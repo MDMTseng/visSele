@@ -1,11 +1,7 @@
 'use strict'
 
-
-import { connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
-import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
-import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 import {
   threePointToArc,
   intersectPoint,
@@ -15,7 +11,10 @@ import {
   distance_point_point
 } from 'UTIL/MathTools';
 
-import { Machine } from 'xstate';
+
+
+import Ajv from "ajv"
+const ajv = new Ajv()
 
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
@@ -28,6 +27,9 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
+
+import {Schema_GenMatchingDefFile} from './GenMatchingUTIL';
+
 import {
   round as roundX, websocket_autoReconnect,
   websocket_reqTrack, dictLookUp, undefFallback,
@@ -76,7 +78,7 @@ import {
 
 
 
-const LOCALSTORAGE_KEY="CABLE.RecentDefFiles"
+const LOCALSTORAGE_KEY="GenMatching.RecentDefFiles"
 
 
 function getLocalStorage_RecentFiles(key=LOCALSTORAGE_KEY)
@@ -99,7 +101,7 @@ function appendLocalStorage_RecentFiles(key=LOCALSTORAGE_KEY,fileInfo)
 
 
 
-class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasComponent_proto {
+class DrawHook_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasComponent_proto {
 
   constructor(canvasDOM) {
     super(canvasDOM);
@@ -161,7 +163,7 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
 
 
 
-      this.regionSelect.onSelect(this.regionSelect);
+      this.regionSelect.onSelect(this.regionSelect,this);
       this.regionSelect=undefined;
     }
     this.ctrlLogic();
@@ -245,8 +247,10 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
     this.secCanvas.width = IM.width;
     this.secCanvas.height = IM.height;
     this.secCanvas_rawImg = IM.img;
+    this.rUtil.renderParam.mmpp = IM.cameraInfo.mmpp;
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx2nd.putImageData(this.secCanvas_rawImg, 0, 0);
+
 
   }
 
@@ -406,7 +410,7 @@ class CanvasComponent extends React.Component {
   }
 
   componentDidMount() {
-    this.ec_canvas = new CableWireDef_CanvasComponent(this.refs.canvas);
+    this.ec_canvas = new DrawHook_CanvasComponent(this.refs.canvas);
 
     if(this.props.onCanvasInit!==undefined)
       this.props.onCanvasInit(this);
@@ -424,13 +428,11 @@ class CanvasComponent extends React.Component {
     this.ec_canvas.draw();
   }
 
-  update(IM,RP,UI_Info) {
+  update(IM) {
 
     if (this.ec_canvas !== undefined) {
       {
         this.ec_canvas.SetIM(IM);
-        this.ec_canvas.SetRP(RP);
-        this.ec_canvas.SetUI_Info(UI_Info);
         this.draw();
       }
     }
@@ -467,9 +469,15 @@ class CanvasComponent extends React.Component {
 }
 
 
+const genDef_validator = ajv.compile(Schema_GenMatchingDefFile)
+
+
+
+
+
 var enc = new TextEncoder();
 
-const CABLE_DEF_EXT="cabDef";
+const GEN_DEF_EXT="genDef";
 
 const configState={
   normal:"normal",
@@ -480,629 +488,501 @@ const configState={
 }
 
 
-function GenMatching_rdx({onExtraCtrlUpdate})
+
+
+function InspRule_positioning_Config({insprule,InspRefImg,ASYNC_WS_SEND_BPG,setCanvasHook,launchRegionSelect,onRuleUpdate,defInfoPath})
 {
   let _cur = useRef({
-    prjRootPath:"data/TMP/",
     init:true,
     canvasRenderInfo:{
-      test:{
-        pt:{x:100,y:100},
-        draw:(info,g,canvas_obj)=>{
-
-          // let info = _this.canvasRenderInfo.test;
-          // let ctx = g.ctx;
-          // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-          // let psize = 2*canvas_obj.rUtil.getPointSize();
-          // ctx.lineWidth = psize/3;
-          
-          // canvas_obj.rUtil.drawcross(ctx, info.pt,psize);
-
-        }
-      }
     }
   });
   let _this=_cur.current;
 
-  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
-  
-  const dispatch = useDispatch();
-  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, ...args));
 
-  const [fileSavingContext,setFileSavingContext]=useState(undefined);
-  const [fileBrowsingContext,setFileBrowsingContext]=useState(undefined);
+  const [_insprule,set_insprule]=useState(insprule);
 
-  const [defPath,setDefPath]=useState("data/default."+CABLE_DEF_EXT);
+  console.log(_insprule);
 
-  const [canComp,setCanComp]=useState(undefined);
-  const [confState,setConfState]=useState(configState.shape_positioning);
-
-  const [_defInfo_,set_defInfo_]=useState({
-    type:"FM_GenMatching",
-    "template_pyramid":	[{
-			"x":	738,
-			"y":	644,
-			"w":	116,
-			"h":	100,
-			"pyramid_level":	0,
-			"angle":	0,
-			"anchor":	{
-				"x":	798.763916015625,
-				"y":	691.59228515625
-			},
-			"features":	[{
-					"label":	4,
-					"theta":	275.19363403320312,
-					"x":	1,
-					"y":	54
-				}, {
-					"label":	4,
-					"theta":	273.5960693359375,
-					"x":	7,
-					"y":	54
-				}, {
-					"label":	4,
-					"theta":	94.599334716796875,
-					"x":	14,
-					"y":	27
-				}, {
-					"label":	4,
-					"theta":	93.944488525390625,
-					"x":	24,
-					"y":	28
-				}, {
-					"label":	4,
-					"theta":	273.94448852539062,
-					"x":	11,
-					"y":	54
-				}, {
-					"label":	4,
-					"theta":	95.3137435913086,
-					"x":	7,
-					"y":	27
-				}, {
-					"label":	4,
-					"theta":	95.3137435913086,
-					"x":	10,
-					"y":	27
-				}, {
-					"label":	4,
-					"theta":	275.31375122070312,
-					"x":	15,
-					"y":	55
-				}, {
-					"label":	4,
-					"theta":	93.990203857421875,
-					"x":	2,
-					"y":	26
-				}, {
-					"label":	4,
-					"theta":	276.25823974609375,
-					"x":	2,
-					"y":	15
-				}, {
-					"label":	4,
-					"theta":	94.058631896972656,
-					"x":	39,
-					"y":	29
-				}, {
-					"label":	4,
-					"theta":	276.0081787109375,
-					"x":	23,
-					"y":	17
-				}, {
-					"label":	4,
-					"theta":	275.2615966796875,
-					"x":	12,
-					"y":	16
-				}, {
-					"label":	5,
-					"theta":	294.197021484375,
-					"x":	36,
-					"y":	57
-				}, {
-					"label":	4,
-					"theta":	274.57315063476562,
-					"x":	8,
-					"y":	16
-				}, {
-					"label":	6,
-					"theta":	325.45895385742188,
-					"x":	40,
-					"y":	60
-				}, {
-					"label":	4,
-					"theta":	95.4765625,
-					"x":	1,
-					"y":	71
-				}, {
-					"label":	4,
-					"theta":	94.697914123535156,
-					"x":	5,
-					"y":	72
-				}, {
-					"label":	4,
-					"theta":	94.697914123535156,
-					"x":	8,
-					"y":	72
-				}, {
-					"label":	4,
-					"theta":	275.6298828125,
-					"x":	37,
-					"y":	18
-				}, {
-					"label":	4,
-					"theta":	94.898307800292969,
-					"x":	17,
-					"y":	73
-				}, {
-					"label":	4,
-					"theta":	94.204627990722656,
-					"x":	25,
-					"y":	74
-				}, {
-					"label":	4,
-					"theta":	276.53134155273438,
-					"x":	49,
-					"y":	19
-				}, {
-					"label":	3,
-					"theta":	237.75070190429688,
-					"x":	90,
-					"y":	4
-				}, {
-					"label":	3,
-					"theta":	251.26278686523438,
-					"x":	96,
-					"y":	1
-				}, {
-					"label":	4,
-					"theta":	261.46978759765625,
-					"x":	100,
-					"y":	0
-				}, {
-					"label":	2,
-					"theta":	216.7669677734375,
-					"x":	83,
-					"y":	10
-				}, {
-					"label":	4,
-					"theta":	279.16192626953125,
-					"x":	86,
-					"y":	99
-				}, {
-					"label":	0,
-					"theta":	182.48905944824219,
-					"x":	75,
-					"y":	53
-				}, {
-					"label":	7,
-					"theta":	167.67985534667969,
-					"x":	75,
-					"y":	66
-				}, {
-					"label":	4,
-					"theta":	275.19363403320312,
-					"x":	5,
-					"y":	92
-				}, {
-					"label":	4,
-					"theta":	274.59933471679688,
-					"x":	9,
-					"y":	92
-				}, {
-					"label":	0,
-					"theta":	181.97453308105469,
-					"x":	75,
-					"y":	60
-				}, {
-					"label":	4,
-					"theta":	275.43951416015625,
-					"x":	38,
-					"y":	93
-				}, {
-					"label":	4,
-					"theta":	271.3636474609375,
-					"x":	29,
-					"y":	93
-				}, {
-					"label":	4,
-					"theta":	270,
-					"x":	26,
-					"y":	93
-				}, {
-					"label":	4,
-					"theta":	274.82000732421875,
-					"x":	18,
-					"y":	93
-				}, {
-					"label":	4,
-					"theta":	272.06961059570312,
-					"x":	22,
-					"y":	93
-				}, {
-					"label":	4,
-					"theta":	272.06961059570312,
-					"x":	33,
-					"y":	93
-				}, {
-					"label":	4,
-					"theta":	98.325057983398438,
-					"x":	90,
-					"y":	80
-				}, {
-					"label":	4,
-					"theta":	272.79217529296875,
-					"x":	43,
-					"y":	94
-				}, {
-					"label":	4,
-					"theta":	272.79217529296875,
-					"x":	46,
-					"y":	94
-				}, {
-					"label":	4,
-					"theta":	272.79217529296875,
-					"x":	52,
-					"y":	94
-				}, {
-					"label":	4,
-					"theta":	272.79217529296875,
-					"x":	55,
-					"y":	95
-				}, {
-					"label":	4,
-					"theta":	278.53021240234375,
-					"x":	67,
-					"y":	96
-				}, {
-					"label":	4,
-					"theta":	278.53021240234375,
-					"x":	72,
-					"y":	97
-				}, {
-					"label":	4,
-					"theta":	280.75103759765625,
-					"x":	75,
-					"y":	97
-				}, {
-					"label":	4,
-					"theta":	275.70977783203125,
-					"x":	62,
-					"y":	95
-				}]
-		}, {
-			"x":	369,
-			"y":	322,
-			"w":	58,
-			"h":	50,
-			"pyramid_level":	1,
-			"angle":	0,
-			"anchor":	{
-				"x":	399.3819580078125,
-				"y":	345.796142578125
-			},
-			"features":	[{
-					"label":	4,
-					"theta":	274.15057373046875,
-					"x":	2,
-					"y":	27
-				}, {
-					"label":	4,
-					"theta":	94.288421630859375,
-					"x":	1,
-					"y":	13
-				}, {
-					"label":	4,
-					"theta":	93.337844848632812,
-					"x":	12,
-					"y":	14
-				}, {
-					"label":	4,
-					"theta":	95.05645751953125,
-					"x":	3,
-					"y":	36
-				}, {
-					"label":	4,
-					"theta":	277.91351318359375,
-					"x":	0,
-					"y":	7
-				}, {
-					"label":	4,
-					"theta":	275.60845947265625,
-					"x":	9,
-					"y":	8
-				}, {
-					"label":	3,
-					"theta":	237.788818359375,
-					"x":	45,
-					"y":	2
-				}, {
-					"label":	4,
-					"theta":	277.176513671875,
-					"x":	43,
-					"y":	49
-				}, {
-					"label":	4,
-					"theta":	273.15423583984375,
-					"x":	26,
-					"y":	47
-				}, {
-					"label":	4,
-					"theta":	273.69070434570312,
-					"x":	18,
-					"y":	46
-				}, {
-					"label":	4,
-					"theta":	273.69070434570312,
-					"x":	21,
-					"y":	47
-				}, {
-					"label":	4,
-					"theta":	270,
-					"x":	14,
-					"y":	46
-				}, {
-					"label":	4,
-					"theta":	95.709785461425781,
-					"x":	45,
-					"y":	40
-				}, {
-					"label":	4,
-					"theta":	274.76287841796875,
-					"x":	3,
-					"y":	46
-				}, {
-					"label":	4,
-					"theta":	273.81338500976562,
-					"x":	7,
-					"y":	46
-				}, {
-					"label":	4,
-					"theta":	276.88095092773438,
-					"x":	54,
-					"y":	50
-				}, {
-					"label":	4,
-					"theta":	94.573158264160156,
-					"x":	58,
-					"y":	42
-				}]
-		}],
-	  "locatingBlocks":	[{
-			"x":	756,
-			"y":	408,
-			"w":	117,
-			"h":	107
-		}, {
-			"x":	749,
-			"y":	651,
-			"w":	109,
-			"h":	107
-		}, {
-			"x":	980,
-			"y":	408,
-			"w":	63,
-			"h":	79
-		}],
-
-  });
-
-  const [editRegionInfo,setEditRegionInfo]=useState(undefined);
-
-
-
-
-  function Reset()
+  function _setCanvasHook(info)
   {
-    setFileSavingContext(undefined);
-    setFileBrowsingContext(undefined);
-    set_defInfo_({
-      type:"FM_GenMatching",
-    });
-    if(canComp!==undefined)
-      canComp.reset();
-  }
-
-  function fetchParam()
-  {
-    ACT_WS_SEND_BPG( "ST", 0,
-      { 
-        InspectionParam:[{
-          get_param:true
-        }]
-      },undefined, { 
-        resolve:(pkts)=>{
-          let DT=pkts.find(pkt=>pkt.type=="DT");
-          console.log("-------DT",DT,"   pkts:",pkts);
-          if(DT!==undefined && DT.data!==undefined&& DT.data[0]!==undefined)
-          {
-            set_defInfo_({..._defInfo_,
-              ...DT.data[0]
-            });
-          }
-        }, 
-        reject:()=>{} 
-      })
-  }
-  function inspStage(inspectionStage)
-  {
-    ACT_WS_SEND_BPG( "ST", 0,
-      { 
-        InspectionParam:[{
-          inspectionStage
-        }]
-      },undefined, { 
-        resolve:(pkts)=>{}, 
-        reject:()=>{} 
-      })
-  }
-
-  function TriggerNewResult(doTakeNew,add_defInfo,cur_defInfo=_defInfo_,resolve=_=>_,reject=_=>_)
-  {
-
-    //let defInfo= {...cur_defInfo,...add_defccInfo};
-    console.log(add_defInfo);
-    let defInfo={...cur_defInfo,...add_defInfo}
-
-
-    // console.log(defInfo);
-    ACT_WS_SEND_BPG("II", 0, {
-      imgsrc:(doTakeNew==false)?"__CACHE_IMG__":undefined,
-      img_property:{
-        down_samp_level:3
-      },
-      definfo:defInfo
-    }, undefined,
-    { resolve:(pkts)=>{
-      log.info(pkts);
-      let RP = pkts.find(pkt=>pkt.type=="RP");
-      let IM = pkts.find(pkt=>pkt.type=="IM");
-      if(RP!==undefined && IM!==undefined)
-      {
-        _this.RP=RP;
-
-        
-        IM.img = new ImageData(IM.image, IM.width);
-        _this.IM=IM;
-        resolve({RP,IM});
-        canComp.update(_this.IM,_this.RP,{});
-      }
-
-      }, reject:(pkts)=>{
-        log.info(pkts);
-        reject(pkts);
-      }});
-
-
-    if(doTakeNew==true)
-    {
-      fetchParam();
-    }
-  }
-
-
-
-  const ACT_File_Save = (filePath, content,promiseCBs) => {
-    let act = UIAct.EV_WS_SEND_BPG(CORE_ID, "SV", 0,
-      {filename:filePath},
-      content,promiseCBs
-    )
-    dispatch(act);
-  }
-  function FileSave(filename,type, encoded_content,resolve=_=>_,reject=_=>_)
-  {
-
-    // console.log(defInfo);
-    ACT_WS_SEND_BPG("SV", 0, {
-      filename,type,
-      make_dir:true
-    }, encoded_content,
-    { resolve:(pkts)=>{
-        let OBJ= pkts.reduce((obj,pkt)=>{
-          obj[pkt.type]=pkt;
-          return obj;
-        },{});
-        resolve(OBJ);
-      }, reject:(pkts)=>{
-        log.info(pkts);
-        reject(pkts);
-      }
-    });
+    _this.canvasRenderInfo=info;
+    setCanvasHook(info)
 
   }
 
   useEffect(() => {
+    setCanvasHook(_this.canvasRenderInfo)
     return () => {
+      setCanvasHook(undefined)
+      // onRuleUpdate(_insprule)
     };
-  },[])
-
-  useEffect(() => {
-    if(canComp===undefined)return;
-    
-     
-    canComp.ec_canvas.EmitEvent=(event)=>{
-  
-      console.log(event);
-      switch (event.type) {
-        case "onRegionInfoUpdate":
-          
-          if(event.data==undefined )
-          {
-            setEditRegionInfo(undefined);
-          }
-          else
-          {
-            console.log(event)
-            setEditRegionInfo(event.data.region);
-          }
-          break;
+  }, [])
 
 
-        case "onUserRegionSelect":
-          
-          console.log(event)
-          break;
+  function runMatch(ruleInfo,refImgPath)
+  {
 
 
-      }
-    };
 
-    canComp.ec_canvas.drawHook=(ctrl_or_draw,g,canvas_obj)=>{
-      if(ctrl_or_draw==true)
-      {
-        Object.keys(_this.canvasRenderInfo).forEach(id=>{
-          let idInfo=_this.canvasRenderInfo[id];
-          if(idInfo.ctrl===undefined)return;
-          if(Array.isArray(idInfo.ctrl))
-          {
-            idInfo.ctrl.forEach(ctrlh=>ctrlh(idInfo,g,canvas_obj))
-          }
-          else
-            idInfo.ctrl(idInfo,g,canvas_obj);
-        })
-        return;
-      }
 
-      Object.keys(_this.canvasRenderInfo).forEach(id=>{
-        let idInfo=_this.canvasRenderInfo[id];
-        if(idInfo.draw===undefined)return;
+    ASYNC_WS_SEND_BPG("II", 0, {
+      imgsrc:"__CACHE_IMG__",
+      camera_id:InspRefImg.cameraInfo.id,
+      definfo:{
+        ...ruleInfo,
+        type:"FM_GenMatching",
+        insp_type:"shape_features_matching",
+        param_type:"load_template_image",
+        image_src_path:refImgPath+"/"+InspRefImg.cameraInfo.refrenceImage,
         
-        if(Array.isArray(idInfo.draw))
-        {
-          idInfo.draw.forEach(drawh=>drawh(idInfo,g,canvas_obj))
+      },
+      // img_property:{
+      //   down_samp_level:3
+      // }
+    })
+    .then(pkts=>{
+      console.log(pkts);
+      
+      let RP = pkts.find(pkt=>pkt.type=="RP");
+      if(RP===undefined)
+      {
+        throw {
+          why:"no report",
+          info:pkts
         }
-        else
-          idInfo.draw(idInfo,g,canvas_obj);
+      }
+      
+      let matchResults = RP.data.matchResults;
+
+      
+      _setCanvasHook({
+        matchResults,
+        draw:(info,g,canvas_obj)=>{
+          let ctx = g.ctx;
+          let psize = 2*canvas_obj.rUtil.getPointSize();
+          ctx.lineWidth = psize/3;
+
+          matchResults.forEach((ms)=>{
+
+            ctx.fillStyle =
+            ctx.strokeStyle = "rgba(50, 200, 50,0.8)";
+            if(ms.refine_score<0.5)
+            {
+              ctx.fillStyle =
+              ctx.strokeStyle = "rgba(200, 0, 0,0.8)";
+            }
+
+            canvas_obj.rUtil.drawcross(ctx, ms,psize);
+            let lineLength=100;
+            let offsetx=lineLength*Math.cos(ms.angle*3.14159/180);
+            let offsety=lineLength*Math.sin(ms.angle*3.14159/180);
+            ctx.beginPath();
+            ctx.moveTo(ms.x, ms.y);
+            ctx.lineTo(ms.x+offsetx, ms.y+offsety);
+            ctx.stroke();
+            
+
+
+            ctx.font = '20px serif';
+            ctx.fillText('s:'+ms.similarity.toFixed(2) +" cl:"+ms.class_id, ms.x, ms.y);
+            ctx.fillText('ang:'+ms.angle.toFixed(2)+" rf_score:"+ms.refine_score, ms.x, ms.y+50);
+          })
+        }
+
       })
+
+    })
+
+  }
+  function CtrlHook_selectRegion(info,g,canvas_obj)
+  {
+    // console.log(">>>");
+    if(canvas_obj.regionSelect===undefined)
+    {
+      info.sel_region=undefined
+      return;
+    }
+
+    if(canvas_obj.regionSelect.pcvst1===undefined || canvas_obj.regionSelect.pcvst2===undefined)
+    {
+      return;
+    }
+
+    let pt1 = canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
+    let pt2 = canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
+      
+    let x,y,w,h;
+
+    x=pt1.x;
+    w=pt2.x-pt1.x;
+
+    y=pt1.y;
+    h=pt2.y-pt1.y;
+
+
+    if(w<0){
+      x+=w;
+      w=-w;
     }
     
-    TriggerNewResult(true,
-      {insp_type:"NOP"},_defInfo_,
-      (ret_info)=>{
-        if(_this.init==true && ret_info.IM!==undefined)
-        {
-          //save 
-          FileSave(_this.prjRootPath+"IMG1.png","__CACHE_IMG__",undefined,
-          (obj)=>{
-            console.log(">>>>",obj);
-          });
-          _this.init=false;
-        }
-      },
-      ()=>{
+    if(h<0){
+      y+=h;
+      h=-h;
+    }
+    info.sel_region={
+      x,y,w,h
+    }
+    
+  }
+  function DrawHook_selectRegionDraw(info,g,canvas_obj)
+  {
+    if(info.sel_region===undefined)return;
+    let ctx = g.ctx;
+
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 5;
+
+    let x = info.sel_region.x;
+    let y = info.sel_region.y;
+    let w = info.sel_region.w;
+    let h = info.sel_region.h;
+    ctx.beginPath();
+    let LineSize = canvas_obj.rUtil.getIndicationLineSize();
+    ctx.setLineDash([LineSize*10,LineSize*3,LineSize*3,LineSize*3]);
+    ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+    ctx.lineWidth = LineSize;
+    ctx.rect(x,y,w,h);
+    ctx.stroke();
+    ctx.closePath();
+
+    ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+    let psize = 2*canvas_obj.rUtil.getPointSize();
+    ctx.lineWidth = psize/3;
+    canvas_obj.rUtil.drawcross(ctx, {x:x+w/2,y:y+h/2},psize);
+
+  }
+  function DrawHook_Template_py(info,g,canvas_obj)
+  {
+    let ctx = g.ctx;
+    let psize = 2*canvas_obj.rUtil.getPointSize();
+    ctx.lineWidth = psize/3;
+
+    let py_mult=1;
+    let templateInfo=info.Template_py||[];
+    templateInfo.forEach((temp,idx)=>{
+      temp.features.forEach((feature)=>{
         
+        let x=py_mult*(temp.x+feature.x);
+        let y=py_mult*(temp.y+feature.y);
+
+        
+
+        ctx.strokeStyle = "rgba("+0+", "+175/(idx+1)+", 0,0.5)";
+        if(info.featureDraw_use_sel_region==true  && info.sel_region!==undefined)
+        {
+          delete feature._del;
+          if(info.sel_region.x<x && info.sel_region.y<y &&
+            info.sel_region.x+info.sel_region.w>x && 
+            info.sel_region.y+info.sel_region.h>y)//check region includs 
+          {
+            
+            ctx.strokeStyle = "rgba("+175/(idx+1)+", "+0+", 0,0.5)";
+            feature._del=true;
+          }
+        }
+
+        canvas_obj.rUtil.drawcross(ctx, {x,y},psize);
+      })
+      py_mult*=2;
+    });
+  
+    
+  }
+  function DrawHook_featureDraw(info,g,canvas_obj)
+  {
+    let ctx = g.ctx;
+    let psize = 2*canvas_obj.rUtil.getPointSize();
+    ctx.lineWidth = psize/3;
+
+    let py_mult=1;
+    info.Template_py.forEach((temp,idx)=>{
+      temp.features.forEach((feature)=>{
+        
+        let x=py_mult*(temp.x+feature.x);
+        let y=py_mult*(temp.y+feature.y);
+
+        
+
+        ctx.strokeStyle = "rgba("+0+", "+175/(idx+1)+", 0,0.5)";
+        if(info.featureDraw_use_sel_region==true  && info.sel_region!==undefined)
+        {
+          delete feature._del;
+          if(info.sel_region.x<x && info.sel_region.y<y &&
+            info.sel_region.x+info.sel_region.w>x && 
+            info.sel_region.y+info.sel_region.h>y)//check region includs 
+          {
+            
+            ctx.strokeStyle = "rgba("+175/(idx+1)+", "+0+", 0,0.5)";
+            feature._del=true;
+          }
+        }
+
+        canvas_obj.rUtil.drawcross(ctx, {x,y},psize);
+      })
+      py_mult*=2;
+    });
+  
+    
+  }
+
+
+  return<>
+    <Button onClick={()=>{
+      onRuleUpdate(_insprule)
+    }}>{"X"}</Button>
+
+    <Button onClick={()=>{
+      
+      console.log(_insprule);
+      _setCanvasHook({
+        Template_py:_insprule.template_pyramid,
+        ctrl:CtrlHook_selectRegion,
+        draw:[DrawHook_selectRegionDraw,DrawHook_Template_py]
+      })
+
+      launchRegionSelect((evt,canvas)=>{
+        console.log(evt,canvas);
+        
+        let x = evt.x;
+        let y = evt.y;
+        let w = evt.w;
+        let h = evt.h;
+        let ROI={x,y,w,h};
+        let anchor={x:x+w/2,y:y+h/2};
+
+        ASYNC_WS_SEND_BPG("II", 0, {
+          imgsrc:"__CACHE_IMG__",
+          camera_id:InspRefImg.cameraInfo.id,
+          definfo:{
+            type:"FM_GenMatching",
+            insp_type:"extract_shape_features",
+            ROI,anchor
+          },
+          // img_property:{
+          //   down_samp_level:3
+          // }
+        })
+        .then(pkts=>{
+          console.log(pkts);
+
+          
+          let RP = pkts.find(pkt=>pkt.type=="RP");
+          if(RP===undefined)
+          {
+            throw {
+              why:"no report",
+              info:pkts
+            }
+          }
+
+          _this.canvasRenderInfo.Template_py=RP.data.template_pyramid;
+          
+
+          set_insprule({
+            ..._insprule,
+            ROI,anchor,
+
+            template_pyramid:RP.data.template_pyramid
+          })
+          canvas.draw();
+          // onConfigUpdate
+        })
+
+
+
+      });
+    }}>ShapeRegion</Button>
+
+
+
+
+    <Button onClick={()=>{
+      _setCanvasHook({
+        Template_py:_insprule.template_pyramid||[],
+        featureDraw_use_sel_region:true,
+        ctrl:CtrlHook_selectRegion,
+        draw:[DrawHook_selectRegionDraw,DrawHook_featureDraw]
+      })
+
+      launchRegionSelect((evt,canvas)=>{
+        let Template_py = _this.canvasRenderInfo.Template_py;
+        Template_py.forEach((temp,idx)=>{
+          temp.features=temp.features.filter(feature=>feature._del!==true);
+        });
+
+        _this.canvasRenderInfo.Template_py=Template_py;
+
+        set_insprule({
+          ..._insprule,
+          template_pyramid:Template_py
+        })
+        canvas.draw();
+
+
+
+      });
+    }}>SelRmTempFeature</Button>
+
+
+
+
+
+
+
+
+
+    <Button onClick={()=>{
+
+      let locatingBlocks=_insprule.locatingBlocks||[];
+      _setCanvasHook({
+        locatingBlocks,
+        ctrl:CtrlHook_selectRegion,
+        draw:[
+          DrawHook_selectRegionDraw,
+          (info,g,canvas_obj)=>{
+          let ctx = g.ctx;
+          let psize = 2*canvas_obj.rUtil.getPointSize();
+          ctx.lineWidth = psize/4;
+
+          ctx.setLineDash([]);
+          let LineSize = canvas_obj.rUtil.getIndicationLineSize();
+          
+          info.locatingBlocks.forEach((region)=>{
+            ctx.beginPath();
+            ctx.strokeStyle = "rgba(179, 100, 0,0.5)";
+            ctx.lineWidth = LineSize;
+            ctx.rect(region.x, region.y, region.w, region.h);
+            ctx.stroke();
+            ctx.closePath();
+
+          })
+        }]
+      })
+
+        
+      launchRegionSelect((evt,canvas)=>{
+        
+        let x=Math.ceil(evt.x);
+        let y=Math.ceil(evt.y);
+        let w=Math.ceil(evt.w);
+        let h=Math.ceil(evt.h);
+
+
+        let new_locatingBlocks=[...locatingBlocks,{x,y,w,h}];
+
+        set_insprule({
+          ..._insprule,
+          locatingBlocks:new_locatingBlocks
+        })
+
+        _this.canvasRenderInfo.locatingBlocks=new_locatingBlocks;
+        canvas.draw();
+
+      });
+    }}>LocaBlock</Button>
+
+    <Button onClick={()=>{
+
+      let locatingBlocks=_insprule.locatingBlocks||[];
+
+
+      _setCanvasHook({
+        locatingBlocks,
+        ctrl:CtrlHook_selectRegion,
+        draw:[
+          DrawHook_selectRegionDraw,
+          (info,g,canvas_obj)=>{
+          let ctx = g.ctx;
+          let psize = 2*canvas_obj.rUtil.getPointSize();
+          ctx.lineWidth = psize/4;
+
+          ctx.setLineDash([]);
+          let LineSize = canvas_obj.rUtil.getIndicationLineSize();
+          
+          info.locatingBlocks.forEach((region)=>{
+            ctx.beginPath();
+            
+            ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
+            
+            if(info.sel_region!==undefined)
+            {
+              delete region._del;
+              if(info.sel_region.x<region.x && info.sel_region.y<region.y &&
+                info.sel_region.x+info.sel_region.w>region.x+region.w && 
+                info.sel_region.y+info.sel_region.h>region.y+region.h)//check region includs 
+              {
+                
+                ctx.strokeStyle = "rgba(200, 0, 0,0.5)";
+                region._del=true;
+              }
+            }
+
+            ctx.lineWidth = LineSize;
+            ctx.rect(region.x, region.y, region.w, region.h);
+            ctx.stroke();
+            ctx.closePath();
+
+          })
+        }]
+      })
+
+      launchRegionSelect((evt,canvas)=>{
+        let lcB=locatingBlocks;
+        lcB=lcB.filter(blk=>blk._del===undefined)
+        
+        _this.canvasRenderInfo.locatingBlocks=lcB;
+        set_insprule({
+          ..._insprule,
+          locatingBlocks:lcB
+        })
+        canvas.draw();
+
+
+
       });
 
+    }}>SelRmBlock</Button>
+    
+    <Button onClick={()=>{
+      runMatch(_insprule,defInfoPath);
+    }}>match</Button>
 
-  }, [canComp])
+    
+    <Button onClick={()=>{
+      runMatch(_insprule,defInfoPath);
+    }}>match_refine</Button>
+  </>;
 
 
+}
 
-  if(canComp!==undefined)
-  {
-    canComp.draw();
-  }
+
+function InspSet_Config({InspInfo,InspRefImg,ASYNC_WS_SEND_BPG,onInfoUpdate,defInfoPath})
+{
+  let _cur = useRef({
+    canvasRenderInfo:{
+    }
+  });
+  let _this=_cur.current;
+
+  const [_inspinfo,set_inspInfo]=useState(InspInfo);
+
+  const [MODE,setMODE]=useState("NORMAL");
+  
+  const [canComp,setCanComp]=useState(undefined);
+  
+
 
   let launchRegionSelect=(onSelectComplete,drawRegionRect=true)=>
   {
@@ -1113,7 +993,7 @@ function GenMatching_rdx({onExtraCtrlUpdate})
     }
 
       
-    canComp.ec_canvas.UserRegionSelect((evt)=>{
+    canComp.ec_canvas.UserRegionSelect((evt,canvas)=>{
       // console.log(evt)
 
       let x = evt.pt1.x;
@@ -1137,13 +1017,12 @@ function GenMatching_rdx({onExtraCtrlUpdate})
       evt.w=w;
       evt.h=h;
 
-      onSelectComplete(evt);
+      onSelectComplete(evt,canvas);
       // canComp.ec_canvas.drawHook=undefined;
     });
 
 
 
-    canComp.draw();
 
   }
   
@@ -1186,506 +1065,503 @@ function GenMatching_rdx({onExtraCtrlUpdate})
 
 
 
-  let confUI=null;
 
-  switch(confState)
-  {
-    case configState.normal:
-      confUI=<>
-
-        <Button onClick={()=>{
-          setConfState(configState.shape_positioning);
-          
-          TriggerNewResult(false,{
-            insp_type:"NOP",
-          });
-        }}>Edit rough positioning</Button>
-
-
-        <Button onClick={()=>{
-          setConfState(configState.template_matching);
-          
-          TriggerNewResult(false,{
-            insp_type:"NOP",
-          });
-        }}>template_matching</Button>
-        <br/>
-
-      </>;
-    break;
-    case configState.test:
-      confUI=<>
-        <Button onClick={()=>{
-          setConfState(configState.normal);
-        }}>{"<"}</Button>
-
-        <Button onClick={()=>{
-          let i=0;
-          let sec1=10;
-          for(i=0;i<sec1;i++)
-          {
-            let ix=i;
-            setTimeout(()=>{
-              console.log(ix);
-              TriggerNewResult(false,{
-                insp_type:"image_binarization",
-                thres:ix*255/(sec1-1)
-              });
-            },ix*100);
-          }
-        }}>AAA</Button>
-
-        <Button onClick={()=>{
-          launchRegionSelect((evt)=>{
-          console.log(evt);
-          });
-        }}>BBB</Button>
-
-        
-        <Button onClick={()=>{
-          launchPointSelect((evt)=>{
-            console.log(evt);
-          });
-        }}>Point</Button>
-      </>;
-
-
-
-
-    break;
-    case configState.shape_positioning:
-
-
-      function runMatch(doFineAdj=false)
-      {
-
-        let addedDef={
-          insp_type:"shape_features_matching",
-          param_type:"load_template_image",
-          image_src_path:_this.prjRootPath+"IMG1.png"
-        }
-        
-        if(doFineAdj==false)
-        {
-          addedDef.locatingBlocks=[];//if NOT do fine adj, then overwrite the locatingBlocks as empty
-        }
-
-
-        TriggerNewResult(false,addedDef,_defInfo_,
-        (obj)=>{
-          console.log(obj);
-          let matchResults = obj.RP.data.matchResults;
-          
-          // set_defInfo_({..._defInfo_,matchResults});
-          _this.canvasRenderInfo.shape_positioning={
-            matchResults,
-            draw:(info,g,canvas_obj)=>{
-              let ctx = g.ctx;
-              let psize = 2*canvas_obj.rUtil.getPointSize();
-              ctx.lineWidth = psize/3;
-
-              matchResults.forEach((ms)=>{
-
-                ctx.fillStyle =
-                ctx.strokeStyle = "rgba(50, 200, 50,0.8)";
-                if(ms.refine_score<0.5)
-                {
-                  ctx.fillStyle =
-                  ctx.strokeStyle = "rgba(200, 0, 0,0.8)";
-                }
-
-                canvas_obj.rUtil.drawcross(ctx, ms,psize);
-                let lineLength=100;
-                let offsetx=lineLength*Math.cos(ms.angle*3.14159/180);
-                let offsety=lineLength*Math.sin(ms.angle*3.14159/180);
-                ctx.beginPath();
-                ctx.moveTo(ms.x, ms.y);
-                ctx.lineTo(ms.x+offsetx, ms.y+offsety);
-                ctx.stroke();
-                
-
-
-                ctx.font = '20px serif';
-                ctx.fillText('s:'+ms.similarity.toFixed(2) +" cl:"+ms.class_id, ms.x, ms.y);
-                ctx.fillText('ang:'+ms.angle.toFixed(2)+" rf_score:"+ms.refine_score, ms.x, ms.y+50);
-              })
-            }
-
-          }
-
-
-
-
-
-        },
-        ()=>{
-
-        });
-      }
-
-      function CtrlHook_selectRegion(info,g,canvas_obj)
-      {
-        if(canvas_obj.regionSelect===undefined)
-        {
-          info.sel_region=undefined
-          return;
-        }
-
-        if(canvas_obj.regionSelect.pcvst1===undefined || canvas_obj.regionSelect.pcvst2===undefined)
-        {
-          return;
-        }
-
-        let pt1 = canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
-        let pt2 = canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
-          
-        let x,y,w,h;
-
-        x=pt1.x;
-        w=pt2.x-pt1.x;
-
-        y=pt1.y;
-        h=pt2.y-pt1.y;
-
+  useEffect(() => {
+    if(canComp===undefined)return;
     
-        if(w<0){
-          x+=w;
-          w=-w;
-        }
-        
-        if(h<0){
-          y+=h;
-          h=-h;
-        }
-        info.sel_region={
-          x,y,w,h
-        }
-        
+     
+    canComp.ec_canvas.EmitEvent=(event)=>{
+  
+    };
+
+    canComp.ec_canvas.drawHook=(ctrl_or_draw,g,canvas_obj)=>{
+      if(ctrl_or_draw==true)
+      {
+        Object.keys(_this.canvasRenderInfo).forEach(id=>{
+          let idInfo=_this.canvasRenderInfo[id];
+          if(idInfo.ctrl===undefined)return;
+          if(Array.isArray(idInfo.ctrl))
+          {
+            idInfo.ctrl.forEach(ctrlh=>ctrlh(idInfo,g,canvas_obj))
+          }
+          else
+            idInfo.ctrl(idInfo,g,canvas_obj);
+        })
+        return;
       }
+
+      Object.keys(_this.canvasRenderInfo).forEach(id=>{
+        let idInfo=_this.canvasRenderInfo[id];
+        if(idInfo.draw===undefined)return;
+        
+        if(Array.isArray(idInfo.draw))
+        {
+          idInfo.draw.forEach(drawh=>drawh(idInfo,g,canvas_obj))
+        }
+        else
+          idInfo.draw(idInfo,g,canvas_obj);
+      })
+    }
+    canComp.ec_canvas.SetIM(InspRefImg);
+    canComp.ec_canvas.scaleImageToFitScreen(InspRefImg)
+
+  }, [canComp])
+
+
+  if(canComp!==undefined)
+  {
+    canComp.draw();
+  }
+
+
+  function updateRule(newRule)
+  {
+    let rules=_inspinfo.inspRules||[];
+    
+    rules=[...rules];
+
+    let idx=rules.findIndex(rule=>rule.id==newRule.id);
+    if(idx==-1)
+    {
+      rules.push(newRule);
+    }
+    else
+    {
+      rules[idx]=newRule;
+    }
+    set_inspInfo({..._inspinfo,inspRules:rules});
+  }
+
+
+  let EditUI;
+  
+  switch(MODE)
+  {
+
+    case "NORMAL":
+      
+      EditUI=(
+        <div className="s overlay overlay scroll HXA WXA" style={{top:0,width:255,background:"#EEE"}}>
+          
+          <Button onClick={()=>{
+            onInfoUpdate(_inspinfo)
+          }}>X</Button>
+          <Button onClick={()=>{
+            setMODE("POSE_EST")
+          }}>{"POSE_EST"}</Button>
+        </div>);
 
       
-      function DrawHook_selectRegionDraw(info,g,canvas_obj)
-      {
-        if(info.sel_region===undefined)return;
-        let ctx = g.ctx;
+      break;
 
-        ctx.strokeStyle = 'red';
-        ctx.lineWidth = 5;
-
-        let x = info.sel_region.x;
-        let y = info.sel_region.y;
-        let w = info.sel_region.w;
-        let h = info.sel_region.h;
-        ctx.beginPath();
-        let LineSize = canvas_obj.rUtil.getIndicationLineSize();
-        ctx.setLineDash([LineSize*10,LineSize*3,LineSize*3,LineSize*3]);
-        ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-        ctx.lineWidth = LineSize;
-        ctx.rect(x,y,w,h);
-        ctx.stroke();
-        ctx.closePath();
-
-        ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-        let psize = 2*canvas_obj.rUtil.getPointSize();
-        ctx.lineWidth = psize/3;
-        canvas_obj.rUtil.drawcross(ctx, {x:x+w/2,y:y+h/2},psize);
-
+    case "POSE_EST":
+      let rules=_inspinfo.inspRules||[];
+      let posi_rule=rules.find(rule=>rule.type="pose_est")||{
+        type:"pose_est",
+        id:30,
+        ROI:{x:0,y:0,w:100,h:100}
       }
-      function DrawHook_featureDraw(info,g,canvas_obj)
-      {
-        let ctx = g.ctx;
-        let psize = 2*canvas_obj.rUtil.getPointSize();
-        ctx.lineWidth = psize/3;
+    
+      EditUI=(
+        <div className="s overlay overlay scroll HXA WXA" style={{top:0,width:255,background:"#EEE"}}>
+      
+          <InspRule_positioning_Config ASYNC_WS_SEND_BPG={ASYNC_WS_SEND_BPG} launchRegionSelect={launchRegionSelect} defInfoPath={defInfoPath}
+            insprule={posi_rule}
+            InspRefImg={InspRefImg}
+            onRuleUpdate={(new_rule)=>{
+              console.log(new_rule);
 
-        let py_mult=1;
-        info.Template_py.forEach((temp,idx)=>{
-          temp.features.forEach((feature)=>{
-            
-            let x=py_mult*(temp.x+feature.x);
-            let y=py_mult*(temp.y+feature.y);
+              updateRule(new_rule);
+              setMODE("NORMAL")
+            }}
 
-            
-
-            ctx.strokeStyle = "rgba("+0+", "+175/(idx+1)+", 0,0.5)";
-            if(info.featureDraw_use_sel_region==true  && info.sel_region!==undefined)
-            {
-              delete feature._del;
-              if(info.sel_region.x<x && info.sel_region.y<y &&
-                info.sel_region.x+info.sel_region.w>x && 
-                info.sel_region.y+info.sel_region.h>y)//check region includs 
+            setCanvasHook={(hook)=>{
+              if(hook===undefined)
               {
-                
-                ctx.strokeStyle = "rgba("+175/(idx+1)+", "+0+", 0,0.5)";
-                feature._del=true;
+                delete _this.canvasRenderInfo.inspRule_positioning_Config;
               }
-            }
-
-            canvas_obj.rUtil.drawcross(ctx, {x,y},psize);
-          })
-          py_mult*=2;
-        });
-      
-        
-      }
-
-
-
-      confUI=<>
-        <Button onClick={()=>{
-          setConfState(configState.normal);
-          delete _this.canvasRenderInfo.shape_positioning;
-        }}>{"<"}</Button>
-
-        <Button onClick={()=>{
-          
-          _this.canvasRenderInfo.shape_positioning={
-            Template_py:_defInfo_.template_pyramid,
-            ctrl:CtrlHook_selectRegion,
-            draw:[DrawHook_selectRegionDraw,DrawHook_featureDraw]
-          }
-
-          launchRegionSelect((evt)=>{
-            console.log(evt);
-            
-            let x = evt.x;
-            let y = evt.y;
-            let w = evt.w;
-            let h = evt.h;
-
-            TriggerNewResult(false,{
-              insp_type:"extract_shape_features",
-              ROI:{x,y,w,h},
-              anchor:{x:x+w/2,y:y+h/2}
-            },_defInfo_,
-            (obj)=>{
-              console.log(obj);
-
-              _this.canvasRenderInfo.shape_positioning.Template_py=obj.RP.data.TemplatePyramid;
-
-              set_defInfo_({..._defInfo_,template_pyramid:obj.RP.data.TemplatePyramid});
-            },
-            ()=>{
-
-            });
-          });
-        }}>ShapeRegion</Button>
-
-
-
-
-        <Button onClick={()=>{
-          let Template_py = _defInfo_.template_pyramid;
-          
-          _this.canvasRenderInfo.shape_positioning={
-            Template_py:_defInfo_.template_pyramid,
-            featureDraw_use_sel_region:true,
-            ctrl:CtrlHook_selectRegion,
-            draw:[DrawHook_selectRegionDraw,DrawHook_featureDraw]
-          }
-
-          launchRegionSelect((evt)=>{
-            let Template_py = _this.canvasRenderInfo.shape_positioning.Template_py;
-            Template_py.forEach((temp,idx)=>{
-              temp.features=temp.features.filter(feature=>feature._del!==true);
-            });
-
-            _this.canvasRenderInfo.shape_positioning.Template_py=Template_py;
-
-            set_defInfo_({..._defInfo_,template_pyramid:Template_py});
-
-          });
-        }}>SelRmTempFeature</Button>
-
-
-
-
-
-
-
-
-
-        <Button onClick={()=>{
-
-          _this.canvasRenderInfo.shape_positioning={
-            defInfo:_defInfo_,
-            ctrl:CtrlHook_selectRegion,
-            draw:[
-              DrawHook_selectRegionDraw,
-              (info,g,canvas_obj)=>{
-              let ctx = g.ctx;
-              let psize = 2*canvas_obj.rUtil.getPointSize();
-              ctx.lineWidth = psize/4;
-
-              ctx.setLineDash([]);
-              let LineSize = canvas_obj.rUtil.getIndicationLineSize();
+              else 
+                _this.canvasRenderInfo.inspRule_positioning_Config=hook;
               
-              let locatingBlocks=info.defInfo.locatingBlocks||[];
-              locatingBlocks.forEach((region)=>{
-                ctx.beginPath();
-                ctx.strokeStyle = "rgba(179, 100, 0,0.5)";
-                ctx.lineWidth = LineSize;
-                ctx.rect(region.x, region.y, region.w, region.h);
-                ctx.stroke();
-                ctx.closePath();
-
-              })
-            }]
-          }
-            
-          launchRegionSelect((evt)=>{
-            
-            let locatingBlocks=_defInfo_.locatingBlocks||[];
-            let x=Math.ceil(evt.x);
-            let y=Math.ceil(evt.y);
-            let w=Math.ceil(evt.w);
-            let h=Math.ceil(evt.h);
-
-
-            let new_locatingBlocks=[...locatingBlocks,
-              {x,y,w,h}];
-            let new_defInfo={..._defInfo_,locatingBlocks:new_locatingBlocks};
-            set_defInfo_(new_defInfo);
-            _this.canvasRenderInfo.shape_positioning.defInfo=new_defInfo;
-
-          });
-        }}>LocaBlock</Button>
-
-        <Button onClick={()=>{
-
-          _this.canvasRenderInfo.shape_positioning={
-            locatingBlocks:_defInfo_.locatingBlocks||[],
-            ctrl:CtrlHook_selectRegion,
-            draw:[
-              DrawHook_selectRegionDraw,
-              (info,g,canvas_obj)=>{
-              let ctx = g.ctx;
-              let psize = 2*canvas_obj.rUtil.getPointSize();
-              ctx.lineWidth = psize/4;
-
-              ctx.setLineDash([]);
-              let LineSize = canvas_obj.rUtil.getIndicationLineSize();
-              
-              let locatingBlocks=info.locatingBlocks||[];
-              locatingBlocks.forEach((region)=>{
-                ctx.beginPath();
-                
-                ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
-                
-                if(info.sel_region!==undefined)
-                {
-                  delete region._del;
-                  if(info.sel_region.x<region.x && info.sel_region.y<region.y &&
-                    info.sel_region.x+info.sel_region.w>region.x+region.w && 
-                    info.sel_region.y+info.sel_region.h>region.y+region.h)//check region includs 
-                  {
-                    
-                    ctx.strokeStyle = "rgba(200, 0, 0,0.5)";
-                    region._del=true;
-                  }
-                }
-
-                ctx.lineWidth = LineSize;
-                ctx.rect(region.x, region.y, region.w, region.h);
-                ctx.stroke();
-                ctx.closePath();
-
-              })
-            }]
-          }
-
-          launchRegionSelect((evt)=>{
-            let lcB=_this.canvasRenderInfo.shape_positioning.locatingBlocks;
-            lcB=lcB.filter(blk=>blk._del===undefined)
-            _this.canvasRenderInfo.shape_positioning.locatingBlocks=lcB;
-            let new_defInfo={..._defInfo_,locatingBlocks:lcB};
-            set_defInfo_(new_defInfo);
-
-          });
-
-        }}>SelRmBlock</Button>
-        
-        <Button onClick={()=>{
-          runMatch(false);
-        }}>match</Button>
-
-        
-        <Button onClick={()=>{
-          runMatch(true);
-        }}>match_refine</Button>
-      </>;
-    break;
-    case configState.template_matching:
-      confUI=<>
-        <Button onClick={()=>{
-          setConfState(configState.normal);
-          delete _this.canvasRenderInfo.template_matching;
-        }}>{"<"}</Button>
-
-
-        <Button onClick={()=>{
-          TriggerNewResult(false,{
-            insp_type:"shape_features_matching",
-          },_defInfo_,
-          (obj)=>{
-            console.log(obj);
-            let matchResults = obj.RP.data.matchResults;
-            
-            // set_defInfo_({..._defInfo_,matchResults});
-            _this.canvasRenderInfo.template_matching={
-              matchResults,
-              draw:(info,g,canvas_obj)=>{
-                let ctx = g.ctx;
-                ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-                let psize = 2*canvas_obj.rUtil.getPointSize();
-                ctx.lineWidth = psize/3;
-
-                matchResults.forEach((ms)=>{
-                  canvas_obj.rUtil.drawcross(ctx, ms,psize);
-                  let lineLength=100;
-                  let offsetx=lineLength*Math.cos(ms.angle*3.14159/180);
-                  let offsety=lineLength*Math.sin(ms.angle*3.14159/180);
-                  ctx.beginPath();
-                  ctx.moveTo(ms.x, ms.y);
-                  ctx.lineTo(ms.x+offsetx, ms.y+offsety);
-                  ctx.stroke();
-
-                  ctx.font = '50px serif';
-                  ctx.fillText('s:'+ms.similarity, 0, 0);
-                  
-                })
-              }
-
-            }
+              console.log(hook);
+              canComp.draw();
+            }}
+            />
+        </div>);
+      break;
 
 
 
-
-
-          },
-          ()=>{
-
-          });
-        }}>match</Button>
-
-
-
-
-
-      </>;
-    break;
   }
 
 
 
-  
-  // console.log(editRegionInfo);
-  return <div className="overlayCon HXF">
-    <CanvasComponent key="kk" addClass="height12" 
-    onCanvasInit={setCanComp}/>
-    <div className="s overlay overlay scroll HXA WXA" style={{top:0,width:255,background:"#EEE"}}>
-      {confUI}
-    </div>
+
+  return  <div className="overlayCon HXF">
+    <CanvasComponent key="kk" addClass="height12" onCanvasInit={setCanComp}/>
+    {EditUI}
   </div>;
+}
+
+
+
+
+
+function GenMatching_rdx({onExtraCtrlUpdate,defInfoPath="data/TMP/"})
+{
+  let _cur = useRef({
+    bk_cam1_conn_info:undefined
+  });
+  let _this=_cur.current;
+
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
+  const [MODE,setMODE] = useState("NORMAL");
+  // const CAM1_ID_CONN_INFO = useSelector(state =>state.ConnInfo.CAM1_ID_CONN_INFO);
+
+  const CAM1_ID_CONN_INFO = useSelector(state =>{
+    let sCAM1_ID_CONN_INFO=state.ConnInfo.CAM1_ID_CONN_INFO
+    // console.log(sCAM1_ID_CONN_INFO,_this.bk_cam1_conn_info);
+    if(GetObjElement(sCAM1_ID_CONN_INFO,["data",0,"name"])!=GetObjElement(_this.bk_cam1_conn_info,["data",0,"name"]))
+    {
+      _this.bk_cam1_conn_info=sCAM1_ID_CONN_INFO;
+    }
+
+    return _this.bk_cam1_conn_info;
+  });
+  console.log(CAM1_ID_CONN_INFO);
+
+
+
+  const dispatch = useDispatch();
+  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, ...args));
+  const ASYNC_WS_SEND_BPG=(tl,prop,data,uintArr)=> new Promise((resolve, reject) => {
+    
+    ACT_WS_SEND_BPG(tl,prop,data,uintArr, { resolve:(pkts)=>{
+      if(pkts.length==1)
+      {
+        let data0 = pkts[0].data;
+        if(data0.ACK!=true)
+        {
+          reject(pkts)
+        }
+      }
+
+      resolve(pkts)
+    }, reject });
+    setTimeout(() => reject("Timeout"), 5000)
+  });
+
+  const [confState,setConfState]=useState(configState.shape_positioning);
+
+
+
+  const [_defInfo_,set_defInfo_]=useState();
+  const [_imgSet_,set_imgSet_]=useState();
+
+
+  async function LoadDefInfo(path)
+  {
+    console.log(path);
+    let pkts=await ASYNC_WS_SEND_BPG("LD", 0, {
+      filename: path+"/info" + '.' + GEN_DEF_EXT,
+      down_samp_level:3
+    });
+    
+    
+    let FL = pkts.find(pkt=>pkt.type=="FL");
+    let info=GetObjElement(FL,["data"]);
+
+    if(info===undefined)
+    {
+      throw {
+        why: "Info File is empty"
+      }
+    }
+    var result = genDef_validator(info);
+
+
+    console.log(result);
+    console.log('Errors: ', genDef_validator.errors);
+
+    if(result==false)
+    {
+      throw {
+        why:"def info is not valid",
+        info:genDef_validator.errors
+      }
+    }
+
+
+    let imageSet=await Promise.all(info.inspectionSet.map( insp => ASYNC_WS_SEND_BPG("LD", 0, {
+        imgsrc: path+"/"+insp.cameraInfo.refrenceImage,
+        down_samp_level:3
+      }).
+      then(pkts=>{
+        let IM = pkts.find(pkt=>pkt.type=="IM");
+        if(IM===undefined)throw "Image not found"
+        IM.cameraInfo=insp.cameraInfo;
+        IM.img = new ImageData(IM.image, IM.width);
+        return IM;
+      })
+    ));
+
+
+    console.log(imageSet);
+
+    return {
+      def:info,
+      imageSet
+    };
+  }
+
+  
+  async function SaveReport(path,defFile,imgset)
+  {
+    let img1=imgset[0];
+    let defFile_cam_info=defFile.inspectionSet[0].cameraInfo;
+    await ASYNC_WS_SEND_BPG("SV", 0, {
+      make_dir:true,
+      filename:path+"/"+defFile_cam_info.refrenceImage,
+      type: "__CACHE_IMG__"
+    });
+
+    await ASYNC_WS_SEND_BPG("SV", 0, {
+      make_dir:true,
+      filename:path+"/info" + '.' + GEN_DEF_EXT,
+    },
+    enc.encode(JSON.stringify(defFile, null, 2))
+    );
+
+    
+  }
+
+  async function constructDefInfo(cameraSet)
+  {
+    let cam=cameraSet[0];
+
+
+    
+    let cameraInfo={
+      "name": cam.data[0].name,
+      "id": cam.id,
+      "serial_number": cam.id,
+      "refrenceImage":cam.data[0].name+"_IMG",
+      "mmpp":cam.data[0].mmpp
+    };
+
+    let info={
+      "type": "FM_GenMatching",
+      "version": "0.0.1",
+      "inspectionSet": [
+        {
+          "cameraInfo":cameraInfo
+        }
+      ]
+    }
+    
+
+    
+    let result=genDef_validator(info);
+    console.log(result,genDef_validator.errors);
+    if(result ==false)
+    {
+      throw {
+        why:"info construct failed",
+        info:genDef_validator.errors
+      }
+    }
+    
+    let pkts=await ASYNC_WS_SEND_BPG("II", 0, {
+      imgsrc:undefined,
+      camera_id:cam.id,
+      definfo:{
+        type:"FM_GenMatching",
+        insp_type:"NOP",
+      },
+      img_property:{
+        down_samp_level:3
+      },
+    });
+    let IM = pkts.find(pkt=>pkt.type=="IM");
+    if(IM===undefined)throw "Image not found"
+    
+
+    IM.cameraInfo=cameraInfo;
+    
+    IM.img = new ImageData(IM.image, IM.width);
+    let imageSet=[IM]
+
+    console.log(pkts);
+
+
+
+    // if(true)
+    // {    
+    //   await SaveReport(defInfoPath,info,[IM])
+
+
+    // }
+
+    
+    return {
+      def:info,
+      imageSet
+    };
+
+  }
+
+
+  
+
+  // useEffect(() => {
+  //   if(typeof onExtraCtrlUpdate === "function")
+  //     onExtraCtrlUpdate({
+  //       save:MODE!="NORMAL"?undefined:()=>
+  //       {
+  //         SaveReport(defInfoPath,_defInfo_,_imgSet_).
+  //         then(()=>{
+  //           console.log("SAVE OK!!!");
+  //         }).
+  //         catch((err)=>{
+  //           console.log("ERR....",err);
+  //         })
+  //       }
+  //     });
+  //   return () => {
+  //   };
+  
+
+  // }, [_defInfo_,_imgSet_,MODE])
+
+
+
+
+  // useEffect(() => {    
+
+  //   console.log(">>>>>>>>>>>>>>>>",_defInfo_);
+  //   if(_defInfo_!==undefined)
+  //   {
+  //     return;
+  //   }
+
+
+
+
+  //   constructDefInfo([CAM1_ID_CONN_INFO]).then((info)=>{
+  //     console.log(info);
+      
+  //     set_defInfo_(info.def)
+  //     set_imgSet_(info.imageSet)
+      
+      
+  //     // setSetUpCamID(info.imageSet[0].cameraInfo.id);
+
+  //   }).catch((err)=>{
+  //     console.log(err);
+  //     // ConnInfo.CAM1_ID_CONN_INFO
+  //     set_defInfo_(undefined)
+  //     set_imgSet_(undefined)
+  //   })
+
+
+
+  // }, [CAM1_ID_CONN_INFO])
+
+
+
+
+  switch(MODE)
+  {
+    case "NORMAL":
+
+      return <>
+      <Button onClick={()=>{
+        setMODE("InfoEDIT")
+      }}>InfoEDIT</Button>
+
+
+
+
+      <Button onClick={()=>{
+        
+
+        constructDefInfo([CAM1_ID_CONN_INFO]).then((info)=>{
+          console.log(info);
+          
+          set_defInfo_(info.def)
+          set_imgSet_(info.imageSet)
+          
+          
+          // setSetUpCamID(info.imageSet[0].cameraInfo.id);
+
+        }).catch((err)=>{
+          console.log(err);
+          // ConnInfo.CAM1_ID_CONN_INFO
+          set_defInfo_(undefined)
+          set_imgSet_(undefined)
+        })
+
+
+      }}>NEW</Button>
+
+      <Button onClick={()=>{
+
+
+        LoadDefInfo(defInfoPath).
+        then((info)=>{
+          console.log(info);
+          
+          set_defInfo_(info.def)
+          set_imgSet_(info.imageSet)
+
+
+          
+        }).catch(err=>{
+          console.log(err)
+        })
+
+
+
+      }}>LOAD</Button>
+
+
+      <Button onClick={()=>{
+
+        SaveReport(defInfoPath,_defInfo_,_imgSet_).
+        then(()=>{
+          console.log("SAVE OK!!!");
+        }).
+        catch((err)=>{
+          console.log("ERR....",err);
+        })
+      }}>SAVE</Button>
+
+
+
+
+      </>
+      break;
+    case "InfoEDIT":
+
+      if(_defInfo_===undefined || _imgSet_===undefined)
+      {
+        return "No def info";
+      }
+      let InspInfo=_defInfo_.inspectionSet[0]
+      let InspRefImg=_imgSet_[0]
+      
+      return <InspSet_Config ASYNC_WS_SEND_BPG={ASYNC_WS_SEND_BPG} InspInfo={InspInfo} InspRefImg={InspRefImg} defInfoPath={defInfoPath}
+      onInfoUpdate={(newInfo)=>{
+        // _defInfo_.inspectionSet=[newInfo];
+        set_defInfo_({..._defInfo_,inspectionSet:[newInfo]});
+        setMODE("NORMAL")
+      }}/>;
+
+
+      break;
+  }
+
+  return NULL;
 }
 
 

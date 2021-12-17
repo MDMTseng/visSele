@@ -1141,7 +1141,7 @@ const MainUI=()=>{
   const [popUpInfo,setPopUpInfo] = useState(undefined);
   const [hideMachineSetting,setHideMachineSetting] = useState(true);
   
-  const [UI_state, _setUI_state] = useState(s_statesTable.RootSelect);
+  const [UI_state, _setUI_state] = useState(s_statesTable.GenMatchingConf);
   const [extraSideUI, setExtraSideUI] = useState([]);
 
   function setUI_state(newUI_state)

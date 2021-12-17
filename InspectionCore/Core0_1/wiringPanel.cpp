@@ -1657,6 +1657,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     }
     else if (checkTL("LD", dat))
     {
+      
+      session_ACK = true;
       LOGI("DataType_BPG:[%c%c] data:\n%s", dat->tl[0], dat->tl[1],(char *)dat->dat_raw);
       do
       {
@@ -1665,7 +1667,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         {
           snprintf(err_str, sizeof(err_str), "JSON parse failed LINE:%04d", __LINE__);
           LOGE("%s", err_str);
-
+          session_ACK=false;
           break;
         }
 
@@ -1679,6 +1681,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             {
               snprintf(err_str, sizeof(err_str), "Cannot read file from:%s", filename);
               LOGE("%s", err_str);
+              session_ACK=false;
               break;
             }
             LOGI("Read deffile:%s", filename);
@@ -1692,30 +1695,41 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
             LOGE("%s", err_str);
+            session_ACK=false;
+            break;
           }
         }
 
         char *deffile = (char *)JFetch(json, "deffile", cJSON_String);
-
-        try
+        if(deffile!=NULL)
         {
-          char *jsonStr = ReadText(deffile);
-          if (jsonStr != NULL)
+          try
           {
-            LOGI("Read deffile:%s", deffile);
-            bpg_dat = GenStrBPGData("DF", jsonStr);
-            bpg_dat.pgID = dat->pgID;
-            fromUpperLayer(bpg_dat);
-            free(jsonStr);
+            char *jsonStr = ReadText(deffile);
+            if (jsonStr != NULL)
+            {
+              LOGI("Read deffile:%s", deffile);
+              bpg_dat = GenStrBPGData("DF", jsonStr);
+              bpg_dat.pgID = dat->pgID;
+              fromUpperLayer(bpg_dat);
+              free(jsonStr);
+            }
+            else
+            {
+              session_ACK=false;
+              break;
+            }
           }
-        }
-        catch (std::invalid_argument iaex)
-        {
-          snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
-          LOGE("%s", err_str);
+          catch (std::invalid_argument iaex)
+          {
+            snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
+            LOGE("%s", err_str);
+            session_ACK=false;
+            break;
+          }
+
         }
 
-        acvImage *srcImg = NULL;
         char *imgSrcPath = (char *)JFetch(json, "imgsrc", cJSON_String);
         if (imgSrcPath != NULL)
         {
@@ -1723,6 +1737,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           int ret_val = LoadIMGFile(&tmp_buff, imgSrcPath);
           if (ret_val == 0)
           {
+            acvImage *srcImg = NULL;
             srcImg = &tmp_buff;
             cacheImage.ReSize(srcImg);
             acvCloneImage(srcImg, &cacheImage, -1);
@@ -1752,9 +1767,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             bpg_dat.pgID = dat->pgID;
             fromUpperLayer(bpg_dat);
           }
+          else
+          {
+            
+            session_ACK=false;
+            break;
+          }
         }
 
-        session_ACK = true;
 
       } while (false);
     }

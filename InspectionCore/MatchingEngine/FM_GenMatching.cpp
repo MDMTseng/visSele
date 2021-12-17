@@ -664,7 +664,7 @@ int FM_GenMatching::FeatureMatching(acvImage *img)
       // auto center = cv::Point2f(cv_img.cols*scaleN,cv_img.rows*scaleN);
       LOGI("=====");
       
-      cJSON_AddItemToObject(jsonRep, "TemplatePyramid", dumpTempPy(&tp,temp_tp_anchorPt));
+      cJSON_AddItemToObject(jsonRep, "template_pyramid", dumpTempPy(&tp,temp_tp_anchorPt));
 
     }
     LOGI("%d %d %d %d",ROI[0],ROI[1],ROI[2],ROI[3]);
