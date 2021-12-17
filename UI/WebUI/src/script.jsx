@@ -711,9 +711,11 @@ class APPMasterX extends React.Component {
                       path:machineSettingPath
                     }
 
-                    
-                    comp.props.ACT_WS_CONNECT(comp.props.Insp_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/insp"));
-                    comp.props.ACT_WS_CONNECT(comp.props.DefFile_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/def"));
+                    if(info.inspection_db_ws_url!==undefined)
+                    {
+                      comp.props.ACT_WS_CONNECT(comp.props.Insp_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/insp"));
+                      comp.props.ACT_WS_CONNECT(comp.props.DefFile_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/def"));
+                    }
 
 
                     if(info.uInsp_peripheral_conn_info!==undefined)
