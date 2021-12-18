@@ -955,7 +955,7 @@ function InspRule_positioning_Config({insprule,InspRefImg,ASYNC_WS_SEND_BPG,setC
     }}>SelRmBlock</Button>
     
     <Button onClick={()=>{
-      runMatch(_insprule,defInfoPath);
+      runMatch({..._insprule,locatingBlocks:undefined},defInfoPath);
     }}>match</Button>
 
     
@@ -1215,7 +1215,7 @@ function GenMatching_rdx({onExtraCtrlUpdate,defInfoPath="data/TMP/"})
   let _this=_cur.current;
 
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
-  const [MODE,setMODE] = useState("NORMAL");
+  const [MODE,setMODE] = useState({type:"NORMAL"});
   // const CAM1_ID_CONN_INFO = useSelector(state =>state.ConnInfo.CAM1_ID_CONN_INFO);
 
   const CAM1_ID_CONN_INFO = useSelector(state =>{
@@ -1470,15 +1470,31 @@ function GenMatching_rdx({onExtraCtrlUpdate,defInfoPath="data/TMP/"})
 
 
 
-  switch(MODE)
+
+  switch(MODE.type)
   {
     case "NORMAL":
 
-      return <>
-      <Button onClick={()=>{
-        setMODE("InfoEDIT")
-      }}>InfoEDIT</Button>
+      let infoEditSelectUI= null;
 
+      try{
+        infoEditSelectUI=_defInfo_.inspectionSet.map((insp,idx)=>
+          <Button onClick={()=>{
+            setMODE({type:"InfoEDIT",idx})
+          }}>{insp.cameraInfo.name}</Button>
+        )
+      }
+      catch(e)
+      {
+
+      }
+
+
+
+
+
+      return <>
+     
 
 
 
@@ -1513,7 +1529,7 @@ function GenMatching_rdx({onExtraCtrlUpdate,defInfoPath="data/TMP/"})
           
           set_defInfo_(info.def)
           set_imgSet_(info.imageSet)
-
+          
 
           
         }).catch(err=>{
@@ -1535,8 +1551,12 @@ function GenMatching_rdx({onExtraCtrlUpdate,defInfoPath="data/TMP/"})
           console.log("ERR....",err);
         })
       }}>SAVE</Button>
-
-
+      
+      <Divider orientation="left"></Divider>
+      
+      {
+        infoEditSelectUI
+      }
 
 
       </>
@@ -1547,14 +1567,14 @@ function GenMatching_rdx({onExtraCtrlUpdate,defInfoPath="data/TMP/"})
       {
         return "No def info";
       }
-      let InspInfo=_defInfo_.inspectionSet[0]
-      let InspRefImg=_imgSet_[0]
+      let InspInfo=_defInfo_.inspectionSet[MODE.idx]
+      let InspRefImg=_imgSet_[MODE.idx]
       
       return <InspSet_Config ASYNC_WS_SEND_BPG={ASYNC_WS_SEND_BPG} InspInfo={InspInfo} InspRefImg={InspRefImg} defInfoPath={defInfoPath}
       onInfoUpdate={(newInfo)=>{
         // _defInfo_.inspectionSet=[newInfo];
         set_defInfo_({..._defInfo_,inspectionSet:[newInfo]});
-        setMODE("NORMAL")
+        setMODE({type:"NORMAL"})
       }}/>;
 
 
