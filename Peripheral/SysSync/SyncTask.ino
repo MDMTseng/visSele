@@ -2,6 +2,7 @@
 #include "main.hpp"
 #include "MSteppers.hpp"
 #include "xtensa/core-macros.h"
+#include "soc/rtc_wdt.h"
 hw_timer_t *timer = NULL;
 #define S_ARR_LEN(arr) (sizeof(arr) / sizeof(arr[0]))
 
@@ -14,67 +15,117 @@ hw_timer_t *timer = NULL;
 #define PIN_M2_STP 13
 
 
+
+#define PIN_DBG0 18
+
+#define SUBDIV 400
+#define mm_PER_REV 2
+
+
 class MStp_M:public MStp{
   public:
 
-
+  int FACCT=0;
   MStp_M(RingBuf<struct runBlock> *_blocks):MStp(_blocks)
   {
+    
+    TICK2SEC_BASE=1000000;
+    PULSE_ROUND_SHIFT=7;
+    minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    acc=SUBDIV*100/mm_PER_REV;
     pinMode(PIN_M1_DIR, OUTPUT);
     pinMode(PIN_M1_STP, OUTPUT);
     pinMode(PIN_M2_DIR, OUTPUT);
     pinMode(PIN_M2_STP, OUTPUT);
+    pinMode(PIN_DBG0, OUTPUT);
+
+    
+  }
+
+  int M1_reader=1<<(MSTP_VEC_SIZE-2);
+  int M2_reader=1<<(MSTP_VEC_SIZE-1);
+
+  void BlockDirEffect(uint32_t idxes)
+  {
+
+    digitalWrite(PIN_M1_DIR, (idxes&M1_reader)!=0);
+    digitalWrite(PIN_M2_DIR, (idxes&M2_reader)!=0);
+    Serial.printf("dir:%s \n",int2bin(idxes,MSTP_VEC_SIZE));
   }
 
 
-  void BlockRunEffect() override
+  
+  bool PIN_DBG0_st=false;
+  uint32_t axis_st=0;
+  void BlockPulEffect(uint32_t idxes_H,uint32_t idxes_L)
   {
+    // if(idxes==0)return;
+    // printf("===p:%s",int2bin(idxes,5));
+    // printf(" d:%s >>",int2bin(axis_dir,5));
 
-    if(axis_RUNState==0)
+    // // printf("PULSE_ROUNDSCALE:%d  ",PULSE_ROUNDSCALE);
+
+    // for(int i=0;i<MSTP_VEC_SIZE;i++)
+    // {
+    //   int idx_p = axis_pul&(1<<i);
+    //   printf("%03d ",curPos_residue.vec[i]*(idx_p?1:0));
+
+    // }
+
+    // printf("\n");
+    
+ 
+    if(axis_st&idxes_H)
     {
+      // Serial.printf("ERROR pull up\n");
+    }
+
+    axis_st|=idxes_H;
+
+ 
+    if(axis_st&idxes_L!=idxes_L)
+    {
+      // Serial.printf("ERROR pin down\n");
+    }
+    axis_st&=~idxes_L;
+    if(idxes_L)
+    {
+      digitalWrite(PIN_DBG0, PIN_DBG0_st);
+      PIN_DBG0_st=!PIN_DBG0_st;
+    }
+    if(idxes_L&M1_reader)
+    {
+
       digitalWrite(PIN_M1_STP, 0);
-      digitalWrite(PIN_M2_STP, 0);
-      axis_RUNState=1;
-      return;
     }
-    axis_RUNState=0;
-    // Serial.printf("p:%s",int2bin(axis_pul));
-    // Serial.printf(" d:%s \n",int2bin(axis_dir));
 
-    uint32_t readHead=1<<0;
-
-    // for(int i=0;i<VEC_SIZE;i++,readHead<<=1)
+    if(idxes_L&M2_reader)
     {
-      
-      if(axis_pul&1)
-      {
-        digitalWrite(PIN_M1_STP, 1);
-        digitalWrite(PIN_M1_DIR, axis_dir&1!=0);
-      }
+      digitalWrite(PIN_M2_STP, 0);
+    }
+    // Serial.printf("id:%s  ",int2bin(idxes,MSTP_VEC_SIZE));
+    // Serial.printf("ac:%s ",int2bin(axis_collectpul,MSTP_VEC_SIZE));
 
-      
-      if(axis_pul&2)
-      {
-        digitalWrite(PIN_M2_STP, 1);
-        digitalWrite(PIN_M2_DIR, axis_dir&2!=0);
-      }
+    // int Midx=0;
 
+    
+    // Serial.printf("PINs:%s\n",int2bin(axis_st,MSTP_VEC_SIZE));
 
+    if(idxes_H&M1_reader)
+    {
+      digitalWrite(PIN_M1_STP, 1);
     }
 
+    if(idxes_H&M2_reader)
+    {
+      digitalWrite(PIN_M2_STP, 1);
+    }
   }
 
-  
 
-  void stopTimer() override
-  {
-  }
-  
-  void startTimer() override
-  {
-  }
+
+
 };
-
 runBlock blockBuff[20];
 RingBuf <runBlock> __blocks(blockBuff,20);
 
@@ -153,20 +204,28 @@ void IRAM_ATTR onTimer()
   // uint32_t nextT=100;
   // Serial.printf("nextT:%d mstp.axis_RUNState:%d\n",mstp.T_next,mstp.axis_RUNState);
 
-  int highT=5;
-  mstp.BlockRunEffect();
-  if(mstp.axis_RUNState==0)
+
+
+  int T = mstp.taskRun();
+  
+  // printf("T:%d\n",T);
+  
+  if(T<0)
   {
-    timerAlarmWrite(timer,highT, true);
+    
+    Serial.printf("ERROR:: T(%d)<0\n",T);
+    return;;
+  }
+  if(T==0)
+  {
+    T=1000000;
+    
   }
   else
   {
-    mstp.timerTask();
-    uint32_t nextT= mstp.T_next;
-    if(nextT<highT*2)nextT=highT*2;
-    timerAlarmWrite(timer,nextT-highT, true);
+    mstp.FACCT+=T;
   }
-
+  timerAlarmWrite(timer,T, true);
 
 
   // 
@@ -175,23 +234,59 @@ StaticJsonDocument<1024> recv_doc;
 StaticJsonDocument<1024> ret_doc;
 void setup()
 {
-
   Serial.begin(921600);
 
   // // setup_comm();
-  timer = timerBegin(0, 80*100, true);
+  timer = timerBegin(0, 80, true);
   
   timerAttachInterrupt(timer, &onTimer, true);
   timerAlarmWrite(timer, 1000, true);
   timerAlarmEnable(timer);
   pinMode(PIN_O1, OUTPUT);
 
+  int speed = 400*40*2/4/10;
+  // for(int i=0;i<4;i++)
+  // {
+  //   
+  //   int posMult=2;
+  //   xVec dst;
+
+    
+  //   for(int k=0;k<1;k++)
+  //   {
+  //     for(int j=0;j<MSTP_VEC_SIZE;j++)
+  //     {
+  //       // dst.vec[j]=SUBDIV*5-j*200;
+  //       dst.vec[j]=posMult*((int32_t)(esp_random()%(SUBDIV*10))-SUBDIV*5);
+  //     }
+  //     mstp.VecTo(dst,speed);
+  //   }
 
   
-  mstp.VecTo((xVec){.vec={200,150,0}},200);
-  // mstp.VecTo((xVec){.vec={100,-300,-50}});
-  mstp.VecTo((xVec){.vec={0,0,0}},200);
+  //   for(int j=0;j<MSTP_VEC_SIZE;j++)
+  //   {
+  //     // dst.vec[j]=SUBDIV*5-j*200;
+  //     dst.vec[j]=10*10/mm_PER_REV*SUBDIV-j*SUBDIV;
+  //   }
+  //   mstp.VecTo(dst,speed);
 
+  
+  //   for(int j=0;j<MSTP_VEC_SIZE;j++)
+  //   {
+  //     // dst.vec[j]=SUBDIV*5-j*200;
+  //     dst.vec[j]=-(10*10/mm_PER_REV*SUBDIV-j*SUBDIV);
+  //   }
+  //   mstp.VecTo(dst,speed);
+
+
+  //   for(int j=0;j<MSTP_VEC_SIZE;j++)
+  //   {
+  //     dst.vec[j]=0;
+  //   }
+  //   mstp.VecTo(dst,speed);
+  // }
+  mstp.VecTo((xVec){100,99},speed);
+  mstp.VecTo((xVec){0,0},speed);
 
 }
 void loop()

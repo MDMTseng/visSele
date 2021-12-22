@@ -8,7 +8,7 @@
 using namespace std;
 
 #ifdef X86_PLATFORM
-#define __PRT__(...) printf(__VA_ARGS__)
+#define __PRT__(...) //printf(__VA_ARGS__)
 #else
 #include <Arduino.h>
 #define __PRT__(...) //Serial.printf(__VA_ARGS__)
@@ -36,7 +36,7 @@ char *int2bin(uint32_t a, int digits) {
 
 xVec vecSub(xVec v1,xVec v2)
 {
-  for(int i=0;i<VEC_SIZE;i++)
+  for(int i=0;i<MSTP_VEC_SIZE;i++)
   {
     v1.vec[i]-=v2.vec[i];
   }
@@ -45,7 +45,7 @@ xVec vecSub(xVec v1,xVec v2)
 
 xVec vecAdd(xVec v1,xVec v2)
 {
-  for(int i=0;i<VEC_SIZE;i++)
+  for(int i=0;i<MSTP_VEC_SIZE;i++)
   {
     v1.vec[i]+=v2.vec[i];
   }
@@ -56,7 +56,7 @@ uint32_t vecMachStepCount(xVec vec)
 {
   uint32_t maxDist=0;
 
-  for(int i=0;i<VEC_SIZE;i++)
+  for(int i=0;i<MSTP_VEC_SIZE;i++)
   {
     int32_t dist = vec.vec[i];
     if(dist<0)dist=-dist;
@@ -168,6 +168,11 @@ void MStp::VecTo(xVec VECTo,float speed)
     .vto=0,
   };
 
+  if(rb.steps==0)
+  {
+    return;
+  }
+
   lastTarLoc=VECTo;
   preVec=rb.vec;
 
@@ -188,7 +193,7 @@ void MStp::VecTo(xVec VECTo,float speed)
     float dotp=0;
     float absA=0;
     float absB=0;
-    for(int i=0;i<VEC_SIZE;i++)
+    for(int i=0;i<MSTP_VEC_SIZE;i++)
     {
       dotp+=tail->vec.vec[i]*rb.vec.vec[i];
       absA+=tail->vec.vec[i]*tail->vec.vec[i];
@@ -196,7 +201,7 @@ void MStp::VecTo(xVec VECTo,float speed)
     }
     float cosinSim=dotp*Q_rsqrt(absA*absB);
     if(cosinSim<0)cosinSim=0;
-    tail->vto=cosinSim*rb.vcen;
+    tail->vto=0;//cosinSim*rb.vcen;
     __PRT__("cosinSim:%f  vto:%f\n",cosinSim,tail->vto);
 
   }
@@ -294,57 +299,59 @@ void MStp::BlockRunStep(runBlock &rb)
     rb.vcur=minSpeed;
   }
 
-  __PRT__("=%03d==: ",rb.cur_step);
-  int stepx=100*(rb.cur_step+1);//100x is for round
+  int64_t step_scal=((int64_t)rb.cur_step+1)<<PULSE_ROUND_SHIFT;//100x is for round  +1 for predict next position
 
+  // __PRT__("=%03d/%03d==: \n",step_scal,rb.steps);
   uint32_t _axis_pul=0;
-  for(int k=0;k<VEC_SIZE;k++)
+  for(int k=0;k<MSTP_VEC_SIZE;k++)
   {
-    int diff = stepx*rb.vec.vec[k]/(int)rb.steps;
-    if(diff%100>=50)//
+    int32_t absVec=rb.vec.vec[k];
+    if(absVec<0)absVec=-rb.vec.vec[k];
+    int64_t prog_scal = step_scal*absVec/rb.steps;
+    int64_t prog_step=prog_scal>>PULSE_ROUND_SHIFT;
+    // __PRT__("  -[%D]:VEC:%d  : PROG:%d curPos:%d step:%d\n",k,absVec,prog_scal,curPos.vec[k],prog_step);
+    if(curPos.vec[k]!=prog_step)
     {
-      diff+=100;
-    }
-    diff/=100;
-    int newVec=rb.from.vec[k]+diff;
-    // __PRT__("%d,",newVec);
-    if(curPos.vec[k]!=newVec)
+      curPos_residue.vec[k]=(1<<PULSE_ROUND_SHIFT)-(prog_scal-  ((prog_step)<<PULSE_ROUND_SHIFT)  );
       _axis_pul|=1<<k;
+      curPos.vec[k]=prog_step;
+    }
+    else
+    {
+      curPos_residue.vec[k]=0;
+    }
 
-    curPos.vec[k]=newVec;
   }
   axis_pul=_axis_pul;
-  if(rb.cur_step==0)
-  {
-    uint32_t _axis_dir=0;
-    for(int k=0;k<VEC_SIZE;k++)
-    {
-      if(rb.vec.vec[k]<0)
-      {
-        _axis_dir|=1<<k;
-      }
-    }
-
-    axis_dir=_axis_dir;
-
-  }
   rb.cur_step++;
 }
 
 
 
-void MStp::BlockRunEffect()
+void MStp::blockPlayer()
 {
-// int2bin(uint32_t a, int digits=sizeof(uint32_t)*8) 
-
-}
-
-void MStp::timerTask()
-{
-
+  
   if(blocks->size()>0)
   {
     runBlock &blk=*blocks->getTail();
+
+    if(blk.cur_step==0)
+    {
+      uint32_t _axis_dir=0;
+      for(int k=0;k<MSTP_VEC_SIZE;k++)
+      {
+        if(blk.vec.vec[k]<0)
+        {
+          _axis_dir|=1<<k;
+        }
+      }
+
+      axis_dir=_axis_dir;
+      BlockDirEffect(axis_dir);
+    }
+
+
+
     BlockRunStep(blk);
 
     float T = TICK2SEC_BASE/blk.vcur;
@@ -365,23 +372,210 @@ void MStp::timerTask()
     {
       float vcur= blk.vcur;
       __PRT__("======vcur:%f=vto:%f===T_lapsed:%d===\n",vcur,blk.vto,T_lapsed);
+      memset(&curPos,0,sizeof(curPos));
       blocks->consumeTail();
       runBlock *new_blk=blocks->getTail();
       if(new_blk!=NULL)
       {
+        new_blk->cur_step=0;
         new_blk->vcur= vcur;
+        // curPos.vec[k]
+
+
+
       }
       T_lapsed=0;
     }
     
+
     // __PRT__("\n\n\n");
   }
   else
   {
-    T_lapsed=200;//empty action
+    T_next=0;
+    // T_lapsed=0;//empty action
     // cout << "This is the first thread "<< endl;
     // std::this_thread::sleep_for(std::chrono::milliseconds(100));
     axis_pul=0;
+
+    for(int i=0;i<MSTP_VEC_SIZE;i++)
+    {
+      curPos_residue.vec[i]=0;
+
+    }
+
   }
 
+
+
+
+}
+
+
+
+
+
+uint32_t MStp::findNearstPulseIdx(uint32_t *ret_minResidue,int *ret_restCount)
+{
+  int idxes=0;
+  uint32_t minV=999999;
+  
+  int restCount=0;
+  int hitCount=0;
+  for(int k=0;k<MSTP_VEC_SIZE;k++)
+  {
+    int resd=curPos_residue.vec[k];
+    // printf(">>%d",resd);
+    if(resd==0)continue;
+    restCount++;
+    if(minV>resd)
+    {
+      minV=resd;
+      idxes=1<<k;
+      hitCount=1;
+    }
+    else if(minV==resd)
+    {
+      idxes|=1<<k;
+      hitCount++;
+    }
+  }
+
+  restCount-=hitCount;
+  
+  if(ret_restCount)
+  {
+    *ret_restCount=restCount;
+  }
+
+  if(ret_minResidue)
+  {
+    *ret_minResidue=minV;
+  }
+  return idxes;
+}
+void MStp::delIdxResidue(uint32_t idxes)
+{
+  for(int k=0;k<MSTP_VEC_SIZE;k++)
+  {
+    if((idxes&(1<<k))==0)continue;
+    curPos_residue.vec[k]=0;
+  }
+}
+
+
+
+
+
+uint32_t MStp::taskRun()
+{
+  accT=curT;
+  BlockPulEffect(pre_indexes,axis_collectpul);
+
+  delIdxResidue(pre_indexes);
+
+  axis_collectpul=0;
+  if(tskrun_state==0)
+  {
+    blockPlayer();
+    pre_indexes=0;
+    isInMidSec=false;
+    accT=0;
+    curT=0;
+    axis_collectpul=0;
+    if(T_next==0)
+    {
+      return 0;
+    }
+    //printf(">>>>st0 T_next:%d\n",T_next);
+    tskrun_state=1;
+  }
+  
+  if(tskrun_state==1)//run pulse
+  {
+    // printf(">>>>st1\n");
+    uint32_t minResidue;
+    int restCount;
+    
+
+
+    uint32_t idxes = findNearstPulseIdx(&minResidue,&restCount);
+
+    uint32_t mT=minResidue*T_next>>PULSE_ROUND_SHIFT;
+
+
+    pre_indexes=idxes;
+    bool trigAxisCollectPul=false;
+    if(isInMidSec==false && mT>(T_next/3))
+    {//if the next pulse is more than T*2/3 then insert a fake pulse
+
+      if(mT<(T_next*2/3))
+      {//go with this pulse
+
+        _axis_collectpul1|=idxes;
+        // printf("MID cur pulse...mT:%d _ax1:%d _ax2:%d\n",mT,_axis_collectpul1,_axis_collectpul2);
+        if(restCount==0)
+        {
+          tskrun_state=0;
+        }
+      }
+      else
+      {
+        // printf("MID ins pulse...mT:%d _ax1:%d _ax2:%d\n",mT,_axis_collectpul1,_axis_collectpul2);
+        mT=T_next/2+1;
+        pre_indexes=0;
+      }
+      isInMidSec=true;
+      trigAxisCollectPul=true;
+    }
+    else
+    {
+
+      if(mT==T_next)
+      {
+        // printf("END cur pulse...mT:%d _ax1:%d _ax2:%d\n",mT,_axis_collectpul1,_axis_collectpul2);
+        trigAxisCollectPul=true;
+      }
+
+      _axis_collectpul1|=idxes;
+      if(restCount==0)
+      {
+        tskrun_state=0;
+      }
+    }
+
+    if(trigAxisCollectPul)
+    {
+      axis_collectpul=_axis_collectpul2;
+      _axis_collectpul2=_axis_collectpul1;
+      _axis_collectpul1=0;
+    }
+
+    curT=mT;
+    // printf(">mT:%d  accT:%d>   T_next:%d  >restCount:%d>>st:%d>\n",mT,accT,T_next,restCount,tskrun_state);
+
+
+
+    int delay=curT-accT;
+
+    int debtStep=5;
+    if(mT==0)
+    {
+
+      // printf("==============DEBT\n");
+      delay+=debtStep;
+      tskrun_adj_debt+=debtStep;
+    }
+    else if(tskrun_adj_debt && delay>(2*debtStep))//pay back
+    {
+      // printf("==============DEBT pay back\n");
+      mT-=debtStep;
+      tskrun_adj_debt-=debtStep;
+    }
+
+    return delay;
+  }
+
+
+  return 0;
 }
