@@ -16,10 +16,10 @@ hw_timer_t *timer = NULL;
 
 
 
-#define PIN_DBG0 18
 
-#define SUBDIV 400
-#define mm_PER_REV 2
+
+#define SUBDIV (1600)
+#define mm_PER_REV 10
 
 
 class MStp_M:public MStp{
@@ -29,28 +29,27 @@ class MStp_M:public MStp{
   MStp_M(RingBuf<struct runBlock> *_blocks):MStp(_blocks)
   {
     
-    TICK2SEC_BASE=1000000;
-    PULSE_ROUND_SHIFT=7;
+    TICK2SEC_BASE=10*1000*1000;
     minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    acc=SUBDIV*100/mm_PER_REV;
+    acc=SUBDIV*2000/mm_PER_REV;
     pinMode(PIN_M1_DIR, OUTPUT);
     pinMode(PIN_M1_STP, OUTPUT);
     pinMode(PIN_M2_DIR, OUTPUT);
     pinMode(PIN_M2_STP, OUTPUT);
-    pinMode(PIN_DBG0, OUTPUT);
+    // pinMode(PIN_DBG0, OUTPUT);
 
     
   }
 
-  int M1_reader=1<<(MSTP_VEC_SIZE-2);
-  int M2_reader=1<<(MSTP_VEC_SIZE-1);
+  int M1_reader=1<<(MSTP_VEC_SIZE-1);
+  int M2_reader=1<<(MSTP_VEC_SIZE-2);
 
   void BlockDirEffect(uint32_t idxes)
   {
 
     digitalWrite(PIN_M1_DIR, (idxes&M1_reader)!=0);
     digitalWrite(PIN_M2_DIR, (idxes&M2_reader)!=0);
-    Serial.printf("dir:%s \n",int2bin(idxes,MSTP_VEC_SIZE));
+    // Serial.printf("dir:%s \n",int2bin(idxes,MSTP_VEC_SIZE));
   }
 
 
@@ -75,24 +74,13 @@ class MStp_M:public MStp{
     // printf("\n");
     
  
-    if(axis_st&idxes_H)
-    {
-      // Serial.printf("ERROR pull up\n");
-    }
-
     axis_st|=idxes_H;
-
- 
-    if(axis_st&idxes_L!=idxes_L)
-    {
-      // Serial.printf("ERROR pin down\n");
-    }
     axis_st&=~idxes_L;
-    if(idxes_L)
-    {
-      digitalWrite(PIN_DBG0, PIN_DBG0_st);
-      PIN_DBG0_st=!PIN_DBG0_st;
-    }
+    // if(idxes_L && (idxes_H==0))
+    // {
+    //   digitalWrite(PIN_DBG0, PIN_DBG0_st);
+    //   PIN_DBG0_st=!PIN_DBG0_st;
+    // }
     if(idxes_L&M1_reader)
     {
 
@@ -225,6 +213,11 @@ void IRAM_ATTR onTimer()
   {
     mstp.FACCT+=T;
   }
+
+  // int64_t td=T-timerRead(timer);
+  // if(td<50)td=50;
+
+
   timerAlarmWrite(timer,T, true);
 
 
@@ -237,56 +230,60 @@ void setup()
   Serial.begin(921600);
 
   // // setup_comm();
-  timer = timerBegin(0, 80, true);
+  timer = timerBegin(0, 8, true);
   
   timerAttachInterrupt(timer, &onTimer, true);
   timerAlarmWrite(timer, 1000, true);
   timerAlarmEnable(timer);
   pinMode(PIN_O1, OUTPUT);
 
-  int speed = 400*40*2/4/10;
-  // for(int i=0;i<4;i++)
-  // {
-  //   
-  //   int posMult=2;
-  //   xVec dst;
+  // int32_t speed =SUBDIV*50/mm_PER_REV;// 25*1000;
+  int32_t speed =20*1000;
+  for(int i=0;i<1;i++)
+  {
+    
+    int posMult=2;
+    xVec dst;
 
     
-  //   for(int k=0;k<1;k++)
-  //   {
-  //     for(int j=0;j<MSTP_VEC_SIZE;j++)
-  //     {
-  //       // dst.vec[j]=SUBDIV*5-j*200;
-  //       dst.vec[j]=posMult*((int32_t)(esp_random()%(SUBDIV*10))-SUBDIV*5);
-  //     }
-  //     mstp.VecTo(dst,speed);
-  //   }
+    for(int k=0;k<18;k++)
+    {
+      int32_t maxDist=20*SUBDIV;
+      for(int j=0;j<MSTP_VEC_SIZE;j++)
+      {
+        // dst.vec[j]=SUBDIV*5-j*200;
+        // dst.vec[j]=((esp_random()&1)?1:-1)*SUBDIV*10*10/mm_PER_REV;
+        
+        // dst.vec[j]=((esp_random()&1)?1:-1)*((int32_t)(esp_random()%(maxDist)));
+        
+        dst.vec[j]=((k&1)?1:-1)*(maxDist);//*(maxDist/MSTP_VEC_SIZE));
+        
+        
+      }
+      mstp.VecTo(dst,speed);
+    }
 
   
-  //   for(int j=0;j<MSTP_VEC_SIZE;j++)
-  //   {
-  //     // dst.vec[j]=SUBDIV*5-j*200;
-  //     dst.vec[j]=10*10/mm_PER_REV*SUBDIV-j*SUBDIV;
-  //   }
-  //   mstp.VecTo(dst,speed);
+    // for(int j=0;j<MSTP_VEC_SIZE;j++)
+    // {
+    //   // dst.vec[j]=SUBDIV*5-j*200;
+    //   dst.vec[j]=10*10*SUBDIV/mm_PER_REV-3*j;
+    // }
+    // mstp.VecTo(dst,speed);
 
   
-  //   for(int j=0;j<MSTP_VEC_SIZE;j++)
-  //   {
-  //     // dst.vec[j]=SUBDIV*5-j*200;
-  //     dst.vec[j]=-(10*10/mm_PER_REV*SUBDIV-j*SUBDIV);
-  //   }
-  //   mstp.VecTo(dst,speed);
+    // for(int j=0;j<MSTP_VEC_SIZE;j++)
+    // {
+    //   // dst.vec[j]=SUBDIV*5-j*200;
+    //   dst.vec[j]=-(10*10*SUBDIV/mm_PER_REV-3*j);
+    // }
+    // mstp.VecTo(dst,speed);
 
 
-  //   for(int j=0;j<MSTP_VEC_SIZE;j++)
-  //   {
-  //     dst.vec[j]=0;
-  //   }
-  //   mstp.VecTo(dst,speed);
-  // }
-  mstp.VecTo((xVec){100,99},speed);
-  mstp.VecTo((xVec){0,0},speed);
+    mstp.VecTo((xVec){0},speed);
+  }
+  // mstp.VecTo((xVec){100,97},speed);
+  // mstp.VecTo((xVec){,0},speed);
 
 }
 void loop()

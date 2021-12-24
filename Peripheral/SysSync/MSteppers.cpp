@@ -8,13 +8,17 @@
 using namespace std;
 
 #ifdef X86_PLATFORM
-#define __PRT__(...) //printf(__VA_ARGS__)
+#define __PRT__(...) printf(__VA_ARGS__)
 #else
 #include <Arduino.h>
 #define __PRT__(...) //Serial.printf(__VA_ARGS__)
 #endif
 
+#define IO_WRITE_DBG(pinno,val) //digitalWrite(pinno,val)
+#define IO_SET_DBG(pinno,val) //pinMode(pinno,val)
 
+
+#define PIN_DBG0 18
 char *int2bin(uint32_t a, int digits, char *buffer, int buf_size) {
     buffer += (buf_size - 1);
 
@@ -145,6 +149,31 @@ float totalTimeNeeded2(float V1,float a1,float VT, float V2, float a2,float D, f
   return T;
 }
 
+
+float DeAccTimeNeeded2(float VT, float V2, float a2,float *ret_D)
+{
+  float T = (V2-VT)/a2;
+  if(ret_D)
+  {
+    *ret_D=T*(V2+VT)/2;
+  }
+
+  return T;
+}
+
+
+// inline float DeAccDistNeededf(float VT, float V2, float a2)
+// {
+//   return (V2*V2-VT*VT)/a2/2;
+// }
+
+
+inline int32_t DeAccDistNeeded(int32_t VT, int32_t V2, int32_t a2)
+{
+  return (V2*V2-VT*VT)/a2/2;
+}
+
+
 float accTo_DistanceNeeded(float Vc, float Vd, float ad, float *ret_Td=NULL)
 {
   float T=(Vd-Vc)/ad;
@@ -154,6 +183,23 @@ float accTo_DistanceNeeded(float Vc, float Vd, float ad, float *ret_Td=NULL)
 
   return D;
 }
+
+
+bool PIN_DBG0_st=false;
+
+MStp::MStp(RingBuf<runBlock> *_blocks)
+{
+
+  IO_SET_DBG(PIN_DBG0, OUTPUT);
+  curPos=lastTarLoc=preVec=(xVec){0};
+  T_next=T_lapsed=0;
+  minSpeed=2;
+  acc=1;
+  axis_pul=0;
+  blocks=_blocks;
+  axis_RUNState=1;
+}
+
 
 void MStp::VecTo(xVec VECTo,float speed)
 {
@@ -227,103 +273,84 @@ void MStp::VecTo(xVec VECTo,float speed)
 
 void MStp::BlockRunStep(runBlock &rb)
 {
-  float T1,T2;
-  float a1=acc;
-  float a2=-acc;
-  float V1=rb.vcur;
-  float V2=rb.vto;
-  float D = (rb.steps-rb.cur_step);
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
+
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
+  int32_t vcur_int=rb.vcur;
+  int32_t vcen_int=rb.vcen;
+  int32_t vto_int=rb.vto;
+
+  int32_t a1=acc;
+  int32_t a2=-a1;
+  uint32_t D = (rb.steps-rb.cur_step);
   
-  float D_=D-1;
-  float T= totalTimeNeeded2(V1,a1,rb.vcen, V2,a2,D_,&T1,&T2);
-  
 
-  float Vc=V1+a1*T1;
+  int32_t deAccReqD=DeAccDistNeeded(vcur_int, vto_int,a2);
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
 
-  
-  float D2Area= (Vc+V2)*(T-T2)/2;
-  float D2Step= D_-D2Area;
-  
-  __PRT__("step:%5d T:%04.3f T1:%04.3f  T2:%04.3f D_deacc:%f\n",rb.cur_step,T,T1,T-T2,D2Step);
-
-  float calc_D=
-      (V1+Vc)*T1/2+
-      (T2-T1)*Vc+
-      (Vc+V2)*(T-T2)/2;
-  if(T2-T1>0.01)
-  {//reaches VT
-    __PRT__("/   \\");
-  }
-  else
-  {//T1 T2 meets
-    __PRT__("   /\\");
-  }
-  // __PRT__(" Vc:(%f~%f) calc_D:%f D:%f  T_next:%d  T_lapsed:%d  realEstT:%f\n",Vc,V2-a2*(T-T2),calc_D ,D,T_next,T_lapsed, T+T_lapsed/TICK2SEC_BASE.0);
-
-
-  // float DBufferDist=accTo_DistanceNeeded(rb.vcur, rb.vto, acc*(rb.vcur>rb.vto?-1:1), &T2);
-
-  // __PRT__("DBufferDist:%f T2:%f \n",DBufferDist,T2);
-  __PRT__(" rb.vcur:%f, rb.vto:%f\n\n",rb.vcur, rb.vto);
-
-
-  // if(T_next>TICK2SEC_BASE)
-  // {
-  //   T_next=TICK2SEC_BASE;
-  // }
-
-  if(D2Step<1.01)
+  __PRT__("vcur_int:%d vcen_int:%d vto_int:%d a1:%d D:%d  deAccReqD:%d  \n",vcur_int,vcen_int,vto_int,a1,D,deAccReqD);
+  if(D<deAccReqD+2)
   {
-    float calcAcc=acc;
-    rb.vcur-=acc*(T_next-T2)/TICK2SEC_BASE;
+    rb.vcur+=(float)a2*T_next/TICK2SEC_BASE;
     if(rb.vcur<rb.vto)
     {
       rb.vcur=rb.vto;
     }
+  // __PRT__("rb.vcur:%f a2:%d  T_next:%d  TICK2SEC_BASE:%d\n",rb.vcur,a2,T_next,TICK2SEC_BASE);
 
   }
-  else if(rb.vcur<rb.vcen)
+  else if(vcur_int<vcen_int)
   {
-    rb.vcur+=acc*T_next/TICK2SEC_BASE;
+    rb.vcur+=(float)a1*T_next/TICK2SEC_BASE;
     
-    if(rb.vcur>Vc)
+    if(vcur_int>vcen_int)
     {
-      rb.vcur=Vc;
+      rb.vcur=rb.vcen;
     }
   }
 
 
 
-  if(rb.vcur<minSpeed)//set min speed
+
+
+
+  // rb.vcur=rb.vcen;
+
+  if(vcur_int<(uint32_t)minSpeed)//set min speed
   {
     rb.vcur=minSpeed;
   }
 
-  int64_t step_scal=((int64_t)rb.cur_step+1)<<PULSE_ROUND_SHIFT;//100x is for round  +1 for predict next position
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
+  // uint32_t step_scal=(rb.cur_step+1)<<PULSE_ROUND_SHIFT;//100x is for round  +1 for predict next position
 
   // __PRT__("=%03d/%03d==: \n",step_scal,rb.steps);
   uint32_t _axis_pul=0;
+  uint32_t steps_scal=rb.steps;
   for(int k=0;k<MSTP_VEC_SIZE;k++)
   {
-    int32_t absVec=rb.vec.vec[k];
-    if(absVec<0)absVec=-rb.vec.vec[k];
-    int64_t prog_scal = step_scal*absVec/rb.steps;
-    int64_t prog_step=prog_scal>>PULSE_ROUND_SHIFT;
-    // __PRT__("  -[%D]:VEC:%d  : PROG:%d curPos:%d step:%d\n",k,absVec,prog_scal,curPos.vec[k],prog_step);
-    if(curPos.vec[k]!=prog_step)
+    curPos.vec[k]+=rb.vec.vec[k];
+    if(curPos.vec[k]>=steps_scal)//a step forward
     {
-      curPos_residue.vec[k]=(1<<PULSE_ROUND_SHIFT)-(prog_scal-  ((prog_step)<<PULSE_ROUND_SHIFT)  );
+      curPos.vec[k]-=steps_scal;
+      curPos_residue.vec[k]=rb.steps-curPos.vec[k];
       _axis_pul|=1<<k;
-      curPos.vec[k]=prog_step;
     }
     else
     {
       curPos_residue.vec[k]=0;
     }
 
+    // curPos.vec[k]+=rb.vec.vec[k];
   }
+
   axis_pul=_axis_pul;
   rb.cur_step++;
+
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
 }
 
 
@@ -333,8 +360,9 @@ void MStp::blockPlayer()
   
   if(blocks->size()>0)
   {
-    runBlock &blk=*blocks->getTail();
 
+    runBlock &blk=*blocks->getTail();
+    curBlk=&blk;
     if(blk.cur_step==0)
     {
       uint32_t _axis_dir=0;
@@ -342,6 +370,7 @@ void MStp::blockPlayer()
       {
         if(blk.vec.vec[k]<0)
         {
+          blk.vec.vec[k]=-blk.vec.vec[k];
           _axis_dir|=1<<k;
         }
       }
@@ -350,12 +379,11 @@ void MStp::blockPlayer()
       BlockDirEffect(axis_dir);
     }
 
-
-
     BlockRunStep(blk);
 
     float T = TICK2SEC_BASE/blk.vcur;
-    T_next=(int)(T);
+    T_next=(uint32_t)(T);
+
     delayRoundX+=T-T_next;
     if(delayRoundX>1)
     {
@@ -371,8 +399,10 @@ void MStp::blockPlayer()
     if(blk.cur_step==blk.steps)
     {
       float vcur= blk.vcur;
-      __PRT__("======vcur:%f=vto:%f===T_lapsed:%d===\n",vcur,blk.vto,T_lapsed);
+      // __PRT__("======vcur:%f=vto:%f===T_lapsed:%d===\n",vcur,blk.vto,T_lapsed);
       memset(&curPos,0,sizeof(curPos));
+      memset(&curPos_residue,0,sizeof(curPos_residue));
+      
       blocks->consumeTail();
       runBlock *new_blk=blocks->getTail();
       if(new_blk!=NULL)
@@ -408,11 +438,27 @@ void MStp::blockPlayer()
 
 
 
-
 }
 
 
 
+uint32_t MStp::findMidIdx(uint32_t from_idxes,uint32_t totSteps)
+{
+  uint32_t idxes=0;
+
+  uint32_t midP=totSteps>>1;
+  for(int k=0;k<MSTP_VEC_SIZE;k++)
+  {
+    if(from_idxes&(1<<k)==0)continue;
+    int resd=curPos_residue.vec[k];
+    __PRT__(">[%d]>%d\n",k,resd);
+    if(resd!=0 && resd<=midP)
+    {
+      idxes|=1<<k;
+    }
+  }
+  return idxes;
+}
 
 
 uint32_t MStp::findNearstPulseIdx(uint32_t *ret_minResidue,int *ret_restCount)
@@ -458,8 +504,10 @@ void MStp::delIdxResidue(uint32_t idxes)
 {
   for(int k=0;k<MSTP_VEC_SIZE;k++)
   {
-    if((idxes&(1<<k))==0)continue;
-    curPos_residue.vec[k]=0;
+    if((idxes&(1<<k)))
+    {
+      curPos_residue.vec[k]=0;
+    }
   }
 }
 
@@ -469,17 +517,21 @@ void MStp::delIdxResidue(uint32_t idxes)
 
 uint32_t MStp::taskRun()
 {
-  accT=curT;
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
   BlockPulEffect(pre_indexes,axis_collectpul);
 
-  delIdxResidue(pre_indexes);
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
+  // delIdxResidue(pre_indexes);
 
   axis_collectpul=0;
+  accT=curT;
   if(tskrun_state==0)
   {
+
+    // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
     blockPlayer();
     pre_indexes=0;
-    isInMidSec=false;
+    isMidPulTrig=false;
     accT=0;
     curT=0;
     axis_collectpul=0;
@@ -487,91 +539,149 @@ uint32_t MStp::taskRun()
     {
       return 0;
     }
-    //printf(">>>>st0 T_next:%d\n",T_next);
+    __PRT__(">>>>st0 T_next:%d\n",T_next);
     tskrun_state=1;
   }
+
+  if(tskrun_state==1)
+  {
+    if(isMidPulTrig==false)
+    {
+      uint32_t idxes=findMidIdx(axis_pul,curBlk->steps);
+      // Serial.printf("=curBlk->steps:%d==idxes:%s  resd:%d\n",curBlk->steps,int2bin(idxes,MSTP_VEC_SIZE),curPos_residue.vec[0]);
+      if(idxes==0)
+        IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=!PIN_DBG0_st);
+      isMidPulTrig=true;
+      axis_pul&=~idxes;//surpress current
+
+      pre_indexes=idxes;
+      axis_collectpul=_axis_collectpul1;
+      _axis_collectpul1=pre_indexes;
+      return T_next/2;
+    }
+    tskrun_state=0;
+
+    pre_indexes=axis_pul;
+    axis_collectpul=_axis_collectpul1;
+    _axis_collectpul1=pre_indexes;
+    return T_next/2;
+  }
   
-  if(tskrun_state==1)//run pulse
+  if(tskrun_state==2)//run pulse
   {
     // printf(">>>>st1\n");
-    uint32_t minResidue;
-    int restCount;
     
 
 
-    uint32_t idxes = findNearstPulseIdx(&minResidue,&restCount);
+    uint32_t idxes;
+    uint32_t mT;
+    if(save_pre_indexes==0)
+    {
+      uint32_t minResidue;
+      int restCount;
+      idxes = findNearstPulseIdx(&minResidue,&restCount);
+      mT=(minResidue*T_next)>>_PULSE_ROUND_SHIFT_;
+    } 
+    else
+    {
+      idxes=save_pre_indexes;
+      save_pre_indexes=0;
+      mT=save_mT;
+      save_mT=0;
+    }
 
-    uint32_t mT=minResidue*T_next>>PULSE_ROUND_SHIFT;
+
+    uint32_t Tdev4=T_next>>2;
+
+    if( (mT<(Tdev4)) || (mT>(3*Tdev4)) )
+    {
+      _axis_collectpul1|=idxes;
+    }
+    else
+    {
+      _axis_collectpul2|=idxes;
+    }
 
 
+
+    // printf("acol1:%s ",int2bin(_axis_collectpul1,MSTP_VEC_SIZE));
+    // printf("acol2:%s \n",int2bin(_axis_collectpul2,MSTP_VEC_SIZE));
     pre_indexes=idxes;
-    bool trigAxisCollectPul=false;
-    if(isInMidSec==false && mT>(T_next/3))
-    {//if the next pulse is more than T*2/3 then insert a fake pulse
 
-      if(mT<(T_next*2/3))
-      {//go with this pulse
+    uint32_t Tdev3=T_next/3;
 
-        _axis_collectpul1|=idxes;
-        // printf("MID cur pulse...mT:%d _ax1:%d _ax2:%d\n",mT,_axis_collectpul1,_axis_collectpul2);
-        if(restCount==0)
-        {
-          tskrun_state=0;
+
+    if(isMidPulTrig==false)
+    {
+      
+      if(mT<(2*Tdev3))
+      {
+        if( mT<(Tdev3))
+        {//let go without pull down
+
+
         }
+        else
+        {//we can reuse this section  _axis_collectpul1
+          axis_collectpul=_axis_collectpul1;
+          _axis_collectpul1=0;
+          isMidPulTrig=true;
+        } 
       }
       else
-      {
-        // printf("MID ins pulse...mT:%d _ax1:%d _ax2:%d\n",mT,_axis_collectpul1,_axis_collectpul2);
-        mT=T_next/2+1;
-        pre_indexes=0;
+      {//insert a event just for pull down   _axis_collectpul1
+        
+
+
+        axis_collectpul=_axis_collectpul1;
+        _axis_collectpul1=0;
+        isMidPulTrig=true;
+
+        save_pre_indexes=pre_indexes;
+        save_mT=mT;
+        pre_indexes=0;//SKIP THIS IDXES
+        mT=T_next/2+1;//MIDDLE PULSE
       }
-      isInMidSec=true;
-      trigAxisCollectPul=true;
     }
     else
     {
 
-      if(mT==T_next)
-      {
-        // printf("END cur pulse...mT:%d _ax1:%d _ax2:%d\n",mT,_axis_collectpul1,_axis_collectpul2);
-        trigAxisCollectPul=true;
-      }
-
-      _axis_collectpul1|=idxes;
-      if(restCount==0)
-      {
+      if(mT==T_next)//there must be a pulse matchs this (the)
+      {//we can reuse this section  _axis_collectpul2
+      
+        axis_collectpul=_axis_collectpul2;
+        _axis_collectpul2=0;
         tskrun_state=0;
       }
-    }
+      else
+      {//let go without pull down
 
-    if(trigAxisCollectPul)
-    {
-      axis_collectpul=_axis_collectpul2;
-      _axis_collectpul2=_axis_collectpul1;
-      _axis_collectpul1=0;
+
+
+      }
     }
 
     curT=mT;
-    // printf(">mT:%d  accT:%d>   T_next:%d  >restCount:%d>>st:%d>\n",mT,accT,T_next,restCount,tskrun_state);
-
-
 
     int delay=curT-accT;
+    // Serial.printf(">mT:%d  accT:%d>   curT:%d  >delay:%d>\n",mT,accT,curT,delay);
 
-    int debtStep=5;
-    if(mT==0)
-    {
 
-      // printf("==============DEBT\n");
-      delay+=debtStep;
-      tskrun_adj_debt+=debtStep;
-    }
-    else if(tskrun_adj_debt && delay>(2*debtStep))//pay back
-    {
-      // printf("==============DEBT pay back\n");
-      mT-=debtStep;
-      tskrun_adj_debt-=debtStep;
-    }
+    // if(delay<50)delay=200;
+    // int debtStep=5;
+    // if(mT==0)
+    // {
+
+    //   // printf("==============DEBT\n");
+    //   delay+=debtStep;
+    //   tskrun_adj_debt+=debtStep;
+    // }
+    // else if(tskrun_adj_debt && delay>(2*debtStep))//pay back
+    // {
+    //   // printf("==============DEBT pay back\n");
+    //   mT-=debtStep;
+    //   tskrun_adj_debt-=debtStep;
+    // }
 
     return delay;
   }

@@ -8,7 +8,7 @@ SysSyncFolder=../../SysSync
 VPATH=$(SysSyncFolder) ./
 export MakeTemplate:= ./Makefile.in
 
-
+ESS_TRACK=$(SysSyncFolder)/include/* $(SysSyncFolder)/*
 
 IDIR=	./ $(SysSyncFolder)/ $(SysSyncFolder)/include
 # EXT_OBJS= $(MODULE_libxd)/lib/libglad.a \

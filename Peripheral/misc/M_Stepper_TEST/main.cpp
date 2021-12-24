@@ -13,26 +13,39 @@ int TIMESCALE_ms=100;
 
 
 
-
-#define SUBDIV 800
-
-
+#define SUBDIV (800)
+#define mm_PER_REV 10
+ 
 
 class MStp_M:public MStp{
   public:
 
   int stepCount[MSTP_VEC_SIZE];
   int FACCT=0;
+  int FACCT2=0;
+
+  void TAdd(int T)
+  {
+    FACCT+=T;
+    FACCT2+=T;
+  }
+
   MStp_M(RingBuf<struct runBlock> *_blocks):MStp(_blocks)
   {
     
-    TICK2SEC_BASE=100000;
-    PULSE_ROUND_SHIFT=7;
-    minSpeed=SUBDIV*TICK2SEC_BASE/10000/200;
-    acc=SUBDIV/20;
+    // TICK2SEC_BASE=100000;
+    // // PULSE_ROUND_SHIFT=15;
+    // minSpeed=SUBDIV*TICK2SEC_BASE/10000/200;
+    // acc=SUBDIV/20;
+
+
+    
+    TICK2SEC_BASE=10*1000*1000;
+    minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    acc=SUBDIV*500/mm_PER_REV;
   }
 
-  int M1_reader=1<<(MSTP_VEC_SIZE-2);
+  int M1_reader=2;//1<<(MSTP_VEC_SIZE-2);
   int M2_reader=1<<(MSTP_VEC_SIZE-1);
 
   void BlockDirEffect(uint32_t idxes)
@@ -96,18 +109,27 @@ class MStp_M:public MStp{
     {
       // digitalWrite(PIN_M2_STP, 0);
     }
-    // printf("id:%s  ",int2bin(idxes_H,MSTP_VEC_SIZE));
-    // printf("ac:%s \n",int2bin(idxes_L,MSTP_VEC_SIZE));
+    printf("id:%s  ",int2bin(idxes_H,MSTP_VEC_SIZE));
+    printf("ac:%s \n",int2bin(idxes_L,MSTP_VEC_SIZE));
 
     // int Midx=0;
 
     
     // Serial.printf("PINs:%s\n",int2bin(axis_st,MSTP_VEC_SIZE));
 
-    if(idxes_H&M1_reader)
+    if(idxes_H&1)
     {
+      printf("M1H:TS:%d\n",FACCT);
+      FACCT=0;
       // digitalWrite(PIN_M1_STP, 1);
     }
+    if(idxes_H&2)
+    {
+      printf("M2H:TS:%d\n",FACCT2);
+      FACCT2=0;
+      // digitalWrite(PIN_M1_STP, 1);
+    }
+
 
     if(idxes_H&M2_reader)
     {
@@ -123,20 +145,20 @@ class MStp_M:public MStp{
     }
 
 
-    if(idxes_L&2)
-    {
+    // if(idxes_L&1)
+    // {
       
-      // printf("MxL:T:%d\n",FACCT);
-      FACCT=0;
-      // digitalWrite(PIN_M1_STP, 0);
-    }
+    //   printf("MxL:T:%d\n",FACCT);
+    //   FACCT=0;
+    //   // digitalWrite(PIN_M1_STP, 0);
+    // }
     
-    if(idxes_H&2)
-    {
-      // digitalWrite(PIN_M1_STP, 1);
-      // printf("MxH:T:%d\n",FACCT);
-      FACCT=0;
-    }
+    // if(idxes_H&1)
+    // {
+    //   // digitalWrite(PIN_M1_STP, 1);
+    //   printf("MxH:T:%d\n",FACCT);
+    //   FACCT=0;
+    // }
   }
 
 };
@@ -177,7 +199,7 @@ void first_thread_job()
       }
       else
       {
-        mstp.FACCT+=T;
+        mstp.TAdd(T);
       }
       // std::this_thread::sleep_for(std::chrono::milliseconds(T/TIMESCALE_ms));
       continue;
@@ -188,54 +210,17 @@ void first_thread_job()
 
 int main()
 {
-  
-  if(0)for(int i=0;i<100;i++)
-  {
-    // V1:0.000000, a1:3.000000, VT:100.099998, V2:0.000000, a2:-3.000000, D:20.000000
-
-    float V1=i/5.0,V2=0,VT=100,a=5,D=18;
-
-
-    float T,T1,T2;
-    // T = totalTimeNeeded(V1, V2,VT, a,D,&T1,&T2);
-    // printf(" V1:%f,V2:%f,VT:%f,a:%f,D:%f => T:%f   T1:%f   T2:%f  \n",V1,V2,VT,a,D, T,T1,T2);
-
-
-    float a1=a*((V1<VT)?1:-1);
-    float a2=a*((VT<V2)?1:-1);
-    T = totalTimeNeeded2(V1,a1,VT, V2,a2, D,&T1,&T2);
-
-    // printf("V1:%f, a1:%f, VT:%f, V2:%f, a2:%f, D:%f => T:%f   T1:%f   T2:%f  \n",V1,a1,VT, V2,a2,D, T,T1,T2);
-
-
-    float Vc=V1+a1*T1;
-    printf(" T1:%f T2:%f  \n",T1,T2);
-    // printf(" T1:%f   T-T2:%f  \n",T1,T-T2);
-    float calc_D=
-        (V1+Vc)*T1/2+
-        (T2-T1)*Vc+
-        (Vc+V2)*(T-T2)/2;
-    if(T2-T1>0.0001)
-    {//reaches VT
-      printf("/   \\");
-    }
-    else
-    {//T1 T2 meets
-      printf("   /\\");
-    }
-    printf(" Vc:%f  :%f calc_D:%f \n\n",Vc,V2-a2*(T-T2),calc_D );
- 
-  }
   thread first_thread(first_thread_job);
   
-  for(int i=0;i<3;i++)
-  {
-    mstp.VecTo((xVec){.vec={122,217,97}},340);
-    mstp.VecTo((xVec){.vec={20,-10,2}},340);
-    mstp.VecTo((xVec){.vec={0,0,0}},340);
-  }
-  // mstp.VecTo((xVec){.vec={100,-300,-50}});
-  // mstp.VecTo((xVec){.vec={50,0,0}});
+  // for(int i=0;i<3;i++)
+  // {
+  //   mstp.VecTo((xVec){.vec={122,217,97}},340);
+  //   mstp.VecTo((xVec){.vec={20,-10,2}},340);
+  //   mstp.VecTo((xVec){.vec={0,0,0}},340);
+  // }
+  mstp.VecTo((xVec){.vec={100,99,0}},1000);
+  mstp.VecTo((xVec){.vec={0,0,0}},1000);
+  mstp.VecTo((xVec){.vec={1,1,1}},1000);
 
   first_thread.join();
   return 0;
