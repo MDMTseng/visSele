@@ -11,8 +11,12 @@ hw_timer_t *timer = NULL;
 
 #define PIN_M1_DIR 32
 #define PIN_M1_STP 33
+#define PIN_M1_SEN1 19
+
+
 #define PIN_M2_DIR 12
 #define PIN_M2_STP 13
+#define PIN_M2_SEN1 18
 
 
 
@@ -26,14 +30,19 @@ class MStp_M:public MStp{
   public:
 
   int FACCT=0;
-  MStp_M(RingBuf<struct runBlock> *_blocks):MStp(_blocks)
+  
+  MStp_M(RingBuf<struct runBlock> *_blocks, MSTP_setup *_axisSetup):MStp(_blocks,_axisSetup)
   {
     
     TICK2SEC_BASE=10*1000*1000;
-    minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    acc=SUBDIV*2000/mm_PER_REV;
+    minSpeed=500;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    acc=SUBDIV*1000/mm_PER_REV;
     pinMode(PIN_M1_DIR, OUTPUT);
     pinMode(PIN_M1_STP, OUTPUT);
+    pinMode(PIN_M1_SEN1, INPUT);
+    pinMode(PIN_M2_SEN1, INPUT);
+
+    
     pinMode(PIN_M2_DIR, OUTPUT);
     pinMode(PIN_M2_STP, OUTPUT);
     // pinMode(PIN_DBG0, OUTPUT);
@@ -41,7 +50,139 @@ class MStp_M:public MStp{
     
   }
 
-  int M1_reader=1<<(MSTP_VEC_SIZE-1);
+  int ZeroStatus=0;
+  uint32_t zeroIndex=0;
+  xVec posWhenHit;
+  int ZeroAxis(uint32_t index,int distance)
+  {
+    StepperForceStop();
+    zeroIndex=index;
+    xVec cpos;
+
+    Serial.printf("STP1");
+    
+      StepperForceStop();
+      cpos=(xVec){0};
+      cpos.vec[index]=distance;
+    Serial.printf("STP2");
+      VecAdd(cpos,minSpeed*10);
+      ZeroStatus=1;
+    Serial.printf("STP3");
+
+      while(ZeroStatus==1 && blocks->size()!=0);
+      {
+        Serial.printf("");//somehow it need this or the ZeroStatus detection would never work
+      }
+      
+      Serial.printf("ZeroStatus:%d  blocks->size():%d  PINRead:%d\n",ZeroStatus,blocks->size(),digitalRead(PIN_M1_SEN1));
+      if(ZeroStatus!=0)
+      {
+        ZeroStatus=0;
+        return -1;
+      }
+        
+      Serial.printf("pos=>posWhenHit[%d]:%d\n",index,posWhenHit.vec[index]);
+    
+
+
+
+
+    
+      StepperForceStop();
+      cpos=(xVec){0};
+      cpos.vec[index]-=distance/2;
+      VecAdd(cpos,200);
+      ZeroStatus=2;
+
+
+      while( (ZeroStatus==2) && (blocks->size()!=0) )
+      {
+        Serial.printf("");//somehow it need this or the ZeroStatus detection would never work
+      }
+      Serial.printf("ZeroStatus:%d  blocks->size():%d  PINRead:%d\n",ZeroStatus,blocks->size(),digitalRead(PIN_M1_SEN1));
+      if(ZeroStatus!=0)
+      {
+        ZeroStatus=0;
+        return -2;
+      }
+        
+      Serial.printf("pos=>posWhenHit[%d]:%d\n",index,posWhenHit.vec[index]);
+    
+
+
+
+  
+    StepperForceStop();
+    curPos_c.vec[index]=0;
+    lastTarLoc=curPos_c;
+    ZeroStatus=0;
+
+
+
+    return 0;
+    // ZeroStatus=0;
+
+  }
+
+
+
+  int ZeroAxisStepEvent()
+  {
+        // Serial.printf("ZeroStatus:%d blocks->size():%d\n",ZeroStatus,blocks->size());
+    
+    int sensorPIN;
+
+    if(zeroIndex==0)
+    {
+      sensorPIN=PIN_M1_SEN1;
+    }
+    else if(zeroIndex==1)
+    {
+      sensorPIN=PIN_M2_SEN1;
+    }
+    else
+    {
+      return -1;
+    }
+
+
+    {
+      if(ZeroStatus==1)
+      {
+        if(digitalRead(sensorPIN))
+        {
+          StepperForceStop();
+          // StepperForceStop();
+          posWhenHit=curPos_c;
+          ZeroStatus=0;
+        }
+      }
+      else 
+      {
+        
+        if(ZeroStatus==2)
+        { 
+          if(digitalRead(sensorPIN)==0)
+          {
+            StepperForceStop();
+            
+            // StepperForceStop();
+            posWhenHit=curPos_c;
+            ZeroStatus=0;
+          }
+        }
+      }
+    }
+    return 0;
+  }
+
+
+
+
+
+
+
+  int M1_reader=1<<0;
   int M2_reader=1<<(MSTP_VEC_SIZE-2);
 
   void BlockDirEffect(uint32_t idxes)
@@ -58,6 +199,10 @@ class MStp_M:public MStp{
   uint32_t axis_st=0;
   void BlockPulEffect(uint32_t idxes_H,uint32_t idxes_L)
   {
+    if(ZeroStatus!=0)
+    {
+      ZeroAxisStepEvent();
+    }
     // if(idxes==0)return;
     // printf("===p:%s",int2bin(idxes,5));
     // printf(" d:%s >>",int2bin(axis_dir,5));
@@ -114,10 +259,12 @@ class MStp_M:public MStp{
 
 
 };
-runBlock blockBuff[20];
-RingBuf <runBlock> __blocks(blockBuff,20);
 
-MStp_M mstp(&__blocks);
+#define MSTP_BLOCK_SIZE 30
+runBlock blockBuff[MSTP_BLOCK_SIZE];
+RingBuf <runBlock> __blocks(blockBuff,MSTP_BLOCK_SIZE);
+
+MStp_M mstp(&__blocks,NULL);
 
 
 class SyncTask
@@ -237,57 +384,102 @@ void setup()
   timerAlarmEnable(timer);
   pinMode(PIN_O1, OUTPUT);
 
+  int retErr=mstp.ZeroAxis(0,-50000)+mstp.ZeroAxis(1,-50000)*10;
+  if(retErr==0)
+  {
+    uint32_t pos=18000*2;
+    uint32_t speed=30200;
+
+    xVec cpos=(xVec){0};
+    cpos.vec[0]=pos;
+    cpos.vec[1]=pos;
+    mstp.VecTo(cpos,speed);
+
+
+    for(int i=0;i<10;i++)
+    {
+      cpos.vec[0]=//(esp_random()%(pos));
+      cpos.vec[1]=(esp_random()%(pos));
+      mstp.VecTo(cpos,speed);
+    }
+
+
+    cpos.vec[0]=pos;
+    cpos.vec[1]=pos;
+    mstp.VecTo(cpos,speed);
+  }
+  else
+  {
+  
+    Serial.printf("Axis zero failed: %d\n",retErr);
+  }
   // int32_t speed =SUBDIV*50/mm_PER_REV;// 25*1000;
-  int32_t speed =20*1000;
-  for(int i=0;i<1;i++)
+  int32_t speed =30*1000;
+  for(int i=0;i<0;i++)
   {
     
     int posMult=2;
     xVec dst;
-
+    int32_t maxDist=5*SUBDIV;
     
-    for(int k=0;k<18;k++)
+    for(int k=0;k<3;k++)
     {
-      int32_t maxDist=20*SUBDIV;
+      
       for(int j=0;j<MSTP_VEC_SIZE;j++)
       {
         // dst.vec[j]=SUBDIV*5-j*200;
         // dst.vec[j]=((esp_random()&1)?1:-1)*SUBDIV*10*10/mm_PER_REV;
         
-        // dst.vec[j]=((esp_random()&1)?1:-1)*((int32_t)(esp_random()%(maxDist)));
+        dst.vec[j]=((esp_random()&1)?1:-1)*((int32_t)(esp_random()%(maxDist)));
         
-        dst.vec[j]=((k&1)?1:-1)*(maxDist);//*(maxDist/MSTP_VEC_SIZE));
+        // dst.vec[j]=((k&1)?1:-1)*(maxDist);//*(maxDist/MSTP_VEC_SIZE));
         
         
       }
       mstp.VecTo(dst,speed);
     }
-
-  
-    // for(int j=0;j<MSTP_VEC_SIZE;j++)
-    // {
-    //   // dst.vec[j]=SUBDIV*5-j*200;
-    //   dst.vec[j]=10*10*SUBDIV/mm_PER_REV-3*j;
-    // }
-    // mstp.VecTo(dst,speed);
-
-  
-    // for(int j=0;j<MSTP_VEC_SIZE;j++)
-    // {
-    //   // dst.vec[j]=SUBDIV*5-j*200;
-    //   dst.vec[j]=-(10*10*SUBDIV/mm_PER_REV-3*j);
-    // }
-    // mstp.VecTo(dst,speed);
-
-
+    
     mstp.VecTo((xVec){0},speed);
+    // for(int k=0;k<13;k++)
+    // {    
+    //   for(int j=0;j<MSTP_VEC_SIZE;j++)
+    //   {
+    //     // dst.vec[j]=SUBDIV*5-j*200;
+    //     dst.vec[j]=maxDist;
+    //   }
+    //   mstp.VecTo(dst,speed);
+
+    //   for(int j=0;j<MSTP_VEC_SIZE;j++)
+    //   {
+    //     // dst.vec[j]=SUBDIV*5-j*200;
+    //     dst.vec[j]=-(maxDist);
+    //   }
+    //   mstp.VecTo(dst,speed);
+    // }
+
+    // mstp.VecTo((xVec){0},speed);
+
+
+    // mstp.VecTo((xVec){0},speed);
+
+     
+    //  mstp.VecTo((xVec){1000,1000,1000},speed);
+
+     
+    //  mstp.VecTo((xVec){2000,2000,2000},speed);
   }
   // mstp.VecTo((xVec){100,97},speed);
-  // mstp.VecTo((xVec){,0},speed);
 
 }
+
+bool inZeroProcess=false;
 void loop()
 {
+  // if(!inZeroProcess)
+  // {
+  //   mstp.ZeroAxis(0,-200);
+  //   inZeroProcess=true;
+  // }
   static uint64_t preTick=0;
   uint64_t cur_tick=getCurTick();
   // oGS.mainLoop();

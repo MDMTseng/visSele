@@ -4,6 +4,8 @@
 #include "RingBuf.hpp"
 #include <initializer_list>
 #include <thread>
+
+
 #include "MSteppers.hpp"
 using namespace std;
 
@@ -16,6 +18,37 @@ int TIMESCALE_ms=100;
 #define SUBDIV (800)
 #define mm_PER_REV 10
  
+MSTP_setup mstp_setup={
+  .axis_setup={
+    {
+      .maxAcc=20,
+      .minSpeed=100,
+      .maxSpeed=10000,
+      .dirFlip=false,
+      .zeroDir=true
+
+    },
+    {
+      .maxAcc=20,
+      .minSpeed=100,
+      .maxSpeed=10000,
+      .dirFlip=false,
+      .zeroDir=true
+
+    },
+    {
+      .maxAcc=20,
+      .minSpeed=100,
+      .maxSpeed=10000,
+      .dirFlip=false,
+      .zeroDir=true
+
+    },
+  }
+};
+
+
+
 
 class MStp_M:public MStp{
   public:
@@ -30,7 +63,7 @@ class MStp_M:public MStp{
     FACCT2+=T;
   }
 
-  MStp_M(RingBuf<struct runBlock> *_blocks):MStp(_blocks)
+  MStp_M(RingBuf<struct runBlock> *_blocks, MSTP_setup *_axisSetup):MStp(_blocks,_axisSetup)
   {
     
     // TICK2SEC_BASE=100000;
@@ -38,7 +71,17 @@ class MStp_M:public MStp{
     // minSpeed=SUBDIV*TICK2SEC_BASE/10000/200;
     // acc=SUBDIV/20;
 
-
+    for(int i=0;i<MSTP_VEC_SIZE;i++)
+    {
+      MSTP_axis_setup &aset=axisSetup->axis_setup[i];
+      printf("%f,%f,%f, %d,%d\n",
+      aset.mmpp,
+      aset.maxAcc,
+      aset.minSpeed,
+      aset.dirFlip,
+      aset.zeroDir);
+      
+    }
     
     TICK2SEC_BASE=10*1000*1000;
     minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
@@ -70,6 +113,14 @@ class MStp_M:public MStp{
   uint32_t axis_st=0;
   void BlockPulEffect(uint32_t idxes_H,uint32_t idxes_L)
   {
+    
+    printf("======");
+    for(int i=0;i<MSTP_VEC_SIZE;i++)
+    {
+      printf("%d  ",curPos_c.vec[i]);
+      // stepCount[i]=0;
+    }
+    printf("\n");
     // if(idxes==0)return;
     // printf("===p:%s",int2bin(idxes,5));
     // printf(" d:%s >>",int2bin(axis_dir,5));
@@ -166,7 +217,7 @@ class MStp_M:public MStp{
 runBlock blockBuff[20];
 RingBuf <runBlock> __blocks(blockBuff,20);
 
-MStp_M mstp(&__blocks);
+MStp_M mstp(&__blocks,&mstp_setup);
 
 
 
@@ -218,10 +269,12 @@ int main()
   //   mstp.VecTo((xVec){.vec={20,-10,2}},340);
   //   mstp.VecTo((xVec){.vec={0,0,0}},340);
   // }
-  mstp.VecTo((xVec){.vec={100,99,0}},1000);
-  mstp.VecTo((xVec){.vec={0,0,0}},1000);
-  mstp.VecTo((xVec){.vec={1,1,1}},1000);
+  mstp.VecTo((xVec){20,19,0},1000);
+  mstp.VecTo((xVec){0},1000);
+  mstp.VecTo((xVec){-20,-19,-0},1000);
+  mstp.VecTo((xVec){0},1000);
 
+  mstp.VecTo((xVec){20,19,0},1000);
   first_thread.join();
   return 0;
 }

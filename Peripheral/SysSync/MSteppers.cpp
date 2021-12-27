@@ -187,19 +187,61 @@ float accTo_DistanceNeeded(float Vc, float Vd, float ad, float *ret_Td=NULL)
 
 bool PIN_DBG0_st=false;
 
-MStp::MStp(RingBuf<runBlock> *_blocks)
+MStp::MStp(RingBuf<runBlock> *_blocks, MSTP_setup *_axisSetup)
 {
 
+  blocks=_blocks;
+  axisSetup=_axisSetup;
+  maxSpeedInc=500;
   IO_SET_DBG(PIN_DBG0, OUTPUT);
-  curPos=lastTarLoc=preVec=(xVec){0};
+  SystemClear();
+}
+
+
+void MStp::SystemClear()
+{
+  
+  curPos_c=curPos_mod=curPos_residue=lastTarLoc=preVec=(xVec){0};
   T_next=T_lapsed=0;
   minSpeed=2;
   acc=1;
   axis_pul=0;
-  blocks=_blocks;
-  axis_RUNState=1;
 }
 
+void MStp::StepperForceStop()
+{
+  
+  blocks->clear();
+  lastTarLoc=curPos_c;
+  T_next=T_lapsed=0;
+  axis_pul=axis_dir=0;
+  delayRoundX=0;
+  pre_indexes=0;
+  tskrun_state=0;
+  isMidPulTrig=true;
+  _axis_collectpul1=_axis_collectpul2=0;
+  accT=curT=0;
+  curPos_mod=curPos_residue=preVec=(xVec){0};
+}
+
+
+// void MStp::AxisZeroing(uint32_t index)
+// {
+
+
+
+// }
+
+
+float MStp::calcMajorSpeed(runBlock &rb)
+{
+  return rb.vcen;
+}
+
+void MStp::VecAdd(xVec VECAdd,float speed)
+{
+  VecTo(vecAdd(lastTarLoc,VECAdd),speed);
+}
 
 void MStp::VecTo(xVec VECTo,float speed)
 {
@@ -209,21 +251,24 @@ void MStp::VecTo(xVec VECTo,float speed)
     .vec = vecSub(VECTo,lastTarLoc),
     .steps=vecMachStepCount(VECTo,lastTarLoc),
     .cur_step=0,
-    .vcur=0,
+    .JunctionCoeff=0,
+    .vcur=minSpeed,
     .vcen=speed,
     .vto=0,
   };
 
+
+
+
+
+
+  rb.vcen=calcMajorSpeed(rb);
   if(rb.steps==0)
   {
     return;
   }
 
-  lastTarLoc=VECTo;
-  preVec=rb.vec;
 
-
-  __PRT__("steps:%d\n",rb.steps);
 
   runBlock *tail = NULL;
   
@@ -236,38 +281,72 @@ void MStp::VecTo(xVec VECTo,float speed)
     // tail->vec;
     // rb.vec;
     
+    preVec=rb.vec;
+
     float dotp=0;
     float absA=0;
     float absB=0;
+
     for(int i=0;i<MSTP_VEC_SIZE;i++)
     {
       dotp+=tail->vec.vec[i]*rb.vec.vec[i];
       absA+=tail->vec.vec[i]*tail->vec.vec[i];
       absB+=rb.vec.vec[i]*rb.vec.vec[i];
     }
-    float cosinSim=dotp*Q_rsqrt(absA*absB);
+    float cosinSim=(dotp*Q_rsqrt(absA*absB));
     if(cosinSim<0)cosinSim=0;
+    cosinSim=cosinSim*cosinSim;
+
+    cosinSim=cosinSim*cosinSim;
+    rb.JunctionCoeff=cosinSim;
+
+
+    {//check if speed is valid
+      // int32_t minDistNeed = DeAccDistNeeded(int32_t VT, 0, -acc);
+
+
+
+
+    }
+    rb.vcur=
     tail->vto=0;//cosinSim*rb.vcen;
-    __PRT__("cosinSim:%f  vto:%f\n",cosinSim,tail->vto);
+    
+
+
+
+
+
+
+
+    // Serial.printf("tail vcur:%f  vcen:%f  vto:%f    rb:vcur:%f  vcen:%f  vto:%f   \n",tail->vcur,tail->vcen,tail->vto,   rb.vcur,rb.vcen,rb.vto );
+
+
+
+
 
   }
   else
   {
-
-
-
-
-
-
     // rb.vcur=100;
-    T_next=200;
+    // T_next=TICK2SEC_BASE/minSpeed;
+    T_next=0;
   }
-  *(blocks->getHead())=rb;
 
-  blocks->pushHead();
+  runBlock* head=blocks->getHead();
+  if(head)
+  {
+    *head=rb;
+
+    blocks->pushHead();
+
+
+    lastTarLoc=VECTo;
+  }
+  else
+  {
+    //failed/buffer is full
+  }
 }
-
-
 
 
 
@@ -282,29 +361,36 @@ void MStp::BlockRunStep(runBlock &rb)
 
   int32_t a1=acc;
   int32_t a2=-a1;
-  uint32_t D = (rb.steps-rb.cur_step);
+  int32_t D = (rb.steps-rb.cur_step);
   
 
   int32_t deAccReqD=DeAccDistNeeded(vcur_int, vto_int,a2);
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
 
-  __PRT__("vcur_int:%d vcen_int:%d vto_int:%d a1:%d D:%d  deAccReqD:%d  \n",vcur_int,vcen_int,vto_int,a1,D,deAccReqD);
-  if(D<deAccReqD+2)
+  __PRT__("vcur_int:%d vcen_int:%d vto_int:%d a1:%d D:%d  deAccReqD:%d  T_next:%d\n",vcur_int,vcen_int,vto_int,a1,D,deAccReqD,T_next);
+  if(D< (deAccReqD+2))
   {
     rb.vcur+=(float)a2*T_next/TICK2SEC_BASE;
-    if(rb.vcur<rb.vto)
+    __PRT__("a2:%d  T_next:%d  TICK2SEC_BASE:%d\n",a2,T_next,TICK2SEC_BASE);
+    if(rb.vcur<minSpeed)
     {
-      rb.vcur=rb.vto;
+      rb.vcur=minSpeed;
     }
   // __PRT__("rb.vcur:%f a2:%d  T_next:%d  TICK2SEC_BASE:%d\n",rb.vcur,a2,T_next,TICK2SEC_BASE);
 
   }
   else if(vcur_int<vcen_int)
   {
-    rb.vcur+=(float)a1*T_next/TICK2SEC_BASE;
+    float speedInc=(float)a1*T_next/TICK2SEC_BASE;
+    if(speedInc>maxSpeedInc)
+    {
+      speedInc=maxSpeedInc;
+    }
+    rb.vcur+=speedInc;
     
-    if(vcur_int>vcen_int)
+    __PRT__("a1:%d  T_next:%d  TICK2SEC_BASE:%d\n",a1,T_next,TICK2SEC_BASE);
+    if(rb.vcur>vcen_int)
     {
       rb.vcur=rb.vcen;
     }
@@ -317,10 +403,7 @@ void MStp::BlockRunStep(runBlock &rb)
 
   // rb.vcur=rb.vcen;
 
-  if(vcur_int<(uint32_t)minSpeed)//set min speed
-  {
-    rb.vcur=minSpeed;
-  }
+  __PRT__("rb.vcur:%f  \n",rb.vcur);
 
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
@@ -331,11 +414,11 @@ void MStp::BlockRunStep(runBlock &rb)
   uint32_t steps_scal=rb.steps;
   for(int k=0;k<MSTP_VEC_SIZE;k++)
   {
-    curPos.vec[k]+=rb.vec.vec[k];
-    if(curPos.vec[k]>=steps_scal)//a step forward
+    curPos_mod.vec[k]+=rb.vec.vec[k];
+    if(curPos_mod.vec[k]>=steps_scal)//a step forward
     {
-      curPos.vec[k]-=steps_scal;
-      curPos_residue.vec[k]=rb.steps-curPos.vec[k];
+      curPos_mod.vec[k]-=steps_scal;
+      curPos_residue.vec[k]=rb.steps-curPos_mod.vec[k];
       _axis_pul|=1<<k;
     }
     else
@@ -343,12 +426,24 @@ void MStp::BlockRunStep(runBlock &rb)
       curPos_residue.vec[k]=0;
     }
 
-    // curPos.vec[k]+=rb.vec.vec[k];
   }
 
   axis_pul=_axis_pul;
-  rb.cur_step++;
 
+
+
+  float T = TICK2SEC_BASE/rb.vcur;
+  this->T_next=(uint32_t)(T);
+
+  delayRoundX+=T-T_next;
+  if(delayRoundX>1)
+  {
+    delayRoundX-=1;
+    T_next+=1;
+  }
+
+
+  this->T_lapsed+=T_next;
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
 }
@@ -362,9 +457,11 @@ void MStp::blockPlayer()
   {
 
     runBlock &blk=*blocks->getTail();
+    float vcur= blk.vcur;
     curBlk=&blk;
     if(blk.cur_step==0)
     {
+      __PRT__(">>>>=vcur:%f=vcen:%f==vto:%f===T_lapsed:%d===\n",vcur,blk.vcen,blk.vto,T_lapsed);
       uint32_t _axis_dir=0;
       for(int k=0;k<MSTP_VEC_SIZE;k++)
       {
@@ -376,45 +473,30 @@ void MStp::blockPlayer()
       }
 
       axis_dir=_axis_dir;
-      BlockDirEffect(axis_dir);
+      T_next=0;
+      BlockDirEffect(axis_dir);//flip direction
     }
 
     BlockRunStep(blk);
 
-    float T = TICK2SEC_BASE/blk.vcur;
-    T_next=(uint32_t)(T);
-
-    delayRoundX+=T-T_next;
-    if(delayRoundX>1)
-    {
-      delayRoundX-=1;
-      T_next+=1;
-    }
-
-
-    T_lapsed+=T_next;
+    blk.cur_step++;
     // std::this_thread::sleep_for(std::chrono::milliseconds(sysInfo.T_next));
     
     // BlockRunEffect();
     if(blk.cur_step==blk.steps)
     {
-      float vcur= blk.vcur;
-      // __PRT__("======vcur:%f=vto:%f===T_lapsed:%d===\n",vcur,blk.vto,T_lapsed);
-      memset(&curPos,0,sizeof(curPos));
+      memset(&curPos_mod,0,sizeof(curPos_mod));
       memset(&curPos_residue,0,sizeof(curPos_residue));
       
       blocks->consumeTail();
       runBlock *new_blk=blocks->getTail();
       if(new_blk!=NULL)
       {
+        __PRT__("===nvcur:%f===vcur:%f=vto:%f===T_lapsed:%d===\n",new_blk->vcur,vcur,blk.vto,T_lapsed);
         new_blk->cur_step=0;
         new_blk->vcur= vcur;
-        // curPos.vec[k]
-
-
 
       }
-      T_lapsed=0;
     }
     
 
@@ -518,8 +600,23 @@ void MStp::delIdxResidue(uint32_t idxes)
 uint32_t MStp::taskRun()
 {
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
+  
+  for(int i=0;i<MSTP_VEC_SIZE;i++)
+  {
+    uint32_t sele=(1<<i);
+    if(pre_indexes&sele)
+    {
+      if(axis_dir&sele)
+      {
+        curPos_c.vec[i]--;
+      }
+      else
+      {
+        curPos_c.vec[i]++;
+      }
+    }
+  }
   BlockPulEffect(pre_indexes,axis_collectpul);
-
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
   // delIdxResidue(pre_indexes);
 

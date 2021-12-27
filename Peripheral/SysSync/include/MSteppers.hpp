@@ -24,6 +24,7 @@ struct runBlock
   xVec vec;
   uint32_t steps;
   uint32_t cur_step;
+  float JunctionCoeff;
   float vcur;
   float vcen;
   float vto;
@@ -43,31 +44,43 @@ class MStp{
 
 public:
   RingBuf <runBlock> *blocks;
-  RingBuf_Static <uint32_t,10> PulOff;
+  // RingBuf_Static <uint32_t,10> PulOff;
+
+  //preset cannot be touched
+  MSTP_setup* axisSetup;
+  uint32_t TICK2SEC_BASE=1000*1000;
+  uint32_t _PULSE_ROUND_SHIFT_=7;
+  float acc;
+  float minSpeed;
+  float maxSpeedInc;
+
+
+
+
+
+
   uint32_t axis_pul;
   uint32_t axis_collectpul;
   uint32_t axis_dir;
-  uint32_t axis_RUNState;
 
-
-  uint32_t TICK2SEC_BASE=1000*1000;
-
-
-  uint32_t _PULSE_ROUND_SHIFT_=7;
-  xVec curPos;
+  xVec curPos_c;
+  xVec curPos_mod;
   xVec curPos_residue;
   xVec lastTarLoc;
   xVec preVec;
-  float acc;
-  float minSpeed;
 
   uint32_t T_next=0;
   uint32_t T_lapsed=0;
 
-  MStp(RingBuf<runBlock> *_blocks);
+  void SystemClear();
+  void StepperForceStop();
+  MStp(RingBuf<runBlock> *_blocks, MSTP_setup *_axisSetup);
   runBlock *curBlk;
 
+
+  void VecAdd(xVec VECAdd,float speed);
   void VecTo(xVec VECTo,float speed);
+  float calcMajorSpeed(runBlock &rb);
   
   float delayRoundX=0;
   void BlockRunStep(runBlock &rb);
