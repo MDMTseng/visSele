@@ -15,6 +15,6 @@ IDIR=	./ $(SysSyncFolder)/ $(SysSyncFolder)/include
 # 	$(MODULE_libxd)/lib/libxd.a \
 # 	$(MODULE_libxd)/lib/libglfw3.a \
 
-export FLAGS= -w -O3 -std=c++0x -DX86_PLATFORM -DMSTP_VEC_SIZE=3
+export FLAGS= -w -O3 -std=c++0x -DX86_PLATFORM -DMSTP_VEC_SIZE=2
 
 include $(MakeTemplate)

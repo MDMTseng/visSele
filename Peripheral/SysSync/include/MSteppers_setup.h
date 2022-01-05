@@ -5,7 +5,7 @@
 
 
 #ifndef MSTP_VEC_SIZE
-#define MSTP_VEC_SIZE 3
+#define MSTP_VEC_SIZE 2
 #endif
 
 struct MSTP_axis_setup{

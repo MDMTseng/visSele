@@ -37,17 +37,15 @@ class MStp_M:public MStp{
     TICK2SEC_BASE=10*1000*1000;
     minSpeed=500;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     acc=SUBDIV*1000/mm_PER_REV;
+    junctionMaxSpeedJump=1200;//5200;
     pinMode(PIN_M1_DIR, OUTPUT);
     pinMode(PIN_M1_STP, OUTPUT);
     pinMode(PIN_M1_SEN1, INPUT);
     pinMode(PIN_M2_SEN1, INPUT);
 
-    
     pinMode(PIN_M2_DIR, OUTPUT);
     pinMode(PIN_M2_STP, OUTPUT);
-    // pinMode(PIN_DBG0, OUTPUT);
-
-    
+    // pinMode(PIN_DBG0, OUTPUT);    
   }
 
   int ZeroStatus=0;
@@ -55,8 +53,29 @@ class MStp_M:public MStp{
   xVec posWhenHit;
   int ZeroAxis(uint32_t index,int distance)
   {
+
+
     StepperForceStop();
     zeroIndex=index;
+
+
+
+    int sensorPIN;
+
+    if(zeroIndex==0)
+    {
+      sensorPIN=PIN_M1_SEN1;
+    }
+    else if(zeroIndex==1)
+    {
+      sensorPIN=PIN_M2_SEN1;
+    }
+    else if(zeroIndex==100)
+    {
+      sensorPIN=PIN_M2_SEN1;
+    }
+
+
     xVec cpos;
 
     Serial.printf("STP1");
@@ -67,14 +86,14 @@ class MStp_M:public MStp{
     Serial.printf("STP2");
       VecAdd(cpos,minSpeed*10);
       ZeroStatus=1;
-    Serial.printf("STP3");
+    Serial.printf("STP3\n");
 
       while(ZeroStatus==1 && blocks->size()!=0);
       {
         Serial.printf("");//somehow it need this or the ZeroStatus detection would never work
       }
       
-      Serial.printf("ZeroStatus:%d  blocks->size():%d  PINRead:%d\n",ZeroStatus,blocks->size(),digitalRead(PIN_M1_SEN1));
+      Serial.printf("ZeroStatus:%d blocks->size():%d  PINRead:%d\n",ZeroStatus,blocks->size(),digitalRead(sensorPIN));
       if(ZeroStatus!=0)
       {
         ZeroStatus=0;
@@ -95,11 +114,12 @@ class MStp_M:public MStp{
       ZeroStatus=2;
 
 
+
       while( (ZeroStatus==2) && (blocks->size()!=0) )
       {
         Serial.printf("");//somehow it need this or the ZeroStatus detection would never work
       }
-      Serial.printf("ZeroStatus:%d  blocks->size():%d  PINRead:%d\n",ZeroStatus,blocks->size(),digitalRead(PIN_M1_SEN1));
+      Serial.printf("ZeroStatus:%d  blocks->size():%d  PINRead:%d\n",ZeroStatus,blocks->size(),digitalRead(sensorPIN));
       if(ZeroStatus!=0)
       {
         ZeroStatus=0;
@@ -116,14 +136,77 @@ class MStp_M:public MStp{
     curPos_c.vec[index]=0;
     lastTarLoc=curPos_c;
     ZeroStatus=0;
-
-
-
     return 0;
     // ZeroStatus=0;
 
   }
 
+
+
+
+
+  int ZeroJointAxis(int distance)
+  {
+    StepperForceStop();
+    zeroIndex=100;
+    xVec cpos;
+
+    Serial.printf("STP1");
+    
+      StepperForceStop();
+      cpos=(xVec){0};
+      cpos.vec[0]=distance;
+      cpos.vec[1]=distance;
+    Serial.printf("STP2");
+      VecAdd(cpos,minSpeed*10);
+      ZeroStatus=1;
+    Serial.printf("STP3");
+
+      while(ZeroStatus==1 && blocks->size()!=0);
+      {
+        Serial.printf("");//somehow it needs this or the ZeroStatus detection would never work
+      }
+      
+      Serial.printf("ZeroStatus:%d  blocks->size():%d  PINRead:%d\n",ZeroStatus,blocks->size(),digitalRead(PIN_M1_SEN1));
+      if(ZeroStatus!=0)
+      {
+        ZeroStatus=0;
+        return -1;
+      }
+        
+      StepperForceStop();
+      cpos=(xVec){0};
+      cpos.vec[0]-=distance/2;
+      cpos.vec[1]-=distance/2;
+      VecAdd(cpos,200);
+      ZeroStatus=2;
+
+
+      while( (ZeroStatus==2) && (blocks->size()!=0) )
+      {
+        Serial.printf("");//somehow it needs this or the ZeroStatus detection would never work
+      }
+      Serial.printf("ZeroStatus:%d  blocks->size():%d  PINRead:%d\n",ZeroStatus,blocks->size(),digitalRead(PIN_M1_SEN1));
+      if(ZeroStatus!=0)
+      {
+        ZeroStatus=0;
+        return -2;
+      }
+        
+    
+
+
+
+  
+    StepperForceStop();
+    curPos_c.vec[0]=0;
+    curPos_c.vec[1]=0;
+    lastTarLoc=curPos_c;
+    ZeroStatus=0;
+    return 0;
+    // ZeroStatus=0;
+
+  }
 
 
   int ZeroAxisStepEvent()
@@ -140,6 +223,10 @@ class MStp_M:public MStp{
     {
       sensorPIN=PIN_M2_SEN1;
     }
+    else if(zeroIndex==100)
+    {
+      sensorPIN=PIN_M2_SEN1;
+    }
     else
     {
       return -1;
@@ -147,29 +234,23 @@ class MStp_M:public MStp{
 
 
     {
+      int sensorRead=digitalRead(sensorPIN);
       if(ZeroStatus==1)
       {
-        if(digitalRead(sensorPIN))
+        if(sensorRead==1 && digitalRead(sensorPIN)==1)//somehow digitalRead is not stable, to a doulbe check
         {
           StepperForceStop();
-          // StepperForceStop();
           posWhenHit=curPos_c;
           ZeroStatus=0;
         }
       }
-      else 
+      else if(ZeroStatus==2)
       {
-        
-        if(ZeroStatus==2)
-        { 
-          if(digitalRead(sensorPIN)==0)
-          {
-            StepperForceStop();
-            
-            // StepperForceStop();
-            posWhenHit=curPos_c;
-            ZeroStatus=0;
-          }
+        if(sensorRead==0 && digitalRead(sensorPIN)==0)
+        {
+          StepperForceStop();
+          posWhenHit=curPos_c;
+          ZeroStatus=0;
         }
       }
     }
@@ -183,7 +264,7 @@ class MStp_M:public MStp{
 
 
   int M1_reader=1<<0;
-  int M2_reader=1<<(MSTP_VEC_SIZE-2);
+  int M2_reader=1<<1;
 
   void BlockDirEffect(uint32_t idxes)
   {
@@ -331,7 +412,7 @@ uint32_t preCD=0;
 
 
 
-
+bool isSystemZeroOK=false;
 
 void IRAM_ATTR onTimer()
 {
@@ -353,7 +434,7 @@ void IRAM_ATTR onTimer()
   }
   if(T==0)
   {
-    T=1000000;
+    T=100*1000;
     
   }
   else
@@ -384,115 +465,34 @@ void setup()
   timerAlarmEnable(timer);
   pinMode(PIN_O1, OUTPUT);
 
-  int retErr=mstp.ZeroAxis(0,-50000)+mstp.ZeroAxis(1,-50000)*10;
-  if(retErr==0)
-  {
-    uint32_t pos=18000*2;
-    uint32_t speed=30200;
+  // int retErr=mstp.ZeroAxis(0,-50000);
+  // if(retErr==0)
+  // {
+  //   isSystemZeroOK=true;
+  // }
+  // retErr+=mstp.ZeroAxis(1,-50000)*10;
+  // int retErr=0;
 
-    xVec cpos=(xVec){0};
-    cpos.vec[0]=pos;
-    cpos.vec[1]=pos;
-    mstp.VecTo(cpos,speed);
-
-
-    for(int i=0;i<10;i++)
-    {
-      cpos.vec[0]=//(esp_random()%(pos));
-      cpos.vec[1]=(esp_random()%(pos));
-      mstp.VecTo(cpos,speed);
-    }
-
-
-    cpos.vec[0]=pos;
-    cpos.vec[1]=pos;
-    mstp.VecTo(cpos,speed);
-  }
-  else
-  {
-  
-    Serial.printf("Axis zero failed: %d\n",retErr);
-  }
-  // int32_t speed =SUBDIV*50/mm_PER_REV;// 25*1000;
-  int32_t speed =30*1000;
-  for(int i=0;i<0;i++)
-  {
-    
-    int posMult=2;
-    xVec dst;
-    int32_t maxDist=5*SUBDIV;
-    
-    for(int k=0;k<3;k++)
-    {
-      
-      for(int j=0;j<MSTP_VEC_SIZE;j++)
-      {
-        // dst.vec[j]=SUBDIV*5-j*200;
-        // dst.vec[j]=((esp_random()&1)?1:-1)*SUBDIV*10*10/mm_PER_REV;
-        
-        dst.vec[j]=((esp_random()&1)?1:-1)*((int32_t)(esp_random()%(maxDist)));
-        
-        // dst.vec[j]=((k&1)?1:-1)*(maxDist);//*(maxDist/MSTP_VEC_SIZE));
-        
-        
-      }
-      mstp.VecTo(dst,speed);
-    }
-    
-    mstp.VecTo((xVec){0},speed);
-    // for(int k=0;k<13;k++)
-    // {    
-    //   for(int j=0;j<MSTP_VEC_SIZE;j++)
-    //   {
-    //     // dst.vec[j]=SUBDIV*5-j*200;
-    //     dst.vec[j]=maxDist;
-    //   }
-    //   mstp.VecTo(dst,speed);
-
-    //   for(int j=0;j<MSTP_VEC_SIZE;j++)
-    //   {
-    //     // dst.vec[j]=SUBDIV*5-j*200;
-    //     dst.vec[j]=-(maxDist);
-    //   }
-    //   mstp.VecTo(dst,speed);
-    // }
-
-    // mstp.VecTo((xVec){0},speed);
-
-
-    // mstp.VecTo((xVec){0},speed);
-
-     
-    //  mstp.VecTo((xVec){1000,1000,1000},speed);
-
-     
-    //  mstp.VecTo((xVec){2000,2000,2000},speed);
-  }
-  // mstp.VecTo((xVec){100,97},speed);
 
 }
 
+uint32_t xendpos=470*SUBDIV/mm_PER_REV;
+uint32_t speed=45000;
 bool inZeroProcess=false;
 void loop()
 {
-  // if(!inZeroProcess)
-  // {
-  //   mstp.ZeroAxis(0,-200);
-  //   inZeroProcess=true;
-  // }
-  static uint64_t preTick=0;
-  uint64_t cur_tick=getCurTick();
-  // oGS.mainLoop();
-  delayMicroseconds(1001000);
+  if(mstp.blocks->size()==0)
+  {
+    delay(2000);
 
-  
-  static uint32_t preccount=0;
-  uint32_t ccount = XTHAL_GET_CCOUNT();
-  // delay(1001);
-  // Serial.printf("SysTick:%d\n", cur_tick-preTick);
-  // Serial.printf("ccount:%d\n", ccount-preccount);
-  preTick=cur_tick;
-  preccount=ccount;
+    for(int i=0;i<5;i++)
+    {
+      mstp.VecTo((xVec){xendpos,xendpos},speed);
+      mstp.VecTo((xVec){xendpos/80,xendpos/80},speed); 
+    }
+    mstp.VecTo((xVec){0,0},speed/10);
+  }
+
 }
 
 

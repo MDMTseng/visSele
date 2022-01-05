@@ -15,8 +15,6 @@ int TIMESCALE_ms=100;
 
 
 
-#define SUBDIV (800)
-#define mm_PER_REV 10
  
 MSTP_setup mstp_setup={
   .axis_setup={
@@ -36,18 +34,21 @@ MSTP_setup mstp_setup={
       .zeroDir=true
 
     },
-    {
-      .maxAcc=20,
-      .minSpeed=100,
-      .maxSpeed=10000,
-      .dirFlip=false,
-      .zeroDir=true
+    // {
+    //   .maxAcc=20,
+    //   .minSpeed=100,
+    //   .maxSpeed=10000,
+    //   .dirFlip=false,
+    //   .zeroDir=true
 
-    },
+    // },
   }
 };
 
 
+
+#define SUBDIV (1600)
+#define mm_PER_REV 10
 
 
 class MStp_M:public MStp{
@@ -83,9 +84,17 @@ class MStp_M:public MStp{
       
     }
     
+    // TICK2SEC_BASE=10*1000*1000;
+    // minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+
+    // junctionMaxSpeedJump=200;
+    // acc=SUBDIV*500/mm_PER_REV;
+
+    
     TICK2SEC_BASE=10*1000*1000;
-    minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    acc=SUBDIV*500/mm_PER_REV;
+    minSpeed=500;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    acc=SUBDIV*3000/mm_PER_REV;
+    junctionMaxSpeedJump=600;//5200;
   }
 
   int M1_reader=2;//1<<(MSTP_VEC_SIZE-2);
@@ -114,13 +123,19 @@ class MStp_M:public MStp{
   void BlockPulEffect(uint32_t idxes_H,uint32_t idxes_L)
   {
     
-    printf("======");
-    for(int i=0;i<MSTP_VEC_SIZE;i++)
-    {
-      printf("%d  ",curPos_c.vec[i]);
-      // stepCount[i]=0;
-    }
-    printf("\n");
+    // printf("======");
+
+
+    // for(int i=0;i<MSTP_VEC_SIZE;i++)
+    // {
+    //   printf("%d  ",curPos_c.vec[i]);
+    //   // stepCount[i]=0;
+    // }
+    // printf("\n");
+
+
+
+
     // if(idxes==0)return;
     // printf("===p:%s",int2bin(idxes,5));
     // printf(" d:%s >>",int2bin(axis_dir,5));
@@ -160,8 +175,8 @@ class MStp_M:public MStp{
     {
       // digitalWrite(PIN_M2_STP, 0);
     }
-    printf("id:%s  ",int2bin(idxes_H,MSTP_VEC_SIZE));
-    printf("ac:%s \n",int2bin(idxes_L,MSTP_VEC_SIZE));
+    // printf("id:%s  ",int2bin(idxes_H,MSTP_VEC_SIZE));
+    // printf("ac:%s \n",int2bin(idxes_L,MSTP_VEC_SIZE));
 
     // int Midx=0;
 
@@ -170,13 +185,13 @@ class MStp_M:public MStp{
 
     if(idxes_H&1)
     {
-      printf("M1H:TS:%d\n",FACCT);
+      // printf("M1H:TS:%d\n",FACCT);
       FACCT=0;
       // digitalWrite(PIN_M1_STP, 1);
     }
     if(idxes_H&2)
     {
-      printf("M2H:TS:%d\n",FACCT2);
+      // printf("M2H:TS:%d\n",FACCT2);
       FACCT2=0;
       // digitalWrite(PIN_M1_STP, 1);
     }
@@ -214,7 +229,7 @@ class MStp_M:public MStp{
 
 };
 
-runBlock blockBuff[20];
+runBlock blockBuff[50];
 RingBuf <runBlock> __blocks(blockBuff,20);
 
 MStp_M mstp(&__blocks,&mstp_setup);
@@ -243,8 +258,8 @@ void first_thread_job()
       }
       if(T==0)
       {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        
+        // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        break;
         // mstp.VecTo((xVec){.vec={50,49,10}},40);
         
       }
@@ -261,7 +276,6 @@ void first_thread_job()
 
 int main()
 {
-  thread first_thread(first_thread_job);
   
   // for(int i=0;i<3;i++)
   // {
@@ -269,12 +283,38 @@ int main()
   //   mstp.VecTo((xVec){.vec={20,-10,2}},340);
   //   mstp.VecTo((xVec){.vec={0,0,0}},340);
   // }
-  mstp.VecTo((xVec){20,19,0},1000);
-  mstp.VecTo((xVec){0},1000);
-  mstp.VecTo((xVec){-20,-19,-0},1000);
-  mstp.VecTo((xVec){0},1000);
+  // mstp.VecTo((xVec){20,20,0},1000);
+  // mstp.VecTo((xVec){0,0,0},1000);
+  // mstp.VecTo((xVec){-20,0,-0},1000);
+  // mstp.VecTo((xVec){0,0,0},1000);
+  // mstp.VecTo((xVec){20,20,0},1000);
 
-  mstp.VecTo((xVec){20,19,0},1000);
+
+  int pos=18000*2;
+  uint32_t speed=45000;
+
+  xVec cpos=(xVec){0};
+  // for(int i=0;i<5;i++)
+  // {
+    
+  //   // mstp.VecTo((xVec){pos*(i+50)/100,pos*50/100},speed);
+  //   // mstp.VecTo((xVec){pos,pos},speed);
+  //   // mstp.VecTo((xVec){pos*(i+26)/50,pos*26/50},speed);
+  //   // mstp.VecTo((xVec){0,0},speed);
+  //   mstp.VecTo((xVec){pos*(50+2*i)/100,pos*50/100},speed);
+  //   mstp.VecTo((xVec){pos,pos},speed);
+  //   mstp.VecTo((xVec){pos*(50+2*i)/100,pos*50/100},speed);
+  //   mstp.VecTo((xVec){0,0},speed);
+  // }
+  mstp.VecAdd((xVec){1000,1000},speed);
+  mstp.VecAdd((xVec){700,1000},speed);
+  mstp.VecAdd((xVec){1000,1000},speed);
+  mstp.VecAdd((xVec){800,1000},speed);
+  mstp.VecAdd((xVec){1000,1000},speed);
+  // mstp.VecTo((xVec){0,0},speed);
+  printf("===========\n");
+  mstp.printBLKInfo();
+  thread first_thread(first_thread_job);
   first_thread.join();
   return 0;
 }

@@ -21,13 +21,18 @@ struct runBlock
 {
   xVec from;
   xVec to;
-  xVec vec;
+  xVec runvec;
+  xVec posvec;
   uint32_t steps;
   uint32_t cur_step;
-  float JunctionCoeff;
+  float JunctionNormCoeff;
+  float JunctionNormMaxDiff;
+  bool isInDeAccState;
   float vcur;
   float vcen;
   float vto;
+  float vto_JunctionMax;
+  float vto_StopMax;
 
 };
 
@@ -52,6 +57,7 @@ public:
   uint32_t _PULSE_ROUND_SHIFT_=7;
   float acc;
   float minSpeed;
+  float junctionMaxSpeedJump;
   float maxSpeedInc;
 
 
@@ -73,6 +79,10 @@ public:
   uint32_t T_lapsed=0;
 
   void SystemClear();
+
+
+
+  void printBLKInfo();
   void StepperForceStop();
   MStp(RingBuf<runBlock> *_blocks, MSTP_setup *_axisSetup);
   runBlock *curBlk;
