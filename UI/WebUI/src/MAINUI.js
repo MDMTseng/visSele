@@ -825,10 +825,10 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
 
           
-          <Button className={"antd-icon-sizing "+(isFileOK?"HW50":"HW100")} size="large"
+          {_mus.cusdisp_db_fetch_url!==undefined?<Button className={"antd-icon-sizing "+(isFileOK?"HW50":"HW100")} size="large"
             style={{"pointerEvents": "auto"}} icon={<CloudServerOutlined/> } type="text"
             onClick={loadMachineSettingPopUp}
-            ></Button>
+            ></Button>:null}
           <Popover 
             style={{"pointerEvents": "auto"}}
             content={<>
@@ -1088,10 +1088,10 @@ const MainUI=()=>{
         type:"InstInsp",
         name:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION
       },
-      GenMatchingConf:{
-        type:"GenMatchingConf",
-        name:"GenMatchingConf"
-      },
+      // GenMatchingConf:{
+      //   type:"GenMatchingConf",
+      //   name:"GenMatchingConf"
+      // },
       // BlankConf:{
       //   type:"BlankConf",
       //   name:"BlankConf"
@@ -1141,7 +1141,7 @@ const MainUI=()=>{
   const [popUpInfo,setPopUpInfo] = useState(undefined);
   const [hideMachineSetting,setHideMachineSetting] = useState(true);
   
-  const [UI_state, _setUI_state] = useState(s_statesTable.GenMatchingConf);
+  const [UI_state, _setUI_state] = useState(s_statesTable.RootSelect);
   const [extraSideUI, setExtraSideUI] = useState([]);
 
   function setUI_state(newUI_state)
