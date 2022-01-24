@@ -2,15 +2,15 @@
 target_bin = main
 _OBJ = main.opp MSteppers.opp
 
-SysSyncFolder=../../SysSync
+MStepperFolder=../../MStepper
 
 
-VPATH=$(SysSyncFolder) ./
+VPATH=$(MStepperFolder) ./
 export MakeTemplate:= ./Makefile.in
 
-ESS_TRACK=$(SysSyncFolder)/include/* $(SysSyncFolder)/*
+ESS_TRACK=$(MStepperFolder)/include/* $(MStepperFolder)/*
 
-IDIR=	./ $(SysSyncFolder)/ $(SysSyncFolder)/include
+IDIR=	./ $(MStepperFolder)/ $(MStepperFolder)/include
 # EXT_OBJS= $(MODULE_libxd)/lib/libglad.a \
 # 	$(MODULE_libxd)/lib/libxd.a \
 # 	$(MODULE_libxd)/lib/libglfw3.a \

@@ -262,7 +262,7 @@ a=MAX_ALLOWED_SPEED_JUMP/JunctionNormMaxDiff;
 */
 
 
-//return ret_blk2_coeff let  blk1.vec => ret_blk2_coeff*blk2.vec would have small(enough) speed jump 
+//return ret_blk2_coeff let  blk1.vec => ret_blk2_coeff*blk2.vec would have the smallest speed diff 
 int Calc_JunctionNormCoeff(runBlock &blk1,runBlock &blk2,float &ret_blk2_coeff)
 {
   ret_blk2_coeff=NAN;
@@ -412,14 +412,21 @@ float MStp::calcMajorSpeed(runBlock &rb)
   return rb.vcen;
 }
 
-void MStp::VecAdd(xVec VECAdd,float speed)
+
+void MStp::Delay(int interval,int intervalCount)
 {
-  VecTo(vecAdd(lastTarLoc,VECAdd),speed);
+  
+}
+
+
+void MStp::VecAdd(xVec VECAdd,float speed,void* ctx)
+{
+  VecTo(vecAdd(lastTarLoc,VECAdd),speed,ctx);
 }
 
 
 
-void MStp::VecTo(xVec VECTo,float speed)
+void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 {
   __PRT__("=================\n");
 
@@ -433,6 +440,7 @@ void MStp::VecTo(xVec VECTo,float speed)
   runBlock &rb=*head;
 
   rb=(runBlock){
+    .ctx=NULL,
     .from = lastTarLoc,
     .to=VECTo,
     .runvec = vecSub(VECTo,lastTarLoc),
@@ -800,7 +808,8 @@ void MStp::blockPlayer()
 
       axis_dir=_axis_dir;
       // T_next=0;
-      BlockDirEffect(axis_dir);//flip direction
+
+      BlockInitEffect(&blk,axis_dir);//flip direction
 
     }
 
@@ -871,6 +880,7 @@ void MStp::blockPlayer()
   }
   else
   {
+    BlockInitEffect(NULL,0);
     T_next=0;
     // T_lapsed=0;//empty action
     // cout << "This is the first thread "<< endl;

@@ -19,6 +19,7 @@ struct xVec
 
 struct runBlock
 {
+  void* ctx;
   xVec from;
   xVec to;
   xVec runvec;
@@ -88,8 +89,10 @@ public:
   runBlock *curBlk;
 
 
-  void VecAdd(xVec VECAdd,float speed);
-  void VecTo(xVec VECTo,float speed);
+  void VecAdd(xVec VECAdd,float speed,void* ctx=NULL);
+  void VecTo(xVec VECTo,float speed,void* ctx=NULL);
+
+  void Delay(int interval,int intervalCount=1);
   float calcMajorSpeed(runBlock &rb);
   
   float delayRoundX=0;
@@ -97,7 +100,7 @@ public:
 
   // virtual void BlockRunEffect(uint32_t idxes)=0;
   virtual void BlockPulEffect(uint32_t idxes_H,uint32_t idxes_L)=0;
-  virtual void BlockDirEffect(uint32_t idxe)=0;
+  virtual void BlockInitEffect(runBlock* blk,uint32_t idxe)=0;
   virtual void blockPlayer();
   bool timerRunning;
   virtual void stopTimer(){timerRunning=false;}
