@@ -100,14 +100,18 @@ class MStp_M:public MStp{
   int M1_reader=2;//1<<(MSTP_VEC_SIZE-2);
   int M2_reader=1<<(MSTP_VEC_SIZE-1);
 
-  void BlockDirEffect(uint32_t idxes)
+  void BlockEndEffect(runBlock* blk)
+  {
+
+  }
+
+  void BlockInitEffect(runBlock* blk,uint32_t idxes)
   {
 
     // digitalWrite(PIN_M1_DIR, idxes&M1_reader);
     // digitalWrite(PIN_M2_DIR, idxes&M2_reader);
     printf("DIR:%s  ",int2bin(idxes,MSTP_VEC_SIZE));
     
-
     for(int i=0;i<MSTP_VEC_SIZE;i++)
     {
       printf("%d  ",stepCount[i]);

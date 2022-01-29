@@ -16,10 +16,12 @@ struct xVec
   int32_t vec[MSTP_VEC_SIZE];
 };
 
+enum blockType { blk_line=0,blk_wait=1 };
 
 struct runBlock
 {
   void* ctx;
+  blockType type;
   xVec from;
   xVec to;
   xVec runvec;
@@ -101,6 +103,8 @@ public:
   // virtual void BlockRunEffect(uint32_t idxes)=0;
   virtual void BlockPulEffect(uint32_t idxes_H,uint32_t idxes_L)=0;
   virtual void BlockInitEffect(runBlock* blk,uint32_t idxe)=0;
+  virtual void BlockEndEffect(runBlock* blk)=0;
+  
   virtual void blockPlayer();
   bool timerRunning;
   virtual void stopTimer(){timerRunning=false;}

@@ -196,6 +196,14 @@ inline float findV1(float D, float a, float V2)
 
 inline int32_t DeAccDistNeeded(int32_t VT, int32_t V2, int32_t a2)
 {
+  return ((int64_t)V2*V2-(int64_t)VT*VT)/a2/2;
+  // int32_t resx2=((V2*V2-VT*VT)<<2)/a2;
+  // return (resx2>>3)+((resx2&(1<<2))?1:0);//do round
+}
+
+
+inline float DeAccDistNeeded_f(float VT, float V2, float a2)
+{
   return (V2*V2-VT*VT)/a2/2;
   // int32_t resx2=((V2*V2-VT*VT)<<2)/a2;
   // return (resx2>>3)+((resx2&(1<<2))?1:0);//do round
@@ -440,7 +448,8 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
   runBlock &rb=*head;
 
   rb=(runBlock){
-    .ctx=NULL,
+    .ctx=ctx,
+    .type=blockType::blk_line,
     .from = lastTarLoc,
     .to=VECTo,
     .runvec = vecSub(VECTo,lastTarLoc),
@@ -684,7 +693,8 @@ void MStp::BlockRunStep(runBlock &rb)
   int32_t D = (rb.steps-rb.cur_step);
   
 
-  int32_t deAccReqD=DeAccDistNeeded(vcur_int, vto_int,a2);
+  // int32_t deAccReqD=DeAccDistNeeded(vcur_int, vto_int,a2);
+  int32_t deAccReqD=(int32_t)DeAccDistNeeded_f(rb.vcur, rb.vto, a2);
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
 
@@ -694,7 +704,7 @@ void MStp::BlockRunStep(runBlock &rb)
   if(deAccBuffer<4)
   {
     rb.isInDeAccState=true;
-    rb.vcur+=(float)a2*T_next/TICK2SEC_BASE;
+    rb.vcur+=(float)a2/rb.vcur;
     // __PRT__("a2:%d  T_next:%d  TICK2SEC_BASE:%d\n",a2,T_next,TICK2SEC_BASE);
     if(rb.vcur<minSpeed)
     {
@@ -709,15 +719,15 @@ void MStp::BlockRunStep(runBlock &rb)
   }
   else if(vcur_int<vcen_int)
   {
-    float speedInc=(float)a1*T_next/TICK2SEC_BASE;
+    float speedInc=(float)a1/rb.vcur;
     if(speedInc>maxSpeedInc)
     {
       speedInc=maxSpeedInc;
     }
-    rb.vcur+=speedInc;
+    rb.vcur+=(speedInc);
     
     // __PRT__("a1:%d  T_next:%d  TICK2SEC_BASE:%d\n",a1,T_next,TICK2SEC_BASE);
-    if(rb.vcur>vcen_int)
+    if(rb.vcur>rb.vcen)
     {
       rb.vcur=rb.vcen;
     }
@@ -826,6 +836,8 @@ void MStp::blockPlayer()
       memset(&curPos_residue,0,sizeof(curPos_residue));
       
       __PRT__("EndSpeed:%f\n",vcur);
+
+      BlockEndEffect(&blk);
       blocks->consumeTail();
       runBlock *new_blk=blocks->getTail();
       if(new_blk!=NULL)
