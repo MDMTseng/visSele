@@ -35,7 +35,6 @@ struct runBlock
   float vcen;
   float vto;
   float vto_JunctionMax;
-  float vto_StopMax;
 
 };
 

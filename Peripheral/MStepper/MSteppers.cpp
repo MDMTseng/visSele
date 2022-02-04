@@ -77,23 +77,6 @@ uint32_t vecMachStepCount(xVec v1,xVec v2)
   return vecMachStepCount(vecSub(v1 ,v2));
 }
 
-float Q_rsqrt( float number )
-{
-	long i;
-	float x2, y;
-	const float threehalfs = 1.5F;
-
-	x2 = number * 0.5F;
-	y  = number;
-	i  = * ( long * ) &y;                       // evil floating point bit level hacking
-	i  = 0x5f3759df - ( i >> 1 );               // what the fuck? 
-	y  = * ( float * ) &i;
-	y  = y * ( threehalfs - ( x2 * y * y ) );   // 1st iteration
-	y  = y * ( threehalfs - ( x2 * y * y ) );   // 2nd iteration, this can be removed
-
-	return y;
-}
-
 float totalTimeNeeded2(float V1,float a1,float VT, float V2, float a2,float D, float *ret_T1, float *ret_T2)
 {
 
@@ -202,9 +185,9 @@ inline int32_t DeAccDistNeeded(int32_t VT, int32_t V2, int32_t a2)
 }
 
 
-inline float DeAccDistNeeded_f(float VT, float V2, float a2)
+inline float DeAccDistNeeded_f(float V1, float V2, float a2)
 {
-  return (V2*V2-VT*VT)/a2/2;
+  return (V2*V2-V1*V1)/a2/2;
   // int32_t resx2=((V2*V2-VT*VT)<<2)/a2;
   // return (resx2>>3)+((resx2&(1<<2))?1:0);//do round
 }
@@ -231,9 +214,18 @@ float accTo_DistanceNeeded(float Vc, float Vd, float ad, float *ret_Td=NULL)
 
 to calc junction speed
 i for the axis index
-  Xi =>  Yi  // speed change target
+
+
+
+ Xi =>   Yi  // speed change target
 
 aXi => abYi // junction speed control with param a & b
+
+For following Xi and Yi is the(element wise) normalized vector( the max element is 1/-1)
+(1,-6,-3,2) => (1/6,-1,-1/2,1/3)
+which means if we have the speed of X  Vx then the a*Vx=Vy  OR Vx=Vy/a
+
+
 
 TARGET=>
 MAX_ALLOWED_SPEED_JUMP>=Max(|aXi-ab'Yi|);
@@ -242,9 +234,9 @@ MAX_ALLOWED_SPEED_JUMP>=Max(|aXi-ab'Yi|);
 
 b = argMin( Max(|Xi-bYi|) ) //find b to have the smallest Speed jump
       b
-  = argMin( (Sigma((Xi-bYi)^N))^1/N ) // When N is big
+  = argMin( (Sigma((Xi-bYi)^2N))^1/2N ) // When N is big
       b         i
-  ~=argMin( (Sigma((Xi-bYi)^2))^1/2 ) // N = 2 is easier to solve with good enough result
+  ~=argMin( (Sigma((Xi-bYi)^2))^1/2 ) //approximation N = 1 is easier to solve with good enough result
       b         i
 b'= argMin( (Sigma((Xi-bYi)^2)) )  //b' is the approximation of b
       b         i
@@ -271,20 +263,43 @@ a=MAX_ALLOWED_SPEED_JUMP/JunctionNormMaxDiff;
 
 
 //return ret_blk2_coeff let  blk1.vec => ret_blk2_coeff*blk2.vec would have the smallest speed diff 
-int Calc_JunctionNormCoeff(runBlock &blk1,runBlock &blk2,float &ret_blk2_coeff)
+int Calc_JunctionNormCoeff(runBlock &blkA,runBlock &blkB,float &ret_blkB_coeff1,float &ret_blkB_coeff2)
 {
-  ret_blk2_coeff=NAN;
+  ret_blkB_coeff1=ret_blkB_coeff2=NAN;
   float BBsum=0;
   float ABsum=0;//basically a dot product
+  float AAsum=0;//basically a dot product
   
+/*
+
+
+100      4032
+466      466
+4032     100
+-9       -9
+-100     -100
+=> normalize(max ele to 1) =>
+0.0248     1
+0.1155     0.1155
+1          0.0248
+-0.002     -0.002
+0.0248     0.0248
+
+*/
+
+
+
+
+
+
 
   for(int i=0;i<MSTP_VEC_SIZE;i++)
   {
-    // float A=(float)tail->runvec.vec[i]/tail->steps;//normalize here, a bit slower
+    // float A=(float)preBlk->runvec.vec[i]/preBlk->steps;//normalize here, a bit slower
     // float B=(float)rb.runvec.vec[i]/rb.steps;
 
-    float A=(float)blk1.runvec.vec[i];//X
-    float B=(float)blk2.runvec.vec[i];//Y
+    float A=(float)blkA.runvec.vec[i];//X
+    float B=(float)blkB.runvec.vec[i];//Y
 
     // if(AB<0 && AB<-junctionMaxSpeedJump)
     // {//The speed from +to-(or reverse) and the difference is too huge, then set target speed to zero
@@ -292,21 +307,43 @@ int Calc_JunctionNormCoeff(runBlock &blk1,runBlock &blk2,float &ret_blk2_coeff)
     //   BB=1;
     //   break;
     // }
+    AAsum+=A*A;
     ABsum+=A*B;
     BBsum+=B*B;
   }
   if(ABsum<0)
   {
-    ret_blk2_coeff=NAN;
+    // ret_blkB_coeff=NAN;
     return -1;
   }
-  // rb.JunctionCoeff=dotp/BB;//normalize in the loop, a bit slower
-  ret_blk2_coeff = ABsum/BBsum*blk2.steps/blk1.steps;
 
-  
+
+  // AAsum/=blkA.steps;
+
+  // rb.JunctionCoeff=dotp/BB;//normalize in the loop, a bit slower
+  float coeff1 = (ABsum/blkA.steps)/(BBsum/blkB.steps);
+  ret_blkB_coeff1=coeff1;//forward way Xi => bYi
+
+  // 
+  float coeff2 = (AAsum/blkA.steps)/(ABsum/blkB.steps);
+  ret_blkB_coeff2=coeff2;//backward way forward way cXi => Yi : b=1/c
+  // __PRT__("coeff:%f %f\n",coeff1,coeff2);
   return 0;
 }
 
+
+//normalize blk1 max speed as 1, blk2 max speed as blk2_coeff
+//find the max abs of diff
+//example:
+//blk2.coeff=2
+//blk1:(2, 2,4,8)  => (1/4,1/4,1/2,  1) =nbk1
+//blk2:(2,-2,1,1)  => (  1, -1,1/2,1/2) *blk2.coeff => (2,-2,1,1) =ncbk2
+//
+//abs_diff=abs(nbk1-ncbk2): abs(-7/8, 9/4, -1/2, 0) => (7/8,9/4,1/2,0)
+//max(abs_diff): 9/4 
+//
+//
+//
 int Calc_JunctionNormMaxDiff(runBlock &blk1,runBlock &blk2,float blk2_coeff,float &ret_MaxDiff)
 {
 
@@ -331,12 +368,13 @@ int Calc_JunctionNormMaxDiff(runBlock &blk1,runBlock &blk2,float blk2_coeff,floa
     float B=(float)blk2.runvec.vec[i]*NormCoeff;
 
 
-    __PRT__("maxJump[%d]:%f %f\n",i,A,B);
+    __PRT__("maxJump[%d]:%f %f\n",i,A/blk1.steps,B/blk1.steps);
     float diff = A-B;
     if(diff<0)diff=-diff;
     if(maxAbsDiff<diff)maxAbsDiff=diff;
   }
   maxAbsDiff/=blk1.steps;
+  __PRT__("maxAbsDiff:%f\n",maxAbsDiff);
 
   ret_MaxDiff=maxAbsDiff;
   
@@ -445,9 +483,9 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
   }
 
 
-  runBlock &rb=*head;
+  runBlock &newBlk=*head;
 
-  rb=(runBlock){
+  newBlk=(runBlock){
     .ctx=ctx,
     .type=blockType::blk_line,
     .from = lastTarLoc,
@@ -463,7 +501,6 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
     .vcen=speed,
     .vto=0,
     .vto_JunctionMax=0,
-    .vto_StopMax=0
   };
 
   lastTarLoc=VECTo;
@@ -471,67 +508,96 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
 
-  // rb.vcen=calcMajorSpeed(rb);
-  if(rb.steps==0)
+  // newBlk.vcen=calcMajorSpeed(newBlk);
+  if(newBlk.steps==0)
   {
     return;
   }
 
 
 
-  runBlock *tail = NULL;
+  runBlock *preBlk = NULL;
   
   if(blocks->size()>0)
   {
-    tail = blocks->getTail(blocks->size()-1);
+    preBlk = blocks->getTail(blocks->size()-1);
   }
-  if(tail!=NULL)
+  if(preBlk!=NULL)
   {// you need to deal with the junction speed
-    // tail->vec;
-    // rb.vec;
+    // preBlk->vec;
+    // newBlk.vec;
     
 
 
-
-    int coeffSt= Calc_JunctionNormCoeff(*tail,rb,rb.JunctionNormCoeff);
+    float coeff1=NAN;
+    float coeff2=NAN;
+    int coeffSt= Calc_JunctionNormCoeff(*preBlk,newBlk,coeff1,coeff2);
     if(coeffSt<0)
     {
-      rb.JunctionNormCoeff=0;
+      newBlk.JunctionNormCoeff=0;
     }
+    __PRT__("====coeff:%f or %f==\n",coeff1,coeff2);
 
-    rb.JunctionNormMaxDiff=NAN;
-    if(rb.JunctionNormCoeff!=0)
+    newBlk.JunctionNormMaxDiff=NAN;
+    if(coeffSt==0)
     {
-      float maxDiff=NAN;
-      int retSt=Calc_JunctionNormMaxDiff(*tail,rb,rb.JunctionNormCoeff,maxDiff);
+      float maxDiff1=NAN,maxDiff2=NAN;
+      int retSt=Calc_JunctionNormMaxDiff(*preBlk,newBlk,coeff1,maxDiff1);
+          retSt=Calc_JunctionNormMaxDiff(*preBlk,newBlk,coeff2,maxDiff2);
+
+
+
+      /*
+        (1+coeff)/maxDiff
+        1 is for the pre speed factor and coeff is for post speed factor
+
+        so 1+coeff would make sure the conbined speed is the larger the better
+
+        To devide maxDiff is to normalize the max difference number
+      */
+      if((1+coeff1)/maxDiff1>(1+coeff2)/maxDiff2)
+      {
+        newBlk.JunctionNormCoeff=coeff1;
+        newBlk.JunctionNormMaxDiff=maxDiff1;
+      }
+      else
+      {
+        newBlk.JunctionNormCoeff=coeff2;
+        newBlk.JunctionNormMaxDiff=maxDiff2;
+      }
+      
+
+      // __PRT__("====maxDiff1:%f  maxDiff2:%f==\n DIFF:",maxDiff1,maxDiff2);
       if(retSt==0)
       {
-        rb.JunctionNormMaxDiff=maxDiff;
+        // newBlk.JunctionNormMaxDiff=maxDiff1;
+
+        // __PRT__("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n DIFF:",newBlk.JunctionNormMaxDiff,preBlk->vto,newBlk.vcur);
+
+        if(newBlk.JunctionNormMaxDiff<0.01)
+          newBlk.JunctionNormMaxDiff=0.01;//min diff cap to prevent value explosion
 
 
+        //max allowed end speed of pre block, so that at junction the max speed jump is within the limit, this is fixed
+        preBlk->vto_JunctionMax=junctionMaxSpeedJump/newBlk.JunctionNormMaxDiff;
 
-        tail->vto_JunctionMax=junctionMaxSpeedJump/rb.JunctionNormMaxDiff;//max allowed speed change
-        tail->vto_StopMax=tail->vto_JunctionMax;
-        tail->vto=tail->vto_JunctionMax;
+        //vcur is the current speed, for un-executed block it's the starting speed
+        newBlk.vcur=preBlk->vto_JunctionMax*newBlk.JunctionNormCoeff;
 
-
-        if(tail->vto>rb.vcen)
+        if(newBlk.vcur>newBlk.vcen)//check if the max initial speed is higher than target speed
         {
-          tail->vto=rb.vcen;
+          newBlk.vcur=newBlk.vcen;//cap the speed
         }
 
 
+        preBlk->vto_JunctionMax=newBlk.vcur/newBlk.JunctionNormCoeff;//calc speed back to preBlk->vto
+        preBlk->vto=preBlk->vto_JunctionMax;
 
-        rb.vcur=tail->vto*rb.JunctionNormCoeff;
-
-
-
-
-        __PRT__("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n DIFF:",tail->vto_JunctionMax,tail->vto,rb.vcur);
+        __PRT__("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n DIFF:",preBlk->vto_JunctionMax,preBlk->vto,newBlk.vcur);
         for(int k=0;k<MSTP_VEC_SIZE;k++)
         {
-          float v1=(tail->vto*tail->runvec.vec[k]/tail->steps);
-          float v2=(  rb.vcur*   rb.runvec.vec[k]/   rb.steps);
+          float v1=(preBlk->vto*preBlk->runvec.vec[k]/preBlk->steps);
+          float v2=(  newBlk.vcur*   newBlk.runvec.vec[k]/   newBlk.steps);
           float diff = v1-v2;
           __PRT__("(A(%f)-B(%f)=%04.2f )",v1,v2,diff);
         }
@@ -539,40 +605,27 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
       }
       else
       {
-        rb.vcur=tail->vto=0;
+        newBlk.vcur=preBlk->vto=0;
       }
     }
     else
     {
-      rb.vcur=tail->vto=0;
+      newBlk.vcur=preBlk->vto=0;
     }
 
 
 
-    __PRT__("maxJump:%f coeff:%f  maxDiff:%f\n",junctionMaxSpeedJump, rb.JunctionNormCoeff, rb.JunctionNormMaxDiff);
+    __PRT__("maxJump:%f coeff:%f  maxDiff:%f\n",junctionMaxSpeedJump, newBlk.JunctionNormCoeff, newBlk.JunctionNormMaxDiff);
 
-    __PRT__("pre vcen:%0.3f vto:%0.3f =>new vcur:%0.3f vcen:%0.3f\n",tail->vcen,tail->vto,rb.vcur,rb.vcen);
+    __PRT__("pre vcen:%0.3f vto:%0.3f =>new vcur:%0.3f vcen:%0.3f\n",preBlk->vcen,preBlk->vto,newBlk.vcur,newBlk.vcen);
 
 
 
-    // rb.vcur=
-    // tail->vto=0;//cosinSim*rb.vcen;
+    // newBlk.vcur=
+    // preBlk->vto=0;//cosinSim*newBlk.vcen;
     
 
 
@@ -581,7 +634,7 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
 
-    // Serial.printf("tail vcur:%f  vcen:%f  vto:%f    rb:vcur:%f  vcen:%f  vto:%f   \n",tail->vcur,tail->vcen,tail->vto,   rb.vcur,rb.vcen,rb.vto );
+    // Serial.printf("preBlk vcur:%f  vcen:%f  vto:%f    newBlk:vcur:%f  vcen:%f  vto:%f   \n",preBlk->vcur,preBlk->vcen,preBlk->vto,   newBlk.vcur,newBlk.vcen,newBlk.vto );
 
 
 
@@ -590,7 +643,7 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
   }
   else
   {
-    // rb.vcur=100;
+    // newBlk.vcur=100;
     // T_next=TICK2SEC_BASE/minSpeed;
     T_next=0;
   }
@@ -603,14 +656,65 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
   {
 
     /*
-            ________
-           /        |
-          /         |
-         /          |
-        /           |
-       /____________|
 
 
+               preblk |     curblk
+           
+            ________      ________
+           /        \    /        \
+          /          \  /          \
+         /            \/            \
+        /             |              \
+       /              |               \
+
+
+
+
+       CASE1:  curblk is too short(less than stoppingMargin)
+            ________    
+           /        \    
+          /          \       /.....
+         /            \____ /
+        /             |    |
+       /              |    |
+
+
+      CASE2:  curblk is not long enough to able to de-accelerate from curblk.vcen(v center max speed) to curblk.vto
+              so the preblk need to reduce the vto speed, so curblk.vcur is low enough to safely de-accelerate to curblk.vto
+                         
+      example:curblk.steps=4                    
+              curblk.vto is 0(stop), but without changing preblk.vto it's impossible
+
+          
+            _________V  preblk.vto 
+          /          | \   
+        /            |   \  
+      /              |     \ 
+    /                |      |
+  /                  |      |
+                      <-----> 
+                      curblk.steps
+
+            recalc preblk.vto'(lower the vto value) so that curblk can reach curblk.vto in the end
+            ______   
+          /        \   
+        /            \V  preblk.vto'   
+      /              | \ 
+    /                |   \
+  /                  |     \
+                      <-----> 
+                      curblk.steps
+
+
+
+
+    CASE3 :the curblk has enough steps to de-accelerate to curblk.vto, so to change preblk is not needed 
+            _________V___  preblk.vto 
+          /          |    \   
+        /            |      \  
+      /              |        \ 
+    /                |          \
+  /                  |            \
     */
 
 
@@ -618,43 +722,57 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
     //look back
     int stoppingMargin=2;
     float Vdiff=0;
-    //stopping look ahead planing
-
-    runBlock* advblk = blocks->getTail(blocks->size()-1);
+    //look ahead planing, to reduce
+    //{oldest blk}.....preblk, curblk, {newest blk}
+    runBlock* curblk;
+    runBlock* preblk = blocks->getTail(blocks->size()-1);
     for(int i=1;i<blocks->size();i++)
-    {
+    {//can only adjust vto
+      curblk = preblk;
+      preblk = blocks->getTail(blocks->size()-1-i);
+      int32_t curDeAccSteps=curblk->steps-stoppingMargin;
 
-      if(advblk->steps<stoppingMargin)
-      {
+      float cur_vfrom=NAN;
+      if(curDeAccSteps<0)
+      {//CASE 1
+        //here is the steps that's too short so we don't do speed change, so vcur(v start)=vto
         __PRT__("ACC skip\n");
-        runBlock* curblk = blocks->getTail(blocks->size()-1-i);
-        curblk->vto_StopMax=advblk->vto/advblk->JunctionNormCoeff;
-        curblk->vto=curblk->vto_StopMax<curblk->vto_JunctionMax?curblk->vto_StopMax:curblk->vto_JunctionMax;
-        advblk=curblk;
-        continue;
-
-      }
-      int32_t minDistNeeded= DeAccDistNeeded(advblk->vcen,advblk->vto, -acc);
-
-
-      // __PRT__("[%d]:blk.steps:%d v:%f,%f,%f minDistNeeded:%d  \n",i,blk.steps,blk.vcur,blk.vcen,blk.vto,minDistNeeded);
-      if( ((int32_t)advblk->steps) <= (minDistNeeded+stoppingMargin) )
-      {  
-        float v1 = findV1(advblk->steps-stoppingMargin, -acc, advblk->vto);
-
-        runBlock* curblk = blocks->getTail(blocks->size()-1-i);
-
-        curblk->vto_StopMax=v1/advblk->JunctionNormCoeff;
-
-        curblk->vto=curblk->vto_StopMax<curblk->vto_JunctionMax?curblk->vto_StopMax:curblk->vto_JunctionMax;
-        // __PRT__("[%d]:v1:%f  ori_V1:%f Vdiff:%f\n",i,v1,ori_V1,Vdiff);
-        advblk=curblk;
-        continue;
+        // curblk->vcur=curblk->vto;
+        cur_vfrom=curblk->vto;
       }
       else
       {
+        //find minimum distance needed
+        int32_t minDistNeeded= DeAccDistNeeded_f(curblk->vcen,curblk->vto, -acc);
+        if( curDeAccSteps <= minDistNeeded )
+        {
+          cur_vfrom = findV1(curDeAccSteps, -acc, curblk->vto);
+          //CASE 2
+        }
+        else
+        {//CASE 3 the curblk has enough steps to de-accelerate to curblk.vto, so exit 
+
+          //(curblk)the steps is long enough to de acc from vcen to vto, 
+          //so we don't need to change the speed vto of (preblk)
+          break;
+        }
+      }
+
+
+      if(cur_vfrom!=cur_vfrom)
+      {
+        //unset, ERROR
         break;
       }
+
+
+
+      float preblk_vto_max=cur_vfrom/curblk->JunctionNormCoeff;
+      preblk->vto=preblk_vto_max<preblk->vto_JunctionMax?preblk_vto_max:preblk->vto_JunctionMax;
+      // __PRT__("[%d]:v1:%f  ori_V1:%f Vdiff:%f\n",i,v1,ori_V1,Vdiff);
+
+      // __PRT__("[%d]:blk.steps:%d v:%f,%f,%f minDistNeeded:%d  \n",i,blk.steps,blk.vcur,blk.vcen,blk.vto,minDistNeeded);
+
 
 
     }
@@ -846,7 +964,7 @@ void MStp::blockPlayer()
         new_blk->cur_step=0;
         new_blk->vcur= vcur*new_blk->JunctionNormCoeff;
 
-        // rb.vcur=tail->vto*rb.JunctionNormCoeff;
+        // rb.vcur=preBlk->vto*rb.JunctionNormCoeff;
 
 
         for(int k=0;k<MSTP_VEC_SIZE;k++)
