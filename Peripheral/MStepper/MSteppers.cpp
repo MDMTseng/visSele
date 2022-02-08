@@ -221,6 +221,14 @@ i for the axis index
 
 aXi => abYi // junction speed control with param a & b
 
+
+target   a->inf  b->1
+
+
+max the speed(Xi)+speed(Xi)
+
+
+
 For following Xi and Yi is the(element wise) normalized vector( the max element is 1/-1)
 (1,-6,-3,2) => (1/6,-1,-1/2,1/3)
 which means if we have the speed of X  Vx then the a*Vx=Vy  OR Vx=Vy/a
@@ -332,6 +340,169 @@ int Calc_JunctionNormCoeff(runBlock &blkA,runBlock &blkB,float &ret_blkB_coeff1,
 }
 
 
+
+
+int Calc_JunctionNormCoeff2(runBlock &blkA,runBlock &blkB,float &ret_blkB_coeff)
+{
+
+
+
+  //STEAGE1 start
+  
+  float coeff;
+  {
+    float BBsum=0;
+    float ABsum=0;//basically a dot product
+    /*
+
+
+    100      4032
+    466      466
+    4032     100
+    -9       -9
+    -100     -100
+    => normalize(max ele to 1) =>
+    0.0248     1
+    0.1155     0.1155
+    1          0.0248
+    -0.002     -0.002
+    0.0248     0.0248
+
+    */
+
+
+
+
+
+
+
+      for(int i=0;i<MSTP_VEC_SIZE;i++)
+      {
+        // float A=(float)preBlk->runvec.vec[i]/preBlk->steps;//normalize here, a bit slower
+        // float B=(float)rb.runvec.vec[i]/rb.steps;
+
+        float A=(float)blkA.runvec.vec[i];//X
+        float B=(float)blkB.runvec.vec[i];//Y
+
+        // if(AB<0 && AB<-junctionMaxSpeedJump)
+        // {//The speed from +to-(or reverse) and the difference is too huge, then set target speed to zero
+        //   dotp=0;
+        //   BB=1;
+        //   break;
+        // }
+        ABsum+=A*B;
+        BBsum+=B*B;
+      }
+      // if(ABsum<0)
+      // {
+      //   // ret_blkB_coeff=NAN;
+      //   return -1;
+      // }
+
+
+      // AAsum/=blkA.steps;
+
+      // rb.JunctionCoeff=dotp/BB;//normalize in the loop, a bit slower
+      coeff = (ABsum/blkA.steps)/(BBsum/blkB.steps);
+  }
+
+  //STEAGE1 end we found the rough coefficient
+  //STEAGE2 start, find which line(element transision) is the highest at this rough coeff (which line that the maxDiff(coeff) minumum sits on)
+
+  int MmL_index=-1;
+  bool MmL_sec=-1;
+  float maxAbsDiff=0;
+  float NormCoeff=blkA.steps*coeff/blkB.steps;
+  {
+
+    // ret_MaxDiff=NAN;
+    //Xi/Yi is for i axis run step count
+    //Xc/Yc is the running steps count
+    //target=> Max(Xi/Xc-b*Yi/Yc)
+    //      =  Max(Xi-Yi*b*Xc/Yc)/Xc
+    //NormCoeff= b*Xc/Yc
+
+    for(int i=0;i<MSTP_VEC_SIZE;i++)
+    {
+      float A=(float)blkA.runvec.vec[i];//pre extract steps
+      float cB=(float)blkB.runvec.vec[i]*NormCoeff;
+      float diff = A-cB;
+      float abs_diff=diff<0?-diff:diff;
+      if(maxAbsDiff<abs_diff)
+      {
+        MmL_index=i;
+        MmL_sec=((diff>=0)^(A>0) )?0:1;
+        maxAbsDiff=diff;
+      }
+
+    }
+    maxAbsDiff/=blkA.steps;
+    
+  }
+
+  //STEAGE2 ended we know which line that the minumum sits on
+
+  //STEAGE3 start, accoding to the sec variable, we know where the minmax line is and what's the 
+
+
+  /*
+    hint:
+    a1+b1 X=Y
+    a2+b2 X=Y
+    X=(a1-a2)/(b2-b1)
+    Y=(b2a1-b1a2)/(b2-b1)
+  */
+
+  {//diff=A-coeff*B
+
+    float MmL_A=(float)blkA.runvec.vec[MmL_index]/blkA.steps;//pre extract steps
+    float MmL_B=(float)blkB.runvec.vec[MmL_index]/blkB.steps;
+    //MmL_sec==0 =>  MmL_A-coeff*MmL_B >0  in this case  MmL_A>0 MmL_B>0
+    //MmL_sec==1 =>  MmL_A-coeff*MmL_B <0
+
+
+    if(MmL_sec==0)
+    {
+      if(MmL_A<0)
+      {
+        MmL_A=-MmL_A;
+        MmL_B=-MmL_B;
+      }
+    }
+
+
+    for(int i=0;i<MSTP_VEC_SIZE;i++)
+    {
+      if(i==MmL_index)
+      {
+        continue;
+      }
+      float A=(float)blkA.runvec.vec[i]/blkA.steps;//pre extract steps
+      float B=(float)blkB.runvec.vec[i]/blkB.steps;
+
+      if(MmL_B==B)continue;//no solution, parellel
+      /*
+      
+
+
+
+      
+      */
+    
+     float Y=(MmL_B*A - MmL_A*B)/(MmL_B-B);
+
+
+    }
+  }
+
+
+
+
+  // ret_blkB_coeff1=coeff1;//forward way Xi => bYi
+
+  // __PRT__("coeff:%f %f\n",coeff1,coeff2);
+  return 0;
+}
 //normalize blk1 max speed as 1, blk2 max speed as blk2_coeff
 //find the max abs of diff
 //example:
@@ -394,7 +565,7 @@ MStp::MStp(RingBuf<runBlock> *_blocks, MSTP_setup *_axisSetup)
 
   blocks=_blocks;
   axisSetup=_axisSetup;
-  maxSpeedInc=500;
+  maxSpeedInc=100;
   minSpeed=100;
   junctionMaxSpeedJump=300;
 
@@ -409,8 +580,8 @@ MStp::MStp(RingBuf<runBlock> *_blocks, MSTP_setup *_axisSetup)
 void MStp::SystemClear()
 {
   
-  curPos_c=curPos_mod=curPos_residue=lastTarLoc=preVec=(xVec){0};
-  T_next=T_lapsed=0;
+  curPos_c=curPos_mod=curPos_residue=lastTarLoc=(xVec){0};
+  T_next=0;
   minSpeed=2;
   acc=1;
   axis_pul=0;
@@ -421,15 +592,14 @@ void MStp::StepperForceStop()
   
   blocks->clear();
   lastTarLoc=curPos_c;
-  T_next=T_lapsed=0;
+  T_next=0;
   axis_pul=axis_dir=0;
-  delayRoundX=0;
+  delayResidue=0;
   pre_indexes=0;
   tskrun_state=0;
   isMidPulTrig=true;
   _axis_collectpul1=_axis_collectpul2=0;
-  accT=curT=0;
-  curPos_mod=curPos_residue=preVec=(xVec){0};
+  curPos_mod=curPos_residue=(xVec){0};
 }
 
 
@@ -451,13 +621,6 @@ std::string toStr(const xVec &vec)
   string str(buff);
   return str;
 }
-
-
-float MStp::calcMajorSpeed(runBlock &rb)
-{
-  return rb.vcen;
-}
-
 
 void MStp::Delay(int interval,int intervalCount)
 {
@@ -508,7 +671,6 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
 
-  // newBlk.vcen=calcMajorSpeed(newBlk);
   if(newBlk.steps==0)
   {
     return;
@@ -536,7 +698,6 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
     {
       newBlk.JunctionNormCoeff=0;
     }
-    __PRT__("====coeff:%f or %f==\n",coeff1,coeff2);
 
     newBlk.JunctionNormMaxDiff=NAN;
     if(coeffSt==0)
@@ -555,7 +716,9 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
         To devide maxDiff is to normalize the max difference number
       */
-      if((1+coeff1)/maxDiff1>(1+coeff2)/maxDiff2)
+      float score1=(1+coeff1)/maxDiff1;
+      float score2=(1+coeff2)/maxDiff2;
+      if( score1 > score2 )
       {
         newBlk.JunctionNormCoeff=coeff1;
         newBlk.JunctionNormMaxDiff=maxDiff1;
@@ -567,6 +730,7 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
       }
       
 
+      __PRT__("====coeff:%f(s:%f) or %f(s:%f)==\n",coeff1,score1,coeff2,score2);
       // __PRT__("====maxDiff1:%f  maxDiff2:%f==\n DIFF:",maxDiff1,maxDiff2);
       if(retSt==0)
       {
@@ -720,7 +884,7 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
     //look back
-    int stoppingMargin=2;
+    int stoppingMargin=5;
     float Vdiff=0;
     //look ahead planing, to reduce
     //{oldest blk}.....preblk, curblk, {newest blk}
@@ -768,10 +932,15 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
       float preblk_vto_max=cur_vfrom/curblk->JunctionNormCoeff;
-      preblk->vto=preblk_vto_max<preblk->vto_JunctionMax?preblk_vto_max:preblk->vto_JunctionMax;
+      float new_preblk_vto=preblk_vto_max<preblk->vto_JunctionMax?preblk_vto_max:preblk->vto_JunctionMax;
+      __PRT__("[%d]:blk.steps:%d v:%f,%f,%f \n",i,preblk->steps,preblk->vcur,preblk->vcen,new_preblk_vto);
+      if(preblk->vto == new_preblk_vto)
+      {//if the preblk vto is exactly the same then the following adjustment is not nessasary
+        break;
+      }
+      preblk->vto=new_preblk_vto;
       // __PRT__("[%d]:v1:%f  ori_V1:%f Vdiff:%f\n",i,v1,ori_V1,Vdiff);
 
-      // __PRT__("[%d]:blk.steps:%d v:%f,%f,%f minDistNeeded:%d  \n",i,blk.steps,blk.vcur,blk.vcen,blk.vto,minDistNeeded);
 
 
 
@@ -835,16 +1004,19 @@ void MStp::BlockRunStep(runBlock &rb)
   // __PRT__("rb.vcur:%f a2:%d  T_next:%d  TICK2SEC_BASE:%d\n",rb.vcur,a2,T_next,TICK2SEC_BASE);
 
   }
-  else if(vcur_int<vcen_int)
+  else if(vcur_int<vcen_int )
   {
-    float speedInc=(float)a1/rb.vcur;
-    if(speedInc>maxSpeedInc)
+    if(rb.cur_step!=0)
     {
-      speedInc=maxSpeedInc;
+      float speedInc=(float)a1/rb.vcur;
+      if(speedInc>maxSpeedInc)
+      {
+        speedInc=maxSpeedInc;
+      }
+      rb.vcur+=(speedInc);
     }
-    rb.vcur+=(speedInc);
     
-    // __PRT__("a1:%d  T_next:%d  TICK2SEC_BASE:%d\n",a1,T_next,TICK2SEC_BASE);
+    // __PRT__("a1:%d  rb.vcur:%f\n",a1,rb.vcur);
     if(rb.vcur>rb.vcen)
     {
       rb.vcur=rb.vcen;
@@ -857,8 +1029,11 @@ void MStp::BlockRunStep(runBlock &rb)
 
 
   // rb.vcur=rb.vcen;
-
-  // __PRT__("rb.vcur:%f  \n",rb.vcur);
+  {
+    int space=3;
+    if(rb.cur_step<space || rb.cur_step>(rb.steps-space))
+      __PRT__("cur_step:%d rb.vcur:%f  \n",rb.cur_step,rb.vcur);
+  }
 
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
@@ -890,15 +1065,13 @@ void MStp::BlockRunStep(runBlock &rb)
   float T = TICK2SEC_BASE/rb.vcur;
   this->T_next=(uint32_t)(T);
 
-  delayRoundX+=T-T_next;
-  if(delayRoundX>1)
+  delayResidue+=T-T_next;
+  if(delayResidue>1)
   {
-    delayRoundX-=1;
+    delayResidue-=1;
     T_next+=1;
   }
 
-
-  this->T_lapsed+=T_next;
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
 }
@@ -913,7 +1086,7 @@ void MStp::blockPlayer()
 
     runBlock &blk=*blocks->getTail();
     float vcur= blk.vcur;
-    curBlk=&blk;
+    runBlk=&blk;
     if(blk.cur_step==0)
     {
 
@@ -960,12 +1133,10 @@ void MStp::blockPlayer()
       runBlock *new_blk=blocks->getTail();
       if(new_blk!=NULL)
       {
-        __PRT__("=new_vcur:%f===vcur:%f=vto:%f==\n",new_blk->vcur,vcur,blk.vto);
         new_blk->cur_step=0;
         new_blk->vcur= vcur*new_blk->JunctionNormCoeff;
 
-        // rb.vcur=preBlk->vto*rb.JunctionNormCoeff;
-
+        __PRT__("  =vcur:%f x coeff:%f=new_v %f,%f,%f==\n",vcur,new_blk->JunctionNormCoeff,new_blk->vcur,blk.vcen,blk.vto);
 
         for(int k=0;k<MSTP_VEC_SIZE;k++)
         {
@@ -1012,7 +1183,6 @@ void MStp::blockPlayer()
   {
     BlockInitEffect(NULL,0);
     T_next=0;
-    // T_lapsed=0;//empty action
     // cout << "This is the first thread "<< endl;
     // std::this_thread::sleep_for(std::chrono::milliseconds(100));
     axis_pul=0;
@@ -1128,7 +1298,6 @@ uint32_t MStp::taskRun()
   // delIdxResidue(pre_indexes);
 
   axis_collectpul=0;
-  accT=curT;
   if(tskrun_state==0)
   {
 
@@ -1136,8 +1305,6 @@ uint32_t MStp::taskRun()
     blockPlayer();
     pre_indexes=0;
     isMidPulTrig=false;
-    accT=0;
-    curT=0;
     axis_collectpul=0;
     if(T_next==0)
     {
@@ -1151,7 +1318,7 @@ uint32_t MStp::taskRun()
   {
     if(isMidPulTrig==false)
     {
-      uint32_t idxes=findMidIdx(axis_pul,curBlk->steps);
+      uint32_t idxes=findMidIdx(axis_pul,runBlk->steps);
       // Serial.printf("=curBlk->steps:%d==idxes:%s  resd:%d\n",curBlk->steps,int2bin(idxes,MSTP_VEC_SIZE),curPos_residue.vec[0]);
       if(idxes==0)
         IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=!PIN_DBG0_st);
@@ -1171,125 +1338,5 @@ uint32_t MStp::taskRun()
     return T_next/2;
   }
   
-  if(tskrun_state==2)//run pulse
-  {
-    // printf(">>>>st1\n");
-    
-
-
-    uint32_t idxes;
-    uint32_t mT;
-    if(save_pre_indexes==0)
-    {
-      uint32_t minResidue;
-      int restCount;
-      idxes = findNearstPulseIdx(&minResidue,&restCount);
-      mT=(minResidue*T_next)>>_PULSE_ROUND_SHIFT_;
-    } 
-    else
-    {
-      idxes=save_pre_indexes;
-      save_pre_indexes=0;
-      mT=save_mT;
-      save_mT=0;
-    }
-
-
-    uint32_t Tdev4=T_next>>2;
-
-    if( (mT<(Tdev4)) || (mT>(3*Tdev4)) )
-    {
-      _axis_collectpul1|=idxes;
-    }
-    else
-    {
-      _axis_collectpul2|=idxes;
-    }
-
-
-
-    // printf("acol1:%s ",int2bin(_axis_collectpul1,MSTP_VEC_SIZE));
-    // printf("acol2:%s \n",int2bin(_axis_collectpul2,MSTP_VEC_SIZE));
-    pre_indexes=idxes;
-
-    uint32_t Tdev3=T_next/3;
-
-
-    if(isMidPulTrig==false)
-    {
-      
-      if(mT<(2*Tdev3))
-      {
-        if( mT<(Tdev3))
-        {//let go without pull down
-
-
-        }
-        else
-        {//we can reuse this section  _axis_collectpul1
-          axis_collectpul=_axis_collectpul1;
-          _axis_collectpul1=0;
-          isMidPulTrig=true;
-        } 
-      }
-      else
-      {//insert a event just for pull down   _axis_collectpul1
-        
-
-
-        axis_collectpul=_axis_collectpul1;
-        _axis_collectpul1=0;
-        isMidPulTrig=true;
-
-        save_pre_indexes=pre_indexes;
-        save_mT=mT;
-        pre_indexes=0;//SKIP THIS IDXES
-        mT=T_next/2+1;//MIDDLE PULSE
-      }
-    }
-    else
-    {
-
-      if(mT==T_next)//there must be a pulse matchs this (the)
-      {//we can reuse this section  _axis_collectpul2
-      
-        axis_collectpul=_axis_collectpul2;
-        _axis_collectpul2=0;
-        tskrun_state=0;
-      }
-      else
-      {//let go without pull down
-
-
-
-      }
-    }
-
-    curT=mT;
-
-    int delay=curT-accT;
-    // Serial.printf(">mT:%d  accT:%d>   curT:%d  >delay:%d>\n",mT,accT,curT,delay);
-
-
-    // if(delay<50)delay=200;
-    // int debtStep=5;
-    // if(mT==0)
-    // {
-
-    //   // printf("==============DEBT\n");
-    //   delay+=debtStep;
-    //   tskrun_adj_debt+=debtStep;
-    // }
-    // else if(tskrun_adj_debt && delay>(2*debtStep))//pay back
-    // {
-    //   // printf("==============DEBT pay back\n");
-    //   mT-=debtStep;
-    //   tskrun_adj_debt-=debtStep;
-    // }
-
-    return delay;
-  }
-
-
   return 0;
 }

@@ -51,12 +51,13 @@ class MStp{
 
 public:
   RingBuf <runBlock> *blocks;
+  runBlock *runBlk;
+
   // RingBuf_Static <uint32_t,10> PulOff;
 
   //preset cannot be touched
   MSTP_setup* axisSetup;
   uint32_t TICK2SEC_BASE=1000*1000;
-  uint32_t _PULSE_ROUND_SHIFT_=7;
   float acc;
   float minSpeed;
   float junctionMaxSpeedJump;
@@ -75,10 +76,9 @@ public:
   xVec curPos_mod;
   xVec curPos_residue;
   xVec lastTarLoc;
-  xVec preVec;
 
   uint32_t T_next=0;
-  uint32_t T_lapsed=0;
+  float delayResidue=0;
 
   void SystemClear();
 
@@ -87,16 +87,13 @@ public:
   void printBLKInfo();
   void StepperForceStop();
   MStp(RingBuf<runBlock> *_blocks, MSTP_setup *_axisSetup);
-  runBlock *curBlk;
 
 
   void VecAdd(xVec VECAdd,float speed,void* ctx=NULL);
   void VecTo(xVec VECTo,float speed,void* ctx=NULL);
 
   void Delay(int interval,int intervalCount=1);
-  float calcMajorSpeed(runBlock &rb);
   
-  float delayRoundX=0;
   void BlockRunStep(runBlock &rb);
 
   // virtual void BlockRunEffect(uint32_t idxes)=0;

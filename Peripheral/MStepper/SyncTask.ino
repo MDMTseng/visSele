@@ -16,7 +16,7 @@ hw_timer_t *timer = NULL;
 
 
 #define PIN_M2_STP 27
-#define PIN_M2_DIR 14
+#define PIN_M2_DIR 26
 #define PIN_M2_SEN1 17
 
 
@@ -52,9 +52,9 @@ class MStp_M:public MStp{
   {
     
     TICK2SEC_BASE=10*1000*1000;
-    minSpeed=500;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    acc=SUBDIV*2000/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
-    junctionMaxSpeedJump=400;//5200;
+    minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    acc=SUBDIV*1500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
+    junctionMaxSpeedJump=000;//5200;
     pinMode(PIN_M1_DIR, OUTPUT);
     pinMode(PIN_M1_STP, OUTPUT);
     pinMode(PIN_M1_SEN1, INPUT);
@@ -554,7 +554,7 @@ void setup()
 
 
   
-  int retErr=mstp.ZeroAxis(1,50000)+mstp.ZeroAxis(0,500*2);
+  int retErr=0;//mstp.ZeroAxis(1,50000)+mstp.ZeroAxis(0,500*2);
 
   rzERROR=retErr;
   if(retErr==0)
@@ -574,15 +574,17 @@ void loop()
   if(rzERROR==0 && mstp.blocks->size()==0)
   {
 
-  uint32_t speed=25000/3;//25000;
+  uint32_t speed=25000/10;//25000;
 
 
-    int pt1=(-30-12*5)*SUBDIV/mm_PER_REV;
-    int pt2=-30*SUBDIV/mm_PER_REV;
+    int pt1=(-30-12*2)*SUBDIV/mm_PER_REV;
+    int pt2=(-30-12*2+1)*SUBDIV/mm_PER_REV;
+    // int pt2=-30*SUBDIV/mm_PER_REV;
     int cidx=0;
     for(int i=0;i<1;i++)
     {
       // delay(1000);
+
       ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
       pickOn(1,pt1, speed,&(ctx[cidx++]));
       ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=1 };
@@ -594,7 +596,6 @@ void loop()
       ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=0 };
       pickOn(2,pt2, speed,&(ctx[cidx++]));
 
-      // delay(1000);
 
       ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
       pickOn(1,pt2, speed,&(ctx[cidx++]));
@@ -606,6 +607,10 @@ void loop()
       pickOn(1,pt1, speed,&(ctx[cidx++]));
       ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=0 };
       pickOn(2,pt1, speed,&(ctx[cidx++]));
+
+
+
+
 
 
       // mstp.VecTo((xVec){0,pt1},speed);

@@ -92,9 +92,9 @@ class MStp_M:public MStp{
 
     
     TICK2SEC_BASE=10*1000*1000;
-    minSpeed=500;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     acc=SUBDIV*3000/mm_PER_REV;
-    junctionMaxSpeedJump=600;//5200;
+    junctionMaxSpeedJump=300;//600;//5200;
   }
 
   int M1_reader=2;//1<<(MSTP_VEC_SIZE-2);
@@ -311,10 +311,12 @@ int main()
   //   mstp.VecTo((xVec){0,0},speed);
   // }
   mstp.VecAdd((xVec){1000,1000},speed);
-  mstp.VecAdd((xVec){700,1000},speed);
+  mstp.VecAdd((xVec){900,1000},speed);
   mstp.VecAdd((xVec){1000,1000},speed);
-  mstp.VecAdd((xVec){800,1000},speed);
-  mstp.VecAdd((xVec){1000,1000},speed);
+  // mstp.VecAdd((xVec){1000,1000},speed);
+  // mstp.VecAdd((xVec){800,1000},speed);
+  // mstp.VecAdd((xVec){1000,1000},speed);
+  // return 0;
   // mstp.VecTo((xVec){0,0},speed);
   printf("===========\n");
   mstp.printBLKInfo();
