@@ -56,9 +56,9 @@ class MStp_M:public MStp{
   {
     
     TICK2SEC_BASE=10*1000*1000;
-    minSpeed=300;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    minSpeed=200;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     acc=SUBDIV*2500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
-    junctionMaxSpeedJump=800;//5200;
+    junctionMaxSpeedJump=300;//5200;
 
     maxSpeedInc=minSpeed;
     pinMode(PIN_M1_DIR, OUTPUT);
@@ -83,14 +83,20 @@ class MStp_M:public MStp{
 
 
   void stopTimer(){
-    timerRunning=false;
     
-    // timerAlarmDisable(timer);  
+    if(timerRunning==true)
+    {
+      timerAlarmDisable(timer); 
+      timerRunning=false;
+    }
   }
   void startTimer(){
-    
-    // timerAlarmEnable(timer);  
-    timerRunning=true;
+    if(timerRunning==false)
+    {
+      timerAlarmEnable(timer);  
+      timerAlarmWrite(timer,1, true);
+      timerRunning=true;
+    }
   }
   int runUntil(int axis,int pin,int pinVal,int distance,int speed,xVec *ret_posWhenHit)
   {
@@ -600,6 +606,13 @@ void setup()
 
 }
 
+void busyLoop(uint32_t count)
+{
+  while(count--)
+  {
+    Serial.printf("");
+  }
+}
 
 MSTP_BlkCtx ctx[10]={0};
 void loop()
@@ -650,12 +663,29 @@ void loop()
       // mstp.VecTo((xVec){mstp.M1Info_Limit1*0/100,pos},speed);
       for(int k=0;k<5;k++)
       {
-        pickOn(1,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
-        pickOn(2,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
+        int speed=1000;
+        // pickOn(1,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
+        // pickOn(2,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
+        mstp.VecTo((xVec){10,10},speed);
+        mstp.VecTo((xVec){12,20},speed);
+        // busyLoop(1000);
+        mstp.VecTo((xVec){5,5},speed);
+        // busyLoop(1000);
+        mstp.VecTo((xVec){0,0},speed);
+        // sleep(1);
+
       }
       
-      mstp.VecTo((xVec){0,-100},speed);
-      mstp.VecTo((xVec){0,100},300);
+      while(mstp.blocks->size()>2)
+      {
+        Serial.printf("");
+      }
+      mstp.VecTo((xVec){30,40},speed);
+      mstp.VecTo((xVec){10,11},speed);
+
+      
+      // mstp.VecTo((xVec){0,0},speed);
+      mstp.VecTo((xVec){0,0},speed);
       mstp.printBLKInfo();
       // mstp.VecTo((xVec){0,pt1},speed);
       // mstp.VecTo((xVec){0,pt2},speed);

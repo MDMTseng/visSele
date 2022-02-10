@@ -20,9 +20,9 @@ char *int2bin(uint32_t a, int digits=8);
 
 #else
 #include <Arduino.h>
-#define __PRT_D_(...) //Serial.printf("D:"__VA_ARGS__)
+#define __PRT_D_(fmt,...) //Serial.printf("D:"__VA_ARGS__)
 // #define __PRT_I_(...) Serial.printf("I:" __VA_ARGS__)
-#define __PRT_I_(fmt,...) Serial.printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
+#define __PRT_I_(fmt,...) //Serial.printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
 #endif
 
 
@@ -40,7 +40,6 @@ struct runBlock
   xVec from;
   xVec to;
   xVec runvec;
-  xVec posvec;
   uint32_t steps;
   uint32_t cur_step;
   float JunctionNormCoeff;
@@ -66,7 +65,7 @@ class MStp{
 
 public:
   RingBuf <runBlock> *blocks;
-  runBlock runBlk;
+  // runBlock runBlk;
   runBlock *p_runBlk;
 
   // RingBuf_Static <uint32_t,10> PulOff;
@@ -88,6 +87,7 @@ public:
   uint32_t axis_collectpul;
   uint32_t axis_dir;
 
+  xVec posvec;
   xVec curPos_c;
   xVec curPos_mod;
   xVec curPos_residue;
@@ -121,7 +121,7 @@ public:
   virtual void BlockEndEffect(runBlock* blk)=0;
   
   virtual void blockPlayer();
-  bool timerRunning;
+  bool timerRunning=false;
   virtual void stopTimer(){timerRunning=false;}
   virtual void startTimer(){timerRunning=true;}
 
