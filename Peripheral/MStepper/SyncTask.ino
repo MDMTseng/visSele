@@ -16,7 +16,7 @@ hw_timer_t *timer = NULL;
 
 
 #define PIN_M2_STP 27
-#define PIN_M2_DIR 26
+#define PIN_M2_DIR 14
 #define PIN_M2_SEN1 17
 
 
@@ -27,6 +27,9 @@ hw_timer_t *timer = NULL;
 #define PIN_OUT_2 32
 #define PIN_OUT_3 33
 
+
+
+#define PIN_DBG 18
 
 #define SUBDIV (800)
 #define mm_PER_REV 10
@@ -40,6 +43,7 @@ struct MSTP_BlkCtx{
   int d1;
 };
 
+
 class MStp_M:public MStp{
   public:
 
@@ -52,9 +56,11 @@ class MStp_M:public MStp{
   {
     
     TICK2SEC_BASE=10*1000*1000;
-    minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    acc=SUBDIV*1500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
-    junctionMaxSpeedJump=000;//5200;
+    minSpeed=300;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    acc=SUBDIV*2500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
+    junctionMaxSpeedJump=800;//5200;
+
+    maxSpeedInc=minSpeed;
     pinMode(PIN_M1_DIR, OUTPUT);
     pinMode(PIN_M1_STP, OUTPUT);
     pinMode(PIN_M1_SEN1, INPUT);
@@ -64,6 +70,7 @@ class MStp_M:public MStp{
     pinMode(PIN_M2_STP, OUTPUT);
     // pinMode(PIN_DBG0, OUTPUT);    
     pinMode(PIN_OUT_1, OUTPUT);    
+    // pinMode(PIN_DBG, OUTPUT);    
 
     
   }
@@ -75,6 +82,16 @@ class MStp_M:public MStp{
   int runUntil_sensorVal=0;
 
 
+  void stopTimer(){
+    timerRunning=false;
+    
+    // timerAlarmDisable(timer);  
+  }
+  void startTimer(){
+    
+    // timerAlarmEnable(timer);  
+    timerRunning=true;
+  }
   int runUntil(int axis,int pin,int pinVal,int distance,int speed,xVec *ret_posWhenHit)
   {
     runUntil_sensorVal=pinVal;
@@ -89,7 +106,7 @@ class MStp_M:public MStp{
     VecAdd(cpos,speed);
     Serial.printf("STP1-3\n");
 
-    while(runUntil_sensorPIN!=0 && blocks->size()!=0)
+    while(runUntil_sensorPIN!=0 && isQueueEmpty()==false)
     {
       Serial.printf("");
     }//wait for touch sensor
@@ -169,7 +186,7 @@ class MStp_M:public MStp{
         cpos.vec[axisIdx]=0;
         VecTo(cpos,runSpeed);
 
-        while(blocks->size()!=0)
+        while(isQueueEmpty()==false)
         {
           Serial.printf("");
         }//wait for end
@@ -202,6 +219,11 @@ class MStp_M:public MStp{
       }
     }
 
+    
+    digitalWrite(PIN_M1_DIR, 1);
+    digitalWrite(PIN_M1_STP, 1);
+    digitalWrite(PIN_M2_DIR, 1);
+    digitalWrite(PIN_M2_STP, 1);
     return 0;
     // ZeroStatus=0;
 
@@ -274,14 +296,18 @@ class MStp_M:public MStp{
     }
 
   }
-  void BlockInitEffect(runBlock* blk,uint32_t dir_idxes)
+  
+  int PIN_DBG_ST=0;
+  void BlockInitEffect(runBlock* blk)
   {
+    
     
     if(blk==NULL)
     {
       return;
     }
 
+    // digitalWrite(PIN_DBG,PIN_DBG_ST=!PIN_DBG_ST);
   
     if(blk->ctx!=NULL)//new block
     {
@@ -321,6 +347,11 @@ class MStp_M:public MStp{
 
 
     }
+  }
+
+
+  void BlockDirEffect(uint32_t dir_idxes)
+  {
     // pre_blk->ctx;//do sth... start
     
     // digitalWrite(PIN_OUT_1, POut1=(!POut1));
@@ -329,7 +360,7 @@ class MStp_M:public MStp{
     
     // Serial.printf("dir:%s \n",int2bin(idxes,MSTP_VEC_SIZE));
   }
-
+    
   
   bool PIN_DBG0_st=false;
   uint32_t axis_st=0;
@@ -365,12 +396,12 @@ class MStp_M:public MStp{
     if(idxes_L&M1_reader)
     {
 
-      digitalWrite(PIN_M1_STP, 0);
+      digitalWrite(PIN_M1_STP, 1);
     }
 
     if(idxes_L&M2_reader)
     {
-      digitalWrite(PIN_M2_STP, 0);
+      digitalWrite(PIN_M2_STP, 1);
     }
     // Serial.printf("id:%s  ",int2bin(idxes,MSTP_VEC_SIZE));
     // Serial.printf("ac:%s ",int2bin(axis_collectpul,MSTP_VEC_SIZE));
@@ -382,12 +413,12 @@ class MStp_M:public MStp{
 
     if(idxes_H&M1_reader)
     {
-      digitalWrite(PIN_M1_STP, 1);
+      digitalWrite(PIN_M1_STP, 0);
     }
 
     if(idxes_H&M2_reader)
     {
-      digitalWrite(PIN_M2_STP, 1);
+      digitalWrite(PIN_M2_STP, 0);
     }
   }
 
@@ -512,17 +543,19 @@ uint32_t xendpos=4700*SUBDIV/mm_PER_REV;
 
 void pickOn(int lidx,int pos,int speed,MSTP_BlkCtx *p_ctx=NULL)
 {
-  int upR=30;
-  if(lidx==1)
+  int upR=50;
+  int restSpeed=speed/2;
+  if(lidx==2)
   {
     mstp.VecTo((xVec){mstp.M1Info_Limit1*upR/100,pos},speed);
     mstp.VecTo((xVec){mstp.M1Info_Limit1,pos},speed,p_ctx);
     mstp.VecTo((xVec){mstp.M1Info_Limit1*upR/100,pos},speed);
   }
-  else if(lidx==2)
+  else if(lidx==1)
   {
     // int M1L1L2Dist=-30*SUBDIV/mm_PER_REV;
-    int M1L1L2Dist=(-30+12)*SUBDIV/mm_PER_REV;
+    // int M1L1L2Dist=(-30+12)*SUBDIV/mm_PER_REV;
+    int M1L1L2Dist=(-30)*SUBDIV/mm_PER_REV;
     pos+=M1L1L2Dist;
     mstp.VecTo((xVec){mstp.M1Info_Limit2*upR/100,pos},speed);
     mstp.VecTo((xVec){mstp.M1Info_Limit2,pos},speed,p_ctx);
@@ -571,10 +604,12 @@ void setup()
 MSTP_BlkCtx ctx[10]={0};
 void loop()
 {
-  if(rzERROR==0 && mstp.blocks->size()==0)
-  {
 
-  uint32_t speed=25000/10;//25000;
+  if(rzERROR==0 && mstp.isQueueEmpty()==true)
+  {
+    delay(1000);
+
+  uint32_t speed=25000;//25000;
 
 
     int pt1=(-30-12*2)*SUBDIV/mm_PER_REV;
@@ -585,34 +620,43 @@ void loop()
     {
       // delay(1000);
 
-      ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
-      pickOn(1,pt1, speed,&(ctx[cidx++]));
-      ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=1 };
-      pickOn(2,pt1, speed,&(ctx[cidx++]));
+      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
+      // pickOn(1,pt1, speed,&(ctx[cidx++]));
+      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=1 };
+      // pickOn(2,pt1, speed,&(ctx[cidx++]));
 
 
-      ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
-      pickOn(1,pt2, speed,&(ctx[cidx++]));
-      ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=0 };
-      pickOn(2,pt2, speed,&(ctx[cidx++]));
+      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
+      // pickOn(1,pt2, speed,&(ctx[cidx++]));
+      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=0 };
+      // pickOn(2,pt2, speed,&(ctx[cidx++]));
 
 
-      ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
-      pickOn(1,pt2, speed,&(ctx[cidx++]));
-      ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=1 };
-      pickOn(2,pt2, speed,&(ctx[cidx++]));
+      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
+      // pickOn(1,pt2, speed,&(ctx[cidx++]));
+      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=1 };
+      // pickOn(2,pt2, speed,&(ctx[cidx++]));
 
 
-      ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
-      pickOn(1,pt1, speed,&(ctx[cidx++]));
-      ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=0 };
-      pickOn(2,pt1, speed,&(ctx[cidx++]));
+      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
+      // pickOn(1,pt1, speed,&(ctx[cidx++]));
+      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=0 };
+      // pickOn(2,pt1, speed,&(ctx[cidx++]));
 
 
-
-
-
-
+      int posDiff=0;
+      
+      // mstp.VecTo((xVec){mstp.M1Info_Limit1*100/100,pos},speed);
+      // mstp.VecTo((xVec){mstp.M1Info_Limit1*0/100,pos},speed);
+      for(int k=0;k<5;k++)
+      {
+        pickOn(1,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
+        pickOn(2,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
+      }
+      
+      mstp.VecTo((xVec){0,-100},speed);
+      mstp.VecTo((xVec){0,100},300);
+      mstp.printBLKInfo();
       // mstp.VecTo((xVec){0,pt1},speed);
       // mstp.VecTo((xVec){0,pt2},speed);
 
@@ -713,3 +757,38 @@ int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, int *ret_result = NULL)
   }
   return ret_len;
 }
+
+
+// void setup()
+// {
+//   // noInterrupts();
+//   Serial.begin(921600);
+  
+//   pinMode(PIN_M1_STP, OUTPUT);
+//   pinMode(PIN_M1_DIR, OUTPUT);
+
+
+//   pinMode(PIN_OUT_0, OUTPUT);
+//   pinMode(PIN_OUT_1, OUTPUT);
+//   pinMode(PIN_OUT_2, OUTPUT);
+//   pinMode(PIN_OUT_3, OUTPUT);
+
+// }
+
+
+
+// void loop()
+// {
+  
+//   digitalWrite(PIN_M1_STP, 1);
+//   digitalWrite(PIN_OUT_0, 1);
+//   delay(1000);
+
+//   digitalWrite(PIN_M1_STP, 0);
+//   digitalWrite(PIN_OUT_0, 0);
+//   delay(1000);
+
+
+
+// }
+

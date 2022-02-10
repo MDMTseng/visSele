@@ -11,6 +11,21 @@ char *int2bin(uint32_t a, int digits=8);
 
 
 
+#define PRT_FUNC_LEN 6
+#ifdef X86_PLATFORM
+
+#define __PRT_D_(fmt,...) printf("%04d %.*s:d " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
+#define __PRT_I_(fmt,...) printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
+
+
+#else
+#include <Arduino.h>
+#define __PRT_D_(...) //Serial.printf("D:"__VA_ARGS__)
+// #define __PRT_I_(...) Serial.printf("I:" __VA_ARGS__)
+#define __PRT_I_(fmt,...) Serial.printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
+#endif
+
+
 struct xVec
 {
   int32_t vec[MSTP_VEC_SIZE];
@@ -51,7 +66,8 @@ class MStp{
 
 public:
   RingBuf <runBlock> *blocks;
-  runBlock *runBlk;
+  runBlock runBlk;
+  runBlock *p_runBlk;
 
   // RingBuf_Static <uint32_t,10> PulOff;
 
@@ -84,6 +100,7 @@ public:
 
 
 
+  bool isQueueEmpty();
   void printBLKInfo();
   void StepperForceStop();
   MStp(RingBuf<runBlock> *_blocks, MSTP_setup *_axisSetup);
@@ -98,7 +115,9 @@ public:
 
   // virtual void BlockRunEffect(uint32_t idxes)=0;
   virtual void BlockPulEffect(uint32_t idxes_H,uint32_t idxes_L)=0;
-  virtual void BlockInitEffect(runBlock* blk,uint32_t idxe)=0;
+  virtual void BlockDirEffect(uint32_t idxes)=0;
+  virtual void BlockInitEffect(runBlock* blk)=0;
+
   virtual void BlockEndEffect(runBlock* blk)=0;
   
   virtual void blockPlayer();

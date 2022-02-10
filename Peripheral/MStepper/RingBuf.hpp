@@ -49,12 +49,22 @@ class RingBufIdxCounter
   RB_Idx_Type getHead(){return headIdx;}
   RB_Idx_Type getTail(){return tailIdx;}
   RB_Idx_Type getTail(RB_Idx_Type idx){
-    int real_idx=getTail()+idx;
+    int real_idx=tailIdx+idx;
     if(real_idx>=RBLen)real_idx-=RBLen;
     return real_idx;
   }
+
+
+  RB_Idx_Type getHead(RB_Idx_Type idx){
+    int real_idx=headIdx-idx;
+    if(real_idx<0)real_idx+=RBLen;
+    return real_idx;
+  }
+
+
   RB_Idx_Type size(){return dataSize;}
   RB_Idx_Type space(){return RBLen-dataSize;}
+  RB_Idx_Type capacity(){return RBLen;}
   
   RB_Idx_Type getNextHead(){
     RB_Idx_Type bk_headIdx=headIdx;
@@ -162,6 +172,14 @@ class RingBuf
   {
     return RBC.size();
   }
+  RB_Idx_Type space()
+  {
+    return RBC.space();
+  }
+  RB_Idx_Type capacity()
+  {
+    return RBC.capacity();
+  }
   
   void clear()
   {
@@ -178,10 +196,20 @@ class RingBuf
     return RBC.getTail();
   }
   
-  RB_Type* getHead()
+  RB_Type* getHead()//the next empty block that's not in the Queue yet
   {
     if(RBC.space()==0)return NULL;
     return buff+RBC.getHead();
+  }
+  
+  RB_Type* getHead(uint32_t idx)
+  {
+    // printf("@idx:%d RBC.size():%d\n",idx,RBC.size());
+    if(idx>RBC.size())return NULL;//if(idx-1>=RBC.size())return NULL;
+    // printf("-idx:%d\n",idx);
+    int idxx=(int)RBC.getHead(idx);
+    // printf("idxx:%d\n",idxx);
+    return buff+idxx;
   }
 
   RB_Idx_Type getTail_Idx(uint32_t idx)

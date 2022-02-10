@@ -92,9 +92,10 @@ class MStp_M:public MStp{
 
     
     TICK2SEC_BASE=10*1000*1000;
-    minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    minSpeed=200;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     acc=SUBDIV*3000/mm_PER_REV;
     junctionMaxSpeedJump=300;//600;//5200;
+    maxSpeedInc=minSpeed;
   }
 
   int M1_reader=2;//1<<(MSTP_VEC_SIZE-2);
@@ -105,13 +106,8 @@ class MStp_M:public MStp{
 
   }
 
-  void BlockInitEffect(runBlock* blk,uint32_t idxes)
+  void BlockInitEffect(runBlock* blk)
   {
-
-    // digitalWrite(PIN_M1_DIR, idxes&M1_reader);
-    // digitalWrite(PIN_M2_DIR, idxes&M2_reader);
-    printf("DIR:%s  ",int2bin(idxes,MSTP_VEC_SIZE));
-    
     for(int i=0;i<MSTP_VEC_SIZE;i++)
     {
       printf("%d  ",stepCount[i]);
@@ -121,6 +117,17 @@ class MStp_M:public MStp{
   }
 
 
+
+  void BlockDirEffect(uint32_t dir_idxes)
+  {
+
+    // digitalWrite(PIN_M1_DIR, idxes&M1_reader);
+    // digitalWrite(PIN_M2_DIR, idxes&M2_reader);
+    printf("DIR:%s  ",int2bin(dir_idxes,MSTP_VEC_SIZE));
+    
+    
+  }
+    
   
 
   uint32_t axis_st=0;
@@ -234,7 +241,7 @@ class MStp_M:public MStp{
 };
 
 runBlock blockBuff[50];
-RingBuf <runBlock> __blocks(blockBuff,20);
+RingBuf <runBlock> __blocks(blockBuff,50);
 
 MStp_M mstp(&__blocks,&mstp_setup);
 
@@ -310,9 +317,9 @@ int main()
   //   mstp.VecTo((xVec){pos*(50+2*i)/100,pos*50/100},speed);
   //   mstp.VecTo((xVec){0,0},speed);
   // }
-  mstp.VecAdd((xVec){1000,1000},speed);
-  mstp.VecAdd((xVec){900,1000},speed);
-  mstp.VecAdd((xVec){1000,1000},speed);
+  mstp.VecTo((xVec){0,100},speed);
+  mstp.VecTo((xVec){100,100},speed);
+  mstp.VecTo((xVec){0,0},speed);
   // mstp.VecAdd((xVec){1000,1000},speed);
   // mstp.VecAdd((xVec){800,1000},speed);
   // mstp.VecAdd((xVec){1000,1000},speed);
