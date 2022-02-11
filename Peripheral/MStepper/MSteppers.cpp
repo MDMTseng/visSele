@@ -274,12 +274,10 @@ a=MAX_ALLOWED_SPEED_JUMP/JunctionNormMaxDiff;
 
 
 //return ret_blk2_coeff let  blk1.vec => ret_blk2_coeff*blk2.vec would have the smallest speed diff 
-int Calc_JunctionNormCoeff(runBlock &blkA,runBlock &blkB,float &ret_blkB_coeff1)
+int Calc_JunctionNormCoeff(runBlock *blkA,runBlock *blkB,float *ret_blkB_coeff1)
 {
-  ret_blkB_coeff1=NAN;
-  float BBsum=0;
-  float ABsum=0;//basically a dot product
-  float AAsum=0;//basically a dot product
+  if(ret_blkB_coeff1)
+    *ret_blkB_coeff1=NAN;
   
 /*
 
@@ -303,14 +301,16 @@ int Calc_JunctionNormCoeff(runBlock &blkA,runBlock &blkB,float &ret_blkB_coeff1)
 
 
 
+  float BBsum=0;
+  float ABsum=0;//basically a dot product
 
   for(int i=0;i<MSTP_VEC_SIZE;i++)
   {
     // float A=(float)preBlk->runvec.vec[i]/preBlk->steps;//normalize here, a bit slower
     // float B=(float)rb.runvec.vec[i]/rb.steps;
 
-    float A=(float)blkA.runvec.vec[i];//X
-    float B=(float)blkB.runvec.vec[i];//Y
+    float A=(float)blkA->runvec.vec[i];//X
+    float B=(float)blkB->runvec.vec[i];//Y
 
     // if(AB<0 && AB<-junctionMaxSpeedJump)
     // {//The speed from +to-(or reverse) and the difference is too huge, then set target speed to zero
@@ -319,6 +319,7 @@ int Calc_JunctionNormCoeff(runBlock &blkA,runBlock &blkB,float &ret_blkB_coeff1)
     //   break;
     // }
     // AAsum+=A*A;
+    
     ABsum+=A*B;
     BBsum+=B*B;
   }
@@ -329,13 +330,15 @@ int Calc_JunctionNormCoeff(runBlock &blkA,runBlock &blkB,float &ret_blkB_coeff1)
     ABsum=0;
   }
 
-
+  __PRT_I_("ABB:%f %f\n",ABsum,BBsum);
   // AAsum/=blkA.steps;
 
   // rb.JunctionCoeff=dotp/BB;//normalize in the loop, a bit slower
-  float coeff1 = (ABsum/blkA.steps)/(0.0001+BBsum/blkB.steps);
-  ret_blkB_coeff1=coeff1;//forward way Xi => bYi
+  float coeff1 = (ABsum/blkA->steps)/(0.0001+BBsum/blkB->steps);
+  // ret_blkB_coeff1=coeff1;//forward way Xi => bYi
 
+  if(ret_blkB_coeff1)
+    *ret_blkB_coeff1=coeff1;
   // // 
   // float coeff2 = (AAsum/blkA.steps)/(0.0001+ABsum/blkB.steps);
   // ret_blkB_coeff2=coeff2;//backward way forward way cXi => Yi : b=1/c
@@ -519,14 +522,13 @@ int Calc_JunctionNormCoeff2(runBlock &blkA,runBlock &blkB,float &ret_blkB_coeff)
 //
 //
 //
-int Calc_JunctionNormMaxDiff(runBlock &blk1,runBlock &blk2,float blk2_coeff,float &ret_MaxDiff)
+int Calc_JunctionNormMaxDiff(runBlock *blk1,runBlock *blk2,float blk2_coeff,float *ret_MaxDiff)
 {
 
 
-  ret_MaxDiff=NAN;
   if( blk2_coeff!=blk2_coeff)
   {
-    ret_MaxDiff=NAN;
+    if(ret_MaxDiff)*ret_MaxDiff=NAN;
     return -1;
   }
   //Xi/Yi is for i axis run step count
@@ -535,31 +537,32 @@ int Calc_JunctionNormMaxDiff(runBlock &blk1,runBlock &blk2,float blk2_coeff,floa
   //      =  Max(Xi-Yi*b*Xc/Yc)/Xc
   //NormCoeff= b*Xc/Yc
 
-  float NormCoeff=blk1.steps*blk2_coeff/blk2.steps;
+  float NormCoeff=blk1->steps*blk2_coeff/blk2->steps;
 
 
   float maxAbsDiff=0;
-  __PRT_I_("steps:%d %d    NormCoeff:%f\n",blk1.steps,blk2.steps,NormCoeff);
+  __PRT_I_("steps:%d %d    NormCoeff:%f\n",blk1->steps,blk2->steps,NormCoeff);
 
-  __PRT_I_("blk1.runvec:%s\n",toStr(blk1.runvec));
-  __PRT_I_("blk2.runvec:%s\n",toStr(blk2.runvec));
+  __PRT_I_("blk1.runvec:%s\n",toStr(blk1->runvec));
+  __PRT_I_("blk2.runvec:%s\n",toStr(blk2->runvec));
 
   for(int i=0;i<MSTP_VEC_SIZE;i++)
   {
-    float A=(float)blk1.runvec.vec[i];//pre extract steps
-    float B=(float)blk2.runvec.vec[i]*NormCoeff;
+    float A=(float)blk1->runvec.vec[i];//pre extract steps
+    float B=(float)blk2->runvec.vec[i]*NormCoeff;
 
 
     float diff = A-B;
     if(diff<0)diff=-diff;
-    __PRT_D_("blk[%d]: %d,%d\n",i,blk1.runvec.vec[i],blk2.runvec.vec[i]);
-    __PRT_I_("maxJump[%d]: coeff:%f  %f %f  diff:%f\n",i,blk2_coeff,A/blk1.steps,B/blk1.steps,diff);
+    __PRT_D_("blk[%d]: %d,%d\n",i,blk1->runvec.vec[i],blk2->runvec.vec[i]);
+    __PRT_I_("maxJump[%d]: A:%f B:%f  diff:%f\n",i,
+      A,B, diff);
     if(maxAbsDiff<diff)maxAbsDiff=diff;
   }
-  maxAbsDiff/=blk1.steps;
+  maxAbsDiff/=blk1->steps;
 
-  ret_MaxDiff=maxAbsDiff;
-  __PRT_I_("ret_MaxDiff:%f\n",ret_MaxDiff);
+  if(ret_MaxDiff)*ret_MaxDiff=maxAbsDiff;
+  __PRT_I_("ret_MaxDiff:%f\n",*ret_MaxDiff);
   
   return 0;
 }
@@ -673,7 +676,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
   };
 
   __PRT_I_("\n");
-  __PRT_I_("==========NEW runvec[%s]=========\n",toStr(newBlk.runvec));
+  __PRT_I_("==========NEW runvec[%s]======idx: h:%d t:%d===\n",toStr(newBlk.runvec),blocks->getHead_Idx(),blocks->getTail_Idx());
   lastTarLoc=VECTo;
 
 
@@ -703,7 +706,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
     
 
     float coeff1=NAN;
-    int coeffSt= Calc_JunctionNormCoeff(*preBlk,newBlk,coeff1);
+    int coeffSt= Calc_JunctionNormCoeff(preBlk,&newBlk,&coeff1);
     if(coeffSt<0)
     {
       newBlk.JunctionNormCoeff=0;
@@ -715,7 +718,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
     {
       float maxDiff1=NAN;
       int retSt=0;
-      retSt |= Calc_JunctionNormMaxDiff(*preBlk,newBlk,coeff1,maxDiff1);
+      retSt |= Calc_JunctionNormMaxDiff(preBlk,&newBlk,coeff1,&maxDiff1);
       // retSt |= Calc_JunctionNormMaxDiff(*preBlk,newBlk,coeff2,maxDiff2);
 
 
@@ -734,7 +737,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
       newBlk.JunctionNormCoeff=coeff1;
       newBlk.JunctionNormMaxDiff=maxDiff1;
-      __PRT_I_("====coeff:%f diff:%f==\n",newBlk.JunctionNormCoeff,newBlk.JunctionNormMaxDiff);
+      __PRT_I_("====coeff:%f,%f diff:%f==\n",newBlk.JunctionNormCoeff,coeff1,newBlk.JunctionNormMaxDiff);
       if(retSt==0)
       {
         // newBlk.JunctionNormMaxDiff=maxDiff1;
@@ -816,14 +819,14 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
     __PRT_D_("maxJump:%f coeff:%f  maxDiff:%f\n",junctionMaxSpeedJump, newBlk.JunctionNormCoeff, newBlk.JunctionNormMaxDiff);
 
 
-    {
-      float vto=preBlk->vto;
-      float vcen=preBlk->vcen;
-      float nvcur=newBlk.vcur;
-      float nvcen=newBlk.vcen;
-      __PRT_I_("pre vcen:%0.3f vto:%0.3f =>new vcur:%0.3f vcen:%0.3f\n",vcen,vto,nvcur,nvcen);
+    // {
+    //   float vto=preBlk->vto;
+    //   float vcen=preBlk->vcen;
+    //   float nvcur=newBlk.vcur;
+    //   float nvcen=newBlk.vcen;
+    //   __PRT_I_("pre vcen:%0.3f vto:%0.3f =>new vcur:%0.3f vcen:%0.3f\n",vcen,vto,nvcur,nvcen);
       
-    }
+    // }
 
 
     // newBlk.vcur=
@@ -1007,7 +1010,7 @@ void MStp::printBLKInfo()
 {
   for(int i=0;i<blocks->size();i++)
   {
-    runBlock& blk = *blocks->getTail(i);
+    runBlock& blk = *blocks->getHead(i);
 
     __PRT_I_("[%2d]:steps:%6d v:%05.2f, %05.2f, %05.2f coeff:(%0.2f,%0.2f) \n",i,blk.steps,
       blk.vcur,blk.vcen,blk.vto,
