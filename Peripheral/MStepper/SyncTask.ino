@@ -377,8 +377,8 @@ class MStp_M:public MStp{
       runUntilDetected();
     }
     // if(idxes==0)return;
-    // printf("===p:%s",int2bin(idxes,5));
-    // printf(" d:%s >>",int2bin(axis_dir,5));
+    // printf("===T:%s",int2bin(idxes_H,5));
+    // printf(" R:%s >>",int2bin(idxes_L,5));
 
     // // printf("PULSE_ROUNDSCALE:%d  ",PULSE_ROUNDSCALE);
 
@@ -547,15 +547,29 @@ StaticJsonDocument<1024> ret_doc;
 
 uint32_t xendpos=4700*SUBDIV/mm_PER_REV;
 
+void vecToWait(xVec VECTo,float speed,void* ctx=NULL)
+{
+  digitalWrite(PIN_OUT_1,1);
+  while(mstp.VecTo(VECTo,speed,ctx)==false)
+  {
+    Serial.printf("");
+  }
+  
+  digitalWrite(PIN_OUT_1,0);
+}
+
+
 void pickOn(int lidx,int pos,int speed,MSTP_BlkCtx *p_ctx=NULL)
 {
-  int upR=50;
+  int upR=80;
   int restSpeed=speed/2;
   if(lidx==2)
   {
-    mstp.VecTo((xVec){mstp.M1Info_Limit1*upR/100,pos},speed);
-    mstp.VecTo((xVec){mstp.M1Info_Limit1,pos},speed,p_ctx);
-    mstp.VecTo((xVec){mstp.M1Info_Limit1*upR/100,pos},speed);
+    vecToWait((xVec){0,pos},speed);
+    vecToWait((xVec){mstp.M1Info_Limit1*upR/100,pos},speed/2);
+    vecToWait((xVec){mstp.M1Info_Limit1,pos},speed/3,p_ctx);
+    // mstp.VecTo((xVec){mstp.M1Info_Limit1*upR/100,pos},speed);
+    vecToWait((xVec){0,pos},speed);
   }
   else if(lidx==1)
   {
@@ -563,9 +577,10 @@ void pickOn(int lidx,int pos,int speed,MSTP_BlkCtx *p_ctx=NULL)
     // int M1L1L2Dist=(-30+12)*SUBDIV/mm_PER_REV;
     int M1L1L2Dist=(-30)*SUBDIV/mm_PER_REV;
     pos+=M1L1L2Dist;
-    mstp.VecTo((xVec){mstp.M1Info_Limit2*upR/100,pos},speed);
-    mstp.VecTo((xVec){mstp.M1Info_Limit2,pos},speed,p_ctx);
-    mstp.VecTo((xVec){mstp.M1Info_Limit2*upR/100,pos},speed);
+    vecToWait((xVec){0,pos},speed);
+    vecToWait((xVec){mstp.M1Info_Limit2*upR/100,pos},speed/2);
+    vecToWait((xVec){mstp.M1Info_Limit2,pos},speed/3,p_ctx);
+    vecToWait((xVec){mstp.M1Info_Limit2*upR/100,pos},speed);
   }
 
 
@@ -661,14 +676,12 @@ void loop()
       
       // mstp.VecTo((xVec){mstp.M1Info_Limit1*100/100,pos},speed);
       // mstp.VecTo((xVec){mstp.M1Info_Limit1*0/100,pos},speed);
-      for(int k=0;k<5;k++)
+      for(int k=0;k<2;k++)
       {
-        int speed=1000;
+        int speed=300;
         // pickOn(1,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
         // pickOn(2,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
-        mstp.VecTo((xVec){10,10},speed);
-        mstp.VecTo((xVec){12,20},speed);
-        // busyLoop(1000);
+
         mstp.VecTo((xVec){5,5},speed);
         // busyLoop(1000);
         mstp.VecTo((xVec){0,0},speed);
@@ -676,16 +689,6 @@ void loop()
 
       }
       
-      while(mstp.blocks->size()>0)
-      {
-        Serial.printf("");
-      }
-      mstp.VecTo((xVec){10,10},speed);
-      mstp.VecTo((xVec){10,0},speed);
-
-      
-      // mstp.VecTo((xVec){0,0},speed);
-      mstp.VecTo((xVec){0,0},speed);
       mstp.printBLKInfo();
       // mstp.VecTo((xVec){0,pt1},speed);
       // mstp.VecTo((xVec){0,pt2},speed);

@@ -104,16 +104,16 @@ class MStp_M:public MStp{
   void BlockEndEffect(runBlock* blk)
   {
 
-  }
-
-  void BlockInitEffect(runBlock* blk)
-  {
     for(int i=0;i<MSTP_VEC_SIZE;i++)
     {
       printf("%d  ",stepCount[i]);
       // stepCount[i]=0;
     }
     printf("\n");
+  }
+
+  void BlockInitEffect(runBlock* blk)
+  {
   }
 
 
@@ -131,11 +131,11 @@ class MStp_M:public MStp{
   
 
   uint32_t axis_st=0;
-  void BlockPulEffect(uint32_t idxes_H,uint32_t idxes_L)
+  void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)
   {
     
-    // printf("======");
-
+    printf("===T:%s",int2bin(idxes_T,MSTP_VEC_SIZE));
+    printf(" R:%s >>\n",int2bin(idxes_R,MSTP_VEC_SIZE));
 
     // for(int i=0;i<MSTP_VEC_SIZE;i++)
     // {
@@ -163,44 +163,44 @@ class MStp_M:public MStp{
     // printf("\n");
     
  
-    if(axis_st&idxes_H)
+    if(axis_st&idxes_T)
     {
       printf("==============ERROR pull up\n");
     }
 
-    axis_st|=idxes_H;
+    axis_st|=idxes_T;
 
  
-    if(axis_st&idxes_L!=idxes_L)
+    if(axis_st&idxes_R!=idxes_R)
     {
       printf("==============ERROR pin down\n");
     }
-    axis_st&=~idxes_L;
+    axis_st&=~idxes_R;
 
-    if(idxes_L&M1_reader)
+    if(idxes_R&M1_reader)
     {
       // digitalWrite(PIN_M1_STP, 0);
     }
 
-    if(idxes_L&M2_reader)
+    if(idxes_R&M2_reader)
     {
       // digitalWrite(PIN_M2_STP, 0);
     }
-    // printf("id:%s  ",int2bin(idxes_H,MSTP_VEC_SIZE));
-    // printf("ac:%s \n",int2bin(idxes_L,MSTP_VEC_SIZE));
+    // printf("id:%s  ",int2bin(idxes_T,MSTP_VEC_SIZE));
+    // printf("ac:%s \n",int2bin(idxes_R,MSTP_VEC_SIZE));
 
     // int Midx=0;
 
     
     // Serial.printf("PINs:%s\n",int2bin(axis_st,MSTP_VEC_SIZE));
 
-    if(idxes_H&1)
+    if(idxes_T&1)
     {
       // printf("M1H:TS:%d\n",FACCT);
       FACCT=0;
       // digitalWrite(PIN_M1_STP, 1);
     }
-    if(idxes_H&2)
+    if(idxes_T&2)
     {
       // printf("M2H:TS:%d\n",FACCT2);
       FACCT2=0;
@@ -208,21 +208,21 @@ class MStp_M:public MStp{
     }
 
 
-    if(idxes_H&M2_reader)
+    if(idxes_T&M2_reader)
     {
       // digitalWrite(PIN_M2_STP, 1);
     }
 
     for(int i=0;i<MSTP_VEC_SIZE;i++)
     {
-      if(idxes_H&(1<<i))
+      if(idxes_T&(1<<i))
       {
         stepCount[i]+=(axis_dir&(1<<i))==0?1:-1;
       }
     }
 
 
-    // if(idxes_L&1)
+    // if(idxes_R&1)
     // {
       
     //   printf("MxL:T:%d\n",FACCT);
@@ -230,7 +230,7 @@ class MStp_M:public MStp{
     //   // digitalWrite(PIN_M1_STP, 0);
     // }
     
-    // if(idxes_H&1)
+    // if(idxes_T&1)
     // {
     //   // digitalWrite(PIN_M1_STP, 1);
     //   printf("MxH:T:%d\n",FACCT);
@@ -258,7 +258,7 @@ void first_thread_job()
       //   printf("tskrun_state:0\n");
       
       int T = mstp.taskRun();
-      // printf("T:%d\n",T);
+      printf("T:%d\n",T);
       
 
       if(T<0)
@@ -317,9 +317,22 @@ int main()
   //   mstp.VecTo((xVec){pos*(50+2*i)/100,pos*50/100},speed);
   //   mstp.VecTo((xVec){0,0},speed);
   // }
-  mstp.VecTo((xVec){0,100},speed);
-  mstp.VecTo((xVec){100,100},speed);
-  mstp.VecTo((xVec){0,0},speed);
+  // mstp.VecTo((xVec){0,100},speed);
+  // mstp.VecTo((xVec){100,100},speed);
+  // mstp.VecTo((xVec){0,0},speed);
+
+  for(int k=0;k<2;k++)
+  {
+    int speed=300;
+    // pickOn(1,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
+    // pickOn(2,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
+
+    mstp.VecTo((xVec){5,5},speed);
+    // busyLoop(1000);
+    mstp.VecTo((xVec){0,0},speed);
+    // sleep(1);
+
+  }
   // mstp.VecAdd((xVec){1000,1000},speed);
   // mstp.VecAdd((xVec){800,1000},speed);
   // mstp.VecAdd((xVec){1000,1000},speed);

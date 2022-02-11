@@ -36,6 +36,9 @@ enum blockType { blk_line=0,blk_wait=1 };
 struct runBlock
 {
   void* ctx;
+  float vcur;
+  float vcen;
+  float vto;
   blockType type;
   xVec from;
   xVec to;
@@ -44,10 +47,6 @@ struct runBlock
   uint32_t cur_step;
   float JunctionNormCoeff;
   float JunctionNormMaxDiff;
-  bool isInDeAccState;
-  float vcur;
-  float vcen;
-  float vto;
   float vto_JunctionMax;
 
 };
@@ -106,15 +105,15 @@ public:
   MStp(RingBuf<runBlock> *_blocks, MSTP_setup *_axisSetup);
 
 
-  void VecAdd(xVec VECAdd,float speed,void* ctx=NULL);
-  void VecTo(xVec VECTo,float speed,void* ctx=NULL);
+  bool VecAdd(xVec VECAdd,float speed,void* ctx=NULL);
+  bool VecTo(xVec VECTo,float speed,void* ctx=NULL);
 
   void Delay(int interval,int intervalCount=1);
   
   void BlockRunStep(runBlock &rb);
 
   // virtual void BlockRunEffect(uint32_t idxes)=0;
-  virtual void BlockPulEffect(uint32_t idxes_H,uint32_t idxes_L)=0;
+  virtual void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)=0;
   virtual void BlockDirEffect(uint32_t idxes)=0;
   virtual void BlockInitEffect(runBlock* blk)=0;
 

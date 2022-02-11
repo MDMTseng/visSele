@@ -632,9 +632,9 @@ void MStp::Delay(int interval,int intervalCount)
 }
 
 
-void MStp::VecAdd(xVec VECAdd,float speed,void* ctx)
+bool MStp::VecAdd(xVec VECAdd,float speed,void* ctx)
 {
-  VecTo(vecAdd(lastTarLoc,VECAdd),speed,ctx);
+  return VecTo(vecAdd(lastTarLoc,VECAdd),speed,ctx);
 }
 
 
@@ -644,12 +644,12 @@ bool MStp::isQueueEmpty()
 }
 
 
-void MStp::VecTo(xVec VECTo,float speed,void* ctx)
+bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 {
 
-  if(blocks->space() <3)
+  if(blocks->space() <=5)
   {
-    return;
+    return false;
   }
 
 
@@ -658,6 +658,9 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
   newBlk=(runBlock){
     .ctx=ctx,
+    .vcur=0,
+    .vcen=speed,
+    .vto=0,
     .type=blockType::blk_line,
     .from = lastTarLoc,
     .to=VECTo,
@@ -666,10 +669,6 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
     .cur_step=0,
     .JunctionNormCoeff=0,
     .JunctionNormMaxDiff=NAN,
-    .isInDeAccState=false,
-    .vcur=0,
-    .vcen=speed,
-    .vto=0,
     .vto_JunctionMax=0,
   };
 
@@ -682,7 +681,7 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
   if(newBlk.steps==0)
   {
-    return;
+    return true;
   }
 
 
@@ -692,7 +691,7 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
   runBlock *preBlk = NULL;
   
-  int blkGard=2;
+  int blkGard=5;
   if(blocks->size()>blkGard)//get previous block to calc junction info
   {
     preBlk = blocks->getHead(1);
@@ -911,7 +910,7 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
 
-    CASE3 :the curblk has enough steps to de-accelerate to curblk.vto, so to change preblk is not needed 
+    CASE3 :the curblk has enough steps to de-accelerate to curblk.vto, so change preblk is not needed 
             _________V___  preblk.vto 
           /          |    \   
         /            |      \  
@@ -929,7 +928,7 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
     //{oldest blk}.....preblk, curblk, {newest blk}
     runBlock* curblk;
     runBlock* preblk = blocks->getHead(1);
-    for(int i=1;(i+2)<blocks->size();i++)
+    for(int i=1;(i+blkGard)<blocks->size();i++)
     {//can only adjust vto
       curblk = preblk;
       preblk = blocks->getHead(1+i);
@@ -998,6 +997,7 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
   
   // timerAlarmEnable(timer);
   // 
+  return true;
 
 }
 
@@ -1141,9 +1141,76 @@ void MStp::BlockRunStep(runBlock &rb)
 
 void MStp::blockPlayer()
 {
-  
+  if(p_runBlk==NULL)
+  {
+    BlockInitEffect(NULL);
+    T_next=0;
+    // cout << "This is the first thread "<< endl;
+    // std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    axis_pul=0;
+
+    for(int i=0;i<MSTP_VEC_SIZE;i++)
+    {
+      curPos_residue.vec[i]=0;
+
+    }
+    // blocks->consumeTail();
+    // __PRT_I_("Empty Q\n");
+    p_runBlk=blocks->getTail();
+    if(p_runBlk!=NULL)
+    {
+    }      
+    else
+    {
+      stopTimer();
+      // __PRT_I_("No Tail\n");
+      return;
+    }
+
+  }
+
+
+    
   if(p_runBlk!=NULL)
   {
+
+    if(p_runBlk->cur_step==p_runBlk->steps)
+    {
+      float vcur= p_runBlk->vcur;
+      memset(&curPos_mod,0,sizeof(curPos_mod));
+      memset(&curPos_residue,0,sizeof(curPos_residue));
+      memset(&posvec,0,sizeof(posvec));
+      
+      __PRT_D_("EndSpeed:%f  T_next:%d\n",vcur,T_next);
+
+      BlockEndEffect(p_runBlk);
+      
+      p_runBlk=NULL;
+      blocks->consumeTail();
+
+      p_runBlk= blocks->getTail();
+      if(p_runBlk!=NULL)
+      {
+        p_runBlk->cur_step=0;
+        p_runBlk->vcur= vcur*p_runBlk->JunctionNormCoeff;
+
+        // __PRT_D_("  =vcur:%f x coeff:%f=new_v %f,%f,%f==\n",vcur,p_runBlk->JunctionNormCoeff,p_runBlk->vcur,blk.vcen,blk.vto);
+
+
+      }
+      else
+      {
+
+        // __PRT_I_("No Tail\n");
+      }
+    }
+    if(p_runBlk==NULL)
+    {
+      stopTimer();
+      return;
+    }
+
+    
 
     runBlock &blk=*p_runBlk;
     float vcur= blk.vcur;
@@ -1189,6 +1256,7 @@ void MStp::blockPlayer()
     }
 
 
+
     float T = TICK2SEC_BASE/vcur;
     this->T_next=(uint32_t)(T);
 
@@ -1208,67 +1276,11 @@ void MStp::blockPlayer()
     // std::this_thread::sleep_for(std::chrono::milliseconds(sysInfo.T_next));
     
     // BlockRunEffect();
-    if(blk.cur_step==blk.steps)
-    {
-      float vcur= blk.vcur;
-      memset(&curPos_mod,0,sizeof(curPos_mod));
-      memset(&curPos_residue,0,sizeof(curPos_residue));
-      memset(&posvec,0,sizeof(posvec));
-      
-      __PRT_D_("EndSpeed:%f  T_next:%d\n",vcur,T_next);
 
-      BlockEndEffect(p_runBlk);
-      
-      p_runBlk=NULL;
-      blocks->consumeTail();
-
-      p_runBlk= blocks->getTail();
-      if(p_runBlk!=NULL)
-      {
-        p_runBlk->cur_step=0;
-        p_runBlk->vcur= vcur*p_runBlk->JunctionNormCoeff;
-
-        __PRT_D_("  =vcur:%f x coeff:%f=new_v %f,%f,%f==\n",vcur,p_runBlk->JunctionNormCoeff,p_runBlk->vcur,blk.vcen,blk.vto);
-
-
-      }
-      else
-      {
-
-        // __PRT_I_("No Tail\n");
-      }
-    }
-    
 
     // __PRT_D_("\n\n\n");
   }
-  else
-  {
-    BlockInitEffect(NULL);
-    T_next=0;
-    // cout << "This is the first thread "<< endl;
-    // std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    axis_pul=0;
 
-    for(int i=0;i<MSTP_VEC_SIZE;i++)
-    {
-      curPos_residue.vec[i]=0;
-
-    }
-    // blocks->consumeTail();
-    // __PRT_I_("Empty Q\n");
-    p_runBlk=blocks->getTail();
-    if(p_runBlk!=NULL)
-    {
-    }      
-    else
-    {
-      stopTimer();
-      // __PRT_I_("No Tail\n");
-    }
-
-
-  }
 
 
 
@@ -1293,7 +1305,7 @@ uint32_t MStp::findMidIdx(uint32_t from_idxes,uint32_t totSteps)
   }
   return idxes;
 }
-
+  
 
 uint32_t MStp::findNearstPulseIdx(uint32_t *ret_minResidue,int *ret_restCount)
 {
@@ -1368,6 +1380,7 @@ uint32_t MStp::taskRun()
       }
     }
   }
+  
   BlockPulEffect(pre_indexes,axis_collectpul);
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
   // delIdxResidue(pre_indexes);
@@ -1376,16 +1389,18 @@ uint32_t MStp::taskRun()
   if(tskrun_state==0)
   {
 
+    __PRT_D_("tskrun_state:%d isMidPulTrig:%d\n",tskrun_state,isMidPulTrig);
     // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
     blockPlayer();
+
+    pre_indexes=0;
+    isMidPulTrig=false;
+    axis_collectpul=0;
+    __PRT_D_("p_runBlk:%p T_next:%d\n",p_runBlk,T_next);
     if(p_runBlk==NULL)
     {
       return 0;
     }
-    pre_indexes=0;
-    isMidPulTrig=false;
-    axis_collectpul=0;
-
     if(T_next==0)
     {
       return 0;
@@ -1395,6 +1410,7 @@ uint32_t MStp::taskRun()
 
   }
 
+  __PRT_D_("tskrun_state:%d isMidPulTrig:%d \n",tskrun_state,isMidPulTrig);
   if(tskrun_state==1)
   {
     if(p_runBlk==NULL)
@@ -1403,18 +1419,27 @@ uint32_t MStp::taskRun()
       tskrun_state=0;
       return 0;
     }
+    __PRT_D_("cur_step:%d \n",p_runBlk->cur_step);
     if(isMidPulTrig==false)
     {
       uint32_t idxes=findMidIdx(axis_pul,p_runBlk->steps);
       // Serial.printf("=curBlk->steps:%d==idxes:%s  resd:%d\n",curBlk->steps,int2bin(idxes,MSTP_VEC_SIZE),curPos_residue.vec[0]);
       if(idxes==0)
+      {
         IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=!PIN_DBG0_st);
+      }
       isMidPulTrig=true;
       axis_pul&=~idxes;//surpress current
 
       pre_indexes=idxes;
       axis_collectpul=_axis_collectpul1;
       _axis_collectpul1=pre_indexes;
+      
+      if(p_runBlk->cur_step==1)
+      {
+        pre_indexes=0;
+        axis_collectpul=~0;
+      }
       return T_next/2;
     }
 
