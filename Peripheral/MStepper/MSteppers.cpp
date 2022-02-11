@@ -848,7 +848,6 @@ void MStp::VecTo(xVec VECTo,float speed,void* ctx)
   {
     // newBlk.vcur=100;
     // T_next=TICK2SEC_BASE/minSpeed;
-    T_next=0;
   }
   runBlock* hrb=blocks->getHead();
   *hrb=newBlk;
@@ -1098,12 +1097,6 @@ void MStp::BlockRunStep(runBlock &rb)
       rb.vcur=rb.vcen;
     }
   }
-  vcur=rb.vcur;
-  if(vcur<minSpeed)
-  {
-    vcur=minSpeed;
-  }
-
 
   // rb.vcur=rb.vcen;
   // {
@@ -1117,6 +1110,12 @@ void MStp::BlockRunStep(runBlock &rb)
   // uint32_t step_scal=(rb.cur_step+1)<<PULSE_ROUND_SHIFT;//100x is for round  +1 for predict next position
 
   // __PRT_D_("=%03d/%03d==: \n",step_scal,rb.steps);
+
+
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
+  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
+
+
   uint32_t _axis_pul=0;
   uint32_t steps_scal=rb.steps;
   for(int k=0;k<MSTP_VEC_SIZE;k++)
@@ -1136,21 +1135,6 @@ void MStp::BlockRunStep(runBlock &rb)
   }
 
   axis_pul=_axis_pul;
-
-
-
-  float T = TICK2SEC_BASE/vcur;
-  this->T_next=(uint32_t)(T);
-
-  delayResidue+=T-T_next;
-  if(delayResidue>1)
-  {
-    delayResidue-=1;
-    T_next+=1;
-  }
-
-  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
-  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
 }
 
 
@@ -1195,6 +1179,30 @@ void MStp::blockPlayer()
     }
 
     BlockRunStep(*p_runBlk);
+
+
+
+    vcur=p_runBlk->vcur;
+    if(vcur<minSpeed)
+    {
+      vcur=minSpeed;
+    }
+
+
+    float T = TICK2SEC_BASE/vcur;
+    this->T_next=(uint32_t)(T);
+
+    delayResidue+=T-T_next;
+    if(delayResidue>1)
+    {
+      delayResidue-=1;
+      T_next+=1;
+    }
+
+
+
+
+
 
     blk.cur_step++;
     // std::this_thread::sleep_for(std::chrono::milliseconds(sysInfo.T_next));

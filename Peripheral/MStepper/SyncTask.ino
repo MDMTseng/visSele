@@ -676,12 +676,12 @@ void loop()
 
       }
       
-      while(mstp.blocks->size()>2)
+      while(mstp.blocks->size()>0)
       {
         Serial.printf("");
       }
-      mstp.VecTo((xVec){30,40},speed);
-      mstp.VecTo((xVec){10,11},speed);
+      mstp.VecTo((xVec){10,10},speed);
+      mstp.VecTo((xVec){10,0},speed);
 
       
       // mstp.VecTo((xVec){0,0},speed);
