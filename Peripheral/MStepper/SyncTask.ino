@@ -674,27 +674,49 @@ void loop()
 
       int posDiff=0;
       
-      // mstp.VecTo((xVec){mstp.M1Info_Limit1*100/100,pos},speed);
-      // mstp.VecTo((xVec){mstp.M1Info_Limit1*0/100,pos},speed);
-      for(int k=0;k<2;k++)
-      {
-        int speed=300;
-        // pickOn(1,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
-        // pickOn(2,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
+      // vecToWait((xVec){mstp.M1Info_Limit1*100/100,pos},speed);
+      // vecToWait((xVec){mstp.M1Info_Limit1*0/100,pos},speed);
+      // for(int k=0;k<20;k++)
+      // {
+      //   int speed=300;
+      //   vecToWait((xVec){5,5},speed);
+      //   // busyLoop(1000);
+      //   vecToWait((xVec){0,0},speed);
+      //   // sleep(1);
+      // vecToWait((xVec){0,0},speed);
+      // vecToWait((xVec){0,10},200);
+      // vecToWait((xVec){0,0},200);
 
-        mstp.VecTo((xVec){5,5},speed);
-        // busyLoop(1000);
-        mstp.VecTo((xVec){0,0},speed);
-        // sleep(1);
+      // }
+      int pos=0;
+      int n=0;
+      pos=n+0;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+4;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+1;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+5;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+2;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+6;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+3;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+7;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
 
-      }
+
+      // n=8;
+      // pos=n+0;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      // pos=n+4;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      // pos=n+1;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      // pos=n+5;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      // pos=n+2;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      // pos=n+6;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      // pos=n+3;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      // pos=n+7;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
+
+
       
       mstp.printBLKInfo();
       // mstp.VecTo((xVec){0,pt1},speed);
       // mstp.VecTo((xVec){0,pt2},speed);
 
     }
-    // mstp.VecTo((xVec){0,0},speed);
   }
 
 }
