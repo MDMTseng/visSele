@@ -94,7 +94,7 @@ class MStp_M:public MStp{
     if(timerRunning==false)
     {
       timerAlarmEnable(timer);  
-      timerAlarmWrite(timer,1, true);
+      // timerAlarmWrite(timer,1, true);
       timerRunning=true;
     }
   }
@@ -370,15 +370,15 @@ class MStp_M:public MStp{
   
   bool PIN_DBG0_st=false;
   uint32_t axis_st=0;
-  void BlockPulEffect(uint32_t idxes_H,uint32_t idxes_L)
+  void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)
   {
     if(runUntil_sensorPIN)
     {
       runUntilDetected();
     }
     // if(idxes==0)return;
-    // printf("===T:%s",int2bin(idxes_H,5));
-    // printf(" R:%s >>",int2bin(idxes_L,5));
+    // printf("===T:%s",int2bin(idxes_T,5));
+    // printf(" R:%s >>",int2bin(idxes_R,5));
 
     // // printf("PULSE_ROUNDSCALE:%d  ",PULSE_ROUNDSCALE);
 
@@ -392,20 +392,20 @@ class MStp_M:public MStp{
     // printf("\n");
     
  
-    axis_st|=idxes_H;
-    axis_st&=~idxes_L;
-    // if(idxes_L && (idxes_H==0))
+    axis_st|=idxes_T;
+    axis_st&=~idxes_R;
+    // if(idxes_R && (idxes_T==0))
     // {
     //   digitalWrite(PIN_DBG0, PIN_DBG0_st);
     //   PIN_DBG0_st=!PIN_DBG0_st;
     // }
-    if(idxes_L&M1_reader)
+    if(idxes_R&M1_reader)
     {
 
       digitalWrite(PIN_M1_STP, 1);
     }
 
-    if(idxes_L&M2_reader)
+    if(idxes_R&M2_reader)
     {
       digitalWrite(PIN_M2_STP, 1);
     }
@@ -417,12 +417,12 @@ class MStp_M:public MStp{
     
     // Serial.printf("PINs:%s\n",int2bin(axis_st,MSTP_VEC_SIZE));
 
-    if(idxes_H&M1_reader)
+    if(idxes_T&M1_reader)
     {
       digitalWrite(PIN_M1_STP, 0);
     }
 
-    if(idxes_H&M2_reader)
+    if(idxes_T&M2_reader)
     {
       digitalWrite(PIN_M2_STP, 0);
     }
@@ -431,7 +431,7 @@ class MStp_M:public MStp{
 
 };
 
-#define MSTP_BLOCK_SIZE 50
+#define MSTP_BLOCK_SIZE 30
 runBlock blockBuff[MSTP_BLOCK_SIZE];
 RingBuf <runBlock> __blocks(blockBuff,MSTP_BLOCK_SIZE);
 
