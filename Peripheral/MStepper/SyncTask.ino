@@ -51,8 +51,7 @@ class MStp_M:public MStp{
   
 
   int POut1=0;
-  
-  MStp_M(RingBuf<struct runBlock> *_blocks, MSTP_setup *_axisSetup):MStp(_blocks,_axisSetup)
+  MStp_M(MSTP_segment *buffer, int bufferL):MStp(buffer,bufferL)
   {
     
     TICK2SEC_BASE=10*1000*1000;
@@ -112,7 +111,7 @@ class MStp_M:public MStp{
     VecAdd(cpos,speed);
     Serial.printf("STP1-3\n");
 
-    while(runUntil_sensorPIN!=0 && isQueueEmpty()==false)
+    while(runUntil_sensorPIN!=0 && SegQ_IsEmpty()==false)
     {
       Serial.printf("");
     }//wait for touch sensor
@@ -192,7 +191,7 @@ class MStp_M:public MStp{
         cpos.vec[axisIdx]=0;
         VecTo(cpos,runSpeed);
 
-        while(isQueueEmpty()==false)
+        while(SegQ_IsEmpty()==false)
         {
           Serial.printf("");
         }//wait for end
@@ -254,7 +253,8 @@ class MStp_M:public MStp{
   int M1_reader=1<<0;
   int M2_reader=1<<1;
 
-  void BlockEndEffect(runBlock* blk)
+
+  void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* blk) MSTP_SEG_PREFIX
   {
     
     if(blk==NULL)
@@ -304,7 +304,7 @@ class MStp_M:public MStp{
   }
   
   int PIN_DBG_ST=0;
-  void BlockInitEffect(runBlock* blk)
+  void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* blk) MSTP_SEG_PREFIX
   {
     
     
@@ -432,10 +432,9 @@ class MStp_M:public MStp{
 };
 
 #define MSTP_BLOCK_SIZE 30
-runBlock blockBuff[MSTP_BLOCK_SIZE];
-RingBuf <runBlock> __blocks(blockBuff,MSTP_BLOCK_SIZE);
+static MSTP_segment blockBuff[MSTP_BLOCK_SIZE];
 
-MStp_M mstp(&__blocks,NULL);
+MStp_M mstp(blockBuff,MSTP_BLOCK_SIZE);
 
 
 class SyncTask
@@ -632,8 +631,7 @@ void busyLoop(uint32_t count)
 MSTP_BlkCtx ctx[10]={0};
 void loop()
 {
-
-  if(rzERROR==0 && mstp.isQueueEmpty()==true)
+  if(rzERROR==0 && mstp.SegQ_IsEmpty()==true)
   {
     delay(1000);
 
