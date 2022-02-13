@@ -503,9 +503,14 @@ uint32_t preCD=0;
 
 bool isSystemZeroOK=false;
 
+uint32_t cp0_regs[18];
 void IRAM_ATTR onTimer()
 {
 
+  // enable FPU
+  xthal_set_cpenable(1);
+  // Save FPU registers
+  xthal_save_cp0(cp0_regs);
   // uint32_t nextT=100;
   // Serial.printf("nextT:%d mstp.axis_RUNState:%d\n",mstp.T_next,mstp.axis_RUNState);
 
@@ -519,9 +524,10 @@ void IRAM_ATTR onTimer()
   {
     
     Serial.printf("ERROR:: T(%d)<0\n",T);
-    return;;
+    T=100*10000;
+    // return;;
   }
-  if(T==0)
+  else if(T==0)
   {
     T=100*1000;
     
@@ -538,6 +544,10 @@ void IRAM_ATTR onTimer()
   timerAlarmWrite(timer,T, true);
 
 
+  // Restore FPU
+  xthal_restore_cp0(cp0_regs);
+  // and turn it back off
+  xthal_set_cpenable(0);
   // 
 }
 StaticJsonDocument<1024> recv_doc;
