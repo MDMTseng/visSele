@@ -902,7 +902,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
 
-void MStp::printBLKInfo()
+void MStp::printSEGInfo()
 {
   for(int i=0;i<SegQ_Size();i++)
   {
@@ -961,7 +961,12 @@ void MStp::BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
   {
     // float alpha=-((deAccBuffer)/4);
     float speedInc=a2/vcur;//*(1+alpha);
-
+    // float newV=seg->vcur+speedInc;
+    // if(newV<minSpeed)
+    // {
+    //   speedInc=-maxSpeedInc;
+    // }
+    
     seg->vcur+=speedInc;
     // __PRT_D_("a2:%d  T_next:%d  TICK2SEC_BASE:%d\n",a2,T_next,TICK2SEC_BASE);
 

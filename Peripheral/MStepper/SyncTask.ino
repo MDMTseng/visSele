@@ -36,7 +36,7 @@ hw_timer_t *timer = NULL;
 
 
 
-struct MSTP_BlkCtx{
+struct MSTP_SegCtx{
   int type;
   // int delay_time_ms;
   int d0;
@@ -55,9 +55,9 @@ class MStp_M:public MStp{
   {
     
     TICK2SEC_BASE=10*1000*1000;
-    minSpeed=200;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    acc=SUBDIV*2500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
-    junctionMaxSpeedJump=300;//5200;
+    acc=SUBDIV*1500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
+    minSpeed=sqrt(acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    junctionMaxSpeedJump=minSpeed;//5200;
 
     maxSpeedInc=minSpeed;
     pinMode(PIN_M1_DIR, OUTPUT);
@@ -254,20 +254,20 @@ class MStp_M:public MStp{
   int M2_reader=1<<1;
 
 
-  void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* blk) MSTP_SEG_PREFIX
+  void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* seg)
   {
     
-    if(blk==NULL)
+    if(seg==NULL)
     {
       return;
     }
 
-    if(blk->ctx==NULL)
+    if(seg->ctx==NULL)
     {
       return;
     }
 
-    MSTP_BlkCtx *ctx=(MSTP_BlkCtx*)blk->ctx;
+    MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
   
     if(ctx->type!=1)
     {
@@ -304,22 +304,22 @@ class MStp_M:public MStp{
   }
   
   int PIN_DBG_ST=0;
-  void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* blk) MSTP_SEG_PREFIX
+  void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* seg)
   {
     
     
-    if(blk==NULL)
+    if(seg==NULL)
     {
       return;
     }
 
     // digitalWrite(PIN_DBG,PIN_DBG_ST=!PIN_DBG_ST);
   
-    if(blk->ctx!=NULL)//new block
+    if(seg->ctx!=NULL)//new block
     {
 
 
-      MSTP_BlkCtx *ctx=(MSTP_BlkCtx*)blk->ctx;
+      MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
     
       if(ctx->type==0)
       {
@@ -358,7 +358,7 @@ class MStp_M:public MStp{
 
   void BlockDirEffect(uint32_t dir_idxes)
   {
-    // pre_blk->ctx;//do sth... start
+    // pre_seg->ctx;//do sth... start
     
     // digitalWrite(PIN_OUT_1, POut1=(!POut1));
     digitalWrite(PIN_M1_DIR, (dir_idxes&M1_reader)!=0);
@@ -568,7 +568,7 @@ void vecToWait(xVec VECTo,float speed,void* ctx=NULL)
 }
 
 
-void pickOn(int lidx,int pos,int speed,MSTP_BlkCtx *p_ctx=NULL)
+void pickOn(int lidx,int pos,int speed,MSTP_SegCtx *p_ctx=NULL)
 {
   int upR=80;
   int restSpeed=speed/2;
@@ -638,14 +638,14 @@ void busyLoop(uint32_t count)
   }
 }
 
-MSTP_BlkCtx ctx[10]={0};
+MSTP_SegCtx ctx[10]={0};
 void loop()
 {
   if(rzERROR==0 && mstp.SegQ_IsEmpty()==true)
   {
-    delay(1000);
+    delay(3000);
 
-  uint32_t speed=25000;//25000;
+  uint32_t speed=40000;//25000;
 
 
     int pt1=(-30-12*2)*SUBDIV/mm_PER_REV;
@@ -656,27 +656,27 @@ void loop()
     {
       // delay(1000);
 
-      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
+      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=1,.d1=0 };
       // pickOn(1,pt1, speed,&(ctx[cidx++]));
-      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=1 };
+      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=0,.d1=1 };
       // pickOn(2,pt1, speed,&(ctx[cidx++]));
 
 
-      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
+      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=1,.d1=0 };
       // pickOn(1,pt2, speed,&(ctx[cidx++]));
-      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=0 };
+      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=0,.d1=0 };
       // pickOn(2,pt2, speed,&(ctx[cidx++]));
 
 
-      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
+      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=1,.d1=0 };
       // pickOn(1,pt2, speed,&(ctx[cidx++]));
-      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=1 };
+      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=0,.d1=1 };
       // pickOn(2,pt2, speed,&(ctx[cidx++]));
 
 
-      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=1,.d1=0 };
+      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=1,.d1=0 };
       // pickOn(1,pt1, speed,&(ctx[cidx++]));
-      // ctx[cidx]=(MSTP_BlkCtx){.type=0,.d0=0,.d1=0 };
+      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=0,.d1=0 };
       // pickOn(2,pt1, speed,&(ctx[cidx++]));
 
 
@@ -720,7 +720,7 @@ void loop()
 
 
       
-      mstp.printBLKInfo();
+      mstp.printSEGInfo();
       // mstp.VecTo((xVec){0,pt1},speed);
       // mstp.VecTo((xVec){0,pt2},speed);
 

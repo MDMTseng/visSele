@@ -9,7 +9,7 @@ int mainX();
 char *int2bin(uint32_t a, int digits, char *buffer, int buf_size);
 char *int2bin(uint32_t a, int digits=8);
 
-#define MSTP_SEG_PREFIX volatile
+#define MSTP_SEG_PREFIX //volatile
 
 #define PRT_FUNC_LEN 6
 #ifdef X86_PLATFORM
@@ -98,7 +98,7 @@ public:
   MSTP_SEG_PREFIX bool SegQ_Tail_Pop() MSTP_SEG_PREFIX;
 
 
-  void printBLKInfo();
+  void printSEGInfo();
   void StepperForceStop();
 
   MStp(MSTP_segment *buffer, int bufferL);
@@ -109,11 +109,11 @@ public:
   void BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *curSeg) MSTP_SEG_PREFIX;
 
   // virtual void BlockRunEffect(uint32_t idxes)=0;
-  virtual void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R) MSTP_SEG_PREFIX{}
-  virtual void BlockDirEffect(uint32_t idxes)MSTP_SEG_PREFIX{}
+  virtual void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)=0;
+  virtual void BlockDirEffect(uint32_t idxes)=0;
 
-  virtual void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* blk) MSTP_SEG_PREFIX{}
-  virtual void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* blk) MSTP_SEG_PREFIX{}
+  virtual void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* blk)=0;
+  virtual void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* blk)=0;
   
   bool timerRunning=false;
   virtual void stopTimer() MSTP_SEG_PREFIX {timerRunning=false;}
