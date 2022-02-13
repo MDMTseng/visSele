@@ -324,7 +324,7 @@ inline int Calc_JunctionNormCoeff(MSTP_SEG_PREFIX MSTP_segment *blkA,MSTP_SEG_PR
 
   for(int i=0;i<MSTP_VEC_SIZE;i++)
   {
-    // float A=(float)preBlk->runvec.vec[i]/preBlk->steps;//normalize here, a bit slower
+    // float A=(float)preSeg->runvec.vec[i]/preSeg->steps;//normalize here, a bit slower
     // float B=(float)rb.runvec.vec[i]/rb.steps;
 
     float A=(float)blkA->runvec.vec[i];//X
@@ -593,21 +593,20 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
   // 
   // timerAlarmDisable(timer);
 
-  MSTP_SEG_PREFIX MSTP_segment *preBlk = NULL;
+  MSTP_SEG_PREFIX MSTP_segment *preSeg = NULL;
   
-  int blkGard=5;
-  if(SegQ_Size()>blkGard)//get previous block to calc junction info
+  if(SegQ_Size()>0)//get previous block to calc junction info
   {
-    preBlk = SegQ_Head(1);
+    preSeg = SegQ_Head(1);
   }
-  if(preBlk!=NULL)
+  if(preSeg!=NULL)
   {// you need to deal with the junction speed
-    // preBlk->vec;
+    // preSeg->vec;
     // newSeg.vec;
     
 
     float coeff1=NAN;
-    int coeffSt= Calc_JunctionNormCoeff(preBlk,&newSeg,&coeff1);
+    int coeffSt= Calc_JunctionNormCoeff(preSeg,&newSeg,&coeff1);
     if(coeffSt<0)
     {
       newSeg.JunctionNormCoeff=0;
@@ -619,8 +618,8 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
     {
       float maxDiff1=NAN;
       int retSt=0;
-      retSt |= Calc_JunctionNormMaxDiff(preBlk,&newSeg,coeff1,&maxDiff1);
-      // retSt |= Calc_JunctionNormMaxDiff(*preBlk,newSeg,coeff2,maxDiff2);
+      retSt |= Calc_JunctionNormMaxDiff(preSeg,&newSeg,coeff1,&maxDiff1);
+      // retSt |= Calc_JunctionNormMaxDiff(*preSeg,newSeg,coeff2,maxDiff2);
 
 
 
@@ -643,20 +642,20 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
       {
         // newSeg.JunctionNormMaxDiff=maxDiff1;
 
-        // __PRT_D_("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n DIFF:",newSeg.JunctionNormMaxDiff,preBlk->vto,newSeg.vcur);
+        // __PRT_D_("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n DIFF:",newSeg.JunctionNormMaxDiff,preSeg->vto,newSeg.vcur);
 
         if(newSeg.JunctionNormMaxDiff<0.01)
           newSeg.JunctionNormMaxDiff=0.01;//min diff cap to prevent value explosion
 
 
         //max allowed end speed of pre block, so that at junction the max speed jump is within the limit, this is fixed
-        preBlk->vto_JunctionMax=junctionMaxSpeedJump/newSeg.JunctionNormMaxDiff;
+        preSeg->vto_JunctionMax=junctionMaxSpeedJump/newSeg.JunctionNormMaxDiff;
 
         //vcur is the current speed, for un-executed block it's the starting speed
-        newSeg.vcur=preBlk->vto_JunctionMax*newSeg.JunctionNormCoeff;
+        newSeg.vcur=preSeg->vto_JunctionMax*newSeg.JunctionNormCoeff;
 
         {
-          float vto_JunctionMax=preBlk->vto_JunctionMax;
+          float vto_JunctionMax=preSeg->vto_JunctionMax;
           float JunctionNormMaxDiff=newSeg.JunctionNormMaxDiff;
           float vcur=newSeg.vcur;
           float vcen=newSeg.vcen;
@@ -667,10 +666,10 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
         {
           newSeg.vcur=newSeg.vcen;//cap the speed
 
-          preBlk->vto_JunctionMax=newSeg.vcur/newSeg.JunctionNormCoeff;//calc speed back to preBlk->vto
+          preSeg->vto_JunctionMax=newSeg.vcur/newSeg.JunctionNormCoeff;//calc speed back to preSeg->vto
 
           {
-            float vto_JunctionMax=preBlk->vto_JunctionMax;
+            float vto_JunctionMax=preSeg->vto_JunctionMax;
             float vcur=newSeg.vcur;
             float vcen=newSeg.vcen;
             __PRT_I_("===JunctionMax:%f  vcur:%f  vcen:%f==\n",vto_JunctionMax,vcur,vcen);
@@ -683,12 +682,12 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
         }
         
-        preBlk->vto=preBlk->vto_JunctionMax;
+        preSeg->vto=preSeg->vto_JunctionMax;
 
 
         {
-          float vto_JunctionMax=preBlk->vto_JunctionMax;
-          float vto=preBlk->vto;
+          float vto_JunctionMax=preSeg->vto_JunctionMax;
+          float vto=preSeg->vto;
           float vcur=newSeg.vcur;
           __PRT_I_("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n",vto_JunctionMax,vto,vcur);
           
@@ -696,7 +695,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
         // for(int k=0;k<MSTP_VEC_SIZE;k++)
         // {
-        //   float v1=(preBlk->vto*preBlk->runvec.vec[k]/preBlk->steps);
+        //   float v1=(preSeg->vto*preSeg->runvec.vec[k]/preSeg->steps);
         //   float v2=(  newSeg.vcur*   newSeg.runvec.vec[k]/   newSeg.steps);
         //   float diff = v1-v2;
         //   __PRT_I_("(A(%f)-B(%f)=%04.2f )\n",v1,v2,diff);
@@ -707,12 +706,12 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
       }
       else
       {
-        newSeg.vcur=preBlk->vto=0;
+        newSeg.vcur=preSeg->vto=0;
       }
     }
     else
     {
-      newSeg.vcur=preBlk->vto=0;
+      newSeg.vcur=preSeg->vto=0;
     }
 
 
@@ -721,8 +720,8 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
     // {
-    //   float vto=preBlk->vto;
-    //   float vcen=preBlk->vcen;
+    //   float vto=preSeg->vto;
+    //   float vcen=preSeg->vcen;
     //   float nvcur=newSeg.vcur;
     //   float nvcen=newSeg.vcen;
     //   __PRT_I_("pre vcen:%0.3f vto:%0.3f =>new vcur:%0.3f vcen:%0.3f\n",vcen,vto,nvcur,nvcen);
@@ -731,7 +730,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
     // newSeg.vcur=
-    // preBlk->vto=0;//cosinSim*newSeg.vcen;
+    // preSeg->vto=0;//cosinSim*newSeg.vcen;
     
 
 
@@ -740,7 +739,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
 
-    // Serial.printf("preBlk vcur:%f  vcen:%f  vto:%f    newSeg:vcur:%f  vcen:%f  vto:%f   \n",preBlk->vcur,preBlk->vcen,preBlk->vto,   newSeg.vcur,newSeg.vcen,newSeg.vto );
+    // Serial.printf("preSeg vcur:%f  vcen:%f  vto:%f    newSeg:vcur:%f  vcen:%f  vto:%f   \n",preSeg->vcur,preSeg->vcen,preSeg->vto,   newSeg.vcur,newSeg.vcen,newSeg.vto );
 
 
 
@@ -759,7 +758,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
     /*
 
 
-               preblk |     curblk
+               preSeg |     curblk
            
             ________      ________
            /        \    /        \
@@ -781,13 +780,13 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
       CASE2:  curblk is not long enough to able to de-accelerate from curblk.vcen(v center max speed) to curblk.vto
-              so the preblk need to reduce the vto speed, so curblk.vcur is low enough to safely de-accelerate to curblk.vto
+              so the preSeg need to reduce the vto speed, so curblk.vcur is low enough to safely de-accelerate to curblk.vto
                          
       example:curblk.steps=4                    
-              curblk.vto is 0(stop), but without changing preblk.vto it's impossible
+              curblk.vto is 0(stop), but without changing preSeg.vto it's impossible
 
           
-            _________V  preblk.vto 
+            _________V  preSeg.vto 
           /          | \   
         /            |   \  
       /              |     \ 
@@ -796,10 +795,10 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
                       <-----> 
                       curblk.steps
 
-            recalc preblk.vto'(lower the vto value) so that curblk can reach curblk.vto in the end
+            recalc preSeg.vto'(lower the vto value) so that curblk can reach curblk.vto in the end
             ______   
           /        \   
-        /            \V  preblk.vto'   
+        /            \V  preSeg.vto'   
       /              | \ 
     /                |   \
   /                  |     \
@@ -809,8 +808,8 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
 
-    CASE3 :the curblk has enough steps to de-accelerate to curblk.vto, so change preblk is not needed 
-            _________V___  preblk.vto 
+    CASE3 :the curblk has enough steps to de-accelerate to curblk.vto, so change preSeg is not needed 
+            _________V___  preSeg.vto 
           /          |    \   
         /            |      \  
       /              |        \ 
@@ -824,16 +823,16 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
     int stoppingMargin=5;
     float Vdiff=0;
     //look ahead planing, to reduce
-    //{oldest blk}.....preblk, curblk, {newest blk}
+    //{oldest blk}.....preSeg, curblk, {newest blk}
     MSTP_SEG_PREFIX MSTP_segment* curblk;
-    MSTP_SEG_PREFIX MSTP_segment* preblk = SegQ_Head(1);
-    for(int i=1;(i+blkGard)<SegQ_Size();i++)
+    MSTP_SEG_PREFIX MSTP_segment* preSeg = SegQ_Head(1);
+    for(int i=1;i<SegQ_Size();i++)
     {//can only adjust vto
-      curblk = preblk;
-      preblk = SegQ_Head(1+i);
+      curblk = preSeg;
+      preSeg = SegQ_Head(1+i);
 
 
-      // if(preblk==NULL)break;
+      // if(preSeg==NULL)break;
       int32_t curDeAccSteps=curblk->steps-stoppingMargin;
 
       float cur_vfrom=NAN;
@@ -857,7 +856,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
         {//CASE 3 the curblk has enough steps to de-accelerate to curblk.vto, so exit 
 
           //(curblk)the steps is long enough to de acc from vcen to vto, 
-          //so we don't need to change the speed vto of (preblk)
+          //so we don't need to change the speed vto of (preSeg)
           break;
         }
       }
@@ -871,18 +870,18 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
 
-      float preblk_vto_max=cur_vfrom/(curblk->JunctionNormCoeff+0.01);
-      float new_preblk_vto=preblk_vto_max<preblk->vto_JunctionMax?preblk_vto_max:preblk->vto_JunctionMax;
+      float preSeg_vto_max=cur_vfrom/(curblk->JunctionNormCoeff+0.01);
+      float new_preSeg_vto=preSeg_vto_max<preSeg->vto_JunctionMax?preSeg_vto_max:preSeg->vto_JunctionMax;
       {
-        float vcur=preblk->vcur;
-        float vcen=preblk->vcen;
-        __PRT_I_("[%d]:blk.steps:%d v:%f,%f,%f \n",i,preblk->steps,vcur,vcen,new_preblk_vto);
+        float vcur=preSeg->vcur;
+        float vcen=preSeg->vcen;
+        __PRT_I_("[%d]:blk.steps:%d v:%f,%f,%f \n",i,preSeg->steps,vcur,vcen,new_preSeg_vto);
       }
-      if(preblk->vto == new_preblk_vto)
-      {//if the preblk vto is exactly the same then the following adjustment is not nessasary
+      if(preSeg->vto == new_preSeg_vto)
+      {//if the preSeg vto is exactly the same then the following adjustment is not nessasary
         break;
       }
-      preblk->vto=new_preblk_vto;
+      preSeg->vto=new_preSeg_vto;
       // __PRT_D_("[%d]:v1:%f  ori_V1:%f Vdiff:%f\n",i,v1,ori_V1,Vdiff);
 
 
