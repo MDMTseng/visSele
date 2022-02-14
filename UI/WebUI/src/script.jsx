@@ -1767,7 +1767,7 @@ class APPMasterX extends React.Component {
           />
           
           <>
-            <Divider>{this.props.System_Setting.version}</Divider>
+            <Divider>V{this.props.System_Setting.version}</Divider>
             <pre>
               {JSON.stringify(this.props.System_Setting, null, 1)}
             </pre>
