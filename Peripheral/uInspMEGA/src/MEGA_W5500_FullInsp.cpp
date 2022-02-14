@@ -33,7 +33,7 @@ uint16_t stageUpdated = 0;
 
 uint16_t g_max_inspLatency = 0;
 
-struct sharedInfo* p_sInfo= get_SharedInfo();
+static struct sharedInfo &sInfo= *get_SharedInfo();
 bool blockNewDetectedObject=false;
 
 GEN_ERROR_CODE errorBuf[20];
@@ -169,7 +169,8 @@ void RESET_ALL_PIPELINE_QUEUE()
   RBuf.clear();
   act_S.ACT_BACKLight1H.clear();
   act_S.ACT_BACKLight1L.clear();
-  act_S.ACT_CAM1.clear();
+  act_S.ACT_CAM1H.clear();
+  act_S.ACT_CAM1L.clear();
   act_S.ACT_SEL1H.clear();
   act_S.ACT_SEL1L.clear();
   act_S.ACT_SEL2H.clear();
@@ -393,6 +394,10 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 
           if(pulse_diff>pulseSep)//give 4 rev time
           {//if too long there is no new object incoming, to maintain pulse-time in sync we need to add a phantom pulse to sample camera system time info
+            // if(inspResCount.NA!=0)
+            {
+              inspResCount.NA--;
+            }
             DEBUG_printf("FAKE pulse:%s\n",uint32_t_str(cur_pulse));
             task_newPulseEvent(cur_pulse, cur_pulse, cur_pulse, 10);
           }
@@ -452,7 +457,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 
 int ActRegister_pipeLineInfo(pipeLineInfo *pli);
 
-
+int registerFAIL_COUNT=0;
 
 int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
@@ -487,6 +492,7 @@ int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle
   head->insp_status = insp_status_UNSET;
   if (ActRegister_pipeLineInfo(head) != 0)
   { //register failed....
+    registerFAIL_COUNT++;
     return -2;
   }
   RBuf.pushHead();
@@ -497,7 +503,7 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli)
 
 
   if (act_S.ACT_BACKLight1H.size_left() >= 1 && act_S.ACT_BACKLight1L.size_left() >= 1 &&
-      act_S.ACT_CAM1.size_left() >= 2 && act_S.ACT_SWITCH.size_left() >= 1)
+      act_S.ACT_CAM1H.size_left() >= 1 && act_S.ACT_CAM1L.size_left() >= 1 && act_S.ACT_SWITCH.size_left() >= 1)
   {
     // DEBUG_printf(">>>>src:%p gate_pulse:%d ",pli,pli->gate_pulse);
     // DEBUG_printf("s:%d ",pli->s_pulse);
@@ -507,8 +513,8 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli)
     ACT_PUSH_TASK(act_S.ACT_BACKLight1H, pli, state_pulseOffset[1], 1, );
     ACT_PUSH_TASK(act_S.ACT_BACKLight1L, pli, state_pulseOffset[4], 2, );
 
-    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, state_pulseOffset[2], 1, );
-    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, state_pulseOffset[3], 2, );
+    ACT_PUSH_TASK(act_S.ACT_CAM1H, pli, state_pulseOffset[2], 1, );
+    ACT_PUSH_TASK(act_S.ACT_CAM1L, pli, state_pulseOffset[3], 2, );
 
     ACT_PUSH_TASK(act_S.ACT_SWITCH, pli, state_pulseOffset[5], 2, );
 
@@ -545,10 +551,10 @@ int ActRegister_Pulse_Time_Sync(pipeLineInfo *pli)
 {
 
   if (act_S.ACT_BACKLight1H.size_left() >= 1 && act_S.ACT_BACKLight1L.size_left() >= 1 &&
-      act_S.ACT_CAM1.size_left() >= 2 && act_S.ACT_SWITCH.size_left() >= 1)
+      act_S.ACT_CAM1H.size_left() >= 1 && act_S.ACT_CAM1L.size_left() >= 1 && act_S.ACT_SWITCH.size_left() >= 1)
   {
-    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, state_pulseOffset[2], 1, );
-    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, state_pulseOffset[3], 2, );
+    ACT_PUSH_TASK(act_S.ACT_CAM1H, pli, state_pulseOffset[2], 1, );
+    ACT_PUSH_TASK(act_S.ACT_CAM1L, pli, state_pulseOffset[3], 2, );
     ACT_PUSH_TASK(act_S.ACT_SWITCH, pli, state_pulseOffset[5], 2, );
     return 0;
     // pli->insp_status=insp_status_OK;
@@ -594,17 +600,15 @@ int Run_ACTS(uint32_t cur_pulse)
                    digitalWrite(BACK_LIGHT_PIN, 0););
 
   ACT_TRY_RUN_TASK(
-      acts->ACT_CAM1, cur_pulse,
+      acts->ACT_CAM1H, cur_pulse,
 
-      //
-      if (task->info == 1)
-      {
-        // DEBUG_println("C");
-        digitalWrite(CAMERA_PIN, 1);
-      } else if (task->info == 2)
-      {
-        digitalWrite(CAMERA_PIN, 0);
-      });
+      digitalWrite(CAMERA_PIN, 1);
+      );  
+  ACT_TRY_RUN_TASK(
+      acts->ACT_CAM1L, cur_pulse,
+
+      digitalWrite(CAMERA_PIN, 0);
+      );
 
   ACT_TRY_RUN_TASK(acts->ACT_SEL1H, cur_pulse,
 
@@ -725,10 +729,10 @@ int AddResultCountToJson(char *send_rsp, uint32_t send_rspL, struct InspResCount
   uint32_t MessageL = 0;
   MessageL += sprintf((char *)send_rsp + MessageL, "\"res_count\":{");
 
-  MessageL += sprintf((char *)send_rsp + MessageL, "\"OK\":%lu,", inspResCount.OK);
-  MessageL += sprintf((char *)send_rsp + MessageL, "\"NG\":%lu,", inspResCount.NG);
-  MessageL += sprintf((char *)send_rsp + MessageL, "\"NA\":%lu,", inspResCount.NA);
-  MessageL += sprintf((char *)send_rsp + MessageL, "\"ERR\":%lu,", inspResCount.ERR);
+  MessageL += sprintf((char *)send_rsp + MessageL, "\"OK\":%lu,", inspResCount.OK>0?inspResCount.OK:0);
+  MessageL += sprintf((char *)send_rsp + MessageL, "\"NG\":%lu,", inspResCount.NG>0?inspResCount.NG:0);
+  MessageL += sprintf((char *)send_rsp + MessageL, "\"NA\":%lu,", inspResCount.NA>0?inspResCount.NA:0);
+  MessageL += sprintf((char *)send_rsp + MessageL, "\"ERR\":%lu,",inspResCount.ERR>0?inspResCount.ERR:0);
 
   MessageL--; //remove the last comma',';
   MessageL += sprintf((char *)send_rsp + MessageL, "},");
@@ -925,7 +929,7 @@ public:
   int convertStringToU64(const char *str, uint64_t *ret_val) // char * preferred
   {
     uint64_t val = 0;
-    for (int i = 0; str[i] != NULL; i++)
+    for (int i = 0; str[i] != '\0'; i++)
     {
       val *= 10;
       int dig = str[i] - '0';
@@ -937,7 +941,12 @@ public:
       *ret_val = val;
     return 0;
   }
-
+  int maxRSize=0;
+  int preRegFailCount=0;
+  int preSkippedPulse=0;
+  int RBufRecJump=0;
+  int pre_RBufRecJump=0;
+  
   virtual int Json_CMDExec(WebSocketProtocol *WProt, uint8_t *recv_cmd, int cmdL, sending_buffer *send_pack, int data_in_pack_maxL)
   {
     // DEBUG_printf(">>>s:%d\n",sysinfo.state);
@@ -946,6 +955,18 @@ public:
     {
       onPeerConnect(WProt);
     }
+
+
+    // int RSize=RBuf.size();
+    // if(maxRSize<RSize || preRegFailCount!=registerFAIL_COUNT || sInfo.skippedPulse!=preSkippedPulse || pre_RBufRecJump!=RBufRecJump)
+    // {
+    //   DEBUG_printf("RSize:%d  failReg:%d skippedPulse:%d RBufRecJump:%d\n",maxRSize,registerFAIL_COUNT,sInfo.skippedPulse,RBufRecJump);
+    //   if(maxRSize<RSize)
+    //     maxRSize=RBuf.size();
+    //   preRegFailCount=registerFAIL_COUNT;
+    //   preSkippedPulse=sInfo.skippedPulse;
+    //   pre_RBufRecJump=RBufRecJump;
+    // }
 
     char *send_rsp = send_pack->data;
     int send_rspL = data_in_pack_maxL;
@@ -1167,6 +1188,8 @@ public:
               }
               else
               {
+                RBufRecJump++;
+                inspResCount.NA++;
                 pipe->insp_status =insp_status_NA;//skip this one and try to find next match
               }
 
@@ -1224,6 +1247,13 @@ public:
           if (diff < 5)
           { //Pulse sync error is in tolerable region
             // DEBUG_printf("ist:%d\n",insp_status);
+            
+            if(sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_Verify)
+            {
+              insp_status=insp_status_NA;
+              inspResCount.NA--;//just skip this NA count
+            }
+
             pipeTarget->insp_status = insp_status;//accept the status
 
             if (mode_info.mode == run_mode_info::TEST && 
@@ -1396,7 +1426,7 @@ public:
       {
         int ret_st = 0;
         MessageL += sprintf((char *)send_rsp + MessageL, "\"type\":\"get_setup_rsp\","
-                                                         "\"ver\":\"0.9.8.0\",");
+                                                         "\"ver\":\"0.9.8.1\",");
         MessageL += MachToJson(send_rsp + MessageL, send_rspL - MessageL, &ret_st);
         DEBUG_print("get_setup:");
         DEBUG_println(send_rsp);
@@ -1731,11 +1761,11 @@ void setup()
 int EV_Axis0_Origin(uint32_t revCount)
 {
   curRevCount = revCount;
-  if ((revCount & 7) == 0)
-  {
-    DEBUG_print("REV:");
-    DEBUG_println(curRevCount);
-  }
+  // if ((revCount & 7) == 0)
+  // {
+  //   DEBUG_print("REV:");
+  //   DEBUG_println(curRevCount);
+  // }
 }
 
 

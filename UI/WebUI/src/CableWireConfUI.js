@@ -1571,8 +1571,7 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
     ACT_WS_SEND_BPG("II", 0, {
       imgsrc:(doTakeNew==false)?"__CACHE_IMG__":undefined,
       img_property:{
-        down_samp_level:2,
-        scale:3,
+        down_samp_level:3,
         calibInfo:{
           type:"NA"
         }

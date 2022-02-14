@@ -82,6 +82,7 @@ export default {
         ERROR_CODES:"系統碼",
         ERROR_CLEAR:"清除系統碼",
         SPEED_SET:"速度設定",
+        SET_DEFAULT_RPM:"設定預設RPM",        
         RESET_INSPECTION_COUNTER:"重設檢測計數",
         uInsp_ACTION_TRIGGER_TIMING:"檢測觸發時間",
 

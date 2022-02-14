@@ -238,10 +238,10 @@ typedef struct run_mode_info
 
 typedef struct InspResCount
 {
-  uint64_t NA;
-  uint64_t OK;
-  uint64_t NG;
-  uint64_t ERR;
+  int64_t NA;
+  int64_t OK;
+  int64_t NG;
+  int64_t ERR;
 } InspResCount;
 
 
@@ -251,7 +251,7 @@ typedef struct InspResCount
 
 
 
-#define PIPE_INFO_LEN 50
+#define PIPE_INFO_LEN 30
 
 #define STEPPER_PLS_PIN 22
 #define STEPPER_DIR_PIN 23
@@ -297,7 +297,8 @@ struct ACT_SCH
   RingBuf_Static<ACT_INFO, PIPE_INFO_LEN>
       ACT_BACKLight1H,
       ACT_BACKLight1L,
-      ACT_CAM1,
+      ACT_CAM1H,
+      ACT_CAM1L,
       ACT_SWITCH,
       ACT_SEL1H,
       ACT_SEL1L,

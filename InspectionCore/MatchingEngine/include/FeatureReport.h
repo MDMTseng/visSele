@@ -315,6 +315,13 @@ typedef struct FeatureReport_cjson_report{
   cJSON *cjson;
 };
 
+
+typedef struct FeatureReport_custom_report{
+  cJSON *cjson;
+  void* data;
+  int (*func)(struct FeatureReport_custom_report report);
+};
+
 typedef struct FeatureReport_stage_light_report{
   vector<stage_light_grid_node_info> *gridInfo;
   int targetImageDim[2];
@@ -331,6 +338,8 @@ typedef struct FeatureReport
     camera_calibration,
     stage_light_report,
     cjson,
+    custom,
+
     END
   } type;
   string name;
@@ -344,6 +353,7 @@ typedef struct FeatureReport
     FeatureReport_camera_calibration      camera_calibration;
     FeatureReport_stage_light_report      stage_light_report;
     FeatureReport_cjson_report                  cjson_report;
+    FeatureReport_custom_report                  custom_report;
   }data;
   string info;
 }FeatureReport;

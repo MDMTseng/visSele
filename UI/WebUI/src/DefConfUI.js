@@ -1912,7 +1912,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               type:"disable",
               mmpp:deffile.featureSet[0].mmpp
             },
-            //scale:1,
+            //down_samp_level:1,
           }
         },undefined,
         {
@@ -2861,7 +2861,7 @@ class APP_DEFCONF_MODE extends React.Component {
                       type:"disable",
                       mmpp:deffile.featureSet[0].mmpp
                     },
-                    //scale:1,
+                    //down_samp_level:1,
                   }
                 },undefined,
                 {

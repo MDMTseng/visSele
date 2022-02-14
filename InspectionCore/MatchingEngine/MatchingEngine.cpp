@@ -4,6 +4,9 @@
 #include "FeatureManager_stage_light_report.h"
 #include "FeatureManager_nop.h"
 #include "FeatureManager_gen.h"
+#include "FM_GenMatching.h"
+#include "FM_Blank.h"
+
 #include "FeatureManager_platingCheck.h"
 #include "logctrl.h"
 #include <common_lib.h>
@@ -82,6 +85,16 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
   {
     LOGI("FeatureManager_nop is the type...");
     featureSet = new FeatureManager_nop(json_str);
+  }
+  else if(strcmp(FM_GenMatching::GetFeatureTypeName(),str) == 0)
+  {
+    LOGI("FM_GenMatching is the type...");
+    featureSet = new FM_GenMatching(json_str);
+  }
+  else if(strcmp(FM_Blank::GetFeatureTypeName(),str) == 0)
+  {
+    LOGI("FM_Blank is the type...");
+    featureSet = new FM_Blank(json_str);
   }
   else
   {

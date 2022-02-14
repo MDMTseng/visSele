@@ -711,9 +711,11 @@ class APPMasterX extends React.Component {
                       path:machineSettingPath
                     }
 
-                    
-                    comp.props.ACT_WS_CONNECT(comp.props.Insp_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/insp"));
-                    comp.props.ACT_WS_CONNECT(comp.props.DefFile_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/def"));
+                    if(info.inspection_db_ws_url!==undefined)
+                    {
+                      comp.props.ACT_WS_CONNECT(comp.props.Insp_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/insp"));
+                      comp.props.ACT_WS_CONNECT(comp.props.DefFile_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/def"));
+                    }
 
 
                     if(info.uInsp_peripheral_conn_info!==undefined)
@@ -1170,6 +1172,8 @@ class APPMasterX extends React.Component {
           {
             resolve:(res)=>{
               console.log(res);
+              let default_pulse_hz = this.machineSetup.pulse_hz;
+              StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,default_pulse_hz:default_pulse_hz});
             }, 
             reject:(res)=>{
               console.log(res);
@@ -1199,6 +1203,8 @@ class APPMasterX extends React.Component {
           let machInfo = pkts[0].data;
           
           this.machineSetupUpdate(machInfo,true);
+          this.default_pulse_hz = machInfo.pulse_hz;
+          StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,default_pulse_hz:this.default_pulse_hz});
         }).catch((err) => {
 
           log.info("LoaduInspSettingToMachine>> step3-error", err);
@@ -1278,6 +1284,8 @@ class APPMasterX extends React.Component {
 
                   if(this.machineSetup!==undefined)
                   {
+                    // this.default_pulse_hz = machInfo.pulse_hz;
+                    StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,default_pulse_hz:this.default_pulse_hz})
                     this.send({type:"set_setup",...this.machineSetup},
                     (ret)=>{
                       this.machineSetupReSync();
@@ -1759,7 +1767,7 @@ class APPMasterX extends React.Component {
           />
           
           <>
-            <Divider>{this.props.System_Setting.version}</Divider>
+            <Divider>V{this.props.System_Setting.version}</Divider>
             <pre>
               {JSON.stringify(this.props.System_Setting, null, 1)}
             </pre>
