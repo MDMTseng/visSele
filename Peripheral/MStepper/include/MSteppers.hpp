@@ -87,6 +87,7 @@ public:
   void SystemClear();
 
 
+  void SegQ_Clear() MSTP_SEG_PREFIX;
   bool SegQ_IsEmpty() MSTP_SEG_PREFIX;
   bool SegQ_IsFull() MSTP_SEG_PREFIX;
   int SegQ_Size() MSTP_SEG_PREFIX;

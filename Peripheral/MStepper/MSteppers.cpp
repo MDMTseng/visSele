@@ -472,7 +472,7 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
 
 void MStp::SystemClear()
 {
-  
+  SegQ_Clear();
   curPos_c=curPos_mod=curPos_residue=lastTarLoc=(xVec){0};
   T_next=0;
   minSpeed=2;
@@ -481,11 +481,25 @@ void MStp::SystemClear()
 
 void MStp::StepperForceStop()
 {
+  stopTimer();
+  SegQ_Clear();
+  lastTarLoc=curPos_c;
+  T_next=0;
+  axis_pul=axis_dir=0;
+  delayResidue=0;
+  pre_indexes=0;
+  tskrun_state=0;
+  isMidPulTrig=true;
+  _axis_collectpul1=0;
+  curPos_mod=curPos_residue=(xVec){0};
   
 }
 
 
-
+void MStp::SegQ_Clear() MSTP_SEG_PREFIX
+{
+  segBufHeadIdx=segBufTailIdx;
+}
 bool MStp::SegQ_IsEmpty() MSTP_SEG_PREFIX
 {
   return segBufHeadIdx==segBufTailIdx;
