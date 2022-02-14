@@ -767,20 +767,38 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
   </>
 
 
+  let PulseHz2RPM=60.0/(2400*16);
+  
+  let defaultRPM=0;
+  let default_pulse_hz=0;
+  if(typeof uInsp_API_ID_CONN_INFO.default_pulse_hz === 'number')
+  {
+    default_pulse_hz=uInsp_API_ID_CONN_INFO.default_pulse_hz;
+    defaultRPM = Math.round(10*default_pulse_hz*PulseHz2RPM)/10.0;
+  }
+  let curRPM=Math.round(10*pulse_hz*PulseHz2RPM)/10.0;
+  const marks = {
+
+    30:"30"
+  };
+  
+  marks[curRPM+""]=curRPM;
+  marks[defaultRPM+""]=">"+defaultRPM+"<";
 
   let SpeedSlider=UI_Speed_Slider==false?null:
   <>
     <br/>
     <Slider key="speedSlider"
       min={0}
-      max={20000}
-      onChange={(value) => {
+      max={30}
+      marks={marks}
+      onChange={(rpm) => {
         ACT_WS_GET_OBJ((api)=>{
-          api.machineSetupUpdate({pulse_hz:value});
+          api.machineSetupUpdate({pulse_hz:Math.round(rpm/PulseHz2RPM)});
         })
       }}
-      value={pulse_hz}
-      step={100}
+      value={curRPM}
+      step={0.1}
     />
   </>
   let detailSetup=UI_detail==false?null:<>
@@ -873,10 +891,10 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
           key="speed_set"
           onClick={() => {
             ACT_WS_GET_OBJ((api)=>{
-              api.machineSetupUpdate({pulse_hz: pulse_hz});
+              api.machineSetupUpdate({pulse_hz: default_pulse_hz});
             })
           }
-          }>{DICT._.SPEED_SET}:{pulse_hz}
+          }>{DICT._.SET_DEFAULT_RPM}:{defaultRPM}
       </Button>
       </Button.Group>
 

@@ -1172,6 +1172,8 @@ class APPMasterX extends React.Component {
           {
             resolve:(res)=>{
               console.log(res);
+              let default_pulse_hz = this.machineSetup.pulse_hz;
+              StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,default_pulse_hz:default_pulse_hz});
             }, 
             reject:(res)=>{
               console.log(res);
@@ -1201,6 +1203,8 @@ class APPMasterX extends React.Component {
           let machInfo = pkts[0].data;
           
           this.machineSetupUpdate(machInfo,true);
+          this.default_pulse_hz = machInfo.pulse_hz;
+          StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,default_pulse_hz:this.default_pulse_hz});
         }).catch((err) => {
 
           log.info("LoaduInspSettingToMachine>> step3-error", err);
@@ -1280,6 +1284,8 @@ class APPMasterX extends React.Component {
 
                   if(this.machineSetup!==undefined)
                   {
+                    // this.default_pulse_hz = machInfo.pulse_hz;
+                    StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,default_pulse_hz:this.default_pulse_hz})
                     this.send({type:"set_setup",...this.machineSetup},
                     (ret)=>{
                       this.machineSetupReSync();

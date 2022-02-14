@@ -723,7 +723,7 @@ class ObjInfoList extends React.Component {
         <div style={{margin:"15px"}}>
           <Divider orientation="left" style={{ 'margin': '2px',fontSize: "12px"}} >全檢速度(pcs/s)</Divider>
           <UINSP_UI UI_INSP_Count_Rate={true} UI_INSP_Count_font_size={15}/>
-          <Divider orientation="left" style={{ 'margin': '10px 2px 2px 2px',fontSize: "12px"}} >轉盤速度(pulse/s)</Divider>
+          <Divider orientation="left" style={{ 'margin': '10px 2px 2px 2px',fontSize: "12px"}} >轉盤速度RPM(圈/分)</Divider>
           <UINSP_UI UI_Speed_Slider={true}/>
           
           
