@@ -345,7 +345,11 @@ inline int Calc_JunctionNormCoeff(MSTP_SEG_PREFIX MSTP_segment *blkA,MSTP_SEG_PR
   {
     // ret_blkB_coeff=NAN;
     // return -1;
-    ABsum=0;
+    // ABsum=0;
+    
+    if(ret_blkB_coeff1)
+      *ret_blkB_coeff1=0;
+    return 0;
   }
 
   __PRT_I_("ABB:%f %f\n",ABsum,BBsum);
@@ -464,8 +468,8 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
   maxSpeedInc=minSpeed;
   
   TICK2SEC_BASE=10*1000*1000;
-  acc=1000
-  IO_SET_DBG(PIN_DBG0, OUTPUT);
+  acc=1000;
+  // IO_SET_DBG(PIN_DBG0, OUTPUT);
   SystemClear();
 }
 

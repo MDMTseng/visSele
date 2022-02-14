@@ -52,6 +52,16 @@ struct MSTP_segment
 };
 
 
+struct MSTP_axisSetup
+{
+  float AccX;
+  float minSpeed;
+  float MaxSpeedJumpX;
+  float maxSpeedInc;
+  int gearRatio;
+
+};
+
 class MStp{
 
 public:

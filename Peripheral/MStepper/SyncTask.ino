@@ -63,6 +63,7 @@ class MStp_M:public MStp{
     pinMode(PIN_M1_DIR, OUTPUT);
     pinMode(PIN_M1_STP, OUTPUT);
     pinMode(PIN_M1_SEN1, INPUT);
+    pinMode(PIN_M1_SEN2, INPUT);
     pinMode(PIN_M2_SEN1, INPUT);
 
     pinMode(PIN_M2_DIR, OUTPUT);
@@ -77,8 +78,8 @@ class MStp_M:public MStp{
 
   xVec posWhenHit;
 
-  int runUntil_sensorPIN=0;
-  int runUntil_sensorVal=0;
+  int volatile runUntil_sensorPIN=0;
+  int volatile runUntil_sensorVal=0;
 
 
   void stopTimer(){
@@ -109,17 +110,23 @@ class MStp_M:public MStp{
     Serial.printf("STP1-2\n");
     runUntil_sensorPIN=pin;
     VecAdd(cpos,speed);
-    Serial.printf("STP1-3\n");
-
+    Serial.printf("STP1-3  pin:%d\n",runUntil_sensorPIN);
+    int cccc=0;
     while(runUntil_sensorPIN!=0 && SegQ_IsEmpty()==false)
-    {
-      Serial.printf("");
+    { 
+      cccc++;
+      if((cccc&0xFFFF)==0)
+        Serial.printf("%d",digitalRead(runUntil_sensorPIN));
+      else 
+        Serial.printf("");
     }//wait for touch sensor
     
+    Serial.printf("\nSTP1-3 res  pin:%d\n",runUntil_sensorPIN);
 
     // Serial.printf("ZeroStatus:%d blocks->size():%d  PINRead:%d\n",ZeroStatus,blocks->size(),digitalRead(sensorPIN));
     if(runUntil_sensorPIN!=0)
     {
+      Serial.printf("\nFAIL:runUntil_sensorPIN:%d R:%d\n",runUntil_sensorPIN,digitalRead(runUntil_sensorPIN));
       runUntil_sensorPIN=0;
       return -1;
     }
@@ -238,8 +245,7 @@ class MStp_M:public MStp{
   {
         // Serial.printf("ZeroStatus:%d blocks->size():%d\n",ZeroStatus,blocks->size());
 
-    int sensorRead=digitalRead(runUntil_sensorPIN);
-
+    volatile int sensorRead=digitalRead(runUntil_sensorPIN);
   
     if(sensorRead==runUntil_sensorVal)//somehow digitalRead is not stable, to a doulbe check
     {
@@ -558,13 +564,13 @@ uint32_t xendpos=4700*SUBDIV/mm_PER_REV;
 
 void vecToWait(xVec VECTo,float speed,void* ctx=NULL)
 {
-  digitalWrite(PIN_OUT_1,1);
+  // digitalWrite(PIN_OUT_1,1);
   while(mstp.VecTo(VECTo,speed,ctx)==false)
   {
     Serial.printf("");
   }
   
-  digitalWrite(PIN_OUT_1,0);
+  // digitalWrite(PIN_OUT_1,0);
 }
 
 
@@ -617,7 +623,7 @@ void setup()
 
 
   
-  int retErr=0;//mstp.ZeroAxis(1,50000)+mstp.ZeroAxis(0,500*2);
+  int retErr=mstp.ZeroAxis(1,50000)+mstp.ZeroAxis(0,500*2);
 
   rzERROR=retErr;
   if(retErr==0)
