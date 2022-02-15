@@ -1,7 +1,6 @@
 /********************* Cubic Spline Interpolation **********************/
 #include<iostream>
 #include<math.h>
-#include "RingBuf.hpp"
 #include <initializer_list>
 #include <thread>
 
@@ -16,34 +15,34 @@ int TIMESCALE_ms=100;
 
 
  
-MSTP_setup mstp_setup={
-  .axis_setup={
-    {
-      .maxAcc=20,
-      .minSpeed=100,
-      .maxSpeed=10000,
-      .dirFlip=false,
-      .zeroDir=true
+// MSTP_setup mstp_setup={
+//   .axis_setup={
+//     {
+//       .maxAcc=20,
+//       .minSpeed=100,
+//       .maxSpeed=10000,
+//       .dirFlip=false,
+//       .zeroDir=true
 
-    },
-    {
-      .maxAcc=20,
-      .minSpeed=100,
-      .maxSpeed=10000,
-      .dirFlip=false,
-      .zeroDir=true
+//     },
+//     {
+//       .maxAcc=20,
+//       .minSpeed=100,
+//       .maxSpeed=10000,
+//       .dirFlip=false,
+//       .zeroDir=true
 
-    },
-    // {
-    //   .maxAcc=20,
-    //   .minSpeed=100,
-    //   .maxSpeed=10000,
-    //   .dirFlip=false,
-    //   .zeroDir=true
+//     },
+//     // {
+//     //   .maxAcc=20,
+//     //   .minSpeed=100,
+//     //   .maxSpeed=10000,
+//     //   .dirFlip=false,
+//     //   .zeroDir=true
 
-    // },
-  }
-};
+//     // },
+//   }
+// };
 
 
 
@@ -64,7 +63,7 @@ class MStp_M:public MStp{
     FACCT2+=T;
   }
 
-  MStp_M(RingBuf<struct runBlock> *_blocks, MSTP_setup *_axisSetup):MStp(_blocks,_axisSetup)
+  MStp_M(MSTP_segment *buffer, int bufferL):MStp(buffer,bufferL)
   {
     
     // TICK2SEC_BASE=100000;
@@ -72,36 +71,37 @@ class MStp_M:public MStp{
     // minSpeed=SUBDIV*TICK2SEC_BASE/10000/200;
     // acc=SUBDIV/20;
 
-    for(int i=0;i<MSTP_VEC_SIZE;i++)
-    {
-      MSTP_axis_setup &aset=axisSetup->axis_setup[i];
-      printf("%f,%f,%f, %d,%d\n",
-      aset.mmpp,
-      aset.maxAcc,
-      aset.minSpeed,
-      aset.dirFlip,
-      aset.zeroDir);
+    // for(int i=0;i<MSTP_VEC_SIZE;i++)
+    // {
+    //   MSTP_axis_setup &aset=axisSetup->axis_setup[i];
+    //   printf("%f,%f,%f, %d,%d\n",
+    //   aset.mmpp,
+    //   aset.maxAcc,
+    //   aset.minSpeed,
+    //   aset.dirFlip,
+    //   aset.zeroDir);
       
-    }
-    
-    // TICK2SEC_BASE=10*1000*1000;
-    // minSpeed=100;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-
-    // junctionMaxSpeedJump=200;
-    // acc=SUBDIV*500/mm_PER_REV;
-
+    // }
     
     TICK2SEC_BASE=10*1000*1000;
-    minSpeed=200;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    acc=SUBDIV*3000/mm_PER_REV;
-    junctionMaxSpeedJump=300;//600;//5200;
+    main_acc=SUBDIV*1500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
+    minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    main_junctionMaxSpeedJump=minSpeed;//5200;
+
     maxSpeedInc=minSpeed;
+    
+    axisInfo[0].AccW=1.5;
+    axisInfo[0].MaxSpeedJumpW=1.5;
+
+    axisInfo[1].AccW=1;
+    axisInfo[1].MaxSpeedJumpW=1;
+  
   }
 
   int M1_reader=2;//1<<(MSTP_VEC_SIZE-2);
   int M2_reader=1<<(MSTP_VEC_SIZE-1);
 
-  void BlockEndEffect(runBlock* blk)
+  void BlockEndEffect(MSTP_segment* seg)
   {
 
     for(int i=0;i<MSTP_VEC_SIZE;i++)
@@ -109,10 +109,10 @@ class MStp_M:public MStp{
       printf("%d  ",stepCount[i]);
       // stepCount[i]=0;
     }
-    printf("\n");
+    printf("<<<<<<<<<<<<<\n");
   }
 
-  void BlockInitEffect(runBlock* blk)
+  void BlockInitEffect(MSTP_segment* seg)
   {
   }
 
@@ -240,10 +240,12 @@ class MStp_M:public MStp{
 
 };
 
-runBlock blockBuff[50];
-RingBuf <runBlock> __blocks(blockBuff,50);
 
-MStp_M mstp(&__blocks,&mstp_setup);
+
+#define MSTP_BLOCK_SIZE 30
+static MSTP_segment blockBuff[MSTP_BLOCK_SIZE];
+
+MStp_M mstp(blockBuff,MSTP_BLOCK_SIZE);
 
 
 
@@ -321,14 +323,21 @@ int main()
   // mstp.VecTo((xVec){100,100},speed);
   // mstp.VecTo((xVec){0,0},speed);
 
+  mstp.VecTo((xVec){0,0},speed);
   for(int k=0;k<2;k++)
   {
     int speed=300;
     // pickOn(1,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
     // pickOn(2,0+posDiff, speed);posDiff-=12*SUBDIV/mm_PER_REV;
 
-    mstp.VecTo((xVec){5,5},speed);
+    mstp.VecTo((xVec){20,20},speed);
+    mstp.VecTo((xVec){10,10},speed);
+    
+    mstp.AddWait(1000);
     // busyLoop(1000);
+    
+    mstp.VecTo((xVec){0,0},speed);
+    mstp.VecTo((xVec){1,1},speed);
     mstp.VecTo((xVec){0,0},speed);
     // sleep(1);
 
@@ -339,7 +348,7 @@ int main()
   // return 0;
   // mstp.VecTo((xVec){0,0},speed);
   printf("===========\n");
-  mstp.printBLKInfo();
+  mstp.printSEGInfo();
   thread first_thread(first_thread_job);
   first_thread.join();
   return 0;
