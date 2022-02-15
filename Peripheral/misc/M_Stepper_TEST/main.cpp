@@ -3,7 +3,7 @@
 #include<math.h>
 #include <initializer_list>
 #include <thread>
-
+#include "GCodeParser.hpp"
 
 #include "MSteppers.hpp"
 using namespace std;
@@ -13,38 +13,40 @@ using namespace std;
 int TIMESCALE_ms=100;
 
 
+class GCodeParser_M:public GCodeParser{
+  void parseLine()
+  {
+    
+    printf("==========CallBack========\n");
+    line[lineCharCount]='\0';
+    printf("line:%s\n",line);
 
+    // for(int i=0;i<blockCount+1;i++)
+    // {
+    //   printf("blk[%d]:%d =>%c\n",i,blockInitial[i],line[blockInitial[i]]);
+    // }
+
+    
+    for(int i=0;i<blockCount;i++)
+    {
+      int startIdx = blockInitial[i];
+      int endIdx = blockInitial[i+1];
+      // printf("blk[%d]:%d =>%c\n",i,blockInitial[i],line[blockInitial[i]]);
+      
+      for(int j=startIdx;j<endIdx;j++)
+      {
+        printf("%c",line[j]);
+      }
+      printf("\n");
+    }
+    // INIT();//if call INIT here then, the sync method would not work
+  }
+  void onError(int code)
+  {
+
+  }
+};
  
-// MSTP_setup mstp_setup={
-//   .axis_setup={
-//     {
-//       .maxAcc=20,
-//       .minSpeed=100,
-//       .maxSpeed=10000,
-//       .dirFlip=false,
-//       .zeroDir=true
-
-//     },
-//     {
-//       .maxAcc=20,
-//       .minSpeed=100,
-//       .maxSpeed=10000,
-//       .dirFlip=false,
-//       .zeroDir=true
-
-//     },
-//     // {
-//     //   .maxAcc=20,
-//     //   .minSpeed=100,
-//     //   .maxSpeed=10000,
-//     //   .dirFlip=false,
-//     //   .zeroDir=true
-
-//     // },
-//   }
-// };
-
-
 
 #define SUBDIV (1600)
 #define mm_PER_REV 10
@@ -301,6 +303,49 @@ int main()
   // mstp.VecTo((xVec){-20,0,-0},1000);
   // mstp.VecTo((xVec){0,0,0},1000);
   // mstp.VecTo((xVec){20,20,0},1000);
+
+  {
+
+    GCodeParser_M gcp;
+
+    char GCODEs[]=
+      " G17 G20 G90 G94 G54\n"
+      "G0 Z0.25\n"
+      "X-0.5 Y0.\n"
+      "Z0.1\n"
+      "G01 Z0. F5.\n"
+      "G02 X0. Y0.5 I0.5 J0. F2.5\n"
+      "X0.5 Y0. I0. J-0.5;???\n"
+      "X0. Y-0.5 I-0.5 (IX) J0.\n"
+      "X-0.5 Y0. I0. J0.5\n"
+      "G01 Z0.1 F5.\n"
+      "G00 X0. Y0. Z0.25";
+    for(int i=0;;i++)
+    {
+      if(gcp.addChar(GCODEs[i]))//you may choose callback method or sync method(process after addChar) BUT remember to use INIT after it
+      {
+        printf("=========SYNC=========\n");
+        for(int i=0;i<gcp.blockCount;i++)
+        {
+          int startIdx = gcp.blockInitial[i];
+          int endIdx = gcp.blockInitial[i+1];
+          // printf("blk[%d]:%d =>%c\n",i,blockInitial[i],line[blockInitial[i]]);
+          
+          for(int j=startIdx;j<endIdx;j++)
+          {
+            printf("%c",gcp.line[j]);
+          }
+          printf("\n");
+        }
+        gcp.INIT();
+      }
+      if(GCODEs[i]=='\0')break;
+    }
+    return -1;
+  }
+
+
+
 
 
   int pos=18000*2;
