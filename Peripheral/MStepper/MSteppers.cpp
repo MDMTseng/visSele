@@ -13,7 +13,7 @@ using namespace std;
 
 
 #define PIN_DBG0 18
-inline char *int2bin(uint32_t a, int digits, char *buffer, int buf_size) {
+char *int2bin(uint32_t a, int digits, char *buffer, int buf_size) {
     buffer += (buf_size - 1);
 
     for (int i = digits-1; i >= 0; i--) {
@@ -35,7 +35,7 @@ inline char* toStr(const MSTP_SEG_PREFIX xVec &vec)
   return buff;
 }
 
-inline char *int2bin(uint32_t a, int digits) {
+char *int2bin(uint32_t a, int digits) {
   static char binChar[64+1];
   binChar[sizeof(binChar)-1]='\0';
   return int2bin(a,digits, binChar, sizeof(binChar));
@@ -569,6 +569,28 @@ MSTP_SEG_PREFIX bool MStp::SegQ_Tail_Pop() MSTP_SEG_PREFIX
 }
 
 
+bool MStp::AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info *exinfo)
+{
+
+
+  if(SegQ_Space() <=3)
+  {
+    return false;
+  }
+
+  MSTP_SEG_PREFIX MSTP_segment* hrb=SegQ_Head();
+  MSTP_SEG_PREFIX MSTP_segment &newSeg=*hrb;
+  newSeg.ctx=ctx;
+  newSeg.type=blockType::blk_wait;
+  newSeg.steps=times;
+  newSeg.step_period=period;
+
+  __PRT_I_("steps:%d step_period:%d\n",newSeg.steps,period);
+  
+  return SegQ_Head_Push();
+}
+
+
 bool MStp::VecAdd(xVec VECAdd,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
 {
   return VecTo(vecAdd(lastTarLoc,VECAdd),speed,ctx,exinfo);
@@ -579,7 +601,7 @@ bool MStp::VecAdd(xVec VECAdd,float speed,void* ctx,MSTP_segment_extra_info *exi
 bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
 {
 
-  if(SegQ_Space() <=5)
+  if(SegQ_Space() <=3)
   {
     return false;
   }
@@ -658,6 +680,10 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
   if(SegQ_Size()>0)//get previous block to calc junction info
   {
     preSeg = SegQ_Head(1);
+    if(preSeg->type==blockType::blk_wait)
+    {
+      preSeg=NULL;
+    }
   }
   
   if(preSeg!=NULL)
@@ -892,6 +918,10 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
       curblk = preSeg;
       preSeg = SegQ_Head(1+i);
 
+      if(preSeg->type==blockType::blk_wait)
+      {
+        break;
+      }
 
       // if(preSeg==NULL)break;
       int32_t curDeAccSteps=curblk->steps-stoppingMargin;
@@ -1101,156 +1131,6 @@ void MStp::BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
   axis_pul=_axis_pul;
 }
 
-
-
-void MStp::SegPlayer() MSTP_SEG_PREFIX
-{
-  if(p_runSeg==NULL)
-  {
-    // BlockInitEffect(NULL);
-    T_next=0;
-    // cout << "This is the first thread "<< endl;
-    // std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    axis_pul=0;
-
-    for(int i=0;i<MSTP_VEC_SIZE;i++)
-    {
-      curPos_residue.vec[i]=0;
-
-    }
-    // blocks->consumeTail();
-    // __PRT_I_("Empty Q\n");
-    p_runSeg=SegQ_Tail();
-    if(p_runSeg!=NULL)
-    {
-    }      
-    else
-    {
-      stopTimer();
-      // __PRT_I_("No Tail\n");
-      return;
-    }
-
-  }
-
-
-    
-  if(p_runSeg!=NULL)
-  {
-
-    if(p_runSeg->cur_step==p_runSeg->steps)
-    {
-      float vcur= p_runSeg->vcur;
-      xVec vec0=(xVec){0};
-      vecAssign(curPos_mod,vec0);
-      vecAssign(curPos_residue,vec0);
-      vecAssign(posvec,vec0);
-      
-      __PRT_D_("EndSpeed:%f  T_next:%d\n",vcur,T_next);
-
-      BlockEndEffect(p_runSeg);
-      
-      SegQ_Tail_Pop();
-
-      p_runSeg=SegQ_Tail();
-      if(p_runSeg!=NULL)
-      {
-        p_runSeg->cur_step=0;
-        p_runSeg->vcur= vcur*p_runSeg->JunctionNormCoeff;
-
-        // __PRT_D_("  =vcur:%f x coeff:%f=new_v %f,%f,%f==\n",vcur,p_runSeg->JunctionNormCoeff,p_runSeg->vcur,blk.vcen,blk.vto);
-
-
-      }
-      else
-      {
-
-        // __PRT_I_("No Tail\n");
-      }
-    }
-    if(p_runSeg==NULL)
-    {
-      stopTimer();
-      return;
-    }
-
-    
-    float vcur= p_runSeg->vcur;
-    if(p_runSeg->cur_step==0)
-    {
-
-      uint32_t _axis_dir=0;
-      xVec rvec;
-      vecAssign_ref(rvec,p_runSeg->runvec);
-      for(int k=0;k<MSTP_VEC_SIZE;k++)
-      {
-        if(rvec.vec[k]==0)
-        {
-          _axis_dir|=axis_dir&(1<<k);//if no movement use the old info
-        }
-        if(rvec.vec[k]<0)
-        {
-          posvec.vec[k]=-rvec.vec[k];
-          _axis_dir|=1<<k;
-        }
-        else
-        {
-          posvec.vec[k]=rvec.vec[k];
-        }
-      }
-
-      // __PRT_D_("start=vcur:%f=vcen:%f==vto:%f==\n",vcur,p_runSeg->vcen,p_runSeg->vto);
-
-      axis_dir=_axis_dir;
-      // T_next=0;
-
-      BlockInitEffect(p_runSeg);//flip direction
-
-    }
-
-    BlockRunStep(p_runSeg);
-
-
-
-    vcur=p_runSeg->vcur;
-    if(vcur<minSpeed)
-    {
-      vcur=minSpeed;
-    }
-
-
-
-    float T = TICK2SEC_BASE/vcur;
-    this->T_next=(uint32_t)(T);
-
-    delayResidue+=T-T_next;
-    if(delayResidue>1)
-    {
-      delayResidue-=1;
-      T_next+=1;
-    }
-
-
-
-
-
-
-    p_runSeg->cur_step++;
-    // std::this_thread::sleep_for(std::chrono::milliseconds(sysInfo.T_next));
-    
-    // BlockRunEffect();
-
-
-    // __PRT_D_("\n\n\n");
-  }
-
-
-
-
-}
-
-
-
 uint32_t MStp::findMidIdx(uint32_t from_idxes,uint32_t totSteps)
 {
   uint32_t idxes=0;
@@ -1274,48 +1154,161 @@ uint32_t MStp::taskRun()
 {
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
   
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
+  if(p_runSeg!=NULL)
   {
-    uint32_t sele=(1<<i);
-    if(pre_indexes&sele)
+    switch(p_runSeg->type)//========Run with current segment
     {
-      if(axis_dir&sele)
-      {
-        curPos_c.vec[i]--;
-      }
-      else
-      {
-        curPos_c.vec[i]++;
-      }
+      case blockType::blk_line:
+      
+        for(int i=0;i<MSTP_VEC_SIZE;i++)
+        {
+          uint32_t sele=(1<<i);
+          if(pre_indexes&sele)
+          {
+            if(axis_dir&sele)
+            {
+              curPos_c.vec[i]--;
+            }
+            else
+            {
+              curPos_c.vec[i]++;
+            }
+          }
+        }
+        
+        BlockPulEffect(pre_indexes,axis_collectpul);
+        // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
+        // delIdxResidue(pre_indexes);
+
+        axis_collectpul=0;
+      break;
     }
   }
-  
-  BlockPulEffect(pre_indexes,axis_collectpul);
-  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
-  // delIdxResidue(pre_indexes);
 
-  axis_collectpul=0;
+  float prevcur=0;
   if(tskrun_state==0)
   {
 
-    __PRT_D_("tskrun_state:%d isMidPulTrig:%d\n",tskrun_state,isMidPulTrig);
-    // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
-    SegPlayer();
+    do
+    {
+      
+      if(p_runSeg==NULL)//========Try to load new segment
+      {
+        T_next=0;
+        axis_pul=0;
 
-    pre_indexes=0;
-    isMidPulTrig=false;
-    axis_collectpul=0;
-    __PRT_D_("p_runSeg:%p T_next:%d\n",p_runSeg,T_next);
-    if(p_runSeg==NULL)
-    {
-      return 0;
-    }
-    if(T_next==0)
-    {
-      return 0;
-    }
-    // __PRT_D_(">>>>st0 T_next:%d\n",T_next);
-    tskrun_state=1;
+        p_runSeg=SegQ_Tail();
+        if(p_runSeg==NULL)
+        {
+          stopTimer();
+          return 0;//EXIT no new segment
+        }
+        else
+        {
+          xVec vec0=(xVec){0};//general reset
+          p_runSeg->cur_step=0;
+          BlockInitEffect(p_runSeg);
+          vecAssign(curPos_mod,vec0);
+          vecAssign(curPos_residue,vec0);
+          vecAssign(posvec,vec0);
+        }
+      }
+
+
+
+
+      switch(p_runSeg->type)//========Run with current segment
+      {
+        case blockType::blk_line:
+
+        break;
+        case blockType::blk_wait :
+
+        break;
+
+      }
+
+
+
+
+      if(p_runSeg->cur_step==p_runSeg->steps) //========segment reaches the end
+      {
+
+        prevcur= p_runSeg->vcur;
+        __PRT_D_(">[%f\n",prevcur);
+        BlockEndEffect(p_runSeg);
+        SegQ_Tail_Pop();
+        p_runSeg=NULL;
+        continue;
+      } 
+
+
+
+      switch(p_runSeg->type)//========Run with current segment
+      {
+        case blockType::blk_line:
+          if(p_runSeg->cur_step==0)
+          {
+            
+            __PRT_D_(">[%f\n",prevcur);
+            p_runSeg->vcur= prevcur*p_runSeg->JunctionNormCoeff;
+            uint32_t _axis_dir=0;
+            xVec rvec=p_runSeg->runvec;
+            for(int k=0;k<MSTP_VEC_SIZE;k++)
+            {
+              if(rvec.vec[k]==0)
+              {
+                _axis_dir|=axis_dir&(1<<k);//if no movement use the old info
+              }
+              if(rvec.vec[k]<0)
+              {
+                posvec.vec[k]=-rvec.vec[k];
+                _axis_dir|=1<<k;
+              }
+              else
+              {
+                posvec.vec[k]=rvec.vec[k];
+              }
+            }
+            axis_dir=_axis_dir;
+          }
+          
+
+          BlockRunStep(p_runSeg);
+
+          {
+            float vcur=p_runSeg->vcur;
+            if(vcur<minSpeed)
+            {
+              vcur=minSpeed;
+            }
+
+            float T = TICK2SEC_BASE/vcur;
+            p_runSeg->step_period=(uint32_t)(T);
+            T_next=p_runSeg->step_period;
+          }
+          
+
+          pre_indexes=0;
+          isMidPulTrig=false;
+          axis_collectpul=0;
+          tskrun_state=1;
+          p_runSeg->cur_step++;
+          
+        break;
+        case blockType::blk_wait :
+          
+          __PRT_D_("blk_wait:::Go wait:%d\n",p_runSeg->step_period);
+          p_runSeg->cur_step++;
+          return p_runSeg->step_period;
+        break;
+
+      }
+
+    }while(p_runSeg==NULL);
+
+
+
 
   }
 

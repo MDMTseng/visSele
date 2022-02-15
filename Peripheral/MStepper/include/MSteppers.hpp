@@ -52,6 +52,7 @@ struct MSTP_segment
   float JunctionNormCoeff;
   float JunctionNormMaxDiff;
   float vto_JunctionMax;
+  uint32_t step_period;
 
 };
 
@@ -125,9 +126,9 @@ public:
   void StepperForceStop();
 
   MStp(MSTP_segment *buffer, int bufferL);
+  bool AddWait(uint32_t period,int times=1, void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
   bool VecAdd(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
   bool VecTo(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
-  void SegPlayer()MSTP_SEG_PREFIX;
   uint32_t T_next=0;
   void BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *curSeg) MSTP_SEG_PREFIX;
 

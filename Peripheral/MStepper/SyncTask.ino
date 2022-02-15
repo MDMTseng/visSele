@@ -580,6 +580,16 @@ void vecToWait(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *ex
 }
 
 
+void addWaitWait(uint32_t period,int times=1,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL)
+{
+  // digitalWrite(PIN_OUT_1,1);
+  while( mstp.AddWait(period,times,ctx,exinfo)==false)
+  {
+    Serial.printf("");
+  }
+  
+  // digitalWrite(PIN_OUT_1,0);
+}
 void pickOn(int lidx,int pos,int speed,MSTP_SegCtx *p_ctx=NULL)
 {
   int upR=80;
