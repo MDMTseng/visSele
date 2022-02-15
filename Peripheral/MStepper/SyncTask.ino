@@ -55,7 +55,7 @@ class MStp_M:public MStp{
   {
     
     TICK2SEC_BASE=10*1000*1000;
-    main_acc=SUBDIV*1500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
+    main_acc=SUBDIV*3000/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
     minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     main_junctionMaxSpeedJump=minSpeed;//5200;
 
@@ -72,8 +72,8 @@ class MStp_M:public MStp{
     pinMode(PIN_OUT_1, OUTPUT);    
     // pinMode(PIN_DBG, OUTPUT);    
 
-    axisInfo[0].AccW=1.5;
-    axisInfo[0].MaxSpeedJumpW=1.5;
+    axisInfo[0].AccW=0.3;
+    axisInfo[0].MaxSpeedJumpW=0.4;
 
     axisInfo[1].AccW=1;
     axisInfo[1].MaxSpeedJumpW=1;
@@ -151,7 +151,7 @@ class MStp_M:public MStp{
   
   int M1Info_Limit1=300;
   int M1Info_Limit2=-300;
-  int ZeroAxis(uint32_t index,int distance)
+  int ZeroAxis(uint32_t index,int distance,int speed)
   {
 
     switch(index)
@@ -160,7 +160,7 @@ class MStp_M:public MStp{
       case 0://rough zeroing
       {
         int sensorDetectVLvl=0;
-        int runSpeed=minSpeed*5;
+        int runSpeed=speed;
         int axisIdx=0;
         xVec retHitPos;
         if(runUntil(axisIdx,PIN_M1_SEN1,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
@@ -214,7 +214,7 @@ class MStp_M:public MStp{
       case 1:
       {
         int sensorDetectVLvl=0;
-        int runSpeed=minSpeed*5;
+        int runSpeed=speed;
         int axisIdx=index;
         
         xVec retHitPos;
@@ -639,7 +639,7 @@ void setup()
 
 
   
-  int retErr=0;//mstp.ZeroAxis(1,50000)+mstp.ZeroAxis(0,500*2);
+  int retErr=mstp.ZeroAxis(1,50000,mstp.minSpeed*2)+mstp.ZeroAxis(0,500*2,mstp.minSpeed);
 
   rzERROR=retErr;
   if(retErr==0)
@@ -665,9 +665,9 @@ void loop()
 {
   if(rzERROR==0 && mstp.SegQ_IsEmpty()==true)
   {
-    delay(3000);
+    delay(1000);
 
-  uint32_t speed=40000;//25000;
+  uint32_t speed=30000;//25000;
 
 
     int pt1=(-30-12*2)*SUBDIV/mm_PER_REV;
@@ -730,18 +730,43 @@ void loop()
       pos=n+7;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
 
 
-      // n=8;
-      // pos=n+0;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      // pos=n+4;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      // pos=n+1;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      // pos=n+5;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      // pos=n+2;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      // pos=n+6;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      // pos=n+3;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      // pos=n+7;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      n=8;
+      pos=n+0;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+4;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+1;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+5;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+2;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+6;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+3;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
+      pos=n+7;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
 
-
+      // vecToWait((xVec){0,-200},speed);
+      // addWaitWait(mstp.TICK2SEC_BASE);
       
+      // // while(mstp.SegQ_IsEmpty()==false)
+      // // { }
+      // sleep(1);
+
+
+
+      // vecToWait((xVec){0,-100},speed);
+      // vecToWait((xVec){0,-101},speed);
+
+
+      MSTP_segment_extra_info einfo;
+      einfo.acc=mstp.main_acc;
+      einfo.deacc=-mstp.main_acc/10;
+      vecToWait((xVec){0,100},speed,NULL,&einfo);
+      
+      einfo.acc=
+      einfo.deacc=-mstp.main_acc/50;
+
+      // addWaitWait(mstp.TICK2SEC_BASE/5);
+      // vecToWait((xVec){0,100},speed/10,NULL,&einfo);
+      addWaitWait(mstp.TICK2SEC_BASE);
+      vecToWait((xVec){0,0},speed/10,NULL,&einfo);
+
+
       mstp.printSEGInfo();
       // mstp.VecTo((xVec){0,pt1},speed);
       // mstp.VecTo((xVec){0,pt2},speed);
