@@ -55,9 +55,9 @@ class MStp_M:public MStp{
   {
     
     TICK2SEC_BASE=10*1000*1000;
-    acc=SUBDIV*1500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
-    minSpeed=sqrt(acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    junctionMaxSpeedJump=minSpeed;//5200;
+    main_acc=SUBDIV*1500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
+    minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    main_junctionMaxSpeedJump=minSpeed;//5200;
 
     maxSpeedInc=minSpeed;
     pinMode(PIN_M1_DIR, OUTPUT);
@@ -72,6 +72,12 @@ class MStp_M:public MStp{
     pinMode(PIN_OUT_1, OUTPUT);    
     // pinMode(PIN_DBG, OUTPUT);    
 
+    axisInfo[0].AccW=1.5;
+    axisInfo[0].MaxSpeedJumpW=1.5;
+
+    axisInfo[1].AccW=1;
+    axisInfo[1].MaxSpeedJumpW=1;
+  
     
   }
 
@@ -562,10 +568,10 @@ StaticJsonDocument<1024> ret_doc;
 
 uint32_t xendpos=4700*SUBDIV/mm_PER_REV;
 
-void vecToWait(xVec VECTo,float speed,void* ctx=NULL)
+void vecToWait(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL)
 {
   // digitalWrite(PIN_OUT_1,1);
-  while(mstp.VecTo(VECTo,speed,ctx)==false)
+  while(mstp.VecTo(VECTo,speed,ctx,exinfo)==false)
   {
     Serial.printf("");
   }
@@ -623,7 +629,7 @@ void setup()
 
 
   
-  int retErr=mstp.ZeroAxis(1,50000)+mstp.ZeroAxis(0,500*2);
+  int retErr=0;//mstp.ZeroAxis(1,50000)+mstp.ZeroAxis(0,500*2);
 
   rzERROR=retErr;
   if(retErr==0)

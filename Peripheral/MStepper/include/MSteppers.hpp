@@ -39,10 +39,14 @@ struct MSTP_segment
   float vcur;
   float vcen;
   float vto;
+  float acc;
+  float deacc;
+  
   blockType type;
   xVec from;
   xVec to;
   xVec runvec;
+  int main_axis_idx;
   uint32_t steps;
   uint32_t cur_step;
   float JunctionNormCoeff;
@@ -54,13 +58,19 @@ struct MSTP_segment
 
 struct MSTP_axisSetup
 {
-  float AccX;
-  float minSpeed;
-  float MaxSpeedJumpX;
-  float maxSpeedInc;
-  int gearRatio;
-
+  float AccW;
+  float MaxSpeedJumpW;
+  // float maxSpeedInc;
 };
+
+
+
+struct MSTP_segment_extra_info
+{
+  float acc;
+  float deacc;
+};
+
 
 class MStp{
 
@@ -76,10 +86,12 @@ public:
 
   //preset cannot be touched
   uint32_t TICK2SEC_BASE=1000*1000;
-  float acc;
+  float main_acc;
   float minSpeed;
-  float junctionMaxSpeedJump;
+  float main_junctionMaxSpeedJump;
   float maxSpeedInc;
+  MSTP_axisSetup axisInfo[MSTP_VEC_SIZE];
+
 
   xVec posvec;
   xVec curPos_c;
@@ -113,8 +125,8 @@ public:
   void StepperForceStop();
 
   MStp(MSTP_segment *buffer, int bufferL);
-  bool VecAdd(xVec VECTo,float speed,void* ctx=NULL);
-  bool VecTo(xVec VECTo,float speed,void* ctx=NULL);
+  bool VecAdd(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
+  bool VecTo(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
   void SegPlayer()MSTP_SEG_PREFIX;
   uint32_t T_next=0;
   void BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *curSeg) MSTP_SEG_PREFIX;

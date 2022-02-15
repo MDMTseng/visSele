@@ -59,25 +59,28 @@ inline xVec vecAdd(xVec v1,xVec v2)
   return v1;
 }
 
-inline uint32_t vecMachStepCount(xVec vec)
+inline uint32_t vecMachStepCount(xVec vec,int *ret_idx=NULL)
 {
   uint32_t maxDist=0;
-
+  int idx=-1;
   for(int i=0;i<MSTP_VEC_SIZE;i++)
   {
     int32_t dist = vec.vec[i];
     if(dist<0)dist=-dist;
     if(maxDist<dist)
     {
+      idx=i;
       maxDist=dist;
     }
   }
-
+  if(ret_idx)*ret_idx=idx;
   return maxDist;
 }
-inline uint32_t vecMachStepCount(xVec v1,xVec v2)
+
+
+inline uint32_t vecMachStepCount(xVec v1,xVec v2,int *ret_idx=NULL)
 {
-  return vecMachStepCount(vecSub(v1 ,v2));
+  return vecMachStepCount(vecSub(v1 ,v2),ret_idx);
 }
 
 inline void vecAssign(MSTP_SEG_PREFIX xVec &to,MSTP_SEG_PREFIX xVec from)
@@ -292,7 +295,7 @@ a=MAX_ALLOWED_SPEED_JUMP/JunctionNormMaxDiff;
 
 
 //return ret_blk2_coeff let  blk1.vec => ret_blk2_coeff*blk2.vec would have the smallest speed diff 
-inline int Calc_JunctionNormCoeff(MSTP_SEG_PREFIX MSTP_segment *blkA,MSTP_SEG_PREFIX MSTP_segment *blkB,float *ret_blkB_coeff1)
+inline int Calc_JunctionNormCoeff(MSTP_SEG_PREFIX MSTP_segment *blkA,MSTP_SEG_PREFIX MSTP_segment *blkB,MSTP_axisSetup *axisInfo,float *ret_blkB_coeff1)
 {
   if(ret_blkB_coeff1)
     *ret_blkB_coeff1=NAN;
@@ -329,7 +332,8 @@ inline int Calc_JunctionNormCoeff(MSTP_SEG_PREFIX MSTP_segment *blkA,MSTP_SEG_PR
 
     float A=(float)blkA->runvec.vec[i];//X
     float B=(float)blkB->runvec.vec[i];//Y
-
+    float W=1/axisInfo[i].MaxSpeedJumpW;//bigger MaxSpeedJumpW means less Weight(less important to take care of)
+    // W*=W;
     // if(AB<0 && AB<-junctionMaxSpeedJump)
     // {//The speed from +to-(or reverse) and the difference is too huge, then set target speed to zero
     //   dotp=0;
@@ -337,9 +341,8 @@ inline int Calc_JunctionNormCoeff(MSTP_SEG_PREFIX MSTP_segment *blkA,MSTP_SEG_PR
     //   break;
     // }
     // AAsum+=A*A;
-    
-    ABsum+=A*B;
-    BBsum+=B*B;
+    ABsum+=A*B*W;
+    BBsum+=B*B*W;
   }
   if(ABsum<0)
   {
@@ -380,7 +383,7 @@ inline int Calc_JunctionNormCoeff(MSTP_SEG_PREFIX MSTP_segment *blkA,MSTP_SEG_PR
 //
 //
 //
-inline int Calc_JunctionNormMaxDiff(MSTP_SEG_PREFIX MSTP_segment *blk1,MSTP_SEG_PREFIX MSTP_segment *blk2,float blk2_coeff,float *ret_MaxDiff)
+inline int Calc_JunctionNormMaxDiff(MSTP_SEG_PREFIX MSTP_segment *blk1,MSTP_SEG_PREFIX MSTP_segment *blk2,float blk2_coeff,MSTP_axisSetup *axisInfo,float *ret_MaxDiff)
 {
 
 
@@ -410,7 +413,7 @@ inline int Calc_JunctionNormMaxDiff(MSTP_SEG_PREFIX MSTP_segment *blk1,MSTP_SEG_
     float B=(float)blk2->runvec.vec[i]*NormCoeff;
 
 
-    float diff = A-B;
+    float diff = (A-B)/axisInfo[i].MaxSpeedJumpW;
     if(diff<0)diff=-diff;
     __PRT_D_("blk[%d]: %d,%d\n",i,blk1->runvec.vec[i],blk2->runvec.vec[i]);
     __PRT_I_("maxJump[%d]: A:%f B:%f  diff:%f\n",i,
@@ -425,10 +428,6 @@ inline int Calc_JunctionNormMaxDiff(MSTP_SEG_PREFIX MSTP_segment *blk1,MSTP_SEG_
   return 0;
 }
 
-
-
-
-  void SystemClear();
 
 
 
@@ -463,12 +462,20 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
   int segBufHeadIdx=0;
   int segBufTailIdx=0;
   minSpeed=100;
-  junctionMaxSpeedJump=300;
+  main_junctionMaxSpeedJump=300;
 
   maxSpeedInc=minSpeed;
   
   TICK2SEC_BASE=10*1000*1000;
-  acc=1000;
+  main_acc=1000;
+
+  
+  
+  for(int i=0;i<MSTP_VEC_SIZE;i++)
+  {
+    axisInfo[i].AccW=1;
+    axisInfo[i].MaxSpeedJumpW=1;
+  }
   // IO_SET_DBG(PIN_DBG0, OUTPUT);
   SystemClear();
 }
@@ -480,7 +487,7 @@ void MStp::SystemClear()
   curPos_c=curPos_mod=curPos_residue=lastTarLoc=(xVec){0};
   T_next=0;
   minSpeed=2;
-  acc=1;
+  main_acc=1000;
 }
 
 void MStp::StepperForceStop()
@@ -562,14 +569,14 @@ MSTP_SEG_PREFIX bool MStp::SegQ_Tail_Pop() MSTP_SEG_PREFIX
 }
 
 
-bool MStp::VecAdd(xVec VECAdd,float speed,void* ctx)
+bool MStp::VecAdd(xVec VECAdd,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
 {
-  return VecTo(vecAdd(lastTarLoc,VECAdd),speed,ctx);
+  return VecTo(vecAdd(lastTarLoc,VECAdd),speed,ctx,exinfo);
 }
 
 
 
-bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
+bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
 {
 
   if(SegQ_Space() <=5)
@@ -580,31 +587,66 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
   MSTP_SEG_PREFIX MSTP_segment* hrb=SegQ_Head();
   MSTP_SEG_PREFIX MSTP_segment &newSeg=*hrb;
+  newSeg.steps=vecMachStepCount(VECTo,lastTarLoc,&newSeg.main_axis_idx);
+  if(newSeg.steps==0)
+  {
+    return true;
+  }
+
+
+
   newSeg.ctx=ctx;
   newSeg.vcur=0;
   newSeg.vcen=speed;
   newSeg.vto=0;
+
+
+  
   newSeg.type=blockType::blk_line;
   vecAssign(newSeg.from,lastTarLoc);
   vecAssign(newSeg.to,VECTo);
   vecAssign(newSeg.runvec,vecSub(VECTo,lastTarLoc));
-  newSeg.steps=vecMachStepCount(VECTo,lastTarLoc);
   newSeg.cur_step=0;
   newSeg.JunctionNormCoeff=0;
   newSeg.JunctionNormMaxDiff=NAN;
   newSeg.vto_JunctionMax=0;
 
+
+  {
+
+    int acc_constrain_axis=-1;
+    float maxK=0;
+    for(int i=0;i<MSTP_VEC_SIZE;i++)
+    {
+      float K=newSeg.runvec.vec[i]/axisInfo[acc_constrain_axis].AccW;
+      if(K<0)K=-K;
+      if(maxK<K)
+      {
+        maxK=K;
+        acc_constrain_axis=i;
+      }
+    }
+    float accW=axisInfo[acc_constrain_axis].AccW;
+    float a=main_acc;
+    float dea=-main_acc;
+    if(exinfo!=NULL)
+    {
+      if(exinfo->acc==exinfo->acc)
+        a=exinfo->acc;
+        
+      if(exinfo->deacc==exinfo->deacc)
+        dea=exinfo->deacc;
+    }
+    newSeg.acc=a*accW;
+    newSeg.deacc=dea*accW;
+  }
+
+
+
   __PRT_I_("\n");
   __PRT_I_("==========NEW runvec[%s]======idx: h:%d t:%d===\n",toStr(newSeg.runvec),segBufHeadIdx,segBufTailIdx);
   lastTarLoc=VECTo;
 
-
-
-
-  if(newSeg.steps==0)
-  {
-    return true;
-  }
 
 
 
@@ -617,6 +659,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
   {
     preSeg = SegQ_Head(1);
   }
+  
   if(preSeg!=NULL)
   {// you need to deal with the junction speed
     // preSeg->vec;
@@ -624,7 +667,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
     
 
     float coeff1=NAN;
-    int coeffSt= Calc_JunctionNormCoeff(preSeg,&newSeg,&coeff1);
+    int coeffSt= Calc_JunctionNormCoeff(preSeg,&newSeg,axisInfo,&coeff1);
     if(coeffSt<0)
     {
       newSeg.JunctionNormCoeff=0;
@@ -636,7 +679,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
     {
       float maxDiff1=NAN;
       int retSt=0;
-      retSt |= Calc_JunctionNormMaxDiff(preSeg,&newSeg,coeff1,&maxDiff1);
+      retSt |= Calc_JunctionNormMaxDiff(preSeg,&newSeg,coeff1,axisInfo,&maxDiff1);
       // retSt |= Calc_JunctionNormMaxDiff(*preSeg,newSeg,coeff2,maxDiff2);
 
 
@@ -667,7 +710,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
         //max allowed end speed of pre block, so that at junction the max speed jump is within the limit, this is fixed
-        preSeg->vto_JunctionMax=junctionMaxSpeedJump/newSeg.JunctionNormMaxDiff;
+        preSeg->vto_JunctionMax=main_junctionMaxSpeedJump/newSeg.JunctionNormMaxDiff;
 
         //vcur is the current speed, for un-executed block it's the starting speed
         newSeg.vcur=preSeg->vto_JunctionMax*newSeg.JunctionNormCoeff;
@@ -734,7 +777,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
 
 
 
-    __PRT_D_("maxJump:%f coeff:%f  maxDiff:%f\n",junctionMaxSpeedJump, newSeg.JunctionNormCoeff, newSeg.JunctionNormMaxDiff);
+    __PRT_D_("maxJump:%f coeff:%f  maxDiff:%f\n",main_junctionMaxSpeedJump, newSeg.JunctionNormCoeff, newSeg.JunctionNormMaxDiff);
 
 
     // {
@@ -864,10 +907,10 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx)
       else
       {
         //find minimum distance needed
-        int32_t minDistNeeded= DeAccDistNeeded_f(curblk->vcen,curblk->vto, -acc);
+        int32_t minDistNeeded= DeAccDistNeeded_f(curblk->vcen,curblk->vto, curblk->deacc);
         if( curDeAccSteps <= minDistNeeded )
         {
-          cur_vfrom = findV1(curDeAccSteps, -acc, curblk->vto);
+          cur_vfrom = findV1(curDeAccSteps, curblk->deacc, curblk->vto);
           //CASE 2
         }
         else
@@ -954,8 +997,8 @@ void MStp::BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
 
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
 
-  float a1=acc;
-  float a2=-a1;
+  float a1=seg->acc;
+  float a2=seg->deacc;
   int32_t D = (seg->steps-seg->cur_step);
   
 
