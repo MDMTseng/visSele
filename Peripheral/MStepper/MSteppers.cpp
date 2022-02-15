@@ -573,7 +573,7 @@ bool MStp::AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info 
 {
 
 
-  if(SegQ_Space() <=3)
+  if(SegQ_Space() <=2)
   {
     return false;
   }
@@ -601,7 +601,7 @@ bool MStp::VecAdd(xVec VECAdd,float speed,void* ctx,MSTP_segment_extra_info *exi
 bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
 {
 
-  if(SegQ_Space() <=3)
+  if(SegQ_Space() <=2)
   {
     return false;
   }
