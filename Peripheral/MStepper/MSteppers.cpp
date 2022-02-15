@@ -581,7 +581,7 @@ bool MStp::AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info 
   MSTP_SEG_PREFIX MSTP_segment* hrb=SegQ_Head();
   MSTP_SEG_PREFIX MSTP_segment &newSeg=*hrb;
   newSeg.ctx=ctx;
-  newSeg.type=blockType::blk_wait;
+  newSeg.type=MSTP_segment_type::seg_wait;
   newSeg.steps=times;
   newSeg.step_period=period;
 
@@ -624,7 +624,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
 
   
-  newSeg.type=blockType::blk_line;
+  newSeg.type=MSTP_segment_type::seg_line;
   vecAssign(newSeg.from,lastTarLoc);
   vecAssign(newSeg.to,VECTo);
   vecAssign(newSeg.runvec,vecSub(VECTo,lastTarLoc));
@@ -680,7 +680,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
   if(SegQ_Size()>0)//get previous block to calc junction info
   {
     preSeg = SegQ_Head(1);
-    if(preSeg->type==blockType::blk_wait)
+    if(preSeg->type==MSTP_segment_type::seg_wait)
     {
       preSeg=NULL;
     }
@@ -918,7 +918,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
       curblk = preSeg;
       preSeg = SegQ_Head(1+i);
 
-      if(preSeg->type==blockType::blk_wait)
+      if(preSeg->type==MSTP_segment_type::seg_wait)
       {
         break;
       }
@@ -1158,7 +1158,7 @@ uint32_t MStp::taskRun()
   {
     switch(p_runSeg->type)//========Run with current segment
     {
-      case blockType::blk_line:
+      case MSTP_segment_type::seg_line:
       
         for(int i=0;i<MSTP_VEC_SIZE;i++)
         {
@@ -1219,10 +1219,10 @@ uint32_t MStp::taskRun()
 
       switch(p_runSeg->type)//========Run with current segment
       {
-        case blockType::blk_line:
+        case MSTP_segment_type::seg_line:
 
         break;
-        case blockType::blk_wait :
+        case MSTP_segment_type::seg_wait :
 
         break;
 
@@ -1246,7 +1246,7 @@ uint32_t MStp::taskRun()
 
       switch(p_runSeg->type)//========Run with current segment
       {
-        case blockType::blk_line:
+        case MSTP_segment_type::seg_line:
           if(p_runSeg->cur_step==0)
           {
             
@@ -1296,7 +1296,7 @@ uint32_t MStp::taskRun()
           p_runSeg->cur_step++;
           
         break;
-        case blockType::blk_wait :
+        case MSTP_segment_type::seg_wait :
           
           __PRT_D_("blk_wait:::Go wait:%d\n",p_runSeg->step_period);
           p_runSeg->cur_step++;

@@ -31,7 +31,7 @@ struct xVec
   int32_t vec[MSTP_VEC_SIZE];
 };
 
-enum blockType { blk_line=0,blk_wait=1 };
+enum MSTP_segment_type { seg_line=0,seg_wait=1 };
 
 struct MSTP_segment
 {
@@ -42,7 +42,7 @@ struct MSTP_segment
   float acc;
   float deacc;
   
-  blockType type;
+  MSTP_segment_type type;
   xVec from;
   xVec to;
   xVec runvec;
