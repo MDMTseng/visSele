@@ -29,6 +29,35 @@ bool GCodeParser::addChar(char c)
   line[lineCharCount]=c;
   do
   {
+
+    if(semicolonFound)//if there is a semi colon, skip to the end
+    {
+      if(c=='\0' || c=='\n')
+      {
+        blockInitial[blockCount]=lineCharCount+1;
+        parseLine();
+        return true;
+      }
+      break;
+    }
+
+    if(headParenthesesFound)
+    {
+      if(c==')')
+      {
+        headParenthesesFound=false;
+        isInSpace=true;
+      }
+      else if(c=='\0' || c=='\n')
+      {
+        blockInitial[blockCount]=lineCharCount+1;
+        parseLine();
+        return true;
+      }
+      break;
+    }
+
+
     if(isInSpace)
     {
       if(c!=' ')
@@ -45,13 +74,13 @@ bool GCodeParser::addChar(char c)
         }
         if(c=='\0' || c=='\n')
         {
-          blockInitial[blockCount]=lineCharCount;
+          blockInitial[blockCount]=lineCharCount+1;
           parseLine();
           return true;
         }
 
       }
-      else
+      else//multiple spaces skip this one
       {
         lineCharCount--;
       }
@@ -60,47 +89,35 @@ bool GCodeParser::addChar(char c)
     }
     else
     {
+      // printf(">>%c\n",c);
       if(c==' ')
       {
         isInSpace=true;
         break;
       }
+      if(c==';')
+      {
+
+        blockInitial[blockCount++]=lineCharCount;
+        semicolonFound=true;
+        break;
+      }
+
+      if(c=='(')
+      {
+
+        blockInitial[blockCount++]=lineCharCount;
+        headParenthesesFound=true;
+        break;
+      }
 
       if(c=='\0' || c=='\n')
       {
-        blockInitial[blockCount]=lineCharCount;
+        blockInitial[blockCount]=lineCharCount+1;
         parseLine();
        
         return true;
       }
-    }
-
-
-    if(semicolonFound)
-    {
-      if(c=='\0' || c=='\n')
-      {
-        blockInitial[blockCount]=lineCharCount;
-        parseLine();
-        return true;
-      }
-      break;
-    }
-
-    if(headParenthesesFound)
-    {
-      if(c==')')
-      {
-        headParenthesesFound=false;
-        isInSpace=true;
-      }
-      else if(c=='\0' || c=='\n')
-      {
-        blockInitial[blockCount]=lineCharCount;
-        parseLine();
-        return true;
-      }
-      break;
     }
 
 
