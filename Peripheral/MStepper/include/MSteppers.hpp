@@ -25,11 +25,12 @@ char *int2bin(uint32_t a, int digits=8);
 #define __PRT_I_(fmt,...) Serial.printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
 #endif
 
-
 struct xVec
 {
   int32_t vec[MSTP_VEC_SIZE];
 };
+ xVec vecAdd(xVec v1,xVec v2);
+ xVec vecSub(xVec v1,xVec v2);
 
 enum MSTP_segment_type { seg_line=0,seg_wait=1 };
 

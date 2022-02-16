@@ -41,7 +41,7 @@ char *int2bin(uint32_t a, int digits) {
   return int2bin(a,digits, binChar, sizeof(binChar));
 }
 
-inline xVec vecSub(xVec v1,xVec v2)
+xVec vecSub(xVec v1,xVec v2)
 {
   for(int i=0;i<MSTP_VEC_SIZE;i++)
   {
@@ -50,7 +50,7 @@ inline xVec vecSub(xVec v1,xVec v2)
   return v1;
 }
 
-inline xVec vecAdd(xVec v1,xVec v2)
+xVec vecAdd(xVec v1,xVec v2)
 {
   for(int i=0;i<MSTP_VEC_SIZE;i++)
   {

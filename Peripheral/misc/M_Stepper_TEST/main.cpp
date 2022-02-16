@@ -244,6 +244,7 @@ MStp_M mstp(blockBuff,MSTP_BLOCK_SIZE);
 class GCodeParser_M:public GCodeParser{
 public:
   MStp *_mstp;
+  xVec pos_offset={0};
   GCodeParser_M(MStp *mstp)
   {
     _mstp=mstp;
@@ -260,7 +261,6 @@ public:
     return dist*pulses_per_mm;
   }
 
-
   float parseFloat(char* str,int strL)
   {
     char strBuf[20];
@@ -269,8 +269,8 @@ public:
     return atof(strBuf);
   }
 
-  bool isAbsLoc=true;
-  void ReadxVecData(char* line, int *blkIdxes,int blkIdxesL,xVec &retVec)
+
+  int ReadxVecData(char* line, int *blkIdxes,int blkIdxesL,float *retVec)
   {
     int didx=0;
     int j=0;
@@ -282,7 +282,7 @@ public:
       if(blk[0]=='G'||blk[0]=='M')
       {
         // printf("j:%d\n",j);
-        return;
+        return j;
       }
       
       // printf("[%d]:",didx++);
@@ -293,23 +293,47 @@ public:
         {
           blk+=1;len-=1;
           
-          float pos = parseFloat(blk,len);
-          uint32_t ipos=unit2Pulse(pos,SUBDIV/mm_PER_REV);
-          // printf("[Y]:%f => pul:%d\n",pos,ipos);
-          retVec.vec[1]=ipos;
+          retVec[0] = parseFloat(blk,len);
         }
         else if(CheckHead(blk, "Z1_"))
         {
           blk+=3;len-=3;
-          float pos = parseFloat(blk,len);
-          uint32_t ipos=unit2Pulse(pos,SUBDIV/mm_PER_REV);
-          // printf("[Z1_]:%f => pul:%d\n",pos,ipos);
-          retVec.vec[0]=ipos;
+          retVec[1] = parseFloat(blk,len);
         }
       }
 
     }
-    return;
+    return j;
+  }
+
+  bool isAbsLoc=true;
+  int ReadxVecData(char* line, int *blkIdxes,int blkIdxesL,xVec &retVec)
+  {
+    float vecBuff[MSTP_VEC_SIZE];
+    
+
+    for(int i=0;i<MSTP_VEC_SIZE;i++)
+    {
+      vecBuff[i]=NAN;//set NAN as unset
+    }
+
+    int retj = ReadxVecData(line,blkIdxes,blkIdxesL,vecBuff);
+    
+    if(vecBuff[0]==vecBuff[0])
+    {
+      uint32_t ipos=unit2Pulse(vecBuff[0],SUBDIV/mm_PER_REV);
+        
+      retVec.vec[0]=ipos;
+    }
+    if(vecBuff[1]==vecBuff[1])
+    {
+      uint32_t ipos=unit2Pulse(vecBuff[1],SUBDIV/mm_PER_REV);
+        
+      retVec.vec[1]=ipos;
+    }
+
+    
+    return retj;
   }
   float latestF= 1000;
   int ReadG1Data(char* line, int *blkIdxes,int blkIdxesL,xVec &vec,float &F)
@@ -423,7 +447,9 @@ public:
           printf("vec:%s F:%f\n",toStr(vec),F);
           if(isAbsLoc)
           {
-            _mstp->VecTo(vec,F);
+           
+            
+            _mstp->VecTo(vecAdd(vec,pos_offset),F);
           }
           else
           {
@@ -453,10 +479,17 @@ public:
           printf("G21 Use mm\n");
         }
         else if(CheckHead(cblk, "G92"))
-        {
+        {//TODO: should do from mm instead of impulse?
           printf("G92 Set pos\n");
 
+          int j=i+1;
+          xVec vec;
+          i= ReadxVecData(line,blockInitial+j,blockCount-j,vec);
 
+          printf("vec:%s\n",toStr(vec));
+          printf("sys last tar loc:%s\n",toStr(_mstp->lastTarLoc));
+
+          pos_offset=vecSub(_mstp->lastTarLoc,vec);
         }
         else
         {
@@ -600,10 +633,12 @@ int main()
 
     char GCODEs[]=
       "G28 G21\n" 
-      "G90 G01 Y0 Z1_0 F20000 (comment x);go abs location\n"
+      "G90 G01 Y-0.2 Z1_0 F20000 (comment x);go abs location\n"
       "G92 Y0 Z1_0                       ;set position\n"
-      "G91 G01 Y0.1 Z1_-0.2 F20000          ;relative position to 100 -20\n"
-      "G01 Y-0.1 F20000                    ;relative position to -100 X\n";
+      "G90\n"
+      "G01 Y0.1 Z1_-0.2 F20000          ;relative position to 100 -20\n"
+      "G01 Y0.2 F20000                    ;relative position to -100 X\n"
+      ;
       // " G17 G20 G90 G94 G54\n"
       // "G0 Z0.25\n"
       // "X-0.5 Y0.\n"
