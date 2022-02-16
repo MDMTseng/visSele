@@ -24,7 +24,7 @@ char *int2bin(uint32_t a, int digits, char *buffer, int buf_size) {
     buffer++;
     return buffer;
 }
-inline char* toStr(const MSTP_SEG_PREFIX xVec &vec)
+char* toStr(const MSTP_SEG_PREFIX xVec &vec)
 {
   static char buff[(MSTP_VEC_SIZE)*(10+2)];//format 3433, 43432 ....
   char* ptr=buff;
@@ -468,9 +468,15 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
   
   TICK2SEC_BASE=10*1000*1000;
   main_acc=1000;
+  for(int i=0;i<MSTP_VEC_SIZE;i++)
+  {
+    limit1.vec[i]=-1000;
+    limit2.vec[i]=1000;
+  }
 
-  
-  
+
+
+
   for(int i=0;i<MSTP_VEC_SIZE;i++)
   {
     axisInfo[i].AccW=1;
@@ -483,11 +489,13 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
 
 void MStp::SystemClear()
 {
-  SegQ_Clear();
+  StepperForceStop();
   curPos_c=curPos_mod=curPos_residue=lastTarLoc=(xVec){0};
   T_next=0;
   minSpeed=2;
   main_acc=1000;
+  doCheckHardLimit=true;
+  fatalErrorCode=0;
 }
 
 void MStp::StepperForceStop()
@@ -568,10 +576,17 @@ MSTP_SEG_PREFIX bool MStp::SegQ_Tail_Pop() MSTP_SEG_PREFIX
   return true;
 }
 
+void MStp::_FatalError(int errorCode,const char* errorText)
+{
+  StepperForceStop();
+  fatalErrorCode=errorCode;
+  FatalError(errorCode,errorText);
+}
 
 bool MStp::AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info *exinfo)
 {
 
+  if(fatalErrorCode!=0)return false;
 
   if(SegQ_Space() <=2)
   {
@@ -600,12 +615,27 @@ bool MStp::VecAdd(xVec VECAdd,float speed,void* ctx,MSTP_segment_extra_info *exi
 
 bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
 {
+  if(fatalErrorCode!=0)return false;
 
   if(SegQ_Space() <=2)
   {
     return false;
   }
 
+
+
+  if(doCheckHardLimit)
+  {
+    for(int i=0;i<MSTP_VEC_SIZE;i++)
+    {
+      if(VECTo.vec[i]<limit1.vec[i] ||VECTo.vec[i]>limit2.vec[i])
+      {
+        //ERROR
+        _FatalError(1,"Hard limit hit");
+        return false;
+      }
+    }
+  }
 
   MSTP_SEG_PREFIX MSTP_segment* hrb=SegQ_Head();
   MSTP_SEG_PREFIX MSTP_segment &newSeg=*hrb;

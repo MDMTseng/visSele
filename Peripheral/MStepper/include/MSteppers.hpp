@@ -71,7 +71,7 @@ struct MSTP_segment_extra_info
   float acc;
   float deacc;
 };
-
+char* toStr(const MSTP_SEG_PREFIX xVec &vec);
 
 class MStp{
 
@@ -93,6 +93,11 @@ public:
   float maxSpeedInc;
   MSTP_axisSetup axisInfo[MSTP_VEC_SIZE];
 
+  int fatalErrorCode;
+  void _FatalError(int errorCode,const char* errorText);
+  virtual void FatalError(int errorCode,const char* errorText)=0;
+  bool doCheckHardLimit=false;
+  xVec limit1,limit2;
 
   xVec posvec;
   xVec curPos_c;
@@ -138,6 +143,7 @@ public:
 
   virtual void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* blk)=0;
   virtual void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* blk)=0;
+  virtual int MachZeroRet(uint32_t index,int distance,int speed)=0;
   
   bool timerRunning=false;
   virtual void stopTimer() MSTP_SEG_PREFIX {timerRunning=false;}
