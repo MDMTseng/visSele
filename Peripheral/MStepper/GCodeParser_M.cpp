@@ -61,18 +61,18 @@ long parseLong(char* str,int strL)
 }
 
 
-int GCodeParser_M::ReadxVecData(char* line, int *blkIdxes,int blkIdxesL,float *retVec)
+int GCodeParser_M::ReadxVecData(char **blkIdxes,int blkIdxesL,float *retVec)
 {
   float num=NAN;
   int ret;
-  ret = FindFloat("Z1_",line, blkIdxes,blkIdxesL,num);
+  ret = FindFloat("Z1_",blkIdxes,blkIdxesL,num);
   if(ret==0)retVec[0]=num;
-  ret = FindFloat("Y",line, blkIdxes,blkIdxesL,num);
+  ret = FindFloat("Y",blkIdxes,blkIdxesL,num);
   if(ret==0)retVec[1]=num;
   return 0;
 }
 
-int GCodeParser_M::ReadxVecData(char* line, int *blkIdxes,int blkIdxesL,xVec &retVec)
+int GCodeParser_M::ReadxVecData(char **blkIdxes,int blkIdxesL,xVec &retVec)
 {
   float vecBuff[MSTP_VEC_SIZE];
   
@@ -82,7 +82,7 @@ int GCodeParser_M::ReadxVecData(char* line, int *blkIdxes,int blkIdxesL,xVec &re
     vecBuff[i]=NAN;//set NAN as unset
   }
 
-  ReadxVecData(line,blkIdxes,blkIdxesL,vecBuff);
+  ReadxVecData(blkIdxes,blkIdxesL,vecBuff);
   
   if(vecBuff[0]==vecBuff[0])
   {
@@ -100,33 +100,33 @@ int GCodeParser_M::ReadxVecData(char* line, int *blkIdxes,int blkIdxesL,xVec &re
   
   return 0;
 }
-int GCodeParser_M::ReadG1Data(char* line, int *blkIdxes,int blkIdxesL,xVec &vec,float &F)
+int GCodeParser_M::ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F)
 {
   vec=isAbsLoc?MTPSYS_getLastLocInStepperSystem():(xVec){0};
-  ReadxVecData(line, blkIdxes,blkIdxesL,vec);
+  ReadxVecData(blkIdxes,blkIdxesL,vec);
   int didx=0;
   int j=0;
-  F=latestF;
 
   float tmpF=latestF;
-  int ret = FindFloat("F",line, blkIdxes,blkIdxesL,tmpF);
+  int ret = FindFloat("F",blkIdxes,blkIdxesL,tmpF);
   float nF=unit2Pulse_conv("F",tmpF);
   if(nF==nF && nF>0)
   {
-    F=latestF=nF;
+    latestF=nF;
   }
+  F=latestF;
 
   return 0;
 }
 
 
-int GCodeParser_M::FindFloat(char *prefix,char* line, int *blkIdxes,int blkIdxesL,float &retNum)
+int GCodeParser_M::FindFloat(char *prefix,char **blkIdxes,int blkIdxesL,float &retNum)
 {
   int j=0;
   int prefixL=strlen(prefix);
   for(;j<blkIdxesL;j++)
   {
-    char* blk=line+blkIdxes[j];
+    char* blk=blkIdxes[j];
     int len=blkIdxes[j+1]-blkIdxes[j]-1;
     if(blk[0]=='('||blk[0]==';')continue;//skip comment
     if(blk[0]=='G'||blk[0]=='M')
@@ -147,13 +147,13 @@ int GCodeParser_M::FindFloat(char *prefix,char* line, int *blkIdxes,int blkIdxes
   }
   return -3;
 }
-int GCodeParser_M::FindInt32(char *prefix,char* line, int *blkIdxes,int blkIdxesL,int32_t &retNum)
+int GCodeParser_M::FindInt32(char *prefix,char **blkIdxes,int blkIdxesL,int32_t &retNum)
 {
   int j=0;
   int prefixL=strlen(prefix);
   for(;j<blkIdxesL;j++)
   {
-    char* blk=line+blkIdxes[j];
+    char* blk=blkIdxes[j];
     int len=blkIdxes[j+1]-blkIdxes[j]-1;
     if(blk[0]=='('||blk[0]==';')continue;//skip comment
     if(blk[0]=='G'||blk[0]=='M')
@@ -176,12 +176,12 @@ int GCodeParser_M::FindInt32(char *prefix,char* line, int *blkIdxes,int blkIdxes
 }
 
 
-int GCodeParser_M::FindGMEnd_idx(char* line, int *blkIdxes,int blkIdxesL)
+int GCodeParser_M::FindGMEnd_idx(char **blkIdxes,int blkIdxesL)
 {
   int j=0;
   for(;j<blkIdxesL;j++)
   {
-    char* blk=line+blkIdxes[j];
+    char* blk=blkIdxes[j];
     int len=blkIdxes[j+1]-blkIdxes[j]-1;
     
     if(blk[0]=='G'||blk[0]=='M')
@@ -253,7 +253,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
     int commentIdx=0;
     for(int i=0;i<blockCount;i++)
     {
-      char *cblk=line+blockInitial[i];
+      char *cblk=blockInitial[i];
       int cblkL=blockInitial[i+1]-blockInitial[i];
       if(cblk[0]=='('||cblk[0]==';')
       {
@@ -274,7 +274,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
   for(int i=0;i<blockCount;i++)
   {
     if(retStatus<0)break;
-    char *cblk=line+blockInitial[i];
+    char *cblk=blockInitial[i];
     int cblkL=blockInitial[i+1]-blockInitial[i];
     // printf(">>head=>%c\n",cblk[0]);
     if(cblk[0]=='G')
@@ -296,7 +296,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         int j=i+1;
         xVec vec;
         float F;
-        ReadG1Data(line,blockInitial+j,blockCount-j,vec,F);
+        ReadG1Data(blockInitial+j,blockCount-j,vec,F);
 
 
         printf("vec:%s F:%f\n",toStr(vec),F);
@@ -309,7 +309,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           MTPSYS_VecAdd(vec,F);
         }
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
-        i=FindGMEnd_idx(line,blockInitial+j,blockCount-j);
+        i=FindGMEnd_idx(blockInitial+j,blockCount-j);
       }
       else if(CheckHead(cblk, "G90"))
       {
@@ -328,7 +328,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         printf("G04 Pause\n");
         int j=i+1;
         int32_t P;
-        int ret = FindInt32("P",line,blockInitial+j,blockCount-j,P);
+        int ret = FindInt32("P",blockInitial+j,blockCount-j,P);
         if(ret==0)
         {
           if(MTPSYS_AddWait((uint32_t)P,1, NULL,NULL)==true)
@@ -344,7 +344,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         {
           retStatus=statusReducer(retStatus,GCodeParser_Status::GCODE_PARSE_ERROR);
         }
-        i=FindGMEnd_idx(line,blockInitial+j,blockCount-j);
+        i=FindGMEnd_idx(blockInitial+j,blockCount-j);
       }
       else if(CheckHead(cblk, "G20"))
       {
@@ -364,14 +364,14 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
 
         int j=i+1;
         xVec vec;
-        ReadxVecData(line,blockInitial+j,blockCount-j,vec);
+        ReadxVecData(blockInitial+j,blockCount-j,vec);
 
         printf("vec:%s\n",toStr(vec));
         printf("sys last tar loc:%s\n",toStr(MTPSYS_getLastLocInStepperSystem()));
 
         pos_offset=vecSub(MTPSYS_getLastLocInStepperSystem(),vec);
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
-        i=FindGMEnd_idx(line,blockInitial+j,blockCount-j);
+        i=FindGMEnd_idx(blockInitial+j,blockCount-j);
       }
       else
       {
@@ -385,7 +385,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       }
 
     }
-    else if(line[blockInitial[i]]=='M')
+    else if(cblk[0]=='M')
     {
 
       if(CheckHead(cblk, "M42"))//M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] marlin M42 Set Pin State
@@ -393,22 +393,22 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         printf("G04 Pause\n");
         int j=i+1;
         int32_t I,P,S,T;
-        if(FindInt32("I",line,blockInitial+j,blockCount-j,I)!=0)I=-1;
-        if(FindInt32("P",line,blockInitial+j,blockCount-j,P)!=0)P=-1;
-        if(FindInt32("S",line,blockInitial+j,blockCount-j,S)!=0)S=-1;
-        if(FindInt32("T",line,blockInitial+j,blockCount-j,T)!=0)T=-1;
+        if(FindInt32("I",blockInitial+j,blockCount-j,I)!=0)I=-1;
+        if(FindInt32("P",blockInitial+j,blockCount-j,P)!=0)P=-1;
+        if(FindInt32("S",blockInitial+j,blockCount-j,S)!=0)S=-1;
+        if(FindInt32("T",blockInitial+j,blockCount-j,T)!=0)T=-1;
 
 
         if(S>=0)
         {
 
           retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
-        }
+        } 
         else
         {
           retStatus=statusReducer(retStatus,GCodeParser_Status::GCODE_PARSE_ERROR);
         }
-        i=FindGMEnd_idx(line,blockInitial+j,blockCount-j);
+        i=FindGMEnd_idx(blockInitial+j,blockCount-j);
       }
       else
       {
@@ -421,7 +421,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_UNSUPPORTED);
       }
     }
-    else if(line[blockInitial[i]]!=';' &&line[blockInitial[i]]!='('  )
+    else if(cblk[0]!=';' &&cblk[0]!='('  )
     {
       printf("XX block:");
       for(int k=0;k<cblkL;k++)

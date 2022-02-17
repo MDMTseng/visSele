@@ -35,7 +35,7 @@ public:
 	int lineCharCount;
 	char line[MAX_LINE_SIZE + 2];
   int blockCount;
-  int blockInitial[30];
+  char* blockInitial[30];
 	GCodeParser();
   GCodeParser_Status runLine(char *line);
 	GCodeParser_Status addChar(char c);

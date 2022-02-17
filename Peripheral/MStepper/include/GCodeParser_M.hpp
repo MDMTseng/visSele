@@ -26,16 +26,16 @@ public:
   float unit2Pulse(float dist,float pulses_per_mm);
   virtual float unit2Pulse_conv(const char* code,float dist);
 
-  int FindFloat(char *prefix,char* line, int *blkIdxes,int blkIdxesL,float &retNum);
-  int FindInt32(char *prefix,char* line, int *blkIdxes,int blkIdxesL,int32_t &retNum);
-  int FindGMEnd_idx(char* line, int *blkIdxes,int blkIdxesL);
+  int FindFloat(char *prefix,char **blkIdxes,int blkIdxesL,float &retNum);
+  int FindInt32(char *prefix,char **blkIdxes,int blkIdxesL,int32_t &retNum);
+  int FindGMEnd_idx(char **blkIdxes,int blkIdxesL);
   
-  int ReadxVecData(char* line, int *blkIdxes,int blkIdxesL,float *retVec);
+  int ReadxVecData(char **blkIdxes,int blkIdxesL,float *retVec);
 
   bool isAbsLoc=true;
-  int ReadxVecData(char* line, int *blkIdxes,int blkIdxesL,xVec &retVec);
+  int ReadxVecData(char **blkIdxes,int blkIdxesL,xVec &retVec);
   float latestF= 1000;
-  int ReadG1Data(char* line, int *blkIdxes,int blkIdxesL,xVec &vec,float &F);
+  int ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F);
 
 
   bool CheckHead(char *str1,char *str2);

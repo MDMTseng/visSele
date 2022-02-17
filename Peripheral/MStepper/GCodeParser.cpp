@@ -54,7 +54,7 @@ GCodeParser::GCodeParser_Status GCodeParser::addChar(char c)
     {
       if(c=='\0' || c=='\n')
       {
-        blockInitial[blockCount]=lineCharCount+1;
+        blockInitial[blockCount]=line+lineCharCount+1;
         return parseLine();
       }
       break;
@@ -69,7 +69,7 @@ GCodeParser::GCodeParser_Status GCodeParser::addChar(char c)
       }
       else if(c=='\0' || c=='\n')
       {
-        blockInitial[blockCount]=lineCharCount+1;
+        blockInitial[blockCount]=line+lineCharCount+1;
         return parseLine();
       }
       break;
@@ -80,7 +80,7 @@ GCodeParser::GCodeParser_Status GCodeParser::addChar(char c)
     {
       if(c!=' ')
       {
-        blockInitial[blockCount++]=lineCharCount;
+        blockInitial[blockCount++]=line+lineCharCount;
         isInSpace=false;
         if(c=='(')
         {
@@ -92,7 +92,7 @@ GCodeParser::GCodeParser_Status GCodeParser::addChar(char c)
         }
         if(c=='\0' || c=='\n')
         {
-          blockInitial[blockCount]=lineCharCount+1;
+          blockInitial[blockCount]=line+lineCharCount+1;
           return parseLine();
         }
 
@@ -115,7 +115,7 @@ GCodeParser::GCodeParser_Status GCodeParser::addChar(char c)
       if(c==';')
       {
 
-        blockInitial[blockCount++]=lineCharCount;
+        blockInitial[blockCount++]=line+lineCharCount;
         semicolonFound=true;
         break;
       }
@@ -123,14 +123,14 @@ GCodeParser::GCodeParser_Status GCodeParser::addChar(char c)
       if(c=='(')
       {
 
-        blockInitial[blockCount++]=lineCharCount;
+        blockInitial[blockCount++]=line+lineCharCount;
         headParenthesesFound=true;
         break;
       }
 
       if(c=='\0' || c=='\n')
       {
-        blockInitial[blockCount]=lineCharCount+1;
+        blockInitial[blockCount]=line+lineCharCount+1;
         return parseLine();
       }
     }
