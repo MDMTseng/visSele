@@ -22,7 +22,7 @@ float GCodeParser_M::unit2Pulse(float dist,float pulses_per_mm)
   {
     dist*=50.8;
   }
-  // printf("unit:%f subdiv:%d  mm_per_rev:%f\n",unit,subdiv,mm_per_rev);
+  // __PRT_D_("unit:%f subdiv:%d  mm_per_rev:%f\n",unit,subdiv,mm_per_rev);
   return dist*pulses_per_mm;
 }
 
@@ -133,7 +133,7 @@ int GCodeParser_M::FindFloat(char *prefix,char **blkIdxes,int blkIdxesL,float &r
     if(blk[0]=='('||blk[0]==';')continue;//skip comment
     if(blk[0]=='G'||blk[0]=='M')
     {
-      // printf("j:%d\n",j);
+      // __PRT_D_("j:%d\n",j);
       return -1;
     }
     
@@ -160,7 +160,7 @@ int GCodeParser_M::FindInt32(char *prefix,char **blkIdxes,int blkIdxesL,int32_t 
     if(blk[0]=='('||blk[0]==';')continue;//skip comment
     if(blk[0]=='G'||blk[0]=='M')
     {
-      // printf("j:%d\n",j);
+      // __PRT_D_("j:%d\n",j);
       return -1;
     }
     
@@ -188,7 +188,7 @@ int GCodeParser_M::FindGMEnd_idx(char **blkIdxes,int blkIdxesL)
     
     if(blk[0]=='G'||blk[0]=='M')
     {
-      // printf("j:%d\n",j);
+      // __PRT_D_("j:%d\n",j);
       return j;
     }
   }
@@ -243,13 +243,13 @@ bool GCodeParser_M::MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T)
 GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
 {
   
-  printf("==========CallBack========\n");
+  __PRT_D_("==========CallBack========\n");
   line[lineCharCount]='\0';
-  printf(">>:%s\n",line);
+  __PRT_D_(">>:%s\n",line);
 
   // for(int i=0;i<blockCount+1;i++)
   // {
-  //   printf("blk[%d]:%d =>%c\n",i,blockInitial[i],line[blockInitial[i]]);
+  //   __PRT_D_("blk[%d]:%d =>%c\n",i,blockInitial[i],line[blockInitial[i]]);
   // }
 
   if(blockCount<1)return GCodeParser_Status::LINE_EMPTY;
@@ -267,14 +267,14 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       {
         if(commentIdx==0)
         {
-          printf("COMMENT========\n");
+          __PRT_D_("COMMENT========\n");
         }
-        printf("[%d]:",commentIdx);
+        __PRT_D_("[%d]:",commentIdx);
         for(int k=0;k<cblkL;k++)
         {
-          printf("%c",cblk[k]);
+          __PRT_D_("%c",cblk[k]);
         }
-        printf("\n"); 
+        __PRT_D_("\n"); 
         commentIdx++;
       }
     }
@@ -284,30 +284,30 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
     if(retStatus<0)break;
     char *cblk=blockInitial[i];
     int cblkL=blockInitial[i+1]-blockInitial[i];
-    // printf(">>head=>%c\n",cblk[0]);
+    // __PRT_D_(">>head=>%c\n",cblk[0]);
     if(cblk[0]=='G')
     {
       if(CheckHead(cblk, "G28"))
       {
-        printf("G28 GO HOME!!!:");
+        __PRT_D_("G28 GO HOME!!!:");
         
         int retErr=0;
         if(retErr==0)retErr=MTPSYS_MachZeroRet(1,50000,MTPSYS_getMinPulseSpeed()*2,NULL);
         if(retErr==0)retErr=MTPSYS_MachZeroRet(0,500*2,MTPSYS_getMinPulseSpeed(),NULL);
         retStatus=statusReducer(retStatus,(retErr==0)?GCodeParser_Status::TASK_OK:GCodeParser_Status::TASK_FAILED);
-        printf("%s\n",retErr==0?"DONE":"FAILED");
+        __PRT_D_("%s\n",retErr==0?"DONE":"FAILED");
 
       }
       else if(CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))//X Y Z A B C
       {
-        printf("G1 baby!!!\n");
+        __PRT_D_("G1 baby!!!\n");
         int j=i+1;
         xVec vec;
         float F;
         ReadG1Data(blockInitial+j,blockCount-j,vec,F);
 
 
-        printf("vec:%s F:%f\n",toStr(vec),F);
+        __PRT_D_("vec:%s F:%f\n",toStr(vec),F);
         if(isAbsLoc)
         {
           MTPSYS_VecTo(vecAdd(vec,pos_offset),F);
@@ -321,19 +321,19 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       }
       else if(CheckHead(cblk, "G90"))
       {
-        printf("G90 absolute pos\n");
+        __PRT_D_("G90 absolute pos\n");
         isAbsLoc=true;
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
       }
       else if(CheckHead(cblk, "G91"))
       {
-        printf("G91 relative pos\n");
+        __PRT_D_("G91 relative pos\n");
         isAbsLoc=false;
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
       }
       else if(CheckHead(cblk, "G04")||CheckHead(cblk, "G4"))
       {
-        printf("G04 Pause\n");
+        __PRT_D_("G04 Pause\n");
         int j=i+1;
         int32_t P;
         int ret = FindInt32("P",blockInitial+j,blockCount-j,P);
@@ -356,38 +356,38 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       else if(CheckHead(cblk, "G20"))
       {
         unit_is_inch=true;
-        printf("G20 Use Inch\n");
+        __PRT_D_("G20 Use Inch\n");
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
       }
       else if(CheckHead(cblk, "G21"))
       {
         unit_is_inch=false;
-        printf("G21 Use mm\n");
+        __PRT_D_("G21 Use mm\n");
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
       }
       else if(CheckHead(cblk, "G92"))
       {//TODO: should do from mm instead of impulse?
-        printf("G92 Set pos\n");
+        __PRT_D_("G92 Set pos\n");
 
         int j=i+1;
         xVec vec;
         ReadxVecData(blockInitial+j,blockCount-j,vec);
 
         pos_offset=vecSub(MTPSYS_getLastLocInStepperSystem(),vec);
-        printf("vec:%s ",toStr(vec));
-        printf("pos_offset:%s\n",toStr(pos_offset));
-        printf("sys last tar loc:%s\n",toStr(MTPSYS_getLastLocInStepperSystem()));
+        __PRT_D_("vec:%s ",toStr(vec));
+        __PRT_D_("pos_offset:%s\n",toStr(pos_offset));
+        __PRT_D_("sys last tar loc:%s\n",toStr(MTPSYS_getLastLocInStepperSystem()));
 
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
       }
       else
       {
-        printf("XX G block:");
+        __PRT_D_("XX G block:");
         for(int k=0;k<cblkL;k++)
         {
-          printf("%c",cblk[k]);
+          __PRT_D_("%c",cblk[k]);
         }
-        printf("\n"); 
+        __PRT_D_("\n"); 
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_UNSUPPORTED);
       }
 
@@ -405,7 +405,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         if(FindInt32("T",blockInitial+j,blockCount-j,T)!=0)T=-1;
 
 
-        printf("M42 I%d P%d S%d T%d\n",I,P,S,T);
+        __PRT_D_("M42 I%d P%d S%d T%d\n",I,P,S,T);
         if(P>=0)
         {
           retStatus=MTPSYS_AddIOState(I,P,S,T)==true?
@@ -419,23 +419,23 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       }
       else
       {
-        printf("XX M block:");
+        __PRT_D_("XX M block:");
         for(int k=0;k<cblkL;k++)
         {
-          printf("%c",cblk[k]);
+          __PRT_D_("%c",cblk[k]);
         }
-        printf("\n"); 
+        __PRT_D_("\n"); 
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_UNSUPPORTED);
       }
     }
     else if(cblk[0]!=';' &&cblk[0]!='('  )
     {
-      printf("XX block:");
+      __PRT_D_("XX block:");
       for(int k=0;k<cblkL;k++)
       {
-        printf("%c",cblk[k]);
+        __PRT_D_("%c",cblk[k]);
       }
-      printf("\n"); 
+      __PRT_D_("\n"); 
       retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_UNSUPPORTED);
     }
 
@@ -450,7 +450,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
   // {
   //   int startIdx = blockInitial[i];
   //   int endIdx = blockInitial[i+1];
-  //   // printf("blk[%d]:%d =>%c\n",i,blockInitial[i],line[blockInitial[i]]);
+  //   // __PRT_D_("blk[%d]:%d =>%c\n",i,blockInitial[i],line[blockInitial[i]]);
     
 
 
@@ -458,9 +458,9 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
 
   //   for(int j=startIdx;j<endIdx;j++)
   //   {
-  //     printf("%c",line[j]);
+  //     __PRT_D_("%c",line[j]);
   //   }
-  //   printf("\n");
+  //   __PRT_D_("\n");
   // }
 
 
@@ -468,7 +468,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
   // {
   //   int startIdx = blockInitial[i];
   //   int endIdx = blockInitial[i+1];
-  //   // printf("blk[%d]:%d =>%c\n",i,blockInitial[i],line[blockInitial[i]]);
+  //   // __PRT_D_("blk[%d]:%d =>%c\n",i,blockInitial[i],line[blockInitial[i]]);
     
 
 
@@ -476,9 +476,9 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
 
   //   for(int j=startIdx;j<endIdx;j++)
   //   {
-  //     printf("%c",line[j]);
+  //     __PRT_D_("%c",line[j]);
   //   }
-  //   printf("\n");
+  //   __PRT_D_("\n");
   // }
   INIT();//if call INIT here then, the sync method would not work
 
