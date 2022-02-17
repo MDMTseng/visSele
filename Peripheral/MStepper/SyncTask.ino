@@ -38,10 +38,13 @@ hw_timer_t *timer = NULL;
 
 
 struct MSTP_SegCtx{
+  bool isInUse;
   int type;
   // int delay_time_ms;
   int d0;
   int d1;
+
+  int32_t I,P,S,T;
 };
 
 
@@ -273,51 +276,16 @@ class MStp_M:public MStp{
 
 
   void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* seg)
-  {
-    
-    if(seg==NULL)
+  {    
+    if(seg==NULL ||seg->ctx==NULL )
     {
       return;
     }
 
-    if(seg->ctx==NULL)
-    {
-      return;
-    }
+    
 
     MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
-  
-    if(ctx->type!=1)
-    {
-      return;
-    }
-
-    if(ctx->d0==0)
-    {
-      if(ctx->d1==0)
-      {
-        digitalWrite(PIN_OUT_0,0);
-        digitalWrite(PIN_OUT_1,1);
-      }
-      if(ctx->d1==1)
-      {
-        digitalWrite(PIN_OUT_0,1);
-        digitalWrite(PIN_OUT_1,0);
-      }
-    }
-    else if(ctx->d0==1)
-    {
-      if(ctx->d1==0)
-      {
-        digitalWrite(PIN_OUT_2,0);
-        digitalWrite(PIN_OUT_3,1);
-      }
-      if(ctx->d1==1)
-      {
-        digitalWrite(PIN_OUT_2,1);
-        digitalWrite(PIN_OUT_3,0);
-      }
-    }
+    ctx->isInUse=false;//release
 
   }
   
@@ -325,51 +293,38 @@ class MStp_M:public MStp{
   void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* seg)
   {
     
-    
-    if(seg==NULL)
+    if(seg==NULL ||seg->ctx==NULL )
     {
       return;
     }
-
-    // digitalWrite(PIN_DBG,PIN_DBG_ST=!PIN_DBG_ST);
-  
-    if(seg->ctx!=NULL)//new block
+    MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
+    switch(ctx->type)
     {
-
-
-      MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
-    
-      if(ctx->type==0)
-      {
-        if(ctx->d0==0)
+      case 42:
+        if(ctx->P<0)break;
+        //P: pin number, S: 0~255 PWM, T: pin setup (0:input, 1:output, 2:input_pullup, 3:input_pulldown)
+        if(ctx->T>=0)
         {
-          if(ctx->d1==0)
+          if     (ctx->T==0)pinMode(ctx->P, INPUT);
+          else if(ctx->T==1)pinMode(ctx->P, OUTPUT);
+          else if(ctx->T==2)pinMode(ctx->P, INPUT_PULLUP);
+          else if(ctx->T==3)pinMode(ctx->P, INPUT_PULLDOWN);
+        }
+        else
+        {
+          if(ctx->S<0)
           {
-            digitalWrite(PIN_OUT_0,0);
-            digitalWrite(PIN_OUT_1,1);
+            digitalWrite(ctx->P,1);
           }
-          if(ctx->d1==1)
+          else
           {
-            digitalWrite(PIN_OUT_0,1);
-            digitalWrite(PIN_OUT_1,0);
+            digitalWrite(ctx->P,ctx->S);
           }
         }
-        else if(ctx->d0==1)
-        {
-          if(ctx->d1==0)
-          {
-            digitalWrite(PIN_OUT_2,0);
-            digitalWrite(PIN_OUT_3,1);
-          }
-          if(ctx->d1==1)
-          {
-            digitalWrite(PIN_OUT_2,1);
-            digitalWrite(PIN_OUT_3,0);
-          }
-        }
-      }
 
 
+
+      break;
     }
   }
 
@@ -684,20 +639,29 @@ public:
     return true;
   }
 
-  
+  MSTP_SegCtx resource;
+  bool MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T)
+  {
+    while(resource.isInUse==true)//check release
+    {
+      Serial.printf("");
+    }
+    resource.isInUse=true;//occupy
+    resource.I=I;
+    resource.P=P;
+    resource.S=S;
+    resource.T=T;
+    resource.type=42;
+    Serial.printf("I:%d,P:%d,S:%d,T:%d\n",I,P,S,T);
+    while(_mstp->AddWait(0,0,&resource,NULL)==false)
+    {
+      Serial.printf("");
+    }
 
-  // bool MTPSYS_M42(uint32_t period_ms,int times, void* ctx,MSTP_segment_extra_info *exinfo)//marlin M42 Set Pin State
-  // {//M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] marlin M42 Set Pin State
-  //   uint32_t waitTick=((int64_t)period_ms*_mstp->TICK2SEC_BASE)/1000;
-  //   while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
-  //   {
-  //     Serial.printf("");
-  //   }
 
-  //   G92 [E<pos>] [X<pos>] [Y<pos>] [Z<pos>]
+    return true;
+  }  
 
-  //   return true;
-  // }
 };
 
 
@@ -731,6 +695,7 @@ void setup()
   // retErr+=mstp.MachZeroRet(1,-50000)*10;
   // int retErr=0;
 
+  gcpm.runLine("M42 P2 T1");
 
 }
 
@@ -746,6 +711,7 @@ MSTP_SegCtx ctx[10]={0};
 
 void loop()
 {
+  
   if(rzERROR==0)// && mstp.SegQ_IsEmpty()==true)
   {
     // delay(1000);
@@ -761,9 +727,11 @@ void loop()
     for(int i=0;i<1;i++)
     {
       // delay(1000);
+      gcpm.runLine("M42 P2 S1");
       sprintf(gcode,"G01 Y30 Z1_%d F200",mstp.M1Info_Limit1);
       gcpm.runLine(gcode);
       gcpm.runLine("G01 Y1 Z1_0 F100");
+      gcpm.runLine("M42 P2 S0");
       gcpm.runLine("G01 Y0 Z1_0 F1");
       gcpm.runLine("G04 P10");
 

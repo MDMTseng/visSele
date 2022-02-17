@@ -22,6 +22,9 @@ public:
   virtual xVec MTPSYS_getLastLocInStepperSystem();
   virtual float MTPSYS_getMinPulseSpeed();
 
+  //I: ignore protection, P: pin number, S:state 0/1 or 0~255 PWM, T: pin setup (0:input, 1:output, 2:input_pullup, 3:input_pulldown)
+  virtual bool MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T);
+
 
   float unit2Pulse(float dist,float pulses_per_mm);
   virtual float unit2Pulse_conv(const char* code,float dist);

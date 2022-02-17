@@ -7,6 +7,7 @@
 #include "MSteppers.hpp"
 using namespace std;
 
+#include "LOG.h"
 
 #define IO_WRITE_DBG(pinno,val) //digitalWrite(pinno,val)
 #define IO_SET_DBG(pinno,val) //pinMode(pinno,val)
@@ -402,10 +403,10 @@ inline int Calc_JunctionNormMaxDiff(MSTP_SEG_PREFIX MSTP_segment *blk1,MSTP_SEG_
 
 
   float maxAbsDiff=0;
-  __PRT_I_("steps:%d %d    NormCoeff:%f\n",blk1->steps,blk2->steps,NormCoeff);
+  __PRT_D_("steps:%d %d    NormCoeff:%f\n",blk1->steps,blk2->steps,NormCoeff);
 
-  __PRT_I_("blk1.runvec:%s\n",toStr(blk1->runvec));
-  __PRT_I_("blk2.runvec:%s\n",toStr(blk2->runvec));
+  __PRT_D_("blk1.runvec:%s\n",toStr(blk1->runvec));
+  __PRT_D_("blk2.runvec:%s\n",toStr(blk2->runvec));
 
   for(int i=0;i<MSTP_VEC_SIZE;i++)
   {
@@ -416,14 +417,14 @@ inline int Calc_JunctionNormMaxDiff(MSTP_SEG_PREFIX MSTP_segment *blk1,MSTP_SEG_
     float diff = (A-B)/axisInfo[i].MaxSpeedJumpW;
     if(diff<0)diff=-diff;
     __PRT_D_("blk[%d]: %d,%d\n",i,blk1->runvec.vec[i],blk2->runvec.vec[i]);
-    __PRT_I_("maxJump[%d]: A:%f B:%f  diff:%f\n",i,
+    __PRT_D_("maxJump[%d]: A:%f B:%f  diff:%f\n",i,
       A,B, diff);
     if(maxAbsDiff<diff)maxAbsDiff=diff;
   }
   maxAbsDiff/=(float)blk1->steps;
 
   if(ret_MaxDiff)*ret_MaxDiff=maxAbsDiff;
-  __PRT_I_("maxAbsDiff:%f,%f\n",maxAbsDiff,*ret_MaxDiff);
+  __PRT_D_("maxAbsDiff:%f,%f\n",maxAbsDiff,*ret_MaxDiff);
   
   return 0;
 }
@@ -729,7 +730,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
       newSeg.JunctionNormCoeff=0;
     }
 
-    __PRT_I_("====coeff:%f    coeffSt:%d==\n",coeff1,coeffSt);
+    // __PRT_I_("====coeff:%f    coeffSt:%d==\n",coeff1,coeffSt);
     newSeg.JunctionNormMaxDiff=99999999;
     if(coeffSt==0)
     {
@@ -785,13 +786,13 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
           preSeg->vto_JunctionMax=newSeg.vcur/newSeg.JunctionNormCoeff;//calc speed back to preSeg->vto
 
-          {
-            float vto_JunctionMax=preSeg->vto_JunctionMax;
-            float vcur=newSeg.vcur;
-            float vcen=newSeg.vcen;
-            __PRT_I_("===JunctionMax:%f  vcur:%f  vcen:%f==\n",vto_JunctionMax,vcur,vcen);
+          // {
+          //   float vto_JunctionMax=preSeg->vto_JunctionMax;
+          //   float vcur=newSeg.vcur;
+          //   float vcen=newSeg.vcen;
+          //   __PRT_I_("===JunctionMax:%f  vcur:%f  vcen:%f==\n",vto_JunctionMax,vcur,vcen);
             
-          }
+          // }
           
         }
         else 
@@ -802,13 +803,13 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
         preSeg->vto=preSeg->vto_JunctionMax;
 
 
-        {
-          float vto_JunctionMax=preSeg->vto_JunctionMax;
-          float vto=preSeg->vto;
-          float vcur=newSeg.vcur;
-          __PRT_I_("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n",vto_JunctionMax,vto,vcur);
+        // {
+        //   float vto_JunctionMax=preSeg->vto_JunctionMax;
+        //   float vto=preSeg->vto;
+        //   float vcur=newSeg.vcur;
+        //   __PRT_I_("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n",vto_JunctionMax,vto,vcur);
           
-        }
+        // }
 
         // for(int k=0;k<MSTP_VEC_SIZE;k++)
         // {
@@ -1245,7 +1246,7 @@ uint32_t MStp::taskRun()
       }
 
 
-
+      __PRT_D_("type:%d\n",p_runSeg->type);
 
       switch(p_runSeg->type)//========Run with current segment
       {
@@ -1253,7 +1254,10 @@ uint32_t MStp::taskRun()
 
         break;
         case MSTP_segment_type::seg_wait :
-
+          if(p_runSeg->step_period==0)
+          {
+            p_runSeg->cur_step=p_runSeg->steps;
+          }
         break;
 
       }

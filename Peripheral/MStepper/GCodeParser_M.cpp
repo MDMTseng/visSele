@@ -8,6 +8,8 @@
 #include <math.h>
 using namespace std;
 
+#include "LOG.h"
+
 
 
 GCodeParser_M::GCodeParser_M(MStp *mstp)
@@ -231,6 +233,12 @@ bool GCodeParser_M::MTPSYS_AddWait(uint32_t period_ms,int times, void* ctx,MSTP_
 }
 
 
+bool GCodeParser_M::MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T)
+{
+
+  return false;
+}
+
 
 GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
 {
@@ -389,7 +397,6 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
 
       if(CheckHead(cblk, "M42"))//M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] marlin M42 Set Pin State
       {
-        printf("G04 Pause\n");
         int j=i+1;
         int32_t I,P,S,T;
         if(FindInt32("I",blockInitial+j,blockCount-j,I)!=0)I=-1;
@@ -398,10 +405,12 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         if(FindInt32("T",blockInitial+j,blockCount-j,T)!=0)T=-1;
 
 
-        if(S>=0)
+        printf("M42 I%d P%d S%d T%d\n",I,P,S,T);
+        if(P>=0)
         {
-
-          retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+          retStatus=MTPSYS_AddIOState(I,P,S,T)==true?
+            statusReducer(retStatus,GCodeParser_Status::TASK_OK):
+            statusReducer(retStatus,GCodeParser_Status::TASK_FAILED);
         } 
         else
         {
