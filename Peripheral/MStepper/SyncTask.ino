@@ -79,7 +79,7 @@ class MStp_M:public MStp{
     axisInfo[1].AccW=1;
     axisInfo[1].MaxSpeedJumpW=1;
   
-    
+    doCheckHardLimit=false;
   }
 
 
@@ -624,7 +624,84 @@ void pickOn(int lidx,int pos,int speed,MSTP_SegCtx *p_ctx=NULL)
 }
 
 
-GCodeParser_M gcpm(&mstp);
+
+class GCodeParser_M2:public GCodeParser_M
+{
+public:
+  GCodeParser_M2(MStp *mstp):GCodeParser_M(mstp)
+  {
+
+  }
+
+  float unit2Pulse_conv(const char* code,float dist)
+  {
+    if(code[0]=='Y')
+    {
+      return unit2Pulse(-dist,SUBDIV/mm_PER_REV);
+    }
+
+    if(code[0]=='Z'&&code[1]=='1')
+    {
+      return unit2Pulse(dist,1);
+    }
+    if(code[0]=='F')
+    {
+      return unit2Pulse(dist,SUBDIV/mm_PER_REV);
+    }
+    return NAN;
+  }
+
+
+  // virtual int MTPSYS_MachZeroRet(uint32_t index,int distance,int speed,void* context);
+  // virtual float MTPSYS_getMinPulseSpeed();
+
+  bool MTPSYS_VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
+  {
+    while(mstp.VecTo(VECTo,speed,ctx,exinfo)==false)
+    {
+      Serial.printf("");
+    }
+    return true;
+  }
+  bool MTPSYS_VecAdd(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
+  {
+    while(mstp.VecAdd(VECTo,speed,ctx,exinfo)==false)
+    {
+      Serial.printf("");
+    }
+    return true;
+  }
+
+
+
+  bool MTPSYS_AddWait(uint32_t period_ms,int times, void* ctx,MSTP_segment_extra_info *exinfo)
+  {
+    uint32_t waitTick=((int64_t)period_ms*_mstp->TICK2SEC_BASE)/1000;
+    while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
+    {
+      Serial.printf("");
+    }
+    return true;
+  }
+
+  
+
+  // bool MTPSYS_M42(uint32_t period_ms,int times, void* ctx,MSTP_segment_extra_info *exinfo)//marlin M42 Set Pin State
+  // {//M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] marlin M42 Set Pin State
+  //   uint32_t waitTick=((int64_t)period_ms*_mstp->TICK2SEC_BASE)/1000;
+  //   while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
+  //   {
+  //     Serial.printf("");
+  //   }
+
+  //   G92 [E<pos>] [X<pos>] [Y<pos>] [Z<pos>]
+
+  //   return true;
+  // }
+};
+
+
+GCodeParser_M2 gcpm(&mstp);
 bool rzERROR=0;
 void setup()
 {
@@ -643,10 +720,10 @@ void setup()
   pinMode(PIN_OUT_1, OUTPUT);
   pinMode(PIN_OUT_2, OUTPUT);
   pinMode(PIN_OUT_3, OUTPUT);
+  rzERROR=0;
+  // GCodeParser::GCodeParser_Status st=gcpm.runLine("G28");
+  // rzERROR=st==GCodeParser::GCodeParser_Status::TASK_OK?0:-1;
 
-  GCodeParser::GCodeParser_Status st=gcpm.runLine("G28");
-
-  rzERROR=st==GCodeParser::GCodeParser_Status::TASK_OK?0:-1;
   if(rzERROR==0)
   {
     // isSystemZeroOK=true;
@@ -666,121 +743,34 @@ void busyLoop(uint32_t count)
 }
 
 MSTP_SegCtx ctx[10]={0};
+
 void loop()
 {
-  if(rzERROR==0 && mstp.SegQ_IsEmpty()==true)
+  if(rzERROR==0)// && mstp.SegQ_IsEmpty()==true)
   {
-    delay(1000);
+    // delay(1000);
 
-  uint32_t speed=30000;//25000;
+    uint32_t speed=30000;//25000;
 
 
     int pt1=(-30-12*2)*SUBDIV/mm_PER_REV;
     int pt2=(-30-12*2+1)*SUBDIV/mm_PER_REV;
     // int pt2=-30*SUBDIV/mm_PER_REV;
     int cidx=0;
+    char gcode[128];
     for(int i=0;i<1;i++)
     {
       // delay(1000);
-
-      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=1,.d1=0 };
-      // pickOn(1,pt1, speed,&(ctx[cidx++]));
-      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=0,.d1=1 };
-      // pickOn(2,pt1, speed,&(ctx[cidx++]));
-
-
-      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=1,.d1=0 };
-      // pickOn(1,pt2, speed,&(ctx[cidx++]));
-      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=0,.d1=0 };
-      // pickOn(2,pt2, speed,&(ctx[cidx++]));
-
-
-      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=1,.d1=0 };
-      // pickOn(1,pt2, speed,&(ctx[cidx++]));
-      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=0,.d1=1 };
-      // pickOn(2,pt2, speed,&(ctx[cidx++]));
-
-
-      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=1,.d1=0 };
-      // pickOn(1,pt1, speed,&(ctx[cidx++]));
-      // ctx[cidx]=(MSTP_SegCtx){.type=0,.d0=0,.d1=0 };
-      // pickOn(2,pt1, speed,&(ctx[cidx++]));
-
-
-      int posDiff=0;
-      
-      // vecToWait((xVec){mstp.M1Info_Limit1*100/100,pos},speed);
-      // vecToWait((xVec){mstp.M1Info_Limit1*0/100,pos},speed);
-      // for(int k=0;k<20;k++)
-      // {
-      //   int speed=300;
-      //   vecToWait((xVec){5,5},speed);
-      //   // busyLoop(1000);
-      //   vecToWait((xVec){0,0},speed);
-      //   // sleep(1);
-      // vecToWait((xVec){0,0},speed);
-      // vecToWait((xVec){0,10},200);
-      // vecToWait((xVec){0,0},200);
-
-      // }
-      int pos=0;
-      int n=0;
-      pos=n+0;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+4;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+1;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+5;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+2;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+6;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+3;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+7;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
-
-
-      n=8;
-      pos=n+0;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+4;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+1;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+5;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+2;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+6;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+3;pickOn(1,0-pos*12*SUBDIV/mm_PER_REV, speed);
-      pos=n+7;pickOn(2,0-pos*12*SUBDIV/mm_PER_REV, speed);
-
-      // vecToWait((xVec){0,-200},speed);
-      // addWaitWait(mstp.TICK2SEC_BASE);
-      
-      // // while(mstp.SegQ_IsEmpty()==false)
-      // // { }
-      // sleep(1);
-
-
-
-      // vecToWait((xVec){0,-100},speed);
-      // vecToWait((xVec){0,-101},speed);
-
-
-      MSTP_segment_extra_info einfo;
-      einfo.acc=mstp.main_acc;
-      einfo.deacc=-mstp.main_acc/10;
-      vecToWait((xVec){0,100},speed,NULL,&einfo);
-      
-      einfo.acc=
-      einfo.deacc=-mstp.main_acc/50;
-
-      // addWaitWait(mstp.TICK2SEC_BASE/5);
-      // vecToWait((xVec){0,100},speed/10,NULL,&einfo);
-      addWaitWait(mstp.TICK2SEC_BASE);
-      vecToWait((xVec){0,0},speed/10,NULL,&einfo);
-
-
-      mstp.printSEGInfo();
-      // mstp.VecTo((xVec){0,pt1},speed);
-      // mstp.VecTo((xVec){0,pt2},speed);
+      sprintf(gcode,"G01 Y30 Z1_%d F200",mstp.M1Info_Limit1);
+      gcpm.runLine(gcode);
+      gcpm.runLine("G01 Y1 Z1_0 F100");
+      gcpm.runLine("G01 Y0 Z1_0 F1");
+      gcpm.runLine("G04 P10");
 
     }
   }
 
 }
-
 
 
 

@@ -42,7 +42,6 @@ public:
 
 	GCodeParser_Status statusReducer(GCodeParser_Status st,GCodeParser_Status new_st);
 
-
   virtual GCodeParser_Status parseLine()=0;
   virtual void onError(int code)=0;
 	void INIT();

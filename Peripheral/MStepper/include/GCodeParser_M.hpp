@@ -7,21 +7,29 @@
 using namespace std;
 
 
-#define SUBDIV (1600)
-#define mm_PER_REV 10.0
-
-
 class GCodeParser_M:public GCodeParser{
 public:
-  MStp *_mstp;
   xVec pos_offset=(xVec){0};
   GCodeParser_M(MStp *mstp);
   bool unit_is_inch=false;
+
+
+  MStp *_mstp;
+  virtual int MTPSYS_MachZeroRet(uint32_t index,int distance,int speed,void* context);
+  virtual bool MTPSYS_VecTo(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
+  virtual bool MTPSYS_VecAdd(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
+  virtual bool MTPSYS_AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info *exinfo);
+  virtual xVec MTPSYS_getLastLocInStepperSystem();
+  virtual float MTPSYS_getMinPulseSpeed();
+
+
   float unit2Pulse(float dist,float pulses_per_mm);
-  float unit2Pulse_axis(int axis,float dist);
+  virtual float unit2Pulse_conv(const char* code,float dist);
 
-  float parseFloat(char* str,int strL);
-
+  int FindFloat(char *prefix,char* line, int *blkIdxes,int blkIdxesL,float &retNum);
+  int FindInt32(char *prefix,char* line, int *blkIdxes,int blkIdxesL,int32_t &retNum);
+  int FindGMEnd_idx(char* line, int *blkIdxes,int blkIdxesL);
+  
   int ReadxVecData(char* line, int *blkIdxes,int blkIdxesL,float *retVec);
 
   bool isAbsLoc=true;
