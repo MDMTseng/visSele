@@ -1,6 +1,6 @@
 
 target_bin = main
-_OBJ = main.opp MSteppers.opp GCodeParser.opp
+_OBJ = main.opp MSteppers.opp GCodeParser.opp GCodeParser_M.opp 
 
 MStepperFolder=../../MStepper
 

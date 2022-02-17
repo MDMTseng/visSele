@@ -1,6 +1,7 @@
 
 #include "main.hpp"
 #include "MSteppers.hpp"
+#include "GCodeParser_M.hpp"
 #include "xtensa/core-macros.h"
 #include "soc/rtc_wdt.h"
 hw_timer_t *timer = NULL;
@@ -623,6 +624,7 @@ void pickOn(int lidx,int pos,int speed,MSTP_SegCtx *p_ctx=NULL)
 }
 
 
+GCodeParser_M gcpm(&mstp);
 bool rzERROR=0;
 void setup()
 {
@@ -642,12 +644,10 @@ void setup()
   pinMode(PIN_OUT_2, OUTPUT);
   pinMode(PIN_OUT_3, OUTPUT);
 
+  GCodeParser::GCodeParser_Status st=gcpm.runLine("G28");
 
-  
-  int retErr=mstp.MachZeroRet(1,50000,mstp.minSpeed*2,NULL)+mstp.MachZeroRet(0,500*2,mstp.minSpeed,NULL);
-
-  rzERROR=retErr;
-  if(retErr==0)
+  rzERROR=st==GCodeParser::GCodeParser_Status::TASK_OK?0:-1;
+  if(rzERROR==0)
   {
     // isSystemZeroOK=true;
   }
