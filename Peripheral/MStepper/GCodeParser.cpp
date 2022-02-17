@@ -22,9 +22,29 @@ GCodeParser::GCodeParser()
   INIT();
 }
 
+GCodeParser::GCodeParser_Status GCodeParser::statusReducer(GCodeParser::GCodeParser_Status st,GCodeParser::GCodeParser_Status new_st)
+{
+  if(st>new_st)
+  {
+    return new_st;
+  }
+  return st;
+}
 
+GCodeParser::GCodeParser_Status GCodeParser::runLine(char *line)
+{
+  for(int i=0;;i++)
+  {
+    char c=line[i];
+    GCodeParser_Status st = addChar(c);
+    if(st!=GCodeParser_Status::LINE_INCOMPLETE)
+      return st;
+    if(c=='\0' || c=='\n')break;
+  }
+  return GCodeParser_Status::LINE_INCOMPLETE;
+}
 
-bool GCodeParser::addChar(char c)
+GCodeParser::GCodeParser_Status GCodeParser::addChar(char c)
 {
   line[lineCharCount]=c;
   do
@@ -35,8 +55,7 @@ bool GCodeParser::addChar(char c)
       if(c=='\0' || c=='\n')
       {
         blockInitial[blockCount]=lineCharCount+1;
-        parseLine();
-        return true;
+        return parseLine();
       }
       break;
     }
@@ -51,8 +70,7 @@ bool GCodeParser::addChar(char c)
       else if(c=='\0' || c=='\n')
       {
         blockInitial[blockCount]=lineCharCount+1;
-        parseLine();
-        return true;
+        return parseLine();
       }
       break;
     }
@@ -75,8 +93,7 @@ bool GCodeParser::addChar(char c)
         if(c=='\0' || c=='\n')
         {
           blockInitial[blockCount]=lineCharCount+1;
-          parseLine();
-          return true;
+          return parseLine();
         }
 
       }
@@ -114,9 +131,7 @@ bool GCodeParser::addChar(char c)
       if(c=='\0' || c=='\n')
       {
         blockInitial[blockCount]=lineCharCount+1;
-        parseLine();
-       
-        return true;
+        return parseLine();
       }
     }
 
@@ -126,5 +141,5 @@ bool GCodeParser::addChar(char c)
   // printf("[%d]:%c b:%d   ",lineCharCount,c,blockCount);
   // printf("p:%d s:%d  \n",headParenthesesFound,semicolonFound);
   lineCharCount++;
-  return false;
+  return GCodeParser_Status::LINE_INCOMPLETE;
 }
