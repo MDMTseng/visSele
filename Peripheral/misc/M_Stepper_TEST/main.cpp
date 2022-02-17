@@ -17,6 +17,16 @@ int TIMESCALE_ms=100;
 #define SUBDIV (800)
 #define mm_PER_REV 10
 
+struct MSTP_SegCtx{
+  bool isInUse;
+  int type;
+  // int delay_time_ms;
+  int d0;
+  int d1;
+
+  int32_t I,P,S,T;
+};
+
 
 
 class MStp_M:public MStp{
@@ -103,10 +113,32 @@ class MStp_M:public MStp{
       // stepCount[i]=0;
     }
     printf("<<<<<<<<<<<<<\n");
+    
+    if(seg==NULL ||seg->ctx==NULL )
+    {
+      return;
+    }
+    MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
+    ctx->isInUse=false;//release
   }
 
   void BlockInitEffect(MSTP_segment* seg)
   {
+    
+    if(seg==NULL ||seg->ctx==NULL )
+    {
+      return;
+    }
+    MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
+    switch(ctx->type)
+    {
+      case 42:
+        printf("M42=>I%d,P:%d,S:%d,T%d\n",ctx->I,ctx->P,ctx->S,ctx->T);
+
+
+
+      break;
+    }
   }
 
 
@@ -234,7 +266,6 @@ class MStp_M:public MStp{
 };
 
 
-
 class GCodeParser_M2:public GCodeParser_M
 {
 public:
@@ -269,7 +300,7 @@ public:
   {
     while(_mstp->VecTo(VECTo,speed,ctx,exinfo)==false)
     {
-      // Serial.printf("");
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     return true;
   }
@@ -277,7 +308,7 @@ public:
   {
     while(_mstp->VecAdd(VECTo,speed,ctx,exinfo)==false)
     {
-      // Serial.printf("");
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     return true;
   }
@@ -289,25 +320,34 @@ public:
     uint32_t waitTick=((int64_t)period_ms*_mstp->TICK2SEC_BASE)/1000;
     while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
     {
-      // Serial.printf("");
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     return true;
   }
 
-  
+  MSTP_SegCtx resource;
+  bool MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T)
+  {
+    while(resource.isInUse==true)//check release
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    resource.isInUse=true;//occupy
+    resource.I=I;
+    resource.P=P;
+    resource.S=S;
+    resource.T=T;
+    resource.type=42;
+    printf("I:%d,P:%d,S:%d,T:%d\n",I,P,S,T);
+    while(_mstp->AddWait(0,0,&resource,NULL)==false)
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
 
-  // bool MTPSYS_M42(uint32_t period_ms,int times, void* ctx,MSTP_segment_extra_info *exinfo)//marlin M42 Set Pin State
-  // {//M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] marlin M42 Set Pin State
-  //   uint32_t waitTick=((int64_t)period_ms*_mstp->TICK2SEC_BASE)/1000;
-  //   while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
-  //   {
-  //     Serial.printf("");
-  //   }
 
-  //   G92 [E<pos>] [X<pos>] [Y<pos>] [Z<pos>]
+    return true;
+  }  
 
-  //   return true;
-  // }
 };
 
 
@@ -374,7 +414,7 @@ int main()
   {
 
     GCodeParser_M2 gcp(&mstp);
-
+    // gcp.runLine("M42 P2 T1");
     printf("runLine:%d\n",gcp.runLine("G28"));
     char GCODEs[]=
       "G28 G21\n" 
@@ -382,13 +422,13 @@ int main()
       "G01 Y0 Z1_1 F10 (comment x);go abs location\n"
       "G92 Y0 Z1_0                       ;set position\n"
       "G91\n"
+      "M42 P2 S0\n"
       "G01 Y0.1 Z1_3 F20          ;relative position to 100 -20\n"
       "G01 Y0.2 F30                   ;relative position to -100 X\n"
       "G01 Y0.2 Z1_40 F30\n"
       "G90\n"
+      // "M42 P2 S1\n"
       "G01 Y0.2 Z1_40 F30\n"
-
-
       ;
       // " G17 G20 G90 G94 G54\n"
       // "G0 Z0.25\n"
@@ -419,6 +459,7 @@ int main()
   int pos=18000*2;
   uint32_t speed=45000;
 
+  thread first_thread(first_thread_job);
   // xVec cpos=(xVec){0};
   // for(int i=0;i<5;i++)
   // {
@@ -462,7 +503,6 @@ int main()
   // mstp.VecTo((xVec){0,0},speed);
   printf("===========\n");
   mstp.printSEGInfo();
-  thread first_thread(first_thread_job);
   first_thread.join();
   return 0;
 }
