@@ -30,7 +30,7 @@ class MStp_M:public MStp{
     FACCT2+=T;
   }
 
-  int MachZeroRet(uint32_t index,int distance,int speed)
+  int MachZeroRet(uint32_t index,int distance,int speed,void* context)
   {
     while(SegQ_IsEmpty()==false)
     {
@@ -432,7 +432,7 @@ public:
         {
           printf("G28 GO HOME!!!:");
           
-          int retErr=_mstp->MachZeroRet(1,50000,_mstp->minSpeed*2)+_mstp->MachZeroRet(0,500*2,_mstp->minSpeed);
+          int retErr=_mstp->MachZeroRet(1,50000,_mstp->minSpeed*2,NULL)+_mstp->MachZeroRet(0,500*2,_mstp->minSpeed,NULL);
           
           printf("%s\n",retErr==0?"DONE":"FAILED");
 

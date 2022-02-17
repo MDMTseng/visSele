@@ -104,6 +104,11 @@ class MStp_M:public MStp{
       timerRunning=true;
     }
   }
+  void FatalError(int errorCode,const char* errorText)
+  {
+     Serial.printf("FATAL error:%d  %s\n",errorCode,errorText);
+  }
+
   int runUntil(int axis,int pin,int pinVal,int distance,int speed,xVec *ret_posWhenHit)
   {
     runUntil_sensorVal=pinVal;
@@ -151,7 +156,7 @@ class MStp_M:public MStp{
   
   int M1Info_Limit1=300;
   int M1Info_Limit2=-300;
-  int ZeroAxis(uint32_t index,int distance,int speed)
+  int MachZeroRet(uint32_t index,int distance,int speed,void* context)
   {
 
     switch(index)
@@ -639,14 +644,14 @@ void setup()
 
 
   
-  int retErr=mstp.ZeroAxis(1,50000,mstp.minSpeed*2)+mstp.ZeroAxis(0,500*2,mstp.minSpeed);
+  int retErr=mstp.MachZeroRet(1,50000,mstp.minSpeed*2,NULL)+mstp.MachZeroRet(0,500*2,mstp.minSpeed,NULL);
 
   rzERROR=retErr;
   if(retErr==0)
   {
     // isSystemZeroOK=true;
   }
-  // retErr+=mstp.ZeroAxis(1,-50000)*10;
+  // retErr+=mstp.MachZeroRet(1,-50000)*10;
   // int retErr=0;
 
 
