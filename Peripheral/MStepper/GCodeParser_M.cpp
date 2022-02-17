@@ -32,9 +32,9 @@ float GCodeParser_M::unit2Pulse_conv(const char* code,float dist)
     return unit2Pulse(dist,1);
   }
 
-  if(code[0]=='Z'&&code[0]=='1')
+  if(code[0]=='Z'&&code[1]=='1')
   {
-    return unit2Pulse(dist,1);
+    return round(unit2Pulse(dist,1));
   }
   if(code[0]=='F')
   {
@@ -207,7 +207,7 @@ int GCodeParser_M::MTPSYS_MachZeroRet(uint32_t index,int distance,int speed,void
 
 bool GCodeParser_M::MTPSYS_VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
 {
-  return _mstp->VecTo(vecAdd(VECTo,pos_offset),speed,ctx,exinfo);
+  return _mstp->VecTo(VECTo,speed,ctx,exinfo);
 }
 bool GCodeParser_M::MTPSYS_VecAdd(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
 {
@@ -271,7 +271,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       }
     }
   }
-  for(int i=0;i<blockCount;i++)
+  for(int i=0;i<blockCount;)
   {
     if(retStatus<0)break;
     char *cblk=blockInitial[i];
@@ -344,7 +344,6 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         {
           retStatus=statusReducer(retStatus,GCodeParser_Status::GCODE_PARSE_ERROR);
         }
-        i=FindGMEnd_idx(blockInitial+j,blockCount-j);
       }
       else if(CheckHead(cblk, "G20"))
       {
@@ -366,12 +365,12 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         xVec vec;
         ReadxVecData(blockInitial+j,blockCount-j,vec);
 
-        printf("vec:%s\n",toStr(vec));
+        pos_offset=vecSub(MTPSYS_getLastLocInStepperSystem(),vec);
+        printf("vec:%s ",toStr(vec));
+        printf("pos_offset:%s\n",toStr(pos_offset));
         printf("sys last tar loc:%s\n",toStr(MTPSYS_getLastLocInStepperSystem()));
 
-        pos_offset=vecSub(MTPSYS_getLastLocInStepperSystem(),vec);
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
-        i=FindGMEnd_idx(blockInitial+j,blockCount-j);
       }
       else
       {
@@ -408,7 +407,6 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         {
           retStatus=statusReducer(retStatus,GCodeParser_Status::GCODE_PARSE_ERROR);
         }
-        i=FindGMEnd_idx(blockInitial+j,blockCount-j);
       }
       else
       {
@@ -431,6 +429,9 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       printf("\n"); 
       retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_UNSUPPORTED);
     }
+
+    i+=FindGMEnd_idx(blockInitial+i+1,blockCount-(i+1))+1;
+
 
   }
 

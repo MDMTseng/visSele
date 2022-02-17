@@ -378,11 +378,17 @@ int main()
     printf("runLine:%d\n",gcp.runLine("G28"));
     char GCODEs[]=
       "G28 G21\n" 
-      "G90 G01 Y-0.2 Z1_0 F20000 (comment x);go abs location\n"
+      "G90\n" 
+      "G01 Y0 Z1_1 F10 (comment x);go abs location\n"
       "G92 Y0 Z1_0                       ;set position\n"
+      "G91\n"
+      "G01 Y0.1 Z1_3 F20          ;relative position to 100 -20\n"
+      "G01 Y0.2 F30                   ;relative position to -100 X\n"
+      "G01 Y0.2 Z1_40 F30\n"
       "G90\n"
-      "G01 Y0.1 Z1_-0.2 F20000          ;relative position to 100 -20\n"
-      "G01 Y0.2 F20000                    ;relative position to -100 X\n"
+      "G01 Y0.2 Z1_40 F30\n"
+
+
       ;
       // " G17 G20 G90 G94 G54\n"
       // "G0 Z0.25\n"
