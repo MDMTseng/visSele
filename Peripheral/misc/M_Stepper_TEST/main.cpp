@@ -14,6 +14,10 @@ int TIMESCALE_ms=100;
 
 
 
+#define SUBDIV (800)
+#define mm_PER_REV 10
+
+
 
 class MStp_M:public MStp{
   public:
@@ -231,6 +235,83 @@ class MStp_M:public MStp{
 
 
 
+class GCodeParser_M2:public GCodeParser_M
+{
+public:
+  GCodeParser_M2(MStp *mstp):GCodeParser_M(mstp)
+  {
+
+  }
+
+  float unit2Pulse_conv(const char* code,float dist)
+  {
+    if(code[0]=='Y')
+    {
+      return unit2Pulse(-dist,SUBDIV/mm_PER_REV);
+    }
+
+    if(code[0]=='Z'&&code[1]=='1')
+    {
+      return unit2Pulse(dist,1);
+    }
+    if(code[0]=='F')
+    {
+      return unit2Pulse(dist,SUBDIV/mm_PER_REV);
+    }
+    return NAN;
+  }
+
+
+  // virtual int MTPSYS_MachZeroRet(uint32_t index,int distance,int speed,void* context);
+  // virtual float MTPSYS_getMinPulseSpeed();
+
+  bool MTPSYS_VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
+  {
+    while(_mstp->VecTo(VECTo,speed,ctx,exinfo)==false)
+    {
+      // Serial.printf("");
+    }
+    return true;
+  }
+  bool MTPSYS_VecAdd(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
+  {
+    while(_mstp->VecAdd(VECTo,speed,ctx,exinfo)==false)
+    {
+      // Serial.printf("");
+    }
+    return true;
+  }
+
+
+
+  bool MTPSYS_AddWait(uint32_t period_ms,int times, void* ctx,MSTP_segment_extra_info *exinfo)
+  {
+    uint32_t waitTick=((int64_t)period_ms*_mstp->TICK2SEC_BASE)/1000;
+    while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
+    {
+      // Serial.printf("");
+    }
+    return true;
+  }
+
+  
+
+  // bool MTPSYS_M42(uint32_t period_ms,int times, void* ctx,MSTP_segment_extra_info *exinfo)//marlin M42 Set Pin State
+  // {//M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] marlin M42 Set Pin State
+  //   uint32_t waitTick=((int64_t)period_ms*_mstp->TICK2SEC_BASE)/1000;
+  //   while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
+  //   {
+  //     Serial.printf("");
+  //   }
+
+  //   G92 [E<pos>] [X<pos>] [Y<pos>] [Z<pos>]
+
+  //   return true;
+  // }
+};
+
+
+
 #define MSTP_BLOCK_SIZE 30
 static MSTP_segment blockBuff[MSTP_BLOCK_SIZE];
 
@@ -292,7 +373,7 @@ int main()
 
   {
 
-    GCodeParser_M gcp(&mstp);
+    GCodeParser_M2 gcp(&mstp);
 
     printf("runLine:%d\n",gcp.runLine("G28"));
     char GCODEs[]=

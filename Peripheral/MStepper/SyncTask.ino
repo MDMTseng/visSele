@@ -657,7 +657,7 @@ public:
 
   bool MTPSYS_VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
   {
-    while(mstp.VecTo(VECTo,speed,ctx,exinfo)==false)
+    while(_mstp->VecTo(VECTo,speed,ctx,exinfo)==false)
     {
       Serial.printf("");
     }
@@ -665,7 +665,7 @@ public:
   }
   bool MTPSYS_VecAdd(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
   {
-    while(mstp.VecAdd(VECTo,speed,ctx,exinfo)==false)
+    while(_mstp->VecAdd(VECTo,speed,ctx,exinfo)==false)
     {
       Serial.printf("");
     }

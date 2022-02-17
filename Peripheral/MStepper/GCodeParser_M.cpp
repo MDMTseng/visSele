@@ -309,6 +309,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           MTPSYS_VecAdd(vec,F);
         }
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+        i=FindGMEnd_idx(line,blockInitial+j,blockCount-j);
       }
       else if(CheckHead(cblk, "G90"))
       {
@@ -343,6 +344,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         {
           retStatus=statusReducer(retStatus,GCodeParser_Status::GCODE_PARSE_ERROR);
         }
+        i=FindGMEnd_idx(line,blockInitial+j,blockCount-j);
       }
       else if(CheckHead(cblk, "G20"))
       {
@@ -369,6 +371,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
 
         pos_offset=vecSub(MTPSYS_getLastLocInStepperSystem(),vec);
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+        i=FindGMEnd_idx(line,blockInitial+j,blockCount-j);
       }
       else
       {
@@ -405,6 +408,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         {
           retStatus=statusReducer(retStatus,GCodeParser_Status::GCODE_PARSE_ERROR);
         }
+        i=FindGMEnd_idx(line,blockInitial+j,blockCount-j);
       }
       else
       {
