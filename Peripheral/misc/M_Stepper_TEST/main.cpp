@@ -18,7 +18,6 @@ int TIMESCALE_ms=100;
 #define mm_PER_REV 10
 
 struct MSTP_SegCtx{
-  bool isInUse;
   int type;
   // int delay_time_ms;
   int d0;
@@ -27,6 +26,9 @@ struct MSTP_SegCtx{
   int32_t I,P,S,T;
 };
 
+const int SegCtxSize=2;
+ResourcePool<MSTP_SegCtx>::ResourceData resbuff[SegCtxSize];
+ResourcePool <MSTP_SegCtx>sctx_pool(resbuff,sizeof(resbuff)/sizeof(resbuff[0]));
 
 
 class MStp_M:public MStp{
@@ -119,7 +121,7 @@ class MStp_M:public MStp{
       return;
     }
     MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
-    ctx->isInUse=false;//release
+    sctx_pool.returnResource(ctx);
   }
 
   void BlockInitEffect(MSTP_segment* seg)
@@ -325,21 +327,21 @@ public:
     return true;
   }
 
-  MSTP_SegCtx resource;
   bool MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T)
   {
-    while(resource.isInUse==true)//check release
+
+    MSTP_SegCtx* sctx=NULL;
+    while((sctx=sctx_pool.applyResource())==NULL)//check release
     {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    resource.isInUse=true;//occupy
-    resource.I=I;
-    resource.P=P;
-    resource.S=S;
-    resource.T=T;
-    resource.type=42;
+    sctx->I=I;
+    sctx->P=P;
+    sctx->S=S;
+    sctx->T=T;
+    sctx->type=42;
     printf("I:%d,P:%d,S:%d,T:%d\n",I,P,S,T);
-    while(_mstp->AddWait(0,0,&resource,NULL)==false)
+    while(_mstp->AddWait(0,0,sctx,NULL)==false)
     {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -369,7 +371,7 @@ void first_thread_job()
       //   printf("tskrun_state:0\n");
       
       int T = mstp.taskRun();
-      printf("T:%d\n",T);
+      printf("Timer T:%d\n",T);
       
 
       if(T<0)
@@ -380,8 +382,8 @@ void first_thread_job()
       }
       if(T==0)
       {
-        // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        // break;
         // mstp.VecTo((xVec){.vec={50,49,10}},40);
         
       }
@@ -411,10 +413,14 @@ int main()
   // mstp.VecTo((xVec){0,0,0},1000);
   // mstp.VecTo((xVec){20,20,0},1000);
 
+  thread first_thread(first_thread_job);
   {
 
     GCodeParser_M2 gcp(&mstp);
     // gcp.runLine("M42 P2 T1");
+
+    
+    gcp.runLine("M42 P2 T1");
     printf("runLine:%d\n",gcp.runLine("G28"));
     char GCODEs[]=
       "G28 G21\n" 
@@ -459,7 +465,6 @@ int main()
   int pos=18000*2;
   uint32_t speed=45000;
 
-  thread first_thread(first_thread_job);
   // xVec cpos=(xVec){0};
   // for(int i=0;i<5;i++)
   // {

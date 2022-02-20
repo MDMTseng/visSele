@@ -272,4 +272,99 @@ class RingBuf_Static:public RingBuf<RB_Type,RB_Idx_Type>
 };
 
 
+
+
+template <
+  typename RP_Type,typename RP_Idx_Type=uint32_t
+>
+class ResourcePool
+{
+
+
+public:
+
+  struct ResourceData{
+    bool occupied;
+    RP_Type data;
+  };
+protected:
+  
+  ResourceData *buff;
+  int buffL;
+
+public:
+
+  ResourcePool(struct ResourceData *buff,RP_Idx_Type len)
+  {
+    this->buff=buff;
+    buffL=len;
+    
+    for(int i=0;i<buffL;i++)
+    {
+      buff[i].occupied=false;
+    }
+  }
+
+  RP_Type* applyResource()
+  {
+    for(int i=0;i<buffL;i++)
+    {
+      if(buff[i].occupied==false)
+      {
+        buff[i].occupied=true;
+        return &(buff[i].data);
+      }
+    }
+    return NULL;
+  }
+
+
+  bool returnResource(RP_Type *res)
+  {
+    
+    for(int i=0;i<buffL;i++)
+    {
+      if(&(buff[i].data)==res)
+      {
+        buff[i].occupied=false;
+        return true;
+      }
+    }
+    return false;
+  //   int addrDiff =(res-( &(buff[0].data) ));
+  //   int idx=addrDiff/sizeof(ResourceData);
+  //   if(idx<0)return false;
+  //   if(idx>=buffL)return false;
+  //   if(buff[idx].occupied==false)return false;
+
+  //   buff[idx].occupied=false;
+  //   return true;
+
+
+  }
+
+  
+};
+
+
+
+
+
+// template <
+//   typename RP_Type, unsigned N ,typename RP_Idx_Type=uint32_t
+// >
+// class ResourcePool_Static:public ResourcePool<RP_Type,RP_Idx_Type>
+// {
+//   protected:
+//   ResourcePool_Static::ResourceData array[N];
+
+//   public:
+//   ResourcePool_Static():ResourcePool<RP_Type,RP_Idx_Type>(array,N)
+//   {
+
+//   }
+// };
+
+
+
 #endif /* __RingBufX_H__ */
