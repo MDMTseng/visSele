@@ -673,6 +673,47 @@ public:
 };
 
 
+
+
+void pickOnGCode(GCodeParser_M2 &gcpm,int headIndex,float pos_mm,int speed_mmps, int pickPin,bool pickup=true)
+{
+  char gcode[128];
+
+  int headPoseDown=0;
+  if(headIndex==0)
+  {
+    pos_mm-=15;
+    headPoseDown=mstp.M1Info_Limit1;
+  }
+  else if(headIndex==1)
+  {
+    pos_mm+=15;
+    headPoseDown=mstp.M1Info_Limit2;
+  }
+  else
+    return;
+
+
+
+  sprintf(gcode,"G01 Y%f Z1_%d F%d",pos_mm,0,speed_mmps);gcpm.runLine(gcode);
+
+  
+  int pinPreTrigger=10;//less means earlier
+  int pinKeepDelay_ms=10;
+
+  sprintf(gcode,"G01 Z1_%d",headPoseDown*pinPreTrigger/100);gcpm.runLine(gcode);
+  sprintf(gcode,"M42 P%d S%d",pickPin,pickup?1:0);gcpm.runLine(gcode);
+  sprintf(gcode,"G01 Z1_%d",headPoseDown);gcpm.runLine(gcode);
+  
+  
+  sprintf(gcode,"G04 P%d",pinKeepDelay_ms);gcpm.runLine(gcode);
+
+  sprintf(gcode,"G01 Z1_0");gcpm.runLine(gcode);
+
+}
+
+
+
 GCodeParser_M2 gcpm(&mstp);
 bool rzERROR=0;
 void setup()
@@ -704,6 +745,7 @@ void setup()
   // int retErr=0;
 
   gcpm.runLine("M42 P2 T1");
+  gcpm.runLine("M42 P4 T1");
 
 }
 
@@ -724,35 +766,38 @@ void loop()
   {
     // delay(1000);
 
-    uint32_t speed=30000;//25000;
-
-
-    int pt1=(-30-12*2)*SUBDIV/mm_PER_REV;
-    int pt2=(-30-12*2+1)*SUBDIV/mm_PER_REV;
     // int pt2=-30*SUBDIV/mm_PER_REV;
     int cidx=0;
     char gcode[128];
     for(int i=0;i<1;i++)
     {
       // delay(1000);
-      sprintf(gcode,"G01 Y30 Z1_%d F2000",mstp.M1Info_Limit1);
-      gcpm.runLine(gcode);
+    //   sprintf(gcode,"G01 Y30 Z1_%d F2000",mstp.M1Info_Limit1);
+    //   gcpm.runLine(gcode);
       
       
-    __PRT_I_(">>>>\n");
-      gcpm.runLine("M42 P2 S1");
-    __PRT_I_(">>>>\n");
-      gcpm.runLine("G01 Y0 Z1_0 F1000");
-      gcpm.runLine("M42 P2 S0");
+    // __PRT_I_(">>>>\n");
+    //   gcpm.runLine("M42 P2 S1");
+    // __PRT_I_(">>>>\n");
+    //   gcpm.runLine("G01 Y0 Z1_0 F1000");
+    //   gcpm.runLine("M42 P2 S0");
       
-    __PRT_I_(">>>>\n");
-      sprintf(gcode,"G01 Y-30 Z1_%d F2000",mstp.M1Info_Limit2);
-      gcpm.runLine(gcode);
+    // __PRT_I_(">>>>\n");
+    //   sprintf(gcode,"G01 Y-30 Z1_%d F2000",mstp.M1Info_Limit2);
+    //   gcpm.runLine(gcode);
 
-    __PRT_I_(">>>>\n");
+    // __PRT_I_(">>>>\n");
       
-      gcpm.runLine("G01 Y0 Z1_0 F2000");
-      gcpm.runLine("G04 P10");
+    //   gcpm.runLine("G01 Y0 Z1_0 F2000");
+    //   gcpm.runLine("G04 P10");
+
+      int speed=100;
+      float pos=50;
+      pickOnGCode(gcpm,0,pos,speed, 2,true);
+      pickOnGCode(gcpm,1,pos,speed, 4,true);
+      pos+=50;
+      pickOnGCode(gcpm,0,pos,speed, 2,false);
+      pickOnGCode(gcpm,1,pos,speed, 4,false);
 
     }
   }
