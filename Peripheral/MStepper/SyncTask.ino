@@ -2,6 +2,7 @@
 #include "main.hpp"
 #include "MSteppers.hpp"
 #include "GCodeParser_M.hpp"
+#include "LOG.h"
 #include "xtensa/core-macros.h"
 #include "soc/rtc_wdt.h"
 hw_timer_t *timer = NULL;
@@ -38,7 +39,6 @@ hw_timer_t *timer = NULL;
 
 
 struct MSTP_SegCtx{
-  bool isInUse;
   int type;
   // int delay_time_ms;
   int d0;
@@ -46,6 +46,12 @@ struct MSTP_SegCtx{
 
   int32_t I,P,S,T;
 };
+
+
+
+const int SegCtxSize=4;
+ResourcePool<MSTP_SegCtx>::ResourceData resbuff[SegCtxSize];
+ResourcePool <MSTP_SegCtx>sctx_pool(resbuff,sizeof(resbuff)/sizeof(resbuff[0]));
 
 
 class MStp_M:public MStp{
@@ -99,6 +105,7 @@ class MStp_M:public MStp{
       timerAlarmDisable(timer); 
       timerRunning=false;
     }
+    __PRT_I_(">\n");
   }
   void startTimer(){
     if(timerRunning==false)
@@ -285,8 +292,7 @@ class MStp_M:public MStp{
     
 
     MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
-    ctx->isInUse=false;//release
-
+    sctx_pool.returnResource(ctx);
   }
   
   int PIN_DBG_ST=0;
@@ -475,11 +481,10 @@ uint32_t preCD=0;
 
 
 bool isSystemZeroOK=false;
-
+int timerCount=0;
 uint32_t cp0_regs[18];
 void IRAM_ATTR onTimer()
 {
-
   // enable FPU
   xthal_set_cpenable(1);
   // Save FPU registers
@@ -493,6 +498,7 @@ void IRAM_ATTR onTimer()
   
   // printf("T:%d\n",T);
   
+  timerCount=T;
   if(T<0)
   {
     
@@ -590,6 +596,7 @@ public:
 
   float unit2Pulse_conv(const char* code,float dist)
   {
+    // Serial.printf("unitConv[%s]:%f\n",code,dist);
     if(code[0]=='Y')
     {
       return unit2Pulse(-dist,SUBDIV/mm_PER_REV);
@@ -612,6 +619,7 @@ public:
 
   bool MTPSYS_VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
   {
+    // Serial.printf("vecto speed:%f\n",speed);
     while(_mstp->VecTo(VECTo,speed,ctx,exinfo)==false)
     {
       Serial.printf("");
@@ -620,6 +628,7 @@ public:
   }
   bool MTPSYS_VecAdd(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
   {
+    // Serial.printf("I:%d,P:%d,S:%d,T:%d\n",I,P,S,T);
     while(_mstp->VecAdd(VECTo,speed,ctx,exinfo)==false)
     {
       Serial.printf("");
@@ -639,21 +648,20 @@ public:
     return true;
   }
 
-  MSTP_SegCtx resource;
   bool MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T)
   {
-    while(resource.isInUse==true)//check release
+    MSTP_SegCtx *p_res;
+    while((p_res=sctx_pool.applyResource())==NULL)//check release
     {
       Serial.printf("");
     }
-    resource.isInUse=true;//occupy
-    resource.I=I;
-    resource.P=P;
-    resource.S=S;
-    resource.T=T;
-    resource.type=42;
+    p_res->I=I;
+    p_res->P=P;
+    p_res->S=S;
+    p_res->T=T;
+    p_res->type=42;
     Serial.printf("I:%d,P:%d,S:%d,T:%d\n",I,P,S,T);
-    while(_mstp->AddWait(0,0,&resource,NULL)==false)
+    while(_mstp->AddWait(0,0,p_res,NULL)==false)
     {
       Serial.printf("");
     }
@@ -727,12 +735,23 @@ void loop()
     for(int i=0;i<1;i++)
     {
       // delay(1000);
-      gcpm.runLine("M42 P2 S1");
-      sprintf(gcode,"G01 Y30 Z1_%d F200",mstp.M1Info_Limit1);
+      sprintf(gcode,"G01 Y30 Z1_%d F2000",mstp.M1Info_Limit1);
       gcpm.runLine(gcode);
-      gcpm.runLine("G01 Y1 Z1_0 F100");
+      
+      
+    __PRT_I_(">>>>\n");
+      gcpm.runLine("M42 P2 S1");
+    __PRT_I_(">>>>\n");
+      gcpm.runLine("G01 Y0 Z1_0 F1000");
       gcpm.runLine("M42 P2 S0");
-      gcpm.runLine("G01 Y0 Z1_0 F1");
+      
+    __PRT_I_(">>>>\n");
+      sprintf(gcode,"G01 Y-30 Z1_%d F2000",mstp.M1Info_Limit2);
+      gcpm.runLine(gcode);
+
+    __PRT_I_(">>>>\n");
+      
+      gcpm.runLine("G01 Y0 Z1_0 F2000");
       gcpm.runLine("G04 P10");
 
     }

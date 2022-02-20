@@ -537,7 +537,7 @@ int MStp::SegQ_Size() MSTP_SEG_PREFIX
 
 int MStp::SegQ_Capacity() MSTP_SEG_PREFIX
 {
-  return segBufL;
+  return segBufL-1;
 }
 
 int MStp::SegQ_Space() MSTP_SEG_PREFIX
@@ -548,7 +548,7 @@ int MStp::SegQ_Space() MSTP_SEG_PREFIX
 
 MSTP_SEG_PREFIX MSTP_segment* MStp::SegQ_Head(int idx) MSTP_SEG_PREFIX
 {
-  if(SegQ_IsFull())return NULL;
+  if(idx>SegQ_Size())return NULL;
   int rIdx=((segBufHeadIdx-idx)+segBufL)%segBufL;
   return segBuf+rIdx;
 }
@@ -564,7 +564,7 @@ bool MStp::SegQ_Head_Push() MSTP_SEG_PREFIX
 
 MSTP_SEG_PREFIX MSTP_segment* MStp::SegQ_Tail(int idx) MSTP_SEG_PREFIX
 {
-  if(SegQ_IsEmpty())return NULL;
+  if(idx>=SegQ_Size())return NULL;
   int rIdx=((segBufTailIdx+idx)+segBufL)%segBufL;
   return segBuf+rIdx;
 }
@@ -598,6 +598,8 @@ bool MStp::AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info 
   MSTP_SEG_PREFIX MSTP_segment &newSeg=*hrb;
   newSeg.ctx=ctx;
   newSeg.type=MSTP_segment_type::seg_wait;
+  newSeg.vcen=0;
+  newSeg.JunctionNormCoeff=0;
   newSeg.steps=times;
   newSeg.step_period=period;
 
@@ -710,11 +712,30 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
   
   if(SegQ_Size()>0)//get previous block to calc junction info
   {
-    preSeg = SegQ_Head(1);
-    if(preSeg->type==MSTP_segment_type::seg_wait)
-    {
-      preSeg=NULL;
+
+    for(int i=1;;i++){
+       preSeg = SegQ_Head(i);
+       if(preSeg==NULL)break;
+       
+        __PRT_I_("preSeg->type:%d\n",preSeg->type);
+       if(preSeg->type==MSTP_segment_type::seg_wait )
+       {
+         if(preSeg->steps!=0)//means it's a real wait
+         {
+           preSeg=NULL;
+           break;
+         }
+         else
+         {//or look for next data
+            continue;
+         }
+       }
+       else
+       {
+         break;
+       }
     }
+   
   }
   
   if(preSeg!=NULL)
@@ -870,6 +891,8 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
     // T_next=TICK2SEC_BASE/minSpeed;
   }
   SegQ_Head_Push();
+
+  
   if(1)
   {
 
@@ -948,10 +971,20 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
     {//can only adjust vto
       curblk = preSeg;
       preSeg = SegQ_Head(1+i);
-
+      __PRT_I_("preSeg:%p type:%d\n",preSeg,preSeg->type);
       if(preSeg->type==MSTP_segment_type::seg_wait)
       {
-        break;
+        if(preSeg->steps!=0)//means it's a real wait no junction calc
+        {
+          preSeg=NULL;
+          break;
+        }
+        else
+        {//or look for next data
+          preSeg=curblk;//make sure the curblk is still the same
+          continue;
+        }
+       
       }
 
       // if(preSeg==NULL)break;
@@ -1012,6 +1045,8 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
     }
 
 
+    
+
   }
   startTimer();
   
@@ -1029,7 +1064,7 @@ void MStp::printSEGInfo()
   {
     MSTP_SEG_PREFIX MSTP_segment*seg=SegQ_Head(i+1);
 
-    __PRT_I_("[%2d]:steps:%6d v:%05.2f, %05.2f, %05.2f coeff:(%0.2f,%0.2f) \n",i,seg->steps,
+    __PRT_I_("[%2d]:type:%d steps:%6d v:%05.2f, %05.2f, %05.2f coeff:(%0.2f,%0.2f) \n",i,seg->type,seg->steps,
       seg->vcur,seg->vcen,seg->vto,
       seg->JunctionNormCoeff,
       seg->JunctionNormMaxDiff);
@@ -1254,6 +1289,13 @@ uint32_t MStp::taskRun()
 
         break;
         case MSTP_segment_type::seg_wait :
+        
+          __PRT_D_(">[%d~%f\n",p_runSeg->cur_step,p_runSeg->vcur);
+          if(p_runSeg->cur_step==0)
+          {
+            p_runSeg->vcur= prevcur;//keeps the speed info
+          }
+          float vcur=p_runSeg->vcur;
           if(p_runSeg->step_period==0)
           {
             p_runSeg->cur_step=p_runSeg->steps;
@@ -1331,7 +1373,10 @@ uint32_t MStp::taskRun()
           
         break;
         case MSTP_segment_type::seg_wait :
-          
+          if(p_runSeg->cur_step==0)
+          {
+            p_runSeg->vcur= prevcur;//keeps the speed info
+          }
           __PRT_D_("blk_wait:::Go wait:%d\n",p_runSeg->step_period);
           p_runSeg->cur_step++;
           return p_runSeg->step_period;
