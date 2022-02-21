@@ -599,14 +599,15 @@ public:
     // Serial.printf("unitConv[%s]:%f\n",code,dist);
     if(code[0]=='Y')
     {
-      return unit2Pulse(-dist,SUBDIV/mm_PER_REV);
+      return unit2Pulse(-1*dist,SUBDIV/mm_PER_REV);//-1 for reverse the direction
     }
 
     if(code[0]=='Z'&&code[1]=='1')
     {
       return unit2Pulse(dist,1);
     }
-    if(code[0]=='F')
+
+    if (code[0]=='F' || strcmp(code, "ACC") == 0 || strcmp(code, "DEA") == 0)
     {
       return unit2Pulse(dist,SUBDIV/mm_PER_REV);
     }
@@ -816,8 +817,11 @@ void loop()
       pickOnGCode(gcpm,0,pos+12*0,speed, PIN_OUT_0,PIN_OUT_1,false);
       pickOnGCode(gcpm,1,pos+12*2,speed, PIN_OUT_2,PIN_OUT_3,false);
 
+      sprintf(gcode,"G01 Y0 Z1_0 F%d",speed);gcpm.runLine(gcode);
+      sprintf(gcode,"G01 Y-5    ACC10 DEA-10",speed);gcpm.runLine(gcode);  
+      sprintf(gcode,"G04 P%d",1500);gcpm.runLine(gcode);
 
-
+      sprintf(gcode,"G01 Y0 Z1_0 ACC20 DEA-10",speed);gcpm.runLine(gcode);
     }
   }
 

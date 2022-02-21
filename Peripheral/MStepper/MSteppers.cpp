@@ -692,6 +692,9 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
       if(exinfo->deacc==exinfo->deacc)
         dea=exinfo->deacc;
     }
+
+    if(a<0)a=-a;
+    if(dea>0)dea=-dea;
     newSeg.acc=a*accW;
     newSeg.deacc=dea*accW;
   }
@@ -699,7 +702,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
 
   __PRT_I_("\n");
-  __PRT_I_("==========NEW runvec[%s]======idx: h:%d t:%d===\n",toStr(newSeg.runvec),segBufHeadIdx,segBufTailIdx);
+  __PRT_I_("==========NEW runvec[%s:%f,%f,%f]======idx: h:%d t:%d===\n",toStr(newSeg.runvec),newSeg.vcen,newSeg.acc,newSeg.deacc,segBufHeadIdx,segBufTailIdx);
   lastTarLoc=VECTo;
 
 

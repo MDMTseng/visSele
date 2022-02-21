@@ -306,15 +306,32 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         float F;
         ReadG1Data(blockInitial+j,blockCount-j,vec,F);
 
+        MSTP_segment_extra_info exinfo={.acc=NAN,.deacc=NAN};
+
+        {
+          
+          float tmpF=NAN;
+          if(FindFloat("ACC",blockInitial+j,blockCount-j,tmpF)==0)
+          {
+            exinfo.acc=unit2Pulse_conv("ACC",tmpF);
+          }
+          tmpF=NAN;
+          
+          if(FindFloat("DEA",blockInitial+j,blockCount-j,tmpF)==0)
+          {
+            exinfo.deacc=unit2Pulse_conv("DEA",tmpF);
+          }
+        }
+
 
         __PRT_D_("vec:%s F:%f\n",toStr(vec),F);
         if(isAbsLoc)
         {
-          MTPSYS_VecTo(vecAdd(vec,pos_offset),F);
+          MTPSYS_VecTo(vecAdd(vec,pos_offset),F,NULL,&exinfo);
         }
         else
         {
-          MTPSYS_VecAdd(vec,F);
+          MTPSYS_VecAdd(vec,F,NULL,&exinfo);
         }
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
         i=FindGMEnd_idx(blockInitial+j,blockCount-j);
