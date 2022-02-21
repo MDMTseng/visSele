@@ -675,17 +675,17 @@ public:
 
 
 
-void pickOnGCode(GCodeParser_M2 &gcpm,int headIndex,float pos_mm,int speed_mmps, int pickPin,bool pickup=true)
+void pickOnGCode(GCodeParser_M2 &gcpm,int headIndex,float pos_mm,int speed_mmps, int pickPin_suck, int pickPin_blow,bool pickup=true)
 {
   char gcode[128];
 
   int headPoseDown=0;
-  if(headIndex==0)
+  if(headIndex==1)
   {
     pos_mm-=15;
-    headPoseDown=mstp.M1Info_Limit1;
+    headPoseDown=mstp.M1Info_Limit1+15;
   }
-  else if(headIndex==1)
+  else if(headIndex==0)
   {
     pos_mm+=15;
     headPoseDown=mstp.M1Info_Limit2;
@@ -696,13 +696,17 @@ void pickOnGCode(GCodeParser_M2 &gcpm,int headIndex,float pos_mm,int speed_mmps,
 
 
   sprintf(gcode,"G01 Y%f Z1_%d F%d",pos_mm,0,speed_mmps);gcpm.runLine(gcode);
-
-  
-  int pinPreTrigger=10;//less means earlier
+  int pinPreTrigger=60;//early pick
+  if(pickup==false)
+  {
+    pinPreTrigger=80;
+  }
+  //less means earlier
   int pinKeepDelay_ms=10;
 
   sprintf(gcode,"G01 Z1_%d",headPoseDown*pinPreTrigger/100);gcpm.runLine(gcode);
-  sprintf(gcode,"M42 P%d S%d",pickPin,pickup?1:0);gcpm.runLine(gcode);
+  sprintf(gcode,"M42 P%d S%d",pickPin_suck,pickup?1:0);gcpm.runLine(gcode);
+  sprintf(gcode,"M42 P%d S%d",pickPin_blow,pickup?0:1);gcpm.runLine(gcode);
   sprintf(gcode,"G01 Z1_%d",headPoseDown);gcpm.runLine(gcode);
   
   
@@ -715,7 +719,7 @@ void pickOnGCode(GCodeParser_M2 &gcpm,int headIndex,float pos_mm,int speed_mmps,
 
 
 GCodeParser_M2 gcpm(&mstp);
-bool rzERROR=0;
+int rzERROR=0;
 void setup()
 {
   // noInterrupts();
@@ -729,23 +733,27 @@ void setup()
   timerAlarmEnable(timer);
   pinMode(PIN_O1, OUTPUT);
 
-  pinMode(PIN_OUT_0, OUTPUT);
-  pinMode(PIN_OUT_1, OUTPUT);
-  pinMode(PIN_OUT_2, OUTPUT);
-  pinMode(PIN_OUT_3, OUTPUT);
+  // pinMode(PIN_OUT_0, OUTPUT);
+  // pinMode(PIN_OUT_1, OUTPUT);
+  // pinMode(PIN_OUT_2, OUTPUT);
+  // pinMode(PIN_OUT_3, OUTPUT);
   rzERROR=0;
-  // GCodeParser::GCodeParser_Status st=gcpm.runLine("G28");
-  // rzERROR=st==GCodeParser::GCodeParser_Status::TASK_OK?0:-1;
+  
+  rzERROR=(gcpm.runLine("G28")==GCodeParser::GCodeParser_Status::TASK_OK)?0:-1;
 
   if(rzERROR==0)
   {
+    {
+      char gcode[128];
+      sprintf(gcode,"M42 P%d T1",PIN_OUT_0);gcpm.runLine(gcode);
+      sprintf(gcode,"M42 P%d T1",PIN_OUT_1);gcpm.runLine(gcode);
+      sprintf(gcode,"M42 P%d T1",PIN_OUT_2);gcpm.runLine(gcode);
+      sprintf(gcode,"M42 P%d T1",PIN_OUT_3);gcpm.runLine(gcode);
+    }
     // isSystemZeroOK=true;
   }
   // retErr+=mstp.MachZeroRet(1,-50000)*10;
   // int retErr=0;
-
-  gcpm.runLine("M42 P2 T1");
-  gcpm.runLine("M42 P4 T1");
 
 }
 
@@ -791,13 +799,24 @@ void loop()
     //   gcpm.runLine("G01 Y0 Z1_0 F2000");
     //   gcpm.runLine("G04 P10");
 
-      int speed=100;
-      float pos=50;
-      pickOnGCode(gcpm,0,pos,speed, 2,true);
-      pickOnGCode(gcpm,1,pos,speed, 4,true);
-      pos+=50;
-      pickOnGCode(gcpm,0,pos,speed, 2,false);
-      pickOnGCode(gcpm,1,pos,speed, 4,false);
+      int speed=300;
+      float pos=20;
+      pickOnGCode(gcpm,0,pos+12*0,speed, PIN_OUT_0,PIN_OUT_1,true);
+      pickOnGCode(gcpm,1,pos+12*2,speed, PIN_OUT_2,PIN_OUT_3,true);
+
+
+      pos+=12*3;
+      pickOnGCode(gcpm,0,pos+12*1,speed, PIN_OUT_0,PIN_OUT_1,false);
+      pickOnGCode(gcpm,1,pos+12*3,speed, PIN_OUT_2,PIN_OUT_3,false);
+
+      pickOnGCode(gcpm,0,pos+12*1,speed, PIN_OUT_0,PIN_OUT_1,true);
+      pickOnGCode(gcpm,1,pos+12*3,speed, PIN_OUT_2,PIN_OUT_3,true);
+
+      pos-=12*3;
+      pickOnGCode(gcpm,0,pos+12*0,speed, PIN_OUT_0,PIN_OUT_1,false);
+      pickOnGCode(gcpm,1,pos+12*2,speed, PIN_OUT_2,PIN_OUT_3,false);
+
+
 
     }
   }
