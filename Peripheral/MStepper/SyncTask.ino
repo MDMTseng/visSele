@@ -105,7 +105,7 @@ class MStp_M:public MStp{
       timerAlarmDisable(timer); 
       timerRunning=false;
     }
-    __PRT_I_(">\n");
+    // __PRT_I_(">\n");
   }
   void startTimer(){
     if(timerRunning==false)
