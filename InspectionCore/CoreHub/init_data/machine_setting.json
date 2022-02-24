@@ -1,0 +1,15 @@
+{
+  "inspection_db_ws_url_": "ws://db.xception.tech:8080/",
+  "cusdisp_db_fetch_url_": "http://db.xception.tech:8080/",
+  "inspection_monitor_url_": "http://gitexp.idcircle.me/hyvision_monitor/0.0.0/",
+  "boot_ctrl_UI": "ws://192.168.2.43:5213",
+  "uInsp_peripheral_conn_info__": {
+    "ip": "192.168.2.43",
+    "port": 5213
+  },
+  "slideInsp_peripheral_conn_info": {},
+  "Sample_Saving_Path": "data/SSP1/",
+  "InspectionMode": "CI",
+  "setting_directory": "data/",
+  "InspSampleSavePath": "/Users/mdm/visSele/InspectionCore/Core0_1/data/SAMPLE"
+}

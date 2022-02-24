@@ -1,49 +1,57 @@
 
-#include <main.h>
+#include "acvImage_BasicTool.hpp"
+#include "logctrl.h"
+#include <float.h>
+#include "common_lib.h"
 
+#include "BPG_Protocol.hpp"
 
-#include <sys/stat.h>
+// class m_BPG_Protocol_Interface : public BPG_Protocol_Interface
+// {
+// public:
+//   int toUpperLayer(BPG_protocol_data bpgdat)
+//   {
+//     bpgdat.dat_raw[bpgdat.size] = '\0';
+//     LOGI(">>> data %s", bpgdat.dat_raw);
 
-static std::timed_mutex mainThreadLock;
-static int mainThreadLock_lock(int call_lineNumber,char* msg="",int try_lock_timeout_ms=0)
+//     BPG_protocol_data ret_dat;
+//     ret_dat.tl[0] = 'A';
+//     ret_dat.tl[1] = 'A';
+
+//     uint8_t *data = requestSendingBuffer(500);
+//     ret_dat.prop = 'x';
+//     ret_dat.dat_raw = data;
+//     ret_dat.size = sprintf((char *)data, "GOGOGO");
+//     ret_dat.pgID = bpgdat.pgID;
+//     ret_dat.callback = NULL;
+//     ret_dat.callbackInfo = NULL;
+//     fromUpperLayer(ret_dat);
+//   }
+// };
+
+// int tmpMain()
+// {
+//   BPG_Link_Interface_WebSocket ifwebsocket(7714);
+//   m_BPG_Protocol_Interface bpg_pi;
+//   ifwebsocket.setUpperLayer(&bpg_pi);
+//   bpg_pi.setLink(&ifwebsocket);
+//   while (1)
+//   {
+//     LOGI("WAIT..");
+//     fd_set fd_s = ifwebsocket.get_fd_set();
+//     int maxfd = ifwebsocket.findMaxFd();
+//     if (select(maxfd + 1, &fd_s, NULL, NULL, NULL) == -1)
+//     {
+//       perror("select");
+//       exit(4);
+//     }
+
+//     ifwebsocket.runLoop(&fd_s, NULL);
+//   }
+//   return 0;
+// }
+
+int tmpMain()
 {
-
-  if(try_lock_timeout_ms<=0)
-  {
-    //LOGI("%s_%d: Locking ",msg,call_lineNumber);
-    mainThreadLock.lock();
-  }
-  else
-  {
-    using Ms = std::chrono::milliseconds;
-    
-    //LOGI("%s_%d: Locking %dms",msg,call_lineNumber,try_lock_timeout_ms);
-    if(mainThreadLock.try_lock_for(Ms(try_lock_timeout_ms)))
-    {
-    }
-    else
-    {
-      //LOGI("Lock failed");
-      return -1;
-    }
-  }
-  //LOGI("%s_%d: Locked ",msg,call_lineNumber);
-
-  return 0;
-}
-static bool terminationFlag=false;
-
-static void ImgPipeProcessThread(bool *terminationflag)
-{
-
-}
-
-
-static std::thread mThread(ImgPipeProcessThread, &terminationFlag);
-
-
-int tmain()
-{
-
   return 0;
 }
