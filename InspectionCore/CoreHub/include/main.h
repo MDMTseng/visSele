@@ -280,4 +280,20 @@ public:
 };
 int cp_main(int argc, char **argv);
 
+
+class InspChannel
+{
+  
+  TSQueue<image_pipe_info *> inspQueue(10);
+  TSQueue<image_pipe_info *> datViewQueue(10);
+  TSQueue<image_pipe_info *> inspSnapQueue(5);
+  
+  MatchingEngine matchingEng;
+  
+  MJPEG_Streamer *mjpegS;
+  MatchingEngine matchingEng;
+  CameraLayer *gen_camera;
+};
+
+
 #endif
