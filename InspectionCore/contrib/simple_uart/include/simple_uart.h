@@ -33,6 +33,8 @@ int simple_uart_close(struct simple_uart *uart);
 
 /* Raw read/write */
 int simple_uart_read(struct simple_uart *uart, void *buffer, int max_len);
+int simple_uart_read_timed(struct simple_uart *sc, void *buffer, int max_len,int wait_ms);
+
 int simple_uart_write(struct simple_uart *uart, const void *buffer, int len);
 
 /* Sets the delay between sending each character when using uart_write */

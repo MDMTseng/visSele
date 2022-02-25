@@ -305,6 +305,8 @@ void SOCK_Msg_Flow::DESTROY()
       delete recvThread;
       recvThread = NULL;
   }
+  bufL=0;
+  delete buf;
 }
 
 SOCK_Msg_Flow::~SOCK_Msg_Flow()
@@ -483,4 +485,173 @@ char* SOCK_JSON_Flow::SYNC_cmd_cameraCalib(char* img_path, int board_w, int boar
 SOCK_JSON_Flow::~SOCK_JSON_Flow()
 {
   DESTROY();
+}
+
+
+
+
+
+
+
+
+
+
+Data_TCP_Layer::Data_TCP_Layer(char *host,int port)throw(std::runtime_error)
+{
+    if ((he=gethostbyname(host)) == NULL) {  /* get the host info */
+        //herror("gethostbyname");
+        throw std::runtime_error("-1");
+    }
+
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        //perror("socket");
+        throw std::runtime_error("-2");
+    }
+
+    int enable = 1;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char*)&enable, sizeof(int)) < 0)
+    {
+      throw std::runtime_error("-3");
+    }
+#ifdef SO_REUSEPORT
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, (char*)&enable, sizeof(int)) < 0)
+    {
+      throw std::runtime_error("-4");
+    }
+#endif
+
+    their_addr.sin_family = AF_INET;      /* host byte order */
+    their_addr.sin_port = htons(port);    /* short, network byte order */
+    their_addr.sin_addr = *((struct in_addr *)he->h_addr);
+    memset(&(their_addr.sin_zero),0, 8);     /* zero the rest of the struct */
+
+    printf("c:sockfd:%d\n",sockfd);
+
+
+
+    int ret_val;
+    char EXP_INFO[100];
+
+    if ((ret_val=connect_nonb( sockfd,(struct sockaddr *)&their_addr,sizeof(struct sockaddr), 1))!=0) {
+      //perror("connect");
+      sprintf(EXP_INFO,"ERROR ret:%d",ret_val);
+      throw std::runtime_error(EXP_INFO);
+    }
+    // recvThread=NULL;
+    recvThread = new std::thread(&Data_TCP_Layer::recv_data_thread, this);
+    // return (recvThread==NULL);
+
+}
+
+int Data_TCP_Layer::recv_data_thread()
+{
+    int recvL=0;
+    
+    uint8_t buffer[200];
+    // printf(">th:sockfd:%d\n",sockfd);
+    // send_data(0,(uint8_t*)">>>>>>>>>",8,0);
+    while((recvL=recv(sockfd, (char*)buffer, sizeof(buffer), 0))>0)
+    {
+      recv_data(buffer,recvL);
+    }
+    return recvL;
+}
+
+int Data_TCP_Layer::send_data(int head_room,uint8_t *data,int len,int leg_room)
+{
+
+    sendLock.lock();
+    int ret = send(sockfd, (char*)data, len, 0);
+    sendLock.unlock();
+    return ret; 
+}
+
+int Data_TCP_Layer::close()
+{
+  if(sockfd!=-1)
+  {
+    socket_close(&sockfd);
+  }
+  sockfd=-1;
+}
+Data_TCP_Layer::~Data_TCP_Layer()
+{
+  socket_close(&sockfd);
+  if(recvThread)
+  {
+      //printf(">recvThread->join()>\n");
+      recvThread->join();
+      //printf(">delete recvThread>\n");
+      delete recvThread;
+      recvThread = NULL;
+  }
+}
+
+
+
+
+
+
+////////////////////////////////////////
+Data_UART_Layer::Data_UART_Layer(const char *name,int speed,const char *mode_string)throw(std::runtime_error)
+{
+
+  printf("name:%s sped:%d mode_string:%s\n",name,speed,mode_string);
+  uart = simple_uart_open(name, speed, mode_string);
+  
+  if( uart == NULL) {  /* get the host info */
+      //herror("gethostbyname");
+      throw std::runtime_error("-1");
+  }
+
+
+
+  // recvThread=NULL;
+  recvThread = new std::thread(&Data_UART_Layer::recv_data_thread, this);
+  // return (recvThread==NULL);
+
+}
+
+int Data_UART_Layer::recv_data_thread()
+{
+  uint8_t buffer[100];
+  for(int k=0;;k++)
+  {
+
+    int datLen = simple_uart_read_timed(uart, buffer, sizeof(buffer),1000);
+    if(datLen==0)continue;
+    recv_data(buffer, datLen);
+  }
+
+  return 0;
+}
+
+int Data_UART_Layer::send_data(int head_room,uint8_t *data,int len,int leg_room)
+{
+    printf(">>>>len%d\n",len);
+    sendLock.lock();
+    int ret = simple_uart_write(uart, (char*)data, len);
+    sendLock.unlock();
+    return ret; 
+}
+
+int Data_UART_Layer::close()
+{
+  if(uart!=NULL)
+  {
+    simple_uart_close(uart);
+  }
+  uart=NULL;
+}
+Data_UART_Layer::~Data_UART_Layer()
+{
+  close();
+  if(recvThread)
+  {
+      //printf(">recvThread->join()>\n");
+      recvThread->join();
+      //printf(">delete recvThread>\n");
+      delete recvThread;
+      recvThread = NULL;
+  }
 }

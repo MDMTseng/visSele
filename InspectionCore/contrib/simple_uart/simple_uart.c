@@ -66,6 +66,12 @@ struct simple_uart
 
 int simple_uart_read(struct simple_uart *sc, void *buffer, int max_len)
 {
+    return simple_uart_read_timed(sc, buffer, max_len,50);
+}
+
+
+int simple_uart_read_timed(struct simple_uart *sc, void *buffer, int max_len,int wait_ms)
+{
 #ifdef WIN32
     COMMTIMEOUTS commTimeout;
 
@@ -90,8 +96,8 @@ int simple_uart_read(struct simple_uart *sc, void *buffer, int max_len)
     FD_SET(sc->fd, &readfds);
     FD_ZERO(&exceptfds);
     FD_SET(sc->fd, &exceptfds);
-    t.tv_sec = 0;
-    t.tv_usec = 50 * 1000;
+    t.tv_sec = wait_ms/1000;
+    t.tv_usec = (wait_ms%1000) * 1000;
 
     r = select(sc->fd + 1, &readfds, NULL, &exceptfds, &t);
     if (r < 0)
@@ -108,6 +114,8 @@ int simple_uart_read(struct simple_uart *sc, void *buffer, int max_len)
     }
     return r;
 }
+
+
 
 int simple_uart_write(struct simple_uart *sc, const void *buffer, int len)
 {
@@ -164,7 +172,7 @@ static int simple_uart_set_config(struct simple_uart *sc, int speed, const char 
 #ifdef __linux__
     int non_standard = 0;
 #endif
-
+    printf("speed:%d<<<<<<<<<<<<<<\n",speed);
     switch (speed)
     {
     case 1200:
@@ -246,6 +254,7 @@ static int simple_uart_set_config(struct simple_uart *sc, int speed, const char 
 #endif
     }
 
+    // printf("sp:%d<<<<<<<<<<<<<<\n",sp);
     if (tcgetattr(sc->fd, &options) < 0)
         return -errno;
 
@@ -457,7 +466,7 @@ int simple_uart_list(char ***namesp, char ***descriptionp)
         if (glob ("/dev/tty.*", 0, NULL, &g) >= 0) {
         char buffer[100];
         char **new_names;
-        new_names = (typeof(new_names))realloc(names, (count + g.gl_pathc) * sizeof (char *));
+        new_names = (char **)realloc(names, (count + g.gl_pathc) * sizeof (char *));
         if (!new_names) {
             globfree(&g);
             free(names);

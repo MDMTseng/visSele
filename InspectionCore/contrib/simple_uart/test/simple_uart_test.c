@@ -39,24 +39,23 @@ void test_open(void)
 	struct simple_uart *uart;
 	pid_t pid;
 
-	pid = setup_loopback();
+	// pid = setup_loopback();
 
 	uart = simple_uart_open("/dev/cu.SLAB_USBtoUART", 921600, "8N1");
 	TEST_ASSERT(uart != NULL);
   
 
   printf(">>>");
-  uint8_t buffer[100];
+  uint8_t buffer[1000];
   for(int k=0;k<20;k++)
   {
 
-    int datLen = simple_uart_read(uart, buffer, sizeof(buffer));
+    int datLen = simple_uart_read_timed(uart, buffer, sizeof(buffer),2000);
     for(int i=0;i<datLen;i++)
     {
       printf("%c",buffer[i]);
     }
-    if(datLen)
-      printf("\nend datLen:%d>>\n",datLen);
+    printf("\nend datLen:%d>>\n",datLen);
   }
 
 
@@ -65,7 +64,7 @@ void test_open(void)
 
 	simple_uart_close(uart);
 
-	shutdown_loopback(pid);
+	// shutdown_loopback(pid);
 }
 
 void test_loopback(void)

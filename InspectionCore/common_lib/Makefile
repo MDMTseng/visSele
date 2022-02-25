@@ -9,6 +9,7 @@ IDIR=	./include/ \
 			$(MODULE_lodepng) \
 			$(MODULE_mjpegLib)/include \
 			$(MODULE_Compat_dirent)/include \
+			$(MODULE_simple_uart)/include \
 
 ODIR=obj
 _OBJ = Util.o Util2.o SOCK_Msg_Flow.opp ImageSampler.opp 

@@ -101,7 +101,7 @@ EXT_OBJS= $(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_smem_channel)/smem_channel.a\
 					$(MODULE_BPG_Protocol)/BPG_Protocol.a \
 					$(MODULE_shape_based_matching)/libshape_based_matching.a \
-          $(MODULE_simple_uart)/serialCom.a \
+          $(MODULE_simple_uart)/simple_uart.a \
 					# $(MODULE_DataChannel)/DataChannel.a \
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
           # $(MODULE_MatchingEngine)/MatchingEngine.a \
@@ -150,8 +150,8 @@ else
 									$(MODULE_MJPEG_Streamer) \
 									$(MODULE_zlib) \
 									$(MODULE_smem_channel)\
-									$(MODULE_BPG_Protocol)\
-                  $(MODULE_SerialCom) \
+									$(MODULE_BPG_Protocol) \
+                  $(MODULE_simple_uart) \
 									# $(MODULE_shape_based_matching)\
 									# $(MODULE_DataChannel) \
 									# $(MODULE_SOIL) \
