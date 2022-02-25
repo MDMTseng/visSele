@@ -27,7 +27,7 @@ export MODULE_SOIL=$(abspath $(moduleRoot)/contrib/SOIL)
 export MODULE_polyfit=$(abspath $(moduleRoot)/contrib/polyfit)
 export MODULE_lodepng=$(abspath $(moduleRoot)/contrib/lodepng)
 export MODULE_CameraLayer=$(abspath $(moduleRoot)/CameraLayer)
-export MODULE_SerialCom=$(abspath $(moduleRoot)/contrib/serialCom)
+export MODULE_simple_uart=$(abspath $(moduleRoot)/contrib/simple_uart)
 
 
 export MODULE_MJPEG_Streamer=$(abspath $(moduleRoot)/MJPEG_Streamer)
@@ -77,7 +77,7 @@ IDIR=	include/ \
 			$(MODULE_lodepng)\
 			$(MODULE_smem_channel)\
 			$(MODULE_shape_based_matching)/include \
-      $(MODULE_SerialCom)/include \
+      $(MODULE_simple_uart)/include \
       # /usr/local/include/opencv4
 			# $(MODULE_DataChannel)/include\
 			# $(MODULE_MLNN)/include/  \
@@ -101,7 +101,7 @@ EXT_OBJS= $(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_smem_channel)/smem_channel.a\
 					$(MODULE_BPG_Protocol)/BPG_Protocol.a \
 					$(MODULE_shape_based_matching)/libshape_based_matching.a \
-          # $(MODULE_SerialCom)/serialCom.a \
+          $(MODULE_simple_uart)/serialCom.a \
 					# $(MODULE_DataChannel)/DataChannel.a \
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
           # $(MODULE_MatchingEngine)/MatchingEngine.a \
@@ -151,7 +151,7 @@ else
 									$(MODULE_zlib) \
 									$(MODULE_smem_channel)\
 									$(MODULE_BPG_Protocol)\
-                  # $(MODULE_SerialCom) \
+                  $(MODULE_SerialCom) \
 									# $(MODULE_shape_based_matching)\
 									# $(MODULE_DataChannel) \
 									# $(MODULE_SOIL) \
