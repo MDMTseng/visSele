@@ -50,3 +50,4 @@ InspectionCore/MatchingEngine/Makefile
 InspectionCore/Core0_1/install_manifest.txt
 InspectionCore/Core0_1/MODULE_MatchingEngine/
 Peripheral/MStepper/.pio/
+InspectionCore/CoreHub/visSele
