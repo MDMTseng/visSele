@@ -18,7 +18,7 @@ SimpPacketParse SPP(500);
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
              void *arg, uint8_t *data, size_t len);
 
-AsyncWebSocket ws("/ws");
+AsyncWebSocket _ws("/ws");
 
 
 
@@ -115,8 +115,8 @@ void WiFiStationConnected(WiFiEvent_t event, WiFiEventInfo_t info){
 
   // Start server
   server.begin();
-  ws.onEvent(onEvent);
-  server.addHandler(&ws);
+  _ws.onEvent(onEvent);
+  server.addHandler(&_ws);
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", index_html);
@@ -145,7 +145,7 @@ void loop_comm()
   // {
   //   connectToWiFi(ssid,password);
   // }
-  ws.cleanupClients();
+  _ws.cleanupClients();
 
   while (Serial.available()) {
     char inChar = (char)Serial.read();

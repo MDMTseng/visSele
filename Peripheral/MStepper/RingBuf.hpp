@@ -49,12 +49,22 @@ class RingBufIdxCounter
   RB_Idx_Type getHead(){return headIdx;}
   RB_Idx_Type getTail(){return tailIdx;}
   RB_Idx_Type getTail(RB_Idx_Type idx){
-    int real_idx=getTail()+idx;
+    int real_idx=tailIdx+idx;
     if(real_idx>=RBLen)real_idx-=RBLen;
     return real_idx;
   }
+
+
+  RB_Idx_Type getHead(RB_Idx_Type idx){
+    int real_idx=headIdx-idx;
+    if(real_idx<0)real_idx+=RBLen;
+    return real_idx;
+  }
+
+
   RB_Idx_Type size(){return dataSize;}
   RB_Idx_Type space(){return RBLen-dataSize;}
+  RB_Idx_Type capacity(){return RBLen;}
   
   RB_Idx_Type getNextHead(){
     RB_Idx_Type bk_headIdx=headIdx;
@@ -162,6 +172,14 @@ class RingBuf
   {
     return RBC.size();
   }
+  RB_Idx_Type space()
+  {
+    return RBC.space();
+  }
+  RB_Idx_Type capacity()
+  {
+    return RBC.capacity();
+  }
   
   void clear()
   {
@@ -178,10 +196,20 @@ class RingBuf
     return RBC.getTail();
   }
   
-  RB_Type* getHead()
+  RB_Type* getHead()//the next empty block that's not in the Queue yet
   {
     if(RBC.space()==0)return NULL;
     return buff+RBC.getHead();
+  }
+  
+  RB_Type* getHead(uint32_t idx)
+  {
+    // printf("@idx:%d RBC.size():%d\n",idx,RBC.size());
+    if(idx>RBC.size())return NULL;//if(idx-1>=RBC.size())return NULL;
+    // printf("-idx:%d\n",idx);
+    int idxx=(int)RBC.getHead(idx);
+    // printf("idxx:%d\n",idxx);
+    return buff+idxx;
   }
 
   RB_Idx_Type getTail_Idx(uint32_t idx)
@@ -242,6 +270,101 @@ class RingBuf_Static:public RingBuf<RB_Type,RB_Idx_Type>
 
   }
 };
+
+
+
+
+template <
+  typename RP_Type,typename RP_Idx_Type=uint32_t
+>
+class ResourcePool
+{
+
+
+public:
+
+  struct ResourceData{
+    bool occupied;
+    RP_Type data;
+  };
+protected:
+  
+  ResourceData *buff;
+  int buffL;
+
+public:
+
+  ResourcePool(struct ResourceData *buff,RP_Idx_Type len)
+  {
+    this->buff=buff;
+    buffL=len;
+    
+    for(int i=0;i<buffL;i++)
+    {
+      buff[i].occupied=false;
+    }
+  }
+
+  RP_Type* applyResource()
+  {
+    for(int i=0;i<buffL;i++)
+    {
+      if(buff[i].occupied==false)
+      {
+        buff[i].occupied=true;
+        return &(buff[i].data);
+      }
+    }
+    return NULL;
+  }
+
+
+  bool returnResource(RP_Type *res)
+  {
+    
+    for(int i=0;i<buffL;i++)
+    {
+      if(&(buff[i].data)==res)
+      {
+        buff[i].occupied=false;
+        return true;
+      }
+    }
+    return false;
+  //   int addrDiff =(res-( &(buff[0].data) ));
+  //   int idx=addrDiff/sizeof(ResourceData);
+  //   if(idx<0)return false;
+  //   if(idx>=buffL)return false;
+  //   if(buff[idx].occupied==false)return false;
+
+  //   buff[idx].occupied=false;
+  //   return true;
+
+
+  }
+
+  
+};
+
+
+
+
+
+// template <
+//   typename RP_Type, unsigned N ,typename RP_Idx_Type=uint32_t
+// >
+// class ResourcePool_Static:public ResourcePool<RP_Type,RP_Idx_Type>
+// {
+//   protected:
+//   ResourcePool_Static::ResourceData array[N];
+
+//   public:
+//   ResourcePool_Static():ResourcePool<RP_Type,RP_Idx_Type>(array,N)
+//   {
+
+//   }
+// };
+
 
 
 #endif /* __RingBufX_H__ */
