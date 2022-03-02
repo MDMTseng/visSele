@@ -33,7 +33,6 @@
 
 #include "acvImage_MophologyTool.hpp"
 
-#include <MicroInsp_FType.hpp>
 #include <Ext_Util_API.hpp>
 #include <ImageSampler.h>
 
@@ -44,6 +43,9 @@
 
 #include "MJPEG_Streamer.hpp"
 #include "BPG_Protocol.hpp"
+
+#include "Data_Layer_Protocol.hpp"
+#include "Data_Layer_PHY.hpp"
 
 
 
@@ -79,19 +81,11 @@ static uint64_t current_time_ms(void)
   return (uint64_t)ms.count();
 }
 
-class MicroInsp_FType : public SOCK_JSON_Flow
-{
-public:
-  uint16_t conn_pgID;
-  MicroInsp_FType(char *host, int port) throw(std::runtime_error) : SOCK_JSON_Flow(host, port){};
 
-  virtual ~MicroInsp_FType() { DESTROY(); }
 
-  virtual int recv_json(char *json_str, int json_strL);
+class PerifChannel;
 
-protected:
-  int ev_on_close() override;
-};
+
 
 typedef struct image_pipe_info
 {
@@ -140,7 +134,11 @@ public:
   acvImage tmp_buff;
   acvImage cacheImage;
   acvImage dataSend_buff;
-  MicroInsp_FType *mift = NULL;
+
+  
+  PerifChannel *perifCH= NULL;
+
+
   Ext_Util_API *exApi = NULL;
 
   CameraLayer *camera = NULL;
@@ -149,7 +147,7 @@ public:
   bool checkTL(const char *TL, const BPG_protocol_data *dat);
   uint16_t TLCode(const char *TL);
   void delete_Ext_Util_API();
-  void delete_MicroInsp_FType();
+  void delete_PeripheralChannel();
   static BPG_protocol_data GenStrBPGData(char *TL, char *jsonStr);
   
   static int SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);

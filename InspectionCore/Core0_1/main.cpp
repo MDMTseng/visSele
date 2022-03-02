@@ -140,29 +140,36 @@ class MData_uInsp:public Data_JsonRaw_Layer
 
 int main(int argc, char **argv)
 {
-  {
-    //  Data_TCP_Layer *PHYLayer=new Data_TCP_Layer("127.0.0.1",1234);
-    Data_UART_Layer *PHYLayer=new Data_UART_Layer("/dev/cu.SLAB_USBtoUART",921600, "8N1");
 
-    MData_uInsp *mift=new MData_uInsp();
-    mift->setDLayer(PHYLayer);
-    
-    mift->askJsonRawSupport();
+  // for(int i=0;i<20;i++)
+  // {
+  //   //  Data_TCP_Layer *PHYLayer=new Data_TCP_Layer("127.0.0.1",1234);
+  //   Data_UART_Layer *PHYLayer=new Data_UART_Layer("/dev/cu.SLAB_USBtoUART",921600, "8N1");
 
-    sleep(1);
-  
-    if(0){
-      char buffer[200];  
-      int headerSize=30;
-      char *str=buffer+headerSize;
-      int str_len=sprintf(str,"{\"type\":\"protocol_JsonRaw\",\"id\":%d}",234);
-      mift->send_string(headerSize,(uint8_t*)str,str_len,sizeof(buffer)-headerSize-str_len);
-    }
+  //   MData_uInsp *mift=new MData_uInsp();
+  //   mift->setDLayer(PHYLayer);
     
-    sleep(3);
+  //   mift->askJsonRawSupport();
+
+  //   sleep(1);
   
-    delete mift;
-  }
+  //   if(0){
+  //     char buffer[200];  
+  //     int headerSize=30;
+  //     char *str=buffer+headerSize;
+  //     int str_len=sprintf(str,"{\"type\":\"protocol_JsonRaw\",\"id\":%d}",234);
+  //     mift->send_string(headerSize,(uint8_t*)str,str_len,sizeof(buffer)-headerSize-str_len);
+  //   }
+    
+  //   // sleep(1);
+  
+  //   delete mift;
+  // }
+  // while(1)
+  // {
+  //   sleep(1000);
+  // }
+  
 
   // char *sendMsg="{\"type\":\"PING\",\"id\":445}";
   // JRL.send_data(0,(uint8_t*)sendMsg,strlen(sendMsg),0);
@@ -180,17 +187,12 @@ int main(int argc, char **argv)
   // StrDev_NL.send_data(0,(uint8_t*)tmpMsg,strlen(tmpMsg)+1,0);
   // char *tmpMsg2="1";
   // StrDev_NL.send_data(0,(uint8_t*)tmpMsg2,strlen(tmpMsg2)+1,0);
-  while(1)
-  {
-    sleep(1000);
-  }
-  
 
   // return demomain(argc,argv);
   // return 0;
   // return testPolyFit();
   // tmpMain();
   // printf(">>>");
-  return 0;//cp_main(argc, argv);
+  return cp_main(argc, argv);
 }
 
