@@ -2770,37 +2770,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     }
     else if (checkTL("PR", dat)) //for external application
     {
-      void *target;
-      char *IP = JFetch_STRING(json, "ip");
-      double *port_number = JFetch_NUMBER(json, "port");
-      if (IP != NULL && port_number != NULL)
-      {
-        try
-        {
-          delete_Ext_Util_API();
-          LOGI("clean Ext_Util_API....");
-          exApi = new Ext_Util_API(IP, *port_number);
-          LOGI("new Ext_Util_API OK...");
-          exApi->start_RECV_Thread();
-          LOGI("start_RECV_Thread...");
-          char *retJson = exApi->SYNC_cmd_cameraCalib("*.jpg", 7, 9);
-          LOGI("SYNC_cmd_cameraCalib...\n\n:%s", retJson);
-          session_ACK = true;
-        }
-        catch (int errN)
-        {
-          sprintf(err_str, "[PR] Ext_Util_API init error:%d", errN);
-        }
-      }
-      else if (exApi && IP == NULL && port_number == NULL)
-      {
-        delete_Ext_Util_API();
-        session_ACK = true;
-      }
-      else
-      {
-        sprintf(err_str, "[PR] ip:%p port:%p", IP, port_number);
-      }
+   
     }
     else if (checkTL("PD", dat)) //Peripheral device
     {
@@ -4274,7 +4244,6 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       bpg_pi.cameraFramesLeft = 0;
       bpg_pi.camera->TriggerMode(1);
       bpg_pi.delete_PeripheralChannel();
-      bpg_pi.delete_Ext_Util_API();
     }
 
 

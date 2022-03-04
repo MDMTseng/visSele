@@ -33,7 +33,6 @@
 
 #include "acvImage_MophologyTool.hpp"
 
-#include <Ext_Util_API.hpp>
 #include <ImageSampler.h>
 
 // #include "DatCH_BPG.hpp"
@@ -139,14 +138,11 @@ public:
   PerifChannel *perifCH= NULL;
 
 
-  Ext_Util_API *exApi = NULL;
-
   CameraLayer *camera = NULL;
   resourcePool<image_pipe_info> resPool;
   int toUpperLayer(BPG_protocol_data bpgdat) override;
   bool checkTL(const char *TL, const BPG_protocol_data *dat);
   uint16_t TLCode(const char *TL);
-  void delete_Ext_Util_API();
   void delete_PeripheralChannel();
   static BPG_protocol_data GenStrBPGData(char *TL, char *jsonStr);
   
