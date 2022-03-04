@@ -28,11 +28,32 @@ static uint32_t crc_update(uint32_t crc, uint8_t data)
     return crc;
 }
 
-int Data_JsonRaw_Layer::askJsonRawSupport(){
-  char *sendMsg="{\"type\":\"JsonRaw_protocol_support\",\"id\":445}";
+int Data_JsonRaw_Layer::ask_JsonRaw_version(){
+  char sendMsg[200];
+  sprintf(sendMsg,"{\"type\":\"ask_JsonRaw_version\",\"id\":100445,\"version\":\"%s\"}",VERSION);
   send_json_string(0,(uint8_t*)sendMsg,strlen(sendMsg),0);
   JsonRawStatus=-2;
   return 0;
+}
+int Data_JsonRaw_Layer::rsp_JsonRaw_version(){
+  char sendMsg[200];
+  sprintf(sendMsg,"{\"type\":\"rsp_JsonRaw_version\",\"id\":100446,\"version\":\"%s\"}",VERSION);
+  send_json_string(0,(uint8_t*)sendMsg,strlen(sendMsg),0);
+  JsonRawStatus=-2;
+  return 0;
+}
+
+int Data_JsonRaw_Layer::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
+  
+  if(opcode==1 )
+  {
+    
+    return 0;
+
+  }
+  return 0;
+
+
 }
 
 int Data_JsonRaw_Layer::send_json_string(int head_room,uint8_t *data,int len,int leg_room){
@@ -122,6 +143,12 @@ int Data_JsonRaw_Layer::send_data(int head_room,uint8_t *data,int len,int leg_ro
 }
 int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
 
+
+
+  if(recvType!=RTYPE::INIT)
+  {
+    //is in packet receive state
+  }
   int i;
   for(i=0;i<len;i++)
   {
@@ -273,7 +300,7 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
             }
             else
             {
-              printf("CRC miss match:tar_crc:%X  calc_crc:%X \n",targ_crc,calc_crc);
+              // printf("CRC miss match:tar_crc:%X  calc_crc:%X \n",targ_crc,calc_crc);
             }
             recvType=RTYPE::INIT;
           }
@@ -289,11 +316,77 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
   }
   
 
-
-  // printf(">>%d/%d\n",i,len);
+  if(recvType!=RTYPE::INIT)
+  {
+    //is in packet receive state
+  }
   return 0;
 
 
 }
 
 
+
+
+
+
+
+// int Data_JsonRaw_Layer::sendString(Data_JsonRaw_Layer *JRL,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json)
+// {
+
+//   if (JRL==NULL)
+//   {
+//     return -1;
+//   }
+//   int buff_head_room=JRL->max_head_room_size();
+//   int buffSize=bufL-buff_head_room;
+//   char *padded_buf=(char*)buf+buff_head_room;
+
+//   int ret= cJSON_PrintPreallocated(json, padded_buf, buffSize-JRL->max_leg_room_size(), false);
+
+//   if(ret == false)
+//   {
+//     return -1;
+//   }
+
+//   int contentSize=strlen(padded_buf);
+//   if(directStringFormat)
+//   {
+//     ret = perifCH->send_json_string(buff_head_room,(uint8_t*)padded_buf,contentSize,buffSize-contentSize);
+//   }
+//   else
+//   {
+//     ret = perifCH->send_string(buff_head_room,(uint8_t*)padded_buf,contentSize,buffSize-contentSize);
+//   }
+//   return ret;
+// }
+
+
+
+
+int Data_JsonRaw_Layer::send_printf(uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...)
+{
+  int buff_head_room=max_head_room_size();
+  int buffSize=bufL-buff_head_room;
+  uint8_t *padded_buf=buf+buff_head_room;
+
+  va_list aptr;
+  int ret;
+  va_start(aptr, fmt);
+  ret = vsnprintf ((char*)padded_buf, buffSize-max_leg_room_size(), fmt, aptr);
+  va_end(aptr); 
+
+  if(ret<0)return ret;
+
+  int contentSize=ret;
+  
+  if(directStringFormat)
+  {
+    ret = send_json_string(buff_head_room,padded_buf,contentSize,buffSize-contentSize);
+  }
+  else
+  {
+    ret = send_string(buff_head_room,padded_buf,contentSize,buffSize-contentSize);
+  }
+  return ret;
+}

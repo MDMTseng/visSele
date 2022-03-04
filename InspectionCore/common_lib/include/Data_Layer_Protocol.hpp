@@ -4,7 +4,7 @@
 #include "json_seg_parser.hpp"
 #include <stdint.h>
 #include <cstddef>
-
+#include <stdarg.h>
 
 class Data_JsonRaw_Layer:public Data_Layer_IF
 {
@@ -16,25 +16,31 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   int jsegpSum=0;
   int rawRECVL;
 
+
   const int base_headerLen=1+1+4+1;//0x1(start 1B)| resv&opcode(1B)| crc(4B) | base length field(1B (+2 or +8))
   const int crcFieldIdx=2;
   const int crcL=4;
   const int lenFieldIdx=crcFieldIdx+crcL;
+  const char *VERSION="0.0.1";
+  protected:
+  char peerVERSION[20];
   public:
   Data_JsonRaw_Layer();
 
 
 
-  int askJsonRawSupport();
+  int ask_JsonRaw_version();
+  int rsp_JsonRaw_version();
 
   int send_json_string(int head_room,uint8_t *data,int len,int leg_room);
   
+  int send_printf(uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...);
   int send_raw_data(int opcode,int head_room,uint8_t *data,int len,int leg_room);
   int send_string(int head_room,uint8_t *data,int len,int leg_room);
   int send_binary(int head_room,uint8_t *data,int len,int leg_room);
   int send_data(int head_room,uint8_t *data,int len,int leg_room);
 
-  virtual int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)=0;
+  virtual int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode);
   enum RTYPE
   {
     INIT,

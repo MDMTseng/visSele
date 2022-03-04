@@ -141,34 +141,56 @@ class MData_uInsp:public Data_JsonRaw_Layer
 int main(int argc, char **argv)
 {
 
-  // for(int i=0;i<20;i++)
-  // {
-  //   //  Data_TCP_Layer *PHYLayer=new Data_TCP_Layer("127.0.0.1",1234);
-  //   Data_UART_Layer *PHYLayer=new Data_UART_Layer("/dev/cu.SLAB_USBtoUART",921600, "8N1");
+  for(int i=0;i<1;i++)
+  {
+    //  Data_TCP_Layer *PHYLayer=new Data_TCP_Layer("127.0.0.1",1234);
+    Data_UART_Layer *PHYLayer=new Data_UART_Layer("/dev/cu.SLAB_USBtoUART",921600, "8N1");
 
-  //   MData_uInsp *mift=new MData_uInsp();
-  //   mift->setDLayer(PHYLayer);
+    MData_uInsp *mift=new MData_uInsp();
+    mift->setDLayer(PHYLayer);
     
-  //   mift->askJsonRawSupport();
+    // mift->ask_JsonRaw_version();
 
-  //   sleep(1);
   
-  //   if(0){
-  //     char buffer[200];  
-  //     int headerSize=30;
-  //     char *str=buffer+headerSize;
-  //     int str_len=sprintf(str,"{\"type\":\"protocol_JsonRaw\",\"id\":%d}",234);
-  //     mift->send_string(headerSize,(uint8_t*)str,str_len,sizeof(buffer)-headerSize-str_len);
-  //   }
+    int id=0;
+    if(1){
+      uint8_t buffer[200];  
+      mift->send_printf(buffer,sizeof(buffer),true,"{\"type\":\"PIN_CONF\",\"pin\":2,\"mode\":1,\"id\":%d}",id++);
+
+      
+      int delay_ms=1;
+      for(int j=0;j<50;j++)
+      { 
+        std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        mift->send_printf(buffer,sizeof(buffer),true,"{\"type\":\"PIN_CONF\",\"pin\":2,\"output\":1,\"id\":%d}",id++);
+        std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        mift->send_printf(buffer,sizeof(buffer),true,"{\"type\":\"PIN_CONF\",\"pin\":2,\"output\":0,\"id\":%d}",id++);
+
+
+      }
+
+      // str_len=sprintf(str,"{\"type\":\"PIN_CONF\",\"pin\":2,\"mode\":0,\"id\":%d}",id++);//input
+      // mift->send_string(headerSize,(uint8_t*)str,str_len,sizeof(buffer)-headerSize-str_len);
+      // for(int j=0;j<500;j++)
+      // {
+      //   sleep(1);
+      //   str_len=sprintf(str,"{\"type\":\"PIN_CONF\",\"pin\":2,\"output\":-1,\"id\":%d}",id++);//get reading
+      //   mift->send_string(headerSize,(uint8_t*)str,str_len,sizeof(buffer)-headerSize-str_len);
+
+      // }
+
+
+
+    }
     
-  //   // sleep(1);
+    sleep(1);
   
-  //   delete mift;
-  // }
-  // while(1)
-  // {
-  //   sleep(1000);
-  // }
+    delete mift;
+  }
+  while(1)
+  {
+    sleep(1000);
+  }
   
 
   // char *sendMsg="{\"type\":\"PING\",\"id\":445}";
