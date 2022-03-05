@@ -2874,6 +2874,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             perifCH->ID=avail_CONN_ID;
             perifCH->conn_pgID=dat->pgID;
             perifCH->setDLayer(PHYLayer);
+
+            perifCH->send_RESET();
+            perifCH->send_RESET();
+            perifCH->RESET();
+
+
             session_ACK = true;
 
             sprintf(tmp, "{\"type\":\"CONNECT\",\"CONN_ID\":%d}", avail_CONN_ID);
