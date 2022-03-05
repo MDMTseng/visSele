@@ -13,7 +13,7 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   int JsonRawStatus=0;//-2 asking rawSupport, 0 means json only, 1 means support
   int packetID;
   json_seg_parser jsegp;
-  int jsegpSum=0;
+  int jlevel=0;
   int rawRECVL;
 
 
@@ -22,6 +22,7 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   const int crcL=4;
   const int lenFieldIdx=crcFieldIdx+crcL;
   const char *VERSION="0.0.1";
+  const char RESET_PACKET[17]="{\"type\":\"RESET\"}";
   protected:
   char peerVERSION[20];
   public:
@@ -31,6 +32,8 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
 
   int ask_JsonRaw_version();
   int rsp_JsonRaw_version();
+  int send_RESET();
+
 
   int send_json_string(int head_room,uint8_t *data,int len,int leg_room);
   
@@ -46,11 +49,26 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
     INIT,
     JSON,
     JSONRAW,
-    ERROR
+    ERROR,
+
+  };
+  
+  enum ERROR_TYPE
+  {
+    NONE,
+    INIT_CHAR_ERROR,
+    JSON_FORMAT_ERROR,
+    RECV_BUFFER_FULL,
+    RAW_CRC_ERROR,
+    RAW_DATA_OVERSIZE
   };
   RTYPE recvType=RTYPE::INIT;
+  ERROR_TYPE errorCode=ERROR_TYPE::NONE;
   int jsonRawStrL=0;
   int recv_data(uint8_t *data,int len, bool is_a_packet=false);
+  
+  virtual int recv_RESET()=0;
+  virtual int recv_ERROR(ERROR_TYPE errorcode)=0;
   
   // int send_data(int head_room,uint8_t *data,int len,int leg_room)
   // {

@@ -187,6 +187,15 @@ class PerifChannel:public Data_JsonRaw_Layer
 
   }
 
+  int recv_RESET()
+  {
+    // printf("Get recv_RESET\n");
+  }
+  int recv_ERROR(ERROR_TYPE errorcode)
+  {
+    // printf("Get recv_ERROR:%d\n",errorcode);
+  }
+  
   void connected(Data_Layer_IF* ch){
     
     printf(">>>%X connected\n",ch);
@@ -1206,14 +1215,6 @@ m_BPG_Protocol_Interface::m_BPG_Protocol_Interface() : resPool(resourcePoolSize)
   cacheImage.ReSize(1, 1);
 }
 
-void m_BPG_Protocol_Interface::delete_Ext_Util_API()
-{
-  if (exApi)
-  {
-    delete exApi;
-    exApi = NULL;
-  }
-}
 void m_BPG_Protocol_Interface::delete_PeripheralChannel()
 {
 

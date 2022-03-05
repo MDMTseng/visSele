@@ -63,3 +63,26 @@ public:
     ~Data_UART_Layer();
 };
 
+
+
+class Data_LOOPBACK_Layer:public Data_Layer_IF
+{
+
+public:
+    Data_LOOPBACK_Layer()
+    {
+
+    }
+
+
+
+    int send_data(int head_room,uint8_t *data,int len,int leg_room)
+    {
+      return recv_data(data,len,false);
+    }
+
+    // int recv_data(uint8_t *data,int len){}
+
+    void connected(Data_Layer_IF* ch){}
+};
+

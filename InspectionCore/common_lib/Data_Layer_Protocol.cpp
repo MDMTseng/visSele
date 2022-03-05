@@ -31,17 +31,19 @@ static uint32_t crc_update(uint32_t crc, uint8_t data)
 int Data_JsonRaw_Layer::ask_JsonRaw_version(){
   char sendMsg[200];
   sprintf(sendMsg,"{\"type\":\"ask_JsonRaw_version\",\"id\":100445,\"version\":\"%s\"}",VERSION);
-  send_json_string(0,(uint8_t*)sendMsg,strlen(sendMsg),0);
-  JsonRawStatus=-2;
-  return 0;
+  return send_json_string(0,(uint8_t*)sendMsg,strlen(sendMsg),0);
 }
 int Data_JsonRaw_Layer::rsp_JsonRaw_version(){
   char sendMsg[200];
   sprintf(sendMsg,"{\"type\":\"rsp_JsonRaw_version\",\"id\":100446,\"version\":\"%s\"}",VERSION);
-  send_json_string(0,(uint8_t*)sendMsg,strlen(sendMsg),0);
-  JsonRawStatus=-2;
-  return 0;
+  return send_json_string(0,(uint8_t*)sendMsg,strlen(sendMsg),0);
 }
+
+int Data_JsonRaw_Layer::send_RESET(){
+  const int RESET_PACKET_SIZE=(sizeof(RESET_PACKET)-1);
+  return send_json_string(0,(uint8_t*)RESET_PACKET,RESET_PACKET_SIZE,0);
+}
+
 
 int Data_JsonRaw_Layer::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   
@@ -153,12 +155,15 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
   for(i=0;i<len;i++)
   {
     char c=data[i];
+
+
     if(recvType==RTYPE::INIT)
     { 
       if(c=='{'||c=='[')
       {
         recvType=RTYPE::JSON;
-        jsegpSum=0;
+        jsegp.reset();
+        jlevel=0;
       }
       else if(c==0x1)
       {
@@ -167,7 +172,9 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
       else
       {
 //        printf("E:%d\n",c);
-        // recvType=RTYPE::ERROR;
+        recvType=RTYPE::ERROR;
+        errorCode=ERROR_TYPE::INIT_CHAR_ERROR;
+        recv_ERROR(errorCode);
       }
       buffIdx=0;
     }
@@ -175,34 +182,149 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
 
     if(recvType!=RTYPE::INIT)
     {
-
+      
       dataBuff[buffIdx++]=c;
+
+      // if(buffIdx%20==1)
+      // {
+      //   printf("buffIdx  %d\n",buffIdx);
+      // }
+
+      if(buffIdx==sizeof(dataBuff))
+      {
+        recvType=RTYPE::ERROR;//full and enter error clean state
+        errorCode=ERROR_TYPE::RECV_BUFFER_FULL;
+        recv_ERROR(errorCode);
+      }
+      // if(recvType==RTYPE::JSON && buffIdx>100)recvType=RTYPE::ERROR;//long json is error~
       switch(recvType)
       {
-        case RTYPE::JSON:{
-          int stat=jsegp.newChar(c);
-          jsegpSum+=stat;
-          if(jsegpSum==0)//ending
+        case RTYPE::ERROR:{
+          //init
+          const int RESET_PACKET_SIZE=(sizeof(RESET_PACKET)-1);
+          if(buffIdx>=RESET_PACKET_SIZE)//buff filled with enough data
           {
+            
+            // printf("buffIdx  %d >=RESET_PACKET_SIZE  %d \n",buffIdx,RESET_PACKET_SIZE);
+            // for(int j=0;j<buffIdx;j++)
+            // {
+            //   printf("%c",dataBuff[j]);
+            // }
+            // printf("\n");
+            
 
-            if(stat!=-1)
+
+
+            int matching_state=0;//0 for no matching, 1 for matching ok, 2 for matching ok but not complete(wait for upcoming data)
+            int dataShiftBackIdx=0;
+            for(int j=0;j<buffIdx;j++)
             {
-              buffIdx=0;
-              //ERROR;
-              //printf("E:%d\n",c);
-              break;
+
+              bool matchPass=true;
+              int k=0;
+              for(k=0;k<RESET_PACKET_SIZE && (j+k)<buffIdx  ;k++)
+              {
+                if(RESET_PACKET[k] != dataBuff[j+k])
+                {
+                  matchPass=false;
+                  break;
+                }
+                
+              }
+
+              if(matchPass)
+              {
+                //packet starts with j
+                //may need data shift
+                if(k<RESET_PACKET_SIZE)//incomplete matching
+                {
+                  matching_state=2;
+                  dataShiftBackIdx=j;
+                }
+                else
+                {
+                  //hit RESET
+                  matching_state=1;
+                  dataShiftBackIdx=j+RESET_PACKET_SIZE-1;//shift and skip reset packet
+                  recv_RESET();
+                  recvType=RTYPE::INIT;
+                }
+                break;
+              }
+              else
+              {
+                continue;
+              }
+
+
+
             }
 
+            if(matching_state==0)
+            {
+              buffIdx=0;
+            }
+            else if(dataShiftBackIdx)
+            {
+              if(dataShiftBackIdx==buffIdx)//meaning reset idx
+              {
+                buffIdx=0;
+              }
+              else
+              {
+                for(int j=0;j+dataShiftBackIdx<buffIdx;j++)
+                {
+                  dataBuff[j]=dataBuff[j+dataShiftBackIdx];
+                }
+                buffIdx-=dataShiftBackIdx;
+              }
+            }
+
+          }
+
+          break;
+        }
+        
+        
+        
+        case RTYPE::JSON:{
+          json_seg_parser::RESULT stat=jsegp.newChar(c);
+          if(stat<=json_seg_parser::RESULT::ERROR)
+          {
+            // printf("jsegp.ERROR_CODE\n");
+            recvType=RTYPE::ERROR;
+            errorCode=ERROR_TYPE::JSON_FORMAT_ERROR;
+            recv_ERROR(errorCode);
+            break;
+          }
+
+          if(stat==json_seg_parser::RESULT::OBJECT_START||
+          stat==json_seg_parser::RESULT::ARRAY_START)
+          {
+            jlevel++;
+            
+            // printf("%c   lvl:%d \n",JSONStr[i],jlevel);
+          }
+          else if(
+            stat==json_seg_parser::RESULT::OBJECT_COMPLETE||
+            stat==json_seg_parser::RESULT::ARRAY_COMPLETE)
+          {
+            jlevel--;
+
+            if(jlevel==0)
+            {
 
 
-            dataBuff[buffIdx]='\0';
-            // if(uplayer_df!=NULL)
-            //   uplayer_df->recv_data(dataBuff,buffIdx);
-            
-            recv_jsonRaw_data(dataBuff,buffIdx,1);//opcode 1 is for text
-            
-            recvType=RTYPE::INIT;
-            if(uplayer_df!=NULL)uplayer_df->recv_data(dataBuff,buffIdx,true);
+
+              dataBuff[buffIdx]='\0';
+              // if(uplayer_df!=NULL)
+              //   uplayer_df->recv_data(dataBuff,buffIdx);
+              recv_jsonRaw_data(dataBuff,buffIdx,1);//opcode 1 is for text
+              
+              recvType=RTYPE::INIT;
+              if(uplayer_df!=NULL)uplayer_df->recv_data(dataBuff,buffIdx,true);
+            }
+
           }
 
         break;
@@ -266,6 +388,11 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
             if((headerLen+dataLen)>sizeof(dataBuff))
             {
               //TODO: ERROR, oversize
+              recvType=RTYPE::ERROR;
+              
+              errorCode=ERROR_TYPE::RAW_DATA_OVERSIZE;
+              recv_ERROR(errorCode);
+              break;
             }
           }
           if(buffIdx==headerLen+1)
@@ -297,12 +424,16 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
               recv_jsonRaw_data(dataBuff+headerLen,dataLen,opcode);
               
               if(uplayer_df!=NULL)uplayer_df->recv_data(dataBuff+headerLen,dataLen,true);
+              recvType=RTYPE::INIT;
             }
             else
             {
               // printf("CRC miss match:tar_crc:%X  calc_crc:%X \n",targ_crc,calc_crc);
+              recvType=RTYPE::ERROR;
+              errorCode=ERROR_TYPE::RAW_CRC_ERROR;
+              recv_ERROR(errorCode);
+              break;
             }
-            recvType=RTYPE::INIT;
           }
 
 
