@@ -309,7 +309,7 @@ int Data_UART_Layer::recv_data_thread()
   {
 
     int datLen = simple_uart_read_timed(uart, buffer, sizeof(buffer),1000);
-    printf(">>>>datLen%d uart:%p \n",datLen,uart);
+    // printf(">>>>datLen%d uart:%p \n",datLen,uart);
     if(datLen<0)break;
     if(datLen==0)continue;
     recv_data(buffer, datLen,false);
@@ -322,7 +322,7 @@ int Data_UART_Layer::recv_data_thread()
 
 int Data_UART_Layer::send_data(int head_room,uint8_t *data,int len,int leg_room)
 {
-    printf(">>>>len%d\n",len);
+    // printf(">>>>len%d\n",len);
     sendLock.lock();
     int ret = simple_uart_write(uart, (char*)data, len);
     sendLock.unlock();

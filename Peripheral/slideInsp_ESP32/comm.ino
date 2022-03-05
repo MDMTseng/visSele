@@ -154,7 +154,7 @@ void loop_comm()
       BP.resize(0);
 
       BP.write(SPP.sChar());
-      CMD_parse(SPP,&BP);
+      // CMD_parse(SPP,&BP);
 
       BP.write(SPP.eChar());
       Serial.print(BP.buffer());
@@ -187,7 +187,7 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
             {
               BP.resize(0);
               BP.write(SPP.sChar());
-              CMD_parse(SPP,&BP);
+              // CMD_parse(SPP,&BP);
               BP.write(SPP.eChar());
               client->text(BP.buffer());
               BP.resize(0);

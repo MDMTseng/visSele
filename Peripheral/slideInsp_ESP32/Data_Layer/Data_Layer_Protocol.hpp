@@ -33,18 +33,6 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   int ask_JsonRaw_version();
   int rsp_JsonRaw_version();
   int send_RESET();
-  int RESET()
-  {
-    sprintf((char*)dataBuff,"");
-    buffIdx=0;
-    JsonRawStatus=0;
-    packetID=0;
-    jsegp.reset();
-    jlevel=0;
-    rawRECVL=0;
-    recvType=RTYPE::INIT;
-    errorCode=ERROR_TYPE::NONE;
-  }
 
 
   int send_json_string(int head_room,uint8_t *data,int len,int leg_room);
