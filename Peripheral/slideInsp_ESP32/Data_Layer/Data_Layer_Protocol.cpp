@@ -156,7 +156,6 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
   {
     char c=data[i];
 
-    // printf("%c\n",c);
 
     if(recvType==RTYPE::INIT)
     { 
@@ -170,12 +169,13 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
       {
         recvType=RTYPE::JSONRAW;
       }
-      else if(c==' '||c=='\t'||c=='\n')
-      {
-        continue;
-      }
+      // else if(c==' '||c=='\t'||c=='\n')
+      // {
+      //   continue;
+      // }
       else
       {
+      //  printf("E:%d  %c\n",c,c);
         recvType=RTYPE::ERROR;
         errorCode=ERROR_TYPE::INIT_CHAR_ERROR;
         recv_ERROR(errorCode);
