@@ -531,130 +531,135 @@ int Data_JsonRaw_Layer::send_printf(uint8_t* buf, int bufL, bool directStringFor
 
 
 
-class Data_LOOPBACK_Layer2:public Data_Layer_IF
-{
+// static float randomGen(float from=0,float to=1)
+// {
+//   float r01=(rand()%1000000)/1000000.0;
+//   return r01*(to-from)+from;
+// }
+// class Data_LOOPBACK_Layer2:public Data_Layer_IF
+// {
 
-public:
-    Data_LOOPBACK_Layer2()
-    {
-      srand((unsigned)time(NULL));
-    }
+// public:
+//     Data_LOOPBACK_Layer2()
+//     {
+//       srand((unsigned)time(NULL));
+//     }
 
-    float errorRate=0.01;
+//     float errorRate=0.01;
 
-    int send_data(int head_room,uint8_t *data,int len,int leg_room)
-    {
-      int dataSent=0;
-      for(int i=0;dataSent<len;i++)
-      {
+//     int send_data(int head_room,uint8_t *data,int len,int leg_room)
+//     {
+//       int dataSent=0;
+//       for(int i=0;dataSent<len;i++)
+//       {
         
-        if(randomGen()<errorRate)//dose error
-        {
-          printf(">>>>>>>>>>>>>>>>>>>>>add error\n");
-          char d=',';
-          recv_data((uint8_t*)&d,1,false);
-        }
+//         if(randomGen()<errorRate)//dose error
+//         {
+//           printf(">>>>>>>>>>>>>>>>>>>>>add error\n");
+//           char d=',';
+//           recv_data((uint8_t*)&d,1,false);
+//         }
 
-        int len2send = 1+(rand()%(len-dataSent));
-
-
-        recv_data(data+dataSent,len2send,false);
-
-        dataSent+=len2send;
-
-      }
-    }
-
-    // int recv_data(uint8_t *data,int len){}
-
-    void connected(Data_Layer_IF* ch){}
-};
+//         int len2send = 1+(rand()%(len-dataSent));
 
 
+//         recv_data(data+dataSent,len2send,false);
 
-class MData_uInsp:public Data_JsonRaw_Layer
-{
+//         dataSent+=len2send;
+
+//       }
+//     }
+
+//     // int recv_data(uint8_t *data,int len){}
+
+//     void connected(Data_Layer_IF* ch){}
+// };
+
+
+
+// class MData_uInsp:public Data_JsonRaw_Layer
+// {
   
-  public:
-  MData_uInsp():Data_JsonRaw_Layer()// throw(std::runtime_error)
-  {
-  }
-  bool printRecv=false;
-  int RCount=0;
-  int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
+//   public:
+//   MData_uInsp():Data_JsonRaw_Layer()// throw(std::runtime_error)
+//   {
+//   }
+//   bool printRecv=false;
+//   int RCount=0;
+//   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     
-    if(printRecv==false)return 0;
-    if(opcode==1 )
-    {
-      cJSON *json=cJSON_Parse((char*)raw);
-      if(json)
-      {
-        char *jstr = cJSON_Print(json);
-        printf("JSON:\n%s\n====len:%d\n",jstr,rawL);
-        delete jstr;
-        char* tmpstr;
-        if((tmpstr=JFetch_STRING(json,"type"))&&strcmp(tmpstr,"MSG")==0)
-        {
-          RCount++;
-        }
+//     if(printRecv==false)return 0;
+//     if(opcode==1 )
+//     {
+//       // cJSON *json=cJSON_Parse((char*)raw);
+//       // if(json)
+//       // {
+//       //   char *jstr = cJSON_Print(json);
+//       //   printf("JSON:\n%s\n====len:%d\n",jstr,rawL);
+//       //   delete jstr;
+//       //   char* tmpstr;
+//       //   if((tmpstr=JFetch_STRING(json,"type"))&&strcmp(tmpstr,"MSG")==0)
+//       //   {
+//       //     RCount++;
+//       //   }
 
 
-        // for(int i=0;i<rawL;i++)
-        // {
-        //   printf("%X ",raw[i]);
-        // }
-        // printf("\n");
+//       //   // for(int i=0;i<rawL;i++)
+//       //   // {
+//       //   //   printf("%X ",raw[i]);
+//       //   // }
+//       //   // printf("\n");
 
-        cJSON_Delete(json);
-      }
-      else
-      {
-        printf("STR:\n%s\n====len:%d\n",raw,rawL);
-      }
-    }
-    // printf(">>opcode:%d\n",opcode);
-    return 0;
+//       //   cJSON_Delete(json);
+//       // }
+//       // else
+//       // {
+//       //   printf("STR:\n%s\n====len:%d\n",raw,rawL);
+//       // }
+//     }
+//     // printf(">>opcode:%d\n",opcode);
+//     return 0;
 
 
-  }
+//   }
 
-  void connected(Data_Layer_IF* ch){
+//   void connected(Data_Layer_IF* ch){
     
-    printf(">>>%X connected\n",ch);
-  }
+//     printf(">>>%X connected\n",ch);
+//   }
 
-  void disconnected(Data_Layer_IF* ch){
-    printf(">>>%X disconnected\n",ch);
-  }
+//   void disconnected(Data_Layer_IF* ch){
+//     printf(">>>%X disconnected\n",ch);
+//   }
 
-  ~MData_uInsp()
-  {
-    close();
-    printf("MData_uInsp DISTRUCT:%p\n",this);
-  }
+//   ~MData_uInsp()
+//   {
+//     close();
+//     printf("MData_uInsp DISTRUCT:%p\n",this);
+//   }
 
 
-  int recv_RESET()
-  {
-    printf("Get recv_RESET\n");
-  }
+//   int recv_RESET()
+//   {
+//     printf("Get recv_RESET\n");
+//   }
 
-  int recv_ERROR(ERROR_TYPE errorcode)
-  {
-    printf("Get recv_ERROR:%d\n",errorcode);
-  }
+//   int recv_ERROR(ERROR_TYPE errorcode)
+//   {
+//     printf("Get recv_ERROR:%d\n",errorcode);
+//   }
   
-  // int send_data(int head_room,uint8_t *data,int len,int leg_room){
+//   // int send_data(int head_room,uint8_t *data,int len,int leg_room){
     
-  //   // printf("==============\n");
-  //   // for(int i=0;i<len;i++)
-  //   // {
-  //   //   printf("%d ",data[i]);
-  //   // }
-  //   // printf("\n");
-  //   return recv_data(data,len, false);//LOOP back
-  // }
-};
+//   //   // printf("==============\n");
+//   //   // for(int i=0;i<len;i++)
+//   //   // {
+//   //   //   printf("%d ",data[i]);
+//   //   // }
+//   //   // printf("\n");
+//   //   return recv_data(data,len, false);//LOOP back
+//   // }
+// };
 
 
 
