@@ -1,6 +1,13 @@
 
 #include "main.hpp"
 
+
+#include <Data_Layer_Protocol.hpp>
+#include <ArduinoJson.h>
+#define __PRT_D_(fmt,...) //Serial.printf("D:"__VA_ARGS__)
+// #define __PRT_I_(...) Serial.printf("I:" __VA_ARGS__)
+#define __PRT_I_(fmt,...) Serial.printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
+
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6)
 const int O_CameraPin = 32;
 bool O_CameraPin_ON=true;
@@ -8,7 +15,7 @@ const int O_BackLight = 33;
 bool O_BackLight_ON=true;
 const int O_LED_Status = 2;
 
-const int I_gate1Pin = 23;
+const int I_gate1Pin = 17;
 bool I_gate1Pin_ON=true;
 
 
@@ -130,21 +137,21 @@ public:
     task_gateSensing(&g2,cur_tick);
     // if(g2.state==GateInfo::NEG_EDGE_OK)
     // {
-    //   // Serial.printf("G2OK %lu: %lu\n",g2.start_pulse,g2.end_pulse);
+    //   // __PRT_D_("G2OK %lu: %lu\n",g2.start_pulse,g2.end_pulse);
 
-    //   Serial.printf("G2OK %lu\n",g2.mid_pulse);
+    //   __PRT_D_("G2OK %lu\n",g2.mid_pulse);
     // }
     // if(g2.state==GateInfo::NEG_EDGE_NG)
     // {
-    //   Serial.printf("G2NG %lu\n",g2.mid_pulse);
+    //   __PRT_D_("G2NG %lu\n",g2.mid_pulse);
     // }
     // if(g1.state==GateInfo::NEG_EDGE_OK)
     // {
-    //   Serial.printf("G1OK %lu\n",g1.mid_pulse);
+    //   __PRT_D_("G1OK %lu\n",g1.mid_pulse);
     // }
     // if(g1.state==GateInfo::NEG_EDGE_NG)
     // {
-    //   Serial.printf("G1NG %lu\n",g1.mid_pulse);
+    //   __PRT_D_("G1NG %lu\n",g1.mid_pulse);
     // }
 
     if (g1.state == GateInfo::NEG_EDGE_OK || g1.state == GateInfo::NEG_EDGE_NG)
@@ -157,7 +164,7 @@ public:
         plInfo->gate_pulse = g1.mid_pulse;
         plInfo->pulse_width = g1.start_pulse - g1.end_pulse;
         objTrack.pushHead();
-        // Serial.printf("pulseAdd objTrack.s:%d  \n", objTrack.size());
+        // __PRT_D_("pulseAdd objTrack.s:%d  \n", objTrack.size());
 
 
         // uint32_t targetOffset=0;//;
@@ -174,7 +181,7 @@ public:
         uint32_t pulseDiff = g2.mid_pulse - plInfo->gate_pulse;
         if(pulseDiff<pulseDiffMIN)
         {
-          Serial.printf("ERROR: pulseDiff:%d TOO SHORT\n",pulseDiff);
+          __PRT_D_("ERROR: pulseDiff:%d TOO SHORT\n",pulseDiff);
         }
         else
         {
@@ -199,9 +206,9 @@ public:
 
           ACT_PUSH_TASK(act_S.ACT_CAM1, plInfo,          camOffset+targetOffset, 1, );
           ACT_PUSH_TASK(act_S.ACT_CAM1, plInfo,  camTime+camOffset+targetOffset, 2, );
-          Serial.printf("pulseDiff: %u pulse:%d \n", pulseDiff, plInfo->gate_pulse);
+          __PRT_D_("pulseDiff: %u pulse:%d \n", pulseDiff, plInfo->gate_pulse);
 
-          Serial.printf("BKL.s:%d BKH.s:%d CAM.s:%d\n",
+          __PRT_D_("BKL.s:%d BKH.s:%d CAM.s:%d\n",
                         act_S.ACT_BACKLight1L.size(), act_S.ACT_BACKLight1H.size(),
                         act_S.ACT_CAM1.size());
         }
@@ -218,7 +225,7 @@ public:
     if(head_diff>pulseDiffMAX)
     {
 
-      Serial.printf("ERROR: cur_PULSE:%d track_PULSE:%d diff:%d OVERTIME\n",cur_tick,plInfo->gate_pulse,head_diff);
+      __PRT_D_("ERROR: cur_PULSE:%d track_PULSE:%d diff:%d OVERTIME\n",cur_tick,plInfo->gate_pulse,head_diff);
       objTrack.consumeTail();
     }
 
@@ -254,7 +261,7 @@ public:
 
       ACT_TRY_RUN_TASK(act_S.ACT_BACKLight1L, _timerCount,
                        digitalWrite(O_BackLight, 0);
-                       Serial.printf("BKL off:%d\n", _timerCount););
+                       __PRT_D_("BKL off:%d\n", _timerCount););
     }
   }
 
@@ -380,7 +387,6 @@ public:
 class oneGateSense
 {
 public:
-  const bool senseFlip = false;
 
   unsigned long skipPulseCount = 0;
   const uint32_t pulseSepMIN = 1000;
@@ -436,7 +442,7 @@ public:
   oneGateSense()
   {
 
-    pinMode(I_gate1Pin, INPUT_PULLUP);
+    pinMode(I_gate1Pin, INPUT_PULLDOWN);
     g1.pin = I_gate1Pin;
     g1.state = GateInfo::INIT;
   }
@@ -504,10 +510,10 @@ public:
         else
         {
           skipPulseCount++;
-          Serial.printf("skip:%d  \n", skipPulseCount);
+          __PRT_D_("skip:%d  \n", skipPulseCount);
         }
 
-        // Serial.printf("pulseAdd objTrack.s:%d  \n", objTrack.size());
+        // __PRT_D_("pulseAdd objTrack.s:%d  \n", objTrack.size());
 
 
       }
@@ -532,7 +538,7 @@ public:
 
       ACT_TRY_RUN_TASK(
           act_S.ACT_CAM1, _timerCount,
-          // Serial.printf("ACT_CAM1:%d\n", task->info);
+          // __PRT_D_("ACT_CAM1:%d\n", task->info);
           if (task->info == 1) {
             digitalWrite(O_CameraPin, 1);
           } else if (task->info == 2) {
@@ -570,14 +576,8 @@ public:
   void task_gateSensing(GateInfo *ginfo,uint32_t cur_tick)
   {
     //(perRevPulseCount/50)
-    uint8_t new_Sense = digitalRead(ginfo->pin);
+    uint8_t new_Sense = digitalRead(ginfo->pin)==I_gate1Pin_ON;
     
-    // Serial.print(new_Sense);
-    if (senseFlip)
-    {
-      new_Sense = !new_Sense;
-    }
-
     if (ginfo->state == GateInfo::INIT)
     {
       if (!new_Sense)
@@ -640,7 +640,7 @@ public:
         if (diff > minWidth && diff < maxWidth)
         {
 
-          // Serial.println("OK_");
+          // __PRT_D_("OK_");
           ginfo->state = GateInfo::NEG_EDGE_OK;
         }
         else
@@ -674,8 +674,6 @@ void IRAM_ATTR onTimer()
 {
   oGS.timerRun();
 }
-StaticJsonDocument<1024> recv_doc;
-StaticJsonDocument<1024> ret_doc;
 void setup()
 {
 
@@ -684,7 +682,8 @@ void setup()
   pinMode(O_BackLight, OUTPUT);
   
   pinMode(I_gate1Pin, INPUT_PULLUP);
-  Serial.begin(921600);
+  // Serial.begin(921600);
+  Serial.begin(230400);
 
 
   while(0)
@@ -699,7 +698,7 @@ void setup()
     digitalWrite(O_CameraPin, 1);
     digitalWrite(O_BackLight, 1);
     digitalWrite(O_LED_Status, 1);
-    Serial.printf("OK_ g:%d\n",digitalRead(I_gate1Pin));
+    __PRT_D_("OK_ g:%d\n",digitalRead(I_gate1Pin));
   }
   // // setup_comm();
   timer = timerBegin(0, 80, true);
@@ -726,83 +725,242 @@ int intArrayContent_ToJson(char *jbuff, uint32_t jbuffL, int16_t *intarray, int 
 }
 
 
-int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, int *ret_result = NULL)
+
+
+
+
+
+StaticJsonDocument <1024>doc;
+StaticJsonDocument  <1024>retdoc;
+
+class MData_uInsp:public Data_JsonRaw_Layer
 {
-  char *TLC = SPP.buffer;
-  char *DATA = SPP.buffer + 2;
-  int dataLen = SPP.size() - 2;
-  //  Serial.print(TLC[0]);
-  //  Serial.println(TLC[1]);
-  //  Serial.println(DATA);
-
-  ret_doc.clear();
-  bool errorCode = -1;
-  int ret_len = 0;
-
-  char retTLC[3];
-  if (TLC[0] == 'T' && TLC[1] == 'T')
+  
+  public:
+  MData_uInsp():Data_JsonRaw_Layer()// throw(std::runtime_error)
   {
-    errorCode = 0;
+    sprintf(peerVERSION,"");
   }
-  else if (TLC[0] == 'S' && TLC[1] == 'T')
+  int recv_RESET()
   {
 
-    { //@ST{"sss":4,"ECHO":{"AAA":{"fff":7}}}$
+  } 
+  int recv_ERROR(ERROR_TYPE errorcode)
+  {
 
-      deserializeJson(recv_doc, DATA);
-
-      const char *sensor = recv_doc["ECHO"];
-      if (sensor != NULL)
-      {
-        bp->printf("tt%s", sensor);
-      }
-
-      recv_doc.clear();
-    }
-    errorCode = 0;
   }
-  else if (TLC[0] == 'J' && TLC[1] == 'S') //@JS{"id":566,"type":"get_cache_rec"}$@JS{"id":566,"type":"empty_cache_rec"}$
-  {
-    sprintf(retTLC, "js");
-    deserializeJson(recv_doc, DATA);
-    ret_doc.clear();
 
-    auto idObj = recv_doc["id"];
-    ret_doc["id"] = idObj;
-
-    auto typeObj = recv_doc["type"];
-    if (typeObj.is<char *>())
+  int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
+    
+    if(opcode==1 )
     {
-      const char *type = typeObj.as<char *>();
-      if (strcmp(type, "get_cache_rec") == 0)
+      doc.clear();
+      retdoc.clear();
+      DeserializationError error = deserializeJson(doc, raw);
+
+      const char* type = doc["type"];
+      // const char* id = doc["id"];
+      if(strcmp(type,"RESET")==0)
+      {
+        return msg_printf("RESET_OK","");
+      }
+      else if(strcmp(type,"ask_JsonRaw_version")==0)
+      {
+        
+        const char* _version = doc["version"];
+        sprintf(peerVERSION,_version);
+        return this->rsp_JsonRaw_version();
+      }
+      else if(strcmp(type,"rsp_JsonRaw_version")==0)
+      {
+        const char* _version = doc["version"];
+        sprintf(peerVERSION,_version);
+        return 0;
+      }
+      else if(strcmp(type,"PING")==0)
       {
 
+        retdoc["type"]="PONG";
+        retdoc["id"]=doc["id"];
+        uint8_t buff[200];
+        int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+        send_json_string(0,buff,slen,0);
+
       }
+      else if(strcmp(type,"PIN_CONF")==0)
+      {
+        
+        if(doc["pin"].is<int>())
+        {
+          int pinNo = doc["pin"];
+
+       
+          if(doc["mode"].is<int>())
+          {
+            int mode= doc["mode"];//0:input 1:output 2:INPUT_PULLUP 3:INPUT_PULLDOWN
+            switch(mode)
+            {
+              case 0:pinMode(pinNo, INPUT);break;
+              case 1:pinMode(pinNo, OUTPUT);break;
+              case 2:pinMode(pinNo, INPUT_PULLUP);break;
+              case 3:pinMode(pinNo, INPUT_PULLDOWN);break;
+            }
+          }
+          else if(doc["output"].is<int>())
+          {
+            int output= doc["output"];//0:input 1:output 2:INPUT_PULLUP 3:INPUT_PULLDOWN
+            switch(output)
+            {
+              case -2://analog
+              {
+                int value=analogRead(pinNo);
+                
+                retdoc["type"]="PIN_INFO";
+                retdoc["value"]=value;
+                retdoc["id"]=doc["id"];
+                uint8_t buff[200];
+                int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+                send_json_string(0,buff,slen,0);
+                break;
+              }
+              case -1://digital
+              {
+                int value=digitalRead(pinNo);
+                
+                retdoc["type"]="PIN_INFO";
+                retdoc["value"]=value;
+                retdoc["id"]=doc["id"];
+                uint8_t buff[200];
+                int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+                send_json_string(0,buff,slen,0);
+                break;
+              }
+              case 0:digitalWrite(pinNo, LOW);break;
+              case 1:digitalWrite(pinNo, HIGH);break;
+            }
+          }
+        }
+        
+
+
+      
+        // retdoc["type"]="DBG_PRT";
+        // // retdoc["msg"]=doc;
+        // retdoc["error"]=error.code();
+        // retdoc["id"]=doc["id"];
+        // uint8_t buff[300];
+        // int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+        // send_json_string(0,buff,slen,0);
+      }
+      else if(strcmp(type,"BYE")==0)
+      {
+        msg_printf("SEEYOU","BYE");
+      }
+
     }
-    recv_doc.clear();
+    return 0;
 
-    errorCode = 0;
+
   }
-  else
+  void connected(Data_Layer_IF* ch){}
+
+  int send_data(int head_room,uint8_t *data,int len,int leg_room){
+    Serial.write(data,len);
+    return 0;
+  }
+  void disconnected(Data_Layer_IF* ch){}
+  void DBGINFO()
   {
+    
   }
 
-  if (bp->size() == 0)
+  int close(){}
+
+  
+  char dbgBuff[500];
+  int dbg_printf(const char *fmt, ...)
   {
-    bp->printf("%s", retTLC);
-    size_t s = serializeJson(ret_doc, bp->buffer() + bp->size(), bp->rest_capacity());
-    bp->resize(bp->size() + s);
+    char *str=dbgBuff;
+    int restL=sizeof(dbgBuff);
+    {//start head
+      int len=sprintf(str,"{\"dbgmsg\":\"");
+      str+=len;
+      restL-=len;
+
+    }
+
+    {
+      va_list aptr;
+      int ret;
+      va_start(aptr, fmt);
+      ret = vsnprintf (str, restL-10, fmt, aptr);
+      va_end(aptr); 
+      str+=ret;
+      restL-=ret;
+
+
+    }
+    {//end
+      int len=sprintf(str,"\"}");
+      str+=len;
+      restL-=len;
+    }
+
+    return send_json_string(0,(uint8_t*)dbgBuff,str-dbgBuff,0);
   }
 
-  if (ret_result)
+  int msg_printf(const char *type,const char *fmt, ...)
   {
-    *ret_result = errorCode;
-  }
-  return ret_len;
-}
+    char *str=dbgBuff;
+    int restL=sizeof(dbgBuff);
+    {//start head
+      int len=sprintf(str,"{\"type\":\"%s\",\"data\":\"",type);
+      str+=len;
+      restL-=len;
 
+    }
+
+    {
+      va_list aptr;
+      int ret;
+      va_start(aptr, fmt);
+      ret = vsnprintf (str, restL-10, fmt, aptr);
+      va_end(aptr); 
+      str+=ret;
+      restL-=ret;
+
+
+    }
+    {//end
+      int len=sprintf(str,"\"}");
+      str+=len;
+      restL-=len;
+    }
+
+    return send_json_string(0,(uint8_t*)dbgBuff,str-dbgBuff,0);
+  }
+};
+
+
+
+
+
+MData_uInsp djrl;
 void loop()
 {
+  {
+    uint8_t recvBuf[50];
+    if (Serial.available() > 0) {
+      // read the incoming byte:
+      // char c=Serial.read();
+      // djrl.recv_data((uint8_t*)&c,1);
+      int recvLen = Serial.read(recvBuf,sizeof(recvBuf));
+      djrl.recv_data((uint8_t*)recvBuf,recvLen);
+
+      // djrl.dbg_printf(">>new data, len:%d",recvLen);
+      
+    }
+  }
   oGS.mainLoop();
   // loop_comm();
   // delay(1000);

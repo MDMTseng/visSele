@@ -67,6 +67,12 @@ TSQueue<image_pipe_info *> inspSnapQueue(5);
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
 
+
+int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json);
+int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...);
+int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us);
+
+
 void InspResultAction(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool *skipImageTransfer, bool *inspSnap, bool *ret_pipe_pass_down = NULL, float datViewMaxFPS=DATA_VIEW_MAX_FPS);
 void setThreadPriority(std::thread &thread, int type, int priority)
 {
@@ -118,6 +124,111 @@ int mainThreadLock_unlock(int call_lineNumber, char *msg = "")
 
   return 0;
 }
+
+
+
+
+// int MicroInsp_FType::ev_on_close()
+// {
+
+//   //MT_LOCK(""); //the delete caller might come within main thread
+//   int fd = getfd();
+//   LOGE("fd:%d is disconnected  conn_pgID:%d", fd,conn_pgID);
+//   char tmp[70];
+//   sprintf(tmp, "{\"type\":\"DISCONNECT\",\"CONN_ID\":%d}", fd);
+
+//   BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
+//   bpg_dat.pgID=conn_pgID;
+//   BPG_protocol_send(bpg_dat);
+//   bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", "{}");
+//   bpg_dat.pgID = conn_pgID;
+//   BPG_protocol_send(bpg_dat);
+//   //MT_UNLOCK("");
+
+//   return 0;
+// }
+
+
+
+m_BPG_Protocol_Interface bpg_pi;
+
+class PerifChannel:public Data_JsonRaw_Layer
+{
+  
+  public:
+
+  uint16_t conn_pgID;
+  int pkt_count = 0;
+  int ID;
+  PerifChannel():Data_JsonRaw_Layer()// throw(std::runtime_error)
+  {
+  }
+  int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
+    
+    if(opcode==1 )
+    {
+
+      char tmp[1024];
+      sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", raw, ID);
+      // LOGI("MSG:%s", tmp);
+      BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
+      bpg_dat.pgID=conn_pgID;
+      bpg_pi.fromUpperLayer(bpg_dat);
+
+      bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", "{}");
+      bpg_dat.pgID = conn_pgID;
+      bpg_pi.fromUpperLayer(bpg_dat);
+      return 0;
+
+    }
+    printf(">>opcode:%d\n",opcode);
+    return 0;
+
+
+  }
+
+  int recv_RESET()
+  {
+    // printf("Get recv_RESET\n");
+  }
+  int recv_ERROR(ERROR_TYPE errorcode)
+  {
+    // printf("Get recv_ERROR:%d\n",errorcode);
+  }
+  
+  void connected(Data_Layer_IF* ch){
+    
+    printf(">>>%X connected\n",ch);
+  }
+
+  void disconnected(Data_Layer_IF* ch){
+    printf(">>>%X disconnected\n",ch);
+  }
+
+  ~PerifChannel()
+  {
+    close();
+    printf("MData_uInsp DISTRUCT:%p\n",this);
+  }
+
+  // int send_data(int head_room,uint8_t *data,int len,int leg_room){
+    
+  //   // printf("==============\n");
+  //   // for(int i=0;i<len;i++)
+  //   // {
+  //   //   printf("%d ",data[i]);
+  //   // }
+  //   // printf("\n");
+  //   return recv_data(data,len, false);//LOOP back
+  // }
+};
+
+
+
+
+
+
+
 
 class ImageStackAddUp
 {
@@ -269,7 +380,6 @@ int imgStackingMaxCount=0;
 ImageStackAddUp imstack;
 
 m_BPG_Link_Interface_WebSocket *ifwebsocket=NULL;
-m_BPG_Protocol_Interface bpg_pi;
 
 MJPEG_Streamer *mjpegS;
 MatchingEngine matchingEng;
@@ -290,17 +400,6 @@ int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj);
 
 std::timed_mutex BPG_protocol_lock;
 
-void BPG_protocol_send(BPG_protocol_data dat)
-{
-  //LOGI("SEND_LOCK");
-  // BPG_protocol_lock.lock();
-  //LOGI("SEND_ING");
-  bpg_pi.fromUpperLayer(dat);
-  // BPG_protocol->SendData(dat);
-  //LOGI("SEND_UNLOCK");
-  // BPG_protocol_lock.unlock();
-  //LOGI("SEND_END");
-}
 
 int _argc;
 char **_argv;
@@ -1101,43 +1200,6 @@ BPG_protocol_data m_BPG_Protocol_Interface::GenStrBPGData(char *TL, char *jsonSt
 
 bool DoImageTransfer = true;
 
-int MicroInsp_FType::recv_json(char *json_str, int json_strL)
-{
-  int fd = getfd();
-
-  char tmp[1024];
-  sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", json_str, fd);
-  // LOGI("MSG:%s", tmp);
-  BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
-  bpg_dat.pgID=conn_pgID;
-  BPG_protocol_send(bpg_dat);
-
-  bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", "{}");
-  bpg_dat.pgID = conn_pgID;
-  BPG_protocol_send(bpg_dat);
-  return 0;
-}
-
-int MicroInsp_FType::ev_on_close()
-{
-
-  //MT_LOCK(""); //the delete caller might come within main thread
-  int fd = getfd();
-  LOGE("fd:%d is disconnected  conn_pgID:%d", fd,conn_pgID);
-  char tmp[70];
-  sprintf(tmp, "{\"type\":\"DISCONNECT\",\"CONN_ID\":%d}", fd);
-
-  BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
-  bpg_dat.pgID=conn_pgID;
-  BPG_protocol_send(bpg_dat);
-  bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", "{}");
-  bpg_dat.pgID = conn_pgID;
-  BPG_protocol_send(bpg_dat);
-  //MT_UNLOCK("");
-
-  return 0;
-}
-
 bool m_BPG_Protocol_Interface::checkTL(const char *TL, const BPG_protocol_data *dat)
 {
   if (TL == NULL)
@@ -1153,22 +1215,14 @@ m_BPG_Protocol_Interface::m_BPG_Protocol_Interface() : resPool(resourcePoolSize)
   cacheImage.ReSize(1, 1);
 }
 
-void m_BPG_Protocol_Interface::delete_Ext_Util_API()
-{
-  if (exApi)
-  {
-    delete exApi;
-    exApi = NULL;
-  }
-}
-void m_BPG_Protocol_Interface::delete_MicroInsp_FType()
+void m_BPG_Protocol_Interface::delete_PeripheralChannel()
 {
 
-  if (mift)
+  if (perifCH)
   {
     LOGI("DELETING");
-    delete mift;
-    mift = NULL;
+    delete perifCH;
+    perifCH = NULL;
   }
   LOGI("DELETED...");
 }
@@ -2717,37 +2771,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     }
     else if (checkTL("PR", dat)) //for external application
     {
-      void *target;
-      char *IP = JFetch_STRING(json, "ip");
-      double *port_number = JFetch_NUMBER(json, "port");
-      if (IP != NULL && port_number != NULL)
-      {
-        try
-        {
-          delete_Ext_Util_API();
-          LOGI("clean Ext_Util_API....");
-          exApi = new Ext_Util_API(IP, *port_number);
-          LOGI("new Ext_Util_API OK...");
-          exApi->start_RECV_Thread();
-          LOGI("start_RECV_Thread...");
-          char *retJson = exApi->SYNC_cmd_cameraCalib("*.jpg", 7, 9);
-          LOGI("SYNC_cmd_cameraCalib...\n\n:%s", retJson);
-          session_ACK = true;
-        }
-        catch (int errN)
-        {
-          sprintf(err_str, "[PR] Ext_Util_API init error:%d", errN);
-        }
-      }
-      else if (exApi && IP == NULL && port_number == NULL)
-      {
-        delete_Ext_Util_API();
-        session_ACK = true;
-      }
-      else
-      {
-        sprintf(err_str, "[PR] ip:%p port:%p", IP, port_number);
-      }
+   
     }
     else if (checkTL("PD", dat)) //Peripheral device
     {
@@ -2771,67 +2795,128 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           }
 
           
-          // if(mift!=NULL)
-          // {
-          //   sprintf(err_str, "mift still in connected state");
-          //   break;
-          // }
+          delete_PeripheralChannel();
+          // char *conn_type = JFetch_STRING(json, "type");
 
-          char *IP = JFetch_STRING(json, "ip");
-          double *port_number = JFetch_NUMBER(json, "port");
-          if (IP == NULL && port_number == NULL)
+          // if(strcmp(conn_type, "uart") == 0)
+          // {
+            
+          // }
+          // else if(strcmp(conn_type, "IP") == 0 || conn_type==NULL)
+          // {
+            
+          // }
+          
+          int avail_CONN_ID=714;
+          Data_Layer_IF *PHYLayer=NULL;
+          char *uart_name = NULL;
+          
+          char *IP = NULL;
+          if ( (uart_name=JFetch_STRING(json, "uart_name")) !=NULL)
           {
-            sprintf(err_str, "IP(%d) port_number(%d)", IP!=NULL,port_number!=NULL);
+            double *baudrate = JFetch_NUMBER(json, "baudrate");
+            char *default_mode="8N1";
+            char *mode = JFetch_STRING(json, "mode");
+            if(mode==NULL)
+            {
+              mode=default_mode;
+            }
+
+            if(baudrate==NULL)
+            {
+              sprintf(err_str, "baudrate is not defined");
+              break;
+            }
+
+
+
+            try{
+              
+              PHYLayer=new Data_UART_Layer(uart_name,(int)*baudrate, mode);
+
+
+            }
+            catch(std::runtime_error &e){
+             
+            }
+
+
+
+
             break;
           }
+          else if( (IP=JFetch_STRING(json, "ip"))!=NULL)
+          {
+
+            double *port_number = JFetch_NUMBER(json, "port");
+            if (port_number == NULL)
+            {
+              sprintf(err_str, "IP(%d) port_number(%d)", IP!=NULL,port_number!=NULL);
+              break;
+            }
           
 
-          LOGI("delete_MicroInsp_FType()");
-          delete_MicroInsp_FType();
-          LOGI("delete_MicroInsp_FType() OK...");
-          LOGI("CONN: %s:%d", IP, (int)*port_number);
+            try{
+              
+              PHYLayer=new Data_TCP_Layer(IP,(int)*port_number);
 
-          try{
+            }
+            catch(std::runtime_error &e){
+            }
 
-            mift = new MicroInsp_FType(IP, (int)*port_number);
 
-            mift->conn_pgID = dat->pgID;
-            LOGI("new MicroInsp_FType OK...");
-            mift->start_RECV_Thread();
-            LOGI("start_RECV_Thread...");
 
-            int fd = mift->getfd();
+          }
+
+          if(PHYLayer!=NULL)
+          {
+            perifCH=new PerifChannel();
+            perifCH->ID=avail_CONN_ID;
+            perifCH->conn_pgID=dat->pgID;
+            perifCH->setDLayer(PHYLayer);
+
+            perifCH->send_RESET();
+            perifCH->send_RESET();
+            perifCH->RESET();
+
+
             session_ACK = true;
 
-            sprintf(tmp, "{\"type\":\"CONNECT\",\"CONN_ID\":%d}", fd);
+            sprintf(tmp, "{\"type\":\"CONNECT\",\"CONN_ID\":%d}", avail_CONN_ID);
             bpg_dat = GenStrBPGData("PD", tmp);
             bpg_dat.pgID = dat->pgID;
             
             fromUpperLayer(bpg_dat);
 
           }
-          catch(std::runtime_error &e){
+          else
+          {
             session_ACK = false;
-            const char *exp_what = e.what();
 
-            LOGI("EXCEPTION:%s",exp_what);
-            sprintf(err_str, "EXCEPTION:");
+            LOGE("PHYLayer is not able to eatablish");
+            sprintf(err_str, "PHYLayer is not able to eatablish");
           }
+
+          // if(perifCH!=NULL)
+          // {
+          //   sprintf(err_str, "perifCH still in connected state");
+          //   break;
+          // }
 
 
         }
         else if(strcmp(type, "DISCONNECT") == 0)
         {
 
-          if(mift==NULL || mift->getfd() != CONN_ID)
+          if(perifCH==NULL || perifCH->ID != CONN_ID)
           {
-            sprintf(err_str, "CONN_ID(%d)  mift exist:%d or current mift has different CONN_ID", CONN_ID, mift!=NULL);
+            sprintf(err_str, "CONN_ID(%d)  perifCH exist:%p or current perifCH has different CONN_ID", CONN_ID, perifCH);
             break;
           }
           
-          if(CONN_ID==-1 || mift->getfd() == CONN_ID)
+          if(CONN_ID==-1 || perifCH->ID == CONN_ID)
           {//disconnect
-            delete_MicroInsp_FType();
+            delete_PeripheralChannel();
             session_ACK = true;
           }
           else
@@ -2844,20 +2929,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         }
         else if(strcmp(type, "MESSAGE") == 0)
         {
-          if(CONN_ID==-1 || mift==NULL || mift->getfd() != CONN_ID)
+          if(CONN_ID==-1 || perifCH==NULL ||perifCH->ID != CONN_ID)
           {
-            sprintf(err_str, "CONN_ID(%d)  mift exist:%d or current mift has different CONN_ID", CONN_ID, mift!=NULL);
+            sprintf(err_str, "CONN_ID(%d)  perifCH exist:%d or current perifCH has different CONN_ID", CONN_ID, perifCH!=NULL);
             break;
           }
 
           cJSON *msg_obj = JFetch_OBJECT(json, "msg");
           if (msg_obj)
           {
-            char *msgjstr = cJSON_PrintUnformatted(msg_obj);
-            int ret = mift->send_data((uint8_t *)msgjstr, strlen(msgjstr));
-            // LOGI("mift->send_data:%d,msgjstr:%s", ret, msgjstr);
-            delete msgjstr;
-            session_ACK = (ret==0);
+            uint8_t _buf[2000];
+            int ret= sendcJsonTo_perifCH(perifCH,_buf, sizeof(_buf),true,msg_obj);
+            session_ACK = (ret>=0);
           }
           else
           {
@@ -3156,18 +3239,17 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
       LOGE("NO resource can be used.....");
       // imagePipeBuffer.clear();
 
-      if (bpg_pi.mift)
+      if (bpg_pi.perifCH)
       {
-        LOGI("mift is here too!!");
-        char buffx[150];
-        static int count = 0;
-        int len = sprintf(buffx,
-                          "{"
-                          "\"type\":\"inspRep\",\"status\":%d,"
-                          "\"idx\":%d"
-                          "}",
-                          -10001, 1);
-        bpg_pi.mift->send_data((uint8_t *)buffx, len);
+        LOGI("perifCH is here too!!");
+        uint8_t buffx[200];
+        
+        int ret= printfTo_perifCH(bpg_pi.perifCH,buffx, sizeof(buffx),true,
+                "{"
+                "\"type\":\"inspRep\",\"status\":%d,"
+                "\"idx\":%d"
+                "}",
+                -10001, 1);
       }
     }
   }
@@ -3188,26 +3270,89 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   return CameraLayer::ACK;
 }
 
-void sendResultTo_mift(int uInspStatus, uint64_t timeStamp_100us)
+
+int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json)
 {
 
-  if (bpg_pi.mift)
+  if (bpg_pi.perifCH==NULL)
   {
-    LOGI("mift is here!!");
-    char buffx[150];
-    static int count = 0;
-    int len = sprintf(buffx,
-                      "{"
-                      "\"type\":\"inspRep\",\"status\":%d,"
-                      "\"idx\":%d,\"count\":%d,"
-                      "\"time_100us\":%lu"
-                      "}",
-                      uInspStatus, 1, count, timeStamp_100us);
-    bpg_pi.mift->send_data((uint8_t *)buffx, len);
-    count = (count + 1) & 0xFF;
-    LOGI("%s", buffx);
+    return -1;
   }
+  int buff_head_room=perifCH->max_head_room_size();
+  int buffSize=bufL-buff_head_room;
+  char *padded_buf=(char*)buf+buff_head_room;
+
+  int ret= cJSON_PrintPreallocated(json, padded_buf, buffSize-perifCH->max_leg_room_size(), false);
+
+  if(ret == false)
+  {
+    return -1;
+  }
+
+  int contentSize=strlen(padded_buf);
+  if(directStringFormat)
+  {
+    ret = perifCH->send_json_string(buff_head_room,(uint8_t*)padded_buf,contentSize,buffSize-contentSize);
+  }
+  else
+  {
+    ret = perifCH->send_string(buff_head_room,(uint8_t*)padded_buf,contentSize,buffSize-contentSize);
+  }
+  return ret;
 }
+
+
+
+
+int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...)
+{
+
+  if (bpg_pi.perifCH==NULL)
+  {
+    return -1;
+  }
+
+  int buff_head_room=perifCH->max_head_room_size();
+  int buffSize=bufL-buff_head_room;
+  uint8_t *padded_buf=buf+buff_head_room;
+
+  va_list aptr;
+  int ret;
+  va_start(aptr, fmt);
+  ret = vsnprintf ((char*)padded_buf, buffSize-perifCH->max_leg_room_size(), fmt, aptr);
+  va_end(aptr); 
+
+  if(ret<0)return ret;
+
+  int contentSize=ret;
+  
+  if(directStringFormat)
+  {
+    ret = perifCH->send_json_string(buff_head_room,padded_buf,contentSize,buffSize-contentSize);
+  }
+  else
+  {
+    ret = perifCH->send_string(buff_head_room,padded_buf,contentSize,buffSize-contentSize);
+  }
+  return ret;
+}
+
+
+int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us,int count)
+{
+  uint8_t buffx[200];
+  
+  int ret= printfTo_perifCH(perifCH,buffx, sizeof(buffx),true,
+    "{"
+    "\"type\":\"inspRep\",\"status\":%d,"
+    "\"idx\":%d,\"count\":%d,"
+    "\"time_100us\":%lu"
+    "}", uInspStatus, 1, count, timeStamp_100us);
+  return ret;
+}
+
+
+          
 
 
 float avgInterval=0;
@@ -3277,7 +3422,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool
   if (*skipInspDataTransfer == false)
   do
   {
-    // sendResultTo_mift(imgPipe->datViewInfo.uInspStatus,fi.timeStamp_100us);
+    // sendResultTo_perifCH(imgPipe->datViewInfo.uInspStatus,fi.timeStamp_100us);
 
     sprintf(tmp, "{\"start\":true}");
     bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", tmp);
@@ -3992,20 +4137,25 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   bool doPassDown = doInspActionThread;
 
 
-  if (bpg_pi.mift!=NULL)
+  if (bpg_pi.perifCH!=NULL)
   {
-    sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100);
+    
+    int ret = sendResultTo_perifCH(bpg_pi.perifCH,imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100,bpg_pi.perifCH->pkt_count);
+    if(ret>=0)
+    {
+      bpg_pi.perifCH->pkt_count++;
+    }
 
 
   }
   cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
-  //taking the short cut, mift(inspection machine) needs 100% of data
+  //taking the short cut, perifCH(inspection machine) needs 100% of data
   // LOGI("timeStamp_us:%lu",imgPipe->fi.timeStamp_us);
   if (doPassDown)
   {
     if(datViewQueue.size()==datViewQueue.capacity())
     {
-      //full, skip the most important data is send to mift(inspection machine)
+      //full, skip the most important data is send to perifCH(inspection machine)
       
       LOGI("SKIP datViewQueue!! info recycle");
       //recycle the resource here
@@ -4100,8 +4250,7 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
             inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
       bpg_pi.cameraFramesLeft = 0;
       bpg_pi.camera->TriggerMode(1);
-      bpg_pi.delete_MicroInsp_FType();
-      bpg_pi.delete_Ext_Util_API();
+      bpg_pi.delete_PeripheralChannel();
     }
 
 
