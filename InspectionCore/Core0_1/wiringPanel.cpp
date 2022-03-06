@@ -2840,10 +2840,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
              
             }
 
-
-
-
-            break;
           }
           else if( (IP=JFetch_STRING(json, "ip"))!=NULL)
           {
