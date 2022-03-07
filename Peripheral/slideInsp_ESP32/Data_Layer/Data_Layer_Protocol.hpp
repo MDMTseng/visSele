@@ -21,10 +21,10 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   const int crcFieldIdx=2;
   const int crcL=4;
   const int lenFieldIdx=crcFieldIdx+crcL;
-  const char *VERSION="0.0.1";
-  const char RESET_PACKET[17]="{\"type\":\"RESET\"}";
   protected:
   char peerVERSION[20];
+  const char *VERSION="0.0.1";
+  const char RESET_PACKET[17]="{\"type\":\"RESET\"}";
   public:
   Data_JsonRaw_Layer();
 

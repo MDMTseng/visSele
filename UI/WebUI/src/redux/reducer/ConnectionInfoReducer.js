@@ -91,6 +91,11 @@ let StateReducer = (state, action) => {
           break;
 
         case SLID_API_ID:
+          if(action.type=="WS_UPDATE")
+          {
+            delete action["type"];
+            return {...state,SLID_API_ID_CONN_INFO:{...state.SLID_API_ID_CONN_INFO,...action}}
+          }
           if(GetObjElement(state,["SLID_API_ID_CONN_INFO","type"]) == action.type)break;
           return {...state,SLID_API_ID_CONN_INFO:action}
           break;

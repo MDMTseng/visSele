@@ -1077,3 +1077,111 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
     </Button>
   </>
 }
+
+
+
+
+
+
+export function SLID_UI({UI_INSP_Count=false})
+{
+  
+  const dispatch = useDispatch();
+  
+  const DICT = useSelector(state => state.UIData.DICT);
+  const SLID_API_ID = useSelector(state => state.ConnInfo.SLID_API_ID);
+  
+  const SLID_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.SLID_API_ID_CONN_INFO);
+
+  const ACT_WS_GET_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(SLID_API_ID,callback));
+
+  let machineSetup=SLID_API_ID_CONN_INFO.machineSetup;
+
+  
+  return<>
+    <Button
+      icon={<BulbOutlined />}
+        key="Pin2_OUTPUT"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"mode":1},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+        pin2 OUTPUT
+    </Button>
+
+    
+    <Button
+        key="L_ON"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"output":1},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+        ON
+    </Button>
+
+    
+    <Button
+        key="L_OFF"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"output":0},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+       OFF
+    </Button>
+  
+    <br/>
+    <Button
+      icon={<SaveOutlined/>}
+      key="testbtn"
+      onClick={() => {
+
+        ACT_WS_GET_OBJ((api)=>{
+          api.machineSetupUpdate({pulse_sep_min:machineSetup.pulse_sep_min+1});
+        })
+      }}>SaveToFile</Button>
+
+
+    <Button
+      icon={<SaveOutlined/>}
+      key="SaveToFile"
+      onClick={() => {
+        ACT_WS_GET_OBJ((api)=>{
+          api.saveMachineSetupIntoFile();
+        })
+      }}>SaveToFile</Button>
+      
+    <pre>{JSON.stringify(machineSetup,null,2)}</pre>
+  </>
+  // useEffect(()=>{
+  // },[])  
+
+  // if(SLID_API_ID_CONN_INFO===undefined )
+  // {
+  //   return null;
+  // }
+
+  // let machineStatus = SLID_API_ID_CONN_INFO.machineStatus;
+  // let machineSetup = SLID_API_ID_CONN_INFO.machineSetup;
+  // if(SLID_API_ID_CONN_INFO.type!=="WS_CONNECTED" || machineStatus===undefined || machineSetup===undefined )
+  // {
+  //   return "!!全檢儀器未連線!!";
+  // }
+
+
+  // return <>
+  //   {insp_count}
+  //   {insp_count_rate}
+  //   {SpeedSlider}
+  //   {detailSetup}
+  // </>
+
+}
