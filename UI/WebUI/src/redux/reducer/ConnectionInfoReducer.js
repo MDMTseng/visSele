@@ -12,6 +12,10 @@ let CAM1_ID= "CAM1_ID";
 let Platform_API_ID="Platform_API_ID";
 let uInsp_API_ID="uInsp_API_ID";
 let SLID_API_ID="SLID_API_ID";
+
+
+
+let CNC_API_ID="CNC_API_ID";
 //TODO: Move inspection report reducer logic to here
 let StateReducer = (state, action) => {
 
@@ -99,6 +103,16 @@ let StateReducer = (state, action) => {
           if(GetObjElement(state,["SLID_API_ID_CONN_INFO","type"]) == action.type)break;
           return {...state,SLID_API_ID_CONN_INFO:action}
           break;
+
+        case CNC_API_ID:
+          if(action.type=="WS_UPDATE")
+          {
+            delete action["type"];
+            return {...state,CNC_API_ID_CONN_INFO:{...state.CNC_API_ID_CONN_INFO,...action}}
+          }
+          if(GetObjElement(state,["CNC_API_ID_CONN_INFO","type"]) == action.type)break;
+          return {...state,CNC_API_ID_CONN_INFO:action}
+          break;
       }
       return state;
     }
@@ -139,6 +153,9 @@ let ConnectionInfoReducer = (state = {
 
   SLID_API_ID,
   SLID_API_ID_CONN_INFO:undefined,
+  
+  CNC_API_ID,
+  CNC_API_ID_CONN_INFO:undefined,
 
   Platform_API_ID,
   Platform_API_ID_CONN_INFO:undefined,

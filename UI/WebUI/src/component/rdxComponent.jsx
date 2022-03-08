@@ -1,5 +1,5 @@
 import { connect } from 'react-redux'
-import React , { useState,useEffect } from 'react';
+import React , { useState,useEffect,useRef } from 'react';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import  Icon  from 'antd/lib/icon';
 import  Menu  from 'antd/lib/menu';
@@ -1163,25 +1163,210 @@ export function SLID_UI({UI_INSP_Count=false})
   </>
   // useEffect(()=>{
   // },[])  
-
-  // if(SLID_API_ID_CONN_INFO===undefined )
-  // {
-  //   return null;
-  // }
-
-  // let machineStatus = SLID_API_ID_CONN_INFO.machineStatus;
-  // let machineSetup = SLID_API_ID_CONN_INFO.machineSetup;
-  // if(SLID_API_ID_CONN_INFO.type!=="WS_CONNECTED" || machineStatus===undefined || machineSetup===undefined )
-  // {
-  //   return "!!全檢儀器未連線!!";
-  // }
+}
 
 
-  // return <>
-  //   {insp_count}
-  //   {insp_count_rate}
-  //   {SpeedSlider}
-  //   {detailSetup}
-  // </>
+function pickOnGCodeArr(headIndex, pos_mm, speed_mmps,  pickPin_suck, pickPin_blow,pickup=true)
+{
+  let GCODE_Arr=[];
+
+  let headPoseDown=0;
+  if(headIndex==1)
+  {
+    pos_mm-=15;
+    headPoseDown=60;
+  }
+  else if(headIndex==0)
+  {
+    pos_mm+=15;
+    headPoseDown=-60;
+  }
+  else
+    return GCODE_Arr;
+
+
+  GCODE_Arr.push("G01 Y"+pos_mm+" Z1_0 F"+speed_mmps);
+  let pinPreTrigger=60;//early pick
+  if(pickup==false)
+  {
+    pinPreTrigger=80;
+  }
+  //less means earlier
+  let pinKeepDelay_ms=10;
+
+    
+  GCODE_Arr.push("G01 Z1_"+headPoseDown*pinPreTrigger/100);
+  GCODE_Arr.push("M42 P"+pickPin_suck+" S"+(pickup?1:0) );
+  GCODE_Arr.push("M42 P"+pickPin_blow+" S"+(pickup?0:1) );
+  GCODE_Arr.push("G01 Z1_"+headPoseDown);
+  GCODE_Arr.push("G04 P"+pinKeepDelay_ms);
+  GCODE_Arr.push("G01 Z1_0");
+
+  return GCODE_Arr;
+
+}
+
+
+export function CNC_UI({UI_INSP_Count=false})
+{
+  
+  let _cur = useRef({});
+  let _this=_cur.current;
+
+  const dispatch = useDispatch();
+  
+  const DICT = useSelector(state => state.UIData.DICT);
+  const CNC_API_ID = useSelector(state => state.ConnInfo.CNC_API_ID);
+  
+  const CNC_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.CNC_API_ID_CONN_INFO);
+
+  const ACT_WS_GET_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(CNC_API_ID,callback));
+
+  let machineSetup=CNC_API_ID_CONN_INFO.machineSetup;
+
+  
+  return<>
+    <Button
+      icon={<BulbOutlined />}
+        key="Pin2_OUTPUT"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"mode":1},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+        pin2 OUTPUT
+    </Button>
+
+    
+    <Button
+        key="L_ON"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"output":1},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+        ON
+    </Button>
+
+    
+    <Button
+        key="L_OFF"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"output":0},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+       OFF
+    </Button>
+  
+    <br/>
+    <Button
+      icon={<SaveOutlined/>}
+      key="testbtn"
+      onClick={() => {
+
+        ACT_WS_GET_OBJ((api)=>{
+          api.machineSetupUpdate({pulse_sep_min:machineSetup.pulse_sep_min+1});
+        })
+      }}>SaveToFile</Button>
+
+
+    <Button
+      icon={<SaveOutlined/>}
+      key="SaveToFile"
+      onClick={() => {
+        ACT_WS_GET_OBJ((api)=>{
+          api.saveMachineSetupIntoFile();
+        })
+      }}>SaveToFile</Button>
+      
+    <pre>{JSON.stringify(machineSetup,null,2)}</pre>
+
+
+
+    <Button
+        key="HOME"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"GCODE","code":"G28"},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+       HOME
+    </Button>
+
+    
+
+    <Button
+        key="Go1"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"GCODE","code":"G01 Y300 Z1_20 F300"},
+            (ret)=>{
+              console.log(ret);
+            },(e)=>console.log(e));
+          })
+        }>
+       Go1
+    </Button>
+    
+    <Button
+        key="Go2"
+        onClick={() =>{
+
+          
+
+
+          let PIN_OUT_0= 25;
+          let PIN_OUT_1= 26;
+          let PIN_OUT_2= 32;
+          let PIN_OUT_3= 33;
+
+
+          let hspeed=320;
+          let sspeed=300;
+          let pos=20;
+          let i=0;
+          let pitch=4.9;
+
+          let gcodeArr=pickOnGCodeArr(1,pos+pitch*(i+5),sspeed, PIN_OUT_0,PIN_OUT_1,true);
+          gcodeArr = gcodeArr.concat(pickOnGCodeArr(0,pos+pitch*(i+0),sspeed, PIN_OUT_2,PIN_OUT_3,true));
+
+          pos=200;
+
+          // gcodeArr = gcodeArr.concat(pickOnGCodeArr(0,pos+pitch*0,hspeed, PIN_OUT_0,PIN_OUT_1,false));
+          // gcodeArr = gcodeArr.concat(pickOnGCodeArr(1,pos+pitch*0,hspeed, PIN_OUT_2,PIN_OUT_3,false));
+
+          // if(_this.gcodeSeq===undefined)
+          // {
+          //   _this.gcodeSeq=gcodeArr;
+          // }
+          // else
+          // {
+          //   _this.gcodeSeq=gcodeArr.concat(_this.gcodeSeq);
+          // }
+
+          
+          // if(_this.gcodeSeqConsumer===undefined)
+          // {
+          //   _this.gcodeSeqConsumer
+          // }
+          ACT_WS_GET_OBJ((api)=>{
+            gcodeArr.forEach(gcode=>{
+              // console.log(gcode);
+              api.send({"type":"GCODE","code":gcode},(ret)=>{console.log(ret);},(e)=>console.log(e));
+            });
+          })
+        }}>
+       Go2
+    </Button>
+  </>
 
 }

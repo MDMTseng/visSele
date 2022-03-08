@@ -7,7 +7,7 @@ import { Provider, connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
-import {UINSP_UI,SLID_UI} from './component/rdxComponent.jsx';
+import {UINSP_UI,SLID_UI,CNC_UI} from './component/rdxComponent.jsx';
 
 import {GetDefaultSystemSetting} from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
@@ -201,9 +201,10 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     [DICT._.camera, ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
     ["設定資料庫",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
     ["檢測資料庫",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
-    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined],//seg line
+    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined||ConnInfo.CNC_API_ID_CONN_INFO!==undefined],//seg line
     ["全檢設備",       ConnInfo.uInsp_API_ID_CONN_INFO,   <RobotOutlined />,false],
     ["坡檢設備",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
+    ["CNC設備",       ConnInfo.CNC_API_ID_CONN_INFO,    <RobotOutlined />,false],
     ]
     .filter(([textName, conn_info, icon,froceAppear])=> (froceAppear|| conn_info!==undefined) && !(showText && textName===undefined))
     .map(([textName, conn_info, icon,froceAppear],idx)=>{
@@ -281,6 +282,12 @@ class APPMasterX extends React.Component {
       uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
       SLID_API_ID:state.ConnInfo.SLID_API_ID,
       SLID_API_ID_CONN_INFO:state.ConnInfo.SLID_API_ID_CONN_INFO,
+
+
+      CNC_API_ID:state.ConnInfo.CNC_API_ID,
+      CNC_API_ID_CONN_INFO:state.ConnInfo.CNC_API_ID_CONN_INFO,
+
+
       Platform_API_ID:state.ConnInfo.Platform_API_ID,
 
       System_Setting:state.UIData.System_Setting,
@@ -746,6 +753,19 @@ class APPMasterX extends React.Component {
                     }
 
 
+                    if(info.CNC_peripheral_conn_info!==undefined)
+                    {
+
+                      comp.props.ACT_WS_GET_OBJ(comp.props.CNC_API_ID, (obj)=>{
+                        obj.connect( info.CNC_peripheral_conn_info);
+                      })
+                    }
+                    else
+                    {
+                      console.log("No CNC_peripheral_conn_info:{url:xxxx}");
+                    }
+
+
 
                     if(info.platform_api_conn_info!==undefined)
                     {
@@ -932,7 +952,7 @@ class APPMasterX extends React.Component {
           delete info.data["_PGINFO_"];
         }
         if (PGID === undefined) {
-          let maxNum=10;
+          let maxNum=500;
           PGID = this.pgIDCounter++;
           
           if(this.pgIDCounter>maxNum)
@@ -1513,7 +1533,7 @@ class APPMasterX extends React.Component {
 
 
 
-    class  SLID_API
+    class  GenPerif_API
     {
 
       cleanUpTrackingWindow()
@@ -1536,7 +1556,7 @@ class APPMasterX extends React.Component {
       }
 
       
-      saveMachineSetupIntoFile(filename = "data/SLID_Setting.json")
+      saveMachineSetupIntoFile(filename = this.settingFilePath)
       {
         
         let act = comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"SV", 0,
@@ -1555,7 +1575,7 @@ class APPMasterX extends React.Component {
 
       
 
-      LoadFileToMachine(filename = "data/SLID_Setting.json") {
+      LoadFileToMachine(filename = this.settingFilePath) {
         new Promise((resolve, reject) => {
 
           log.info("LoadSettingToMachine step2");
@@ -1585,7 +1605,7 @@ class APPMasterX extends React.Component {
 
         this.machineSetup=doReplace==true?newMachineInfo:{...this.machineSetup,...newMachineInfo};
         // console.log(this.machineSetup);
-        StoreX.dispatch({type:"WS_UPDATE",id:comp.props.SLID_API_ID,machineSetup:this.machineSetup});
+        StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineSetup:this.machineSetup});
         this.send({type:"set_setup",...newMachineInfo},
         (ret)=>{
           console.log("<<<<<<*************>>>>>>",ret);
@@ -1620,7 +1640,7 @@ class APPMasterX extends React.Component {
           return false;
         }
         
-        StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.SLID_API_ID,data:undefined});
+        StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:undefined});
         this.connInfo=connInfo;
         this.inReconnection=true;
         this.LoadFileToMachine();
@@ -1651,11 +1671,11 @@ class APPMasterX extends React.Component {
                 case "DISCONNECT":
                   this.CONN_ID=undefined;
                   this.cleanUpConnection();
-                  StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.SLID_API_ID,data:PD});
+                  StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:PD});
                   break;
                 case "CONNECT":
                   this.CONN_ID=PD_data.CONN_ID;
-                  StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.SLID_API_ID,data:PD});
+                  StoreX.dispatch({type:"WS_CONNECTED",id:this.id,data:PD});
 
                   if(this.machineSetup!==undefined)
                   {
@@ -1680,14 +1700,15 @@ class APPMasterX extends React.Component {
             this.inReconnection=false;
             this.cleanUpConnection();
             console.log(e);
-            StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.SLID_API_ID,data:undefined});
+            StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:undefined});
             
           }
         });
       }
 
-      constructor(id,pg_id_channel=10025)
+      constructor(id,settingFilePath,pg_id_channel=10025)
       {
+        this.settingFilePath=settingFilePath;
         this.CONN_ID=undefined;
         this.pg_id_channel=pg_id_channel;
         this.id=id;
@@ -1701,15 +1722,6 @@ class APPMasterX extends React.Component {
         this.PINGCount=0;
 
         this.machineInfo=undefined;
-
-
-        this.pre_res_count=undefined;
-        this.res_count_start_time=undefined;
-        this.res_count_pre_time=undefined;
-
-        this.res_count_rate_overall=undefined;
-        this.res_count_rate_recent=undefined;
-
 
         
       } 
@@ -1815,10 +1827,14 @@ class APPMasterX extends React.Component {
       }
       
     }
-    this.props.ACT_WS_REGISTER(this.props.SLID_API_ID,new SLID_API(this.props.SLID_API_ID));
+    this.props.ACT_WS_REGISTER(this.props.SLID_API_ID, new GenPerif_API(this.props.SLID_API_ID,"data/SLID_Setting.json",10025));
 
 
 
+    this.props.ACT_WS_REGISTER(this.props.CNC_API_ID, new GenPerif_API(this.props.CNC_API_ID,"data/CNC_Setting.json",10026));
+
+
+    
 
     class  Platform_API
     {
@@ -2089,6 +2105,23 @@ class APPMasterX extends React.Component {
                       </>
                       ,
                       title:"SLID_API",
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
+                  break;
+                }
+                
+                case this.props.CNC_API_ID:
+                {
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=><>
+                      <CNC_UI/><br/>
+                      </>
+                      ,
+                      title:"CNC_API",
                       onCancel:()=>this.setState({modal_view:undefined}),
                       onOk:()=>this.setState({modal_view:undefined}),
                       footer:null
