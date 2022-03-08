@@ -602,10 +602,14 @@ bool MStp::AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info 
   newSeg.JunctionNormCoeff=0;
   newSeg.steps=times;
   newSeg.step_period=period;
-
+  if(SegQ_Head_Push())
+  {  
+    startTimer();
+    return true;
+  }
+  return false;
   //__PRT_I_("steps:%d step_period:%d\n",newSeg.steps,period);
-  
-  return SegQ_Head_Push();
+
 }
 
 
