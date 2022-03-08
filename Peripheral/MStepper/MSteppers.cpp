@@ -356,7 +356,7 @@ inline int Calc_JunctionNormCoeff(MSTP_SEG_PREFIX MSTP_segment *blkA,MSTP_SEG_PR
     return 0;
   }
 
-  __PRT_I_("ABB:%f %f\n",ABsum,BBsum);
+  //__PRT_I_("ABB:%f %f\n",ABsum,BBsum);
   // AAsum/=blkA.steps;
 
   // rb.JunctionCoeff=dotp/BB;//normalize in the loop, a bit slower
@@ -603,7 +603,7 @@ bool MStp::AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info 
   newSeg.steps=times;
   newSeg.step_period=period;
 
-  __PRT_I_("steps:%d step_period:%d\n",newSeg.steps,period);
+  //__PRT_I_("steps:%d step_period:%d\n",newSeg.steps,period);
   
   return SegQ_Head_Push();
 }
@@ -701,8 +701,8 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
 
 
-  __PRT_I_("\n");
-  __PRT_I_("==========NEW runvec[%s:%f,%f,%f]======idx: h:%d t:%d===\n",toStr(newSeg.runvec),newSeg.vcen,newSeg.acc,newSeg.deacc,segBufHeadIdx,segBufTailIdx);
+  // __PRT_I_("\n");
+  // __PRT_I_("==========NEW runvec[%s:%f,%f,%f]======idx: h:%d t:%d===\n",toStr(newSeg.runvec),newSeg.vcen,newSeg.acc,newSeg.deacc,segBufHeadIdx,segBufTailIdx);
   lastTarLoc=VECTo;
 
 
@@ -720,7 +720,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
        preSeg = SegQ_Head(i);
        if(preSeg==NULL)break;
        
-        __PRT_I_("preSeg->type:%d\n",preSeg->type);
+        //__PRT_I_("preSeg->type:%d\n",preSeg->type);
        if(preSeg->type==MSTP_segment_type::seg_wait )
        {
          if(preSeg->steps!=0)//means it's a real wait
@@ -779,7 +779,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
       newSeg.JunctionNormCoeff=coeff1;
       newSeg.JunctionNormMaxDiff=maxDiff1;
-      __PRT_I_("====coeff:%f,%f diff:%f==\n",newSeg.JunctionNormCoeff,coeff1,newSeg.JunctionNormMaxDiff);
+      //__PRT_I_("====coeff:%f,%f diff:%f==\n",newSeg.JunctionNormCoeff,coeff1,newSeg.JunctionNormMaxDiff);
       if(retSt==0)
       {
         // newSeg.JunctionNormMaxDiff=maxDiff1;
@@ -801,7 +801,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
           float JunctionNormMaxDiff=newSeg.JunctionNormMaxDiff;
           float vcur=newSeg.vcur;
           float vcen=newSeg.vcen;
-          __PRT_I_("===JunctionMax:%f ndiff:%f vcur:%f  vcen:%f==\n",vto_JunctionMax,JunctionNormMaxDiff,vcur,vcen);
+          //__PRT_I_("===JunctionMax:%f ndiff:%f vcur:%f  vcen:%f==\n",vto_JunctionMax,JunctionNormMaxDiff,vcur,vcen);
           
         }
         if(newSeg.vcur>newSeg.vcen)//check if the max initial speed is higher than target speed
@@ -974,7 +974,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
     {//can only adjust vto
       curblk = preSeg;
       preSeg = SegQ_Head(1+i);
-      __PRT_I_("preSeg:%p type:%d\n",preSeg,preSeg->type);
+      //__PRT_I_("preSeg:%p type:%d\n",preSeg,preSeg->type);
       if(preSeg->type==MSTP_segment_type::seg_wait)
       {
         if(preSeg->steps!=0)//means it's a real wait no junction calc
@@ -1033,7 +1033,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
       {
         float vcur=preSeg->vcur;
         float vcen=preSeg->vcen;
-        __PRT_I_("[%d]:blk.steps:%d v:%f,%f,%f \n",i,preSeg->steps,vcur,vcen,new_preSeg_vto);
+        //__PRT_I_("[%d]:blk.steps:%d v:%f,%f,%f \n",i,preSeg->steps,vcur,vcen,new_preSeg_vto);
       }
       if(preSeg->vto == new_preSeg_vto)
       {//if the preSeg vto is exactly the same then the following adjustment is not nessasary
@@ -1067,11 +1067,11 @@ void MStp::printSEGInfo()
   {
     MSTP_SEG_PREFIX MSTP_segment*seg=SegQ_Head(i+1);
 
-    __PRT_I_("[%2d]:type:%d steps:%6d v:%05.2f, %05.2f, %05.2f coeff:(%0.2f,%0.2f) \n",i,seg->type,seg->steps,
-      seg->vcur,seg->vcen,seg->vto,
-      seg->JunctionNormCoeff,
-      seg->JunctionNormMaxDiff);
-    __PRT_I_("     :%s\n",toStr(seg->runvec));
+    //__PRT_I_("[%2d]:type:%d steps:%6d v:%05.2f, %05.2f, %05.2f coeff:(%0.2f,%0.2f) \n",i,seg->type,seg->steps,
+      // seg->vcur,seg->vcen,seg->vto,
+      // seg->JunctionNormCoeff,
+      // seg->JunctionNormMaxDiff);
+    //__PRT_I_("     :%s\n",toStr(seg->runvec));
 
   }
 

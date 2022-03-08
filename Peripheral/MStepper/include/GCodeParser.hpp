@@ -37,7 +37,7 @@ public:
   int blockCount;
   char* blockInitial[30];
 	GCodeParser();
-  GCodeParser_Status runLine(char *line);
+  GCodeParser_Status runLine(const char *line);
 	GCodeParser_Status addChar(char c);
 
 	GCodeParser_Status statusReducer(GCodeParser_Status st,GCodeParser_Status new_st);

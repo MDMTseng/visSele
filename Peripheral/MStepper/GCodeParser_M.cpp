@@ -358,11 +358,11 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         {
           if(MTPSYS_AddWait((uint32_t)P,1, NULL,NULL)==true)
           {
-            retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_FAILED);
+            retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
           }
           else
           {
-            retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+            retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_FAILED);
           }
         }
         else
