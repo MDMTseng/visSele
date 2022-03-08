@@ -1085,7 +1085,7 @@ void setup()
 {
   // noInterrupts();
   Serial.begin(230400);
-  Serial.setRxBufferSize(1000);
+  Serial.setRxBufferSize(100);
   // // setup_comm();
   timer = timerBegin(0, 8, true);
   
