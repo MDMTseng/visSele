@@ -230,6 +230,34 @@ inline float accTo_DistanceNeeded(float Vc, float Vd, float ad, float *ret_Td=NU
 
 
 
+inline float SpeedFactor(xVec vec,MSTP_axisSetup *axis_setup,int *ret_idx=NULL,int *ret_vidx=NULL)
+{
+  float maxDist=0;
+  float maxVDist=0;
+  int vidx=-1;
+  int idx=-1;
+  for(int i=0;i<MSTP_VEC_SIZE;i++)
+  {
+    int32_t dist = vec.vec[i];
+    if(dist<0)dist=-dist;
+    float virtualDist=dist*axis_setup[i].VirtualStep;
+    
+    if(maxVDist<virtualDist)
+    {
+      vidx=i;
+      maxVDist=virtualDist;
+    }
+    
+    if(maxDist<dist)
+    {
+      idx=i;
+      maxDist=dist;
+    }
+  }
+  if(ret_idx)*ret_idx=idx;
+  if(ret_vidx)*ret_vidx=vidx;
+  return maxDist/maxVDist;
+}
 
 
 
@@ -333,7 +361,8 @@ inline int Calc_JunctionNormCoeff(MSTP_SEG_PREFIX MSTP_segment *blkA,MSTP_SEG_PR
 
     float A=(float)blkA->runvec.vec[i];//X
     float B=(float)blkB->runvec.vec[i];//Y
-    float W=1/axisInfo[i].MaxSpeedJumpW;//bigger MaxSpeedJumpW means less Weight(less important to take care of)
+    float BdivW=B/axisInfo[i].MaxSpeedJumpW;//Y
+    //bigger MaxSpeedJumpW means less Weight(less important to take care of)
     // W*=W;
     // if(AB<0 && AB<-junctionMaxSpeedJump)
     // {//The speed from +to-(or reverse) and the difference is too huge, then set target speed to zero
@@ -342,8 +371,8 @@ inline int Calc_JunctionNormCoeff(MSTP_SEG_PREFIX MSTP_segment *blkA,MSTP_SEG_PR
     //   break;
     // }
     // AAsum+=A*A;
-    ABsum+=A*B*W;
-    BBsum+=B*B*W;
+    ABsum+=A*BdivW;
+    BBsum+=B*BdivW;
   }
   if(ABsum<0)
   {
@@ -482,6 +511,7 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
   {
     axisInfo[i].AccW=1;
     axisInfo[i].MaxSpeedJumpW=1;
+    axisInfo[i].VirtualStep=1;
   }
   // IO_SET_DBG(PIN_DBG0, OUTPUT);
   SystemClear();
@@ -654,17 +684,25 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
 
 
+
+
   newSeg.ctx=ctx;
-  newSeg.vcur=0;
-  newSeg.vcen=speed;
-  newSeg.vto=0;
-
-
   
   newSeg.type=MSTP_segment_type::seg_line;
   vecAssign(newSeg.from,lastTarLoc);
   vecAssign(newSeg.to,VECTo);
   vecAssign(newSeg.runvec,vecSub(VECTo,lastTarLoc));
+
+  newSeg.vcur=0;
+  int main_idx=0;
+  int main_vidx=0;
+  float vfactor=SpeedFactor(newSeg.runvec,axisInfo,&main_idx,&main_vidx);
+  newSeg.vcen=speed*vfactor;
+  newSeg.main_axis_idx=main_idx;
+  newSeg.virtual_axis_idx=main_vidx;
+
+  newSeg.vto=0;
+
   newSeg.cur_step=0;
   newSeg.JunctionNormCoeff=0;
   newSeg.JunctionNormMaxDiff=NAN;
@@ -685,7 +723,9 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
         acc_constrain_axis=i;
       }
     }
-    float accW=axisInfo[acc_constrain_axis].AccW;
+    float accW=axisInfo[acc_constrain_axis].AccW*newSeg.runvec.vec[main_idx]/newSeg.runvec.vec[acc_constrain_axis];
+
+    if(accW<0)accW=-accW;
     float a=main_acc;
     float dea=-main_acc;
     if(exinfo!=NULL)
