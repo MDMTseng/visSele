@@ -677,7 +677,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
     float maxK=0;
     for(int i=0;i<MSTP_VEC_SIZE;i++)
     {
-      float K=newSeg.runvec.vec[i]/axisInfo[acc_constrain_axis].AccW;
+      float K=newSeg.runvec.vec[i]/axisInfo[i].AccW;
       if(K<0)K=-K;
       if(maxK<K)
       {
