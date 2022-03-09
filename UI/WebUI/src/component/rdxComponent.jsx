@@ -1165,8 +1165,8 @@ export function SLID_UI({UI_INSP_Count=false})
   // },[])  
 }
 
-let Z1_NLim=-99;//-119;
-let Z1_PLim=106;//132-2;
+let Z1_NLim=-110;//-119;
+let Z1_PLim=112;//132-2;
 
 
 function pickOnGCodeArr(headIndex, pos_mm, speed_mmps,  pickPin_suck, pickPin_blow,pickup=true)
@@ -1212,19 +1212,19 @@ function pickOnGCodeArr(headIndex, pos_mm, speed_mmps,  pickPin_suck, pickPin_bl
 
 
 
-function pickOnGCodeArrV2(headIndex, pos_mm, speed_mmps,  pickPin_suck, pickPin_blow,pickup=true)
+function pickOnGCodeArrV2(headIndex, pos_mm, speed_mmps,  pickPin_suck, pickPin_blow,pickup=true,prelocating=false,locatingSpeed=NaN,locatingAcc=NaN)
 {
   let GCODE_Arr=[];
 
   let headPoseDown=0;
   if(headIndex==1)
   {
-    pos_mm-=15;
+    pos_mm-=30;
     headPoseDown=Z1_PLim;
   }
   else if(headIndex==0)
   {
-    pos_mm+=15;
+    pos_mm+=0;
     headPoseDown=Z1_NLim;
   }
   else
@@ -1236,18 +1236,38 @@ function pickOnGCodeArrV2(headIndex, pos_mm, speed_mmps,  pickPin_suck, pickPin_
     pinPreTrigger=80;
   }
   //less means earlier
-  GCODE_Arr.push("G01 Y"+pos_mm+" Z1_"+0+" F"+speed_mmps);
-  GCODE_Arr.push("G04 P"+0);
-  GCODE_Arr.push("G01 Z1_"+(headPoseDown*pinPreTrigger/100)+" F"+speed_mmps);
+
+
+  if(locatingSpeed!=locatingSpeed)locatingSpeed=speed_mmps;
+  let locatingSpeed_CodeP=" F"+locatingSpeed.toFixed(2);
+  let locatingAcc_CodeP=(locatingAcc==locatingAcc)?" ACC"+(locatingAcc*0.8).toFixed(2)+" DEA-"+locatingAcc.toFixed(2):"";
+  
+  if(prelocating)
+  {
+    GCODE_Arr.push("G01 Y"+pos_mm+" Z1_"+(headPoseDown*pinPreTrigger/100).toFixed(2)+locatingSpeed_CodeP+locatingAcc_CodeP);  
+  }
+  else
+  {
+    GCODE_Arr.push("G01 Y"+pos_mm+" Z1_"+0+locatingSpeed_CodeP+locatingAcc_CodeP);
+    GCODE_Arr.push("G04 P"+0);
+    GCODE_Arr.push("G01 Z1_"+(headPoseDown*pinPreTrigger/100).toFixed(2)+" F"+speed_mmps);  
+  }
+
+
 
 
     
   GCODE_Arr.push("M42 P"+pickPin_suck+" S"+(pickup?1:0) );
-  GCODE_Arr.push("M42 P"+pickPin_blow+" S"+(pickup?0:1) );
-  GCODE_Arr.push("G01 Z1_"+headPoseDown);
+  // GCODE_Arr.push("M42 P"+pickPin_blow+" S"+(pickup?0:1) );
+  GCODE_Arr.push("G01 Z1_"+headPoseDown+" F"+speed_mmps);
   let pinKeepDelay_ms=10;
   GCODE_Arr.push("G04 P"+pinKeepDelay_ms);
-  GCODE_Arr.push("G01 Z1_0");
+  // GCODE_Arr.push("M42 P"+pickPin_blow+" S0" );
+  if(pickup)
+    GCODE_Arr.push("G01 Z1_0"+" F"+speed_mmps+" ACC"+(locatingAcc*0.3).toFixed(2));//slow accleration pick up
+  else 
+    GCODE_Arr.push("G01 Z1_0"+" F"+speed_mmps);
+
 
   return GCODE_Arr;
 
@@ -1266,15 +1286,15 @@ function TESTGCODE1()
   // GCODE_Arr.push("G01 Y"+pos_mm+" Z1_"+posZ1_pul+" F"+speed);
 
   let i=0;
-  let acc=2500;
-  let segCount=300;
+  let acc=1500;
+  let segCount=400;
   for(i=0;i<segCount;i++)
   {
     let theta=7*2*Math.PI*i/segCount;
     
     GCODE_Arr.push(
     "G01 Y"+(pos_mm+100*i/segCount).toFixed(3)+
-    " Z1_"+(97*   Math.pow(    Math.cos(theta) ,5  )   ).toFixed(3)+" F"+speed+" ACC"+acc+ " DEA-"+acc);
+    " Z1_"+(97*   Math.pow(    Math.cos(theta) ,3  )   ).toFixed(3)+" F"+speed+" ACC"+acc+ " DEA-"+acc);
 
   }
 
@@ -1286,7 +1306,7 @@ function TESTGCODE1()
     
     GCODE_Arr.push(
     "G01 Y"+(pos_mm+100*(segCount-1-i)/segCount).toFixed(3)+
-    " Z1_"+(97*   Math.pow(    Math.cos(theta) ,5  )   ).toFixed(3)+" F"+speed+" ACC"+acc+ " DEA-"+acc);
+    " Z1_"+(97*   Math.pow(    Math.cos(theta) ,3  )   ).toFixed(3)+" F"+speed+" ACC"+acc+ " DEA-"+acc);
 
   }
 
@@ -1328,7 +1348,7 @@ export function CNC_UI({UI_INSP_Count=false})
 
   function pushInSendGCodeQ()
   {
-    if(_this.isSendWaiting==true)
+    if(_this.isSendWaiting==true || _this.gcodeSeq.length==0)
     {
       return;
     }
@@ -1477,7 +1497,8 @@ export function CNC_UI({UI_INSP_Count=false})
           let hspeed=330;
           let sspeed=330;
 
-          let pitch=5.2;
+          hspeed=sspeed=20;
+          let pitch=49/10.0;
           let gcodeArr=[];
           
           _this.gcodeSeq.push("G90");//abs pos
@@ -1508,19 +1529,25 @@ export function CNC_UI({UI_INSP_Count=false})
           let hspeed=350;
           let sspeed=350;
 
-          let pitch=5.2;
+          let pitch=5.25;
           let gcodeArr=[];
           
+
+          let positionLocatingSpeed=250;
           _this.gcodeSeq.push("G90");//abs pos
           let i;
           for(i=0;i<5;i++)
           {
-            let pos=20;
-            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos+pitch*(i+5),sspeed, PIN_OUT[2],PIN_OUT[3],true));
+            let pos=341;
+            let initSpeed=(_this.gcodeSeq.length==0 && i==0 )?300:positionLocatingSpeed;
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos+(pitch)*(i+5),sspeed, PIN_OUT[2],PIN_OUT[3],true,false,initSpeed,2000));
             gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos+pitch*(i+0),sspeed, PIN_OUT[0],PIN_OUT[1],true));
             pos=200;
-            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos+pitch*0,hspeed, PIN_OUT[0],PIN_OUT[1],false));
-            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos+pitch*0,hspeed, PIN_OUT[2],PIN_OUT[3],false));
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos+pitch*0,hspeed, PIN_OUT[0],PIN_OUT[1],true,true,positionLocatingSpeed,2000));
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos+pitch*5,hspeed, PIN_OUT[2],PIN_OUT[3],true,true));
+            // pos=150;
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos+pitch*(-2.5),hspeed, PIN_OUT[0],PIN_OUT[1],false,true));
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos+pitch*2.5,hspeed, PIN_OUT[2],PIN_OUT[3],false,true));
   
           }
           _this.gcodeSeq=_this.gcodeSeq.concat(gcodeArr);
@@ -1561,7 +1588,7 @@ export function CNC_UI({UI_INSP_Count=false})
         onClick={() =>{
           let _machineInfo={...machineInfo,Y:machineInfo.Y+10};
           setMachineInfo(_machineInfo);
-          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+100);
           pushInSendGCodeQ();
         }}>
        Y+10
@@ -1574,7 +1601,7 @@ export function CNC_UI({UI_INSP_Count=false})
           
           let _machineInfo={...machineInfo,Y:machineInfo.Y-10};
           setMachineInfo(_machineInfo);
-          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+100);
           pushInSendGCodeQ();
         }}>
        Y-10
