@@ -8,7 +8,7 @@
 
 #include "Data_Layer_Protocol.hpp"
 #include "Data_Layer_PHY.hpp"
-
+#include "CameraLayerManager.hpp"
 
 float randomGen(float from=0,float to=1)
 {
@@ -71,8 +71,80 @@ int_fast32_t testPolyFit()
   return 0;
 }
 
+CameraLayer::status CameraLayer_Callback_CAM1(CameraLayer &cl_obj, int type, void *context)
+{
+  
+  LOGI("type:%d\n",type);
+  return CameraLayer::status::ACK;
+}
 
 
+CameraLayer::status CameraLayer_Callback_CAM2(CameraLayer &cl_obj, int type, void *context)
+{
+  
+  LOGI("type:%d\n",type);
+  return CameraLayer::status::ACK;
+}
+
+
+void camLyerTest()
+{
+  CameraLayerManager clm;
+  clm.discover();
+  printf("cam:\n%s\n",clm.genJsonStringList().c_str());
+  CameraLayer *camLayer=clm.connectCamera(0,0,"",CameraLayer_Callback_CAM1,NULL);
+  CameraLayer *camLayer2=clm.connectCamera(0,1,"",CameraLayer_Callback_CAM2,NULL);
+  // CameraLayer *camLayer=clm.connectCamera(1,0,"data/BMP_carousel_test",CameraLayer_Callback_XXX,NULL);
+
+  if(camLayer!=NULL)
+  {
+    printf("connected:\n%s\n",camLayer->getCameraJsonInfo().c_str());
+  }
+  else
+  {
+    printf("connect failed\n");
+    return 0;
+  }
+  // camLayer->TriggerMode(1);
+  // printf("WAIT for image trigger~\n");
+  // for(int i=0;i<2;i++)
+  // {
+  //   camLayer->Trigger();
+  //   sleep(1);
+  // }
+
+
+  camLayer->TriggerMode(0);
+  camLayer->SetFrameRate(NAN);
+  
+
+  camLayer2->TriggerMode(0);
+  camLayer2->SetFrameRate(NAN);
+  printf("WAIT for image streaming~\n");
+  for(int i=0;i<3;i++)
+  {
+    sleep(1);
+  }
+  
+  camLayer->SetROI(0,0,100,100,100,100);
+  printf("WAIT for image streaming~ setFPS:err:%d\n",camLayer->SetFrameRate(INFINITY));
+  
+  for(int i=0;i<3;i++)
+  {
+    sleep(1);
+  }
+
+
+  camLayer->SetROI(0,0,100,100,100,100);
+  printf("WAIT for image streaming~ setFPS:err:%d\n",camLayer->SetFrameRate(5));
+  
+  for(int i=0;i<3;i++)
+  {
+    sleep(1);
+  }
+
+  delete camLayer;
+}
 
 int main(int argc, char **argv)
 {
