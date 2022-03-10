@@ -74,7 +74,7 @@ class MStp_M:public MStp{
   {
     
     TICK2SEC_BASE=10*1000*1000;
-    main_acc=SUBDIV*3000/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
+    main_acc=SUBDIV*2500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
     minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     main_junctionMaxSpeedJump=minSpeed;//5200;
 
@@ -91,9 +91,11 @@ class MStp_M:public MStp{
     pinMode(PIN_OUT_1, OUTPUT);    
     // pinMode(PIN_DBG, OUTPUT);    
 
-    axisInfo[0].AccW=0.3;
-    axisInfo[0].MaxSpeedJumpW=0.4;
+    axisInfo[0].VirtualStep=3;
+    axisInfo[0].AccW=SUBDIV*3500/mm_PER_REV/main_acc/axisInfo[0].VirtualStep;
+    axisInfo[0].MaxSpeedJumpW=1/axisInfo[0].VirtualStep;
 
+    axisInfo[1].VirtualStep=1;
     axisInfo[1].AccW=1;
     axisInfo[1].MaxSpeedJumpW=1;
   
