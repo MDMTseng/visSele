@@ -1167,7 +1167,7 @@ export function SLID_UI({UI_INSP_Count=false})
 
 let Z1_NLim=-110;//-119;
 let Z1_PLim=112;//132-2;
-
+let nozzelDist=31;
 
 function pickOnGCodeArr(headIndex, pos_mm, speed_mmps,  pickPin_suck, pickPin_blow,pickup=true)
 {
@@ -1219,7 +1219,7 @@ function pickOnGCodeArrV2(headIndex, pos_mm, speed_mmps,  pickPin_suck, pickPin_
   let headPoseDown=0;
   if(headIndex==1)
   {
-    pos_mm-=30;
+    pos_mm-=nozzelDist;
     headPoseDown=Z1_PLim;
   }
   else if(headIndex==0)
@@ -1242,6 +1242,8 @@ function pickOnGCodeArrV2(headIndex, pos_mm, speed_mmps,  pickPin_suck, pickPin_
   let locatingSpeed_CodeP=" F"+locatingSpeed.toFixed(2);
   let locatingAcc_CodeP=(locatingAcc==locatingAcc)?" ACC"+(locatingAcc*0.8).toFixed(2)+" DEA-"+locatingAcc.toFixed(2):"";
   
+
+  pos_mm=pos_mm.toFixed(2);
   if(prelocating)
   {
     GCODE_Arr.push("G01 Y"+pos_mm+" Z1_"+(headPoseDown*pinPreTrigger/100).toFixed(2)+locatingSpeed_CodeP+locatingAcc_CodeP);  
@@ -1526,28 +1528,36 @@ export function CNC_UI({UI_INSP_Count=false})
 
 
 
-          let hspeed=350;
-          let sspeed=350;
+          let hspeed=300;
+          let sspeed=300;
 
-          let pitch=5.25;
+          let pitch=5.5;
           let gcodeArr=[];
           
 
-          let positionLocatingSpeed=250;
+          let positionLocatingSpeed=300;
           _this.gcodeSeq.push("G90");//abs pos
           let i;
           for(i=0;i<5;i++)
           {
-            let pos=341;
-            let initSpeed=(_this.gcodeSeq.length==0 && i==0 )?300:positionLocatingSpeed;
-            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos+(pitch)*(i+5),sspeed, PIN_OUT[2],PIN_OUT[3],true,false,initSpeed,2000));
+            let pos=340.8;
+            let initSpeed=(i!=0)?positionLocatingSpeed:(positionLocatingSpeed*0.7);
+
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos+pitch*(i+5),sspeed, PIN_OUT[2],PIN_OUT[3],true,false,initSpeed,2000));
             gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos+pitch*(i+0),sspeed, PIN_OUT[0],PIN_OUT[1],true));
-            pos=200;
-            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos+pitch*0,hspeed, PIN_OUT[0],PIN_OUT[1],true,true,positionLocatingSpeed,2000));
-            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos+pitch*5,hspeed, PIN_OUT[2],PIN_OUT[3],true,true));
+            pos=152;
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos            ,hspeed, PIN_OUT[0],PIN_OUT[1],true,true,initSpeed,2000));
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos            ,hspeed, PIN_OUT[2],PIN_OUT[3],true,true));
             // pos=150;
-            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos+pitch*(-2.5),hspeed, PIN_OUT[0],PIN_OUT[1],false,true));
-            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos+pitch*2.5,hspeed, PIN_OUT[2],PIN_OUT[3],false,true));
+            pos=0;
+            // gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos,hspeed, PIN_OUT[0],PIN_OUT[1],false,true));
+            // gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos,hspeed, PIN_OUT[2],PIN_OUT[3],false,true));
+            gcodeArr.push("G01 Y"+(pos-15.2).toFixed(2)+" F"+sspeed);
+
+            
+            gcodeArr.push("M42 P"+PIN_OUT[2]+" S0");
+            gcodeArr.push("M42 P"+PIN_OUT[0]+" S0");
+            gcodeArr.push("G04 P30");
   
           }
           _this.gcodeSeq=_this.gcodeSeq.concat(gcodeArr);
@@ -1568,6 +1578,26 @@ export function CNC_UI({UI_INSP_Count=false})
         }}>
        Y+
     </Button>
+    <Button
+        key="Y+.1"
+        onClick={() =>{
+          let _machineInfo={...machineInfo,Y:Math.round((machineInfo.Y+0.1)*100)/100};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       +
+    </Button>
+    <Button
+        key="Y-.1"
+        onClick={() =>{
+          let _machineInfo={...machineInfo,Y:Math.round((machineInfo.Y-0.1)*100)/100};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       -
+    </Button>
 
     
     <Button
@@ -1581,7 +1611,6 @@ export function CNC_UI({UI_INSP_Count=false})
         }}>
        Y-
     </Button>
-
     
     <Button
         key="Y+10"
@@ -1606,6 +1635,32 @@ export function CNC_UI({UI_INSP_Count=false})
         }}>
        Y-10
     </Button>
+
+    <br/>
+    <Button
+        key="Y-SP"
+        onClick={() =>{
+          
+          let _machineInfo={...machineInfo,Y:Math.round((machineInfo.Y-nozzelDist)*100)/100};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       Y-SP
+    </Button>
+    <Button
+        key="Y+SP"
+        onClick={() =>{
+          
+          let _machineInfo={...machineInfo,Y:Math.round((machineInfo.Y+nozzelDist)*100)/100};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       Y+SP
+    </Button>
+
+    
     {"          "}
     <Button
         key="Z1_+"
