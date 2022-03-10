@@ -53,3 +53,4 @@ Peripheral/MStepper/.pio/
 InspectionCore/CoreHub/visSele
 InspectionCore/Core0_1/B3_1.hydef
 InspectionCore/Core0_1/visSele_bk
+InspectionCore/contrib/simple_uart/test/simple_uart_test
