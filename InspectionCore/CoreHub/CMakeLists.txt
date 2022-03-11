@@ -105,7 +105,7 @@ if($ENV{FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK} EQUAL 1)
   
 endif()
 
-add_executable (visSele main.cpp Ext_Util_API.cpp tmpCodes.cpp wiringPanel.cpp)
+add_executable (visSele main.cpp tmpCodes.cpp wiringPanel.cpp)
 
 add_dependencies(visSele mod_target MatchingEngine shape_based_matching)
 
@@ -124,6 +124,7 @@ target_link_libraries(visSele
   $ENV{MODULE_mjpegLib}/mjpegLib.a 
   $ENV{MODULE_MJPEG_Streamer}/MJPEG_Streamer.a
   $ENV{MODULE_BPG_Protocol}/BPG_Protocol.a
+  $ENV{MODULE_simple_uart}/simple_uart.a
 
   $ENV{MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
@@ -155,6 +156,7 @@ include_directories (
   $ENV{MODULE_mjpegLib}/include
   $ENV{MODULE_MJPEG_Streamer}/include
   $ENV{MODULE_BPG_Protocol}/include 
+  $ENV{MODULE_simple_uart}/include
   $ENV{MODULE_smem_channel}
   $ENV{MODULE_wfqueue}
   $ENV{MODULE_lodepng}

@@ -41,6 +41,7 @@ struct MSTP_segment
   xVec to;
   xVec runvec;
   int main_axis_idx;
+  int virtual_axis_idx;
   uint32_t steps;
   uint32_t cur_step;
   float JunctionNormCoeff;
@@ -53,6 +54,7 @@ struct MSTP_segment
 
 struct MSTP_axisSetup
 {
+  float VirtualStep;//it's the effect multiplier that 
   float AccW;
   float MaxSpeedJumpW;
   // float maxSpeedInc;
