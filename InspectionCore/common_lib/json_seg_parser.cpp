@@ -62,7 +62,7 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
       }
       else
       {
-        return RESULT::ERROR;
+        return RESULT::ERROR_SEC;
       }
 
     }
@@ -79,7 +79,7 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
       }
       else
       {
-        return RESULT::ERROR;
+        return RESULT::ERROR_SEC;
       }
     }
 
@@ -104,7 +104,7 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
       }
       else 
       {
-        return RESULT::ERROR;
+        return RESULT::ERROR_SEC;
       }
     break;
     case DAT:
@@ -167,7 +167,7 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
       }
       else
       {
-        return RESULT::ERROR;
+        return RESULT::ERROR_SEC;
       }
 
     break;
@@ -189,7 +189,7 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
       }
       else
       {
-        return RESULT::ERROR;
+        return RESULT::ERROR_SEC;
       }
     break;
     case STR:
@@ -215,7 +215,7 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
         }
         else
         {//shouldn't be here
-          return RESULT::ERROR;
+          return RESULT::ERROR_SEC;
         }
       }
       else if(ch==']')
@@ -227,7 +227,7 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
         }
         else
         {//shouldn't be here
-          return RESULT::ERROR;
+          return RESULT::ERROR_SEC;
         }
       }
       else if(ch==',')
@@ -249,7 +249,7 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
         }
         else
         {
-          return RESULT::ERROR;
+          return RESULT::ERROR_SEC;
         }
       }
       else
@@ -262,7 +262,7 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
     break;
   }
 
-  return RESULT::ERROR;
+  return RESULT::ERROR_SEC;
 }
 
 

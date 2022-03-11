@@ -61,7 +61,7 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
     INIT,
     JSON,
     JSONRAW,
-    ERROR,
+    ERROR_SEC,
 
   };
   
