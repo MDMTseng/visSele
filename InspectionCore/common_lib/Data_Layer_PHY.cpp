@@ -348,6 +348,7 @@ int Data_UART_Layer::close()
   }
   printf("Data_Layer_IF::close\n");
   Data_Layer_IF::close();
+  return 0;
 }
 Data_UART_Layer::~Data_UART_Layer()
 {

@@ -51,10 +51,9 @@ class json_seg_parser
       STR_START=10,
       STR_END,
 
-      ERROR=-1000,
+      ERROR_SEC=-1000,
     };
 
-    const int ERROR_CODE=-10000;
     json_seg_parser();
     virtual void reset();
     virtual RESULT newChar(char ch);

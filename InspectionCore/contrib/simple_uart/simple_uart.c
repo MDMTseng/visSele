@@ -72,24 +72,29 @@ int simple_uart_read(struct simple_uart *sc, void *buffer, int max_len)
 
 int simple_uart_read_timed(struct simple_uart *sc, void *buffer, int max_len,int wait_ms)
 {
+    
+    int r;
 #ifdef WIN32
     COMMTIMEOUTS commTimeout;
+    int singleReadTime=30;//TODO: CPU consuming set timeout properly
 
     /* Get the comm timouts */
     if (GetCommTimeouts(sc->port, &commTimeout)) {
         /* Set the timeout to return immediately with whatever data is there */
         commTimeout.ReadIntervalTimeout = MAXDWORD;
         commTimeout.ReadTotalTimeoutMultiplier = MAXDWORD;
-        commTimeout.ReadTotalTimeoutConstant = 1;
+        commTimeout.ReadTotalTimeoutConstant = singleReadTime;
         SetCommTimeouts(sc->port, &commTimeout);
     }
-
-    if (!ReadFile (sc->port, buffer, max_len, (LPDWORD)&r, NULL) != 0)
-        return -GetLastError();
+    for(int totalReadTime=0;totalReadTime<wait_ms;totalReadTime+=singleReadTime)
+    {
+        if (!ReadFile (sc->port, buffer, max_len, (LPDWORD)&r, NULL) != 0)
+            return -GetLastError();
+        if(r!=0)break;
+    }
 #else
     fd_set readfds, exceptfds;
     struct timeval t;
-    int r;
 
     // Have a timeout of 50ms to avoid just thrashing the CPU
     FD_ZERO(&readfds);
@@ -379,7 +384,7 @@ struct simple_uart *simple_uart_open(const char *device, int speed, const char *
     port = CreateFile (full_port_name, mode, 0, NULL, OPEN_EXISTING, 0, NULL);
     if (port == INVALID_HANDLE_VALUE)
         return NULL;
-    retval = calloc(sizeof(struct simple_uart), 1);
+    retval = (struct simple_uart*)calloc(sizeof(struct simple_uart), 1);
     retval->port = port;
 #else
     int fd;
@@ -494,11 +499,11 @@ int simple_uart_list(char ***namesp, char ***descriptionp)
         char target[255];
         sprintf(buffer, "COM%d", i + 1);
         if (QueryDosDevice(buffer, target, sizeof(target)) > 0) {
-            char **new_names = realloc(names, (pos + 1) * sizeof (char *));
+            char **new_names = (char**)realloc(names, (pos + 1) * sizeof (char *));
             if (!new_names)
                 continue;
             names = new_names;
-            names[pos] = malloc(strlen (buffer) + 1);
+            names[pos] = (char*)malloc(strlen (buffer) + 1);
             strcpy(names[pos], buffer);
             pos++;
         }
@@ -583,7 +588,7 @@ int simple_uart_send_break(struct simple_uart *uart)
     SetCommBreak(uart->port);
     // Linux doesn't support durations, it is always 4/10 of a second.
     // Replicate that here.
-    msleep(400);
+    usleep(400*1000);
     ClearCommBreak(uart->port);
     return 0;
 #endif
@@ -632,7 +637,7 @@ int simple_uart_get_pin(struct simple_uart *uart, int pin)
     case SIMPLE_UART_DSR:
         return (status & MS_DSR_ON) ? 1 : 0;
     case SIMPLE_UART_DCD:
-        return (status & MS_RSLD_ON) ? 1 : 0;
+        return (status & MS_RLSD_ON) ? 1 : 0;
     case SIMPLE_UART_RI:
         return (status & MS_RING_ON) ? 1 : 0;
     default:

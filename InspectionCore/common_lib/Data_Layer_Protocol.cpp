@@ -176,7 +176,7 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
       }
       else
       {
-        recvType=RTYPE::ERROR;
+        recvType=RTYPE::ERROR_SEC;
         errorCode=ERROR_TYPE::INIT_CHAR_ERROR;
         recv_ERROR(errorCode);
       }
@@ -196,14 +196,14 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
 
       if(buffIdx==sizeof(dataBuff))
       {
-        recvType=RTYPE::ERROR;//full and enter error clean state
+        recvType=RTYPE::ERROR_SEC;//full and enter error clean state
         errorCode=ERROR_TYPE::RECV_BUFFER_FULL;
         recv_ERROR(errorCode);
       }
-      // if(recvType==RTYPE::JSON && buffIdx>100)recvType=RTYPE::ERROR;//long json is error~
+      // if(recvType==RTYPE::JSON && buffIdx>100)recvType=RTYPE::ERROR_SEC;//long json is error~
       switch(recvType)
       {
-        case RTYPE::ERROR:{
+        case RTYPE::ERROR_SEC:{
           //init
           const int RESET_PACKET_SIZE=(sizeof(RESET_PACKET)-1);
           if(buffIdx>=RESET_PACKET_SIZE)//buff filled with enough data
@@ -293,10 +293,10 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
         
         case RTYPE::JSON:{
           json_seg_parser::RESULT stat=jsegp.newChar(c);
-          if(stat<=json_seg_parser::RESULT::ERROR)
+          if(stat<=json_seg_parser::RESULT::ERROR_SEC)
           {
             // printf("jsegp.ERROR_CODE\n");
-            recvType=RTYPE::ERROR;
+            recvType=RTYPE::ERROR_SEC;
             errorCode=ERROR_TYPE::JSON_FORMAT_ERROR;
             recv_ERROR(errorCode);
             break;
@@ -392,7 +392,7 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
             if((headerLen+dataLen)>sizeof(dataBuff))
             {
               //TODO: ERROR, oversize
-              recvType=RTYPE::ERROR;
+              recvType=RTYPE::ERROR_SEC;
               
               errorCode=ERROR_TYPE::RAW_DATA_OVERSIZE;
               recv_ERROR(errorCode);
@@ -433,7 +433,7 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
             else
             {
               // printf("CRC miss match:tar_crc:%X  calc_crc:%X \n",targ_crc,calc_crc);
-              recvType=RTYPE::ERROR;
+              recvType=RTYPE::ERROR_SEC;
               errorCode=ERROR_TYPE::RAW_CRC_ERROR;
               recv_ERROR(errorCode);
               break;
@@ -824,7 +824,7 @@ int Data_JsonRaw_Layer::send_printf(uint8_t* buf, int bufL, bool directStringFor
 //       // printf("r:%d  >>> %c\n",res,JSONStr[i]);
 
 
-//       if(res>json_seg_parser::RESULT::ERROR)
+//       if(res>json_seg_parser::RESULT::ERROR_SEC)
 //       {
 //         if(res==json_seg_parser::RESULT::OBJECT_START||
 //           res==json_seg_parser::RESULT::ARRAY_START)
