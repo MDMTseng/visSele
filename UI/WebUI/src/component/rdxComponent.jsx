@@ -1,5 +1,5 @@
 import { connect } from 'react-redux'
-import React , { useState,useEffect } from 'react';
+import React , { useState,useEffect,useRef } from 'react';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import  Icon  from 'antd/lib/icon';
 import  Menu  from 'antd/lib/menu';
@@ -1076,4 +1076,667 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
         Set 10000
     </Button>
   </>
+}
+
+
+
+
+
+
+export function SLID_UI({UI_INSP_Count=false})
+{
+  
+  const dispatch = useDispatch();
+  
+  const DICT = useSelector(state => state.UIData.DICT);
+  const SLID_API_ID = useSelector(state => state.ConnInfo.SLID_API_ID);
+  
+  const SLID_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.SLID_API_ID_CONN_INFO);
+
+  const ACT_WS_GET_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(SLID_API_ID,callback));
+
+  let machineSetup=SLID_API_ID_CONN_INFO.machineSetup;
+
+  
+  return<>
+    <Button
+      icon={<BulbOutlined />}
+        key="Pin2_OUTPUT"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"mode":1},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+        pin2 OUTPUT
+    </Button>
+
+    
+    <Button
+        key="L_ON"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"output":1},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+        ON
+    </Button>
+
+    
+    <Button
+        key="L_OFF"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"output":0},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+       OFF
+    </Button>
+  
+    <br/>
+    <Button
+      icon={<SaveOutlined/>}
+      key="testbtn"
+      onClick={() => {
+
+        ACT_WS_GET_OBJ((api)=>{
+          api.machineSetupUpdate({pulse_sep_min:machineSetup.pulse_sep_min+1});
+        })
+      }}>SaveToFile</Button>
+
+
+    <Button
+      icon={<SaveOutlined/>}
+      key="SaveToFile"
+      onClick={() => {
+        ACT_WS_GET_OBJ((api)=>{
+          api.saveMachineSetupIntoFile();
+        })
+      }}>SaveToFile</Button>
+      
+    <pre>{JSON.stringify(machineSetup,null,2)}</pre>
+  </>
+  // useEffect(()=>{
+  // },[])  
+}
+
+let Z1_NLim=-110;//-119;
+let Z1_PLim=112;//132-2;
+let nozzelDist=31;
+
+function pickOnGCodeArr(headIndex, pos_mm, speed_mmps,  pickPin_suck, pickPin_blow,pickup=true)
+{
+  let GCODE_Arr=[];
+
+  let headPoseDown=0;
+  if(headIndex==1)
+  {
+    pos_mm-=15;
+    headPoseDown=Z1_PLim;
+  }
+  else if(headIndex==0)
+  {
+    pos_mm+=15;
+    headPoseDown=Z1_NLim;
+  }
+  else
+    return GCODE_Arr;
+
+
+  GCODE_Arr.push("G01 Y"+pos_mm+" Z1_0 F"+speed_mmps);
+  let pinPreTrigger=60;//early pick
+  if(pickup==false)
+  {
+    pinPreTrigger=80;
+  }
+  //less means earlier
+
+    
+  GCODE_Arr.push("G01 Z1_"+headPoseDown*pinPreTrigger/100);
+  GCODE_Arr.push("M42 P"+pickPin_suck+" S"+(pickup?1:0) );
+  GCODE_Arr.push("M42 P"+pickPin_blow+" S"+(pickup?0:1) );
+  GCODE_Arr.push("G01 Z1_"+headPoseDown);
+  let pinKeepDelay_ms=10;
+  GCODE_Arr.push("G04 P"+pinKeepDelay_ms);
+  GCODE_Arr.push("G01 Z1_0");
+
+  return GCODE_Arr;
+
+}
+
+
+
+
+function pickOnGCodeArrV2(headIndex, pos_mm, speed_mmps,  pickPin_suck, pickPin_blow,pickup=true,prelocating=false,locatingSpeed=NaN,locatingAcc=NaN)
+{
+  let GCODE_Arr=[];
+
+  let headPoseDown=0;
+  if(headIndex==1)
+  {
+    pos_mm-=nozzelDist;
+    headPoseDown=Z1_PLim;
+  }
+  else if(headIndex==0)
+  {
+    pos_mm+=0;
+    headPoseDown=Z1_NLim;
+  }
+  else
+    return GCODE_Arr;
+
+  let pinPreTrigger=60;//early pick
+  if(pickup==false)
+  {
+    pinPreTrigger=80;
+  }
+  //less means earlier
+
+
+  if(locatingSpeed!=locatingSpeed)locatingSpeed=speed_mmps;
+  let locatingSpeed_CodeP=" F"+locatingSpeed.toFixed(2);
+  let locatingAcc_CodeP=(locatingAcc==locatingAcc)?" ACC"+(locatingAcc*0.8).toFixed(2)+" DEA-"+locatingAcc.toFixed(2):"";
+  
+
+  pos_mm=pos_mm.toFixed(2);
+  if(prelocating)
+  {
+    GCODE_Arr.push("G01 Y"+pos_mm+" Z1_"+(headPoseDown*pinPreTrigger/100).toFixed(2)+locatingSpeed_CodeP+locatingAcc_CodeP);  
+  }
+  else
+  {
+    GCODE_Arr.push("G01 Y"+pos_mm+" Z1_"+0+locatingSpeed_CodeP+locatingAcc_CodeP);
+    GCODE_Arr.push("G04 P"+0);
+    GCODE_Arr.push("G01 Z1_"+(headPoseDown*pinPreTrigger/100).toFixed(2)+" F"+speed_mmps);  
+  }
+
+
+
+
+    
+  GCODE_Arr.push("M42 P"+pickPin_suck+" S"+(pickup?1:0) );
+  // GCODE_Arr.push("M42 P"+pickPin_blow+" S"+(pickup?0:1) );
+  GCODE_Arr.push("G01 Z1_"+headPoseDown+" F"+speed_mmps);
+  let pinKeepDelay_ms=10;
+  GCODE_Arr.push("G04 P"+pinKeepDelay_ms);
+  // GCODE_Arr.push("M42 P"+pickPin_blow+" S0" );
+  if(pickup)
+    GCODE_Arr.push("G01 Z1_0"+" F"+speed_mmps+" ACC"+(locatingAcc*0.3).toFixed(2));//slow accleration pick up
+  else 
+    GCODE_Arr.push("G01 Z1_0"+" F"+speed_mmps);
+
+
+  return GCODE_Arr;
+
+}
+
+
+
+function TESTGCODE1()
+{
+
+  let GCODE_Arr=[];
+  let pos_mm=30;
+  let posZ1_pul=30;
+  let speed=350;
+
+  // GCODE_Arr.push("G01 Y"+pos_mm+" Z1_"+posZ1_pul+" F"+speed);
+
+  let i=0;
+  let acc=1500;
+  let segCount=400;
+  for(i=0;i<segCount;i++)
+  {
+    let theta=7*2*Math.PI*i/segCount;
+    
+    GCODE_Arr.push(
+    "G01 Y"+(pos_mm+100*i/segCount).toFixed(3)+
+    " Z1_"+(97*   Math.pow(    Math.cos(theta) ,3  )   ).toFixed(3)+" F"+speed+" ACC"+acc+ " DEA-"+acc);
+
+  }
+
+
+  
+  for(i=0;i<segCount;i++)
+  {
+    let theta=7*2*Math.PI*i/segCount;
+    
+    GCODE_Arr.push(
+    "G01 Y"+(pos_mm+100*(segCount-1-i)/segCount).toFixed(3)+
+    " Z1_"+(97*   Math.pow(    Math.cos(theta) ,3  )   ).toFixed(3)+" F"+speed+" ACC"+acc+ " DEA-"+acc);
+
+  }
+
+
+  return GCODE_Arr;
+
+}
+
+
+
+export function CNC_UI({UI_INSP_Count=false})
+{
+  
+  let _cur = useRef({isSendWaiting:false,gcodeSeq:[],
+  
+  
+  });
+  let _this=_cur.current;
+
+  const dispatch = useDispatch();
+  
+  const DICT = useSelector(state => state.UIData.DICT);
+  const CNC_API_ID = useSelector(state => state.ConnInfo.CNC_API_ID);
+  
+  const CNC_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.CNC_API_ID_CONN_INFO);
+
+  const ACT_WS_GET_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(CNC_API_ID,callback));
+
+  let PIN_OUT=[ 25,26,32,33];
+
+  const [machineInfo, setMachineInfo] = useState({
+    Y:0,Z1_:0,
+    P0:false,
+    P1:false,
+    P2:false,
+    P3:false,
+  });
+  let machineSetup=CNC_API_ID_CONN_INFO.machineSetup;
+
+  function pushInSendGCodeQ()
+  {
+    if(_this.isSendWaiting==true || _this.gcodeSeq.length==0)
+    {
+      return;
+    }
+    const gcode = _this.gcodeSeq.shift();
+    if(gcode==undefined || gcode==null)return;
+    _this.isSendWaiting=true;
+    ACT_WS_GET_OBJ((api)=>{
+      api.send({"type":"GCODE","code":gcode},
+      (ret)=>{
+        console.log(ret);
+        _this.isSendWaiting=false;
+        pushInSendGCodeQ(_this.gcodeSeq);
+
+      },(e)=>console.log(e));
+    })
+  }
+
+
+  return<>
+    <Button
+      icon={<BulbOutlined />}
+        key="Pin2_OUTPUT"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"mode":1},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+        pin2 OUTPUT
+    </Button>
+
+    
+    <Button
+        key="L_ON"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"output":1},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+        ON
+    </Button>
+
+    
+    <Button
+        key="L_OFF"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"PIN_CONF","pin":2,"output":0},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+       OFF
+    </Button>
+  
+    <br/>
+    <Button
+      icon={<SaveOutlined/>}
+      key="testbtn"
+      onClick={() => {
+
+        ACT_WS_GET_OBJ((api)=>{
+          api.machineSetupUpdate({pulse_sep_min:machineSetup.pulse_sep_min+1});
+        })
+      }}>SaveToFile</Button>
+
+
+    <Button
+      icon={<SaveOutlined/>}
+      key="SaveToFile"
+      onClick={() => {
+        ACT_WS_GET_OBJ((api)=>{
+          api.saveMachineSetupIntoFile();
+        })
+      }}>SaveToFile</Button>
+      
+    <pre>{JSON.stringify(machineSetup,null,2)}</pre>
+
+
+
+    <Button
+        key="HOME"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"GCODE","code":"G28"},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+       HOME
+    </Button>
+
+    
+    <Button
+        key="TGo1"
+        onClick={() =>{
+
+          
+
+
+          let gcodeArr=[];
+          
+          _this.gcodeSeq.push("G90");//abs pos
+          gcodeArr = gcodeArr.concat(TESTGCODE1());
+          _this.gcodeSeq=_this.gcodeSeq.concat(gcodeArr);
+          pushInSendGCodeQ();
+        }}>
+       TGo1
+    </Button>
+    
+    <Button
+        key="Go1"
+        onClick={() =>{
+
+          
+
+
+
+          let hspeed=320;
+          let sspeed=300;
+
+          let pitch=4.9;
+          let gcodeArr=[];
+          
+          _this.gcodeSeq.push("G90");//abs pos
+          let i=0;
+          let pos=20;
+          gcodeArr = gcodeArr.concat(pickOnGCodeArr(0,pos+pitch*(i+0),sspeed, PIN_OUT[0],PIN_OUT[1],true));
+          _this.gcodeSeq=_this.gcodeSeq.concat(gcodeArr);
+          pushInSendGCodeQ();
+        }}>
+       Go1
+    </Button>
+    {"   "}
+    <Button
+        key="Go2"
+        onClick={() =>{
+
+          
+
+
+
+          let hspeed=330;
+          let sspeed=330;
+
+          hspeed=sspeed=20;
+          let pitch=49/10.0;
+          let gcodeArr=[];
+          
+          _this.gcodeSeq.push("G90");//abs pos
+          let i;
+          for(i=0;i<5;i++)
+          {
+            let pos=20;
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos+pitch*(i+5),sspeed, PIN_OUT[2],PIN_OUT[3],true));
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos+pitch*(i+0),sspeed, PIN_OUT[0],PIN_OUT[1],true));
+            // pos=200;
+            // gcodeArr = gcodeArr.concat(pickOnGCodeArr2(0,pos+pitch*0,hspeed, PIN_OUT[0],PIN_OUT[1],false));
+            // gcodeArr = gcodeArr.concat(pickOnGCodeArr2(1,pos+pitch*0,hspeed, PIN_OUT[2],PIN_OUT[3],false));
+  
+          }
+          _this.gcodeSeq=_this.gcodeSeq.concat(gcodeArr);
+          pushInSendGCodeQ();
+        }}>
+       Go2
+    </Button>
+    <Button
+        key="GoF"
+        onClick={() =>{
+
+          
+
+
+
+          let hspeed=300;
+          let sspeed=300;
+
+          let pitch=5.5;
+          let gcodeArr=[];
+          
+
+          let positionLocatingSpeed=300;
+          _this.gcodeSeq.push("G90");//abs pos
+          let i;
+          for(i=0;i<5;i++)
+          {
+            let pos=340.8;
+            let initSpeed=(i!=0)?positionLocatingSpeed:(positionLocatingSpeed*0.7);
+
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos+pitch*(i+5),sspeed, PIN_OUT[2],PIN_OUT[3],true,false,initSpeed,2000));
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos+pitch*(i+0),sspeed, PIN_OUT[0],PIN_OUT[1],true));
+            pos=152;
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos            ,hspeed, PIN_OUT[0],PIN_OUT[1],true,true,initSpeed,2000));
+            gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos            ,hspeed, PIN_OUT[2],PIN_OUT[3],true,true));
+            // pos=150;
+            pos=0;
+            // gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(0,pos,hspeed, PIN_OUT[0],PIN_OUT[1],false,true));
+            // gcodeArr = gcodeArr.concat(pickOnGCodeArrV2(1,pos,hspeed, PIN_OUT[2],PIN_OUT[3],false,true));
+            gcodeArr.push("G01 Y"+(pos-15.2).toFixed(2)+" F"+sspeed);
+
+            
+            gcodeArr.push("M42 P"+PIN_OUT[2]+" S0");
+            gcodeArr.push("M42 P"+PIN_OUT[0]+" S0");
+            gcodeArr.push("G04 P30");
+  
+          }
+          _this.gcodeSeq=_this.gcodeSeq.concat(gcodeArr);
+          pushInSendGCodeQ();
+        }}>
+       GoFull
+    </Button>
+
+
+    <pre>{JSON.stringify(machineInfo)}</pre>
+    <Button
+        key="Y+"
+        onClick={() =>{
+          let _machineInfo={...machineInfo,Y:machineInfo.Y+1};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       Y+
+    </Button>
+    <Button
+        key="Y+.1"
+        onClick={() =>{
+          let _machineInfo={...machineInfo,Y:Math.round((machineInfo.Y+0.1)*100)/100};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       +
+    </Button>
+    <Button
+        key="Y-.1"
+        onClick={() =>{
+          let _machineInfo={...machineInfo,Y:Math.round((machineInfo.Y-0.1)*100)/100};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       -
+    </Button>
+
+    
+    <Button
+        key="Y-"
+        onClick={() =>{
+          
+          let _machineInfo={...machineInfo,Y:machineInfo.Y-1};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       Y-
+    </Button>
+    
+    <Button
+        key="Y+10"
+        onClick={() =>{
+          let _machineInfo={...machineInfo,Y:machineInfo.Y+10};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+100);
+          pushInSendGCodeQ();
+        }}>
+       Y+10
+    </Button>
+
+    
+    <Button
+        key="Y-10"
+        onClick={() =>{
+          
+          let _machineInfo={...machineInfo,Y:machineInfo.Y-10};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+100);
+          pushInSendGCodeQ();
+        }}>
+       Y-10
+    </Button>
+
+    <br/>
+    <Button
+        key="Y-SP"
+        onClick={() =>{
+          
+          let _machineInfo={...machineInfo,Y:Math.round((machineInfo.Y-nozzelDist)*100)/100};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       Y-SP
+    </Button>
+    <Button
+        key="Y+SP"
+        onClick={() =>{
+          
+          let _machineInfo={...machineInfo,Y:Math.round((machineInfo.Y+nozzelDist)*100)/100};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Y"+_machineInfo.Y +" Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       Y+SP
+    </Button>
+
+    
+    {"          "}
+    <Button
+        key="Z1_+"
+        onClick={() =>{
+          let _machineInfo={...machineInfo,Z1_:machineInfo.Z1_+1};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       Z1_+
+    </Button>
+    <Button
+        key="Z1_-"
+        onClick={() =>{
+          let _machineInfo={...machineInfo,Z1_:machineInfo.Z1_-1};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       Z1_-
+    </Button>
+
+
+    <br/>
+    {[0,1,2,3].map(pidx=><Button
+        key={"P"+pidx}
+        onClick={() =>{
+          let pinIdx=pidx;
+          let PinKey="P"+pinIdx;
+          let _machineInfo={...machineInfo};
+          _machineInfo[PinKey]=!_machineInfo[PinKey];
+          setMachineInfo(_machineInfo);
+          let code = "M42 P"+PIN_OUT[pinIdx]+" S"+(_machineInfo[PinKey]?0:1);
+          console.log(code);
+          _this.gcodeSeq.push(code);
+          pushInSendGCodeQ();
+        }}>
+       P{pidx}
+    </Button>)}
+    
+
+    <br/>
+    <Button
+        key="Z1_PLim"
+        onClick={() =>{
+          let _machineInfo={...machineInfo,Z1_:Z1_PLim};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Z1_"+0+" F"+20);
+          _this.gcodeSeq.push("G04 P"+200);
+          _this.gcodeSeq.push("G01 Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       Z1_{Z1_PLim}
+    </Button>
+    <Button
+        key="Z1_Zero"
+        onClick={() =>{
+          let _machineInfo={...machineInfo,Z1_:0};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       Z1_0
+    </Button>
+    <Button
+        key="Z1_NLim"
+        onClick={() =>{
+          let _machineInfo={...machineInfo,Z1_:Z1_NLim};
+          setMachineInfo(_machineInfo);
+          _this.gcodeSeq.push("G01 Z1_"+0+" F"+20);
+          _this.gcodeSeq.push("G04 P"+200);
+          _this.gcodeSeq.push("G01 Z1_"+_machineInfo.Z1_+" F"+20);
+          pushInSendGCodeQ();
+        }}>
+       Z1_{Z1_NLim}
+    </Button>
+  </>
+
 }

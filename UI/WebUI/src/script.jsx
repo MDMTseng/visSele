@@ -7,7 +7,7 @@ import { Provider, connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
-import {UINSP_UI} from './component/rdxComponent.jsx';
+import {UINSP_UI,SLID_UI,CNC_UI} from './component/rdxComponent.jsx';
 
 import {GetDefaultSystemSetting} from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
@@ -201,9 +201,10 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     [DICT._.camera, ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
     ["設定資料庫",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
     ["檢測資料庫",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
-    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined],
+    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined||ConnInfo.CNC_API_ID_CONN_INFO!==undefined],//seg line
     ["全檢設備",       ConnInfo.uInsp_API_ID_CONN_INFO,   <RobotOutlined />,false],
     ["坡檢設備",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
+    ["CNC設備",       ConnInfo.CNC_API_ID_CONN_INFO,    <RobotOutlined />,false],
     ]
     .filter(([textName, conn_info, icon,froceAppear])=> (froceAppear|| conn_info!==undefined) && !(showText && textName===undefined))
     .map(([textName, conn_info, icon,froceAppear],idx)=>{
@@ -279,6 +280,14 @@ class APPMasterX extends React.Component {
       CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
       CORE_ID_CONN_INFO:state.ConnInfo.CORE_ID_CONN_INFO,
       uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
+      SLID_API_ID:state.ConnInfo.SLID_API_ID,
+      SLID_API_ID_CONN_INFO:state.ConnInfo.SLID_API_ID_CONN_INFO,
+
+
+      CNC_API_ID:state.ConnInfo.CNC_API_ID,
+      CNC_API_ID_CONN_INFO:state.ConnInfo.CNC_API_ID_CONN_INFO,
+
+
       Platform_API_ID:state.ConnInfo.Platform_API_ID,
 
       System_Setting:state.UIData.System_Setting,
@@ -731,6 +740,31 @@ class APPMasterX extends React.Component {
                     }
 
 
+                    if(info.SLID_peripheral_conn_info!==undefined)
+                    {
+
+                      comp.props.ACT_WS_GET_OBJ(comp.props.SLID_API_ID, (obj)=>{
+                        obj.connect( info.SLID_peripheral_conn_info);
+                      })
+                    }
+                    else
+                    {
+                      console.log("No SLID_peripheral_conn_info:{url:xxxx}");
+                    }
+
+
+                    if(info.CNC_peripheral_conn_info!==undefined)
+                    {
+
+                      comp.props.ACT_WS_GET_OBJ(comp.props.CNC_API_ID, (obj)=>{
+                        obj.connect( info.CNC_peripheral_conn_info);
+                      })
+                    }
+                    else
+                    {
+                      console.log("No CNC_peripheral_conn_info:{url:xxxx}");
+                    }
+
 
 
                     if(info.platform_api_conn_info!==undefined)
@@ -918,7 +952,7 @@ class APPMasterX extends React.Component {
           delete info.data["_PGINFO_"];
         }
         if (PGID === undefined) {
-          let maxNum=10;
+          let maxNum=500;
           PGID = this.pgIDCounter++;
           
           if(this.pgIDCounter>maxNum)
@@ -1499,6 +1533,308 @@ class APPMasterX extends React.Component {
 
 
 
+    class  GenPerif_API
+    {
+
+      cleanUpTrackingWindow()
+      {
+        let keyList = Object.keys(this.trackingWindow);
+        keyList.forEach(key=>{
+          let reject = this.trackingWindow[key].reject;
+          if(reject !==undefined)
+          {
+            reject("CONNECTION ERROR");
+          }
+          delete this.trackingWindow[key]
+        })
+      }
+
+      cleanUpConnection()
+      {
+        this.cleanUpTrackingWindow();
+        
+      }
+
+      
+      saveMachineSetupIntoFile(filename = this.settingFilePath)
+      {
+        
+        let act = comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"SV", 0,
+          { filename: filename },
+          new TextEncoder().encode(JSON.stringify(this.machineSetup, null, 4)),
+          {
+            resolve:(res)=>{
+              console.log(res);
+            }, 
+            reject:(res)=>{
+              console.log(res);
+            }, 
+          }
+        )
+      }
+
+      
+
+      LoadFileToMachine(filename = this.settingFilePath) {
+        new Promise((resolve, reject) => {
+
+          log.info("LoadSettingToMachine step2");
+          comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"LD", 0,
+            { filename },
+            undefined, { resolve, reject }
+          );
+          setTimeout(() => reject("Timeout"), 1000)
+        }).then((pkts) => {
+
+          log.info("LoadSettingToMachine>> step3", pkts);
+          if (pkts[0].type != "FL")
+          {
+            return;
+          }
+          let machInfo = pkts[0].data;
+          
+          this.machineSetupUpdate(machInfo,true);
+        }).catch((err) => {
+
+          log.info("LoadSettingToMachine>> step3-error", err);
+        })
+      }
+
+      machineSetupUpdate(newMachineInfo,doReplace=false)
+      {
+
+        this.machineSetup=doReplace==true?newMachineInfo:{...this.machineSetup,...newMachineInfo};
+        // console.log(this.machineSetup);
+        StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineSetup:this.machineSetup});
+        this.send({type:"set_setup",...newMachineInfo},
+        (ret)=>{
+          console.log("<<<<<<*************>>>>>>",ret);
+          //HACK: just assume it will work
+          // this.machineSetup={...this.machineSetup,...newMachineInfo};
+          // console.log(ret);
+        },(e)=>console.log(e));
+      }
+      
+      machineSetupReSync() {
+        console.log("*************");
+        this.send({type:"get_setup"},
+        (ret)=>{
+          if(ret["ack"]!=true)
+          {
+            console.log("get setup failed:",ret);
+            return;
+          }
+          delete ret["type"];
+          delete ret["id"];
+          delete ret["st"];
+          delete ret["ack"];
+          this.machineSetup=ret;
+          this.machineSetupUpdate(this.machineSetup,true);
+        },(e)=>console.log(e));
+      }
+
+      connect(connInfo)
+      {
+        if(this.inReconnection==true)
+        {//still in reconnection state, return
+          return false;
+        }
+        
+        StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:undefined});
+        this.connInfo=connInfo;
+        this.inReconnection=true;
+        this.LoadFileToMachine();
+        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, {type:"CONNECT",...connInfo, _PGID_: this.pg_id_channel, _PGINFO_: { keep: true }},undefined,
+        {
+          resolve: (stacked_pkts,action_channal) => {
+            let PD=stacked_pkts.find(pkt=>pkt.type=="PD");
+            this.inReconnection=false;
+            if(PD!==undefined)
+            {
+              let PD_data=PD.data;
+              switch(PD_data.type)
+              {
+                case "MESSAGE":
+                {
+                  let CONN_ID = PD_data.CONN_ID;
+                  let msg = PD_data.msg;
+                  let msg_id = msg!==undefined? msg.id:undefined;
+                  let trwin=this.trackingWindow[msg_id];
+                  if(trwin!==undefined)
+                  {
+                    if(trwin.resolve!==undefined)
+                      trwin.resolve(msg);
+                    delete this.trackingWindow[msg_id];
+                  }
+                }
+                  break;
+                case "DISCONNECT":
+                  this.CONN_ID=undefined;
+                  this.cleanUpConnection();
+                  StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:PD});
+                  break;
+                case "CONNECT":
+                  this.CONN_ID=PD_data.CONN_ID;
+                  StoreX.dispatch({type:"WS_CONNECTED",id:this.id,data:PD});
+
+                  if(this.machineSetup!==undefined)
+                  {
+                    // this.default_pulse_hz = machInfo.pulse_hz;
+                    this.send({type:"set_setup",...this.machineSetup},
+                    (ret)=>{
+                      this.machineSetupReSync();
+                      
+                    },(e)=>console.log(e));
+                  }
+                  else
+                  {
+                    this.machineSetupReSync();
+                  }
+                  
+                  break;
+              }
+            }
+          },
+          reject:(e)=>{
+            this.CONN_ID=undefined;
+            this.inReconnection=false;
+            this.cleanUpConnection();
+            console.log(e);
+            StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:undefined});
+            
+          }
+        });
+      }
+
+      constructor(id,settingFilePath,pg_id_channel=10025)
+      {
+        this.settingFilePath=settingFilePath;
+        this.CONN_ID=undefined;
+        this.pg_id_channel=pg_id_channel;
+        this.id=id;
+        this.connInfo=undefined;
+        this.inReconnection=false;
+        this.checkReconnectionInterval=setInterval(()=>this.checkReConnection(),3000);//watch dog to do reconnection
+        this.runPINGInterval=setInterval(()=>this._sendPing(),3000);//watch dog to do reconnection
+
+        this.trackingWindow={};
+        this.idCounter=10;
+        this.PINGCount=0;
+
+        this.machineInfo=undefined;
+
+        
+      } 
+      checkReConnection()
+      {
+        // console.log(this.connInfo,this.connected,this.inReconnection);
+        if(this.connInfo===undefined ||this.CONN_ID!==undefined || this.inReconnection==true)
+        {
+          return;
+        }
+        this.connect(this.connInfo);
+        // this.checkReconnectionTimeout=setTimeout(,);
+      }
+
+      getMachineSetup()
+      {
+        return this.machineSetup;
+      }
+
+      findAvailableID()
+      {
+        let id=this.idCounter;
+        while(this.trackingWindow[id]!==undefined)
+        {
+          this.idCounter++;
+          if(this.idCounter>999999)
+          {
+            this.idCounter=0;
+          }
+          id=this.idCounter;
+        }
+        return id;
+      }
+      
+      _sendPing()
+      {
+        if(this.CONN_ID===undefined)return ;
+
+
+        if(this.PINGCount>=2)
+        {
+          //time to disconnect
+          this.PINGCount=0;
+          
+          this.connect(this.connInfo);
+          return;
+        }
+        this.PINGCount++;
+        // console.log(this.CONN_ID);
+
+        this.triggerPing();
+        // this.machineSetupUpdate({pulse_hz:0});
+      }
+      triggerPing()
+      {
+        
+        this.send({type:"PING"},(ret)=>{
+          console.log(ret);
+          delete ret["type"]
+          delete ret["id"]
+          delete ret["st"]
+          let machineStatus={...ret};
+          let res_count=machineStatus.res_count||{OK:0,NG:0,NA:0};
+
+          let currentTime_ms=new Date().getTime();
+
+          this.PINGCount=0;
+        },errorInfo=>console.log(errorInfo));
+
+      }
+      send(data,resolve,reject)
+      {
+        if(this.CONN_ID===undefined)
+        {
+          reject("CONN ID is not set");
+          return ;
+        }
+
+
+        if(data.id!==undefined )
+        {
+          if(this.trackingWindow[data.id]!==undefined)
+            reject(`ID ${data.id} collision`);
+        }
+        else
+        {
+          data.id=this.findAvailableID();
+        }
+        this.trackingWindow[data.id]={resolve,reject};
+
+        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, //just send
+        {
+          msg:data,
+          CONN_ID:this.CONN_ID,
+          type:"MESSAGE"
+        },undefined, {
+          resolve:d=>d,
+          reject:d=>console.log(d)
+        });
+        
+
+
+      }
+      
+    }
+    this.props.ACT_WS_REGISTER(this.props.SLID_API_ID, new GenPerif_API(this.props.SLID_API_ID,"data/SLID_Setting.json",10025));
+
+
+
+    this.props.ACT_WS_REGISTER(this.props.CNC_API_ID, new GenPerif_API(this.props.CNC_API_ID,"data/CNC_Setting.json",10026));
+
+
+    
 
     class  Platform_API
     {
@@ -1752,6 +2088,40 @@ class APPMasterX extends React.Component {
                       
                       </>,
                       title:"uInsp_API",
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
+                  break;
+                }
+                
+                case this.props.SLID_API_ID:
+                {
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=><>
+                      <SLID_UI/><br/>
+                      </>
+                      ,
+                      title:"SLID_API",
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
+                  break;
+                }
+                
+                case this.props.CNC_API_ID:
+                {
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=><>
+                      <CNC_UI/><br/>
+                      </>
+                      ,
+                      title:"CNC_API",
                       onCancel:()=>this.setState({modal_view:undefined}),
                       onOk:()=>this.setState({modal_view:undefined}),
                       footer:null

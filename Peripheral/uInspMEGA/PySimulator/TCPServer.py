@@ -163,7 +163,6 @@ while True:
 
         # Else existing socket is sending a message
         else:
-
             # Receive message
             message = notified_socket.recv(999);
             
@@ -187,6 +186,7 @@ while True:
             segIdxes=[-1]
             isInString=False
             pCounter=1
+            st=-1
             for idx in range(1, len(message)):
               
               # print(message[idx])
@@ -231,6 +231,7 @@ while True:
 
 
               if msg_type == "inspRep":
+                st=0
                 _id=None
                 if jmsg["status"]==0:
                   if(OK_LIMIT_CD!=0):
@@ -277,11 +278,49 @@ while True:
                   }
               elif msg_type == "error_clear":
                 machState["error_codes"]=[]
+
+
+              if(True):
+                if msg_type == "protocol_JsonRaw":
+                  st=0
+
+
+
+
                 
+              retMsg["st"]=st
               if _id is not None:
                 retMsg["id"]=_id
-                print("<<",retMsg)
-                notified_socket.send(json.dumps(retMsg).encode("utf-8"))
+                # print("<<",retMsg)
+                
+                # retMsg["obj"]={'a':4}
+                # retMsg["rawL"]=4
+                if False:
+                  
+                  xs =bytearray("kjadnkafnanfio;ajwfoiasdofn;lasdkfn;lasdfnioawejfoiawejfiojdsfo".encode("utf-8"))
+                  xs=xs+xs+xs+xs
+                  header=bytearray([1,1])
+                  # header_lenfield
+                  dataLen=len(xs)
+                  if(dataLen<=125):
+                    header=header+bytearray([dataLen])
+                  elif(dataLen<=65535):
+                    header=header+bytearray([126,dataLen//256,dataLen%256])
+                    # header=header+bytearray([127,0,0,0,0,  0,0,dataLen//256,dataLen%256])
+
+                  
+
+
+                  print(header)
+                  xs=header+xs;
+                  pass
+                else:
+                  xs = bytearray(json.dumps(retMsg).encode("utf-8"))
+                # xs.append(100)
+                # xs.append(1)
+                # xs.append(122)
+                notified_socket.send(xs)
+
               # print(f'Received message from {user["data"].decode("utf-8")}: {message["data"].decode("utf-8")}')
 
             # Iterate over connected clients and broadcast message

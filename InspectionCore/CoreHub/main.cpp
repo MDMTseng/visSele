@@ -3,13 +3,12 @@
 #include <main.h>
 #include "tmpCodes.hpp"
 #include "polyfit.h"
-#include "acvImage_BasicTool.hpp"
-#include "SBM_if.hpp"
-#include <UTIL.hpp>
 
-using namespace std;
-using namespace cv;
-SBM_if sbmif;
+#include "cJSON.h"
+
+#include "Data_Layer_Protocol.hpp"
+#include "Data_Layer_PHY.hpp"
+#include "CameraLayerManager.hpp"
 
 float randomGen(float from=0,float to=1)
 {
@@ -72,144 +71,109 @@ int_fast32_t testPolyFit()
   return 0;
 }
 
-int testDistance()
+CameraLayer::status CameraLayer_Callback_CAM1(CameraLayer &cl_obj, int type, void *context)
 {
-  float errorSum=0;
-  for(int i=0;i<100;i++)
+  
+  LOGI("type:%d\n",type);
+  return CameraLayer::status::ACK;
+}
+
+
+CameraLayer::status CameraLayer_Callback_CAM2(CameraLayer &cl_obj, int type, void *context)
+{
+  
+  LOGI("type:%d\n",type);
+  return CameraLayer::status::ACK;
+}
+
+
+void camLyerTest()
+{
+  CameraLayerManager clm;
+  clm.discover();
+  printf("cam:\n%s\n",clm.genJsonStringList().c_str());
+  CameraLayer *camLayer=clm.connectCamera(0,0,"",CameraLayer_Callback_CAM1,NULL);
+  CameraLayer *camLayer2=clm.connectCamera(0,1,"",CameraLayer_Callback_CAM2,NULL);
+  // CameraLayer *camLayer=clm.connectCamera(1,0,"data/BMP_carousel_test",CameraLayer_Callback_XXX,NULL);
+
+  if(camLayer!=NULL)
   {
-    
-    acv_Line line={
-      .line_vec=(acv_XY){randomGen(-100,100),randomGen(-100,100)},
-      .line_anchor=(acv_XY){randomGen(-100,100),randomGen(-100,100)},
-    };
+    printf("connected:\n%s\n",camLayer->getCameraJsonInfo().c_str());
+  }
+  else
+  {
+    printf("connect failed\n");
+    return 0;
+  }
+  // camLayer->TriggerMode(1);
+  // printf("WAIT for image trigger~\n");
+  // for(int i=0;i<2;i++)
+  // {
+  //   camLayer->Trigger();
+  //   sleep(1);
+  // }
 
-    float tarDist=randomGen(-100,100);
-    float tarSlide=randomGen(-100,100);
 
-    acv_XY vec = acvVecNormalize(line.line_vec);
-    acv_XY nvec =acvVecNormal(vec);
+  camLayer->TriggerMode(0);
+  camLayer->SetFrameRate(NAN);
+  
 
-    acv_XY pt1=acvVecAdd(acvVecAdd(line.line_anchor,acvVecMult(vec,tarSlide)),acvVecMult(nvec,tarDist));
-
-    float dist =acvDistance_Signed(line, pt1);
-    errorSum+=abs(dist-tarDist);
-    LOGI("Test[%d]: tarDist:%f dist:%f diff:%f",i,tarDist,dist,dist-tarDist);
+  camLayer2->TriggerMode(0);
+  camLayer2->SetFrameRate(NAN);
+  printf("WAIT for image streaming~\n");
+  for(int i=0;i<3;i++)
+  {
+    sleep(1);
   }
   
-  LOGI("errorSum:%f",errorSum);
-  return 0;
+  camLayer->SetROI(0,0,100,100,100,100);
+  printf("WAIT for image streaming~ setFPS:err:%d\n",camLayer->SetFrameRate(INFINITY));
+  
+  for(int i=0;i<3;i++)
+  {
+    sleep(1);
+  }
+
+
+  camLayer->SetROI(0,0,100,100,100,100);
+  printf("WAIT for image streaming~ setFPS:err:%d\n",camLayer->SetFrameRate(5));
+  
+  for(int i=0;i<3;i++)
+  {
+    sleep(1);
+  }
+
+  delete camLayer;
 }
-
-
-
-static std::string prefix = "./";
-
-void sdsd()
-{
-    // std::vector<std::string> ids;
-    // string class_id = "test";
-    // ids.push_back(class_id);
-
-    SBM_if sbmif;
-    {
-        Mat img = imread(prefix+"case1/train.png");
-        assert(!img.empty() && "check your img path");
-        sbmif.train(img,1);
-    }
-
-    Mat test_img = imread(prefix+"case1/test.png", cv::IMREAD_GRAYSCALE);
-    assert(!test_img.empty() && "check your img path");
-
-    Timer timer;
-    auto matches = sbmif.test(test_img);
-    for(int i=1;i<10;i++)
-    {
-      auto matches_ = sbmif.test(test_img);
-    }
-    timer.out("MATCH::====================");
-
-    if(test_img.channels() == 1) cvtColor(test_img, test_img, COLOR_GRAY2BGR);
-
-    std::cout << "matches.size(): " << matches.size() << std::endl;
-    size_t top5 = 500;
-    if(top5>matches.size()) top5=matches.size();
-
-    vector<Rect> boxes;
-    vector<float> scores;
-    vector<int> idxs;
-    for(auto match: matches){
-        Rect box;
-        box.x = match.x;
-        box.y = match.y;
-        
-        // printf("template_id:%d\n",match.template_id);
-        auto templ = sbmif.detector.getTemplates(match.class_id,
-                                            match.template_id);
-
-        box.width = templ[0].width;
-        box.height = templ[0].height;
-        boxes.push_back(box);
-        scores.push_back(match.similarity);
-    }
-    cv_dnn::NMSBoxes(boxes, scores, 0, 0.5f, idxs);
-
-    for(auto idx: idxs){
-    //for(int idx=0;idx<matches.size(); idx++){
-        auto match = matches[idx];
-
-        auto templ = sbmif.detector.getTemplates(match.class_id,
-                                        match.template_id);
-        int x =  templ[0].width + match.x;
-        int y = templ[0].height + match.y;
-        int r = templ[0].width/2;
-
-
-        cv::Vec3b randColor;
-        randColor[0] = rand()%(255/3) + 255/3;
-        randColor[1] = rand()%(255/3) + 255/3; 
-        randColor[2] = rand()%(255/3) + 255/3;
-
-        for(int i=0; i<templ[0].features.size(); i++){
-            auto feat = templ[0].features[i];
-            cv::circle(test_img, {feat.x+match.x, feat.y+match.y}, 5, randColor, -1);
-        }
-
-        cv::putText(test_img, to_string(int(round(match.similarity))),
-                    Point(match.x+r-10, match.y-3), FONT_HERSHEY_PLAIN, 2, randColor);
-
-        printf("xy:%d,%d  wh:%d,%d\n",x,y,templ[0].width,templ[0].height);
-        cv::RotatedRect rotatedRectangle(
-          {(float)(x+match.x)/2, (float)(y+match.y)/2}, 
-          {(float)templ[0].width, (float)templ[0].height}, 
-          -templ[0].angle);
-
-        cv::Point2f vertices[4];
-        rotatedRectangle.points(vertices);
-        for(int i=0; i<4; i++){
-            int next = (i+1)%4;
-            cv::line(test_img, vertices[i], vertices[next], randColor, 2);
-        }
-
-
-
-
-
-        std::cout << "\nmatch.template_id: " << match.template_id << std::endl;
-        std::cout << "match.similarity: " << match.similarity << std::endl;
-    }
-
-    imshow("img", test_img);
-    waitKey(0);
-
-    std::cout << "test end" << std::endl << std::endl;
-
-}
-
-
 
 int main(int argc, char **argv)
 {
-  // return testDistance();
+
+  // while(1)
+  // {
+  //   sleep(1000);
+  // }
+  
+
+  // char *sendMsg="{\"type\":\"PING\",\"id\":445}";
+  // JRL.send_data(0,(uint8_t*)sendMsg,strlen(sendMsg),0);
+
+
+  // std::thread _inspSnapSaveThread(testUART_thread);
+  // _inspSnapSaveThread.join();
+  // Data_UART_Layer UARTCH("/dev/cu.SLAB_USBtoUART",921600, "8N1");
+  // MData_String_NL_Layer MUART_NL;
+  // MData_String_Dev StrDev_NL;
+  
+  // MUART_NL.setDLayer(&UARTCH);
+  // StrDev_NL.setDLayer(&MUART_NL);
+  // char *tmpMsg="1";
+  // StrDev_NL.send_data(0,(uint8_t*)tmpMsg,strlen(tmpMsg)+1,0);
+  // char *tmpMsg2="1";
+  // StrDev_NL.send_data(0,(uint8_t*)tmpMsg2,strlen(tmpMsg2)+1,0);
+
+  // return demomain(argc,argv);
+  // return 0;
   // return testPolyFit();
   // tmpMain();
   // printf(">>>");

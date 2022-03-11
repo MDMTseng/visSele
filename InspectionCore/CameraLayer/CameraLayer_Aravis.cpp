@@ -513,7 +513,7 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
       g_clear_error(&err);
     }
     // sleep(1);
-    this_thread::sleep_for(chrono::milliseconds(100) );
+    this_thread::sleep_for(chrono::milliseconds(1000) );
   }
 
   gint	xo_inc = arv_camera_get_x_offset_increment	(camera,NULL);
@@ -594,27 +594,84 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
 {
   GError *err = NULL;
 
+
+
+
+    {
+      arv_camera_stop_acquisition(camera, &err);
+      if(err)
+      {
+        LOGD("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+        err=NULL;
+        g_clear_error(&err);
+        return CameraLayer::NAK;
+      }
+    }
+
+
   takeCount = -1;
   //0 for continuous, 1 for soft trigger, 2 for HW trigger
   if (type == 0)
   {
-    arv_camera_start_acquisition(camera, NULL);
-    acquisition_started=true;
+
+    {
+      arv_camera_set_string (camera, "TriggerMode", "Off", &err);
+      if(err)
+      {
+        LOGD("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+        err=NULL;
+        g_clear_error(&err);
+        return CameraLayer::NAK;
+      }
+    }
+
+
+
   }
   else
   {
-    arv_camera_stop_acquisition(camera, NULL);
-    acquisition_started=false;
+
+    {
+      arv_camera_set_string (camera, "TriggerMode", "On", &err);
+      if(err)
+      {
+        LOGD("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+        err=NULL;
+        g_clear_error(&err);
+        return CameraLayer::NAK;
+      }
+    }
+
+    arv_camera_set_string (camera, "TriggerSource", "Anyway", &err);
+    if(err)
+    {
+      LOGD("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+      err=NULL;
+      g_clear_error(&err);
+      return CameraLayer::NAK;
+    }
   }
 
-  if (type == 1)
   {
-    arv_camera_set_trigger(camera, "Software", &err);
+    arv_camera_start_acquisition(camera, &err);
+    if(err)
+    {
+      LOGD("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+      err=NULL;
+      g_clear_error(&err);
+      return CameraLayer::NAK;
+    }
+    acquisition_started=true;
   }
-  else
-  {
-    arv_camera_set_trigger(camera, "Line1", &err);
-  }
+
+  // if (type == 1)
+  // {
+  //   arv_camera_set_trigger(camera, "Software", &err);
+  // }
+  // else
+  // {
+  //   arv_camera_set_trigger(camera, "Line1", &err);
+  // }
   if (err == NULL)
   {
     return CameraLayer::ACK;
@@ -637,9 +694,9 @@ CameraLayer::status CameraLayer_Aravis::Trigger()
   GError *err = NULL;
   if (takeCount >= 0)
     takeCount++;
-  // arv_camera_software_trigger (camera,&err);
+  arv_camera_software_trigger (camera,&err);
 
-  arv_camera_start_acquisition(camera, NULL);
+  // arv_camera_start_acquisition(camera, NULL);
   acquisition_started=true;
   if (err == NULL)
   {
@@ -683,12 +740,81 @@ CameraLayer::status CameraLayer_Aravis::SetOnceWB()
 
 CameraLayer::status CameraLayer_Aravis::SetFrameRate(float frame_rate)
 {
+
   GError *err = NULL;
-  arv_camera_set_frame_rate(camera, frame_rate, &err);
+
+  if(frame_rate!=frame_rate || frame_rate<0)
+  {
+      
+    {
+
+      arv_camera_set_boolean (camera, "AcquisitionFrameRateEnable", false, &err);
+
+      if (err != NULL)
+      {
+        
+        LOGD("AcquisitionFrameRateEnable:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+        g_clear_error(&err);
+
+        return CameraLayer::NAK;
+        // return CameraLayer::NAK;
+      }
+      
+    }
+    return CameraLayer::ACK;
+  }
+
+  
+
+  double min=NAN,max=NAN;
+  {
+
+    arv_camera_get_frame_rate_bounds (camera, &min, &max, &err);
+
+    if (err != NULL)
+    {
+      
+      LOGD("FrameRateBound:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+      g_clear_error(&err);
+      return CameraLayer::NAK;
+      // return CameraLayer::NAK;
+    }
+
+    LOGD("M:%f m:%f\n",max,min);
+  }
+
+  if(frame_rate==0)frame_rate=min;  
+  else if(isinf(frame_rate))frame_rate=max;
+  else if(frame_rate<min || frame_rate>max)return CameraLayer::NAK;
+
+
+
+
+  {
+
+    arv_camera_set_boolean (camera, "AcquisitionFrameRateEnable", true, &err);
+
+    if (err != NULL)
+    {
+      
+      LOGD("AcquisitionFrameRateEnable:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+      g_clear_error(&err);
+
+      // return CameraLayer::NAK;
+    }
+  }
+
+
+
+
+
+  arv_camera_set_float (camera,"AcquisitionFrameRate", frame_rate, &err);
+
   if (err == NULL)
   {
     return CameraLayer::ACK;
   }
+  LOGD("SetFrameRate:d%d c:%d m:%s\n",err->domain,err->code,err->message);
   g_clear_error(&err);
   return CameraLayer::NAK;
 }

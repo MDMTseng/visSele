@@ -56,12 +56,12 @@ class CameraLayer{
         EV_ERROR
     }ev_type;
 
-
-    protected:
-
     //void *cameraInst;
     typedef CameraLayer::status (*CameraLayer_Callback)(
         CameraLayer &cl_obj, int type, void* context);
+
+    protected:
+
 
 
 

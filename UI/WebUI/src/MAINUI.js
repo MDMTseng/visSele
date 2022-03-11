@@ -429,11 +429,11 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   let InspectionMonitor_URL_overvall=_mus.inspection_monitor_url;
   let InspectionMonitor_URL_w_info=_mus.inspection_monitor_url;
-  if (isString(DefFileHash) && DefFileHash.length > 5) {
+  if (InspectionMonitor_URL_overvall!==undefined && isString(DefFileHash) && DefFileHash.length > 5) {
 
     if(InspectionMonitor_URL_overvall.includes("?")==false)
     {
-      InspectionMoniInspectionMonitor_URL_overvalltor_URL+="?"
+      InspectionMonitor_URL_overvall+="?"
     }
     InspectionMonitor_URL_overvall+="v=" + 0;
 

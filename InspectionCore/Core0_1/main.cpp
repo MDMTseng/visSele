@@ -4,6 +4,11 @@
 #include "tmpCodes.hpp"
 #include "polyfit.h"
 
+#include "cJSON.h"
+
+#include "Data_Layer_Protocol.hpp"
+#include "Data_Layer_PHY.hpp"
+
 
 float randomGen(float from=0,float to=1)
 {
@@ -71,7 +76,29 @@ int_fast32_t testPolyFit()
 
 int main(int argc, char **argv)
 {
+
+  // while(1)
+  // {
+  //   sleep(1000);
+  // }
   
+
+  // char *sendMsg="{\"type\":\"PING\",\"id\":445}";
+  // JRL.send_data(0,(uint8_t*)sendMsg,strlen(sendMsg),0);
+
+
+  // std::thread _inspSnapSaveThread(testUART_thread);
+  // _inspSnapSaveThread.join();
+  // Data_UART_Layer UARTCH("/dev/cu.SLAB_USBtoUART",921600, "8N1");
+  // MData_String_NL_Layer MUART_NL;
+  // MData_String_Dev StrDev_NL;
+  
+  // MUART_NL.setDLayer(&UARTCH);
+  // StrDev_NL.setDLayer(&MUART_NL);
+  // char *tmpMsg="1";
+  // StrDev_NL.send_data(0,(uint8_t*)tmpMsg,strlen(tmpMsg)+1,0);
+  // char *tmpMsg2="1";
+  // StrDev_NL.send_data(0,(uint8_t*)tmpMsg2,strlen(tmpMsg2)+1,0);
 
   // return demomain(argc,argv);
   // return 0;

@@ -9,9 +9,10 @@ IDIR=	./include/ \
 			$(MODULE_lodepng) \
 			$(MODULE_mjpegLib)/include \
 			$(MODULE_Compat_dirent)/include \
+			$(MODULE_simple_uart)/include \
 
 ODIR=obj
-_OBJ = Util.o Util2.o SOCK_Msg_Flow.opp ImageSampler.opp 
+_OBJ = Util.o Util2.o ImageSampler.opp Data_Layer_PHY.opp Data_Layer_Protocol.opp json_seg_parser.opp
 
 target_a= $(addsuffix .a ,$(MODULE_NAME))
 ESS_TRACK=$(wildcard $(addsuffix /*.h* ,$(IDIR)))

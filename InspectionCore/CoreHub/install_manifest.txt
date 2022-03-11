@@ -1,0 +1,12 @@
+/Users/mdm/visSele/export/APP_Core/Core/./visSele
+/Users/mdm/visSele/export/APP_Core/Core/./init_data/cache_def.png
+/Users/mdm/visSele/export/APP_Core/Core/./init_data/cameraCalibration.json
+/Users/mdm/visSele/export/APP_Core/Core/./init_data/featureDetect.json
+/Users/mdm/visSele/export/APP_Core/Core/./init_data/cache_def.hydef
+/Users/mdm/visSele/export/APP_Core/Core/./init_data/CalibMap.bin
+/Users/mdm/visSele/export/APP_Core/Core/./init_data/default_camera_param.json
+/Users/mdm/visSele/export/APP_Core/Core/./init_data/default_camera_setting.json
+/Users/mdm/visSele/export/APP_Core/Core/./init_data/machine_info
+/Users/mdm/visSele/export/APP_Core/Core/./init_data/machine_setting.json
+/Users/mdm/visSele/export/APP_Core/Core/./init_data/stageLightCalib.json
+/Users/mdm/visSele/export/APP_Core/Core/./libmvsdk.dylib
