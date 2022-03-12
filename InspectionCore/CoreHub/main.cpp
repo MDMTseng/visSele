@@ -103,7 +103,7 @@ void camLyerTest()
   else
   {
     printf("connect failed\n");
-    return 0;
+    return ;
   }
   // camLayer->TriggerMode(1);
   // printf("WAIT for image trigger~\n");
