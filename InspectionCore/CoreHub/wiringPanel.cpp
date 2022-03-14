@@ -1375,7 +1375,10 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       LOGI("CLOSING peer %s:%d\n",
             inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
       bpg_pi.cameraFramesLeft = 0;
-      bpg_pi.camera->TriggerMode(1);
+      if(bpg_pi.camera!=NULL)
+      {
+        bpg_pi.camera->TriggerMode(1);
+      }
       bpg_pi.delete_PeripheralChannel();
     }
 
