@@ -429,6 +429,7 @@ CameraLayer_Aravis::cam_info CameraLayer_Aravis::getCameraInfo()
 
 void CameraLayer_Aravis::listDevices(vector<cam_info> &ret_infoList, bool tryOpen)
 {
+  ret_infoList.resize(0);
   arv_update_device_list();
   int n_devices = arv_get_n_devices();
 
