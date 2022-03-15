@@ -27,16 +27,19 @@ public:
 
 
   float unit2Pulse(float dist,float pulses_per_mm);
-  virtual float unit2Pulse_conv(const char* code,float dist);
+  virtual float unit2Pulse_conv(int axisIdx,float dist)=0;
 
-  int FindFloat(char *prefix,char **blkIdxes,int blkIdxesL,float &retNum);
-  int FindInt32(char *prefix,char **blkIdxes,int blkIdxesL,int32_t &retNum);
+  int FindFloat(const char *prefix,char **blkIdxes,int blkIdxesL,float &retNum);
+  int FindInt32(const char *prefix,char **blkIdxes,int blkIdxesL,int32_t &retNum);
   int FindGMEnd_idx(char **blkIdxes,int blkIdxesL);
   
   int ReadxVecData(char **blkIdxes,int blkIdxesL,float *retVec);
 
   bool isAbsLoc=true;
   int ReadxVecData(char **blkIdxes,int blkIdxesL,xVec &retVec);
+
+  int ReadxVecELE_toPulses(char **blkIdxes,int blkIdxesL,xVec &retVec,int axisIdx,const char* axisGIDX);
+
   float latestF= 1000;
   int ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F);
 

@@ -400,6 +400,17 @@ class  GenPerif_API
     
   }
 
+
+  protected _onDisconnected()
+  {
+    this.onDisconnected();
+  }
+  
+  protected _onConnected()
+  {
+    this.onConnected();
+  }
+
   onInfoUpdate(newInfo:{[key:string]:any})
   {
     
@@ -515,6 +526,10 @@ class  GenPerif_API
                 if(trwin.resolve!==undefined)
                   trwin.resolve(msg);
                 this.trackingWindow.delete(msg_id);
+              }
+              else
+              {
+                console.log(msg);
               }
             }
               break;
@@ -664,7 +679,52 @@ class  GenPerif_API
 
 class CNC_Perif extends GenPerif_API
 {
+  gcodeSeq:string[]
+  isSendWaiting:boolean
+  constructor(id:string,pg_id_channel:number)
+  {
+    super(id,pg_id_channel);
+    this.gcodeSeq=[]
+    this.isSendWaiting=false
+  }
 
+  
+  KickSendGCodeQ()
+  {
+    if(this.isSendWaiting==true || this.gcodeSeq.length==0)
+    {
+      return;
+    }
+    const gcode = this.gcodeSeq.shift();
+    if(gcode==undefined || gcode==null)return;
+    this.isSendWaiting=true;
+
+    this.send({"type":"GCODE","code":gcode},
+      (ret)=>{
+        console.log(ret)
+        this.isSendWaiting=false;
+        this.KickSendGCodeQ();
+      },(e)=>console.log(e));
+  }
+
+  pushGCode(GCodeArr:string[])
+  {
+    this.gcodeSeq=this.gcodeSeq.concat(GCodeArr);
+    this.KickSendGCodeQ();
+  }
+
+
+  protected _onDisconnected()
+  {
+    this.gcodeSeq=[];
+    this.isSendWaiting=false;
+    this.onDisconnected();
+  }
+  
+  protected _onConnected()
+  {
+    this.onConnected();
+  }
 }
 
 export type CNC_PERIPHERAL_TYPE=CNC_Perif
@@ -746,6 +806,14 @@ function App() {
             })
           })
         }}>{JSON.stringify(CORE_API_INFO)}</Button>
+
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CNC_PERIPHERAL_ID,(_api)=>{
+            let api=_api as CNC_PERIPHERAL_TYPE;//cast
+            api.pushGCode(["G01 Y1000 Z1_600 R11_300 R12_430 F350","G01 Y0 Z1_0 R11_0 R12_0 F350"]);
+          })
+        }}>ppppp</Button>
+        
       </header>
     </div>
   );
