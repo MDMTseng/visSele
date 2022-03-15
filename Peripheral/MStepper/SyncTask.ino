@@ -20,18 +20,21 @@ hw_timer_t *timer = NULL;
 #define PIN_O1 5
 
 
-#define PIN_M1_STP 12
-#define PIN_M1_DIR 13
-#define PIN_M1_SEN1 19
-#define PIN_M1_SEN2 18
+#define PIN_Z1_STP 12
+#define PIN_Z1_DIR 13
+#define PIN_Z1_SEN1 19
+#define PIN_Z1_SEN2 18
 
 
-#define PIN_M2_STP 27
-#define PIN_M2_DIR 14
-#define PIN_M2_SEN1 17
+#define PIN_Y_STP 27
+#define PIN_Y_DIR 14
+#define PIN_Y_SEN1 17
 
+#define PIN_R11_STP 23
+#define PIN_R11_DIR 22
 
-
+#define PIN_R12_STP 21
+#define PIN_R12_DIR 5
 
 #define PIN_OUT_0 25
 #define PIN_OUT_1 26
@@ -70,6 +73,10 @@ class MStp_M:public MStp{
   
 
   int POut1=0;
+
+
+
+
   MStp_M(MSTP_segment *buffer, int bufferL):MStp(buffer,bufferL)
   {
     
@@ -79,25 +86,45 @@ class MStp_M:public MStp{
     main_junctionMaxSpeedJump=minSpeed;//5200;
 
     maxSpeedInc=minSpeed;
-    pinMode(PIN_M1_DIR, OUTPUT);
-    pinMode(PIN_M1_STP, OUTPUT);
-    pinMode(PIN_M1_SEN1, INPUT);
-    pinMode(PIN_M1_SEN2, INPUT);
-    pinMode(PIN_M2_SEN1, INPUT);
+    pinMode(PIN_Z1_DIR, OUTPUT);
+    pinMode(PIN_Z1_STP, OUTPUT);
+    pinMode(PIN_Z1_SEN1, INPUT);
+    pinMode(PIN_Z1_SEN2, INPUT);
+    pinMode(PIN_Y_SEN1, INPUT);
 
-    pinMode(PIN_M2_DIR, OUTPUT);
-    pinMode(PIN_M2_STP, OUTPUT);
-    // pinMode(PIN_DBG0, OUTPUT);    
+    pinMode(PIN_Y_DIR, OUTPUT);
+    pinMode(PIN_Y_STP, OUTPUT);
+
+
+    pinMode(PIN_R11_DIR, OUTPUT);
+    pinMode(PIN_R11_STP, OUTPUT);
+    pinMode(PIN_R12_DIR, OUTPUT);
+    pinMode(PIN_R12_STP, OUTPUT);
+
+
     pinMode(PIN_OUT_1, OUTPUT);    
     // pinMode(PIN_DBG, OUTPUT);    
 
-    axisInfo[0].VirtualStep=3;
-    axisInfo[0].AccW=SUBDIV*3500/mm_PER_REV/main_acc/axisInfo[0].VirtualStep;
-    axisInfo[0].MaxSpeedJumpW=1/axisInfo[0].VirtualStep;
+    axisInfo[AXIS_IDX_X].VirtualStep=1;
+    axisInfo[AXIS_IDX_X].AccW=1;
+    axisInfo[AXIS_IDX_X].MaxSpeedJumpW=1;
 
-    axisInfo[1].VirtualStep=1;
-    axisInfo[1].AccW=1;
-    axisInfo[1].MaxSpeedJumpW=1;
+    axisInfo[AXIS_IDX_Y].VirtualStep=1;
+    axisInfo[AXIS_IDX_Y].AccW=1;
+    axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
+
+
+    axisInfo[AXIS_IDX_Z1].VirtualStep=3;
+    axisInfo[AXIS_IDX_Z1].AccW=SUBDIV*3500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
+    axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=1/axisInfo[AXIS_IDX_Y].VirtualStep;
+
+    axisInfo[AXIS_IDX_R11].VirtualStep=3;
+    axisInfo[AXIS_IDX_R11].AccW=SUBDIV*1500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
+    axisInfo[AXIS_IDX_R11].MaxSpeedJumpW=1/axisInfo[AXIS_IDX_Y].VirtualStep;
+    
+    axisInfo[AXIS_IDX_R12].VirtualStep=3;
+    axisInfo[AXIS_IDX_R12].AccW=SUBDIV*1500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
+    axisInfo[AXIS_IDX_R12].MaxSpeedJumpW=1/axisInfo[AXIS_IDX_Y].VirtualStep;
   
     doCheckHardLimit=false;
   }
@@ -176,53 +203,53 @@ class MStp_M:public MStp{
 
 
   
-  int M1Info_Limit1=300;
-  int M1Info_Limit2=-300;
+  int Z1Info_Limit1=300;
+  int Z1Info_Limit2=-300;
   int MachZeroRet(uint32_t index,int distance,int speed,void* context)
   {
 
     switch(index)
     {
       
-      case 0://rough zeroing
+      case AXIS_IDX_Z1://rough zeroing
       {
         int sensorDetectVLvl=0;
         int runSpeed=speed;
         int axisIdx=0;
         xVec retHitPos;
-        if(runUntil(axisIdx,PIN_M1_SEN1,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
+        if(runUntil(axisIdx,PIN_Z1_SEN1,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
         {
           return -1;
         }
 
-        if(runUntil(axisIdx,PIN_M1_SEN1,!sensorDetectVLvl,-distance/2,runSpeed,&retHitPos)!=0)
+        if(runUntil(axisIdx,PIN_Z1_SEN1,!sensorDetectVLvl,-distance/2,runSpeed,&retHitPos)!=0)
         {
           return -1;
         }
-        M1Info_Limit1=retHitPos.vec[axisIdx];
+        Z1Info_Limit1=retHitPos.vec[axisIdx];
         __UPRT_D_("pos1=%d\n",retHitPos.vec[axisIdx]);
 
       
 
-        if(runUntil(axisIdx,PIN_M1_SEN2,sensorDetectVLvl,-distance,runSpeed,&retHitPos)!=0)
+        if(runUntil(axisIdx,PIN_Z1_SEN2,sensorDetectVLvl,-distance,runSpeed,&retHitPos)!=0)
         {
           return -1;
         }
 
-        if(runUntil(axisIdx,PIN_M1_SEN2,!sensorDetectVLvl,distance/2,runSpeed,&retHitPos)!=0)
+        if(runUntil(axisIdx,PIN_Z1_SEN2,!sensorDetectVLvl,distance/2,runSpeed,&retHitPos)!=0)
         {
           return -1;
         }
         
-        M1Info_Limit2=retHitPos.vec[axisIdx];
+        Z1Info_Limit2=retHitPos.vec[axisIdx];
         __UPRT_D_("pos2=%d\n",retHitPos.vec[axisIdx]);
 
-        int M1Mid=(M1Info_Limit1+M1Info_Limit2)/2;
-        M1Info_Limit1-=M1Mid;
-        M1Info_Limit2-=M1Mid;
+        int Z1Mid=(Z1Info_Limit1+Z1Info_Limit2)/2;
+        Z1Info_Limit1-=Z1Mid;
+        Z1Info_Limit2-=Z1Mid;
 
         StepperForceStop();
-        curPos_c.vec[axisIdx]-=M1Mid;//zero the Cur_pos
+        curPos_c.vec[axisIdx]-=Z1Mid;//zero the Cur_pos
         lastTarLoc=curPos_c;
 
 
@@ -238,20 +265,20 @@ class MStp_M:public MStp{
 
         break;
       }
-      case 1:
+      case AXIS_IDX_Y:
       {
         int sensorDetectVLvl=0;
         int runSpeed=speed;
         int axisIdx=index;
         
         xVec retHitPos;
-        if(runUntil(axisIdx,PIN_M2_SEN1,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
+        if(runUntil(axisIdx,PIN_Y_SEN1,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
         {
           return -1;
         }
 
         
-        if(runUntil(axisIdx,PIN_M2_SEN1,!sensorDetectVLvl,-distance/2,runSpeed,&retHitPos)!=0)
+        if(runUntil(axisIdx,PIN_Y_SEN1,!sensorDetectVLvl,-distance/2,runSpeed,&retHitPos)!=0)
         {
           return -1;
         }
@@ -265,10 +292,10 @@ class MStp_M:public MStp{
     }
 
     
-    digitalWrite(PIN_M1_DIR, 1);
-    digitalWrite(PIN_M1_STP, 1);
-    digitalWrite(PIN_M2_DIR, 1);
-    digitalWrite(PIN_M2_STP, 1);
+    digitalWrite(PIN_Z1_DIR, 1);
+    digitalWrite(PIN_Z1_STP, 1);
+    digitalWrite(PIN_Y_DIR, 1);
+    digitalWrite(PIN_Y_STP, 1);
     return 0;
     // ZeroStatus=0;
 
@@ -288,9 +315,6 @@ class MStp_M:public MStp{
     }
     return 0;
   }
-
-  int M1_reader=1<<0;
-  int M2_reader=1<<1;
 
 
   void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* seg)
@@ -351,8 +375,12 @@ class MStp_M:public MStp{
     // pre_seg->ctx;//do sth... start
     
     // digitalWrite(PIN_OUT_1, POut1=(!POut1));
-    digitalWrite(PIN_M1_DIR, (dir_idxes&M1_reader)!=0);
-    digitalWrite(PIN_M2_DIR, (dir_idxes&M2_reader)!=0);
+    digitalWrite(PIN_Y_DIR,  (dir_idxes&(1<<AXIS_IDX_Y  ))!=0);
+    digitalWrite(PIN_Z1_DIR, (dir_idxes&(1<<AXIS_IDX_Z1 ))!=0);
+    digitalWrite(PIN_R11_DIR,(dir_idxes&(1<<AXIS_IDX_R11))!=0);
+    digitalWrite(PIN_R12_DIR,(dir_idxes&(1<<AXIS_IDX_R12))!=0);
+
+
     
     // __UPRT_D_("dir:%s \n",int2bin(idxes,MSTP_VEC_SIZE));
   }
@@ -389,16 +417,28 @@ class MStp_M:public MStp{
     //   digitalWrite(PIN_DBG0, PIN_DBG0_st);
     //   PIN_DBG0_st=!PIN_DBG0_st;
     // }
-    if(idxes_R&M1_reader)
+    if(idxes_R&(1<<AXIS_IDX_Z1))
     {
-
-      digitalWrite(PIN_M1_STP, 1);
+      digitalWrite(PIN_Z1_STP, 1);
     }
 
-    if(idxes_R&M2_reader)
+    if(idxes_R&(1<<AXIS_IDX_Y))
     {
-      digitalWrite(PIN_M2_STP, 1);
+      digitalWrite(PIN_Y_STP, 1);
     }
+    if(idxes_R&(1<<AXIS_IDX_R11))
+    {
+      digitalWrite(PIN_R11_STP, 1);
+    }
+    if(idxes_R&(1<<AXIS_IDX_R12))
+    {
+      digitalWrite(PIN_R12_STP, 1);
+    }
+
+
+
+
+
     // __UPRT_D_("id:%s  ",int2bin(idxes,MSTP_VEC_SIZE));
     // __UPRT_D_("ac:%s ",int2bin(axis_collectpul,MSTP_VEC_SIZE));
 
@@ -407,15 +447,24 @@ class MStp_M:public MStp{
     
     // __UPRT_D_("PINs:%s\n",int2bin(axis_st,MSTP_VEC_SIZE));
 
-    if(idxes_T&M1_reader)
+    if(idxes_T&(1<<AXIS_IDX_Z1))
     {
-      digitalWrite(PIN_M1_STP, 0);
+      digitalWrite(PIN_Z1_STP, 0);
+    }
+    if(idxes_T&(1<<AXIS_IDX_Y))
+    {
+      digitalWrite(PIN_Y_STP, 0);
+    }
+    if(idxes_T&(1<<AXIS_IDX_R11))
+    {
+      digitalWrite(PIN_R11_STP, 0);
+    }
+    if(idxes_T&(1<<AXIS_IDX_R12))
+    {
+      digitalWrite(PIN_R12_STP, 0);
     }
 
-    if(idxes_T&M2_reader)
-    {
-      digitalWrite(PIN_M2_STP, 0);
-    }
+
   }
 
 
@@ -459,6 +508,44 @@ class SyncTask
 
 
 
+
+class MData_JR:public Data_JsonRaw_Layer
+{
+  
+  public:
+  MData_JR():Data_JsonRaw_Layer()// throw(std::runtime_error)
+  {
+    sprintf(peerVERSION,"");
+  }
+  int recv_RESET()
+  {
+    doDataLog=false;
+  } 
+  int recv_ERROR(ERROR_TYPE errorcode);
+  char gcodewait_gcode[100];
+  int gcodewait_id=-1;
+  
+
+  int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode);
+  void connected(Data_Layer_IF* ch){}
+
+  int send_data(int head_room,uint8_t *data,int len,int leg_room);
+  void disconnected(Data_Layer_IF* ch){}
+
+  int close(){}
+
+  
+  char dbgBuff[500];
+  int dbg_printf(const char *fmt, ...);
+
+  int msg_printf(const char *type,const char *fmt, ...);
+
+  void loop();
+
+
+};
+
+MData_JR djrl;
 
 extern void __digitalWrite(uint8_t pin, uint8_t val)
 {
@@ -568,34 +655,6 @@ void addWaitWait(uint32_t period,int times=1,void* ctx=NULL,MSTP_segment_extra_i
   
   // digitalWrite(PIN_OUT_1,0);
 }
-void pickOn(int lidx,int pos,int speed,MSTP_SegCtx *p_ctx=NULL)
-{
-  int upR=80;
-  int restSpeed=speed/2;
-  if(lidx==2)
-  {
-    vecToWait((xVec){0,pos},speed);
-    vecToWait((xVec){mstp.M1Info_Limit1*upR/100,pos},speed/2);
-    vecToWait((xVec){mstp.M1Info_Limit1,pos},speed/3,p_ctx);
-    // mstp.VecTo((xVec){mstp.M1Info_Limit1*upR/100,pos},speed);
-    vecToWait((xVec){0,pos},speed);
-  }
-  else if(lidx==1)
-  {
-    // int M1L1L2Dist=-30*SUBDIV/mm_PER_REV;
-    // int M1L1L2Dist=(-30+12)*SUBDIV/mm_PER_REV;
-    int M1L1L2Dist=(-30)*SUBDIV/mm_PER_REV;
-    pos+=M1L1L2Dist;
-    vecToWait((xVec){0,pos},speed);
-    vecToWait((xVec){mstp.M1Info_Limit2*upR/100,pos},speed/2);
-    vecToWait((xVec){mstp.M1Info_Limit2,pos},speed/3,p_ctx);
-    vecToWait((xVec){mstp.M1Info_Limit2*upR/100,pos},speed);
-  }
-
-
-}
-
-
 
 class GCodeParser_M2:public GCodeParser_M
 {
@@ -605,23 +664,31 @@ public:
 
   }
 
-  float unit2Pulse_conv(const char* code,float dist)
+  float unit2Pulse_conv(int axisIdx,float dist)
   {
     // __UPRT_D_("unitConv[%s]:%f\n",code,dist);
-    if(code[0]=='Y')
+    switch(axisIdx)
     {
-      return unit2Pulse(-1*dist,SUBDIV/mm_PER_REV);//-1 for reverse the direction
+      case AXIS_IDX_X:return 0;
+      case AXIS_IDX_Y:return unit2Pulse(-1*dist,SUBDIV/mm_PER_REV);//-1 for reverse the direction
+      
+      case AXIS_IDX_FEEDRATE:
+      case AXIS_IDX_ACCELERATION:
+      case AXIS_IDX_DEACCELERATION:
+        return unit2Pulse(dist,SUBDIV/mm_PER_REV);
+
+
+      case AXIS_IDX_Z1:return dist;//as pulse count
+
+      case AXIS_IDX_R11:
+      case AXIS_IDX_R12://assume it's 800 pulses pre rev
+        return dist*360/800;//-1 for reverse the direction
+
+
+
+
     }
 
-    if(code[0]=='Z'&&code[1]=='1')
-    {
-      return unit2Pulse(dist,1);
-    }
-
-    if (code[0]=='F' || strcmp(code, "ACC") == 0 || strcmp(code, "DEA") == 0)
-    {
-      return unit2Pulse(dist,SUBDIV/mm_PER_REV);
-    }
     return NAN;
   }
 
@@ -632,6 +699,7 @@ public:
   bool MTPSYS_VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
   {
     // __UPRT_D_("vecto speed:%f\n",speed);
+    // djrl.dbg_printf(">>%f %f>>",VECTo.vec[AXIS_IDX_R11],VECTo.vec[AXIS_IDX_R12]);
     while(_mstp->VecTo(VECTo,speed,ctx,exinfo)==false)
     {
       Serial.printf("");
@@ -695,12 +763,12 @@ void pickOnGCode(GCodeParser_M2 &gcpm,int headIndex,float pos_mm,int speed_mmps,
   if(headIndex==1)
   {
     pos_mm-=15;
-    headPoseDown=mstp.M1Info_Limit1+15;
+    headPoseDown=mstp.Z1Info_Limit1+15;
   }
   else if(headIndex==0)
   {
     pos_mm+=15;
-    headPoseDown=mstp.M1Info_Limit2;
+    headPoseDown=mstp.Z1Info_Limit2;
   }
   else
     return;
@@ -734,353 +802,323 @@ GCodeParser_M2 gcpm(&mstp);
 StaticJsonDocument <500>doc;
 StaticJsonDocument  <500>retdoc;
 
-class MData_JR:public Data_JsonRaw_Layer
+int MData_JR::recv_ERROR(ERROR_TYPE errorcode)
 {
+  for(int i=0;i<buffIdx;i++)
+  {
+    if(dataBuff[i]=='"')
+      dataBuff[i]='\'';
+  }  
+  dataBuff[buffIdx]='\0';
+  doDataLog=true;
+
+
+  dbg_printf("recv_ERROR:%d %s",errorcode,dataBuff);
+}
+
+int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   
-  public:
-  MData_JR():Data_JsonRaw_Layer()// throw(std::runtime_error)
+  if(opcode==1 )
   {
-    sprintf(peerVERSION,"");
-  }
-  int recv_RESET()
-  {
-    doDataLog=false;
-  } 
-  int recv_ERROR(ERROR_TYPE errorcode)
-  {
-    for(int i=0;i<buffIdx;i++)
+    doc.clear();
+    retdoc.clear();
+    DeserializationError error = deserializeJson(doc, raw);
+    bool rspAck=false;
+    bool doRsp=false;
+
+    const char* type = doc["type"];
+    // const char* id = doc["id"];
+    if(strcmp(type,"RESET")==0)
     {
-      if(dataBuff[i]=='"')
-        dataBuff[i]='\'';
-    }  
-    dataBuff[buffIdx]='\0';
-    doDataLog=true;
-
-
-    dbg_printf("recv_ERROR:%d %s",errorcode,dataBuff);
-  }
-
-  char gcodewait_gcode[100];
-  int gcodewait_id=-1;
-  
-
-  int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
-    
-    if(opcode==1 )
+      return msg_printf("RESET_OK","");
+    }
+    else if(strcmp(type,"ask_JsonRaw_version")==0)
     {
-      doc.clear();
-      retdoc.clear();
-      DeserializationError error = deserializeJson(doc, raw);
-      bool rspAck=false;
-      bool doRsp=false;
+      
+      const char* _version = doc["version"];
+      strcpy(peerVERSION,_version);
+      return this->rsp_JsonRaw_version();
+    }
+    else if(strcmp(type,"rsp_JsonRaw_version")==0)
+    {
+      const char* _version = doc["version"];
+      strcpy(peerVERSION,_version);
+      return 0;
+    }
+    else if(strcmp(type,"PING")==0)
+    {
+      retdoc["type"]="PONG"; 
+      doRsp=rspAck=true;
+    }
+    else if(strcmp(type,"get_setup")==0)
+    {
 
-      const char* type = doc["type"];
-      // const char* id = doc["id"];
-      if(strcmp(type,"RESET")==0)
-      {
-        return msg_printf("RESET_OK","");
-      }
-      else if(strcmp(type,"ask_JsonRaw_version")==0)
-      {
-        
-        const char* _version = doc["version"];
-        strcpy(peerVERSION,_version);
-        return this->rsp_JsonRaw_version();
-      }
-      else if(strcmp(type,"rsp_JsonRaw_version")==0)
-      {
-        const char* _version = doc["version"];
-        strcpy(peerVERSION,_version);
-        return 0;
-      }
-      else if(strcmp(type,"PING")==0)
-      {
-        retdoc["type"]="PONG"; 
-        doRsp=rspAck=true;
-      }
-      else if(strcmp(type,"get_setup")==0)
-      {
-
-        retdoc["type"]="get_setup";
-        retdoc["ver"]="0.5.0";
-        retdoc["name"]="CNC_1";;
-        genMachineSetup(retdoc);
-
-        
-        doRsp=rspAck=true;
-
-      }
-      else if(strcmp(type,"set_setup")==0)
-      {
-        retdoc["type"]="set_setup";
-        
-        setMachineSetup(doc);
-        doRsp=rspAck=true;
-
-      }
-      else if(strcmp(type,"PIN_CONF")==0)
-      {
-        
-        if(doc["pin"].is<int>())
-        {
-          int pinNo = doc["pin"];
-
-       
-          if(doc["mode"].is<int>())
-          {
-            int mode= doc["mode"];//0:input 1:output 2:INPUT_PULLUP 3:INPUT_PULLDOWN
-            switch(mode)
-            {
-              case 0:pinMode(pinNo, INPUT);break;
-              case 1:pinMode(pinNo, OUTPUT);break;
-              case 2:pinMode(pinNo, INPUT_PULLUP);break;
-              case 3:pinMode(pinNo, INPUT_PULLDOWN);break;
-            }
-          }
-          else if(doc["output"].is<int>())
-          {
-            int output= doc["output"];//0:input 1:output 2:INPUT_PULLUP 3:INPUT_PULLDOWN
-            switch(output)
-            {
-              case -2://analog
-              {
-                int value=analogRead(pinNo);
-                
-                retdoc["type"]="PIN_INFO";
-                retdoc["value"]=value;
-                doRsp=rspAck=true;
-
-                break;
-              }
-              case -1://digital
-              {
-                int value=digitalRead(pinNo);
-                
-                retdoc["type"]="PIN_INFO";
-                retdoc["value"]=value;
-                doRsp=rspAck=true;
-                break;
-              }
-              case 0:digitalWrite(pinNo, LOW);break;
-              case 1:digitalWrite(pinNo, HIGH);break;
-            }
-          }
-        }
-        else
-        {
-
-        }
-        
-
+      retdoc["type"]="get_setup";
+      retdoc["ver"]="0.5.0";
+      retdoc["name"]="CNC_1";;
+      genMachineSetup(retdoc);
 
       
-        // retdoc["type"]="DBG_PRT";
-        // // retdoc["msg"]=doc;
-        // retdoc["error"]=error.code();
-        // retdoc["id"]=doc["id"];
-        // uint8_t buff[300];
-        // int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-        // send_json_string(0,buff,slen,0);
-      }
-      else if(strcmp(type,"BYE")==0)
-      {
-        doRsp=rspAck=true;
+      doRsp=rspAck=true;
 
-      }      
-      else if(strcmp(type,"GCODE")==0)
-      {
-        
-        int space = mstp.SegQ_Space();
-        int safe_Margin=3;
-
-        space-=safe_Margin;
-        if(space<0)space=0;
-
-        const char* code = doc["code"];
-        if(code==NULL)
-        {
-          doRsp=true;
-          rspAck=false;
-          retdoc["buffer_space"]=space;
-        }
-        else if(gcodewait_id!=-1)
-        {
-          doRsp=true;
-          rspAck=false;
-          retdoc["buffer_space"]=space;
-        }
-        else
-        {
-          doRsp=true;
-          rspAck=false;
-          
-          if( space>0)
-          {
-            rspAck=(gcpm.runLine(code)==GCodeParser::GCodeParser_Status::TASK_OK);
-            space = mstp.SegQ_Space()-safe_Margin;
-            if(space<0)space=0;
-            retdoc["buffer_space"]=space;
-          }
-          else
-          {
-            //wait
-            doRsp=false;
-            
-            strcpy(gcodewait_gcode,code);
-
-            gcodewait_id=doc["id"];
-
-          }
-
-
-        }
-
-
-      }
-      else if(strcmp(type,"motion_buffer_info")==0)
-      {
-        
-        const char* code = doc["code"];
-        doRsp=rspAck=true;
-
-        int space = mstp.SegQ_Space();
-        int safe_Margin=3;
-        space-=safe_Margin;
-        if(space<0)space=0;
-        retdoc["buffer_space"]=space;
-        retdoc["buffer_size"]= mstp.SegQ_Size();
-        retdoc["buffer_capacity"]=mstp.SegQ_Capacity()-safe_Margin;
-      }
-
-
-      if(doRsp)
-      {
-        retdoc["id"]=doc["id"];
-        retdoc["ack"]=rspAck;
-        
-        uint8_t buff[700];
-        int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-        send_json_string(0,buff,slen,0);
-      }
     }
+    else if(strcmp(type,"set_setup")==0)
+    {
+      retdoc["type"]="set_setup";
+      
+      setMachineSetup(doc);
+      doRsp=rspAck=true;
+
+    }
+    else if(strcmp(type,"PIN_CONF")==0)
+    {
+      
+      if(doc["pin"].is<int>())
+      {
+        int pinNo = doc["pin"];
+
+      
+        if(doc["mode"].is<int>())
+        {
+          int mode= doc["mode"];//0:input 1:output 2:INPUT_PULLUP 3:INPUT_PULLDOWN
+          switch(mode)
+          {
+            case 0:pinMode(pinNo, INPUT);break;
+            case 1:pinMode(pinNo, OUTPUT);break;
+            case 2:pinMode(pinNo, INPUT_PULLUP);break;
+            case 3:pinMode(pinNo, INPUT_PULLDOWN);break;
+          }
+        }
+        else if(doc["output"].is<int>())
+        {
+          int output= doc["output"];//0:input 1:output 2:INPUT_PULLUP 3:INPUT_PULLDOWN
+          switch(output)
+          {
+            case -2://analog
+            {
+              int value=analogRead(pinNo);
+              
+              retdoc["type"]="PIN_INFO";
+              retdoc["value"]=value;
+              doRsp=rspAck=true;
+
+              break;
+            }
+            case -1://digital
+            {
+              int value=digitalRead(pinNo);
+              
+              retdoc["type"]="PIN_INFO";
+              retdoc["value"]=value;
+              doRsp=rspAck=true;
+              break;
+            }
+            case 0:digitalWrite(pinNo, LOW);break;
+            case 1:digitalWrite(pinNo, HIGH);break;
+          }
+        }
+      }
+      else
+      {
+
+      }
+      
 
 
-    return 0;
-
-
-  }
-  void connected(Data_Layer_IF* ch){}
-
-  int send_data(int head_room,uint8_t *data,int len,int leg_room){
-    Serial.write(data,len);
-    return 0;
-  }
-  void disconnected(Data_Layer_IF* ch){}
-  void DBGINFO()
-  {
     
-  }
-
-  int close(){}
-
-  
-  char dbgBuff[500];
-  int dbg_printf(const char *fmt, ...)
-  {
-    char *str=dbgBuff;
-    int restL=sizeof(dbgBuff);
-    {//start head
-      int len=sprintf(str,"{\"dbg\":\"");
-      str+=len;
-      restL-=len;
-
+      // retdoc["type"]="DBG_PRT";
+      // // retdoc["msg"]=doc;
+      // retdoc["error"]=error.code();
+      // retdoc["id"]=doc["id"];
+      // uint8_t buff[300];
+      // int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+      // send_json_string(0,buff,slen,0);
     }
-
+    else if(strcmp(type,"BYE")==0)
     {
-      va_list aptr;
-      int ret;
-      va_start(aptr, fmt);
-      ret = vsnprintf (str, restL-10, fmt, aptr);
-      va_end(aptr); 
-      str+=ret;
-      restL-=ret;
+      doRsp=rspAck=true;
 
-
-    }
-    {//end
-      int len=sprintf(str,"\"}");
-      str+=len;
-      restL-=len;
-    }
-
-    return send_json_string(0,(uint8_t*)dbgBuff,str-dbgBuff,0);
-  }
-
-  int msg_printf(const char *type,const char *fmt, ...)
-  {
-    char *str=dbgBuff;
-    int restL=sizeof(dbgBuff);
-    {//start head
-      int len=sprintf(str,"{\"type\":\"%s\",\"data\":\"",type);
-      str+=len;
-      restL-=len;
-
-    }
-
+    }      
+    else if(strcmp(type,"GCODE")==0)
     {
-      va_list aptr;
-      int ret;
-      va_start(aptr, fmt);
-      ret = vsnprintf (str, restL-10, fmt, aptr);
-      va_end(aptr); 
-      str+=ret;
-      restL-=ret;
-
-
-    }
-    {//end
-      int len=sprintf(str,"\"}");
-      str+=len;
-      restL-=len;
-    }
-
-    return send_json_string(0,(uint8_t*)dbgBuff,str-dbgBuff,0);
-  }
-
-  void loop()
-  {
-    if(gcodewait_id!=-1)
-    {//try to consume the waited gcode
+      
       int space = mstp.SegQ_Space();
       int safe_Margin=3;
 
       space-=safe_Margin;
-      if(space>0)//here is a space
-      {
-        retdoc.clear();
-        bool rspAck=(gcpm.runLine(gcodewait_gcode)==GCodeParser::GCodeParser_Status::TASK_OK);
+      if(space<0)space=0;
 
+      const char* code = doc["code"];
+      if(code==NULL)
+      {
+        doRsp=true;
+        rspAck=false;
+        retdoc["buffer_space"]=space;
+      }
+      else if(gcodewait_id!=-1)
+      {
+        doRsp=true;
+        rspAck=false;
+        retdoc["buffer_space"]=space;
+      }
+      else
+      {
+        doRsp=true;
+        rspAck=false;
+        
+        if( space>0)
         {
+          rspAck=(gcpm.runLine(code)==GCodeParser::GCodeParser_Status::TASK_OK);
           space = mstp.SegQ_Space()-safe_Margin;
           if(space<0)space=0;
           retdoc["buffer_space"]=space;
-          retdoc["id"]=gcodewait_id;
-          retdoc["ack"]=rspAck;
-          
-          char *buff=dbgBuff;
-          int buffL=sizeof(dbgBuff);
-          int slen=serializeJson(retdoc, buff,buffL);
-          send_json_string(0,(uint8_t*)buff,slen,0);
         }
-        gcodewait_id=-1;
+        else
+        {
+          //wait
+          doRsp=false;
+          
+          strcpy(gcodewait_gcode,code);
+
+          gcodewait_id=doc["id"];
+
+        }
+
+
       }
+
+
+    }
+    else if(strcmp(type,"motion_buffer_info")==0)
+    {
+      
+      const char* code = doc["code"];
+      doRsp=rspAck=true;
+
+      int space = mstp.SegQ_Space();
+      int safe_Margin=3;
+      space-=safe_Margin;
+      if(space<0)space=0;
+      retdoc["buffer_space"]=space;
+      retdoc["buffer_size"]= mstp.SegQ_Size();
+      retdoc["buffer_capacity"]=mstp.SegQ_Capacity()-safe_Margin;
+    }
+
+
+    if(doRsp)
+    {
+      retdoc["id"]=doc["id"];
+      retdoc["ack"]=rspAck;
+      
+      uint8_t buff[700];
+      int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+      send_json_string(0,buff,slen,0);
     }
   }
 
 
-};
+  return 0;
 
-MData_JR djrl;
+
+}
+int MData_JR::send_data(int head_room,uint8_t *data,int len,int leg_room){
+  Serial.write(data,len);
+  return 0;
+}
+
+int MData_JR::dbg_printf(const char *fmt, ...)
+{
+  char *str=dbgBuff;
+  int restL=sizeof(dbgBuff);
+  {//start head
+    int len=sprintf(str,"{\"dbg\":\"");
+    str+=len;
+    restL-=len;
+
+  }
+
+  {
+    va_list aptr;
+    int ret;
+    va_start(aptr, fmt);
+    ret = vsnprintf (str, restL-10, fmt, aptr);
+    va_end(aptr); 
+    str+=ret;
+    restL-=ret;
+
+
+  }
+  {//end
+    int len=sprintf(str,"\"}");
+    str+=len;
+    restL-=len;
+  }
+
+  return send_json_string(0,(uint8_t*)dbgBuff,str-dbgBuff,0);
+}
+
+int MData_JR::msg_printf(const char *type,const char *fmt, ...)
+{
+  char *str=dbgBuff;
+  int restL=sizeof(dbgBuff);
+  {//start head
+    int len=sprintf(str,"{\"type\":\"%s\",\"data\":\"",type);
+    str+=len;
+    restL-=len;
+
+  }
+
+  {
+    va_list aptr;
+    int ret;
+    va_start(aptr, fmt);
+    ret = vsnprintf (str, restL-10, fmt, aptr);
+    va_end(aptr); 
+    str+=ret;
+    restL-=ret;
+
+
+  }
+  {//end
+    int len=sprintf(str,"\"}");
+    str+=len;
+    restL-=len;
+  }
+
+  return send_json_string(0,(uint8_t*)dbgBuff,str-dbgBuff,0);
+}
+
+void MData_JR::loop()
+{
+  if(gcodewait_id!=-1)
+  {//try to consume the waited gcode
+    int space = mstp.SegQ_Space();
+    int safe_Margin=3;
+
+    space-=safe_Margin;
+    if(space>0)//here is a space
+    {
+      retdoc.clear();
+      bool rspAck=(gcpm.runLine(gcodewait_gcode)==GCodeParser::GCodeParser_Status::TASK_OK);
+
+      {
+        space = mstp.SegQ_Space()-safe_Margin;
+        if(space<0)space=0;
+        retdoc["buffer_space"]=space;
+        retdoc["id"]=gcodewait_id;
+        retdoc["ack"]=rspAck;
+        
+        char *buff=dbgBuff;
+        int buffL=sizeof(dbgBuff);
+        int slen=serializeJson(retdoc, buff,buffL);
+        send_json_string(0,(uint8_t*)buff,slen,0);
+      }
+      gcodewait_id=-1;
+    }
+  }
+}
+
+
 
 
 int rzERROR=0;
@@ -1167,7 +1205,7 @@ void loop()
     for(int i=4;i>=0;i--)
     {
       // delay(1000);
-    //   sprintf(gcode,"G01 Y30 Z1_%d F2000",mstp.M1Info_Limit1);
+    //   sprintf(gcode,"G01 Y30 Z1_%d F2000",mstp.Z1Info_Limit1);
     //   gcpm.runLine(gcode);
       
       
@@ -1178,7 +1216,7 @@ void loop()
     //   gcpm.runLine("M42 P2 S0");
       
     // __PRT_I_(">>>>\n");
-    //   sprintf(gcode,"G01 Y-30 Z1_%d F2000",mstp.M1Info_Limit2);
+    //   sprintf(gcode,"G01 Y-30 Z1_%d F2000",mstp.Z1Info_Limit2);
     //   gcpm.runLine(gcode);
 
     // __PRT_I_(">>>>\n");

@@ -27,26 +27,6 @@ float GCodeParser_M::unit2Pulse(float dist,float pulses_per_mm)
 }
 
 
-float GCodeParser_M::unit2Pulse_conv(const char* code,float dist)
-{
-  if(code[0]=='Y')
-  {
-    return unit2Pulse(dist,1);
-  }
-
-  if(code[0]=='Z'&&code[1]=='1')
-  {
-    return round(unit2Pulse(dist,1));
-  }
-  if(code[0]=='F')
-  {
-    return unit2Pulse(dist,1);
-  }
-
-
-  return NAN;
-}
-
 float parseFloat(char* str,int strL)
 {
   char strBuf[20];
@@ -63,66 +43,63 @@ long parseLong(char* str,int strL)
 }
 
 
-int GCodeParser_M::ReadxVecData(char **blkIdxes,int blkIdxesL,float *retVec)
+int GCodeParser_M::ReadxVecELE_toPulses(char **blkIdxes,int blkIdxesL,xVec &retVec,int axisIdx,const char* axisGIDX)
 {
-  float num=NAN;
-  int ret;
-  ret = FindFloat("Z1_",blkIdxes,blkIdxesL,num);
-  if(ret==0)retVec[0]=num;
-  ret = FindFloat("Y",blkIdxes,blkIdxesL,num);
-  if(ret==0)retVec[1]=num;
+
+  float num;
+  int ret = FindFloat(axisGIDX,blkIdxes,blkIdxesL,num);
+  if(ret)return ret;
+  retVec.vec[axisIdx]=(uint32_t)unit2Pulse_conv(axisIdx,num);
   return 0;
 }
 
+
 int GCodeParser_M::ReadxVecData(char **blkIdxes,int blkIdxesL,xVec &retVec)
 {
-  float vecBuff[MSTP_VEC_SIZE];
-  
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_X,AXIS_GDX_X);
 
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    vecBuff[i]=NAN;//set NAN as unset
-  }
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Y,AXIS_GDX_Y);
 
-  ReadxVecData(blkIdxes,blkIdxesL,vecBuff);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z1,AXIS_GDX_Z1);
   
-  if(vecBuff[0]==vecBuff[0])
-  {
-    uint32_t ipos=unit2Pulse_conv("Z1",vecBuff[0]);
-    
-    retVec.vec[0]=ipos;
-  }
-  if(vecBuff[1]==vecBuff[1])
-  {
-    uint32_t ipos=unit2Pulse_conv("Y",vecBuff[1]);
-      
-    retVec.vec[1]=ipos;
-  }
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R11,AXIS_GDX_R11);
+  
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R12,AXIS_GDX_R12);
 
-  
   return 0;
 }
 int GCodeParser_M::ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F)
 {
   vec=isAbsLoc?MTPSYS_getLastLocInStepperSystem():(xVec){0};
   ReadxVecData(blkIdxes,blkIdxesL,vec);
-  int didx=0;
-  int j=0;
 
-  float tmpF=latestF;
-  int ret = FindFloat("F",blkIdxes,blkIdxesL,tmpF);
-  float nF=unit2Pulse_conv("F",tmpF);
-  if(nF==nF && nF>0)
+  float tmpF=NAN;
+  int ret = FindFloat(AXIS_GDX_FEEDRATE,blkIdxes,blkIdxesL,tmpF);
+  if(ret==0)
   {
-    latestF=nF;
+    tmpF=unit2Pulse_conv(AXIS_IDX_FEEDRATE,tmpF);
+
+    if(tmpF>0)
+    {
+      latestF=tmpF;
+    }
+    else 
+    {
+      tmpF=latestF;
+    }
+
   }
-  F=latestF;
+  else
+  {
+    tmpF=latestF;
+  }
+  F=tmpF;
 
   return 0;
 }
 
 
-int GCodeParser_M::FindFloat(char *prefix,char **blkIdxes,int blkIdxesL,float &retNum)
+int GCodeParser_M::FindFloat(const char *prefix,char **blkIdxes,int blkIdxesL,float &retNum)
 {
   int j=0;
   int prefixL=strlen(prefix);
@@ -149,7 +126,7 @@ int GCodeParser_M::FindFloat(char *prefix,char **blkIdxes,int blkIdxesL,float &r
   }
   return -3;
 }
-int GCodeParser_M::FindInt32(char *prefix,char **blkIdxes,int blkIdxesL,int32_t &retNum)
+int GCodeParser_M::FindInt32(const char *prefix,char **blkIdxes,int blkIdxesL,int32_t &retNum)
 {
   int j=0;
   int prefixL=strlen(prefix);
@@ -311,15 +288,15 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         {
           
           float tmpF=NAN;
-          if(FindFloat("ACC",blockInitial+j,blockCount-j,tmpF)==0)
+          if(FindFloat(AXIS_GDX_ACCELERATION,blockInitial+j,blockCount-j,tmpF)==0)
           {
-            exinfo.acc=unit2Pulse_conv("ACC",tmpF);
+            exinfo.acc=unit2Pulse_conv(AXIS_IDX_ACCELERATION,tmpF);
           }
           tmpF=NAN;
           
-          if(FindFloat("DEA",blockInitial+j,blockCount-j,tmpF)==0)
+          if(FindFloat(AXIS_GDX_DEACCELERATION,blockInitial+j,blockCount-j,tmpF)==0)
           {
-            exinfo.deacc=unit2Pulse_conv("DEA",tmpF);
+            exinfo.deacc=unit2Pulse_conv(AXIS_IDX_DEACCELERATION,tmpF);
           }
         }
 
