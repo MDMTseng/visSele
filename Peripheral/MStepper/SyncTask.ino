@@ -802,7 +802,8 @@ class MData_JR:public Data_JsonRaw_Layer
       {
 
         retdoc["type"]="get_setup";
-        retdoc["ver"]=VERSION;
+        retdoc["ver"]="0.5.0";
+        retdoc["name"]="CNC_1";;
         genMachineSetup(retdoc);
 
         
