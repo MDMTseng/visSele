@@ -19,6 +19,7 @@
 #include <compat_dirent.h>
 #include <smem_channel.hpp>
 #include <ctime>
+#include "CameraLayerManager.hpp"
 
 #define _VERSION_ "1.2"
 std::timed_mutex mainThreadLock;
@@ -28,6 +29,7 @@ const int resourcePoolSize = 30;
 
 
 
+CameraLayerManager clm;
 int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json);
 int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...);
 int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us);
@@ -698,15 +700,36 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
       } while (false);
     }
+    else if (checkTL("CM", dat)) //Camera
+    {
+      session_ACK = false;
+      char *type_str = JFetch_STRING(json, "type");
+      if (strcmp(type_str, "discover") ==0)
+      {
+        session_ACK = true;
+
+        clm.discover();
+            
+        cJSON *discoverInfo = cJSON_Parse(clm.genJsonStringList().c_str());
+        char *jstr = cJSON_Print(discoverInfo);
+        cJSON_Delete(discoverInfo);
+        bpg_dat = GenStrBPGData("CM", jstr);
+        bpg_dat.pgID = dat->pgID;
+        fromUpperLayer(bpg_dat);
+        free(jstr);
+      }
+      else if(strcmp(type_str, "connect") ==0)
+      {
+
+      }
+
+    }
     else if (checkTL("GS", dat)) //[G]et [S]etting
     {
-
+      
+      session_ACK = false;
       cJSON *items = JFetch_ARRAY(json, "items");
-      if (items == NULL)
-      {
-        session_ACK = false;
-      }
-      else
+      if (items != NULL)
       {
         session_ACK = true;
 
@@ -731,6 +754,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             cJSON_AddStringToObject(retArr, itemType, chBuff);
           }
         }
+
+        
+        char *jstr = cJSON_Print(retArr);
+        cJSON_Delete(retArr);
+        bpg_dat = GenStrBPGData("GS", jstr);
+        bpg_dat.pgID = dat->pgID;
+        
+        fromUpperLayer(bpg_dat);
+        free(jstr);
       }
     }
     else if (checkTL("LD", dat))
