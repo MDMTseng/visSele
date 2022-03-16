@@ -280,7 +280,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     // if (checkTL("GS", dat) == false)
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
     //       dat->pgID);
-    if (checkTL("HR", dat))
+         if (checkTL("HR", dat))
     {
       LOGI("DataType_BPG>>>>%s", dat->dat_raw);
 
@@ -426,7 +426,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
       } while (false);
     }
-    else if (checkTL("CM", dat)) //Camera
+    else if (checkTL("CM", dat)) //[C]amera [M]anager
     {
       session_ACK = false;
       char *type_str = JFetch_STRING(json, "type");
@@ -575,7 +575,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         cJSON_Delete(retArr);
       }
     }
-    else if (checkTL("LD", dat))
+    else if (checkTL("LD", dat)) //[L]oa[D] file
     {
       
       session_ACK = true;
@@ -663,7 +663,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
       } while (false);
     }
-    else if (checkTL("PD", dat)) //Peripheral device
+    else if (checkTL("PD", dat)) //[P]eripheral [D]evice
     {
       char *type = JFetch_STRING(json, "type");
 

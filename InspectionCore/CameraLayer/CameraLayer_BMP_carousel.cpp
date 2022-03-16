@@ -16,13 +16,14 @@ CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer_Callback cb,void*
     isThreadWorking=false;
 
 
-    char buff[300];
+    char buff[700];
     snprintf(buff, sizeof(buff),
     "{\
       \"type\":\"CameraLayer_BMP_carousel\",\
       \"name\":\"BMP_CAM\",\
+      \"id\":\"%s\",\
       \"folder_name\":\"%s\"\
-    }",folderName.c_str());
+    }",folderName.c_str(),folderName.c_str());
     cam_json_info.assign(buff);
     LOGI(">>>%s",cam_json_info.c_str());
 }
