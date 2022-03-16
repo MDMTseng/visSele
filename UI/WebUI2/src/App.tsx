@@ -740,7 +740,7 @@ function App() {
   const ACT_EXT_API_UPDATE= (...p:Parameters<typeof EXT_API_UPDATE>) => dispatch(EXT_API_UPDATE(...p));
   const ACT_EXT_API_CONNECTED= (...p:Parameters<typeof EXT_API_CONNECTED>) => dispatch(EXT_API_CONNECTED(...p));
   const ACT_EXT_API_DISCONNECTED= (...p:Parameters<typeof EXT_API_DISCONNECTED>) => dispatch(EXT_API_DISCONNECTED(...p));
-
+  const [camList,setCamList]=useState<{[key:string]:{[key:string]:any,list:any[]}}>({});
   useEffect(() => {
     
     let core_api=new BPG_WS(CORE_ID);
@@ -795,17 +795,82 @@ function App() {
       
   }, []); 
 
+  let camUIInfo = Object.keys(camList).map((driverKey:string,index)=>{
+   
+    let camInfos=camList[driverKey];
+
+    return camInfos.list.map((cam,idx)=>({
+      driver_idx:index,
+      id:cam.id,
+      misc:(driverKey=="bmpcarousel")?"data/BMP_carousel_test":"",
+      cam_idx:idx,
+      channel_id:index*1000+idx+50000
+    }));
+  }).flat();
+  console.log(camUIInfo);
+
+
+
   return (
     <div className="App">
-      <header className="App-header">
         <Button onClick={()=>{
           ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
             let api=_api as CORE_API_TYPE;//cast
             api.cameraDiscovery().then((ret:any)=>{
               console.log(ret);
+              
+              setCamList(ret[0].data)
             })
           })
         }}>{JSON.stringify(CORE_API_INFO)}</Button>
+        
+
+
+
+        {camUIInfo.map(cam=><Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as CORE_API_TYPE;//cast
+            api.send(
+              "CM",0,{
+                type:"connect",
+                driver_idx:cam.driver_idx,
+                cam_idx:cam.cam_idx,
+                misc:cam.misc,
+                _PGID_:cam.channel_id,
+                _PGINFO_:{keep:true}
+              },undefined,
+              {
+                reject:(arg:any[])=>console.error(arg),
+                resolve:(arg:any[])=>{
+
+
+
+                  api.send(
+                  "CM",0,{
+                    type:"get_insp_targets"
+                  },undefined,
+                  {
+                    reject:(arg:any[])=>console.error(arg),
+                    resolve:(arg:any[])=>{
+                      console.log(arg);
+                    }
+                  })
+
+
+
+
+                  
+                }
+              })
+          })
+
+
+
+
+        }}>{cam.id}</Button>)}
+
+
+
 
         <Button onClick={()=>{
           ACT_EXT_API_ACCESS(CNC_PERIPHERAL_ID,(_api)=>{
@@ -814,7 +879,6 @@ function App() {
           })
         }}>ppppp</Button>
         
-      </header>
     </div>
   );
 }

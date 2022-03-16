@@ -134,7 +134,7 @@ class CameraLayerManager
   {
     std::string jobj=std::string("{")
     +"\"aravis\":"+CamList2Json(aravisCamList)+","
-    +"\"bmpcarousel\":{}"//+","
+    +"\"bmpcarousel\":{\"list\":[{\"id\":\"bmpcarousel\"}]}"//+","
     +"}";
 
     return jobj;

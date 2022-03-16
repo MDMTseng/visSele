@@ -25,280 +25,189 @@
 std::timed_mutex mainThreadLock;
 
 
-const int resourcePoolSize = 30;
 
 
 
-CameraLayerManager clm;
-int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json);
-int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...);
-int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us);
 
-void setThreadPriority(std::thread &thread, int type, int priority)
-{
-
-  sched_param sch;
-  int policy;
-  pthread_getschedparam(thread.native_handle(), &policy, &sch);
-  sch.sched_priority = priority;
-  if (pthread_setschedparam(thread.native_handle(), type, &sch))
-  {
-    // std::cout << "Failed to setschedparam: " << std::strerror(errno) << '\n';
-  }
-}
 
 m_BPG_Protocol_Interface bpg_pi;
-
-class PerifChannel:public Data_JsonRaw_Layer
-{
-  
-  public:
-
-  uint16_t conn_pgID;
-  int pkt_count = 0;
-  int ID;
-  PerifChannel():Data_JsonRaw_Layer()// throw(std::runtime_error)
-  {
-  }
-  int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
-    
-    if(opcode==1 )
-    {
-
-      char tmp[1024];
-      sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", raw, ID);
-      // LOGI("MSG:%s", tmp);
-      BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
-      bpg_dat.pgID=conn_pgID;
-      bpg_pi.fromUpperLayer(bpg_dat);
-
-      bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", "{}");
-      bpg_dat.pgID = conn_pgID;
-      bpg_pi.fromUpperLayer(bpg_dat);
-      return 0;
-
-    }
-    printf(">>opcode:%d\n",opcode);
-    return 0;
-
-
-  }
-
-  int recv_RESET()
-  {
-    // printf("Get recv_RESET\n");
-  }
-  int recv_ERROR(ERROR_TYPE errorcode)
-  {
-    // printf("Get recv_ERROR:%d\n",errorcode);
-  }
-  
-  void connected(Data_Layer_IF* ch){
-    
-    printf(">>>%X connected\n",ch);
-  }
-
-  void disconnected(Data_Layer_IF* ch){
-    printf(">>>%X disconnected\n",ch);
-  }
-
-  ~PerifChannel()
-  {
-    close();
-    printf("MData_uInsp DISTRUCT:%p\n",this);
-  }
-
-  // int send_data(int head_room,uint8_t *data,int len,int leg_room){
-    
-  //   // printf("==============\n");
-  //   // for(int i=0;i<len;i++)
-  //   // {
-  //   //   printf("%d ",data[i]);
-  //   // }
-  //   // printf("\n");
-  //   return recv_data(data,len, false);//LOOP back
-  // }
-};
-
-
-
 
 
 
 m_BPG_Link_Interface_WebSocket *ifwebsocket=NULL;
 
+struct InspectionTarget_EXCHANGE
+{
+  cJSON *info;
+  uint8_t* binary;
+  BPG_protocol_data_acvImage_Send_info* imgInfo;
+};
+
+class InspectionTarget
+{
+  CameraLayer *camera=NULL;
+  cJSON *InspConf=NULL;
+  public:
+  int channel_id;
+  InspectionTarget()
+  {
+    // this->camera=camera;
+    // InspConf=inspectionConfig;
+  }
+
+  void assignCamera(CameraLayer *cam)
+  {
+    camera=cam;
+  }
+
+  void setInspDef(cJSON* json)
+  {
+  }
+
+  cJSON* getInfo_cJSON()
+  {
+    cJSON *obj=cJSON_CreateObject();
+
+    {
+      cJSON *camInfo = cJSON_Parse(camera->getCameraJsonInfo().c_str());
+      cJSON_AddItemToObject(obj, "camera", camInfo);
+    }
+
+    {
+      cJSON *otherInfo=cJSON_CreateObject();
+      cJSON_AddItemToObject(obj, "inspInfo", otherInfo);
+    }
+
+
+    {
+      cJSON_AddNumberToObject(obj, "channel_id", channel_id);
+    }
+    return obj;
+  }
+
+  bool isExchangeDataInUse=false;
+  InspectionTarget_EXCHANGE excdata={0};
+  InspectionTarget_EXCHANGE* setInfo(InspectionTarget_EXCHANGE* info)
+  {
+    isExchangeDataInUse=true;
+    return &excdata;
+  }
+
+  bool returnExchange(InspectionTarget_EXCHANGE* info)
+  {
+    if(isExchangeDataInUse==false || info!=&excdata)return false;
+    isExchangeDataInUse=false;
+    return true;
+  }
+  
+
+  static CameraLayer::status sCAM_CallBack(CameraLayer &cl_obj, int type, void *context)
+  {
+    InspectionTarget *itm=(InspectionTarget*)context;
+    itm->cam_CallBack(cl_obj,type);
+    return CameraLayer::status::ACK;
+  }
+  void cam_CallBack(CameraLayer &cl_obj, int type)
+  {
+    
+  }
+
+
+  ~InspectionTarget()
+  {
+    if(InspConf)
+      cJSON_Delete(InspConf);
+    InspConf=NULL;
+
+    
+    if(camera)
+      delete( camera );
+    camera=NULL;
+  }
+
+};
+
+
+class InspectionTargetManager
+{
+  vector<InspectionTarget*> inspTar;
+
+
+  inline static CameraLayerManager clm;
+  public:
+  static InspectionTarget* createInspTargetWithCamera(int driver_idx,int idx,std::string misc_str)
+  {
+    InspectionTarget* insptar=new InspectionTarget();
+    CameraLayer *cam= clm.connectCamera(driver_idx,idx,misc_str,InspectionTarget::sCAM_CallBack,insptar);
+    insptar->assignCamera(cam);
+    return insptar;
+  }
+  public:
+  static string cameraDiscovery()
+  {
+    clm.discover();
+    return clm.genJsonStringList();
+  }
+
+
+
+  
+  InspectionTarget* AddInspTargetWithCamera(int driver_idx,int idx,std::string misc_str)
+  {
+    InspectionTarget* insptar=createInspTargetWithCamera( driver_idx, idx, misc_str);
+    inspTar.push_back(insptar);
+    return insptar;
+  }
+
+
+  const vector<InspectionTarget*>& getInspTars()
+  {
+    return inspTar;
+  }
+
+
+  ~InspectionTargetManager()
+  {
+    for(int i=0;i<inspTar.size();i++)
+    {
+      delete inspTar[i];
+      inspTar[i]=NULL;
+    }
+    inspTar.resize(0);
+  }
+};
+
+
+
+InspectionTargetManager inspTarMan;
+
+
+
+int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
+  
+  if(opcode==1 )
+  {
+
+    char tmp[1024];
+    sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", raw, ID);
+    // LOGI("MSG:%s", tmp);
+    bpg_pi.fromUpperLayer_DATA("PD",conn_pgID,tmp);
+    bpg_pi.fromUpperLayer_DATA("SS",conn_pgID,"{}");
+    return 0;
+
+  }
+  printf(">>opcode:%d\n",opcode);
+  return 0;
+
+
+}
+
+
+
+
+
 int _argc;
 char **_argv;
-
-typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst, size_t dstLen, uint8_t *src, size_t srcLen);
-
-void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler *sampler, int doNearest = 1,
-                       int X = -1, int Y = -1, int W = -1, int H = -1)
-{
-  int X2 = src.GetWidth() - 1;
-  int Y2 = src.GetHeight() - 1;
-
-  if (X < 0)
-    X = 0;
-  else if (X >= X2)
-    X = X2 - 1;
-
-  if (Y < 0)
-    Y = 0;
-  else if (Y >= Y2)
-    Y = Y2 - 1;
-
-  if (W > 0)
-  {
-    X2 = X + W;
-    if (X2 >= src.GetWidth())
-    {
-      X2 = src.GetWidth() - 1;
-    }
-  }
-
-  if (H > 0)
-  {
-    Y2 = Y + H;
-    if (Y2 >= src.GetHeight())
-    {
-      Y2 = src.GetHeight() - 1;
-    }
-  }
-  X /= downScale;
-  Y /= downScale;
-  X2 /= downScale;
-  Y2 /= downScale;
-  dst.ReSize((X2 - X + 1), (Y2 - Y + 1));
-  // LOGI("X:%d Y:%d X2:%d Y2:%d", X, Y, X2, Y2);
-  //LOGI("map=%p",map);
-  for (int i = Y; i <= Y2; i++)
-  {
-    int src_i = i * downScale;
-    for (int j = X; j <= X2; j++)
-    {
-      int RSum = 0, GSum = 0, BSum = 0;
-      int src_j = j * downScale;
-
-      {
-        float bri = 0;
-        if (sampler)
-        {
-          float coord[] = {(float)src_j, (float)src_i};
-
-          // if(i==(Y2/2) && j>200 && j< 400)
-          // {
-            
-          //   float coord2[] = {coord[0], coord[1]};
-          //   // int ret = sampler->ideal2img(coord2);
-          //   bri = sampler->sampleImage_IdealCoord(&src, coord, doNearest);
-            
-          //   LOGI("X:%d,%d bri:%f %f,%f=>%f,%f  samp:%p", j, i,bri,coord2[0],coord2[1],coord[0],coord[1],sampler);
-          // }else
-          // {
-
-          // }
-
-          bri = sampler->sampleImage_IdealCoord(&src, coord, doNearest);
-
-          if (bri > 255)
-            bri = 255;
-          BSum += bri;
-          GSum += bri;
-          RSum += bri;
-        }
-        else
-        {
-          BSum = src.CVector[src_i][(src_j)*3 + 0];
-          GSum = src.CVector[src_i][(src_j)*3 + 1];
-          RSum = src.CVector[src_i][(src_j)*3 + 2];
-        }
-      }
-      
-      uint8_t *pix = &(dst.CVector[i - Y][(j - X) * 3 + 0]);
-      pix[0] = BSum;
-      pix[1] = GSum;
-      pix[2] = RSum;
-    }
-  }
-}
-
-cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth = 0)
-{
-  if (path == NULL)
-    return NULL;
-
-  DIR *d = opendir(path);
-
-  if (d == NULL)
-    return NULL;
-
-  cJSON *retObj = (jObj_to_W == NULL) ? cJSON_CreateObject() : jObj_to_W;
-  struct dirent *dir;
-  cJSON *dirFiles = cJSON_CreateArray();
-  char buf[PATH_MAX + 1];
-  realfullPath(path, buf);
-
-  cJSON_AddStringToObject(retObj, "path", buf);
-  cJSON_AddItemToObject(retObj, "files", dirFiles);
-
-  std::string folderPath(buf);
-
-  if (depth > 0)
-    while ((dir = readdir(d)) != NULL)
-    {
-      //if(dir->d_name[0]=='.')continue;
-      cJSON *fileInfo = cJSON_CreateObject();
-      cJSON_AddItemToArray(dirFiles, fileInfo);
-      cJSON_AddStringToObject(fileInfo, "name", dir->d_name);
-
-      char *type = NULL;
-      std::string fileName(dir->d_name);
-      std::string filePath = folderPath + "/" + fileName;
-
-      switch (dir->d_type)
-      {
-      case DT_REG:
-        type = "REG";
-        break;
-      case DT_DIR:
-      {
-        if (depth > 0 && dir->d_name != NULL && dir->d_name[0] != '\0' && dir->d_name[0] != '.')
-        {
-          cJSON *subFolderStruct = cJSON_DirFiles(filePath.c_str(), NULL, depth - 1);
-          if (subFolderStruct != NULL)
-          {
-            cJSON_AddItemToObject(fileInfo, "struct", subFolderStruct);
-          }
-        }
-        type = "DIR";
-        break;
-      }
-      // case DT_FIFO:
-      // case DT_SOCK:
-      // case DT_CHR:
-      // case DT_BLK:
-      // case DT_LNK:
-      case DT_UNKNOWN:
-      default:
-        type = "UNKNOWN";
-        break;
-      }
-      cJSON_AddStringToObject(fileInfo, "type", type);
-
-      struct stat st;
-      if (stat(filePath.c_str(), &st) == 0)
-      {
-        cJSON_AddNumberToObject(fileInfo, "size_bytes", st.st_size);
-        cJSON_AddNumberToObject(fileInfo, "mtime_ms", st.st_mtime * 1000);
-        cJSON_AddNumberToObject(fileInfo, "ctime_ms", st.st_ctime * 1000);
-        cJSON_AddNumberToObject(fileInfo, "atime_ms", st.st_atime * 1000);
-      }
-    }
-  closedir(d);
-
-  return retObj;
-}
 
 machine_hash machine_h = {0};
 void AttachStaticInfo(cJSON *reportJson, m_BPG_Protocol_Interface *BPG_prot_if)
@@ -353,162 +262,6 @@ BGLightNodeInfo extractInfoFromJson(cJSON *nodeRoot) //have exception
   return info;
 }
 
-BPG_protocol_data m_BPG_Protocol_Interface::GenStrBPGData(char *TL, char *jsonStr)
-{
-  BPG_protocol_data BPG_dat = {0};
-  BPG_dat.tl[0] = TL[0];
-  BPG_dat.tl[1] = TL[1];
-  if (jsonStr == NULL)
-  {
-    BPG_dat.size = 0;
-  }
-  else
-  {
-    BPG_dat.size = strlen(jsonStr);
-  }
-  BPG_dat.dat_raw = (uint8_t *)jsonStr;
-
-  return BPG_dat;
-}
-
-bool DoImageTransfer = true;
-
-bool m_BPG_Protocol_Interface::checkTL(const char *TL, const BPG_protocol_data *dat)
-{
-  if (TL == NULL)
-    return false;
-  return (TL[0] == dat->tl[0] && TL[1] == dat->tl[1]);
-}
-uint16_t m_BPG_Protocol_Interface::TLCode(const char *TL)
-{
-  return (((uint16_t)TL[0] << 8) | TL[1]);
-}
-m_BPG_Protocol_Interface::m_BPG_Protocol_Interface() : resPool(resourcePoolSize)
-{
-  cacheImage.ReSize(1, 1);
-}
-
-void m_BPG_Protocol_Interface::delete_PeripheralChannel()
-{
-
-  if (perifCH)
-  {
-    LOGI("DELETING");
-    delete perifCH;
-    perifCH = NULL;
-  }
-  LOGI("DELETED...");
-}
-
-
-
-
-std::vector<uint8_t> image_send_buffer(40000);
-int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
-{
-  if(callbackInfo==NULL)return -1;
-  BPG_protocol_data send_dat;
-  BPG_protocol_data_acvImage_Send_info *img_info = (BPG_protocol_data_acvImage_Send_info*)callbackInfo;
-
-  acvImage *img=img_info->img;
-
-  uint8_t header[]={
-    0,0,
-    
-    (uint8_t)(img_info->offsetX >>8),
-    (uint8_t)(img_info->offsetX),
-    (uint8_t)(img_info->offsetY >>8),
-    (uint8_t)(img_info->offsetY),
-
-    (uint8_t)(img->GetWidth()>>8),
-    (uint8_t)(img->GetWidth()),
-    (uint8_t)(img->GetHeight()>>8),
-    (uint8_t)(img->GetHeight()),
-    (uint8_t)(img_info->scale),
-    
-    (uint8_t)(img_info->fullWidth >>8),
-    (uint8_t)(img_info->fullWidth),
-    (uint8_t)(img_info->fullHeight >>8),
-    (uint8_t)(img_info->fullHeight),
-  };
-
-  {
-    image_send_buffer.resize(dch.getHeaderSize()+sizeof(header));
-    dch.headerSetup(&image_send_buffer[0], image_send_buffer.size(), data);
-
-    memcpy(&image_send_buffer[dch.getHeaderSize()], header, sizeof(header));
-    dch.toLinkLayer(&image_send_buffer[0], dch.getHeaderSize()+sizeof(header), false);
-
-  }
-
-  const int headerOffset=10;
-  image_send_buffer.resize(headerOffset+10000);
-  
-
-  int rest_len =
-    img->GetWidth()*
-    img->GetHeight();
-
-  uint8_t *img_pix_ptr=img->CVector[0];
-
-  for(bool isKeepGoing=true;isKeepGoing && rest_len;)
-  {
-    int imgBufferDataSize=image_send_buffer.size()-headerOffset;
-    uint8_t* imgBufferDataPtr=&image_send_buffer[headerOffset];
-    int sendL = 0;
-    for(int i=0;i<imgBufferDataSize-4;i+=4,img_pix_ptr+=3)
-    {
-      imgBufferDataPtr[i]=img_pix_ptr[2];
-      imgBufferDataPtr[i+1]=img_pix_ptr[1];
-      imgBufferDataPtr[i+2]=img_pix_ptr[0];
-      imgBufferDataPtr[i+3]=255;
-      sendL+=4;
-      rest_len--;
-      if(rest_len==0)
-      {
-        isKeepGoing=false;
-        break;
-      }
-    }
-    // LOGI("b[..]:%d %d %d %d... sendL:%d isKeepGoing:%d"
-    // ,image_send_buffer[0]
-    // ,image_send_buffer[1]
-    // ,image_send_buffer[2]
-    // ,image_send_buffer[3]
-    // ,sendL,isKeepGoing);
-
-    //gives linklayer enough(according to linklayer's requirment 
-    //can be much bigger(find possible maximum size header of all linklayer types))
-    dch.toLinkLayer(imgBufferDataPtr, sendL, isKeepGoing==false,headerOffset,0);
-  }
-  return 0;
-
-} 
-
-
-
-
-
-CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
-{  
-  if (type != CameraLayer::EV_IMG)
-    return CameraLayer::NAK;
-  acvImage *img=(acvImage*)obj;
-
-  CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
-  LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
-  img->ReSize(finfo.width,finfo.height,3);
-
-  return cl_obj.ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
-}
-
-int getImage(CameraLayer *camera,acvImage *dst_img,int trig_type=0,int timeout_ms=-1)
-{
-  return (camera->SnapFrame(SNAP_Callback,(void*)dst_img,trig_type,timeout_ms) == CameraLayer::ACK)?0:-1;
-}
-
-
-
 int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat) 
 {
   //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
@@ -521,26 +274,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     char err_str[1000] = "\0";
     bool session_ACK = false;
     char tmp[200];    //For string construct json reply
-    BPG_protocol_data bpg_dat; //Empty
-    // {
-    //     sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"IM\"]}",session_id);
-    //     bpg_dat=GenStrBPGData("SS", tmp);
-    //     datCH_BPG.data.p_BPG_protocol_data=&bpg_dat;
-    //     self->SendData(datCH_BPG);
-    // }
-    bpg_dat.pgID = dat->pgID;
-
-    // using Ms = std::chrono::milliseconds;
-    // for (int retryC=0;!mainThreadLock.try_lock_for(Ms(100));retryC++) //Lock and wait 100 ms
-    // {
-    //   LOGE("try lock:%d",retryC);
-    //   //Still locked
-    //   if (retryC > 1) //If the flag is closed then, exit
-    //   {
-    //     LOGE("retryC");
-    //     exit(-1);
-    //   }
-    // }
   do
   {
 
@@ -687,14 +420,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             session_ACK = true;
           }
 
-          fileStructStr = cJSON_Print(cjFileStruct);
-
-          bpg_dat = GenStrBPGData("FS", fileStructStr); //[F]older [S]truct
-          // LOGI("size:%d,raw=>\n%s",bpg_dat.size,bpg_dat.dat_raw);
-          bpg_dat.pgID = dat->pgID;
-          fromUpperLayer(bpg_dat);
-          if (fileStructStr)
-            free(fileStructStr);
+          fromUpperLayer_DATA("FS",dat->pgID,cjFileStruct);
           cJSON_Delete(cjFileStruct);
         }
 
@@ -708,20 +434,110 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       {
         session_ACK = true;
 
-        clm.discover();
+        string discoverInfo_str = InspectionTargetManager::cameraDiscovery();
             
-        cJSON *discoverInfo = cJSON_Parse(clm.genJsonStringList().c_str());
-        char *jstr = cJSON_Print(discoverInfo);
+        cJSON *discoverInfo = cJSON_Parse(discoverInfo_str.c_str());
+        fromUpperLayer_DATA("CM",dat->pgID,discoverInfo);
         cJSON_Delete(discoverInfo);
-        bpg_dat = GenStrBPGData("CM", jstr);
-        bpg_dat.pgID = dat->pgID;
-        fromUpperLayer(bpg_dat);
-        free(jstr);
       }
       else if(strcmp(type_str, "connect") ==0)
-      {
+      {do{
+        
+        double *driver_idx = JFetch_NUMBER(json, "driver_idx");
+        double *cam_idx = JFetch_NUMBER(json, "cam_idx");
+        
+        session_ACK = false;
+        
+        LOGI(">>>");
+        if(driver_idx==NULL ||cam_idx==NULL)break;
 
+        LOGI(">>>");
+
+        string miscStr="";
+        {
+          char* misc=JFetch_STRING(json, "misc");
+          if(misc)
+          {
+            string str(misc);
+            miscStr=misc;
+          }
+        }
+
+        InspectionTarget *insptar = inspTarMan.AddInspTargetWithCamera((int)*driver_idx,(int)*cam_idx,miscStr);
+        if(insptar)
+        {
+          insptar->channel_id=dat->pgID;
+          cJSON* info = insptar->getInfo_cJSON();
+
+          
+          fromUpperLayer_DATA("CM",dat->pgID,info);
+          cJSON_Delete(info);
+        }
+        LOGI(">>>insptar:%p",insptar);
+        session_ACK = (insptar!=NULL);
+          
+        
+      }while(0);}
+      else if(strcmp(type_str, "get_insp_targets") ==0)
+      {
+        
+        cJSON *retArr = cJSON_CreateArray();
+        const vector<InspectionTarget *> &insptars=inspTarMan.getInspTars();
+        for(int i=0;i<insptars.size();i++)
+        {
+          cJSON_AddItemToArray(retArr, insptars[i]->getInfo_cJSON());
+        }
+        session_ACK = true;
+        
+        fromUpperLayer_DATA("CM",dat->pgID,retArr);
+        cJSON_Delete(retArr);
       }
+      else if(strcmp(type_str, "target_exchange") ==0)
+      {do{
+        
+        double *_channel_id = JFetch_NUMBER(json, "channel_id");
+        if(_channel_id==NULL)
+        {
+          break;
+        }
+        int channel_id=(int)*_channel_id;
+        const vector<InspectionTarget *> &insptars=inspTarMan.getInspTars();
+        InspectionTarget *targetToSet=NULL;
+        for(int i=0;i<insptars.size();i++)
+        {
+          if(insptars[i]->channel_id==channel_id)
+          {
+            targetToSet=insptars[i];
+            break;
+          }
+        }
+        
+        if(targetToSet!=NULL)
+        {
+          session_ACK=true;
+          InspectionTarget_EXCHANGE input={0};
+          input.info=json;
+          
+          InspectionTarget_EXCHANGE *ret = targetToSet->setInfo(&input);
+          
+          if(ret->info)
+          {
+            fromUpperLayer_DATA("CM",dat->pgID,ret->info);
+          }
+          
+          if(ret->imgInfo)
+          {
+            
+            fromUpperLayer_DATA("IM",dat->pgID,ret->imgInfo);
+          }
+          targetToSet->returnExchange(ret);
+        }
+        else
+        {
+          session_ACK=false;
+        }
+
+      }while(0);}
 
     }
     else if (checkTL("GS", dat)) //[G]et [S]etting
@@ -755,14 +571,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           }
         }
 
-        
-        char *jstr = cJSON_Print(retArr);
+        fromUpperLayer_DATA("GS",dat->pgID,retArr);
         cJSON_Delete(retArr);
-        bpg_dat = GenStrBPGData("GS", jstr);
-        bpg_dat.pgID = dat->pgID;
-        
-        fromUpperLayer(bpg_dat);
-        free(jstr);
       }
     }
     else if (checkTL("LD", dat))
@@ -795,10 +605,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
               break;
             }
             LOGI("Read deffile:%s", filename);
-            bpg_dat = GenStrBPGData("FL", fileStr);
-            bpg_dat.pgID = dat->pgID;
-            
-            fromUpperLayer(bpg_dat);
+            fromUpperLayer_DATA("FL",dat->pgID, fileStr);
             free(fileStr);
           }
           catch (std::invalid_argument iaex)
@@ -832,7 +639,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
                 default_scale = 1;
             }
             //TODO:HACK: 4 times scale down for transmission speed, bpg_dat.scale is not used for now
-            bpg_dat = GenStrBPGData("IM", NULL);
+
             BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)default_scale};
 
             iminfo.fullHeight = srcImg->GetHeight();
@@ -840,12 +647,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
             //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
             ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, NULL);
-            bpg_dat.callbackInfo = (uint8_t *)&iminfo;
 
-            bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
+            fromUpperLayer_DATA("IM",dat->pgID,&iminfo);
 
-            bpg_dat.pgID = dat->pgID;
-            fromUpperLayer(bpg_dat);
+
           }
           else
           {
@@ -964,10 +769,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             session_ACK = true;
 
             sprintf(tmp, "{\"type\":\"CONNECT\",\"CONN_ID\":%d}", avail_CONN_ID);
-            bpg_dat = GenStrBPGData("PD", tmp);
-            bpg_dat.pgID = dat->pgID;
-            
-            fromUpperLayer(bpg_dat);
+            fromUpperLayer_DATA("PD",dat->pgID,tmp);
 
           }
           else
@@ -1020,7 +822,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           if (msg_obj)
           {
             uint8_t _buf[2000];
-            int ret= sendcJsonTo_perifCH(perifCH,_buf, sizeof(_buf),true,msg_obj);
+            int ret= sendcJSONTo_perifCH(perifCH,_buf, sizeof(_buf),true,msg_obj);
             session_ACK = (ret>=0);
           }
           else
@@ -1036,10 +838,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     }
     sprintf(tmp, "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
             dat->tl[0], dat->tl[1], (session_ACK) ? "true" : "false", err_str);
-    bpg_dat = GenStrBPGData("SS", tmp);
-    bpg_dat.pgID = dat->pgID;
-
-    fromUpperLayer(bpg_dat);
+    fromUpperLayer_DATA("SS",dat->pgID,tmp);
     cJSON_Delete(json);
   }
   while(0);
@@ -1050,179 +849,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
   return 0;
 }
-
-int str_ends_with(const char *str, const char *suffix)
-{
-  if (!str || !suffix)
-    return 0;
-  size_t lenstr = strlen(str);
-  size_t lensuffix = strlen(suffix);
-  if (lensuffix > lenstr)
-    return 0;
-  return strncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
-}
-
-CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
-{
-  if (type != CameraLayer::EV_IMG)
-    return CameraLayer::NAK;
-  // static clock_t pframeT;
-  // clock_t t = clock();
-
-
-  // if(inspQueue.size()>imageQueueSkipSize)//for responsiveness
-  // {//skip image if the queue is more than imageQueueSkipSize
-  
-  //   LOGE("skip image, inspQueue.size():%d>imageQueueSkipSize:%d\n", inspQueue.size(),imageQueueSkipSize);
-  //   return CameraLayer::NAK;
-  // }
-
-  // double interval = (double)(t - pframeT) / CLOCKS_PER_SEC * 1000;
-  // if (!doImgProcessThread)
-  // {
-  //   int skip_int = 0;
-  //   LOGI("frameInterval:%fms t:%d pframeT:%d", interval, t, pframeT);
-  //   if (interval < skip_int)
-  //   {
-  //     LOGI("interval:%f is less than skip_int:%d ms", interval, skip_int);
-  //     return CameraLayer::NAK; //if the interval less than 70ms then... skip this frame
-  //   }
-  // }
-  // pframeT = t;
-  // LOGI("=============== frameInterval:%fms \n", interval);
-  // LOGI("bpg_pi->cameraFramesLeft:%d", bpg_pi.cameraFramesLeft);
-  // CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
-
-  // CameraLayer::frameInfo finfo = cl_GMV.GetFrameInfo();
-  
-  // // LOGE("finfo.wh:%d,%d", finfo.width,finfo.height);
-  
-
-  // image_pipe_info *headImgPipe = bpg_pi.resPool.fetchResrc_blocking();
-  // if (headImgPipe == NULL)
-  // {
-  //   LOGE("HEAD IMG pipe is NULL");
-  //   return CameraLayer::NAK;
-  // }
-
-  // headImgPipe->camLayer = &cl_obj;
-  // headImgPipe->type = type;
-  // headImgPipe->context = context;
-  // headImgPipe->fi = finfo;
-  
-  // headImgPipe->img.ReSize(finfo.width,finfo.height,3);
-  // cl_GMV.ExtractFrame(headImgPipe->img.CVector[0],3,finfo.width*finfo.height);
-
-  // headImgPipe->bacpac = &calib_bacpac;
-
-  // if (doImgProcessThread)
-  // {
-
-  //   // LOGE("bpg_pi.resPool.rest_size:: %d", bpg_pi.resPool.rest_size());
-
-  //   if (inspQueue.push_blocking(headImgPipe) == false)
-  //   {
-  //     LOGE("NO resource can be used.....");
-  //     // imagePipeBuffer.clear();
-
-  //     if (bpg_pi.perifCH)
-  //     {
-  //       LOGI("perifCH is here too!!");
-  //       uint8_t buffx[200];
-        
-  //       int ret= printfTo_perifCH(bpg_pi.perifCH,buffx, sizeof(buffx),true,
-  //               "{"
-  //               "\"type\":\"inspRep\",\"status\":%d,"
-  //               "\"idx\":%d"
-  //               "}",
-  //               -10001, 1);
-  //     }
-  //   }
-  // }
-  // else
-  // {
-  //   //
-  //   //   while (imagePipeBuffer.size() == 0)
-  //   //   { //Wait for ImgPipeProcessThread to complete
-  //   //
-  //   //     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  //   //   }
-  //   //
-  //   bool doPassDown = false;
-  //   ImgPipeProcessCenter_imp(headImgPipe, &doPassDown);
-  //   if (!doPassDown)
-  //     bpg_pi.resPool.retResrc(headImgPipe);
-  // }
-  return CameraLayer::ACK;
-}
-
-
-int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json)
-{
-
-  if (bpg_pi.perifCH==NULL)
-  {
-    return -1;
-  }
-  int buff_head_room=perifCH->max_head_room_size();
-  int buffSize=bufL-buff_head_room;
-  char *padded_buf=(char*)buf+buff_head_room;
-
-  int ret= cJSON_PrintPreallocated(json, padded_buf, buffSize-perifCH->max_leg_room_size(), false);
-
-  if(ret == false)
-  {
-    return -1;
-  }
-
-  int contentSize=strlen(padded_buf);
-  if(directStringFormat)
-  {
-    ret = perifCH->send_json_string(buff_head_room,(uint8_t*)padded_buf,contentSize,buffSize-contentSize);
-  }
-  else
-  {
-    ret = perifCH->send_string(buff_head_room,(uint8_t*)padded_buf,contentSize,buffSize-contentSize);
-  }
-  return ret;
-}
-
-
-
-
-int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...)
-{
-
-  if (bpg_pi.perifCH==NULL)
-  {
-    return -1;
-  }
-
-  int buff_head_room=perifCH->max_head_room_size();
-  int buffSize=bufL-buff_head_room;
-  uint8_t *padded_buf=buf+buff_head_room;
-
-  va_list aptr;
-  int ret;
-  va_start(aptr, fmt);
-  ret = vsnprintf ((char*)padded_buf, buffSize-perifCH->max_leg_room_size(), fmt, aptr);
-  va_end(aptr); 
-
-  if(ret<0)return ret;
-
-  int contentSize=ret;
-  
-  if(directStringFormat)
-  {
-    ret = perifCH->send_json_string(buff_head_room,padded_buf,contentSize,buffSize-contentSize);
-  }
-  else
-  {
-    ret = perifCH->send_string(buff_head_room,padded_buf,contentSize,buffSize-contentSize);
-  }
-  return ret;
-}
-
 
 int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us,int count)
 {
@@ -1239,148 +865,6 @@ int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeSta
 
 
           
-
-std::string getTimeStr(const char *timeFormat = "%d-%m-%Y %H:%M:%S")
-{
-  time_t rawtime;
-  struct tm *timeinfo;
-  char buffer[80];
-
-  time(&rawtime);
-  timeinfo = localtime(&rawtime);
-
-  strftime(buffer, sizeof(buffer), timeFormat, timeinfo);
-  std::string str(buffer);
-  return str;
-}
-
-bool isEndsWith(const char *str, const char *suffix)
-{
-    if (!str || !suffix)
-        return 0;
-    size_t lenstr = strlen(str);
-    size_t lensuffix = strlen(suffix);
-    if (lensuffix >  lenstr)
-        return 0;
-    return strncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
-}
-bool isStartsWith(const char *str, const char *prefix)
-{
-  int p_len = strlen(prefix);
-  int s_len = strlen(str);
-  if(s_len<p_len)return false;
-  return strncmp(str, prefix, p_len) == 0;
-}
-
-
-int getFileCountInFolder(const char* path,const char* ext)
-{
-  DIR *d = opendir(path);
-  if (d) {
-    int count=0;
-    struct dirent *dir;
-    while ((dir = readdir(d)) != NULL) {
-      if(dir->d_name[0]=='.')continue;//ignore all "." initial names(including . .. .xxxx)
-      if(isEndsWith(dir->d_name,ext))
-      {
-
-        count++;
-      }
-
-    }
-    closedir(d);
-    return count;
-  }
-  return -1;
-}
-
-
-int removeOldestRep(const char* path,const char* ext)
-{
-  //the rep has a define file and some other axiliry files(for now there is a companion Image file)
-
-  std::string path_ostr=path;
-
-  DIR *d = opendir(path);
-  if (d==NULL) {
-    return -1;
-  }
-
-  
-  std::string oldestFileName="";
-
-  {
-
-    time_t oldest_mtime=0;//oldest on latest modified time
-    struct dirent *dir;
-    int count=0;
-    while ((dir = readdir(d)) != NULL) {
-      
-      
-      // if(dir->d_type!=DT_REG)continue;//if not a file, next
-      if(dir->d_name[0]=='.')continue;//ignore all "." initial names(including . .. .xxxx)
-      
-      if(isEndsWith(dir->d_name,ext))//focus on the certain type(extension) of file
-      {
-        
-        std::string full_path=path_ostr+(std::string)dir->d_name;
-      // LOGI("path_ostr:%s",full_path.c_str());
-        struct stat st;
-        if (stat(full_path.c_str(), &st) != 0)continue;
-      // LOGI("mt:%d",st.st_mtime);
-
-        if(st.st_mtime<oldest_mtime||count==0)//is current file has mtime less than the record
-        {
-          oldestFileName=(std::string)dir->d_name;
-          oldest_mtime=st.st_mtime;
-        }
-        count++;
-      }
-
-    }
-    if(oldest_mtime==0)//there is zero target type file
-    {
-      closedir(d);
-      d=NULL;
-      return -2;
-    }
-
-  }
-
-  
-  rewinddir(d);
-  
-
-  std::string FILE_NAME = oldestFileName.substr (
-    0,  oldestFileName.length()-1-strlen(ext)); //remove extention and the dot'.'
-
-  // LOGI("oldestFileName:%s, FILE_NAME:%s",oldestFileName.c_str(),FILE_NAME.c_str());
-
-  {
-    int removeCount=0;
-    struct dirent *dir;
-    int count=0;
-    while ((dir = readdir(d)) != NULL) {
-      //if not a file, next
-      // if(dir->d_type!=DT_REG)continue;//not a file
-      if(dir->d_name[0]=='.')continue;//ignore all "." initial names(including . .. .xxxx)
-      if(isStartsWith(dir->d_name,FILE_NAME.c_str())==false)continue;//not starts with [FILE_NAME]
-
-      std::string full_path=path_ostr+(std::string)dir->d_name;
-      // LOGI("DLE: FILE_NAME:%s",full_path.c_str());
-      remove(full_path.c_str());//remove it
-      removeCount++;
-    }
-    closedir(d);
-    return removeCount;
-  }
-
-
-
-  return 0;
-}
-
-
 
 int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
 {
@@ -1533,25 +1017,6 @@ void sigroutine(int dunno)
   }
   return;
 }
-
-void CameraLayer_Callback_BMP(CameraLayer &cl_obj, int type, void *context)
-{
-  CameraLayer_BMP &clBMP = *((CameraLayer_BMP *)&cl_obj);
-  LOGV("Called.... %d, filename:%s", type, clBMP.GetCurrentFileName().c_str());
-}
-
-
-char* PatternRest(char *str, const char *pattern)
-{
-  for(;;str++,pattern++)
-  { 
-    if(*pattern=='\0')return str;//pattern ends... return
-    if(*str != *pattern)return NULL;//if str NOT equal to pattern ( including *str=='\0')
-    else  continue;
-  }
-  return NULL;
-}
-
 
 
 #include <vector>
