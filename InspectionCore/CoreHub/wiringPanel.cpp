@@ -36,19 +36,14 @@ m_BPG_Protocol_Interface bpg_pi;
 
 m_BPG_Link_Interface_WebSocket *ifwebsocket=NULL;
 
-struct InspectionTarget_EXCHANGE
-{
-  cJSON *info;
-  uint8_t* binary;
-  BPG_protocol_data_acvImage_Send_info* imgInfo;
-};
-
 class InspectionTarget
 {
   CameraLayer *camera=NULL;
   cJSON *InspConf=NULL;
+  std::timed_mutex rsclock;
   public:
   int channel_id;
+  
   InspectionTarget()
   {
     // this->camera=camera;
@@ -78,25 +73,80 @@ class InspectionTarget
       cJSON_AddItemToObject(obj, "inspInfo", otherInfo);
     }
 
-
     {
       cJSON_AddNumberToObject(obj, "channel_id", channel_id);
     }
     return obj;
   }
 
-  bool isExchangeDataInUse=false;
+
+
   InspectionTarget_EXCHANGE excdata={0};
+  acvImage img;
+  acvImage img_buff;
   InspectionTarget_EXCHANGE* setInfo(InspectionTarget_EXCHANGE* info)
   {
-    isExchangeDataInUse=true;
+    rsclock.lock();
+    cJSON * json=info->info;
+
+    char *insp_type = JFetch_STRING(json, "insp_type");
+
+    memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
+
+
+    if(strcmp(insp_type, "snap") ==0)
+    {
+      LOGI(">>>>>");
+      int ret= getImage(camera,&img,0,-1);
+      if(ret!=0)
+      {
+        return NULL;
+      }
+      LOGI(">>>>>");
+      BPG_protocol_data_acvImage_Send_info imgInfo;
+      imgInfo.img=&img;
+      imgInfo.scale=1;
+      imgInfo.offsetX=0;
+      imgInfo.offsetY=0;
+      imgInfo.fullHeight=img.GetHeight();
+      imgInfo.fullWidth=img.GetWidth();
+
+
+      excdata.imgInfo=imgInfo;
+      excdata.isOK=true;
+
+
+      LOGI(">>>>>");
+      return &excdata;
+    }
+
+    if(strcmp(insp_type, "start_stream") ==0)
+    {
+      camera->TriggerMode(0);
+      excdata.isOK=true;
+      return &excdata;
+    }
+    if(strcmp(insp_type, "stop_stream") ==0)
+    {
+      camera->TriggerMode(2);
+      excdata.isOK=true;
+      return &excdata;
+    }
+    excdata.isOK=false;
     return &excdata;
+
   }
 
   bool returnExchange(InspectionTarget_EXCHANGE* info)
   {
-    if(isExchangeDataInUse==false || info!=&excdata)return false;
-    isExchangeDataInUse=false;
+    if(info!=&excdata)return false;
+
+    if(info->info)
+      cJSON_Delete( info->info );
+    
+    memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
+    
+    rsclock.unlock();
     return true;
   }
   
@@ -104,14 +154,26 @@ class InspectionTarget
   static CameraLayer::status sCAM_CallBack(CameraLayer &cl_obj, int type, void *context)
   {
     InspectionTarget *itm=(InspectionTarget*)context;
-    itm->cam_CallBack(cl_obj,type);
+    itm->CAM_CallBack(cl_obj,type);
     return CameraLayer::status::ACK;
   }
-  void cam_CallBack(CameraLayer &cl_obj, int type)
-  {
-    
-  }
 
+  void CAM_CallBack(CameraLayer &cl_obj, int type)
+  {
+    if (type != CameraLayer::EV_IMG)
+      return;
+
+    CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
+    LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
+    img.ReSize(finfo.width,finfo.height,3);
+
+    CameraLayer::status st = cl_obj.ExtractFrame(img.CVector[0],3,finfo.width*finfo.height);
+
+    BPG_protocol_data_acvImage_Send_info imgInfo=ImageDownSampling_Info(img_buff,img,4,NULL,1,0,0,-1,-1);
+
+    bpg_pi.fromUpperLayer_DATA("IM",channel_id,&imgInfo);
+    bpg_pi.fromUpperLayer_SS(channel_id,true,NULL,NULL);    
+  }
 
   ~InspectionTarget()
   {
@@ -157,6 +219,20 @@ class InspectionTargetManager
     InspectionTarget* insptar=createInspTargetWithCamera( driver_idx, idx, misc_str);
     inspTar.push_back(insptar);
     return insptar;
+  }
+
+
+
+  
+  bool DelInspTargetWithCamera(int idx)
+  {
+    if(idx<0||idx>=inspTar.size())return false;
+
+    InspectionTarget *ispt=inspTar[idx];
+    delete ispt;
+    inspTar[idx]=NULL;
+    inspTar.erase(inspTar.begin()+idx);
+    return true;
   }
 
 
@@ -462,19 +538,75 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             miscStr=misc;
           }
         }
-
-        InspectionTarget *insptar = inspTarMan.AddInspTargetWithCamera((int)*driver_idx,(int)*cam_idx,miscStr);
-        if(insptar)
+        
+        
+        
         {
-          insptar->channel_id=dat->pgID;
-          cJSON* info = insptar->getInfo_cJSON();
+          const vector<InspectionTarget *> &insptars=inspTarMan.getInspTars();
+          InspectionTarget *insptar=NULL;
+          for(int i=0;i<insptars.size();i++)
+          {
+            if(insptars[i]->channel_id==dat->pgID)
+            {
+              insptar=insptars[i];
+            }
+          }
+
+          if(insptar==NULL)
+          {
+            InspectionTarget *insptar = inspTarMan.AddInspTargetWithCamera((int)*driver_idx,(int)*cam_idx,miscStr);
+            
+            if(insptar)
+            {
+              insptar->channel_id=dat->pgID;
+            }
+          }
+
+          if(insptar)
+          {
+            cJSON* info = insptar->getInfo_cJSON();
+
+            fromUpperLayer_DATA("CM",dat->pgID,info);
+            cJSON_Delete(info);
+          }
+          // LOGI(">>>insptar:%p",insptar);
+          session_ACK = (insptar!=NULL);
+
+
+        }
+
+
 
           
-          fromUpperLayer_DATA("CM",dat->pgID,info);
-          cJSON_Delete(info);
+        
+      }while(0);}
+      
+      else if(strcmp(type_str, "disconnect") ==0)
+      {do{
+      
+        double *_channel_id = JFetch_NUMBER(json, "channel_id");
+        if(_channel_id==NULL)
+        {
+          break;
         }
-        LOGI(">>>insptar:%p",insptar);
-        session_ACK = (insptar!=NULL);
+        int channel_id=(int)*_channel_id;
+
+        
+        LOGI(">>>>>channel_id:%d",channel_id);
+        const vector<InspectionTarget *> &insptars=inspTarMan.getInspTars();
+        InspectionTarget *targetToSet=NULL;
+        for(int i=0;i<insptars.size();i++)
+        {
+          
+          LOGI(">>>>>insptars[%d].chid:%d",i,insptars[i]->channel_id);
+          if(insptars[i]->channel_id==channel_id)
+          {
+            session_ACK=true;
+            inspTarMan.DelInspTargetWithCamera(i);
+            break;
+          }
+        }
+        
           
         
       }while(0);}
@@ -501,10 +633,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           break;
         }
         int channel_id=(int)*_channel_id;
+
+        
+        LOGI(">>>>>channel_id:%d",channel_id);
         const vector<InspectionTarget *> &insptars=inspTarMan.getInspTars();
         InspectionTarget *targetToSet=NULL;
         for(int i=0;i<insptars.size();i++)
         {
+          
+          LOGI(">>>>>insptars[%d].chid:%d",i,insptars[i]->channel_id);
           if(insptars[i]->channel_id==channel_id)
           {
             targetToSet=insptars[i];
@@ -514,23 +651,17 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         
         if(targetToSet!=NULL)
         {
-          session_ACK=true;
           InspectionTarget_EXCHANGE input={0};
           input.info=json;
           
-          InspectionTarget_EXCHANGE *ret = targetToSet->setInfo(&input);
-          
-          if(ret->info)
+          LOGI(">>>>>json:%p",json);
+          InspectionTarget_EXCHANGE *retExch = targetToSet->setInfo(&input);
+          if(retExch!=NULL)
           {
-            fromUpperLayer_DATA("CM",dat->pgID,ret->info);
+            fromUpperLayer_DATA("CM",dat->pgID,retExch);
+            session_ACK=retExch->isOK;
+            targetToSet->returnExchange(retExch);
           }
-          
-          if(ret->imgInfo)
-          {
-            
-            fromUpperLayer_DATA("IM",dat->pgID,ret->imgInfo);
-          }
-          targetToSet->returnExchange(ret);
         }
         else
         {

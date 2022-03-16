@@ -12,13 +12,13 @@ class CameraLayer_BMP : public CameraLayer{
     std::vector <int> gaussianNoiseTable_M;
 
     protected:
-    int cacheUseCounter;
+    int cacheUseCounter=0;
     acvImage img_load;
     const float exp_time_100ExpUs=5000;
-    float exp_time_us;
-    float a_gain;
-    float ROI_X,ROI_Y,ROI_W,ROI_H;
-    int MIRROR_X,MIRROR_Y;
+    float exp_time_us=1000;
+    float a_gain=1;
+    float ROI_X=0,ROI_Y=0,ROI_W=9999999,ROI_H=9999999;
+    int MIRROR_X=0,MIRROR_Y=0;
     public:
     CameraLayer_BMP(CameraLayer_Callback cb,void* context);
     

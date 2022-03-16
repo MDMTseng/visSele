@@ -86,6 +86,8 @@ class PerifChannel;
 
 
 
+                
+
 typedef struct image_pipe_info
 {
   CameraLayer *camLayer;
@@ -122,6 +124,15 @@ typedef struct BPG_protocol_data_acvImage_Send_info
 
 }BPG_protocol_data_acvImage_Send_info;
 
+
+       
+struct InspectionTarget_EXCHANGE
+{
+  int isOK;
+  cJSON *info;
+  BPG_protocol_data_acvImage_Send_info imgInfo;
+};
+
 class m_BPG_Protocol_Interface : public BPG_Protocol_Interface
 {
 public:
@@ -147,6 +158,8 @@ public:
   int fromUpperLayer_DATA(const char*TL,int pgID,cJSON* json);
   int fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_acvImage_Send_info* imgInfo);
   int fromUpperLayer_DATA(const char*TL,int pgID,char* str);
+  int fromUpperLayer_DATA(const char*TL,int pgID,InspectionTarget_EXCHANGE* excahngeInfo);
+  int fromUpperLayer_SS(int pgID,bool isACK,const char*fromTL,const char* error_msg);
   void delete_PeripheralChannel();
   static BPG_protocol_data GenStrBPGData(const char *TL, char *jsonStr);
   
@@ -164,120 +177,6 @@ class m_BPG_Link_Interface_WebSocket : public BPG_Link_Interface_WebSocket
   m_BPG_Link_Interface_WebSocket():BPG_Link_Interface_WebSocket(){};
   int ws_callback(websock_data data, void *param) override;
 };
-
-
-
-class PerifProt
-{
-public:
-  typedef struct Pak
-  {
-    uint8_t *type;
-    uint64_t *length_raw;
-    uint64_t length;
-    uint8_t *data;
-    uint8_t *raw;
-    uint8_t *next;
-  } Pak;
-  static uint64_t length_raw2real_ength(uint64_t x)
-  {
-    int i;
-    for (i = 0; i < 4; i++)
-    {
-      uint64_t a = 0xFFull << (8 * i);
-      uint64_t b = 0xFF00000000000000ull >> (8 * i);
-
-      a = x & a;
-      b = x & b;
-
-      a = a << 8 * (7 - 2 * i);
-      b = b >> 8 * (7 - 2 * i);
-
-      x = x & (~(0xFFull << (8 * i)));
-      x = x & (~(0xFF00000000000000ull >> (8 * i)));
-      x = x | a;
-      x = x | b;
-    }
-
-    return x; // don't forget this
-  }
-
-  static Pak parse(uint8_t *raw)
-  {
-    Pak pak;
-    pak.type = raw;
-    pak.length_raw = (uint64_t *)(raw + 2);
-    pak.length = length_raw2real_ength(*pak.length_raw);
-    pak.data = raw + 10;
-    pak.raw = raw;
-    pak.next = pak.data + pak.length;
-    return pak;
-  }
-
-  static int countValidArr(uint8_t *dat, uint64_t len)
-  {
-    if (!dat)
-      return -1;
-    uint64_t rest_len = len;
-    uint8_t *rawData = dat;
-    int count = 0;
-    while (rest_len)
-    {
-      Pak iter = parse(rawData);
-      uint64_t iterPakTotalLen = iter.next - iter.raw;
-      if (rest_len < iterPakTotalLen)
-        return -1;
-      LOGI("[%c%c]:len:%d", iter.type[0], iter.type[1], iter.length);
-      rest_len -= iterPakTotalLen;
-      rawData = iter.next;
-      count++;
-    }
-    return count;
-  }
-  static int countValidArr(Pak *pakArr)
-  {
-    if (!pakArr)
-      return -1;
-    uint64_t rest_len = pakArr->length;
-    uint8_t *rawData = pakArr->data;
-    return countValidArr(rawData, rest_len);
-  }
-
-  static int fetch(uint8_t *raw, uint64_t len, char *subPakType, Pak *subpak)
-  {
-    if (!raw || subpak == NULL)
-      return -1;
-    uint64_t rest_len = len;
-    uint8_t *rawData = raw;
-    int count = 0;
-    while (rest_len)
-    {
-      Pak iter = parse(rawData);
-      uint64_t iterPakTotalLen = iter.next - iter.raw;
-      if (rest_len < iterPakTotalLen)
-        return -1;
-      if (subPakType[0] == iter.type[0] && subPakType[1] == iter.type[1])
-      {
-        *subpak = iter;
-        return 0;
-      }
-      rest_len -= iterPakTotalLen;
-      rawData = iter.next;
-      count++;
-    }
-    return -1;
-  }
-  static int fetch(Pak *pak, char *subPakType, Pak *subpak)
-  {
-    if (!pak || subpak == NULL)
-      return -1;
-    uint64_t rest_len = pak->length;
-    uint8_t *rawData = pak->data;
-    return fetch(rawData, rest_len, subPakType, subpak);
-  }
-};
-
-
 
 class PerifChannel:public Data_JsonRaw_Layer
 {
@@ -372,4 +271,9 @@ void setThreadPriority(std::thread &thread, int type, int priority);
 
 void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler *sampler, int doNearest = 1,
                        int X = -1, int Y = -1, int W = -1, int H = -1);
+
+
+BPG_protocol_data_acvImage_Send_info ImageDownSampling_Info(acvImage &dstBuff, acvImage &src, int downScale, ImageSampler *sampler, int doNearest,
+                       int X, int Y, int W, int H);
+
 #endif

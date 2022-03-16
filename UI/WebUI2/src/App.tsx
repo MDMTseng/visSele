@@ -123,11 +123,12 @@ class BPG_WS
           // comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "HR", 0, { a: ["d"] });
           break;
         }
-      case "IM"://special treate
+      case "IM"://special treate unpack image info
         {
 
           let pkg = BPG_Protocol.raw2obj_IM(evt);
-          parsed_pkt = pkg;
+          parsed_pkt = {...header};
+          parsed_pkt.img=pkg;
           break;
         }
       default:
@@ -843,21 +844,7 @@ function App() {
                 reject:(arg:any[])=>console.error(arg),
                 resolve:(arg:any[])=>{
 
-
-
-                  api.send(
-                  "CM",0,{
-                    type:"get_insp_targets"
-                  },undefined,
-                  {
-                    reject:(arg:any[])=>console.error(arg),
-                    resolve:(arg:any[])=>{
-                      console.log(arg);
-                    }
-                  })
-
-
-
+                  console.log(arg);
 
                   
                 }
@@ -870,6 +857,62 @@ function App() {
         }}>{cam.id}</Button>)}
 
 
+
+
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as CORE_API_TYPE;//cast
+           
+
+            api.send(
+              "CM",0,{
+                type:"target_exchange",
+                insp_type:"start_stream",
+                channel_id:50000
+              },undefined,
+              {
+                reject:(arg:any[])=>console.error(arg),
+                resolve:(arg:any[])=>{
+                  console.log(arg);
+                }
+              })
+
+
+
+          })
+
+
+
+
+        }}>DDDDDD</Button>
+
+
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as CORE_API_TYPE;//cast
+           
+
+            api.send(
+              "CM",0,{
+                type:"target_exchange",
+                insp_type:"stop_stream",
+                channel_id:50000
+              },undefined,
+              {
+                reject:(arg:any[])=>console.error(arg),
+                resolve:(arg:any[])=>{
+                  console.log(arg);
+                }
+              })
+
+
+
+          })
+
+
+
+
+        }}>DDDDDD</Button>
 
 
         <Button onClick={()=>{

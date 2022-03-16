@@ -165,6 +165,45 @@ int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*TL,int pgID,BPG_pro
   bpg_dat.pgID = pgID;
   return fromUpperLayer(bpg_dat);
 }
+int m_BPG_Protocol_Interface::fromUpperLayer_SS(int pgID,bool isACK,const char*fromTL,const char* error_msg)
+{
+
+
+  char _buf[200];
+  char *buf=_buf;
+  buf+=sprintf(buf, "{\"start\":false,\"ACK\":%s",
+           (isACK) ? "true" : "false");
+
+  if(fromTL)
+    buf+=sprintf(buf, ",\"cmd\":\"%c%c\"", fromTL[0], fromTL[1]);
+
+          
+  if(error_msg)
+    buf+=sprintf(buf, ",\"errMsg\":\"%s\"", error_msg);
+
+  
+  buf+=sprintf(buf, "}");
+
+
+
+  return fromUpperLayer_DATA("SS",pgID,_buf);
+}
+
+int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*jsonTL,int pgID,InspectionTarget_EXCHANGE* excahngeInfo)
+{
+  if(excahngeInfo==NULL)return -1;
+  if(excahngeInfo->info)
+  {
+    fromUpperLayer_DATA("CM",pgID,excahngeInfo->info);
+  }
+  
+  if(excahngeInfo->imgInfo.img)
+  {
+    
+    fromUpperLayer_DATA("IM",pgID,&excahngeInfo->imgInfo);
+  }
+  return 0;
+}
 
 
 cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth)
@@ -646,3 +685,23 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
   }
 }
 
+
+
+
+BPG_protocol_data_acvImage_Send_info ImageDownSampling_Info(acvImage &dstBuff, acvImage &src, int downScale, ImageSampler *sampler, int doNearest,
+                       int X, int Y, int W, int H)
+{
+  BPG_protocol_data_acvImage_Send_info iminfo = {img : &dstBuff, scale : (uint16_t)downScale};
+  //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+
+  iminfo.offsetX = (X / downScale) * downScale;
+  iminfo.offsetY = (X / downScale) * downScale;
+
+  ImageDownSampling(dstBuff, src, downScale, sampler, doNearest,iminfo.offsetX,iminfo.offsetY,W,H);
+
+  iminfo.fullHeight = src.GetHeight();
+  iminfo.fullWidth = src.GetWidth();
+  return iminfo;
+
+
+}

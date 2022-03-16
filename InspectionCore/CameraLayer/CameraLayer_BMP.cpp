@@ -21,6 +21,7 @@ CameraLayer_BMP::CameraLayer_BMP(CameraLayer_Callback cb,void* context):CameraLa
         float x = sqrt(-2 * log(u)) * cos(2 * M_PI * v);
         gaussianNoiseTable_M[i]=(int)(x*1000000);//million scale up
     }
+    // ROI_H=ROI_W=999999;
     a_gain=1;
     SetExposureTime(exp_time_100ExpUs);
 }
@@ -301,7 +302,7 @@ CameraLayer_BMP::status CameraLayer_BMP::CalcROI(int* X,int* Y,int* W,int* H)
   int tmpX=ROI_X;
   int tmpY=ROI_Y;
 
-  // LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
+  LOGI("%d %d %d %d",tmpX,tmpY,tmpW,tmpH);
   if(tmpX<0){
     tmpX=0;
   }
@@ -371,6 +372,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       this->fileName = fileName;
         LOGI("Loading:%s",fileName.c_str());
         ret = acvLoadBitmapFile(&img_load, fileName.c_str());
+        LOGI("ret:%d",ret);
     }
     if(ret!=0)
     {
