@@ -80,7 +80,9 @@ let raw2obj_IM=(ws_evt:any, offset = 0)=>{
 
   // console.log(ret_obj,headerArray);
   let RGBA_pix_Num = 4*width*height;
-  
+  let _image=new Uint8ClampedArray(ws_evt.data,
+    offset+BPG_header_L+headerL,4*width*height);
+  let image=new ImageData(_image, width);
   return {
     camera_id,
     session_id,
@@ -89,8 +91,8 @@ let raw2obj_IM=(ws_evt:any, offset = 0)=>{
     width,height,
     scale,
     full_width,full_height,
-    image:new Uint8ClampedArray(ws_evt.data,
-      offset+BPG_header_L+headerL,4*width*height)
+    // _image,
+    image
   };
 };
 
@@ -161,107 +163,6 @@ export function BPG_ExpCalc(postExp_:string[],funcSet:ESP2POST_FuncSet,fallbackF
 }
 
 export const DEF_EXTENSION = "hydef";
-
-
-
-// export class CameraCtrl {
-//   constructor(setting) {
-//     this.data = {
-//       DoImageTransfer: true,
-//       emptyResultCount: 0,
-//       cameraFrameRate: 30,
-//       speedSwitchingCount: 1000,
-//     };
-//     this.ws_ch = setting.ws_ch;
-
-//     this.ev_frameRateChange = setting.ev_frameRateChange;
-//     if (this.ev_frameRateChange === undefined)
-//       this.ev_frameRateChange = () => { };
-
-//     this.ev_emptyResultCountChange = setting.ev_emptyResultCountChange;
-//     if (this.ev_emptyResultCountChange === undefined)
-//       this.ev_emptyResultCountChange = () => { };
-
-//     this.setSpeedSwitchingCount(1000);
-//     this.setCameraSpeed_HIGH();
-//   }
-
-
-
-//   setCameraImageTransfer(doTransfer) {
-//     if (doTransfer === undefined) doTransfer = !this.data.DoImageTransfer;
-//     this.data.DoImageTransfer = doTransfer;
-//     this.ws_ch({ DoImageTransfer: doTransfer });
-//   }
-
-
-//   setCameraFrameRate(framerate) {
-//     if (this.data.framerate == framerate) return;
-//     log.info("setCameraFrameRate:" + framerate);
-//     this.data.framerate = framerate;
-
-//     this.ev_frameRateChange(framerate);
-//     this.ws_ch({ CameraSetting: { framerate: framerate } });
-//   }
-
-
-//   setImageCropParam(cropWindow,downSampleFactor=8) {
-
-
-//     let obj={};
-//     if(cropWindow!==undefined)
-//     {
-//       obj.ImageTransferSetup={
-//         crop:cropWindow
-//       };
-//     }
-    
-//     if(downSampleFactor!==undefined)
-//     {
-//       obj.CameraSetting={
-//         down_samp_level:downSampleFactor
-//       };
-//     }
-//     this.ws_ch(obj);
-//   }
-
-
-
-//   setSpeedSwitchingCount(speedSwitchingCount = 1000) {
-//     this.data.speedSwitchingCount = speedSwitchingCount;
-//   }
-
-//   setCameraSpeed_HIGHEST() {
-//     this.setCameraFrameRate(9999999);
-//   }
-//   setCameraSpeed_HIGH() {
-//     this.setCameraFrameRate(20);
-//   }
-//   setCameraSpeed_LOW() {
-//     this.setCameraFrameRate(2);
-//   }
-
-//   updateInspectionReportForPowerSaving(report) {
-//     if (report === undefined || report.reports.length == 0) {
-//       this.data.emptyResultCount++;
-//       if (this.data.emptyResultCount > this.data.speedSwitchingCount)
-//         this.setCameraSpeed_LOW();
-
-//       this.ev_emptyResultCountChange(this.data.emptyResultCount);
-//       return;
-//     }
-
-//     if (this.data.emptyResultCount != 0) {
-//       this.ev_emptyResultCountChange(this.data.emptyResultCount);
-//       this.data.emptyResultCount = 0;
-//       this.setCameraSpeed_HIGH();
-//     }
-//   }
-
-// }
-
-
-
 
 
 export default { raw2header, raw2obj_rawdata, raw2obj,raw2obj_IM,objbarr2raw }

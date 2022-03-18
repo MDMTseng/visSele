@@ -1,16 +1,21 @@
 
-type VEC2D={x:number,y:number}
+export type VEC2D={x:number,y:number}
 
 
-interface VEC2D_W_Distance extends VEC2D {
+export interface VEC2D_W_Distance extends VEC2D {
   dist:number
 }
 
-interface SHAPE_ARC extends VEC2D {
+export interface SHAPE_ARC extends VEC2D {
   angleFrom:number,angleTo:number,r:number
 }
 
-type SHAPE_LINE={x1:number,y1:number,x2:number,y2:number}|{x:number,y:number,vx:number,vy:number};
+export type SHAPE_LINE_seg={x1:number,y1:number,x2:number,y2:number};
+
+
+export type SHAPE_LINE_ext=SHAPE_LINE_seg|{x:number,y:number,vx:number,vy:number};
+
+
 
 export function distance_point_point(pt1:VEC2D, pt2:VEC2D):number
 {
@@ -77,7 +82,7 @@ export function distance_arc_point(arc:SHAPE_ARC, point:VEC2D):VEC2D_W_Distance
   return point2;
 }
 
-export function closestPointOnLine(line:SHAPE_LINE|any, point:VEC2D):VEC2D_W_Distance
+export function closestPointOnLine(line:SHAPE_LINE_ext|any, point:VEC2D):VEC2D_W_Distance
 {
 
   let line_:{x:number,y:number,vx:number,vy:number} ;
@@ -150,7 +155,7 @@ export function vecXY_mulin(v1:VEC2D,realNum:number)
   return v1;
 }
 
-export function distance_line_point(line:SHAPE_LINE|any, point:VEC2D):VEC2D_W_Distance
+export function distance_line_point(line:SHAPE_LINE_ext|any, point:VEC2D):VEC2D_W_Distance
 {
   //arc={x1,y1,x2,y2}
 

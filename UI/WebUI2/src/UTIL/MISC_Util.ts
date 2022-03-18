@@ -1532,7 +1532,7 @@ export const LocalStorageTools={
     return [];
   },
   setlist:(lsKey:string,list:Array<any>)=>localStorage.setItem(lsKey, JSON.stringify(list)),
-  appendlist:(lsKey:string,data:any,pre_removeFilter:(data:any)=>boolean)=>
+  appendlist:(lsKey:string,data:any,pre_removeFilter:(data:any,idx:number)=>boolean)=>
   {
     let LocalS_list = LocalStorageTools.getlist(lsKey);
 
