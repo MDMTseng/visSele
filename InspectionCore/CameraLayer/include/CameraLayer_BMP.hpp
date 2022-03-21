@@ -20,7 +20,11 @@ class CameraLayer_BMP : public CameraLayer{
     float ROI_X=0,ROI_Y=0,ROI_W=9999999,ROI_H=9999999;
     int MIRROR_X=0,MIRROR_Y=0;
     public:
-    CameraLayer_BMP(CameraLayer_Callback cb,void* context);
+    
+    static std::string getDriverName(){
+      return "BMP";
+    }
+    CameraLayer_BMP(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context);
     
     status LoadBMP(std::string fileName);
     std::string GetCurrentFileName(){return this->fileName;}
@@ -55,8 +59,12 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     void ContTriggerThread();
     public:
     
+    static std::string getDriverName(){
+      return "BMP_carousel";
+    }
     int fileIdx;
-    CameraLayer_BMP_carousel(CameraLayer_Callback cb,void* context,std::string folderName);
+    // CameraLayer_BMP_carousel(CameraLayer_Callback cb,void* context,std::string folderName);
+    CameraLayer_BMP_carousel(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context);
     status updateFolder(std::string folderName);
     status SetFrameRate(float frame_rate);
     status TriggerCount(int count);
@@ -65,9 +73,9 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     status LoadNext(bool call_cb=true);
     status TriggerMode(int mode);
     ~CameraLayer_BMP_carousel();
+    static int listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist);
 
     status isInOperation();
 };
-
 
 #endif

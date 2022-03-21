@@ -29,7 +29,11 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     tSdkFrameHead *_cached_frame_info;
     public:
     
-    CameraLayer_GIGE_MindVision(CameraLayer_Callback cb,void* context);
+    static std::string getDriverName(){
+      return "MindVision";
+    }
+
+    CameraLayer_GIGE_MindVision(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context);
     static CameraLayer::status EnumerateDevice(tSdkCameraDevInfo * pCameraList,INT * piNums);
     CameraLayer::status InitCamera(tSdkCameraDevInfo *devInfo);
 

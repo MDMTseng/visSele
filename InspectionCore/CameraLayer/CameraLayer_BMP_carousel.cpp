@@ -7,14 +7,20 @@
 
 #include<sys/time.h>
 
-CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer_Callback cb,void* context,std::string folderName):
-    CameraLayer_BMP(cb,context)
+
+
+CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context):CameraLayer_BMP(camInfo,misc,cb,context)
 {
-    updateFolder(folderName);
+    if(camInfo.driver_name!=CameraLayer_BMP_carousel::getDriverName())
+    {
+      std::string excpMsg = "param_driver_name:" + camInfo.driver_name + " != "+CameraLayer_BMP_carousel::getDriverName();
+      throw std::invalid_argument(excpMsg);
+    }
+    updateFolder(misc);
     fileIdx=0;
     cameraThread=NULL;
     isThreadWorking=false;
-
+    connection_data=camInfo;
 
     char buff[700];
     snprintf(buff, sizeof(buff),
@@ -23,10 +29,32 @@ CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer_Callback cb,void*
       \"name\":\"BMP_CAM\",\
       \"id\":\"%s\",\
       \"folder_name\":\"%s\"\
-    }",folderName.c_str(),folderName.c_str());
+    }",misc.c_str(),misc.c_str());
     cam_json_info.assign(buff);
     LOGI(">>>%s",cam_json_info.c_str());
 }
+
+
+// CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer_Callback cb,void* context,std::string folderName):
+//     CameraLayer_BMP(cb,context)
+// {
+//     updateFolder(folderName);
+//     fileIdx=0;
+//     cameraThread=NULL;
+//     isThreadWorking=false;
+
+
+//     char buff[700];
+//     snprintf(buff, sizeof(buff),
+//     "{\
+//       \"type\":\"CameraLayer_BMP_carousel\",\
+//       \"name\":\"BMP_CAM\",\
+//       \"id\":\"%s\",\
+//       \"folder_name\":\"%s\"\
+//     }",folderName.c_str(),folderName.c_str());
+//     cam_json_info.assign(buff);
+//     LOGI(">>>%s",cam_json_info.c_str());
+// }
 
 CameraLayer_BMP_carousel::~CameraLayer_BMP_carousel()
 {
@@ -156,16 +184,16 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
         {
             break;
         }
-
-        if(frameInterval_ms-delay_time>0)
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));
-        }
-        if(modeTriggerSim_sleep>0)
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(modeTriggerSim_sleep));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // if(frameInterval_ms-delay_time>0)
+        // {
+        //     std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));
+        // }
+        // if(modeTriggerSim_sleep>0)
+        // {
+        //     std::this_thread::sleep_for(std::chrono::milliseconds(modeTriggerSim_sleep));
           
-        }
+        // }
     }
     //ThreadTerminationFlag = 0;
 
@@ -210,7 +238,7 @@ CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
 
     if(mode==2)
     {
-      mode=0;
+      // mode=0;
       modeTriggerSim_sleep=10000;
     }
     if(mode>=0)
@@ -243,4 +271,27 @@ CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
         }
     }
     return ACK;
+}
+
+
+int CameraLayer_BMP_carousel::listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist)
+{
+  int vlistL=5;
+  for(int i=0;i<vlistL;i++)
+  {
+    CameraLayer::BasicCameraInfo info;
+    
+    info.name=
+    info.id=
+    info.model=
+    info.serial_number="IDX:"+std::to_string(i);
+    info.vender="CameraLayer_BMP_carousel";
+    info.ctx=NULL;
+    info.driver_name=getDriverName();
+    devlist.push_back(info);
+  }
+
+  return vlistL;
+
+
 }

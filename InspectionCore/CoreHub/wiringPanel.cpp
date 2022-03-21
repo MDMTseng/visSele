@@ -197,10 +197,10 @@ class InspectionTargetManager
 
   inline static CameraLayerManager clm;
   public:
-  static InspectionTarget* createInspTargetWithCamera(int driver_idx,int idx,std::string misc_str)
+  static InspectionTarget* createInspTargetWithCamera(int idx,std::string misc_str)
   {
     InspectionTarget* insptar=new InspectionTarget();
-    CameraLayer *cam= clm.connectCamera(driver_idx,idx,misc_str,InspectionTarget::sCAM_CallBack,insptar);
+    CameraLayer *cam= clm.connectCamera(idx,misc_str,InspectionTarget::sCAM_CallBack,insptar);
     insptar->assignCamera(cam);
     return insptar;
   }
@@ -214,9 +214,9 @@ class InspectionTargetManager
 
 
   
-  InspectionTarget* AddInspTargetWithCamera(int driver_idx,int idx,std::string misc_str)
+  InspectionTarget* AddInspTargetWithCamera(int idx,std::string misc_str)
   {
-    InspectionTarget* insptar=createInspTargetWithCamera( driver_idx, idx, misc_str);
+    InspectionTarget* insptar=createInspTargetWithCamera(idx, misc_str);
     inspTar.push_back(insptar);
     return insptar;
   }
@@ -519,13 +519,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       else if(strcmp(type_str, "connect") ==0)
       {do{
         
-        double *driver_idx = JFetch_NUMBER(json, "driver_idx");
         double *cam_idx = JFetch_NUMBER(json, "cam_idx");
         
         session_ACK = false;
         
         LOGI(">>>");
-        if(driver_idx==NULL ||cam_idx==NULL)break;
+        if(cam_idx==NULL)break;
 
         LOGI(">>>");
 
@@ -554,7 +553,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
           if(insptar==NULL)
           {
-            InspectionTarget *insptar = inspTarMan.AddInspTargetWithCamera((int)*driver_idx,(int)*cam_idx,miscStr);
+            InspectionTarget *insptar = inspTarMan.AddInspTargetWithCamera((int)*cam_idx,miscStr);
             
             if(insptar)
             {

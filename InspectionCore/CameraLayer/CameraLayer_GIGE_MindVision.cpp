@@ -2,7 +2,7 @@
 #include "CameraLayer_GIGE_MindVision.hpp"
 #include "logctrl.h"
 
-CameraLayer_GIGE_MindVision::CameraLayer_GIGE_MindVision(CameraLayer_Callback cb, void *context) : CameraLayer(cb, context)
+CameraLayer_GIGE_MindVision::CameraLayer_GIGE_MindVision(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context): CameraLayer(camInfo,misc,cb, context)
 {
   m.unlock();
   _cached_frame_info=NULL;

@@ -11,7 +11,7 @@
 #define M_PI (3.14159265358979323846)
 #endif
 
-CameraLayer_BMP::CameraLayer_BMP(CameraLayer_Callback cb,void* context):CameraLayer(cb,context)
+CameraLayer_BMP::CameraLayer_BMP(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context):CameraLayer(camInfo,misc,cb,context)
 {
     gaussianNoiseTable_M.resize(256);
     for(int i=0;i<gaussianNoiseTable_M.size();i++)

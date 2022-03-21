@@ -92,8 +92,8 @@ void camLyerTest()
   CameraLayerManager clm;
   clm.discover();
   printf("cam:\n%s\n",clm.genJsonStringList().c_str());
-  CameraLayer *camLayer=clm.connectCamera(0,0,"",CameraLayer_Callback_CAM1,NULL);
-  CameraLayer *camLayer2=clm.connectCamera(0,1,"",CameraLayer_Callback_CAM2,NULL);
+  CameraLayer *camLayer=clm.connectCamera(0,"",CameraLayer_Callback_CAM1,NULL);
+  CameraLayer *camLayer2=clm.connectCamera(1,"data/BMP_carousel_test1",CameraLayer_Callback_CAM2,NULL);
   // CameraLayer *camLayer=clm.connectCamera(1,0,"data/BMP_carousel_test",CameraLayer_Callback_XXX,NULL);
 
   if(camLayer!=NULL)

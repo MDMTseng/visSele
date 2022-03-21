@@ -46,6 +46,10 @@ public:
     MV_FRAME_OUT_INFO_EX frameInfo;
     void *context;
   };
+  
+  static std::string getDriverName(){
+    return "HikRobot";
+  }
 protected:
   void *handle;
 
@@ -167,6 +171,7 @@ public:
   // CameraLayer::status EnumerateDevice(tSdkCameraDevInfo *pCameraList, INT *piNums);
   // CameraLayer::status InitCamera(tSdkCameraDevInfo *devInfo);
   static int32_t listDevices(MV_CC_DEVICE_INFO_LIST *stDeviceList);
+  static int listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist);
 
   CameraLayer::status TriggerMode(int type);
   CameraLayer::status Trigger();
@@ -206,7 +211,5 @@ public:
 
   ~CameraLayer_HikRobot_Camera();
 };
-
-
 
 #endif

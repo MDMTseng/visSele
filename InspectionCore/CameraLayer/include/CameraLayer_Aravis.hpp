@@ -16,7 +16,6 @@ class CameraLayer_Aravis : public CameraLayer
 
 public:
 
-
   struct cam_info{
     std::string id;
     std::string physical_id;
@@ -43,12 +42,18 @@ protected:
   void STREAM_CONTROL_LOST_CB(ArvStream *stream);
 
   ArvBuffer *_frame_cache_buffer;
-
 public:
-  CameraLayer_Aravis(const char* deviceID,CameraLayer_Callback cb, void *context);
+
+  static std::string getDriverName(){
+    return "Aravis";
+  }
+
+  // CameraLayer_Aravis(const char* deviceID,CameraLayer_Callback cb, void *context);
+  CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context);
   // CameraLayer::status EnumerateDevice(tSdkCameraDevInfo *pCameraList, INT *piNums);
   // CameraLayer::status InitCamera(tSdkCameraDevInfo *devInfo);
   static void listDevices(std::vector<cam_info> &ret_infoList,bool tryOpen=false);
+  static int listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist);
   CameraLayer::status TriggerMode(int type);
 
   CameraLayer::status TriggerCount(int count);

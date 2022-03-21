@@ -48,6 +48,33 @@ static CameraLayer_Aravis::cam_info getDeviceInfo(int index, bool tryOpen)
   return ci;
 }
 
+
+int CameraLayer_Aravis::listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist)
+{
+  std::vector<cam_info> tmpList;
+  listDevices(tmpList,true);
+  for(int i=0;i<tmpList.size();i++)
+  {
+    CameraLayer::BasicCameraInfo info;
+    
+    info.name=tmpList[i].physical_id;
+    info.id=tmpList[i].id;
+    info.model=tmpList[i].model;
+    info.serial_number=tmpList[i].serial_nbr;
+    info.vender=tmpList[i].vendor;
+    info.ctx=NULL;
+    info.driver_name=getDriverName();
+    devlist.push_back(info);
+  }
+
+  return tmpList.size();
+
+
+}
+
+
+
+
 void CameraLayer_Aravis::s_STREAM_NEW_BUFFER_CB(ArvStream *stream, CameraLayer_Aravis *self)
 {
   self->STREAM_NEW_BUFFER_CB(stream);
@@ -256,19 +283,20 @@ stream_cb(void *user_data, ArvStreamCallbackType type, ArvBuffer *buffer)
   }
 }
 
-CameraLayer_Aravis::CameraLayer_Aravis(const char *deviceID, CameraLayer_Callback cb, void *context) : CameraLayer(cb, context)
+CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context): CameraLayer(camInfo,misc,cb, context)
 {
-  if (deviceID == NULL)
+  if (camInfo.driver_name != CameraLayer_Aravis::getDriverName())
   {
-    string excpMsg = "deviceID:" + string(deviceID) + " is not available";
+    
+    string excpMsg = "param_driver_name:" + camInfo.driver_name + " != "+CameraLayer_Aravis::getDriverName();
     throw std::invalid_argument(excpMsg);
   }
-  self_info = getDeviceIndex(deviceID);
+  self_info = getDeviceIndex(camInfo.id.c_str());
   GError *error = NULL;
-  camera = arv_camera_new(deviceID, &error);
+  camera = arv_camera_new(camInfo.id.c_str(), &error);
   if (camera == NULL)
   {
-    string excpMsg = "deviceID:" + string(deviceID) + " is not available";
+    string excpMsg = "deviceID:" + camInfo.id + " is not available";
     throw std::invalid_argument(excpMsg);
   }
 
@@ -346,7 +374,7 @@ CameraLayer_Aravis::CameraLayer_Aravis(const char *deviceID, CameraLayer_Callbac
   {
 
     g_object_unref(camera);
-    string excpMsg = "deviceID:" + string(deviceID) + " stream creation failed";
+    string excpMsg = "deviceID:" + camInfo.id + " stream creation failed";
     throw std::invalid_argument(excpMsg);
   }
 

@@ -17,6 +17,16 @@ class CameraLayer{
 
     public:
     
+    struct BasicCameraInfo{
+      std::string driver_name;
+      std::string name;
+      std::string id;
+      std::string model;
+      std::string serial_number;
+      std::string vender;
+      void* ctx;
+    };
+
     typedef struct {
       uint64_t timeStamp_us;
       uint32_t width;
@@ -63,6 +73,8 @@ class CameraLayer{
     protected:
 
 
+    CameraLayer::BasicCameraInfo connection_data;
+    std::string connection_misc;
 
 
     CameraLayer_Callback callback;
@@ -85,11 +97,18 @@ class CameraLayer{
     static CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj);
     public:
     
+    static std::string getDriverName(){
+      return "_CameraLayer_";
+    }
 
+    
+    static int listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &dev){return 0;}
 
-
-    CameraLayer(CameraLayer_Callback cb,void* context)
+    
+    CameraLayer(CameraLayer::BasicCameraInfo connection_data,std::string connection_misc,CameraLayer_Callback cb,void* context)
     {
+        this->connection_data=connection_data;
+        this->connection_misc=connection_misc;
         this->callback = cb;
         this->context = context;
     }
