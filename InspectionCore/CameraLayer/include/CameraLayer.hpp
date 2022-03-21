@@ -113,6 +113,11 @@ class CameraLayer{
         this->context = context;
     }
 
+    CameraLayer::BasicCameraInfo getConnectionData()
+    {
+      return connection_data;
+    }
+
     virtual CameraLayer::status TriggerMode(int type){return NAK;}
 
     virtual CameraLayer::status TriggerCount(int TYPE)

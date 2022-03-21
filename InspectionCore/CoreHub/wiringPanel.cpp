@@ -21,6 +21,8 @@
 #include <ctime>
 #include "CameraLayerManager.hpp"
 
+
+
 #define _VERSION_ "1.2"
 std::timed_mutex mainThreadLock;
 
@@ -36,226 +38,12 @@ m_BPG_Protocol_Interface bpg_pi;
 
 m_BPG_Link_Interface_WebSocket *ifwebsocket=NULL;
 
-class InspectionTarget
-{
-  CameraLayer *camera=NULL;
-  cJSON *InspConf=NULL;
-  std::timed_mutex rsclock;
-  public:
-  int channel_id;
-  
-  InspectionTarget()
-  {
-    // this->camera=camera;
-    // InspConf=inspectionConfig;
-  }
-
-  void assignCamera(CameraLayer *cam)
-  {
-    camera=cam;
-  }
-
-  void setInspDef(cJSON* json)
-  {
-  }
-
-  cJSON* getInfo_cJSON()
-  {
-    cJSON *obj=cJSON_CreateObject();
-
-    {
-      cJSON *camInfo = cJSON_Parse(camera->getCameraJsonInfo().c_str());
-      cJSON_AddItemToObject(obj, "camera", camInfo);
-    }
-
-    {
-      cJSON *otherInfo=cJSON_CreateObject();
-      cJSON_AddItemToObject(obj, "inspInfo", otherInfo);
-    }
-
-    {
-      cJSON_AddNumberToObject(obj, "channel_id", channel_id);
-    }
-    return obj;
-  }
-
-
-
-  InspectionTarget_EXCHANGE excdata={0};
-  acvImage img;
-  acvImage img_buff;
-  InspectionTarget_EXCHANGE* setInfo(InspectionTarget_EXCHANGE* info)
-  {
-    rsclock.lock();
-    cJSON * json=info->info;
-
-    char *insp_type = JFetch_STRING(json, "insp_type");
-
-    memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
-
-
-    if(strcmp(insp_type, "snap") ==0)
-    {
-      LOGI(">>>>>");
-      int ret= getImage(camera,&img,0,-1);
-      if(ret!=0)
-      {
-        return NULL;
-      }
-      LOGI(">>>>>");
-      BPG_protocol_data_acvImage_Send_info imgInfo;
-      imgInfo.img=&img;
-      imgInfo.scale=1;
-      imgInfo.offsetX=0;
-      imgInfo.offsetY=0;
-      imgInfo.fullHeight=img.GetHeight();
-      imgInfo.fullWidth=img.GetWidth();
-
-
-      excdata.imgInfo=imgInfo;
-      excdata.isOK=true;
-
-
-      LOGI(">>>>>");
-      return &excdata;
-    }
-
-    if(strcmp(insp_type, "start_stream") ==0)
-    {
-      camera->TriggerMode(0);
-      excdata.isOK=true;
-      return &excdata;
-    }
-    if(strcmp(insp_type, "stop_stream") ==0)
-    {
-      camera->TriggerMode(2);
-      excdata.isOK=true;
-      return &excdata;
-    }
-    excdata.isOK=false;
-    return &excdata;
-
-  }
-
-  bool returnExchange(InspectionTarget_EXCHANGE* info)
-  {
-    if(info!=&excdata)return false;
-
-    if(info->info)
-      cJSON_Delete( info->info );
-    
-    memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
-    
-    rsclock.unlock();
-    return true;
-  }
-  
-
-  static CameraLayer::status sCAM_CallBack(CameraLayer &cl_obj, int type, void *context)
-  {
-    InspectionTarget *itm=(InspectionTarget*)context;
-    itm->CAM_CallBack(cl_obj,type);
-    return CameraLayer::status::ACK;
-  }
-
-  void CAM_CallBack(CameraLayer &cl_obj, int type)
-  {
-    if (type != CameraLayer::EV_IMG)
-      return;
-
-    CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
-    LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
-    img.ReSize(finfo.width,finfo.height,3);
-
-    CameraLayer::status st = cl_obj.ExtractFrame(img.CVector[0],3,finfo.width*finfo.height);
-
-    BPG_protocol_data_acvImage_Send_info imgInfo=ImageDownSampling_Info(img_buff,img,4,NULL,1,0,0,-1,-1);
-
-    bpg_pi.fromUpperLayer_DATA("IM",channel_id,&imgInfo);
-    bpg_pi.fromUpperLayer_SS(channel_id,true,NULL,NULL);    
-  }
-
-  ~InspectionTarget()
-  {
-    if(InspConf)
-      cJSON_Delete(InspConf);
-    InspConf=NULL;
-
-    
-    if(camera)
-      delete( camera );
-    camera=NULL;
-  }
-
-};
-
-
-class InspectionTargetManager
-{
-  vector<InspectionTarget*> inspTar;
-
-
-  inline static CameraLayerManager clm;
-  public:
-  static InspectionTarget* createInspTargetWithCamera(int idx,std::string misc_str)
-  {
-    InspectionTarget* insptar=new InspectionTarget();
-    CameraLayer *cam= clm.connectCamera(idx,misc_str,InspectionTarget::sCAM_CallBack,insptar);
-    insptar->assignCamera(cam);
-    return insptar;
-  }
-  public:
-  static string cameraDiscovery()
-  {
-    clm.discover();
-    return clm.genJsonStringList();
-  }
-
-
-
-  
-  InspectionTarget* AddInspTargetWithCamera(int idx,std::string misc_str)
-  {
-    InspectionTarget* insptar=createInspTargetWithCamera(idx, misc_str);
-    inspTar.push_back(insptar);
-    return insptar;
-  }
-
-
-
-  
-  bool DelInspTargetWithCamera(int idx)
-  {
-    if(idx<0||idx>=inspTar.size())return false;
-
-    InspectionTarget *ispt=inspTar[idx];
-    delete ispt;
-    inspTar[idx]=NULL;
-    inspTar.erase(inspTar.begin()+idx);
-    return true;
-  }
-
-
-  const vector<InspectionTarget*>& getInspTars()
-  {
-    return inspTar;
-  }
-
-
-  ~InspectionTargetManager()
-  {
-    for(int i=0;i<inspTar.size();i++)
-    {
-      delete inspTar[i];
-      inspTar[i]=NULL;
-    }
-    inspTar.resize(0);
-  }
-};
 
 
 
 InspectionTargetManager inspTarMan;
+
+
 
 
 
@@ -510,7 +298,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       {
         session_ACK = true;
 
-        string discoverInfo_str = InspectionTargetManager::cameraDiscovery();
+        string discoverInfo_str = CameraManager::cameraDiscovery();
             
         cJSON *discoverInfo = cJSON_Parse(discoverInfo_str.c_str());
         fromUpperLayer_DATA("CM",dat->pgID,discoverInfo);
@@ -519,12 +307,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       else if(strcmp(type_str, "connect") ==0)
       {do{
         
-        double *cam_idx = JFetch_NUMBER(json, "cam_idx");
-        
         session_ACK = false;
-        
-        LOGI(">>>");
-        if(cam_idx==NULL)break;
 
         LOGI(">>>");
 
@@ -539,40 +322,38 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         }
         
         
-        
+        double *cam_idx = JFetch_NUMBER(json, "idx");
+        CameraLayer* gcam=NULL;
+        if(cam_idx!=NULL)
         {
-          const vector<InspectionTarget *> &insptars=inspTarMan.getInspTars();
-          InspectionTarget *insptar=NULL;
-          for(int i=0;i<insptars.size();i++)
-          {
-            if(insptars[i]->channel_id==dat->pgID)
-            {
-              insptar=insptars[i];
-            }
-          }
 
-          if(insptar==NULL)
-          {
-            InspectionTarget *insptar = inspTarMan.AddInspTargetWithCamera((int)*cam_idx,miscStr);
-            
-            if(insptar)
-            {
-              insptar->channel_id=dat->pgID;
-            }
-          }
-
-          if(insptar)
-          {
-            cJSON* info = insptar->getInfo_cJSON();
-
-            fromUpperLayer_DATA("CM",dat->pgID,info);
-            cJSON_Delete(info);
-          }
-          // LOGI(">>>insptar:%p",insptar);
-          session_ACK = (insptar!=NULL);
-
+          gcam = inspTarMan.camman.addCamera((int)*cam_idx,miscStr);
 
         }
+        else
+        {
+          char *_driver_name = JFetch_STRING(json, "driver_name");
+          std::string driver_name=_driver_name==NULL?"":std::string(_driver_name);
+          char *_cam_id = JFetch_STRING(json, "id");
+          std::string cam_id=_cam_id==NULL?"":std::string(_cam_id);
+          if(_cam_id)
+          {
+
+            gcam = inspTarMan.camman.addCamera(driver_name,cam_id,miscStr);
+          }
+        }
+
+        
+        if(gcam)
+        {
+          CameraLayer::BasicCameraInfo data=gcam->getConnectionData();
+          cJSON* info = inspTarMan.camman.cameraInfo2Json(data);
+
+          fromUpperLayer_DATA("CM",dat->pgID,info);
+          cJSON_Delete(info);
+        }
+        // LOGI(">>>insptar:%p",insptar);
+        session_ACK = (gcam!=NULL);
 
 
 
@@ -583,93 +364,86 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       else if(strcmp(type_str, "disconnect") ==0)
       {do{
       
-        double *_channel_id = JFetch_NUMBER(json, "channel_id");
-        if(_channel_id==NULL)
+        session_ACK = false;
+        char *_driver_name = JFetch_STRING(json, "driver_name");
+        std::string driver_name=_driver_name==NULL?"":std::string(_driver_name);
+        char *_cam_id = JFetch_STRING(json, "id");
+        std::string cam_id=_cam_id==NULL?"":std::string(_cam_id);
+        if(_cam_id)
         {
-          break;
+
+          session_ACK = inspTarMan.camman.delCamera(driver_name,cam_id);
         }
-        int channel_id=(int)*_channel_id;
+
+      }while(0);}
+      else if(strcmp(type_str, "connected_camera_list") ==0)
+      {do{
+      
+        session_ACK = true;
 
         
-        LOGI(">>>>>channel_id:%d",channel_id);
-        const vector<InspectionTarget *> &insptars=inspTarMan.getInspTars();
-        InspectionTarget *targetToSet=NULL;
-        for(int i=0;i<insptars.size();i++)
-        {
-          
-          LOGI(">>>>>insptars[%d].chid:%d",i,insptars[i]->channel_id);
-          if(insptars[i]->channel_id==channel_id)
-          {
-            session_ACK=true;
-            inspTarMan.DelInspTargetWithCamera(i);
-            break;
-          }
-        }
-        
-          
-        
+        cJSON* camList = inspTarMan.camman.ConnectedCameraList();
+
+        fromUpperLayer_DATA("CM",dat->pgID,camList);
+        cJSON_Delete(camList);
+
+
       }while(0);}
-      else if(strcmp(type_str, "get_insp_targets") ==0)
+
+    }    
+    else if (checkTL("IT", dat)) //[I]nsp [T]arget
+    {do{
+      
+      session_ACK = false;
+      char *type_str = JFetch_STRING(json, "type");
+      if(strcmp(type_str, "create") ==0)
+      {
+        char *_id = JFetch_STRING(json, "id");
+        if(_id==NULL)break;
+        std::string id=std::string(_id);
+        session_ACK=(inspTarMan.addInspTar(id)!=NULL);
+        
+
+
+      }
+      else if(strcmp(type_str, "delete") ==0)
       {
         
-        cJSON *retArr = cJSON_CreateArray();
-        const vector<InspectionTarget *> &insptars=inspTarMan.getInspTars();
-        for(int i=0;i<insptars.size();i++)
-        {
-          cJSON_AddItemToArray(retArr, insptars[i]->getInfo_cJSON());
-        }
-        session_ACK = true;
+        char *_id = JFetch_STRING(json, "id");
+        if(_id==NULL)break;
+        std::string id=std::string(_id);
+        session_ACK=inspTarMan.delInspTar(id);
         
-        fromUpperLayer_DATA("CM",dat->pgID,retArr);
-        cJSON_Delete(retArr);
       }
-      else if(strcmp(type_str, "target_exchange") ==0)
-      {do{
+      else if(strcmp(type_str, "camera_recv_info") ==0)
+      {
         
-        double *_channel_id = JFetch_NUMBER(json, "channel_id");
-        if(_channel_id==NULL)
-        {
-          break;
-        }
-        int channel_id=(int)*_channel_id;
-
+        char *_camera_id = JFetch_STRING(json, "camera_id");
+        if(_camera_id==NULL)break;
+        char *_camera_trigger_tag = JFetch_STRING(json, "camera_trigger_tag");
+        if(_camera_trigger_tag==NULL)break;
         
-        LOGI(">>>>>channel_id:%d",channel_id);
-        const vector<InspectionTarget *> &insptars=inspTarMan.getInspTars();
-        InspectionTarget *targetToSet=NULL;
-        for(int i=0;i<insptars.size();i++)
-        {
-          
-          LOGI(">>>>>insptars[%d].chid:%d",i,insptars[i]->channel_id);
-          if(insptars[i]->channel_id==channel_id)
-          {
-            targetToSet=insptars[i];
-            break;
-          }
-        }
+        char *_id = JFetch_STRING(json, "id");
+        if(_id==NULL)break;
+        std::string camera_id=std::string(_camera_id);
+        std::string camera_trigger_tag=std::string(_camera_trigger_tag);
+        std::string id=std::string(_id);
+        InspectionTarget *insptar= inspTarMan.getInspTar(id);
+
+
+
+
+      }
+      else if(strcmp(type_str, "exchange") ==0)
+      {
         
-        if(targetToSet!=NULL)
-        {
-          InspectionTarget_EXCHANGE input={0};
-          input.info=json;
-          
-          LOGI(">>>>>json:%p",json);
-          InspectionTarget_EXCHANGE *retExch = targetToSet->setInfo(&input);
-          if(retExch!=NULL)
-          {
-            fromUpperLayer_DATA("CM",dat->pgID,retExch);
-            session_ACK=retExch->isOK;
-            targetToSet->returnExchange(retExch);
-          }
-        }
-        else
-        {
-          session_ACK=false;
-        }
+        char *_id = JFetch_STRING(json, "id");
+        if(_id==NULL)break;
+        std::string id=std::string(_id);
+        InspectionTarget *insptar= inspTarMan.getInspTar(id);
 
-      }while(0);}
-
-    }
+      }
+    }while(0);}
     else if (checkTL("GS", dat)) //[G]et [S]etting
     {
       

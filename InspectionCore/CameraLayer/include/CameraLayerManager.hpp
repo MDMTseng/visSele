@@ -16,8 +16,8 @@
 class CameraLayerManager
 {
   
-  vector<CameraLayer::BasicCameraInfo> camBasicInfo;
   public:
+  std::vector<CameraLayer::BasicCameraInfo> camBasicInfo;
   std::string strJsonAppendKeyString(std::string key,std::string strData)
   {
     return "\""+key+"\":\""+strData+"\"";
@@ -65,7 +65,7 @@ class CameraLayerManager
 
 
 #ifdef FEATURE_COMPILE_W_ARAVIS
-  vector<CameraLayer_Aravis::cam_info> aravisCamList;
+  std::vector<CameraLayer_Aravis::cam_info> aravisCamList;
 
 
 
@@ -83,7 +83,7 @@ class CameraLayerManager
     +"}";
   }
 
-  std::string CamList2Json(vector<CameraLayer_Aravis::cam_info> &list)
+  std::string CamList2Json(std::vector<CameraLayer_Aravis::cam_info> &list)
   {
     std::string jobj="{\"list\":[";
 
@@ -119,7 +119,7 @@ class CameraLayerManager
     +"}";
   }
 
-  std::string CamList2Json(vector<CameraLayer::BasicCameraInfo> &list)
+  std::string CamList2Json(std::vector<CameraLayer::BasicCameraInfo> &list)
   {
     std::string jobj="[";
 
@@ -244,6 +244,19 @@ class CameraLayerManager
       return new CameraLayer_BMP_carousel(camBasicInfo[camera_idx],misc,callback, ctx);
     }
 
+    return NULL;
+  }
+
+  //driver_name can be "" empty string to skip driver info locating
+  CameraLayer* connectCamera(std::string driver_name,std::string cam_id,std::string misc,CameraLayer::CameraLayer_Callback callback, void* ctx)
+  {
+    for(int i=0;i<camBasicInfo.size();i++)
+    {
+      if((  driver_name.length()==0 ||camBasicInfo[i].driver_name==driver_name) && camBasicInfo[i].id==cam_id)
+      {
+        return connectCamera(i, misc, callback, ctx);
+      }
+    }
     return NULL;
   }
 

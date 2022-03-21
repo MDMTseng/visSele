@@ -17,6 +17,11 @@ CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer::BasicCameraInfo 
       throw std::invalid_argument(excpMsg);
     }
     updateFolder(misc);
+
+
+    connection_data.serial_number=misc;
+
+
     fileIdx=0;
     cameraThread=NULL;
     isThreadWorking=false;

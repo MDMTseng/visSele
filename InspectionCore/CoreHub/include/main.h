@@ -46,6 +46,7 @@
 #include "Data_Layer_Protocol.hpp"
 #include "Data_Layer_PHY.hpp"
 
+#include "InspectionTarget.hpp"
 
 
 int demomain(int argc, char **argv);
@@ -114,24 +115,6 @@ int BPG_prot_cb_acvImage_Send(BPG_Protocol_Interface &dch, struct BPG_protocol_d
 //typedef int (*BPG_protocol_data_feed_callback)(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 
 
-
-typedef struct BPG_protocol_data_acvImage_Send_info
-{
-    acvImage* img;
-    uint16_t scale;
-    uint16_t offsetX,offsetY;
-    uint16_t fullWidth,fullHeight;
-
-}BPG_protocol_data_acvImage_Send_info;
-
-
-       
-struct InspectionTarget_EXCHANGE
-{
-  int isOK;
-  cJSON *info;
-  BPG_protocol_data_acvImage_Send_info imgInfo;
-};
 
 class m_BPG_Protocol_Interface : public BPG_Protocol_Interface
 {
