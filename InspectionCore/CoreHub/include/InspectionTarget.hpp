@@ -29,12 +29,13 @@ struct InspectionTarget_EXCHANGE
 class InspectionTarget;
 class CameraManager
 {
-  std::vector<CameraLayer*> cameras;
 
   inline static CameraLayerManager clm;
   public:
-  CameraLayer* addCamera(int idx,std::string misc_str);
-  CameraLayer* addCamera(std::string driverName,std::string camera_id,std::string misc_str);
+  std::vector<CameraLayer*> cameras;
+  std::vector<acvImage*> buffImage;
+  CameraLayer* addCamera(int idx,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx);
+  CameraLayer* addCamera(std::string driverName,std::string camera_id,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx);
   CameraLayer* getCamera(std::string driverName,std::string camera_id);
   bool delCamera(int idx);
   bool delCamera(std::string driverName,std::string camera_id);
@@ -56,10 +57,14 @@ class CameraManager
 
 class InspectionTargetManager
 {
+  std::mutex camCBLock;
   public:
   CameraManager camman;
 
   std::vector<InspectionTarget*> inspTar;
+
+  static CameraLayer::status sCAM_CallBack(CameraLayer &cl_obj, int type, void *context);
+  CameraLayer::status CAM_CallBack(CameraLayer &cl_obj, int type, void *context);
 
 
   int getInspTarIdx(std::string id);
@@ -99,17 +104,33 @@ class InspectionTarget
     return true;
   }
 
+  bool matchCamRecvInfo(std::string cam_id,std::string trigger_id)
+  {
+    for(int i=0;i<camRecvInfo.size();i++)
+    {
+      if(camRecvInfo[i].cam_id==cam_id && (trigger_id.length()==0 || trigger_id==camRecvInfo[i].trigger_id))
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+
+
   InspectionTarget(std::string id);
   void setInspDef(cJSON* json);
   cJSON* getInfo_cJSON();
 
   InspectionTarget_EXCHANGE excdata={0};
   acvImage img_buff;
-  InspectionTarget_EXCHANGE* setInfo(InspectionTarget_EXCHANGE* info);
+  InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info);
 
   bool returnExchange(InspectionTarget_EXCHANGE* info);
 
-  void CAM_CallBack(acvImage &img,CameraLayer& src);
+  void CAM_CallBack(CameraLayer& srcCam,acvImage &img,std::string cam_id,std::string trigger_id)
+  {
+    printf("<<<<id:%s<<<%s  WH:%d,%d\n",id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight());
+  }
 
   ~InspectionTarget();
 };

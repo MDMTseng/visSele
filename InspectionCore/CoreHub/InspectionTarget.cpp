@@ -46,7 +46,7 @@ cJSON* InspectionTarget::getInfo_cJSON()
 }
 
 
-InspectionTarget_EXCHANGE* InspectionTarget::setInfo(InspectionTarget_EXCHANGE* info)
+InspectionTarget_EXCHANGE* InspectionTarget::exchange(InspectionTarget_EXCHANGE* info)
 {
   rsclock.lock();
   cJSON * json=info->info;
@@ -112,24 +112,6 @@ bool InspectionTarget::returnExchange(InspectionTarget_EXCHANGE* info)
   return true;
 }
 
-
-void InspectionTarget::CAM_CallBack(acvImage &img,CameraLayer& src)
-{
-  // if (type != CameraLayer::EV_IMG)
-  //   return;
-
-  // CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
-  // LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
-  // img.ReSize(finfo.width,finfo.height,3);
-
-  // CameraLayer::status st = cl_obj.ExtractFrame(img.CVector[0],3,finfo.width*finfo.height);
-
-  // BPG_protocol_data_acvImage_Send_info imgInfo=ImageDownSampling_Info(img_buff,img,4,NULL,1,0,0,-1,-1);
-
-  // bpg_pi.fromUpperLayer_DATA("IM",channel_id,&imgInfo);
-  // bpg_pi.fromUpperLayer_SS(channel_id,true,NULL,NULL);    
-}
-
 InspectionTarget::~InspectionTarget()
 {
   if(InspConf)
@@ -145,38 +127,7 @@ string CameraManager::cameraDiscovery()
 }
 
 
-
-
-static void _CAM_CallBack(acvImage &img,CameraLayer& src)
-{
-  // if (type != CameraLayer::EV_IMG)
-  //   return;
-
-  // CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
-  // LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
-  // img.ReSize(finfo.width,finfo.height,3);
-
-  // CameraLayer::status st = cl_obj.ExtractFrame(img.CVector[0],3,finfo.width*finfo.height);
-
-  // BPG_protocol_data_acvImage_Send_info imgInfo=ImageDownSampling_Info(img_buff,img,4,NULL,1,0,0,-1,-1);
-
-  // bpg_pi.fromUpperLayer_DATA("IM",channel_id,&imgInfo);
-  // bpg_pi.fromUpperLayer_SS(channel_id,true,NULL,NULL);    
-}
-static CameraLayer::status sCAM_CallBack(CameraLayer &cl_obj, int type, void *context)
-{
-  // InspectionTarget *itm=(InspectionTarget*)context;
-  // itm->CAM_CallBack(cl_obj,type);
-
-
-
-
-
-
-  return CameraLayer::status::ACK;
-}
-
-CameraLayer* CameraManager::addCamera(int idx,std::string misc_str)
+CameraLayer* CameraManager::addCamera(int idx,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx)
 {
   CameraLayer::BasicCameraInfo bcaminfo = clm.camBasicInfo[idx];
   if(findConnectedCameraIdx(bcaminfo.driver_name,bcaminfo.id)>=0)
@@ -186,16 +137,23 @@ CameraLayer* CameraManager::addCamera(int idx,std::string misc_str)
 
 
 
-  CameraLayer *cam= clm.connectCamera(idx,misc_str,sCAM_CallBack,this);
+  CameraLayer *cam= clm.connectCamera(idx,misc_str,callback,ctx);
 
   cameras.push_back(cam);
 
+  if(buffImage.size()<cameras.size())
+  {
+    for(int i=buffImage.size();i<cameras.size();i++)
+    {
+      buffImage.push_back(new acvImage(1,1,3));
+    }
+  }
 
   return cam;
 }
 
 
-CameraLayer* CameraManager::addCamera(std::string driverName,std::string camera_id,std::string misc_str)
+CameraLayer* CameraManager::addCamera(std::string driverName,std::string camera_id,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx)
 {
   // CameraLayer::BasicCameraInfo bcaminfo = clm.camBasicInfo[idx];
   {
@@ -206,10 +164,17 @@ CameraLayer* CameraManager::addCamera(std::string driverName,std::string camera_
     }
   }
 
-  CameraLayer *cam= clm.connectCamera(driverName,camera_id,misc_str,sCAM_CallBack,NULL);
+  CameraLayer *cam= clm.connectCamera(driverName,camera_id,misc_str,callback,ctx);
 
   cameras.push_back(cam);
 
+  if(buffImage.size()<cameras.size())
+  {
+    for(int i=buffImage.size();i<cameras.size();i++)
+    {
+      buffImage.push_back(new acvImage(1,1,3));
+    }
+  }
 
   return cam;
 }
@@ -287,6 +252,16 @@ CameraManager::~CameraManager()
     cameras[i]=NULL;
   }
   cameras.resize(0);
+
+  for(int i=0;i<buffImage.size();i++)
+  {
+    delete buffImage[i];
+    buffImage[i]=NULL;
+  }
+  buffImage.resize(0);
+
+
+  
 }
 
 
@@ -355,3 +330,41 @@ cJSON* InspectionTargetManager::getInspTarListInfo()
 
 
 
+
+
+CameraLayer::status InspectionTargetManager::sCAM_CallBack(CameraLayer &cl_obj, int type, void *context)
+{
+  if(context==NULL)return CameraLayer::status::NAK;
+  InspectionTargetManager* itman = (InspectionTargetManager*)context;
+  return itman->CAM_CallBack(cl_obj,type,context);
+}
+
+CameraLayer::status InspectionTargetManager::CAM_CallBack(CameraLayer &cl_obj, int type, void *context)
+{
+  if (type != CameraLayer::EV_IMG)return CameraLayer::status::NAK;
+  std::lock_guard<std::mutex> lck(camCBLock);
+
+  acvImage *bufImg=NULL;
+  for(int i=0;i<camman.cameras.size();i++)
+  {
+    if(camman.cameras[i]==(&cl_obj))
+    {
+      bufImg= camman.buffImage[i];
+
+      CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
+      // LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
+      bufImg->ReSize(finfo.width,finfo.height,3);
+
+      CameraLayer::status st = cl_obj.ExtractFrame(bufImg->CVector[0],3,finfo.width*finfo.height);
+
+    }
+  }
+  // printf(">>>>>>>>>\n");
+  if(bufImg==NULL)return CameraLayer::status::NAK;
+  for(int i=0;i<inspTar.size();i++)
+  {
+    inspTar[i]->CAM_CallBack(cl_obj,*bufImg,cl_obj.getConnectionData().id,"");//no trigger id yet
+  }
+
+  return CameraLayer::status::ACK;
+}

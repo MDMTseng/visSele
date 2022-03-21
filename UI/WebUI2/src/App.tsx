@@ -1,38 +1,147 @@
 import React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect,useRef } from 'react';
 import { useDispatch, useSelector } from "react-redux";
-import { Button,Tabs } from 'antd';
+import { Layout,Button,Tabs } from 'antd';
+
+import clone from 'clone';
 
 import {StoreTypes} from './redux/store';
-import {EXT_API_ACCESS, EXT_API_CONNECTED,EXT_API_DISCONNECTED, EXT_API_REGISTER, EXT_API_UPDATE} from './redux/actions/EXT_API_ACT';
+import {EXT_API_ACCESS, EXT_API_CONNECTED,EXT_API_DISCONNECTED, EXT_API_REGISTER,EXT_API_UNREGISTER, EXT_API_UPDATE} from './redux/actions/EXT_API_ACT';
 
 
 import { GetObjElement} from './UTIL/MISC_Util';
 
 import GenMatching_rdx from './CanvasComponent';
-import {CORE_ID,CORE_API_TYPE,CNC_PERIPHERAL_ID,CNC_PERIPHERAL_TYPE,BPG_WS,CNC_Perif} from './EXT_API';
+import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_API';
 
+const { TabPane } = Tabs;
+const { Header, Content, Footer,Sider } = Layout;
+type type_InspDef={
+  name:string,
+  
+  cameraList:{id:string,[key:string]:any}[]
 
-
-
-function InspTargetUI()
-{
-
-  return (
-    <Tabs defaultActiveKey="1" >
-    {/* <TabPane tab="Tab 1" key="1">
-      Content of Tab Pane 1
-    </TabPane>
-    <TabPane tab="Tab 2" key="2">
-      Content of Tab Pane 2
-    </TabPane>
-    <TabPane tab="Tab 3" key="3">
-      Content of Tab Pane 3
-    </TabPane> */}
-  </Tabs>)
+  rules:{
+    name:string,
+    id:string
+    [key:string]:any
+  }[]
 }
 
 
+function CameraDiscover({onCameraSelected}:{onCameraSelected:(...param:any)=>void})
+{
+  
+  const _ = useRef({});
+  let _this=_.current;
+  const dispatch = useDispatch();
+  const CORE_API_INFO = useSelector((state:StoreTypes) => state.EXT_API[CORE_ID]);
+  const ACT_EXT_API_REGISTER= (...p:Parameters<typeof EXT_API_REGISTER>) => dispatch(EXT_API_REGISTER(...p));
+  const ACT_EXT_API_ACCESS= (...p:Parameters<typeof EXT_API_ACCESS>) => dispatch(EXT_API_ACCESS(...p));
+  const ACT_EXT_API_UPDATE= (...p:Parameters<typeof EXT_API_UPDATE>) => dispatch(EXT_API_UPDATE(...p));
+  const ACT_EXT_API_CONNECTED= (...p:Parameters<typeof EXT_API_CONNECTED>) => dispatch(EXT_API_CONNECTED(...p));
+  const ACT_EXT_API_DISCONNECTED= (...p:Parameters<typeof EXT_API_DISCONNECTED>) => dispatch(EXT_API_DISCONNECTED(...p));
+  const [camList,setCamList]=useState<{id:string,driver_name:string,name:string,model:string}[]|undefined>(undefined);
+
+  useEffect(()=>{
+    ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+      let api=_api as BPG_WS;//cast
+      api.cameraDiscovery().then((ret:any)=>{
+        console.log(ret);
+        setCamList(ret[0].data)
+      })
+    })
+  },[])
+
+  if(camList===undefined)
+  {
+    return <>
+    
+     掃描中
+  
+    </>
+  }
+
+  if(camList.length==0)
+  {
+    return <>
+    
+     無相機
+  
+    </>
+  }
+
+  return <>
+    
+    {camList.map(cam=><Button key={"id_"+cam.id} onClick={()=>{
+      onCameraSelected(cam);
+        // ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+        //   let api=_api as BPG_WS;//cast
+        //   api.send(
+        //     "CM",0,{
+        //       type:"connect",
+        //       driver_idx:cam.driver_idx,
+        //       cam_idx:cam.cam_idx,
+        //       misc:cam.misc,
+        //       _PGID_:cam.channel_id,
+        //       _PGINFO_:{keep:true}
+        //     },undefined,
+        //     {
+        //       reject:(arg:any[])=>console.error(arg),
+        //       resolve:(arg:any[])=>{
+
+        //         console.log(arg);
+
+                
+        //       }
+        //     })
+        // })
+
+
+
+
+      }}>{cam.id}</Button>)}
+  
+  
+  
+  </>
+}
+
+function InspectionTargets({inspDef,onDefSetupUpdate}:{inspDef:type_InspDef,onDefSetupUpdate:(inspdef:type_InspDef)=>boolean})
+{
+  const [_inspDef,set_inspDef]=useState<type_InspDef>();
+  useEffect(()=>{
+   
+    set_inspDef(clone(inspDef))
+  },[inspDef])
+
+  if(_inspDef===undefined)return null;
+
+  return <>
+    InspectionTargets
+
+    <Button onClick={()=>{
+      
+    }}>Add Cam</Button>
+    <Button onClick={()=>{
+      let newList = [..._inspDef.rules];
+      newList.push({id:"ID:"+newList.length,name:"N_"+newList.length});
+      
+      set_inspDef({..._inspDef,rules:newList})
+    }}>Add Insp</Button>
+    <Tabs defaultActiveKey="1">
+      {_inspDef.rules.map(rule=>(
+        <TabPane tab={rule.name} key={rule.id}  >
+          <div style={{width:"100%",height:"100%"}}>
+
+          {rule.name}
+
+          </div>
+        </TabPane>
+      ))}
+    </Tabs>
+  </>
+}
 
 function App() {
   
@@ -116,119 +225,201 @@ function App() {
   console.log(camUIInfo);
 
  
+  if(GetObjElement(CORE_API_INFO,["state"])!=1)
+  {
+    return <div>Wait....</div>;
+  }
   let test_ch_id=51000;
   return (
-    <div className="App">
-      <Button onClick={()=>{
-        ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
-          let api=_api as CORE_API_TYPE;//cast
-          api.cameraDiscovery().then((ret:any)=>{
-            console.log(ret);
+    <Layout className="layout" style={{width:"100%",height:"100%"}}>
+
+      {/* <Header>00000</Header> */}
+      <Sider collapsible collapsed={true}>
+
+      </Sider>
+      <Content style={{ padding: '0 50px' }}>
+
+        {/* <InspectionTargets inspDef={{
+          name:"aaa",
+          cameraList:[{id:"ssss"}],
+          rules:[]
+        }} onDefSetupUpdate={(_)=>false}/>
+        <br/> */}
+
+        <CameraDiscover onCameraSelected={(camInfo)=>{
+          console.log(camInfo);
+
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as BPG_WS;//cast
+            Promise.all([
+              api.send_P("CM",0,{type:"connect",id:camInfo.id}),
+              api.send_P("CM",0,{type:"connected_camera_list"}),
+            ])
             
-            setCamList(ret[0].data)
+            .then((d)=>{
+              console.log(d);
+            })
           })
-        })
-      }}>{JSON.stringify(CORE_API_INFO)}</Button>
-      
+        }}/>
+        
 
 
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as BPG_WS;//cast
+            
+            Promise.all([
+              api.send_P("IT",0,{type:"create",id:"INSP1"}),
+              api.send_P("CM",0,{type:"connected_camera_list"}),
+            ])
+            
+            .then((d)=>{
+              console.log(d);
+            })
 
-      {camUIInfo.map(cam=><Button key={"id_"+cam.channel_id} onClick={()=>{
-        ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
-          let api=_api as CORE_API_TYPE;//cast
-          api.send(
-            "CM",0,{
-              type:"connect",
-              driver_idx:cam.driver_idx,
-              cam_idx:cam.cam_idx,
-              misc:cam.misc,
-              _PGID_:cam.channel_id,
-              _PGINFO_:{keep:true}
-            },undefined,
-            {
-              reject:(arg:any[])=>console.error(arg),
-              resolve:(arg:any[])=>{
 
-                console.log(arg);
-
+            
+              .then(ret=>{
                 
-              }
-            })
-        })
+              })
+          })
 
 
 
 
-      }}>{cam.id}</Button>)}
+        }}>Start Stream</Button>
 
 
 
 
-      <Button onClick={()=>{
-        ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
-          let api=_api as CORE_API_TYPE;//cast
-          
 
-          api.send(
-            "CM",0,{
-              type:"target_exchange",
-              insp_type:"start_stream",
-              channel_id:test_ch_id
-            },undefined,
-            {
-              reject:(arg:any[])=>console.error(arg),
-              resolve:(arg:any[])=>{
-                console.log(arg);
-              }
-            })
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as BPG_WS;//cast
+            
 
-
-
-        })
+            api.send(
+              "CM",0,{
+                type:"start_stream",
+                id:"Hikrobot-00F42197140"
+              },undefined,
+              {
+                reject:(arg:any[])=>console.error(arg),
+                resolve:(arg:any[])=>{
+                  console.log(arg);
+                }
+              })
 
 
 
-
-      }}>Start Stream</Button>
-
-
-      <Button onClick={()=>{
-        ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
-          let api=_api as CORE_API_TYPE;//cast
-          
-
-          api.send(
-            "CM",0,{
-              type:"target_exchange",
-              insp_type:"stop_stream",
-              channel_id:test_ch_id
-            },undefined,
-            {
-              reject:(arg:any[])=>console.error(arg),
-              resolve:(arg:any[])=>{
-                console.log(arg);
-              }
-            })
-
-
-
-        })
+          })
 
 
 
 
-      }}>Stop Stream</Button>
+        }}>Start Stream</Button>
 
 
-      <Button onClick={()=>{
-        ACT_EXT_API_ACCESS(CNC_PERIPHERAL_ID,(_api)=>{
-          let api=_api as CNC_PERIPHERAL_TYPE;//cast
-          api.pushGCode(["G01 Y1000 Z1_600 R11_300 R12_430 F350","G01 Y0 Z1_0 R11_0 R12_0 F350"]);
-        })
-      }}>CNC cmd</Button>
-      
-      {/* <GenMatching_rdx image=/> */}
-    </div>
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as BPG_WS;//cast
+            
+
+            api.send(
+              "CM",0,{
+                type:"stop_stream",
+                id:"Hikrobot-00F42197140"
+              },undefined,
+              {
+                reject:(arg:any[])=>console.error(arg),
+                resolve:(arg:any[])=>{
+                  console.log(arg);
+                }
+              })
+
+
+
+          })
+
+
+
+
+        }}>Stop Stream</Button>
+
+
+
+
+      </Content>
+      {/* <Footer style={{ textAlign: 'center' }}>
+
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as BPG_WS;//cast
+            
+
+            api.send(
+              "CM",0,{
+                type:"target_exchange",
+                insp_type:"start_stream",
+                channel_id:test_ch_id
+              },undefined,
+              {
+                reject:(arg:any[])=>console.error(arg),
+                resolve:(arg:any[])=>{
+                  console.log(arg);
+                }
+              })
+
+
+
+          })
+
+
+
+
+        }}>Start Stream</Button>
+
+
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as BPG_WS;//cast
+            
+
+            api.send(
+              "CM",0,{
+                type:"target_exchange",
+                insp_type:"stop_stream",
+                channel_id:test_ch_id
+              },undefined,
+              {
+                reject:(arg:any[])=>console.error(arg),
+                resolve:(arg:any[])=>{
+                  console.log(arg);
+                }
+              })
+
+
+
+          })
+
+
+
+
+        }}>Stop Stream</Button>
+
+        <br/>
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CNC_PERIPHERAL_ID,(_api)=>{
+            let api=_api as CNC_Perif;//cast
+            api.pushGCode(["G01 Y1000 Z1_600 R11_300 R12_430 F350","G01 Y0 Z1_0 R11_0 R12_0 F350"]);
+          })
+        }}>CNC cmd</Button>
+        
+
+
+      </Footer> */}
+    </Layout>
+
   );
 }
 

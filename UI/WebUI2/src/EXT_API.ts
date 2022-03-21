@@ -198,6 +198,30 @@ export class BPG_WS
     })
   }
 
+  send_P(
+    tl:string,
+    prop:number,
+    data:TYPE_OBJECT|undefined,
+    uintArr:Uint8Array|undefined=undefined)
+  {
+    return new Promise((resolve,reject)=>{
+      let ret=this._send({
+        tl,
+        prop,
+        data,//json object
+        uintArr,
+        promiseCBs:{
+          reject:(arg:any[])=>reject(arg),
+          resolve:(arg:any[])=>resolve(arg),
+        }
+      })
+      if(ret==false)
+      {
+        reject(null);
+      }
+
+    })
+  }
   send(
     tl:string,
     prop:number,
@@ -206,8 +230,9 @@ export class BPG_WS
     promiseCBs:{
       reject(...arg:any[]):any,
       resolve(...arg:any[]):any,
-    }|undefined)
+    })
   {
+
     return this._send({
       tl,
       prop,
@@ -719,5 +744,89 @@ export class CNC_Perif extends GenPerif_API
   }
 }
 
-export type CNC_PERIPHERAL_TYPE=CNC_Perif
 
+
+export class  InspCamera_API
+{
+
+  id:string
+  stream_pg_id:number
+  constructor(id:string,stream_pg_id:number)
+  {
+    this.stream_pg_id=stream_pg_id;
+    this.id=id;
+    
+  } 
+
+
+  BPG_Send(
+    tl:string,
+    prop:number,
+    data:TYPE_OBJECT|undefined,
+    uintArr:Uint8Array|undefined,
+    promiseCBs:{
+      reject(...arg:any[]):any,
+      resolve(...arg:any[]):any,
+    }|undefined)
+  {
+
+  }
+  onDisconnected()
+  {
+    
+  }
+  
+  onConnected()
+  {
+    
+  }
+
+
+  protected _onDisconnected()
+  {
+    this.onDisconnected();
+  }
+  
+  protected _onConnected()
+  {
+    this.onConnected();
+  }
+
+  onInfoUpdate(newInfo:{[key:string]:any})
+  {
+    
+  }
+  
+
+  connect(camInfo:any)
+  {
+    this.BPG_Send(
+    "CM",0,{
+      type:"connect",
+      driver_idx:camInfo.driver_idx,
+      cam_idx:camInfo.cam_idx,
+      misc:camInfo.misc,
+      _PGID_:this.stream_pg_id,
+      _PGINFO_:{keep:true}
+    },undefined,
+    {
+      reject:(arg:any[])=>console.error(arg),
+      resolve:(stacked_pkts:any[])=>{
+
+        // let PD=stacked_pkts.find((pkt:any)=>pkt.type=="PD");
+        console.log(stacked_pkts);
+        
+      }
+    })
+  }
+
+  checkReConnection()
+  {
+  }
+
+  checkConnection()
+  {
+  }
+
+  
+}
