@@ -1276,7 +1276,11 @@ class APP_ANALYSIS_MODE extends React.Component{
           </Button>
           <RangePicker key="RP"
             value={this.state.dateRange} 
-            onChange={(date)=>this.stateUpdate({dateRange:date})}/>
+            onChange={(date)=>{
+              let date_start_n_end=[date[0].startOf('day'),date[1].endOf('day')]
+              // console.log(date_start_n_end);
+              this.stateUpdate({dateRange:date_start_n_end})
+            }}/>
 
           <Button type="primary" icon="search" disabled={ (!dateRangeReady || !defFileReady) || (this.state.dataInSync)} onClick={
             ()=>{
