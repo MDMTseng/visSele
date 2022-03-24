@@ -1099,7 +1099,7 @@ export function SLID_UI({UI_INSP_Count=false})
 
   
   return<>
-    <Button
+    {/* <Button
       icon={<BulbOutlined />}
         key="Pin2_OUTPUT"
         onClick={() =>
@@ -1110,15 +1110,20 @@ export function SLID_UI({UI_INSP_Count=false})
           })
         }>
         pin2 OUTPUT
-    </Button>
+    </Button> */}
 
     
     <Button
-        key="L_ON"
+        icon={<BulbOutlined />}
+        key="ON"
         onClick={() =>
           ACT_WS_GET_OBJ((api)=>{
-            api.send({"type":"PIN_CONF","pin":2,"output":1},
+            // api.send({"type":"PIN_CONF","pin":2,"output":1},
+            
+            console.log({"type":"BL_ON"});
+            api.send({"type":"BL_ON"},
             (ret)=>{
+              console.log(ret);
             },(e)=>console.log(e));
           })
         }>
@@ -1127,19 +1132,38 @@ export function SLID_UI({UI_INSP_Count=false})
 
     
     <Button
-        key="L_OFF"
+        key="OFF"
         onClick={() =>
           ACT_WS_GET_OBJ((api)=>{
-            api.send({"type":"PIN_CONF","pin":2,"output":0},
+            api.send({"type":"BL_OFF"},
             (ret)=>{
             },(e)=>console.log(e));
           })
         }>
        OFF
     </Button>
+    {"  "}
+    <Button
+        icon={<BulbOutlined />}
+        key="TAKE"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            api.send({"type":"BL_ON"},
+            (ret)=>{
+            },(e)=>console.log(e));
+            api.send({"type":"Cam_Trigger"},
+            (ret)=>{
+            },(e)=>console.log(e));
+            api.send({"type":"BL_OFF"},
+            (ret)=>{
+            },(e)=>console.log(e));
+          })
+        }>
+       SHOT
+    </Button>
   
     <br/>
-    <Button
+    {/* <Button
       icon={<SaveOutlined/>}
       key="testbtn"
       onClick={() => {
@@ -1147,7 +1171,7 @@ export function SLID_UI({UI_INSP_Count=false})
         ACT_WS_GET_OBJ((api)=>{
           api.machineSetupUpdate({pulse_sep_min:machineSetup.pulse_sep_min+1});
         })
-      }}>SaveToFile</Button>
+      }}>SaveToFile</Button> */}
 
 
     <Button

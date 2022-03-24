@@ -9,8 +9,8 @@
 #define __PRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
 
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6)
-const int O_CameraPin = 32;
-const int O_BackLight = 33;
+const int O_CameraPin = 33;
+const int O_BackLight = 32;
 const int I_gate1Pin = 17;
 
 
@@ -404,6 +404,7 @@ void setup()
   delay(3000);
   // digitalWrite(O_BackLight, 0);
   digitalWrite(O_CameraPin, 0);
+  digitalWrite(O_BackLight, 0);
 }
 
 
@@ -544,6 +545,30 @@ class MData_uInsp:public Data_JsonRaw_Layer
         // uint8_t buff[300];
         // int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
         // send_json_string(0,buff,slen,0);
+      }
+      else if(strcmp(type,"BL_ON")==0)
+      {
+        digitalWrite(O_BackLight, O_BackLight_ON);
+        doRsp=rspAck=true;
+
+      }     
+      else if(strcmp(type,"BL_OFF")==0)
+      {
+        digitalWrite(O_BackLight, !O_BackLight_ON);
+        doRsp=rspAck=true;
+
+      }
+      else if(strcmp(type,"Cam_Trigger")==0)
+      {
+        digitalWrite(O_CameraPin_ON, !O_CameraPin_ON);
+        delay(10);
+        digitalWrite(O_CameraPin_ON, O_CameraPin_ON);
+        delay(100);
+        digitalWrite(O_CameraPin_ON, !O_CameraPin_ON);
+
+
+        doRsp=rspAck=true;
+
       }
       else if(strcmp(type,"BYE")==0)
       {
