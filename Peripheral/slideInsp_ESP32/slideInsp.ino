@@ -11,11 +11,13 @@
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6)
 const int O_CameraPin = 33;
 const int O_BackLight = 32;
+const int O_EM_STOP = 25;
 const int I_gate1Pin = 17;
 
 
 bool O_CameraPin_ON=true;
 bool O_BackLight_ON=true;
+bool O_EM_STOP_ON=true;
 bool I_gate1Pin_ON=true;
 
 // twoGateSense tGS;
@@ -44,6 +46,7 @@ void genMachineSetup(JsonDocument &jdoc)
 
   jdoc["O_CameraPin_ON"]=O_CameraPin_ON;
   jdoc["O_BackLight_ON"]=O_BackLight_ON;
+  jdoc["O_EM_STOP_ON"]=O_EM_STOP_ON;
   jdoc["I_gate1Pin_ON"]=I_gate1Pin_ON;
 
 }
@@ -66,6 +69,7 @@ void setMachineSetup(JsonDocument &jdoc)
 
   JSON_SETIF_ABLE(O_CameraPin_ON,jdoc,"O_CameraPin_ON");
   JSON_SETIF_ABLE(O_BackLight_ON,jdoc,"O_BackLight_ON");
+  JSON_SETIF_ABLE(O_EM_STOP_ON,jdoc,"O_EM_STOP_ON");
   JSON_SETIF_ABLE(I_gate1Pin_ON,jdoc,"I_gate1Pin_ON");
 }
 
@@ -375,6 +379,7 @@ void setup()
 
   pinMode(O_CameraPin, OUTPUT);
   pinMode(O_BackLight, OUTPUT);
+  pinMode(O_EM_STOP, OUTPUT);
   
   pinMode(I_gate1Pin, INPUT_PULLUP);
   // Serial.begin(921600);
@@ -555,6 +560,27 @@ class MData_uInsp:public Data_JsonRaw_Layer
       else if(strcmp(type,"BL_OFF")==0)
       {
         digitalWrite(O_BackLight, !O_BackLight_ON);
+        doRsp=rspAck=true;
+
+      }
+      else if(strcmp(type,"EM_STOP")==0)
+      {
+        digitalWrite(O_EM_STOP, O_EM_STOP_ON);
+        delay(10);
+        digitalWrite(O_EM_STOP, !O_EM_STOP_ON);
+
+        doRsp=rspAck=true;
+
+      }
+      else if(strcmp(type,"EM_STOP_ON")==0)
+      {
+        digitalWrite(O_EM_STOP, O_EM_STOP_ON);
+        doRsp=rspAck=true;
+
+      }
+      else if(strcmp(type,"EM_STOP_OFF")==0)
+      {
+        digitalWrite(O_EM_STOP, !O_EM_STOP_ON);
         doRsp=rspAck=true;
 
       }
