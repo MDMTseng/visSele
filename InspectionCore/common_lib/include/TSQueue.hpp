@@ -40,6 +40,8 @@ public:
   bool resume_from_termination();
   bool pop(T& retDat);
   bool pop_blocking(T& retDat);
+  bool peek(T& retDat);
+  bool peek_blocking(T& retDat);
   bool push(const T &item);
   bool push_blocking(const T &item);
 };
@@ -112,11 +114,40 @@ bool TSQueue<T>::pop(T& retDat) {
   push_mutex_.unlock();
   return true;
 }
+
+template<typename T>
+bool TSQueue<T>::peek(T& retDat) {
+  if(termination)termination_avalanche_and_throw_excption();
+  std::lock_guard<std::mutex> lock(mutex_);
+  if(termination)termination_avalanche_and_throw_excption();
+  if (queue_.empty()) {
+    return false;
+  }
+  retDat = queue_.front();
+  push_mutex_.unlock();
+  return true;
+}
+
 template<typename T>
 bool TSQueue<T>::pop_blocking(T& retDat) {
 
   if(termination)termination_avalanche_and_throw_excption();
   while(pop(retDat)==false)
+  {
+    if(termination)termination_avalanche_and_throw_excption();
+    // printf("pop_blocking :: locked\n");
+    pop_mutex_.lock();
+    // printf("pop_blocking :: unlocked\n");
+  }
+
+  return true;
+}
+
+template<typename T>
+bool TSQueue<T>::peek_blocking(T& retDat) {
+
+  if(termination)termination_avalanche_and_throw_excption();
+  while(peek(retDat)==false)
   {
     if(termination)termination_avalanche_and_throw_excption();
     // printf("pop_blocking :: locked\n");
@@ -385,6 +416,53 @@ class resourcePool
     //the ptr address is valid
     return true;
   }  
+
+};
+
+
+
+
+
+
+template<typename T>
+class TSVector
+{
+  std::mutex _w_lock;
+  std::vector <T>vec;
+
+public:
+  void push_back(T d)
+  {
+    
+    std::lock_guard<std::mutex> lock(_w_lock);
+
+    vec.push_back(d);
+  }
+  void w_lock()
+  {
+    _w_lock.lock();
+  }
+  void w_unlock()
+  {
+    _w_lock.unlock();
+  }
+
+  size_t size()
+  {
+    return vec.size();
+  }
+
+
+  T& operator[](int idx)
+  {
+    return vec[idx];
+  }
+
+  bool erase(int idx)
+  {
+    return vec.erase(vec.begin()+idx)!=vec.end();
+  }
+
 
 };
 

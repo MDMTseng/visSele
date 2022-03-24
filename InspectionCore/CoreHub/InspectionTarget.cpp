@@ -44,73 +44,11 @@ cJSON* InspectionTarget::getInfo_cJSON()
   }
   return obj;
 }
+// cJSON* InspectionTarget::getInspResult()
+// {
+//   return getInfo_cJSON();
+// }
 
-
-InspectionTarget_EXCHANGE* InspectionTarget::exchange(InspectionTarget_EXCHANGE* info)
-{
-  rsclock.lock();
-  cJSON * json=info->info;
-
-  char *insp_type = JFetch_STRING(json, "insp_type");
-
-  memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
-
-
-  // if(strcmp(insp_type, "snap") ==0)
-  // {
-  //   LOGI(">>>>>");
-  //   int ret= getImage(camera,&img,0,-1);
-  //   if(ret!=0)
-  //   {
-  //     return NULL;
-  //   }
-  //   LOGI(">>>>>");
-  //   BPG_protocol_data_acvImage_Send_info imgInfo;
-  //   imgInfo.img=&img;
-  //   imgInfo.scale=1;
-  //   imgInfo.offsetX=0;
-  //   imgInfo.offsetY=0;
-  //   imgInfo.fullHeight=img.GetHeight();
-  //   imgInfo.fullWidth=img.GetWidth();
-
-
-  //   excdata.imgInfo=imgInfo;
-  //   excdata.isOK=true;
-
-
-  //   LOGI(">>>>>");
-  //   return &excdata;
-  // }
-
-  if(strcmp(insp_type, "start_stream") ==0)
-  {
-    // camera->TriggerMode(0);
-    excdata.isOK=true;
-    return &excdata;
-  }
-  if(strcmp(insp_type, "stop_stream") ==0)
-  {
-    // camera->TriggerMode(2);
-    excdata.isOK=true;
-    return &excdata;
-  }
-  excdata.isOK=false;
-  return &excdata;
-
-}
-
-bool InspectionTarget::returnExchange(InspectionTarget_EXCHANGE* info)
-{
-  if(info!=&excdata)return false;
-
-  if(info->info)
-    cJSON_Delete( info->info );
-  
-  memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
-  
-  rsclock.unlock();
-  return true;
-}
 
 InspectionTarget::~InspectionTarget()
 {
@@ -127,7 +65,31 @@ string CameraManager::cameraDiscovery()
 }
 
 
-CameraLayer* CameraManager::addCamera(int idx,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx)
+
+CameraManager::StreamingInfo* CameraManager::addCamera(CameraLayer *cam)
+{
+  if(cam==NULL)
+  {
+    return NULL;
+  }
+
+  CameraManager::StreamingInfo info;
+
+
+  info.channel_id=-1;
+  info.camera=cam;//init data
+
+
+  camera_streaming_infos.push_back(info);
+
+
+
+  return &camera_streaming_infos[camera_streaming_infos.size()-1];
+}
+
+
+
+CameraManager::StreamingInfo* CameraManager::addCamera(int idx,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx)
 {
   CameraLayer::BasicCameraInfo bcaminfo = clm.camBasicInfo[idx];
   if(findConnectedCameraIdx(bcaminfo.driver_name,bcaminfo.id)>=0)
@@ -139,21 +101,11 @@ CameraLayer* CameraManager::addCamera(int idx,std::string misc_str,CameraLayer::
 
   CameraLayer *cam= clm.connectCamera(idx,misc_str,callback,ctx);
 
-  cameras.push_back(cam);
-
-  if(buffImage.size()<cameras.size())
-  {
-    for(int i=buffImage.size();i<cameras.size();i++)
-    {
-      buffImage.push_back(new acvImage(1,1,3));
-    }
-  }
-
-  return cam;
+  return addCamera(cam);
 }
 
 
-CameraLayer* CameraManager::addCamera(std::string driverName,std::string camera_id,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx)
+CameraManager::StreamingInfo* CameraManager::addCamera(std::string driverName,std::string camera_id,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx)
 {
   // CameraLayer::BasicCameraInfo bcaminfo = clm.camBasicInfo[idx];
   {
@@ -166,25 +118,15 @@ CameraLayer* CameraManager::addCamera(std::string driverName,std::string camera_
 
   CameraLayer *cam= clm.connectCamera(driverName,camera_id,misc_str,callback,ctx);
 
-  cameras.push_back(cam);
-
-  if(buffImage.size()<cameras.size())
-  {
-    for(int i=buffImage.size();i<cameras.size();i++)
-    {
-      buffImage.push_back(new acvImage(1,1,3));
-    }
-  }
-
-  return cam;
+  return addCamera(cam);
 }
 
-CameraLayer* CameraManager::getCamera(std::string driverName,std::string camera_id)
+CameraManager::StreamingInfo* CameraManager::getCamera(std::string driverName,std::string camera_id)
 {
   int idx=findConnectedCameraIdx( driverName, camera_id);
   if(idx>=0)
   {
-    return cameras[idx];
+    return &camera_streaming_infos[idx];
   }
   return NULL;
 }
@@ -193,9 +135,9 @@ CameraLayer* CameraManager::getCamera(std::string driverName,std::string camera_
 int CameraManager::findConnectedCameraIdx(std::string driverName,std::string camera_id)
 {
   int i=0;
-  for( i=0;i<cameras.size();i++)
+  for( i=0;i<camera_streaming_infos.size();i++)
   {
-    CameraLayer::BasicCameraInfo data=cameras[i]->getConnectionData();
+    CameraLayer::BasicCameraInfo data=camera_streaming_infos[i].camera->getConnectionData();
     if( (driverName.length()==0 || data.driver_name==driverName) && data.id==camera_id)
     {
       return i;
@@ -204,15 +146,29 @@ int CameraManager::findConnectedCameraIdx(std::string driverName,std::string cam
   return -1;
 }
 
+template <class T>
+static bool delMoveCameraInfo(vector<T> arr,int delIdx)
+{
+  if(delIdx<0||delIdx>=arr.size()-1)return false;
+  if(delIdx==arr.size()-1)return true;//if it's the last element no need to swap location
+
+  T tmp=arr[delIdx];
+
+  arr.erase(arr.begin()+delIdx);
+  arr.push_back(tmp);
+  return true;
+}
+
 
 bool CameraManager::delCamera(int idx)
 {
-  if(idx<0||idx>=cameras.size())return false;
+  if(idx<0||idx>=camera_streaming_infos.size())return false;
 
-  CameraLayer *ispt=cameras[idx];
+  CameraLayer *ispt=camera_streaming_infos[idx].camera;
   delete ispt;
-  cameras[idx]=NULL;
-  cameras.erase(cameras.begin()+idx);
+  camera_streaming_infos[idx].camera=NULL;
+  camera_streaming_infos.erase(camera_streaming_infos.begin()+idx);
+
   return true;
 }
 
@@ -233,10 +189,13 @@ cJSON* CameraManager::ConnectedCameraList()
 {
 
   cJSON* jarr=cJSON_CreateArray();
-  for(int i=0;i<cameras.size();i++)
+  for(int i=0;i<camera_streaming_infos.size();i++)
   {
-    CameraLayer::BasicCameraInfo data=cameras[i]->getConnectionData();
-    cJSON_AddItemToArray(jarr, cameraInfo2Json(data) );
+    CameraLayer::BasicCameraInfo data=camera_streaming_infos[i].camera->getConnectionData();
+    cJSON* caminfo=cameraInfo2Json(data);
+    
+    cJSON_AddNumberToObject(caminfo, "channel_id", camera_streaming_infos[i].channel_id);
+    cJSON_AddItemToArray(jarr, caminfo );
   }
 
   return jarr;
@@ -246,30 +205,20 @@ cJSON* CameraManager::ConnectedCameraList()
 
 CameraManager::~CameraManager()
 {
-  for(int i=0;i<cameras.size();i++)
+  for(int i=0;i<camera_streaming_infos.size();i++)
   {
-    delete cameras[i];
-    cameras[i]=NULL;
+    delete camera_streaming_infos[i].camera;
+    camera_streaming_infos[i].camera=NULL;
   }
-  cameras.resize(0);
-
-  for(int i=0;i<buffImage.size();i++)
-  {
-    delete buffImage[i];
-    buffImage[i]=NULL;
-  }
-  buffImage.resize(0);
-
-
-  
+  camera_streaming_infos.resize(0);
 }
 
 
 int InspectionTargetManager::getInspTarIdx(std::string id)
 {
-  for(int i=0;i<inspTar.size();i++)
+  for(int i=0;i<inspTars.size();i++)
   {
-    if(inspTar[i]->id==id)
+    if(inspTars[i]->id==id)
     {
       return i;
     }
@@ -277,17 +226,16 @@ int InspectionTargetManager::getInspTarIdx(std::string id)
   return -1;
 }
 
-InspectionTarget* InspectionTargetManager::addInspTar(std::string id)
+bool InspectionTargetManager::addInspTar(InspectionTarget* inspTar,std::string id)
 {
   
   int idx = getInspTarIdx(id);
   if(idx>=0)
   {
-    return NULL;
+    return false;
   }
-  InspectionTarget* it=new InspectionTarget(id);
-  inspTar.push_back(it);
-  return it;
+  inspTars.push_back(inspTar);
+  return true;
 }
 
 
@@ -301,10 +249,10 @@ bool InspectionTargetManager::delInspTar(std::string id)
   }
 
 
-  InspectionTarget *ispt=inspTar[idx];
+  InspectionTarget *ispt=inspTars[idx];
   delete ispt;
-  inspTar[idx]=NULL;
-  inspTar.erase(inspTar.begin()+idx);
+  inspTars[idx]=NULL;
+  inspTars.erase(inspTars.begin()+idx);
   return true;
 }
 
@@ -316,7 +264,7 @@ InspectionTarget* InspectionTargetManager::getInspTar(std::string id)
   {
     return NULL;
   }
-  return inspTar[idx];
+  return inspTars[idx];
 
 }
 
@@ -324,8 +272,13 @@ InspectionTarget* InspectionTargetManager::getInspTar(std::string id)
 cJSON* InspectionTargetManager::getInspTarListInfo()
 {
   
-  return NULL;//inspTar[idx];
+  cJSON* jarr=cJSON_CreateArray();
+  for(int i=0;i<inspTars.size();i++)
+  {
+    cJSON_AddItemToArray(jarr, inspTars[i]->getInfo_cJSON());
+  }
 
+  return jarr;
 }
 
 
@@ -342,29 +295,60 @@ CameraLayer::status InspectionTargetManager::sCAM_CallBack(CameraLayer &cl_obj, 
 CameraLayer::status InspectionTargetManager::CAM_CallBack(CameraLayer &cl_obj, int type, void *context)
 {
   if (type != CameraLayer::EV_IMG)return CameraLayer::status::NAK;
-  std::lock_guard<std::mutex> lck(camCBLock);
+  std::lock_guard<std::mutex> _(camCBLock);
 
-  acvImage *bufImg=NULL;
-  for(int i=0;i<camman.cameras.size();i++)
+  CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
+  for(int i=0;i<camman.camera_streaming_infos.size();i++)
   {
-    if(camman.cameras[i]==(&cl_obj))
+    if(camman.camera_streaming_infos[i].camera==(&cl_obj))
     {
-      bufImg= camman.buffImage[i];
+      
 
-      CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
-      // LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
-      bufImg->ReSize(finfo.width,finfo.height,3);
 
-      CameraLayer::status st = cl_obj.ExtractFrame(bufImg->CVector[0],3,finfo.width*finfo.height);
 
+      // acvImage bufImg;
+      // // CameraStreamingInfo *streamInfo=NULL;
+      // // acvImage bufImg= camman.camera_streaming_infos[i].buffImage;
+
+      // // // LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
+      // bufImg.ReSize(finfo.width,finfo.height,3);
+      
+
+      // CameraLayer::status st = cl_obj.ExtractFrame(bufImg.CVector[0],3,finfo.width*finfo.height);
+
+
+      CamStream_CallBack(camman.camera_streaming_infos[i]);
+
+      return CameraLayer::status::ACK;
     }
   }
   // printf(">>>>>>>>>\n");
-  if(bufImg==NULL)return CameraLayer::status::NAK;
-  for(int i=0;i<inspTar.size();i++)
-  {
-    inspTar[i]->CAM_CallBack(cl_obj,*bufImg,cl_obj.getConnectionData().id,"");//no trigger id yet
-  }
+  return CameraLayer::status::NAK;
+}
 
-  return CameraLayer::status::ACK;
+
+void InspectionTargetManager::inspTargetProcess(image_pipe_info &info)
+{
+  std::string trigger_id="TT";
+  std::string camera_id=info.StreamInfo.camera->getConnectionData().id;
+
+
+  cJSON *otherInfo=cJSON_CreateObject();
+
+
+  cJSON* reportInfo=cJSON_CreateObject();
+  cJSON_AddStringToObject(reportInfo, "trigger_id", trigger_id.c_str());
+  cJSON_AddStringToObject(reportInfo, "camera_id", camera_id.c_str());
+  cJSON* reports=cJSON_CreateArray();
+  cJSON_AddItemToObject(reportInfo, "reports", reports);
+  for(int i=0;i<inspTars.size();i++)
+  {
+    inspTars[i]->CAM_CallBack(
+      &(info.StreamInfo),
+      info.img, camera_id, trigger_id);//no trigger id yet
+
+    cJSON_AddItemToArray(reports, inspTars[i]->getInspResult() );
+  }
+  info.report_json=reportInfo;//collect
+  // InspResult_CallBack(info);//TODO: intent code fix this 
 }

@@ -5,7 +5,7 @@
 #include <main.h>
 
 
-const int resourcePoolSize = 30;
+const int resourcePoolSize = 40;
 std::vector<uint8_t> image_send_buffer(40000);
 int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
 {

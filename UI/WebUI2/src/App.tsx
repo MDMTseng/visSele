@@ -252,7 +252,10 @@ function App() {
           ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
             let api=_api as BPG_WS;//cast
             Promise.all([
-              api.send_P("CM",0,{type:"connect",id:camInfo.id}),
+              api.send_P("CM",0,{
+                type:"connect",
+                id:camInfo.id,
+                misc:"data/BMP_carousel_test1"}),
               api.send_P("CM",0,{type:"connected_camera_list"}),
             ])
             
@@ -270,7 +273,8 @@ function App() {
             
             Promise.all([
               api.send_P("IT",0,{type:"create",id:"INSP1"}),
-              api.send_P("CM",0,{type:"connected_camera_list"}),
+              api.send_P("IT",0,{type:"create",id:"INSP2"}),
+              // api.send_P("CM",0,{type:"connected_camera_list"}),
             ])
             
             .then((d)=>{
@@ -287,7 +291,7 @@ function App() {
 
 
 
-        }}>Start Stream</Button>
+        }}>InspTarget init</Button>
 
 
 
@@ -298,16 +302,15 @@ function App() {
             let api=_api as BPG_WS;//cast
             
 
-            api.send(
+            api.send_P(
               "CM",0,{
                 type:"start_stream",
-                id:"Hikrobot-00F42197140"
-              },undefined,
-              {
-                reject:(arg:any[])=>console.error(arg),
-                resolve:(arg:any[])=>{
-                  console.log(arg);
-                }
+                id:"BMP_carousel_1"
+              })
+            api.send_P(
+              "CM",0,{
+                type:"start_stream",
+                id:"BMP_carousel_0",
               })
 
 
@@ -325,17 +328,17 @@ function App() {
             let api=_api as BPG_WS;//cast
             
 
-            api.send(
+            api.send_P(
               "CM",0,{
                 type:"stop_stream",
-                id:"Hikrobot-00F42197140"
-              },undefined,
-              {
-                reject:(arg:any[])=>console.error(arg),
-                resolve:(arg:any[])=>{
-                  console.log(arg);
-                }
+                id:"BMP_carousel_1"
               })
+            api.send_P(
+              "CM",0,{
+                type:"stop_stream",
+                id:"BMP_carousel_0"
+              })
+
 
 
 

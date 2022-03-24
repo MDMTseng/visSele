@@ -5,6 +5,7 @@
 #include "vector"
 #include "cJSON.h"
 #include "acvImage.hpp"
+#include "TSQueue.hpp"
 
 
 
@@ -26,17 +27,39 @@ struct InspectionTarget_EXCHANGE
   BPG_protocol_data_acvImage_Send_info imgInfo;
 };
 
+
+
+
 class InspectionTarget;
 class CameraManager
 {
 
+       
+
   inline static CameraLayerManager clm;
   public:
-  std::vector<CameraLayer*> cameras;
-  std::vector<acvImage*> buffImage;
-  CameraLayer* addCamera(int idx,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx);
-  CameraLayer* addCamera(std::string driverName,std::string camera_id,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx);
-  CameraLayer* getCamera(std::string driverName,std::string camera_id);
+  struct StreamingInfo
+  {
+    CameraLayer* camera;
+    int channel_id;
+  };
+
+  protected:
+  StreamingInfo* addCamera(CameraLayer *cam);
+
+  public:
+
+  std::vector<StreamingInfo> camera_streaming_infos;
+
+  StreamingInfo* addCamera(int idx,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx);
+  StreamingInfo* addCamera(std::string driverName,std::string camera_id,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx);
+  
+  StreamingInfo* getCamera(std::string driverName,std::string camera_id);
+
+  // StreamingInfo* getCameraStreamingInfo(std::string driverName,std::string camera_id);
+  // StreamingInfo* getCameraStreamingInfo(CameraLayer* camera);
+
+
   bool delCamera(int idx);
   bool delCamera(std::string driverName,std::string camera_id);
   
@@ -54,25 +77,54 @@ class CameraManager
 };
 
 
+typedef struct image_pipe_info
+{
+  CameraManager::StreamingInfo StreamInfo;
+  CameraLayer::frameInfo fi;
+  std::string triggerTag;
+  // FeatureManager_BacPac *bacpac;
+  acvImage img;
+
+  cJSON *report_json;
+} image_pipe_info;
+
+// struct CameraStreamingInfo
+// {
+//   int channel_id;
+// };
 
 class InspectionTargetManager
 {
   std::mutex camCBLock;
   public:
+
+
+
+
   CameraManager camman;
 
-  std::vector<InspectionTarget*> inspTar;
+  std::vector<InspectionTarget*> inspTars;
 
   static CameraLayer::status sCAM_CallBack(CameraLayer &cl_obj, int type, void *context);
   CameraLayer::status CAM_CallBack(CameraLayer &cl_obj, int type, void *context);
 
 
+  // virtual image_pipe_info* RequestPipeInfoResource_CallBack()=0; //override this to ask resource into Q
+  // virtual void CamStream_CallBack(image_pipe_info &info)=0;//override this store the info into Q
+
+  virtual void CamStream_CallBack(CameraManager::StreamingInfo &info)=0;
+
+
+  void inspTargetProcess(image_pipe_info &info);
+
+
+
+
   int getInspTarIdx(std::string id);
 
-  InspectionTarget* addInspTar(std::string id);
-
-
   bool delInspTar(std::string id);
+  
+  bool addInspTar(InspectionTarget* inspTar,std::string id);
 
   InspectionTarget* getInspTar(std::string id);
   
@@ -84,53 +136,26 @@ class InspectionTargetManager
 
 class InspectionTarget
 {
-  struct cameraTargetInfo{
-    std::string cam_id;
-    std::string trigger_id;
-  };
-  std::vector<cameraTargetInfo> camRecvInfo;
   cJSON *InspConf=NULL;
-  std::timed_mutex rsclock;
   public:
   int channel_id;
   std::string id;
   
-  bool registerCamRecvInfo(std::string cam_id,std::string trigger_id)
-  {
-    cameraTargetInfo cTI;
-    cTI.cam_id=cam_id;
-    cTI.trigger_id=trigger_id;
-    camRecvInfo.push_back(cTI);
-    return true;
-  }
-
-  bool matchCamRecvInfo(std::string cam_id,std::string trigger_id)
-  {
-    for(int i=0;i<camRecvInfo.size();i++)
-    {
-      if(camRecvInfo[i].cam_id==cam_id && (trigger_id.length()==0 || trigger_id==camRecvInfo[i].trigger_id))
-      {
-        return true;
-      }
-    }
-    return false;
-  }
-
 
   InspectionTarget(std::string id);
   void setInspDef(cJSON* json);
   cJSON* getInfo_cJSON();
 
-  InspectionTarget_EXCHANGE excdata={0};
   acvImage img_buff;
-  InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info);
+  virtual InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info)=0;
 
+  virtual cJSON* getInspResult()=0;
   bool returnExchange(InspectionTarget_EXCHANGE* info);
-
-  void CAM_CallBack(CameraLayer& srcCam,acvImage &img,std::string cam_id,std::string trigger_id)
-  {
-    printf("<<<<id:%s<<<%s  WH:%d,%d\n",id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight());
-  }
+  virtual void CAM_CallBack(CameraManager::StreamingInfo *srcCamSi,acvImage &img,std::string cam_id,std::string trigger_id)=0;
+  // {
+  //   CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
+  //   printf("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%d\n",id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
+  // }
 
   ~InspectionTarget();
 };

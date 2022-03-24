@@ -89,27 +89,6 @@ class PerifChannel;
 
                 
 
-typedef struct image_pipe_info
-{
-  CameraLayer *camLayer;
-  int type;
-  void *context;
-  acvImage img;
-  uint8_t *img_jpg_enc;
-  size_t img_jpg_enc_L;
-
-  CameraLayer::frameInfo fi;
-  //acvRadialDistortionParam cam_param;
-  FeatureManager_BacPac *bacpac;
-
-  struct datView_Info
-  {
-    int finspStatus;
-    int uInspStatus;
-    cJSON *report_json;
-  } datViewInfo;
-} image_pipe_info;
-
 
 int BPG_prot_cb_acvImage_Send(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 //typedef int (*BPG_protocol_data_feed_callback)(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);

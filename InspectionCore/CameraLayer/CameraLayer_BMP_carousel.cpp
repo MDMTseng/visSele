@@ -289,7 +289,7 @@ int CameraLayer_BMP_carousel::listAddDevices(std::vector<CameraLayer::BasicCamer
     info.name=
     info.id=
     info.model=
-    info.serial_number="IDX:"+std::to_string(i);
+    info.serial_number="BMP_carousel_"+std::to_string(i);
     info.vender="CameraLayer_BMP_carousel";
     info.ctx=NULL;
     info.driver_name=getDriverName();
