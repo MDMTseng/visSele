@@ -10,7 +10,7 @@ import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
 var dateFormat = require("dateformat");
 import INFO from './info.js';
-import { TagOptions_rdx,UINSP_UI } from './component/rdxComponent.jsx';
+import { TagOptions_rdx,UINSP_UI ,SLID_UI} from './component/rdxComponent.jsx';
 import dclone from 'clone';
 import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
@@ -205,6 +205,14 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
     </Button>
 }
 
+
+
+function SLID_InspMonitor({})
+{
+
+  let _this= useRef({}).current;
+  return <SLID_UI SIMPLE_CTRL_UI/>;
+}
 
 
 // <InspectionReportInsert2DB 
@@ -616,13 +624,67 @@ function UInspMiscCtrlPopUp({force_popUp=false,allow_auto_popUp=true,onCancel=_=
   return uInspPopUp;
 }
 
+
+
+
+
+function SLIDMiscCtrlPopUp({force_popUp=false,allow_auto_popUp=true,onCancel=_=>_})
+{
+
+  const _this = useRef({}).current;
+  
+  const dispatch = useDispatch();
+  const SLID_API_ID = useSelector(state => state.ConnInfo.SLID_API_ID);
+  const SLID_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.SLID_API_ID_CONN_INFO);
+  const API= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(SLID_API_ID,callback));
+
+  const ACT_WS_GET_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(SLID_API_ID,callback));
+
+  const [popUp, setPopUp] = useState(false);
+
+  
+
+
+
+  let SLIDPopUp=null;
+  if(force_popUp==true || (allow_auto_popUp&&popUp) )
+  {
+
+    SLIDPopUp=<Modal
+      title={"坡檢設備"}
+      visible={true}
+      onOk={() => {}}
+      onCancel={() => {
+        onCancel();
+        setPopUp(false);
+        
+      }}
+      header={null}
+      footer={null}
+    >
+      <SLID_UI UI_EM_STOP_UI/>
+
+    </Modal>
+  }
+
+  return <>
+    
+    <SLID_UI on_EM_STOP_state_change={(api,report_stat)=>{
+      if(api.is_in_EM_STOP==true)setPopUp(api.is_in_EM_STOP)
+      }}/>
+  
+  
+    {SLIDPopUp}</>;
+}
+
+
 class ObjInfoList extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
       collapsed: false,
       fullScreen: false,
-      uInspMISCCtrl_popUp:false,
+      perifMISCCtrl_popUp:false,
     }
   }
 
@@ -731,11 +793,66 @@ class ObjInfoList extends React.Component {
             onClick={() => {
               this.setState({
                 ...this.state,
-                uInspMISCCtrl_popUp: true,
+                perifMISCCtrl_popUp: true,
               })
             }} ></Button>
         </div>
     </SubMenu>
+
+
+    // console.log(this.state.SLID_EM_STOP_src_list);
+    let SLIDUI=this.props.SLID_API_ID_CONN_INFO===undefined? null:
+    <div style={{ 'textAlign': 'left' }} key={"uInsp" } className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
+    onClick={() => {
+      this.setState({
+        ...this.state,
+        perifMISCCtrl_popUp: true,
+      })
+    }}
+      > 
+        <SLID_UI on_EM_STOP_state_change={(api,report_stat)=>{
+          console.log(api.is_in_EM_STOP,api.EM_STOP_src_list);
+          if(api.is_in_EM_STOP==true)
+          {
+            this.setState({
+              SLID_EM_STOP_src_list: api.EM_STOP_src_list,
+            });
+          }
+          else
+          {
+            this.setState({
+              SLID_EM_STOP_src_list:undefined,
+            });
+
+          }
+          
+        }}/>
+
+        <Button key="opt SLID" icon={<SettingOutlined/>}
+            onClick={() => {
+              this.setState({
+                ...this.state,
+                perifMISCCtrl_popUp: true,
+              })
+            }} >
+
+          <Tag style={{ 'fontSize': 15 }} 
+            className={this.state.SLID_EM_STOP_src_list===undefined?"":"Emergency_Blink"}
+            color={this.state.SLID_EM_STOP_src_list===undefined?"green":"white"}
+            >坡檢停機狀態:{this.state.SLID_EM_STOP_src_list===undefined?"正常":"停機"}</Tag>
+
+
+        </Button>
+        {/* <SLIDMiscCtrlPopUp force_popUp={this.state.perifMISCCtrl_popUp} 
+          onCancel={_=>this.setState({
+            perifMISCCtrl_popUp: false,
+          })}/> */}
+    </div>
+
+
+
+
+    // console.log(this.props.SLID_API_ID_CONN_INFO);
 
     return (
       <>
@@ -748,17 +865,29 @@ class ObjInfoList extends React.Component {
           // defaultOpenKeys={['functionMenu']}
           mode="inline">
           {uInspUI}
-          
+          {SLIDUI}
 
           {resultMenu}
 
         </Menu>
         {fullScreenMODAL}
-        <UInspMiscCtrlPopUp force_popUp={this.state.uInspMISCCtrl_popUp} 
+        {
+          uInspUI===null?null:
+          <UInspMiscCtrlPopUp force_popUp={this.state.perifMISCCtrl_popUp} 
           onCancel={_=>this.setState({
-            ...this.state,
-            uInspMISCCtrl_popUp: false,
+            perifMISCCtrl_popUp: false,
           })}/>
+        }
+        {
+          SLIDUI===null?null:
+          <SLIDMiscCtrlPopUp force_popUp={this.state.perifMISCCtrl_popUp} 
+            onCancel={_=>this.setState({
+              perifMISCCtrl_popUp: false,
+            })}/>
+        }
+
+
+
       </>
     );
   }
@@ -1514,8 +1643,8 @@ class APP_INSP_MODE extends React.Component {
 
   
   componentDidMount() {
-
-
+    let DefFileHash=this.props.edit_info.DefFileHash;
+    console.log(DefFileHash);
     this.CameraCtrl.setCameraImageTransfer(true);
     
     this.CameraCtrl.setImageCropParam(undefined,4);
@@ -1556,6 +1685,8 @@ class APP_INSP_MODE extends React.Component {
 
     }
 
+
+
     function insp_resolve(pkts,main_ch)
     {
       // console.log(pkts)
@@ -1571,70 +1702,81 @@ class APP_INSP_MODE extends React.Component {
       main_ch(pkts);
     }
 
-    let deffile = defFileGeneration(this.props.edit_info);
-    if (this.props.machine_custom_setting.InspectionMode== "FI") {
+    setTimeout(()=>{//wait for ctrlMarginInfos applied
+
+      let deffile = defFileGeneration(this.props.edit_info);
+
+      this.props.ACT_WS_Define_File_Update(deffile,true)
+      deffile.featureSet_sha1=DefFileHash;//fake the sha1 data since we might modify the deffile, but still need to have the same deffile hex
+
+
+
+
+      console.log(deffile);
+      if (this.props.machine_custom_setting.InspectionMode== "FI") {
+
+        
+        //deffile.intrusionSizeLimitRatio=0.001;//By default, the intrusionSizeLimitRatio for Full insp should be as small as possible
+        deffile.featureSet[0].matching_angle_margin_deg=180;//By default, match whole round -180~180
+        deffile.featureSet[0].matching_face=0;//By default, match two sides
+
+        this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}
+        , undefined,{ 
+          resolve:insp_resolve, 
+          reject:(e)=>{
+            console.log(e)
+          } 
+        });
+        this.props.ACT_StatSettingParam_Update(this.props.System_Setting.FI_MODE_StatSettingParam)
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+        { 
+          INSP_NG_SNAP:this.props.machine_custom_setting.FI_INSP_NG_SNAP==true,
+          INSP_NG_SNAP_MAX_NUM:this.props.machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM||100
+        });
+        this.CameraCtrl.setCameraSpeed_HIGHEST();
+      }
+      else if (this.props.machine_custom_setting.InspectionMode == "CI") {
+        
+        // deffile.featureSet[0].single_result_area_ratio=0.9;
+        this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile     
+        }, undefined, { 
+          resolve:insp_resolve, 
+          reject:(e)=>{
+            console.log(e)
+          } 
+        });
+
+
+        // this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+        // { CameraSetting: { down_samp_w_calib:false } });
+
+        // this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: {
+        //   type:"gen"
+        // }
+        // }, undefined);
+
+        this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
+      }
+
+      {
+        let LS_ROI=LocalStorageTools.getobj(LS_INSP_ROI_KEY);
+        
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+        {CameraSetting: { ROI:LS_ROI}});
 
       
-      //deffile.intrusionSizeLimitRatio=0.001;//By default, the intrusionSizeLimitRatio for Full insp should be as small as possible
-      deffile.featureSet[0].matching_angle_margin_deg=180;//By default, match whole round -180~180
-      deffile.featureSet[0].matching_face=0;//By default, match two sides
+        console.log(LS_ROI)
+      }
 
-      this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}
-      , undefined,{ 
-        resolve:insp_resolve, 
-        reject:(e)=>{
-          console.log(e)
-        } 
-      });
-      this.props.ACT_StatSettingParam_Update(this.props.System_Setting.FI_MODE_StatSettingParam)
-      this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-      { 
-        INSP_NG_SNAP:this.props.machine_custom_setting.FI_INSP_NG_SNAP==true,
-        INSP_NG_SNAP_MAX_NUM:this.props.machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM||100
-      });
-      this.CameraCtrl.setCameraSpeed_HIGHEST();
-    }
-    else if (this.props.machine_custom_setting.InspectionMode == "CI") {
+      this.exitGate=false;
+
       
-      // deffile.featureSet[0].single_result_area_ratio=0.9;
-      this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile     
-       }, undefined, { 
-        resolve:insp_resolve, 
-        reject:(e)=>{
-          console.log(e)
-        } 
-      });
-
-
-      // this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-      // { CameraSetting: { down_samp_w_calib:false } });
-
-      // this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: {
-      //   type:"gen"
-      // }
-      // }, undefined);
-
-      this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
-    }
-
-    {
-      let LS_ROI=LocalStorageTools.getobj(LS_INSP_ROI_KEY);
-      
-      this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-      {CameraSetting: { ROI:LS_ROI}});
-
-    
-      console.log(LS_ROI)
-    }
-
-    this.exitGate=false;
-
-    
-    this.props.ACT_WS_GET_OBJ(this.props.uInsp_API_ID,(api)=>{
-      if(api===undefined)return;
-      api.send({type: "enter_inspection"},
-      (ret)=>{},(e)=>console.log(e));
-    })
+      this.props.ACT_WS_GET_OBJ(this.props.uInsp_API_ID,(api)=>{
+        if(api===undefined)return;
+        api.send({type: "enter_inspection"},
+        (ret)=>{},(e)=>console.log(e));
+      })
+    },1)
   }
 
   componentWillUnmount() {
@@ -1659,7 +1801,8 @@ class APP_INSP_MODE extends React.Component {
       isInSettingUI:false,
       SettingParamInfo:undefined,
       modalInfo:undefined,
-      renderObjAlignRotate:false
+      renderObjAlignRotate:false,
+      hideSLID:true
     };
 
     
@@ -2255,10 +2398,10 @@ class APP_INSP_MODE extends React.Component {
           measureDisplayRank={this.state.measureDisplayRank}
           IR_decotrator={this.props.info_decorator}
           checkResult2AirAction={this.checkResult2AirAction}
-          uInsp_peripheral_conn_info={this.props.machine_custom_setting.uInsp_peripheral_conn_info}
           shape_def={this.props.shape_list}
           key="ObjInfoList"
           uInsp_API_ID_CONN_INFO={this.props.uInsp_API_ID_CONN_INFO}
+          SLID_API_ID_CONN_INFO={this.props.SLID_API_ID_CONN_INFO}
           ACT_WS_GET_OBJ={this.props.ACT_WS_GET_OBJ}
           WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND_CORE_BPG( tl, prop, data, uintArr); }}
         />);
@@ -2313,9 +2456,6 @@ class APP_INSP_MODE extends React.Component {
         menuOpacity = 0.3;
         break;
     }
-
-
-
     let headerUI = 
     <>
       
@@ -2343,7 +2483,21 @@ class APP_INSP_MODE extends React.Component {
           {(this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected : this.props.DICT.connection.server_disconnected)
           + " " + this.state.inspUploadedCount + ":" + this.props.reportStatisticState.historyReport.length + "/" + InspectionReportPullSkip}
       </Button> */}
-
+      
+      <Button type="primary" size={"large"} onClick={()=>this.setState({hideSLID:false})}>
+       SHOW
+      </Button>
+      {/* {this.state.hideSLID==false?null:SLID_SP_UI}
+      
+      <Modal visible={this.state.hideSLID==false}
+         onCancel={()=>{
+           
+          this.setState({hideSLID:true});
+         }}
+      
+      > 
+        {SLID_SP_UI}
+      </Modal> */}
 
       <InspectionReportInsert2DB 
         // newAddedReport={this.props.reportStatisticState.newAddedReport} 
@@ -2527,6 +2681,9 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps,ff) => {
     },
     ACT_WS_SEND_BPG: (id,tl, prop, data, uintArr, promiseCBs) => 
       dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
+    ACT_WS_Define_File_Update:(defFile,keepCurTag) => dispatch(UIAct.EV_WS_Define_File_Update(defFile,keepCurTag)),
+
+    
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
     ACT_Shape_List_Update:(newlist)=>dispatch(DefConfAct.Shape_List_Update(newlist)),
@@ -2556,6 +2713,8 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     
     uInsp_API_ID_CONN_INFO:state.ConnInfo.uInsp_API_ID_CONN_INFO,
     uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
+
+    SLID_API_ID_CONN_INFO:state.ConnInfo.SLID_API_ID_CONN_INFO,
 
     CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
     

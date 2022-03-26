@@ -21,7 +21,7 @@ let $CTG=CSSTransitionGroup;
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
-import { websocket_reqTrack, websocket_autoReconnect,GetObjElement,websocket_aliveTracking,ConsumeQueue} from 'UTIL/MISC_Util';
+import { websocket_reqTrack, websocket_autoReconnect,xstate_GetCurrentMainState,GetObjElement,websocket_aliveTracking,ConsumeQueue} from 'UTIL/MISC_Util';
 import { MW_API } from "REDUX_STORE_SRC/middleware/MW_API";
 
 // import LocaleProvider from 'antd/lib/locale-provider';
@@ -1779,7 +1779,7 @@ class APPMasterX extends React.Component {
       {
         
         this.send({type:"PING"},(ret)=>{
-          console.log(ret);
+          // console.log(ret);
           delete ret["type"]
           delete ret["id"]
           delete ret["st"]
@@ -1827,7 +1827,220 @@ class APPMasterX extends React.Component {
       }
       
     }
-    this.props.ACT_WS_REGISTER(this.props.SLID_API_ID, new GenPerif_API(this.props.SLID_API_ID,"data/SLID_Setting.json",10025));
+
+    
+    class  SLID_API extends GenPerif_API
+    {
+      constructor(id,settingFilePath,pg_id_channel=10025)
+      {
+        super(id,settingFilePath,pg_id_channel);
+        this.checkInfoInterval=undefined;
+        this.checkInfoListenerDict={};
+        // this.pause_EM_STOP=false;
+        this.is_in_EM_STOP=false;
+        this.EM_STOP_src_list=[];
+        this.no_obj_detected_time_ms=-1;
+        this.EM_STOP_Rule=this.readLocalstorage_SLID_EM_STOP_RULE({
+          no_obj_detected_time_max_ms:60*5*1000,
+          SNG_Max:10,
+          CNG_Max:20,
+
+          
+          consecutive_SNG_Max:3,
+          consecutive_CNG_Max:6,
+
+          
+          fuzzy_consecutive_SNG_Max:-1,
+          fuzzy_consecutive_CNG_Max:-1,
+
+          
+        })
+
+      }
+      readLocalstorage_SLID_EM_STOP_RULE(defaultRule)
+      {
+        let readRule = window.localStorage.getItem('SLID_EM_STOP_RULE');
+        if(readRule===null)
+        {
+          this.saveLocalstorage_SLID_EM_STOP_RULE(defaultRule);
+          return defaultRule;
+        }
+        return JSON.parse(readRule);
+      }
+      saveLocalstorage_SLID_EM_STOP_RULE(rule=this.EM_STOP_Rule)
+      {
+        window.localStorage.setItem('SLID_EM_STOP_RULE', JSON.stringify(rule));
+      }
+      connect(connInfo)
+      {
+        if(this.checkInfoInterval===undefined)
+        {//start scan loop
+          this.checkInfoInterval=window.setInterval(()=>this.checkInfoState(),1000);//watch dog to do reconnection
+        }
+        super.connect(connInfo)
+      }
+
+
+
+
+      reload_EM_STOP_RULE()
+      {
+        this.EM_STOP_Rule=this.readLocalstorage_SLID_EM_STOP_RULE();
+      }
+      update_EM_STOP_RULE(newRule)
+      {
+        this.EM_STOP_Rule={...this.EM_STOP_Rule,...newRule};
+        this.saveLocalstorage_SLID_EM_STOP_RULE(this.EM_STOP_Rule)
+      }
+      tmp_EM_STOP_RULE(newRule)
+      {
+        this.EM_STOP_Rule={...this.EM_STOP_Rule,...newRule};
+
+      }
+      
+
+      checkInfoListenerAdd(key,cb)
+      {
+        this.checkInfoListenerDict[key]=cb
+      }
+      
+      checkInfoListenerRemove(key)
+      {
+        delete this.checkInfoListenerDict[key]
+      }
+
+
+      checkInfoState()
+      {
+        let reportStatisticState=GetObjElement(StoreX.getState(),["UIData","edit_info","reportStatisticState"]);
+        let c_state=GetObjElement(StoreX.getState(),["UIData","c_state"]);
+        let m_state=xstate_GetCurrentMainState(c_state);
+
+        // console.log(this.p_state,m_state.state)
+        if(this.p_state!=m_state.state)
+        {
+          if(m_state.state==UIAct.UI_SM_STATES.INSP_MODE)
+            this.clear_EM_STOP_state();
+          this.p_state=m_state.state;
+        }
+
+
+        if(m_state.state==UIAct.UI_SM_STATES.INSP_MODE)
+        {
+          this.no_obj_detected_time_ms=-1;
+          if(this.reportCount==reportStatisticState.reportCount)
+          {
+            if(this.noreport_timestamp===undefined)
+              this.noreport_timestamp=Date.now();
+            else
+            {
+              
+              this.no_obj_detected_time_ms= Date.now()-this.noreport_timestamp;
+              
+            }
+          }
+          else
+          {
+            this.noreport_timestamp=undefined
+            this.reportCount=reportStatisticState.reportCount;
+          }
+
+          ////
+
+
+          if(this.is_in_EM_STOP==false)
+          {
+
+            let needToTrigEM_STOP=false;
+            let EM_STOP_src_list=[];
+            if(this.EM_STOP_Rule.no_obj_detected_time_max_ms>0 && this.no_obj_detected_time_ms>=this.EM_STOP_Rule.no_obj_detected_time_max_ms)
+            {
+              EM_STOP_src_list.push("no_obj_detected_time_ms");
+              needToTrigEM_STOP=true
+            }
+            else
+            reportStatisticState.statisticValue.measureList.forEach(msure=>{
+              let stat_sp=msure.statistic.sp;//find every 
+
+              if(this.EM_STOP_Rule.SNG_Max>0 && stat_sp.SNG_count>=this.EM_STOP_Rule.SNG_Max)
+              {
+                EM_STOP_src_list.push("SNG_count");
+                needToTrigEM_STOP=true;return;
+              }
+              if(this.EM_STOP_Rule.CNG_Max>0 && stat_sp.CNG_count>=this.EM_STOP_Rule.CNG_Max)
+              {
+                EM_STOP_src_list.push("CNG_count");
+                needToTrigEM_STOP=true;return;
+              }
+
+              if(this.EM_STOP_Rule.consecutive_SNG_Max>0 && stat_sp.consecutive_SNG_count>=this.EM_STOP_Rule.consecutive_SNG_Max)
+              {
+                EM_STOP_src_list.push("consecutive_SNG_count");
+                needToTrigEM_STOP=true;return;
+              }
+              if(this.EM_STOP_Rule.consecutive_CNG_Max>0 && stat_sp.consecutive_CNG_count>=this.EM_STOP_Rule.consecutive_CNG_Max)
+              {
+                EM_STOP_src_list.push("consecutive_CNG_count");
+                needToTrigEM_STOP=true;return;
+              }
+
+
+
+              if(this.EM_STOP_Rule.fuzzy_consecutive_SNG_Max>0 && stat_sp.fuzzy_consecutive_SNG_count>=this.EM_STOP_Rule.fuzzy_consecutive_SNG_Max)
+              {
+                EM_STOP_src_list.push("fuzzy_consecutive_SNG_count");
+                needToTrigEM_STOP=true;return;
+              }
+              if(this.EM_STOP_Rule.fuzzy_consecutive_CNG_Max>0 && stat_sp.fuzzy_consecutive_CNG_count>=this.EM_STOP_Rule.fuzzy_consecutive_CNG_Max)
+              {
+                EM_STOP_src_list.push("fuzzy_consecutive_CNG_count");
+                needToTrigEM_STOP=true;return;
+              }
+              
+            })
+            if(needToTrigEM_STOP)
+            {
+              this.EM_STOP_src_list=EM_STOP_src_list;
+              this.trigger_EM_STOP();
+            }
+          }
+
+
+
+        }
+        else
+        {
+          this.noreport_timestamp=undefined;
+        }
+
+
+          
+        // console.log(this.checkInfoListenerDict)
+        Object.keys(this.checkInfoListenerDict).forEach(key=>{
+          
+          this.checkInfoListenerDict[key](this,reportStatisticState);
+        })
+
+      }
+      
+      clear_EM_STOP_state()
+      {
+        this.noreport_timestamp=undefined
+        this.is_in_EM_STOP=false;
+        this.EM_STOP_src_list=[];
+      }
+      trigger_EM_STOP(keep_ms=10)
+      {
+        this.is_in_EM_STOP=true;
+        // this.is_in_EM_STOP_src="TRIG";
+        this.send({"type":"EM_STOP","keep_ms":keep_ms},
+        (ret)=>{
+          // console.log(ret);
+        },(e)=>console.log(e));
+      }
+    }
+
+    this.props.ACT_WS_REGISTER(this.props.SLID_API_ID, new SLID_API(this.props.SLID_API_ID,"data/SLID_Setting.json",10025));
 
 
 
@@ -2101,7 +2314,25 @@ class APPMasterX extends React.Component {
                   this.setState({
                     modal_view:{
                       view_fn:()=><>
-                      <SLID_UI/><br/>
+                      <SLID_UI key="SIMP_UI" SIMPLE_CTRL_UI/><br/>
+
+
+                      {/* <SLID_UI key="STOP_UI" UI_EM_STOP_UI 
+                      on_EM_STOP_triggered={(api,report_stat)=>{
+                        if(this.state.modal_view!==undefined)return;
+                        this.setState({
+                          modal_view:{
+                            view_fn:()=>
+                            <SLID_UI key="STOP_UI" UI_EM_STOP_UI on_EM_STOP_triggered={(api,report_stat)=>{}}/>
+                            ,
+                            title:"SLID_API_EM_STOP",
+                            onCancel:()=>this.setState({modal_view:undefined}),
+                            onOk:()=>this.setState({modal_view:undefined}),
+                            footer:null
+                          }
+                        });
+                      }}/> */}
+
                       </>
                       ,
                       title:"SLID_API",

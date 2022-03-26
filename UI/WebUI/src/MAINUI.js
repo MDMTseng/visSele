@@ -286,6 +286,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const Info_decorator = useSelector(state => state.UIData.edit_info.__decorator);
   const CAM1_ID_CONN_INFO = useSelector(state => state.ConnInfo.CAM1_ID_CONN_INFO);
   const uInsp_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.uInsp_API_ID_CONN_INFO);
+  const SLID_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.SLID_API_ID_CONN_INFO);
+
+  
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
   const DefFileName = useSelector(state => state.UIData.edit_info.DefFileName);
@@ -315,16 +318,22 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   useEffect(()=>{
     let is_Cam_Ready=GetObjElement(CAM1_ID_CONN_INFO,["type"])=="WS_CONNECTED";
     let is_uInsp_Ready=GetObjElement(uInsp_API_ID_CONN_INFO,["type"])=="WS_CONNECTED";
+    let is_SLID_Ready=GetObjElement(SLID_API_ID_CONN_INFO,["type"])=="WS_CONNECTED";
     if(uInsp_API_ID_CONN_INFO===undefined)
     {
       is_uInsp_Ready=true;//if the uInsp is not set(maybe not the full inspection machine) ig nore it
     }
+    if(SLID_API_ID_CONN_INFO===undefined)
+    {
+      is_SLID_Ready=true;//if the uInsp is not set(maybe not the full inspection machine) ig nore it
+    }
 
     let CamInfo=is_Cam_Ready?undefined:DICT._.camera_reconnection_caption;
     let uInspInfo=is_uInsp_Ready?undefined:DICT._.uInsp_reconnection_caption;
+    let SLIDInfo=is_SLID_Ready?undefined:"坡檢設備重連中";
 
 
-    let isSystemReadyForInsp=is_Cam_Ready && is_uInsp_Ready;
+    let isSystemReadyForInsp=is_Cam_Ready && is_uInsp_Ready && is_SLID_Ready;
     
     if(!isSystemReadyForInsp)
     {
@@ -333,7 +342,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           <div className="antd-icon-sizing" style={{height:"50px"}}>
             <LoadingOutlined/>
           </div>
-          {[CamInfo,uInspInfo]
+          {[CamInfo,uInspInfo,SLIDInfo]
             .filter(info=>info!==undefined)
             .map(info=>
             <Title level={2} style={{textAlign:"center"}} >
@@ -374,7 +383,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           
         } 
       });
-    },1000);
+    },50);
 
   },[])
 

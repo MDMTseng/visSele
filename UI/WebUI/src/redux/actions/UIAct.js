@@ -273,10 +273,10 @@ export function EV_Camera_Info_Update(info)
   }
 }
 
-export function EV_WS_Define_File_Update(DFData)
+export function EV_WS_Define_File_Update(DFData,keepCurTag=false)
 {
   return {
-    type: UI_SM_EVENT.Define_File_Update ,data:DFData
+    type: UI_SM_EVENT.Define_File_Update ,data:DFData,keepCurTag
   }
 }
 

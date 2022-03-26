@@ -98,6 +98,10 @@
   animation: DISCONNECT_Blink_ANIMATION 1s infinite;  /* IE 10+, Fx 29+ */
 }
 
+.Emergency_Blink {
+  animation: DISCONNECT_Blink_ANIMATION 1s infinite;  /* IE 10+, Fx 29+ */
+}
+
 @keyframes DISCONNECT_Blink_ANIMATION {
   0%, 49% {
     background-color: #400000;

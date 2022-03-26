@@ -12,6 +12,7 @@ import {CusDisp_DB} from 'UTIL/DB_Query';
 import  Tabs  from 'antd/lib/tabs';
 import { useSelector,useDispatch } from 'react-redux';
 
+import Table from 'antd/lib/table';
 import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import dclone from 'clone';
@@ -1079,13 +1080,10 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
 }
 
 
-
-
-
-
-export function SLID_UI({UI_INSP_Count=false})
+export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_EM_STOP_UI=false,on_EM_STOP_state_change=_=>_})
 {
   
+  let _this= useRef({}).current;
   const dispatch = useDispatch();
   
   const DICT = useSelector(state => state.UIData.DICT);
@@ -1094,11 +1092,185 @@ export function SLID_UI({UI_INSP_Count=false})
   const SLID_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.SLID_API_ID_CONN_INFO);
 
   const ACT_WS_GET_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(SLID_API_ID,callback));
-
+  const ACT_StatInfo_Clear= (callback)=>dispatch(UIAct.EV_StatInfo_Clear());
   let machineSetup=SLID_API_ID_CONN_INFO.machineSetup;
 
-  
-  return<>
+
+  // const reportStatisticState = useSelector(state => state.UIData.edit_info.reportStatisticState);
+
+  const [statisticValue, set_statisticValue] = useState(undefined);
+  const [SLID_api, set_SLID_api] = useState(undefined);
+  const [_UPDATE_, set_update] = useState(0);
+ 
+  useEffect(()=>{//auto update
+      let _key=_this.api_cb_key=Date.now();
+      ACT_WS_GET_OBJ(api=>{
+        set_SLID_api(api);
+        console.log(">>>List Add:",_key);
+        api.checkInfoListenerAdd(_key,(api,report_stat)=>{
+          // console.log(api,report_stat);
+          if(api.is_in_EM_STOP!=_this.is_in_EM_STOP)
+          {
+            on_EM_STOP_state_change(api,report_stat)
+            _this.is_in_EM_STOP=api.is_in_EM_STOP;
+          }
+          set_statisticValue({...report_stat.statisticValue})
+
+        },true)
+      })
+      return ()=>{
+        
+        // console.log(">>>List XXXXXX:",_key);
+        ACT_WS_GET_OBJ(api=>{
+          api.checkInfoListenerRemove(_key)
+          _this.api_cb_key=undefined;
+        })
+      }
+  },[])
+
+  function update_EM_Stop_Rule(rulelet)
+  {
+
+    ACT_WS_GET_OBJ(api=>{
+      api.update_EM_STOP_RULE(rulelet)
+      
+    })
+    set_update(_UPDATE_+1);
+  }
+
+  let _UI_EM_STOP_BRIF_INFO_UI=null;
+  if(UI_EM_STOP_BRIF_INFO_UI && SLID_api!==undefined)
+  {
+    _UI_EM_STOP_BRIF_INFO_UI=<>{SLID_api.EM_STOP_src_list}</>
+  }
+
+
+  let _UI_EM_STOP_UI=null;
+  if(UI_EM_STOP_UI && statisticValue!==undefined && SLID_api!==undefined)
+  {
+    // let dddd=[
+    //   "no_obj_detected_time_max_ms",
+    //   "CNG_Max",
+    //   "consecutive_CNG_Max",
+    //   "fuzzy_consecutive_CNG_Max",
+
+    //   "SNG_Max",
+    //   "consecutive_SNG_Max",
+    //   "fuzzy_consecutive_SNG_Max",
+
+
+    // ].map(k=>SLID_api.EM_STOP_Rule[k]+"  ")
+
+    // I know hooks shouldnt be in the middle of the logic branch, but as long as the props flag keeps the same it's fine
+    
+    let sp_info_obj=[
+      "CNG_count",
+      "consecutive_CNG_count",
+      "fuzzy_consecutive_CNG_count",
+
+
+      "SNG_count",
+      "consecutive_SNG_count",
+      "fuzzy_consecutive_SNG_count",
+
+    ].reduce((obj,key)=>{
+      obj[key]=statisticValue.measureList.map(mea=>mea.statistic.sp[key])
+      return obj;
+    },{})
+    
+    // let spInfoUI=
+
+
+    // console.log(reportStatisticState,SLID_api);
+
+
+    
+
+    const dataSource = [
+      {
+        SEC:"無檢測時長(分鐘)",
+        SEC_SRC:"no_obj_detected_time_ms",
+        SETUP: <><InputNumber 
+          value={(SLID_api.EM_STOP_Rule.no_obj_detected_time_max_ms/1000/60).toFixed(2)} 
+          onChange={(value) => update_EM_Stop_Rule({no_obj_detected_time_max_ms:value*1000*60})}/>
+          </>,
+        INSP:  (SLID_api.no_obj_detected_time_ms/1000/60).toFixed(2),
+      },
+      {
+        SEC: 'NG數',
+        SEC_SRC:"SNG_count",
+        SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.SNG_Max} onChange={(value) => update_EM_Stop_Rule({SNG_Max:value})}/>,
+        INSP: Math.max(...sp_info_obj.SNG_count),
+      },
+      {
+        SEC: '連續NG數',
+        SEC_SRC:"consecutive_SNG_count",
+        SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.consecutive_SNG_Max}  onChange={(value) => update_EM_Stop_Rule({consecutive_SNG_Max:value})}/>,
+        INSP: Math.max(...sp_info_obj.consecutive_SNG_count),
+      },
+      {
+        SEC: '模糊連續NG數',
+        SEC_SRC:"fuzzy_consecutive_SNG_count",
+        SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.fuzzy_consecutive_SNG_Max}  onChange={(value) => update_EM_Stop_Rule({fuzzy_consecutive_SNG_Max:value})}/>,
+        INSP: Math.max(...sp_info_obj.fuzzy_consecutive_SNG_count),
+      },
+      {
+        SEC: '生產NG數',
+        SEC_SRC:"CNG_count",
+        SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.CNG_Max}  onChange={(value) => update_EM_Stop_Rule({CNG_Max:value})}/>,
+        INSP: Math.max(...sp_info_obj.CNG_count),
+      },
+      {
+        SEC: '連續生產NG數',
+        SEC_SRC:"consecutive_CNG_count",
+        SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.consecutive_CNG_Max}  onChange={(value) => update_EM_Stop_Rule({consecutive_CNG_Max:value})}/>,
+        INSP: Math.max(...sp_info_obj.consecutive_CNG_count),
+      },
+      {
+        SEC: '模糊連續生產NG數',
+        SEC_SRC:"fuzzy_consecutive_CNG_count",
+        SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.fuzzy_consecutive_CNG_Max}  onChange={(value) => update_EM_Stop_Rule({fuzzy_consecutive_CNG_Max:value})}/>,
+        INSP: Math.max(...sp_info_obj.fuzzy_consecutive_CNG_count),
+      },
+    ];
+
+    dataSource.forEach(dat=>{
+      dat.SEC=<Tag style={{ 'fontSize': 15 }}  color={SLID_api.EM_STOP_src_list.includes(dat.SEC_SRC)?"red":undefined}>{dat.SEC}</Tag>
+    })
+
+
+
+    const columns = [
+      {
+        title: '類別',
+        dataIndex: 'SEC',
+      },
+      {
+        title: '設定',
+        dataIndex: 'SETUP',
+      },
+      {
+        title: '測量資訊',
+        dataIndex: 'INSP',
+      },
+    ];
+
+
+
+
+    _UI_EM_STOP_UI=<>
+    <Button onClick={()=>{
+      ACT_WS_GET_OBJ(api=>{
+        api.clear_EM_STOP_state()
+      })
+      ACT_StatInfo_Clear()}}>重置</Button>
+    <Table dataSource={dataSource} columns={columns} />
+    <br/>
+    </>
+
+  }
+  let _SIMPLE_CTRL_UI=SIMPLE_CTRL_UI==false?null:
+  <>
     {/* <Button
       icon={<BulbOutlined />}
         key="Pin2_OUTPUT"
@@ -1142,8 +1314,22 @@ export function SLID_UI({UI_INSP_Count=false})
         }>
        OFF
     </Button>
+
     {"  "}
     <Button
+        icon={<WarningOutlined />}
+        key="EM_STOP"
+        onClick={() =>
+          ACT_WS_GET_OBJ((api)=>{
+            // api.send({"type":"PIN_CONF","pin":2,"output":1},
+            api.trigger_EM_STOP();
+          })
+        }>
+        STOP
+    </Button>
+
+    
+    {/* <Button
         icon={<BulbOutlined />}
         key="TAKE"
         onClick={() =>
@@ -1161,7 +1347,7 @@ export function SLID_UI({UI_INSP_Count=false})
         }>
        SHOT
     </Button>
-  
+   */}
     <br/>
     {/* <Button
       icon={<SaveOutlined/>}
@@ -1185,8 +1371,17 @@ export function SLID_UI({UI_INSP_Count=false})
       
     <pre>{JSON.stringify(machineSetup,null,2)}</pre>
   </>
+
   // useEffect(()=>{
   // },[])  
+
+
+
+  return <>
+    {_UI_EM_STOP_BRIF_INFO_UI}
+    {_SIMPLE_CTRL_UI}
+    {_UI_EM_STOP_UI}
+  </>
 }
 
 let Z1_NLim=-110;//-119;

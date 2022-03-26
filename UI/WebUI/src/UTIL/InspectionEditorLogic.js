@@ -177,6 +177,29 @@ export class InspectionEditorLogic {
     this.sig360info = sig360info;
   }
 
+  getInitStatisticSPState()
+  {
+    return {
+      CNG_count: 0,
+      consecutive_CNG_count: 0,
+      max_consecutive_CNG_count: 0,
+      fuzzy_consecutive_CNG_count: 0,
+      fuzzy_consecutive_CNG_info:0,
+      max_fuzzy_consecutive_CNG_count: 0,
+
+
+
+      SNG_count: 0,
+      consecutive_SNG_count: 0,
+      fuzzy_consecutive_SNG_count: 0,
+      fuzzy_consecutive_SNG_info:0,
+      max_consecutive_SNG_count: 0,
+      max_fuzzy_consecutive_SNG_count: 0,
+
+      
+    };
+  }
+
   resetStatisticState(edit_info)
   {
 
@@ -213,6 +236,8 @@ export class InspectionEditorLogic {
             variance: 0,//E[X^2]-E[X]^2
             //deviation = Sigma = sqrt(variance)
             sigma: 0,
+
+            sp:this.getInitStatisticSPState(),
             //
             CP: 0,
             CK: 0,

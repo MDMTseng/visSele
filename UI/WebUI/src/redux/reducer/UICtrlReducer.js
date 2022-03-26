@@ -136,6 +136,89 @@ function StateReducer(newState, action) {
     return histoInfo;
   }
 
+  function statReducer_sp(stat_sp,measuredef,new_rep)
+  {
+
+    // console.log(stat_sp,measuredef,new_rep);
+
+    let new_sp={...stat_sp};
+    if(new_rep.status!=INSPECTION_STATUS.FAILURE && new_rep.status!=INSPECTION_STATUS.SUCCESS)
+    {
+      return stat_sp;
+    }
+    if(new_rep.value>measuredef.USL)//upper NG
+    {
+      new_sp.SNG_count++;
+      new_sp.consecutive_SNG_count++;
+      new_sp.fuzzy_consecutive_SNG_count++;
+      new_sp.fuzzy_consecutive_SNG_info=5;
+    }
+    else if(new_rep.value<measuredef.LSL)//lower NG
+    {
+      new_sp.SNG_count++;
+      new_sp.consecutive_SNG_count++;
+      new_sp.fuzzy_consecutive_SNG_count++;
+      new_sp.fuzzy_consecutive_SNG_info=5;
+    }
+    else 
+    {
+      new_sp.consecutive_SNG_count=0;
+      if((new_sp.fuzzy_consecutive_SNG_info)>0)
+      {
+        new_sp.fuzzy_consecutive_SNG_info--;
+      }
+      else 
+        new_sp.fuzzy_consecutive_SNG_count=0;
+    }
+
+    
+    if(new_rep.value>measuredef.UCL)//upper NG
+    {
+      new_sp.CNG_count++;
+      new_sp.consecutive_CNG_count++;
+      new_sp.fuzzy_consecutive_CNG_count++;
+      new_sp.fuzzy_consecutive_CNG_info=5;
+    }
+    else if(new_rep.value<measuredef.LCL)//upper NG
+    {
+      new_sp.CNG_count++;
+      new_sp.consecutive_CNG_count++;
+      new_sp.fuzzy_consecutive_CNG_count++;
+      new_sp.fuzzy_consecutive_CNG_info=5;
+    }
+    else
+    {
+      new_sp.consecutive_CNG_count=0;
+      if((new_sp.fuzzy_consecutive_CNG_info)>0)
+      {
+        new_sp.fuzzy_consecutive_CNG_info--;
+      }
+      else 
+        new_sp.fuzzy_consecutive_CNG_count=0;
+    }
+
+
+    if(new_sp.max_consecutive_SNG_count<new_sp.consecutive_SNG_count)
+    {
+      new_sp.max_consecutive_SNG_count=new_sp.consecutive_SNG_count;
+    }
+    if(new_sp.max_fuzzy_consecutive_SNG_count<new_sp.fuzzy_consecutive_SNG_count)
+    {
+      new_sp.max_fuzzy_consecutive_SNG_count=new_sp.fuzzy_consecutive_SNG_count;
+    }
+
+    if(new_sp.max_consecutive_CNG_count<new_sp.consecutive_CNG_count)
+    {
+      new_sp.max_consecutive_CNG_count=new_sp.consecutive_CNG_count;
+    }
+    if(new_sp.max_fuzzy_consecutive_CNG_count<new_sp.fuzzy_consecutive_CNG_count)
+    {
+      new_sp.max_fuzzy_consecutive_CNG_count=new_sp.fuzzy_consecutive_CNG_count;
+    }
+    
+    return new_sp;
+    // stat.sp
+  }
 
   function statReducer(statistic, report) {
 
@@ -173,6 +256,13 @@ function StateReducer(newState, action) {
       stat.sqSum += nv_val * nv_val;
       stat.variance = stat.sqSum / stat.count - stat.mean * stat.mean;//E[X^2]-E[X]^2
       stat.sigma = Math.sqrt(stat.variance);
+      
+
+      stat.sp=statReducer_sp(stat.sp,measure,new_rep);
+      // console.log(new_rep.detailStatus);
+      // stat.sp={
+
+      // }
 
 
       stat.CPU = (measure.USL - stat.mean) / (3 * stat.sigma);
@@ -383,9 +473,13 @@ function StateReducer(newState, action) {
                     //  [update/insert]> tracking_window >
                     //     [if no update after 4s]> historyReport
 
-                    let imageW_mm=newState.edit_info.img.full_width*mmpcampix;
-                    let imageH_mm=newState.edit_info.img.full_height*mmpcampix;
-
+                    let imageW_mm=NaN;
+                    let imageH_mm=NaN;
+                    if(newState.edit_info.img!=null)
+                    {
+                      imageW_mm=newState.edit_info.img.full_width*mmpcampix;
+                      imageH_mm=newState.edit_info.img.full_height*mmpcampix;  
+                    }
 
                     inspReport.reports.forEach((singleReport) => {
 
@@ -719,6 +813,8 @@ function StateReducer(newState, action) {
             };
             console.log("StatSettingParam_Update", newState.edit_info.statSetting);
             break;
+
+            
           case UISEV.StatInfo_Clear:
 
           
@@ -727,6 +823,7 @@ function StateReducer(newState, action) {
             newState.edit_info._obj.resetStatisticState(newState.edit_info);
 
             break;
+            
           case UISEV.Image_Update:
             newState.edit_info = { ...newState.edit_info, img: action.data };
             break;
@@ -770,11 +867,22 @@ function StateReducer(newState, action) {
           case UISEV.Define_File_Update:
 
             let root_defFile = action.data;
-
             if (root_defFile.type === "binary_processing_group") {
+              let bk_inspOptionalTag=undefined;
+              // console.log(">>>>>>>>>>>>>>>>>",action);
+              if(action.keepCurTag)
+              {
+                bk_inspOptionalTag=newState.edit_info.inspOptionalTag;
+              }
               Edit_info_reset(newState);
               newState.edit_info = 
                 newState.edit_info._obj.rootDefInfoLoading(root_defFile,newState.edit_info);
+
+              
+              if(bk_inspOptionalTag!=undefined)
+              {
+                newState.edit_info.inspOptionalTag=bk_inspOptionalTag;
+              }
             }
             break;
 
