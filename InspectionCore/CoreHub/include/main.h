@@ -16,20 +16,8 @@
 #include <stdexcept>
 #include "CameraLayer_BMP.hpp"
 
-#ifdef FEATURE_COMPILE_W_ARAVIS
-#include "CameraLayer_Aravis.hpp"
-#endif
 
-#ifdef FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK
-#include "MvCameraControl.h"
-#include "CameraLayer_HikRobot_Camera.hpp"
-#endif
-
-#ifdef FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK
-
-#include "CameraLayer_GIGE_MindVision.hpp"
-#endif
-
+#include "CameraLayerManager.hpp"
 
 #include "acvImage_MophologyTool.hpp"
 

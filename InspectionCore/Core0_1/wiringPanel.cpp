@@ -16,6 +16,7 @@
 #include <main.h>
 #include <playground.h>
 #include <stdexcept>
+#include <CameraLayerManager.hpp>
 #include <compat_dirent.h>
 #include <smem_channel.hpp>
 #include <ctime>
@@ -39,7 +40,7 @@ float OK_MAX_FPS=6;
 float NG_MAX_FPS=6;
 float NA_MAX_FPS=6;
 
-
+CameraLayerManager camLayerMan;
 cJSON *cache_deffile_JSON = NULL;
 
 cJSON *cache_camera_param = NULL;
@@ -4291,202 +4292,6 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
   return -3;
 }
 
-
-
-#ifdef FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK
-CameraLayer_GIGE_MindVision *initCamera_MindVision(std::string targetIdContains = "")
-{
-  LOGE("driver is here .... ");
-
-  tSdkCameraDevInfo sCameraList[10];
-  int retListL = sizeof(sCameraList) / sizeof(sCameraList[0]);
-  CameraLayer_GIGE_MindVision::EnumerateDevice(sCameraList, &retListL);
-
-  if (retListL <= 0)
-    return NULL;
-  for (int i = 0; i < retListL; i++)
-  {
-    printf("CAM:%d======\n", i);
-    printf("acDriverVersion:%s\n", sCameraList[i].acDriverVersion);
-    printf("acFriendlyName:%s\n", sCameraList[i].acFriendlyName);
-    printf("acLinkName:%s\n", sCameraList[i].acLinkName);
-    printf("acPortType:%s\n", sCameraList[i].acPortType);
-    printf("acProductName:%s\n", sCameraList[i].acProductName);
-    printf("acProductSeries:%s\n", sCameraList[i].acProductSeries);
-    printf("acSensorType:%s\n", sCameraList[i].acSensorType);
-    printf("acSn:%s\n", sCameraList[i].acSn);
-    printf("\n\n\n\n");
-  }
-  CameraLayer_GIGE_MindVision *CL_GIGE = new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV, NULL);
-  if (CL_GIGE->InitCamera(&(sCameraList[0])) == CameraLayer::ACK)
-  {
-    return CL_GIGE;
-  }
-  delete CL_GIGE;
-  return NULL;
-}
-#else
-CameraLayer *initCamera_MindVision(std::string targetIdContains = "")
-{
-  LOGE("NO driver.... skip");
-  return NULL;
-}
-#endif
-
-#ifdef FEATURE_COMPILE_W_ARAVIS
-CameraLayer_Aravis *initCamera_Aravis(std::string targetIdContains = "")
-{
-  LOGE("driver is here .... ");
-  vector<CameraLayer_Aravis::cam_info> infoList;
-  CameraLayer_Aravis::listDevices(infoList, true);
-  if (infoList.size() > 0)
-  {
-    for (int i = 0; i < infoList.size(); i++)
-    {
-      if (targetIdContains.length() > 0 && infoList[i].id.find(targetIdContains) == string::npos)
-      {
-        continue;
-      }
-
-      try
-      {
-        if (infoList[i].available)
-        { //try to find first available camera
-
-          LOGI("=======CAM OPEN========");
-          CameraLayer_Aravis *camera = new CameraLayer_Aravis(infoList[i].id.c_str(), CameraLayer_Callback_GIGEMV, NULL);
-          CameraLayer_Aravis::cam_info ci = camera->getCameraInfo();
-          LOGI("=======CAM OPEN========");
-          LOGI("id:%s", ci.id.c_str());
-          LOGI("physical_id:%s", ci.physical_id.c_str());
-          LOGI("address:%s", ci.address.c_str());
-          LOGI("model:%s", ci.model.c_str());
-          LOGI("protocol:%s", ci.protocol.c_str());
-          LOGI("serial_nbr:%s", ci.serial_nbr.c_str());
-          LOGI("vendor:%s", ci.vendor.c_str());
-          LOGI("available:%d", ci.available);
-          return camera;
-        }
-      }
-      catch (const std::exception &ex)
-      {
-      }
-    }
-  }
-
-  return NULL;
-}
-
-#else
-CameraLayer *initCamera_Aravis(std::string targetIdContains = "")
-{
-  LOGE("NO driver.... skip");
-  return NULL;
-}
-#endif
-
-#ifdef FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK
-
-bool PrintDeviceInfo(MV_CC_DEVICE_INFO *pstMVDevInfo)
-{
-  if (NULL == pstMVDevInfo)
-  {
-    printf("The Pointer of pstMVDevInfo is NULL!\n");
-    return false;
-  }
-  if (pstMVDevInfo->nTLayerType == MV_GIGE_DEVICE)
-  {
-    printf("chUserDefinedName: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chUserDefinedName);
-    printf("chModelName: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chModelName);
-    printf("chDeviceVersion: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chDeviceVersion);
-    printf("chManufacturerSpecificInfo: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chManufacturerSpecificInfo);
-    printf("chManufacturerName: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chManufacturerName);
-    printf("Serial Number: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chSerialNumber);
-  }
-  else if (pstMVDevInfo->nTLayerType == MV_USB_DEVICE)
-  {
-    printf("chUserDefinedName: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chUserDefinedName);
-    printf("chVendorName: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chVendorName);
-    printf("chModelName: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chModelName);
-    printf("chFamilyName: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chFamilyName);
-    printf("chDeviceVersion: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chDeviceVersion);
-    printf("chManufacturerName: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chManufacturerName);
-    printf("Serial Number: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chSerialNumber);
-  }
-  else
-  {
-    printf("Not support.\n");
-  }
-
-  return true;
-}
-
-CameraLayer_HikRobot_Camera *initCamera_HikRobot_Camera(std::string targetIdContains = "")
-{
-  LOGE("driver is here .... ");
-  MV_CC_DEVICE_INFO_LIST stDeviceList;
-  CameraLayer_HikRobot_Camera::listDevices(&stDeviceList);
-
-  MV_CC_DEVICE_INFO *tar_pstMVDevInfo = NULL;
-  for (unsigned int i = 0; i < stDeviceList.nDeviceNum; i++)
-  {
-    printf("[device %d]:\n", i);
-    MV_CC_DEVICE_INFO *pstMVDevInfo = stDeviceList.pDeviceInfo[i];
-    if (NULL == pstMVDevInfo)
-    {
-      continue;
-    }
-
-    PrintDeviceInfo(pstMVDevInfo);
-    std::string UserDefinedName;
-    if (pstMVDevInfo->nTLayerType == MV_GIGE_DEVICE)
-    {
-      UserDefinedName = std::string((const char *)pstMVDevInfo->SpecialInfo.stGigEInfo.chUserDefinedName);
-    }
-    if (pstMVDevInfo->nTLayerType == MV_USB_DEVICE)
-    {
-      UserDefinedName = std::string((const char *)pstMVDevInfo->SpecialInfo.stUsb3VInfo.chUserDefinedName);
-    }
-    if (UserDefinedName.find(targetIdContains) == string::npos)
-    {
-      continue;
-    }
-    tar_pstMVDevInfo = pstMVDevInfo;
-    // void *handle = NULL;
-    // nRet = MV_CC_CreateHandle(&handle, pstMVDevInfo);
-    // if (MV_OK == nRet)
-    // {
-    //   cameraHandles.push_back(handle);
-    // }
-  }
-
-  if (tar_pstMVDevInfo == NULL)
-    return NULL;
-
-  CameraLayer_HikRobot_Camera *extractCam = NULL;
-  try
-  {
-    return new CameraLayer_HikRobot_Camera(tar_pstMVDevInfo, CameraLayer_Callback_GIGEMV, NULL);
-  }
-  catch (const std::exception &e)
-  {
-    LOGE("catch an E:%s", e.what());
-  }
-  return NULL;
-}
-
-#else
-CameraLayer *initCamera_HikRobot_Camera(std::string targetIdContains = "")
-{
-  LOGE("NO driver.... skip");
-  return NULL;
-}
-#endif
-
-
-
-
-
 int initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 {
   return CL_bmpc == NULL ? -1 : 0;
@@ -4520,32 +4325,21 @@ CameraLayer *getCamera(int initCameraType = 0)
   //     camera = NULL;
   //   }
   // }
-
-  std::string target_name_part = "";
-  if (camera == NULL)
+  camLayerMan.discover();
+  if(camLayerMan.camBasicInfo.size()>0)
   {
-    camera = initCamera_MindVision(target_name_part);
-  }
-  if (camera == NULL)
-  {
-    LOGI(">>>>>\n");
-    camera = initCamera_HikRobot_Camera(target_name_part);
-  }
-  if (camera == NULL)
-  {
-    LOGI(">>>>>\n");
-    camera = initCamera_Aravis(target_name_part);
+    CameraLayer::BasicCameraInfo BCamInfo = camLayerMan.camBasicInfo[0];
+    if(BCamInfo.vender=="CameraLayer_BMP_carousel")
+    {
+      camera=camLayerMan.connectCamera(BCamInfo.driver_name,BCamInfo.id,"data/BMP_carousel_test",CameraLayer_Callback_GIGEMV, NULL);
+    }
+    else
+    {
+      camera=camLayerMan.connectCamera(BCamInfo.driver_name,BCamInfo.id,"",CameraLayer_Callback_GIGEMV, NULL);
+    }
   }
 
-  LOGI("camera ptr:%p", camera);
 
-  if (camera == NULL && (initCameraType == 0 || initCameraType == 2))
-  {
-    CameraLayer_BMP_carousel *camera_BMP;
-    LOGV("CameraLayer_BMP_carousel");
-    camera_BMP = new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV, NULL, "data/BMP_carousel_test");
-    camera = camera_BMP;
-  }
 
   if (camera == NULL)
   {
