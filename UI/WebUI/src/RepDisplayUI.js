@@ -1,6 +1,7 @@
 import React , { useState,useEffect,useContext,useRef } from 'react';
 import * as logX from 'loglevel';
 let log = logX.getLogger("InspectionUI");
+import html2canvas from 'html2canvas';
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
@@ -114,7 +115,7 @@ class CanvasComponent extends React.Component {
   render() {
     return (
       <div className={this.props.addClass}>
-        <canvas ref="canvas" className="width12 HXF" />
+        <canvas ref="canvas" id="RepDisplay_canvas" className="width12 HXF" />
         <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)} />
       </div>
     );
@@ -143,7 +144,7 @@ export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_
   function updateDef(newEditInfo,_def)
   {
     newEditInfo =newEditInfo._obj.rootDefInfoLoading(_def,newEditInfo)
-    console.log(newEditInfo);
+    // console.log(newEditInfo);
     return newEditInfo;
   }
 
@@ -185,24 +186,27 @@ export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_
       newEditInfo._obj=new InspectionEditorLogic();
     if(def!==undefined && _this.def!=def)
       newEditInfo = updateDef(newEditInfo,def);
-    if(image!==undefined && _this.image!=image)
+
+      
+    if(image!==undefined)// && _this.image!=image)
     {
       
-      if(IGNORE_IMAGE_FIT_TO_SCREEN==true)
-      {
-        image.IGNORE_IMAGE_FIT_TO_SCREEN=true;
-      }
-      else if(IGNORE_IMAGE_FIT_TO_SCREEN==false)
-      {
-        image.IGNORE_IMAGE_FIT_TO_SCREEN=false;
-      }
-      if(_this.firstImageSet==true)
-      {
-        _this.firstImageSet=false;
-        image.IGNORE_IMAGE_FIT_TO_SCREEN=false;
-      }
+      // if(IGNORE_IMAGE_FIT_TO_SCREEN==true)
+      // {
+      //   image.IGNORE_IMAGE_FIT_TO_SCREEN=true;
+      // }
+      // else if(IGNORE_IMAGE_FIT_TO_SCREEN==false)
+      // {
+      //   image.IGNORE_IMAGE_FIT_TO_SCREEN=false;
+      // }
+      // if(_this.firstImageSet==true)
+      // {
+      //   image.IGNORE_IMAGE_FIT_TO_SCREEN=false;
+      // }
       newEditInfo = updateImage(newEditInfo,image);
     }
+
+    // console.log(image);
     if(camera_param!==undefined && _this.camera_param!=camera_param)
       newEditInfo = updateCamParam(newEditInfo,camera_param);
     if(reports!==undefined && _this.reports!=reports)
@@ -215,9 +219,25 @@ export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_
     setEditInfo(newEditInfo);
   },[def,image,camera_param,reports])
 
+  if(_this.image!==undefined)
+  {
 
-  // console.log(editInfo);
-
+    if(IGNORE_IMAGE_FIT_TO_SCREEN==true)
+    {
+      _this.image.IGNORE_IMAGE_FIT_TO_SCREEN=true;
+    }
+    else if(IGNORE_IMAGE_FIT_TO_SCREEN==false)
+    {
+      _this.image.IGNORE_IMAGE_FIT_TO_SCREEN=false;
+    }
+    if(_this.firstImageSet==true)
+    {
+      _this.firstImageSet=false;
+      _this.image.IGNORE_IMAGE_FIT_TO_SCREEN=false;
+    }
+    // console.log(editInfo);
+  
+  }
 
 
   return (<div  className="s width12 height12">
@@ -234,25 +254,32 @@ export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_
 
 
 
+function default_infoDispParam()
+{
+  return{
+    color:"white",
+    background:"rgba(0,0,0,0.2)",
+    hideInfoDetail:false,
+    hideDefDetail:true,
+    reportIdxHide:[],
+  }
+}
 
 
 export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
 
   
   // const DICT = useSelector(state => state.UIData.DICT);
-  
+
+  let _this= useRef({}).current;
+
   const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
   const [repImgInfo,SetRepImgInfo]=useState(undefined);
   const [cachedXREPList,setCachedXREPList]=useState(undefined);
   const [curIdx,setCurIdx]=useState(-1);
-  const [repDispInfo,setRepDispInfo]=useState(
-    {
+  const [repDispInfo,setRepDispInfo]=useState(undefined);
 
-      def:undefined,
-      camera_param:undefined,
-      reports:undefined
-    });
-
+  const [infoDispParam,setInfoDispParam]=useState(default_infoDispParam());
 
 
     
@@ -264,9 +291,12 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
   // });
   let xreps="xreps";
   
-  function LoadNewFile(filePath)
+  function LoadNewFile(filePath,fileInfo)
   {
     filePath = filePath.replace("." + xreps, "");
+    // console.log(filePath);
+    // console.log(fileInfo);
+    _this.latest_filename=fileInfo.name.replace("." + xreps, "");
     BPG_Channel( "LD", 0,{ filename: filePath+"." + xreps,imgsrc: filePath,down_samp_level:1 },undefined,
     { resolve:(pkts,action_channal)=>{
       let SS=pkts.find(pkt=>pkt.type=="SS");
@@ -284,6 +314,8 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
         reports:reports,
         def:FL.data.defInfo
       })
+      
+      setInfoDispParam(default_infoDispParam())
 
       SetRepImgInfo(img_pros.data);
 
@@ -321,7 +353,8 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       callBack:(filePath, fileInfo) => {
         console.log(filePath, fileInfo,">>>");
 
-        LoadNewFile(filePath);
+        // _this.Latest_file_path=
+        LoadNewFile(filePath,fileInfo);
 
       }
     });
@@ -332,8 +365,45 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
   useEffect(()=>{
     BrowseNewFileToLoad();
   },[]);
+  function downloadImage(data, filename) {
+    var a = document.createElement('a');
+    a.href = data;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+  }
+  function getLines(ctx, text, maxWidth,lineBreakChars=[" "]) {
+    // var sections = word_char_based_split?text.split(" "):text.split("");
+    let sections=[];
+    let idxHead=0;
+    for (let i=0; i < text.length; i++) {
+      let chr=String.fromCharCode(text.charCodeAt(i));
+      
+      if(lineBreakChars.includes(chr)||i==text.length-1)
+      {
+        sections.push(text.substring(idxHead,i+1));
+        idxHead=i+1;
+      }
+    }
+    // console.log(sections);
 
-  
+    let lines = [];
+    let currentLine = sections[0];
+
+    for (let i = 1; i < sections.length; i++) {
+      let section = sections[i];
+      let width = ctx.measureText(currentLine + section).width;
+      // console.log(width)
+      if (width < maxWidth) {
+          currentLine +=  section;
+      } else {
+          lines.push(currentLine);
+          currentLine = section;
+      }
+    }
+    lines.push(currentLine);
+    return lines;
+}
   useEffect(()=>{
     onExtraCtrlUpdate({
       browseNewFileToLoad:()=>BrowseNewFileToLoad(),
@@ -341,21 +411,181 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       loadNext:()=>{
         let newIdx=(curIdx+1)%cachedXREPList.length;
         setCurIdx(newIdx);
-        // console.log(cachedXREPList,newIdx);
-        LoadNewFile(cachedXREPList[newIdx].path);
+        console.log(cachedXREPList,newIdx);
+        LoadNewFile(cachedXREPList[newIdx].path,cachedXREPList[newIdx]);
       },
       loadPrev:()=>{ 
         let newIdx=(curIdx-1);
         if(newIdx<0)newIdx+=cachedXREPList.length;
         setCurIdx(newIdx);
         // console.log(cachedXREPList,newIdx);
-        LoadNewFile(cachedXREPList[newIdx].path);
+        LoadNewFile(cachedXREPList[newIdx].path,cachedXREPList[newIdx]);
+      },
+      imageSave:()=>{
+        console.log("SAVE...");
+
+
+        // var ctx = canvas.getContext('2d');
+        // ctx.resetTransform();
+        // let textHeight=14;
+        // ctx.font = textHeight+"px Arial";
+        // ctx.fillStyle = "red";
+        // let text="PATH:"+_this.latest_filename;
+
+        // let tlines=getLines(ctx,text,canvas.width,[" ","/","\\",":"]);
+        // let drawY=50;
+        // tlines.forEach(line=>{
+        //   ctx.fillText(line, 10,drawY);
+        //   drawY+=textHeight;
+        // })
+
+
+        let RepDisplayUI_ele = document.getElementById("RepDisplayUI");
+        html2canvas(RepDisplayUI_ele).then(function(canvas) {
+            // document.body.appendChild(canvas);
+            let dataURL = canvas.toDataURL();
+
+            // var dataURL = canvas.toDataURL("image/jpeg", 1.0);
+    
+            downloadImage(dataURL, _this.latest_filename+'.png');
+        });
+        // var dataURL = canvas.toDataURL("image/jpeg", 1.0);
+
+        // downloadImage(dataURL, 'my-canvas.png');
+
+      },
+      canvasSave:()=>{
+        console.log("SAVE...");
+
+        let canvas = document.getElementById("RepDisplay_canvas");
+
+        var ctx = canvas.getContext('2d');
+        ctx.resetTransform();
+        let textHeight=14;
+        ctx.font = textHeight+"px Arial";
+        ctx.fillStyle = "red";
+        let text="PATH:"+_this.latest_filename;
+
+        let tlines=getLines(ctx,text,canvas.width,[" ","/","\\",":"]);
+        let drawY=50;
+        tlines.forEach(line=>{
+          ctx.fillText(line, 10,drawY);
+          drawY+=textHeight;
+        })
+
+
+        var dataURL = canvas.toDataURL();//"image/jpeg", 1.0);
+
+        downloadImage(dataURL, _this.latest_filename+'.png');
+
       }
     })
   },[cachedXREPList,curIdx]);
 
-  console.log(repDispInfo,repImgInfo);
-  return (<div  className="s width12 height12">
+  // console.log(repDispInfo,repImgInfo,infoDispParam);
+
+  let infoTableUI=null;
+  
+  if(repDispInfo!==undefined)
+  {
+    try{
+
+    let curFileInfo=cachedXREPList[curIdx]
+    infoTableUI=
+    <table style={{color:infoDispParam.color,background:infoDispParam.background}}>
+      <tbody>
+
+
+        <tr>
+          <td >檔名:</td>
+          <td>{curFileInfo.name}</td>
+        </tr>
+        <tr>
+          <td >檔案創建時間:</td>
+          <td>{new Date(curFileInfo.ctime_ms).toLocaleString('en-US',{ hour12: false })}</td>
+        </tr>
+            
+        <tr onClick={()=>{setInfoDispParam({...infoDispParam,hideInfoDetail:!infoDispParam.hideInfoDetail})}}>
+          <td style={{textAlign:"left"}}>{infoDispParam.hideInfoDetail?"+":"-"}詳細資訊</td>
+        </tr>
+        {infoDispParam.hideInfoDetail?null:<>
+          <tr onClick={()=>{setInfoDispParam({...infoDispParam,hideDefDetail:!infoDispParam.hideDefDetail})}}>
+            <td >{infoDispParam.hideDefDetail?"+":"-"}檢測檔名稱:</td>
+            <td>{repDispInfo.def.name}</td>
+          </tr>
+          {infoDispParam.hideDefDetail?null:<>
+            <tr><td >sha1:</td>
+            <td>{repDispInfo.def.featureSet_sha1}</td></tr>
+            <tr><td >pre_sha1:</td>
+            <td>{repDispInfo.def.featureSet_sha1_pre}</td></tr>
+            <tr><td >root_sha1:</td>
+            <td>{repDispInfo.def.featureSet_sha1_root}</td></tr>
+          </>}
+          
+          {/* <tr>
+          <td>原始檔路徑:</td>
+          <td>{_this.latest_filename}</td>
+          </tr> */}
+
+          {repDispInfo.reports.map((rep,idx)=>{
+            let repDispUI=null;
+            if(infoDispParam.reportIdxHide.includes(idx)==false)
+            {
+              let jReps=rep.judgeReports;
+              repDispUI=[]
+              // repDispUI.push(<>
+              //   <tr idx={idx+"_time"}>
+              //   <td >時間</td>
+              //   <td>{new Date(rep.add_time_ms).toLocaleString()}</td>
+              //   </tr>
+              
+              // </>)
+
+
+              repDispUI.push(jReps.map((jrep,jidx)=>(
+                <tr idx={idx+"jrep"+jidx}>
+                <td >{jrep.name}</td>
+                <td>{jrep.value.toFixed(3)}</td>
+                </tr>
+              )))
+            }
+
+            return <>
+              <tr onClick={()=>{
+                let new_reportIdxHide;
+                if(repDispUI==null)
+                {
+                  new_reportIdxHide=infoDispParam.reportIdxHide.filter(_idx=>_idx!=idx);
+                }
+                else
+                {
+                  new_reportIdxHide=[...infoDispParam.reportIdxHide,idx]
+                }
+                console.log(new_reportIdxHide);
+              
+                setInfoDispParam({...infoDispParam,reportIdxHide:new_reportIdxHide})
+              }}>
+                <td >{(repDispUI==null?"+":"-")+" "+idx}</td>
+                <td >----------------</td>
+              </tr>
+
+              {repDispUI}
+            </>
+          })}
+        </>}
+      </tbody>
+    </table>
+    }
+    catch(e)
+    {
+
+    }
+  }
+
+
+
+
+  return (<div  className="s width12 height12 overlayCon" id="RepDisplayUI">
 
     <BPG_FileBrowser key="BPG_FileBrowser"
       className="width8 modal-sizing"
@@ -364,6 +594,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       BPG_Channel={BPG_Channel}
 
       onFileSelected={(filePath, fileInfo,folderStruct) => {
+        console.log(fileInfo);
         let xrepLists=folderStruct.files
           .filter(f=>(f.type=="REG"&&f.name.endsWith(xreps)))
           .sort((f1,f2) => f1.ctime_ms>f2.ctime_ms);
@@ -383,7 +614,18 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       fileGroups={(fileSelectorInfo !== undefined)?fileSelectorInfo.groups:undefined}
       fileFilter={(fileSelectorInfo !== undefined)?fileSelectorInfo.filter:undefined} />
     {/* <CanvasComponent addClass="height12" edit_info={editInfo}/> */}
-    <RepDisplay {...repDispInfo} image={repImgInfo}/>
+    <RepDisplay {...repDispInfo} image={repImgInfo} IGNORE_IMAGE_FIT_TO_SCREEN/>
+    <div className={"overlay"} >
+
+
+      {infoTableUI}
+
+
+
+
+
+
+    </div>
   </div>);
 }
  

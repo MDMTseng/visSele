@@ -1541,6 +1541,17 @@ const MainUI=()=>{
             })
           }
 
+          
+          if(extraCtrls.imageSave!==undefined)
+          {
+            extraCtrlUI.push({
+              key:"imageSave",
+              icon:<SaveOutlined />,
+              text:"imageSave",
+              onClick:_=>extraCtrls.imageSave()
+              // subMenu:[]
+            })
+          }
 
 
           setExtraSideUI(extraCtrlUI);

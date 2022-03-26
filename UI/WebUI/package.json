@@ -29,6 +29,7 @@
     "cytoscape": "^3.18.2",
     "cytoscape-cose-bilkent": "^4.1.0",
     "dateformat": "^3.0.3",
+    "html2canvas": "^1.4.1",
     "jsonp": "^0.2.1",
     "jsum": "^0.1.4",
     "localStorage": "^1.0.4",
