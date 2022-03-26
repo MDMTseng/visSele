@@ -565,8 +565,13 @@ class MData_uInsp:public Data_JsonRaw_Layer
       }
       else if(strcmp(type,"EM_STOP")==0)
       {
+        int keep_ms=10;
+        if(doc["keep_ms"].is<int>())
+        {
+          keep_ms=doc["keep_ms"];
+        }
         digitalWrite(O_EM_STOP, O_EM_STOP_ON);
-        delay(10);
+        delay(keep_ms);
         digitalWrite(O_EM_STOP, !O_EM_STOP_ON);
 
         doRsp=rspAck=true;
