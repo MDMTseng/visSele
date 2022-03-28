@@ -185,7 +185,10 @@ export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_
     if(newEditInfo._obj===undefined )
       newEditInfo._obj=new InspectionEditorLogic();
     if(def!==undefined && _this.def!=def)
+    {
+      delete def["featureSet_sha1"]
       newEditInfo = updateDef(newEditInfo,def);
+    }
 
       
     if(image!==undefined)// && _this.image!=image)
@@ -206,7 +209,7 @@ export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_
       newEditInfo = updateImage(newEditInfo,image);
     }
 
-    // console.log(image);
+    console.log(newEditInfo);
     if(camera_param!==undefined && _this.camera_param!=camera_param)
       newEditInfo = updateCamParam(newEditInfo,camera_param);
     if(reports!==undefined && _this.reports!=reports)
