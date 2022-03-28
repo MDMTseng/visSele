@@ -879,7 +879,7 @@ function StateReducer(newState, action) {
                 newState.edit_info._obj.rootDefInfoLoading(root_defFile,newState.edit_info);
 
               
-              if(bk_inspOptionalTag!=undefined)
+              if(bk_inspOptionalTag!==undefined)
               {
                 newState.edit_info.inspOptionalTag=bk_inspOptionalTag;
               }

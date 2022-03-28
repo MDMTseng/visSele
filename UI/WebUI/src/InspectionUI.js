@@ -1704,7 +1704,7 @@ class APP_INSP_MODE extends React.Component {
       main_ch(pkts);
     }
 
-    setTimeout(()=>{//wait for ctrlMarginInfos applied
+    setTimeout(()=>{//wait for ctrlMarginInfos applied- the wait need to be longer >100ms
 
       let deffile = defFileGeneration(this.props.edit_info);
 
@@ -1778,7 +1778,7 @@ class APP_INSP_MODE extends React.Component {
         api.send({type: "enter_inspection"},
         (ret)=>{},(e)=>console.log(e));
       })
-    },1)
+    },100)//somehow in windows paltform it needs to be longer to catch the change in reducer
   }
 
   componentWillUnmount() {
