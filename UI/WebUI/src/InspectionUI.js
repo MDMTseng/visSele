@@ -670,7 +670,11 @@ function SLIDMiscCtrlPopUp({force_popUp=false,allow_auto_popUp=true,onCancel=_=>
   return <>
     
     <SLID_UI on_EM_STOP_state_change={(api,report_stat)=>{
-      if(api.is_in_EM_STOP==true)setPopUp(api.is_in_EM_STOP)
+
+      if(_this.is_in_EM_STOP!=api.is_in_EM_STOP&&api.is_in_EM_STOP==true)
+        setPopUp(api.is_in_EM_STOP)
+
+      _this.is_in_EM_STOP=api.is_in_EM_STOP;
       }}/>
   
   
@@ -811,20 +815,18 @@ class ObjInfoList extends React.Component {
     }}
       > 
         <SLID_UI on_EM_STOP_state_change={(api,report_stat)=>{
-          console.log(api.is_in_EM_STOP,api.EM_STOP_src_list);
-          if(api.is_in_EM_STOP==true)
-          {
-            this.setState({
-              SLID_EM_STOP_src_list: api.EM_STOP_src_list,
-            });
-          }
-          else
-          {
-            this.setState({
-              SLID_EM_STOP_src_list:undefined,
-            });
+          // console.log(api.is_in_EM_STOP,api.EM_STOP_src_list);
+          if(api.is_in_EM_STOP==this.state.is_in_EM_STOP && api.EM_STOP_Rule.enable_EM_STOP==this.state.enable_EM_STOP)return;
+          console.log(">>>in_EM_STOP:",api.is_in_EM_STOP," enable_EM_STOP:",api.EM_STOP_Rule.enable_EM_STOP);
 
-          }
+          let SLID_EM_STOP_src_list=api.is_in_EM_STOP==true?api.EM_STOP_src_list:undefined;
+          
+          this.setState({
+            enable_EM_STOP:api.EM_STOP_Rule.enable_EM_STOP,
+            SLID_EM_STOP_src_list:SLID_EM_STOP_src_list,
+            is_in_EM_STOP:api.is_in_EM_STOP
+          });
+
           
         }}/>
 
@@ -836,10 +838,10 @@ class ObjInfoList extends React.Component {
               })
             }} >
 
-          <Tag style={{ 'fontSize': 15 }} 
-            className={this.state.SLID_EM_STOP_src_list===undefined?"":"Emergency_Blink"}
-            color={this.state.SLID_EM_STOP_src_list===undefined?"green":"white"}
-            >坡檢停機狀態:{this.state.SLID_EM_STOP_src_list===undefined?"正常":"停機"}</Tag>
+        <Tag style={{ 'fontSize': 15 }} 
+          className={this.state.SLID_EM_STOP_src_list===undefined ||this.state.enable_EM_STOP==false?"":"Emergency_Blink"}
+          color={this.state.enable_EM_STOP==false?"gray": (this.state.SLID_EM_STOP_src_list===undefined?"green":"white") }
+          >坡檢停機功能:{this.state.enable_EM_STOP==false?"停用": (this.state.SLID_EM_STOP_src_list===undefined?"正常":"停機") }</Tag>
 
 
         </Button>

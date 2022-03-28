@@ -1103,13 +1103,23 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
   const [_UPDATE_, set_update] = useState(0);
  
   useEffect(()=>{//auto update
-      let _key=_this.api_cb_key=Date.now();
+      function getRandomInt(max) {
+        return Math.floor(Math.random() * max);
+      }
+      let _key=_this.api_cb_key=getRandomInt(1000000);
       ACT_WS_GET_OBJ(api=>{
         set_SLID_api(api);
-        console.log(">>>List Add:",_key);
+        while(api.checkInfoListenerKeyUsed(_key))
+        {
+          _key=_this.api_cb_key=getRandomInt(1000000);
+        }
+        console.log(">>>SLID_API List Add:",_key);
+
         api.checkInfoListenerAdd(_key,(api,report_stat)=>{
           // console.log(api,report_stat);
-          if(api.is_in_EM_STOP!=_this.is_in_EM_STOP)
+          // if(api.is_in_EM_STOP!=_this.is_in_EM_STOP)
+          
+          // console.log(">>>List CALL:",_key);
           {
             on_EM_STOP_state_change(api,report_stat)
             _this.is_in_EM_STOP=api.is_in_EM_STOP;
@@ -1120,7 +1130,7 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
       })
       return ()=>{
         
-        // console.log(">>>List XXXXXX:",_key);
+        console.log(">>>SLID_API List Remove:",_key);
         ACT_WS_GET_OBJ(api=>{
           api.checkInfoListenerRemove(_key)
           _this.api_cb_key=undefined;
@@ -1197,37 +1207,37 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
         INSP:  (SLID_api.no_obj_detected_time_ms/1000/60).toFixed(2),
       },
       {
-        SEC: 'NG數',
+        SEC: '總規格NG數',
         SEC_SRC:"SNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.SNG_Max} onChange={(value) => update_EM_Stop_Rule({SNG_Max:value})}/>,
         INSP: Math.max(...sp_info_obj.SNG_count),
       },
       {
-        SEC: '連續NG數',
+        SEC: '連續規格NG數',
         SEC_SRC:"consecutive_SNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.consecutive_SNG_Max}  onChange={(value) => update_EM_Stop_Rule({consecutive_SNG_Max:value})}/>,
         INSP: Math.max(...sp_info_obj.consecutive_SNG_count),
       },
       {
-        SEC: '模糊連續NG數',
+        SEC: '模糊連續規格NG數',
         SEC_SRC:"fuzzy_consecutive_SNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.fuzzy_consecutive_SNG_Max}  onChange={(value) => update_EM_Stop_Rule({fuzzy_consecutive_SNG_Max:value})}/>,
         INSP: Math.max(...sp_info_obj.fuzzy_consecutive_SNG_count),
       },
       {
-        SEC: '生產NG數',
+        SEC: '總管制NG數',
         SEC_SRC:"CNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.CNG_Max}  onChange={(value) => update_EM_Stop_Rule({CNG_Max:value})}/>,
         INSP: Math.max(...sp_info_obj.CNG_count),
       },
       {
-        SEC: '連續生產NG數',
+        SEC: '連續管制NG數',
         SEC_SRC:"consecutive_CNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.consecutive_CNG_Max}  onChange={(value) => update_EM_Stop_Rule({consecutive_CNG_Max:value})}/>,
         INSP: Math.max(...sp_info_obj.consecutive_CNG_count),
       },
       {
-        SEC: '模糊連續生產NG數',
+        SEC: '模糊連續管制NG數',
         SEC_SRC:"fuzzy_consecutive_CNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.fuzzy_consecutive_CNG_Max}  onChange={(value) => update_EM_Stop_Rule({fuzzy_consecutive_CNG_Max:value})}/>,
         INSP: Math.max(...sp_info_obj.fuzzy_consecutive_CNG_count),
@@ -1246,7 +1256,7 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
         dataIndex: 'SEC',
       },
       {
-        title: '設定',
+        title: '設定 (0為不使用)',
         dataIndex: 'SETUP',
       },
       {
@@ -1259,13 +1269,37 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
 
 
     _UI_EM_STOP_UI=<>
-    <Button onClick={()=>{
-      ACT_WS_GET_OBJ(api=>{
-        api.clear_EM_STOP_state()
-      })
-      ACT_StatInfo_Clear()}}>重置</Button>
-    <Table dataSource={dataSource} columns={columns} />
-    <br/>
+      檢驗NG停機功能:
+      <Switch checked={(SLID_api.EM_STOP_Rule.enable_EM_STOP)}
+        onChange={(checked)=>
+          {
+            update_EM_Stop_Rule({enable_EM_STOP:checked})
+          }
+        } 
+      />
+      {/* {SLID_api.EM_STOP_Rule.enable_EM_STOP==false?null: */}
+      <>
+        <Divider/>
+        <Button onClick={()=>{
+          ACT_WS_GET_OBJ(api=>{
+            api.clear_EM_STOP_state()
+          })
+          ACT_StatInfo_Clear()}}>重置停機資訊</Button>
+
+        
+        <Table dataSource={dataSource} columns={columns} />
+        <pre>
+        ＊模糊連續NG數- 為防止單獨OK檢測破壞"連續NG數"的累積 <br/>
+                      因此"模糊連續NG數"會在連續OK>5次後 才會進行重置<br/>
+        例如 <br/>
+        O O O O O X O (連續NG數:0 模糊連續NG數:1)<br/>
+        X X O O O O X (連續NG數:1 模糊連續NG數:3)<br/>
+        X O O O O O X (連續NG數:1 模糊連續NG數:1)<br/>
+        X O X O X O X (連續NG數:1 模糊連續NG數:4)<br/>
+        </pre>
+
+      </>
+      {/* } */}
     </>
 
   }

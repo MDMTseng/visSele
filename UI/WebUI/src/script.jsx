@@ -1841,6 +1841,7 @@ class APPMasterX extends React.Component {
         this.EM_STOP_src_list=[];
         this.no_obj_detected_time_ms=-1;
         this.EM_STOP_Rule=this.readLocalstorage_SLID_EM_STOP_RULE({
+          enable_EM_STOP:false,
           no_obj_detected_time_max_ms:60*5*1000,
           SNG_Max:10,
           CNG_Max:20,
@@ -1865,7 +1866,8 @@ class APPMasterX extends React.Component {
           this.saveLocalstorage_SLID_EM_STOP_RULE(defaultRule);
           return defaultRule;
         }
-        return JSON.parse(readRule);
+
+        return {...defaultRule,...JSON.parse(readRule)};
       }
       saveLocalstorage_SLID_EM_STOP_RULE(rule=this.EM_STOP_Rule)
       {
@@ -1891,6 +1893,11 @@ class APPMasterX extends React.Component {
       {
         this.EM_STOP_Rule={...this.EM_STOP_Rule,...newRule};
         this.saveLocalstorage_SLID_EM_STOP_RULE(this.EM_STOP_Rule)
+        
+        let reportStatisticState=GetObjElement(StoreX.getState(),["UIData","edit_info","reportStatisticState"]);
+        Object.keys(this.checkInfoListenerDict).forEach(key=>{
+          this.checkInfoListenerDict[key](this,reportStatisticState);
+        })
       }
       tmp_EM_STOP_RULE(newRule)
       {
@@ -1899,6 +1906,10 @@ class APPMasterX extends React.Component {
       }
       
 
+      checkInfoListenerKeyUsed(key)
+      {
+        return this.checkInfoListenerDict[key]!==undefined
+      }
       checkInfoListenerAdd(key,cb)
       {
         this.checkInfoListenerDict[key]=cb
@@ -1925,7 +1936,7 @@ class APPMasterX extends React.Component {
         }
 
 
-        if(m_state.state==UIAct.UI_SM_STATES.INSP_MODE)
+        if(m_state.state==UIAct.UI_SM_STATES.INSP_MODE && this.EM_STOP_Rule.enable_EM_STOP==true)
         {
           this.no_obj_detected_time_ms=-1;
           if(this.reportCount==reportStatisticState.reportCount)
