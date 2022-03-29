@@ -279,6 +279,7 @@ export class InspectionEditorLogic {
       {
         let sha1_info_in_file = root_defFile.featureSet_sha1;
         if (sha1_info_in_file !== sha1_info_in_json) {
+          console.error("HASH doesn't match!!!",sha1_info_in_file,sha1_info_in_json);
           doExit = true;
         }
       }
@@ -391,28 +392,51 @@ export class InspectionEditorLogic {
     //console.log(measure, measureDef);
     if (measureDef === undefined || measureReport.status === INSPECTION_STATUS.NA || measureReport.value!=measureReport.value) {
       return MEASURERSULTRESION.NA;
-    }
+    }    
     else if (measureReport.status === INSPECTION_STATUS.UNSET) {
       return MEASURERSULTRESION.UNSET;
     }
     else if (measureReport.value < measureDef.LSL) {
       return MEASURERSULTRESION.LSNG;
     }
+    else if (measureReport.value > measureDef.USL) {
+      return MEASURERSULTRESION.USNG;
+    }
     else if (measureReport.value < measureDef.LCL) {
       return MEASURERSULTRESION.LCNG;
+    }
+    else if (measureReport.value > measureDef.UCL) {
+      return MEASURERSULTRESION.UCNG;
     }
     else if (measureReport.value < measureDef.value) {
       return MEASURERSULTRESION.LOK;
     }
-    else if (measureReport.value < measureDef.UCL) {
+    else {
       return MEASURERSULTRESION.UOK;
     }
-    else if (measureReport.value < measureDef.USL) {
-      return MEASURERSULTRESION.UCNG;
-    }
-    else {
-      return MEASURERSULTRESION.USNG;
-    }
+
+
+    // else if (measureReport.status === INSPECTION_STATUS.UNSET) {
+    //   return MEASURERSULTRESION.UNSET;
+    // }
+    // else if (measureReport.value < measureDef.LSL) {
+    //   return MEASURERSULTRESION.LSNG;
+    // }
+    // else if (measureReport.value < measureDef.LCL) {
+    //   return MEASURERSULTRESION.LCNG;
+    // }
+    // else if (measureReport.value < measureDef.value) {
+    //   return MEASURERSULTRESION.LOK;
+    // }
+    // else if (measureReport.value < measureDef.UCL) {
+    //   return MEASURERSULTRESION.UOK;
+    // }
+    // else if (measureReport.value < measureDef.USL) {
+    //   return MEASURERSULTRESION.UCNG;
+    // }
+    // else {
+    //   return MEASURERSULTRESION.USNG;
+    // }
 
   }
 
