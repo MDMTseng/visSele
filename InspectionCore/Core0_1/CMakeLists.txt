@@ -60,7 +60,7 @@ add_custom_target(
 )
 
 
-SET(COMMON_COMPILE_FLAGS "-Wall -Wno-sign-compare -Wno-write-strings -Wno-unused-variable -static -static-libgcc -static-libstdc++ -Wl,-Bstatic -lstdc++ -lpthread")
+SET(COMMON_COMPILE_FLAGS "-Wall -Wno-sign-compare -Wno-write-strings -Wno-unused-variable -lstdc++ -lpthread")
 SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${COMMON_COMPILE_FLAGS}")
 
 if($ENV{FEATURE_COMPILE_W_ARAVIS} EQUAL 1)
