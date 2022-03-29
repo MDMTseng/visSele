@@ -1679,7 +1679,9 @@ class APP_INSP_MODE extends React.Component {
 
 
           });
-          this.props.ACT_Shape_List_Update(newShapeList);
+          this.props.ACT_Shape_List_Update_EXPRESS(newShapeList);
+          
+          // console.log("ACT_Shape_List_Update<<<<<<");
           console.log(newShapeList)
         }
 
@@ -1704,11 +1706,11 @@ class APP_INSP_MODE extends React.Component {
       main_ch(pkts);
     }
 
-    setTimeout(()=>{//wait for ctrlMarginInfos applied- the wait need to be longer >100ms
-
+    {
+      // console.log("defFileGeneration>>>>>>>>");
       let deffile = defFileGeneration(this.props.edit_info);
 
-      this.props.ACT_WS_Define_File_Update(deffile,true)
+      this.props.ACT_WS_Define_File_Update_EXPRESS(deffile,true)
       deffile.featureSet_sha1=DefFileHash;//fake the sha1 data since we might modify the deffile, but still need to have the same deffile hex
 
 
@@ -1778,7 +1780,7 @@ class APP_INSP_MODE extends React.Component {
         api.send({type: "enter_inspection"},
         (ret)=>{},(e)=>console.log(e));
       })
-    },100)//somehow in windows paltform it needs to be longer to catch the change in reducer
+    }
   }
 
   componentWillUnmount() {
@@ -2683,12 +2685,12 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps,ff) => {
     },
     ACT_WS_SEND_BPG: (id,tl, prop, data, uintArr, promiseCBs) => 
       dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
-    ACT_WS_Define_File_Update:(defFile,keepCurTag) => dispatch(UIAct.EV_WS_Define_File_Update(defFile,keepCurTag)),
+    ACT_WS_Define_File_Update_EXPRESS:(defFile,keepCurTag) => dispatch({...UIAct.EV_WS_Define_File_Update(defFile,keepCurTag),ActionThrottle_type: "express"}),
 
     
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
-    ACT_Shape_List_Update:(newlist)=>dispatch(DefConfAct.Shape_List_Update(newlist)),
+    ACT_Shape_List_Update_EXPRESS:(newlist,cb)=>dispatch({...DefConfAct.Shape_List_Update(newlist,cb),ActionThrottle_type: "express"}),
     ACT_WS_GET_OBJ: (api_id,callback)=>dispatch(UIAct.EV_WS_GET_OBJ(api_id,callback))
   }
 }
