@@ -205,7 +205,7 @@ function YYYYMMDD(date)
          ].join('');
 }
 
-function InspectionRecordGrouping(InspectionRecord,largestInterval=2*60*1000)
+function InspectionRecordGrouping(InspectionRecord,largestInterval=2*60*1000,maxGroupLength=2*60*60*100)
 {
   let fd = InspectionRecord;
   let inspGroups=[];
@@ -223,7 +223,7 @@ function InspectionRecordGrouping(InspectionRecord,largestInterval=2*60*1000)
   AddNewGroup(fd[0]);
   for(let i=1;i<fd.length;i++)
   {
-    if(fd[i].time_ms-frontGroup.endTime<largestInterval)
+    if(fd[i].time_ms-frontGroup.endTime<largestInterval && fd[i].time_ms-frontGroup.startTime<maxGroupLength)
     {
       frontGroup.group.push(fd[i]);
       frontGroup.endTime=fd[i].time_ms;
@@ -296,9 +296,10 @@ function InspectionRecordGroup_AppendCPK(InspRecGroup,defInspRange)
 }
 
 
-function inspectionRecGroup_Generate(inspectionRec,groupInterval,measureList)
+function inspectionRecGroup_Generate(inspectionRec,groupInterval,maxGroupLength,measureList)
 {
-    let inspectionRecGroup = InspectionRecordGrouping(inspectionRec,groupInterval);
+  // console.log(groupInterval,maxGroupLength);
+    let inspectionRecGroup = InspectionRecordGrouping(inspectionRec,groupInterval,maxGroupLength);
     InspectionRecordGroup_AppendCPK(inspectionRecGroup,measureList);
     return inspectionRecGroup;
 }
@@ -1050,6 +1051,7 @@ class APP_ANALYSIS_MODE extends React.Component{
         inspectionRec_TagFiltered:[],
       inspectionRecGroup:[],
       groupInterval:2*60*1000,//10 mins
+      maxGroupLength:2*60*60*1000,//10 mins
       liveFeedMode:false,
       dataInSync:false,
       controlChartOverlap:false,
@@ -1198,11 +1200,32 @@ class APP_ANALYSIS_MODE extends React.Component{
             let day_base=moment(t._d).startOf('date')._d.getTime();
             console.log(mo-day_base)
             let groupInterval = mo-day_base;
-            console.log("TimePicker",this.state.inspectionRec_TagFiltered);
+            let maxGroupLength=this.state.maxGroupLength;
+            // console.log("TimePicker",this.state.inspectionRec_TagFiltered);
             let inspectionRecGroup =
-              inspectionRecGroup_Generate(this.state.inspectionRec_TagFiltered,groupInterval,measureList);
+              inspectionRecGroup_Generate(this.state.inspectionRec_TagFiltered,groupInterval,maxGroupLength,measureList);
 
             this.stateUpdate({inspectionRecGroup,groupInterval});
+        }}/>,
+        "  最大單一統計持續長度",
+        <TimePicker defaultValue={moment((this.state.maxGroupLength/60000)/60+':'+(this.state.maxGroupLength/60000)%60, 'HH:mm')} format={'HH:mm'} hourStep={3} minuteStep={1} allowClear={false} 
+          onChange={(t)=>
+          {
+            
+            if(t===null)return;
+            console.log(t);
+            let mo=t._d.getTime();
+            console.log(mo);
+
+            let day_base=moment(t._d).startOf('date')._d.getTime();
+            console.log(mo-day_base)
+            let groupInterval =this.state.groupInterval;
+            let maxGroupLength = mo-day_base;
+            // console.log("TimePicker",this.state.inspectionRec_TagFiltered);
+            let inspectionRecGroup =
+              inspectionRecGroup_Generate(this.state.inspectionRec_TagFiltered,groupInterval,maxGroupLength,measureList);
+
+            this.stateUpdate({inspectionRecGroup,maxGroupLength});
         }}/>,
         <Checkbox checked={this.state.controlChartOverlap} onChange={(ev)=>this.setState({controlChartOverlap:ev.target.checked})}>重疊顯示</Checkbox>,
       ]
@@ -1294,7 +1317,7 @@ class APP_ANALYSIS_MODE extends React.Component{
                   {
                     let latestTime=newStream[newStream.length-1].time_ms;
                     let inspectionRecGroup =
-                      inspectionRecGroup_Generate(fullStream,this.state.groupInterval,measureList);
+                      inspectionRecGroup_Generate(fullStream,this.state.groupInterval,this.state.maxGroupLength,measureList);
                     this.stateUpdate({
                       inspectionRec:fullStream,
                       inspectionRecGroup:inspectionRecGroup,
@@ -1440,7 +1463,7 @@ class APP_ANALYSIS_MODE extends React.Component{
 
                   console.log(updatedDefFile);
                   let inspectionRecGroup =
-                      inspectionRecGroup_Generate(filterTagsBoolean,this.state.groupInterval,measureList);
+                      inspectionRecGroup_Generate(filterTagsBoolean,this.state.groupInterval,this.state.maxGroupLength,measureList);
                   //console.log(filterTagsBoolean,inspectionRecGroup);
                   this.stateUpdate({
                     tagState,
