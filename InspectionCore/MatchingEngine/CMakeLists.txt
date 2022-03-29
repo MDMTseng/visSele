@@ -17,15 +17,18 @@ include_directories (
   $ENV{MODULE_polyfit}/include 
   $ENV{MODULE_zlib}/src 
   $ENV{OpenCV_INCLUDE_DIRS}
-  $ENV{MODULE_shape_based_matching}/include
-  $ENV{MODULE_shape_based_matching}/MIPP
+  # $ENV{MODULE_shape_based_matching}/include
+  # $ENV{MODULE_shape_based_matching}/MIPP
   )
   
 
 
 add_library(${PROJECT_NAME} STATIC MatchingEngine.cpp MatchingCore.cpp FeatureManager.cpp FeatureExtractor.cpp ContourGrid.cpp 
 FeatureManager_group.cpp FeatureManager_platingCheck.cpp FeatureManager_sig360_circle_line.cpp
-MorphEngine/MorphEngine.cpp FeatureReport_UTIL.cpp FeatureManager_stage_light_report.cpp FeatureManager_gen.cpp FM_GenMatching.cpp  FM_Blank.cpp 
+MorphEngine/MorphEngine.cpp FeatureReport_UTIL.cpp FeatureManager_stage_light_report.cpp 
+# FeatureManager_gen.cpp 
+# FM_GenMatching.cpp  
+# FM_Blank.cpp 
 )
 target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
 

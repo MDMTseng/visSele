@@ -85,9 +85,19 @@ static uint64_t current_time_ms(void)
 class PerifChannel;
 
 
+enum image_pipe_info_OccupyFIdx
+{
+  // imgInsp,
+  // datView,
+  snapSave,
+  resendCache
+};
 
 typedef struct image_pipe_info
 {
+
+  uint32_t occupyFlag;
+  bool endLifeCycle;
   CameraLayer *camLayer;
   int type;
   void *context;
@@ -106,7 +116,6 @@ typedef struct image_pipe_info
     cJSON *report_json;
   } datViewInfo;
 } image_pipe_info;
-
 
 int BPG_prot_cb_acvImage_Send(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 //typedef int (*BPG_protocol_data_feed_callback)(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);

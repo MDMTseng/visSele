@@ -18,13 +18,13 @@ else(APPLE)
 endif()
 
 
-set(OpenCV_DIR C:/OpenCV-MinGW)
+# set(OpenCV_DIR C:/OpenCV-MinGW)
 
 
-# opencv
-set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} /opt/ros/kinetic)
-find_package(OpenCV 4 REQUIRED)
-include_directories(${OpenCV_INCLUDE_DIRS})
+# # opencv
+# set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} /opt/ros/kinetic)
+# find_package(OpenCV 4 REQUIRED)
+# include_directories(${OpenCV_INCLUDE_DIRS})
 
 find_package(OpenMP)
 if (OPENMP_FOUND)
@@ -51,7 +51,7 @@ add_custom_target(really-clean
 )
 
 add_subdirectory($ENV{MODULE_MatchingEngine} $ENV{MODULE_MatchingEngine})
-add_subdirectory($ENV{MODULE_shape_based_matching} $ENV{MODULE_shape_based_matching})
+# add_subdirectory($ENV{MODULE_shape_based_matching} $ENV{MODULE_shape_based_matching})
 
 add_custom_target(
     mod_target
@@ -60,7 +60,7 @@ add_custom_target(
 )
 
 
-SET(COMMON_COMPILE_FLAGS "-Wall -Wno-sign-compare -Wno-write-strings -Wno-unused-variable")
+SET(COMMON_COMPILE_FLAGS "-Wall -Wno-sign-compare -Wno-write-strings -Wno-unused-variable -static -static-libgcc -static-libstdc++ -Wl,-Bstatic -lstdc++ -lpthread")
 SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${COMMON_COMPILE_FLAGS}")
 
 if($ENV{FEATURE_COMPILE_W_ARAVIS} EQUAL 1)
@@ -107,7 +107,7 @@ endif()
 
 add_executable (visSele main.cpp tmpCodes.cpp wiringPanel.cpp)
 
-add_dependencies(visSele mod_target MatchingEngine shape_based_matching)
+add_dependencies(visSele mod_target MatchingEngine)
 
 target_link_libraries(visSele
   $ENV{MODULE_MatchingEngine}/libMatchingEngine.a
@@ -126,9 +126,9 @@ target_link_libraries(visSele
   $ENV{MODULE_BPG_Protocol}/BPG_Protocol.a
   $ENV{MODULE_simple_uart}/simple_uart.a
 
-  $ENV{MODULE_shape_based_matching}/libshape_based_matching.a
+  # $ENV{MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
-  ${OpenCV_LIBS}
+  # ${OpenCV_LIBS}
   ${PLAT_LIBS}
   ${LINK_LIBS_CAMERA}
   )
@@ -148,8 +148,8 @@ include_directories (
   $ENV{MODULE_MindVision_GIGE}/include 
   $ENV{MODULE_Compat_dirent}/include 
   $ENV{MODULE_polyfit}/include 
-  $ENV{MODULE_shape_based_matching}/include 
-  $ENV{MODULE_shape_based_matching}/MIPP 
+  # $ENV{MODULE_shape_based_matching}/include 
+  # $ENV{MODULE_shape_based_matching}/MIPP 
   $ENV{MODULE_MatchingEngine}/include
   $ENV{MODULE_MatchingEngine}/include_priv
   $ENV{MODULE_MatchingEngine}/MorphEngine/include
@@ -161,6 +161,6 @@ include_directories (
   $ENV{MODULE_wfqueue}
   $ENV{MODULE_lodepng}
   ${OS_SP_inc}
-  ${OpenCV_INCLUDE_DIRS}
+  # ${OpenCV_INCLUDE_DIRS}
   )
   

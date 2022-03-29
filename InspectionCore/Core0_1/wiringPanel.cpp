@@ -60,7 +60,7 @@ int InspSampleSaveMaxCount = 1000;
 
 const int resourcePoolSize = 30;
 
-std::timed_mutex lastDatViewCache_lock;
+std::mutex lastDatViewCache_lock;
 image_pipe_info *lastDatViewCache=NULL;
 TSQueue<image_pipe_info *> inspQueue(10);
 TSQueue<image_pipe_info *> datViewQueue(10);
@@ -74,7 +74,44 @@ int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directSt
 int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us);
 
 
-void InspResultAction(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool *skipImageTransfer, bool *inspSnap, bool *ret_pipe_pass_down = NULL, float datViewMaxFPS=DATA_VIEW_MAX_FPS);
+void image_pipe_info_occupyFlag_set(image_pipe_info &pinfo,image_pipe_info_OccupyFIdx fidx)
+{
+  pinfo.occupyFlag|=(((typeof(pinfo.occupyFlag))1)<<fidx);
+}
+void image_pipe_info_occupyFlag_clr(image_pipe_info &pinfo,image_pipe_info_OccupyFIdx fidx)
+{
+  pinfo.occupyFlag&=~(((typeof(pinfo.occupyFlag))1)<<fidx);
+}
+
+
+bool image_pipe_info_gc(image_pipe_info &info,resourcePool<image_pipe_info> &pool)
+{
+  if(info.occupyFlag!=0)return false;
+  pool.retResrc(&info);
+  return true;
+}
+bool image_pipe_info_resendCache_swap_and_gc(image_pipe_info &info,resourcePool<image_pipe_info>&pool)
+{
+  if(lastDatViewCache==&info)return true;
+  std::lock_guard<std::mutex> guard(lastDatViewCache_lock);
+  image_pipe_info_occupyFlag_set(info,image_pipe_info_OccupyFIdx::resendCache);
+  if(lastDatViewCache==NULL)
+  {
+    lastDatViewCache=&info;
+    return true;
+  }
+  image_pipe_info *bk_Cache=lastDatViewCache;
+  lastDatViewCache=&info;
+  image_pipe_info_occupyFlag_clr(*bk_Cache,image_pipe_info_OccupyFIdx::resendCache);
+  return image_pipe_info_gc(*bk_Cache,pool);
+}
+
+void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool *skipImageTransfer, bool *inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS,bool pureSendImg);
+
+void InspResultAction(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool *skipImageTransfer, bool *inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS=10)
+{
+  InspResultAction_s(imgPipe,skipInspDataTransfer,skipImageTransfer,inspSnap,ret_pipe_pass_down,datViewMaxFPS,false);
+}
 void setThreadPriority(std::thread &thread, int type, int priority)
 {
 
@@ -2759,7 +2796,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
 
 
-          InspResultAction(lastDatViewCache, &skipInspDataTransfer, &skipImageTransfer , &inspSnap,NULL,0.8);
+          InspResultAction_s(lastDatViewCache, &skipInspDataTransfer, &skipImageTransfer , &inspSnap,NULL,2,true);
 
           LOGI("IMG resend DONE....!!!!");
           lastDatViewCache_lock.unlock();
@@ -3220,7 +3257,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   headImgPipe->type = type;
   headImgPipe->context = context;
   headImgPipe->fi = finfo;
-  
+  headImgPipe->occupyFlag=0;
   headImgPipe->img.ReSize(finfo.width,finfo.height,3);
   cl_GMV.ExtractFrame(headImgPipe->img.CVector[0],3,finfo.width*finfo.height);
 
@@ -3354,7 +3391,7 @@ int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeSta
 
 float avgInterval=0;
 uint64_t lastImgSendTime=0;
-void InspResultAction(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool *skipImageTransfer, bool *inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS)
+void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool *skipImageTransfer, bool *inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS,bool pureSendImg)
 {
   static int frameActionID = 0;
   if (ret_pipe_pass_down)
@@ -3565,6 +3602,8 @@ void InspResultAction(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool
       
       lastImgSendTime=cur_ms;
       avgInterval=cur_avgInterval;
+      if(pureSendImg==false)
+        image_pipe_info_resendCache_swap_and_gc(*imgPipe,bpg_pi.resPool);
       // lastImgSendTime=t;
     }
 
@@ -3594,6 +3633,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool
 
   if (*inspSnap==true)
   {
+    image_pipe_info_occupyFlag_set(*imgPipe,image_pipe_info_OccupyFIdx::snapSave);
     if (inspSnapQueue.push(imgPipe))
     {
       if (ret_pipe_pass_down)//we passed the info into inspSnapQueue, so mark it
@@ -3601,6 +3641,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool
     }
     else
     {
+      image_pipe_info_occupyFlag_clr(*imgPipe,image_pipe_info_OccupyFIdx::snapSave);
       *inspSnap=false;
       LOGE("inspSnapQueue is full.... skip the save");
       saveInspQFullSkipCount++;
@@ -3756,50 +3797,6 @@ int removeOldestRep(const char* path,const char* ext)
 }
 
 
-
-//if updateLastCache==false => del targetEle
-//if updateLastCache==true =>  del lastDatViewCache; lastDatViewCache=targetEle
-int pipeEleRecycle(image_pipe_info *targetEle, bool updateLastCache)
-{
-
-
-  if(targetEle==lastDatViewCache)//same element
-  {
-    return -2;
-  }
-
-  image_pipe_info *destroyObj=targetEle;
-
-
-  lastDatViewCache_lock.lock();
-  if(updateLastCache==true)
-  {
-    if(lastDatViewCache==NULL)
-    {
-      destroyObj=NULL;
-    }
-    else
-    {
-      destroyObj=lastDatViewCache;
-    }
-    
-    lastDatViewCache=targetEle;
-  }
-  int ret=-1;
-  if(destroyObj!=NULL)
-  {
-    cJSON_Delete(destroyObj->datViewInfo.report_json);
-    destroyObj->datViewInfo.report_json = NULL;
-    bpg_pi.resPool.retResrc(destroyObj);
-    ret=0;
-  }
-  lastDatViewCache_lock.unlock();
-
-  return ret;
-}
-
-
-
 void InspSnapSaveThread(bool *terminationflag)
 {
   using Ms = std::chrono::milliseconds;
@@ -3888,9 +3885,9 @@ void InspSnapSaveThread(bool *terminationflag)
         saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &headImgPipe->img, filePath.c_str());
       }
 
-
-      
-      pipeEleRecycle(headImgPipe,false);
+      image_pipe_info_occupyFlag_clr(*headImgPipe,image_pipe_info_OccupyFIdx::snapSave);//clear the snap flag
+      //possible occupation flag => resendCache, let image_pipe_info_resendCache_swap_and_gc handle it
+      image_pipe_info_gc(*headImgPipe,bpg_pi.resPool);//try to gc the pointer, if there is no occupation
     }
   }
 }
@@ -3982,16 +3979,8 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
 
       InspResultAction(headImgPipe,&skipInspDataTransfer , &skipImageTransfer , &inspSnap, &doPassDown,maxFPS);
-
-      //delayStartCounter=10000;
-      if (!doPassDown)
-      { //there is the end, recycle the resource
-        //the logic here is to preserve the last datView info, so that we can use it if it's the last frame
-        //if skipImageTransfer==false => image is sent => we want to update the last cache image
-        bool doUpdateLastCache=(skipImageTransfer==false);
-        pipeEleRecycle(headImgPipe,doUpdateLastCache);
-      }
-    
+      //possible occupationFlag snap save | resendCache
+      image_pipe_info_gc(*headImgPipe,bpg_pi.resPool);//if all occupation flag cleared, it will gc the pointer    
       
     }
   }
@@ -4032,30 +4021,30 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
   //if(stackingC!=0)return;
 
-  if (0)
-  {
-    if (imstack.imgStacked.GetHeight() != capImg.GetHeight() || imstack.imgStacked.GetWidth() != capImg.GetWidth())
-    {
-      imstack.ReSize(&capImg);
-    }
-    else if (imstack.DiffBigger(&capImg, 10, 30))
-    {
-      imstack.Reset();
-    }
+  // if (0)
+  // {
+  //   if (imstack.imgStacked.GetHeight() != capImg.GetHeight() || imstack.imgStacked.GetWidth() != capImg.GetWidth())
+  //   {
+  //     imstack.ReSize(&capImg);
+  //   }
+  //   else if (imstack.DiffBigger(&capImg, 10, 30))
+  //   {
+  //     imstack.Reset();
+  //   }
 
-    LOGI("stackingC:%d", imstack.stackingC);
-    imstack.Add(&capImg);
-    // LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-  }
-  else
-  {
-    if(imstack.stackingC<imgStackingMaxCount)
-    {
-      imstack.ReSize(&capImg);
-      LOGI("Loading Image to imstack!!!!!");
-      imstack.Add(&capImg);
-    }
-  }
+  //   LOGI("stackingC:%d", imstack.stackingC);
+  //   imstack.Add(&capImg);
+  //   // LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+  // }
+  // else
+  // {
+  //   if(imstack.stackingC<imgStackingMaxCount)
+  //   {
+  //     imstack.ReSize(&capImg);
+  //     LOGI("Loading Image to imstack!!!!!");
+  //     imstack.Add(&capImg);
+  //   }
+  // }
 
   {
 
