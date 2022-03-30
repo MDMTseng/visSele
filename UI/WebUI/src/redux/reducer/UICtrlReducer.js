@@ -141,11 +141,11 @@ function StateReducer(newState, action) {
 
     // console.log(stat_sp,measuredef,new_rep);
 
-    let new_sp={...stat_sp};
-    if(new_rep.status!=INSPECTION_STATUS.FAILURE && new_rep.status!=INSPECTION_STATUS.SUCCESS)
+    if( (new_rep.status!=INSPECTION_STATUS.FAILURE && new_rep.status!=INSPECTION_STATUS.SUCCESS) || measuredef.quality_essential==false)
     {
       return stat_sp;
     }
+    let new_sp={...stat_sp};
     if(new_rep.value>measuredef.USL)//upper NG
     {
       new_sp.SNG_count++;
