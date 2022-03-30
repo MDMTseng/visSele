@@ -243,8 +243,7 @@ export class BPG_WS
   }
   _send(info:any)
   {
-    if(this.websocket===undefined)return false;
-    if(this.websocket.readyState!==WebSocket.OPEN)
+    if(this.websocket===undefined || this.websocket.readyState!==WebSocket.OPEN)
     {
       if(info.promiseCBs!==undefined)
       {
@@ -259,6 +258,14 @@ export class BPG_WS
       PGINFO = info.data._PGINFO_;
       delete info.data["_PGID_"];
       delete info.data["_PGINFO_"];
+    }
+    if(PGID>65535)
+    {
+      if(info.promiseCBs!==undefined)
+      {
+        info.promiseCBs.reject("PGID exceeds 65535");
+      }
+      return false;
     }
     if (PGID === undefined) {
       let maxNum=500;

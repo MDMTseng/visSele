@@ -134,7 +134,7 @@ static BPG_protocol_data convert(uint8_t *dat, size_t len)
   bpgdat.tl[0] = dat[0];
   bpgdat.tl[1] = dat[1];
   bpgdat.prop = dat[2];
-  bpgdat.pgID = (dat[3] << 8) | (dat[4]);
+  bpgdat.pgID = (((uint16_t)dat[3]) << 8) | (dat[4]);
   bpgdat.dat_raw = &(dat[9]);
 
   return bpgdat;
