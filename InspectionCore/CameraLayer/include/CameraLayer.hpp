@@ -70,6 +70,7 @@ class CameraLayer{
     typedef CameraLayer::status (*CameraLayer_Callback)(
         CameraLayer &cl_obj, int type, void* context);
 
+    int triggerMode;
     protected:
 
 
@@ -118,7 +119,7 @@ class CameraLayer{
       return connection_data;
     }
 
-    virtual CameraLayer::status TriggerMode(int type){return NAK;}
+    virtual CameraLayer::status TriggerMode(int type){ triggerMode=type;return NAK;}
 
     virtual CameraLayer::status TriggerCount(int TYPE)
     {

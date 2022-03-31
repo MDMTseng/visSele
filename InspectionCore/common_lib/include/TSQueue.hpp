@@ -463,6 +463,10 @@ public:
     return vec.erase(vec.begin()+idx)!=vec.end();
   }
 
+  void clear()
+  {
+    vec.clear();
+  }
 
 };
 

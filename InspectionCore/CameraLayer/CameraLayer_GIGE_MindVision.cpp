@@ -430,7 +430,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::GetROI(int *x, int *y, int *w, 
 
 CameraLayer::status CameraLayer_GIGE_MindVision::TriggerMode(int type)
 {
-
+  CameraLayer::TriggerMode(type);
   return L_TriggerMode(type);
 }
 

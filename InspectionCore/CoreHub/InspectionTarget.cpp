@@ -25,7 +25,7 @@ void InspectionTarget::setInspDef(cJSON* json)
 {
 }
 
-cJSON* InspectionTarget::getInfo_cJSON()
+cJSON* InspectionTarget::genInfo()
 {
   cJSON *obj=cJSON_CreateObject();
 
@@ -41,6 +41,7 @@ cJSON* InspectionTarget::getInfo_cJSON()
 
   {
     cJSON_AddNumberToObject(obj, "channel_id", channel_id);
+    cJSON_AddStringToObject(obj, "id", id.c_str());
   }
   return obj;
 }
@@ -269,13 +270,13 @@ InspectionTarget* InspectionTargetManager::getInspTar(std::string id)
 }
 
 
-cJSON* InspectionTargetManager::getInspTarListInfo()
+cJSON* InspectionTargetManager::genInspTarListInfo()
 {
   
   cJSON* jarr=cJSON_CreateArray();
   for(int i=0;i<inspTars.size();i++)
   {
-    cJSON_AddItemToArray(jarr, inspTars[i]->getInfo_cJSON());
+    cJSON_AddItemToArray(jarr, inspTars[i]->genInfo());
   }
 
   return jarr;
@@ -329,26 +330,20 @@ CameraLayer::status InspectionTargetManager::CAM_CallBack(CameraLayer &cl_obj, i
 
 void InspectionTargetManager::inspTargetProcess(image_pipe_info &info)
 {
-  std::string trigger_id="TT";
   std::string camera_id=info.StreamInfo.camera->getConnectionData().id;
 
-
-  cJSON *otherInfo=cJSON_CreateObject();
-
-
-  cJSON* reportInfo=cJSON_CreateObject();
-  cJSON_AddStringToObject(reportInfo, "trigger_id", trigger_id.c_str());
-  cJSON_AddStringToObject(reportInfo, "camera_id", camera_id.c_str());
+  // cJSON* reportInfo=cJSON_CreateObject();
+  // cJSON_AddStringToObject(reportInfo, "trigger_tag", info.trigger_tag.c_str());
+  // cJSON_AddStringToObject(reportInfo, "camera_id", camera_id.c_str());
   cJSON* reports=cJSON_CreateArray();
-  cJSON_AddItemToObject(reportInfo, "reports", reports);
+  // cJSON_AddItemToObject(reportInfo, "reports", reports);
   for(int i=0;i<inspTars.size();i++)
   {
     inspTars[i]->CAM_CallBack(
       &(info.StreamInfo),
-      info.img, camera_id, trigger_id);//no trigger id yet
-
-    cJSON_AddItemToArray(reports, inspTars[i]->getInspResult() );
+      info.img, camera_id, info.trigger_tag,info.trigger_id);//no trigger id yet
+    cJSON_AddItemToArray(reports, inspTars[i]->genInspReport() );
   }
-  info.report_json=reportInfo;//collect
+  info.report_json=reports;//collect
   // InspResult_CallBack(info);//TODO: intent code fix this 
 }

@@ -479,6 +479,8 @@ CameraLayer::status CameraLayer_HikRobot_Camera::TriggerCount(int count)
 
 CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
 {
+  
+  CameraLayer::TriggerMode(type);
   // LOGI(">>>>type:%d",type);
   if (type == 0) //continuous
   {

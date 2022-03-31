@@ -110,7 +110,7 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
     {
       struct timeval tp;
       gettimeofday(&tp, NULL);
-      uint64_t _100us = tp.tv_sec * 1000000 + tp.tv_usec; //get current timestamp in milliseconds
+      uint64_t _100us = ((uint64_t)tp.tv_sec) * 1000000 + tp.tv_usec; //get current timestamp in milliseconds
 
       int newX,newY;
       int newW,newH;
@@ -189,16 +189,16 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
         {
             break;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        // if(frameInterval_ms-delay_time>0)
-        // {
-        //     std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));
-        // }
-        // if(modeTriggerSim_sleep>0)
-        // {
-        //     std::this_thread::sleep_for(std::chrono::milliseconds(modeTriggerSim_sleep));
+        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if(frameInterval_ms-delay_time>0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));
+        }
+        if(modeTriggerSim_sleep>0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(modeTriggerSim_sleep));
           
-        // }
+        }
     }
     //ThreadTerminationFlag = 0;
 
@@ -239,11 +239,13 @@ CameraLayer::status CameraLayer_BMP_carousel::SnapFrame(CameraLayer_Callback sna
 
 CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
 {
+  
+    CameraLayer::TriggerMode(mode);
     modeTriggerSim_sleep=0;
 
     if(mode==2)
     {
-      // mode=0;
+      mode=0;
       modeTriggerSim_sleep=10000;
     }
     if(mode>=0)

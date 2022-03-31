@@ -118,7 +118,7 @@ function InspectionTargets({inspDef,onDefSetupUpdate}:{inspDef:type_InspDef,onDe
   if(_inspDef===undefined)return null;
 
   return <>
-    InspectionTargets
+    {/* InspectionTargets */}
 
     <Button onClick={()=>{
       
@@ -194,10 +194,10 @@ function App() {
     core_api.onConnected=()=>{
       ACT_EXT_API_CONNECTED(CORE_ID);
 
-      CNC_api.connect({
-        uart_name:"/dev/cu.SLAB_USBtoUART",
-        baudrate:230400
-      });
+      // CNC_api.connect({
+      //   uart_name:"/dev/cu.SLAB_USBtoUART",
+      //   baudrate:230400
+      // });
     }
 
 
@@ -251,17 +251,23 @@ function App() {
 
           ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
             let api=_api as BPG_WS;//cast
-            Promise.all([
-              api.send_P("CM",0,{
+            
+              api.send("CM",0,{
                 type:"connect",
                 id:camInfo.id,
-                misc:"data/BMP_carousel_test1"}),
-              api.send_P("CM",0,{type:"connected_camera_list"}),
-            ])
-            
-            .then((d)=>{
-              console.log(d);
-            })
+                _PGID_:50000,
+                _PGINFO_:{keep:true},
+                misc:"data/BMP_carousel_test1"},undefined,{
+                  reject:(e)=>{},
+                  resolve:(e)=>{
+
+
+                    console.log(e)
+                  },
+                })
+              // api.send_P("CM",0,{type:"connected_camera_list"})
+
+
           })
         }}/>
         
@@ -271,21 +277,26 @@ function App() {
           ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
             let api=_api as BPG_WS;//cast
             
-            Promise.all([
-              api.send_P("IT",0,{type:"create",id:"INSP1"}),
-              api.send_P("IT",0,{type:"create",id:"INSP2"}),
-              // api.send_P("CM",0,{type:"connected_camera_list"}),
-            ])
-            
-            .then((d)=>{
-              console.log(d);
+
+            api.send("IT",0,{type:"create",id:"INSP1",_PGID_:51000,_PGINFO_:{keep:true}},undefined,{
+                reject:(e)=>{},
+                resolve:(e)=>{
+
+
+                  console.log(e)
+                },
+              })
+
+
+            api.send("IT",0,{type:"create",id:"INSP2",_PGID_:52000,_PGINFO_:{keep:true}},undefined,{
+              reject:(e)=>{},
+              resolve:(e)=>{
+
+
+                console.log(e)
+              },
             })
 
-
-            
-              .then(ret=>{
-                
-              })
           })
 
 
@@ -294,6 +305,19 @@ function App() {
         }}>InspTarget init</Button>
 
 
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as BPG_WS;//cast
+            
+            Promise.all([
+              api.send_P("IT",0,{type:"list"}),
+            ])
+            
+            .then((d)=>{
+              console.log(d);
+            })
+          })
+        }}>InspTarget list</Button>
 
 
 
@@ -313,6 +337,16 @@ function App() {
                 id:"BMP_carousel_0",
               })
 
+              api.send_P(
+                "CM",0,{
+                  type:"start_stream",
+                  id:"BMP_carousel_2"
+                })
+              api.send_P(
+                "CM",0,{
+                  type:"start_stream",
+                  id:"BMP_carousel_3",
+                })
 
 
           })
@@ -327,17 +361,77 @@ function App() {
           ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
             let api=_api as BPG_WS;//cast
             
+            api.send_P(
+              "CM",0,{
+                type:"trigger",
+                id:"BMP_carousel_0",
+                trigger_tag:"KLKS0",
+                trigger_id:0
+              })
+            api.send_P(
+              "CM",0,{
+                type:"trigger",
+                id:"BMP_carousel_0",
+                trigger_tag:"KLKS0",
+                trigger_id:1
+              })
 
-            api.send_P(
-              "CM",0,{
-                type:"stop_stream",
-                id:"BMP_carousel_1"
-              })
-            api.send_P(
-              "CM",0,{
-                type:"stop_stream",
-                id:"BMP_carousel_0"
-              })
+            // api.send_P(
+            //   "CM",0,{
+            //     type:"trigger",
+            //     id:"BMP_carousel_1",
+            //     trigger_tag:"KLKS1"
+            //   })
+
+          })
+
+
+
+
+        }}>Trig</Button>
+
+
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as BPG_WS;//cast
+            
+
+            
+            Promise.all([
+              api.send_P(
+                "CM",0,{
+                  type:"stop_stream",
+                  id:"BMP_carousel_1"
+                }),
+              api.send_P(
+                "CM",0,{
+                  type:"stop_stream",
+                  id:"BMP_carousel_0"
+                }),
+  
+              api.send_P(
+                "CM",0,{
+                  type:"stop_stream",
+                  id:"BMP_carousel_2"
+                }),
+              api.send_P(
+                "CM",0,{
+                  type:"stop_stream",
+                  id:"BMP_carousel_3"
+                })
+            ])
+            
+            .then((d)=>{
+
+              api.send_P(
+                "CM",0,{
+                  type:"clean_trigger_info_matching_buffer",
+                })
+
+
+            })
+
+            
 
 
 

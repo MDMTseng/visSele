@@ -27,13 +27,6 @@
 std::timed_mutex mainThreadLock;
 
 
-
-
-bool doMockTriggerInfo=true;
-
-
-
-
 m_BPG_Protocol_Interface bpg_pi;
 
 
@@ -46,7 +39,8 @@ struct pipetriggerInfo_mix{
   
   struct _triggerInfo{
 
-    std::string triggerTag;
+    int trigger_id;
+    std::string trigger_tag;
     std::string camera_id;
     uint64_t est_trigger_time_us;
   };
@@ -60,7 +54,6 @@ TSVector<pipetriggerInfo_mix> triggerInfoMatchingBuffer;
 
 
 
-
 TSQueue<pipetriggerInfo_mix> triggerInfoMatchingQueue(10);
 
 
@@ -70,18 +63,61 @@ TSQueue<image_pipe_info *> datViewQueue(10);
 TSQueue<image_pipe_info *> inspSnapQueue(5);
 
 
+
+bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
+{
+  int zeroCount=0;
+  for(int i=0;i<3;i++)
+  {
+    if(inspQueue.size()+datViewQueue.size()+inspSnapQueue.size()==0)
+    {
+
+    }
+    else
+    {
+      i=0;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+  for(int i=0;i<triggerInfoMatchingBuffer.size();i++)
+  {
+    if(triggerInfoMatchingBuffer[i].pipeInfo!=NULL)
+    {
+      bpg_pi.resPool.retResrc(triggerInfoMatchingBuffer[i].pipeInfo);
+      triggerInfoMatchingBuffer[i].pipeInfo=NULL;
+    }
+  }
+  triggerInfoMatchingBuffer.clear();
+  return true;
+}
+
+
+
+
 class InspectionTargetManager_m:public InspectionTargetManager
 {
 
 
   void CamStream_CallBack(CameraManager::StreamingInfo &info){
 
+
+
+
+    LOGE("============DO INSP>> waterLvL: insp:%d/%d dview:%d/%d  snap:%d/%d   poolSize:%d trigInfoMatchingSize:%d",
+        inspQueue.size(), inspQueue.capacity(),
+        datViewQueue.size(), datViewQueue.capacity(),
+        inspSnapQueue.size(), inspSnapQueue.capacity(),
+        bpg_pi.resPool.rest_size(),triggerInfoMatchingBuffer.size());
+
+
+
+
     image_pipe_info *pinfo= bpg_pi.resPool.fetchResrc_blocking();
 
     CameraLayer::frameInfo finfo = info.camera->GetFrameInfo();
     pinfo->StreamInfo=info;
     pinfo->fi=finfo;
-    pinfo->triggerTag="";
+    pinfo->trigger_tag="";
     pinfo->img.ReSize(finfo.width,finfo.height,3);
     CameraLayer::status st = info.camera->ExtractFrame(pinfo->img.CVector[0],3,finfo.width*finfo.height);
     LOGI(">>>CAM:%s",pinfo->StreamInfo.camera->getConnectionData().id.c_str());
@@ -89,7 +125,9 @@ class InspectionTargetManager_m:public InspectionTargetManager
     pipetriggerInfo_mix pmix;
     pmix.pipeInfo=pinfo;
     
+      LOGI("0");
     triggerInfoMatchingQueue.push_blocking(pmix);
+      LOGI("1");
 
   }
 
@@ -117,7 +155,8 @@ void TriggerInfoMatchingThread(bool *terminationflag)
     // triggerInfoQueue.pop_blocking(&trigInfo)
     while (triggerInfoMatchingQueue.pop_blocking(headImgPipeMixInfo))
     {
-      triggerInfoMatchingBuffer.w_lock();
+      LOGI("headImgPipeMixInfo.pipeInfo:%p",headImgPipeMixInfo.pipeInfo);
+      // triggerInfoMatchingBuffer.w_lock();
       
       {
 
@@ -131,17 +170,25 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         if(headImgPipeMixInfo.pipeInfo!=NULL)//image/pipe info
         {
           targetImgPipe= headImgPipeMixInfo.pipeInfo;
+          
+
+
+
+          bool doMockTriggerInfo=targetImgPipe->StreamInfo.camera->triggerMode==0;//streaming
+
+
 
           if(doMockTriggerInfo)
           {
             pipetriggerInfo_mix::_triggerInfo mocktrig;
             mocktrig.camera_id=targetImgPipe->StreamInfo.camera->getConnectionData().id;
             mocktrig.est_trigger_time_us=targetImgPipe->fi.timeStamp_us+123;//
-            mocktrig.triggerTag="MOCK:"+mocktrig.camera_id;
+            mocktrig.trigger_id=-1;
+            mocktrig.trigger_tag="Stream";
             
-            triggerInfoMatchingBuffer.w_unlock();
+            // triggerInfoMatchingBuffer.w_unlock();
             triggerInfoMatchingBuffer.push_back({triggerInfo:mocktrig});
-            triggerInfoMatchingBuffer.w_lock();
+            // triggerInfoMatchingBuffer.w_lock();
           }
 
           
@@ -153,13 +200,26 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             if(_triggerInfo.camera_id!=targetImgPipe->StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
 
 
-            int cost=_triggerInfo.est_trigger_time_us-targetImgPipe->fi.timeStamp_us;
-            if(cost<0)cost=-cost;
+            int cost;
+            
+            
+            if(_triggerInfo.est_trigger_time_us==0)
+            {
+              cost=0;
+            }
+            else
+            {
+              cost=_triggerInfo.est_trigger_time_us-targetImgPipe->fi.timeStamp_us;
+              if(cost<0)cost=-cost;
+
+            }
+          
             if(minMatchingCost>cost)
             {
               targetTriggerInfo=_triggerInfo;
               minMatchingIdx=i;
               minMatchingCost=cost;
+              if(cost==0)break;
             }
           }
         }
@@ -174,14 +234,29 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             auto _PipeInfo=triggerInfoMatchingBuffer[i].pipeInfo;
             if(targetTriggerInfo.camera_id!=_PipeInfo->StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
 
+            
+            int cost;
+            
+            
+            if(targetTriggerInfo.est_trigger_time_us==0)
+            {
+              cost=0;
+            }
+            else
+            {
+              cost=_PipeInfo->fi.timeStamp_us-targetTriggerInfo.est_trigger_time_us;
+              if(cost<0)cost=-cost;
+            }
+          
 
-            int cost=_PipeInfo->fi.timeStamp_us-targetTriggerInfo.est_trigger_time_us;
-            if(cost<0)cost=-cost;
+
+
             if(minMatchingCost>cost)
             {
               targetImgPipe=_PipeInfo;
               minMatchingIdx=i;
               minMatchingCost=cost;
+              if(cost==0)break;
             }
           }
         }
@@ -193,7 +268,8 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         if( minMatchingIdx!=-1 && minMatchingCost<1000)
         {
           LOGI("Get matching. idx:%d cost:%d  psss to next Q",minMatchingIdx,minMatchingCost);
-          targetImgPipe->triggerTag=targetTriggerInfo.triggerTag;
+          targetImgPipe->trigger_tag=targetTriggerInfo.trigger_tag;
+          targetImgPipe->trigger_id=targetTriggerInfo.trigger_id;
           inspQueue.push_blocking(targetImgPipe);
           triggerInfoMatchingBuffer.erase(minMatchingIdx);//remove from buffer 
         }
@@ -201,10 +277,16 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         {
           LOGI("No matching.... push in buffer");
           triggerInfoMatchingBuffer.push_back(headImgPipeMixInfo);//no match, add new data to buffer 
+          LOGI("buffer size:%d",triggerInfoMatchingBuffer.size());
+      LOGI(">>>>>");
         }
       }
+      LOGI(">>>>>");
       
-      triggerInfoMatchingBuffer.w_unlock();
+      // triggerInfoMatchingBuffer.w_unlock();
+      
+      LOGI(">>>>>");
+
     }
 
 
@@ -235,8 +317,8 @@ void ImgPipeProcessThread(bool *terminationflag)
     {
       
       LOGI(">>>CAM:%s",headImgPipe->StreamInfo.camera->getConnectionData().id.c_str());
-      LOGI(">>>triggerT:%s",headImgPipe->triggerTag.c_str());
-      // inspTarMan.inspTargetProcess(*headImgPipe);
+      LOGI(">>>triggerT:%s  id:%d",headImgPipe->trigger_tag.c_str(),headImgPipe->trigger_id);
+      inspTarMan.inspTargetProcess(*headImgPipe);
       datViewQueue.push_blocking(headImgPipe);
       // bpg_pi.resPool.retResrc(headImgPipe);
     }
@@ -245,32 +327,103 @@ void ImgPipeProcessThread(bool *terminationflag)
 
 void ImgPipeDatViewThread(bool *terminationflag)
 {
+  
+  acvImage dataSend_buff;
   using Ms = std::chrono::milliseconds;
-  int delayStartCounter = 10000;
   while (terminationflag && *terminationflag == false)
   {
     image_pipe_info *headImgPipe = NULL;
 
     while (datViewQueue.pop_blocking(headImgPipe))
     {
+      {
+
+
+        int imgCHID=headImgPipe->StreamInfo.channel_id;
+    
+        
+        // CameraLayer::BasicCameraInfo data=headImgPipe->StreamInfo.camera->getConnectionData();
+        // cJSON* caminfo=CameraManager::cameraInfo2Json(data);
+
+
+        cJSON* camBrifInfo=cJSON_CreateObject();
+        cJSON_AddStringToObject(camBrifInfo, "trigger_tag", headImgPipe->trigger_tag.c_str());
+        cJSON_AddNumberToObject(camBrifInfo, "trigger_id", headImgPipe->trigger_id);
+        cJSON_AddStringToObject(camBrifInfo, "camera_id",headImgPipe->StreamInfo.camera->getConnectionData().id.c_str());
+
+        bpg_pi.fromUpperLayer_DATA("CM",imgCHID,camBrifInfo);
+        cJSON_Delete(camBrifInfo);
+        
+        
+        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)4};
+        
+        iminfo.fullHeight = headImgPipe->img.GetHeight();
+        iminfo.fullWidth = headImgPipe->img.GetWidth();
+        //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
+        //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+        ImageDownSampling(dataSend_buff, headImgPipe->img, iminfo.scale, NULL);
+
+        bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
+        bpg_pi.fromUpperLayer_SS(imgCHID,true);
+      }
+      
+
+
+
+      if(headImgPipe->report_json)
+      {
+        
+        for (int i = 0 ; i < cJSON_GetArraySize(headImgPipe->report_json) ; i++)
+        {
+          cJSON * report = cJSON_GetArrayItem(headImgPipe->report_json, i);
+          double* channel_id=JFetch_NUMBER(report,"channel_id");
+          int ch_id=channel_id==NULL?0:(int)*channel_id;
+          bpg_pi.fromUpperLayer_DATA("RP",ch_id,report);
+          bpg_pi.fromUpperLayer_SS(ch_id,true);
+        }
+        cJSON_Delete(headImgPipe->report_json);
+        headImgPipe->report_json=NULL;
+
+
+      }
       
       LOGI(">>>CAM:%s",headImgPipe->StreamInfo.camera->getConnectionData().id.c_str());
       //send data to view
       bpg_pi.resPool.retResrc(headImgPipe);
+      
     }
   }
 }
 
 class InspectionTarget_m :public InspectionTarget
-{
+{ 
 public:
+  struct report{
+    bool isReady;
+    std::string trigger_tag;
+    int trigger_id;
+    std::string cam_id;
+    uint64_t timeStamp_us;
+  } ;
 
-  InspectionTarget_m(std::string id):InspectionTarget(id)
+  report rep;
+  InspectionTarget_m(std::string id,cJSON* def):InspectionTarget(id)
   {
+
   }
-  cJSON* getInspResult()
+  cJSON* genInspReport()
   {
-    return NULL;
+    if(rep.isReady==false)return NULL;
+    cJSON *inspresult=NULL;
+  
+    inspresult=cJSON_CreateObject();
+    cJSON_AddStringToObject(inspresult,"id",this->id.c_str());
+    cJSON_AddNumberToObject(inspresult,"channel_id",this->channel_id);
+    cJSON_AddStringToObject(inspresult,"trigger_tag",rep.trigger_tag.c_str());
+    cJSON_AddNumberToObject(inspresult,"trigger_id",rep.trigger_id);
+    cJSON_AddStringToObject(inspresult,"camera_id",rep.cam_id.c_str());
+    cJSON_AddNumberToObject(inspresult,"timeStamp_us",rep.timeStamp_us);
+    return inspresult;
   }
 
   InspectionTarget_EXCHANGE excdata={0};
@@ -301,10 +454,18 @@ public:
 
   }
 
-  void CAM_CallBack(CameraManager::StreamingInfo *srcCamSi,acvImage &img,std::string cam_id,std::string trigger_id)
+  void CAM_CallBack(CameraManager::StreamingInfo *srcCamSi,acvImage &img,std::string cam_id,std::string trigger_tag,int trigger_id)
   {
+    rep.isReady=false;
     CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
-    printf("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%d\n",id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
+    LOGI("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%" PRId64,id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
+
+    rep.trigger_tag=trigger_tag;
+    rep.trigger_id=trigger_id;
+    rep.cam_id=cam_id;
+    rep.timeStamp_us=info.timeStamp_us;
+    
+    rep.isReady=true;
   }
 
   bool returnExchange(InspectionTarget_EXCHANGE* info)
@@ -335,7 +496,7 @@ int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     //   pipetriggerInfo_mix::_triggerInfo mocktrig;
     //   mocktrig.camera_id=targetImgPipe->StreamInfo.camera->getConnectionData().id;
     //   mocktrig.est_trigger_time_us=targetImgPipe->fi.timeStamp_us+123;//
-    //   mocktrig.triggerTag="MOCK:"+mocktrig.camera_id;
+    //   mocktrig.trigger_tag="MOCK:"+mocktrig.camera_id;
       
     //   triggerInfoMatchingBuffer.w_unlock();
     //   triggerInfoMatchingBuffer.push_back({triggerInfo:mocktrig});
@@ -424,7 +585,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
     //      dat->pgID);
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);
-    char err_str[1000] = "\0";
+    char err_str[500] = "\0";
     bool session_ACK = false;
     char tmp[200];    //For string construct json reply
   do
@@ -433,7 +594,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     // if (checkTL("GS", dat) == false)
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
     //       dat->pgID);
-         if (checkTL("HR", dat))
+    if (checkTL("HR", dat))
     {
       LOGI("DataType_BPG>>>>%s", dat->dat_raw);
 
@@ -636,7 +797,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         {
           CameraLayer::BasicCameraInfo data=gcami->camera->getConnectionData();
           cJSON* info = inspTarMan.camman.cameraInfo2Json(data);
-
+          LOGI("dat->pgID:%d",dat->pgID);
           gcami->channel_id=dat->pgID;
           
           fromUpperLayer_DATA("CM",dat->pgID,info);
@@ -693,6 +854,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
 
       }while(0);}
+
       else if(strcmp(type_str, "start_stream") ==0)
       {do{
         char *_cam_id = JFetch_STRING(json, "id");
@@ -716,6 +878,59 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         session_ACK = true;
       }while(0);}
 
+      else if(strcmp(type_str, "start_stream") ==0)
+      {do{
+        char *_cam_id = JFetch_STRING(json, "id");
+        if(_cam_id==NULL)break;
+        std::string id=std::string(_cam_id);
+        CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
+        if(cami==NULL)break;
+        cami->camera->TriggerMode(0);
+
+        session_ACK = true;
+      }while(0);}
+      else if(strcmp(type_str, "clean_trigger_info_matching_buffer") ==0)
+      {do{
+        cleanUp_triggerInfoMatchingBuffer_UNSAFE();
+        LOGI("cleanUp complete!!");
+        session_ACK = true;
+      }while(0);}
+      else if(strcmp(type_str, "trigger") ==0)
+      {do{
+                
+        char *_cam_id = JFetch_STRING(json, "id");
+        if(_cam_id==NULL)break;
+        std::string id=std::string(_cam_id);
+        CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
+
+        LOGI("cami:%p",cami);
+        if(cami==NULL)break;
+
+        char *_trigger_tag = JFetch_STRING(json, "trigger_tag");
+        std::string trigger_tag=_trigger_tag==NULL?"SW_TRIG":std::string(_trigger_tag);
+
+        {
+          
+          pipetriggerInfo_mix mocktrig;
+          mocktrig.pipeInfo=NULL;
+          mocktrig.triggerInfo.camera_id=id;
+          double *_trigger_id = JFetch_NUMBER(json, "trigger_id");
+          mocktrig.triggerInfo.trigger_id=(_trigger_id==NULL)?-1:(int)*_trigger_id;
+          mocktrig.triggerInfo.est_trigger_time_us=0;//
+          mocktrig.triggerInfo.trigger_tag=trigger_tag;
+          
+          triggerInfoMatchingQueue.push_blocking(mocktrig);
+        }
+        cami->camera->Trigger();
+
+
+
+
+        session_ACK = true;
+    
+
+
+      }while(0);}
     }    
     else if (checkTL("IT", dat)) //[I]nsp [T]arget
     {do{
@@ -728,8 +943,28 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         if(_id==NULL)break;
         std::string id=std::string(_id);
 
-        InspectionTarget* inspTar=new InspectionTarget_m(id);
-        session_ACK=inspTarMan.addInspTar(inspTar,id);
+        if(inspTarMan.getInspTar(id)!=NULL)
+        {
+          snprintf(err_str, sizeof(err_str), "InspTar: id:%s is already existed", _id);
+          break;
+        }
+
+
+
+        
+        char* insp_type=JFetch_STRING(json, "def.type");
+        InspectionTarget* inspTar=NULL;
+        if(true || strcmp(insp_type, "m") ==0)
+        {
+          inspTar=new InspectionTarget_m(id,JFetch_OBJECT(json, "def"));
+        }
+
+        if(inspTar)
+        {
+          inspTar->channel_id=dat->pgID;
+          session_ACK=inspTarMan.addInspTar(inspTar,id);
+        }
+
         if(session_ACK==false)delete inspTar;
       }
       else if(strcmp(type_str, "delete") ==0)
@@ -739,6 +974,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         if(_id==NULL)break;
         std::string id=std::string(_id);
         session_ACK=inspTarMan.delInspTar(id);
+        
+      }
+      else if(strcmp(type_str, "list") ==0)
+      {
+        
+        
+            
+        cJSON *IT_list =inspTarMan.genInspTarListInfo();
+        fromUpperLayer_DATA("IT",dat->pgID,IT_list);
+        cJSON_Delete(IT_list);
         
       }
       else if(strcmp(type_str, "exchange") ==0)

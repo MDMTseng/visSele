@@ -109,7 +109,7 @@ public:
   int fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_acvImage_Send_info* imgInfo);
   int fromUpperLayer_DATA(const char*TL,int pgID,char* str);
   int fromUpperLayer_DATA(const char*TL,int pgID,InspectionTarget_EXCHANGE* excahngeInfo);
-  int fromUpperLayer_SS(int pgID,bool isACK,const char*fromTL,const char* error_msg);
+  int fromUpperLayer_SS(int pgID,bool isACK,const char*fromTL=NULL,const char* error_msg=NULL);
   void delete_PeripheralChannel();
   static BPG_protocol_data GenStrBPGData(const char *TL, char *jsonStr);
   

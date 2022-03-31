@@ -621,6 +621,7 @@ CameraLayer::status CameraLayer_Aravis::GetROI(int *x, int *y, int *w, int *h, i
 
 CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
 {
+  CameraLayer::TriggerMode(type);
   GError *err = NULL;
 
 
