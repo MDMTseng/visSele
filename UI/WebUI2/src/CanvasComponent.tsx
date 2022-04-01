@@ -90,7 +90,7 @@ function appendLocalStorage_RecentFiles(key=LOCALSTORAGE_KEY,fileInfo:any)
 }
 
 
-type type_DrawHook_g={
+export type type_DrawHook_g={
   ctx:CanvasRenderingContext2D,
   // base_img:CanvasRenderingContext2D,
   // base_img_scale:number,
@@ -113,19 +113,25 @@ type type_DrawHook_g={
   mouseEdge:boolean,
 }
 
-type type_DrawHook=(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>void
+export type type_DrawHook=(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>void
 
-class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
+export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   regionSelect:{
     pt1:VEC2D|undefined,
     pt2:VEC2D|undefined,
     pcvst1:VEC2D|undefined,
     pcvst2:VEC2D|undefined,
-    onSelect:(info:any,ctx:any)=>any
+    onSelect:(info:any,ctx:any)=>any,
+    start:boolean
   }|undefined
 
-  tmp_canvas:HTMLCanvasElement
+  
+  onMouseStatUpdate:(pt:VEC2D,pcvst:VEC2D)=>void
+  // onViewPortUpdate:(pt:VEC2D,pcvst:VEC2D)=>void
+
+
+
   g:type_DrawHook_g|undefined
 
 
@@ -140,11 +146,13 @@ class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
   constructor(canvasDOM:HTMLCanvasElement) {
     super(canvasDOM);
     this.reset();
-    this.tmp_canvas= document.createElement('canvas');
     this.regionSelect=undefined;
     this.cur_worldTransform_inv= new DOMMatrix();
     this.cur_worldTransform= new DOMMatrix();
     this.drawHook=undefined
+
+    this.onMouseStatUpdate=(pt,pcvst)=>0;
+
   }
 
 
@@ -156,6 +164,35 @@ class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     canvas.height = height;
   }
 
+  regionSelectUpdate(pcvst:VEC2D,selState:number)
+  {
+    let wMat = this.worldTransform();
+    //log.debug("this.camera.matrix::",wMat);
+    let worldTransform = wMat.scale(1);//copy
+    let worldTransform_inv = worldTransform.invertSelf();
+    let pt=this.VecX2DMat(pcvst, worldTransform_inv);
+
+
+    this.onMouseStatUpdate(pt,pcvst);
+
+    if(this.regionSelect===undefined)return;
+    if(selState!=0 && this.regionSelect.start!=true)return;
+    this.regionSelect.start=true;
+    if(selState==0)
+    {
+      this.regionSelect.pt1= this.regionSelect.pt2=pt;
+      this.regionSelect.pcvst1= this.regionSelect.pcvst2=pcvst;
+    }
+
+    if(selState==1 || selState==2)
+    {
+      this.regionSelect.pt2=pt;
+      this.regionSelect.pcvst2=pcvst;
+    }
+
+    
+    this.regionSelect.onSelect(this.regionSelect,selState);
+  }
 
   reset()
   {
@@ -176,23 +213,7 @@ class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     else
     {
       // console.log(this.regionSelect);
-      {
-        let wMat = this.worldTransform();
-        //log.debug("this.camera.matrix::",wMat);
-        let worldTransform = wMat.scale(1);//copy
-        let worldTransform_inv = worldTransform.invertSelf();
-
-        if(this.regionSelect.pcvst1!==undefined && this.regionSelect.pcvst2!==undefined)
-        {
-          this.regionSelect.pt1= this.VecX2DMat(this.regionSelect.pcvst1, worldTransform_inv);
-          this.regionSelect.pt2= this.VecX2DMat(this.regionSelect.pcvst2, worldTransform_inv);
-        }
-      }
-
-
-
-      this.regionSelect.onSelect(this.regionSelect,this);
-      this.regionSelect=undefined;
+      this.regionSelectUpdate(pos,2);
     }
     this.ctrlLogic();
     this.draw();
@@ -219,7 +240,7 @@ class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     }
     else
     {
-      this.regionSelect.pcvst2={ x: this.mouseStatus.x, y: this.mouseStatus.y};
+      this.regionSelectUpdate(this.mouseStatus,1);
     }
 
 
@@ -235,7 +256,12 @@ class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.camera.SetOffset({x:this.canvas.width/2,y:this.canvas.height/2});
     
   }
-  UserRegionSelect(onSelect:(info:any,ctx:any)=>any|undefined)
+
+
+
+  
+  UserRegionSelect(onSelect:
+    ((info:{pt1: VEC2D,pt2: VEC2D,pcvst1: VEC2D,pcvst2: VEC2D},SeleState:number)=>void) |undefined)
   {
     if(onSelect==undefined)
     {
@@ -249,7 +275,8 @@ class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
       pt2:undefined,
       pcvst1:undefined,
       pcvst2:undefined,
-      onSelect
+      onSelect,
+      start:false
     };
   }
   onmousedown(evt:MouseEvent) 
@@ -257,10 +284,10 @@ class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
 
     super.onmousedown(evt);
     // this.doDragging=false;
+    
     if(this.regionSelect!==undefined)
     {
-      this.regionSelect.pcvst1=this.regionSelect.pcvst2=
-        { x: this.mouseStatus.x, y: this.mouseStatus.y};
+      this.regionSelectUpdate(this.mouseStatus,0);
     }
 
   }
@@ -379,26 +406,67 @@ class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
 }
 
-const useDivDimensions = () => {
 
-  const divRef = createRef<HTMLDivElement>()
-  const [dimensions, setDimensions] = useState({ width: 1, height: 2 })
-  React.useEffect(() => {
-    if (divRef.current) {
-      const { current } = divRef
-      const boundingRect = current.getBoundingClientRect()
-      const { width, height } = boundingRect
-      setDimensions({ width: Math.round(width), height: Math.round(height) })
+function useDivDimensions(divRef:React.RefObject<HTMLDivElement | undefined>) {
+  const [dimensions, setDimensions] = useState([0, 0]);
+
+
+  const _this = useRef({isInitSable:false,initQueryInterval:-1,bkClientRect:{width:-1,height:-1}}).current;
+
+  useLayoutEffect(() => {
+
+    function updateSize()
+    {
+      if (divRef.current) {
+        _this.isInitSable=true;
+        const { current } = divRef
+        const boundingRect = current.getBoundingClientRect()
+        const { width, height } = boundingRect
+        const rwh  = [  Math.round(width), Math.round(height) ]
+        if(rwh[0]==dimensions[0] &&rwh[1]==dimensions[1])return;
+        setDimensions(rwh)
+      }
     }
-  }, [divRef])
-  return {divRef,...dimensions}
-}
-interface typeCanvasComponent{
-  dhook:type_DrawHook
-}
-function CanvasComponent( {dhook}:typeCanvasComponent) {
+    window.addEventListener('resize', updateSize);
+    _this.initQueryInterval=window.setInterval(()=>{
+      if(_this.isInitSable==true)
+      {
+        updateSize();
+        window.clearInterval(_this.initQueryInterval);
+      }
+      if (divRef===undefined||divRef.current===undefined)return;
+      if (divRef===null||divRef.current===null)return;
+      if(_this.bkClientRect.width===-1)
+      {
+        _this.bkClientRect=divRef.current.getBoundingClientRect();
+        return;
+      }
+      const boundingRect = divRef.current.getBoundingClientRect();
+      if(_this.bkClientRect.height==boundingRect.height && _this.bkClientRect.width==boundingRect.width)
+      {
 
-  const {divRef,width, height} = useDivDimensions();
+        updateSize();
+        window.clearInterval(_this.initQueryInterval);
+      }
+    },100);
+    return () =>{
+      console.log("REMOVE....");
+      window.removeEventListener('resize', updateSize);
+    }
+  }, []);
+  return dimensions;
+}
+
+export function HookCanvasComponent( {dhook}:{
+  dhook:type_DrawHook
+}) {
+
+  const divRef = useRef<HTMLDivElement>(null)
+  const [width, height] = useDivDimensions(divRef);
+
+
+
+  console.log("<<<<",width, height)
   const pixelRatio = window.devicePixelRatio;
   const canvas = useRef<HTMLCanvasElement>(null);
   const _r = useRef<{canvComp:DrawHook_CanvasComponent|undefined}>({canvComp:undefined});
@@ -426,9 +494,9 @@ function CanvasComponent( {dhook}:typeCanvasComponent) {
   // console.log(width_,height_);
   const displayWidth = Math.floor(pixelRatio * width);
   const displayHeight = Math.floor(pixelRatio * height);
-
+  
   return (
-    <div style={{ width: '100%', height: '500px' }} ref={divRef}>
+    <div style={{ width: '100%', height: '100%' }} ref={divRef}>
       <canvas
         style={{ width: '100%', height: '100%' }}
         ref={canvas}
@@ -439,39 +507,3 @@ function CanvasComponent( {dhook}:typeCanvasComponent) {
     </div>
   );
 };
-
-
-
-var enc = new TextEncoder();
-let funcdHook=(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
-  // console.log(ctrl_or_draw);
-  if(ctrl_or_draw==false)
-  {
-    let scale = canvas_obj.camera.GetCameraScale();
-    scale/=20;
-    if(scale>1)scale=1;
-    if(scale<0.3)scale=0.3;
-    g.ctx.lineWidth = scale*canvas_obj.rUtil.getIndicationLineSize();
-    g.ctx.beginPath();
-
-
-    g.ctx.moveTo(0,0)
-    g.ctx.lineTo(g.ctx.canvas.clientWidth, g.ctx.canvas.clientHeight)
-    g.ctx.stroke()
-  }
-}
-
-
-
-function GenMatching_rdx({img}:{img:any})
-{
-  // let [dhook,setDHook]=useState<type_DrawHook>(
-  //   )
-
-  console.log(funcdHook);
-
-  return <><CanvasComponent dhook={funcdHook}/></>;
-}
-
-
-export default CanvasComponent;

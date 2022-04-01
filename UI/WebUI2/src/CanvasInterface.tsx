@@ -365,13 +365,6 @@ class renderUTIL {
 }
 
 
-
-type IMG_INFO={
-  scale:number,
-  width:number,
-  height:number,
-  img:any
-}
 export class EverCheckCanvasComponent_proto {
 
   EmitEvent: (param:any) => void;
@@ -394,10 +387,7 @@ export class EverCheckCanvasComponent_proto {
   camera:CameraCtrl
   rUtil:renderUTIL
   debounce_zoom_emit:any
-  img_info:IMG_INFO|undefined
-  secCanvas_rawImg:any
-  secCanvas:HTMLCanvasElement
-
+  allow_camera_drag:boolean
   
   getMousePos(evt:MouseEvent) {
     var rect = this.canvas.getBoundingClientRect();
@@ -446,7 +436,6 @@ export class EverCheckCanvasComponent_proto {
 
   constructor(canvasDOM:HTMLCanvasElement) {
     this.canvas = canvasDOM;
-    this.img_info=undefined;
     this.canvas.onmousemove = this.onmousemove.bind(this);
     this.canvas.onmousedown = (ev)=>{
       ev.preventDefault();
@@ -569,12 +558,13 @@ export class EverCheckCanvasComponent_proto {
 
     this.mouseStatus = { x: -1, y: -1, px: -1, py: -1, status: 0, pstatus: 0 };
 
-    this.secCanvas_rawImg = null;
+    // this.secCanvas_rawImg = null;
 
-    this.secCanvas = document.createElement('canvas');
+    // this.secCanvas = document.createElement('canvas');
 
     this.camera = new CameraCtrl();
     this.camera.Scale(100);
+    this.allow_camera_drag=true
 
     this.rUtil = new renderUTIL(this.camera);
     this.debounce_zoom_emit = this.throttle(this.zoom_emit.bind(this), 500);
@@ -596,37 +586,6 @@ export class EverCheckCanvasComponent_proto {
     log.debug("resourceClean......")
   }
 
-  SetImgBuffer(img_info:IMG_INFO|undefined) {
-    if (img_info == this.img_info) return;
-    //this.zoomToCurSignature();
-    // console.log(img_info);
-    this.img_info = img_info;
-    if(img_info==undefined)return;
-    let img = img_info.img;
-    this.secCanvas.width = img.width;
-    this.secCanvas.height = img.height;
-    this.secCanvas_rawImg = img;
-    let ctx2nd = this.secCanvas.getContext('2d');
-    if(ctx2nd==null)return;
-    ctx2nd.putImageData(img, 0, 0);
-
-    log.debug("SetImg::: UPDATE", ctx2nd);
-  }
-
-  
-
-  scaleImageToFitScreen(img_info=this.img_info) {
-    if(img_info===undefined)return;
-    let mmpp = this.rUtil.get_mmpp();
-    // console.log(img_info.scale*img_info.width*mmpp);
-
-    let curScale = this.camera.GetCameraScale();
-    this.camera.Scale(1/curScale);
-    this.camera.Scale(this.canvas.width/(img_info.scale*img_info.width*mmpp));
-    
-    // console.log(this.canvas.width,(img_info.scale*img_info.width*mmpp));
-    this.camera.SetOffset({ x: -(img_info.scale*img_info.width*mmpp)/2, y: -(img_info.scale*img_info.height*mmpp)/2 });
-  }
 
   debounce(func:()=>void, wait:number, immediate:boolean) {
     let timeout:number=-1;
@@ -696,20 +655,6 @@ export class EverCheckCanvasComponent_proto {
     );
   }
 
-  zoom_full() {
-
-    let crop = [0,0,999999,999999];
-    let down_samp_level = 0.001;
-    this.EmitEvent(
-      {
-        type: "down_samp_level_update",
-        data: {
-          down_samp_level,
-          crop
-        }
-      }
-    );
-  }
   onmouseswheel(evt:WheelEvent) {
     //
     let ret_val = this.scaleCanvas(this.mouseStatus, evt.deltaY / 4);
@@ -747,12 +692,11 @@ export class EverCheckCanvasComponent_proto {
     let pos = this.getMousePos(evt);
     this.mouseStatus.x = pos.x;
     this.mouseStatus.y = pos.y;
-    let doDragging = true;
 
     let doDraw=true;
     //console.log("this.state.substate:",this.state.substate);
     
-    if (doDragging) {
+    if (this.allow_camera_drag) {
       if (this.mouseStatus.status == 1) {
         
         doDraw=true;

@@ -11,8 +11,12 @@ import {EXT_API_ACCESS, EXT_API_CONNECTED,EXT_API_DISCONNECTED, EXT_API_REGISTER
 
 import { GetObjElement} from './UTIL/MISC_Util';
 
-import GenMatching_rdx from './CanvasComponent';
+import {HookCanvasComponent,DrawHook_CanvasComponent,type_DrawHook_g,type_DrawHook} from './CanvasComponent';
 import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_API';
+
+import { Row, Col } from 'antd';
+
+
 
 const { TabPane } = Tabs;
 const { Header, Content, Footer,Sider } = Layout;
@@ -143,18 +147,123 @@ function InspectionTargets({inspDef,onDefSetupUpdate}:{inspDef:type_InspDef,onDe
   </>
 }
 
+
+type IMCM_type=
+{
+  camera_id:string,
+  trigger_id:number,
+  trigger_tag:string,
+  image_info:{
+    full_height: number
+    full_width: number
+    height: number
+    image: ImageData
+    offsetX: number
+    offsetY: number
+    scale: number
+    width: number
+  }
+}
+
+
+
+function VIEWUI({IMCM,}:{IMCM:IMCM_type|undefined}){
+  const _ = useRef<any>({
+    imgCanvas:document.createElement('canvas')
+  });
+  let _this=_.current;
+  console.log(IMCM);
+  const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
+  const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);
+
+  useEffect(() => {
+    setDrawHooks([(CoD,g,canvObj)=>{
+      // console.log(_this.imgCanvas);
+      g.ctx.drawImage(_this.imgCanvas, 0, 0);
+    }])
+    
+    // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
+    // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
+    return (() => {
+      });
+      
+  }, []); 
+
+  useEffect(() => {
+    if(IMCM===undefined)return;
+    _this.imgCanvas.width = IMCM.image_info.width;
+    _this.imgCanvas.height = IMCM.image_info.height;
+    console.log(IMCM.image_info);
+    let ctx2nd = _this.imgCanvas.getContext('2d');
+    ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+    if(_this.canvas_obj!==undefined)
+    {
+      _this.canvas_obj.draw();
+    }
+
+
+
+  }, [IMCM]); 
+
+  return <>
+    {/* <Button onClick={()=>{
+
+    }}>InspTarget list</Button> */}
+
+    
+    <HookCanvasComponent dhook={(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
+      _this.canvas_obj=canvas_obj;
+      // console.log(ctrl_or_draw);
+      if(ctrl_or_draw==true)//ctrl
+      {
+
+        // if(canvas_obj.regionSelect===undefined)
+        // canvas_obj.UserRegionSelect((onSelect,draggingState)=>{
+        //   if(draggingState==1)
+        //   {
+
+        //   }
+        //   else if(draggingState==2)
+        //   {
+        //     console.log(onSelect);
+        //     canvas_obj.UserRegionSelect(undefined)
+        //   }
+        // });
+        
+        ctrlHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+      }
+      else//draw
+      {
+        drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+       
+      }
+    }
+    }/>
+
+  </> ;
+
+}
+
+
+
+
 function App() {
   
+  const _ = useRef<any>({
+  });
+  let _this=_.current;
   const dispatch = useDispatch();
   const CORE_API_INFO = useSelector((state:StoreTypes) => state.EXT_API[CORE_ID]);
+
+
   const ACT_EXT_API_REGISTER= (...p:Parameters<typeof EXT_API_REGISTER>) => dispatch(EXT_API_REGISTER(...p));
   const ACT_EXT_API_ACCESS= (...p:Parameters<typeof EXT_API_ACCESS>) => dispatch(EXT_API_ACCESS(...p));
   const ACT_EXT_API_UPDATE= (...p:Parameters<typeof EXT_API_UPDATE>) => dispatch(EXT_API_UPDATE(...p));
   const ACT_EXT_API_CONNECTED= (...p:Parameters<typeof EXT_API_CONNECTED>) => dispatch(EXT_API_CONNECTED(...p));
   const ACT_EXT_API_DISCONNECTED= (...p:Parameters<typeof EXT_API_DISCONNECTED>) => dispatch(EXT_API_DISCONNECTED(...p));
 
-
-  const [camList,setCamList]=useState<{[key:string]:{[key:string]:any,list:any[]}}>({});
+  const [IMCM,setIMCM]=useState<IMCM_type>();
+  // const [camList,setCamList]=useState<{[key:string]:{[key:string]:any,list:any[]}}>({});
 
   useEffect(() => {
     
@@ -200,9 +309,6 @@ function App() {
       // });
     }
 
-
-
-    
     // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
     // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
     return (() => {
@@ -210,19 +316,19 @@ function App() {
       
   }, []); 
 
-  let camUIInfo = Object.keys(camList).map((driverKey:string,index)=>{
+  // let camUIInfo = Object.keys(camList).map((driverKey:string,index)=>{
    
-    let camInfos=camList[driverKey];
+  //   let camInfos=camList[driverKey];
 
-    return camInfos.list.map((cam,idx)=>({
-      driver_idx:index,
-      id:cam.id,
-      misc:(driverKey=="bmpcarousel")?"data/BMP_carousel_test":"",
-      cam_idx:idx,
-      channel_id:index*1000+idx+50000
-    }));
-  }).flat();
-  console.log(camUIInfo);
+  //   return camInfos.list.map((cam,idx)=>({
+  //     driver_idx:index,
+  //     id:cam.id,
+  //     misc:(driverKey=="bmpcarousel")?"data/BMP_carousel_test":"",
+  //     cam_idx:idx,
+  //     channel_id:index*1000+idx+50000
+  //   }));
+  // }).flat();
+  // console.log(camUIInfo);
 
  
   if(GetObjElement(CORE_API_INFO,["state"])!=1)
@@ -260,9 +366,17 @@ function App() {
                 misc:"data/BMP_carousel_test1"},undefined,{
                   reject:(e)=>{},
                   resolve:(e)=>{
-
-
-                    console.log(e)
+                    let IM=e.find((p:any)=>p.type=="IM");
+                    if(IM===undefined)return;
+                    let CM=e.find((p:any)=>p.type=="CM");
+                    if(CM===undefined)return;
+                    let IMCM={
+                      image_info:IM.image_info,
+                      camera_id:CM.data.camera_id,
+                      trigger_id:CM.data.trigger_id,
+                      trigger_tag:CM.data.trigger_tag,
+                    }
+                    setIMCM(IMCM)
                   },
                 })
               // api.send_P("CM",0,{type:"connected_camera_list"})
@@ -270,6 +384,7 @@ function App() {
 
           })
         }}/>
+        <br/>
         
 
 
@@ -368,26 +483,7 @@ function App() {
                 trigger_tag:"KLKS0",
                 trigger_id:0
               })
-            api.send_P(
-              "CM",0,{
-                type:"trigger",
-                id:"BMP_carousel_0",
-                trigger_tag:"KLKS0",
-                trigger_id:1
-              })
-
-            // api.send_P(
-            //   "CM",0,{
-            //     type:"trigger",
-            //     id:"BMP_carousel_1",
-            //     trigger_tag:"KLKS1"
-            //   })
-
           })
-
-
-
-
         }}>Trig</Button>
 
 
@@ -442,76 +538,9 @@ function App() {
 
 
         }}>Stop Stream</Button>
-
-
-
-
+        <VIEWUI IMCM={IMCM}/>
       </Content>
       {/* <Footer style={{ textAlign: 'center' }}>
-
-        <Button onClick={()=>{
-          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
-            let api=_api as BPG_WS;//cast
-            
-
-            api.send(
-              "CM",0,{
-                type:"target_exchange",
-                insp_type:"start_stream",
-                channel_id:test_ch_id
-              },undefined,
-              {
-                reject:(arg:any[])=>console.error(arg),
-                resolve:(arg:any[])=>{
-                  console.log(arg);
-                }
-              })
-
-
-
-          })
-
-
-
-
-        }}>Start Stream</Button>
-
-
-        <Button onClick={()=>{
-          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
-            let api=_api as BPG_WS;//cast
-            
-
-            api.send(
-              "CM",0,{
-                type:"target_exchange",
-                insp_type:"stop_stream",
-                channel_id:test_ch_id
-              },undefined,
-              {
-                reject:(arg:any[])=>console.error(arg),
-                resolve:(arg:any[])=>{
-                  console.log(arg);
-                }
-              })
-
-
-
-          })
-
-
-
-
-        }}>Stop Stream</Button>
-
-        <br/>
-        <Button onClick={()=>{
-          ACT_EXT_API_ACCESS(CNC_PERIPHERAL_ID,(_api)=>{
-            let api=_api as CNC_Perif;//cast
-            api.pushGCode(["G01 Y1000 Z1_600 R11_300 R12_430 F350","G01 Y0 Z1_0 R11_0 R12_0 F350"]);
-          })
-        }}>CNC cmd</Button>
-        
 
 
       </Footer> */}
