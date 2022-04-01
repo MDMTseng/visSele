@@ -1266,6 +1266,7 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
     ];
 
 
+    let isInEM_STOP=GetObjElement(SLID_api.EM_STOP_src_list,[0])!==undefined;
 
 
     _UI_EM_STOP_UI=<>
@@ -1280,13 +1281,14 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
       {/* {SLID_api.EM_STOP_Rule.enable_EM_STOP==false?null: */}
       <>
         <Divider/>
-        <Button onClick={()=>{
+        <Button key="opt SLID" icon={isInEM_STOP?<WarningOutlined/>:undefined} size="large" className={(isInEM_STOP)?"Emergency_Blink":""}
+        onClick={()=>{
           ACT_WS_GET_OBJ(api=>{
             api.clear_EM_STOP_state()
           })
-          ACT_StatInfo_Clear()}}>重置停機資訊</Button>
-
-        
+          ACT_StatInfo_Clear()}} >
+          {isInEM_STOP?"*******":null}重置停機資訊 {isInEM_STOP?"*******":null}
+        </Button>
         <Table dataSource={dataSource} columns={columns} />
         <pre>
         ＊模糊連續NG數- 為防止單獨OK檢測破壞"連續NG數"的累積 <br/>

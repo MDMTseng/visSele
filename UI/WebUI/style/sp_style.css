@@ -99,6 +99,7 @@
 }
 
 .Emergency_Blink {
+  color:#FFF !important;
   animation: DISCONNECT_Blink_ANIMATION 1s infinite;  /* IE 10+, Fx 29+ */
 }
 
