@@ -124,6 +124,7 @@ class InspectionTargetManager
   int getInspTarIdx(std::string id);
 
   bool delInspTar(std::string id);
+  bool clearInspTar();
   
   bool addInspTar(InspectionTarget* inspTar,std::string id);
 
@@ -158,5 +159,5 @@ class InspectionTarget
   //   printf("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%d\n",id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
   // }
 
-  ~InspectionTarget();
+  virtual ~InspectionTarget();
 };

@@ -223,7 +223,7 @@ export class BPG_WS
     })
   }
   send(
-    tl:string,
+    tl:string|undefined,
     prop:number,
     data:TYPE_OBJECT|undefined,
     uintArr:Uint8Array|undefined,
@@ -301,7 +301,8 @@ export class BPG_WS
         _PGINFO_: PGINFO
       });
 
-      this.websocket.send(BPG_Protocol.objbarr2raw(info.tl, info.prop, PGID, info.data, info.uintArr));
+      if(info.tl!==undefined)
+        this.websocket.send(BPG_Protocol.objbarr2raw(info.tl, info.prop, PGID, info.data, info.uintArr));
     }
 
 

@@ -218,7 +218,7 @@ class CameraLayerManager
   CameraLayer* connectCamera(int camera_idx,std::string misc,CameraLayer::CameraLayer_Callback callback, void* ctx)
   {
     if(camera_idx<0 || camera_idx>=camBasicInfo.size())return NULL;
-    printf(">>camera_idx:%d>>\n",camera_idx);
+    // printf(">>camera_idx:%d>>\n",camera_idx);
 #ifdef FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK
 #endif
 #ifdef FEATURE_COMPILE_W_ARAVIS

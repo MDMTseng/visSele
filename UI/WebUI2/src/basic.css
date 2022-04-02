@@ -1,0 +1,9 @@
+
+.overlayCon {
+	position: relative;
+	overflow:hidden;
+}
+.overlay {
+	position: absolute;
+	background: none;
+}

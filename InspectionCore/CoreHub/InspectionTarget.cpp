@@ -256,6 +256,19 @@ bool InspectionTargetManager::delInspTar(std::string id)
   inspTars.erase(inspTars.begin()+idx);
   return true;
 }
+bool InspectionTargetManager::clearInspTar()
+{
+
+  for(int i=0;i<inspTars.size();i++)
+  {
+    printf("i:%d  =>%p   \n ",i,inspTars[i]);
+    delete inspTars[i];
+    printf("i:%d  =>%p   \n ",i,inspTars[i]);
+    inspTars[i]=NULL;
+  }
+  inspTars.clear();
+  return true;
+}
 
 InspectionTarget* InspectionTargetManager::getInspTar(std::string id)
 {

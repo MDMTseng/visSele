@@ -480,6 +480,9 @@ public:
     rsclock.unlock();
     return true;
   }
+  virtual ~InspectionTarget_m()
+  {
+  }
 };
 
 
@@ -759,8 +762,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         
         session_ACK = false;
 
-        LOGI(">>>");
-
         string miscStr="";
         {
           char* misc=JFetch_STRING(json, "misc");
@@ -952,11 +953,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
 
         
-        char* insp_type=JFetch_STRING(json, "def.type");
+        char* insp_type=JFetch_STRING(json, "definfo.type");
         InspectionTarget* inspTar=NULL;
         if(true || strcmp(insp_type, "m") ==0)
         {
-          inspTar=new InspectionTarget_m(id,JFetch_OBJECT(json, "def"));
+          InspectionTarget* inspTar_=new InspectionTarget_m(id,NULL);
+          delete inspTar_;
+          inspTar_=NULL;
+
+          inspTar=new InspectionTarget_m(id,JFetch_OBJECT(json, "definfo"));
         }
 
         if(inspTar)
@@ -975,6 +980,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         std::string id=std::string(_id);
         session_ACK=inspTarMan.delInspTar(id);
         
+      }
+      else if(strcmp(type_str, "delete_all") ==0)
+      {
+        session_ACK=inspTarMan.clearInspTar();
       }
       else if(strcmp(type_str, "list") ==0)
       {

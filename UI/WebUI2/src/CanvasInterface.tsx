@@ -388,13 +388,15 @@ export class EverCheckCanvasComponent_proto {
   rUtil:renderUTIL
   debounce_zoom_emit:any
   allow_camera_drag:boolean
+  pixelRatio:number
   
   getMousePos(evt:MouseEvent) {
     var rect = this.canvas.getBoundingClientRect();
     let mouse = {
-      x: evt.clientX - rect.left,
-      y: evt.clientY - rect.top
+      x: (evt.clientX - rect.left)*this.pixelRatio,
+      y: (evt.clientY - rect.top)*this.pixelRatio
     };
+    
     return mouse;
   }
 
@@ -436,6 +438,7 @@ export class EverCheckCanvasComponent_proto {
 
   constructor(canvasDOM:HTMLCanvasElement) {
     this.canvas = canvasDOM;
+    this.pixelRatio=window.devicePixelRatio;
     this.canvas.onmousemove = this.onmousemove.bind(this);
     this.canvas.onmousedown = (ev)=>{
       ev.preventDefault();

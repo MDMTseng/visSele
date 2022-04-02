@@ -142,7 +142,6 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
   drawHook:type_DrawHook|undefined
 
 
-
   constructor(canvasDOM:HTMLCanvasElement) {
     super(canvasDOM);
     this.reset();
@@ -152,7 +151,6 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.drawHook=undefined
 
     this.onMouseStatUpdate=(pt,pcvst)=>0;
-
   }
 
 
@@ -222,6 +220,7 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   onmousemove(evt:MouseEvent) {
     let pos = this.getMousePos(evt);
+    // console.log(pos);
     this.mouseStatus.x = pos.x;
     this.mouseStatus.y = pos.y;
     let doDragging = true;
@@ -476,6 +475,8 @@ export function HookCanvasComponent( {dhook}:{
   useEffect(() => {
     if(canvas===null || canvas.current===null)return;
     _this.canvComp=new DrawHook_CanvasComponent(canvas.current);
+    
+    _this.canvComp.pixelRatio=pixelRatio;
     return () => {
       _this.canvComp=undefined;//delete the canvas component
     };
@@ -494,7 +495,6 @@ export function HookCanvasComponent( {dhook}:{
   // console.log(width_,height_);
   const displayWidth = Math.floor(pixelRatio * width);
   const displayHeight = Math.floor(pixelRatio * height);
-  
   return (
     <div style={{ width: '100%', height: '100%' }} ref={divRef}>
       <canvas
