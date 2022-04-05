@@ -18,12 +18,15 @@ typedef struct {
 int getDataFromJsonObj(cJSON * obj,void **ret_ptr);
 int getDataFromJsonObj(cJSON * obj,int idx,void **ret_ptr);
 int getDataFromJsonObj(cJSON * obj,const char *name,void **ret_ptr);
-int getDataFromJson(cJSON * obj,char *path,void **ret_ptr);
-void* JFetch(cJSON * obj,char *path,int type);
-void* JFetEx(cJSON * obj,char *path,int type);
+int getDataFromJson(cJSON * obj,const char *path,void **ret_ptr);
+void* JFetch(cJSON * obj,const char *path,int type);
+void* JFetEx(cJSON * obj,const char *path,int type);
 
 #define JFetch_STRING(obj,path) ((char*)JFetch(obj,path,cJSON_String))
 #define JFetch_NUMBER(obj,path) ((double*)JFetch(obj,path,cJSON_Number))
+
+double JFetch_NUMBER_ex(cJSON * obj,const char *path,double defaultNumber=NAN);
+
 #define JFetch_ARRAY(obj,path) ((cJSON*)JFetch(obj,path,cJSON_Array))
 #define JFetch_OBJECT(obj,path) ((cJSON*)JFetch(obj,path,cJSON_Object))
 

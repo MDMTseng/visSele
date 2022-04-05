@@ -196,7 +196,7 @@ function SingleTargetVIEWUI({IMCM_group,rule,onRuleChange}:{
 
 
   
-  return <div style={{width:"500px",height:"500px"}}  className={"overlayCon"}>
+  return <div style={{width:"800px",height:"800px"}}  className={"overlayCon"}>
 
     <div className={"overlay"} >
 
@@ -326,20 +326,21 @@ function VIEWUI(){
     type:"m",
     rules:[
       {
-        name:"rule1",
-        type:"binarize",
+        id:"rule1",
+        type:"ColorRegionLocating",
         camera_id:"BMP_carousel_0",
         trigger_tag:"KLKS0",
-        region:[50,50,100,100],
-        thres:40,
-      },
-      {
-        name:"rule2",
-        type:"binarize",
-        camera_id:"BMP_carousel_0",
-        trigger_tag:"KLKS1",
-        region:[50,50,100,100],
-        thres:40,
+        regionInfo:[
+          {
+            colorThres:40,
+            region:[50,50,100,100],
+
+
+          },
+
+
+
+        ],
       }
     ]
   })
@@ -737,7 +738,7 @@ function VIEWUI(){
         }}>Stop Stream</Button>
 
         {
-          defInfo.rules.map(rule=><SingleTargetVIEWUI key={rule.name} IMCM_group={IMCM_group} rule={rule} onRuleChange={rule=>console.log(rule)}/>)
+          defInfo.rules.map(rule=><SingleTargetVIEWUI key={rule.id} IMCM_group={IMCM_group} rule={rule} onRuleChange={rule=>console.log(rule)}/>)
 
         
         

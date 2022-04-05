@@ -22,7 +22,11 @@
 #include "CameraLayerManager.hpp"
 
 
+#include <opencv2/calib3d.hpp>
+#include "opencv2/imgproc.hpp"
+#include <opencv2/imgcodecs.hpp>
 
+using namespace cv;
 #define _VERSION_ "1.2"
 std::timed_mutex mainThreadLock;
 
@@ -395,7 +399,163 @@ void ImgPipeDatViewThread(bool *terminationflag)
   }
 }
 
-class InspectionTarget_m :public InspectionTarget
+
+class InspectionTarget_s :public InspectionTarget
+{
+
+public:
+  vector <InspectionTarget_s*> *localGroup;
+  InspectionTarget_s(std::string id,cJSON* def,vector <InspectionTarget_s*> *localGroup):InspectionTarget(id)
+  {
+    this->localGroup=localGroup;
+    // setInspDef(def);
+    // report=NULL;
+  }
+
+  virtual bool checkRef()=0;
+
+  virtual acvImage* fetchImage(std::string id)=0;
+
+  virtual cJSON* fetchInspReport()=0;
+
+
+  virtual void setInspDef(cJSON* def)=0;
+
+  virtual void CAM_CallBack(CameraManager::StreamingInfo *srcCamSi,acvImage &img,std::string cam_id,std::string trigger_tag,int trigger_id)=0;
+  
+  virtual ~InspectionTarget_s()
+  {
+  }
+
+};
+
+
+
+class InspectionTarget_s_ColorRegionDetection :public InspectionTarget_s
+{
+
+  cJSON* report;
+public:
+  InspectionTarget_s_ColorRegionDetection(std::string id,cJSON* def,vector <InspectionTarget_s*> *localGroup):InspectionTarget_s(id,def,localGroup)
+  {
+    // this->localGroup=localGroup;
+    setInspDef(def);
+    report=NULL;
+  }
+
+  bool checkRef()
+  {
+    return true;
+  }
+
+  acvImage* fetchImage(std::string id)
+  {
+    return NULL;
+  }
+
+  cJSON* fetchInspReport()
+  {
+    return report;
+  }
+
+
+  virtual void setInspDef(cJSON* def)
+  {
+
+
+    //clean up objects
+    InspectionTarget::setInspDef(def);
+    //build up objects
+
+
+
+
+  }
+
+  void CAM_CallBack(CameraManager::StreamingInfo *srcCamSi,acvImage &img,std::string cam_id,std::string trigger_tag,int trigger_id)
+  {
+    CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
+    LOGI("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%" PRId64,id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
+
+
+    cv::Mat def_temp_img(img.GetHeight(),img.GetWidth(),CV_8UC3,img.CVector[0]);
+
+
+    for(int i=0;;i++)
+    {
+      std::string key="regionInfo["+std::to_string(i)+"]";
+      
+      LOGI("key:%s",key.c_str());
+      cJSON *regionInfo=JFetch_OBJECT(def,key.c_str());
+      if(regionInfo==NULL)break;
+
+
+      try{
+        int X=(int)*JFetEx_NUMBER(regionInfo,"region[0]");
+        int Y=(int)*JFetEx_NUMBER(regionInfo,"region[1]");
+        int W=(int)*JFetEx_NUMBER(regionInfo,"region[2]");
+        int H=(int)*JFetEx_NUMBER(regionInfo,"region[3]");
+        double colorThres=*JFetEx_NUMBER(regionInfo,"colorThres");
+
+
+        cv::Mat def_temp_img_ROI = def_temp_img(cv::Rect(X, Y, W, H));
+
+        cv::Mat grayscaleMat (def_temp_img_ROI.size(), CV_8U);
+        cv::cvtColor(def_temp_img_ROI, grayscaleMat,COLOR_RGB2GRAY);
+        // cv::Mat image1=def_temp_img_ROI.copyTo(def_temp_img_ROI);
+
+        cv::threshold(grayscaleMat, grayscaleMat, colorThres, 255, cv::THRESH_BINARY);
+        
+        cv::cvtColor(grayscaleMat,def_temp_img_ROI,COLOR_GRAY2RGB);
+
+        Mat labels;
+        Mat1i stats;
+        Mat1d centroids;
+        int n_labels = connectedComponentsWithStats(grayscaleMat, labels, stats, centroids);
+
+        
+        LOGI("idx:%d  colorThres>%f  region:[%d,%d,%d,%d],n_labels:%d",i,colorThres,
+          X,Y,W,H,n_labels);
+
+
+
+
+      }catch(...)
+      {
+        
+        LOGE("....ERROR....");
+      }
+      
+      char* defStr=cJSON_Print(regionInfo);
+      LOGI(">>>%d\n%s",i,defStr);
+      delete defStr;
+
+
+
+    }
+
+
+  }
+  
+  virtual ~InspectionTarget_s_ColorRegionDetection()
+  {
+    if(report)
+    {
+      cJSON_Delete(report);
+      report=NULL;
+    }
+  }
+
+  virtual InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info)
+  {
+    return NULL;
+  }
+
+};
+
+
+
+class InspectionTarget_g :public InspectionTarget
 { 
 public:
   struct report{
@@ -407,10 +567,25 @@ public:
   } ;
 
   report rep;
-  InspectionTarget_m(std::string id,cJSON* def):InspectionTarget(id)
-  {
 
+  vector<InspectionTarget_s*> subInspList;
+  
+  cJSON *inspresult=NULL;
+  InspectionTarget_g(std::string id,cJSON* def):InspectionTarget(id)
+  {
+    setInspDef(def);
+
+    char* defStr=cJSON_Print(this->def);
+    LOGI("\n%s",defStr);
+    delete defStr;
   }
+
+
+  cJSON* fetchInspReport()
+  {
+    return inspresult;
+  }
+
   cJSON* genInspReport()
   {
     if(rep.isReady==false)return NULL;
@@ -454,6 +629,65 @@ public:
 
   }
 
+  
+  
+  virtual void setInspDef(cJSON* def)
+  {
+
+    for(int i=0;i<subInspList.size();i++)
+    {
+      delete subInspList[i];
+      subInspList[i]=NULL;
+    }
+    subInspList.clear();
+
+    //clean up objects
+    InspectionTarget::setInspDef(def);
+    //build up objects
+
+    if(0){
+      char* defStr=cJSON_Print(def);
+      LOGI("\n%s",defStr);
+      delete defStr;
+    }
+
+
+    
+    cJSON* rules=JFetch_ARRAY(def,"rules");
+    for (int i = 0 ; i < cJSON_GetArraySize(rules) ; i++)
+    {
+      cJSON * rule = cJSON_GetArrayItem(rules, i);
+    
+      std::string type=std::string(JFetch_STRING(rule,"type"));
+    
+      std::string id=std::string(JFetch_STRING(rule,"id"));
+
+      
+      if(type=="ColorRegionLocating")
+      {
+        InspectionTarget_s* subIT=
+          new InspectionTarget_s_ColorRegionDetection(id,rule,&subInspList);
+        subInspList.push_back(subIT);
+      }
+      else
+      {
+        //failed
+      }
+
+    }
+
+    bool is_Ref_OK=true;
+    for (int i = 0 ; i < subInspList.size() ; i++)
+    {
+      if(subInspList[i]->checkRef()==false)
+      {
+        is_Ref_OK=false;
+        break;
+      }
+    }
+
+  }
+
   void CAM_CallBack(CameraManager::StreamingInfo *srcCamSi,acvImage &img,std::string cam_id,std::string trigger_tag,int trigger_id)
   {
     rep.isReady=false;
@@ -466,6 +700,18 @@ public:
     rep.timeStamp_us=info.timeStamp_us;
     
     rep.isReady=true;
+
+
+    for(int i=0;i<subInspList.size();i++)
+    {
+      subInspList[i]->CAM_CallBack(srcCamSi,img,cam_id,trigger_tag,trigger_id);
+    }
+    if(inspresult!=NULL)
+    {
+      cJSON_Delete(inspresult);
+      inspresult=NULL;
+    }
+    inspresult=genInspReport();
   }
 
   bool returnExchange(InspectionTarget_EXCHANGE* info)
@@ -480,8 +726,12 @@ public:
     rsclock.unlock();
     return true;
   }
-  virtual ~InspectionTarget_m()
+  virtual ~InspectionTarget_g()
   {
+    if(inspresult!=NULL)
+    {
+      cJSON_Delete(inspresult);
+    }
   }
 };
 
@@ -957,11 +1207,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         InspectionTarget* inspTar=NULL;
         if(true || strcmp(insp_type, "m") ==0)
         {
-          InspectionTarget* inspTar_=new InspectionTarget_m(id,NULL);
-          delete inspTar_;
-          inspTar_=NULL;
-
-          inspTar=new InspectionTarget_m(id,JFetch_OBJECT(json, "definfo"));
+          inspTar=new InspectionTarget_g(id,JFetch_OBJECT(json, "definfo"));
         }
 
         if(inspTar)

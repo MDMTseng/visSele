@@ -138,20 +138,20 @@ class InspectionTargetManager
 
 class InspectionTarget
 {
-  cJSON *InspConf=NULL;
   public:
   int channel_id;
   std::string id;
   
+  cJSON *def=NULL;
 
   InspectionTarget(std::string id);
-  void setInspDef(cJSON* json);
+  virtual void setInspDef(const cJSON* def);
   cJSON* genInfo();
 
   acvImage img_buff;
   virtual InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info)=0;
-
-  virtual cJSON* genInspReport()=0;
+  virtual cJSON* fetchInspReport()=0;
+  // virtual cJSON* genInspReport()=0;
   bool returnExchange(InspectionTarget_EXCHANGE* info);
   virtual void CAM_CallBack(CameraManager::StreamingInfo *srcCamSi,acvImage &img,std::string cam_id,std::string trigger_tag,int trigger_id)=0;
   // {

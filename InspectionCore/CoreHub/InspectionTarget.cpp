@@ -13,17 +13,20 @@ cJSON* CameraManager::cameraInfo2Json(CameraLayer::BasicCameraInfo &info)
 
 InspectionTarget::InspectionTarget(std::string id)
 {
-  this->id=id;
   
-  // this->camera=camera;
-  // InspConf=inspectionConfig;
+  this->def=NULL;
+  this->id=id;
 }
 
 
-
-void InspectionTarget::setInspDef(cJSON* json)
+void InspectionTarget::setInspDef(const cJSON* def)
 {
+  if(this->def)cJSON_Delete(this->def);
+  this->def=NULL;
+  if(def)
+    this->def= cJSON_Duplicate(def, cJSON_True);
 }
+
 
 cJSON* InspectionTarget::genInfo()
 {
@@ -53,10 +56,7 @@ cJSON* InspectionTarget::genInfo()
 
 InspectionTarget::~InspectionTarget()
 {
-  if(InspConf)
-    cJSON_Delete(InspConf);
-  InspConf=NULL;
-
+  setInspDef(NULL);
 }
 
 string CameraManager::cameraDiscovery()
@@ -355,7 +355,7 @@ void InspectionTargetManager::inspTargetProcess(image_pipe_info &info)
     inspTars[i]->CAM_CallBack(
       &(info.StreamInfo),
       info.img, camera_id, info.trigger_tag,info.trigger_id);//no trigger id yet
-    cJSON_AddItemToArray(reports, inspTars[i]->genInspReport() );
+    cJSON_AddItemToArray(reports, cJSON_Duplicate(inspTars[i]->fetchInspReport(),cJSON_True ));
   }
   info.report_json=reports;//collect
   // InspResult_CallBack(info);//TODO: intent code fix this 

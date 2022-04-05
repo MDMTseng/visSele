@@ -52,8 +52,16 @@ int getDataFromJsonObj(cJSON * obj,const char *name,void **ret_ptr)
   return getDataFromJsonObj(tmpObj,ret_ptr);
 }
 
-int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
+int getDataFromJson(cJSON * obj,const char *path,void **ret_ptr)
 {
+  // if(path==NULL || path[0]=='\0')return cJSON_Invalid;
+  if(path[0]=='[')
+  {
+    return getDataFromJson(obj,path+1,ret_ptr);
+  }
+
+
+
   void *dummy_target;
   if(ret_ptr==NULL)
   {
@@ -62,7 +70,6 @@ int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
   char buff[64];//HACK no check
   if(strlen(path)>sizeof(buff))return -1;
   strcpy(buff,path);
-  char *nextSection=nextSection;
   int i=0;
   char endType;
   for(i=0;i<sizeof(buff);i++)
@@ -79,7 +86,7 @@ int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
   }
   buff[i]='\0';
   int nameLength = i;
-  nextSection = path+(i+((endType=='\0')?0:1));
+  const char *nextSection = path+(i+((endType=='\0')?0:1));
 
   //printf("%s  %s  %s  obj->type:%d\n",buff,path,nextSection,obj->type);
   cJSON * curobj=obj;
@@ -124,9 +131,8 @@ int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
           *ret_ptr = (void*)getobj;
           return obj_type;
         }
-        if(nextSection[0]=='.')//Skip the .
-          nextSection++;
-        return getDataFromJson(getobj,nextSection,ret_ptr);
+        int skipIdx = nextSection[0]=='.'?1:0;
+        return getDataFromJson(getobj,nextSection+skipIdx,ret_ptr);
       }
       else if(obj->type&cJSON_Object)
       {
@@ -166,7 +172,7 @@ int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
 }
 
 
-void* JFetch(cJSON * obj,char *path,int type)
+void* JFetch(cJSON * obj,const char *path,int type)
 {
   void* tmp_ptr=NULL;
   if(0!=(getDataFromJson(obj,path,&tmp_ptr)&type))
@@ -177,7 +183,7 @@ void* JFetch(cJSON * obj,char *path,int type)
 
 }
 
-void* JFetEx(cJSON * obj,char *path,int type)
+void* JFetEx(cJSON * obj,const char *path,int type)
 {
   void *ptr = JFetch(obj,path,type);
   if(ptr == NULL)
@@ -464,4 +470,12 @@ int SaveJson(cJSON* json,const char* path)
   int ret = WriteBytesToFile((uint8_t*)jsonStr,strlen(jsonStr),path);
   delete(jsonStr);
   return (ret<0)?-1:0;
+}
+
+
+
+double JFetch_NUMBER_ex(cJSON * obj,const char *path,double defaultNumber){
+  double* pn=JFetch_NUMBER(obj,path);
+  if(pn)return *pn;
+  return defaultNumber;
 }
