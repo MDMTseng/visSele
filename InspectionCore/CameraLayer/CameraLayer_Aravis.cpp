@@ -90,6 +90,26 @@ void empty_stream(ArvStream *stream)
   return;
 }
 
+
+CameraLayer::FrameExtractPixelFormat CameraLayer_Aravis::GetFrameFormat()
+{
+
+  ArvPixelFormat format = arv_buffer_get_image_pixel_format	(_frame_cache_buffer);
+
+  if(format == ARV_PIXEL_FORMAT_MONO_8)
+  {
+    return CameraLayer::FrameExtractPixelFormat::Mono;
+  }
+
+  if(format == ARV_PIXEL_FORMAT_BAYER_GR_8)
+  {
+    return CameraLayer::FrameExtractPixelFormat::Bayer_GR;
+  }
+
+  return CameraLayer::FrameExtractPixelFormat::RGB;
+}
+
+
 CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int channelCount, size_t pixelCount)
 {
 
@@ -113,6 +133,7 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
   
   ArvPixelFormat format = arv_buffer_get_image_pixel_format	(_frame_cache_buffer);
 
+  LOGI(">>>>format:%0X  img_size:%d  wh:%d,%d",format,img_size,w,h);
   if(format == ARV_PIXEL_FORMAT_MONO_8)
   {
     
@@ -137,6 +158,94 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
     // LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
     return ACK;
 
+  }
+  else if(format == ARV_PIXEL_FORMAT_BAYER_GR_8)
+  {
+    if(channelCount!=3)return NAK;
+
+
+    //G R G R G R
+    //B G B G B G
+    //G R G R G R
+    //B G B G B G
+    //G R G R G R
+
+    // int h2=h-2;
+    // int w2=w-2;
+
+
+    for(int i=1;i<h-2;i++)
+    {
+      int skipX=1;
+      uint8_t* bayerPix=img_dat+i*w+skipX;
+      uint8_t* bayerPix_NL=img_dat+(i+1)*w+skipX;
+      uint8_t* bayerPix_PL=img_dat+(i-1)*w+skipX;
+      uint8_t* tarPix=imgBuffer+((i*w)+skipX)*channelCount;
+
+      int y_type=2*(i&1);
+      for(int j=1;j<w-2;j++)
+      {
+        
+        int x_type=j&1;
+        int pix_Type=x_type+y_type;
+        int R=0,G=0,B=0;
+
+        if(pix_Type==0)
+        {
+          
+          //B G B G B G
+          //G R[G]R G R
+          //B G B G B G
+          G=(bayerPix[0]+bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/5;
+          R=(bayerPix[1]+bayerPix[-1])/2;
+          B=(bayerPix_NL[0]+bayerPix_PL[0])/2;
+
+        }
+        else if(pix_Type==1)
+        {
+          
+          //B G B G B G
+          //G R G[R]G R
+          //B G B G B G
+          G=(bayerPix[1]+bayerPix[-1]+bayerPix_NL[0]+bayerPix_PL[0])/4;
+          R=bayerPix[0];
+          B=(bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/4;
+        }
+        else if(pix_Type==2)
+        {
+          //G R G R G R
+          //B G[B]G B G
+          //G R G R G R
+          G=(bayerPix[1]+bayerPix[-1]+bayerPix_NL[0]+bayerPix_PL[0])/4;
+          B=bayerPix[0];
+          R=(bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/4;
+        }
+        else//3
+        {
+          //G R G R G R
+          //B G B[G]B G
+          //G R G R G R
+          G=(bayerPix[0]+bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/5;
+          B=(bayerPix[1]+bayerPix[-1])/2;
+          R=(bayerPix_NL[0]+bayerPix_PL[0])/2;
+        }
+
+
+
+
+
+
+        tarPix[0]=B;
+        tarPix[1]=G;
+        tarPix[2]=R;
+        bayerPix++;
+        bayerPix_NL++;
+        bayerPix_PL++;
+        tarPix+=channelCount;
+      }
+
+    }
+    return ACK;
   }
   else
   {
@@ -675,10 +784,10 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
     arv_camera_set_string (camera, "TriggerSource", "Anyway", &err);
     if(err)
     {
-      LOGD("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
-      err=NULL;
-      g_clear_error(&err);
-      return CameraLayer::NAK;
+      // LOGD("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+      // err=NULL;
+      // g_clear_error(&err);
+      // return CameraLayer::NAK;
     }
   }
 

@@ -14,9 +14,19 @@
 
 
 class CameraLayer{
-
+  
     public:
-    
+
+
+    typedef enum {
+      RGB,
+      Mono,
+      Bayer_GR
+    }FrameExtractPixelFormat;
+
+
+
+
     struct BasicCameraInfo{
       std::string driver_name;
       std::string name;
@@ -100,6 +110,11 @@ class CameraLayer{
     
     static std::string getDriverName(){
       return "_CameraLayer_";
+    }
+
+    FrameExtractPixelFormat GetFrameFormat()
+    {
+      return FrameExtractPixelFormat::RGB;
     }
 
     

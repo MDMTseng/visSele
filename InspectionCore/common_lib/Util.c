@@ -479,3 +479,12 @@ double JFetch_NUMBER_ex(cJSON * obj,const char *path,double defaultNumber){
   if(pn)return *pn;
   return defaultNumber;
 }
+
+
+std::string JFetch_STRING_ex(cJSON * obj,const char *path,std::string default_str)
+{
+  
+  char* pstr=JFetch_STRING(obj,path);
+  if(pstr)return std::string(pstr);
+  return default_str;
+}

@@ -1,15 +1,14 @@
 import React from 'react';
 import { useState, useEffect,useRef } from 'react';
 import { useDispatch, useSelector } from "react-redux";
-import { Layout,Button,Tabs } from 'antd';
-
+import { Layout,Button,Tabs,Slider } from 'antd';
 import clone from 'clone';
 
 import {StoreTypes} from './redux/store';
 import {EXT_API_ACCESS, EXT_API_CONNECTED,EXT_API_DISCONNECTED, EXT_API_REGISTER,EXT_API_UNREGISTER, EXT_API_UPDATE} from './redux/actions/EXT_API_ACT';
 
 
-import { GetObjElement} from './UTIL/MISC_Util';
+import { GetObjElement,ID_debounce,ID_throttle} from './UTIL/MISC_Util';
 
 import {HookCanvasComponent,DrawHook_CanvasComponent,type_DrawHook_g,type_DrawHook} from './CanvasComponent';
 import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_API';
@@ -33,6 +32,7 @@ type type_InspDef={
   }[]
 }
 
+let tar_camera_id="BMP_carousel_0";//"MindVision-040010720303";
 
 function CameraDiscover({onCameraSelected}:{onCameraSelected:(...param:any)=>void})
 {
@@ -87,46 +87,6 @@ function CameraDiscover({onCameraSelected}:{onCameraSelected:(...param:any)=>voi
   </>
 }
 
-function InspectionTargets({inspDef,onDefSetupUpdate}:{inspDef:type_InspDef,onDefSetupUpdate:(inspdef:type_InspDef)=>boolean})
-{
-  const [_inspDef,set_inspDef]=useState<type_InspDef>();
-  useEffect(()=>{
-   
-    set_inspDef(clone(inspDef))
-  },[inspDef])
-
-  if(_inspDef===undefined)return null;
-
-  return <>
-    {/* InspectionTargets */}
-
-    <Button onClick={()=>{
-      
-    }}>Add Cam</Button>
-    <Button onClick={()=>{
-      let newList = [..._inspDef.rules];
-      newList.push({id:"ID:"+newList.length,name:"N_"+newList.length});
-      
-      set_inspDef({..._inspDef,rules:newList})
-    }}>Add Insp</Button>
-    <Tabs defaultActiveKey="1">
-      {_inspDef.rules.map(rule=>(
-        <TabPane tab={rule.name} key={rule.id}  >
-          <div style={{width:"100%",height:"100%"}}>
-
-          {rule.name}
-
-          </div>
-        </TabPane>
-      ))}
-    </Tabs>
-  </>
-}
-
-
-
-
-
 
 type IMCM_type=
 {
@@ -146,28 +106,227 @@ type IMCM_type=
 }
 
 
-function SingleTargetVIEWUI({IMCM_group,rule,onRuleChange}:{
+function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
+  {
+    srule:any,
+    onRuleChange:(...param:any)=>void,
+    canvas_obj:DrawHook_CanvasComponent
+  })
+{
+  let srule_Filled={
+    
+    region:[0,0,0,0],
+    colorThres:10,
+    hough_circle:{
+      dp:1,
+      minDist:5,
+      param1:100,
+      param2:30,
+      minRadius:5,
+      maxRadius:15
+    },
+    hsv:{
+      rangeh:{
+        h:180,s:255,v:255
+      },
+      rangel:{
+        h:0,s:0,v:0
+      },
+    },
+
+    ...srule
+  }
+  const _this = useRef<any>({}).current;
+  return <>
+    <Button key={">>>"} onClick={()=>{
+        canvas_obj.UserRegionSelect((info,state)=>{
+          if(state==2)
+          {
+            console.log(info);
+            
+            let x,y,w,h;
+
+            x=info.pt1.x;
+            w=info.pt2.x-info.pt1.x;
+        
+            y=info.pt1.y;
+            h=info.pt2.y-info.pt1.y;
+        
+        
+            if(w<0){
+              x+=w;
+              w=-w;
+            }
+            
+            if(h<0){
+              y+=h;
+              h=-h;
+            }
+
+            let newRule={...srule_Filled,region:[Math.round(x),Math.round(y),Math.round(w),Math.round(h)]};
+            onRuleChange(newRule)
+
+            canvas_obj.UserRegionSelect(undefined)
+          }
+        })
+      }}>設定範圍</Button>
+    
+{/* 
+    <br/>hough_circle
+    <Slider defaultValue={srule_Filled.hough_circle.minRadius} max={100} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,minRadius:v}};
+      onRuleChange(newRule)
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    
+    <Slider defaultValue={srule_Filled.hough_circle.maxRadius} max={100} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,maxRadius:v}};
+        onRuleChange(newRule)
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>  */}
+
+
+
+
+    <>
+
+
+    <br/>HSV
+    <Slider defaultValue={srule_Filled.hsv.rangeh.h} max={180} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      let newRule={...srule_Filled,hsv:{...srule_Filled.hsv,rangeh:{...srule_Filled.hsv.rangeh,h:v}}};
+      onRuleChange(newRule)
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={srule_Filled.hsv.rangel.h} max={180} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        let newRule={...srule_Filled,hsv:{...srule_Filled.hsv,rangel:{...srule_Filled.hsv.rangel,h:v}}};
+        onRuleChange(newRule)
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+    <Slider defaultValue={srule_Filled.hsv.rangeh.s} max={255} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      let newRule={...srule_Filled,hsv:{...srule_Filled.hsv,rangeh:{...srule_Filled.hsv.rangeh,s:v}}};
+      onRuleChange(newRule)
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={srule_Filled.hsv.rangel.s} max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        let newRule={...srule_Filled,hsv:{...srule_Filled.hsv,rangel:{...srule_Filled.hsv.rangel,s:v}}};
+        onRuleChange(newRule)
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+
+    <Slider defaultValue={srule_Filled.hsv.rangeh.v} max={255} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      let newRule={...srule_Filled,hsv:{...srule_Filled.hsv,rangeh:{...srule_Filled.hsv.rangeh,v:v}}};
+      onRuleChange(newRule)
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={srule_Filled.hsv.rangel.v} max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_throttle(_this.trigTO,()=>{
+        let newRule={...srule_Filled,hsv:{...srule_Filled.hsv,rangel:{...srule_Filled.hsv.rangel,v:v}}};
+        onRuleChange(newRule)
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+
+
+    </>
+
+    <br/>colorThres
+    <Slider defaultValue={srule_Filled.colorThres}  max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        let newRule={...srule_Filled,colorThres:v};
+        onRuleChange(newRule)
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+
+  </>
+
+}
+
+
+
+function SingleTargetVIEWUI_ColorRegionLocating({IMCM_group,rule,report,onRuleChange}:{
   IMCM_group:{[trigID:string]:IMCM_type},
   rule:any,
+  report:any,
   onRuleChange:(...param:any)=>void}){
   const _ = useRef<any>({
 
     imgCanvas:document.createElement('canvas'),
-    canvasComp:undefined
+    canvasComp:undefined,
+    drawHooks:[],
+    ctrlHooks:[]
+
+
   });
   let _this=_.current;
-  console.log(IMCM_group);
-  const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
-  const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);
-  const [isInRegionSelect,set_isInRegionSelect]=useState(false);
+  // console.log(IMCM_group,report);
+  // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
+  // const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);
   const [Local_IMCM,setLocal_IMCM]=
     useState<IMCM_type|undefined>(undefined);
 
+  
+  enum editState {
+    Normal_Show = 0,
+    Region_Edit = 1,
+    CalibDataCollection = 100,
+  }
+  
+  const [stateInfo,setStateInfo]=useState<{st:editState,info:any}[]>([{
+    st:editState.Normal_Show,
+    info:undefined
+  }]);
+
+  let stateInfo_tail=stateInfo[stateInfo.length-1];
+
+
+
   useEffect(() => {
-    setDrawHooks([(CoD,g,canvObj)=>{
-      // console.log(_this.imgCanvas);
-      g.ctx.drawImage(_this.imgCanvas, 0, 0);
-    }])
+
     
     // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
     // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
@@ -194,30 +353,152 @@ function SingleTargetVIEWUI({IMCM_group,rule,onRuleChange}:{
     }
   }, [IMCM_group]); 
 
+  function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
+  {
+    let ctx = g.ctx;
+    // ctx.lineWidth = 5;
+
+    let x = region.x;
+    let y = region.y;
+    let w = region.w;
+    let h = region.h;
+    ctx.beginPath();
+    ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
+    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+    ctx.lineWidth = lineWidth;
+    ctx.rect(x,y,w,h);
+    ctx.stroke();
+    ctx.closePath();
+
+    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+    ctx.lineWidth = lineWidth*2/3;
+    canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
+
+  }
+
+
+
+
+
+  let EDIT_UI= null;
+  
+  switch(stateInfo_tail.st)
+  {
+    
+    case editState.Normal_Show:
+
+      EDIT_UI=<>
+        
+        <Button onClick={()=>{
+            setStateInfo([...stateInfo,{
+              st:editState.CalibDataCollection,
+              info:{}
+            }])
+          }}>CALIBData</Button>
+        <br/>
+
+
+
+
+        <Button key={"_"+-1} onClick={()=>{
+          
+          let newRule={...rule};
+          newRule.regionInfo.push({region:[0,0,0,0],colorThres:10});
+          onRuleChange(newRule)
+
+          
+          setStateInfo([...stateInfo,{
+            st:editState.Region_Edit,
+            info:{
+              idx:newRule.regionInfo.length-1
+            }
+          }])
+
+        }}>+</Button>
+
+        
+
+        {rule.regionInfo.map((region:any,idx:number)=>{
+          return <Button key={"_"+idx} onClick={()=>{
+            if(_this.canvasComp===undefined)return;
+
+
+            setStateInfo([...stateInfo,{
+              st:editState.Region_Edit,
+              info:{
+                idx:idx
+              }
+            }])
+
+
+
+
+          }}>{"idx:"+idx}</Button>
+        })}
+
+      </>
+
+
+      break;
+
+    case editState.Region_Edit:
+
+
+      if(rule.regionInfo.length<=stateInfo_tail.info.idx)
+      {
+        break;
+      }
+      
+      let regionInfo=rule.regionInfo[stateInfo_tail.info.idx];
+
+      EDIT_UI=<>
+        <Button key={"_"+-1} onClick={()=>{
+          
+          let new_stateInfo=[...stateInfo]
+          new_stateInfo.pop();
+
+          setStateInfo(new_stateInfo)
+        }}>{"<"}</Button>
+        <ColorRegionLocating_SingleRegion 
+          srule={regionInfo} 
+          onRuleChange={(newRule_sregion)=>{
+            // console.log(newRule);
+
+            
+            let newRule={...rule};
+            newRule.regionInfo[stateInfo_tail.info.idx]=newRule_sregion;
+
+
+            onRuleChange(newRule)
+            // _this.sel_region=undefined
+
+          }}
+          canvas_obj={_this.canvasComp}/>
+      </>
+
+      break;
+    
+
+    case editState.CalibDataCollection:
+      EDIT_UI=<>
+        <Button key={"_"+-1} onClick={()=>{
+          
+          let new_stateInfo=[...stateInfo]
+          new_stateInfo.pop();
+
+          setStateInfo(new_stateInfo)
+        }}>{"<"}</Button>
+        </>
+      break;
+  }
+  
 
   
   return <div style={{width:"800px",height:"800px"}}  className={"overlayCon"}>
 
     <div className={"overlay"} >
 
-      <Button  onClick={()=>{
-        if(_this.canvasComp===undefined)return;
-        set_isInRegionSelect(true);
-        let canvas_obj:DrawHook_CanvasComponent=_this.canvasComp;
-        canvas_obj.UserRegionSelect((info,state)=>{
-          if(state==2)
-          {
-            console.log(info);
-            canvas_obj.UserRegionSelect(undefined)
-            set_isInRegionSelect(false);
-          }
-          else
-          {
-
-          }
-        })
-      }}>RegionSelect</Button>
-
+      {EDIT_UI}
 
     </div>
 
@@ -241,8 +522,8 @@ function SingleTargetVIEWUI({IMCM_group,rule,onRuleChange}:{
         //   }
         // });
         
-        ctrlHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
-        if(isInRegionSelect && canvas_obj.regionSelect!==undefined)
+        // ctrlHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+        if(canvas_obj.regionSelect!==undefined)
         {
           if(canvas_obj.regionSelect.pt1===undefined || canvas_obj.regionSelect.pt2===undefined)
           {
@@ -279,33 +560,57 @@ function SingleTargetVIEWUI({IMCM_group,rule,onRuleChange}:{
       }
       else//draw
       {
-        drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
-       
-        if(isInRegionSelect)
+        if(Local_IMCM!==undefined)
         {
-          if(_this.sel_region===undefined)return;
-          let ctx = g.ctx;
-      
-          ctx.strokeStyle = 'red';
-          ctx.lineWidth = 5;
-      
-          let x = _this.sel_region.x;
-          let y = _this.sel_region.y;
-          let w = _this.sel_region.w;
-          let h = _this.sel_region.h;
-          ctx.beginPath();
-          let LineSize = canvas_obj.rUtil.getIndicationLineSize();
-          ctx.setLineDash([LineSize*10,LineSize*3,LineSize*3,LineSize*3]);
+          g.ctx.save();
+          let scale=Local_IMCM.image_info.scale;
+          g.ctx.scale(scale,scale);
+          g.ctx.translate(-0.5, -0.5);
+          g.ctx.drawImage(_this.imgCanvas, 0, 0);
+          g.ctx.restore();
+        }
+        // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+       
+
+        let ctx = g.ctx;
+        
+        {
+          rule.regionInfo.forEach((region:any,idx:number)=>{
+
+            let region_ROI=
+            {
+              x:region.region[0],
+              y:region.region[1],
+              w:region.region[2],
+              h:region.region[3]
+            }
+            
+            ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
+            drawRegion(g,canvas_obj,region_ROI,canvas_obj.rUtil.getIndicationLineSize());
+            
+            
+            let region_components=GetObjElement(report,["regionInfo",idx,"components"]);
+            // console.log(report,region_components);
+            if(region_components!==undefined)
+            {
+              region_components.forEach((regComp:any)=>{
+
+                canvas_obj.rUtil.drawCross(ctx, {x:region_ROI.x+regComp.x,y:region_ROI.y+regComp.y}, 5);
+              })
+
+            }
+
+
+
+          })
+        }
+
+
+        if(canvas_obj.regionSelect!==undefined && _this.sel_region!==undefined)
+        {
           ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-          ctx.lineWidth = LineSize;
-          ctx.rect(x,y,w,h);
-          ctx.stroke();
-          ctx.closePath();
-      
-          ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-          let psize = 2*canvas_obj.rUtil.getPointSize();
-          ctx.lineWidth = psize/3;
-          canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2},psize);
+          
+          drawRegion(g,canvas_obj,_this.sel_region,canvas_obj.rUtil.getIndicationLineSize());
       
         }
       }
@@ -323,17 +628,19 @@ function VIEWUI(){
   const dispatch = useDispatch();
   const ACT_EXT_API_ACCESS= (...p:Parameters<typeof EXT_API_ACCESS>) => dispatch(EXT_API_ACCESS(...p));
   const [defInfo,setDefInfo]=useState({
+    name:"TEST_DEF",
     type:"m",
     rules:[
       {
         id:"rule1",
         type:"ColorRegionLocating",
-        camera_id:"BMP_carousel_0",
+        sampleImageFolder:"data/TEST_DEF/rule1_KLKS0",
+        camera_id:tar_camera_id,//"BMP_carousel_0",
         trigger_tag:"KLKS0",
         regionInfo:[
           {
-            colorThres:40,
-            region:[50,50,100,100],
+            colorThres:30,
+            region:[569,310,100,100],
 
 
           },
@@ -344,6 +651,7 @@ function VIEWUI(){
       }
     ]
   })
+  const [defReport,setDefReport]=useState<any>(undefined);
   
 
   async function getAPI(API_ID:string)
@@ -377,7 +685,7 @@ function VIEWUI(){
     let cameraListInfos=await api.cameraDiscovery() as any[];
     let CM=cameraListInfos.find(info=>info.type=="CM")
     if(CM===undefined)throw "CM not found"
-
+    console.log(CM.data);
     return CM.data as {name:string,id:string,driver_name:string}[];
   }
 
@@ -447,6 +755,18 @@ function VIEWUI(){
         
         ));//
       console.log(connctResult);
+
+
+      
+      await Promise.all(cameraList.map(cam=>
+        api.send_P("CM",0,{
+          type:"setting",id:cam.id,
+
+          exposure:10000,
+          analog_gain:20,
+        }).then((camInfoPkts:any)=>camInfoPkts[0].data)
+        
+        ));//
     }
 
     return await queryConnCamList();
@@ -481,7 +801,46 @@ function VIEWUI(){
     })
   }
 
+  function updateDefInfo(_defInfo:any)
+  {
 
+    InspTargetReload(_defInfo,51000).then(e=>{
+      console.log(e)
+      ACT_EXT_API_ACCESS(CORE_ID,(_api )=>{
+        let api=_api as BPG_WS
+        api.send(undefined,0,{_PGID_:51000,_PGINFO_:{keep:true}},undefined,{
+          resolve:(e)=>{
+            let RP = e.find((pkt:any)=>pkt.type=="RP");
+            if(RP===undefined)
+            {
+              setDefReport(undefined)
+              return;
+            }
+
+            
+            setDefReport(RP.data)
+            
+            console.log(e)
+          },
+          reject:(e)=>{
+            console.log(e)
+          },
+        })
+
+        
+        api.send_P(
+          "CM",0,{
+            type:"trigger",
+            id:tar_camera_id,//"BMP_carousel_0",
+            trigger_tag:"KLKS0",
+            // img_path:"data/TEST_DEF/rule1_KLKS0/KKK2.png",
+            trigger_id:0,
+            channel_id:50201
+          })
+
+      })
+    })
+  }
 
 
   const [IMCM_group,setIMCM_group]=useState<{[trigID:string]:IMCM_type}>({});
@@ -503,6 +862,7 @@ function VIEWUI(){
           if(IM===undefined)return;
           let CM=e.find((p:any)=>p.type=="CM");
           if(CM===undefined)return;
+          console.log(IM,CM);
           let IMCM={
             image_info:IM.image_info,
             camera_id:CM.data.camera_id,
@@ -523,62 +883,16 @@ function VIEWUI(){
 
     })
 
-    InspTargetReload(defInfo,51000).then(e=>{
-      console.log(e)
-      ACT_EXT_API_ACCESS(CORE_ID,(_api )=>{
-        let api=_api as BPG_WS
-        api.send(undefined,0,{_PGID_:51000,_PGINFO_:{keep:true}},undefined,{
-          resolve:(e)=>{
-            console.log(e)
-          },
-          reject:(e)=>{
-            console.log(e)
-          },
-        })
-      })
-    })
+    setTimeout(()=>{
 
+      updateDefInfo(defInfo);
+    },100)
 
 
   },[])
 
   return <>
 
-    {/* <CameraDiscover onCameraSelected={(camInfo)=>{
-      console.log(camInfo);
-
-      ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
-        let api=_api as BPG_WS;//cast
-        
-          api.send("CM",0,{
-            type:"connect",
-            id:camInfo.id,
-            _PGID_:50000,
-            _PGINFO_:{keep:true},
-            misc:"data/BMP_carousel_test1"},undefined,{
-              reject:(e)=>{},
-              resolve:(e)=>{
-                let IM=e.find((p:any)=>p.type=="IM");
-                if(IM===undefined)return;
-                let CM=e.find((p:any)=>p.type=="CM");
-                if(CM===undefined)return;
-                let IMCM={
-                  image_info:IM.image_info,
-                  camera_id:CM.data.camera_id,
-                  trigger_id:CM.data.trigger_id,
-                  trigger_tag:CM.data.trigger_tag,
-                }
-                setIMCM_group({
-                  ...IMCM_group,
-                  [IMCM.trigger_tag]:IMCM
-                })
-              },
-            })
-          // api.send_P("CM",0,{type:"connected_camera_list"})
-
-
-      })
-    }}/> */}
     <br/>
     
 
@@ -629,24 +943,24 @@ function VIEWUI(){
             api.send_P(
               "CM",0,{
                 type:"start_stream",
-                id:"BMP_carousel_1"
+                id:tar_camera_id
               })
-            api.send_P(
-              "CM",0,{
-                type:"start_stream",
-                id:"BMP_carousel_0",
-              })
+            // api.send_P(
+            //   "CM",0,{
+            //     type:"start_stream",
+            //     id:"BMP_carousel_0",
+            //   })
 
-              api.send_P(
-                "CM",0,{
-                  type:"start_stream",
-                  id:"BMP_carousel_2"
-                })
-              api.send_P(
-                "CM",0,{
-                  type:"start_stream",
-                  id:"BMP_carousel_3",
-                })
+            //   api.send_P(
+            //     "CM",0,{
+            //       type:"start_stream",
+            //       id:"BMP_carousel_2"
+            //     })
+            //   api.send_P(
+            //     "CM",0,{
+            //       type:"start_stream",
+            //       id:"BMP_carousel_3",
+            //     })
 
 
           })
@@ -657,14 +971,14 @@ function VIEWUI(){
         }}>Start Stream</Button>
 
 
-<Button onClick={()=>{
+        <Button onClick={()=>{
           ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
             let api=_api as BPG_WS;//cast
             
             api.send_P(
               "CM",0,{
                 type:"trigger",
-                id:"BMP_carousel_0",
+                id:tar_camera_id,
                 trigger_tag:"KLKS0",
                 trigger_id:0
               })
@@ -677,13 +991,28 @@ function VIEWUI(){
             api.send_P(
               "CM",0,{
                 type:"trigger",
-                id:"BMP_carousel_0",
+                id:tar_camera_id,
                 trigger_tag:"KLKS1",
                 trigger_id:0
               })
           })
         }}>Trig1</Button>
 
+        <Button onClick={()=>{
+          ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
+            let api=_api as BPG_WS;//cast
+            
+            api.send_P(
+              "CM",0,{
+                type:"trigger",
+                id:tar_camera_id,
+                trigger_tag:"KLKS0",
+                // img_path:"data/TEST_DEF/rule1_KLKS0/KKK2.png",
+                trigger_id:0,
+                channel_id:50201
+              })
+          })
+        }}>TrigX</Button>
 
         <Button onClick={()=>{
           ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
@@ -738,7 +1067,24 @@ function VIEWUI(){
         }}>Stop Stream</Button>
 
         {
-          defInfo.rules.map(rule=><SingleTargetVIEWUI key={rule.id} IMCM_group={IMCM_group} rule={rule} onRuleChange={rule=>console.log(rule)}/>)
+          defInfo.rules.map((rule,index)=>{
+            
+            let subRuleRep=GetObjElement(defReport,["rules",index]);
+            return <SingleTargetVIEWUI_ColorRegionLocating key={rule.id} IMCM_group={IMCM_group} rule={rule} report={subRuleRep} onRuleChange={new_rule=>{
+            
+
+              let new_defInfo={...defInfo};
+              new_defInfo.rules[index]=new_rule;
+              console.log(new_rule);
+              setDefInfo(new_defInfo);
+
+
+              
+
+              updateDefInfo(new_defInfo);
+              
+          
+            }}/>})
 
         
         
@@ -838,32 +1184,9 @@ function App() {
     return <div>Wait....</div>;
   }
   let test_ch_id=51000;
-  return (
-    <Layout className="layout" style={{width:"100%",height:"100%"}}>
 
-      {/* <Header>00000</Header> */}
-      <Sider collapsible collapsed={true}>
+  return <VIEWUI/>;
 
-      </Sider>
-      <Content style={{ padding: '0 50px' }}>
-
-        {/* <InspectionTargets inspDef={{
-          name:"aaa",
-          cameraList:[{id:"ssss"}],
-          rules:[]
-        }} onDefSetupUpdate={(_)=>false}/>
-        <br/> */}
-
-
-        <VIEWUI/>
-      </Content>
-      {/* <Footer style={{ textAlign: 'center' }}>
-
-
-      </Footer> */}
-    </Layout>
-
-  );
 }
 
 export default App;

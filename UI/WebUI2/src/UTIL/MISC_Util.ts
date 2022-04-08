@@ -55,7 +55,7 @@ export function xstate_GetSubState(state:any)
 }
 
 
-export function GetObjElement(rootObj:{[key:string]:any}|undefined,keyTrace:(string[]),traceIdxTo=keyTrace.length-1)
+export function GetObjElement(rootObj:{[key:string]:any}|undefined,keyTrace:((string|number)[]),traceIdxTo=keyTrace.length-1)
 {
   if(rootObj===undefined)return undefined;
   let obj:any = rootObj;
@@ -1562,4 +1562,54 @@ export const LocalStorageTools={
 
 
 
+}
+
+
+
+export function ID_debounce(dbid:number|undefined,func:()=>void,func_clear_dbid:()=>void,delay:number=500)
+{
+  if(dbid!==undefined)
+  {
+    clearTimeout(dbid)
+    dbid=undefined
+
+    dbid=window.setTimeout(()=>{
+      func();
+      func_clear_dbid();
+    },delay)
+  }
+  else
+  {
+    func();
+    dbid=window.setTimeout(()=>{
+      func_clear_dbid();
+    },delay)
+  }
+  return dbid;
+}
+
+
+
+export function ID_throttle(thid:{timeout:number,last_func:()=>void}|undefined,func:()=>void,func_clear_thid:()=>void,delay:number=500)
+{
+  if(thid===undefined)
+  {
+    func();
+    thid={
+      timeout:window.setTimeout(()=>{
+        if(thid)
+        {
+          thid.timeout=-1;
+          thid.last_func();
+        }
+        func_clear_thid();
+      },delay),
+      last_func:()=>undefined
+    }
+  }
+  else
+  {
+    thid.last_func=func;
+  }
+  return thid;
 }

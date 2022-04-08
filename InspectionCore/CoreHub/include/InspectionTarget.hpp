@@ -81,6 +81,8 @@ typedef struct image_pipe_info
 {
   CameraManager::StreamingInfo StreamInfo;
   CameraLayer::frameInfo fi;
+  
+  std::string camera_id;
   std::string trigger_tag;
   int trigger_id;
   // FeatureManager_BacPac *bacpac;
@@ -153,7 +155,7 @@ class InspectionTarget
   virtual cJSON* fetchInspReport()=0;
   // virtual cJSON* genInspReport()=0;
   bool returnExchange(InspectionTarget_EXCHANGE* info);
-  virtual void CAM_CallBack(CameraManager::StreamingInfo *srcCamSi,acvImage &img,std::string cam_id,std::string trigger_tag,int trigger_id)=0;
+  virtual void CAM_CallBack(image_pipe_info *pipe)=0;
   // {
   //   CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
   //   printf("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%d\n",id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);

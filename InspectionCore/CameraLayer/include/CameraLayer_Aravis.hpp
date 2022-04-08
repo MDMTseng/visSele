@@ -79,6 +79,8 @@ public:
   void ContTriggerThreadTermination();
   CameraLayer::status L_TriggerMode(int type);
   CameraLayer::status L_SetFrameRateMode(int type);
+  
+  CameraLayer::FrameExtractPixelFormat GetFrameFormat();
 
   ~CameraLayer_Aravis();
 };

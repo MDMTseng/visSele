@@ -100,7 +100,7 @@ bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
 
 class InspectionTargetManager_m:public InspectionTargetManager
 {
-
+  vector<uint8_t> frameDataBuff;
 
   void CamStream_CallBack(CameraManager::StreamingInfo &info){
 
@@ -120,11 +120,13 @@ class InspectionTargetManager_m:public InspectionTargetManager
 
     CameraLayer::frameInfo finfo = info.camera->GetFrameInfo();
     pinfo->StreamInfo=info;
+    
+    pinfo->camera_id=info.camera->getConnectionData().id;
     pinfo->fi=finfo;
     pinfo->trigger_tag="";
     pinfo->img.ReSize(finfo.width,finfo.height,3);
     CameraLayer::status st = info.camera->ExtractFrame(pinfo->img.CVector[0],3,finfo.width*finfo.height);
-    LOGI(">>>CAM:%s",pinfo->StreamInfo.camera->getConnectionData().id.c_str());
+    LOGI(">>>CAM:%s  WH:%d %d",pinfo->camera_id.c_str(),finfo.width,finfo.height);
 
     pipetriggerInfo_mix pmix;
     pmix.pipeInfo=pinfo;
@@ -136,6 +138,59 @@ class InspectionTargetManager_m:public InspectionTargetManager
   }
 
 };
+
+
+int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,int trigger_id,int channel_id)
+{
+  image_pipe_info *pinfo= bpg_pi.resPool.fetchResrc();
+  if(pinfo==NULL)return -1;
+
+  pinfo->StreamInfo.camera=NULL;
+  pinfo->StreamInfo.channel_id=channel_id;
+  pinfo->camera_id=camera_id;
+  pinfo->trigger_tag=trigger_tag;
+
+  Mat mat=imread(path.c_str());
+
+  int H = mat.rows;
+  int W = mat.cols;
+  CameraLayer::frameInfo finfo;
+  finfo.offset_x=finfo.offset_y=0;
+  finfo.height=H;
+  finfo.width=W;
+  finfo.timeStamp_us=0;
+  pinfo->fi=finfo;
+
+  pinfo->img.ReSize(W,H);
+  
+  cv::Mat dst_mat(H,W,CV_8UC3,pinfo->img.CVector[0]);
+
+  
+
+
+  if(mat.channels()==3)
+  {
+    mat.copyTo(dst_mat);
+  }
+  else if(mat.channels()==1)
+  {
+    cv::cvtColor(mat,dst_mat,COLOR_GRAY2RGB);
+  }
+  else
+  {
+    bpg_pi.resPool.retResrc(pinfo);
+    return -2;
+  }
+
+  inspQueue.push_blocking(pinfo);
+
+  return 0;
+}
+
+
+
+
+
 InspectionTargetManager_m inspTarMan;
 
 void TriggerInfoMatchingThread(bool *terminationflag)
@@ -178,14 +233,14 @@ void TriggerInfoMatchingThread(bool *terminationflag)
 
 
 
-          bool doMockTriggerInfo=targetImgPipe->StreamInfo.camera->triggerMode==0;//streaming
+          bool doMockTriggerInfo=(targetImgPipe->StreamInfo.camera!=NULL) && (targetImgPipe->StreamInfo.camera->triggerMode==0);//streaming
 
 
 
           if(doMockTriggerInfo)
           {
             pipetriggerInfo_mix::_triggerInfo mocktrig;
-            mocktrig.camera_id=targetImgPipe->StreamInfo.camera->getConnectionData().id;
+            mocktrig.camera_id=targetImgPipe->camera_id;
             mocktrig.est_trigger_time_us=targetImgPipe->fi.timeStamp_us+123;//
             mocktrig.trigger_id=-1;
             mocktrig.trigger_tag="Stream";
@@ -201,7 +256,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             if(triggerInfoMatchingBuffer[i].pipeInfo!=NULL)continue;//skip image/pipe info
 
             auto _triggerInfo=triggerInfoMatchingBuffer[i].triggerInfo;
-            if(_triggerInfo.camera_id!=targetImgPipe->StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
+            if(_triggerInfo.camera_id!=targetImgPipe->camera_id)continue;//camera id is not match
 
 
             int cost;
@@ -236,7 +291,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             if(triggerInfoMatchingBuffer[i].pipeInfo==NULL)continue;//skip trigger info
 
             auto _PipeInfo=triggerInfoMatchingBuffer[i].pipeInfo;
-            if(targetTriggerInfo.camera_id!=_PipeInfo->StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
+            if(targetTriggerInfo.camera_id!=_PipeInfo->camera_id)continue;//camera id is not match
 
             
             int cost;
@@ -320,7 +375,7 @@ void ImgPipeProcessThread(bool *terminationflag)
     while (inspQueue.pop_blocking(headImgPipe))
     {
       
-      LOGI(">>>CAM:%s",headImgPipe->StreamInfo.camera->getConnectionData().id.c_str());
+      LOGI(">>>CAM:%s",headImgPipe->camera_id.c_str());
       LOGI(">>>triggerT:%s  id:%d",headImgPipe->trigger_tag.c_str(),headImgPipe->trigger_id);
       inspTarMan.inspTargetProcess(*headImgPipe);
       datViewQueue.push_blocking(headImgPipe);
@@ -353,20 +408,26 @@ void ImgPipeDatViewThread(bool *terminationflag)
         cJSON* camBrifInfo=cJSON_CreateObject();
         cJSON_AddStringToObject(camBrifInfo, "trigger_tag", headImgPipe->trigger_tag.c_str());
         cJSON_AddNumberToObject(camBrifInfo, "trigger_id", headImgPipe->trigger_id);
-        cJSON_AddStringToObject(camBrifInfo, "camera_id",headImgPipe->StreamInfo.camera->getConnectionData().id.c_str());
+        cJSON_AddStringToObject(camBrifInfo, "camera_id",headImgPipe->camera_id.c_str());
 
         bpg_pi.fromUpperLayer_DATA("CM",imgCHID,camBrifInfo);
         cJSON_Delete(camBrifInfo);
         
         
-        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)4};
-        
+        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)1};
         iminfo.fullHeight = headImgPipe->img.GetHeight();
         iminfo.fullWidth = headImgPipe->img.GetWidth();
-        //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-        //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-        ImageDownSampling(dataSend_buff, headImgPipe->img, iminfo.scale, NULL);
-
+        if(iminfo.scale>1)
+        {
+          //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
+          //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+          ImageDownSampling(dataSend_buff, headImgPipe->img, iminfo.scale, NULL);
+        }
+        else
+        {
+          iminfo.scale=1;
+          iminfo.img=&headImgPipe->img;
+        }
         bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
         bpg_pi.fromUpperLayer_SS(imgCHID,true);
       }
@@ -391,7 +452,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
       }
       
-      LOGI(">>>CAM:%s",headImgPipe->StreamInfo.camera->getConnectionData().id.c_str());
+      LOGI(">>>CAM:%s",headImgPipe->camera_id.c_str());
       //send data to view
       bpg_pi.resPool.retResrc(headImgPipe);
       
@@ -421,7 +482,7 @@ public:
 
   virtual void setInspDef(cJSON* def)=0;
 
-  virtual void CAM_CallBack(CameraManager::StreamingInfo *srcCamSi,acvImage &img,std::string cam_id,std::string trigger_tag,int trigger_id)=0;
+  virtual void CAM_CallBack(image_pipe_info *pipe)=0;
   
   virtual ~InspectionTarget_s()
   {
@@ -472,15 +533,23 @@ public:
 
   }
 
-  void CAM_CallBack(CameraManager::StreamingInfo *srcCamSi,acvImage &img,std::string cam_id,std::string trigger_tag,int trigger_id)
+  void CAM_CallBack(image_pipe_info *pipe)
   {
-    CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
-    LOGI("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%" PRId64,id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
+    // CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
+    // LOGI("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%" PRId64,id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
+    LOGI("<<<<");
+    if(report!=NULL)
+    {
+      cJSON_Delete(report);
+    }
+    report=cJSON_CreateObject();
 
+    cv::Mat def_temp_img(pipe->img.GetHeight(),pipe->img.GetWidth(),CV_8UC3,pipe->img.CVector[0]);
 
-    cv::Mat def_temp_img(img.GetHeight(),img.GetWidth(),CV_8UC3,img.CVector[0]);
+    // cvtColor(def_temp_img, def_temp_img, COLOR_BayerGR2BGR);
+    cJSON* rep_regionInfo=cJSON_CreateArray();
 
-
+    cJSON_AddItemToObject(report,"regionInfo",rep_regionInfo);
     for(int i=0;;i++)
     {
       std::string key="regionInfo["+std::to_string(i)+"]";
@@ -490,32 +559,193 @@ public:
       if(regionInfo==NULL)break;
 
 
+      cJSON *region_report=cJSON_CreateObject();
+
+      
+      cJSON_AddNumberToObject(region_report,"idx",i);
+      cJSON_AddItemToArray(rep_regionInfo,region_report);
+
       try{
         int X=(int)*JFetEx_NUMBER(regionInfo,"region[0]");
         int Y=(int)*JFetEx_NUMBER(regionInfo,"region[1]");
         int W=(int)*JFetEx_NUMBER(regionInfo,"region[2]");
         int H=(int)*JFetEx_NUMBER(regionInfo,"region[3]");
-        double colorThres=*JFetEx_NUMBER(regionInfo,"colorThres");
 
 
         cv::Mat def_temp_img_ROI = def_temp_img(cv::Rect(X, Y, W, H));
 
-        cv::Mat grayscaleMat (def_temp_img_ROI.size(), CV_8U);
-        cv::cvtColor(def_temp_img_ROI, grayscaleMat,COLOR_RGB2GRAY);
-        // cv::Mat image1=def_temp_img_ROI.copyTo(def_temp_img_ROI);
-
-        cv::threshold(grayscaleMat, grayscaleMat, colorThres, 255, cv::THRESH_BINARY);
-        
-        cv::cvtColor(grayscaleMat,def_temp_img_ROI,COLOR_GRAY2RGB);
-
-        Mat labels;
-        Mat1i stats;
-        Mat1d centroids;
-        int n_labels = connectedComponentsWithStats(grayscaleMat, labels, stats, centroids);
 
         
-        LOGI("idx:%d  colorThres>%f  region:[%d,%d,%d,%d],n_labels:%d",i,colorThres,
-          X,Y,W,H,n_labels);
+
+        if(1){
+          
+          Mat img_HSV;
+          cvtColor(def_temp_img_ROI, img_HSV, COLOR_BGR2HSV);
+
+
+          double l_h=JFetch_NUMBER_ex(regionInfo,"hsv.rangel.h",0);
+          double l_s=JFetch_NUMBER_ex(regionInfo,"hsv.rangel.s",0);
+          double l_v=JFetch_NUMBER_ex(regionInfo,"hsv.rangel.v",0);
+
+          double h_h=JFetch_NUMBER_ex(regionInfo,"hsv.rangeh.h",180);
+          double h_s=JFetch_NUMBER_ex(regionInfo,"hsv.rangeh.s",255);
+          double h_v=JFetch_NUMBER_ex(regionInfo,"hsv.rangeh.v",255);
+
+          LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
+          cv::Scalar rangeH=cv::Scalar(h_h,h_s,h_v);
+          cv::Scalar rangeL=cv::Scalar(l_h,l_s,l_v);
+
+          Mat img_HSV_threshold;
+          inRange(img_HSV, rangeL, rangeH, img_HSV_threshold);
+          // cv::cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
+
+
+          {
+            double *colorThres=JFetch_NUMBER(regionInfo,"colorThres");
+            if(colorThres)
+            {
+              cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
+              cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
+            }
+          }
+
+
+          {
+
+            Mat labels;
+            Mat1i stats;
+            Mat centroids;
+            // img_HSV_threshold =  cv::Scalar::all(255) - img_HSV_threshold;
+            int n_labels = connectedComponentsWithStats(img_HSV_threshold, labels, stats, centroids);
+
+            
+
+            cJSON* components=cJSON_CreateArray();
+            cJSON_AddItemToObject(region_report,"components",components);
+
+
+
+            cv::cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
+            for(int k=1;k<n_labels;k++)
+            {
+              int area=stats.at<int>(k,cv::CC_STAT_AREA);
+              
+              if(area<100)continue;
+              LOGI("comp[%d] area:%d",k,area);
+
+              Point center = Point(centroids.at<double>(k, 0), centroids.at<double>(k, 1));
+              // circle center;
+              circle( def_temp_img_ROI, center, 1, Scalar(0,100,100), 3, LINE_AA);
+
+              
+              cJSON *comp_info=cJSON_CreateObject();
+              
+              cJSON_AddItemToArray(components,comp_info);
+
+              
+              cJSON_AddNumberToObject(comp_info,"area",area);
+              cJSON_AddNumberToObject(comp_info,"x",center.x);
+              cJSON_AddNumberToObject(comp_info,"y",center.y);
+
+
+
+            }
+            // LOGI("idx:%d  colorThres>%f  region:[%d,%d,%d,%d],n_labels:%d",i,colorThres,
+            //   X,Y,W,H,n_labels);
+
+
+
+          }
+
+
+
+
+
+
+          if(0){
+
+              
+
+            double dp=JFetch_NUMBER_ex(regionInfo,"hough_circle.dp",1);
+            double minDist=JFetch_NUMBER_ex(regionInfo,"hough_circle.minDist",def_temp_img_ROI.rows/16);
+            double param1=JFetch_NUMBER_ex(regionInfo,"hough_circle.param1",100);
+            double param2=JFetch_NUMBER_ex(regionInfo,"hough_circle.param2",30);
+            int minRadius=(int)JFetch_NUMBER_ex(regionInfo,"hough_circle.minRadius",5);
+            int maxRadius=(int)JFetch_NUMBER_ex(regionInfo,"hough_circle.maxRadius",15);
+            vector<Vec3f> circles;
+            
+            cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 7, 7), 0, 0 );
+            // medianBlur(img_HSV_threshold, img_HSV_threshold, 3);
+            cv::cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
+            // cv::blur(def_temp_img_ROI, def_temp_img_ROI, 3);
+
+
+
+            HoughCircles(img_HSV_threshold, circles, HOUGH_GRADIENT, dp,
+                        minDist,  // change this value to detect circles with different distances to each other
+                        param1, param2, minRadius, maxRadius // change the last two parameters
+            );
+            for( size_t i = 0; i < circles.size(); i++ )
+            {
+                Vec3i c = circles[i];
+                Point center = Point(c[0], c[1]);
+                // circle center
+                // circle( def_temp_img_ROI, center, 1, Scalar(0,100,100), 3, LINE_AA);
+                // circle outline
+                int radius = c[2];
+                circle( def_temp_img_ROI, center, radius, Scalar(255,0,255), 3, LINE_AA);
+            }
+              
+          }
+
+
+
+
+
+
+        }
+
+
+
+
+
+        if(0){
+
+          cv::Mat grayscaleMat (def_temp_img_ROI.size(), CV_8U);
+          cv::cvtColor(def_temp_img_ROI, grayscaleMat,COLOR_RGB2GRAY);
+          // cv::Mat image1=def_temp_img_ROI.copyTo(def_temp_img_ROI);
+
+
+
+
+
+          double dp=JFetch_NUMBER_ex(regionInfo,"hough_circle.dp",1);
+          double minDist=JFetch_NUMBER_ex(regionInfo,"hough_circle.minDist",grayscaleMat.rows/16);
+          double param1=JFetch_NUMBER_ex(regionInfo,"hough_circle.param1",100);
+          double param2=JFetch_NUMBER_ex(regionInfo,"hough_circle.param2",30);
+          int minRadius=(int)JFetch_NUMBER_ex(regionInfo,"hough_circle.minRadius",5);
+          int maxRadius=(int)JFetch_NUMBER_ex(regionInfo,"hough_circle.maxRadius",15);
+
+          
+          medianBlur(grayscaleMat, grayscaleMat, 1);
+          vector<Vec3f> circles;
+          HoughCircles(grayscaleMat, circles, HOUGH_GRADIENT, dp,
+                      minDist,  // change this value to detect circles with different distances to each other
+                      param1, param2, minRadius, maxRadius // change the last two parameters
+          );
+          for( size_t i = 0; i < circles.size(); i++ )
+          {
+              Vec3i c = circles[i];
+              Point center = Point(c[0], c[1]);
+              // circle center
+              circle( def_temp_img_ROI, center, 1, Scalar(0,100,100), 3, LINE_AA);
+              // circle outline
+              int radius = c[2];
+              circle( def_temp_img_ROI, center, radius, Scalar(255,0,255), 3, LINE_AA);
+          }
+
+
+        }
 
 
 
@@ -529,9 +759,7 @@ public:
       char* defStr=cJSON_Print(regionInfo);
       LOGI(">>>%d\n%s",i,defStr);
       delete defStr;
-
-
-
+      
     }
 
 
@@ -598,6 +826,17 @@ public:
     cJSON_AddNumberToObject(inspresult,"trigger_id",rep.trigger_id);
     cJSON_AddStringToObject(inspresult,"camera_id",rep.cam_id.c_str());
     cJSON_AddNumberToObject(inspresult,"timeStamp_us",rep.timeStamp_us);
+
+
+    cJSON* rep_rules=cJSON_CreateArray();
+    cJSON_AddItemToObject(inspresult,"rules",rep_rules);
+
+    
+    for(int i=0;i<subInspList.size();i++)
+    {
+      cJSON_AddItemToArray(rep_rules,cJSON_Duplicate(subInspList[i]->fetchInspReport(),true));
+    }
+
     return inspresult;
   }
 
@@ -688,23 +927,24 @@ public:
 
   }
 
-  void CAM_CallBack(CameraManager::StreamingInfo *srcCamSi,acvImage &img,std::string cam_id,std::string trigger_tag,int trigger_id)
+  void CAM_CallBack(image_pipe_info *pipe)
   {
     rep.isReady=false;
-    CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
-    LOGI("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%" PRId64,id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
+    // CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
+    // LOGI("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%" PRId64,id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
 
-    rep.trigger_tag=trigger_tag;
-    rep.trigger_id=trigger_id;
-    rep.cam_id=cam_id;
-    rep.timeStamp_us=info.timeStamp_us;
+    rep.trigger_tag=pipe->trigger_tag;
+    rep.trigger_id=pipe->trigger_id;
+    rep.cam_id=pipe->camera_id;
+    rep.timeStamp_us=pipe->fi.timeStamp_us;
     
     rep.isReady=true;
 
 
     for(int i=0;i<subInspList.size();i++)
     {
-      subInspList[i]->CAM_CallBack(srcCamSi,img,cam_id,trigger_tag,trigger_id);
+      subInspList[i]->CAM_CallBack(pipe);
+      // subInspList[i]->fetchInspReport();
     }
     if(inspresult!=NULL)
     {
@@ -742,19 +982,6 @@ int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   
   if(opcode==1 )
   {
-    //
-    
-    // if(doMockTriggerInfo)
-    // {
-    //   pipetriggerInfo_mix::_triggerInfo mocktrig;
-    //   mocktrig.camera_id=targetImgPipe->StreamInfo.camera->getConnectionData().id;
-    //   mocktrig.est_trigger_time_us=targetImgPipe->fi.timeStamp_us+123;//
-    //   mocktrig.trigger_tag="MOCK:"+mocktrig.camera_id;
-      
-    //   triggerInfoMatchingBuffer.w_unlock();
-    //   triggerInfoMatchingBuffer.push_back({triggerInfo:mocktrig});
-    //   triggerInfoMatchingBuffer.w_lock();
-    // }
     char tmp[1024];
     sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", raw, ID);
     // LOGI("MSG:%s", tmp);
@@ -1046,6 +1273,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         
         if(gcami)
         {
+          gcami->camera->TriggerMode(1);
           CameraLayer::BasicCameraInfo data=gcami->camera->getConnectionData();
           cJSON* info = inspTarMan.camman.cameraInfo2Json(data);
           LOGI("dat->pgID:%d",dat->pgID);
@@ -1129,14 +1357,33 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         session_ACK = true;
       }while(0);}
 
-      else if(strcmp(type_str, "start_stream") ==0)
+      else if(strcmp(type_str, "setting") ==0)
       {do{
         char *_cam_id = JFetch_STRING(json, "id");
         if(_cam_id==NULL)break;
         std::string id=std::string(_cam_id);
         CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
         if(cami==NULL)break;
-        cami->camera->TriggerMode(0);
+
+        LOGI("CAMERA:%s",id.c_str());
+
+        double *exposure = JFetch_NUMBER(json, "exposure");
+        if(exposure)
+        {
+          cami->camera->SetExposureTime(*exposure);
+          LOGI("Exposure:%f",*exposure);
+        }
+
+        double *analog_gain = JFetch_NUMBER(json, "analog_gain");
+        if(analog_gain)
+        {
+          cami->camera->SetAnalogGain(*analog_gain);
+          LOGI("analog_gain:%f",*analog_gain);
+        }
+
+
+
+
 
         session_ACK = true;
       }while(0);}
@@ -1148,37 +1395,71 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       }while(0);}
       else if(strcmp(type_str, "trigger") ==0)
       {do{
-                
+        
         char *_cam_id = JFetch_STRING(json, "id");
         if(_cam_id==NULL)break;
         std::string id=std::string(_cam_id);
-        CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
-
-        LOGI("cami:%p",cami);
-        if(cami==NULL)break;
-
-        char *_trigger_tag = JFetch_STRING(json, "trigger_tag");
-        std::string trigger_tag=_trigger_tag==NULL?"SW_TRIG":std::string(_trigger_tag);
-
+        char *_img_path = JFetch_STRING(json, "img_path");
+        if(_img_path)
         {
           
-          pipetriggerInfo_mix mocktrig;
-          mocktrig.pipeInfo=NULL;
-          mocktrig.triggerInfo.camera_id=id;
+          char *_trigger_tag = JFetch_STRING(json, "trigger_tag");
           double *_trigger_id = JFetch_NUMBER(json, "trigger_id");
-          mocktrig.triggerInfo.trigger_id=(_trigger_id==NULL)?-1:(int)*_trigger_id;
-          mocktrig.triggerInfo.est_trigger_time_us=0;//
-          mocktrig.triggerInfo.trigger_tag=trigger_tag;
+          double *_channel_id = JFetch_NUMBER(json, "channel_id");
+
+          if(_trigger_tag==NULL ||  _trigger_id==NULL || _channel_id==NULL)
+          {
+            sprintf(err_str, "trigger_tag:%p trigger_id:%p channel_id:%p", _trigger_tag,_trigger_id,_channel_id);
+            break;
+          }
           
-          triggerInfoMatchingQueue.push_blocking(mocktrig);
+          LOGI("_img_path:%s _cam_id:%s _trigger_tag:%s",_img_path,_cam_id,_trigger_tag);
+          LOGI("_trigger_id:%d _channel_id:%d",(int)*_trigger_id,(int)*_channel_id);
+          int ret=
+            ReadImageAndPushToInspQueue(
+              std::string(_img_path),
+              id,
+              std::string(_trigger_tag),
+              (int)*_trigger_id,
+              (int)*_channel_id);
         }
-        cami->camera->Trigger();
+        else
+        {
+          CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
+
+          LOGI("cami:%p",cami);
+          if(cami==NULL)break;
+
+          // cami->camera->TriggerMode(1);
+          CameraLayer::status st=cami->camera->Trigger();
+          LOGI("Trigger:%d",st);
+
+          char *_trigger_tag = JFetch_STRING(json, "trigger_tag");
+          std::string trigger_tag=_trigger_tag==NULL?"SW_TRIG":std::string(_trigger_tag);
+
+          {
+            
+            pipetriggerInfo_mix mocktrig;
+            mocktrig.pipeInfo=NULL;
+            mocktrig.triggerInfo.camera_id=id;
+            double *_trigger_id = JFetch_NUMBER(json, "trigger_id");
+            mocktrig.triggerInfo.trigger_id=(_trigger_id==NULL)?-1:(int)*_trigger_id;
+            mocktrig.triggerInfo.est_trigger_time_us=0;//
+            mocktrig.triggerInfo.trigger_tag=trigger_tag;
+            
+            triggerInfoMatchingQueue.push_blocking(mocktrig);
+          }
 
 
 
 
-        session_ACK = true;
-    
+          session_ACK = true;
+      
+        }
+
+
+
+
 
 
       }while(0);}

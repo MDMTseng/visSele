@@ -343,7 +343,7 @@ CameraLayer::status InspectionTargetManager::CAM_CallBack(CameraLayer &cl_obj, i
 
 void InspectionTargetManager::inspTargetProcess(image_pipe_info &info)
 {
-  std::string camera_id=info.StreamInfo.camera->getConnectionData().id;
+  std::string camera_id=info.camera_id;
 
   // cJSON* reportInfo=cJSON_CreateObject();
   // cJSON_AddStringToObject(reportInfo, "trigger_tag", info.trigger_tag.c_str());
@@ -352,9 +352,9 @@ void InspectionTargetManager::inspTargetProcess(image_pipe_info &info)
   // cJSON_AddItemToObject(reportInfo, "reports", reports);
   for(int i=0;i<inspTars.size();i++)
   {
-    inspTars[i]->CAM_CallBack(
-      &(info.StreamInfo),
-      info.img, camera_id, info.trigger_tag,info.trigger_id);//no trigger id yet
+    inspTars[i]->CAM_CallBack(&info);
+      // &(info.StreamInfo),
+      // info.img, camera_id, info.trigger_tag,info.trigger_id);//no trigger id yet
     cJSON_AddItemToArray(reports, cJSON_Duplicate(inspTars[i]->fetchInspReport(),cJSON_True ));
   }
   info.report_json=reports;//collect

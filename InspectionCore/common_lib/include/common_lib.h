@@ -25,6 +25,7 @@ void* JFetEx(cJSON * obj,const char *path,int type);
 #define JFetch_STRING(obj,path) ((char*)JFetch(obj,path,cJSON_String))
 #define JFetch_NUMBER(obj,path) ((double*)JFetch(obj,path,cJSON_Number))
 
+std::string JFetch_STRING_ex(cJSON * obj,const char *path,std::string default_str="");
 double JFetch_NUMBER_ex(cJSON * obj,const char *path,double defaultNumber=NAN);
 
 #define JFetch_ARRAY(obj,path) ((cJSON*)JFetch(obj,path,cJSON_Array))
