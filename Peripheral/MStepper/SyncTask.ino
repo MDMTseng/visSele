@@ -855,7 +855,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
       retdoc["type"]="get_setup";
       retdoc["ver"]="0.5.0";
-      retdoc["name"]="CNC_1";;
+      retdoc["name"]="CNC_1";
+
+
+
+
+
+
+      
       genMachineSetup(retdoc);
 
       
@@ -1269,6 +1276,36 @@ int intArrayContent_ToJson(char *jbuff, uint32_t jbuffL, int16_t *intarray, int 
 
 void genMachineSetup(JsonDocument &jdoc)
 {
+
+
+
+  jdoc["PIN_Z1_STP"]=PIN_Z1_STP;
+  jdoc["PIN_Z1_DIR"]=PIN_Z1_DIR;
+  jdoc["PIN_Z1_SEN1"]=PIN_Z1_SEN1;
+  jdoc["PIN_Z1_SEN2"]=PIN_Z1_SEN2;
+
+
+  jdoc["PIN_Y_STP"]=PIN_Y_STP;
+  jdoc["PIN_Y_DIR"]=PIN_Y_DIR;
+  jdoc["PIN_Y_SEN1"]=PIN_Y_SEN1;
+
+
+  jdoc["PIN_R11_STP"]=PIN_R11_STP;
+  jdoc["PIN_R11_DIR"]=PIN_R11_DIR;
+
+
+  jdoc["PIN_R12_STP"]=PIN_R12_STP;
+  jdoc["PIN_R12_DIR"]=PIN_R12_DIR;
+  
+
+
+  jdoc["PIN_OUT_0"]=PIN_OUT_0;
+  jdoc["PIN_OUT_1"]=PIN_OUT_1;
+  jdoc["PIN_OUT_2"]=PIN_OUT_2;
+  jdoc["PIN_OUT_3"]=PIN_OUT_3;
+  
+  
+  jdoc["axis"]="X,Y,Z1_,R11_,R12_";
 
   // jdoc["cam_trig_delay"]=g_cam_trig_delay;
   // jdoc["flash_trig_delay"]=g_flash_trig_delay;

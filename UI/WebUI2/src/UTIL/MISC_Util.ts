@@ -71,6 +71,71 @@ export function GetObjElement(rootObj:{[key:string]:any}|undefined,keyTrace:((st
   return obj;
 }
 
+
+export function ObjShellingAssign(rootObj:{[key:string]:any}|undefined,keyTrace:((string|number)[]),data:any=undefined)
+{
+  if(rootObj===undefined)return undefined;
+  let obj:any = rootObj;
+  let traceIdxTLen = keyTrace.length;
+  if( rootObj === undefined)return;
+  let root:any=undefined;
+
+  
+  if(obj instanceof Object)
+  {
+    obj=root={...obj};
+  }
+  else if(obj instanceof Array)
+  {
+    obj=root=[...obj];
+  }
+  else
+  {
+    return undefined;
+  }
+
+
+  for (let i=0;i<traceIdxTLen;i++) {
+    let key = keyTrace[i];
+    //console.log(obj,key,obj[key]);
+    
+    let subObj:any=obj[key];
+    
+    console.log(obj,key,subObj);
+    if(i==traceIdxTLen-1)
+    {
+      if(data!==undefined)
+      {
+        obj[key]=data;
+      }
+      return root;
+    }
+
+
+
+  
+    if(subObj instanceof Object)
+    {
+      subObj={...subObj};
+    }
+    else if(obj instanceof Array)
+    {
+      subObj=[...subObj];
+    }
+
+
+    obj[key]=subObj;
+    obj=subObj;
+
+
+
+
+    if( obj === undefined)return obj;
+  }
+  return obj;
+}
+
+
 export function isString (value:any) {
   return typeof value === 'string' || value instanceof String;
 }

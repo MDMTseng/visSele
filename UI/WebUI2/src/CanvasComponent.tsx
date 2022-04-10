@@ -410,7 +410,7 @@ function useDivDimensions(divRef:React.RefObject<HTMLDivElement | undefined>) {
   const [dimensions, setDimensions] = useState([0, 0]);
 
 
-  const _this = useRef({isInitSable:false,initQueryInterval:-1,bkClientRect:{width:-1,height:-1}}).current;
+  const _this = useRef({isInitSable:false,initQueryInterval:-1,bkClientRect:{width:-1,height:-1},bkDim:[0,0]}).current;
 
   useLayoutEffect(() => {
 
@@ -422,8 +422,9 @@ function useDivDimensions(divRef:React.RefObject<HTMLDivElement | undefined>) {
         const boundingRect = current.getBoundingClientRect()
         const { width, height } = boundingRect
         const rwh  = [  Math.round(width), Math.round(height) ]
-        if(rwh[0]==dimensions[0] &&rwh[1]==dimensions[1])return;
+        if(rwh[0]==_this.bkDim[0] &&rwh[1]==_this.bkDim[1])return;
         setDimensions(rwh)
+        _this.bkDim=rwh;
       }
     }
     window.addEventListener('resize', updateSize);
@@ -431,7 +432,7 @@ function useDivDimensions(divRef:React.RefObject<HTMLDivElement | undefined>) {
       if(_this.isInitSable==true)
       {
         updateSize();
-        window.clearInterval(_this.initQueryInterval);
+        // window.clearInterval(_this.initQueryInterval);
       }
       if (divRef===undefined||divRef.current===undefined)return;
       if (divRef===null||divRef.current===null)return;
@@ -445,9 +446,9 @@ function useDivDimensions(divRef:React.RefObject<HTMLDivElement | undefined>) {
       {
 
         updateSize();
-        window.clearInterval(_this.initQueryInterval);
+        // window.clearInterval(_this.initQueryInterval);
       }
-    },100);
+    },1000);
     return () =>{
       console.log("REMOVE....");
       window.removeEventListener('resize', updateSize);

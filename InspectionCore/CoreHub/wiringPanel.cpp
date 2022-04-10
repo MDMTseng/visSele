@@ -414,7 +414,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
         cJSON_Delete(camBrifInfo);
         
         
-        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)1};
+        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)3};
         iminfo.fullHeight = headImgPipe->img.GetHeight();
         iminfo.fullWidth = headImgPipe->img.GetWidth();
         if(iminfo.scale>1)
@@ -634,8 +634,8 @@ public:
               LOGI("comp[%d] area:%d",k,area);
 
               Point center = Point(centroids.at<double>(k, 0), centroids.at<double>(k, 1));
-              // circle center;
-              circle( def_temp_img_ROI, center, 1, Scalar(0,100,100), 3, LINE_AA);
+              // // circle center;
+              // circle( def_temp_img_ROI, center, 1, Scalar(0,100,100), 3, LINE_AA);
 
               
               cJSON *comp_info=cJSON_CreateObject();
