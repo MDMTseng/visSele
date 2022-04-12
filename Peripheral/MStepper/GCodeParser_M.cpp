@@ -390,7 +390,10 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
     {
 
       if(CheckHead(cblk, "M42"))//M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] marlin M42 Set Pin State
-      {
+      {//S<state> 0 input 1 output 2 INPUT_PULLUP 3 INPUT_PULLDOWN
+        //M42 P2 S1  //set output
+        //M42 P2 T1  //Set one
+        
         int j=i+1;
         int32_t I,P,S,T;
         if(FindInt32("I",blockInitial+j,blockCount-j,I)!=0)I=-1;
