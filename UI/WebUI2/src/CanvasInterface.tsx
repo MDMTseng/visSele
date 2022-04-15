@@ -566,7 +566,7 @@ export class EverCheckCanvasComponent_proto {
     // this.secCanvas = document.createElement('canvas');
 
     this.camera = new CameraCtrl();
-    this.camera.Scale(100);
+    this.camera.Scale(1);
     this.allow_camera_drag=true
 
     this.rUtil = new renderUTIL(this.camera);

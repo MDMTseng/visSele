@@ -5,7 +5,7 @@
 
 
 #ifndef MSTP_VEC_SIZE
-#define MSTP_VEC_SIZE 5
+#define MSTP_VEC_SIZE 4
 #endif
 
 

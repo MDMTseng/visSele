@@ -64,13 +64,13 @@ int GCodeParser_M::ReadxVecData(char **blkIdxes,int blkIdxesL,xVec &retVec)
   
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R11,AXIS_GDX_R11);
   
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R12,AXIS_GDX_R12);
+  // ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R12,AXIS_GDX_R12);
 
   return 0;
 }
 int GCodeParser_M::ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F)
 {
-  vec=isAbsLoc?MTPSYS_getLastLocInStepperSystem():(xVec){0};
+  vec=isAbsLoc?vecSub(MTPSYS_getLastLocInStepperSystem(),pos_offset):(xVec){0};
   ReadxVecData(blkIdxes,blkIdxesL,vec);
 
   float tmpF=NAN;
@@ -267,10 +267,11 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       if(CheckHead(cblk, "G28"))
       {
         __PRT_D_("G28 GO HOME!!!:");
-        
         int retErr=0;
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(1,50000,MTPSYS_getMinPulseSpeed()*2,NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(0,500*2,MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,50000,MTPSYS_getMinPulseSpeed()*2,NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,500*2,MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R11,500*2,MTPSYS_getMinPulseSpeed(),NULL);
+        pos_offset=(xVec){0};
         retStatus=statusReducer(retStatus,(retErr==0)?GCodeParser_Status::TASK_OK:GCodeParser_Status::TASK_FAILED);
         __PRT_D_("%s\n",retErr==0?"DONE":"FAILED");
 

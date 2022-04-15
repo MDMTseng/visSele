@@ -28,7 +28,7 @@ export const EXT_API_MIDDLEWARE = (WSData:{[key:string]:any}) =>
     {
       if(action.return_cb!==undefined)
         return action.return_cb(api_in_store);
-      return undefined;
+      return api_in_store;
     }
 
     case EXT_API_TYPES.UNREGISTER:

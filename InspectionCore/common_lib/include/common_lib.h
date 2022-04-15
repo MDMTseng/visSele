@@ -31,10 +31,14 @@ double JFetch_NUMBER_ex(cJSON * obj,const char *path,double defaultNumber=NAN);
 #define JFetch_ARRAY(obj,path) ((cJSON*)JFetch(obj,path,cJSON_Array))
 #define JFetch_OBJECT(obj,path) ((cJSON*)JFetch(obj,path,cJSON_Object))
 
+#define JFetch_TRUE(obj,path)  (NULL!=JFetch(obj,path,cJSON_True))
+#define JFetch_FALSE(obj,path) (NULL!=JFetch(obj,path,cJSON_False))
+
 #define JFetEx_STRING(obj,path) ((char*)JFetEx(obj,path,cJSON_String))
 #define JFetEx_NUMBER(obj,path) ((double*)JFetEx(obj,path,cJSON_Number))
 #define JFetEx_ARRAY(obj,path) ((cJSON*)JFetEx(obj,path,cJSON_Array))
 #define JFetEx_OBJECT(obj,path) ((cJSON*)JFetEx(obj,path,cJSON_Object))
+
 
 #define JxSTR(obj,path) JFetEx_STRING(obj,path)
 #define JxNUM(obj,path) JFetEx_NUMBER(obj,path)

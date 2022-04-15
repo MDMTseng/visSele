@@ -65,7 +65,7 @@ class CameraManager
   
   int findConnectedCameraIdx(std::string driverName,std::string camera_id);
   public:
-  static std::string cameraDiscovery();
+  static std::string cameraDiscovery(bool doDiscover=true);
   
   cJSON* ConnectedCameraList();
   static cJSON* cameraInfo2Json(CameraLayer::BasicCameraInfo &info);

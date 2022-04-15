@@ -80,28 +80,26 @@ export function ObjShellingAssign(rootObj:{[key:string]:any}|undefined,keyTrace:
   if( rootObj === undefined)return;
   let root:any=undefined;
 
-  
-  if(obj instanceof Object)
+  if(Array.isArray(obj))
   {
-    obj=root={...obj};
+    obj=[...obj];
   }
-  else if(obj instanceof Array)
+  else if(typeof obj === 'object')
   {
-    obj=root=[...obj];
+    obj={...obj};
   }
   else
   {
     return undefined;
   }
 
-
+  root=obj;
   for (let i=0;i<traceIdxTLen;i++) {
     let key = keyTrace[i];
     //console.log(obj,key,obj[key]);
     
     let subObj:any=obj[key];
     
-    console.log(obj,key,subObj);
     if(i==traceIdxTLen-1)
     {
       if(data!==undefined)
@@ -113,14 +111,13 @@ export function ObjShellingAssign(rootObj:{[key:string]:any}|undefined,keyTrace:
 
 
 
-  
-    if(subObj instanceof Object)
-    {
-      subObj={...subObj};
-    }
-    else if(obj instanceof Array)
+    if(Array.isArray(subObj))
     {
       subObj=[...subObj];
+    }
+    else if(typeof subObj === 'object')
+    {
+      subObj={...subObj};
     }
 
 
@@ -1655,7 +1652,7 @@ export function ID_debounce(dbid:number|undefined,func:()=>void,func_clear_dbid:
 
 
 
-export function ID_throttle(thid:{timeout:number,last_func:()=>void}|undefined,func:()=>void,func_clear_thid:()=>void,delay:number=500)
+export function ID_throttle(thid:{timeout:number,last_func:(()=>void)|undefined}|undefined,func:()=>void,func_clear_thid:()=>void,delay:number=500)
 {
   if(thid===undefined)
   {
@@ -1665,11 +1662,21 @@ export function ID_throttle(thid:{timeout:number,last_func:()=>void}|undefined,f
         if(thid)
         {
           thid.timeout=-1;
-          thid.last_func();
+          if(thid.last_func)
+          {
+            let NX =ID_throttle(undefined,thid.last_func,func_clear_thid,delay);
+            thid.last_func=NX.last_func;
+            thid.timeout=thid.timeout;
+          }
+          else
+          {
+            func_clear_thid();
+          }
+
         }
-        func_clear_thid();
+
       },delay),
-      last_func:()=>undefined
+      last_func:undefined
     }
   }
   else

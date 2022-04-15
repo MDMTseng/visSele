@@ -395,6 +395,8 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
     while (datViewQueue.pop_blocking(headImgPipe))
     {
+
+      if(1)
       {
 
 
@@ -414,7 +416,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
         cJSON_Delete(camBrifInfo);
         
         
-        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)3};
+        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)10};
         iminfo.fullHeight = headImgPipe->img.GetHeight();
         iminfo.fullWidth = headImgPipe->img.GetWidth();
         if(iminfo.scale>1)
@@ -644,8 +646,8 @@ public:
 
               
               cJSON_AddNumberToObject(comp_info,"area",area);
-              cJSON_AddNumberToObject(comp_info,"x",center.x);
-              cJSON_AddNumberToObject(comp_info,"y",center.y);
+              cJSON_AddNumberToObject(comp_info,"x",center.x+X);
+              cJSON_AddNumberToObject(comp_info,"y",center.y+Y);
 
 
 
@@ -1228,7 +1230,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       {
         session_ACK = true;
 
-        string discoverInfo_str = CameraManager::cameraDiscovery();
+        string discoverInfo_str = CameraManager::cameraDiscovery(JFetch_TRUE(json, "do_refresh"));
             
         cJSON *discoverInfo = cJSON_Parse(discoverInfo_str.c_str());
         fromUpperLayer_DATA("CM",dat->pgID,discoverInfo);
@@ -1275,6 +1277,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         {
           gcami->camera->TriggerMode(1);
           CameraLayer::BasicCameraInfo data=gcami->camera->getConnectionData();
+          gcami->camera->SetExposureTime(20000);
           cJSON* info = inspTarMan.camman.cameraInfo2Json(data);
           LOGI("dat->pgID:%d",dat->pgID);
           gcami->channel_id=dat->pgID;
@@ -1425,18 +1428,24 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         }
         else
         {
-          CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
 
-          LOGI("cami:%p",cami);
-          if(cami==NULL)break;
+          if(JFetch_TRUE(json, "soft_trigger"))
+          {
+            CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
+            if(cami)
+            {
 
-          // cami->camera->TriggerMode(1);
-          CameraLayer::status st=cami->camera->Trigger();
-          LOGI("Trigger:%d",st);
+              LOGI("cami:%p",cami);
+
+              // cami->camera->TriggerMode(1);
+              CameraLayer::status st=cami->camera->Trigger();
+              LOGI("Trigger:%d",st);
+            }
+          }
 
           char *_trigger_tag = JFetch_STRING(json, "trigger_tag");
           std::string trigger_tag=_trigger_tag==NULL?"SW_TRIG":std::string(_trigger_tag);
-
+          LOGI(">>>trigger_tag:%s",trigger_tag.c_str());
           {
             
             pipetriggerInfo_mix mocktrig;
@@ -1444,7 +1453,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             mocktrig.triggerInfo.camera_id=id;
             double *_trigger_id = JFetch_NUMBER(json, "trigger_id");
             mocktrig.triggerInfo.trigger_id=(_trigger_id==NULL)?-1:(int)*_trigger_id;
-            mocktrig.triggerInfo.est_trigger_time_us=0;//
+            mocktrig.triggerInfo.est_trigger_time_us=0;//force matching
             mocktrig.triggerInfo.trigger_tag=trigger_tag;
             
             triggerInfoMatchingQueue.push_blocking(mocktrig);

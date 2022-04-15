@@ -152,6 +152,13 @@ export class BPG_WS
           }
           if (req_pkt.promiseCBs !== undefined) {
             req_pkt.promiseCBs.resolve(stacked_pkts);
+            if(req_pkt._PGINFO_!==undefined && req_pkt._PGINFO_.hookedCBs!==undefined)
+            {
+              let hookedCBs=req_pkt._PGINFO_.hookedCBs;
+              Object.keys(hookedCBs).forEach(key=>{
+                hookedCBs[key].resolve(stacked_pkts);
+              })
+            }
           }
           else
           {
@@ -185,12 +192,12 @@ export class BPG_WS
   }
 
   
-  cameraDiscovery()
+  cameraDiscovery(do_refresh:boolean=true)
   {
     return new Promise((resolve,reject)=>{
 
       this.send(
-        "CM",0,{type:"discover"},undefined,
+        "CM",0,{type:"discover",do_refresh},undefined,
         {
           reject:(arg:any[])=>reject(arg),
           resolve:(arg:any[])=>resolve(arg),
@@ -201,8 +208,8 @@ export class BPG_WS
   send_P(
     tl:string,
     prop:number,
-    data:TYPE_OBJECT|undefined,
-    uintArr:Uint8Array|undefined=undefined)
+    data?:TYPE_OBJECT,
+    uintArr?:Uint8Array)
   {
     return new Promise((resolve,reject)=>{
       let ret=this._send({
@@ -222,6 +229,50 @@ export class BPG_WS
 
     })
   }
+
+
+  send_cbs_add(PGID:number,cbs_key:string,promiseCBs:{
+    reject(...arg:any[]):any,
+    resolve(...arg:any[]):any,
+  })
+  {
+    
+    let req_pkt = this.reqWindow.get(PGID);
+    if(req_pkt===undefined)
+    {
+      req_pkt={
+        time: new Date().getTime(),
+        pkts: [],
+        promiseCBs:undefined,
+        _PGINFO_: undefined
+      }
+      this.reqWindow.set(PGID,req_pkt);
+    }
+
+    if(req_pkt._PGINFO_===undefined)
+    {
+      req_pkt._PGINFO_={};
+    }
+    
+    if(req_pkt._PGINFO_.hookedCBs===undefined)
+    {
+      req_pkt._PGINFO_.hookedCBs={};
+    }
+
+    req_pkt._PGINFO_.hookedCBs[cbs_key]=promiseCBs;
+  }
+  send_cbs_remove(PGID:number,cbs_key:string)
+  {
+
+    let req_pkt = this.reqWindow.get(PGID);
+    if(req_pkt===undefined)return;
+
+    if(req_pkt._PGINFO_===undefined)return;
+    
+    if(req_pkt._PGINFO_.hookedCBs===undefined)return;
+    delete req_pkt._PGINFO_.hookedCBs[cbs_key];
+  }
+
   send(
     tl:string|undefined,
     prop:number,
@@ -241,7 +292,16 @@ export class BPG_WS
       promiseCBs
     })
   }
-  _send(info:any)
+  _send(info:{
+    tl:string|undefined,
+    prop:number,
+    data:TYPE_OBJECT|undefined,
+    uintArr:Uint8Array|undefined,
+    promiseCBs:{
+      reject(...arg:any[]):any,
+      resolve(...arg:any[]):any,
+    }
+  })
   {
     if(this.websocket===undefined || this.websocket.readyState!==WebSocket.OPEN)
     {
@@ -294,11 +354,25 @@ export class BPG_WS
       throw new Error('Here is not allowed anymore');
     }
     else {
+      
+      let set_PGINFO_=PGINFO;
+      
+      let req_pkt = this.reqWindow.get(PGID);
+      if(req_pkt!==undefined)
+      {
+        set_PGINFO_= {...req_pkt._PGINFO_,...PGINFO};
+      }
+
+      if(PGID===51000)
+      {
+        console.log(set_PGINFO_);
+      }
+
       this.reqWindow.set(PGID,{
         time: new Date().getTime(),
         pkts: [],
         promiseCBs:info.promiseCBs,
-        _PGINFO_: PGINFO
+        _PGINFO_: set_PGINFO_
       });
 
       if(info.tl!==undefined)
@@ -361,6 +435,7 @@ export class  GenPerif_API
   PINGCount:number
   
   machineSetup:{[key:string]:any}|undefined
+  pingHeartBeatEnable:boolean
   constructor(id:string,pg_id_channel:number)
   {
     this.CONN_ID=undefined;
@@ -376,7 +451,7 @@ export class  GenPerif_API
     this.PINGCount=0;
 
     this.machineSetup=undefined;
-
+    this.pingHeartBeatEnable=true;
     
   } 
   cleanUpTrackingWindow()
@@ -626,11 +701,21 @@ export class  GenPerif_API
     }
     return id;
   }
-  
+
+  enablePING(enable:boolean=true)
+  {
+    this.pingHeartBeatEnable=enable;
+    if(enable==false)
+    {
+      this.PINGCount=0;
+    }
+  }
+
   _sendPing()
   {
     if(this.CONN_ID===undefined)return ;
 
+    if(this.pingHeartBeatEnable==false)return;
 
     if(this.PINGCount>=2)
     {
@@ -663,6 +748,9 @@ export class  GenPerif_API
     },(errorInfo:any)=>console.log(errorInfo));
 
   }
+
+
+  
   send(data:{
     [key:string]:any
   },resolve:(...arg: any[])=> any,
@@ -678,7 +766,10 @@ export class  GenPerif_API
     if(data.id!==undefined )
     {
       if(this.trackingWindow.get(data.id)!==undefined)
+      {
         reject(`ID ${data.id} collision`);
+        return false;
+      }
     }
     else
     {
@@ -696,8 +787,15 @@ export class  GenPerif_API
       reject:d=>console.log(d)
     });
     
+    return true;
 
+  }
 
+  send_P(data:{
+    [key:string]:any
+  })
+  {
+    return new Promise((resolve,reject)=>this.send(data,resolve,reject))
   }
   
 }

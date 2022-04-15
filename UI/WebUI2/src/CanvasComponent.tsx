@@ -466,7 +466,7 @@ export function HookCanvasComponent( {dhook}:{
 
 
 
-  console.log("<<<<",width, height)
+  // console.log("<<<<",width, height)
   const pixelRatio = window.devicePixelRatio;
   const canvas = useRef<HTMLCanvasElement>(null);
   const _r = useRef<{canvComp:DrawHook_CanvasComponent|undefined}>({canvComp:undefined});

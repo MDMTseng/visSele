@@ -32,6 +32,8 @@ hw_timer_t *timer = NULL;
 
 #define PIN_R11_STP 23
 #define PIN_R11_DIR 22
+#define PIN_R11_SEN1 34//9
+
 
 #define PIN_R12_STP 21
 #define PIN_R12_DIR 5
@@ -98,6 +100,7 @@ class MStp_M:public MStp{
 
     pinMode(PIN_R11_DIR, OUTPUT);
     pinMode(PIN_R11_STP, OUTPUT);
+    pinMode(PIN_R11_SEN1, INPUT);
     pinMode(PIN_R12_DIR, OUTPUT);
     pinMode(PIN_R12_STP, OUTPUT);
 
@@ -114,17 +117,17 @@ class MStp_M:public MStp{
     axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
 
 
-    axisInfo[AXIS_IDX_Z1].VirtualStep=3;
-    axisInfo[AXIS_IDX_Z1].AccW=SUBDIV*3500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
+    axisInfo[AXIS_IDX_Z1].VirtualStep=15;
+    axisInfo[AXIS_IDX_Z1].AccW=SUBDIV*2500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
     axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=1/axisInfo[AXIS_IDX_Y].VirtualStep;
 
-    axisInfo[AXIS_IDX_R11].VirtualStep=3;
+    axisInfo[AXIS_IDX_R11].VirtualStep=10;
     axisInfo[AXIS_IDX_R11].AccW=SUBDIV*1500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
     axisInfo[AXIS_IDX_R11].MaxSpeedJumpW=1/axisInfo[AXIS_IDX_Y].VirtualStep;
     
-    axisInfo[AXIS_IDX_R12].VirtualStep=3;
-    axisInfo[AXIS_IDX_R12].AccW=SUBDIV*1500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
-    axisInfo[AXIS_IDX_R12].MaxSpeedJumpW=1/axisInfo[AXIS_IDX_Y].VirtualStep;
+    // axisInfo[AXIS_IDX_R12].VirtualStep=3;
+    // axisInfo[AXIS_IDX_R12].AccW=SUBDIV*1500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
+    // axisInfo[AXIS_IDX_R12].MaxSpeedJumpW=1/axisInfo[AXIS_IDX_Y].VirtualStep;
   
     doCheckHardLimit=false;
   }
@@ -215,7 +218,7 @@ class MStp_M:public MStp{
       {
         int sensorDetectVLvl=0;
         int runSpeed=speed;
-        int axisIdx=0;
+        int axisIdx=index;
         xVec retHitPos;
         if(runUntil(axisIdx,PIN_Z1_SEN1,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
         {
@@ -287,7 +290,31 @@ class MStp_M:public MStp{
         StepperForceStop();
         curPos_c.vec[axisIdx]=0;//zero the Cur_pos
         lastTarLoc=curPos_c;
+        break;
+      }
+      case AXIS_IDX_R11:
+      {
+        int sensorDetectVLvl=0;
+        int runSpeed=speed;
+        int axisIdx=index;
+        
+        xVec retHitPos;
+        if(runUntil(axisIdx,PIN_R11_SEN1,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
+        {
+          return -1;
+        }
 
+        
+        if(runUntil(axisIdx,PIN_R11_SEN1,!sensorDetectVLvl,-distance/2,runSpeed,&retHitPos)!=0)
+        {
+          return -1;
+        }
+      
+
+        StepperForceStop();
+        curPos_c.vec[axisIdx]=0;//zero the Cur_pos
+        lastTarLoc=curPos_c;
+        break;
       }
     }
 
@@ -682,7 +709,7 @@ public:
 
       case AXIS_IDX_R11:
       case AXIS_IDX_R12://assume it's 800 pulses pre rev
-        return dist*360/800;//-1 for reverse the direction
+        return dist*1600/360;//-1 for reverse the direction
 
 
 
@@ -1133,7 +1160,7 @@ void setup()
 {
   // noInterrupts();
   Serial.begin(230400);
-  Serial.setRxBufferSize(100);
+  Serial.setRxBufferSize(500);
   // // setup_comm();
   timer = timerBegin(0, 8, true);
   

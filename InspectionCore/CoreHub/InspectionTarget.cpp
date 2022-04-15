@@ -59,13 +59,14 @@ InspectionTarget::~InspectionTarget()
   setInspDef(NULL);
 }
 
-string CameraManager::cameraDiscovery()
+string CameraManager::cameraDiscovery(bool doDiscover)
 {
-  clm.discover();
+  if(doDiscover)
+  {
+    clm.discover();
+  }
   return clm.genJsonStringList();
 }
-
-
 
 CameraManager::StreamingInfo* CameraManager::addCamera(CameraLayer *cam)
 {

@@ -1,11 +1,12 @@
 import React from 'react';
 import { useState, useEffect,useRef } from 'react';
 import { useDispatch, useSelector } from "react-redux";
-import { Layout,Button,Tabs,Slider,Menu } from 'antd';
+import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm } from 'antd';
+import {ReportCalcSysInfo,SysInfoCalcCompensation} from './MachineCalibCalcUtil';
 
 const { SubMenu } = Menu;
 
-import { UserOutlined, LaptopOutlined, NotificationOutlined } from '@ant-design/icons';
+import { UserOutlined, LaptopOutlined, NotificationOutlined,DownOutlined } from '@ant-design/icons';
 
 import clone from 'clone';
 
@@ -18,14 +19,14 @@ import { GetObjElement,ID_debounce,ID_throttle,ObjShellingAssign} from './UTIL/M
 import {HookCanvasComponent,DrawHook_CanvasComponent,type_DrawHook_g,type_DrawHook} from './CanvasComponent';
 import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_API';
 
-import { Row, Col } from 'antd';
+import { Row, Col,Input } from 'antd';
 
 
 import './basic.css';
 
 let INSP1_REP_PGID_ = 51000
 
-
+let HACK_do_Camera_Check=false;
 const { TabPane } = Tabs;
 const { Header, Content, Footer,Sider } = Layout;
 type type_InspDef={
@@ -296,7 +297,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
   IMCM_group:{[trigID:string]:IMCM_type},
   rule:any,
   report:any,
-  onRuleChange:(...param:any)=>void}){
+  onRuleChange:(updatedRule:any,doInspUpdate:boolean)=>void}){
   const _ = useRef<any>({
 
     imgCanvas:document.createElement('canvas'),
@@ -324,6 +325,15 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
     st:editState.Normal_Show,
     info:undefined
   }]);
+
+  
+  const dispatch = useDispatch();
+  const [BPG_API,setBPG_API]=useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+  const [CNC_API,setCNC_API]=useState<CNC_Perif>(dispatch(EXT_API_ACCESS(CNC_PERIPHERAL_ID)) as any);
+
+  
+  const [queryCameraList,setQueryCameraList]=useState<any[]|undefined>(undefined);
+
 
   let stateInfo_tail=stateInfo[stateInfo.length-1];
 
@@ -360,7 +370,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
 
   useEffect(() => {
     let newIMCM=IMCM_group[rule.trigger_tag];
-    console.log(newIMCM,rule.trigger_tag);
+    // console.log(newIMCM,rule.trigger_tag);
     if(Local_IMCM===newIMCM)return;
     
     if(newIMCM===undefined)return;
@@ -419,7 +429,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
           
           let newRule={...rule};
           newRule.regionInfo.push({region:[0,0,0,0],colorThres:10});
-          onRuleChange(newRule)
+          onRuleChange(newRule,false)
 
           
           setStateInfo([...stateInfo,{
@@ -455,9 +465,87 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
 
       EDIT_UI=<>
         
+        <Input maxLength={100} value={rule.id} 
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            console.log(e.target.value);
+
+            let newRule={...rule};
+            newRule.id=e.target.value;
+            onRuleChange(newRule,false)
+
+
+          }}/>
+
+        <Input maxLength={100} value={rule.type} disabled
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            
+          }}/>
+
+        <Input maxLength={100} value={rule.sampleImageFolder}  disabled
+          style={{width:"100px"}}
+          onChange={(e)=>{
+          }}/>
+
+
+        <Dropdown
+          overlay={<>
+            <Menu>
+              {
+                queryCameraList===undefined?
+                  <Menu.Item disabled danger>
+                  <a target="_blank" rel="noopener noreferrer" href="https://www.antgroup.com">
+                    Press to update
+                  </a>
+                  </Menu.Item>
+                  :
+                  queryCameraList.map(cam=><Menu.Item key={cam.id} 
+                  onClick={()=>{
+                    let newRule={...rule};
+                    newRule.camera_id=cam.id;
+                    HACK_do_Camera_Check=true;
+                    onRuleChange(newRule,true)
+                  }}>
+                    {cam.id}
+                  </Menu.Item>)
+
+              }
+            </Menu>
+          </>}
+        >
+          <Button onClick={()=>{
+            // queryCameraList
+            setQueryCameraList(undefined);
+            BPG_API.cameraDiscovery(true)
+              .then((e: any)=>{
+                console.log(e);
+                setQueryCameraList(e[0].data)
+              })
+            // let api=await getAPI(CORE_ID) as BPG_WS;
+            // let cameraListInfos=await api.cameraDiscovery() as any[];
+            // let CM=cameraListInfos.find(info=>info.type=="CM")
+            // if(CM===undefined)throw "CM not found"
+            // console.log(CM.data);
+            // return CM.data as {name:string,id:string,driver_name:string}[];
+            
+          }}>{rule.camera_id}</Button>
+        </Dropdown>
+
+
+
+        <Input maxLength={100} value={rule.trigger_tag} 
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            let newRule={...rule};
+            newRule.trigger_tag=e.target.value;
+            onRuleChange(newRule,false)
+        }}/>
+
+        <br/>
         <Button onClick={()=>{
 
-          onRuleChange(rule);
+          onRuleChange(rule,true);
           }}>SHOT</Button>
 
         {EditUI}
@@ -496,7 +584,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
             newRule.regionInfo[stateInfo_tail.info.idx]=newRule_sregion;
 
 
-            onRuleChange(newRule)
+            onRuleChange(newRule,true)
             // _this.sel_region=undefined
 
           }}
@@ -631,7 +719,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
             {
               region_components.forEach((regComp:any)=>{
 
-                canvas_obj.rUtil.drawCross(ctx, {x:region_ROI.x+regComp.x,y:region_ROI.y+regComp.y}, 5);
+                canvas_obj.rUtil.drawCross(ctx, {x:regComp.x,y:regComp.y}, 5);
               })
 
             }
@@ -661,76 +749,57 @@ let defInfo_Default={
   name:"TEST_DEF",
   type:"m",
 
-  GInstruction:{
-    Zero:{
+  act_cmds:[
+    {
+      id:"Zero",
       cmds:[
-        "'M43 '+",
+        "console.log('ssssss')"
 
       ]
     },
-    Mylar_Take_1:{
-      gcode:"M43"
-    },
-    Mylar_Take_2:{
-      gcode:"M43"
-    },
+    {
+      id:"Mylar_Take_1",
+      cmds:[
+        "reportWait_register('KLKxxx','Locating1')",
+        "api.send_P('GS',0,{items:['data_path']})",
+        "api.send_P('GS',0,{items:['binary_path','data_path']})",
+        "v.fff=NaN;",
 
+        `reportWait_promise('KLKxxx')
+          .then(rep=>v.rep=report_process_Mylar_P1(rep))`,
+        "v.ddd=0;",
+      ]
+    },
+    // Mylar_Take_2
     
-    Mylar_Insp_1:{
-      gcode:"M43"
-    },
-    Mylar_Insp_2:{
-      gcode:"M43"
-    },
-    Mylar_Insp_Wait:{
-      gcode:"M43"
-    },
+    // Mylar_Insp_1
+    // Mylar_Insp_2
+    // Mylar_Insp_Wait
+    // Pillar_Take
+    // Pillar_Insp_1
+    // Pillar_Insp_2
+    // Pillar_OK_1
+
+    // Pillar_NG_1
+    // Pillar_OK_2
+    // Pillar_NG_2
+  ],
+
+  act_cmd_set_run:[
+    {
+      id:"Zero",
+
+    }
+  ],
 
 
-    Pillar_Take:{
-      gcode:"M43"
-    },
-
-
-    Pillar_Insp_1:{
-      gcode:"M43"
-    },
-    Pillar_Insp_2:{
-      gcode:"M43"
-    },
-
-
-    Pillar_OK_1:{
-      gcode:"M43"
-    },
-
-
-    Pillar_NG_1:{
-      gcode:"M43"
-    },
-
-
-    Pillar_OK_2:{
-      gcode:"M43"
-    },
-
-
-    Pillar_NG_2:{
-      gcode:"M43"
-    },
-
-
-
-
-
-  },
   rules:[
     {
       id:"rule1",
       type:"ColorRegionLocating",
-      sampleImageFolder:"data/TEST_DEF/rule1_KLKS0",
+      sampleImageFolder:"data/TEST_DEF/rule1_Locating1",
       camera_id:tar_camera_id,//"BMP_carousel_0",
-      trigger_tag:"KLKS0",
+      trigger_tag:"Locating1",
       regionInfo:[
         {
           colorThres:30,
@@ -746,6 +815,160 @@ let defInfo_Default={
   ]
 }
 
+
+function startsWith (str:string, needle:string) {
+  var len = needle.length
+  var i = -1
+  while (++i < len) {
+    if (str.charAt(i) !== needle.charAt(i)) {
+      return false
+    }
+  }
+  return true
+}
+
+
+async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[],onRunCmdIdexChanged:(index:number,info:string)=>void,abortSig?:AbortSignal)
+{
+  v.inCMD_Promise=true;
+  
+  let P=Promise;
+  // function PALL(ps:Promise<any>[])
+  // {
+  //   return Promise.all()
+  // }
+  function G(code:string)
+  {
+    return CNC_api.send_P({"type":"GCODE","code":code})
+  }
+  
+  function S(
+    tl:string,
+    prop:number,
+    data?:{[key:string]:any},
+    uintArr?:Uint8Array)
+  {
+    
+    return api.send_P(tl,prop,data,uintArr)
+  }
+  
+  let ReportCalcSysInfo_=ReportCalcSysInfo;
+  let SysInfoCalcCompensation_=SysInfoCalcCompensation;
+  async function READFILE(fileName:string)
+  {
+    let pkts = await api.send_P("LD",0,{filename:fileName},undefined) as any[];
+
+    let RP=pkts.find((pkt)=>pkt.type=="FL")
+    
+    if(RP===undefined)throw "READFILE cannot find "+fileName
+
+
+    return RP.data;
+  }
+  
+  function report_process_Mylar_P1(report:any)
+  {
+    console.log(report);
+    return report.rules[0].regionInfo.map((region:any)=>region.components);
+  }
+
+  function report_process_Mylar_P2(report:any)
+  {
+    return report;
+  }
+
+
+  function reportWait_reg(key:string,trigger_tag:string,camera_id?:string,trigger_id?:number)
+  {
+    // console.log(key,trigger_tag,camera_id,trigger_id)
+    if(v.reportListener[key])
+    {
+      if(v.reportListener[key].reject)
+        v.reportListener[key].reject();
+      
+      delete v.reportListener[key];
+      v.reportListener[key]=undefined;
+    }
+    v.reportListener[key]={
+      trigger_tag,trigger_id,camera_id
+    }
+  }
+
+  function reportWait(key:string)
+  {
+    return new Promise((resolve,reject)=>{
+
+      if(v.reportListener[key])
+      {
+        if(v.reportListener[key].report)
+        {
+          resolve(v.reportListener[key].report);
+        }
+        else
+        {
+          v.reportListener[key].resolve=resolve;
+          v.reportListener[key].reject=reject;
+        }
+      }
+      else
+      {
+        reject("No registered repWait info");
+      }
+    }).then((rep:any)=>{
+      delete v.reportListener[key];
+      return rep;
+    })
+  }
+
+
+
+  let run_cmd_idx=0;
+  function progressUpdate(info="")
+  {
+    onRunCmdIdexChanged(run_cmd_idx,info);
+  }
+
+  function NOT_ABORT()
+  {
+    if(abortSig&&abortSig.aborted)
+    {
+      throw("ACMD ABORT")
+    }
+  }
+
+  async function INCLUDE(fileName:string)
+  {
+    return eval( await READFILE(fileName))
+  }
+  
+  let $async=0;//just for a mark
+  for(run_cmd_idx=0; run_cmd_idx<cmdList.length; run_cmd_idx++)
+  {
+    let cmd=cmdList[run_cmd_idx];
+    v.inCMD_index=run_cmd_idx;
+    progressUpdate();
+    try{
+      let ret;
+      if(startsWith(cmd,'$async'))
+        ret = await eval("(async () => {"+cmd+"})()");
+      else
+        ret = await eval(cmd);
+    }
+    catch(e){
+      run_cmd_idx=-100;
+      progressUpdate();
+      throw({type:"ACMD exception",cmd,index:run_cmd_idx,e})
+    }
+    // console.log("$>",ret)
+  }
+
+  run_cmd_idx=-2;
+  progressUpdate();
+  
+  v.inCMD_Promise=false;
+  return true;
+}
+
 function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
   defInfo:typeof defInfo_Default,
   defReport:any,
@@ -753,6 +976,29 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
   onDefChange:(...param:any)=>void
 }){
   
+  const _this = useRef<any>({
+    listCMD_Vairable:{
+      inCMD_Promise:false,
+      cur_defInfo:{},
+      reportListener:{
+        _key_:{//example
+          time:0,
+          trigger_tag:"sss",
+          trigger_id:100,
+          camera_id:"Cam1",
+          
+          report:undefined,
+          resolve:(...v:any)=>null,
+          reject:(...e:any)=>null,
+          // reject:undefined,
+        }
+      },
+  
+    }
+
+  }).current;
+
+  _this.listCMD_Vairable.cur_defInfo=defInfo;
   enum editState {
     Normal_Show = 0,
     Calib_Param_Edit = 1,
@@ -763,61 +1009,60 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
     info:undefined
   });
 
+  const [delConfirmCounter,setDelConfirmCounter]=useState(0);
+
   
   
   const dispatch = useDispatch();
-  const ACT_EXT_API_ACCESS= (...p:Parameters<typeof EXT_API_ACCESS>) => dispatch(EXT_API_ACCESS(...p));
-
-  async function WaitCallback
-
+  const [BPG_API,setBPG_API]=useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+  const [CNC_API,setCNC_API]=useState<CNC_Perif>(dispatch(EXT_API_ACCESS(CNC_PERIPHERAL_ID)) as any);
 
 
-  async function getAPI(API_ID:string)
-  {
-    let api=await new Promise((resolve,reject)=>{
-      ACT_EXT_API_ACCESS(API_ID,(api)=>{
-        if(api===undefined)reject();
-        resolve(api) 
-      })
+  const [crunIdx,setCRunIdx]=useState(-1);
+  const [crunInfo,setCRunInfo]=useState("");
+  const [crunAbortCtrl,setCRunAbortCtrl]=useState<AbortController|undefined>(undefined);
+  
+  useEffect(() => {
+    let cbKey="TargetVIEWUI_CB";
+    BPG_API.send_cbs_add(INSP1_REP_PGID_,cbKey,{
+      resolve:(pkts)=>{
+        
+        let RP=pkts.find((info:any)=>info.type=="RP")
+        if(RP===undefined)return;
+        RP=RP.data;
+
+        let filteredKey=Object.keys(_this.listCMD_Vairable.reportListener)
+          .filter(key=>{
+            let repListener=_this.listCMD_Vairable.reportListener[key];
+            if(repListener.camera_id && repListener.camera_id!==RP.camera_id)return false;
+            if(repListener.trigger_tag && repListener.trigger_tag!==RP.trigger_tag)return false;
+            if(repListener.trigger_id && repListener.trigger_id!==RP.trigger_id)return false;
+            if(repListener.report!==undefined)return false;
+            return true;
+
+          })
+        
+        filteredKey.forEach(key=>{
+          if(_this.listCMD_Vairable.reportListener[key].resolve!==undefined)
+          {
+            _this.listCMD_Vairable.reportListener[key].resolve(RP);
+          }
+          else
+          {
+            _this.listCMD_Vairable.reportListener[key].report=RP;
+          }
+        })
+        // console.log(RP.data);
+      },
+      reject:(pkts)=>{
+
+      }
     });
-
-    return api;
-  }
-
-  async function pushInSendGCodeQ()
-  {
     
-    let api=await getAPI(CORE_ID) as BPG_WS;
-
-
-    let ret = await api.send_P("IT",0,{type:"delete_all"})
-    await api.send_P("IT",0,{type:"create",id:"XXX",defInfo,_PGID_:_PGID_,_PGINFO_:{keep:true}})
-      
-
-    
-    if(_this.isSendWaiting==true || _this.gcodeSeq.length==0)
-    {
-      return;
-    }
-    const gcode = _this.gcodeSeq.shift();
-    if(gcode==undefined || gcode==null)return;
-    _this.isSendWaiting=true;
-    ACT_WS_GET_OBJ((api)=>{
-      api.send({"type":"GCODE","code":gcode},
-      (ret)=>{
-        console.log(ret);
-        _this.isSendWaiting=false;
-        pushInSendGCodeQ(_this.gcodeSeq);
-
-      },(e)=>console.log(e));
-    })
-  }
-
-  // let new_stateInfo=[...stateInfo]
-  // new_stateInfo.pop();
-
-  // setStateInfo(new_stateInfo)
-
+    return (() => {
+      BPG_API.send_cbs_remove(INSP1_REP_PGID_,cbKey)
+      });
+  }, []); 
 
 
   let siderUI=null;
@@ -833,41 +1078,281 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
       
       switch(GetObjElement(stateInfo,["info","rootSel"]))
       {
-        case "CalibDetail":
+          case "ACT_CMD_Edit":
+            //
+          // console.log(defInfo.act_cmds[stateInfo.info.act_cmd_idx])
+          let act_cmdInfo=defInfo.act_cmds[stateInfo.info.act_cmd_idx];
+          let cmds=act_cmdInfo.cmds;
 
-          subMenu= <div style={{float:"left",width:"50%"}}>
-            <Menu mode="inline" theme="dark">
-    
-            <SubMenu key="sub1" title="subnav 1">
-                <input value="sss"></input>
-            </SubMenu>
-    
-            </Menu>
-    
+
+
+          subMenu= <div style={{
+            overflow: "scroll",
+            boxShadow: "-5px 5px 15px rgb(0 0 0 / 50%)",
+            float:"left",
+            width:"50%",
+            height: "100%",
+            
+            
+            padding: "5px",
+            background: "white",
+            color: "black"}}>
+            
+            
+            <Divider style={{margin: "5px"}}> NAME </Divider>
+
+            <Input maxLength={100} value={act_cmdInfo.id} 
+                style={{margin:"1px"}}
+                onChange={(e)=>{
+                  let value=e.target.value;
+                  let new_defInfo=ObjShellingAssign(defInfo,["act_cmds",stateInfo.info.act_cmd_idx,"id"],value);
+                  console.log(defInfo,new_defInfo);
+                  onDefChange(new_defInfo,undefined);
+
+                }}/>
+
+            <Button disabled={crunAbortCtrl!==undefined}   onClick={()=>{
+              const abortController = new AbortController();
+
+              setCRunAbortCtrl(abortController);
+              listCMDPromise(BPG_API,CNC_API,_this.listCMD_Vairable,cmds,(index,info)=>{
+                // console.log(info)
+                if(_this.crunIdx!=index)
+                {
+                  setCRunIdx(index);
+                  _this.crunIdx=index
+                  setCRunInfo(info)
+                }
+
+                
+                _this.throttle_Info_UPDATE=
+                ID_throttle(_this.throttle_Info_UPDATE,()=>{
+                  setCRunInfo(info)
+                },()=>_this.throttle_Info_UPDATE=undefined,100);
+                // else
+                // {
+                //   setCRunInfo(info)
+                // }
+              },abortController.signal)
+              .then(_=>{
+                abortController.abort();
+                console.log("DONE")
+                setCRunAbortCtrl(undefined);
+              })
+              .catch(e=>{
+                console.log(e);
+                setCRunAbortCtrl(undefined);
+              });
+
+              
+              // new Promise((resolve,reject)=>{
+
+              //   const abortCB=(e:Event)=>
+              //   {
+              //     reject(e)
+              //   }
+              //   abortController.signal.addEventListener("abort",abortCB);
+              // }).catch(e=>{
+              //   console.log(e)
+              // })
+              // setTimeout(()=>{
+              //   abortController.abort();
+              // },3000)
+              
+
+            }}>Run</Button>
+
+            <Button disabled={crunAbortCtrl===undefined || (crunAbortCtrl&&crunAbortCtrl.signal.aborted)}   onClick={()=>{
+              if(crunAbortCtrl===undefined)return;
+              crunAbortCtrl.abort();
+              setDelConfirmCounter(delConfirmCounter+1);//HACK this is just to force the update,delConfirmCounter would not be used at this stage
+            }}>STOP</Button> 
+            
+            <Popconfirm
+                title="Are you sure to delete this task?"
+                onConfirm={()=>{
+                  
+                }}
+                okButtonProps={{danger:true,onClick:()=>{
+                  if(delConfirmCounter==0)
+                  {
+                    defInfo.act_cmds[stateInfo.info.act_cmd_idx]
+
+                    let new_defInfo={...defInfo};
+                    new_defInfo.act_cmds.splice(stateInfo.info.act_cmd_idx, 1);
+                    onDefChange(new_defInfo,undefined);
+                    setStateInfo({...stateInfo,
+                      info:{rootSel:"",}
+                    })
+                  }
+                  else
+                  {
+                    setDelConfirmCounter(delConfirmCounter-1);
+                  }
+                }}}
+                onCancel={()=>{}}
+                okText={"Yes:"+delConfirmCounter}
+                cancelText="No"
+              >
+              <Button danger type="primary" onClick={()=>{
+                setDelConfirmCounter(5);
+              }}>DEL</Button>
+            </Popconfirm> 
+           
+            
+            <Divider style={{margin: "5px"}}> ACMD </Divider>
+            {
+              cmds.map((cmd:string,idx:number)=><>
+
+
+                <Dropdown
+                  overlay={<>
+                    <Button size="small" onClick={()=>{
+                      let new_defInfo={...defInfo};
+                      new_defInfo.act_cmds[stateInfo.info.act_cmd_idx].cmds.splice(idx, 0, "");
+                      onDefChange(new_defInfo,undefined);
+                    }}>+</Button>
+                    <Button size="small" onClick={()=>{
+                  
+                      let new_defInfo={...defInfo};
+                      new_defInfo.act_cmds[stateInfo.info.act_cmd_idx].cmds.splice(idx, 1);
+                      onDefChange(new_defInfo,undefined);
+                    }}>-</Button>
+                  </>}
+                >
+                  <a style={{color:"#000"}} className="ant-dropdown-link"  onClick={e => e.preventDefault()}>
+                    <DownOutlined />
+                  </a>
+                </Dropdown>
+
+                {crunIdx==idx?(crunInfo.length?crunInfo:"<--------"):null}
+
+
+                <Input.TextArea value={cmd} 
+                // rows={1}
+                autoSize
+                tabIndex={-1}
+                onKeyDown={(e)=>{
+                  if (e.key == 'Tab') {
+                    // e.preventDefault();
+
+                  }
+                }}
+                style={{margin:"1px"}}
+                onChange={(e)=>{
+                  let value=e.target.value;
+                  console.log(value)
+                  
+                  let new_defInfo=ObjShellingAssign(defInfo,["act_cmds",stateInfo.info.act_cmd_idx,"cmds",idx],value);
+                  console.log(defInfo,new_defInfo);
+                  onDefChange(new_defInfo,undefined);
+
+                }}/>
+              </>)
+            }
+
+            <Button size="small" onClick={()=>{
+              
+              let new_defInfo={...defInfo};
+              new_defInfo.act_cmds[stateInfo.info.act_cmd_idx].cmds.push("");
+              onDefChange(new_defInfo,undefined);
+
+            }}>+</Button>
+
+
           </div>
-    
           break;
       }
 
 
-
+      // console.log(defInfo);
 
       siderUI=
-      <Sider width={subMenu==null?250:500}>
+      <Sider width={subMenu==null?200:400}>
 
-        <div style={{float:"left",width:subMenu==null?"100%":"50%"}}>
-          <Menu theme="dark" onClick={(e)=>{
-            console.log(e);
-            
-            setStateInfo({...stateInfo,
-              info:{
-                rootSel:e.key,
+        <div style={{float:"left",height:"100%",width:subMenu==null?"100%":"50%"}}>
+
+          
+          <Menu mode="inline" theme="dark"
+          onClick={(e)=>{
+
+            if(e.keyPath.length!=2)return;
+
+            switch(e.keyPath[1])
+            {
+              case "ACTCMD":
+              {
+                setStateInfo({...stateInfo,
+                  info:{
+                    rootSel:"ACT_CMD_Edit",
+                    act_cmd_idx:e.key,
+                  }
+                })
               }
-            })
-          }}>
-            <Menu.Item key="LL">{"LL"}</Menu.Item>
-            <Menu.Item key="CalibDetail">{"CalibDetail"}</Menu.Item>
+              break;
+
+
+
+
+            }
+            console.log(e);
+
+          }} >
+
+            
+            <SubMenu key="INSP" title="INSP" 
+            onTitleClick={()=>{
+              setStateInfo({...stateInfo,
+                info:{rootSel:"",}
+              })
+            }}>
+            {
+              defInfo.rules.map((rule,index)=><Menu.Item key={index}>{rule.id+"<<"}</Menu.Item>)
+            }
+
+
+
+
+              <Menu.Item key={defInfo.act_cmds.length} onClick={()=>{
+                // let new_defInfo={...defInfo};
+
+                // new_defInfo.act_cmds=[...new_defInfo.act_cmds,{
+                //   id:"NEW_ACT_CMD",
+                //   cmds:[]
+                // }]
+                // onDefChange(new_defInfo,undefined);
+              }}>+</Menu.Item>
+            </SubMenu>
+
+
+
+            <SubMenu key="ACTCMD" title="ACTCMD" 
+            onTitleClick={()=>{
+              setStateInfo({...stateInfo,
+                info:{rootSel:"",}
+              })
+
+            }}>
+            {
+              defInfo.act_cmds.map((cmdInfo,index)=><Menu.Item key={index}>{cmdInfo.id+"<<"}</Menu.Item>)
+            }
+
+
+
+
+            <Menu.Item key={defInfo.act_cmds.length} onClick={()=>{
+              let new_defInfo={...defInfo};
+
+              new_defInfo.act_cmds=[...new_defInfo.act_cmds,{
+                id:"NEW_ACT_CMD",
+                cmds:[]
+              }]
+              onDefChange(new_defInfo,undefined);
+            }}>+</Menu.Item>
+            </SubMenu>
           </Menu>
+
+
         </div>
        {subMenu}
 
@@ -879,10 +1364,10 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
   }
   return <>
 
-    <Layout>
+    <Layout style={{ height: '100%' }}>
     <Header style={{ width: '100%' }}>
 
-    <Menu theme="dark" mode="horizontal" selectable={false} style={{height:"50px"}}>
+    <Menu theme="dark" mode="horizontal" selectable={false}>
         <Menu.Item key="1" onClick={()=>{
           
           setStateInfo({
@@ -904,13 +1389,13 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
     {defInfo.rules.map((rule,index)=>{
       
       let subRuleRep=GetObjElement(defReport,["rules",index]);
-      return <SingleTargetVIEWUI_ColorRegionLocating readonly width="100%" height="800px" key={rule.id} IMCM_group={IMCM_group} rule={rule} report={subRuleRep} onRuleChange={new_rule=>{
+      return <SingleTargetVIEWUI_ColorRegionLocating readonly={false} width="100%" height="100%" key={index} IMCM_group={IMCM_group} rule={rule} report={subRuleRep} onRuleChange={(new_rule,doInspUpdate=true)=>{
       
 
         let new_defInfo={...defInfo};
         new_defInfo.rules[index]=new_rule;
         console.log(new_defInfo);
-        onDefChange(new_defInfo,new_rule);
+        onDefChange(new_defInfo,doInspUpdate?new_rule:undefined);
       }}/>})
     }
     </Content>
@@ -1072,7 +1557,7 @@ function VIEWUI(){
         api.send_P("CM",0,{
           type:"setting",id:cam.id,
 
-          exposure:10000,
+          exposure:50000,
           analog_gain:20,
         }).then((camInfoPkts:any)=>camInfoPkts[0].data)
         
@@ -1132,7 +1617,7 @@ function VIEWUI(){
             
             setDefReport(RP.data)
             
-            console.log(e)
+            // console.log(e)
           },
           reject:(e)=>{
             console.log(e)
@@ -1143,10 +1628,10 @@ function VIEWUI(){
         api.send_P(
           "CM",0,{
             type:"trigger",
-
+            soft_trigger:true,
             id:camTrigInfo.id,
             trigger_tag:camTrigInfo.trigger_tag,
-            // img_path:"data/TEST_DEF/rule1_KLKS0/KKK2.png",
+            // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
             trigger_id:camTrigInfo.trigger_id,
             img_path:camTrigInfo.img_path,
             channel_id:50201
@@ -1177,7 +1662,7 @@ function VIEWUI(){
           if(IM===undefined)return;
           let CM=e.find((p:any)=>p.type=="CM");
           if(CM===undefined)return;
-          console.log(IM,CM);
+          // console.log(IM,CM);
           let IMCM={
             image_info:IM.image_info,
             camera_id:CM.data.camera_id,
@@ -1194,9 +1679,9 @@ function VIEWUI(){
       })
       updateDefInfo(defInfo,{
         id:tar_camera_id,
-        trigger_tag:"KLKS0",
+        trigger_tag:"Locating1",
         trigger_id:0,
-        img_path:undefined,//"data/TEST_DEF/rule1_KLKS0/KKK2.png",
+        img_path:undefined,//"data/TEST_DEF/rule1_Locating1/KKK2.png",
       });
 
 
@@ -1209,7 +1694,7 @@ function VIEWUI(){
 
   },[defInfoCritUpdate])
 
-  console.log(defInfo);
+  // console.log(defInfo);
   return <>
 
         <Button onClick={()=>{
@@ -1345,19 +1830,34 @@ function VIEWUI(){
           IMCM_group={IMCM_group}
           onDefChange={(new_def,tarRule)=>{
             
-            setDefInfo(new_def);
-            console.log(tarRule);
-            updateDefInfo(new_def,{
-              id:tarRule.camera_id,
-              trigger_tag:tarRule.trigger_tag,
-              trigger_id:0,
-              img_path:undefined,//"data/TEST_DEF/rule1_KLKS0/KKK2.png",
-            });
+
+            if(HACK_do_Camera_Check)
+            {
+              setDefInfoCritUpdate(new_def);
+              HACK_do_Camera_Check=false;
+            }
+            else
+            {
+              setDefInfo(new_def);
+              
+              if(tarRule!==undefined)
+              {
+
+                console.log(tarRule);
+                updateDefInfo(new_def,{
+                  id:tarRule.camera_id,
+                  trigger_tag:tarRule.trigger_tag,
+                  trigger_id:0,
+                  img_path:undefined,//"data/TEST_DEF/rule1_Locating1/KKK2.png",
+                });
+              }
+            }
+
 
             
             // id:tar_camera_id,//"BMP_carousel_0",
-            // trigger_tag:"KLKS0",
-            // // img_path:"data/TEST_DEF/rule1_KLKS0/KKK2.png",
+            // trigger_tag:"Locating1",
+            // // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
             // trigger_id:0,
           }}
         />

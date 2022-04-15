@@ -258,3 +258,91 @@ export function PtRotate2d(pt:VEC2D, theta:number,flipF=1) {
 
 
 
+
+// Circle CircleFitByHyper (Data& data)
+export function PointsFitCircle(pts:VEC2D[],w:number[])
+{
+    let i,iter,IterMAX=99;
+
+    let Xi,Yi,Zi;
+    let Mz,Mxy,Mxx,Myy,Mxz,Myz,Mzz,Cov_xy,Var_z;
+    let A0,A1,A2,A22;
+    let Dy,xnew,x,ynew,y;
+    let DET,Xcenter,Ycenter;
+
+    let ptsMean={x:0,y:0,w:0};
+    pts.forEach((pt,idx)=>{
+      ptsMean.x+=pt.x;
+      ptsMean.y+=pt.y;
+      ptsMean.w+=w[idx]
+    })
+    ptsMean.x/=ptsMean.w;
+    ptsMean.y/=ptsMean.w;
+    //let ptsMean=vecXY_mulin(,1.0/pts.length);
+
+
+    
+    // Circle circle;
+//     computing moments
+
+    Mxx=Myy=Mxy=Mxz=Myz=Mzz=0.;
+    let sumW=0;
+    for (i=0; i<pts.length; i++)
+    {
+        Xi = pts[i].x - ptsMean.x;   //  centered x-coordinates
+        Yi = pts[i].y - ptsMean.y;   //  centered y-coordinates
+        Zi = Xi*Xi + Yi*Yi;
+
+        sumW+=w[i];
+        Mxy += Xi*Yi*w[i];
+        Mxx += Xi*Xi*w[i];
+        Myy += Yi*Yi*w[i];
+        Mxz += Xi*Zi*w[i];
+        Myz += Yi*Zi*w[i];
+        Mzz += Zi*Zi*w[i];
+    }
+    Mxx /= sumW;
+    Myy /= sumW;
+    Mxy /= sumW;
+    Mxz /= sumW;
+    Myz /= sumW;
+    Mzz /= sumW;
+
+//    computing the coefficients of the characteristic polynomial
+
+    Mz = Mxx + Myy;
+    Cov_xy = Mxx*Myy - Mxy*Mxy;
+    Var_z = Mzz - Mz*Mz;
+
+    A2 = 4*Cov_xy - 3*Mz*Mz - Mzz;
+    A1 = Var_z*Mz + 4*Cov_xy*Mz - Mxz*Mxz - Myz*Myz;
+    A0 = Mxz*(Mxz*Myy - Myz*Mxy) + Myz*(Myz*Mxx - Mxz*Mxy) - Var_z*Cov_xy;
+    A22 = A2 + A2;
+
+//    finding the root of the characteristic polynomial
+//    using Newton's method starting at x=0
+//     (it is guaranteed to converge to the right root)
+
+	for (x=0.,y=A0,iter=0; iter<IterMAX; iter++)  // usually, 4-6 iterations are enough
+    {
+        Dy = A1 + x*(A22 + 16.*x*x);
+        xnew = x - y/Dy;
+        if ((xnew == x)||(!isFinite(xnew))) break;
+        ynew = A0 + xnew*(A1 + xnew*(A2 + 4*xnew*xnew));
+        if (Math.abs(ynew)>=Math.abs(y))  break;
+        x = xnew;  y = ynew;
+    }
+
+//    computing paramters of the fitting circle
+
+    DET = x*x - x*Mz + Cov_xy;
+    Xcenter = (Mxz*(Myy - x) - Myz*Mxy)/DET/2;
+    Ycenter = (Myz*(Mxx - x) - Mxz*Mxy)/DET/2;
+//       assembling the output
+    return {
+      x:Xcenter + ptsMean.x,
+      y:Ycenter + ptsMean.y,
+      r:Math.sqrt(Xcenter*Xcenter + Ycenter*Ycenter + Mz - x - x)
+    }
+    
+}
