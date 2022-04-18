@@ -206,7 +206,7 @@ export class BPG_WS
   }
 
   send_P(
-    tl:string,
+    tl:string|undefined,
     prop:number,
     data?:TYPE_OBJECT,
     uintArr?:Uint8Array)
@@ -327,6 +327,7 @@ export class BPG_WS
       }
       return false;
     }
+    console.log(info.data,PGID);
     if (PGID === undefined) {
       let maxNum=500;
       PGID = this.pgIDCounter++;

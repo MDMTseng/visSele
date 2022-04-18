@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useEffect,useRef } from 'react';
+import { useState, useEffect,useRef,useMemo } from 'react';
 import { useDispatch, useSelector } from "react-redux";
 import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm } from 'antd';
 import {ReportCalcSysInfo,SysInfoCalcCompensation} from './MachineCalibCalcUtil';
@@ -291,9 +291,11 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
 
 
 
-function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_group,rule,report,onRuleChange}:{
+function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=undefined,renderHook,IMCM_group,rule,report,onRuleChange}:{
   readonly:boolean,
+  style?:any,
   width:string,height:string,
+  renderHook:((ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,rule:any)=>void)|undefined,
   IMCM_group:{[trigID:string]:IMCM_type},
   rule:any,
   report:any,
@@ -308,6 +310,26 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
 
   });
   let _this=_.current;
+  let c_report:any = undefined;
+  if(_this.cache_report!==report)
+  {
+    if(report!==undefined)
+    {
+      _this.cache_report=report;
+    }
+  }
+  c_report=_this.cache_report;
+
+
+  useEffect(() => {
+
+    _this.cache_report=undefined;
+    // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
+    // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
+    return (() => {
+      });
+      
+  }, [rule]); 
   // console.log(IMCM_group,report);
   // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
   // const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);
@@ -333,8 +355,9 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
 
   
   const [queryCameraList,setQueryCameraList]=useState<any[]|undefined>(undefined);
+  const [delConfirmCounter,setDelConfirmCounter]=useState(0);
 
-
+  
   let stateInfo_tail=stateInfo[stateInfo.length-1];
 
   // function pushInSendGCodeQ()
@@ -359,17 +382,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
 
 
   useEffect(() => {
-
-    
-    // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
-    // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
-    return (() => {
-      });
-      
-  }, []); 
-
-  useEffect(() => {
-    let newIMCM=IMCM_group[rule.trigger_tag];
+    let newIMCM=IMCM_group[rule.trigger_tag+rule.camera_id];
     // console.log(newIMCM,rule.trigger_tag);
     if(Local_IMCM===newIMCM)return;
     
@@ -542,11 +555,34 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
             onRuleChange(newRule,false)
         }}/>
 
+        <Popconfirm
+            title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+            onConfirm={()=>{}}
+            onCancel={()=>{}}
+            okButtonProps={{danger:true,onClick:()=>{
+              if(delConfirmCounter!=0)
+              {
+                setDelConfirmCounter(delConfirmCounter-1);
+              }
+              else
+              {
+                onRuleChange(undefined,false)
+              }
+            }}}
+            okText={"Yes:"+delConfirmCounter}
+            cancelText="No"
+          >
+          <Button danger type="primary" onClick={()=>{
+            setDelConfirmCounter(5);
+          }}>DEL</Button>
+        </Popconfirm> 
         <br/>
         <Button onClick={()=>{
 
           onRuleChange(rule,true);
-          }}>SHOT</Button>
+        }}>SHOT</Button>
+
+
 
         {EditUI}
 
@@ -618,7 +654,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
   
 
   
-  return <div style={{width,height}}  className={"overlayCon"}>
+  return <div style={{...style,width,height}}  className={"overlayCon"}>
 
     <div className={"overlay"} >
 
@@ -632,7 +668,6 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
       // console.log(ctrl_or_draw);
       if(ctrl_or_draw==true)//ctrl
       {
-
         // if(canvas_obj.regionSelect===undefined)
         // canvas_obj.UserRegionSelect((onSelect,draggingState)=>{
         //   if(draggingState==1)
@@ -713,7 +748,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
             drawRegion(g,canvas_obj,region_ROI,canvas_obj.rUtil.getIndicationLineSize());
             
             
-            let region_components=GetObjElement(report,["regionInfo",idx,"components"]);
+            let region_components=GetObjElement(c_report,["regionInfo",idx,"components"]);
             // console.log(report,region_components);
             if(region_components!==undefined)
             {
@@ -737,6 +772,12 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,IMCM_grou
           drawRegion(g,canvas_obj,_this.sel_region,canvas_obj.rUtil.getIndicationLineSize());
       
         }
+      }
+
+      
+      if(renderHook)
+      {
+        renderHook(ctrl_or_draw,g,canvas_obj,rule);
       }
     }
     }/>
@@ -865,19 +906,6 @@ async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[
 
     return RP.data;
   }
-  
-  function report_process_Mylar_P1(report:any)
-  {
-    console.log(report);
-    return report.rules[0].regionInfo.map((region:any)=>region.components);
-  }
-
-  function report_process_Mylar_P2(report:any)
-  {
-    return report;
-  }
-
-
   function reportWait_reg(key:string,trigger_tag:string,camera_id?:string,trigger_id?:number)
   {
     // console.log(key,trigger_tag,camera_id,trigger_id)
@@ -1313,14 +1341,25 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
 
 
 
-              <Menu.Item key={defInfo.act_cmds.length} onClick={()=>{
-                // let new_defInfo={...defInfo};
+              <Menu.Item key={defInfo.rules.length} onClick={()=>{
+                console.log(defInfo.rules);
+                let new_defInfo={...defInfo};
 
-                // new_defInfo.act_cmds=[...new_defInfo.act_cmds,{
-                //   id:"NEW_ACT_CMD",
-                //   cmds:[]
-                // }]
-                // onDefChange(new_defInfo,undefined);
+                new_defInfo.rules=[...new_defInfo.rules,{
+                  
+                  id: "rule_"+defInfo.rules.length,
+                  type: "ColorRegionLocating",
+                  sampleImageFolder: "data/TEST_DEF/rule1_Locating1",
+                  camera_id: "BMP_carousel_0",
+                  trigger_tag: "TTag_"+defInfo.rules.length,
+                  regionInfo:[
+                    {
+                      colorThres:30,
+                      region:[0,0,10,10],
+                    },
+                  ],
+                }]
+                onDefChange(new_defInfo,undefined);
               }}>+</Menu.Item>
             </SubMenu>
 
@@ -1362,6 +1401,31 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
 
       break;
   }
+
+  let defRulesCount=defInfo.rules.length;
+  let WHArr:{w:number,h:number}[]=[];
+  if(defRulesCount==1)
+  {
+    WHArr=[{w:100,h:100}];
+  }
+  else if(defRulesCount==2)
+  {
+    WHArr=[{w:50,h:100},{w:50,h:100}];
+  }
+  else if(defRulesCount==3)
+  {
+    // WHArr=[{w:50,h:50},{w:50,h:50},{w:100,h:50}];
+    WHArr=[{w:33.333,h:100},{w:33.333,h:100},{w:33.333,h:100}];
+  }
+  else if(defRulesCount==4)
+  {
+    WHArr=[{w:50,h:50},{w:50,h:50},{w:50,h:50},{w:50,h:50}];
+  }
+
+
+
+
+
   return <>
 
     <Layout style={{ height: '100%' }}>
@@ -1387,15 +1451,35 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
     
     <Content className="site-layout" style={{ padding: '0 0px'}}>
     {defInfo.rules.map((rule,index)=>{
+      let rep_rules=GetObjElement(defReport,["rules"]);
+      let subRuleRep=undefined;
+      if(rep_rules!==undefined)
+        subRuleRep=rep_rules.find((rep_rule:any)=>rep_rule.id==rule.id);
+      // console.log(rule,subRuleRep);
+      // subRuleRep
+      let whsetting=WHArr[index];
+      return <SingleTargetVIEWUI_ColorRegionLocating readonly={false} width={whsetting.w+"%"} height={whsetting.h+"%"} style={{float:"left"}} key={index} IMCM_group={IMCM_group} rule={rule} report={subRuleRep} renderHook={_this.listCMD_Vairable.renderHook} onRuleChange={(new_rule,doInspUpdate=true)=>{
       
-      let subRuleRep=GetObjElement(defReport,["rules",index]);
-      return <SingleTargetVIEWUI_ColorRegionLocating readonly={false} width="100%" height="100%" key={index} IMCM_group={IMCM_group} rule={rule} report={subRuleRep} onRuleChange={(new_rule,doInspUpdate=true)=>{
-      
+        if(new_rule!==undefined)//update
+        {
+          let new_defInfo={...defInfo};
+          new_defInfo.rules[index]=new_rule;
+          console.log(new_defInfo);
+          onDefChange(new_defInfo,doInspUpdate?new_rule:undefined);
+        }
+        else//deltetion
+        {
+          
+          let new_defInfo={...defInfo,rules:[...defInfo.rules]};
+          
+          new_defInfo.rules.splice(index, 1);
 
-        let new_defInfo={...defInfo};
-        new_defInfo.rules[index]=new_rule;
-        console.log(new_defInfo);
-        onDefChange(new_defInfo,doInspUpdate?new_rule:undefined);
+          HACK_do_Camera_Check=true;
+          onDefChange(new_defInfo,undefined);
+
+
+          
+        }
       }}/>})
     }
     </Content>
@@ -1407,7 +1491,7 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
 }
 
 
-
+const _DEF_FILE_PATH_="data/xxx.json";
 function VIEWUI(){
   const _this = useRef<any>({}).current;
   
@@ -1517,7 +1601,7 @@ function VIEWUI(){
       await DisconnectAllCamera();
     let api=await getAPI(CORE_ID) as BPG_WS;
     let isFullfill= await isConnectedCameraFullfillList(camera_id_List)
-    console.log(isFullfill);
+
     if(isFullfill==false)
     {
       await DisconnectAllCamera();
@@ -1528,6 +1612,8 @@ function VIEWUI(){
         driver_name: string;
       }[]=[];
       
+
+      console.log(camera_id_List,discoveredCam);
       for(let i=0;i<camera_id_List.length;i++)
       {
         let camid=camera_id_List[i];
@@ -1559,6 +1645,7 @@ function VIEWUI(){
 
           exposure:50000,
           analog_gain:20,
+          WB_ONCE:true
         }).then((camInfoPkts:any)=>camInfoPkts[0].data)
         
         ));//
@@ -1586,10 +1673,9 @@ function VIEWUI(){
         api.send("CM",0,{
           type:"set_camera_channel_id",
           id:cam_id,
-          ...(idx==0?
-            {_PGID_:channel_id,_PGINFO_:{keep:true}}:
-            {}
-          )
+          _PGID_:channel_id,_PGINFO_:{keep:true}
+          
+          
         },undefined,cbs)
       )
       
@@ -1598,10 +1684,10 @@ function VIEWUI(){
 
 
 
-  function updateDefInfo(_defInfo:any,camTrigInfo:{id:string,trigger_tag:string,trigger_id:number,img_path:string|undefined})
+  function updateDefInfo_(_defInfo:any,camTrigInfo:{id:string,trigger_tag:string,trigger_id:number,img_path:string|undefined}|undefined=undefined)
   {
 
-    InspTargetReload(_defInfo,INSP1_REP_PGID_).then(e=>{
+    return InspTargetReload(_defInfo,INSP1_REP_PGID_).then(e=>{
       console.log(e)
       ACT_EXT_API_ACCESS(CORE_ID,(_api )=>{
         let api=_api as BPG_WS
@@ -1614,7 +1700,7 @@ function VIEWUI(){
               return;
             }
   
-            
+            console.log(RP.data)
             setDefReport(RP.data)
             
             // console.log(e)
@@ -1624,36 +1710,86 @@ function VIEWUI(){
           },
         })
 
-        
-        api.send_P(
-          "CM",0,{
-            type:"trigger",
-            soft_trigger:true,
-            id:camTrigInfo.id,
-            trigger_tag:camTrigInfo.trigger_tag,
-            // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
-            trigger_id:camTrigInfo.trigger_id,
-            img_path:camTrigInfo.img_path,
-            channel_id:50201
-          })
+        if(camTrigInfo!==undefined)
+          api.send_P(
+            "CM",0,{
+              type:"trigger",
+              soft_trigger:true,
+              id:camTrigInfo.id,
+              trigger_tag:camTrigInfo.trigger_tag,
+              // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
+              trigger_id:camTrigInfo.trigger_id,
+              img_path:camTrigInfo.img_path,
+              channel_id:50201
+            })
 
       })
     })
+  }
+
+  
+
+  async function updateDefInfo(_defInfo:any,camTrigInfo:{id:string,trigger_tag:string,trigger_id:number,img_path:string|undefined}|undefined=undefined)
+  {
+
+    console.log("+===========",_defInfo);
+    let reloadRes = await InspTargetReload(_defInfo,INSP1_REP_PGID_);
+    console.log("+===========",reloadRes);
+    let api = await getAPI(CORE_ID)as BPG_WS
+
+    api.send(undefined,0,{_PGID_:INSP1_REP_PGID_,_PGINFO_:{keep:true}},undefined,{
+      resolve:(e)=>{
+        let RP = e.find((pkt:any)=>pkt.type=="RP");
+        if(RP===undefined)
+        {
+          setDefReport(undefined)
+          return;
+        }
+
+        console.log(RP.data)
+        setDefReport(RP.data)
+        
+        // console.log(e)
+      },
+      reject:(e)=>{
+        console.log(e)
+      },
+    })
+
+
+
+    if(camTrigInfo!==undefined)
+      api.send_P(
+        "CM",0,{
+          type:"trigger",
+          soft_trigger:true,
+          id:camTrigInfo.id,
+          trigger_tag:camTrigInfo.trigger_tag,
+          // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
+          trigger_id:camTrigInfo.trigger_id,
+          img_path:camTrigInfo.img_path,
+          channel_id:50201
+        })
+
+    return reloadRes;
+
   }
 
 
   const [IMCM_group,setIMCM_group]=useState<{[trigID:string]:IMCM_type}>({});
   useEffect(()=>{
 
+    if(defInfoCritUpdate==0)return;
+    console.log("++++++++++++++",defInfo);
     let cameraList=Object.keys(defInfo.rules.reduce((obj,rule)=>{ 
       obj[rule.camera_id]=1;
       return obj;
        },{}))
 
-    console.log(cameraList);
-    let froceDisconnectAll=false;
+    // console.log(cameraList);
+    let froceDisconnectAll=true;
     CameraCheckAndConnect(cameraList,froceDisconnectAll).then(e=>{
-      console.log(e)
+      // console.log(e)
         
       CameraSetChannelID(cameraList,50201,
       { reject:(e)=>console.log(e),
@@ -1662,7 +1798,7 @@ function VIEWUI(){
           if(IM===undefined)return;
           let CM=e.find((p:any)=>p.type=="CM");
           if(CM===undefined)return;
-          // console.log(IM,CM);
+          // console.log("++++++++\n",IM,CM);
           let IMCM={
             image_info:IM.image_info,
             camera_id:CM.data.camera_id,
@@ -1671,29 +1807,56 @@ function VIEWUI(){
           }
           setIMCM_group({
             ...IMCM_group,
-            [IMCM.trigger_tag]:IMCM
+            [IMCM.trigger_tag+IMCM.camera_id]:IMCM
           })
 
 
         }, 
       })
-      updateDefInfo(defInfo,{
-        id:tar_camera_id,
-        trigger_tag:"Locating1",
-        trigger_id:0,
-        img_path:undefined,//"data/TEST_DEF/rule1_Locating1/KKK2.png",
+
+      
+      updateDefInfo(defInfo).then(inspTarList=>{
+        console.log(">>>>>>>>>>>>>>>>>",defInfo,inspTarList);
+        ACT_EXT_API_ACCESS(CORE_ID,(_api )=>{
+          let api=_api as BPG_WS
+          
+          defInfo.rules.forEach(rule=>{
+            
+            api.send_P(
+              "CM",0,{
+                type:"trigger",
+                soft_trigger:true,
+                id:rule.camera_id,
+                trigger_tag:rule.trigger_tag,
+                // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
+                trigger_id:100,
+                // img_path:camTrigInfo.img_path,
+                channel_id:50201
+              })
+          })
+        })
+
       });
+
 
 
 
     })
     .catch(e=>{
-
+      console.log("XXXXXX");
     })
 
 
   },[defInfoCritUpdate])
 
+  useEffect(()=>{//load default
+
+    ACT_FILE_Load(_DEF_FILE_PATH_)
+    .then((e)=>{
+      console.log(e);
+      setDefInfoCritUpdate(e);
+    })
+  },[])
   // console.log(defInfo);
   return <>
 
@@ -1809,7 +1972,7 @@ function VIEWUI(){
 
         <Button onClick={()=>{
 
-          ACT_FILE_Load("data/xxx.json")
+          ACT_FILE_Load(_DEF_FILE_PATH_)
             .then((e)=>{
               console.log(e);
               setDefInfoCritUpdate(e);
@@ -1820,7 +1983,7 @@ function VIEWUI(){
         <Button onClick={()=>{
           // defInfo
           var enc = new TextEncoder();
-          ACT_FILE_Save("data/xxx.json",enc.encode(JSON.stringify(defInfo, null, 2)));
+          ACT_FILE_Save(_DEF_FILE_PATH_,enc.encode(JSON.stringify(defInfo, null, 2)));
         }}>SAVE</Button>
 
 

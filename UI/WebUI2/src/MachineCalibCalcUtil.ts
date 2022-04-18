@@ -119,7 +119,7 @@ function TryFillUndefInfo(xList:CompDatType[], fList:CompDatType[][],simFactor:n
   }
 } 
 
-function compRepExtractPtGroup(Reps:CompRepType[],areaTargets:number[],aFactor:number)
+function compRepExtractPtGroup(Reps:CompRepType[],areaTargets:number[],aFactor:number,doTryFill=true)
 {
   let ptGGroup=
   Reps[0].reports.map((srep,idx:number)=>{
@@ -163,13 +163,21 @@ function compRepExtractPtGroup(Reps:CompRepType[],areaTargets:number[],aFactor:n
     })
 
     // console.log(firstStageResult,ptG)
-    firstStageResult=TryFillUndefInfo(firstStageResult, ptG,1-(1-aFactor)/2)
+    if(doTryFill)
+      firstStageResult=TryFillUndefInfo(firstStageResult, ptG,1-(1-aFactor)/2)
 
     // console.log(firstStageResult,ptG)
 
     return firstStageResult;
-
   });
+
+  return ptGroup;
+
+}
+
+
+function checkAllPointsValid(ptGroup:CompDatType[][],Reps:CompRepType[])
+{
 
   ptGroup.forEach(ptg=>{
     ptg.forEach(pt=>{
@@ -181,14 +189,12 @@ function compRepExtractPtGroup(Reps:CompRepType[],areaTargets:number[],aFactor:n
     })
   })
   return ptGroup;
-
 }
-
 
 function R11InfoCalc(R11Info:(CompRepType&{R11_angle:number})[],mmpp:number)
 {
-  let ptGroup=compRepExtractPtGroup(R11Info,[1331,664,770,1231,1229],0.7);
-
+  let ptGroup=compRepExtractPtGroup(R11Info,[1331,1231,1231,1231,1229],0.7);
+  checkAllPointsValid(ptGroup,R11Info)
   let circCentre = R11InfoFindCentre(ptGroup,R11Info.map(d=>d.R11_angle));
 
 
@@ -208,7 +214,8 @@ function R11InfoCalc(R11Info:(CompRepType&{R11_angle:number})[],mmpp:number)
 
   return {
     mmpp,
-    RInfo:RGroup
+    RInfo:RGroup,
+    centre:circCentre
   }
 }
 
@@ -217,10 +224,39 @@ function R11InfoCalc(R11Info:(CompRepType&{R11_angle:number})[],mmpp:number)
 
 
 
-export function ReportCalcSysInfo(R11Info:(CompRepType&{R11_angle:number})[],YLocInfo:(CompRepType&{Y_Loc:number})[])
+export function ReportCalcSysInfo(
+  reports:{
+    CalibYloc:number,
+    R11Rep:(CompRepType&{R11_angle:number})[],
+    YRep:(CompRepType&{Y_Loc:number})[]})
+  
+  
 {
-  const mmpp=0.04347826086;
-  return R11InfoCalc(R11Info,mmpp);
+  let YLocInfo=reports.YRep;
+  let R11Info=reports.R11Rep;
+
+  let SYSINFO:any;
+  let ptGroupYvec=compRepExtractPtGroup(YLocInfo,[1331,1231,1231,1231,1231],0.7,false);
+  {
+    let pt1 = ptGroupYvec[4][0];
+    let pt2 = ptGroupYvec[0][1];
+    if(pt1!==null &&pt2!==null)
+    {
+      let dist = YLocInfo[1].Y_Loc-YLocInfo[0].Y_Loc;
+      let vec = {x:pt2.x-pt1.x,y:pt2.y-pt1.y};
+      let vecDist=Math.hypot(vec.x,vec.y);
+
+      console.log(dist,vec,dist/vecDist);
+
+      let mmpp = dist/vecDist;
+      vec.x=vec.x*mmpp;
+      vec.y=vec.y*mmpp;
+      SYSINFO=R11InfoCalc(R11Info,mmpp);
+      SYSINFO={...SYSINFO,CalibYloc:reports.CalibYloc,mmpp:dist/vecDist,Y_vec:vec}
+    }
+  }
+  
+  return SYSINFO;
 }
 
 export function CALC_ADJ(sysInfo:ReturnType<typeof ReportCalcSysInfo>,h:number,nozzleIdx:number )
