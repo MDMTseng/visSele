@@ -29,14 +29,14 @@ float GCodeParser_M::unit2Pulse(float dist,float pulses_per_mm)
 
 float parseFloat(char* str,int strL)
 {
-  char strBuf[20];
+  char strBuf[30];
   memcpy(strBuf,str,strL);
   strBuf[strL]='\0';
   return atof(strBuf);
 }
 long parseLong(char* str,int strL)
 {
-  char strBuf[20];
+  char strBuf[30];
   memcpy(strBuf,str,strL);
   strBuf[strL]='\0';
   return atol(strBuf);
