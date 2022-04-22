@@ -203,6 +203,10 @@ cJSON* CameraManager::ConnectedCameraList()
   return jarr;
 }
 
+const vector<CameraManager::StreamingInfo> & CameraManager::ConnectedCamera_ex()
+{
+  return camera_streaming_infos;
+}
 
 
 CameraManager::~CameraManager()

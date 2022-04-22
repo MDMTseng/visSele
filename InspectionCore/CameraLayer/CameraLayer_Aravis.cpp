@@ -874,7 +874,18 @@ CameraLayer::status CameraLayer_Aravis::SetAnalogGain(float gain)
 
 CameraLayer::status CameraLayer_Aravis::SetOnceWB()
 {
-  return CameraLayer::NAK;
+  GError *err = NULL;
+  arv_camera_execute_command 		(camera, "WBOnce",&err);
+  
+  if (err != NULL)
+  {
+    
+    LOGI("WBOnce failed:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+    g_clear_error(&err);
+
+    return CameraLayer::NAK;
+  }
+  return CameraLayer::ACK;
 }
 
 CameraLayer::status CameraLayer_Aravis::SetFrameRate(float frame_rate)

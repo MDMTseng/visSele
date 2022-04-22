@@ -68,6 +68,7 @@ class CameraManager
   static std::string cameraDiscovery(bool doDiscover=true);
   
   cJSON* ConnectedCameraList();
+  const vector<CameraManager::StreamingInfo> &ConnectedCamera_ex();
   static cJSON* cameraInfo2Json(CameraLayer::BasicCameraInfo &info);
   // InspectionTarget* AddInspTargetWithCamera(int idx,std::string misc_str);
   
@@ -148,11 +149,12 @@ class InspectionTarget
 
   InspectionTarget(std::string id);
   virtual void setInspDef(const cJSON* def);
-  cJSON* genInfo();
+  virtual cJSON* genInfo();
 
   acvImage img_buff;
   virtual InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info)=0;
   virtual cJSON* fetchInspReport()=0;
+  virtual void cleanInspReport()=0;
   // virtual cJSON* genInspReport()=0;
   bool returnExchange(InspectionTarget_EXCHANGE* info);
   virtual void CAM_CallBack(image_pipe_info *pipe)=0;

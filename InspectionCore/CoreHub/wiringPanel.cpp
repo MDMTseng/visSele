@@ -496,12 +496,13 @@ public:
 
 class InspectionTarget_s_ColorRegionDetection :public InspectionTarget_s
 {
-
+  cJSON* nullOBJ;
   cJSON* report;
 public:
   InspectionTarget_s_ColorRegionDetection(std::string id,cJSON* def,vector <InspectionTarget_s*> *localGroup):InspectionTarget_s(id,def,localGroup)
   {
     // this->localGroup=localGroup;
+    nullOBJ=NULL;//cJSON_CreateNull();
     setInspDef(def);
     report=NULL;
   }
@@ -518,7 +519,16 @@ public:
 
   cJSON* fetchInspReport()
   {
+    // if(report==NULL)
+    // {
+    //   return nullOBJ;
+    // }
     return report;
+  }
+  void cleanInspReport()
+  {
+    cJSON_Delete(report);
+    report=NULL;
   }
 
 
@@ -543,6 +553,12 @@ public:
     if(report!=NULL)
     {
       cJSON_Delete(report);
+      report=NULL;
+    }
+
+    if(pipe->trigger_tag!=JFetch_STRING_ex(def,"trigger_tag","") || pipe->camera_id!=JFetch_STRING_ex(def,"camera_id",""))
+    {
+      return;
     }
     report=cJSON_CreateObject();
 
@@ -551,6 +567,7 @@ public:
     // cvtColor(def_temp_img, def_temp_img, COLOR_BayerGR2BGR);
     cJSON* rep_regionInfo=cJSON_CreateArray();
 
+    cJSON_AddStringToObject(report,"id",id.c_str());
     cJSON_AddItemToObject(report,"regionInfo",rep_regionInfo);
     for(int i=0;;i++)
     {
@@ -814,6 +831,54 @@ public:
   cJSON* fetchInspReport()
   {
     return inspresult;
+  }
+
+  
+
+  void cleanInspReport()
+  {
+    
+    for(int i=0;i<subInspList.size();i++)
+    {
+      subInspList[i]->cleanInspReport();
+    }
+    cJSON_Delete(inspresult);
+    inspresult=NULL;
+  }
+
+  cJSON* genInfo()
+  {
+    cJSON *obj=cJSON_CreateObject();
+
+    {
+      // cJSON *camInfo = cJSON_Parse(camera->getCameraJsonInfo().c_str());
+      // cJSON_AddItemToObject(obj, "camera", camInfo);
+    }
+
+    {
+      cJSON *otherInfo=cJSON_CreateArray();
+      cJSON_AddItemToObject(obj, "inspInfo", otherInfo);
+
+      for( auto sInsp:subInspList)
+      {
+        
+        cJSON *info=cJSON_CreateObject();
+
+
+        cJSON_AddStringToObject(info, "id", sInsp->id.c_str() );
+        
+        cJSON_AddItemToArray(otherInfo,info);
+      }
+
+
+
+    }
+
+    {
+      cJSON_AddNumberToObject(obj, "channel_id", channel_id);
+      cJSON_AddStringToObject(obj, "id", id.c_str());
+    }
+    return obj;
   }
 
   cJSON* genInspReport()
@@ -1384,6 +1449,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           LOGI("analog_gain:%f",*analog_gain);
         }
 
+        if(JFetch_TRUE(json, "WB_ONCE"))
+        {
+          cami->camera->SetOnceWB();
+        }
+
 
 
 
@@ -1398,7 +1468,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       }while(0);}
       else if(strcmp(type_str, "trigger") ==0)
       {do{
-        
         char *_cam_id = JFetch_STRING(json, "id");
         if(_cam_id==NULL)break;
         std::string id=std::string(_cam_id);
@@ -1408,29 +1477,46 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           
           char *_trigger_tag = JFetch_STRING(json, "trigger_tag");
           double *_trigger_id = JFetch_NUMBER(json, "trigger_id");
-          double *_channel_id = JFetch_NUMBER(json, "channel_id");
+          double channel_id = JFetch_NUMBER_ex(json, "channel_id");
 
-          if(_trigger_tag==NULL ||  _trigger_id==NULL || _channel_id==NULL)
+          if(channel_id!=channel_id)
           {
-            sprintf(err_str, "trigger_tag:%p trigger_id:%p channel_id:%p", _trigger_tag,_trigger_id,_channel_id);
+            CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
+            if(cami)
+            {
+              channel_id=cami->channel_id;
+            }
+          }
+
+          if(_trigger_tag==NULL ||  _trigger_id==NULL || channel_id!=channel_id)
+          {
+            sprintf(err_str, "trigger_tag:%p trigger_id:%p channel_id:%f", _trigger_tag,_trigger_id,channel_id);
+            LOGI("%s",err_str);
             break;
           }
           
           LOGI("_img_path:%s _cam_id:%s _trigger_tag:%s",_img_path,_cam_id,_trigger_tag);
-          LOGI("_trigger_id:%d _channel_id:%d",(int)*_trigger_id,(int)*_channel_id);
+          LOGI("_trigger_id:%d _channel_id:%d",(int)*_trigger_id,(int)channel_id);
           int ret=
             ReadImageAndPushToInspQueue(
               std::string(_img_path),
               id,
               std::string(_trigger_tag),
               (int)*_trigger_id,
-              (int)*_channel_id);
+              (int)channel_id);
         }
         else
         {
 
           if(JFetch_TRUE(json, "soft_trigger"))
           {
+            {
+              auto xx = inspTarMan.camman.ConnectedCamera_ex();
+              for(auto cam : xx)
+              {
+                LOGI(">>CAM>%s",cam.camera->getConnectionData().id.c_str());
+              }
+            }
             CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
             if(cami)
             {
