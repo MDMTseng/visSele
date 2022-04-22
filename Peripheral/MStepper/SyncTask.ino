@@ -84,7 +84,7 @@ class MStp_M:public MStp{
     
     TICK2SEC_BASE=10*1000*1000;
     main_acc=SUBDIV*2500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
-    minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    minSpeed=sqrt(main_acc)/4;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     main_junctionMaxSpeedJump=minSpeed;//5200;
 
     maxSpeedInc=minSpeed;
@@ -116,14 +116,15 @@ class MStp_M:public MStp{
     axisInfo[AXIS_IDX_Y].AccW=1;
     axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
 
+    auto mainAXIS_VSTEP=axisInfo[AXIS_IDX_Y].VirtualStep;
 
-    axisInfo[AXIS_IDX_Z1].VirtualStep=15;
-    axisInfo[AXIS_IDX_Z1].AccW=SUBDIV*2500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
-    axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=1/axisInfo[AXIS_IDX_Y].VirtualStep;
+    axisInfo[AXIS_IDX_Z1].VirtualStep=20;
+    axisInfo[AXIS_IDX_Z1].AccW=1;
+    axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=1/mainAXIS_VSTEP;
 
     axisInfo[AXIS_IDX_R11].VirtualStep=10;
-    axisInfo[AXIS_IDX_R11].AccW=SUBDIV*1500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
-    axisInfo[AXIS_IDX_R11].MaxSpeedJumpW=1/axisInfo[AXIS_IDX_Y].VirtualStep;
+    axisInfo[AXIS_IDX_R11].AccW=1;
+    axisInfo[AXIS_IDX_R11].MaxSpeedJumpW=1/mainAXIS_VSTEP;
     
     // axisInfo[AXIS_IDX_R12].VirtualStep=3;
     // axisInfo[AXIS_IDX_R12].AccW=SUBDIV*1500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
