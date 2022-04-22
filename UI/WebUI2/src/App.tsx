@@ -1,12 +1,10 @@
 import React from 'react';
 import { useState, useEffect,useRef,useMemo } from 'react';
 import { useDispatch, useSelector } from "react-redux";
-import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm } from 'antd';
-import {ReportCalcSysInfo,SysInfoCalcCompensation} from './MachineCalibCalcUtil';
-
+import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio } from 'antd';
 const { SubMenu } = Menu;
 
-import { UserOutlined, LaptopOutlined, NotificationOutlined,DownOutlined } from '@ant-design/icons';
+import { UserOutlined, LaptopOutlined, NotificationOutlined,DownOutlined,MoreOutlined,PlayCircleOutlined } from '@ant-design/icons';
 
 import clone from 'clone';
 
@@ -19,10 +17,16 @@ import { GetObjElement,ID_debounce,ID_throttle,ObjShellingAssign} from './UTIL/M
 import {HookCanvasComponent,DrawHook_CanvasComponent,type_DrawHook_g,type_DrawHook} from './CanvasComponent';
 import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_API';
 
-import { Row, Col,Input } from 'antd';
+import { Row, Col,Input,Tag,Modal } from 'antd';
 
 
 import './basic.css';
+
+import ReactJsoneditor from 'jsoneditor-for-react';
+
+// declare module 'jsoneditor-react'jsoneditor-for-react"
+
+import 'jsoneditor-react/es/editor.min.css';
 
 let INSP1_REP_PGID_ = 51000
 
@@ -122,6 +126,8 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
     canvas_obj:DrawHook_CanvasComponent
   })
 {
+  
+  const [delConfirmCounter,setDelConfirmCounter]=useState(0);
   let srule_Filled={
     
     region:[0,0,0,0],
@@ -180,6 +186,28 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
         })
       }}>設定範圍</Button>
     
+      <Popconfirm
+            title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+            onConfirm={()=>{}}
+            onCancel={()=>{}}
+            okButtonProps={{danger:true,onClick:()=>{
+              if(delConfirmCounter!=0)
+              {
+                setDelConfirmCounter(delConfirmCounter-1);
+              }
+              else
+              {
+                onRuleChange(undefined);
+                // onRuleChange(undefined,false)
+              }
+            }}}
+            okText={"Yes:"+delConfirmCounter}
+            cancelText="No"
+          >
+          <Button danger type="primary" onClick={()=>{
+            setDelConfirmCounter(5);
+          }}>DEL</Button>
+        </Popconfirm> 
 {/* 
     <br/>hough_circle
     <Slider defaultValue={srule_Filled.hough_circle.minRadius} max={100} onChange={(v)=>{
@@ -420,6 +448,8 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
     ctx.lineWidth = lineWidth*2/3;
     canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
 
+
+
   }
 
 
@@ -617,8 +647,21 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
             
             let newRule={...rule};
-            newRule.regionInfo[stateInfo_tail.info.idx]=newRule_sregion;
+            if(newRule_sregion!==undefined)
+            {
+              newRule.regionInfo[stateInfo_tail.info.idx]=newRule_sregion;
+            }
+            else
+            {
+              
+              newRule.regionInfo.splice(stateInfo_tail.info.idx, 1);
+              
+              let new_stateInfo=[...stateInfo]
+              new_stateInfo.pop();
 
+              setStateInfo(new_stateInfo)
+
+            }
 
             onRuleChange(newRule,true)
             // _this.sel_region=undefined
@@ -746,7 +789,11 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
             
             ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
             drawRegion(g,canvas_obj,region_ROI,canvas_obj.rUtil.getIndicationLineSize());
-            
+                    
+            ctx.font = "40px Arial";
+            ctx.fillStyle = "rgba(0, 179, 0,0.5)";
+            ctx.fillText("idx:"+idx,region_ROI.x,region_ROI.y)
+
             
             let region_components=GetObjElement(c_report,["regionInfo",idx,"components"]);
             // console.log(report,region_components);
@@ -755,6 +802,10 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
               region_components.forEach((regComp:any)=>{
 
                 canvas_obj.rUtil.drawCross(ctx, {x:regComp.x,y:regComp.y}, 5);
+
+                ctx.font = "4px Arial";
+                ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
+                ctx.fillText(regComp.area,regComp.x,regComp.y)
               })
 
             }
@@ -869,7 +920,7 @@ function startsWith (str:string, needle:string) {
 }
 
 
-async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[],onRunCmdIdexChanged:(index:number,info:string)=>void,abortSig?:AbortSignal)
+async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[],onRunCmdIdexChanged:(index:number,info:string)=>void,abortSig?:AbortSignal,onUserInputRequest?:(setting:any)=>Promise<any>)
 {
   v.inCMD_Promise=true;
   
@@ -883,6 +934,11 @@ async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[
     return CNC_api.send_P({"type":"GCODE","code":code})
   }
   
+  async function delay(ms=1000)
+  {
+    return new Promise((resolve,reject)=>setTimeout(resolve,ms))
+  }
+
   function S(
     tl:string,
     prop:number,
@@ -892,9 +948,6 @@ async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[
     
     return api.send_P(tl,prop,data,uintArr)
   }
-  
-  let ReportCalcSysInfo_=ReportCalcSysInfo;
-  let SysInfoCalcCompensation_=SysInfoCalcCompensation;
   async function READFILE(fileName:string)
   {
     let pkts = await api.send_P("LD",0,{filename:fileName},undefined) as any[];
@@ -948,7 +1001,56 @@ async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[
     })
   }
 
+  async function waitUserSelect(title:string,info="",arr:any[],default_value:any)
+  {
+    if(onUserInputRequest===undefined)return default_value;
+    let value = await onUserInputRequest({
+      title:title,
+      type:"SELECT",
+      data:arr,
+      info,
+      default_value:default_value});
+    if(value)return value;
+    return default_value;
+  }
+  async function waitUserSelects(title:string,info_arr:{text:string,opts:any[],default?:any}[])
+  {
 
+
+
+    // waitUserSelects("setup",[
+    //   {text:"",opts:[1,2,3]},
+    //   {text:">>",opts:["A","B","C"]},
+    // ],[0,0])
+
+
+    if(onUserInputRequest===undefined)return info_arr.map((info,idx)=>info.default);
+    let value = await onUserInputRequest({
+      title:title,
+      type:"SELECTS",
+      data:info_arr});
+    if(value)return value;
+    // return default_value;
+    return info_arr.map((info,idx)=>info.default);
+  }
+
+  
+  async function waitUserCheck(title:string,info="")
+  {
+    if(onUserInputRequest===undefined)return;
+    await onUserInputRequest({
+      title:title,
+      type:"CHECK",
+      info});
+  }
+
+  async function waitUserInput(obj:any,default_value:any)
+  {
+    if(onUserInputRequest===undefined)return default_value;
+    let value = await onUserInputRequest({...obj,default_value:default_value});
+    if(value)return value;
+    return default_value;
+  }
 
   let run_cmd_idx=0;
   function progressUpdate(info="")
@@ -1003,7 +1105,7 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
   IMCM_group:{[trigID:string]:IMCM_type},
   onDefChange:(...param:any)=>void
 }){
-  
+  const ReactJsoneditorRef=useRef<ReactJsoneditor|undefined>();
   const _this = useRef<any>({
     listCMD_Vairable:{
       inCMD_Promise:false,
@@ -1050,6 +1152,21 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
   const [crunInfo,setCRunInfo]=useState("");
   const [crunAbortCtrl,setCRunAbortCtrl]=useState<AbortController|undefined>(undefined);
   
+  const [mouseOnIdx,setMouseOnIdx]=useState(-1);
+  
+  let DAT_ANY:any=undefined;
+  const [modalInfo,setModalInfo]=useState({
+    timeTag:0,
+    visible:false,
+    type:"",
+    onOK:(_:any)=>_,
+    onCancel:(_:any)=>_,
+    title:"",
+    DATA:DAT_ANY
+
+  });
+
+
   useEffect(() => {
     let cbKey="TargetVIEWUI_CB";
     BPG_API.send_cbs_add(INSP1_REP_PGID_,cbKey,{
@@ -1093,6 +1210,85 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
   }, []); 
 
 
+  function listCMDPromiseRun(cmds:string[])
+  {
+    const abortController = new AbortController();
+
+    setCRunAbortCtrl(abortController);
+    listCMDPromise(BPG_API,CNC_API,_this.listCMD_Vairable,cmds,(index,info)=>{
+      // console.log(info)
+      if(_this.crunIdx!=index)
+      {
+        setCRunIdx(index);
+        _this.crunIdx=index
+        setCRunInfo(info)
+      }
+
+      
+      _this.throttle_Info_UPDATE=
+      ID_throttle(_this.throttle_Info_UPDATE,()=>{
+        setCRunInfo(info)
+      },()=>_this.throttle_Info_UPDATE=undefined,100);
+      // else
+      // {
+      //   setCRunInfo(info)
+      // }
+    },abortController.signal,
+    async (setting)=>{
+      let _setting={...setting}
+      _this.listCMD_Vairable.USER_INPUT=undefined;
+      if(setting.type==="SELECTS")
+      {//preset
+        _this.listCMD_Vairable.USER_INPUT=setting.data.map((info:any)=>info.default);
+      }
+      await new Promise((resolve,reject)=>{
+        setModalInfo({
+          timeTag:Date.now(),
+          visible:true,
+          type:setting.type,
+          onOK:(_:any)=>{
+            resolve(true)
+            setModalInfo({...modalInfo,visible:false})
+          },
+          onCancel:(_:any)=>{
+            reject(false)
+            setModalInfo({...modalInfo,visible:false})
+          },
+          title:setting.title,
+          DATA:_setting
+        })
+      })
+      
+      return _this.listCMD_Vairable.USER_INPUT;
+    })
+    .then(_=>{
+      abortController.abort();
+      console.log("DONE")
+      setCRunAbortCtrl(undefined);
+    })
+    .catch(e=>{
+      console.log(e);
+      setCRunAbortCtrl(undefined);
+    });
+
+    
+    // new Promise((resolve,reject)=>{
+
+    //   const abortCB=(e:Event)=>
+    //   {
+    //     reject(e)
+    //   }
+    //   abortController.signal.addEventListener("abort",abortCB);
+    // }).catch(e=>{
+    //   console.log(e)
+    // })
+    // setTimeout(()=>{
+    //   abortController.abort();
+    // },3000)
+    
+
+  }
+
   let siderUI=null;
   switch(stateInfo.st)
   {
@@ -1112,6 +1308,10 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
           let act_cmdInfo=defInfo.act_cmds[stateInfo.info.act_cmd_idx];
           let cmds=act_cmdInfo.cmds;
 
+          if(stateInfo.info.showDetail!=true)
+          {
+            break;
+          }
 
 
           subMenu= <div style={{
@@ -1140,54 +1340,7 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
                 }}/>
 
             <Button disabled={crunAbortCtrl!==undefined}   onClick={()=>{
-              const abortController = new AbortController();
-
-              setCRunAbortCtrl(abortController);
-              listCMDPromise(BPG_API,CNC_API,_this.listCMD_Vairable,cmds,(index,info)=>{
-                // console.log(info)
-                if(_this.crunIdx!=index)
-                {
-                  setCRunIdx(index);
-                  _this.crunIdx=index
-                  setCRunInfo(info)
-                }
-
-                
-                _this.throttle_Info_UPDATE=
-                ID_throttle(_this.throttle_Info_UPDATE,()=>{
-                  setCRunInfo(info)
-                },()=>_this.throttle_Info_UPDATE=undefined,100);
-                // else
-                // {
-                //   setCRunInfo(info)
-                // }
-              },abortController.signal)
-              .then(_=>{
-                abortController.abort();
-                console.log("DONE")
-                setCRunAbortCtrl(undefined);
-              })
-              .catch(e=>{
-                console.log(e);
-                setCRunAbortCtrl(undefined);
-              });
-
-              
-              // new Promise((resolve,reject)=>{
-
-              //   const abortCB=(e:Event)=>
-              //   {
-              //     reject(e)
-              //   }
-              //   abortController.signal.addEventListener("abort",abortCB);
-              // }).catch(e=>{
-              //   console.log(e)
-              // })
-              // setTimeout(()=>{
-              //   abortController.abort();
-              // },3000)
-              
-
+              listCMDPromiseRun(cmds);
             }}>Run</Button>
 
             <Button disabled={crunAbortCtrl===undefined || (crunAbortCtrl&&crunAbortCtrl.signal.aborted)}   onClick={()=>{
@@ -1294,6 +1447,13 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
 
 
       // console.log(defInfo);
+      let ButtonStyle={
+        
+        minWidth:"15px",
+        color:"#FFF",
+        background:"#444",
+      }
+
 
       siderUI=
       <Sider width={subMenu==null?200:400}>
@@ -1301,31 +1461,7 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
         <div style={{float:"left",height:"100%",width:subMenu==null?"100%":"50%"}}>
 
           
-          <Menu mode="inline" theme="dark"
-          onClick={(e)=>{
-
-            if(e.keyPath.length!=2)return;
-
-            switch(e.keyPath[1])
-            {
-              case "ACTCMD":
-              {
-                setStateInfo({...stateInfo,
-                  info:{
-                    rootSel:"ACT_CMD_Edit",
-                    act_cmd_idx:e.key,
-                  }
-                })
-              }
-              break;
-
-
-
-
-            }
-            console.log(e);
-
-          }} >
+          <Menu mode="inline" theme="dark" selectable={false}>
 
             
             <SubMenu key="INSP" title="INSP" 
@@ -1366,14 +1502,67 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
 
 
             <SubMenu key="ACTCMD" title="ACTCMD" 
+            
             onTitleClick={()=>{
               setStateInfo({...stateInfo,
                 info:{rootSel:"",}
               })
-
             }}>
             {
-              defInfo.act_cmds.map((cmdInfo,index)=><Menu.Item key={index}>{cmdInfo.id+"<<"}</Menu.Item>)
+              defInfo.act_cmds.map((cmdInfo,index)=>{
+                let isThisIdx="ACT_CMD_Edit"==GetObjElement(stateInfo,["info","rootSel"])
+                              &&index===GetObjElement(stateInfo,["info","act_cmd_idx"]);
+                let isMouseOnThis=mouseOnIdx==index;
+                // PlayCircleOutlined
+                return <Menu.Item
+                onClick={_=>_}
+                className="antd_menu_item_8px_padding"
+                onMouseEnter={()=>{
+                  setMouseOnIdx(index);
+                }}
+                onMouseLeave={()=>{
+                  setMouseOnIdx(-1);
+                }}
+                key={index}>
+                  
+                  {/* <Tag icon={<DownOutlined />}/> */}
+                  {(isMouseOnThis==false && isThisIdx==false)?null:
+                  <Button.Group>
+
+                  
+                  <Button style={ButtonStyle} shape="circle" icon={<PlayCircleOutlined />} onClick={()=>{
+                    
+                    listCMDPromiseRun(cmdInfo.cmds);
+                  }} size={"small"}></Button>
+                  <Button shape="circle"  style={{...ButtonStyle,width:"15px"}}
+                  
+                  icon={<MoreOutlined />} size={"small"} onClick={(e)=>{
+                    if(isThisIdx)
+                    {
+                      setStateInfo({...stateInfo,
+                        info:{rootSel:"",}
+                      })
+                    }
+                    else
+                    {
+                      setStateInfo({...stateInfo,
+                        info:{
+                          rootSel:"ACT_CMD_Edit",
+                          act_cmd_idx:index,
+                          showDetail:true,
+                        }
+                      })
+                    }
+                  }}/>
+                  </Button.Group>}
+                  {"    "}
+                  {cmdInfo.id}
+                  {isThisIdx?"  >":null}
+                  {/* <Tag icon={<DownOutlined />} color="#cd201f">
+                    Youtube
+                  </Tag> */}
+                  {/* <Button shape="circle" size="small" icon={<DownOutlined />} /> */}
+                </Menu.Item>})
             }
 
 
@@ -1386,7 +1575,14 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
                 id:"NEW_ACT_CMD",
                 cmds:[]
               }]
+              setStateInfo({...stateInfo,
+                info:{
+                  rootSel:"ACT_CMD_Edit",
+                  act_cmd_idx:defInfo.act_cmds.length,
+                }
+              })
               onDefChange(new_defInfo,undefined);
+              
             }}>+</Menu.Item>
             </SubMenu>
           </Menu>
@@ -1450,6 +1646,47 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
     {siderUI}
     
     <Content className="site-layout" style={{ padding: '0 0px'}}>
+    <Modal
+        title={modalInfo.title}
+        visible={modalInfo.visible}
+        onOk={modalInfo.onOK}
+        // confirmLoading={confirmLoading}
+        onCancel={modalInfo.onCancel}
+      >
+        {/* <ReactJsoneditor ref={ReactJsoneditorRef} values={modalInfo.DATA} /> */}
+        {modalInfo.type=="SELECT"?<>
+          {modalInfo.DATA.info}<br/>
+          {modalInfo.DATA.data.map((sdat:any)=><Button onClick={()=>{ _this.listCMD_Vairable.USER_INPUT=sdat;modalInfo.onOK(0)  }}>{sdat}</Button>)}
+          <br/>
+          {_this.listCMD_Vairable.USER_INPUTdefault_value===undefined?
+            null:<>預設:{_this.listCMD_Vairable.USER_INPUTdefault_value}</>}
+          
+        </>:modalInfo.type=="SELECTS"?<>
+          {modalInfo.DATA.info}
+          {modalInfo.DATA.data.map((opts_info:{text:string,opts:any[],default?:any},index:number)=><>
+            <Divider style={{margin: "5px"}}> {opts_info.text} </Divider>
+            <br/>
+            <Radio.Group key={modalInfo.timeTag+":"+index} defaultValue={opts_info.default} onChange={()=>{}}>
+            {opts_info.opts.map((opt)=><Radio.Button value={opt} onClick={()=>{
+              _this.listCMD_Vairable.USER_INPUT[index]=opt;
+              
+            }}>{opt}</Radio.Button>)}
+            </Radio.Group>
+            {/* <br/>
+            {opts_info.default===undefined?
+              null:<>預設:{opts_info.default}</>} */}
+          </>
+          )}
+         
+
+
+
+        </>:modalInfo.type=="CHECK"?<>
+          {modalInfo.DATA.info}
+        </>:null
+          
+        }
+    </Modal>
     {defInfo.rules.map((rule,index)=>{
       let rep_rules=GetObjElement(defReport,["rules"]);
       let subRuleRep=undefined;

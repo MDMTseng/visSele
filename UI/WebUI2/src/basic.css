@@ -7,3 +7,11 @@
 	position: absolute;
 	background: none;
 }
+
+.antd_menu_item_no_padding{
+  padding-left: 0px !important;
+}
+
+.antd_menu_item_8px_padding{
+  padding-left: 8px !important;
+}

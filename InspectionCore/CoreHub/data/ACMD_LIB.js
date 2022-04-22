@@ -1,7 +1,7 @@
 
 
 const Y_Mylar=200;
-const Y_Camera=190;
+const Y_Camera=173;
 const Z_Camera=-30;
 
 const Y_Pillar=100;
@@ -68,15 +68,16 @@ let SYS_ZERO=async ()=>{
 
   CNC_api.enablePING(false);
   await G("G28")
-  await G("G01 R11_-48.5")
+  await G(`G01 R11_${-48.5+1}  F100`)
   await G("G92 T0 Z1_0 R11_0")
   CNC_api.enablePING(true);
 
+  await G(`M42 P${camTrigPIN} T0`)
   await G(`M42 P${camTrigPIN} S1`)
-  await G(`M42 P${suckPIN} S1`)
-  await G(`M42 P${suckPIN} T1`)
-  await G("G04 P1000")
   await G(`M42 P${suckPIN} T0`)
+  await G(`M42 P${suckPIN} S1`)
+  // await G(`M42 P${suckPIN} T1`)
+  // await G("G04 P1000")
 }
 
 
@@ -154,7 +155,7 @@ function rangeGen(from,to,count)
 let CalibShotSeq=async (Yloc,trigger_tag,camera_id)=>{
 
   await G(`G01 Y${Yloc-10} Z1_${Z_Camera} R11_0`)
-  let YSeq=[0,44]//rangeGen(-0,4*(11),5);
+  let YSeq=[-11*2,0]//rangeGen(-0,4*(11),5);
   let YRep=[];
   for(let i=0;i<YSeq.length;i++)
   {
@@ -165,7 +166,7 @@ let CalibShotSeq=async (Yloc,trigger_tag,camera_id)=>{
     });
   }
 
-  let R11Seq=rangeGen(-8,8,5);
+  let R11Seq=rangeGen(-12,12,2);
   let R11Rep=[];
   for(let i=0;i<R11Seq.length;i++)
   {
@@ -185,6 +186,421 @@ let CalibShotSeq=async (Yloc,trigger_tag,camera_id)=>{
     CalibYloc:Yloc,
     YRep,R11Rep
   }
+}
+
+
+function  intersectPoint( p1, p2, p3, p4)
+{
+  let intersec={x:0,y:0};
+  let denominator;
+
+  let V1 = (p1.x-p2.x);
+  let V2 = (p3.x-p4.x);
+  let V3 = (p1.y-p2.y);
+  let V4 = (p3.y-p4.y);
+
+  denominator = V1* V4 - V3* V2;
+
+  let V12 = (p1.x*p2.y-p1.y*p2.x);
+  let V34 = (p3.x*p4.y-p3.y*p4.x);
+  intersec.x=( V12 * V2 - V1 * V34 )/denominator;
+  intersec.y=( V12 * V4 - V3 * V34 )/denominator;
+
+  return intersec;
+}
+function R11InfoFindCentre(R11_PtGroup,angleInfo)
+{
+  //find min angle
+  let ang0_index=angleInfo.reduce((mina_idx,ang,cur_idx)=>angleInfo[mina_idx]<ang?mina_idx:cur_idx,0);
+  // let N=R11Info.length-1;
+  //find max angle
+  let angN_index=angleInfo.reduce((mina_idx,ang,cur_idx)=>angleInfo[mina_idx]>ang?mina_idx:cur_idx,0);
+
+  // let angNDiff=angleInfo[angN_index]-angleInfo[ang0_index];
+
+  {
+    
+    let ang0_pt0=R11_PtGroup[0][ang0_index];
+    let ang0_ptN=R11_PtGroup[R11_PtGroup.length-1][ang0_index];
+
+    let angN_pt0=R11_PtGroup[0][angN_index];
+    let angN_ptN=R11_PtGroup[R11_PtGroup.length-1][angN_index];
+
+    if(ang0_pt0===null || ang0_ptN===null || angN_pt0===null || angN_ptN===null)
+    {
+      throw {R11_PtGroup,angleInfo,ang0_pt0,ang0_ptN,angN_pt0,angN_ptN,msg:"R11InfoFindCentre requre points failed"};
+    }
+
+    return intersectPoint(ang0_pt0,ang0_ptN,angN_pt0,angN_ptN);
+    // console.log(180-180* Math.atan2(ang0_infoVec0.y,ang0_infoVec0.x)/Math.PI);
+  }
+
+}
+
+
+function TryFillUndefInfo(xList, fList,simFactor)
+{
+  let preDatIdx=-1;
+  let nxtDatIdx=-1;
+  for(let i=0;i<xList.length;i++)
+  {
+    if(xList[i]===null)continue;
+    
+    if(
+    preDatIdx==-1 ||
+    (xList[preDatIdx]===undefined && xList[i]===undefined) ||
+    (xList[preDatIdx]!==undefined && xList[i]!==undefined))//same prop
+    {
+      preDatIdx = i;
+      continue;
+    }
+
+    nxtDatIdx=i;
+
+    break;
+
+  }
+
+  if(nxtDatIdx!=-1)
+  {
+    let newxList=[...xList];
+    let undefIdx;
+    let valIdx;
+    if(newxList[nxtDatIdx]!==undefined)
+    {
+      undefIdx=preDatIdx;
+      valIdx=nxtDatIdx;
+    }
+    else
+    {
+      undefIdx=nxtDatIdx;
+      valIdx=preDatIdx;
+    }
+
+    let vObj=newxList[valIdx];
+    if(vObj===null)
+    {
+      return undefined
+    }
+    let tarArea=vObj.area;
+
+    let hFactor=0;
+    let targetCand=undefined;
+    fList[undefIdx].forEach((cand)=>{
+      let factor=(tarArea<cand.area)?(tarArea/cand.area):(cand.area/tarArea);
+      if(hFactor<factor)
+      {
+        hFactor=factor;
+        targetCand=cand;
+      }
+    })
+
+    if(hFactor<simFactor)
+    {
+      newxList[undefIdx]=null;
+    }
+    else
+    {
+      newxList[undefIdx]=targetCand;
+    }
+
+    // console.log(fList[undefIdx],newxList[valIdx],">>>",targetCand);
+    return TryFillUndefInfo(newxList, fList,simFactor);
+  }
+  else
+  {
+    return xList;
+  }
+} 
+
+function R11InfoCalc(R11Info,mmpp,R11_areaTargets,R11_aFactor)
+{
+  console.log("R11InfoCalc R11Info>>",R11Info);
+  let ptGroup=compRepExtractPtGroup(R11Info,R11_areaTargets,R11_aFactor);
+  // checkAllPointsValid(ptGroup,R11Info)
+  let circCentre = R11InfoFindCentre(ptGroup,R11Info.map(d=>d.R11_angle));
+
+
+  let RGroup=ptGroup.map(ptg=>{
+    let stat=ptg.reduce((infoSum,pt)=>{
+      if(pt===null)return infoSum;
+      if(circCentre===undefined)return infoSum;
+      infoSum.count++;
+      infoSum.distSum+=Math.hypot(circCentre.x-pt.x,circCentre.y-pt.y);
+      return infoSum;
+    },{distSum:0,count:0});
+    return stat.distSum/stat.count
+
+  }).map(RinPix=>RinPix*mmpp)
+
+
+
+  return {
+    mmpp,
+    RInfo:RGroup,
+    centre:circCentre
+  }
+}
+
+
+// let sysInfo=R11InfoCalc(_R11Info,circCentre,mmpp);
+
+
+
+function checkAllPointsValid(ptGroup,Reps)
+{
+
+  ptGroup.forEach(ptg=>{
+    ptg.forEach(pt=>{
+
+      if(pt===undefined || pt===null)
+      {
+        throw {info:Reps,ptGroup,msg:"Data Collection is not complete"};
+      }
+    })
+  })
+  return ptGroup;
+}
+
+function compRepExtractPtGroup(Reps,areaTargets,aFactor,doTryFill=true)
+{
+  let ptGGroup=
+  Reps[0].reports.map((srep,idx)=>{
+
+    let xx=Reps.map((sinfo)=>sinfo.reports[idx].components);
+    return xx;
+  })
+  let ptGroup=ptGGroup.map((ptG,idx)=>{
+    let areaTarget=areaTargets[idx];
+    let firstStageResult=ptG.map(ptComp=>{
+      
+
+      let hFactor=0;
+      let hFactorIdx=-1;
+
+      for(let i=0;i<ptComp.length;i++)
+      {
+        let comp=ptComp[i];
+        if(comp===null)
+        {
+          throw {info:Reps,ptComp,index:i,msg:"ptComp[i] is null"};
+        }
+        let factor = (comp.area<areaTarget)?(comp.area/areaTarget):(areaTarget/comp.area);
+        if(hFactor<factor)
+        {
+          hFactor=factor;
+          hFactorIdx=i;
+        }
+      }
+
+      let FPts=null;
+      if(hFactor>aFactor)
+      {
+        FPts=ptComp[hFactorIdx];
+      }
+
+
+
+
+      return FPts;
+    })
+
+    // console.log(firstStageResult,ptG)
+    if(doTryFill)
+      firstStageResult=TryFillUndefInfo(firstStageResult, ptG,1-(1-aFactor)/2)
+
+    // console.log(firstStageResult,ptG)
+
+    return firstStageResult;
+  });
+
+  return ptGroup;
+
+}
+
+
+function ReportCalcSysInfo(
+  reports, 
+  Y_areaTargets=[1031,1031,1000,1231,1231], Y_aFactor=0.7,
+  R11_areaTargets=[1000,1000,1000,1000,1000], R11_aFactor=0.7
+  )
+  // :{
+  //   CalibYloc:number,
+  //   R11Rep:(CompRepType&{R11_angle:number})[],
+  //   YRep:(CompRepType&{Y_Loc:number})[]})
+  
+  
+{
+  let YLocInfo=reports.YRep;
+  let R11Info=reports.R11Rep;
+
+  let SYSINFO=undefined;
+  let ptGroupYvec=compRepExtractPtGroup(YLocInfo,Y_areaTargets,Y_aFactor,false);
+  {
+    console.log("???????",YLocInfo,ptGroupYvec);
+    let pt1 = ptGroupYvec[ptGroupYvec.length-1][0];
+    let pt2 = ptGroupYvec[0][ptGroupYvec[0].length-1];
+    if(pt1===null ||pt2===null)
+    {
+      throw {ptGroupYvec,YLocInfo,msg:"Yvec rep requre point is not match"}
+
+    }
+
+    {
+      let dist = YLocInfo[YLocInfo.length-1].Y_Loc-YLocInfo[0].Y_Loc;
+      let vec = {x:pt2.x-pt1.x,y:pt2.y-pt1.y};
+      let vecDist=Math.hypot(vec.x,vec.y);
+
+      console.log(dist,vec,dist/vecDist);
+
+      let mmpp = dist/vecDist;
+      vec.x=vec.x*mmpp;
+      vec.y=vec.y*mmpp;
+      SYSINFO=R11InfoCalc(R11Info,mmpp,R11_areaTargets,R11_aFactor);
+      SYSINFO={...SYSINFO,CalibYloc:reports.CalibYloc,mmpp:dist/vecDist,Y_vec:vec}
+    }
+  }
+  
+  return SYSINFO;
+}
+
+
+async function CalibSeq( 
+  Y_areaTargets=[1031,1031,1000,1231,1231], Y_aFactor=0.7,
+  R11_areaTargets=[1000,1000,1000,1000,1000], R11_aFactor=0.7)
+{
+  let status="RUNNING"
+  let fillStyle="#ffAA00"
+
+  let seqRep=undefined;
+  let resultInfo=undefined;
+
+  let dbgSwitchIdx=0;
+
+  v.renderHook=
+  (ctrl_or_draw,g,canvas_obj,rule)=>{
+  try{
+    if(ctrl_or_draw==true)return;
+    let ctx = g.ctx;
+    if(rule.id=="rule1"){
+      // canvas_obj.rUtil.drawCross(ctx, v.ptx, 45);
+      ctx.fillStyle = fillStyle;
+      ctx.font = "100px Arial";
+      ctx.fillText(status,100,100)
+      if(seqRep)
+      {
+
+        // console.log(seqRep)
+        dbgSwitchIdx++;
+
+
+
+        seqRep.YRep.forEach((rrep,idx)=>{
+          let hue=(60*(idx)/seqRep.YRep.length)+0
+          // console.log(rrep.reports,hue)
+
+          ctx.strokeStyle = 
+          ctx.fillStyle = "hsl("+hue.toFixed(2)+",100%,50%)";
+          rrep.reports.forEach(srep=>{
+
+            srep.components.forEach(scomp=>{
+
+              canvas_obj.rUtil.drawCross(ctx, {
+                x:scomp.x,
+                y:scomp.y,
+              }, 5);
+
+              ctx.font = "4px Arial";
+              ctx.fillText(scomp.area,scomp.x,scomp.y)
+
+  
+            })
+          })
+          
+        })
+
+
+        seqRep.R11Rep.forEach((rrep,idx)=>{
+          let hue=(60*(idx)/seqRep.R11Rep.length)+180
+          // console.log(rrep.reports,hue)
+
+          ctx.strokeStyle = 
+          ctx.fillStyle = "hsl("+hue.toFixed(2)+",100%,50%)";
+          rrep.reports.forEach(srep=>{
+
+            srep.components.forEach(scomp=>{
+
+              canvas_obj.rUtil.drawCross(ctx, {
+                x:scomp.x,
+                y:scomp.y,
+              }, 5);
+
+              ctx.font = "4px Arial";
+              ctx.fillText(scomp.area,scomp.x,scomp.y)
+
+  
+            })
+          })
+          
+        })
+
+
+
+
+      }
+      if(resultInfo)
+      {
+        canvas_obj.rUtil.drawCross(ctx, {
+          x:resultInfo.centre.x,
+          y:resultInfo.centre.y,
+        }, 100);
+
+        let vecLen=100;
+        ctx.beginPath();
+        ctx.moveTo(resultInfo.centre.x-vecLen*resultInfo.Y_vec.x, resultInfo.centre.y-vecLen*resultInfo.Y_vec.y);
+        ctx.lineTo(resultInfo.centre.x, resultInfo.centre.y);
+        //ctx.closePath();
+        ctx.stroke();
+      }
+    }
+  }catch(e)
+  {
+    console.error(e)
+  }
+    
+  }
+  progressUpdate(">>")
+
+
+
+  status="CalibShotSeq!!"
+  progressUpdate(">>")
+  let reports=await v.lib.CalibShotSeq(v.lib.Y_Camera,"Locating1","MindVision-040010720303")
+  seqRep=reports;
+
+  console.log("reports:",reports)
+  status="ReportCalcSysInfo!!"
+  progressUpdate(">>")
+
+  v.SYSINFO=
+    ReportCalcSysInfo(reports,
+      Y_areaTargets,Y_aFactor,
+      R11_areaTargets,R11_aFactor)
+
+  if(v.SYSINFO!==undefined)
+  {
+    status="OK!!"
+    fillStyle="#00FF00"
+  }
+  else
+  {
+    status="Failed!!"
+    fillStyle="#ff0000"
+  }
+  resultInfo=v.SYSINFO;
+  console.log(resultInfo);
+  progressUpdate(">>")
+
 }
 
 
@@ -366,14 +782,19 @@ function SYSGOLOC_GetYR11(y,h,mylar_pt)
   // console.log(cpL)
 
   let R=dist_C2Pt*v.SYSINFO.mmpp;
-  
+
+
   let theda=Math.asin(h/R)+theda_PyCPc;
   let theta360=(theda*180/Math.PI);
   let compY=R*(1-Math.cos(theda));
 
+  let HACK_adj=-R*0.012;//-i*0.12,
+  //HACK i*0.1 HACK adjust: the offset might be caused by camera fish eyes
+  //do Camera calib after
+  
   // console.log(theta360,x+deltaX);
   return {
-    Y:y-compY+R,
+    Y:y-compY+R+HACK_adj,
     R11:theta360
   }
   // await G(`G01 Y${(y-compY+R).toFixed(3)} R11_${theta360.toFixed(4)} Z1_${z}`)
@@ -386,14 +807,9 @@ async function SYSGOLOC(y,h,mylar_pt,z=0)
 }
 
 
-async function TEST_MYLAR_Check()
+async function TEST_MYLAR_Check(YLoc=Y_Camera,postTakeCB=undefined)
 {
   // await G("G01 Y100 R11_0 F250 ACC200 DEA200")
-
-
-  await G(`G01 Y${Y_Camera-10} Z1_${0} R11_0 F250`)
-  await G(`G01 Y${Y_Camera} Z1_${Z_Camera} R11_0 F250`)
-
 
   // SET_SYS_INFO()
   let Trig_tag="TTag_2"
@@ -402,19 +818,27 @@ async function TEST_MYLAR_Check()
 
 
 
-
+  await G(`G01 Y${YLoc-2} R11_0`)
+  await G(`G01 Y${YLoc} Z1_${Z_Camera} R11_0`)
 
   await v.lib.LocaShot_take(
-  "R11LOC")
+    "R11LOC")
+
+  await G(`G04 P50`)
+  if(postTakeCB!==undefined)
+    await postTakeCB()
+
+
+
 
   let report = await v.lib.LocaShot_wait(
   "R11LOC")
   
   let CUR_MYLAR_STATE=report.rules[0].regionInfo;
 
-  let pts=componentsPtFilter(CUR_MYLAR_STATE,[7000,8000,9000,9000,9000],0.7);
+  let pts=componentsPtFilter(CUR_MYLAR_STATE,[10000,10000,10000,8000,5000],0.7);
 
-  // console.log(pts,"<<<<<<")
+  console.log(pts,"<<<<<<",CUR_MYLAR_STATE)
 
   return pts;
   // for(let pt of pts)
@@ -439,33 +863,66 @@ async function TEST_MYLAR_Check()
   // }
 }
 
-async function MylarWorkCycle()
+async function MylarWorkCycle(y,x,speed=280)
 {
+  let preZ=-0
+  let pickZ=-25
+  let PillarY=y
+  let PillarX=-x
+
   let mylar_pts=
-  await TEST_MYLAR_Check()
-  let preZ=-50
-  let pickZ=-100
-  let PillarY=50
-  let PillarX=-5
+    await TEST_MYLAR_Check(v.SYSINFO.CalibYloc,async()=>{
 
-  for(let mylar_pt of mylar_pts)
-  {
+      await G(`G01 Z1_0`)
+      await G(`G01 Y${PillarY} F${speed}`)
 
-  let YR11Info=SYSGOLOC_GetYR11(
-  PillarY,
-  PillarX,
-  mylar_pt)
+  })
 
-
-  await G(`G01 Y${YR11Info.Y} Z1_${YR11Info.Z1} Z1_${preZ}`)
-
-  await G(`G01 Z1_${pickZ}`)
-
+  await G(`G01 Y${PillarY}`)
   await G(`G01 Z1_${preZ}`)
+  console.log("----------",mylar_pts);
+  // ddd
+  for(let i=0;i<3;i++)
+  {
+    let mylar_pt=mylar_pts[i]
+    if(mylar_pt===null||mylar_pt===undefined)continue;
+    console.log(">>>",i,mylar_pt);
+    let YR11Info=SYSGOLOC_GetYR11(
+    PillarY,//-i*0.12,//HACK i*0.1 HACK calib: the offset might be caused by camera fish eyes
+    PillarX,
+    mylar_pt)
+
+    console.log(YR11Info);
+
+    let Trig_tag="TTag_2"
+    // await v.lib.LocaShot_prep(
+    // "R11LOC",Trig_tag,"MindVision-040010720303")
+
+
+
+
+
+
+    await G(`G01 Y${YR11Info.Y.toFixed(4)} R11_${YR11Info.R11.toFixed(4)} Z1_${preZ}`)
+
+    // await v.lib.LocaShot_take(
+    //   "R11LOC")
+    
+    //   let report = await v.lib.LocaShot_wait(
+    //   "R11LOC")
+
+
+    await waitUIInfo({
+      title:"AAAA"})
+    await G(`G01 Z1_${pickZ} ACC300 DEA300`)
+
+
+    await G(`G01 Z1_${preZ} ACC300 DEA300`)
 
   }
+  await G(`G01 Z1_${0}`)
 
-  let pillar_pts=await TEST_Pillar_Check()
+  // let pillar_pts=await TEST_Pillar_Check()
 
 
 }
@@ -477,13 +934,14 @@ async function MylarWorkCycle()
   LocaShot_prep,
   LocaShot_take,
   LocaShot_wait,
-  CalibShotSeq,
+  CalibShotSeq,CalibSeq,
   SYSGO,SYSGOLOC,SYSGOLOC_GetYR11,
   delay,
   TEST_MYLAR_Check,
   MylarWorkCycle,
   Y_Mylar,
   Y_Camera,
+  Z_Camera,
   Y_Pillar,
   _HACK_SET_SYS_INFO
 
