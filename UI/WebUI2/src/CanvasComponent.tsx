@@ -421,37 +421,20 @@ function useDivDimensions(divRef:React.RefObject<HTMLDivElement | undefined>) {
         const { current } = divRef
         const boundingRect = current.getBoundingClientRect()
         const { width, height } = boundingRect
+        if(width==0 && height==0)return;
         const rwh  = [  Math.round(width), Math.round(height) ]
         if(rwh[0]==_this.bkDim[0] &&rwh[1]==_this.bkDim[1])return;
         setDimensions(rwh)
         _this.bkDim=rwh;
       }
     }
-    window.addEventListener('resize', updateSize);
-    _this.initQueryInterval=window.setInterval(()=>{
-      if(_this.isInitSable==true)
-      {
-        updateSize();
-        // window.clearInterval(_this.initQueryInterval);
-      }
-      if (divRef===undefined||divRef.current===undefined)return;
-      if (divRef===null||divRef.current===null)return;
-      if(_this.bkClientRect.width===-1)
-      {
-        _this.bkClientRect=divRef.current.getBoundingClientRect();
-        return;
-      }
-      const boundingRect = divRef.current.getBoundingClientRect();
-      if(_this.bkClientRect.height==boundingRect.height && _this.bkClientRect.width==boundingRect.width)
-      {
 
-        updateSize();
-        // window.clearInterval(_this.initQueryInterval);
-      }
-    },1000);
+    const ro =new ResizeObserver(updateSize);
+    
+    ro.observe(divRef.current as Element);
     return () =>{
       console.log("REMOVE....");
-      window.removeEventListener('resize', updateSize);
+      ro.unobserve(divRef.current as Element);
     }
   }, []);
   return dimensions;

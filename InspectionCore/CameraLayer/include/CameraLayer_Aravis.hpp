@@ -67,6 +67,10 @@ public:
   CameraLayer::status ExtractFrame(uint8_t *imgBuffer, int channelCount, size_t pixelCount);
   CameraLayer::status GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh);
   CameraLayer::status SetOnceWB();
+  
+  CameraLayer::status SetRGain(float gain);
+  CameraLayer::status SetGGain(float gain);
+  CameraLayer::status SetBGain(float gain);
 
   CameraLayer::status SetMirror(int Dir, int en);
   CameraLayer::status SetROIMirror(int Dir, int en);

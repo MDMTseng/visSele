@@ -1,6 +1,6 @@
 
 
-const Y_Mylar=200;
+const Y_Mylar=373-7;
 const Y_Camera=173;
 const Z_Camera=-30;
 
@@ -68,8 +68,8 @@ let SYS_ZERO=async ()=>{
 
   CNC_api.enablePING(false);
   await G("G28")
-  await G(`G01 R11_${-48.5+1}  F100`)
-  await G("G92 T0 Z1_0 R11_0")
+  await G(`G01 R11_${-48.5+1-2.1}  F100`)
+  await G("G92 Y0 Z1_0 R11_0")
   CNC_api.enablePING(true);
 
   await G(`M42 P${camTrigPIN} T0`)
@@ -111,7 +111,7 @@ let LocaShot_wait=(skey)=>{
   return reportWait(skey);
 }
 
-let LocaShot=async (skey,Yloc,trigger_tag,camera_id,Yloc_stage=undefined)=>{
+let LocaShot=async (skey,trigger_tag,camera_id,Yloc_stage=undefined)=>{
 
   await api.send_P(
     "CM",0,{
@@ -127,11 +127,8 @@ let LocaShot=async (skey,Yloc,trigger_tag,camera_id,Yloc_stage=undefined)=>{
   reportWait_reg(skey,trigger_tag,camera_id);
   
   // await G(`G01 Y${Yloc+0.1}`)
-  await G(`G01 Y${Yloc}`)
-
-
   await G(`M42 P${camTrigPIN} T1`)
-  await G("G04 P100")
+  await G("G04 P20")
   await G(`M42 P${camTrigPIN} T0`)
 
   if(Yloc_stage)
@@ -155,24 +152,33 @@ function rangeGen(from,to,count)
 let CalibShotSeq=async (Yloc,trigger_tag,camera_id)=>{
 
   await G(`G01 Y${Yloc-10} Z1_${Z_Camera} R11_0`)
+  // await G(`G01 F10`)
   let YSeq=[-11*2,0]//rangeGen(-0,4*(11),5);
   let YRep=[];
+
+  let settleTime=50;
   for(let i=0;i<YSeq.length;i++)
   {
-    let repX=await LocaShot("YLOC",Yloc+YSeq[i],trigger_tag,camera_id);
+    let tarY=Yloc+YSeq[i];
+    await G(`G01 Y${tarY-4}`)
+    await G(`G01 Y${tarY} DEA50`)
+    if(settleTime>0)await G("G04 P"+settleTime)
+    let repX=await LocaShot("YLOC",trigger_tag,camera_id);
     YRep.push({
-      "Y_Loc":Yloc+YSeq[i],
+      "Y_Loc":tarY,
       reports:repX.rules[0].regionInfo
     });
   }
 
-  let R11Seq=rangeGen(-12,12,2);
+  let R11Seq=[-31,-30,-1,0,29,30];
   let R11Rep=[];
   for(let i=0;i<R11Seq.length;i++)
   {
 
-    await G(`G01 R11_${R11Seq[i]}`)
-    let repX=await LocaShot("R11LOC",Yloc,trigger_tag,camera_id);
+    await G(`G01 R11_${R11Seq[i]} DEA100`)
+
+    if(settleTime>0)await G("G04 P"+settleTime)
+    let repX=await LocaShot("R11LOC",trigger_tag,camera_id);
     R11Rep.push({
       "R11_angle":R11Seq[i],
       reports:repX.rules[0].regionInfo
@@ -184,6 +190,8 @@ let CalibShotSeq=async (Yloc,trigger_tag,camera_id)=>{
 
   return {
     CalibYloc:Yloc,
+    CalibZloc:Z_Camera,
+
     YRep,R11Rep
   }
 }
@@ -208,7 +216,52 @@ function  intersectPoint( p1, p2, p3, p4)
 
   return intersec;
 }
+function circleCenter(p1, p2, p3) {
+  let ax = (p1.x + p2.x) / 2;
+  let ay = (p1.y + p2.y) / 2;
+  let ux = (p1.y - p2.y);
+  let uy = (p2.x - p1.x);
+  let bx = (p2.x + p3.x) / 2;
+  let by = (p2.y + p3.y) / 2;
+  let vx = (p2.y - p3.y);
+  let vy = (p3.x - p2.x);
+  let dx = ax - bx;
+  let dy = ay - by;
+  let vu = vx * uy - vy * ux;
+  if (vu == 0)
+      return false; // Points are collinear, so no unique solution
+  let g = (dx * uy - dy * ux) / vu;
+  return {x:bx + g * vx,y:by + g * vy}
+}
+
+
 function R11InfoFindCentre(R11_PtGroup,angleInfo)
+{
+  // console.log(R11_PtGroup,angleInfo)
+  // dddd
+
+  let centre1;
+  {
+    let outerRingPts = R11_PtGroup[1];
+    let centre_1= circleCenter(outerRingPts[0], outerRingPts[2], outerRingPts[4]);
+    let centre_2= circleCenter(outerRingPts[1], outerRingPts[3], outerRingPts[5]);
+    centre1={x:(centre_1.x+centre_2.x)/2,y:(centre_1.y+centre_2.y)/2};
+    console.log(centre1);
+  }
+
+  let centre2;
+  {
+    let outerRingPts = R11_PtGroup[2];//outer ring
+    let centre_1= circleCenter(outerRingPts[0], outerRingPts[2], outerRingPts[4]);
+    let centre_2= circleCenter(outerRingPts[1], outerRingPts[3], outerRingPts[5]);
+    centre2={x:(centre_1.x+centre_2.x)/2,y:(centre_1.y+centre_2.y)/2};
+    console.log(centre2);
+  }
+  // console.log(outerRingPts,X)
+  return centre2;//{x:(centre1.x+centre2.x)/2,y:(centre1.y+centre2.y)/2};
+
+}
+function R11InfoFindCentre_(R11_PtGroup,angleInfo)
 {
   //find min angle
   let ang0_index=angleInfo.reduce((mina_idx,ang,cur_idx)=>angleInfo[mina_idx]<ang?mina_idx:cur_idx,0);
@@ -236,7 +289,6 @@ function R11InfoFindCentre(R11_PtGroup,angleInfo)
   }
 
 }
-
 
 function TryFillUndefInfo(xList, fList,simFactor)
 {
@@ -465,10 +517,28 @@ function ReportCalcSysInfo(
 }
 
 
+v.renderHook=(ctrl_or_draw,g,canvas_obj,rule)=>{
+  if(v.renderHook_set===undefined)return;
+  Object.keys(v.renderHook_set).forEach(key=>{
+    v.renderHook_set[key](ctrl_or_draw,g,canvas_obj,rule);
+  })
+}
+v.renderHook_set=[];
+
 async function CalibSeq( 
   Y_areaTargets=[1031,1031,1000,1231,1231], Y_aFactor=0.7,
-  R11_areaTargets=[1000,1000,1000,1000,1000], R11_aFactor=0.7)
+  R11_areaTargets=[1000,1000,1000,1000,1000], R11_aFactor=0.7,cycleCount=2)
 {
+  let p_resultInfo=undefined;
+  if(cycleCount>1)
+  {
+    p_resultInfo = await CalibSeq(Y_areaTargets,Y_aFactor,R11_areaTargets,R11_aFactor,cycleCount-1);
+    console.log(p_resultInfo)
+  }
+
+  let preCalib=undefined
+
+
   let status="RUNNING"
   let fillStyle="#ffAA00"
 
@@ -582,12 +652,31 @@ async function CalibSeq(
   status="ReportCalcSysInfo!!"
   progressUpdate(">>")
 
-  v.SYSINFO=
+  resultInfo=
     ReportCalcSysInfo(reports,
       Y_areaTargets,Y_aFactor,
       R11_areaTargets,R11_aFactor)
 
-  if(v.SYSINFO!==undefined)
+  
+  if(cycleCount>1)
+  {
+    let alpha=1/cycleCount;
+    console.log(resultInfo,p_resultInfo);
+    resultInfo.mmpp+=(1-alpha)*(p_resultInfo.mmpp-resultInfo.mmpp);
+    resultInfo.RInfo[0]+=(1-alpha)*(p_resultInfo.RInfo[0]-resultInfo.RInfo[0]);
+    resultInfo.RInfo[1]+=(1-alpha)*(p_resultInfo.RInfo[1]-resultInfo.RInfo[1]);
+    resultInfo.RInfo[2]+=(1-alpha)*(p_resultInfo.RInfo[2]-resultInfo.RInfo[2]);
+
+    resultInfo.centre.x+=(1-alpha)*(p_resultInfo.centre.x-resultInfo.centre.x);
+    resultInfo.centre.y+=(1-alpha)*(p_resultInfo.centre.y-resultInfo.centre.y);
+
+
+    resultInfo.Y_vec.x+=(1-alpha)*(p_resultInfo.Y_vec.x-resultInfo.Y_vec.x);
+    resultInfo.Y_vec.y+=(1-alpha)*(p_resultInfo.Y_vec.y-resultInfo.Y_vec.y);
+
+  }
+
+  if(resultInfo!==undefined)
   {
     status="OK!!"
     fillStyle="#00FF00"
@@ -597,10 +686,21 @@ async function CalibSeq(
     status="Failed!!"
     fillStyle="#ff0000"
   }
-  resultInfo=v.SYSINFO;
-  console.log(resultInfo);
-  progressUpdate(">>")
+  // resultInfo=v.SYSINFO;
 
+  if(preCalib===undefined)
+  {
+    preCalib=JSON.parse(JSON.stringify(resultInfo))
+  }
+  resultInfo.golden=preCalib;
+  resultInfo.golden_offset={
+    x:(preCalib.centre.x-resultInfo.centre.x)*resultInfo.mmpp,
+    y:(preCalib.centre.y-resultInfo.centre.y)*resultInfo.mmpp,
+  }
+  console.log(resultInfo);
+
+  progressUpdate(">>")
+  return resultInfo;
 }
 
 
@@ -764,6 +864,8 @@ function componentsPtFilter(componentSet,areaTargets,aFactor)
 function SYSGOLOC_GetYR11(y,h,mylar_pt)
 {
 
+  y+=v.SYSINFO.golden_offset.x;
+  h+=v.SYSINFO.golden_offset.y;
   let cpL = closestPointOnLine({
     x:v.SYSINFO.centre.x,
     y:v.SYSINFO.centre.y,
@@ -784,11 +886,11 @@ function SYSGOLOC_GetYR11(y,h,mylar_pt)
   let R=dist_C2Pt*v.SYSINFO.mmpp;
 
 
-  let theda=Math.asin(h/R)+theda_PyCPc;
+  let theda=Math.asin(-h/R)+theda_PyCPc;
   let theta360=(theda*180/Math.PI);
   let compY=R*(1-Math.cos(theda));
 
-  let HACK_adj=-R*0.012;//-i*0.12,
+  let HACK_adj=0;//-R*0.012;//-i*0.12,
   //HACK i*0.1 HACK adjust: the offset might be caused by camera fish eyes
   //do Camera calib after
   
@@ -807,24 +909,28 @@ async function SYSGOLOC(y,h,mylar_pt,z=0)
 }
 
 
-async function TEST_MYLAR_Check(YLoc=Y_Camera,postTakeCB=undefined)
+async function TEST_MYLAR_Check(
+  YLoc=Y_Camera,
+  cameraZ=Z_Camera,
+  Trig_tag="TTag_2",
+  postTakeCB=undefined,
+  areaTargets=[10000,10000,10000,8000,5000], aFactor=0.7)
 {
   // await G("G01 Y100 R11_0 F250 ACC200 DEA200")
-
+  let delay=20;
   // SET_SYS_INFO()
-  let Trig_tag="TTag_2"
   await v.lib.LocaShot_prep(
   "R11LOC",Trig_tag,"MindVision-040010720303")
 
 
 
   await G(`G01 Y${YLoc-2} R11_0`)
-  await G(`G01 Y${YLoc} Z1_${Z_Camera} R11_0`)
+  await G(`G01 Y${YLoc} Z1_${cameraZ} R11_0`)
 
   await v.lib.LocaShot_take(
     "R11LOC")
 
-  await G(`G04 P50`)
+  await G(`G04 P${delay}`)
   if(postTakeCB!==undefined)
     await postTakeCB()
 
@@ -836,7 +942,7 @@ async function TEST_MYLAR_Check(YLoc=Y_Camera,postTakeCB=undefined)
   
   let CUR_MYLAR_STATE=report.rules[0].regionInfo;
 
-  let pts=componentsPtFilter(CUR_MYLAR_STATE,[10000,10000,10000,8000,5000],0.7);
+  let pts=componentsPtFilter(CUR_MYLAR_STATE,areaTargets,aFactor);
 
   console.log(pts,"<<<<<<",CUR_MYLAR_STATE)
 
@@ -863,66 +969,292 @@ async function TEST_MYLAR_Check(YLoc=Y_Camera,postTakeCB=undefined)
   // }
 }
 
-async function MylarWorkCycle(y,x,speed=280)
+async function Motion_MylarPick(preY,Y,prepareZ,Z,pickPin=25,pickWait=50)
 {
-  let preZ=-0
-  let pickZ=-25
-  let PillarY=y
-  let PillarX=-x
+
+  await G(`G01 Z1_0 R11_0`)
+  if(preY!==undefined)
+  {
+
+  }
+  else
+  {
+    await G(`G01 Y${Y} `)
+    await G(`G01 Z1_${Z}`)  
+  }
+
+
+  await G(`M42 P${pickPin} T1`)
+  await G(`G04 P${pickWait}`)
+
+  await G(`G01 Z1_0`)
+
+}
+
+
+
+let Mylar_YLoc=Y_Mylar;
+let Mylar_YSeg=5.5;
+let Mylar_Z=-40-1;
+let Mylar_PreZ=Mylar_Z/3;
+
+async function MylarWorkCycle(cycleIndex,debugMode=false)
+{
+
+  let pii=0;//cycleIndex;
+  if(cycleIndex==0){
+    pii=6
+  }else if (cycleIndex==1){
+    pii=5
+  }else if (cycleIndex==2){
+    pii=1
+  }else{
+    pii=0
+  }
+  let curY=Mylar_YLoc+Mylar_YSeg*(pii)+v.SYSINFO.golden_offset.x
+
+
+  // x+=v.SYSINFO.golden_offset.x;
+  // y+=v.SYSINFO.golden_offset.y;
+  //Pick mylar------------------
+  {
+
+    await G(`G01 Z1_${Mylar_PreZ} R11_0`)
+    await G(`G01 Y${curY}`)
+
+    if(debugMode)await waitUserCheck("MYLAR_Pick")
+    await G(`G01 Z1_${Mylar_Z} DEA100`)
+    await G("G04 P10")
+    await G(`M42 P${25} T1`)
+    await G("G04 P20")
+    let prepN=3;
+    let middleZ=(Mylar_Z*prepN+Mylar_PreZ)/(prepN+1);
+    await G(`G01 Z1_${middleZ.toFixed(4)} ACC100`)//pick up slower
+    await G(`G01 Z1_${Mylar_PreZ.toFixed(4)}`)//pick up slower
+
+
+  }
+
+
+
+
+
+
+
+  //Check mylar------------------
+
+  let speed=320;
+
+  let preZ=-30
+  let heightDiff=17+5;
+  let pickZ=-69-17+heightDiff
+  let PillarY=50
+  let PillarX=0
 
   let mylar_pts=
-    await TEST_MYLAR_Check(v.SYSINFO.CalibYloc,async()=>{
+    await TEST_MYLAR_Check(
+      v.SYSINFO.CalibYloc,
+      Z_Camera,
+      "TTag_2",
+      async()=>{
 
-      await G(`G01 Z1_0`)
-      await G(`G01 Y${PillarY} F${speed}`)
+        if(debugMode)await waitUserCheck("MYLAR_Check")
+        // await G(`G01 Z1_0`)
 
-  })
+        let N=20;
+        await G(`G01 Y${((PillarY*N+v.SYSINFO.CalibYloc)/(N+1)).toFixed(3)} F${speed}`)
 
-  await G(`G01 Y${PillarY}`)
+      },
+      [10000,10000,10000],
+      0.7)
+
   await G(`G01 Z1_${preZ}`)
   console.log("----------",mylar_pts);
-  // ddd
-  for(let i=0;i<3;i++)
+
+
+
+
+  //pick pillar if available------------------
+  let maxSkipCount=mylar_pts.length;
+
+  let HACK_Offset= v.HACK_Offset //[{y:-0,x:-0.34230},{y:-0.11,x:-0.3671},{y:-0-0.08,x:-0.30522-0.076},]
+  // [{y:0.15,x:0.3},{y:0.0,x:0.0},{y:0.0,x:0.0}]
+  
+  if(HACK_Offset===undefined)
+    HACK_Offset=[{y:0,x:0},{y:0.0,x:0.0},{y:0.0,x:0.0}];
+
+
+
+  for(let i=0;i<mylar_pts.length;i++)
   {
     let mylar_pt=mylar_pts[i]
-    if(mylar_pt===null||mylar_pt===undefined)continue;
+    if(mylar_pt===null||mylar_pt===undefined)
+    {
+      maxSkipCount--;
+      continue;
+    }
     console.log(">>>",i,mylar_pt);
     let YR11Info=SYSGOLOC_GetYR11(
-    PillarY,//-i*0.12,//HACK i*0.1 HACK calib: the offset might be caused by camera fish eyes
-    PillarX,
+    PillarY+((HACK_Offset===undefined)?0:HACK_Offset[i].y),//-i*0.12,//HACK i*0.1 HACK calib: the offset might be caused by camera fish eyes
+    PillarX+((HACK_Offset===undefined)?0:HACK_Offset[i].x),
     mylar_pt)
 
     console.log(YR11Info);
 
-    let Trig_tag="TTag_2"
-    // await v.lib.LocaShot_prep(
-    // "R11LOC",Trig_tag,"MindVision-040010720303")
-
-
-
-
-
-
     await G(`G01 Y${YR11Info.Y.toFixed(4)} R11_${YR11Info.R11.toFixed(4)} Z1_${preZ}`)
 
-    // await v.lib.LocaShot_take(
-    //   "R11LOC")
-    
-    //   let report = await v.lib.LocaShot_wait(
-    //   "R11LOC")
+    if(debugMode)await waitUserCheck("Wait for pick",``)
+
+    await G(`G04 P50`)
+    await G(`G01 Z1_${pickZ} DEA500`)
 
 
-    await waitUIInfo({
-      title:"AAAA"})
-    await G(`G01 Z1_${pickZ} ACC300 DEA300`)
-
-
-    await G(`G01 Z1_${preZ} ACC300 DEA300`)
+    await G(`G01 Z1_${preZ} ACC200`)
 
   }
   await G(`G01 Z1_${0}`)
 
+  if(maxSkipCount==0)return;//early quit
+
+
+  let resultSecY=250;
+
+  //Check pillar location------------------
+
+  let pillar_pts=
+    await TEST_MYLAR_Check(v.SYSINFO.CalibYloc,
+      Z_Camera+heightDiff,//lift up a bit for pillar height
+      "PillarCheck",
+      async()=>{
+
+        if(debugMode)await waitUserCheck("C",``)
+        // await G(`G01 Z1_0`)
+        await G(`G01 Y${resultSecY} Z1_0 R11_0`)//go the the result section in advance
+      },
+      [1200,1200,1200],
+      0.7);
+
+  console.log("----------",mylar_pts,pillar_pts);
   // let pillar_pts=await TEST_Pillar_Check()
+
+  let isOK=true;
+  let HACK_INSP_Offset=[
+    {
+      "x": 0,
+      "y": 0,
+    },
+    {
+      "x": 0,
+      "y": -0,
+    },
+    {
+      "x": 0,
+      "y": -0,
+    }]
+  HACK_INSP_Offset=[
+    {
+      "x": 0+0.15235,
+      "y": 0.0761,
+    },
+    {
+      "x": 0.037713,
+      "y": -0.113140,
+    },
+    {
+      "x": -0.03771,
+      "y": -0.11314,
+    }]
+  let distsInfo=[];
+  {//check pillar if the location error within tolerable range
+    let tolerance_mm=0.15;
+    for(let i=0;i<mylar_pts.length;i++)
+    {
+      let mylar_pt=mylar_pts[i]
+      let pillar_pt=pillar_pts[i]
+      if(mylar_pt===null||mylar_pt===undefined)
+      {
+
+        distsInfo.push(null);
+        continue;
+      }
+      if(pillar_pt===null||pillar_pt===undefined){
+        isOK=false;
+        distsInfo.push(null);
+        continue;
+      }
+      
+      let diffInfo={
+        x:(pillar_pt.x-mylar_pt.x)*v.SYSINFO.mmpp-HACK_INSP_Offset[i].x,
+        y:(pillar_pt.y-mylar_pt.y)*v.SYSINFO.mmpp-HACK_INSP_Offset[i].y
+      }
+      let dist=Math.hypot(diffInfo.x,diffInfo.y);
+
+      diffInfo.dist=dist
+      // if(maxDist<dist)
+      // {
+      //   maxDist=dist;
+      // }
+      distsInfo.push(diffInfo);
+      if(dist>tolerance_mm)
+      {        
+        isOK=false;
+      }
+
+    }
+
+  }
+
+  //>>>true dists:0.2229,0.1576 mmpp:0.03823029755109455
+  if(debugMode)
+  {//check HACK_Offset is complete
+    await waitUserCheck("isOK",`>>>${isOK} \n dists:${JSON.stringify(distsInfo,null,2)}\nmmpp:${v.SYSINFO.mmpp}`)
+    
+  }
+
+  if(debugMode || (isOK===false && debugMode==false ))
+  {
+    await waitUserCheck("Override the offset data?",`dists:${JSON.stringify(distsInfo,null,2)}\nmmpp:${v.SYSINFO.mmpp}`)
+      .then(_=>{
+        v.HACK_Offset=distsInfo.map((dinfo,idx)=>{
+          let updateX=(dinfo===null)?0:dinfo.y;//swap the xy order, since the machine coord and camera coord rotated 90 deg
+          let updateY=(dinfo===null)?0:dinfo.x;
+          if(Math.abs(updateX)<0.05)updateX=updateX/2;//slow approach
+          if(Math.abs(updateY)<0.05)updateY=updateY/2;//slow approach
+
+
+          return{
+          x:HACK_Offset[idx].x+updateX,
+          y:HACK_Offset[idx].y+updateY
+        }})
+      })
+      .catch(e=>{
+        console.log(">>>");
+        throw(e)
+      })
+  }
+
+  let resultOKSecY=resultSecY+30;
+  let resultNGSecY=resultSecY;
+
+  if(isOK)
+  {
+    await G(`G01 Y${resultOKSecY}`)
+  }
+  else
+  {
+    await G(`G01 Y${resultNGSecY} R11_-90`)
+  }
+
+
+  await G(`M42 P${25} T0`)//release
+
+  await G(`M42 P${26} T1`)//fast blow
+  await G("G04 P10")
+  await G(`M42 P${26} T0`)
+
+
+  // await G(`G01 Z1_0 R11_0`)
+
 
 
 }

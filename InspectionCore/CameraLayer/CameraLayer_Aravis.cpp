@@ -874,6 +874,7 @@ CameraLayer::status CameraLayer_Aravis::SetAnalogGain(float gain)
 
 CameraLayer::status CameraLayer_Aravis::SetOnceWB()
 {
+  
   GError *err = NULL;
   arv_camera_execute_command 		(camera, "WBOnce",&err);
   
@@ -885,7 +886,77 @@ CameraLayer::status CameraLayer_Aravis::SetOnceWB()
 
     return CameraLayer::NAK;
   }
+  
+  // arv_camera_set_integer(camera,"RGain",1200,NULL);
+  // arv_camera_set_integer(camera,"GGain",1200,NULL);
+  // arv_camera_set_integer(camera,"BGain",1200,NULL);
+
+  
+  {
+    int rg=arv_camera_get_integer(camera, "RGain", NULL);
+    int gg=arv_camera_get_integer(camera, "GGain", NULL);
+    int bg=arv_camera_get_integer(camera, "BGain", NULL);
+
+    printf("CameraLayer_Aravis::SetOnceWB:RGBGain  %d %d %d\n",rg,gg,bg);
+    // return CameraLayer::NAK;
+  }
+
+
   return CameraLayer::ACK;
+}
+
+
+
+CameraLayer::status CameraLayer_Aravis::SetRGain(float gain)
+{
+  GError *err = NULL;
+  arv_camera_set_integer(camera,"RGain",(int)gain,&err);
+
+  if (err != NULL)
+  {
+    
+    LOGI("WBOnce failed:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+    g_clear_error(&err);
+
+    return CameraLayer::NAK;
+  }
+  return CameraLayer::ACK;
+
+  
+}
+CameraLayer::status CameraLayer_Aravis::SetGGain(float gain)
+{
+  GError *err = NULL;
+  arv_camera_set_integer(camera,"GGain",(int)gain,&err);
+
+  if (err != NULL)
+  {
+    
+    LOGI("failed:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+    g_clear_error(&err);
+
+    return CameraLayer::NAK;
+  }
+  return CameraLayer::ACK;
+
+  
+}
+CameraLayer::status CameraLayer_Aravis::SetBGain(float gain)
+{
+  GError *err = NULL;
+  arv_camera_set_integer(camera,"BGain",(int)gain,&err);
+
+  if (err != NULL)
+  {
+    
+    LOGI("failed:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+    g_clear_error(&err);
+
+    return CameraLayer::NAK;
+  }
+  return CameraLayer::ACK;
+
+  
 }
 
 CameraLayer::status CameraLayer_Aravis::SetFrameRate(float frame_rate)

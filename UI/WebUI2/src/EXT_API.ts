@@ -327,7 +327,7 @@ export class BPG_WS
       }
       return false;
     }
-    console.log(info.data,PGID);
+    // console.log(info.data,PGID);
     if (PGID === undefined) {
       let maxNum=500;
       PGID = this.pgIDCounter++;

@@ -17,7 +17,7 @@ import { GetObjElement,ID_debounce,ID_throttle,ObjShellingAssign} from './UTIL/M
 import {HookCanvasComponent,DrawHook_CanvasComponent,type_DrawHook_g,type_DrawHook} from './CanvasComponent';
 import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_API';
 
-import { Row, Col,Input,Tag,Modal } from 'antd';
+import { Row, Col,Input,Tag,Modal,message } from 'antd';
 
 
 import './basic.css';
@@ -234,7 +234,17 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
 
 
     <>
+    
+    
+    <br/>結果顯示
+    <Slider defaultValue={srule_Filled.resultOverlayAlpha} min={0} max={1} step={0.1} onChange={(v)=>{
 
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onRuleChange(ObjShellingAssign(srule_Filled,["resultOverlayAlpha"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
 
     <br/>HSV
     <Slider defaultValue={srule_Filled.hsv.rangeh.h} max={180} onChange={(v)=>{
@@ -806,6 +816,10 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
                 ctx.font = "4px Arial";
                 ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
                 ctx.fillText(regComp.area,regComp.x,regComp.y)
+                
+                ctx.font = "4px Arial";
+                ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
+                ctx.fillText(`${regComp.x},${regComp.y}`,regComp.x,regComp.y+5)
               })
 
             }
@@ -923,7 +937,13 @@ function startsWith (str:string, needle:string) {
 async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[],onRunCmdIdexChanged:(index:number,info:string)=>void,abortSig?:AbortSignal,onUserInputRequest?:(setting:any)=>Promise<any>)
 {
   v.inCMD_Promise=true;
-  
+  // v.DisplayIdList=["ruleId1","ruleId2"]
+
+  function SET_DISPLAY_ID_LIST(idList:string[])
+  {
+    v.DisplayIdList=idList;
+  }
+
   let P=Promise;
   // function PALL(ps:Promise<any>[])
   // {
@@ -933,10 +953,20 @@ async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[
   {
     return CNC_api.send_P({"type":"GCODE","code":code})
   }
-  
+  let Message=message
   async function delay(ms=1000)
   {
     return new Promise((resolve,reject)=>setTimeout(resolve,ms))
+  }
+  async function LS_Save(key:string,msg:any)
+  {
+    localStorage.setItem("_listCMDPromise_"+key, JSON.stringify(msg))
+  }
+  async function LS_Load(key:string)
+  {
+    let read = localStorage.getItem("_listCMDPromise_"+key)
+    if(read===null)return read;
+    return JSON.parse(read);
   }
 
   function S(
@@ -1269,6 +1299,22 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
     .catch(e=>{
       console.log(e);
       setCRunAbortCtrl(undefined);
+      delete e.cmd
+      if(e.e!==undefined)
+        e.e=e.e.toString();
+      setModalInfo({
+        timeTag:Date.now(),
+        visible:true,
+        type:"CHECK",
+        onOK:(_:any)=>{
+          setModalInfo({...modalInfo,visible:false})
+        },
+        onCancel:(_:any)=>{
+          setModalInfo({...modalInfo,visible:false})
+        },
+        title:"!!!!錯誤 例外!!!!",
+        DATA:{info:`${JSON.stringify(e,null,2)}`}
+      })
     });
 
     
@@ -1287,6 +1333,46 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
     // },3000)
     
 
+  }
+
+  let displayRuleId=_this.listCMD_Vairable.DisplayIdList as string[];//=defInfo.rules.map((rule,idx)=>rule.id+" ");
+
+  if(_this.listCMD_Vairable.DisplayIdList===undefined)
+  {
+    displayRuleId=defInfo.rules.map((rule,idx)=>rule.id);
+  }
+
+  let displayRuleIdx:number[];
+  displayRuleIdx=displayRuleId
+    .map(ruleId=>defInfo.rules.findIndex(rule=>rule.id==ruleId))
+    .filter(idx=>idx>=0)
+  
+  let displayRuleIdx_hide:number[]
+    =defInfo.rules.map((rule,idx)=>idx).filter(idx=>{
+      if(displayRuleIdx.find(idx_to_show=>idx_to_show==idx)===undefined)
+        return true;
+      return false;
+    });
+
+
+  let defRulesCount=displayRuleIdx.length;
+  let WHArr:{w:number,h:number}[]=[];
+  if(defRulesCount==1)
+  {
+    WHArr=[{w:100,h:100}];
+  }
+  else if(defRulesCount==2)
+  {
+    WHArr=[{w:50,h:100},{w:50,h:100}];
+  }
+  else if(defRulesCount==3)
+  {
+    // WHArr=[{w:50,h:50},{w:50,h:50},{w:100,h:50}];
+    WHArr=[{w:33.333,h:100},{w:33.333,h:100},{w:33.333,h:100}];
+  }
+  else if(defRulesCount==4)
+  {
+    WHArr=[{w:50,h:50},{w:50,h:50},{w:50,h:50},{w:50,h:50}];
   }
 
   let siderUI=null;
@@ -1455,6 +1541,8 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
       }
 
 
+    
+
       siderUI=
       <Sider width={subMenu==null?200:400}>
 
@@ -1471,19 +1559,50 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
               })
             }}>
             {
-              defInfo.rules.map((rule,index)=><Menu.Item key={index}>{rule.id+"<<"}</Menu.Item>)
+              
+              displayRuleIdx.map((ruleIdx,idx)=><Menu.Item onClick={()=>{
+                // let id=defInfo.rules[ruleIdx].id;
+                displayRuleId.splice(idx, 1);
+                _this.listCMD_Vairable.DisplayIdList=displayRuleId;
+                  
+                console.log(displayRuleIdx,_this.listCMD_Vairable.DisplayIdList)
+                setDelConfirmCounter(delConfirmCounter+1);
+              }}
+              key={defInfo.rules[ruleIdx].id}>{defInfo.rules[ruleIdx].id+"<<"}</Menu.Item>)
             }
 
-
-
+              <Menu.Item key={"___"}>-----------</Menu.Item>
+            {
+              displayRuleIdx_hide.map((ruleIdx,idx)=><Menu.Item
+              onClick={()=>{
+                _this.listCMD_Vairable.DisplayIdList.push(defInfo.rules[ruleIdx].id)
+                setDelConfirmCounter(delConfirmCounter+1);
+              }} key={defInfo.rules[ruleIdx].id}>{defInfo.rules[ruleIdx].id+"<<"}</Menu.Item>)
+            }
 
               <Menu.Item key={defInfo.rules.length} onClick={()=>{
                 console.log(defInfo.rules);
                 let new_defInfo={...defInfo};
 
+                let newId="Untitled";
+                for(let idx=-1;;idx++)
+                {
+                  let paddedIdx=newId;
+                  if(idx!==-1)
+                  {
+                    paddedIdx+=`(${idx})`;
+                  }
+                  if(defInfo.rules.find(rule=>rule.id==paddedIdx)!==undefined)
+                  {
+                    continue;
+                  }
+                  newId=paddedIdx;
+                  break;
+                }
+
                 new_defInfo.rules=[...new_defInfo.rules,{
                   
-                  id: "rule_"+defInfo.rules.length,
+                  id: newId,
                   type: "ColorRegionLocating",
                   sampleImageFolder: "data/TEST_DEF/rule1_Locating1",
                   camera_id: "BMP_carousel_0",
@@ -1597,31 +1716,56 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
 
       break;
   }
-
-  let defRulesCount=defInfo.rules.length;
-  let WHArr:{w:number,h:number}[]=[];
-  if(defRulesCount==1)
+  // console.log(_this.listCMD_Vairable);
+  
+  function TargetViewUIShow(index:number,displaySetting={w:100,h:100,hide:false})
   {
-    WHArr=[{w:100,h:100}];
+    let rule=defInfo.rules[index]
+    let rep_rules=GetObjElement(defReport,["rules"]);
+    let subRuleRep=undefined;
+    if(rep_rules!==undefined)
+      subRuleRep=rep_rules.find((rep_rule:any)=>rep_rule.id==rule.id);
+    // console.log(rule,subRuleRep);
+    // subRuleRep
+    // let whsetting={w:50,h:50};
+    // if(show)
+    //   whsetting=WHArr[index];
+    return <SingleTargetVIEWUI_ColorRegionLocating 
+    readonly={false} 
+    width={displaySetting.w+"%"} 
+    height={displaySetting.h+"%"} 
+    style={{float:"left",display:displaySetting.hide?"none":undefined}} 
+    key={rule.id} 
+    IMCM_group={IMCM_group} 
+    rule={rule} 
+    report={subRuleRep} 
+    renderHook={_this.listCMD_Vairable.renderHook} 
+    onRuleChange={(new_rule,doInspUpdate=true)=>{
+    
+      if(new_rule!==undefined)//update
+      {
+        let new_defInfo={...defInfo};
+        new_defInfo.rules[index]=new_rule;
+        console.log(new_defInfo);
+        onDefChange(new_defInfo,doInspUpdate?new_rule:undefined);
+      }
+      else//deltetion
+      {
+        
+        let new_defInfo={...defInfo,rules:[...defInfo.rules]};
+        
+        new_defInfo.rules.splice(index, 1);
+
+        HACK_do_Camera_Check=true;
+        onDefChange(new_defInfo,undefined);
+
+
+        
+      }
+    }}/>
+    
   }
-  else if(defRulesCount==2)
-  {
-    WHArr=[{w:50,h:100},{w:50,h:100}];
-  }
-  else if(defRulesCount==3)
-  {
-    // WHArr=[{w:50,h:50},{w:50,h:50},{w:100,h:50}];
-    WHArr=[{w:33.333,h:100},{w:33.333,h:100},{w:33.333,h:100}];
-  }
-  else if(defRulesCount==4)
-  {
-    WHArr=[{w:50,h:50},{w:50,h:50},{w:50,h:50},{w:50,h:50}];
-  }
-
-
-
-
-
+  // console.log(WHArr,displayRuleIdx,displayRuleIdx_hide);
   return <>
 
     <Layout style={{ height: '100%' }}>
@@ -1681,44 +1825,16 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
 
 
 
-        </>:modalInfo.type=="CHECK"?<>
+        </>:modalInfo.type=="CHECK"?<pre>
           {modalInfo.DATA.info}
-        </>:null
+        </pre>:null
           
         }
     </Modal>
-    {defInfo.rules.map((rule,index)=>{
-      let rep_rules=GetObjElement(defReport,["rules"]);
-      let subRuleRep=undefined;
-      if(rep_rules!==undefined)
-        subRuleRep=rep_rules.find((rep_rule:any)=>rep_rule.id==rule.id);
-      // console.log(rule,subRuleRep);
-      // subRuleRep
-      let whsetting=WHArr[index];
-      return <SingleTargetVIEWUI_ColorRegionLocating readonly={false} width={whsetting.w+"%"} height={whsetting.h+"%"} style={{float:"left"}} key={index} IMCM_group={IMCM_group} rule={rule} report={subRuleRep} renderHook={_this.listCMD_Vairable.renderHook} onRuleChange={(new_rule,doInspUpdate=true)=>{
-      
-        if(new_rule!==undefined)//update
-        {
-          let new_defInfo={...defInfo};
-          new_defInfo.rules[index]=new_rule;
-          console.log(new_defInfo);
-          onDefChange(new_defInfo,doInspUpdate?new_rule:undefined);
-        }
-        else//deltetion
-        {
-          
-          let new_defInfo={...defInfo,rules:[...defInfo.rules]};
-          
-          new_defInfo.rules.splice(index, 1);
-
-          HACK_do_Camera_Check=true;
-          onDefChange(new_defInfo,undefined);
-
-
-          
-        }
-      }}/>})
-    }
+    {[
+      displayRuleIdx.map((rule_index,idxidx)=>TargetViewUIShow(rule_index,{...WHArr[idxidx],hide:false})),
+      displayRuleIdx_hide.map((index)=>TargetViewUIShow(index,{w:50,h:50,hide:true}))]
+      .flat()}
     </Content>
   
     </Layout>
@@ -1880,9 +1996,13 @@ function VIEWUI(){
         api.send_P("CM",0,{
           type:"setting",id:cam.id,
 
-          exposure:50000,
-          analog_gain:20,
-          WB_ONCE:true
+          exposure:Math.round(1000000/60),//overcome the 60Hz light
+          analog_gain:0.7,
+          // WB_ONCE:true,
+          RGain: 151,
+          GGain: 100,
+          BGain: 126,
+
         }).then((camInfoPkts:any)=>camInfoPkts[0].data)
         
         ));//
@@ -2097,7 +2217,7 @@ function VIEWUI(){
   // console.log(defInfo);
   return <>
 
-        <Button onClick={()=>{
+        {/* <Button onClick={()=>{
           ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
             let api=_api as BPG_WS;//cast
             
@@ -2170,6 +2290,7 @@ function VIEWUI(){
 
         }}>Start Stream</Button>
 
+ */}
 
         <Button onClick={()=>{
           ACT_EXT_API_ACCESS(CORE_ID,(_api)=>{
@@ -2206,7 +2327,6 @@ function VIEWUI(){
 
 
         }}>Stop Stream</Button>
-
         <Button onClick={()=>{
 
           ACT_FILE_Load(_DEF_FILE_PATH_)
@@ -2325,7 +2445,7 @@ function App() {
 
       CNC_api.connect({
         uart_name:"/dev/cu.SLAB_USBtoUART",
-        baudrate:230400
+        baudrate:115200
       });
     }
 

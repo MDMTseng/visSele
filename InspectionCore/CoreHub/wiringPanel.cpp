@@ -416,7 +416,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
         cJSON_Delete(camBrifInfo);
         
         
-        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)10};
+        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)2};
         iminfo.fullHeight = headImgPipe->img.GetHeight();
         iminfo.fullWidth = headImgPipe->img.GetWidth();
         if(iminfo.scale>1)
@@ -644,7 +644,25 @@ public:
 
 
 
-            cv::cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
+
+            
+            {
+              double *resultOverlayAlpha=JFetch_NUMBER(regionInfo,"resultOverlayAlpha");
+              if(resultOverlayAlpha && *resultOverlayAlpha>0 && *resultOverlayAlpha<=1)
+              {
+                // cv::cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
+                Mat img_HSV_threshold_rgb;
+                cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
+                addWeighted( 
+                img_HSV_threshold_rgb, *resultOverlayAlpha, 
+                def_temp_img_ROI, 1-*resultOverlayAlpha, 0.0, 
+                def_temp_img_ROI);
+                // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
+                // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
+              }
+            }
+              // cv::cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
+
             for(int k=1;k<n_labels;k++)
             {
               int area=stats.at<int>(k,cv::CC_STAT_AREA);
@@ -1449,12 +1467,36 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           LOGI("analog_gain:%f",*analog_gain);
         }
 
-        if(JFetch_TRUE(json, "WB_ONCE"))
         {
-          cami->camera->SetOnceWB();
+
+          if(JFetch_TRUE(json, "WB_ONCE"))
+          {
+            cami->camera->SetOnceWB();
+          }
+
+
+          double *RGain = JFetch_NUMBER(json, "RGain");
+          if(RGain)
+          {
+            cami->camera->SetRGain(*RGain);
+            LOGI("RGain:%f",*RGain);
+          }
+
+          double *GGain = JFetch_NUMBER(json, "GGain");
+          if(GGain)
+          {
+            cami->camera->SetGGain(*GGain);
+            LOGI("GGain:%f",*GGain);
+          }
+
+          double *BGain = JFetch_NUMBER(json, "BGain");
+          if(BGain)
+          {
+            cami->camera->SetBGain(*BGain);
+            LOGI("BGain:%f",*BGain);
+          }
+
         }
-
-
 
 
 

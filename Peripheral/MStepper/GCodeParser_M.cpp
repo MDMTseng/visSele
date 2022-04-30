@@ -75,6 +75,8 @@ int GCodeParser_M::ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F)
 
   float tmpF=NAN;
   int ret = FindFloat(AXIS_GDX_FEEDRATE,blkIdxes,blkIdxesL,tmpF);
+  if(tmpF<0)ret=-1;
+  if(tmpF>300)ret=-1;// HACK: TODO: speed cap
   if(ret==0)
   {
     tmpF=unit2Pulse_conv(AXIS_IDX_FEEDRATE,tmpF);
@@ -268,9 +270,9 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       {
         __PRT_D_("G28 GO HOME!!!:");
         int retErr=0;
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,50000,MTPSYS_getMinPulseSpeed()*2,NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,500*2,MTPSYS_getMinPulseSpeed(),NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R11,500*2,MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,500*2,MTPSYS_getMinPulseSpeed()*5,NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R11,500*2,MTPSYS_getMinPulseSpeed()*5,NULL);
         pos_offset=(xVec){0};
         retStatus=statusReducer(retStatus,(retErr==0)?GCodeParser_Status::TASK_OK:GCodeParser_Status::TASK_FAILED);
         __PRT_D_("%s\n",retErr==0?"DONE":"FAILED");

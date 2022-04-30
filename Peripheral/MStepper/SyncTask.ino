@@ -1160,7 +1160,7 @@ int rzERROR=0;
 void setup()
 {
   // noInterrupts();
-  Serial.begin(230400);
+  Serial.begin(115200);//230400);
   Serial.setRxBufferSize(500);
   // // setup_comm();
   timer = timerBegin(0, 8, true);

@@ -171,6 +171,9 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
     virtual CameraLayer::status SetAnalogGain(float gain){return NAK;}
+    virtual CameraLayer::status SetRGain(float gain){return NAK;}
+    virtual CameraLayer::status SetGGain(float gain){return NAK;}
+    virtual CameraLayer::status SetBGain(float gain){return NAK;}
 
     virtual CameraLayer::status SetBalckLevel(float blvl){return NAK;}
 
