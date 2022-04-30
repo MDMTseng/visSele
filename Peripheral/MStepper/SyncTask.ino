@@ -83,9 +83,9 @@ class MStp_M:public MStp{
   {
     
     TICK2SEC_BASE=10*1000*1000;
-    main_acc=SUBDIV*2500/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
+    main_acc=SUBDIV*2000/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
     minSpeed=sqrt(main_acc)/4;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    main_junctionMaxSpeedJump=minSpeed;//5200;
+    main_junctionMaxSpeedJump=minSpeed*4;//5200;
 
     maxSpeedInc=minSpeed;
     pinMode(PIN_Z1_DIR, OUTPUT);
@@ -122,7 +122,7 @@ class MStp_M:public MStp{
     axisInfo[AXIS_IDX_Z1].AccW=1;
     axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=1/mainAXIS_VSTEP;
 
-    axisInfo[AXIS_IDX_R11].VirtualStep=10;
+    axisInfo[AXIS_IDX_R11].VirtualStep=2;
     axisInfo[AXIS_IDX_R11].AccW=1;
     axisInfo[AXIS_IDX_R11].MaxSpeedJumpW=1/mainAXIS_VSTEP;
     
@@ -276,7 +276,7 @@ class MStp_M:public MStp{
         int axisIdx=index;
         
         xVec retHitPos;
-        if(runUntil(axisIdx,PIN_Y_SEN1,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
+        if(runUntil(axisIdx,PIN_Y_SEN1,sensorDetectVLvl,distance,runSpeed*5,&retHitPos)!=0)
         {
           return -1;
         }
@@ -710,7 +710,7 @@ public:
 
       case AXIS_IDX_R11:
       case AXIS_IDX_R12://assume it's 800 pulses pre rev
-        return dist*1600/360;//-1 for reverse the direction
+        return dist*3200/360;//-1 for reverse the direction
 
 
 
