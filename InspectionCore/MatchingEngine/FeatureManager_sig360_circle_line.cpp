@@ -1117,7 +1117,34 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     {
       judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
     }
+
+    
+    if(judgeReport.status == FeatureReport_sig360_circle_line_single::STATUS_NA)
+    {
+      judgeReport.measured_val=NAN;
+    }
+
+
+
+
   }
+
+  // if(judgeReport.def->NAasNG)
+  // {
+  //   if(judgeReport.status == FeatureReport_sig360_circle_line_single::STATUS_NA)
+  //   {
+  //     judgeReport.status=FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
+  //   }
+  // }
+  // if(judgeReport.def->NGasNA)
+  // {
+  //   if(judgeReport.status == FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+  //   {
+  //     judgeReport.status=FeatureReport_sig360_circle_line_single::STATUS_NA;
+  //   }
+  // }
+
+  
 
   return judgeReport;
 }
@@ -1734,6 +1761,19 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
     {
       judge.quality_essential = false;
     }
+  }
+
+  judge.NGasNA=false;
+  if(JFetch_TRUE(judge_obj, "NGasNA"))
+  {
+    judge.NGasNA=true;
+  }
+
+  
+  judge.NAasNG=false;
+  if(JFetch_TRUE(judge_obj, "NAasNG"))
+  {
+    judge.NAasNG=true;
   }
 
   char *subtype = JFetEx_STRING(judge_obj, "subtype");
@@ -2383,20 +2423,20 @@ int ptInfoFind(vector<ContourFetch::contourMatchSec> &ptGs,int mixedIdx,edgeTrac
 int vertex_touch_searching(acv_Line line_cand,vector<ContourFetch::contourMatchSec> &ptGs,edgeTracking &eT,float flip,acv_Line *retLineMax,acv_XY *pt0,acv_XY *pt1)
 {
 
-  LOGI("vertex_touch_searching  m_sections.size():%d",ptGs.size());
-  LOGI(">>line_vec>>%f,%f",line_cand.line_vec.X,line_cand.line_vec.Y);
+  // LOGI("vertex_touch_searching  m_sections.size():%d",ptGs.size());
+  // LOGI(">>line_vec>>%f,%f",line_cand.line_vec.X,line_cand.line_vec.Y);
 
 
   acv_XY edgeVec=acvVecNormal(line_cand.line_vec);
 
 
-  LOGI(">edgeVec>>>%f,%f",edgeVec.X,edgeVec.Y);
+  // LOGI(">edgeVec>>>%f,%f",edgeVec.X,edgeVec.Y);
 
   vector<acv_XY> pts;
   for(ContourFetch::contourMatchSec &sec:ptGs)
   {
      
-    LOGI("-----------");
+    // LOGI("-----------");
     for(ContourFetch::ptInfo &pt:sec.section)
     {
       pts.push_back(pt.pt);
@@ -2404,7 +2444,7 @@ int vertex_touch_searching(acv_Line line_cand,vector<ContourFetch::contourMatchS
       acv_XY vec= acvVecSub(pt.pt,line_cand.line_anchor);
       float dist = acv2DDotProduct(vec,edgeVec)*flip;
 
-      LOGI("dist:%f   pt:%0.3f,%0.3f  sobel:%0.3f,%0.3f",dist,  pt.pt.X,pt.pt.Y,  pt.sobel.X, pt.sobel.Y);
+      // LOGI("dist:%f   pt:%0.3f,%0.3f  sobel:%0.3f,%0.3f",dist,  pt.pt.X,pt.pt.Y,  pt.sobel.X, pt.sobel.Y);
     }
   }
   std::vector<int> ret_chIdxs;
@@ -2429,8 +2469,8 @@ int vertex_touch_searching(acv_Line line_cand,vector<ContourFetch::contourMatchS
     }
     float dist = acvDistance(pt0,pt1);
 
-    LOGI("pt0:%f,%f  %f,%f  dotP:%f",pt0.X,pt0.Y,  pt1.X,pt1.Y,dotP);
-    LOGI("[%d~%d ]  dist:%f",ret_chIdxs[i],ret_chIdxs[nxti],dist);
+    // LOGI("pt0:%f,%f  %f,%f  dotP:%f",pt0.X,pt0.Y,  pt1.X,pt1.Y,dotP);
+    // LOGI("[%d~%d ]  dist:%f",ret_chIdxs[i],ret_chIdxs[nxti],dist);
     if(maxDist<dist)
     {
       maxDist=dist;

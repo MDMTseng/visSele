@@ -2265,6 +2265,8 @@ class APP_DEFCONF_MODE extends React.Component {
 
                 quality_essential:"switch",
                 orientation_essential:"switch",
+                NGasNA:"switch",
+                NAasNG:"switch",
                 ref: (edit_tar.subtype === UIAct.SHAPE_TYPE.measure_subtype.calc) ?
                   undefined :
                   {

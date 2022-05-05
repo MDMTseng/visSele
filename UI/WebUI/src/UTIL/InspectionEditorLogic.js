@@ -142,6 +142,15 @@ export function Shape_Attr_Fill(shapeObject)
         shapeObject={...shapeObject}
         shapeObject.orientation_essential=false;
       }
+      
+      if(shapeObject.NGasNA != true)
+      {
+        shapeObject.NGasNA=false;
+      }
+      if(shapeObject.NAasNG != true)
+      {
+        shapeObject.NAasNG=false;
+      }
     break;
 
   }

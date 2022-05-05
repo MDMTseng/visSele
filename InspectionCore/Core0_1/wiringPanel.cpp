@@ -3203,7 +3203,22 @@ int InspStatusReduce(vector<FeatureReport_judgeReport> &jrep)
   for (int k = 0; k < jrep.size(); k++)
   {
     if(jrep[k].def->quality_essential==true)
-    stat = InspStatusReducer(stat, jrep[k].status);
+    {
+      int cur_stat=jrep[k].status;
+
+      // LOGI(">>>NAG:%d NGA:%d  cur_stat:%d",jrep[k].def->NAasNG,jrep[k].def->NGasNA, cur_stat);
+      if(jrep[k].def->NAasNG && cur_stat==FeatureReport_sig360_circle_line_single::STATUS_NA)
+      {
+        cur_stat=FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
+      }
+      if(jrep[k].def->NGasNA && cur_stat==FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+      {
+        cur_stat=FeatureReport_sig360_circle_line_single::STATUS_NA;
+      }
+
+      stat = InspStatusReducer(stat, cur_stat);
+
+    }
   }
   return stat;
 }

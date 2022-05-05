@@ -101,6 +101,8 @@ export default {
     },
     measure:{
       quality_essential:"品質必需",
+      NGasNA:"NG->A",
+      NAasNG:"NA->G",
       orientation_essential:"朝向必需",
 
       value_adjust:"數值微調",
