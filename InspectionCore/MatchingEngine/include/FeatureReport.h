@@ -63,6 +63,7 @@ typedef struct featureDef_line{
   acv_XY searchVec;//The vector to searching the contour edge
   acv_XY searchEstAnchor;//The vector to searching the contour edge
   float MatchingMarginX;//the length of the line itself
+  bool vertex_touch_searching;
   /*
 
   We will rotate the picture to let image line contour pixel lie on horizontal position

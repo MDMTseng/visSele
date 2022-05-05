@@ -2193,6 +2193,7 @@ class APP_DEFCONF_MODE extends React.Component {
 
       edit_tar=Shape_Attr_Fill(edit_tar);
       switch (edit_tar.type) {
+        case UIAct.SHAPE_TYPE.line:
         case UIAct.SHAPE_TYPE.aux_point:
         case UIAct.SHAPE_TYPE.aux_line:
         case UIAct.SHAPE_TYPE.search_point:
@@ -2217,6 +2218,8 @@ class APP_DEFCONF_MODE extends React.Component {
 
                 search_far: "switch",
                 locating_anchor: "switch",
+
+                vertex_touch_searching:"switch",
                 // line_thickness_value:"input-number",
                 
 

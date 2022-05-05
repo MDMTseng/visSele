@@ -115,4 +115,8 @@ class edgeTracking
 
   void goAdv (ContourFetch::contourMatchSec &section,bool goForward,int new_regionSideWidth);
 };
+
+
+
+void ComputeConvexHull(const acv_XY *polygon,const int L,int initOffset,std::vector<int> &ret_chIdxs);//The polygon cannot have internal overlap/loop
 #endif

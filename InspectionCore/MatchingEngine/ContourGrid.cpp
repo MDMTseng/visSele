@@ -350,6 +350,7 @@ void ContourFetch::getContourPointsWithInLineContour(
     {
   
       ptInfo pti = contourSections[idx][j];
+      acv_XY pt_bk=pti.pt;
       acv_XY pt=pti.pt;
       
       // printf("%.1f,%.1f,cur:%f>>>",pt.X,pt.Y,pti.curvature*180/3.14159);
@@ -370,16 +371,25 @@ void ContourFetch::getContourPointsWithInLineContour(
       {
         if( abs(pti.curvature)>lineCurvatureMax)continue;
 
-        //LOGV(">> X:%f<%f  Y:%f<%f",pt.X,epsilonX,pt.Y,epsilonY);
         if(flip_f==0)
           ptInSection=true;
         else
         {
-          float dotP = pti.sobel.X * line.line_vec.Y - pti.sobel.Y * line.line_vec.X;
+          acv_XY sobel = acvVecNormalize(pti.sobel);
+          acv_XY line_vec = acvVecNormalize(line.line_vec);
+          float dotP = sobel.X * line_vec.Y - sobel.Y * line_vec.X;
           if(dotP*flip_f>cosSim)
           {
             ptInSection=true;
+          // LOGI("pt XY:%f,%f >> %f,%f  dotP:%f",
+          //   pt.X,pt.Y,
+          //   pti.sobel.X,pti.sobel.Y,
+          //   dotP);
           }
+        }
+        if(ptInSection)
+        {
+          
         }
       }
       // printf("%d>\n",ptInSection);

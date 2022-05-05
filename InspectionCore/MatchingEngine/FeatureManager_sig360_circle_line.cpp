@@ -1649,6 +1649,17 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   {
     sprintf(line.name, "@LINE_%d", featureLineList.size());
   }
+  
+  if(JFetch_TRUE(line_obj,"vertex_touch_searching"))
+  {
+    line.vertex_touch_searching=true;
+  }
+  else
+  {
+    line.vertex_touch_searching=false;
+  }
+
+
   line = lineDefDataPrep(line);
   featureLineList.push_back(line);
   return 0;
@@ -2315,6 +2326,155 @@ const FeatureReport_lineReport lr_NA = {line : lf_zero, status : FeatureReport_s
 
 bool drawDraw = false;
 
+
+int ptInfoFind(vector<ContourFetch::contourMatchSec> &ptGs,int mixedIdx,edgeTracking &eT,ContourFetch::ptInfo *ret_pt0)
+{
+  ContourFetch::contourMatchSec singPt;
+  for(int i=0;i<ptGs.size();i++)
+  {
+    if(mixedIdx>=ptGs[i].section.size())
+    {
+      mixedIdx-=ptGs[i].section.size();
+      continue;
+    }
+    // LOGI("ptGs[%d].section.size():%d>>>mixedIdx:%d",i,ptGs[i].section.size(),mixedIdx);
+    singPt.dist=ptGs[i].dist;
+    singPt.sigma=ptGs[i].sigma;
+    singPt.contourIdx=ptGs[i].contourIdx;
+
+    ContourFetch::ptInfo tarPt = ptGs[i].section[mixedIdx];
+    int span=2;
+    
+    // LOGI("%d<=j<=%d   size:%d",mixedIdx-span,(mixedIdx+span+1 ),ptGs[i].section.size());
+    for(int j=mixedIdx-span; 
+      (j<(mixedIdx+span+1 )) && (j<(int)ptGs[i].section.size())   ;
+      j++)
+    {
+      if(j<0)j=0;
+      
+      singPt.section.push_back(ptGs[i].section[j]);
+    }
+    
+    eT.initTracking(singPt, 0);
+
+    acv_XY ptSum={0};
+
+    for(int j=0;j<singPt.section.size();j++)
+    {
+      acv_XY pt=singPt.section[j].pt;
+      ptSum=acvVecAdd(ptSum,pt);
+    }
+    ptSum=acvVecMult(ptSum,1.0/singPt.section.size());
+
+
+
+    if(ret_pt0)
+    {
+      tarPt.pt=ptSum;
+      *ret_pt0=tarPt;
+    }
+    return 0;
+  }
+  return -1;
+}
+
+// void ComputeConvexHull(const acv_XY *polygon,const int L,std::vector<int> &ret_chIdxs);
+
+int vertex_touch_searching(acv_Line line_cand,vector<ContourFetch::contourMatchSec> &ptGs,edgeTracking &eT,float flip,acv_Line *retLineMax,acv_XY *pt0,acv_XY *pt1)
+{
+
+  LOGI("vertex_touch_searching  m_sections.size():%d",ptGs.size());
+  LOGI(">>line_vec>>%f,%f",line_cand.line_vec.X,line_cand.line_vec.Y);
+
+
+  acv_XY edgeVec=acvVecNormal(line_cand.line_vec);
+
+
+  LOGI(">edgeVec>>>%f,%f",edgeVec.X,edgeVec.Y);
+
+  vector<acv_XY> pts;
+  for(ContourFetch::contourMatchSec &sec:ptGs)
+  {
+     
+    LOGI("-----------");
+    for(ContourFetch::ptInfo &pt:sec.section)
+    {
+      pts.push_back(pt.pt);
+      // pt.
+      acv_XY vec= acvVecSub(pt.pt,line_cand.line_anchor);
+      float dist = acv2DDotProduct(vec,edgeVec)*flip;
+
+      LOGI("dist:%f   pt:%0.3f,%0.3f  sobel:%0.3f,%0.3f",dist,  pt.pt.X,pt.pt.Y,  pt.sobel.X, pt.sobel.Y);
+    }
+  }
+  std::vector<int> ret_chIdxs;
+  ComputeConvexHull(&pts[0],pts.size(),-1,ret_chIdxs);
+  
+  int maxDist=5;
+  int maxDistIdxsIdx=-1;
+  for(int i=0;i<ret_chIdxs.size();i++)
+  {
+    acv_XY pt0=pts[ret_chIdxs[i]];
+    int nxti=i+1;
+    if(nxti>=ret_chIdxs.size())
+      nxti-=ret_chIdxs.size();
+
+    acv_XY pt1=pts[ret_chIdxs[nxti]];
+    acv_XY vec=acvVecSub(pt1,pt0);
+
+    float dotP=acv2DDotProduct(vec, line_cand.line_vec);
+    if(dotP*flip<0)
+    {
+      continue;
+    }
+    float dist = acvDistance(pt0,pt1);
+
+    LOGI("pt0:%f,%f  %f,%f  dotP:%f",pt0.X,pt0.Y,  pt1.X,pt1.Y,dotP);
+    LOGI("[%d~%d ]  dist:%f",ret_chIdxs[i],ret_chIdxs[nxti],dist);
+    if(maxDist<dist)
+    {
+      maxDist=dist;
+      maxDistIdxsIdx=i;
+    }
+  }
+
+
+
+  if(maxDistIdxsIdx==-1)
+  {
+    return -1;
+  }
+
+
+  ContourFetch::ptInfo pti0,pti1;
+  ptInfoFind(ptGs,ret_chIdxs[maxDistIdxsIdx],eT,&pti0);
+  
+  int nxti=maxDistIdxsIdx+1;
+  if(nxti>=ret_chIdxs.size())
+  {
+    nxti-=ret_chIdxs.size();
+  }
+  ptInfoFind(ptGs,ret_chIdxs[nxti],eT,&pti1);
+
+  LOGI("pti>>>:%f,%f  %f,%f  ",pti0.pt.X,pti0.pt.Y, pti1.pt.X,pti1.pt.Y);
+
+  if(pt0)
+  {
+    *pt0=pti0.pt;
+  }
+  if(pt1)
+  {
+    *pt1=pti1.pt;
+  }
+  if(retLineMax)
+  {
+    retLineMax->line_anchor=pti0.pt;
+    retLineMax->line_vec=acvVecMult(acvVecSub(pti1.pt,pti0.pt),flip);
+  }
+
+  return 0;
+}
+
 FeatureReport_lineReport SingleMatching_line(featureDef_line *line, edgeTracking &eT, float ppmm,
                                              acv_Line line_cand, ContourFetch &edge_grid, float flip_f,
                                              vector<ContourFetch::ptInfo> &tmp_points, vector<ContourFetch::contourMatchSec> &m_sections)
@@ -2345,13 +2505,17 @@ FeatureReport_lineReport SingleMatching_line(featureDef_line *line, edgeTracking
   //     line_cand.line_anchor.Y+mult*line_cand.line_vec.Y,
   //     20,255,128);
   // }
+  float lineCurvatureMax=line->vertex_touch_searching?10 :0.15;
+  float cosSim=line->vertex_touch_searching?0.3 :0.9;
   edge_grid.getContourPointsWithInLineContour(line_cand,
                                               MatchingMarginX,
 
                                               //HACK:Kinda hack... the initial Margin is for initial keypoints search,
                                               //But since we get the cadidate line already, no need for huge Margin
                                               initMatchingMargin,
-                                              flip_f, m_sections);
+                                              flip_f, m_sections,
+                                              lineCurvatureMax,
+                                              cosSim);
 
   if (m_sections.size() == 0)
   { //No match... FAIL
@@ -2359,6 +2523,45 @@ FeatureReport_lineReport SingleMatching_line(featureDef_line *line, edgeTracking
     FeatureReport_lineReport lr = lr_NA;
     lr.def = line;
     return lr;
+  }
+
+
+  if(line->vertex_touch_searching)
+  {
+    acv_Line retLine;
+    acv_XY pt0,pt1;
+
+    if(vertex_touch_searching(line_cand,m_sections,eT,flip_f,&retLine,&pt0,&pt1)==0)
+    {
+
+
+      acv_LineFit lf;
+      lf.line = retLine;
+      lf.matching_pts = 2;
+      lf.s = 1;
+      FeatureReport_lineReport lr;
+      // lr.rough_RMSE=rRMSE;
+      // lr.rough_MAX=rMAX;
+      // lr.rough_MIN=rMIN;
+      lr.line = lf;
+      lr.def = line;
+      // lr.line.end_pt1 = pt0;
+      // lr.line.end_pt2 = pt1;
+      
+      lr.line.end_pt1 = acvClosestPointOnLine(line->p0, retLine);
+      lr.line.end_pt2 = acvClosestPointOnLine(line->p1, retLine);
+      lr.status=FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+      return lr;
+    }
+    else
+    {
+
+
+      LOGI("MatchingMarginX:%f ,initMatchingMargin:%f",MatchingMarginX);
+      FeatureReport_lineReport lr = lr_NA;
+      lr.def = line;
+      return lr;
+    }
   }
 
   float section_sigma_thres = 9999; //m_sections[0].sigma + 3;

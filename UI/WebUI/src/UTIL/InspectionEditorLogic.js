@@ -86,7 +86,15 @@ export function Shape_Attr_Fill(shapeObject)
 
   switch(shapeObject.type)
   {
-    // case UIAct.SHAPE_TYPE.line:
+    case SHAPE_TYPE.line:
+    {
+      shapeObject={...shapeObject}
+      if(shapeObject.vertex_touch_searching!==true)
+      {
+        shapeObject.vertex_touch_searching=false;
+      }
+    }
+    break;
     // case UIAct.SHAPE_TYPE.arc:
     // break;
     case SHAPE_TYPE.search_point:
