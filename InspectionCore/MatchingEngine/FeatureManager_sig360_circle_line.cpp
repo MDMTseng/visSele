@@ -1101,7 +1101,25 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     {
       va = 0;
     }
-    judgeReport.measured_val += va;
+
+    float vm = NAN;
+    if (flip_f >= 0)
+    {
+      vm = judgeReport.def->value_mult;
+    }
+    else
+    {
+      vm = judgeReport.def->value_mult_b;
+    }
+    if (vm != vm)
+    {
+      vm = 1;
+    }
+
+
+
+
+    judgeReport.measured_val = judgeReport.measured_val*vm + va;
   }
 
   if (notNA)
@@ -1879,6 +1897,7 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
 
   judge.targetVal_b = judge.targetVal = JfetchStrNUM(judge_obj, "value");
   judge.value_adjust_b = judge.value_adjust = JfetchStrNUM(judge_obj, "value_adjust");
+  judge.value_mult_b = judge.value_mult = JfetchStrNUM(judge_obj, "value_mult");
 
   judge.USL_b = judge.USL = JfetchStrNUM(judge_obj, "USL");
   judge.LSL_b = judge.LSL = JfetchStrNUM(judge_obj, "LSL");
@@ -1888,10 +1907,33 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   if (type == cJSON_True)
   {
     judge.value_adjust_b = JfetchStrNUM(judge_obj, "value_adjust_b");
+    judge.value_mult_b = JfetchStrNUM(judge_obj, "value_mult_b");
     judge.targetVal_b = JfetchStrNUM(judge_obj, "value_b");
     judge.USL_b = JfetchStrNUM(judge_obj, "USL_b");
     judge.LSL_b = JfetchStrNUM(judge_obj, "LSL_b");
   }
+
+  if(judge.value_mult!=judge.value_mult)
+  {
+    judge.value_mult=1;
+  }
+
+  if(judge.value_adjust!=judge.value_adjust)
+  {
+    judge.value_adjust=0;
+  }
+
+
+  if(judge.value_mult_b!=judge.value_mult_b)
+  {
+    judge.value_mult_b=1;
+  }
+
+  if(judge.value_adjust_b!=judge.value_adjust_b)
+  {
+    judge.value_adjust_b=0;
+  }
+
 
   pnum = JFetch_NUMBER(judge_obj, "ref[0].id");
   if (pnum == NULL)

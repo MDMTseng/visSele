@@ -130,6 +130,12 @@ export function Shape_Attr_Fill(shapeObject)
         shapeObject.value_adjust=0;
       }
 
+      if(typeof shapeObject.value_mult != "number")
+      {
+        shapeObject={...shapeObject}
+        shapeObject.value_mult=1;
+      }
+
       
       if(typeof shapeObject.quality_essential != "boolean")
       {

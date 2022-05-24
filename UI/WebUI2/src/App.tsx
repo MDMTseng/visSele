@@ -22,11 +22,11 @@ import { Row, Col,Input,Tag,Modal,message } from 'antd';
 
 import './basic.css';
 
-import ReactJsoneditor from 'jsoneditor-for-react';
+// import ReactJsoneditor from 'jsoneditor-for-react';
 
 // declare module 'jsoneditor-react'jsoneditor-for-react"
 
-import 'jsoneditor-react/es/editor.min.css';
+// import 'jsoneditor-react/es/editor.min.css';
 
 let INSP1_REP_PGID_ = 51000
 
@@ -1135,7 +1135,6 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
   IMCM_group:{[trigID:string]:IMCM_type},
   onDefChange:(...param:any)=>void
 }){
-  const ReactJsoneditorRef=useRef<ReactJsoneditor|undefined>();
   const _this = useRef<any>({
     listCMD_Vairable:{
       inCMD_Promise:false,

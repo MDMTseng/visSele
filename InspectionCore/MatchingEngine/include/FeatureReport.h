@@ -147,11 +147,11 @@ typedef struct FeatureReport_judgeDef{
   int OBJ1_id;
   int OBJ2_id;
   int ref_baseLine_id;
-  float targetVal,value_adjust;
+  float targetVal,value_adjust,value_mult;
   float USL,LSL;
   float UCL,LCL;
   
-  float targetVal_b,value_adjust_b;
+  float targetVal_b,value_adjust_b,value_mult_b;
   float USL_b,LSL_b;
   float UCL_b,LCL_b;
   

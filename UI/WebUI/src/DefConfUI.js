@@ -2245,6 +2245,7 @@ class APP_DEFCONF_MODE extends React.Component {
                   },
                   ref: edit_tar.ref
                 },
+                value_mult: "input-number",
                 value_adjust: "input-number",
                 value: "input-number",
                 USL: "ULRangeSetup",
@@ -2252,6 +2253,7 @@ class APP_DEFCONF_MODE extends React.Component {
                 UCL: "ULRangeSetup",
                 LCL: "ULRangeSetup",
 
+                value_mult_b: "input-number",
                 value_adjust_b: "input-number",
                 value_b: "input-number",
                 USL_b: "ULRangeSetup",
@@ -2355,6 +2357,7 @@ class APP_DEFCONF_MODE extends React.Component {
                           if (evt.target.checked == false) {
                             delete target.obj["value_b"];
                             delete target.obj["value_adjust_b"];
+                            delete target.obj["value_mult_b"];
                             delete target.obj["USL_b"];
                             delete target.obj["LSL_b"];
                             delete target.obj["UCL_b"];
@@ -2362,7 +2365,8 @@ class APP_DEFCONF_MODE extends React.Component {
                           }
                           else {
                             
-                            target.obj["value_adjust_b"] = target.obj["value_adjust_b"];
+                            target.obj["value_adjust_b"] = target.obj["value_adjust"];
+                            target.obj["value_mult_b"] = target.obj["value_mult"];
                             target.obj["value_b"] = target.obj["value"];
                             target.obj["USL_b"] = target.obj["USL"];
                             target.obj["LSL_b"] = target.obj["LSL"];
