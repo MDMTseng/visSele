@@ -269,21 +269,37 @@ class ImageSampler
     float sampPix=sampleImage_ImgCoord(img, idealVec,doNearest);
     return sampPix;
   }
+  int sampleImage3_IdealCoord(acvImage *img,float imgPos[2],float ret_RGB[3],int doNearest=1)
+  {
+    int ret = ideal2img(imgPos);
+    return sampleImage3_ImgCoord(img, imgPos,ret_RGB,doNearest);
+  }
+  float sampleImage3_ImgCoord(acvImage *img,float imgPos[2],float ret_RGB[3],int doNearest=1)
+  {
+    acv_XY pos={imgPos[0],imgPos[1]};
+    ret_RGB[0]=sampleImage_ImgCoord(img,pos,doNearest,0);
+    ret_RGB[1]=sampleImage_ImgCoord(img,pos,doNearest,1);
+    ret_RGB[2]=sampleImage_ImgCoord(img,pos,doNearest,2);
+
+
+    return 0;
+  }
+
   float sampleImage_IdealCoord(acvImage *img,acv_XY pos,int doNearest=1)
   {
     int ret = ideal2img(&pos);
     return sampleImage_ImgCoord(img, pos,doNearest);
   }
 
-  float sampleImage_ImgCoord(acvImage *img,acv_XY pos,int doNearest=1)
+  float sampleImage_ImgCoord(acvImage *img,acv_XY pos,int doNearest=1,int ch=0)
   {
     //float bri = acvUnsignedMap1Sampling(img, pos,0);
     float bri;
     
     if(doNearest==1)
-      bri= acvUnsignedMap1Sampling_Nearest(img, pos,0);
+      bri= acvUnsignedMap1Sampling_Nearest(img, pos,ch);
     else if (doNearest==0)
-      bri= acvUnsignedMap1Sampling(img, pos,0);
+      bri= acvUnsignedMap1Sampling(img, pos,ch);
     // if(CCC%3001==0)
     // {
     //   LOGI("pos:%f,%f offset:%f,%f",pos.X,pos.Y,origin_offset.X,origin_offset.Y);

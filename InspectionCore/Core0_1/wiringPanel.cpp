@@ -545,19 +545,23 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
           //   // int ret = sampler->ideal2img(coord2);
           //   bri = sampler->sampleImage_IdealCoord(&src, coord, doNearest);
             
-          //   LOGI("X:%d,%d bri:%f %f,%f=>%f,%f  samp:%p", j, i,bri,coord2[0],coord2[1],coord[0],coord[1],sampler);
+          //   LOGI("X:%d,%d bri:%f %f,%f=>%f,%f  samp:%p", j, i,bri,coord2[0]  ,coord2[1],coord[0],coord[1],sampler);
           // }else
           // {
 
           // }
+          float bgr[3];
+          sampler->sampleImage3_IdealCoord(&src, coord,bgr, doNearest);
 
-          bri = sampler->sampleImage_IdealCoord(&src, coord, doNearest);
-
-          if (bri > 255)
-            bri = 255;
-          BSum += bri;
-          GSum += bri;
-          RSum += bri;
+          if ( bgr[0] > 255)
+             bgr[0] = 255;
+          if ( bgr[1] > 255)
+             bgr[1] = 255;
+          if ( bgr[2] > 255)
+             bgr[2] = 255;
+          BSum += bgr[0];
+          GSum += bgr[1];
+          RSum += bgr[2];
         }
         else
         {
@@ -1320,6 +1324,7 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
   {
     int imgBufferDataSize=image_send_buffer.size()-headerOffset;
     uint8_t* imgBufferDataPtr=&image_send_buffer[headerOffset];
+    // LOGI(">img_pix_ptr,%d %d,%d",img_pix_ptr[0],img_pix_ptr[1],img_pix_ptr[2]);
     int sendL = 0;
     for(int i=0;i<imgBufferDataSize-4;i+=4,img_pix_ptr+=3)
     {
@@ -4339,6 +4344,7 @@ CameraLayer *getCamera(int initCameraType = 0)
     }
     else
     {
+      LOGI(">>>name:%s  sn:%s  model:%s   ",BCamInfo.name.c_str(),BCamInfo.serial_number.c_str(),BCamInfo.model.c_str());
       camera=camLayerMan.connectCamera(BCamInfo.driver_name,BCamInfo.id,"",CameraLayer_Callback_GIGEMV, NULL);
     }
   }
