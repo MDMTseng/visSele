@@ -1821,7 +1821,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             })
         }
 
-        function triggerSnapExam(trigger_type=0,timeout=-1)
+        function triggerSnapExam(trigger_type=0,timeout=-1,doReset=true)
         {
           
           setModal_viewAsWait();
@@ -1843,6 +1843,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               if(SS.data.ACK==true)
               {              
                 let acts=pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined);
+                console.log(acts)
                 dispatch({
                   type: "ATBundle",
                   ActionThrottle_type: "express",
@@ -1867,22 +1868,32 @@ function DEFCONF_MODE_NEUTRAL_UI({})
                 view:"圖像獲取異常"
                 })
             })
-          ACT_Shape_List_Reset();
+          if(doReset)
+            ACT_Shape_List_Reset();
         }
 
-        let triggerTimeout=5000;
+        let triggerTimeout=10000;
+        let doRESET=true
         setModal_view({
-          footer:[
-              <Button key="back" onClick={()=>{triggerSnapExam()}}>
+          footer:<>
+              <Button key="back" onClick={()=>{triggerSnapExam(0,-1,false)}}>
                 立即
-              </Button>,
-              <Button key="trigger5S" type="primary" onClick={()=>{triggerSnapExam(2,triggerTimeout)}}>
+              </Button>
+              <Button key="trigger5S" type="primary" onClick={()=>{triggerSnapExam(2,triggerTimeout,false)}}>
                 {triggerTimeout/1000}s內觸發
-              </Button>,
+              </Button>
+              {"<<<不重置"}
+              <br/>
+              <Button key="back" onClick={()=>{triggerSnapExam(0,-1,true)}}>
+                立即
+              </Button>
+              <Button key="trigger5S" type="primary" onClick={()=>{triggerSnapExam(2,triggerTimeout,true)}}>
+                {triggerTimeout/1000}s內觸發
+              </Button>
               <Button danger onClick={()=>setModal_view(undefined)}>
                 取消
-              </Button>,
-            ],
+              </Button>
+              </>,
             onOk: () => {
               setModal_view(undefined);
 

@@ -1123,21 +1123,25 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
 
   }
 
-  // if(judgeReport.def->NAasNG)
-  // {
-  //   if(judgeReport.status == FeatureReport_sig360_circle_line_single::STATUS_NA)
-  //   {
-  //     judgeReport.status=FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
-  //   }
-  // }
-  // if(judgeReport.def->NGasNA)
-  // {
-  //   if(judgeReport.status == FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
-  //   {
-  //     judgeReport.status=FeatureReport_sig360_circle_line_single::STATUS_NA;
-  //   }
-  // }
+  int preSta=judgeReport.status;
+  if(judgeReport.def->NAasNG)
+  {
+    if(judgeReport.status == FeatureReport_sig360_circle_line_single::STATUS_NA)
+    {
+      judgeReport.status=FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
+    }
+  }
+  if(judgeReport.def->NGasNA)
+  {
+    if(judgeReport.status == FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+    {
+      judgeReport.status=FeatureReport_sig360_circle_line_single::STATUS_NA;
+    }
+  }
 
+  LOGI(">>>NAG:%d NGA:%d pre-sta:%d sta:%d",
+    judgeReport.def->NAasNG,judgeReport.def->NGasNA,
+    preSta,judgeReport.status);
   
 
   return judgeReport;
