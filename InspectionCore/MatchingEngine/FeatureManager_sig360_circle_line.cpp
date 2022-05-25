@@ -1088,38 +1088,14 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   }
 
   { //Add adjust value
-    float va = NAN;
-    if (flip_f >= 0)
-    {
-      va = judgeReport.def->value_adjust;
-    }
-    else
-    {
-      va = judgeReport.def->value_adjust_b;
-    }
-    if (va != va)
-    {
-      va = 0;
-    }
-
-    float vm = NAN;
-    if (flip_f >= 0)
-    {
-      vm = judgeReport.def->value_mult;
-    }
-    else
-    {
-      vm = judgeReport.def->value_mult_b;
-    }
-    if (vm != vm)
-    {
-      vm = 1;
-    }
+    auto DEF=judgeReport.def;
 
 
-
-
-    judgeReport.measured_val = judgeReport.measured_val*vm + va;
+    judgeReport.measured_val = 
+      (judgeReport.measured_val - DEF->value_A)
+      *(DEF->value_Y - DEF->value_X)
+      /(DEF->value_B - DEF->value_A)
+      +DEF->value_X;
   }
 
   if (notNA)
@@ -1896,8 +1872,23 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   LOGV("feature is a measure/judge:%s id:%d subtype:%s", judge.name, judge.id, subtype);
 
   judge.targetVal_b = judge.targetVal = JfetchStrNUM(judge_obj, "value");
-  judge.value_adjust_b = judge.value_adjust = JfetchStrNUM(judge_obj, "value_adjust");
-  judge.value_mult_b = judge.value_mult = JfetchStrNUM(judge_obj, "value_mult");
+
+  judge.value_A = JfetchStrNUM(judge_obj, "value_A");
+  judge.value_B = JfetchStrNUM(judge_obj, "value_B");
+
+  judge.value_X = JfetchStrNUM(judge_obj, "value_X");
+  judge.value_Y = JfetchStrNUM(judge_obj, "value_Y");
+
+  if( judge.value_A!=judge.value_A ||
+  judge.value_B!=judge.value_B ||
+  judge.value_X!=judge.value_X ||
+  judge.value_Y!=judge.value_Y )
+  {
+    judge.value_A=0;
+    judge.value_B=1;
+    judge.value_X=0;
+    judge.value_Y=1;
+  }
 
   judge.USL_b = judge.USL = JfetchStrNUM(judge_obj, "USL");
   judge.LSL_b = judge.LSL = JfetchStrNUM(judge_obj, "LSL");
@@ -1906,35 +1897,11 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   int type = getDataFromJson(judge_obj, "back_value_setup", &target);
   if (type == cJSON_True)
   {
-    judge.value_adjust_b = JfetchStrNUM(judge_obj, "value_adjust_b");
-    judge.value_mult_b = JfetchStrNUM(judge_obj, "value_mult_b");
     judge.targetVal_b = JfetchStrNUM(judge_obj, "value_b");
     judge.USL_b = JfetchStrNUM(judge_obj, "USL_b");
     judge.LSL_b = JfetchStrNUM(judge_obj, "LSL_b");
   }
-
-  if(judge.value_mult!=judge.value_mult)
-  {
-    judge.value_mult=1;
-  }
-
-  if(judge.value_adjust!=judge.value_adjust)
-  {
-    judge.value_adjust=0;
-  }
-
-
-  if(judge.value_mult_b!=judge.value_mult_b)
-  {
-    judge.value_mult_b=1;
-  }
-
-  if(judge.value_adjust_b!=judge.value_adjust_b)
-  {
-    judge.value_adjust_b=0;
-  }
-
-
+  
   pnum = JFetch_NUMBER(judge_obj, "ref[0].id");
   if (pnum == NULL)
     judge.OBJ1_id = -1;

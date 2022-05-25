@@ -478,7 +478,6 @@ class renderUTIL {
       this.draw_Text(ctx, InfoCurVal, fontPx,0,Y_offset);
     }
   }
-
   drawMeasureDistance(ctx, eObject, refObjs, shapeList, unitConvert,measValueAdjStr="") {
 
     let alignLine = null;
@@ -894,13 +893,10 @@ class renderUTIL {
             }
             let measValueAdjStr = "";
             
-            if(eObject.value_mult!==undefined && eObject.value_mult!=1)
+            if(eObject.value_A!==undefined && eObject.value_B!==undefined && eObject.value_X!==undefined && eObject.value_Y!==undefined)
             {
-              measValueAdjStr+=" x"+eObject.value_mult
-            }
-            if(eObject.value_adjust!==undefined && eObject.value_adjust!==0)
-            {
-              measValueAdjStr+=" +"+eObject.value_adjust
+
+              measValueAdjStr+=" "+eObject.value_A+"~"+eObject.value_B+" => "+eObject.value_X+"~"+eObject.value_Y;
             }
 
             // console.log(eObject);

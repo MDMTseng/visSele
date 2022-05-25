@@ -124,16 +124,28 @@ export function Shape_Attr_Fill(shapeObject)
     break;
     case SHAPE_TYPE.measure:
 
-      if(typeof shapeObject.value_adjust != "number")
+      if(typeof shapeObject.value_A != "number")
       {
         shapeObject={...shapeObject}
-        shapeObject.value_adjust=0;
+        shapeObject.value_A=0;
       }
 
-      if(typeof shapeObject.value_mult != "number")
+      if(typeof shapeObject.value_B != "number")
       {
         shapeObject={...shapeObject}
-        shapeObject.value_mult=1;
+        shapeObject.value_B=1;
+      }
+
+      if(typeof shapeObject.value_X != "number")
+      {
+        shapeObject={...shapeObject}
+        shapeObject.value_X=0;
+      }
+
+      if(typeof shapeObject.value_Y != "number")
+      {
+        shapeObject={...shapeObject}
+        shapeObject.value_Y=1;
       }
 
       
