@@ -545,19 +545,23 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
           //   // int ret = sampler->ideal2img(coord2);
           //   bri = sampler->sampleImage_IdealCoord(&src, coord, doNearest);
             
-          //   LOGI("X:%d,%d bri:%f %f,%f=>%f,%f  samp:%p", j, i,bri,coord2[0],coord2[1],coord[0],coord[1],sampler);
+          //   LOGI("X:%d,%d bri:%f %f,%f=>%f,%f  samp:%p", j, i,bri,coord2[0]  ,coord2[1],coord[0],coord[1],sampler);
           // }else
           // {
 
           // }
+          float bgr[3];
+          sampler->sampleImage3_IdealCoord(&src, coord,bgr, doNearest);
 
-          bri = sampler->sampleImage_IdealCoord(&src, coord, doNearest);
-
-          if (bri > 255)
-            bri = 255;
-          BSum += bri;
-          GSum += bri;
-          RSum += bri;
+          if ( bgr[0] > 255)
+             bgr[0] = 255;
+          if ( bgr[1] > 255)
+             bgr[1] = 255;
+          if ( bgr[2] > 255)
+             bgr[2] = 255;
+          BSum += bgr[0];
+          GSum += bgr[1];
+          RSum += bgr[2];
         }
         else
         {
@@ -960,6 +964,19 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     retV = 0;
   }
 
+
+  {
+    val = JFetch_NUMBER(&settingJson, "trigger_mode");
+    if (val)
+    {
+      camera.TriggerMode((int)*val);
+      retV = 0;
+    }
+  }
+
+
+
+
   {
     
     val = JFetch_NUMBER(&settingJson, "blacklevel");
@@ -1320,6 +1337,7 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
   {
     int imgBufferDataSize=image_send_buffer.size()-headerOffset;
     uint8_t* imgBufferDataPtr=&image_send_buffer[headerOffset];
+    // LOGI(">img_pix_ptr,%d %d,%d",img_pix_ptr[0],img_pix_ptr[1],img_pix_ptr[2]);
     int sendL = 0;
     for(int i=0;i<imgBufferDataSize-4;i+=4,img_pix_ptr+=3)
     {
@@ -3207,11 +3225,13 @@ int InspStatusReduce(vector<FeatureReport_judgeReport> &jrep)
       int cur_stat=jrep[k].status;
 
       // LOGI(">>>NAG:%d NGA:%d  cur_stat:%d",jrep[k].def->NAasNG,jrep[k].def->NGasNA, cur_stat);
-      if(jrep[k].def->NAasNG && cur_stat==FeatureReport_sig360_circle_line_single::STATUS_NA)
+      if(jrep[k].def->NAasNG 
+      && cur_stat==FeatureReport_sig360_circle_line_single::STATUS_NA)
       {
         cur_stat=FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
       }
-      if(jrep[k].def->NGasNA && cur_stat==FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+      if(jrep[k].def->NGasNA 
+      && cur_stat==FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
       {
         cur_stat=FeatureReport_sig360_circle_line_single::STATUS_NA;
       }
@@ -4339,6 +4359,7 @@ CameraLayer *getCamera(int initCameraType = 0)
     }
     else
     {
+      LOGI(">>>name:%s  sn:%s  model:%s   ",BCamInfo.name.c_str(),BCamInfo.serial_number.c_str(),BCamInfo.model.c_str());
       camera=camLayerMan.connectCamera(BCamInfo.driver_name,BCamInfo.id,"",CameraLayer_Callback_GIGEMV, NULL);
     }
   }
@@ -4351,7 +4372,7 @@ CameraLayer *getCamera(int initCameraType = 0)
   }
 
   LOGV("TriggerMode(1)");
-  camera->TriggerMode(1);
+  camera->TriggerMode(2);
   camera->SetExposureTime(12570.5110);
   camera->SetAnalogGain(1);
 

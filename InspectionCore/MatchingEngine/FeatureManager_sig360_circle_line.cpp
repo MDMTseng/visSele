@@ -1088,20 +1088,14 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   }
 
   { //Add adjust value
-    float va = NAN;
-    if (flip_f >= 0)
-    {
-      va = judgeReport.def->value_adjust;
-    }
-    else
-    {
-      va = judgeReport.def->value_adjust_b;
-    }
-    if (va != va)
-    {
-      va = 0;
-    }
-    judgeReport.measured_val += va;
+    auto DEF=judgeReport.def;
+
+
+    judgeReport.measured_val = 
+      (judgeReport.measured_val - DEF->value_A)
+      *(DEF->value_Y - DEF->value_X)
+      /(DEF->value_B - DEF->value_A)
+      +DEF->value_X;
   }
 
   if (notNA)
@@ -1129,21 +1123,25 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
 
   }
 
-  // if(judgeReport.def->NAasNG)
-  // {
-  //   if(judgeReport.status == FeatureReport_sig360_circle_line_single::STATUS_NA)
-  //   {
-  //     judgeReport.status=FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
-  //   }
-  // }
-  // if(judgeReport.def->NGasNA)
-  // {
-  //   if(judgeReport.status == FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
-  //   {
-  //     judgeReport.status=FeatureReport_sig360_circle_line_single::STATUS_NA;
-  //   }
-  // }
+  int preSta=judgeReport.status;
+  if(judgeReport.def->NAasNG)
+  {
+    if(judgeReport.status == FeatureReport_sig360_circle_line_single::STATUS_NA)
+    {
+      judgeReport.status=FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
+    }
+  }
+  if(judgeReport.def->NGasNA)
+  {
+    if(judgeReport.status == FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+    {
+      judgeReport.status=FeatureReport_sig360_circle_line_single::STATUS_NA;
+    }
+  }
 
+  LOGI(">>>NAG:%d NGA:%d pre-sta:%d sta:%d",
+    judgeReport.def->NAasNG,judgeReport.def->NGasNA,
+    preSta,judgeReport.status);
   
 
   return judgeReport;
@@ -1878,7 +1876,23 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   LOGV("feature is a measure/judge:%s id:%d subtype:%s", judge.name, judge.id, subtype);
 
   judge.targetVal_b = judge.targetVal = JfetchStrNUM(judge_obj, "value");
-  judge.value_adjust_b = judge.value_adjust = JfetchStrNUM(judge_obj, "value_adjust");
+
+  judge.value_A = JfetchStrNUM(judge_obj, "value_A");
+  judge.value_B = JfetchStrNUM(judge_obj, "value_B");
+
+  judge.value_X = JfetchStrNUM(judge_obj, "value_X");
+  judge.value_Y = JfetchStrNUM(judge_obj, "value_Y");
+
+  if( judge.value_A!=judge.value_A ||
+  judge.value_B!=judge.value_B ||
+  judge.value_X!=judge.value_X ||
+  judge.value_Y!=judge.value_Y )
+  {
+    judge.value_A=0;
+    judge.value_B=1;
+    judge.value_X=0;
+    judge.value_Y=1;
+  }
 
   judge.USL_b = judge.USL = JfetchStrNUM(judge_obj, "USL");
   judge.LSL_b = judge.LSL = JfetchStrNUM(judge_obj, "LSL");
@@ -1887,12 +1901,11 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   int type = getDataFromJson(judge_obj, "back_value_setup", &target);
   if (type == cJSON_True)
   {
-    judge.value_adjust_b = JfetchStrNUM(judge_obj, "value_adjust_b");
     judge.targetVal_b = JfetchStrNUM(judge_obj, "value_b");
     judge.USL_b = JfetchStrNUM(judge_obj, "USL_b");
     judge.LSL_b = JfetchStrNUM(judge_obj, "LSL_b");
   }
-
+  
   pnum = JFetch_NUMBER(judge_obj, "ref[0].id");
   if (pnum == NULL)
     judge.OBJ1_id = -1;

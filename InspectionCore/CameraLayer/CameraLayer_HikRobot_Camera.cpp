@@ -1,8 +1,9 @@
 
 #include "CameraLayer_HikRobot_Camera.hpp"
 
+#include <string>
 
-
+MV_CC_DEVICE_INFO_LIST s_dev_list;
 CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int h, int zw, int zh)
 {
 
@@ -192,7 +193,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::ExtractFrame(uint8_t *imgBuffer
   }
   
   MvGvspPixelType pType = _cached_frame_info->enPixelType;
-
+  LOGI("pType:%X PixelType_Gvsp_BayerGB8:%X", pType,PixelType_Gvsp_BayerGB8);
   if(pType == PixelType_Gvsp_Mono8)
   {
     
@@ -215,6 +216,40 @@ CameraLayer::status CameraLayer_HikRobot_Camera::ExtractFrame(uint8_t *imgBuffer
         // }
         src_Pix_Gray++;
       }
+    }
+    // LOGI("fi.timeStamp_us:%llu",fi.timeStamp_us);
+    // LOGI("xywh:%d,%d %d,%d",x,y,w,h);
+
+    // LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
+    return ACK;
+
+  }
+  else if(pType == PixelType_Gvsp_BGR8_Packed)
+  {
+    
+    int w=_cached_frame_info->nWidth;
+    int h=_cached_frame_info->nHeight;
+
+    
+
+    for(int i=0;i<h;i++)
+    {
+      uint8_t* src_Pix_Gray=_cached_pData+i*w*3;
+      uint8_t* tar_Pix=imgBuffer+(i*w)*channelCount;
+      memcpy(tar_Pix,src_Pix_Gray,w*3);
+      // for(int j=0;j<w;j++)
+      // {
+      //   tar_Pix[0]=
+      //   tar_Pix[1]=
+      //   tar_Pix[2]=src_Pix_Gray[2];
+      //   tar_Pix+=channelCount;
+      //   // for(int k=0;k<channelCount;k++)//Somehow it's super slow
+      //   // {
+      //   //   *tar_Pix=*src_Pix_Gray;
+      //   //   tar_Pix++;
+      //   // }
+      //   src_Pix_Gray+=3;
+      // }
     }
     // LOGI("fi.timeStamp_us:%llu",fi.timeStamp_us);
     // LOGI("xywh:%d,%d %d,%d",x,y,w,h);
@@ -304,7 +339,7 @@ void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_O
   _cached_frame_info=NULL;
 }
 
-int32_t CameraLayer_HikRobot_Camera::listDevices(MV_CC_DEVICE_INFO_LIST *stDeviceList)
+int32_t listDevices(MV_CC_DEVICE_INFO_LIST *stDeviceList)
 {
   if (stDeviceList == NULL)
     return MV_E_PARAMETER;
@@ -315,10 +350,129 @@ int32_t CameraLayer_HikRobot_Camera::listDevices(MV_CC_DEVICE_INFO_LIST *stDevic
   return nRet;
 }
 
-CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devInfo, CameraLayer_Callback cb, void *context)
-    : CameraLayer(cb, context),imgQueue(10)
+int CameraLayer_HikRobot_Camera::listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist)
+{
+  
+  listDevices(&s_dev_list);
+  
+  for(int i=0;i<s_dev_list.nDeviceNum;i++)
+  {
+    CameraLayer::BasicCameraInfo info;
+    switch(s_dev_list.pDeviceInfo[i]->nTLayerType)
+    {
+      case MV_GIGE_DEVICE:
+      {
+        auto mvcamInfo=s_dev_list.pDeviceInfo[i]->SpecialInfo.stGigEInfo;
+        info.name=std::string((char*)mvcamInfo.chUserDefinedName);
+
+        info.id=std::string((char*)mvcamInfo.chSerialNumber);
+        info.model=std::string((char*)mvcamInfo.chModelName);
+
+
+        info.serial_number=std::string((char*)mvcamInfo.chSerialNumber);
+
+        info.vender=std::string((char*)mvcamInfo.chManufacturerName);
+
+
+
+        // info.id=tmpList[i].id;
+        // info.model=tmpList[i].model;
+        // info.serial_number=tmpList[i].serial_nbr;
+        // info.vender=tmpList[i].vendor;
+        // info.ctx=NULL;
+        // info.driver_name=getDriverName();
+
+
+      break;
+      }
+      case MV_USB_DEVICE:
+      {
+        auto mvcamInfo=s_dev_list.pDeviceInfo[i]->SpecialInfo.stUsb3VInfo;
+        info.name=std::string((char*)mvcamInfo.chUserDefinedName);
+        info.id=std::string((char*)mvcamInfo.chSerialNumber);
+        info.model=std::string((char*)mvcamInfo.chModelName);
+
+
+        info.serial_number=std::string((char*)mvcamInfo.chSerialNumber);
+
+        info.vender=std::string((char*)mvcamInfo.chManufacturerName);
+
+
+
+        // info.id=tmpList[i].id;
+        // info.model=tmpList[i].model;
+        // info.serial_number=tmpList[i].serial_nbr;
+        // info.vender=tmpList[i].vendor;
+        // info.ctx=NULL;
+        // info.driver_name=getDriverName();
+
+
+      break;
+      }
+    }
+    
+    
+    info.driver_name="HikRobot";//CameraLayer_HikRobot_Camera::getDriverName();
+
+    LOGI(">>>name:%s  sn:%s  model:%s   ",info.name.c_str(),info.serial_number.c_str(),info.model.c_str());
+    LOGI(">>>driver_name:%s   ",info.driver_name.c_str());
+
+    devlist.push_back(info);
+  }
+
+  return devlist.size();
+
+
+}
+
+
+
+CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(
+  CameraLayer::BasicCameraInfo camInfo,
+  std::string misc,
+  CameraLayer_Callback cb, 
+  void *context):CameraLayer(camInfo,misc,cb, context),imgQueue(10)
 {
   bDevConnected = false;
+
+  const MV_CC_DEVICE_INFO *devInfo=NULL;
+  for(int i=0;i<s_dev_list.nDeviceNum;i++)
+  {
+    // if(camInfo.serial_number == std::string((char*)s_dev_list.  .chSerialNumber))
+
+
+
+
+
+    switch(s_dev_list.pDeviceInfo[i]->nTLayerType)
+    { 
+      case MV_GIGE_DEVICE:
+      {
+        auto mvcamInfo=s_dev_list.pDeviceInfo[i]->SpecialInfo.stGigEInfo;
+        if(camInfo.serial_number==std::string((char*)mvcamInfo.chSerialNumber))
+        {
+          devInfo=s_dev_list.pDeviceInfo[i];
+        }
+      break;
+      }
+      case MV_USB_DEVICE:
+      {
+        auto mvcamInfo=s_dev_list.pDeviceInfo[i]->SpecialInfo.stUsb3VInfo;
+        if(camInfo.serial_number==std::string((char*)mvcamInfo.chSerialNumber))
+        {
+          devInfo=s_dev_list.pDeviceInfo[i];
+        }
+      break;
+      }
+
+    }
+
+    if(devInfo)
+      break;
+  }
+
+
+
   if (devInfo == NULL)
   {
     throw std::invalid_argument("NULL devInfo");
@@ -405,6 +559,28 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devI
   threadRunningState = true;
 
   SetROI(0, 0, 999999, 999999, 0, 0);
+
+  {
+    MVCC_ENUMVALUE pixFormat={0};
+    int ret = MV_CC_GetPixelFormat(handle,&pixFormat);
+    //1080001 graylevel
+    //108000A GB
+
+    if(pixFormat.nCurValue==PixelType_Gvsp_BayerGB8)
+    {
+      int pixF=MV_CC_SetPixelFormat(handle,PixelType_Gvsp_BGR8_Packed);
+    }
+    ret = MV_CC_GetPixelFormat(handle,&pixFormat);
+
+    // LOGI(">>nCurValue:%X",pixFormat.nCurValue);
+
+  }
+
+
+
+
+
+
   StartAquisition();
   inNoError=true;
   imgQueueThread = std::thread(&CameraLayer_HikRobot_Camera::imgQThreadFunc,this);
@@ -503,7 +679,9 @@ CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
   if (type == 2) //hardware trigger
   {
     takeCount=-1;
-    int nRet = SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_LINE0);
+    int nRet = SetEnumValue("TriggerSource", 13);//anyway
+    if(nRet!=MV_OK)
+      nRet = SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_LINE0);
     return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
   }
 
@@ -529,6 +707,31 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetAnalogGain(float gain)
 }
 
 
+CameraLayer::status CameraLayer_HikRobot_Camera::SetRGain(float gain)
+{
+  
+  MV_CC_SetEnumValueByString(handle, "BalanceRatioSelector", "Red");
+  
+  SetIntValue("BalanceRatio",(int)gain);
+  return CameraLayer::ACK;
+}
+
+CameraLayer::status CameraLayer_HikRobot_Camera::SetGGain(float gain)
+{
+  
+  MV_CC_SetEnumValueByString(handle, "BalanceRatioSelector", "Green");
+  
+  SetIntValue("BalanceRatio",(int)gain);
+  return CameraLayer::ACK;
+}
+CameraLayer::status CameraLayer_HikRobot_Camera::SetBGain(float gain)
+{
+  
+  MV_CC_SetEnumValueByString(handle, "BalanceRatioSelector", "Blue");
+  
+  SetIntValue("BalanceRatio",(int)gain);
+  return CameraLayer::ACK;
+}
 CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
 {
   if (Dir < 0 || Dir > 1)

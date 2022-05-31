@@ -838,7 +838,7 @@ function StateReducer(newState, action) {
           case UISEV.SIG360_Report_Update:
           case UISEV.SIG360_Extraction:
               
-              Edit_info_reset(newState);
+              // Edit_info_reset(newState);
               console.log(action.data);
               newState.edit_info._obj.Setsig360info(action.data);
               

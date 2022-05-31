@@ -30,25 +30,32 @@ class CameraLayerManager
 #ifdef FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK
   MV_CC_DEVICE_INFO_LIST hikrobotCamList={0};
 
-  std::string CamInfo2Json(MV_CC_DEVICE_INFO &info)
+  std::vector<CameraLayer_HikRobot_Camera::cam_info> hikrCamList;
+
+
+
+  std::string CamInfo2Json(CameraLayer_HikRobot_Camera::cam_info &info)
   {
-    return "{"+
-      strJsonAppendKeyEntry("id",info.)+","+
-    
-    
-    
-    "}";
+    return "{"
+      +strJsonAppendKeyString("id",info.id)+","
+      +strJsonAppendKeyString("phy_id",info.physical_id)+","
+      +strJsonAppendKeyString("address",info.address)+","
+      +strJsonAppendKeyString("vendor",info.vendor)+","
+      +strJsonAppendKeyString("model",info.model)+","
+      +strJsonAppendKeyString("serial_nbr",info.serial_nbr)+","
+      +strJsonAppendKeyString("protocol",info.protocol)
+    +"}";
   }
 
-  std::string CamList2Json(MV_CC_DEVICE_INFO_LIST &list)
+  std::string CamList2Json(std::vector<CameraLayer_HikRobot_Camera::cam_info> &list)
   {
     std::string jobj="{\"list\":[";
 
-    for(int i=0;i<list.nDeviceNum;i++)
+    for(int i=0;i<list.size();i++)
     {
-      MV_CC_DEVICE_INFO *pstMVDevInfo = list.pDeviceInfo[i];
-      jobj+=CamInfo2Json(*pstMVDevInfo);
-      if(i<list.nDeviceNum-1)//not the last data
+      CameraLayer_HikRobot_Camera::cam_info &cinfo=list[i];
+      jobj+=CamInfo2Json(cinfo);
+      if(i<list.size()-1)//not the last data
       {
         jobj+=",";
       }
@@ -58,7 +65,6 @@ class CameraLayerManager
     return jobj;
 
   }
-
 
 
 #endif
@@ -150,8 +156,17 @@ class CameraLayerManager
     #ifdef FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK
       // CameraLayer_HikRobot_Camera::
       
+      // CameraLayer_HikRobot_Camera::listDevices(&hikrobotCamList);
       CameraLayer_HikRobot_Camera::listAddDevices(camBasicInfo);
       // CameraLayer_HikRobot_Camera::listDevices(&hikrobotCamList);
+
+      for(int i=0;i<camBasicInfo.size();i++)
+      {
+        LOGI("name:%s  sn:%s",camBasicInfo[i].name.c_str(),camBasicInfo[i].serial_number.c_str());
+      }
+
+
+
       hikrobot_driver_idx=count++;
     #endif
 
@@ -220,6 +235,24 @@ class CameraLayerManager
     if(camera_idx<0 || camera_idx>=camBasicInfo.size())return NULL;
     // printf(">>camera_idx:%d>>\n",camera_idx);
 #ifdef FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK
+
+    if(camBasicInfo[camera_idx].driver_name==CameraLayer_HikRobot_Camera::getDriverName())
+    {
+      printf(">>>>>>driver_name:%s>>\n",camBasicInfo[camera_idx].driver_name.c_str());
+      try
+      {
+        return new CameraLayer_HikRobot_Camera(camBasicInfo[camera_idx],misc, callback, ctx);
+      }
+      catch (const std::exception &ex)
+      {
+      }
+      return NULL;
+    }
+
+
+
+
+
 #endif
 #ifdef FEATURE_COMPILE_W_ARAVIS
   
@@ -252,6 +285,7 @@ class CameraLayerManager
   {
     for(int i=0;i<camBasicInfo.size();i++)
     {
+      //LOGI("driver_name:%s id:%s",camBasicInfo[i].driver_name.c_str(),camBasicInfo[i].id.c_str());
       if((  driver_name.length()==0 ||camBasicInfo[i].driver_name==driver_name) && camBasicInfo[i].id==cam_id)
       {
         return connectCamera(i, misc, callback, ctx);

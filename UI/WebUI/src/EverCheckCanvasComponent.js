@@ -478,8 +478,7 @@ class renderUTIL {
       this.draw_Text(ctx, InfoCurVal, fontPx,0,Y_offset);
     }
   }
-
-  drawMeasureDistance(ctx, eObject, refObjs, shapeList, unitConvert) {
+  drawMeasureDistance(ctx, eObject, refObjs, shapeList, unitConvert,measValueAdjStr="") {
 
     let alignLine = null;
     let point_onAlignLine = null;
@@ -584,7 +583,7 @@ class renderUTIL {
           "D" + eObject.value.toFixed(this.fixedDigit.D) + unitConvert.unit,
           "L:" + eObject.LSL * unitConvert.mult.toFixed(this.fixedDigit.D) + unitConvert.unit + 
           " U:" + eObject.USL * unitConvert.mult.toFixed(this.fixedDigit.D) + unitConvert.unit,
-          "Now:" + (measureValue * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit,
+          "Now:" + (measureValue * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit + measValueAdjStr,
           fontPx)
 
       }
@@ -892,11 +891,19 @@ class renderUTIL {
                 eObject.inspection_value=Number.NaN;
               }
             }
+            let measValueAdjStr = "";
+            
+            if(eObject.value_A!==undefined && eObject.value_B!==undefined && eObject.value_X!==undefined && eObject.value_Y!==undefined)
+            {
+
+              measValueAdjStr+=" "+eObject.value_A+"~"+eObject.value_B+" => "+eObject.value_X+"~"+eObject.value_Y;
+            }
+
             // console.log(eObject);
             switch (eObject.subtype) {
               case SHAPE_TYPE.measure_subtype.distance:
                 {
-                  measureValue = this.drawMeasureDistance(ctx, eObject, subObjs, shapeList, unitConvert);
+                  measureValue = this.drawMeasureDistance(ctx, eObject, subObjs, shapeList, unitConvert,measValueAdjStr);
 
                 }
                 break;
@@ -1086,7 +1093,7 @@ class renderUTIL {
                       eObject.name,
                       ""+eObject.value.toFixed(this.fixedDigit.A) + "º",
                       "L:" + eObject.LSL.toFixed(this.fixedDigit.A) + "º U:" + eObject.USL.toFixed(this.fixedDigit.A) + "º",
-                      "Now:" + (measureDeg).toFixed(this.fixedDigit.A) + "º",
+                      "Now:" + (measureDeg).toFixed(this.fixedDigit.A) + "º" + measValueAdjStr,
                       fontPx)
                     
                     measureValue=measureDeg;
@@ -1152,7 +1159,7 @@ class renderUTIL {
                       eObject.name,
                       "R" + eObject.value.toFixed(this.fixedDigit.R) + unitConvert.unit,
                       "L:" + (eObject.LSL * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit + " U:" + (eObject.USL * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit,
-                      "Now:" + (arc.r * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit,
+                      "Now:" + (arc.r * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit + measValueAdjStr,
                       fontPx);
 
                     measureValue=arc.r;
@@ -1245,7 +1252,7 @@ class renderUTIL {
                       eObject.name,
                       tagName + eObject.value.toFixed(this.fixedDigit.R) + unitConvert.unit,
                       "L:" + (eObject.LSL * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit + " U:" + (eObject.USL * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit,
-                      "",
+                      "?" + measValueAdjStr,
                       fontPx);
 
                     measureValue=arc.r;
@@ -1305,7 +1312,7 @@ class renderUTIL {
                       eObject.name,
                       "C" + eObject.value.toFixed(this.fixedDigit.C),
                       "L:" + eObject.LSL.toFixed(this.fixedDigit.C) + " U:" + eObject.USL.toFixed(this.fixedDigit.C),
-                      "Now:" +measureValue.toFixed(this.fixedDigit.C),
+                      "Now:" +measureValue.toFixed(this.fixedDigit.C + measValueAdjStr),
                       fontPx);
                     
 

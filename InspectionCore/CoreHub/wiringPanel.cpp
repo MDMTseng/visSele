@@ -1460,6 +1460,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           LOGI("Exposure:%f",*exposure);
         }
 
+
+        {
+          double *val = JFetch_NUMBER(json, "trigger_mode");
+          if (val)
+          {
+            cami->camera->TriggerMode((int)*val);
+            // retV = 0;
+          }
+        }
+
+
+
         double *analog_gain = JFetch_NUMBER(json, "analog_gain");
         if(analog_gain)
         {
@@ -1495,6 +1507,30 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             cami->camera->SetBGain(*BGain);
             LOGI("BGain:%f",*BGain);
           }
+
+
+          
+          double *frame_rate = JFetch_NUMBER(json, "frame_rate");
+          if(frame_rate)
+          {
+            cami->camera->SetFrameRate (*frame_rate);
+            LOGI("SetFrameRate:%f",*frame_rate);
+          }
+
+          double *black_level = JFetch_NUMBER(json, "black_level");
+          if(black_level)
+          {
+            cami->camera->SetBalckLevel (*black_level);
+            LOGI("black_level:%f",*black_level);
+          }
+
+          double *gamma = JFetch_NUMBER(json, "gamma");
+          if(gamma)
+          {
+            cami->camera->SetGamma (*gamma);
+            LOGI("gamma:%f",*gamma);
+          }
+
 
         }
 

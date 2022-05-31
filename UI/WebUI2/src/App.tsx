@@ -22,11 +22,11 @@ import { Row, Col,Input,Tag,Modal,message } from 'antd';
 
 import './basic.css';
 
-import ReactJsoneditor from 'jsoneditor-for-react';
+// import ReactJsoneditor from 'jsoneditor-for-react';
 
 // declare module 'jsoneditor-react'jsoneditor-for-react"
 
-import 'jsoneditor-react/es/editor.min.css';
+// import 'jsoneditor-react/es/editor.min.css';
 
 let INSP1_REP_PGID_ = 51000
 
@@ -1135,7 +1135,6 @@ function TargetVIEWUI({defInfo,defReport,IMCM_group,onDefChange}:{
   IMCM_group:{[trigID:string]:IMCM_type},
   onDefChange:(...param:any)=>void
 }){
-  const ReactJsoneditorRef=useRef<ReactJsoneditor|undefined>();
   const _this = useRef<any>({
     listCMD_Vairable:{
       inCMD_Promise:false,
@@ -1995,13 +1994,19 @@ function VIEWUI(){
       await Promise.all(cameraList.map(cam=>
         api.send_P("CM",0,{
           type:"setting",id:cam.id,
+          trigger_mode:2,
+          analog_gain:17.0166,
 
-          exposure:Math.round(1000000/60),//overcome the 60Hz light
-          analog_gain:0.7,
+          exposure:400,//us
+
+
           // WB_ONCE:true,
-          RGain: 151,
-          GGain: 100,
-          BGain: 126,
+          RGain: 1655,
+          GGain: 1023,
+          BGain: 1639,
+          gamma:0.5,
+          frame_rate:9999999,
+
 
         }).then((camInfoPkts:any)=>camInfoPkts[0].data)
         
@@ -2444,7 +2449,7 @@ function App() {
       ACT_EXT_API_CONNECTED(CORE_ID);
 
       CNC_api.connect({
-        uart_name:"/dev/cu.SLAB_USBtoUART",
+        uart_name:"COM5",
         baudrate:115200
       });
     }

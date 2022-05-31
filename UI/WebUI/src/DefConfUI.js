@@ -1821,7 +1821,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             })
         }
 
-        function triggerSnapExam(trigger_type=0,timeout=-1)
+        function triggerSnapExam(trigger_type=0,timeout=-1,doReset=true)
         {
           
           setModal_viewAsWait();
@@ -1843,6 +1843,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               if(SS.data.ACK==true)
               {              
                 let acts=pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined);
+                console.log(acts)
                 dispatch({
                   type: "ATBundle",
                   ActionThrottle_type: "express",
@@ -1867,22 +1868,32 @@ function DEFCONF_MODE_NEUTRAL_UI({})
                 view:"圖像獲取異常"
                 })
             })
-          ACT_Shape_List_Reset();
+          if(doReset)
+            ACT_Shape_List_Reset();
         }
 
-        let triggerTimeout=5000;
+        let triggerTimeout=10000;
+        let doRESET=true
         setModal_view({
-          footer:[
-              <Button key="back" onClick={()=>{triggerSnapExam()}}>
+          footer:<>
+              <Button key="back" onClick={()=>{triggerSnapExam(0,-1,false)}}>
                 立即
-              </Button>,
-              <Button key="trigger5S" type="primary" onClick={()=>{triggerSnapExam(2,triggerTimeout)}}>
+              </Button>
+              <Button key="trigger5S" type="primary" onClick={()=>{triggerSnapExam(2,triggerTimeout,false)}}>
                 {triggerTimeout/1000}s內觸發
-              </Button>,
+              </Button>
+              {"<<<不重置"}
+              <br/>
+              <Button key="back" onClick={()=>{triggerSnapExam(0,-1,true)}}>
+                立即
+              </Button>
+              <Button key="trigger5S" type="primary" onClick={()=>{triggerSnapExam(2,triggerTimeout,true)}}>
+                {triggerTimeout/1000}s內觸發
+              </Button>
               <Button danger onClick={()=>setModal_view(undefined)}>
                 取消
-              </Button>,
-            ],
+              </Button>
+              </>,
             onOk: () => {
               setModal_view(undefined);
 
@@ -2245,14 +2256,12 @@ class APP_DEFCONF_MODE extends React.Component {
                   },
                   ref: edit_tar.ref
                 },
-                value_adjust: "input-number",
                 value: "input-number",
                 USL: "ULRangeSetup",
                 LSL: "ULRangeSetup",
                 UCL: "ULRangeSetup",
                 LCL: "ULRangeSetup",
 
-                value_adjust_b: "input-number",
                 value_b: "input-number",
                 USL_b: "ULRangeSetup",
                 LSL_b: "ULRangeSetup",
@@ -2267,6 +2276,10 @@ class APP_DEFCONF_MODE extends React.Component {
                 orientation_essential:"switch",
                 NGasNA:"switch",
                 NAasNG:"switch",
+                value_A: "input-number",
+                value_B: "input-number",
+                value_X: "input-number",
+                value_Y: "input-number",
                 ref: (edit_tar.subtype === UIAct.SHAPE_TYPE.measure_subtype.calc) ?
                   undefined :
                   {
@@ -2354,7 +2367,6 @@ class APP_DEFCONF_MODE extends React.Component {
                         if (lastKey == "back_value_setup") {
                           if (evt.target.checked == false) {
                             delete target.obj["value_b"];
-                            delete target.obj["value_adjust_b"];
                             delete target.obj["USL_b"];
                             delete target.obj["LSL_b"];
                             delete target.obj["UCL_b"];
@@ -2362,7 +2374,8 @@ class APP_DEFCONF_MODE extends React.Component {
                           }
                           else {
                             
-                            target.obj["value_adjust_b"] = target.obj["value_adjust_b"];
+                            // target.obj["value_adjust_b"] = target.obj["value_adjust"];
+                            // target.obj["value_mult_b"] = target.obj["value_mult"];
                             target.obj["value_b"] = target.obj["value"];
                             target.obj["USL_b"] = target.obj["USL"];
                             target.obj["LSL_b"] = target.obj["LSL"];

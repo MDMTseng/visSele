@@ -166,11 +166,15 @@ protected:
   
 
 public:
-  CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devInfo, CameraLayer_Callback cb, void *context);
 
+  CameraLayer_HikRobot_Camera(
+    CameraLayer::BasicCameraInfo camInfo,
+    std::string misc,
+    CameraLayer_Callback cb, 
+    void *context);
   // CameraLayer::status EnumerateDevice(tSdkCameraDevInfo *pCameraList, INT *piNums);
   // CameraLayer::status InitCamera(tSdkCameraDevInfo *devInfo);
-  static int32_t listDevices(MV_CC_DEVICE_INFO_LIST *stDeviceList);
+  // static int32_t listDevices(MV_CC_DEVICE_INFO_LIST *stDeviceList);
   static int listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist);
 
   CameraLayer::status TriggerMode(int type);
@@ -188,6 +192,9 @@ public:
   CameraLayer::status TriggerCount(int count);
   // CameraLayer::status RUN();
   CameraLayer::status SetAnalogGain(float gain);
+  CameraLayer::status SetRGain(float gain);
+  CameraLayer::status SetGGain(float gain);
+  CameraLayer::status SetBGain(float gain);
   // CameraLayer::status SetOnceWB();
   CameraLayer::status isInOperation();
   CameraLayer::status SetMirror(int Dir, int en);
