@@ -964,6 +964,19 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     retV = 0;
   }
 
+
+  {
+    val = JFetch_NUMBER(&settingJson, "trigger_mode");
+    if (val)
+    {
+      camera.TriggerMode((int)*val);
+      retV = 0;
+    }
+  }
+
+
+
+
   {
     
     val = JFetch_NUMBER(&settingJson, "blacklevel");
@@ -4359,7 +4372,7 @@ CameraLayer *getCamera(int initCameraType = 0)
   }
 
   LOGV("TriggerMode(1)");
-  camera->TriggerMode(1);
+  camera->TriggerMode(2);
   camera->SetExposureTime(12570.5110);
   camera->SetAnalogGain(1);
 

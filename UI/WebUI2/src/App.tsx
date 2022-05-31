@@ -1994,13 +1994,19 @@ function VIEWUI(){
       await Promise.all(cameraList.map(cam=>
         api.send_P("CM",0,{
           type:"setting",id:cam.id,
+          trigger_mode:2,
+          analog_gain:17.0166,
 
-          exposure:Math.round(1000000/60),//overcome the 60Hz light
-          analog_gain:0.7,
+          exposure:400,//us
+
+
           // WB_ONCE:true,
-          RGain: 151,
-          GGain: 100,
-          BGain: 126,
+          RGain: 1655,
+          GGain: 1023,
+          BGain: 1639,
+          gamma:0.5,
+          frame_rate:9999999,
+
 
         }).then((camInfoPkts:any)=>camInfoPkts[0].data)
         
@@ -2443,7 +2449,7 @@ function App() {
       ACT_EXT_API_CONNECTED(CORE_ID);
 
       CNC_api.connect({
-        uart_name:"/dev/cu.SLAB_USBtoUART",
+        uart_name:"COM5",
         baudrate:115200
       });
     }

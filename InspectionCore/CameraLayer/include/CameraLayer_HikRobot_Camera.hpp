@@ -192,6 +192,9 @@ public:
   CameraLayer::status TriggerCount(int count);
   // CameraLayer::status RUN();
   CameraLayer::status SetAnalogGain(float gain);
+  CameraLayer::status SetRGain(float gain);
+  CameraLayer::status SetGGain(float gain);
+  CameraLayer::status SetBGain(float gain);
   // CameraLayer::status SetOnceWB();
   CameraLayer::status isInOperation();
   CameraLayer::status SetMirror(int Dir, int en);

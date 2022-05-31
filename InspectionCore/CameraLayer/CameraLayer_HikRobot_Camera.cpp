@@ -679,7 +679,9 @@ CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
   if (type == 2) //hardware trigger
   {
     takeCount=-1;
-    int nRet = SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_LINE0);
+    int nRet = SetEnumValue("TriggerSource", 13);//anyway
+    if(nRet!=MV_OK)
+      nRet = SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_LINE0);
     return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
   }
 
@@ -705,6 +707,31 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetAnalogGain(float gain)
 }
 
 
+CameraLayer::status CameraLayer_HikRobot_Camera::SetRGain(float gain)
+{
+  
+  MV_CC_SetEnumValueByString(handle, "BalanceRatioSelector", "Red");
+  
+  SetIntValue("BalanceRatio",(int)gain);
+  return CameraLayer::ACK;
+}
+
+CameraLayer::status CameraLayer_HikRobot_Camera::SetGGain(float gain)
+{
+  
+  MV_CC_SetEnumValueByString(handle, "BalanceRatioSelector", "Green");
+  
+  SetIntValue("BalanceRatio",(int)gain);
+  return CameraLayer::ACK;
+}
+CameraLayer::status CameraLayer_HikRobot_Camera::SetBGain(float gain)
+{
+  
+  MV_CC_SetEnumValueByString(handle, "BalanceRatioSelector", "Blue");
+  
+  SetIntValue("BalanceRatio",(int)gain);
+  return CameraLayer::ACK;
+}
 CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
 {
   if (Dir < 0 || Dir > 1)
