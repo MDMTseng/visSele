@@ -1,1 +1,1 @@
-make -f Makefile_mods runCMake && ./visSele
+make -f Makefile_mods runCMake
