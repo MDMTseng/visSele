@@ -739,6 +739,8 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
     return CameraLayer::NAK;
   }
   m.lock();
+  
+  StopAquisition();
   bool ben=(en!=0);
   if(Dir==0)
   {
@@ -749,6 +751,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
     SetBoolValue("ReverseY", ben);
   }
   mirrorFlag[Dir] = en;
+  StartAquisition();
   m.unlock();
   return CameraLayer::ACK;
 }
