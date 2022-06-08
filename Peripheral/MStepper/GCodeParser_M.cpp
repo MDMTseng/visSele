@@ -271,8 +271,8 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         __PRT_D_("G28 GO HOME!!!:");
         int retErr=0;
         if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,500*2,MTPSYS_getMinPulseSpeed()*5,NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R11,500*2,MTPSYS_getMinPulseSpeed()*20,NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,500*2,MTPSYS_getMinPulseSpeed()*10,NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R11,500*2*4,MTPSYS_getMinPulseSpeed()*20*4,NULL);
         pos_offset=(xVec){0};
         retStatus=statusReducer(retStatus,(retErr==0)?GCodeParser_Status::TASK_OK:GCodeParser_Status::TASK_FAILED);
         __PRT_D_("%s\n",retErr==0?"DONE":"FAILED");

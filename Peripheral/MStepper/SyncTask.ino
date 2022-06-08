@@ -122,7 +122,7 @@ class MStp_M:public MStp{
     axisInfo[AXIS_IDX_Z1].AccW=1;
     axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=1/mainAXIS_VSTEP;
 
-    axisInfo[AXIS_IDX_R11].VirtualStep=2;
+    axisInfo[AXIS_IDX_R11].VirtualStep=1;
     axisInfo[AXIS_IDX_R11].AccW=1;
     axisInfo[AXIS_IDX_R11].MaxSpeedJumpW=1/mainAXIS_VSTEP;
     
@@ -710,7 +710,7 @@ public:
 
       case AXIS_IDX_R11:
       case AXIS_IDX_R12://assume it's 800 pulses pre rev
-        return dist*3200/360;//-1 for reverse the direction
+        return dist*12800/360;//-1 for reverse the direction
 
 
 
