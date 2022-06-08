@@ -1524,13 +1524,23 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             LOGI("black_level:%f",*black_level);
           }
 
-          double *gamma = JFetch_NUMBER(json, "gamma");
-          if(gamma)
+          if(JFetch_TRUE(json, "mirrorX"))
           {
-            cami->camera->SetGamma (*gamma);
-            LOGI("gamma:%f",*gamma);
+            cami->camera->SetMirror(0,1);
+          }
+          if(JFetch_FALSE(json, "mirrorX"))
+          {
+            cami->camera->SetMirror(0,0);
           }
 
+          if(JFetch_TRUE(json, "mirrorY"))
+          {
+            cami->camera->SetMirror(1,1);
+          }
+          if(JFetch_FALSE(json, "mirrorY"))
+          {
+            cami->camera->SetMirror(1,0);
+          }
 
         }
 
