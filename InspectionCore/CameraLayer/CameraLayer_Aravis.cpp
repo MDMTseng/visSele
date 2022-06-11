@@ -774,7 +774,7 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
       arv_camera_set_string (camera, "TriggerMode", "On", &err);
       if(err)
       {
-        LOGD("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+        LOGE("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
         err=NULL;
         g_clear_error(&err);
         return CameraLayer::NAK;
@@ -782,6 +782,21 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
     }
 
     arv_camera_set_string (camera, "TriggerSource", "Anyway", &err);
+    if(err)
+    {
+      LOGE("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+      err=NULL;
+      g_clear_error(&err);
+    }
+    arv_camera_set_string (camera, "TriggerActivation", "RisingEdge", &err);
+
+    if(err)
+    {
+      LOGE("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+      err=NULL;
+      g_clear_error(&err);
+    }
+    
     if(err)
     {
       // LOGD("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
