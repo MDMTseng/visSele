@@ -1312,6 +1312,20 @@ function SettingUI({})
     >
       {dictLookUp("matchingAngleLimit180", DICT)}
     </Checkbox>,
+
+    
+    <Checkbox
+    checked={edit_info.matching_angle_margin_deg == 5}
+
+    onChange={(ev) => {
+      if (edit_info.matching_angle_margin_deg == 5)
+        ACT_Matching_Angle_Margin_Deg_Update(180);
+      else
+        ACT_Matching_Angle_Margin_Deg_Update(5);
+    }}
+    >
+    {dictLookUp("matchingAngleLimit10", DICT)}
+    </Checkbox>,
     <br />,
     <Checkbox
       checked={edit_info.matching_face == 1}

@@ -1953,6 +1953,10 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   this->matching_angle_offset = 0;    //original signature init matching angle
   this->matching_face = 0;            //front and back facing
   this->matching_without_signature = true;
+  this->sigRelativeMatchSimThres=0.8;
+  this->sigMatchSimThres=0.9;
+
+
   {
     double *margin_deg = JFetch_NUMBER(root, "matching_angle_margin_deg");
     if (margin_deg != NULL)
@@ -3271,7 +3275,7 @@ inline int valueWarping(int v, int ringSize)
   v %= ringSize;
   return (v < 0) ? v + ringSize : v;
 }
-void matchingErrorMin_Refine(vector<acv_XY> &sigMatchErr, vector<acv_XY> &minMatchErr)
+void matchingErrorLocalMin_Refine(vector<acv_XY> &sigMatchErr, vector<acv_XY> &minMatchErr)
 {
   minMatchErr.resize(0);
   for (int i = 0; i < sigMatchErr.size(); i++)
@@ -3321,7 +3325,7 @@ void xrefine(ContourSignature &tar, ContourSignature &src, float roughScanCount,
   //   LOGI("%f,%f",sigMatchErr[i].X,sigMatchErr[i].Y);
   // }
 
-  matchingErrorMin_Refine(sigMatchErr, minMatchErr);
+  matchingErrorLocalMin_Refine(sigMatchErr, minMatchErr);
 
   // for(int i=0;i<minMatchErr.size();i++)
   // {
@@ -3385,20 +3389,28 @@ bool isAngleInRegion(float angle, float from, float to)
   return (angle >= to);
 }
 
-//normalized_thres default value is obtained threshold by test no absolute reason
-bool isErrPass(float error,ContourSignature &sig,float normalized_thres=0.1)
+
+float SigMatchErrorNormalize(float error,ContourSignature &sig)
 {
-  float errThres2nd=(error / sig.mean);
-  
-  LOGI("error:%f sig.mean:%f errThres2nd:%f",error,sig.mean,errThres2nd);
-  if ((errThres2nd > normalized_thres))
-  {
-    return false;
-  }
-
-  return true;
-
+  return (sqrt(error) / sig.mean);
+  // if()
+  // return (sqrt(error) / sig.sigma);
 }
+
+//normalized_thres default value is obtained threshold by test no absolute reason
+// bool isErrPass(float error,ContourSignature &sig,float normalized_thres=0.1)
+// {
+//   float errThres2nd=(error / sig.mean);
+  
+//   LOGI("error:%f sig.mean:%f errThres2nd:%f",error,sig.mean,errThres2nd);
+//   if ((errThres2nd > normalized_thres))
+//   {
+//     return false;
+//   }
+
+//   return true;
+
+// }
 
 FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatching_ReportGen(
   featureDef_searchPoint *def,
@@ -4162,6 +4174,10 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   float angle = NAN;
   vector<acv_XY> minMatchErr;
   vector<acv_XY> minMatchErr_bk;
+  float globeMinErr_ALL=ignoreErr;
+
+
+
   {
 
     int scanWidth = 10;
@@ -4179,9 +4195,17 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     //   matching_angle_margin=M_PI-0.0001;
     // }
     // minMatchErr[0].Y=0.01;
+
+    float globeMinErr=ignoreErr;
     for (int i = 0; i < minMatchErr.size(); i++)
     {
       float preErr = minMatchErr[i].Y;
+
+      
+      if(globeMinErr>preErr)
+      {
+        globeMinErr=preErr;
+      }
       if (matching_angle_margin < M_PI - 0.001 && isAngleInRegion(minMatchErr[i].X * M_PI / 180, this->matching_angle_offset - matching_angle_margin, this->matching_angle_offset + matching_angle_margin))
       {
         minMatchErr[i].Y = ignoreErr;
@@ -4198,10 +4222,18 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       // minMatchErr[i].Y+=0.005723;
     }
 
+    float globeMinErr_bk=ignoreErr;
     for (int i = 0; i < minMatchErr_bk.size(); i++)
     {
       float preErr = minMatchErr_bk[i].Y;
       float angle = minMatchErr_bk[i].X * M_PI / 180 + M_PI; //the flip is along X axis, but in practice the flip should(in practice sense) be along Y axis
+      
+      
+      
+      if(globeMinErr_bk>preErr)
+      {
+        globeMinErr_bk=preErr;
+      }
       if (matching_angle_margin < M_PI - 0.001 && isAngleInRegion(angle, this->matching_angle_offset - matching_angle_margin, this->matching_angle_offset + matching_angle_margin))
       {
         minMatchErr_bk[i].Y = ignoreErr;
@@ -4215,10 +4247,63 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       }
       LOGI("B %f: %f>%f", minMatchErr_bk[i].X, preErr, minMatchErr_bk[i].Y);
     }
+    
+    globeMinErr_ALL=globeMinErr;
+    if(globeMinErr_ALL>globeMinErr_bk)
+    {
+      globeMinErr_ALL=globeMinErr_bk;
+    }
+    
+  }
+  float globeMaxSimF_ALL=1-SigMatchErrorNormalize(globeMinErr_ALL,feature_signature);
+  
+  
+  if(sigRelativeMatchSimThres==sigRelativeMatchSimThres)//Not NaN
+  {
+    //check if the first avaliable error factor still not too far from the best match
+    
+    float sqrt_MaxSimF=1-SigMatchErrorNormalize(minErr,feature_signature);
+    if(sqrt_MaxSimF/globeMaxSimF_ALL<sigRelativeMatchSimThres)
+    {
+      // LOGE("gErr:%f cur_Err:%f",globeMinErr_ALL,minErr);
+      return -40;
+    }
+
+    for (int i = 0; i < minMatchErr.size(); i++)
+    {
+      
+      float sqrt_SimF=1-SigMatchErrorNormalize(minMatchErr[i].Y,feature_signature);
+      
+      // LOGE("minMatchErr[%d].Y:%f sqrt_SimF:%f",i,minMatchErr[i].Y,sqrt_SimF);
+      if(sqrt_SimF/globeMaxSimF_ALL<sigRelativeMatchSimThres)
+      {
+          minMatchErr[i].Y = ignoreErr;
+      }
+    }
+
+    for (int i = 0; i < minMatchErr_bk.size(); i++)
+    {
+      float sqrt_SimF=1-SigMatchErrorNormalize(minMatchErr_bk[i].Y,feature_signature);
+      // LOGE("b_minMatchErr[%d].Y:%f sqrt_SimF:%f",i,minMatchErr[i].Y,sqrt_SimF);
+      if(sqrt_SimF/globeMaxSimF_ALL<sigRelativeMatchSimThres)
+      {
+          minMatchErr_bk[i].Y = ignoreErr;
+      }
+    }
   }
 
 
-  if(isErrPass(sqrt(minErr),feature_signature)==false)//if the minimum err still not pass, then, early stop the following procesure
+
+
+  LOGI("minErr:%f globeMinErr_ALL:%f mean:%f sigma:%f",
+    minErr,globeMinErr_ALL,feature_signature.mean,feature_signature.sigma
+  );
+  
+  float minAvaSimilar=(1-SigMatchErrorNormalize(minErr,feature_signature));
+  LOGI("globeMaxSimF_ALL:%f sigRelativeMatchSimThres:%f minAvaSimilar:%f  sigMatchSimThres:%f ",
+    globeMaxSimF_ALL,sigRelativeMatchSimThres,minAvaSimilar,sigMatchSimThres
+  );
+  if(minAvaSimilar<(sigMatchSimThres))//if the minimum err still not pass, then, early stop the following procesure
   {
     return -30;
   }
@@ -4355,11 +4440,15 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
            lableIdx, ldData[lableIdx].Center.X, ldData[lableIdx].Center.Y, ldData[lableIdx].area, error, isInv, angle * 180 / 3.14159);
     }
 
-    if(isErrPass(error,feature_signature)==false)
+    float similarFactor=(1-SigMatchErrorNormalize(error,feature_signature));
+    if(similarFactor<(sigMatchSimThres))//if the minimum err still not pass, then, early stop the following procesure
     {
-      LOGE("error:%f", error);
+      LOGE("similarFactor:%f", similarFactor);
       return -3;
     }
+    singleReport.similarity=similarFactor;
+
+
 
     angle+=angle_offset;
 

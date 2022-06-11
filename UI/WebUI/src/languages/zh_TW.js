@@ -54,6 +54,7 @@ export default {
         DefFileTag:"標籤",
         "Info Graphs":"資料圖表",
         matchingAngleLimit180:"角度限制180",
+        matchingAngleLimit10:"角度限制10",
         matchingFaceFrontOnly:"僅正面",
         setting:"設定",
 

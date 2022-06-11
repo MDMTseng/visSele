@@ -157,6 +157,12 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   float single_result_area_ratio;
 
 
+  //it's the relativesimilar thres  <= 1- min_error/cur_angle_error
+  float sigRelativeMatchSimThres=0.9;
+  //it's the absolute similar thres <= 1-normalized error = 1-error/sig.mean
+  float sigMatchSimThres=0.9;
+  //
+
   vector<FeatureReport_sig360_circle_line_single> reportDataPool;
   vector<FeatureReport_sig360_circle_line_single> reports;
 

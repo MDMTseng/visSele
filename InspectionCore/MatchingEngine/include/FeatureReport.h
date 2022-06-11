@@ -245,6 +245,7 @@ typedef struct FeatureReport_sig360_circle_line_single{
   int pix_area;
   int labeling_idx;
   float rotate;
+  float similarity;
   bool  isFlipped;
   float scale;
   char *targetName;
