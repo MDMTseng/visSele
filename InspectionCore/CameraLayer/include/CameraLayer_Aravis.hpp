@@ -56,6 +56,9 @@ public:
   static int listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist);
   CameraLayer::status TriggerMode(int type);
 
+
+
+  CameraLayer::status isInOperation();
   CameraLayer::status TriggerCount(int count);
   CameraLayer::status Trigger();
   CameraLayer::status RUN();
