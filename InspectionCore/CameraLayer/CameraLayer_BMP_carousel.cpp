@@ -243,11 +243,11 @@ CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
     CameraLayer::TriggerMode(mode);
     modeTriggerSim_sleep=0;
 
-    if(mode==2)
-    {
-      mode=0;
-      modeTriggerSim_sleep=10000;
-    }
+    // if(mode==2)
+    // {
+    //   mode=0;
+    //   modeTriggerSim_sleep=10000;
+    // }
     if(mode>=0)
     {
       triggerMode = mode;
