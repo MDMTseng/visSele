@@ -1892,7 +1892,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     {
       calib_bacpac.sampler->ignoreCalib(false);
       neutral_bacpac.sampler->ignoreCalib(true);
-      FeatureManager_BacPac *select_bacpac = &calib_bacpac;
+      FeatureManager_BacPac *select_bacpac = &neutral_bacpac;
 
       if (json == NULL)
       {
@@ -1969,19 +1969,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         {
           jsonStr = cJSON_Print(defInfo);
 
-          // {
-          //   neutral_bacpac.sampler->getCalibMap()->calibPpB=NAN;
-          //   double *tmpN=JFetch_NUMBER(defInfo,"featureSet[0].cam_param.ppb2b");
-          //   if(tmpN)
-          //     neutral_bacpac.sampler->getCalibMap()->calibPpB=*tmpN;
-          // }
-
-          // {
-          //   neutral_bacpac.sampler->getCalibMap()->calibmmpB=NAN;
-          //   double *tmpN=JFetch_NUMBER(defInfo,"featureSet[0].cam_param.mmpb2b");
-          //   if(tmpN)
-          //     neutral_bacpac.sampler->getCalibMap()->calibmmpB=*tmpN;
-          // }
         }
         else
         {
@@ -1995,6 +1982,25 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           }
           LOGI("Read deffile:%s", deffile);
         }
+
+        
+        {
+          
+          cJSON *defObj = cJSON_Parse(jsonStr);
+          if(defObj==NULL)
+          {
+            snprintf(err_str, sizeof(err_str), "defObj: is not Available  LINE:%04d", __LINE__);
+            LOGE("%s", err_str);
+            break;
+          }
+          neutral_bacpac.sampler->getCalibMap()->calibPpB=
+            JFetch_NUMBER_ex(defObj,"featureSet[0].cam_param.ppb2b");
+          neutral_bacpac.sampler->getCalibMap()->calibmmpB=
+            JFetch_NUMBER_ex(defObj,"featureSet[0].cam_param.mmpb2b");
+        } 
+        
+
+
         // bpg_dat = GenStrBPGData("DF", jsonStr);
         // bpg_dat.pgID = dat->pgID;
         // datCH_BPG.data.p_BPG_protocol_data = &bpg_dat;
