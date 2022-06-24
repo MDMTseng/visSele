@@ -2449,6 +2449,8 @@ int vertex_touch_searching(acv_Line line_cand,vector<ContourFetch::contourMatchS
 
   // LOGI(">edgeVec>>>%f,%f",edgeVec.X,edgeVec.Y);
 
+  float minDist=999999;
+  int minDistIdx=-1;
   vector<acv_XY> pts;
   for(ContourFetch::contourMatchSec &sec:ptGs)
   {
@@ -2460,12 +2462,18 @@ int vertex_touch_searching(acv_Line line_cand,vector<ContourFetch::contourMatchS
       // pt.
       acv_XY vec= acvVecSub(pt.pt,line_cand.line_anchor);
       float dist = acv2DDotProduct(vec,edgeVec)*flip;
-
-      // LOGI("dist:%f   pt:%0.3f,%0.3f  sobel:%0.3f,%0.3f",dist,  pt.pt.X,pt.pt.Y,  pt.sobel.X, pt.sobel.Y);
+      if(minDist>dist)
+      {
+        minDist=dist;
+        minDistIdx=pts.size()-1;
+      }
     }
   }
   std::vector<int> ret_chIdxs;
-  ComputeConvexHull(&pts[0],pts.size(),-1,ret_chIdxs);
+  //the following ComputeConvexHull is not a saft algo, that is, if the init stating point is not on convex surface
+  //it will give false result
+  //minDistIdx is the closest point to the target line, that is, the minDistIdx means it has to be on the ConvexHull point
+  ComputeConvexHull(&pts[0],pts.size(),minDistIdx,ret_chIdxs);
   
   int maxDist=5;
   int maxDistIdxsIdx=-1;
