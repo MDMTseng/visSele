@@ -66,7 +66,7 @@ export default {
         boot_daemon:"啟動總管",
         upload_database:"資料庫",
 
-        
+        vertex_touch_searching:"凸點連線",
         update_status:"更新狀態",
 
         force_update:"強制更新",
