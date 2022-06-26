@@ -1,7 +1,7 @@
 
 // import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
-import { GetObjElement } from './UTIL/MISC_Util';
+import { GetObjElement } from '../UTIL/MISC_Util';
 import {
   threePointToArc,
   intersectPoint,
@@ -9,10 +9,10 @@ import {
   closestPointOnLine,
   closestPointOnPoints,
   distance_point_point
-} from './UTIL/MathTools';
+} from '../UTIL/MathTools';
 
 
-import {VEC2D,SHAPE_ARC,SHAPE_LINE_seg} from './UTIL/MathTools';
+import {VEC2D,SHAPE_ARC,SHAPE_LINE_seg} from '../UTIL/MathTools';
 
 import * as log from 'loglevel';
 import dclone from 'clone';

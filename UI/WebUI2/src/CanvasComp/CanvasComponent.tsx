@@ -8,9 +8,9 @@ import {
   closestPointOnLine,
   closestPointOnPoints,
   distance_point_point
-} from './UTIL/MathTools';
+} from '../UTIL/MathTools';
 
-import {VEC2D,SHAPE_ARC,SHAPE_LINE_seg} from './UTIL/MathTools';
+import {VEC2D,SHAPE_ARC,SHAPE_LINE_seg} from '../UTIL/MathTools';
 
 
 import Ajv from "ajv"
@@ -26,7 +26,7 @@ import {
   round as roundX,
   GetObjElement, Exp2PostfixExp, PostfixExpCalc,xstate_GetCurrentMainState,
   LocalStorageTools
-} from './UTIL/MISC_Util';
+} from '../UTIL/MISC_Util';
 
 let xState=xstate_GetCurrentMainState;
 
