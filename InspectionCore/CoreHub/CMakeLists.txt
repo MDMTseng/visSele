@@ -6,6 +6,10 @@ set (PWD ${CMAKE_CURRENT_SOURCE_DIR})
 set (MWD ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 
+message(STATUS "CMAKE_HOST_SYSTEM_PROCESSOR: ${CMAKE_HOST_SYSTEM_PROCESSOR}")
+if(APPLE AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm64")
+  set (APPLEARM64 1)
+endif()
 
 
 if(MSVC OR MSYS OR MINGW)
@@ -13,7 +17,9 @@ if(MSVC OR MSYS OR MINGW)
   
   set (PLAT_LIBS wsock32 ws2_32)
 
-else(APPLE)
+elseif(APPLEARM64)
+  set ( platform mac_arm64)
+elseif(APPLE)
   set ( platform mac_x64)
 endif()
 
@@ -40,7 +46,10 @@ find_package(PkgConfig REQUIRED)
   
 if(MSVC OR MSYS OR MINGW)
   set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
-else(APPLE)
+elseif(APPLEARM64)
+
+elseif(APPLE)
+
 endif()
 # add_executable (helloTest helloTest.cpp )
 
@@ -71,8 +80,22 @@ if($ENV{FEATURE_COMPILE_W_ARAVIS} EQUAL 1)
   
   if(MSVC OR MSYS OR MINGW)
     SET(LINK_LIBS_CAMERA ${LINK_LIBS_CAMERA}  $ENV{MODULE_aravis}/${platform}/MVCAMSDK.lib)
-  else(APPLE)
   
+
+  elseif(APPLEARM64)
+  
+    pkg_search_module(GLIB REQUIRED glib-2.0)
+    # message( >>>> ${GLIB_INCLUDE_DIRS} )
+    set ( OS_SP_inc "${OS_SP_inc} ${GLIB_INCLUDE_DIRS}")
+    pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+    
+    SET(LINK_LIBS_CAMERA ${LINK_LIBS_CAMERA} ${GTK3_LINK_LIBRARIES})
+    # message(STATUS "----- GTK3_INCLUDE_DIRS: ${GTK3_INCLUDE_DIRS}")
+    # message(STATUS "----- GKT3_LIBRARIES: ${GTK3_LIBRARIES}")
+    # message(STATUS "----- GTK3_LINK_LIBRARIES: ${GTK3_LINK_LIBRARIES}")
+    SET(LINK_LIBS_CAMERA ${LINK_LIBS_CAMERA}  $ENV{MODULE_aravis}/src/libaravis-0.8.0.dylib)
+  elseif(APPLE)
+    
     pkg_search_module(GLIB REQUIRED glib-2.0)
     # message( >>>> ${GLIB_INCLUDE_DIRS} )
     set ( OS_SP_inc "${OS_SP_inc} ${GLIB_INCLUDE_DIRS}")
