@@ -28,45 +28,44 @@
 #include <opencv2/imgcodecs.hpp>
 
 using namespace cv;
-class InspectionTarget_s :public InspectionTarget
-{
+// class InspectionTarget_s :public InspectionTarget
+// {
 
-public:
-  vector <InspectionTarget_s*> *localGroup;
-  InspectionTarget_s(std::string id,cJSON* def,vector <InspectionTarget_s*> *localGroup):InspectionTarget(id)
-  {
-    this->localGroup=localGroup;
-    // setInspDef(def);
-    // report=NULL;
-  }
+// public:
+//   vector <InspectionTarget_s*> *localGroup;
+//   InspectionTarget_s(std::string id,cJSON* def,vector <InspectionTarget_s*> *localGroup):InspectionTarget(id)
+//   {
+//     this->localGroup=localGroup;
+//     // setInspDef(def);
+//     // report=NULL;
+//   }
 
-  virtual bool checkRef()=0;
+//   virtual bool checkRef()=0;
 
-  virtual acvImage* fetchImage(std::string id)=0;
+//   virtual acvImage* fetchImage(std::string id)=0;
 
-  virtual cJSON* fetchInspReport()=0;
+//   virtual cJSON* fetchInspReport()=0;
 
 
-  virtual void setInspDef(cJSON* def)=0;
+//   virtual void setInspDef(cJSON* def)=0;
 
-  virtual void CAM_CallBack(image_pipe_info *pipe)=0;
+//   virtual void CAM_CallBack(image_pipe_info *pipe)=0;
   
-  virtual ~InspectionTarget_s()
-  {
-  }
+//   virtual ~InspectionTarget_s()
+//   {
+//   }
 
-};
+// };
 
 
 
-class InspectionTarget_s_ColorRegionDetection :public InspectionTarget_s
+class InspectionTarget_s_ColorRegionDetection :public InspectionTarget
 {
   cJSON* nullOBJ;
   cJSON* report;
 public:
-  InspectionTarget_s_ColorRegionDetection(std::string id,cJSON* def,vector <InspectionTarget_s*> *localGroup):InspectionTarget_s(id,def,localGroup)
+  InspectionTarget_s_ColorRegionDetection(std::string id,cJSON* def):InspectionTarget(id)
   {
-    // this->localGroup=localGroup;
     nullOBJ=NULL;//cJSON_CreateNull();
     setInspDef(def);
     report=NULL;
@@ -385,251 +384,251 @@ public:
 
 
 
-class InspectionTarget_g :public InspectionTarget
-{ 
-public:
-  struct report{
-    bool isReady;
-    std::string trigger_tag;
-    int trigger_id;
-    std::string cam_id;
-    uint64_t timeStamp_us;
-  } ;
+// class InspectionTarget_g :public InspectionTarget
+// { 
+// public:
+//   struct report{
+//     bool isReady;
+//     std::string trigger_tag;
+//     int trigger_id;
+//     std::string cam_id;
+//     uint64_t timeStamp_us;
+//   } ;
 
-  report rep;
+//   report rep;
 
-  vector<InspectionTarget_s*> subInspList;
+//   vector<InspectionTarget_s*> subInspList;
   
-  cJSON *inspresult=NULL;
-  InspectionTarget_g(std::string id,cJSON* def):InspectionTarget(id)
+//   cJSON *inspresult=NULL;
+//   InspectionTarget_g(std::string id,cJSON* def):InspectionTarget(id)
 
-  {
-    setInspDef(def);
+//   {
+//     setInspDef(def);
 
-    char* defStr=cJSON_Print(this->def);
-    LOGI("\n%s",defStr);
-    delete defStr;
-  }
+//     char* defStr=cJSON_Print(this->def);
+//     LOGI("\n%s",defStr);
+//     delete defStr;
+//   }
 
 
-  cJSON* fetchInspReport()
-  {
-    return inspresult;
-  }
+//   cJSON* fetchInspReport()
+//   {
+//     return inspresult;
+//   }
 
   
 
-  void cleanInspReport()
-  {
+//   void cleanInspReport()
+//   {
     
-    for(int i=0;i<subInspList.size();i++)
-    {
-      subInspList[i]->cleanInspReport();
-    }
-    cJSON_Delete(inspresult);
-    inspresult=NULL;
-  }
+//     for(int i=0;i<subInspList.size();i++)
+//     {
+//       subInspList[i]->cleanInspReport();
+//     }
+//     cJSON_Delete(inspresult);
+//     inspresult=NULL;
+//   }
 
-  cJSON* genInfo()
-  {
-    cJSON *obj=cJSON_CreateObject();
+//   cJSON* genInfo()
+//   {
+//     cJSON *obj=cJSON_CreateObject();
 
-    {
-      // cJSON *camInfo = cJSON_Parse(camera->getCameraJsonInfo().c_str());
-      // cJSON_AddItemToObject(obj, "camera", camInfo);
-    }
+//     {
+//       // cJSON *camInfo = cJSON_Parse(camera->getCameraJsonInfo().c_str());
+//       // cJSON_AddItemToObject(obj, "camera", camInfo);
+//     }
 
-    {
-      cJSON *otherInfo=cJSON_CreateArray();
-      cJSON_AddItemToObject(obj, "inspInfo", otherInfo);
+//     {
+//       cJSON *otherInfo=cJSON_CreateArray();
+//       cJSON_AddItemToObject(obj, "inspInfo", otherInfo);
 
-      for( auto sInsp:subInspList)
-      {
+//       for( auto sInsp:subInspList)
+//       {
         
-        cJSON *info=cJSON_CreateObject();
+//         cJSON *info=cJSON_CreateObject();
 
 
-        cJSON_AddStringToObject(info, "id", sInsp->id.c_str() );
+//         cJSON_AddStringToObject(info, "id", sInsp->id.c_str() );
         
-        cJSON_AddItemToArray(otherInfo,info);
-      }
+//         cJSON_AddItemToArray(otherInfo,info);
+//       }
 
 
 
-    }
+//     }
 
-    {
-      cJSON_AddNumberToObject(obj, "channel_id", channel_id);
-      cJSON_AddStringToObject(obj, "id", id.c_str());
-    }
-    return obj;
-  }
+//     {
+//       cJSON_AddNumberToObject(obj, "channel_id", channel_id);
+//       cJSON_AddStringToObject(obj, "id", id.c_str());
+//     }
+//     return obj;
+//   }
 
-  cJSON* genInspReport()
-  {
-    if(rep.isReady==false)return NULL;
-    cJSON *inspresult=NULL;
+//   cJSON* genInspReport()
+//   {
+//     if(rep.isReady==false)return NULL;
+//     cJSON *inspresult=NULL;
   
-    inspresult=cJSON_CreateObject();
-    cJSON_AddStringToObject(inspresult,"id",this->id.c_str());
-    cJSON_AddNumberToObject(inspresult,"channel_id",this->channel_id);
-    cJSON_AddStringToObject(inspresult,"trigger_tag",rep.trigger_tag.c_str());
-    cJSON_AddNumberToObject(inspresult,"trigger_id",rep.trigger_id);
-    cJSON_AddStringToObject(inspresult,"camera_id",rep.cam_id.c_str());
-    cJSON_AddNumberToObject(inspresult,"timeStamp_us",rep.timeStamp_us);
+//     inspresult=cJSON_CreateObject();
+//     cJSON_AddStringToObject(inspresult,"id",this->id.c_str());
+//     cJSON_AddNumberToObject(inspresult,"channel_id",this->channel_id);
+//     cJSON_AddStringToObject(inspresult,"trigger_tag",rep.trigger_tag.c_str());
+//     cJSON_AddNumberToObject(inspresult,"trigger_id",rep.trigger_id);
+//     cJSON_AddStringToObject(inspresult,"camera_id",rep.cam_id.c_str());
+//     cJSON_AddNumberToObject(inspresult,"timeStamp_us",rep.timeStamp_us);
 
 
-    cJSON* rep_rules=cJSON_CreateArray();
-    cJSON_AddItemToObject(inspresult,"rules",rep_rules);
+//     cJSON* rep_rules=cJSON_CreateArray();
+//     cJSON_AddItemToObject(inspresult,"rules",rep_rules);
 
     
-    for(int i=0;i<subInspList.size();i++)
-    {
-      cJSON_AddItemToArray(rep_rules,cJSON_Duplicate(subInspList[i]->fetchInspReport(),true));
-    }
+//     for(int i=0;i<subInspList.size();i++)
+//     {
+//       cJSON_AddItemToArray(rep_rules,cJSON_Duplicate(subInspList[i]->fetchInspReport(),true));
+//     }
 
-    return inspresult;
-  }
+//     return inspresult;
+//   }
 
-  InspectionTarget_EXCHANGE excdata={0};
-  std::timed_mutex rsclock;
-  InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info)
-  {
-    rsclock.lock();
-    cJSON * json=info->info;
+//   InspectionTarget_EXCHANGE excdata={0};
+//   std::timed_mutex rsclock;
+//   InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info)
+//   {
+//     rsclock.lock();
+//     cJSON * json=info->info;
 
-    char *insp_type = JFetch_STRING(json, "insp_type");
+//     char *insp_type = JFetch_STRING(json, "insp_type");
 
-    memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
+//     memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
 
-    if(strcmp(insp_type, "start_stream") ==0)
-    {
-      // camera->TriggerMode(0);
-      excdata.isOK=true;
-      return &excdata;
-    }
-    if(strcmp(insp_type, "stop_stream") ==0)
-    {
-      // camera->TriggerMode(2);
-      excdata.isOK=true;
-      return &excdata;
-    }
-    excdata.isOK=false;
-    return &excdata;
+//     if(strcmp(insp_type, "start_stream") ==0)
+//     {
+//       // camera->TriggerMode(0);
+//       excdata.isOK=true;
+//       return &excdata;
+//     }
+//     if(strcmp(insp_type, "stop_stream") ==0)
+//     {
+//       // camera->TriggerMode(2);
+//       excdata.isOK=true;
+//       return &excdata;
+//     }
+//     excdata.isOK=false;
+//     return &excdata;
 
-  }
+//   }
 
   
   
-  virtual void setInspDef(cJSON* def)
-  {
+//   virtual void setInspDef(cJSON* def)
+//   {
 
-    for(int i=0;i<subInspList.size();i++)
-    {
-      delete subInspList[i];
-      subInspList[i]=NULL;
-    }
-    subInspList.clear();
+//     for(int i=0;i<subInspList.size();i++)
+//     {
+//       delete subInspList[i];
+//       subInspList[i]=NULL;
+//     }
+//     subInspList.clear();
 
-    //clean up objects
-    InspectionTarget::setInspDef(def);
-    //build up objects
+//     //clean up objects
+//     InspectionTarget::setInspDef(def);
+//     //build up objects
 
-    if(0){
-      char* defStr=cJSON_Print(def);
-      LOGI("\n%s",defStr);
-      delete defStr;
-    }
+//     if(0){
+//       char* defStr=cJSON_Print(def);
+//       LOGI("\n%s",defStr);
+//       delete defStr;
+//     }
 
 
     
-    cJSON* rules=JFetch_ARRAY(def,"rules");
-    for (int i = 0 ; i < cJSON_GetArraySize(rules) ; i++)
-    {
-      cJSON * rule = cJSON_GetArrayItem(rules, i);
+//     cJSON* rules=JFetch_ARRAY(def,"rules");
+//     for (int i = 0 ; i < cJSON_GetArraySize(rules) ; i++)
+//     {
+//       cJSON * rule = cJSON_GetArrayItem(rules, i);
     
-      std::string type=std::string(JFetch_STRING(rule,"type"));
+//       std::string type=std::string(JFetch_STRING(rule,"type"));
     
-      std::string id=std::string(JFetch_STRING(rule,"id"));
+//       std::string id=std::string(JFetch_STRING(rule,"id"));
 
       
-      if(type=="ColorRegionLocating")
-      {
-        InspectionTarget_s* subIT=
-          new InspectionTarget_s_ColorRegionDetection(id,rule,&subInspList);
-        subInspList.push_back(subIT);
-      }
-      else if(type=="ShapeLocating")
-      {
-        InspectionTarget_s* subIT=
-          new InspectionTarget_s_ColorRegionDetection(id,rule,&subInspList);
-        subInspList.push_back(subIT);
-      }
-      else
-      {
-        //failed
-      }
+//       if(type=="ColorRegionLocating")
+//       {
+//         InspectionTarget_s* subIT=
+//           new InspectionTarget_s_ColorRegionDetection(id,rule,&subInspList);
+//         subInspList.push_back(subIT);
+//       }
+//       else if(type=="ShapeLocating")
+//       {
+//         InspectionTarget_s* subIT=
+//           new InspectionTarget_s_ColorRegionDetection(id,rule,&subInspList);
+//         subInspList.push_back(subIT);
+//       }
+//       else
+//       {
+//         //failed
+//       }
 
-    }
+//     }
 
-    bool is_Ref_OK=true;
-    for (int i = 0 ; i < subInspList.size() ; i++)
-    {
-      if(subInspList[i]->checkRef()==false)
-      {
-        is_Ref_OK=false;
-        break;
-      }
-    }
+//     bool is_Ref_OK=true;
+//     for (int i = 0 ; i < subInspList.size() ; i++)
+//     {
+//       if(subInspList[i]->checkRef()==false)
+//       {
+//         is_Ref_OK=false;
+//         break;
+//       }
+//     }
 
-  }
+//   }
 
-  void CAM_CallBack(image_pipe_info *pipe)
-  {
-    rep.isReady=false;
-    // CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
-    // LOGI("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%" PRId64,id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
+//   void CAM_CallBack(image_pipe_info *pipe)
+//   {
+//     rep.isReady=false;
+//     // CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
+//     // LOGI("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%" PRId64,id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
 
-    rep.trigger_tag=pipe->trigger_tag;
-    rep.trigger_id=pipe->trigger_id;
-    rep.cam_id=pipe->camera_id;
-    rep.timeStamp_us=pipe->fi.timeStamp_us;
+//     rep.trigger_tag=pipe->trigger_tag;
+//     rep.trigger_id=pipe->trigger_id;
+//     rep.cam_id=pipe->camera_id;
+//     rep.timeStamp_us=pipe->fi.timeStamp_us;
     
-    rep.isReady=true;
+//     rep.isReady=true;
 
 
-    for(int i=0;i<subInspList.size();i++)
-    {
-      subInspList[i]->CAM_CallBack(pipe);
-      // subInspList[i]->fetchInspReport();
-    }
-    if(inspresult!=NULL)
-    {
-      cJSON_Delete(inspresult);
-      inspresult=NULL;
-    }
-    inspresult=genInspReport();
-  }
+//     for(int i=0;i<subInspList.size();i++)
+//     {
+//       subInspList[i]->CAM_CallBack(pipe);
+//       // subInspList[i]->fetchInspReport();
+//     }
+//     if(inspresult!=NULL)
+//     {
+//       cJSON_Delete(inspresult);
+//       inspresult=NULL;
+//     }
+//     inspresult=genInspReport();
+//   }
 
-  bool returnExchange(InspectionTarget_EXCHANGE* info)
-  {
-    if(info!=&excdata)return false;
+//   bool returnExchange(InspectionTarget_EXCHANGE* info)
+//   {
+//     if(info!=&excdata)return false;
 
-    if(info->info)
-      cJSON_Delete( info->info );
+//     if(info->info)
+//       cJSON_Delete( info->info );
     
-    memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
+//     memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
     
-    rsclock.unlock();
-    return true;
-  }
-  virtual ~InspectionTarget_g()
-  {
-    if(inspresult!=NULL)
-    {
-      cJSON_Delete(inspresult);
-    }
-  }
-};
+//     rsclock.unlock();
+//     return true;
+//   }
+//   virtual ~InspectionTarget_g()
+//   {
+//     if(inspresult!=NULL)
+//     {
+//       cJSON_Delete(inspresult);
+//     }
+//   }
+// };
 
 

@@ -862,6 +862,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           LOGI("Exposure:%f",*exposure);
         }
 
+        {
+          double *gamma = JFetch_NUMBER(json, "gamma");
+          if(gamma)
+          {
+            cami->camera->SetGamma(*gamma);
+            LOGI("gamma:%f",*gamma);
+          }
+        }
+
+
 
         {
           double *val = JFetch_NUMBER(json, "trigger_mode");
@@ -1054,27 +1064,49 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       
       session_ACK = false;
       char *type_str = JFetch_STRING(json, "type");
+
       if(strcmp(type_str, "create") ==0)
       {
         char *_id = JFetch_STRING(json, "id");
         if(_id==NULL)break;
         std::string id=std::string(_id);
 
-        if(inspTarMan.getInspTar(id)!=NULL)
+
+        InspectionTarget* iptar=inspTarMan.getInspTar(id);
+
+        cJSON *defInfo = JFetch_OBJECT(json, "definfo");
+
+        if(iptar!=NULL)
         {
-          snprintf(err_str, sizeof(err_str), "InspTar: id:%s is already existed", _id);
+          snprintf(err_str, sizeof(err_str), "InspTar create: id:%s is already existed", _id);
+          
+          LOGI(">err_str:%s",err_str);
           break;
         }
 
-
-
-        
-        char* insp_type=JFetch_STRING(json, "definfo.type");
         InspectionTarget* inspTar=NULL;
-        if(true || strcmp(insp_type, "m") ==0)
+        if(defInfo!=NULL)
         {
-          inspTar=new InspectionTarget_g(id,JFetch_OBJECT(json, "definfo"));
+          std::string type=std::string(JFetch_STRING(defInfo,"type"));
+        
+          std::string id=std::string(JFetch_STRING(defInfo,"id"));
+          
+          LOGI(">>>id:%s Add type:%s",id.c_str(),type.c_str());
+          if(type=="ColorRegionLocating")
+          {
+            inspTar = new InspectionTarget_s_ColorRegionDetection(id,defInfo);
+          }
+          else if(type=="ShapeLocating")
+          {
+            // inspTar=
+            //   new InspectionTarget_s_ColorRegionDetection(id,rule,&subInspList);
+          }
+          else
+          {
+            //failed
+          }
         }
+
 
         if(inspTar)
         {
@@ -1083,6 +1115,35 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         }
 
         if(session_ACK==false)delete inspTar;
+      }
+      else if(strcmp(type_str, "update"))
+      {
+         char *_id = JFetch_STRING(json, "id");
+        if(_id==NULL)break;
+        std::string id=std::string(_id);
+
+
+        InspectionTarget* iptar=inspTarMan.getInspTar(id);
+
+        cJSON *defInfo = JFetch_OBJECT(json, "definfo");
+        if(iptar==NULL)
+        {
+          snprintf(err_str, sizeof(err_str), "InspTar update: id:%s is not found", _id);
+          LOGI(">err_str:%s",err_str);
+          break;
+        }
+        if(defInfo==NULL)
+        {
+          snprintf(err_str, sizeof(err_str), "InspTar update: defInfo is not found");
+          LOGI(">err_str:%s",err_str);
+          break;
+        }
+
+
+
+        session_ACK=true;
+        iptar->setInspDef(defInfo);
+
       }
       else if(strcmp(type_str, "delete") ==0)
       {
