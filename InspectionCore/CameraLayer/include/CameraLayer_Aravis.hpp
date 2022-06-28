@@ -74,11 +74,13 @@ public:
   CameraLayer::status SetRGain(float gain);
   CameraLayer::status SetGGain(float gain);
   CameraLayer::status SetBGain(float gain);
-
+  CameraLayer::status SetBalckLevel(float blvl);
   CameraLayer::status SetMirror(int Dir, int en);
   CameraLayer::status SetROIMirror(int Dir, int en);
   CameraLayer::status SetFrameRate(float frame_rate);
   CameraLayer::status SetFrameRateMode(int mode);
+  
+  CameraLayer::status SetGamma(float gamma);
   CameraLayer::status GetAnalogGain(int *ret_min, int *ret_max);
   CameraLayer::status SetExposureTime(float time_us);
   CameraLayer::status GetExposureTime(float *ret_time_us);

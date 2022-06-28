@@ -50,6 +50,23 @@ type type_InspDef={
 }
 
 
+type type_CameraInfo={
+  id:string,
+  driver_name:string,
+  model:string,
+  name: string,
+  serial_nbr:string,
+  vendor:string,
+
+  analog_gain:number,
+  exposure:number,
+  RGain:number,
+  GGain:number,
+  BGain:number,
+  gamma:number,
+  frame_rate:number,
+}
+
 class CameraMan{
 
 }
@@ -61,6 +78,8 @@ class CameraSet{
 
 
 
+var enc = new TextEncoder();
+
 const _DEF_FOLDER_PATH_="data/Test1.xprj";
 function VIEWUI(){
   const _this = useRef<any>({}).current;
@@ -70,7 +89,20 @@ function VIEWUI(){
 
 
 
-  const ACT_FILE_Save= async(filename:string,content:Uint8Array) => {
+  const ACT_FILE_Save= async(filename:string,jobj={},humanReadable=false) => {
+    let jstr="";
+    if(humanReadable)
+      jstr= JSON.stringify(jobj, null, 2)
+    else 
+      jstr= JSON.stringify(jobj)
+
+    let api=await getAPI(CORE_ID) as BPG_WS;
+
+    return await api.send_P("SV",0,{filename,make_dir:true},enc.encode(jstr))
+  }
+  
+
+  const ACT_FILE_Save_Raw= async(filename:string,content:Uint8Array) => {
     
     let api=await getAPI(CORE_ID) as BPG_WS;
 
@@ -108,7 +140,117 @@ function VIEWUI(){
 
 
 
-  const [defInfoCritUpdate,_setDefInfoCritUpdate]=useState(0)
+  async function queryConnCamList()
+  {
+    let api=await getAPI(CORE_ID) as BPG_WS;
+    let cameraListInfos=await api.send_P("CM",0,{type:"connected_camera_list"}) as any[];
+    let CM=cameraListInfos.find(info=>info.type=="CM")
+    if(CM===undefined)throw "CM not found"
+
+    let camList = CM.data as {name:string,id:string,driver_name:string}[];
+
+
+    return camList;
+  }
+
+
+  async function queryDiscoverList()
+  {
+    let api=await getAPI(CORE_ID) as BPG_WS;
+    let cameraListInfos=await api.cameraDiscovery() as any[];
+    let CM=cameraListInfos.find(info=>info.type=="CM")
+    if(CM===undefined)throw "CM not found"
+    console.log(CM.data);
+    return CM.data as {name:string,id:string,driver_name:string}[];
+  }
+
+
+  async function DisconnectAllCamera()
+  {
+    let api=await getAPI(CORE_ID) as BPG_WS;
+    let connCamList=await queryConnCamList();
+    
+    let disconnInfo = await Promise.all(
+      connCamList.map(cam=>api.send_P("CM",0,{type:"disconnect",id:cam.id}))
+    )
+
+    return disconnInfo;
+  }
+
+  async function isConnectedCameraFullfillList(camera_id_List:string[])
+  {
+    let connCamList=await queryConnCamList();
+    for(let i=0;i<camera_id_List.length;i++)
+    {
+      let cam_id=camera_id_List[i];
+      let cam = connCamList.find(caminfo=>caminfo.id==cam_id);
+      if(cam===undefined) return false;
+    }
+    return true;
+  }
+
+
+
+  async function CameraCheckAndConnect(camera_setup_List:type_CameraInfo[],froceDisconnectAll=false)
+  {
+    if(froceDisconnectAll)
+      await DisconnectAllCamera();
+    let api=await getAPI(CORE_ID) as BPG_WS;
+    let camera_id_List=camera_setup_List.map(info=>info.id)
+    let isFullfill= await isConnectedCameraFullfillList(camera_id_List)
+
+    if(isFullfill==false)
+    {
+      await DisconnectAllCamera();
+      let discoveredCam = await queryDiscoverList();
+      let cameraList:{
+        name: string;
+        id: string;
+        driver_name: string;
+      }[]=[];
+      
+
+      console.log(camera_id_List,discoveredCam);
+      for(let i=0;i<camera_id_List.length;i++)
+      {
+        let camid=camera_id_List[i];
+        let caminfoFound = discoveredCam.find(cam=>cam.id==camid);
+        if(caminfoFound===undefined)throw "2";
+        cameraList.push(caminfoFound);
+      }
+
+
+      // let cameraList=camera_id_List.map((camid)=>discoveredCam.find(cam=>cam.id==camid))
+      console.log(cameraList);
+
+
+
+      let connctResult=await Promise.all(cameraList.map(cam=>
+        api.send_P("CM",0,{
+          type:"connect",
+          misc:"data/BMP_carousel_test1",
+          id:cam.id}).then((camInfoPkts:any)=>camInfoPkts[0].data)
+        
+        ));//
+      console.log(connctResult);
+
+
+      for( let camQueryInfo of cameraList )
+      {
+        let camSetup=camera_setup_List.find(csl=>csl.id==camQueryInfo.id)
+        if(camSetup===undefined)continue;
+        api.send_P("CM",0,{
+          ...camSetup,
+          type:"setting",
+          trigger_mode:2,
+        }).then((camInfoPkts:any)=>camInfoPkts[0].data)
+      }
+
+    }
+
+    return await queryConnCamList();
+  }
+
 
   // const [defInfo,setDefInfo]=useState(defInfo_Default)
 
@@ -204,6 +346,9 @@ function VIEWUI(){
     })
   }
 
+
+
+
   
 
   async function updateDefInfo(_defInfo:any,camTrigInfo:{id:string,trigger_tag:string,trigger_id:number,img_path:string|undefined}|undefined=undefined)
@@ -268,34 +413,57 @@ function VIEWUI(){
       }
     }
 
-    
-    let cameraInfo= await ACT_FILE_Load(PrjDefFolderPath+"/cameraInfo.json");
+    let cameraIdCollect=InspTars_main.map(it=>it.camera_id);
+    for(let camId of cameraIdCollect)//Add empty camera info that's not in the cameras collection
+    {
+      let camInfoIdx= main.CameraInfo.findIndex((cinfo:type_CameraInfo)=>cinfo.id===camId)
+      if(camInfoIdx===-1)
+      {
+        main.CameraInfo.add({
+          id:camId
+        })
+      }
+    }
 
-    
-    // console.log(InspTars_ids);
 
-    // let InspTars_main=await Promise.all(
-    //   InspTars
-    //   .map((t:{id:string})=>t.id)
-    //   .map((id:string)=> ACT_FILE_Load(PrjDefFolderPath+"/it_"+id+"/main.js")));
 
-    // console.log(InspTars_main);
+    let XCmds=await ACT_FILE_Load( PrjDefFolderPath+"/XCmds.json");
     return {
       path:PrjDefFolderPath,
-      folderInfo:await ACT_Folder_Struct(PrjDefFolderPath,9),
+      _folderInfo:await ACT_Folder_Struct(PrjDefFolderPath,9),
       main,
-      cameraInfo,
-      InspTars_main
-      // cameras:
+      InspTars_main,
+      XCmds
     }
+  }
+
+  async function SavePrjDef(PrjDefFolderPath:string,PrjDef:(any))
+  {
+
+    await ACT_FILE_Save(PrjDefFolderPath+"/main.json",PrjDef.main,true)
+    await ACT_FILE_Save(PrjDefFolderPath+"/XCmds.json",PrjDef.XCmds,true)
+
+    for(let it of PrjDef.InspTars_main)
+    {
+      let path = PrjDefFolderPath+"/it_"+it.id+"/main.json"
+      await ACT_FILE_Save(path,it,true)
+    }
+    return true
   }
 
   useEffect(()=>{//load default
 
+    (async()=>{
+      let prjDef = await LOADPrjDef( _DEF_FOLDER_PATH_)
 
-    LOADPrjDef( _DEF_FOLDER_PATH_)
-    .then((e)=>{
-      console.log(e);
+      let connCameraInfo = await CameraCheckAndConnect(prjDef.main.CameraInfo,true)
+      // updateDefInfo();
+
+      console.log(prjDef)
+      console.log(connCameraInfo)
+    })()
+    .then(r=>{
+      // console.log(r)
     })
   },[])
   // console.log(defInfo);

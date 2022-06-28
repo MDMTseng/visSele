@@ -683,8 +683,15 @@ CameraLayer_Aravis::~CameraLayer_Aravis()
 }
 CameraLayer::status CameraLayer_Aravis::SetMirror(int Dir, int en)
 {
-
-  return CameraLayer::NAK;
+  if(Dir==0)
+  {
+    arv_camera_set_boolean(camera,"ReverseX",en,NULL);
+  }
+  if(Dir==1)
+  {
+    arv_camera_set_boolean(camera,"ReverseY",en,NULL);
+  }
+  return CameraLayer::ACK;
 }
 CameraLayer::status CameraLayer_Aravis::SetROIMirror(int Dir, int en)
 {
@@ -843,7 +850,7 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
   //0 for continuous, 1 for soft trigger, 2 for HW trigger
   if (type == 0)
   {
-
+    LOGI(">>>>TriggerMode off");
     {
       arv_camera_set_string (camera, "TriggerMode", "Off", &err);
       if(err)
@@ -1012,6 +1019,48 @@ CameraLayer::status CameraLayer_Aravis::SetOnceWB()
 }
 
 
+CameraLayer::status CameraLayer_Aravis::SetGamma(float gamma)
+{
+  GError *err = NULL;
+  
+  
+  arv_camera_set_boolean (camera, "GammaEnable", true, NULL);
+  arv_camera_set_float(camera,"Gamma",gamma,&err);
+
+  if (err != NULL)
+  {
+    
+    LOGI("gamma failed:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+    g_clear_error(&err);
+
+    return CameraLayer::NAK;
+  }
+  return CameraLayer::ACK;
+
+  
+}
+
+
+CameraLayer::status CameraLayer_Aravis::SetBalckLevel(float blvl)
+{
+  GError *err = NULL;
+  
+  
+  arv_camera_set_boolean (camera, "BlackLevelEnable", true, NULL);
+  arv_camera_set_integer(camera,"BlackLevel",(int)blvl,&err);
+
+  if (err != NULL)
+  {
+    
+    LOGI("BlackLevel failed:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+    g_clear_error(&err);
+
+    return CameraLayer::NAK;
+  }
+  return CameraLayer::ACK;
+
+  
+}
 
 CameraLayer::status CameraLayer_Aravis::SetRGain(float gain)
 {
