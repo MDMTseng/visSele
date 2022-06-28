@@ -440,8 +440,8 @@ function useDivDimensions(divRef:React.RefObject<HTMLDivElement | undefined>) {
   return dimensions;
 }
 
-export function HookCanvasComponent( {dhook}:{
-  dhook:type_DrawHook
+export function HookCanvasComponent( {dhook,style={}}:{
+  dhook:type_DrawHook,style:any
 }) {
 
   const divRef = useRef<HTMLDivElement>(null)
@@ -480,7 +480,7 @@ export function HookCanvasComponent( {dhook}:{
   const displayWidth = Math.floor(pixelRatio * width);
   const displayHeight = Math.floor(pixelRatio * height);
   return (
-    <div style={{ width: '100%', height: '100%' }} ref={divRef}>
+    <div style={{ width: '100%', height: '100%',...style }} ref={divRef}>
       <canvas
         style={{ width: '100%', height: '100%' }}
         ref={canvas}

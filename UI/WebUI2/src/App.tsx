@@ -1,10 +1,12 @@
 import React from 'react';
 import { useState, useEffect,useRef,useMemo } from 'react';
 import { useDispatch, useSelector } from "react-redux";
-import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio } from 'antd';
-const { SubMenu } = Menu;
+import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio, InputNumber, Switch } from 'antd';
 
-import { UserOutlined, LaptopOutlined, NotificationOutlined,DownOutlined,MoreOutlined,PlayCircleOutlined } from '@ant-design/icons';
+import type { MenuProps, MenuTheme } from 'antd/es/menu';
+const { SubMenu } = Menu;
+import { UserOutlined, LaptopOutlined, NotificationOutlined,DownOutlined,MoreOutlined,PlayCircleOutlined,
+  DisconnectOutlined,LinkOutlined } from '@ant-design/icons';
 
 import clone from 'clone';
 
@@ -24,8 +26,16 @@ import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_A
 import { Row, Col,Input,Tag,Modal,message } from 'antd';
 
 
+import { type_CameraInfo,type_IMCM} from './AppTypes';
 import './basic.css';
 
+
+
+type MenuItem = Required<MenuProps>['items'][number];
+
+var enc = new TextEncoder();
+
+const _DEF_FOLDER_PATH_="data/Test1.xprj";
 // import ReactJsoneditor from 'jsoneditor-for-react';
 
 // declare module 'jsoneditor-react'jsoneditor-for-react"
@@ -50,219 +60,142 @@ type type_InspDef={
 }
 
 
-type type_CameraInfo={
-  id:string,
-  driver_name:string,
-  model:string,
-  name: string,
-  serial_nbr:string,
-  vendor:string,
 
-  analog_gain:number,
-  exposure:number,
-  RGain:number,
-  GGain:number,
-  BGain:number,
-  gamma:number,
-  frame_rate:number,
-}
-
-class CameraMan{
-
+function APPUI()
+{
+  return <></>
 }
 
 
-class CameraSet{
+
+function CameraSetupEditUI({camSetupInfo,fetchCoreAPI,onCameraSetupUpdate}:{ camSetupInfo:type_CameraInfo, fetchCoreAPI:()=>Promise<BPG_WS>,onCameraSetupUpdate:(caminfo:type_CameraInfo)=>void}){
+
+  const _this = useRef<any>({
+
+    imgCanvas:document.createElement('canvas')
+  }).current;
+
+  const [Local_IMCM,setLocal_IMCM]=
+    useState<type_IMCM|undefined>(undefined);
   
+  useEffect(()=>{//load default
+
+    (async ()=>{
+      let api = await fetchCoreAPI()
+      await api.CameraSetChannelID([camSetupInfo.id],51009,{
+        resolve:(pkts)=>{
+          // console.log(pkts);
+          let IM=pkts.find((p:any)=>p.type=="IM");
+          if(IM===undefined)return;
+          let CM=pkts.find((p:any)=>p.type=="CM");
+          if(CM===undefined)return;
+          // console.log("++++++++\n",IM,CM);
+          let IMCM={
+            image_info:IM.image_info,
+            camera_id:CM.data.camera_id,
+            trigger_id:CM.data.trigger_id,
+            trigger_tag:CM.data.trigger_tag,
+          } as type_IMCM
+
+          _this.imgCanvas.width = IMCM.image_info.width;
+          _this.imgCanvas.height = IMCM.image_info.height;
+
+          let ctx2nd = _this.imgCanvas.getContext('2d');
+          ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+
+
+          setLocal_IMCM(IMCM)
+          // console.log(IMCM)
+
+        },
+        reject:(pkts)=>{
+
+        }
+      })
+      await api.CameraSetup(camSetupInfo,0);
+    })()
+
+    return ()=>{
+    }
+  },[])
+  return <> 
+    {/* <pre>{
+      JSON.stringify(camSetupInfo,null,2)
+    }</pre> */}
+    esposure:<InputNumber value={camSetupInfo.exposure} onChange={(num)=>{
+      onCameraSetupUpdate({...camSetupInfo,exposure:num})
+    }}/>
+    <br/>
+    analog_gain:<InputNumber value={camSetupInfo.analog_gain} onChange={(num)=>{
+      onCameraSetupUpdate({...camSetupInfo,analog_gain:num})
+    }}/>
+    <br/>
+    frame_rate:<InputNumber value={camSetupInfo.frame_rate} onChange={(num)=>{
+      onCameraSetupUpdate({...camSetupInfo,frame_rate:num})
+    }}/>
+    <br/>
+    gamma:<InputNumber value={camSetupInfo.gamma} onChange={(num)=>{
+      onCameraSetupUpdate({...camSetupInfo,gamma:num})
+    }}/>
+    <br/>
+    black_level:<InputNumber value={camSetupInfo.black_level} onChange={(num)=>{
+      onCameraSetupUpdate({...camSetupInfo,black_level:num})
+    }}/>
+    <br/>
+    <Switch checkedChildren="反X" unCheckedChildren="正X" checked={camSetupInfo.mirrorX} onChange={(check)=>{
+      onCameraSetupUpdate({...camSetupInfo,mirrorX:check})
+    }}/>
+    <Switch checkedChildren="反Y" unCheckedChildren="正Y" checked={camSetupInfo.mirrorY} onChange={(check)=>{
+      onCameraSetupUpdate({...camSetupInfo,mirrorY:check})
+    }}/>
+    
+    <br/>
+    <HookCanvasComponent style={{height:"300px"}} dhook={(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
+      // _this.canvasComp=canvas_obj;
+      // console.log(ctrl_or_draw);
+      if(ctrl_or_draw==true)//ctrl
+      {
+      }
+      else//draw
+      {
+        if(Local_IMCM!==undefined)
+        {
+          g.ctx.save();
+          let scale=Local_IMCM.image_info.scale;
+          g.ctx.translate(-Local_IMCM.image_info.full_width/2,-Local_IMCM.image_info.full_height/2);
+          g.ctx.scale(scale,scale);
+          g.ctx.translate(-0.5, -0.5);
+          
+          g.ctx.drawImage(_this.imgCanvas, 0, 0);
+          g.ctx.restore();
+        }
+        // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+       
+
+        let ctx = g.ctx;
+        
+      }
+    }
+    }/>
+  </>
 }
 
+let DAT_ANY_UNDEF:any=undefined;
 
 
-var enc = new TextEncoder();
-
-const _DEF_FOLDER_PATH_="data/Test1.xprj";
 function VIEWUI(){
   const _this = useRef<any>({}).current;
   
   const dispatch = useDispatch();
   const ACT_EXT_API_ACCESS= (...p:Parameters<typeof EXT_API_ACCESS>) => dispatch(EXT_API_ACCESS(...p));
 
+  const [defConfig,setDefConfig]=useState<any>(undefined);
+  const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
 
 
-  const ACT_FILE_Save= async(filename:string,jobj={},humanReadable=false) => {
-    let jstr="";
-    if(humanReadable)
-      jstr= JSON.stringify(jobj, null, 2)
-    else 
-      jstr= JSON.stringify(jobj)
-
-    let api=await getAPI(CORE_ID) as BPG_WS;
-
-    return await api.send_P("SV",0,{filename,make_dir:true},enc.encode(jstr))
-  }
-  
-
-  const ACT_FILE_Save_Raw= async(filename:string,content:Uint8Array) => {
-    
-    let api=await getAPI(CORE_ID) as BPG_WS;
-
-    return await api.send_P("SV",0,{filename},content)
-  }
-
-  const ACT_FILE_Load= async (filename:string) => {
-    
-    let api=await getAPI(CORE_ID) as BPG_WS;
-    let data = await api.send_P("LD",0,{filename}) as any;
-
-    let FL=data.find((info:any)=>info.type=="FL")
-    if(FL===undefined)
-    {
-      throw "Read Failed  FL is undefined";
-    }
-    
-    return FL.data;
-  }
-
-
-  const ACT_Folder_Struct= async (path:string,depth=1) => {
-    
-    let api=await getAPI(CORE_ID) as BPG_WS;
-    let data = await api.send_P("FB",0,{path,depth}) as any;
-
-    let FS=data.find((info:any)=>info.type=="FS")
-    if(FS===undefined)
-    {
-      throw "Read Failed  FS is undefined";
-    }
-    
-    return FS.data;
-  }
-
-
-
-  async function queryConnCamList()
-  {
-    let api=await getAPI(CORE_ID) as BPG_WS;
-    let cameraListInfos=await api.send_P("CM",0,{type:"connected_camera_list"}) as any[];
-    let CM=cameraListInfos.find(info=>info.type=="CM")
-    if(CM===undefined)throw "CM not found"
-
-    let camList = CM.data as {name:string,id:string,driver_name:string}[];
-
-
-    return camList;
-  }
-
-
-  async function queryDiscoverList()
-  {
-    let api=await getAPI(CORE_ID) as BPG_WS;
-    let cameraListInfos=await api.cameraDiscovery() as any[];
-    let CM=cameraListInfos.find(info=>info.type=="CM")
-    if(CM===undefined)throw "CM not found"
-    console.log(CM.data);
-    return CM.data as {name:string,id:string,driver_name:string}[];
-  }
-
-
-  async function DisconnectAllCamera()
-  {
-    let api=await getAPI(CORE_ID) as BPG_WS;
-    let connCamList=await queryConnCamList();
-    
-    let disconnInfo = await Promise.all(
-      connCamList.map(cam=>api.send_P("CM",0,{type:"disconnect",id:cam.id}))
-    )
-
-    return disconnInfo;
-  }
-
-  async function isConnectedCameraFullfillList(camera_id_List:string[])
-  {
-    let connCamList=await queryConnCamList();
-    for(let i=0;i<camera_id_List.length;i++)
-    {
-      let cam_id=camera_id_List[i];
-      let cam = connCamList.find(caminfo=>caminfo.id==cam_id);
-      if(cam===undefined) return false;
-    }
-    return true;
-  }
-
-
-
-  async function CameraCheckAndConnect(camera_setup_List:type_CameraInfo[],froceDisconnectAll=false)
-  {
-    if(froceDisconnectAll)
-      await DisconnectAllCamera();
-    let api=await getAPI(CORE_ID) as BPG_WS;
-    let camera_id_List=camera_setup_List.map(info=>info.id)
-    let isFullfill= await isConnectedCameraFullfillList(camera_id_List)
-
-    if(isFullfill==false)
-    {
-      await DisconnectAllCamera();
-      let discoveredCam = await queryDiscoverList();
-      let cameraList:{
-        name: string;
-        id: string;
-        driver_name: string;
-      }[]=[];
-      
-
-      console.log(camera_id_List,discoveredCam);
-      for(let i=0;i<camera_id_List.length;i++)
-      {
-        let camid=camera_id_List[i];
-        let caminfoFound = discoveredCam.find(cam=>cam.id==camid);
-        if(caminfoFound===undefined)throw "2";
-        cameraList.push(caminfoFound);
-      }
-
-
-      // let cameraList=camera_id_List.map((camid)=>discoveredCam.find(cam=>cam.id==camid))
-      console.log(cameraList);
-
-
-
-      let connctResult=await Promise.all(cameraList.map(cam=>
-        api.send_P("CM",0,{
-          type:"connect",
-          misc:"data/BMP_carousel_test1",
-          id:cam.id}).then((camInfoPkts:any)=>camInfoPkts[0].data)
-        
-        ));//
-      console.log(connctResult);
-
-
-      for( let camQueryInfo of cameraList )
-      {
-        let camSetup=camera_setup_List.find(csl=>csl.id==camQueryInfo.id)
-        if(camSetup===undefined)continue;
-        api.send_P("CM",0,{
-          ...camSetup,
-          type:"setting",
-          trigger_mode:2,
-        }).then((camInfoPkts:any)=>camInfoPkts[0].data)
-      }
-
-    }
-
-    return await queryConnCamList();
-  }
-
-
-  // const [defInfo,setDefInfo]=useState(defInfo_Default)
-
-  
-  // let setDefInfoCritUpdate=(_defInfo:typeof defInfo)=>{
-  //   setDefInfo(_defInfo);
-  //   _setDefInfoCritUpdate(defInfoCritUpdate+1);
-  // }
   const [defReport,setDefReport]=useState<any>(undefined);
-  
 
-  async function getAPI(API_ID:string)
+  async function getAPI(API_ID:string=CORE_ID)
   {
     let api=await new Promise((resolve,reject)=>{
       ACT_EXT_API_ACCESS(API_ID,(api)=>{
@@ -273,91 +206,34 @@ function VIEWUI(){
 
     return api;
   }
-  async function InspTargetReload(defInfo:any,_PGID_:number)
-  {
-    let api=await getAPI(CORE_ID) as BPG_WS;
-    let ret = await api.send_P("IT",0,{type:"delete_all"})
-    await api.send_P("IT",0,{type:"create",id:"XXX",defInfo,_PGID_:_PGID_,_PGINFO_:{keep:true}})
-      
-
-    return await api.send_P("IT",0,{type:"list"});
-  }
-
-  function CameraSetChannelID(camera_id_List:string[],channel_id:number,
-    cbs:{ reject(...arg: any[]): any; resolve(...arg: any[]): any; })
-  {
-    ACT_EXT_API_ACCESS(CORE_ID,(_api )=>{
-      let api=_api as BPG_WS
-      let connctResult=camera_id_List.map((cam_id,idx)=>
-        api.send("CM",0,{
-          type:"set_camera_channel_id",
-          id:cam_id,
-          _PGID_:channel_id,_PGINFO_:{keep:true}
-          
-          
-        },undefined,cbs)
-      )
-      
-    })
-  }
-
-
-
-  function updateDefInfo_(_defInfo:any,camTrigInfo:{id:string,trigger_tag:string,trigger_id:number,img_path:string|undefined}|undefined=undefined)
-  {
-
-    return InspTargetReload(_defInfo,INSP1_REP_PGID_).then(e=>{
-      console.log(e)
-      ACT_EXT_API_ACCESS(CORE_ID,(_api )=>{
-        let api=_api as BPG_WS
-        api.send(undefined,0,{_PGID_:INSP1_REP_PGID_,_PGINFO_:{keep:true}},undefined,{
-          resolve:(e)=>{
-            let RP = e.find((pkt:any)=>pkt.type=="RP");
-            if(RP===undefined)
-            {
-              setDefReport(undefined)
-              return;
-            }
   
-            console.log(RP.data)
-            setDefReport(RP.data)
-            
-            // console.log(e)
-          },
-          reject:(e)=>{
-            console.log(e)
-          },
-        })
-
-        if(camTrigInfo!==undefined)
-          api.send_P(
-            "CM",0,{
-              type:"trigger",
-              soft_trigger:true,
-              id:camTrigInfo.id,
-              trigger_tag:camTrigInfo.trigger_tag,
-              // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
-              trigger_id:camTrigInfo.trigger_id,
-              img_path:camTrigInfo.img_path,
-              channel_id:50201
-            })
-
-      })
-    })
+  async function getCoreAPI()
+  {
+   
+    return await getAPI(CORE_ID)as BPG_WS;
   }
-
-
-
-
   
+  
+  const emptyModalInfo={
+    timeTag:0,
+    visible:false,
+    type:"",
+    onOK:()=>{},
+    onCancel:()=>{},
+    title:"",
+    DATA:DAT_ANY_UNDEF,
+    content:DAT_ANY_UNDEF
+
+  }
+  const [modalInfo,setModalInfo]=useState(emptyModalInfo);
 
   async function updateDefInfo(_defInfo:any,camTrigInfo:{id:string,trigger_tag:string,trigger_id:number,img_path:string|undefined}|undefined=undefined)
   {
 
-    console.log("+===========",_defInfo);
-    let reloadRes = await InspTargetReload(_defInfo,INSP1_REP_PGID_);
-    console.log("+===========",reloadRes);
     let api = await getAPI(CORE_ID)as BPG_WS
+    console.log("+===========",_defInfo);
+    let reloadRes = await api.InspTargetUpdate(_defInfo,INSP1_REP_PGID_);
+    console.log("+===========",reloadRes);
 
     api.send(undefined,0,{_PGID_:INSP1_REP_PGID_,_PGINFO_:{keep:true}},undefined,{
       resolve:(e)=>{
@@ -368,7 +244,6 @@ function VIEWUI(){
           return;
         }
 
-        console.log(RP.data)
         setDefReport(RP.data)
         
         // console.log(e)
@@ -399,7 +274,8 @@ function VIEWUI(){
 
   async function LOADPrjDef(PrjDefFolderPath:string)
   {
-    let main= await ACT_FILE_Load(PrjDefFolderPath+"/main.json");
+    let api = await getAPI(CORE_ID)as BPG_WS
+    let main= await api.FILE_Load(PrjDefFolderPath+"/main.json");
 
     
     let InspTars_main:any[]=[];
@@ -409,7 +285,7 @@ function VIEWUI(){
       for(let id of InspTars_ids)
       {
         let path = PrjDefFolderPath+"/it_"+id+"/main.json"
-        InspTars_main.push(await ACT_FILE_Load(path));
+        InspTars_main.push(await  api.FILE_Load(path));
       }
     }
 
@@ -427,10 +303,10 @@ function VIEWUI(){
 
 
 
-    let XCmds=await ACT_FILE_Load( PrjDefFolderPath+"/XCmds.json");
+    let XCmds=await  api.FILE_Load( PrjDefFolderPath+"/XCmds.json");
     return {
       path:PrjDefFolderPath,
-      _folderInfo:await ACT_Folder_Struct(PrjDefFolderPath,9),
+      _folderInfo:await api.Folder_Struct(PrjDefFolderPath,9),
       main,
       InspTars_main,
       XCmds
@@ -440,37 +316,264 @@ function VIEWUI(){
   async function SavePrjDef(PrjDefFolderPath:string,PrjDef:(any))
   {
 
-    await ACT_FILE_Save(PrjDefFolderPath+"/main.json",PrjDef.main,true)
-    await ACT_FILE_Save(PrjDefFolderPath+"/XCmds.json",PrjDef.XCmds,true)
+    let api = await getAPI(CORE_ID)as BPG_WS
+    await api.FILE_Save(PrjDefFolderPath+"/main.json",PrjDef.main,true)
+    await api.FILE_Save(PrjDefFolderPath+"/XCmds.json",PrjDef.XCmds,true)
 
     for(let it of PrjDef.InspTars_main)
     {
       let path = PrjDefFolderPath+"/it_"+it.id+"/main.json"
-      await ACT_FILE_Save(path,it,true)
+      await api.FILE_Save(path,it,true)
     }
     return true
+  }
+  async function CameraInfoDoConnection(CameraInfo:type_CameraInfo[],froceReconnect=false)
+  {
+    let api = await getAPI(CORE_ID)as BPG_WS
+    let connCameraInfo = await api.CameraCheckAndConnect(CameraInfo,froceReconnect)
+    return CameraInfo.map((ci:type_CameraInfo)=>{
+     let connTar = connCameraInfo.find(cCam=>cCam.id==ci.id);
+     return {...ci,available:connTar!==undefined}
+    })
+  }
+  async function ReloadPrjDef(path:string)
+  {
+    let prjDef = await LOADPrjDef( path)
+    console.log(prjDef)
+    let api = await getAPI(CORE_ID)as BPG_WS
+
+    prjDef.main.CameraInfo= await CameraInfoDoConnection(prjDef.main.CameraInfo,true)
+    // updateDefInfo();
+    await api.InspTargetRemoveAll()
+
+    for(let inspTar of prjDef.InspTars_main)
+    {
+      
+      let id=inspTar.id;
+
+      // console.log(id,inspTar)
+      await api.InspTargetCreate(inspTar,12000);
+    }
+
+
+    // InspTargetReload(defInfo:any,_PGID_:number)
+    // ddd
+    setDefConfig(prjDef);
+    console.log(prjDef)
   }
 
   useEffect(()=>{//load default
 
-    (async()=>{
-      let prjDef = await LOADPrjDef( _DEF_FOLDER_PATH_)
-
-      let connCameraInfo = await CameraCheckAndConnect(prjDef.main.CameraInfo,true)
-      // updateDefInfo();
-
-      console.log(prjDef)
-      console.log(connCameraInfo)
-    })()
-    .then(r=>{
-      // console.log(r)
+    ReloadPrjDef(_DEF_FOLDER_PATH_)
+    .catch(e=>{
+      console.log(e)
     })
   },[])
   // console.log(defInfo);
-  return <>
-   111
-  </>
+  // return <>
+  //  <APPUI></APPUI>
+  // </>
 
+  function getItem(
+    label: React.ReactNode,
+    key?: React.Key | null,
+    icon?: React.ReactNode,
+    children?: MenuItem[],
+    disabled=false
+  ): MenuItem {
+    return {
+      key,
+      icon,
+      children,
+      label,
+      disabled
+    } as MenuItem;
+  }
+
+
+  let cameraMenu=
+  getItem('Camera', 'cam',undefined, [
+    ...(
+      defConfig===undefined?[]:
+      (defConfig.main.CameraInfo
+        .map((cam:type_CameraInfo,index:number)=>
+          ( getItem(<div onClick={()=>{
+            let keyTime=Date.now();//use time as key to force CameraSetupEditUI remount
+            function updater(ncamInfo:type_CameraInfo){
+              
+              setModalInfo({...emptyModalInfo,
+                title:cam.id,
+                visible:true,
+                content:<CameraSetupEditUI key={keyTime} fetchCoreAPI={getCoreAPI} camSetupInfo={ncamInfo}  onCameraSetupUpdate={ncam=>{
+                  console.log(ncam)
+                  updater(ncam);
+                  (async function(){
+                    let api = await getAPI(CORE_ID)as BPG_WS
+                    console.log(ncam);
+                    await api.CameraSetup(ncam,0);
+                  })()
+                  
+
+                }}
+                />,
+                
+                onOK:()=>{
+
+                  let new_defConfig= ObjShellingAssign(defConfig,["main","CameraInfo"],defConfig.main.CameraInfo);
+                  new_defConfig.main.CameraInfo[index]=ncamInfo;
+                  
+                  (async function(){
+                    let api = await getCoreAPI()
+                    await api.CameraSetup(ncamInfo,2);
+                    await api.CameraClearTriggerInfo();
+                  })()
+                  // console.log(setModalInfo);
+                  setDefConfig(new_defConfig)
+                  setModalInfo(emptyModalInfo)
+                  
+                },
+                
+                onCancel:()=>{
+                  
+                  (async function(){
+                    let api = await getCoreAPI()
+                    await api.CameraSetup(cam,2);
+                    await api.CameraClearTriggerInfo();
+                  })()
+                  
+                  setModalInfo(emptyModalInfo)
+                }
+              })
+            }
+            updater(cam);
+
+            console.log(cam,index)}
+          
+          
+          }>{cam.id}</div>,cam.id,
+          cam.available?<LinkOutlined/>:<DisconnectOutlined/>) )))
+    ),
+    getItem(<Dropdown
+      trigger={["click"]}
+      disabled={cameraQueryList===undefined}
+      overlay={<>
+        <Menu>
+          {
+            cameraQueryList===undefined || cameraQueryList.length===0?
+              <Menu.Item disabled danger>
+              <a target="_blank" rel="noopener noreferrer" href="https://www.antgroup.com">
+                just a sec...
+              </a>
+              </Menu.Item>
+              :
+              cameraQueryList.map(cam=><Menu.Item key={cam.id} 
+              onClick={()=>{
+                console.log(defConfig.main.CameraInfo)
+                console.log(cam)
+                cam.available=false;
+                let new_camInfo=[...defConfig.main.CameraInfo,cam];
+                
+                CameraInfoDoConnection(new_camInfo).then(result_camInfo=>{
+
+                  let new_defConfig= ObjShellingAssign(defConfig,["main","CameraInfo"],result_camInfo);
+                  setDefConfig(new_defConfig)
+                });
+              }}>
+                {cam.id}
+              </Menu.Item>)
+
+          }
+        </Menu>
+      </>}
+    ><div onClick={()=>{
+
+      setCameraQueryList(undefined);
+      (async ()=>{
+        let api = await getAPI(CORE_ID)as BPG_WS
+        let camList = await api.queryDiscoverList();
+        setCameraQueryList(camList);
+        console.log(camList)
+      })();
+      
+    }}>+
+    </div>
+    </Dropdown>, 'Add'),
+  ])
+
+
+  const items: MenuItem[] = [
+    cameraMenu
+  ];
+
+  let siderUI=
+  <Sider width={200}>
+
+    <Menu mode="inline" theme="dark" selectable={false}
+
+      items={items}
+    >
+
+              
+      {/* <SubMenu key="INSP" title="Camera" >
+        
+        {
+          defConfig===undefined?<></>:
+          defConfig.main.CameraInfo.map((cam:type_CameraInfo)=>(
+          <Menu.Item key={cam.id} onClick={()=>{}}>
+            {cam.id}
+          </Menu.Item>))
+        }
+
+        <Menu.Item key="Add">
+          +
+        </Menu.Item>
+      </SubMenu> */}
+
+    </Menu>
+
+  </Sider>
+
+
+
+  return <>
+
+    <Layout style={{ height: '100%' }}>
+    <Header style={{ width: '100%' }}>
+
+    <Menu theme="dark" mode="horizontal" selectable={false}>
+        <Menu.Item key="1" onClick={()=>{
+        }}>Calib_Param_Edit</Menu.Item>
+        <Menu.Item key="2" onClick={()=>{
+          SavePrjDef(_DEF_FOLDER_PATH_,defConfig);
+        }}>SAVE</Menu.Item>
+    </Menu>
+    
+
+    
+    <Modal
+        title={modalInfo.title}
+        visible={modalInfo.visible}
+        onOk={modalInfo.onOK}
+        // confirmLoading={confirmLoading}
+        onCancel={modalInfo.onCancel}
+      >
+        {modalInfo.content}
+    </Modal>
+
+
+    </Header>
+
+    <Layout>
+    {siderUI}
+    
+    <Content className="site-layout" style={{ padding: '0 0px'}}>
+    Content
+    </Content>
+  
+    </Layout>
+  
+    </Layout>
+  </>
 }
 
 

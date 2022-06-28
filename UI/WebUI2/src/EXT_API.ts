@@ -2,10 +2,16 @@
 import BPG_Protocol from './UTIL/BPG_Protocol';
 
 import { GetObjElement} from './UTIL/MISC_Util';
+import { type_CameraInfo} from './AppTypes';
+
+
+
 export let CORE_ID= "CORE_ID";
 
 type TYPE_OBJECT ={[key:string]:any}
   
+
+var enc = new TextEncoder();
 export class BPG_WS
 {
   id:string
@@ -192,19 +198,6 @@ export class BPG_WS
   }
 
   
-  cameraDiscovery(do_refresh:boolean=true)
-  {
-    return new Promise((resolve,reject)=>{
-
-      this.send(
-        "CM",0,{type:"discover",do_refresh},undefined,
-        {
-          reject:(arg:any[])=>reject(arg),
-          resolve:(arg:any[])=>resolve(arg),
-        })
-    })
-  }
-
   send_P(
     tl:string|undefined,
     prop:number,
@@ -404,6 +397,233 @@ export class BPG_WS
 
     console.log("onDisconnected");
   }
+
+
+  async queryDiscoverList()
+  {
+    let cameraListInfos=await this.send_P(
+      "CM",0,{type:"discover",do_refresh:true}) as any[];
+
+    let CM=cameraListInfos.find(info=>info.type=="CM")
+    if(CM===undefined)throw "CM not found"
+    console.log(CM.data);
+    return CM.data as {name:string,id:string,driver_name:string}[];
+  }
+
+  
+  async queryConnCamList()
+  {
+    let cameraListInfos=await this.send_P("CM",0,{type:"connected_camera_list"}) as any[];
+    let CM=cameraListInfos.find(info=>info.type=="CM")
+    if(CM===undefined)throw "CM not found"
+
+    let camList = CM.data as {name:string,id:string,driver_name:string}[];
+
+
+    return camList;
+  }
+
+
+  
+
+
+  CameraSetChannelID(camera_id_List:string[],channel_id:number,
+    cbs:{ reject(...arg: any[]): any; resolve(...arg: any[]): any; })
+  {
+    let connctResult=camera_id_List.map((cam_id,idx)=>
+      this.send("CM",0,{
+        type:"set_camera_channel_id",
+        id:cam_id,
+        _PGID_:channel_id,_PGINFO_:{keep:true}
+      },undefined,cbs)
+    )
+  }
+  
+
+  async DisconnectAllCamera()
+  {
+    let connCamList=await this.queryConnCamList();
+    
+    let disconnInfo = await Promise.all(
+      connCamList.map(cam=>this.send_P("CM",0,{type:"disconnect",id:cam.id}))
+    )
+
+    return disconnInfo;
+  }
+
+  async isConnectedCameraFullfillList(camera_id_List:string[])
+  {
+    let connCamList=await this.queryConnCamList();
+    for(let i=0;i<camera_id_List.length;i++)
+    {
+      let cam_id=camera_id_List[i];
+      let cam = connCamList.find(caminfo=>caminfo.id==cam_id);
+      if(cam===undefined) return false;
+    }
+    return true;
+  }
+
+
+  async CameraSetup(camSetup:type_CameraInfo,trigger_mode=2)//0 continuous   1:software trigger   2:any trigger
+  {
+    return await this.send_P("CM",0,{
+      ...camSetup,
+      type:"setting",
+      trigger_mode,
+    }).then((camInfoPkts:any)=>camInfoPkts[0].data)
+    
+  }
+
+  async CameraClearTriggerInfo()
+  {
+    return await this.send_P("CM",0,{
+      type:"clean_trigger_info_matching_buffer"
+    })
+  }
+  async CameraCheckAndConnect(camera_setup_List:type_CameraInfo[],froceDisconnectAll=false)
+  {
+    if(froceDisconnectAll)
+      await this.DisconnectAllCamera();
+    let camera_id_List=camera_setup_List.map(info=>info.id)
+    let isFullfill= await this.isConnectedCameraFullfillList(camera_id_List)
+
+    if(isFullfill==false)
+    {
+      await this.DisconnectAllCamera();
+      let discoveredCam = await  this.queryDiscoverList();
+      let cameraList:{
+        name: string;
+        id: string;
+        available:boolean,
+        driver_name: string;
+      }[]=[];
+      
+
+      console.log(camera_id_List,discoveredCam);
+      for(let i=0;i<camera_id_List.length;i++)
+      {
+        let camid=camera_id_List[i];
+        let caminfoFound = discoveredCam.find(cam=>cam.id==camid);
+        // if(caminfoFound===undefined)throw "2";
+        let available=caminfoFound!==undefined
+        if(caminfoFound===undefined)
+        {
+          caminfoFound={
+            id:camid,
+            name:"",
+            driver_name:""
+          }
+        }
+        // else
+        cameraList.push({...caminfoFound,available});
+      }
+
+
+      // let cameraList=camera_id_List.map((camid)=>discoveredCam.find(cam=>cam.id==camid))
+      console.log(cameraList);
+
+
+
+      let connctResult=await Promise.all(cameraList.map(cam=>
+        this.send_P("CM",0,{
+          type:"connect",
+          misc:"data/BMP_carousel_test1",
+          id:cam.id}).then((camInfoPkts:any)=>camInfoPkts[0].data)
+        
+        ));//
+      console.log(connctResult);
+
+
+      for( let camQueryInfo of cameraList )
+      {
+        let camSetup=camera_setup_List.find(csl=>csl.id==camQueryInfo.id)
+        if(camSetup===undefined)continue;
+
+        await this.CameraSetup(camSetup,2)
+      }
+
+    }
+
+    return await this.queryConnCamList();
+  }
+
+
+
+
+
+  FILE_Save(filename:string,jobj={},humanReadable=false){
+    let jstr="";
+    if(humanReadable)
+      jstr= JSON.stringify(jobj, null, 2)
+    else 
+      jstr= JSON.stringify(jobj)
+
+
+    return this.send_P("SV",0,{filename,make_dir:true},enc.encode(jstr))
+  }
+  
+
+  FILE_Save_Raw=(filename:string,content:Uint8Array) => {
+    
+    return this.send_P("SV",0,{filename},content)
+  }
+
+
+
+
+  async FILE_Load (filename:string) {
+    
+    let data = await this.send_P("LD",0,{filename}) as any;
+
+    let FL=data.find((info:any)=>info.type=="FL")
+    if(FL===undefined)
+    {
+      throw "Read Failed  FL is undefined";
+    }
+    
+    return FL.data;
+  }
+
+
+  async Folder_Struct(path:string,depth=1) {
+    
+    let data = await this.send_P("FB",0,{path,depth}) as any;
+
+    let FS=data.find((info:any)=>info.type=="FS")
+    if(FS===undefined)
+    {
+      throw "Read Failed  FS is undefined";
+    }
+    
+    return FS.data;
+  }
+
+  // const [defInfo,setDefInfo]=useState(defInfo_Default)
+
+  
+  // let setDefInfoCritUpdate=(_defInfo:typeof defInfo)=>{
+  //   setDefInfo(_defInfo);
+  //   _setDefInfoCritUpdate(defInfoCritUpdate+1);
+  // }
+  
+
+  async InspTargetRemoveAll()
+  {
+    let ret = await this.send_P("IT",0,{type:"delete_all"})
+  }
+
+
+  
+  async InspTargetCreate(defInfo:any,_PGID_:number)
+  {
+    await this.send_P("IT",0,{type:"create",id:defInfo.id,defInfo,_PGID_:_PGID_,_PGINFO_:{keep:true}})
+  }
+  async InspTargetUpdate(defInfo:any,_PGID_:number)
+  {
+    await this.send_P("IT",0,{type:"update",id:defInfo.id,defInfo,_PGID_:_PGID_,_PGINFO_:{keep:true}})
+  }
+
+
 }
 export type CORE_API_TYPE=BPG_WS
 
