@@ -100,7 +100,6 @@ public:
 
 
   CameraLayer *camera = NULL;
-  resourcePool<image_pipe_info> resPool;
   int toUpperLayer(BPG_protocol_data bpgdat) override;
   bool checkTL(const char *TL, const BPG_protocol_data *dat);
   uint16_t TLCode(const char *TL);
@@ -108,7 +107,6 @@ public:
   int fromUpperLayer_DATA(const char*TL,int pgID,cJSON* json);
   int fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_acvImage_Send_info* imgInfo);
   int fromUpperLayer_DATA(const char*TL,int pgID,char* str);
-  int fromUpperLayer_DATA(const char*TL,int pgID,InspectionTarget_EXCHANGE* excahngeInfo);
   int fromUpperLayer_SS(int pgID,bool isACK,const char*fromTL=NULL,const char* error_msg=NULL);
   void delete_PeripheralChannel();
   static BPG_protocol_data GenStrBPGData(const char *TL, char *jsonStr);

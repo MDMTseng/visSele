@@ -1,6 +1,7 @@
 
 #include "InspectionTarget.hpp"
 
+#include "logctrl.h"
 #include "common_lib.h"
 using namespace std;
 
@@ -10,23 +11,50 @@ cJSON* CameraManager::cameraInfo2Json(CameraLayer::BasicCameraInfo &info)
   return cJSON_Parse(jsinstr.c_str());
 }
 
-
-InspectionTarget::InspectionTarget(std::string id)
+InspectionTarget::InspectionTarget(std::string id,InspectionTargetManager* belongMan)
 {
   
   this->def=NULL;
   this->id=id;
+  this->addtionalInfo=NULL;
+  this->belongMan=belongMan;
 }
 
 
-void InspectionTarget::setInspDef(const cJSON* def)
+
+
+void InspectionTarget::acceptStageInfo(StageInfo* sinfo)
 {
+  sinfo->lock.lock();
+  sinfo->inUseCount++;
+  input.push_back(sinfo);
+  sinfo->lock.unlock();
+}
+
+bool InspectionTarget::feedStageInfo(StageInfo* sinfo)
+{
+  return false;
+}
+
+void InspectionTarget::setInspDef(cJSON* def)
+{
+
   if(this->def)cJSON_Delete(this->def);
   this->def=NULL;
+  this->depSrc.clear();
   if(def)
+  {
     this->def= cJSON_Duplicate(def, cJSON_True);
+    for(int i=0;;i++)
+    {
+      std::string path("depSrc[");
+      path=path+to_string(i)+"]";
+      char* dsrc=JFetch_STRING(def,path.c_str());
+      if(dsrc==NULL)break;
+      this->depSrc.push_back(std::string(dsrc));
+    }
+  }
 }
-
 
 cJSON* InspectionTarget::genInfo()
 {
@@ -43,10 +71,22 @@ cJSON* InspectionTarget::genInfo()
   }
 
   {
-    cJSON_AddNumberToObject(obj, "channel_id", channel_id);
+    // cJSON_AddNumberToObject(obj, "channel_id", channel_id);
     cJSON_AddStringToObject(obj, "id", id.c_str());
   }
   return obj;
+}
+
+
+void InspectionTarget::setAddtionalInfo(cJSON* info)
+{
+
+  if(this->addtionalInfo)cJSON_Delete(this->addtionalInfo);
+  this->addtionalInfo=NULL;
+  if(info)
+  {
+    this->addtionalInfo= cJSON_Duplicate(info, cJSON_True);
+  }
 }
 // cJSON* InspectionTarget::getInspResult()
 // {
@@ -57,6 +97,7 @@ cJSON* InspectionTarget::genInfo()
 InspectionTarget::~InspectionTarget()
 {
   setInspDef(NULL);
+  setAddtionalInfo(NULL);
 }
 
 string CameraManager::cameraDiscovery(bool doDiscover)
@@ -288,6 +329,70 @@ InspectionTarget* InspectionTargetManager::getInspTar(std::string id)
 }
 
 
+
+int InspectionTargetManager::feedStageInfo(StageInfo* sinfo)
+{
+  if(sinfo==NULL)return -1;
+  int acceptCount=0;
+  for(int i=0;i<inspTars.size();i++)
+  {
+    if(inspTars[i]->feedStageInfo(sinfo)==true)
+    {
+      acceptCount++;
+    }
+  }
+  
+  return acceptCount;
+}
+
+
+
+
+int InspectionTargetManager::recycleStageInfo(StageInfo* sinfo)
+{
+  if(sinfo==NULL)return -1;
+
+  {
+    const std::lock_guard<std::mutex> lock( sinfo->lock);
+    if(sinfo->inUseCount!=0)
+    {
+      return sinfo->inUseCount;
+    }
+  }
+  delete sinfo;
+  return 0;
+}
+
+int InspectionTargetManager::processStageInfo()
+{
+  int totalProcessCount=0;
+  while(1)
+  {
+    int curProcessCount=0;
+
+    LOGI(">>>");
+    for(int i=0;i<inspTars.size();i++)
+    { 
+      curProcessCount+=inspTars[i]->processInput();
+    }
+
+    LOGI(">>>");
+    if(curProcessCount==0)
+    {
+      break;
+    }
+    totalProcessCount+=curProcessCount;
+  }
+
+
+
+
+  return totalProcessCount;
+}
+
+
+
+
 cJSON* InspectionTargetManager::genInspTarListInfo()
 {
   
@@ -346,22 +451,22 @@ CameraLayer::status InspectionTargetManager::CAM_CallBack(CameraLayer &cl_obj, i
 }
 
 
-void InspectionTargetManager::inspTargetProcess(image_pipe_info &info)
-{
-  std::string camera_id=info.camera_id;
+// void InspectionTargetManager::inspTargetProcess(image_pipe_info &info)
+// {
+//   std::string camera_id=info.camera_id;
 
-  // cJSON* reportInfo=cJSON_CreateObject();
-  // cJSON_AddStringToObject(reportInfo, "trigger_tag", info.trigger_tag.c_str());
-  // cJSON_AddStringToObject(reportInfo, "camera_id", camera_id.c_str());
-  cJSON* reports=cJSON_CreateArray();
-  // cJSON_AddItemToObject(reportInfo, "reports", reports);
-  for(int i=0;i<inspTars.size();i++)
-  {
-    inspTars[i]->CAM_CallBack(&info);
-      // &(info.StreamInfo),
-      // info.img, camera_id, info.trigger_tag,info.trigger_id);//no trigger id yet
-    cJSON_AddItemToArray(reports, cJSON_Duplicate(inspTars[i]->fetchInspReport(),cJSON_True ));
-  }
-  info.report_json=reports;//collect
-  // InspResult_CallBack(info);//TODO: intent code fix this 
-}
+//   // cJSON* reportInfo=cJSON_CreateObject();
+//   // cJSON_AddStringToObject(reportInfo, "trigger_tag", info.trigger_tag.c_str());
+//   // cJSON_AddStringToObject(reportInfo, "camera_id", camera_id.c_str());
+//   cJSON* reports=cJSON_CreateArray();
+//   // cJSON_AddItemToObject(reportInfo, "reports", reports);
+//   for(int i=0;i<inspTars.size();i++)
+//   {
+//     inspTars[i]->CAM_CallBack(&info);
+//       // &(info.StreamInfo),
+//       // info.img, camera_id, info.trigger_tag,info.trigger_id);//no trigger id yet
+//     cJSON_AddItemToArray(reports, cJSON_Duplicate(inspTars[i]->fetchInspReport(),cJSON_True ));
+//   }
+//   info.report_json=reports;//collect
+//   // InspResult_CallBack(info);//TODO: intent code fix this 
+// }

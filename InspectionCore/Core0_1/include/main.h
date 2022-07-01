@@ -148,7 +148,7 @@ public:
 
 
   CameraLayer *camera = NULL;
-  resourcePool<image_pipe_info> resPool;
+  // resourcePool<image_pipe_info> resPool;
   int toUpperLayer(BPG_protocol_data bpgdat) override;
   bool checkTL(const char *TL, const BPG_protocol_data *dat);
   uint16_t TLCode(const char *TL);

@@ -3,6 +3,7 @@
 
 #include "CameraLayerManager.hpp"
 #include "vector"
+#include "map"
 #include "cJSON.h"
 #include "acvImage.hpp"
 #include "TSQueue.hpp"
@@ -20,12 +21,12 @@ typedef struct BPG_protocol_data_acvImage_Send_info
 
 
        
-struct InspectionTarget_EXCHANGE
-{
-  int isOK;
-  cJSON *info;
-  BPG_protocol_data_acvImage_Send_info imgInfo;
-};
+// struct InspectionTarget_EXCHANGE
+// {
+//   int isOK;
+//   cJSON *info;
+//   BPG_protocol_data_acvImage_Send_info imgInfo;
+// };
 
 
 
@@ -78,24 +79,84 @@ class CameraManager
 };
 
 
-typedef struct image_pipe_info
-{
-  CameraManager::StreamingInfo StreamInfo;
-  CameraLayer::frameInfo fi;
+// typedef struct image_pipe_info
+// {
+//   CameraManager::StreamingInfo StreamInfo;
+//   CameraLayer::frameInfo fi;
   
-  std::string camera_id;
-  std::string trigger_tag;
-  int trigger_id;
-  // FeatureManager_BacPac *bacpac;
-  acvImage img;
+//   std::string camera_id;
+//   std::string trigger_tag;
+//   int trigger_id;
+//   // FeatureManager_BacPac *bacpac;
+//   acvImage img;
 
-  cJSON *report_json;
-} image_pipe_info;
+//   cJSON *report_json;
+// } image_pipe_info;
+
 
 // struct CameraStreamingInfo
 // {
 //   int channel_id;
 // };
+
+
+
+class StageInfo{
+  public:
+  std::string type;
+  std::string source;
+  
+  CameraManager::StreamingInfo StreamInfo;
+  CameraLayer::frameInfo fi;
+  
+
+  std::string trigger_tag;
+  int trigger_id;
+  
+  std::map<std::string,acvImage*> imgSets;
+  cJSON *jInfo;
+
+
+  
+  std::string pInfoType;
+  void* pInfo;
+
+  std::mutex lock;
+  int inUseCount;
+
+  ~StageInfo(){
+    const std::lock_guard<std::mutex> lock(this->lock);
+    if(inUseCount)
+    {
+      throw std::string("inUseCount is not Zero:")+to_string(inUseCount);
+    }
+
+    for(auto iter =imgSets.begin(); iter != imgSets.end(); ++iter)
+    {
+      auto k =  iter->first;
+      if(iter->second!=NULL)
+      {
+        delete iter->second;
+        iter->second=NULL;
+      }
+    }
+    imgSets.clear();
+
+    if(jInfo)
+    {
+      cJSON_Delete(jInfo);
+      jInfo=NULL;
+    }
+
+    if(pInfo)
+    {
+      delete pInfo;
+      pInfo=NULL;
+    }
+
+  }
+  
+};
 
 class InspectionTargetManager
 {
@@ -119,8 +180,10 @@ class InspectionTargetManager
   virtual void CamStream_CallBack(CameraManager::StreamingInfo &info)=0;
 
 
-  void inspTargetProcess(image_pipe_info &info);
+  int feedStageInfo(StageInfo* sinfo);//return how many inspection target needs it
+  int recycleStageInfo(StageInfo* sinfo);//return 0 as destroy, other positive number means how many other inspTar still holds it 
 
+  int processStageInfo();
 
 
 
@@ -137,31 +200,31 @@ class InspectionTargetManager
 };
 
 
-
-
 class InspectionTarget
 {
   public:
-  int channel_id;
   std::string id;
-  
   cJSON *def=NULL;
-
-  InspectionTarget(std::string id);
-  virtual void setInspDef(const cJSON* def);
-  virtual cJSON* genInfo();
-
-  acvImage img_buff;
-  virtual InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info)=0;
-  virtual cJSON* fetchInspReport()=0;
-  virtual void cleanInspReport()=0;
-  // virtual cJSON* genInspReport()=0;
-  bool returnExchange(InspectionTarget_EXCHANGE* info);
-  virtual void CAM_CallBack(image_pipe_info *pipe)=0;
-  // {
-  //   CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
-  //   printf("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%d\n",id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
-  // }
-
+  cJSON *addtionalInfo=NULL;
+  InspectionTargetManager* belongMan;
+  InspectionTarget(std::string id,InspectionTargetManager* belongMan);
   virtual ~InspectionTarget();
+  virtual void setInspDef(cJSON* def);
+  virtual void setAddtionalInfo(cJSON* info);
+
+  
+  std::vector<std::string> depSrc;
+  std::vector<StageInfo*> input;
+  virtual bool feedStageInfo(StageInfo* sinfo)=0;
+
+
+  virtual int processInput()=0;//returns input processed
+  virtual cJSON* genInfo();
+  protected:
+  
+  virtual void acceptStageInfo(StageInfo* sinfo);
+
 };
+
+
+

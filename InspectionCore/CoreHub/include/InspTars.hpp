@@ -61,72 +61,84 @@ using namespace cv;
 
 class InspectionTarget_s_ColorRegionDetection :public InspectionTarget
 {
-  cJSON* nullOBJ;
-  cJSON* report;
 public:
-  InspectionTarget_s_ColorRegionDetection(std::string id,cJSON* def):InspectionTarget(id)
+  InspectionTarget_s_ColorRegionDetection(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,belongMan)
   {
-    nullOBJ=NULL;//cJSON_CreateNull();
     setInspDef(def);
-    report=NULL;
   }
-
-  bool checkRef()
-  {
-    return true;
-  }
-
-  acvImage* fetchImage(std::string id)
-  {
-    return NULL;
-  }
-
-  cJSON* fetchInspReport()
-  {
-    // if(report==NULL)
-    // {
-    //   return nullOBJ;
-    // }
-    return report;
-  }
-  void cleanInspReport()
-  {
-    cJSON_Delete(report);
-    report=NULL;
-  }
-
 
   virtual void setInspDef(cJSON* def)
   {
-
-
-    //clean up objects
     InspectionTarget::setInspDef(def);
-    //build up objects
-
-
-
-
   }
 
-  void CAM_CallBack(image_pipe_info *pipe)
+  bool matchTriggerTag(string tarTag,cJSON* def)
   {
-    // CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
-    // LOGI("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%" PRId64,id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
-    LOGI("<<<<");
-    if(report!=NULL)
+    cJSON* defTags=JFetch_ARRAY(def,"trigger_tag");
+    int asize=cJSON_GetArraySize(defTags);
+    for (int i = 0 ; i <asize ; i++)
     {
-      cJSON_Delete(report);
-      report=NULL;
+      cJSON * tag = cJSON_GetArrayItem(defTags, i);
+      if(tag->type==cJSON_String)
+      {
+        string str = string(tag->valuestring);
+        LOGI("str:%s tarTag:%s ",str.c_str(),tarTag.c_str());
+        if(str==tarTag)
+        {
+          return true;
+        }
+      }
     }
 
-    if(pipe->trigger_tag!=JFetch_STRING_ex(def,"trigger_tag","") || pipe->camera_id!=JFetch_STRING_ex(def,"camera_id",""))
-    {
-      return;
-    }
-    report=cJSON_CreateObject();
+    return false;
+  }
 
-    cv::Mat def_temp_img(pipe->img.GetHeight(),pipe->img.GetWidth(),CV_8UC3,pipe->img.CVector[0]);
+
+  bool feedStageInfo(StageInfo* sinfo)
+  {
+    // string sinfo_camId= sinfo->StreamInfo.camera->getConnectionData().id;
+
+    if(matchTriggerTag( sinfo->trigger_tag,def))// || sinfo_camId!=JFetch_STRING_ex(def,"camera_id",""))
+    {
+      acceptStageInfo(sinfo);
+      return true;
+    }
+    return false;
+  }
+
+  int processInput()
+  {
+    int pCount=0;
+    for(int i=0;i<input.size();i++)
+    {
+      StageInfo* stinfo=input[i];
+      singleProcess(stinfo);
+      pCount++;
+      input[i]=NULL;//mark the data is deleted
+
+      belongMan->recycleStageInfo(stinfo);
+    }
+
+    int availableCount=0;//warp it up(remove NULL element)
+    for(int i=0;i<input.size();i++)
+    {
+      if(input[i])
+      {
+        input[availableCount]=input[i];
+        availableCount++;
+      }
+    }
+    input.resize(availableCount);
+    return pCount;
+  }
+
+
+  void singleProcess(StageInfo* sinfo)
+  {
+
+    cJSON *report=cJSON_CreateObject();
+    acvImage* srcImg=sinfo->imgSets["cam"];
+    cv::Mat def_temp_img(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
 
     // cvtColor(def_temp_img, def_temp_img, COLOR_BayerGR2BGR);
     cJSON* rep_regionInfo=cJSON_CreateArray();
@@ -368,17 +380,12 @@ public:
   
   virtual ~InspectionTarget_s_ColorRegionDetection()
   {
-    if(report)
-    {
-      cJSON_Delete(report);
-      report=NULL;
-    }
   }
 
-  virtual InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info)
-  {
-    return NULL;
-  }
+  // virtual InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info)
+  // {
+  //   return NULL;
+  // }
 
 };
 

@@ -21,6 +21,7 @@
 #include <ctime>
 #include "CameraLayerManager.hpp"
 
+#include "InspectionTarget.hpp"
 #include "InspTars.hpp"
 
 #include <opencv2/calib3d.hpp>
@@ -39,8 +40,8 @@ m_BPG_Protocol_Interface bpg_pi;
 m_BPG_Link_Interface_WebSocket *ifwebsocket=NULL;
 
 
-struct pipetriggerInfo_mix{
-  image_pipe_info *pipeInfo;
+struct sttriggerInfo_mix{
+  StageInfo *stInfo;
   
   struct _triggerInfo{
 
@@ -51,50 +52,22 @@ struct pipetriggerInfo_mix{
   };
   _triggerInfo triggerInfo;
 };
-// vector<pipetriggerInfo_mix> triggerInfoBuffer(10);
-// TSQueue<pipetriggerInfo_mix> triggerInfoQueue(10);
+// vector<sttriggerInfo_mix> triggerInfoBuffer(10);
+// TSQueue<sttriggerInfo_mix> triggerInfoQueue(10);
 
 
-TSVector<pipetriggerInfo_mix> triggerInfoMatchingBuffer;
-
-
-
-TSQueue<pipetriggerInfo_mix> triggerInfoMatchingQueue(10);
+TSVector<sttriggerInfo_mix> triggerInfoMatchingBuffer;
 
 
 
-TSQueue<image_pipe_info *> inspQueue(10);
-TSQueue<image_pipe_info *> datViewQueue(10);
-TSQueue<image_pipe_info *> inspSnapQueue(5);
+TSQueue<sttriggerInfo_mix> triggerInfoMatchingQueue(10);
 
 
 
-bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
-{
-  int zeroCount=0;
-  for(int i=0;i<3;i++)
-  {
-    if(inspQueue.size()+datViewQueue.size()+inspSnapQueue.size()==0)
-    {
+TSQueue<StageInfo *> inspQueue(10);
+// TSQueue<image_pipe_info *> datViewQueue(10);
+// TSQueue<image_pipe_info *> inspSnapQueue(5);
 
-    }
-    else
-    {
-      i=0;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  }
-  for(int i=0;i<triggerInfoMatchingBuffer.size();i++)
-  {
-    if(triggerInfoMatchingBuffer[i].pipeInfo!=NULL)
-    {
-      bpg_pi.resPool.retResrc(triggerInfoMatchingBuffer[i].pipeInfo);
-      triggerInfoMatchingBuffer[i].pipeInfo=NULL;
-    }
-  }
-  triggerInfoMatchingBuffer.clear();
-  return true;
-}
 
 
 
@@ -108,29 +81,31 @@ class InspectionTargetManager_m:public InspectionTargetManager
 
 
 
-    LOGE("============DO INSP>> waterLvL: insp:%d/%d dview:%d/%d  snap:%d/%d   poolSize:%d trigInfoMatchingSize:%d",
-        inspQueue.size(), inspQueue.capacity(),
-        datViewQueue.size(), datViewQueue.capacity(),
-        inspSnapQueue.size(), inspSnapQueue.capacity(),
-        bpg_pi.resPool.rest_size(),triggerInfoMatchingBuffer.size());
+    LOGE("============DO INSP>> waterLvL: insp:%d/%d  trigInfoMatchingSize:%d",
+        inspQueue.size(), inspQueue.capacity(),triggerInfoMatchingBuffer.size());
+
+    // LOGE("============DO INSP>> waterLvL: insp:%d/%d dview:%d/%d  snap:%d/%d   poolSize:%d trigInfoMatchingSize:%d",
+    //     inspQueue.size(), inspQueue.capacity(),
+    //     datViewQueue.size(), datViewQueue.capacity(),
+    //     inspSnapQueue.size(), inspSnapQueue.capacity(),
+    //     bpg_pi.resPool.rest_size(),triggerInfoMatchingBuffer.size());
 
 
-
-
-    image_pipe_info *pinfo= bpg_pi.resPool.fetchResrc_blocking();
+    StageInfo *newStateInfo=new StageInfo();
 
     CameraLayer::frameInfo finfo = info.camera->GetFrameInfo();
-    pinfo->StreamInfo=info;
-    
-    pinfo->camera_id=info.camera->getConnectionData().id;
-    pinfo->fi=finfo;
-    pinfo->trigger_tag="";
-    pinfo->img.ReSize(finfo.width,finfo.height,3);
-    CameraLayer::status st = info.camera->ExtractFrame(pinfo->img.CVector[0],3,finfo.width*finfo.height);
-    LOGI(">>>CAM:%s  WH:%d %d",pinfo->camera_id.c_str(),finfo.width,finfo.height);
 
-    pipetriggerInfo_mix pmix;
-    pmix.pipeInfo=pinfo;
+    newStateInfo->StreamInfo=info;
+    newStateInfo->source=info.camera->getConnectionData().id;
+    newStateInfo->fi=finfo;
+    newStateInfo->trigger_tag="";
+    acvImage *img=new acvImage(finfo.width,finfo.height,3);
+    newStateInfo->imgSets["cam"]=img;
+    CameraLayer::status st = info.camera->ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
+    // LOGI(">>>CAM:%s  WH:%d %d",info->camera_id.c_str(),finfo.width,finfo.height);
+
+    sttriggerInfo_mix pmix;
+    pmix.stInfo=newStateInfo;
     
       LOGI("0");
     triggerInfoMatchingQueue.push_blocking(pmix);
@@ -143,13 +118,12 @@ class InspectionTargetManager_m:public InspectionTargetManager
 
 int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,int trigger_id,int channel_id)
 {
-  image_pipe_info *pinfo= bpg_pi.resPool.fetchResrc();
-  if(pinfo==NULL)return -1;
+  StageInfo *newStateInfo=new StageInfo();
+  if(newStateInfo==NULL)return -1;
 
-  pinfo->StreamInfo.camera=NULL;
-  pinfo->StreamInfo.channel_id=channel_id;
-  pinfo->camera_id=camera_id;
-  pinfo->trigger_tag=trigger_tag;
+  newStateInfo->StreamInfo.camera=NULL;
+  newStateInfo->StreamInfo.channel_id=channel_id;
+  newStateInfo->trigger_tag=trigger_tag;
 
   Mat mat=imread(path.c_str());
 
@@ -160,11 +134,12 @@ int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,
   finfo.height=H;
   finfo.width=W;
   finfo.timeStamp_us=0;
-  pinfo->fi=finfo;
+  newStateInfo->fi=finfo;
 
-  pinfo->img.ReSize(W,H);
+  acvImage *img=new acvImage(W,H,3);
+  newStateInfo->imgSets["cam"]=img;
   
-  cv::Mat dst_mat(H,W,CV_8UC3,pinfo->img.CVector[0]);
+  cv::Mat dst_mat(H,W,CV_8UC3,img->CVector[0]);
 
   
 
@@ -178,12 +153,11 @@ int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,
     cv::cvtColor(mat,dst_mat,COLOR_GRAY2RGB);
   }
   else
-  {
-    bpg_pi.resPool.retResrc(pinfo);
+  { //TODO: recycle the newStateInfo
     return -2;
   }
 
-  inspQueue.push_blocking(pinfo);
+  inspQueue.push_blocking(newStateInfo);
 
   return 0;
 }
@@ -193,6 +167,31 @@ int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,
 
 
 InspectionTargetManager_m inspTarMan;
+
+
+
+
+bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
+{
+  int zeroCount=0;
+  for(int i=0;i<3;i++)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+  for(int i=0;i<triggerInfoMatchingBuffer.size();i++)
+  {
+    if(triggerInfoMatchingBuffer[i].stInfo!=NULL)
+    {
+      // bpg_pi.resPool.retResrc(triggerInfoMatchingBuffer[i].pipeInfo);
+
+      inspTarMan.recycleStageInfo(triggerInfoMatchingBuffer[i].stInfo);
+      triggerInfoMatchingBuffer[i].stInfo=NULL;
+    }
+  }
+  triggerInfoMatchingBuffer.clear();
+  return true;
+}
+
 
 void TriggerInfoMatchingThread(bool *terminationflag)
 {
@@ -210,12 +209,12 @@ void TriggerInfoMatchingThread(bool *terminationflag)
     //   {
     //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     //   }
-    pipetriggerInfo_mix headImgPipeMixInfo;
+    sttriggerInfo_mix headImgStageInfoMixInfo;
 
     // triggerInfoQueue.pop_blocking(&trigInfo)
-    while (triggerInfoMatchingQueue.pop_blocking(headImgPipeMixInfo))
+    while (triggerInfoMatchingQueue.pop_blocking(headImgStageInfoMixInfo))
     {
-      LOGI("headImgPipeMixInfo.pipeInfo:%p",headImgPipeMixInfo.pipeInfo);
+      LOGI("headImgStageInfoMixInfo.stInfo:%p",headImgStageInfoMixInfo.stInfo);
       // triggerInfoMatchingBuffer.w_lock();
       
       {
@@ -224,25 +223,26 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         int minMatchingCost=999999;
         int minMatchingIdx=-1;
 
-        image_pipe_info *targetImgPipe=NULL;
-        pipetriggerInfo_mix::_triggerInfo targetTriggerInfo;
+        StageInfo *targetStageInfo=NULL;
+        sttriggerInfo_mix::_triggerInfo targetTriggerInfo;
 
-        if(headImgPipeMixInfo.pipeInfo!=NULL)//image/pipe info
-        {
-          targetImgPipe= headImgPipeMixInfo.pipeInfo;
+        if(headImgStageInfoMixInfo.stInfo!=NULL)
+        {//image/pipe info
+          targetStageInfo= headImgStageInfoMixInfo.stInfo;
           
 
 
 
-          bool doMockTriggerInfo=(targetImgPipe->StreamInfo.camera!=NULL) && (targetImgPipe->StreamInfo.camera->triggerMode==0);//streaming
+          bool doMockTriggerInfo=(targetStageInfo->StreamInfo.camera!=NULL) && (targetStageInfo->StreamInfo.camera->triggerMode==0);//streaming
 
 
+          LOGI("  doMockTriggerInfo:%d cam:%p mode:%d ",doMockTriggerInfo,  targetStageInfo->StreamInfo.camera  ,targetStageInfo->StreamInfo.camera->triggerMode);
 
           if(doMockTriggerInfo)
           {
-            pipetriggerInfo_mix::_triggerInfo mocktrig;
-            mocktrig.camera_id=targetImgPipe->camera_id;
-            mocktrig.est_trigger_time_us=targetImgPipe->fi.timeStamp_us+123;//
+            sttriggerInfo_mix::_triggerInfo mocktrig;
+            mocktrig.camera_id=targetStageInfo->StreamInfo.camera->getConnectionData().id;;
+            mocktrig.est_trigger_time_us=targetStageInfo->fi.timeStamp_us+123;//
             mocktrig.trigger_id=-1;
             mocktrig.trigger_tag="Stream";
             
@@ -254,10 +254,11 @@ void TriggerInfoMatchingThread(bool *terminationflag)
           
           for(int i=0;i<triggerInfoMatchingBuffer.size();i++)//try to find trigger info matching
           {//
-            if(triggerInfoMatchingBuffer[i].pipeInfo!=NULL)continue;//skip image/pipe info
+            if(triggerInfoMatchingBuffer[i].stInfo!=NULL)continue;//skip image/pipe info
 
             auto _triggerInfo=triggerInfoMatchingBuffer[i].triggerInfo;
-            if(_triggerInfo.camera_id!=targetImgPipe->camera_id)continue;//camera id is not match
+           
+            if(_triggerInfo.camera_id!=targetStageInfo->StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
 
 
             int cost;
@@ -269,7 +270,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             }
             else
             {
-              cost=_triggerInfo.est_trigger_time_us-targetImgPipe->fi.timeStamp_us;
+              cost=_triggerInfo.est_trigger_time_us-targetStageInfo->fi.timeStamp_us;
               if(cost<0)cost=-cost;
 
             }
@@ -283,16 +284,16 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             }
           }
         }
-        else//trigger info 
-        {
+        else 
+        {//trigger info
 
-          targetTriggerInfo=headImgPipeMixInfo.triggerInfo;
+          targetTriggerInfo=headImgStageInfoMixInfo.triggerInfo;
           for(int i=0;i<triggerInfoMatchingBuffer.size();i++)//try to find image/pipe info
           {//
-            if(triggerInfoMatchingBuffer[i].pipeInfo==NULL)continue;//skip trigger info
+            if(triggerInfoMatchingBuffer[i].stInfo==NULL)continue;//skip trigger info
 
-            auto _PipeInfo=triggerInfoMatchingBuffer[i].pipeInfo;
-            if(targetTriggerInfo.camera_id!=_PipeInfo->camera_id)continue;//camera id is not match
+            auto _stInfo=triggerInfoMatchingBuffer[i].stInfo;
+            if(targetTriggerInfo.camera_id!=_stInfo->StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
 
             
             int cost;
@@ -304,7 +305,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             }
             else
             {
-              cost=_PipeInfo->fi.timeStamp_us-targetTriggerInfo.est_trigger_time_us;
+              cost=_stInfo->fi.timeStamp_us-targetTriggerInfo.est_trigger_time_us;
               if(cost<0)cost=-cost;
             }
           
@@ -313,7 +314,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
 
             if(minMatchingCost>cost)
             {
-              targetImgPipe=_PipeInfo;
+              targetStageInfo=_stInfo;
               minMatchingIdx=i;
               minMatchingCost=cost;
               if(cost==0)break;
@@ -328,15 +329,16 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         if( minMatchingIdx!=-1 && minMatchingCost<1000)
         {
           LOGI("Get matching. idx:%d cost:%d  psss to next Q",minMatchingIdx,minMatchingCost);
-          targetImgPipe->trigger_tag=targetTriggerInfo.trigger_tag;
-          targetImgPipe->trigger_id=targetTriggerInfo.trigger_id;
-          inspQueue.push_blocking(targetImgPipe);
+          targetStageInfo->trigger_tag=targetTriggerInfo.trigger_tag;
+          targetStageInfo->trigger_id=targetTriggerInfo.trigger_id;
+
+          inspQueue.push_blocking(targetStageInfo);
           triggerInfoMatchingBuffer.erase(minMatchingIdx);//remove from buffer 
         }
         else
         {
           LOGI("No matching.... push in buffer");
-          triggerInfoMatchingBuffer.push_back(headImgPipeMixInfo);//no match, add new data to buffer 
+          triggerInfoMatchingBuffer.push_back(headImgStageInfoMixInfo);//no match, add new data to buffer 
           LOGI("buffer size:%d",triggerInfoMatchingBuffer.size());
       LOGI(">>>>>");
         }
@@ -371,20 +373,33 @@ void ImgPipeProcessThread(bool *terminationflag)
     //   {
     //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     //   }
-    image_pipe_info *headImgPipe = NULL;
+    StageInfo *stInfo = NULL;
 
-    while (inspQueue.pop_blocking(headImgPipe))
+    while (inspQueue.pop_blocking(stInfo))
     {
       
-      LOGI(">>>CAM:%s",headImgPipe->camera_id.c_str());
-      LOGI(">>>triggerT:%s  id:%d",headImgPipe->trigger_tag.c_str(),headImgPipe->trigger_id);
-      inspTarMan.inspTargetProcess(*headImgPipe);
-      datViewQueue.push_blocking(headImgPipe);
-      // bpg_pi.resPool.retResrc(headImgPipe);
+      // LOGI(">>>CAM:%s",headImgPipe->camera_id.c_str());
+      LOGI(">>>triggerT:%s  id:%d",stInfo->trigger_tag.c_str(),stInfo->trigger_id);
+      int acceptCount=inspTarMan.feedStageInfo(stInfo);
+      LOGI("acceptCount:%d",acceptCount);
+      if(acceptCount)
+      {
+        int processCount = inspTarMan.processStageInfo();
+        LOGI("processCount:%d",processCount);
+      }
+      else
+      {
+        LOGE("NO InspTar accepts stage Info recycle.....");
+        //no one accept the stage info
+        inspTarMan.recycleStageInfo(stInfo);
+      }
+
+      LOGI("......<>>>>>.....");
+
     }
   }
 }
-
+/*
 void ImgPipeDatViewThread(bool *terminationflag)
 {
   
@@ -417,7 +432,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
         cJSON_Delete(camBrifInfo);
         
         
-        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)2};
+        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)6};
         iminfo.fullHeight = headImgPipe->img.GetHeight();
         iminfo.fullWidth = headImgPipe->img.GetWidth();
         if(iminfo.scale>1)
@@ -463,7 +478,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
   }
 }
 
-
+*/
 
 int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   
@@ -1034,8 +1049,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           LOGI(">>>trigger_tag:%s",trigger_tag.c_str());
           {
             
-            pipetriggerInfo_mix mocktrig;
-            mocktrig.pipeInfo=NULL;
+            sttriggerInfo_mix mocktrig;
+            mocktrig.stInfo=NULL;
             mocktrig.triggerInfo.camera_id=id;
             double *_trigger_id = JFetch_NUMBER(json, "trigger_id");
             mocktrig.triggerInfo.trigger_id=(_trigger_id==NULL)?-1:(int)*_trigger_id;
@@ -1064,6 +1079,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       
       session_ACK = false;
       char *type_str = JFetch_STRING(json, "type");
+      {
+        char* jsonStr=cJSON_Print(json);
+        LOGI("jsonStr:\n%s",jsonStr);
+        delete jsonStr;
+      }
+
+
+
 
       if(strcmp(type_str, "create") ==0)
       {
@@ -1094,7 +1117,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           LOGI(">>>id:%s Add type:%s",id.c_str(),type.c_str());
           if(type=="ColorRegionLocating")
           {
-            inspTar = new InspectionTarget_s_ColorRegionDetection(id,defInfo);
+            inspTar = new InspectionTarget_s_ColorRegionDetection(id,defInfo,&inspTarMan);
           }
           else if(type=="ShapeLocating")
           {
@@ -1110,13 +1133,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
         if(inspTar)
         {
-          inspTar->channel_id=dat->pgID;
           session_ACK=inspTarMan.addInspTar(inspTar,id);
         }
 
         if(session_ACK==false)delete inspTar;
       }
-      else if(strcmp(type_str, "update"))
+      else if(strcmp(type_str, "update")==0)
       {
          char *_id = JFetch_STRING(json, "id");
         if(_id==NULL)break;
@@ -1156,6 +1178,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       }
       else if(strcmp(type_str, "delete_all") ==0)
       {
+        
+        LOGI("delete_all");
         session_ACK=inspTarMan.clearInspTar();
       }
       else if(strcmp(type_str, "list") ==0)
@@ -1616,8 +1640,8 @@ int mainLoop(bool realCamera = false)
 
   std::thread InspThread(ImgPipeProcessThread, &terminationFlag);
   setThreadPriority(InspThread, SCHED_RR, -20);
-  std::thread ActionThread(ImgPipeDatViewThread, &terminationFlag);
-  setThreadPriority(ActionThread, SCHED_RR, 0);
+  // std::thread ActionThread(ImgPipeDatViewThread, &terminationFlag);
+  // setThreadPriority(ActionThread, SCHED_RR, 0);
   // std::thread _inspSnapSaveThread(InspSnapSaveThread, &terminationFlag);
   // setThreadPriority(_inspSnapSaveThread, SCHED_RR, 19);
 

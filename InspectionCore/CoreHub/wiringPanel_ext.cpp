@@ -5,7 +5,6 @@
 #include <main.h>
 
 
-const int resourcePoolSize = 40;
 std::vector<uint8_t> image_send_buffer(40000);
 int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
 {
@@ -122,7 +121,7 @@ uint16_t m_BPG_Protocol_Interface::TLCode(const char *TL)
 }
 
 
-m_BPG_Protocol_Interface::m_BPG_Protocol_Interface() : resPool(resourcePoolSize)
+m_BPG_Protocol_Interface::m_BPG_Protocol_Interface()
 {
   cacheImage.ReSize(1, 1);
 }
@@ -189,21 +188,21 @@ int m_BPG_Protocol_Interface::fromUpperLayer_SS(int pgID,bool isACK,const char*f
   return fromUpperLayer_DATA("SS",pgID,_buf);
 }
 
-int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*jsonTL,int pgID,InspectionTarget_EXCHANGE* excahngeInfo)
-{
-  if(excahngeInfo==NULL)return -1;
-  if(excahngeInfo->info)
-  {
-    fromUpperLayer_DATA("CM",pgID,excahngeInfo->info);
-  }
+// int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*jsonTL,int pgID,InspectionTarget_EXCHANGE* excahngeInfo)
+// {
+//   if(excahngeInfo==NULL)return -1;
+//   if(excahngeInfo->info)
+//   {
+//     fromUpperLayer_DATA("CM",pgID,excahngeInfo->info);
+//   }
   
-  if(excahngeInfo->imgInfo.img)
-  {
+//   if(excahngeInfo->imgInfo.img)
+//   {
     
-    fromUpperLayer_DATA("IM",pgID,&excahngeInfo->imgInfo);
-  }
-  return 0;
-}
+//     fromUpperLayer_DATA("IM",pgID,&excahngeInfo->imgInfo);
+//   }
+//   return 0;
+// }
 
 
 cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth)
