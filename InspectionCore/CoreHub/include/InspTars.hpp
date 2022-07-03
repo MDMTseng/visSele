@@ -58,6 +58,31 @@ using namespace cv;
 // };
 
 
+bool matchJArrStr(string tarTag,cJSON* jarr)
+{
+  if(jarr==NULL)return false;
+  int asize=cJSON_GetArraySize(jarr);
+  for (int i = 0 ; i <asize ; i++)
+  {
+    cJSON * tag = cJSON_GetArrayItem(jarr, i);
+    if(tag->type==cJSON_String)
+    {
+      string str = string(tag->valuestring);
+      if(str==tarTag)
+      {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+bool matchTriggerTag(string tarTag,cJSON* def)
+{
+  cJSON* defTags=JFetch_ARRAY(def,"trigger_tags");
+  return  matchJArrStr(tarTag,defTags);
+}
+
+
 
 class InspectionTarget_ColorRegionDetection :public InspectionTarget
 {
@@ -72,29 +97,14 @@ public:
     InspectionTarget::setInspDef(def);
   }
 
-  bool matchTriggerTag(string tarTag,cJSON* def)
-  {
-    cJSON* defTags=JFetch_ARRAY(def,"trigger_tag");
-    int asize=cJSON_GetArraySize(defTags);
-    for (int i = 0 ; i <asize ; i++)
-    {
-      cJSON * tag = cJSON_GetArrayItem(defTags, i);
-      if(tag->type==cJSON_String)
-      {
-        string str = string(tag->valuestring);
-        LOGI("str:%s tarTag:%s ",str.c_str(),tarTag.c_str());
-        if(str==tarTag)
-        {
-          return true;
-        }
-      }
-    }
-
-    return false;
-  }
   bool stageInfoFilter(StageInfo* sinfo)
   {
-    return matchTriggerTag( sinfo->trigger_tag,def);
+    for(auto tag : sinfo->trigger_tags )
+    {
+      if( matchTriggerTag(tag,def))
+        return true;
+    }
+    return false;
   }
 
 
@@ -107,12 +117,14 @@ public:
     {
       StageInfo * curInput=input_pool[i];
       singleProcess(curInput);
+
       input_pool[i]=NULL;
+      belongMan->recycleStageInfo(curInput);//remember to recycle the StageInfo
     }
     input_pool.clear();
 
 
-    return poolSize;
+    return poolSize;//run all
 
   }
   // bool feedStageInfo(StageInfo* sinfo)
@@ -152,7 +164,7 @@ public:
 
     // cvtColor(def_temp_img, def_temp_img, COLOR_BayerGR2BGR);
     cJSON* rep_regionInfo=cJSON_CreateArray();
-
+    
     cJSON_AddStringToObject(report,"id",id.c_str());
     cJSON_AddItemToObject(report,"regionInfo",rep_regionInfo);
     for(int i=0;;i++)
@@ -379,12 +391,26 @@ public:
         LOGE("....ERROR....");
       }
       
-      char* defStr=cJSON_Print(regionInfo);
-      LOGI(">>>%d\n%s",i,defStr);
-      delete defStr;
+      // char* defStr=cJSON_Print(regionInfo);
+      // LOGI(">>>%d\n%s",i,defStr);
+      // delete defStr;
+
       
     }
+    StageInfo *reportInfo=new StageInfo();
+    reportInfo->source=this->id;
+    reportInfo->trigger_id=sinfo->trigger_id;
+    reportInfo->trigger_tags.push_back("InfoStream2UI");
+    // reportInfo->trigger_tags.push_back("fine tune");
+    // reportInfo->fi=sinfo->fi;
+    // reportInfo->StreamInfo=sinfo->StreamInfo;
+    // reportInfo->trigger_tag=sinfo->trigger_tag;
+    reportInfo->type="report";
 
+
+    reportInfo->jInfo=rep_regionInfo;
+
+    belongMan->dispatch(reportInfo);
 
   }
   
@@ -399,31 +425,6 @@ public:
 
 };
 
-
-
-bool matchJArrStr(string tarTag,cJSON* jarr)
-{
-  if(jarr==NULL)return false;
-  int asize=cJSON_GetArraySize(jarr);
-  for (int i = 0 ; i <asize ; i++)
-  {
-    cJSON * tag = cJSON_GetArrayItem(jarr, i);
-    if(tag->type==cJSON_String)
-    {
-      string str = string(tag->valuestring);
-      if(str==tarTag)
-      {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-bool matchTriggerTag(string tarTag,cJSON* def)
-{
-  cJSON* defTags=JFetch_ARRAY(def,"trigger_tag");
-  return  matchJArrStr(tarTag,defTags);
-}
 
 
 class InspectionTarget_S :public InspectionTarget
@@ -445,15 +446,12 @@ public:
   }
 
 
-
-  bool feedStageInfo(StageInfo* sinfo)
+  bool stageInfoFilter(StageInfo* sinfo)
   {
-    // string sinfo_camId= sinfo->StreamInfo.camera->getConnectionData().id;
-
-    if(matchTriggerTag( sinfo->trigger_tag,def))// || sinfo_camId!=JFetch_STRING_ex(def,"camera_id",""))
+    for(auto tag : sinfo->trigger_tags )
     {
-      acceptStageInfo(sinfo);
-      return true;
+      if( matchTriggerTag(tag,def))
+        return true;
     }
     return false;
   }

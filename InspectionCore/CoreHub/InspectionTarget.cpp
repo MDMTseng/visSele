@@ -397,6 +397,16 @@ int InspectionTargetManager::dispatch(StageInfo* sinfo)
       acceptCount++;
     }
   }
+  if(acceptCount==0)
+  {
+    
+    LOGI("id:%d trigger:",sinfo->trigger_id);
+    for(auto tag:sinfo->trigger_tags)
+      LOGI("%s",tag.c_str());
+    LOGE("No one accepts StageInfo: from:%s type:%s ",sinfo->source.c_str(),sinfo->type.c_str());
+    LOGE("Recycle.... ");
+    recycleStageInfo(sinfo);
+  }
   
   return acceptCount;
 }
@@ -432,7 +442,7 @@ int InspectionTargetManager::inspTarProcess()
       curProcessCount+=inspTars[i]->processInputPool();
     }
 
-    LOGI(">>>");
+    LOGI(">>>curProcessCount:%d",curProcessCount);
     if(curProcessCount==0)
     {
       break;

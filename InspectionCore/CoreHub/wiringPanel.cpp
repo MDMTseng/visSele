@@ -99,7 +99,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
     newStateInfo->StreamInfo=info;
     newStateInfo->source=info.camera->getConnectionData().id;
     newStateInfo->fi=finfo;
-    newStateInfo->trigger_tag="";
+    // newStateInfo->trigger_tag="";
     acvImage *img=new acvImage(finfo.width,finfo.height,3);
     newStateInfo->imgSets["cam"]=img;
     CameraLayer::status st = info.camera->ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
@@ -124,7 +124,7 @@ int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,
 
   newStateInfo->StreamInfo.camera=NULL;
   newStateInfo->StreamInfo.channel_id=channel_id;
-  newStateInfo->trigger_tag=trigger_tag;
+  newStateInfo->trigger_tags.push_back(trigger_tag);
 
   Mat mat=imread(path.c_str());
 
@@ -330,7 +330,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         if( minMatchingIdx!=-1 && minMatchingCost<1000)
         {
           LOGI("Get matching. idx:%d cost:%d  psss to next Q",minMatchingIdx,minMatchingCost);
-          targetStageInfo->trigger_tag=targetTriggerInfo.trigger_tag;
+          targetStageInfo->trigger_tags.push_back(targetTriggerInfo.trigger_tag);
           targetStageInfo->trigger_id=targetTriggerInfo.trigger_id;
 
           inspQueue.push_blocking(targetStageInfo);
@@ -380,7 +380,9 @@ void ImgPipeProcessThread(bool *terminationflag)
     {
       
       // LOGI(">>>CAM:%s",headImgPipe->camera_id.c_str());
-      LOGI(">>>triggerT:%s  id:%d",stInfo->trigger_tag.c_str(),stInfo->trigger_id);
+      LOGI("id:%d trigger:",stInfo->trigger_id);
+      for(auto tag:stInfo->trigger_tags)
+        LOGI("%s",tag.c_str());
       int acceptCount=inspTarMan.dispatch(stInfo);
       LOGI("acceptCount:%d",acceptCount);
       if(acceptCount)

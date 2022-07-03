@@ -110,7 +110,7 @@ class StageInfo{
   CameraLayer::frameInfo fi;
   
 
-  std::string trigger_tag;
+  std::vector<std::string> trigger_tags;
   int trigger_id;
   
   std::map<std::string,acvImage*> imgSets;
