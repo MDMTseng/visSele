@@ -27,13 +27,35 @@ void InspectionTarget::acceptStageInfo(StageInfo* sinfo)
 {
   sinfo->lock.lock();
   sinfo->inUseCount++;
-  input.push_back(sinfo);
   sinfo->lock.unlock();
+
+  {
+    const std::lock_guard<std::mutex> lock(this->input_stage_lock);
+    input_stage.push_back(sinfo);
+  }
 }
 
 bool InspectionTarget::feedStageInfo(StageInfo* sinfo)
 {
+  if(stageInfoFilter(sinfo))
+  {
+    acceptStageInfo(sinfo);
+    return true;
+  }
   return false;
+}
+
+void InspectionTarget::loadInputStageIntoPool()
+{
+  input_stage_lock.lock();
+
+  for(int i=0;i<input_stage.size();i++)
+  {
+    input_pool.push_back(input_stage[i]);
+  }
+  input_stage.clear();
+  input_stage_lock.unlock();
+
 }
 
 void InspectionTarget::setInspDef(cJSON* def)
@@ -41,20 +63,35 @@ void InspectionTarget::setInspDef(cJSON* def)
 
   if(this->def)cJSON_Delete(this->def);
   this->def=NULL;
-  this->depSrc.clear();
+  // this->depSrc.clear();
   if(def)
   {
     this->def= cJSON_Duplicate(def, cJSON_True);
-    for(int i=0;;i++)
-    {
-      std::string path("depSrc[");
-      path=path+to_string(i)+"]";
-      char* dsrc=JFetch_STRING(def,path.c_str());
-      if(dsrc==NULL)break;
-      this->depSrc.push_back(std::string(dsrc));
-    }
+    // for(int i=0;;i++)
+    // {
+    //   std::string path("depSrc[");
+    //   path=path+to_string(i)+"]";
+    //   char* dsrc=JFetch_STRING(def,path.c_str());
+    //   if(dsrc==NULL)break;
+    //   this->depSrc.push_back(std::string(dsrc));
+    // }
   }
 }
+
+// void InspectionTarget::inputPick(StageInfo* pool,int poolL,std::vector<StageInfo*> ret_pick)
+// {
+//   ret_pick.clear();
+//   for(int i=0;i<poolL;i++)
+//   {
+//     if(pool[i]!=NULL)
+//     {
+//       ret_pick.push_back(pool[i]);
+//       pool[i]=NULL;
+//       return;
+//     }
+//   }
+//   return;
+// }
 
 cJSON* InspectionTarget::genInfo()
 {
@@ -78,6 +115,7 @@ cJSON* InspectionTarget::genInfo()
 }
 
 
+
 void InspectionTarget::setAddtionalInfo(cJSON* info)
 {
 
@@ -87,6 +125,11 @@ void InspectionTarget::setAddtionalInfo(cJSON* info)
   {
     this->addtionalInfo= cJSON_Duplicate(info, cJSON_True);
   }
+}
+
+bool  InspectionTarget::isService()
+{
+  return asService;
 }
 // cJSON* InspectionTarget::getInspResult()
 // {
@@ -99,6 +142,8 @@ InspectionTarget::~InspectionTarget()
   setInspDef(NULL);
   setAddtionalInfo(NULL);
 }
+
+
 
 string CameraManager::cameraDiscovery(bool doDiscover)
 {
@@ -302,7 +347,7 @@ bool InspectionTargetManager::delInspTar(std::string id)
   inspTars.erase(inspTars.begin()+idx);
   return true;
 }
-bool InspectionTargetManager::clearInspTar()
+bool InspectionTargetManager::clearInspTar(bool rmService)
 {
 
   for(int i=0;i<inspTars.size();i++)
@@ -312,7 +357,18 @@ bool InspectionTargetManager::clearInspTar()
     printf("i:%d  =>%p   \n ",i,inspTars[i]);
     inspTars[i]=NULL;
   }
-  inspTars.clear();
+
+
+  int remainCount=0;
+  for(int i=0;i<inspTars.size();i++)
+  {
+    if( inspTars[i])
+    {
+      inspTars[remainCount]= inspTars[i];
+      remainCount++;
+    }
+  }
+  inspTars.resize(remainCount);
   return true;
 }
 
@@ -330,7 +386,7 @@ InspectionTarget* InspectionTargetManager::getInspTar(std::string id)
 
 
 
-int InspectionTargetManager::feedStageInfo(StageInfo* sinfo)
+int InspectionTargetManager::dispatch(StageInfo* sinfo)
 {
   if(sinfo==NULL)return -1;
   int acceptCount=0;
@@ -363,7 +419,7 @@ int InspectionTargetManager::recycleStageInfo(StageInfo* sinfo)
   return 0;
 }
 
-int InspectionTargetManager::processStageInfo()
+int InspectionTargetManager::inspTarProcess()
 {
   int totalProcessCount=0;
   while(1)
@@ -373,7 +429,7 @@ int InspectionTargetManager::processStageInfo()
     LOGI(">>>");
     for(int i=0;i<inspTars.size();i++)
     { 
-      curProcessCount+=inspTars[i]->processInput();
+      curProcessCount+=inspTars[i]->processInputPool();
     }
 
     LOGI(">>>");

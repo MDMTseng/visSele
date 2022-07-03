@@ -56,11 +56,11 @@ struct sttriggerInfo_mix{
 // TSQueue<sttriggerInfo_mix> triggerInfoQueue(10);
 
 
-TSVector<sttriggerInfo_mix> triggerInfoMatchingBuffer;
 
 
 
 TSQueue<sttriggerInfo_mix> triggerInfoMatchingQueue(10);
+TSVector<sttriggerInfo_mix> triggerInfoMatchingBuffer;
 
 
 
@@ -75,6 +75,7 @@ TSQueue<StageInfo *> inspQueue(10);
 class InspectionTargetManager_m:public InspectionTargetManager
 {
   vector<uint8_t> frameDataBuff;
+
 
   void CamStream_CallBack(CameraManager::StreamingInfo &info){
 
@@ -380,11 +381,11 @@ void ImgPipeProcessThread(bool *terminationflag)
       
       // LOGI(">>>CAM:%s",headImgPipe->camera_id.c_str());
       LOGI(">>>triggerT:%s  id:%d",stInfo->trigger_tag.c_str(),stInfo->trigger_id);
-      int acceptCount=inspTarMan.feedStageInfo(stInfo);
+      int acceptCount=inspTarMan.dispatch(stInfo);
       LOGI("acceptCount:%d",acceptCount);
       if(acceptCount)
       {
-        int processCount = inspTarMan.processStageInfo();
+        int processCount = inspTarMan.inspTarProcess();
         LOGI("processCount:%d",processCount);
       }
       else
@@ -1117,12 +1118,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           LOGI(">>>id:%s Add type:%s",id.c_str(),type.c_str());
           if(type=="ColorRegionLocating")
           {
-            inspTar = new InspectionTarget_s_ColorRegionDetection(id,defInfo,&inspTarMan);
+            inspTar = new InspectionTarget_ColorRegionDetection(id,defInfo,&inspTarMan);
           }
           else if(type=="ShapeLocating")
           {
             // inspTar=
-            //   new InspectionTarget_s_ColorRegionDetection(id,rule,&subInspList);
+            //   new InspectionTarget_ColorRegionDetection(id,rule,&subInspList);
           }
           else
           {

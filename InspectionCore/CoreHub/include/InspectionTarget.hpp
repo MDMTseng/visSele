@@ -117,10 +117,6 @@ class StageInfo{
   cJSON *jInfo;
 
 
-  
-  std::string pInfoType;
-  void* pInfo;
-
   std::mutex lock;
   int inUseCount;
 
@@ -147,13 +143,27 @@ class StageInfo{
       cJSON_Delete(jInfo);
       jInfo=NULL;
     }
+  }
+  
+};
 
-    if(pInfo)
+//custom Stage info
+class StageInfo_cusTest:public StageInfo{
+  char* charArr=NULL;
+  StageInfo_cusTest()
+  {
+    type="StageInfo_cusTest";
+  }
+  ~StageInfo_cusTest()
+  {
+    
+    if(charArr)
     {
-      delete pInfo;
-      pInfo=NULL;
+      delete charArr;
+      charArr=NULL;
     }
-
+    //this destructor will be called first,
+    //after this ~StageInfo will be called in C++ 
   }
   
 };
@@ -180,17 +190,18 @@ class InspectionTargetManager
   virtual void CamStream_CallBack(CameraManager::StreamingInfo &info)=0;
 
 
-  int feedStageInfo(StageInfo* sinfo);//return how many inspection target needs it
+  int dispatch(StageInfo* sinfo);//return how many inspection target needs it
   int recycleStageInfo(StageInfo* sinfo);//return 0 as destroy, other positive number means how many other inspTar still holds it 
 
-  int processStageInfo();
+  int inspTarProcess();
 
 
 
   int getInspTarIdx(std::string id);
 
   bool delInspTar(std::string id);
-  bool clearInspTar();
+  bool clearInspTar( bool rmService=false );
+ 
   
   bool addInspTar(InspectionTarget* inspTar,std::string id);
 
@@ -202,6 +213,8 @@ class InspectionTargetManager
 
 class InspectionTarget
 {
+  protected:
+  bool asService=false;
   public:
   std::string id;
   cJSON *def=NULL;
@@ -210,21 +223,72 @@ class InspectionTarget
   InspectionTarget(std::string id,InspectionTargetManager* belongMan);
   virtual ~InspectionTarget();
   virtual void setInspDef(cJSON* def);
+
   virtual void setAddtionalInfo(cJSON* info);
 
-  
-  std::vector<std::string> depSrc;
-  std::vector<StageInfo*> input;
-  virtual bool feedStageInfo(StageInfo* sinfo)=0;
-
-
-  virtual int processInput()=0;//returns input processed
   virtual cJSON* genInfo();
+  bool isService();
+
+  
+  std::mutex input_stage_lock;
+  std::vector<StageInfo*> input_stage;
+  std::vector<StageInfo*> input_pool;
+  
+  virtual bool feedStageInfo(StageInfo* sinfo);
+
+  virtual int processInputPool()=0;
   protected:
   
+  virtual bool stageInfoFilter(StageInfo* sinfo)=0;
+  // virtual std::vector<StageInfo*> inputPick(std::vector<StageInfo*> infoPool)=0;//returns input processed
   virtual void acceptStageInfo(StageInfo* sinfo);
+
+  void loadInputStageIntoPool();
 
 };
 
 
+
+/*
+  
+  =========DISPATCH for each inspTar=======
+  dispatch StageInfo "sinfo"
+    |
+    V
+  inspTar.feedStageInfo(sinfo)
+  {
+    if( inspTar.stageInfoFilter(sinfo))
+    {
+      inspTar.acceptStageInfo(sinfo){
+        input_stage.lock()
+        inspTar.input_stage.push(sinfo)
+        input_stage.unlock()
+      }
+    }
+  }
+  ================
+
+  =========Run section=======
+  input_stage.lock()
+  input=[...input,...input_stage ]
+  input_stage=[]
+  input_stage.unlock()
+
+  while( inputPack = inputPick(input) )
+  {
+    Do_Some_Work(inputPack)
+  }
+
+  input=removeUsedInfo(input)
+
+
+  ================
+
+
+
+
+
+
+
+*/
 

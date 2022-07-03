@@ -59,10 +59,10 @@ using namespace cv;
 
 
 
-class InspectionTarget_s_ColorRegionDetection :public InspectionTarget
+class InspectionTarget_ColorRegionDetection :public InspectionTarget
 {
 public:
-  InspectionTarget_s_ColorRegionDetection(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,belongMan)
+  InspectionTarget_ColorRegionDetection(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,belongMan)
   {
     setInspDef(def);
   }
@@ -92,45 +92,55 @@ public:
 
     return false;
   }
-
-
-  bool feedStageInfo(StageInfo* sinfo)
+  bool stageInfoFilter(StageInfo* sinfo)
   {
-    // string sinfo_camId= sinfo->StreamInfo.camera->getConnectionData().id;
-
-    if(matchTriggerTag( sinfo->trigger_tag,def))// || sinfo_camId!=JFetch_STRING_ex(def,"camera_id",""))
-    {
-      acceptStageInfo(sinfo);
-      return true;
-    }
-    return false;
+    return matchTriggerTag( sinfo->trigger_tag,def);
   }
 
-  int processInput()
+
+  int processInputPool()
   {
-    int pCount=0;
-    for(int i=0;i<input.size();i++)
-    {
-      StageInfo* stinfo=input[i];
-      singleProcess(stinfo);
-      pCount++;
-      input[i]=NULL;//mark the data is deleted
+    loadInputStageIntoPool();
 
-      belongMan->recycleStageInfo(stinfo);
-    }
-
-    int availableCount=0;//warp it up(remove NULL element)
-    for(int i=0;i<input.size();i++)
+    int poolSize=input_pool.size();
+    for(int i=0;i<poolSize;i++)
     {
-      if(input[i])
-      {
-        input[availableCount]=input[i];
-        availableCount++;
-      }
+      StageInfo * curInput=input_pool[i];
+      singleProcess(curInput);
+      input_pool[i]=NULL;
     }
-    input.resize(availableCount);
-    return pCount;
+    input_pool.clear();
+
+
+    return poolSize;
+
   }
+  // bool feedStageInfo(StageInfo* sinfo)
+  // {
+  //   // string sinfo_camId= sinfo->StreamInfo.camera->getConnectionData().id;
+
+  //   if(matchTriggerTag( sinfo->trigger_tag,def))// || sinfo_camId!=JFetch_STRING_ex(def,"camera_id",""))
+  //   {
+  //     acceptStageInfo(sinfo);
+  //     return true;
+  //   }
+  //   return false;
+  // }
+
+  // int process()
+  // {
+
+  //   int pCount=0;
+  //   StageInfo* fetchInfo;
+  //   while(inputQ.pop(fetchInfo))
+  //   {
+  //     pCount++;
+  //     singleProcess(fetchInfo);
+  //     belongMan->recycleStageInfo(fetchInfo);
+  //   }
+
+  //   return pCount;
+  // }
 
 
   void singleProcess(StageInfo* sinfo)
@@ -378,7 +388,7 @@ public:
 
   }
   
-  virtual ~InspectionTarget_s_ColorRegionDetection()
+  virtual ~InspectionTarget_ColorRegionDetection()
   {
   }
 
@@ -389,6 +399,108 @@ public:
 
 };
 
+
+
+bool matchJArrStr(string tarTag,cJSON* jarr)
+{
+  if(jarr==NULL)return false;
+  int asize=cJSON_GetArraySize(jarr);
+  for (int i = 0 ; i <asize ; i++)
+  {
+    cJSON * tag = cJSON_GetArrayItem(jarr, i);
+    if(tag->type==cJSON_String)
+    {
+      string str = string(tag->valuestring);
+      if(str==tarTag)
+      {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+bool matchTriggerTag(string tarTag,cJSON* def)
+{
+  cJSON* defTags=JFetch_ARRAY(def,"trigger_tag");
+  return  matchJArrStr(tarTag,defTags);
+}
+
+
+class InspectionTarget_S :public InspectionTarget
+{
+  public:
+
+  InspectionTarget_S(std::string id,InspectionTargetManager* belongMan):InspectionTarget(id,belongMan)
+  {
+  }
+
+};
+
+class InspectionTarget_S_ImageStreaming :public InspectionTarget_S
+{
+public:
+  InspectionTarget_S_ImageStreaming(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget_S(id,belongMan)
+  {
+    setInspDef(def);
+  }
+
+
+
+  bool feedStageInfo(StageInfo* sinfo)
+  {
+    // string sinfo_camId= sinfo->StreamInfo.camera->getConnectionData().id;
+
+    if(matchTriggerTag( sinfo->trigger_tag,def))// || sinfo_camId!=JFetch_STRING_ex(def,"camera_id",""))
+    {
+      acceptStageInfo(sinfo);
+      return true;
+    }
+    return false;
+  }
+
+  // int processInput()
+  // {
+  //   {
+  //     const std::lock_guard<std::mutex> lock(this->input_stage_lock);
+  //     for(int i=0;i<input_stage.size();i++)//load input_stage onto input
+  //     {
+  //       input.push_back(input_stage[i]);
+  //     }
+  //   }
+
+  //   int pCount=0;
+  //   for(int i=0;i<input.size();i++)
+  //   {
+  //     StageInfo* stinfo=input[i];
+  //     singleProcess(stinfo);
+  //     pCount++;
+  //     input[i]=NULL;//mark the data is deleted
+
+  //     belongMan->recycleStageInfo(stinfo);
+  //   }
+
+  //   int availableCount=0;//warp it up(remove NULL element)
+  //   for(int i=0;i<input.size();i++)
+  //   {
+  //     if(input[i])
+  //     {
+  //       input[availableCount]=input[i];
+  //       availableCount++;
+  //     }
+  //   }
+  //   input.resize(availableCount);
+  //   return pCount;
+  // }
+  
+
+  virtual void singleProcess(StageInfo* sinfo)
+  {
+    
+  }
+  // virtual ~InspectionTarget_S_ImageStreaming()
+  // {
+  // }
+};
 
 
 // class InspectionTarget_g :public InspectionTarget
@@ -562,13 +674,13 @@ public:
 //       if(type=="ColorRegionLocating")
 //       {
 //         InspectionTarget_s* subIT=
-//           new InspectionTarget_s_ColorRegionDetection(id,rule,&subInspList);
+//           new InspectionTarget_ColorRegionDetection(id,rule,&subInspList);
 //         subInspList.push_back(subIT);
 //       }
 //       else if(type=="ShapeLocating")
 //       {
 //         InspectionTarget_s* subIT=
-//           new InspectionTarget_s_ColorRegionDetection(id,rule,&subInspList);
+//           new InspectionTarget_ColorRegionDetection(id,rule,&subInspList);
 //         subInspList.push_back(subIT);
 //       }
 //       else
