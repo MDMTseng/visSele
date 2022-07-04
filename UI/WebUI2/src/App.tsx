@@ -289,7 +289,7 @@ function VIEWUI(){
       }
     }
 
-    let cameraIdCollect=InspTars_main.map(it=>it.camera_id);
+    let cameraIdCollect=InspTars_main.map(it=>it.camera_id).filter(id=>id!==undefined);
     for(let camId of cameraIdCollect)//Add empty camera info that's not in the cameras collection
     {
       let camInfoIdx= main.CameraInfo.findIndex((cinfo:type_CameraInfo)=>cinfo.id===camId)
