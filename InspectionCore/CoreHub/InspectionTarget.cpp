@@ -12,13 +12,15 @@ cJSON* CameraManager::cameraInfo2Json(CameraLayer::BasicCameraInfo &info)
   return cJSON_Parse(jsinstr.c_str());
 }
 
-InspectionTarget::InspectionTarget(std::string id,InspectionTargetManager* belongMan)
+InspectionTarget::InspectionTarget(std::string id,cJSON* def,InspectionTargetManager* belongMan)
 {
   this->inputPoolInsufficient=false;
   this->def=NULL;
   this->id=id;
   this->addtionalInfo=NULL;
   this->belongMan=belongMan;
+  
+  setInspDef(def);
 }
 
 
@@ -174,6 +176,19 @@ InspectionTarget::~InspectionTarget()
 {
   setInspDef(NULL);
   setAddtionalInfo(NULL);
+
+  for(int i=0;i<input_stage.size();i++)
+  {
+    reutrnStageInfo(input_stage[i]);
+  }
+  input_stage.clear();
+
+  for(int i=0;i<input_pool.size();i++)
+  {
+    reutrnStageInfo(input_pool[i]);
+  }
+  input_pool.clear();
+
 }
 
 

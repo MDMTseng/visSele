@@ -222,7 +222,7 @@ class InspectionTarget
   cJSON *def=NULL;
   cJSON *addtionalInfo=NULL;
   InspectionTargetManager* belongMan;
-  InspectionTarget(std::string id,InspectionTargetManager* belongMan);
+  InspectionTarget(std::string id,cJSON* def,InspectionTargetManager* belongMan);
   virtual ~InspectionTarget();
   virtual void setInspDef(cJSON* def);
 

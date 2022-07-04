@@ -85,14 +85,8 @@ bool matchTriggerTag(string tarTag,cJSON* def)
 class InspectionTarget_TEST_IT :public InspectionTarget
 {
   public:
-  InspectionTarget_TEST_IT(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,belongMan)
+  InspectionTarget_TEST_IT(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan)
   {
-    setInspDef(def);
-  }
-
-  virtual void setInspDef(cJSON* def)
-  {
-    InspectionTarget::setInspDef(def);
   }
 
   bool stageInfoFilter(StageInfo* sinfo)
@@ -138,14 +132,8 @@ class InspectionTarget_TEST_IT :public InspectionTarget
 class InspectionTarget_ColorRegionDetection :public InspectionTarget
 {
 public:
-  InspectionTarget_ColorRegionDetection(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,belongMan)
+  InspectionTarget_ColorRegionDetection(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan)
   {
-    setInspDef(def);
-  }
-
-  virtual void setInspDef(cJSON* def)
-  {
-    InspectionTarget::setInspDef(def);
   }
 
   bool stageInfoFilter(StageInfo* sinfo)
@@ -450,11 +438,20 @@ public:
 
       
     }
+    
+    acvImage *copyImg=new acvImage();
+    copyImg->ReSize(srcImg);
+
+    acvCloneImage(srcImg,copyImg,-1);
+    
+
     StageInfo *reportInfo=new StageInfo();
     reportInfo->source=this->id;
+    reportInfo->imgSets["img"]=copyImg;
     reportInfo->trigger_id=sinfo->trigger_id;
     reportInfo->trigger_tags.push_back("InfoStream2UI");
     reportInfo->trigger_tags.push_back("ToTestRule");
+    reportInfo->trigger_tags.push_back("ImTran");
     // reportInfo->fi=sinfo->fi;
     // reportInfo->StreamInfo=sinfo->StreamInfo;
     // reportInfo->trigger_tag=sinfo->trigger_tag;
@@ -475,81 +472,6 @@ public:
   //   return NULL;
   // }
 
-};
-
-
-
-class InspectionTarget_S :public InspectionTarget
-{
-  public:
-
-  InspectionTarget_S(std::string id,InspectionTargetManager* belongMan):InspectionTarget(id,belongMan)
-  {
-  }
-
-};
-
-class InspectionTarget_S_ImageStreaming :public InspectionTarget_S
-{
-public:
-  InspectionTarget_S_ImageStreaming(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget_S(id,belongMan)
-  {
-    setInspDef(def);
-  }
-
-
-  bool stageInfoFilter(StageInfo* sinfo)
-  {
-    for(auto tag : sinfo->trigger_tags )
-    {
-      if( matchTriggerTag(tag,def))
-        return true;
-    }
-    return false;
-  }
-
-  // int processInput()
-  // {
-  //   {
-  //     const std::lock_guard<std::mutex> lock(this->input_stage_lock);
-  //     for(int i=0;i<input_stage.size();i++)//load input_stage onto input
-  //     {
-  //       input.push_back(input_stage[i]);
-  //     }
-  //   }
-
-  //   int pCount=0;
-  //   for(int i=0;i<input.size();i++)
-  //   {
-  //     StageInfo* stinfo=input[i];
-  //     singleProcess(stinfo);
-  //     pCount++;
-  //     input[i]=NULL;//mark the data is deleted
-
-  //     reutrnStageInfo(stinfo);
-  //   }
-
-  //   int availableCount=0;//warp it up(remove NULL element)
-  //   for(int i=0;i<input.size();i++)
-  //   {
-  //     if(input[i])
-  //     {
-  //       input[availableCount]=input[i];
-  //       availableCount++;
-  //     }
-  //   }
-  //   input.resize(availableCount);
-  //   return pCount;
-  // }
-  
-
-  virtual void singleProcess(StageInfo* sinfo)
-  {
-    
-  }
-  // virtual ~InspectionTarget_S_ImageStreaming()
-  // {
-  // }
 };
 
 
