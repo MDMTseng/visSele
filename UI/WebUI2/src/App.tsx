@@ -600,36 +600,44 @@ function CameraSetupEditUI({camSetupInfo,fetchCoreAPI,onCameraSetupUpdate}:{ cam
 
     (async ()=>{
       let api = await fetchCoreAPI()
-      await api.CameraSetChannelID([camSetupInfo.id],51009,{
-        resolve:(pkts)=>{
-          // console.log(pkts);
-          let IM=pkts.find((p:any)=>p.type=="IM");
-          if(IM===undefined)return;
-          let CM=pkts.find((p:any)=>p.type=="CM");
-          if(CM===undefined)return;
-          // console.log("++++++++\n",IM,CM);
-          let IMCM={
-            image_info:IM.image_info,
-            camera_id:CM.data.camera_id,
-            trigger_id:CM.data.trigger_id,
-            trigger_tag:CM.data.trigger_tag,
-          } as type_IMCM
+      // await api.InspTargetExchange(camSetupInfo.id,{
+      //   id:"",
+      //   data:{
+          
 
-          _this.imgCanvas.width = IMCM.image_info.width;
-          _this.imgCanvas.height = IMCM.image_info.height;
+      //   }
+      // });
 
-          let ctx2nd = _this.imgCanvas.getContext('2d');
-          ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+      // await api.CameraSetChannelID([camSetupInfo.id],51009,{
+      //   resolve:(pkts)=>{
+      //     // console.log(pkts);
+      //     let IM=pkts.find((p:any)=>p.type=="IM");
+      //     if(IM===undefined)return;
+      //     let CM=pkts.find((p:any)=>p.type=="CM");
+      //     if(CM===undefined)return;
+      //     // console.log("++++++++\n",IM,CM);
+      //     let IMCM={
+      //       image_info:IM.image_info,
+      //       camera_id:CM.data.camera_id,
+      //       trigger_id:CM.data.trigger_id,
+      //       trigger_tag:CM.data.trigger_tag,
+      //     } as type_IMCM
+
+      //     _this.imgCanvas.width = IMCM.image_info.width;
+      //     _this.imgCanvas.height = IMCM.image_info.height;
+
+      //     let ctx2nd = _this.imgCanvas.getContext('2d');
+      //     ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
 
 
-          setLocal_IMCM(IMCM)
-          // console.log(IMCM)
+      //     setLocal_IMCM(IMCM)
+      //     // console.log(IMCM)
 
-        },
-        reject:(pkts)=>{
+      //   },
+      //   reject:(pkts)=>{
 
-        }
-      })
+      //   }
+      // })
       await api.CameraSetup(camSetupInfo,0);
     })()
 
@@ -893,7 +901,7 @@ function VIEWUI(){
       let id=inspTar.id;
 
       // console.log(id,inspTar)
-      await api.InspTargetCreate(inspTar,12000);
+      await api.InspTargetCreate(inspTar);
     }
 
 

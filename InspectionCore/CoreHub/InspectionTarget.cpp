@@ -151,7 +151,7 @@ cJSON* InspectionTarget::genInfo()
 
 
 
-void InspectionTarget::setAddtionalInfo(cJSON* info)
+cJSON* InspectionTarget::exchangeInfo(cJSON* info)
 {
 
   if(this->addtionalInfo)cJSON_Delete(this->addtionalInfo);
@@ -160,6 +160,8 @@ void InspectionTarget::setAddtionalInfo(cJSON* info)
   {
     this->addtionalInfo= cJSON_Duplicate(info, cJSON_True);
   }
+
+  return NULL;
 }
 
 bool  InspectionTarget::isService()
@@ -175,7 +177,7 @@ bool  InspectionTarget::isService()
 InspectionTarget::~InspectionTarget()
 {
   setInspDef(NULL);
-  setAddtionalInfo(NULL);
+  exchangeInfo(NULL);
 
   for(int i=0;i<input_stage.size();i++)
   {

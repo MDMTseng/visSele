@@ -226,7 +226,7 @@ class InspectionTarget
   virtual ~InspectionTarget();
   virtual void setInspDef(cJSON* def);
 
-  virtual void setAddtionalInfo(cJSON* info);
+  virtual cJSON* exchangeInfo(cJSON* info);
 
   virtual cJSON* genInfo();
   bool isService();

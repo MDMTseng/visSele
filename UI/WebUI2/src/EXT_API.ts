@@ -614,13 +614,18 @@ export class BPG_WS
 
 
   
-  async InspTargetCreate(defInfo:any,_PGID_:number)
+  async InspTargetCreate(defInfo:any)
   {
-    await this.send_P("IT",0,{type:"create",id:defInfo.id,defInfo,_PGID_:_PGID_,_PGINFO_:{keep:true}})
+    await this.send_P("IT",0,{type:"create",id:defInfo.id,defInfo})
   }
-  async InspTargetUpdate(defInfo:any,_PGID_:number)
+  async InspTargetUpdate(defInfo:any)
   {
-    await this.send_P("IT",0,{type:"update",id:defInfo.id,defInfo,_PGID_:_PGID_,_PGINFO_:{keep:true}})
+    await this.send_P("IT",0,{type:"update",id:defInfo.id,defInfo})
+  }
+  async InspTargetExchange(inspTarId:string,data:any,_PGID_:number|undefined=undefined)
+  {
+    
+    await this.send_P("IT",0,{type:"excahnge",id:inspTarId,data})
   }
 
 

@@ -696,6 +696,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);
     char err_str[500] = "\0";
     bool session_ACK = false;
+    bool noInstantACK = false;
     char tmp[200];    //For string construct json reply
   do
   {
@@ -1327,8 +1328,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         
         char *_id = JFetch_STRING(json, "id");
         if(_id==NULL)break;
-        std::string id=std::string(_id);
-        InspectionTarget *insptar= inspTarMan.getInspTar(id);
+        InspectionTarget *insptar= inspTarMan.getInspTar(std::string(_id));
+        if(insptar==NULL)break;
+
+        cJSON* reply=insptar->exchangeInfo(JFetch_OBJECT(json,"data"));
+        if(reply!=NULL)
+        {
+          fromUpperLayer_DATA("IT",dat->pgID,reply);
+          cJSON_Delete(reply);
+        }
+
+        // if(JFetch_NUMBER(json,"channel_id")!=NULL)//if there is channel_id in json, then exchangeInfo has to deal with reply itself
+        // {
+        //   noInstantACK=true;
+        // }
+
+        session_ACK=true;
 
       }
     }while(0);}
@@ -1628,9 +1643,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
 
     }
-    sprintf(tmp, "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
-            dat->tl[0], dat->tl[1], (session_ACK) ? "true" : "false", err_str);
-    fromUpperLayer_DATA("SS",dat->pgID,tmp);
+    
+    
+    if(noInstantACK==false)
+    {
+      sprintf(tmp, "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
+              dat->tl[0], dat->tl[1], (session_ACK) ? "true" : "false", err_str);
+      fromUpperLayer_DATA("SS",dat->pgID,tmp);
+    }
+    
+    
+    
+    
     cJSON_Delete(json);
   }
   while(0);
