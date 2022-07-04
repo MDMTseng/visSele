@@ -3,6 +3,7 @@
 
 #include "logctrl.h"
 #include "common_lib.h"
+#include <future>
 using namespace std;
 
 cJSON* CameraManager::cameraInfo2Json(CameraLayer::BasicCameraInfo &info)
@@ -13,7 +14,7 @@ cJSON* CameraManager::cameraInfo2Json(CameraLayer::BasicCameraInfo &info)
 
 InspectionTarget::InspectionTarget(std::string id,InspectionTargetManager* belongMan)
 {
-  
+  this->inputPoolInsufficient=false;
   this->def=NULL;
   this->id=id;
   this->addtionalInfo=NULL;
@@ -31,9 +32,23 @@ void InspectionTarget::acceptStageInfo(StageInfo* sinfo)
 
   {
     const std::lock_guard<std::mutex> lock(this->input_stage_lock);
+    LOGI("accept StageInfo: src:%s",sinfo->source.c_str());
+    inputPoolInsufficient=false;
     input_stage.push_back(sinfo);
   }
 }
+
+
+
+int InspectionTarget::reutrnStageInfo(StageInfo* sinfo)
+{
+  {
+    const std::lock_guard<std::mutex> lock( sinfo->lock);
+    if(sinfo->inUseCount>0)sinfo->inUseCount--; 
+  }
+  belongMan->recycleStageInfo(sinfo);
+}
+
 
 bool InspectionTarget::feedStageInfo(StageInfo* sinfo)
 {
@@ -45,18 +60,36 @@ bool InspectionTarget::feedStageInfo(StageInfo* sinfo)
   return false;
 }
 
-void InspectionTarget::loadInputStageIntoPool()
-{
-  input_stage_lock.lock();
 
-  for(int i=0;i<input_stage.size();i++)
+
+
+int InspectionTarget::processInputStagePool()
+{
+  if(input_stage.size())
   {
-    input_pool.push_back(input_stage[i]);
+    input_stage_lock.lock();
+
+    for(int i=0;i<input_stage.size();i++)
+    {
+      input_pool.push_back(input_stage[i]);
+    }
+    input_stage.clear();
+    input_stage_lock.unlock();
+    inputPoolInsufficient=false;
   }
-  input_stage.clear();
-  input_stage_lock.unlock();
+  else
+  {
+    if(inputPoolInsufficient)return 0;
+  }
+
+  int processCount = processInputPool();
+  
+  inputPoolInsufficient=(processCount==0);
+
+  return processCount;
 
 }
+
 
 void InspectionTarget::setInspDef(cJSON* def)
 {
@@ -407,6 +440,12 @@ int InspectionTargetManager::dispatch(StageInfo* sinfo)
     LOGE("Recycle.... ");
     recycleStageInfo(sinfo);
   }
+  else
+  {
+    SInfoInSysCount++;
+    
+    LOGE("++>>>>SInfoInSysCount:%d ",SInfoInSysCount);
+  }
   
   return acceptCount;
 }
@@ -418,14 +457,14 @@ int InspectionTargetManager::recycleStageInfo(StageInfo* sinfo)
 {
   if(sinfo==NULL)return -1;
 
+  // LOGE("recycle: src:%s  inUseCount:%d",sinfo->source.c_str(),sinfo->inUseCount);
+  if(sinfo->inUseCount!=0)
   {
-    const std::lock_guard<std::mutex> lock( sinfo->lock);
-    if(sinfo->inUseCount!=0)
-    {
-      return sinfo->inUseCount;
-    }
+    return sinfo->inUseCount;
   }
   delete sinfo;
+  SInfoInSysCount--;
+  LOGE("-->>>>SInfoInSysCount:%d ",SInfoInSysCount);
   return 0;
 }
 
@@ -434,13 +473,14 @@ int InspectionTargetManager::inspTarProcess()
   int totalProcessCount=0;
   while(1)
   {
-    int curProcessCount=0;
 
-    LOGI(">>>");
-    for(int i=0;i<inspTars.size();i++)
-    { 
-      curProcessCount+=inspTars[i]->processInputPool();
-    }
+    std::vector<std::future<int>> fut_vec;
+    for (int i = 0; i < inspTars.size(); i++)
+      fut_vec.push_back(inspTars[i]->futureInputStagePool());
+
+    int curProcessCount=0;
+    for (int i = 0; i < fut_vec.size(); ++i)
+      curProcessCount += fut_vec[i].get();
 
     LOGI(">>>curProcessCount:%d",curProcessCount);
     if(curProcessCount==0)

@@ -7,6 +7,7 @@
 #include "cJSON.h"
 #include "acvImage.hpp"
 #include "TSQueue.hpp"
+#include <future>
 
 
 
@@ -174,7 +175,7 @@ class InspectionTargetManager
   public:
 
 
-
+  int SInfoInSysCount=0;
 
   CameraManager camman;
 
@@ -217,6 +218,7 @@ class InspectionTarget
   bool asService=false;
   public:
   std::string id;
+  bool inputPoolInsufficient;
   cJSON *def=NULL;
   cJSON *addtionalInfo=NULL;
   InspectionTargetManager* belongMan;
@@ -236,15 +238,17 @@ class InspectionTarget
   
   virtual bool feedStageInfo(StageInfo* sinfo);
 
-  virtual int processInputPool()=0;
+
+  virtual int processInputStagePool();  
+  virtual std::future<int> futureInputStagePool()=0;
   protected:
   
   virtual bool stageInfoFilter(StageInfo* sinfo)=0;
   // virtual std::vector<StageInfo*> inputPick(std::vector<StageInfo*> infoPool)=0;//returns input processed
   virtual void acceptStageInfo(StageInfo* sinfo);
+  int reutrnStageInfo(StageInfo* sinfo);
 
-  void loadInputStageIntoPool();
-
+  virtual int processInputPool()=0; 
 };
 
 

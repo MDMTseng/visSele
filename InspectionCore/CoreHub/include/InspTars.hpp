@@ -82,7 +82,58 @@ bool matchTriggerTag(string tarTag,cJSON* def)
   return  matchJArrStr(tarTag,defTags);
 }
 
+class InspectionTarget_TEST_IT :public InspectionTarget
+{
+  public:
+  InspectionTarget_TEST_IT(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,belongMan)
+  {
+    setInspDef(def);
+  }
 
+  virtual void setInspDef(cJSON* def)
+  {
+    InspectionTarget::setInspDef(def);
+  }
+
+  bool stageInfoFilter(StageInfo* sinfo)
+  {
+    for(auto tag : sinfo->trigger_tags )
+    {
+      if( matchTriggerTag(tag,def))
+        return true;
+    }
+    return false;
+  }
+
+  std::future<int> futureInputStagePool()
+  {
+    return std::async(launch::async,&InspectionTarget_TEST_IT::processInputStagePool,this);
+  }
+
+  int processInputPool()
+  {
+    int poolSize=input_pool.size();
+    for(int i=0;i<poolSize;i++)
+    {
+      StageInfo * curInput=input_pool[i];
+      singleProcess(curInput);
+
+      input_pool[i]=NULL;
+      reutrnStageInfo(curInput);//remember to recycle the StageInfo
+    }
+    input_pool.clear();
+
+    return poolSize;//run all
+
+  }
+
+
+  
+  void singleProcess(StageInfo* sinfo)
+  {
+    LOGI("InspectionTarget_TEST_IT Got info from:%s ......",sinfo->source.c_str());
+  }
+};
 
 class InspectionTarget_ColorRegionDetection :public InspectionTarget
 {
@@ -107,11 +158,13 @@ public:
     return false;
   }
 
+  std::future<int> futureInputStagePool()
+  {
+    return std::async(launch::async,&InspectionTarget_ColorRegionDetection::processInputStagePool,this);
+  }
 
   int processInputPool()
   {
-    loadInputStageIntoPool();
-
     int poolSize=input_pool.size();
     for(int i=0;i<poolSize;i++)
     {
@@ -119,7 +172,7 @@ public:
       singleProcess(curInput);
 
       input_pool[i]=NULL;
-      belongMan->recycleStageInfo(curInput);//remember to recycle the StageInfo
+      reutrnStageInfo(curInput);//remember to recycle the StageInfo
     }
     input_pool.clear();
 
@@ -148,7 +201,7 @@ public:
   //   {
   //     pCount++;
   //     singleProcess(fetchInfo);
-  //     belongMan->recycleStageInfo(fetchInfo);
+  //     reutrnStageInfo(fetchInfo);
   //   }
 
   //   return pCount;
@@ -401,7 +454,7 @@ public:
     reportInfo->source=this->id;
     reportInfo->trigger_id=sinfo->trigger_id;
     reportInfo->trigger_tags.push_back("InfoStream2UI");
-    // reportInfo->trigger_tags.push_back("fine tune");
+    reportInfo->trigger_tags.push_back("ToTestRule");
     // reportInfo->fi=sinfo->fi;
     // reportInfo->StreamInfo=sinfo->StreamInfo;
     // reportInfo->trigger_tag=sinfo->trigger_tag;
@@ -411,7 +464,6 @@ public:
     reportInfo->jInfo=rep_regionInfo;
 
     belongMan->dispatch(reportInfo);
-
   }
   
   virtual ~InspectionTarget_ColorRegionDetection()
@@ -474,7 +526,7 @@ public:
   //     pCount++;
   //     input[i]=NULL;//mark the data is deleted
 
-  //     belongMan->recycleStageInfo(stinfo);
+  //     reutrnStageInfo(stinfo);
   //   }
 
   //   int availableCount=0;//warp it up(remove NULL element)

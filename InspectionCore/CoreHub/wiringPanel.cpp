@@ -185,7 +185,10 @@ bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
     {
       // bpg_pi.resPool.retResrc(triggerInfoMatchingBuffer[i].pipeInfo);
 
-      inspTarMan.recycleStageInfo(triggerInfoMatchingBuffer[i].stInfo);
+
+      //since triggerInfoMatchingBuffer[i].stInfo is not yet dispatched, it shouldn't use recycle to delete, so deal(DELETE) it here 
+      // inspTarMan.recycleStageInfo(triggerInfoMatchingBuffer[i].stInfo);
+      delete triggerInfoMatchingBuffer[i].stInfo;
       triggerInfoMatchingBuffer[i].stInfo=NULL;
     }
   }
@@ -1122,10 +1125,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             inspTar = new InspectionTarget_ColorRegionDetection(id,defInfo,&inspTarMan);
           }
-          else if(type=="ShapeLocating")
+          else if(type=="TEST_IT")
           {
-            // inspTar=
-            //   new InspectionTarget_ColorRegionDetection(id,rule,&subInspList);
+            inspTar = new InspectionTarget_TEST_IT(id,defInfo,&inspTarMan);
           }
           else
           {
