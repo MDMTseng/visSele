@@ -1,0 +1,65 @@
+{
+  "type": "xprj",
+  "ver": "0.0.0",
+  "Peripherals": {
+    "type": "DDD",
+    "connection_info": {
+      "uart_name": "COM5",
+      "baudrate": 115200
+    }
+  },
+  "CameraInfo": [
+    {
+      "driver_name": "Aravis",
+      "id": "Hikrobot-00F71598890",
+      "model": "00F71598890",
+      "name": "USB3",
+      "serial_nbr": "Hikrobot",
+      "vendor": "MV-CA050-11UC",
+      "analog_gain": 18,
+      "exposure": 3000,
+      "RGain": 1655,
+      "GGain": 1023,
+      "BGain": 1639,
+      "gamma": 1,
+      "frame_rate": 10,
+      "available": false
+    },
+    {
+      "driver_name": "Aravis",
+      "name": "USB3",
+      "id": "Hikrobot-00F92938639",
+      "vendor": "MV-CA050-11UC",
+      "model": "00F92938639",
+      "serial_nbr": "Hikrobot",
+      "available": true,
+      "exposure": 16666,
+      "frame_rate": 7,
+      "analog_gain": 4,
+      "gamma": 1,
+      "mirrorY": false,
+      "mirrorX": false,
+      "black_level": 0
+    },
+    {
+      "driver_name": "BMP_carousel",
+      "name": "BMP_carousel_0",
+      "id": "BMP_carousel_0",
+      "vendor": "BMP_carousel_0",
+      "model": "BMP_carousel_0",
+      "serial_nbr": "CameraLayer_BMP_carousel",
+      "available": true
+    }
+  ],
+  "InspTars": [
+    {
+      "id": "rule1"
+    },
+    {
+      "id": "testRule"
+    },
+    {
+      "id": "ImTran"
+    }
+  ]
+}

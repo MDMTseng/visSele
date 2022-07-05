@@ -1,0 +1,8 @@
+{
+  "id": "ImTran",
+  "type": "ImageDataTransfer",
+  "trigger_tags": [
+    "Stream",
+    "ImTran"
+  ]
+}

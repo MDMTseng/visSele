@@ -1,0 +1,8 @@
+{
+  "id": "testRule",
+  "type": "TEST_IT",
+  "trigger_tags": [
+    "ToTestRule",
+    "Stream"
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "id": "rule1",
+  "type": "ColorRegionLocating",
+  "sampleImageFolder": "data/TEST_DEF/rule1_Locating1",
+  "camera_id": "Hikrobot-00F71598890",
+  "trigger_tags": [
+    "Locating1",
+    "Stream"
+  ],
+  "transfer_setting": {
+    "wtags": [
+      "ImTranse"
+    ]
+  },
+  "regionInfo": [
+    {
+      "region": [
+        1602,
+        815,
+        245,
+        430
+      ],
+      "colorThres": 39,
+      "hough_circle": {
+        "dp": 1,
+        "minDist": 5,
+        "param1": 100,
+        "param2": 30,
+        "minRadius": 5,
+        "maxRadius": 15
+      },
+      "hsv": {
+        "rangeh": {
+          "h": 180,
+          "s": 255,
+          "v": 146
+        },
+        "rangel": {
+          "h": 0,
+          "s": 0,
+          "v": 0
+        }
+      },
+      "resultOverlayAlpha": 0.6
+    },
+    {
+      "region": [
+        1321,
+        709,
+        265,
+        628
+      ],
+      "colorThres": 85,
+      "hough_circle": {
+        "dp": 1,
+        "minDist": 5,
+        "param1": 100,
+        "param2": 30,
+        "minRadius": 5,
+        "maxRadius": 15
+      },
+      "hsv": {
+        "rangeh": {
+          "h": 180,
+          "s": 249,
+          "v": 130
+        },
+        "rangel": {
+          "h": 0,
+          "s": 0,
+          "v": 0
+        }
+      },
+      "resultOverlayAlpha": 0.4
+    },
+    {
+      "region": [
+        1089,
+        491,
+        230,
+        1002
+      ],
+      "colorThres": 16,
+      "hough_circle": {
+        "dp": 1,
+        "minDist": 5,
+        "param1": 100,
+        "param2": 30,
+        "minRadius": 5,
+        "maxRadius": 15
+      },
+      "hsv": {
+        "rangeh": {
+          "h": 180,
+          "s": 255,
+          "v": 66
+        },
+        "rangel": {
+          "h": 0,
+          "s": 0,
+          "v": 0
+        }
+      },
+      "resultOverlayAlpha": 0.5
+    }
+  ]
+}

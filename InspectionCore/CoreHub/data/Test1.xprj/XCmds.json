@@ -1,0 +1,74 @@
+[
+  {
+    "id": "LIB_INC",
+    "cmds": [
+      "$async\nlet ds= await\nREADFILE(\"data/ACMD_LIB.js\")\n\nv.lib=eval(ds)\nv.ptx={x:0,y:0}\nv.renderHook_set[\"TEST\"]=\n(ctrl_or_draw,g,canvas_obj,rule)=>{\n\nif(ctrl_or_draw==true)return;\nlet ctx = g.ctx;\nif(rule.id==\"rule1\"){\ncanvas_obj.rUtil.drawCross(ctx, v.ptx, 15);\n}\n\nif(rule.id==\"rule_X\"){\ncanvas_obj.rUtil.drawCross(ctx, v.ptx, 25);\n}\n\n\n//console.log(rule)\n}",
+      "$async\nSET_DISPLAY_ID_LIST(\n[\"rule_X\"])\nfor(let i=0;i<10;i++)\n{\n\nNOT_ABORT();\nawait delay(1000);\n\nv.ptx={x:i*10,y:0}\nprogressUpdate(\">>\"+i)\n}\n\nSET_DISPLAY_ID_LIST(undefined)\ndelete v.renderHook_set[\"TEST\"]\nddd\nfor(let i=0;i<10;i++)\n{\nNOT_ABORT();\n\nawait v.lib.delay(500);\nawait v.lib.LocaShot_prep(\n\"R11LOC\",\n\"TTag_2\",\n\"BMP_carousel_1\",\nfalse,\n\"data/TEST_DEF/rule1_KLKS0/def_temp_img copy.jpg\")\n\n\nawait v.lib.LocaShot_prep(\n\"R11LOC2\",\n\"Locating1\",\n\"BMP_carousel_0\",\nfalse,\n\"data/TEST_DEF/rule1_KLKS0/def_temp_img copy.jpg\")\n\n\n\nv.ptx={x:i*10,y:0}\nprogressUpdate(\">>\"+i)\n\n\nawait v.lib.LocaShot_wait(\n\"R11LOC2\")\n\n\nawait v.lib.LocaShot_wait(\n\"R11LOC\")\n}\n\n\n"
+    ]
+  },
+  {
+    "id": "歸零",
+    "cmds": [
+      "$async\nlet ds= await\nREADFILE(\"data/ACMD_LIB.js\")\n\nv.lib=eval(ds)",
+      "$async\n\n//await G(\"G01 Y00 F200\")\n//await v.lib.delay(2000)\nawait v.lib.SYS_ZERO()\n"
+    ]
+  },
+  {
+    "id": "校正",
+    "cmds": [
+      "$async\nlet ds= await\nREADFILE(\"data/ACMD_LIB.js\")\n\nv.lib=eval(ds)\n\n\nSET_DISPLAY_ID_LIST(\n[\"rule1\"])\nprogressUpdate(\"歸零\")\n\nawait G(`G01 F200`)\n\n\nlet  Y_areaTargets=[1500,1300,1100]\n\nlet Y_aFactor=0.7\n\nlet R11_areaTargets=Y_areaTargets\n\nlet R11_aFactor=0.7\n\n\nv.SYSINFO=await v.lib.CalibSeq(\nY_areaTargets,\nY_aFactor,\nR11_areaTargets,\nR11_aFactor,1\n)\n\n\nprogressUpdate(\"歸零OK\")\nawait delay(2000)\nSET_DISPLAY_ID_LIST(undefined)\n",
+      ""
+    ]
+  },
+  {
+    "id": "RUN",
+    "cmds": [
+      "$async\nlet ds= await\nREADFILE(\"data/ACMD_LIB.js\")\n\nv.lib=eval(ds)\n//v.lib._HACK_SET_SYS_INFO();\n\nawait G(`M42 P${25} T0`)\nawait G(`M42 P${26} T0`)\nawait G(`M42 P${25} S1`)\nawait G(`M42 P${26} S1`)\n\nawait G(`G01 Z0`)\n\n",
+      "$async\n\nif(v.runidx===undefined)\n{\nv.runidx=0;\n}\nv.runidx%=4;\n\n\nlet info = \nawait waitUserSelects(\"\",\n[{\ntext:\"INIT_Sec\",\nopts:[0,1,2,3],\ndefault:v.runidx\n},{\ntext:\"DEBUG\",\nopts:[0,1],\ndefault:1\n},\n])\nv.runidx=info[0]\n\nlet debugMode=(info[1]==1);\n\nfor(let i=0;;i++){\nlet sTime=Date.now();\nNOT_ABORT();\nlet pii=v.runidx%4;\nv.runidx++;\nawait v.lib.MylarWorkCycle(pii,\ndebugMode)\n\nlet eTime=Date.now();\n\nprogressUpdate(\"time:\"+(eTime-sTime))\n}\n"
+    ]
+  },
+  {
+    "id": "T相機照相位置",
+    "cmds": [
+      "$async\nlet ds= await\nREADFILE(\"data/ACMD_LIB.js\")\n\nv.lib=eval(ds)",
+      "$async\nawait G(`G01 Z1_0 F200`)\nconsole.log(v.SYSINFO)\nawait G(`G01 Y${v.lib.Y_Camera-1} F200`)\n\nawait G(`G01 Y${v.lib.Y_Camera} Z1_${v.lib.Z_Camera} R11_30`)\n\nawait waitUserCheck()\n\nawait G(`G01 R11_0 Z1_${v.lib.Z_Camera+17}  `)\nawait waitUserCheck()\nawait G(`G01 R11_-30`)\nawait waitUserCheck()\n\n\n\n\nawait G(`G01 Y${v.lib.Y_Camera} Z1_${v.lib.Z_Camera+17}  F200`)"
+    ]
+  },
+  {
+    "id": "T基礎體操",
+    "cmds": [
+      "$async",
+      "$async\n\nawait G(`G01 Y0 Z1_0 R11_0 F100`)\nawait G(`M42 P${25} T0`)\n\nawait G(\"G04 P1000\")\n\n\nawait G(`G01 Y40`)\n\nawait G(`G01 Y30`)\n//await G(`M42 P${25} T0`)\n\n\nawait G(`G01 Y0`)\n\nawait G(`G01 R11_-90`)\nawait G(`G01 R11_0`)\n\n\nawait G(`G01 Z1_-90`)\nawait G(`G01 Z1_0`)\n\n\nawait G(\"G04 P3000\")\nawait G(`M42 P${26} T1`)\n\nawait G(\"G04 P10\")\nawait G(`M42 P${25} T0`)\n\nawait G(\"G04 P100\")\n\nawait G(`M42 P${26} T0`)\n\n"
+    ]
+  },
+  {
+    "id": "T麥拉台來回",
+    "cmds": [
+      "$async\n\nlet Y=373-5.5\nlet Z=-37\nlet ACC=\"ACC100 DEA200\"\nlet Delay=1000\nawait G(`G01 R11_0 F280`)\n\nawait G(`M42 P${25} T0`)\nawait G(`M42 P${26} T0`)\nawait G(`M42 P${25} S1`)\nawait G(`M42 P${26} S1`)\n\nlet curPos=0\nfor(let i=0;;)\n{\n\n\nlet info = \nawait waitUserSelects(\"\",\n[{\ntext:\"++\",\nopts:[0,1,2,3,4,5],\ndefault:curPos\n},\n{\ntext:\"Suck\",\nopts:[0,1],\ndefault:0\n},{\ntext:\"Z\",\nopts:[Z-5,Z-1,Z,Z+1,Z+5],\ndefault:Z\n},\n])\ncurPos=info[0]\ni=curPos\nZ=info[2]\nawait G(`G01 Z1_0  ACC200 DEA200`)\n\n\nawait G(`G01 Y${Y+5.5*(i%6)} Z1_0   ${ACC}`)\n\nawait G(`G01 Z1_${Z}  ${ACC}`)\n\nawait G(`M42 P${25} T${info[1]}`)\n\n\nawait G(`G04 P${Delay}`)\n\nawait G(`G01 Z1_0  ${ACC}`)\n\n\nconsole.log(info);\n\n}\n"
+    ]
+  },
+  {
+    "id": "解除吸氣",
+    "cmds": [
+      "$async\n\nawait G(`G01 Z1_${0}`)\nawait G(`M42 P${25} T0`)\nawait G(`M42 P${26} T0`)"
+    ]
+  },
+  {
+    "id": "NEW_ACT_CMD",
+    "cmds": [
+      "$async\nv.HACK_Offset=undefined"
+    ]
+  },
+  {
+    "id": "NEW_ACT_CMD",
+    "cmds": [
+      "$async \n\n{\nawait G(`M42 P${25} T1`)\nawait G(`M42 P${26} T0`)\n\n\nawait waitUserCheck(\"\",\"\")\n\nawait G(`M42 P${25} T0`)\nawait G(`M42 P${26} T1`)\n\nawait waitUserCheck(\"\",\"\")\n\n\nawait G(`M42 P${25} T0`)\nawait G(`M42 P${26} T0`)\n\n\n}"
+    ]
+  },
+  {
+    "id": "NEW_ACT_CMD",
+    "cmds": [
+      "$async\n\nawait G(`G01 R11_-0 Z1_90`)\nawait G(`G01 Z1_0`)\nawait G(`G01 Z1_-20 DEA1 F100`)\n\nawait G(`G01 Z1_-90   F300`)\n\nawait G(`G01 Z1_-10`)\nawait G(`G01 Z1_0 DEA1`)\nawait G(`G01 Z1_0`)"
+    ]
+  }
+]
