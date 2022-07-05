@@ -399,15 +399,14 @@ bool InspectionTargetManager::delInspTar(std::string id)
 }
 bool InspectionTargetManager::clearInspTar(bool rmService)
 {
-
+  
   for(int i=0;i<inspTars.size();i++)
   {
-    printf("i:%d  =>%p   \n ",i,inspTars[i]);
+    printf("i:%d  =>%p :%s   \n ",i,inspTars[i],inspTars[i]->id.c_str());
     delete inspTars[i];
-    printf("i:%d  =>%p   \n ",i,inspTars[i]);
+    printf("-:%d  =>%p   \n ",i,inspTars[i]);
     inspTars[i]=NULL;
   }
-
 
   int remainCount=0;
   for(int i=0;i<inspTars.size();i++)

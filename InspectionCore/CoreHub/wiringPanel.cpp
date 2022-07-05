@@ -99,9 +99,19 @@ class InspectionTargetManager_m:public InspectionTargetManager
     newStateInfo->StreamInfo=info;
     newStateInfo->source=info.camera->getConnectionData().id;
     newStateInfo->fi=finfo;
+    if(info.channel_id)
+    {
+      newStateInfo->jInfo=cJSON_CreateObject();
+      cJSON* streaming_info=cJSON_CreateObject();
+
+
+      cJSON_AddItemToObject(newStateInfo->jInfo,"streaming_info",streaming_info);
+      cJSON_AddNumberToObject(streaming_info, "channel_id",info.channel_id);
+    }
+    
     // newStateInfo->trigger_tag="";
     acvImage *img=new acvImage(finfo.width,finfo.height,3);
-    newStateInfo->imgSets["cam"]=img;
+    newStateInfo->imgSets["img"]=img;
     CameraLayer::status st = info.camera->ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
     // LOGI(">>>CAM:%s  WH:%d %d",info->camera_id.c_str(),finfo.width,finfo.height);
 
@@ -138,7 +148,7 @@ int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,
   newStateInfo->fi=finfo;
 
   acvImage *img=new acvImage(W,H,3);
-  newStateInfo->imgSets["cam"]=img;
+  newStateInfo->imgSets["img"]=img;
   
   cv::Mat dst_mat(H,W,CV_8UC3,img->CVector[0]);
 
@@ -510,7 +520,7 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
   TSQueue<StageInfo *> datTransferQueue;
   std::thread runThread;
   public:
-  InspectionTarget_ImageDataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(10),runThread(&InspectionTarget_ImageDataTransfer::thread_run,this)
+  InspectionTarget_ImageDataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(2),runThread(&InspectionTarget_ImageDataTransfer::thread_run,this)
   {
 
   }
@@ -536,11 +546,28 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
     {
       StageInfo * curInput=input_pool[i];
       // singleProcess(curInput);
-      if(datTransferQueue.push(curInput)==false)
-      {
-        reutrnStageInfo(curInput);
+      
+      try{
+        if(datTransferQueue.push(curInput))
+        {
+          LOGI("PUSH PUSH");
+        }
+        else
+        {
+          reutrnStageInfo(curInput);
+        }
       }
-      LOGI("PUSH PUSH");
+      catch(TS_Termination_Exception e)
+      {
+        for(int j=0;j<poolSize;j++)
+        {
+          StageInfo * curInput=input_pool[i];
+          if(curInput==NULL)continue;
+          reutrnStageInfo(curInput);
+        }
+        break;
+      }
+
 
       input_pool[i]=NULL;
       // reutrnStageInfo(curInput);//remember to recycle the StageInfo
@@ -556,18 +583,42 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
     
     acvImage cacheImage;
     StageInfo * curInput;
-    while(datTransferQueue.pop_blocking(curInput))
+    while(true)
     {
+      try{
+        if(datTransferQueue.pop_blocking(curInput)==false)
+        {
+          break;
+        }
+      }
+      catch(TS_Termination_Exception e)
+      {
+        break;
+      }
+
+
+
+
 
       LOGI("ImageDataTransfer thread pop data: src:%s  type:%s ",curInput->source.c_str(),curInput->type.c_str());
       for ( const auto &kyim : curInput->imgSets ) {
           LOGI("[%s]:%p",kyim.first.c_str(),kyim.second);
       }
+
+      LOGI("curInput->jInfo:%p ",curInput->jInfo);
+      double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo,"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
+      if(f_imgCHID!=f_imgCHID)
+      {//no enough info return...
+        LOGE("no enough info return...");
+        reutrnStageInfo(curInput);
+        continue;
+      }
+      int imgCHID=(int)f_imgCHID;
       // curInput->imgSets./
 
+      LOGI("imgCHID:%d ",imgCHID);
       acvImage *im2send=curInput->imgSets["img"];
 
-      int imgCHID=12345;//headImgPipe->StreamInfo.channel_id;
   
       {
         // CameraLayer::BasicCameraInfo data=headImgPipe->StreamInfo.camera->getConnectionData();
@@ -617,7 +668,7 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
     datTransferQueue.termination_trigger();
     runThread.join();
     StageInfo *sinfo=NULL;
-    while(datTransferQueue.pop(sinfo))
+    while(datTransferQueue.dump(sinfo))
     {
       reutrnStageInfo(sinfo);
     }

@@ -129,6 +129,7 @@ class InspectionTarget_TEST_IT :public InspectionTarget
   }
 };
 
+
 class InspectionTarget_ColorRegionDetection :public InspectionTarget
 {
 public:
@@ -200,8 +201,14 @@ public:
   {
 
     cJSON *report=cJSON_CreateObject();
-    acvImage* srcImg=sinfo->imgSets["cam"];
-    cv::Mat def_temp_img(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+    acvImage* srcImg=sinfo->imgSets["img"];
+
+
+    acvImage *copyImg=new acvImage();
+    copyImg->ReSize(srcImg);
+    acvCloneImage(srcImg,copyImg,-1);
+    cv::Mat def_temp_img(copyImg->GetHeight(),copyImg->GetWidth(),CV_8UC3,copyImg->CVector[0]);
+
 
     // cvtColor(def_temp_img, def_temp_img, COLOR_BayerGR2BGR);
     cJSON* rep_regionInfo=cJSON_CreateArray();
@@ -439,10 +446,7 @@ public:
       
     }
     
-    acvImage *copyImg=new acvImage();
-    copyImg->ReSize(srcImg);
 
-    acvCloneImage(srcImg,copyImg,-1);
     
 
     StageInfo *reportInfo=new StageInfo();

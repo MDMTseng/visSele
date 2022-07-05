@@ -44,6 +44,8 @@ public:
   bool peek_blocking(T& retDat);
   bool push(const T &item);
   bool push_blocking(const T &item);
+  bool dump(T &item);
+
 };
 
 template<typename T>
@@ -184,6 +186,19 @@ bool TSQueue<T>::push_blocking(const T &item) {
     // printf("push_blocking :: unlocked\n");
   }
 
+  return true;
+}
+
+
+template<typename T>
+bool TSQueue<T>::dump(T &item) {
+
+  if (queue_.empty()) {
+    return false;
+  }
+  item = queue_.front();
+  queue_.pop();
+  
   return true;
 }
 
