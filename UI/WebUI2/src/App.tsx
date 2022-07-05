@@ -30,6 +30,39 @@ import { type_CameraInfo,type_IMCM} from './AppTypes';
 import './basic.css';
 
 
+type IMCM_type=
+{
+  camera_id:string,
+  trigger_id:number,
+  trigger_tag:string,
+  image_info:{
+    full_height: number
+    full_width: number
+    height: number
+    image: ImageData
+    offsetX: number
+    offsetY: number
+    scale: number
+    width: number
+  }
+}
+
+
+
+type IMCM_group={[trigID:string]:IMCM_type}
+
+
+type CompParam_InspTarUI =   {
+  readonly:boolean,
+  style?:any,
+  width:number,height:number,
+  renderHook:((ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,rule:any)=>void)|undefined,
+  IMCM_group:IMCM_group,
+  def:any,
+  report:any,
+  onDefChange:(updatedDef:any)=>void}
+
+  
 
 type MenuItem = Required<MenuProps>['items'][number];
 
@@ -47,32 +80,232 @@ let INSP1_REP_PGID_ = 51000
 let HACK_do_Camera_Check=false;
 const { TabPane } = Tabs;
 const { Header, Content, Footer,Sider } = Layout;
-type type_InspDef={
-  name:string,
-  
-  cameraList:{id:string,[key:string]:any}[]
 
-  rules:{
-    name:string,
-    id:string
-    [key:string]:any
-  }[]
+
+
+// {
+//   readonly:boolean,
+//   style?:any,
+//   width:string,height:string,
+//   renderHook:((ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,rule:any)=>void)|undefined,
+//   IMCM_group:{[trigID:string]:IMCM_type},
+//   rule:any,
+//   report:any,
+//   onRuleChange:(updatedRule:any,doInspUpdate:boolean)=>void}
+
+function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
+  {
+    srule:any,
+    onRuleChange:(...param:any)=>void,
+    canvas_obj:DrawHook_CanvasComponent
+  })
+{
+  
+  const [delConfirmCounter,setDelConfirmCounter]=useState(0);
+  let srule_Filled={
+    
+    region:[0,0,0,0],
+    colorThres:10,
+    hough_circle:{
+      dp:1,
+      minDist:5,
+      param1:100,
+      param2:30,
+      minRadius:5,
+      maxRadius:15
+    },
+    hsv:{
+      rangeh:{
+        h:180,s:255,v:255
+      },
+      rangel:{
+        h:0,s:0,v:0
+      },
+    },
+
+    ...srule
+  }
+  const _this = useRef<any>({}).current;
+  return <>
+    <Button key={">>>"} onClick={()=>{
+        canvas_obj.UserRegionSelect((info,state)=>{
+          if(state==2)
+          {
+            console.log(info);
+            
+            let x,y,w,h;
+
+            x=info.pt1.x;
+            w=info.pt2.x-info.pt1.x;
+        
+            y=info.pt1.y;
+            h=info.pt2.y-info.pt1.y;
+        
+        
+            if(w<0){
+              x+=w;
+              w=-w;
+            }
+            
+            if(h<0){
+              y+=h;
+              h=-h;
+            }
+
+            let newRule={...srule_Filled,region:[Math.round(x),Math.round(y),Math.round(w),Math.round(h)]};
+            onRuleChange(newRule)
+
+            canvas_obj.UserRegionSelect(undefined)
+          }
+        })
+      }}>設定範圍</Button>
+    
+      <Popconfirm
+            title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+            onConfirm={()=>{}}
+            onCancel={()=>{}}
+            okButtonProps={{danger:true,onClick:()=>{
+              if(delConfirmCounter!=0)
+              {
+                setDelConfirmCounter(delConfirmCounter-1);
+              }
+              else
+              {
+                onRuleChange(undefined);
+                // onRuleChange(undefined,false)
+              }
+            }}}
+            okText={"Yes:"+delConfirmCounter}
+            cancelText="No"
+          >
+          <Button danger type="primary" onClick={()=>{
+            setDelConfirmCounter(5);
+          }}>DEL</Button>
+        </Popconfirm> 
+{/* 
+    <br/>hough_circle
+    <Slider defaultValue={srule_Filled.hough_circle.minRadius} max={100} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,minRadius:v}};
+      onRuleChange(newRule)
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    
+    <Slider defaultValue={srule_Filled.hough_circle.maxRadius} max={100} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,maxRadius:v}};
+        onRuleChange(newRule)
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>  */}
+
+
+
+
+    <>
+    
+    
+    <br/>結果顯示
+    <Slider defaultValue={srule_Filled.resultOverlayAlpha} min={0} max={1} step={0.1} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onRuleChange(ObjShellingAssign(srule_Filled,["resultOverlayAlpha"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+    <br/>HSV
+    <Slider defaultValue={srule_Filled.hsv.rangeh.h} max={180} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","h"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={srule_Filled.hsv.rangel.h} max={180} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangel","h"],v));
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+    <Slider defaultValue={srule_Filled.hsv.rangeh.s} max={255} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","s"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={srule_Filled.hsv.rangel.s} max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangel","s"],v));
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+
+    <Slider defaultValue={srule_Filled.hsv.rangeh.v} max={255} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","v"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={srule_Filled.hsv.rangel.v} max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_throttle(_this.trigTO,()=>{
+
+        onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangel","v"],v));
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+
+
+    </>
+
+    <br/>colorThres
+    <Slider defaultValue={srule_Filled.colorThres}  max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_throttle(_this.trigTO,()=>{
+        onRuleChange(ObjShellingAssign(srule_Filled,["colorThres"],v));
+      },()=>_this.trigTO=undefined,200);
+
+    }}/>
+
+
+
+
+  </>
+
 }
 
 
 
 
 
-
-function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=undefined,renderHook,IMCM_group,rule,report,onRuleChange}:{
-  readonly:boolean,
-  style?:any,
-  width:string,height:string,
-  renderHook:((ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,rule:any)=>void)|undefined,
-  IMCM_group:{[trigID:string]:IMCM_type},
-  rule:any,
-  report:any,
-  onRuleChange:(updatedRule:any,doInspUpdate:boolean)=>void}){
+function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
     imgCanvas:document.createElement('canvas'),
@@ -102,7 +335,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
     return (() => {
       });
       
-  }, [rule]); 
+  }, [def]); 
   // console.log(IMCM_group,report);
   // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
   // const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);
@@ -155,7 +388,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
 
   useEffect(() => {
-    let newIMCM=IMCM_group[rule.trigger_tag+rule.camera_id];
+    let newIMCM=IMCM_group[def.trigger_tag+def.camera_id];
     // console.log(newIMCM,rule.trigger_tag);
     if(Local_IMCM===newIMCM)return;
     
@@ -215,15 +448,15 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
         EditUI=<>
         <Button key={"_"+-1} onClick={()=>{
           
-          let newRule={...rule};
-          newRule.regionInfo.push({region:[0,0,0,0],colorThres:10});
-          onRuleChange(newRule,false)
+          let newDef={...def};
+          newDef.regionInfo.push({region:[0,0,0,0],colorThres:10});
+          onDefChange(newDef,false)
 
           
           setStateInfo([...stateInfo,{
             st:editState.Region_Edit,
             info:{
-              idx:newRule.regionInfo.length-1
+              idx:newDef.regionInfo.length-1
             }
           }])
 
@@ -231,7 +464,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
         
 
-        {rule.regionInfo.map((region:any,idx:number)=>{
+        {def.regionInfo.map((region:any,idx:number)=>{
           return <Button key={"_"+idx} onClick={()=>{
             if(_this.canvasComp===undefined)return;
 
@@ -253,25 +486,25 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
       EDIT_UI=<>
         
-        <Input maxLength={100} value={rule.id} 
+        <Input maxLength={100} value={def.id} 
           style={{width:"100px"}}
           onChange={(e)=>{
             console.log(e.target.value);
 
-            let newRule={...rule};
-            newRule.id=e.target.value;
-            onRuleChange(newRule,false)
+            let newDef={...def};
+            newDef.id=e.target.value;
+            onRuleChange(newDef,false)
 
 
           }}/>
 
-        <Input maxLength={100} value={rule.type} disabled
+        <Input maxLength={100} value={def.type} disabled
           style={{width:"100px"}}
           onChange={(e)=>{
             
           }}/>
 
-        <Input maxLength={100} value={rule.sampleImageFolder}  disabled
+        <Input maxLength={100} value={def.sampleImageFolder}  disabled
           style={{width:"100px"}}
           onChange={(e)=>{
           }}/>
@@ -290,10 +523,10 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
                   :
                   queryCameraList.map(cam=><Menu.Item key={cam.id} 
                   onClick={()=>{
-                    let newRule={...rule};
-                    newRule.camera_id=cam.id;
+                    let newDef={...def};
+                    newDef.camera_id=cam.id;
                     HACK_do_Camera_Check=true;
-                    onRuleChange(newRule,true)
+                    onDefChange(newDef,true)
                   }}>
                     {cam.id}
                   </Menu.Item>)
@@ -317,17 +550,17 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
             // console.log(CM.data);
             // return CM.data as {name:string,id:string,driver_name:string}[];
             
-          }}>{rule.camera_id}</Button>
+          }}>{def.camera_id}</Button>
         </Dropdown>
 
 
 
-        <Input maxLength={100} value={rule.trigger_tag} 
+        <Input maxLength={100} value={def.trigger_tag} 
           style={{width:"100px"}}
           onChange={(e)=>{
-            let newRule={...rule};
-            newRule.trigger_tag=e.target.value;
-            onRuleChange(newRule,false)
+            let newDef={...def};
+            newDef.trigger_tag=e.target.value;
+            onRuleChange(newDef,false)
         }}/>
 
         <Popconfirm
@@ -354,7 +587,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
         <br/>
         <Button onClick={()=>{
 
-          onRuleChange(rule,true);
+          onDefChange(def,true);
         }}>SHOT</Button>
 
 
@@ -370,12 +603,12 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
     case editState.Region_Edit:
 
 
-      if(rule.regionInfo.length<=stateInfo_tail.info.idx)
+      if(def.regionInfo.length<=stateInfo_tail.info.idx)
       {
         break;
       }
       
-      let regionInfo=rule.regionInfo[stateInfo_tail.info.idx];
+      let regionInfo=def.regionInfo[stateInfo_tail.info.idx];
 
       EDIT_UI=<>
         <Button key={"_"+-1} onClick={()=>{
@@ -387,19 +620,19 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
         }}>{"<"}</Button>
         <ColorRegionLocating_SingleRegion 
           srule={regionInfo} 
-          onRuleChange={(newRule_sregion)=>{
-            // console.log(newRule);
+          onRuleChange={(newDef_sregion)=>{
+            // console.log(newDef);
 
             
-            let newRule={...rule};
-            if(newRule_sregion!==undefined)
+            let newDef={...newDef};
+            if(newDef_sregion!==undefined)
             {
-              newRule.regionInfo[stateInfo_tail.info.idx]=newRule_sregion;
+              newDef.regionInfo[stateInfo_tail.info.idx]=newDef_sregion;
             }
             else
             {
               
-              newRule.regionInfo.splice(stateInfo_tail.info.idx, 1);
+              newDef.regionInfo.splice(stateInfo_tail.info.idx, 1);
               
               let new_stateInfo=[...stateInfo]
               new_stateInfo.pop();
@@ -408,7 +641,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
             }
 
-            onRuleChange(newRule,true)
+            onRuleChange(newDef,true)
             // _this.sel_region=undefined
 
           }}
@@ -442,7 +675,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
   
 
   
-  return <div style={{...style,width,height}}  className={"overlayCon"}>
+  return <div style={{...style,width:width+"%",height:height+"%"}}  className={"overlayCon"}>
 
     <div className={"overlay"} >
 
@@ -522,7 +755,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
         let ctx = g.ctx;
         
         {
-          rule.regionInfo.forEach((region:any,idx:number)=>{
+          def.regionInfo.forEach((region:any,idx:number)=>{
 
             let region_ROI=
             {
@@ -577,7 +810,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
       
       if(renderHook)
       {
-        renderHook(ctrl_or_draw,g,canvas_obj,rule);
+        renderHook(ctrl_or_draw,g,canvas_obj,newDef);
       }
     }
     }/>
@@ -608,36 +841,36 @@ function CameraSetupEditUI({camSetupInfo,fetchCoreAPI,onCameraSetupUpdate}:{ cam
       //   }
       // });
 
-      // await api.CameraSetChannelID([camSetupInfo.id],51009,{
-      //   resolve:(pkts)=>{
-      //     // console.log(pkts);
-      //     let IM=pkts.find((p:any)=>p.type=="IM");
-      //     if(IM===undefined)return;
-      //     let CM=pkts.find((p:any)=>p.type=="CM");
-      //     if(CM===undefined)return;
-      //     // console.log("++++++++\n",IM,CM);
-      //     let IMCM={
-      //       image_info:IM.image_info,
-      //       camera_id:CM.data.camera_id,
-      //       trigger_id:CM.data.trigger_id,
-      //       trigger_tag:CM.data.trigger_tag,
-      //     } as type_IMCM
+      await api.CameraSetChannelID([camSetupInfo.id],51009,{
+        resolve:(pkts)=>{
+          // console.log(pkts);
+          let IM=pkts.find((p:any)=>p.type=="IM");
+          if(IM===undefined)return;
+          let CM=pkts.find((p:any)=>p.type=="CM");
+          if(CM===undefined)return;
+          // console.log("++++++++\n",IM,CM);
+          let IMCM={
+            image_info:IM.image_info,
+            camera_id:CM.data.camera_id,
+            trigger_id:CM.data.trigger_id,
+            trigger_tag:CM.data.trigger_tag,
+          } as type_IMCM
 
-      //     _this.imgCanvas.width = IMCM.image_info.width;
-      //     _this.imgCanvas.height = IMCM.image_info.height;
+          _this.imgCanvas.width = IMCM.image_info.width;
+          _this.imgCanvas.height = IMCM.image_info.height;
 
-      //     let ctx2nd = _this.imgCanvas.getContext('2d');
-      //     ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+          let ctx2nd = _this.imgCanvas.getContext('2d');
+          ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
 
 
-      //     setLocal_IMCM(IMCM)
-      //     // console.log(IMCM)
+          setLocal_IMCM(IMCM)
+          // console.log(IMCM)
 
-      //   },
-      //   reject:(pkts)=>{
+        },
+        reject:(pkts)=>{
 
-      //   }
-      // })
+        }
+      })
       await api.CameraSetup(camSetupInfo,0);
     })()
 
@@ -709,6 +942,7 @@ function CameraSetupEditUI({camSetupInfo,fetchCoreAPI,onCameraSetupUpdate}:{ cam
 let DAT_ANY_UNDEF:any=undefined;
 
 
+
 function VIEWUI(){
 
 
@@ -734,7 +968,7 @@ function VIEWUI(){
     }
 
   }).current;
-
+  const [IMCM_group,setIMCM_group]=useState<IMCM_group>({});
   const dispatch = useDispatch();
   const ACT_EXT_API_ACCESS= (...p:Parameters<typeof EXT_API_ACCESS>) => dispatch(EXT_API_ACCESS(...p));
 
@@ -743,7 +977,7 @@ function VIEWUI(){
 
 
   const [defReport,setDefReport]=useState<any>(undefined);
-
+  const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
   async function getAPI(API_ID:string=CORE_ID)
   {
     let api=await new Promise((resolve,reject)=>{
@@ -923,7 +1157,7 @@ function VIEWUI(){
   //  <APPUI></APPUI>
   // </>
 
-  function getItem(
+  function menuCol(
     label: React.ReactNode,
     key?: React.Key | null,
     icon?: React.ReactNode,
@@ -939,27 +1173,120 @@ function VIEWUI(){
     } as MenuItem;
   }
 
-  let InspMenu=
-  getItem('Insp', 'insp',undefined, [
-    ...(
-      defConfig===undefined?[ getItem("WAIT...","WAIT...")]:
-      (defConfig.InspTars_main
-        .map((inspTar:any,index:number)=>
-          ( getItem(<div onClick={()=>{
 
-            console.log(inspTar)
-          }}>
-            {inspTar.id}
-          </div>,inspTar.id) )))
+
+  let displayInspTarId=_this.listCMD_Vairable.InspTarDispIDList as string[];//=defInfo.rules.map((rule,idx)=>def.id+" ");
+  
+  let displayInspTarIdx:number[]=[];
+  let displayInspTarIdx_hide:number[]=[];
+  if(defConfig!==undefined)
+  {
+    if(_this.listCMD_Vairable.InspTarDispIDList===undefined)
+    {
+      displayInspTarId=defConfig.InspTars_main.map((itar:any)=>itar.id);
+    }
+  
+   
+    displayInspTarIdx=displayInspTarId
+      .map(itarID=>defConfig.InspTars_main.findIndex((itar:any)=>itar.id==itarID))
+      .filter(idx=>idx>=0)
+  
+    displayInspTarIdx_hide
+      =defConfig.InspTars_main.map((itar:any,idx:number)=>idx).filter((idx:number)=>{
+        if(displayInspTarIdx.find(idx_to_show=>idx_to_show==idx)===undefined)
+          return true;
+        return false;
+      });
+  
+  }
+
+
+
+  // console.log(displayInspTarId,displayInspTarIdx,displayInspTarIdx_hide);
+
+  let InspMenu=
+  menuCol('Insp', 'insp',undefined, [
+    ...(
+      defConfig===undefined?[ menuCol("WAIT...","WAIT...")]:
+      (
+        [
+          ...displayInspTarIdx.map((InspTarIdx:number,listIndex:number)=>{
+            let inspTar=defConfig.InspTars_main[InspTarIdx];
+
+            return  menuCol(<div onClick={()=>{
+              
+
+
+              displayInspTarId.splice(listIndex, 1);
+              _this.listCMD_Vairable.InspTarDispIDList=displayInspTarId;
+
+
+              console.log(displayInspTarId)
+              setForceUpdateCounter(forceUpdateCounter+1);
+
+
+
+            }}>
+              {inspTar.id}
+            </div>,inspTar.id)
+          }),
+          menuCol("------------","divLine"),
+          ...displayInspTarIdx_hide.map((InspTarIdx:number,listIndex:number)=>{
+            let inspTar=defConfig.InspTars_main[InspTarIdx];
+
+            return  menuCol(<div onClick={()=>{
+              
+
+
+              displayInspTarId.push(inspTar.id);
+              _this.listCMD_Vairable.InspTarDispIDList=displayInspTarId;
+
+
+              console.log(displayInspTarId)
+              setForceUpdateCounter(forceUpdateCounter+1);
+
+
+
+            }}>
+              {inspTar.id}
+            </div>,inspTar.id)
+          }),
+      
+      
+      
+        ]
+        
+        
+      )
+        
+        
+        // defConfig.InspTars_main.filter((inspTar:any,index:number)=>index)
+        // .map((inspTar:any,index:number)=>
+        //   ( menuCol(<div onClick={()=>{
+            
+
+
+        //     displayInspTarId.splice(index, 1);
+        //     _this.listCMD_Vairable.InspTarDispIDList=displayInspTarId;
+
+
+        //     console.log(displayInspTarId)
+        //     setForceUpdateCounter(forceUpdateCounter+1);
+
+
+
+        //   }}>
+        //     {inspTar.id}
+        //   </div>,inspTar.id) )))
     )])
 
   let cameraMenu=
-  getItem('Camera', 'cam',undefined, [
+  menuCol('Camera', 'cam',undefined, [
     ...(
-      defConfig===undefined?[ getItem("WAIT...","WAIT...")]:
+      defConfig===undefined?[ menuCol("WAIT...","WAIT...")]:
       (defConfig.main.CameraInfo
         .map((cam:type_CameraInfo,index:number)=>
-          ( getItem(<div onClick={()=>{
+          ( menuCol(<div onClick={()=>{
             let keyTime=Date.now();//use time as key to force CameraSetupEditUI remount
             function updater(ncamInfo:type_CameraInfo){
               
@@ -1015,7 +1342,7 @@ function VIEWUI(){
           }>{cam.id}</div>,cam.id,
           cam.available?<LinkOutlined/>:<DisconnectOutlined/>) )))
     ),
-    getItem(<Dropdown
+    menuCol(<Dropdown
       trigger={["click"]}
       disabled={cameraQueryList===undefined}
       overlay={<>
@@ -1095,79 +1422,97 @@ function VIEWUI(){
     </Menu>
 
   </Sider>
+    
 
-  let displayInspTarId=_this.listCMD_Vairable.InspTarDispIDList as string[];//=defInfo.rules.map((rule,idx)=>rule.id+" ");
-  
-  let displayInspTarIdx:number[]=[];
-  let displayInspTarIdx_hide:number[]=[];
-  if(defConfig!==undefined)
+  function InspTargetUI_MUX(param:CompParam_InspTarUI)
   {
-    if(_this.listCMD_Vairable.InspTarDispIDList===undefined)
-    {
-      displayInspTarId=defConfig.InspTars_main.map((itar:any)=>itar.id);
-    }
-  
-   
-    displayInspTarIdx=displayInspTarId
-      .map(itarID=>defConfig.InspTars_main.findIndex((itar:any)=>itar.id==itarID))
-      .filter(idx=>idx>=0)
-  
-    displayInspTarIdx_hide
-      =defConfig.InspTars_main.map((itar:any,idx:number)=>idx).filter((idx:number)=>{
-        if(displayInspTarIdx.find(idx_to_show=>idx_to_show==idx)===undefined)
-          return true;
-        return false;
-      });
-  
+    if(param.def.type=="ColorRegionLocating")
+    return <SingleTargetVIEWUI_ColorRegionLocating {...param} />;
+
+
+    return  <></>;
   }
 
-    
-  // function TargetViewUIShow(index:number,displaySetting={w:100,h:100,hide:false})
-  // {
-  //   let inspTar=defConfig.InspTars_main [index]
-  //   let rep_rules=GetObjElement(defReport,["rules"]);
-  //   let subRuleRep=undefined;
-  //   if(rep_rules!==undefined)
-  //     subRuleRep=rep_rules.find((rep_rule:any)=>rep_rule.id==inspTar.id);
-  //   // console.log(rule,subRuleRep);
-  //   // subRuleRep
-  //   // let whsetting={w:50,h:50};
-  //   // if(show)
-  //   //   whsetting=WHArr[index];
-  //   return <SingleTargetVIEWUI_ColorRegionLocating 
-  //   readonly={false} 
-  //   width={displaySetting.w+"%"} 
-  //   height={displaySetting.h+"%"} 
-  //   style={{float:"left",display:displaySetting.hide?"none":undefined}} 
-  //   key={inspTar.id} 
-  //   IMCM_group={IMCM_group} 
-  //   rule={inspTar} 
-  //   report={subRuleRep} 
-  //   renderHook={_this.listCMD_Vairable.renderHook} 
-  //   onRuleChange={(new_rule,doInspUpdate=true)=>{
-    
-  //     // if(new_rule!==undefined)//update
-  //     // {
-  //     //   let new_defInfo={...defInfo};
-  //     //   new_defInfo.rules[index]=new_rule;
-  //     //   console.log(new_defInfo);
-  //     //   onDefChange(new_defInfo,doInspUpdate?new_rule:undefined);
-  //     // }
-  //     // else//deltetion
-  //     // {
-        
-  //     //   let new_defInfo={...defInfo,rules:[...defInfo.rules]};
-        
-  //     //   new_defInfo.rules.splice(index, 1);
+  
+  function TargetViewUIShow(InspTarList:any[],displayIDList:string[],IMCM_group:IMCM_group)
+  {
 
-  //     //   onDefChange(new_defInfo,undefined);
+    let InspTarList_show=InspTarList;
+    let InspTarList_hide;
 
-
-        
-  //     // }
-  //   }}/>
+      
+    let displayInspTarIdx:number[]=[];
+    let displayInspTarIdx_hide:number[]=[];
+    if(defConfig!==undefined)
+    {
+      displayInspTarIdx=displayIDList
+        .map(itarID=>InspTarList.findIndex((itar:any)=>itar.id==itarID))
+        .filter(idx=>idx>=0)
     
-  // }
+      displayInspTarIdx_hide
+        =InspTarList.map((itar:any,idx:number)=>idx).filter((idx:number)=>{
+          if(displayInspTarIdx.find(idx_to_show=>idx_to_show==idx)===undefined)
+            return true;
+          return false;
+        });
+    
+    }
+
+    console.log(InspTarList);
+    console.log(displayIDList,displayInspTarIdx,displayInspTarIdx_hide);
+
+    // let inspTar=defConfig.InspTars_main [index]
+    // let rep_rules=GetObjElement(defReport,["rules"]);
+    // let subRuleRep=undefined;
+    // if(rep_rules!==undefined)
+    //   subRuleRep=rep_rules.find((rep_rule:any)=>rep_def.id==inspTar.id);
+    // console.log(rule,subRuleRep);
+    // subRuleRep
+    // let whsetting={w:50,h:50};
+    // if(show)
+    //   whsetting=WHArr[index];
+    // return <SingleTargetVIEWUI_ColorRegionLocating 
+    // readonly={false} 
+    // width={displaySetting.w+"%"} 
+    // height={displaySetting.h+"%"} 
+    // style={{float:"left",display:displaySetting.hide?"none":undefined}} 
+    // key={inspTar.id} 
+    // IMCM_group={IMCM_group} 
+    // rule={inspTar} 
+    // report={subRuleRep} 
+    // renderHook={_this.listCMD_Vairable.renderHook} 
+    // onRuleChange={(new_rule,doInspUpdate=true)=>{
+    
+    // }}/>
+
+
+
+    // function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI)
+    return <>
+    {
+      // displayInspTarIdx.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=>inspTar.id+":"+inspTar.type+",")
+      displayInspTarIdx.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=><InspTargetUI_MUX 
+        readonly={false} 
+        width={20} 
+        height={100} 
+        style={{float:"left"}} 
+        key={inspTar.id} 
+        IMCM_group={IMCM_group} 
+        def={inspTar} 
+        report={undefined} 
+        renderHook={_this.listCMD_Vairable.renderHook} 
+        onDefChange={(new_rule,doInspUpdate=true)=>{
+          console.log(new_rule);
+        }}/>)
+    }
+    <br/>---hide----<br/>
+    {
+      displayInspTarIdx_hide.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=>inspTar.id+",")
+    }
+    
+    
+    </>;
+  }
 
 
   return <>
@@ -1206,9 +1551,13 @@ function VIEWUI(){
     {/* { (defConfig===undefined)?"WAIT":
       displayInspTarId.map(tar=><p>{tar}</p>)
     } */}
-    {
-      //displayInspTarIdx.map((rule_index,idxidx)=>TargetViewUIShow(rule_index,{w:30,h:100,hide:false}))
-    }
+    {/* {
+      displayInspTarIdx.map((InspTarIdx:number,listIndex:number)=>{
+        let inspTar=defConfig.InspTars_main[InspTarIdx];
+        return inspTar.id;
+      })
+    } */}
+    { (defConfig===undefined)?"WAIT":TargetViewUIShow(defConfig.InspTars_main,displayInspTarId,IMCM_group)}
     </Content>
   
     </Layout>
