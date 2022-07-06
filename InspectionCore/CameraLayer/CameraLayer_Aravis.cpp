@@ -163,6 +163,18 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
     return ACK;
 
   }
+  if(format == ARV_PIXEL_FORMAT_BGR_8_PACKED)
+  {
+    
+    if(channelCount!=3)return NAK;
+    memcpy(imgBuffer,img_dat, w * h*3);
+    // LOGI("fi.timeStamp_us:%llu",fi.timeStamp_us);
+    // LOGI("xywh:%d,%d %d,%d",x,y,w,h);
+
+    // LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
+    return ACK;
+
+  }
   else if(format == ARV_PIXEL_FORMAT_BAYER_GR_8)
   {
     if(channelCount!=3)return NAK;
@@ -340,6 +352,7 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
   }
   else
   {
+    LOGE("format:%0x transform is not impl yet.... ",format);
     return NAK;
   }
   // LOGI("img.size:%d ", img_size);
@@ -521,7 +534,7 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   arv_camera_set_trigger(camera, "Software", NULL);
 
   stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
-
+  
   // arv_camera_set_chunk_mode(camera,true,NULL);
 
   LOGI(">>>>");
@@ -578,6 +591,8 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
     throw std::invalid_argument(excpMsg);
   }
 
+
+  arv_camera_set_pixel_format(camera,ARV_PIXEL_FORMAT_BGR_8_PACKED,NULL);
   g_signal_connect(stream, "new-buffer", G_CALLBACK(s_STREAM_NEW_BUFFER_CB), this);
 
   arv_stream_set_emit_signals(stream, TRUE);

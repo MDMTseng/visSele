@@ -70,7 +70,7 @@ TSQueue<StageInfo *> inspQueue(10);
 
 
 
-
+uint64_t lastImgSendTime=0;
 
 class InspectionTargetManager_m:public InspectionTargetManager
 {
@@ -80,10 +80,18 @@ class InspectionTargetManager_m:public InspectionTargetManager
   void CamStream_CallBack(CameraManager::StreamingInfo &info){
 
 
+    
+    uint64_t cur_ms = current_time_ms();
+    uint64_t cur_Interval =cur_ms-lastImgSendTime;
+    if(lastImgSendTime==0)
+    {
+      cur_Interval=1;
+    }
+    lastImgSendTime=cur_ms;
 
 
-    LOGE("============DO INSP>> waterLvL: insp:%d/%d  trigInfoMatchingSize:%d",
-        inspQueue.size(), inspQueue.capacity(),triggerInfoMatchingBuffer.size());
+    LOGE("============DO INSP>> waterLvL: insp:%d/%d  trigInfoMatchingSize:%d  cur_Interval:%" PRIu64 "<<<cur_ms:%" PRIu64 "",
+        inspQueue.size(), inspQueue.capacity(),triggerInfoMatchingBuffer.size(),cur_Interval,cur_ms);
 
     // LOGE("============DO INSP>> waterLvL: insp:%d/%d dview:%d/%d  snap:%d/%d   poolSize:%d trigInfoMatchingSize:%d",
     //     inspQueue.size(), inspQueue.capacity(),
@@ -91,10 +99,13 @@ class InspectionTargetManager_m:public InspectionTargetManager
     //     inspSnapQueue.size(), inspSnapQueue.capacity(),
     //     bpg_pi.resPool.rest_size(),triggerInfoMatchingBuffer.size());
 
-
+    
     StageInfo *newStateInfo=new StageInfo();
 
     CameraLayer::frameInfo finfo = info.camera->GetFrameInfo();
+
+    acvImage *img=new acvImage(finfo.width,finfo.height,3);
+    CameraLayer::status st = info.camera->ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
 
     newStateInfo->StreamInfo=info;
     newStateInfo->source=info.camera->getConnectionData().id;
@@ -110,9 +121,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
     }
     
     // newStateInfo->trigger_tag="";
-    acvImage *img=new acvImage(finfo.width,finfo.height,3);
     newStateInfo->imgSets["img"]=img;
-    CameraLayer::status st = info.camera->ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
     // LOGI(">>>CAM:%s  WH:%d %d",info->camera_id.c_str(),finfo.width,finfo.height);
 
     sttriggerInfo_mix pmix;
@@ -519,10 +528,11 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
 {
   TSQueue<StageInfo *> datTransferQueue;
   std::thread runThread;
+  int realTimeDropFlag;
   public:
   InspectionTarget_ImageDataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(1),runThread(&InspectionTarget_ImageDataTransfer::thread_run,this)
   {
-
+    realTimeDropFlag=-1;
   }
   bool stageInfoFilter(StageInfo* sinfo)
   {
@@ -557,8 +567,10 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
           LOGE("PUSH Failed....");
           reutrnStageInfo(curInput);
         }
-        else if(datTransferQueue.push(curInput))
+        else if(realTimeDropFlag<=0 && datTransferQueue.push(curInput))
         {
+          if(realTimeDropFlag>=0)
+            realTimeDropFlag++;
           LOGI("PUSH PUSH");
         }
         else
@@ -662,8 +674,9 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
         }
         bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
         bpg_pi.fromUpperLayer_SS(imgCHID,true);
-
-
+        
+        if(realTimeDropFlag>0)
+          realTimeDropFlag--;
 
 
       }

@@ -21,8 +21,10 @@ class CameraLayer{
 
     typedef enum {
       RGB,
+      RGB8,
+      BGR8,
       Mono,
-      Bayer_GR
+      Bayer_GR,
     }FrameExtractPixelFormat;
 
 
