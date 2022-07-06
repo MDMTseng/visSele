@@ -125,6 +125,10 @@ class InspectionTarget_TEST_IT :public InspectionTarget
   
   void singleProcess(StageInfo* sinfo)
   {
+
+    StageInfo *reportInfo=new StageInfo();
+    reportInfo->AddSharedInfo(sinfo);
+    belongMan->dispatch(reportInfo);
     LOGI("InspectionTarget_TEST_IT Got info from:%s ......",sinfo->source.c_str());
   }
 };
@@ -169,6 +173,20 @@ public:
     return poolSize;//run all
 
   }
+
+  
+
+  cJSON* exchangeInfo(cJSON* info)
+  {
+    //LOGI(">>>>>>>>>>>>");
+
+    InspectionTarget::exchangeInfo(info);
+
+
+
+    return cJSON_CreateObject();
+  }
+
   // bool feedStageInfo(StageInfo* sinfo)
   // {
   //   // string sinfo_camId= sinfo->StreamInfo.camera->getConnectionData().id;
@@ -450,6 +468,7 @@ public:
     
 
     StageInfo *reportInfo=new StageInfo();
+    reportInfo->AddSharedInfo(sinfo);
     reportInfo->source=this->id;
     reportInfo->imgSets["img"]=copyImg;
     reportInfo->trigger_id=sinfo->trigger_id;

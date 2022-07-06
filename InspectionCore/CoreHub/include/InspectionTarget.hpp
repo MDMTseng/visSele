@@ -8,6 +8,7 @@
 #include "acvImage.hpp"
 #include "TSQueue.hpp"
 #include <future>
+#include "logctrl.h"
 
 
 
@@ -101,8 +102,59 @@ class CameraManager
 // };
 
 
+class InspectionTargetManager;
+class StageInfo;
+class InspectionTarget
+{
+  protected:
+  bool asService=false;
+  public:
+  std::string id;
+  bool inputPoolInsufficient;
+  cJSON *def=NULL;
+  cJSON *addtionalInfo=NULL;
+  InspectionTargetManager* belongMan;
+  InspectionTarget(std::string id,cJSON* def,InspectionTargetManager* belongMan);
+  virtual ~InspectionTarget();
+  virtual void setInspDef(cJSON* def);
+
+  virtual cJSON* exchangeInfo(cJSON* info);
+
+  virtual cJSON* genInfo();
+  bool isService();
+
+  
+  std::mutex input_stage_lock;
+  std::vector<StageInfo*> input_stage;
+  std::vector<StageInfo*> input_pool;
+  
+  virtual bool feedStageInfo(StageInfo* sinfo);
+
+
+  virtual int processInputStagePool();  
+  virtual std::future<int> futureInputStagePool()=0;
+
+
+
+
+  protected:
+  
+  virtual bool stageInfoFilter(StageInfo* sinfo)=0;
+  // virtual std::vector<StageInfo*> inputPick(std::vector<StageInfo*> infoPool)=0;//returns input processed
+  virtual void acceptStageInfo(StageInfo* sinfo);
+  int reutrnStageInfo(StageInfo* sinfo);
+
+  virtual int processInputPool()=0; 
+};
+
+
+#define STAGEINFO_LIFECYCLE_DEBUG 1
+
+static int StageInfoLiveCounter=0;
 
 class StageInfo{
+  protected:
+  int inUseCount;
   public:
   std::string type;
   std::string source;
@@ -119,8 +171,22 @@ class StageInfo{
 
 
   std::mutex lock;
-  int inUseCount;
 
+  std::vector<StageInfo*> sharedInfo;
+  StageInfo(){
+    StreamInfo=(CameraManager::StreamingInfo){0};
+    fi=( CameraLayer::frameInfo){0};
+    inUseCount=0;
+    StageInfoLiveCounter++;
+    type="";
+    source="";
+    trigger_id=-1;
+    jInfo=NULL;
+
+#if STAGEINFO_LIFECYCLE_DEBUG
+    LOGE("++>StageInfoLiveCounter:%d  :%p",StageInfoLiveCounter,this);
+#endif
+  }
   ~StageInfo(){
     const std::lock_guard<std::mutex> lock(this->lock);
     if(inUseCount)
@@ -144,8 +210,85 @@ class StageInfo{
       cJSON_Delete(jInfo);
       jInfo=NULL;
     }
+
+    for(int i=0;i<sharedInfo.size();i++)
+    {
+      StageInfo* info=sharedInfo[i];
+      if(info && info->isStillInUse()==false )
+      {
+        delete info;
+      }
+      sharedInfo[i]=NULL;
+    }
+    sharedInfo.clear();
+    StageInfoLiveCounter--;
+#if STAGEINFO_LIFECYCLE_DEBUG
+    LOGE("-->StageInfoLiveCounter:%d  :%p",StageInfoLiveCounter,this);
+#endif
+
+  }
+  void AddSharedInfo(StageInfo* info)
+  {
+    lock.lock();
+    sharedInfo.push_back(info);
+    lock.unlock();
+  }
+
+  bool isStillInUse()
+  {
+    return inUseCount!=0;
+  }
+
+  int getUseCount()
+  {
+    return inUseCount;
   }
   
+  virtual bool registerInUse(InspectionTarget* who)
+  {
+    
+#if STAGEINFO_LIFECYCLE_DEBUG
+    LOGI("reg:%s  :%p",who->id.c_str(),this);
+#endif
+    lock.lock();
+    inUseCount++;
+    
+    for(int i=0;i<sharedInfo.size();i++)
+    {
+      StageInfo* info=sharedInfo[i];
+      if(info)
+      {
+        info->registerInUse(who);
+      }
+    }
+
+    lock.unlock();
+    return true;
+  }
+
+  
+  virtual bool unregisterInUse(InspectionTarget* who)
+  {
+#if STAGEINFO_LIFECYCLE_DEBUG
+    LOGI("unreg:%s  :%p",who->id.c_str(),this);
+#endif
+    if(inUseCount==0)return false;
+    lock.lock();
+    inUseCount--;
+    
+    for(int i=0;i<sharedInfo.size();i++)
+    {
+      StageInfo* info=sharedInfo[i];
+      if(info)
+      {
+        info->unregisterInUse(who);
+      }
+    }
+    lock.unlock();
+    return true;
+  }
+
+
 };
 
 //custom Stage info
@@ -211,45 +354,6 @@ class InspectionTargetManager
   cJSON* genInspTarListInfo();
 };
 
-
-class InspectionTarget
-{
-  protected:
-  bool asService=false;
-  public:
-  std::string id;
-  bool inputPoolInsufficient;
-  cJSON *def=NULL;
-  cJSON *addtionalInfo=NULL;
-  InspectionTargetManager* belongMan;
-  InspectionTarget(std::string id,cJSON* def,InspectionTargetManager* belongMan);
-  virtual ~InspectionTarget();
-  virtual void setInspDef(cJSON* def);
-
-  virtual cJSON* exchangeInfo(cJSON* info);
-
-  virtual cJSON* genInfo();
-  bool isService();
-
-  
-  std::mutex input_stage_lock;
-  std::vector<StageInfo*> input_stage;
-  std::vector<StageInfo*> input_pool;
-  
-  virtual bool feedStageInfo(StageInfo* sinfo);
-
-
-  virtual int processInputStagePool();  
-  virtual std::future<int> futureInputStagePool()=0;
-  protected:
-  
-  virtual bool stageInfoFilter(StageInfo* sinfo)=0;
-  // virtual std::vector<StageInfo*> inputPick(std::vector<StageInfo*> infoPool)=0;//returns input processed
-  virtual void acceptStageInfo(StageInfo* sinfo);
-  int reutrnStageInfo(StageInfo* sinfo);
-
-  virtual int processInputPool()=0; 
-};
 
 
 

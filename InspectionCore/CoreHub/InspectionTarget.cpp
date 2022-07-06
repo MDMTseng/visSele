@@ -28,9 +28,7 @@ InspectionTarget::InspectionTarget(std::string id,cJSON* def,InspectionTargetMan
 
 void InspectionTarget::acceptStageInfo(StageInfo* sinfo)
 {
-  sinfo->lock.lock();
-  sinfo->inUseCount++;
-  sinfo->lock.unlock();
+  sinfo->registerInUse(this);
 
   {
     const std::lock_guard<std::mutex> lock(this->input_stage_lock);
@@ -44,10 +42,9 @@ void InspectionTarget::acceptStageInfo(StageInfo* sinfo)
 
 int InspectionTarget::reutrnStageInfo(StageInfo* sinfo)
 {
-  {
-    const std::lock_guard<std::mutex> lock( sinfo->lock);
-    if(sinfo->inUseCount>0)sinfo->inUseCount--; 
-  }
+  sinfo->unregisterInUse(this);
+  LOGI("getUseCount:%d  :%p",sinfo->getUseCount(),sinfo);
+
   belongMan->recycleStageInfo(sinfo);
 }
 
@@ -460,7 +457,7 @@ int InspectionTargetManager::dispatch(StageInfo* sinfo)
   {
     SInfoInSysCount++;
     
-    LOGE("++>>>>SInfoInSysCount:%d ",SInfoInSysCount);
+    // LOGE("++>>>>SInfoInSysCount:%d ",SInfoInSysCount);
   }
   
   return acceptCount;
@@ -474,13 +471,19 @@ int InspectionTargetManager::recycleStageInfo(StageInfo* sinfo)
   if(sinfo==NULL)return -1;
 
   // LOGE("recycle: src:%s  inUseCount:%d",sinfo->source.c_str(),sinfo->inUseCount);
-  if(sinfo->inUseCount!=0)
+  if(sinfo->isStillInUse())
   {
-    return sinfo->inUseCount;
+    return sinfo->getUseCount();
   }
+
+  for(auto sharedInfo :sinfo->sharedInfo )
+  {
+    if(sharedInfo)
+      recycleStageInfo(sharedInfo);
+  }
+  sinfo->sharedInfo.clear();//do clear the vector, or the StageInfo destructor will delete sharedInfo again
+
   delete sinfo;
-  SInfoInSysCount--;
-  LOGE("-->>>>SInfoInSysCount:%d ",SInfoInSysCount);
   return 0;
 }
 

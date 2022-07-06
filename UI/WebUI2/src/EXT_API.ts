@@ -625,7 +625,7 @@ export class BPG_WS
   async InspTargetExchange(inspTarId:string,data:any,_PGID_:number|undefined=undefined)
   {
     
-    await this.send_P("IT",0,{type:"excahnge",id:inspTarId,data})
+    return await this.send_P("IT",0,{type:"exchange",id:inspTarId,data})
   }
 
 

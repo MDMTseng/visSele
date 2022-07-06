@@ -315,6 +315,12 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
 
   });
+  const [defConfig,setDefConfig]=useState<any>(undefined);
+  const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
+
+
+  const [defReport,setDefReport]=useState<any>(undefined);
+  const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
   let _this=_.current;
   let c_report:any = undefined;
   if(_this.cache_report!==report)
@@ -366,6 +372,20 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
   
   let stateInfo_tail=stateInfo[stateInfo.length-1];
 
+
+
+  
+  useEffect(() => {
+
+    (async ()=>{
+
+      let ret = await BPG_API.InspTargetExchange(def.id,{},51090);
+      console.log(ret);
+    })()
+    return (() => {
+
+      
+    })}, []); 
   // function pushInSendGCodeQ()
   // {
   //   if(_this.isSendWaiting==true || _this.gcodeSeq.length==0)
@@ -624,7 +644,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
             // console.log(newDef);
 
             
-            let newDef={...newDef};
+            let newDef={...def};
             if(newDef_sregion!==undefined)
             {
               newDef.regionInfo[stateInfo_tail.info.idx]=newDef_sregion;
@@ -641,7 +661,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
             }
 
-            onRuleChange(newDef,true)
+            onDefChange(newDef,true)
             // _this.sel_region=undefined
 
           }}
@@ -875,6 +895,13 @@ function CameraSetupEditUI({camSetupInfo,fetchCoreAPI,onCameraSetupUpdate}:{ cam
     })()
 
     return ()=>{
+      (async ()=>{
+        let api = await fetchCoreAPI()
+        await api.CameraSetChannelID([camSetupInfo.id],0,{
+          resolve:()=>0,
+          reject:()=>0
+        });
+      })()
     }
   },[])
   return <> 

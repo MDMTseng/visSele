@@ -607,7 +607,7 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
 
       LOGI("curInput->jInfo:%p ",curInput->jInfo);
       double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo,"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
-      if(f_imgCHID!=f_imgCHID)
+      if(f_imgCHID!=f_imgCHID || f_imgCHID==0)
       {//no enough info return...
         LOGE("no enough info return...");
         reutrnStageInfo(curInput);
