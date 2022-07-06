@@ -247,10 +247,10 @@ class StageInfo{
   virtual bool registerInUse(InspectionTarget* who)
   {
     
+    const std::lock_guard<std::mutex> lock(this->lock);
 #if STAGEINFO_LIFECYCLE_DEBUG
     LOGI("reg:%s  :%p",who->id.c_str(),this);
 #endif
-    lock.lock();
     inUseCount++;
     
     for(int i=0;i<sharedInfo.size();i++)
@@ -262,18 +262,18 @@ class StageInfo{
       }
     }
 
-    lock.unlock();
     return true;
   }
 
   
   virtual bool unregisterInUse(InspectionTarget* who)
   {
+    
+    const std::lock_guard<std::mutex> lock(this->lock);
 #if STAGEINFO_LIFECYCLE_DEBUG
     LOGI("unreg:%s  :%p",who->id.c_str(),this);
 #endif
     if(inUseCount==0)return false;
-    lock.lock();
     inUseCount--;
     
     for(int i=0;i<sharedInfo.size();i++)
@@ -284,7 +284,6 @@ class StageInfo{
         info->unregisterInUse(who);
       }
     }
-    lock.unlock();
     return true;
   }
 
@@ -335,7 +334,11 @@ class InspectionTargetManager
 
 
   int dispatch(StageInfo* sinfo);//return how many inspection target needs it
-  int recycleStageInfo(StageInfo* sinfo);//return 0 as destroy, other positive number means how many other inspTar still holds it 
+
+  
+  std::mutex recycleStageInfoMutex;
+  int unregNrecycleStageInfo(StageInfo* sinfo,InspectionTarget* from );//return 0 as destroy, other positive number means how many other inspTar still holds it 
+  int _unregNrecycleStageInfo(StageInfo* sinfo,InspectionTarget* from );//return 0 as destroy, other positive number means how many other inspTar still holds it 
 
   int inspTarProcess();
 

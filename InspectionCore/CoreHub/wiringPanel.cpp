@@ -407,7 +407,7 @@ void ImgPipeProcessThread(bool *terminationflag)
       {
         LOGE("NO InspTar accepts stage Info recycle.....");
         //no one accept the stage info
-        inspTarMan.recycleStageInfo(stInfo);
+        inspTarMan.unregNrecycleStageInfo(stInfo,NULL);
       }
 
       LOGI("......<>>>>>.....");
@@ -520,7 +520,7 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
   TSQueue<StageInfo *> datTransferQueue;
   std::thread runThread;
   public:
-  InspectionTarget_ImageDataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(2),runThread(&InspectionTarget_ImageDataTransfer::thread_run,this)
+  InspectionTarget_ImageDataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(1),runThread(&InspectionTarget_ImageDataTransfer::thread_run,this)
   {
 
   }
@@ -548,17 +548,29 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
       // singleProcess(curInput);
       
       try{
-        if(datTransferQueue.push(curInput))
+        
+        double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo,"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
+        if(f_imgCHID!=f_imgCHID || f_imgCHID==0)
+        {//no enough info return...
+          LOGE("---no enough info return...");
+          
+          LOGE("PUSH Failed....");
+          reutrnStageInfo(curInput);
+        }
+        else if(datTransferQueue.push(curInput))
         {
           LOGI("PUSH PUSH");
         }
         else
         {
+          LOGE("PUSH Failed....");
           reutrnStageInfo(curInput);
         }
       }
       catch(TS_Termination_Exception e)
       {
+        
+        LOGE("TS_Termination_Exception....");
         for(int j=0;j<poolSize;j++)
         {
           StageInfo * curInput=input_pool[i];
@@ -607,12 +619,12 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
 
       LOGI("curInput->jInfo:%p ",curInput->jInfo);
       double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo,"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
-      if(f_imgCHID!=f_imgCHID || f_imgCHID==0)
-      {//no enough info return...
-        LOGE("no enough info return...");
-        reutrnStageInfo(curInput);
-        continue;
-      }
+      // if(f_imgCHID!=f_imgCHID || f_imgCHID==0)
+      // {//no enough info return...
+      //   LOGE("no enough info return...");
+      //   reutrnStageInfo(curInput);
+      //   continue;
+      // }
       int imgCHID=(int)f_imgCHID;
       // curInput->imgSets./
 
@@ -634,7 +646,7 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
         cJSON_Delete(camBrifInfo);
         
         
-        BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)6};
+        BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)10};
         iminfo.fullHeight = im2send->GetHeight();
         iminfo.fullWidth = im2send->GetWidth();
         if(iminfo.scale>1)

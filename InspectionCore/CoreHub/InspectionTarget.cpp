@@ -42,10 +42,9 @@ void InspectionTarget::acceptStageInfo(StageInfo* sinfo)
 
 int InspectionTarget::reutrnStageInfo(StageInfo* sinfo)
 {
-  sinfo->unregisterInUse(this);
   LOGI("getUseCount:%d  :%p",sinfo->getUseCount(),sinfo);
 
-  belongMan->recycleStageInfo(sinfo);
+  belongMan->unregNrecycleStageInfo(sinfo,this);
 }
 
 
@@ -451,7 +450,7 @@ int InspectionTargetManager::dispatch(StageInfo* sinfo)
       LOGI("%s",tag.c_str());
     LOGE("No one accepts StageInfo: from:%s type:%s ",sinfo->source.c_str(),sinfo->type.c_str());
     LOGE("Recycle.... ");
-    recycleStageInfo(sinfo);
+    unregNrecycleStageInfo(sinfo,NULL);
   }
   else
   {
@@ -466,10 +465,18 @@ int InspectionTargetManager::dispatch(StageInfo* sinfo)
 
 
 
-int InspectionTargetManager::recycleStageInfo(StageInfo* sinfo)
+int InspectionTargetManager::unregNrecycleStageInfo(StageInfo* sinfo,InspectionTarget* from )
 {
-  if(sinfo==NULL)return -1;
+  std::lock_guard<std::mutex> _(recycleStageInfoMutex);
 
+  return _unregNrecycleStageInfo(sinfo,from);
+}
+int InspectionTargetManager::_unregNrecycleStageInfo(StageInfo* sinfo,InspectionTarget* from )
+{
+
+  if(sinfo==NULL)return -1;
+  if(from)
+    sinfo->unregisterInUse(from);
   // LOGE("recycle: src:%s  inUseCount:%d",sinfo->source.c_str(),sinfo->inUseCount);
   if(sinfo->isStillInUse())
   {
@@ -479,7 +486,7 @@ int InspectionTargetManager::recycleStageInfo(StageInfo* sinfo)
   for(auto sharedInfo :sinfo->sharedInfo )
   {
     if(sharedInfo)
-      recycleStageInfo(sharedInfo);
+      _unregNrecycleStageInfo(sharedInfo,from);
   }
   sinfo->sharedInfo.clear();//do clear the vector, or the StageInfo destructor will delete sharedInfo again
 
