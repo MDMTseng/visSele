@@ -613,6 +613,10 @@ export class BPG_WS
   }
 
 
+  async InspTargetGetInfo()
+  {
+    return await this.send_P("IT",0,{type:"list"})
+  }
   
   async InspTargetCreate(defInfo:any)
   {

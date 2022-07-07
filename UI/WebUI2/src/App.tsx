@@ -60,7 +60,7 @@ type CompParam_InspTarUI =   {
   IMCM_group:IMCM_group,
   def:any,
   report:any,
-  onDefChange:(updatedDef:any)=>void}
+  onDefChange:(updatedDef:any,ddd:boolean)=>void}
 
   
 
@@ -91,12 +91,12 @@ const { Header, Content, Footer,Sider } = Layout;
 //   IMCM_group:{[trigID:string]:IMCM_type},
 //   rule:any,
 //   report:any,
-//   onRuleChange:(updatedRule:any,doInspUpdate:boolean)=>void}
+//   onDefChange:(updatedRule:any,doInspUpdate:boolean)=>void}
 
-function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
+function ColorRegionLocating_SingleRegion({srule,onDefChange,canvas_obj}:
   {
     srule:any,
-    onRuleChange:(...param:any)=>void,
+    onDefChange:(...param:any)=>void,
     canvas_obj:DrawHook_CanvasComponent
   })
 {
@@ -153,7 +153,7 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
             }
 
             let newRule={...srule_Filled,region:[Math.round(x),Math.round(y),Math.round(w),Math.round(h)]};
-            onRuleChange(newRule)
+            onDefChange(newRule)
 
             canvas_obj.UserRegionSelect(undefined)
           }
@@ -171,8 +171,8 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
               }
               else
               {
-                onRuleChange(undefined);
-                // onRuleChange(undefined,false)
+                onDefChange(undefined);
+                // onDefChange(undefined,false)
               }
             }}}
             okText={"Yes:"+delConfirmCounter}
@@ -189,7 +189,7 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
     _this.trigTO=
     ID_debounce(_this.trigTO,()=>{
       let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,minRadius:v}};
-      onRuleChange(newRule)
+      onDefChange(newRule)
     },()=>_this.trigTO=undefined,500);
 
     }}/>
@@ -199,7 +199,7 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
       _this.trigTO=
       ID_debounce(_this.trigTO,()=>{
         let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,maxRadius:v}};
-        onRuleChange(newRule)
+        onDefChange(newRule)
       },()=>_this.trigTO=undefined,500);
 
     }}/>  */}
@@ -215,7 +215,7 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
 
     _this.trigTO=
     ID_debounce(_this.trigTO,()=>{
-      onRuleChange(ObjShellingAssign(srule_Filled,["resultOverlayAlpha"],v));
+      onDefChange(ObjShellingAssign(srule_Filled,["resultOverlayAlpha"],v));
     },()=>_this.trigTO=undefined,500);
 
     }}/>
@@ -225,7 +225,7 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
 
     _this.trigTO=
     ID_debounce(_this.trigTO,()=>{
-      onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","h"],v));
+      onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","h"],v));
     },()=>_this.trigTO=undefined,500);
 
     }}/>
@@ -233,7 +233,7 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
 
       _this.trigTO=
       ID_debounce(_this.trigTO,()=>{
-        onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangel","h"],v));
+        onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangel","h"],v));
       },()=>_this.trigTO=undefined,500);
 
     }}/>
@@ -244,7 +244,7 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
 
     _this.trigTO=
     ID_debounce(_this.trigTO,()=>{
-      onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","s"],v));
+      onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","s"],v));
     },()=>_this.trigTO=undefined,500);
 
     }}/>
@@ -252,7 +252,7 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
 
       _this.trigTO=
       ID_debounce(_this.trigTO,()=>{
-        onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangel","s"],v));
+        onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangel","s"],v));
       },()=>_this.trigTO=undefined,500);
 
     }}/>
@@ -264,7 +264,7 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
 
     _this.trigTO=
     ID_debounce(_this.trigTO,()=>{
-      onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","v"],v));
+      onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","v"],v));
     },()=>_this.trigTO=undefined,500);
 
     }}/>
@@ -273,7 +273,7 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
       _this.trigTO=
       ID_throttle(_this.trigTO,()=>{
 
-        onRuleChange(ObjShellingAssign(srule_Filled,["hsv","rangel","v"],v));
+        onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangel","v"],v));
       },()=>_this.trigTO=undefined,500);
 
     }}/>
@@ -289,7 +289,7 @@ function ColorRegionLocating_SingleRegion({srule,onRuleChange,canvas_obj}:
 
       _this.trigTO=
       ID_throttle(_this.trigTO,()=>{
-        onRuleChange(ObjShellingAssign(srule_Filled,["colorThres"],v));
+        onDefChange(ObjShellingAssign(srule_Filled,["colorThres"],v));
       },()=>_this.trigTO=undefined,200);
 
     }}/>
@@ -513,7 +513,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
             let newDef={...def};
             newDef.id=e.target.value;
-            onRuleChange(newDef,false)
+            onDefChange(newDef,false)
 
 
           }}/>
@@ -558,7 +558,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
           <Button onClick={()=>{
             // queryCameraList
             setQueryCameraList(undefined);
-            BPG_API.cameraDiscovery(true)
+            BPG_API.queryDiscoverList()
               .then((e: any)=>{
                 console.log(e);
                 setQueryCameraList(e[0].data)
@@ -580,7 +580,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
           onChange={(e)=>{
             let newDef={...def};
             newDef.trigger_tag=e.target.value;
-            onRuleChange(newDef,false)
+            onDefChange(newDef,false)
         }}/>
 
         <Popconfirm
@@ -594,7 +594,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
               }
               else
               {
-                onRuleChange(undefined,false)
+                onDefChange(undefined,false)
               }
             }}}
             okText={"Yes:"+delConfirmCounter}
@@ -640,7 +640,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
         }}>{"<"}</Button>
         <ColorRegionLocating_SingleRegion 
           srule={regionInfo} 
-          onRuleChange={(newDef_sregion)=>{
+          onDefChange={(newDef_sregion)=>{
             // console.log(newDef);
 
             
@@ -704,7 +704,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
     </div>
 
     
-    <HookCanvasComponent dhook={(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
+    <HookCanvasComponent style={{}} dhook={(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
       _this.canvasComp=canvas_obj;
       // console.log(ctrl_or_draw);
       if(ctrl_or_draw==true)//ctrl
@@ -830,7 +830,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
       
       if(renderHook)
       {
-        renderHook(ctrl_or_draw,g,canvas_obj,newDef);
+        // renderHook(ctrl_or_draw,g,canvas_obj,newDef);
       }
     }
     }/>
@@ -1042,7 +1042,8 @@ function VIEWUI(){
 
     let api = await getAPI(CORE_ID)as BPG_WS
     console.log("+===========",_defInfo);
-    let reloadRes = await api.InspTargetUpdate(_defInfo,INSP1_REP_PGID_);
+    // let reloadRes = await api.InspTargetUpdate(_defInfo,INSP1_REP_PGID_);
+    let reloadRes = await api.InspTargetUpdate(_defInfo);
     console.log("+===========",reloadRes);
 
     api.send(undefined,0,{_PGID_:INSP1_REP_PGID_,_PGINFO_:{keep:true}},undefined,{
@@ -1161,15 +1162,16 @@ function VIEWUI(){
       
       let id=inspTar.id;
 
-      // console.log(id,inspTar)
       await api.InspTargetCreate(inspTar);
     }
-
+    
+    let infoList = await api.InspTargetGetInfo();
+    
 
     // InspTargetReload(defInfo:any,_PGID_:number)
     // ddd
     setDefConfig(prjDef);
-    console.log(prjDef)
+    console.log(prjDef,infoList)
   }
 
   useEffect(()=>{//load default
@@ -1508,7 +1510,7 @@ function VIEWUI(){
     // rule={inspTar} 
     // report={subRuleRep} 
     // renderHook={_this.listCMD_Vairable.renderHook} 
-    // onRuleChange={(new_rule,doInspUpdate=true)=>{
+    // onDefChange={(new_rule,doInspUpdate=true)=>{
     
     // }}/>
 
@@ -1620,7 +1622,7 @@ function App() {
     ACT_EXT_API_REGISTER(core_api.id,core_api);
     
     core_api.connect({
-      url:"ws://localhost:4090"
+      url:"ws://127.0.0.1:4090"
     });
 
 
