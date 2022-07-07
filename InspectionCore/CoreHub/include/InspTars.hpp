@@ -91,7 +91,7 @@ class InspectionTarget_TEST_IT :public InspectionTarget
   {
   }
 
-  bool stageInfoFilter(StageInfo* sinfo)
+  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
   {
     for(auto tag : sinfo->trigger_tags )
     {
@@ -133,11 +133,10 @@ class InspectionTarget_TEST_IT :public InspectionTarget
     int poolSize=input_pool.size();
     for(int i=0;i<poolSize;i++)
     {
-      StageInfo * curInput=input_pool[i];
+      std::shared_ptr<StageInfo> curInput=input_pool[i];
       singleProcess(curInput);
 
       input_pool[i]=NULL;
-      reutrnStageInfo(curInput);//remember to recycle the StageInfo
     }
     input_pool.clear();
 
@@ -147,7 +146,7 @@ class InspectionTarget_TEST_IT :public InspectionTarget
 
 
   
-  void singleProcess(StageInfo* sinfo)
+  void singleProcess(std::shared_ptr<StageInfo> sinfo)
   {
     // StageInfo *reportInfo=new StageInfo();
     // reportInfo->AddSharedInfo(sinfo);
@@ -164,7 +163,7 @@ public:
   }
 
   static std::string TYPE(){ return "ColorRegionDetection"; }
-  bool stageInfoFilter(StageInfo* sinfo)
+  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
   {
     for(auto tag : sinfo->trigger_tags )
     {
@@ -184,11 +183,10 @@ public:
     int poolSize=input_pool.size();
     for(int i=0;i<poolSize;i++)
     {
-      StageInfo * curInput=input_pool[i];
+      std::shared_ptr<StageInfo> curInput=input_pool[i];
       singleProcess(curInput);
 
       input_pool[i]=NULL;
-      reutrnStageInfo(curInput);//remember to recycle the StageInfo
     }
     input_pool.clear();
 
@@ -271,16 +269,16 @@ public:
 
   }
 
-  void singleProcess(StageInfo* sinfo)
+  void singleProcess(std::shared_ptr<StageInfo> sinfo)
   {
 
     cJSON *report=cJSON_CreateObject();
-    acvImage* srcImg=sinfo->imgSets["img"];
+    auto srcImg=sinfo->imgSets["img"];
 
 
     acvImage *copyImg=new acvImage();
-    copyImg->ReSize(srcImg);
-    acvCloneImage(srcImg,copyImg,-1);
+    copyImg->ReSize(srcImg.get());
+    acvCloneImage(srcImg.get(),copyImg,-1);
     cv::Mat def_temp_img(copyImg->GetHeight(),copyImg->GetWidth(),CV_8UC3,copyImg->CVector[0]);
 
 
@@ -522,12 +520,11 @@ public:
     
 
     
-
-    StageInfo_Blob *reportInfo=new StageInfo_Blob();
+    std::shared_ptr<StageInfo_Blob> reportInfo(new StageInfo_Blob());
     // reportInfo->AddSharedInfo(sinfo);
     reportInfo->source=this;
     reportInfo->source_id=id;
-    reportInfo->imgSets["img"]=copyImg;
+    reportInfo->imgSets["img"]=std::shared_ptr<acvImage>(copyImg);
     reportInfo->trigger_id=sinfo->trigger_id;
     reportInfo->trigger_tags.push_back("InfoStream2UI");
     reportInfo->trigger_tags.push_back("ToTestRule");
@@ -537,7 +534,7 @@ public:
     // reportInfo->trigger_tag=sinfo->trigger_tag;
 
 
-    reportInfo->jInfo=rep_regionInfo;
+    reportInfo->jInfo=std::shared_ptr<cJSON>(rep_regionInfo);
 
     belongMan->dispatch(reportInfo);
   }
@@ -556,17 +553,17 @@ public:
 
 class InspectionTarget_ImageDataTransfer :public InspectionTarget
 {
-  TSQueue<StageInfo *> datTransferQueue;
+  TSQueue<std::shared_ptr<StageInfo>> datTransferQueue;
   std::thread runThread;
   int realTimeDropFlag;
   public:
   
   static std::string TYPE(){ return "ImageDataTransfer"; }
-  InspectionTarget_ImageDataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(1),runThread(&InspectionTarget_ImageDataTransfer::thread_run,this)
+  InspectionTarget_ImageDataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(10),runThread(&InspectionTarget_ImageDataTransfer::thread_run,this)
   {
     realTimeDropFlag=-1;
   }
-  bool stageInfoFilter(StageInfo* sinfo)
+  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
   {
     for(auto tag : sinfo->trigger_tags )
     {
@@ -610,18 +607,17 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
     int poolSize=input_pool.size();
     for(int i=0;i<poolSize;i++)
     {
-      StageInfo * curInput=input_pool[i];
-      // singleProcess(curInput);
+      std::shared_ptr<StageInfo> curInput=input_pool[i];
+      
       
       try{
         
-        double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo,"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
+        double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo.get(),"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
         if(f_imgCHID!=f_imgCHID || f_imgCHID==0)
         {//no enough info return...
           LOGE("---no enough info return...");
           
           LOGE("PUSH Failed....");
-          reutrnStageInfo(curInput);
         }
         else if(realTimeDropFlag<=0 && datTransferQueue.push(curInput))
         {
@@ -632,19 +628,12 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
         else
         {
           LOGE("PUSH Failed....");
-          reutrnStageInfo(curInput);
         }
       }
       catch(TS_Termination_Exception e)
       {
         
         LOGE("TS_Termination_Exception....");
-        for(int j=0;j<poolSize;j++)
-        {
-          StageInfo * curInput=input_pool[i];
-          if(curInput==NULL)continue;
-          reutrnStageInfo(curInput);
-        }
         break;
       }
 
@@ -663,10 +652,6 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
     datTransferQueue.termination_trigger();
     runThread.join();
     StageInfo *sinfo=NULL;
-    while(datTransferQueue.dump(sinfo))
-    {
-      reutrnStageInfo(sinfo);
-    }
     
   }
 

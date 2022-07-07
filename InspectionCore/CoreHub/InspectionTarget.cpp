@@ -25,13 +25,9 @@ InspectionTarget::InspectionTarget(std::string id,cJSON* def,InspectionTargetMan
 
 
 
-
-void InspectionTarget::acceptStageInfo(StageInfo* sinfo)
+void InspectionTarget::acceptStageInfo(std::shared_ptr<StageInfo> sinfo)
 {
-  sinfo->registerInUse(this);
-
   {
-    const std::lock_guard<std::mutex> lock(this->input_stage_lock);
     // LOGI("accept StageInfo: src:%s",sinfo->source.c_str());
     inputPoolInsufficient=false;
     input_stage.push_back(sinfo);
@@ -40,15 +36,7 @@ void InspectionTarget::acceptStageInfo(StageInfo* sinfo)
 
 
 
-int InspectionTarget::reutrnStageInfo(StageInfo* sinfo)
-{
-  LOGI("getUseCount:%d  :%p",sinfo->getUseCount(),sinfo);
-
-  belongMan->unregNrecycleStageInfo(sinfo,this);
-}
-
-
-bool InspectionTarget::feedStageInfo(StageInfo* sinfo)
+bool InspectionTarget::feedStageInfo(std::shared_ptr<StageInfo> sinfo)
 {
   if(stageInfoFilter(sinfo))
   {
@@ -191,16 +179,16 @@ InspectionTarget::~InspectionTarget()
   setInspDef(NULL);
   exchangeInfo(NULL);
 
-  for(int i=0;i<input_stage.size();i++)
-  {
-    reutrnStageInfo(input_stage[i]);
-  }
+  // for(int i=0;i<input_stage.size();i++)
+  // {
+  //   reutrnStageInfo(input_stage[i]);
+  // }
   input_stage.clear();
 
-  for(int i=0;i<input_pool.size();i++)
-  {
-    reutrnStageInfo(input_pool[i]);
-  }
+  // for(int i=0;i<input_pool.size();i++)
+  // {
+  //   reutrnStageInfo(input_pool[i]);
+  // }
   input_pool.clear();
 
 }
@@ -447,7 +435,7 @@ InspectionTarget* InspectionTargetManager::getInspTar(std::string id)
 
 
 
-int InspectionTargetManager::dispatch(StageInfo* sinfo)
+int InspectionTargetManager::dispatch(std::shared_ptr<StageInfo> sinfo)
 {
   if(sinfo==NULL)return -1;
   int acceptCount=0;
@@ -477,36 +465,6 @@ int InspectionTargetManager::dispatch(StageInfo* sinfo)
 }
 
 
-
-
-int InspectionTargetManager::unregNrecycleStageInfo(StageInfo* sinfo,InspectionTarget* from )
-{
-  std::lock_guard<std::mutex> _(recycleStageInfoMutex);
-
-  return _unregNrecycleStageInfo(sinfo,from);
-}
-int InspectionTargetManager::_unregNrecycleStageInfo(StageInfo* sinfo,InspectionTarget* from )
-{
-
-  if(sinfo==NULL)return -1;
-  if(from)
-    sinfo->unregisterInUse(from);
-  // LOGE("recycle: src:%s  inUseCount:%d",sinfo->source.c_str(),sinfo->inUseCount);
-  if(sinfo->isStillInUse())
-  {
-    return sinfo->getUseCount();
-  }
-
-  for(auto sharedInfo :sinfo->sharedInfo )
-  {
-    if(sharedInfo)
-      _unregNrecycleStageInfo(sharedInfo,from);
-  }
-  sinfo->sharedInfo.clear();//do clear the vector, or the StageInfo destructor will delete sharedInfo again
-
-  delete sinfo;
-  return 0;
-}
 
 int InspectionTargetManager::inspTarProcess()
 {
