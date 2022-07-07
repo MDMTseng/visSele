@@ -465,8 +465,6 @@ int InspectionTargetManager::dispatch(StageInfo* sinfo)
     for(auto tag:sinfo->trigger_tags)
       LOGI("%s",tag.c_str());
     LOGE("No one accepts StageInfo: from:%s type:%s ",sinfo->source_id.c_str(),sinfo->typeName().c_str());
-    LOGE("Recycle.... ");
-    unregNrecycleStageInfo(sinfo,NULL);
   }
   else
   {
