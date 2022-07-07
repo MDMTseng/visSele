@@ -159,16 +159,22 @@ cJSON* InspectionTarget::genITInfo_basic()
 
 cJSON* InspectionTarget::exchangeInfo(cJSON* info)
 {
+  std::string type=JFetch_STRING_ex(info,"type");
 
-  if(this->addtionalInfo)cJSON_Delete(this->addtionalInfo);
-  this->addtionalInfo=NULL;
-  if(info)
+  if(type=="get_info")
   {
-    this->addtionalInfo= cJSON_Duplicate(info, cJSON_True);
+    return genITInfo();
   }
+
+  if(type=="get_io_setting")
+  {
+    return genITIOInfo();
+  }
+
 
   return NULL;
 }
+
 
 bool  InspectionTarget::isService()
 {

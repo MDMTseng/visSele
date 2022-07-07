@@ -103,27 +103,24 @@ class InspectionTarget_TEST_IT :public InspectionTarget
 
   virtual cJSON* genITIOInfo()
   {
-    cJSON* info= cJSON_CreateObject();
+
+
+    cJSON* arr= cJSON_CreateArray();
+
     {
-      cJSON* arr= cJSON_CreateArray();
-      cJSON_AddItemToObject(info, "i",arr );
+      cJSON* opt= cJSON_CreateObject();
+      cJSON_AddItemToArray(arr,opt);
 
       {
         cJSON* sarr= cJSON_CreateArray();
-        cJSON_AddItemToArray(arr,sarr);
         
+        cJSON_AddItemToObject(opt, "i",sarr );
         cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Image::stypeName().c_str() ));
       }
 
     }
 
-    
-    if(0){//no output
-      cJSON* arr= cJSON_CreateArray();
-      cJSON_AddItemToObject(info, "i",arr );
-    }
-
-    return info;
+    return arr;
   }
 
   std::future<int> futureInputStagePool()
@@ -205,12 +202,11 @@ public:
   cJSON* exchangeInfo(cJSON* info)
   {
     //LOGI(">>>>>>>>>>>>");
+    cJSON* ret = InspectionTarget::exchangeInfo(info);
+    if(ret)return ret;
+    std::string type=JFetch_STRING_ex(info,"type");
 
-    InspectionTarget::exchangeInfo(info);
-
-
-
-    return cJSON_CreateObject();
+    return NULL;
   }
 
   // bool feedStageInfo(StageInfo* sinfo)
@@ -243,34 +239,36 @@ public:
 
   virtual cJSON* genITIOInfo()
   {
-    cJSON* info= cJSON_CreateObject();
+
+
+    
+    cJSON* arr= cJSON_CreateArray();
+
     {
-      cJSON* arr= cJSON_CreateArray();
-      cJSON_AddItemToObject(info, "i",arr );
+      cJSON* opt= cJSON_CreateObject();
+      cJSON_AddItemToArray(arr,opt);
 
       {
         cJSON* sarr= cJSON_CreateArray();
-        cJSON_AddItemToArray(arr,sarr);
         
+        cJSON_AddItemToObject(opt, "i",sarr );
         cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Image::stypeName().c_str() ));
       }
 
-    }
-
-    
-    {
-      cJSON* arr= cJSON_CreateArray();
-      cJSON_AddItemToObject(info, "i",arr );
-      
       {
         cJSON* sarr= cJSON_CreateArray();
-        cJSON_AddItemToArray(arr,sarr);
         
+        cJSON_AddItemToObject(opt, "o",sarr );
         cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Blob::stypeName().c_str() ));
       }
+
+
+
+
     }
 
-    return info;
+    return arr;
+
   }
 
   void singleProcess(StageInfo* sinfo)
@@ -589,21 +587,22 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
 
   virtual cJSON* genITIOInfo()
   {
-    cJSON* info= cJSON_CreateObject();
+
+    cJSON* arr= cJSON_CreateArray();
+
     {
-      cJSON* arr= cJSON_CreateArray();
-      cJSON_AddItemToObject(info, "i",arr );
+      cJSON* opt= cJSON_CreateObject();
+      cJSON_AddItemToArray(arr,opt);
 
       {
         cJSON* sarr= cJSON_CreateArray();
-        cJSON_AddItemToArray(arr,sarr);
         
+        cJSON_AddItemToObject(opt, "i",sarr );
         cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Blob::stypeName().c_str() ));
       }
-
     }
 
-    return info;
+    return arr;
   }
 
   int processInputPool()

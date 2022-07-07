@@ -317,7 +317,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             if(triggerInfoMatchingBuffer[i].stInfo==NULL)continue;//skip trigger info
 
             auto _stInfo=triggerInfoMatchingBuffer[i].stInfo;
-            if(targetTriggerInfo.camera_id!=_stInfo->StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
+            if(targetTriggerInfo.camera_id!=_stInfo->StreamInfo.camera->getConnectionData().id)continue;//camera id is not matching
 
             
             int cost;
@@ -352,8 +352,10 @@ void TriggerInfoMatchingThread(bool *terminationflag)
 
         if( minMatchingIdx!=-1 && minMatchingCost<1000)
         {
-          LOGI("Get matching. idx:%d cost:%d  psss to next Q",minMatchingIdx,minMatchingCost);
+          LOGI("Get matching. idx:%d cost:%d  psss to next Q info:%p",minMatchingIdx,minMatchingCost,targetStageInfo );
           targetStageInfo->trigger_tags.push_back(targetTriggerInfo.trigger_tag);
+          targetStageInfo->trigger_tags.push_back(targetTriggerInfo.camera_id);
+          LOGI("cam id:%s",targetTriggerInfo.camera_id.c_str());
           targetStageInfo->trigger_id=targetTriggerInfo.trigger_id;
 
           inspQueue.push_blocking(targetStageInfo);
@@ -364,14 +366,10 @@ void TriggerInfoMatchingThread(bool *terminationflag)
           LOGI("No matching.... push in buffer");
           triggerInfoMatchingBuffer.push_back(headImgStageInfoMixInfo);//no match, add new data to buffer 
           LOGI("buffer size:%d",triggerInfoMatchingBuffer.size());
-      LOGI(">>>>>");
         }
       }
-      LOGI(">>>>>");
-      
       // triggerInfoMatchingBuffer.w_unlock();
       
-      LOGI(">>>>>");
 
     }
 
@@ -1193,11 +1191,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       
       session_ACK = false;
       char *type_str = JFetch_STRING(json, "type");
-      {
-        char* jsonStr=cJSON_Print(json);
-        LOGI("jsonStr:\n%s",jsonStr);
-        delete jsonStr;
-      }
+      // {
+      //   char* jsonStr=cJSON_Print(json);
+      //   LOGI("jsonStr:\n%s",jsonStr);
+      //   delete jsonStr;
+      // }
 
 
 
@@ -1320,6 +1318,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         cJSON* reply=insptar->exchangeInfo(JFetch_OBJECT(json,"data"));
         if(reply!=NULL)
         {
+          session_ACK=true;
           fromUpperLayer_DATA("IT",dat->pgID,reply);
           cJSON_Delete(reply);
         }
@@ -1329,7 +1328,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         //   noInstantACK=true;
         // }
 
-        session_ACK=true;
 
       }
     }while(0);}
