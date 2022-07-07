@@ -32,7 +32,7 @@ void InspectionTarget::acceptStageInfo(StageInfo* sinfo)
 
   {
     const std::lock_guard<std::mutex> lock(this->input_stage_lock);
-    LOGI("accept StageInfo: src:%s",sinfo->source.c_str());
+    // LOGI("accept StageInfo: src:%s",sinfo->source.c_str());
     inputPoolInsufficient=false;
     input_stage.push_back(sinfo);
   }
@@ -97,6 +97,9 @@ void InspectionTarget::setInspDef(cJSON* def)
   // this->depSrc.clear();
   if(def)
   {
+    id=JFetch_STRING_ex(def,"id","");
+    name=JFetch_STRING_ex(def,"name","");
+    type=JFetch_STRING_ex(def,"type","");
     this->def= cJSON_Duplicate(def, cJSON_True);
     // for(int i=0;;i++)
     // {
@@ -124,23 +127,30 @@ void InspectionTarget::setInspDef(cJSON* def)
 //   return;
 // }
 
-cJSON* InspectionTarget::genInfo()
+cJSON* InspectionTarget::genITInfo()
+{
+  cJSON* info= genITInfo_basic();
+  
+  {
+    cJSON_AddItemToObject(info, "io",genITIOInfo() );
+  }
+  return info;
+}
+
+cJSON* InspectionTarget::genITInfo_basic()
 {
   cJSON *obj=cJSON_CreateObject();
 
-  {
-    // cJSON *camInfo = cJSON_Parse(camera->getCameraJsonInfo().c_str());
-    // cJSON_AddItemToObject(obj, "camera", camInfo);
-  }
-
-  {
-    cJSON *otherInfo=cJSON_CreateObject();
-    cJSON_AddItemToObject(obj, "inspInfo", otherInfo);
-  }
+  // {
+  //   cJSON *otherInfo=cJSON_CreateObject();
+  //   cJSON_AddItemToObject(obj, "inspInfo", otherInfo);
+  // }
 
   {
     // cJSON_AddNumberToObject(obj, "channel_id", channel_id);
     cJSON_AddStringToObject(obj, "id", id.c_str());
+    cJSON_AddStringToObject(obj, "type",this->type.c_str());
+    cJSON_AddStringToObject(obj, "name",this->name.c_str());
   }
   return obj;
 }
@@ -448,7 +458,7 @@ int InspectionTargetManager::dispatch(StageInfo* sinfo)
     LOGI("id:%d trigger:",sinfo->trigger_id);
     for(auto tag:sinfo->trigger_tags)
       LOGI("%s",tag.c_str());
-    LOGE("No one accepts StageInfo: from:%s type:%s ",sinfo->source.c_str(),sinfo->type.c_str());
+    LOGE("No one accepts StageInfo: from:%s type:%s ",sinfo->source_id.c_str(),sinfo->typeName().c_str());
     LOGE("Recycle.... ");
     unregNrecycleStageInfo(sinfo,NULL);
   }
@@ -501,10 +511,10 @@ int InspectionTargetManager::inspTarProcess()
   {
 
     std::vector<std::future<int>> fut_vec;
+    int curProcessCount=0;
     for (int i = 0; i < inspTars.size(); i++)
       fut_vec.push_back(inspTars[i]->futureInputStagePool());
 
-    int curProcessCount=0;
     for (int i = 0; i < fut_vec.size(); ++i)
       curProcessCount += fut_vec[i].get();
 
@@ -531,7 +541,7 @@ cJSON* InspectionTargetManager::genInspTarListInfo()
   cJSON* jarr=cJSON_CreateArray();
   for(int i=0;i<inspTars.size();i++)
   {
-    cJSON_AddItemToArray(jarr, inspTars[i]->genInfo());
+    cJSON_AddItemToArray(jarr, inspTars[i]->genITInfo());
   }
 
   return jarr;

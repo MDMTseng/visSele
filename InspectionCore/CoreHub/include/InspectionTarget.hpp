@@ -100,7 +100,23 @@ class CameraManager
 // {
 //   int channel_id;
 // };
+// enum StageInfo_CAT{
 
+//   PURE_IMAGE,
+
+//   LOCATING_INFO,
+//   LOCATING_INFO_SIGNATURE,
+//   LOCATING_INFO_SHAPE_MATCHING,
+
+//   BLOB,//{area, point, region}[]
+//   ARC,//{point, radious}[]
+//   POINT,//point
+//   LINE,//{point1, point2,sigma}[]
+
+//   VALUE_RESULT,//{value,detail:[]}
+
+  
+// };
 
 class InspectionTargetManager;
 class StageInfo;
@@ -110,17 +126,31 @@ class InspectionTarget
   bool asService=false;
   public:
   std::string id;
+  std::string type;
+  std::string name;
+
   bool inputPoolInsufficient;
   cJSON *def=NULL;
   cJSON *addtionalInfo=NULL;
   InspectionTargetManager* belongMan;
+
+  
+  static std::string TYPE(){ return "IT"; }
+  // std::vector<StageInfo_CAT> acceptTags;
   InspectionTarget(std::string id,cJSON* def,InspectionTargetManager* belongMan);
+  
+
+
+
+
+
   virtual ~InspectionTarget();
   virtual void setInspDef(cJSON* def);
 
   virtual cJSON* exchangeInfo(cJSON* info);
 
-  virtual cJSON* genInfo();
+  virtual cJSON* genITIOInfo()=0;
+  virtual cJSON* genITInfo();
   bool isService();
 
   
@@ -132,19 +162,35 @@ class InspectionTarget
 
 
   virtual int processInputStagePool();  
-  virtual std::future<int> futureInputStagePool()=0;
 
+
+  virtual std::future<int> futureInputStagePool()=0;
 
 
 
   protected:
   
+  virtual cJSON* genITInfo_basic();
   virtual bool stageInfoFilter(StageInfo* sinfo)=0;
   // virtual std::vector<StageInfo*> inputPick(std::vector<StageInfo*> infoPool)=0;//returns input processed
   virtual void acceptStageInfo(StageInfo* sinfo);
   int reutrnStageInfo(StageInfo* sinfo);
 
   virtual int processInputPool()=0; 
+};
+
+class InspectionTarget_PureImage: public InspectionTarget
+{
+  InspectionTarget_PureImage(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan)
+  {
+
+  }
+};
+class InspectionTarget_Locating: public InspectionTarget
+{
+  InspectionTarget_Locating(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan)
+  {
+  }
 };
 
 
@@ -156,13 +202,14 @@ class StageInfo{
   protected:
   int inUseCount;
   public:
-  std::string type;
-  std::string source;
-  
+  std::string source_id;
+  InspectionTarget *source;
   CameraManager::StreamingInfo StreamInfo;
   CameraLayer::frameInfo fi;
   
-
+  
+  virtual std::string typeName()=0;
+  // std::vector<StageInfo_CAT> catInfo;
   std::vector<std::string> trigger_tags;
   int trigger_id;
   
@@ -178,8 +225,8 @@ class StageInfo{
     fi=( CameraLayer::frameInfo){0};
     inUseCount=0;
     StageInfoLiveCounter++;
-    type="";
-    source="";
+    source=NULL;
+    source_id="";
     trigger_id=-1;
     jInfo=NULL;
 
@@ -187,7 +234,7 @@ class StageInfo{
     LOGE("++>StageInfoLiveCounter:%d  :%p",StageInfoLiveCounter,this);
 #endif
   }
-  ~StageInfo(){
+  virtual ~StageInfo(){
     const std::lock_guard<std::mutex> lock(this->lock);
     if(inUseCount)
     {
@@ -290,27 +337,6 @@ class StageInfo{
 
 };
 
-//custom Stage info
-class StageInfo_cusTest:public StageInfo{
-  char* charArr=NULL;
-  StageInfo_cusTest()
-  {
-    type="StageInfo_cusTest";
-  }
-  ~StageInfo_cusTest()
-  {
-    
-    if(charArr)
-    {
-      delete charArr;
-      charArr=NULL;
-    }
-    //this destructor will be called first,
-    //after this ~StageInfo will be called in C++ 
-  }
-  
-};
-
 class InspectionTargetManager
 {
   std::mutex camCBLock;
@@ -352,12 +378,52 @@ class InspectionTargetManager
   
   bool addInspTar(InspectionTarget* inspTar,std::string id);
 
+  void genInspTarInOutMap();
+
   InspectionTarget* getInspTar(std::string id);
   
   cJSON* genInspTarListInfo();
 };
 
 
+
+//custom Stage info
+class StageInfo_cusTest:public StageInfo{
+  char* charArr=NULL;
+  public:
+  static std::string stypeName(){return "cusTest";}
+  std::string typeName(){return StageInfo_cusTest::stypeName();}
+  StageInfo_cusTest()
+  {
+  }
+  ~StageInfo_cusTest()
+  {
+    
+    if(charArr)
+    {
+      delete charArr;
+      charArr=NULL;
+    }
+    //this destructor will be called first,
+    //after this ~StageInfo will be called in C++ 
+  }
+  
+};
+
+class StageInfo_Image:public StageInfo
+{
+  public:
+  static std::string stypeName(){return "Image";}
+  std::string typeName(){return StageInfo_Image::stypeName();}
+};
+
+
+class StageInfo_Blob:public StageInfo
+{
+  public:
+  static std::string stypeName(){return "Blob";}
+  std::string typeName(){return StageInfo_Blob::stypeName();}
+};
 
 
 /*

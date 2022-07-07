@@ -85,6 +85,8 @@ bool matchTriggerTag(string tarTag,cJSON* def)
 class InspectionTarget_TEST_IT :public InspectionTarget
 {
   public:
+  
+  static std::string TYPE(){ return "TEST_IT"; }
   InspectionTarget_TEST_IT(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan)
   {
   }
@@ -97,6 +99,31 @@ class InspectionTarget_TEST_IT :public InspectionTarget
         return true;
     }
     return false;
+  }
+
+  virtual cJSON* genITIOInfo()
+  {
+    cJSON* info= cJSON_CreateObject();
+    {
+      cJSON* arr= cJSON_CreateArray();
+      cJSON_AddItemToObject(info, "i",arr );
+
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        cJSON_AddItemToArray(arr,sarr);
+        
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Image::stypeName().c_str() ));
+      }
+
+    }
+
+    
+    if(0){//no output
+      cJSON* arr= cJSON_CreateArray();
+      cJSON_AddItemToObject(info, "i",arr );
+    }
+
+    return info;
   }
 
   std::future<int> futureInputStagePool()
@@ -125,14 +152,12 @@ class InspectionTarget_TEST_IT :public InspectionTarget
   
   void singleProcess(StageInfo* sinfo)
   {
-
-    StageInfo *reportInfo=new StageInfo();
-    reportInfo->AddSharedInfo(sinfo);
-    belongMan->dispatch(reportInfo);
-    LOGI("InspectionTarget_TEST_IT Got info from:%s ......",sinfo->source.c_str());
+    // StageInfo *reportInfo=new StageInfo();
+    // reportInfo->AddSharedInfo(sinfo);
+    // belongMan->dispatch(reportInfo);
+    LOGI("InspectionTarget_TEST_IT Got info from:%s ......",sinfo->source_id.c_str());
   }
 };
-
 
 class InspectionTarget_ColorRegionDetection :public InspectionTarget
 {
@@ -141,6 +166,7 @@ public:
   {
   }
 
+  static std::string TYPE(){ return "ColorRegionDetection"; }
   bool stageInfoFilter(StageInfo* sinfo)
   {
     for(auto tag : sinfo->trigger_tags )
@@ -214,6 +240,38 @@ public:
   //   return pCount;
   // }
 
+
+  virtual cJSON* genITIOInfo()
+  {
+    cJSON* info= cJSON_CreateObject();
+    {
+      cJSON* arr= cJSON_CreateArray();
+      cJSON_AddItemToObject(info, "i",arr );
+
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        cJSON_AddItemToArray(arr,sarr);
+        
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Image::stypeName().c_str() ));
+      }
+
+    }
+
+    
+    {
+      cJSON* arr= cJSON_CreateArray();
+      cJSON_AddItemToObject(info, "i",arr );
+      
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        cJSON_AddItemToArray(arr,sarr);
+        
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Blob::stypeName().c_str() ));
+      }
+    }
+
+    return info;
+  }
 
   void singleProcess(StageInfo* sinfo)
   {
@@ -467,9 +525,10 @@ public:
 
     
 
-    StageInfo *reportInfo=new StageInfo();
-    reportInfo->AddSharedInfo(sinfo);
-    reportInfo->source=this->id;
+    StageInfo_Blob *reportInfo=new StageInfo_Blob();
+    // reportInfo->AddSharedInfo(sinfo);
+    reportInfo->source=this;
+    reportInfo->source_id=id;
     reportInfo->imgSets["img"]=copyImg;
     reportInfo->trigger_id=sinfo->trigger_id;
     reportInfo->trigger_tags.push_back("InfoStream2UI");
@@ -478,7 +537,6 @@ public:
     // reportInfo->fi=sinfo->fi;
     // reportInfo->StreamInfo=sinfo->StreamInfo;
     // reportInfo->trigger_tag=sinfo->trigger_tag;
-    reportInfo->type="report";
 
 
     reportInfo->jInfo=rep_regionInfo;
@@ -498,251 +556,121 @@ public:
 };
 
 
-// class InspectionTarget_g :public InspectionTarget
-// { 
-// public:
-//   struct report{
-//     bool isReady;
-//     std::string trigger_tag;
-//     int trigger_id;
-//     std::string cam_id;
-//     uint64_t timeStamp_us;
-//   } ;
-
-//   report rep;
-
-//   vector<InspectionTarget_s*> subInspList;
+class InspectionTarget_ImageDataTransfer :public InspectionTarget
+{
+  TSQueue<StageInfo *> datTransferQueue;
+  std::thread runThread;
+  int realTimeDropFlag;
+  public:
   
-//   cJSON *inspresult=NULL;
-//   InspectionTarget_g(std::string id,cJSON* def):InspectionTarget(id)
+  static std::string TYPE(){ return "ImageDataTransfer"; }
+  InspectionTarget_ImageDataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(1),runThread(&InspectionTarget_ImageDataTransfer::thread_run,this)
+  {
+    realTimeDropFlag=-1;
+  }
+  bool stageInfoFilter(StageInfo* sinfo)
+  {
+    for(auto tag : sinfo->trigger_tags )
+    {
+      if( matchTriggerTag(tag,def))
+        return true;
+    }
+    return false;
+  }
 
-//   {
-//     setInspDef(def);
 
-//     char* defStr=cJSON_Print(this->def);
-//     LOGI("\n%s",defStr);
-//     delete defStr;
-//   }
+  std::future<int> futureInputStagePool()
+  {
+    return std::async(launch::async,&InspectionTarget_ImageDataTransfer::processInputStagePool,this);
+  }
 
-
-//   cJSON* fetchInspReport()
-//   {
-//     return inspresult;
-//   }
 
   
 
-//   void cleanInspReport()
-//   {
-    
-//     for(int i=0;i<subInspList.size();i++)
-//     {
-//       subInspList[i]->cleanInspReport();
-//     }
-//     cJSON_Delete(inspresult);
-//     inspresult=NULL;
-//   }
+  virtual cJSON* genITIOInfo()
+  {
+    cJSON* info= cJSON_CreateObject();
+    {
+      cJSON* arr= cJSON_CreateArray();
+      cJSON_AddItemToObject(info, "i",arr );
 
-//   cJSON* genInfo()
-//   {
-//     cJSON *obj=cJSON_CreateObject();
-
-//     {
-//       // cJSON *camInfo = cJSON_Parse(camera->getCameraJsonInfo().c_str());
-//       // cJSON_AddItemToObject(obj, "camera", camInfo);
-//     }
-
-//     {
-//       cJSON *otherInfo=cJSON_CreateArray();
-//       cJSON_AddItemToObject(obj, "inspInfo", otherInfo);
-
-//       for( auto sInsp:subInspList)
-//       {
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        cJSON_AddItemToArray(arr,sarr);
         
-//         cJSON *info=cJSON_CreateObject();
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Blob::stypeName().c_str() ));
+      }
 
+    }
 
-//         cJSON_AddStringToObject(info, "id", sInsp->id.c_str() );
-        
-//         cJSON_AddItemToArray(otherInfo,info);
-//       }
+    return info;
+  }
 
-
-
-//     }
-
-//     {
-//       cJSON_AddNumberToObject(obj, "channel_id", channel_id);
-//       cJSON_AddStringToObject(obj, "id", id.c_str());
-//     }
-//     return obj;
-//   }
-
-//   cJSON* genInspReport()
-//   {
-//     if(rep.isReady==false)return NULL;
-//     cJSON *inspresult=NULL;
-  
-//     inspresult=cJSON_CreateObject();
-//     cJSON_AddStringToObject(inspresult,"id",this->id.c_str());
-//     cJSON_AddNumberToObject(inspresult,"channel_id",this->channel_id);
-//     cJSON_AddStringToObject(inspresult,"trigger_tag",rep.trigger_tag.c_str());
-//     cJSON_AddNumberToObject(inspresult,"trigger_id",rep.trigger_id);
-//     cJSON_AddStringToObject(inspresult,"camera_id",rep.cam_id.c_str());
-//     cJSON_AddNumberToObject(inspresult,"timeStamp_us",rep.timeStamp_us);
-
-
-//     cJSON* rep_rules=cJSON_CreateArray();
-//     cJSON_AddItemToObject(inspresult,"rules",rep_rules);
-
-    
-//     for(int i=0;i<subInspList.size();i++)
-//     {
-//       cJSON_AddItemToArray(rep_rules,cJSON_Duplicate(subInspList[i]->fetchInspReport(),true));
-//     }
-
-//     return inspresult;
-//   }
-
-//   InspectionTarget_EXCHANGE excdata={0};
-//   std::timed_mutex rsclock;
-//   InspectionTarget_EXCHANGE* exchange(InspectionTarget_EXCHANGE* info)
-//   {
-//     rsclock.lock();
-//     cJSON * json=info->info;
-
-//     char *insp_type = JFetch_STRING(json, "insp_type");
-
-//     memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
-
-//     if(strcmp(insp_type, "start_stream") ==0)
-//     {
-//       // camera->TriggerMode(0);
-//       excdata.isOK=true;
-//       return &excdata;
-//     }
-//     if(strcmp(insp_type, "stop_stream") ==0)
-//     {
-//       // camera->TriggerMode(2);
-//       excdata.isOK=true;
-//       return &excdata;
-//     }
-//     excdata.isOK=false;
-//     return &excdata;
-
-//   }
-
-  
-  
-//   virtual void setInspDef(cJSON* def)
-//   {
-
-//     for(int i=0;i<subInspList.size();i++)
-//     {
-//       delete subInspList[i];
-//       subInspList[i]=NULL;
-//     }
-//     subInspList.clear();
-
-//     //clean up objects
-//     InspectionTarget::setInspDef(def);
-//     //build up objects
-
-//     if(0){
-//       char* defStr=cJSON_Print(def);
-//       LOGI("\n%s",defStr);
-//       delete defStr;
-//     }
-
-
-    
-//     cJSON* rules=JFetch_ARRAY(def,"rules");
-//     for (int i = 0 ; i < cJSON_GetArraySize(rules) ; i++)
-//     {
-//       cJSON * rule = cJSON_GetArrayItem(rules, i);
-    
-//       std::string type=std::string(JFetch_STRING(rule,"type"));
-    
-//       std::string id=std::string(JFetch_STRING(rule,"id"));
-
+  int processInputPool()
+  {
+    int poolSize=input_pool.size();
+    for(int i=0;i<poolSize;i++)
+    {
+      StageInfo * curInput=input_pool[i];
+      // singleProcess(curInput);
       
-//       if(type=="ColorRegionLocating")
-//       {
-//         InspectionTarget_s* subIT=
-//           new InspectionTarget_ColorRegionDetection(id,rule,&subInspList);
-//         subInspList.push_back(subIT);
-//       }
-//       else if(type=="ShapeLocating")
-//       {
-//         InspectionTarget_s* subIT=
-//           new InspectionTarget_ColorRegionDetection(id,rule,&subInspList);
-//         subInspList.push_back(subIT);
-//       }
-//       else
-//       {
-//         //failed
-//       }
+      try{
+        
+        double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo,"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
+        if(f_imgCHID!=f_imgCHID || f_imgCHID==0)
+        {//no enough info return...
+          LOGE("---no enough info return...");
+          
+          LOGE("PUSH Failed....");
+          reutrnStageInfo(curInput);
+        }
+        else if(realTimeDropFlag<=0 && datTransferQueue.push(curInput))
+        {
+          if(realTimeDropFlag>=0)
+            realTimeDropFlag++;
+          LOGI("PUSH PUSH");
+        }
+        else
+        {
+          LOGE("PUSH Failed....");
+          reutrnStageInfo(curInput);
+        }
+      }
+      catch(TS_Termination_Exception e)
+      {
+        
+        LOGE("TS_Termination_Exception....");
+        for(int j=0;j<poolSize;j++)
+        {
+          StageInfo * curInput=input_pool[i];
+          if(curInput==NULL)continue;
+          reutrnStageInfo(curInput);
+        }
+        break;
+      }
 
-//     }
 
-//     bool is_Ref_OK=true;
-//     for (int i = 0 ; i < subInspList.size() ; i++)
-//     {
-//       if(subInspList[i]->checkRef()==false)
-//       {
-//         is_Ref_OK=false;
-//         break;
-//       }
-//     }
+      input_pool[i]=NULL;
+      // reutrnStageInfo(curInput);//remember to recycle the StageInfo
+    }
+    input_pool.clear();
 
-//   }
+    return poolSize;//run all
 
-//   void CAM_CallBack(image_pipe_info *pipe)
-//   {
-//     rep.isReady=false;
-//     // CameraLayer::frameInfo  info=srcCamSi->camera->GetFrameInfo();
-//     // LOGI("<<<<id:%s<<<%s  WH:%d,%d  timeStamp_us:%" PRId64,id.c_str(),cam_id.c_str(),img.GetWidth(),img.GetHeight(),info.timeStamp_us);
-
-//     rep.trigger_tag=pipe->trigger_tag;
-//     rep.trigger_id=pipe->trigger_id;
-//     rep.cam_id=pipe->camera_id;
-//     rep.timeStamp_us=pipe->fi.timeStamp_us;
+  }
+  void thread_run();
+  ~InspectionTarget_ImageDataTransfer()
+  {
+    datTransferQueue.termination_trigger();
+    runThread.join();
+    StageInfo *sinfo=NULL;
+    while(datTransferQueue.dump(sinfo))
+    {
+      reutrnStageInfo(sinfo);
+    }
     
-//     rep.isReady=true;
+  }
 
-
-//     for(int i=0;i<subInspList.size();i++)
-//     {
-//       subInspList[i]->CAM_CallBack(pipe);
-//       // subInspList[i]->fetchInspReport();
-//     }
-//     if(inspresult!=NULL)
-//     {
-//       cJSON_Delete(inspresult);
-//       inspresult=NULL;
-//     }
-//     inspresult=genInspReport();
-//   }
-
-//   bool returnExchange(InspectionTarget_EXCHANGE* info)
-//   {
-//     if(info!=&excdata)return false;
-
-//     if(info->info)
-//       cJSON_Delete( info->info );
-    
-//     memset(&excdata,0,sizeof(InspectionTarget_EXCHANGE));
-    
-//     rsclock.unlock();
-//     return true;
-//   }
-//   virtual ~InspectionTarget_g()
-//   {
-//     if(inspresult!=NULL)
-//     {
-//       cJSON_Delete(inspresult);
-//     }
-//   }
-// };
+};
 
 

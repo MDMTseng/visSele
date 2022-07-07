@@ -39,9 +39,8 @@ m_BPG_Protocol_Interface bpg_pi;
 
 m_BPG_Link_Interface_WebSocket *ifwebsocket=NULL;
 
-
 struct sttriggerInfo_mix{
-  StageInfo *stInfo;
+  StageInfo_Image *stInfo;
   
   struct _triggerInfo{
 
@@ -64,7 +63,8 @@ TSVector<sttriggerInfo_mix> triggerInfoMatchingBuffer;
 
 
 
-TSQueue<StageInfo *> inspQueue(10);
+
+TSQueue<StageInfo_Image *> inspQueue(10);
 // TSQueue<image_pipe_info *> datViewQueue(10);
 // TSQueue<image_pipe_info *> inspSnapQueue(5);
 
@@ -100,7 +100,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
     //     bpg_pi.resPool.rest_size(),triggerInfoMatchingBuffer.size());
 
     
-    StageInfo *newStateInfo=new StageInfo();
+    StageInfo_Image *newStateInfo=new StageInfo_Image();
 
     CameraLayer::frameInfo finfo = info.camera->GetFrameInfo();
 
@@ -108,7 +108,8 @@ class InspectionTargetManager_m:public InspectionTargetManager
     CameraLayer::status st = info.camera->ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
 
     newStateInfo->StreamInfo=info;
-    newStateInfo->source=info.camera->getConnectionData().id;
+    newStateInfo->source=NULL;//info.camera->getConnectionData().id;
+    newStateInfo->source_id=info.camera->getConnectionData().id;
     newStateInfo->fi=finfo;
     if(info.channel_id)
     {
@@ -138,7 +139,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
 
 int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,int trigger_id,int channel_id)
 {
-  StageInfo *newStateInfo=new StageInfo();
+  StageInfo_Image *newStateInfo=new StageInfo_Image();
   if(newStateInfo==NULL)return -1;
 
   newStateInfo->StreamInfo.camera=NULL;
@@ -246,7 +247,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         int minMatchingCost=999999;
         int minMatchingIdx=-1;
 
-        StageInfo *targetStageInfo=NULL;
+        StageInfo_Image *targetStageInfo=NULL;
         sttriggerInfo_mix::_triggerInfo targetTriggerInfo;
 
         if(headImgStageInfoMixInfo.stInfo!=NULL)
@@ -396,7 +397,7 @@ void ImgPipeProcessThread(bool *terminationflag)
     //   {
     //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     //   }
-    StageInfo *stInfo = NULL;
+    StageInfo_Image *stInfo = NULL;
 
     while (inspQueue.pop_blocking(stInfo))
     {
@@ -524,183 +525,92 @@ int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 }
 
 
-class InspectionTarget_ImageDataTransfer :public InspectionTarget
+void InspectionTarget_ImageDataTransfer::thread_run()
 {
-  TSQueue<StageInfo *> datTransferQueue;
-  std::thread runThread;
-  int realTimeDropFlag;
-  public:
-  InspectionTarget_ImageDataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(1),runThread(&InspectionTarget_ImageDataTransfer::thread_run,this)
-  {
-    realTimeDropFlag=-1;
-  }
-  bool stageInfoFilter(StageInfo* sinfo)
-  {
-    for(auto tag : sinfo->trigger_tags )
-    {
-      if( matchTriggerTag(tag,def))
-        return true;
-    }
-    return false;
-  }
-
-  std::future<int> futureInputStagePool()
-  {
-    return std::async(launch::async,&InspectionTarget_ImageDataTransfer::processInputStagePool,this);
-  }
-
-  int processInputPool()
-  {
-    int poolSize=input_pool.size();
-    for(int i=0;i<poolSize;i++)
-    {
-      StageInfo * curInput=input_pool[i];
-      // singleProcess(curInput);
-      
-      try{
-        
-        double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo,"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
-        if(f_imgCHID!=f_imgCHID || f_imgCHID==0)
-        {//no enough info return...
-          LOGE("---no enough info return...");
-          
-          LOGE("PUSH Failed....");
-          reutrnStageInfo(curInput);
-        }
-        else if(realTimeDropFlag<=0 && datTransferQueue.push(curInput))
-        {
-          if(realTimeDropFlag>=0)
-            realTimeDropFlag++;
-          LOGI("PUSH PUSH");
-        }
-        else
-        {
-          LOGE("PUSH Failed....");
-          reutrnStageInfo(curInput);
-        }
-      }
-      catch(TS_Termination_Exception e)
-      {
-        
-        LOGE("TS_Termination_Exception....");
-        for(int j=0;j<poolSize;j++)
-        {
-          StageInfo * curInput=input_pool[i];
-          if(curInput==NULL)continue;
-          reutrnStageInfo(curInput);
-        }
-        break;
-      }
-
-
-      input_pool[i]=NULL;
-      // reutrnStageInfo(curInput);//remember to recycle the StageInfo
-    }
-    input_pool.clear();
-
-    return poolSize;//run all
-
-  }
-
-  void thread_run()
-  {
-    
-    acvImage cacheImage;
-    StageInfo * curInput;
-    while(true)
-    {
-      try{
-        if(datTransferQueue.pop_blocking(curInput)==false)
-        {
-          break;
-        }
-      }
-      catch(TS_Termination_Exception e)
-      {
-        break;
-      }
-
-
-
-
-
-      LOGI("ImageDataTransfer thread pop data: src:%s  type:%s ",curInput->source.c_str(),curInput->type.c_str());
-      for ( const auto &kyim : curInput->imgSets ) {
-          LOGI("[%s]:%p",kyim.first.c_str(),kyim.second);
-      }
-
-      LOGI("curInput->jInfo:%p ",curInput->jInfo);
-      double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo,"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
-      // if(f_imgCHID!=f_imgCHID || f_imgCHID==0)
-      // {//no enough info return...
-      //   LOGE("no enough info return...");
-      //   reutrnStageInfo(curInput);
-      //   continue;
-      // }
-      int imgCHID=(int)f_imgCHID;
-      // curInput->imgSets./
-
-      LOGI("imgCHID:%d ",imgCHID);
-      acvImage *im2send=curInput->imgSets["img"];
-
   
-      {
-        // CameraLayer::BasicCameraInfo data=headImgPipe->StreamInfo.camera->getConnectionData();
-        // cJSON* caminfo=CameraManager::cameraInfo2Json(data);
-
-
-        cJSON* camBrifInfo=cJSON_CreateObject();
-        // cJSON_AddStringToObject(camBrifInfo, "trigger_tag", curInput->trigger_tag.c_str());
-        cJSON_AddNumberToObject(camBrifInfo, "trigger_id", curInput->trigger_id);
-        // cJSON_AddStringToObject(camBrifInfo, "camera_id",curInput->camera_id.c_str());
-
-        bpg_pi.fromUpperLayer_DATA("CM",imgCHID,camBrifInfo);
-        cJSON_Delete(camBrifInfo);
-        
-        
-        BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)10};
-        iminfo.fullHeight = im2send->GetHeight();
-        iminfo.fullWidth = im2send->GetWidth();
-        if(iminfo.scale>1)
-        {
-          //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-          //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-          ImageDownSampling(cacheImage, *im2send, iminfo.scale, NULL);
-        }
-        else
-        {
-          iminfo.scale=1;
-          iminfo.img=im2send;
-        }
-        bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
-        bpg_pi.fromUpperLayer_SS(imgCHID,true);
-        
-        if(realTimeDropFlag>0)
-          realTimeDropFlag--;
-
-
-      }
-
-
-
-
-      reutrnStageInfo(curInput);
-    }
-  }
-
-  ~InspectionTarget_ImageDataTransfer()
+  acvImage cacheImage;
+  StageInfo * curInput;
+  while(true)
   {
-    datTransferQueue.termination_trigger();
-    runThread.join();
-    StageInfo *sinfo=NULL;
-    while(datTransferQueue.dump(sinfo))
-    {
-      reutrnStageInfo(sinfo);
+    try{
+      if(datTransferQueue.pop_blocking(curInput)==false)
+      {
+        break;
+      }
     }
-    
-  }
+    catch(TS_Termination_Exception e)
+    {
+      break;
+    }
 
-};
+
+
+
+    LOGI("ImageDataTransfer thread pop data: name:%s type:%s ",curInput->source_id.c_str(),curInput->typeName().c_str());
+
+    for ( const auto &kyim : curInput->imgSets ) {
+        LOGI("[%s]:%p",kyim.first.c_str(),kyim.second);
+    }
+
+    LOGI("curInput->jInfo:%p ",curInput->jInfo);
+    double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo,"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
+    // if(f_imgCHID!=f_imgCHID || f_imgCHID==0)
+    // {//no enough info return...
+    //   LOGE("no enough info return...");
+    //   reutrnStageInfo(curInput);
+    //   continue;
+    // }
+    int imgCHID=(int)f_imgCHID;
+    // curInput->imgSets./
+
+    LOGI("imgCHID:%d ",imgCHID);
+    acvImage *im2send=curInput->imgSets["img"];
+
+
+    {
+      // CameraLayer::BasicCameraInfo data=headImgPipe->StreamInfo.camera->getConnectionData();
+      // cJSON* caminfo=CameraManager::cameraInfo2Json(data);
+
+
+      cJSON* camBrifInfo=cJSON_CreateObject();
+      // cJSON_AddStringToObject(camBrifInfo, "trigger_tag", curInput->trigger_tag.c_str());
+      cJSON_AddNumberToObject(camBrifInfo, "trigger_id", curInput->trigger_id);
+      // cJSON_AddStringToObject(camBrifInfo, "camera_id",curInput->camera_id.c_str());
+
+      bpg_pi.fromUpperLayer_DATA("CM",imgCHID,camBrifInfo);
+      cJSON_Delete(camBrifInfo);
+      
+      
+      BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)10};
+      iminfo.fullHeight = im2send->GetHeight();
+      iminfo.fullWidth = im2send->GetWidth();
+      if(iminfo.scale>1)
+      {
+        //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
+        //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+        ImageDownSampling(cacheImage, *im2send, iminfo.scale, NULL);
+      }
+      else
+      {
+        iminfo.scale=1;
+        iminfo.img=im2send;
+      }
+      bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
+      bpg_pi.fromUpperLayer_SS(imgCHID,true);
+      
+      if(realTimeDropFlag>0)
+        realTimeDropFlag--;
+
+
+    }
+
+
+
+
+    reutrnStageInfo(curInput);
+  }
+}
+
 
 
 
@@ -1314,20 +1224,20 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         InspectionTarget* inspTar=NULL;
         if(defInfo!=NULL)
         {
-          std::string type=std::string(JFetch_STRING(defInfo,"type"));
+          std::string type=JFetch_STRING_ex(defInfo,"type");
         
-          std::string id=std::string(JFetch_STRING(defInfo,"id"));
+          std::string id=JFetch_STRING_ex(defInfo,"id");
           
           LOGI(">>>id:%s Add type:%s",id.c_str(),type.c_str());
-          if(type=="ColorRegionLocating")
+          if(type==InspectionTarget_ColorRegionDetection::TYPE())
           {
             inspTar = new InspectionTarget_ColorRegionDetection(id,defInfo,&inspTarMan);
           }
-          else if(type=="TEST_IT")
+          else if(type==InspectionTarget_TEST_IT::TYPE())
           {
             inspTar = new InspectionTarget_TEST_IT(id,defInfo,&inspTarMan);
           }
-          else if(type=="ImageDataTransfer")
+          else if(type==InspectionTarget_ImageDataTransfer::TYPE())
           {
             inspTar = new InspectionTarget_ImageDataTransfer(id,defInfo,&inspTarMan);
           }

@@ -1,6 +1,6 @@
 {
   "id": "rule1",
-  "type": "ColorRegionLocating",
+  "type": "ColorRegionDetection",
   "sampleImageFolder": "data/TEST_DEF/rule1_Locating1",
   "camera_id": "Hikrobot-00F71598890",
   "trigger_tags": [
