@@ -423,9 +423,22 @@ export class BPG_WS
     return camList;
   }
 
-
+  
   
 
+
+  async CameraSWTrigger(camera_id:string,trigger_tag:string,trigger_id:number)
+  {
+    return this.send_P(
+      "CM",0,{
+        type:"trigger",
+        soft_trigger:true,
+        id:camera_id,
+        trigger_tag:trigger_tag,
+        // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
+        trigger_id:trigger_id,
+      })
+  }
 
   CameraSetChannelID(camera_id_List:string[],channel_id:number,
     cbs:{ reject(...arg: any[]): any; resolve(...arg: any[]): any; })
@@ -632,6 +645,16 @@ export class BPG_WS
     return await this.send_P("IT",0,{type:"exchange",id:inspTarId,data})
   }
 
+  async InspTargetSetStreamChannelID(inspTarId:string,channel_id:number,
+    cbs:{ reject(...arg: any[]): any; resolve(...arg: any[]): any; })
+  {
+    this.send("IT",0,{
+      type:"exchange",
+      id:inspTarId,
+      data:{type:"stream_info",stream_id:channel_id},
+      _PGID_:channel_id,_PGINFO_:{keep:true}
+    },undefined,cbs)
+  }
 
 }
 export type CORE_API_TYPE=BPG_WS

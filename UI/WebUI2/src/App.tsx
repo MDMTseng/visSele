@@ -55,6 +55,7 @@ type IMCM_group={[trigID:string]:IMCM_type}
 type CompParam_InspTarUI =   {
   readonly:boolean,
   style?:any,
+  stream_id:number,
   width:number,height:number,
   renderHook:((ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,rule:any)=>void)|undefined,
   IMCM_group:IMCM_group,
@@ -93,7 +94,7 @@ const { Header, Content, Footer,Sider } = Layout;
 //   report:any,
 //   onDefChange:(updatedRule:any,doInspUpdate:boolean)=>void}
 
-function ColorRegionLocating_SingleRegion({srule,onDefChange,canvas_obj}:
+function ColorRegionDetection_SingleRegion({srule,onDefChange,canvas_obj}:
   {
     srule:any,
     onDefChange:(...param:any)=>void,
@@ -305,7 +306,7 @@ function ColorRegionLocating_SingleRegion({srule,onDefChange,canvas_obj}:
 
 
 
-function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI){
+function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
     imgCanvas:document.createElement('canvas'),
@@ -315,7 +316,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
 
   });
-  const [defConfig,setDefConfig]=useState<any>(undefined);
+  const [cacheDef,setCacheDef]=useState<any>(def);
   const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
 
 
@@ -336,6 +337,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
   useEffect(() => {
 
     _this.cache_report=undefined;
+    setCacheDef(def);
     // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
     // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
     return (() => {
@@ -374,16 +376,86 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
 
 
+  function onCacheDefChange(updatedDef: any,ddd:boolean)
+  {
+    console.log(updatedDef);
+    setCacheDef(updatedDef);
+
+    
+
+    (async ()=>{
+      await BPG_API.InspTargetUpdate(updatedDef)
+      
+      // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
+      
+      await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
+
+    })()
+    
+  }
+
   
   useEffect(() => {
 
     (async ()=>{
 
-      let ret = await BPG_API.InspTargetExchange(def.id,{},51090);
+      let ret = await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
       console.log(ret);
+
+      // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+      await BPG_API.InspTargetSetStreamChannelID(
+        cacheDef.id,stream_id,
+        {
+          resolve:(pkts)=>{
+            // console.log(pkts);
+            let IM=pkts.find((p:any)=>p.type=="IM");
+            if(IM===undefined)return;
+            let CM=pkts.find((p:any)=>p.type=="CM");
+            if(CM===undefined)return;
+            let RP=pkts.find((p:any)=>p.type=="RP");
+            if(RP===undefined)return;
+            console.log("++++++++\n",IM,CM,RP);
+
+
+            setDefReport(RP.data)
+            let IMCM={
+              image_info:IM.image_info,
+              camera_id:CM.data.camera_id,
+              trigger_id:CM.data.trigger_id,
+              trigger_tag:CM.data.trigger_tag,
+            } as type_IMCM
+  
+            _this.imgCanvas.width = IMCM.image_info.width;
+            _this.imgCanvas.height = IMCM.image_info.height;
+  
+            let ctx2nd = _this.imgCanvas.getContext('2d');
+            ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+  
+  
+            setLocal_IMCM(IMCM)
+            // console.log(IMCM)
+  
+          },
+          reject:(pkts)=>{
+  
+          }
+        }
+      )
+
     })()
     return (() => {
-
+      (async ()=>{
+        await BPG_API.InspTargetSetStreamChannelID(
+          cacheDef.id,0,
+          {
+            resolve:(pkts)=>{
+            },
+            reject:(pkts)=>{
+    
+            }
+          }
+        )
+      })()
       
     })}, []); 
   // function pushInSendGCodeQ()
@@ -408,7 +480,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
 
   useEffect(() => {
-    let newIMCM=IMCM_group[def.trigger_tag+def.camera_id];
+    let newIMCM=IMCM_group[cacheDef.trigger_tag+cacheDef.camera_id];
     // console.log(newIMCM,rule.trigger_tag);
     if(Local_IMCM===newIMCM)return;
     
@@ -466,11 +538,11 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
       if(readonly==false)
       {
         EditUI=<>
-        <Button key={"_"+-1} onClick={()=>{
+        <Button key={"_"+10000} onClick={()=>{
           
-          let newDef={...def};
+          let newDef={...cacheDef};
           newDef.regionInfo.push({region:[0,0,0,0],colorThres:10});
-          onDefChange(newDef,false)
+          onCacheDefChange(newDef,false)
 
           
           setStateInfo([...stateInfo,{
@@ -484,7 +556,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
         
 
-        {def.regionInfo.map((region:any,idx:number)=>{
+        {cacheDef.regionInfo.map((region:any,idx:number)=>{
           return <Button key={"_"+idx} onClick={()=>{
             if(_this.canvasComp===undefined)return;
 
@@ -506,25 +578,25 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
       EDIT_UI=<>
         
-        <Input maxLength={100} value={def.id} 
+        <Input maxLength={100} value={cacheDef.id} 
           style={{width:"100px"}}
           onChange={(e)=>{
             console.log(e.target.value);
 
-            let newDef={...def};
+            let newDef={...cacheDef};
             newDef.id=e.target.value;
-            onDefChange(newDef,false)
+            onCacheDefChange(newDef,false)
 
 
           }}/>
 
-        <Input maxLength={100} value={def.type} disabled
+        <Input maxLength={100} value={cacheDef.type} disabled
           style={{width:"100px"}}
           onChange={(e)=>{
             
           }}/>
 
-        <Input maxLength={100} value={def.sampleImageFolder}  disabled
+        <Input maxLength={100} value={cacheDef.sampleImageFolder}  disabled
           style={{width:"100px"}}
           onChange={(e)=>{
           }}/>
@@ -543,10 +615,10 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
                   :
                   queryCameraList.map(cam=><Menu.Item key={cam.id} 
                   onClick={()=>{
-                    let newDef={...def};
+                    let newDef={...cacheDef};
                     newDef.camera_id=cam.id;
                     HACK_do_Camera_Check=true;
-                    onDefChange(newDef,true)
+                    onCacheDefChange(newDef,true)
                   }}>
                     {cam.id}
                   </Menu.Item>)
@@ -570,17 +642,17 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
             // console.log(CM.data);
             // return CM.data as {name:string,id:string,driver_name:string}[];
             
-          }}>{def.camera_id}</Button>
+          }}>{cacheDef.camera_id}</Button>
         </Dropdown>
 
 
 
-        <Input maxLength={100} value={def.trigger_tag} 
+        <Input maxLength={100} value={cacheDef.trigger_tag} 
           style={{width:"100px"}}
           onChange={(e)=>{
-            let newDef={...def};
+            let newDef={...cacheDef};
             newDef.trigger_tag=e.target.value;
-            onDefChange(newDef,false)
+            onCacheDefChange(newDef,false)
         }}/>
 
         <Popconfirm
@@ -594,7 +666,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
               }
               else
               {
-                onDefChange(undefined,false)
+                onCacheDefChange(undefined,false)
               }
             }}}
             okText={"Yes:"+delConfirmCounter}
@@ -606,11 +678,11 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
         </Popconfirm> 
         <br/>
         <Button onClick={()=>{
-
-          onDefChange(def,true);
+          onCacheDefChange(cacheDef,true);
         }}>SHOT</Button>
-
-
+        <Button onClick={()=>{
+          onDefChange(cacheDef,true)
+        }}>SAVE</Button>
 
         {EditUI}
 
@@ -623,12 +695,12 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
     case editState.Region_Edit:
 
 
-      if(def.regionInfo.length<=stateInfo_tail.info.idx)
+      if(cacheDef.regionInfo.length<=stateInfo_tail.info.idx)
       {
         break;
       }
       
-      let regionInfo=def.regionInfo[stateInfo_tail.info.idx];
+      let regionInfo=cacheDef.regionInfo[stateInfo_tail.info.idx];
 
       EDIT_UI=<>
         <Button key={"_"+-1} onClick={()=>{
@@ -638,13 +710,13 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
           setStateInfo(new_stateInfo)
         }}>{"<"}</Button>
-        <ColorRegionLocating_SingleRegion 
+        <ColorRegionDetection_SingleRegion 
           srule={regionInfo} 
           onDefChange={(newDef_sregion)=>{
             // console.log(newDef);
 
             
-            let newDef={...def};
+            let newDef={...cacheDef};
             if(newDef_sregion!==undefined)
             {
               newDef.regionInfo[stateInfo_tail.info.idx]=newDef_sregion;
@@ -661,7 +733,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
 
             }
 
-            onDefChange(newDef,true)
+            onCacheDefChange(newDef,true)
             // _this.sel_region=undefined
 
           }}
@@ -775,7 +847,7 @@ function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=und
         let ctx = g.ctx;
         
         {
-          def.regionInfo.forEach((region:any,idx:number)=>{
+          cacheDef.regionInfo.forEach((region:any,idx:number)=>{
 
             let region_ROI=
             {
@@ -891,6 +963,11 @@ function CameraSetupEditUI({camSetupInfo,fetchCoreAPI,onCameraSetupUpdate}:{ cam
 
         }
       })
+
+
+
+
+
       await api.CameraSetup(camSetupInfo,0);
     })()
 
@@ -1005,6 +1082,10 @@ function VIEWUI(){
 
   const [defReport,setDefReport]=useState<any>(undefined);
   const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
+
+
+
+
   async function getAPI(API_ID:string=CORE_ID)
   {
     let api=await new Promise((resolve,reject)=>{
@@ -1082,7 +1163,6 @@ function VIEWUI(){
     return reloadRes;
 
   }
-
   async function LOADPrjDef(PrjDefFolderPath:string)
   {
     let api = await getAPI(CORE_ID)as BPG_WS
@@ -1123,7 +1203,6 @@ function VIEWUI(){
       XCmds
     }
   }
-
   async function SavePrjDef(PrjDefFolderPath:string,PrjDef:(any))
   {
 
@@ -1162,6 +1241,7 @@ function VIEWUI(){
       
       let id=inspTar.id;
 
+      // console.log(id,inspTar)
       await api.InspTargetCreate(inspTar);
     }
     
@@ -1455,8 +1535,8 @@ function VIEWUI(){
 
   function InspTargetUI_MUX(param:CompParam_InspTarUI)
   {
-    if(param.def.type=="ColorRegionLocating")
-    return <SingleTargetVIEWUI_ColorRegionLocating {...param} />;
+    if(param.def.type=="ColorRegionDetection")
+    return <SingleTargetVIEWUI_ColorRegionDetection {...param} />;
 
 
     return  <></>;
@@ -1500,7 +1580,7 @@ function VIEWUI(){
     // let whsetting={w:50,h:50};
     // if(show)
     //   whsetting=WHArr[index];
-    // return <SingleTargetVIEWUI_ColorRegionLocating 
+    // return <SingleTargetVIEWUI_ColorRegionDetection 
     // readonly={false} 
     // width={displaySetting.w+"%"} 
     // height={displaySetting.h+"%"} 
@@ -1516,7 +1596,7 @@ function VIEWUI(){
 
 
 
-    // function SingleTargetVIEWUI_ColorRegionLocating({readonly,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI)
+    // function SingleTargetVIEWUI_ColorRegionDetection({readonly,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI)
     return <>
     {
       // displayInspTarIdx.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=>inspTar.id+":"+inspTar.type+",")
@@ -1524,6 +1604,7 @@ function VIEWUI(){
         readonly={false} 
         width={20} 
         height={100} 
+        stream_id={50120}
         style={{float:"left"}} 
         key={inspTar.id} 
         IMCM_group={IMCM_group} 
@@ -1532,6 +1613,14 @@ function VIEWUI(){
         renderHook={_this.listCMD_Vairable.renderHook} 
         onDefChange={(new_rule,doInspUpdate=true)=>{
           console.log(new_rule);
+
+          let idx = InspTarList.findIndex(itar=>itar.id==new_rule.id);
+          if(idx<0)return;
+
+          let newDefConfig={...defConfig,InspTars_main:[...InspTarList]};
+          newDefConfig.InspTars_main[idx]=new_rule;
+          
+          setDefConfig(newDefConfig)
         }}/>)
     }
     <br/>---hide----<br/>

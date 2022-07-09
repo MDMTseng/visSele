@@ -165,8 +165,16 @@ public:
   static std::string TYPE(){ return "ColorRegionDetection"; }
   bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
   {
+    // if(sinfo->typeName())
+
+
+
     for(auto tag : sinfo->trigger_tags )
     {
+      if(tag=="_STREAM_")
+      {
+        return false;
+      }
       if( matchTriggerTag(tag,def))
         return true;
     }
@@ -521,7 +529,7 @@ public:
 
     
     std::shared_ptr<StageInfo_Blob> reportInfo(new StageInfo_Blob());
-    // reportInfo->AddSharedInfo(sinfo);
+    reportInfo->sharedInfo.push_back(sinfo);
     reportInfo->source=this;
     reportInfo->source_id=id;
     reportInfo->imgSets["img"]=std::shared_ptr<acvImage>(copyImg);
@@ -529,12 +537,15 @@ public:
     reportInfo->trigger_tags.push_back("InfoStream2UI");
     reportInfo->trigger_tags.push_back("ToTestRule");
     reportInfo->trigger_tags.push_back("ImTran");
+    reportInfo->trigger_tags.push_back(id);
+
     // reportInfo->fi=sinfo->fi;
     // reportInfo->StreamInfo=sinfo->StreamInfo;
     // reportInfo->trigger_tag=sinfo->trigger_tag;
 
-
-    reportInfo->jInfo=std::shared_ptr<cJSON>(rep_regionInfo);
+    reportInfo->StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
+    LOGI("CHID:%d",reportInfo->StreamInfo.channel_id);
+    reportInfo->jInfo=rep_regionInfo;
 
     belongMan->dispatch(reportInfo);
   }
@@ -612,10 +623,9 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
       
       try{
         
-        double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo.get(),"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
-        if(f_imgCHID!=f_imgCHID || f_imgCHID==0)
+        if(curInput->StreamInfo.channel_id==0)
         {//no enough info return...
-          LOGE("---no enough info return...");
+          LOGE("---no channel_id available");
           
           LOGE("PUSH Failed....");
         }

@@ -110,15 +110,15 @@ class InspectionTargetManager_m:public InspectionTargetManager
     newStateInfo->source=NULL;//info.camera->getConnectionData().id;
     newStateInfo->source_id=info.camera->getConnectionData().id;
     newStateInfo->fi=finfo;
-    if(info.channel_id)
-    {
-      newStateInfo->jInfo=std::shared_ptr<cJSON>(cJSON_CreateObject());
-      cJSON* streaming_info=cJSON_CreateObject();
+    // if(info.channel_id)
+    // {
+    //   newStateInfo->jInfo=cJSON_CreateObject();
+    //   cJSON* streaming_info=cJSON_CreateObject();
 
 
-      cJSON_AddItemToObject(newStateInfo->jInfo.get(),"streaming_info",streaming_info);
-      cJSON_AddNumberToObject(streaming_info, "channel_id",info.channel_id);
-    }
+    //   cJSON_AddItemToObject(newStateInfo->jInfo,"streaming_info",streaming_info);
+    //   cJSON_AddNumberToObject(streaming_info, "channel_id",info.channel_id);
+    // }
     
     // newStateInfo->trigger_tag="";
     newStateInfo->imgSets["img"]=img;
@@ -269,7 +269,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             mocktrig.camera_id=targetStageInfo->StreamInfo.camera->getConnectionData().id;;
             mocktrig.est_trigger_time_us=targetStageInfo->fi.timeStamp_us+123;//
             mocktrig.trigger_id=-1;
-            mocktrig.trigger_tag="Stream";
+            mocktrig.trigger_tag="_STREAM_";
             
             // triggerInfoMatchingBuffer.w_unlock();
             triggerInfoMatchingBuffer.push_back({triggerInfo:mocktrig});
@@ -356,7 +356,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
           LOGI("Get matching. idx:%d cost:%d  psss to next Q stInfo:%p",minMatchingIdx,minMatchingCost,targetStageInfo.get() );
           targetStageInfo->trigger_tags.push_back(targetTriggerInfo.trigger_tag);
           targetStageInfo->trigger_tags.push_back(targetTriggerInfo.camera_id);
-          LOGI("cam id:%s",targetTriggerInfo.camera_id.c_str());
+          LOGI("cam id:%s  ch_id:%d",targetTriggerInfo.camera_id.c_str(),targetStageInfo->StreamInfo.channel_id);
           targetStageInfo->trigger_id=targetTriggerInfo.trigger_id;
 
           inspQueue.push_blocking(targetStageInfo);
@@ -553,15 +553,8 @@ void InspectionTarget_ImageDataTransfer::thread_run()
         LOGI("[%s]:%p",kyim.first.c_str(),kyim.second.get());
     }
 
-    LOGI("curInput->jInfo:%p ",curInput->jInfo.get());
-    double f_imgCHID=JFetch_NUMBER_ex(curInput->jInfo.get(),"streaming_info.channel_id");//headImgPipe->StreamInfo.channel_id;
-    // if(f_imgCHID!=f_imgCHID || f_imgCHID==0)
-    // {//no enough info return...
-    //   LOGE("no enough info return...");
-    //   reutrnStageInfo(curInput);
-    //   continue;
-    // }
-    int imgCHID=(int)f_imgCHID;
+    LOGI("curInput->jInfo:%p ",curInput->jInfo);
+    int imgCHID=curInput->StreamInfo.channel_id;
     // curInput->imgSets./
 
     LOGI("imgCHID:%d ",imgCHID);
@@ -580,6 +573,12 @@ void InspectionTarget_ImageDataTransfer::thread_run()
 
       bpg_pi.fromUpperLayer_DATA("CM",imgCHID,camBrifInfo);
       cJSON_Delete(camBrifInfo);
+
+
+      if(curInput->jInfo)
+        bpg_pi.fromUpperLayer_DATA("RP",imgCHID,curInput->jInfo);
+
+
       
       
       BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)10};
@@ -1154,18 +1153,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             }
           }
 
-          char *_trigger_tag = JFetch_STRING(json, "trigger_tag");
-          std::string trigger_tag=_trigger_tag==NULL?"SW_TRIG":std::string(_trigger_tag);
-          LOGI(">>>trigger_tag:%s",trigger_tag.c_str());
           {
             
             sttriggerInfo_mix mocktrig;
             mocktrig.stInfo=NULL;
             mocktrig.triggerInfo.camera_id=id;
-            double *_trigger_id = JFetch_NUMBER(json, "trigger_id");
-            mocktrig.triggerInfo.trigger_id=(_trigger_id==NULL)?-1:(int)*_trigger_id;
+            mocktrig.triggerInfo.trigger_id=(int)JFetch_NUMBER_ex(json, "trigger_id",-1);
             mocktrig.triggerInfo.est_trigger_time_us=0;//force matching
-            mocktrig.triggerInfo.trigger_tag=trigger_tag;
+            mocktrig.triggerInfo.trigger_tag=JFetch_STRING_ex(json, "trigger_tag","_SW_TRIG_");
             
             triggerInfoMatchingQueue.push_blocking(mocktrig);
           }

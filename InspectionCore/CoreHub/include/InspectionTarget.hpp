@@ -129,10 +129,10 @@ class InspectionTarget
   std::string id;
   std::string type;
   std::string name;
-
+  int stream_id;
   bool inputPoolInsufficient;
   cJSON *def=NULL;
-  cJSON *addtionalInfo=NULL;
+  cJSON *additionalInfo=NULL;
   InspectionTargetManager* belongMan;
 
   
@@ -176,6 +176,7 @@ class InspectionTarget
   // virtual std::vector<StageInfo*> inputPick(std::vector<StageInfo*> infoPool)=0;//returns input processed
   virtual void acceptStageInfo(std::shared_ptr<StageInfo> sinfo);
 
+  void additionalInfoAssign(std::string key,cJSON* info);
   virtual int processInputPool()=0; 
 };
 
@@ -212,7 +213,7 @@ class StageInfo{
   int trigger_id;
   
   std::map<std::string,std::shared_ptr<acvImage>> imgSets;
-  std::shared_ptr<cJSON> jInfo;
+  cJSON* jInfo;
   
 
 
@@ -244,11 +245,11 @@ class StageInfo{
     // }
     imgSets.clear();
 
-    // if(jInfo)
-    // {
-    //   cJSON_Delete(jInfo);
-    //   jInfo=NULL;
-    // }
+    if(jInfo)
+    {
+      cJSON_Delete(jInfo);
+      jInfo=NULL;
+    }
 
     // for(int i=0;i<sharedInfo.size();i++)
     // {

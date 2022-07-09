@@ -17,10 +17,10 @@ InspectionTarget::InspectionTarget(std::string id,cJSON* def,InspectionTargetMan
   this->inputPoolInsufficient=false;
   this->def=NULL;
   this->id=id;
-  this->addtionalInfo=NULL;
+  this->additionalInfo=NULL;
   this->belongMan=belongMan;
-  
   setInspDef(def);
+  additionalInfo=cJSON_CreateObject();
 }
 
 
@@ -145,6 +145,20 @@ cJSON* InspectionTarget::genITInfo_basic()
 
 
 
+void InspectionTarget::additionalInfoAssign(std::string key,cJSON* info)
+{
+
+  {
+
+    cJSON *tmpObj = cJSON_DetachItemFromObject(additionalInfo,key.c_str());
+    if(tmpObj)
+    {
+      cJSON_Delete(tmpObj);
+    }
+  }
+  
+  cJSON_AddItemToObject(additionalInfo,key.c_str(),cJSON_Duplicate(info, cJSON_True));
+}
 cJSON* InspectionTarget::exchangeInfo(cJSON* info)
 {
   std::string type=JFetch_STRING_ex(info,"type");
@@ -157,6 +171,12 @@ cJSON* InspectionTarget::exchangeInfo(cJSON* info)
   if(type=="get_io_setting")
   {
     return genITIOInfo();
+  }
+
+  if(type=="stream_info")
+  {
+    additionalInfoAssign(type,info);
+    return cJSON_CreateObject();
   }
 
 
@@ -177,8 +197,14 @@ bool  InspectionTarget::isService()
 InspectionTarget::~InspectionTarget()
 {
   setInspDef(NULL);
-  exchangeInfo(NULL);
+  // exchangeInfo(NULL)
+  if(additionalInfo)
+  {
+    cJSON_Delete(additionalInfo);
+    additionalInfo=NULL;
+  }
 
+  
   // for(int i=0;i<input_stage.size();i++)
   // {
   //   reutrnStageInfo(input_stage[i]);
@@ -480,7 +506,7 @@ int InspectionTargetManager::inspTarProcess()
     for (int i = 0; i < fut_vec.size(); ++i)
       curProcessCount += fut_vec[i].get();
 
-    LOGI(">>>curProcessCount:%d",curProcessCount);
+    // LOGI(">>>curProcessCount:%d",curProcessCount);
     if(curProcessCount==0)
     {
       break;
