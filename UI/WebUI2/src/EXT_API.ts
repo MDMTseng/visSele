@@ -224,7 +224,7 @@ export class BPG_WS
   }
 
 
-  send_cbs_add(PGID:number,cbs_key:string,promiseCBs:{
+  send_cbs_attach(PGID:number,cbs_key:string,promiseCBs:{
     reject(...arg:any[]):any,
     resolve(...arg:any[]):any,
   })
@@ -254,12 +254,17 @@ export class BPG_WS
 
     req_pkt._PGINFO_.hookedCBs[cbs_key]=promiseCBs;
   }
-  send_cbs_remove(PGID:number,cbs_key:string)
+  send_cbs_detach(PGID:number,cbs_key:string|undefined)
   {
 
     let req_pkt = this.reqWindow.get(PGID);
     if(req_pkt===undefined)return;
 
+    if(cbs_key===undefined)
+    {
+      req_pkt._PGINFO_.hookedCBs={};
+      return;
+    }
     if(req_pkt._PGINFO_===undefined)return;
     
     if(req_pkt._PGINFO_.hookedCBs===undefined)return;

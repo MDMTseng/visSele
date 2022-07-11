@@ -76,9 +76,8 @@ const _DEF_FOLDER_PATH_="data/Test1.xprj";
 
 // import 'jsoneditor-react/es/editor.min.css';
 
-let INSP1_REP_PGID_ = 51000
+let INSPTAR_BASE_STREAM_ID = 51000
 
-let HACK_do_Camera_Check=false;
 const { TabPane } = Tabs;
 const { Header, Content, Footer,Sider } = Layout;
 
@@ -395,7 +394,7 @@ function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,heigh
   }
 
   
-  useEffect(() => {
+  useEffect(() => {//////////////////////
 
     (async ()=>{
 
@@ -403,9 +402,10 @@ function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,heigh
       console.log(ret);
 
       // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
-      await BPG_API.InspTargetSetStreamChannelID(
-        cacheDef.id,stream_id,
-        {
+
+      await BPG_API.send_cbs_attach(
+        cacheDef.stream_id,"ColorRegionDetection",{
+          
           resolve:(pkts)=>{
             // console.log(pkts);
             let IM=pkts.find((p:any)=>p.type=="IM");
@@ -440,21 +440,63 @@ function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,heigh
   
           }
         }
+
       )
+      // await BPG_API.InspTargetSetStreamChannelID(
+      //   cacheDef.id,stream_id,
+      //   {
+      //     resolve:(pkts)=>{
+      //       // console.log(pkts);
+      //       let IM=pkts.find((p:any)=>p.type=="IM");
+      //       if(IM===undefined)return;
+      //       let CM=pkts.find((p:any)=>p.type=="CM");
+      //       if(CM===undefined)return;
+      //       let RP=pkts.find((p:any)=>p.type=="RP");
+      //       if(RP===undefined)return;
+      //       console.log("++++++++\n",IM,CM,RP);
+
+
+      //       setDefReport(RP.data)
+      //       let IMCM={
+      //         image_info:IM.image_info,
+      //         camera_id:CM.data.camera_id,
+      //         trigger_id:CM.data.trigger_id,
+      //         trigger_tag:CM.data.trigger_tag,
+      //       } as type_IMCM
+  
+      //       _this.imgCanvas.width = IMCM.image_info.width;
+      //       _this.imgCanvas.height = IMCM.image_info.height;
+  
+      //       let ctx2nd = _this.imgCanvas.getContext('2d');
+      //       ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+  
+  
+      //       setLocal_IMCM(IMCM)
+      //       // console.log(IMCM)
+  
+      //     },
+      //     reject:(pkts)=>{
+  
+      //     }
+      //   }
+      // )
 
     })()
     return (() => {
       (async ()=>{
-        await BPG_API.InspTargetSetStreamChannelID(
-          cacheDef.id,0,
-          {
-            resolve:(pkts)=>{
-            },
-            reject:(pkts)=>{
+        await BPG_API.send_cbs_detach(
+          stream_id,"ColorRegionDetection");
+            
+        // await BPG_API.InspTargetSetStreamChannelID(
+        //   cacheDef.id,0,
+        //   {
+        //     resolve:(pkts)=>{
+        //     },
+        //     reject:(pkts)=>{
     
-            }
-          }
-        )
+        //     }
+        //   }
+        // )
       })()
       
     })}, []); 
@@ -599,7 +641,7 @@ function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,heigh
                   onClick={()=>{
                     let newDef={...cacheDef};
                     newDef.camera_id=cam.id;
-                    HACK_do_Camera_Check=true;
+                    // HACK_do_Camera_Check=true;
                     onCacheDefChange(newDef,true)
                   }}>
                     {cam.id}
@@ -1099,51 +1141,6 @@ function VIEWUI(){
   }
   const [modalInfo,setModalInfo]=useState(emptyModalInfo);
 
-  async function updateDefInfo(_defInfo:any,camTrigInfo:{id:string,trigger_tag:string,trigger_id:number,img_path:string|undefined}|undefined=undefined)
-  {
-
-    let api = await getAPI(CORE_ID)as BPG_WS
-    console.log("+===========",_defInfo);
-    // let reloadRes = await api.InspTargetUpdate(_defInfo,INSP1_REP_PGID_);
-    let reloadRes = await api.InspTargetUpdate(_defInfo);
-    console.log("+===========",reloadRes);
-
-    api.send(undefined,0,{_PGID_:INSP1_REP_PGID_,_PGINFO_:{keep:true}},undefined,{
-      resolve:(e)=>{
-        let RP = e.find((pkt:any)=>pkt.type=="RP");
-        if(RP===undefined)
-        {
-          setDefReport(undefined)
-          return;
-        }
-
-        setDefReport(RP.data)
-        
-        // console.log(e)
-      },
-      reject:(e)=>{
-        console.log(e)
-      },
-    })
-
-
-
-    if(camTrigInfo!==undefined)
-      api.send_P(
-        "CM",0,{
-          type:"trigger",
-          soft_trigger:true,
-          id:camTrigInfo.id,
-          trigger_tag:camTrigInfo.trigger_tag,
-          // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
-          trigger_id:camTrigInfo.trigger_id,
-          img_path:camTrigInfo.img_path,
-          channel_id:50201
-        })
-
-    return reloadRes;
-
-  }
   async function LOADPrjDef(PrjDefFolderPath:string)
   {
     let api = await getAPI(CORE_ID)as BPG_WS
@@ -1217,13 +1214,73 @@ function VIEWUI(){
     // updateDefInfo();
     await api.InspTargetRemoveAll()
 
+    let inspTarStreamingId=INSPTAR_BASE_STREAM_ID;
     for(let inspTar of prjDef.InspTars_main)
     {
       
       let id=inspTar.id;
+      // if(inspTar.stream_id===undefined)
+      // {
+      inspTar.stream_id=inspTarStreamingId;
+      inspTarStreamingId++;
+      // }
 
       // console.log(id,inspTar)
       await api.InspTargetCreate(inspTar);
+
+      await api.InspTargetSetStreamChannelID(
+        inspTar.id,inspTar.stream_id,
+        {
+          resolve:(pkts)=>{
+            console.log(pkts);
+          },
+          reject:(pkts)=>{
+            console.log(pkts);
+  
+          }
+        }
+      )
+
+
+      // await BPG_API.InspTargetSetStreamChannelID(
+      //   cacheDef.id,stream_id,
+      //   {
+      //     resolve:(pkts)=>{
+      //       // console.log(pkts);
+      //       let IM=pkts.find((p:any)=>p.type=="IM");
+      //       if(IM===undefined)return;
+      //       let CM=pkts.find((p:any)=>p.type=="CM");
+      //       if(CM===undefined)return;
+      //       let RP=pkts.find((p:any)=>p.type=="RP");
+      //       if(RP===undefined)return;
+      //       console.log("++++++++\n",IM,CM,RP);
+
+
+      //       setDefReport(RP.data)
+      //       let IMCM={
+      //         image_info:IM.image_info,
+      //         camera_id:CM.data.camera_id,
+      //         trigger_id:CM.data.trigger_id,
+      //         trigger_tag:CM.data.trigger_tag,
+      //       } as type_IMCM
+  
+      //       _this.imgCanvas.width = IMCM.image_info.width;
+      //       _this.imgCanvas.height = IMCM.image_info.height;
+  
+      //       let ctx2nd = _this.imgCanvas.getContext('2d');
+      //       ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+  
+  
+      //       setLocal_IMCM(IMCM)
+      //       // console.log(IMCM)
+  
+      //     },
+      //     reject:(pkts)=>{
+  
+      //     }
+      //   }
+      // )
+      
     }
     
     let infoList = await api.InspTargetGetInfo();
