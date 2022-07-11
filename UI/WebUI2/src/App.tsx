@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useEffect,useRef,useMemo } from 'react';
+import { useState, useEffect,useRef,useMemo,useContext } from 'react';
 import { useDispatch, useSelector } from "react-redux";
 import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio, InputNumber, Switch } from 'antd';
 
@@ -58,7 +58,7 @@ type CompParam_InspTarUI =   {
   stream_id:number,
   width:number,height:number,
   renderHook:((ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,rule:any)=>void)|undefined,
-  IMCM_group:IMCM_group,
+  // IMCM_group:IMCM_group,
   def:any,
   report:any,
   onDefChange:(updatedDef:any,ddd:boolean)=>void}
@@ -306,7 +306,7 @@ function ColorRegionDetection_SingleRegion({srule,onDefChange,canvas_obj}:
 
 
 
-function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI){
+function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
     imgCanvas:document.createElement('canvas'),
@@ -478,24 +478,6 @@ function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,heigh
   //   })
   // }
 
-
-  useEffect(() => {
-    let newIMCM=IMCM_group[cacheDef.trigger_tag+cacheDef.camera_id];
-    // console.log(newIMCM,rule.trigger_tag);
-    if(Local_IMCM===newIMCM)return;
-    
-    if(newIMCM===undefined)return;
-    _this.imgCanvas.width = newIMCM.image_info.width;
-    _this.imgCanvas.height = newIMCM.image_info.height;
-    // console.log(IMCM.image_info);
-    let ctx2nd = _this.imgCanvas.getContext('2d');
-    ctx2nd.putImageData(newIMCM.image_info.image, 0, 0);
-    setLocal_IMCM(newIMCM);
-    if(_this.canvasComp!==undefined)
-    {
-      _this.canvasComp.draw();
-    }
-  }, [IMCM_group]); 
 
   function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
   {
@@ -1072,7 +1054,6 @@ function VIEWUI(){
     }
 
   }).current;
-  const [IMCM_group,setIMCM_group]=useState<IMCM_group>({});
   const dispatch = useDispatch();
   const ACT_EXT_API_ACCESS= (...p:Parameters<typeof EXT_API_ACCESS>) => dispatch(EXT_API_ACCESS(...p));
 
@@ -1543,7 +1524,7 @@ function VIEWUI(){
   }
 
   
-  function TargetViewUIShow(InspTarList:any[],displayIDList:string[],IMCM_group:IMCM_group)
+  function TargetViewUIShow(InspTarList:any[],displayIDList:string[])
   {
 
     let InspTarList_show=InspTarList;
@@ -1607,7 +1588,6 @@ function VIEWUI(){
         stream_id={50120}
         style={{float:"left"}} 
         key={inspTar.id} 
-        IMCM_group={IMCM_group} 
         def={inspTar} 
         report={undefined} 
         renderHook={_this.listCMD_Vairable.renderHook} 
@@ -1675,7 +1655,7 @@ function VIEWUI(){
         return inspTar.id;
       })
     } */}
-    { (defConfig===undefined)?"WAIT":TargetViewUIShow(defConfig.InspTars_main,displayInspTarId,IMCM_group)}
+    { (defConfig===undefined)?"WAIT":TargetViewUIShow(defConfig.InspTars_main,displayInspTarId)}
     </Content>
   
     </Layout>
