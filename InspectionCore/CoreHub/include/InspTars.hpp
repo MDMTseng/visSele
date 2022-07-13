@@ -158,8 +158,10 @@ class InspectionTarget_TEST_IT :public InspectionTarget
 class InspectionTarget_ColorRegionDetection :public InspectionTarget
 {
 public:
-  InspectionTarget_ColorRegionDetection(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan)
+  InspectionTarget_ColorRegionDetection(std::string id,cJSON* def,InspectionTargetManager* belongMan)
+    :InspectionTarget(id,def,belongMan)
   {
+    type=InspectionTarget_ColorRegionDetection::TYPE();
   }
 
   static std::string TYPE(){ return "ColorRegionDetection"; }
@@ -545,7 +547,13 @@ public:
 
     reportInfo->StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
     LOGI("CHID:%d",reportInfo->StreamInfo.channel_id);
-    reportInfo->jInfo=rep_regionInfo;
+
+    
+    cJSON *freport=cJSON_CreateObject();
+    cJSON_AddItemToObject(freport,"report",rep_regionInfo);
+    reportInfo->jInfo=freport;
+
+    attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
 
     belongMan->dispatch(reportInfo);
   }

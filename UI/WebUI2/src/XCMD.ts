@@ -16,11 +16,11 @@ function startsWith (str:string, needle:string) {
 export async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[],onRunCmdIdexChanged:(index:number,info:string)=>void,abortSig?:AbortSignal,onUserInputRequest?:(setting:any)=>Promise<any>)
 {
   v.inCMD_Promise=true;
-  // v.DisplayIdList=["ruleId1","ruleId2"]
+
 
   function SET_DISPLAY_ID_LIST(idList:string[])
   {
-    v.DisplayIdList=idList;
+    v.InspTarDispIDList=idList;
   }
 
   let P=Promise;
@@ -59,16 +59,22 @@ export async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:
   }
   async function READFILE(fileName:string)
   {
+
+
+    
     let pkts = await api.send_P("LD",0,{filename:fileName},undefined) as any[];
 
+    
     let RP=pkts.find((pkt)=>pkt.type=="FL")
+    
     
     if(RP===undefined)throw "READFILE cannot find "+fileName
 
+    
 
     return RP.data;
   }
-  function reportWait_reg(key:string,trigger_tag:string,camera_id?:string,trigger_id?:number)
+  function reportWait_reg(key:string,inspTar_id:string,trigger_id?:number)
   {
     // console.log(key,trigger_tag,camera_id,trigger_id)
     if(v.reportListener[key])
@@ -80,13 +86,16 @@ export async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:
       v.reportListener[key]=undefined;
     }
     v.reportListener[key]={
-      trigger_tag,trigger_id,camera_id
+      inspTar_id,trigger_id
     }
   }
 
-  function reportWait(key:string)
+  function reportWait(key:string,timeout_ms:number=5000)
   {
+    let timeoutID=-1;
+
     return new Promise((resolve,reject)=>{
+      
 
       if(v.reportListener[key])
       {
@@ -98,6 +107,15 @@ export async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:
         {
           v.reportListener[key].resolve=resolve;
           v.reportListener[key].reject=reject;
+
+          if(timeout_ms>=0)
+          {
+            timeoutID=window.setTimeout(()=>{
+              reject("TIMEOUT("+timeout_ms+")....")
+              delete v.reportListener[key];
+            },timeout_ms)
+          }
+
         }
       }
       else
@@ -105,6 +123,11 @@ export async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:
         reject("No registered repWait info");
       }
     }).then((rep:any)=>{
+      if(timeoutID!=-1)
+      {
+        clearTimeout(timeoutID);
+        timeoutID=-1;
+      }
       delete v.reportListener[key];
       return rep;
     })
@@ -177,9 +200,11 @@ export async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:
 
   async function INCLUDE(fileName:string)
   {
-    return eval( await READFILE(fileName))
+    let file= await READFILE(fileName);
+    return eval(file)
   }
   
+
   let $async=0;//just for a mark
   for(run_cmd_idx=0; run_cmd_idx<cmdList.length; run_cmd_idx++)
   {

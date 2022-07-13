@@ -19,10 +19,20 @@ InspectionTarget::InspectionTarget(std::string id,cJSON* def,InspectionTargetMan
   this->id=id;
   this->additionalInfo=NULL;
   this->belongMan=belongMan;
+  this->type=InspectionTarget::TYPE();
   setInspDef(def);
   additionalInfo=cJSON_CreateObject();
 }
 
+void InspectionTarget::attachSstaticInfo( cJSON* jobj,int trigger_id )
+{
+  
+  cJSON_AddStringToObject(jobj,"id",id.c_str());
+  cJSON_AddStringToObject(jobj,"type",type.c_str());
+  cJSON_AddStringToObject(jobj,"name",name.c_str());
+  cJSON_AddNumberToObject(jobj,"trigger_id",trigger_id);
+
+}
 
 
 void InspectionTarget::acceptStageInfo(std::shared_ptr<StageInfo> sinfo)

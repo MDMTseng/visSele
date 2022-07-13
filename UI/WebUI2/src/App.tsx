@@ -935,7 +935,7 @@ function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,heigh
 
 }
 
-function CameraSetupEditUI({camSetupInfo,fetchCoreAPI,onCameraSetupUpdate}:{ camSetupInfo:type_CameraInfo, fetchCoreAPI:()=>Promise<BPG_WS>,onCameraSetupUpdate:(caminfo:type_CameraInfo)=>void}){
+function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetupInfo:type_CameraInfo, CoreAPI:BPG_WS,onCameraSetupUpdate:(caminfo:type_CameraInfo)=>void}){
 
   const _this = useRef<any>({
 
@@ -948,7 +948,7 @@ function CameraSetupEditUI({camSetupInfo,fetchCoreAPI,onCameraSetupUpdate}:{ cam
   useEffect(()=>{//load default
 
     (async ()=>{
-      let api = await fetchCoreAPI()
+      let api =CoreAPI
       // await api.InspTargetExchange(camSetupInfo.id,{
       //   id:"",
       //   data:{
@@ -997,7 +997,7 @@ function CameraSetupEditUI({camSetupInfo,fetchCoreAPI,onCameraSetupUpdate}:{ cam
 
     return ()=>{
       (async ()=>{
-        let api = await fetchCoreAPI()
+        let api =CoreAPI
         await api.CameraSetChannelID([camSetupInfo.id],0,{
           resolve:()=>0,
           reject:()=>0
@@ -1067,6 +1067,87 @@ function CameraSetupEditUI({camSetupInfo,fetchCoreAPI,onCameraSetupUpdate}:{ cam
   </>
 }
 
+
+
+
+function InspTargetUI_MUX(param:CompParam_InspTarUI)
+{
+  if(param.def.type=="ColorRegionDetection")
+  return <SingleTargetVIEWUI_ColorRegionDetection {...param} />;
+
+
+  return  <></>;
+}
+
+
+function TargetViewUIShow({InspTarList,displayIDList,defConfig,onDefChange,renderHook}:{InspTarList:any[],displayIDList:string[],defConfig:any, onDefChange:(updatedDef:any)=>void,renderHook:any})
+{
+
+  let InspTarList_show=InspTarList;
+  let InspTarList_hide;
+
+    
+  let displayInspTarIdx:number[]=[];
+  let displayInspTarIdx_hide:number[]=[];
+  if(defConfig!==undefined)
+  {
+    displayInspTarIdx=displayIDList
+      .map(itarID=>InspTarList.findIndex((itar:any)=>itar.id==itarID))
+      .filter(idx=>idx>=0)
+  
+    displayInspTarIdx_hide
+      =InspTarList.map((itar:any,idx:number)=>idx).filter((idx:number)=>{
+        if(displayInspTarIdx.find(idx_to_show=>idx_to_show==idx)===undefined)
+          return true;
+        return false;
+      });
+  
+  }
+
+  useEffect(()=>{//load default
+    console.log(">>TargetViewUIShow>>>>>>>>>>>>>>");
+  },[])
+  console.log(InspTarList);
+  console.log(displayIDList,displayInspTarIdx,displayInspTarIdx_hide);
+
+
+  // function SingleTargetVIEWUI_ColorRegionDetection({readonly,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI)
+  return <>
+  {
+    // displayInspTarIdx.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=>inspTar.id+":"+inspTar.type+",")
+    displayInspTarIdx.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=><InspTargetUI_MUX 
+      readonly={false} 
+      width={20} 
+      height={100} 
+      stream_id={50120}
+      style={{float:"left"}} 
+      key={inspTar.id} 
+      def={inspTar} 
+      report={undefined} 
+      renderHook={renderHook} 
+      onDefChange={(new_rule,doInspUpdate=true)=>{
+        console.log(new_rule);
+
+        let idx = InspTarList.findIndex(itar=>itar.id==new_rule.id);
+        if(idx<0)return;
+
+        let newDefConfig={...defConfig,InspTars_main:[...InspTarList]};
+        newDefConfig.InspTars_main[idx]=new_rule;
+        
+        onDefChange(newDefConfig)
+      }}/>)
+  }
+  <br/>---hide----<br/>
+  {
+    displayInspTarIdx_hide.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=>inspTar.id+",")
+  }
+  
+  
+  </>;
+}
+
+
+
 let DAT_ANY_UNDEF:any=undefined;
 
 
@@ -1076,6 +1157,7 @@ function VIEWUI(){
 
   const _this = useRef<any>({
     listCMD_Vairable:{
+      $DEFPATH:"",
       inCMD_Promise:false,
       InspTarDispIDList:undefined,
       cur_defInfo:{},
@@ -1097,7 +1179,13 @@ function VIEWUI(){
 
   }).current;
   const dispatch = useDispatch();
-  const ACT_EXT_API_ACCESS= (...p:Parameters<typeof EXT_API_ACCESS>) => dispatch(EXT_API_ACCESS(...p));
+  
+  const [BPG_API,setBPG_API]=useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+  const [CNC_API,setCNC_API]=useState<CNC_Perif>(dispatch(EXT_API_ACCESS(CNC_PERIPHERAL_ID)) as any);
+
+  const [xCMDIdx,setXCMDIdx]=useState(-1);
+
+
 
   const [defConfig,setDefConfig]=useState<any>(undefined);
   const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
@@ -1108,26 +1196,6 @@ function VIEWUI(){
 
 
 
-
-  async function getAPI(API_ID:string=CORE_ID)
-  {
-    let api=await new Promise((resolve,reject)=>{
-      ACT_EXT_API_ACCESS(API_ID,(api)=>{
-        if(api===undefined)reject();
-        resolve(api) 
-      })
-    });
-
-    return api;
-  }
-  
-  async function getCoreAPI()
-  {
-   
-    return await getAPI(CORE_ID)as BPG_WS;
-  }
-  
-  
   const emptyModalInfo={
     timeTag:0,
     visible:false,
@@ -1143,7 +1211,7 @@ function VIEWUI(){
 
   async function LOADPrjDef(PrjDefFolderPath:string)
   {
-    let api = await getAPI(CORE_ID)as BPG_WS
+    let api = BPG_API
     let main= await api.FILE_Load(PrjDefFolderPath+"/main.json");
 
     
@@ -1173,6 +1241,7 @@ function VIEWUI(){
 
 
     let XCmds=await  api.FILE_Load( PrjDefFolderPath+"/XCmds.json");
+    _this.listCMD_Vairable.$DEFPATH=PrjDefFolderPath;
     return {
       path:PrjDefFolderPath,
       _folderInfo:await api.Folder_Struct(PrjDefFolderPath,9),
@@ -1184,7 +1253,7 @@ function VIEWUI(){
   async function SavePrjDef(PrjDefFolderPath:string,PrjDef:(any))
   {
 
-    let api = await getAPI(CORE_ID)as BPG_WS
+    let api = BPG_API
     await api.FILE_Save(PrjDefFolderPath+"/main.json",PrjDef.main,true)
     await api.FILE_Save(PrjDefFolderPath+"/XCmds.json",PrjDef.XCmds,true)
 
@@ -1197,18 +1266,18 @@ function VIEWUI(){
   }
   async function CameraInfoDoConnection(CameraInfo:type_CameraInfo[],froceReconnect=false)
   {
-    let api = await getAPI(CORE_ID)as BPG_WS
+    let api = BPG_API
     let connCameraInfo = await api.CameraCheckAndConnect(CameraInfo,froceReconnect)
     return CameraInfo.map((ci:type_CameraInfo)=>{
      let connTar = connCameraInfo.find(cCam=>cCam.id==ci.id);
      return {...ci,available:connTar!==undefined}
     })
   }
-  async function ReloadPrjDef(path:string)
+  async function ReloadPrjDef(path:string)  
   {
     let prjDef = await LOADPrjDef( path)
     console.log(prjDef)
-    let api = await getAPI(CORE_ID)as BPG_WS
+    let api = BPG_API
 
     prjDef.main.CameraInfo= await CameraInfoDoConnection(prjDef.main.CameraInfo,true)
     // updateDefInfo();
@@ -1242,44 +1311,45 @@ function VIEWUI(){
       )
 
 
-      // await BPG_API.InspTargetSetStreamChannelID(
-      //   cacheDef.id,stream_id,
-      //   {
-      //     resolve:(pkts)=>{
-      //       // console.log(pkts);
-      //       let IM=pkts.find((p:any)=>p.type=="IM");
-      //       if(IM===undefined)return;
-      //       let CM=pkts.find((p:any)=>p.type=="CM");
-      //       if(CM===undefined)return;
-      //       let RP=pkts.find((p:any)=>p.type=="RP");
-      //       if(RP===undefined)return;
-      //       console.log("++++++++\n",IM,CM,RP);
 
 
-      //       setDefReport(RP.data)
-      //       let IMCM={
-      //         image_info:IM.image_info,
-      //         camera_id:CM.data.camera_id,
-      //         trigger_id:CM.data.trigger_id,
-      //         trigger_tag:CM.data.trigger_tag,
-      //       } as type_IMCM
-  
-      //       _this.imgCanvas.width = IMCM.image_info.width;
-      //       _this.imgCanvas.height = IMCM.image_info.height;
-  
-      //       let ctx2nd = _this.imgCanvas.getContext('2d');
-      //       ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
-  
-  
-      //       setLocal_IMCM(IMCM)
-      //       // console.log(IMCM)
-  
-      //     },
-      //     reject:(pkts)=>{
-  
-      //     }
-      //   }
-      // )
+
+      let collection_PGID=53450
+      let cbKey="TargetVIEWUI_CB";
+      await api.send_cbs_attach(inspTar.stream_id,cbKey,{
+        resolve:(pkts)=>{
+          
+          let RP=pkts.find((info:any)=>info.type=="RP")
+          if(RP===undefined)return;
+          RP=RP.data;
+          console.log(RP);
+          let filteredKey=Object.keys(_this.listCMD_Vairable.reportListener)
+            .filter(key=>{
+              let repListener=_this.listCMD_Vairable.reportListener[key];
+              if(repListener.inspTar_id && repListener.inspTar_id!==RP.id)return false;
+              if(repListener.trigger_id && repListener.trigger_id!==RP.trigger_id)return false;
+              if(repListener.type && repListener.type!==RP.type)return false;
+              if(repListener.report!==undefined)return false;
+              return true;
+
+            })
+          
+          filteredKey.forEach(key=>{
+            if(_this.listCMD_Vairable.reportListener[key].resolve!==undefined)
+            {
+              _this.listCMD_Vairable.reportListener[key].resolve(RP);
+            }
+            else
+            {
+              _this.listCMD_Vairable.reportListener[key].report=RP;
+            }
+          })
+          // console.log(RP.data);
+        },
+        reject:(pkts)=>{
+
+        }
+      })
       
     }
     
@@ -1299,10 +1369,19 @@ function VIEWUI(){
       console.log(e)
     })
   },[])
+
   // console.log(defInfo);
   // return <>
   //  <APPUI></APPUI>
   // </>
+
+
+
+  const [delConfirmCounter,setDelConfirmCounter]=useState(0);
+  
+  const [crunIdx,setCRunIdx]=useState(-1);
+  const [crunInfo,setCRunInfo]=useState("");
+  const [crunAbortCtrl,setCRunAbortCtrl]=useState<AbortController|undefined>(undefined);
 
   function menuCol(
     label: React.ReactNode,
@@ -1348,11 +1427,92 @@ function VIEWUI(){
   }
 
 
+  function listCMDPromiseRun(cmds:string[])
+  {
+    const abortController = new AbortController();
+
+    setCRunAbortCtrl(abortController);
+    listCMDPromise(BPG_API,CNC_API,_this.listCMD_Vairable,cmds,(index,info)=>{
+      // console.log(info)
+      if(_this.crunIdx!=index)
+      {
+        setCRunIdx(index);
+        _this.crunIdx=index
+        setCRunInfo(info)
+      }
+
+      
+      _this.throttle_Info_UPDATE=
+      ID_throttle(_this.throttle_Info_UPDATE,()=>{
+        setCRunInfo(info)
+      },()=>_this.throttle_Info_UPDATE=undefined,100);
+      // else
+      // {
+      //   setCRunInfo(info)
+      // }
+    },abortController.signal,
+    async (setting)=>{
+      let _setting={...setting}
+      _this.listCMD_Vairable.USER_INPUT=undefined;
+      if(setting.type==="SELECTS")
+      {//preset
+        _this.listCMD_Vairable.USER_INPUT=setting.data.map((info:any)=>info.default);
+      }
+      await new Promise((resolve,reject)=>{
+        setModalInfo({
+          timeTag:Date.now(),
+          visible:true,
+          type:setting.type,
+          onOK:()=>{
+            resolve(true)
+            setModalInfo({...modalInfo,visible:false})
+          },
+          onCancel:()=>{
+            reject(false)
+            setModalInfo({...modalInfo,visible:false})
+          },
+          title:setting.title,
+          DATA:_setting,
+          content:undefined
+        })
+      })
+      
+      return _this.listCMD_Vairable.USER_INPUT;
+    })
+    .then(_=>{
+      abortController.abort();
+      console.log("DONE")
+      setCRunAbortCtrl(undefined);
+    })
+    .catch(e=>{
+      console.log(e);
+      setCRunAbortCtrl(undefined);
+      delete e.cmd
+      if(e.e!==undefined)
+        e.e=e.e.toString();
+      setModalInfo({
+        timeTag:Date.now(),
+        visible:true,
+        type:"CHECK",
+        onOK:()=>{
+          setModalInfo({...modalInfo,visible:false})
+        },
+        onCancel:()=>{
+          setModalInfo({...modalInfo,visible:false})
+        },
+        title:"!!!!錯誤 例外!!!!",
+        DATA:{info:`${JSON.stringify(e,null,2)}`},
+        content:undefined
+      })
+    });
+  }
+
+
 
   // console.log(displayInspTarId,displayInspTarIdx,displayInspTarIdx_hide);
 
   let InspMenu=
-  menuCol('Insp', 'insp',undefined, [
+  menuCol('檢驗', 'insp',undefined, [
     ...(
       defConfig===undefined?[ menuCol("WAIT...","WAIT...")]:
       (
@@ -1428,9 +1588,9 @@ function VIEWUI(){
     )])
 
   let cameraMenu=
-  menuCol('Camera', 'cam',undefined, [
+  menuCol('相機', 'cam',undefined, [
     ...(
-      defConfig===undefined?[ menuCol("WAIT...","WAIT...")]:
+      defConfig===undefined?[ menuCol("WAIT...","WAITCam")]:
       (defConfig.main.CameraInfo
         .map((cam:type_CameraInfo,index:number)=>
           ( menuCol(<div onClick={()=>{
@@ -1440,11 +1600,11 @@ function VIEWUI(){
               setModalInfo({...emptyModalInfo,
                 title:cam.id,
                 visible:true,
-                content:<CameraSetupEditUI key={keyTime} fetchCoreAPI={getCoreAPI} camSetupInfo={ncamInfo}  onCameraSetupUpdate={ncam=>{
+                content:<CameraSetupEditUI key={keyTime} CoreAPI={BPG_API} camSetupInfo={ncamInfo}  onCameraSetupUpdate={ncam=>{
                   console.log(ncam)
                   updater(ncam);
                   (async function(){
-                    let api = await getAPI(CORE_ID)as BPG_WS
+                    let api =BPG_API
                     console.log(ncam);
                     await api.CameraSetup(ncam,0);
                   })()
@@ -1459,7 +1619,7 @@ function VIEWUI(){
                   new_defConfig.main.CameraInfo[index]=ncamInfo;
                   
                   (async function(){
-                    let api = await getCoreAPI()
+                    let api =BPG_API
                     await api.CameraSetup(ncamInfo,2);
                     await api.CameraClearTriggerInfo();
                   })()
@@ -1472,7 +1632,7 @@ function VIEWUI(){
                 onCancel:()=>{
                   
                   (async function(){
-                    let api = await getCoreAPI()
+                    let api =BPG_API
                     await api.CameraSetup(cam,2);
                     await api.CameraClearTriggerInfo();
                   })()
@@ -1525,7 +1685,7 @@ function VIEWUI(){
 
       setCameraQueryList(undefined);
       (async ()=>{
-        let api = await getAPI(CORE_ID)as BPG_WS
+        let api = BPG_API
         let camList = await api.queryDiscoverList();
         setCameraQueryList(camList);
         console.log(camList)
@@ -1537,137 +1697,230 @@ function VIEWUI(){
   ])
 
 
+
+
+  let xcmdMenu=
+  menuCol(<div onClick={()=>{
+
+     setXCMDIdx(-1);
+     setDelConfirmCounter(delConfirmCounter+1);
+    }}>程序指令</div>, 'xcmd',undefined,
+    
+      defConfig===undefined?[ menuCol("WAIT...","WAIT...")]:
+      [
+        ...defConfig.XCmds.map((xcmd:any,index:number)=>menuCol(<div onClick={()=>{
+          setXCMDIdx(xCMDIdx==index?-1:index);
+
+        }}>{xcmd.id}</div>,xcmd.id+index))
+        ,
+        menuCol(        <div onClick={()=>{
+
+        
+
+          let new_xCMDList=[...defConfig.XCmds];
+          new_xCMDList.splice(xCMDIdx, 1);
+          
+          let new_defConfig=ObjShellingAssign(defConfig,["XCmds"],new_xCMDList);
+
+
+          setDefConfig(new_defConfig);
+          setXCMDIdx(-1);
+        }}>+</div>,"_ADD_")//new xcmd 
+
+      ]
+      
+    )
+
   const items: MenuItem[] = [
     cameraMenu,
     InspMenu,
+    xcmdMenu
   ];
 
-  let siderUI=
-  <Sider width={200}>
 
-    <Menu mode="inline" theme="dark" selectable={false}
+  let siderBaseSize=200;
+  let extSiderSizeMul=xCMDIdx==-1?0:1;
+  let extSizerSize=siderBaseSize*extSiderSizeMul;
 
-      items={items}
-    >
+  let baseSiderTabs=
+  <div style={{float:"left",height:"100%",width:(100*(1)/(1+extSiderSizeMul))+"%"}}>
+  <Menu mode="inline" theme="dark" selectable={false}
 
+    items={items}
+  >
+  </Menu>
+  </div>
+
+
+
+  let curXCMD:any=undefined;
+  if(xCMDIdx!=-1)
+  {
+    curXCMD=defConfig.XCmds[xCMDIdx];
+  }
+
+
+  let extSiderTabs=xCMDIdx==-1?null:
+  <div style={{float:"left",height:"100%",width:(100*(extSiderSizeMul)/(1+extSiderSizeMul))+"%",
+
+  overflow: "scroll",
+  boxShadow: "-5px 5px 15px rgb(0 0 0 / 50%)",
+  padding: "5px",
+  background: "white",
+  color: "black"}}>
+
+    <Input maxLength={100} value={curXCMD.id}
+                style={{margin:"1px"}}
+                onChange={(e)=>{
+                  let value=e.target.value;
+                  let new_defConfig=ObjShellingAssign(defConfig,["XCmds",xCMDIdx,"id"],value);
+                  console.log(defConfig,xCMDIdx,new_defConfig);
+                  setDefConfig(new_defConfig);
+
+                }}/>
+    {/* {xCMDWidthM==1?
+      <Button onClick={()=>{setXCMDWidthM(3);}}>+</Button>:
+      <Button onClick={()=>{setXCMDWidthM(1);}}>-</Button>
+    } */}
+
+
+            <Button disabled={crunAbortCtrl!==undefined} onClick={()=>{
+              listCMDPromiseRun(curXCMD.cmds);
+            }}>Run</Button>
+
+            <Button disabled={crunAbortCtrl===undefined || (crunAbortCtrl&&crunAbortCtrl.signal.aborted)}   onClick={()=>{
+              if(crunAbortCtrl===undefined)return;
+              crunAbortCtrl.abort();
+              setDelConfirmCounter(delConfirmCounter+1);//HACK this is just to force the update,delConfirmCounter would not be used at this stage
+            }}>STOP</Button> 
+            
+            <Popconfirm
+                title="Are you sure to delete this task?"
+                onConfirm={()=>{
+                  
+                }}
+                okButtonProps={{danger:true,onClick:()=>{
+                  if(delConfirmCounter==0)
+                  {
+                    let new_xCMDList=[...defConfig.XCmds];
+                    new_xCMDList.splice(xCMDIdx, 1);
+                    
+                    let new_defConfig=ObjShellingAssign(defConfig,["XCmds"],new_xCMDList);
+
+
+                    setDefConfig(new_defConfig);
+                    setXCMDIdx(-1);
+
+                  }
+                  else
+                  {
+                    setDelConfirmCounter(delConfirmCounter-1);
+                  }
+                }}}
+                onCancel={()=>{}}
+                okText={"Yes:"+delConfirmCounter}
+                cancelText="No"
+              >
+              <Button danger type="primary" onClick={()=>{
+                setDelConfirmCounter(5);
+              }}>DEL</Button>
+            </Popconfirm> 
+           
+            
+            <Divider style={{margin: "5px"}}> ACMD </Divider>
+            {
+              curXCMD.cmds.map((cmd:string,idx:number)=><>
+
+
+                <Dropdown
+                  overlay={<>
+                    <Button size="small" onClick={()=>{
+                      let new_cmd_list=[...curXCMD.cmds]
+                      new_cmd_list.splice(idx, 0, "");
+                      let new_defConfig=ObjShellingAssign(defConfig,["XCmds",xCMDIdx,"cmds"],new_cmd_list);
+                      setDefConfig(new_defConfig);
+
+
+                    }}>+</Button>
+                    <Button size="small" onClick={()=>{
+                  
+                      let new_cmd_list=[...curXCMD.cmds]
+                      new_cmd_list.splice(idx, 1);
+                      let new_defConfig=ObjShellingAssign(defConfig,["XCmds",xCMDIdx,"cmds"],new_cmd_list);
+                      setDefConfig(new_defConfig);
+                    }}>-</Button>
+                  </>}
+                >
+                  <a style={{color:"#000"}} className="ant-dropdown-link"  onClick={e => e.preventDefault()}>
+                    <DownOutlined />
+                  </a>
+                </Dropdown>
+
+                {crunIdx==idx?(crunInfo.length?crunInfo:"<--------"):null}
+
+
+                <Input.TextArea value={cmd} 
+                // rows={1}
+                autoSize
+                tabIndex={-1}
+                onKeyDown={(e)=>{
+                  if (e.key == 'Tab') {
+                    // e.preventDefault();
+
+                  }
+                }}
+                style={{margin:"1px"}}
+                onChange={(e)=>{
+                  
+                  let value=e.target.value;
+                  console.log(value)
+                  
+
+                  let new_defConfig=ObjShellingAssign(defConfig,["XCmds",xCMDIdx,"cmds",idx],value);
+                  console.log(new_defConfig);
+                  setDefConfig(new_defConfig);
+
+                }}/>
+              </>)
+            }
+
+            <Button size="small" onClick={()=>{
               
-      {/* <SubMenu key="INSP" title="Camera" >
-        
-        {
-          defConfig===undefined?<></>:
-          defConfig.main.CameraInfo.map((cam:type_CameraInfo)=>(
-          <Menu.Item key={cam.id} onClick={()=>{}}>
-            {cam.id}
-          </Menu.Item>))
-        }
+              let new_cmd_list=[...curXCMD.cmds]
+              new_cmd_list.push("");
+              let new_defConfig=ObjShellingAssign(defConfig,["XCmds",xCMDIdx,"cmds"],new_cmd_list);
+              setDefConfig(new_defConfig);
 
-        <Menu.Item key="Add">
-          +
-        </Menu.Item>
-      </SubMenu> */}
+            }}>+</Button>
 
-    </Menu>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+
+  let siderUI=
+  <Sider width={siderBaseSize+extSizerSize}>
+  {baseSiderTabs}
+  {extSiderTabs}
 
   </Sider>
     
-
-  function InspTargetUI_MUX(param:CompParam_InspTarUI)
-  {
-    if(param.def.type=="ColorRegionDetection")
-    return <SingleTargetVIEWUI_ColorRegionDetection {...param} />;
-
-
-    return  <></>;
-  }
-
-  
-  function TargetViewUIShow(InspTarList:any[],displayIDList:string[])
-  {
-
-    let InspTarList_show=InspTarList;
-    let InspTarList_hide;
-
-      
-    let displayInspTarIdx:number[]=[];
-    let displayInspTarIdx_hide:number[]=[];
-    if(defConfig!==undefined)
-    {
-      displayInspTarIdx=displayIDList
-        .map(itarID=>InspTarList.findIndex((itar:any)=>itar.id==itarID))
-        .filter(idx=>idx>=0)
-    
-      displayInspTarIdx_hide
-        =InspTarList.map((itar:any,idx:number)=>idx).filter((idx:number)=>{
-          if(displayInspTarIdx.find(idx_to_show=>idx_to_show==idx)===undefined)
-            return true;
-          return false;
-        });
-    
-    }
-
-    console.log(InspTarList);
-    console.log(displayIDList,displayInspTarIdx,displayInspTarIdx_hide);
-
-    // let inspTar=defConfig.InspTars_main [index]
-    // let rep_rules=GetObjElement(defReport,["rules"]);
-    // let subRuleRep=undefined;
-    // if(rep_rules!==undefined)
-    //   subRuleRep=rep_rules.find((rep_rule:any)=>rep_def.id==inspTar.id);
-    // console.log(rule,subRuleRep);
-    // subRuleRep
-    // let whsetting={w:50,h:50};
-    // if(show)
-    //   whsetting=WHArr[index];
-    // return <SingleTargetVIEWUI_ColorRegionDetection 
-    // readonly={false} 
-    // width={displaySetting.w+"%"} 
-    // height={displaySetting.h+"%"} 
-    // style={{float:"left",display:displaySetting.hide?"none":undefined}} 
-    // key={inspTar.id} 
-    // IMCM_group={IMCM_group} 
-    // rule={inspTar} 
-    // report={subRuleRep} 
-    // renderHook={_this.listCMD_Vairable.renderHook} 
-    // onDefChange={(new_rule,doInspUpdate=true)=>{
-    
-    // }}/>
-
-
-
-    // function SingleTargetVIEWUI_ColorRegionDetection({readonly,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI)
-    return <>
-    {
-      // displayInspTarIdx.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=>inspTar.id+":"+inspTar.type+",")
-      displayInspTarIdx.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=><InspTargetUI_MUX 
-        readonly={false} 
-        width={20} 
-        height={100} 
-        stream_id={50120}
-        style={{float:"left"}} 
-        key={inspTar.id} 
-        def={inspTar} 
-        report={undefined} 
-        renderHook={_this.listCMD_Vairable.renderHook} 
-        onDefChange={(new_rule,doInspUpdate=true)=>{
-          console.log(new_rule);
-
-          let idx = InspTarList.findIndex(itar=>itar.id==new_rule.id);
-          if(idx<0)return;
-
-          let newDefConfig={...defConfig,InspTars_main:[...InspTarList]};
-          newDefConfig.InspTars_main[idx]=new_rule;
-          
-          setDefConfig(newDefConfig)
-        }}/>)
-    }
-    <br/>---hide----<br/>
-    {
-      displayInspTarIdx_hide.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=>inspTar.id+",")
-    }
-    
-    
-    </>;
-  }
 
 
   return <>
@@ -1712,7 +1965,9 @@ function VIEWUI(){
         return inspTar.id;
       })
     } */}
-    { (defConfig===undefined)?"WAIT":TargetViewUIShow(defConfig.InspTars_main,displayInspTarId)}
+    { 
+    (defConfig===undefined)?"WAIT": 
+      <TargetViewUIShow InspTarList={defConfig.InspTars_main} displayIDList={displayInspTarId} defConfig={defConfig}  onDefChange={(newdef:any)=>{setDefConfig(newdef)}}  renderHook={_this.listCMD_Vairable.renderHook}/>}
     </Content>
   
     </Layout>

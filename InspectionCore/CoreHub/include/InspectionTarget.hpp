@@ -171,6 +171,7 @@ class InspectionTarget
 
   protected:
   
+  void attachSstaticInfo( cJSON* jobj,int trigger_id );
   virtual cJSON* genITInfo_basic();
   virtual bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)=0;
   // virtual std::vector<StageInfo*> inputPick(std::vector<StageInfo*> infoPool)=0;//returns input processed
