@@ -53,9 +53,10 @@ type IMCM_group={[trigID:string]:IMCM_type}
 
 
 type CompParam_InspTarUI =   {
-  readonly:boolean,
+  display:boolean,
   style?:any,
   stream_id:number,
+  fsPath:string,
   width:number,height:number,
   renderHook:((ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,rule:any)=>void)|undefined,
   // IMCM_group:IMCM_group,
@@ -305,7 +306,7 @@ function ColorRegionDetection_SingleRegion({srule,onDefChange,canvas_obj}:
 
 
 
-function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
+function SingleTargetVIEWUI_ColorRegionDetection({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
     imgCanvas:document.createElement('canvas'),
@@ -334,7 +335,7 @@ function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,heigh
 
 
   useEffect(() => {
-
+    console.log("fsPath:"+fsPath)
     _this.cache_report=undefined;
     setCacheDef(def);
     // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
@@ -521,6 +522,7 @@ function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,heigh
   // }
 
 
+  if(display==false)return null;
   function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
   {
     let ctx = g.ctx;
@@ -559,7 +561,7 @@ function SingleTargetVIEWUI_ColorRegionDetection({readonly,stream_id,width,heigh
 
 
       let EditUI=null;
-      if(readonly==false)
+      if(true)//allow edit
       {
         EditUI=<>
         <Button key={"_"+10000} onClick={()=>{
@@ -1080,13 +1082,9 @@ function InspTargetUI_MUX(param:CompParam_InspTarUI)
 }
 
 
-function TargetViewUIShow({InspTarList,displayIDList,defConfig,onDefChange,renderHook}:{InspTarList:any[],displayIDList:string[],defConfig:any, onDefChange:(updatedDef:any)=>void,renderHook:any})
+function TargetViewUIShow({displayIDList,defConfig,onDefChange,renderHook}:{displayIDList:string[],defConfig:any, onDefChange:(updatedDef:any)=>void,renderHook:any})
 {
-
-  let InspTarList_show=InspTarList;
-  let InspTarList_hide;
-
-    
+  let InspTarList=defConfig.InspTars_main;
   let displayInspTarIdx:number[]=[];
   let displayInspTarIdx_hide:number[]=[];
   if(defConfig!==undefined)
@@ -1111,39 +1109,42 @@ function TargetViewUIShow({InspTarList,displayIDList,defConfig,onDefChange,rende
   console.log(displayIDList,displayInspTarIdx,displayInspTarIdx_hide);
 
 
+
+
+
   // function SingleTargetVIEWUI_ColorRegionDetection({readonly,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI)
-  return <>
-  {
+  return <>{
     // displayInspTarIdx.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=>inspTar.id+":"+inspTar.type+",")
-    displayInspTarIdx.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=><InspTargetUI_MUX 
-      readonly={false} 
-      width={20} 
-      height={100} 
-      stream_id={50120}
-      style={{float:"left"}} 
-      key={inspTar.id} 
-      def={inspTar} 
-      report={undefined} 
-      renderHook={renderHook} 
-      onDefChange={(new_rule,doInspUpdate=true)=>{
-        console.log(new_rule);
+    [...displayInspTarIdx,-1,...displayInspTarIdx_hide].map((idx:number)=>idx>=0?InspTarList[idx]:undefined).map((inspTar:any,idx:number)=>{
+    
+      if(inspTar===undefined)
+      {
+        return  <><br/>---hide----<br/></>
+      }
+      return  <InspTargetUI_MUX 
+        display={idx<displayInspTarIdx.length} 
+        width={100/displayInspTarIdx.length} 
+        height={100} 
+        stream_id={50120}
+        style={{float:"left"}} 
+        key={inspTar.id} 
+        def={inspTar} 
+        report={undefined} 
+        fsPath={defConfig.path}
+        renderHook={renderHook} 
+        onDefChange={(new_rule,doInspUpdate=true)=>{
+          console.log(new_rule);
 
-        let idx = InspTarList.findIndex(itar=>itar.id==new_rule.id);
-        if(idx<0)return;
+          let idx = InspTarList.findIndex((itar:any)=>itar.id==new_rule.id);
+          if(idx<0)return;
 
-        let newDefConfig={...defConfig,InspTars_main:[...InspTarList]};
-        newDefConfig.InspTars_main[idx]=new_rule;
-        
-        onDefChange(newDefConfig)
-      }}/>)
-  }
-  <br/>---hide----<br/>
-  {
-    displayInspTarIdx_hide.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=>inspTar.id+",")
-  }
-  
-  
-  </>;
+          let newDefConfig={...defConfig,InspTars_main:[...InspTarList]};
+          newDefConfig.InspTars_main[idx]=new_rule;
+          
+          onDefChange(newDefConfig)
+        }}
+      />})
+  } </>;
 }
 
 
@@ -1967,7 +1968,7 @@ function VIEWUI(){
     } */}
     { 
     (defConfig===undefined)?"WAIT": 
-      <TargetViewUIShow InspTarList={defConfig.InspTars_main} displayIDList={displayInspTarId} defConfig={defConfig}  onDefChange={(newdef:any)=>{setDefConfig(newdef)}}  renderHook={_this.listCMD_Vairable.renderHook}/>}
+      <TargetViewUIShow displayIDList={displayInspTarId} defConfig={defConfig}  onDefChange={(newdef:any)=>{setDefConfig(newdef)}}  renderHook={_this.listCMD_Vairable.renderHook}/>}
     </Content>
   
     </Layout>
