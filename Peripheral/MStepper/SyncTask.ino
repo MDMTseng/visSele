@@ -7,6 +7,11 @@
 #include "soc/rtc_wdt.h"
 #include <Data_Layer_Protocol.hpp>
 
+
+extern "C" {
+#include "direct_spi.h"
+}
+
 #pragma once
 #define __UPRT_D_(fmt,...) //Serial.printf("D:"__VA_ARGS__)
 // #define __PRT_I_(...) Serial.printf("I:" __VA_ARGS__)
@@ -51,6 +56,7 @@ hw_timer_t *timer = NULL;
 #define mm_PER_REV 10
 
 
+spi_device_handle_t spi1;
 
 struct MSTP_SegCtx{
   int type;
@@ -502,37 +508,6 @@ class MStp_M:public MStp{
 static MSTP_segment blockBuff[MSTP_BLOCK_SIZE];
 
 MStp_M mstp(blockBuff,MSTP_BLOCK_SIZE);
-
-
-class SyncTask
-{
-  protected:
-  uint32_t tarClock;
-  bool is_in_action;
-  char name[32];
-  public:
-  SyncTask(const char* name)
-  {
-    strcpy(this->name,name);
-    is_in_action=false;
-  }
-
-  void update(uint32_t currentClock)
-  {
-    int32_t diff = tarClock-currentClock;
-    if(diff==0)
-    {
-      return;
-    }
-    //TODO...
-
-  }
-
-  int pushCmd(char* cmd)
-  { 
-
-  }
-};
 
 
 
@@ -1159,6 +1134,10 @@ void MData_JR::loop()
 int rzERROR=0;
 void setup()
 {
+  
+  spi1= direct_spi_init(1,20*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
+  spi_device_select(spi1,1);
+
   // noInterrupts();
   Serial.begin(115200);//230400);
   Serial.setRxBufferSize(500);
