@@ -26,9 +26,9 @@ void IRAM_ATTR direct_spi_transfer(spi_device_handle_t handle, int bits) {
 
 
 
-spi_device_handle_t direct_spi_init(int clkHz,int pin_MOSI,int pin_MISO,int pin_CLK,int pin_CS)
+spi_device_handle_t direct_spi_init(int ch,int clkHz,int pin_MOSI,int pin_MISO,int pin_CLK,int pin_CS)
 {
-	int dmach = 1;
+	int dmach = ch;
   esp_err_t ret;
   spi_device_handle_t spi;
   spi_bus_config_t buscfg={
@@ -54,16 +54,7 @@ spi_device_handle_t direct_spi_init(int clkHz,int pin_MOSI,int pin_MISO,int pin_
   //Attach the LCD to the SPI bus
   ret=spi_bus_add_device(SPI_BUS, &devcfg, &buscfg, &spi);
   assert(ret==ESP_OK);
-	printf("SPI: bus initialized\r\n");
 
-	// Test select/deselect
-	ret = spi_device_select(spi, 1);
-  assert(ret==ESP_OK);
-	ret = spi_device_deselect(spi);
-  assert(ret==ESP_OK);
-
-	printf("SPI: attached display device, speed=%u\r\n", get_speed(spi));
-	printf("SPI: bus uses native pins: %s\r\n", spi_uses_native_pins(spi) ? "true" : "false");
   return spi;
 }
 
