@@ -521,7 +521,10 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
 void MStp::SystemClear()
 {
   StepperForceStop();
-  curPos_c=curPos_mod=curPos_residue=lastTarLoc=(xVec){0};
+  curPos_c=
+  curPos_mod=
+  lastTarLoc=(xVec){0};
+  // curPos_residue=(xVec){0};
   T_next=0;
   minSpeed=2;
   main_acc=1000;
@@ -535,13 +538,14 @@ void MStp::StepperForceStop()
   SegQ_Clear();
   lastTarLoc=curPos_c;
   T_next=0;
-  axis_pul=axis_dir=0;
+  axis_pul_1st=axis_pul_2nd=axis_dir=0;
   delayResidue=0;
   pre_indexes=0;
   tskrun_state=0;
   isMidPulTrig=true;
   _axis_collectpul1=0;
-  curPos_mod=curPos_residue=(xVec){0};
+  curPos_mod=(xVec){0};
+  // curPos_residue=(xVec){0};
   
 }
 
@@ -967,11 +971,11 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
        /              |    |
 
 
-      CASE2:  curblk is not long enough to able to de-accelerate from curblk.vcen(v center max speed) to curblk.vto
+      CASE2:  curblk is not long enough to be able to de-accelerate from curblk.vcen(v center max speed) to curblk.vto
               so the preSeg need to reduce the vto speed, so curblk.vcur is low enough to safely de-accelerate to curblk.vto
                          
       example:curblk.steps=4                    
-              curblk.vto is 0(stop), but without changing preSeg.vto it's impossible
+              curblk.vto is 0(stop), but without changing preSeg.vto. it's impossible
 
           
             _________V  preSeg.vto 
@@ -1223,57 +1227,167 @@ void MStp::BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
 
 
-  uint32_t _axis_pul=0;
-  uint32_t steps_scal=seg->steps;
+  uint32_t _axis_pul_1st=0;
+  uint32_t _axis_pul_2nd=0;
+  uint32_t steps_main=seg->steps;
   for(int k=0;k<MSTP_VEC_SIZE;k++)
   {
-    curPos_mod.vec[k]+=posvec.vec[k];
-    if(curPos_mod.vec[k]>=steps_scal)//a step forward
+    //The algo to find when should pulse of each axis happen
+    
+    //exp: run to vec [10 3]
+    
+    //  main vec steps_main=10
+    //  curr vec steps_curr= 3
+    //  =>max steps 10
+    //step count 1   2   3   4   5   6   7   8   9  10
+    //v1[main]  10  20  30  40  50  60  70  80  90 100      each step cycle will have a main vector pulse, for sure~
+    //v2         3   6   9  12  15  18  21  24  27  30
+    //mod        x   x   x  @2   x   x  @1   x   x  @0      each @ means pulse hit, a puls should happen in this cycle
+    
+    //to find the exact location of the pulse in pulse cycle
+    //we will do following calc
+    //residue = steps_curr-mod
+    //ratio   = residue/steps_curr
+    //mod        x   x   x  @2   x   x  @1   x   x  @0
+    //residue    x   x   x   1   x   x   2   x   x   3(exact last line)
+    //ratio      x   x   x  1/3  x   x 2/3   x   x   1
+
+
+    //a standard pulse (will happen in main vector pulse train)
+    // |------|      ^
+    // |      |______|
+
+    
+    // |    ^--------|
+    // |____|        |
+    //exp   ^ratio=1/3
+
+    // |         ^---|
+    // |_________|   |
+    //exp        ^ratio=2/3
+
+    // |             ^
+    // |_____________|
+    //exp            ^ratio=1
+
+    
+    // ------|      ^------|      ^------|      ^------|      ^------|      ^------|      ^------|      ^------|      ^------|      ^------|      ^
+    //       |______|      |______|      |______|      |______|      |______|      |______|      |______|      |______|      |______|      |______|
+
+    //Type P                                        ^---------|                                     ^---|                                         ^
+    // _____________________________________________|         |_____________________________________|   |_________________________________________|
+    //                                              1/3                                             2/3                                           1           
+    //Type R (rounding)                                ^------|                                         ^------|                                  ^
+    // ________________________________________________|      |_________________________________________|      |__________________________________|
+    //                                              1/3=> 0.5                                       2/3=>1                                        1=>1
+
+    //in perfect world the side vector sould happen as Type P shows
+    //But to save comp power we will do Type R (align(round) to main vector transition edge (neg/pos edge))
+
+
+    //WE DEFINE a step cycle as blow
+    // XXXXXX|XXXXXX|   
+    // "X" means unknown state(H/L), "|" means a transition might happens here
+    // for main vector pulse the pulse will always happen at second "|"(transition)
+
+    //NOTE: to reserve resources side vec pulse transition will force to happen on the "|" 
+    //      (not totally accurate pulse position but save comp power& time and acceptable)
+
+
+
+
+
+
+    int32_t steps_curr=posvec.vec[k];
+    curPos_mod.vec[k]+=steps_curr;
+    if(curPos_mod.vec[k]>=steps_main)//a step forward
     {
-      curPos_mod.vec[k]-=steps_scal;
-      curPos_residue.vec[k]=seg->steps-curPos_mod.vec[k];
-      _axis_pul|=1<<k;
+      curPos_mod.vec[k]-=steps_main;
+
+      {
+
+        //exp: main vec steps_main=10
+        //     curr vec steps_curr= 3
+        // 3|6|9|*12
+        //        ^hit 12>10 mode =2 (definitely less than steps_curr)
+        //        residue =steps_curr- mode = 3-2 =1  
+        //        ratio   = residue/steps_curr = 1/3
+        int32_t residue=steps_curr-curPos_mod.vec[k];
+        //float ratio=residue/steps_curr;
+
+        // main axis standard pulse
+        // |------|      ^
+        // |      |______|
+        //exp     ^ratio=0.5
+
+        //OR
+        // |             ^
+        // |_____________|
+        //exp ^ratio=0.2
+        //    1st    2nd    perspect to the main axis
+
+        // if a pos edge is in the 1st section, then will push into _axis_pul_1st
+        //the 1st secion pulse will perform within the middle edge
+        //        ^------|
+        // _______|      |
+        //     1st   2nd    Note: since only main axis has the highest freq, the side axis will have time to bring down the line state
+      
+        //the 1st secion pulse will perform within the middle edge
+        // |XXXXXX|       ^
+        // |XXXXXX|_______|
+        //     1st   2nd
+
+
+        if((residue<<1)<=(steps_curr))//is ratio<=0.5 then it blong to the first section
+          _axis_pul_1st|=1<<k;
+        else
+          _axis_pul_2nd|=1<<k;
+      }
+
     }
     else
     {
-      curPos_residue.vec[k]=0;
+      // curPos_residue.vec[k]=0;
     }
 
   }
 
-  axis_pul=_axis_pul;
+  axis_pul_1st=_axis_pul_1st;
+  axis_pul_2nd=_axis_pul_2nd;
 }
 
-uint32_t MStp::findMidIdx(uint32_t from_idxes,uint32_t totSteps)
-{
-  uint32_t idxes=0;
+// uint32_t MStp::findMidIdx(uint32_t from_idxes,uint32_t totSteps)
+// {
+//   uint32_t idxes=0;
 
-  uint32_t midP=totSteps>>1;
-  for(int k=0;k<MSTP_VEC_SIZE;k++)
-  {
-    if((from_idxes&(1<<k))==0)continue;
-    int resd=curPos_residue.vec[k];
-    // __PRT_D_(">[%d]>%d\n",k,resd);
-    if(resd!=0 && resd<=midP)
-    {
-      idxes|=1<<k;
-    }
-  }
-  return idxes;
-}
+//   uint32_t midP=totSteps>>1;
+//   for(int k=0;k<MSTP_VEC_SIZE;k++)
+//   {
+//     if((from_idxes&(1<<k))==0)continue;
+//     int resd=curPos_residue.vec[k];
+//     // __PRT_D_(">[%d]>%d\n",k,resd);
+//     if(resd!=0 && resd<=midP)
+//     {
+//       idxes|=1<<k;
+//     }
+//   }
+//   return idxes;
+// }
 
 
 uint32_t MStp::taskRun()
 {
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
   
+
+  //First, if there is an current runSeg=> 
   if(p_runSeg!=NULL)
   {
     switch(p_runSeg->type)//========Run with current segment
     {
       case MSTP_segment_type::seg_line:
       
-        for(int i=0;i<MSTP_VEC_SIZE;i++)
+        for(int i=0;i<MSTP_VEC_SIZE;i++)//calc run psition
         {
           uint32_t sele=(1<<i);
           if(pre_indexes&sele)
@@ -1298,17 +1412,18 @@ uint32_t MStp::taskRun()
     }
   }
 
+  //tskrun_state ==0 means () or ()
   float prevcur=0;
-  if(tskrun_state==0)
+  if(tskrun_state==0)//
   {
 
     do
     {
       
-      if(p_runSeg==NULL)//========Try to load new segment
+      if(p_runSeg==NULL)//========if current runSeg==NULL Try to load new segment
       {
         T_next=0;
-        axis_pul=0;
+        axis_pul_1st=axis_pul_2nd=0;
 
         p_runSeg=SegQ_Tail();
         if(p_runSeg==NULL)
@@ -1322,7 +1437,7 @@ uint32_t MStp::taskRun()
           p_runSeg->cur_step=0;
           BlockInitEffect(p_runSeg);
           vecAssign(curPos_mod,vec0);
-          vecAssign(curPos_residue,vec0);
+          // vecAssign(curPos_residue,vec0);
           vecAssign(posvec,vec0);
         }
       }
@@ -1450,37 +1565,28 @@ uint32_t MStp::taskRun()
     __PRT_D_("cur_step:%d \n",p_runSeg->cur_step);
     if(isMidPulTrig==false)
     {
-      uint32_t idxes=findMidIdx(axis_pul,p_runSeg->steps);
-      // Serial.printf("=curBlk->steps:%d==idxes:%s  resd:%d\n",curBlk->steps,int2bin(idxes,MSTP_VEC_SIZE),curPos_residue.vec[0]);
-      if(idxes==0)
-      {
-        IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=!PIN_DBG0_st);
-      }
-      isMidPulTrig=true;
-      axis_pul&=~idxes;//surpress current
-
-      pre_indexes=idxes;
-      axis_collectpul=_axis_collectpul1;
-      _axis_collectpul1=pre_indexes;
-      
       if(p_runSeg->cur_step==1)
       {
-        pre_indexes=0;
-        axis_collectpul=~0;
+        axis_pul_1st=0;
+        _axis_collectpul1=(1<<MSTP_VEC_SIZE)-1;
       }
-      return T_next/2;
+      isMidPulTrig=true;
+      pre_indexes=axis_pul_1st;
     }
-
-
-    if(p_runSeg->cur_step==1)
+    else
     {
-      BlockDirEffect(axis_dir);
+      if(p_runSeg->cur_step==1)
+      {
+        BlockDirEffect(axis_dir);
+      }
+      tskrun_state=0;
+      pre_indexes=axis_pul_2nd;
     }
-    tskrun_state=0;
 
-    pre_indexes=axis_pul;
+
     axis_collectpul=_axis_collectpul1;
     _axis_collectpul1=pre_indexes;
+    BlockPinInfoUpdate(axis_dir,pre_indexes,0);
     return T_next/2;
   }
   

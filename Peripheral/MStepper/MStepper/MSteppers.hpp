@@ -98,11 +98,12 @@ public:
   xVec posvec;
   xVec curPos_c;
   xVec curPos_mod;
-  xVec curPos_residue;
+  // xVec curPos_residue;
   xVec lastTarLoc;
 
 
-  uint32_t axis_pul;
+  uint32_t axis_pul_1st;
+  uint32_t axis_pul_2nd;
   uint32_t axis_collectpul;
   uint32_t _axis_collectpul1;
   uint32_t axis_dir;
@@ -136,6 +137,10 @@ public:
   // virtual void BlockRunEffect(uint32_t idxes)=0;
   virtual void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)=0;
   virtual void BlockDirEffect(uint32_t idxes)=0;
+
+  virtual void BlockPinInfoUpdate(uint32_t dir,uint32_t idxes_T,uint32_t idxes_R)=0;
+
+
 
   virtual void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* blk)=0;
   virtual void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* blk)=0;

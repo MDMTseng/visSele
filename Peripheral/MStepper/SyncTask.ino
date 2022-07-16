@@ -409,16 +409,23 @@ class MStp_M:public MStp{
     // pre_seg->ctx;//do sth... start
     
     // digitalWrite(PIN_OUT_1, POut1=(!POut1));
-    digitalWrite(PIN_Y_DIR,  (dir_idxes&(1<<AXIS_IDX_Y  ))!=0);
-    digitalWrite(PIN_Z1_DIR, (dir_idxes&(1<<AXIS_IDX_Z1 ))!=0);
-    digitalWrite(PIN_R11_DIR,(dir_idxes&(1<<AXIS_IDX_R11))!=0);
-    digitalWrite(PIN_R12_DIR,(dir_idxes&(1<<AXIS_IDX_R12))!=0);
+    // digitalWrite(PIN_Y_DIR,  (dir_idxes&(1<<AXIS_IDX_Y  ))!=0);
+    // digitalWrite(PIN_Z1_DIR, (dir_idxes&(1<<AXIS_IDX_Z1 ))!=0);
+    // digitalWrite(PIN_R11_DIR,(dir_idxes&(1<<AXIS_IDX_R11))!=0);
+    // digitalWrite(PIN_R12_DIR,(dir_idxes&(1<<AXIS_IDX_R12))!=0);
 
 
     
     // __UPRT_D_("dir:%s \n",int2bin(idxes,MSTP_VEC_SIZE));
   }
     
+
+  void BlockPinInfoUpdate(uint32_t dir,uint32_t idxes_T,uint32_t idxes_R)
+  {
+    uint32_t portPins=dir<<9 | idxes_T<<0;
+
+    //send_SPI(portPins);
+  }
   
   bool PIN_DBG0_st=false;
   uint32_t axis_st=0;
@@ -428,77 +435,7 @@ class MStp_M:public MStp{
     {
       runUntilDetected();
     }
-    // if(idxes==0)return;
-    // printf("===T:%s",int2bin(idxes_T,5));
-    // printf(" R:%s >>",int2bin(idxes_R,5));
-
-    // // printf("PULSE_ROUNDSCALE:%d  ",PULSE_ROUNDSCALE);
-
-    // for(int i=0;i<MSTP_VEC_SIZE;i++)
-    // {
-    //   int idx_p = axis_pul&(1<<i);
-    //   printf("%03d ",curPos_residue.vec[i]*(idx_p?1:0));
-
-    // }
-
-    // printf("\n");
-    
- 
-    axis_st|=idxes_T;
-    axis_st&=~idxes_R;
-    // if(idxes_R && (idxes_T==0))
-    // {
-    //   digitalWrite(PIN_DBG0, PIN_DBG0_st);
-    //   PIN_DBG0_st=!PIN_DBG0_st;
-    // }
-    if(idxes_R&(1<<AXIS_IDX_Z1))
-    {
-      digitalWrite(PIN_Z1_STP, 1);
-    }
-
-    if(idxes_R&(1<<AXIS_IDX_Y))
-    {
-      digitalWrite(PIN_Y_STP, 1);
-    }
-    if(idxes_R&(1<<AXIS_IDX_R11))
-    {
-      digitalWrite(PIN_R11_STP, 1);
-    }
-    if(idxes_R&(1<<AXIS_IDX_R12))
-    {
-      digitalWrite(PIN_R12_STP, 1);
-    }
-
-
-
-
-
-    // __UPRT_D_("id:%s  ",int2bin(idxes,MSTP_VEC_SIZE));
-    // __UPRT_D_("ac:%s ",int2bin(axis_collectpul,MSTP_VEC_SIZE));
-
-    // int Midx=0;
-
-    
-    // __UPRT_D_("PINs:%s\n",int2bin(axis_st,MSTP_VEC_SIZE));
-
-    if(idxes_T&(1<<AXIS_IDX_Z1))
-    {
-      digitalWrite(PIN_Z1_STP, 0);
-    }
-    if(idxes_T&(1<<AXIS_IDX_Y))
-    {
-      digitalWrite(PIN_Y_STP, 0);
-    }
-    if(idxes_T&(1<<AXIS_IDX_R11))
-    {
-      digitalWrite(PIN_R11_STP, 0);
-    }
-    if(idxes_T&(1<<AXIS_IDX_R12))
-    {
-      digitalWrite(PIN_R12_STP, 0);
-    }
-
-
+    //Pin trigger update
   }
 
 
