@@ -15,7 +15,7 @@ public:
 
 
   MStp *_mstp;
-  virtual int MTPSYS_MachZeroRet(uint32_t index,int distance,int speed,void* context);
+  virtual int MTPSYS_MachZeroRet(uint32_t axis_index,uint32_t sensor_pin,int distance,int speed,void* context);
   virtual bool MTPSYS_VecTo(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
   virtual bool MTPSYS_VecAdd(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
   virtual bool MTPSYS_AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info *exinfo);

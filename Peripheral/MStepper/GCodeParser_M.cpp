@@ -61,10 +61,17 @@ int GCodeParser_M::ReadxVecData(char **blkIdxes,int blkIdxesL,xVec &retVec)
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Y,AXIS_GDX_Y);
 
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z1,AXIS_GDX_Z1);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R1,AXIS_GDX_R1);
   
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R11,AXIS_GDX_R11);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z2,AXIS_GDX_Z2);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R2,AXIS_GDX_R2);
+
   
-  // ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R12,AXIS_GDX_R12);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z2,AXIS_GDX_Z3);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R2,AXIS_GDX_R3);
+
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z2,AXIS_GDX_Z4);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R2,AXIS_GDX_R4);
 
   return 0;
 }
@@ -76,7 +83,8 @@ int GCodeParser_M::ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F)
   float tmpF=NAN;
   int ret = FindFloat(AXIS_GDX_FEEDRATE,blkIdxes,blkIdxesL,tmpF);
   if(tmpF<0)ret=-1;
-  if(tmpF>400)ret=-1;// HACK: TODO: speed cap
+  // if(tmpF>400)ret=-1;// HACK: TODO: speed cap
+  if(tmpF>400)tmpF=400;// HACK: TODO: speed cap
   if(ret==0)
   {
     tmpF=unit2Pulse_conv(AXIS_IDX_FEEDRATE,tmpF);
@@ -181,9 +189,9 @@ bool GCodeParser_M::CheckHead(char *str1,char *str2)
 }
 
 
-int GCodeParser_M::MTPSYS_MachZeroRet(uint32_t index,int distance,int speed,void* context)
+int GCodeParser_M::MTPSYS_MachZeroRet(uint32_t axis_index,uint32_t sensor_pin,int distance,int speed,void* context)
 {
-  return _mstp->MachZeroRet(index,distance,speed,context);
+  return _mstp->MachZeroRet(axis_index,sensor_pin,distance,speed,context);
 }
 
 bool GCodeParser_M::MTPSYS_VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinfo)
@@ -270,9 +278,21 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       {
         __PRT_D_("G28 GO HOME!!!:");
         int retErr=0;
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,500*2,MTPSYS_getMinPulseSpeed()*10,NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R11,500*2*4,MTPSYS_getMinPulseSpeed()*20*4,NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_X,PIN_X_SEN1,50000,MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,PIN_Y_SEN1,-50000,MTPSYS_getMinPulseSpeed(),NULL);
+        
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z2,PIN_Z2_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z3,PIN_Z3_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z4,PIN_Z4_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R1,PIN_R1_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R2,PIN_R2_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R3,PIN_R3_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R4,PIN_R4_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+
+
+
         pos_offset=(xVec){0};
         retStatus=statusReducer(retStatus,(retErr==0)?GCodeParser_Status::TASK_OK:GCodeParser_Status::TASK_FAILED);
         __PRT_D_("%s\n",retErr==0?"DONE":"FAILED");
@@ -293,7 +313,8 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           float tmpF=NAN;
           if(FindFloat(AXIS_GDX_ACCELERATION,blockInitial+j,blockCount-j,tmpF)==0)
           {
-            exinfo.acc=unit2Pulse_conv(AXIS_IDX_ACCELERATION,tmpF);
+            exinfo.deacc=exinfo.acc=unit2Pulse_conv(AXIS_IDX_ACCELERATION,tmpF);
+
           }
           tmpF=NAN;
           

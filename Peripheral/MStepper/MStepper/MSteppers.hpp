@@ -144,7 +144,7 @@ public:
 
   virtual void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* blk)=0;
   virtual void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* blk)=0;
-  virtual int MachZeroRet(uint32_t index,int distance,int speed,void* context)=0;
+  virtual int MachZeroRet(uint32_t axis_index,uint32_t sensor_pin,int distance,int speed,void* context)=0;
   
   bool timerRunning=false;
   virtual void stopTimer() MSTP_SEG_PREFIX {timerRunning=false;}

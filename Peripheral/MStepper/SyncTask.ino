@@ -23,34 +23,18 @@ hw_timer_t *timer = NULL;
 #define S_ARR_LEN(arr) (sizeof(arr) / sizeof(arr[0]))
 
 #define PIN_O1 5
+#define PIN_LED 2
 
-
-#define PIN_Z1_STP 12
-#define PIN_Z1_DIR 13
-#define PIN_Z1_SEN1 19
-#define PIN_Z1_SEN2 18
-
-
-#define PIN_Y_STP 27
-#define PIN_Y_DIR 14
-#define PIN_Y_SEN1 17
-
-#define PIN_R11_STP 23
-#define PIN_R11_DIR 22
-#define PIN_R11_SEN1 34//9
-
-
-#define PIN_R12_STP 21
-#define PIN_R12_DIR 5
-
-#define PIN_OUT_0 25
-#define PIN_OUT_1 26
-#define PIN_OUT_2 32
-#define PIN_OUT_3 33
 
 
 
 #define PIN_DBG 18
+
+
+int pin_SH_165=17;
+int pin_TRIG_595=PIN_NUM_CS;
+
+
 
 #define SUBDIV (800)
 #define mm_PER_REV 10
@@ -90,28 +74,28 @@ class MStp_M:public MStp{
     
     TICK2SEC_BASE=10*1000*1000;
     main_acc=SUBDIV*2000/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
-    minSpeed=sqrt(main_acc)/4;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     main_junctionMaxSpeedJump=minSpeed*4;//5200;
 
     maxSpeedInc=minSpeed;
-    pinMode(PIN_Z1_DIR, OUTPUT);
-    pinMode(PIN_Z1_STP, OUTPUT);
-    pinMode(PIN_Z1_SEN1, INPUT);
-    pinMode(PIN_Z1_SEN2, INPUT);
-    pinMode(PIN_Y_SEN1, INPUT);
+    // pinMode(PIN_Z1_DIR, OUTPUT);
+    // pinMode(PIN_Z1_STP, OUTPUT);
+    // pinMode(PIN_Z1_SEN1, INPUT);
+    // pinMode(PIN_Z1_SEN2, INPUT);
+    // pinMode(PIN_Y_SEN1, INPUT);
 
-    pinMode(PIN_Y_DIR, OUTPUT);
-    pinMode(PIN_Y_STP, OUTPUT);
-
-
-    pinMode(PIN_R11_DIR, OUTPUT);
-    pinMode(PIN_R11_STP, OUTPUT);
-    pinMode(PIN_R11_SEN1, INPUT);
-    pinMode(PIN_R12_DIR, OUTPUT);
-    pinMode(PIN_R12_STP, OUTPUT);
+    // pinMode(PIN_Y_DIR, OUTPUT);
+    // pinMode(PIN_Y_STP, OUTPUT);
 
 
-    pinMode(PIN_OUT_1, OUTPUT);    
+    // pinMode(PIN_R11_DIR, OUTPUT);
+    // pinMode(PIN_R11_STP, OUTPUT);
+    // pinMode(PIN_R11_SEN1, INPUT);
+    // pinMode(PIN_R12_DIR, OUTPUT);
+    // pinMode(PIN_R12_STP, OUTPUT);
+
+
+    // pinMode(PIN_OUT_1, OUTPUT);    
     // pinMode(PIN_DBG, OUTPUT);    
 
     axisInfo[AXIS_IDX_X].VirtualStep=1;
@@ -124,13 +108,51 @@ class MStp_M:public MStp{
 
     auto mainAXIS_VSTEP=axisInfo[AXIS_IDX_Y].VirtualStep;
 
-    axisInfo[AXIS_IDX_Z1].VirtualStep=20;
+
+
+
+
+
+
+    axisInfo[AXIS_IDX_Z1].VirtualStep=1;
     axisInfo[AXIS_IDX_Z1].AccW=1;
     axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=1/mainAXIS_VSTEP;
 
-    axisInfo[AXIS_IDX_R11].VirtualStep=1;
-    axisInfo[AXIS_IDX_R11].AccW=1;
-    axisInfo[AXIS_IDX_R11].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_R1].VirtualStep=1;
+    axisInfo[AXIS_IDX_R1].AccW=1;
+    axisInfo[AXIS_IDX_R1].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+
+
+
+    axisInfo[AXIS_IDX_Z2].VirtualStep=1;
+    axisInfo[AXIS_IDX_Z2].AccW=1;
+    axisInfo[AXIS_IDX_Z2].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+
+    axisInfo[AXIS_IDX_R2].VirtualStep=1;
+    axisInfo[AXIS_IDX_R2].AccW=1;
+    axisInfo[AXIS_IDX_R2].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+
+
+
+    axisInfo[AXIS_IDX_Z3].VirtualStep=1;
+    axisInfo[AXIS_IDX_Z3].AccW=1;
+    axisInfo[AXIS_IDX_Z3].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+
+    axisInfo[AXIS_IDX_R3].VirtualStep=1;
+    axisInfo[AXIS_IDX_R3].AccW=1;
+    axisInfo[AXIS_IDX_R3].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+
+
+
+    axisInfo[AXIS_IDX_Z4].VirtualStep=1;
+    axisInfo[AXIS_IDX_Z4].AccW=1;
+    axisInfo[AXIS_IDX_Z4].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+
+    axisInfo[AXIS_IDX_R4].VirtualStep=1;
+    axisInfo[AXIS_IDX_R4].AccW=1;
+    axisInfo[AXIS_IDX_R4].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+
+
     
     // axisInfo[AXIS_IDX_R12].VirtualStep=3;
     // axisInfo[AXIS_IDX_R12].AccW=SUBDIV*1500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
@@ -142,7 +164,7 @@ class MStp_M:public MStp{
 
   xVec posWhenHit;
 
-  int volatile runUntil_sensorPIN=0;
+  int volatile runUntil_ExtPIN=-1;
   int volatile runUntil_sensorVal=0;
 
 
@@ -168,7 +190,7 @@ class MStp_M:public MStp{
      __UPRT_D_("FATAL error:%d  %s\n",errorCode,errorText);
   }
 
-  int runUntil(int axis,int pin,int pinVal,int distance,int speed,xVec *ret_posWhenHit)
+  int runUntil(int axis,int ext_pin,int pinVal,int distance,int speed,xVec *ret_posWhenHit)
   {
     runUntil_sensorVal=pinVal;
 
@@ -178,26 +200,26 @@ class MStp_M:public MStp{
     xVec cpos=(xVec){0};
     cpos.vec[axis]=distance;
     __UPRT_D_("STP1-2\n");
-    runUntil_sensorPIN=pin;
+    runUntil_ExtPIN=ext_pin;
     VecAdd(cpos,speed);
-    __UPRT_D_("STP1-3  pin:%d\n",runUntil_sensorPIN);
+    __UPRT_D_("STP1-3  pin:%d\n",runUntil_ExtPIN);
     int cccc=0;
-    while(runUntil_sensorPIN!=0 && SegQ_IsEmpty()==false)
+    while(runUntil_ExtPIN!=-1 && SegQ_IsEmpty()==false)
     { 
       cccc++;
       if((cccc&0xFFFF)==0)
-        __UPRT_D_("%d",digitalRead(runUntil_sensorPIN));
+        __UPRT_D_("%d",digitalRead(runUntil_ExtPIN));
       else 
         Serial.printf("");
     }//wait for touch sensor
     
-    __UPRT_D_("\nSTP1-3 res  pin:%d\n",runUntil_sensorPIN);
+    __UPRT_D_("\nSTP1-3 res  pin:%d\n",runUntil_ExtPIN);
 
     // __UPRT_D_("ZeroStatus:%d blocks->size():%d  PINRead:%d\n",ZeroStatus,blocks->size(),digitalRead(sensorPIN));
-    if(runUntil_sensorPIN!=0)
+    if(runUntil_ExtPIN!=-1)
     {
-      __UPRT_D_("\nFAIL:runUntil_sensorPIN:%d R:%d\n",runUntil_sensorPIN,digitalRead(runUntil_sensorPIN));
-      runUntil_sensorPIN=0;
+      __UPRT_D_("\nFAIL:runUntil_ExtPIN:%d R:%d\n",runUntil_ExtPIN,digitalRead(runUntil_ExtPIN));
+      runUntil_ExtPIN=-1;
       return -1;
     }
 
@@ -215,139 +237,65 @@ class MStp_M:public MStp{
   
   int Z1Info_Limit1=300;
   int Z1Info_Limit2=-300;
-  int MachZeroRet(uint32_t index,int distance,int speed,void* context)
+  int MachZeroRet(uint32_t axis_index,uint32_t sensor_pin,int distance,int speed,void* context)
   {
 
-    switch(index)
+    switch(axis_index)
     {
-      
-      case AXIS_IDX_Z1://rough zeroing
-      {
-        int sensorDetectVLvl=0;
-        int runSpeed=speed;
-        int axisIdx=index;
-        xVec retHitPos;
-        if(runUntil(axisIdx,PIN_Z1_SEN1,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
-        {
-          return -1;
-        }
 
-        if(runUntil(axisIdx,PIN_Z1_SEN1,!sensorDetectVLvl,-distance/2,runSpeed,&retHitPos)!=0)
-        {
-          return -1;
-        }
-        Z1Info_Limit1=retHitPos.vec[axisIdx];
-        __UPRT_D_("pos1=%d\n",retHitPos.vec[axisIdx]);
-
-      
-
-        if(runUntil(axisIdx,PIN_Z1_SEN2,sensorDetectVLvl,-distance,runSpeed,&retHitPos)!=0)
-        {
-          return -1;
-        }
-
-        if(runUntil(axisIdx,PIN_Z1_SEN2,!sensorDetectVLvl,distance/2,runSpeed,&retHitPos)!=0)
-        {
-          return -1;
-        }
-        
-        Z1Info_Limit2=retHitPos.vec[axisIdx];
-        __UPRT_D_("pos2=%d\n",retHitPos.vec[axisIdx]);
-
-        int Z1Mid=(Z1Info_Limit1+Z1Info_Limit2)/2;
-        Z1Info_Limit1-=Z1Mid;
-        Z1Info_Limit2-=Z1Mid;
-
-        StepperForceStop();
-        curPos_c.vec[axisIdx]-=Z1Mid;//zero the Cur_pos
-        lastTarLoc=curPos_c;
-
-
-        
-        xVec cpos=curPos_c;
-        cpos.vec[axisIdx]=0;
-        VecTo(cpos,runSpeed);
-
-        while(SegQ_IsEmpty()==false)
-        {
-          Serial.printf("");
-        }//wait for end
-
-        break;
-      }
+      case AXIS_IDX_X:
       case AXIS_IDX_Y:
+      case AXIS_IDX_Z1://rough
+      case AXIS_IDX_R1:
+      case AXIS_IDX_Z2://rough
+      case AXIS_IDX_R2:
+      case AXIS_IDX_Z3://rough
+      case AXIS_IDX_R3:
+      case AXIS_IDX_Z4://rough
+      case AXIS_IDX_R4:
       {
         int sensorDetectVLvl=0;
         int runSpeed=speed;
-        int axisIdx=index;
+        int axisIdx=axis_index;
         
         xVec retHitPos;
-        if(runUntil(axisIdx,PIN_Y_SEN1,sensorDetectVLvl,distance,runSpeed*5,&retHitPos)!=0)
+        if(runUntil(axisIdx,sensor_pin,sensorDetectVLvl,distance,runSpeed*5,&retHitPos)!=0)
         {
           return -1;
         }
 
+        delay(10);
         
-        if(runUntil(axisIdx,PIN_Y_SEN1,!sensorDetectVLvl,-distance/2,runSpeed,&retHitPos)!=0)
+        if(runUntil(axisIdx,sensor_pin,!sensorDetectVLvl,-distance/2,runSpeed,&retHitPos)!=0)
         {
           return -1;
         }
-      
-
-        StepperForceStop();
-        curPos_c.vec[axisIdx]=0;//zero the Cur_pos
-        lastTarLoc=curPos_c;
-        break;
-      }
-      case AXIS_IDX_R11:
-      {
-        int sensorDetectVLvl=0;
-        int runSpeed=speed;
-        int axisIdx=index;
-        
-        xVec retHitPos;
-        if(runUntil(axisIdx,PIN_R11_SEN1,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
-        {
-          return -1;
-        }
-
-        
-        if(runUntil(axisIdx,PIN_R11_SEN1,!sensorDetectVLvl,-distance/2,runSpeed,&retHitPos)!=0)
-        {
-          return -1;
-        }
-      
-
-        StepperForceStop();
+        delay(10);
         curPos_c.vec[axisIdx]=0;//zero the Cur_pos
         lastTarLoc=curPos_c;
         break;
       }
     }
 
-    
-    digitalWrite(PIN_Z1_DIR, 1);
-    digitalWrite(PIN_Z1_STP, 1);
-    digitalWrite(PIN_Y_DIR, 1);
-    digitalWrite(PIN_Y_STP, 1);
     return 0;
     // ZeroStatus=0;
 
   }
 
-  int runUntilDetected()
+  bool runUntilDetected(uint32_t extInputPort)
   {
         // __UPRT_D_("ZeroStatus:%d blocks->size():%d\n",ZeroStatus,blocks->size());
 
-    volatile int sensorRead=digitalRead(runUntil_sensorPIN);
+    volatile int sensorRead=(extInputPort>>runUntil_ExtPIN)&1;
   
     if(sensorRead==runUntil_sensorVal)//somehow digitalRead is not stable, to a doulbe check
     {
       StepperForceStop();
       posWhenHit=curPos_c;
-      runUntil_sensorPIN=0;
+      runUntil_ExtPIN=-1;
+      return true;
     }
-    return 0;
+    return false;
   }
 
 
@@ -422,20 +370,37 @@ class MStp_M:public MStp{
 
   void BlockPinInfoUpdate(uint32_t dir,uint32_t idxes_T,uint32_t idxes_R)
   {
-    uint32_t portPins=dir<<9 | idxes_T<<0;
+    uint32_t portPins=(dir&0xFF)<<16 | (idxes_T & 0xFF)<<24;
 
+    spi1->host->hw->data_buf[0]=portPins;
+    
+    gpio_set_level((gpio_num_t) pin_SH_165, 1);//switch to keep in 165 register
+    gpio_set_level((gpio_num_t) pin_TRIG_595, 0);//
+    direct_spi_transfer(spi1,32);
     //send_SPI(portPins);
   }
   
-  bool PIN_DBG0_st=false;
-  uint32_t axis_st=0;
   void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)
   {
-    if(runUntil_sensorPIN)
+    while (direct_spi_in_use(spi1));
+    gpio_set_level((gpio_num_t) pin_SH_165, 0);//switch to load
+    uint32_t inputPort=spi1->host->hw->data_buf[0];
+    if(inputPort&(1<<PIN_X_SEN1))
     {
-      runUntilDetected();
+      gpio_set_level((gpio_num_t)PIN_LED, 1);
     }
-    //Pin trigger update
+    else
+    {
+      gpio_set_level((gpio_num_t)PIN_LED, 0);
+    }
+    if(runUntil_ExtPIN!=-1)
+    {
+      if(runUntilDetected(inputPort)==true)
+        return;
+    }
+
+    gpio_set_level((gpio_num_t) pin_TRIG_595, 1);//trigger 595 internal register update to 959 phy pin
+    
   }
 
 
@@ -609,7 +574,7 @@ public:
     // __UPRT_D_("unitConv[%s]:%f\n",code,dist);
     switch(axisIdx)
     {
-      case AXIS_IDX_X:return 0;
+      case AXIS_IDX_X:return unit2Pulse(-1*dist,SUBDIV/mm_PER_REV);
       case AXIS_IDX_Y:return unit2Pulse(-1*dist,SUBDIV/mm_PER_REV);//-1 for reverse the direction
       
       case AXIS_IDX_FEEDRATE:
@@ -618,10 +583,15 @@ public:
         return unit2Pulse(dist,SUBDIV/mm_PER_REV);
 
 
-      case AXIS_IDX_Z1:return dist;//as pulse count
+      case AXIS_IDX_Z1:
+      case AXIS_IDX_Z2:
+      case AXIS_IDX_Z3:
+      case AXIS_IDX_Z4:return dist;//as pulse count
 
-      case AXIS_IDX_R11:
-      case AXIS_IDX_R12://assume it's 800 pulses pre rev
+      case AXIS_IDX_R1:
+      case AXIS_IDX_R2:
+      case AXIS_IDX_R3:
+      case AXIS_IDX_R4://assume it's 800 pulses pre rev
         return dist*12800/360;//-1 for reverse the direction
 
 
@@ -691,50 +661,6 @@ public:
   }  
 
 };
-
-
-
-
-void pickOnGCode(GCodeParser_M2 &gcpm,int headIndex,float pos_mm,int speed_mmps, int pickPin_suck, int pickPin_blow,bool pickup=true)
-{
-  char gcode[128];
-
-  int headPoseDown=0;
-  if(headIndex==1)
-  {
-    pos_mm-=15;
-    headPoseDown=mstp.Z1Info_Limit1+15;
-  }
-  else if(headIndex==0)
-  {
-    pos_mm+=15;
-    headPoseDown=mstp.Z1Info_Limit2;
-  }
-  else
-    return;
-
-
-
-  sprintf(gcode,"G01 Y%f Z1_%d F%d",pos_mm,0,speed_mmps);gcpm.runLine(gcode);
-  int pinPreTrigger=60;//early pick
-  if(pickup==false)
-  {
-    pinPreTrigger=80;
-  }
-  //less means earlier
-  int pinKeepDelay_ms=10;
-
-  sprintf(gcode,"G01 Z1_%d",headPoseDown*pinPreTrigger/100);gcpm.runLine(gcode);
-  sprintf(gcode,"M42 P%d S%d",pickPin_suck,pickup?1:0);gcpm.runLine(gcode);
-  sprintf(gcode,"M42 P%d S%d",pickPin_blow,pickup?0:1);gcpm.runLine(gcode);
-  sprintf(gcode,"G01 Z1_%d",headPoseDown);gcpm.runLine(gcode);
-  
-  
-  sprintf(gcode,"G04 P%d",pinKeepDelay_ms);gcpm.runLine(gcode);
-
-  sprintf(gcode,"G01 Z1_0");gcpm.runLine(gcode);
-
-}
 
 
 
@@ -1072,7 +998,7 @@ int rzERROR=0;
 void setup()
 {
   
-  spi1= direct_spi_init(1,20*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
+  spi1= direct_spi_init(1,10*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
   spi_device_select(spi1,1);
 
   // noInterrupts();
@@ -1085,6 +1011,11 @@ void setup()
   timerAlarmWrite(timer, 1000, true);
   timerAlarmEnable(timer);
   pinMode(PIN_O1, OUTPUT);
+  pinMode(pin_TRIG_595, OUTPUT);
+  pinMode(pin_SH_165, OUTPUT);
+  pinMode(PIN_LED, OUTPUT);
+
+    
 
   // pinMode(PIN_OUT_0, OUTPUT);
   // pinMode(PIN_OUT_1, OUTPUT);
@@ -1096,13 +1027,13 @@ void setup()
 
   if(rzERROR==0)
   {
-    {
-      char gcode[128];
-      sprintf(gcode,"M42 P%d T1",PIN_OUT_0);gcpm.runLine(gcode);
-      sprintf(gcode,"M42 P%d T1",PIN_OUT_1);gcpm.runLine(gcode);
-      sprintf(gcode,"M42 P%d T1",PIN_OUT_2);gcpm.runLine(gcode);
-      sprintf(gcode,"M42 P%d T1",PIN_OUT_3);gcpm.runLine(gcode);
-    }
+    // {
+    //   char gcode[128];
+    //   sprintf(gcode,"M42 P%d T1",PIN_OUT_0);gcpm.runLine(gcode);
+    //   sprintf(gcode,"M42 P%d T1",PIN_OUT_1);gcpm.runLine(gcode);
+    //   sprintf(gcode,"M42 P%d T1",PIN_OUT_2);gcpm.runLine(gcode);
+    //   sprintf(gcode,"M42 P%d T1",PIN_OUT_3);gcpm.runLine(gcode);
+    // }
     // isSystemZeroOK=true;
   }
   // retErr+=mstp.MachZeroRet(1,-50000)*10;
@@ -1146,59 +1077,6 @@ void loop()
 
     }
   }
-  if(0&&rzERROR==0)// && mstp.SegQ_IsEmpty()==true)
-  {
-    // delay(1000);
-
-    // int pt2=-30*SUBDIV/mm_PER_REV;
-    int cidx=0;
-    char gcode[128];
-    for(int i=4;i>=0;i--)
-    {
-      // delay(1000);
-    //   sprintf(gcode,"G01 Y30 Z1_%d F2000",mstp.Z1Info_Limit1);
-    //   gcpm.runLine(gcode);
-      
-      
-    // __PRT_I_(">>>>\n");
-    //   gcpm.runLine("M42 P2 S1");
-    // __PRT_I_(">>>>\n");
-    //   gcpm.runLine("G01 Y0 Z1_0 F1000");
-    //   gcpm.runLine("M42 P2 S0");
-      
-    // __PRT_I_(">>>>\n");
-    //   sprintf(gcode,"G01 Y-30 Z1_%d F2000",mstp.Z1Info_Limit2);
-    //   gcpm.runLine(gcode);
-
-    // __PRT_I_(">>>>\n");
-      
-    //   gcpm.runLine("G01 Y0 Z1_0 F2000");
-    //   gcpm.runLine("G04 P10");
-
-      int hspeed=320;
-      int sspeed=10;
-      float pos=20;
-      float pitch=4.9;
-      
-      sprintf(gcode,"G01 Y%f Z1_%d F%d",pos+pitch*(i+2.5),0,hspeed);gcpm.runLine(gcode);
-      pickOnGCode(gcpm,1,pos+pitch*(i+5),sspeed, PIN_OUT_0,PIN_OUT_1,true);
-      pickOnGCode(gcpm,0,pos+pitch*(i+0),sspeed, PIN_OUT_2,PIN_OUT_3,true);
-
-      pos=200;
-      pickOnGCode(gcpm,0,pos+pitch*0,hspeed, PIN_OUT_0,PIN_OUT_1,false);
-      pickOnGCode(gcpm,1,pos+pitch*0,hspeed, PIN_OUT_2,PIN_OUT_3,false);      
-
-
-
-
-
-      // sprintf(gcode,"G01 Y0 Z1_0 F%d",speed);gcpm.runLine(gcode);
-      // sprintf(gcode,"G01 Y-5    ACC10 DEA-10",speed);gcpm.runLine(gcode);  
-      // sprintf(gcode,"G04 P%d",1500);gcpm.runLine(gcode);
-
-      // sprintf(gcode,"G01 Y0 Z1_0 ACC20 DEA-10",speed);gcpm.runLine(gcode);
-    }
-  }
 
 }
 
@@ -1223,30 +1101,30 @@ void genMachineSetup(JsonDocument &jdoc)
 
 
 
-  jdoc["PIN_Z1_STP"]=PIN_Z1_STP;
-  jdoc["PIN_Z1_DIR"]=PIN_Z1_DIR;
-  jdoc["PIN_Z1_SEN1"]=PIN_Z1_SEN1;
-  jdoc["PIN_Z1_SEN2"]=PIN_Z1_SEN2;
+  // jdoc["PIN_Z1_STP"]=PIN_Z1_STP;
+  // jdoc["PIN_Z1_DIR"]=PIN_Z1_DIR;
+  // jdoc["PIN_Z1_SEN1"]=PIN_Z1_SEN1;
+  // jdoc["PIN_Z1_SEN2"]=PIN_Z1_SEN2;
 
 
-  jdoc["PIN_Y_STP"]=PIN_Y_STP;
-  jdoc["PIN_Y_DIR"]=PIN_Y_DIR;
-  jdoc["PIN_Y_SEN1"]=PIN_Y_SEN1;
+  // jdoc["PIN_Y_STP"]=PIN_Y_STP;
+  // jdoc["PIN_Y_DIR"]=PIN_Y_DIR;
+  // jdoc["PIN_Y_SEN1"]=PIN_Y_SEN1;
 
 
-  jdoc["PIN_R11_STP"]=PIN_R11_STP;
-  jdoc["PIN_R11_DIR"]=PIN_R11_DIR;
+  // jdoc["PIN_R11_STP"]=PIN_R11_STP;
+  // jdoc["PIN_R11_DIR"]=PIN_R11_DIR;
 
 
-  jdoc["PIN_R12_STP"]=PIN_R12_STP;
-  jdoc["PIN_R12_DIR"]=PIN_R12_DIR;
+  // jdoc["PIN_R12_STP"]=PIN_R12_STP;
+  // jdoc["PIN_R12_DIR"]=PIN_R12_DIR;
   
 
 
-  jdoc["PIN_OUT_0"]=PIN_OUT_0;
-  jdoc["PIN_OUT_1"]=PIN_OUT_1;
-  jdoc["PIN_OUT_2"]=PIN_OUT_2;
-  jdoc["PIN_OUT_3"]=PIN_OUT_3;
+  // jdoc["PIN_OUT_0"]=PIN_OUT_0;
+  // jdoc["PIN_OUT_1"]=PIN_OUT_1;
+  // jdoc["PIN_OUT_2"]=PIN_OUT_2;
+  // jdoc["PIN_OUT_3"]=PIN_OUT_3;
   
   
   jdoc["axis"]="X,Y,Z1_,R11_,R12_";
