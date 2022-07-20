@@ -367,25 +367,34 @@ class MStp_M:public MStp{
     // __UPRT_D_("dir:%s \n",int2bin(idxes,MSTP_VEC_SIZE));
   }
     
+  uint32_t static_Pin_info=0;
+  uint32_t _latest_stp_pins=0;//info in the register
+  uint32_t _latest_dir_pins=0;
+  uint32_t latest_stp_pins=0;//info that really on pins
+  uint32_t latest_dir_pins=0;
 
-  void BlockPinInfoUpdate(uint32_t dir,uint32_t idxes_T,uint32_t idxes_R)
+  
+  void ShiftRegAssign(uint32_t dir,uint32_t step)
   {
-    uint32_t portPins=(dir&0xFF)<<16 | (idxes_T & 0xFF)<<24;
+    _latest_stp_pins=step;
+    _latest_dir_pins=dir;
+    uint32_t portPins=(dir&0xFF)<<16 | (step & 0xFF)<<24|static_Pin_info<<0;
 
     spi1->host->hw->data_buf[0]=portPins;
     
-    gpio_set_level((gpio_num_t) pin_SH_165, 1);//switch to keep in 165 register
+    gpio_set_level((gpio_num_t) pin_SH_165, 1);//switch to keep in 165 register(stop 165 load pin to reg)
     gpio_set_level((gpio_num_t) pin_TRIG_595, 0);//
     direct_spi_transfer(spi1,32);
     //send_SPI(portPins);
   }
   
-  void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)
+
+  void ShiftRegUpdate()
   {
-    while (direct_spi_in_use(spi1));
-    gpio_set_level((gpio_num_t) pin_SH_165, 0);//switch to load
-    uint32_t inputPort=spi1->host->hw->data_buf[0];
-    if(inputPort&(1<<PIN_X_SEN1))
+    while (direct_spi_in_use(spi1));//wait for SPI bus available
+    gpio_set_level((gpio_num_t) pin_SH_165, 0);//switch to load(165 keeps load pin to internal reg)
+    latest_input_pins=spi1->host->hw->data_buf[0];
+    if(latest_input_pins&(1<<PIN_X_SEN1))
     {
       gpio_set_level((gpio_num_t)PIN_LED, 1);
     }
@@ -395,15 +404,28 @@ class MStp_M:public MStp{
     }
     if(runUntil_ExtPIN!=-1)
     {
-      if(runUntilDetected(inputPort)==true)
+      if(runUntilDetected(latest_input_pins)==true)//if reaches, do not let 595 update pins, to prevent further movement
         return;
     }
 
     gpio_set_level((gpio_num_t) pin_TRIG_595, 1);//trigger 595 internal register update to 959 phy pin
     
+    latest_stp_pins=_latest_stp_pins;
+    latest_dir_pins=_latest_dir_pins;
   }
 
 
+  void BlockPinInfoUpdate(uint32_t dir,uint32_t idxes_T,uint32_t idxes_R)
+  {
+     ShiftRegAssign(dir,idxes_T);
+  }
+  
+  
+  uint32_t latest_input_pins=0;
+  void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)
+  {
+    ShiftRegUpdate();
+  }
 };
 
 #define MSTP_BLOCK_SIZE 40
