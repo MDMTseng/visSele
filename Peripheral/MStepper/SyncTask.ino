@@ -27,8 +27,10 @@ hw_timer_t *timer = NULL;
 
 
 
+#define _ZEROING_DBG_FLAG_
 
-#define PIN_DBG 18
+#define PIN_DBG 14
+#define PIN_DBG2 27
 
 
 int pin_SH_165=17;
@@ -40,7 +42,7 @@ int pin_TRIG_595=PIN_NUM_CS;
 #define mm_PER_REV 10
 
 
-spi_device_handle_t spi1;
+spi_device_handle_t spi1=NULL;
 
 struct MSTP_SegCtx{
   int type;
@@ -159,6 +161,19 @@ class MStp_M:public MStp{
     // axisInfo[AXIS_IDX_R12].MaxSpeedJumpW=1/axisInfo[AXIS_IDX_Y].VirtualStep;
   
     doCheckHardLimit=false;
+
+    
+  }
+
+  void INIT()
+  {
+    
+
+    spi1= direct_spi_init(1,10*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
+    spi_device_select(spi1,1);
+
+    ShiftRegAssign(0,0);
+    ShiftRegUpdate();
   }
 
 
@@ -190,6 +205,7 @@ class MStp_M:public MStp{
      __UPRT_D_("FATAL error:%d  %s\n",errorCode,errorText);
   }
 
+  int _ZERO_DBG_COUNTER=0;
   int runUntil(int axis,int ext_pin,int pinVal,int distance,int speed,xVec *ret_posWhenHit)
   {
     runUntil_sensorVal=pinVal;
@@ -258,11 +274,13 @@ class MStp_M:public MStp{
         int runSpeed=speed;
         int axisIdx=axis_index;
         
+        _ZERO_DBG_COUNTER=30;
         xVec retHitPos;
-        if(runUntil(axisIdx,sensor_pin,sensorDetectVLvl,distance,runSpeed*5,&retHitPos)!=0)
+        if(runUntil(axisIdx,sensor_pin,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
         {
           return -1;
         }
+        _ZERO_DBG_COUNTER=30;
 
         delay(10);
         
@@ -287,36 +305,43 @@ class MStp_M:public MStp{
         // __UPRT_D_("ZeroStatus:%d blocks->size():%d\n",ZeroStatus,blocks->size());
 
     volatile int sensorRead=(extInputPort>>runUntil_ExtPIN)&1;
-  
+
+    
+#ifdef _ZEROING_DBG_FLAG_
+    if(_ZERO_DBG_COUNTER==0)
+#else
     if(sensorRead==runUntil_sensorVal)//somehow digitalRead is not stable, to a doulbe check
+#endif
     {
       StepperForceStop();
       posWhenHit=curPos_c;
       runUntil_ExtPIN=-1;
       return true;
     }
+
+#ifdef _ZEROING_DBG_FLAG_
+      _ZERO_DBG_COUNTER--;
+#endif
     return false;
   }
 
 
-  void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* seg)
+  bool isIOCtrl(MSTP_SEG_PREFIX MSTP_segment* seg)
   {    
     if(seg==NULL ||seg->ctx==NULL )
     {
-      return;
+      return false;
     }
-
-    
-
     MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
-    sctx_pool.returnResource(ctx);
+    return ctx->type==42;
   }
-  
+
+  bool static_Pin_update_needed=false;
+  uint32_t static_Pin_info=0;
   int PIN_DBG_ST=0;
   void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* seg)
   {
-    
-    if(seg==NULL ||seg->ctx==NULL )
+    if(isIOCtrl(seg)==false)
     {
       return;
     }
@@ -326,22 +351,16 @@ class MStp_M:public MStp{
       case 42:
         if(ctx->P<0)break;
         //P: pin number, S: 0~255 PWM, T: pin setup (0:input, 1:output, 2:input_pullup, 3:input_pulldown)
-        if(ctx->T>=0)
+
         {
-          if     (ctx->T==0)pinMode(ctx->P, INPUT);
-          else if(ctx->T==1)pinMode(ctx->P, OUTPUT);
-          else if(ctx->T==2)pinMode(ctx->P, INPUT_PULLUP);
-          else if(ctx->T==3)pinMode(ctx->P, INPUT_PULLDOWN);
-        }
-        else
-        {
-          if(ctx->S<0)
+          static_Pin_update_needed=true;
+          if(ctx->S==0)
           {
-            digitalWrite(ctx->P,1);
+            static_Pin_info&=~(1<<ctx->P);
           }
           else
           {
-            digitalWrite(ctx->P,ctx->S);
+            static_Pin_info|=(1<<ctx->P);
           }
         }
 
@@ -351,6 +370,42 @@ class MStp_M:public MStp{
     }
   }
 
+  void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* seg,MSTP_SEG_PREFIX MSTP_segment* n_seg)
+  {    
+
+
+    if(static_Pin_update_needed)
+    {//if no following segment to execute, then do IO update here
+      
+
+      if(isIOCtrl(n_seg)==false)
+      {
+
+        if(n_seg && n_seg->type== MSTP_segment_type::seg_line)
+        {
+          ShiftRegAssign(latest_dir_pins,latest_stp_pins);
+          static_Pin_update_needed=false;
+        }
+        else
+        {
+          ShiftRegAssign(latest_dir_pins,latest_stp_pins);
+          ShiftRegUpdate();
+          static_Pin_update_needed=false;
+        }
+
+      }
+    }
+
+
+
+    if(seg==NULL)
+    {
+      return;
+    }
+    MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
+    if(ctx==NULL )return;
+    sctx_pool.returnResource(ctx);
+  }
 
   void BlockDirEffect(uint32_t dir_idxes)
   {
@@ -367,7 +422,6 @@ class MStp_M:public MStp{
     // __UPRT_D_("dir:%s \n",int2bin(idxes,MSTP_VEC_SIZE));
   }
     
-  uint32_t static_Pin_info=0;
   uint32_t _latest_stp_pins=0;//info in the register
   uint32_t _latest_dir_pins=0;
   uint32_t latest_stp_pins=0;//info that really on pins
@@ -379,6 +433,7 @@ class MStp_M:public MStp{
     _latest_stp_pins=step;
     _latest_dir_pins=dir;
     uint32_t portPins=(dir&0xFF)<<16 | (step & 0xFF)<<24|static_Pin_info<<0;
+    // uint32_t portPins= (step & 0xFF)<<24| (dir&0x7)<<16 | static_Pin_info<<(16+3);
 
     spi1->host->hw->data_buf[0]=portPins;
     
@@ -391,16 +446,16 @@ class MStp_M:public MStp{
 
   void ShiftRegUpdate()
   {
+    static_Pin_update_needed=false;//will
     while (direct_spi_in_use(spi1));//wait for SPI bus available
     gpio_set_level((gpio_num_t) pin_SH_165, 0);//switch to load(165 keeps load pin to internal reg)
     latest_input_pins=spi1->host->hw->data_buf[0];
     if(latest_input_pins&(1<<PIN_X_SEN1))
     {
-      gpio_set_level((gpio_num_t)PIN_LED, 1);
+      // gpio_set_level((gpio_num_t)PIN_LED, 1);
     }
     else
     {
-      gpio_set_level((gpio_num_t)PIN_LED, 0);
     }
     if(runUntil_ExtPIN!=-1)
     {
@@ -510,37 +565,35 @@ int timerCount=0;
 uint32_t cp0_regs[18];
 void IRAM_ATTR onTimer()
 {
+  gpio_set_level((gpio_num_t)PIN_LED,1);
   // enable FPU
   xthal_set_cpenable(1);
   // Save FPU registers
   xthal_save_cp0(cp0_regs);
   // uint32_t nextT=100;
   // __UPRT_D_("nextT:%d mstp.axis_RUNState:%d\n",mstp.T_next,mstp.axis_RUNState);
-
-
-
-  int T = mstp.taskRun();
   
+
+  uint32_t T=mstp.taskRun();
   // printf("T:%d\n",T);
-  
-  timerCount=T;
-  if(T<0)
+  if(T>100000)
   {
     
     __UPRT_D_("ERROR:: T(%d)<0\n",T);
     T=100*10000;
     // return;;
   }
-  else if(T==0)
+  
+
+  if(T==0)
   {
     T=100*1000;
     
   }
-  else
-  {
-    mstp.FACCT+=T;
-  }
-
+  // if(timerT_TOP)
+  // {
+  //   T=timerT_TOP;
+  // }
   // int64_t td=T-timerRead(timer);
   // if(td<50)td=50;
 
@@ -553,6 +606,7 @@ void IRAM_ATTR onTimer()
   // and turn it back off
   xthal_set_cpenable(0);
   // 
+  gpio_set_level((gpio_num_t)PIN_LED,0);
 }
 StaticJsonDocument<1024> recv_doc;
 StaticJsonDocument<1024> ret_doc;
@@ -882,7 +936,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
       }
 
-
+      // delay(10);
+      // dbg_printf("timerRunning:%d-%d timerCount:%d-%d T:%d",
+      //   bkTRunning,mstp.timerRunning,
+      //   bkTCount,timerCount,
+      //   timerT_latest);
+      // timerT_latest=-1;
     }
     else if(strcmp(type,"motion_buffer_info")==0)
     {
@@ -1020,9 +1079,6 @@ int rzERROR=0;
 void setup()
 {
   
-  spi1= direct_spi_init(1,10*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
-  spi_device_select(spi1,1);
-
   // noInterrupts();
   Serial.begin(115200);//230400);
   Serial.setRxBufferSize(500);
@@ -1030,37 +1086,18 @@ void setup()
   timer = timerBegin(0, 8, true);
   
   timerAttachInterrupt(timer, &onTimer, true);
-  timerAlarmWrite(timer, 1000, true);
+  // timerAlarmWrite(timer, 1000, true);
   timerAlarmEnable(timer);
-  pinMode(PIN_O1, OUTPUT);
+  pinMode(PIN_DBG, OUTPUT);
+  pinMode(PIN_DBG2, OUTPUT);
   pinMode(pin_TRIG_595, OUTPUT);
   pinMode(pin_SH_165, OUTPUT);
   pinMode(PIN_LED, OUTPUT);
 
-    
+  spi1= direct_spi_init(1,10*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
+  spi_device_select(spi1,1);
 
-  // pinMode(PIN_OUT_0, OUTPUT);
-  // pinMode(PIN_OUT_1, OUTPUT);
-  // pinMode(PIN_OUT_2, OUTPUT);
-  // pinMode(PIN_OUT_3, OUTPUT);
-  rzERROR=0;
-  
-  // rzERROR=(gcpm.runLine("G28")==GCodeParser::GCodeParser_Status::TASK_OK)?0:-1;
-
-  if(rzERROR==0)
-  {
-    // {
-    //   char gcode[128];
-    //   sprintf(gcode,"M42 P%d T1",PIN_OUT_0);gcpm.runLine(gcode);
-    //   sprintf(gcode,"M42 P%d T1",PIN_OUT_1);gcpm.runLine(gcode);
-    //   sprintf(gcode,"M42 P%d T1",PIN_OUT_2);gcpm.runLine(gcode);
-    //   sprintf(gcode,"M42 P%d T1",PIN_OUT_3);gcpm.runLine(gcode);
-    // }
-    // isSystemZeroOK=true;
-  }
-  // retErr+=mstp.MachZeroRet(1,-50000)*10;
-  // int retErr=0;
-
+  mstp.INIT();
 }
 
 void busyLoop(uint32_t count)

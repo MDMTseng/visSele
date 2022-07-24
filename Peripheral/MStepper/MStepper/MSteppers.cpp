@@ -536,6 +536,7 @@ void MStp::StepperForceStop()
 {
   stopTimer();
   SegQ_Clear();
+  p_runSeg=NULL;
   lastTarLoc=curPos_c;
   T_next=0;
   axis_pul_1st=axis_pul_2nd=axis_dir=0;
@@ -1475,7 +1476,7 @@ uint32_t MStp::taskRun()
 
         prevcur= p_runSeg->vcur;
         __PRT_D_(">[%f\n",prevcur);
-        BlockEndEffect(p_runSeg);
+        BlockEndEffect(p_runSeg,SegQ_Tail(1));
         SegQ_Tail_Pop();
         p_runSeg=NULL;
         continue;
