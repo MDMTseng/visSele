@@ -27,7 +27,7 @@ hw_timer_t *timer = NULL;
 
 
 
-#define _ZEROING_DBG_FLAG_
+// #define _ZEROING_DBG_FLAG_
 
 #define PIN_DBG 14
 #define PIN_DBG2 27
