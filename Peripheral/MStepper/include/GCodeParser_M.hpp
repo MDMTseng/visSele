@@ -31,6 +31,7 @@ public:
 
   int FindFloat(const char *prefix,char **blkIdxes,int blkIdxesL,float &retNum);
   int FindInt32(const char *prefix,char **blkIdxes,int blkIdxesL,int32_t &retNum);
+  int FindStr(const char *prefix,char **blkIdxes,int blkIdxesL,char* retStr);
   int FindGMEnd_idx(char **blkIdxes,int blkIdxesL);
   
   int ReadxVecData(char **blkIdxes,int blkIdxesL,float *retVec);
@@ -44,7 +45,7 @@ public:
   int ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F);
 
 
-  bool CheckHead(char *str1,char *str2);
+  bool CheckHead(const char *str1,const char *str2);
 
   GCodeParser::GCodeParser_Status parseLine();
   void onError(int code);

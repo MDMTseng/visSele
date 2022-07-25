@@ -77,7 +77,7 @@ class MStp_M:public MStp{
     TICK2SEC_BASE=10*1000*1000;
     main_acc=SUBDIV*2000/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
     minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    main_junctionMaxSpeedJump=minSpeed*4;//5200;
+    main_junctionMaxSpeedJump=minSpeed;//5200;
 
     maxSpeedInc=minSpeed;
     // pinMode(PIN_Z1_DIR, OUTPUT);
@@ -100,13 +100,16 @@ class MStp_M:public MStp{
     // pinMode(PIN_OUT_1, OUTPUT);    
     // pinMode(PIN_DBG, OUTPUT);    
 
+    int general_max_freq=20000;
     axisInfo[AXIS_IDX_X].VirtualStep=1;
     axisInfo[AXIS_IDX_X].AccW=1;
     axisInfo[AXIS_IDX_X].MaxSpeedJumpW=1;
+    axisInfo[AXIS_IDX_X].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_Y].VirtualStep=1;
     axisInfo[AXIS_IDX_Y].AccW=1;
     axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
+    axisInfo[AXIS_IDX_Y].MaxSpeed=general_max_freq;
 
     auto mainAXIS_VSTEP=axisInfo[AXIS_IDX_Y].VirtualStep;
 
@@ -119,40 +122,48 @@ class MStp_M:public MStp{
     axisInfo[AXIS_IDX_Z1].VirtualStep=1;
     axisInfo[AXIS_IDX_Z1].AccW=1;
     axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_Z1].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_R1].VirtualStep=1;
     axisInfo[AXIS_IDX_R1].AccW=1;
     axisInfo[AXIS_IDX_R1].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_R1].MaxSpeed=general_max_freq;
 
 
 
     axisInfo[AXIS_IDX_Z2].VirtualStep=1;
     axisInfo[AXIS_IDX_Z2].AccW=1;
     axisInfo[AXIS_IDX_Z2].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_Z2].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_R2].VirtualStep=1;
     axisInfo[AXIS_IDX_R2].AccW=1;
     axisInfo[AXIS_IDX_R2].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_R2].MaxSpeed=general_max_freq;
 
 
 
     axisInfo[AXIS_IDX_Z3].VirtualStep=1;
     axisInfo[AXIS_IDX_Z3].AccW=1;
     axisInfo[AXIS_IDX_Z3].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_Z3].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_R3].VirtualStep=1;
     axisInfo[AXIS_IDX_R3].AccW=1;
     axisInfo[AXIS_IDX_R3].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_R3].MaxSpeed=general_max_freq;
 
 
 
     axisInfo[AXIS_IDX_Z4].VirtualStep=1;
     axisInfo[AXIS_IDX_Z4].AccW=1;
     axisInfo[AXIS_IDX_Z4].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_Z4].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_R4].VirtualStep=1;
     axisInfo[AXIS_IDX_R4].AccW=1;
     axisInfo[AXIS_IDX_R4].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_R4].MaxSpeed=general_max_freq;
 
 
     
@@ -650,8 +661,8 @@ public:
     // __UPRT_D_("unitConv[%s]:%f\n",code,dist);
     switch(axisIdx)
     {
-      case AXIS_IDX_X:return unit2Pulse(-1*dist,SUBDIV/mm_PER_REV);
-      case AXIS_IDX_Y:return unit2Pulse(-1*dist,SUBDIV/mm_PER_REV);//-1 for reverse the direction
+      case AXIS_IDX_X:return unit2Pulse(1*dist,SUBDIV/mm_PER_REV);
+      case AXIS_IDX_Y:return unit2Pulse(1*dist,SUBDIV/mm_PER_REV);//-1 for reverse the direction
       
       case AXIS_IDX_FEEDRATE:
       case AXIS_IDX_ACCELERATION:
@@ -1093,10 +1104,6 @@ void setup()
   pinMode(pin_TRIG_595, OUTPUT);
   pinMode(pin_SH_165, OUTPUT);
   pinMode(PIN_LED, OUTPUT);
-
-  spi1= direct_spi_init(1,10*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
-  spi_device_select(spi1,1);
-
   mstp.INIT();
 }
 

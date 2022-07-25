@@ -229,8 +229,8 @@ inline float accTo_DistanceNeeded(float Vc, float Vd, float ad, float *ret_Td=NU
 }
 
 
-
-inline float SpeedFactor(xVec vec,MSTP_axisSetup *axis_setup,int *ret_idx=NULL,int *ret_vidx=NULL)
+//See info in MStepper header for VirtualStep 
+inline float SpeedFactor(xVec vec,MSTP_axisSetup *axis_setup,int *ret_idx,int *ret_vidx=NULL)
 {
   float maxDist=0;
   float maxVDist=0;
@@ -259,8 +259,52 @@ inline float SpeedFactor(xVec vec,MSTP_axisSetup *axis_setup,int *ret_idx=NULL,i
   return maxDist/maxVDist;
 }
 
+inline float SpeedFactor_onRefAxis(xVec vec,MSTP_axisSetup *axis_setup,int *ret_idx,int ref_axis_idx)
+{
+  float maxDist=0;
+  float maxVDist= vec.vec[ref_axis_idx]*axis_setup[ref_axis_idx].VirtualStep;
+  if(maxVDist<0)maxVDist=-maxVDist;
+  int idx=-1;
 
 
+  for(int i=0;i<MSTP_VEC_SIZE;i++)
+  {
+    int32_t dist = vec.vec[i];
+    if(dist<0)dist=-dist;
+    
+    if(maxDist<dist)
+    {
+      idx=i;
+      maxDist=dist;
+    }
+  }
+
+  if(ret_idx)*ret_idx=idx;
+  return maxDist/maxVDist;
+}
+
+
+inline float SpeedCap(xVec vec,MSTP_axisSetup *axis_setup,int phy_main_axis,float main_axis_speed)
+{
+  float mainDist= vec.vec[phy_main_axis];
+  if(mainDist<0)mainDist=-mainDist;
+  int idx=-1;
+
+  float maxAllowed_MA_Speed=main_axis_speed;//on main axis
+  for(int i=0;i<MSTP_VEC_SIZE;i++)
+  {
+    int32_t dist = vec.vec[i];
+    if(dist<0)dist=-dist;
+
+    float cur_allowed_MA_Speed=axis_setup[i].MaxSpeed*mainDist/dist;
+    if(maxAllowed_MA_Speed>cur_allowed_MA_Speed )
+    {
+      maxAllowed_MA_Speed=cur_allowed_MA_Speed;
+    }
+  }
+
+  return maxAllowed_MA_Speed;
+}
 
 
 /*
@@ -512,6 +556,7 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
     axisInfo[i].AccW=1;
     axisInfo[i].MaxSpeedJumpW=1;
     axisInfo[i].VirtualStep=1;
+    axisInfo[i].MaxSpeed=100;
   }
   // IO_SET_DBG(PIN_DBG0, OUTPUT);
   SystemClear();
@@ -701,10 +746,22 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
   newSeg.vcur=0;
   int main_idx=0;
   int main_vidx=0;
-  float vfactor=SpeedFactor(newSeg.runvec,axisInfo,&main_idx,&main_vidx);
-  newSeg.vcen=speed*vfactor;
+  float vfactor=1;
+  if(exinfo->speedOnAxisIdx==-1)
+  {
+    vfactor=SpeedFactor(newSeg.runvec,axisInfo,&main_idx,&main_vidx);
+    newSeg.virtual_axis_idx=main_vidx;
+  }
+  else
+  {
+    vfactor=SpeedFactor_onRefAxis(newSeg.runvec,axisInfo,&main_idx,exinfo->speedOnAxisIdx);
+    newSeg.virtual_axis_idx=exinfo->speedOnAxisIdx;
+  }
+
+
+  newSeg.vcen=SpeedCap(newSeg.runvec,axisInfo,main_idx,speed*vfactor);
+  // newSeg.vcen=speed*vfactor;
   newSeg.main_axis_idx=main_idx;
-  newSeg.virtual_axis_idx=main_vidx;
 
   newSeg.vto=0;
 
@@ -728,9 +785,9 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
         acc_constrain_axis=i;
       }
     }
-    float accW=axisInfo[acc_constrain_axis].AccW*newSeg.runvec.vec[main_idx]/newSeg.runvec.vec[acc_constrain_axis];
+    float accWFactor=axisInfo[acc_constrain_axis].AccW*newSeg.runvec.vec[main_idx]/newSeg.runvec.vec[acc_constrain_axis];
 
-    if(accW<0)accW=-accW;
+    if(accWFactor<0)accWFactor=-accWFactor;
     float a=main_acc;
     float dea=-main_acc;
     if(exinfo!=NULL)
@@ -744,8 +801,8 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
     if(a<0)a=-a;
     if(dea>0)dea=-dea;
-    newSeg.acc=a*accW;
-    newSeg.deacc=dea*accW;
+    newSeg.acc=a*accWFactor;
+    newSeg.deacc=dea*accWFactor;
   }
 
 

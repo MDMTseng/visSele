@@ -163,7 +163,35 @@ int GCodeParser_M::FindInt32(const char *prefix,char **blkIdxes,int blkIdxesL,in
   }
   return -1;
 }
+int GCodeParser_M::FindStr(const char *prefix,char **blkIdxes,int blkIdxesL,char* retStr)
+{
+  retStr[0]='\0';
+  int j=0;
+  int prefixL=strlen(prefix);
+  for(;j<blkIdxesL;j++)
+  {
+    char* blk=blkIdxes[j];
+    int len=blkIdxes[j+1]-blkIdxes[j]-1;
+    if(blk[0]=='('||blk[0]==';')continue;//skip comment
+    if(blk[0]=='G'||blk[0]=='M')
+    {
+      // __PRT_D_("j:%d\n",j);
+      return -1;
+    }
+    
+    for(int k=0;k<len;k++)//single block G21 or P4355 or X-34
+    {
+      if(strncmp(blk, prefix, prefixL)==0)
+      {
+        memcpy(retStr,blk+prefixL,len-prefixL);
+        retStr[len-prefixL]='\0';
+        return 0;
+      }
+    }
 
+  }
+  return -1;
+}
 
 int GCodeParser_M::FindGMEnd_idx(char **blkIdxes,int blkIdxesL)
 {
@@ -183,7 +211,7 @@ int GCodeParser_M::FindGMEnd_idx(char **blkIdxes,int blkIdxesL)
 }
 
 
-bool GCodeParser_M::CheckHead(char *str1,char *str2)
+bool GCodeParser_M::CheckHead(const char *str1,const char *str2)
 {
   return strncmp(str1, str2, strlen(str2))==0;
 }
@@ -306,7 +334,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         float F;
         ReadG1Data(blockInitial+j,blockCount-j,vec,F);
 
-        MSTP_segment_extra_info exinfo={.acc=NAN,.deacc=NAN};
+        MSTP_segment_extra_info exinfo={.speedOnAxisIdx=-1,.acc=NAN,.deacc=NAN};
 
         {
           
@@ -322,6 +350,60 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           {
             exinfo.deacc=unit2Pulse_conv(AXIS_IDX_DEACCELERATION,tmpF);
           }
+
+
+          
+          // exinfo.speedOnAxisIdx=AXIS_IDX_X;
+          char AxisCode[10];
+          if(FindStr(AXIS_GDX_FEED_ON_AXIS,blockInitial+j,blockCount-j,AxisCode)==0)
+          {
+            if(CheckHead(AxisCode,AXIS_GDX_X))
+            {
+              exinfo.speedOnAxisIdx=AXIS_IDX_X;
+            }
+            else if(CheckHead(AxisCode,AXIS_GDX_Y))
+            {
+              exinfo.speedOnAxisIdx=AXIS_IDX_Y;
+            }
+
+            else if(CheckHead(AxisCode,AXIS_GDX_Z1))
+            {
+              exinfo.speedOnAxisIdx=AXIS_IDX_Z1;
+            }
+            else if(CheckHead(AxisCode,AXIS_GDX_R1))
+            {
+              exinfo.speedOnAxisIdx=AXIS_IDX_R1;
+            }
+
+            else if(CheckHead(AxisCode,AXIS_GDX_Z2))
+            {
+              exinfo.speedOnAxisIdx=AXIS_IDX_Z2;
+            }
+            else if(CheckHead(AxisCode,AXIS_GDX_R2))
+            {
+              exinfo.speedOnAxisIdx=AXIS_IDX_R2;
+            }
+            
+            else if(CheckHead(AxisCode,AXIS_GDX_Z3))
+            {
+              exinfo.speedOnAxisIdx=AXIS_IDX_Z3;
+            }
+            else if(CheckHead(AxisCode,AXIS_GDX_R3))
+            {
+              exinfo.speedOnAxisIdx=AXIS_IDX_R3;
+            }
+
+            else if(CheckHead(AxisCode,AXIS_GDX_Z4))
+            {
+              exinfo.speedOnAxisIdx=AXIS_IDX_Z4;
+            }
+            else if(CheckHead(AxisCode,AXIS_GDX_R4))
+            {
+              exinfo.speedOnAxisIdx=AXIS_IDX_R4;
+            }
+
+          }
+
         }
 
 

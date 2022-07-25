@@ -54,16 +54,36 @@ struct MSTP_segment
 
 struct MSTP_axisSetup
 {
+  
+//it's to find the speed factor(SF) that add on the main physical axis speed, so that virtual main axis 
+//for example:
+//
+// vector virtual step -> is to compensate every axis "effects" speed difference 
+// (the pulse speed will alter according to virtual step number)
+// virtual step  [10  1 1]
+// vector To     [10 60 3], speed 100   => the axis [1] is the physical main axis  => speed
+// virtual effect[100 60 3]  => the axis [0] is the  virtual main axis  so the speed should act on it
+// physical speed 100*(  SF=60/100 ) =60   => virtual speed on axis[0] is 100
   float VirtualStep;//it's the effect multiplier that 
+
+
+//A bit like what VirtualStep does but for acceleration,
+//Some axis allows higher acceleration .....
   float AccW;
+
+
+//value of the MAX "pulse" speed(freq) jump on this axis
   float MaxSpeedJumpW;
   // float maxSpeedInc;
+
+  float MaxSpeed;
 };
 
 
 
 struct MSTP_segment_extra_info
 {
+  int speedOnAxisIdx;
   float acc;
   float deacc;
 };
