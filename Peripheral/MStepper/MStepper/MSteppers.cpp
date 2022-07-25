@@ -747,7 +747,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
   int main_idx=0;
   int main_vidx=0;
   float vfactor=1;
-  if(exinfo->speedOnAxisIdx==-1)
+  if(exinfo==NULL || exinfo->speedOnAxisIdx==-1)
   {
     vfactor=SpeedFactor(newSeg.runvec,axisInfo,&main_idx,&main_vidx);
     newSeg.virtual_axis_idx=main_vidx;
