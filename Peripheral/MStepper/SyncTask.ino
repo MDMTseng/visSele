@@ -19,6 +19,47 @@ extern "C" {
 
 
 
+
+
+bool doDataLog=false;
+class MData_JR:public Data_JsonRaw_Layer
+{
+  
+  public:
+  MData_JR():Data_JsonRaw_Layer()// throw(std::runtime_error)
+  {
+    sprintf(peerVERSION,"");
+  }
+  int recv_RESET()
+  {
+    doDataLog=false;
+  } 
+  int recv_ERROR(ERROR_TYPE errorcode);
+  char gcodewait_gcode[100];
+  int gcodewait_id=-1;
+  
+
+  int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode);
+  void connected(Data_Layer_IF* ch){}
+
+  int send_data(int head_room,uint8_t *data,int len,int leg_room);
+  void disconnected(Data_Layer_IF* ch){}
+
+  int close(){}
+
+  
+  char dbgBuff[500];
+  int dbg_printf(const char *fmt, ...);
+
+  int msg_printf(const char *type,const char *fmt, ...);
+
+  void loop();
+
+
+};
+MData_JR djrl;
+
+
 hw_timer_t *timer = NULL;
 #define S_ARR_LEN(arr) (sizeof(arr) / sizeof(arr[0]))
 
@@ -54,7 +95,6 @@ struct MSTP_SegCtx{
 };
 
 
-bool doDataLog=false;
 const int SegCtxSize=40;
 ResourcePool<MSTP_SegCtx>::ResourceData resbuff[SegCtxSize];
 ResourcePool <MSTP_SegCtx>sctx_pool(resbuff,sizeof(resbuff)/sizeof(resbuff[0]));
@@ -461,13 +501,13 @@ class MStp_M:public MStp{
     while (direct_spi_in_use(spi1));//wait for SPI bus available
     gpio_set_level((gpio_num_t) pin_SH_165, 0);//switch to load(165 keeps load pin to internal reg)
     latest_input_pins=spi1->host->hw->data_buf[0];
-    if(latest_input_pins&(1<<PIN_X_SEN1))
-    {
-      // gpio_set_level((gpio_num_t)PIN_LED, 1);
-    }
-    else
-    {
-    }
+    // if(latest_input_pins&(1<<PIN_X_SEN1))
+    // {
+    //   // gpio_set_level((gpio_num_t)PIN_LED, 1);
+    // }
+    // else
+    // {
+    // }
     if(runUntil_ExtPIN!=-1)
     {
       if(runUntilDetected(latest_input_pins)==true)//if reaches, do not let 595 update pins, to prevent further movement
@@ -499,46 +539,6 @@ static MSTP_segment blockBuff[MSTP_BLOCK_SIZE];
 
 MStp_M mstp(blockBuff,MSTP_BLOCK_SIZE);
 
-
-
-
-class MData_JR:public Data_JsonRaw_Layer
-{
-  
-  public:
-  MData_JR():Data_JsonRaw_Layer()// throw(std::runtime_error)
-  {
-    sprintf(peerVERSION,"");
-  }
-  int recv_RESET()
-  {
-    doDataLog=false;
-  } 
-  int recv_ERROR(ERROR_TYPE errorcode);
-  char gcodewait_gcode[100];
-  int gcodewait_id=-1;
-  
-
-  int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode);
-  void connected(Data_Layer_IF* ch){}
-
-  int send_data(int head_room,uint8_t *data,int len,int leg_room);
-  void disconnected(Data_Layer_IF* ch){}
-
-  int close(){}
-
-  
-  char dbgBuff[500];
-  int dbg_printf(const char *fmt, ...);
-
-  int msg_printf(const char *type,const char *fmt, ...);
-
-  void loop();
-
-
-};
-
-MData_JR djrl;
 
 extern void __digitalWrite(uint8_t pin, uint8_t val)
 {
