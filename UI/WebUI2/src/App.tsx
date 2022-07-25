@@ -1716,14 +1716,37 @@ function VIEWUI(){
         ,
         menuCol(        <div onClick={()=>{
 
-        
+          
 
           let new_xCMDList=[...defConfig.XCmds];
-          new_xCMDList.splice(xCMDIdx, 1);
+
+          let newName="NEW XCMD";
+          for(let i=0;;i++)
+          {
+            let checkName=newName;
+            if(i!==0)
+            {
+              checkName+=" "+i; 
+            }
+            //console.log(checkName);
+            if(new_xCMDList.find(xcmd=>xcmd.id==checkName)===undefined)
+            {
+              newName=checkName;
+              break;
+            }
+          }
+
+          new_xCMDList.push({
+            id:newName,
+            cmds:[]
+          });
+
+          // new_xCMDList.splice(xCMDIdx, 1);
           
           let new_defConfig=ObjShellingAssign(defConfig,["XCmds"],new_xCMDList);
 
 
+          //console.log(defConfig,new_defConfig)
           setDefConfig(new_defConfig);
           setXCMDIdx(-1);
         }}>+</div>,"_ADD_")//new xcmd 
@@ -2033,10 +2056,11 @@ function App() {
     core_api.onConnected=()=>{
       ACT_EXT_API_CONNECTED(CORE_ID);
 
-      // CNC_api.connect({
-      //   uart_name:"COM5",
-      //   baudrate:115200
-      // });
+      CNC_api.connect({
+        // uart_name:"/dev/cu.SLAB_USBtoUART",
+        uart_name:"/dev/cu.usbserial-1410",
+        baudrate:115200
+      });
     }
 
     // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
