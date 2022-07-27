@@ -128,7 +128,7 @@ if($ENV{FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK} EQUAL 1)
   
 endif()
 
-add_executable (visSele main.cpp wiringPanel.cpp wiringPanel_ext.cpp InspectionTarget.cpp)
+add_executable (visSele main.cpp wiringPanel.cpp wiringPanel_ext.cpp InspectionTarget/InspectionTarget.cpp)
 
 add_dependencies(visSele mod_target MatchingEngine shape_based_matching)
 
@@ -161,6 +161,7 @@ include_directories (
   ${INCLUDE_DIRECTORIES}
   "." 
   "./include"
+  "./InspectionTarget"
   $ENV{MODULE_acvImage}/include/ 
   $ENV{MODULE_circleFitting} 
   $ENV{MODULE_common_lib}/include 
