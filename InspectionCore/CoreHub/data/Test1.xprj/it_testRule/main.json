@@ -3,6 +3,7 @@
   "type": "TEST_IT",
   "trigger_tags": [
     "ToTestRule",
-    "Stream"
-  ]
+    "Hikrobot-00F92938639"
+  ],
+  "stream_id": 51002
 }

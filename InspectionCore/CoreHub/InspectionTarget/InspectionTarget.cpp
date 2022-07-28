@@ -610,3 +610,29 @@ CameraLayer::status InspectionTargetManager::CAM_CallBack(CameraLayer &cl_obj, i
 //   info.report_json=reports;//collect
 //   // InspResult_CallBack(info);//TODO: intent code fix this 
 // }
+
+
+
+bool matchJArrStr(string tarTag,cJSON* jarr)
+{
+  if(jarr==NULL)return false;
+  int asize=cJSON_GetArraySize(jarr);
+  for (int i = 0 ; i <asize ; i++)
+  {
+    cJSON * tag = cJSON_GetArrayItem(jarr, i);
+    if(tag->type==cJSON_String)
+    {
+      string str = string(tag->valuestring);
+      if(str==tarTag)
+      {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+bool matchTriggerTag(string tarTag,cJSON* def)
+{
+  cJSON* defTags=JFetch_ARRAY(def,"trigger_tags");
+  return  matchJArrStr(tarTag,defTags);
+}

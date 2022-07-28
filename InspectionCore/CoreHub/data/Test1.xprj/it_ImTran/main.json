@@ -2,7 +2,12 @@
   "id": "ImTran",
   "type": "ImageDataTransfer",
   "trigger_tags": [
-    "Stream",
-    "ImTran"
-  ]
+    "StreamX",
+    "ImTran",
+    "rule1",
+    "regionInspection",
+    "Hikrobot-00F92938639",
+    "BMP_carousel_0"
+  ],
+  "stream_id": 51002
 }

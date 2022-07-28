@@ -1,6 +1,6 @@
 [
   {
-    "id": "LIB_INC",
+    "id": "LIB_INC1",
     "cmds": [
       "$async\nlet ds= await\nREADFILE(\"data/ACMD_LIB.js\")\n\nv.lib=eval(ds)\nv.ptx={x:0,y:0}\nv.renderHook_set[\"TEST\"]=\n(ctrl_or_draw,g,canvas_obj,rule)=>{\n\nif(ctrl_or_draw==true)return;\nlet ctx = g.ctx;\nif(rule.id==\"rule1\"){\ncanvas_obj.rUtil.drawCross(ctx, v.ptx, 15);\n}\n\nif(rule.id==\"rule_X\"){\ncanvas_obj.rUtil.drawCross(ctx, v.ptx, 25);\n}\n\n\n//console.log(rule)\n}",
       "$async\nSET_DISPLAY_ID_LIST(\n[\"rule_X\"])\nfor(let i=0;i<10;i++)\n{\n\nNOT_ABORT();\nawait delay(1000);\n\nv.ptx={x:i*10,y:0}\nprogressUpdate(\">>\"+i)\n}\n\nSET_DISPLAY_ID_LIST(undefined)\ndelete v.renderHook_set[\"TEST\"]\nddd\nfor(let i=0;i<10;i++)\n{\nNOT_ABORT();\n\nawait v.lib.delay(500);\nawait v.lib.LocaShot_prep(\n\"R11LOC\",\n\"TTag_2\",\n\"BMP_carousel_1\",\nfalse,\n\"data/TEST_DEF/rule1_KLKS0/def_temp_img copy.jpg\")\n\n\nawait v.lib.LocaShot_prep(\n\"R11LOC2\",\n\"Locating1\",\n\"BMP_carousel_0\",\nfalse,\n\"data/TEST_DEF/rule1_KLKS0/def_temp_img copy.jpg\")\n\n\n\nv.ptx={x:i*10,y:0}\nprogressUpdate(\">>\"+i)\n\n\nawait v.lib.LocaShot_wait(\n\"R11LOC2\")\n\n\nawait v.lib.LocaShot_wait(\n\"R11LOC\")\n}\n\n\n"
@@ -9,8 +9,7 @@
   {
     "id": "歸零",
     "cmds": [
-      "$async\nlet ds= await\nREADFILE(\"data/ACMD_LIB.js\")\n\nv.lib=eval(ds)",
-      "$async\n\n//await G(\"G01 Y00 F200\")\n//await v.lib.delay(2000)\nawait v.lib.SYS_ZERO()\n"
+      "$async\n\nawait G(\"G28\")\n"
     ]
   },
   {
@@ -50,25 +49,32 @@
   {
     "id": "解除吸氣",
     "cmds": [
-      "$async\n\nawait G(`G01 Z1_${0}`)\nawait G(`M42 P${25} T0`)\nawait G(`M42 P${26} T0`)"
+      "$async\n\nawait G(`G28`)"
     ]
   },
   {
     "id": "NEW_ACT_CMD",
     "cmds": [
-      "$async\nv.HACK_Offset=undefined"
+      "$async\nv.HACK_Offset=undefined\n\nawait G(`G04 P1000`)\nawait G(`M42 P0 T1`)\nlet ret = await G(`G01 Y0 X100 Z1_0 F300 ACC1000`)\n\nawait G(`M42 P1 T1`)\n\nconsole.log(ret)\nawait G(`G01 Y-100 F300 ACC1000`)\n\nawait G(`M42 P2 T1`)\nawait G(`M42 P0 T0`)\nawait G(`G01 Z1_-40000 F300 ACC1000`)\nawait G(`G01 Y0 X0  Z1_0 R11_0 R12_0 ACC500 DEA1000`)\n\nawait G(`M42 P1 T0`)\nawait G(`G04 P100`)\nawait G(`M42 P2 T0`)\n"
     ]
   },
   {
     "id": "NEW_ACT_CMD",
     "cmds": [
-      "$async \n\n{\nawait G(`M42 P${25} T1`)\nawait G(`M42 P${26} T0`)\n\n\nawait waitUserCheck(\"\",\"\")\n\nawait G(`M42 P${25} T0`)\nawait G(`M42 P${26} T1`)\n\nawait waitUserCheck(\"\",\"\")\n\n\nawait G(`M42 P${25} T0`)\nawait G(`M42 P${26} T0`)\n\n\n}"
+      "$async\nv.HACK_Offset=undefined\n\n// let ret = await G(`G01 Y100 X38 F200 ACC200 DEA200`)\n\n// console.log(ret)\n\nlet cycle=1;\nlet seg=cycle*200;\n\nlet XMax=180;\nlet YMax=100;\nlet Z1=0;\n\nfor(let i=0;i<seg;i++)\n{\n  let t=cycle*3.14159*2*i/(seg-1);\n  let X=-XMax*(1+Math.sin(t))/2;\n  let Y=YMax*(1-Math.cos(t))/2;\n  //X= -XMax*Math.random();\n  //Y=YMax*Math.random()\n  X=X.toFixed(3)\n  Y=Y.toFixed(3)\n  let ACC=i<1?100:300\n//Z1+=2000*(Math.random()-0.5)\n  await G(`G01 Y${Y} X${X} Z1_${Z1.toFixed(3)} F200 ACC${ACC}`)\n\nprogressUpdate(i+\"/\"+seg)\n\n}\n\n\n\nawait G(`G01 Y0 X0 Z1_0 ACC500 F300`)\n"
     ]
   },
   {
-    "id": "NEW_ACT_CMD",
+    "id": "NEW",
     "cmds": [
-      "$async\n\nawait G(`G01 R11_-0 Z1_90`)\nawait G(`G01 Z1_0`)\nawait G(`G01 Z1_-20 DEA1 F100`)\n\nawait G(`G01 Z1_-90   F300`)\n\nawait G(`G01 Z1_-10`)\nawait G(`G01 Z1_0 DEA1`)\nawait G(`G01 Z1_0`)"
+      "$async\nlet path=v.$DEFPATH\nconsole.log(\">>>\",path)\n\nlet lib=await INCLUDE(path+\"/lib_calc1.js\")\nconsole.log(\">>>\")\nconsole.log(lib)\n",
+      "$async\n\n\nawait reportWait_reg(\"AAA\",\"rule1\",4433)\n\nawait delay(1000)\n\n\nlet retRep = \nawait reportWait(\"AAA\")\n\nconsole.log(\">>>\",retRep)\n"
+    ]
+  },
+  {
+    "id": "NEW XCMD",
+    "cmds": [
+      "$async\nlet AXF=\"  AXF_Y\"\nlet F=\" F300 \"\nlet ACC=\" ACC1000\"\n\n\nfor(let i=0;i<10;i++){\nawait G(`G01 X15  Y0 `+AXF+F+ACC)\n\n\n//await G(`G01 X35  Y-3 `+AXF+F+ACC)\n\n\nawait G(`G01 X0  Y0 `+AXF+F+ACC)\n\n\nawait G(`G01 X0  Y15 `+AXF+F+ACC)\n\nawait G(`G01 X0  Y0 `+AXF+F+ACC)\n\n}"
     ]
   }
 ]

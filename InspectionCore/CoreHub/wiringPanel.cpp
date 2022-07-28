@@ -555,10 +555,14 @@ void InspectionTarget_ImageDataTransfer::thread_run()
 
     LOGI("curInput->jInfo:%p ",curInput->jInfo);
     int imgCHID=curInput->StreamInfo.channel_id;
+    int downSample=curInput->StreamInfo.downsample;
+    if(downSample<2)
+    {
+      downSample=1;
+    }
     // curInput->imgSets./
 
     LOGI("imgCHID:%d ",imgCHID);
-    std::shared_ptr<acvImage> im2send=curInput->imgSets["img"];
 
 
     {
@@ -579,23 +583,27 @@ void InspectionTarget_ImageDataTransfer::thread_run()
         bpg_pi.fromUpperLayer_DATA("RP",imgCHID,curInput->jInfo);
 
 
-      
-      
-      BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)10};
-      iminfo.fullHeight = im2send->GetHeight();
-      iminfo.fullWidth = im2send->GetWidth();
-      if(iminfo.scale>1)
+      std::shared_ptr<acvImage> im2send=curInput->imgSets["img"];
+      if(im2send!=NULL)
       {
-        //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-        //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-        ImageDownSampling(cacheImage, *im2send, iminfo.scale, NULL);
+        BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)downSample};
+        iminfo.fullHeight = im2send->GetHeight();
+        iminfo.fullWidth = im2send->GetWidth();
+        if(iminfo.scale>1)
+        {
+          //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
+          //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+          ImageDownSampling(cacheImage, *im2send, iminfo.scale, NULL);
+        }
+        else
+        {
+          iminfo.scale=1;
+          iminfo.img=im2send.get();
+        }
+        bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
+
       }
-      else
-      {
-        iminfo.scale=1;
-        iminfo.img=im2send.get();
-      }
-      bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
+      
       bpg_pi.fromUpperLayer_SS(imgCHID,true);
       
       if(realTimeDropFlag>0)
@@ -1231,6 +1239,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           else if(type==InspectionTarget_ImageDataTransfer::TYPE())
           {
             inspTar = new InspectionTarget_ImageDataTransfer(id,defInfo,&inspTarMan);
+          }
+          else if(type==InspectionTarget_Orientation_ColorRegionOval::TYPE())
+          {
+            inspTar = new InspectionTarget_Orientation_ColorRegionOval(id,defInfo,&inspTarMan);
+          }
+          else if(type==InspectionTarget_SurfaceCheckSimple::TYPE())
+          {
+            inspTar = new InspectionTarget_SurfaceCheckSimple(id,defInfo,&inspTarMan);
           }
           else
           {

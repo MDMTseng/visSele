@@ -128,7 +128,7 @@ if($ENV{FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK} EQUAL 1)
   
 endif()
 
-add_executable (visSele main.cpp wiringPanel.cpp wiringPanel_ext.cpp InspectionTarget/InspectionTarget.cpp)
+add_executable (visSele main.cpp wiringPanel.cpp wiringPanel_ext.cpp InspectionTarget/InspectionTarget.cpp InspectionTarget/InspTar_Orientation_ColorRegionOval.cpp   InspectionTarget/InspTar_SurfaceCheckSimple.cpp)
 
 add_dependencies(visSele mod_target MatchingEngine shape_based_matching)
 

@@ -26,6 +26,8 @@
 #include <opencv2/calib3d.hpp>
 #include "opencv2/imgproc.hpp"
 #include <opencv2/imgcodecs.hpp>
+#include <InspTar_Orientation_ColorRegionOval.hpp>
+#include <InspTar_SurfaceCheckSimple.hpp>
 
 using namespace cv;
 // class InspectionTarget_s :public InspectionTarget
@@ -58,29 +60,6 @@ using namespace cv;
 // };
 
 
-bool matchJArrStr(string tarTag,cJSON* jarr)
-{
-  if(jarr==NULL)return false;
-  int asize=cJSON_GetArraySize(jarr);
-  for (int i = 0 ; i <asize ; i++)
-  {
-    cJSON * tag = cJSON_GetArrayItem(jarr, i);
-    if(tag->type==cJSON_String)
-    {
-      string str = string(tag->valuestring);
-      if(str==tarTag)
-      {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-bool matchTriggerTag(string tarTag,cJSON* def)
-{
-  cJSON* defTags=JFetch_ARRAY(def,"trigger_tags");
-  return  matchJArrStr(tarTag,defTags);
-}
 
 class InspectionTarget_TEST_IT :public InspectionTarget
 {
@@ -154,6 +133,9 @@ class InspectionTarget_TEST_IT :public InspectionTarget
     LOGI("InspectionTarget_TEST_IT Got info from:%s ......",sinfo->source_id.c_str());
   }
 };
+
+
+
 
 class InspectionTarget_ColorRegionDetection :public InspectionTarget
 {
@@ -546,6 +528,7 @@ public:
     // reportInfo->trigger_tag=sinfo->trigger_tag;
 
     reportInfo->StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
+    reportInfo->StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",-1);
     LOGI("CHID:%d",reportInfo->StreamInfo.channel_id);
 
     

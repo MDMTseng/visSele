@@ -46,6 +46,7 @@ class CameraManager
   {
     CameraLayer* camera;
     int channel_id;
+    int downsample;
   };
 
   protected:
@@ -403,6 +404,9 @@ class StageInfo_cusTest:public StageInfo{
   
 };
 
+
+
+
 class StageInfo_Image:public StageInfo
 {
   public:
@@ -417,6 +421,8 @@ class StageInfo_Blob:public StageInfo
   static std::string stypeName(){return "Blob";}
   std::string typeName(){return StageInfo_Blob::stypeName();}
 };
+
+
 
 
 /*
@@ -462,3 +468,9 @@ class StageInfo_Blob:public StageInfo
 
 */
 
+
+
+
+
+bool matchJArrStr(string tarTag,cJSON* jarr);
+bool matchTriggerTag(string tarTag,cJSON* def);

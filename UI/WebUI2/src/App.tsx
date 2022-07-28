@@ -937,6 +937,1370 @@ function SingleTargetVIEWUI_ColorRegionDetection({display,stream_id,fsPath,width
 
 }
 
+
+
+function Orientation_ColorRegionOval_SingleRegion({srule,onDefChange,canvas_obj}:
+  {
+    srule:any,
+    onDefChange:(...param:any)=>void,
+    canvas_obj:DrawHook_CanvasComponent
+  })
+{
+  
+  const [delConfirmCounter,setDelConfirmCounter]=useState(0);
+  let srule_Filled={
+    
+    region:[0,0,0,0],
+    colorThres:10,
+    hsv:{
+      rangeh:{
+        h:180,s:255,v:255
+      },
+      rangel:{
+        h:0,s:0,v:0
+      },
+    },
+
+    contour:{
+      lengthh:400000,
+      lengthl:400,
+
+      areah:639030,
+      areal:400,
+
+    },
+
+    ...srule
+  }
+  const _this = useRef<any>({}).current;
+  return <>
+    <Button key={">>>"} onClick={()=>{
+        canvas_obj.UserRegionSelect((info,state)=>{
+          if(state==2)
+          {
+            console.log(info);
+            
+            let x,y,w,h;
+
+            x=info.pt1.x;
+            w=info.pt2.x-info.pt1.x;
+        
+            y=info.pt1.y;
+            h=info.pt2.y-info.pt1.y;
+        
+        
+            if(w<0){
+              x+=w;
+              w=-w;
+            }
+            
+            if(h<0){
+              y+=h;
+              h=-h;
+            }
+
+            let newRule={...srule_Filled,region:[Math.round(x),Math.round(y),Math.round(w),Math.round(h)]};
+            onDefChange(newRule)
+
+            canvas_obj.UserRegionSelect(undefined)
+          }
+        })
+      }}>設定範圍</Button>
+    
+      <Popconfirm
+            title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+            onConfirm={()=>{}}
+            onCancel={()=>{}}
+            okButtonProps={{danger:true,onClick:()=>{
+              if(delConfirmCounter!=0)
+              {
+                setDelConfirmCounter(delConfirmCounter-1);
+              }
+              else
+              {
+                onDefChange(undefined);
+                // onDefChange(undefined,false)
+              }
+            }}}
+            okText={"Yes:"+delConfirmCounter}
+            cancelText="No"
+          >
+          <Button danger type="primary" onClick={()=>{
+            setDelConfirmCounter(5);
+          }}>DEL</Button>
+        </Popconfirm> 
+{/* 
+    <br/>hough_circle
+    <Slider defaultValue={srule_Filled.hough_circle.minRadius} max={100} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,minRadius:v}};
+      onDefChange(newRule)
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    
+    <Slider defaultValue={srule_Filled.hough_circle.maxRadius} max={100} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,maxRadius:v}};
+        onDefChange(newRule)
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>  */}
+
+
+
+
+    <>
+    
+    
+    <br/>結果顯示
+    <Slider defaultValue={srule_Filled.resultOverlayAlpha} min={0} max={1} step={0.1} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onDefChange(ObjShellingAssign(srule_Filled,["resultOverlayAlpha"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+    <br/>HSV
+    <Slider defaultValue={srule_Filled.hsv.rangeh.h} max={180} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","h"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={srule_Filled.hsv.rangel.h} max={180} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangel","h"],v));
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+    <Slider defaultValue={srule_Filled.hsv.rangeh.s} max={255} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","s"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={srule_Filled.hsv.rangel.s} max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangel","s"],v));
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+
+    <Slider defaultValue={srule_Filled.hsv.rangeh.v} max={255} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangeh","v"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={srule_Filled.hsv.rangel.v} max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_throttle(_this.trigTO,()=>{
+
+        onDefChange(ObjShellingAssign(srule_Filled,["hsv","rangel","v"],v));
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+
+
+    </>
+
+    <br/>colorThres
+    <Slider defaultValue={srule_Filled.colorThres}  max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_throttle(_this.trigTO,()=>{
+        onDefChange(ObjShellingAssign(srule_Filled,["colorThres"],v));
+      },()=>_this.trigTO=undefined,200);
+
+    }}/>
+
+
+
+
+  </>
+
+}
+
+
+
+
+function SingleTargetVIEWUI_Orientation_ColorRegionOval({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
+  const _ = useRef<any>({
+
+    imgCanvas:document.createElement('canvas'),
+    canvasComp:undefined,
+    drawHooks:[],
+    ctrlHooks:[]
+
+
+  });
+  const [cacheDef,setCacheDef]=useState<any>(def);
+  const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
+
+
+  const [defReport,setDefReport]=useState<any>(undefined);
+  const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
+  let _this=_.current;
+  let c_report:any = undefined;
+  if(_this.cache_report!==report)
+  {
+    if(report!==undefined)
+    {
+      _this.cache_report=report;
+    }
+  }
+  c_report=_this.cache_report;
+
+
+  useEffect(() => {
+    console.log("fsPath:"+fsPath)
+    _this.cache_report=undefined;
+    setCacheDef(def);
+    // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
+    // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
+    return (() => {
+      });
+      
+  }, [def]); 
+  // console.log(IMCM_group,report);
+  // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
+  // const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);
+  const [Local_IMCM,setLocal_IMCM]=
+    useState<IMCM_type|undefined>(undefined);
+
+  
+  enum editState {
+    Normal_Show = 0,
+    Region_Edit = 1,
+    CalibDataCollection = 100,
+  }
+  
+  const [stateInfo,setStateInfo]=useState<{st:editState,info:any}[]>([{
+    st:editState.Normal_Show,
+    info:undefined
+  }]);
+
+  
+  const dispatch = useDispatch();
+  const [BPG_API,setBPG_API]=useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+  const [CNC_API,setCNC_API]=useState<CNC_Perif>(dispatch(EXT_API_ACCESS(CNC_PERIPHERAL_ID)) as any);
+
+  
+  const [queryCameraList,setQueryCameraList]=useState<any[]|undefined>(undefined);
+  const [delConfirmCounter,setDelConfirmCounter]=useState(0);
+
+  
+  let stateInfo_tail=stateInfo[stateInfo.length-1];
+
+
+
+  function onCacheDefChange(updatedDef: any,ddd:boolean)
+  {
+    console.log(updatedDef);
+    setCacheDef(updatedDef);
+
+    
+
+    (async ()=>{
+      await BPG_API.InspTargetUpdate(updatedDef)
+      
+      // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
+      
+      await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
+
+    })()
+    
+  }
+
+  
+  useEffect(() => {//////////////////////
+
+    (async ()=>{
+
+      let ret = await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+      console.log(ret);
+
+      // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+
+      await BPG_API.send_cbs_attach(
+        cacheDef.stream_id,"ColorRegionDetection",{
+          
+          resolve:(pkts)=>{
+            // console.log(pkts);
+            let IM=pkts.find((p:any)=>p.type=="IM");
+            if(IM===undefined)return;
+            let CM=pkts.find((p:any)=>p.type=="CM");
+            if(CM===undefined)return;
+            let RP=pkts.find((p:any)=>p.type=="RP");
+            if(RP===undefined)return;
+            console.log("++++++++\n",IM,CM,RP);
+
+
+            setDefReport(RP.data)
+            let IMCM={
+              image_info:IM.image_info,
+              camera_id:CM.data.camera_id,
+              trigger_id:CM.data.trigger_id,
+              trigger_tag:CM.data.trigger_tag,
+            } as type_IMCM
+  
+            _this.imgCanvas.width = IMCM.image_info.width;
+            _this.imgCanvas.height = IMCM.image_info.height;
+  
+            let ctx2nd = _this.imgCanvas.getContext('2d');
+            ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+  
+  
+            setLocal_IMCM(IMCM)
+            // console.log(IMCM)
+  
+          },
+          reject:(pkts)=>{
+  
+          }
+        }
+
+      )
+
+    })()
+    return (() => {
+      (async ()=>{
+        await BPG_API.send_cbs_detach(
+          stream_id,"ColorRegionDetection");
+            
+        // await BPG_API.InspTargetSetStreamChannelID(
+        //   cacheDef.id,0,
+        //   {
+        //     resolve:(pkts)=>{
+        //     },
+        //     reject:(pkts)=>{
+    
+        //     }
+        //   }
+        // )
+      })()
+      
+    })}, []); 
+  // function pushInSendGCodeQ()
+  // {
+  //   if(_this.isSendWaiting==true || _this.gcodeSeq.length==0)
+  //   {
+  //     return;
+  //   }
+  //   const gcode = _this.gcodeSeq.shift();
+  //   if(gcode==undefined || gcode==null)return;
+  //   _this.isSendWaiting=true;
+  //   ACT_WS_GET_OBJ((api)=>{
+  //     api.send({"type":"GCODE","code":gcode},
+  //     (ret)=>{
+  //       console.log(ret);
+  //       _this.isSendWaiting=false;
+  //       pushInSendGCodeQ(_this.gcodeSeq);
+
+  //     },(e)=>console.log(e));
+  //   })
+  // }
+
+
+  if(display==false)return null;
+  function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
+  {
+    let ctx = g.ctx;
+    // ctx.lineWidth = 5;
+
+    let x = region.x;
+    let y = region.y;
+    let w = region.w;
+    let h = region.h;
+    ctx.beginPath();
+    ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
+    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+    ctx.lineWidth = lineWidth;
+    ctx.rect(x,y,w,h);
+    ctx.stroke();
+    ctx.closePath();
+
+    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+    ctx.lineWidth = lineWidth*2/3;
+    canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
+
+
+
+  }
+
+
+
+
+
+  let EDIT_UI= null;
+  
+  switch(stateInfo_tail.st)
+  {
+    
+    case editState.Normal_Show:
+
+
+      let EditUI=null;
+      if(true)//allow edit
+      {
+        EditUI=<>
+        <Button key={"_"+10000} onClick={()=>{
+          
+          let newDef={...cacheDef};
+          newDef.regionInfo.push({region:[0,0,0,0],colorThres:10});
+          onCacheDefChange(newDef,false)
+
+          
+          setStateInfo([...stateInfo,{
+            st:editState.Region_Edit,
+            info:{
+              idx:newDef.regionInfo.length-1
+            }
+          }])
+
+        }}>+</Button>
+
+        
+
+        {cacheDef.regionInfo.map((region:any,idx:number)=>{
+          return <Button key={"_"+idx} onClick={()=>{
+            if(_this.canvasComp===undefined)return;
+
+
+            setStateInfo([...stateInfo,{
+              st:editState.Region_Edit,
+              info:{
+                idx:idx
+              }
+            }])
+
+
+
+
+          }}>{"idx:"+idx}</Button>
+        })}
+        </>
+      }
+
+      EDIT_UI=<>
+        
+        <Input maxLength={100} value={cacheDef.id} 
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            console.log(e.target.value);
+
+            let newDef={...cacheDef};
+            newDef.id=e.target.value;
+            onCacheDefChange(newDef,false)
+
+
+          }}/>
+
+        <Input maxLength={100} value={cacheDef.type} disabled
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            
+          }}/>
+
+        <Input maxLength={100} value={cacheDef.sampleImageFolder}  disabled
+          style={{width:"100px"}}
+          onChange={(e)=>{
+          }}/>
+
+
+        <Dropdown
+          overlay={<>
+            <Menu>
+              {
+                queryCameraList===undefined?
+                  <Menu.Item disabled danger>
+                  <a target="_blank" rel="noopener noreferrer" href="https://www.antgroup.com">
+                    Press to update
+                  </a>
+                  </Menu.Item>
+                  :
+                  queryCameraList.map(cam=><Menu.Item key={cam.id} 
+                  onClick={()=>{
+                    let newDef={...cacheDef};
+                    newDef.camera_id=cam.id;
+                    // HACK_do_Camera_Check=true;
+                    onCacheDefChange(newDef,true)
+                  }}>
+                    {cam.id}
+                  </Menu.Item>)
+
+              }
+            </Menu>
+          </>}
+        >
+          <Button onClick={()=>{
+            // queryCameraList
+            setQueryCameraList(undefined);
+            BPG_API.queryDiscoverList()
+              .then((e: any)=>{
+                console.log(e);
+                setQueryCameraList(e[0].data)
+              })
+            // let api=await getAPI(CORE_ID) as BPG_WS;
+            // let cameraListInfos=await api.cameraDiscovery() as any[];
+            // let CM=cameraListInfos.find(info=>info.type=="CM")
+            // if(CM===undefined)throw "CM not found"
+            // console.log(CM.data);
+            // return CM.data as {name:string,id:string,driver_name:string}[];
+            
+          }}>{cacheDef.camera_id}</Button>
+        </Dropdown>
+
+
+
+        <Input maxLength={100} value={cacheDef.trigger_tag} 
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            let newDef={...cacheDef};
+            newDef.trigger_tag=e.target.value;
+            onCacheDefChange(newDef,false)
+        }}/>
+
+        <Popconfirm
+            title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+            onConfirm={()=>{}}
+            onCancel={()=>{}}
+            okButtonProps={{danger:true,onClick:()=>{
+              if(delConfirmCounter!=0)
+              {
+                setDelConfirmCounter(delConfirmCounter-1);
+              }
+              else
+              {
+                onCacheDefChange(undefined,false)
+              }
+            }}}
+            okText={"Yes:"+delConfirmCounter}
+            cancelText="No"
+          >
+          <Button danger type="primary" onClick={()=>{
+            setDelConfirmCounter(5);
+          }}>DEL</Button>
+        </Popconfirm> 
+        <br/>
+        <Button onClick={()=>{
+          onCacheDefChange(cacheDef,true);
+        }}>SHOT</Button>
+        <Button onClick={()=>{
+          onDefChange(cacheDef,true)
+        }}>SAVE</Button>
+
+        {EditUI}
+
+
+      </>
+
+
+      break;
+
+    case editState.Region_Edit:
+
+
+      if(cacheDef.regionInfo.length<=stateInfo_tail.info.idx)
+      {
+        break;
+      }
+      
+      let regionInfo=cacheDef.regionInfo[stateInfo_tail.info.idx];
+
+      EDIT_UI=<>
+        <Button key={"_"+-1} onClick={()=>{
+          
+          let new_stateInfo=[...stateInfo]
+          new_stateInfo.pop();
+
+          setStateInfo(new_stateInfo)
+        }}>{"<"}</Button>
+        <Orientation_ColorRegionOval_SingleRegion 
+          srule={regionInfo} 
+          onDefChange={(newDef_sregion)=>{
+            // console.log(newDef);
+
+            
+            let newDef={...cacheDef};
+            if(newDef_sregion!==undefined)
+            {
+              newDef.regionInfo[stateInfo_tail.info.idx]=newDef_sregion;
+            }
+            else
+            {
+              
+              newDef.regionInfo.splice(stateInfo_tail.info.idx, 1);
+              
+              let new_stateInfo=[...stateInfo]
+              new_stateInfo.pop();
+
+              setStateInfo(new_stateInfo)
+
+            }
+
+            onCacheDefChange(newDef,true)
+            // _this.sel_region=undefined
+
+          }}
+          canvas_obj={_this.canvasComp}/>
+      </>
+
+      break;
+    
+
+    case editState.CalibDataCollection:
+      EDIT_UI=<>
+        <Button key={"_"+-1} onClick={()=>{
+          
+          let new_stateInfo=[...stateInfo]
+          new_stateInfo.pop();
+
+          setStateInfo(new_stateInfo)
+        }}>{"<"}</Button>
+
+
+
+
+
+
+
+
+
+        </>
+      break;
+  }
+  
+
+  
+  return <div style={{...style,width:width+"%",height:height+"%"}}  className={"overlayCon"}>
+
+    <div className={"overlay"} >
+
+      {EDIT_UI}
+
+    </div>
+
+    
+    <HookCanvasComponent style={{}} dhook={(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
+      _this.canvasComp=canvas_obj;
+      // console.log(ctrl_or_draw);
+      if(ctrl_or_draw==true)//ctrl
+      {
+        // if(canvas_obj.regionSelect===undefined)
+        // canvas_obj.UserRegionSelect((onSelect,draggingState)=>{
+        //   if(draggingState==1)
+        //   {
+
+        //   }
+        //   else if(draggingState==2)
+        //   {
+        //     console.log(onSelect);
+        //     canvas_obj.UserRegionSelect(undefined)
+        //   }
+        // });
+        
+        // ctrlHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+        if(canvas_obj.regionSelect!==undefined)
+        {
+          if(canvas_obj.regionSelect.pt1===undefined || canvas_obj.regionSelect.pt2===undefined)
+          {
+            return;
+          }
+      
+          let pt1 = canvas_obj.regionSelect.pt1;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
+          let pt2 = canvas_obj.regionSelect.pt2;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
+           
+          
+          // console.log(canvas_obj.regionSelect);
+          let x,y,w,h;
+      
+          x=pt1.x;
+          w=pt2.x-pt1.x;
+      
+          y=pt1.y;
+          h=pt2.y-pt1.y;
+      
+      
+          if(w<0){
+            x+=w;
+            w=-w;
+          }
+          
+          if(h<0){
+            y+=h;
+            h=-h;
+          }
+          _this.sel_region={
+            x,y,w,h
+          }
+        }
+      }
+      else//draw
+      {
+        if(Local_IMCM!==undefined)
+        {
+          g.ctx.save();
+          let scale=Local_IMCM.image_info.scale;
+          g.ctx.scale(scale,scale);
+          g.ctx.translate(-0.5, -0.5);
+          g.ctx.drawImage(_this.imgCanvas, 0, 0);
+          g.ctx.restore();
+        }
+        // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+       
+
+        let ctx = g.ctx;
+        
+        {
+          cacheDef.regionInfo.forEach((region:any,idx:number)=>{
+
+            let region_ROI=
+            {
+              x:region.region[0],
+              y:region.region[1],
+              w:region.region[2],
+              h:region.region[3]
+            }
+            
+            ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
+            drawRegion(g,canvas_obj,region_ROI,canvas_obj.rUtil.getIndicationLineSize());
+                    
+            ctx.font = "40px Arial";
+            ctx.fillStyle = "rgba(0, 179, 0,0.5)";
+            ctx.fillText("idx:"+idx,region_ROI.x,region_ROI.y)
+
+            
+            let region_components=GetObjElement(c_report,["regionInfo",idx,"components"]);
+            // console.log(report,region_components);
+            if(region_components!==undefined)
+            {
+              region_components.forEach((regComp:any)=>{
+
+                canvas_obj.rUtil.drawCross(ctx, {x:regComp.x,y:regComp.y}, 5);
+
+                ctx.font = "4px Arial";
+                ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
+                ctx.fillText(regComp.area,regComp.x,regComp.y)
+                
+                ctx.font = "4px Arial";
+                ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
+                ctx.fillText(`${regComp.x},${regComp.y}`,regComp.x,regComp.y+5)
+              })
+
+            }
+
+
+
+          })
+        }
+
+
+        if(canvas_obj.regionSelect!==undefined && _this.sel_region!==undefined)
+        {
+          ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+          
+          drawRegion(g,canvas_obj,_this.sel_region,canvas_obj.rUtil.getIndicationLineSize());
+      
+        }
+      }
+
+      
+      if(renderHook)
+      {
+        // renderHook(ctrl_or_draw,g,canvas_obj,newDef);
+      }
+    }
+    }/>
+
+  </div>;
+
+}
+
+
+
+function SurfaceCheckSimple_EDIT_UI({def,onDefChange,canvas_obj}:
+  {
+    def:any,
+    onDefChange:(...param:any)=>void,
+    canvas_obj:DrawHook_CanvasComponent
+  })
+{
+  
+  const [delConfirmCounter,setDelConfirmCounter]=useState(0);
+  let def_Filled={
+    
+    W:500,
+    H:500,
+
+    hsv:{
+      rangeh:{
+        h:180,s:255,v:255
+      },
+      rangel:{
+        h:0,s:0,v:0
+      },
+    },
+    colorThres:10,
+    resultOverlayAlpha:0,
+
+    ...def
+  }
+  const _this = useRef<any>({}).current;
+  return <>
+
+  
+    <br/>W:
+    <InputNumber min={10} max={2000} value={def_Filled.W}
+    onChange={(num)=>{
+      let newDef={...def_Filled,W:num}
+      onDefChange(newDef,true);
+    }} />
+    {"  "}H:
+    <InputNumber min={10} max={2000} value={def_Filled.H}
+    onChange={(num)=>{
+      let newDef={...def_Filled,H:num}
+      onDefChange(newDef,true);
+    }} />
+      
+
+
+
+        <>
+    
+    
+    <br/>結果顯示
+    <Slider defaultValue={def_Filled.resultOverlayAlpha} min={0} max={1} step={0.1} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onDefChange(ObjShellingAssign(def_Filled,["resultOverlayAlpha"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+    <br/>HSV
+    <Slider defaultValue={def_Filled.hsv.rangeh.h} max={180} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onDefChange(ObjShellingAssign(def_Filled,["hsv","rangeh","h"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={def_Filled.hsv.rangel.h} max={180} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        onDefChange(ObjShellingAssign(def_Filled,["hsv","rangel","h"],v));
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+    <Slider defaultValue={def_Filled.hsv.rangeh.s} max={255} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onDefChange(ObjShellingAssign(def_Filled,["hsv","rangeh","s"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={def_Filled.hsv.rangel.s} max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        onDefChange(ObjShellingAssign(def_Filled,["hsv","rangel","s"],v));
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+
+    <Slider defaultValue={def_Filled.hsv.rangeh.v} max={255} onChange={(v)=>{
+
+    _this.trigTO=
+    ID_debounce(_this.trigTO,()=>{
+      onDefChange(ObjShellingAssign(def_Filled,["hsv","rangeh","v"],v));
+    },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={def_Filled.hsv.rangel.v} max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_throttle(_this.trigTO,()=>{
+
+        onDefChange(ObjShellingAssign(def_Filled,["hsv","rangel","v"],v));
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
+
+
+
+
+    </>
+
+    <br/>colorThres
+    <Slider defaultValue={def_Filled.colorThres}  max={255} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_throttle(_this.trigTO,()=>{
+        onDefChange(ObjShellingAssign(def_Filled,["colorThres"],v));
+      },()=>_this.trigTO=undefined,200);
+
+    }}/>
+
+
+
+
+  </>
+
+}
+
+
+function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
+  const _ = useRef<any>({
+
+    imgCanvas:document.createElement('canvas'),
+    canvasComp:undefined,
+    drawHooks:[],
+    ctrlHooks:[]
+
+
+  });
+  const [cacheDef,setCacheDef]=useState<any>(def);
+  const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
+
+
+  const [defReport,setDefReport]=useState<any>(undefined);
+  const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
+  let _this=_.current;
+  let c_report:any = undefined;
+  if(_this.cache_report!==report)
+  {
+    if(report!==undefined)
+    {
+      _this.cache_report=report;
+    }
+  }
+  c_report=_this.cache_report;
+
+
+  useEffect(() => {
+    console.log("fsPath:"+fsPath)
+    _this.cache_report=undefined;
+    setCacheDef(def);
+    // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
+    // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
+    return (() => {
+      });
+      
+  }, [def]); 
+  // console.log(IMCM_group,report);
+  // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
+  // const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);
+  const [Local_IMCM,setLocal_IMCM]=
+    useState<IMCM_type|undefined>(undefined);
+
+  
+  enum EditState {
+    Normal_Show = 0,
+    Region_Edit = 1,
+    CalibDataCollection = 100,
+  }
+  
+  const [editState,setEditState]=useState<EditState>(EditState.Normal_Show);
+
+  
+  const dispatch = useDispatch();
+  const [BPG_API,setBPG_API]=useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+  const [CNC_API,setCNC_API]=useState<CNC_Perif>(dispatch(EXT_API_ACCESS(CNC_PERIPHERAL_ID)) as any);
+
+  
+  const [queryCameraList,setQueryCameraList]=useState<any[]|undefined>(undefined);
+  const [delConfirmCounter,setDelConfirmCounter]=useState(0);
+
+
+  function onCacheDefChange(updatedDef: any,ddd:boolean)
+  {
+    console.log(updatedDef);
+    setCacheDef(updatedDef);
+
+    
+
+    (async ()=>{
+      await BPG_API.InspTargetUpdate(updatedDef)
+      
+      // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
+      
+      await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
+
+    })()
+    
+  }
+
+  
+  useEffect(() => {//////////////////////
+
+    (async ()=>{
+
+      let ret = await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+      console.log(ret);
+
+      // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+
+      await BPG_API.send_cbs_attach(
+        cacheDef.stream_id,"ColorRegionDetection",{
+          
+          resolve:(pkts)=>{
+            // console.log(pkts);
+            let IM=pkts.find((p:any)=>p.type=="IM");
+            if(IM===undefined)return;
+            let CM=pkts.find((p:any)=>p.type=="CM");
+            if(CM===undefined)return;
+            // let RP=pkts.find((p:any)=>p.type=="RP");
+            // if(RP===undefined)return;
+            // console.log("++++++++\n",IM,CM,RP);
+
+
+            // setDefReport(RP.data)
+            let IMCM={
+              image_info:IM.image_info,
+              camera_id:CM.data.camera_id,
+              trigger_id:CM.data.trigger_id,
+              trigger_tag:CM.data.trigger_tag,
+            } as type_IMCM
+  
+            _this.imgCanvas.width = IMCM.image_info.width;
+            _this.imgCanvas.height = IMCM.image_info.height;
+  
+            let ctx2nd = _this.imgCanvas.getContext('2d');
+            ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+  
+  
+            setLocal_IMCM(IMCM)
+            // console.log(IMCM)
+  
+          },
+          reject:(pkts)=>{
+  
+          }
+        }
+
+      )
+
+    })()
+    return (() => {
+      (async ()=>{
+        await BPG_API.send_cbs_detach(
+          stream_id,"ColorRegionDetection");
+            
+        // await BPG_API.InspTargetSetStreamChannelID(
+        //   cacheDef.id,0,
+        //   {
+        //     resolve:(pkts)=>{
+        //     },
+        //     reject:(pkts)=>{
+    
+        //     }
+        //   }
+        // )
+      })()
+      
+    })}, []); 
+  // function pushInSendGCodeQ()
+  // {
+  //   if(_this.isSendWaiting==true || _this.gcodeSeq.length==0)
+  //   {
+  //     return;
+  //   }
+  //   const gcode = _this.gcodeSeq.shift();
+  //   if(gcode==undefined || gcode==null)return;
+  //   _this.isSendWaiting=true;
+  //   ACT_WS_GET_OBJ((api)=>{
+  //     api.send({"type":"GCODE","code":gcode},
+  //     (ret)=>{
+  //       console.log(ret);
+  //       _this.isSendWaiting=false;
+  //       pushInSendGCodeQ(_this.gcodeSeq);
+
+  //     },(e)=>console.log(e));
+  //   })
+  // }
+
+
+  if(display==false)return null;
+  function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
+  {
+    let ctx = g.ctx;
+    // ctx.lineWidth = 5;
+
+    let x = region.x;
+    let y = region.y;
+    let w = region.w;
+    let h = region.h;
+    ctx.beginPath();
+    ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
+    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+    ctx.lineWidth = lineWidth;
+    ctx.rect(x,y,w,h);
+    ctx.stroke();
+    ctx.closePath();
+
+    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+    ctx.lineWidth = lineWidth*2/3;
+    canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
+
+
+
+  }
+
+
+
+
+
+  let EDIT_UI= null;
+  
+  switch(editState)
+  {
+    
+    case EditState.Normal_Show:
+
+
+      let EditUI=null;
+      EDIT_UI=<>
+        
+        <Input maxLength={100} value={cacheDef.id} 
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            console.log(e.target.value);
+
+            let newDef={...cacheDef};
+            newDef.id=e.target.value;
+            onCacheDefChange(newDef,false)
+
+
+          }}/>
+
+        <Input maxLength={100} value={cacheDef.type} disabled
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            
+          }}/>
+
+        <Input maxLength={100} value={cacheDef.sampleImageFolder}  disabled
+          style={{width:"100px"}}
+          onChange={(e)=>{
+          }}/>
+
+
+
+
+
+        <Input maxLength={100} value={cacheDef.trigger_tag} 
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            let newDef={...cacheDef};
+            newDef.trigger_tag=e.target.value;
+            onCacheDefChange(newDef,false)
+        }}/>
+
+        <Popconfirm
+            title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+            onConfirm={()=>{}}
+            onCancel={()=>{}}
+            okButtonProps={{danger:true,onClick:()=>{
+              if(delConfirmCounter!=0)
+              {
+                setDelConfirmCounter(delConfirmCounter-1);
+              }
+              else
+              {
+                onCacheDefChange(undefined,false)
+              }
+            }}}
+            okText={"Yes:"+delConfirmCounter}
+            cancelText="No"
+          >
+          <Button danger type="primary" onClick={()=>{
+            setDelConfirmCounter(5);
+          }}>DEL</Button>
+        </Popconfirm> 
+        <br/>
+        <Button onClick={()=>{
+          onCacheDefChange(cacheDef,true);
+        }}>SHOT</Button>
+
+        <Button key={"_"+10000} onClick={()=>{
+          setEditState( EditState.Region_Edit);
+        }}>EDIT</Button>
+
+        <Button onClick={()=>{
+          onDefChange(cacheDef,true)
+        }}>SAVE</Button>
+
+
+      </>
+
+
+      break;
+
+    case EditState.Region_Edit:
+
+      EDIT_UI=<>
+        <Button key={"_"+-1} onClick={()=>{
+          
+          setEditState( EditState.Normal_Show);
+        }}>{"<"}</Button>
+
+
+        <SurfaceCheckSimple_EDIT_UI 
+            def={cacheDef} 
+            onDefChange={(newDef)=>{
+              onCacheDefChange(newDef,true);
+              
+            }}
+            canvas_obj={_this.canvasComp}/>
+      </>
+
+      break;
+  }
+  
+
+  
+  return <div style={{...style,width:width+"%",height:height+"%"}}  className={"overlayCon"}>
+
+    <div className={"overlay"} >
+
+      {EDIT_UI}
+
+    </div>
+
+    
+    <HookCanvasComponent style={{}} dhook={(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
+      _this.canvasComp=canvas_obj;
+      // console.log(ctrl_or_draw);
+      if(ctrl_or_draw==true)//ctrl
+      {
+        // if(canvas_obj.regionSelect===undefined)
+        // canvas_obj.UserRegionSelect((onSelect,draggingState)=>{
+        //   if(draggingState==1)
+        //   {
+
+        //   }
+        //   else if(draggingState==2)
+        //   {
+        //     console.log(onSelect);
+        //     canvas_obj.UserRegionSelect(undefined)
+        //   }
+        // });
+        
+        // ctrlHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+        if(canvas_obj.regionSelect!==undefined)
+        {
+          if(canvas_obj.regionSelect.pt1===undefined || canvas_obj.regionSelect.pt2===undefined)
+          {
+            return;
+          }
+      
+          let pt1 = canvas_obj.regionSelect.pt1;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
+          let pt2 = canvas_obj.regionSelect.pt2;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
+           
+          
+          // console.log(canvas_obj.regionSelect);
+          let x,y,w,h;
+      
+          x=pt1.x;
+          w=pt2.x-pt1.x;
+      
+          y=pt1.y;
+          h=pt2.y-pt1.y;
+      
+      
+          if(w<0){
+            x+=w;
+            w=-w;
+          }
+          
+          if(h<0){
+            y+=h;
+            h=-h;
+          }
+          _this.sel_region={
+            x,y,w,h
+          }
+        }
+      }
+      else//draw
+      {
+        if(Local_IMCM!==undefined)
+        {
+          g.ctx.save();
+          let scale=Local_IMCM.image_info.scale;
+          g.ctx.scale(scale,scale);
+          g.ctx.translate(-0.5, -0.5);
+          g.ctx.drawImage(_this.imgCanvas, 0, 0);
+          g.ctx.restore();
+        }
+        // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+       
+
+        let ctx = g.ctx;
+        
+
+        if(canvas_obj.regionSelect!==undefined && _this.sel_region!==undefined)
+        {
+          ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+          
+          drawRegion(g,canvas_obj,_this.sel_region,canvas_obj.rUtil.getIndicationLineSize());
+      
+        }
+      }
+
+      
+      if(renderHook)
+      {
+        // renderHook(ctrl_or_draw,g,canvas_obj,newDef);
+      }
+    }
+    }/>
+
+  </div>;
+  
+}
+
+
+
 function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetupInfo:type_CameraInfo, CoreAPI:BPG_WS,onCameraSetupUpdate:(caminfo:type_CameraInfo)=>void}){
 
   const _this = useRef<any>({
@@ -1076,6 +2440,13 @@ function InspTargetUI_MUX(param:CompParam_InspTarUI)
 {
   if(param.def.type=="ColorRegionDetection")
   return <SingleTargetVIEWUI_ColorRegionDetection {...param} />;
+
+  if(param.def.type=="Orientation_ColorRegionOval")
+  return <SingleTargetVIEWUI_Orientation_ColorRegionOval {...param} />;
+
+
+  if(param.def.type=="SurfaceCheckSimple")
+  return <SingleTargetVIEWUI_SurfaceCheckSimple {...param} />;
 
 
   return  <></>;

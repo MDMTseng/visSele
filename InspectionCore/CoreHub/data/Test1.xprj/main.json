@@ -32,7 +32,7 @@
       "vendor": "MV-CA050-11UC",
       "model": "00F92938639",
       "serial_nbr": "Hikrobot",
-      "available": true,
+      "available": false,
       "exposure": 16666,
       "frame_rate": 7,
       "analog_gain": 4,
@@ -53,10 +53,10 @@
   ],
   "InspTars": [
     {
-      "id": "rule1"
+      "id": "rule2"
     },
     {
-      "id": "testRule"
+      "id": "regionInspection"
     },
     {
       "id": "ImTran"
