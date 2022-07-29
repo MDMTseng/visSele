@@ -1207,8 +1207,8 @@ void MStp::BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
   int32_t D = (seg->steps-seg->cur_step);
   
 
-  int32_t deAccReqD=DeAccDistNeeded(seg->vcur,  seg->vto,(int32_t)a2);
-  // int32_t deAccReqD=(int32_t)DeAccDistNeeded_f(seg->vcur, seg->vto, a2);
+  // int32_t deAccReqD=DeAccDistNeeded(seg->vcur,  seg->vto,(int32_t)a2);
+  int32_t deAccReqD=(int32_t)DeAccDistNeeded_f(seg->vcur, seg->vto, a2);
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
 

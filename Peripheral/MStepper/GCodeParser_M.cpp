@@ -84,7 +84,7 @@ int GCodeParser_M::ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F)
   int ret = FindFloat(AXIS_GDX_FEEDRATE,blkIdxes,blkIdxesL,tmpF);
   if(tmpF<0)ret=-1;
   // if(tmpF>400)ret=-1;// HACK: TODO: speed cap
-  if(tmpF>400)tmpF=400;// HACK: TODO: speed cap
+  // if(tmpF>400)tmpF=400;// HACK: TODO: speed cap
   if(ret==0)
   {
     tmpF=unit2Pulse_conv(AXIS_IDX_FEEDRATE,tmpF);

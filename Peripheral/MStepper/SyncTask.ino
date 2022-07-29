@@ -140,15 +140,15 @@ class MStp_M:public MStp{
     // pinMode(PIN_OUT_1, OUTPUT);    
     // pinMode(PIN_DBG, OUTPUT);    
 
-    int general_max_freq=20000;
+    int general_max_freq=70000;
     axisInfo[AXIS_IDX_X].VirtualStep=1;
     axisInfo[AXIS_IDX_X].AccW=1;
-    axisInfo[AXIS_IDX_X].MaxSpeedJumpW=1;
+    axisInfo[AXIS_IDX_X].MaxSpeedJumpW=2;
     axisInfo[AXIS_IDX_X].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_Y].VirtualStep=1;
     axisInfo[AXIS_IDX_Y].AccW=1;
-    axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
+    axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=2;
     axisInfo[AXIS_IDX_Y].MaxSpeed=general_max_freq;
 
     auto mainAXIS_VSTEP=axisInfo[AXIS_IDX_Y].VirtualStep;
@@ -220,7 +220,7 @@ class MStp_M:public MStp{
   {
     
 
-    spi1= direct_spi_init(1,10*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
+    spi1= direct_spi_init(1,30*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
     spi_device_select(spi1,1);
 
     ShiftRegAssign(0,0);
@@ -1091,7 +1091,8 @@ void setup()
 {
   
   // noInterrupts();
-  Serial.begin(115200);//230400);
+  // Serial.begin(115200);//230400);
+  Serial.begin(115200);
   Serial.setRxBufferSize(500);
   // // setup_comm();
   timer = timerBegin(0, 8, true);
