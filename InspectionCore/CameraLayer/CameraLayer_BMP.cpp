@@ -116,7 +116,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
         else
         {
           // acvCloneImage(&img_load,&img,-1);
-          if(0)
+          if(1)
           {
 
             memcpy(imgBuffer,img_load.CVector[0],newH*newW*channelCount);
@@ -135,14 +135,17 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
                 int N=0;
                 if(noiseRange>0)
                   N= (rand()%(2*noiseRange+1))-noiseRange;
-                int d =N+ ((img_load.CVector[li][lj*3]*tExp)>>13);
-                
-                if(d<0)d=0;
-                else if(d>255)d=255;
-                
-                imgBuffer[(i*newW+j)*channelCount+0]=
-                imgBuffer[(i*newW+j)*channelCount+1]=
-                imgBuffer[(i*newW+j)*channelCount+2]=d;
+
+                for(int ix=0;ix<3;ix++)
+                {
+                  int d =N+ ((img_load.CVector[li][lj*3+ix]*tExp)>>13);
+                  
+                  if(d<0)d=0;
+                  else if(d>255)d=255;
+                  
+                  imgBuffer[(i*newW+j)*channelCount+ix]=d;
+
+                }
                 // img.CVector[i][j*3] = 
                 // img.CVector[i][j*3+1] =
                 // img.CVector[i][j*3+2] = d;
