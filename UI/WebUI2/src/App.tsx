@@ -3439,8 +3439,8 @@ function App() {
 
       CNC_api.connect({
         // uart_name:"/dev/cu.SLAB_USBtoUART",
-        uart_name:"/dev/cu.usbserial-1410",
-        baudrate:115200
+        uart_name:"/dev/cu.usbserial-1420",
+        baudrate:460800//230400//115200
       });
     }
 

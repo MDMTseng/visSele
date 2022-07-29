@@ -207,6 +207,9 @@ static int simple_uart_set_config(struct simple_uart *sc, int speed, const char 
     case 230400:
         sp = B230400;
         break;
+    case 460800:
+        sp = 460800;
+        break;
     case 921600:
         sp = 921600;
         break;
