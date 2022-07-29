@@ -636,6 +636,8 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
     cam_json_info.assign(buff);
   }
 
+
+  arv_camera_set_string (camera, "BalanceWhiteAuto", "Off",NULL);
   arv_camera_set_string (camera, "TriggerSource", "Anyway",NULL);
   arv_camera_set_string (camera, "TriggerMode", "On", NULL);
   GError *err = NULL;
@@ -703,6 +705,8 @@ CameraLayer_Aravis::~CameraLayer_Aravis()
 }
 CameraLayer::status CameraLayer_Aravis::SetMirror(int Dir, int en)
 {
+
+  arv_camera_stop_acquisition (camera, NULL);
   if(Dir==0)
   {
     arv_camera_set_boolean(camera,"ReverseX",en,NULL);
@@ -711,6 +715,10 @@ CameraLayer::status CameraLayer_Aravis::SetMirror(int Dir, int en)
   {
     arv_camera_set_boolean(camera,"ReverseY",en,NULL);
   }
+
+
+  arv_camera_start_acquisition (camera, NULL);
+
   return CameraLayer::ACK;
 }
 CameraLayer::status CameraLayer_Aravis::SetROIMirror(int Dir, int en)
@@ -1105,7 +1113,12 @@ CameraLayer::status CameraLayer_Aravis::SetBalckLevel(float blvl)
 CameraLayer::status CameraLayer_Aravis::SetRGain(float gain)
 {
   GError *err = NULL;
-  arv_camera_set_integer(camera,"RGain",(int)gain,&err);
+  
+  // arv_camera_set_integer(camera,"RGain",(int)gain,&err);
+  
+  arv_camera_set_string (camera, "BalanceRatioSelector", "Red",NULL);
+  arv_camera_set_integer(camera,"BalanceRatio",(int)gain,&err);
+
 
   if (err != NULL)
   {
@@ -1122,7 +1135,10 @@ CameraLayer::status CameraLayer_Aravis::SetRGain(float gain)
 CameraLayer::status CameraLayer_Aravis::SetGGain(float gain)
 {
   GError *err = NULL;
-  arv_camera_set_integer(camera,"GGain",(int)gain,&err);
+  // arv_camera_set_integer(camera,"GGain",(int)gain,&err);
+
+  arv_camera_set_string (camera, "BalanceRatioSelector", "Green",NULL);
+  arv_camera_set_integer(camera,"BalanceRatio",(int)gain,&err);
 
   if (err != NULL)
   {
@@ -1139,7 +1155,10 @@ CameraLayer::status CameraLayer_Aravis::SetGGain(float gain)
 CameraLayer::status CameraLayer_Aravis::SetBGain(float gain)
 {
   GError *err = NULL;
-  arv_camera_set_integer(camera,"BGain",(int)gain,&err);
+  // arv_camera_set_integer(camera,"BGain",(int)gain,&err);
+
+  arv_camera_set_string (camera, "BalanceRatioSelector", "Blue",NULL);
+  arv_camera_set_integer(camera,"BalanceRatio",(int)gain,&err);
 
   if (err != NULL)
   {
