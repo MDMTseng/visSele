@@ -514,25 +514,10 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   }
 
   // SetROI(0,0,200,200,0,0);
-  if (arv_camera_is_uv_device(camera))
-  {
-    guint min, max;
-
-    arv_camera_uv_get_bandwidth_bounds(camera, &min, &max, NULL);
-    printf("uv bandwidth limit    = %d [%d..%d]\n", arv_camera_uv_get_bandwidth(camera, NULL), min, max);
-  }
-  if (arv_camera_is_gv_device(camera))
-  {
-    printf("gv n_stream channels  = %d\n", arv_camera_gv_get_n_stream_channels(camera, NULL));
-    printf("gv current channel    = %d\n",
-           arv_camera_gv_get_current_stream_channel(camera, NULL));
-    g_print("gv packet delay       = %" G_GINT64_FORMAT " ns\n",
-            arv_camera_gv_get_packet_delay(camera, NULL));
-    printf("gv packet size        = %d bytes\n", arv_camera_gv_get_packet_size(camera, NULL));
-  }
 
   arv_camera_set_trigger(camera, "Software", NULL);
 
+  arv_camera_set_pixel_format(camera,ARV_PIXEL_FORMAT_BGR_8_PACKED,NULL);//this need to be before arv_camera_create_stream
   stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
   
   // arv_camera_set_chunk_mode(camera,true,NULL);
@@ -592,7 +577,7 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   }
 
 
-  arv_camera_set_pixel_format(camera,ARV_PIXEL_FORMAT_BGR_8_PACKED,NULL);
+  //
   g_signal_connect(stream, "new-buffer", G_CALLBACK(s_STREAM_NEW_BUFFER_CB), this);
 
   arv_stream_set_emit_signals(stream, TRUE);
@@ -650,6 +635,26 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
     );
     cam_json_info.assign(buff);
   }
+
+  arv_camera_set_string (camera, "TriggerSource", "Anyway",NULL);
+  arv_camera_set_string (camera, "TriggerMode", "On", NULL);
+  GError *err = NULL;
+
+  arv_camera_stop_acquisition (camera, &err);
+  if (err)
+  {
+    LOGE("ERR code:%d msg:%s", err->code, err->message);
+    g_clear_error(&err);
+  }
+  
+  
+  arv_camera_start_acquisition (camera, &err);
+  if (err)
+  {
+    LOGE("ERR code:%d msg:%s", err->code, err->message);
+    g_clear_error(&err);
+  }
+
   //
 
   // CameraLayer_Aravis::cam_info &ci=self_info;
@@ -807,15 +812,15 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
 
 
     
-  if(acquisition_started)
-  {
-    arv_camera_start_acquisition (camera, &err);
-    if (err)
-    {
-      LOGI("ERR code:%d msg:%s", err->code, err->message);
-      g_clear_error(&err);
-    }
-  }
+  // if(acquisition_started)
+  // {
+  //   arv_camera_start_acquisition (camera, &err);
+  //   if (err)
+  //   {
+  //     LOGI("ERR code:%d msg:%s", err->code, err->message);
+  //     g_clear_error(&err);
+  //   }
+  // }
 
   return CameraLayer::ACK;
 }
@@ -849,16 +854,16 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
 
 
 
-    {
-      arv_camera_stop_acquisition(camera, &err);
-      if(err)
-      {
-        LOGD("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
-        err=NULL;
-        g_clear_error(&err);
-        return CameraLayer::NAK;
-      }
-    }
+    // {
+    //   arv_camera_stop_acquisition(camera, &err);
+    //   if(err)
+    //   {
+    //     LOGE("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+    //     err=NULL;
+    //     g_clear_error(&err);
+    //     return CameraLayer::NAK;
+    //   }
+    // }
 
 
   takeCount = -1;
@@ -874,6 +879,11 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
         err=NULL;
         g_clear_error(&err);
         return CameraLayer::NAK;
+      }
+      else
+      {
+        
+        LOGE("TriggerMode OFF");
       }
     }
 
@@ -892,6 +902,11 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
         g_clear_error(&err);
         return CameraLayer::NAK;
       }
+      else
+      {
+        
+        LOGE("TriggerMode ON");
+      }
     }
 
     arv_camera_set_string (camera, "TriggerSource", "Anyway", &err);
@@ -901,6 +916,11 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
       err=NULL;
       g_clear_error(&err);
     }
+    else
+    {
+      
+      LOGE("TriggerSource Anyway");
+    }
     arv_camera_set_string (camera, "TriggerActivation", "RisingEdge", &err);
 
     if(err)
@@ -908,6 +928,11 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
       LOGE("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
       err=NULL;
       g_clear_error(&err);
+    }
+    else
+    {
+      
+      LOGE("TriggerActivation RisingEdge");
     }
     
     if(err)
@@ -919,17 +944,17 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
     }
   }
 
-  {
-    arv_camera_start_acquisition(camera, &err);
-    if(err)
-    {
-      LOGD("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
-      err=NULL;
-      g_clear_error(&err);
-      return CameraLayer::NAK;
-    }
-    acquisition_started=true;
-  }
+  // {
+  //   arv_camera_start_acquisition(camera, &err);
+  //   if(err)
+  //   {
+  //     LOGE("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+  //     err=NULL;
+  //     g_clear_error(&err);
+  //     return CameraLayer::NAK;
+  //   }
+  //   acquisition_started=true;
+  // }
 
   // if (type == 1)
   // {
