@@ -556,9 +556,9 @@ void InspectionTarget_ImageDataTransfer::thread_run()
     LOGI("curInput->jInfo:%p ",curInput->jInfo);
     int imgCHID=curInput->StreamInfo.channel_id;
     int downSample=curInput->StreamInfo.downsample;
-    if(downSample<2)
+    if(downSample<1)
     {
-      downSample=1;
+      downSample=10;
     }
     // curInput->imgSets./
 
@@ -958,6 +958,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       {do{
         char *_cam_id = JFetch_STRING(json, "id");
         if(_cam_id==NULL)break;
+        LOGE("===========start_stream===========");
         std::string id=std::string(_cam_id);
         CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
         if(cami==NULL)break;
@@ -1009,7 +1010,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           double *val = JFetch_NUMBER(json, "trigger_mode");
           if (val)
           {
-            cami->camera->TriggerMode((int)*val);
+            LOGE("trigger_mode:%f",*val);
+            if(cami->camera->TriggerMode((int)*val)==CameraLayer::NAK)
+            {
+              LOGE("FAILED");
+            }
             // retV = 0;
           }
         }
