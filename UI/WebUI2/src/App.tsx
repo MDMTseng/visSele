@@ -2375,7 +2375,7 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
     {/* <pre>{
       JSON.stringify(camSetupInfo,null,2)
     }</pre> */}
-    esposure:<InputNumber value={camSetupInfo.exposure} onChange={(num)=>{
+    exposure:<InputNumber value={camSetupInfo.exposure} onChange={(num)=>{
       onCameraSetupUpdate({...camSetupInfo,exposure:num})
     }}/>
     <br/>
@@ -2385,6 +2385,16 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
     <br/>
     frame_rate:<InputNumber value={camSetupInfo.frame_rate} onChange={(num)=>{
       onCameraSetupUpdate({...camSetupInfo,frame_rate:num})
+    }}/>
+    <br/>
+    RGain:<InputNumber value={camSetupInfo.RGain} onChange={(num)=>{
+      onCameraSetupUpdate({...camSetupInfo,RGain:num})
+    }}/>
+    GGain:<InputNumber value={camSetupInfo.GGain} onChange={(num)=>{
+      onCameraSetupUpdate({...camSetupInfo,GGain:num})
+    }}/>
+    BGain:<InputNumber value={camSetupInfo.BGain} onChange={(num)=>{
+      onCameraSetupUpdate({...camSetupInfo,BGain:num})
     }}/>
     <br/>
     gamma:<InputNumber value={camSetupInfo.gamma} onChange={(num)=>{
