@@ -213,18 +213,12 @@ class MStp_M:public MStp{
   
     doCheckHardLimit=false;
 
-    
-  }
-
-  void INIT()
-  {
-    
-
     spi1= direct_spi_init(1,40*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
     spi_device_select(spi1,1);
 
     ShiftRegAssign(0,0);
     ShiftRegUpdate();
+    
   }
 
 
@@ -236,11 +230,11 @@ class MStp_M:public MStp{
 
   void stopTimer(){
     
-    if(timerRunning==true)
-    {
-      timerAlarmDisable(timer); 
-      timerRunning=false;
-    }
+    // if(timerRunning==true)
+    // {
+    //   timerAlarmDisable(timer); 
+    //   timerRunning=false;
+    // }
     // __PRT_I_(">\n");
   }
   void startTimer(){
@@ -596,7 +590,7 @@ void IRAM_ATTR onTimer()
   }
   
 
-  if(T==0)
+  if(T==0)//go idle update speed
   {
     T=100*1000;
     
@@ -1098,14 +1092,12 @@ void setup()
   timer = timerBegin(0, 8, true);
   
   timerAttachInterrupt(timer, &onTimer, true);
-  // timerAlarmWrite(timer, 1000, true);
   timerAlarmEnable(timer);
   pinMode(PIN_DBG, OUTPUT);
   pinMode(PIN_DBG2, OUTPUT);
   pinMode(pin_TRIG_595, OUTPUT);
   pinMode(pin_SH_165, OUTPUT);
   pinMode(PIN_LED, OUTPUT);
-  mstp.INIT();
 }
 
 void busyLoop(uint32_t count)

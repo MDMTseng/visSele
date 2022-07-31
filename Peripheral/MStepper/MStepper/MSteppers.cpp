@@ -1513,7 +1513,11 @@ uint32_t MStp::taskRun()
         if(p_runSeg==NULL)
         {
           stopTimer();
-          return 0;//EXIT no new segment
+
+          BlockPinInfoUpdate(axis_dir,pre_indexes,0);//keep pin update
+          BlockPulEffect(pre_indexes,axis_collectpul);//wait for spi input
+
+          return 0;//EXIT, no new segment,go idle
         }
         else
         {
