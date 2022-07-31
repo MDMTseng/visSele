@@ -220,7 +220,7 @@ class MStp_M:public MStp{
   {
     
 
-    spi1= direct_spi_init(1,30*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
+    spi1= direct_spi_init(1,40*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
     spi_device_select(spi1,1);
 
     ShiftRegAssign(0,0);

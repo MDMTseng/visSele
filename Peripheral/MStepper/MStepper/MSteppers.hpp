@@ -44,6 +44,10 @@ struct MSTP_segment
   int virtual_axis_idx;
   uint32_t steps;
   uint32_t cur_step;
+  
+  uint32_t dir_bit;
+  xVec runvec_abs;
+
   float JunctionNormCoeff;
   float JunctionNormMaxDiff;
   float vto_JunctionMax;
@@ -115,7 +119,7 @@ public:
   bool doCheckHardLimit=false;
   xVec limit1,limit2;
 
-  xVec posvec;
+  xVec vec_abs;
   xVec curPos_c;
   xVec curPos_mod;
   // xVec curPos_residue;
@@ -152,7 +156,7 @@ public:
   bool VecAdd(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
   bool VecTo(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
   uint32_t T_next=0;
-  void BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *curSeg) MSTP_SEG_PREFIX;
+  void CalcNextStep(MSTP_SEG_PREFIX MSTP_segment *curSeg) MSTP_SEG_PREFIX;
 
   // virtual void BlockRunEffect(uint32_t idxes)=0;
   virtual void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)=0;

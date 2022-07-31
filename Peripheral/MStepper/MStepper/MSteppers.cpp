@@ -743,6 +743,26 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
   vecAssign(newSeg.to,VECTo);
   vecAssign(newSeg.runvec,vecSub(VECTo,lastTarLoc));
 
+  {
+    uint32_t _axis_dir=0;
+    xVec _vec_abs=newSeg.runvec;
+    for(int k=0;k<MSTP_VEC_SIZE;k++)
+    {
+      auto vecgo=_vec_abs.vec[k];
+      if(vecgo<0)
+      {
+        _vec_abs.vec[k]=-vecgo;
+        _axis_dir|=1<<k;
+      }
+      else
+      {
+        _vec_abs.vec[k]=vecgo;
+      }
+    }
+    newSeg.runvec_abs=_vec_abs;
+    newSeg.dir_bit=_axis_dir;
+  }
+
   newSeg.vcur=0;
   int main_idx=0;
   int main_vidx=0;
@@ -1195,8 +1215,7 @@ void MStp::printSEGInfo()
 //   return (preV+decision)/2;
 // }
 
-
-void MStp::BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
+void nextIntervalCalc(MSTP_SEG_PREFIX MSTP_segment *seg,float minSpeed,float maxSpeedInc) MSTP_SEG_PREFIX
 {
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
 
@@ -1267,6 +1286,11 @@ void MStp::BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
     }
   }
   seg->vcur=vcur;
+}
+
+
+void MStp::CalcNextStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
+{
   // seg->vcur=seg->vcen;
   // {
   //   int space=3;
@@ -1356,9 +1380,9 @@ void MStp::BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
 
 
 
-    int32_t steps_curr=posvec.vec[k];
+    int32_t vele_abs=vec_abs.vec[k];
     int32_t &curPos_mod_vec=curPos_mod.vec[k];
-    curPos_mod_vec+=steps_curr;
+    curPos_mod_vec+=vele_abs;
     if(curPos_mod_vec>=steps_main)//a step forward
     {
       curPos_mod_vec-=steps_main;
@@ -1371,7 +1395,7 @@ void MStp::BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
         //        ^hit 12>10 mode =2 (definitely less than steps_curr)
         //        residue =steps_curr- mode = 3-2 =1  
         //        ratio   = residue/steps_curr = 1/3
-        int32_t residue=steps_curr-curPos_mod_vec;
+        int32_t residue=vele_abs-curPos_mod_vec;
         //float ratio=residue/steps_curr;
 
         // main axis standard pulse
@@ -1397,7 +1421,7 @@ void MStp::BlockRunStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
         //     1st   2nd
 
 
-        if((residue<<1)<=(steps_curr))//is ratio<=0.5 then it blong to the first section
+        if((residue<<1)<=(vele_abs))//is ratio<=0.5 then it blong to the first section
           _axis_pul_1st|=1<<k;
         else
           _axis_pul_2nd|=1<<k;
@@ -1445,7 +1469,7 @@ uint32_t MStp::taskRun()
     switch(p_runSeg->type)//========Run with current segment
     {
       case MSTP_segment_type::seg_line:
-      
+        auto *cp_vec=curPos_c.vec;
         for(int i=0;i<MSTP_VEC_SIZE;i++)//calc run psition
         {
           uint32_t sele=(1<<i);
@@ -1453,11 +1477,11 @@ uint32_t MStp::taskRun()
           {
             if(axis_dir&sele)
             {
-              curPos_c.vec[i]--;
+              cp_vec[i]--;
             }
             else
             {
-              curPos_c.vec[i]++;
+              cp_vec[i]++;
             }
           }
         }
@@ -1473,6 +1497,7 @@ uint32_t MStp::taskRun()
 
   //tskrun_state ==0 means () or ()
   float prevcur=0;
+  bool intervalUpdate=false;
   if(tskrun_state==0)//
   {
 
@@ -1549,43 +1574,14 @@ uint32_t MStp::taskRun()
             
             __PRT_D_(">[%f\n",prevcur);
             p_runSeg->vcur= prevcur*p_runSeg->JunctionNormCoeff;
-            uint32_t _axis_dir=0;
-            xVec rvec=p_runSeg->runvec;
-            for(int k=0;k<MSTP_VEC_SIZE;k++)
-            {
-              int32_t &rvec_vec=rvec.vec[k];
-              if(rvec_vec==0)
-              {
-                _axis_dir|=axis_dir&(1<<k);//if no movement use the old info
-              }
-              if(rvec_vec<0)
-              {
-                posvec.vec[k]=-rvec_vec;
-                _axis_dir|=1<<k;
-              }
-              else
-              {
-                posvec.vec[k]=rvec_vec;
-              }
-            }
-            axis_dir=_axis_dir;
+            axis_dir=p_runSeg->dir_bit;
+            vec_abs=p_runSeg->runvec_abs;
           }
           
 
-          BlockRunStep(p_runSeg);
-          {
-            uint32_t vcur=p_runSeg->vcur;
-            if(vcur<(uint32_t)minSpeed)
-            {
-              vcur=(uint32_t)minSpeed;
-            }
+          CalcNextStep(p_runSeg);
 
-            uint32_t T = TICK2SEC_BASE/(uint32_t)vcur;
-            p_runSeg->step_period=(T);
-            T_next=p_runSeg->step_period;
-          }
-          
-
+          intervalUpdate=true;
           pre_indexes=0;
           isMidPulTrig=false;
           axis_collectpul=0;
@@ -1646,6 +1642,25 @@ uint32_t MStp::taskRun()
     axis_collectpul=_axis_collectpul1;
     _axis_collectpul1=pre_indexes;
     BlockPinInfoUpdate(axis_dir,pre_indexes,0);
+
+    if(intervalUpdate)
+    {
+      
+      nextIntervalCalc(p_runSeg, minSpeed, maxSpeedInc);
+      
+      {
+        uint32_t vcur=p_runSeg->vcur;
+        if(vcur<(uint32_t)minSpeed)
+        {
+          vcur=(uint32_t)minSpeed;
+        }
+
+        uint32_t T = TICK2SEC_BASE/(uint32_t)vcur;
+        p_runSeg->step_period=(T);
+        T_next=p_runSeg->step_period;
+      }
+      
+    }
     return T_next>>1;
   }
   
