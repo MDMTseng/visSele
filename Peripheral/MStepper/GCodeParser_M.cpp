@@ -12,6 +12,11 @@ using namespace std;
 
 
 
+bool CheckHead(const char *str1,const char *str2)
+{
+  return strncmp(str1, str2, strlen(str2))==0;
+}
+
 GCodeParser_M::GCodeParser_M(MStp *mstp)
 {
   _mstp=mstp;
@@ -67,14 +72,108 @@ int GCodeParser_M::ReadxVecData(char **blkIdxes,int blkIdxesL,xVec &retVec)
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R2,AXIS_GDX_R2);
 
   
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z2,AXIS_GDX_Z3);
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R2,AXIS_GDX_R3);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z3,AXIS_GDX_Z3);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R3,AXIS_GDX_R3);
 
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z2,AXIS_GDX_Z4);
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R2,AXIS_GDX_R4);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z4,AXIS_GDX_Z4);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R4,AXIS_GDX_R4);
 
   return 0;
 }
+
+
+int axisGDX2IDX(char *GDXCode,int fallback=-1)
+{
+  if(CheckHead(GDXCode,AXIS_GDX_X))
+  {
+    return AXIS_IDX_X;
+  }
+  else if(CheckHead(GDXCode,AXIS_GDX_Y))
+  {
+    return AXIS_IDX_Y;
+  }
+
+  else if(CheckHead(GDXCode,AXIS_GDX_Z1))
+  {
+    return AXIS_IDX_Z1;
+  }
+  else if(CheckHead(GDXCode,AXIS_GDX_R1))
+  {
+    return AXIS_IDX_R1;
+  }
+
+  else if(CheckHead(GDXCode,AXIS_GDX_Z2))
+  {
+    return AXIS_IDX_Z2;
+  }
+  else if(CheckHead(GDXCode,AXIS_GDX_R2))
+  {
+    return AXIS_IDX_R2;
+  }
+  
+  else if(CheckHead(GDXCode,AXIS_GDX_Z3))
+  {
+    return AXIS_IDX_Z3;
+  }
+  else if(CheckHead(GDXCode,AXIS_GDX_R3))
+  {
+    return AXIS_IDX_R3;
+  }
+
+  else if(CheckHead(GDXCode,AXIS_GDX_Z4))
+  {
+    return AXIS_IDX_Z4;
+  }
+  else if(CheckHead(GDXCode,AXIS_GDX_R4))
+  {
+    return AXIS_IDX_R4;
+  }
+
+  if(CheckHead(GDXCode,AXIS_GDX_FEEDRATE))
+  {
+    return AXIS_IDX_FEEDRATE;
+  }
+  if(CheckHead(GDXCode,AXIS_GDX_ACCELERATION))
+  {
+    return AXIS_IDX_ACCELERATION;
+  }
+  if(CheckHead(GDXCode,AXIS_GDX_DEACCELERATION))
+  {
+    return AXIS_IDX_DEACCELERATION;
+  }
+  if(CheckHead(GDXCode,AXIS_GDX_FEED_ON_AXIS))
+  {
+    return AXIS_IDX_FEED_ON_AXIS;
+  }
+
+  return fallback;
+}
+
+const char* axisIDX2GDX(int IDXCode)
+{
+  switch(IDXCode)
+  {
+
+    case AXIS_IDX_X:return AXIS_GDX_X;
+    case AXIS_IDX_Y:return AXIS_GDX_Y;
+    case AXIS_IDX_Z1:return AXIS_GDX_Z1;
+    case AXIS_IDX_R1:return AXIS_GDX_R1;
+    case AXIS_IDX_Z2:return AXIS_GDX_Z2;
+    case AXIS_IDX_R2:return AXIS_GDX_R2;
+    case AXIS_IDX_Z3:return AXIS_GDX_Z3;
+    case AXIS_IDX_R3:return AXIS_GDX_R3;
+    case AXIS_IDX_Z4:return AXIS_GDX_Z4;
+    case AXIS_IDX_R4:return AXIS_GDX_R4;
+
+    case AXIS_IDX_FEEDRATE:return AXIS_GDX_FEEDRATE;
+    case AXIS_IDX_ACCELERATION:return AXIS_GDX_ACCELERATION;
+    case AXIS_IDX_DEACCELERATION:return AXIS_GDX_DEACCELERATION;
+    case AXIS_IDX_FEED_ON_AXIS:return AXIS_GDX_FEED_ON_AXIS;
+  }
+  return NULL;
+}
+
+
 int GCodeParser_M::ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F)
 {
   vec=isAbsLoc?vecSub(MTPSYS_getLastLocInStepperSystem(),pos_offset):(xVec){0};
@@ -210,11 +309,6 @@ int GCodeParser_M::FindGMEnd_idx(char **blkIdxes,int blkIdxesL)
   return j;
 }
 
-
-bool GCodeParser_M::CheckHead(const char *str1,const char *str2)
-{
-  return strncmp(str1, str2, strlen(str2))==0;
-}
 
 
 int GCodeParser_M::MTPSYS_MachZeroRet(uint32_t axis_index,uint32_t sensor_pin,int distance,int speed,void* context)
@@ -357,51 +451,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           char AxisCode[10];
           if(FindStr(AXIS_GDX_FEED_ON_AXIS,blockInitial+j,blockCount-j,AxisCode)==0)
           {
-            if(CheckHead(AxisCode,AXIS_GDX_X))
-            {
-              exinfo.speedOnAxisIdx=AXIS_IDX_X;
-            }
-            else if(CheckHead(AxisCode,AXIS_GDX_Y))
-            {
-              exinfo.speedOnAxisIdx=AXIS_IDX_Y;
-            }
-
-            else if(CheckHead(AxisCode,AXIS_GDX_Z1))
-            {
-              exinfo.speedOnAxisIdx=AXIS_IDX_Z1;
-            }
-            else if(CheckHead(AxisCode,AXIS_GDX_R1))
-            {
-              exinfo.speedOnAxisIdx=AXIS_IDX_R1;
-            }
-
-            else if(CheckHead(AxisCode,AXIS_GDX_Z2))
-            {
-              exinfo.speedOnAxisIdx=AXIS_IDX_Z2;
-            }
-            else if(CheckHead(AxisCode,AXIS_GDX_R2))
-            {
-              exinfo.speedOnAxisIdx=AXIS_IDX_R2;
-            }
-            
-            else if(CheckHead(AxisCode,AXIS_GDX_Z3))
-            {
-              exinfo.speedOnAxisIdx=AXIS_IDX_Z3;
-            }
-            else if(CheckHead(AxisCode,AXIS_GDX_R3))
-            {
-              exinfo.speedOnAxisIdx=AXIS_IDX_R3;
-            }
-
-            else if(CheckHead(AxisCode,AXIS_GDX_Z4))
-            {
-              exinfo.speedOnAxisIdx=AXIS_IDX_Z4;
-            }
-            else if(CheckHead(AxisCode,AXIS_GDX_R4))
-            {
-              exinfo.speedOnAxisIdx=AXIS_IDX_R4;
-            }
-
+            exinfo.speedOnAxisIdx=axisGDX2IDX(AxisCode,-1);
           }
 
         }
@@ -518,6 +568,50 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         else
         {
           retStatus=statusReducer(retStatus,GCodeParser_Status::GCODE_PARSE_ERROR);
+        }
+      }
+      else if(CheckHead(cblk, "M114"))//Get current position
+      {//
+      
+        if(p_jnote)
+        {
+
+          xVec curPulseLoc= _mstp->curPos_c;
+          auto &jnote=*p_jnote;
+          auto jobjM144 = jnote.createNestedObject("M144");
+          auto jobjStp = jobjM144.createNestedObject("step");
+          auto jobjUnit = jobjM144.createNestedObject("unit");
+          for(int i=0;i<MSTP_VEC_SIZE;i++)
+          {
+            const char* gdx = axisIDX2GDX(i);
+            if(gdx==NULL)continue;
+            auto stepLoc=curPulseLoc.vec[i];
+            jobjStp[gdx]=stepLoc;
+            float unitLoc =Pulse2Unit_conv(i,stepLoc);
+            jobjUnit[gdx]=unitLoc;
+
+
+          }
+          retStatus=GCodeParser_Status::TASK_OK;
+        }
+
+      }
+      else if(CheckHead(cblk, "M226"))//Wait for Pin State,M226 P<pin> [S<state>]
+      {//TODO
+      }
+      else if(CheckHead(cblk, "M400"))//Wait for motion stops
+      {//TODO
+        while(1)
+        {//wait
+          if(_mstp->p_runSeg==NULL)
+          {
+            retStatus=GCodeParser_Status::TASK_OK;
+            break;
+          }
+          else
+          {//to let variable updates between main thread and 
+            yield();
+          }
         }
       }
       else

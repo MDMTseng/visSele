@@ -4,6 +4,7 @@
 #include "GCodeParser.hpp"
 
 #include "MSteppers.hpp"
+#include <ArduinoJson.h>
 using namespace std;
 
 
@@ -25,9 +26,12 @@ public:
   //I: ignore protection, P: pin number, S:state 0/1 or 0~255 PWM, T: pin setup (0:input, 1:output, 2:input_pullup, 3:input_pulldown)
   virtual bool MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T);
 
+  JsonDocument *p_jnote;
+  void putJSONNote(JsonDocument* jnote){this->p_jnote=jnote;}
 
   float unit2Pulse(float dist,float pulses_per_mm);
   virtual float unit2Pulse_conv(int axisIdx,float dist)=0;
+  virtual float Pulse2Unit_conv(int axisIdx,float pulseCount)=0;
 
   int FindFloat(const char *prefix,char **blkIdxes,int blkIdxesL,float &retNum);
   int FindInt32(const char *prefix,char **blkIdxes,int blkIdxesL,int32_t &retNum);
@@ -44,8 +48,6 @@ public:
   float latestF= 1000;
   int ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F);
 
-
-  bool CheckHead(const char *str1,const char *str2);
 
   GCodeParser::GCodeParser_Status parseLine();
   void onError(int code);

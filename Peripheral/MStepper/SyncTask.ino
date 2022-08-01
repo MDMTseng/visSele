@@ -100,6 +100,7 @@ ResourcePool<MSTP_SegCtx>::ResourceData resbuff[SegCtxSize];
 ResourcePool <MSTP_SegCtx>sctx_pool(resbuff,sizeof(resbuff)/sizeof(resbuff[0]));
 
 
+#define _TICK2SEC_BASE_ (10*1000*1000)
 class MStp_M:public MStp{
   public:
 
@@ -114,7 +115,7 @@ class MStp_M:public MStp{
   MStp_M(MSTP_segment *buffer, int bufferL):MStp(buffer,bufferL)
   {
     
-    TICK2SEC_BASE=10*1000*1000;
+    this->TICK2SEC_BASE=_TICK2SEC_BASE_;
     main_acc=SUBDIV*2000/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
     minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     main_junctionMaxSpeedJump=minSpeed;//5200;
@@ -229,7 +230,7 @@ class MStp_M:public MStp{
 
 
   void stopTimer(){
-    
+    //do not stop, for constant pull input pins
     // if(timerRunning==true)
     // {
     //   timerAlarmDisable(timer); 
@@ -306,12 +307,16 @@ class MStp_M:public MStp{
 
       case AXIS_IDX_X:
       case AXIS_IDX_Y:
+
       case AXIS_IDX_Z1://rough
       case AXIS_IDX_R1:
+
       case AXIS_IDX_Z2://rough
       case AXIS_IDX_R2:
+
       case AXIS_IDX_Z3://rough
       case AXIS_IDX_R3:
+
       case AXIS_IDX_Z4://rough
       case AXIS_IDX_R4:
       {
@@ -592,7 +597,7 @@ void IRAM_ATTR onTimer()
 
   if(T==0)//go idle update speed
   {
-    T=100*1000;
+    T=_TICK2SEC_BASE_/1000;
     
   }
   // if(timerT_TOP)
@@ -681,6 +686,11 @@ public:
     }
 
     return NAN;
+  }
+  float Pulse2Unit_conv(int axisIdx,float pulseCount)
+  {
+    // __UPRT_D_("unitConv[%s]:%f\n",code,dist);
+    return pulseCount/unit2Pulse_conv(axisIdx,1);//since all the converts for now are direct multiplication
   }
 
 
@@ -922,7 +932,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         
         if( space>0)
         {
+          gcpm.putJSONNote(&retdoc);
           rspAck=(gcpm.runLine(code)==GCodeParser::GCodeParser_Status::TASK_OK);
+          gcpm.putJSONNote(NULL);
           space = mstp.SegQ_Space()-safe_Margin;
           if(space<0)space=0;
           retdoc["buffer_space"]=space;
@@ -1089,7 +1101,7 @@ void setup()
   Serial.begin(460800);
   Serial.setRxBufferSize(500);
   // // setup_comm();
-  timer = timerBegin(0, 8, true);
+  timer = timerBegin(0, 80*1000000/_TICK2SEC_BASE_, true);
   
   timerAttachInterrupt(timer, &onTimer, true);
   timerAlarmEnable(timer);
