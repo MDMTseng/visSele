@@ -10,7 +10,7 @@ using namespace std;
 
 class GCodeParser_M:public GCodeParser{
 public:
-  xVec pos_offset=(xVec){0};
+  xVec pulse_offset=(xVec){0};
   GCodeParser_M(MStp *mstp);
   bool unit_is_inch=false;
 

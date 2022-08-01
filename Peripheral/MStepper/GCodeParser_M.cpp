@@ -176,7 +176,7 @@ const char* axisIDX2GDX(int IDXCode)
 
 int GCodeParser_M::ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F)
 {
-  vec=isAbsLoc?vecSub(MTPSYS_getLastLocInStepperSystem(),pos_offset):(xVec){0};
+  vec=isAbsLoc?vecSub(MTPSYS_getLastLocInStepperSystem(),pulse_offset):(xVec){0};
   ReadxVecData(blkIdxes,blkIdxesL,vec);
 
   float tmpF=NAN;
@@ -396,31 +396,8 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
     // __PRT_D_(">>head=>%c\n",cblk[0]);
     if(cblk[0]=='G')
     {
-      if(CheckHead(cblk, "G28"))
-      {
-        __PRT_D_("G28 GO HOME!!!:");
-        int retErr=0;
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_X,PIN_X_SEN1,50000,MTPSYS_getMinPulseSpeed(),NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,PIN_Y_SEN1,-50000,MTPSYS_getMinPulseSpeed(),NULL);
-        
-        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
-        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z2,PIN_Z2_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
-        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z3,PIN_Z3_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
-        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z4,PIN_Z4_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
 
-        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R1,PIN_R1_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
-        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R2,PIN_R2_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
-        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R3,PIN_R3_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
-        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R4,PIN_R4_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
-
-
-
-        pos_offset=(xVec){0};
-        retStatus=statusReducer(retStatus,(retErr==0)?GCodeParser_Status::TASK_OK:GCodeParser_Status::TASK_FAILED);
-        __PRT_D_("%s\n",retErr==0?"DONE":"FAILED");
-
-      }
-      else if(CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))//X Y Z A B C
+      if(CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))//X Y Z A B C
       {
         __PRT_D_("G1 baby!!!\n");
         int j=i+1;
@@ -460,7 +437,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         __PRT_D_("vec:%s F:%f\n",toStr(vec),F);
         if(isAbsLoc)
         {
-          MTPSYS_VecTo(vecAdd(vec,pos_offset),F,NULL,&exinfo);
+          MTPSYS_VecTo(vecAdd(vec,pulse_offset),F,NULL,&exinfo);
         }
         else
         {
@@ -475,7 +452,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         isAbsLoc=true;
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
       }
-      else if(CheckHead(cblk, "G91"))
+      else if(false && CheckHead(cblk, "G91"))
       {
         __PRT_D_("G91 relative pos\n");
         isAbsLoc=false;
@@ -503,33 +480,59 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           retStatus=statusReducer(retStatus,GCodeParser_Status::GCODE_PARSE_ERROR);
         }
       }
-      else if(CheckHead(cblk, "G20"))
+      else if(false && CheckHead(cblk, "G20"))
       {
         unit_is_inch=true;
         __PRT_D_("G20 Use Inch\n");
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
       }
-      else if(CheckHead(cblk, "G21"))
+      else if(false && CheckHead(cblk, "G21"))
       {
         unit_is_inch=false;
         __PRT_D_("G21 Use mm\n");
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
       }
       else if(CheckHead(cblk, "G92"))
-      {//TODO: should do from mm instead of impulse?
+      {
         __PRT_D_("G92 Set pos\n");
 
         int j=i+1;
-        xVec vec;
+        xVec xvLast = MTPSYS_getLastLocInStepperSystem();
+        xVec vec=xvLast;
         ReadxVecData(blockInitial+j,blockCount-j,vec);
 
-        pos_offset=vecSub(MTPSYS_getLastLocInStepperSystem(),vec);
+        pulse_offset=vecSub(xvLast,vec);
         __PRT_D_("vec:%s ",toStr(vec));
-        __PRT_D_("pos_offset:%s\n",toStr(pos_offset));
+        __PRT_D_("pulse_offset:%s\n",toStr(pulse_offset));
         __PRT_D_("sys last tar loc:%s\n",toStr(MTPSYS_getLastLocInStepperSystem()));
 
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
       }
+      else if(CheckHead(cblk, "G28"))
+      {
+        __PRT_D_("G28 GO HOME!!!:");
+        int retErr=0;
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_X,PIN_X_SEN1,50000,MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,PIN_Y_SEN1,-50000,MTPSYS_getMinPulseSpeed(),NULL);
+        
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z2,PIN_Z2_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z3,PIN_Z3_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z4,PIN_Z4_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R1,PIN_R1_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R2,PIN_R2_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R3,PIN_R3_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+        // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_R4,PIN_R4_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
+
+
+
+        pulse_offset=(xVec){0};
+        retStatus=statusReducer(retStatus,(retErr==0)?GCodeParser_Status::TASK_OK:GCodeParser_Status::TASK_FAILED);
+        __PRT_D_("%s\n",retErr==0?"DONE":"FAILED");
+
+      }
+      
       else
       {
         __PRT_D_("XX G block:");
@@ -579,16 +582,17 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           xVec curPulseLoc= _mstp->curPos_c;
           auto &jnote=*p_jnote;
           auto jobjM144 = jnote.createNestedObject("M144");
-          auto jobjStp = jobjM144.createNestedObject("step");
-          auto jobjUnit = jobjM144.createNestedObject("unit");
+          // auto jobjStp = jobjM144.createNestedObject("step");
+          // auto jobjUnit = jobjM144.createNestedObject("unit");
           for(int i=0;i<MSTP_VEC_SIZE;i++)
           {
             const char* gdx = axisIDX2GDX(i);
             if(gdx==NULL)continue;
-            auto stepLoc=curPulseLoc.vec[i];
-            jobjStp[gdx]=stepLoc;
+            auto stepLoc=curPulseLoc.vec[i]-pulse_offset.vec[i];
+            // jobjStp[gdx]=stepLoc;
             float unitLoc =Pulse2Unit_conv(i,stepLoc);
-            jobjUnit[gdx]=unitLoc;
+           
+            jobjM144[gdx]=unitLoc;
 
 
           }
@@ -610,7 +614,8 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           }
           else
           {//to let variable updates between main thread and 
-            yield();
+            // yield();
+            delay(10);
           }
         }
       }

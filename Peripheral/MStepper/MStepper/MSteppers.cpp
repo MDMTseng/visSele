@@ -1269,7 +1269,7 @@ void nextIntervalCalc(MSTP_SEG_PREFIX MSTP_segment *seg,float minSpeed,float max
   }
   else if(vcur<seg->vcen )
   {
-    if(seg->cur_step!=0)
+    if(seg->cur_step>2)
     {
       float speedInc=a1/vcur;
       if(speedInc>maxSpeedInc)
