@@ -272,7 +272,7 @@ class MStp_M:public MStp{
       if((cccc&0xFFFF)==0)
         __UPRT_D_("%d",digitalRead(runUntil_ExtPIN));
       else 
-        Serial.printf("");
+        yield();
     }//wait for touch sensor
     
     __UPRT_D_("\nSTP1-3 res  pin:%d\n",runUntil_ExtPIN);
@@ -629,7 +629,7 @@ void vecToWait(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *ex
   // digitalWrite(PIN_OUT_1,1);
   while(mstp.VecTo(VECTo,speed,ctx,exinfo)==false)
   {
-    Serial.printf("");
+    yield();
   }
   
   // digitalWrite(PIN_OUT_1,0);
@@ -641,7 +641,7 @@ void addWaitWait(uint32_t period,int times=1,void* ctx=NULL,MSTP_segment_extra_i
   // digitalWrite(PIN_OUT_1,1);
   while( mstp.AddWait(period,times,ctx,exinfo)==false)
   {
-    Serial.printf("");
+    yield();
   }
   
   // digitalWrite(PIN_OUT_1,0);
@@ -703,7 +703,7 @@ public:
     // djrl.dbg_printf(">>%f %f>>",VECTo.vec[AXIS_IDX_R11],VECTo.vec[AXIS_IDX_R12]);
     while(_mstp->VecTo(VECTo,speed,ctx,exinfo)==false)
     {
-      Serial.printf("");
+      yield();
     }
     return true;
   }
@@ -712,7 +712,7 @@ public:
     // __UPRT_D_("I:%d,P:%d,S:%d,T:%d\n",I,P,S,T);
     while(_mstp->VecAdd(VECTo,speed,ctx,exinfo)==false)
     {
-      Serial.printf("");
+      yield();
     }
     return true;
   }
@@ -724,7 +724,7 @@ public:
     uint32_t waitTick=((int64_t)period_ms*_mstp->TICK2SEC_BASE)/1000;
     while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
     {
-      Serial.printf("");
+      yield();
     }
     return true;
   }
@@ -734,7 +734,7 @@ public:
     MSTP_SegCtx *p_res;
     while((p_res=sctx_pool.applyResource())==NULL)//check release
     {
-      Serial.printf("");
+      yield();
     }
     p_res->I=I;
     p_res->P=P;
@@ -744,7 +744,7 @@ public:
     __UPRT_D_("I:%d,P:%d,S:%d,T:%d\n",I,P,S,T);
     while(_mstp->AddWait(0,0,p_res,NULL)==false)
     {
-      Serial.printf("");
+      yield();
     }
 
 
@@ -1116,7 +1116,7 @@ void busyLoop(uint32_t count)
 {
   while(count--)
   {
-    Serial.printf("");
+    yield();
   }
 }
 
