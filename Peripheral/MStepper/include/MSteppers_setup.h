@@ -5,22 +5,39 @@
 
 
 #ifndef MSTP_VEC_SIZE
-#define MSTP_VEC_SIZE 20
+#define MSTP_VEC_SIZE 10
 #endif
 
 
-#define AXIS_IDX_X 0
-#define AXIS_IDX_Y 1
+#define AXIS_IDX_X 3
+#define AXIS_IDX_Y 4
 
-#define AXIS_IDX_Z1 2
-#define AXIS_IDX_R1 3
+#define AXIS_IDX_Z1 5
+#define AXIS_IDX_R1 6
 
-#define AXIS_IDX_Z2 4
-#define AXIS_IDX_R2 5
-#define AXIS_IDX_Z3 6
+#define AXIS_IDX_Z2 1
+#define AXIS_IDX_R2 2
+#define AXIS_IDX_Z3 0
 #define AXIS_IDX_R3 7
 #define AXIS_IDX_Z4 8
 #define AXIS_IDX_R4 9
+
+
+
+// #define AXIS_IDX_X 0
+// #define AXIS_IDX_Y 1
+
+// #define AXIS_IDX_Z1 2
+// #define AXIS_IDX_R1 3
+
+// #define AXIS_IDX_Z2 4
+// #define AXIS_IDX_R2 5
+// #define AXIS_IDX_Z3 6
+// #define AXIS_IDX_R3 7
+// #define AXIS_IDX_Z4 8
+// #define AXIS_IDX_R4 9
+
+
 
 
 
