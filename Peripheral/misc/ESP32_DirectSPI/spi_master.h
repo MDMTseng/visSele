@@ -167,7 +167,7 @@ typedef spi_device_interface_config_t* spi_device_interface_config_handle_t;
  *         - ESP_ERR_NO_MEM        if out of memory
  *         - ESP_OK                on success
  */
-esp_err_t spi_bus_initialize(spi_host_device_t host, spi_bus_config_t *bus_config, int dma_chan);
+esp_err_t dspi_bus_initialize(spi_host_device_t host, spi_bus_config_t *bus_config, int dma_chan);
 
 /**
  * @brief Free a SPI bus
@@ -181,7 +181,7 @@ esp_err_t spi_bus_initialize(spi_host_device_t host, spi_bus_config_t *bus_confi
  *         - ESP_ERR_INVALID_STATE if not all devices on the bus are freed
  *         - ESP_OK                on success
  */
-esp_err_t spi_bus_free(spi_host_device_t host, int dofree);
+esp_err_t dspi_bus_free(spi_host_device_t host, int dofree);
 
 /**
  * @brief Add a device. This allocates a CS line for the device, allocates memory for the device structure and hooks
@@ -204,7 +204,7 @@ esp_err_t spi_bus_free(spi_host_device_t host, int dofree);
  *         - ESP_ERR_NO_MEM        if out of memory
  *         - ESP_OK                on success
  */
-esp_err_t spi_bus_add_device(spi_host_device_t host, spi_device_interface_config_t *dev_config, spi_bus_config_t *bus_config, spi_device_handle_t *handle);
+esp_err_t dspi_bus_add_device(spi_host_device_t host, spi_device_interface_config_t *dev_config, spi_bus_config_t *bus_config, spi_device_handle_t *handle);
 
 /**
  * @brief Remove a device from the SPI bus
@@ -215,7 +215,7 @@ esp_err_t spi_bus_add_device(spi_host_device_t host, spi_device_interface_config
  *         - ESP_ERR_INVALID_STATE if device already is freed
  *         - ESP_OK                on success
  */
-esp_err_t spi_bus_remove_device(spi_device_handle_t handle);
+esp_err_t dspi_bus_remove_device(spi_device_handle_t handle);
 
 /**
  * @brief Queue a SPI transaction for execution
@@ -228,7 +228,7 @@ esp_err_t spi_bus_remove_device(spi_device_handle_t handle);
  *         - ESP_ERR_INVALID_ARG   if parameter is invalid
  *         - ESP_OK                on success
  */
-esp_err_t spi_device_queue_trans(spi_device_handle_t handle, spi_transaction_t *trans_desc, TickType_t ticks_to_wait);
+esp_err_t dspi_device_queue_trans(spi_device_handle_t handle, spi_transaction_t *trans_desc, TickType_t ticks_to_wait);
 
 
 /**
@@ -248,7 +248,7 @@ esp_err_t spi_device_queue_trans(spi_device_handle_t handle, spi_transaction_t *
  *         - ESP_ERR_INVALID_ARG   if parameter is invalid
  *         - ESP_OK                on success
  */
-esp_err_t spi_device_get_trans_result(spi_device_handle_t handle, spi_transaction_t **trans_desc, TickType_t ticks_to_wait);
+esp_err_t dspi_device_get_trans_result(spi_device_handle_t handle, spi_transaction_t **trans_desc, TickType_t ticks_to_wait);
 
 
 /**
@@ -265,7 +265,7 @@ esp_err_t spi_device_get_trans_result(spi_device_handle_t handle, spi_transactio
  *         - ESP_ERR_INVALID_ARG   if parameter is invalid
  *         - ESP_OK                on success
  */
-esp_err_t spi_device_transmit(spi_device_handle_t handle, spi_transaction_t *trans_desc);
+esp_err_t dspi_device_transmit(spi_device_handle_t handle, spi_transaction_t *trans_desc);
 
 
 // ==== Non queued not DMA transfer and common functions ===========================================
@@ -312,7 +312,7 @@ uint32_t set_speed(spi_device_handle_t handle, uint32_t speed);
  *         - ESP_ERR_INVALID_ARG   if parameter is invalid
  *         - ESP_OK                on success
  */
-esp_err_t spi_device_select(spi_device_handle_t handle, int force);
+esp_err_t dspi_device_select(spi_device_handle_t handle, int force);
 
 /**
  * @brief De-select spi device for transmission when not using Queued transmissions
@@ -326,7 +326,7 @@ esp_err_t spi_device_select(spi_device_handle_t handle, int force);
  *         - ESP_ERR_INVALID_ARG   if parameter is invalid
  *         - ESP_OK                on success
  */
-esp_err_t spi_device_deselect(spi_device_handle_t handle);
+esp_err_t dspi_device_deselect(spi_device_handle_t handle);
 
 
 /**
@@ -356,7 +356,7 @@ void spi_get_native_pins(int host, int *sdi, int *sdo, int *sck);
  * 'spi_device_TakeSemaphore' can be used before 'spi_device_queue_trans' or 'spi_device_transmit'
  * 'spi_device_GiveSemaphore' can be used after 'spi_device_get_trans_result' or 'spi_device_transmit'
  */
-esp_err_t spi_device_TakeSemaphore(spi_device_handle_t handle);
+esp_err_t dspi_device_TakeSemaphore(spi_device_handle_t handle);
 void spi_device_GiveSemaphore(spi_device_handle_t handle);
 
 /**
@@ -373,7 +373,7 @@ void spi_device_GiveSemaphore(spi_device_handle_t handle);
  * @return
  *
  */
-esp_err_t spi_transfer_data(spi_device_handle_t handle, spi_transaction_t *trans);
+esp_err_t dspi_transfer_data(spi_device_handle_t handle, spi_transaction_t *trans);
 
 
 #ifdef __cplusplus

@@ -83,12 +83,12 @@ void IRAM_ATTR onTimer()
 void setup()
 {
   Serial.begin(921600);
-  spi1= direct_spi_init(1,10*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
+  spi1= direct_spi_init(1,40*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
 
   gpio_set_direction((gpio_num_t)pin_SH_165,GPIO_MODE_OUTPUT);
   gpio_set_direction((gpio_num_t)pin_LED,GPIO_MODE_OUTPUT);
   
-  spi_device_select(spi1,1);
+  dspi_device_select(spi1,1);
   // while(1)
   // {
   //  
