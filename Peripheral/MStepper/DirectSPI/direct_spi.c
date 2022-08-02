@@ -49,10 +49,10 @@ spi_device_handle_t direct_spi_init(int ch,int clkHz,int pin_MOSI,int pin_MISO,i
 
 
 //Initialize the SPI bus
-  ret=spi_bus_initialize(SPI_BUS, &buscfg, dmach);
+  ret=dspi_bus_initialize(SPI_BUS, &buscfg, dmach);
   assert(ret==ESP_OK);
   //Attach the LCD to the SPI bus
-  ret=spi_bus_add_device(SPI_BUS, &devcfg, &buscfg, &spi);
+  ret=dspi_bus_add_device(SPI_BUS, &devcfg, &buscfg, &spi);
   assert(ret==ESP_OK);
 
   return spi;

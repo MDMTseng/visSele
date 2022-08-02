@@ -101,6 +101,7 @@ public:
   MSTP_SEG_PREFIX int segBufTailIdx;
   MSTP_SEG_PREFIX MSTP_segment *segBuf;
   MSTP_SEG_PREFIX MSTP_segment *p_runSeg;
+  // SemaphoreHandle_t motionFinishMutex;
   // runBlock runBlk;
 
   // RingBuf_Static <uint32_t,10> PulOff;

@@ -89,7 +89,7 @@ Main function in this mode is 'spi_transfer_data()'
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include "driver/periph_ctrl.h"
-#include "esp_heap_alloc_caps.h"
+// #include "esp_heap_alloc_caps.h"
 
 
 static spi_host_t *spihost[3] = {NULL};
@@ -201,7 +201,7 @@ static const spi_signal_conn_t io_signal[3]={
 static void spi_intr(void *arg);
 
 
-esp_err_t spi_bus_initialize(spi_host_device_t host, spi_bus_config_t *bus_config, int dma_chan)
+esp_err_t dspi_bus_initialize(spi_host_device_t host, spi_bus_config_t *bus_config, int dma_chan)
 {
     bool native=true;
 
@@ -226,7 +226,7 @@ esp_err_t spi_bus_initialize(spi_host_device_t host, spi_bus_config_t *bus_confi
 
     if (dma_chan > 0) {
 		//The host struct contains two dma descriptors, so we need DMA'able memory for this.
-		spihost[host]=pvPortMallocCaps(sizeof(spi_host_t), MALLOC_CAP_DMA);
+		spihost[host]=heap_caps_malloc(sizeof(spi_host_t), MALLOC_CAP_DMA);
 		if (spihost[host]==NULL) return ESP_ERR_NO_MEM;
 		memset(spihost[host], 0, sizeof(spi_host_t));
 
@@ -323,7 +323,7 @@ esp_err_t spi_bus_initialize(spi_host_device_t host, spi_bus_config_t *bus_confi
     return ESP_OK;
 }
 
-esp_err_t spi_bus_free(spi_host_device_t host, int dofree)
+esp_err_t dspi_bus_free(spi_host_device_t host, int dofree)
 {
     int x;
     SPI_CHECK(host>=SPI_HOST && host<=VSPI_HOST, "invalid host", ESP_ERR_INVALID_ARG);
@@ -349,7 +349,7 @@ esp_err_t spi_bus_free(spi_host_device_t host, int dofree)
  Add a device. This allocates a CS line for the device, allocates memory for the device structure and hooks
  up the CS pin to whatever is specified.
 */
-esp_err_t spi_bus_add_device(spi_host_device_t host, spi_device_interface_config_t *dev_config, spi_bus_config_t *bus_config, spi_device_handle_t *handle)
+esp_err_t dspi_bus_add_device(spi_host_device_t host, spi_device_interface_config_t *dev_config, spi_bus_config_t *bus_config, spi_device_handle_t *handle)
 {
     int freecs, maxdev;
     int apbclk=APB_CLK_FREQ;
@@ -425,7 +425,7 @@ esp_err_t spi_bus_add_device(spi_host_device_t host, spi_device_interface_config
     return ESP_OK;
 }
 
-esp_err_t spi_bus_remove_device(spi_device_handle_t handle)
+esp_err_t dspi_bus_remove_device(spi_device_handle_t handle)
 {
     int x;
     SPI_CHECK(handle!=NULL, "invalid handle", ESP_ERR_INVALID_ARG);
@@ -749,7 +749,7 @@ static void IRAM_ATTR spi_intr(void *arg)
     if (do_yield) portYIELD_FROM_ISR();
 }
 
-esp_err_t spi_device_queue_trans(spi_device_handle_t handle, spi_transaction_t *trans_desc,  TickType_t ticks_to_wait)
+esp_err_t dspi_device_queue_trans(spi_device_handle_t handle, spi_transaction_t *trans_desc,  TickType_t ticks_to_wait)
 {
     BaseType_t r;
     SPI_CHECK(handle!=NULL, "invalid dev handle", ESP_ERR_INVALID_ARG);
@@ -764,7 +764,7 @@ esp_err_t spi_device_queue_trans(spi_device_handle_t handle, spi_transaction_t *
     return ESP_OK;
 }
 
-esp_err_t spi_device_get_trans_result(spi_device_handle_t handle, spi_transaction_t **trans_desc, TickType_t ticks_to_wait)
+esp_err_t dspi_device_get_trans_result(spi_device_handle_t handle, spi_transaction_t **trans_desc, TickType_t ticks_to_wait)
 {
     BaseType_t r;
     SPI_CHECK(handle!=NULL, "invalid dev handle", ESP_ERR_INVALID_ARG);
@@ -774,14 +774,14 @@ esp_err_t spi_device_get_trans_result(spi_device_handle_t handle, spi_transactio
 }
 
 //Porcelain to do one blocking transmission.
-esp_err_t spi_device_transmit(spi_device_handle_t handle, spi_transaction_t *trans_desc)
+esp_err_t dspi_device_transmit(spi_device_handle_t handle, spi_transaction_t *trans_desc)
 {
     esp_err_t ret;
     spi_transaction_t *ret_trans;
     //ToDo: check if any spi transfers in flight
-    ret=spi_device_queue_trans(handle, trans_desc, portMAX_DELAY);
+    ret=dspi_device_queue_trans(handle, trans_desc, portMAX_DELAY);
     if (ret!=ESP_OK) return ret;
-    ret=spi_device_get_trans_result(handle, &ret_trans, portMAX_DELAY);
+    ret=dspi_device_get_trans_result(handle, &ret_trans, portMAX_DELAY);
     if (ret!=ESP_OK) return ret;
     assert(ret_trans==trans_desc);
     return ESP_OK;
@@ -792,7 +792,7 @@ esp_err_t spi_device_transmit(spi_device_handle_t handle, spi_transaction_t *tra
 //===== Functions used in non-DMA, not queued mode ===============
 // ===============================================================
 
-esp_err_t IRAM_ATTR spi_device_select(spi_device_handle_t handle, int force)
+esp_err_t IRAM_ATTR dspi_device_select(spi_device_handle_t handle, int force)
 {
 	if ((handle->cfg.selected == 1) && (!force)) return ESP_OK;
 
@@ -815,12 +815,12 @@ esp_err_t IRAM_ATTR spi_device_select(spi_device_handle_t handle, int force)
 	// Check if previously used device is the same
 	if (memcmp(&host->cur_bus_config, &handle->bus_config, sizeof(spi_bus_config_t)) != 0) {
 		// device has different bus configuration, we need to reconfigure the bus
-		esp_err_t err = spi_bus_free(1, 0);
+		esp_err_t err = dspi_bus_free(1, 0);
 		if (err) {
 			xSemaphoreGive(host->spi_bus_mutex);
 			return err;
 		}
-		err = spi_bus_initialize(i, &handle->bus_config, -1);
+		err = dspi_bus_initialize(i, &handle->bus_config, -1);
 		if (err) {
 			xSemaphoreGive(host->spi_bus_mutex);
 			return err;
@@ -956,7 +956,7 @@ uint32_t get_speed(spi_device_handle_t handle)
 {
 	spi_host_t *host=(spi_host_t*)handle->host;
 	uint32_t speed = 0;
-	if (spi_device_select(handle, 0) == ESP_OK) {
+	if (dspi_device_select(handle, 0) == ESP_OK) {
 		if (host->hw->clock.clk_equ_sysclk == 1) speed = 80000000;
 		else speed =  80000000/(host->hw->clock.clkdiv_pre+1)/(host->hw->clock.clkcnt_n+1);
 	}
@@ -968,10 +968,10 @@ uint32_t set_speed(spi_device_handle_t handle, uint32_t speed)
 {
 	spi_host_t *host=(spi_host_t*)handle->host;
 	uint32_t newspeed = 0;
-	if (spi_device_select(handle, 0) == ESP_OK) {
+	if (dspi_device_select(handle, 0) == ESP_OK) {
 		handle->cfg.clock_speed_hz = speed;
 		spi_device_deselect(handle);
-		if (spi_device_select(handle, 1) == ESP_OK) {
+		if (dspi_device_select(handle, 1) == ESP_OK) {
 			if (host->hw->clock.clk_equ_sysclk == 1) newspeed = 80000000;
 			else newspeed =  80000000/(host->hw->clock.clkdiv_pre+1)/(host->hw->clock.clkcnt_n+1);
 		}
@@ -1051,7 +1051,7 @@ esp_err_t IRAM_ATTR spi_transfer_data(spi_device_handle_t handle, spi_transactio
 
     // ** If the device was not selected, select it
     if (handle->cfg.selected == 0) {
-        ret = spi_device_select(handle, 0);
+        ret = dspi_device_select(handle, 0);
         if (ret) return ret;
         do_deselect = 1;     // We will deselect the device after the operation !
     }

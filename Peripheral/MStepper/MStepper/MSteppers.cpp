@@ -560,6 +560,8 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
   }
   // IO_SET_DBG(PIN_DBG0, OUTPUT);
   SystemClear();
+  // motionFinishMutex=xSemaphoreCreateMutex();
+
 }
 
 
@@ -1513,7 +1515,7 @@ uint32_t MStp::taskRun()
         if(p_runSeg==NULL)
         {
           stopTimer();
-
+          // xSemaphoreGive(motionFinishMutex);
           BlockPinInfoUpdate(axis_dir,pre_indexes,0);//keep pin update
           BlockPulEffect(pre_indexes,axis_collectpul);//wait for spi input
 
