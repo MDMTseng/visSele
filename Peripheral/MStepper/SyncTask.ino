@@ -6,6 +6,7 @@
 #include "xtensa/core-macros.h"
 #include "soc/rtc_wdt.h"
 #include <Data_Layer_Protocol.hpp>
+#include "driver/timer.h"
 
 
 extern "C" {
@@ -239,12 +240,13 @@ class MStp_M:public MStp{
     // __PRT_I_(">\n");
   }
   void startTimer(){
-    if(timerRunning==false)
-    {
-      timerAlarmEnable(timer);  
-      // timerAlarmWrite(timer,1, true);
-      timerRunning=true;
-    }
+    // if(timerRunning==false)
+    // {
+    //   timerAlarmEnable(timer);  
+    //   // timerAlarmWrite(timer,1, true);
+    //   
+    // }
+    timerRunning=true;
   }
   void FatalError(int errorCode,const char* errorText)
   {
@@ -586,15 +588,6 @@ void IRAM_ATTR onTimer()
 
   uint32_t T=mstp.taskRun();
   // printf("T:%d\n",T);
-  if(T>100000)
-  {
-    
-    __UPRT_D_("ERROR:: T(%d)<0\n",T);
-    T=100*10000;
-    // return;;
-  }
-  
-
   if(T==0)//go idle update speed
   {
     T=_TICK2SEC_BASE_/1000;
@@ -608,8 +601,9 @@ void IRAM_ATTR onTimer()
   // if(td<50)td=50;
 
 
-  timerAlarmWrite(timer,T, true);
-
+  // timerAlarmWrite(timer,T, true);
+  // T-=27;
+  timer_set_alarm_value(timer_group_t::TIMER_GROUP_0, timer_idx_t::TIMER_0, (uint64_t)T);
 
   // Restore FPU
   xthal_restore_cp0(cp0_regs);
@@ -1104,6 +1098,7 @@ void setup()
   timer = timerBegin(0, 80*1000000/_TICK2SEC_BASE_, true);
   
   timerAttachInterrupt(timer, &onTimer, true);
+  timerAlarmWrite(timer, 10000, true);
   timerAlarmEnable(timer);
   pinMode(PIN_DBG, OUTPUT);
   pinMode(PIN_DBG2, OUTPUT);

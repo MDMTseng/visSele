@@ -13,6 +13,7 @@
 #include "Arduino.h"
 #include <string.h>
 #include "esp_system.h"
+#include "driver/timer.h"
 
 extern "C" {
 #include "direct_spi.h"
@@ -74,10 +75,16 @@ hw_timer_t *timer = NULL;
 spi_device_handle_t spi1;
 void IRAM_ATTR onTimer()
 {
+
+  gpio_set_level((gpio_num_t)pin_LED, 1);
+  gpio_set_level((gpio_num_t)pin_LED, 0);
   display_test(spi1);
-  float freq=30*1000*2;
+  float freq=1000;
   int tick=20*1000*1000/freq;
-  timerAlarmWrite(timer,tick, true);
+  gpio_set_level((gpio_num_t)pin_LED, 1);
+  // timerAlarmWrite(timer,tick, true);
+  timer_set_alarm_value(timer_group_t::TIMER_GROUP_0, timer_idx_t::TIMER_0, (uint64_t)tick);
+  gpio_set_level((gpio_num_t)pin_LED, 0);
 }
 
 void setup()
@@ -85,6 +92,7 @@ void setup()
   Serial.begin(921600);
   spi1= direct_spi_init(1,40*1000*1000,PIN_NUM_MOSI,PIN_NUM_MISO,PIN_NUM_CLK,PIN_NUM_CS);
 
+  gpio_set_direction((gpio_num_t)PIN_NUM_CS,GPIO_MODE_OUTPUT);
   gpio_set_direction((gpio_num_t)pin_SH_165,GPIO_MODE_OUTPUT);
   gpio_set_direction((gpio_num_t)pin_LED,GPIO_MODE_OUTPUT);
   
