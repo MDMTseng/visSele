@@ -586,12 +586,9 @@ void MStp::StepperForceStop()
   p_runSeg=NULL;
   lastTarLoc=curPos_c;
   T_next=0;
-  axis_pul_1st=axis_pul_2nd=axis_dir=0;
-  delayResidue=0;
-  pre_indexes=0;
+  // axis_pul_1st=axis_pul_2nd=
+  axis_pul=axis_dir=0;
   tskrun_state=0;
-  isMidPulTrig=true;
-  _axis_collectpul1=0;
   curPos_mod=(xVec){0};
   // curPos_residue=(xVec){0};
   
@@ -1311,8 +1308,9 @@ void MStp::CalcNextStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
 
 
-  uint32_t _axis_pul_1st=0;
-  uint32_t _axis_pul_2nd=0;
+  // uint32_t _axis_pul_1st=0;
+  // uint32_t _axis_pul_2nd=0;
+  uint32_t _axis_pul=0;
   uint32_t steps_main=seg->steps;
   for(int k=0;k<MSTP_VEC_SIZE;k++)
   {
@@ -1422,11 +1420,11 @@ void MStp::CalcNextStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
         // |XXXXXX|_______|
         //     1st   2nd
 
-
-        if((residue<<1)<=(vele_abs))//is ratio<=0.5 then it blong to the first section
-          _axis_pul_1st|=1<<k;
-        else
-          _axis_pul_2nd|=1<<k;
+        _axis_pul|=1<<k;
+        // if((residue<<1)<=(vele_abs))//is ratio<=0.5 then it blong to the first section
+        //   _axis_pul_1st|=1<<k;
+        // else
+        //   _axis_pul_2nd|=1<<k;
       }
 
     }
@@ -1437,8 +1435,9 @@ void MStp::CalcNextStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
 
   }
 
-  axis_pul_1st=_axis_pul_1st;
-  axis_pul_2nd=_axis_pul_2nd;
+  // axis_pul_1st=_axis_pul_1st;
+  // axis_pul_2nd=_axis_pul_2nd;
+  axis_pul=_axis_pul;
 }
 
 // uint32_t MStp::findMidIdx(uint32_t from_idxes,uint32_t totSteps)
@@ -1464,42 +1463,22 @@ uint32_t MStp::taskRun()
 {
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
   
-
   //First, if there is an current runSeg=> 
   if(p_runSeg!=NULL)
   {
     switch(p_runSeg->type)//========Run with current segment
     {
       case MSTP_segment_type::seg_line:
-        auto *cp_vec=curPos_c.vec;
-        for(int i=0;i<MSTP_VEC_SIZE;i++)//calc run psition
-        {
-          uint32_t sele=(1<<i);
-          if(pre_indexes&sele)
-          {
-            if(axis_dir&sele)
-            {
-              cp_vec[i]--;
-            }
-            else
-            {
-              cp_vec[i]++;
-            }
-          }
-        }
-        
-        BlockPulEffect(pre_indexes,axis_collectpul);
+        BlockPulEffect(0,0);
         // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
         // delIdxResidue(pre_indexes);
 
-        axis_collectpul=0;
       break;
     }
   }
 
   //tskrun_state ==0 means () or ()
   float prevcur=0;
-  bool intervalUpdate=false;
   if(tskrun_state==0)//
   {
 
@@ -1509,15 +1488,15 @@ uint32_t MStp::taskRun()
       if(p_runSeg==NULL)//========if current runSeg==NULL Try to load new segment
       {
         T_next=0;
-        axis_pul_1st=axis_pul_2nd=0;
-
+        // axis_pul_1st=axis_pul_2nd=0;
+        axis_pul=0;
         p_runSeg=SegQ_Tail();
         if(p_runSeg==NULL)
         {
           stopTimer();
           // xSemaphoreGive(motionFinishMutex);
-          BlockPinInfoUpdate(axis_dir,pre_indexes,0);//keep pin update
-          BlockPulEffect(pre_indexes,axis_collectpul);//wait for spi input
+          BlockPinInfoUpdate(axis_dir,0,0);//keep pin update
+          BlockPulEffect(0,0);//wait for spi input
 
           return 0;//EXIT, no new segment,go idle
         }
@@ -1537,11 +1516,31 @@ uint32_t MStp::taskRun()
 
       switch(p_runSeg->type)//========Run with current segment (short work)
       {
-        // case MSTP_segment_type::seg_line:
-
-        // break;
-        case MSTP_segment_type::seg_wait :
+        case MSTP_segment_type::seg_line:
+        {
+          BlockPinInfoUpdate(axis_dir,0,0);
+          auto *cp_vec=curPos_c.vec;
+          for(int i=0;i<MSTP_VEC_SIZE;i++)//calc run psition
+          {
+            uint32_t sele=(1<<i);
+            if(axis_pul&sele)
+            {
+              if(axis_dir&sele)
+              {
+                cp_vec[i]--;
+              }
+              else
+              {
+                cp_vec[i]++;
+              }
+            }
+          }
         
+        }
+
+        break;
+        case MSTP_segment_type::seg_wait :
+        {
           __PRT_D_(">[%d~%f\n",p_runSeg->cur_step,p_runSeg->vcur);
           if(p_runSeg->cur_step==0)
           {
@@ -1552,6 +1551,7 @@ uint32_t MStp::taskRun()
           {
             p_runSeg->cur_step=p_runSeg->steps;
           }
+        }
         break;
 
       }
@@ -1587,10 +1587,6 @@ uint32_t MStp::taskRun()
 
           CalcNextStep(p_runSeg);
 
-          intervalUpdate=true;
-          pre_indexes=0;
-          isMidPulTrig=false;
-          axis_collectpul=0;
           tskrun_state=1;
           p_runSeg->cur_step++;
           
@@ -1619,37 +1615,31 @@ uint32_t MStp::taskRun()
   {
     if(p_runSeg==NULL)
     {
-      pre_indexes=0;
       tskrun_state=0;
       return 0;
     }
     __PRT_D_("cur_step:%d \n",p_runSeg->cur_step);
-    if(isMidPulTrig==false)
+    // if(isMidPulTrig==false)
+    // {
+    //   if(p_runSeg->cur_step==1)
+    //   {
+    //     axis_pul_1st=0;
+    //     _axis_collectpul1=(1<<MSTP_VEC_SIZE)-1;
+    //   }
+    //   isMidPulTrig=true;
+    //   pre_indexes=axis_pul_1st;
+    // }
+    // else
     {
-      if(p_runSeg->cur_step==1)
-      {
-        axis_pul_1st=0;
-        _axis_collectpul1=(1<<MSTP_VEC_SIZE)-1;
-      }
-      isMidPulTrig=true;
-      pre_indexes=axis_pul_1st;
-    }
-    else
-    {
-      if(p_runSeg->cur_step==1)
-      {
-        BlockDirEffect(axis_dir);
-      }
+      // if(p_runSeg->cur_step==1)
+      // {
+      //   BlockDirEffect(axis_dir);
+      // }
       tskrun_state=0;
-      pre_indexes=axis_pul_2nd;
     }
 
 
-    axis_collectpul=_axis_collectpul1;
-    _axis_collectpul1=pre_indexes;
-    BlockPinInfoUpdate(axis_dir,pre_indexes,0);
-
-    if(intervalUpdate)
+    
     {
       
       nextIntervalCalc(p_runSeg, minSpeed, maxSpeedInc);
@@ -1667,7 +1657,12 @@ uint32_t MStp::taskRun()
       }
       
     }
-    return T_next>>1;
+    setTimer(T_next);
+    BlockPulEffect(0,0);
+    
+    BlockPinInfoUpdate(axis_dir,axis_pul,0);
+
+    return T_next;
   }
   
   return 0;

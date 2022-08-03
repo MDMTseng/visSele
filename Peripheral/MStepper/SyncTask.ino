@@ -83,7 +83,6 @@ int pin_TRIG_595=PIN_NUM_CS;
 #define SUBDIV (800)
 #define mm_PER_REV 10
 
-
 spi_device_handle_t spi1=NULL;
 
 struct MSTP_SegCtx{
@@ -142,7 +141,7 @@ class MStp_M:public MStp{
     // pinMode(PIN_OUT_1, OUTPUT);    
     // pinMode(PIN_DBG, OUTPUT);    
 
-    int general_max_freq=70000;
+    int general_max_freq=100000;
     axisInfo[AXIS_IDX_X].VirtualStep=1;
     axisInfo[AXIS_IDX_X].AccW=1;
     axisInfo[AXIS_IDX_X].MaxSpeedJumpW=2;
@@ -247,6 +246,28 @@ class MStp_M:public MStp{
     //   
     // }
     timerRunning=true;
+  }
+  void setTimer(uint64_t T)
+  {
+    
+    // printf("T:%d\n",T);
+    if(T==0)//go idle update speed
+    {
+      T=_TICK2SEC_BASE_/1000;
+      
+    }
+    // if(timerT_TOP)
+    // {
+    //   T=timerT_TOP;
+    // }
+    // int64_t td=T-timerRead(timer);
+    // if(td<50)td=50;
+
+
+    // timerAlarmWrite(timer,T, true);
+    // T-=27;
+    timer_set_alarm_value(timer_group_t::TIMER_GROUP_0, timer_idx_t::TIMER_0, (uint64_t)T);
+
   }
   void FatalError(int errorCode,const char* errorText)
   {
@@ -574,7 +595,9 @@ uint32_t preCD=0;
 
 bool isSystemZeroOK=false;
 int timerCount=0;
+
 uint32_t cp0_regs[18];
+
 void IRAM_ATTR onTimer()
 {
   gpio_set_level((gpio_num_t)PIN_LED,1);
@@ -587,24 +610,8 @@ void IRAM_ATTR onTimer()
   
 
   uint32_t T=mstp.taskRun();
-  // printf("T:%d\n",T);
-  if(T==0)//go idle update speed
-  {
-    T=_TICK2SEC_BASE_/1000;
-    
-  }
-  // if(timerT_TOP)
-  // {
-  //   T=timerT_TOP;
-  // }
-  // int64_t td=T-timerRead(timer);
-  // if(td<50)td=50;
 
-
-  // timerAlarmWrite(timer,T, true);
-  // T-=27;
-  timer_set_alarm_value(timer_group_t::TIMER_GROUP_0, timer_idx_t::TIMER_0, (uint64_t)T);
-
+  
   // Restore FPU
   xthal_restore_cp0(cp0_regs);
   // and turn it back off

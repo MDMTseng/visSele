@@ -127,10 +127,9 @@ public:
   xVec lastTarLoc;
 
 
-  uint32_t axis_pul_1st;
-  uint32_t axis_pul_2nd;
-  uint32_t axis_collectpul;
-  uint32_t _axis_collectpul1;
+  // uint32_t axis_pul_1st;
+  // uint32_t axis_pul_2nd;
+  uint32_t axis_pul;
   uint32_t axis_dir;
   float delayResidue=0;
 
@@ -174,10 +173,9 @@ public:
   bool timerRunning=false;
   virtual void stopTimer() MSTP_SEG_PREFIX {timerRunning=false;}
   virtual void startTimer() MSTP_SEG_PREFIX{timerRunning=true;}
+  virtual void setTimer(uint64_t) =0;
 
-  int pre_indexes=0;
   int tskrun_state=0;
-  bool isMidPulTrig=false;
   uint32_t taskRun();
 
 
