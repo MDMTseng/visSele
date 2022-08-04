@@ -191,6 +191,7 @@ InspectionTargetManager_m inspTarMan;
 
 
 
+std::map<std::string, std::string> triggerMockFlags;
 
 bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
 {
@@ -212,6 +213,7 @@ bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
     }
   }
   triggerInfoMatchingBuffer.clear();
+  triggerMockFlags.clear();
   return true;
 }
 
@@ -255,21 +257,19 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         {//image/pipe info
           targetStageInfo= headImgStageInfoMixInfo.stInfo;
           
-
-
-
-          bool doMockTriggerInfo=(targetStageInfo->StreamInfo.camera!=NULL) && (targetStageInfo->StreamInfo.camera->triggerMode==0);//streaming
-
+          bool doMockTriggerInfo=(targetStageInfo->StreamInfo.camera!=NULL) && (triggerMockFlags.find(targetStageInfo->StreamInfo.camera->getConnectionData().id) != triggerMockFlags.end()) ;
 
           LOGI("  doMockTriggerInfo:%d cam:%p mode:%d ",doMockTriggerInfo,  targetStageInfo->StreamInfo.camera  ,targetStageInfo->StreamInfo.camera->triggerMode);
 
           if(doMockTriggerInfo)
           {
             sttriggerInfo_mix::_triggerInfo mocktrig;
-            mocktrig.camera_id=targetStageInfo->StreamInfo.camera->getConnectionData().id;;
+            mocktrig.camera_id=targetStageInfo->StreamInfo.camera->getConnectionData().id;
+            
             mocktrig.est_trigger_time_us=targetStageInfo->fi.timeStamp_us+123;//
             mocktrig.trigger_id=-1;
-            mocktrig.trigger_tag="_STREAM_";
+            std::string mockTag=triggerMockFlags[mocktrig.camera_id];
+            mocktrig.trigger_tag=(mockTag.length() ==0)?"_STREAM_":mockTag;
             
             // triggerInfoMatchingBuffer.w_unlock();
             triggerInfoMatchingBuffer.push_back({triggerInfo:mocktrig});
@@ -1103,6 +1103,26 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         LOGI("cleanUp complete!!");
         session_ACK = true;
       }while(0);}
+      else if(strcmp(type_str, "trigger_info_mocking") ==0)
+      {
+        char *_cam_id = JFetch_STRING(json, "id");
+        if(_cam_id!=NULL)
+        {
+          std::string id = std::string(_cam_id);
+          if(JFetch_TRUE(json, "remove"))
+          {
+
+            session_ACK = triggerMockFlags.erase(id)>0;
+            
+          }
+          else
+          {
+            // triggerMockFlags.insert({id,JFetch_STRING_ex(json, "tag")});
+            triggerMockFlags[id]=JFetch_STRING_ex(json, "tag");
+            session_ACK = true;
+          }
+        }
+      }
       else if(strcmp(type_str, "trigger") ==0)
       {do{
         char *_cam_id = JFetch_STRING(json, "id");

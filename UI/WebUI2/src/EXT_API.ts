@@ -492,6 +492,18 @@ export class BPG_WS
     
   }
 
+  
+  async CameraTriggerInfoMocking(camID:string,tag:string="_STREAM_",doRemove:boolean=false)//0 continuous   1:software trigger   2:any trigger
+  {
+    return await this.send_P("CM",0,{
+      type:"trigger_info_mocking",
+      id:camID,
+      tag,
+      remove:doRemove,
+    })
+    
+  }
+
   async CameraClearTriggerInfo()
   {
     return await this.send_P("CM",0,{

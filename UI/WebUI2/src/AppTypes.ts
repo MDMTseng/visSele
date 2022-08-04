@@ -10,6 +10,7 @@ export type type_CameraInfo={
   serial_nbr:string,
   vendor:string,
 
+  trigger_mode:number,
   analog_gain:number,
   exposure:number,
   RGain:number,
