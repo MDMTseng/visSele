@@ -2375,6 +2375,11 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
     {/* <pre>{
       JSON.stringify(camSetupInfo,null,2)
     }</pre> */}
+    trigger_on:
+    <Switch checkedChildren="O" unCheckedChildren="X" checked={camSetupInfo.trigger_mode==1} onChange={(check)=>{
+      onCameraSetupUpdate({...camSetupInfo,trigger_mode:check?1:0})
+    }}/>
+    <br/>
     exposure:<InputNumber value={camSetupInfo.exposure} onChange={(num)=>{
       onCameraSetupUpdate({...camSetupInfo,exposure:num})
     }}/>
