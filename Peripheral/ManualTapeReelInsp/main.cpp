@@ -1,7 +1,7 @@
 
 #include "main.hpp"
 
-#include <ESP32Encoder.h>
+#include <EncoderCounter.hpp>
 
 #include <Data_Layer_Protocol.hpp>
 #include <ArduinoJson.h>
@@ -76,16 +76,23 @@ void setMachineSetup(JsonDocument &jdoc)
 }
 
 static void enc_cb(void* arg);
-ESP32Encoder encoder(true, enc_cb);
+EncoderCounter encoder(I_EncAPin,I_EncBPin,4,enc_cb, NULL);
 int32_t count=0;
 static bool leds = false;
 
 
 
 
+int lastCount=0;
+
 static IRAM_ATTR void enc_cb(void* arg) {
   //Serial.printf("enc cb: count: %d\n", enc->getCount());
   count=encoder.getCount();
+  if(lastCount>=count)
+  {
+    //reverse run skip
+    return;
+  }
   // digitalWrite(O_LEDPin, leds);
   // leds=!leds;
   int t=count%10;
@@ -108,6 +115,7 @@ static IRAM_ATTR void enc_cb(void* arg) {
       digitalWrite(O_LEDPin, 0);
     break;
   }
+  lastCount=count;
   
 
 }
@@ -139,8 +147,6 @@ void setup()
   
   pinMode(I_EncAPin, INPUT_PULLUP);
   pinMode(I_EncBPin, INPUT_PULLUP);
-  ESP32Encoder::useInternalWeakPullResistors=UP;
-  encoder.attachHalfQuad(I_EncAPin, I_EncBPin);
   encoder.clearCount();
   encoder.setFilter(1023);
   // Serial.begin(921600);
