@@ -48,6 +48,7 @@ export MODULE_BPG_Protocol=$(abspath $(moduleRoot)/BPG_Protocol)
 
 # export MODULE_MLNN=$(abspath $(moduleRoot)/MLNN)
 export MODULE_MatchingEngine=$(abspath $(moduleRoot)/MatchingEngine)
+export MODULE_libuvc=$(abspath $(moduleRoot)/contrib/libuvc/$(platform))
 
 export SO_EXPORT_PATH=$(abspath .)
 
@@ -55,7 +56,7 @@ export SO_EXPORT_PATH=$(abspath .)
 export FEATURE_COMPILE_W_ARAVIS=0
 export FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=0
 export FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=0
-
+export FEATURE_COMPILE_W_UVC=0
 
 # export GLEWSRCDir=$(abspath ../../$(moduleRoot)/glew-2.1.0)
 # export GLFWSRCDir=$(abspath ../../$(moduleRoot)/glfw-3.2.1)
@@ -84,6 +85,7 @@ IDIR=	include/ \
 			$(MODULE_smem_channel)\
 			$(MODULE_shape_based_matching)/include \
       $(MODULE_simple_uart)/include \
+			$(MODULE_libuvc)/include \
       # /usr/local/include/opencv4
 			# $(MODULE_DataChannel)/include\
 			# $(MODULE_MLNN)/include/  \
@@ -108,6 +110,7 @@ EXT_OBJS= $(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_BPG_Protocol)/BPG_Protocol.a \
 					$(MODULE_shape_based_matching)/libshape_based_matching.a \
           $(MODULE_simple_uart)/simple_uart.a \
+          $(MODULE_libuvc)/libuvc.a \
 					# $(MODULE_DataChannel)/DataChannel.a \
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
           # $(MODULE_MatchingEngine)/MatchingEngine.a \
@@ -132,6 +135,7 @@ else
 	FLAGS+=  -std=c++11
 	EXT_OBJS+=
 	FEATURE_COMPILE_W_ARAVIS=1
+	FEATURE_COMPILE_W_UVC=1
 	FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=1
 	# FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=1
 endif

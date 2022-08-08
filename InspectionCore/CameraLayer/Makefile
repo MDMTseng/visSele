@@ -12,6 +12,18 @@ IDIR = include \
 _OBJ = CameraLayer.opp CameraLayer_BMP.opp CameraLayer_BMP_carousel.opp 
 
 FLAGS= -std=c++11 
+
+
+ifeq ($(FEATURE_COMPILE_W_UVC),1)
+	FLAGS+= -D FEATURE_COMPILE_W_UVC
+	IDIR+=$(MODULE_libuvc)/include
+	_OBJ+= CameraLayer_UVC.opp
+endif
+
+
+
+
+
 ifeq ($(FEATURE_COMPILE_W_ARAVIS),1)
 	FLAGS+= -D FEATURE_COMPILE_W_ARAVIS
 	FLAGS+=  `pkg-config --cflags glib-2.0`
