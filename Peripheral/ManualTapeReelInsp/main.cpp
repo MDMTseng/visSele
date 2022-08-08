@@ -9,12 +9,17 @@
 // #define __PRT_I_(...) Serial.printf("I:" __VA_ARGS__)
 #define __PRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
 
+const char *ModuleVer="0.0.1";
+
+const char *ModuleType="ManualTapeReelInsp";
+
+
 const int O_LEDPin = 2;
 //O => 26 25 33 32
 //I => 17 18 19 23
 
 const int O_CameraPin = 33;
-const int O_BackLight = 32;
+const int O_FlashLight = 32;
 const int O_EM_STOP = 25;
 const int O_TBD = 26;
 
@@ -24,22 +29,41 @@ const int I_EncBPin = 18;
 
 
 bool O_CameraPin_ON=true;
-bool O_BackLight_ON=true;
+bool O_FlashLight_ON=true;
 bool O_EM_STOP_ON=true;
 bool I_Enc_Inv=true;
 
 // twoGateSense tGS;
-int g_flash_trig_delay=80;//from object detected how long to flash
-int g_cam_trig_delay=85;//from object detected how long to trigger camera
-int g_flash_time=1000;//flash how long
+int g_act_trigger_type=0;//0 for timer trigger, 1 for counter trigger
+int g_flash_on_time=80;//from object detected how long to flash
+int g_cam_trig_time=85;//from object detected how long to trigger camera
+int g_flash_off_time=10000;//flash how long
+
+
+// int g_act_trigger_type=1;//0 for timer trigger, 1 for counter trigger
+// int g_flash_on_time=0;//from object detected how long to flash
+// int g_cam_trig_time=1;//from object detected how long to trigger camera
+// int g_flash_off_time=4;//flash how long
+
+
+
+
+int encStepSkip=4;
+
+
+int encStepsPerObject=4;
+int ObjCountPreSet=5;
+
+
 
 
 void genMachineSetup(JsonDocument &jdoc)
 {
 
-  jdoc["cam_trig_delay"]=g_cam_trig_delay;
-  jdoc["flash_trig_delay"]=g_flash_trig_delay;
-  jdoc["flash_time"]=g_flash_time;
+  jdoc["act_trigger_type"]=g_act_trigger_type;
+  jdoc["flash_on_time"]=g_flash_on_time;
+  jdoc["cam_trig_time"]=g_cam_trig_time;
+  jdoc["flash_off_time"]=g_flash_off_time;
   // jdoc["pulse_sep_min"]=g_pulse_sep_min;
   // jdoc["pulse_width_min"]=g_pulse_width_min;
   // jdoc["pulse_width_max"]=g_pulse_width_max;
@@ -47,7 +71,7 @@ void genMachineSetup(JsonDocument &jdoc)
   // jdoc["pulse_debounce_low"]=g_pulse_debounce_low;
 
   jdoc["O_CameraPin_ON"]=O_CameraPin_ON;
-  jdoc["O_BackLight_ON"]=O_BackLight_ON;
+  jdoc["O_FlashLight_ON"]=O_FlashLight_ON;
   jdoc["O_EM_STOP_ON"]=O_EM_STOP_ON;
   jdoc["I_Enc_Inv"]=I_Enc_Inv;
 
@@ -58,31 +82,25 @@ void genMachineSetup(JsonDocument &jdoc)
 
 void setMachineSetup(JsonDocument &jdoc)
 {
-  JSON_SETIF_ABLE(g_cam_trig_delay,jdoc,"cam_trig_delay");
-  JSON_SETIF_ABLE(g_flash_trig_delay,jdoc,"flash_trig_delay");
-  JSON_SETIF_ABLE(g_flash_time,jdoc,"flash_time");
+  JSON_SETIF_ABLE(g_act_trigger_type,jdoc,"act_trigger_type");
+  JSON_SETIF_ABLE(g_flash_on_time,jdoc,"flash_on_time");
+  JSON_SETIF_ABLE(g_cam_trig_time,jdoc,"cam_trig_time");
+  JSON_SETIF_ABLE(g_flash_off_time,jdoc,"flash_off_time");
   // JSON_SETIF_ABLE(g_pulse_sep_min,jdoc,"pulse_sep_min");
   // JSON_SETIF_ABLE(g_pulse_width_min,jdoc,"pulse_width_min");
   // JSON_SETIF_ABLE(g_pulse_width_max,jdoc,"pulse_width_max");
   // JSON_SETIF_ABLE(g_pulse_debounce_high,jdoc,"pulse_debounce_high");
   // JSON_SETIF_ABLE(g_pulse_debounce_low,jdoc,"pulse_debounce_low");
-  JSON_SETIF_ABLE(g_cam_trig_delay,jdoc,"cam_trig_delay");
 
 
   JSON_SETIF_ABLE(O_CameraPin_ON,jdoc,"O_CameraPin_ON");
-  JSON_SETIF_ABLE(O_BackLight_ON,jdoc,"O_BackLight_ON");
+  JSON_SETIF_ABLE(O_FlashLight_ON,jdoc,"O_FlashLight_ON");
   JSON_SETIF_ABLE(O_EM_STOP_ON,jdoc,"O_EM_STOP_ON");
   JSON_SETIF_ABLE(I_Enc_Inv,jdoc,"I_Enc_Inv");
+
 }
 
 static void enc_cb(void* arg);
-
-int encStepSkip=4;
-
-
-
-int encStep_ObjStep=4;
-int ObjSetCount=5;
 
 
 
@@ -99,15 +117,20 @@ int lastCount=0;
 
 static IRAM_ATTR void enc_cb(void* arg) {
   //Serial.printf("enc cb: count: %d\n", enc->getCount());
-  count=encoder.getCount();
+  if(I_Enc_Inv) count=-encoder.getCount();
+  else          count=-encoder.getCount();
+
+
+
   if(lastCount>=count)
   {
+    lastCount=count;
     //reverse run skip
     return;
   }
   // digitalWrite(O_LEDPin, leds);
   // leds=!leds;
-  int t=count%(encStep_ObjStep*ObjSetCount);
+  int t=count%(encStepsPerObject*ObjCountPreSet);
   if(t==0)
   {
       
@@ -115,12 +138,37 @@ static IRAM_ATTR void enc_cb(void* arg) {
     {
       timerRunStage_outSeq++;
     }
-    else
+    else if(g_act_trigger_type==0)
     {
       timerRunStage=1;
       timerAlarmWrite(timer, 1, true);
       timerAlarmEnable(timer);
     }
+  }
+
+  if(g_act_trigger_type==1)
+  {
+    
+    static int pret=0;
+    if(pret>t)pret=-1;
+    if(t>=g_flash_on_time && pret<g_flash_on_time)
+    {
+      digitalWrite(O_LEDPin, 1);
+      digitalWrite(O_FlashLight, O_FlashLight_ON);
+    }
+    if(t>=g_cam_trig_time && pret<g_cam_trig_time)
+    {
+
+      digitalWrite(O_CameraPin, O_CameraPin_ON);
+    }
+    if(t>=g_flash_off_time && pret<g_flash_off_time)
+    {
+      digitalWrite(O_FlashLight, !O_FlashLight_ON);
+      digitalWrite(O_CameraPin, !O_CameraPin_ON);
+      digitalWrite(O_LEDPin, 0);
+    }
+
+    pret=t;
   }
  
   lastCount=count;
@@ -137,27 +185,58 @@ void IRAM_ATTR onTimer()
   {
     
     case 1:  
-      timerAlarmWrite(timer, g_flash_trig_delay, true);
+    {
       timerRunStage=20;
+      int delay=g_flash_on_time;
+      if(delay>0)
+      {
+        timerAlarmWrite(timer, delay, true);
+      }
+      else
+      {
+        onTimer();
+      }
+    }
     return;
 
     case 20:  
+    {
       digitalWrite(O_LEDPin, 1);
-      digitalWrite(O_BackLight, 1);
-      timerAlarmWrite(timer, g_cam_trig_delay-g_flash_trig_delay, true);
+      digitalWrite(O_FlashLight, O_FlashLight_ON);
       timerRunStage=30;
+      int delay= g_cam_trig_time-g_flash_on_time;
+      if(delay>0)
+      {
+        timerAlarmWrite(timer, delay, true);
+      }
+      else
+      {
+        onTimer();
+      }
+    }
     return;
 
     
     case 30:
-      digitalWrite(O_CameraPin, 1);
+    {
+      digitalWrite(O_CameraPin, O_CameraPin_ON);
       timerRunStage=40;
-      timerAlarmWrite(timer, g_flash_time-g_cam_trig_delay, true);
+      int delay= g_flash_off_time-g_cam_trig_time;
+      if(delay>0)
+      {
+        timerAlarmWrite(timer, delay, true);
+      }
+      else
+      {
+        onTimer();
+      }
+
+    }
     return;
     
     case 40:
-      digitalWrite(O_BackLight, 0);
-      digitalWrite(O_CameraPin, 0);
+      digitalWrite(O_FlashLight, !O_FlashLight_ON);
+      digitalWrite(O_CameraPin, !O_CameraPin_ON);
       digitalWrite(O_LEDPin, 0);
 
     
@@ -183,7 +262,7 @@ void setup()
 
   pinMode(O_LEDPin, OUTPUT);
   pinMode(O_CameraPin, OUTPUT);
-  pinMode(O_BackLight, OUTPUT);
+  pinMode(O_FlashLight, OUTPUT);
   pinMode(O_EM_STOP, OUTPUT);
   
   pinMode(I_EncAPin, INPUT_PULLUP);
@@ -199,11 +278,11 @@ void setup()
       
     delay(200);
     digitalWrite(O_CameraPin, 0);
-    digitalWrite(O_BackLight, 0);
+    digitalWrite(O_FlashLight, 0);
     
     delay(200);
     digitalWrite(O_CameraPin, 1);
-    digitalWrite(O_BackLight, 1);
+    digitalWrite(O_FlashLight, 1);
     __PRT_D_("OK_ g:%d\n",digitalRead(I_gate1Pin));
   }
   // // setup_comm();
@@ -213,12 +292,12 @@ void setup()
   // timerAlarmWrite(timer, 1000000, true);
   // timerAlarmEnable(timer);
 
-  digitalWrite(O_BackLight, 1);
+  digitalWrite(O_FlashLight, 1);
   digitalWrite(O_CameraPin, 1);
   delay(3000);
-  // digitalWrite(O_BackLight, 0);
+  // digitalWrite(O_FlashLight, 0);
   digitalWrite(O_CameraPin, 0);
-  digitalWrite(O_BackLight, 0);
+  digitalWrite(O_FlashLight, 0);
 }
 
 
@@ -281,7 +360,8 @@ class MData_uInsp:public Data_JsonRaw_Layer
       {
 
         retdoc["type"]="get_setup";
-        retdoc["ver"]=VERSION;
+        retdoc["ver"]=ModuleVer;
+        retdoc["type"]=ModuleType;
         genMachineSetup(retdoc);
 
         
@@ -362,13 +442,13 @@ class MData_uInsp:public Data_JsonRaw_Layer
       }
       else if(strcmp(type,"BL_ON")==0)
       {
-        digitalWrite(O_BackLight, O_BackLight_ON);
+        digitalWrite(O_FlashLight, O_FlashLight_ON);
         doRsp=rspAck=true;
 
       }     
       else if(strcmp(type,"BL_OFF")==0)
       {
-        digitalWrite(O_BackLight, !O_BackLight_ON);
+        digitalWrite(O_FlashLight, !O_FlashLight_ON);
         doRsp=rspAck=true;
 
       }
@@ -407,6 +487,13 @@ class MData_uInsp:public Data_JsonRaw_Layer
         digitalWrite(O_CameraPin_ON, !O_CameraPin_ON);
 
 
+        doRsp=rspAck=true;
+
+      }
+      else if(strcmp(type,"Encoder_Reset")==0)
+      {
+        lastCount=0;
+        encoder.clearCount();
         doRsp=rspAck=true;
 
       }
@@ -539,6 +626,6 @@ void loop()
   {
     djrl.dbg_printf("ENC:%06d timerC:%d timerRunStage:%d outTime:%d\n",count,timer_run_count,timerRunStage,timerRunStage_outSeq);
     last_count=count;
-    // delay(500);
+    delay(100);
   }
 }
