@@ -35,9 +35,9 @@ bool I_Enc_Inv=true;
 
 // twoGateSense tGS;
 int g_act_trigger_type=0;//0 for timer trigger, 1 for counter trigger
-int g_flash_on_time=80;//from object detected how long to flash
-int g_cam_trig_time=85;//from object detected how long to trigger camera
-int g_flash_off_time=10000;//flash how long
+int g_flash_on_time=0;//from object detected how long to flash
+int g_cam_trig_time=400;//from object detected how long to trigger camera
+int g_flash_off_time=2000;//flash how long
 
 
 // int g_act_trigger_type=1;//0 for timer trigger, 1 for counter trigger
