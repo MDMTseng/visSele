@@ -29,9 +29,9 @@ bool O_EM_STOP_ON=true;
 bool I_Enc_Inv=true;
 
 // twoGateSense tGS;
-int g_cam_trig_delay=85;//from object detected how long to trigger camera
 int g_flash_trig_delay=80;//from object detected how long to flash
-int g_flash_time=100;//flash how long
+int g_cam_trig_delay=85;//from object detected how long to trigger camera
+int g_flash_time=1000;//flash how long
 
 
 void genMachineSetup(JsonDocument &jdoc)
@@ -76,13 +76,25 @@ void setMachineSetup(JsonDocument &jdoc)
 }
 
 static void enc_cb(void* arg);
-EncoderCounter encoder(I_EncAPin,I_EncBPin,4,enc_cb, NULL);
+
+int encStepSkip=4;
+
+
+
+int encStep_ObjStep=4;
+int ObjSetCount=5;
+
+
+
+EncoderCounter encoder(I_EncAPin,I_EncBPin,encStepSkip,enc_cb, NULL);
 int32_t count=0;
 static bool leds = false;
 
 
+hw_timer_t *timer = NULL;
 
-
+int timerRunStage_outSeq=0;
+int timerRunStage=0;
 int lastCount=0;
 
 static IRAM_ATTR void enc_cb(void* arg) {
@@ -95,35 +107,69 @@ static IRAM_ATTR void enc_cb(void* arg) {
   }
   // digitalWrite(O_LEDPin, leds);
   // leds=!leds;
-  int t=count%10;
-  switch(t)
+  int t=count%(encStep_ObjStep*ObjSetCount);
+  if(t==0)
   {
-    case 0:
-      digitalWrite(O_LEDPin, 1);
-      digitalWrite(O_BackLight, 1);
-    break;
-    case 2:
-      digitalWrite(O_CameraPin, 1);
-      break;
-    case 3:
-    break;
-    case 4:
-      digitalWrite(O_BackLight, 0);
-      digitalWrite(O_CameraPin, 0);
-    break;
-    case 8:
-      digitalWrite(O_LEDPin, 0);
-    break;
+      
+    if(timerRunStage!=0)
+    {
+      timerRunStage_outSeq++;
+    }
+    else
+    {
+      timerRunStage=1;
+      timerAlarmWrite(timer, 1, true);
+      timerAlarmEnable(timer);
+    }
   }
+ 
   lastCount=count;
   
 
 }
 
+int timer_run_count=0;
+void IRAM_ATTR onTimer()
+{
+  timer_run_count++;
+
+  switch(timerRunStage)
+  {
+    
+    case 1:  
+      timerAlarmWrite(timer, g_flash_trig_delay, true);
+      timerRunStage=20;
+    return;
+
+    case 20:  
+      digitalWrite(O_LEDPin, 1);
+      digitalWrite(O_BackLight, 1);
+      timerAlarmWrite(timer, g_cam_trig_delay-g_flash_trig_delay, true);
+      timerRunStage=30;
+    return;
+
+    
+    case 30:
+      digitalWrite(O_CameraPin, 1);
+      timerRunStage=40;
+      timerAlarmWrite(timer, g_flash_time-g_cam_trig_delay, true);
+    return;
+    
+    case 40:
+      digitalWrite(O_BackLight, 0);
+      digitalWrite(O_CameraPin, 0);
+      digitalWrite(O_LEDPin, 0);
+
+    
+  }
+
+  timerRunStage=0;
+  timerAlarmDisable(timer);
+  timerAlarmWrite(timer, 0, false);
+}
 
 
 
-hw_timer_t *timer = NULL;
 #define S_ARR_LEN(arr) (sizeof(arr) / sizeof(arr[0]))
 
 
@@ -132,11 +178,6 @@ hw_timer_t *timer = NULL;
 
 
 
-
-
-void IRAM_ATTR onTimer()
-{
-}
 void setup()
 {
 
@@ -168,8 +209,9 @@ void setup()
   // // setup_comm();
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTimer, true);
-  timerAlarmWrite(timer, 100, true);
-  timerAlarmEnable(timer);
+  // timerAlarmWrite(timer, 100, false);
+  // timerAlarmWrite(timer, 1000000, true);
+  // timerAlarmEnable(timer);
 
   digitalWrite(O_BackLight, 1);
   digitalWrite(O_CameraPin, 1);
@@ -495,7 +537,8 @@ void loop()
   // loop_comm();
   if(last_count!=count)
   {
-    djrl.dbg_printf("ENC:%06d \n",count);
+    djrl.dbg_printf("ENC:%06d timerC:%d timerRunStage:%d outTime:%d\n",count,timer_run_count,timerRunStage,timerRunStage_outSeq);
     last_count=count;
+    // delay(500);
   }
 }
