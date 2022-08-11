@@ -1128,6 +1128,24 @@ function Orientation_ColorRegionOval_SingleRegion({srule,onDefChange,canvas_obj}
 
 
 
+    <br/>Edge thres
+    <Slider defaultValue={srule_Filled.contour.lengthh} max={65535} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        onDefChange(ObjShellingAssign(srule_Filled,["contour","lengthh"],v));
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+    <Slider defaultValue={srule_Filled.contour.lengthl} max={10} onChange={(v)=>{
+
+      _this.trigTO=
+      ID_debounce(_this.trigTO,()=>{
+        onDefChange(ObjShellingAssign(srule_Filled,["contour","lengthl"],v));
+      },()=>_this.trigTO=undefined,500);
+
+    }}/>
+
 
 
     </>
@@ -1150,6 +1168,436 @@ function Orientation_ColorRegionOval_SingleRegion({srule,onDefChange,canvas_obj}
 }
 
 
+
+function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
+  const _ = useRef<any>({
+
+    imgCanvas:document.createElement('canvas'),
+    canvasComp:undefined,
+    drawHooks:[],
+    ctrlHooks:[]
+
+
+  });
+  const [cacheDef,setCacheDef]=useState<any>(def);
+  const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
+
+
+  const [defReport,setDefReport]=useState<any>(undefined);
+  const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
+  let _this=_.current;
+  let c_report:any = undefined;
+  if(_this.cache_report!==report)
+  {
+    if(report!==undefined)
+    {
+      _this.cache_report=report;
+    }
+  }
+  c_report=_this.cache_report;
+
+
+  useEffect(() => {
+    console.log("fsPath:"+fsPath)
+    _this.cache_report=undefined;
+    setCacheDef(def);
+    // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
+    // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
+    return (() => {
+      });
+      
+  }, [def]); 
+  // console.log(IMCM_group,report);
+  // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
+  // const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);
+  const [Local_IMCM,setLocal_IMCM]=
+    useState<IMCM_type|undefined>(undefined);
+
+  
+  enum EditState {
+    Normal_Show = 0,
+    Region_Edit = 1,
+    CalibDataCollection = 100,
+  }
+  
+  const [editState,setEditState]=useState<EditState>(EditState.Normal_Show);
+  
+
+  
+  const dispatch = useDispatch();
+  const [BPG_API,setBPG_API]=useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+
+  const [delConfirmCounter,setDelConfirmCounter]=useState(0);
+
+
+  function onCacheDefChange(updatedDef: any,ddd:boolean)
+  {
+    console.log(updatedDef);
+    setCacheDef(updatedDef);
+
+    
+
+    (async ()=>{
+      await BPG_API.InspTargetUpdate(updatedDef)
+      
+      // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
+      
+      await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
+
+    })()
+    
+  }
+
+  
+  useEffect(() => {//////////////////////
+
+    (async ()=>{
+
+      let ret = await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+      console.log(ret);
+
+      // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+
+      await BPG_API.send_cbs_attach(
+        cacheDef.stream_id,"KEY_KEY_Orientation_ShapeBasedMatching",{
+          
+          resolve:(pkts)=>{
+            // console.log(pkts);
+            let IM=pkts.find((p:any)=>p.type=="IM");
+            if(IM===undefined)return;
+            let CM=pkts.find((p:any)=>p.type=="CM");
+            if(CM===undefined)return;
+            let RP=pkts.find((p:any)=>p.type=="RP");
+            if(RP===undefined)return;
+            console.log("++++++++\n",IM,CM,RP);
+
+
+            setDefReport(RP.data)
+            let IMCM={
+              image_info:IM.image_info,
+              camera_id:CM.data.camera_id,
+              trigger_id:CM.data.trigger_id,
+              trigger_tag:CM.data.trigger_tag,
+            } as type_IMCM
+  
+            _this.imgCanvas.width = IMCM.image_info.width;
+            _this.imgCanvas.height = IMCM.image_info.height;
+  
+            let ctx2nd = _this.imgCanvas.getContext('2d');
+            ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+  
+  
+            setLocal_IMCM(IMCM)
+            // console.log(IMCM)
+  
+          },
+          reject:(pkts)=>{
+  
+          }
+        }
+
+      )
+
+    })()
+    return (() => {
+      (async ()=>{
+        await BPG_API.send_cbs_detach(
+          stream_id,"ColorRegionDetection");
+            
+        // await BPG_API.InspTargetSetStreamChannelID(
+        //   cacheDef.id,0,
+        //   {
+        //     resolve:(pkts)=>{
+        //     },
+        //     reject:(pkts)=>{
+    
+        //     }
+        //   }
+        // )
+      })()
+      
+    })}, []); 
+  // function pushInSendGCodeQ()
+  // {
+  //   if(_this.isSendWaiting==true || _this.gcodeSeq.length==0)
+  //   {
+  //     return;
+  //   }
+  //   const gcode = _this.gcodeSeq.shift();
+  //   if(gcode==undefined || gcode==null)return;
+  //   _this.isSendWaiting=true;
+  //   ACT_WS_GET_OBJ((api)=>{
+  //     api.send({"type":"GCODE","code":gcode},
+  //     (ret)=>{
+  //       console.log(ret);
+  //       _this.isSendWaiting=false;
+  //       pushInSendGCodeQ(_this.gcodeSeq);
+
+  //     },(e)=>console.log(e));
+  //   })
+  // }
+
+
+  if(display==false)return null;
+  function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
+  {
+    let ctx = g.ctx;
+    // ctx.lineWidth = 5;
+
+    let x = region.x;
+    let y = region.y;
+    let w = region.w;
+    let h = region.h;
+    ctx.beginPath();
+    ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
+    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+    ctx.lineWidth = lineWidth;
+    ctx.rect(x,y,w,h);
+    ctx.stroke();
+    ctx.closePath();
+
+    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+    ctx.lineWidth = lineWidth*2/3;
+    canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
+
+
+
+  }
+
+
+
+
+
+  let EDIT_UI= null;
+  
+  switch(editState)
+  {
+    
+    case EditState.Normal_Show:
+
+
+      let EditUI=null;
+      if(true)//allow edit
+      {
+        EditUI=<>
+        <Button key={"_"+10000} onClick={()=>{
+          
+
+          setEditState( EditState.Region_Edit);
+
+        }}>EDIT</Button>
+
+
+        </>
+      }
+
+      EDIT_UI=<>
+        
+        <Input maxLength={100} value={cacheDef.id} 
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            console.log(e.target.value);
+
+            let newDef={...cacheDef};
+            newDef.id=e.target.value;
+            onCacheDefChange(newDef,false)
+
+
+          }}/>
+
+        <Input maxLength={100} value={cacheDef.type} disabled
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            
+          }}/>
+
+        <Input maxLength={100} value={cacheDef.sampleImageFolder}  disabled
+          style={{width:"100px"}}
+          onChange={(e)=>{
+          }}/>
+
+
+        <Input maxLength={100} value={cacheDef.trigger_tag} 
+          style={{width:"100px"}}
+          onChange={(e)=>{
+            let newDef={...cacheDef};
+            newDef.trigger_tag=e.target.value;
+            onCacheDefChange(newDef,false)
+        }}/>
+
+        <Popconfirm
+            title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+            onConfirm={()=>{}}
+            onCancel={()=>{}}
+            okButtonProps={{danger:true,onClick:()=>{
+              if(delConfirmCounter!=0)
+              {
+                setDelConfirmCounter(delConfirmCounter-1);
+              }
+              else
+              {
+                onCacheDefChange(undefined,false)
+              }
+            }}}
+            okText={"Yes:"+delConfirmCounter}
+            cancelText="No"
+          >
+          <Button danger type="primary" onClick={()=>{
+            setDelConfirmCounter(5);
+          }}>DEL</Button>
+        </Popconfirm> 
+        <br/>
+        <Button onClick={()=>{
+          onCacheDefChange(cacheDef,true);
+        }}>SHOT</Button>
+        <Button onClick={()=>{
+          onDefChange(cacheDef,true)
+        }}>SAVE</Button>
+
+        {EditUI}
+
+
+      </>
+
+
+      break;
+
+    case EditState.Region_Edit:
+
+
+      EDIT_UI=<>
+        <Button key={"_"+-1} onClick={()=>{
+          
+          setEditState(EditState.Normal_Show)
+        }}>{"<"}</Button>
+       <Button key={"_"+10000} onClick={()=>{
+          
+          
+          (async ()=>{
+
+            let ret = await BPG_API.InspTargetExchange(cacheDef.id,{
+              type:"extract_feature",
+              image_path:fsPath+"/"+cacheDef.templateSourceInfo.image,
+              feature_count:20,
+              
+            });
+            console.log(ret);
+
+
+
+
+
+          })()
+
+        }}>Templ</Button>        
+      </>
+
+      break;
+  }
+  
+
+  
+  return <div style={{...style,width:width+"%",height:height+"%"}}  className={"overlayCon"}>
+
+    <div className={"overlay"} >
+
+      {EDIT_UI}
+
+    </div>
+
+    
+    <HookCanvasComponent style={{}} dhook={(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
+      _this.canvasComp=canvas_obj;
+      // console.log(ctrl_or_draw);
+      if(ctrl_or_draw==true)//ctrl
+      {
+        // if(canvas_obj.regionSelect===undefined)
+        // canvas_obj.UserRegionSelect((onSelect,draggingState)=>{
+        //   if(draggingState==1)
+        //   {
+
+        //   }
+        //   else if(draggingState==2)
+        //   {
+        //     console.log(onSelect);
+        //     canvas_obj.UserRegionSelect(undefined)
+        //   }
+        // });
+        
+        // ctrlHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+        if(canvas_obj.regionSelect!==undefined)
+        {
+          if(canvas_obj.regionSelect.pt1===undefined || canvas_obj.regionSelect.pt2===undefined)
+          {
+            return;
+          }
+      
+          let pt1 = canvas_obj.regionSelect.pt1;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
+          let pt2 = canvas_obj.regionSelect.pt2;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
+           
+          
+          // console.log(canvas_obj.regionSelect);
+          let x,y,w,h;
+      
+          x=pt1.x;
+          w=pt2.x-pt1.x;
+      
+          y=pt1.y;
+          h=pt2.y-pt1.y;
+      
+      
+          if(w<0){
+            x+=w;
+            w=-w;
+          }
+          
+          if(h<0){
+            y+=h;
+            h=-h;
+          }
+          _this.sel_region={
+            x,y,w,h
+          }
+        }
+      }
+      else//draw
+      {
+        if(Local_IMCM!==undefined)
+        {
+          g.ctx.save();
+          let scale=Local_IMCM.image_info.scale;
+          g.ctx.scale(scale,scale);
+          g.ctx.translate(-0.5, -0.5);
+          g.ctx.drawImage(_this.imgCanvas, 0, 0);
+          g.ctx.restore();
+        }
+        // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+       
+
+        let ctx = g.ctx;
+        
+
+        if(canvas_obj.regionSelect!==undefined && _this.sel_region!==undefined)
+        {
+          ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+          
+          drawRegion(g,canvas_obj,_this.sel_region,canvas_obj.rUtil.getIndicationLineSize());
+      
+        }
+
+      }
+
+      
+      if(renderHook)
+      {
+        // renderHook(ctrl_or_draw,g,canvas_obj,newDef);
+      }
+    }
+    }/>
+
+  </div>;
+
+}
 
 
 function SingleTargetVIEWUI_Orientation_ColorRegionOval({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
@@ -2580,6 +3028,10 @@ function InspTargetUI_MUX(param:CompParam_InspTarUI)
   return <SingleTargetVIEWUI_Orientation_ColorRegionOval {...param} />;
 
 
+  if(param.def.type=="Orientation_ShapeBasedMatching")
+  return <SingleTargetVIEWUI_Orientation_ShapeBasedMatching {...param} />;
+
+
   if(param.def.type=="SurfaceCheckSimple")
   return <SingleTargetVIEWUI_SurfaceCheckSimple {...param} />;
 
@@ -2636,7 +3088,7 @@ function TargetViewUIShow({displayIDList,defConfig,onDefChange,renderHook}:{disp
         key={inspTar.id} 
         def={inspTar} 
         report={undefined} 
-        fsPath={defConfig.path}
+        fsPath={defConfig.path+"/it_"+inspTar.id}
         renderHook={renderHook} 
         onDefChange={(new_rule,doInspUpdate=true)=>{
           console.log(new_rule);
