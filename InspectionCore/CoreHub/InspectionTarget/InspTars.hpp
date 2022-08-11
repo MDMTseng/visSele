@@ -26,7 +26,7 @@
 #include <opencv2/calib3d.hpp>
 #include "opencv2/imgproc.hpp"
 #include <opencv2/imgcodecs.hpp>
-#include <InspTar_Orientation_ColorRegionOval.hpp>
+#include <InspTar_Orientation.hpp>
 #include <InspTar_SurfaceCheckSimple.hpp>
 
 using namespace cv;

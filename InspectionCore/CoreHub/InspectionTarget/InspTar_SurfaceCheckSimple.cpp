@@ -1,6 +1,6 @@
 
 #include "InspTar_SurfaceCheckSimple.hpp"
-#include "InspTar_Orientation_ColorRegionOval.hpp"
+#include "StageInfo_Orientation.hpp"
 
 using namespace cv;
 
@@ -176,68 +176,78 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   if(d_sinfo->orientation.size()>0)
   {  
-    retImage=new acvImage(W,H,3);
-    Mat def_temp_img_ROI(retImage->GetHeight(),retImage->GetWidth(),CV_8UC3,retImage->CVector[0]);
+    retImage=new acvImage(W*d_sinfo->orientation.size(),H,3);
+    Mat def_temp_img(retImage->GetHeight(),retImage->GetWidth(),CV_8UC3,retImage->CVector[0]);
 
-    StageInfo_Orientation::orient orientation = d_sinfo->orientation[0];
+    for(int i=0;i<d_sinfo->orientation.size();i++)
+    {
+      // cJSON* idxRegion=JFetch_ARRAY(def,("[+"+std::to_string(i)+"+]").c_str());
+      Mat def_temp_img_ROI = def_temp_img(Rect(i*W, 0, W, H));
+      StageInfo_Orientation::orient orientation = d_sinfo->orientation[i];
 
-    float angle = orientation.angle;
-    if(angle>M_PI_2)angle-=M_PI;
-    if(angle<-M_PI_2)angle+=M_PI;
-    Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2,H/2},-angle);
+      float angle = orientation.angle;
+      if(angle!=angle)continue;
+      if(angle>M_PI_2)angle-=M_PI;
+      if(angle<-M_PI_2)angle+=M_PI;
+      Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2,H/2},-angle);
 
-    cv::warpAffine(CV_srcImg, def_temp_img_ROI, rot,def_temp_img_ROI.size());
-
-
-    if(1){
-      
-      Mat img_HSV;
-      cvtColor(def_temp_img_ROI, img_HSV, COLOR_BGR2HSV);
-
-
-      double l_h=JFetch_NUMBER_ex(def,"hsv.rangel.h",0);
-      double l_s=JFetch_NUMBER_ex(def,"hsv.rangel.s",0);
-      double l_v=JFetch_NUMBER_ex(def,"hsv.rangel.v",0);
-
-      double h_h=JFetch_NUMBER_ex(def,"hsv.rangeh.h",180);
-      double h_s=JFetch_NUMBER_ex(def,"hsv.rangeh.s",255);
-      double h_v=JFetch_NUMBER_ex(def,"hsv.rangeh.v",255);
-
-      LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
-      Scalar rangeH=Scalar(h_h,h_s,h_v);
-      Scalar rangeL=Scalar(l_h,l_s,l_v);
-
-      Mat img_HSV_threshold;
-      inRange(img_HSV, rangeL, rangeH, img_HSV_threshold);
-      // cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
+      cv::warpAffine(CV_srcImg, def_temp_img_ROI, rot,def_temp_img_ROI.size());
 
 
-      {
-        double *colorThres=JFetch_NUMBER(def,"colorThres");
-        if(colorThres)
+      if(1){
+        
+        Mat img_HSV;
+        cvtColor(def_temp_img_ROI, img_HSV, COLOR_BGR2HSV);
+
+
+        double l_h=JFetch_NUMBER_ex(def,"hsv.rangel.h",0);
+        double l_s=JFetch_NUMBER_ex(def,"hsv.rangel.s",0);
+        double l_v=JFetch_NUMBER_ex(def,"hsv.rangel.v",0);
+
+        double h_h=JFetch_NUMBER_ex(def,"hsv.rangeh.h",180);
+        double h_s=JFetch_NUMBER_ex(def,"hsv.rangeh.s",255);
+        double h_v=JFetch_NUMBER_ex(def,"hsv.rangeh.v",255);
+
+        LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
+        Scalar rangeH=Scalar(h_h,h_s,h_v);
+        Scalar rangeL=Scalar(l_h,l_s,l_v);
+
+        Mat img_HSV_threshold;
+        inRange(img_HSV, rangeL, rangeH, img_HSV_threshold);
+        // cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
+
+
         {
-          GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
-          threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, THRESH_BINARY);
+          double colorThres=JFetch_NUMBER_ex(def,"colorThres",0);
+          if(colorThres>0)
+          {
+            GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 5, 5), 0, 0 );
+            threshold(img_HSV_threshold, img_HSV_threshold, colorThres, 255, THRESH_BINARY);
+
+            GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 5, 5), 0, 0 );
+            threshold(img_HSV_threshold, img_HSV_threshold, 255-colorThres, 255, THRESH_BINARY);
+
+          }
         }
-      }
-      
-          
-      {
-        double *resultOverlayAlpha=JFetch_NUMBER(def,"resultOverlayAlpha");
-        if(resultOverlayAlpha && *resultOverlayAlpha>0 && *resultOverlayAlpha<=1)
+        
+            
         {
-          // cv::cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
-          Mat img_HSV_threshold_rgb;
-          cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
-          addWeighted( 
-          img_HSV_threshold_rgb, *resultOverlayAlpha, 
-          def_temp_img_ROI, 1-*resultOverlayAlpha, 0.0, 
-          def_temp_img_ROI);
-          // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
-          // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
+          double resultOverlayAlpha=JFetch_NUMBER_ex(def,"resultOverlayAlpha",0);
+          {
+            // cv::cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
+            Mat img_HSV_threshold_rgb;
+            cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
+            addWeighted( 
+            img_HSV_threshold_rgb, resultOverlayAlpha, 
+            def_temp_img_ROI, 1-resultOverlayAlpha, 0.0, 
+            def_temp_img_ROI);
+            // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
+            // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
+          }
         }
       }
     }
+
 
   }
 

@@ -1,5 +1,5 @@
 
-#include "InspTar_Orientation_ColorRegionOval.hpp"
+#include "InspTar_Orientation.hpp"
 
 
 using namespace cv;
@@ -25,10 +25,10 @@ bool InspectionTarget_Orientation_ColorRegionOval::stageInfoFilter(shared_ptr<St
 
   for(auto tag : sinfo->trigger_tags )
   {
-    if(tag=="_STREAM_")
-    {
-      return false;
-    }
+    // if(tag=="_STREAM_")
+    // {
+    //   return false;
+    // }
     if( matchTriggerTag(tag,def))
       return true;
   }
@@ -140,8 +140,10 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
     cJSON *region_report=cJSON_CreateObject();
 
     
-    cJSON_AddNumberToObject(region_report,"idx",i);
     cJSON_AddItemToArray(rep_regionInfo,region_report);
+
+
+    cJSON_AddNumberToObject(region_report,"idx",i);
 
     try{
       int X=(int)*JFetEx_NUMBER(regionInfo,"region[0]");
@@ -216,27 +218,29 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
         double contourAreaL=JFetch_NUMBER_ex(regionInfo,"contour.areal",0);
 
         float maxScore=0;
-        StageInfo_Orientation::orient max_orie;
+        float taridx=-1;
+        float tarArea=0;
         for( size_t i = 0; i< contours.size(); i++ )
         {
           int contourL=contours[i].size();
 
           LOGI("[%d] L:%d",i,contourL);
           if(contourL<contourLenL || contourL>contourLenH )continue;
-          // vector<Point>approx_contours(contours.size());
+
+          auto &approx_contours=contours[i];
+          // vector<cv::Point>approx_contours;
           // float epsilon = 0.001*contourL;
           // if(epsilon<2)epsilon=2;
           // approxPolyDP(contours[i], approx_contours,epsilon, true);
 
 
 
-          double area = contourArea(contours[i],false);
-          LOGI("[%d] L:%d epsi:%d nL:%d area:%f",i,contourL,contours[i].size(),area);
+          double area = contourArea(approx_contours,false);
+          LOGI("[%d] L:%d epsi:%d nL:%d area:%f",i,contourL,approx_contours.size(),area);
           int iarea=area;
           if(iarea<contourAreaL || iarea>contourAreaH )continue;
 
 
-          RotatedRect rrect=fitEllipse(contours[i]);
           // int sqArea=contourL/4;
           // float cratio=area/(sqArea*sqArea);
           
@@ -245,25 +249,56 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
           if(maxScore<area)
           {
             maxScore=area;
+            tarArea=area;
+            taridx=i;
 
-            StageInfo_Orientation::orient orie;
-
-            orie.center.X=rrect.center.x+X;
-            orie.center.Y=rrect.center.y+Y;
-            orie.flip=false;
-            orie.angle=rrect.angle*3.14159/180;
-
-            max_orie=orie;
 
             LOGI("%d>>contourL:%d iarea:%d",i,contourL,iarea);
-            LOGI("center:%f %f  angle:%f",orie.center.X,orie.center.Y,orie.angle*180/3.14159);
 
 
           }
 
         }
-        if(maxScore>0)
-          reportInfo->orientation.push_back(max_orie);
+
+        StageInfo_Orientation::orient orie;
+        orie.angle=NAN;
+        orie.center=(acv_XY){NAN,NAN};
+        if(taridx!=-1)
+        {
+
+
+          vector<Point>  hull;
+          convexHull(Mat(contours[taridx]), hull);
+
+
+          RotatedRect rrect=fitEllipse(hull);
+
+          orie.center.X=rrect.center.x+X;
+          orie.center.Y=rrect.center.y+Y;
+          orie.flip=false;
+          orie.angle=rrect.angle*3.14159/180;
+
+          LOGI("center:%f %f  angle:%f",orie.center.X,orie.center.Y,orie.angle*180/3.14159);
+          cJSON_AddNumberToObject(region_report,"contour_length",hull.size());
+
+          {
+
+            cJSON *center=cJSON_CreateObject();
+
+            
+            cJSON_AddItemToObject(region_report,"center",center);
+
+            cJSON_AddNumberToObject(center,"x",orie.center.X);
+            cJSON_AddNumberToObject(center,"y",orie.center.Y);
+
+          }
+          cJSON_AddNumberToObject(region_report,"area",tarArea);
+
+          cJSON_AddNumberToObject(region_report,"angle",orie.angle);
+          cJSON_AddBoolToObject(region_report,"flip",orie.flip);
+        }
+        // if(maxScore>0)
+        reportInfo->orientation.push_back(orie);
 
 
       }
