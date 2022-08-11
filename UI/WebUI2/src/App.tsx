@@ -1731,6 +1731,21 @@ function SingleTargetVIEWUI_Orientation_ColorRegionOval({display,stream_id,fsPat
           drawRegion(g,canvas_obj,_this.sel_region,canvas_obj.rUtil.getIndicationLineSize());
       
         }
+
+        if(defReport)
+        {
+          
+          ctx.strokeStyle = "rgba(255,0,100,0.5)";
+          defReport.report.forEach((reg:any)=>{
+            if(reg.center===undefined || reg.angle===undefined)return;
+            canvas_obj.rUtil.drawCross(ctx, {x:reg.center.x,y:reg.center.y}, 5);
+            let angle = reg.angle;
+            if(angle>Math.PI/2)angle-=Math.PI;
+            let vec=PtRotate2d({x:30,y:0},angle,1);
+            canvas_obj.rUtil.drawLine(ctx,{x1:reg.center.x,y1:reg.center.y,x2:reg.center.x+vec.x,y2:reg.center.y+vec.y})
+            // console.log(reg,canvas_obj)
+          })
+        }
       }
 
       
