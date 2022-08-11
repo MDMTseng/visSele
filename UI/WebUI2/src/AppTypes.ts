@@ -9,7 +9,12 @@ export type type_CameraInfo={
   name: string,
   serial_nbr:string,
   vendor:string,
-
+  ROI:{
+    x:number,
+    y:number,
+    w:number,
+    h:number,
+  },
   trigger_mode:number,
   analog_gain:number,
   exposure:number,
