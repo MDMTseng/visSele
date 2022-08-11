@@ -19,6 +19,7 @@ import { GetObjElement,ID_debounce,ID_throttle,ObjShellingAssign} from './UTIL/M
 import {listCMDPromise} from './XCMD';
 
 
+import {VEC2D,SHAPE_ARC,SHAPE_LINE_seg,PtRotate2d} from './UTIL/MathTools';
 
 import {HookCanvasComponent,DrawHook_CanvasComponent,type_DrawHook_g,type_DrawHook} from './CanvasComp/CanvasComponent';
 import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_API';
@@ -2299,13 +2300,63 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
   
 }
 
+function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
+{
+  let ctx = g.ctx;
+  // ctx.lineWidth = 5;
+
+  let x = region.x;
+  let y = region.y;
+  let w = region.w;
+  let h = region.h;
+  ctx.beginPath();
+  ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
+  // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+  ctx.lineWidth = lineWidth;
+  ctx.rect(x,y,w,h);
+  ctx.stroke();
+  ctx.closePath();
+
+  // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+  ctx.lineWidth = lineWidth*2/3;
+  canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
+
+
+
+}
+
+function PtsToXYWH( pt1:VEC2D, pt2:VEC2D)
+{
+  let x,y,w,h;
+
+  x=pt1.x;
+  w=pt2.x-pt1.x;
+
+  y=pt1.y;
+  h=pt2.y-pt1.y;
+
+
+  if(w<0){
+    x+=w;
+    w=-w;
+  }
+  
+  if(h<0){
+    y+=h;
+    h=-h;
+  }
+  return {
+    x,y,w,h
+  }
+}
 
 
 function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetupInfo:type_CameraInfo, CoreAPI:BPG_WS,onCameraSetupUpdate:(caminfo:type_CameraInfo)=>void}){
 
-  const _this = useRef<any>({
-
-    imgCanvas:document.createElement('canvas')
+  const _this = useRef<{canvasComp:DrawHook_CanvasComponent|undefined,imgCanvas:HTMLCanvasElement
+  }>({
+    canvasComp:undefined,
+    imgCanvas:document.createElement('canvas') as HTMLCanvasElement
   }).current;
 
   const [Local_IMCM,setLocal_IMCM]=
@@ -2342,7 +2393,11 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
           _this.imgCanvas.height = IMCM.image_info.height;
 
           let ctx2nd = _this.imgCanvas.getContext('2d');
-          ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+          if(ctx2nd)
+          {
+            ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+
+          }
 
 
           setLocal_IMCM(IMCM)
@@ -2371,6 +2426,12 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
       })()
     }
   },[])
+
+
+
+
+
+
   return <> 
     {/* <pre>{
       JSON.stringify(camSetupInfo,null,2)
@@ -2416,30 +2477,74 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
     <Switch checkedChildren="反Y" unCheckedChildren="正Y" checked={camSetupInfo.mirrorY} onChange={(check)=>{
       onCameraSetupUpdate({...camSetupInfo,mirrorY:check})
     }}/>
-    
+    <Button key={">ROI>>"} onClick={()=>{
+      
+      if(_this.canvasComp==undefined)return;
+      
+      onCameraSetupUpdate({...camSetupInfo,ROI:{x:0,y:0,w:999999,h:999999}});
+      _this.canvasComp.UserRegionSelect((info,state)=>{
+        if(state==2)
+        {
+          console.log(info);
+          
+          let x,y,w,h;
+          
+          let roi_region=PtsToXYWH(info.pt1,info.pt2);
+          console.log(roi_region)
+          // onDefChange(newRule)
+          onCameraSetupUpdate({...camSetupInfo,ROI:roi_region})
+          if(_this.canvasComp==undefined)return;
+          _this.canvasComp.UserRegionSelect(undefined)
+        }
+      })
+    }}>ROI</Button>
     <br/>
     <HookCanvasComponent style={{height:"300px"}} dhook={(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
-      // _this.canvasComp=canvas_obj;
-      // console.log(ctrl_or_draw);
+      _this.canvasComp=canvas_obj;
       if(ctrl_or_draw==true)//ctrl
       {
+        
       }
       else//draw
       {
         if(Local_IMCM!==undefined)
         {
+          // g.ctx.save();
+          // let scale=Local_IMCM.image_info.scale;
+          // g.ctx.translate(-Local_IMCM.image_info.full_width/2,-Local_IMCM.image_info.full_height/2);
+          // g.ctx.scale(scale,scale);
+          // g.ctx.translate(-0.5, -0.5);
+          
+          // g.ctx.drawImage(_this.imgCanvas, 0, 0);
+          // g.ctx.restore();
+
+          
           g.ctx.save();
           let scale=Local_IMCM.image_info.scale;
-          g.ctx.translate(-Local_IMCM.image_info.full_width/2,-Local_IMCM.image_info.full_height/2);
           g.ctx.scale(scale,scale);
           g.ctx.translate(-0.5, -0.5);
-          
           g.ctx.drawImage(_this.imgCanvas, 0, 0);
           g.ctx.restore();
         }
         // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
        
 
+        // console.log(canvas_obj);
+        
+
+        if(canvas_obj.regionSelect!==undefined && (canvas_obj.regionSelect.pt1!==undefined && canvas_obj.regionSelect.pt2!==undefined))
+        {
+
+          let ctx = g.ctx;
+          ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+          
+          {
+            let sel_region=PtsToXYWH(canvas_obj.regionSelect.pt1,canvas_obj.regionSelect.pt2);
+            drawRegion(g,canvas_obj,sel_region,canvas_obj.rUtil.getIndicationLineSize());
+          }
+
+      
+        }
         let ctx = g.ctx;
         
       }

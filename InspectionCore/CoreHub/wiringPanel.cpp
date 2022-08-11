@@ -1058,6 +1058,24 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           }
 
 
+          {
+            cJSON *roi=JFetch_OBJECT(json,"ROI");
+            if(roi)
+            {
+              double x=JFetch_NUMBER_ex(roi, "x");
+              double y=JFetch_NUMBER_ex(roi, "y");
+              double w=JFetch_NUMBER_ex(roi, "w");
+              double h=JFetch_NUMBER_ex(roi, "h");
+              if(x==x && y==y && w==w && h==h)
+              {
+                
+                cami->camera->SetROI((int)x,(int)y,(int)w,(int)h,0,0);
+              }
+              LOGI("ROI: %f,%f,%f,%f<<<<",x,y,w,h);
+            }
+
+          }
+
           
           double *frame_rate = JFetch_NUMBER(json, "frame_rate");
           if(frame_rate)
