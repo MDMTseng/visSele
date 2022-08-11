@@ -656,6 +656,10 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
     LOGE("ERR code:%d msg:%s", err->code, err->message);
     g_clear_error(&err);
   }
+  else 
+  {
+    acquisition_started=true;
+  }
 
   //
 
@@ -797,28 +801,33 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
 
 
   arv_camera_set_region(camera, (int)x, (int)y, (int)w, (int)h, &err);
+
+  CameraLayer::status retState=CameraLayer::ACK;
   if (err)
   {
     LOGI("ERR code:%d msg:%s", err->code, err->message);
     g_clear_error(&err);
     
-    
-    if(acquisition_started)
-    {
-      arv_camera_start_acquisition (camera, &err);
-      if (err)
-      {
-        LOGI("ERR code:%d msg:%s", err->code, err->message);
-        g_clear_error(&err);
-      }
-    }
-    return CameraLayer::NAK;
+    retState=CameraLayer::NAK;
+  }
+  else
+  {
+
+    GetROI(&x, &y, &w, &h, NULL, NULL);
+    LOGI("xywh:%d,%d %d,%d", x, y, w, h);
   }
 
-  GetROI(&x, &y, &w, &h, NULL, NULL);
-  LOGI("xywh:%d,%d %d,%d", x, y, w, h);
 
-
+  
+  if(acquisition_started)
+  {
+    arv_camera_start_acquisition (camera, &err);
+    if (err)
+    {
+      LOGI("ERR code:%d msg:%s", err->code, err->message);
+      g_clear_error(&err);
+    }
+  }
     
   // if(acquisition_started)
   // {
@@ -830,7 +839,7 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
   //   }
   // }
 
-  return CameraLayer::ACK;
+  return retState;
 }
 CameraLayer::status CameraLayer_Aravis::GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh)
 {
