@@ -169,7 +169,7 @@ void InspectionTarget::additionalInfoAssign(std::string key,cJSON* info)
   
   cJSON_AddItemToObject(additionalInfo,key.c_str(),cJSON_Duplicate(info, cJSON_True));
 }
-bool InspectionTarget::exchangeInfo(cJSON* info,int info_ID,exchangeCMD_ACT &act)
+bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
 {
   std::string type=JFetch_STRING_ex(info,"type");
 
@@ -213,7 +213,7 @@ bool  InspectionTarget::isService()
 InspectionTarget::~InspectionTarget()
 {
   setInspDef(NULL);
-  // exchangeInfo(NULL)
+  // exchangeCMD(NULL)
   if(additionalInfo)
   {
     cJSON_Delete(additionalInfo);

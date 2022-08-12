@@ -109,10 +109,10 @@ line2Dup::TemplatePyramid Json2TemplatePyramid(cJSON* json)
 }
 
 
-bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeInfo(cJSON* info,int id,exchangeCMD_ACT &act)
+bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
 {
   //LOGI(">>>>>>>>>>>>");
-  bool ret = InspectionTarget::exchangeInfo(info,id,act);//apply framework layer exchange
+  bool ret = InspectionTarget::exchangeCMD(info,id,act);//apply framework layer exchange
   if(ret)return ret;
   string type=JFetch_STRING_ex(info,"type");
 

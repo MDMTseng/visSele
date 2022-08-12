@@ -1410,7 +1410,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         InspectionTarget *insptar= inspTarMan.getInspTar(std::string(_id));
         if(insptar==NULL)break;
 
-        session_ACK=insptar->exchangeInfo(JFetch_OBJECT(json,"data"),dat->pgID,exchCMDact);
+        session_ACK=insptar->exchangeCMD(JFetch_OBJECT(json,"data"),dat->pgID,exchCMDact);
         // if(reply!=NULL)
         // {
         //   session_ACK=true;
@@ -1418,7 +1418,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         //   cJSON_Delete(reply);
         // }
 
-        // if(JFetch_NUMBER(json,"channel_id")!=NULL)//if there is channel_id in json, then exchangeInfo has to deal with reply itself
+        // if(JFetch_NUMBER(json,"channel_id")!=NULL)//if there is channel_id in json, then exchangeCMD has to deal with reply itself
         // {
         //   noInstantACK=true;
         // }

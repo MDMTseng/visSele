@@ -157,7 +157,7 @@ class InspectionTarget
   virtual ~InspectionTarget();
   virtual void setInspDef(cJSON* def);
 
-  virtual bool exchangeInfo(cJSON* info,int info_ID,exchangeCMD_ACT &act);
+  virtual bool exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act);
 
   virtual cJSON* genITIOInfo()=0;
   virtual cJSON* genITInfo();

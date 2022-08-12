@@ -60,10 +60,10 @@ int InspectionTarget_SurfaceCheckSimple::processInputPool()
 
 
 
-bool InspectionTarget_SurfaceCheckSimple::exchangeInfo(cJSON* info,int id,exchangeCMD_ACT &act)
+bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
 {
   //LOGI(">>>>>>>>>>>>");
-  bool ret = InspectionTarget::exchangeInfo(info,id,act);
+  bool ret = InspectionTarget::exchangeCMD(info,id,act);
   if(ret)return ret;
   string type=JFetch_STRING_ex(info,"type");
 
