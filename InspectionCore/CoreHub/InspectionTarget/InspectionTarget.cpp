@@ -169,28 +169,34 @@ void InspectionTarget::additionalInfoAssign(std::string key,cJSON* info)
   
   cJSON_AddItemToObject(additionalInfo,key.c_str(),cJSON_Duplicate(info, cJSON_True));
 }
-cJSON* InspectionTarget::exchangeInfo(cJSON* info)
+bool InspectionTarget::exchangeInfo(cJSON* info,int info_ID,exchangeCMD_ACT &act)
 {
   std::string type=JFetch_STRING_ex(info,"type");
 
   if(type=="get_info")
   {
-    return genITInfo();
+    cJSON * itinfo = genITInfo();
+    act.send("IF",info_ID,itinfo);
+    cJSON_Delete(itinfo);
+    return true;
   }
 
   if(type=="get_io_setting")
   {
-    return genITIOInfo();
+    cJSON * itioinfo = genITIOInfo();
+    act.send("IO",info_ID,itioinfo);
+    cJSON_Delete(itioinfo);
+    return true;
   }
 
   if(type=="stream_info")
   {
     additionalInfoAssign(type,info);
-    return cJSON_CreateObject();
+    return true;
   }
 
 
-  return NULL;
+  return false;
 }
 
 

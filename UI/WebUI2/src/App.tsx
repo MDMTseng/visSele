@@ -49,6 +49,56 @@ type IMCM_type=
 }
 
 
+function PtsToXYWH( pt1:VEC2D, pt2:VEC2D)
+{
+  let x,y,w,h;
+
+  x=pt1.x;
+  w=pt2.x-pt1.x;
+
+  y=pt1.y;
+  h=pt2.y-pt1.y;
+
+
+  if(w<0){
+    x+=w;
+    w=-w;
+  }
+  
+  if(h<0){
+    y+=h;
+    h=-h;
+  }
+  return {
+    x,y,w,h
+  }
+}
+
+function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
+{
+  let ctx = g.ctx;
+  // ctx.lineWidth = 5;
+
+  let x = region.x;
+  let y = region.y;
+  let w = region.w;
+  let h = region.h;
+  ctx.beginPath();
+  ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
+  // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+  ctx.lineWidth = lineWidth;
+  ctx.rect(x,y,w,h);
+  ctx.stroke();
+  ctx.closePath();
+
+  // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+  ctx.lineWidth = lineWidth*2/3;
+  canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
+
+
+
+}
+
 
 type IMCM_group={[trigID:string]:IMCM_type}
 
@@ -387,9 +437,9 @@ function SingleTargetVIEWUI_ColorRegionDetection({display,stream_id,fsPath,width
     (async ()=>{
       await BPG_API.InspTargetUpdate(updatedDef)
       
-      // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
+      await BPG_API.CameraSWTrigger("Hikrobot-00F71598890","TTT",4433)
       
-      await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
+      // await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
 
     })()
     
@@ -524,32 +574,6 @@ function SingleTargetVIEWUI_ColorRegionDetection({display,stream_id,fsPath,width
 
 
   if(display==false)return null;
-  function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
-  {
-    let ctx = g.ctx;
-    // ctx.lineWidth = 5;
-
-    let x = region.x;
-    let y = region.y;
-    let w = region.w;
-    let h = region.h;
-    ctx.beginPath();
-    ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
-    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-    ctx.lineWidth = lineWidth;
-    ctx.rect(x,y,w,h);
-    ctx.stroke();
-    ctx.closePath();
-
-    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-    ctx.lineWidth = lineWidth*2/3;
-    canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
-
-
-
-  }
-
-
 
 
 
@@ -964,7 +988,7 @@ function Orientation_ColorRegionOval_SingleRegion({srule,onDefChange,canvas_obj}
 
     contour:{
       lengthh:400000,
-      lengthl:400,
+      lengthl:70,
 
       areah:639030,
       areal:400,
@@ -1175,13 +1199,18 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
     imgCanvas:document.createElement('canvas'),
     canvasComp:undefined,
     drawHooks:[],
-    ctrlHooks:[]
+    ctrlHooks:[],
 
+    
 
+    featureImgCanvas:document.createElement('canvas'),
   });
   const [cacheDef,setCacheDef]=useState<any>(def);
   const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
 
+  const [featureInfoExt,setFeatureInfoExt]=useState<any>({});
+
+  const [featureInfo,setFeatureInfo]=useState<any>({});
 
   const [defReport,setDefReport]=useState<any>(undefined);
   const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
@@ -1218,11 +1247,77 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
     Normal_Show = 0,
     Region_Edit = 1,
     CalibDataCollection = 100,
+    NA=-99999
   }
   
-  const [editState,setEditState]=useState<EditState>(EditState.Normal_Show);
+  const [editState,_setEditState]=useState<EditState>(EditState.Normal_Show);
   
+  function setEditState(newEditState:EditState)
+  {
+    let state3Ev:EditState[]=[];//3 elements, leave,stay,enter
+    if(newEditState!=editState)
+    {
+      state3Ev=[editState,EditState.NA,newEditState]
+    }
+    state3Ev.forEach((st,idx)=>{
+      
+      switch(st)//current state
+      {
+        case EditState.Normal_Show:
+          if(idx==2)//enter
+          {
+            
+          }
+          else if(idx==0)//leave
+          {
+            
+          }
+          break;
+        case EditState.Region_Edit:
+          if(idx==2)//enter
+          {
+            setFeatureInfo(cacheDef.featureInfo===undefined?{}:cacheDef.featureInfo);
 
+            if(featureInfoExt.IM===undefined)//do a init image fetch
+            (async ()=>{
+
+              let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
+                type:"extract_feature",
+                image_path:fsPath+"/"+cacheDef.templateSourceInfo.image,
+                feature_count:-1,
+                image_transfer_downsampling:3,
+              }) as any[];
+  
+              let newFeatureInfoExt:any={};
+              
+              
+              let IM=pkts.find((p:any)=>p.type=="IM");
+              if(IM!==undefined)
+              {
+                _this.featureImgCanvas.width = IM.image_info.width;
+                _this.featureImgCanvas.height = IM.image_info.height;
+      
+                let ctx2nd = _this.featureImgCanvas.getContext('2d');
+                ctx2nd.putImageData(IM.image_info.image, 0, 0);
+                newFeatureInfoExt.IM=IM;
+                
+              }
+  
+              setFeatureInfoExt({...featureInfoExt,...newFeatureInfoExt})
+  
+  
+  
+            })()
+          }
+          else if(idx==0)//leave
+          {
+            setFeatureInfo({})
+          }
+          break;
+      }
+    })
+    _setEditState(newEditState);
+  }
   
   const dispatch = useDispatch();
   const [BPG_API,setBPG_API]=useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
@@ -1339,31 +1434,6 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
 
   if(display==false)return null;
-  function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
-  {
-    let ctx = g.ctx;
-    // ctx.lineWidth = 5;
-
-    let x = region.x;
-    let y = region.y;
-    let w = region.w;
-    let h = region.h;
-    ctx.beginPath();
-    ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
-    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-    ctx.lineWidth = lineWidth;
-    ctx.rect(x,y,w,h);
-    ctx.stroke();
-    ctx.closePath();
-
-    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-    ctx.lineWidth = lineWidth*2/3;
-    canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
-
-
-
-  }
-
 
 
 
@@ -1466,30 +1536,160 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
 
       EDIT_UI=<>
-        <Button key={"_"+-1} onClick={()=>{
-          
-          setEditState(EditState.Normal_Show)
-        }}>{"<"}</Button>
+        <Popconfirm
+            key={"UIBack"}
+            title={`確定要更新？`}
+            onConfirm={()=>{}}
+            onCancel={()=>{
+              
+              setEditState(EditState.Normal_Show)
+
+            }}
+            okButtonProps={{danger:true,onClick:()=>{
+              setCacheDef({...cacheDef,featureInfo:featureInfo})
+              setEditState(EditState.Normal_Show)
+              
+            }}}
+            okText={"Yes:"}
+            cancelText="No"
+          >
+          <Button danger type="primary" onClick={()=>{
+
+          }}>{"<"}</Button>
+        </Popconfirm> 
+
+
+
+
+
+
+
        <Button key={"_"+10000} onClick={()=>{
           
           
           (async ()=>{
 
-            let ret = await BPG_API.InspTargetExchange(cacheDef.id,{
+            let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
               type:"extract_feature",
               image_path:fsPath+"/"+cacheDef.templateSourceInfo.image,
-              feature_count:20,
+              feature_count:100,
+              image_transfer_downsampling:(featureInfo.IM===undefined)?3:-1,
+              mask_regions:featureInfo.mask_regions
+            }) as any[];
+            console.log(pkts);
+
+            let newFeatureInfo:any={};
+            let newFeatureInfoExt:any={};
+            
+            
+            let IM=pkts.find((p:any)=>p.type=="IM");
+            if(IM!==undefined)
+            {
+              _this.featureImgCanvas.width = IM.image_info.width;
+              _this.featureImgCanvas.height = IM.image_info.height;
+    
+              let ctx2nd = _this.featureImgCanvas.getContext('2d');
+              ctx2nd.putImageData(IM.image_info.image, 0, 0);
+              newFeatureInfoExt.IM=IM;
               
-            });
-            console.log(ret);
+            }
 
 
+            let RP=pkts.find((p:any)=>p.type=="RP");
+            if(RP!==undefined)
+            {
+              newFeatureInfo.templatePyramid=RP.data;
+            }
+
+            
+            setFeatureInfo({...featureInfo,...newFeatureInfo})
+            setFeatureInfoExt({...featureInfoExt,...newFeatureInfoExt})
 
 
 
           })()
 
-        }}>Templ</Button>        
+        }}>Templ</Button>  
+        <br/>
+        
+
+
+
+
+
+        { 
+          featureInfo.mask_regions===undefined?null:
+          featureInfo.mask_regions.map((regi:any,idx:number)=>
+            
+
+          
+        <Popconfirm
+            key={"regi_del_"+idx}
+            title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+            onConfirm={()=>{}}
+            onCancel={()=>{}}
+            okButtonProps={{danger:true,onClick:()=>{
+              if(delConfirmCounter!=0)
+              {
+                setDelConfirmCounter(delConfirmCounter-1);
+              }
+              else
+              { 
+                let new_mask_regions=[...featureInfo.mask_regions];
+
+                new_mask_regions.splice(idx, 1);
+                
+                setFeatureInfo({...featureInfo,mask_regions:new_mask_regions})
+                
+              }
+            }}}
+            okText={"Yes:"+delConfirmCounter}
+            cancelText="No"
+          >
+          <Button danger type="primary" onClick={()=>{
+            setDelConfirmCounter(5);
+          }}>{idx}</Button>
+        </Popconfirm> 
+
+
+
+          )
+        }
+
+        <Button key={"AddWReg"} onClick={()=>{
+
+
+      
+          if(_this.canvasComp==undefined)return;
+          _this.sel_region=undefined;
+          _this.canvasComp.UserRegionSelect((info:any,state:number)=>{
+            if(state==2)
+            {
+              console.log(info);
+              
+              let x,y,w,h;
+              
+              let roi_region=PtsToXYWH(info.pt1,info.pt2);
+              console.log(roi_region)
+              let regInfo = {...roi_region,isBlackRegion:false};
+              
+              let mask_regions=featureInfo.mask_regions===undefined?[]:[...featureInfo.mask_regions];
+
+              mask_regions.push(regInfo);
+              setFeatureInfo({...featureInfo,mask_regions})
+              
+              // onDefChange(newRule)
+              if(_this.canvasComp==undefined)return;
+              _this.canvasComp.UserRegionSelect(undefined)
+            }
+          })
+        }}>+</Button>  
+
+
+
+
+
+
       </>
 
       break;
@@ -1509,22 +1709,11 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
     <HookCanvasComponent style={{}} dhook={(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
       _this.canvasComp=canvas_obj;
       // console.log(ctrl_or_draw);
+
+      let ctx=g.ctx;
+
       if(ctrl_or_draw==true)//ctrl
       {
-        // if(canvas_obj.regionSelect===undefined)
-        // canvas_obj.UserRegionSelect((onSelect,draggingState)=>{
-        //   if(draggingState==1)
-        //   {
-
-        //   }
-        //   else if(draggingState==2)
-        //   {
-        //     console.log(onSelect);
-        //     canvas_obj.UserRegionSelect(undefined)
-        //   }
-        // });
-        
-        // ctrlHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
         if(canvas_obj.regionSelect!==undefined)
         {
           if(canvas_obj.regionSelect.pt1===undefined || canvas_obj.regionSelect.pt2===undefined)
@@ -1534,7 +1723,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
       
           let pt1 = canvas_obj.regionSelect.pt1;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
           let pt2 = canvas_obj.regionSelect.pt2;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
-           
+          
           
           // console.log(canvas_obj.regionSelect);
           let x,y,w,h;
@@ -1560,23 +1749,87 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           }
         }
       }
-      else//draw
-      {
-        if(Local_IMCM!==undefined)
+      if(editState==EditState.Normal_Show)
+      {      
+        if(ctrl_or_draw==true)//ctrl
         {
-          g.ctx.save();
-          let scale=Local_IMCM.image_info.scale;
-          g.ctx.scale(scale,scale);
-          g.ctx.translate(-0.5, -0.5);
-          g.ctx.drawImage(_this.imgCanvas, 0, 0);
-          g.ctx.restore();
         }
-        // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
-       
-
-        let ctx = g.ctx;
+        else//draw
+        {
+    
+          if(Local_IMCM!==undefined)
+          {
+            g.ctx.save();
+            let scale=Local_IMCM.image_info.scale;
+            g.ctx.scale(scale,scale);
+            g.ctx.translate(-0.5, -0.5);
+            g.ctx.drawImage(_this.imgCanvas, 0, 0);
+            g.ctx.restore();
+          }
+          // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
         
 
+        }
+
+      }
+      
+      if(editState==EditState.Region_Edit)
+      {
+        if(ctrl_or_draw==true)//ctrl
+        {
+        }
+        else//draw
+        {
+          if(featureInfoExt.IM!==undefined)
+          {
+            g.ctx.save();
+            let scale=featureInfoExt.IM.image_info.scale;
+            g.ctx.scale(scale,scale);
+            g.ctx.translate(-0.5, -0.5);
+            g.ctx.drawImage(_this.featureImgCanvas, 0, 0);
+            g.ctx.restore();
+          }
+
+          
+          if(featureInfo.templatePyramid!==undefined)
+          {
+            let mult=1;
+            for(let i=0;i<featureInfo.templatePyramid.length;i++,mult*=2)
+            {
+              let template = featureInfo.templatePyramid[i]
+              template.features.forEach((temp_pt:any)=>{
+                // ctx.strokeStyle = "rgba(255, 0, 0,1)";
+                ctx.lineWidth=4/mult;
+                ctx.strokeStyle = `HSLA(${300*i/featureInfo.templatePyramid.length}, 100%, 50%,1)`;
+                canvas_obj.rUtil.drawCross(ctx, {x:(temp_pt.x+template.tl_x)*mult,y:(temp_pt.y+template.tl_y)*mult}, 12/mult);
+              })
+            }
+          }
+
+
+          if(featureInfo.mask_regions!==undefined)
+          {
+            featureInfo.mask_regions.forEach((regi:any,idx:number)=>{
+              
+              ctx.strokeStyle = "rgba(100,100, 100,0.5)";
+              
+           
+              drawRegion(g,canvas_obj,{x:regi.x,y:regi.y,w:regi.w,h:regi.h},canvas_obj.rUtil.getIndicationLineSize()); 
+              ctx.font = "40px Arial";
+              ctx.fillStyle = "rgba(150,100, 100,0.5)";
+              ctx.fillText("idx:"+idx,regi.x,regi.y)
+            })
+          }
+
+
+
+
+        }
+      }
+
+      
+      if(ctrl_or_draw==false)
+      {
         if(canvas_obj.regionSelect!==undefined && _this.sel_region!==undefined)
         {
           ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
@@ -1584,8 +1837,9 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           drawRegion(g,canvas_obj,_this.sel_region,canvas_obj.rUtil.getIndicationLineSize());
       
         }
-
       }
+
+
 
       
       if(renderHook)
@@ -1779,33 +2033,6 @@ function SingleTargetVIEWUI_Orientation_ColorRegionOval({display,stream_id,fsPat
 
 
   if(display==false)return null;
-  function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
-  {
-    let ctx = g.ctx;
-    // ctx.lineWidth = 5;
-
-    let x = region.x;
-    let y = region.y;
-    let w = region.w;
-    let h = region.h;
-    ctx.beginPath();
-    ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
-    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-    ctx.lineWidth = lineWidth;
-    ctx.rect(x,y,w,h);
-    ctx.stroke();
-    ctx.closePath();
-
-    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-    ctx.lineWidth = lineWidth*2/3;
-    canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
-
-
-
-  }
-
-
-
 
 
   let EDIT_UI= null;
@@ -2426,8 +2653,9 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
       await BPG_API.InspTargetUpdate(updatedDef)
       
       // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
-      
-      await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
+     
+      await BPG_API.CameraSWTrigger("Hikrobot-00F71598890","TTT",4433)
+      // await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
 
     })()
     
@@ -2524,32 +2752,6 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
 
 
   if(display==false)return null;
-  function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
-  {
-    let ctx = g.ctx;
-    // ctx.lineWidth = 5;
-
-    let x = region.x;
-    let y = region.y;
-    let w = region.w;
-    let h = region.h;
-    ctx.beginPath();
-    ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
-    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-    ctx.lineWidth = lineWidth;
-    ctx.rect(x,y,w,h);
-    ctx.stroke();
-    ctx.closePath();
-
-    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-    ctx.lineWidth = lineWidth*2/3;
-    canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
-
-
-
-  }
-
-
 
 
 
@@ -2763,55 +2965,6 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
   
 }
 
-function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
-{
-  let ctx = g.ctx;
-  // ctx.lineWidth = 5;
-
-  let x = region.x;
-  let y = region.y;
-  let w = region.w;
-  let h = region.h;
-  ctx.beginPath();
-  ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
-  // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-  ctx.lineWidth = lineWidth;
-  ctx.rect(x,y,w,h);
-  ctx.stroke();
-  ctx.closePath();
-
-  // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-  ctx.lineWidth = lineWidth*2/3;
-  canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
-
-
-
-}
-
-function PtsToXYWH( pt1:VEC2D, pt2:VEC2D)
-{
-  let x,y,w,h;
-
-  x=pt1.x;
-  w=pt2.x-pt1.x;
-
-  y=pt1.y;
-  h=pt2.y-pt1.y;
-
-
-  if(w<0){
-    x+=w;
-    w=-w;
-  }
-  
-  if(h<0){
-    y+=h;
-    h=-h;
-  }
-  return {
-    x,y,w,h
-  }
-}
 
 
 function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetupInfo:type_CameraInfo, CoreAPI:BPG_WS,onCameraSetupUpdate:(caminfo:type_CameraInfo)=>void}){
@@ -3079,6 +3232,7 @@ function TargetViewUIShow({displayIDList,defConfig,onDefChange,renderHook}:{disp
       {
         return  <><br/>---hide----<br/></>
       }
+      console.log(defConfig.path,inspTar.id);
       return  <InspTargetUI_MUX 
         display={idx<displayInspTarIdx.length} 
         width={100/displayInspTarIdx.length} 
@@ -4016,11 +4170,11 @@ function App() {
     core_api.onConnected=()=>{
       ACT_EXT_API_CONNECTED(CORE_ID);
 
-      CNC_api.connect({
-        // uart_name:"/dev/cu.SLAB_USBtoUART",
-        uart_name:"/dev/cu.usbserial-1420",
-        baudrate:460800//230400//115200
-      });
+      // CNC_api.connect({
+      //   // uart_name:"/dev/cu.SLAB_USBtoUART",
+      //   uart_name:"/dev/cu.usbserial-1420",
+      //   baudrate:460800//230400//115200
+      // });
     }
 
     // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());

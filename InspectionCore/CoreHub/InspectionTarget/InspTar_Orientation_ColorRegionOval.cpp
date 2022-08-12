@@ -57,16 +57,14 @@ int InspectionTarget_Orientation_ColorRegionOval::processInputPool()
 
 }
 
-
-
-cJSON* InspectionTarget_Orientation_ColorRegionOval::exchangeInfo(cJSON* info)
+bool InspectionTarget_Orientation_ColorRegionOval::exchangeInfo(cJSON* info,int id,exchangeCMD_ACT &act)
 {
   //LOGI(">>>>>>>>>>>>");
-  cJSON* ret = InspectionTarget::exchangeInfo(info);
+  bool ret = InspectionTarget::exchangeInfo(info,id,act);
   if(ret)return ret;
   string type=JFetch_STRING_ex(info,"type");
 
-  return NULL;
+  return false;
 }
 
 

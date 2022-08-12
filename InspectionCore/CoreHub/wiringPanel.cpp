@@ -674,6 +674,45 @@ BGLightNodeInfo extractInfoFromJson(cJSON *nodeRoot) //have exception
   return info;
 }
 
+
+class exchangeCMD_ACTx: public exchangeCMD_ACT
+{ 
+  
+  acvImage dataSend_buff;
+  virtual void send(const char *TL, int pgID,cJSON* def){
+    
+    bpg_pi.fromUpperLayer_DATA(TL,pgID,def);
+
+  };
+  virtual void send(const char *TL, int pgID,acvImage* img,int downSample){
+    acvImage* p_img=img;
+    if(p_img==NULL)return;
+    BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)downSample};
+
+    iminfo.fullHeight = p_img->GetHeight();
+    iminfo.fullWidth = p_img->GetWidth();
+    iminfo.offsetX=0;
+    iminfo.offsetY=0;
+    if(downSample<=1)
+    {
+      iminfo.scale=1;
+      iminfo.img=p_img;
+      bpg_pi.fromUpperLayer_DATA(TL,pgID,&iminfo);
+      return;
+    }
+
+
+    //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
+    //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+    ImageDownSampling(dataSend_buff, *p_img, iminfo.scale, NULL);
+
+    bpg_pi.fromUpperLayer_DATA(TL,pgID,&iminfo);
+  };
+
+};
+
+exchangeCMD_ACTx exchCMDact;
+
 int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat) 
 {
   //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
@@ -1291,6 +1330,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             inspTar = new InspectionTarget_SurfaceCheckSimple(id,defInfo,&inspTarMan);
           }
+          else if(type==InspectionTarget_Orientation_ShapeBasedMatching::TYPE())
+          {
+            inspTar = new InspectionTarget_Orientation_ShapeBasedMatching(id,defInfo,&inspTarMan);
+          }
           else
           {
             //failed
@@ -1367,13 +1410,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         InspectionTarget *insptar= inspTarMan.getInspTar(std::string(_id));
         if(insptar==NULL)break;
 
-        cJSON* reply=insptar->exchangeInfo(JFetch_OBJECT(json,"data"));
-        if(reply!=NULL)
-        {
-          session_ACK=true;
-          fromUpperLayer_DATA("IT",dat->pgID,reply);
-          cJSON_Delete(reply);
-        }
+        session_ACK=insptar->exchangeInfo(JFetch_OBJECT(json,"data"),dat->pgID,exchCMDact);
+        // if(reply!=NULL)
+        // {
+        //   session_ACK=true;
+        //   fromUpperLayer_DATA("IT",dat->pgID,reply);
+        //   cJSON_Delete(reply);
+        // }
 
         // if(JFetch_NUMBER(json,"channel_id")!=NULL)//if there is channel_id in json, then exchangeInfo has to deal with reply itself
         // {

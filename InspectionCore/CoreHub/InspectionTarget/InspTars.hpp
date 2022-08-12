@@ -189,14 +189,14 @@ public:
 
   
 
-  cJSON* exchangeInfo(cJSON* info)
+  bool exchangeInfo(cJSON* info,int id,exchangeCMD_ACT &act)
   {
     //LOGI(">>>>>>>>>>>>");
-    cJSON* ret = InspectionTarget::exchangeInfo(info);
+    bool ret = InspectionTarget::exchangeInfo(info,id,act);
     if(ret)return ret;
     std::string type=JFetch_STRING_ex(info,"type");
 
-    return NULL;
+    return false;
   }
 
   // bool feedStageInfo(StageInfo* sinfo)

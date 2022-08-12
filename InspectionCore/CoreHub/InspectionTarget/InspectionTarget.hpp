@@ -120,6 +120,14 @@ class CameraManager
   
 // };
 
+class exchangeCMD_ACT
+{ 
+  public:
+  virtual void send(const char *TL, int pgID,cJSON* def)=0;
+  virtual void send(const char *TL, int pgID,acvImage* img,int downSample)=0;
+
+};
+
 class InspectionTargetManager;
 class StageInfo;
 class InspectionTarget
@@ -149,7 +157,7 @@ class InspectionTarget
   virtual ~InspectionTarget();
   virtual void setInspDef(cJSON* def);
 
-  virtual cJSON* exchangeInfo(cJSON* info);
+  virtual bool exchangeInfo(cJSON* info,int info_ID,exchangeCMD_ACT &act);
 
   virtual cJSON* genITIOInfo()=0;
   virtual cJSON* genITInfo();

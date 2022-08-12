@@ -50,7 +50,7 @@ public:
 
   int processInputPool();
 
-  cJSON* exchangeInfo(cJSON* info);
+  bool exchangeInfo(cJSON* info,int id,exchangeCMD_ACT &act);
 
   virtual cJSON* genITIOInfo();
 
