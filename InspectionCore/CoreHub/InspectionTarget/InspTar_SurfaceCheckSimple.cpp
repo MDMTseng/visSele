@@ -178,7 +178,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   {  
     retImage=new acvImage(W*d_sinfo->orientation.size(),H,3);
     Mat def_temp_img(retImage->GetHeight(),retImage->GetWidth(),CV_8UC3,retImage->CVector[0]);
-
+    def_temp_img={0};
     for(int i=0;i<d_sinfo->orientation.size();i++)
     {
       // cJSON* idxRegion=JFetch_ARRAY(def,("[+"+std::to_string(i)+"+]").c_str());
@@ -186,7 +186,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
       StageInfo_Orientation::orient orientation = d_sinfo->orientation[i];
 
       float angle = orientation.angle;
-      if(angle!=angle)continue;
+      if(angle!=angle)
+      {
+        continue;
+      }
       if(angle>M_PI_2)angle-=M_PI;
       if(angle<-M_PI_2)angle+=M_PI;
       Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2,H/2},-angle);
