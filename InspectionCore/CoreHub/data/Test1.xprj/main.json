@@ -21,9 +21,10 @@
       "RGain": 1655,
       "GGain": 1023,
       "BGain": 1639,
-      "gamma": 1,
+      "gamma": 0.7,
       "frame_rate": 10,
-      "available": false
+      "available": false,
+      "pixel_format": "BGR8Packed"
     },
     {
       "driver_name": "Aravis",
@@ -33,13 +34,23 @@
       "model": "00F92938639",
       "serial_nbr": "Hikrobot",
       "available": false,
-      "exposure": 16666,
-      "frame_rate": 7,
-      "analog_gain": 4,
-      "gamma": 1,
-      "mirrorY": false,
-      "mirrorX": false,
-      "black_level": 0
+      "exposure": 200,
+      "frame_rate": 70,
+      "analog_gain": 17,
+      "gamma": 0.5,
+      "mirrorY": true,
+      "mirrorX": true,
+      "black_level": 200,
+      "trigger_mode": 1,
+      "BGain": 1100,
+      "GGain": 900,
+      "RGain": 1500,
+      "ROI": {
+        "x": 8.290346160996023,
+        "y": 822.6738598389959,
+        "w": 2427.989591788024,
+        "h": 488.970126123977
+      }
     },
     {
       "driver_name": "BMP_carousel",
@@ -57,6 +68,9 @@
     },
     {
       "id": "regionInspection"
+    },
+    {
+      "id": "shapeBasedMatching_test"
     },
     {
       "id": "ImTran"

@@ -23,14 +23,6 @@
         859
       ],
       "colorThres": 21,
-      "hough_circle": {
-        "dp": 1,
-        "minDist": 5,
-        "param1": 100,
-        "param2": 30,
-        "minRadius": 5,
-        "maxRadius": 15
-      },
       "hsv": {
         "rangeh": {
           "h": 53,

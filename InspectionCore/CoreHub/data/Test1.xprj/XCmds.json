@@ -61,7 +61,7 @@
   {
     "id": "NEW_ACT_CMD",
     "cmds": [
-      "$async\nv.HACK_Offset=undefined\n\n// let ret = await G(`G01 Y100 X38 F200 ACC200 DEA200`)\n\n// console.log(ret)\n\nlet cycle=1;\nlet seg=cycle*200;\n\nlet XMax=180;\nlet YMax=100;\nlet Z1=0;\n\nfor(let i=0;i<seg;i++)\n{\n  let t=cycle*3.14159*2*i/(seg-1);\n  let X=-XMax*(1+Math.sin(t))/2;\n  let Y=YMax*(1-Math.cos(t))/2;\n  //X= -XMax*Math.random();\n  //Y=YMax*Math.random()\n  X=X.toFixed(3)\n  Y=Y.toFixed(3)\n  let ACC=i<1?100:300\n//Z1+=2000*(Math.random()-0.5)\n  await G(`G01 Y${Y} X${X} Z1_${Z1.toFixed(3)} F200 ACC${ACC}`)\n\nprogressUpdate(i+\"/\"+seg)\n\n}\n\n\n\nawait G(`G01 Y0 X0 Z1_0 ACC500 F300`)\n"
+      "$async\nv.HACK_Offset=undefined\n\n// let ret = await G(`G01 Y100 X38 F200 ACC200 DEA200`)\n\n// console.log(ret)\n\nlet cycle=1;\nlet seg=cycle*200;\n\nlet XMax=180;\nlet YMax=100;\nlet Z1=0;\n\nfor(let i=0;i<seg;i++)\n{\n  let t=cycle*3.14159*2*i/(seg-1);\n  let X=-XMax*(1+Math.sin(t))/2;\n  let Y=YMax*(1-Math.cos(t))/2;\n  //X= -XMax*Math.random();\n  //Y=YMax*Math.random()\n  X=X.toFixed(3)\n  Y=Y.toFixed(3)\n  let ACC=i<1?100:1000\n//Z1+=2000*(Math.random()-0.5)\n  await G(`G01 Y${Y} X${X} Z1_${Z1.toFixed(3)} F700 ACC${ACC}`)\n\nprogressUpdate(i+\"/\"+seg)\n\n}\n\n\n\nawait G(`G01 Y0 X0 Z1_0 ACC500 F300`)\n"
     ]
   },
   {
@@ -74,7 +74,13 @@
   {
     "id": "NEW XCMD",
     "cmds": [
-      "$async\nlet AXF=\"  AXF_Y\"\nlet F=\" F300 \"\nlet ACC=\" ACC1000\"\n\n\nfor(let i=0;i<10;i++){\nawait G(`G01 X15  Y0 `+AXF+F+ACC)\n\n\n//await G(`G01 X35  Y-3 `+AXF+F+ACC)\n\n\nawait G(`G01 X0  Y0 `+AXF+F+ACC)\n\n\nawait G(`G01 X0  Y15 `+AXF+F+ACC)\n\nawait G(`G01 X0  Y0 `+AXF+F+ACC)\n\n}"
+      "$async\nlet AXF=\"\"//\"  AXF_Y\"\nlet F=\" F900 \"\nlet ACC=\" ACC9000\"\n\n\nfor(let i=0;i<5;i++){\nawait G(`G01 X145  Y0 `+AXF+F+ACC)\n\n\n//await G(`G01 X35  Y-3 `+AXF+F+ACC)\n\n\nawait G(`G01 X50  Y30 Z1_10 R1_90`+AXF+F+ACC)\n\n\nawait G(`G01 X0  Y15 `+AXF+F+ACC)\n\nawait G(`G01 X0  Y0 Z1_0 R1_0`+AXF+F+ACC)\n\n}"
+    ]
+  },
+  {
+    "id": "NEW XCMD 1",
+    "cmds": [
+      "$async\nlet ret;\nret = await G(`G1 X800 Y700 R1_0 R2_0 R3_0 R4_0 Z1_0 Z2_0 Z3_0 Z4_0 F1000 ACC9000`)\n\nret = await G(`G1 X0 Y0 R1_0 R2_0 R3_0 R4_0 Z1_0 Z2_0 Z3_0 Z4_0 F900`)\n\n\nconsole.log(\"back\",ret);\n await G(`M400`)\nret = await G(`M114`)\nconsole.log(\"backRead\",ret);\n"
     ]
   }
 ]
