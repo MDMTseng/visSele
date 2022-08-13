@@ -1190,7 +1190,10 @@ function Orientation_ColorRegionOval_SingleRegion({srule,onDefChange,canvas_obj}
   </>
 
 }
-
+function SingleTargetVIEWUI_Orientation_ShapeBasedMatching_defEdit({def,onDefChange}:{def:any,onDefChange: (updatedDef: any) => void})
+{
+  
+}
 
 
 function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
@@ -1323,6 +1326,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
   const [BPG_API,setBPG_API]=useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
 
   const [delConfirmCounter,setDelConfirmCounter]=useState(0);
+  const [updateC,setUpdateC]=useState(0);
 
 
   function onCacheDefChange(updatedDef: any,ddd:boolean)
@@ -1397,7 +1401,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
     return (() => {
       (async ()=>{
         await BPG_API.send_cbs_detach(
-          stream_id,"ColorRegionDetection");
+          stream_id,"KEY_KEY_Orientation_ShapeBasedMatching");
             
         // await BPG_API.InspTargetSetStreamChannelID(
         //   cacheDef.id,0,
@@ -1622,34 +1626,34 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           featureInfo.mask_regions.map((regi:any,idx:number)=>
             
 
-          
-        <Popconfirm
-            key={"regi_del_"+idx}
-            title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
-            onConfirm={()=>{}}
-            onCancel={()=>{}}
-            okButtonProps={{danger:true,onClick:()=>{
-              if(delConfirmCounter!=0)
-              {
-                setDelConfirmCounter(delConfirmCounter-1);
-              }
-              else
-              { 
-                let new_mask_regions=[...featureInfo.mask_regions];
+              
+            <Popconfirm
+                key={"regi_del_"+idx+"..."+updateC}
+                title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+                onConfirm={()=>{}}
+                onCancel={()=>{}}
+                okButtonProps={{danger:true,onClick:()=>{
+                  if(delConfirmCounter!=0)
+                  {
+                    setDelConfirmCounter(delConfirmCounter-1);
+                  }
+                  else
+                  { 
+                    let new_mask_regions=[...featureInfo.mask_regions];
 
-                new_mask_regions.splice(idx, 1);
-                
-                setFeatureInfo({...featureInfo,mask_regions:new_mask_regions})
-                
-              }
-            }}}
-            okText={"Yes:"+delConfirmCounter}
-            cancelText="No"
-          >
-          <Button danger type="primary" onClick={()=>{
-            setDelConfirmCounter(5);
-          }}>{idx}</Button>
-        </Popconfirm> 
+                    new_mask_regions.splice(idx, 1);
+                    
+                    setFeatureInfo({...featureInfo,mask_regions:new_mask_regions})
+                    setUpdateC(updateC+1);
+                  }
+                }}}
+                okText={"Yes:"+delConfirmCounter}
+                cancelText="No"
+              >
+              <Button danger type="primary" onClick={()=>{
+                setDelConfirmCounter(5);
+              }}>{idx}</Button>
+            </Popconfirm> 
 
 
 
@@ -1685,6 +1689,9 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           })
         }}>+</Button>  
 
+
+
+        <br/>
 
 
 
@@ -1765,6 +1772,24 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
             g.ctx.translate(-0.5, -0.5);
             g.ctx.drawImage(_this.imgCanvas, 0, 0);
             g.ctx.restore();
+          }
+
+
+
+
+          if(defReport!==undefined)
+          {
+            // console.log(defReport)
+            defReport.forEach((match:any,idx:number)=>{
+              
+              ctx.lineWidth=4;
+              ctx.strokeStyle = `HSLA(0, 100%, 50%,1)`;
+              canvas_obj.rUtil.drawCross(ctx, {x:match.x,y:match.y}, 12);
+              
+              ctx.font = "40px Arial";
+              ctx.fillStyle = "rgba(150,100, 100,0.5)";
+              ctx.fillText("idx:"+idx+" ang:"+match.template_id+" sim:"+match.similarity.toFixed(1),match.x,match.y)
+            })
           }
           // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
         
@@ -2672,7 +2697,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
       // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
 
       await BPG_API.send_cbs_attach(
-        cacheDef.stream_id,"ColorRegionDetection",{
+        cacheDef.stream_id,"SurfaceCheckSimple",{
           
           resolve:(pkts)=>{
             // console.log(pkts);
@@ -2715,7 +2740,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
     return (() => {
       (async ()=>{
         await BPG_API.send_cbs_detach(
-          stream_id,"ColorRegionDetection");
+          stream_id,"SurfaceCheckSimple");
             
         // await BPG_API.InspTargetSetStreamChannelID(
         //   cacheDef.id,0,

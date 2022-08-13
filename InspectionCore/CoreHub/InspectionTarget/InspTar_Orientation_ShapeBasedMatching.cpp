@@ -12,13 +12,15 @@ template<typename Base, typename T> inline bool instanceof(const T) {
 }
 
 InspectionTarget_Orientation_ShapeBasedMatching::InspectionTarget_Orientation_ShapeBasedMatching(string id,cJSON* def,InspectionTargetManager* belongMan)
-  :InspectionTarget(id,def,belongMan)
+  :InspectionTarget(id,NULL,belongMan)
 {
   type=InspectionTarget_Orientation_ShapeBasedMatching::TYPE();
 
 
-  sbm=new SBM_if(60, {4,6,12},30,80);
-
+  sbm=NULL;
+  
+  setInspDef(def);
+  // sbm=new SBM_if(60, {4,6,12},30,80);
 }
 
 bool InspectionTarget_Orientation_ShapeBasedMatching::stageInfoFilter(shared_ptr<StageInfo> sinfo)
@@ -57,6 +59,125 @@ int InspectionTarget_Orientation_ShapeBasedMatching::processInputPool()
 
 }
 
+
+
+
+line2Dup::Template Json2Template(cJSON* jtpTemp)
+{
+  line2Dup::Template tmpl;
+  tmpl.angle=JFetch_NUMBER_ex(jtpTemp,"angle");
+  tmpl.width=JFetch_NUMBER_ex(jtpTemp,"width");
+  tmpl.height=JFetch_NUMBER_ex(jtpTemp,"height");
+  tmpl.tl_x=JFetch_NUMBER_ex(jtpTemp,"tl_x");
+  tmpl.tl_y=JFetch_NUMBER_ex(jtpTemp,"tl_y");
+  tmpl.pyramid_level=JFetch_NUMBER_ex(jtpTemp,"pyramid_level");
+
+
+  // tmpl.features.push_back();
+  for(int i=0;;i++)
+  {
+    cJSON *jfeat=JFetch_OBJECT(jtpTemp,("features["+to_string(i)+"]").c_str());
+
+    if(jfeat==NULL)break;
+    line2Dup::Feature feat;
+    feat.label=JFetch_NUMBER_ex(jfeat,"label");
+    feat.theta=JFetch_NUMBER_ex(jfeat,"theta");
+    feat.x=JFetch_NUMBER_ex(jfeat,"x");
+    feat.y=JFetch_NUMBER_ex(jfeat,"y");
+    tmpl.features.push_back(feat);
+  }
+  return tmpl;
+}
+
+
+line2Dup::TemplatePyramid Json2TemplatePyramid(cJSON* jtpArr)
+{
+  line2Dup::TemplatePyramid tp;
+  for(int i=0;;i++)
+  {
+    cJSON *layerTemp=JFetch_OBJECT(jtpArr,("["+to_string(i)+"]").c_str());
+
+    if(layerTemp==NULL)break;
+    line2Dup::Template temp=Json2Template(layerTemp);
+    tp.push_back(temp);
+  }
+  return tp;
+}
+
+void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON* def)
+{
+  InspectionTarget::setInspDef(def);
+// featureInfo
+  if(sbm)
+  {
+    delete(sbm);
+    sbm=NULL;
+  }
+  matching_downScale=JFetch_NUMBER_ex(def,"matching_downScale",1);
+  if(matching_downScale<0.01)matching_downScale=0.01;
+  cJSON* featureInfo=JFetch_OBJECT(def,"featureInfo");
+  if(featureInfo)
+  {
+    bool match_front_face=JFetch_TRUE(featureInfo,"match_front_face");
+    bool match_back_face=JFetch_TRUE(featureInfo,"match_back_face");
+    
+    int num_features= JFetch_NUMBER_ex(featureInfo,"num_features",60);
+    int weak_thresh= JFetch_NUMBER_ex(featureInfo,"weak_thresh",30);
+    int strong_thresh= JFetch_NUMBER_ex(featureInfo,"strong_thresh",80);
+    vector<int> T;
+    for(int i=0;;i++)
+    {
+      double *t=JFetch_NUMBER(featureInfo,("T["+to_string(i)+"]").c_str());
+      if(t)
+        T.push_back(*t);
+      else
+        break;
+    }
+    if(T.size()==0)//default
+    {
+      T.push_back(4);
+      T.push_back(6);
+      T.push_back(12);
+    }
+
+    LOGI(">>>%d,%d,%d",num_features,weak_thresh,strong_thresh);
+    sbm=new SBM_if(num_features, T,weak_thresh,strong_thresh);
+
+
+    cJSON *jtemplatePyramid= JFetch_ARRAY(featureInfo,"templatePyramid");
+    
+    insp_tp=Json2TemplatePyramid(jtemplatePyramid);
+    
+
+
+
+
+    int templateCenter_x= JFetch_NUMBER_ex(featureInfo,"center.x",0);
+    int templateCenter_y= JFetch_NUMBER_ex(featureInfo,"center.y",0);
+
+    cv::Point2f f0Pos(insp_tp[0].tl_x+insp_tp[0].features[0].x,insp_tp[0].tl_y+insp_tp[0].features[0].y);
+    cv::Point2f cenOffset=cv::Point2f(0,0);//cv::Point2f(templateCenter_x,templateCenter_y)-f0Pos;
+    sbm->regTemplateOffset(template_name     ,{cenOffset,false});
+    cenOffset.y*=-1;
+    sbm->regTemplateOffset(template_name+"_f",{cenOffset,true});
+
+    if(match_front_face)
+    {
+      sbm->train(template_name     ,insp_tp,cv::Point2f(0,0),false,matching_downScale,0,360,360);
+    }
+
+    if(match_back_face)
+    {
+      sbm->train(template_name+"_f",insp_tp,cv::Point2f(0,0),true ,matching_downScale,0,360,360);
+    }
+
+
+
+  }
+
+
+
+}
 
 cJSON* TemplateFeature2Json(line2Dup::Feature &feat)
 {
@@ -100,13 +221,6 @@ cJSON* TemplatePyramid2Json(line2Dup::TemplatePyramid &tp)
 }
 
 
-
-
-
-line2Dup::TemplatePyramid Json2TemplatePyramid(cJSON* json)
-{
-  
-}
 
 
 bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
@@ -250,9 +364,122 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
 
   LOGI(">>>>>>>>InspectionTarget_Orientation_ShapeBasedMatching>>>>>>>>");
+  LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
+  
+  auto srcImg=sinfo->imgSets["img"];
+
+  LOGI(">>>>>>>>");
+
+  Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+
+
+  cv::Size size1 = CV_srcImg.size();
+  size1.width=((int)(size1.width*matching_downScale))/8*8;
+  size1.height=((int)(size1.height*matching_downScale))/8*8;
+
+  Mat CV_srcImg_ds(size1,CV_8UC3);
+  resize(CV_srcImg,CV_srcImg_ds,size1,cv::INTER_AREA);
+  
+
+  float magThres_eq_alpha=0.3;
+  float magnitude_thres=JFetch_NUMBER_ex(def,"magnitude_thres",20)/(magThres_eq_alpha+(1-magThres_eq_alpha)*matching_downScale);
+  if(magnitude_thres>128)magnitude_thres=128;
+  std::vector<line2Dup::Match> matches = sbm->detector.match(CV_srcImg_ds, 
+    JFetch_NUMBER_ex(def,"similarity_thres",60),
+    magnitude_thres,
+    {template_name,template_name+"_f"});
+
+
+
+
+
+
+
+
+  vector<Rect> boxes;
+  vector<float> scores;
+  vector<int> idxs;
+  int CCC=0;
+  for(auto match: matches){
+    Rect box;
+    box.x = match.x;
+    box.y = match.y;
+    
+    auto templ = sbm->detector.getTemplates(match.class_id,
+                                        match.template_id);
+
+    box.width = templ[0].width;
+    box.height = templ[0].height;
+    boxes.push_back(box);
+    scores.push_back(match.similarity);
+    CCC++;
+  }
+  cv_dnn::NMSBoxes(boxes, scores, 0, 0.5f, idxs);
+
+
+
+  LOGI("=====idxs.size():%d",idxs.size());
+
+
+  // std::cout << "matches.size(): " << matches.size() << std::endl; 
+
+  LOGI("matches.size():%d",matches.size());
+  shared_ptr<StageInfo_Orientation> reportInfo(new StageInfo_Orientation());
+
+
+  cJSON* rep_regionInfo=cJSON_CreateArray();
+
+  for(auto idx: idxs)
+  {
+       
+    line2Dup::Match match = matches[idx];
+    cJSON *region_report=cJSON_CreateObject();
+    cJSON_AddItemToArray(rep_regionInfo,region_report);
+
+
+    cJSON_AddNumberToObject(region_report,"x",match.x/matching_downScale);
+    cJSON_AddNumberToObject(region_report,"y",match.y/matching_downScale);
+
+    cJSON_AddNumberToObject(region_report,"template_id",match.template_id);
+    cJSON_AddNumberToObject(region_report,"similarity",match.similarity);
+    cJSON_AddStringToObject(region_report,"class_id",match.class_id.c_str());
+
+
+  }
+
+
+  LOGI(">>>>>>>>");
+  reportInfo->source=this;
+  reportInfo->source_id=id;
+  reportInfo->imgSets["img"]=srcImg;//shared_ptr<acvImage>(retImage);
+  
+  reportInfo->trigger_id=sinfo->trigger_id;
+  // reportInfo->trigger_tags.push_back("InfoStream2UI");
+  // reportInfo->trigger_tags.push_back("ToTestRule");
+  reportInfo->trigger_tags.push_back("ImTran");
+
+  
+  reportInfo->trigger_tags.push_back(id);
+
+  LOGI(">>>>>>>>");
+  
+
+  reportInfo->StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
+  reportInfo->StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",4);
+  LOGI("CHID:%d",reportInfo->StreamInfo.channel_id);
+
+  reportInfo->jInfo=rep_regionInfo;
+
+  // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
+
+  LOGI(">>>>>>>>");
+  belongMan->dispatch(reportInfo);
+
+  
 }
 
 InspectionTarget_Orientation_ShapeBasedMatching::~InspectionTarget_Orientation_ShapeBasedMatching()
 {
-  delete sbm;
+  if(sbm)
+    delete sbm;
 }

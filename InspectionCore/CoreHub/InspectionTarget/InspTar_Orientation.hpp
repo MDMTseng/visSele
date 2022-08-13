@@ -54,6 +54,9 @@ class InspectionTarget_Orientation_ShapeBasedMatching :public InspectionTarget
 {
   protected:
   SBM_if *sbm;
+  line2Dup::TemplatePyramid insp_tp;
+  float matching_downScale=0.5;
+  string template_name="tNAME";
 public:
   InspectionTarget_Orientation_ShapeBasedMatching(string id,cJSON* def,InspectionTargetManager* belongMan);
 
@@ -61,6 +64,7 @@ public:
   bool stageInfoFilter(shared_ptr<StageInfo> sinfo);
   future<int> futureInputStagePool();
 
+  void setInspDef(cJSON* def);
   int processInputPool();
 
   bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act);
