@@ -521,6 +521,8 @@ public:
     // reportInfo->trigger_tags.push_back("InfoStream2UI");
     // reportInfo->trigger_tags.push_back("ToTestRule");
     // reportInfo->trigger_tags.push_back("ImTran");
+
+    reportInfo->sharedInfo.push_back(sinfo);
     reportInfo->trigger_tags.push_back(id);
 
     // reportInfo->fi=sinfo->fi;

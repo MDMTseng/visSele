@@ -329,8 +329,7 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
   // reportInfo->trigger_tags.push_back("ToTestRule");
   reportInfo->trigger_tags.push_back("ImTran");
   // reportInfo->trigger_tags.push_back("regionInspection");
-
-  
+  reportInfo->sharedInfo.push_back(sinfo);
   reportInfo->trigger_tags.push_back(id);
 
   

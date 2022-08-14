@@ -275,7 +275,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   // reportInfo->trigger_tags.push_back("ToTestRule");
   reportInfo->trigger_tags.push_back("ImTran");
 
-  
+  reportInfo->sharedInfo.push_back(sinfo);
   reportInfo->trigger_tags.push_back(id);
 
   
