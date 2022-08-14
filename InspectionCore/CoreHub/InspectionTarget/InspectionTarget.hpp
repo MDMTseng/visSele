@@ -230,7 +230,7 @@ class StageInfo{
   std::vector<std::string> trigger_tags;
   int trigger_id;
   
-  std::map<std::string,std::shared_ptr<acvImage>> imgSets;
+  // std::map<std::string,std::shared_ptr<acvImage>> imgSets;
   cJSON* jInfo;
   
 
@@ -262,7 +262,7 @@ class StageInfo{
     //     iter->second=NULL;
     //   }
     // }
-    imgSets.clear();
+    // imgSets.clear();
 
     if(jInfo)
     {

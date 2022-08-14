@@ -146,7 +146,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
     LOGE("sinfo type is not match.....");
     return;
   }
-  auto srcImg=d_sinfo->imgSets["src"];
+  auto srcImg=d_sinfo->img;
 
 
   Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
@@ -268,7 +268,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   reportInfo->source=this;
   reportInfo->source_id=id;
-  reportInfo->imgSets["img"]=shared_ptr<acvImage>(retImage);
+  reportInfo->img=shared_ptr<acvImage>(retImage);
   
   reportInfo->trigger_id=sinfo->trigger_id;
   // reportInfo->trigger_tags.push_back("InfoStream2UI");

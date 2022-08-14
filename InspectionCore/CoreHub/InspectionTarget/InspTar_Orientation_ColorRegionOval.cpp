@@ -107,7 +107,7 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
 
   LOGI("RUN:%s   from:%s",id.c_str(),sinfo->source_id.c_str());
   cJSON *report=cJSON_CreateObject();
-  auto srcImg=sinfo->imgSets["img"];
+  auto srcImg=sinfo->img;
 
 
   acvImage *copyImg=new acvImage();
@@ -316,12 +316,13 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
     
   }
   
+  delete copyImg;
 
   reportInfo->sharedInfo.push_back(sinfo);
   reportInfo->source=this;
   reportInfo->source_id=id;
-  reportInfo->imgSets["img"]=shared_ptr<acvImage>(copyImg);
-  reportInfo->imgSets["src"]=srcImg;
+  reportInfo->img=srcImg;//shared_ptr<acvImage>(copyImg);
+  // reportInfo->imgSets["src"]=srcImg;
   
   reportInfo->trigger_id=sinfo->trigger_id;
   // reportInfo->trigger_tags.push_back("InfoStream2UI");

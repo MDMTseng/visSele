@@ -329,7 +329,7 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON* info,in
     string folder_path=JFetch_STRING_ex(info,"folder_path");
     if(folder_path.length()==0)return false;
 
-    auto srcImg=cache_stage_info->imgSets["img"];
+    auto srcImg=cache_stage_info->img;
     if(srcImg==NULL)return false;
 
     Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
@@ -408,7 +408,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   LOGI(">>>>>>>>InspectionTarget_Orientation_ShapeBasedMatching>>>>>>>>");
   LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
   
-  auto srcImg=sinfo->imgSets["img"];
+  auto srcImg=sinfo->img;
 
   LOGI(">>>>>>>>");
 
@@ -504,7 +504,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   LOGI(">>>>>>>>");
   reportInfo->source=this;
   reportInfo->source_id=id;
-  reportInfo->imgSets["img"]=srcImg;//shared_ptr<acvImage>(retImage);
+  reportInfo->img=srcImg;//shared_ptr<acvImage>(retImage);
   
   reportInfo->trigger_id=sinfo->trigger_id;
   // reportInfo->trigger_tags.push_back("InfoStream2UI");

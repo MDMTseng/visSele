@@ -121,7 +121,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
     // }
     
     // newStateInfo->trigger_tag="";
-    newStateInfo->imgSets["img"]=img;
+    newStateInfo->img=img;
     // LOGI(">>>CAM:%s  WH:%d %d",info->camera_id.c_str(),finfo.width,finfo.height);
 
     sttriggerInfo_mix pmix;
@@ -159,7 +159,7 @@ int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,
   newStateInfo->img_prop.fi=finfo;
 
   std::shared_ptr<acvImage> img(new acvImage(W,H,3));
-  newStateInfo->imgSets["img"]=img;
+  newStateInfo->img=img;
   
   cv::Mat dst_mat(H,W,CV_8UC3,img->CVector[0]);
 
@@ -550,9 +550,9 @@ void InspectionTarget_ImageDataTransfer::thread_run()
 
     LOGI("ImageDataTransfer thread pop data: name:%s type:%s ",curInput->source_id.c_str(),curInput->typeName().c_str());
 
-    for ( const auto &kyim : curInput->imgSets ) {
-        LOGI("[%s]:%p",kyim.first.c_str(),kyim.second.get());
-    }
+    // for ( const auto &kyim : curInput->imgSets ) {
+    //     LOGI("[%s]:%p",kyim.first.c_str(),kyim.second.get());
+    // }
 
     LOGI("curInput->jInfo:%p ",curInput->jInfo);
     int imgCHID=curInput->img_prop.StreamInfo.channel_id;
@@ -584,7 +584,7 @@ void InspectionTarget_ImageDataTransfer::thread_run()
         bpg_pi.fromUpperLayer_DATA("RP",imgCHID,curInput->jInfo);
 
 
-      std::shared_ptr<acvImage> im2send=curInput->imgSets["img"];
+      std::shared_ptr<acvImage> im2send=curInput->img;
       if(im2send!=NULL)
       {
         BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)downSample};

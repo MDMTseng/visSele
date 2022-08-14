@@ -265,7 +265,7 @@ public:
   {
 
     cJSON *report=cJSON_CreateObject();
-    auto srcImg=sinfo->imgSets["img"];
+    auto srcImg=sinfo->img;
 
 
     acvImage *copyImg=new acvImage();
@@ -516,7 +516,7 @@ public:
     reportInfo->sharedInfo.push_back(sinfo);
     reportInfo->source=this;
     reportInfo->source_id=id;
-    reportInfo->imgSets["img"]=std::shared_ptr<acvImage>(copyImg);
+    reportInfo->img=std::shared_ptr<acvImage>(copyImg);
     reportInfo->trigger_id=sinfo->trigger_id;
     // reportInfo->trigger_tags.push_back("InfoStream2UI");
     // reportInfo->trigger_tags.push_back("ToTestRule");
