@@ -134,6 +134,7 @@ class InspectionTarget
 {
   protected:
   bool asService=false;
+  shared_ptr<StageInfo> cache_stage_info=NULL;
   public:
   std::string id;
   std::string type;
@@ -277,66 +278,8 @@ class StageInfo{
 #endif
 
   }
-  // void AddSharedInfo(StageInfo* info)
-  // {
-  //   lock.lock();
-  //   sharedInfo.push_back(info);
-  //   lock.unlock();
-  // }
-
-  // bool isStillInUse()
-  // {
-  //   return inUseCount!=0;
-  // }
-
-  // int getUseCount()
-  // {
-  //   return inUseCount;
-  // }
-  
-//   virtual bool registerInUse(InspectionTarget* who)
-//   {
-    
-//     const std::lock_guard<std::mutex> lock(this->lock);
-// #if STAGEINFO_LIFECYCLE_DEBUG
-//     LOGI("reg:%s  :%p",who->id.c_str(),this);
-// #endif
-//     inUseCount++;
-    
-//     for(int i=0;i<sharedInfo.size();i++)
-//     {
-//       StageInfo* info=sharedInfo[i];
-//       if(info)
-//       {
-//         info->registerInUse(who);
-//       }
-//     }
-
-//     return true;
-//   }
 
   
-//   virtual bool unregisterInUse(InspectionTarget* who)
-//   {
-    
-//     const std::lock_guard<std::mutex> lock(this->lock);
-// #if STAGEINFO_LIFECYCLE_DEBUG
-//     LOGI("unreg:%s  :%p",who->id.c_str(),this);
-// #endif
-//     if(inUseCount==0)return false;
-//     inUseCount--;
-    
-//     for(int i=0;i<sharedInfo.size();i++)
-//     {
-//       StageInfo* info=sharedInfo[i];
-//       if(info)
-//       {
-//         info->unregisterInUse(who);
-//       }
-//     }
-//     return true;
-//   }
-
 
 };
 
@@ -390,27 +333,27 @@ class InspectionTargetManager
 
 
 //custom Stage info
-class StageInfo_cusTest:public StageInfo{
-  char* charArr=NULL;
-  public:
-  static std::string stypeName(){return "cusTest";}
-  std::string typeName(){return StageInfo_cusTest::stypeName();}
-  StageInfo_cusTest()
-  {
-  }
-  ~StageInfo_cusTest()
-  {
+// class StageInfo_cusTest:public StageInfo{
+//   char* charArr=NULL;
+//   public:
+//   static std::string stypeName(){return "cusTest";}
+//   std::string typeName(){return StageInfo_cusTest::stypeName();}
+//   StageInfo_cusTest()
+//   {
+//   }
+//   ~StageInfo_cusTest()
+//   {
     
-    if(charArr)
-    {
-      delete charArr;
-      charArr=NULL;
-    }
-    //this destructor will be called first,
-    //after this ~StageInfo will be called in C++ 
-  }
+//     if(charArr)
+//     {
+//       delete charArr;
+//       charArr=NULL;
+//     }
+//     //this destructor will be called first,
+//     //after this ~StageInfo will be called in C++ 
+//   }
   
-};
+// };
 
 
 
@@ -418,6 +361,11 @@ class StageInfo_cusTest:public StageInfo{
 class StageInfo_Image:public StageInfo
 {
   public:
+  std::shared_ptr<acvImage> img;
+  struct img_prop{
+    float mmpp;
+    
+  };
   static std::string stypeName(){return "Image";}
   std::string typeName(){return StageInfo_Image::stypeName();}
 };

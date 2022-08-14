@@ -152,11 +152,11 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON* def)
 
 
 
-    int templateCenter_x= JFetch_NUMBER_ex(featureInfo,"center.x",0);
-    int templateCenter_y= JFetch_NUMBER_ex(featureInfo,"center.y",0);
+    int templateCenter_x= JFetch_NUMBER_ex(featureInfo,"center.x",insp_tp[0].tl_x);
+    int templateCenter_y= JFetch_NUMBER_ex(featureInfo,"center.y",insp_tp[0].tl_y);
 
     cv::Point2f f0Pos(insp_tp[0].tl_x+insp_tp[0].features[0].x,insp_tp[0].tl_y+insp_tp[0].features[0].y);
-    cv::Point2f cenOffset=cv::Point2f(0,0);//cv::Point2f(templateCenter_x,templateCenter_y)-f0Pos;
+    cv::Point2f cenOffset=cv::Point2f(templateCenter_x,templateCenter_y)-f0Pos;
     sbm->regTemplateOffset(template_name     ,{cenOffset,false});
     cenOffset.y*=-1;
     sbm->regTemplateOffset(template_name+"_f",{cenOffset,true});
@@ -259,9 +259,9 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON* info,in
       act.send("IM",id,&src_acvImg,10);
     }
 
-    int feature_count= JFetch_NUMBER_ex(info,"feature_count",60);
+    int num_features= JFetch_NUMBER_ex(info,"num_features",60);
 
-    if(feature_count>0)
+    if(num_features>0)
     {
 
       Mat _mask;
@@ -308,7 +308,7 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON* info,in
       
       line2Dup::TemplatePyramid tp;
       //1087,231   1596,666
-      sbm->TemplateFeatureExtraction(img,_mask,JFetch_NUMBER_ex(info,"feature_count",60),tp);
+      sbm->TemplateFeatureExtraction(img,_mask,num_features,tp);
 
 
       cJSON* jtp=TemplatePyramid2Json(tp);
@@ -318,6 +318,31 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON* info,in
     }
 
     return true;
+
+  }
+
+
+  
+  if(type=="cache_image_save")
+  {
+    if(cache_stage_info==NULL)return false;
+    string folder_path=JFetch_STRING_ex(info,"folder_path");
+    if(folder_path.length()==0)return false;
+
+    auto srcImg=cache_stage_info->imgSets["img"];
+    if(srcImg==NULL)return false;
+
+    Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+
+
+    string image_name=JFetch_STRING_ex(info,"image_name","test.png");
+    imwrite(folder_path+"/"+image_name, CV_srcImg);  
+
+
+
+    // cache_stage_info
+
+
 
   }
 
@@ -359,10 +384,27 @@ cJSON* InspectionTarget_Orientation_ShapeBasedMatching::genITIOInfo()
 
 }
 
+
+
+cv::Point2f rotate2d(const cv::Point2f& inPoint, const double angRad)
+{
+    cv::Point2f outPoint;
+    //CW rotation
+    outPoint.x = std::cos(angRad)*inPoint.x - std::sin(angRad)*inPoint.y;
+    outPoint.y = std::sin(angRad)*inPoint.x + std::cos(angRad)*inPoint.y;
+    return outPoint;
+}
+
+cv::Point2f rotatePoint(const cv::Point2f& inPoint, const cv::Point2f& center, const double angRad)
+{
+    return rotate2d(inPoint - center, angRad) + center;
+}
+
+
 void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<StageInfo> sinfo)
 {
 
-
+  cache_stage_info=sinfo;
   LOGI(">>>>>>>>InspectionTarget_Orientation_ShapeBasedMatching>>>>>>>>");
   LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
   
@@ -433,12 +475,23 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   {
        
     line2Dup::Match match = matches[idx];
+    auto templ = sbm->detector.getTemplates(match.class_id,match.template_id);
+
+    //calc the position relative to the first point
+    cv::Point2f f0Pt = cv::Point2f((float)templ[0].features[0].x+match.x,(float)templ[0].features[0].y+match.y)/matching_downScale;
+    SBM_if::anchorInfo Aoffset = sbm->fetchTemplateOffset(match.class_id);
+    LOGI(">>>ang:%f <<id:%s",templ[0].angle,match.class_id.c_str());
+    cv::Point2f anchorPt = rotate2d(Aoffset.offset ,templ[0].angle*M_PI/180);
+    anchorPt+=f0Pt;
+
+
     cJSON *region_report=cJSON_CreateObject();
     cJSON_AddItemToArray(rep_regionInfo,region_report);
 
 
-    cJSON_AddNumberToObject(region_report,"x",match.x/matching_downScale);
-    cJSON_AddNumberToObject(region_report,"y",match.y/matching_downScale);
+    cJSON_AddNumberToObject(region_report,"x",anchorPt.x);
+    cJSON_AddNumberToObject(region_report,"y",anchorPt.y);
+    cJSON_AddNumberToObject(region_report,"angle",templ[0].angle/180*M_PI);
 
     cJSON_AddNumberToObject(region_report,"template_id",match.template_id);
     cJSON_AddNumberToObject(region_report,"similarity",match.similarity);

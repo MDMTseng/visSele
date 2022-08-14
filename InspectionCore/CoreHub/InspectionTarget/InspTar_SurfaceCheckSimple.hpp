@@ -31,7 +31,7 @@ using namespace cv;
 
 using namespace std;
 
-class StageInfo_SurfaceCheckSimple:public StageInfo_Blob
+class StageInfo_SurfaceCheckSimple:public StageInfo
 {
   public:
   static string stypeName(){return "SurfaceCheckSimple";}

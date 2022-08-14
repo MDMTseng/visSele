@@ -5,6 +5,8 @@
 #include "common_lib.h"
 #include <future>
 using namespace std;
+#include<opencv2/highgui/highgui.hpp>
+using namespace cv;
 
 cJSON* CameraManager::cameraInfo2Json(CameraLayer::BasicCameraInfo &info)
 {
@@ -196,6 +198,7 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
   }
 
 
+
   return false;
 }
 
@@ -232,7 +235,7 @@ InspectionTarget::~InspectionTarget()
   //   reutrnStageInfo(input_pool[i]);
   // }
   input_pool.clear();
-
+  cache_stage_info=NULL;
 }
 
 

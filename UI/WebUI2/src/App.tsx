@@ -1190,11 +1190,6 @@ function Orientation_ColorRegionOval_SingleRegion({srule,onDefChange,canvas_obj}
   </>
 
 }
-function SingleTargetVIEWUI_Orientation_ShapeBasedMatching_defEdit({def,onDefChange}:{def:any,onDefChange: (updatedDef: any) => void})
-{
-  
-}
-
 
 function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
@@ -1208,16 +1203,13 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
     featureImgCanvas:document.createElement('canvas'),
   });
+  let _this=_.current;
   const [cacheDef,setCacheDef]=useState<any>(def);
-  const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
-
   const [featureInfoExt,setFeatureInfoExt]=useState<any>({});
 
   const [featureInfo,setFeatureInfo]=useState<any>({});
 
   const [defReport,setDefReport]=useState<any>(undefined);
-  const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
-  let _this=_.current;
   let c_report:any = undefined;
   if(_this.cache_report!==report)
   {
@@ -1525,8 +1517,34 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           onCacheDefChange(cacheDef,true);
         }}>SHOT</Button>
         <Button onClick={()=>{
+          (async ()=>{
+
+            let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
+              type:"cache_image_save",
+              folder_path:fsPath+"/",
+              image_name:"OK_"+Date.now()+".png",
+            }) as any[];
+            console.log(pkts);
+
+          })()
+        }}>SAVE OK IMAGE</Button>
+
+        <Button onClick={()=>{
+        (async ()=>{
+
+          let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
+            type:"cache_image_save",
+            folder_path:fsPath+"/",
+            image_name:"NG_"+Date.now()+".png",
+          }) as any[];
+          console.log(pkts);
+        })()
+        }}>SAVE NG IMAGE</Button>
+
+
+        <Button onClick={()=>{
           onDefChange(cacheDef,true)
-        }}>SAVE</Button>
+        }}>Commit</Button>
 
         {EditUI}
 
@@ -1576,7 +1594,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
             let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
               type:"extract_feature",
               image_path:fsPath+"/"+cacheDef.templateSourceInfo.image,
-              feature_count:100,
+              num_features:cacheDef.num_features,
               image_transfer_downsampling:(featureInfo.IM===undefined)?3:-1,
               mask_regions:featureInfo.mask_regions
             }) as any[];
@@ -1786,9 +1804,18 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
               ctx.strokeStyle = `HSLA(0, 100%, 50%,1)`;
               canvas_obj.rUtil.drawCross(ctx, {x:match.x,y:match.y}, 12);
               
+              let angle = match.angle;
+
               ctx.font = "40px Arial";
               ctx.fillStyle = "rgba(150,100, 100,0.5)";
-              ctx.fillText("idx:"+idx+" ang:"+match.template_id+" sim:"+match.similarity.toFixed(1),match.x,match.y)
+              ctx.fillText("idx:"+idx+" ang:"+(angle*180/3.14159).toFixed(1)+" sim:"+match.similarity.toFixed(1),match.x,match.y)
+
+
+              
+
+              let vec=PtRotate2d({x:100,y:0},angle,1);
+              canvas_obj.rUtil.drawLine(ctx,{x1:match.x,y1:match.y,x2:match.x+vec.x,y2:match.y+vec.y})
+
             })
           }
           // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
@@ -1843,6 +1870,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
               ctx.font = "40px Arial";
               ctx.fillStyle = "rgba(150,100, 100,0.5)";
               ctx.fillText("idx:"+idx,regi.x,regi.y)
+
             })
           }
 
