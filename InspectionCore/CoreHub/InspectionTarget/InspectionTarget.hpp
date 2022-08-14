@@ -214,8 +214,15 @@ class StageInfo{
   public:
   std::string source_id;
   InspectionTarget *source;
-  CameraManager::StreamingInfo StreamInfo;
-  CameraLayer::frameInfo fi;
+  
+  std::shared_ptr<acvImage> img;
+  struct _img_prop{
+    CameraLayer::frameInfo fi;
+    float mmpp;
+    CameraManager::StreamingInfo StreamInfo;
+    
+  };
+   struct _img_prop img_prop;
   
   
   virtual std::string typeName()=0;
@@ -232,8 +239,9 @@ class StageInfo{
 
   std::vector<std::shared_ptr<StageInfo>> sharedInfo;
   StageInfo(){
-    StreamInfo=(CameraManager::StreamingInfo){0};
-    fi=( CameraLayer::frameInfo){0};
+    img_prop.StreamInfo=(CameraManager::StreamingInfo){0};
+    img_prop.mmpp=0;
+    img_prop.fi=( CameraLayer::frameInfo){0};
     StageInfoLiveCounter++;
     source=NULL;
     source_id="";
@@ -361,11 +369,6 @@ class InspectionTargetManager
 class StageInfo_Image:public StageInfo
 {
   public:
-  std::shared_ptr<acvImage> img;
-  struct img_prop{
-    float mmpp;
-    
-  };
   static std::string stypeName(){return "Image";}
   std::string typeName(){return StageInfo_Image::stypeName();}
 };

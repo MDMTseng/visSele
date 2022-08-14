@@ -280,9 +280,9 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   
 
-  reportInfo->StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",2);
-  LOGI("CHID:%d",reportInfo->StreamInfo.channel_id);
+  reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
+  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",2);
+  LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
 
   reportInfo->jInfo=NULL;
 

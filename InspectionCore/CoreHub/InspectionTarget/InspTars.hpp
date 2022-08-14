@@ -518,18 +518,18 @@ public:
     reportInfo->source_id=id;
     reportInfo->imgSets["img"]=std::shared_ptr<acvImage>(copyImg);
     reportInfo->trigger_id=sinfo->trigger_id;
-    reportInfo->trigger_tags.push_back("InfoStream2UI");
-    reportInfo->trigger_tags.push_back("ToTestRule");
-    reportInfo->trigger_tags.push_back("ImTran");
+    // reportInfo->trigger_tags.push_back("InfoStream2UI");
+    // reportInfo->trigger_tags.push_back("ToTestRule");
+    // reportInfo->trigger_tags.push_back("ImTran");
     reportInfo->trigger_tags.push_back(id);
 
     // reportInfo->fi=sinfo->fi;
     // reportInfo->StreamInfo=sinfo->StreamInfo;
     // reportInfo->trigger_tag=sinfo->trigger_tag;
 
-    reportInfo->StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-    reportInfo->StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",-1);
-    LOGI("CHID:%d",reportInfo->StreamInfo.channel_id);
+    reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
+    reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",-1);
+    LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
 
     
     cJSON *freport=cJSON_CreateObject();
@@ -614,7 +614,7 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
       
       try{
         
-        if(curInput->StreamInfo.channel_id==0)
+        if(curInput->img_prop.StreamInfo.channel_id==0)
         {//no enough info return...
           LOGE("---no channel_id available");
           

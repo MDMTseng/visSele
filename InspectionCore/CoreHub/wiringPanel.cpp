@@ -106,10 +106,10 @@ class InspectionTargetManager_m:public InspectionTargetManager
     std::shared_ptr<acvImage> img(new acvImage(finfo.width,finfo.height,3));
     CameraLayer::status st = info.camera->ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
 
-    newStateInfo->StreamInfo=info;
+    newStateInfo->img_prop.StreamInfo=info;
     newStateInfo->source=NULL;//info.camera->getConnectionData().id;
     newStateInfo->source_id=info.camera->getConnectionData().id;
-    newStateInfo->fi=finfo;
+    newStateInfo->img_prop.fi=finfo;
     // if(info.channel_id)
     // {
     //   newStateInfo->jInfo=cJSON_CreateObject();
@@ -142,8 +142,8 @@ int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,
   std::shared_ptr<StageInfo_Image> newStateInfo(new StageInfo_Image());
   if(newStateInfo==NULL)return -1;
 
-  newStateInfo->StreamInfo.camera=NULL;
-  newStateInfo->StreamInfo.channel_id=channel_id;
+  newStateInfo->img_prop.StreamInfo.camera=NULL;
+  newStateInfo->img_prop.StreamInfo.channel_id=channel_id;
   newStateInfo->trigger_tags.push_back(trigger_tag);
 
   Mat mat=imread(path.c_str());
@@ -155,7 +155,8 @@ int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,
   finfo.height=H;
   finfo.width=W;
   finfo.timeStamp_us=0;
-  newStateInfo->fi=finfo;
+  newStateInfo->img_prop.mmpp=0;
+  newStateInfo->img_prop.fi=finfo;
 
   std::shared_ptr<acvImage> img(new acvImage(W,H,3));
   newStateInfo->imgSets["img"]=img;
@@ -259,14 +260,14 @@ void TriggerInfoMatchingThread(bool *terminationflag)
           
           bool doMockTriggerInfo=(targetStageInfo->StreamInfo.camera!=NULL) && (triggerMockFlags.find(targetStageInfo->StreamInfo.camera->getConnectionData().id) != triggerMockFlags.end()) ;
 
-          LOGI("  doMockTriggerInfo:%d cam:%p mode:%d ",doMockTriggerInfo,  targetStageInfo->StreamInfo.camera  ,targetStageInfo->StreamInfo.camera->triggerMode);
+          LOGI("  doMockTriggerInfo:%d cam:%p mode:%d ",doMockTriggerInfo,  targetStageInfo->img_prop.StreamInfo.camera  ,targetStageInfo->img_prop.StreamInfo.camera->triggerMode);
 
           if(doMockTriggerInfo)
           {
             sttriggerInfo_mix::_triggerInfo mocktrig;
-            mocktrig.camera_id=targetStageInfo->StreamInfo.camera->getConnectionData().id;
+            mocktrig.camera_id=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
             
-            mocktrig.est_trigger_time_us=targetStageInfo->fi.timeStamp_us+123;//
+            mocktrig.est_trigger_time_us=targetStageInfo->img_prop.fi.timeStamp_us+123;//
             mocktrig.trigger_id=-1;
             std::string mockTag=triggerMockFlags[mocktrig.camera_id];
             mocktrig.trigger_tag=(mockTag.length() ==0)?"_STREAM_":mockTag;
@@ -283,7 +284,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
 
             auto _triggerInfo=triggerInfoMatchingBuffer[i].triggerInfo;
            
-            if(_triggerInfo.camera_id!=targetStageInfo->StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
+            if(_triggerInfo.camera_id!=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
 
 
             int cost;
@@ -295,7 +296,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             }
             else
             {
-              cost=_triggerInfo.est_trigger_time_us-targetStageInfo->fi.timeStamp_us;
+              cost=_triggerInfo.est_trigger_time_us-targetStageInfo->img_prop.fi.timeStamp_us;
               if(cost<0)cost=-cost;
 
             }
@@ -318,7 +319,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             if(triggerInfoMatchingBuffer[i].stInfo==NULL)continue;//skip trigger info
 
             auto _stInfo=triggerInfoMatchingBuffer[i].stInfo;
-            if(targetTriggerInfo.camera_id!=_stInfo->StreamInfo.camera->getConnectionData().id)continue;//camera id is not matching
+            if(targetTriggerInfo.camera_id!=_stInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not matching
 
             
             int cost;
@@ -330,7 +331,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             }
             else
             {
-              cost=_stInfo->fi.timeStamp_us-targetTriggerInfo.est_trigger_time_us;
+              cost=_stInfo->img_prop.fi.timeStamp_us-targetTriggerInfo.est_trigger_time_us;
               if(cost<0)cost=-cost;
             }
           
@@ -356,7 +357,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
           LOGI("Get matching. idx:%d cost:%d  psss to next Q stInfo:%p",minMatchingIdx,minMatchingCost,targetStageInfo.get() );
           targetStageInfo->trigger_tags.push_back(targetTriggerInfo.trigger_tag);
           targetStageInfo->trigger_tags.push_back(targetTriggerInfo.camera_id);
-          LOGI("cam id:%s  ch_id:%d",targetTriggerInfo.camera_id.c_str(),targetStageInfo->StreamInfo.channel_id);
+          LOGI("cam id:%s  ch_id:%d",targetTriggerInfo.camera_id.c_str(),targetStageInfo->img_prop.StreamInfo.channel_id);
           targetStageInfo->trigger_id=targetTriggerInfo.trigger_id;
 
           inspQueue.push_blocking(targetStageInfo);
@@ -443,10 +444,10 @@ void ImgPipeDatViewThread(bool *terminationflag)
       {
 
 
-        int imgCHID=headImgPipe->StreamInfo.channel_id;
+        int imgCHID=headImgPipe->img_prop.StreamInfo.channel_id;
     
         
-        // CameraLayer::BasicCameraInfo data=headImgPipe->StreamInfo.camera->getConnectionData();
+        // CameraLayer::BasicCameraInfo data=headImgPipe->img_prop.StreamInfo.camera->getConnectionData();
         // cJSON* caminfo=CameraManager::cameraInfo2Json(data);
 
 
@@ -554,8 +555,8 @@ void InspectionTarget_ImageDataTransfer::thread_run()
     }
 
     LOGI("curInput->jInfo:%p ",curInput->jInfo);
-    int imgCHID=curInput->StreamInfo.channel_id;
-    int downSample=curInput->StreamInfo.downsample;
+    int imgCHID=curInput->img_prop.StreamInfo.channel_id;
+    int downSample=curInput->img_prop.StreamInfo.downsample;
     if(downSample<1)
     {
       downSample=10;
@@ -566,7 +567,7 @@ void InspectionTarget_ImageDataTransfer::thread_run()
 
 
     {
-      // CameraLayer::BasicCameraInfo data=headImgPipe->StreamInfo.camera->getConnectionData();
+      // CameraLayer::BasicCameraInfo data=headImgPipe->img_prop.StreamInfo.camera->getConnectionData();
       // cJSON* caminfo=CameraManager::cameraInfo2Json(data);
 
 

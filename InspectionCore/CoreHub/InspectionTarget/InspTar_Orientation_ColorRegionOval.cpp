@@ -327,16 +327,16 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
   // reportInfo->trigger_tags.push_back("InfoStream2UI");
   // reportInfo->trigger_tags.push_back("ToTestRule");
   reportInfo->trigger_tags.push_back("ImTran");
-  reportInfo->trigger_tags.push_back("regionInspection");
+  // reportInfo->trigger_tags.push_back("regionInspection");
 
   
   reportInfo->trigger_tags.push_back(id);
 
   
 
-  reportInfo->StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
-  LOGI("CHID:%d",reportInfo->StreamInfo.channel_id);
+  reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
+  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
+  LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
 
   
   cJSON *freport=cJSON_CreateObject();

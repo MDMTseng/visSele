@@ -517,9 +517,9 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   LOGI(">>>>>>>>");
   
 
-  reportInfo->StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",4);
-  LOGI("CHID:%d",reportInfo->StreamInfo.channel_id);
+  reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
+  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",4);
+  LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
 
   reportInfo->jInfo=rep_regionInfo;
 
