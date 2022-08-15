@@ -1,6 +1,6 @@
 {
   "id": "ImTran",
-  "type": "ImageDataTransfer",
+  "type": "DataTransfer",
   "trigger_tags": [
     "StreamX",
     "ImTran",

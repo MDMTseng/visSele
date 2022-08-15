@@ -527,7 +527,7 @@ int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 }
 
 
-void InspectionTarget_ImageDataTransfer::thread_run()
+void InspectionTarget_DataTransfer::thread_run()
 {
   
   acvImage cacheImage;
@@ -548,7 +548,7 @@ void InspectionTarget_ImageDataTransfer::thread_run()
 
 
 
-    LOGI("ImageDataTransfer thread pop data: name:%s type:%s ",curInput->source_id.c_str(),curInput->typeName().c_str());
+    LOGI("DataTransfer thread pop data: name:%s type:%s ",curInput->source_id.c_str(),curInput->typeName().c_str());
 
     // for ( const auto &kyim : curInput->imgSets ) {
     //     LOGI("[%s]:%p",kyim.first.c_str(),kyim.second.get());
@@ -1319,9 +1319,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             inspTar = new InspectionTarget_TEST_IT(id,defInfo,&inspTarMan);
           }
-          else if(type==InspectionTarget_ImageDataTransfer::TYPE())
+          else if(type==InspectionTarget_DataTransfer::TYPE())
           {
-            inspTar = new InspectionTarget_ImageDataTransfer(id,defInfo,&inspTarMan);
+            inspTar = new InspectionTarget_DataTransfer(id,defInfo,&inspTarMan);
           }
           else if(type==InspectionTarget_Orientation_ColorRegionOval::TYPE())
           {

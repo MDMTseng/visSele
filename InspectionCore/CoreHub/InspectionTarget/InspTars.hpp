@@ -555,15 +555,15 @@ public:
 };
 
 
-class InspectionTarget_ImageDataTransfer :public InspectionTarget
+class InspectionTarget_DataTransfer :public InspectionTarget
 {
   TSQueue<std::shared_ptr<StageInfo>> datTransferQueue;
   std::thread runThread;
   int realTimeDropFlag;
   public:
   
-  static std::string TYPE(){ return "ImageDataTransfer"; }
-  InspectionTarget_ImageDataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(10),runThread(&InspectionTarget_ImageDataTransfer::thread_run,this)
+  static std::string TYPE(){ return "DataTransfer"; }
+  InspectionTarget_DataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(10),runThread(&InspectionTarget_DataTransfer::thread_run,this)
   {
     realTimeDropFlag=-1;
   }
@@ -580,7 +580,7 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
 
   std::future<int> futureInputStagePool()
   {
-    return std::async(launch::async,&InspectionTarget_ImageDataTransfer::processInputStagePool,this);
+    return std::async(launch::async,&InspectionTarget_DataTransfer::processInputStagePool,this);
   }
 
 
@@ -650,7 +650,7 @@ class InspectionTarget_ImageDataTransfer :public InspectionTarget
 
   }
   void thread_run();
-  ~InspectionTarget_ImageDataTransfer()
+  ~InspectionTarget_DataTransfer()
   {
     datTransferQueue.termination_trigger();
     runThread.join();
