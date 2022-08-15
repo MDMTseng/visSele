@@ -120,6 +120,27 @@ class CameraManager
   
 // };
 
+
+
+/*
+_________________________________________
+|          V                V          <| (the dispatched stageInfo will 
+|          V                V          ^| do filter In each InspTar in list
+|          V                V          ^| and stage in each accepted InspTar
+|   ____________       ____________    ^| into input_stage)
+|  |   Filter   |     |   Filter   |   ^| 
+|__|____________|_____|____________|___^| --call inspTarProcess
+|  |            |     |            |   ^|   will call every InspTar
+|  |            |     |            |   ^|   as a thread load input_stage into input_pool
+|  | InspTar A  |     | InspTar B  |   ^|   and start to process the input in input_pool
+|  |____________|     |____________|   ^|   wait for all InspTar ends
+|    dispatch   stageInfo[s]     >>    ^|   Then go over again
+|                                       |
+|InspTarManager ________________＿______| ---------^
+
+
+*/
+
 class exchangeCMD_ACT
 { 
   public:
