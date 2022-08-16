@@ -529,6 +529,58 @@ int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 }
 
 
+
+void InspectionTarget_GroupResultSave::thread_run()
+{
+  acvImage cacheImage;
+  while(true)
+  {
+    vector<shared_ptr<StageInfo>> curInputGroup;
+    try{
+      if(datTransferQueue.pop_blocking(curInputGroup)==false)
+      {
+        break;
+      }
+    }
+    catch(TS_Termination_Exception e)
+    {
+      break;
+    }
+
+
+    // LOGI(">>>processGroup:  trigger_id:%d =========",trigger_id);
+    
+    StageInfo_Category *catInfo=NULL;
+    for(int i=0;i<curInputGroup.size();i++)
+    {
+      auto curInput=curInputGroup[i];
+      
+      LOGI("[%d]:typeName:%s from:%s  =========",i,curInput->typeName().c_str(),curInput->source_id.c_str());
+      if(curInput->typeName()==StageInfo_Category::stypeName())
+      {
+        catInfo=(StageInfo_Category*)curInput.get();
+      }
+    }
+    if(catInfo!=NULL && catInfo->category<0)
+    {
+      for(int i=0;i<curInputGroup.size();i++)
+      {
+        //save all
+        auto curInput=curInputGroup[i];
+        LOGI("[%d]:SAVE:%s  =========",i,curInput->source_id.c_str());
+        LOGI("DataTransfer thread pop data: name:%s type:%s ",curInput->source_id.c_str(),curInput->typeName().c_str());
+      
+      }
+        
+    }
+    else
+    {
+      LOGI("No StageInfo_Category.... skip");
+    }
+  }
+}
+
+
 void InspectionTarget_DataTransfer::thread_run()
 {
   
@@ -1325,10 +1377,17 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             inspTar = new InspectionTarget_DataTransfer(id,defInfo,&inspTarMan);
           }
-          else if(type==InspectionTarget_StageInfoReduce::TYPE())
+          
+          else if(type==InspectionTarget_ReduceCategorize::TYPE())
           {
-            inspTar = new InspectionTarget_StageInfoReduce(id,defInfo,&inspTarMan);
+            inspTar = new InspectionTarget_ReduceCategorize(id,defInfo,&inspTarMan);
           }
+          
+          else if(type==InspectionTarget_GroupResultSave::TYPE())
+          {
+            inspTar = new InspectionTarget_GroupResultSave(id,defInfo,&inspTarMan);
+          }
+
           else if(type==InspectionTarget_Orientation_ColorRegionOval::TYPE())
           {
             inspTar = new InspectionTarget_Orientation_ColorRegionOval(id,defInfo,&inspTarMan);

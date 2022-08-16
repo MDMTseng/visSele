@@ -249,7 +249,7 @@ public:
         cJSON* sarr= cJSON_CreateArray();
         
         cJSON_AddItemToObject(opt, "o",sarr );
-        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Blob::stypeName().c_str() ));
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo::stypeName().c_str() ));
       }
 
 
@@ -512,7 +512,7 @@ public:
     
 
     
-    std::shared_ptr<StageInfo_Blob> reportInfo(new StageInfo_Blob());
+    std::shared_ptr<StageInfo> reportInfo(new StageInfo());
     reportInfo->sharedInfo.push_back(sinfo);
     reportInfo->source=this;
     reportInfo->source_id=id;
@@ -599,7 +599,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget
         cJSON* sarr= cJSON_CreateArray();
         
         cJSON_AddItemToObject(opt, "i",sarr );
-        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Blob::stypeName().c_str() ));
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo::stypeName().c_str() ));
       }
     }
 
@@ -662,11 +662,9 @@ class InspectionTarget_DataTransfer :public InspectionTarget
 
 
 
-class InspectionTarget_StageInfoReduce :public InspectionTarget
+
+class InspectionTarget_StageInfoCollect_Base :public InspectionTarget
 {
-  TSQueue< std::vector< std::shared_ptr<StageInfo> > > datTransferQueue;
-
-
   
   struct infoGroupinfo{
     int trigger_id;
@@ -677,15 +675,12 @@ class InspectionTarget_StageInfoReduce :public InspectionTarget
   std::map<int,  struct infoGroupinfo> id_info_grup;
 
   
-  int realTimeDropFlag;
   public:
   
-  static std::string TYPE(){ return "StageInfoReduce"; }
-  InspectionTarget_StageInfoReduce(std::string id,cJSON* def,InspectionTargetManager* belongMan):
-    InspectionTarget(id,def,belongMan),
-    datTransferQueue(10)
+  static std::string TYPE(){ return "StageInfoCollect_Base"; }
+  InspectionTarget_StageInfoCollect_Base(std::string id,cJSON* def,InspectionTargetManager* belongMan):
+    InspectionTarget(id,def,belongMan)
   {
-    realTimeDropFlag=-1;
   }
   bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
   {
@@ -700,7 +695,7 @@ class InspectionTarget_StageInfoReduce :public InspectionTarget
 
   std::future<int> futureInputStagePool()
   {
-    return std::async(launch::async,&InspectionTarget_StageInfoReduce::processInputStagePool,this);
+    return std::async(launch::async,&InspectionTarget_StageInfoCollect_Base::processInputStagePool,this);
   }
 
 
@@ -719,7 +714,7 @@ class InspectionTarget_StageInfoReduce :public InspectionTarget
         cJSON* sarr= cJSON_CreateArray();
         
         cJSON_AddItemToObject(opt, "i",sarr );
-        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Blob::stypeName().c_str() ));
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo::stypeName().c_str() ));
       }
     }
 
@@ -782,7 +777,7 @@ class InspectionTarget_StageInfoReduce :public InspectionTarget
 
   }
 
-  void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
+  virtual void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
   {
     
     LOGI("processGroup:  trigger_id:%d =========",trigger_id);
@@ -792,14 +787,86 @@ class InspectionTarget_StageInfoReduce :public InspectionTarget
     }
   }
 
-
-  void thread_run(){}
-  ~InspectionTarget_StageInfoReduce()
+  ~InspectionTarget_StageInfoCollect_Base()
   {
-    datTransferQueue.termination_trigger();
-    // runThread.join();
-    StageInfo *sinfo=NULL;
     
   }
 };
 
+
+
+
+class InspectionTarget_ReduceCategorize :public InspectionTarget_StageInfoCollect_Base
+{
+  protected:
+  public:
+
+  
+  InspectionTarget_ReduceCategorize(std::string id,cJSON* def,InspectionTargetManager* belongMan):
+    InspectionTarget_StageInfoCollect_Base(id,def,belongMan)
+    {}
+  static std::string TYPE(){ return "ReduceCategorize"; }
+  void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
+  {
+    
+
+    shared_ptr<StageInfo_Category> reportInfo(new StageInfo_Category());
+
+    
+
+    LOGI(">>>>>>>>");
+    reportInfo->source=this;
+    reportInfo->source_id=id;
+    
+    reportInfo->trigger_id=trigger_id;
+    reportInfo->trigger_tags.push_back(reportInfo->source_id);
+    reportInfo->category=-909;
+    reportInfo->jInfo=NULL;
+    belongMan->dispatch(reportInfo);
+
+  }
+
+  ~InspectionTarget_ReduceCategorize()
+  {
+  }
+  
+
+};
+
+
+
+
+
+class InspectionTarget_GroupResultSave :public InspectionTarget_StageInfoCollect_Base
+{
+  protected:
+  TSQueue< std::vector< std::shared_ptr<StageInfo> > > datTransferQueue;
+
+
+  std::thread runThread;
+  public:
+
+  
+  InspectionTarget_GroupResultSave(std::string id,cJSON* def,InspectionTargetManager* belongMan):
+    InspectionTarget_StageInfoCollect_Base(id,def,belongMan),
+    datTransferQueue(10),runThread(&InspectionTarget_GroupResultSave::thread_run,this)
+    {}
+  static std::string TYPE(){ return "GroupResultSave"; }
+  void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
+  {
+    
+    datTransferQueue.push(group);
+
+  }
+
+  void thread_run();
+
+  ~InspectionTarget_GroupResultSave()
+  {
+    datTransferQueue.termination_trigger();
+    runThread.join();
+    
+  }
+  
+
+};

@@ -31,14 +31,6 @@ using namespace cv;
 
 using namespace std;
 
-class StageInfo_SurfaceCheckSimple:public StageInfo
-{
-  public:
-  static string stypeName(){return "SurfaceCheckSimple";}
-  string typeName(){return StageInfo_SurfaceCheckSimple::stypeName();}
-
-};
-
 class InspectionTarget_SurfaceCheckSimple :public InspectionTarget
 {
 public:
