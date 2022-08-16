@@ -31,7 +31,7 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::stageInfoFilter(shared_ptr
     // {
     //   return false;
     // }
-    if( matchTriggerTag(tag,def))
+    if( matchTriggerTag(tag))
       return true;
   }
   return false;

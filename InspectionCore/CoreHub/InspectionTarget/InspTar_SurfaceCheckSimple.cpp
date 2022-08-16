@@ -30,7 +30,7 @@ bool InspectionTarget_SurfaceCheckSimple::stageInfoFilter(shared_ptr<StageInfo> 
       return false;
     }
     if(tag==id)return true;
-    if( matchTriggerTag(tag,def))
+    if( matchTriggerTag(tag))
       return true;
   }
   return false;

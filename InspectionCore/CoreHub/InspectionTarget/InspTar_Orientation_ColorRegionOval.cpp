@@ -29,7 +29,7 @@ bool InspectionTarget_Orientation_ColorRegionOval::stageInfoFilter(shared_ptr<St
     // {
     //   return false;
     // }
-    if( matchTriggerTag(tag,def))
+    if( matchTriggerTag(tag))
       return true;
   }
   return false;

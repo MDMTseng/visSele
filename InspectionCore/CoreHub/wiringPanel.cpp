@@ -258,7 +258,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         {//image/pipe info
           targetStageInfo= headImgStageInfoMixInfo.stInfo;
           
-          bool doMockTriggerInfo=(targetStageInfo->StreamInfo.camera!=NULL) && (triggerMockFlags.find(targetStageInfo->StreamInfo.camera->getConnectionData().id) != triggerMockFlags.end()) ;
+          bool doMockTriggerInfo=(targetStageInfo->img_prop.StreamInfo.camera!=NULL);// && (triggerMockFlags.find(targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id) != triggerMockFlags.end()) ;
 
           LOGI("  doMockTriggerInfo:%d cam:%p mode:%d ",doMockTriggerInfo,  targetStageInfo->img_prop.StreamInfo.camera  ,targetStageInfo->img_prop.StreamInfo.camera->triggerMode);
 
@@ -266,9 +266,10 @@ void TriggerInfoMatchingThread(bool *terminationflag)
           {
             sttriggerInfo_mix::_triggerInfo mocktrig;
             mocktrig.camera_id=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
-            
+            LOGI(">>>>>>>>>timeStamp_us::%d",targetStageInfo->img_prop.fi.timeStamp_us);
             mocktrig.est_trigger_time_us=targetStageInfo->img_prop.fi.timeStamp_us+123;//
-            mocktrig.trigger_id=-1;
+            mocktrig.trigger_id=-(int)(targetStageInfo->img_prop.fi.timeStamp_us);
+
             std::string mockTag=triggerMockFlags[mocktrig.camera_id];
             mocktrig.trigger_tag=(mockTag.length() ==0)?"_STREAM_":mockTag;
             
@@ -358,6 +359,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
           targetStageInfo->trigger_tags.push_back(targetTriggerInfo.trigger_tag);
           targetStageInfo->trigger_tags.push_back(targetTriggerInfo.camera_id);
           LOGI("cam id:%s  ch_id:%d",targetTriggerInfo.camera_id.c_str(),targetStageInfo->img_prop.StreamInfo.channel_id);
+          LOGI("TId:%d  info TId:%d",targetStageInfo->trigger_id,targetTriggerInfo.trigger_id);
           targetStageInfo->trigger_id=targetTriggerInfo.trigger_id;
 
           inspQueue.push_blocking(targetStageInfo);
@@ -545,9 +547,6 @@ void InspectionTarget_DataTransfer::thread_run()
       break;
     }
 
-
-
-
     LOGI("DataTransfer thread pop data: name:%s type:%s ",curInput->source_id.c_str(),curInput->typeName().c_str());
 
     // for ( const auto &kyim : curInput->imgSets ) {
@@ -564,7 +563,6 @@ void InspectionTarget_DataTransfer::thread_run()
     // curInput->imgSets./
 
     LOGI("imgCHID:%d ",imgCHID);
-
 
     {
       // CameraLayer::BasicCameraInfo data=headImgPipe->img_prop.StreamInfo.camera->getConnectionData();
@@ -612,6 +610,10 @@ void InspectionTarget_DataTransfer::thread_run()
 
 
     }
+  
+    
+
+
   }
 }
 
@@ -1322,6 +1324,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           else if(type==InspectionTarget_DataTransfer::TYPE())
           {
             inspTar = new InspectionTarget_DataTransfer(id,defInfo,&inspTarMan);
+          }
+          else if(type==InspectionTarget_StageInfoReduce::TYPE())
+          {
+            inspTar = new InspectionTarget_StageInfoReduce(id,defInfo,&inspTarMan);
           }
           else if(type==InspectionTarget_Orientation_ColorRegionOval::TYPE())
           {

@@ -166,6 +166,7 @@ class InspectionTarget
   cJSON *additionalInfo=NULL;
   InspectionTargetManager* belongMan;
 
+  std::vector< std::string > trigger_tags;
   
   static std::string TYPE(){ return "IT"; }
   // std::vector<StageInfo_CAT> acceptTags;
@@ -200,6 +201,7 @@ class InspectionTarget
 
 
 
+  bool matchTriggerTag(string tarTag);
   protected:
   
   void attachSstaticInfo( cJSON* jobj,int trigger_id );
@@ -449,8 +451,3 @@ class StageInfo_Blob:public StageInfo
 */
 
 
-
-
-
-bool matchJArrStr(string tarTag,cJSON* jarr);
-bool matchTriggerTag(string tarTag,cJSON* def);

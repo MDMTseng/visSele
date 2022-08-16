@@ -92,6 +92,7 @@ int InspectionTarget::processInputStagePool()
 void InspectionTarget::setInspDef(cJSON* def)
 {
 
+  trigger_tags.clear();
   if(this->def)cJSON_Delete(this->def);
   this->def=NULL;
   // this->depSrc.clear();
@@ -101,6 +102,17 @@ void InspectionTarget::setInspDef(cJSON* def)
     name=JFetch_STRING_ex(def,"name","");
     type=JFetch_STRING_ex(def,"type","");
     this->def= cJSON_Duplicate(def, cJSON_True);
+
+    for(int i=0;;i++)
+    {
+      char* dsrc=JFetch_STRING(def,("trigger_tags["+to_string(i)+"]").c_str());
+      if(dsrc==NULL)break;
+      trigger_tags.push_back(std::string(dsrc));
+    }
+
+
+
+
     // for(int i=0;;i++)
     // {
     //   std::string path("depSrc[");
@@ -126,6 +138,16 @@ void InspectionTarget::setInspDef(cJSON* def)
 //   }
 //   return;
 // }
+
+
+bool InspectionTarget::matchTriggerTag(string tarTag)
+{
+  for(string tagInList:trigger_tags)
+  {
+    if(tarTag==tagInList)return true;
+  }
+  return false;
+}
 
 cJSON* InspectionTarget::genITInfo()
 {
@@ -619,29 +641,3 @@ CameraLayer::status InspectionTargetManager::CAM_CallBack(CameraLayer &cl_obj, i
 //   info.report_json=reports;//collect
 //   // InspResult_CallBack(info);//TODO: intent code fix this 
 // }
-
-
-
-bool matchJArrStr(string tarTag,cJSON* jarr)
-{
-  if(jarr==NULL)return false;
-  int asize=cJSON_GetArraySize(jarr);
-  for (int i = 0 ; i <asize ; i++)
-  {
-    cJSON * tag = cJSON_GetArrayItem(jarr, i);
-    if(tag->type==cJSON_String)
-    {
-      string str = string(tag->valuestring);
-      if(str==tarTag)
-      {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-bool matchTriggerTag(string tarTag,cJSON* def)
-{
-  cJSON* defTags=JFetch_ARRAY(def,"trigger_tags");
-  return  matchJArrStr(tarTag,defTags);
-}

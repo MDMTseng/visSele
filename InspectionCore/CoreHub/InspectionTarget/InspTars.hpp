@@ -74,7 +74,7 @@ class InspectionTarget_TEST_IT :public InspectionTarget
   {
     for(auto tag : sinfo->trigger_tags )
     {
-      if( matchTriggerTag(tag,def))
+      if( matchTriggerTag(tag))
         return true;
     }
     return false;
@@ -159,7 +159,7 @@ public:
       {
         return false;
       }
-      if( matchTriggerTag(tag,def))
+      if( matchTriggerTag(tag))
         return true;
     }
     return false;
@@ -203,7 +203,7 @@ public:
   // {
   //   // string sinfo_camId= sinfo->StreamInfo.camera->getConnectionData().id;
 
-  //   if(matchTriggerTag( sinfo->trigger_tag,def))// || sinfo_camId!=JFetch_STRING_ex(def,"camera_id",""))
+  //   if(matchTriggerTag( sinfo->trigger_tag))// || sinfo_camId!=JFetch_STRING_ex(def,"camera_id",""))
   //   {
   //     acceptStageInfo(sinfo);
   //     return true;
@@ -571,7 +571,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget
   {
     for(auto tag : sinfo->trigger_tags )
     {
-      if( matchTriggerTag(tag,def))
+      if( matchTriggerTag(tag))
         return true;
     }
     return false;
@@ -660,4 +660,146 @@ class InspectionTarget_DataTransfer :public InspectionTarget
 
 };
 
+
+
+class InspectionTarget_StageInfoReduce :public InspectionTarget
+{
+  TSQueue< std::vector< std::shared_ptr<StageInfo> > > datTransferQueue;
+
+
+  
+  struct infoGroupinfo{
+    int trigger_id;
+    std::vector< std::string > tagList;
+    std::vector< std::shared_ptr<StageInfo> >  group;
+    
+  };
+  std::map<int,  struct infoGroupinfo> id_info_grup;
+
+  
+  int realTimeDropFlag;
+  public:
+  
+  static std::string TYPE(){ return "StageInfoReduce"; }
+  InspectionTarget_StageInfoReduce(std::string id,cJSON* def,InspectionTargetManager* belongMan):
+    InspectionTarget(id,def,belongMan),
+    datTransferQueue(10)
+  {
+    realTimeDropFlag=-1;
+  }
+  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
+  {
+    for(auto tag : sinfo->trigger_tags )
+    {
+      if( matchTriggerTag(tag))
+        return true;
+    }
+    return false;
+  }
+
+
+  std::future<int> futureInputStagePool()
+  {
+    return std::async(launch::async,&InspectionTarget_StageInfoReduce::processInputStagePool,this);
+  }
+
+
+  
+
+  virtual cJSON* genITIOInfo()
+  {
+
+    cJSON* arr= cJSON_CreateArray();
+
+    {
+      cJSON* opt= cJSON_CreateObject();
+      cJSON_AddItemToArray(arr,opt);
+
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        
+        cJSON_AddItemToObject(opt, "i",sarr );
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Blob::stypeName().c_str() ));
+      }
+    }
+
+    return arr;
+  }
+
+  int processInputPool()
+  {
+    int poolSize=input_pool.size();
+    for(int i=0;i<poolSize;i++)
+    {
+      std::shared_ptr<StageInfo> curInput=input_pool[i];
+      
+      int id=curInput->trigger_id;
+
+      if (id_info_grup.find(id) == id_info_grup.end()) {
+        //no existing record
+        struct infoGroupinfo igi;
+        igi.tagList=trigger_tags;
+        igi.trigger_id=id;
+        id_info_grup.insert ( std::pair<int, struct infoGroupinfo >(id,igi) );
+      }
+      auto &container=id_info_grup[id];
+
+      container.group.push_back(curInput);
+
+      bool isMatched=false;
+      for(int j=0;j<container.tagList.size();j++)
+      {
+        string tagRem=container.tagList[j];
+        for(string inTag:curInput->trigger_tags)
+        {
+          if(inTag==tagRem)
+          {
+            container.tagList.erase(container.tagList.begin()+j);
+            isMatched=true;
+            break;
+          }
+        }
+        if(isMatched)break;
+      }
+
+      
+      LOGI("Group:%d add input from:%s size:%d",id,curInput->source_id.c_str(),container.group.size() );
+      LOGI("tagList.size:%d",container.tagList.size());
+      
+
+      if(container.tagList.size()==0)
+      {
+        processGroup(id,container.group);
+
+        id_info_grup.erase(id);
+      }
+      input_pool[i]=NULL;
+      // reutrnStageInfo(curInput);//remember to recycle the StageInfo
+    }
+    input_pool.clear();
+
+    return poolSize;//run all
+
+  }
+
+  void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
+  {
+    
+    LOGI("processGroup:  trigger_id:%d =========",trigger_id);
+    for(int i=0;i<group.size();i++)
+    {
+      LOGI("[%d]:from:%s  =========",i,group[i]->source_id.c_str());
+    }
+  }
+
+
+  void thread_run(){}
+  ~InspectionTarget_StageInfoReduce()
+  {
+    datTransferQueue.termination_trigger();
+    // runThread.join();
+    StageInfo *sinfo=NULL;
+    
+  }
+};
 
