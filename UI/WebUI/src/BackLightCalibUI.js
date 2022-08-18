@@ -154,7 +154,7 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
   let staticObj = useRef({
     targetBri:200,
     briPreDiffSign:0,
-    adjAlpha:0.7,
+    adjAlpha:0.9,
     fCount:0,
     finalRep:undefined
   });
@@ -202,13 +202,14 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
           setCurBriDiff(c.targetBri-maxMean);
 
           let exposure=reportInfo.data.cam_param.exposure_time;
-          if(exposure<50)exposure=50;
+          if(exposure<1)exposure=1;
           exposure*=
             (((1-c.adjAlpha)*1+(c.adjAlpha)*c.targetBri/maxMean));
           if(exposure>1000*1000)
           {
             exposure=1000*1000;
           }
+          if(exposure<1)exposure=1;
           console.log(exposure);
           BPG_Channel("ST",0,{CameraSetting:{exposure}});
 
