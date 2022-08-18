@@ -71,6 +71,27 @@ void setMachineSetup(JsonDocument &jdoc)
   JSON_SETIF_ABLE(O_BackLight_ON,jdoc,"O_BackLight_ON");
   JSON_SETIF_ABLE(O_EM_STOP_ON,jdoc,"O_EM_STOP_ON");
   JSON_SETIF_ABLE(I_gate1Pin_ON,jdoc,"I_gate1Pin_ON");
+
+  {
+    int pinM=-1;
+    JSON_SETIF_ABLE(pinM,jdoc,"I_gate1Pin_MODE");
+    if(pinM!=-1)
+    {
+      
+      pinMode(I_gate1Pin, pinM);  
+      // #define INPUT             0x01
+      // #define OUTPUT            0x03 
+      // #define PULLUP            0x04
+      // #define INPUT_PULLUP      0x05
+      // #define PULLDOWN          0x08
+      // #define INPUT_PULLDOWN    0x09
+      // #define OPEN_DRAIN        0x10
+      // #define OUTPUT_OPEN_DRAIN 0x12
+      // #define ANALOG            0xC0
+    }
+  }
+
+
 }
 
 
