@@ -39,7 +39,19 @@ class StageInfo{
   // std::map<std::string,std::shared_ptr<acvImage>> imgSets;
   cJSON* jInfo;
   
+  virtual void dataSetToJInfo()
+  {
+    if(jInfo)
+    {
+      cJSON_Delete(jInfo);
+      jInfo=NULL;
+    }
 
+    jInfo=cJSON_CreateObject();
+    cJSON_AddStringToObject(jInfo,"InspTar_id",source_id.c_str());
+    cJSON_AddStringToObject(jInfo,"InspTar_type",typeName().c_str());
+
+  }
 
   std::mutex lock;
 
@@ -114,6 +126,15 @@ class StageInfo_Category:public StageInfo
   static std::string stypeName(){return "Category";}
   virtual std::string typeName(){return this->stypeName();}
   int category;
+
+
+  virtual void dataSetToJInfo()
+  {
+    StageInfo::dataSetToJInfo();
+    cJSON* repInfo=cJSON_CreateObject();
+    cJSON_AddItemToObject(jInfo,"report",repInfo);
+    cJSON_AddNumberToObject(repInfo,"category",category);
+  }
 };
 
 
@@ -155,4 +176,40 @@ class StageInfo_Orientation:public StageInfo
   
   vector<struct orient> orientation;
 
+
+
+
+  virtual void dataSetToJInfo()
+  {
+    StageInfo::dataSetToJInfo();
+
+    StageInfo::dataSetToJInfo();
+    cJSON* repArray=cJSON_CreateArray();
+    cJSON_AddItemToObject(jInfo,"report",repArray);
+    for(int i=0;i<orientation.size();i++)
+    {
+      LOGI(">>>");
+      cJSON *jorient=cJSON_CreateObject();
+      cJSON_AddItemToArray(repArray,jorient);
+      orient orie=orientation[i];
+      {
+        
+        cJSON *center=cJSON_CreateObject();
+
+        
+        cJSON_AddItemToObject(jorient,"center",center);
+
+        cJSON_AddNumberToObject(center,"x",orie.center.X);
+        cJSON_AddNumberToObject(center,"y",orie.center.Y);
+
+      }
+      // cJSON_AddNumberToObject(jorient,"area",tarArea);
+
+      cJSON_AddNumberToObject(jorient,"angle",orie.angle);
+      cJSON_AddBoolToObject(jorient,"flip",orie.flip);
+
+    }
+  }
+
+  
 };
