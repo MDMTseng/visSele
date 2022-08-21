@@ -197,10 +197,16 @@ std::map<std::string, std::string> triggerMockFlags;
 bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
 {
   int zeroCount=0;
-  for(int i=0;i<3;i++)
+  LOGI("Wait for kill.....");
+  for(int i=0;i<1;i++)
   {
+    if(inspTarMan.isAllInspTarBufferClear())
+    {
+      break;
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
+  LOGI("Ready to kill.....");
   for(int i=0;i<triggerInfoMatchingBuffer.size();i++)
   {
     if(triggerInfoMatchingBuffer[i].stInfo!=NULL)
@@ -218,6 +224,8 @@ bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
   return true;
 }
 
+
+// std::timed_mutex mainThreadLock;
 
 void TriggerInfoMatchingThread(bool *terminationflag)
 {
@@ -241,6 +249,10 @@ void TriggerInfoMatchingThread(bool *terminationflag)
       sttriggerInfo_mix headImgStageInfoMixInfo;
       if(triggerInfoMatchingQueue.pop_blocking(headImgStageInfoMixInfo)==false)
         break;
+
+
+      LOGI(">>>>>>>>>>>>>>>>>>>");
+
 
       LOGI("headImgStageInfoMixInfo.stInfo:%p  Qsize:%d",headImgStageInfoMixInfo.stInfo.get(),triggerInfoMatchingQueue.size());
       // triggerInfoMatchingBuffer.w_lock();

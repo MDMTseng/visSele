@@ -1153,7 +1153,7 @@ function Orientation_ColorRegionOval_SingleRegion({srule,onDefChange,canvas_obj}
 
 
     <br/>Edge thres
-    <Slider defaultValue={srule_Filled.contour.lengthh} max={65535} onChange={(v)=>{
+    <Slider defaultValue={srule_Filled.contour.lengthh} max={3000} onChange={(v)=>{
 
       _this.trigTO=
       ID_debounce(_this.trigTO,()=>{
@@ -1161,7 +1161,7 @@ function Orientation_ColorRegionOval_SingleRegion({srule,onDefChange,canvas_obj}
       },()=>_this.trigTO=undefined,500);
 
     }}/>
-    <Slider defaultValue={srule_Filled.contour.lengthl} max={10} onChange={(v)=>{
+    <Slider defaultValue={srule_Filled.contour.lengthl} max={3000} onChange={(v)=>{
 
       _this.trigTO=
       ID_debounce(_this.trigTO,()=>{
@@ -1273,7 +1273,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           {
             setFeatureInfo(cacheDef.featureInfo===undefined?{}:cacheDef.featureInfo);
 
-            if(featureInfoExt.IM===undefined)//do a init image fetch
+            //if(featureInfoExt.IM===undefined)//do a init image fetch
             (async ()=>{
 
               let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
@@ -1333,7 +1333,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
       
       // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
       
-      await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
+      await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",Date.now())
 
     })()
     
@@ -1572,7 +1572,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
               setEditState(EditState.Normal_Show)
               
             }}}
-            okText={"Yes:"}
+            okText={"Yes"}
             cancelText="No"
           >
           <Button danger type="primary" onClick={()=>{
@@ -2520,6 +2520,18 @@ function SurfaceCheckSimple_EDIT_UI({def,onDefChange,canvas_obj}:
   const _this = useRef<any>({}).current;
   return <>
 
+    <br/>XOffset:
+    <InputNumber value={def_Filled.X_offset}
+    onChange={(num)=>{
+      let newDef={...def_Filled,X_offset:num}
+      onDefChange(newDef,true);
+    }} />
+    {"  "}YOffset:
+    <InputNumber value={def_Filled.Y_offset}
+    onChange={(num)=>{
+      let newDef={...def_Filled,Y_offset:num}
+      onDefChange(newDef,true);
+    }} />
   
     <br/>W:
     <InputNumber min={10} max={2000} value={def_Filled.W}

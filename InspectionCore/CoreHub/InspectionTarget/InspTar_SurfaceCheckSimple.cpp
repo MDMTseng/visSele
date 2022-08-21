@@ -168,6 +168,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
 
+  float X_offset=JFetch_NUMBER_ex(def,"X_offset",0);
+  float Y_offset=JFetch_NUMBER_ex(def,"Y_offset",0);
 
   float W=JFetch_NUMBER_ex(def,"W");
   float H=JFetch_NUMBER_ex(def,"H");
@@ -192,7 +194,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
       }
       if(angle>M_PI_2)angle-=M_PI;
       if(angle<-M_PI_2)angle+=M_PI;
-      Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2,H/2},-angle);
+      Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset,H/2+Y_offset},-angle);
 
       cv::warpAffine(CV_srcImg, def_temp_img_ROI, rot,def_temp_img_ROI.size());
 

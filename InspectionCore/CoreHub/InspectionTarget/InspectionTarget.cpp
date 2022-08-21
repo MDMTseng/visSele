@@ -561,7 +561,10 @@ int InspectionTargetManager::inspTarProcess()
   return totalProcessCount;
 }
 
-
+bool InspectionTargetManager::isAllInspTarBufferClear()
+{
+  return false;
+}
 
 
 cJSON* InspectionTargetManager::genInspTarListInfo()

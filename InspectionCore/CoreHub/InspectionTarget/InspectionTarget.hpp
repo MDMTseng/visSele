@@ -216,7 +216,7 @@ class InspectionTargetManager
 
   int inspTarProcess();
 
-
+  bool isAllInspTarBufferClear();
 
   int getInspTarIdx(std::string id);
 

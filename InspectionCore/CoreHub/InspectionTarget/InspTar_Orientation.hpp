@@ -56,7 +56,7 @@ class InspectionTarget_Orientation_ShapeBasedMatching :public InspectionTarget
   SBM_if *sbm;
   line2Dup::TemplatePyramid insp_tp;
   float matching_downScale=0.5;
-  string template_name="tNAME";
+  string template_class_name="tNAME";
 public:
   InspectionTarget_Orientation_ShapeBasedMatching(string id,cJSON* def,InspectionTargetManager* belongMan);
 

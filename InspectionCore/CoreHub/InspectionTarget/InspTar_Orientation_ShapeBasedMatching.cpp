@@ -157,18 +157,18 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON* def)
 
     cv::Point2f f0Pos(insp_tp[0].tl_x+insp_tp[0].features[0].x,insp_tp[0].tl_y+insp_tp[0].features[0].y);
     cv::Point2f cenOffset=cv::Point2f(templateCenter_x,templateCenter_y)-f0Pos;
-    sbm->regTemplateOffset(template_name     ,{cenOffset,false});
+    sbm->regTemplateOffset(template_class_name     ,{cenOffset,false});
     cenOffset.y*=-1;
-    sbm->regTemplateOffset(template_name+"_f",{cenOffset,true});
+    sbm->regTemplateOffset(template_class_name+"_f",{cenOffset,true});
 
     if(match_front_face)
     {
-      sbm->train(template_name     ,insp_tp,cv::Point2f(0,0),false,matching_downScale,0,360,360);
+      sbm->train(template_class_name     ,insp_tp,cv::Point2f(0,0),false,matching_downScale,-30,30,360);
     }
 
     if(match_back_face)
     {
-      sbm->train(template_name+"_f",insp_tp,cv::Point2f(0,0),true ,matching_downScale,0,360,360);
+      sbm->train(template_class_name+"_f",insp_tp,cv::Point2f(0,0),true ,matching_downScale,0,360,360);
     }
 
 
@@ -401,6 +401,14 @@ cv::Point2f rotatePoint(const cv::Point2f& inPoint, const cv::Point2f& center, c
 }
 
 
+bool hasEnding (std::string const &fullString, std::string const &ending) {
+    if (fullString.length() >= ending.length()) {
+        return (0 == fullString.compare (fullString.length() - ending.length(), ending.length(), ending));
+    } else {
+        return false;
+    }
+}
+
 void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<StageInfo> sinfo)
 {
 
@@ -429,7 +437,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   std::vector<line2Dup::Match> matches = sbm->detector.match(CV_srcImg_ds, 
     JFetch_NUMBER_ex(def,"similarity_thres",60),
     magnitude_thres,
-    {template_name,template_name+"_f"});
+    {template_class_name,template_class_name+"_f"});
 
 
 
@@ -491,15 +499,22 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
     cJSON_AddNumberToObject(region_report,"x",anchorPt.x);
     cJSON_AddNumberToObject(region_report,"y",anchorPt.y);
-    cJSON_AddNumberToObject(region_report,"angle",templ[0].angle/180*M_PI);
+    float angle_rad=templ[0].angle/180*M_PI;
+    cJSON_AddNumberToObject(region_report,"angle",angle_rad);
 
     cJSON_AddNumberToObject(region_report,"template_id",match.template_id);
     cJSON_AddNumberToObject(region_report,"similarity",match.similarity);
     cJSON_AddStringToObject(region_report,"class_id",match.class_id.c_str());
 
 
-  }
+    StageInfo_Orientation::orient orie;
+    orie.angle=angle_rad;
+    orie.flip=hasEnding(match.class_id,"_f");
+    orie.center={anchorPt.x,anchorPt.y};
 
+    reportInfo->orientation.push_back(orie);
+
+  }
 
   LOGI(">>>>>>>>");
   reportInfo->source=this;

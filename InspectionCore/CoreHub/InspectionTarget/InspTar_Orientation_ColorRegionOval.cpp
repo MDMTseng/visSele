@@ -109,10 +109,9 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
   cJSON *report=cJSON_CreateObject();
   auto srcImg=sinfo->img;
 
-
-  acvImage *copyImg=new acvImage();
+  shared_ptr<acvImage> copyImg=shared_ptr<acvImage>(new acvImage());
   copyImg->ReSize(srcImg.get());
-  acvCloneImage(srcImg.get(),copyImg,-1);
+  acvCloneImage(srcImg.get(),copyImg.get(),-1);
   Mat def_temp_img(copyImg->GetHeight(),copyImg->GetWidth(),CV_8UC3,copyImg->CVector[0]);
 
   
@@ -316,12 +315,11 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
     
   }
   
-  delete copyImg;
 
   reportInfo->sharedInfo.push_back(sinfo);
   reportInfo->source=this;
   reportInfo->source_id=id;
-  reportInfo->img=srcImg;//shared_ptr<acvImage>(copyImg);
+  reportInfo->img=copyImg;
   // reportInfo->imgSets["src"]=srcImg;
   
   reportInfo->trigger_id=sinfo->trigger_id;
