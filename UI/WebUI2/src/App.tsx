@@ -1798,25 +1798,34 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           if(defReport!==undefined)
           {
             // console.log(defReport)
-            defReport.forEach((match:any,idx:number)=>{
+            defReport.report.forEach((match:any,idx:number)=>{
               
               ctx.lineWidth=4;
               ctx.strokeStyle = `HSLA(0, 100%, 50%,1)`;
-              canvas_obj.rUtil.drawCross(ctx, {x:match.x,y:match.y}, 12);
+              canvas_obj.rUtil.drawCross(ctx, {x:match.center.x,y:match.center.y}, 12);
               
               let angle = match.angle;
 
               ctx.font = "40px Arial";
               ctx.fillStyle = "rgba(150,100, 100,0.5)";
-              ctx.fillText("idx:"+idx+" ang:"+(angle*180/3.14159).toFixed(1)+" sim:"+match.similarity.toFixed(1),match.x,match.y)
+              ctx.fillText("idx:"+idx+" ang:"+(angle*180/3.14159).toFixed(1)+" sim:"+match.confidence.toFixed(1),match.center.x,match.center.y)
 
 
               
 
               let vec=PtRotate2d({x:100,y:0},angle,1);
-              canvas_obj.rUtil.drawLine(ctx,{x1:match.x,y1:match.y,x2:match.x+vec.x,y2:match.y+vec.y})
+              canvas_obj.rUtil.drawLine(ctx,{x1:match.center.x,y1:match.center.y,x2:match.center.x+vec.x,y2:match.center.y+vec.y})
 
             })
+
+            {
+              ctx.save();
+              ctx.resetTransform();
+              ctx.font = "20px Arial";
+              ctx.fillStyle = "rgba(150,100, 100,0.5)";
+              ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,150)
+              ctx.restore();
+            }
           }
           // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
         
@@ -2745,8 +2754,8 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             if(IM===undefined)return;
             let CM=pkts.find((p:any)=>p.type=="CM");
             if(CM===undefined)return;
-            // let RP=pkts.find((p:any)=>p.type=="RP");
-            // if(RP===undefined)return;
+            let RP=pkts.find((p:any)=>p.type=="RP");
+            if(RP===undefined)return;
             // console.log("++++++++\n",IM,CM,RP);
 
 
@@ -2766,6 +2775,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
   
   
             setLocal_IMCM(IMCM)
+            setDefReport(RP.data);
             // console.log(IMCM)
   
           },
@@ -3015,6 +3025,23 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
           
           drawRegion(g,canvas_obj,_this.sel_region,canvas_obj.rUtil.getIndicationLineSize());
       
+        }
+
+
+
+        if(defReport!==undefined)
+        {
+          {
+            ctx.save();
+            ctx.resetTransform();
+            ctx.font = "20px Arial";
+            ctx.fillStyle = "rgba(150,100, 100,0.5)";
+            
+            ctx.fillText("Result:"+defReport.report.category,20,100);
+            ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,130)
+
+            ctx.restore();
+          }
         }
       }
 

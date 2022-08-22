@@ -163,12 +163,30 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON* def)
 
     if(match_front_face)
     {
-      sbm->train(template_class_name     ,insp_tp,cv::Point2f(0,0),false,matching_downScale,-30,30,360);
+      float AngleStart=JFetch_NUMBER_ex(featureInfo,"match_front_face_angle_range[0]",-179.999);
+      float AngleEnd=JFetch_NUMBER_ex(featureInfo,"match_front_face_angle_range[1]",180);
+      int AngleSegs=(int)round(JFetch_NUMBER_ex(featureInfo,"match_front_face_angle_segs",(AngleEnd-AngleStart)));
+
+      sbm->train(template_class_name     ,insp_tp,cv::Point2f(0,0),false,
+        matching_downScale,
+        AngleStart,
+        AngleEnd,
+        AngleSegs);
     }
 
     if(match_back_face)
     {
-      sbm->train(template_class_name+"_f",insp_tp,cv::Point2f(0,0),true ,matching_downScale,0,360,360);
+      float AngleStart=JFetch_NUMBER_ex(featureInfo,"match_back_face_angle_range[0]",-179.999);
+      float AngleEnd=JFetch_NUMBER_ex(featureInfo,"match_back_face_angle_range[1]",180);
+      int AngleSegs=(int)round(JFetch_NUMBER_ex(featureInfo,"match_back_face_angle_segs",(AngleEnd-AngleStart)));
+
+      sbm->train(template_class_name+"_f",insp_tp,cv::Point2f(0,0),true,
+        matching_downScale,
+        AngleStart,
+        AngleEnd,
+        AngleSegs);
+
+
     }
 
 
@@ -477,8 +495,6 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   shared_ptr<StageInfo_Orientation> reportInfo(new StageInfo_Orientation());
 
 
-  cJSON* rep_regionInfo=cJSON_CreateArray();
-
   for(auto idx: idxs)
   {
        
@@ -494,25 +510,12 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
     cv::Point2f anchorPt = rotate2d(Aoffset.offset ,templ[0].angle*M_PI/180);
     anchorPt+=f0Pt;
 
-
-    cJSON *region_report=cJSON_CreateObject();
-    cJSON_AddItemToArray(rep_regionInfo,region_report);
-
-
-    cJSON_AddNumberToObject(region_report,"x",anchorPt.x);
-    cJSON_AddNumberToObject(region_report,"y",anchorPt.y);
     float angle_rad=templ[0].angle/180*M_PI;
-    cJSON_AddNumberToObject(region_report,"angle",angle_rad);
-
-    cJSON_AddNumberToObject(region_report,"template_id",match.template_id);
-    cJSON_AddNumberToObject(region_report,"similarity",match.similarity);
-    cJSON_AddStringToObject(region_report,"class_id",match.class_id.c_str());
-
-
     StageInfo_Orientation::orient orie;
     orie.angle=angle_rad;
     orie.flip=hasEnding(match.class_id,"_f");
     orie.center={anchorPt.x,anchorPt.y};
+    orie.confidence=match.similarity;
 
     reportInfo->orientation.push_back(orie);
 
@@ -538,9 +541,6 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",4);
   LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
 
-  reportInfo->jInfo=rep_regionInfo;
-
-
   {
     int64 t1 = cv::getTickCount();
     double secs_us = 1000000*(t1-t0)/cv::getTickFrequency();
@@ -550,6 +550,9 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
     LOGI(">>>>>>>>process_time_us:%f",secs_us);
   }
+
+  reportInfo->genJsonRepTojInfo();
+
 
   belongMan->dispatch(reportInfo);
 

@@ -45,6 +45,8 @@ class StageInfo{
     cJSON* rep=cJSON_CreateObject();
     cJSON_AddStringToObject(rep,"InspTar_id",source_id.c_str());
     cJSON_AddStringToObject(rep,"InspTar_type",typeName().c_str());
+    cJSON_AddNumberToObject(rep,"process_time_us",process_time_us);
+
     return rep;
   }
 
@@ -181,6 +183,7 @@ class StageInfo_Orientation:public StageInfo
     acv_XY center;
     float angle;
     bool flip;
+    float confidence;
   };
 
 
@@ -212,7 +215,11 @@ class StageInfo_Orientation:public StageInfo
       // cJSON_AddNumberToObject(jorient,"area",tarArea);
 
       cJSON_AddNumberToObject(jorient,"angle",orie.angle);
+      cJSON_AddNumberToObject(jorient,"confidence",orie.confidence);
+      
       cJSON_AddBoolToObject(jorient,"flip",orie.flip);
+
+
 
     }
 
