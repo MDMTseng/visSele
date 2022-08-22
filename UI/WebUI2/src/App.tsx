@@ -3481,7 +3481,17 @@ function VIEWUI(){
   async function ReloadPrjDef(path:string)  
   {
     let prjDef = await LOADPrjDef( path)
-    console.log(prjDef)
+
+    _this.listCMD_Vairable.InspTarDispIDList=prjDef.InspTars_main.reduce((pval,cval)=>{
+      console.log(cval);
+      if(cval.default_hide!==true)
+        pval.push(cval.id);
+      return pval;
+    },[] as string[]);
+
+
+
+    console.log(_this.listCMD_Vairable.InspTarDispIDList,prjDef)
     let api = BPG_API
 
     prjDef.main.CameraInfo= await CameraInfoDoConnection(prjDef.main.CameraInfo,true)
