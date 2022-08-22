@@ -64,16 +64,19 @@
   ],
   "InspTars": [
     {
-      "id": "rule2"
+      "id": "shapeBasedMatching_test"
     },
     {
       "id": "regionInspection"
     },
     {
-      "id": "shapeBasedMatching_test"
+      "id": "ResultScoring"
     },
     {
       "id": "ImTran"
+    },
+    {
+      "id": "DataSave"
     }
   ]
 }

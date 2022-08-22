@@ -1,9 +1,0 @@
-{
-  "id": "testRule",
-  "type": "TEST_IT",
-  "trigger_tags": [
-    "ToTestRule",
-    "Hikrobot-00F92938639"
-  ],
-  "stream_id": 51002
-}
