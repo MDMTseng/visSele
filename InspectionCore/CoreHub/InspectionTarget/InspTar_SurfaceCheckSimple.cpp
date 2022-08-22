@@ -138,6 +138,7 @@ Mat getRotTranMat(acv_XY pt1,acv_XY pt2,float theta)
 
 void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> sinfo)
 {
+  int64 t0 = cv::getTickCount();
   LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
   
 
@@ -176,11 +177,14 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   acvImage *retImage=NULL;
 
+  int category=STAGEINFO_CAT_NA;
   if(d_sinfo->orientation.size()>0)
   {  
     retImage=new acvImage(W*d_sinfo->orientation.size(),H,3);
     Mat def_temp_img(retImage->GetHeight(),retImage->GetWidth(),CV_8UC3,retImage->CVector[0]);
     def_temp_img={0};
+
+    category=STAGEINFO_CAT_OK;
     for(int i=0;i<d_sinfo->orientation.size();i++)
     {
       // cJSON* idxRegion=JFetch_ARRAY(def,("[+"+std::to_string(i)+"+]").c_str());
@@ -250,6 +254,22 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
           }
         }
+
+        {
+
+          vector<vector<Point> > contours;
+          vector<Vec4i> hierarchy;
+          findContours( img_HSV_threshold, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE );
+          
+          for(int k=0;k<contours.size();k++)
+          {
+
+            double area = contourArea(contours[k],false);
+            if(area>100)category=STAGEINFO_CAT_NG;
+            LOGI(">>[%d]>siz:%d area:%f",k,contours[k].size(),area);
+          }
+
+        }
       }
     }
 
@@ -273,23 +293,29 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   reportInfo->img=shared_ptr<acvImage>(retImage);
   
   reportInfo->trigger_id=sinfo->trigger_id;
-  // reportInfo->trigger_tags.push_back("InfoStream2UI");
-  // reportInfo->trigger_tags.push_back("ToTestRule");
-  reportInfo->trigger_tags.push_back("ImTran");
-
   reportInfo->sharedInfo.push_back(sinfo);
   reportInfo->trigger_tags.push_back(id);
 
-  
+  reportInfo->category=category;
 
   reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
   reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",2);
-  LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
+  LOGI("CHID:%d category:%d",reportInfo->img_prop.StreamInfo.channel_id,category);
 
-  reportInfo->jInfo=NULL;
-
+  // reportInfo->jInfo=NULL;
   // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
 
+  {
+    int64 t1 = cv::getTickCount();
+    double secs_us = 1000000*(t1-t0)/cv::getTickFrequency();
+    reportInfo->process_time_us=secs_us;
+    reportInfo->create_time_sysTick=t1;
+    // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
+
+    LOGI(">>>>>>>>process_time_us:%f",secs_us);
+  }
+
+  reportInfo->genJsonRepTojInfo();
   belongMan->dispatch(reportInfo);
 
 }

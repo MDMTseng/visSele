@@ -35,11 +35,20 @@ class StageInfo{
   // std::vector<StageInfo_CAT> catInfo;
   std::vector<std::string> trigger_tags;
   int trigger_id;
-  
+  float process_time_us;
+  int64_t create_time_sysTick;
   // std::map<std::string,std::shared_ptr<acvImage>> imgSets;
   cJSON* jInfo;
   
-  virtual void dataSetToJInfo()
+  virtual cJSON* genJsonRep()
+  {
+    cJSON* rep=cJSON_CreateObject();
+    cJSON_AddStringToObject(rep,"InspTar_id",source_id.c_str());
+    cJSON_AddStringToObject(rep,"InspTar_type",typeName().c_str());
+    return rep;
+  }
+
+  virtual void genJsonRepTojInfo()
   {
     if(jInfo)
     {
@@ -47,9 +56,7 @@ class StageInfo{
       jInfo=NULL;
     }
 
-    jInfo=cJSON_CreateObject();
-    cJSON_AddStringToObject(jInfo,"InspTar_id",source_id.c_str());
-    cJSON_AddStringToObject(jInfo,"InspTar_type",typeName().c_str());
+    jInfo=genJsonRep();
 
   }
 
@@ -118,7 +125,9 @@ class StageInfo_Image:public StageInfo
 };
 
 
-
+#define STAGEINFO_CAT_NA (-999)
+#define STAGEINFO_CAT_OK (1)
+#define STAGEINFO_CAT_NG (-1)
 
 class StageInfo_Category:public StageInfo
 {
@@ -127,13 +136,15 @@ class StageInfo_Category:public StageInfo
   virtual std::string typeName(){return this->stypeName();}
   int category;
 
-
-  virtual void dataSetToJInfo()
+  virtual cJSON* genJsonRep()
   {
-    StageInfo::dataSetToJInfo();
+    cJSON* rootRep=StageInfo::genJsonRep();
+
+
     cJSON* repInfo=cJSON_CreateObject();
-    cJSON_AddItemToObject(jInfo,"report",repInfo);
+    cJSON_AddItemToObject(rootRep,"report",repInfo);
     cJSON_AddNumberToObject(repInfo,"category",category);
+    return rootRep;
   }
 };
 
@@ -152,7 +163,7 @@ class StageInfo_Group:public StageInfo
 };
 
 
-class StageInfo_SurfaceCheckSimple:public StageInfo
+class StageInfo_SurfaceCheckSimple:public StageInfo_Category
 {
   public:
   static string stypeName(){return "SurfaceCheckSimple";}
@@ -179,29 +190,24 @@ class StageInfo_Orientation:public StageInfo
 
 
 
-  virtual void dataSetToJInfo()
+  virtual cJSON* genJsonRep()
   {
-    StageInfo::dataSetToJInfo();
+    cJSON* rootRep=StageInfo::genJsonRep();
 
-    StageInfo::dataSetToJInfo();
     cJSON* repArray=cJSON_CreateArray();
-    cJSON_AddItemToObject(jInfo,"report",repArray);
+    cJSON_AddItemToObject(rootRep,"report",repArray);
     for(int i=0;i<orientation.size();i++)
     {
-      LOGI(">>>");
       cJSON *jorient=cJSON_CreateObject();
       cJSON_AddItemToArray(repArray,jorient);
       orient orie=orientation[i];
       {
-        
         cJSON *center=cJSON_CreateObject();
 
-        
         cJSON_AddItemToObject(jorient,"center",center);
 
         cJSON_AddNumberToObject(center,"x",orie.center.X);
         cJSON_AddNumberToObject(center,"y",orie.center.Y);
-
       }
       // cJSON_AddNumberToObject(jorient,"area",tarArea);
 
@@ -209,6 +215,8 @@ class StageInfo_Orientation:public StageInfo
       cJSON_AddBoolToObject(jorient,"flip",orie.flip);
 
     }
+
+    return rootRep;
   }
 
   

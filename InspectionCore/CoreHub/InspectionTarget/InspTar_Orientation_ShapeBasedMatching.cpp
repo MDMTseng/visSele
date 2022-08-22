@@ -411,7 +411,7 @@ bool hasEnding (std::string const &fullString, std::string const &ending) {
 
 void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<StageInfo> sinfo)
 {
-
+  int64 t0 = cv::getTickCount();
   cache_stage_info=sinfo;
   LOGI(">>>>>>>>InspectionTarget_Orientation_ShapeBasedMatching>>>>>>>>");
   LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
@@ -487,6 +487,8 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
     //calc the position relative to the first point
     cv::Point2f f0Pt = cv::Point2f((float)templ[0].features[0].x+match.x,(float)templ[0].features[0].y+match.y)/matching_downScale;
+    float offset = (1/matching_downScale-1)/2;
+    f0Pt+=cv::Point2f(offset,offset);
     SBM_if::anchorInfo Aoffset = sbm->fetchTemplateOffset(match.class_id);
     LOGI(">>>ang:%f <<id:%s",templ[0].angle,match.class_id.c_str());
     cv::Point2f anchorPt = rotate2d(Aoffset.offset ,templ[0].angle*M_PI/180);
@@ -538,9 +540,17 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
   reportInfo->jInfo=rep_regionInfo;
 
-  // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
 
-  LOGI(">>>>>>>>");
+  {
+    int64 t1 = cv::getTickCount();
+    double secs_us = 1000000*(t1-t0)/cv::getTickFrequency();
+    reportInfo->process_time_us=secs_us;
+    reportInfo->create_time_sysTick=t1;
+    // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
+
+    LOGI(">>>>>>>>process_time_us:%f",secs_us);
+  }
+
   belongMan->dispatch(reportInfo);
 
   
