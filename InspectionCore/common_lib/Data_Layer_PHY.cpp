@@ -295,7 +295,26 @@ Data_UART_Layer::Data_UART_Layer(const char *name,int speed,const char *mode_str
   }
 
 
+  uint8_t buffer[100];
+  for(int k=0;;k++)//try to deplete buffer
+  {
+    int datLen = simple_uart_read_timed(uart, buffer, sizeof(buffer),30);
+    if(datLen)
+    {
+      printf("WARN:: UART:%s channel still has residue data length:%d \n",name,datLen);
 
+      printf("Text print blow\n");
+      for(int i=0;i<datLen;i++)
+      {
+        printf("%c",buffer[i]);
+      }
+      printf("\n");
+      continue;
+    }
+    break;
+  }
+
+  
   // recvThread=NULL;
   recvThread = new std::thread(&Data_UART_Layer::recv_data_thread, this);
   // return (recvThread==NULL);
@@ -309,7 +328,15 @@ int Data_UART_Layer::recv_data_thread()
   {
 
     int datLen = simple_uart_read_timed(uart, buffer, sizeof(buffer),1000);
-    // printf(">>>>datLen%d uart:%p \n",datLen,uart);
+
+    // printf(">>>>simple_uart datLen:%d\n",datLen);
+    // for(int i=0;i<datLen;i++)
+    // {
+    //     printf("%c",buffer[i]);
+    // }
+    // printf("\n");
+
+
     if(datLen<0)break;
     if(datLen==0)continue;
     recv_data(buffer, datLen,false);
