@@ -1,5 +1,6 @@
 
 #include "main.hpp"
+#include "RingBuf.hpp"
 
 #include <EncoderCounter.hpp>
 
@@ -12,6 +13,9 @@
 const char *ModuleVer="0.0.1";
 
 const char *ModuleType="ManualTapeReelInsp";
+
+
+char CAM_NAME_BUFF[100]="Hikrobot-2BDF92938639-00F92938639";
 
 
 const int O_LEDPin = 2;
@@ -54,7 +58,12 @@ int encStepSkip=4;
 int encStepsPerObject=4;
 int ObjCountPreSet=5;
 
+struct triggerInfo{
+  char* p_camera_id;
+  uint32_t step;
+};
 
+RingBuf_Static<struct triggerInfo,20,uint8_t> triggerInfoQ;
 
 
 void genMachineSetup(JsonDocument &jdoc)
@@ -113,18 +122,20 @@ hw_timer_t *timer = NULL;
 
 int timerRunStage_outSeq=0;
 int timerRunStage=0;
-int lastCount=0;
+int lastFrontCount=0;
 
+int lastestCount=0;
 static IRAM_ATTR void enc_cb(void* arg) {
   //Serial.printf("enc cb: count: %d\n", enc->getCount());
-  if(I_Enc_Inv) count=-encoder.getCount();
-  else          count=-encoder.getCount();
+  if(I_Enc_Inv) count=encoder.count;
+  else          count=-encoder.count;
 
 
+  lastestCount=count;
 
-  if(lastCount>=count)
+  if(lastFrontCount>=count)
   {
-    lastCount=count;
+    lastFrontCount=count;
     //reverse run skip
     return;
   }
@@ -171,7 +182,7 @@ static IRAM_ATTR void enc_cb(void* arg) {
     pret=t;
   }
  
-  lastCount=count;
+  lastFrontCount=count;
   
 
 }
@@ -186,6 +197,11 @@ void IRAM_ATTR onTimer()
     
     case 1:  
     {
+      struct triggerInfo tinfo;
+      tinfo.step=lastestCount;
+      tinfo.p_camera_id=CAM_NAME_BUFF;
+      *(triggerInfoQ.getHead())=tinfo;
+      triggerInfoQ.pushHead();
       timerRunStage=20;
       int delay=g_flash_on_time;
       if(delay>0)
@@ -322,6 +338,7 @@ class MData_uInsp:public Data_JsonRaw_Layer
 
   }
 
+  int PING_Count=0;
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     
     if(opcode==1 )
@@ -336,6 +353,7 @@ class MData_uInsp:public Data_JsonRaw_Layer
       // const char* id = doc["id"];
       if(strcmp(type,"RESET")==0)
       {
+        PING_Count=0;
         return msg_printf("RESET_OK","");
       }
       else if(strcmp(type,"ask_JsonRaw_version")==0)
@@ -353,6 +371,8 @@ class MData_uInsp:public Data_JsonRaw_Layer
       }
       else if(strcmp(type,"PING")==0)
       {
+        PING_Count++;
+        digitalWrite(O_LEDPin, PING_Count&1);
         retdoc["type"]="PONG"; 
         doRsp=rspAck=true;
       }
@@ -440,15 +460,37 @@ class MData_uInsp:public Data_JsonRaw_Layer
         // int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
         // send_json_string(0,buff,slen,0);
       }
-      else if(strcmp(type,"BL_ON")==0)
+      else if(strcmp(type,"LIGHT_1_ON")==0)
       {
         digitalWrite(O_FlashLight, O_FlashLight_ON);
         doRsp=rspAck=true;
 
       }     
-      else if(strcmp(type,"BL_OFF")==0)
+      else if(strcmp(type,"LIGHT_1_OFF")==0)
       {
         digitalWrite(O_FlashLight, !O_FlashLight_ON);
+        doRsp=rspAck=true;
+
+      }
+      else if(strcmp(type,"TRIG_CAMERA_TAKE")==0)
+      {
+          
+        timerRunStage=1;
+        timerAlarmWrite(timer, 1, true);
+        timerAlarmEnable(timer);
+        doRsp=rspAck=true;
+      }
+      else if(strcmp(type,"GET_CUR_STEP_COUNTER")==0)
+      {
+        // digitalWrite(O_FlashLight, !O_FlashLight_ON);
+
+        retdoc["step"]=lastestCount;//encoder.getCount();
+        doRsp=rspAck=true;
+
+      }
+      else if(strcmp(type,"STEP_COUNTER_RESET")==0)
+      {
+        encoder.clearCount();
         doRsp=rspAck=true;
 
       }
@@ -478,6 +520,17 @@ class MData_uInsp:public Data_JsonRaw_Layer
         doRsp=rspAck=true;
 
       }
+      else if(strcmp(type,"SET_CAMERA_ID")==0)
+      {
+        if(doc["camera_id"].is<std::string>())
+        {
+          std::string camera_id=doc["camera_id"];
+          strcpy(CAM_NAME_BUFF,camera_id.c_str());
+          
+          rspAck=true;
+        }
+        doRsp=true;
+      }
       else if(strcmp(type,"Cam_Trigger")==0)
       {
         digitalWrite(O_CameraPin_ON, !O_CameraPin_ON);
@@ -492,7 +545,8 @@ class MData_uInsp:public Data_JsonRaw_Layer
       }
       else if(strcmp(type,"Encoder_Reset")==0)
       {
-        lastCount=0;
+        lastFrontCount=0;
+        lastestCount=0;
         encoder.clearCount();
         doRsp=rspAck=true;
 
@@ -616,16 +670,38 @@ void loop()
       int recvLen = Serial.read(recvBuf,sizeof(recvBuf));
       djrl.recv_data((uint8_t*)recvBuf,recvLen);
 
-      // djrl.dbg_printf(">>new data, len:%d",recvLen);
+      // djrl.dbg_printf(">>recv,len:%d",recvLen);
       
+    }
+  }
+
+  int curTrigQSize=triggerInfoQ.size();
+  {
+    uint8_t buff[700];
+    retdoc.clear();
+    retdoc["type"]="TriggerInfo"; 
+    while(curTrigQSize)
+    {
+      triggerInfo info=*triggerInfoQ.getTail();
+      triggerInfoQ.consumeTail();
+      // djrl.dbg_printf(">>Triggered Step:%d",info.step);
+      retdoc["tag"]="s_Step_"+std::to_string(info.step);
+      retdoc["trigger_id"]=info.step;
+      retdoc["camera_id"]=std::string(info.p_camera_id);
+      curTrigQSize=triggerInfoQ.size();
+
+
+
+      int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+      djrl.send_json_string(0,buff,slen,0);
     }
   }
   // oGS.mainLoop();
   // loop_comm();
-  if(last_count!=count)
-  {
-    djrl.dbg_printf("ENC:%06d timerC:%d timerRunStage:%d outTime:%d\n",count,timer_run_count,timerRunStage,timerRunStage_outSeq);
-    last_count=count;
-    delay(100);
-  }
+  // if(last_count!=count)
+  // {
+  //   djrl.dbg_printf("ENC:%06d timerC:%d timerRunStage:%d outTime:%d\n",count,timer_run_count,timerRunStage,timerRunStage_outSeq);
+  //   last_count=count;
+  //   delay(100);
+  // }
 }
