@@ -160,6 +160,8 @@ class InspectionTarget
   bool matchTriggerTag(string tarTag);
   protected:
   
+  void insertInputTagsWPrefix(std::vector<std::string> &insertTo,std::vector<std::string> &fromList,std::string prefixToMatch);
+
   void attachSstaticInfo( cJSON* jobj,int trigger_id );
   virtual cJSON* genITInfo_basic();
   virtual bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)=0;

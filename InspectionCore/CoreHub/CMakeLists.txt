@@ -132,7 +132,8 @@ add_executable (visSele main.cpp wiringPanel.cpp wiringPanel_ext.cpp
 InspectionTarget/InspectionTarget.cpp 
 InspectionTarget/InspTar_Orientation_ColorRegionOval.cpp 
 InspectionTarget/InspTar_Orientation_ShapeBasedMatching.cpp
-InspectionTarget/InspTar_SurfaceCheckSimple.cpp)
+InspectionTarget/InspTar_SurfaceCheckSimple.cpp
+InspectionTarget/InspTar_WBar_SizeComp.cpp)
 
 add_dependencies(visSele mod_target MatchingEngine shape_based_matching)
 

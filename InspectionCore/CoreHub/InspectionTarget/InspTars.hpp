@@ -518,9 +518,6 @@ public:
     reportInfo->source_id=id;
     reportInfo->img=std::shared_ptr<acvImage>(copyImg);
     reportInfo->trigger_id=sinfo->trigger_id;
-    // reportInfo->trigger_tags.push_back("InfoStream2UI");
-    // reportInfo->trigger_tags.push_back("ToTestRule");
-    // reportInfo->trigger_tags.push_back("ImTran");
 
     reportInfo->sharedInfo.push_back(sinfo);
     reportInfo->trigger_tags.push_back(id);
@@ -563,7 +560,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget
   public:
   
   static std::string TYPE(){ return "DataTransfer"; }
-  InspectionTarget_DataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(10),runThread(&InspectionTarget_DataTransfer::thread_run,this)
+  InspectionTarget_DataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(30),runThread(&InspectionTarget_DataTransfer::thread_run,this)
   {
     realTimeDropFlag=-1;
   }
@@ -855,7 +852,10 @@ class InspectionTarget_GroupResultSave :public InspectionTarget_StageInfoCollect
   void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
   {
     
-    datTransferQueue.push(group);
+    // if(datTransferQueue.push(group)==false)
+    // {
+    //   LOGI("datTransferQueue.push FAILED.....");
+    // }
 
   }
 

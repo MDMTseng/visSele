@@ -12,7 +12,7 @@ using namespace std;
 
 #define STAGEINFO_LIFECYCLE_DEBUG 1
 
-static int StageInfoLiveCounter=0;
+static std::atomic<int> StageInfoLiveCounter={0};
 
 class StageInfo{
   public:
@@ -45,8 +45,16 @@ class StageInfo{
     cJSON* rep=cJSON_CreateObject();
     cJSON_AddStringToObject(rep,"InspTar_id",source_id.c_str());
     cJSON_AddStringToObject(rep,"InspTar_type",typeName().c_str());
+    cJSON_AddNumberToObject(rep,"trigger_id",trigger_id);
     cJSON_AddNumberToObject(rep,"process_time_us",process_time_us);
 
+    cJSON* tagset=cJSON_CreateArray();
+    cJSON_AddItemToObject(rep,"tags",tagset);
+    for(auto tag:trigger_tags)
+    {
+      
+      cJSON_AddItemToArray(tagset,cJSON_CreateString(tag.c_str()));
+    }
     return rep;
   }
 
@@ -76,7 +84,7 @@ class StageInfo{
     jInfo=NULL;
 
 #if STAGEINFO_LIFECYCLE_DEBUG
-    LOGE("++>StageInfoLiveCounter:%d  :%p",StageInfoLiveCounter,this);
+    LOGE("++>StageInfoLiveCounter:%d  :%p",(int)StageInfoLiveCounter,this);
 #endif
   }
   virtual ~StageInfo(){
@@ -109,7 +117,7 @@ class StageInfo{
     sharedInfo.clear();
     StageInfoLiveCounter--;
 #if STAGEINFO_LIFECYCLE_DEBUG
-    LOGE("-->StageInfoLiveCounter:%d  :%p",StageInfoLiveCounter,this);
+    LOGE("-->StageInfoLiveCounter:%d  :%p",(int)StageInfoLiveCounter,this);
 #endif
 
   }
@@ -127,9 +135,14 @@ class StageInfo_Image:public StageInfo
 };
 
 
-#define STAGEINFO_CAT_NA (-999)
+#define STAGEINFO_CAT_NA (0)
 #define STAGEINFO_CAT_OK (1)
 #define STAGEINFO_CAT_NG (-1)
+
+
+#define STAGEINFO_CAT_NOT_EXIST (-40000)
+
+
 
 class StageInfo_Category:public StageInfo
 {
@@ -150,6 +163,37 @@ class StageInfo_Category:public StageInfo
   }
 };
 
+class StageInfo_Group_Category:public StageInfo_Category
+{
+  public:
+  static std::string stypeName(){return "Category";}
+  virtual std::string typeName(){return this->stypeName();}
+
+  struct Group_Info{
+    int category;
+    int score;
+  };
+  vector<struct Group_Info> group_info;
+
+  virtual cJSON* genJsonRep()
+  {
+    cJSON* rootRep=StageInfo_Category::genJsonRep();
+    cJSON* report=cJSON_GetObjectItem(rootRep,"report");
+
+    cJSON* g_cat=cJSON_CreateArray();
+    cJSON_AddItemToObject(report,"group_category",g_cat);
+    for(int i=0;i<group_info.size();i++)
+    {
+      cJSON *ginfo=cJSON_CreateObject();
+      cJSON_AddItemToArray(g_cat,ginfo);
+
+      cJSON_AddNumberToObject(ginfo,"category",group_info[i].category);
+      cJSON_AddNumberToObject(ginfo,"score",group_info[i].score);
+
+    }
+    return rootRep;
+  }
+};
 
 
 

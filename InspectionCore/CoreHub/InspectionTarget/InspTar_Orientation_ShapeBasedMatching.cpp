@@ -274,7 +274,7 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON* info,in
     {
       acvImage src_acvImg;
       src_acvImg.useExtBuffer((BYTE *)img.data,img.rows*img.cols*3,img.cols,img.rows);
-      act.send("IM",id,&src_acvImg,10);
+      act.send("IM",id,&src_acvImg,image_transfer_downsampling);
     }
 
     int num_features= JFetch_NUMBER_ex(info,"num_features",60);
@@ -326,7 +326,33 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON* info,in
       
       line2Dup::TemplatePyramid tp;
       //1087,231   1596,666
-      sbm->TemplateFeatureExtraction(img,_mask,num_features,tp);
+
+      { 
+        float weak_thresh= JFetch_NUMBER_ex(info,"weak_thresh",30);
+        float strong_thresh= JFetch_NUMBER_ex(info,"strong_thresh",80);
+        vector<int> T;
+        for(int i=0;;i++)
+        {
+          double *t=JFetch_NUMBER(info,("T["+to_string(i)+"]").c_str());
+          if(t)
+            T.push_back(*t);
+          else
+            break;
+        }
+        if(T.size()==0)//default
+        {
+          T.push_back(4);
+          T.push_back(6);
+        }
+        SBM_if t_sbm(num_features, T,weak_thresh,strong_thresh);
+        t_sbm.TemplateFeatureExtraction(img,_mask,num_features,tp);
+
+      }
+     
+
+
+
+
 
 
       cJSON* jtp=TemplatePyramid2Json(tp);
@@ -427,6 +453,7 @@ bool hasEnding (std::string const &fullString, std::string const &ending) {
     }
 }
 
+
 void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<StageInfo> sinfo)
 {
   int64 t0 = cv::getTickCount();
@@ -440,6 +467,8 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
   Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
 
+  LOGI(">>>>>>>>");
+
 
   cv::Size size1 = CV_srcImg.size();
   size1.width=((int)(size1.width*matching_downScale))/8*8;
@@ -449,40 +478,134 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   resize(CV_srcImg,CV_srcImg_ds,size1,cv::INTER_AREA);
   
 
+  LOGI(">>>>>>>>");
+
   float magThres_eq_alpha=0.3;
   float magnitude_thres=JFetch_NUMBER_ex(def,"magnitude_thres",20)/(magThres_eq_alpha+(1-magThres_eq_alpha)*matching_downScale);
   if(magnitude_thres>128)magnitude_thres=128;
-  std::vector<line2Dup::Match> matches = sbm->detector.match(CV_srcImg_ds, 
-    JFetch_NUMBER_ex(def,"similarity_thres",60),
-    magnitude_thres,
-    {template_class_name,template_class_name+"_f"});
 
 
 
+  std::vector<line2Dup::Match> matches;
+  
 
-
-
-
-
-  vector<Rect> boxes;
-  vector<float> scores;
   vector<int> idxs;
-  int CCC=0;
-  for(auto match: matches){
-    Rect box;
-    box.x = match.x;
-    box.y = match.y;
-    
-    auto templ = sbm->detector.getTemplates(match.class_id,
-                                        match.template_id);
+  {
+    bool doMatchFilter=false;
 
-    box.width = templ[0].width;
-    box.height = templ[0].height;
-    boxes.push_back(box);
-    scores.push_back(match.similarity);
-    CCC++;
+
+    cJSON * search_regions=JFetch_ARRAY(def,"search_regions");
+    float similarity_thres=JFetch_NUMBER_ex(def,"similarity_thres",60);
+    if(search_regions && cJSON_GetArraySize(search_regions))
+    {
+      int arrL=cJSON_GetArraySize(search_regions);
+      for(int i=0;i<arrL;i++)
+      {
+
+        cJSON * region_info = cJSON_GetArrayItem(search_regions, i);
+
+        int x = (int)(JFetch_NUMBER_ex(region_info,"x",0)*matching_downScale);
+        int y = (int)(JFetch_NUMBER_ex(region_info,"y",0)*matching_downScale);
+        int w = (int)(JFetch_NUMBER_ex(region_info,"w",0)*matching_downScale);
+        int h = (int)(JFetch_NUMBER_ex(region_info,"h",0)*matching_downScale);
+        
+        {
+          Mat &m=CV_srcImg_ds;
+
+          if(x<0)
+          {
+            w+=x;
+            x=0;
+          }
+          if(y<0)
+          {
+            h+=y;
+            y=0;
+          }
+          if(x>=m.cols || y>=m.rows)continue;
+
+          if(x+w>m.cols)
+          {
+            w=m.cols-x;
+          }
+          if(y+h>m.rows)
+          {
+            h=m.rows-y;
+          }
+
+          int margin=10;
+          if(w<=margin || h<=margin)continue;
+
+
+        }
+        
+        Mat CV_srcImg_region = CV_srcImg_ds(Rect(x,y,w,h));
+
+        std::vector<line2Dup::Match> sub_matches= sbm->detector.match(
+        CV_srcImg_region, 
+        similarity_thres,
+        magnitude_thres,
+        {template_class_name,template_class_name+"_f"});
+
+        line2Dup::Match maxMatch;
+        maxMatch.similarity=0;
+        float maxSim=0;
+        for(auto &sub_match: sub_matches){
+          if(maxSim<sub_match.similarity)
+          {
+            maxSim=sub_match.similarity;
+            maxMatch=sub_match;
+            maxMatch.x+=x;
+            maxMatch.y+=y;
+          }
+        }
+
+        LOGI(">>>maxMatch sim:%f",maxMatch.similarity);
+        idxs.push_back(matches.size());
+        matches.push_back(maxMatch);
+      }
+      doMatchFilter=false;
+    }
+    else
+    {
+      matches= sbm->detector.match(
+      CV_srcImg_ds, 
+      similarity_thres,
+      magnitude_thres,
+      {template_class_name,template_class_name+"_f"});
+      LOGI(">>>>>>>>");
+      doMatchFilter=true;
+
+
+    }
+
+
+    if(doMatchFilter)
+    {
+
+      vector<Rect> boxes;
+      vector<float> scores;
+
+      for(auto match: matches){
+        Rect box;
+        box.x = match.x;
+        box.y = match.y;
+        
+        auto templ = sbm->detector.getTemplates(match.class_id,
+                                            match.template_id);
+
+        box.width = templ[0].width;
+        box.height = templ[0].height;
+        boxes.push_back(box);
+        scores.push_back(match.similarity);
+
+      }
+
+      cv_dnn::NMSBoxes(boxes, scores, 0, 0.5f, idxs);
+    }
+
   }
-  cv_dnn::NMSBoxes(boxes, scores, 0, 0.5f, idxs);
+
 
 
 
@@ -497,13 +620,26 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
   for(auto idx: idxs)
   {
-       
     line2Dup::Match match = matches[idx];
+    if(match.similarity==0)//for regional search, that needs to give yes/no answer
+    {
+
+      StageInfo_Orientation::orient orie;
+
+      orie.angle=0;
+      orie.flip=false;
+      orie.center={0,0};
+      orie.confidence=0;
+
+      reportInfo->orientation.push_back(orie);
+      continue;
+    }
+    
     auto templ = sbm->detector.getTemplates(match.class_id,match.template_id);
 
     //calc the position relative to the first point
     cv::Point2f f0Pt = cv::Point2f((float)templ[0].features[0].x+match.x,(float)templ[0].features[0].y+match.y)/matching_downScale;
-    float offset = (1/matching_downScale-1)/2;
+    float offset = (1/matching_downScale-1);// /2;
     f0Pt+=cv::Point2f(offset,offset);
     SBM_if::anchorInfo Aoffset = sbm->fetchTemplateOffset(match.class_id);
     LOGI(">>>ang:%f <<id:%s",templ[0].angle,match.class_id.c_str());
@@ -512,6 +648,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
     float angle_rad=templ[0].angle/180*M_PI;
     StageInfo_Orientation::orient orie;
+
     orie.angle=angle_rad;
     orie.flip=hasEnding(match.class_id,"_f");
     orie.center={anchorPt.x,anchorPt.y};
@@ -524,15 +661,14 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   LOGI(">>>>>>>>");
   reportInfo->source=this;
   reportInfo->source_id=id;
-  reportInfo->img=srcImg;//shared_ptr<acvImage>(retImage);
+  reportInfo->img=srcImg;
   
   reportInfo->trigger_id=sinfo->trigger_id;
-  // reportInfo->trigger_tags.push_back("InfoStream2UI");
-  // reportInfo->trigger_tags.push_back("ToTestRule");
-  reportInfo->trigger_tags.push_back("ImTran");
 
   reportInfo->sharedInfo.push_back(sinfo);
   reportInfo->trigger_tags.push_back(id);
+  insertInputTagsWPrefix(reportInfo->trigger_tags,sinfo->trigger_tags,"s_");
+
 
   LOGI(">>>>>>>>");
   

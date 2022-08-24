@@ -26,6 +26,27 @@ InspectionTarget::InspectionTarget(std::string id,cJSON* def,InspectionTargetMan
   additionalInfo=cJSON_CreateObject();
 }
 
+bool checkHead(const char *str,const char *prefix)
+{
+  if(str==NULL || prefix==NULL)return false;
+  for(int i=0;;i++)
+  {
+    if(prefix[i]=='\0')return true;
+    if(str[i]!=prefix[i])break;
+  }
+  return false;
+}
+
+void InspectionTarget::insertInputTagsWPrefix(std::vector<std::string> &insertTo,std::vector<std::string> &fromList,std::string prefixToMatch)
+{
+  for(auto tags:fromList)
+  {
+    if(checkHead(tags.c_str(),prefixToMatch.c_str()))
+    {
+      insertTo.push_back(tags);
+    }
+  }
+}
 void InspectionTarget::attachSstaticInfo( cJSON* jobj,int trigger_id )
 {
   

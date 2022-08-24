@@ -74,7 +74,7 @@ function PtsToXYWH( pt1:VEC2D, pt2:VEC2D)
   }
 }
 
-function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number)
+function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number,drawCenterPoint:boolean=true)
 {
   let ctx = g.ctx;
   // ctx.lineWidth = 5;
@@ -91,9 +91,12 @@ function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region
   ctx.stroke();
   ctx.closePath();
 
-  // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-  ctx.lineWidth = lineWidth*2/3;
-  canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
+  if(drawCenterPoint)
+  {
+    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+    ctx.lineWidth = lineWidth*2/3;
+    canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
+  }
 
 
 
@@ -405,7 +408,6 @@ function SingleTargetVIEWUI_ColorRegionDetection({display,stream_id,fsPath,width
   enum editState {
     Normal_Show = 0,
     Region_Edit = 1,
-    CalibDataCollection = 100,
   }
   
   const [stateInfo,setStateInfo]=useState<{st:editState,info:any}[]>([{
@@ -791,28 +793,6 @@ function SingleTargetVIEWUI_ColorRegionDetection({display,stream_id,fsPath,width
           canvas_obj={_this.canvasComp}/>
       </>
 
-      break;
-    
-
-    case editState.CalibDataCollection:
-      EDIT_UI=<>
-        <Button key={"_"+-1} onClick={()=>{
-          
-          let new_stateInfo=[...stateInfo]
-          new_stateInfo.pop();
-
-          setStateInfo(new_stateInfo)
-        }}>{"<"}</Button>
-
-
-
-
-
-
-
-
-
-        </>
       break;
   }
   
@@ -1203,6 +1183,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
     featureImgCanvas:document.createElement('canvas'),
   });
+  const SBM_FEAT_REF_IMG_NAME="FeatureRefImage.png"
   let _this=_.current;
   const [cacheDef,setCacheDef]=useState<any>(def);
   const [featureInfoExt,setFeatureInfoExt]=useState<any>({});
@@ -1210,6 +1191,8 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
   const [featureInfo,setFeatureInfo]=useState<any>({});
 
   const [defReport,setDefReport]=useState<any>(undefined);
+
+
   let c_report:any = undefined;
   if(_this.cache_report!==report)
   {
@@ -1240,8 +1223,8 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
   
   enum EditState {
     Normal_Show = 0,
-    Region_Edit = 1,
-    CalibDataCollection = 100,
+    Feature_Edit = 1,
+    Search_Region_Edit = 2,
     NA=-99999
   }
   
@@ -1268,7 +1251,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
             
           }
           break;
-        case EditState.Region_Edit:
+        case EditState.Feature_Edit:
           if(idx==2)//enter
           {
             setFeatureInfo(cacheDef.featureInfo===undefined?{}:cacheDef.featureInfo);
@@ -1278,9 +1261,9 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
               let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
                 type:"extract_feature",
-                image_path:fsPath+"/"+cacheDef.templateSourceInfo.image,
+                image_path:fsPath+"/"+SBM_FEAT_REF_IMG_NAME,
                 feature_count:-1,
-                image_transfer_downsampling:3,
+                image_transfer_downsampling:1,
               }) as any[];
   
               let newFeatureInfoExt:any={};
@@ -1309,6 +1292,16 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
             setFeatureInfo({})
           }
           break;
+      
+        case EditState.Search_Region_Edit:          
+        if(idx==2)//enter
+        {
+        }
+        else if(idx==0)//leave
+        {
+        }
+        break;
+
       }
     })
     _setEditState(newEditState);
@@ -1333,7 +1326,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
       
       // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
       
-      await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",Date.now())
+      await BPG_API.CameraSWTrigger("BMP_carousel_0","s_KKLL",Date.now())
 
     })()
     
@@ -1360,7 +1353,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
             if(CM===undefined)return;
             let RP=pkts.find((p:any)=>p.type=="RP");
             if(RP===undefined)return;
-            console.log("++++++++\n",IM,CM,RP);
+            // console.log("++++++++\n",IM,CM,RP);
 
 
             setDefReport(RP.data)
@@ -1446,14 +1439,16 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
       if(true)//allow edit
       {
         EditUI=<>
-        <Button key={"_"+10000} onClick={()=>{
+        <Button onClick={()=>{
           
+          setEditState( EditState.Feature_Edit);
 
-          setEditState( EditState.Region_Edit);
+        }}>編輯特徵</Button>
+        <Button  onClick={()=>{
+          
+          setEditState( EditState.Search_Region_Edit);
 
-        }}>EDIT</Button>
-
-
+        }}>編輯搜尋範圍</Button>
         </>
       }
 
@@ -1516,30 +1511,58 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
         <Button onClick={()=>{
           onCacheDefChange(cacheDef,true);
         }}>SHOT</Button>
+
+
+
+        
+              
+        <Popconfirm key={"SAVE feat ref image "+updateC}
+            title={`確定要儲存此圖為特徵參考圖？ 再按:${delConfirmCounter+1}次`}
+            onConfirm={()=>{}}
+            onCancel={()=>{}}
+            okButtonProps={{danger:true,onClick:()=>{
+              if(delConfirmCounter!=0)
+              {
+                setDelConfirmCounter(delConfirmCounter-1);
+              }
+              else
+              { 
+                (async ()=>{
+
+                  let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
+                    type:"cache_image_save",
+                    folder_path:fsPath+"/",
+                    image_name:SBM_FEAT_REF_IMG_NAME,
+                  }) as any[];
+                  console.log(pkts);
+      
+                })()
+                setUpdateC(updateC+1);
+              }
+            }}}
+            okText={"Yes:"+delConfirmCounter}
+            cancelText="No"
+          >
+          <Button danger type="primary" onClick={()=>{
+            setDelConfirmCounter(5);
+          }}>存為特徵參考圖</Button>
+        </Popconfirm> 
+
+
+              
+
         <Button onClick={()=>{
-          (async ()=>{
+             (async ()=>{
 
-            let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
-              type:"cache_image_save",
-              folder_path:fsPath+"/",
-              image_name:"OK_"+Date.now()+".png",
-            }) as any[];
-            console.log(pkts);
-
-          })()
-        }}>SAVE OK IMAGE</Button>
-
-        <Button onClick={()=>{
-        (async ()=>{
-
-          let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
-            type:"cache_image_save",
-            folder_path:fsPath+"/",
-            image_name:"NG_"+Date.now()+".png",
-          }) as any[];
-          console.log(pkts);
-        })()
-        }}>SAVE NG IMAGE</Button>
+              let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
+                type:"cache_image_save",
+                folder_path:fsPath+"/",
+                image_name:"_"+Date.now()+".png",
+              }) as any[];
+              console.log(pkts);
+  
+            })()
+        }}>SAVE IMAGE</Button>
 
 
         <Button onClick={()=>{
@@ -1554,7 +1577,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
       break;
 
-    case EditState.Region_Edit:
+    case EditState.Feature_Edit:
 
 
       EDIT_UI=<>
@@ -1590,14 +1613,19 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           
           
           (async ()=>{
-
-            let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
+            
+            let obj={
               type:"extract_feature",
-              image_path:fsPath+"/"+cacheDef.templateSourceInfo.image,
+              image_path:fsPath+"/"+SBM_FEAT_REF_IMG_NAME,
               num_features:cacheDef.num_features,
-              image_transfer_downsampling:(featureInfo.IM===undefined)?3:-1,
+              weak_thresh:featureInfo.weak_thresh,
+              strong_thresh:featureInfo.strong_thresh,
+              T:[2,2],
+              image_transfer_downsampling:-1,
               mask_regions:featureInfo.mask_regions
-            }) as any[];
+            }
+            console.log(obj)
+            let pkts = await BPG_API.InspTargetExchange(cacheDef.id,obj) as any[];
             console.log(pkts);
 
             let newFeatureInfo:any={};
@@ -1632,10 +1660,29 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           })()
 
         }}>Templ</Button>  
+
+
+
+        Feats:
+        <InputNumber value={cacheDef.num_features}
+        onChange={(num)=>{
+          setCacheDef({...cacheDef,num_features:num})
+        }} />
+
+
+        EdgeStrong:
+        <InputNumber value={featureInfo.strong_thresh}
+        onChange={(num)=>{
+          setFeatureInfo({...featureInfo,strong_thresh:num})
+        }} />
+        EdgeWeak:
+        <InputNumber value={featureInfo.weak_thresh}
+        onChange={(num)=>{
+          setFeatureInfo({...featureInfo,weak_thresh:num})
+        }} />
+
         <br/>
         
-
-
 
 
 
@@ -1662,14 +1709,14 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
                     new_mask_regions.splice(idx, 1);
                     
                     setFeatureInfo({...featureInfo,mask_regions:new_mask_regions})
-                    setUpdateC(updateC+1);
+                    
                   }
                 }}}
                 okText={"Yes:"+delConfirmCounter}
                 cancelText="No"
               >
               <Button danger type="primary" onClick={()=>{
-                setDelConfirmCounter(5);
+                setDelConfirmCounter(3);
               }}>{idx}</Button>
             </Popconfirm> 
 
@@ -1678,7 +1725,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           )
         }
 
-        <Button key={"AddWReg"} onClick={()=>{
+        <Button key={"AddNewFeat"} onClick={()=>{
 
 
       
@@ -1705,18 +1752,121 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
               _this.canvasComp.UserRegionSelect(undefined)
             }
           })
-        }}>+</Button>  
-
-
-
-        <br/>
-
-
+        }}>+特徵範圍</Button>  
 
 
 
       </>
 
+      break;
+  
+
+
+
+    case EditState.Search_Region_Edit:
+
+
+      EDIT_UI=<>
+        <Button danger type="primary" onClick={()=>{
+          setEditState(EditState.Normal_Show)
+        }}>{"<"}</Button>
+
+
+
+        scaleD:
+        <InputNumber value={cacheDef.matching_downScale}
+        onChange={(num)=>{
+
+          setCacheDef({...cacheDef,matching_downScale:num})
+        }} />
+
+
+        Sim:
+        <InputNumber value={cacheDef.similarity_thres}
+        onChange={(num)=>{
+
+          setCacheDef({...cacheDef,similarity_thres:num})
+        }} />
+
+        
+        MagThres:
+        <InputNumber value={cacheDef.magnitude_thres}
+        onChange={(num)=>{
+          setCacheDef({...cacheDef,magnitude_thres:num})
+        }} />
+
+        <br/>
+
+        {        
+          cacheDef.search_regions===undefined?null:
+          cacheDef.search_regions.map((regi:any,idx:number)=>
+            
+
+              
+            <Popconfirm
+                key={"regi_del_"+idx+"..."+updateC}
+                title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+                onConfirm={()=>{}}
+                onCancel={()=>{}}
+                okButtonProps={{danger:true,onClick:()=>{
+                  if(delConfirmCounter!=0)
+                  {
+                    setDelConfirmCounter(delConfirmCounter-1);
+                  }
+                  else
+                  { 
+                    let new_search_regions=[...cacheDef.search_regions];
+
+                    new_search_regions.splice(idx, 1);
+                    
+                    setCacheDef({...cacheDef,search_regions:new_search_regions})
+                    setUpdateC(updateC+1);
+                  }
+                }}}
+                okText={"Yes:"+delConfirmCounter}
+                cancelText="No"
+              >
+              <Button danger type="primary" onClick={()=>{
+                setDelConfirmCounter(3);
+              }}>{idx}</Button>
+            </Popconfirm> 
+
+
+
+          )
+        }
+
+        <Button key={"AddNewRegion"} onClick={()=>{
+
+
+      
+          if(_this.canvasComp==undefined)return;
+          _this.sel_region=undefined;
+          _this.canvasComp.UserRegionSelect((info:any,state:number)=>{
+            if(state==2)
+            {
+              console.log(info);
+              
+              let x,y,w,h;
+              
+              let roi_region=PtsToXYWH(info.pt1,info.pt2);
+              console.log(roi_region)
+              let regInfo = {...roi_region,isBlackRegion:false};
+              
+              let search_regions=cacheDef.search_regions===undefined?[]:[...cacheDef.search_regions];
+
+              search_regions.push(regInfo);
+              setCacheDef({...cacheDef,search_regions})
+              
+              // onDefChange(newRule)
+              if(_this.canvasComp==undefined)return;
+              _this.canvasComp.UserRegionSelect(undefined)
+            }
+          })
+        }}>+搜尋範圍</Button>  
+
+
+      </>
       break;
   }
   
@@ -1774,7 +1924,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           }
         }
       }
-      if(editState==EditState.Normal_Show)
+      if(editState==EditState.Normal_Show || editState==EditState.Search_Region_Edit)
       {      
         if(ctrl_or_draw==true)//ctrl
         {
@@ -1800,6 +1950,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
             // console.log(defReport)
             defReport.report.forEach((match:any,idx:number)=>{
               
+              if(match.confidence<=0)return;
               ctx.lineWidth=4;
               ctx.strokeStyle = `HSLA(0, 100%, 50%,1)`;
               canvas_obj.rUtil.drawCross(ctx, {x:match.center.x,y:match.center.y}, 12);
@@ -1823,18 +1974,44 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
               ctx.resetTransform();
               ctx.font = "20px Arial";
               ctx.fillStyle = "rgba(150,100, 100,0.5)";
-              ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,150)
+              ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,180)
               ctx.restore();
             }
           }
           // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
-        
+          try{
+
+            if(cacheDef.search_regions!==undefined)
+            {
+              cacheDef.search_regions.forEach((regi:any,idx:number)=>{
+                ctx.strokeStyle = "rgba(150,50, 50,0.8)";
+                if(defReport && defReport.report[idx]!==undefined)
+                {
+                  if(defReport.report[idx].confidence>=0)
+                    ctx.strokeStyle = "rgba(50,150, 50,0.8)";
+
+                }
+                
+             
+                drawRegion(g,canvas_obj,{x:regi.x,y:regi.y,w:regi.w,h:regi.h},canvas_obj.rUtil.getIndicationLineSize()); 
+                ctx.font = "20px Arial";
+                ctx.fillStyle = "rgba(50,150, 50,0.8)";
+                ctx.fillText("idx:"+idx,regi.x,regi.y)
+  
+              })
+            }
+          }
+          catch(e)
+          {
+
+          }
+          
 
         }
 
       }
       
-      if(editState==EditState.Region_Edit)
+      if(editState==EditState.Feature_Edit)
       {
         if(ctrl_or_draw==true)//ctrl
         {
@@ -1866,25 +2043,6 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
               })
             }
           }
-
-
-          if(featureInfo.mask_regions!==undefined)
-          {
-            featureInfo.mask_regions.forEach((regi:any,idx:number)=>{
-              
-              ctx.strokeStyle = "rgba(100,100, 100,0.5)";
-              
-           
-              drawRegion(g,canvas_obj,{x:regi.x,y:regi.y,w:regi.w,h:regi.h},canvas_obj.rUtil.getIndicationLineSize()); 
-              ctx.font = "40px Arial";
-              ctx.fillStyle = "rgba(150,100, 100,0.5)";
-              ctx.fillText("idx:"+idx,regi.x,regi.y)
-
-            })
-          }
-
-
-
 
         }
       }
@@ -1964,7 +2122,6 @@ function SingleTargetVIEWUI_Orientation_ColorRegionOval({display,stream_id,fsPat
   enum editState {
     Normal_Show = 0,
     Region_Edit = 1,
-    CalibDataCollection = 100,
   }
   
   const [stateInfo,setStateInfo]=useState<{st:editState,info:any}[]>([{
@@ -2312,28 +2469,6 @@ function SingleTargetVIEWUI_Orientation_ColorRegionOval({display,stream_id,fsPat
       </>
 
       break;
-    
-
-    case editState.CalibDataCollection:
-      EDIT_UI=<>
-        <Button key={"_"+-1} onClick={()=>{
-          
-          let new_stateInfo=[...stateInfo]
-          new_stateInfo.pop();
-
-          setStateInfo(new_stateInfo)
-        }}>{"<"}</Button>
-
-
-
-
-
-
-
-
-
-        </>
-      break;
   }
   
 
@@ -2554,6 +2689,12 @@ function SurfaceCheckSimple_EDIT_UI({def,onDefChange,canvas_obj}:
       let newDef={...def_Filled,H:num}
       onDefChange(newDef,true);
     }} />
+    {"  "}面積閾值:
+    <InputNumber value={def_Filled.area_thres}
+    onChange={(num)=>{
+      let newDef={...def_Filled,area_thres:num}
+      onDefChange(newDef,true);
+    }} />
       
 
 
@@ -2653,14 +2794,24 @@ function SurfaceCheckSimple_EDIT_UI({def,onDefChange,canvas_obj}:
 }
 
 
+const CAT_ID_NAME={
+  "0":"NA",
+  "1":"OK", 
+  "-1":"NG",
+  "-40000":"空"
+}
 function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
     imgCanvas:document.createElement('canvas'),
     canvasComp:undefined,
     drawHooks:[],
-    ctrlHooks:[]
+    ctrlHooks:[],
 
+    stepQueryTime:1000,
+    latestStepCount:0,
+    periodicTask_HDL:undefined,
+    periodicTask:()=>{}
 
   });
   const [cacheDef,setCacheDef]=useState<any>(def);
@@ -2701,7 +2852,6 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
   enum EditState {
     Normal_Show = 0,
     Region_Edit = 1,
-    CalibDataCollection = 100,
   }
   
   const [editState,setEditState]=useState<EditState>(EditState.Normal_Show);
@@ -2728,14 +2878,56 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
       
       // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
      
-      await BPG_API.CameraSWTrigger("Hikrobot-00F71598890","TTT",4433)
-      // await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
+      // await BPG_API.CameraSWTrigger("Hikrobot-00F71598890","TTT",4433)
+      await BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","TTT",4433)
 
     })()
     
   }
 
-  
+  function periodicCB()
+  {
+    // console.log("jkdshfsdhf;iohsd;iofjhsdio;fhj;isdojfhdsil;");
+    _this.periodicTask_HDL=undefined;
+
+    {(async ()=>{
+      let ret = await CNC_API.send_P({"type":"GET_CUR_STEP_COUNTER"}) as any
+
+      if(ret.step!=_this.latestStepCount)
+      {
+        _this.latestStepCount=ret.step;
+        _this.stepQueryTime=100;
+        console.log(ret.step);
+        _this.canvasComp.draw();
+      }
+      else
+      {
+        _this.stepQueryTime+=50;
+        if(_this.stepQueryTime>1000)
+          _this.stepQueryTime=1000;
+      }
+
+    })()
+    .catch(()=>{
+
+    }).finally(()=>{
+
+      if(_this.periodicTask_HDL!==undefined)
+      {
+        window.clearTimeout(_this.periodicTask_HDL);
+      }
+      _this.periodicTask_HDL=window.setTimeout(_this.periodicTask,_this.stepQueryTime);
+    })
+
+    // if(_this.periodicTask_HDL!==undefined)
+    // {
+    //   window.clearTimeout(_this.periodicTask_HDL);
+    // }
+    // _this.periodicTask_HDL=window.setTimeout(_this.periodicTask,_this.stepQueryTime);
+    
+   }
+  }
+  _this.periodicTask=periodicCB;
   useEffect(() => {//////////////////////
 
     (async ()=>{
@@ -2775,7 +2967,16 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
   
   
             setLocal_IMCM(IMCM)
-            setDefReport(RP.data);
+            let rep=RP.data;
+            setDefReport(rep);
+            if(rep.report.category<=0)
+            {
+              CNC_API.send_P({"type":"EM_STOP"})
+              .catch(e=>{
+
+              })
+            
+            }
             // console.log(IMCM)
   
           },
@@ -2787,7 +2988,11 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
       )
 
     })()
+
+    _this.periodicTask();
+
     return (() => {
+      window.clearTimeout(_this.periodicTask_HDL);
       (async ()=>{
         await BPG_API.send_cbs_detach(
           stream_id,"SurfaceCheckSimple");
@@ -2909,6 +3114,28 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
         <Button onClick={()=>{
           onDefChange(cacheDef,true)
         }}>SAVE</Button>
+
+        {"   "}
+        <Button onClick={()=>{
+          CNC_API.send_P({"type":"Encoder_Reset"})
+        }}>歸零</Button>
+
+        <Button onClick={()=>{
+
+        CNC_API.send_P({"type":"TRIG_CAMERA_TAKE"})
+        // BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","",0,false)
+        }}>測試觸發</Button>
+        <Button onClick={()=>{
+
+          CNC_API.send_P({"type":"LIGHT_1_ON"})
+          // BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","",0,false)
+        }}>LON</Button>
+        <Button onClick={()=>{
+
+          CNC_API.send_P({"type":"LIGHT_1_OFF"})
+          // BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","",0,false)
+        }}>LOFF</Button>
+
 
 
       </>
@@ -3037,15 +3264,44 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             ctx.font = "20px Arial";
             ctx.fillStyle = "rgba(150,100, 100,0.5)";
             
-            ctx.fillText("Result:"+defReport.report.category,20,100);
-            ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,130)
+            ctx.fillText("Result:"+defReport.report.category + " DIST:"+(_this.latestStepCount*4)+"mm",20,150);
+            ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,180)
 
             ctx.restore();
           }
+          
+          defReport.report.group_category.forEach((catInfo:any,index:number)=>{
+            // console.log(catInfo,cacheDef);
+            
+
+            let TextY=20;
+
+            
+            ctx.font = TextY+"px Arial";
+            if(catInfo.category>0)
+              ctx.fillStyle = "rgba(0, 255, 0,1)";
+            else
+              ctx.fillStyle = "rgba(255, 0, 0,1)";
+
+            ctx.fillText(CAT_ID_NAME[catInfo.category+""],cacheDef.W*index,0+TextY+5)
+
+            ctx.font = (TextY*0.7).toFixed(2)+"px Arial";
+            ctx.fillText(catInfo.score,cacheDef.W*index,0+TextY+TextY+5)
+
+
+            ctx.strokeStyle = "rgba(179, 0, 0,1)";
+            drawRegion(g,canvas_obj,{
+              x:cacheDef.W*index,
+              y:0,
+              w:cacheDef.W,
+              h:cacheDef.H
+            },
+            canvas_obj.rUtil.getIndicationLineSize(),
+            false);
+          })
         }
       }
 
-      
       if(renderHook)
       {
         // renderHook(ctrl_or_draw,g,canvas_obj,newDef);
@@ -3131,6 +3387,10 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
           resolve:()=>0,
           reject:()=>0
         });
+
+
+        await api.CameraTriggerInfoMocking(camSetupInfo.id,"",true);
+
       })()
     }
   },[])
@@ -3516,7 +3776,7 @@ function VIEWUI(){
         inspTar.id,inspTar.stream_id,
         {
           resolve:(pkts)=>{
-            console.log(pkts);
+            // console.log(pkts);
           },
           reject:(pkts)=>{
             console.log(pkts);
@@ -3537,7 +3797,7 @@ function VIEWUI(){
           let RP=pkts.find((info:any)=>info.type=="RP")
           if(RP===undefined)return;
           RP=RP.data;
-          console.log(RP);
+          // console.log(RP);
           let filteredKey=Object.keys(_this.listCMD_Vairable.reportListener)
             .filter(key=>{
               let repListener=_this.listCMD_Vairable.reportListener[key];
@@ -4272,11 +4532,11 @@ function App() {
     core_api.onConnected=()=>{
       ACT_EXT_API_CONNECTED(CORE_ID);
 
-      // CNC_api.connect({
-      //   // uart_name:"/dev/cu.SLAB_USBtoUART",
-      //   uart_name:"/dev/cu.usbserial-1420",
-      //   baudrate:460800//230400//115200
-      // });
+      CNC_api.connect({
+        // uart_name:"/dev/cu.SLAB_USBtoUART",
+        uart_name:"/dev/cu.usbserial-1130",
+        baudrate:460800//230400//115200
+      });
     }
 
     // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());

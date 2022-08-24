@@ -45,7 +45,8 @@ struct sttriggerInfo_mix{
   struct _triggerInfo{
 
     int trigger_id;
-    std::string trigger_tag;
+    // std::string trigger_tag;
+    std::vector<std::string> tags;
     std::string camera_id;
     uint64_t est_trigger_time_us;
   };
@@ -270,7 +271,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         {//image/pipe info
           targetStageInfo= headImgStageInfoMixInfo.stInfo;
           
-          bool doMockTriggerInfo=(targetStageInfo->img_prop.StreamInfo.camera!=NULL);// && (triggerMockFlags.find(targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id) != triggerMockFlags.end()) ;
+          bool doMockTriggerInfo=(targetStageInfo->img_prop.StreamInfo.camera!=NULL) && (triggerMockFlags.find(targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id) != triggerMockFlags.end()) ;
 
           LOGI("  doMockTriggerInfo:%d cam:%p mode:%d ",doMockTriggerInfo,  targetStageInfo->img_prop.StreamInfo.camera  ,targetStageInfo->img_prop.StreamInfo.camera->triggerMode);
 
@@ -283,7 +284,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             mocktrig.trigger_id=-(int)(targetStageInfo->img_prop.fi.timeStamp_us);
 
             std::string mockTag=triggerMockFlags[mocktrig.camera_id];
-            mocktrig.trigger_tag=(mockTag.length() ==0)?"_STREAM_":mockTag;
+            mocktrig.tags.push_back( (mockTag.length() ==0)?"_STREAM_":mockTag);
             
             // triggerInfoMatchingBuffer.w_unlock();
             triggerInfoMatchingBuffer.push_back({triggerInfo:mocktrig});
@@ -368,7 +369,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         if( minMatchingIdx!=-1 && minMatchingCost<1000)
         {
           LOGI("Get matching. idx:%d cost:%d  psss to next Q stInfo:%p",minMatchingIdx,minMatchingCost,targetStageInfo.get() );
-          targetStageInfo->trigger_tags.push_back(targetTriggerInfo.trigger_tag);
+          targetStageInfo->trigger_tags=targetTriggerInfo.tags;
           targetStageInfo->trigger_tags.push_back(targetTriggerInfo.camera_id);
           LOGI("cam id:%s  ch_id:%d",targetTriggerInfo.camera_id.c_str(),targetStageInfo->img_prop.StreamInfo.channel_id);
           LOGI("TId:%d  info TId:%d",targetStageInfo->trigger_id,targetTriggerInfo.trigger_id);
@@ -527,6 +528,43 @@ int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   if(opcode==1 )
   {
     char tmp[1024];
+    if(strstr((char*)raw, "\"type\":\"TriggerInfo\"") != NULL)
+    {
+      LOGI("MSG:%s", raw);
+      cJSON *json = cJSON_Parse((char *)raw);
+      if(json)
+      {
+        string camid=JFetch_STRING_ex(json,"camera_id");
+        float trigger_id=JFetch_NUMBER_ex(json,"trigger_id");
+
+        if(trigger_id==trigger_id && camid.length()>0)
+        {
+
+        
+          
+          sttriggerInfo_mix trigInfo;
+          trigInfo.stInfo=NULL;
+          trigInfo.triggerInfo.camera_id=camid;
+          trigInfo.triggerInfo.trigger_id=(int)trigger_id;
+          trigInfo.triggerInfo.est_trigger_time_us=0;//force matching
+
+          string tag=JFetch_STRING_ex(json,"tag");
+          if(tag.length()>0)
+          {
+            trigInfo.triggerInfo.tags.push_back(tag);
+          }
+          
+          triggerInfoMatchingQueue.push_blocking(trigInfo);
+        
+
+        }
+        cJSON_Delete(json);
+      }
+    }
+
+
+
+    
     sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", raw, ID);
     // LOGI("MSG:%s", tmp);
     bpg_pi.fromUpperLayer_DATA("PD",conn_pgID,tmp);
@@ -600,6 +638,9 @@ void InspectionTarget_DataTransfer::thread_run()
   while(true)
   {
     std::shared_ptr<StageInfo> curInput;
+    LOGI("<<<<<size():%d",datTransferQueue.size());
+    // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
+          
     try{
       if(datTransferQueue.pop_blocking(curInput)==false)
       {
@@ -611,7 +652,11 @@ void InspectionTarget_DataTransfer::thread_run()
       break;
     }
 
-    LOGI("DataTransfer thread pop data: name:%s type:%s ",curInput->source_id.c_str(),curInput->typeName().c_str());
+    int DBG_USECOUNT=curInput.use_count();
+    LOGI("<<<<<size():%d usecount:%d",datTransferQueue.size(),DBG_USECOUNT);
+
+    LOGI("DataTransfer thread pop data: name:%s ",curInput->source_id.c_str());
+    LOGI("DataTransfer thread pop data: type:%s ",curInput->typeName().c_str());
 
     // for ( const auto &kyim : curInput->imgSets ) {
     //     LOGI("[%s]:%p",kyim.first.c_str(),kyim.second.get());
@@ -624,6 +669,9 @@ void InspectionTarget_DataTransfer::thread_run()
     {
       downSample=10;
     }
+
+    int downSampleAdj=datTransferQueue.size();
+    downSample+=downSampleAdj;
     // curInput->imgSets./
 
     LOGI("imgCHID:%d ",imgCHID);
@@ -1310,6 +1358,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             }
           }
 
+          if(JFetch_TRUE(json, "mocking_trigger_info"))
           {
             
             sttriggerInfo_mix mocktrig;
@@ -1317,7 +1366,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             mocktrig.triggerInfo.camera_id=id;
             mocktrig.triggerInfo.trigger_id=(int)JFetch_NUMBER_ex(json, "trigger_id",-1);
             mocktrig.triggerInfo.est_trigger_time_us=0;//force matching
-            mocktrig.triggerInfo.trigger_tag=JFetch_STRING_ex(json, "trigger_tag","_SW_TRIG_");
+            mocktrig.triggerInfo.tags.push_back( std::string( JFetch_STRING_ex(json, "trigger_tag","_SW_TRIG_")) );
             
             triggerInfoMatchingQueue.push_blocking(mocktrig);
           }

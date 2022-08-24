@@ -1,5 +1,5 @@
 
-#include "InspTar_SurfaceCheckSimple.hpp"
+#include "InspTar_WBar_SizeComp.hpp"
 #include "StageInfo_Orientation.hpp"
 
 using namespace cv;
@@ -10,14 +10,14 @@ template<typename Base, typename T> inline bool instanceof(const T) {
    return is_base_of<Base, T>::value;
 }
 
-InspectionTarget_SurfaceCheckSimple::InspectionTarget_SurfaceCheckSimple(string id,cJSON* def,InspectionTargetManager* belongMan)
+InspTar_WBar_SizeComp::InspTar_WBar_SizeComp(string id,cJSON* def,InspectionTargetManager* belongMan)
   :InspectionTarget(id,def,belongMan)
 {
-  type=InspectionTarget_SurfaceCheckSimple::TYPE();
+  type=InspTar_WBar_SizeComp::TYPE();
   LOGI("sodkoskoskad;aks;dkas;dk");
 }
 
-bool InspectionTarget_SurfaceCheckSimple::stageInfoFilter(shared_ptr<StageInfo> sinfo)
+bool InspTar_WBar_SizeComp::stageInfoFilter(shared_ptr<StageInfo> sinfo)
 {
   // if(sinfo->typeName())
 
@@ -36,12 +36,12 @@ bool InspectionTarget_SurfaceCheckSimple::stageInfoFilter(shared_ptr<StageInfo> 
   return false;
 }
 
-future<int> InspectionTarget_SurfaceCheckSimple::futureInputStagePool()
+future<int> InspTar_WBar_SizeComp::futureInputStagePool()
 {
-  return async(launch::async,&InspectionTarget_SurfaceCheckSimple::processInputStagePool,this);
+  return async(launch::async,&InspTar_WBar_SizeComp::processInputStagePool,this);
 }
 
-int InspectionTarget_SurfaceCheckSimple::processInputPool()
+int InspTar_WBar_SizeComp::processInputPool()
 {
   int poolSize=input_pool.size();
   for(int i=0;i<poolSize;i++)
@@ -60,7 +60,7 @@ int InspectionTarget_SurfaceCheckSimple::processInputPool()
 
 
 
-bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
+bool InspTar_WBar_SizeComp::exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
 {
   //LOGI(">>>>>>>>>>>>");
   bool ret = InspectionTarget::exchangeCMD(info,id,act);
@@ -71,7 +71,7 @@ bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchang
 }
 
 
-cJSON* InspectionTarget_SurfaceCheckSimple::genITIOInfo()
+cJSON* InspTar_WBar_SizeComp::genITIOInfo()
 {
 
 
@@ -136,7 +136,7 @@ static Mat getRotTranMat(acv_XY pt1,acv_XY pt2,float theta)
 //   pts2 = np.float32([pt2,[pt2[0],pt2[1]+1],[pt2[0]+1,pt2[1]]])
 //   return cv2.getAffineTransform(pts1,pts2)
 
-void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> sinfo)
+void InspTar_WBar_SizeComp::singleProcess(shared_ptr<StageInfo> sinfo)
 {
   int64 t0 = cv::getTickCount();
   LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
@@ -177,30 +177,25 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   acvImage *retImage=NULL;
 
-  shared_ptr<StageInfo_Group_Category> reportInfo(new StageInfo_Group_Category());
-  
-  int area_thres=JFetch_NUMBER_ex(def,"area_thres",100);
+  int category=STAGEINFO_CAT_NA;
   if(d_sinfo->orientation.size()>0)
   {  
     retImage=new acvImage(W*d_sinfo->orientation.size(),H,3);
     Mat def_temp_img(retImage->GetHeight(),retImage->GetWidth(),CV_8UC3,retImage->CVector[0]);
     def_temp_img={0};
 
+    category=STAGEINFO_CAT_OK;
     for(int i=0;i<d_sinfo->orientation.size();i++)
     {
-      int SUB_category=STAGEINFO_CAT_NA;
-      int cur_score=-1;
-      StageInfo_Orientation::orient orientation = d_sinfo->orientation[i];
-      do{
-      if(orientation.confidence<=0)
-      {
-        SUB_category=STAGEINFO_CAT_NOT_EXIST;
-        break;
-      }
       // cJSON* idxRegion=JFetch_ARRAY(def,("[+"+std::to_string(i)+"+]").c_str());
       Mat def_temp_img_ROI = def_temp_img(Rect(i*W, 0, W, H));
+      StageInfo_Orientation::orient orientation = d_sinfo->orientation[i];
 
       float angle = orientation.angle;
+      if(angle!=angle)
+      {
+        continue;
+      }
       if(angle>M_PI_2)angle-=M_PI;
       if(angle<-M_PI_2)angle+=M_PI;
       Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset,H/2+Y_offset},-angle);
@@ -264,45 +259,23 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
           vector<vector<Point> > contours;
           vector<Vec4i> hierarchy;
-          bitwise_not(img_HSV_threshold , img_HSV_threshold);
           findContours( img_HSV_threshold, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE );
-          int area_sum=0;
+          
           for(int k=0;k<contours.size();k++)
           {
-            int area = contourArea(contours[k],false);
-            area_sum+= area;
 
-            // LOGI(">>[%d]>siz:%d area:%f",k,contours[k].size(),area);
-          }            
-
-          // LOGI(">>>>>>>>> area_sum:%d",area_sum);
-          if(area_sum>area_thres)SUB_category=STAGEINFO_CAT_NG;
-          else        SUB_category=STAGEINFO_CAT_OK;
-          cur_score=area_sum;
+            double area = contourArea(contours[k],false);
+            if(area>100)category=STAGEINFO_CAT_NG;
+            LOGI(">>[%d]>siz:%d area:%f",k,contours[k].size(),area);
+          }
 
         }
       }
-    
-    
-    
-    
-      }while (0);
-      StageInfo_Group_Category::Group_Info gi;
-      gi.category=SUB_category;
-      gi.score=cur_score;
-      reportInfo->group_info.push_back(gi);
     }
 
 
   }
-  int category=0;
-  for(auto catInfo:reportInfo->group_info)
-  {
-    if(category>catInfo.category || category==0)
-    {
-      category=catInfo.category;
-    }
-  }
+
 
 
 
@@ -310,6 +283,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
   
+  shared_ptr<StageInfo_SurfaceCheckSimple> reportInfo(new StageInfo_SurfaceCheckSimple());
 
 
 
@@ -322,12 +296,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   reportInfo->sharedInfo.push_back(sinfo);
   reportInfo->trigger_tags.push_back(id);
 
-  insertInputTagsWPrefix(reportInfo->trigger_tags,sinfo->trigger_tags,"s_");
-
   reportInfo->category=category;
 
   reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",1);
+  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",2);
   LOGI("CHID:%d category:%d",reportInfo->img_prop.StreamInfo.channel_id,category);
 
   // reportInfo->jInfo=NULL;
@@ -348,6 +320,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 }
 
-InspectionTarget_SurfaceCheckSimple::~InspectionTarget_SurfaceCheckSimple()
+InspTar_WBar_SizeComp::~InspTar_WBar_SizeComp()
 {
 }

@@ -323,10 +323,6 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
   // reportInfo->imgSets["src"]=srcImg;
   
   reportInfo->trigger_id=sinfo->trigger_id;
-  // reportInfo->trigger_tags.push_back("InfoStream2UI");
-  // reportInfo->trigger_tags.push_back("ToTestRule");
-  reportInfo->trigger_tags.push_back("ImTran");
-  // reportInfo->trigger_tags.push_back("regionInspection");
   reportInfo->sharedInfo.push_back(sinfo);
   reportInfo->trigger_tags.push_back(id);
 

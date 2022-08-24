@@ -432,12 +432,13 @@ export class BPG_WS
   
 
 
-  async CameraSWTrigger(camera_id:string,trigger_tag:string,trigger_id:number)
+  async CameraSWTrigger(camera_id:string,trigger_tag:string,trigger_id:number,doTriggerInfoMocking:boolean=true)
   {
     return this.send_P(
       "CM",0,{
         type:"trigger",
         soft_trigger:true,
+        mocking_trigger_info:doTriggerInfoMocking,
         id:camera_id,
         trigger_tag:trigger_tag,
         // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
@@ -1098,12 +1099,6 @@ export class CNC_Perif extends GenPerif_API
         this.isSendWaiting=false;
         this.KickSendGCodeQ();
       },(e)=>console.log(e));
-  }
-
-  pushGCode(GCodeArr:string[])
-  {
-    this.gcodeSeq=this.gcodeSeq.concat(GCodeArr);
-    this.KickSendGCodeQ();
   }
 
 
