@@ -2,7 +2,8 @@
 OS := $(shell uname)
 ARCH :=$(shell uname -m)
 
-ifeq ($(OS),Windows_NT)
+$(info =================OS:$(OS)  $(findstring MINGW64, $(OS)))
+ifeq ($(findstring MINGW64, $(OS)),MINGW64)
 	export platform=win_x64
 	FLAGS+= -static -static-libgcc -static-libstdc++ -lws2_32
 else ifeq ($(OS)_$(ARCH),Darwin_arm64)
