@@ -201,8 +201,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
       Mat def_temp_img_ROI = def_temp_img(Rect(i*W, 0, W, H));
 
       float angle = orientation.angle;
-      if(angle>M_PI_2)angle-=M_PI;
-      if(angle<-M_PI_2)angle+=M_PI;
+      // if(angle>M_PI_2)angle-=M_PI;
+      // if(angle<-M_PI_2)angle+=M_PI;
+
+      angle+=JFetch_NUMBER_ex(def,"angle_offset",0)*M_PI/180;
       Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset,H/2+Y_offset},-angle);
 
       cv::warpAffine(CV_srcImg, def_temp_img_ROI, rot,def_temp_img_ROI.size());
@@ -346,6 +348,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   reportInfo->genJsonRepTojInfo();
   belongMan->dispatch(reportInfo);
 
+  cache_stage_info=sinfo;
 }
 
 InspectionTarget_SurfaceCheckSimple::~InspectionTarget_SurfaceCheckSimple()
