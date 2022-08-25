@@ -699,7 +699,7 @@ export class  GenPerif_API
 
   connInfo:any
   inReconnection:boolean
-
+  isConnected:boolean
   checkReconnectionInterval:number
   runPINGInterval:number
   idCounter:number
@@ -723,6 +723,7 @@ export class  GenPerif_API
 
     this.machineSetup=undefined;
     this.pingHeartBeatEnable=true;
+    this.isConnected=false;
     
   } 
   cleanUpTrackingWindow()
@@ -907,7 +908,8 @@ export class  GenPerif_API
             case "DISCONNECT":
               this.CONN_ID=undefined;
               this.cleanUpConnection();
-              this.onDisconnected();
+              this.onDisconnected();  
+              this.isConnected=false;
               break;
             case "CONNECT":
               this.CONN_ID=PD_data.CONN_ID;
@@ -991,8 +993,9 @@ export class  GenPerif_API
     if(this.PINGCount>=2)
     {
       //time to disconnect
-      this.PINGCount=0;
-      
+      this.PINGCount=0; 
+      this.isConnected=false;
+      // this.machineSetup=undefined;
       this.connect(this.connInfo);
       return;
     }
@@ -1007,6 +1010,8 @@ export class  GenPerif_API
     
     this.send({type:"PING"},(ret:any)=>{
       // console.log(ret);
+
+      this.isConnected=true;
       delete ret["type"]
       delete ret["id"]
       delete ret["st"]
