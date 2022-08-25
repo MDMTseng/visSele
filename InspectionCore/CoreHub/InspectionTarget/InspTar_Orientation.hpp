@@ -14,6 +14,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <StageInfo_Orientation.hpp>
 
+#include "InspectionTarget.hpp"
 
 
 
