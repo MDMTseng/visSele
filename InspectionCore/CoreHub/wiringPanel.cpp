@@ -199,7 +199,7 @@ bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
 {
   int zeroCount=0;
   LOGI("Wait for kill.....");
-  for(int i=0;i<1;i++)
+  for(int i=0;i<10;i++)
   {
     if(inspTarMan.isAllInspTarBufferClear())
     {

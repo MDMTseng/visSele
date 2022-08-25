@@ -191,6 +191,7 @@ class InspectionTarget_Locating: public InspectionTarget
 class InspectionTargetManager
 {
   std::mutex camCBLock;
+  std::mutex processLock;
   public:
 
 

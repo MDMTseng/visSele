@@ -1171,6 +1171,45 @@ function Orientation_ColorRegionOval_SingleRegion({srule,onDefChange,canvas_obj}
 
 }
 
+function rgb2hsv (r:number, g:number, b:number) {
+  let rabs, gabs, babs, rr, gg, bb, h=0, s, v:number, diff:number, diffc, percentRoundFn;
+  rabs = r / 255;
+  gabs = g / 255;
+  babs = b / 255;
+  v = Math.max(rabs, gabs, babs),
+  diff = v - Math.min(rabs, gabs, babs);
+  diffc = (c:number) => (v - c) / 6 / diff + 1 / 2;
+  percentRoundFn = (num:number) => Math.round(num * 100) / 100;
+  if (diff == 0) {
+      h = s = 0;
+  } else {
+      s = diff / v;
+      rr = diffc(rabs);
+      gg = diffc(gabs);
+      bb = diffc(babs);
+
+      if (rabs === v) {
+          h = bb - gg;
+      } else if (gabs === v) {
+          h = (1 / 3) + rr - bb;
+      } else if (babs === v) {
+          h = (2 / 3) + gg - rr;
+      }
+      if (h < 0) {
+          h += 1;
+      }else if (h > 1) {
+          h -= 1;
+      }
+  }
+  // return {
+  //     h: Math.round(h * 360),
+  //     s: percentRoundFn(s * 100),
+  //     v: percentRoundFn(v * 100)
+  // };
+
+  return [h * 180,s * 255,v * 255];
+}
+
 function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
@@ -1314,7 +1353,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
   const [updateC,setUpdateC]=useState(0);
 
 
-  function onCacheDefChange(updatedDef: any,ddd:boolean)
+  function onCacheDefChange(updatedDef: any,doTakeNewImage:boolean=true)
   {
     console.log(updatedDef);
     setCacheDef(updatedDef);
@@ -1325,8 +1364,8 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
       await BPG_API.InspTargetUpdate(updatedDef)
       
       // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
-      
-      await BPG_API.CameraSWTrigger("BMP_carousel_0","s_KKLL",Date.now())
+      if(doTakeNewImage)
+        await BPG_API.CameraSWTrigger("BMP_carousel_0","s_Step_25",Date.now())
 
     })()
     
@@ -1513,6 +1552,10 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
         }}>SHOT</Button>
 
 
+        <Button onClick={()=>{
+          BPG_API.InspTargetExchange(cacheDef.id,{type:"revisit_cache_stage_info"});
+        }}>SHOT2</Button>
+
 
         
               
@@ -1661,8 +1704,6 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
         }}>Templ</Button>  
 
-
-
         Feats:
         <InputNumber value={cacheDef.num_features}
         onChange={(num)=>{
@@ -1770,8 +1811,6 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
         <Button danger type="primary" onClick={()=>{
           setEditState(EditState.Normal_Show)
         }}>{"<"}</Button>
-
-
 
         scaleD:
         <InputNumber value={cacheDef.matching_downScale}
@@ -1886,7 +1925,6 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
       // console.log(ctrl_or_draw);
 
       let ctx=g.ctx;
-
       if(ctrl_or_draw==true)//ctrl
       {
         if(canvas_obj.regionSelect!==undefined)
@@ -1922,7 +1960,13 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           _this.sel_region={
             x,y,w,h
           }
+
+
         }
+
+        const imageData = ctx.getImageData(g.mouseStatus.x, g.mouseStatus.y, 1,1);
+        // 
+        _this.fetchedPixInfo=imageData;
       }
       if(editState==EditState.Normal_Show || editState==EditState.Search_Region_Edit)
       {      
@@ -1958,8 +2002,11 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
               let angle = match.angle;
 
               ctx.font = "40px Arial";
-              ctx.fillStyle = "rgba(150,100, 100,0.5)";
-              ctx.fillText("idx:"+idx+" ang:"+(angle*180/3.14159).toFixed(1)+" sim:"+match.confidence.toFixed(1),match.center.x,match.center.y)
+              ctx.fillStyle = "rgba(150,100, 100,0.8)";
+              ctx.fillText("idx:"+idx,match.center.x,match.center.y-40)
+              ctx.font = "20px Arial";
+              ctx.fillText("ang:"+(angle*180/3.14159).toFixed(0),match.center.x,match.center.y-20)
+              ctx.fillText("sim:"+match.confidence.toFixed(1),match.center.x,match.center.y-0)
 
 
               
@@ -1993,7 +2040,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
                 }
                 
              
-                drawRegion(g,canvas_obj,{x:regi.x,y:regi.y,w:regi.w,h:regi.h},canvas_obj.rUtil.getIndicationLineSize()); 
+                drawRegion(g,canvas_obj,{x:regi.x,y:regi.y,w:regi.w,h:regi.h},canvas_obj.rUtil.getIndicationLineSize(),false  ); 
                 ctx.font = "20px Arial";
                 ctx.fillStyle = "rgba(50,150, 50,0.8)";
                 ctx.fillText("idx:"+idx,regi.x,regi.y)
@@ -2056,6 +2103,19 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           
           drawRegion(g,canvas_obj,_this.sel_region,canvas_obj.rUtil.getIndicationLineSize());
       
+        }
+
+        if(_this.fetchedPixInfo!==undefined)
+        {
+          ctx.save();
+          ctx.resetTransform();
+          // console.log(_this.fetchedPixInfo)
+          let pixInfo=_this.fetchedPixInfo.data;
+          ctx.font = "1.5em Arial";
+          ctx.fillStyle = "rgba(250,100, 50,1)";
+
+          ctx.fillText(rgb2hsv(pixInfo[0],pixInfo[1],pixInfo[2]).map(num=>num.toFixed(1)).toString(),g.mouseStatus.x,g.mouseStatus.y)
+          ctx.restore();
         }
       }
 
@@ -2408,6 +2468,8 @@ function SingleTargetVIEWUI_Orientation_ColorRegionOval({display,stream_id,fsPat
         <Button onClick={()=>{
           onCacheDefChange(cacheDef,true);
         }}>SHOT</Button>
+
+
         <Button onClick={()=>{
           onDefChange(cacheDef,true)
         }}>SAVE</Button>
@@ -2689,7 +2751,14 @@ function SurfaceCheckSimple_EDIT_UI({def,onDefChange,canvas_obj}:
       let newDef={...def_Filled,H:num}
       onDefChange(newDef,true);
     }} />
-    {"  "}面積閾值:
+    {"  "}角度調整:
+    <InputNumber value={def_Filled.angle_offset}
+    onChange={(num)=>{
+      let newDef={...def_Filled,angle_offset:num}
+      onDefChange(newDef,true);
+    }} />
+    <br/>
+    面積閾值:
     <InputNumber value={def_Filled.area_thres}
     onChange={(num)=>{
       let newDef={...def_Filled,area_thres:num}
@@ -2800,6 +2869,7 @@ const CAT_ID_NAME={
   "-1":"NG",
   "-40000":"空"
 }
+const mmpstp=4;
 function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
@@ -2809,16 +2879,22 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
     ctrlHooks:[],
 
     stepQueryTime:1000,
-    latestStepCount:0,
     periodicTask_HDL:undefined,
     periodicTask:()=>{}
 
   });
+
+  const [perifConnState,setPerifConnState]=useState<boolean>(false);
+
+
   const [cacheDef,setCacheDef]=useState<any>(def);
   const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
 
 
   const [defReport,setDefReport]=useState<any>(undefined);
+  const [NGInfoList,setNGInfoList]=useState<{location_mm:number,category:number}[]>([]);
+  const [reelStep,setReelStep]=useState<number>(0);
+
   const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
   let _this=_.current;
   let c_report:any = undefined;
@@ -2879,10 +2955,11 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
       // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
      
       // await BPG_API.CameraSWTrigger("Hikrobot-00F71598890","TTT",4433)
-      await BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","TTT",4433)
+      // await BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","TTT",4433)
 
     })()
     
+    BPG_API.InspTargetExchange(cacheDef.id,{type:"revisit_cache_stage_info"});
   }
 
   function periodicCB()
@@ -2891,14 +2968,15 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
     _this.periodicTask_HDL=undefined;
 
     {(async ()=>{
+      // console.log(  CNC_API.isConnected)
+      if(CNC_API.isConnected!=perifConnState)
+        setPerifConnState(CNC_API.isConnected);
       let ret = await CNC_API.send_P({"type":"GET_CUR_STEP_COUNTER"}) as any
 
-      if(ret.step!=_this.latestStepCount)
+      if(ret.step!=reelStep)
       {
-        _this.latestStepCount=ret.step;
-        _this.stepQueryTime=100;
-        console.log(ret.step);
-        _this.canvasComp.draw();
+        setReelStep(ret.step)
+        _this.stepQueryTime=200;
       }
       else
       {
@@ -2908,9 +2986,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
       }
 
     })()
-    .catch(()=>{
-
-    }).finally(()=>{
+    .catch((e)=>{
 
       if(_this.periodicTask_HDL!==undefined)
       {
@@ -2919,6 +2995,11 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
       _this.periodicTask_HDL=window.setTimeout(_this.periodicTask,_this.stepQueryTime);
     })
 
+    if(_this.periodicTask_HDL!==undefined)
+    {
+      window.clearTimeout(_this.periodicTask_HDL);
+    }
+    _this.periodicTask_HDL=window.setTimeout(_this.periodicTask,_this.stepQueryTime);
     // if(_this.periodicTask_HDL!==undefined)
     // {
     //   window.clearTimeout(_this.periodicTask_HDL);
@@ -2928,6 +3009,8 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
    }
   }
   _this.periodicTask=periodicCB;
+
+  _this.TMP_NGInfoList=NGInfoList;
   useEffect(() => {//////////////////////
 
     (async ()=>{
@@ -2972,12 +3055,30 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             if(rep.report.category<=0)
             {
               CNC_API.send_P({"type":"EM_STOP"})
+              .then((ret)=>{
+                // console.log(ret)
+              })
               .catch(e=>{
 
               })
+
+
+
+              let repAtStepTag = rep.tags.find((tag:string)=>tag.startsWith("s_Step_"));
+              if(repAtStepTag!==undefined)
+              {
+                let repAtStep=parseInt(repAtStepTag.replace('s_Step_',''));
+
+                // rep.report
+                console.log(rep.report.group_category,repAtStep)
+
+                let newNGInfo = rep.report.group_category.map((bad_ele:any,index:number)=>({location_mm:repAtStep*mmpstp+index*mmpstp,category:bad_ele.category})).filter((ele:any)=>ele.category<=0)
+                // console.log(newNGInfo,"mm")
+
+                setNGInfoList([..._this.TMP_NGInfoList,...newNGInfo])
+              }
             
             }
-            // console.log(IMCM)
   
           },
           reject:(pkts)=>{
@@ -3107,6 +3208,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
           onCacheDefChange(cacheDef,true);
         }}>SHOT</Button>
 
+
         <Button key={"_"+10000} onClick={()=>{
           setEditState( EditState.Region_Edit);
         }}>EDIT</Button>
@@ -3115,27 +3217,67 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
           onDefChange(cacheDef,true)
         }}>SAVE</Button>
 
-        {"   "}
-        <Button onClick={()=>{
-          CNC_API.send_P({"type":"Encoder_Reset"})
-        }}>歸零</Button>
+        {"  "}
+        {
+          (perifConnState)?<>        
+            <Button onClick={()=>{
+              CNC_API.send_P({"type":"Encoder_Reset"})
+            }}>歸零</Button>
+    
+            <Button onClick={()=>{
+    
+            CNC_API.send_P({"type":"TRIG_CAMERA_TAKE"})
+            // BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","",0,false)
+            }}>測試觸發</Button>
+            <Button onClick={()=>{
+    
+              CNC_API.send_P({"type":"LIGHT_1_ON"})
+              // BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","",0,false)
+            }}>LON</Button>
+            <Button onClick={()=>{
+    
+              CNC_API.send_P({"type":"LIGHT_1_OFF"})
+              // BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","",0,false)
+            }}>LOFF</Button>
+            </>:
+            null
+        }
+        <br/>
+        {
+          (NGInfoList.length>0)?
+          <Popconfirm
+              placement="rightBottom"
+              title={`確定要刪除全部NG？ 再按:${delConfirmCounter+1}次`}
+              onConfirm={()=>{}}
+              onCancel={()=>{}}
+              okButtonProps={{danger:true,onClick:()=>{
+                if(delConfirmCounter!=0)
+                {
+                  setDelConfirmCounter(delConfirmCounter-1);
+                }
+                else
+                {
+                  setNGInfoList([])
+                }
+              }}}
+              okText={"Yes:"+delConfirmCounter}
+              cancelText="No"
+            >
+            <Button danger type="primary" onClick={()=>{
+              setDelConfirmCounter(5);
+            }}>X</Button>
+          </Popconfirm> :null
+        }
+        {
+          NGInfoList.map((nginfo,index)=>
+            <Button danger onClick={()=>{
 
-        <Button onClick={()=>{
-
-        CNC_API.send_P({"type":"TRIG_CAMERA_TAKE"})
-        // BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","",0,false)
-        }}>測試觸發</Button>
-        <Button onClick={()=>{
-
-          CNC_API.send_P({"type":"LIGHT_1_ON"})
-          // BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","",0,false)
-        }}>LON</Button>
-        <Button onClick={()=>{
-
-          CNC_API.send_P({"type":"LIGHT_1_OFF"})
-          // BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","",0,false)
-        }}>LOFF</Button>
-
+              let newList=[...NGInfoList]
+              newList.splice(index, 1);
+              setNGInfoList(newList);
+            }}>{nginfo.location_mm+reelStep*mmpstp+"mm ["+CAT_ID_NAME[nginfo.category+""]+"]"}</Button>
+          )
+        }
 
 
       </>
@@ -3159,6 +3301,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
               
             }}
             canvas_obj={_this.canvasComp}/>
+        
       </>
 
       break;
@@ -3264,7 +3407,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             ctx.font = "20px Arial";
             ctx.fillStyle = "rgba(150,100, 100,0.5)";
             
-            ctx.fillText("Result:"+defReport.report.category + " DIST:"+(_this.latestStepCount*4)+"mm",20,150);
+            ctx.fillText("Result:"+defReport.report.category + " DIST:"+(reelStep*mmpstp)+"mm",20,150);
             ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,180)
 
             ctx.restore();
@@ -4430,6 +4573,9 @@ function VIEWUI(){
 
     <Menu theme="dark" mode="horizontal" selectable={false}>
         <Menu.Item key="1" onClick={()=>{
+
+
+          BPG_API.CameraClearTriggerInfo();
         }}>Calib_Param_Edit</Menu.Item>
         <Menu.Item key="2" onClick={()=>{
           SavePrjDef(_DEF_FOLDER_PATH_,defConfig);
@@ -4512,11 +4658,11 @@ function App() {
     let CNC_api=new CNC_Perif(CNC_PERIPHERAL_ID,20666);
 
     {
-      CNC_api.onConnected=()=>ACT_EXT_API_CONNECTED(CNC_PERIPHERAL_ID);
+      CNC_api.onConnected=()=>{ACT_EXT_API_CONNECTED(CNC_PERIPHERAL_ID)};
   
       CNC_api.onInfoUpdate=(info:[key: string])=>ACT_EXT_API_UPDATE(CNC_api.id,info);
   
-      CNC_api.onDisconnected=()=>ACT_EXT_API_DISCONNECTED(CNC_PERIPHERAL_ID);
+      CNC_api.onDisconnected=()=>{ACT_EXT_API_DISCONNECTED(CNC_PERIPHERAL_ID)};
       
       CNC_api.BPG_Send=core_api.send.bind(core_api);
   
@@ -4534,7 +4680,7 @@ function App() {
 
       CNC_api.connect({
         // uart_name:"/dev/cu.SLAB_USBtoUART",
-        uart_name:"/dev/cu.usbserial-1130",
+        uart_name:"/dev/cu.usbserial-0001",
         baudrate:460800//230400//115200
       });
     }

@@ -71,6 +71,8 @@ void InspectionTarget::acceptStageInfo(std::shared_ptr<StageInfo> sinfo)
 
 bool InspectionTarget::feedStageInfo(std::shared_ptr<StageInfo> sinfo)
 {
+
+  std::lock_guard<std::mutex> _(input_stage_lock);
   if(stageInfoFilter(sinfo))
   {
     acceptStageInfo(sinfo);
@@ -239,6 +241,20 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
     additionalInfoAssign(type,info);
     return true;
   }
+
+  if(type=="revisit_cache_stage_info")
+  {
+    LOGI("cache_stage_info.get():%p",cache_stage_info.get());
+    if(cache_stage_info.get()==NULL)return false;
+    
+    belongMan->dispatch(cache_stage_info);
+
+    while (belongMan->inspTarProcess())
+    {
+    }
+    return true;
+  }
+
 
 
 
@@ -556,6 +572,8 @@ int InspectionTargetManager::dispatch(std::shared_ptr<StageInfo> sinfo)
 
 int InspectionTargetManager::inspTarProcess()
 {
+  
+  std::lock_guard<std::mutex> lock(processLock);
   int totalProcessCount=0;
   while(1)
   {
