@@ -153,7 +153,7 @@ target_link_libraries(visSele
   $ENV{MODULE_MJPEG_Streamer}/MJPEG_Streamer.a
   $ENV{MODULE_BPG_Protocol}/BPG_Protocol.a
   $ENV{MODULE_simple_uart}/simple_uart.a
-  $ENV{MODULE_libuvc}/libuvc.a
+  # $ENV{MODULE_libuvc}/libuvc.a
 
   $ENV{MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
@@ -187,7 +187,7 @@ include_directories (
   $ENV{MODULE_MJPEG_Streamer}/include
   $ENV{MODULE_BPG_Protocol}/include 
   $ENV{MODULE_simple_uart}/include
-  $ENV{MODULE_libuvc}/include
+  # $ENV{MODULE_libuvc}/include
   $ENV{MODULE_smem_channel}
   $ENV{MODULE_wfqueue}
   $ENV{MODULE_lodepng}

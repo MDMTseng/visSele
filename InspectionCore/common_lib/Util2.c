@@ -14,7 +14,9 @@
 #include <memory>
 #include "mjpegLib.h"
 
-
+#ifdef _WIN32
+#include<windows.h>
+#endif
 bool isDirExist(const char* dir_path)
 {
   DIR* dir = opendir(dir_path);
