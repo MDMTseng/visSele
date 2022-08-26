@@ -10,11 +10,10 @@ template<typename Base, typename T> inline bool instanceof(const T) {
    return is_base_of<Base, T>::value;
 }
 
-InspectionTarget_SurfaceCheckSimple::InspectionTarget_SurfaceCheckSimple(string id,cJSON* def,InspectionTargetManager* belongMan)
-  :InspectionTarget(id,def,belongMan)
+InspectionTarget_SurfaceCheckSimple::InspectionTarget_SurfaceCheckSimple(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+  :InspectionTarget(id,def,belongMan,local_env_path)
 {
   type=InspectionTarget_SurfaceCheckSimple::TYPE();
-  LOGI("sodkoskoskad;aks;dkas;dk");
 }
 
 bool InspectionTarget_SurfaceCheckSimple::stageInfoFilter(shared_ptr<StageInfo> sinfo)

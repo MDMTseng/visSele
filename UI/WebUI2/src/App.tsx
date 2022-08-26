@@ -3913,7 +3913,9 @@ function VIEWUI(){
       // }
 
       // console.log(id,inspTar)
-      await api.InspTargetCreate(inspTar);
+
+
+      await api.InspTargetCreate(inspTar,prjDef.path+"/it_"+inspTar.id);
 
       await api.InspTargetSetStreamChannelID(
         inspTar.id,inspTar.stream_id,
