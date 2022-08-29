@@ -131,7 +131,7 @@ static IRAM_ATTR void enc_cb(void* arg) {
   else          count=-encoder.count;
 
 
-  lastestCount=count;
+  lastestCount=count/4;
 
   if(lastFrontCount>=count)
   {
@@ -685,7 +685,7 @@ void loop()
       triggerInfo info=*triggerInfoQ.getTail();
       triggerInfoQ.consumeTail();
       // djrl.dbg_printf(">>Triggered Step:%d",info.step);
-      retdoc["tag"]="s_Step_"+std::to_string(info.step);
+      retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
       retdoc["trigger_id"]=info.step;
       retdoc["camera_id"]=std::string(info.p_camera_id);
       curTrigQSize=triggerInfoQ.size();
