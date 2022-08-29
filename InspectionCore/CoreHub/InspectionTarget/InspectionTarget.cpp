@@ -257,6 +257,30 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
   }
 
 
+  
+  if(type=="cache_image_save")
+  {
+    if(cache_stage_info==NULL)return false;
+    string folder_path=JFetch_STRING_ex(info,"folder_path");
+    if(folder_path.length()==0)return false;
+
+    auto srcImg=cache_stage_info->img;
+    if(srcImg==NULL)return false;
+
+    Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+
+
+    string image_name=JFetch_STRING_ex(info,"image_name","test.png");
+    imwrite(folder_path+"/"+image_name, CV_srcImg);  
+
+
+
+    // cache_stage_info
+
+
+
+  }
+
 
 
   return false;
