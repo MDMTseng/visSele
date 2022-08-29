@@ -3011,6 +3011,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
   _this.periodicTask=periodicCB;
 
   _this.TMP_NGInfoList=NGInfoList;
+  _this.perifConnState=perifConnState;
   useEffect(() => {//////////////////////
 
     (async ()=>{
@@ -3052,7 +3053,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             setLocal_IMCM(IMCM)
             let rep=RP.data;
             setDefReport(rep);
-            if(rep.report.category<=0)
+            if(rep.report.category<=0 && _this.perifConnState)
             {
               CNC_API.send_P({"type":"EM_STOP"})
               .then((ret)=>{
@@ -3072,7 +3073,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
                 // rep.report
                 console.log(rep.report.group_category,repAtStep)
 
-                let newNGInfo = rep.report.group_category.map((bad_ele:any,index:number)=>({location_mm:repAtStep*mmpstp+index*mmpstp,category:bad_ele.category})).filter((ele:any)=>ele.category<=0)
+                let newNGInfo = rep.report.group_category.map((bad_ele:any,index:number)=>({location_mm:-repAtStep*mmpstp+index*mmpstp,category:bad_ele.category})).filter((ele:any)=>ele.category<=0)
                 // console.log(newNGInfo,"mm")
 
                 setNGInfoList([..._this.TMP_NGInfoList,...newNGInfo])
