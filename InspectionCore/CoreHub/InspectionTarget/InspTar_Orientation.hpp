@@ -58,7 +58,14 @@ class InspectionTarget_Orientation_ShapeBasedMatching :public InspectionTarget
   line2Dup::TemplatePyramid insp_tp;
   float matching_downScale=0.5;
   string template_class_name="tNAME";
+
 public:
+
+  struct refine_region_info{
+    Mat img;
+    cv::Rect2d regionInRef;
+  };
+  vector<refine_region_info> refine_region_set;
   InspectionTarget_Orientation_ShapeBasedMatching(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
   static string TYPE(){ return "Orientation_ShapeBasedMatching"; }

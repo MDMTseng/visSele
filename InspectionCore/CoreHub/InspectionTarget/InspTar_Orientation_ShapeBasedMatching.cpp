@@ -2,6 +2,7 @@
 #include "InspTar_Orientation.hpp"
 
 
+#include <TemplateMatching_SubPix.h>
 using namespace cv;
 
 using namespace std;
@@ -113,6 +114,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON* def)
     delete(sbm);
     sbm=NULL;
   }
+  refine_region_set.clear();
   matching_downScale=JFetch_NUMBER_ex(def,"matching_downScale",1);
   if(matching_downScale<0.01)matching_downScale=0.01;
   cJSON* featureInfo=JFetch_OBJECT(def,"featureInfo");
@@ -189,6 +191,49 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON* def)
 
     }
 
+
+
+    cJSON*refine_match_regions=JFetch_ARRAY(featureInfo,"refine_match_regions");
+    if(refine_match_regions)
+    {
+      string feature_ref_image_path=local_env_path+"/"+JFetch_STRING_ex(featureInfo,"feature_ref_image","FeatureRefImage.png");
+      
+      Mat img = imread(feature_ref_image_path, IMREAD_COLOR);
+      if (img.empty()==false)
+      {
+    
+        int reg_size=cJSON_GetArraySize(refine_match_regions);
+        
+        for (int i = 0 ; i <reg_size ; i++)
+        {
+          cJSON * regionInfo = cJSON_GetArrayItem(refine_match_regions, i);
+          int x=(int)JFetch_NUMBER_ex(regionInfo, "x");
+          int y=(int)JFetch_NUMBER_ex(regionInfo, "y");
+          int w=(int)JFetch_NUMBER_ex(regionInfo, "w");
+          int h=(int)JFetch_NUMBER_ex(regionInfo, "h");
+
+          struct refine_region_info regInfo;
+          regInfo.regionInRef=Rect2d(x,y,w,h);
+          regInfo.img=img(regInfo.regionInRef).clone();
+
+          regInfo.regionInRef.x-=templateCenter_x;
+          regInfo.regionInRef.y-=templateCenter_y;
+
+          // imwrite(local_env_path+"/"+"ddd"+std::to_string(i)+".jpg", regInfo.img);  
+
+          LOGI("refine reg load:%d,%d,%d,%d",x,y,w,h);
+          refine_region_set.push_back(regInfo);
+        }
+      
+
+      }
+
+
+
+      LOGI(">>>>>>>>>>>>>>>>>feature_ref_image_path:%s",feature_ref_image_path.c_str());
+    }
+
+    LOGI(">>>>>>>>>>>>>>>>>local_env_path:%s",local_env_path.c_str());
 
 
   }
@@ -370,6 +415,389 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON* info,in
 }
 
 
+
+cv::Point2f rotate2d(const cv::Point2f& inPoint, const double angRad)
+{
+    cv::Point2f outPoint;
+    //CW rotation
+    double c=std::cos(angRad);
+    double s=std::sin(angRad);
+    outPoint.x = c*inPoint.x - s*inPoint.y;
+    outPoint.y = s*inPoint.x + c*inPoint.y;
+    return outPoint;
+}
+
+cv::Point2f rotatePoint(const cv::Point2f& inPoint, const cv::Point2f& center, const double angRad)
+{
+    return rotate2d(inPoint - center, angRad) + center;
+}
+
+
+cv::Mat rotCrop(cv::Mat& srcImg,float obj_x,float obj_y,float temp_rel_x,float temp_rel_y,float temp_w,float temp_h, float angRad,int margin=5, cv::Point2f *ret_center=NULL)
+{
+
+  // LOGI("temp:: %f,%f,%f,%f  margin:%d  angRad:%f",temp_rel_x,temp_rel_y,temp_w,temp_h,margin,angRad);
+
+
+  temp_rel_x-=margin;
+  temp_rel_y-=margin;
+  temp_w+=margin*2;
+  temp_h+=margin*2;
+
+  // LOGI(">>temp:: %f,%f,%f,%f",temp_rel_x,temp_rel_y,temp_w,temp_h);
+
+
+  Point2f objPos = Point2f( obj_x, obj_y );
+  Point2f temp_rel = Point2f( temp_rel_x, temp_rel_y );
+  Point2f srcTri[3];      //point 2f object for input file
+  srcTri[0] = Point2f( 0.f, 0.f );
+  srcTri[1] = Point2f( 0  , temp_h);        //Before transformation selecting points
+  srcTri[2] = Point2f( temp_w, 0);
+
+  // LOGI("temp_rel     :%f,%f",  temp_rel.x,temp_rel.y);
+  // LOGI("objPos       :%f,%f",  objPos.x,objPos.y);
+  for(int i=0;i<3;i++)
+  {
+    // LOGI("srcTri   [%d]:%f,%f",i,srcTri[i].x,srcTri[i].y);
+    srcTri[i]+=temp_rel;
+    // LOGI("      >>>>>>>:%f,%f",  srcTri[i].x,srcTri[i].y);
+    srcTri[i]=rotate2d(srcTri[i],angRad);
+    // LOGI("      >>>>>>>:%f,%f",  srcTri[i].x,srcTri[i].y);
+    srcTri[i]+=objPos;
+    // LOGI("      >>>>>>>:%f,%f",  srcTri[i].x,srcTri[i].y);
+  }
+
+  if(ret_center!=NULL)
+  {
+    *ret_center=(srcTri[1]+srcTri[2])/2;
+  }
+
+
+  Point2f dstTri[3];      //point 2f object for destination file
+  dstTri[0] = Point2f( 0.f, 0.f );
+  dstTri[1] = Point2f( 0  , temp_h);        //Before transformation selecting points
+  dstTri[2] = Point2f( temp_w, 0   );
+  Mat warp_mat = getAffineTransform( srcTri, dstTri );  //apply an affine transforation to image and storing it
+  Mat warp_dst = Mat::zeros( temp_h, temp_w, srcImg.type() );
+  warpAffine( srcImg, warp_dst, warp_mat, warp_dst.size() );     
+
+
+  return warp_dst;
+}
+
+
+int DBG_C=0;
+
+float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeBasedMatching::refine_region_info> &regions_n_TempImgs,float marginFactor,Point2f &anchorPt,float &angleRad,float minAcceptedScore=0.2,int *ret_acceptedRegionCount=NULL)
+{
+
+  if(ret_acceptedRegionCount)*ret_acceptedRegionCount=0;
+  // anchorPt.x+=5;//test shift
+  // anchorPt.y+=5;
+  // angleRad=12.000000*M_PI/180;
+  // LOGI("original theta:%f",angleRad*180/M_PI);
+
+  vector<Point2f> initPts;
+  vector<Point2f> initPts_temp;
+  vector<Point2f> updatedPts;
+  vector<float> matchingPoints;
+  float minAccScore=1;
+  for(int i=0;i<regions_n_TempImgs.size();i++)
+  {
+    
+    auto reg = regions_n_TempImgs[i].regionInRef;
+    int margin=(int)(marginFactor);
+    cv::Point2f crop_center;
+
+    // LOGI("====anchorPt:%f %f======",anchorPt.x,anchorPt.y);
+    // LOGI("====reg:xy:%f,%f  wh:%f,%f======",reg.x,reg.y,reg.width,reg.height);
+    cv::Mat mat = rotCrop(
+      srcImg,
+      anchorPt.x,
+      anchorPt.y,
+      reg.x,
+      reg.y,
+      reg.width,
+      reg.height, 
+      angleRad,
+      margin,
+      &crop_center);
+
+    Mat result;
+    bool isResForMax;
+    cv::cvtColor(mat, mat, cv::COLOR_BGR2GRAY);
+    equalizeHist( mat, mat );
+
+    Mat temp_gray;
+    cv::cvtColor(regions_n_TempImgs[i].img, temp_gray, cv::COLOR_BGR2GRAY);
+    equalizeHist( temp_gray, temp_gray );
+
+
+    Point2f levelXPt = TemplateMatching_SubPix(mat,temp_gray,result,isResForMax,TM_CCOEFF_NORMED);
+
+
+    float matchResult = result.at<float>((int)round(levelXPt.x), (int)round(levelXPt.y));
+
+    std::string prefix="S"+to_string(DBG_C)+"_";
+    if(0)
+    {
+      // imwrite("data/ZZZ/"+prefix+"OOP_"+std::to_string(i)+".jpg",mat);  
+
+      cv::Mat mat_cp =mat.clone();
+
+      auto rect=Rect(levelXPt.x,levelXPt.y,temp_gray.cols, temp_gray.rows);
+      temp_gray.copyTo(mat_cp(rect));
+      cv::rectangle(mat_cp, rect, cv::Scalar(255, 255, 255));
+      cv::rectangle(mat_cp, Rect(mat_cp.cols/2-1,mat_cp.rows/2-1,2,2), cv::Scalar(200, 200, 200));
+      imwrite("data/ZZZ/"+prefix+"_TOP_"+std::to_string(i)+".jpg",mat_cp);  
+
+
+      // result*=200;
+      // imwrite("data/TEMP_"+std::to_string(i)+".jpg", temp_gray);  
+      // imwrite("data/ZZZ/"+prefix+"RES_"+std::to_string(i)+".jpg",result);  
+    }
+    // // if(ret_acceptedRegionCount)//JUST for DBG
+    // std::string prefix="S"+to_string(DBG_C)+"_";
+    // if(1)
+    // {
+    //   // imwrite("data/ZZZ/"+prefix+"OOP_"+std::to_string(i)+".jpg",mat);  
+
+    //   cv::Mat mat_cp =mat.clone();
+
+    //   auto rect=Rect(levelXPt.x,levelXPt.y,temp_gray.cols, temp_gray.rows);
+    //   temp_gray.copyTo(mat_cp(rect));
+    //   cv::rectangle(mat_cp, rect, cv::Scalar(255, 255, 255));
+    //   cv::rectangle(mat_cp, Rect(mat_cp.cols/2-1,mat_cp.rows/2-1,2,2), cv::Scalar(200, 200, 200));
+    //   imwrite("data/ZZZ/"+prefix+"_TOP_"+std::to_string(i)+".jpg",mat_cp);  
+
+
+    //   // result*=200;
+    //   // imwrite("data/TEMP_"+std::to_string(i)+".jpg", temp_gray);  
+    //   // imwrite("data/ZZZ/"+prefix+"RES_"+std::to_string(i)+".jpg",result);  
+    // }
+    // if(true){//export template diff image for debugging
+    //   string path_p="data/TMP/"+std::to_string(count);
+    //   Mat mat_ROI=mat(cv::Rect(round(levelXPt.x),round(levelXPt.y),regionTempImgs[i].cols, regionTempImgs[i].rows));
+    //   // locatingBlockImg[i].copyTo(mat_ROI);
+
+    //   float diffAmp=2;
+    //   addWeighted( regionTempImgs[i], -0.5*diffAmp, mat_ROI, 0.5*diffAmp, 128.0, mat_ROI);
+    //   imwrite(path_p+"mat_final"+std::to_string(i)+".png", mat);
+    // }
+
+
+    float offsetThres=margin-1;
+    levelXPt.x-=margin;
+    levelXPt.y-=margin;
+    LOGI("[%d]:matchResult:%f offset:%f,%f",i,matchResult,levelXPt.x,levelXPt.y);
+    if(matchResult!=matchResult || matchResult<minAcceptedScore ||levelXPt.x<-offsetThres || levelXPt.x>offsetThres || levelXPt.y<-offsetThres || levelXPt.y>offsetThres)
+    {
+      levelXPt.x=levelXPt.y=NAN;
+    }
+    else
+    {
+
+
+      // if(ret_acceptedRegionCount)//JUST for DBG
+
+      // cv::cvtColor(mat, mat, cv::COLOR_GRAY2BGR);
+      // mat.copyTo(srcImg(Rect(crop_center.x-mat.cols/2,crop_center.y-mat.rows/2,mat.cols, mat.rows)));
+
+      
+      // LOGI("O levelXPt %f,%f",levelXPt.x,levelXPt.y);
+      levelXPt=rotate2d(levelXPt,angleRad);
+      // LOGI("> levelXPt  %f,%f",levelXPt.x,levelXPt.y);
+      // LOGI("initPts     %f,%f",crop_center.x,crop_center.y);
+      // LOGI("crop_center %f,%f",crop_center.x+levelXPt.x,crop_center.y+levelXPt.y);
+
+      cv::Point2f updatedPt=crop_center+levelXPt;
+      cv::Point2f tempPt=cv::Point2f(reg.x+reg.width/2,reg.y+reg.height/2);
+      // LOGI("temp        %f,%f",tempPt.x,tempPt.y);
+      // if(i==0)
+      // {
+      //   updatedPt=cv::Point2f(794,230);
+      // }
+      // else if(i==1)
+      // {
+      //   updatedPt=cv::Point2f(799,442);
+      // }
+      // else if(i==2)
+      // {
+      //   updatedPt=cv::Point2f(872,443.5);
+      // }
+
+
+      // LOGI("DBG_CENTER %f,%f",updatedPt.x,updatedPt.y);
+
+      initPts_temp.push_back(tempPt);
+      initPts.push_back(crop_center);
+      updatedPts.push_back(updatedPt);
+      // LOGI("x:%f y:%f",crop_center.x+levelXPt.x,crop_center.y+levelXPt.y);
+
+      // regions_n_TempImgs[i].img.copyTo(srcImg(Rect(crop_center.x+levelXPt.x-reg.width/2,crop_center.y+levelXPt.y-reg.height/2,temp_gray.cols, temp_gray.rows)));
+      
+      if(minAccScore>matchResult)
+      {
+        minAccScore=matchResult;
+      }
+
+    }
+
+
+    // printf("matchLoc_subPix:%f %f\n",levelXPt.x,levelXPt.y);
+    // small_image.copyTo(big_image(cv::Rect(x,y,small_image.cols, small_image.rows)));
+
+    // Mat cimg=def_temp_img(cv::Rect(block.x,block.y,block.w,block.h));
+    
+
+    // LOGI("block relXY:%f %f",block.rel_x,block.rel_y);
+    // locatingBlockImg.push_back(cimg);
+
+
+  }
+  // exit(0);
+
+
+
+  if(true && updatedPts.size()>=3 )
+  {
+    cv::Mat R = estimateAffine2D(initPts_temp,updatedPts);
+
+    cout << "M = " << endl << " "  << R << endl << endl;
+
+
+
+    double v_cos=(R.at<double>(0,0)+R.at<double>(1,1))/2;
+    double v_sin=(R.at<double>(1,0)-R.at<double>(0,1))/2;
+
+
+
+    // std::vector<cv::Point2f> inputV;
+    // std::vector<cv::Point2f> outputV;
+
+    // cv::Point2f pt0={0};
+    // for(int i=0;i<regions_n_TempImgs.size();i++)
+    // {
+    //   pt0.x+=regions_n_TempImgs[i].regionInRef.x;
+    //   pt0.y+=regions_n_TempImgs[i].regionInRef.y;
+    // }
+    // pt0/=(float)regions_n_TempImgs.size();
+    // pt0+=anchorPt;
+
+    // inputV.push_back(pt0);
+    // inputV.push_back((cv::Point2f){pt0.x+1,pt0.y});//get offset
+    // transform(inputV,outputV, R);
+
+
+    cv::Point2f translate=cv::Point2f(R.at<double>(0,2),R.at<double>(1,2));
+
+    float angle=atan2(v_sin,v_cos);
+    LOGI("theta:%f",angle*180/M_PI);
+    angleRad=angle;
+
+    anchorPt=translate;
+    
+
+    if(ret_acceptedRegionCount)*ret_acceptedRegionCount=updatedPts.size();
+    return minAccScore;
+  }
+
+
+  if(false && updatedPts.size()>=3 )
+  {
+    for(int i=0;i<updatedPts.size();i++)
+    {
+      LOGI("[%d] %.2f,%.2f => %.2f,%.2f",i,initPts[i].x,initPts[i].y,updatedPts[i].x,updatedPts[i].y);
+      // LOGI("crop_center %f,%f",crop_center.x+levelXPt.x,crop_center.y+levelXPt.y);
+    }
+    cv::Mat R = estimateAffine2D(initPts,updatedPts);
+
+    if(R.cols != 0)
+    {
+      std::vector<cv::Point2f> inputV;
+      std::vector<cv::Point2f> outputV;
+
+      inputV.clear();
+      outputV.clear();
+
+      cv::Point2f pt0={0};
+      for(int i=0;i<regions_n_TempImgs.size();i++)
+      {
+        pt0.x+=regions_n_TempImgs[i].regionInRef.x;
+        pt0.y+=regions_n_TempImgs[i].regionInRef.y;
+      }
+      pt0/=(float)regions_n_TempImgs.size();
+      pt0+=anchorPt;
+
+      inputV.push_back(pt0);
+      inputV.push_back((cv::Point2f){pt0.x+1,pt0.y});//get offset
+      // inputV.push_back((cv::Point2f){1,0});//get rotation
+
+      transform(inputV,outputV, R);
+      for(int i=0;i<inputV.size();i++)
+      {
+        LOGI("..[%d] %.2f,%.2f => %.2f,%.2f",i,inputV[i].x,inputV[i].y,outputV[i].x,outputV[i].y);
+        // LOGI("crop_center %f,%f",crop_center.x+levelXPt.x,crop_center.y+levelXPt.y);
+      }
+
+      // LOGI("a:%f,%f  na:%f,%f",anchorPt.x,anchorPt.y,new_anchorPt.x,new_anchorPt.y);
+      
+
+      Point2f rotation = outputV[1]-outputV[0];
+      float angle=atan2(rotation.y,rotation.x);
+      LOGI("theta:%f",angle*180/M_PI);
+      angleRad+=1*angle-0.0;
+
+
+      {
+        LOGI("%f,%f >>>>> %f,%f",inputV[0].x,inputV[0].y,outputV[0].x,outputV[0].y);
+        // Point2f new_anchorPt = outputV[0];
+        anchorPt+=(outputV[0]-inputV[0]);
+      }
+
+      if(ret_acceptedRegionCount)*ret_acceptedRegionCount=updatedPts.size();
+      return minAccScore;
+    }
+  }
+
+  if(false && updatedPts.size()==2 )
+  {
+    cv::Mat R = estimateAffine2D(initPts,updatedPts);
+
+    if(R.cols != 0)
+    {
+      std::vector<cv::Point2f> inputV;
+      inputV.push_back(anchorPt);
+      inputV.push_back((cv::Point2f){anchorPt.x+1,anchorPt.y});//get offset
+      // inputV.push_back((cv::Point2f){1,0});//get rotation
+
+      std::vector<cv::Point2f> outputV;
+
+      transform(inputV,outputV, R);
+
+      Point2f new_anchorPt = outputV[0];
+      LOGI("a:%f,%f  na:%f,%f",anchorPt.x,anchorPt.y,new_anchorPt.x,new_anchorPt.y);
+      anchorPt=new_anchorPt;
+
+      Point2f rotation = outputV[1]-new_anchorPt;
+      float angle=atan2(rotation.y,rotation.x);
+      LOGI("theta:%f",angle*180/M_PI);
+      angleRad+=angle;
+      return minAccScore;
+    }
+  }
+  
+  return 0;
+
+
+  // ofsSum/=ofsCount;
+  // anchorPt+=ofsSum;
+
+
+}
+
+
+
 cJSON* InspectionTarget_Orientation_ShapeBasedMatching::genITIOInfo()
 {
 
@@ -406,20 +834,6 @@ cJSON* InspectionTarget_Orientation_ShapeBasedMatching::genITIOInfo()
 
 
 
-cv::Point2f rotate2d(const cv::Point2f& inPoint, const double angRad)
-{
-    cv::Point2f outPoint;
-    //CW rotation
-    outPoint.x = std::cos(angRad)*inPoint.x - std::sin(angRad)*inPoint.y;
-    outPoint.y = std::sin(angRad)*inPoint.x + std::cos(angRad)*inPoint.y;
-    return outPoint;
-}
-
-cv::Point2f rotatePoint(const cv::Point2f& inPoint, const cv::Point2f& center, const double angRad)
-{
-    return rotate2d(inPoint - center, angRad) + center;
-}
-
 
 bool hasEnding (std::string const &fullString, std::string const &ending) {
     if (fullString.length() >= ending.length()) {
@@ -432,6 +846,8 @@ bool hasEnding (std::string const &fullString, std::string const &ending) {
 
 void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<StageInfo> sinfo)
 {
+
+  // std::this_thread::sleep_for(std::chrono::milliseconds(100));
   int64 t0 = cv::getTickCount();
   cache_stage_info=sinfo;
   LOGI(">>>>>>>>InspectionTarget_Orientation_ShapeBasedMatching>>>>>>>>");
@@ -453,7 +869,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   Mat CV_srcImg_ds(size1,CV_8UC3);
   resize(CV_srcImg,CV_srcImg_ds,size1,cv::INTER_AREA);
   
-
+  cv::cvtColor(CV_srcImg_ds, CV_srcImg_ds, cv::COLOR_BGR2GRAY);
   LOGI(">>>>>>>>");
 
   float magThres_eq_alpha=0.3;
@@ -594,8 +1010,9 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   shared_ptr<StageInfo_Orientation> reportInfo(new StageInfo_Orientation());
 
 
-  for(auto idx: idxs)
+  for(int i=0;i<idxs.size();i++)
   {
+    auto idx=idxs[i];
     line2Dup::Match match = matches[idx];
     if(match.similarity==0)//for regional search, that needs to give yes/no answer
     {
@@ -615,17 +1032,80 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
     //calc the position relative to the first point
     cv::Point2f f0Pt = cv::Point2f((float)templ[0].features[0].x+match.x,(float)templ[0].features[0].y+match.y)/matching_downScale;
+    SBM_if::anchorInfo Aoffset = sbm->fetchTemplateOffset(match.class_id);
+    LOGI("[%d]>>>ang:%f <<id:%s",i,templ[0].angle,match.class_id.c_str());
+    cv::Point2f anchorPt = rotate2d(Aoffset.offset ,templ[0].angle*M_PI/180);
+
     float offset = (1/matching_downScale-1);// /2;
     f0Pt+=cv::Point2f(offset,offset);
-    SBM_if::anchorInfo Aoffset = sbm->fetchTemplateOffset(match.class_id);
-    LOGI(">>>ang:%f <<id:%s",templ[0].angle,match.class_id.c_str());
-    cv::Point2f anchorPt = rotate2d(Aoffset.offset ,templ[0].angle*M_PI/180);
     anchorPt+=f0Pt;
 
-    float angle_rad=templ[0].angle/180*M_PI;
+
+    float refine_score=0;
+    float refinedAngleRad=templ[0].angle*M_PI/180;
+
+    if(0)
+    {
+      float tmpAngle=refinedAngleRad;
+      cv::Point2f tmp_anchorPt=anchorPt;
+      int margin=(int)(25);
+      DBG_C=0;
+      refine_score = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt,tmpAngle,0.2);
+      
+      // if(refine_score>0.3)
+      if(0)
+      {
+        LOGI("[%d]-----refine_score:%f",i,refine_score);
+        auto tmp_anchorPt2=tmp_anchorPt;
+        auto tmpAngle2=tmpAngle;
+        int refine_block_count=0;
+        float refine_score2;
+
+        for(int i=1;i<3;i++)
+        {
+          DBG_C=i;
+          refine_score2 = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt2,tmpAngle2,0.2,&refine_block_count);
+        }
+
+        LOGI("[%d]-----refine_score2:%f",i,refine_score2);
+        if(refine_score<=refine_score2)
+        {
+          refine_score=refine_score2;
+          tmpAngle=tmpAngle2;
+          tmp_anchorPt=tmp_anchorPt2;
+        }
+      }
+      LOGI("[%d]----------refine_score:%f",i,refine_score);
+      LOGI(" %f =>  %f",refinedAngleRad*180/M_PI,tmpAngle*180/M_PI);
+      LOGI(" %f,%f  =>  %f,%f",anchorPt.x,anchorPt.y,tmp_anchorPt.x,tmp_anchorPt.y);
+      if(refine_score>0.4)
+      {//accept the refinement
+        refinedAngleRad=tmpAngle;
+        anchorPt=tmp_anchorPt;
+      }
+      else//for regional search, that needs to give yes/no answer
+      {
+
+        StageInfo_Orientation::orient orie;
+
+        orie.angle=0;
+        orie.flip=false;
+        orie.center={0,0};
+        orie.confidence=0;
+
+        reportInfo->orientation.push_back(orie);
+        continue;
+
+        // refinedAngleRad=tmpAngle;
+        // anchorPt=tmp_anchorPt;
+        // match.similarity=0.1;
+      }
+    }
+
+
     StageInfo_Orientation::orient orie;
 
-    orie.angle=angle_rad;
+    orie.angle=refinedAngleRad;
     orie.flip=hasEnding(match.class_id,"_f");
     orie.center={anchorPt.x,anchorPt.y};
     orie.confidence=match.similarity;
@@ -650,7 +1130,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   
 
   reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",4);
+  reportInfo->img_prop.StreamInfo.downsample=1;//JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",4);
   LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
 
   {
