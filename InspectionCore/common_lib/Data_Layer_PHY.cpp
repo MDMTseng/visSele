@@ -176,7 +176,7 @@ done:
 #endif
 
 
-Data_TCP_Layer::Data_TCP_Layer(char *host,int port)throw(std::runtime_error)
+Data_TCP_Layer::Data_TCP_Layer(char *host,int port)//throw(std::runtime_error)
 {
     if ((he=gethostbyname(host)) == NULL) {  /* get the host info */
         //herror("gethostbyname");
@@ -283,7 +283,7 @@ Data_TCP_Layer::~Data_TCP_Layer()
 
 
 ////////////////////////////////////////
-Data_UART_Layer::Data_UART_Layer(const char *name,int speed,const char *mode_string)throw(std::runtime_error)
+Data_UART_Layer::Data_UART_Layer(const char *name,int speed,const char *mode_string)//throw(std::runtime_error)
 {
 
   printf("name:%s sped:%d mode_string:%s\n",name,speed,mode_string);
