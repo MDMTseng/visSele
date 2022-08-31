@@ -14,7 +14,7 @@ cJSON* CameraManager::cameraInfo2Json(CameraLayer::BasicCameraInfo &info)
   return cJSON_Parse(jsinstr.c_str());
 }
 
-InspectionTarget::InspectionTarget(std::string id,cJSON* def,InspectionTargetManager* belongMan)
+InspectionTarget::InspectionTarget(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
 {
   this->inputPoolInsufficient=false;
   this->def=NULL;
@@ -22,6 +22,7 @@ InspectionTarget::InspectionTarget(std::string id,cJSON* def,InspectionTargetMan
   this->additionalInfo=NULL;
   this->belongMan=belongMan;
   this->type=InspectionTarget::TYPE();
+  this->local_env_path=local_env_path;
   setInspDef(def);
   additionalInfo=cJSON_CreateObject();
 }
@@ -255,6 +256,30 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
     return true;
   }
 
+
+  
+  if(type=="cache_image_save")
+  {
+    if(cache_stage_info==NULL)return false;
+    string folder_path=JFetch_STRING_ex(info,"folder_path");
+    if(folder_path.length()==0)return false;
+
+    auto srcImg=cache_stage_info->img;
+    if(srcImg==NULL)return false;
+
+    Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+
+
+    string image_name=JFetch_STRING_ex(info,"image_name","test.png");
+    imwrite(folder_path+"/"+image_name, CV_srcImg);  
+
+
+
+    // cache_stage_info
+
+
+
+  }
 
 
 

@@ -1704,19 +1704,19 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
         }}>Templ</Button>  
 
-        Feats:
-        <InputNumber value={cacheDef.num_features}
+        特徵數:
+        <InputNumber  min={10} value={cacheDef.num_features}
         onChange={(num)=>{
           setCacheDef({...cacheDef,num_features:num})
         }} />
 
 
-        EdgeStrong:
+        圖像邊緣強度:
         <InputNumber value={featureInfo.strong_thresh}
         onChange={(num)=>{
           setFeatureInfo({...featureInfo,strong_thresh:num})
         }} />
-        EdgeWeak:
+        特徵強度:
         <InputNumber value={featureInfo.weak_thresh}
         onChange={(num)=>{
           setFeatureInfo({...featureInfo,weak_thresh:num})
@@ -1797,6 +1797,77 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
 
 
+        <br/>
+
+        { 
+          featureInfo.refine_match_regions===undefined?null:
+          featureInfo.refine_match_regions.map((regi:any,idx:number)=>
+            
+
+              
+            <Popconfirm
+                key={"regi_del_"+idx+"..."+updateC}
+                title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+                onConfirm={()=>{}}
+                onCancel={()=>{}}
+                okButtonProps={{danger:true,onClick:()=>{
+                  if(delConfirmCounter!=0)
+                  {
+                    setDelConfirmCounter(delConfirmCounter-1);
+                  }
+                  else
+                  { 
+                    let new_refine_match_regions=[...featureInfo.refine_match_regions];
+
+                    new_refine_match_regions.splice(idx, 1);
+                    
+                    setFeatureInfo({...featureInfo,refine_match_regions:new_refine_match_regions})
+                    
+                  }
+                }}}
+                okText={"Yes:"+delConfirmCounter}
+                cancelText="No"
+              >
+              <Button danger type="primary" onClick={()=>{
+                setDelConfirmCounter(3);
+              }}>{idx}</Button>
+            </Popconfirm> 
+
+
+
+          )
+        }
+
+        <Button key={"AddRefineFeat"} onClick={()=>{
+
+
+      
+          if(_this.canvasComp==undefined)return;
+          _this.sel_region=undefined;
+          _this.canvasComp.UserRegionSelect((info:any,state:number)=>{
+            if(state==2)
+            {
+              console.log(info);
+              
+              let x,y,w,h;
+              
+              let roi_region=PtsToXYWH(info.pt1,info.pt2);
+              console.log(roi_region)
+              let regInfo = {...roi_region,isBlackRegion:false};
+              
+              let refine_match_regions=featureInfo.refine_match_regions===undefined?[]:[...featureInfo.refine_match_regions];
+
+              refine_match_regions.push(regInfo);
+              setFeatureInfo({...featureInfo,refine_match_regions})
+              
+              // onDefChange(newRule)
+              if(_this.canvasComp==undefined)return;
+              _this.canvasComp.UserRegionSelect(undefined)
+            }
+          })
+        }}>+校位範圍</Button>  
+
+
       </>
 
       break;
@@ -1809,8 +1880,15 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
       EDIT_UI=<>
         <Button danger type="primary" onClick={()=>{
+
           setEditState(EditState.Normal_Show)
         }}>{"<"}</Button>
+
+        <Button onClick={()=>{
+
+          onCacheDefChange(cacheDef,false);
+          BPG_API.InspTargetExchange(cacheDef.id,{type:"revisit_cache_stage_info"});
+        }}>ReCheck</Button>
 
         scaleD:
         <InputNumber value={cacheDef.matching_downScale}
@@ -1833,6 +1911,19 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
         onChange={(num)=>{
           setCacheDef({...cacheDef,magnitude_thres:num})
         }} />
+
+
+        
+        {" "}
+        校位下限(0~1):
+        <InputNumber min={0} max={1} value={cacheDef.refine_score_thres}
+          onChange={(num)=>{
+            setCacheDef({...cacheDef,refine_score_thres:num})
+        }} />
+
+        <Switch checkedChildren="強制" unCheckedChildren="盡力" checked={cacheDef.must_refine_result==true} onChange={(check)=>{
+          setCacheDef({...cacheDef,must_refine_result:check})
+        }}/>
 
         <br/>
 
@@ -1925,6 +2016,8 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
       // console.log(ctrl_or_draw);
 
       let ctx=g.ctx;
+
+      let camMag=canvas_obj.camera.GetCameraScale();
       if(ctrl_or_draw==true)//ctrl
       {
         if(canvas_obj.regionSelect!==undefined)
@@ -1995,9 +2088,9 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
             defReport.report.forEach((match:any,idx:number)=>{
               
               if(match.confidence<=0)return;
-              ctx.lineWidth=4;
+              ctx.lineWidth=4/camMag;
               ctx.strokeStyle = `HSLA(0, 100%, 50%,1)`;
-              canvas_obj.rUtil.drawCross(ctx, {x:match.center.x,y:match.center.y}, 12);
+              canvas_obj.rUtil.drawCross(ctx, {x:match.center.x,y:match.center.y}, 12/camMag);
               
               let angle = match.angle;
 
@@ -2005,12 +2098,13 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
               ctx.fillStyle = "rgba(150,100, 100,0.8)";
               ctx.fillText("idx:"+idx,match.center.x,match.center.y-40)
               ctx.font = "20px Arial";
-              ctx.fillText("ang:"+(angle*180/3.14159).toFixed(0),match.center.x,match.center.y-20)
-              ctx.fillText("sim:"+match.confidence.toFixed(1),match.center.x,match.center.y-0)
+              ctx.fillText("ang:"+(angle*180/3.14159).toFixed(2),match.center.x,match.center.y-20)
+              ctx.fillText("sim:"+match.confidence.toFixed(3),match.center.x,match.center.y-0)
 
 
               
 
+              ctx.lineWidth=4/camMag;
               let vec=PtRotate2d({x:100,y:0},angle,1);
               canvas_obj.rUtil.drawLine(ctx,{x1:match.center.x,y1:match.center.y,x2:match.center.x+vec.x,y2:match.center.y+vec.y})
 
@@ -2065,6 +2159,8 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
         }
         else//draw
         {
+
+          let camMag=canvas_obj.camera.GetCameraScale();
           if(featureInfoExt.IM!==undefined)
           {
             g.ctx.save();
@@ -2078,6 +2174,9 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           
           if(featureInfo.templatePyramid!==undefined)
           {
+            if(canvas_obj.regionSelect===undefined)//when in region select, hide the template info
+            {
+
             let mult=1;
             for(let i=0;i<featureInfo.templatePyramid.length;i++,mult*=2)
             {
@@ -2089,7 +2188,48 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
                 canvas_obj.rUtil.drawCross(ctx, {x:(temp_pt.x+template.tl_x)*mult,y:(temp_pt.y+template.tl_y)*mult}, 12/mult);
               })
             }
+  
           }
+            if(featureInfo.mask_regions!==undefined)
+            {
+              featureInfo.mask_regions.forEach((regi:any,idx:number)=>{
+                
+                ctx.strokeStyle = 
+                ctx.fillStyle = "rgba(150,100, 100,0.8)";
+                
+            
+                drawRegion(g,canvas_obj,{x:regi.x,y:regi.y,w:regi.w,h:regi.h},canvas_obj.rUtil.getIndicationLineSize()); 
+                let fontSize_eq=40/camMag;
+                if(fontSize_eq>40)fontSize_eq=40;
+                ctx.font = (fontSize_eq)+"px Arial";
+                ctx.fillText("idx:"+idx,regi.x,regi.y)
+
+              })
+            }
+
+
+          }
+
+          if(featureInfo.refine_match_regions!==undefined)
+          {            
+            if(featureInfo.refine_match_regions!==undefined)
+            {
+              featureInfo.refine_match_regions.forEach((regi:any,idx:number)=>{
+                
+                ctx.fillStyle = 
+                ctx.strokeStyle = "rgba(100,100, 200,0.8)";
+                
+            
+                drawRegion(g,canvas_obj,{x:regi.x,y:regi.y,w:regi.w,h:regi.h},canvas_obj.rUtil.getIndicationLineSize()); 
+                let fontSize_eq=40/camMag;
+                if(fontSize_eq>40)fontSize_eq=40;
+                ctx.font = (fontSize_eq)+"px Arial";
+                ctx.fillText("idx:"+idx,regi.x,regi.y)
+
+              })
+            }
+          }
+
 
         }
       }
@@ -3011,6 +3151,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
   _this.periodicTask=periodicCB;
 
   _this.TMP_NGInfoList=NGInfoList;
+  _this.perifConnState=perifConnState;
   useEffect(() => {//////////////////////
 
     (async ()=>{
@@ -3052,7 +3193,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             setLocal_IMCM(IMCM)
             let rep=RP.data;
             setDefReport(rep);
-            if(rep.report.category<=0)
+            if(rep.report.category<=0 && _this.perifConnState)
             {
               CNC_API.send_P({"type":"EM_STOP"})
               .then((ret)=>{
@@ -3072,7 +3213,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
                 // rep.report
                 console.log(rep.report.group_category,repAtStep)
 
-                let newNGInfo = rep.report.group_category.map((bad_ele:any,index:number)=>({location_mm:repAtStep*mmpstp+index*mmpstp,category:bad_ele.category})).filter((ele:any)=>ele.category<=0)
+                let newNGInfo = rep.report.group_category.map((bad_ele:any,index:number)=>({location_mm:-repAtStep*mmpstp+index*mmpstp,category:bad_ele.category})).filter((ele:any)=>ele.category<=0)
                 // console.log(newNGInfo,"mm")
 
                 setNGInfoList([..._this.TMP_NGInfoList,...newNGInfo])
@@ -3406,9 +3547,9 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             ctx.resetTransform();
             ctx.font = "20px Arial";
             ctx.fillStyle = "rgba(150,100, 100,0.5)";
-            
-            ctx.fillText("Result:"+defReport.report.category + " DIST:"+(reelStep*mmpstp)+"mm",20,150);
-            ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,180)
+            let Y=350;
+            ctx.fillText("Result:"+defReport.report.category + " DIST:"+(reelStep*mmpstp)+"mm",20,Y);
+            ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,Y+30)
 
             ctx.restore();
           }
@@ -3913,7 +4054,9 @@ function VIEWUI(){
       // }
 
       // console.log(id,inspTar)
-      await api.InspTargetCreate(inspTar);
+
+
+      await api.InspTargetCreate(inspTar,prjDef.path+"/it_"+inspTar.id);
 
       await api.InspTargetSetStreamChannelID(
         inspTar.id,inspTar.stream_id,

@@ -10,8 +10,8 @@ template<typename Base, typename T> inline bool instanceof(const T) {
    return is_base_of<Base, T>::value;
 }
 
-InspTar_WBar_SizeComp::InspTar_WBar_SizeComp(string id,cJSON* def,InspectionTargetManager* belongMan)
-  :InspectionTarget(id,def,belongMan)
+InspTar_WBar_SizeComp::InspTar_WBar_SizeComp(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+  :InspectionTarget(id,def,belongMan,local_env_path)
 {
   type=InspTar_WBar_SizeComp::TYPE();
   LOGI("sodkoskoskad;aks;dkas;dk");

@@ -649,9 +649,9 @@ export class BPG_WS
     return await this.send_P("IT",0,{type:"list"})
   }
   
-  async InspTargetCreate(defInfo:any)
+  async InspTargetCreate(defInfo:any,env_path:string)
   {
-    await this.send_P("IT",0,{type:"create",id:defInfo.id,defInfo})
+    await this.send_P("IT",0,{type:"create",id:defInfo.id,defInfo,env_path})
   }
   async InspTargetUpdate(defInfo:any)
   {

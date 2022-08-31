@@ -66,7 +66,7 @@ class InspectionTarget_TEST_IT :public InspectionTarget
   public:
   
   static std::string TYPE(){ return "TEST_IT"; }
-  InspectionTarget_TEST_IT(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan)
+  InspectionTarget_TEST_IT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):InspectionTarget(id,def,belongMan,local_env_path)
   {
   }
 
@@ -140,8 +140,8 @@ class InspectionTarget_TEST_IT :public InspectionTarget
 class InspectionTarget_ColorRegionDetection :public InspectionTarget
 {
 public:
-  InspectionTarget_ColorRegionDetection(std::string id,cJSON* def,InspectionTargetManager* belongMan)
-    :InspectionTarget(id,def,belongMan)
+  InspectionTarget_ColorRegionDetection(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+    :InspectionTarget(id,def,belongMan,local_env_path)
   {
     type=InspectionTarget_ColorRegionDetection::TYPE();
   }
@@ -560,7 +560,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget
   public:
   
   static std::string TYPE(){ return "DataTransfer"; }
-  InspectionTarget_DataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan),datTransferQueue(30),runThread(&InspectionTarget_DataTransfer::thread_run,this)
+  InspectionTarget_DataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):InspectionTarget(id,def,belongMan,local_env_path),datTransferQueue(30),runThread(&InspectionTarget_DataTransfer::thread_run,this)
   {
     realTimeDropFlag=-1;
   }
@@ -675,8 +675,8 @@ class InspectionTarget_StageInfoCollect_Base :public InspectionTarget
   public:
   
   static std::string TYPE(){ return "StageInfoCollect_Base"; }
-  InspectionTarget_StageInfoCollect_Base(std::string id,cJSON* def,InspectionTargetManager* belongMan):
-    InspectionTarget(id,def,belongMan)
+  InspectionTarget_StageInfoCollect_Base(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
+    InspectionTarget(id,def,belongMan,local_env_path)
   {
   }
   bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
@@ -799,8 +799,8 @@ class InspectionTarget_ReduceCategorize :public InspectionTarget_StageInfoCollec
   public:
 
   
-  InspectionTarget_ReduceCategorize(std::string id,cJSON* def,InspectionTargetManager* belongMan):
-    InspectionTarget_StageInfoCollect_Base(id,def,belongMan)
+  InspectionTarget_ReduceCategorize(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
+    InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path)
     {}
   static std::string TYPE(){ return "ReduceCategorize"; }
   void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
@@ -844,8 +844,8 @@ class InspectionTarget_GroupResultSave :public InspectionTarget_StageInfoCollect
   public:
 
   
-  InspectionTarget_GroupResultSave(std::string id,cJSON* def,InspectionTargetManager* belongMan):
-    InspectionTarget_StageInfoCollect_Base(id,def,belongMan),
+  InspectionTarget_GroupResultSave(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
+    InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path),
     datTransferQueue(10),runThread(&InspectionTarget_GroupResultSave::thread_run,this)
     {}
   static std::string TYPE(){ return "GroupResultSave"; }

@@ -110,6 +110,7 @@ class StageInfo;
 class InspectionTarget
 {
   protected:
+  std::string local_env_path;
   bool asService=false;
   shared_ptr<StageInfo> cache_stage_info=NULL;
   public:
@@ -126,7 +127,7 @@ class InspectionTarget
   
   static std::string TYPE(){ return "IT"; }
   // std::vector<StageInfo_CAT> acceptTags;
-  InspectionTarget(std::string id,cJSON* def,InspectionTargetManager* belongMan);
+  InspectionTarget(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
   
 
 
@@ -171,21 +172,6 @@ class InspectionTarget
   void additionalInfoAssign(std::string key,cJSON* info);
   virtual int processInputPool()=0; 
 };
-
-class InspectionTarget_PureImage: public InspectionTarget
-{
-  InspectionTarget_PureImage(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan)
-  {
-
-  }
-};
-class InspectionTarget_Locating: public InspectionTarget
-{
-  InspectionTarget_Locating(std::string id,cJSON* def,InspectionTargetManager* belongMan):InspectionTarget(id,def,belongMan)
-  {
-  }
-};
-
 
 
 class InspectionTargetManager

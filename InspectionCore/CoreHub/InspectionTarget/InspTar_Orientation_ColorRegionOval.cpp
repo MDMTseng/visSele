@@ -11,8 +11,8 @@ template<typename Base, typename T> inline bool instanceof(const T) {
    return is_base_of<Base, T>::value;
 }
 
-InspectionTarget_Orientation_ColorRegionOval::InspectionTarget_Orientation_ColorRegionOval(string id,cJSON* def,InspectionTargetManager* belongMan)
-  :InspectionTarget(id,def,belongMan)
+InspectionTarget_Orientation_ColorRegionOval::InspectionTarget_Orientation_ColorRegionOval(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+  :InspectionTarget(id,def,belongMan,local_env_path)
 {
   type=InspectionTarget_Orientation_ColorRegionOval::TYPE();
 }

@@ -28,7 +28,7 @@ using namespace std;
 class InspectionTarget_Orientation_ColorRegionOval :public InspectionTarget
 {
 public:
-  InspectionTarget_Orientation_ColorRegionOval(string id,cJSON* def,InspectionTargetManager* belongMan);
+  InspectionTarget_Orientation_ColorRegionOval(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
   static string TYPE(){ return "Orientation_ColorRegionOval"; }
   bool stageInfoFilter(shared_ptr<StageInfo> sinfo);
@@ -58,8 +58,15 @@ class InspectionTarget_Orientation_ShapeBasedMatching :public InspectionTarget
   line2Dup::TemplatePyramid insp_tp;
   float matching_downScale=0.5;
   string template_class_name="tNAME";
+
 public:
-  InspectionTarget_Orientation_ShapeBasedMatching(string id,cJSON* def,InspectionTargetManager* belongMan);
+
+  struct refine_region_info{
+    Mat img;
+    cv::Rect2d regionInRef;
+  };
+  vector<refine_region_info> refine_region_set;
+  InspectionTarget_Orientation_ShapeBasedMatching(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
   static string TYPE(){ return "Orientation_ShapeBasedMatching"; }
   bool stageInfoFilter(shared_ptr<StageInfo> sinfo);

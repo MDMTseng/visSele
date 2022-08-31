@@ -1418,6 +1418,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           break;
         }
 
+
+        std::string env_path = JFetch_STRING_ex(json, "env_path");
+
         InspectionTarget* inspTar=NULL;
         if(defInfo!=NULL)
         {
@@ -1428,38 +1431,38 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           LOGI(">>>id:%s Add type:%s",id.c_str(),type.c_str());
           if(type==InspectionTarget_ColorRegionDetection::TYPE())
           {
-            inspTar = new InspectionTarget_ColorRegionDetection(id,defInfo,&inspTarMan);
+            inspTar = new InspectionTarget_ColorRegionDetection(id,defInfo,&inspTarMan,env_path);
           }
           else if(type==InspectionTarget_TEST_IT::TYPE())
           {
-            inspTar = new InspectionTarget_TEST_IT(id,defInfo,&inspTarMan);
+            inspTar = new InspectionTarget_TEST_IT(id,defInfo,&inspTarMan,env_path);
           }
           else if(type==InspectionTarget_DataTransfer::TYPE())
           {
-            inspTar = new InspectionTarget_DataTransfer(id,defInfo,&inspTarMan);
+            inspTar = new InspectionTarget_DataTransfer(id,defInfo,&inspTarMan,env_path);
           }
           
           else if(type==InspectionTarget_ReduceCategorize::TYPE())
           {
-            inspTar = new InspectionTarget_ReduceCategorize(id,defInfo,&inspTarMan);
+            inspTar = new InspectionTarget_ReduceCategorize(id,defInfo,&inspTarMan,env_path);
           }
           
           else if(type==InspectionTarget_GroupResultSave::TYPE())
           {
-            inspTar = new InspectionTarget_GroupResultSave(id,defInfo,&inspTarMan);
+            inspTar = new InspectionTarget_GroupResultSave(id,defInfo,&inspTarMan,env_path);
           }
 
           else if(type==InspectionTarget_Orientation_ColorRegionOval::TYPE())
           {
-            inspTar = new InspectionTarget_Orientation_ColorRegionOval(id,defInfo,&inspTarMan);
+            inspTar = new InspectionTarget_Orientation_ColorRegionOval(id,defInfo,&inspTarMan,env_path);
           }
           else if(type==InspectionTarget_SurfaceCheckSimple::TYPE())
           {
-            inspTar = new InspectionTarget_SurfaceCheckSimple(id,defInfo,&inspTarMan);
+            inspTar = new InspectionTarget_SurfaceCheckSimple(id,defInfo,&inspTarMan,env_path);
           }
           else if(type==InspectionTarget_Orientation_ShapeBasedMatching::TYPE())
           {
-            inspTar = new InspectionTarget_Orientation_ShapeBasedMatching(id,defInfo,&inspTarMan);
+            inspTar = new InspectionTarget_Orientation_ShapeBasedMatching(id,defInfo,&inspTarMan,env_path);
           }
           else
           {
