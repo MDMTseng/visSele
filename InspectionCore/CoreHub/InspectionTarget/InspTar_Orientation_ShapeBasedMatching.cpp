@@ -496,7 +496,7 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
   // anchorPt.y+=5;
   // angleRad=12.000000*M_PI/180;
   // LOGI("original theta:%f",angleRad*180/M_PI);
-
+  
   vector<Point2f> initPts;
   vector<Point2f> initPts_temp;
   vector<Point2f> updatedPts;
@@ -668,28 +668,45 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
 
 
     double v_cos=(R.at<double>(0,0)+R.at<double>(1,1))/2;
+    R.at<double>(0,0)=R.at<double>(1,1)=v_cos;
     double v_sin=(R.at<double>(1,0)-R.at<double>(0,1))/2;
+    R.at<double>(1,0)=v_sin;
+    R.at<double>(0,1)=-v_sin;
+
+    cv::Point2f translate=cv::Point2f(R.at<double>(0,2),R.at<double>(1,2));//first Est
+
+    R.at<double>(0,2)=R.at<double>(1,2)=0;//set to zero, no translation
+
+    if(1){
+      std::vector<cv::Point2f> outputV;
+
+      transform(initPts_temp,outputV, R);
 
 
+      LOGI("pre-translate:%f,%f",translate.x,translate.y);      
+      cv::Point2f pt1={0};
+      cv::Point2f pt2={0};
+      for(int i=0;i<outputV.size();i++)
+      {
+        pt1+=updatedPts[i];
+        pt2+=outputV[i];
 
-    // std::vector<cv::Point2f> inputV;
-    // std::vector<cv::Point2f> outputV;
+        LOGI("[%d] pt1:%f,%f  pt2:%f,%f",i,updatedPts[i].x,updatedPts[i].y,outputV[i].x,outputV[i].y);
+      }
 
-    // cv::Point2f pt0={0};
-    // for(int i=0;i<regions_n_TempImgs.size();i++)
-    // {
-    //   pt0.x+=regions_n_TempImgs[i].regionInRef.x;
-    //   pt0.y+=regions_n_TempImgs[i].regionInRef.y;
-    // }
-    // pt0/=(float)regions_n_TempImgs.size();
-    // pt0+=anchorPt;
-
-    // inputV.push_back(pt0);
-    // inputV.push_back((cv::Point2f){pt0.x+1,pt0.y});//get offset
-    // transform(inputV,outputV, R);
+      translate=(pt1-pt2)/(float)outputV.size();
 
 
-    cv::Point2f translate=cv::Point2f(R.at<double>(0,2),R.at<double>(1,2));
+      for(int i=0;i<outputV.size();i++)
+      {
+        pt1=outputV[i]+translate-updatedPts[i];
+
+        LOGI(">%d] diff:%f,%f ",i,pt1.x,pt1.y);
+      }
+
+      LOGI("translate:%f,%f",translate.x,translate.y);
+    }
+
 
     float angle=atan2(v_sin,v_cos);
     LOGI("theta:%f",angle*180/M_PI);
