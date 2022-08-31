@@ -1956,6 +1956,12 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   this->sigRelativeMatchSimThres=0.8;
   this->sigMatchSimThres=0.9;
 
+  this->sigRelativeMatchSimThres=JFetch_NUMBER_ex(root, "sig_relative_match_sim_thres",0.8);
+  
+  this->sigMatchSimThres=JFetch_NUMBER_ex(root, "sig_match_sim_thres",0.9);
+
+  this->sig_st1_matching_sim_thres=JFetch_NUMBER_ex(root, "sig_st1_matching_sim_thres",0.3);
+
 
   {
     double *margin_deg = JFetch_NUMBER(root, "matching_angle_margin_deg");
@@ -4889,7 +4895,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
       float stage1Sim = meanRatio * sigmaRatio;
       LOGI("mR:%f  sR:%f stage1Sim:%f", meanRatio, sigmaRatio, stage1Sim);
-      if (meanRatio < 0.5 || stage1Sim < 0.2)
+      if (meanRatio < 0.5 || stage1Sim < sig_st1_matching_sim_thres)
         continue;
     }
 

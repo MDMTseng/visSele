@@ -1724,6 +1724,14 @@ class APP_INSP_MODE extends React.Component {
         deffile.featureSet[0].matching_angle_margin_deg=180;//By default, match whole round -180~180
         deffile.featureSet[0].matching_face=0;//By default, match two sides
 
+
+
+        // deffile.featureSet[0].sig_st1_matching_sim_thres=0.2;
+        // deffile.briThres=100;
+
+
+
+
         this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}
         , undefined,{ 
           resolve:insp_resolve, 

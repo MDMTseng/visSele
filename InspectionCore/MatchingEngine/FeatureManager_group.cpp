@@ -42,6 +42,8 @@ int FeatureManager_group_proto::parse_jobj()
   LOGI("type:<%s> ",type_str);
 
 
+  briThres=JFetch_NUMBER_ex(root,"briThres",80);
+
   cJSON *featureSetList = cJSON_GetObjectItem(root,"featureSet");
 
   if(featureSetList==NULL)
@@ -200,13 +202,14 @@ void labeledUpScale(acvImage *us_dst,acvImage *ds_src,int ds_Factor)
     }
   }
 }
+
 int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
 {
   report.bacpac=bacpac;
     error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
     binary_img.ReSize(img->GetWidth(),img->GetHeight());
-    acvThreshold(&binary_img,img, 80, 0);
+    acvThreshold(&binary_img,img, briThres, 0);
 
     int downScaleF=1;//
     acvImage *lableImg=&ds_binary_img;

@@ -22,6 +22,7 @@ protected:
   virtual int addSubFeature(cJSON * subFeature)=0;
   virtual int clearFeatureGroup()=0;
   int parse_jobj() override;
+  float briThres;
 };
 
 

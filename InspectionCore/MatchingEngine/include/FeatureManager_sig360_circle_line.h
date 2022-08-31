@@ -157,6 +157,8 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   float single_result_area_ratio;
 
 
+  float sig_st1_matching_sim_thres;
+
   //it's the relativesimilar thres  <= 1- min_error/cur_angle_error
   float sigRelativeMatchSimThres=0.9;
   //it's the absolute similar thres <= 1-normalized error = 1-error/sig.mean
