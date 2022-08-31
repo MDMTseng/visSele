@@ -1797,6 +1797,77 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
 
 
+        <br/>
+
+        { 
+          featureInfo.refine_match_regions===undefined?null:
+          featureInfo.refine_match_regions.map((regi:any,idx:number)=>
+            
+
+              
+            <Popconfirm
+                key={"regi_del_"+idx+"..."+updateC}
+                title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
+                onConfirm={()=>{}}
+                onCancel={()=>{}}
+                okButtonProps={{danger:true,onClick:()=>{
+                  if(delConfirmCounter!=0)
+                  {
+                    setDelConfirmCounter(delConfirmCounter-1);
+                  }
+                  else
+                  { 
+                    let new_refine_match_regions=[...featureInfo.refine_match_regions];
+
+                    new_refine_match_regions.splice(idx, 1);
+                    
+                    setFeatureInfo({...featureInfo,refine_match_regions:new_refine_match_regions})
+                    
+                  }
+                }}}
+                okText={"Yes:"+delConfirmCounter}
+                cancelText="No"
+              >
+              <Button danger type="primary" onClick={()=>{
+                setDelConfirmCounter(3);
+              }}>{idx}</Button>
+            </Popconfirm> 
+
+
+
+          )
+        }
+
+        <Button key={"AddRefineFeat"} onClick={()=>{
+
+
+      
+          if(_this.canvasComp==undefined)return;
+          _this.sel_region=undefined;
+          _this.canvasComp.UserRegionSelect((info:any,state:number)=>{
+            if(state==2)
+            {
+              console.log(info);
+              
+              let x,y,w,h;
+              
+              let roi_region=PtsToXYWH(info.pt1,info.pt2);
+              console.log(roi_region)
+              let regInfo = {...roi_region,isBlackRegion:false};
+              
+              let refine_match_regions=featureInfo.refine_match_regions===undefined?[]:[...featureInfo.refine_match_regions];
+
+              refine_match_regions.push(regInfo);
+              setFeatureInfo({...featureInfo,refine_match_regions})
+              
+              // onDefChange(newRule)
+              if(_this.canvasComp==undefined)return;
+              _this.canvasComp.UserRegionSelect(undefined)
+            }
+          })
+        }}>+校位範圍</Button>  
+
+
       </>
 
       break;
@@ -1809,8 +1880,15 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
       EDIT_UI=<>
         <Button danger type="primary" onClick={()=>{
+
           setEditState(EditState.Normal_Show)
         }}>{"<"}</Button>
+
+        <Button onClick={()=>{
+
+          onCacheDefChange(cacheDef,false);
+          BPG_API.InspTargetExchange(cacheDef.id,{type:"revisit_cache_stage_info"});
+        }}>ReCheck</Button>
 
         scaleD:
         <InputNumber value={cacheDef.matching_downScale}
@@ -1833,6 +1911,19 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
         onChange={(num)=>{
           setCacheDef({...cacheDef,magnitude_thres:num})
         }} />
+
+
+        
+        {" "}
+        校位下限(0~1):
+        <InputNumber min={0} max={1} value={cacheDef.refine_score_thres}
+          onChange={(num)=>{
+            setCacheDef({...cacheDef,refine_score_thres:num})
+        }} />
+
+        <Switch checkedChildren="強制" unCheckedChildren="盡力" checked={cacheDef.must_refine_result==true} onChange={(check)=>{
+          setCacheDef({...cacheDef,must_refine_result:check})
+        }}/>
 
         <br/>
 
@@ -1925,6 +2016,8 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
       // console.log(ctrl_or_draw);
 
       let ctx=g.ctx;
+
+      let camMag=canvas_obj.camera.GetCameraScale();
       if(ctrl_or_draw==true)//ctrl
       {
         if(canvas_obj.regionSelect!==undefined)
@@ -2065,6 +2158,8 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
         }
         else//draw
         {
+
+          let camMag=canvas_obj.camera.GetCameraScale();
           if(featureInfoExt.IM!==undefined)
           {
             g.ctx.save();
@@ -2078,6 +2173,9 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           
           if(featureInfo.templatePyramid!==undefined)
           {
+            if(canvas_obj.regionSelect===undefined)//when in region select, hide the template info
+            {
+
             let mult=1;
             for(let i=0;i<featureInfo.templatePyramid.length;i++,mult*=2)
             {
@@ -2089,7 +2187,48 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
                 canvas_obj.rUtil.drawCross(ctx, {x:(temp_pt.x+template.tl_x)*mult,y:(temp_pt.y+template.tl_y)*mult}, 12/mult);
               })
             }
+  
           }
+            if(featureInfo.mask_regions!==undefined)
+            {
+              featureInfo.mask_regions.forEach((regi:any,idx:number)=>{
+                
+                ctx.strokeStyle = 
+                ctx.fillStyle = "rgba(150,100, 100,0.8)";
+                
+            
+                drawRegion(g,canvas_obj,{x:regi.x,y:regi.y,w:regi.w,h:regi.h},canvas_obj.rUtil.getIndicationLineSize()); 
+                let fontSize_eq=40/camMag;
+                if(fontSize_eq>40)fontSize_eq=40;
+                ctx.font = (fontSize_eq)+"px Arial";
+                ctx.fillText("idx:"+idx,regi.x,regi.y)
+
+              })
+            }
+
+
+          }
+
+          if(featureInfo.refine_match_regions!==undefined)
+          {            
+            if(featureInfo.refine_match_regions!==undefined)
+            {
+              featureInfo.refine_match_regions.forEach((regi:any,idx:number)=>{
+                
+                ctx.fillStyle = 
+                ctx.strokeStyle = "rgba(100,100, 200,0.8)";
+                
+            
+                drawRegion(g,canvas_obj,{x:regi.x,y:regi.y,w:regi.w,h:regi.h},canvas_obj.rUtil.getIndicationLineSize()); 
+                let fontSize_eq=40/camMag;
+                if(fontSize_eq>40)fontSize_eq=40;
+                ctx.font = (fontSize_eq)+"px Arial";
+                ctx.fillText("idx:"+idx,regi.x,regi.y)
+
+              })
+            }
+          }
+
 
         }
       }

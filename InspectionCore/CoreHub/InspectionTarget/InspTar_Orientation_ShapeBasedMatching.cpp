@@ -1044,7 +1044,12 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
     float refine_score=0;
     float refinedAngleRad=templ[0].angle*M_PI/180;
 
-    if(0)
+    double refine_score_thres=JFetch_NUMBER_ex(def,"refine_score_thres",0.5);
+    bool must_refine_result=JFetch_TRUE(def,"must_refine_result");
+
+    
+    LOGI("refine_score_thres:%f must_refine_result:%d",refine_score_thres,must_refine_result);
+    if(refine_region_set.size()>0 && refine_score_thres>0)
     {
       float tmpAngle=refinedAngleRad;
       cv::Point2f tmp_anchorPt=anchorPt;
@@ -1053,7 +1058,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
       refine_score = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt,tmpAngle,0.2);
       
       // if(refine_score>0.3)
-      if(0)
+      if(1)//further refine
       {
         LOGI("[%d]-----refine_score:%f",i,refine_score);
         auto tmp_anchorPt2=tmp_anchorPt;
@@ -1065,25 +1070,32 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
         {
           DBG_C=i;
           refine_score2 = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt2,tmpAngle2,0.2,&refine_block_count);
+
+          LOGI("[%d]-----refine_score2:%f",i,refine_score2);
+          if(refine_score<=refine_score2)
+          {
+            refine_score=refine_score2;
+            tmpAngle=tmpAngle2;
+            tmp_anchorPt=tmp_anchorPt2;
+          }
+          else
+          {
+            break;//early stop
+          }
         }
 
-        LOGI("[%d]-----refine_score2:%f",i,refine_score2);
-        if(refine_score<=refine_score2)
-        {
-          refine_score=refine_score2;
-          tmpAngle=tmpAngle2;
-          tmp_anchorPt=tmp_anchorPt2;
-        }
       }
-      LOGI("[%d]----------refine_score:%f",i,refine_score);
+
+      LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
       LOGI(" %f =>  %f",refinedAngleRad*180/M_PI,tmpAngle*180/M_PI);
       LOGI(" %f,%f  =>  %f,%f",anchorPt.x,anchorPt.y,tmp_anchorPt.x,tmp_anchorPt.y);
-      if(refine_score>0.4)
+
+      if(refine_score>refine_score_thres)
       {//accept the refinement
         refinedAngleRad=tmpAngle;
         anchorPt=tmp_anchorPt;
       }
-      else//for regional search, that needs to give yes/no answer
+      else if(must_refine_result==true)//for regional search, that needs to give yes/no answer
       {
 
         StageInfo_Orientation::orient orie;
@@ -1101,6 +1113,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
         // match.similarity=0.1;
       }
     }
+    if(refine_score>0.999)refine_score=0.999;
 
 
     StageInfo_Orientation::orient orie;
@@ -1108,7 +1121,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
     orie.angle=refinedAngleRad;
     orie.flip=hasEnding(match.class_id,"_f");
     orie.center={anchorPt.x,anchorPt.y};
-    orie.confidence=match.similarity;
+    orie.confidence=round(match.similarity)+refine_score;//HACK to store refine info
 
     reportInfo->orientation.push_back(orie);
 
