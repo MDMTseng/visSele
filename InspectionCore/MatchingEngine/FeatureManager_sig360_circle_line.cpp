@@ -4889,7 +4889,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
       float stage1Sim = meanRatio * sigmaRatio;
       LOGI("mR:%f  sR:%f stage1Sim:%f", meanRatio, sigmaRatio, stage1Sim);
-      if (meanRatio < 0.8 || stage1Sim < 0.5)
+      if (meanRatio < 0.5 || stage1Sim < 0.2)
         continue;
     }
 
