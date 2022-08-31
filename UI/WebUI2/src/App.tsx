@@ -1704,19 +1704,19 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
         }}>Templ</Button>  
 
-        Feats:
-        <InputNumber value={cacheDef.num_features}
+        特徵數:
+        <InputNumber  min={10} value={cacheDef.num_features}
         onChange={(num)=>{
           setCacheDef({...cacheDef,num_features:num})
         }} />
 
 
-        EdgeStrong:
+        圖像邊緣強度:
         <InputNumber value={featureInfo.strong_thresh}
         onChange={(num)=>{
           setFeatureInfo({...featureInfo,strong_thresh:num})
         }} />
-        EdgeWeak:
+        特徵強度:
         <InputNumber value={featureInfo.weak_thresh}
         onChange={(num)=>{
           setFeatureInfo({...featureInfo,weak_thresh:num})
@@ -2088,9 +2088,9 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
             defReport.report.forEach((match:any,idx:number)=>{
               
               if(match.confidence<=0)return;
-              ctx.lineWidth=4;
+              ctx.lineWidth=4/camMag;
               ctx.strokeStyle = `HSLA(0, 100%, 50%,1)`;
-              canvas_obj.rUtil.drawCross(ctx, {x:match.center.x,y:match.center.y}, 12);
+              canvas_obj.rUtil.drawCross(ctx, {x:match.center.x,y:match.center.y}, 12/camMag);
               
               let angle = match.angle;
 
@@ -2098,12 +2098,13 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
               ctx.fillStyle = "rgba(150,100, 100,0.8)";
               ctx.fillText("idx:"+idx,match.center.x,match.center.y-40)
               ctx.font = "20px Arial";
-              ctx.fillText("ang:"+(angle*180/3.14159).toFixed(0),match.center.x,match.center.y-20)
-              ctx.fillText("sim:"+match.confidence.toFixed(1),match.center.x,match.center.y-0)
+              ctx.fillText("ang:"+(angle*180/3.14159).toFixed(2),match.center.x,match.center.y-20)
+              ctx.fillText("sim:"+match.confidence.toFixed(3),match.center.x,match.center.y-0)
 
 
               
 
+              ctx.lineWidth=4/camMag;
               let vec=PtRotate2d({x:100,y:0},angle,1);
               canvas_obj.rUtil.drawLine(ctx,{x1:match.center.x,y1:match.center.y,x2:match.center.x+vec.x,y2:match.center.y+vec.y})
 
@@ -3546,9 +3547,9 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             ctx.resetTransform();
             ctx.font = "20px Arial";
             ctx.fillStyle = "rgba(150,100, 100,0.5)";
-            
-            ctx.fillText("Result:"+defReport.report.category + " DIST:"+(reelStep*mmpstp)+"mm",20,150);
-            ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,180)
+            let Y=350;
+            ctx.fillText("Result:"+defReport.report.category + " DIST:"+(reelStep*mmpstp)+"mm",20,Y);
+            ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,Y+30)
 
             ctx.restore();
           }
