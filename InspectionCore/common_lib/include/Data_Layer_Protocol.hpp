@@ -33,7 +33,7 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   int ask_JsonRaw_version();
   int rsp_JsonRaw_version();
   int send_RESET();
-  int RESET()
+  virtual int RESET()
   {
     sprintf((char*)dataBuff,"");
     buffIdx=0;
@@ -44,6 +44,7 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
     rawRECVL=0;
     recvType=RTYPE::INIT;
     errorCode=ERROR_TYPE::NONE;
+    return 0;
   }
 
 
