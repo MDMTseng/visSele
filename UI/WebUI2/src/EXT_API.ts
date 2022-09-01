@@ -101,14 +101,6 @@ export class BPG_WS
               reject:(...arg:any[])=>console.error(arg),
               resolve:(...arg:any[])=>console.log(arg),
             })
-
-          this.send( "LD", 0, { filename: "data/default_camera_param.json"},
-            undefined, 
-            {reject:(...arg:any[])=>console.error(arg),
-              resolve: (data) => {
-              console.log(data);
-          }});
-
           // comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "HR", 0, { a: ["d"] });
           break;
         }
@@ -773,13 +765,15 @@ export class  GenPerif_API
   }
 
 
-  protected _onDisconnected()
+  _onDisconnected()
   {
+    this.trackingWindow=new Map();
     this.onDisconnected();
   }
   
-  protected _onConnected()
+  _onConnected()
   {
+    this.trackingWindow=new Map();
     this.onConnected();
   }
 
@@ -908,12 +902,12 @@ export class  GenPerif_API
             case "DISCONNECT":
               this.CONN_ID=undefined;
               this.cleanUpConnection();
-              this.onDisconnected();  
+              this._onDisconnected();  
               this.isConnected=false;
               break;
             case "CONNECT":
               this.CONN_ID=PD_data.CONN_ID;
-              this.onConnected();
+              this._onConnected();
 
               if(this.machineSetup!==undefined)
               {
@@ -938,12 +932,15 @@ export class  GenPerif_API
         this.inReconnection=false;
         this.cleanUpConnection();
         console.log(e);
-        this.onDisconnected();
+        this._onDisconnected();
         
       }
     });
   }
-
+  disconnect()
+  {
+    //TODO
+  }
   checkReConnection()
   {
     // console.log(this.connInfo,this.connected,this.inReconnection);
@@ -995,6 +992,7 @@ export class  GenPerif_API
       //time to disconnect
       this.PINGCount=0; 
       this.isConnected=false;
+      this.CONN_ID=undefined;
       // this.machineSetup=undefined;
       this.connect(this.connInfo);
       return;
@@ -1078,46 +1076,11 @@ export class  GenPerif_API
 
 export class CNC_Perif extends GenPerif_API
 {
-  gcodeSeq:string[]
-  isSendWaiting:boolean
   constructor(id:string,pg_id_channel:number)
   {
     super(id,pg_id_channel);
-    this.gcodeSeq=[]
-    this.isSendWaiting=false
   }
 
-  
-  KickSendGCodeQ()
-  {
-    if(this.isSendWaiting==true || this.gcodeSeq.length==0)
-    {
-      return;
-    }
-    const gcode = this.gcodeSeq.shift();
-    if(gcode==undefined || gcode==null)return;
-    this.isSendWaiting=true;
-
-    this.send({"type":"GCODE","code":gcode},
-      (ret)=>{
-        console.log(ret)
-        this.isSendWaiting=false;
-        this.KickSendGCodeQ();
-      },(e)=>console.log(e));
-  }
-
-
-  protected _onDisconnected()
-  {
-    this.gcodeSeq=[];
-    this.isSendWaiting=false;
-    this.onDisconnected();
-  }
-  
-  protected _onConnected()
-  {
-    this.onConnected();
-  }
 }
 
 
