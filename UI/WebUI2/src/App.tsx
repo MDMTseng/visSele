@@ -3661,7 +3661,8 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
       await api.CameraTriggerInfoMocking(camSetupInfo.id);
 
 
-      await api.CameraSetup(camSetupInfo,0);
+      // await api.CameraSetup(camSetupInfo,0);
+      onCameraSetupUpdate(camSetupInfo);
     })()
 
     return ()=>{
@@ -4365,11 +4366,10 @@ function VIEWUI(){
                   console.log(ncam)
                   updater(ncam);
                   (async function(){
-                    let api =BPG_API
                     console.log(ncam);
                     let trigMode=ncam.trigger_mode;
                    
-                    await api.CameraSetup(ncam,trigMode);
+                    await BPG_API.CameraSetup({...ncam,frame_rate:5},trigMode);
                   })()
                   
 
