@@ -31,6 +31,12 @@ import { type_CameraInfo,type_IMCM} from './AppTypes';
 import './basic.css';
 
 
+enum EDIT_PERMIT_FLAG {
+  XXFLAGXX=1<<0
+}
+
+
+
 type IMCM_type=
 {
   camera_id:string,
@@ -111,6 +117,7 @@ type CompParam_InspTarUI =   {
   style?:any,
   stream_id:number,
   fsPath:string,
+  EditPermitFlag:number,
   width:number,height:number,
   renderHook:((ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,rule:any)=>void)|undefined,
   // IMCM_group:IMCM_group,
@@ -360,7 +367,7 @@ function ColorRegionDetection_SingleRegion({srule,onDefChange,canvas_obj}:
 
 
 
-function SingleTargetVIEWUI_ColorRegionDetection({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
+function SingleTargetVIEWUI_ColorRegionDetection({display,stream_id,fsPath,width,height,EditPermitFlag,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
     imgCanvas:document.createElement('canvas'),
@@ -1210,7 +1217,7 @@ function rgb2hsv (r:number, g:number, b:number) {
   return [h * 180,s * 255,v * 255];
 }
 
-function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
+function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,EditPermitFlag,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
     imgCanvas:document.createElement('canvas'),
@@ -1475,57 +1482,13 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
 
       let EditUI=null;
-      if(true)//allow edit
+      if( (EditPermitFlag&EDIT_PERMIT_FLAG.XXFLAGXX)!=0 )//allow edit
       {
         EditUI=<>
-        <Button onClick={()=>{
           
-          setEditState( EditState.Feature_Edit);
-
-        }}>編輯特徵</Button>
-        <Button  onClick={()=>{
-          
-          setEditState( EditState.Search_Region_Edit);
-
-        }}>編輯搜尋範圍</Button>
-        </>
-      }
-
-      EDIT_UI=<>
-        
-        <Input maxLength={100} value={cacheDef.id} 
-          style={{width:"100px"}}
-          onChange={(e)=>{
-            console.log(e.target.value);
-
-            let newDef={...cacheDef};
-            newDef.id=e.target.value;
-            onCacheDefChange(newDef,false)
 
 
-          }}/>
-
-        <Input maxLength={100} value={cacheDef.type} disabled
-          style={{width:"100px"}}
-          onChange={(e)=>{
-            
-          }}/>
-
-        <Input maxLength={100} value={cacheDef.sampleImageFolder}  disabled
-          style={{width:"100px"}}
-          onChange={(e)=>{
-          }}/>
-
-
-        <Input maxLength={100} value={cacheDef.trigger_tag} 
-          style={{width:"100px"}}
-          onChange={(e)=>{
-            let newDef={...cacheDef};
-            newDef.trigger_tag=e.target.value;
-            onCacheDefChange(newDef,false)
-        }}/>
-
-        <Popconfirm
+          <Popconfirm
             title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
             onConfirm={()=>{}}
             onCancel={()=>{}}
@@ -1546,18 +1509,26 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
             setDelConfirmCounter(5);
           }}>DEL</Button>
         </Popconfirm> 
-        <br/>
+
+
+        <TagsEdit_DropDown tags={cacheDef.trigger_tags}
+          onTagsChange={(newTags)=>{
+            
+            onCacheDefChange({...cacheDef,trigger_tags:newTags},false)
+          }}>
+          <a>TAGS</a>
+        </TagsEdit_DropDown>
+
         <Button onClick={()=>{
           onCacheDefChange(cacheDef,true);
         }}>SHOT</Button>
 
-
+            
         <Button onClick={()=>{
           BPG_API.InspTargetExchange(cacheDef.id,{type:"revisit_cache_stage_info"});
         }}>SHOT2</Button>
 
 
-        
               
         <Popconfirm key={"SAVE feat ref image "+updateC}
             title={`確定要儲存此圖為特徵參考圖？ 再按:${delConfirmCounter+1}次`}
@@ -1611,6 +1582,37 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
         <Button onClick={()=>{
           onDefChange(cacheDef,true)
         }}>Commit</Button>
+        <Button onClick={()=>{
+          
+          setEditState( EditState.Feature_Edit);
+
+        }}>編輯特徵</Button>
+        <Button  onClick={()=>{
+          
+          setEditState( EditState.Search_Region_Edit);
+
+        }}>編輯搜尋範圍</Button>
+        </>
+      }
+
+      EDIT_UI=<>
+        
+        <Input maxLength={100} value={cacheDef.id} disabled
+          style={{width:"300px"}}
+          onChange={(e)=>{
+          }}/>
+        {/* 
+        <Input maxLength={100} value={cacheDef.type} disabled
+          style={{width:"100px"}}
+          onChange={(e)=>{
+          }}/>
+
+        <Input maxLength={100} value={cacheDef.sampleImageFolder}  disabled
+          style={{width:"100px"}}
+          onChange={(e)=>{
+          }}/> */}
+
+
 
         {EditUI}
 
@@ -3002,6 +3004,76 @@ function SurfaceCheckSimple_EDIT_UI({def,onDefChange,canvas_obj}:
 
 }
 
+  
+function TagsEdit_DropDown({tags,onTagsChange,children}:{tags:string[],onTagsChange:(tags:string[]) => void,children: React.ReactChild })
+{
+  const [visible, _setVisible] = useState(false);
+  const [newTagTxt, setNewTagTxt] = useState("");
+
+
+  const [tagDelInfo, setTagDelInfo] = useState({tarTag:"",countdown:0});
+
+
+  function setVisible(enable:boolean)
+  {
+    setTagDelInfo({...tagDelInfo,tarTag:""});
+    _setVisible(enable);
+  }
+
+  let isNewTagTxtDuplicated = tags.find(tag=>tag==newTagTxt)!=undefined;
+  return <Dropdown   onVisibleChange={setVisible} visible={visible}
+      overlay={<Menu>
+        {
+          [...tags.map((tag:string,index:number)=>(
+          <Menu.Item key={tag+"_"+index} 
+            onClick={()=>{
+              if(tagDelInfo.tarTag!=tag)
+              {
+                setTagDelInfo({
+                  tarTag:tag,
+                  countdown:3
+                });
+                return;
+              }
+
+              if(tagDelInfo.countdown>0)
+              {
+                setTagDelInfo({...tagDelInfo,countdown:tagDelInfo.countdown-1});
+                return;
+              }
+
+              let newList=[...tags]
+              newList.splice(index, 1);
+              onTagsChange(newList);
+              }}>
+              {tag+((tagDelInfo.tarTag!=tag)?"":("   cd:"+tagDelInfo.countdown))}
+          </Menu.Item>)),
+
+          <Menu.Item key={"ADD"} 
+          onClick={(e)=>{
+          }}>
+
+          <Input maxLength={100} value={newTagTxt} status={isNewTagTxtDuplicated?"error":undefined}
+            onChange={(e)=>{
+              setNewTagTxt(e.target.value);
+            }}
+            onPressEnter={(e)=>{
+              if(isNewTagTxtDuplicated==false)
+              {
+                onTagsChange([...tags,newTagTxt]);
+                setNewTagTxt("");
+              }
+          }}/>
+
+          </Menu.Item>
+        ]
+        }
+      </Menu>}
+    >
+      {children}
+    </Dropdown>
+
+}
 
 const CAT_ID_NAME={
   "0":"NA",
@@ -3010,7 +3082,7 @@ const CAT_ID_NAME={
   "-40000":"空"
 }
 const mmpstp=4;
-function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
+function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,height,EditPermitFlag,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
     imgCanvas:document.createElement('canvas'),
@@ -3090,12 +3162,8 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
     
 
     (async ()=>{
+      console.log(">>>");
       await BPG_API.InspTargetUpdate(updatedDef)
-      
-      // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
-     
-      // await BPG_API.CameraSWTrigger("Hikrobot-00F71598890","TTT",4433)
-      // await BPG_API.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890","TTT",4433)
 
     })()
     
@@ -3111,23 +3179,30 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
       // console.log(  CNC_API.isConnected)
       if(CNC_API.isConnected!=perifConnState)
         setPerifConnState(CNC_API.isConnected);
-      let ret = await CNC_API.send_P({"type":"GET_CUR_STEP_COUNTER"}) as any
 
-      if(ret.step!=reelStep)
+      // if(CNC_API.isConnected)
       {
-        setReelStep(ret.step)
-        _this.stepQueryTime=200;
-      }
-      else
-      {
-        _this.stepQueryTime+=50;
-        if(_this.stepQueryTime>1000)
-          _this.stepQueryTime=1000;
+
+        // console.log("SEND....")
+        let ret = await CNC_API.send_P({"type":"GET_CUR_STEP_COUNTER"}) as any
+        // console.log(ret)
+        if(ret.step!=reelStep)
+        {
+          setReelStep(ret.step)
+          _this.stepQueryTime=200;
+        }
+        else
+        {
+          _this.stepQueryTime+=50;
+          if(_this.stepQueryTime>1000)
+            _this.stepQueryTime=1000;
+        }
       }
 
     })()
     .catch((e)=>{
 
+      // console.log(e)
       if(_this.periodicTask_HDL!==undefined)
       {
         window.clearTimeout(_this.periodicTask_HDL);
@@ -3286,21 +3361,12 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
 
 
       let EditUI=null;
+
+      if( (EditPermitFlag&EDIT_PERMIT_FLAG.XXFLAGXX)!=0 )//allow edit
+      {
       EDIT_UI=<>
         
-        <Input maxLength={100} value={cacheDef.id} 
-          style={{width:"100px"}}
-          onChange={(e)=>{
-            console.log(e.target.value);
-
-            let newDef={...cacheDef};
-            newDef.id=e.target.value;
-            onCacheDefChange(newDef,false)
-
-
-          }}/>
-
-        <Input maxLength={100} value={cacheDef.type} disabled
+        {/* <Input maxLength={100} value={cacheDef.type} disabled
           style={{width:"100px"}}
           onChange={(e)=>{
             
@@ -3309,19 +3375,21 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
         <Input maxLength={100} value={cacheDef.sampleImageFolder}  disabled
           style={{width:"100px"}}
           onChange={(e)=>{
-          }}/>
+          }}/> */}
 
 
 
 
+        <TagsEdit_DropDown tags={cacheDef.trigger_tags}
+          onTagsChange={(newTags)=>{
+            
+            onCacheDefChange({...cacheDef,trigger_tags:newTags},false)
+          }}>
+          <a>TAGS</a>
+        </TagsEdit_DropDown>
 
-        <Input maxLength={100} value={cacheDef.trigger_tag} 
-          style={{width:"100px"}}
-          onChange={(e)=>{
-            let newDef={...cacheDef};
-            newDef.trigger_tag=e.target.value;
-            onCacheDefChange(newDef,false)
-        }}/>
+
+
 
         <Popconfirm
             title={`確定要刪除？ 再按:${delConfirmCounter+1}次`}
@@ -3357,7 +3425,17 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
         <Button onClick={()=>{
           onDefChange(cacheDef,true)
         }}>SAVE</Button>
+        </>
+      }
 
+
+      EDIT_UI=<>
+        
+        <Input maxLength={300} value={cacheDef.id} disabled
+          style={{width:"300px"}}
+          onChange={(e)=>{
+          }}/>
+        {EDIT_UI}
         {"  "}
         {
           (perifConnState)?<>        
@@ -3830,7 +3908,7 @@ function InspTargetUI_MUX(param:CompParam_InspTarUI)
 }
 
 
-function TargetViewUIShow({displayIDList,defConfig,onDefChange,renderHook}:{displayIDList:string[],defConfig:any, onDefChange:(updatedDef:any)=>void,renderHook:any})
+function TargetViewUIShow({displayIDList,defConfig,EditPermitFlag,onDefChange,renderHook}:{displayIDList:string[],defConfig:any,EditPermitFlag:number, onDefChange:(updatedDef:any)=>void,renderHook:any})
 {
   let InspTarList=defConfig.InspTars_main;
   let displayInspTarIdx:number[]=[];
@@ -3876,6 +3954,7 @@ function TargetViewUIShow({displayIDList,defConfig,onDefChange,renderHook}:{disp
         height={100} 
         stream_id={50120}
         style={{float:"left"}} 
+        EditPermitFlag={EditPermitFlag}
         key={inspTar.id} 
         def={inspTar} 
         report={undefined} 
@@ -4144,6 +4223,7 @@ function VIEWUI(){
   const [crunIdx,setCRunIdx]=useState(-1);
   const [crunInfo,setCRunInfo]=useState("");
   const [crunAbortCtrl,setCRunAbortCtrl]=useState<AbortController|undefined>(undefined);
+  const [editPermitFlag,setEditPermitFlag]=useState<number>(0);
 
   function menuCol(
     label: React.ReactNode,
@@ -4700,11 +4780,10 @@ function VIEWUI(){
   </div>
 
 
-  let siderUI=
+  let siderUI=(editPermitFlag&EDIT_PERMIT_FLAG.XXFLAGXX)==0?null:
   <Sider width={siderBaseSize+extSizerSize}>
   {baseSiderTabs}
   {extSiderTabs}
-
   </Sider>
     
 
@@ -4715,14 +4794,26 @@ function VIEWUI(){
     <Header style={{ width: '100%' }}>
 
     <Menu theme="dark" mode="horizontal" selectable={false}>
+        <Menu.Item key="SHOW_EDIT" onClick={()=>{
+          // if(editPermitFlag&EDIT_PERMIT_FLAG.XXFLAGXX)
+          // {
+          // }
+          
+          setEditPermitFlag(editPermitFlag^EDIT_PERMIT_FLAG.XXFLAGXX)
+        }}>EDIT_LEVEL {editPermitFlag}</Menu.Item>
+        {
+          (editPermitFlag&EDIT_PERMIT_FLAG.XXFLAGXX)==0?null:<>
         <Menu.Item key="1" onClick={()=>{
-
-
           BPG_API.CameraClearTriggerInfo();
-        }}>Calib_Param_Edit</Menu.Item>
+            }}>ClearTriggerInfo</Menu.Item>
+    
         <Menu.Item key="2" onClick={()=>{
           SavePrjDef(_DEF_FOLDER_PATH_,defConfig);
         }}>SAVE</Menu.Item>
+          </>
+        }
+
+
     </Menu>
     
 
@@ -4756,7 +4847,10 @@ function VIEWUI(){
     } */}
     { 
     (defConfig===undefined)?"WAIT": 
-      <TargetViewUIShow displayIDList={displayInspTarId} defConfig={defConfig}  onDefChange={(newdef:any)=>{setDefConfig(newdef)}}  renderHook={_this.listCMD_Vairable.renderHook}/>}
+      <TargetViewUIShow displayIDList={displayInspTarId} defConfig={defConfig} EditPermitFlag={editPermitFlag}  onDefChange={(newdef:any)=>{
+        console.log(newdef);
+        setDefConfig(newdef)
+        }}  renderHook={_this.listCMD_Vairable.renderHook}/>}
     </Content>
   
     </Layout>
