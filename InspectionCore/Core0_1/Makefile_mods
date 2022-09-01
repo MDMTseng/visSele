@@ -1,11 +1,18 @@
+OS := $(shell uname)
+ARCH :=$(shell uname -m)
 
-ifeq ($(OS)$(CC),Windows_NTcc)
+$(info =================OS:$(OS)  $(findstring MINGW64, $(OS)))
+ifeq ($(findstring MINGW64, $(OS)),MINGW64)
 	export platform=win_x64
 	FLAGS+= -static -static-libgcc -static-libstdc++ -lws2_32
+else ifeq ($(OS)_$(ARCH),Darwin_arm64)
+	LIBS+= -lz 
+	export platform=mac_arm64
 else
 	LIBS+= -lz 
 	export platform=mac_x64
 endif
+
 
 
 
@@ -111,6 +118,13 @@ ifeq ($(OS)$(CC),Windows_NTcc)
 	FLAGS+= -D_MINGW -D_WINDOWS
 	FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=1
 	FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=1
+else ifeq ($(platform),mac_arm64)
+	FLAGS+=  -std=c++11
+	EXT_OBJS+=
+	FEATURE_COMPILE_W_ARAVIS=1
+	
+	# FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=1
+	# FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=1
 else
 	FLAGS+=  -std=c++11
 	EXT_OBJS+=
