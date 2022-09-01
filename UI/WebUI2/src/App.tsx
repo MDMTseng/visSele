@@ -4066,7 +4066,11 @@ function VIEWUI(){
         })
       }
     }
-
+    CNC_API.disconnect();
+    if(main.PeripheralInfo && main.PeripheralInfo.connection_info)
+    {
+      CNC_API.connect(main.PeripheralInfo.connection_info);
+    }
 
 
     let XCmds=await  api.FILE_Load( PrjDefFolderPath+"/XCmds.json");
@@ -4915,11 +4919,11 @@ function App() {
     core_api.onConnected=()=>{
       ACT_EXT_API_CONNECTED(CORE_ID);
 
-      CNC_api.connect({
-        // uart_name:"/dev/cu.SLAB_USBtoUART",
-        uart_name:"/dev/cu.usbserial-0001",
-        baudrate:460800//230400//115200
-      });
+      // CNC_api.connect({
+      //   // uart_name:"/dev/cu.SLAB_USBtoUART",
+      //   uart_name:"/dev/cu.usbserial-0001",
+      //   baudrate:460800//230400//115200
+      // });
     }
 
     // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
