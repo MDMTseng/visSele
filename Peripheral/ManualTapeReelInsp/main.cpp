@@ -37,6 +37,15 @@ bool O_FlashLight_ON=true;
 bool O_EM_STOP_ON=true;
 bool I_Enc_Inv=true;
 
+const int I_POS_RERADY_PIN = 19;
+bool I_POS_RERADY_PIN_ON = true;
+bool I_POS_RERADY_WARN_ENABLE = false;
+
+const int I_PIN_4 = 23;//In 1,2,3,4
+
+// const int I_ = 18;
+// bool I_Enc_Inv=true;
+
 // twoGateSense tGS;
 int g_act_trigger_type=0;//0 for timer trigger, 1 for counter trigger
 int g_flash_on_time=0;//from object detected how long to flash
@@ -78,6 +87,9 @@ void genMachineSetup(JsonDocument &jdoc)
   jdoc["O_FlashLight_ON"]=O_FlashLight_ON;
   jdoc["O_EM_STOP_ON"]=O_EM_STOP_ON;
   jdoc["I_Enc_Inv"]=I_Enc_Inv;
+  jdoc["I_POS_RERADY_WARN_ENABLE"]=I_POS_RERADY_WARN_ENABLE;
+  jdoc["I_POS_RERADY_PIN_ON"]=I_POS_RERADY_PIN_ON;
+
 
 
   jdoc["trig_camera_id"]=std::string(CAM_ID_BUFF);
@@ -98,6 +110,8 @@ void setMachineSetup(JsonDocument &jdoc)
   JSON_SETIF_ABLE(O_FlashLight_ON,jdoc,"O_FlashLight_ON");
   JSON_SETIF_ABLE(O_EM_STOP_ON,jdoc,"O_EM_STOP_ON");
   JSON_SETIF_ABLE(I_Enc_Inv,jdoc,"I_Enc_Inv");
+  JSON_SETIF_ABLE(I_POS_RERADY_WARN_ENABLE,jdoc,"I_POS_RERADY_WARN_ENABLE");
+  JSON_SETIF_ABLE(I_POS_RERADY_PIN_ON,jdoc,"I_POS_RERADY_PIN_ON");
 
 
   if(jdoc["trig_camera_id"].is<std::string>()  )
@@ -702,4 +716,45 @@ void loop()
   //   last_count=count;
   //   delay(100);
   // }
+
+  {
+    static unsigned long lastms_POS_RERADY_WARN = 0;
+    static bool prev_ready_state = 0;
+    if(I_POS_RERADY_WARN_ENABLE)
+    {
+      auto cur_ms = millis();
+      if(cur_ms-lastms_POS_RERADY_WARN>1000)//every 1000ms
+      {
+        lastms_POS_RERADY_WARN=cur_ms;
+        if(digitalRead(I_POS_RERADY_PIN)==I_POS_RERADY_PIN_ON )//ready
+        {
+          if(prev_ready_state==0)
+          {//release
+
+            digitalWrite(O_EM_STOP, !O_EM_STOP_ON);
+          }
+          prev_ready_state=1;
+
+        }
+        else//not ready
+        {
+
+          digitalWrite(O_EM_STOP, O_EM_STOP_ON);
+          prev_ready_state=0;
+        }
+
+      }
+      //const int I_POS_RERADY_PIN = 19;
+      // bool I_POS_RERADY_PIN_ON = true;
+      // bool I_POS_RERADY_PIN_ENABLE = false;
+    }
+    else
+    {
+      if(prev_ready_state==0)
+      {//release
+        digitalWrite(O_EM_STOP, !O_EM_STOP_ON);
+      }
+      prev_ready_state=1;
+    }
+  }
 }
