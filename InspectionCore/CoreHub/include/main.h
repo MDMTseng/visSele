@@ -142,10 +142,12 @@ class PerifChannel:public Data_JsonRaw_Layer
   int recv_RESET()
   {
     // printf("Get recv_RESET\n");
+    return 0;
   }
   int recv_ERROR(ERROR_TYPE errorcode)
   {
     // printf("Get recv_ERROR:%d\n",errorcode);
+    return 0;
   }
   
   void connected(Data_Layer_IF* ch){

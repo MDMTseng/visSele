@@ -589,7 +589,7 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
     float offsetThres=margin-1;
     levelXPt.x-=margin;
     levelXPt.y-=margin;
-    LOGI("[%d]:matchResult:%f offset:%f,%f",i,matchResult,levelXPt.x,levelXPt.y);
+    // LOGI("[%d]:matchResult:%f offset:%f,%f",i,matchResult,levelXPt.x,levelXPt.y);
     if(matchResult!=matchResult || matchResult<minAcceptedScore ||levelXPt.x<-offsetThres || levelXPt.x>offsetThres || levelXPt.y<-offsetThres || levelXPt.y>offsetThres)
     {
       levelXPt.x=levelXPt.y=NAN;
@@ -663,7 +663,7 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
   {
     cv::Mat R = estimateAffine2D(initPts_temp,updatedPts);
 
-    cout << "M = " << endl << " "  << R << endl << endl;
+    // cout << "M = " << endl << " "  << R << endl << endl;
 
 
 
@@ -683,7 +683,7 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
       transform(initPts_temp,outputV, R);
 
 
-      LOGI("pre-translate:%f,%f",translate.x,translate.y);      
+      // LOGI("pre-translate:%f,%f",translate.x,translate.y);      
       cv::Point2f pt1={0};
       cv::Point2f pt2={0};
       for(int i=0;i<outputV.size();i++)
@@ -691,7 +691,7 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
         pt1+=updatedPts[i];
         pt2+=outputV[i];
 
-        LOGI("[%d] pt1:%f,%f  pt2:%f,%f",i,updatedPts[i].x,updatedPts[i].y,outputV[i].x,outputV[i].y);
+        // LOGI("[%d] pt1:%f,%f  pt2:%f,%f",i,updatedPts[i].x,updatedPts[i].y,outputV[i].x,outputV[i].y);
       }
 
       translate=(pt1-pt2)/(float)outputV.size();
@@ -701,15 +701,15 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
       {
         pt1=outputV[i]+translate-updatedPts[i];
 
-        LOGI(">%d] diff:%f,%f ",i,pt1.x,pt1.y);
+        // LOGI(">%d] diff:%f,%f ",i,pt1.x,pt1.y);
       }
 
-      LOGI("translate:%f,%f",translate.x,translate.y);
+      // LOGI("translate:%f,%f",translate.x,translate.y);
     }
 
 
     float angle=atan2(v_sin,v_cos);
-    LOGI("theta:%f",angle*180/M_PI);
+    // LOGI("theta:%f",angle*180/M_PI);
     angleRad=angle;
 
     anchorPt=translate;
@@ -1066,6 +1066,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
     
     LOGI("refine_score_thres:%f must_refine_result:%d",refine_score_thres,must_refine_result);
+    int refineCount=2;
     if(refine_region_set.size()>0 && refine_score_thres>0)
     {
       float tmpAngle=refinedAngleRad;
@@ -1083,12 +1084,12 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
         int refine_block_count=0;
         float refine_score2;
 
-        for(int i=1;i<3;i++)
+        for(int i=1;i<refineCount;i++)
         {
           DBG_C=i;
           refine_score2 = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt2,tmpAngle2,0.2,&refine_block_count);
 
-          LOGI("[%d]-----refine_score2:%f",i,refine_score2);
+          LOGI("[%d]-----refine_score:%f",i,refine_score2);
           if(refine_score<=refine_score2)
           {
             refine_score=refine_score2;
@@ -1104,8 +1105,8 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
       }
 
       LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
-      LOGI(" %f =>  %f",refinedAngleRad*180/M_PI,tmpAngle*180/M_PI);
-      LOGI(" %f,%f  =>  %f,%f",anchorPt.x,anchorPt.y,tmp_anchorPt.x,tmp_anchorPt.y);
+      // LOGI(" %f =>  %f",refinedAngleRad*180/M_PI,tmpAngle*180/M_PI);
+      LOGI(" %f,%f, a:%f  =>  %f,%f a:%f ",anchorPt.x,anchorPt.y,refinedAngleRad*180/M_PI,tmp_anchorPt.x,tmp_anchorPt.y,tmpAngle*180/M_PI);
 
       if(refine_score>refine_score_thres)
       {//accept the refinement
