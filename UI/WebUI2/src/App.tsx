@@ -1567,16 +1567,31 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
         <Button onClick={()=>{
              (async ()=>{
-
+              let name="OK_"+Date.now()+".png";
               let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
                 type:"cache_image_save",
                 folder_path:fsPath+"/",
-                image_name:"_"+Date.now()+".png",
+                image_name:name,
               }) as any[];
               console.log(pkts);
+              message.info(`${name} 儲存結束`);
   
             })()
-        }}>SAVE IMAGE</Button>
+        }}>SOK IMG</Button>
+        <Button onClick={()=>{
+             (async ()=>{
+
+              let name="NG_"+Date.now()+".png";
+              let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
+                type:"cache_image_save",
+                folder_path:fsPath+"/",
+                image_name:"NG_"+Date.now()+".png",
+              }) as any[];
+              console.log(pkts);
+              message.info(`${name} 儲存結束`);
+  
+            })()
+        }}>SNG IMG</Button>
 
 
         <Button onClick={()=>{

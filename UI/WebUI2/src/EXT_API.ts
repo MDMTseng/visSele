@@ -850,6 +850,7 @@ export class  GenPerif_API
         console.log("get setup failed:",ret);
         return;
       }
+      console.log(ret);
       delete ret["type"];
       delete ret["id"];
       delete ret["st"];
