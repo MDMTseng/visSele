@@ -4884,8 +4884,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     // acvSaveBitmapFile("FFKFKJDK3.BMP", labeledBuff);
     // exit(-1);
     tmp_signature.CalcInfo();
-
+  
     { //early intercept just to check mean and sigma
+
+      LOGI("mCur:%f  mFea:%f",tmp_signature.mean, feature_signature.mean);
       float meanRatio = tmp_signature.mean / feature_signature.mean;
       if (meanRatio > 1)
         meanRatio = 1 / meanRatio;
