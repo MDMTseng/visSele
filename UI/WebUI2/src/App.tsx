@@ -3096,7 +3096,8 @@ const CAT_ID_NAME={
   "-1":"NG",
   "-40000":"空"
 }
-const mmpstp=4;
+const _MM_P_STP_=4;
+const _OBJ_SEP_DIST_=4;
 function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,height,EditPermitFlag,style=undefined,renderHook,def,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
@@ -3120,6 +3121,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
 
   const [defReport,setDefReport]=useState<any>(undefined);
   const [NGInfoList,setNGInfoList]=useState<{location_mm:number,category:number}[]>([]);
+  const [latestRepStepCount,setLatestRepStepCount]=useState(0);
   const [reelStep,setReelStep]=useState<number>(0);
 
   const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
@@ -3299,13 +3301,13 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
               if(repAtStepTag!==undefined)
               {
                 let repAtStep=parseInt(repAtStepTag.replace('s_Step_',''));
-
                 // rep.report
                 console.log(rep.report.group_category,repAtStep)
 
-                let newNGInfo = rep.report.group_category.map((bad_ele:any,index:number)=>({location_mm:-repAtStep*mmpstp+index*mmpstp,category:bad_ele.category})).filter((ele:any)=>ele.category<=0)
+                let newNGInfo = rep.report.group_category.map((bad_ele:any,index:number)=>({location_mm:-repAtStep*_MM_P_STP_+index*_MM_P_STP_,category:bad_ele.category})).filter((ele:any)=>ele.category<=0)
                 // console.log(newNGInfo,"mm")
 
+                setLatestRepStepCount(repAtStep);
                 setNGInfoList([..._this.TMP_NGInfoList,...newNGInfo])
               }
             
@@ -3509,7 +3511,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
               let newList=[...NGInfoList]
               newList.splice(index, 1);
               setNGInfoList(newList);
-            }}>{nginfo.location_mm+reelStep*mmpstp+"mm ["+CAT_ID_NAME[nginfo.category+""]+"]"}</Button>
+            }}>{((nginfo.location_mm+reelStep*_MM_P_STP_)/_OBJ_SEP_DIST_)+"顆 ["+CAT_ID_NAME[nginfo.category+""]+"]"}</Button>
           )
         }
 
@@ -3641,7 +3643,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             ctx.font = "20px Arial";
             ctx.fillStyle = "rgba(150,100, 100,0.5)";
             let Y=350;
-            ctx.fillText("Result:"+defReport.report.category + " DIST:"+(reelStep*mmpstp)+"mm",20,Y);
+            ctx.fillText("Result:"+defReport.report.category + " DIST:"+(reelStep*_MM_P_STP_/_OBJ_SEP_DIST_)+"顆",20,Y);
             ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,Y+30)
 
             ctx.restore();
@@ -3651,7 +3653,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             // console.log(catInfo,cacheDef);
             
 
-            let TextY=20;
+            let TextY=15;
 
             
             ctx.font = TextY+"px Arial";
@@ -3660,7 +3662,11 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             else
               ctx.fillStyle = "rgba(255, 0, 0,1)";
 
-            ctx.fillText(CAT_ID_NAME[catInfo.category+""],cacheDef.W*index,0+TextY+5)
+            
+              
+
+            let curOffset=(reelStep*_MM_P_STP_-latestRepStepCount*_OBJ_SEP_DIST_+index*_MM_P_STP_)/_OBJ_SEP_DIST_;
+            ctx.fillText(CAT_ID_NAME[catInfo.category+""]+" "+curOffset+"顆",cacheDef.W*index,0+TextY+5)
 
             ctx.font = (TextY*0.7).toFixed(2)+"px Arial";
             ctx.fillText(catInfo.score,cacheDef.W*index,0+TextY+TextY+5)
