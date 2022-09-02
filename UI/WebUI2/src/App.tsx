@@ -4069,6 +4069,8 @@ function VIEWUI(){
     CNC_API.disconnect();
     if(main.PeripheralInfo && main.PeripheralInfo.connection_info)
     {
+      CNC_API.machineSetup=main.PeripheralInfo.machine_setup;
+
       CNC_API.connect(main.PeripheralInfo.connection_info);
     }
 

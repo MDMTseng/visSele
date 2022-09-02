@@ -10,12 +10,12 @@
 // #define __PRT_I_(...) Serial.printf("I:" __VA_ARGS__)
 #define __PRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
 
-const char *ModuleVer="0.0.1";
+const char *ModuleVer="0.1";
 
-const char *ModuleType="ManualTapeReelInsp";
+const char *ModuleModelName="ManualTapeReelInsp";
 
 
-char CAM_NAME_BUFF[100]="Hikrobot-2BDF92938639-00F92938639";
+char CAM_ID_BUFF[100]="Hikrobot-2BDF92938639-00F92938639";
 
 
 const int O_LEDPin = 2;
@@ -73,16 +73,14 @@ void genMachineSetup(JsonDocument &jdoc)
   jdoc["flash_on_time"]=g_flash_on_time;
   jdoc["cam_trig_time"]=g_cam_trig_time;
   jdoc["flash_off_time"]=g_flash_off_time;
-  // jdoc["pulse_sep_min"]=g_pulse_sep_min;
-  // jdoc["pulse_width_min"]=g_pulse_width_min;
-  // jdoc["pulse_width_max"]=g_pulse_width_max;
-  // jdoc["pulse_debounce_high"]=g_pulse_debounce_high;
-  // jdoc["pulse_debounce_low"]=g_pulse_debounce_low;
 
   jdoc["O_CameraPin_ON"]=O_CameraPin_ON;
   jdoc["O_FlashLight_ON"]=O_FlashLight_ON;
   jdoc["O_EM_STOP_ON"]=O_EM_STOP_ON;
   jdoc["I_Enc_Inv"]=I_Enc_Inv;
+
+
+  jdoc["trig_camera_id"]=std::string(CAM_ID_BUFF);
 
 }
 
@@ -95,17 +93,18 @@ void setMachineSetup(JsonDocument &jdoc)
   JSON_SETIF_ABLE(g_flash_on_time,jdoc,"flash_on_time");
   JSON_SETIF_ABLE(g_cam_trig_time,jdoc,"cam_trig_time");
   JSON_SETIF_ABLE(g_flash_off_time,jdoc,"flash_off_time");
-  // JSON_SETIF_ABLE(g_pulse_sep_min,jdoc,"pulse_sep_min");
-  // JSON_SETIF_ABLE(g_pulse_width_min,jdoc,"pulse_width_min");
-  // JSON_SETIF_ABLE(g_pulse_width_max,jdoc,"pulse_width_max");
-  // JSON_SETIF_ABLE(g_pulse_debounce_high,jdoc,"pulse_debounce_high");
-  // JSON_SETIF_ABLE(g_pulse_debounce_low,jdoc,"pulse_debounce_low");
-
 
   JSON_SETIF_ABLE(O_CameraPin_ON,jdoc,"O_CameraPin_ON");
   JSON_SETIF_ABLE(O_FlashLight_ON,jdoc,"O_FlashLight_ON");
   JSON_SETIF_ABLE(O_EM_STOP_ON,jdoc,"O_EM_STOP_ON");
   JSON_SETIF_ABLE(I_Enc_Inv,jdoc,"I_Enc_Inv");
+
+
+  if(jdoc["trig_camera_id"].is<std::string>()  )
+  {
+    std::string trig_camera_id= jdoc["trig_camera_id"];
+    strcpy(CAM_ID_BUFF,trig_camera_id.c_str());
+  }
 
 }
 
@@ -199,7 +198,7 @@ void IRAM_ATTR onTimer()
     {
       struct triggerInfo tinfo;
       tinfo.step=lastestCount;
-      tinfo.p_camera_id=CAM_NAME_BUFF;
+      tinfo.p_camera_id=CAM_ID_BUFF;
       *(triggerInfoQ.getHead())=tinfo;
       triggerInfoQ.pushHead();
       timerRunStage=20;
@@ -379,9 +378,8 @@ class MData_uInsp:public Data_JsonRaw_Layer
       else if(strcmp(type,"get_setup")==0)
       {
 
-        retdoc["type"]="get_setup";
         retdoc["ver"]=ModuleVer;
-        retdoc["type"]=ModuleType;
+        retdoc["model"]=ModuleModelName;
         genMachineSetup(retdoc);
 
         
@@ -525,7 +523,7 @@ class MData_uInsp:public Data_JsonRaw_Layer
         if(doc["camera_id"].is<std::string>())
         {
           std::string camera_id=doc["camera_id"];
-          strcpy(CAM_NAME_BUFF,camera_id.c_str());
+          strcpy(CAM_ID_BUFF,camera_id.c_str());
           
           rspAck=true;
         }
