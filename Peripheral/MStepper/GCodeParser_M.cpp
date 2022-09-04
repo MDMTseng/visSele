@@ -64,6 +64,7 @@ int GCodeParser_M::ReadxVecData(char **blkIdxes,int blkIdxesL,xVec &retVec)
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_X,AXIS_GDX_X);
 
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Y,AXIS_GDX_Y);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z,AXIS_GDX_Z);
 
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z1,AXIS_GDX_Z1);
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R1,AXIS_GDX_R1);
@@ -91,6 +92,10 @@ int axisGDX2IDX(char *GDXCode,int fallback=-1)
   else if(CheckHead(GDXCode,AXIS_GDX_Y))
   {
     return AXIS_IDX_Y;
+  }
+  else if(CheckHead(GDXCode,AXIS_GDX_Z))
+  {
+    return AXIS_IDX_Z;
   }
 
   else if(CheckHead(GDXCode,AXIS_GDX_Z1))
@@ -156,6 +161,7 @@ const char* axisIDX2GDX(int IDXCode)
 
     case AXIS_IDX_X:return AXIS_GDX_X;
     case AXIS_IDX_Y:return AXIS_GDX_Y;
+    case AXIS_IDX_Z:return AXIS_GDX_Z;
     case AXIS_IDX_Z1:return AXIS_GDX_Z1;
     case AXIS_IDX_R1:return AXIS_GDX_R1;
     case AXIS_IDX_Z2:return AXIS_GDX_Z2;
@@ -339,13 +345,6 @@ float GCodeParser_M::MTPSYS_getMinPulseSpeed()
 bool GCodeParser_M::MTPSYS_AddWait(uint32_t period_ms,int times, void* ctx,MSTP_segment_extra_info *exinfo)
 {
   return _mstp->AddWait(period_ms,times,ctx,exinfo);
-}
-
-
-bool GCodeParser_M::MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T)
-{
-
-  return false;
 }
 
 
@@ -559,12 +558,30 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         if(FindInt32("P",blockInitial+j,blockCount-j,P)!=0)P=-1;
         if(FindInt32("S",blockInitial+j,blockCount-j,S)!=0)S=-1;
         if(FindInt32("T",blockInitial+j,blockCount-j,T)!=0)T=-1;
+        
 
-
-        __PRT_D_("M42 I%d P%d S%d T%d\n",I,P,S,T);
-        if(P>=0)
+        char *CID_Ptr=NULL;;
+        char CID_BUF[50];
+        if(FindStr("CID_",blockInitial+j,blockCount-j,CID_BUF)==0)
         {
-          retStatus=MTPSYS_AddIOState(I,P,S,T)==true?
+          CID_Ptr=CID_BUF;
+        }
+        char *TTAG_Ptr=NULL;
+        char TTAG_BUF[50];
+        if(FindStr("TTAG_",blockInitial+j,blockCount-j,TTAG_BUF)==0)
+        {
+          TTAG_Ptr=TTAG_BUF;
+        }
+
+        int TID;
+        if(FindInt32("TID_",blockInitial+j,blockCount-j,TID)!=0)TID=-1;
+
+
+
+        __PRT_D_("M42 I%d P%d S%d T%d CID:%s TTAG:%s\n",I,P,S,T,CID_Ptr,TTAG_Ptr);
+        if(CID_Ptr!=NULL || P>=0)
+        {
+          retStatus=MTPSYS_AddIOState(I,P,S,T,CID_Ptr,TTAG_Ptr,TID)==true?
             statusReducer(retStatus,GCodeParser_Status::TASK_OK):
             statusReducer(retStatus,GCodeParser_Status::TASK_FAILED);
         } 

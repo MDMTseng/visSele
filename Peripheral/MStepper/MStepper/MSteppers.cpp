@@ -1502,12 +1502,15 @@ uint32_t MStp::taskRun()
         }
         else
         {
-          xVec vec0=(xVec){0};//general reset
           p_runSeg->cur_step=0;
           BlockInitEffect(p_runSeg);
-          vecAssign(curPos_mod,vec0);
+          curPos_mod=(xVec){0};
           // vecAssign(curPos_residue,vec0);
           // vecAssign(posvec,vec0);
+          if(MSTP_segment_type::seg_line==p_runSeg->type)
+          {
+            axis_dir=p_runSeg->dir_bit;
+          }
         }
       }
 
