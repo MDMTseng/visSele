@@ -386,7 +386,7 @@ class MStp_M:public MStp{
 
         delay(10);
         
-        if(runUntil(axisIdx,sensor_pin,!sensorDetectVLvl,-distance/2,runSpeed,&retHitPos)!=0)
+        if(runUntil(axisIdx,sensor_pin,!sensorDetectVLvl,-distance/2,runSpeed/10,&retHitPos)!=0)
         {
           return -1;
         }
