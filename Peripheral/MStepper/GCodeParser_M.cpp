@@ -487,8 +487,8 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       {
         __PRT_D_("G28 GO HOME!!!:");
         int retErr=0;
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_X,PIN_X_SEN1,unit2Pulse_conv(AXIS_IDX_X,-2000),5*MTPSYS_getMinPulseSpeed(),NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,PIN_Y_SEN1,unit2Pulse_conv(AXIS_IDX_Y,-2000),5*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_X,PIN_X_SEN1,unit2Pulse_conv(AXIS_IDX_X,-2000),20*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,PIN_Y_SEN1,unit2Pulse_conv(AXIS_IDX_Y,-2000),20*MTPSYS_getMinPulseSpeed(),NULL);
         
         // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
         // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z2,PIN_Z2_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
