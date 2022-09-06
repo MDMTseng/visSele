@@ -1601,6 +1601,7 @@ uint32_t MStp::taskRun()
           }
           __PRT_D_("blk_wait:::Go wait:%d\n",p_runSeg->step_period);
           p_runSeg->cur_step++;
+          setTimer(p_runSeg->step_period);
           return p_runSeg->step_period;
         break;
 
