@@ -81,8 +81,8 @@ int pin_TRIG_595=5;
 
 
 
-#define SUBDIV (800)
-#define mm_PER_REV 10
+#define SUBDIV (5000)
+#define mm_PER_REV 100
 
 spi_device_handle_t spi1=NULL;
 
@@ -660,7 +660,6 @@ StaticJsonDocument<1024> recv_doc;
 StaticJsonDocument<1024> ret_doc;
 
 
-uint32_t xendpos=4700*SUBDIV/mm_PER_REV;
 
 void vecToWait(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL)
 {
@@ -699,8 +698,8 @@ public:
     switch(axisIdx)
     {
       case AXIS_IDX_X:
-      case AXIS_IDX_Y:
       case AXIS_IDX_Z:return unit2Pulse(1*dist,SUBDIV/mm_PER_REV);//-1 for reverse the direction
+      case AXIS_IDX_Y:return unit2Pulse(-1*dist,SUBDIV/mm_PER_REV);
       
       case AXIS_IDX_FEEDRATE:
       case AXIS_IDX_ACCELERATION:
