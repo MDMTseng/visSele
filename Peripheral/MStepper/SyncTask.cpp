@@ -166,18 +166,18 @@ class MStp_M:public MStp{
     int general_max_freq=100000;
     axisInfo[AXIS_IDX_X].VirtualStep=1;
     axisInfo[AXIS_IDX_X].AccW=1;
-    axisInfo[AXIS_IDX_X].MaxSpeedJumpW=2;
+    axisInfo[AXIS_IDX_X].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_X].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_Y].VirtualStep=1;
+    axisInfo[AXIS_IDX_Y].VirtualStep=1.5;
     axisInfo[AXIS_IDX_Y].AccW=1;
-    axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=2;
+    axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_Y].MaxSpeed=general_max_freq;
 
 
     axisInfo[AXIS_IDX_Z].VirtualStep=1;
     axisInfo[AXIS_IDX_Z].AccW=1;
-    axisInfo[AXIS_IDX_Z].MaxSpeedJumpW=2;
+    axisInfo[AXIS_IDX_Z].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_Z].MaxSpeed=general_max_freq;
 
     auto mainAXIS_VSTEP=axisInfo[AXIS_IDX_Y].VirtualStep;
@@ -247,7 +247,7 @@ class MStp_M:public MStp{
 
     ShiftRegAssign(0,0);
     ShiftRegUpdate();
-    
+
 
     endstopPins_normalState=0xff;
     endstopPins=0xff;
@@ -585,12 +585,12 @@ class MStp_M:public MStp{
     gpio_set_level((gpio_num_t) pin_SH_165, 0);//switch to load(165 keeps load pin to internal reg)
     if(shiftRegAssignedCount==1)
     {
-    latest_input_pins=spi1->host->hw->data_buf[0];
+      latest_input_pins=spi1->host->hw->data_buf[0];
       if(runUntil_ExtPIN!=-1)//in zeroing state
-    {
-      if(runUntilDetected(latest_input_pins)==true)//if reaches, do not let 595 update pins, to prevent further movement
-        return;
-    }
+      {
+        if(runUntilDetected(latest_input_pins)==true)//if reaches, do not let 595 update pins, to prevent further movement
+          return;
+      }
       else
       {//or check end stop hit
         if(endStopDetection)
@@ -849,7 +849,7 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
   if(recv_data)
     dbg_printf("recv_ERROR:%d %s dat:%s",errorcode,dataBuff,string((char*)recv_data,0,9).c_str());
   else 
-  dbg_printf("recv_ERROR:%d %s",errorcode,dataBuff);
+    dbg_printf("recv_ERROR:%d %s",errorcode,dataBuff);
 }
 
 int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
