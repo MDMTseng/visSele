@@ -633,7 +633,7 @@ MSTP_SEG_PREFIX MSTP_segment* MStp::SegQ_Head(int idx) MSTP_SEG_PREFIX
 }
 bool MStp::SegQ_Head_Push() MSTP_SEG_PREFIX
 {
-  if(SegQ_IsFull())return false;
+  if(SegQ_IsFull() || endStopHitLock)return false;
   int newIdx=(segBufHeadIdx+1)%segBufL;
   segBufHeadIdx=newIdx;
   return true;

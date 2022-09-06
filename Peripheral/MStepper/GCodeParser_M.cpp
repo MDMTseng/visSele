@@ -634,6 +634,37 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           }
         }
       }
+      else if(CheckHead(cblk, "M119"))//input (includes Endstop) States as integer (state are in binary form)
+      {
+
+        if(p_jnote)
+        {
+          auto &jnote=*p_jnote;
+          auto jobjRet = jnote.createNestedObject("M119");
+
+          jobjRet["state"]=_mstp->latest_input_pins;
+          jobjRet["last_hit"]=_mstp->endstopPins_hit;
+          jobjRet["lock"]=_mstp->endStopHitLock;
+          jobjRet["in_detection"]=_mstp->endStopDetection;
+
+          jobjRet["endstop_pins"]=_mstp->endstopPins;
+          jobjRet["endstop_pins_ns"]=_mstp->endstopPins_normalState;
+          retStatus=GCodeParser_Status::TASK_OK;
+        }
+
+
+      }
+      else if(CheckHead(cblk, "M120"))//enable end stop
+      {
+        _mstp->endStopDetection=true;
+      }
+      else if(CheckHead(cblk, "M121"))//disable end stop
+      {
+        _mstp->endStopDetection=false;
+        _mstp->endStopHitLock=false;
+        _mstp->endstopPins_hit=0;
+        
+      }
       else if(false && CheckHead(cblk, "M226"))//Wait for Pin State,M226 P<pin> [S<state>] [T<timeout>]
       {//TODO
       }

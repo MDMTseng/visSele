@@ -248,6 +248,10 @@ class MStp_M:public MStp{
     ShiftRegAssign(0,0);
     ShiftRegUpdate();
     
+
+    endstopPins_normalState=0xff;
+    endstopPins=0xff;
+    
   }
 
 
@@ -544,7 +548,7 @@ class MStp_M:public MStp{
   uint32_t latest_stp_pins=0;//info that really on pins
   uint32_t latest_dir_pins=0;
 
-  
+  int shiftRegAssignedCount=0;//the count hs to be 1 in order to get correct input data
   void ShiftRegAssign(uint32_t dir,uint32_t step)
   {
     _latest_stp_pins=step;
@@ -557,29 +561,62 @@ class MStp_M:public MStp{
     gpio_set_level((gpio_num_t) pin_SH_165, 1);//switch to keep in 165 register(stop 165 load pin to reg)
     gpio_set_level((gpio_num_t) pin_TRIG_595, 0);//
     direct_spi_transfer(spi1,32);
+    shiftRegAssignedCount++;
     //send_SPI(portPins);
   }
   
+
+
+  bool isEndStopHit(uint32_t inputPins)
+  {
+    auto endStopPinHit= (inputPins^endstopPins_normalState) & endstopPins;
+    if( endStopPinHit )
+    {
+      endstopPins_hit=inputPins;
+      return true;
+    }
+    return false;
+  }
 
   void ShiftRegUpdate()
   {
     static_Pin_update_needed=false;//will
     while (direct_spi_in_use(spi1));//wait for SPI bus available
     gpio_set_level((gpio_num_t) pin_SH_165, 0);//switch to load(165 keeps load pin to internal reg)
+    if(shiftRegAssignedCount==1)
+    {
     latest_input_pins=spi1->host->hw->data_buf[0];
-    // if(latest_input_pins&(1<<PIN_X_SEN1))
-    // {
-    //   // gpio_set_level((gpio_num_t)PIN_LED, 1);
-    // }
-    // else
-    // {
-    // }
-    if(runUntil_ExtPIN!=-1)
+      if(runUntil_ExtPIN!=-1)//in zeroing state
     {
       if(runUntilDetected(latest_input_pins)==true)//if reaches, do not let 595 update pins, to prevent further movement
         return;
     }
+      else
+      {//or check end stop hit
+        if(endStopDetection)
+        {
+          if(endStopHitLock || isEndStopHit(latest_input_pins))
+          {
+            if(endStopHitLock==false)
+            {
+              
+              StepperForceStop();
+            }
+            endStopHitLock=true;
+          }
+        }
 
+        if( endStopHitLock )
+        {
+          //hit.... em stop
+          endStopHitLock=true;
+          return;
+        }
+      }
+    }
+
+
+    shiftRegAssignedCount=0;
     gpio_set_level((gpio_num_t) pin_TRIG_595, 1);//trigger 595 internal register update to 959 phy pin
     
     latest_stp_pins=_latest_stp_pins;
@@ -593,7 +630,6 @@ class MStp_M:public MStp{
   }
   
   
-  uint32_t latest_input_pins=0;
   void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)
   {
     ShiftRegUpdate();
