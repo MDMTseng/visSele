@@ -36,7 +36,7 @@ class MData_JR:public Data_JsonRaw_Layer
   {
     doDataLog=false;
   } 
-  int recv_ERROR(ERROR_TYPE errorcode);
+  int recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0);
   char gcodewait_gcode[100];
   int gcodewait_id=-1;
   
@@ -800,7 +800,7 @@ GCodeParser_M2 gcpm(&mstp);
 StaticJsonDocument <500>doc;
 StaticJsonDocument  <500>retdoc;
 
-int MData_JR::recv_ERROR(ERROR_TYPE errorcode)
+int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
 {
   for(int i=0;i<buffIdx;i++)
   {
@@ -810,7 +810,9 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode)
   dataBuff[buffIdx]='\0';
   doDataLog=true;
 
-
+  if(recv_data)
+    dbg_printf("recv_ERROR:%d %s dat:%s",errorcode,dataBuff,string((char*)recv_data,0,9).c_str());
+  else 
   dbg_printf("recv_ERROR:%d %s",errorcode,dataBuff);
 }
 

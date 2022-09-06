@@ -70,7 +70,7 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   int recv_data(uint8_t *data,int len, bool is_a_packet=false);
   
   virtual int recv_RESET()=0;
-  virtual int recv_ERROR(ERROR_TYPE errorcode)=0;
+  virtual int recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0)=0;
   
   // int send_data(int head_room,uint8_t *data,int len,int leg_room)
   // {
