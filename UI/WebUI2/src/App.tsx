@@ -2877,6 +2877,7 @@ function SurfaceCheckSimple_EDIT_UI({def,onDefChange,canvas_obj}:
     },
     colorThres:10,
     resultOverlayAlpha:0,
+    img_order_reverse:false,
 
     ...def
   }
@@ -2936,6 +2937,12 @@ function SurfaceCheckSimple_EDIT_UI({def,onDefChange,canvas_obj}:
       onDefChange(ObjShellingAssign(def_Filled,["resultOverlayAlpha"],v));
     },()=>_this.trigTO=undefined,500);
 
+    }}/>
+
+    
+    圖序反轉:
+    <Switch checkedChildren="左至右" unCheckedChildren="右至左" checked={def_Filled.img_order_reverse==true} onChange={(check)=>{
+      onDefChange(ObjShellingAssign(def_Filled,["img_order_reverse"],check));
     }}/>
 
     <br/>HSV
@@ -3543,8 +3550,8 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
       break;
   }
   
-
-  
+  let img_order_reverse= cacheDef.img_order_reverse===true;
+  // console.log("img_order_reverse:"+img_order_reverse) 
   return <div style={{...style,width:width+"%",height:height+"%"}}  className={"overlayCon"}>
 
     <div className={"overlay"} >
@@ -3649,10 +3656,12 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             ctx.restore();
           }
           
-          defReport.report.group_category.forEach((catInfo:any,index:number)=>{
+          let g_cat=defReport.report.group_category;
+          g_cat.forEach((catInfo:any,_index:number)=>{
             // console.log(catInfo,cacheDef);
             
 
+            let index=img_order_reverse?(g_cat.length-1-_index):_index;
             let TextY=15;
 
             
