@@ -398,7 +398,7 @@ class MStp_M:public MStp{
         }
         _ZERO_DBG_COUNTER=30;
 
-        delay(10);
+        delay(100);
         
         if(runUntil(axisIdx,sensor_pin,!sensorDetectVLvl,-distance/2,runSpeed/100,&retHitPos)!=0)
         {
