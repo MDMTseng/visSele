@@ -608,10 +608,16 @@ class MStp_M:public MStp{
           {
             if(endStopHitLock==false)
             {
+              endStopHitLock=true;
               
+              struct triggerInfo tinfo={.isTrigInfo=false,.log="End_stop hit, EM STOP...."};
+
+              triggerInfo* Qhead=NULL;
+              while( (Qhead=triggerInfoQ.getHead()) ==NULL);
+              *Qhead=tinfo;
+              triggerInfoQ.pushHead();
               StepperForceStop();
             }
-            endStopHitLock=true;
           }
         }
 
@@ -805,11 +811,14 @@ public:
   bool MTPSYS_AddWait(uint32_t period_ms,int times, void* ctx,MSTP_segment_extra_info *exinfo)
   {
     uint32_t waitTick=((int64_t)period_ms*_mstp->TICK2SEC_BASE)/1000;
-    while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
-    {
-      yield();
-    }
-    return true;
+
+    // G_LOG("in MTPSYS_AddWait");
+    // while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
+    // {
+    //   yield();
+    // }
+    // return true;
+    return _mstp->AddWait(waitTick,times,ctx,exinfo);
   }
 
   bool MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T,char* CID,char* TTAG,int TID)
@@ -853,7 +862,7 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
       dataBuff[i]='\'';
   }  
   dataBuff[buffIdx]='\0';
-  doDataLog=true;
+  // doDataLog=true;
 
   if(recv_data)
     dbg_printf("recv_ERROR:%d %s dat:%s",errorcode,dataBuff,string((char*)recv_data,0,9).c_str());
@@ -1242,14 +1251,13 @@ void loop()
   }
 
 
-  int curTrigQSize=triggerInfoQ.size();
   {
     uint8_t buff[700];
     retdoc.clear();
-    while(curTrigQSize)
+    int curTrigQSize;
+    while(0!=(curTrigQSize=triggerInfoQ.size()))
     {
       triggerInfo info=*triggerInfoQ.getTail();
-      triggerInfoQ.consumeTail();
       // retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
       // retdoc["trigger_id"]=info.step;
 
@@ -1259,7 +1267,6 @@ void loop()
       retdoc["camera_id"]=info.camera_id;
       retdoc["tag"]=info.trig_tag;
       retdoc["trigger_id"]=info.trig_id;
-      curTrigQSize=triggerInfoQ.size();
 
 
 
@@ -1270,6 +1277,7 @@ void loop()
       {
         djrl.dbg_printf("%s",info.log.c_str());
       }
+      triggerInfoQ.consumeTail();
     }
   }
 
