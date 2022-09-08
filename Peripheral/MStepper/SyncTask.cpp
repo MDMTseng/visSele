@@ -62,6 +62,13 @@ class MData_JR:public Data_JsonRaw_Layer
 MData_JR djrl;
 
 
+
+void G_LOG(char* str)
+{
+  djrl.dbg_printf(str);
+}
+
+
 hw_timer_t *timer = NULL;
 #define S_ARR_LEN(arr) (sizeof(arr) / sizeof(arr[0]))
 
@@ -96,10 +103,13 @@ enum MSTP_SegCtx_TYPE{
 
 
 
-struct triggerInfo{
+struct triggerInfo{//TODO: rename the infoQ to be more versatile
   string camera_id;
   string trig_tag;
   int trig_id;
+
+  bool isTrigInfo;
+  string log;
 };
 
 RingBuf_Static<struct triggerInfo,20,uint8_t> triggerInfoQ;
@@ -394,7 +404,6 @@ class MStp_M:public MStp{
         {
           return -1;
         }
-        delay(10);
         curPos_c.vec[axisIdx]=0;//zero the Cur_pos
         lastTarLoc=curPos_c;
         break;
@@ -459,7 +468,7 @@ class MStp_M:public MStp{
         if(ctx->CID.length()>0)
         {
           //send camera idx 
-          struct triggerInfo tinfo={.camera_id=ctx->CID,.trig_tag=ctx->TTAG,.trig_id=ctx->TID};
+          struct triggerInfo tinfo={.camera_id=ctx->CID,.trig_tag=ctx->TTAG,.trig_id=ctx->TID,.isTrigInfo=true};
 
           triggerInfo* Qhead=NULL;
           while( (Qhead=triggerInfoQ.getHead()) ==NULL)
@@ -1204,13 +1213,15 @@ void loop()
 {
   djrl.loop();
   {
-    if (Serial.available() > 0) {
+    bool recvF=false;
+    while(Serial.available() > 0) {
+      recvF=true;
       // read the incoming byte:
       // char c=Serial.read();
       // djrl.recv_data((uint8_t*)&c,1);
       int recvLen = Serial.read(recvBuf,sizeof(recvBuf-1));
       //
-
+      // djrl.dbg_printf("recvLen:%d",recvLen);
       djrl.recv_data((uint8_t*)recvBuf,recvLen);
       if(doDataLog)
       {
@@ -1224,6 +1235,10 @@ void loop()
       }
 
     }
+    if(recvF)
+    {
+      // djrl.dbg_printf("recv DONE");
+    }
   }
 
 
@@ -1231,13 +1246,16 @@ void loop()
   {
     uint8_t buff[700];
     retdoc.clear();
-    retdoc["type"]="TriggerInfo"; 
     while(curTrigQSize)
     {
       triggerInfo info=*triggerInfoQ.getTail();
       triggerInfoQ.consumeTail();
       // retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
       // retdoc["trigger_id"]=info.step;
+
+      if(info.isTrigInfo)
+      {
+        retdoc["type"]="TriggerInfo"; 
       retdoc["camera_id"]=info.camera_id;
       retdoc["tag"]=info.trig_tag;
       retdoc["trigger_id"]=info.trig_id;
@@ -1247,6 +1265,11 @@ void loop()
 
       int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
       djrl.send_json_string(0,buff,slen,0);
+      }
+      else
+      {
+        djrl.dbg_printf("%s",info.log.c_str());
+      }
     }
   }
 
