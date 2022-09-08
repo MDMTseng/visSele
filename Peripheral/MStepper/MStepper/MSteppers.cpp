@@ -1509,7 +1509,15 @@ uint32_t MStp::taskRun()
           // vecAssign(posvec,vec0);
           if(MSTP_segment_type::seg_line==p_runSeg->type)
           {
+            if(axis_dir!=p_runSeg->dir_bit)
+            {
             axis_dir=p_runSeg->dir_bit;
+
+              // for(volatile int i=0;i<2000;i++)//HACK: to extend time before axis_dir do changing, to prevent dir change and step pulse (posedge) too close
+              // {
+
+              // }
+            }
           }
         }
       }
