@@ -19,7 +19,8 @@ extern "C" {
 #define __UPRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
 
 
-
+void genMachineSetup(JsonDocument &jdoc);
+void setMachineSetup(JsonDocument &jdoc);
 
 
 bool doDataLog=false;
@@ -35,7 +36,7 @@ class MData_JR:public Data_JsonRaw_Layer
   {
     doDataLog=false;
   } 
-  int recv_ERROR(ERROR_TYPE errorcode);
+  int recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0);
   char gcodewait_gcode[100];
   int gcodewait_id=-1;
   
@@ -76,22 +77,43 @@ hw_timer_t *timer = NULL;
 
 
 int pin_SH_165=17;
-int pin_TRIG_595=PIN_NUM_CS;
+int pin_TRIG_595=5;
 
 
 
-#define SUBDIV (800)
-#define mm_PER_REV 10
+#define SUBDIV (5000)
+#define mm_PER_REV 100
 
 spi_device_handle_t spi1=NULL;
 
+array<string, 10> CameraIDList;
+enum MSTP_SegCtx_TYPE{
+  NA=0,
+  IO_CTRL=1
+
+};
+
+
+
+
+struct triggerInfo{
+  string camera_id;
+  string trig_tag;
+  int trig_id;
+};
+
+RingBuf_Static<struct triggerInfo,20,uint8_t> triggerInfoQ;
+
+
+
 struct MSTP_SegCtx{
-  int type;
+  MSTP_SegCtx_TYPE type;
   // int delay_time_ms;
-  int d0;
-  int d1;
 
   int32_t I,P,S,T;
+  string CID;
+  string TTAG;
+  int TID;
 };
 
 
@@ -144,13 +166,19 @@ class MStp_M:public MStp{
     int general_max_freq=100000;
     axisInfo[AXIS_IDX_X].VirtualStep=1;
     axisInfo[AXIS_IDX_X].AccW=1;
-    axisInfo[AXIS_IDX_X].MaxSpeedJumpW=2;
+    axisInfo[AXIS_IDX_X].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_X].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_Y].VirtualStep=1;
+    axisInfo[AXIS_IDX_Y].VirtualStep=1.5;
     axisInfo[AXIS_IDX_Y].AccW=1;
-    axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=2;
+    axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_Y].MaxSpeed=general_max_freq;
+
+
+    axisInfo[AXIS_IDX_Z].VirtualStep=1;
+    axisInfo[AXIS_IDX_Z].AccW=1;
+    axisInfo[AXIS_IDX_Z].MaxSpeedJumpW=1;
+    axisInfo[AXIS_IDX_Z].MaxSpeed=general_max_freq;
 
     auto mainAXIS_VSTEP=axisInfo[AXIS_IDX_Y].VirtualStep;
 
@@ -219,6 +247,10 @@ class MStp_M:public MStp{
 
     ShiftRegAssign(0,0);
     ShiftRegUpdate();
+
+
+    endstopPins_normalState=0xff;
+    endstopPins=0xff;
     
   }
 
@@ -317,9 +349,9 @@ class MStp_M:public MStp{
 
   }
 
-
-
   
+
+
   int Z1Info_Limit1=300;
   int Z1Info_Limit2=-300;
   int MachZeroRet(uint32_t axis_index,uint32_t sensor_pin,int distance,int speed,void* context)
@@ -330,6 +362,7 @@ class MStp_M:public MStp{
 
       case AXIS_IDX_X:
       case AXIS_IDX_Y:
+      case AXIS_IDX_Z:
 
       case AXIS_IDX_Z1://rough
       case AXIS_IDX_R1:
@@ -357,7 +390,7 @@ class MStp_M:public MStp{
 
         delay(10);
         
-        if(runUntil(axisIdx,sensor_pin,!sensorDetectVLvl,-distance/2,runSpeed,&retHitPos)!=0)
+        if(runUntil(axisIdx,sensor_pin,!sensorDetectVLvl,-distance/2,runSpeed/100,&retHitPos)!=0)
         {
           return -1;
         }
@@ -406,7 +439,7 @@ class MStp_M:public MStp{
       return false;
     }
     MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
-    return ctx->type==42;
+    return ctx->type==MSTP_SegCtx_TYPE::IO_CTRL;
   }
 
   bool static_Pin_update_needed=false;
@@ -421,7 +454,23 @@ class MStp_M:public MStp{
     MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
     switch(ctx->type)
     {
-      case 42:
+      case MSTP_SegCtx_TYPE::IO_CTRL:
+
+        if(ctx->CID.length()>0)
+        {
+          //send camera idx 
+          struct triggerInfo tinfo={.camera_id=ctx->CID,.trig_tag=ctx->TTAG,.trig_id=ctx->TID};
+
+          triggerInfo* Qhead=NULL;
+          while( (Qhead=triggerInfoQ.getHead()) ==NULL)
+          {
+            yield();
+          }
+          *Qhead=tinfo;
+          triggerInfoQ.pushHead();
+        }
+
+
         if(ctx->P<0)break;
         //P: pin number, S: 0~255 PWM, T: pin setup (0:input, 1:output, 2:input_pullup, 3:input_pulldown)
 
@@ -436,7 +485,6 @@ class MStp_M:public MStp{
             static_Pin_info|=(1<<ctx->P);
           }
         }
-
 
 
       break;
@@ -500,42 +548,75 @@ class MStp_M:public MStp{
   uint32_t latest_stp_pins=0;//info that really on pins
   uint32_t latest_dir_pins=0;
 
-  
+  int shiftRegAssignedCount=0;//the count hs to be 1 in order to get correct input data
   void ShiftRegAssign(uint32_t dir,uint32_t step)
   {
     _latest_stp_pins=step;
     _latest_dir_pins=dir;
     uint32_t portPins=(dir&0xFF)<<16 | (step & 0xFF)<<24|static_Pin_info<<0;
-    // uint32_t portPins= (step & 0xFF)<<24| (dir&0x7)<<16 | static_Pin_info<<(16+3);
+    // uint32_t portPins=(dir&0xF)<<16 | (step & 0xFF)<<24|(static_Pin_info&0xF)<<20;
 
     spi1->host->hw->data_buf[0]=portPins;
     
     gpio_set_level((gpio_num_t) pin_SH_165, 1);//switch to keep in 165 register(stop 165 load pin to reg)
     gpio_set_level((gpio_num_t) pin_TRIG_595, 0);//
     direct_spi_transfer(spi1,32);
+    shiftRegAssignedCount++;
     //send_SPI(portPins);
   }
   
+
+
+  bool isEndStopHit(uint32_t inputPins)
+  {
+    auto endStopPinHit= (inputPins^endstopPins_normalState) & endstopPins;
+    if( endStopPinHit )
+    {
+      endstopPins_hit=inputPins;
+      return true;
+    }
+    return false;
+  }
 
   void ShiftRegUpdate()
   {
     static_Pin_update_needed=false;//will
     while (direct_spi_in_use(spi1));//wait for SPI bus available
     gpio_set_level((gpio_num_t) pin_SH_165, 0);//switch to load(165 keeps load pin to internal reg)
-    latest_input_pins=spi1->host->hw->data_buf[0];
-    // if(latest_input_pins&(1<<PIN_X_SEN1))
-    // {
-    //   // gpio_set_level((gpio_num_t)PIN_LED, 1);
-    // }
-    // else
-    // {
-    // }
-    if(runUntil_ExtPIN!=-1)
+    if(shiftRegAssignedCount==1)
     {
-      if(runUntilDetected(latest_input_pins)==true)//if reaches, do not let 595 update pins, to prevent further movement
-        return;
+      latest_input_pins=spi1->host->hw->data_buf[0];
+      if(runUntil_ExtPIN!=-1)//in zeroing state
+      {
+        if(runUntilDetected(latest_input_pins)==true)//if reaches, do not let 595 update pins, to prevent further movement
+          return;
+      }
+      else
+      {//or check end stop hit
+        if(endStopDetection)
+        {
+          if(endStopHitLock || isEndStopHit(latest_input_pins))
+          {
+            if(endStopHitLock==false)
+            {
+              
+              StepperForceStop();
+            }
+            endStopHitLock=true;
+          }
+        }
+
+        if( endStopHitLock )
+        {
+          //hit.... em stop
+          endStopHitLock=true;
+          return;
+        }
+      }
     }
 
+
+    shiftRegAssignedCount=0;
     gpio_set_level((gpio_num_t) pin_TRIG_595, 1);//trigger 595 internal register update to 959 phy pin
     
     latest_stp_pins=_latest_stp_pins;
@@ -549,7 +630,6 @@ class MStp_M:public MStp{
   }
   
   
-  uint32_t latest_input_pins=0;
   void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)
   {
     ShiftRegUpdate();
@@ -589,13 +669,6 @@ inline uint64_t getCurTick()
   return SystemTick+timerRead(timer);
 }
 
-uint32_t preCD=0;
-
-
-
-bool isSystemZeroOK=false;
-int timerCount=0;
-
 uint32_t cp0_regs[18];
 
 void IRAM_ATTR onTimer()
@@ -623,7 +696,6 @@ StaticJsonDocument<1024> recv_doc;
 StaticJsonDocument<1024> ret_doc;
 
 
-uint32_t xendpos=4700*SUBDIV/mm_PER_REV;
 
 void vecToWait(xVec VECTo,float speed,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL)
 {
@@ -661,8 +733,9 @@ public:
     // __UPRT_D_("unitConv[%s]:%f\n",code,dist);
     switch(axisIdx)
     {
-      case AXIS_IDX_X:return unit2Pulse(1*dist,SUBDIV/mm_PER_REV);
-      case AXIS_IDX_Y:return unit2Pulse(1*dist,SUBDIV/mm_PER_REV);//-1 for reverse the direction
+      case AXIS_IDX_X:
+      case AXIS_IDX_Z:return unit2Pulse(1*dist,SUBDIV/mm_PER_REV);//-1 for reverse the direction
+      case AXIS_IDX_Y:return unit2Pulse(-1*dist,SUBDIV/mm_PER_REV);
       
       case AXIS_IDX_FEEDRATE:
       case AXIS_IDX_ACCELERATION:
@@ -730,7 +803,7 @@ public:
     return true;
   }
 
-  bool MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T)
+  bool MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T,char* CID,char* TTAG,int TID)
   {
     MSTP_SegCtx *p_res;
     while((p_res=sctx_pool.applyResource())==NULL)//check release
@@ -741,8 +814,11 @@ public:
     p_res->P=P;
     p_res->S=S;
     p_res->T=T;
-    p_res->type=42;
-    __UPRT_D_("I:%d,P:%d,S:%d,T:%d\n",I,P,S,T);
+    p_res->CID=CID==NULL?"":string(CID);
+    p_res->TTAG=TTAG==NULL?"":string(TTAG);
+    p_res->TID=TID;
+    p_res->type=MSTP_SegCtx_TYPE::IO_CTRL;
+    __UPRT_D_("I:%d,P:%d,S:%d,T:%d CID:%s TTAG:%s TID:%d\n",I,P,S,T,CID,TTAG,TID);
     while(_mstp->AddWait(0,0,p_res,NULL)==false)
     {
       yield();
@@ -760,7 +836,7 @@ GCodeParser_M2 gcpm(&mstp);
 StaticJsonDocument <500>doc;
 StaticJsonDocument  <500>retdoc;
 
-int MData_JR::recv_ERROR(ERROR_TYPE errorcode)
+int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
 {
   for(int i=0;i<buffIdx;i++)
   {
@@ -770,8 +846,10 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode)
   dataBuff[buffIdx]='\0';
   doDataLog=true;
 
-
-  dbg_printf("recv_ERROR:%d %s",errorcode,dataBuff);
+  if(recv_data)
+    dbg_printf("recv_ERROR:%d %s dat:%s",errorcode,dataBuff,string((char*)recv_data,0,9).c_str());
+  else 
+    dbg_printf("recv_ERROR:%d %s",errorcode,dataBuff);
 }
 
 int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
@@ -954,12 +1032,6 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
       }
 
-      // delay(10);
-      // dbg_printf("timerRunning:%d-%d timerCount:%d-%d T:%d",
-      //   bkTRunning,mstp.timerRunning,
-      //   bkTCount,timerCount,
-      //   timerT_latest);
-      // timerT_latest=-1;
     }
     else if(strcmp(type,"motion_buffer_info")==0)
     {
@@ -1112,6 +1184,9 @@ void setup()
   pinMode(pin_TRIG_595, OUTPUT);
   pinMode(pin_SH_165, OUTPUT);
   pinMode(PIN_LED, OUTPUT);
+
+  // CameraIDList[0]="ABC";
+  // CameraIDList[1]="DEF";
 }
 
 void busyLoop(uint32_t count)
@@ -1122,7 +1197,7 @@ void busyLoop(uint32_t count)
   }
 }
 
-MSTP_SegCtx ctx[10]={0};
+MSTP_SegCtx ctx[10];
 
 static uint8_t recvBuf[20];
 void loop()
@@ -1151,6 +1226,30 @@ void loop()
     }
   }
 
+
+  int curTrigQSize=triggerInfoQ.size();
+  {
+    uint8_t buff[700];
+    retdoc.clear();
+    retdoc["type"]="TriggerInfo"; 
+    while(curTrigQSize)
+    {
+      triggerInfo info=*triggerInfoQ.getTail();
+      triggerInfoQ.consumeTail();
+      // retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
+      // retdoc["trigger_id"]=info.step;
+      retdoc["camera_id"]=info.camera_id;
+      retdoc["tag"]=info.trig_tag;
+      retdoc["trigger_id"]=info.trig_id;
+      curTrigQSize=triggerInfoQ.size();
+
+
+
+      int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+      djrl.send_json_string(0,buff,slen,0);
+    }
+  }
+
 }
 
 
@@ -1172,49 +1271,9 @@ int intArrayContent_ToJson(char *jbuff, uint32_t jbuffL, int16_t *intarray, int 
 void genMachineSetup(JsonDocument &jdoc)
 {
 
-
-
-  // jdoc["PIN_Z1_STP"]=PIN_Z1_STP;
-  // jdoc["PIN_Z1_DIR"]=PIN_Z1_DIR;
-  // jdoc["PIN_Z1_SEN1"]=PIN_Z1_SEN1;
-  // jdoc["PIN_Z1_SEN2"]=PIN_Z1_SEN2;
-
-
-  // jdoc["PIN_Y_STP"]=PIN_Y_STP;
-  // jdoc["PIN_Y_DIR"]=PIN_Y_DIR;
-  // jdoc["PIN_Y_SEN1"]=PIN_Y_SEN1;
-
-
-  // jdoc["PIN_R11_STP"]=PIN_R11_STP;
-  // jdoc["PIN_R11_DIR"]=PIN_R11_DIR;
-
-
-  // jdoc["PIN_R12_STP"]=PIN_R12_STP;
-  // jdoc["PIN_R12_DIR"]=PIN_R12_DIR;
-  
-
-
-  // jdoc["PIN_OUT_0"]=PIN_OUT_0;
-  // jdoc["PIN_OUT_1"]=PIN_OUT_1;
-  // jdoc["PIN_OUT_2"]=PIN_OUT_2;
-  // jdoc["PIN_OUT_3"]=PIN_OUT_3;
-  
-  
   jdoc["axis"]="X,Y,Z1_,R11_,R12_";
 
-  // jdoc["cam_trig_delay"]=g_cam_trig_delay;
-  // jdoc["flash_trig_delay"]=g_flash_trig_delay;
-  // jdoc["flash_time"]=g_flash_time;
-  // jdoc["pulse_sep_min"]=g_pulse_sep_min;
-  // jdoc["pulse_width_min"]=g_pulse_width_min;
-  // jdoc["pulse_width_max"]=g_pulse_width_max;
-  // jdoc["pulse_debounce_high"]=g_pulse_debounce_high;
-  // jdoc["pulse_debounce_low"]=g_pulse_debounce_low;
-
-  // jdoc["O_CameraPin_ON"]=O_CameraPin_ON;
-  // jdoc["O_BackLight_ON"]=O_BackLight_ON;
-  // jdoc["I_gate1Pin_ON"]=I_gate1Pin_ON;
-
+  // auto obj=jdoc.createNestedObject("obj");
 }
 
 #define JSON_SETIF_ABLE(tarVar,jsonObj,key) \
@@ -1223,19 +1282,6 @@ void genMachineSetup(JsonDocument &jdoc)
 void setMachineSetup(JsonDocument &jdoc)
 {
   // JSON_SETIF_ABLE(g_cam_trig_delay,jdoc,"cam_trig_delay");
-  // JSON_SETIF_ABLE(g_flash_trig_delay,jdoc,"flash_trig_delay");
-  // JSON_SETIF_ABLE(g_flash_time,jdoc,"flash_time");
-  // JSON_SETIF_ABLE(g_pulse_sep_min,jdoc,"pulse_sep_min");
-  // JSON_SETIF_ABLE(g_pulse_width_min,jdoc,"pulse_width_min");
-  // JSON_SETIF_ABLE(g_pulse_width_max,jdoc,"pulse_width_max");
-  // JSON_SETIF_ABLE(g_pulse_debounce_high,jdoc,"pulse_debounce_high");
-  // JSON_SETIF_ABLE(g_pulse_debounce_low,jdoc,"pulse_debounce_low");
-  // JSON_SETIF_ABLE(g_cam_trig_delay,jdoc,"cam_trig_delay");
-
-
-  // JSON_SETIF_ABLE(O_CameraPin_ON,jdoc,"O_CameraPin_ON");
-  // JSON_SETIF_ABLE(O_BackLight_ON,jdoc,"O_BackLight_ON");
-  // JSON_SETIF_ABLE(I_gate1Pin_ON,jdoc,"I_gate1Pin_ON");
 }
 
 

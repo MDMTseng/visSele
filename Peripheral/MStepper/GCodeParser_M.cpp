@@ -64,6 +64,7 @@ int GCodeParser_M::ReadxVecData(char **blkIdxes,int blkIdxesL,xVec &retVec)
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_X,AXIS_GDX_X);
 
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Y,AXIS_GDX_Y);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z,AXIS_GDX_Z);
 
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z1,AXIS_GDX_Z1);
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R1,AXIS_GDX_R1);
@@ -91,6 +92,10 @@ int axisGDX2IDX(char *GDXCode,int fallback=-1)
   else if(CheckHead(GDXCode,AXIS_GDX_Y))
   {
     return AXIS_IDX_Y;
+  }
+  else if(CheckHead(GDXCode,AXIS_GDX_Z))
+  {
+    return AXIS_IDX_Z;
   }
 
   else if(CheckHead(GDXCode,AXIS_GDX_Z1))
@@ -156,6 +161,7 @@ const char* axisIDX2GDX(int IDXCode)
 
     case AXIS_IDX_X:return AXIS_GDX_X;
     case AXIS_IDX_Y:return AXIS_GDX_Y;
+    case AXIS_IDX_Z:return AXIS_GDX_Z;
     case AXIS_IDX_Z1:return AXIS_GDX_Z1;
     case AXIS_IDX_R1:return AXIS_GDX_R1;
     case AXIS_IDX_Z2:return AXIS_GDX_Z2;
@@ -342,13 +348,6 @@ bool GCodeParser_M::MTPSYS_AddWait(uint32_t period_ms,int times, void* ctx,MSTP_
 }
 
 
-bool GCodeParser_M::MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T)
-{
-
-  return false;
-}
-
-
 GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
 {
   
@@ -397,7 +396,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
     if(cblk[0]=='G')
     {
 
-      if(CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))//X Y Z A B C
+      if(     CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))//X Y Z A B C
       {
         __PRT_D_("G1 baby!!!\n");
         int j=i+1;
@@ -446,19 +445,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
         i=FindGMEnd_idx(blockInitial+j,blockCount-j);
       }
-      else if(CheckHead(cblk, "G90"))
-      {
-        __PRT_D_("G90 absolute pos\n");
-        isAbsLoc=true;
-        retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
-      }
-      else if(false && CheckHead(cblk, "G91"))
-      {
-        __PRT_D_("G91 relative pos\n");
-        isAbsLoc=false;
-        retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
-      }
-      else if(CheckHead(cblk, "G04")||CheckHead(cblk, "G4"))
+      else if(CheckHead(cblk, "G04")||CheckHead(cblk, "G4"))//G04 P10; pause
       {
         __PRT_D_("G04 Pause\n");
         int j=i+1;
@@ -480,19 +467,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           retStatus=statusReducer(retStatus,GCodeParser_Status::GCODE_PARSE_ERROR);
         }
       }
-      else if(false && CheckHead(cblk, "G20"))
-      {
-        unit_is_inch=true;
-        __PRT_D_("G20 Use Inch\n");
-        retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
-      }
-      else if(false && CheckHead(cblk, "G21"))
-      {
-        unit_is_inch=false;
-        __PRT_D_("G21 Use mm\n");
-        retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
-      }
-      else if(CheckHead(cblk, "G92"))
+      else if(CheckHead(cblk, "G92"))//G92 Set pos
       {
         __PRT_D_("G92 Set pos\n");
 
@@ -508,12 +483,12 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
 
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
       }
-      else if(CheckHead(cblk, "G28"))
+      else if(CheckHead(cblk, "G28"))//G28 GO HOME!!!:
       {
         __PRT_D_("G28 GO HOME!!!:");
         int retErr=0;
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_X,PIN_X_SEN1,50000,MTPSYS_getMinPulseSpeed(),NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,PIN_Y_SEN1,-50000,MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_X,PIN_X_SEN1,unit2Pulse_conv(AXIS_IDX_X,-2000),20*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,PIN_Y_SEN1,unit2Pulse_conv(AXIS_IDX_Y,-2000),20*MTPSYS_getMinPulseSpeed(),NULL);
         
         // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
         // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z2,PIN_Z2_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
@@ -532,6 +507,30 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         __PRT_D_("%s\n",retErr==0?"DONE":"FAILED");
 
       }
+      else if(false && CheckHead(cblk, "G90"))//G90 absolute pos
+      {
+        __PRT_D_("G90 absolute pos\n");
+        isAbsLoc=true;
+        retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+      }
+      else if(false && CheckHead(cblk, "G91"))//G91 relative pos
+      {
+        __PRT_D_("G91 relative pos\n");
+        isAbsLoc=false;
+        retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+      }
+      else if(false && CheckHead(cblk, "G20"))//G20 Use Inch
+      {
+        unit_is_inch=true;
+        __PRT_D_("G20 Use Inch\n");
+        retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+      }
+      else if(false && CheckHead(cblk, "G21"))//G21 Use mm
+      {
+        unit_is_inch=false;
+        __PRT_D_("G21 Use mm\n");
+        retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+      }
       
       else
       {
@@ -547,8 +546,9 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
     }
     else if(cblk[0]=='M')
     {
-
-      if(CheckHead(cblk, "M42"))//M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] marlin M42 Set Pin State
+      //M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] marlin M42 Set Pin State
+      //M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] CID_{string} TTAG_{string} TID_{int} //addtional info for trigger info replay
+      if(     CheckHead(cblk, "M42"))
       {//S<state> 0 input 1 output 2 INPUT_PULLUP 3 INPUT_PULLDOWN
         //M42 P2 S1  //set output
         //M42 P2 T1  //Set one
@@ -559,12 +559,30 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         if(FindInt32("P",blockInitial+j,blockCount-j,P)!=0)P=-1;
         if(FindInt32("S",blockInitial+j,blockCount-j,S)!=0)S=-1;
         if(FindInt32("T",blockInitial+j,blockCount-j,T)!=0)T=-1;
+        
 
-
-        __PRT_D_("M42 I%d P%d S%d T%d\n",I,P,S,T);
-        if(P>=0)
+        char *CID_Ptr=NULL;;
+        char CID_BUF[50];
+        if(FindStr("CID_",blockInitial+j,blockCount-j,CID_BUF)==0)
         {
-          retStatus=MTPSYS_AddIOState(I,P,S,T)==true?
+          CID_Ptr=CID_BUF;
+        }
+        char *TTAG_Ptr=NULL;
+        char TTAG_BUF[50];
+        if(FindStr("TTAG_",blockInitial+j,blockCount-j,TTAG_BUF)==0)
+        {
+          TTAG_Ptr=TTAG_BUF;
+        }
+
+        int TID;
+        if(FindInt32("TID_",blockInitial+j,blockCount-j,TID)!=0)TID=-1;
+
+
+
+        __PRT_D_("M42 I%d P%d S%d T%d CID:%s TTAG:%s\n",I,P,S,T,CID_Ptr,TTAG_Ptr);
+        if(CID_Ptr!=NULL || P>=0)
+        {
+          retStatus=MTPSYS_AddIOState(I,P,S,T,CID_Ptr,TTAG_Ptr,TID)==true?
             statusReducer(retStatus,GCodeParser_Status::TASK_OK):
             statusReducer(retStatus,GCodeParser_Status::TASK_FAILED);
         } 
@@ -573,7 +591,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           retStatus=statusReducer(retStatus,GCodeParser_Status::GCODE_PARSE_ERROR);
         }
       }
-      else if(CheckHead(cblk, "M114"))//Get current position
+      else if(CheckHead(cblk, "M114"))//Get/reply current position
       {//
       
         if(p_jnote)
@@ -600,9 +618,6 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         }
 
       }
-      else if(CheckHead(cblk, "M226"))//Wait for Pin State,M226 P<pin> [S<state>]
-      {//TODO
-      }
       else if(CheckHead(cblk, "M400"))//Wait for motion stops
       {//TODO
         while(1)
@@ -618,6 +633,40 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
             delay(10);
           }
         }
+      }
+      else if(CheckHead(cblk, "M119"))//input (includes Endstop) States as integer (state are in binary form)
+      {
+
+        if(p_jnote)
+        {
+          auto &jnote=*p_jnote;
+          auto jobjRet = jnote.createNestedObject("M119");
+
+          jobjRet["state"]=_mstp->latest_input_pins;
+          jobjRet["last_hit"]=_mstp->endstopPins_hit;
+          jobjRet["lock"]=_mstp->endStopHitLock;
+          jobjRet["in_detection"]=_mstp->endStopDetection;
+
+          jobjRet["endstop_pins"]=_mstp->endstopPins;
+          jobjRet["endstop_pins_ns"]=_mstp->endstopPins_normalState;
+          retStatus=GCodeParser_Status::TASK_OK;
+        }
+
+
+      }
+      else if(CheckHead(cblk, "M120"))//enable end stop
+      {
+        _mstp->endStopDetection=true;
+      }
+      else if(CheckHead(cblk, "M121"))//disable end stop
+      {
+        _mstp->endStopDetection=false;
+        _mstp->endStopHitLock=false;
+        _mstp->endstopPins_hit=0;
+        
+      }
+      else if(false && CheckHead(cblk, "M226"))//Wait for Pin State,M226 P<pin> [S<state>] [T<timeout>]
+      {//TODO
       }
       else
       {

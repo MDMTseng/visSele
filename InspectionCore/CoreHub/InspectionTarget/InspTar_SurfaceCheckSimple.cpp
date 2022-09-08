@@ -178,7 +178,21 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   shared_ptr<StageInfo_Group_Category> reportInfo(new StageInfo_Group_Category());
   
+  double resultOverlayAlpha=JFetch_NUMBER_ex(def,"resultOverlayAlpha",0);
+
+
+  double l_h=JFetch_NUMBER_ex(def,"hsv.rangel.h",0);
+  double l_s=JFetch_NUMBER_ex(def,"hsv.rangel.s",0);
+  double l_v=JFetch_NUMBER_ex(def,"hsv.rangel.v",0);
+
+  double h_h=JFetch_NUMBER_ex(def,"hsv.rangeh.h",180);
+  double h_s=JFetch_NUMBER_ex(def,"hsv.rangeh.s",255);
+  double h_v=JFetch_NUMBER_ex(def,"hsv.rangeh.v",255);
+  double colorThres=JFetch_NUMBER_ex(def,"colorThres",0);
+  bool img_order_reverse=JFetch_TRUE(def,"img_order_reverse");
   int area_thres=JFetch_NUMBER_ex(def,"area_thres",100);
+
+  float angle_offset=JFetch_NUMBER_ex(def,"angle_offset",0)*M_PI/180;
   if(d_sinfo->orientation.size()>0)
   {  
     retImage=new acvImage(W*d_sinfo->orientation.size(),H,3);
@@ -197,13 +211,13 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         break;
       }
       // cJSON* idxRegion=JFetch_ARRAY(def,("[+"+std::to_string(i)+"+]").c_str());
-      Mat def_temp_img_ROI = def_temp_img(Rect(i*W, 0, W, H));
+      int imgOrderIdx=img_order_reverse?(d_sinfo->orientation.size()-1-i):i;
+      Mat def_temp_img_ROI = def_temp_img(Rect(imgOrderIdx*W, 0, W, H));
 
       float angle = orientation.angle;
       // if(angle>M_PI_2)angle-=M_PI;
       // if(angle<-M_PI_2)angle+=M_PI;
-
-      angle+=JFetch_NUMBER_ex(def,"angle_offset",0)*M_PI/180;
+      angle+=angle_offset;
       Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset,H/2+Y_offset},-angle);
 
       cv::warpAffine(CV_srcImg, def_temp_img_ROI, rot,def_temp_img_ROI.size());
@@ -215,14 +229,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         cvtColor(def_temp_img_ROI, img_HSV, COLOR_BGR2HSV);
 
 
-        double l_h=JFetch_NUMBER_ex(def,"hsv.rangel.h",0);
-        double l_s=JFetch_NUMBER_ex(def,"hsv.rangel.s",0);
-        double l_v=JFetch_NUMBER_ex(def,"hsv.rangel.v",0);
-
-        double h_h=JFetch_NUMBER_ex(def,"hsv.rangeh.h",180);
-        double h_s=JFetch_NUMBER_ex(def,"hsv.rangeh.s",255);
-        double h_v=JFetch_NUMBER_ex(def,"hsv.rangeh.v",255);
-
         LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
         Scalar rangeH=Scalar(h_h,h_s,h_v);
         Scalar rangeL=Scalar(l_h,l_s,l_v);
@@ -233,7 +239,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
         {
-          double colorThres=JFetch_NUMBER_ex(def,"colorThres",0);
           if(colorThres>0)
           {
             GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 5, 5), 0, 0 );
@@ -247,7 +252,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         
             
         {
-          double resultOverlayAlpha=JFetch_NUMBER_ex(def,"resultOverlayAlpha",0);
           {
             // cv::cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
             Mat img_HSV_threshold_rgb;

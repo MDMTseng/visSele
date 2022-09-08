@@ -178,7 +178,7 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
       //  printf("E:%d  %c\n",c,c);
         recvType=RTYPE::ERROR;
         errorCode=ERROR_TYPE::INIT_CHAR_ERROR;
-        recv_ERROR(errorCode);
+        recv_ERROR(errorCode,(uint8_t*)data,len);
       }
       buffIdx=0;
     }

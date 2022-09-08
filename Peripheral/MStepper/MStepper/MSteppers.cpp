@@ -633,7 +633,7 @@ MSTP_SEG_PREFIX MSTP_segment* MStp::SegQ_Head(int idx) MSTP_SEG_PREFIX
 }
 bool MStp::SegQ_Head_Push() MSTP_SEG_PREFIX
 {
-  if(SegQ_IsFull())return false;
+  if(SegQ_IsFull() || endStopHitLock)return false;
   int newIdx=(segBufHeadIdx+1)%segBufL;
   segBufHeadIdx=newIdx;
   return true;
@@ -1502,12 +1502,15 @@ uint32_t MStp::taskRun()
         }
         else
         {
-          xVec vec0=(xVec){0};//general reset
           p_runSeg->cur_step=0;
           BlockInitEffect(p_runSeg);
-          vecAssign(curPos_mod,vec0);
+          curPos_mod=(xVec){0};
           // vecAssign(curPos_residue,vec0);
           // vecAssign(posvec,vec0);
+          if(MSTP_segment_type::seg_line==p_runSeg->type)
+          {
+            axis_dir=p_runSeg->dir_bit;
+          }
         }
       }
 
@@ -1598,6 +1601,7 @@ uint32_t MStp::taskRun()
           }
           __PRT_D_("blk_wait:::Go wait:%d\n",p_runSeg->step_period);
           p_runSeg->cur_step++;
+          setTimer(p_runSeg->step_period);
           return p_runSeg->step_period;
         break;
 

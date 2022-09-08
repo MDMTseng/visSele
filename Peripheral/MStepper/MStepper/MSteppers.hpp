@@ -106,6 +106,15 @@ public:
 
   // RingBuf_Static <uint32_t,10> PulOff;
 
+  uint32_t latest_input_pins=0;
+  bool endStopDetection=false;
+  bool endStopHitLock=false;
+
+  uint32_t endstopPins=0;//0xFF;//first 8 bits input are for end stop
+  uint32_t endstopPins_normalState=0;//0xFF; //first 8 bits input(end stops ) are 1111 1111 at notmal state
+  uint32_t endstopPins_hit=0;//0xFF; //first 8 bits input(end stops ) are 1111 1111 at notmal state
+
+  
   //preset cannot be touched
   uint32_t TICK2SEC_BASE=1000*1000;
   float main_acc;
