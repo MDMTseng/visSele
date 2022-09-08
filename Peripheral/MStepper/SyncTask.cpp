@@ -21,7 +21,7 @@ extern "C" {
 
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc);
-
+uint32_t g_step_trigger_edge=0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
 
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
@@ -562,7 +562,7 @@ class MStp_M:public MStp{
   {
     _latest_stp_pins=step;
     _latest_dir_pins=dir;
-    uint32_t portPins=(dir&0xFF)<<16 | (step & 0xFF)<<24|static_Pin_info<<0;
+    uint32_t portPins=( dir&0xFF)<<16 | ( (step^g_step_trigger_edge) & 0xFF)<<24|static_Pin_info<<0;
     // uint32_t portPins=(dir&0xF)<<16 | (step & 0xFF)<<24|(static_Pin_info&0xF)<<20;
 
     spi1->host->hw->data_buf[0]=portPins;
