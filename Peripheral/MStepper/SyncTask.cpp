@@ -564,12 +564,12 @@ class MStp_M:public MStp{
     _latest_dir_pins=dir;
     uint32_t portPins=( dir&0xFF)<<16 | ( (step^g_step_trigger_edge) & 0xFF)<<24|static_Pin_info<<0;
     // uint32_t portPins=(dir&0xF)<<16 | (step & 0xFF)<<24|(static_Pin_info&0xF)<<20;
-
-    spi1->host->hw->data_buf[0]=portPins;
+    int pidx=0;
+    spi1->host->hw->data_buf[pidx]=portPins;
     
     gpio_set_level((gpio_num_t) pin_SH_165, 1);//switch to keep in 165 register(stop 165 load pin to reg)
     gpio_set_level((gpio_num_t) pin_TRIG_595, 0);//
-    direct_spi_transfer(spi1,32);
+    direct_spi_transfer(spi1,32*(pidx+1));
     shiftRegAssignedCount++;
     //send_SPI(portPins);
   }
