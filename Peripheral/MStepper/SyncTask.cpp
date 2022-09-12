@@ -179,8 +179,8 @@ class MStp_M:public MStp{
     axisInfo[AXIS_IDX_X].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_X].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_Y].VirtualStep=1.5;
-    axisInfo[AXIS_IDX_Y].AccW=1;
+    axisInfo[AXIS_IDX_Y].VirtualStep=2;
+    axisInfo[AXIS_IDX_Y].AccW=0.5;
     axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_Y].MaxSpeed=general_max_freq;
 
