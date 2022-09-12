@@ -2923,6 +2923,19 @@ function SurfaceCheckSimple_EDIT_UI({def,onDefChange,canvas_obj}:
       onDefChange(newDef,true);
     }} />
       
+    單線長閾值:
+    <InputNumber value={def_Filled.line_length_thres}
+    onChange={(num)=>{
+      let newDef={...def_Filled,line_length_thres:num}
+      onDefChange(newDef,true);
+    }} />
+    單面積閾值:
+    <InputNumber value={def_Filled.point_area_thres}
+    onChange={(num)=>{
+      let newDef={...def_Filled,point_area_thres:num}
+      onDefChange(newDef,true);
+    }} />
+      
 
 
 
@@ -3101,7 +3114,10 @@ const CAT_ID_NAME={
   "0":"NA",
   "1":"OK", 
   "-1":"NG",
-  "-40000":"空"
+  "-40000":"空",
+
+  "-700":"點過大",
+  "-701":"邊過長",
 }
 const _MM_P_STP_=4;
 const _OBJ_SEP_DIST_=4;
@@ -3617,6 +3633,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
       }
       else//draw
       {
+        let camMag=canvas_obj.camera.GetCameraScale();
         if(Local_IMCM!==undefined)
         {
           g.ctx.save();
@@ -3655,11 +3672,11 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
 
             ctx.restore();
           }
-          
-          let g_cat=defReport.report.group_category;
+          let g_cat=defReport.report.sub_reports;
           g_cat.forEach((catInfo:any,_index:number)=>{
             // console.log(catInfo,cacheDef);
             
+            // console.log(catInfo);
 
             let index=img_order_reverse?(g_cat.length-1-_index):_index;
             let TextY=15;
@@ -3690,6 +3707,31 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             },
             canvas_obj.rUtil.getIndicationLineSize(),
             false);
+
+            
+            catInfo.elements.forEach((ele:any)=>{
+
+              if(CAT_ID_NAME[ele.category+""]=="OK")
+                ctx.strokeStyle = "rgba(0, 179, 0,0.6)";
+              else
+                ctx.strokeStyle = "rgba(179, 0, 0,0.6)";
+              
+              ctx.fillStyle = ctx.strokeStyle;
+              canvas_obj.rUtil.drawCross(ctx, {x:ele.x,y:ele.y}, 1);
+              
+              
+              // let fontSize_eq=10/camMag;
+              // if(fontSize_eq>10)fontSize_eq=40;
+              // ctx.font = (fontSize_eq)+"px Arial";
+              ctx.font ="1px Arial";
+              ctx.fillText(CAT_ID_NAME[ele.category+""],ele.x,ele.y);
+
+              
+
+            });
+
+
+
           })
         }
       }

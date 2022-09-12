@@ -1,6 +1,7 @@
 
 #include "InspTar_SurfaceCheckSimple.hpp"
 #include "StageInfo_Orientation.hpp"
+#include "StageInfo.hpp"
 
 using namespace cv;
 
@@ -176,7 +177,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   acvImage *retImage=NULL;
 
-  shared_ptr<StageInfo_Group_Category> reportInfo(new StageInfo_Group_Category());
+  shared_ptr<StageInfo_SurfaceCheckSimple> reportInfo(new StageInfo_SurfaceCheckSimple());
   
   double resultOverlayAlpha=JFetch_NUMBER_ex(def,"resultOverlayAlpha",0);
 
@@ -190,7 +191,13 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   double h_v=JFetch_NUMBER_ex(def,"hsv.rangeh.v",255);
   double colorThres=JFetch_NUMBER_ex(def,"colorThres",0);
   bool img_order_reverse=JFetch_TRUE(def,"img_order_reverse");
+  
   int area_thres=JFetch_NUMBER_ex(def,"area_thres",100);
+
+  int point_area_thres=JFetch_NUMBER_ex(def,"point_area_thres",1000000000);
+  int point_total_area_thres=JFetch_NUMBER_ex(def,"point_total_area_thres",1000000000);
+  int line_length_thres=JFetch_NUMBER_ex(def,"line_length_thres",1000000000);
+  int line_total_length_thres=JFetch_NUMBER_ex(def,"line_total_length_thres",1000000000);
 
   float angle_offset=JFetch_NUMBER_ex(def,"angle_offset",0)*M_PI/180;
   if(d_sinfo->orientation.size()>0)
@@ -204,6 +211,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
       int SUB_category=STAGEINFO_CAT_NA;
       int cur_score=-1;
       StageInfo_Orientation::orient orientation = d_sinfo->orientation[i];
+
+      StageInfo_SurfaceCheckSimple::SRegion_Info si;
       do{
       if(orientation.confidence<=0)
       {
@@ -221,6 +230,18 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
       Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset,H/2+Y_offset},-angle);
 
       cv::warpAffine(CV_srcImg, def_temp_img_ROI, rot,def_temp_img_ROI.size());
+
+
+
+
+      if(1){
+
+        Mat image(def_temp_img_ROI.rows,def_temp_img_ROI.cols,CV_8UC3);
+        cv::GaussianBlur(def_temp_img_ROI, image, cv::Size(0, 0), 3);
+        float alpha=0.3;
+        cv::addWeighted(def_temp_img_ROI, 1+alpha, image, -alpha, 0, def_temp_img_ROI);
+      }
+
 
 
       if(1){
@@ -272,17 +293,121 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           bitwise_not(img_HSV_threshold , img_HSV_threshold);
           findContours( img_HSV_threshold, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE );
           int area_sum=0;
+
+
+
+
+          int point_max_area=0;
+          int point_total_area=0;
+          int line_max_length=0;
+          int line_total_length=0;
+
+          bool isNG=false;
           for(int k=0;k<contours.size();k++)
           {
             int area = contourArea(contours[k],false);
-            area_sum+= area;
+            int a_area=area+contours[k].size();
+            area_sum+=a_area;
+
+
+
+            StageInfo_SurfaceCheckSimple::Ele_info einfo;
+            einfo.category=STAGEINFO_CAT_NA;
+            einfo.perimeter=contours.size();
+            einfo.angle=NAN;
+
+            bool isALine=false;
+
+
+            {
+              RotatedRect rrect;
+              bool isEllipse=false;
+              try
+              {
+                if(contours[k].size()>6)
+                  rrect=fitEllipse(contours[k]);
+              }
+              catch(const cv::Exception& e)
+              {
+              }
+
+              if(isEllipse==false)
+              {
+                rrect=minAreaRect(contours[k]);
+                // rrect.center.x-=rrect.size.width/2;
+                // rrect.center.y-=rrect.size.height/2;
+              }
+              
+              einfo.x=rrect.center.x+imgOrderIdx*W;
+              einfo.y=rrect.center.y;
+
+
+              einfo.h=rrect.size.height;
+              einfo.w=rrect.size.width;
+
+              int longestSide=einfo.h>einfo.w?einfo.h:einfo.w;
+              int shortestSide=einfo.h<einfo.w?einfo.h:einfo.w;
+              einfo.angle=rrect.angle*M_PI/180;
+
+              if(line_length_thres<longestSide)
+              {
+                einfo.category=STAGEINFO_CAT_SCS_LINE_OVER_LEN;
+                isNG=true;
+              }
+              else
+              {
+              }
+
+              if((float)longestSide/shortestSide>2.5){//consider as a line
+                line_total_length+=longestSide;
+                if(line_max_length<longestSide)
+                {
+                  line_max_length=longestSide;
+                }
+                isALine=true;
+              }
+
+            }
+
+
+            if(isALine==false)
+            {
+              point_total_area+=a_area;
+              if(point_max_area<a_area)
+              {
+                point_max_area=a_area;
+              }
+
+              if(point_area_thres<a_area)
+              {
+                einfo.category=STAGEINFO_CAT_SCS_PT_OVER_SIZE;
+                isNG=true;
+              }
+              else
+              {
+              }
+            }
+
+            if(einfo.category==STAGEINFO_CAT_NA)
+            {
+              einfo.category=STAGEINFO_CAT_OK;
+            }
 
             // LOGI(">>[%d]>siz:%d area:%f",k,contours[k].size(),area);
-          }            
-
+            einfo.area=a_area;
+            si.elements.push_back(einfo);
+          }
           // LOGI(">>>>>>>>> area_sum:%d",area_sum);
-          if(area_sum>area_thres)SUB_category=STAGEINFO_CAT_NG;
-          else        SUB_category=STAGEINFO_CAT_OK;
+
+
+          if(isNG ||
+          area_sum>area_thres ||
+          // point_max_area>point_area_thres ||
+          // line_max_length>line_length_thres ||
+          point_total_area>point_total_area_thres ||
+          line_total_length>line_total_length_thres)
+                                 SUB_category=STAGEINFO_CAT_NG;
+          else                   SUB_category=STAGEINFO_CAT_OK;
           cur_score=area_sum;
 
         }
@@ -292,16 +417,15 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
     
     
       }while (0);
-      StageInfo_Group_Category::Group_Info gi;
-      gi.category=SUB_category;
-      gi.score=cur_score;
-      reportInfo->group_info.push_back(gi);
+      si.category=SUB_category;
+      si.score=cur_score;
+      reportInfo->sreg_info.push_back(si);
     }
 
 
   }
   int category=0;
-  for(auto catInfo:reportInfo->group_info)
+  for(auto catInfo:reportInfo->sreg_info)
   {
     if(category>catInfo.category || category==0)
     {
