@@ -633,7 +633,7 @@ MSTP_SEG_PREFIX MSTP_segment* MStp::SegQ_Head(int idx) MSTP_SEG_PREFIX
 }
 bool MStp::SegQ_Head_Push() MSTP_SEG_PREFIX
 {
-  if(SegQ_IsFull() || endStopHitLock)return false;
+  if(endStopHitLock || SegQ_IsFull() )return false;
   int newIdx=(segBufHeadIdx+1)%segBufL;
   segBufHeadIdx=newIdx;
   return true;
@@ -666,7 +666,7 @@ void MStp::_FatalError(int errorCode,const char* errorText)
 bool MStp::AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info *exinfo)
 {
 
-  if(fatalErrorCode!=0)return false;
+  if(endStopHitLock || fatalErrorCode!=0)return false;
 
   if(SegQ_Space() <=2)
   {
@@ -1509,7 +1509,15 @@ uint32_t MStp::taskRun()
           // vecAssign(posvec,vec0);
           if(MSTP_segment_type::seg_line==p_runSeg->type)
           {
+            if(axis_dir!=p_runSeg->dir_bit)
+            {
             axis_dir=p_runSeg->dir_bit;
+
+              // for(volatile int i=0;i<2000;i++)//HACK: to extend time before axis_dir do changing, to prevent dir change and step pulse (posedge) too close
+              // {
+
+              // }
+            }
           }
         }
       }

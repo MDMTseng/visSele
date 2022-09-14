@@ -422,7 +422,17 @@ export class BPG_WS
 
   
   
-
+  async InjectImage(imagePath:string,tags:string[],triggerID:number)
+  {
+    return this.send_P(
+      "CM",0,{
+        type:"trigger",
+        img_path:imagePath,
+        trigger_tags:tags,
+        trigger_id:triggerID,
+        channel_id:-1
+      })
+  }
 
   async CameraSWTrigger(camera_id:string,trigger_tag:string,trigger_id:number,doTriggerInfoMocking:boolean=true)
   {
@@ -619,6 +629,11 @@ export class BPG_WS
     }
     
     return FS.data;
+  }
+
+  async FileRename(filePath_from:string,filePath_to:string) {
+    
+    return await this.send_P("SV",0,{filename:filePath_to,type:"rename",from:filePath_from}) as any;
   }
 
   // const [defInfo,setDefInfo]=useState(defInfo_Default)

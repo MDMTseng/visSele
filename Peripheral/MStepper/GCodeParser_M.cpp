@@ -9,6 +9,7 @@
 using namespace std;
 
 #include "LOG.h"
+#include "main.hpp"
 
 
 
@@ -393,6 +394,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
     char *cblk=blockInitial[i];
     int cblkL=blockInitial[i+1]-blockInitial[i];
     // __PRT_D_(">>head=>%c\n",cblk[0]);
+    // G_LOG(cblk);
     if(cblk[0]=='G')
     {
 
@@ -453,6 +455,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         int ret = FindInt32("P",blockInitial+j,blockCount-j,P);
         if(ret==0)
         {
+          // G_LOG("run MTPSYS_AddWait");
           if(MTPSYS_AddWait((uint32_t)P,1, NULL,NULL)==true)
           {
             retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
@@ -693,6 +696,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
     i+=FindGMEnd_idx(blockInitial+i+1,blockCount-(i+1))+1;
 
 
+    // G_LOG("BLK_END");
   }
 
 

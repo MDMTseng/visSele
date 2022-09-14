@@ -139,7 +139,6 @@ class StageInfo_Image:public StageInfo
 #define STAGEINFO_CAT_OK (1)
 #define STAGEINFO_CAT_NG (-1)
 
-
 #define STAGEINFO_CAT_NOT_EXIST (-40000)
 
 
@@ -163,17 +162,36 @@ class StageInfo_Category:public StageInfo
   }
 };
 
-class StageInfo_Group_Category:public StageInfo_Category
+
+
+#define STAGEINFO_CAT_SCS_PT_OVER_SIZE (-700)
+#define STAGEINFO_CAT_SCS_TOTAL_PT_OVER_SIZE (-710)
+#define STAGEINFO_CAT_SCS_LINE_OVER_LEN (-701)
+#define STAGEINFO_CAT_SCS_TOTAL_LINE_OVER_LEN (-711)
+
+class StageInfo_SurfaceCheckSimple:public StageInfo_Category
 {
   public:
-  static std::string stypeName(){return "Category";}
+  static std::string stypeName(){return "SurfaceCheckSimple";}
   virtual std::string typeName(){return this->stypeName();}
 
-  struct Group_Info{
+  struct Ele_info{
+    // int type;
+    int area;
+    int perimeter;
+    int x,y;
+    int w,h;
+    float angle;
+
+    int category;
+  };
+  
+  struct SRegion_Info{
     int category;
     int score;
+    vector<Ele_info> elements;
   };
-  vector<struct Group_Info> group_info;
+  vector<struct SRegion_Info> sreg_info;
 
   virtual cJSON* genJsonRep()
   {
@@ -181,14 +199,36 @@ class StageInfo_Group_Category:public StageInfo_Category
     cJSON* report=cJSON_GetObjectItem(rootRep,"report");
 
     cJSON* g_cat=cJSON_CreateArray();
-    cJSON_AddItemToObject(report,"group_category",g_cat);
-    for(int i=0;i<group_info.size();i++)
+    cJSON_AddItemToObject(report,"sub_reports",g_cat);
+    for(int i=0;i<sreg_info.size();i++)
     {
       cJSON *ginfo=cJSON_CreateObject();
       cJSON_AddItemToArray(g_cat,ginfo);
 
-      cJSON_AddNumberToObject(ginfo,"category",group_info[i].category);
-      cJSON_AddNumberToObject(ginfo,"score",group_info[i].score);
+      cJSON_AddNumberToObject(ginfo,"category",sreg_info[i].category);
+      cJSON_AddNumberToObject(ginfo,"score",sreg_info[i].score);
+
+
+      cJSON* elements=cJSON_CreateArray();
+      for(int j=0;j<sreg_info[i].elements.size();j++)
+      {
+        cJSON *ele=cJSON_CreateObject();
+        cJSON_AddItemToArray(elements,ele);
+
+
+        cJSON_AddNumberToObject(ele,"area",sreg_info[i].elements[j].area);
+        cJSON_AddNumberToObject(ele,"perimeter",sreg_info[i].elements[j].perimeter);
+        cJSON_AddNumberToObject(ele,"x",sreg_info[i].elements[j].x);
+        cJSON_AddNumberToObject(ele,"y",sreg_info[i].elements[j].y);
+        cJSON_AddNumberToObject(ele,"w",sreg_info[i].elements[j].w);
+        cJSON_AddNumberToObject(ele,"h",sreg_info[i].elements[j].h);
+        cJSON_AddNumberToObject(ele,"angle",sreg_info[i].elements[j].angle);
+        cJSON_AddNumberToObject(ele,"category",sreg_info[i].elements[j].category);
+
+      }
+      cJSON_AddItemToObject(ginfo,"elements",elements);
+
+
 
     }
     return rootRep;
@@ -208,14 +248,6 @@ class StageInfo_Group:public StageInfo
 
 };
 
-
-class StageInfo_SurfaceCheckSimple:public StageInfo_Category
-{
-  public:
-  static string stypeName(){return "SurfaceCheckSimple";}
-  string typeName(){return this->stypeName();}
-
-};
 
 class StageInfo_Orientation:public StageInfo
 {

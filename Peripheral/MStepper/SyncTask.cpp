@@ -21,7 +21,7 @@ extern "C" {
 
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc);
-
+uint32_t g_step_trigger_edge=0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
 
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
@@ -62,6 +62,13 @@ class MData_JR:public Data_JsonRaw_Layer
 MData_JR djrl;
 
 
+
+void G_LOG(char* str)
+{
+  djrl.dbg_printf(str);
+}
+
+
 hw_timer_t *timer = NULL;
 #define S_ARR_LEN(arr) (sizeof(arr) / sizeof(arr[0]))
 
@@ -96,10 +103,13 @@ enum MSTP_SegCtx_TYPE{
 
 
 
-struct triggerInfo{
+struct triggerInfo{//TODO: rename the infoQ to be more versatile
   string camera_id;
   string trig_tag;
   int trig_id;
+
+  bool isTrigInfo;
+  string log;
 };
 
 RingBuf_Static<struct triggerInfo,20,uint8_t> triggerInfoQ;
@@ -169,8 +179,8 @@ class MStp_M:public MStp{
     axisInfo[AXIS_IDX_X].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_X].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_Y].VirtualStep=1.5;
-    axisInfo[AXIS_IDX_Y].AccW=1;
+    axisInfo[AXIS_IDX_Y].VirtualStep=2;
+    axisInfo[AXIS_IDX_Y].AccW=0.5;
     axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_Y].MaxSpeed=general_max_freq;
 
@@ -388,13 +398,12 @@ class MStp_M:public MStp{
         }
         _ZERO_DBG_COUNTER=30;
 
-        delay(10);
+        delay(100);
         
         if(runUntil(axisIdx,sensor_pin,!sensorDetectVLvl,-distance/2,runSpeed/100,&retHitPos)!=0)
         {
           return -1;
         }
-        delay(10);
         curPos_c.vec[axisIdx]=0;//zero the Cur_pos
         lastTarLoc=curPos_c;
         break;
@@ -459,7 +468,7 @@ class MStp_M:public MStp{
         if(ctx->CID.length()>0)
         {
           //send camera idx 
-          struct triggerInfo tinfo={.camera_id=ctx->CID,.trig_tag=ctx->TTAG,.trig_id=ctx->TID};
+          struct triggerInfo tinfo={.camera_id=ctx->CID,.trig_tag=ctx->TTAG,.trig_id=ctx->TID,.isTrigInfo=true};
 
           triggerInfo* Qhead=NULL;
           while( (Qhead=triggerInfoQ.getHead()) ==NULL)
@@ -553,14 +562,14 @@ class MStp_M:public MStp{
   {
     _latest_stp_pins=step;
     _latest_dir_pins=dir;
-    uint32_t portPins=(dir&0xFF)<<16 | (step & 0xFF)<<24|static_Pin_info<<0;
+    uint32_t portPins=( dir&0xFF)<<16 | ( (step^g_step_trigger_edge) & 0xFF)<<24|static_Pin_info<<0;
     // uint32_t portPins=(dir&0xF)<<16 | (step & 0xFF)<<24|(static_Pin_info&0xF)<<20;
-
-    spi1->host->hw->data_buf[0]=portPins;
+    int pidx=0;
+    spi1->host->hw->data_buf[pidx]=portPins;
     
     gpio_set_level((gpio_num_t) pin_SH_165, 1);//switch to keep in 165 register(stop 165 load pin to reg)
     gpio_set_level((gpio_num_t) pin_TRIG_595, 0);//
-    direct_spi_transfer(spi1,32);
+    direct_spi_transfer(spi1,32*(pidx+1));
     shiftRegAssignedCount++;
     //send_SPI(portPins);
   }
@@ -599,10 +608,16 @@ class MStp_M:public MStp{
           {
             if(endStopHitLock==false)
             {
+              endStopHitLock=true;
               
+              struct triggerInfo tinfo={.isTrigInfo=false,.log="End_stop hit, EM STOP...."};
+
+              triggerInfo* Qhead=NULL;
+              while( (Qhead=triggerInfoQ.getHead()) ==NULL);
+              *Qhead=tinfo;
+              triggerInfoQ.pushHead();
               StepperForceStop();
             }
-            endStopHitLock=true;
           }
         }
 
@@ -796,11 +811,14 @@ public:
   bool MTPSYS_AddWait(uint32_t period_ms,int times, void* ctx,MSTP_segment_extra_info *exinfo)
   {
     uint32_t waitTick=((int64_t)period_ms*_mstp->TICK2SEC_BASE)/1000;
-    while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
-    {
-      yield();
-    }
-    return true;
+
+    // G_LOG("in MTPSYS_AddWait");
+    // while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
+    // {
+    //   yield();
+    // }
+    // return true;
+    return _mstp->AddWait(waitTick,times,ctx,exinfo);
   }
 
   bool MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T,char* CID,char* TTAG,int TID)
@@ -844,7 +862,7 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
       dataBuff[i]='\'';
   }  
   dataBuff[buffIdx]='\0';
-  doDataLog=true;
+  // doDataLog=true;
 
   if(recv_data)
     dbg_printf("recv_ERROR:%d %s dat:%s",errorcode,dataBuff,string((char*)recv_data,0,9).c_str());
@@ -1204,13 +1222,15 @@ void loop()
 {
   djrl.loop();
   {
-    if (Serial.available() > 0) {
+    bool recvF=false;
+    while(Serial.available() > 0) {
+      recvF=true;
       // read the incoming byte:
       // char c=Serial.read();
       // djrl.recv_data((uint8_t*)&c,1);
       int recvLen = Serial.read(recvBuf,sizeof(recvBuf-1));
       //
-
+      // djrl.dbg_printf("recvLen:%d",recvLen);
       djrl.recv_data((uint8_t*)recvBuf,recvLen);
       if(doDataLog)
       {
@@ -1224,29 +1244,40 @@ void loop()
       }
 
     }
+    if(recvF)
+    {
+      // djrl.dbg_printf("recv DONE");
+    }
   }
 
 
-  int curTrigQSize=triggerInfoQ.size();
   {
     uint8_t buff[700];
     retdoc.clear();
-    retdoc["type"]="TriggerInfo"; 
-    while(curTrigQSize)
+    int curTrigQSize;
+    while(0!=(curTrigQSize=triggerInfoQ.size()))
     {
       triggerInfo info=*triggerInfoQ.getTail();
-      triggerInfoQ.consumeTail();
       // retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
       // retdoc["trigger_id"]=info.step;
+
+      if(info.isTrigInfo)
+      {
+        retdoc["type"]="TriggerInfo"; 
       retdoc["camera_id"]=info.camera_id;
       retdoc["tag"]=info.trig_tag;
       retdoc["trigger_id"]=info.trig_id;
-      curTrigQSize=triggerInfoQ.size();
 
 
 
       int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
       djrl.send_json_string(0,buff,slen,0);
+      }
+      else
+      {
+        djrl.dbg_printf("%s",info.log.c_str());
+      }
+      triggerInfoQ.consumeTail();
     }
   }
 

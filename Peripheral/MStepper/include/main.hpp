@@ -16,5 +16,8 @@ void setup_comm();
 void loop_comm();
 
 
+void G_LOG(char* str);
+
+
 // void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
 //              void *arg, uint8_t *data, size_t len);
