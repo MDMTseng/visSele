@@ -346,7 +346,7 @@ function ColorRegionDetection_SingleRegion({srule,onDefChange,canvas_obj}:
 
     </>
 
-    <br/>colorThres
+    <br/>細節量
     <Slider defaultValue={srule_Filled.colorThres}  max={255} onChange={(v)=>{
 
       _this.trigTO=
@@ -1161,7 +1161,7 @@ function Orientation_ColorRegionOval_SingleRegion({srule,onDefChange,canvas_obj}
 
     </>
 
-    <br/>colorThres
+    <br/>細節量
     <Slider defaultValue={srule_Filled.colorThres}  max={255} onChange={(v)=>{
 
       _this.trigTO=
@@ -1217,6 +1217,246 @@ function rgb2hsv (r:number, g:number, b:number) {
   return [h * 180,s * 255,v * 255];
 }
 
+
+function TestInputSelectUI({folderPath,stream_id}:{folderPath:string,stream_id:number})
+{
+  const _this = useRef<any>({}).current;
+  const dispatch = useDispatch();
+  const [BPG_API,setBPG_API]=useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+  const [imageFolderInfo,setImageFolderInfo]=useState<any>(undefined);
+  const [finalReports,setFinalReports]=useState<any>({});
+  const [latestSelect,setLatestSelect]=useState<any>(undefined);
+
+  const injectID_Prefix="s_InjectID_";
+  const cbs_key="xxxx";
+  _this.finalReports=finalReports;
+
+
+
+
+  function FileListReset()
+  {
+    (async ()=>{
+      let folderContent=await BPG_API.Folder_Struct(folderPath,2);
+      let regex = /[a-zA-Z]+_[0-9]+\.png/i;
+
+      let imageInfo=folderContent.files
+        .filter((finfo:any)=>regex.test(finfo.name))
+        .sort((finfo1:any,finfo2:any)=>finfo1.mtime_ms-finfo2.mtime_ms)
+
+      console.log(imageInfo);
+      
+      folderContent.files=imageInfo;
+      setImageFolderInfo(folderContent);
+
+      setFinalReports({})//clear
+      setLatestSelect(undefined);
+      console.log(folderContent)
+
+
+    })()
+  }
+
+
+
+  useEffect(() => {//////////////////////
+    console.log("TestInputSelectUI INIT");
+
+
+
+
+    BPG_API.send_cbs_attach(
+      stream_id,cbs_key,{
+        
+        resolve:(pkts)=>{
+          let RP=pkts.find((p:any)=>p.type=="RP");
+          if(RP===undefined)return;
+
+          let tags=RP.data.tags as string[];
+          let injID=tags.find((tag:string)=>tag.startsWith(injectID_Prefix));
+            
+          if(injID===undefined)return;
+          injID=injID.replace(injectID_Prefix,"");
+
+
+          setFinalReports({..._this.finalReports,[injID]:RP.data})
+
+
+        },
+        reject:(pkts)=>{
+
+        }
+      }
+
+    )
+
+
+    FileListReset();
+
+
+
+
+
+
+
+
+
+
+    return (() => {
+
+      BPG_API.send_cbs_detach(stream_id,cbs_key);
+    
+      console.log("TestInputSelectUI EXIT");
+    });
+  },[]);
+
+  function ImgTest(folder_path:string, fileInfo:{name:string})
+  {
+    let sIDTag=injectID_Prefix+fileInfo.name;
+
+    BPG_API.InjectImage(folder_path+"/"+fileInfo.name,["UI_Inject",sIDTag],Date.now());
+
+    setLatestSelect({
+      ...imageFolderInfo,
+      sIDTag,
+      file:fileInfo
+    });
+    
+  }
+
+  let bottonRunAll=imageFolderInfo===undefined?null:
+  <Button onClick={()=>{
+
+    setFinalReports({})//clear
+    setLatestSelect(undefined);
+    imageFolderInfo.files.forEach((file:any)=>{
+      // let resultType=NaN;
+      // let report=finalReports[file.name];
+      // if(report!==undefined)
+      // {
+      //   resultType=report.report.category
+      // }
+      if(file.name.startsWith("IG_"))return;
+
+      ImgTest(imageFolderInfo.path, file);
+    })
+
+  }}>
+
+    群組測試
+  </Button>
+
+  // console.log(finalReports,latestSelect)
+  let bottonS=imageFolderInfo===undefined?null:
+  imageFolderInfo.files.map((file:any)=>{
+    let hasGenOK=false;
+    let hasGenNG=false;
+    let report=finalReports[file.name];
+    if(report!==undefined)
+    {
+      report.report.sub_reports.forEach((subrep:any)=>{
+        if(subrep.category==1)hasGenOK=true;
+        if(subrep.category==-1)hasGenNG=true;
+      })
+    }
+    let pureGenOK=hasGenOK && !hasGenNG;
+    let pureGenNG=!hasGenOK && hasGenNG;
+
+    // console.log(hasGenOK,hasGenNG)
+    // console.log(file.name,pureGenOK,pureGenNG)
+
+    return <Button key={file.name} type={(pureGenOK||pureGenNG)?"primary":"dashed"} danger={hasGenNG} ghost={!hasGenOK&&!hasGenNG}
+    onClick={()=>{
+      ImgTest(imageFolderInfo.path, file);
+      
+    }}>
+      {file.name.replace(".png","")}
+    </Button>
+  })
+
+
+  async function fileRename(folder_path:string,cName:string,nName:string)
+  {
+    let renameResult=await BPG_API.FileRename(folder_path+"/"+cName,folder_path+"/"+nName);
+    console.log(renameResult);
+    FileListReset();
+
+  }
+
+  //`確定命名為OK?`
+  function Btn_LatestSelectFile_Rename(prefix:string,btnText:string,confirmText:string)
+  {
+    return <Popconfirm
+        title={confirmText}
+        onConfirm={()=>{}}
+        onCancel={()=>{}}
+        okButtonProps={{danger:true,onClick:()=>{
+          
+          let fname=latestSelect.file.name;
+          fname=prefix+fname.replace(/^[a-zA-Z]+_/g, "");
+          fileRename(latestSelect.path,latestSelect.file.name,fname);
+        }}}
+        okText={"好"}
+        cancelText="No"
+      >
+      <Button onClick={()=>{}}>
+        {btnText}
+      </Button>
+    </Popconfirm> 
+  }
+
+  return <>
+  
+    <Button danger type="primary" onClick={()=>{
+      FileListReset();
+
+    }}>檔案重整</Button>
+
+    {bottonRunAll}
+
+    <br/>
+    {latestSelect===undefined?null:<>
+      {latestSelect.file.name}
+
+
+      {Btn_LatestSelectFile_Rename("NG_","NG",`確定命名為NG?`)}
+
+
+
+      {Btn_LatestSelectFile_Rename("OK_","OK",`確定命名為OK?`)}
+
+
+
+      {Btn_LatestSelectFile_Rename("IG_","忽略",`確定設定至群組測試 忽略清單?`)}
+
+
+    </>}
+    <div style={{width:"100%",height:"400px", background:"rgba(0,0,0,0.8)",overflow:"scroll"}}>
+      {bottonS}
+
+      <br/><br/>說明:
+      <Button key={"all OK log"} type="primary">
+        可檢全OK
+      </Button>
+
+      <Button key={"all OK log"} type="primary" danger>
+        可檢全NG
+      </Button>
+
+      <Button key={"all NG log"} type="dashed" danger>
+        可檢OK NG混合
+      </Button>
+
+      <Button key={"all NG log"} type="dashed" ghost>
+        無可檢
+      </Button>
+    </div>
+
+
+    </>
+}
+
+
 function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fsPath,width,height,style=undefined,renderHook,def,EditPermitFlag,report,onDefChange}:CompParam_InspTarUI){
   const _ = useRef<any>({
 
@@ -1271,6 +1511,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
     Normal_Show = 0,
     Feature_Edit = 1,
     Search_Region_Edit = 2,
+    Test_Saved_Files= 3,
     NA=-99999
   }
   
@@ -1340,6 +1581,15 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           break;
       
         case EditState.Search_Region_Edit:          
+        if(idx==2)//enter
+        {
+        }
+        else if(idx==0)//leave
+        {
+        }
+        break;
+
+        case EditState.Test_Saved_Files:
         if(idx==2)//enter
         {
         }
@@ -1519,14 +1769,10 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           <a>TAGS</a>
         </TagsEdit_DropDown>
 
-        <Button onClick={()=>{
-          onCacheDefChange(cacheDef,true);
-        }}>SHOT</Button>
 
-            
-        <Button onClick={()=>{
+        {/* <Button onClick={()=>{
           BPG_API.InspTargetExchange(cacheDef.id,{type:"revisit_cache_stage_info"});
-        }}>SHOT2</Button>
+        }}>重試</Button> */}
 
 
               
@@ -1566,35 +1812,6 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
               
 
         <Button onClick={()=>{
-             (async ()=>{
-              let name="OK_"+Date.now()+".png";
-              let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
-                type:"cache_image_save",
-                folder_path:fsPath+"/",
-                image_name:name,
-              }) as any[];
-              console.log(pkts);
-              message.info(`${name} 儲存結束`);
-  
-            })()
-        }}>SOK IMG</Button>
-        <Button onClick={()=>{
-             (async ()=>{
-
-              let name="NG_"+Date.now()+".png";
-              let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
-                type:"cache_image_save",
-                folder_path:fsPath+"/",
-                image_name:"NG_"+Date.now()+".png",
-              }) as any[];
-              console.log(pkts);
-              message.info(`${name} 儲存結束`);
-  
-            })()
-        }}>SNG IMG</Button>
-
-
-        <Button onClick={()=>{
           onDefChange(cacheDef,true)
         }}>Commit</Button>
         <Button onClick={()=>{
@@ -1602,11 +1819,13 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           setEditState( EditState.Feature_Edit);
 
         }}>編輯特徵</Button>
+
         <Button  onClick={()=>{
           
           setEditState( EditState.Search_Region_Edit);
 
         }}>編輯搜尋範圍</Button>
+
         </>
       }
 
@@ -1627,11 +1846,72 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           onChange={(e)=>{
           }}/> */}
 
+        <Button onClick={()=>{
+          onCacheDefChange(cacheDef,true);
+        }}>照相</Button>
+
 
 
         {EditUI}
 
 
+        <br/>
+        
+
+        <Popconfirm
+            title={`確定儲存OK圖?`}
+            onConfirm={()=>{}}
+            onCancel={()=>{}}
+            okButtonProps={{danger:true,onClick:()=>{
+              (async ()=>{
+                let name="OK_"+Date.now()+".png";
+                let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
+                  type:"cache_image_save",
+                  folder_path:fsPath+"/",
+                  image_name:name,
+                }) as any[];
+                console.log(pkts);
+                message.info(`${name} 儲存成功`);
+    
+              })()
+            }}}
+            okText={"好"}
+            cancelText="No"
+          >
+          <Button onClick={()=>{}}>
+          存OK
+          </Button>
+        </Popconfirm> 
+
+
+        <Popconfirm
+            title={`確定儲存NG圖?`}
+            onConfirm={()=>{}}
+            onCancel={()=>{}}
+            okButtonProps={{danger:true,onClick:()=>{
+              (async ()=>{
+                let name="NG_"+Date.now()+".png";
+                let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
+                  type:"cache_image_save",
+                  folder_path:fsPath+"/",
+                  image_name:name,
+                }) as any[];
+                console.log(pkts);
+                message.info(`${name} 儲存成功`);
+    
+              })()
+            }}}
+            okText={"好"}
+            cancelText="No"
+          >
+          <Button onClick={()=>{}}>
+          存NG
+          </Button>
+        </Popconfirm> 
+
+        <Button  onClick={()=>{
+          setEditState( EditState.Test_Saved_Files);
+        }}>測試存檔</Button>
       </>
 
 
@@ -2015,13 +2295,33 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
       </>
       break;
+  
+  
+  
+    
+    case EditState.Test_Saved_Files:{
+
+      let folderPath=cacheDef.testInputFolder||fsPath;
+      let result_InspTar_stream_id=51001;//HACK hard coded
+      EDIT_UI=<>
+        <Button danger type="primary" onClick={()=>{
+
+          setEditState(EditState.Normal_Show)
+        }}>{"<"}</Button>
+        <TestInputSelectUI folderPath={folderPath} stream_id={result_InspTar_stream_id}></TestInputSelectUI>
+      </>
+    }break;
+  
+  
+  
+  
   }
   
 
   
   return <div style={{...style,width:width+"%",height:height+"%"}}  className={"overlayCon"}>
 
-    <div className={"overlay"} >
+    <div className={"overlay"} style={{width:"100%"}}>
 
       {EDIT_UI}
 
@@ -2078,7 +2378,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
         // 
         _this.fetchedPixInfo=imageData;
       }
-      if(editState==EditState.Normal_Show || editState==EditState.Search_Region_Edit)
+      if(editState==EditState.Normal_Show || editState==EditState.Search_Region_Edit||editState==EditState.Test_Saved_Files)
       {      
         if(ctrl_or_draw==true)//ctrl
         {
@@ -3022,7 +3322,7 @@ function SurfaceCheckSimple_EDIT_UI({def,onDefChange,canvas_obj}:
 
     </>
 
-    <br/>colorThres
+    <br/>細節量
     <Slider defaultValue={def_Filled.colorThres}  max={255} onChange={(v)=>{
 
       _this.trigTO=
@@ -4017,7 +4317,7 @@ function TargetViewUIShow({displayIDList,defConfig,EditPermitFlag,onDefChange,re
     
       if(inspTar===undefined)
       {
-        return  <><br/>---hide----<br/></>
+        return  null;//<><br/>---hide----<br/></>
       }
       console.log(defConfig.path,inspTar.id);
       return  <InspTargetUI_MUX 

@@ -137,7 +137,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
 };
 
 
-int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,int trigger_id,int channel_id)
+int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trigger_id,int channel_id)
 {
   
   std::shared_ptr<StageInfo_Image> newStateInfo(new StageInfo_Image());
@@ -145,7 +145,7 @@ int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,
 
   newStateInfo->img_prop.StreamInfo.camera=NULL;
   newStateInfo->img_prop.StreamInfo.channel_id=channel_id;
-  newStateInfo->trigger_tags.push_back(trigger_tag);
+  newStateInfo->trigger_tags=trigger_tags;
 
   Mat mat=imread(path.c_str());
 
@@ -161,6 +161,7 @@ int ReadImageAndPushToInspQueue(string path,string camera_id,string trigger_tag,
 
   std::shared_ptr<acvImage> img(new acvImage(W,H,3));
   newStateInfo->img=img;
+  newStateInfo->trigger_id=trigger_id;
   
   cv::Mat dst_mat(H,W,CV_8UC3,img->CVector[0]);
 
@@ -527,10 +528,10 @@ int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   
   if(opcode==1 )
   {
+    // LOGI("<MSG:%s", raw);
     char tmp[1024];
     if(strstr((char*)raw, "\"type\":\"TriggerInfo\"") != NULL)
     {
-      LOGI("MSG:%s", raw);
       cJSON *json = cJSON_Parse((char *)raw);
       if(json)
       {
@@ -902,18 +903,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         { //No raw data, check "type"
 
           char *type = (char *)JFetch(json, "type", cJSON_String);
-          if (strcmp(type, "__CACHE_IMG__") == 0)
+          if (strcmp(type, "rename") == 0)
           {
-            LOGE("__CACHE_IMG__ %d x %d", cacheImage.GetWidth(), cacheImage.GetHeight());
-            if (cacheImage.GetWidth() * cacheImage.GetHeight() > 10) //HACK: just a hacky way to make sure the cache image is there
+
+            string fromFileName = JFetch_STRING_ex(json, "from");
+            if(fromFileName.length()>0)
             {
-              SaveIMGFile(fileName, &cacheImage);
-              session_ACK=true;
+              session_ACK=(rename(fromFileName.c_str(), fileName)==0);
             }
-            else
-            {
-              session_ACK = false;
-            }
+
+
           }
         
         }
@@ -1297,46 +1296,47 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       }
       else if(strcmp(type_str, "trigger") ==0)
       {do{
-        char *_cam_id = JFetch_STRING(json, "id");
-        if(_cam_id==NULL)break;
-        std::string id=std::string(_cam_id);
         char *_img_path = JFetch_STRING(json, "img_path");
         if(_img_path)
         {
           
-          char *_trigger_tag = JFetch_STRING(json, "trigger_tag");
-          double *_trigger_id = JFetch_NUMBER(json, "trigger_id");
-          double channel_id = JFetch_NUMBER_ex(json, "channel_id");
-
-          if(channel_id!=channel_id)
+          vector<string> tags;
           {
-            CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
-            if(cami)
+
+            cJSON* trigger_tags = JFetch_ARRAY(json, "trigger_tags");
+            if(trigger_tags)
+          {
+              int tagsLen=cJSON_GetArraySize(trigger_tags);
+              for(int i=0;i<tagsLen;i++)
             {
-              channel_id=cami->channel_id;
+                cJSON * item= cJSON_GetArrayItem(trigger_tags,i);
+                if(item->type & cJSON_String)
+                {
+                  tags.push_back(string(item->valuestring));
+                }
+              }
             }
           }
 
-          if(_trigger_tag==NULL ||  _trigger_id==NULL || channel_id!=channel_id)
-          {
-            sprintf(err_str, "trigger_tag:%p trigger_id:%p channel_id:%f", _trigger_tag,_trigger_id,channel_id);
-            LOGI("%s",err_str);
-            break;
-          }
+          LOGI("_img_path:%s tags:%d",_img_path,tags.size());
+
+
+
+
           
-          LOGI("_img_path:%s _cam_id:%s _trigger_tag:%s",_img_path,_cam_id,_trigger_tag);
-          LOGI("_trigger_id:%d _channel_id:%d",(int)*_trigger_id,(int)channel_id);
           int ret=
             ReadImageAndPushToInspQueue(
               std::string(_img_path),
-              id,
-              std::string(_trigger_tag),
-              (int)*_trigger_id,
-              (int)channel_id);
+              tags,
+              (int)JFetch_NUMBER_ex(json, "trigger_id",-1),
+              (int)JFetch_NUMBER_ex(json,"channel_id",-1));
         }
         else
         {
 
+          char *_cam_id = JFetch_STRING(json, "id");
+          if(_cam_id==NULL)break;
+          std::string id=std::string(_cam_id);
           if(JFetch_TRUE(json, "soft_trigger"))
           {
             {
