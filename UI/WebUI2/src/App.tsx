@@ -1,7 +1,9 @@
 import React from 'react';
 import { useState, useEffect,useRef,useMemo,useContext } from 'react';
 import { useDispatch, useSelector } from "react-redux";
-import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio, InputNumber, Switch } from 'antd';
+import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio, InputNumber, Switch,Select } from 'antd';
+
+const { Option } = Select;
 
 import type { MenuProps, MenuTheme } from 'antd/es/menu';
 const { SubMenu } = Menu;
@@ -1238,10 +1240,10 @@ function TestInputSelectUI({folderPath,stream_id}:{folderPath:string,stream_id:n
   {
     (async ()=>{
       let folderContent=await BPG_API.Folder_Struct(folderPath,2);
-      let regex = /[a-zA-Z]+_[0-9]+\.png/i;
+      let regex = /.+\.png/i;
 
       let imageInfo=folderContent.files
-        .filter((finfo:any)=>regex.test(finfo.name))
+        .filter((finfo:any)=>(finfo.name!="FeatureRefImage.png")&&regex.test(finfo.name))
         .sort((finfo1:any,finfo2:any)=>finfo1.mtime_ms-finfo2.mtime_ms)
 
       console.log(imageInfo);
@@ -1418,16 +1420,18 @@ function TestInputSelectUI({folderPath,stream_id}:{folderPath:string,stream_id:n
     {latestSelect===undefined?null:<>
       {latestSelect.file.name}
 
-
+{/* 
       {Btn_LatestSelectFile_Rename("NG_","NG",`確定命名為NG?`)}
 
 
 
       {Btn_LatestSelectFile_Rename("OK_","OK",`確定命名為OK?`)}
+ */}
 
 
-
-      {Btn_LatestSelectFile_Rename("IG_","忽略",`確定設定至群組測試 忽略清單?`)}
+      {latestSelect.file.name.startsWith("IG_")? 
+      Btn_LatestSelectFile_Rename("","加入群組測試",`確定設定至群組測試清單?`):
+      Btn_LatestSelectFile_Rename("IG_","忽略群組測試",`確定設定至群組測試 忽略清單?`)}
 
 
     </>}
@@ -1439,15 +1443,15 @@ function TestInputSelectUI({folderPath,stream_id}:{folderPath:string,stream_id:n
         可檢全OK
       </Button>
 
-      <Button key={"all OK log"} type="primary" danger>
+      <Button key={"all NG log"} type="primary" danger>
         可檢全NG
       </Button>
 
-      <Button key={"all NG log"} type="dashed" danger>
+      <Button key={"all NG OK Mix"} type="dashed" danger>
         可檢OK NG混合
       </Button>
 
-      <Button key={"all NG log"} type="dashed" ghost>
+      <Button key={"no insp"} type="dashed" ghost>
         無可檢
       </Button>
     </div>
@@ -1477,6 +1481,20 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
   const [featureInfo,setFeatureInfo]=useState<any>({});
 
   const [defReport,setDefReport]=useState<any>(undefined);
+
+
+  const emptyModalInfo={
+    timeTag:0,
+    visible:false,
+    type:"",
+    onOK:(minfo:any)=>{},
+    onCancel:(minfo:any)=>{},
+    title:"",
+    DATA:DAT_ANY_UNDEF,
+    contentCB:(minfo:any)=><></>
+
+  }
+  const [modalInfo,setModalInfo]=useState(emptyModalInfo);
 
 
   let c_report:any = undefined;
@@ -1846,9 +1864,9 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
           onChange={(e)=>{
           }}/> */}
 
-        <Button onClick={()=>{
+        {/* <Button onClick={()=>{
           onCacheDefChange(cacheDef,true);
-        }}>照相</Button>
+        }}>照相</Button> */}
 
 
 
@@ -1858,60 +1876,74 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
         <br/>
         
 
-        <Popconfirm
-            title={`確定儲存OK圖?`}
-            onConfirm={()=>{}}
-            onCancel={()=>{}}
-            okButtonProps={{danger:true,onClick:()=>{
+          <Button onClick={()=>{
+
+
+
+            let default_name=Date.now();
+
+            setModalInfo({
+              timeTag:Date.now(),
+              visible:true,
+              type:">>",
+              onOK:(minfo:typeof modalInfo)=>{
+                // resolve(true)
+
+
               (async ()=>{
-                let name="OK_"+Date.now()+".png";
+                  let name=minfo.DATA.prefix+minfo.DATA.name+".png";
                 let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
                   type:"cache_image_save",
                   folder_path:fsPath+"/",
                   image_name:name,
                 }) as any[];
                 console.log(pkts);
-                message.info(`${name} 儲存成功`);
+                  // if(pkts[0].data.ACK)
+                  // {
+                  // }
+                  // else
+                  // {
+                  //   message.info(`${name} 儲存失敗`);
+                  // }
+
+                  message.info(`${name} 儲存...`);
+                  setModalInfo({...minfo,visible:false})
     
               })()
-            }}}
-            okText={"好"}
-            cancelText="No"
-          >
-          <Button onClick={()=>{}}>
-          存OK
-          </Button>
-        </Popconfirm> 
+              },
+              onCancel:(minfo:typeof modalInfo)=>{
+                // reject(false)
+                setModalInfo({...minfo,visible:false})
+              },
+              title:"儲存當前圖檔",
+              DATA:{
+                prefix:"",
+                name:default_name
+              },
+              contentCB:(minfo:typeof modalInfo )=><>
 
+                檔案名稱:
+                <Input addonBefore={ 
+                <Select key={default_name} defaultValue="___" onChange={value=>setModalInfo(ObjShellingAssign(minfo,["DATA","prefix"],value))   }>
+                  <Option value="___">{"___"}</Option>
+                  <Option value="[OK]">OK</Option>
+                  <Option value="[NG]">NG</Option>
+                </Select>} value={minfo.DATA.name}
+                onChange={(ev)=>{
+                  setModalInfo(ObjShellingAssign(minfo,["DATA","name"],ev.target.value))
 
-        <Popconfirm
-            title={`確定儲存NG圖?`}
-            onConfirm={()=>{}}
-            onCancel={()=>{}}
-            okButtonProps={{danger:true,onClick:()=>{
-              (async ()=>{
-                let name="NG_"+Date.now()+".png";
-                let pkts = await BPG_API.InspTargetExchange(cacheDef.id,{
-                  type:"cache_image_save",
-                  folder_path:fsPath+"/",
-                  image_name:name,
-                }) as any[];
-                console.log(pkts);
-                message.info(`${name} 儲存成功`);
+                }} />
     
-              })()
-            }}}
-            okText={"好"}
-            cancelText="No"
-          >
-          <Button onClick={()=>{}}>
-          存NG
+              </>
+            })
+          }}>
+          儲存當前圖檔
           </Button>
-        </Popconfirm> 
+
 
         <Button  onClick={()=>{
           setEditState( EditState.Test_Saved_Files);
-        }}>測試存檔</Button>
+        }}>測試儲存圖檔</Button>
       </>
 
 
@@ -2327,6 +2359,15 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
 
     </div>
 
+    <Modal
+        title={modalInfo.title}
+        visible={modalInfo.visible}
+        onOk={()=>modalInfo.onOK(modalInfo)}
+        // confirmLoading={confirmLoading}
+        onCancel={()=>modalInfo.onCancel(modalInfo)}
+      >
+        {modalInfo.visible?modalInfo.contentCB(modalInfo):null}
+    </Modal>
     
     <HookCanvasComponent style={{}} dhook={(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
       _this.canvasComp=canvas_obj;
@@ -3625,10 +3666,11 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
               {
                 let repAtStep=parseInt(repAtStepTag.replace('s_Step_',''));
                 // rep.report
-                console.log(rep.report.group_category,repAtStep)
+                console.log(rep,repAtStep)
 
-                let newNGInfo = rep.report.group_category.map((bad_ele:any,index:number)=>({location_mm:-repAtStep*_MM_P_STP_+index*_MM_P_STP_,category:bad_ele.category})).filter((ele:any)=>ele.category<=0)
-                // console.log(newNGInfo,"mm")
+                let newNGInfo = rep.report.sub_reports.map((bad_ele:any,index:number)=>({location_mm:-repAtStep*_MM_P_STP_+index*_MM_P_STP_,category:bad_ele.category}))
+                  .filter((ele:any)=>ele.category<=0)
+                console.log(newNGInfo,"mm")
 
                 setLatestRepStepCount(repAtStep);
                 setNGInfoList([..._this.TMP_NGInfoList,...newNGInfo])
@@ -3991,7 +4033,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             
               
 
-            let curOffset=(reelStep*_MM_P_STP_-latestRepStepCount*_OBJ_SEP_DIST_+index*_MM_P_STP_)/_OBJ_SEP_DIST_;
+            let curOffset=(reelStep*_MM_P_STP_-latestRepStepCount*_OBJ_SEP_DIST_+_index*_MM_P_STP_)/_OBJ_SEP_DIST_;
             ctx.fillText(CAT_ID_NAME[catInfo.category+""]+" "+curOffset+"顆",cacheDef.W*index,0+TextY+5)
 
             ctx.font = (TextY*0.7).toFixed(2)+"px Arial";
