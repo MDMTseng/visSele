@@ -559,6 +559,7 @@ class MStp_M:public MStp{
 
   int shiftRegAssignedCount=0;//the count hs to be 1 in order to get correct input data
   #define BIT_CUT(V32,offset,width)  (   ( (V32)>>(offset) )     &    ((1<<(width))-1)    )
+  #define ENDIAN_SWITCH(B32)  (((B32)<<24)|(((B32)&0xFF00)<<8)|(((B32)&0xFF0000)>>8)|((B32)>>24))
 
   void ShiftRegAssign(uint32_t dir,uint32_t step)
   {
@@ -595,12 +596,13 @@ class MStp_M:public MStp{
     portPins=
     //((portPins&0xFF)<<24)|((portPins&0xFF00)<<8)|((portPins&0xFF0000)>8)|((portPins&0xFF000000)>24);
     ((portPins)<<24)|((portPins&0xFF00)<<8)|((portPins&0xFF0000)>>8)|((portPins)>>24);//endieness conversion
-    int pidx=0;
-    spi1->host->hw->data_buf[pidx]=portPins;
+    // int pidx=0;
+    spi1->host->hw->data_buf[1]=portPins;
+    spi1->host->hw->data_buf[0]=ENDIAN_SWITCH(static_Pin_info);
     
     gpio_set_level((gpio_num_t) pin_SH_165, 1);//switch to keep in 165 register(stop 165 load pin to reg)
     gpio_set_level((gpio_num_t) pin_TRIG_595, 0);//
-    direct_spi_transfer(spi1,32*(pidx+1));
+    direct_spi_transfer(spi1,32*(2));
     shiftRegAssignedCount++;
     //send_SPI(portPins);
   }
