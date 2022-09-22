@@ -4017,7 +4017,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
       bool skipImageTransfer= !imgSendState;
       bool inspSnap=saveToSnap;
 
-
+      // LOGE("repSend:%d imgSend:%d inspSnap:%d",reportSendState,imgSendState,inspSnap);
 
       InspResultAction(headImgPipe,&skipInspDataTransfer , &skipImageTransfer , &inspSnap, &doPassDown,maxFPS);
       //possible occupationFlag snap save | resendCache

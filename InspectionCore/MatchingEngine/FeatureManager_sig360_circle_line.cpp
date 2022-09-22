@@ -4457,7 +4457,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     float similarFactor=(1-SigMatchErrorNormalize(error,feature_signature));
     if(similarFactor<(sigMatchSimThres))//if the minimum err still not pass, then, early stop the following procesure
     {
-      LOGE("similarFactor:%f", similarFactor);
+      LOGE("similarFactor:%f < %f", similarFactor,sigMatchSimThres);
       return -3;
     }
     singleReport.similarity=similarFactor;
