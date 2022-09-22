@@ -113,7 +113,8 @@ EXT_OBJS= $(MODULE_circleFitting)/CircleFitting.a \
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
           # $(MODULE_MatchingEngine)/MatchingEngine.a \
 
-ifeq ($(OS)$(CC),Windows_NTcc)
+# ifeq ($(OS)$(CC),Windows_NTcc)
+ifeq ($(findstring MINGW64, $(OS)),MINGW64)
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a 
 	FLAGS+= -D_MINGW -D_WINDOWS
 	FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=1
