@@ -9,7 +9,7 @@ IDIR = include \
 			$(MODULE_common_lib)/include \
 
 
-_OBJ = CameraLayer.opp CameraLayer_BMP.opp CameraLayer_BMP_carousel.opp 
+_OBJ = CameraLayer.opp CameraLayer_BMP.opp CameraLayer_BMP_carousel.opp CameraLayerManager.opp
 
 FLAGS= -std=c++11 
 

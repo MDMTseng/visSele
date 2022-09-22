@@ -2,10 +2,46 @@
 #include "CameraLayer_GIGE_MindVision.hpp"
 #include "logctrl.h"
 
+tSdkCameraDevInfo sCameraList[20];
+int sCameraListCount=0;
 CameraLayer_GIGE_MindVision::CameraLayer_GIGE_MindVision(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context): CameraLayer(camInfo,misc,cb, context)
 {
   m.unlock();
   _cached_frame_info=NULL;
+
+
+
+
+  if(camInfo.driver_name!=CameraLayer_GIGE_MindVision::getDriverName())
+  {
+    
+    printf("ERROR:  WRONG DRIVER.... request driver:%s   here is for driver:%s\n",camInfo.driver_name.c_str(),CameraLayer_GIGE_MindVision::getDriverName().c_str());
+    return;//exception
+  }
+
+  int tarIdx=-1;
+  for(int i=0;i<sCameraListCount;i++)
+  {
+    if(std::string(sCameraList[i].acSn)==camInfo.serial_number &&
+    std::string(sCameraList[i].acSn)==camInfo.id && 
+    std::string(sCameraList[i].acFriendlyName)==camInfo.name
+    )
+    {
+      tarIdx=i;
+      break;
+    }
+  }
+
+  if(tarIdx==-1)
+  {
+    printf("ERROR:  WRONG DRIVER.... request driver:%s name:%s\n",camInfo.driver_name.c_str(),camInfo.name.c_str());
+    return;//exception
+  }
+
+  InitCamera(&sCameraList[tarIdx]);
+  
+// CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *devInfo)
+
   
 }
 
@@ -36,6 +72,56 @@ CameraLayer::status CameraLayer_GIGE_MindVision::EnumerateDevice(tSdkCameraDevIn
 
   return CameraLayer::ACK;
 }
+
+int CameraLayer_GIGE_MindVision::listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist)
+{
+
+
+  sCameraListCount=sizeof(sCameraList)/sizeof(sCameraList[0]);
+  CameraEnumerateDevice(sCameraList, &sCameraListCount);
+  printf("CameraLayer_GIGE_MindVision:====sCameraListCount:%d==\n",sCameraListCount);
+  for(int i=0;i<sCameraListCount;i++)
+  {
+    CameraLayer::BasicCameraInfo info;
+
+    //     printf("CAM:%d======\n", i);
+    //     printf("acDriverVersion:%s\n", sCameraList[i].acDriverVersion);
+    //     printf("acFriendlyName:%s\n", sCameraList[i].acFriendlyName);
+    //     printf("acLinkName:%s\n", sCameraList[i].acLinkName);
+    //     printf("acPortType:%s\n", sCameraList[i].acPortType);
+    //     printf("acProductName:%s\n", sCameraList[i].acProductName);
+    //     printf("acProductSeries:%s\n", sCameraList[i].acProductSeries);
+    //     printf("acSensorType:%s\n", sCameraList[i].acSensorType);
+    //     printf("acSn:%s\n", sCameraList[i].acSn);
+    //     printf("\n\n\n\n");
+
+
+
+
+    info.name=std::string((char*)sCameraList[i].acFriendlyName);
+    info.id=std::string((char*)sCameraList[i].acSn);
+    info.model=std::string((char*)sCameraList[i].acProductName);
+    info.serial_number=std::string((char*)sCameraList[i].acSn);
+
+    info.vender=CameraLayer_GIGE_MindVision::getDriverName();
+    
+
+    info.driver_name=CameraLayer_GIGE_MindVision::getDriverName();
+
+    LOGI(">>>name:%s  sn:%s  model:%s   ",info.name.c_str(),info.serial_number.c_str(),info.model.c_str());
+    LOGI(">>>driver_name:%s   ",info.driver_name.c_str());
+
+    devlist.push_back(info);
+  }
+
+  return sCameraListCount;
+
+
+}
+
+
+
+
 void CameraLayer_GIGE_MindVision::sGIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead *frameInfo, PVOID pContext)
 {
   CameraLayer_GIGE_MindVision *self = (CameraLayer_GIGE_MindVision *)pContext;

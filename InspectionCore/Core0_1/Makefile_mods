@@ -84,7 +84,7 @@ IDIR=	include/ \
 			$(MODULE_lodepng)\
 			$(MODULE_smem_channel)\
 			$(MODULE_shape_based_matching)/include \
-      $(MODULE_simple_uart)/include \
+      		$(MODULE_simple_uart)/include \
       # /usr/local/include/opencv4
 			# $(MODULE_DataChannel)/include\
 			# $(MODULE_MLNN)/include/  \
@@ -119,6 +119,7 @@ ifeq ($(findstring MINGW64, $(OS)),MINGW64)
 	FLAGS+= -D_MINGW -D_WINDOWS
 	FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=1
 	FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=1
+	# FEATURE_COMPILE_W_ARAVIS=1
 else ifeq ($(platform),mac_arm64)
 	FLAGS+=  -std=c++11
 	EXT_OBJS+=
@@ -134,6 +135,12 @@ else
 	FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=1
 	# FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=1
 endif
+
+
+
+$(info FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK:$(FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK))
+$(info FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK:$(FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK))
+$(info FEATURE_COMPILE_W_ARAVIS:$(FEATURE_COMPILE_W_ARAVIS))
 
 
 ESS_TRACK=
