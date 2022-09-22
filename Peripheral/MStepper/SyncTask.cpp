@@ -22,7 +22,7 @@ extern "C" {
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc);
 uint32_t g_step_trigger_edge=0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
-
+uint32_t g_dir_inv=0;
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
 {
@@ -558,18 +558,51 @@ class MStp_M:public MStp{
   uint32_t latest_dir_pins=0;
 
   int shiftRegAssignedCount=0;//the count hs to be 1 in order to get correct input data
+  #define BIT_CUT(V32,offset,width)  (   ( (V32)>>(offset) )     &    ((1<<(width))-1)    )
+  #define ENDIAN_SWITCH(B32)  (((B32)<<24)|(((B32)&0xFF00)<<8)|(((B32)&0xFF0000)>>8)|((B32)>>24))
+
   void ShiftRegAssign(uint32_t dir,uint32_t step)
   {
     _latest_stp_pins=step;
     _latest_dir_pins=dir;
-    uint32_t portPins=( dir&0xFF)<<16 | ( (step^g_step_trigger_edge) & 0xFF)<<24|static_Pin_info<<0;
+
+
+
+    // uint32_t Seg1=V_CUT(dir,0,3)<<8|V_CUT(step,0,3)<<8;
+
+
+    // uint32_t Seg2=V_CUT(dir,0,3)<<8|V_CUT(step,0,3)<<8;
+    uint32_t m_dir=dir^g_dir_inv;
+    uint32_t m_step=step^g_step_trigger_edge;
+
+
+    uint32_t portPins=
+      ( ((BIT_CUT(m_step,0,3+4)  )|(BIT_CUT(m_dir,0,3+4)<<8))       )|
+      ( ((BIT_CUT(m_step,7,  4)  )|(BIT_CUT(m_dir,7,  4)<<5))<<(16) );
+
+    //demo board    pX  pY  pZ pZ1 pR1 pZ2 pR2 ___  dX  dY  dZ dZ1 dR1 dZ2 dR2 ___ pZ3 pR3 pZ4 pR4 ___ dZ3 dR3 dZ4 dR4  ____  
+    //               0                               8                              16                 (21)         24    25   
+    
+    
+    // uint32_t portPins=
+    //   ( ((BIT_CUT(m_step,0,3+5)  )|(BIT_CUT(m_dir,0,3+5)<<8))       );
+    //demo board    pX  pY  pZ pZ1 pZ2 pZ3 pZ4 pRx dX  dY dZ dZ1 dZ2 dZ3 dZ4 dRx 
+    //               0                              8                          15
+
+
+
+    // (( dir&0xFF)<<16 | ( (step^g_step_trigger_edge) & 0xFF)<<24|static_Pin_info<<0)>>16;
     // uint32_t portPins=(dir&0xF)<<16 | (step & 0xFF)<<24|(static_Pin_info&0xF)<<20;
-    int pidx=0;
-    spi1->host->hw->data_buf[pidx]=portPins;
+    portPins=
+    //((portPins&0xFF)<<24)|((portPins&0xFF00)<<8)|((portPins&0xFF0000)>8)|((portPins&0xFF000000)>24);
+    ((portPins)<<24)|((portPins&0xFF00)<<8)|((portPins&0xFF0000)>>8)|((portPins)>>24);//endieness conversion
+    // int pidx=0;
+    spi1->host->hw->data_buf[1]=portPins;
+    spi1->host->hw->data_buf[0]=ENDIAN_SWITCH(static_Pin_info);
     
     gpio_set_level((gpio_num_t) pin_SH_165, 1);//switch to keep in 165 register(stop 165 load pin to reg)
     gpio_set_level((gpio_num_t) pin_TRIG_595, 0);//
-    direct_spi_transfer(spi1,32*(pidx+1));
+    direct_spi_transfer(spi1,32*(2));
     shiftRegAssignedCount++;
     //send_SPI(portPins);
   }

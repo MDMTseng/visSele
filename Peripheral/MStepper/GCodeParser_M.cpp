@@ -32,19 +32,43 @@ float GCodeParser_M::unit2Pulse(float dist,float pulses_per_mm)
   return dist*pulses_per_mm;
 }
 
-
 float parseFloat(char* str,int strL)
 {
+  if(str==NULL || strL<=0)return NAN;
+
   char strBuf[30];
+
   memcpy(strBuf,str,strL);
   strBuf[strL]='\0';
-  return atof(strBuf);
+
+
+
+  char *ep = NULL;
+  double f = strtod (strBuf, &ep);
+
+  if (!ep  ||  *ep)
+      return NAN;  // has non-floating digits after number, if any
+
+  return f;
 }
-long parseLong(char* str,int strL)
+long parseLong(char* str,int strL, bool *isOK)
 {
+  if(isOK)*isOK=false;
   char strBuf[30];
   memcpy(strBuf,str,strL);
   strBuf[strL]='\0';
+
+  char testChar=strBuf[0];
+  if(testChar!='-'&&testChar!='+' && (testChar<'0' || testChar>'9'))return 0;//head is wrong
+
+  for(int i=1;i<strL;i++)
+  {
+    testChar=strBuf[i];
+    if((testChar<'0' || testChar>'9'))return 0;//not a number
+  }
+
+
+  if(isOK)*isOK=true;
   return atol(strBuf);
 }
 
@@ -222,7 +246,6 @@ int GCodeParser_M::FindFloat(const char *prefix,char **blkIdxes,int blkIdxesL,fl
   for(;j<blkIdxesL;j++)
   {
     char* blk=blkIdxes[j];
-    int len=blkIdxes[j+1]-blkIdxes[j]-1;
     if(blk[0]=='('||blk[0]==';')continue;//skip comment
     if(blk[0]=='G'||blk[0]=='M')
     {
@@ -230,7 +253,8 @@ int GCodeParser_M::FindFloat(const char *prefix,char **blkIdxes,int blkIdxesL,fl
       return -1;
     }
     
-    for(int k=0;k<len;k++)//single block G21 or P4355 or X-34
+    int len=blkIdxes[j+1]-blkIdxes[j]-1;
+    // for(int k=0;k<len;k++)//single block G21 or P4355 or X-34
     {
       if(strncmp(blk, prefix, prefixL)==0)
       {
@@ -257,12 +281,13 @@ int GCodeParser_M::FindInt32(const char *prefix,char **blkIdxes,int blkIdxesL,in
       return -1;
     }
     
-    for(int k=0;k<len;k++)//single block G21 or P4355 or X-34
+    // for(int k=0;k<len;k++)//single block G21 or P4355 or X-34
     {
       if(strncmp(blk, prefix, prefixL)==0)
       {
-        retNum=(int32_t)parseLong(blk+prefixL,len-prefixL);
-        return 0;
+        bool isOK=false;
+        retNum=(int32_t)parseLong(blk+prefixL,len-prefixL,&isOK);
+        return isOK?0:-1;
       }
     }
 
@@ -285,7 +310,7 @@ int GCodeParser_M::FindStr(const char *prefix,char **blkIdxes,int blkIdxesL,char
       return -1;
     }
     
-    for(int k=0;k<len;k++)//single block G21 or P4355 or X-34
+    // for(int k=0;k<len;k++)//single block G21 or P4355 or X-34
     {
       if(strncmp(blk, prefix, prefixL)==0)
       {
@@ -632,8 +657,8 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           }
           else
           {//to let variable updates between main thread and 
-            // yield();
-            delay(10);
+            yield();
+            // delay(10);
           }
         }
       }

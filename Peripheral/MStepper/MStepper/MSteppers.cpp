@@ -1557,6 +1557,10 @@ uint32_t MStp::taskRun()
           {
             p_runSeg->vcur= prevcur;//keeps the speed info
           }
+          else if(p_runSeg->cur_step==p_runSeg->steps)
+          {
+            setTimer(0);
+          }
           float vcur=p_runSeg->vcur;
           if(p_runSeg->step_period==0)
           {

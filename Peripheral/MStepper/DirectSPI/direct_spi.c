@@ -45,7 +45,7 @@ spi_device_handle_t direct_spi_init(int ch,int clkHz,int pin_MOSI,int pin_MISO,i
   devcfg.spics_io_num=-1;                       //we will use external CS pin
   devcfg.spics_ext_io_num=pin_CS;           //external CS pin
   devcfg.queue_size=7;                          //We want to be able to queue 7 transactions at a time
-  devcfg.flags=0;//SPI_DEVICE_HALFDUPLEX;           //Set half duplex mode (**IF NOT SET, READ FROM DISPLAY MEMORY WILL NOT WORK**)
+  devcfg.flags=(0&SPI_DEVICE_TXBIT_LSBFIRST)|(SPI_DEVICE_RXBIT_LSBFIRST);//SPI_DEVICE_HALFDUPLEX;           //Set half duplex mode (**IF NOT SET, READ FROM DISPLAY MEMORY WILL NOT WORK**)
 
 
 //Initialize the SPI bus
