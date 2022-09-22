@@ -710,6 +710,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetAnalogGain(float gain)
 CameraLayer::status CameraLayer_HikRobot_Camera::SetRGain(float gain)
 {
   
+  MV_CC_SetEnumValueByString(handle, "BalanceWhiteAuto", "Off");
   MV_CC_SetEnumValueByString(handle, "BalanceRatioSelector", "Red");
   
   SetIntValue("BalanceRatio",(int)gain);
@@ -718,7 +719,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetRGain(float gain)
 
 CameraLayer::status CameraLayer_HikRobot_Camera::SetGGain(float gain)
 {
-  
+  MV_CC_SetEnumValueByString(handle, "BalanceWhiteAuto", "Off");
   MV_CC_SetEnumValueByString(handle, "BalanceRatioSelector", "Green");
   
   SetIntValue("BalanceRatio",(int)gain);
@@ -726,7 +727,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetGGain(float gain)
 }
 CameraLayer::status CameraLayer_HikRobot_Camera::SetBGain(float gain)
 {
-  
+  MV_CC_SetEnumValueByString(handle, "BalanceWhiteAuto", "Off");
   MV_CC_SetEnumValueByString(handle, "BalanceRatioSelector", "Blue");
   
   SetIntValue("BalanceRatio",(int)gain);
