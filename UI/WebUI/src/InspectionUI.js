@@ -1717,7 +1717,7 @@ class APP_INSP_MODE extends React.Component {
 
 
       console.log(deffile);
-      if (this.props.machine_custom_setting.InspectionMode== "FI") {
+      if (this.props.machine_custom_setting.InspectionMode== "FI" || this.props.machine_custom_setting.InspectionMode== "FI_C") {
 
         
         //deffile.intrusionSizeLimitRatio=0.001;//By default, the intrusionSizeLimitRatio for Full insp should be as small as possible

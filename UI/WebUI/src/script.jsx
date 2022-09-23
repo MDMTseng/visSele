@@ -705,7 +705,7 @@ class APPMasterX extends React.Component {
                   console.log(data);
                   if (data[0].type == "FL") {
                     let info = data[0].data;//complete the necessary info
-                    if(info.InspectionMode!="FI" && info.InspectionMode!="CI" )
+                    if(info.InspectionMode!="FI_C" &&info.InspectionMode!="FI" && info.InspectionMode!="CI" )
                     {
                       info.InspectionMode="CI";
                     }
