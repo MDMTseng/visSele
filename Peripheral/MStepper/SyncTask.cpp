@@ -195,53 +195,53 @@ class MStp_M:public MStp{
 
 
 
+    float VSTP=0.5;
 
-
-
+    float JW=5;
     axisInfo[AXIS_IDX_Z1].VirtualStep=1;
     axisInfo[AXIS_IDX_Z1].AccW=1;
-    axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z1].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_R1].VirtualStep=1;
+    axisInfo[AXIS_IDX_R1].VirtualStep=VSTP;
     axisInfo[AXIS_IDX_R1].AccW=1;
-    axisInfo[AXIS_IDX_R1].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_R1].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R1].MaxSpeed=general_max_freq;
 
 
 
     axisInfo[AXIS_IDX_Z2].VirtualStep=1;
     axisInfo[AXIS_IDX_Z2].AccW=1;
-    axisInfo[AXIS_IDX_Z2].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_Z2].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z2].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_R2].VirtualStep=1;
+    axisInfo[AXIS_IDX_R2].VirtualStep=VSTP;
     axisInfo[AXIS_IDX_R2].AccW=1;
-    axisInfo[AXIS_IDX_R2].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_R2].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R2].MaxSpeed=general_max_freq;
 
 
 
     axisInfo[AXIS_IDX_Z3].VirtualStep=1;
     axisInfo[AXIS_IDX_Z3].AccW=1;
-    axisInfo[AXIS_IDX_Z3].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_Z3].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z3].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_R3].VirtualStep=1;
+    axisInfo[AXIS_IDX_R3].VirtualStep=VSTP;
     axisInfo[AXIS_IDX_R3].AccW=1;
-    axisInfo[AXIS_IDX_R3].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_R3].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R3].MaxSpeed=general_max_freq;
 
 
 
     axisInfo[AXIS_IDX_Z4].VirtualStep=1;
     axisInfo[AXIS_IDX_Z4].AccW=1;
-    axisInfo[AXIS_IDX_Z4].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_Z4].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z4].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_R4].VirtualStep=1;
+    axisInfo[AXIS_IDX_R4].VirtualStep=VSTP;
     axisInfo[AXIS_IDX_R4].AccW=1;
-    axisInfo[AXIS_IDX_R4].MaxSpeedJumpW=1/mainAXIS_VSTEP;
+    axisInfo[AXIS_IDX_R4].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R4].MaxSpeed=general_max_freq;
 
 
@@ -505,24 +505,12 @@ class MStp_M:public MStp{
 
 
     if(static_Pin_update_needed)
-    {//if no following segment to execute, then do IO update here
-      
-
-      if(isIOCtrl(n_seg)==false)
+    { //if there is a Pin_= need to be updated yet next segment isn't IOCtrl => then do IO update right now
+      if(isIOCtrl(n_seg)==false)//if update pin is needed
       {
-
-        if(n_seg && n_seg->type== MSTP_segment_type::seg_line)
-        {
-          ShiftRegAssign(latest_dir_pins,latest_stp_pins);
-          static_Pin_update_needed=false;
-        }
-        else
-        {
-          ShiftRegAssign(latest_dir_pins,latest_stp_pins);
-          ShiftRegUpdate();
-          static_Pin_update_needed=false;
-        }
-
+        ShiftRegUpdate();
+        ShiftRegAssign(latest_dir_pins,0);
+        ShiftRegUpdate();
       }
     }
 
@@ -593,16 +581,17 @@ class MStp_M:public MStp{
 
     // (( dir&0xFF)<<16 | ( (step^g_step_trigger_edge) & 0xFF)<<24|static_Pin_info<<0)>>16;
     // uint32_t portPins=(dir&0xF)<<16 | (step & 0xFF)<<24|(static_Pin_info&0xF)<<20;
-    portPins=
+
     //((portPins&0xFF)<<24)|((portPins&0xFF00)<<8)|((portPins&0xFF0000)>8)|((portPins&0xFF000000)>24);
-    ((portPins)<<24)|((portPins&0xFF00)<<8)|((portPins&0xFF0000)>>8)|((portPins)>>24);//endieness conversion
-    // int pidx=0;
-    spi1->host->hw->data_buf[1]=portPins;
-    spi1->host->hw->data_buf[0]=ENDIAN_SWITCH(static_Pin_info);
+    // ((portPins)<<24)|((portPins&0xFF00)<<8)|((portPins&0xFF0000)>>8)|((portPins)>>24);//endieness conversion
+    int groupCount=5;
+    int groupIdx=groupCount-1;
+    spi1->host->hw->data_buf[groupIdx--]=ENDIAN_SWITCH(portPins);
+    spi1->host->hw->data_buf[groupIdx--]=ENDIAN_SWITCH(static_Pin_info);
     
     gpio_set_level((gpio_num_t) pin_SH_165, 1);//switch to keep in 165 register(stop 165 load pin to reg)
     gpio_set_level((gpio_num_t) pin_TRIG_595, 0);//
-    direct_spi_transfer(spi1,32*(2));
+    direct_spi_transfer(spi1,32*(groupCount));
     shiftRegAssignedCount++;
     //send_SPI(portPins);
   }
@@ -794,13 +783,13 @@ public:
       case AXIS_IDX_Z1:
       case AXIS_IDX_Z2:
       case AXIS_IDX_Z3:
-      case AXIS_IDX_Z4:return dist;//as pulse count
+      case AXIS_IDX_Z4:return unit2Pulse(dist,200*16/40);//as pulse count
 
       case AXIS_IDX_R1:
       case AXIS_IDX_R2:
       case AXIS_IDX_R3:
       case AXIS_IDX_R4://assume it's 800 pulses pre rev
-        return dist*12800/360;//-1 for reverse the direction
+        return dist*(200*16)/360;//-1 for reverse the direction
 
 
 
@@ -1221,8 +1210,8 @@ void setup()
 {
   
   // noInterrupts();
-  // Serial.begin(115200);//230400);
-  Serial.begin(460800);
+  Serial.begin(115200);//230400);
+  // Serial.begin(460800);
   Serial.setRxBufferSize(500);
   // // setup_comm();
   timer = timerBegin(0, 80*1000000/_TICK2SEC_BASE_, true);
@@ -1313,6 +1302,20 @@ void loop()
       triggerInfoQ.consumeTail();
     }
   }
+
+
+  // static unsigned long startMillis=0; 
+  // unsigned long currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
+  // if (currentMillis - startMillis >= 100)  //test whether the period has elapsed
+  // {
+  //   startMillis = currentMillis;  //IMPORTANT to save the start time of the current LED state.
+
+  //   Serial.printf(PRTF_B2b_PAT,PRTF_B2b(mstp.latest_input_pins>>24));
+  //   Serial.printf(PRTF_B2b_PAT,PRTF_B2b(mstp.latest_input_pins>>16));
+  //   Serial.printf(PRTF_B2b_PAT,PRTF_B2b(mstp.latest_input_pins>>8));
+  //   Serial.printf(PRTF_B2b_PAT,PRTF_B2b(mstp.latest_input_pins));
+  //   Serial.printf("\n");
+  // }
 
 }
 
