@@ -1197,8 +1197,9 @@ void MData_JR::loop()
     if(space>0)//here is a space
     {
       retdoc.clear();
+      gcpm.putJSONNote(&retdoc);
       bool rspAck=(gcpm.runLine(gcodewait_gcode)==GCodeParser::GCodeParser_Status::TASK_OK);
-
+      gcpm.putJSONNote(NULL);
       {
         space = mstp.SegQ_Space()-safe_Margin;
         if(space<0)space=0;
