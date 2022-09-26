@@ -151,7 +151,7 @@ class MStp_M:public MStp{
   {
     
     this->TICK2SEC_BASE=_TICK2SEC_BASE_;
-    main_acc=SUBDIV*2000/mm_PER_REV;//SUBDIV*3200/mm_PER_REV;
+    main_acc=unit2Pulse_conv(AXIS_IDX_X,2000);//SUBDIV*3200/mm_PER_REV;
     minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     main_junctionMaxSpeedJump=minSpeed;//5200;
 
@@ -196,53 +196,53 @@ class MStp_M:public MStp{
     auto mainAXIS_VSTEP=axisInfo[AXIS_IDX_Y].VirtualStep;
 
 
+//inline float unit2Pulse_conv(int axisIdx,float dist);
+    float ZX_VS=0.5;
+    float RX_VS=1;
 
-
-    float VSTP=0.5;
-
-    float JW=5;
-    axisInfo[AXIS_IDX_Z1].VirtualStep=1;
+    float JW=1;
+    axisInfo[AXIS_IDX_Z1].VirtualStep=ZX_VS;
     axisInfo[AXIS_IDX_Z1].AccW=1;
     axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z1].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_R1].VirtualStep=VSTP;
+    axisInfo[AXIS_IDX_R1].VirtualStep=RX_VS;
     axisInfo[AXIS_IDX_R1].AccW=1;
     axisInfo[AXIS_IDX_R1].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R1].MaxSpeed=general_max_freq;
 
 
 
-    axisInfo[AXIS_IDX_Z2].VirtualStep=1;
+    axisInfo[AXIS_IDX_Z2].VirtualStep=ZX_VS;
     axisInfo[AXIS_IDX_Z2].AccW=1;
     axisInfo[AXIS_IDX_Z2].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z2].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_R2].VirtualStep=VSTP;
+    axisInfo[AXIS_IDX_R2].VirtualStep=RX_VS;
     axisInfo[AXIS_IDX_R2].AccW=1;
     axisInfo[AXIS_IDX_R2].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R2].MaxSpeed=general_max_freq;
 
 
 
-    axisInfo[AXIS_IDX_Z3].VirtualStep=1;
+    axisInfo[AXIS_IDX_Z3].VirtualStep=ZX_VS;
     axisInfo[AXIS_IDX_Z3].AccW=1;
     axisInfo[AXIS_IDX_Z3].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z3].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_R3].VirtualStep=VSTP;
+    axisInfo[AXIS_IDX_R3].VirtualStep=RX_VS;
     axisInfo[AXIS_IDX_R3].AccW=1;
     axisInfo[AXIS_IDX_R3].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R3].MaxSpeed=general_max_freq;
 
 
 
-    axisInfo[AXIS_IDX_Z4].VirtualStep=1;
+    axisInfo[AXIS_IDX_Z4].VirtualStep=ZX_VS;
     axisInfo[AXIS_IDX_Z4].AccW=1;
     axisInfo[AXIS_IDX_Z4].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z4].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_R4].VirtualStep=VSTP;
+    axisInfo[AXIS_IDX_R4].VirtualStep=RX_VS;
     axisInfo[AXIS_IDX_R4].AccW=1;
     axisInfo[AXIS_IDX_R4].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R4].MaxSpeed=general_max_freq;
