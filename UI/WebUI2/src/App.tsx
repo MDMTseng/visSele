@@ -3555,7 +3555,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
   {
     // console.log("jkdshfsdhf;iohsd;iofjhsdio;fhj;isdojfhdsil;");
     _this.periodicTask_HDL=undefined;
-
+    return;
     {(async ()=>{
       // console.log(  CNC_API.isConnected)
       if(CNC_API.isConnected!=perifConnState)

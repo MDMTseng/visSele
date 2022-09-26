@@ -59,15 +59,24 @@ struct MSTP_segment
 struct MSTP_axisSetup
 {
   
-//it's to find the speed factor(SF) that add on the main physical axis speed, so that virtual main axis 
+//VirtualStep is to addon the main axis selection logic and feed speed adjustment
+//Every axis's "effect" on every step may vary, Note that the MSTP is pulse frequency based system.
+
 //for example:
-//
 // vector virtual step -> is to compensate every axis "effects" speed difference 
 // (the pulse speed will alter according to virtual step number)
-// virtual step  [10  1 1]
-// vector To     [10 60 3], speed 100   => the axis [1] is the physical main axis  => speed
-// virtual effect[100 60 3]  => the axis [0] is the  virtual main axis  so the speed should act on it
-// physical speed 100*(  SF=60/100 ) =60   => virtual speed on axis[0] is 100
+// virtual step  [2  1 3]
+// vector To     [50 60 3], speed 100   => the axis [1] is the physical main axis, if there is no virtual step
+// virtual effect[100 60 9]  => the axis [0] is the  virtual main axis  so the speed should act on it(main axis selects the largest effect axis)
+// phy speed on axis[0] is 100/2,  speed on axis[1] is 100/2*60/50
+
+//Other case
+// virtual step  [2  1  3]
+// vector To     [20 60 3], speed 100   => the axis [1] is the physical main axis
+// virtual effect[40 60 9]  => the axis [1] is the  virtual main axis  so the speed should act on it
+// phy speed on axis[0] is 100/1*20/60 speed on axis[1] is 100
+
+//In short higher(go more virtual steps), go slower, and under the hood this will affects which axis is the main axis;
   float VirtualStep;//it's the effect multiplier that 
 
 
