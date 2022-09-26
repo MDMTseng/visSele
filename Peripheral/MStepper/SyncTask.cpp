@@ -20,7 +20,7 @@ extern "C" {
 
 
 
-inline float unit2Pulse_conv(int axisIdx,float dist);
+inline float mm2Pulse_conv(int axisIdx,float dist);
 
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc);
@@ -151,7 +151,7 @@ class MStp_M:public MStp{
   {
     
     this->TICK2SEC_BASE=_TICK2SEC_BASE_;
-    main_acc=unit2Pulse_conv(AXIS_IDX_X,2000);//SUBDIV*3200/mm_PER_REV;
+    main_acc=mm2Pulse_conv(AXIS_IDX_X,2000);//SUBDIV*3200/mm_PER_REV;
     minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     main_junctionMaxSpeedJump=minSpeed;//5200;
 
@@ -762,7 +762,7 @@ void addWaitWait(uint32_t period,int times=1,void* ctx=NULL,MSTP_segment_extra_i
 
 
 
-inline float unit2Pulse_conv(int axisIdx,float dist)
+inline float mm2Pulse_conv(int axisIdx,float dist)
 {
   // __UPRT_D_("unitConv[%s]:%f\n",code,dist);
 
@@ -810,7 +810,7 @@ public:
   {
 
 
-    return unit2Pulse_conv( axisIdx, dist);
+    return mm2Pulse_conv( axisIdx, dist);
   }
   float Pulse2Unit_conv(int axisIdx,float pulseCount)
   {
