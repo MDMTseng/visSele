@@ -576,7 +576,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
     {
       //M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] marlin M42 Set Pin State
       //M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] CID_{string} TTAG_{string} TID_{int} //addtional info for trigger info replay
-      if(     CheckHead(cblk, "M42"))
+      if(     CheckHead(cblk, "M42"))//PIN ctrl
       {//S<state> 0 input 1 output 2 INPUT_PULLUP 3 INPUT_PULLDOWN
         //M42 P2 S1  //set output
         //M42 P2 T1  //Set one

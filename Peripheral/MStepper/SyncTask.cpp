@@ -19,6 +19,9 @@ extern "C" {
 #define __UPRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
 
 
+
+inline float unit2Pulse_conv(int axisIdx,float dist);
+
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc);
 uint32_t g_step_trigger_edge=0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
@@ -757,6 +760,44 @@ void addWaitWait(uint32_t period,int times=1,void* ctx=NULL,MSTP_segment_extra_i
   // digitalWrite(PIN_OUT_1,0);
 }
 
+
+
+inline float unit2Pulse_conv(int axisIdx,float dist)
+{
+  // __UPRT_D_("unitConv[%s]:%f\n",code,dist);
+
+  // return unit2Pulse(
+  switch(axisIdx)
+  {
+    case AXIS_IDX_X:
+    case AXIS_IDX_Z:return dist*SUBDIV/mm_PER_REV;//-1 for reverse the direction
+    case AXIS_IDX_Y:return -1*dist*SUBDIV/mm_PER_REV;
+    
+    case AXIS_IDX_FEEDRATE:
+    case AXIS_IDX_ACCELERATION:
+    case AXIS_IDX_DEACCELERATION:
+      return dist*SUBDIV/mm_PER_REV;
+
+
+    case AXIS_IDX_Z1:
+    case AXIS_IDX_Z2:
+    case AXIS_IDX_Z3:
+    case AXIS_IDX_Z4:return dist*200*16/40;//as pulse count
+
+    case AXIS_IDX_R1:
+    case AXIS_IDX_R2:
+    case AXIS_IDX_R3:
+    case AXIS_IDX_R4://assume it's 800 pulses pre rev
+      return dist*(200*16)/360;//-1 for reverse the direction
+
+
+
+
+  }
+
+  return NAN;
+}
+
 class GCodeParser_M2:public GCodeParser_M
 {
 public:
@@ -767,36 +808,9 @@ public:
 
   float unit2Pulse_conv(int axisIdx,float dist)
   {
-    // __UPRT_D_("unitConv[%s]:%f\n",code,dist);
-    switch(axisIdx)
-    {
-      case AXIS_IDX_X:
-      case AXIS_IDX_Z:return unit2Pulse(1*dist,SUBDIV/mm_PER_REV);//-1 for reverse the direction
-      case AXIS_IDX_Y:return unit2Pulse(-1*dist,SUBDIV/mm_PER_REV);
-      
-      case AXIS_IDX_FEEDRATE:
-      case AXIS_IDX_ACCELERATION:
-      case AXIS_IDX_DEACCELERATION:
-        return unit2Pulse(dist,SUBDIV/mm_PER_REV);
 
 
-      case AXIS_IDX_Z1:
-      case AXIS_IDX_Z2:
-      case AXIS_IDX_Z3:
-      case AXIS_IDX_Z4:return unit2Pulse(dist,200*16/40);//as pulse count
-
-      case AXIS_IDX_R1:
-      case AXIS_IDX_R2:
-      case AXIS_IDX_R3:
-      case AXIS_IDX_R4://assume it's 800 pulses pre rev
-        return dist*(200*16)/360;//-1 for reverse the direction
-
-
-
-
-    }
-
-    return NAN;
+    return unit2Pulse_conv( axisIdx, dist);
   }
   float Pulse2Unit_conv(int axisIdx,float pulseCount)
   {
