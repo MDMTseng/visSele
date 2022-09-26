@@ -196,11 +196,11 @@ class MStp_M:public MStp{
     auto mainAXIS_VSTEP=axisInfo[AXIS_IDX_Y].VirtualStep;
 
 
-//inline float unit2Pulse_conv(int axisIdx,float dist);
-    float ZX_VS=0.5;
-    float RX_VS=1;
+//inline float mm2Pulse_conv(int axisIdx,float dist);
+    float ZX_VS=mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_Z1,1);
+    float RX_VS=mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_R1,1)*(M_PI/180*5);//R axis uses Deg as unit, to convert to mm effect length we convert it as rad * R(effect radius in mm) as effect arc length
 
-    float JW=1;
+    float JW=10;
     axisInfo[AXIS_IDX_Z1].VirtualStep=ZX_VS;
     axisInfo[AXIS_IDX_Z1].AccW=1;
     axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=JW;
