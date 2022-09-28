@@ -24,7 +24,7 @@ inline float mm2Pulse_conv(int axisIdx,float dist);
 
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc);
-uint32_t g_step_trigger_edge=0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
+uint32_t g_step_trigger_edge=0;//0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
 uint32_t g_dir_inv=0;
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
@@ -91,7 +91,7 @@ int pin_TRIG_595=5;
 
 
 
-#define SUBDIV (5000)
+#define SUBDIV (3200)
 #define mm_PER_REV 100
 
 spi_device_handle_t spi1=NULL;
@@ -153,7 +153,7 @@ class MStp_M:public MStp{
     this->TICK2SEC_BASE=_TICK2SEC_BASE_;
     main_acc=mm2Pulse_conv(AXIS_IDX_X,2000);//SUBDIV*3200/mm_PER_REV;
     minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    main_junctionMaxSpeedJump=minSpeed;//5200;
+    main_junctionMaxSpeedJump=minSpeed*3;//5200;
 
     maxSpeedInc=minSpeed;
     // pinMode(PIN_Z1_DIR, OUTPUT);
@@ -182,8 +182,8 @@ class MStp_M:public MStp{
     axisInfo[AXIS_IDX_X].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_X].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_Y].VirtualStep=2;
-    axisInfo[AXIS_IDX_Y].AccW=0.5;
+    axisInfo[AXIS_IDX_Y].VirtualStep=1.5;
+    axisInfo[AXIS_IDX_Y].AccW=0.7;
     axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_Y].MaxSpeed=general_max_freq;
 
@@ -200,7 +200,7 @@ class MStp_M:public MStp{
     float ZX_VS=mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_Z1,1);
     float RX_VS=mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_R1,1)*(M_PI/180*5);//R axis uses Deg as unit, to convert to mm effect length we convert it as rad * R(effect radius in mm) as effect arc length
 
-    float JW=10;
+    float JW=10/3;
     axisInfo[AXIS_IDX_Z1].VirtualStep=ZX_VS;
     axisInfo[AXIS_IDX_Z1].AccW=1;
     axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=JW;
@@ -336,12 +336,12 @@ class MStp_M:public MStp{
     int cccc=0;
     while(runUntil_ExtPIN!=-1 && SegQ_IsEmpty()==false)
     { 
-      cccc++;
-      if((cccc&0xFFFF)==0)
-        __UPRT_D_("%d",digitalRead(runUntil_ExtPIN));
-      else 
+      // cccc++;
+      // if((cccc&0xFFFF)==0)
+      //   __UPRT_D_("%d",digitalRead(runUntil_ExtPIN));
+      // else 
         yield();
-    }//wait for touch sensor
+    }//wait to touch sensor
     
     __UPRT_D_("\nSTP1-3 res  pin:%d\n",runUntil_ExtPIN);
 
@@ -568,10 +568,19 @@ class MStp_M:public MStp{
 
 
     uint32_t portPins=
-      ( ((BIT_CUT(m_step,0,3+4)  )|(BIT_CUT(m_dir,0,3+4)<<8))       )|
-      ( ((BIT_CUT(m_step,7,  4)  )|(BIT_CUT(m_dir,7,  4)<<5))<<(16) );
+      ( ((BIT_CUT(m_step,0,  1)<< 7)|(BIT_CUT(m_dir,0,  1)<<15)))|
+
+      ( ((BIT_CUT(m_step,3,  4)<< 3)|(BIT_CUT(m_dir,3,  4)<<11))       )|
+
+
+      ( ((BIT_CUT(m_step,1,  1)<<20)|(BIT_CUT(m_dir,1,  1)<<25)))|
+      ( ((BIT_CUT(m_step,7,  4)    )|(BIT_CUT(m_dir,7,  4)<<5))<<(16) );
 
     //demo board    pX  pY  pZ pZ1 pR1 pZ2 pR2 ___  dX  dY  dZ dZ1 dR1 dZ2 dR2 ___ pZ3 pR3 pZ4 pR4 ___ dZ3 dR3 dZ4 dR4  ____  
+    //               0                               8                              16                 (21)         24    25   
+    
+
+    //demo board    __  __  pZ pZ1 pR1 pZ2 pR2 pX   __  __  dZ dZ1 dR1 dZ2 dR2  dX pZ3 pR3 pZ4 pR4  pY dZ3 dR3 dZ4 dR4   dY  
     //               0                               8                              16                 (21)         24    25   
     
     
