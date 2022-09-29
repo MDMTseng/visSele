@@ -324,7 +324,7 @@ class MStp_M:public MStp{
   {
     runUntil_sensorVal=pinVal;
 
-    StepperForceStop();
+    MT_StepperForceStop();
     __UPRT_D_("STP1-1\n");
 
     xVec cpos=(xVec){0};
@@ -431,7 +431,7 @@ class MStp_M:public MStp{
     if(sensorRead==runUntil_sensorVal)//somehow digitalRead is not stable, to a doulbe check
 #endif
     {
-      StepperForceStop();
+      IT_StepperForceStop();
       posWhenHit=curPos_c;
       runUntil_ExtPIN=-1;
       return true;
@@ -519,15 +519,18 @@ class MStp_M:public MStp{
 
 
 
-    if(seg==NULL)
+    if(seg!=NULL)
     {
-      return;
+      BlockCtxReturn(seg);
     }
+  }
+  void BlockCtxReturn(MSTP_SEG_PREFIX MSTP_segment* seg)
+  {    
     MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
     if(ctx==NULL )return;
     sctx_pool.returnResource(ctx);
+    seg->ctx=NULL;
   }
-
   void BlockDirEffect(uint32_t dir_idxes)
   {
     // pre_seg->ctx;//do sth... start
@@ -650,7 +653,7 @@ class MStp_M:public MStp{
               while( (Qhead=triggerInfoQ.getHead()) ==NULL);
               *Qhead=tinfo;
               triggerInfoQ.pushHead();
-              StepperForceStop();
+              IT_StepperForceStop();
             }
           }
         }

@@ -516,15 +516,15 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         __PRT_D_("G28 GO HOME!!!:");
         int retErr=0;
 
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN2,unit2Pulse_conv(AXIS_IDX_Z1,2000),40*MTPSYS_getMinPulseSpeed(),NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z2,PIN_Z2_SEN2,unit2Pulse_conv(AXIS_IDX_Z2,2000),40*MTPSYS_getMinPulseSpeed(),NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z3,PIN_Z3_SEN2,unit2Pulse_conv(AXIS_IDX_Z3,2000),40*MTPSYS_getMinPulseSpeed(),NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z4,PIN_Z4_SEN2,unit2Pulse_conv(AXIS_IDX_Z4,2000),40*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN2,unit2Pulse_conv(AXIS_IDX_Z1,2000),20*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z2,PIN_Z2_SEN2,unit2Pulse_conv(AXIS_IDX_Z2,2000),20*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z3,PIN_Z3_SEN2,unit2Pulse_conv(AXIS_IDX_Z3,2000),20*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z4,PIN_Z4_SEN2,unit2Pulse_conv(AXIS_IDX_Z4,2000),20*MTPSYS_getMinPulseSpeed(),NULL);
         
 
 
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_X,PIN_X_SEN1,unit2Pulse_conv(AXIS_IDX_X,-2000),20*MTPSYS_getMinPulseSpeed(),NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,PIN_Y_SEN1,unit2Pulse_conv(AXIS_IDX_Y,-2000),20*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_X,PIN_X_SEN1,unit2Pulse_conv(AXIS_IDX_X,-2000),10*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,PIN_Y_SEN1,unit2Pulse_conv(AXIS_IDX_Y,-2000),10*MTPSYS_getMinPulseSpeed(),NULL);
         
 
         // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
@@ -671,7 +671,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           }
         }
       }
-      else if(CheckHead(cblk, "M119"))//input (includes Endstop) States as integer (state are in binary form)
+      else if(CheckHead(cblk, "M119"))//get input (includes Endstop) States as integer (state are in binary form)
       {
 
         if(p_jnote)

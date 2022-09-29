@@ -153,7 +153,7 @@ public:
 
   void SystemClear();
 
-
+  bool MT_SegQ_Clear_Flag=false;
   void SegQ_Clear() MSTP_SEG_PREFIX;
   bool SegQ_IsEmpty() MSTP_SEG_PREFIX;
   bool SegQ_IsFull() MSTP_SEG_PREFIX;
@@ -167,7 +167,9 @@ public:
 
 
   void printSEGInfo();
-  void StepperForceStop();
+  void MT_StepperForceStop();
+  void MT_SegQ_Clear();
+  void IT_StepperForceStop();
 
   MStp(MSTP_segment *buffer, int bufferL);
   bool AddWait(uint32_t period,int times=1, void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
@@ -186,6 +188,8 @@ public:
 
   virtual void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* blk)=0;
   virtual void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* seg,MSTP_SEG_PREFIX MSTP_segment* n_seg)=0;
+
+  virtual void BlockCtxReturn(MSTP_SEG_PREFIX MSTP_segment* seg)=0;
   virtual int MachZeroRet(uint32_t axis_index,uint32_t sensor_pin,int distance,int speed,void* context)=0;
   
   bool timerRunning=false;

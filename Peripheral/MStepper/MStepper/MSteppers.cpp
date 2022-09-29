@@ -567,7 +567,7 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
 
 void MStp::SystemClear()
 {
-  StepperForceStop();
+  MT_StepperForceStop();
   curPos_c=
   curPos_mod=
   lastTarLoc=(xVec){0};
@@ -579,11 +579,11 @@ void MStp::SystemClear()
   fatalErrorCode=0;
 }
 
-void MStp::StepperForceStop()
+void MStp::MT_StepperForceStop()
 {
   stopTimer();
-  SegQ_Clear();
-  p_runSeg=NULL;
+  MT_SegQ_Clear();
+  // p_runSeg=NULL;
   lastTarLoc=curPos_c;
   T_next=0;
   // axis_pul_1st=axis_pul_2nd=
@@ -594,10 +594,50 @@ void MStp::StepperForceStop()
   
 }
 
+void MStp::MT_SegQ_Clear() MSTP_SEG_PREFIX
+{
+  MT_SegQ_Clear_Flag=true;
+  while(p_runSeg)
+  {
+    yield();
+  }
+  MT_SegQ_Clear_Flag=false;
+}
+
+
+
+void MStp::IT_StepperForceStop()
+{
+  stopTimer();
+  SegQ_Clear();
+  p_runSeg=NULL;
+  MT_StepperForceStop();
+  // lastTarLoc=curPos_c;
+  // T_next=0;
+  // // axis_pul_1st=axis_pul_2nd=
+  // axis_pul=axis_dir=0;
+  // tskrun_state=0;
+  // curPos_mod=(xVec){0};
+  // // curPos_residue=(xVec){0};
+  
+}
+
 
 void MStp::SegQ_Clear() MSTP_SEG_PREFIX
 {
+  int headIdx=segBufHeadIdx;
+  int tailIdx=segBufTailIdx;
+
   segBufHeadIdx=segBufTailIdx;
+
+  for(;tailIdx!=headIdx;tailIdx++)
+  {
+    if(tailIdx==segBufL)
+    {
+      tailIdx-=segBufL;
+    }
+    BlockCtxReturn(segBuf+tailIdx);
+  }
 }
 bool MStp::SegQ_IsEmpty() MSTP_SEG_PREFIX
 {
@@ -658,7 +698,7 @@ MSTP_SEG_PREFIX bool MStp::SegQ_Tail_Pop() MSTP_SEG_PREFIX
 
 void MStp::_FatalError(int errorCode,const char* errorText)
 {
-  StepperForceStop();
+  MT_StepperForceStop();
   fatalErrorCode=errorCode;
   FatalError(errorCode,errorText);
 }
@@ -1552,13 +1592,22 @@ uint32_t MStp::taskRun()
 
 
 
-    if(p_runSeg->cur_step==p_runSeg->steps) //========segment reaches the end
+    if(MT_SegQ_Clear_Flag || p_runSeg==NULL || p_runSeg->cur_step==p_runSeg->steps) //========segment reaches the end
     {
 
-      prevcur= p_runSeg->vcur;
       __PRT_D_(">[%f\n",prevcur);
-      BlockEndEffect(p_runSeg,SegQ_Tail(1));
-      SegQ_Tail_Pop();
+      if(MT_SegQ_Clear_Flag  || p_runSeg==NULL)
+      {
+        prevcur=0;
+        MT_SegQ_Clear_Flag=false;
+        SegQ_Clear();
+      }
+      else
+      {
+        prevcur= p_runSeg->vcur;
+        BlockEndEffect(p_runSeg,SegQ_Tail(1));
+        SegQ_Tail_Pop();
+      }
       p_runSeg=NULL;
       continue;
     } 
