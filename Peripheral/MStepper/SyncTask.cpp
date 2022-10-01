@@ -80,7 +80,7 @@ hw_timer_t *timer = NULL;
 
 
 
-// #define _ZEROING_DBG_FLAG_
+//#define _HOMING_DBG_FLAG_ 50
 
 #define PIN_DBG 14
 #define PIN_DBG2 27
@@ -319,10 +319,15 @@ class MStp_M:public MStp{
      __UPRT_D_("FATAL error:%d  %s\n",errorCode,errorText);
   }
 
-  int _ZERO_DBG_COUNTER=0;
+  int _HOMING_DBG_COUNTER=0;
   int runUntil(int axis,int ext_pin,int pinVal,int distance,int speed,xVec *ret_posWhenHit)
   {
     runUntil_sensorVal=pinVal;
+
+
+#ifdef _HOMING_DBG_FLAG_
+    _HOMING_DBG_COUNTER=_HOMING_DBG_FLAG_;
+#endif
 
     MT_StepperForceStop();
     __UPRT_D_("STP1-1\n");
@@ -336,11 +341,7 @@ class MStp_M:public MStp{
     int cccc=0;
     while(runUntil_ExtPIN!=-1 && SegQ_IsEmpty()==false)
     { 
-      // cccc++;
-      // if((cccc&0xFFFF)==0)
-      //   __UPRT_D_("%d",digitalRead(runUntil_ExtPIN));
-      // else 
-        yield();
+      yield();
     }//wait to touch sensor
     
     __UPRT_D_("\nSTP1-3 res  pin:%d\n",runUntil_ExtPIN);
@@ -393,13 +394,11 @@ class MStp_M:public MStp{
         int runSpeed=speed;
         int axisIdx=axis_index;
         
-        _ZERO_DBG_COUNTER=30;
         xVec retHitPos;
         if(runUntil(axisIdx,sensor_pin,sensorDetectVLvl,distance,runSpeed,&retHitPos)!=0)
         {
           return -1;
         }
-        _ZERO_DBG_COUNTER=30;
 
         delay(100);
         
@@ -425,8 +424,8 @@ class MStp_M:public MStp{
     volatile int sensorRead=(extInputPort>>runUntil_ExtPIN)&1;
 
     
-#ifdef _ZEROING_DBG_FLAG_
-    if(_ZERO_DBG_COUNTER==0)
+#ifdef _HOMING_DBG_FLAG_
+    if(_HOMING_DBG_COUNTER==0)
 #else
     if(sensorRead==runUntil_sensorVal)//somehow digitalRead is not stable, to a doulbe check
 #endif
@@ -437,8 +436,9 @@ class MStp_M:public MStp{
       return true;
     }
 
-#ifdef _ZEROING_DBG_FLAG_
-      _ZERO_DBG_COUNTER--;
+#ifdef _HOMING_DBG_FLAG_
+    if(_HOMING_DBG_COUNTER>0)
+      _HOMING_DBG_COUNTER--;
 #endif
     return false;
   }
