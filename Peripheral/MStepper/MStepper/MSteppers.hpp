@@ -154,17 +154,18 @@ public:
   void SystemClear();
 
   bool MT_SegQ_Clear_Flag=false;
-  void SegQ_Clear() MSTP_SEG_PREFIX;
-  bool SegQ_IsEmpty() MSTP_SEG_PREFIX;
-  bool SegQ_IsFull() MSTP_SEG_PREFIX;
   int SegQ_Size() MSTP_SEG_PREFIX;
   int SegQ_Space() MSTP_SEG_PREFIX;
   int SegQ_Capacity() MSTP_SEG_PREFIX;
+  bool SegQ_IsEmpty() MSTP_SEG_PREFIX;
+  bool SegQ_IsFull() MSTP_SEG_PREFIX;
+protected:
+  void SegQ_Clear() MSTP_SEG_PREFIX;
   MSTP_SEG_PREFIX MSTP_segment* SegQ_Head(int idx=0) MSTP_SEG_PREFIX;
   bool SegQ_Head_Push() MSTP_SEG_PREFIX;
   MSTP_SEG_PREFIX MSTP_segment* SegQ_Tail(int idx=0) MSTP_SEG_PREFIX;
   MSTP_SEG_PREFIX bool SegQ_Tail_Pop() MSTP_SEG_PREFIX;
-
+public:
 
   void printSEGInfo();
   void MT_StepperForceStop();

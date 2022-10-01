@@ -533,8 +533,8 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
 
   segBuf=buffer;
   segBufL=bufferL;
-  int segBufHeadIdx=0;
-  int segBufTailIdx=0;
+  segBufHeadIdx=0;
+  segBufTailIdx=0;
   minSpeed=100;
   main_junctionMaxSpeedJump=300;
 
@@ -611,14 +611,15 @@ void MStp::IT_StepperForceStop()
   stopTimer();
   SegQ_Clear();
   p_runSeg=NULL;
-  MT_StepperForceStop();
-  // lastTarLoc=curPos_c;
-  // T_next=0;
-  // // axis_pul_1st=axis_pul_2nd=
-  // axis_pul=axis_dir=0;
-  // tskrun_state=0;
-  // curPos_mod=(xVec){0};
-  // // curPos_residue=(xVec){0};
+
+
+
+  lastTarLoc=curPos_c;
+  T_next=0;
+  // axis_pul_1st=axis_pul_2nd=
+  axis_pul=axis_dir=0;
+  tskrun_state=0;
+  curPos_mod=(xVec){0};
   
 }
 
@@ -630,13 +631,14 @@ void MStp::SegQ_Clear() MSTP_SEG_PREFIX
 
   segBufHeadIdx=segBufTailIdx;
 
-  for(;tailIdx!=headIdx;tailIdx++)
+  while(tailIdx!=headIdx)
   {
+    BlockCtxReturn(segBuf+tailIdx);
+    tailIdx++;
     if(tailIdx==segBufL)
     {
-      tailIdx-=segBufL;
+      tailIdx=0;
     }
-    BlockCtxReturn(segBuf+tailIdx);
   }
 }
 bool MStp::SegQ_IsEmpty() MSTP_SEG_PREFIX
