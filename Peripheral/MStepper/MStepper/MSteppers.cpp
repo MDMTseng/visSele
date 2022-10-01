@@ -575,7 +575,7 @@ void MStp::SystemClear()
   T_next=0;
   minSpeed=2;
   main_acc=1000;
-  doCheckHardLimit=true;
+  doCheckSoftLimit=true;
   fatalErrorCode=0;
 }
 
@@ -752,14 +752,14 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
 
 
-  if(doCheckHardLimit)
+  if(doCheckSoftLimit)
   {
     for(int i=0;i<MSTP_VEC_SIZE;i++)
     {
       if(VECTo.vec[i]<limit1.vec[i] ||VECTo.vec[i]>limit2.vec[i])
       {
         //ERROR
-        _FatalError(1,"Hard limit hit");
+        _FatalError(MSTP_ERR_CODE_SOFT_LIMIT,"SOFT limit hit");
         return false;
       }
     }

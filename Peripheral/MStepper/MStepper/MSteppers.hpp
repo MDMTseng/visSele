@@ -102,6 +102,11 @@ struct MSTP_segment_extra_info
 };
 char* toStr(const MSTP_SEG_PREFIX xVec &vec);
 
+#define MSTP_ERR_CODE_PHY_LIMIT 1
+#define MSTP_ERR_CODE_SOFT_LIMIT 2
+
+
+
 class MStp{
 
 public:
@@ -135,7 +140,7 @@ public:
   int fatalErrorCode;
   void _FatalError(int errorCode,const char* errorText);
   virtual void FatalError(int errorCode,const char* errorText)=0;
-  bool doCheckHardLimit=false;
+  bool doCheckSoftLimit=false;
   xVec limit1,limit2;
 
   xVec vec_abs;
