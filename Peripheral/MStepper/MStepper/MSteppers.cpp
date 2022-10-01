@@ -597,7 +597,7 @@ void MStp::MT_StepperForceStop()
 void MStp::MT_SegQ_Clear() MSTP_SEG_PREFIX
 {
   MT_SegQ_Clear_Flag=true;
-  while(p_runSeg)
+  while(SegQ_IsEmpty()==false)
   {
     yield();
   }
