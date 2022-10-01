@@ -429,7 +429,11 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
 
       if(     CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))//X Y Z A B C
       {
-        if(isMTPLocked)break;
+        if(isMTPLocked)
+        {
+          retStatus=GCodeParser_Status::TASK_FATAL_FAILED;
+          break;
+        }
         __PRT_D_("G1 baby!!!\n");
         int j=i+1;
         xVec vec;
@@ -477,9 +481,13 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
         i=FindGMEnd_idx(blockInitial+j,blockCount-j);
       }
-      else if(CheckHead(cblk, "G04")||CheckHead(cblk, "G4"))//G04 P10; pause
+      else if(CheckHead(cblk, "G04 ")||CheckHead(cblk, "G4 "))//G04 P10; pause
       {
-        if(isMTPLocked)break;
+        if(isMTPLocked)
+        {
+          retStatus=GCodeParser_Status::TASK_FATAL_FAILED;
+          break;
+        }
         __PRT_D_("G04 Pause\n");
         int j=i+1;
         int32_t P;
@@ -501,9 +509,13 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           retStatus=statusReducer(retStatus,GCodeParser_Status::GCODE_PARSE_ERROR);
         }
       }
-      else if(CheckHead(cblk, "G92"))//G92 Set pos
+      else if(CheckHead(cblk, "G92 "))//G92 Set pos
       {
-        if(isMTPLocked)break;
+        if(isMTPLocked)
+        {
+          retStatus=GCodeParser_Status::TASK_FATAL_FAILED;
+          break;
+        }
         __PRT_D_("G92 Set pos\n");
 
         int j=i+1;
@@ -520,14 +532,18 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       }
       else if(CheckHead(cblk, "G28"))//G28 GO HOME!!!:
       {
-        if(isMTPLocked)break;
+        if(isMTPLocked)
+        {
+          retStatus=GCodeParser_Status::TASK_FATAL_FAILED;
+          break;
+        }
         __PRT_D_("G28 GO HOME!!!:");
         int retErr=0;
 
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN2,unit2Pulse_conv(AXIS_IDX_Z1,2000),20*MTPSYS_getMinPulseSpeed(),NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z2,PIN_Z2_SEN2,unit2Pulse_conv(AXIS_IDX_Z2,2000),20*MTPSYS_getMinPulseSpeed(),NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z3,PIN_Z3_SEN2,unit2Pulse_conv(AXIS_IDX_Z3,2000),20*MTPSYS_getMinPulseSpeed(),NULL);
-        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z4,PIN_Z4_SEN2,unit2Pulse_conv(AXIS_IDX_Z4,2000),20*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN2,unit2Pulse_conv(AXIS_IDX_Z1,2000),10*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z2,PIN_Z2_SEN2,unit2Pulse_conv(AXIS_IDX_Z2,2000),10*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z3,PIN_Z3_SEN2,unit2Pulse_conv(AXIS_IDX_Z3,2000),10*MTPSYS_getMinPulseSpeed(),NULL);
+        if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z4,PIN_Z4_SEN2,unit2Pulse_conv(AXIS_IDX_Z4,2000),10*MTPSYS_getMinPulseSpeed(),NULL);
         
 
 
@@ -593,12 +609,16 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
     {
       //M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] marlin M42 Set Pin State
       //M42 [I<bool>] [P<pin>] S<state> [T<0|1|2|3>] CID_{string} TTAG_{string} TID_{int} //addtional info for trigger info replay
-      if(     CheckHead(cblk, "M42"))//PIN ctrl
+      if(     CheckHead(cblk, "M42 "))//PIN ctrl
       {//S<state> 0 input 1 output 2 INPUT_PULLUP 3 INPUT_PULLDOWN
         //M42 P2 S1  //set output
         //M42 P2 T1  //Set one
         
-        if(isMTPLocked)break;
+        if(isMTPLocked)
+        {
+          retStatus=GCodeParser_Status::TASK_FATAL_FAILED;
+          break;
+        }
         int j=i+1;
         int32_t I,P,S,T;
         if(FindInt32("I",blockInitial+j,blockCount-j,I)!=0)I=-1;
@@ -667,7 +687,11 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
       else if(CheckHead(cblk, "M400"))//Wait for motion stops
       {//TODO
 
-        if(isMTPLocked)break;
+        if(isMTPLocked)
+        {
+          retStatus=GCodeParser_Status::TASK_FATAL_FAILED;
+          break;
+        }
         while(1)
         {//wait
           if(_mstp->p_runSeg==NULL)
@@ -713,7 +737,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         _mstp->endstopPins_hit=0;
         
       }
-      else if(false && CheckHead(cblk, "M226"))//Wait for Pin State,M226 P<pin> [S<state>] [T<timeout>]
+      else if(false && CheckHead(cblk, "M226 "))//Wait for Pin State,M226 P<pin> [S<state>] [T<timeout>]
       {//TODO
       }
       else
