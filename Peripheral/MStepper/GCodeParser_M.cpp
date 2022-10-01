@@ -423,6 +423,25 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
     bool isMTPLocked=( _mstp->endStopHitLock || _mstp->fatalErrorCode!=0);
 
     do{
+      
+    // if(isMTPLocked)
+    // {
+    //   if(CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))break;
+    //   if(CheckHead(cblk, "G04 ")||CheckHead(cblk, "G4 "))break;
+    //   if(CheckHead(cblk, "G92 "))break;
+    //   if(CheckHead(cblk, "G28 "))break;
+
+
+    //   if(CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))break;
+    //   if(CheckHead(cblk, "G04 ")||CheckHead(cblk, "G4 "))break;
+    //   if(CheckHead(cblk, "G92 "))break;
+    //   if(CheckHead(cblk, "G28 "))break;
+
+
+    //   if(CheckHead(cblk, "M42 "))break;
+    //   if(CheckHead(cblk, "M400 "))break;
+
+    // }
 
     if(cblk[0]=='G')
     {
