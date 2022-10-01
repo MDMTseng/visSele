@@ -292,6 +292,8 @@ protected:
   ResourceData *buff;
   int buffL;
 
+  int _size;
+
 public:
 
   ResourcePool(struct ResourceData *buff,RP_Idx_Type len)
@@ -303,6 +305,7 @@ public:
     {
       buff[i].occupied=false;
     }
+    _size=buffL;
   }
 
   RP_Type* applyResource()
@@ -312,6 +315,7 @@ public:
       if(buff[i].occupied==false)
       {
         buff[i].occupied=true;
+        _size--;
         return &(buff[i].data);
       }
     }
@@ -327,6 +331,8 @@ public:
       if(&(buff[i].data)==res)
       {
         buff[i].occupied=false;
+
+        _size++;
         return true;
       }
     }
@@ -343,6 +349,10 @@ public:
 
   }
 
+  int size()
+  {
+    return _size;
+  }
   
 };
 
