@@ -1504,9 +1504,8 @@ void MStp::CalcNextStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
 uint32_t MStp::taskRun()
 {
   float prevcur=0;
-  do
-  {
-    
+
+LOAD_AGAIN:
     if(p_runSeg==NULL)//Try to load new segment
     {
       T_next=0;
@@ -1549,7 +1548,7 @@ uint32_t MStp::taskRun()
 
 
 
-    __PRT_D_("type:%d\n",p_runSeg->type);
+    //__PRT_D_("type:%d\n",p_runSeg->type);
 
     switch(p_runSeg->type)//========Run with current segment (short work)
     {
@@ -1611,7 +1610,7 @@ uint32_t MStp::taskRun()
         SegQ_Tail_Pop();
       }
       p_runSeg=NULL;
-      continue;
+      goto LOAD_AGAIN;
     } 
 
 
@@ -1662,9 +1661,6 @@ uint32_t MStp::taskRun()
       break;
 
     }
-
-  }while(p_runSeg==NULL);
-
 
 
   

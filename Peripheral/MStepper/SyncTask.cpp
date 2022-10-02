@@ -89,7 +89,9 @@ hw_timer_t *timer = NULL;
 int pin_SH_165=17;
 int pin_TRIG_595=5;
 
-
+#define GPIOLS32_SET(PIN) GPIO.out_w1ts=1<<(PIN);
+#define GPIOLS32_CLR(PIN) GPIO.out_w1tc=1<<(PIN);
+  
 
 #define SUBDIV (3200)
 #define mm_PER_REV 100
@@ -604,8 +606,8 @@ class MStp_M:public MStp{
     spi1->host->hw->data_buf[groupIdx--]=ENDIAN_SWITCH(portPins);
     spi1->host->hw->data_buf[groupIdx--]=ENDIAN_SWITCH(static_Pin_info);
     
-    gpio_set_level((gpio_num_t) pin_SH_165, 1);//switch to keep in 165 register(stop 165 load pin to reg)
-    gpio_set_level((gpio_num_t) pin_TRIG_595, 0);//
+    GPIOLS32_SET(pin_SH_165);//switch to keep in 165 register(stop 165 load pin to reg)
+    GPIOLS32_CLR(pin_TRIG_595);//
     direct_spi_transfer(spi1,32*(groupCount));
     shiftRegAssignedCount++;
     //send_SPI(portPins);
@@ -628,7 +630,7 @@ class MStp_M:public MStp{
   {
     static_Pin_update_needed=false;//will
     while (direct_spi_in_use(spi1));//wait for SPI bus available
-    gpio_set_level((gpio_num_t) pin_SH_165, 0);//switch to load(165 keeps load pin to internal reg)
+    GPIOLS32_CLR(pin_SH_165);//switch to load(165 keeps load pin to internal reg)
     if(shiftRegAssignedCount==1)
     {
       latest_input_pins=spi1->host->hw->data_buf[0];
@@ -669,7 +671,7 @@ class MStp_M:public MStp{
 
 
     shiftRegAssignedCount=0;
-    gpio_set_level((gpio_num_t) pin_TRIG_595, 1);//trigger 595 internal register update to 959 phy pin
+    GPIOLS32_SET(pin_TRIG_595);//trigger 595 internal register update to 959 phy pin
     
     latest_stp_pins=_latest_stp_pins;
     latest_dir_pins=_latest_dir_pins;
@@ -725,7 +727,7 @@ uint32_t cp0_regs[18];
 
 void IRAM_ATTR onTimer()
 {
-  gpio_set_level((gpio_num_t)PIN_LED,1);
+  GPIOLS32_SET(PIN_LED);
   // enable FPU
   xthal_set_cpenable(1);
   // Save FPU registers
@@ -742,7 +744,7 @@ void IRAM_ATTR onTimer()
   // and turn it back off
   xthal_set_cpenable(0);
   // 
-  gpio_set_level((gpio_num_t)PIN_LED,0);
+  GPIOLS32_CLR(PIN_LED);
 }
 StaticJsonDocument<1024> recv_doc;
 StaticJsonDocument<1024> ret_doc;
