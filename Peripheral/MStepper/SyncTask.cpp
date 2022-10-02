@@ -94,7 +94,7 @@ int pin_TRIG_595=5;
   
 
 #define SUBDIV (3200)
-#define mm_PER_REV 100
+#define mm_PER_REV 95
 
 spi_device_handle_t spi1=NULL;
 
@@ -155,7 +155,7 @@ class MStp_M:public MStp{
     this->TICK2SEC_BASE=_TICK2SEC_BASE_;
     main_acc=mm2Pulse_conv(AXIS_IDX_X,2000);//SUBDIV*3200/mm_PER_REV;
     minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    main_junctionMaxSpeedJump=minSpeed*3;//5200;
+    main_junctionMaxSpeedJump=minSpeed*2;//5200;
 
     maxSpeedInc=minSpeed;
     // pinMode(PIN_Z1_DIR, OUTPUT);
@@ -178,13 +178,13 @@ class MStp_M:public MStp{
     // pinMode(PIN_OUT_1, OUTPUT);    
     // pinMode(PIN_DBG, OUTPUT);    
 
-    int general_max_freq=100000;
+    int general_max_freq=65*1000;
     axisInfo[AXIS_IDX_X].VirtualStep=1;
     axisInfo[AXIS_IDX_X].AccW=1;
     axisInfo[AXIS_IDX_X].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_X].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_Y].VirtualStep=1.5;
+    axisInfo[AXIS_IDX_Y].VirtualStep=1.3;
     axisInfo[AXIS_IDX_Y].AccW=0.7;
     axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_Y].MaxSpeed=general_max_freq;
@@ -199,53 +199,57 @@ class MStp_M:public MStp{
 
 
 //inline float mm2Pulse_conv(int axisIdx,float dist);
-    float ZX_VS=mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_Z1,1);
-    float RX_VS=mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_R1,1)*(M_PI/180*5);//R axis uses Deg as unit, to convert to mm effect length we convert it as rad * R(effect radius in mm) as effect arc length
+    float _ZX_VS=mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_Z1,1);
+    float _RX_VS=mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_R1,1)*(M_PI/180*5);//R axis uses Deg as unit, to convert to mm effect length we convert it as rad * R(effect radius in mm) as effect arc length
 
+    float ZX_VS=_ZX_VS*0.3;
+    float ZXAccW=1/_ZX_VS;
+    float RX_VS=_RX_VS*0.3;
+    float RXAccW=1/_RX_VS;
     float JW=10/3;
     axisInfo[AXIS_IDX_Z1].VirtualStep=ZX_VS;
-    axisInfo[AXIS_IDX_Z1].AccW=1;
+    axisInfo[AXIS_IDX_Z1].AccW=ZXAccW;
     axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z1].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_R1].VirtualStep=RX_VS;
-    axisInfo[AXIS_IDX_R1].AccW=1;
+    axisInfo[AXIS_IDX_R1].AccW=RXAccW;
     axisInfo[AXIS_IDX_R1].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R1].MaxSpeed=general_max_freq;
 
 
 
     axisInfo[AXIS_IDX_Z2].VirtualStep=ZX_VS;
-    axisInfo[AXIS_IDX_Z2].AccW=1;
+    axisInfo[AXIS_IDX_Z2].AccW=ZXAccW;
     axisInfo[AXIS_IDX_Z2].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z2].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_R2].VirtualStep=RX_VS;
-    axisInfo[AXIS_IDX_R2].AccW=1;
+    axisInfo[AXIS_IDX_R2].AccW=RXAccW;
     axisInfo[AXIS_IDX_R2].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R2].MaxSpeed=general_max_freq;
 
 
 
     axisInfo[AXIS_IDX_Z3].VirtualStep=ZX_VS;
-    axisInfo[AXIS_IDX_Z3].AccW=1;
+    axisInfo[AXIS_IDX_Z3].AccW=ZXAccW;
     axisInfo[AXIS_IDX_Z3].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z3].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_R3].VirtualStep=RX_VS;
-    axisInfo[AXIS_IDX_R3].AccW=1;
+    axisInfo[AXIS_IDX_R3].AccW=RXAccW;
     axisInfo[AXIS_IDX_R3].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R3].MaxSpeed=general_max_freq;
 
 
 
     axisInfo[AXIS_IDX_Z4].VirtualStep=ZX_VS;
-    axisInfo[AXIS_IDX_Z4].AccW=1;
+    axisInfo[AXIS_IDX_Z4].AccW=ZXAccW;
     axisInfo[AXIS_IDX_Z4].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_Z4].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_R4].VirtualStep=RX_VS;
-    axisInfo[AXIS_IDX_R4].AccW=1;
+    axisInfo[AXIS_IDX_R4].AccW=RXAccW;
     axisInfo[AXIS_IDX_R4].MaxSpeedJumpW=JW;
     axisInfo[AXIS_IDX_R4].MaxSpeed=general_max_freq;
 
