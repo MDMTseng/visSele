@@ -713,7 +713,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
         }
         while(1)
         {//wait
-          if(_mstp->p_runSeg==NULL)
+          if(_mstp->SegQ_IsEmpty())
           {
             retStatus=GCodeParser_Status::TASK_OK;
             break;
