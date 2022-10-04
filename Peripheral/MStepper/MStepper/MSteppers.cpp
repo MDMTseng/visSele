@@ -1519,6 +1519,7 @@ LOAD_AGAIN:
         BlockPinInfoUpdate(axis_dir,0,0);//keep pin update
         BlockPulEffect(0,0);//wait for spi input
 
+        setTimer(0);
         return 0;//EXIT, no new segment,go idle
       }
       else
