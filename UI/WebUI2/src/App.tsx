@@ -4764,7 +4764,7 @@ function VIEWUI(){
         },
         title:"!!!!錯誤 例外!!!!",
         DATA:{info:`${JSON.stringify(e,null,2)}`},
-        content:undefined
+        content:JSON.stringify(e,null,2)
       })
     });
   }
