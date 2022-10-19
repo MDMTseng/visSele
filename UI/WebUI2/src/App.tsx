@@ -4587,7 +4587,7 @@ function VIEWUI(){
           let filteredKey=Object.keys(_this.listCMD_Vairable.reportListener)
             .filter(key=>{
               let repListener=_this.listCMD_Vairable.reportListener[key];
-              if(repListener.inspTar_id && repListener.inspTar_id!==RP.id)return false;
+              if(repListener.inspTar_id && repListener.inspTar_id!==RP.InspTar_id)return false;
               if(repListener.trigger_id && repListener.trigger_id!==RP.trigger_id)return false;
               if(repListener.type && repListener.type!==RP.type)return false;
               if(repListener.report!==undefined)return false;
