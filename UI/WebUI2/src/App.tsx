@@ -2473,7 +2473,7 @@ function SingleTargetVIEWUI_Orientation_ShapeBasedMatching({display,stream_id,fs
               ctx.resetTransform();
               ctx.font = "20px Arial";
               ctx.fillStyle = "rgba(150,100, 100,0.5)";
-              ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,180)
+              ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,400)
               ctx.restore();
             }
           }
@@ -4008,7 +4008,7 @@ function SingleTargetVIEWUI_SurfaceCheckSimple({display,stream_id,fsPath,width,h
             ctx.resetTransform();
             ctx.font = "20px Arial";
             ctx.fillStyle = "rgba(150,100, 100,0.5)";
-            let Y=350;
+            let Y=350+200;
             ctx.fillText("Result:"+defReport.report.category + " DIST:"+(reelStep*_MM_P_STP_/_OBJ_SEP_DIST_)+"顆",20,Y);
             ctx.fillText("ProcessTime:"+(defReport.process_time_us/1000).toFixed(2)+" ms",20,Y+30)
 
