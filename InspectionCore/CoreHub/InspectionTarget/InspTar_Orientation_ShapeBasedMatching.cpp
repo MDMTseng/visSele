@@ -1016,7 +1016,9 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   }
 
 
-
+  {
+    LOGI(">>>>>>>>process_time_us:%f",1000000*(cv::getTickCount()-t0)/cv::getTickFrequency());
+  }
 
   LOGI("=====idxs.size():%d",idxs.size());
 
@@ -1053,7 +1055,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
     LOGI("[%d]>>>ang:%f <<id:%s",i,templ[0].angle,match.class_id.c_str());
     cv::Point2f anchorPt = rotate2d(Aoffset.offset ,templ[0].angle*M_PI/180);
 
-    float offset = (1/matching_downScale-1);// /2;
+    float offset = (1/matching_downScale-1)/2;
     f0Pt+=cv::Point2f(offset,offset);
     anchorPt+=f0Pt;
 
@@ -1071,7 +1073,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
     {
       float tmpAngle=refinedAngleRad;
       cv::Point2f tmp_anchorPt=anchorPt;
-      int margin=(int)(25);
+      int margin=(int)(25+(1/matching_downScale));
       DBG_C=0;
       refine_score = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt,tmpAngle,0.2);
       
