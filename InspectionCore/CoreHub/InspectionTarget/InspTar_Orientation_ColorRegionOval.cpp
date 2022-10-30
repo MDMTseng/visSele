@@ -104,9 +104,8 @@ cJSON* InspectionTarget_Orientation_ColorRegionOval::genITIOInfo()
 
 void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<StageInfo> sinfo)
 {
-
+  int64 t0 = cv::getTickCount();
   LOGI("RUN:%s   from:%s",id.c_str(),sinfo->source_id.c_str());
-  cJSON *report=cJSON_CreateObject();
   auto srcImg=sinfo->img;
 
   shared_ptr<acvImage> copyImg=shared_ptr<acvImage>(new acvImage());
@@ -115,11 +114,6 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
   Mat def_temp_img(copyImg->GetHeight(),copyImg->GetWidth(),CV_8UC3,copyImg->CVector[0]);
 
   
-  // cvtColor(def_temp_img, def_temp_img, COLOR_BayerGR2BGR);
-  cJSON* rep_regionInfo=cJSON_CreateArray();
-  
-  cJSON_AddStringToObject(report,"id",id.c_str());
-  cJSON_AddItemToObject(report,"regionInfo",rep_regionInfo);
 
 
 
@@ -134,21 +128,14 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
     if(regionInfo==NULL)break;
 
 
-    cJSON *region_report=cJSON_CreateObject();
-
-    
-    cJSON_AddItemToArray(rep_regionInfo,region_report);
-
-
-    cJSON_AddNumberToObject(region_report,"idx",i);
-
     try{
       int X=(int)*JFetEx_NUMBER(regionInfo,"region[0]");
       int Y=(int)*JFetEx_NUMBER(regionInfo,"region[1]");
       int W=(int)*JFetEx_NUMBER(regionInfo,"region[2]");
       int H=(int)*JFetEx_NUMBER(regionInfo,"region[3]");
 
-
+      bool isBlackObject=JFetch_TRUE(regionInfo,"blackObject");
+      bool isOnlyMaxArea=JFetch_TRUE(regionInfo,"onlyMaxArea");
       Mat def_temp_img_ROI = def_temp_img(Rect(X, Y, W, H));
 
 
@@ -175,7 +162,10 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
         Mat img_HSV_threshold;
         inRange(img_HSV, rangeL, rangeH, img_HSV_threshold);
         // cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
-
+        if(isBlackObject)
+        {
+          bitwise_not(img_HSV_threshold,img_HSV_threshold);
+        }
 
         {
           double *colorThres=JFetch_NUMBER(regionInfo,"colorThres");
@@ -214,88 +204,134 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
         double contourAreaH=JFetch_NUMBER_ex(regionInfo,"contour.areah",INFINITY);
         double contourAreaL=JFetch_NUMBER_ex(regionInfo,"contour.areal",0);
 
-        float maxScore=0;
-        float taridx=-1;
-        float tarArea=0;
-        for( size_t i = 0; i< contours.size(); i++ )
+
+
+        if(isOnlyMaxArea)
         {
-          int contourL=contours[i].size();
-
-          LOGI("[%d] L:%d",i,contourL);
-          if(contourL<contourLenL || contourL>contourLenH )continue;
-
-          auto &approx_contours=contours[i];
-          // vector<cv::Point>approx_contours;
-          // float epsilon = 0.001*contourL;
-          // if(epsilon<2)epsilon=2;
-          // approxPolyDP(contours[i], approx_contours,epsilon, true);
-
-
-
-          double area = contourArea(approx_contours,false);
-          LOGI("[%d] L:%d epsi:%d nL:%d area:%f",i,contourL,approx_contours.size(),area);
-          int iarea=area;
-          if(iarea<contourAreaL || iarea>contourAreaH )continue;
-
-
-          // int sqArea=contourL/4;
-          // float cratio=area/(sqArea*sqArea);
-          
-
-
-          if(maxScore<area)
+          float maxScore=0;
+          float taridx=-1;
+          float tarArea=0;
+          for( size_t i = 0; i< contours.size(); i++ )
           {
-            maxScore=area;
-            tarArea=area;
-            taridx=i;
+            int contourL=contours[i].size();
+
+            LOGI("[%d] L:%d",i,contourL);
+            if(contourL<contourLenL || contourL>contourLenH )continue;
+
+            auto &approx_contours=contours[i];
+            // vector<cv::Point>approx_contours;
+            // float epsilon = 0.001*contourL;
+            // if(epsilon<2)epsilon=2;
+            // approxPolyDP(contours[i], approx_contours,epsilon, true);
 
 
-            LOGI("%d>>contourL:%d iarea:%d",i,contourL,iarea);
+
+            double area = contourArea(approx_contours,false);
+            LOGI("[%d] L:%d epsi:%d nL:%d area:%f",i,contourL,approx_contours.size(),area);
+            int iarea=area;
+            if(iarea<contourAreaL || iarea>contourAreaH )continue;
 
 
-          }
-
-        }
-
-        StageInfo_Orientation::orient orie;
-        orie.angle=NAN;
-        orie.center=(acv_XY){NAN,NAN};
-        if(taridx!=-1)
-        {
-
-
-          vector<Point>  hull;
-          convexHull(Mat(contours[taridx]), hull);
-
-
-          RotatedRect rrect=fitEllipse(hull);
-
-          orie.center.X=rrect.center.x+X;
-          orie.center.Y=rrect.center.y+Y;
-          orie.flip=false;
-          orie.angle=rrect.angle*3.14159/180;
-
-          LOGI("center:%f %f  angle:%f",orie.center.X,orie.center.Y,orie.angle*180/3.14159);
-          cJSON_AddNumberToObject(region_report,"contour_length",hull.size());
-
-          {
-
-            cJSON *center=cJSON_CreateObject();
-
+            // int sqArea=contourL/4;
+            // float cratio=area/(sqArea*sqArea);
             
-            cJSON_AddItemToObject(region_report,"center",center);
 
-            cJSON_AddNumberToObject(center,"x",orie.center.X);
-            cJSON_AddNumberToObject(center,"y",orie.center.Y);
+
+            if(maxScore<area)
+            {
+              maxScore=area;
+              tarArea=area;
+              taridx=i;
+
+
+              LOGI("%d>>contourL:%d iarea:%d",i,contourL,iarea);
+
+
+            }
 
           }
-          cJSON_AddNumberToObject(region_report,"area",tarArea);
 
-          cJSON_AddNumberToObject(region_report,"angle",orie.angle);
-          cJSON_AddBoolToObject(region_report,"flip",orie.flip);
+          StageInfo_Orientation::orient orie;
+          orie.angle=NAN;
+          orie.center=(acv_XY){NAN,NAN};
+          if(taridx!=-1)
+          {
+
+
+            vector<Point>  hull;
+            convexHull(Mat(contours[taridx]), hull);
+
+
+            RotatedRect rrect=fitEllipse(hull);
+
+            orie.center.X=rrect.center.x+X;
+            orie.center.Y=rrect.center.y+Y;
+            orie.flip=false;
+            orie.angle=rrect.angle*3.14159/180;
+
+            LOGI("center:%f %f  angle:%f",orie.center.X,orie.center.Y,orie.angle*180/3.14159);
+
+          }
+          // if(maxScore>0)
+          reportInfo->orientation.push_back(orie);
+
         }
-        // if(maxScore>0)
-        reportInfo->orientation.push_back(orie);
+        else
+        {
+          for( size_t i = 0; i< contours.size(); i++ )
+          {
+            int contourL=contours[i].size();
+
+            LOGI("[%d] L:%d",i,contourL);
+            if(contourL<contourLenL || contourL>contourLenH )continue;
+
+            auto &approx_contours=contours[i];
+            // vector<cv::Point>approx_contours;
+            // float epsilon = 0.001*contourL;
+            // if(epsilon<2)epsilon=2;
+            // approxPolyDP(contours[i], approx_contours,epsilon, true);
+
+
+
+            double area = contourArea(approx_contours,false);
+            LOGI("[%d] L:%d epsi:%d nL:%d area:%f",i,contourL,approx_contours.size(),area);
+            int iarea=area;
+            if(iarea<contourAreaL || iarea>contourAreaH )continue;
+
+
+            // int sqArea=contourL/4;
+            // float cratio=area/(sqArea*sqArea);
+            
+            StageInfo_Orientation::orient orie;
+            orie.angle=NAN;
+            orie.center=(acv_XY){NAN,NAN};
+
+
+            {
+
+
+              vector<Point>  hull;
+              convexHull(Mat(contours[i]), hull);
+
+
+              RotatedRect rrect=fitEllipse(hull);
+
+              orie.center.X=rrect.center.x+X;
+              orie.center.Y=rrect.center.y+Y;
+              LOGI("c.XY:%f %f",orie.center.X,orie.center.Y);
+              orie.flip=false;
+              orie.angle=rrect.angle*3.14159/180;
+              orie.confidence=0.5;
+
+            }
+            // if(maxScore>0)
+            reportInfo->orientation.push_back(orie);
+
+
+          }
+
+        }
+
 
 
       }
@@ -319,25 +355,32 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
   reportInfo->sharedInfo.push_back(sinfo);
   reportInfo->source=this;
   reportInfo->source_id=id;
-  reportInfo->img=copyImg;
+  reportInfo->img_show=copyImg;
+  reportInfo->img=srcImg;
   // reportInfo->imgSets["src"]=srcImg;
   
   reportInfo->trigger_id=sinfo->trigger_id;
-  reportInfo->sharedInfo.push_back(sinfo);
   reportInfo->trigger_tags.push_back(id);
+  insertInputTagsWPrefix(reportInfo->trigger_tags,sinfo->trigger_tags,"s_");
 
   
 
   reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
+  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",4);
   LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
+  {
+    int64 t1 = cv::getTickCount();
+    double secs_us = 1000000*(t1-t0)/cv::getTickFrequency();
+    reportInfo->process_time_us=secs_us;
+    reportInfo->create_time_sysTick=t1;
+    // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
 
+    LOGI(">>>>>>>>process_time_us:%f",secs_us);
+  }
   
-  cJSON *freport=cJSON_CreateObject();
-  cJSON_AddItemToObject(freport,"report",rep_regionInfo);
-  reportInfo->jInfo=freport;
+  reportInfo->genJsonRepTojInfo();
 
-  attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
+  // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
 
   belongMan->dispatch(reportInfo);
 }

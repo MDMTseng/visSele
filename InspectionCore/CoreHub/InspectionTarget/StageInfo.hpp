@@ -20,6 +20,7 @@ class StageInfo{
   InspectionTarget *source;
   
   std::shared_ptr<acvImage> img;
+  std::shared_ptr<acvImage> img_show;
   struct _img_prop{
     CameraLayer::frameInfo fi;
     float mmpp;

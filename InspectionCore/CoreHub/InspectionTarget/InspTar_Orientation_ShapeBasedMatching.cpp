@@ -1150,6 +1150,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   LOGI(">>>>>>>>");
   reportInfo->source=this;
   reportInfo->source_id=id;
+  reportInfo->img_show=
   reportInfo->img=srcImg;
   
   reportInfo->trigger_id=sinfo->trigger_id;

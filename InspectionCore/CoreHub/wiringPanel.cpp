@@ -695,7 +695,7 @@ void InspectionTarget_DataTransfer::thread_run()
         bpg_pi.fromUpperLayer_DATA("RP",imgCHID,curInput->jInfo);
 
 
-      std::shared_ptr<acvImage> im2send=curInput->img;
+      std::shared_ptr<acvImage> im2send=curInput->img_show;
       if(im2send!=NULL)
       {
         BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)downSample};

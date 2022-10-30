@@ -445,7 +445,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   reportInfo->source=this;
   reportInfo->source_id=id;
-  reportInfo->img=shared_ptr<acvImage>(retImage);
+  reportInfo->img_show=shared_ptr<acvImage>(retImage);
+  reportInfo->img=srcImg;
   
   reportInfo->trigger_id=sinfo->trigger_id;
   reportInfo->sharedInfo.push_back(sinfo);
