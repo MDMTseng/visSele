@@ -2549,7 +2549,8 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 }
 
 
-export function SingleTargetVIEWUI_Orientation_ColorRegionOval({ display, stream_id, fsPath, width, height, style = undefined, renderHook, def, report, onDefChange }: CompParam_InspTarUI) {
+export function SingleTargetVIEWUI_Orientation_ColorRegionOval(props: CompParam_InspTarUI) {
+    let { display, stream_id, fsPath, width, height, EditPermitFlag, style = undefined, renderHook, def, report, onDefChange }=props;
     const _ = useRef<any>({
 
         imgCanvas: document.createElement('canvas'),
@@ -2735,9 +2736,14 @@ export function SingleTargetVIEWUI_Orientation_ColorRegionOval({ display, stream
 
 
             let EditUI = null;
-            if (true)//allow edit
+            if ((EditPermitFlag & EDIT_PERMIT_FLAG.XXFLAGXX) != 0)//allow edit
             {
                 EditUI = <>
+
+
+
+                    <InspTarView_basicInfo {...props}  def={cacheDef}/>
+
                     <Button key={"_" + 10000} onClick={() => {
 
                         let newDef = { ...cacheDef };
@@ -2778,23 +2784,15 @@ export function SingleTargetVIEWUI_Orientation_ColorRegionOval({ display, stream
 
             EDIT_UI = <>
 
-                <Input maxLength={100} value={cacheDef.id}
-                    style={{ width: "100px" }}
+                <Input maxLength={100} value={cacheDef.id} disabled
+                    style={{ width: "200px" }}
                     onChange={(e) => {
-                        console.log(e.target.value);
-
-                        let newDef = { ...cacheDef };
-                        newDef.id = e.target.value;
-                        onCacheDefChange(newDef, false)
-
-
                     }} />
-
-                <Input maxLength={100} value={cacheDef.type} disabled
+                {/* <Input maxLength={100} value={cacheDef.type} disabled
                     style={{ width: "100px" }}
                     onChange={(e) => {
 
-                    }} />
+                    }} /> */}
 
                 <Input maxLength={100} value={cacheDef.sampleImageFolder} disabled
                     style={{ width: "100px" }}
@@ -3426,6 +3424,11 @@ export function InspTarView_basicInfo({ display, stream_id, fsPath, width, heigh
         <Button onClick={() => {
             onDefChange(cacheDef, true)
         }}>SAVE</Button>
+
+        <Switch checkedChildren="隱藏" unCheckedChildren="顯示" checked={cacheDef.default_hide == true} onChange={(check) => {
+            
+            onDefChange({ ...cacheDef, default_hide: check }, false)
+        }} />
     </>
 
 }
