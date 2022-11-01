@@ -1136,6 +1136,24 @@ function Orientation_ColorRegionOval_SingleRegion({ srule, onDefChange, canvas_o
             }} />
 
 
+            <br />Area thres
+            <Slider defaultValue={srule_Filled.contour.areah} max={10000} onChange={(v) => {
+
+                _this.trigTO =
+                    ID_debounce(_this.trigTO, () => {
+                        onDefChange(ObjShellingAssign(srule_Filled, ["contour", "areah"], v));
+                    }, () => _this.trigTO = undefined, 500);
+
+            }} />
+            <Slider defaultValue={srule_Filled.contour.areal} max={10000} onChange={(v) => {
+
+                _this.trigTO =
+                    ID_debounce(_this.trigTO, () => {
+                        onDefChange(ObjShellingAssign(srule_Filled, ["contour", "areal"], v));
+                    }, () => _this.trigTO = undefined, 500);
+
+            }} />
+
 
         </>
 
