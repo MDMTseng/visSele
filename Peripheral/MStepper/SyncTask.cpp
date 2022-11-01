@@ -124,8 +124,8 @@ RingBuf_Static<struct triggerInfo,20,uint8_t> triggerInfoQ;
 struct MSTP_SegCtx{
   MSTP_SegCtx_TYPE type;
   // int delay_time_ms;
-
-  int32_t I,P,S,T;
+  uint32_t PORT,S;
+  int32_t P,T;
   string CID;
   string TTAG;
   int TID;
@@ -489,9 +489,15 @@ class MStp_M:public MStp{
         }
 
 
-        if(ctx->P<0)break;
         //P: pin number, S: 0~255 PWM, T: pin setup (0:input, 1:output, 2:input_pullup, 3:input_pulldown)
+        if(ctx->PORT)
+        {
+          static_Pin_update_needed=true;
+          static_Pin_info=((~ctx->PORT)&static_Pin_info)|(ctx->PORT&ctx->S);
 
+
+        }
+        else if(ctx->P>=0)
         {
           static_Pin_update_needed=true;
           if(ctx->S==0)
@@ -875,14 +881,14 @@ public:
     return _mstp->AddWait(waitTick,times,ctx,exinfo);
   }
 
-  bool MTPSYS_AddIOState(int32_t I,int32_t P, int32_t S,int32_t T,char* CID,char* TTAG,int TID)
+  bool MTPSYS_AddIOState(uint32_t PORT,int32_t P, uint32_t S,int32_t T,char* CID,char* TTAG,int TID)
   {
     MSTP_SegCtx *p_res;
     while((p_res=sctx_pool.applyResource())==NULL)//check release
     {
       yield();
     }
-    p_res->I=I;
+    p_res->PORT=PORT;
     p_res->P=P;
     p_res->S=S;
     p_res->T=T;
@@ -890,7 +896,7 @@ public:
     p_res->TTAG=TTAG==NULL?"":string(TTAG);
     p_res->TID=TID;
     p_res->type=MSTP_SegCtx_TYPE::IO_CTRL;
-    __UPRT_D_("I:%d,P:%d,S:%d,T:%d CID:%s TTAG:%s TID:%d\n",I,P,S,T,CID,TTAG,TID);
+    __UPRT_D_("M:%d,P:%d,S:%d,T:%d CID:%s TTAG:%s TID:%d\n",M,P,S,T,CID,TTAG,TID);
     while(_mstp->AddWait(0,0,p_res,NULL)==false)
     {
       yield();

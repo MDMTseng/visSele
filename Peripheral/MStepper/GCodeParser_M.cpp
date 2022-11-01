@@ -72,6 +72,29 @@ long parseLong(char* str,int strL, bool *isOK)
   return atol(strBuf);
 }
 
+uint32_t parseUlong(char* str,int strL, bool *isOK)
+{
+  if(isOK)*isOK=false;
+  char strBuf[30];
+  memcpy(strBuf,str,strL);
+  strBuf[strL]='\0';
+
+  char testChar=strBuf[0];
+
+
+  uint32_t num;
+  for(int i=0;i<strL;i++)
+  {
+    testChar=strBuf[i];
+    if((testChar<'0' || testChar>'9'))return 0;//not a number
+    num*=10;
+    num+=testChar-'0';
+  }
+
+
+  if(isOK)*isOK=true;
+  return num;
+}
 
 int GCodeParser_M::ReadxVecELE_toPulses(char **blkIdxes,int blkIdxesL,xVec &retVec,int axisIdx,const char* axisGIDX)
 {
@@ -287,6 +310,35 @@ int GCodeParser_M::FindInt32(const char *prefix,char **blkIdxes,int blkIdxesL,in
       {
         bool isOK=false;
         retNum=(int32_t)parseLong(blk+prefixL,len-prefixL,&isOK);
+        return isOK?0:-1;
+      }
+    }
+
+  }
+  return -1;
+}
+
+int GCodeParser_M::FindUint32(const char *prefix,char **blkIdxes,int blkIdxesL,uint32_t &retNum)
+{
+  int j=0;
+  int prefixL=strlen(prefix);
+  for(;j<blkIdxesL;j++)
+  {
+    char* blk=blkIdxes[j];
+    int len=blkIdxes[j+1]-blkIdxes[j]-1;
+    if(blk[0]=='('||blk[0]==';')continue;//skip comment
+    if(blk[0]=='G'||blk[0]=='M')
+    {
+      // __PRT_D_("j:%d\n",j);
+      return -1;
+    }
+    
+    // for(int k=0;k<len;k++)//single block G21 or P4355 or X-34
+    {
+      if(strncmp(blk, prefix, prefixL)==0)
+      {
+        bool isOK=false;
+        retNum=parseUlong(blk+prefixL,len-prefixL,&isOK);
         return isOK?0:-1;
       }
     }
@@ -639,14 +691,15 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
           break;
         }
         int j=i+1;
-        int32_t I,P,S,T;
-        if(FindInt32("I",blockInitial+j,blockCount-j,I)!=0)I=-1;
+        uint32_t PORT,S;
+        int32_t P,T;
+        if(FindUint32("PORT",blockInitial+j,blockCount-j,PORT)!=0)PORT=0;
+        if(FindUint32("S",blockInitial+j,blockCount-j,S)!=0)S=0;
         if(FindInt32("P",blockInitial+j,blockCount-j,P)!=0)P=-1;
-        if(FindInt32("S",blockInitial+j,blockCount-j,S)!=0)S=-1;
         if(FindInt32("T",blockInitial+j,blockCount-j,T)!=0)T=-1;
         
 
-        char *CID_Ptr=NULL;;
+        char *CID_Ptr=NULL;
         char CID_BUF[50];
         if(FindStr("CID_",blockInitial+j,blockCount-j,CID_BUF)==0)
         {
@@ -664,10 +717,10 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseLine()
 
 
 
-        __PRT_D_("M42 I%d P%d S%d T%d CID:%s TTAG:%s\n",I,P,S,T,CID_Ptr,TTAG_Ptr);
-        if(CID_Ptr!=NULL || P>=0)
+        __PRT_D_("M42 PORT%d P%d S%d T%d CID:%s TTAG:%s\n",PORT,P,S,T,CID_Ptr,TTAG_Ptr);
+        if(CID_Ptr!=NULL || P>=0 || PORT)
         {
-          retStatus=MTPSYS_AddIOState(I,P,S,T,CID_Ptr,TTAG_Ptr,TID)==true?
+          retStatus=MTPSYS_AddIOState(PORT,P,S,T,CID_Ptr,TTAG_Ptr,TID)==true?
             statusReducer(retStatus,GCodeParser_Status::TASK_OK):
             statusReducer(retStatus,GCodeParser_Status::TASK_FAILED);
         } 
