@@ -2642,14 +2642,12 @@ export function SingleTargetVIEWUI_Orientation_ColorRegionOval(props: CompParam_
 
 
         (async () => {
+            console.log(">>>");
             await BPG_API.InspTargetUpdate(updatedDef)
-
-            // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
-
-            await BPG_API.CameraSWTrigger("BMP_carousel_0", "TTT", 4433)
 
         })()
 
+        BPG_API.InspTargetExchange(cacheDef.id, { type: "revisit_cache_stage_info" });
     }
 
 
@@ -2931,8 +2929,6 @@ export function SingleTargetVIEWUI_Orientation_ColorRegionOval(props: CompParam_
                     srule={regionInfo}
                     onDefChange={(newDef_sregion) => {
                         // console.log(newDef);
-
-
                         let newDef = { ...cacheDef };
                         if (newDef_sregion !== undefined) {
                             newDef.regionInfo[stateInfo_tail.info.idx] = newDef_sregion;
