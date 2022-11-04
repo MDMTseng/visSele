@@ -102,6 +102,21 @@ cJSON* InspectionTarget_Orientation_ColorRegionOval::genITIOInfo()
 
 }
 
+Point3d findCenterAndOrientation(const Mat& src)
+{
+    Moments m = cv::moments(src, true);
+    double cen_x = m.m10/m.m00; //Centers are right
+    double cen_y = m.m01/m.m00;
+
+    double a = m.m20-m.m00*cen_x*cen_x;
+    double b = 2*m.m11-m.m00*(cen_x*cen_x+cen_y*cen_y);
+    double c = m.m02-m.m00*cen_y*cen_y;
+
+    double theta = a==c?0:atan2(b, a-c)/2.0;
+
+    return Point3d(cen_x, cen_y, theta);
+}
+
 void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<StageInfo> sinfo)
 {
   int64 t0 = cv::getTickCount();
@@ -258,18 +273,31 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
           {
 
 
-            vector<Point>  hull;
-            convexHull(Mat(contours[taridx]), hull);
+            // vector<Point>  hull;
+            // convexHull(Mat(contours[taridx]), hull);
+            // RotatedRect rrect=fitEllipse(hull);
 
 
-            RotatedRect rrect=fitEllipse(hull);
+            // cv::Moments M = cv::moments(contours[taridx]);
+            // cv::Point center(M.m10/M.m00, M.m01/M.m00);
 
-            orie.center.X=rrect.center.x+X;
-            orie.center.Y=rrect.center.y+Y;
+            // double theta;
+            // {
+            //   theta = -0.5 * atan2(
+            //       (2 * M.m11) ,
+            //       (M.m20 -  M.m02));
+            //   // theta = (theta / M_PI) * 180;
+            // }
+
+
+            cv::Point3d pose=findCenterAndOrientation(Mat(contours[taridx]));
+            orie.center.X=pose.x+X;
+            orie.center.Y=pose.y+Y;
             orie.flip=false;
-            orie.angle=rrect.angle*3.14159/180;
+            orie.angle=pose.z+M_PI/2;//rrect.angle*M_PI/180;
+            orie.confidence=0.5;
 
-            LOGI("center:%f %f  angle:%f",orie.center.X,orie.center.Y,orie.angle*180/3.14159);
+            LOGI("center:%f %f  angle:%f",orie.center.X,orie.center.Y,orie.angle*180/M_PI);
 
           }
           // if(maxScore>0)
@@ -290,8 +318,8 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
             // float epsilon = 0.001*contourL;
             // if(epsilon<2)epsilon=2;
             // approxPolyDP(contours[i], approx_contours,epsilon, true);
-
-
+            cv::Moments M = cv::moments(contours[i]);
+              cv::Point center(M.m10/M.m00, M.m01/M.m00);
 
             double area = contourArea(approx_contours,false);
             LOGI("[%d] L:%d epsi:%d nL:%d area:%f",i,contourL,approx_contours.size(),area);
@@ -383,6 +411,8 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
   // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
 
   belongMan->dispatch(reportInfo);
+
+  cache_stage_info=sinfo;
 }
 
 InspectionTarget_Orientation_ColorRegionOval::~InspectionTarget_Orientation_ColorRegionOval()
