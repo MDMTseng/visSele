@@ -24,8 +24,8 @@ inline float mm2Pulse_conv(int axisIdx,float dist);
 
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc);
-uint32_t g_step_trigger_edge=0;//0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
-uint32_t g_dir_inv=0;
+uint32_t g_step_trigger_edge=(1<<AXIS_IDX_X);//0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
+uint32_t g_dir_inv=0^(1<<AXIS_IDX_Z1)^(1<<AXIS_IDX_Z2)^(1<<AXIS_IDX_Z3)^(1<<AXIS_IDX_Z4);
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
 {
@@ -565,7 +565,10 @@ class MStp_M:public MStp{
 
   int shiftRegAssignedCount=0;//the count hs to be 1 in order to get correct input data
   #define BIT_CUT(V32,offset,width)  (   ( (V32)>>(offset) )     &    ((1<<(width))-1)    )
+
+  #define BIT_CUT2(V32,LBitPosition,HBitPosition)  (   ( (V32)>>(LBitPosition) )     &    ((1<<(HBitPosition-LBitPosition+1))-1)    )
   #define ENDIAN_SWITCH(B32)  (((B32)<<24)|(((B32)&0xFF00)<<8)|(((B32)&0xFF0000)>>8)|((B32)>>24))
+
 
   void ShiftRegAssign(uint32_t dir,uint32_t step)
   {
@@ -581,15 +584,9 @@ class MStp_M:public MStp{
     uint32_t m_dir=dir^g_dir_inv;
     uint32_t m_step=step^g_step_trigger_edge;
 
+    // uint32_t portPins=((testCounter&0xff)<<24)|((testCounter&0xff)<<16);
+    // testCounter++;
 
-    uint32_t portPins=
-      ( ((BIT_CUT(m_step,0,  1)<< 7)|(BIT_CUT(m_dir,0,  1)<<15)))|
-
-      ( ((BIT_CUT(m_step,3,  4)<< 3)|(BIT_CUT(m_dir,3,  4)<<11))       )|
-
-
-      ( ((BIT_CUT(m_step,1,  1)<<20)|(BIT_CUT(m_dir,1,  1)<<25)))|
-      ( ((BIT_CUT(m_step,7,  4)    )|(BIT_CUT(m_dir,7,  4)<<5))<<(16) );
 
     //demo board    pX  pY  pZ pZ1 pR1 pZ2 pR2 ___  dX  dY  dZ dZ1 dR1 dZ2 dR2 ___ pZ3 pR3 pZ4 pR4 ___ dZ3 dR3 dZ4 dR4  ____  
     //               0                               8                              16                 (21)         24    25   
@@ -598,7 +595,51 @@ class MStp_M:public MStp{
     //demo board    __  __  pZ pZ1 pR1 pZ2 pR2 pX   __  __  dZ dZ1 dR1 dZ2 dR2  dX pZ3 pR3 pZ4 pR4  pY dZ3 dR3 dZ4 dR4   dY  
     //               0                               8                              16                 (21)         24    25   
     
-    
+    //demo board
+    // uint32_t portPins=
+    //   ( ((BIT_CUT(m_step,0,  1)<< 7)|(BIT_CUT(m_dir,0,  1)<<15)))|
+
+    //   ( ((BIT_CUT(m_step,3,  4)<< 3)|(BIT_CUT(m_dir,3,  4)<<11))       )|
+
+
+    //   ( ((BIT_CUT(m_step,1,  1)<<20)|(BIT_CUT(m_dir,1,  1)<<25)))|
+    //   ( ((BIT_CUT(m_step,7,  4)    )|(BIT_CUT(m_dir,7,  4)<<5))<<(16) );
+
+
+    //V0.1.0 board  pX  pY  dX dY pR1 pZ2 pR2 pX   __  __  dZ dZ1 dR1 dZ2 dR2  dX pZ3 pR3 pZ4 pR4  pY dZ3 dR3 dZ4 dR4   dY  
+    //               0                               8                              16                 (21)         24    25   
+    //V0.1.0 board
+    // uint32_t portPins=
+    //  ( ((BIT_CUT(m_step,0,  2)<< ( 0))|(BIT_CUT(m_dir,0,  2)<<( 2))))//XY
+    // |( ((BIT_CUT(m_step,2,  5)<< ( 4))|(BIT_CUT(m_dir,2,  5)<<( 9))))//axis idx step & dir 2~ 6
+
+
+    // //HW bug FIX: the dir10 would use pin 25 as backup and needs air wire to route 
+    // |   (BIT_CUT(m_step,7,  5)<< (14)) //axis idx step 7 ~11, step is OK
+    // |   (BIT_CUT(m_dir ,7,  1)<< (19))| (BIT_CUT(m_dir,9,  3)<<(20)) //dir 7 8 9 11, 
+    // |   (BIT_CUT(m_dir ,8,  1)<< (25))//
+     
+    // |((uint32_t)0<<24)|((uint32_t)0<<23)//pin 24 => XY disable value (1 as disable 0 as enable)
+    // ;
+
+
+
+
+
+    uint32_t portPins=
+     ( ((BIT_CUT2(m_step,AXIS_IDX_X,AXIS_IDX_Y)<< ( 0))|(BIT_CUT2(m_dir,AXIS_IDX_X,AXIS_IDX_Y)<<( 2))))//XY
+
+
+    |( ((BIT_CUT2(m_step,AXIS_IDX_R1,AXIS_IDX_G2_RS)<< ( 4))|(BIT_CUT2(m_dir,AXIS_IDX_R1,AXIS_IDX_G2_RS)<<( 9))))//axis idx step & dir 2~ 6
+
+
+    //HW bug FIX: the dir10 would use pin 25 as backup and needs air wire to route 
+    |   (BIT_CUT2(m_step,AXIS_IDX_Z1,AXIS_IDX_G1_RS)<< (14)) //axis idx step 7 ~11, step is OK
+    |   (BIT_CUT2(m_dir ,AXIS_IDX_Z1,   AXIS_IDX_Z1)<< (19)) | (BIT_CUT2(m_dir,AXIS_IDX_Z3,  AXIS_IDX_G1_RS)<<(20)) //dir 7 8 9 11, 
+    |   (BIT_CUT2(m_dir ,AXIS_IDX_Z2,   AXIS_IDX_Z2)<< (31))//
+    |   ((uint32_t)0<<24)|((uint32_t)0<<23)//pin 24 => XY disable value (1 as disable 0 as enable)
+    ;
+
     // uint32_t portPins=
     //   ( ((BIT_CUT(m_step,0,3+5)  )|(BIT_CUT(m_dir,0,3+5)<<8))       );
     //demo board    pX  pY  pZ pZ1 pZ2 pZ3 pZ4 pRx dX  dY dZ dZ1 dZ2 dZ3 dZ4 dRx 
@@ -806,13 +847,13 @@ inline float mm2Pulse_conv(int axisIdx,float dist)
     case AXIS_IDX_Z1:
     case AXIS_IDX_Z2:
     case AXIS_IDX_Z3:
-    case AXIS_IDX_Z4:return dist*200*16/40;//as pulse count
+    case AXIS_IDX_Z4:return dist*200*4/40;//as pulse count
 
     case AXIS_IDX_R1:
     case AXIS_IDX_R2:
     case AXIS_IDX_R3:
     case AXIS_IDX_R4://assume it's 800 pulses pre rev
-      return dist*(200*16)/360;//-1 for reverse the direction
+      return dist*(200*4)/360;//-1 for reverse the direction
 
 
 
