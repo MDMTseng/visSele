@@ -122,6 +122,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
     // }
     
     // newStateInfo->trigger_tag="";
+    newStateInfo->img_show=
     newStateInfo->img=img;
     // LOGI(">>>CAM:%s  WH:%d %d",info->camera_id.c_str(),finfo.width,finfo.height);
 
