@@ -3165,6 +3165,19 @@ function SurfaceCheckSimple_EDIT_UI({ def, onDefChange, canvas_obj }:
                 let newDef = { ...def_Filled, H: num }
                 onDefChange(newDef, true);
             }} />
+        <br />iW:
+        <InputNumber min={10} max={2000} value={def_Filled.inner_W}
+            onChange={(num) => {
+                let newDef = { ...def_Filled, inner_W: num }
+                onDefChange(newDef, true);
+            }} />
+        {"  "}iH:
+        <InputNumber min={10} max={2000} value={def_Filled.inner_H}
+            onChange={(num) => {
+                let newDef = { ...def_Filled, inner_H: num }
+                onDefChange(newDef, true);
+            }} />
+        <br />
         {"  "}角度調整:
         <InputNumber value={def_Filled.angle_offset}
             onChange={(num) => {

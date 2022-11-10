@@ -175,6 +175,17 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   float W=JFetch_NUMBER_ex(def,"W");
   float H=JFetch_NUMBER_ex(def,"H");
 
+
+  float innerW=JFetch_NUMBER_ex(def,"inner_W",W);
+  float innerH=JFetch_NUMBER_ex(def,"inner_H",H);
+  if(innerW>W)innerW=W;
+  if(innerH>H)innerH=H;
+
+  innerW=W-((W-innerW)/2)*2;
+  innerH=H-((H-innerH)/2)*2;
+
+
+
   acvImage *retImage=NULL;
 
   shared_ptr<StageInfo_SurfaceCheckSimple> reportInfo(new StageInfo_SurfaceCheckSimple());
@@ -204,6 +215,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   {  
     retImage=new acvImage(W*d_sinfo->orientation.size(),H,3);
     Mat def_temp_img(retImage->GetHeight(),retImage->GetWidth(),CV_8UC3,retImage->CVector[0]);
+    
     def_temp_img={0};
 
     for(int i=0;i<d_sinfo->orientation.size();i++)
@@ -221,7 +233,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
       }
       // cJSON* idxRegion=JFetch_ARRAY(def,("[+"+std::to_string(i)+"+]").c_str());
       int imgOrderIdx=img_order_reverse?(d_sinfo->orientation.size()-1-i):i;
-      Mat def_temp_img_ROI = def_temp_img(Rect(imgOrderIdx*W, 0, W, H));
+      Mat _def_temp_img_ROI = def_temp_img(Rect(imgOrderIdx*W, 0, W, H));
 
       float angle = orientation.angle;
       // if(angle>M_PI_2)angle-=M_PI;
@@ -229,17 +241,18 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
       angle+=angle_offset;
       Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset,H/2+Y_offset},-angle);
 
-      cv::warpAffine(CV_srcImg, def_temp_img_ROI, rot,def_temp_img_ROI.size());
+      cv::warpAffine(CV_srcImg, _def_temp_img_ROI, rot,_def_temp_img_ROI.size());
 
+      Mat def_temp_img_innerROI = _def_temp_img_ROI(Rect((W-innerW)/2, (H-innerH)/2, innerW, innerH));
 
 
 
       if(1){
 
-        Mat image(def_temp_img_ROI.rows,def_temp_img_ROI.cols,CV_8UC3);
-        cv::GaussianBlur(def_temp_img_ROI, image, cv::Size(0, 0), 3);
+        Mat image(def_temp_img_innerROI.rows,def_temp_img_innerROI.cols,CV_8UC3);
+        cv::GaussianBlur(def_temp_img_innerROI, image, cv::Size(0, 0), 3);
         float alpha=0.3;
-        cv::addWeighted(def_temp_img_ROI, 1+alpha, image, -alpha, 0, def_temp_img_ROI);
+        cv::addWeighted(def_temp_img_innerROI, 1+alpha, image, -alpha, 0, def_temp_img_innerROI);
       }
 
 
@@ -247,7 +260,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
       if(1){
         
         Mat img_HSV;
-        cvtColor(def_temp_img_ROI, img_HSV, COLOR_BGR2HSV);
+        cvtColor(def_temp_img_innerROI, img_HSV, COLOR_BGR2HSV);
 
 
         LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
@@ -256,7 +269,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
         Mat img_HSV_threshold;
         inRange(img_HSV, rangeL, rangeH, img_HSV_threshold);
-        // cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
+        // cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
 
 
         {
@@ -274,13 +287,13 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             
         {
           {
-            // cv::cvtColor(img_HSV_threshold,def_temp_img_ROI,COLOR_GRAY2RGB);
+            // cv::cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
             Mat img_HSV_threshold_rgb;
             cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
             addWeighted( 
             img_HSV_threshold_rgb, resultOverlayAlpha, 
-            def_temp_img_ROI, 1-resultOverlayAlpha, 0.0, 
-            def_temp_img_ROI);
+            def_temp_img_innerROI, 1-resultOverlayAlpha, 0.0, 
+            def_temp_img_innerROI);
             // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
             // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
           }
