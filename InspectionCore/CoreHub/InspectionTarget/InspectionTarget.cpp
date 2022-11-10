@@ -286,11 +286,6 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
   return false;
 }
 
-
-bool  InspectionTarget::isService()
-{
-  return asService;
-}
 // cJSON* InspectionTarget::getInspResult()
 // {
 //   return getInfo_cJSON();

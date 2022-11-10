@@ -141,7 +141,6 @@ class InspectionTarget
 
   virtual cJSON* genITIOInfo()=0;
   virtual cJSON* genITInfo();
-  bool isService();
 
   
   std::mutex input_stage_lock;
