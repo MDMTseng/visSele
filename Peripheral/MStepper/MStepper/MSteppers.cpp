@@ -1533,7 +1533,6 @@ LOAD_AGAIN:
       else
       {
         p_runSeg->cur_step=0;
-        BlockInitEffect(p_runSeg);
         curPos_mod=(xVec){0};
         // vecAssign(curPos_residue,vec0);
         // vecAssign(posvec,vec0);
@@ -1551,6 +1550,7 @@ LOAD_AGAIN:
           p_runSeg->vcur= prevcur;//keeps the speed info
         }
 
+        BlockInitEffect(p_runSeg);
           
       }
     }
