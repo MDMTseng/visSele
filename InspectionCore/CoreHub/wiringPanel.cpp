@@ -301,12 +301,10 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             auto _triggerInfo=triggerInfoMatchingBuffer[i].triggerInfo;
            
             // if(_triggerInfo.camera_id!=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
-
-            if (targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id.find(_triggerInfo.camera_id) == std::string::npos) {
+            auto curCamID=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
+            if (curCamID.find(_triggerInfo.camera_id) == std::string::npos) {
               continue;
             }
-
-
 
             int cost;
             
@@ -342,8 +340,9 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             auto _stInfo=triggerInfoMatchingBuffer[i].stInfo;
             //if(targetTriggerInfo.camera_id!=_stInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not fully matched
 
+            auto curCamID=_stInfo->img_prop.StreamInfo.camera->getConnectionData().id;
 
-            if (_stInfo->img_prop.StreamInfo.camera->getConnectionData().id.find(targetTriggerInfo.camera_id) == std::string::npos) {
+            if (curCamID.find(targetTriggerInfo.camera_id) == std::string::npos) {
               continue;
             }
             
@@ -381,8 +380,9 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         {
           LOGI("Get matching. idx:%d cost:%d  psss to next Q stInfo:%p",minMatchingIdx,minMatchingCost,targetStageInfo.get() );
           targetStageInfo->trigger_tags=targetTriggerInfo.tags;
-          targetStageInfo->trigger_tags.push_back(targetTriggerInfo.camera_id);
-          LOGI("cam id:%s  ch_id:%d",targetTriggerInfo.camera_id.c_str(),targetStageInfo->img_prop.StreamInfo.channel_id);
+          auto fullCamID=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
+          targetStageInfo->trigger_tags.push_back(fullCamID);
+          LOGI("cam id:%s  ch_id:%d",fullCamID.c_str(),targetStageInfo->img_prop.StreamInfo.channel_id);
           LOGI("TId:%d  info TId:%d",targetStageInfo->trigger_id,targetTriggerInfo.trigger_id);
           targetStageInfo->trigger_id=targetTriggerInfo.trigger_id;
 
