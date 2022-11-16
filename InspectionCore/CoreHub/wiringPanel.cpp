@@ -300,7 +300,12 @@ void TriggerInfoMatchingThread(bool *terminationflag)
 
             auto _triggerInfo=triggerInfoMatchingBuffer[i].triggerInfo;
            
-            if(_triggerInfo.camera_id!=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
+            // if(_triggerInfo.camera_id!=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
+
+            if (targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id.find(_triggerInfo.camera_id) == std::string::npos) {
+              continue;
+            }
+
 
 
             int cost;
@@ -335,8 +340,12 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             if(triggerInfoMatchingBuffer[i].stInfo==NULL)continue;//skip trigger info
 
             auto _stInfo=triggerInfoMatchingBuffer[i].stInfo;
-            if(targetTriggerInfo.camera_id!=_stInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not matching
+            //if(targetTriggerInfo.camera_id!=_stInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not fully matched
 
+
+            if (_stInfo->img_prop.StreamInfo.camera->getConnectionData().id.find(targetTriggerInfo.camera_id) == std::string::npos) {
+              continue;
+            }
             
             int cost;
             
@@ -553,7 +562,34 @@ int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
           string tag=JFetch_STRING_ex(json,"tag");
           if(tag.length()>0)
           {
-            trigInfo.triggerInfo.tags.push_back(tag);
+
+
+            // split tag by ','
+            char delim=',';
+            int start = 0;
+            auto len = 0;
+
+            auto tag_cstr=tag.c_str();
+            for(len=0;;len++)
+            {
+
+              if(tag_cstr[start+len]=='\0')
+              { 
+                if(len)trigInfo.triggerInfo.tags.push_back(tag.substr(start,len));
+                break;
+              }
+              if(tag_cstr[start+len]==delim)
+              {
+
+                if(len)trigInfo.triggerInfo.tags.push_back(tag.substr(start,len));
+                start+=len+1;
+                len=0;
+              }
+            }
+
+            // trigInfo.triggerInfo.tags.push_back(tag);// push tag string in as is
+
+
           }
           
           triggerInfoMatchingQueue.push_blocking(trigInfo);
