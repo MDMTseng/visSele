@@ -953,8 +953,9 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
         // __PRT_D_("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n DIFF:",newSeg.JunctionNormMaxDiff,preSeg->vto,newSeg.vcur);
 
-        if(newSeg.JunctionNormMaxDiff<0.01)
-          newSeg.JunctionNormMaxDiff=0.01;//min diff cap to prevent value explosion
+        if(newSeg.JunctionNormMaxDiff<0.0001)
+          newSeg.JunctionNormMaxDiff=0.0001;//min diff cap to prevent value explosion
+
 
 
         //max allowed end speed of pre block, so that at junction the max speed jump is within the limit, this is fixed
@@ -962,15 +963,22 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
         //vcur is the current speed, for un-executed block it's the starting speed
         newSeg.vcur=preSeg->vto_JunctionMax*newSeg.JunctionNormCoeff;
-
-        {
-          float vto_JunctionMax=preSeg->vto_JunctionMax;
-          float JunctionNormMaxDiff=newSeg.JunctionNormMaxDiff;
-          float vcur=newSeg.vcur;
-          float vcen=newSeg.vcen;
-          //__PRT_I_("===JunctionMax:%f ndiff:%f vcur:%f  vcen:%f==\n",vto_JunctionMax,JunctionNormMaxDiff,vcur,vcen);
+        // char PrtBuff[100];
+        // sprintf(PrtBuff,"coeff:%.4f dMax:%.4f  jMax:%.4f vcur:%.4f",
+        //   newSeg.JunctionNormCoeff,
+        //   newSeg.JunctionNormMaxDiff,
+        //   preSeg->vto_JunctionMax,
+        //   newSeg.vcur
           
-        }
+        //   );G_LOG(PrtBuff);
+        // {
+        //   float vto_JunctionMax=preSeg->vto_JunctionMax;
+        //   float JunctionNormMaxDiff=newSeg.JunctionNormMaxDiff;
+        //   float vcur=newSeg.vcur;
+        //   float vcen=newSeg.vcen;
+        //   //__PRT_I_("===JunctionMax:%f ndiff:%f vcur:%f  vcen:%f==\n",vto_JunctionMax,JunctionNormMaxDiff,vcur,vcen);
+          
+        // }
         if(newSeg.vcur>newSeg.vcen)//check if the max initial speed is higher than target speed
         {
           newSeg.vcur=newSeg.vcen;//cap the speed
