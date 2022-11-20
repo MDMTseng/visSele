@@ -112,7 +112,7 @@ struct triggerInfo{//TODO: rename the infoQ to be more versatile
   string camera_id;
   string trig_tag;
   int trig_id;
-
+  float curFreq;
   bool isTrigInfo;
   string log;
 };
@@ -477,7 +477,7 @@ class MStp_M:public MStp{
         if(ctx->CID.length()>0)
         {
           //send camera idx 
-          struct triggerInfo tinfo={.camera_id=ctx->CID,.trig_tag=ctx->TTAG,.trig_id=ctx->TID,.isTrigInfo=true};
+          struct triggerInfo tinfo={.camera_id=ctx->CID,.trig_tag=ctx->TTAG,.trig_id=ctx->TID,.curFreq=seg->vcur,.isTrigInfo=true};
 
           triggerInfo* Qhead=NULL;
           while( (Qhead=triggerInfoQ.getHead()) ==NULL)
@@ -633,7 +633,7 @@ class MStp_M:public MStp{
     |( ((BIT_CUT2(m_step,AXIS_IDX_R1,AXIS_IDX_G2_RS)<< ( 4))|(BIT_CUT2(m_dir,AXIS_IDX_R1,AXIS_IDX_G2_RS)<<( 9))))//axis idx step & dir 2~ 6
 
 
-    //HW bug FIX: the dir10 would use pin 25 as backup and needs air wire to route 
+    //HW V0.1.0 board bug FIX: the dir10 would use pin 25 as backup and needs air wire to route 
     |   (BIT_CUT2(m_step,AXIS_IDX_Z1,AXIS_IDX_G1_RS)<< (14)) //axis idx step 7 ~11, step is OK
     |   (BIT_CUT2(m_dir ,AXIS_IDX_Z1,   AXIS_IDX_Z1)<< (19)) | (BIT_CUT2(m_dir,AXIS_IDX_Z3,  AXIS_IDX_G1_RS)<<(20)) //dir 7 8 9 11, 
     |   (BIT_CUT2(m_dir ,AXIS_IDX_Z2,   AXIS_IDX_Z2)<< (31))//
@@ -700,7 +700,7 @@ class MStp_M:public MStp{
             {
               endStopHitLock=true;
               
-              struct triggerInfo tinfo={.isTrigInfo=false,.log="End_stop hit, EM STOP...."};
+              struct triggerInfo tinfo={.isTrigInfo=false,.log="End_stop hit, EM STOP...."+to_string(endstopPins)+" "+to_string(endstopPins_normalState)};
 
               triggerInfo* Qhead=NULL;
               while( (Qhead=triggerInfoQ.getHead()) ==NULL);
@@ -1282,7 +1282,12 @@ void MData_JR::loop()
   }
 }
 
+//float 100 add,sub 5.5us
+//float 100 mult,div 24us
+//float 100 sin 48us
 
+//int 100 add,mult,div 5.5us
+//int 100 div 5.8us
 
 
 int rzERROR=0;
@@ -1318,6 +1323,22 @@ void busyLoop(uint32_t count)
 }
 
 MSTP_SegCtx ctx[10];
+
+
+string toFixed(float num,int powNum=100)
+{
+  int ipnum=round(num*powNum);
+  int inum=ipnum/powNum;
+
+  string istr=to_string(inum);
+  int pnum=(ipnum%powNum);
+
+  string pstr=to_string(pnum+powNum);
+
+  string resStr=istr+pstr;
+  resStr[istr.length()]='.';
+  return resStr;
+}
 
 static uint8_t recvBuf[20];
 void loop()
@@ -1366,14 +1387,14 @@ void loop()
       if(info.isTrigInfo)
       {
         retdoc["type"]="TriggerInfo"; 
-      retdoc["camera_id"]=info.camera_id;
-      retdoc["tag"]=info.trig_tag;
-      retdoc["trigger_id"]=info.trig_id;
+        retdoc["camera_id"]=info.camera_id;
+        retdoc["tag"]=info.trig_tag+",s_PFQ:"+toFixed(info.curFreq,100);
+        retdoc["trigger_id"]=info.trig_id;
 
 
 
-      int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-      djrl.send_json_string(0,buff,slen,0);
+        int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+        djrl.send_json_string(0,buff,slen,0);
       }
       else
       {
