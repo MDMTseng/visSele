@@ -3979,9 +3979,9 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
                         ctx.font = TextY + "px Arial";
                         if (catInfo.category > 0)
-                            ctx.fillStyle = "rgba(0, 255, 0,1)";
+                            ctx.strokeStyle =ctx.fillStyle = "rgba(0, 255, 0,1)";
                         else
-                            ctx.fillStyle = "rgba(255, 0, 0,1)";
+                            ctx.strokeStyle =ctx.fillStyle = "rgba(255, 0, 0,1)";
 
 
 
@@ -3993,14 +3993,15 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                         ctx.fillText(catInfo.score, cacheDef.W * index, 0 + TextY + TextY + 5)
 
 
-                        ctx.strokeStyle = "rgba(179, 0, 0,1)";
+                        // ctx.strokeStyle = "rgba(179, 0, 0,1)";
+                        let lsz=canvas_obj.rUtil.getIndicationLineSize();
                         drawRegion(g, canvas_obj, {
-                            x: cacheDef.W * index,
-                            y: 0,
-                            w: cacheDef.W,
-                            h: cacheDef.H
+                            x: cacheDef.W * index+lsz/2,
+                            y: 0+lsz/2,
+                            w: cacheDef.W-lsz,
+                            h: cacheDef.H-lsz
                         },
-                            canvas_obj.rUtil.getIndicationLineSize(),
+                        lsz,
                             false);
 
 
