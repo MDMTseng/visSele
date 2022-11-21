@@ -284,6 +284,8 @@ class ResourcePool
 public:
 
   struct ResourceData{
+    ResourceData(){};
+    ~ResourceData(){};
     bool occupied;
     RP_Type data;
   };

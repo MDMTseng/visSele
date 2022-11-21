@@ -121,11 +121,27 @@ RingBuf_Static<struct triggerInfo,20,uint8_t> triggerInfoQ;
 
 
 
+struct MSTP_SegCtx_IOCTRL{
+  uint32_t PORT=0,S=0;
+  int32_t P=0,T=0;
+};
+
+
+struct MSTP_SegCtx_INPUTMON{
+  uint32_t PINS,PIN_NS;
+  uint32_t existField;
+  bool doMonitor;
+};
+
+
 struct MSTP_SegCtx{
+  MSTP_SegCtx(){}
+  ~MSTP_SegCtx(){}
   MSTP_SegCtx_TYPE type;
-  // int delay_time_ms;
-  uint32_t PORT,S;
-  int32_t P,T;
+  union {
+    struct MSTP_SegCtx_IOCTRL IO_CTRL;
+    struct MSTP_SegCtx_INPUTMON INPUT_MON;
+  }; 
   string CID;
   string TTAG;
   int TID;
@@ -465,19 +481,23 @@ class MStp_M:public MStp{
   int PIN_DBG_ST=0;
   void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* seg)
   {
-    if(isIOCtrl(seg)==false)
-    {
-      return;
-    }
+    if(seg==NULL)return;
+    
     MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
+    if(ctx==NULL)return;
     switch(ctx->type)
     {
-      case MSTP_SegCtx_TYPE::IO_CTRL:
+      case MSTP_SegCtx_TYPE::IO_CTRL:{
 
         if(ctx->CID.length()>0)
         {
           //send camera idx 
-          struct triggerInfo tinfo={.camera_id=ctx->CID,.trig_tag=ctx->TTAG,.trig_id=ctx->TID,.curFreq=seg->vcur,.isTrigInfo=true};
+          struct triggerInfo tinfo={
+            .camera_id=ctx->CID,
+            .trig_tag=ctx->TTAG,
+            .trig_id=ctx->TID,
+            .curFreq=seg->vcur,
+            .isTrigInfo=true};
 
           triggerInfo* Qhead=NULL;
           while( (Qhead=triggerInfoQ.getHead()) ==NULL)
@@ -490,26 +510,42 @@ class MStp_M:public MStp{
 
 
         //P: pin number, S: 0~255 PWM, T: pin setup (0:input, 1:output, 2:input_pullup, 3:input_pulldown)
-        if(ctx->PORT)
+        if(ctx->IO_CTRL.PORT)
         {
           static_Pin_update_needed=true;
-          static_Pin_info=((~ctx->PORT)&static_Pin_info)|(ctx->PORT&ctx->S);
+          static_Pin_info=((~ctx->IO_CTRL.PORT)&static_Pin_info)|(ctx->IO_CTRL.PORT&ctx->IO_CTRL.S);
 
 
         }
-        else if(ctx->P>=0)
+        else if(ctx->IO_CTRL.P>=0)
         {
           static_Pin_update_needed=true;
-          if(ctx->S==0)
+          if(ctx->IO_CTRL.S==0)
           {
-            static_Pin_info&=~(1<<ctx->P);
+            static_Pin_info&=~(1<<ctx->IO_CTRL.P);
           }
           else
           {
-            static_Pin_info|=(1<<ctx->P);
+            static_Pin_info|=(1<<ctx->IO_CTRL.P);
           }
         }
 
+
+      break;
+      }
+    
+      case MSTP_SegCtx_TYPE::INPUT_MON_CTRL:
+        if(ctx->INPUT_MON.existField&(1<<0))
+        {
+          endstopPins=ctx->INPUT_MON.PINS;
+        }
+
+        if(ctx->INPUT_MON.existField&(1<<1))
+        {
+          endstopPins_normalState=ctx->INPUT_MON.PIN_NS;
+        }
+        
+        endStopDetection=ctx->INPUT_MON.doMonitor;
 
       break;
     }
@@ -700,7 +736,9 @@ class MStp_M:public MStp{
             {
               endStopHitLock=true;
               
-              struct triggerInfo tinfo={.isTrigInfo=false,.log="End_stop hit, EM STOP...."+to_string(endstopPins)+" "+to_string(endstopPins_normalState)};
+              struct triggerInfo tinfo={.isTrigInfo=false,.log="End_stop hit, EM STOP....pin"+
+              to_string(endstopPins)+" ns"+to_string(endstopPins_normalState)+
+              " cs"+to_string(latest_input_pins)};
 
               triggerInfo* Qhead=NULL;
               while( (Qhead=triggerInfoQ.getHead()) ==NULL);
@@ -908,6 +946,75 @@ public:
   }
 
 
+  GCodeParser::GCodeParser_Status parseCMD(char **blks, char blkCount)
+  {
+    GCodeParser::GCodeParser_Status st=GCodeParser_M::parseCMD(blks,blkCount);
+
+    if(st!=GCodeParser_Status::TASK_UNSUPPORTED)return st;
+
+    bool isMTPLocked=( _mstp->endStopHitLock || _mstp->fatalErrorCode!=0);
+
+    if(isMTPLocked) 
+      return GCodeParser_Status::TASK_FATAL_FAILED;
+    st=GCodeParser_Status::LINE_EMPTY;
+
+
+    GCodeParser_Status retStatus=st;
+    char *cblk=blks[0];
+    int cblkL=blks[1]-blks[0];
+
+    blks++;//skip the 1st blk
+    blkCount--;
+
+    if(cblk[0]=='M')
+    {
+
+      if(CheckHead(cblk, "M120.1 "))//enable end stop
+      {
+ 
+        MSTP_SegCtx *p_res;
+        while((p_res=sctx_pool.applyResource())==NULL)//check release
+        {
+          yield();
+        }
+        p_res->type=MSTP_SegCtx_TYPE::INPUT_MON_CTRL;
+
+
+
+        uint32_t PINS;
+        if(FindUint32("PINS",blks,blkCount,PINS)==0)
+        {
+          p_res->INPUT_MON.PINS=PINS;
+
+          p_res->INPUT_MON.existField|=1<<0;
+
+        }
+        uint32_t PNS;
+        if(FindUint32("PNS",blks,blkCount,PNS)==0)
+        {
+          p_res->INPUT_MON.PIN_NS=PNS;
+          
+          p_res->INPUT_MON.existField|=1<<1;
+        }
+
+        p_res->INPUT_MON.doMonitor=true;
+
+
+        while(_mstp->AddWait(0,0,p_res,NULL)==false)
+        {
+          yield();
+        }
+
+        // retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+        return GCodeParser_Status::TASK_OK;
+
+      }
+    }
+
+    
+
+    return retStatus;
+  }
 
   bool MTPSYS_AddWait(uint32_t period_ms,int times, void* ctx,MSTP_segment_extra_info *exinfo)
   {
@@ -929,21 +1036,31 @@ public:
     {
       yield();
     }
-    p_res->PORT=PORT;
-    p_res->P=P;
-    p_res->S=S;
-    p_res->T=T;
+
+
+    // {
+    // char BUF[100];
+    // sprintf(BUF,"MTPSYS_AddIOState F:%p",p_res);
+    // G_LOG(BUF);
+    // }
+
+
+    p_res->IO_CTRL.PORT=PORT;
+    p_res->IO_CTRL.P=P;
+    p_res->IO_CTRL.S=S;
+    p_res->IO_CTRL.T=T;
+    p_res->type=MSTP_SegCtx_TYPE::IO_CTRL;
+
+
+
+    p_res->TID=TID;
     p_res->CID=CID==NULL?"":string(CID);
     p_res->TTAG=TTAG==NULL?"":string(TTAG);
-    p_res->TID=TID;
-    p_res->type=MSTP_SegCtx_TYPE::IO_CTRL;
     __UPRT_D_("M:%d,P:%d,S:%d,T:%d CID:%s TTAG:%s TID:%d\n",M,P,S,T,CID,TTAG,TID);
     while(_mstp->AddWait(0,0,p_res,NULL)==false)
     {
       yield();
     }
-
-
     return true;
   }  
 

@@ -33,13 +33,6 @@ public:
   virtual float unit2Pulse_conv(int axisIdx,float dist)=0;
   virtual float Pulse2Unit_conv(int axisIdx,float pulseCount)=0;
 
-  int FindFloat(const char *prefix,char **blkIdxes,int blkIdxesL,float &retNum);
-  int FindInt32(const char *prefix,char **blkIdxes,int blkIdxesL,int32_t &retNum);
-
-  int FindUint32(const char *prefix,char **blkIdxes,int blkIdxesL,uint32_t &retNum);
-  int FindStr(const char *prefix,char **blkIdxes,int blkIdxesL,char* retStr);
-  int FindGMEnd_idx(char **blkIdxes,int blkIdxesL);
-  
   int ReadxVecData(char **blkIdxes,int blkIdxesL,float *retVec);
 
   bool isAbsLoc=true;
@@ -51,7 +44,7 @@ public:
   int ReadG1Data(char **blkIdxes,int blkIdxesL,xVec &vec,float &F);
 
 
-  GCodeParser::GCodeParser_Status parseLine();
+  GCodeParser::GCodeParser_Status parseCMD(char **blks, char blkCount);
   void onError(int code);
 };
  
