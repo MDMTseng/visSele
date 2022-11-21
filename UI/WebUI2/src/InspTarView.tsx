@@ -2058,6 +2058,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                     if (_this.canvasComp == undefined) return;
                     _this.sel_region = undefined;
+                    _this.sel_region_type="region"
                     _this.canvasComp.UserRegionSelect((info: any, state: number) => {
                         if (state == 2) {
                             console.log(info);
@@ -2072,7 +2073,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                             mask_regions.push(regInfo);
                             setFeatureInfo({ ...featureInfo, mask_regions })
-
+                            _this.sel_region_type=undefined;
                             // onDefChange(newRule)
                             if (_this.canvasComp == undefined) return;
                             _this.canvasComp.UserRegionSelect(undefined)
@@ -2129,6 +2130,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                     if (_this.canvasComp == undefined) return;
                     _this.sel_region = undefined;
+                    _this.sel_region_type="region"
                     _this.canvasComp.UserRegionSelect((info: any, state: number) => {
                         if (state == 2) {
                             console.log(info);
@@ -2144,6 +2146,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                             refine_match_regions.push(regInfo);
                             setFeatureInfo({ ...featureInfo, refine_match_regions })
 
+                            _this.sel_region_type=undefined;
                             // onDefChange(newRule)
                             if (_this.canvasComp == undefined) return;
                             _this.canvasComp.UserRegionSelect(undefined)
@@ -2151,7 +2154,33 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     })
                 }}>+校位範圍</Button>
 
+                <Button key={"AddAnchor"} onClick={() => {
 
+
+
+                    _this.sel_region_type="vector"
+                    if (_this.canvasComp == undefined) return;
+                    _this.sel_region = undefined;
+                    _this.canvasComp.UserRegionSelect((info: any, state: number) => {
+                        if (state == 2) {
+                            _this.sel_region_type=undefined;
+                            console.log(info)
+                            if(info.pt1.x==info.pt2.x&&info.pt1.y==info.pt2.y)
+                            {
+                                setFeatureInfo({ ...featureInfo, origin_info:undefined });
+                            }
+                            else
+                            {
+                                setFeatureInfo({ ...featureInfo, origin_info:
+                                    {pt:info.pt1,
+                                    vec:{
+                                        x:info.pt2.x-info.pt1.x,
+                                        y:info.pt2.y-info.pt1.y}} });
+                            }
+                            _this.canvasComp.UserRegionSelect(undefined)
+                        }
+                    })
+                }}>設定原點與方向</Button>
             </>
 
             break;
@@ -2198,6 +2227,18 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
 
 
+                
+                角度:
+                <InputNumber min={-360} max={360} value={cacheDef.featureInfo.match_front_face_angle_range[0]}
+                    onChange={(num) => {
+                        setCacheDef(ObjShellingAssign(cacheDef, ["featureInfo", "match_front_face_angle_range", 0], num));
+                    }} />
+                ~
+                <InputNumber min={-360} max={360} value={cacheDef.featureInfo.match_front_face_angle_range[1]}
+                    onChange={(num) => {
+                        setCacheDef(ObjShellingAssign(cacheDef, ["featureInfo", "match_front_face_angle_range", 1], num));
+                    }} />
+
                 {" "}
                 校位下限(0~1):
                 <InputNumber min={0} max={1} value={cacheDef.refine_score_thres}
@@ -2205,10 +2246,18 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                         setCacheDef({ ...cacheDef, refine_score_thres: num })
                     }} />
 
+
                 <Switch checkedChildren="強制" unCheckedChildren="盡力" checked={cacheDef.must_refine_result == true} onChange={(check) => {
                     setCacheDef({ ...cacheDef, must_refine_result: check })
                 }} />
 
+                <Switch checkedChildren="剔除" unCheckedChildren="保留" checked={cacheDef.remove_refine_failed_result == true} onChange={(check) => {
+                    setCacheDef({ ...cacheDef, remove_refine_failed_result: check })
+                }} />
+
+                <Switch checkedChildren="區域最似" unCheckedChildren="區域全部" checked={cacheDef.regional_most_similar_match == true} onChange={(check) => {
+                    setCacheDef({ ...cacheDef, regional_most_similar_match: check })
+                }} />
                 <br />
 
                 {
@@ -2256,6 +2305,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                     if (_this.canvasComp == undefined) return;
                     _this.sel_region = undefined;
+                    _this.sel_region_type="region"
                     _this.canvasComp.UserRegionSelect((info: any, state: number) => {
                         if (state == 2) {
                             console.log(info);
@@ -2271,6 +2321,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                             search_regions.push(regInfo);
                             setCacheDef({ ...cacheDef, search_regions })
 
+                            _this.sel_region_type=undefined;
                             // onDefChange(newRule)
                             if (_this.canvasComp == undefined) return;
                             _this.canvasComp.UserRegionSelect(undefined)
@@ -2361,15 +2412,15 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                         h = -h;
                     }
                     _this.sel_region = {
-                        x, y, w, h
+                        x, y, w, h,pt1,pt2
                     }
 
 
                 }
 
-                const imageData = ctx.getImageData(g.mouseStatus.x, g.mouseStatus.y, 1, 1);
-                // 
-                _this.fetchedPixInfo = imageData;
+                // const imageData = ctx.getImageData(g.mouseStatus.x, g.mouseStatus.y, 1, 1);
+                // // 
+                // _this.fetchedPixInfo = imageData;
             }
             if (editState == EditState.Normal_Show || editState == EditState.Search_Region_Edit || editState == EditState.Test_Saved_Files) {
                 if (ctrl_or_draw == true)//ctrl
@@ -2528,6 +2579,24 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     }
 
 
+
+
+
+                    if (featureInfo.origin_info !== undefined) {
+
+                        ctx.setLineDash([0,0,0,0]);
+                        let oriInfo=featureInfo.origin_info;
+                        canvas_obj.rUtil.drawCross(ctx, { x: oriInfo.pt.x, y: oriInfo.pt.y }, 10);
+                        
+                        canvas_obj.rUtil.drawLine(ctx,{
+                            x1:oriInfo.pt.x, 
+                            y1:oriInfo.pt.y, 
+                            x2:oriInfo.pt.x+oriInfo.vec.x, 
+                            y2:oriInfo.pt.y+oriInfo.vec.y })
+                    }
+
+
+
                 }
             }
 
@@ -2536,19 +2605,49 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                 if (canvas_obj.regionSelect !== undefined && _this.sel_region !== undefined) {
                     ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
 
-                    drawRegion(g, canvas_obj, _this.sel_region, canvas_obj.rUtil.getIndicationLineSize());
+                    if(_this.sel_region_type=="region")
+                    {
+                        drawRegion(g, canvas_obj, _this.sel_region, canvas_obj.rUtil.getIndicationLineSize());
+                    }
+                    if(_this.sel_region_type=="vector")
+                    {
+                        canvas_obj.rUtil.drawCross(ctx, { x: _this.sel_region.pt1.x, y: _this.sel_region.pt1.y }, 10);
+                        
+                        ctx.setLineDash([0,0,0,0]);
+                        canvas_obj.rUtil.drawLine(ctx,{
+                            x1: _this.sel_region.pt1.x, 
+                            y1: _this.sel_region.pt1.y, 
+                            x2: _this.sel_region.pt2.x, 
+                            y2: _this.sel_region.pt2.y })
 
+                    }
                 }
 
-                if (_this.fetchedPixInfo !== undefined) {
+                // if (_this.fetchedPixInfo !== undefined) {
+                //     ctx.save();
+                //     ctx.resetTransform();
+                //     // console.log(_this.fetchedPixInfo)
+                //     let pixInfo = _this.fetchedPixInfo.data;
+                //     ctx.font = "1.5em Arial";
+                //     ctx.fillStyle = "rgba(250,100, 50,1)";
+
+                //     ctx.fillText(rgb2hsv(pixInfo[0], pixInfo[1], pixInfo[2]).map(num => num.toFixed(1)).toString(), g.mouseStatus.x, g.mouseStatus.y)
+                //     ctx.restore();
+                // }
+
+                {
                     ctx.save();
                     ctx.resetTransform();
                     // console.log(_this.fetchedPixInfo)
-                    let pixInfo = _this.fetchedPixInfo.data;
+                    // let pixInfo = _this.fetchedPixInfo.data;
                     ctx.font = "1.5em Arial";
                     ctx.fillStyle = "rgba(250,100, 50,1)";
+                    g.worldTransform
+                    
 
-                    ctx.fillText(rgb2hsv(pixInfo[0], pixInfo[1], pixInfo[2]).map(num => num.toFixed(1)).toString(), g.mouseStatus.x, g.mouseStatus.y)
+                    let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
+                    // console.log(mouseOnCanvas)
+                    ctx.fillText(`${mouseOnCanvas.x.toFixed(1)},${mouseOnCanvas.y.toFixed(1)}`, g.mouseStatus.x, g.mouseStatus.y)
                     ctx.restore();
                 }
             }
