@@ -1214,7 +1214,7 @@ function rgb2hsv(r: number, g: number, b: number) {
 }
 
 
-function TestInputSelectUI({ folderPath, stream_id }: { folderPath: string, stream_id: number }) {
+function TestInputSelectUI({ folderPath, stream_id, testTag}: { folderPath: string, stream_id: number,testTag:string }) {
     const _this = useRef<any>({}).current;
     const dispatch = useDispatch();
     const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
@@ -1307,7 +1307,7 @@ function TestInputSelectUI({ folderPath, stream_id }: { folderPath: string, stre
     function ImgTest(folder_path: string, fileInfo: { name: string }) {
         let sIDTag = injectID_Prefix + fileInfo.name;
 
-        BPG_API.InjectImage(folder_path + "/" + fileInfo.name, ["UI_Inject", sIDTag], Date.now());
+        BPG_API.InjectImage(folder_path + "/" + fileInfo.name, ["UI_Inject", sIDTag,testTag], Date.now());
 
         setLatestSelect({
             ...imageFolderInfo,
@@ -2294,7 +2294,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                     setEditState(EditState.Normal_Show)
                 }}>{"<"}</Button>
-                <TestInputSelectUI folderPath={folderPath} stream_id={result_InspTar_stream_id}></TestInputSelectUI>
+                <TestInputSelectUI testTag={""}  folderPath={folderPath} stream_id={result_InspTar_stream_id}></TestInputSelectUI>
             </>
         } break;
 
