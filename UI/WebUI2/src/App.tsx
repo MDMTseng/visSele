@@ -1,7 +1,9 @@
 import React from 'react';
-import { useState, useEffect,useRef,useMemo,useContext } from 'react';
+import { useState, useEffect,useRef,useMemo,useContext, useCallback } from 'react';
 import { useDispatch, useSelector } from "react-redux";
 import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio, InputNumber, Switch,Select } from 'antd';
+import { DraggableModal, DraggableModalProvider } from 'ant-design-draggable-modal'
+import 'ant-design-draggable-modal/dist/index.css'
 
 const { Option } = Select;
 
@@ -795,29 +797,69 @@ function VIEWUI(){
     async (setting)=>{
       let _setting={...setting}
       _this.listCMD_Vairable.USER_INPUT=undefined;
-      if(setting.type==="SELECTS")
+
+      if(setting.type==="SEL_CBS")
       {//preset
-        _this.listCMD_Vairable.USER_INPUT=setting.data.map((info:any)=>info.default);
-      }
-      await new Promise((resolve,reject)=>{
-        setModalInfo({
-          timeTag:Date.now(),
-          visible:true,
-          type:setting.type,
-          onOK:()=>{
-            resolve(true)
-            setModalInfo({...modalInfo,visible:false})
-          },
-          onCancel:()=>{
-            reject(false)
-            setModalInfo({...modalInfo,visible:false})
-          },
-          title:setting.title,
-          DATA:_setting,
-          content:undefined
+        await new Promise((resolve,reject)=>{
+          _this.listCMD_Vairable.USER_INPUT=setting.data.map((info:any)=>info.default);
+          _this.listCMD_Vairable.USER_INPUT_LOCK=false;
+          let updateUI=(data:any)=>
+          {
+
+            let content=data.map((info:any,dataIndex:number)=>{
+              return <>
+                
+                <Divider> {info.text} </Divider>
+    
+
+                {info.opts.map((opt:string)=>opt=="\n"?<br/>:<Button onClick={()=>{
+
+                  if(_this.listCMD_Vairable.USER_INPUT_LOCK==true)return;//skip
+                  _this.listCMD_Vairable.USER_INPUT_LOCK=true;
+
+                  (async ()=>{
+                    await info.callback(dataIndex,opt,updateUI);
+                    _this.listCMD_Vairable.USER_INPUT_LOCK=false;
+                  })();
+
+
+                }}>{opt}</Button>)}
+
+
+
+
+
+              </>
+            });
+
+            setModalInfo({
+              timeTag:Date.now(),
+              visible:true,
+              type:setting.type,
+              onOK:()=>{
+                resolve(true)
+                setModalInfo({...modalInfo,visible:false})
+              },
+              onCancel:()=>{
+                reject(false)
+                setModalInfo({...modalInfo,visible:false})
+              },
+              title:setting.title,
+              DATA:_setting,
+              content:content
+            })
+          }
+          updateUI(setting.data);
         })
-      })
+
+
+
       
+      }
+
+
+
+
       return _this.listCMD_Vairable.USER_INPUT;
     })
     .then(_=>{
@@ -1317,7 +1359,8 @@ function VIEWUI(){
     
 
     
-    <Modal
+    <DraggableModalProvider>
+    <DraggableModal
         title={modalInfo.title}
         visible={modalInfo.visible}
         onOk={modalInfo.onOK}
@@ -1325,8 +1368,8 @@ function VIEWUI(){
         onCancel={modalInfo.onCancel}
       >
         {modalInfo.content}
-    </Modal>
-
+    </DraggableModal>
+    </DraggableModalProvider>
 
     </Header>
 

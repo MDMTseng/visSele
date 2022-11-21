@@ -13,7 +13,11 @@ function startsWith (str:string, needle:string) {
   return true
 }
 
-export async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[],onRunCmdIdexChanged:(index:number,info:string)=>void,abortSig?:AbortSignal,onUserInputRequest?:(setting:any)=>Promise<any>)
+export async function listCMDPromise(
+  api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:string[],
+  onRunCmdIdexChanged:(index:number,info:string)=>void,
+  abortSig?:AbortSignal,
+  onUserInputRequest?:(setting:any)=>Promise<any>)
 {
   v.inCMD_Promise=true;
 
@@ -111,7 +115,7 @@ export async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:
           if(timeout_ms>=0)
           {
             timeoutID=window.setTimeout(()=>{
-              reject("TIMEOUT("+timeout_ms+")....")
+              reject("TIMEOUT("+timeout_ms+").... key:"+key)
               delete v.reportListener[key];
             },timeout_ms)
           }
@@ -183,6 +187,22 @@ export async function listCMDPromise(api:BPG_WS,CNC_api:CNC_Perif,v:any,cmdList:
     if(value)return value;
     return default_value;
   }
+
+
+
+  async function waitUserCallBack(title:string,info_arr:{text:string,opts:any[],callback:any,default?:any}[])
+  {
+    if(onUserInputRequest===undefined)return info_arr.map((info,idx)=>info.default);
+    let value = await onUserInputRequest({
+      title:title,
+      type:"SEL_CBS",
+      data:info_arr});
+    if(value)return value;
+    // return default_value;
+    return info_arr.map((info,idx)=>info.default);
+  }
+
+
 
   let run_cmd_idx=0;
   function progressUpdate(info="")
