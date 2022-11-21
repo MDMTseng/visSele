@@ -243,7 +243,9 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
       cv::warpAffine(CV_srcImg, _def_temp_img_ROI, rot,_def_temp_img_ROI.size());
 
-      Mat def_temp_img_innerROI = _def_temp_img_ROI(Rect((W-innerW)/2, (H-innerH)/2, innerW, innerH));
+      int innerROI_X=(W-innerW)/2;
+      int innerROI_Y=(H-innerH)/2;
+      Mat def_temp_img_innerROI = _def_temp_img_ROI(Rect(innerROI_X, innerROI_Y, innerW, innerH));
 
 
 
@@ -351,8 +353,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                 // rrect.center.y-=rrect.size.height/2;
               }
               
-              einfo.x=rrect.center.x+imgOrderIdx*W;
-              einfo.y=rrect.center.y;
+              einfo.x=rrect.center.x+imgOrderIdx*W+innerROI_X;
+              einfo.y=rrect.center.y+innerROI_Y;
 
 
               einfo.h=rrect.size.height;
