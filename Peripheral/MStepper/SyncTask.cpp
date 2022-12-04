@@ -65,6 +65,8 @@ class MData_JR:public Data_JsonRaw_Layer
 MData_JR djrl;
 
 
+int HACK_cur_cmd_id=-1;
+
 
 void G_LOG(char* str)
 {
@@ -1104,6 +1106,37 @@ public:
         return GCodeParser_Status::TASK_OK;
 
       }
+    
+      else if(CheckHead(cblk, "M400"))//Wait for motion stop, non blocking
+      {
+
+        MSTP_SegCtx *p_res;
+        while((p_res=sctx_pool.applyResource())==NULL)//check release
+        {
+          yield();
+        }
+        p_res->type=MSTP_SegCtx_TYPE::ON_TIME_REPLY;
+
+
+        p_res->ON_TIME_REP.isAck=true;
+        p_res->ON_TIME_REP.id=HACK_cur_cmd_id;
+        if(HACK_cur_cmd_id==-1)
+        {
+          p_res->ON_TIME_REP.isAck=false;
+          return GCodeParser_Status::GCODE_PARSE_ERROR;
+        }
+
+        while(_mstp->AddWait(0,0,p_res,NULL)==false)
+        {
+          yield();
+        }
+
+        // retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+        return GCodeParser_Status::TASK_OK_NO_RSP;
+
+
+        
+      }
     }
 
     
@@ -1198,6 +1231,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     bool doRsp=false;
 
     const char* type = doc["type"];
+    HACK_cur_cmd_id=-1;
+    if(doc["id"].is<int>()==true)
+    {
+      HACK_cur_cmd_id=doc["id"];
+    }
     // const char* id = doc["id"];
     if(strcmp(type,"RESET")==0)
     {

@@ -494,7 +494,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseCMD(char **blks, char blkCou
       }
 
     }
-    else if(CheckHead(cblk, "M400"))//Wait for motion stops
+    else if(CheckHead(cblk, "M400.1"))//Wait for motion stops,blocking style
     {//TODO
 
       if(isMTPLocked)
