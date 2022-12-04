@@ -21,6 +21,7 @@ public:
 
 
     TASK_WARN_OK= 100, 
+    TASK_OK_NO_RSP= 1, 
     TASK_OK= 0, 
     TASK_FAILED= -1, 
     TASK_UNSUPPORTED= -3000, 

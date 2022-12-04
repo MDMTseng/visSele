@@ -101,20 +101,36 @@ spi_device_handle_t spi1=NULL;
 array<string, 10> CameraIDList;
 enum MSTP_SegCtx_TYPE{
   NA=0,
-  IO_CTRL=1
+  IO_CTRL=1,
+  INPUT_MON_CTRL=2,
+  ON_TIME_REPLY=3,
 
 };
 
 
+enum triggerInfo_Type{
+  trigInfo=1000,
+  ext_log=1001,
+  respFrame=1002,
+};
+
 
 
 struct triggerInfo{//TODO: rename the infoQ to be more versatile
+  triggerInfo_Type type;
+
+  //trigInfo
   string camera_id;
   string trig_tag;
   int trig_id;
   float curFreq;
-  bool isTrigInfo;
+
+  //log
   string log;
+
+  //respFrame
+  bool isAck;
+  int resp_id;
 };
 
 RingBuf_Static<struct triggerInfo,20,uint8_t> triggerInfoQ;
@@ -134,6 +150,11 @@ struct MSTP_SegCtx_INPUTMON{
 };
 
 
+struct MSTP_SegCtx_OnTimeReply{
+  int id;
+  bool isAck;
+};
+
 struct MSTP_SegCtx{
   MSTP_SegCtx(){}
   ~MSTP_SegCtx(){}
@@ -141,6 +162,7 @@ struct MSTP_SegCtx{
   union {
     struct MSTP_SegCtx_IOCTRL IO_CTRL;
     struct MSTP_SegCtx_INPUTMON INPUT_MON;
+    struct MSTP_SegCtx_OnTimeReply ON_TIME_REP;
   }; 
   string CID;
   string TTAG;
@@ -547,11 +569,11 @@ class MStp_M:public MStp{
         {
           //send camera idx 
           struct triggerInfo tinfo={
+            .type=triggerInfo_Type::trigInfo,
             .camera_id=ctx->CID,
             .trig_tag=ctx->TTAG,
             .trig_id=ctx->TID,
-            .curFreq=seg->vcur,
-            .isTrigInfo=true};
+            .curFreq=seg->vcur};
 
           triggerInfo* Qhead=NULL;
           while( (Qhead=triggerInfoQ.getHead()) ==NULL)
@@ -602,6 +624,22 @@ class MStp_M:public MStp{
         endStopDetection=ctx->INPUT_MON.doMonitor;
 
       break;
+
+      case MSTP_SegCtx_TYPE::ON_TIME_REPLY :
+        
+        struct triggerInfo tinfo={
+        .type=triggerInfo_Type::respFrame,
+        .isAck=ctx->ON_TIME_REP.isAck,
+        .resp_id=ctx->ON_TIME_REP.id
+        };
+
+        triggerInfo* Qhead=NULL;
+        while( (Qhead=triggerInfoQ.getHead()) ==NULL);
+        *Qhead=tinfo;
+        triggerInfoQ.pushHead();
+      break;
+
+
     }
   }
 
@@ -790,9 +828,12 @@ class MStp_M:public MStp{
             {
               endStopHitLock=true;
               
-              struct triggerInfo tinfo={.isTrigInfo=false,.log="End_stop hit, EM STOP....pin"+
+              struct triggerInfo tinfo={
+              .type=triggerInfo_Type::ext_log,
+              .log="End_stop hit, EM STOP....pin"+
               to_string(endstopPins)+" ns"+to_string(endstopPins_normalState)+
-              " cs"+to_string(latest_input_pins)};
+              " cs"+to_string(latest_input_pins),
+              };
 
               triggerInfo* Qhead=NULL;
               while( (Qhead=triggerInfoQ.getHead()) ==NULL);
@@ -1306,7 +1347,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         if( space>0)
         {
           gcpm.putJSONNote(&retdoc);
-          rspAck=(gcpm.runLine(code)==GCodeParser::GCodeParser_Status::TASK_OK);
+          GCodeParser::GCodeParser_Status grep=gcpm.runLine(code);
+          if(grep==GCodeParser::GCodeParser_Status::TASK_OK)
+          {
+            rspAck=true;
+          }
+          else if(grep==GCodeParser::GCodeParser_Status::TASK_OK_NO_RSP)
+          {
+            doRsp=false;
+          }
           gcpm.putJSONNote(NULL);
           space = mstp.SegQ_Space()-safe_Margin;
           if(space<0)space=0;
