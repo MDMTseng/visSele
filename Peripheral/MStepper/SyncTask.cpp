@@ -314,15 +314,69 @@ class MStp_M:public MStp{
     // }
     timerRunning=true;
   }
-  void setTimer(uint64_t T)
+  
+  
+  uint64_t updateWait_residue=0;
+  uint64_t maxInterval_us=250;
+
+
+
+  void MT_StepperForceStop()
   {
-    
-    // printf("T:%d\n",T);
-    if(T==0)//go idle update speed
+    MStp::MT_StepperForceStop();
+    updateWait_residue=0;
+  }
+
+  void IT_StepperForceStop()
+  {
+    MStp::IT_StepperForceStop();
+    updateWait_residue=0;
+  }
+
+
+  uint32_t taskRun()
+  {
+    if(updateWait_residue)
     {
-      T=_TICK2SEC_BASE_/1000;
+      uint32_t t;
+      if(updateWait_residue>maxInterval_us)
+      {
+        updateWait_residue-=maxInterval_us;
+        t=maxInterval_us;
+      }
+      else
+      {
+        t=updateWait_residue;
+        updateWait_residue=0;
+      }
+      setTimer(t);
+
+      BlockPulEffect(0,0);
       
+      BlockPinInfoUpdate(axis_dir,axis_pul,0);
+      return t;
     }
+    return MStp::taskRun();
+  }
+
+
+
+  void setTimer(uint64_t T_us)
+  {
+
+    // printf("T:%d\n",T);
+    if(T_us==0)//go idle update speed
+    {
+      T_us=maxInterval_us;//_TICK2SEC_BASE_/1000/4;
+    }
+    else if(T_us>maxInterval_us)
+    {
+      updateWait_residue=T_us-maxInterval_us;
+      T_us=maxInterval_us;
+    }
+
+
+    uint64_t T=T_us*_TICK2SEC_BASE_/1000000;
     // if(timerT_TOP)
     // {
     //   T=timerT_TOP;

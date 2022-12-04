@@ -173,9 +173,9 @@ protected:
 public:
 
   void printSEGInfo();
-  void MT_StepperForceStop();
+  virtual void MT_StepperForceStop();
   void MT_SegQ_Clear();
-  void IT_StepperForceStop();
+  virtual void IT_StepperForceStop();
 
   MStp(MSTP_segment *buffer, int bufferL);
   bool AddWait(uint32_t period,int times=1, void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
@@ -204,7 +204,7 @@ public:
   virtual void setTimer(uint64_t) =0;
 
   int tskrun_state=0;
-  uint32_t taskRun();
+  virtual uint32_t taskRun();
 
 
   uint32_t findMidIdx(uint32_t from_idxes,uint32_t totSteps);
