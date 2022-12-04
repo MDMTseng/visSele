@@ -806,7 +806,8 @@ class MStp_M:public MStp{
     }
     return false;
   }
-
+  int preENC=0;
+  int EncV=0;
   void ShiftRegUpdate()
   {
     static_Pin_update_needed=false;//will
@@ -853,6 +854,33 @@ class MStp_M:public MStp{
           return;
         }
       }
+
+      int cur_ENC=(latest_input_pins>>8)&0x3;
+
+      // int ENC_XOR=preENC^cur_ENC;
+      // if(ENC_XOR==1)EncV++;
+      // else if(ENC_XOR==2)EncV--;
+
+      switch(preENC)
+      {
+        case 0:
+          if(cur_ENC==1)EncV++;
+          if(cur_ENC==2)EncV--;
+        break;
+        case 1:
+          if(cur_ENC==3)EncV++;
+          if(cur_ENC==0)EncV--;
+        break;
+        case 3:
+          if(cur_ENC==2)EncV++;
+          if(cur_ENC==1)EncV--;
+        break;
+        case 2:
+          if(cur_ENC==0)EncV++;
+          if(cur_ENC==3)EncV--;
+        break;
+      }
+      preENC=cur_ENC;
     }
 
 
