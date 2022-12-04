@@ -1126,6 +1126,10 @@ GCodeParser_M2 gcpm(&mstp);
 StaticJsonDocument <500>doc;
 StaticJsonDocument  <500>retdoc;
 
+
+
+bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc, bool &doRsp,bool &isACK);
+
 int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
 {
   for(int i=0;i<buffIdx;i++)
@@ -1337,6 +1341,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       retdoc["buffer_size"]= mstp.SegQ_Size();
       retdoc["buffer_capacity"]=mstp.SegQ_Capacity()-safe_Margin;
     }
+    else if(AUX_Task_Try_Read(doc,type,retdoc,doRsp,rspAck))
+    {
+    }
 
 
     if(doRsp)
@@ -1453,6 +1460,260 @@ void MData_JR::loop()
   }
 }
 
+
+
+enum AUX_TASK_INFO_TYPE{
+  AUX_DELAY=1,
+  AUX_IO_CTRL=2,
+  AUX_WAIT_FOR_ENC=3,
+  AUX_WAIT_FOR_FINISH=1000,
+
+};
+
+
+struct AUX_TASK_INFO_WAIT_FOR_FINISH{
+  int cmd_id;
+
+};
+
+struct AUX_TASK_INFO_WAIT_FOR_ENC{
+  int value;
+
+};
+struct AUX_TASK_INFO_DELAY{
+  int time;
+
+};
+struct AUX_TASK_INFO_IO_CTRL{
+  
+  int pin;
+  int state;
+
+  char CID[50];
+  char TTAG[50];
+  int TID;
+
+
+};
+
+struct AUX_TASK_INFO {
+  AUX_TASK_INFO(){}
+  ~AUX_TASK_INFO(){}
+  AUX_TASK_INFO_TYPE type;
+  
+
+
+  union {
+    AUX_TASK_INFO_DELAY delayInfo;
+    AUX_TASK_INFO_IO_CTRL ioCtrl;
+    AUX_TASK_INFO_WAIT_FOR_ENC wait_enc;
+    AUX_TASK_INFO_WAIT_FOR_FINISH wait_fin;
+  }; 
+
+  //Just for ioCtrl
+  // string CID;
+  // string TTAG;
+};
+static QueueHandle_t AUXTaskQueue;
+
+bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc, bool &doRsp,bool &isACK)
+{
+  if(strcmp(type,"AUX_TEST")==0)
+  {
+    ret_doc["msg"]="Try more";
+    doRsp=true;
+    isACK=false;
+    return true;
+  }
+
+
+  if(strcmp(type,"AUX_DELAY")==0)
+  {
+
+
+    AUX_TASK_INFO task;
+    task.type = AUX_TASK_INFO_TYPE::AUX_DELAY;
+
+
+    task.delayInfo.time=(doc["P"].is<int>())?doc["P"]:1000;
+
+    xQueueSend(AUXTaskQueue, (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
+    doRsp=true;
+    isACK=true;
+    return true;
+  }
+  if(strcmp(type,"AUX_WAIT_FOR_ENC")==0)
+  {
+
+    doRsp=true;
+
+
+
+    if(doc["value"].is<int>()==false)
+    {
+      isACK=false;
+      return true;
+    }
+    AUX_TASK_INFO task;
+    task.type = AUX_TASK_INFO_TYPE::AUX_WAIT_FOR_ENC;
+    task.wait_enc.value=doc["value"];
+
+    xQueueSend(AUXTaskQueue, (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
+    isACK=true;
+    return true;
+  }
+
+  if(strcmp(type,"AUX_WAIT_FOR_FINISH")==0)
+  {
+
+
+
+    AUX_TASK_INFO task;
+    task.type = AUX_TASK_INFO_TYPE::AUX_WAIT_FOR_FINISH;
+    task.wait_fin.cmd_id=doc["id"];
+
+
+    xQueueSend(AUXTaskQueue, (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
+    doRsp=false;
+    isACK=true;
+    return true;
+  }
+
+
+
+  if(strcmp(type,"AUX_IO_CTRL")==0)
+  {
+
+
+    AUX_TASK_INFO task;
+    task.type = AUX_TASK_INFO_TYPE::AUX_IO_CTRL;
+
+
+    task.ioCtrl.pin=(doc["pin"].is<int>())?doc["pin"]:-1;
+    task.ioCtrl.state=(doc["state"].is<int>())?doc["state"]:-1;
+
+    if(task.ioCtrl.pin==-1 || task.ioCtrl.state==-1)
+    {
+      isACK=false;
+
+    }
+    else
+    {
+      task.ioCtrl.CID[0]='\0';
+      task.ioCtrl.TTAG[0]='\0';
+      task.ioCtrl.TID=-1;
+      if(doc["CID"].is<const char*>()  )
+      { 
+        strncpy(task.ioCtrl.CID,(const char*)doc["CID"],sizeof(task.ioCtrl.CID));
+
+        if(doc["TTAG"].is<const char*>() )
+        {
+          strncpy(task.ioCtrl.TTAG,(const char*)doc["TTAG"],sizeof(task.ioCtrl.TTAG));
+        }
+
+
+        task.ioCtrl.TID=(doc["TID"].is<int>() )?doc["TID"]:-1;
+
+      }
+
+      
+
+
+      xQueueSend(AUXTaskQueue, (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
+      isACK=true;
+    }
+    doRsp=true;
+    return true;
+  }
+
+
+  if(strcmp(type,"AUX_ENC_V")==0)
+  {
+
+
+    ret_doc["enc_v"]=mstp.EncV;
+    isACK=true;
+    doRsp=true;
+    return true;
+  }
+  
+
+  return false;
+}
+
+
+void AUX_task(void *pvParameter)
+{
+    while(1) {
+      AUX_TASK_INFO info; 
+      if (xQueueReceive(AUXTaskQueue, (void *)&info, portMAX_DELAY) == pdTRUE) {
+
+        switch(info.type)
+        {
+
+          case AUX_TASK_INFO_TYPE::AUX_DELAY:
+            vTaskDelay(info.delayInfo.time / portTICK_RATE_MS);
+            // G_LOG(">>>>");
+          break;
+          case AUX_TASK_INFO_TYPE::AUX_WAIT_FOR_ENC :
+            while(mstp.EncV<info.wait_enc.value)
+            {
+              vTaskDelay(1 / portTICK_RATE_MS);
+            }
+
+          break;
+
+          case AUX_TASK_INFO_TYPE::AUX_IO_CTRL :
+
+            if(info.ioCtrl.CID[0])
+            {
+              //send camera idx 
+              struct triggerInfo tinfo={
+                .type=triggerInfo_Type::trigInfo,
+                .camera_id=string(info.ioCtrl.CID),
+                .trig_tag=string(info.ioCtrl.TTAG),
+                .trig_id=info.ioCtrl.TID,
+                .curFreq=NAN};
+
+              triggerInfo* Qhead=NULL;
+              while( (Qhead=triggerInfoQ.getHead()) ==NULL)
+              {
+                yield();
+              }
+              *Qhead=tinfo;
+              triggerInfoQ.pushHead();
+            
+
+            }
+            if(info.ioCtrl.state==1)
+            {
+              mstp.static_Pin_info|=(uint32_t)1<<info.ioCtrl.pin;
+            }
+            if(info.ioCtrl.state==0)
+            {
+              mstp.static_Pin_info&=~(((uint32_t)1)<<info.ioCtrl.pin);
+            }
+          break;
+
+
+          case AUX_TASK_INFO_TYPE::AUX_WAIT_FOR_FINISH :
+
+              struct triggerInfo tinfo={
+              .type=triggerInfo_Type::respFrame,
+              .isAck=true,
+              .resp_id=info.wait_fin.cmd_id
+              };
+
+              triggerInfo* Qhead=NULL;
+              while( (Qhead=triggerInfoQ.getHead()) ==NULL);
+              *Qhead=tinfo;
+              triggerInfoQ.pushHead();
+          break;
+        }
+      }
+    }
+}
+
 //float 100 add,sub 5.5us
 //float 100 mult,div 24us
 //float 100 sin 48us
@@ -1475,6 +1736,16 @@ void setup()
   timerAttachInterrupt(timer, &onTimer, true);
   timerAlarmWrite(timer, 10000, true);
   timerAlarmEnable(timer);
+
+
+
+  {
+
+    AUXTaskQueue = xQueueCreate(20 /* Number of queue slots */, sizeof(AUX_TASK_INFO));
+    xTaskCreatePinnedToCore(&AUX_task, "AUX_task", 2048, NULL, 1, NULL, 0);
+
+  }
+
   pinMode(PIN_DBG, OUTPUT);
   pinMode(PIN_DBG2, OUTPUT);
   pinMode(pin_TRIG_595, OUTPUT);
@@ -1554,22 +1825,49 @@ void loop()
       triggerInfo info=*triggerInfoQ.getTail();
       // retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
       // retdoc["trigger_id"]=info.step;
-
-      if(info.isTrigInfo)
+      switch (info.type)
       {
-        retdoc["type"]="TriggerInfo"; 
-        retdoc["camera_id"]=info.camera_id;
-        retdoc["tag"]=info.trig_tag+",s_PFQ:"+toFixed(info.curFreq,100);
-        retdoc["trigger_id"]=info.trig_id;
+        case triggerInfo_Type::trigInfo :
+        {
+          retdoc["type"]="TriggerInfo"; 
+          retdoc["camera_id"]=info.camera_id;
+
+
+          string tag = info.trig_tag;
+          if(info.curFreq==info.curFreq)
+          {
+            tag+=",s_PFQ:"+toFixed(info.curFreq,100);
+          }
+
+          retdoc["tag"]=tag;
+          retdoc["trigger_id"]=info.trig_id;
 
 
 
-        int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-        djrl.send_json_string(0,buff,slen,0);
-      }
-      else
-      {
-        djrl.dbg_printf("%s",info.log.c_str());
+          int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+          djrl.send_json_string(0,buff,slen,0);
+          break;
+        }
+        
+        case triggerInfo_Type::ext_log :
+        {
+
+          djrl.dbg_printf("%s",info.log.c_str());
+
+          break;
+        }
+      
+        case triggerInfo_Type::respFrame :
+        {
+
+
+          retdoc["id"]=info.resp_id;
+          retdoc["ack"]=info.isAck;
+          
+          int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+          djrl.send_json_string(0,buff,slen,0);
+          break;
+        }
       }
       triggerInfoQ.consumeTail();
     }
