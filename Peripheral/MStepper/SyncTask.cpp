@@ -100,7 +100,6 @@ int pin_TRIG_595=5;
 
 spi_device_handle_t spi1=NULL;
 
-array<string, 10> CameraIDList;
 enum MSTP_SegCtx_TYPE{
   NA=0,
   IO_CTRL=1,
@@ -110,7 +109,7 @@ enum MSTP_SegCtx_TYPE{
 };
 
 
-enum triggerInfo_Type{
+enum Mstp2CommInfo_Type{
   trigInfo=1000,
   ext_log=1001,
   respFrame=1002,
@@ -118,8 +117,8 @@ enum triggerInfo_Type{
 
 
 
-struct triggerInfo{//TODO: rename the infoQ to be more versatile
-  triggerInfo_Type type;
+struct Mstp2CommInfo{//TODO: rename the infoQ to be more versatile
+  Mstp2CommInfo_Type type;
 
   //trigInfo
   string camera_id;
@@ -135,7 +134,7 @@ struct triggerInfo{//TODO: rename the infoQ to be more versatile
   int resp_id;
 };
 
-RingBuf_Static<struct triggerInfo,20,uint8_t> triggerInfoQ;
+RingBuf_Static<struct Mstp2CommInfo,20,uint8_t> Mstp2CommInfoQ;
 
 
 
@@ -194,10 +193,10 @@ class MStp_M:public MStp{
     
     this->TICK2SEC_BASE=_TICK2SEC_BASE_;
     main_acc=mm2Pulse_conv(AXIS_IDX_X,2000);//SUBDIV*3200/mm_PER_REV;
-    minSpeed=sqrt(main_acc);//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    main_junctionMaxSpeedJump=minSpeed*2;//5200;
+    minSpeed=50;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    main_junctionMaxSpeedJump=300;//5200;
 
-    maxSpeedInc=minSpeed;
+    maxSpeedInc=100*8;
     // pinMode(PIN_Z1_DIR, OUTPUT);
     // pinMode(PIN_Z1_STP, OUTPUT);
     // pinMode(PIN_Z1_SEN1, INPUT);
@@ -239,14 +238,14 @@ class MStp_M:public MStp{
 
 
 //inline float mm2Pulse_conv(int axisIdx,float dist);
-    float _ZX_VS=mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_Z1,1);
-    float _RX_VS=mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_R1,1)*(M_PI/180*5);//R axis uses Deg as unit, to convert to mm effect length we convert it as rad * R(effect radius in mm) as effect arc length
+    float _ZX_VS=1;//mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_Z1,1);
+    float _RX_VS=1;//mm2Pulse_conv(AXIS_IDX_X,1)/mm2Pulse_conv(AXIS_IDX_R1,1)*(M_PI/180*5);//R axis uses Deg as unit, to convert to mm effect length we convert it as rad * R(effect radius in mm) as effect arc length
 
-    float ZX_VS=_ZX_VS*0.3;
+    float ZX_VS=_ZX_VS;
     float ZXAccW=1/_ZX_VS;
-    float RX_VS=_RX_VS*0.3;
+    float RX_VS=_RX_VS;
     float RXAccW=1/_RX_VS;
-    float JW=10/3;
+    float JW=1;
     axisInfo[AXIS_IDX_Z1].VirtualStep=ZX_VS;
     axisInfo[AXIS_IDX_Z1].AccW=ZXAccW;
     axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=JW;
@@ -308,8 +307,8 @@ class MStp_M:public MStp{
     ShiftRegUpdate();
 
 
-    endstopPins_normalState=0xff;
-    endstopPins=0xff;
+    endstopPins_normalState=0x3ff;
+    endstopPins=0x3ff ;
     
   }
 
@@ -341,7 +340,7 @@ class MStp_M:public MStp{
   
   
   uint64_t updateWait_residue=0;
-  uint64_t maxInterval_us=250;
+  uint64_t maxInterval_us=1000000/(1000);
 
 
 
@@ -570,20 +569,20 @@ class MStp_M:public MStp{
         if(ctx->CID.length()>0)
         {
           //send camera idx 
-          struct triggerInfo tinfo={
-            .type=triggerInfo_Type::trigInfo,
+          struct Mstp2CommInfo tinfo={
+            .type=Mstp2CommInfo_Type::trigInfo,
             .camera_id=ctx->CID,
             .trig_tag=ctx->TTAG,
             .trig_id=ctx->TID,
             .curFreq=seg->vcur};
 
-          triggerInfo* Qhead=NULL;
-          while( (Qhead=triggerInfoQ.getHead()) ==NULL)
+          Mstp2CommInfo* Qhead=NULL;
+          while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL)
           {
             yield();
           }
           *Qhead=tinfo;
-          triggerInfoQ.pushHead();
+          Mstp2CommInfoQ.pushHead();
         }
 
 
@@ -629,16 +628,16 @@ class MStp_M:public MStp{
 
       case MSTP_SegCtx_TYPE::ON_TIME_REPLY :
         
-        struct triggerInfo tinfo={
-        .type=triggerInfo_Type::respFrame,
+        struct Mstp2CommInfo tinfo={
+        .type=Mstp2CommInfo_Type::respFrame,
         .isAck=ctx->ON_TIME_REP.isAck,
         .resp_id=ctx->ON_TIME_REP.id
         };
 
-        triggerInfo* Qhead=NULL;
-        while( (Qhead=triggerInfoQ.getHead()) ==NULL);
+        Mstp2CommInfo* Qhead=NULL;
+        while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
         *Qhead=tinfo;
-        triggerInfoQ.pushHead();
+        Mstp2CommInfoQ.pushHead();
       break;
 
 
@@ -831,17 +830,17 @@ class MStp_M:public MStp{
             {
               endStopHitLock=true;
               
-              struct triggerInfo tinfo={
-              .type=triggerInfo_Type::ext_log,
+              struct Mstp2CommInfo tinfo={
+              .type=Mstp2CommInfo_Type::ext_log,
               .log="End_stop hit, EM STOP....pin"+
               to_string(endstopPins)+" ns"+to_string(endstopPins_normalState)+
               " cs"+to_string(latest_input_pins),
               };
 
-              triggerInfo* Qhead=NULL;
-              while( (Qhead=triggerInfoQ.getHead()) ==NULL);
+              Mstp2CommInfo* Qhead=NULL;
+              while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
               *Qhead=tinfo;
-              triggerInfoQ.pushHead();
+              Mstp2CommInfoQ.pushHead();
               IT_StepperForceStop();
             }
           }
@@ -1783,20 +1782,20 @@ void AUX_task(void *pvParameter)
             if(info.ioCtrl.CID[0])
             {
               //send camera idx 
-              struct triggerInfo tinfo={
-                .type=triggerInfo_Type::trigInfo,
+              struct Mstp2CommInfo tinfo={
+                .type=Mstp2CommInfo_Type::trigInfo,
                 .camera_id=string(info.ioCtrl.CID),
                 .trig_tag=string(info.ioCtrl.TTAG),
                 .trig_id=info.ioCtrl.TID,
                 .curFreq=NAN};
 
-              triggerInfo* Qhead=NULL;
-              while( (Qhead=triggerInfoQ.getHead()) ==NULL)
+              Mstp2CommInfo* Qhead=NULL;
+              while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL)
               {
                 yield();
               }
               *Qhead=tinfo;
-              triggerInfoQ.pushHead();
+              Mstp2CommInfoQ.pushHead();
             
 
             }
@@ -1813,16 +1812,16 @@ void AUX_task(void *pvParameter)
 
           case AUX_TASK_INFO_TYPE::AUX_WAIT_FOR_FINISH :
 
-              struct triggerInfo tinfo={
-              .type=triggerInfo_Type::respFrame,
+              struct Mstp2CommInfo tinfo={
+              .type=Mstp2CommInfo_Type::respFrame,
               .isAck=true,
               .resp_id=info.wait_fin.cmd_id
               };
 
-              triggerInfo* Qhead=NULL;
-              while( (Qhead=triggerInfoQ.getHead()) ==NULL);
+              Mstp2CommInfo* Qhead=NULL;
+              while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
               *Qhead=tinfo;
-              triggerInfoQ.pushHead();
+              Mstp2CommInfoQ.pushHead();
           break;
         }
       }
@@ -1935,14 +1934,14 @@ void loop()
     uint8_t buff[700];
     retdoc.clear();
     int curTrigQSize;
-    while(0!=(curTrigQSize=triggerInfoQ.size()))
+    while(0!=(curTrigQSize=Mstp2CommInfoQ.size()))
     {
-      triggerInfo info=*triggerInfoQ.getTail();
+      Mstp2CommInfo info=*Mstp2CommInfoQ.getTail();
       // retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
       // retdoc["trigger_id"]=info.step;
       switch (info.type)
       {
-        case triggerInfo_Type::trigInfo :
+        case Mstp2CommInfo_Type::trigInfo :
         {
           retdoc["type"]="TriggerInfo"; 
           retdoc["camera_id"]=info.camera_id;
@@ -1964,7 +1963,7 @@ void loop()
           break;
         }
         
-        case triggerInfo_Type::ext_log :
+        case Mstp2CommInfo_Type::ext_log :
         {
 
           djrl.dbg_printf("%s",info.log.c_str());
@@ -1972,7 +1971,7 @@ void loop()
           break;
         }
       
-        case triggerInfo_Type::respFrame :
+        case Mstp2CommInfo_Type::respFrame :
         {
 
 
@@ -1984,7 +1983,7 @@ void loop()
           break;
         }
       }
-      triggerInfoQ.consumeTail();
+      Mstp2CommInfoQ.consumeTail();
     }
   }
 
