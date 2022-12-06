@@ -1574,7 +1574,7 @@ void MData_JR::loop()
   }
 }
 
-
+#define AUX_COUNT 5
 
 enum AUX_TASK_INFO_TYPE{
   AUX_DELAY=1,
@@ -1628,10 +1628,16 @@ struct AUX_TASK_INFO {
   // string CID;
   // string TTAG;
 };
-static QueueHandle_t AUXTaskQueue;
+
+static QueueHandle_t AUXTaskQueue[AUX_COUNT];
 
 bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc, bool &doRsp,bool &isACK)
 {
+  int AUX_THREAD_ID=(doc["aid"].is<int>())?doc["aid"]:0;
+  if(AUX_THREAD_ID>=AUX_COUNT)
+  {
+    return false;
+  }
   if(strcmp(type,"AUX_TEST")==0)
   {
     ret_doc["msg"]="Try more";
@@ -1651,7 +1657,7 @@ bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc
 
     task.delayInfo.time=(doc["P"].is<int>())?doc["P"]:1000;
 
-    xQueueSend(AUXTaskQueue, (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
+    xQueueSend(AUXTaskQueue[AUX_THREAD_ID], (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
     doRsp=true;
     isACK=true;
     return true;
@@ -1672,7 +1678,7 @@ bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc
     task.type = AUX_TASK_INFO_TYPE::AUX_WAIT_FOR_ENC;
     task.wait_enc.value=doc["value"];
 
-    xQueueSend(AUXTaskQueue, (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
+    xQueueSend(AUXTaskQueue[AUX_THREAD_ID], (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
     isACK=true;
     return true;
   }
@@ -1687,7 +1693,7 @@ bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc
     task.wait_fin.cmd_id=doc["id"];
 
 
-    xQueueSend(AUXTaskQueue, (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
+    xQueueSend(AUXTaskQueue[AUX_THREAD_ID], (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
     doRsp=false;
     isACK=true;
     return true;
@@ -1733,7 +1739,7 @@ bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc
       
 
 
-      xQueueSend(AUXTaskQueue, (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
+      xQueueSend(AUXTaskQueue[AUX_THREAD_ID], (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
       isACK=true;
     }
     doRsp=true;
@@ -1756,11 +1762,16 @@ bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc
 }
 
 
+
+RingBuf_Static<struct Mstp2CommInfo,20,uint8_t> AUX2CommInfoQ;
+static SemaphoreHandle_t AUX2Comm_Lock;
+
 void AUX_task(void *pvParameter)
 {
+  QueueHandle_t &Q=*(QueueHandle_t *)pvParameter;
     while(1) {
       AUX_TASK_INFO info; 
-      if (xQueueReceive(AUXTaskQueue, (void *)&info, portMAX_DELAY) == pdTRUE) {
+      if (xQueueReceive(Q, (void *)&info, portMAX_DELAY) == pdTRUE) {
 
         switch(info.type)
         {
@@ -1789,13 +1800,17 @@ void AUX_task(void *pvParameter)
                 .trig_id=info.ioCtrl.TID,
                 .curFreq=NAN};
 
+
+
+              xSemaphoreTake(AUX2Comm_Lock, portMAX_DELAY);//LOCK
               Mstp2CommInfo* Qhead=NULL;
-              while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL)
+              while( (Qhead=AUX2CommInfoQ.getHead()) ==NULL)
               {
                 yield();
               }
               *Qhead=tinfo;
-              Mstp2CommInfoQ.pushHead();
+              AUX2CommInfoQ.pushHead();
+              xSemaphoreGive(AUX2Comm_Lock);//UNLOCK
             
 
             }
@@ -1818,10 +1833,12 @@ void AUX_task(void *pvParameter)
               .resp_id=info.wait_fin.cmd_id
               };
 
+              xSemaphoreTake(AUX2Comm_Lock, portMAX_DELAY);//LOCK
               Mstp2CommInfo* Qhead=NULL;
-              while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+              while( (Qhead=AUX2CommInfoQ.getHead()) ==NULL);
               *Qhead=tinfo;
-              Mstp2CommInfoQ.pushHead();
+              AUX2CommInfoQ.pushHead();
+              xSemaphoreGive(AUX2Comm_Lock);//UNLOCK
           break;
         }
       }
@@ -1852,13 +1869,14 @@ void setup()
   timerAlarmEnable(timer);
 
 
-
+  AUX2Comm_Lock = xSemaphoreCreateMutex();
+  for(int i=0;i<AUX_COUNT;i++)
   {
-
-    AUXTaskQueue = xQueueCreate(20 /* Number of queue slots */, sizeof(AUX_TASK_INFO));
-    xTaskCreatePinnedToCore(&AUX_task, "AUX_task", 2048, NULL, 1, NULL, 0);
+    AUXTaskQueue[i] = xQueueCreate(20 /* Number of queue slots */, sizeof(AUX_TASK_INFO));
+    xTaskCreatePinnedToCore(&AUX_task, "AUX_task", 2048, (void*)&AUXTaskQueue[i], 1, NULL, 0);
 
   }
+
 
   pinMode(PIN_DBG, OUTPUT);
   pinMode(PIN_DBG2, OUTPUT);
@@ -1934,9 +1952,30 @@ void loop()
     uint8_t buff[700];
     retdoc.clear();
     int curTrigQSize;
-    while(0!=(curTrigQSize=Mstp2CommInfoQ.size()))
+    while(1)
     {
-      Mstp2CommInfo info=*Mstp2CommInfoQ.getTail();
+      bool hasNewInfo=false;
+      Mstp2CommInfo info;
+      if(hasNewInfo ==false && 0!=(curTrigQSize=Mstp2CommInfoQ.size()))
+      {
+        info=*Mstp2CommInfoQ.getTail();
+        Mstp2CommInfoQ.consumeTail();
+        hasNewInfo=true;
+      }
+
+
+      if(hasNewInfo ==false && 0!=(curTrigQSize=AUX2CommInfoQ.size()))
+      {
+        info=*AUX2CommInfoQ.getTail();
+        AUX2CommInfoQ.consumeTail();
+        hasNewInfo=true;
+      }
+
+
+
+
+      if(hasNewInfo==false)break;
+
       // retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
       // retdoc["trigger_id"]=info.step;
       switch (info.type)
