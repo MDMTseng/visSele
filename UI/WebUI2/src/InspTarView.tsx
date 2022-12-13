@@ -126,7 +126,8 @@ type CompParam_InspTarUI = {
     // IMCM_group:IMCM_group,
     def: any,
     report: any,
-    onDefChange: (updatedDef: any, ddd: boolean) => void
+    onDefChange: (updatedDef: any, ddd: boolean) => void,
+    APIExport:(  (api_set:any)=>void   )|undefined
 }
 
 
@@ -1455,7 +1456,7 @@ function TestInputSelectUI({ folderPath, stream_id, testTags=[]}: { folderPath: 
 
 
 export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompParam_InspTarUI) {
-    let { display, stream_id, fsPath, width, height, style = undefined, renderHook, def, EditPermitFlag, report, onDefChange }=props;
+    let { display, stream_id, fsPath, width, height, style = undefined, renderHook, def, EditPermitFlag, report, onDefChange , APIExport}=props;
     const _ = useRef<any>({
 
         imgCanvas: document.createElement('canvas'),
@@ -1511,6 +1512,16 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
         });
 
     }, [def]);
+    if(APIExport!==undefined)//keeps update for every state change
+    {
+        APIExport({
+            onMouseClick:(callback:any)=>{
+                setOnMouseClick({callback})
+            }
+        })
+    }
+
+
     // console.log(IMCM_group,report);
     // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
     // const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);

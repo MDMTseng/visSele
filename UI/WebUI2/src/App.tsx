@@ -133,7 +133,10 @@ type CompParam_InspTarUI =   {
   // IMCM_group:IMCM_group,
   def:any,
   report:any,
-  onDefChange:(updatedDef:any,ddd:boolean)=>void}
+  onDefChange:(updatedDef:any,ddd:boolean)=>void,
+  APIExport:(  (api_set:any)=>void   )|undefined
+
+}
 
   
 
@@ -466,6 +469,7 @@ function TargetViewUIShow({displayIDList,defConfig,EditPermitFlag,onDefChange,re
           
           onDefChange(newDefConfig)
         }}
+        APIExport={undefined}
       />})
   } </>;
 }
