@@ -254,6 +254,7 @@ long parseLong(char* str,int strL, bool *isOK)
 {
   if(isOK)*isOK=false;
   char strBuf[30];
+  if(strL>(sizeof(strBuf)-1))return 0;
   memcpy(strBuf,str,strL);
   strBuf[strL]='\0';
 
