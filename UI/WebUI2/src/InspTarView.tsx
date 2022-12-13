@@ -1304,10 +1304,13 @@ function TestInputSelectUI({ folderPath, stream_id, testTag}: { folderPath: stri
         });
     }, []);
 
-    function ImgTest(folder_path: string, fileInfo: { name: string }) {
+    function ImgTest(folder_path: string, fileInfo: { name: string },tags:string[]=[]) {
         let sIDTag = injectID_Prefix + fileInfo.name;
-
-        BPG_API.InjectImage(folder_path + "/" + fileInfo.name, ["UI_Inject", sIDTag,testTag], Date.now());
+        // let final_tags=[sIDTag,...tags];
+        let final_tags=[...tags];
+        
+        console.log(final_tags);
+        BPG_API.InjectImage(folder_path + "/" + fileInfo.name,final_tags, Date.now());
 
         setLatestSelect({
             ...imageFolderInfo,
@@ -1330,8 +1333,8 @@ function TestInputSelectUI({ folderPath, stream_id, testTag}: { folderPath: stri
                 //   resultType=report.report.category
                 // }
                 if (file.name.startsWith("IG_")) return;
-
-                ImgTest(imageFolderInfo.path, file);
+                //console.log(testTags);
+                ImgTest(imageFolderInfo.path, file,testTags);
             })
 
         }}>
@@ -1359,7 +1362,7 @@ function TestInputSelectUI({ folderPath, stream_id, testTag}: { folderPath: stri
 
             return <Button key={file.name} type={(pureGenOK || pureGenNG) ? "primary" : "dashed"} danger={hasGenNG} ghost={!hasGenOK && !hasGenNG}
                 onClick={() => {
-                    ImgTest(imageFolderInfo.path, file);
+                    ImgTest(imageFolderInfo.path, file,testTags);
 
                 }}>
                 {file.name.replace(".png", "")}
@@ -2345,7 +2348,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                     setEditState(EditState.Normal_Show)
                 }}>{"<"}</Button>
-                <TestInputSelectUI testTag={""}  folderPath={folderPath} stream_id={result_InspTar_stream_id}></TestInputSelectUI>
+                <TestInputSelectUI testTags={[def.id+"_Inject"]}  folderPath={folderPath} stream_id={result_InspTar_stream_id}></TestInputSelectUI>
             </>
         } break;
 
@@ -3420,7 +3423,8 @@ function TagsEdit_DropDown({ tags, onTagsChange, children }: { tags: string[], o
         setTagDelInfo({ ...tagDelInfo, tarTag: "" });
         _setVisible(enable);
     }
-
+    if(tags===undefined)
+        tags=[]
     let isNewTagTxtDuplicated = tags.find(tag => tag == newTagTxt) != undefined;
     return <Dropdown onVisibleChange={setVisible} visible={visible}
         overlay={<Menu>
@@ -3513,10 +3517,10 @@ export function InspTarView_basicInfo({ display, stream_id, fsPath, width, heigh
 
     return <>
 
-        <TagsEdit_DropDown tags={cacheDef.trigger_tags}
+        <TagsEdit_DropDown tags={cacheDef.match_tags}
             onTagsChange={(newTags) => {
 
-                onDefChange({ ...cacheDef, trigger_tags: newTags }, false)
+                onDefChange({ ...cacheDef, match_tags: newTags }, false)
             }}>
             <a>TAGS</a>
         </TagsEdit_DropDown>
