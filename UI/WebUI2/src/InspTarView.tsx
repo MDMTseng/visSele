@@ -1214,7 +1214,7 @@ function rgb2hsv(r: number, g: number, b: number) {
 }
 
 
-function TestInputSelectUI({ folderPath, stream_id, testTag}: { folderPath: string, stream_id: number,testTag:string }) {
+function TestInputSelectUI({ folderPath, stream_id, testTags=[]}: { folderPath: string, stream_id: number,testTags:string[] }) {
     const _this = useRef<any>({}).current;
     const dispatch = useDispatch();
     const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
@@ -1222,7 +1222,7 @@ function TestInputSelectUI({ folderPath, stream_id, testTag}: { folderPath: stri
     const [finalReports, setFinalReports] = useState<any>({});
     const [latestSelect, setLatestSelect] = useState<any>(undefined);
 
-    const injectID_Prefix = "s_InjectID_";
+    const injectID_Prefix = "s_InjectID:";
     const cbs_key = "xxxx";
     _this.finalReports = finalReports;
 
