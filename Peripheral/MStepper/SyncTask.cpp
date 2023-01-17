@@ -1914,6 +1914,16 @@ string toFixed(float num,int powNum=100)
   return resStr;
 }
 
+
+bool replace(std::string& str, const std::string& from, const std::string& to) {
+    size_t start_pos = str.find(from);
+    if(start_pos == std::string::npos)
+        return false;
+    str.replace(start_pos, from.length(), to);
+    return true;
+}
+
+
 static uint8_t recvBuf[20];
 void loop()
 {
@@ -1950,13 +1960,11 @@ void loop()
 
   {
     uint8_t buff[700];
-    retdoc.clear();
-    int curTrigQSize;
     while(1)
     {
       bool hasNewInfo=false;
       Mstp2CommInfo info;
-      if(hasNewInfo ==false && 0!=(curTrigQSize=Mstp2CommInfoQ.size()))
+      if(hasNewInfo ==false && 0!=(Mstp2CommInfoQ.size()))
       {
         info=*Mstp2CommInfoQ.getTail();
         Mstp2CommInfoQ.consumeTail();
@@ -1964,7 +1972,7 @@ void loop()
       }
 
 
-      if(hasNewInfo ==false && 0!=(curTrigQSize=AUX2CommInfoQ.size()))
+      if(hasNewInfo ==false && 0!=(AUX2CommInfoQ.size()))
       {
         info=*AUX2CommInfoQ.getTail();
         AUX2CommInfoQ.consumeTail();
@@ -1976,6 +1984,7 @@ void loop()
 
       if(hasNewInfo==false)break;
 
+      retdoc.clear();
       // retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
       // retdoc["trigger_id"]=info.step;
       switch (info.type)
@@ -1988,6 +1997,7 @@ void loop()
 
           string tag = info.trig_tag;
           if(info.curFreq==info.curFreq)
+            replace(tag,"$s_PFQ", "s_PFQ="+toFixed(info.curFreq,100));
           {
             tag+=",s_PFQ:"+toFixed(info.curFreq,100);
           }
@@ -2022,7 +2032,6 @@ void loop()
           break;
         }
       }
-      Mstp2CommInfoQ.consumeTail();
     }
   }
 
