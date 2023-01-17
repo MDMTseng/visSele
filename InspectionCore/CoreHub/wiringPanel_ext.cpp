@@ -216,17 +216,18 @@ cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth)
     return NULL;
 
   cJSON *retObj = (jObj_to_W == NULL) ? cJSON_CreateObject() : jObj_to_W;
-  struct dirent *dir;
-  cJSON *dirFiles = cJSON_CreateArray();
   char buf[PATH_MAX + 1];
   realfullPath(path, buf);
 
   cJSON_AddStringToObject(retObj, "path", buf);
-  cJSON_AddItemToObject(retObj, "files", dirFiles);
 
-  std::string folderPath(buf);
 
-  if (depth > 0)
+  if (depth > 0){
+
+    cJSON *dirFiles = cJSON_CreateArray();
+    cJSON_AddItemToObject(retObj, "files", dirFiles);
+    std::string folderPath(buf);
+    struct dirent *dir;
     while ((dir = readdir(d)) != NULL)
     {
       //if(dir->d_name[0]=='.')continue;
@@ -277,6 +278,7 @@ cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth)
         cJSON_AddNumberToObject(fileInfo, "atime_ms", st.st_atime * 1000);
       }
     }
+  }
   closedir(d);
 
   return retObj;
