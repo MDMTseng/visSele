@@ -125,6 +125,7 @@ struct Mstp2CommInfo{//TODO: rename the infoQ to be more versatile
   string trig_tag;
   int trig_id;
   float curFreq;
+  int curReelLocation;
 
   //log
   string log;
@@ -173,7 +174,7 @@ struct MSTP_SegCtx{
 
 const int SegCtxSize=40;
 ResourcePool<MSTP_SegCtx>::ResourceData resbuff[SegCtxSize];
-ResourcePool <MSTP_SegCtx>sctx_pool(resbuff,sizeof(resbuff)/sizeof(resbuff[0]));
+ResourcePool <MSTP_SegCtx>sctx_pool(resbuff,SegCtxSize);
 
 
 #define _TICK2SEC_BASE_ (10*1000*1000)
@@ -574,7 +575,8 @@ class MStp_M:public MStp{
             .camera_id=ctx->CID,
             .trig_tag=ctx->TTAG,
             .trig_id=ctx->TID,
-            .curFreq=seg->vcur};
+            .curFreq=seg->vcur,
+            .curReelLocation=EncV};
 
           Mstp2CommInfo* Qhead=NULL;
           while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL)
@@ -1173,7 +1175,7 @@ public:
 
   bool MTPSYS_AddWait(uint32_t period_ms,int times, void* ctx,MSTP_segment_extra_info *exinfo)
   {
-    uint32_t waitTick=((int64_t)period_ms*_mstp->TICK2SEC_BASE)/1000;
+    uint32_t waitTick=((int64_t)period_ms*1000);
 
     // G_LOG("in MTPSYS_AddWait");
     // while(_mstp->AddWait(waitTick,times,ctx,exinfo)==false)
@@ -1604,7 +1606,7 @@ struct AUX_TASK_INFO_IO_CTRL{
   int state;
 
   char CID[50];
-  char TTAG[50];
+  char TTAG[100];
   int TID;
 
 
@@ -1680,6 +1682,21 @@ bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc
 
     xQueueSend(AUXTaskQueue[AUX_THREAD_ID], (void*)&task, 10 / portTICK_PERIOD_MS /* timeout */);
     isACK=true;
+    return true;
+  }
+  if(strcmp(type,"AUX_SET_ENC")==0)
+  {
+
+    doRsp=true;
+
+
+
+    if(doc["value"].is<int>()==false)
+    {
+      isACK=false;
+      return true;
+    }
+    mstp.EncV=doc["value"];
     return true;
   }
 
@@ -1798,7 +1815,8 @@ void AUX_task(void *pvParameter)
                 .camera_id=string(info.ioCtrl.CID),
                 .trig_tag=string(info.ioCtrl.TTAG),
                 .trig_id=info.ioCtrl.TID,
-                .curFreq=NAN};
+                .curFreq=NAN,
+                .curReelLocation=mstp.EncV};
 
 
 
@@ -1862,7 +1880,7 @@ void setup()
   // Serial.begin(460800);
   Serial.setRxBufferSize(500);
   // // setup_comm();
-  timer = timerBegin(0, 80*1000000/_TICK2SEC_BASE_, true);
+  timer = timerBegin(0, 80*1000*1000/_TICK2SEC_BASE_, true);
   
   timerAttachInterrupt(timer, &onTimer, true);
   timerAlarmWrite(timer, 10000, true);
@@ -1998,9 +2016,7 @@ void loop()
           string tag = info.trig_tag;
           if(info.curFreq==info.curFreq)
             replace(tag,"$s_PFQ", "s_PFQ="+toFixed(info.curFreq,100));
-          {
-            tag+=",s_PFQ:"+toFixed(info.curFreq,100);
-          }
+          replace(tag,"$s_REELLOC", "s_REELLOC="+to_string(info.curReelLocation));
 
           retdoc["tag"]=tag;
           retdoc["trigger_id"]=info.trig_id;
