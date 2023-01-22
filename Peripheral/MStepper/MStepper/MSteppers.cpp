@@ -1644,8 +1644,8 @@ LOAD_AGAIN:
             vcur=(uint32_t)minSpeed;
           }
 
-          uint32_t T = TICK2SEC_BASE/(uint32_t)vcur;
-          p_runSeg->step_period=(T);
+          uint32_t uT = 1000*1000/(uint32_t)vcur;
+          p_runSeg->step_period=(uT);
           T_next=p_runSeg->step_period;
         }
 

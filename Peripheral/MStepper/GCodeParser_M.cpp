@@ -444,7 +444,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseCMD(char **blks, char blkCou
         CID_Ptr=CID_BUF;
       }
       char *TTAG_Ptr=NULL;
-      char TTAG_BUF[50];
+      char TTAG_BUF[100];
       if(FindStr("TTAG_",blks,blkCount,TTAG_BUF)==0)
       {
         TTAG_Ptr=TTAG_BUF;
