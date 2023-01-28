@@ -116,7 +116,8 @@ int InspectionTarget::processInputStagePool()
 void InspectionTarget::setInspDef(cJSON* def)
 {
 
-  trigger_tags.clear();
+  match_tags=NULL;
+  black_tags=NULL;
   if(this->def)cJSON_Delete(this->def);
   this->def=NULL;
   // this->depSrc.clear();
@@ -127,12 +128,9 @@ void InspectionTarget::setInspDef(cJSON* def)
     type=JFetch_STRING_ex(def,"type","");
     this->def= cJSON_Duplicate(def, cJSON_True);
 
-    for(int i=0;;i++)
-    {
-      char* dsrc=JFetch_STRING(def,("trigger_tags["+to_string(i)+"]").c_str());
-      if(dsrc==NULL)break;
-      trigger_tags.push_back(std::string(dsrc));
-    }
+
+    match_tags=JFetch_ARRAY(this->def,"match_tags");
+    black_tags=JFetch_ARRAY(this->def,"trigger_tags");
 
 
 
@@ -164,14 +162,7 @@ void InspectionTarget::setInspDef(cJSON* def)
 // }
 
 
-bool InspectionTarget::matchTriggerTag(string tarTag)
-{
-  for(string tagInList:trigger_tags)
-  {
-    if(tarTag==tagInList)return true;
-  }
-  return false;
-}
+
 
 cJSON* InspectionTarget::genITInfo()
 {
@@ -179,6 +170,7 @@ cJSON* InspectionTarget::genITInfo()
   
   {
     cJSON_AddItemToObject(info, "io",genITIOInfo() );
+    cJSON_AddStringToObject(info, "env_path",local_env_path.c_str());
   }
   return info;
 }
@@ -201,6 +193,72 @@ cJSON* InspectionTarget::genITInfo_basic()
   return obj;
 }
 
+
+bool InspectionTarget::stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
+{
+
+  if(match_tags==NULL)return false;
+
+    
+  int size=cJSON_GetArraySize(match_tags);
+  for(int i=0;i<size;i++)
+  {
+    cJSON *tagSetInList = cJSON_GetArrayItem(match_tags,i);
+    
+    if(tagSetInList->type==cJSON_String)
+    {
+      if(tagSetInList->valuestring==NULL)continue;
+      string strInDef=string(tagSetInList->valuestring);
+      
+      for(auto tag : sinfo->trigger_tags )
+      {
+        if(strInDef==tag)
+          return true;
+      }
+    }
+    else if(tagSetInList->type==cJSON_Array)
+    {
+      int fullMatchTagSet=cJSON_GetArraySize(tagSetInList);
+      for(int j=0;j<fullMatchTagSet;j++)
+      {
+
+
+        cJSON *fullMatchTag = cJSON_GetArrayItem(tagSetInList,j);
+        
+        bool isMatch=false;
+        if(fullMatchTag->type==cJSON_String)
+        {      
+          string strFMTag=string(fullMatchTag->valuestring);
+      
+          LOGI("tag=>%s",strFMTag.c_str());
+          for(auto tag : sinfo->trigger_tags )
+          {
+            if(strFMTag==tag)
+            {
+              isMatch=true;
+              break;
+            }
+          }
+        }
+        LOGI("isMatch:%d",isMatch);
+        if(isMatch==false)break;//No match, break
+
+        if(j==fullMatchTagSet-1)
+        {//it's full match
+          return true;
+        }
+
+
+
+
+      }
+
+    }
+  }
+  LOGI(">>>>");
+  return false;
+
+}
 
 
 void InspectionTarget::additionalInfoAssign(std::string key,cJSON* info)

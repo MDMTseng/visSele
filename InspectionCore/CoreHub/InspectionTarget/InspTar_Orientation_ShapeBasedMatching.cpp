@@ -24,20 +24,6 @@ InspectionTarget_Orientation_ShapeBasedMatching::InspectionTarget_Orientation_Sh
   // sbm=new SBM_if(60, {4,6,12},30,80);
 }
 
-bool InspectionTarget_Orientation_ShapeBasedMatching::stageInfoFilter(shared_ptr<StageInfo> sinfo)
-{
-  for(auto tag : sinfo->trigger_tags )
-  {
-    // if(tag=="_STREAM_")
-    // {
-    //   return false;
-    // }
-    if( matchTriggerTag(tag))
-      return true;
-  }
-  return false;
-}
-
 future<int> InspectionTarget_Orientation_ShapeBasedMatching::futureInputStagePool()
 {
   return async(launch::async,&InspectionTarget_Orientation_ShapeBasedMatching::processInputStagePool,this);

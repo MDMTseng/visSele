@@ -17,23 +17,6 @@ InspectionTarget_Orientation_ColorRegionOval::InspectionTarget_Orientation_Color
   type=InspectionTarget_Orientation_ColorRegionOval::TYPE();
 }
 
-bool InspectionTarget_Orientation_ColorRegionOval::stageInfoFilter(shared_ptr<StageInfo> sinfo)
-{
-  // if(sinfo->typeName())
-
-
-
-  for(auto tag : sinfo->trigger_tags )
-  {
-    // if(tag=="_STREAM_")
-    // {
-    //   return false;
-    // }
-    if( matchTriggerTag(tag))
-      return true;
-  }
-  return false;
-}
 
 future<int> InspectionTarget_Orientation_ColorRegionOval::futureInputStagePool()
 {

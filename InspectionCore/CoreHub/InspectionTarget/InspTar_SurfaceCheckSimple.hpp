@@ -37,7 +37,6 @@ public:
   InspectionTarget_SurfaceCheckSimple(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
   static string TYPE(){ return "SurfaceCheckSimple"; }
-  bool stageInfoFilter(shared_ptr<StageInfo> sinfo);
   future<int> futureInputStagePool();
 
   int processInputPool();

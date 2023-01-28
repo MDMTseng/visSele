@@ -17,24 +17,24 @@ InspectionTarget_SurfaceCheckSimple::InspectionTarget_SurfaceCheckSimple(string 
   type=InspectionTarget_SurfaceCheckSimple::TYPE();
 }
 
-bool InspectionTarget_SurfaceCheckSimple::stageInfoFilter(shared_ptr<StageInfo> sinfo)
-{
-  // if(sinfo->typeName())
+// bool InspectionTarget_SurfaceCheckSimple::stageInfoFilter(shared_ptr<StageInfo> sinfo)
+// {
+//   // if(sinfo->typeName())
 
 
 
-  for(auto tag : sinfo->trigger_tags )
-  {
-    if(tag=="_STREAM_")
-    {
-      return false;
-    }
-    if(tag==id)return true;
-    if( matchTriggerTag(tag))
-      return true;
-  }
-  return false;
-}
+//   for(auto tag : sinfo->trigger_tags )
+//   {
+//     if(tag=="_STREAM_")
+//     {
+//       return false;
+//     }
+//     if(tag==id)return true;
+//     if( matchTriggerTag(tag))
+//       return true;
+//   }
+//   return false;
+// }
 
 future<int> InspectionTarget_SurfaceCheckSimple::futureInputStagePool()
 {
@@ -265,7 +265,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         cvtColor(def_temp_img_innerROI, img_HSV, COLOR_BGR2HSV);
 
 
-        LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
+        // LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
         Scalar rangeH=Scalar(h_h,h_s,h_v);
         Scalar rangeL=Scalar(l_h,l_s,l_v);
 

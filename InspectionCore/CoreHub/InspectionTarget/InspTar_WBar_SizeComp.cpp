@@ -17,24 +17,24 @@ InspTar_WBar_SizeComp::InspTar_WBar_SizeComp(string id,cJSON* def,InspectionTarg
   LOGI("sodkoskoskad;aks;dkas;dk");
 }
 
-bool InspTar_WBar_SizeComp::stageInfoFilter(shared_ptr<StageInfo> sinfo)
-{
-  // if(sinfo->typeName())
+// bool InspTar_WBar_SizeComp::stageInfoFilter(shared_ptr<StageInfo> sinfo)
+// {
+//   // if(sinfo->typeName())
 
 
 
-  for(auto tag : sinfo->trigger_tags )
-  {
-    if(tag=="_STREAM_")
-    {
-      return false;
-    }
-    if(tag==id)return true;
-    if( matchTriggerTag(tag))
-      return true;
-  }
-  return false;
-}
+//   for(auto tag : sinfo->trigger_tags )
+//   {
+//     if(tag=="_STREAM_")
+//     {
+//       return false;
+//     }
+//     if(tag==id)return true;
+//     if( matchTriggerTag(tag))
+//       return true;
+//   }
+//   return false;
+// }
 
 future<int> InspTar_WBar_SizeComp::futureInputStagePool()
 {

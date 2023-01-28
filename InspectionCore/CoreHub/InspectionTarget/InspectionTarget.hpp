@@ -123,7 +123,8 @@ class InspectionTarget
   cJSON *additionalInfo=NULL;
   InspectionTargetManager* belongMan;
 
-  std::vector< std::string > trigger_tags;
+  cJSON * match_tags;
+  cJSON * black_tags;
   
   static std::string TYPE(){ return "IT"; }
   // std::vector<StageInfo_CAT> acceptTags;
@@ -157,14 +158,14 @@ class InspectionTarget
 
 
 
-  bool matchTriggerTag(string tarTag);
+  // bool matchTriggerTag(string tarTag);
   protected:
+  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo);
   
   void insertInputTagsWPrefix(std::vector<std::string> &insertTo,std::vector<std::string> &fromList,std::string prefixToMatch);
 
   void attachSstaticInfo( cJSON* jobj,int trigger_id );
   virtual cJSON* genITInfo_basic();
-  virtual bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)=0;
   // virtual std::vector<StageInfo*> inputPick(std::vector<StageInfo*> infoPool)=0;//returns input processed
   virtual void acceptStageInfo(std::shared_ptr<StageInfo> sinfo);
 

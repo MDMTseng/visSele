@@ -31,7 +31,6 @@ public:
   InspectionTarget_Orientation_ColorRegionOval(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
   static string TYPE(){ return "Orientation_ColorRegionOval"; }
-  bool stageInfoFilter(shared_ptr<StageInfo> sinfo);
   future<int> futureInputStagePool();
 
   int processInputPool();
@@ -73,7 +72,6 @@ public:
   InspectionTarget_Orientation_ShapeBasedMatching(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
   static string TYPE(){ return "Orientation_ShapeBasedMatching"; }
-  bool stageInfoFilter(shared_ptr<StageInfo> sinfo);
   future<int> futureInputStagePool();
 
   void setInspDef(cJSON* def);
