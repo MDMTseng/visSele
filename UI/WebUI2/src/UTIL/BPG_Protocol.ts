@@ -1,10 +1,6 @@
 
 import {PostfixExpCalc,ESP2POST_FuncSet,ESP2POST_FuncCallBack} from './MISC_Util';
 
-
-import * as logX from 'loglevel';
-let log = logX.getLogger("BPG_Protocol");
-
 var enc = new TextEncoder();
 
 const BPG_header_L = 9;

@@ -14,7 +14,6 @@ import {
 
 import {VEC2D,SHAPE_ARC,SHAPE_LINE_seg} from '../UTIL/MathTools';
 
-import * as log from 'loglevel';
 import dclone from 'clone';
 
 class CameraCtrl {
@@ -452,7 +451,7 @@ export class EverCheckCanvasComponent_proto {
       this.onmouseup(ev);
     };
     
-    this.EmitEvent = (event) => { log.info(event); };
+    this.EmitEvent = (event) => { console.log(event); };
     this.canvas.onmouseout = this.onmouseout.bind(this);
 
     {
@@ -586,7 +585,7 @@ export class EverCheckCanvasComponent_proto {
 
   resourceClean() {
     this.canvas.removeEventListener('wheel', this.onmouseswheel.bind(this));
-    log.debug("resourceClean......")
+    console.log("resourceClean......")
   }
 
 

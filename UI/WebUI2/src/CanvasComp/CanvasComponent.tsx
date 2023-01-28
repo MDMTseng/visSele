@@ -12,10 +12,6 @@ import {
 
 import {VEC2D,SHAPE_ARC,SHAPE_LINE_seg} from '../UTIL/MathTools';
 
-
-import Ajv from "ajv"
-const ajv = new Ajv()
-
 // let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 // let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 // let BPG_FileBrowser_varify_info = BASE_COM.BPG_FileBrowser_varify_info;
@@ -28,9 +24,8 @@ import {
   LocalStorageTools
 } from '../UTIL/MISC_Util';
 
-let xState=xstate_GetCurrentMainState;
 
-import * as log from 'loglevel';
+// import * as log from 'loglevel';
 import dclone from 'clone';
 import Modal from "antd/lib/modal";
 import Menu from "antd/lib/menu";
@@ -41,14 +36,13 @@ import Table  from 'antd/lib/table';
 import Checkbox from "antd/lib/checkbox";
 import InputNumber from 'antd/lib/input-number';
 import Input from 'antd/lib/input';
-const { CheckableTag } = Tag;
-const { TextArea } = Input;
 import Divider from 'antd/lib/divider';
-import Dropdown from 'antd/lib/Dropdown'
-import Slider from 'antd/lib/Slider';
-import Popover from 'antd/lib/Popover';
+import Dropdown from 'antd/lib/dropdown'
+import Slider from 'antd/lib/slider';
+import Popover from 'antd/lib/popover';
 
-const SubMenu = Menu.SubMenu;
+
+
 
 import { useSelector,useDispatch } from 'react-redux';
 import { 
@@ -65,8 +59,15 @@ import {
   DownOutlined, TrophyOutlined,
   SubnodeOutlined
 } from '@ant-design/icons';
+import Ajv from "ajv"
 
+const { CheckableTag } = Tag;
+const { TextArea } = Input;
 
+const ajv = new Ajv()
+let xState=xstate_GetCurrentMainState;
+
+const SubMenu = Menu.SubMenu;
 
 const LOCALSTORAGE_KEY="GenMatching.RecentDefFiles"
 
@@ -151,6 +152,8 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.drawHook=undefined
 
     this.onMouseStatUpdate=(pt,pcvst)=>0;
+
+    this.scaleHeadToFitScreen();
   }
 
 
@@ -252,7 +255,9 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   scaleHeadToFitScreen()
   {
-    this.camera.SetOffset({x:this.canvas.width/2,y:this.canvas.height/2});
+    let scale=0.5;
+    this.camera.Scale(scale);
+    this.camera.SetOffset({x:-this.canvas.width/2/scale,y:-this.canvas.height/2/scale});
     
   }
 
@@ -402,6 +407,8 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
       this.drawHook(true,this.g,this);
     }
 
+    this.mouseStatus.pstatus=this.mouseStatus.status
+
   }
 }
 
@@ -461,6 +468,9 @@ export function HookCanvasComponent( {dhook,style={}}:{
     _this.canvComp=new DrawHook_CanvasComponent(canvas.current);
     
     _this.canvComp.pixelRatio=pixelRatio;
+    setTimeout(()=>{
+      _this.canvComp?.scaleHeadToFitScreen();
+    },1000)
     return () => {
       _this.canvComp=undefined;//delete the canvas component
     };

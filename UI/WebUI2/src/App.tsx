@@ -5,10 +5,22 @@ import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio, Inpu
 import { DraggableModal, DraggableModalProvider } from 'ant-design-draggable-modal'
 import 'ant-design-draggable-modal/dist/index.css'
 
-const { Option } = Select;
+import ReactFlow, {
+  MiniMap,
+  Controls,
+  Background,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+} from 'reactflow';
+
+import 'reactflow/dist/style.css';
+
+// import ResponsiveReactGridLayout from 'react-grid-layout';
+
+import { Responsive, WidthProvider } from "react-grid-layout";
 
 import type { MenuProps, MenuTheme } from 'antd/es/menu';
-const { SubMenu } = Menu;
 import { UserOutlined, LaptopOutlined, NotificationOutlined,DownOutlined,
   DisconnectOutlined,LinkOutlined } from '@ant-design/icons';
 
@@ -28,12 +40,11 @@ import {VEC2D,SHAPE_ARC,SHAPE_LINE_seg,PtRotate2d} from './UTIL/MathTools';
 import {HookCanvasComponent,DrawHook_CanvasComponent,type_DrawHook_g,type_DrawHook} from './CanvasComp/CanvasComponent';
 import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_API';
 
-import { Row, Col,Input,Tag,Modal,message } from 'antd';
+import { Row, Col,Input,Tag,Modal,message,Space } from 'antd';
 
 
 import { type_CameraInfo,type_IMCM} from './AppTypes';
 import './basic.css';
-
 
 
 import {SingleTargetVIEWUI_ColorRegionDetection,
@@ -41,7 +52,12 @@ import {SingleTargetVIEWUI_ColorRegionDetection,
   SingleTargetVIEWUI_Orientation_ShapeBasedMatching,
   SingleTargetVIEWUI_SurfaceCheckSimple } from './InspTarView';
 
+const ResponsiveGridLayout = WidthProvider(Responsive);
+const { Option } = Select;
+const { SubMenu } = Menu;
+  
 enum EDIT_PERMIT_FLAG {
+  OPONLY=0,
   XXFLAGXX=1<<0
 }
 
@@ -256,9 +272,6 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
 
 
   return <> 
-    {/* <pre>{
-      JSON.stringify(camSetupInfo,null,2)
-    }</pre> */}
     trigger_on:
     <Switch checkedChildren="O" unCheckedChildren="X" checked={camSetupInfo.trigger_mode==1} onChange={(check)=>{
       onCameraSetupUpdate({...camSetupInfo,trigger_mode:check?1:0})
@@ -373,6 +386,11 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
       }
     }
     }/>
+
+
+    <pre>{
+      JSON.stringify(camSetupInfo,null,2)
+    }</pre>
   </>
 }
 
@@ -480,6 +498,101 @@ let DAT_ANY_UNDEF:any=undefined;
 
 
 
+
+
+const initialNodes = [
+  { id: '1', position: { x: 0, y: 0 }, data: { label: '1' } },
+  { id: '2', position: { x: 0, y: 100 }, data: { label: '2' } },
+  { id: '3', position: { x: 0, y: 200 }, data: { label: '3' } },
+];
+
+const initialEdges = [{ id: 'e1-2', source: '1', target: '2' },{ id: 'e2-3', source: '2', target: '3' },{ id: 'e1-3', source: '1', target: '3' }];
+
+function NodeFlow_DEMO({defConfig}:any) {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
+
+  console.log(defConfig.InspTars_main);
+
+  useEffect(() => {
+    let nodes=defConfig.InspTars_main.map((it:any,idx:any)=>({
+      id:it.id,
+      position:{x:0,y:idx*100},
+      data:{label:it.id}
+    })).filter((node:any)=>node.id!=="ImTran")
+
+    let edges=defConfig.InspTars_main.map((it:any,idx:number,arr:any[])=>{
+      let cid=it.id;
+      let cand_it=arr
+        .filter((sit:any)=>sit.match_tags.find((tag:string)=>tag==cid)!==undefined)
+      
+      return cand_it
+        .map((it:any)=>it.id)
+        .map((id:string)=>(
+          { id: `${cid}-${id}`, source:cid, target: id }
+        ))
+    }).flat()
+    console.log(nodes,edges);
+    setNodes(nodes);
+    setEdges(edges);
+
+  },defConfig)
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+    >
+      <MiniMap />
+      <Controls />
+      <Background />
+    </ReactFlow>
+  );
+}
+
+
+
+
+const DraggableGridLayout_DEMO = () => {
+  const layout = [
+    { i: 'a', x: 0, y: 0, w: 4, h: 2 },
+    { i: 'b', x: 4, y: 0, w: 4, h: 2 },
+    { i: 'c', x: 8, y: 0, w: 4, h: 2 },
+    { i: 'd', x: 0, y: 2, w: 4, h: 2 }
+  ];
+
+
+
+  const onDrop = (event: any) => {
+    console.log(event);
+  };
+
+
+
+  return (
+    <div className="App" style={{width:"100%",height:"100%",overflow:"hidden"}}>
+      <ResponsiveGridLayout
+         onDrop={(e) => onDrop(e)} className="layout" layouts={{ lg: layout }} breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+          cols={{ lg: 5, md: 4, sm: 3, xs: 2, xxs: 1 }}
+          // rowHeight={300}
+          // width={1000}
+         
+         
+         >
+        <div key="a" style={{ backgroundColor: "#ccc" }}>a</div>
+        <div key="b" style={{ backgroundColor: "#ccc" }}>b</div>
+        <div key="c" style={{ backgroundColor: "#ccc" }}>c</div>
+        <div key="d" style={{ backgroundColor: "#ccc" }}>d</div>
+      </ResponsiveGridLayout>
+    </div>
+  );
+}
+
 function VIEWUI(){
 
 
@@ -518,8 +631,6 @@ function VIEWUI(){
   const [defConfig,setDefConfig]=useState<any>(undefined);
   const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
 
-
-  const [defReport,setDefReport]=useState<any>(undefined);
   const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
 
 
@@ -594,6 +705,7 @@ function VIEWUI(){
     for(let it of PrjDef.InspTars_main)
     {
       let path = PrjDefFolderPath+"/it_"+it.id+"/main.json"
+      console.log(path,it)
       await api.FILE_Save(path,it,true)
     }
     return true
@@ -668,7 +780,6 @@ function VIEWUI(){
           let RP=pkts.find((info:any)=>info.type=="RP")
           if(RP===undefined)return;
           RP=RP.data;
-          // console.log(RP);
           let filteredKey=Object.keys(_this.listCMD_Vairable.reportListener)
             .filter(key=>{
               let repListener=_this.listCMD_Vairable.reportListener[key];
@@ -811,12 +922,107 @@ function VIEWUI(){
           {
 
             let content=data.map((info:any,dataIndex:number)=>{
-              return <>
-                
-                <Divider> {info.text} </Divider>
+
+              let doms=
+
+              info.opts.map((opt:any)=>{
+
+
+
+                if (typeof opt === 'object' ) {
+
+                  switch(opt.type)
+                  {
+                    case "InspTar_UI":{
+                      let id = opt.id
+
+                      let itar=defConfig.InspTars_main.find( (ipt:any)=>ipt.id==id)
+                      // console.log(itar)
+                      if(itar===undefined)return "InspTar NotFound"
+    
+                      return <InspTargetUI_MUX 
+                        display={true} 
+                        width={80} 
+                        height={70} 
+                        stream_id={50120}
+                        style={{float:"left"}} 
+                        EditPermitFlag={EDIT_PERMIT_FLAG.OPONLY}
+                        key={id} 
+                        def={itar} 
+                        report={undefined} 
+                        fsPath={defConfig.path+"/it_"+id}
+                        renderHook={undefined} 
+                        onDefChange={(new_rule,doInspUpdate=true)=>{
+    
+                        }}
+              
+                        APIExport={opt.APIExport}
+                      />
+                    }
     
 
-                {info.opts.map((opt:string)=>opt=="\n"?<br/>:<Button onClick={()=>{
+                    case "button":{
+                      let key = opt.key || opt.text
+                      let text= opt.text || key
+
+    
+                      return <Button onClick={()=>{
+
+                        if(_this.listCMD_Vairable.USER_INPUT_LOCK==true)return;//skip
+                        _this.listCMD_Vairable.USER_INPUT_LOCK=true;
+                        (async ()=>{
+                          try{
+                          if(opt.onClick!==undefined)
+                            await opt.onClick(updateUI);
+                          else 
+                            await info.callback(dataIndex,key,updateUI);
+                          _this.listCMD_Vairable.USER_INPUT_LOCK=false;
+                          }
+                          catch(e)
+                          {
+                            console.error(e)
+                          }
+                        })().catch(e=>{
+                          console.error(e)
+                        })
+      
+      
+                        }}>{(typeof text === 'string')?text:text(dataIndex)}</Button>
+                    }
+    
+
+                  }
+                  return "OBJ INFO IS NOT HANDLED"
+                }
+
+
+
+
+                if(opt=="$\n")return <br/>;
+
+
+                // if(opt.startsWith("$\s")){
+                //   let count=opt.slice(2);
+                //   return 
+                // }
+
+                if(opt=="$\s")return " ";
+
+
+
+                if(opt.startsWith("$t:")){
+                  return opt.slice(3).replace(/ /g, "\u00A0")
+                }
+
+
+
+                if(opt.startsWith("$divider:")){
+                  return <Divider> {opt.slice(8)} </Divider>
+                }
+
+
+
+                return<Button onClick={()=>{
 
                   if(_this.listCMD_Vairable.USER_INPUT_LOCK==true)return;//skip
                   _this.listCMD_Vairable.USER_INPUT_LOCK=true;
@@ -827,10 +1033,16 @@ function VIEWUI(){
                   })();
 
 
-                }}>{opt}</Button>)}
+                  }}>{opt}</Button>
+              })
 
+              console.log(doms)
+              return <>
+                
+                {(info.text===undefined || info.text===null)?null:<Divider> {(typeof info.text === 'string')?info.text:info.text(dataIndex)} </Divider>}
+    
 
-
+                {doms}
 
 
               </>
@@ -841,10 +1053,12 @@ function VIEWUI(){
               visible:true,
               type:setting.type,
               onOK:()=>{
+                abortController.abort();
                 resolve(true)
                 setModalInfo({...modalInfo,visible:false})
               },
               onCancel:()=>{
+                abortController.abort();
                 reject(false)
                 setModalInfo({...modalInfo,visible:false})
               },
@@ -924,7 +1138,29 @@ function VIEWUI(){
               {inspTar.id}
             </div>,inspTar.id)
           }),
-          menuCol("------------","divLine"),
+          menuCol(<div onClick={()=>{
+              
+            setModalInfo({
+              timeTag:Date.now(),
+              type:"AA",
+              visible:true,
+              onOK:()=>{
+                setModalInfo({...modalInfo,visible:false})
+              },
+              onCancel:()=>{
+                setModalInfo({...modalInfo,visible:false})
+              },
+              title:"><>>>",
+              DATA:"",
+              content:<>
+                {/* <NodeFlow_DEMO defConfig={defConfig}/> */}
+                <DraggableGridLayout_DEMO/>
+              </>
+            })
+
+          }}>
+            ------------
+          </div>,"divLine"),
           ...displayInspTarIdx_hide.map((InspTarIdx:number,listIndex:number)=>{
             let inspTar=defConfig.InspTars_main[InspTarIdx];
 

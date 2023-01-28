@@ -3,10 +3,8 @@ import { useState, useEffect, useRef, useMemo, useContext } from 'react';
 import { useDispatch, useSelector } from "react-redux";
 import { Layout, Button, Tabs, Slider, Menu, Divider, Dropdown, Popconfirm, Radio, InputNumber, Switch, Select } from 'antd';
 
-const { Option } = Select;
 
 import type { MenuProps, MenuTheme } from 'antd/es/menu';
-const { SubMenu } = Menu;
 import {
     UserOutlined, LaptopOutlined, NotificationOutlined, DownOutlined, MoreOutlined, PlayCircleOutlined,
     DisconnectOutlined, LinkOutlined
@@ -36,6 +34,8 @@ import './basic.css';
 
 let DAT_ANY_UNDEF: any = undefined;
 
+const { SubMenu } = Menu;
+const { Option } = Select;
 
 enum EDIT_PERMIT_FLAG {
     XXFLAGXX = 1 << 0
@@ -436,7 +436,7 @@ export function SingleTargetVIEWUI_ColorRegionDetection({ display, stream_id, fs
         (async () => {
             await BPG_API.InspTargetUpdate(updatedDef)
 
-            await BPG_API.CameraSWTrigger("Hikrobot-00F71598890", "TTT", 4433)
+            // await BPG_API.CameraSWTrigger("Hikrobot-00F71598890", "TTT", 4433)
 
             // await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
 
@@ -1180,8 +1180,8 @@ function rgb2hsv(r: number, g: number, b: number) {
     rabs = r / 255;
     gabs = g / 255;
     babs = b / 255;
-    v = Math.max(rabs, gabs, babs),
-        diff = v - Math.min(rabs, gabs, babs);
+    v = Math.max(rabs, gabs, babs);
+    diff = v - Math.min(rabs, gabs, babs);
     diffc = (c: number) => (v - c) / 6 / diff + 1 / 2;
     percentRoundFn = (num: number) => Math.round(num * 100) / 100;
     if (diff == 0) {
@@ -1493,6 +1493,9 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
     const [modalInfo, setModalInfo] = useState(emptyModalInfo);
 
 
+    const [onMouseClick, setOnMouseClick] = useState<any >(undefined);
+
+
     let c_report: any = undefined;
     if (_this.cache_report !== report) {
         if (report !== undefined) {
@@ -1512,11 +1515,36 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
         });
 
     }, [def]);
+
+
+
+    // useEffect(() => {
+    //     console.log(APIExport)
+
+    //     if(APIExport!==undefined)
+    //     {
+    //         APIExport({
+    //             api1:()=>"hello world"
+    //         })
+    //     }
+
+
+
+    //     return (() => {
+    //     });
+
+    // }, [APIExport]);
+
+
+    // console.log(">>>>>>>",onMouseClick);
     if(APIExport!==undefined)//keeps update for every state change
     {
         APIExport({
             onMouseClick:(callback:any)=>{
                 setOnMouseClick({callback})
+            },
+            getLatestReport:()=>{
+                return defReport;
             }
         })
     }
@@ -1637,16 +1665,12 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
         (async () => {
             await BPG_API.InspTargetUpdate(updatedDef)
-
-            // await BPG_API.CameraSWTrigger("Hikrobot-00F92938639","TTT",4433)
-            if (doTakeNewImage)
-                await BPG_API.CameraSWTrigger("BMP_carousel_0", "s_Step_25", Date.now())
-
         })()
-
+        onDefChange(updatedDef,doTakeNewImage);
     }
 
 
+    let ctime=Date.now()
     useEffect(() => {//////////////////////
 
         (async () => {
@@ -1655,9 +1679,8 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
             console.log(ret);
 
             // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
-
             await BPG_API.send_cbs_attach(
-                cacheDef.stream_id, "KEY_KEY_Orientation_ShapeBasedMatching", {
+                cacheDef.stream_id, "KEY_KEY_Orientation_ShapeBasedMatching"+ctime, {
 
                 resolve: (pkts) => {
                     // console.log(pkts);
@@ -1687,6 +1710,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                     setLocal_IMCM(IMCM)
                     // console.log(IMCM)
+                    console.log(def.id)
 
                 },
                 reject: (pkts) => {
@@ -1700,7 +1724,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
         return (() => {
             (async () => {
                 await BPG_API.send_cbs_detach(
-                    stream_id, "KEY_KEY_Orientation_ShapeBasedMatching");
+                    stream_id, "KEY_KEY_Orientation_ShapeBasedMatching"+ctime);
 
                 // await BPG_API.InspTargetSetStreamChannelID(
                 //   cacheDef.id,0,
@@ -1754,11 +1778,10 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
             {
                 EditUI = <>
 
-
-
-                    <InspTarView_basicInfo {...props}  def={cacheDef}/>
-
-
+                    <InspTarView_basicInfo {...props} def={cacheDef} onDefChange={(newDef,ddd)=>{
+                        console.log(cacheDef,newDef)
+                        onCacheDefChange(newDef,ddd);
+                    }}/>
                     {/* <Button onClick={()=>{
             BPG_API.InspTargetExchange(cacheDef.id,{type:"revisit_cache_stage_info"});
           }}>重試</Button> */}
@@ -2439,6 +2462,14 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
             if (editState == EditState.Normal_Show || editState == EditState.Search_Region_Edit || editState == EditState.Test_Saved_Files) {
                 if (ctrl_or_draw == true)//ctrl
                 {
+                    if(onMouseClick!==undefined && (g.mouseStatus.status==1 && g.mouseEdge))
+                    {
+                        console.log(onMouseClick);
+                        let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
+                        let cb=onMouseClick.callback;
+                        setOnMouseClick(undefined)
+                        cb(mouseOnCanvas);
+                    }
                 }
                 else//draw
                 {
@@ -2471,7 +2502,9 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                             ctx.fillText("idx:" + idx, match.center.x, match.center.y - 40)
                             ctx.font = "20px Arial";
                             ctx.fillText("ang:" + (angle * 180 / 3.14159).toFixed(2), match.center.x, match.center.y - 20)
-                            ctx.fillText("sim:" + match.confidence.toFixed(3), match.center.x, match.center.y - 0)
+
+                            if(match.confidence!==undefined)
+                                ctx.fillText("sim:" + match.confidence.toFixed(3), match.center.x, match.center.y - 0)
 
 
 
@@ -2656,7 +2689,6 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     // let pixInfo = _this.fetchedPixInfo.data;
                     ctx.font = "1.5em Arial";
                     ctx.fillStyle = "rgba(250,100, 50,1)";
-                    g.worldTransform
                     
 
                     let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
@@ -2761,6 +2793,8 @@ export function SingleTargetVIEWUI_Orientation_ColorRegionOval(props: CompParam_
         })()
 
         BPG_API.InspTargetExchange(cacheDef.id, { type: "revisit_cache_stage_info" });
+
+        onDefChange(updatedDef,ddd);
     }
 
 
@@ -2869,10 +2903,9 @@ export function SingleTargetVIEWUI_Orientation_ColorRegionOval(props: CompParam_
             {
                 EditUI = <>
 
-
-
-                    <InspTarView_basicInfo {...props}  def={cacheDef}/>
-
+                    <InspTarView_basicInfo {...props} def={cacheDef} onDefChange={(newDef,ddd)=>{
+                        onCacheDefChange(newDef,ddd);
+                    }}/>
                     <Button key={"_" + 10000} onClick={() => {
 
                         let newDef = { ...cacheDef };
@@ -3663,6 +3696,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
         })()
 
         BPG_API.InspTargetExchange(cacheDef.id, { type: "revisit_cache_stage_info" });
+        onDefChange(updatedDef,ddd);
     }
 
     function periodicCB() {
@@ -3866,7 +3900,9 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
             style={{width:"100px"}}
             onChange={(e)=>{
             }}/> */}
-                    <InspTarView_basicInfo {...props} def={cacheDef} />
+                    <InspTarView_basicInfo {...props} def={cacheDef} onDefChange={(newDef,ddd)=>{
+                        onCacheDefChange(newDef,ddd);
+                    }}/>
 
 
                     <br />
@@ -4144,6 +4180,206 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
                     })
                 }
+            }
+
+            if (renderHook) {
+                // renderHook(ctrl_or_draw,g,canvas_obj,newDef);
+            }
+        }
+        } />
+
+    </div>;
+
+}
+
+
+
+
+export function SingleTargetVIEWUI_BASE(props: CompParam_InspTarUI) {
+    let { display, stream_id, fsPath, width, height, EditPermitFlag, style = undefined, renderHook, def, report, onDefChange }=props;
+    const _ = useRef<any>({
+        imgCanvas: document.createElement('canvas'),
+        canvasComp: undefined,
+    });
+    let _this = _.current;
+    const [cacheDef, setCacheDef] = useState<any>(def);
+
+    const [defReport, setDefReport] = useState<any>(undefined);
+
+    useEffect(() => {
+        console.log("fsPath:" + fsPath)
+        setCacheDef(def);
+        return (() => {
+        });
+
+    }, [def]);
+    const [Local_IMCM, setLocal_IMCM] =
+        useState<IMCM_type | undefined>(undefined);
+
+    const dispatch = useDispatch();
+    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+
+    function onCacheDefChange(updatedDef: any) {
+        setCacheDef(updatedDef);
+
+
+
+        (async () => {
+            console.log(">>>");
+            await BPG_API.InspTargetUpdate(updatedDef)
+            await BPG_API.InspTargetExchange(cacheDef.id, { type: "revisit_cache_stage_info" });
+        })()
+    }
+
+    useEffect(() => {//////////////////////
+
+        (async () => {
+
+            let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
+            console.log(ret);
+
+            // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+
+            await BPG_API.send_cbs_attach(
+                cacheDef.stream_id, "SurfaceCheckSimple", {
+
+                resolve: (pkts) => {
+                    // console.log(pkts);
+                    let IM = pkts.find((p: any) => p.type == "IM");
+                    if (IM === undefined) return;
+                    let CM = pkts.find((p: any) => p.type == "CM");
+                    if (CM === undefined) return;
+                    let RP = pkts.find((p: any) => p.type == "RP");
+                    if (RP === undefined) return;
+                    // console.log("++++++++\n",IM,CM,RP);
+
+
+                    // setDefReport(RP.data)
+                    let IMCM = {
+                        image_info: IM.image_info,
+                        camera_id: CM.data.camera_id,
+                        trigger_id: CM.data.trigger_id,
+                        trigger_tag: CM.data.trigger_tag,
+                    } as type_IMCM
+
+                    _this.imgCanvas.width = IMCM.image_info.width;
+                    _this.imgCanvas.height = IMCM.image_info.height;
+
+                    let ctx2nd = _this.imgCanvas.getContext('2d');
+                    ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+
+
+                    setLocal_IMCM(IMCM)
+                    let rep = RP.data;
+                    setDefReport(rep);
+
+                },
+                reject: (pkts) => {
+
+                }
+            }
+
+            )
+
+        })()
+        return (() => {
+            (async () => {
+                await BPG_API.send_cbs_detach(
+                    stream_id, "SurfaceCheckSimple");
+            })()
+
+        })
+    }, []);
+
+
+    if (display == false) return null;
+ 
+    return <div style={{ ...style, width: width + "%", height: height + "%" }} className={"overlayCon"}>
+
+        <div className={"overlay"} >
+
+            {/* {EDIT_UI} */}
+
+        </div>
+
+
+        <HookCanvasComponent style={{}} dhook={(ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent) => {
+            _this.canvasComp = canvas_obj;
+            // console.log(ctrl_or_draw);
+            if (ctrl_or_draw == true)//ctrl
+            {
+                // if(canvas_obj.regionSelect===undefined)
+                // canvas_obj.UserRegionSelect((onSelect,draggingState)=>{
+                //   if(draggingState==1)
+                //   {
+
+                //   }
+                //   else if(draggingState==2)
+                //   {
+                //     console.log(onSelect);
+                //     canvas_obj.UserRegionSelect(undefined)
+                //   }
+                // });
+
+                // ctrlHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+                if (canvas_obj.regionSelect !== undefined) {
+                    if (canvas_obj.regionSelect.pt1 === undefined || canvas_obj.regionSelect.pt2 === undefined) {
+                        return;
+                    }
+
+                    let pt1 = canvas_obj.regionSelect.pt1;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
+                    let pt2 = canvas_obj.regionSelect.pt2;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
+
+
+                    // console.log(canvas_obj.regionSelect);
+                    let x, y, w, h;
+
+                    x = pt1.x;
+                    w = pt2.x - pt1.x;
+
+                    y = pt1.y;
+                    h = pt2.y - pt1.y;
+
+
+                    if (w < 0) {
+                        x += w;
+                        w = -w;
+                    }
+
+                    if (h < 0) {
+                        y += h;
+                        h = -h;
+                    }
+                    _this.sel_region = {
+                        x, y, w, h
+                    }
+                }
+            }
+            else//draw
+            {
+                let camMag = canvas_obj.camera.GetCameraScale();
+                if (Local_IMCM !== undefined) {
+                    g.ctx.save();
+                    let scale = Local_IMCM.image_info.scale;
+                    g.ctx.scale(scale, scale);
+                    g.ctx.translate(-0.5, -0.5);
+                    g.ctx.drawImage(_this.imgCanvas, 0, 0);
+                    g.ctx.restore();
+                }
+                // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
+
+
+                let ctx = g.ctx;
+
+
+                if (canvas_obj.regionSelect !== undefined && _this.sel_region !== undefined) {
+                    ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+
+                    drawRegion(g, canvas_obj, _this.sel_region, canvas_obj.rUtil.getIndicationLineSize());
+
+                }
+
+
             }
 
             if (renderHook) {
