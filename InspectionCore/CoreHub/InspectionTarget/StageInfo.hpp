@@ -164,6 +164,24 @@ class StageInfo_Category:public StageInfo
 };
 
 
+class StageInfo_Value:public StageInfo
+{
+  public:
+  static std::string stypeName(){return "Value";}
+  virtual std::string typeName(){return this->stypeName();}
+  int value;
+
+  virtual cJSON* genJsonRep()
+  {
+    cJSON* rootRep=StageInfo::genJsonRep();
+
+    cJSON_AddNumberToObject(rootRep,"report",value);
+    return rootRep;
+  }
+};
+
+
+
 
 #define STAGEINFO_CAT_SCS_PT_OVER_SIZE (-700)
 #define STAGEINFO_CAT_SCS_TOTAL_PT_OVER_SIZE (-710)

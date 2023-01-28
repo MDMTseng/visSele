@@ -70,16 +70,6 @@ class InspectionTarget_TEST_IT :public InspectionTarget
   {
   }
 
-  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
-  {
-    for(auto tag : sinfo->trigger_tags )
-    {
-      if( matchTriggerTag(tag))
-        return true;
-    }
-    return false;
-  }
-
   virtual cJSON* genITIOInfo()
   {
 
@@ -147,23 +137,6 @@ public:
   }
 
   static std::string TYPE(){ return "ColorRegionDetection"; }
-  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
-  {
-    // if(sinfo->typeName())
-
-
-
-    for(auto tag : sinfo->trigger_tags )
-    {
-      if(tag=="_STREAM_")
-      {
-        return false;
-      }
-      if( matchTriggerTag(tag))
-        return true;
-    }
-    return false;
-  }
 
   std::future<int> futureInputStagePool()
   {
@@ -552,56 +525,31 @@ public:
 };
 
 
-class InspectionTarget_DataTransfer :public InspectionTarget
+class InspectionTarget_DataThreadedProcess :public InspectionTarget
 {
+  protected:
   TSQueue<std::shared_ptr<StageInfo>> datTransferQueue;
   std::thread runThread;
   int realTimeDropFlag;
   public:
   
   static std::string TYPE(){ return "DataTransfer"; }
-  InspectionTarget_DataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):InspectionTarget(id,def,belongMan,local_env_path),datTransferQueue(30),runThread(&InspectionTarget_DataTransfer::thread_run,this)
+  InspectionTarget_DataThreadedProcess(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
+    InspectionTarget(id,def,belongMan,local_env_path),
+    datTransferQueue(10),
+    runThread(&InspectionTarget_DataThreadedProcess::thread_run,this)
   {
     realTimeDropFlag=-1;
   }
-  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
-  {
-    for(auto tag : sinfo->trigger_tags )
-    {
-      if( matchTriggerTag(tag))
-        return true;
-    }
-    return false;
-  }
-
 
   std::future<int> futureInputStagePool()
   {
-    return std::async(launch::async,&InspectionTarget_DataTransfer::processInputStagePool,this);
+    return std::async(launch::async,&InspectionTarget_DataThreadedProcess::processInputStagePool,this);
   }
 
 
   
 
-  virtual cJSON* genITIOInfo()
-  {
-
-    cJSON* arr= cJSON_CreateArray();
-
-    {
-      cJSON* opt= cJSON_CreateObject();
-      cJSON_AddItemToArray(arr,opt);
-
-      {
-        cJSON* sarr= cJSON_CreateArray();
-        
-        cJSON_AddItemToObject(opt, "i",sarr );
-        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo::stypeName().c_str() ));
-      }
-    }
-
-    return arr;
-  }
 
   int processInputPool()
   {
@@ -646,8 +594,8 @@ class InspectionTarget_DataTransfer :public InspectionTarget
     return poolSize;//run all
 
   }
-  void thread_run();
-  ~InspectionTarget_DataTransfer()
+  virtual void thread_run()=0;
+  ~InspectionTarget_DataThreadedProcess()
   {
     datTransferQueue.termination_trigger();
     runThread.join();
@@ -679,16 +627,6 @@ class InspectionTarget_StageInfoCollect_Base :public InspectionTarget
     InspectionTarget(id,def,belongMan,local_env_path)
   {
   }
-  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
-  {
-    for(auto tag : sinfo->trigger_tags )
-    {
-      if( matchTriggerTag(tag))
-        return true;
-    }
-    return false;
-  }
-
 
   std::future<int> futureInputStagePool()
   {
@@ -721,54 +659,54 @@ class InspectionTarget_StageInfoCollect_Base :public InspectionTarget
   int processInputPool()
   {
     int poolSize=input_pool.size();
-    for(int i=0;i<poolSize;i++)
-    {
-      std::shared_ptr<StageInfo> curInput=input_pool[i];
+    // for(int i=0;i<poolSize;i++)
+    // {
+    //   std::shared_ptr<StageInfo> curInput=input_pool[i];
       
-      int id=curInput->trigger_id;
+    //   int id=curInput->trigger_id;
 
-      if (id_info_grup.find(id) == id_info_grup.end()) {
-        //no existing record
-        struct infoGroupinfo igi;
-        igi.tagList=trigger_tags;
-        igi.trigger_id=id;
-        id_info_grup.insert ( std::pair<int, struct infoGroupinfo >(id,igi) );
-      }
-      auto &container=id_info_grup[id];
+    //   if (id_info_grup.find(id) == id_info_grup.end()) {
+    //     //no existing record
+    //     struct infoGroupinfo igi;
+    //     igi.tagList=trigger_tags;
+    //     igi.trigger_id=id;
+    //     id_info_grup.insert ( std::pair<int, struct infoGroupinfo >(id,igi) );
+    //   }
+    //   auto &container=id_info_grup[id];
 
-      container.group.push_back(curInput);
+    //   container.group.push_back(curInput);
 
-      bool isMatched=false;
-      for(int j=0;j<container.tagList.size();j++)
-      {
-        string tagRem=container.tagList[j];
-        for(string inTag:curInput->trigger_tags)
-        {
-          if(inTag==tagRem)
-          {
-            container.tagList.erase(container.tagList.begin()+j);
-            isMatched=true;
-            break;
-          }
-        }
-        if(isMatched)break;
-      }
+    //   bool isMatched=false;
+    //   for(int j=0;j<container.tagList.size();j++)
+    //   {
+    //     string tagRem=container.tagList[j];
+    //     for(string inTag:curInput->trigger_tags)
+    //     {
+    //       if(inTag==tagRem)
+    //       {
+    //         container.tagList.erase(container.tagList.begin()+j);
+    //         isMatched=true;
+    //         break;
+    //       }
+    //     }
+    //     if(isMatched)break;
+    //   }
 
       
-      LOGI("Group:%d add input from:%s size:%d",id,curInput->source_id.c_str(),container.group.size() );
-      LOGI("tagList.size:%d",container.tagList.size());
+    //   LOGI("Group:%d add input from:%s size:%d",id,curInput->source_id.c_str(),container.group.size() );
+    //   LOGI("tagList.size:%d",container.tagList.size());
       
 
-      if(container.tagList.size()==0)
-      {
-        processGroup(id,container.group);
+    //   if(container.tagList.size()==0)
+    //   {
+    //     processGroup(id,container.group);
 
-        id_info_grup.erase(id);
-      }
-      input_pool[i]=NULL;
-      // reutrnStageInfo(curInput);//remember to recycle the StageInfo
-    }
-    input_pool.clear();
+    //     id_info_grup.erase(id);
+    //   }
+    //   input_pool[i]=NULL;
+    //   // reutrnStageInfo(curInput);//remember to recycle the StageInfo
+    // }
+    // input_pool.clear();
 
     return poolSize;//run all
 

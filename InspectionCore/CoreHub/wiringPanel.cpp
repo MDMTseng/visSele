@@ -2,7 +2,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
-
+#include<sys/time.h>
 //#include "MLNN.hpp"
 #include "cJSON.h"
 #include "logctrl.h"
@@ -91,8 +91,8 @@ class InspectionTargetManager_m:public InspectionTargetManager
     lastImgSendTime=cur_ms;
 
 
-    LOGE("============DO INSP>> waterLvL: insp:%d/%d  trigInfoMatchingSize:%d  cur_Interval:%" PRIu64 "<<<cur_ms:%" PRIu64 "",
-        inspQueue.size(), inspQueue.capacity(),triggerInfoMatchingBuffer.size(),cur_Interval,cur_ms);
+    LOGE("============DO INSP>> waterLvL: insp:%d/%d  trigInfoMatchingSize:%d  cur_Interval:%" PRIu64 "<<<cur_ms:%" PRIu64 "   from:%s",
+        inspQueue.size(), inspQueue.capacity(),triggerInfoMatchingBuffer.size(),cur_Interval,cur_ms,info.camera->getConnectionData().id.c_str());
 
     // LOGE("============DO INSP>> waterLvL: insp:%d/%d dview:%d/%d  snap:%d/%d   poolSize:%d trigInfoMatchingSize:%d",
     //     inspQueue.size(), inspQueue.capacity(),
@@ -669,106 +669,273 @@ void InspectionTarget_GroupResultSave::thread_run()
 }
 
 
-void InspectionTarget_DataTransfer::thread_run()
+
+class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
 {
-  
-  acvImage cacheImage;
-  while(true)
+  public:
+
+  static std::string TYPE(){ return "DataTransfer"; }
+  InspectionTarget_DataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+    :InspectionTarget_DataThreadedProcess(id,def,belongMan,local_env_path)
   {
-    std::shared_ptr<StageInfo> curInput;
-    LOGI("<<<<<size():%d",datTransferQueue.size());
-    // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
-          
-    try{
-      if(datTransferQueue.pop_blocking(curInput)==false)
+    datTransferQueue.resize(30);
+  }
+
+
+  virtual cJSON* genITIOInfo()
+  {
+
+    cJSON* arr= cJSON_CreateArray();
+
+    {
+      cJSON* opt= cJSON_CreateObject();
+      cJSON_AddItemToArray(arr,opt);
+
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        
+        cJSON_AddItemToObject(opt, "i",sarr );
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo::stypeName().c_str() ));
+      }
+    }
+
+    return arr;
+  }
+
+
+  void thread_run()
+  {
+    
+    acvImage cacheImage;
+    while(true)
+    {
+      std::shared_ptr<StageInfo> curInput;
+      LOGI("<<<<<size():%d",datTransferQueue.size());
+      // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
+            
+      try{
+        if(datTransferQueue.pop_blocking(curInput)==false)
+        {
+          break;
+        }
+      }
+      catch(TS_Termination_Exception e)
       {
         break;
       }
-    }
-    catch(TS_Termination_Exception e)
-    {
-      break;
-    }
-
-    int DBG_USECOUNT=curInput.use_count();
-    LOGI("<<<<<size():%d usecount:%d",datTransferQueue.size(),DBG_USECOUNT);
-
-    LOGI("DataTransfer thread pop data: name:%s ",curInput->source_id.c_str());
-    LOGI("DataTransfer thread pop data: type:%s ",curInput->typeName().c_str());
-
-    // for ( const auto &kyim : curInput->imgSets ) {
-    //     LOGI("[%s]:%p",kyim.first.c_str(),kyim.second.get());
-    // }
-
-    LOGI("curInput->jInfo:%p ",curInput->jInfo);
-    int imgCHID=curInput->img_prop.StreamInfo.channel_id;
-    int downSample=curInput->img_prop.StreamInfo.downsample;
-    if(downSample<1)
-    {
-      downSample=10;
-    }
-
-    int downSampleAdj=datTransferQueue.size();
-    downSample+=downSampleAdj;
-    // curInput->imgSets./
-
-    LOGI("imgCHID:%d ",imgCHID);
-
-    {
-      // CameraLayer::BasicCameraInfo data=headImgPipe->img_prop.StreamInfo.camera->getConnectionData();
-      // cJSON* caminfo=CameraManager::cameraInfo2Json(data);
 
 
-      cJSON* camBrifInfo=cJSON_CreateObject();
-      // cJSON_AddStringToObject(camBrifInfo, "trigger_tag", curInput->trigger_tag.c_str());
-      cJSON_AddNumberToObject(camBrifInfo, "trigger_id", curInput->trigger_id);
-      // cJSON_AddStringToObject(camBrifInfo, "camera_id",curInput->camera_id.c_str());
+      int DBG_USECOUNT=curInput.use_count();
+      LOGI("<<<<<size():%d usecount:%d",datTransferQueue.size(),DBG_USECOUNT);
 
-      bpg_pi.fromUpperLayer_DATA("CM",imgCHID,camBrifInfo);
-      cJSON_Delete(camBrifInfo);
+      LOGI("DataTransfer thread pop data: name:%s ",curInput->source_id.c_str());
+      LOGI("DataTransfer thread pop data: type:%s ",curInput->typeName().c_str());
 
+      // for ( const auto &kyim : curInput->imgSets ) {
+      //     LOGI("[%s]:%p",kyim.first.c_str(),kyim.second.get());
+      // }
 
-      if(curInput->jInfo)
-        bpg_pi.fromUpperLayer_DATA("RP",imgCHID,curInput->jInfo);
-
-
-      std::shared_ptr<acvImage> im2send=curInput->img_show;
-      if(im2send!=NULL)
+      LOGI("curInput->jInfo:%p ",curInput->jInfo);
+      int imgCHID=curInput->img_prop.StreamInfo.channel_id;
+      int downSample=curInput->img_prop.StreamInfo.downsample;
+      if(downSample<1)
       {
-        BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)downSample};
-        iminfo.fullHeight = im2send->GetHeight();
-        iminfo.fullWidth = im2send->GetWidth();
-        if(iminfo.scale>1)
+        downSample=1;
+      }
+
+      int downSampleAdj=datTransferQueue.size();
+      downSample+=downSampleAdj;
+      // curInput->imgSets./
+
+      
+
+      LOGI("imgCHID:%d ",imgCHID);
+
+      {
+        // CameraLayer::BasicCameraInfo data=headImgPipe->img_prop.StreamInfo.camera->getConnectionData();
+        // cJSON* caminfo=CameraManager::cameraInfo2Json(data);
+
+
+        cJSON* camBrifInfo=cJSON_CreateObject();
+        // cJSON_AddStringToObject(camBrifInfo, "trigger_tag", curInput->trigger_tag.c_str());
+        cJSON_AddNumberToObject(camBrifInfo, "trigger_id", curInput->trigger_id);
+        // cJSON_AddStringToObject(camBrifInfo, "camera_id",curInput->camera_id.c_str());
+
+        bpg_pi.fromUpperLayer_DATA("CM",imgCHID,camBrifInfo);
+        cJSON_Delete(camBrifInfo);
+
+
+        if(curInput->jInfo)
+          bpg_pi.fromUpperLayer_DATA("RP",imgCHID,curInput->jInfo);
+
+
+        std::shared_ptr<acvImage> im2send=curInput->img_show;
+        if(im2send!=NULL)
         {
-          //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-          //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-          ImageDownSampling(cacheImage, *im2send, iminfo.scale, NULL);
+          float pscale=sqrt(im2send->GetHeight()*im2send->GetWidth()/500000.0);
+          downSample=pscale<=0?1:(int)pscale;
+          BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)downSample};
+          iminfo.fullHeight = im2send->GetHeight();
+          iminfo.fullWidth = im2send->GetWidth();
+          if(iminfo.scale>1)
+          {
+            //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
+            //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+            ImageDownSampling(cacheImage, *im2send, iminfo.scale, NULL);
+          }
+          else
+          {
+            iminfo.scale=1;
+            iminfo.img=im2send.get();
+          }
+          bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
+
         }
-        else
-        {
-          iminfo.scale=1;
-          iminfo.img=im2send.get();
-        }
-        bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
+        
+        bpg_pi.fromUpperLayer_SS(imgCHID,true);
+        
+        if(realTimeDropFlag>0)
+          realTimeDropFlag--;
+
 
       }
+    
       
-      bpg_pi.fromUpperLayer_SS(imgCHID,true);
-      
-      if(realTimeDropFlag>0)
-        realTimeDropFlag--;
 
 
     }
-  
-    
-
-
   }
-}
 
 
 
+
+};
+
+
+
+
+
+class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedProcess
+{
+  public:
+  std::string mark="SIIS";
+  static std::string TYPE(){ return "StageInfoImageSave"; }
+  InspectionTarget_StageInfoImageSave(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+    :InspectionTarget_DataThreadedProcess(id,def,belongMan,local_env_path),mark("SIIS")
+  {
+    datTransferQueue.resize(9999);
+  }
+
+
+  virtual cJSON* genITIOInfo()
+  {
+
+    cJSON* arr= cJSON_CreateArray();
+
+    {
+      cJSON* opt= cJSON_CreateObject();
+      cJSON_AddItemToArray(arr,opt);
+
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        
+        cJSON_AddItemToObject(opt, "i",sarr );
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Image::stypeName().c_str() ));
+      }
+    }
+
+    return arr;
+  }
+
+  long long timeInMilliseconds(void) {
+      struct timeval tv;
+
+      gettimeofday(&tv,NULL);
+      return (((long long)tv.tv_sec)*1000)+(tv.tv_usec/1000);
+  }
+  bool exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
+  {
+    std::string type=JFetch_STRING_ex(info,"type");
+
+    return InspectionTarget_DataThreadedProcess::exchangeCMD(info,info_ID,act);
+  }
+  int saveCount=0;
+  void thread_run()
+  {
+    
+    // acvImage cacheImage;
+    while(true)
+    {
+      std::shared_ptr<StageInfo> curInput;
+      // LOGI("<<<<<size():%d",datTransferQueue.size());
+      // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
+            
+      try{
+        LOGI("TryReadNew");
+        if(datTransferQueue.pop_blocking(curInput)==false)
+        {
+          LOGI("TryReadTailed");
+          break;
+        }
+      }
+      catch(TS_Termination_Exception e)
+      {
+        LOGI("TS_Termination_Exception");
+        break;
+      }
+
+
+      auto d_sinfo = dynamic_cast<StageInfo_Image *>(curInput.get());
+      if(d_sinfo==NULL) {
+        LOGE("sinfo type is StageInfo_Image only, does not match.....");
+        continue;
+      }
+      std::vector<std::string> &tags=d_sinfo->trigger_tags;
+
+      for(int i=0;i<tags.size();i++)
+      {
+        if(tags[i]==mark)
+        {//this is from saved image here
+          return;
+        }
+      }
+
+
+
+      //[ms][trigger id][tags]
+      //t:3409329 tid:451 tags:test1,fff,wfgh
+      
+      int trigID=d_sinfo->trigger_id;
+
+      std::string filename="t="+to_string(timeInMilliseconds())+" tid="+to_string(trigID)+" tags="+mark;
+
+      for(int i=0;i<tags.size();i++)
+      {
+        filename+=","+tags[i];
+      }
+      filename+=".png";
+
+      LOGI("SAVE image filename:%s ",filename.c_str());
+      LOGI("local_env_path:%s ",local_env_path.c_str());
+
+
+      auto srcImg=d_sinfo->img;
+
+      Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+        
+      imwrite(local_env_path+"/"+filename, CV_srcImg);  
+      saveCount++;
+      LOGI("SAVE image DONE c:%d",saveCount);
+    }
+
+
+    LOGI("InspectionTarget_StageInfoImageSave ended.....");
+  }
+
+
+
+
+};
 
 
 int _argc;
@@ -1477,6 +1644,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           else if(type==InspectionTarget_DataTransfer::TYPE())
           {
             inspTar = new InspectionTarget_DataTransfer(id,defInfo,&inspTarMan,env_path);
+          }
+          else if(type==InspectionTarget_StageInfoImageSave::TYPE())
+          {
+            inspTar = new InspectionTarget_StageInfoImageSave(id,defInfo,&inspTarMan,env_path);
           }
           
           else if(type==InspectionTarget_ReduceCategorize::TYPE())
