@@ -8,7 +8,7 @@
 
 class Data_JsonRaw_Layer:public Data_Layer_IF
 {
-  uint8_t dataBuff[500];
+  uint8_t dataBuff[2048];
   int buffIdx=0;
   int JsonRawStatus=0;//-2 asking rawSupport, 0 means json only, 1 means support
   int packetID;
