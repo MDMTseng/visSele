@@ -11,13 +11,13 @@ class json_seg_parser
     enum JSonState
     {
       NUL,
-      OBJ_KEY,
-      OBJ_SEP,
+      OBJ_KEY=1,
+      OBJ_SEP=2,
       OBJ_VAL=3,
-      OBJ_END,
-      ARR_END,
-      STR,
-      VAL,
+      OBJ_END=4,
+      ARR_END=5,
+      STR=6,
+      VAL=7,
       DAT=8,
 
       ERR
