@@ -26,7 +26,7 @@ import { VEC2D, SHAPE_ARC, SHAPE_LINE_seg, PtRotate2d } from './UTIL/MathTools';
 import { HookCanvasComponent, DrawHook_CanvasComponent, type_DrawHook_g, type_DrawHook } from './CanvasComp/CanvasComponent';
 import { CORE_ID, CNC_PERIPHERAL_ID, BPG_WS, CNC_Perif, InspCamera_API } from './EXT_API';
 
-import { Row, Col, Input, Tag, Modal, message } from 'antd';
+import { Row, Col, Input, Tag, Modal, message,Space } from 'antd';
 
 
 import { type_CameraInfo, type_IMCM } from './AppTypes';
@@ -824,33 +824,8 @@ export function SingleTargetVIEWUI_ColorRegionDetection({ display, stream_id, fs
                     if (canvas_obj.regionSelect.pt1 === undefined || canvas_obj.regionSelect.pt2 === undefined) {
                         return;
                     }
-
-                    let pt1 = canvas_obj.regionSelect.pt1;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
-                    let pt2 = canvas_obj.regionSelect.pt2;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
-
-
-                    // console.log(canvas_obj.regionSelect);
-                    let x, y, w, h;
-
-                    x = pt1.x;
-                    w = pt2.x - pt1.x;
-
-                    y = pt1.y;
-                    h = pt2.y - pt1.y;
-
-
-                    if (w < 0) {
-                        x += w;
-                        w = -w;
-                    }
-
-                    if (h < 0) {
-                        y += h;
-                        h = -h;
-                    }
-                    _this.sel_region = {
-                        x, y, w, h
-                    }
+                    _this.sel_region = PtsToXYWH(canvas_obj.regionSelect.pt1, canvas_obj.regionSelect.pt2);
+                    
                 }
             }
             else//draw
@@ -1710,7 +1685,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                     setLocal_IMCM(IMCM)
                     // console.log(IMCM)
-                    console.log(def.id)
+                   //console.log(def.id)
 
                 },
                 reject: (pkts) => {
@@ -2428,30 +2403,10 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     let pt1 = canvas_obj.regionSelect.pt1;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
                     let pt2 = canvas_obj.regionSelect.pt2;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
 
-
-                    // console.log(canvas_obj.regionSelect);
-                    let x, y, w, h;
-
-                    x = pt1.x;
-                    w = pt2.x - pt1.x;
-
-                    y = pt1.y;
-                    h = pt2.y - pt1.y;
-
-
-                    if (w < 0) {
-                        x += w;
-                        w = -w;
-                    }
-
-                    if (h < 0) {
-                        y += h;
-                        h = -h;
-                    }
-                    _this.sel_region = {
-                        x, y, w, h,pt1,pt2
-                    }
-
+                    _this.sel_region = 
+                    {...PtsToXYWH(canvas_obj.regionSelect.pt1, canvas_obj.regionSelect.pt2),
+                        pt1,pt2
+                    };
 
                 }
 
@@ -3135,32 +3090,7 @@ export function SingleTargetVIEWUI_Orientation_ColorRegionOval(props: CompParam_
                         return;
                     }
 
-                    let pt1 = canvas_obj.regionSelect.pt1;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
-                    let pt2 = canvas_obj.regionSelect.pt2;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
-
-
-                    // console.log(canvas_obj.regionSelect);
-                    let x, y, w, h;
-
-                    x = pt1.x;
-                    w = pt2.x - pt1.x;
-
-                    y = pt1.y;
-                    h = pt2.y - pt1.y;
-
-
-                    if (w < 0) {
-                        x += w;
-                        w = -w;
-                    }
-
-                    if (h < 0) {
-                        y += h;
-                        h = -h;
-                    }
-                    _this.sel_region = {
-                        x, y, w, h
-                    }
+                    _this.sel_region = PtsToXYWH(canvas_obj.regionSelect.pt1, canvas_obj.regionSelect.pt2)
                 }
             }
             else//draw
@@ -3254,16 +3184,358 @@ export function SingleTargetVIEWUI_Orientation_ColorRegionOval(props: CompParam_
 
 }
 
+const SCS_REF_IMG_NAME = "FeatureRefImage.png"
 
-
-function SurfaceCheckSimple_EDIT_UI({ def, onDefChange, canvas_obj }:
+function SurfaceCheckSimple_RefImg_EDIT_UI({BPG_API,fsPath, def, onDefChange,onFinish, canvas_obj,canvas_hook_update }:
     {
+        BPG_API:BPG_WS,
+        fsPath:string,
         def: any,
         onDefChange: (...param: any) => void,
-        canvas_obj: DrawHook_CanvasComponent
+        onFinish:(...param: any) => void,
+        canvas_obj: DrawHook_CanvasComponent,
+        canvas_hook_update:(cb:((ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent)=>any)|undefined)=>any
+    }) 
+    {
+        const _this = useRef<any>({
+            featureImgCanvas: document.createElement('canvas'),
+            featureInfoExt:{}
+        }).current;
+        const [delConfirmCounter, setDelConfirmCounter] = useState(0);
+        const [updateC, setUpdateC] = useState(0);
+        const [extractedRGB, setExtractedRGB] = useState({R:NaN,G:NaN,B:NaN});
+
+
+
+        async function updateRefInfo(def:any,doUpdateImage:boolean=false)
+        {
+
+            let pkts = await BPG_API.InspTargetExchange(def.id, {
+                type: "extract_feature",
+                image_transfer_downsampling:doUpdateImage?1:-1,
+                image_path: fsPath + "/" + SCS_REF_IMG_NAME,
+                colorExtractInfo:_this.def_Filled.majorColorBalancing
+            }) as any[];
+
+            let newFeatureInfoExt: any = {};
+
+
+            let IM = pkts.find((p: any) => p.type == "IM");
+            if (IM !== undefined) {
+                _this.featureImgCanvas.width = IM.image_info.width;
+                _this.featureImgCanvas.height = IM.image_info.height;
+
+                let ctx2nd = _this.featureImgCanvas.getContext('2d');
+                ctx2nd.putImageData(IM.image_info.image, 0, 0);
+                newFeatureInfoExt.IM = IM;
+
+            }
+
+            newFeatureInfoExt.RP=undefined;
+            let RP = pkts.find((p: any) => p.type == "RP");
+            if (RP !== undefined) {
+                newFeatureInfoExt.RP = RP;
+
+                // onDefChange(_this.def_Filled);
+                setExtractedRGB(RP.data.report);
+
+            }
+            console.log(newFeatureInfoExt);
+
+
+            _this.featureInfoExt={..._this.featureInfoExt,...newFeatureInfoExt}
+
+
+            setUpdateC(updateC+1)
+        }
+        // _this.extractedRGB=extractedRGB;
+        _this.def_Filled={
+            
+            blackRegions:[],
+            ...def
+        }
+
+        _this.def_Filled.majorColorBalancing={
+            enable:false,
+            refRegions:[],
+            refRGB:{R:NaN,G:NaN,B:NaN},
+            ...def.majorColorBalancing
+
+        };
+
+
+
+
+        useEffect(() => {
+
+
+            // updateRefInfo(_this.def_Filled,true);
+
+            canvas_hook_update((ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent)=>{
+                if(ctrl_or_draw==true)
+                {
+                    return;
+                }
+    
+                let ctx = g.ctx;
+    
+                
+    
+    
+                if (_this.featureInfoExt.IM !== undefined) {
+                    g.ctx.save();
+                    let scale = _this.featureInfoExt.IM.image_info.scale;
+                    g.ctx.scale(scale, scale);
+                    g.ctx.translate(-0.5, -0.5);
+                    g.ctx.drawImage(_this.featureImgCanvas, 0, 0);
+                    g.ctx.restore();
+                }
+    
+
+
+                if (canvas_obj.regionSelect !== undefined &&
+                    canvas_obj.regionSelect.pt1 !== undefined &&
+                    canvas_obj.regionSelect.pt2 !== undefined )
+                {
+                    ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+                    
+                    let roi_region = PtsToXYWH(canvas_obj.regionSelect.pt1, canvas_obj.regionSelect.pt2);
+                    drawRegion(g, canvas_obj, roi_region, canvas_obj.rUtil.getIndicationLineSize());
+
+                }
+                else
+                {
+                    _this.def_Filled.majorColorBalancing.refRegions.forEach((region:{x:number,y:number,w:number,h:number})=>{
+                        ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
+                        drawRegion(g, canvas_obj,region, canvas_obj.rUtil.getIndicationLineSize());
+                    })
+
+
+                    _this.def_Filled.blackRegions.forEach((region:{x:number,y:number,w:number,h:number})=>{
+                        ctx.strokeStyle = "rgba(50, 10, 10,0.8)";
+                        drawRegion(g, canvas_obj,region, canvas_obj.rUtil.getIndicationLineSize());
+                    })
+                }
+    
+                
+            })
+    
+            
+            return (() => {
+                canvas_hook_update(undefined)
+            });
+    
+        }, []);
+
+        useEffect(() => {
+            updateRefInfo(_this.def_Filled,
+                (_this.featureInfoExt.IM===undefined)?true:false);
+        }, [def]);
+        console.log(_this.def_Filled);
+        return <>
+
+
+            <Button danger onClick={() => {
+                _this.def_Filled.majorColorBalancing.refRGB=extractedRGB;
+                onDefChange(_this.def_Filled);
+                onFinish();
+                
+            }}>{"<"}</Button>
+
+
+
+            <Switch checkedChildren="使用" unCheckedChildren="不使用" checked={_this.def_Filled.majorColorBalancing.enable == true} onChange={(check) => {
+
+                
+                _this.def_Filled.majorColorBalancing.enable=check;
+                onDefChange(_this.def_Filled);
+
+
+            }} />
+
+
+            區域色彩校正
+
+
+            
+            <br/>
+
+            參考色彩區域:
+            {
+                _this.def_Filled.majorColorBalancing.refRegions.map((regi: any, idx: number) =>
+
+
+
+                    <Popconfirm
+                        key={"regi_del_" + idx + "..."+updateC}
+                        title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
+                        onConfirm={() => { }}
+                        onCancel={() => { }}
+                        okButtonProps={{
+                            danger: true, onClick: () => {
+                                if (delConfirmCounter != 0) {
+                                    setDelConfirmCounter(delConfirmCounter - 1);
+                                }
+                                else {
+                                    let new_ref_regions = [..._this.def_Filled.majorColorBalancing.refRegions];
+
+                                    new_ref_regions.splice(idx, 1);
+
+
+                                    _this.def_Filled.majorColorBalancing.refRegions=new_ref_regions;
+
+                                    // setFeatureInfo({ ...featureInfo, mask_regions })
+
+                                    onDefChange(_this.def_Filled);
+
+                                }
+                            }
+                        }}
+                        okText={"Yes:" + delConfirmCounter}
+                        cancelText="No"
+                    >
+                        <Button danger type="primary" onClick={() => {
+                            setDelConfirmCounter(3);
+                        }}>{idx}</Button>
+                    </Popconfirm>
+
+
+
+                )
+            }
+
+            
+
+
+
+            <Button danger type="primary" onClick={() => {
+                
+                canvas_obj.UserRegionSelect((info, state) => {
+                    if (state == 2) {
+                        console.log(info);
+
+                        let roi_region = PtsToXYWH(info.pt1, info.pt2);
+                        console.log(roi_region)
+
+                        _this.def_Filled.majorColorBalancing.refRegions=
+                        [..._this.def_Filled.majorColorBalancing.refRegions,roi_region];
+
+                        // setFeatureInfo({ ...featureInfo, mask_regions })
+
+                        onDefChange(_this.def_Filled);
+                        canvas_obj.UserRegionSelect(undefined)
+
+                    }
+                })
+
+
+
+            }}>+</Button>
+            <br/>
+            {JSON.stringify(extractedRGB)}
+
+            <br/>
+
+            忽略區域:
+
+            {
+                _this.def_Filled.blackRegions.map((regi: any, idx: number) =>
+
+
+
+                    <Popconfirm
+                        key={"regi_del_" + idx + "..."+updateC}
+                        title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
+                        onConfirm={() => { }}
+                        onCancel={() => { }}
+                        okButtonProps={{
+                            danger: true, onClick: () => {
+                                if (delConfirmCounter != 0) {
+                                    setDelConfirmCounter(delConfirmCounter - 1);
+                                }
+                                else {
+                                    let new_ref_regions = [..._this.def_Filled.blackRegions];
+
+                                    new_ref_regions.splice(idx, 1);
+
+
+                                    _this.def_Filled.blackRegions=new_ref_regions;
+
+                                    // setFeatureInfo({ ...featureInfo, mask_regions })
+
+                                    onDefChange(_this.def_Filled);
+
+                                }
+                            }
+                        }}
+                        okText={"Yes:" + delConfirmCounter}
+                        cancelText="No"
+                    >
+                        <Button danger type="primary" onClick={() => {
+                            setDelConfirmCounter(3);
+                        }}>{idx}</Button>
+                    </Popconfirm>
+
+
+
+                )
+            }
+
+            
+
+
+
+            <Button danger type="primary" onClick={() => {
+                
+                canvas_obj.UserRegionSelect((info, state) => {
+                    if (state == 2) {
+                        console.log(info);
+
+                        let roi_region = PtsToXYWH(info.pt1, info.pt2);
+                        console.log(roi_region)
+
+                        _this.def_Filled.blackRegions=
+                        [..._this.def_Filled.blackRegions,roi_region];
+
+                        // setFeatureInfo({ ...featureInfo, mask_regions })
+
+                        onDefChange(_this.def_Filled);
+                        canvas_obj.UserRegionSelect(undefined)
+
+                    }
+                })
+
+
+
+            }}>+</Button>
+        </>
+
+
+
+
+
+    }
+
+
+
+
+
+function SurfaceCheckSimple_EDIT_UI(param:
+    {
+        BPG_API:BPG_WS,
+        fsPath:string,
+        def: any,
+        onDefChange: (...param: any) => void,
+        onFinish:(...param: any) => void,
+        canvas_obj: DrawHook_CanvasComponent,
+        canvas_hook_update:(cb:((ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent)=>any)|undefined)=>any
     }) {
+    
+    let {BPG_API,fsPath, def, onDefChange,onFinish, canvas_obj,canvas_hook_update }=param;
 
     const [delConfirmCounter, setDelConfirmCounter] = useState(0);
+    const [updateC, setUpdateC] = useState(0);
+    const [UIStack, setUIStack] = useState<{type:string,exitcb:(info:any)=>any,updatecb:(info:any)=>any}[]>([]);
     let def_Filled = {
 
         W: 500,
@@ -3280,57 +3552,225 @@ function SurfaceCheckSimple_EDIT_UI({ def, onDefChange, canvas_obj }:
         colorThres: 10,
         resultOverlayAlpha: 0,
         img_order_reverse: false,
+        colorBalancingDiffThres:30,
 
         ...def
     }
     const _this = useRef<any>({}).current;
+
+    let topUI=UIStack[UIStack.length-1];
+
+    let UI_POP=(retInfo:any) => {
+        topUI.exitcb(retInfo);
+        let newUIStack=[...UIStack]
+        newUIStack.pop();
+        setUIStack(newUIStack)
+    };
+    
+
+    if(UIStack.length>0)
+    {
+
+        switch(topUI.type)
+        {
+            case "區域色彩校正":
+                return <>
+                    <SurfaceCheckSimple_RefImg_EDIT_UI 
+                        {...param}
+
+                        // onDefChange={(newDef)=>{
+                        //     console.log(newDef);
+                        // }}
+                        onFinish={()=>{
+                            canvas_hook_update(undefined)
+                            UI_POP("AAA RET");
+                        }}
+                        
+
+                    />
+                </>
+            
+
+            case "擷取參數設定":
+                return <>
+
+                    
+                <Button danger onClick={() => {
+                    canvas_hook_update(undefined)
+                    UI_POP(undefined);
+                }}>{"<"}</Button>
+
+                        XOffset:
+                <InputNumber value={def_Filled.X_offset}
+                    onChange={(num) => {
+                        let newDef = { ...def_Filled, X_offset: num }
+                        onDefChange(newDef, true);
+                    }} />
+                {"  "}YOffset:
+                <InputNumber value={def_Filled.Y_offset}
+                    onChange={(num) => {
+                        let newDef = { ...def_Filled, Y_offset: num }
+                        onDefChange(newDef, true);
+                    }} />
+
+                <br />W:
+                <InputNumber min={10} max={2000} value={def_Filled.W}
+                    onChange={(num) => {
+                        let newDef = { ...def_Filled, W: num }
+                        onDefChange(newDef, true);
+                    }} />
+                {"  "}H:
+                <InputNumber min={10} max={2000} value={def_Filled.H}
+                    onChange={(num) => {
+                        let newDef = { ...def_Filled, H: num }
+                        onDefChange(newDef, true);
+                    }} />
+                <br />iW:
+                <InputNumber min={10} max={2000} value={def_Filled.inner_W}
+                    onChange={(num) => {
+                        let newDef = { ...def_Filled, inner_W: num }
+                        onDefChange(newDef, true);
+                    }} />
+                {"  "}iH:
+                <InputNumber min={10} max={2000} value={def_Filled.inner_H}
+                    onChange={(num) => {
+                        let newDef = { ...def_Filled, inner_H: num }
+                        onDefChange(newDef, true);
+                    }} />
+                <br />
+                {"  "}角度調整:
+                <InputNumber value={def_Filled.angle_offset}
+                    onChange={(num) => {
+                        let newDef = { ...def_Filled, angle_offset: num }
+                        onDefChange(newDef, true);
+                    }} />
+
+
+                圖序反轉:
+                <Switch checkedChildren="左至右" unCheckedChildren="右至左" checked={def_Filled.img_order_reverse == true} onChange={(check) => {
+                    onDefChange(ObjShellingAssign(def_Filled, ["img_order_reverse"], check));
+                }} />
+                </>
+            
+            
+        }
+
+
+        return <Button danger onClick={() => {
+            UI_POP(undefined);
+        }}>BACK</Button>;
+    }
+
+
+
+
     return <>
 
-        <br />XOffset:
-        <InputNumber value={def_Filled.X_offset}
-            onChange={(num) => {
-                let newDef = { ...def_Filled, X_offset: num }
-                onDefChange(newDef, true);
-            }} />
-        {"  "}YOffset:
-        <InputNumber value={def_Filled.Y_offset}
-            onChange={(num) => {
-                let newDef = { ...def_Filled, Y_offset: num }
-                onDefChange(newDef, true);
+        <Button key={"_" + -1} onClick={() => {
+            onFinish(def_Filled);
+        }}>{"<"}</Button>
+
+        <Button danger type="primary" onClick={() => {
+            setUIStack([...UIStack,{
+                type:"區域色彩校正",
+                exitcb:(info)=>{
+                    console.log(info);
+                },
+                updatecb:(info)=>{
+
+                }
+            }])
+        }}>區域色彩校正</Button>
+
+        <Popconfirm key={"SAVE feat ref image " + updateC}
+            title={`確定要儲存此圖為特徵參考圖？ 再按:${delConfirmCounter + 1}次`}
+            onConfirm={() => { }}
+            onCancel={() => { }}
+            okButtonProps={{
+                danger: true, onClick: () => {
+                    if (delConfirmCounter != 0) {
+                        setDelConfirmCounter(delConfirmCounter - 1);
+                    }
+                    else {
+                        (async () => {
+
+
+
+                            
+                            await BPG_API.InspTargetUpdate({...def_Filled,blur_radius:0,resultOverlayAlpha:0,majorColorBalancing:undefined});
+                            await BPG_API.InspTargetExchange(def_Filled.id, { type: "revisit_cache_stage_info" });
+                            let pkts = await BPG_API.InspTargetExchange(def_Filled.id, {
+                                type: "result_cache_image_save",
+                                folder_path: fsPath + "/",
+                                image_name: SCS_REF_IMG_NAME,
+                            }) as any[];
+                            // await BPG_API.InspTargetUpdate(def);
+                            onDefChange(def_Filled, true);
+                            console.log(pkts);
+                            console.log("NN1");
+
+                        })()
+
+                        setUpdateC(updateC + 1);
+                    }
+                }
+            }}
+            okText={"Yes:" + delConfirmCounter}
+            cancelText="No"
+            >
+            <Button danger type="primary" onClick={() => {
+                setDelConfirmCounter(5);
+            }}>存為特徵參考圖</Button>
+            </Popconfirm>
+
+
+
+        <Row>
+            <Col span={6}>
+                色彩校正差:{def_Filled.colorBalancingDiffThres}
+            </Col>
+            <Col span={16}>
+            <Slider defaultValue={def_Filled.colorBalancingDiffThres} step={0.1} max={255} onChange={(v) => {
+
+            _this.trigTO =
+                ID_throttle(_this.trigTO, () => {
+                    onDefChange(ObjShellingAssign(def_Filled, ["colorBalancingDiffThres"], v));
+                }, () => _this.trigTO = undefined, 200);
+
             }} />
 
-        <br />W:
-        <InputNumber min={10} max={2000} value={def_Filled.W}
-            onChange={(num) => {
-                let newDef = { ...def_Filled, W: num }
-                onDefChange(newDef, true);
-            }} />
-        {"  "}H:
-        <InputNumber min={10} max={2000} value={def_Filled.H}
-            onChange={(num) => {
-                let newDef = { ...def_Filled, H: num }
-                onDefChange(newDef, true);
-            }} />
-        <br />iW:
-        <InputNumber min={10} max={2000} value={def_Filled.inner_W}
-            onChange={(num) => {
-                let newDef = { ...def_Filled, inner_W: num }
-                onDefChange(newDef, true);
-            }} />
-        {"  "}iH:
-        <InputNumber min={10} max={2000} value={def_Filled.inner_H}
-            onChange={(num) => {
-                let newDef = { ...def_Filled, inner_H: num }
-                onDefChange(newDef, true);
-            }} />
+            </Col>
+        </Row>
+
+        <Button danger type="primary" onClick={() => {
+            setUIStack([...UIStack,{
+                type:"擷取參數設定",
+                exitcb:(info)=>{
+                    console.log(info);
+                },
+                updatecb:(info)=>{
+
+                }
+            }])
+        }}>擷取參數設定</Button>
         <br />
-        {"  "}角度調整:
-        <InputNumber value={def_Filled.angle_offset}
-            onChange={(num) => {
-                let newDef = { ...def_Filled, angle_offset: num }
-                onDefChange(newDef, true);
-            }} />
-        <br />
+        <Row>
+            <Col span={6}>
+                結果顯示:{def_Filled.resultOverlayAlpha*100}%
+            </Col>
+            <Col span={16}>
+            <Slider defaultValue={def_Filled.resultOverlayAlpha} min={0} max={1} step={0.1} onChange={(v) => {
+
+                _this.trigTO =
+                    ID_debounce(_this.trigTO, () => {
+                        onDefChange(ObjShellingAssign(def_Filled, ["resultOverlayAlpha"], v));
+                    }, () => _this.trigTO = undefined, 500);
+
+                }} />
+
+            </Col>
+        </Row>
+
         面積閾值:
         <InputNumber value={def_Filled.area_thres}
             onChange={(num) => {
@@ -3356,24 +3796,11 @@ function SurfaceCheckSimple_EDIT_UI({ def, onDefChange, canvas_obj }:
 
         <>
 
-
-            <br />結果顯示
-            <Slider defaultValue={def_Filled.resultOverlayAlpha} min={0} max={1} step={0.1} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(def_Filled, ["resultOverlayAlpha"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-
-
-            圖序反轉:
-            <Switch checkedChildren="左至右" unCheckedChildren="右至左" checked={def_Filled.img_order_reverse == true} onChange={(check) => {
-                onDefChange(ObjShellingAssign(def_Filled, ["img_order_reverse"], check));
-            }} />
-
-            <br />HSV
+        <Row>
+            <Col span={2}>
+                H
+            </Col>
+            <Col span={20}>
             <Slider defaultValue={def_Filled.hsv.rangeh.h} max={180} onChange={(v) => {
 
                 _this.trigTO =
@@ -3381,36 +3808,56 @@ function SurfaceCheckSimple_EDIT_UI({ def, onDefChange, canvas_obj }:
                         onDefChange(ObjShellingAssign(def_Filled, ["hsv", "rangeh", "h"], v));
                     }, () => _this.trigTO = undefined, 500);
 
-            }} />
-            <Slider defaultValue={def_Filled.hsv.rangel.h} max={180} onChange={(v) => {
+                }} />
+                <Slider defaultValue={def_Filled.hsv.rangel.h} max={180} onChange={(v) => {
 
                 _this.trigTO =
                     ID_debounce(_this.trigTO, () => {
                         onDefChange(ObjShellingAssign(def_Filled, ["hsv", "rangel", "h"], v));
                     }, () => _this.trigTO = undefined, 500);
 
-            }} />
+                }} />
+
+            </Col>
+        </Row>
+        
+
+        <Row>
+            <Col span={2}>
+                S
+            </Col>
+            <Col span={20}>
 
 
-
-            <Slider defaultValue={def_Filled.hsv.rangeh.s} max={255} onChange={(v) => {
+                <Slider defaultValue={def_Filled.hsv.rangeh.s} max={255} onChange={(v) => {
 
                 _this.trigTO =
                     ID_debounce(_this.trigTO, () => {
                         onDefChange(ObjShellingAssign(def_Filled, ["hsv", "rangeh", "s"], v));
                     }, () => _this.trigTO = undefined, 500);
 
-            }} />
-            <Slider defaultValue={def_Filled.hsv.rangel.s} max={255} onChange={(v) => {
+                }} />
+                <Slider defaultValue={def_Filled.hsv.rangel.s} max={255} onChange={(v) => {
 
                 _this.trigTO =
                     ID_debounce(_this.trigTO, () => {
                         onDefChange(ObjShellingAssign(def_Filled, ["hsv", "rangel", "s"], v));
                     }, () => _this.trigTO = undefined, 500);
 
-            }} />
+                }} />
 
 
+
+
+            </Col>
+        </Row>
+        
+
+        <Row>
+            <Col span={2}>
+                V
+            </Col>
+            <Col span={20}>
 
 
             <Slider defaultValue={def_Filled.hsv.rangeh.v} max={255} onChange={(v) => {
@@ -3420,8 +3867,8 @@ function SurfaceCheckSimple_EDIT_UI({ def, onDefChange, canvas_obj }:
                         onDefChange(ObjShellingAssign(def_Filled, ["hsv", "rangeh", "v"], v));
                     }, () => _this.trigTO = undefined, 500);
 
-            }} />
-            <Slider defaultValue={def_Filled.hsv.rangel.v} max={255} onChange={(v) => {
+                }} />
+                <Slider defaultValue={def_Filled.hsv.rangel.v} max={255} onChange={(v) => {
 
                 _this.trigTO =
                     ID_throttle(_this.trigTO, () => {
@@ -3429,7 +3876,15 @@ function SurfaceCheckSimple_EDIT_UI({ def, onDefChange, canvas_obj }:
                         onDefChange(ObjShellingAssign(def_Filled, ["hsv", "rangel", "v"], v));
                     }, () => _this.trigTO = undefined, 500);
 
-            }} />
+                }} />
+
+
+
+
+
+
+            </Col>
+        </Row>
 
 
 
@@ -3437,15 +3892,23 @@ function SurfaceCheckSimple_EDIT_UI({ def, onDefChange, canvas_obj }:
 
         </>
 
-        <br />細節量
-        <Slider defaultValue={def_Filled.colorThres} max={255} onChange={(v) => {
+        <Row>
+            <Col span={4}>
+                細節量
+            </Col>
+            <Col span={18}>
+            <Slider defaultValue={def_Filled.colorThres} max={255} onChange={(v) => {
 
             _this.trigTO =
                 ID_throttle(_this.trigTO, () => {
                     onDefChange(ObjShellingAssign(def_Filled, ["colorThres"], v));
                 }, () => _this.trigTO = undefined, 200);
 
-        }} />
+            }} />
+
+            </Col>
+        </Row>
+
 
 
 
@@ -3455,12 +3918,31 @@ function SurfaceCheckSimple_EDIT_UI({ def, onDefChange, canvas_obj }:
 }
 
 
-function TagsEdit_DropDown({ tags, onTagsChange, children }: { tags: string[], onTagsChange: (tags: string[]) => void, children: React.ReactChild }) {
+
+function tagsMatching(tags1:string[],tags2:string[])
+{
+    for(let i=0;i<tags1.length;i++)
+    {
+        let isMatched=false;
+        for(let j=0;j<tags2.length;j++)
+        {
+            if(tags1[i]==tags2[j])
+            {
+                isMatched=true;
+                break;
+            }
+        }
+        if(isMatched==false)return false;
+    }
+    return true;
+}
+
+function TagsEdit_DropDown({ tags, onTagsChange, children }: { tags: (string|string[])[], onTagsChange: (tags: (string|string[])[]) => void, children: React.ReactChild }) {
     const [visible, _setVisible] = useState(false);
     const [newTagTxt, setNewTagTxt] = useState("");
 
 
-    const [tagDelInfo, setTagDelInfo] = useState({ tarTag: "", countdown: 0 });
+    const [tagDelInfo, setTagDelInfo] = useState<{tarTag:(string|string[]),countdown:number}>({ tarTag: "", countdown: 0 });
 
 
     function setVisible(enable: boolean) {
@@ -3469,11 +3951,19 @@ function TagsEdit_DropDown({ tags, onTagsChange, children }: { tags: string[], o
     }
     if(tags===undefined)
         tags=[]
-    let isNewTagTxtDuplicated = tags.find(tag => tag == newTagTxt) != undefined;
+
+    let newTags=newTagTxt.split(',');
+
+
+
+    let isNewTagTxtDuplicated = tags.find(tag => tagsMatching(Array.isArray(tag)?tag:[tag],newTags)) != undefined;
+
+
+
     return <Dropdown onVisibleChange={setVisible} visible={visible}
         overlay={<Menu>
             {
-                [...tags.map((tag: string, index: number) => (
+                [...tags.map((tag: string|string[], index: number) => (
                     <Menu.Item key={tag + "_" + index}
                         onClick={() => {
                             if (tagDelInfo.tarTag != tag) {
@@ -3505,8 +3995,10 @@ function TagsEdit_DropDown({ tags, onTagsChange, children }: { tags: string[], o
                             setNewTagTxt(e.target.value);
                         }}
                         onPressEnter={(e) => {
+                            let new_tags=[...tags,newTags];
+
                             if (isNewTagTxtDuplicated == false) {
-                                onTagsChange([...tags, newTagTxt]);
+                                onTagsChange(new_tags);
                                 setNewTagTxt("");
                             }
                         }} />
@@ -3529,6 +4021,7 @@ const CAT_ID_NAME = {
 
     "-700": "點過大",
     "-701": "邊過長",
+    "-750": "色彩校正差異過大",
 }
 const _MM_P_STP_ = 4;
 const _OBJ_SEP_DIST_ = 4;
@@ -3617,6 +4110,8 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
         imgCanvas: document.createElement('canvas'),
         canvasComp: undefined,
+        canvasHook:undefined,
+        
         drawHooks: [],
         ctrlHooks: [],
 
@@ -3997,19 +4492,29 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
         case EditState.Region_Edit:
 
             EDIT_UI = <>
-                <Button key={"_" + -1} onClick={() => {
+                {/* <Button key={"_" + -1} onClick={() => {
 
                     setEditState(EditState.Normal_Show);
-                }}>{"<"}</Button>
+                }}>{"<"}</Button> */}
 
 
                 <SurfaceCheckSimple_EDIT_UI
+                    BPG_API={BPG_API}
+                    fsPath={fsPath}
                     def={cacheDef}
                     onDefChange={(newDef) => {
                         onCacheDefChange(newDef, true);
 
                     }}
-                    canvas_obj={_this.canvasComp} />
+                    onFinish={(newDef) => {
+
+                        _this.canvasHook=undefined;
+                        setEditState(EditState.Normal_Show);
+                    }}
+                    canvas_obj={_this.canvasComp}
+                    canvas_hook_update={(new_canvas_hook)=>{_this.canvasHook=new_canvas_hook}}
+                    
+                    />
 
             </>
 
@@ -4029,6 +4534,11 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
         <HookCanvasComponent style={{}} dhook={(ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent) => {
             _this.canvasComp = canvas_obj;
+            if(_this.canvasHook!==undefined )
+            {
+                _this.canvasHook(ctrl_or_draw,g,canvas_obj);
+                return;
+            }
             // console.log(ctrl_or_draw);
             if (ctrl_or_draw == true)//ctrl
             {
@@ -4050,33 +4560,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                     if (canvas_obj.regionSelect.pt1 === undefined || canvas_obj.regionSelect.pt2 === undefined) {
                         return;
                     }
-
-                    let pt1 = canvas_obj.regionSelect.pt1;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
-                    let pt2 = canvas_obj.regionSelect.pt2;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
-
-
-                    // console.log(canvas_obj.regionSelect);
-                    let x, y, w, h;
-
-                    x = pt1.x;
-                    w = pt2.x - pt1.x;
-
-                    y = pt1.y;
-                    h = pt2.y - pt1.y;
-
-
-                    if (w < 0) {
-                        x += w;
-                        w = -w;
-                    }
-
-                    if (h < 0) {
-                        y += h;
-                        h = -h;
-                    }
-                    _this.sel_region = {
-                        x, y, w, h
-                    }
+                    _this.sel_region = PtsToXYWH(canvas_obj.regionSelect.pt1, canvas_obj.regionSelect.pt2);
                 }
             }
             else//draw
@@ -4106,6 +4590,9 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
 
                 if (defReport !== undefined) {
+
+                    let g_cat = defReport.report.sub_reports;
+
                     {
                         ctx.save();
                         ctx.resetTransform();
@@ -4113,11 +4600,30 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                         ctx.fillStyle = "rgba(150,100, 100,0.5)";
                         let Y = 350 + 200;
                         ctx.fillText("Result:" + defReport.report.category + " DIST:" + (reelStep * _MM_P_STP_ / _OBJ_SEP_DIST_) + "顆", 20, Y);
-                        ctx.fillText("ProcessTime:" + (defReport.process_time_us / 1000).toFixed(2) + " ms", 20, Y + 30)
+                        Y+=30;ctx.fillText("ProcessTime:" + (defReport.process_time_us / 1000).toFixed(2) + " ms", 20, Y)
+
+
+                        // console.error(g_cat);
+                        let catSet = g_cat.reduce((catSet:any,catInfo: any) => {
+                            return {...catSet,
+                                ...catInfo.elements.reduce((catSet:any,catEInfo: any) => {
+                                    if(catEInfo.category!=1)
+                                    {
+                                        catSet[catEInfo.category+""]=1;
+                                    }
+                                    return catSet;
+                                },{})
+                            };
+                        },{})
+                        Object.keys(catSet).forEach(cat=>{
+                            Y+=30;
+                            ctx.fillText(CAT_ID_NAME[cat + ""], 20, Y)
+                            
+                        })
+
 
                         ctx.restore();
                     }
-                    let g_cat = defReport.report.sub_reports;
                     g_cat.forEach((catInfo: any, _index: number) => {
                         // console.log(catInfo,cacheDef);
 
@@ -4170,7 +4676,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                             // if(fontSize_eq>10)fontSize_eq=40;
                             // ctx.font = (fontSize_eq)+"px Arial";
                             ctx.font = "1px Arial";
-                            ctx.fillText(CAT_ID_NAME[ele.category + ""], ele.x, ele.y);
+                            ctx.fillText(CAT_ID_NAME[ele.category + ""]+":"+ele.area, ele.x, ele.y);
 
 
 
@@ -4326,33 +4832,7 @@ export function SingleTargetVIEWUI_BASE(props: CompParam_InspTarUI) {
                     if (canvas_obj.regionSelect.pt1 === undefined || canvas_obj.regionSelect.pt2 === undefined) {
                         return;
                     }
-
-                    let pt1 = canvas_obj.regionSelect.pt1;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
-                    let pt2 = canvas_obj.regionSelect.pt2;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
-
-
-                    // console.log(canvas_obj.regionSelect);
-                    let x, y, w, h;
-
-                    x = pt1.x;
-                    w = pt2.x - pt1.x;
-
-                    y = pt1.y;
-                    h = pt2.y - pt1.y;
-
-
-                    if (w < 0) {
-                        x += w;
-                        w = -w;
-                    }
-
-                    if (h < 0) {
-                        y += h;
-                        h = -h;
-                    }
-                    _this.sel_region = {
-                        x, y, w, h
-                    }
+                    _this.sel_region = PtsToXYWH(canvas_obj.regionSelect.pt1, canvas_obj.regionSelect.pt2);
                 }
             }
             else//draw
@@ -4387,6 +4867,222 @@ export function SingleTargetVIEWUI_BASE(props: CompParam_InspTarUI) {
             }
         }
         } />
+
+    </div>;
+
+}
+
+
+
+export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
+    let { display, stream_id, fsPath, width, height, EditPermitFlag, style = undefined, renderHook, def, report, onDefChange }=props;
+    const _ = useRef<any>({
+        imgCanvas: document.createElement('canvas'),
+        canvasComp: undefined,
+    });
+    let _this = _.current;
+    const [cacheDef, setCacheDef] = useState<any>(def);
+
+    const [defReport, setDefReport] = useState<any>(undefined);
+
+    useEffect(() => {
+        console.log("fsPath:" + fsPath)
+        setCacheDef(def);
+        return (() => {
+        });
+
+    }, [def]);
+    const [Local_IMCM, setLocal_IMCM] =
+        useState<IMCM_type | undefined>(undefined);
+
+    const dispatch = useDispatch();
+    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+
+    const PeripheralCONNID=3455;
+    async function delay(ms=1000)
+    {
+      return new Promise((resolve,reject)=>setTimeout(resolve,ms))
+    }
+    useEffect(() => {//////////////////////
+
+        _this.send_id=0;
+        _this.sendCBDict={};
+        async function pSend(data:any,timeout=0)
+        {
+            if(data.id===undefined)
+            {
+                data.id=_this.send_id;
+                _this.send_id++;
+            }
+
+            
+
+            return new Promise((resolve,reject)=>{
+                _this.sendCBDict[data.id]={
+                    resolve,
+                    reject
+                }
+            
+                BPG_API.InspTargetExchange(cacheDef.id, { type: "MESSAGE",msg:data });
+                if(timeout>0)
+                    setTimeout(reject,timeout)
+            })
+        }
+        _this.send=pSend;
+
+
+        BPG_API.send(undefined, 0, { _PGID_: PeripheralCONNID, _PGINFO_: { keep: true }},undefined,
+        {
+
+            resolve: (stacked_pkts) => {
+                let msg=stacked_pkts[0].data.msg;
+
+                // console.log(">>>>>",msg,_this.sendCBDict);
+                if(_this.sendCBDict[msg.id]!==undefined)
+                {
+                    _this.sendCBDict[msg.id].resolve(msg)
+                    delete _this.sendCBDict[msg.id];
+                }
+
+
+
+            },
+            reject:(stacked_pkts) => {
+                // console.error(">>>>>",stacked_pkts);
+            }
+        });
+
+
+
+        (async () => {
+
+            let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
+            console.log(ret);
+            console.log(def);
+
+            let is_CONNECTED=(await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
+            console.error("is_CONNECTED:",is_CONNECTED," PeripheralCONNID",PeripheralCONNID);
+
+            if(is_CONNECTED==false)
+            {
+                
+                await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT",comm_id:PeripheralCONNID });
+    
+                await delay(1000);
+            }
+
+            // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+
+            is_CONNECTED=(await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
+            console.error("is_CONNECTED:",is_CONNECTED);
+
+        })()
+
+
+
+        return (() => {
+            (async () => {
+                await BPG_API.send_cbs_detach(
+                    stream_id, "SurfaceCheckSimple");
+            })()
+
+        })
+    }, []);
+
+
+    if (display == false) return null;
+ 
+    return <div style={{ ...style, width: width + "%", height: height + "%" }} className={"overlayCon"}>
+        <div className={"overlay"} >
+
+            {/* {EDIT_UI} */}
+            <Button onClick={()=>{
+
+                (async () => {
+
+                        let Freq=2000;
+
+                        let CAM1_T=5000;
+
+
+                        let SWTime=8000;
+
+                        let airBlowHL=Math.round(36*Freq/1000/2);
+                        let SEL1_T=SWTime+1000;
+                        let SEL2_T=SWTime+2000;
+
+
+
+
+                        console.log(await _this.send({type:"set_setup",plateFreq:Freq,stepRun:-1,stage_pulse_offset:{
+                            CAM1_on:CAM1_T,CAM1_off:CAM1_T+5,
+                            L1A_on:CAM1_T-2,L1A_off:CAM1_T+5,
+                            SWITCH:SWTime,
+                            SEL1_on:SEL1_T-airBlowHL,SEL1_off:SEL1_T+airBlowHL,
+                            SEL2_on:SEL2_T-airBlowHL,SEL2_off:SEL2_T+airBlowHL} }));
+                        
+                        console.log(await _this.send({type:"clear_error"}));
+                        console.log(await _this.send({type:"enter_insp_mode"}));
+                })()
+
+            }}>RUN</Button>
+            <Button onClick={()=>{
+
+                (async () => {
+
+                        console.log(await _this.send({type:"set_setup",plateFreq:0}));
+                })()
+
+            }}>STOP</Button>
+
+
+
+            <Button onClick={()=>{
+
+                (async () => {
+
+                        console.log(await _this.send({type:"trig_phamton_pulse"}));
+                })()
+
+            }}>FakeTrig</Button>
+
+            <Button onClick={()=>{
+
+                (async () => {
+                    console.log(await _this.send({type:"clear_error"}));
+                })()
+
+            }}>ErrorClear</Button>
+
+
+            <Button onClick={()=>{
+
+            (async () => {
+                    console.log(await _this.send({type:"get_setup"}));
+            })()
+
+            }}>GetSetup</Button>
+
+
+            <Button onClick={()=>{
+
+                (async () => {
+                    let is_CONNECTED=(await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
+                    console.error("is_CONNECTED:",is_CONNECTED," PeripheralCONNID",PeripheralCONNID);
+        
+                    if(is_CONNECTED==false)
+                    {
+                        
+                        await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT",comm_id:PeripheralCONNID });
+            
+                    }
+        
+                })()
+
+            }}>CONNECT</Button>
+
+        </div>
+
 
     </div>;
 

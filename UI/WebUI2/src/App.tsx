@@ -50,7 +50,8 @@ import './basic.css';
 import {SingleTargetVIEWUI_ColorRegionDetection,
   SingleTargetVIEWUI_Orientation_ColorRegionOval,
   SingleTargetVIEWUI_Orientation_ShapeBasedMatching,
-  SingleTargetVIEWUI_SurfaceCheckSimple } from './InspTarView';
+  SingleTargetVIEWUI_SurfaceCheckSimple,
+  SingleTargetVIEWUI_JSON_Peripheral } from './InspTarView';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 const { Option } = Select;
@@ -414,6 +415,10 @@ function InspTargetUI_MUX(param:CompParam_InspTarUI)
   return <SingleTargetVIEWUI_SurfaceCheckSimple {...param} />;
 
 
+  if(param.def.type=="JSON_Peripheral")
+  return <SingleTargetVIEWUI_JSON_Peripheral {...param} />;
+
+
   return  <></>;
 }
 
@@ -441,8 +446,8 @@ function TargetViewUIShow({displayIDList,defConfig,EditPermitFlag,onDefChange,re
   useEffect(()=>{//load default
     console.log(">>TargetViewUIShow>>>>>>>>>>>>>>");
   },[])
-  console.log(InspTarList);
-  console.log(displayIDList,displayInspTarIdx,displayInspTarIdx_hide);
+  // console.log(InspTarList);
+  // console.log(displayIDList,displayInspTarIdx,displayInspTarIdx_hide);
 
 
 
@@ -457,7 +462,7 @@ function TargetViewUIShow({displayIDList,defConfig,EditPermitFlag,onDefChange,re
       {
         return  null;//<><br/>---hide----<br/></>
       }
-      console.log(defConfig.path,inspTar.id);
+      //console.log(defConfig.path,inspTar.id);
       return  <InspTargetUI_MUX 
         display={idx<displayInspTarIdx.length} 
         width={100/displayInspTarIdx.length} 
@@ -1431,7 +1436,7 @@ function VIEWUI(){
     } */}
 
 
-            <Button disabled={crunAbortCtrl!==undefined} onClick={()=>{
+            <Button disabled={false} onClick={()=>{
               listCMDPromiseRun(curXCMD.cmds);
             }}>Run</Button>
 

@@ -667,7 +667,7 @@ export class BPG_WS
   async InspTargetExchange(inspTarId:string,data:any,_PGID_:number|undefined=undefined)
   {
     
-    return await this.send_P("IT",0,{type:"exchange",id:inspTarId,data})
+    return await this.send_P("IT",0,{type:"exchange",id:inspTarId,data,_PGID_})
   }
 
   async InspTargetSetStreamChannelID(inspTarId:string,channel_id:number,
