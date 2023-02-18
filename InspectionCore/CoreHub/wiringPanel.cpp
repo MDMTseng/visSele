@@ -892,14 +892,16 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
       }
       std::vector<std::string> &tags=d_sinfo->trigger_tags;
 
+      bool doSkip=false;
       for(int i=0;i<tags.size();i++)
       {
         if(tags[i]==mark)
         {//this is from saved image here
-          return;
+          doSkip=true;
+          break;
         }
       }
-
+      if(doSkip)continue;
 
 
       //[ms][trigger id][tags]
@@ -1509,10 +1511,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
             cJSON* trigger_tags = JFetch_ARRAY(json, "trigger_tags");
             if(trigger_tags)
-          {
+            {
               int tagsLen=cJSON_GetArraySize(trigger_tags);
               for(int i=0;i<tagsLen;i++)
-            {
+              {
                 cJSON * item= cJSON_GetArrayItem(trigger_tags,i);
                 if(item->type & cJSON_String)
                 {
@@ -1671,6 +1673,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           else if(type==InspectionTarget_Orientation_ShapeBasedMatching::TYPE())
           {
             inspTar = new InspectionTarget_Orientation_ShapeBasedMatching(id,defInfo,&inspTarMan,env_path);
+          }
+          else if(type==InspectionTarget_JSON_Peripheral::TYPE())
+          {
+            inspTar = new InspectionTarget_JSON_Peripheral(id,defInfo,&inspTarMan,env_path);
+          }
+          else if(type==InspectionTarget_StageInfoCollect_Base::TYPE())
+          {
+            inspTar = new InspectionTarget_StageInfoCollect_Base(id,defInfo,&inspTarMan,env_path);
           }
           else
           {
@@ -1890,16 +1900,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     else if (checkTL("PD", dat)) //[P]eripheral [D]evice
     {
       char *type = JFetch_STRING(json, "type");
-
-      double *_CONN_ID = JFetch_NUMBER(json, "CONN_ID");
-      int CONN_ID=-1;
-      if(_CONN_ID)
-      {
-        CONN_ID=(int)*_CONN_ID;
-      }
-
+      int CONN_ID=JFetch_NUMBER_ex(json, "CONN_ID",-1);
 
       do{
+        if(CONN_ID==-1)break;
         if(strcmp(type, "CONNECT") == 0)
         {
           if(CONN_ID!=-1)
@@ -1980,15 +1984,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
           if(PHYLayer!=NULL)
           {
-            perifCH=new PerifChannel();
-            perifCH->ID=avail_CONN_ID;
-            perifCH->conn_pgID=dat->pgID;
-            perifCH->setDLayer(PHYLayer);
+            PerifChannel* pch=new PerifChannel();
+            perifCH=pch;
+            pch->ID=avail_CONN_ID;
+            pch->conn_pgID=dat->pgID;
+            pch->setDLayer(PHYLayer);
 
-            perifCH->send_RESET();
-            perifCH->send_RESET();
-            perifCH->RESET();
-
+            pch->send_RESET();
+            pch->send_RESET();
+            pch->RESET();
+ 
 
             session_ACK = true;
 
@@ -2083,7 +2088,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
   return 0;
 }
 
-int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us,int count)
+int sendResultTo_perifCH(Data_JsonRaw_Layer *perifCH,int uInspStatus, uint64_t timeStamp_100us,int count)
 {
   uint8_t buffx[200];
   

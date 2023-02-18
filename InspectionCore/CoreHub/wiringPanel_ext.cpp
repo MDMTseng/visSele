@@ -298,7 +298,7 @@ int str_ends_with(const char *str, const char *suffix)
 
 
 
-int sendcJSONTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json)
+int sendcJSONTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json)
 {
 
   if (perifCH==NULL)
@@ -310,7 +310,7 @@ int sendcJSONTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool direc
   char *padded_buf=(char*)buf+buff_head_room;
 
   int ret= cJSON_PrintPreallocated(json, padded_buf, buffSize-perifCH->max_leg_room_size(), false);
-
+  LOGI(">>%s",padded_buf);
   if(ret == false)
   {
     return -1;
@@ -401,7 +401,7 @@ char* PatternRest(char *str, const char *pattern)
 }
 
 
-int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json)
+int sendcJsonTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json)
 {
 
   if (perifCH==NULL)
@@ -433,7 +433,7 @@ int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool direc
 
 
 
-int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...)
+int printfTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...)
 {
 
   if (perifCH==NULL)

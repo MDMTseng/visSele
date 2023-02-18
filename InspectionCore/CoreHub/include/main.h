@@ -189,7 +189,7 @@ cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth = 0);
 int str_ends_with(const char *str, const char *suffix);
 
 
-int sendcJSONTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json);
+int sendcJSONTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json);
 
 
 std::string getTimeStr(const char *timeFormat = "%d-%m-%Y %H:%M:%S");
@@ -202,11 +202,11 @@ int getFileCountInFolder(const char* path,const char* ext);
 char* PatternRest(char *str, const char *pattern);
 
 
-int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...);
+int printfTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...);
 
-int sendcJSONTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json);
+int sendcJSONTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json);
 
-int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us);
+int sendResultTo_perifCH(Data_JsonRaw_Layer *perifCH,int uInspStatus, uint64_t timeStamp_100us);
 
 int removeOldestRep(const char* path,const char* ext);
 
