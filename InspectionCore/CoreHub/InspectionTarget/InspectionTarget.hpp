@@ -113,6 +113,7 @@ class InspectionTarget
   std::string local_env_path;
   bool asService=false;
   shared_ptr<StageInfo> cache_stage_info=NULL;
+  shared_ptr<StageInfo> result_cache_stage_info=NULL;
   public:
   std::string id;
   std::string type;
@@ -160,6 +161,9 @@ class InspectionTarget
 
   // bool matchTriggerTag(string tarTag);
   protected:
+
+  static bool tagMatching(cJSON* tagWhiteList, vector<std::string> &tagArr);
+
   bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo);
   
   void insertInputTagsWPrefix(std::vector<std::string> &insertTo,std::vector<std::string> &fromList,std::string prefixToMatch);
@@ -197,7 +201,7 @@ class InspectionTargetManager
   virtual void CamStream_CallBack(CameraManager::StreamingInfo &info)=0;
 
 
-  int dispatch(std::shared_ptr<StageInfo> sinfo);//return how many inspection target needs it
+  int dispatch(std::shared_ptr<StageInfo> sinfo, InspectionTarget* targetIT=NULL);//return how many inspection target needs it
 
   std::mutex recycleStageInfoMutex;
   // int unregNrecycleStageInfo(StageInfo* sinfo,InspectionTarget* from );//return 0 as destroy, other positive number means how many other inspTar still holds it 

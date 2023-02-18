@@ -194,23 +194,22 @@ cJSON* InspectionTarget::genITInfo_basic()
 }
 
 
-bool InspectionTarget::stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
+bool InspectionTarget::tagMatching(cJSON* tagWhiteList, vector<std::string> &tagArr)
 {
-
-  if(match_tags==NULL)return false;
+    if(tagWhiteList==NULL)return false;
 
     
-  int size=cJSON_GetArraySize(match_tags);
+  int size=cJSON_GetArraySize(tagWhiteList);
   for(int i=0;i<size;i++)
   {
-    cJSON *tagSetInList = cJSON_GetArrayItem(match_tags,i);
+    cJSON *tagSetInList = cJSON_GetArrayItem(tagWhiteList,i);
     
     if(tagSetInList->type==cJSON_String)
     {
       if(tagSetInList->valuestring==NULL)continue;
       string strInDef=string(tagSetInList->valuestring);
       
-      for(auto tag : sinfo->trigger_tags )
+      for(auto tag : tagArr )
       {
         if(strInDef==tag)
           return true;
@@ -230,8 +229,7 @@ bool InspectionTarget::stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
         {      
           string strFMTag=string(fullMatchTag->valuestring);
       
-          LOGI("tag=>%s",strFMTag.c_str());
-          for(auto tag : sinfo->trigger_tags )
+          for(auto tag : tagArr )
           {
             if(strFMTag==tag)
             {
@@ -255,8 +253,13 @@ bool InspectionTarget::stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
 
     }
   }
-  LOGI(">>>>");
   return false;
+}
+
+
+bool InspectionTarget::stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
+{
+  return tagMatching(match_tags,sinfo->trigger_tags);
 
 }
 
@@ -306,7 +309,7 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
     LOGI("cache_stage_info.get():%p",cache_stage_info.get());
     if(cache_stage_info.get()==NULL)return false;
     
-    belongMan->dispatch(cache_stage_info);
+    belongMan->dispatch(cache_stage_info,this);
 
     while (belongMan->inspTarProcess())
     {
@@ -335,7 +338,28 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
 
     // cache_stage_info
 
+    return true;
 
+  }
+
+
+
+  if(type=="result_cache_image_save")
+  {
+    if(result_cache_stage_info==NULL)return false;
+    string folder_path=JFetch_STRING_ex(info,"folder_path");
+    if(folder_path.length()==0)return false;
+
+    auto srcImg=result_cache_stage_info->img_show;
+    if(srcImg==NULL)return false;
+
+    Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+
+
+    string image_name=JFetch_STRING_ex(info,"image_name","test.png");
+    imwrite(folder_path+"/"+image_name, CV_srcImg);  
+
+    return true;
 
   }
 
@@ -373,6 +397,7 @@ InspectionTarget::~InspectionTarget()
   // }
   input_pool.clear();
   cache_stage_info=NULL;
+  result_cache_stage_info=NULL;
 }
 
 
@@ -617,17 +642,29 @@ InspectionTarget* InspectionTargetManager::getInspTar(std::string id)
 
 
 
-int InspectionTargetManager::dispatch(std::shared_ptr<StageInfo> sinfo)
+int InspectionTargetManager::dispatch(std::shared_ptr<StageInfo> sinfo, InspectionTarget* targetIT)
 {
   if(sinfo==NULL)return -1;
   int acceptCount=0;
-  for(int i=0;i<inspTars.size();i++)
+
+  if(targetIT==NULL)
   {
-    if(inspTars[i]->feedStageInfo(sinfo)==true)
+    for(int i=0;i<inspTars.size();i++)
+    {
+      if(inspTars[i]->feedStageInfo(sinfo)==true)
+      {
+        acceptCount++;
+      }
+    }
+  }
+  else
+  {
+    if(targetIT->feedStageInfo(sinfo)==true)
     {
       acceptCount++;
     }
   }
+
   if(acceptCount==0)
   {
     
