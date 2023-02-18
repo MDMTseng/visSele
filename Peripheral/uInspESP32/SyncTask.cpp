@@ -239,7 +239,7 @@ RingBuf_Static<struct TaskQ2CommInfo,20,uint8_t> TaskQ2CommInfoQ;
 void ERROR_LOG_PUSH(GEN_ERROR_CODE code)
 {
   GEN_ERROR_CODE *head_code = ERROR_HIST.getHead();
-  if (head_code == NULL)
+  if (head_code == NULL)//no space, eat tail keep the latest one
   {
     ERROR_HIST.consumeTail();
     head_code = ERROR_HIST.getHead();
@@ -259,8 +259,6 @@ void ERROR_LOG_PUSH(GEN_ERROR_CODE code)
 
 bool blockNewDetectedObject=false;
 
-int runCount=0;
-int runCount2=0;
 
 void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 {
@@ -281,7 +279,6 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
   }
 
 
-  // runCount++;
   for (int i = i_from; i >= i_to; i--)//2(exit) -> 1(loop) -> 0(enter) the reversed order is to make sure exit(from old state) run first then run enter(to new state) block
   {
 
@@ -307,7 +304,6 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       } //enter
       else if (i == 1)
       {
-        runCount++;
         SYS_TAR_FREQ=SETUP_TAR_FREQ;
         // SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);
         // SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);//the event sould be issued by remote
@@ -451,8 +447,6 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
 int ActRegister_pipeLineInfo(pipeLineInfo *pli);
 
 
-int DBG_COUNT=0;
-
 
 int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
@@ -460,8 +454,6 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
 
 
   if(blockNewDetectedObject)return -1;
-  //
-  DBG_COUNT+=1;
   pipeLineInfo *head = RBuf.getHead();
   if (head == NULL)
     return -1;
@@ -474,14 +466,10 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   head->gate_pulse = middle_pulse;
   head->insp_status = insp_status_UNSET;
   head->tid=acc_tid;
-
-  DBG_COUNT+=100;
   if (ActRegister_pipeLineInfo(head) != 0)
   { //register failed....
     return -2;
   }
-
-  DBG_COUNT+=10000;
   RBuf.pushHead();
   acc_tid++;
   return 0;
@@ -637,12 +625,12 @@ int Run_ACTS(uint32_t cur_pulse)
           break;
       }
       //
-      if (RBuf.getTail() == task->src)
+      
       {
         // task->src->insp_status = insp_status_DEL;
         task->src->insp_status = insp_status_DEL;
         task->src = NULL;
-        RBuf.consumeTail();
+        // RBuf.consumeTail();
       }
   );
 
@@ -1112,8 +1100,8 @@ StaticJsonDocument<1024> recv_doc;
 StaticJsonDocument<1024> ret_doc;
 
 
-StaticJsonDocument <500>doc;
-StaticJsonDocument  <500>retdoc;
+StaticJsonDocument <1024>doc;
+StaticJsonDocument  <1024>retdoc;
 
 
 
@@ -1224,7 +1212,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
     else
     {
-      SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_FATAL);
+      SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::INSP_RESULT_MATCHES_NO_OBJECT);
       rspAck=false;
     }
 
@@ -1803,6 +1791,22 @@ void loop()
   // }
 
 
+
+  {//clean up finished 
+    pipeLineInfo * tail;
+    while (tail=RBuf.getTail())
+    {
+      // task->src->insp_status = insp_status_DEL;
+      if(tail->insp_status == insp_status_DEL)
+      {
+        RBuf.consumeTail();
+      }
+      else
+      {
+        break;
+      }
+    }
+  }
 }
 
 
@@ -1852,11 +1856,20 @@ void genMachineSetup(JsonDocument &jdoc)
 
   jdoc["plateFreq"]=SETUP_TAR_FREQ;
 
-  jdoc["SYS_TAR_FREQ"]=SYS_TAR_FREQ;
+
+  {
+    JsonArray jERROR_HIST = jdoc.createNestedArray("ERROR_HIST");
+
+    for(int i=0;i<ERROR_HIST.size();i++)
+    {
+      jERROR_HIST.add((int)*ERROR_HIST.getTail(i));
+    }
+  }
+
+
+  // jdoc["SYS_TAR_FREQ"]=SYS_TAR_FREQ;
   jdoc["curState"]=(int)sysinfo.state;
-  jdoc["runCount"]=(int)runCount;
   jdoc["SYS_STEP_COUNT"]=(int)SYS_STEP_COUNT;
-  jdoc["DBG_COUNT"]=(int)DBG_COUNT;
 
   
 }

@@ -133,7 +133,7 @@ enum class GEN_ERROR_CODE
 {
   NOP=-1,
   RESET = 0,
-  INSP_RESULT_HAS_NO_OBJECT = 1,
+  INSP_RESULT_MATCHES_NO_OBJECT = 1,
   INSP_CAM_TRIG_INFO_CANNOT_BE_SENT = 10,
   OBJECT_HAS_NO_INSP_RESULT = 2,
   INSP_RESULT_COUNTER_ERROR = 3,
@@ -187,12 +187,12 @@ typedef struct run_mode_info
 #define PIN_O_CAM1 17
 #define PIN_O_L2A 18
 #define PIN_O_CAM2 19
-#define PIN_O_SEL1 2
-#define PIN_O_SEL2 21
-#define PIN_O_SEL3 24
+#define PIN_O_SEL1 25
+#define PIN_O_SEL2 26
+#define PIN_O_SEL3 21
 
 
-#define PIN_I_GATE 26
+#define PIN_I_GATE 27
 
 
 
