@@ -503,9 +503,17 @@ cv::Mat rotCrop(cv::Mat& srcImg,float obj_x,float obj_y,float temp_rel_x,float t
 }
 
 
-int DBG_C=0;
 
-float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeBasedMatching::refine_region_info> &regions_n_TempImgs,float marginFactor,Point2f &anchorPt,float &angleRad,float minAcceptedScore=0.2,int downSamp=1,int *ret_acceptedRegionCount=NULL)
+float PoseRefine(
+  cv::Mat &srcImg,
+  std::vector<InspectionTarget_Orientation_ShapeBasedMatching::refine_region_info> &regions_n_TempImgs,
+  float marginFactor,
+  Point2f &anchorPt,
+  float &angleRad,
+  float minAcceptedScore=0.2,
+  int downSamp=1,
+  int *ret_acceptedRegionCount=NULL,
+  std::string DBG_STR="")
 {
 
   if(ret_acceptedRegionCount)*ret_acceptedRegionCount=0;
@@ -544,7 +552,19 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
     Mat result;
     bool isResForMax;
     cv::cvtColor(mat, mat, cv::COLOR_BGR2GRAY);
-    equalizeHist( mat, mat );
+
+    float sharpBlurSigma=2;  
+    float beta=1.5;
+    float sharpC1=1.0*beta;  
+    float sharpC2=-0.6*beta;
+    {
+      Mat buf;
+      cv::GaussianBlur(mat, buf, cv::Size(0, 0), sharpBlurSigma);
+      cv::addWeighted(buf, sharpC1, mat, sharpC2, 0, mat);
+    }
+
+
+    // equalizeHist( mat, mat );
 
     Mat temp_gray;
     
@@ -552,12 +572,62 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
 
 
     cv::cvtColor(temp_gray, temp_gray, cv::COLOR_BGR2GRAY);
-    equalizeHist( temp_gray, temp_gray );
+    // equalizeHist( temp_gray, temp_gray );
 
-    Point2f levelXPt = TemplateMatching_SubPix(mat,temp_gray,result,isResForMax,TM_CCOEFF_NORMED);
+    {
+      Mat buf;
+      cv::GaussianBlur(temp_gray, buf, cv::Size(0, 0), sharpBlurSigma);
+      cv::addWeighted(buf, sharpC1, temp_gray, sharpC2, 0, temp_gray);
+    }
 
-    std::string prefix="S"+to_string(DBG_C)+"_";
-    if(0)
+
+    Point2f levelXPt = TemplateMatching_Pix(mat,temp_gray,result,isResForMax,TM_CCOEFF_NORMED);
+
+
+    float matchResult = result.at<float>((int)round(levelXPt.x), (int)round(levelXPt.y));
+    
+    
+    if(0){
+      int x=(int)round(levelXPt.x);
+      int y=(int)round(levelXPt.y);
+      float matchResult0 = result.at<float>(x-1,y-1);
+      float matchResult1 = result.at<float>(x,y-1);
+      float matchResult2 = result.at<float>(x+1,y-1);
+
+      float matchResult3 = result.at<float>(x-1,y);
+      float matchResult4 = result.at<float>(x,y);
+      float matchResult5 = result.at<float>(x+1,y);
+
+      float matchResult6 = result.at<float>(x-1,y+1);
+      float matchResult7 = result.at<float>(x,y+1);
+      float matchResult8 = result.at<float>(x+1,y+1);
+
+
+      LOGE("loc [%d %d]",x,y);
+
+      LOGE("[%0.3f %0.3f %0.3f]",matchResult0,matchResult1,matchResult2);
+      LOGE("[%0.3f %0.3f %0.3f]",matchResult3,matchResult4,matchResult5);
+      LOGE("[%0.3f %0.3f %0.3f]",matchResult6,matchResult7,matchResult8);
+
+
+    }
+
+    {
+
+
+      double minVal=999; double maxVal=-1; Point minLoc; Point maxLoc;
+      Point matchLoc;
+      minMaxLoc( result, &minVal, &maxVal, &minLoc, &maxLoc );
+      matchResult=maxVal;
+      levelXPt=maxLoc;
+      // LOGE(">>>>>minLoc:%d %d:%f",minLoc.x,minLoc.y,minVal);
+      // LOGE(">>>>>maxLoc:%d %d:%f",maxLoc.x,maxLoc.y,maxVal);
+
+    }
+
+
+    std::string prefix="S"+DBG_STR+"_";
+    if(0)//save DBG matching image
     {
       // imwrite("data/ZZZ/"+prefix+"OOP_"+std::to_string(i)+".jpg",mat);  
 
@@ -570,14 +640,13 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
       imwrite("data/ZZZ/"+prefix+"_TOP_"+std::to_string(i)+".jpg",mat_cp);  
 
 
-      // result*=200;
+      result*=200;
       // imwrite("data/TEMP_"+std::to_string(i)+".jpg", temp_gray);  
-      // imwrite("data/ZZZ/"+prefix+"RES_"+std::to_string(i)+".jpg",result);  
+      imwrite("data/ZZZ/"+prefix+"RES_"+std::to_string(i)+".jpg",result);  
     }
 
 
-    float matchResult = result.at<float>((int)round(levelXPt.x), (int)round(levelXPt.y));
-
+    // LOGE("dstr:%s res:%f",DBG_STR.c_str(),matchResult);
     levelXPt*=downSamp;
     // // if(ret_acceptedRegionCount)//JUST for DBG
     // std::string prefix="S"+to_string(DBG_C)+"_";
@@ -629,7 +698,7 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
       
       // LOGI("O levelXPt %f,%f",levelXPt.x,levelXPt.y);
       levelXPt=rotate2d(levelXPt,angleRad);
-      LOGI("> levelXPt  %f,%f",levelXPt.x,levelXPt.y);
+      // LOGI("> levelXPt  %f,%f",levelXPt.x,levelXPt.y);
       // LOGI("initPts     %f,%f",crop_center.x,crop_center.y);
       // LOGI("crop_center %f,%f",crop_center.x+levelXPt.x,crop_center.y+levelXPt.y);
 
@@ -820,6 +889,8 @@ float PoseRefine(cv::Mat &srcImg,std::vector<InspectionTarget_Orientation_ShapeB
   if(true && updatedPts.size()==2 )
   {
     anchorPt+=(updatedPts[0]+updatedPts[1]-initPts[0]-initPts[1])/2;
+
+    // anchorPt+=updatedPts[1]-initPts[1];
     angleRad+=
     atan2(updatedPts[1].y-updatedPts[0].y,updatedPts[1].x-updatedPts[0].x)
     -atan2(initPts[1].y-initPts[0].y,initPts[1].x-initPts[0].x);
@@ -1109,7 +1180,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
 
 
-
+    std::string DBG_STR;
     // LOGI("refine_score_thres:%f must_refine_result:%d",refine_score_thres,must_refine_result);
     int refineCount=2;
     if(refine_region_set.size()>0 && refine_score_thres>0)
@@ -1117,8 +1188,8 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
       float tmpAngle=refinedAngleRad;
       cv::Point2f tmp_anchorPt=anchorPt;
       int margin=(int)(30+(1/matching_downScale));
-      DBG_C=0;
-      refine_score = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt,tmpAngle,0.2,1);
+      DBG_STR=id+"_"+to_string(i)+"_"+to_string(0);
+      refine_score = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt,tmpAngle,0.05,1,NULL,DBG_STR);
       // if(refine_score>0.3)
       if(1)//further refine
       {
@@ -1128,11 +1199,11 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
         int refine_block_count=0;
         float refine_score2;
 
-        for(int i=1;i<refineCount;i++)
+        for(int j=1;j<refineCount;j++)
         {
-          margin/=2;
-          DBG_C=i;
-          refine_score2 = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt2,tmpAngle2,0.2,1,&refine_block_count);
+          // margin/=2;
+          DBG_STR=id+"_"+to_string(i)+"_"+to_string(j);
+          refine_score2 = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt2,tmpAngle2,0.2,1,&refine_block_count,DBG_STR);
 
           LOGI("[%d]-----refine_score:%f",i,refine_score2);
           if(refine_score<=refine_score2)
@@ -1148,6 +1219,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
         }
 
       }
+
 
       LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
       // LOGI(" %f =>  %f",refinedAngleRad*180/M_PI,tmpAngle*180/M_PI);

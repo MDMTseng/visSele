@@ -392,7 +392,7 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
   reportInfo->genJsonRepTojInfo();
 
   // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
-
+  result_cache_stage_info=reportInfo;
   belongMan->dispatch(reportInfo);
 
   cache_stage_info=sinfo;

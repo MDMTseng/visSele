@@ -59,6 +59,65 @@ int InspectionTarget_SurfaceCheckSimple::processInputPool()
 }
 
 
+cv::Scalar ImgRegionsAveraging(Mat &img,cJSON *refRegionArray)
+{
+  if(refRegionArray==NULL)return cv::Scalar(NAN,NAN,NAN);
+
+  int regionCount=cJSON_GetArraySize(refRegionArray);
+  cv::Scalar rsum={0};
+  int pixCSum=0;
+
+  for(int i=0;i<regionCount;i++)
+  {
+    
+    cJSON *region= cJSON_GetArrayItem(refRegionArray,i);
+
+    int x=(int)JFetch_NUMBER_ex(region,"x");
+    int y=(int)JFetch_NUMBER_ex(region,"y");
+    int w=(int)JFetch_NUMBER_ex(region,"w");
+    int h=(int)JFetch_NUMBER_ex(region,"h");
+
+
+    LOGI("xywh:%d,%d,%d,%d",x,y,w,h);
+    LOGI("img col row:%d,%d",img.cols,img.rows);
+
+
+    if(x<0)
+    {
+      w+=x;
+      x=0;
+    }
+
+    if(y<0)
+    {
+      h+=y;
+      y=0;
+    }
+
+    if(w>img.cols)
+    {
+      w=img.cols;
+    }
+    if(h>img.rows)
+    {
+      h=img.rows;
+    }
+
+
+
+
+    cv::Mat roi(img,cv::Rect(x,y,w,h));
+    pixCSum+=w*h;
+    cv::Scalar sum= cv::sum(roi);
+    rsum+=sum;
+    // sum/=(w*h);
+    // LOGI("w:%d h:%d sum:[%f,%f,%f]",w,h,sum[0],sum[1],sum[2]);
+  }
+  cv::Scalar avgPix=rsum/pixCSum;
+  LOGI("pixCSum:%d avgPix:[%f,%f,%f]",pixCSum,avgPix[0],avgPix[1],avgPix[2]);
+  return avgPix;
+}
+
 
 bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
 {
@@ -66,6 +125,112 @@ bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchang
   bool ret = InspectionTarget::exchangeCMD(info,id,act);
   if(ret)return ret;
   string type=JFetch_STRING_ex(info,"type");
+
+
+  if(type=="useExtParam")
+  {
+
+    if(extParam)//remove existing param
+    {
+      cJSON_Delete(extParam);
+      extParam=NULL;
+    }
+    if(JFetch_FALSE(info,"enable"))
+    {
+      useExtParam=false;
+    }
+    else{
+      useExtParam=true;
+    }
+    return true;
+  }
+
+  if(type=="extParam")
+  {
+    if(extParam)
+    {
+      cJSON_Delete(extParam);
+      extParam=NULL;
+    }
+    extParam=cJSON_Duplicate(info,true);
+
+    if(extParam && useExtParam)
+    {
+      if(cache_stage_info.get()==NULL)return false;
+    
+      belongMan->dispatch(cache_stage_info,this);
+
+      while (belongMan->inspTarProcess())
+      {
+      }
+    }
+
+
+    return true;
+  }
+
+
+
+
+
+
+  if(type=="extract_feature")
+  {
+    string path=JFetch_STRING_ex(info,"image_path");
+    if(path=="")
+    {
+      return NULL;
+    }
+    Mat img = imread(path, IMREAD_COLOR);
+    if (img.empty())
+    {
+      return NULL;
+    }
+
+    acvImage src_acvImg;
+    src_acvImg.useExtBuffer((BYTE *)img.data,img.rows*img.cols*3,img.cols,img.rows);
+
+    // acvImage src_acvImg(img.cols,img.rows,3);
+    // for(int i=0;i<img.rows;i++)for(int j=0;j<img.cols;j++)
+    // {
+    //   src_acvImg.CVector[i][j*3]=0;
+    //   src_acvImg.CVector[i][j*3+1]=0;
+    //   src_acvImg.CVector[i][j*3+2]=0;
+    // }
+    int image_transfer_downsampling=(int)JFetch_NUMBER_ex(info,"image_transfer_downsampling",-1);
+    if(image_transfer_downsampling>=1)
+    {
+      act.send("IM",id,&src_acvImg,image_transfer_downsampling);
+    }
+
+    cJSON *refRegions=JFetch_ARRAY(info,"colorExtractInfo.refRegions");
+    if(refRegions)
+    {
+      
+      cv::Scalar avgPix= ImgRegionsAveraging(img,refRegions);
+      // LOGI("pixCSum:%d avgPix:[%f,%f,%f]",pixCSum,avgPix[0],avgPix[1],avgPix[2]);
+      {
+        cJSON* jrep=cJSON_CreateObject();
+        cJSON* rep=cJSON_CreateObject();
+        cJSON_AddItemToObject(jrep,"report",rep);
+        cJSON_AddNumberToObject(rep,"R",avgPix[0]);
+        cJSON_AddNumberToObject(rep,"G",avgPix[1]);
+        cJSON_AddNumberToObject(rep,"B",avgPix[2]);
+        act.send("RP",id,jrep);
+        cJSON_Delete(jrep);jrep=NULL;
+      }
+
+      return true;
+
+    }
+
+
+
+    return true;
+
+  }
+
+
 
   return false;
 }
@@ -138,6 +303,14 @@ static Mat getRotTranMat(acv_XY pt1,acv_XY pt2,float theta)
 
 void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> sinfo)
 {
+  if(useExtParam==true && extParam==NULL )
+  {
+    
+    cache_stage_info=sinfo;
+    return;
+  }
+
+
   int64 t0 = cv::getTickCount();
   LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
   
@@ -154,7 +327,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
 
-  LOGI("orientation info size:%d",d_sinfo->orientation.size());
 
 
   // if()
@@ -211,18 +383,74 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   int line_total_length_thres=JFetch_NUMBER_ex(def,"line_total_length_thres",1000000000);
 
   float angle_offset=JFetch_NUMBER_ex(def,"angle_offset",0)*M_PI/180;
-  if(d_sinfo->orientation.size()>0)
+
+  int blurRadius=(int)JFetch_NUMBER_ex(def,"blur_radius",0);
+  vector<StageInfo_Orientation::orient> *orienList=&(d_sinfo->orientation);
+
+
+  vector<StageInfo_Orientation::orient> orienList_ext;
+
+  
+  if(useExtParam==true)
+  {
+    orienList=&orienList_ext;
+  }
+  if(useExtParam==true && extParam)
+  {
+    cJSON *orienJList = JFetch_ARRAY(extParam,"orientation");
+    if(orienJList)
+    {
+      int listL=cJSON_GetArraySize(orienJList);
+      for(int i=0;i<listL;i++)
+      {
+        cJSON *jorient= cJSON_GetArrayItem(orienJList,i);
+        StageInfo_Orientation::orient orient;
+
+
+        orient.flip=JFetch_TRUE(jorient,"flip")==true;
+        orient.angle=JFetch_NUMBER_ex(jorient,"angle",0);
+        orient.confidence=JFetch_NUMBER_ex(jorient,"confidence",0);
+
+        orient.center.X=JFetch_NUMBER_ex(jorient,"center.X");
+        orient.center.Y=JFetch_NUMBER_ex(jorient,"center.Y");
+        orienList_ext.push_back(orient);
+      }
+    }
+    orienList=&orienList_ext;
+  }
+
+
+  auto &orientationList=*orienList;
+
+  
+
+  bool refCompEnable=JFetch_TRUE(def,"majorColorBalancing.enable");
+  cv::Scalar refAvgPix=cv::Scalar(
+    JFetch_NUMBER_ex(def,"majorColorBalancing.refRGB.R"),
+    JFetch_NUMBER_ex(def,"majorColorBalancing.refRGB.G"),
+    JFetch_NUMBER_ex(def,"majorColorBalancing.refRGB.B"));
+
+  cJSON *refRegions=JFetch_ARRAY(def,"majorColorBalancing.refRegions");
+  cJSON *blackRegions=JFetch_ARRAY(def,"blackRegions");
+  float colorBalancingDiffThres=JFetch_NUMBER_ex(def,"colorBalancingDiffThres");
+  
+
+
+  LOGI("orientation info size:%d",orientationList.size());
+  if(orientationList.size()>0)
   {  
-    retImage=new acvImage(W*d_sinfo->orientation.size(),H,3);
+    retImage=new acvImage(W*orientationList.size(),H,3);
     Mat def_temp_img(retImage->GetHeight(),retImage->GetWidth(),CV_8UC3,retImage->CVector[0]);
     
+
+
     def_temp_img={0};
 
-    for(int i=0;i<d_sinfo->orientation.size();i++)
+    for(int i=0;i<orientationList.size();i++)
     {
       int SUB_category=STAGEINFO_CAT_NA;
       int cur_score=-1;
-      StageInfo_Orientation::orient orientation = d_sinfo->orientation[i];
+      StageInfo_Orientation::orient orientation = orientationList[i];
 
       StageInfo_SurfaceCheckSimple::SRegion_Info si;
       do{
@@ -232,7 +460,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         break;
       }
       // cJSON* idxRegion=JFetch_ARRAY(def,("[+"+std::to_string(i)+"+]").c_str());
-      int imgOrderIdx=img_order_reverse?(d_sinfo->orientation.size()-1-i):i;
+      int imgOrderIdx=img_order_reverse?(orientationList.size()-1-i):i;
       Mat _def_temp_img_ROI = def_temp_img(Rect(imgOrderIdx*W, 0, W, H));
 
       float angle = orientation.angle;
@@ -251,10 +479,44 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
       if(1){
 
-        Mat image(def_temp_img_innerROI.rows,def_temp_img_innerROI.cols,CV_8UC3);
-        cv::GaussianBlur(def_temp_img_innerROI, image, cv::Size(0, 0), 3);
-        float alpha=0.3;
-        cv::addWeighted(def_temp_img_innerROI, 1+alpha, image, -alpha, 0, def_temp_img_innerROI);
+        // Mat image(def_temp_img_innerROI.rows,def_temp_img_innerROI.cols,CV_8UC3);
+        // cv::GaussianBlur(def_temp_img_innerROI, image, cv::Size(5, 5), 10);
+        // float alpha=0.3;
+        // cv::addWeighted(def_temp_img_innerROI, 1+alpha, image, -alpha, 0, def_temp_img_innerROI);
+      }
+
+      if(blurRadius>0)
+        cv::GaussianBlur(def_temp_img_innerROI, def_temp_img_innerROI, cv::Size(blurRadius, blurRadius), blurRadius);
+
+
+
+      float colorBalancingDiff=NAN;
+      LOGI(">>>>>>>>>>>>refCompEnable:%d refRegions:%p",refCompEnable,refRegions);
+      if(refCompEnable==true && refRegions!=NULL)
+      {
+        LOGI(">>>>>>>>>>>>");
+        cv::Scalar avgPix= ImgRegionsAveraging(_def_temp_img_ROI,refRegions);
+
+
+        colorBalancingDiff= norm(refAvgPix,avgPix,NORM_L2);
+
+        
+
+        // if(colorBalancingDiffThres==colorBalancingDiffThres && colorBalancingDiffThres)
+        // {
+          
+        // }
+        LOGI(">>>>>>>>>>>>colorBalancingDiff:%f",colorBalancingDiff);
+        cv::Scalar compScalar;//=refAvgPix/avgPix;
+        compScalar[0]=refAvgPix[0]/avgPix[0];
+        compScalar[1]=refAvgPix[1]/avgPix[1];
+        compScalar[2]=refAvgPix[2]/avgPix[2];
+        // def_temp_img_innerROI*=compScalar;
+        multiply(def_temp_img_innerROI,compScalar, def_temp_img_innerROI);
+
+        LOGI(">>>>>>>>>>>>refAvgPix:%f %f %f",refAvgPix[0],refAvgPix[1],refAvgPix[2]);
+        LOGI(">>>>>>>>>>>>avgPix:%f %f %f",avgPix[0],avgPix[1],avgPix[2]);
+        LOGI(">>>>>>>>>>>>compScalar:%f %f %f",compScalar[0],compScalar[1],compScalar[2]);
       }
 
 
@@ -273,6 +535,45 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         inRange(img_HSV, rangeL, rangeH, img_HSV_threshold);
         // cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
 
+        if(blackRegions)
+        {
+
+          int regionCount=cJSON_GetArraySize(blackRegions);
+          for(int i=0;i<regionCount;i++)
+          {
+            
+            cJSON *region= cJSON_GetArrayItem(blackRegions,i);
+            
+            int x=(int)JFetch_NUMBER_ex(region,"x")-innerROI_X;
+            int y=(int)JFetch_NUMBER_ex(region,"y")-innerROI_Y;
+            int w=(int)JFetch_NUMBER_ex(region,"w");
+            int h=(int)JFetch_NUMBER_ex(region,"h");
+            if(x<0)
+            {
+              w+=x;
+              x=0;
+            }
+
+            if(y<0)
+            {
+              h+=y;
+              y=0;
+            }
+
+            if(w>img_HSV_threshold.cols)
+            {
+              w=img_HSV_threshold.cols;
+            }
+            if(h>img_HSV_threshold.rows)
+            {
+              h=img_HSV_threshold.rows;
+            }
+
+
+            img_HSV_threshold(Rect(x,y,w,h)) = 255;
+          }
+
+        }
 
         {
           if(colorThres>0)
@@ -306,7 +607,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           vector<vector<Point> > contours;
           vector<Vec4i> hierarchy;
           bitwise_not(img_HSV_threshold , img_HSV_threshold);
-          findContours( img_HSV_threshold, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE );
+
+
+
+
+          findContours( img_HSV_threshold, contours, hierarchy, RETR_LIST, CHAIN_APPROX_SIMPLE );
           int area_sum=0;
 
 
@@ -318,6 +623,19 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           int line_total_length=0;
 
           bool isNG=false;
+
+          if(colorBalancingDiff>colorBalancingDiffThres)
+          {
+
+            StageInfo_SurfaceCheckSimple::Ele_info einfo={0};
+            einfo.category=STAGEINFO_CAT_SCS_COLOR_CORRECTION_THRES_LIMIT;
+            einfo.area=colorBalancingDiff;
+            si.elements.push_back(einfo);
+            isNG=true;
+          }
+
+
+
           for(int k=0;k<contours.size();k++)
           {
             int area = contourArea(contours[k],false);
@@ -490,10 +808,15 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   reportInfo->genJsonRepTojInfo();
   belongMan->dispatch(reportInfo);
-
+  result_cache_stage_info=reportInfo;
   cache_stage_info=sinfo;
 }
 
 InspectionTarget_SurfaceCheckSimple::~InspectionTarget_SurfaceCheckSimple()
 {
+  if(extParam)
+  {
+    cJSON_Delete(extParam);
+    extParam=NULL;
+  }
 }
