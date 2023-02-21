@@ -231,6 +231,8 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON* def)
 
           struct refine_region_info regInfo;
           regInfo.regionInRef=Rect2d(x,y,w,h);
+
+          if(x+w>img.cols || y+h>img.rows)continue;
           regInfo.img=img(regInfo.regionInRef).clone();
 
           regInfo.regionInRef.x-=templateCenter_x;
@@ -250,6 +252,8 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON* def)
       LOGI(">>>>>>>>>>>>>>>>>feature_ref_image_path:%s",feature_ref_image_path.c_str());
     }
 
+
+    refine_angle_only=JFetch_TRUE(featureInfo,"refine_angle_only");
     LOGI(">>>>>>>>>>>>>>>>>local_env_path:%s",local_env_path.c_str());
 
 
@@ -1202,6 +1206,8 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
         for(int j=1;j<refineCount;j++)
         {
           // margin/=2;
+
+          if(refine_angle_only)tmp_anchorPt2=anchorPt;//if adjust the angle only use the unrefined position every time
           DBG_STR=id+"_"+to_string(i)+"_"+to_string(j);
           refine_score2 = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt2,tmpAngle2,0.2,1,&refine_block_count,DBG_STR);
 
@@ -1219,6 +1225,8 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
         }
 
       }
+
+      if(refine_angle_only)tmp_anchorPt=anchorPt;//ignore the refined location if needed
 
 
       LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);

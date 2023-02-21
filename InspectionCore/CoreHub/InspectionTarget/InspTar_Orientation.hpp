@@ -69,6 +69,9 @@ public:
     cv::Rect2d regionInRef;
   };
   vector<refine_region_info> refine_region_set;
+  bool refine_angle_only;
+
+
   InspectionTarget_Orientation_ShapeBasedMatching(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
   static string TYPE(){ return "Orientation_ShapeBasedMatching"; }

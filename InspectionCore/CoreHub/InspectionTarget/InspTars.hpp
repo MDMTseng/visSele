@@ -598,7 +598,6 @@ class InspectionTarget_DataThreadedProcess :public InspectionTarget
   {
     datTransferQueue.termination_trigger();
     runThread.join();
-    StageInfo *sinfo=NULL;
     
   }
 
