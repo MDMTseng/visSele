@@ -950,7 +950,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
         try{
           
-          PHYLayer=new Data_UART_Layer(uart_name,baudrate, default_mode);
+          PHYLayer=new Data_UART_Layer(uart_name,baudrate, default_mode.c_str());
 
 
         }
