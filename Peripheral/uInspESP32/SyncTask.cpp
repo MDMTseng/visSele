@@ -37,6 +37,7 @@ SYS_INFO sysinfo = {
 
 
 float SETUP_TAR_FREQ=1500;
+bool SYS_FREQ_STABLE=false;
 float SYS_TAR_FREQ=0;
 float SYS_CUR_FREQ=0;
 float SYS_FREQ_ADV_STEP=5;
@@ -44,9 +45,11 @@ float SYS_FREQ_ADV_STEP=5;
 #define _PLAT_DIAMITER_mm 350
 #define _PLAT_CIRC_um (_PLAT_DIAMITER_mm*3.14159*1000)
 #define _PLAT_SUB_STEP 800
-#define _PLAT_PULSE_PER_TURN (_PLAT_SUB_STEP*18)
+#define _PLAT_PULSE_PER_TURN (_PLAT_SUB_STEP*18 *2)
 #define _PLAT_DIST_um_PER_STEP ((int)(_PLAT_CIRC_um/_PLAT_PULSE_PER_TURN))
 
+#define _PLAT_DIST_um(stepCount) ((int)(stepCount*_PLAT_CIRC_um/_PLAT_PULSE_PER_TURN))
+#define _PLAT_DIST_step(dist_um) ((int)(dist_um*_PLAT_PULSE_PER_TURN/_PLAT_CIRC_um))
 
 //disk D=350 circumference 350*Pi
 //1600*9 steps per round
@@ -222,6 +225,7 @@ struct TaskQ2CommInfo{//TODO: rename the infoQ to be more versatile
   string trig_tag;
 
   int btrig_idx;
+  int64_t trig_time_us;
   int trig_id;
   // float curFreq;
 
@@ -285,8 +289,6 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
     SYS_STATE state = states[i];
     switch (state)
     {
-    case SYS_STATE::NOP:
-      break;
     case SYS_STATE::INIT:
       if (i == 2)
       {//For INIT state "EXIT"(i==2) is the first and the last action it would run
@@ -298,7 +300,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
     case SYS_STATE::IDLE:
       if (i == 0)
       {
-        blockNewDetectedObject=false;//Accept pulse to trigger camera
+        blockNewDetectedObject=true;//Accept pulse to trigger camera
         //but in this state will not handle other event
         RESET_ALL_PIPELINE_QUEUE();
       } //enter
@@ -386,6 +388,11 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
     }
 
 
+    case SYS_STATE::NOP:
+    default:
+    break;
+
+
     
     }
   }
@@ -447,10 +454,12 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
 int ActRegister_pipeLineInfo(pipeLineInfo *pli);
 
 
-
+uint32_t _prePulse=0;
 int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
   static uint32_t acc_tid=1;
+
+  if(middle_pulse-_prePulse<(_PLAT_DIST_step(3000)))return -9;
 
 
   if(blockNewDetectedObject)return -1;
@@ -472,6 +481,7 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   }
   RBuf.pushHead();
   acc_tid++;
+  _prePulse=middle_pulse;
   return 0;
 }
 int ActRegister_pipeLineInfo(pipeLineInfo *pli)
@@ -510,6 +520,8 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli)
 
 int Run_ACTS(uint32_t cur_pulse)
 {
+  bool time_us_fetched=false;
+  uint64_t time_us=0;
   struct ACT_SCH *acts= &act_S;
   // static uint32_t pre_pulse=0;
 
@@ -540,6 +552,12 @@ int Run_ACTS(uint32_t cur_pulse)
                     TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
                     if(commInfo){
                       commInfo->type=TaskQ2CommInfo_Type::btrigInfo;
+                      if(time_us_fetched==false)
+                      {
+                        time_us=esp_timer_get_time();
+                        time_us_fetched=true;
+                      }
+                      commInfo->trig_time_us=time_us;
                       commInfo->btrig_idx=1;
                       commInfo->trig_id=task->src->tid;
                       TaskQ2CommInfoQ.pushHead();
@@ -571,6 +589,12 @@ int Run_ACTS(uint32_t cur_pulse)
                     TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
                     if(commInfo){
                       commInfo->type=TaskQ2CommInfo_Type::btrigInfo;
+                      if(time_us_fetched==false)
+                      {
+                        time_us=esp_timer_get_time();
+                        time_us_fetched=true;
+                      }
+                      commInfo->trig_time_us=time_us;
                       commInfo->btrig_idx=2;
                       commInfo->trig_id=task->src->tid;
                       TaskQ2CommInfoQ.pushHead();
@@ -637,10 +661,12 @@ int Run_ACTS(uint32_t cur_pulse)
 
 
   ACT_TRY_RUN_TASK(acts->ACT_SEL1, cur_pulse,
+                  if(SYS_FREQ_STABLE)
                    digitalWrite(PIN_O_SEL1, task->info!=0););
 
 
   ACT_TRY_RUN_TASK(acts->ACT_SEL2, cur_pulse,
+                  if(SYS_FREQ_STABLE)
                    digitalWrite(PIN_O_SEL2, task->info!=0););
 
 
@@ -839,6 +865,7 @@ void RESET_GateSensing()
 
 
 bool _senseInv_=true;
+
 const int  minWidth = 0;
 const int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
 const int  DEBOUNCE_L_THRES = 1+20/_PLAT_DIST_um_PER_STEP;//object inner connection
@@ -1207,6 +1234,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     if(tarP)
     {
+      uint32_t pressure=tarP->gate_pulse+STAGE_PULSE_OFFSET.SWITCH-SYS_STEP_COUNT;
+      if(pressure<1000)
+      {
+        SETUP_TAR_FREQ=SETUP_TAR_FREQ*19/20;
+      }
+      retdoc["tr"]=pressure;
       tarP->insp_status=cat;
       rspAck=true;
     }
@@ -1228,9 +1261,32 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   
   else if(strcmp(type,"clear_error")==0)
   {
+    RESET_ALL_PIPELINE_QUEUE(); 
     SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR_REDEEM);
 
     
+    doRsp=rspAck=true;
+  }
+
+  else if(strcmp(type,"PIN_ON")==0)
+  {
+    
+    if(doc["pin"].is<int>()==true)
+    {
+      int pin=doc["pin"];
+      digitalWrite(pin,HIGH);
+    }
+    doRsp=rspAck=true;
+  }
+  else if(strcmp(type,"PIN_OFF")==0)
+  {
+    
+    if(doc["pin"].is<int>()==true)
+    {
+      int pin=doc["pin"];
+
+      digitalWrite(pin,LOW);
+    }
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"enter_insp_mode")==0)
@@ -1693,6 +1749,9 @@ void loop()
         {
           retdoc["type"]="bTrigInfo"; 
           retdoc["tidx"]=info.btrig_idx;
+          retdoc["usH"]=info.trig_time_us>>32;
+          retdoc["usL"]=info.trig_time_us&((uint32_t)0-1);
+
           retdoc["tid"]=info.trig_id;
           retdoc["Qs"]=RBuf.size();
           int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
@@ -1729,7 +1788,12 @@ void loop()
   do{//timer freq ctrl
     subDiv=(subDiv+1)&(0xFF);
     if(subDiv!=0)break;
-    if(SYS_CUR_FREQ==SYS_TAR_FREQ)break;
+    if(SYS_CUR_FREQ==SYS_TAR_FREQ)
+    {
+      SYS_FREQ_STABLE=true;
+      break;
+    }
+    SYS_FREQ_STABLE=false;
     bool TimerNeedsStart=false;
     if(SYS_CUR_FREQ==0)
     {

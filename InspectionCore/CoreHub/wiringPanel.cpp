@@ -717,6 +717,13 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
           {
             int tidx=JFetch_NUMBER_ex(json,"tidx",-1);
             int tid=JFetch_NUMBER_ex(json,"tid",-1);
+
+
+            int64_t usH=JFetch_NUMBER_ex(json,"usH",-1);
+            int64_t usL=JFetch_NUMBER_ex(json,"usL",-1);
+
+            int64_t uInsp_time_us=(usH==-1 || usL==-1)?0:((usH<<32)|usL);
+
             cJSON_Delete(json);
 
             LOGI("bTrigInfo tidx:%d tid:%d", tidx,tid);
@@ -725,16 +732,43 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
             if(tidx==1)
             {
 
-              
-              sttriggerInfo_mix trigInfo;
-              trigInfo.stInfo=NULL;
-              trigInfo.triggerInfo.camera_id="2BDF44478350";
-              trigInfo.triggerInfo.trigger_id=tid;
-              trigInfo.triggerInfo.est_trigger_time_us=0;//force matching
-              trigInfo.triggerInfo.tags.push_back("ObjInsp");
-              trigInfo.triggerInfo.tags.push_back("s_BtmCheck");
-              
-              triggerInfoMatchingQueue.push_blocking(trigInfo);
+              {
+
+                int64_t time_us=0;
+                {//convert uInsp_time_us to camera time_us
+                  time_us=uInsp_time_us*0;
+                }
+
+
+
+                sttriggerInfo_mix trigInfo;
+                trigInfo.stInfo=NULL;
+                trigInfo.triggerInfo.camera_id="2BDF44478350";
+                trigInfo.triggerInfo.trigger_id=tid;
+                trigInfo.triggerInfo.est_trigger_time_us=time_us;//force matching
+                trigInfo.triggerInfo.tags.push_back("CAM_A");
+                trigInfo.triggerInfo.tags.push_back("s_uINSP_A");
+                triggerInfoMatchingQueue.push_blocking(trigInfo);
+              }
+
+              {
+
+                int64_t time_us=0;
+                {//convert uInsp_time_us to camera time_us
+                  time_us=uInsp_time_us*0;
+                }
+                sttriggerInfo_mix trigInfo;
+                trigInfo.triggerInfo.camera_id="2BDF44478343";
+                trigInfo.triggerInfo.trigger_id=tid;
+                trigInfo.triggerInfo.est_trigger_time_us=time_us;//force matching
+                trigInfo.triggerInfo.tags.push_back("CAM_B");
+                trigInfo.triggerInfo.tags.push_back("s_uINSP_B");
+                triggerInfoMatchingQueue.push_blocking(trigInfo);
+              }
+
+
+
+
             }
 
 
