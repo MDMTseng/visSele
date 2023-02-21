@@ -939,25 +939,18 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       char *IP = NULL;
       if ( (uart_name=JFetch_STRING(src_info, "uart_name")) !=NULL)
       {
-        double *baudrate = JFetch_NUMBER(src_info, "baudrate");
-        char *default_mode="8N1";
-        char *mode = JFetch_STRING(src_info, "mode");
-        if(mode==NULL)
+        int baudrate = (int)JFetch_NUMBER_ex(src_info, "baudrate",-1);
+        if(baudrate==-1)
         {
-          mode=default_mode;
-        }
-
-        if(baudrate==NULL)
-        {
-          // sprintf(err_str, "baudrate is not defined");
           break;
         }
 
 
+        string default_mode=JFetch_STRING_ex(src_info, "mode","8N1");
 
         try{
           
-          PHYLayer=new Data_UART_Layer(uart_name,(int)*baudrate, mode);
+          PHYLayer=new Data_UART_Layer(uart_name,baudrate, default_mode);
 
 
         }
