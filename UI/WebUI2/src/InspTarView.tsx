@@ -2166,6 +2166,12 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     })
                 }}>+校位範圍</Button>
 
+
+                <Switch checkedChildren="僅角度" unCheckedChildren="位置與角度" checked={featureInfo.refine_angle_only == true} onChange={(check) => {
+                    setFeatureInfo({ ...featureInfo, refine_angle_only:check })
+                }} />
+
+                <br/>
                 <Button key={"AddAnchor"} onClick={() => {
 
 
@@ -4634,16 +4640,20 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
 
                         ctx.font = TextY + "px Arial";
-                        if (catInfo.category > 0)
-                            ctx.strokeStyle =ctx.fillStyle = "rgba(0, 255, 0,1)";
+
+                        let id_name=CAT_ID_NAME[catInfo.category + ""];
+                        if (id_name == "OK")
+                            ctx.strokeStyle =ctx.fillStyle ="rgba(0, 179, 0,0.6)";
+                        else if (id_name == "空")
+                            ctx.strokeStyle =ctx.fillStyle ="rgba(100, 100, 100,0.6)";
                         else
-                            ctx.strokeStyle =ctx.fillStyle = "rgba(255, 0, 0,1)";
+                            ctx.strokeStyle =ctx.fillStyle ="rgba(179, 0, 0,0.6)";
 
 
 
 
                         let curOffset = (reelStep * _MM_P_STP_ - latestRepStepCount * _OBJ_SEP_DIST_ + _index * _MM_P_STP_) / _OBJ_SEP_DIST_;
-                        ctx.fillText(CAT_ID_NAME[catInfo.category + ""] + " " + curOffset + "顆", cacheDef.W * index, 0 + TextY + 5)
+                        ctx.fillText(id_name+ " " + curOffset + "顆", cacheDef.W * index, 0 + TextY + 5)
 
                         ctx.font = (TextY * 0.7).toFixed(2) + "px Arial";
                         ctx.fillText(catInfo.score, cacheDef.W * index, 0 + TextY + TextY + 5)
@@ -4663,8 +4673,12 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
                         catInfo.elements.forEach((ele: any) => {
 
-                            if (CAT_ID_NAME[ele.category + ""] == "OK")
+
+                            let id_name=CAT_ID_NAME[ele.category + ""];
+                            if (id_name == "OK")
                                 ctx.strokeStyle = "rgba(0, 179, 0,0.6)";
+                            else if (id_name == "空")
+                                ctx.strokeStyle = "rgba(100, 100, 100,0.6)";
                             else
                                 ctx.strokeStyle = "rgba(179, 0, 0,0.6)";
 
@@ -4676,7 +4690,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                             // if(fontSize_eq>10)fontSize_eq=40;
                             // ctx.font = (fontSize_eq)+"px Arial";
                             ctx.font = "1px Arial";
-                            ctx.fillText(CAT_ID_NAME[ele.category + ""]+":"+ele.area, ele.x, ele.y);
+                            ctx.fillText(id_name+":"+ele.area, ele.x, ele.y);
 
 
 
@@ -5000,23 +5014,26 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
                 (async () => {
 
-                        let Freq=2000;
+                        let Freq=1000;
 
-                        let CAM1_T=5000;
+                        let CAM1_T=2300;
 
 
-                        let SWTime=8000;
+                        let SWTime=9000;
 
-                        let airBlowHL=Math.round(36*Freq/1000/2);
-                        let SEL1_T=SWTime+1000;
-                        let SEL2_T=SWTime+2000;
+                        let pulsesPerRev=28800
+
+
+                        let SEL1_T=SWTime+100;
+                        let SEL2_T=SWTime+500;
+                        let airBlowHL=Math.round(20*Freq/1000/2);
 
 
 
 
                         console.log(await _this.send({type:"set_setup",plateFreq:Freq,stepRun:-1,stage_pulse_offset:{
-                            CAM1_on:CAM1_T,CAM1_off:CAM1_T+5,
-                            L1A_on:CAM1_T-2,L1A_off:CAM1_T+5,
+                            CAM1_on:CAM1_T,CAM1_off:CAM1_T+2,
+                            L1A_on:CAM1_T-2,L1A_off:CAM1_T+2,
                             SWITCH:SWTime,
                             SEL1_on:SEL1_T-airBlowHL,SEL1_off:SEL1_T+airBlowHL,
                             SEL2_on:SEL2_T-airBlowHL,SEL2_off:SEL2_T+airBlowHL} }));
@@ -5081,6 +5098,34 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
             }}>CONNECT</Button>
 
+
+
+            <Button onClick={()=>{
+
+            (async () => {
+                await BPG_API.InspTargetExchange(cacheDef.id, { type: "DISCONNECT",comm_id:PeripheralCONNID });
+
+            })()
+
+            }}>DISCONNECT</Button>
+
+            <br/>
+
+            <Button onClick={()=>{
+
+            (async () => {
+                    console.log(await _this.send({type:"PIN_ON",pin:16}));
+            })()
+
+            }}>LON</Button>
+
+            <Button onClick={()=>{
+
+            (async () => {
+                console.log(await _this.send({type:"PIN_OFF",pin:16}));
+            })()
+
+            }}>LOFF</Button>
         </div>
 
 
