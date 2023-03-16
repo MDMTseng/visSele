@@ -144,7 +144,7 @@ void InspTar_WBar_SizeComp::singleProcess(shared_ptr<StageInfo> sinfo)
 
   auto d_sinfo = dynamic_cast<StageInfo_Orientation *>(sinfo.get());
   if(d_sinfo==NULL) {
-    LOGE("sinfo type is not match.....");
+    LOGE("sinfo type does not match.....");
     return;
   }
   auto srcImg=d_sinfo->img;

@@ -41,9 +41,10 @@ class StageInfo{
   // std::map<std::string,std::shared_ptr<acvImage>> imgSets;
   cJSON* jInfo;
   
-  virtual cJSON* genJsonRep()
+  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
   {
-    cJSON* rep=cJSON_CreateObject();
+    if(rep==NULL)
+      rep=cJSON_CreateObject();
     cJSON_AddStringToObject(rep,"InspTar_id",source_id.c_str());
     cJSON_AddStringToObject(rep,"InspTar_type",typeName().c_str());
     cJSON_AddNumberToObject(rep,"trigger_id",trigger_id);
@@ -59,7 +60,11 @@ class StageInfo{
     return rep;
   }
 
-  virtual void genJsonRepTojInfo()
+
+
+
+
+  virtual void genJsonRepTojInfo(uint64_t brifVector=0xFFFF)
   {
     if(jInfo)
     {
@@ -67,7 +72,7 @@ class StageInfo{
       jInfo=NULL;
     }
 
-    jInfo=genJsonRep();
+    jInfo=attachJsonRep(jInfo,brifVector);
 
   }
 
@@ -136,12 +141,15 @@ class StageInfo_Image:public StageInfo
 };
 
 
+#define STAGEINFO_CAT_UNSET (-999999)
 #define STAGEINFO_CAT_NA (0)
 #define STAGEINFO_CAT_OK (1)
 #define STAGEINFO_CAT_NG (-1)
+#define STAGEINFO_CAT_NG2 (-2)
+#define STAGEINFO_CAT_NG3 (-3)
+#define STAGEINFO_CAT_NG4 (-4)
 
 #define STAGEINFO_CAT_NOT_EXIST (-40000)
-
 
 
 class StageInfo_Category:public StageInfo
@@ -151,14 +159,15 @@ class StageInfo_Category:public StageInfo
   virtual std::string typeName(){return this->stypeName();}
   int category;
 
-  virtual cJSON* genJsonRep()
+  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
   {
-    cJSON* rootRep=StageInfo::genJsonRep();
+    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
 
 
     cJSON* repInfo=cJSON_CreateObject();
     cJSON_AddItemToObject(rootRep,"report",repInfo);
     cJSON_AddNumberToObject(repInfo,"category",category);
+
     return rootRep;
   }
 };
@@ -171,9 +180,9 @@ class StageInfo_Value:public StageInfo
   virtual std::string typeName(){return this->stypeName();}
   int value;
 
-  virtual cJSON* genJsonRep()
+  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
   {
-    cJSON* rootRep=StageInfo::genJsonRep();
+    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
 
     cJSON_AddNumberToObject(rootRep,"report",value);
     return rootRep;
@@ -182,12 +191,17 @@ class StageInfo_Value:public StageInfo
 
 
 
+#define STAGEINFO_CAT_SCS_PT_OVER_SIZE (-700)
+#define STAGEINFO_CAT_SCS_LINE_OVER_LEN (-701)
+
 
 #define STAGEINFO_CAT_SCS_COLOR_CORRECTION_THRES_LIMIT (-750)
-#define STAGEINFO_CAT_SCS_PT_OVER_SIZE (-700)
-#define STAGEINFO_CAT_SCS_TOTAL_PT_OVER_SIZE (-710)
-#define STAGEINFO_CAT_SCS_LINE_OVER_LEN (-701)
-#define STAGEINFO_CAT_SCS_TOTAL_LINE_OVER_LEN (-711)
+
+#define STAGEINFO_CAT_SCS_EXTRA_STAT (51001)
+// #define STAGEINFO_CAT_SCS_TOTAL_ELE_COUNT (-50070)
+// #define STAGEINFO_CAT_SCS_TOTAL_ELE_AREA (-50071)
+// #define STAGEINFO_CAT_SCS_MAX_LINE_LENGTH (-50073)
+// #define STAGEINFO_CAT_SCS_TOTAL_BLOB_AREA (-50075)
 
 class StageInfo_SurfaceCheckSimple:public StageInfo_Category
 {
@@ -195,60 +209,193 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
   static std::string stypeName(){return "SurfaceCheckSimple";}
   virtual std::string typeName(){return this->stypeName();}
 
-  struct Ele_info{
+  float pixel_size;
+  struct Ele_info{//in subregion we have several elements(dot line....)
     // int type;
-    int area;
-    int perimeter;
-    int x,y;
-    int w,h;
-    float angle;
 
     int category;
+
+    union content
+    {
+      struct
+      {
+        int perimeter;
+        int x,y;
+        int w,h;
+        float angle;
+
+
+        int area;
+        int length;
+
+      } line;
+
+      struct
+      {      
+        int perimeter;  
+        int x,y;
+        int w,h;
+        float angle;
+
+        int area;
+
+      } point;
+
+
+      
+      struct
+      {
+        char type[16];
+        int value;
+        float difference;
+
+      } extra_stat;
+
+
+    } data;
+
   };
-  
-  struct SRegion_Info{
+
+
+
+
+
+  struct SubRegion_Info{//for every oriantation info we may have multiple subregions
     int category;
     int score;
     vector<Ele_info> elements;
-  };
-  vector<struct SRegion_Info> sreg_info;
 
-  virtual cJSON* genJsonRep()
+    struct
+    {
+      int element_count;//in pixel
+      int element_area;
+      int blob_area;
+      int max_line_length;
+
+    } info_stat;
+  };
+  
+  struct MatchRegion_Info{//per oriantation info
+    int category;
+    int score;
+    vector<SubRegion_Info> subregions;
+  };
+  vector<struct MatchRegion_Info> match_reg_info;
+
+  virtual cJSON* attachJsonRep(cJSON* _rootRep,uint64_t brifVector=-1)
   {
-    cJSON* rootRep=StageInfo_Category::genJsonRep();
+    cJSON* rootRep=StageInfo_Category::attachJsonRep(_rootRep,brifVector);
+    
+    if(pixel_size==pixel_size)
+      cJSON_AddNumberToObject(rootRep,"pixel_size",pixel_size);
+    
+
     cJSON* report=cJSON_GetObjectItem(rootRep,"report");
 
     cJSON* g_cat=cJSON_CreateArray();
     cJSON_AddItemToObject(report,"sub_reports",g_cat);
-    for(int i=0;i<sreg_info.size();i++)
+    for(int i=0;i<match_reg_info.size();i++)
     {
+
       cJSON *ginfo=cJSON_CreateObject();
       cJSON_AddItemToArray(g_cat,ginfo);
 
-      cJSON_AddNumberToObject(ginfo,"category",sreg_info[i].category);
-      cJSON_AddNumberToObject(ginfo,"score",sreg_info[i].score);
+      cJSON_AddNumberToObject(ginfo,"category",match_reg_info[i].category);
+      cJSON_AddNumberToObject(ginfo,"score",match_reg_info[i].score);
 
 
-      cJSON* elements=cJSON_CreateArray();
-      for(int j=0;j<sreg_info[i].elements.size();j++)
+      cJSON* subregions=cJSON_CreateArray();
+      cJSON_AddItemToObject(ginfo,"sub_regions",subregions);
+      for(int j=0;j<match_reg_info[i].subregions.size();j++)
       {
-        cJSON *ele=cJSON_CreateObject();
-        cJSON_AddItemToArray(elements,ele);
+        SubRegion_Info &subreg=match_reg_info[i].subregions[j];
+
+        cJSON *jsubreg=cJSON_CreateObject();
+        cJSON_AddItemToArray(subregions,jsubreg);
+        cJSON_AddNumberToObject(jsubreg,"category",subreg.category);
+        cJSON_AddNumberToObject(jsubreg,"score",subreg.score);
+
+        cJSON* elements=cJSON_CreateArray();
+
+        cJSON_AddItemToObject(jsubreg,"elements",elements);
 
 
-        cJSON_AddNumberToObject(ele,"area",sreg_info[i].elements[j].area);
-        cJSON_AddNumberToObject(ele,"perimeter",sreg_info[i].elements[j].perimeter);
-        cJSON_AddNumberToObject(ele,"x",sreg_info[i].elements[j].x);
-        cJSON_AddNumberToObject(ele,"y",sreg_info[i].elements[j].y);
-        cJSON_AddNumberToObject(ele,"w",sreg_info[i].elements[j].w);
-        cJSON_AddNumberToObject(ele,"h",sreg_info[i].elements[j].h);
-        cJSON_AddNumberToObject(ele,"angle",sreg_info[i].elements[j].angle);
-        cJSON_AddNumberToObject(ele,"category",sreg_info[i].elements[j].category);
+
+        {
+          cJSON_AddNumberToObject(jsubreg,"blob_area",subreg.info_stat.blob_area);
+          cJSON_AddNumberToObject(jsubreg,"element_area",subreg.info_stat.element_area);
+          cJSON_AddNumberToObject(jsubreg,"element_count",subreg.info_stat.element_count);
+          cJSON_AddNumberToObject(jsubreg,"max_line_length",subreg.info_stat.max_line_length);
+          
+        }
+
+
+        if(brifVector!=0)
+        for(int k=0;k<subreg.elements.size();k++)
+        {
+          Ele_info &einfo =subreg.elements[k];
+
+
+
+          cJSON *ele=cJSON_CreateObject();
+          cJSON_AddItemToArray(elements,ele);
+          cJSON_AddNumberToObject(ele,"category",einfo.category);
+          
+
+          switch(einfo.category)
+          {
+            case STAGEINFO_CAT_SCS_PT_OVER_SIZE:
+            {
+
+              cJSON_AddNumberToObject(ele,"area",einfo.data.point.area);
+              cJSON_AddNumberToObject(ele,"perimeter",einfo.data.point.perimeter);
+              cJSON_AddNumberToObject(ele,"x",einfo.data.point.x);
+              cJSON_AddNumberToObject(ele,"y",einfo.data.point.y);
+              cJSON_AddNumberToObject(ele,"w",einfo.data.point.w);
+              cJSON_AddNumberToObject(ele,"h",einfo.data.point.h);
+              cJSON_AddNumberToObject(ele,"angle",einfo.data.point.angle);
+              break;
+            }
+
+
+            case STAGEINFO_CAT_SCS_LINE_OVER_LEN:
+            {
+
+              cJSON_AddNumberToObject(ele,"area",einfo.data.line.area);
+              cJSON_AddNumberToObject(ele,"perimeter",einfo.data.line.perimeter);
+              cJSON_AddNumberToObject(ele,"x",einfo.data.line.x);
+              cJSON_AddNumberToObject(ele,"y",einfo.data.line.y);
+              cJSON_AddNumberToObject(ele,"w",einfo.data.line.w);
+              cJSON_AddNumberToObject(ele,"h",einfo.data.line.h);
+              cJSON_AddNumberToObject(ele,"angle",einfo.data.line.angle);
+              cJSON_AddNumberToObject(ele,"length",einfo.data.line.length);
+              break;
+            }
+
+            case STAGEINFO_CAT_SCS_EXTRA_STAT:
+            {
+              cJSON_AddStringToObject(ele,"type",einfo.data.extra_stat.type);
+              cJSON_AddNumberToObject(ele,"value",einfo.data.extra_stat.value);
+              cJSON_AddNumberToObject(ele,"difference",einfo.data.extra_stat.difference);
+
+
+
+              
+              break;
+            }
+
+
+            default:
+            break;
+            
+          }
+
+
+
+        }
+
 
       }
-      cJSON_AddItemToObject(ginfo,"elements",elements);
-
-
 
     }
     return rootRep;
@@ -289,9 +436,9 @@ class StageInfo_Orientation:public StageInfo
 
 
 
-  virtual cJSON* genJsonRep()
+  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
   {
-    cJSON* rootRep=StageInfo::genJsonRep();
+    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
 
     cJSON* repArray=cJSON_CreateArray();
     cJSON_AddItemToObject(rootRep,"report",repArray);
@@ -323,4 +470,24 @@ class StageInfo_Orientation:public StageInfo
   }
 
   
+};
+
+
+
+
+
+class StageInfo_SorterInfo:public StageInfo_Category
+{
+  public:
+  static std::string stypeName(){return "SorterInfo";}
+  virtual std::string typeName(){return this->stypeName();}
+  int category;
+
+  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
+  {
+    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
+
+    cJSON_AddNumberToObject(rootRep,"category",category);
+    return rootRep;
+  }
 };

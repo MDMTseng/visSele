@@ -550,7 +550,7 @@ class InspectionTarget_DataThreadedProcess :public InspectionTarget
   
 
 
-  int processInputPool()
+  virtual int processInputPool()
   {
     int poolSize=input_pool.size();
     for(int i=0;i<poolSize;i++)
@@ -560,17 +560,18 @@ class InspectionTarget_DataThreadedProcess :public InspectionTarget
       
       try{
         
-        if(curInput->img_prop.StreamInfo.channel_id==0)
-        {//no enough info return...
-          LOGE("---no channel_id available");
+        // if(curInput->img_prop.StreamInfo.channel_id==0)
+        // {//no enough info return...
+        //   LOGE("---no channel_id available");
           
-          LOGE("PUSH Failed....");
-        }
-        else if(realTimeDropFlag<=0 && datTransferQueue.push(curInput))
+        //   LOGE("PUSH Failed....");
+        // }
+        // else 
+        if(realTimeDropFlag<=0 && datTransferQueue.push(curInput))
         {
           if(realTimeDropFlag>=0)
             realTimeDropFlag++;
-          LOGI("PUSH PUSH datTransferQueue.size:%d",datTransferQueue.size());
+          // LOGI("PUSH PUSH datTransferQueue.size:%d",datTransferQueue.size());
         }
         else
         {
@@ -725,7 +726,7 @@ class InspectionTarget_StageInfoCollect_Base :public InspectionTarget
 
 
 
-  bool feedStageInfo(std::shared_ptr<StageInfo> sinfo)
+  virtual bool feedStageInfo(std::shared_ptr<StageInfo> sinfo)
   {
     std::lock_guard<std::mutex> _(input_stage_lock);
     int info_tid=sinfo->trigger_id;
