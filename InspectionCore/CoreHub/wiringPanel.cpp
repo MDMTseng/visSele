@@ -22,7 +22,9 @@
 #include "CameraLayerManager.hpp"
 
 #include "InspectionTarget.hpp"
+#include "InspTar_SpriteDraw.hpp"
 #include "InspTars.hpp"
+#include "RingBuf.hpp"
 
 #include <opencv2/calib3d.hpp>
 #include "opencv2/imgproc.hpp"
@@ -59,17 +61,19 @@ struct sttriggerInfo_mix{
 
 
 
-TSQueue<sttriggerInfo_mix> triggerInfoMatchingQueue(10);
+TSQueue<sttriggerInfo_mix> triggerInfoMatchingQueue(100);
 TSVector<sttriggerInfo_mix> triggerInfoMatchingBuffer;
 
 
 
 
-TSQueue<std::shared_ptr<StageInfo_Image>> inspQueue(10);
+TSQueue<std::shared_ptr<StageInfo_Image>> inspQueue(100);
 // TSQueue<image_pipe_info *> datViewQueue(10);
 // TSQueue<image_pipe_info *> inspSnapQueue(5);
 
 
+int CAM1_Counter=0;
+int CAM2_Counter=0;
 
 uint64_t lastImgSendTime=0;
 
@@ -91,9 +95,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
     lastImgSendTime=cur_ms;
 
 
-    LOGE("============DO INSP>> waterLvL: insp:%d/%d  trigInfoMatchingSize:%d  cur_Interval:%" PRIu64 "<<<cur_ms:%" PRIu64 "   from:%s",
-        inspQueue.size(), inspQueue.capacity(),triggerInfoMatchingBuffer.size(),cur_Interval,cur_ms,info.camera->getConnectionData().id.c_str());
-
+    
     // LOGE("============DO INSP>> waterLvL: insp:%d/%d dview:%d/%d  snap:%d/%d   poolSize:%d trigInfoMatchingSize:%d",
     //     inspQueue.size(), inspQueue.capacity(),
     //     datViewQueue.size(), datViewQueue.capacity(),
@@ -103,6 +105,12 @@ class InspectionTargetManager_m:public InspectionTargetManager
     std::shared_ptr<StageInfo_Image> newStateInfo(new StageInfo_Image());
 
     CameraLayer::frameInfo finfo = info.camera->GetFrameInfo();
+
+    
+    
+    LOGE("============DO INSP>> waterLvL: insp:%d/%d  trigInfoMatchingSize:%d  cur_Interval:%" PRIu64 "<<<tstmp_ms:%" PRIu64 "   from:%s",
+        inspQueue.size(), inspQueue.capacity(),triggerInfoMatchingBuffer.size(),cur_Interval,finfo.timeStamp_us,info.camera->getConnectionData().id.c_str());
+
 
     std::shared_ptr<acvImage> img(new acvImage(finfo.width,finfo.height,3));
     CameraLayer::status st = info.camera->ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
@@ -157,6 +165,8 @@ int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trig
   finfo.height=H;
   finfo.width=W;
   finfo.timeStamp_us=0;
+  finfo.pixel_size_mm=NAN;
+
   newStateInfo->img_prop.mmpp=0;
   newStateInfo->img_prop.fi=finfo;
 
@@ -181,7 +191,7 @@ int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trig
   { //TODO: recycle the newStateInfo
     return -2;
   }
-
+  LOGE("inspQueue.size()=%d ",inspQueue.size());
   inspQueue.push_blocking(newStateInfo);
 
   return 0;
@@ -214,6 +224,9 @@ bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
   {
     if(triggerInfoMatchingBuffer[i].stInfo!=NULL)
     {
+
+      LOGE("SRC:%s",triggerInfoMatchingBuffer[i].stInfo->source_id.c_str());
+      
       // bpg_pi.resPool.retResrc(triggerInfoMatchingBuffer[i].pipeInfo);
 
 
@@ -431,11 +444,11 @@ void ImgPipeProcessThread(bool *terminationflag)
 
 
       // LOGI(">>>CAM:%s",headImgPipe->camera_id.c_str());
-      LOGI("id:%d trigger:",stInfo->trigger_id);
-      for(auto tag:stInfo->trigger_tags)
-        LOGI("%s",tag.c_str());
+      // LOGI("id:%d trigger:",stInfo->trigger_id);
+      // for(auto tag:stInfo->trigger_tags)
+      //   LOGI("%s",tag.c_str());
       int acceptCount=inspTarMan.dispatch(stInfo);
-      LOGI("acceptCount:%d",acceptCount);
+      // LOGI("acceptCount:%d",acceptCount);
       if(acceptCount)
       {
         int processCount = inspTarMan.inspTarProcess();
@@ -448,7 +461,7 @@ void ImgPipeProcessThread(bool *terminationflag)
         // inspTarMan.unregNrecycleStageInfo(stInfo,NULL);
       }
 
-      LOGI("......<>>>>>.....");
+      // LOGI("......<>>>>>.....");
 
     }
   }
@@ -849,14 +862,35 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     // }
   };
   PerifChannel2 *pCH= NULL;
+  int ImgSaveCountDown_OK=0;
+  int ImgSaveCountDown_NG=0;
+  int ImgSaveCountDown_NA=0;
+
+
+  std::mutex recentSrcLock;
+  vector<vector<std::shared_ptr<StageInfo>>> recentSrcStageInfoSet;
+  RingBufIdxCounter<int> recentSrcStageInfoSetIdx;
+
+  class uInspTStmp2CamTSmp
+  {
+    float mult;
+    float offset1;
+    float offset2;
+    //(uInsp+offset1)*mult+offset2=Cam
+  };
+
 
   public:
 
 
   static std::string TYPE(){ return "JSON_Peripheral"; }
-  InspectionTarget_JSON_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path)
+  InspectionTarget_JSON_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
+    InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path),
+    recentSrcStageInfoSetIdx(100)
   {
+
     comm_pgID=-1;
+    recentSrcStageInfoSet.resize(recentSrcStageInfoSetIdx.space());
   }
 
   ~InspectionTarget_JSON_Peripheral()
@@ -877,6 +911,13 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     // pCH=
   }
 
+
+
+  virtual bool feedStageInfo(std::shared_ptr<StageInfo> sinfo)
+  {
+    if(sinfo->source==this)return false;
+    return InspectionTarget_StageInfoCollect_Base::feedStageInfo(sinfo);
+  }
 
 
   virtual cJSON* genITIOInfo()
@@ -906,7 +947,15 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     return std::async(launch::async,&InspectionTarget_JSON_Peripheral::processInputStagePool,this);
   }
 
+  string TEST_mode="";
+  int TEST_mode_counter=0;
+  int TEST_mode_counter_MOD=0;
+  int TEST_mode_count1=0;
+  int TEST_mode_count2=0;
 
+
+  int cacheStageInfoTID_START=-100000000;
+  int cacheStageInfoTID=-100000000;
   bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
   {
     bool ret = InspectionTarget::exchangeCMD(info,id,act);
@@ -944,6 +993,12 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     if(type=="is_CONNECTED")
     {
       return pCH!=NULL;
+    }
+
+
+    if(type=="timer_conv_seq")
+    {
+      return false;
     }
 
     if(type=="CONNECT")
@@ -1022,7 +1077,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
         comm_pgID=comm_id;
         pCH->comm_pgID=comm_id;
         pCH->setDLayer(PHYLayer);
-
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         pCH->send_RESET();
         pCH->RESET();
 
@@ -1063,6 +1118,16 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
     
     return false;
+  }
+
+
+  int find(std::vector< string > tags,string target)
+  {
+    for(int i=0;i<tags.size();i++)
+    {
+      if(tags[i]==target)return i;
+    }
+    return -1;
   }
 
   void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
@@ -1166,7 +1231,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
   InspectionTarget_DataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
     :InspectionTarget_DataThreadedProcess(id,def,belongMan,local_env_path)
   {
-    datTransferQueue.resize(30);
+    datTransferQueue.resize(300);
   }
 
 
@@ -1190,6 +1255,32 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
     return arr;
   }
 
+  int force_down_scale=-1;
+  float downSampFactor=1;
+  int downSampResolutionCap=500000;
+
+  bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
+  {
+    bool ret = InspectionTarget::exchangeCMD(info,id,act);
+    if(ret)return ret;
+    string type=JFetch_STRING_ex(info,"type");
+    if(type=="force_down_scale")
+    {
+      force_down_scale=JFetch_NUMBER_ex(info,"scale",-1);
+      return true;
+    }
+    if(type=="down_samp_factor")
+    {
+      downSampFactor=JFetch_NUMBER_ex(info,"factor",1);
+      return true;
+    }
+    if(type=="down_samp_resolution_cap")
+    {
+      downSampResolutionCap=JFetch_NUMBER_ex(info,"cap",5000000);
+      return true;
+    }
+    return false;
+  }
 
   void thread_run()
   {
@@ -1938,6 +2029,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             LOGI("black_level:%f",*black_level);
           }
 
+
+          double *pixel_size = JFetch_NUMBER(json, "pixel_size");
+          if(pixel_size)
+          {
+            cami->camera->SetPixelSize (*pixel_size);
+            LOGI("pixel_size:%f",*pixel_size);
+          }
+
           if(JFetch_TRUE(json, "mirrorX"))
           {
             cami->camera->SetMirror(0,1);
@@ -2169,6 +2268,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           else if(type==InspectionTarget_StageInfoCollect_Base::TYPE())
           {
             inspTar = new InspectionTarget_StageInfoCollect_Base(id,defInfo,&inspTarMan,env_path);
+          }
+          else if(type==InspectionTarget_SpriteDraw::TYPE())
+          {
+            inspTar = new InspectionTarget_SpriteDraw(id,defInfo,&inspTarMan,env_path);
           }
           else
           {
