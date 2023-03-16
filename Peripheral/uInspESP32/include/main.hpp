@@ -139,6 +139,7 @@ enum class GEN_ERROR_CODE
   INSP_RESULT_COUNTER_ERROR = 3,
   INSP_RESULT_PULSE_TIME_OUT_OF_SYNC = 4,
   INSP_RESULT_HAS_NO_TIME_STAMP = 5,
+  SEL_ACT_LIMIT_REACHES=0xff,
 };
 
 struct SYS_INFO
@@ -181,7 +182,10 @@ typedef struct run_mode_info
 
 
 #define STEPPER_PLS_PIN 22
-#define STEPPER_DIR_PIN 23
+#define STEPPER_DIR_PIN 21
+
+#define STEPPER_EN_ACTIVATION 0
+#define STEPPER_EN_PIN 13
 
 #define PIN_O_L1A 16
 #define PIN_O_CAM1 17
@@ -189,7 +193,7 @@ typedef struct run_mode_info
 #define PIN_O_CAM2 19
 #define PIN_O_SEL1 25
 #define PIN_O_SEL2 26
-#define PIN_O_SEL3 21
+#define PIN_O_SEL3 32
 
 
 #define PIN_I_GATE 27

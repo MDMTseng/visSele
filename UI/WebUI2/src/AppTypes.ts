@@ -23,6 +23,7 @@ export type type_CameraInfo={
   BGain:number,
   gamma:number,
   black_level:number,
+  pixel_size:number,
   frame_rate:number,
   mirrorX:boolean,
   mirrorY:boolean

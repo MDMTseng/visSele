@@ -51,7 +51,8 @@ import {SingleTargetVIEWUI_ColorRegionDetection,
   SingleTargetVIEWUI_Orientation_ColorRegionOval,
   SingleTargetVIEWUI_Orientation_ShapeBasedMatching,
   SingleTargetVIEWUI_SurfaceCheckSimple,
-  SingleTargetVIEWUI_JSON_Peripheral } from './InspTarView';
+  SingleTargetVIEWUI_JSON_Peripheral,
+  CompParam_InspTarUI } from './InspTarView';
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 const { Option } = Select;
@@ -139,22 +140,6 @@ function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region
 type IMCM_group={[trigID:string]:IMCM_type}
 
 
-type CompParam_InspTarUI =   {
-  display:boolean,
-  style?:any,
-  stream_id:number,
-  fsPath:string,
-  EditPermitFlag:number,
-  width:number,height:number,
-  renderHook:((ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,rule:any)=>void)|undefined,
-  // IMCM_group:IMCM_group,
-  def:any,
-  report:any,
-  onDefChange:(updatedDef:any,ddd:boolean)=>void,
-  APIExport:(  (api_set:any)=>void   )|undefined
-
-}
-
   
 
 type MenuItem = Required<MenuProps>['items'][number];
@@ -193,6 +178,9 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
     canvasComp:undefined,
     imgCanvas:document.createElement('canvas') as HTMLCanvasElement
   }).current;
+
+  const _this2 = useRef<any>({}).current;
+
 
   const [Local_IMCM,setLocal_IMCM]=
     useState<type_IMCM|undefined>(undefined);
@@ -303,9 +291,13 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
     gamma:<InputNumber value={camSetupInfo.gamma} onChange={(num)=>{
       onCameraSetupUpdate({...camSetupInfo,gamma:num})
     }}/>
-    <br/>
+    <br/> 
     black_level:<InputNumber value={camSetupInfo.black_level} onChange={(num)=>{
       onCameraSetupUpdate({...camSetupInfo,black_level:num})
+    }}/>
+    <br/>
+    pixel_size(mm):<InputNumber value={camSetupInfo.pixel_size} onChange={(num)=>{
+      onCameraSetupUpdate({...camSetupInfo,pixel_size:num})
     }}/>
     <br/>
     <Switch checkedChildren="反X" unCheckedChildren="正X" checked={camSetupInfo.mirrorX} onChange={(check)=>{
@@ -341,6 +333,11 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
       if(ctrl_or_draw==true)//ctrl
       {
         
+
+
+        const imageData = g.ctx.getImageData(g.mouseStatus.x-2, g.mouseStatus.y-2, 1, 1);
+        _this2.fetchedPixInfo = imageData;
+
       }
       else//draw
       {
@@ -365,6 +362,20 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
         }
         // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
        
+        if (_this2.fetchedPixInfo !== undefined) {
+            g.ctx.save();
+            g.ctx.resetTransform();
+            // console.log(_this.fetchedPixInfo)
+            let pixInfo = _this2.fetchedPixInfo.data;
+            g.ctx.font = "1.5em Arial";
+            g.ctx.fillStyle = "rgba(250,100, 50,1)";
+
+            // g.ctx.fillText(rgb2hsv(pixInfo[0], pixInfo[1], pixInfo[2]).map(num => num.toFixed(1)).toString(), g.mouseStatus.x, g.mouseStatus.y)
+
+            g.ctx.fillText((pixInfo as number[]).map(num => num.toFixed(1)).toString(), g.mouseStatus.x, g.mouseStatus.y)
+            g.ctx.restore();
+        }
+
 
         // console.log(canvas_obj);
         
@@ -452,6 +463,14 @@ function TargetViewUIShow({displayIDList,defConfig,EditPermitFlag,onDefChange,re
 
 
 
+  let wseg=displayInspTarIdx.length;
+  let hseg=1;
+
+  if(wseg>3)
+  {
+    hseg=Math.ceil(wseg/3);
+    wseg=3;
+  }
 
   // function SingleTargetVIEWUI_ColorRegionDetection({readonly,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI)
   return <>{
@@ -465,12 +484,13 @@ function TargetViewUIShow({displayIDList,defConfig,EditPermitFlag,onDefChange,re
       //console.log(defConfig.path,inspTar.id);
       return  <InspTargetUI_MUX 
         display={idx<displayInspTarIdx.length} 
-        width={100/displayInspTarIdx.length} 
-        height={100} 
+        width={100/wseg} 
+        height={100/hseg} 
         stream_id={50120}
         style={{float:"left"}} 
         EditPermitFlag={EditPermitFlag}
         key={inspTar.id} 
+        systemInspTarList={InspTarList}
         def={inspTar} 
         report={undefined} 
         fsPath={defConfig.path+"/it_"+inspTar.id}
@@ -953,6 +973,7 @@ function VIEWUI(){
                         style={{float:"left"}} 
                         EditPermitFlag={EDIT_PERMIT_FLAG.OPONLY}
                         key={id} 
+                        systemInspTarList={defConfig.InspTars_main}
                         def={itar} 
                         report={undefined} 
                         fsPath={defConfig.path+"/it_"+id}

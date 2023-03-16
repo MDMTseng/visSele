@@ -96,10 +96,24 @@ export function ObjShellingAssign(rootObj:{[key:string]:any}|undefined,keyTrace:
   root=obj;
   for (let i=0;i<traceIdxTLen;i++) {
     let key = keyTrace[i];
-    //console.log(obj,key,obj[key]);
+    // console.log(obj,key,obj[key]);
     
     let subObj:any=obj[key];
     
+    if(subObj===undefined)
+    {
+      if(typeof key === 'string')
+      {
+        subObj=obj[key]={};
+      }
+      else if(!isNaN(key))//is a number
+      {
+
+        subObj=obj[key]=[];
+      }
+    }
+
+
     if(i==traceIdxTLen-1)
     {
       if(data!==undefined)

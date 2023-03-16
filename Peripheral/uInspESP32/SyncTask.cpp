@@ -36,11 +36,14 @@ SYS_INFO sysinfo = {
 
 
 
-float SETUP_TAR_FREQ=1500;
+float SETUP_TAR_FREQ=0;
 bool SYS_FREQ_STABLE=false;
 float SYS_TAR_FREQ=0;
 float SYS_CUR_FREQ=0;
 float SYS_FREQ_ADV_STEP=5;
+bool SYS_STEPPER_DISABLED=false;
+
+int SEL1_ACT_COUNTDOWN=-1;
 
 #define _PLAT_DIAMITER_mm 350
 #define _PLAT_CIRC_um (_PLAT_DIAMITER_mm*3.14159*1000)
@@ -63,7 +66,10 @@ typedef struct pipeLineInfo{
   uint32_t tid;
 }pipeLineInfo;
 
-
+uint64_t SEL1_Count=0;
+uint64_t SEL2_Count=0;
+uint64_t SEL3_Count=0;
+uint64_t NA_Count=0;
 
 typedef struct stagePulseOffset{
   uint32_t CAM1_on;
@@ -459,7 +465,7 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
 {
   static uint32_t acc_tid=1;
 
-  if(middle_pulse-_prePulse<(_PLAT_DIST_step(3000)))return -9;
+  if(middle_pulse-_prePulse<(_PLAT_DIST_step(4000)))return -9;
 
 
   if(blockNewDetectedObject)return -1;
@@ -536,7 +542,17 @@ int Run_ACTS(uint32_t cur_pulse)
   GEN_ERROR_CODE ecode=GEN_ERROR_CODE::NOP;
 
   ACT_TRY_RUN_TASK(acts->ACT_L1A, cur_pulse,
-                   digitalWrite(PIN_O_L1A, task->info!=0););
+                   if(task->info)
+                   {
+                    GPIOLS32_SET(PIN_O_L1A);
+                   }
+                   else 
+                   {         
+                    GPIOLS32_CLR(PIN_O_L1A);
+                   }
+                   
+                   
+                   );
 
 
 
@@ -577,7 +593,15 @@ int Run_ACTS(uint32_t cur_pulse)
 
 
   ACT_TRY_RUN_TASK(acts->ACT_L2A, cur_pulse,
-                   digitalWrite(PIN_O_L2A, task->info!=0););
+                   if(task->info)
+                   {
+                    GPIOLS32_SET(PIN_O_L2A);
+                   }
+                   else 
+                   {         
+                    GPIOLS32_CLR(PIN_O_L2A);
+                   }
+                    );
 
 
   ACT_TRY_RUN_TASK(acts->ACT_CAM2, cur_pulse,
@@ -636,6 +660,7 @@ int Run_ACTS(uint32_t cur_pulse)
           ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_off, 0, _task_->src =NULL; );
           break;
         case 0xFFFF:
+          NA_Count++;
           // inspResCount.NA++;
           break;
 
@@ -661,13 +686,41 @@ int Run_ACTS(uint32_t cur_pulse)
 
 
   ACT_TRY_RUN_TASK(acts->ACT_SEL1, cur_pulse,
-                  if(SYS_FREQ_STABLE)
-                   digitalWrite(PIN_O_SEL1, task->info!=0););
+                   if(task->info)
+                   {
+
+                    if(SYS_FREQ_STABLE && SYS_STEPPER_DISABLED==false && SEL1_ACT_COUNTDOWN)
+                    {
+                      if(SEL1_ACT_COUNTDOWN>0)SEL1_ACT_COUNTDOWN--;
+                      SEL1_Count++;
+                      GPIOLS32_SET(PIN_O_SEL1);
+                    }
+                   }
+                   else 
+                   {         
+                    GPIOLS32_CLR(PIN_O_SEL1);
+                   }
+                  );
 
 
   ACT_TRY_RUN_TASK(acts->ACT_SEL2, cur_pulse,
-                  if(SYS_FREQ_STABLE)
-                   digitalWrite(PIN_O_SEL2, task->info!=0););
+                  
+                  if(task->info)
+                  {
+
+                  if(SYS_FREQ_STABLE && SYS_STEPPER_DISABLED==false)
+                  {
+                    SEL2_Count++;
+                    GPIOLS32_SET(PIN_O_SEL2);
+                  }
+                  }
+                  else 
+                  {         
+                  GPIOLS32_CLR(PIN_O_SEL2);
+                  }
+                
+                  
+                  );
 
 
   if(ecode!=GEN_ERROR_CODE::NOP)
@@ -1028,7 +1081,9 @@ void GateSensing()
 
         // uint32_t avg_PD_B2M=(pre_pulseDist_B2M+pulseDist_B2M)>>1;
         // if(pulseDist_B2M>(minPulseDist*2/3) && avg_PD_B2M>minPulseDist)
-        newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,SYS_STEP_COUNT,diff);
+
+        if(SYS_STEPPER_DISABLED==false && SYS_FREQ_STABLE)
+          newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,SYS_STEP_COUNT,diff);
   
       }
       // else
@@ -1212,6 +1267,41 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=rspAck=true;
 
   }
+  else if(strcmp(type,"reset_running_stat")==0)
+  {
+
+    SEL1_Count=SEL2_Count=SEL3_Count=NA_Count=0;
+
+    doRsp=rspAck=true;
+
+  }
+  else if(strcmp(type,"get_running_stat")==0)
+  {
+
+    // {
+    //   JsonArray jERROR_HIST = jdoc.createNestedArray("ERROR_HIST");
+
+    //   for(int i=0;i<ERROR_HIST.size();i++)
+    //   {
+    //     jERROR_HIST.add((int)*ERROR_HIST.getTail(i));
+    //   }
+    // }
+
+
+    JsonObject jCountInfo  = retdoc.createNestedObject("count");
+    jCountInfo["SEL1"]=SEL1_Count;
+    jCountInfo["SEL2"]=SEL2_Count;
+    jCountInfo["SEL3"]=SEL3_Count;
+    jCountInfo["NA"]=NA_Count;
+
+
+
+    // retdoc["plateFreq"]=NA_Count;
+
+
+    doRsp=rspAck=true;
+
+  }
   else if(strcmp(type,"report")==0)
   {
     int tid=(doc["tid"].is<int>()==true)?doc["tid"]:-1;
@@ -1305,9 +1395,75 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
   else if(strcmp(type,"trig_phamton_pulse")==0)
   {
-    newPulseEvent(SYS_STEP_COUNT-10, SYS_STEP_COUNT+10, SYS_STEP_COUNT,20);
+    uint32_t tatPulse= SYS_STEP_COUNT-STAGE_PULSE_OFFSET.L1A_on+_PLAT_DIST_step(3000);
+
+    newPulseEvent(tatPulse-10, tatPulse+10, tatPulse,20);
     
     doRsp=rspAck=true;
+  }
+
+  else if(strcmp(type,"sel1_act_countdown")==0)
+  {
+    
+    if(doc["count"].is<int>()==true)
+    {
+      SEL1_ACT_COUNTDOWN=doc["count"];
+    }
+    else
+    {
+      SEL1_ACT_COUNTDOWN=0;
+    }
+    doRsp=rspAck=true;
+  }
+
+
+  else if(strcmp(type,"stepper_enable")==0)
+  {
+    digitalWrite(STEPPER_EN_PIN,STEPPER_EN_ACTIVATION);
+    SYS_STEPPER_DISABLED=false;
+    doRsp=rspAck=true;
+  }
+  else if(strcmp(type,"stepper_disable")==0)
+  {
+    digitalWrite(STEPPER_EN_PIN,!STEPPER_EN_ACTIVATION);
+    SYS_STEPPER_DISABLED=true;
+    doRsp=rspAck=true;
+  }
+
+
+
+  else if(strcmp(type,"sel_act")==0)
+  {
+    int idx=doc["idx"];
+    int delay_ms=10;
+
+    if(doc["delay"].is<int>()==true)
+    {
+      delay_ms=doc["delay"];
+    }
+
+    switch(idx)
+    {
+      case 1:
+      digitalWrite(PIN_O_SEL1, 1);
+      delay(delay_ms);
+      digitalWrite(PIN_O_SEL1, 0);
+      rspAck=true;
+      break;
+      case 2:
+      digitalWrite(PIN_O_SEL2, 1);
+      delay(delay_ms);
+      digitalWrite(PIN_O_SEL2, 0);
+      rspAck=true;
+      break;
+      case 3:
+      digitalWrite(PIN_O_SEL3, 1);
+      delay(delay_ms);
+      digitalWrite(PIN_O_SEL3, 0);
+      rspAck=true;
+      break;
+    }
+    doRsp=true;
   }
   
   else if(strcmp(type,"BYE")==0)
@@ -1576,6 +1732,7 @@ void setup()
   Serial.begin(115200);//230400);
   // Serial.begin(460800);
   Serial.setRxBufferSize(500);
+  // Serial.setHwFlowCtrlMode(0);
   // // setup_comm();
   timer = timerBegin(0, 80*1000*1000/_TICK2SEC_BASE_, true);
   
@@ -1598,6 +1755,11 @@ void setup()
 
   pinMode(STEPPER_PLS_PIN, OUTPUT);
   pinMode(STEPPER_DIR_PIN, OUTPUT);
+  pinMode(STEPPER_EN_PIN, OUTPUT);
+
+  digitalWrite(STEPPER_EN_PIN,STEPPER_EN_ACTIVATION);
+  SYS_STEPPER_DISABLED=false;
+  
 
 
 
@@ -1673,6 +1835,7 @@ void loop()
       // djrl.recv_data((uint8_t*)&c,1);
       int recvLen = Serial.read(recvBuf,sizeof(recvBuf-1));
       //
+      if(recvLen<=0)continue;
       // djrl.dbg_printf("recvLen:%d",recvLen);
       djrl.recv_data((uint8_t*)recvBuf,recvLen);
       if(doDataLog)
@@ -1790,6 +1953,15 @@ void loop()
     if(subDiv!=0)break;
     if(SYS_CUR_FREQ==SYS_TAR_FREQ)
     {
+      if(SYS_TAR_FREQ==0 && SYS_FREQ_STABLE==false)//just stable
+      {
+
+        GPIOLS32_CLR(PIN_O_L1A);
+        GPIOLS32_CLR(PIN_O_L2A);
+        GPIOLS32_CLR(PIN_O_SEL1);
+        GPIOLS32_CLR(PIN_O_SEL2);
+        GPIOLS32_CLR(PIN_O_SEL3);
+      }
       SYS_FREQ_STABLE=true;
       break;
     }
@@ -1871,6 +2043,14 @@ void loop()
       }
     }
   }
+
+  // {
+  //   if(SEL1_ACT_COUNTDOWN==0)
+  //   {
+      
+  //     SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::SEL_ACT_LIMIT_REACHES);
+  //   }
+  // }
 }
 
 

@@ -63,7 +63,7 @@ let raw2obj_IM=(ws_evt:any, offset = 0)=>{
 
 
   let camera_id=headerArray[0];
-  let session_id=headerArray[1];
+  let format=headerArray[1];
   let offsetX=(headerArray[2]<<8)|headerArray[3];
   let offsetY=(headerArray[4]<<8)|headerArray[5];
   let width=(headerArray[6]<<8)|headerArray[7];
@@ -74,14 +74,23 @@ let raw2obj_IM=(ws_evt:any, offset = 0)=>{
   let full_height=(headerArray[13]<<8)|headerArray[14];
 
 
+  let image:ImageData|undefined;
   // console.log(ret_obj,headerArray);
-  let RGBA_pix_Num = 4*width*height;
-  let _image=new Uint8ClampedArray(ws_evt.data,
-    offset+BPG_header_L+headerL,4*width*height);
-  let image=new ImageData(_image, width);
+  if(format==0)
+  {
+    let RGBA_pix_Num = 4*width*height;
+    let _image=new Uint8ClampedArray(ws_evt.data,
+      offset+BPG_header_L+headerL,4*width*height);
+    image=new ImageData(_image, width);
+  }
+  else if(format==50)
+  {
+    
+  }
+
   return {
     camera_id,
-    session_id,
+    format,
     offsetX,
     offsetY,
     width,height,
