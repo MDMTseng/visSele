@@ -201,7 +201,7 @@ class InspectionTargetManager
   virtual void CamStream_CallBack(CameraManager::StreamingInfo &info)=0;
 
 
-  int dispatch(std::shared_ptr<StageInfo> sinfo, InspectionTarget* targetIT=NULL);//return how many inspection target needs it
+  int dispatch(std::shared_ptr<StageInfo> sinfo, InspectionTarget* targetIT=NULL,string it_id="");//return how many inspection target needs it
 
   std::mutex recycleStageInfoMutex;
   // int unregNrecycleStageInfo(StageInfo* sinfo,InspectionTarget* from );//return 0 as destroy, other positive number means how many other inspTar still holds it 
