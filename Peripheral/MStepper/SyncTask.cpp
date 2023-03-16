@@ -160,6 +160,8 @@ struct MSTP_SegCtx_OnTimeReply{
 struct MSTP_SegCtx{
   MSTP_SegCtx(){}
   ~MSTP_SegCtx(){}
+
+  bool isProcessed;
   MSTP_SegCtx_TYPE type;
   union {
     struct MSTP_SegCtx_IOCTRL IO_CTRL;
@@ -195,7 +197,7 @@ class MStp_M:public MStp{
     this->TICK2SEC_BASE=_TICK2SEC_BASE_;
     main_acc=mm2Pulse_conv(AXIS_IDX_X,2000);//SUBDIV*3200/mm_PER_REV;
     minSpeed=50;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
-    main_junctionMaxSpeedJump=300;//5200;
+    main_junctionMaxSpeedJump=700;//5200;
 
     maxSpeedInc=100*8;
     // pinMode(PIN_Z1_DIR, OUTPUT);
@@ -219,15 +221,17 @@ class MStp_M:public MStp{
     // pinMode(PIN_DBG, OUTPUT);    
 
     int general_max_freq=65*1000;
-    axisInfo[AXIS_IDX_X].VirtualStep=1;
+    axisInfo[AXIS_IDX_X].VirtualStep=1;//ref axis
     axisInfo[AXIS_IDX_X].AccW=1;
     axisInfo[AXIS_IDX_X].MaxSpeedJumpW=1;
     axisInfo[AXIS_IDX_X].MaxSpeed=general_max_freq;
 
-    axisInfo[AXIS_IDX_Y].VirtualStep=1.3;
-    axisInfo[AXIS_IDX_Y].AccW=0.7;
-    axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=1;
-    axisInfo[AXIS_IDX_Y].MaxSpeed=general_max_freq;
+    float pulseRatio;
+    pulseRatio=abs(mm2Pulse_conv(AXIS_IDX_Y,1)/mm2Pulse_conv(AXIS_IDX_X,1));
+    axisInfo[AXIS_IDX_Y].VirtualStep=1/pulseRatio;
+    axisInfo[AXIS_IDX_Y].AccW=pulseRatio*0.8;
+    axisInfo[AXIS_IDX_Y].MaxSpeedJumpW=pulseRatio;
+    axisInfo[AXIS_IDX_Y].MaxSpeed=general_max_freq*pulseRatio;
 
 
     axisInfo[AXIS_IDX_Z].VirtualStep=1;
@@ -247,10 +251,35 @@ class MStp_M:public MStp{
     float RX_VS=_RX_VS;
     float RXAccW=1/_RX_VS;
     float JW=1;
-    axisInfo[AXIS_IDX_Z1].VirtualStep=ZX_VS;
-    axisInfo[AXIS_IDX_Z1].AccW=ZXAccW;
-    axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=JW;
-    axisInfo[AXIS_IDX_Z1].MaxSpeed=general_max_freq;
+
+
+    {
+      float speedMult=3.34;
+      pulseRatio=abs(mm2Pulse_conv(AXIS_IDX_Z1,1)/mm2Pulse_conv(AXIS_IDX_X,1))*speedMult;
+      float MaxSpeedJumpW=pulseRatio/3;
+      axisInfo[AXIS_IDX_Z1].VirtualStep=1/pulseRatio;
+      axisInfo[AXIS_IDX_Z1].AccW=pulseRatio;
+      axisInfo[AXIS_IDX_Z1].MaxSpeedJumpW=MaxSpeedJumpW;
+      axisInfo[AXIS_IDX_Z1].MaxSpeed=general_max_freq;
+
+      axisInfo[AXIS_IDX_Z2].VirtualStep=1/pulseRatio;
+      axisInfo[AXIS_IDX_Z2].AccW=pulseRatio;
+      axisInfo[AXIS_IDX_Z2].MaxSpeedJumpW=MaxSpeedJumpW;
+      axisInfo[AXIS_IDX_Z2].MaxSpeed=general_max_freq;
+
+      axisInfo[AXIS_IDX_Z3].VirtualStep=1/pulseRatio;
+      axisInfo[AXIS_IDX_Z3].AccW=pulseRatio;
+      axisInfo[AXIS_IDX_Z3].MaxSpeedJumpW=MaxSpeedJumpW;
+      axisInfo[AXIS_IDX_Z3].MaxSpeed=general_max_freq;
+
+
+      axisInfo[AXIS_IDX_Z4].VirtualStep=1/pulseRatio;
+      axisInfo[AXIS_IDX_Z4].AccW=pulseRatio;
+      axisInfo[AXIS_IDX_Z4].MaxSpeedJumpW=MaxSpeedJumpW;
+      axisInfo[AXIS_IDX_Z4].MaxSpeed=general_max_freq;
+
+    }
+
 
     axisInfo[AXIS_IDX_R1].VirtualStep=RX_VS;
     axisInfo[AXIS_IDX_R1].AccW=RXAccW;
@@ -259,10 +288,6 @@ class MStp_M:public MStp{
 
 
 
-    axisInfo[AXIS_IDX_Z2].VirtualStep=ZX_VS;
-    axisInfo[AXIS_IDX_Z2].AccW=ZXAccW;
-    axisInfo[AXIS_IDX_Z2].MaxSpeedJumpW=JW;
-    axisInfo[AXIS_IDX_Z2].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_R2].VirtualStep=RX_VS;
     axisInfo[AXIS_IDX_R2].AccW=RXAccW;
@@ -271,10 +296,6 @@ class MStp_M:public MStp{
 
 
 
-    axisInfo[AXIS_IDX_Z3].VirtualStep=ZX_VS;
-    axisInfo[AXIS_IDX_Z3].AccW=ZXAccW;
-    axisInfo[AXIS_IDX_Z3].MaxSpeedJumpW=JW;
-    axisInfo[AXIS_IDX_Z3].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_R3].VirtualStep=RX_VS;
     axisInfo[AXIS_IDX_R3].AccW=RXAccW;
@@ -282,11 +303,6 @@ class MStp_M:public MStp{
     axisInfo[AXIS_IDX_R3].MaxSpeed=general_max_freq;
 
 
-
-    axisInfo[AXIS_IDX_Z4].VirtualStep=ZX_VS;
-    axisInfo[AXIS_IDX_Z4].AccW=ZXAccW;
-    axisInfo[AXIS_IDX_Z4].MaxSpeedJumpW=JW;
-    axisInfo[AXIS_IDX_Z4].MaxSpeed=general_max_freq;
 
     axisInfo[AXIS_IDX_R4].VirtualStep=RX_VS;
     axisInfo[AXIS_IDX_R4].AccW=RXAccW;
@@ -608,7 +624,7 @@ class MStp_M:public MStp{
             static_Pin_info|=(1<<ctx->IO_CTRL.P);
           }
         }
-
+        ctx->isProcessed=true;
 
       break;
       }
@@ -626,6 +642,8 @@ class MStp_M:public MStp{
         
         endStopDetection=ctx->INPUT_MON.doMonitor;
 
+        ctx->isProcessed=true;
+
       break;
 
       case MSTP_SegCtx_TYPE::ON_TIME_REPLY :
@@ -640,6 +658,7 @@ class MStp_M:public MStp{
         while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
         *Qhead=tinfo;
         Mstp2CommInfoQ.pushHead();
+        ctx->isProcessed=true;
       break;
 
 
@@ -671,6 +690,29 @@ class MStp_M:public MStp{
   {    
     MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
     if(ctx==NULL )return;
+
+    if(ctx->isProcessed==false)
+    switch(ctx->type)//deal with the release event
+    {
+      case MSTP_SegCtx_TYPE::ON_TIME_REPLY ://if it's not processed, send NAK
+        
+        struct Mstp2CommInfo tinfo={
+        .type=Mstp2CommInfo_Type::respFrame,
+        .isAck=false,
+        .resp_id=ctx->ON_TIME_REP.id
+        };
+
+        Mstp2CommInfo* Qhead=NULL;
+        while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+        *Qhead=tinfo;
+        Mstp2CommInfoQ.pushHead();
+      break;
+    }
+  
+
+
+
+
     sctx_pool.returnResource(ctx);
     seg->ctx=NULL;
   }
@@ -998,20 +1040,20 @@ inline float mm2Pulse_conv(int axisIdx,float dist)
   // return unit2Pulse(
   switch(axisIdx)
   {
-    case AXIS_IDX_X:
-    case AXIS_IDX_Z:return dist*SUBDIV/mm_PER_REV;//-1 for reverse the direction
-    case AXIS_IDX_Y:return -1*dist*SUBDIV/mm_PER_REV;
-    
     case AXIS_IDX_FEEDRATE:
     case AXIS_IDX_ACCELERATION:
     case AXIS_IDX_DEACCELERATION:
-      return dist*SUBDIV/mm_PER_REV;
+    case AXIS_IDX_X:return dist*5000/mm_PER_REV;
 
+
+    case AXIS_IDX_Z:return dist*SUBDIV/mm_PER_REV;//-1 for reverse the direction
+    case AXIS_IDX_Y:return -1*dist*SUBDIV/mm_PER_REV;
+    
 
     case AXIS_IDX_Z1:
     case AXIS_IDX_Z2:
     case AXIS_IDX_Z3:
-    case AXIS_IDX_Z4:return dist*200*4/40;//as pulse count
+    case AXIS_IDX_Z4:return dist*200*8/40;//as pulse count
 
     case AXIS_IDX_R1:
     case AXIS_IDX_R2:
@@ -1124,7 +1166,7 @@ public:
         }
 
         p_res->INPUT_MON.doMonitor=true;
-
+        p_res->isProcessed=false;
 
         while(_mstp->AddWait(0,0,p_res,NULL)==false)
         {
@@ -1145,6 +1187,7 @@ public:
           yield();
         }
         p_res->type=MSTP_SegCtx_TYPE::ON_TIME_REPLY;
+        p_res->isProcessed=false;
 
 
         p_res->ON_TIME_REP.isAck=true;
@@ -1207,6 +1250,7 @@ public:
     p_res->IO_CTRL.S=S;
     p_res->IO_CTRL.T=T;
     p_res->type=MSTP_SegCtx_TYPE::IO_CTRL;
+    p_res->isProcessed=false;
 
 
 
