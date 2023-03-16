@@ -35,6 +35,7 @@ class InspectionTarget_SurfaceCheckSimple :public InspectionTarget
 {
   bool useExtParam=false;
   cJSON* extParam=NULL;
+  bool show_display_overlay=true;
 public:
   InspectionTarget_SurfaceCheckSimple(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
