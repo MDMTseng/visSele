@@ -46,6 +46,7 @@ class CameraLayer{
       uint32_t height;
       float offset_x;
       float offset_y;
+      float pixel_size_mm;
     }frameInfo;
     /*// Camera's device information
     typedef struct
@@ -97,13 +98,14 @@ class CameraLayer{
     int maxWidth,maxHeight;
     frameInfo fi;
     std::string cam_json_info;
+
     
     float ROI_x;
     float ROI_y;
     float ROI_w;
     float ROI_h;
-
-    
+    float pixel_size_mm=NAN;
+    int frameCount;
     std::mutex m;
     CameraLayer_Callback _snap_cb;
     int snapFlag=0;
@@ -130,6 +132,7 @@ class CameraLayer{
         this->connection_misc=connection_misc;
         this->callback = cb;
         this->context = context;
+        frameCount=0;
     }
 
     CameraLayer::BasicCameraInfo getConnectionData()
@@ -179,6 +182,10 @@ class CameraLayer{
     virtual CameraLayer::status SetBGain(float gain){return NAK;}
 
     virtual CameraLayer::status SetBalckLevel(float blvl){return NAK;}
+    virtual CameraLayer::status SetPixelSize(float pixel_size_mm){
+        this->pixel_size_mm=pixel_size_mm;
+        return ACK;
+    }
 
     virtual CameraLayer::status SetGamma(float Gamma){return NAK;}
 
