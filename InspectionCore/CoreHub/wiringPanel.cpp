@@ -1116,7 +1116,163 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       return true;
     }
 
+    if(type=="TEST_MODE")
+    {
+      string mode=JFetch_STRING_ex(info,"mode");
+      TEST_mode=mode;
+      TEST_mode_count1=JFetch_NUMBER_ex(info,"space[0]",1);
+      TEST_mode_count2=JFetch_NUMBER_ex(info,"space[1]",1);
+      TEST_mode_counter_MOD=TEST_mode_count1+TEST_mode_count2;
+      if(TEST_mode=="OK_OK")
+      {
+        return true;
+      }
+      if(TEST_mode=="NG_NG")
+      {
+        return true;
+      }
+      if(TEST_mode=="NA_NA")
+      {
+        return true;
+      }
+      if(TEST_mode=="OK_NG")
+      {
+        return true;
+      }
+      if(TEST_mode=="OK_NG_NA")
+      {
+        TEST_mode_counter_MOD=3;
+        return true;
+      }
+      if(TEST_mode=="OK_NA")
+      {
+        return true;
+      }
+      if(TEST_mode=="NG_NA")
+      {
+        return true;
+      }
+
+
+      TEST_mode="";
+      return true;
+
+    }
     
+
+    if(type=="SrcImgSaveCountDown")
+    {
+      ImgSaveCountDown_OK=JFetch_NUMBER_ex(info,"count_OK",ImgSaveCountDown_OK);
+      ImgSaveCountDown_NG=JFetch_NUMBER_ex(info,"count_NG",ImgSaveCountDown_NG);
+      ImgSaveCountDown_NA=JFetch_NUMBER_ex(info,"count_NA",ImgSaveCountDown_NA);
+      return true;
+    }
+
+
+    if(type=="GetFetchSrcTIDList")
+    {
+        
+      std::lock_guard<std::mutex> lock(recentSrcLock); 
+      cJSON* arr= cJSON_CreateArray();
+
+      for(int i=0;i<recentSrcStageInfoSetIdx.size();i++)
+      {
+        int idx = recentSrcStageInfoSetIdx.getHead(i+1);
+        if(recentSrcStageInfoSet[idx].size()==0)continue;
+        cJSON_AddItemToArray(arr,cJSON_CreateNumber(recentSrcStageInfoSet[idx][0]->trigger_id));
+
+      }
+
+      act.send("RP",id,arr);
+      cJSON_Delete(arr);arr=NULL;
+      return true;
+    }
+
+
+
+
+    if(type=="TriggerFetchSrc")
+    {
+      int targetIdx=-1;
+      {
+        
+        std::lock_guard<std::mutex> lock(recentSrcLock); 
+        
+
+        float ftargetTID=JFetch_NUMBER_ex(info,"trigger_id");
+        if(ftargetTID!=ftargetTID)return false;
+        int targetTID=ftargetTID;
+            // LOGI("<<<<targetTID:%d>>>>",targetTID);
+        for(int i=0;i<recentSrcStageInfoSetIdx.size();i++)
+        {
+          int idx = recentSrcStageInfoSetIdx.getTail(i);
+          auto &infoSet=recentSrcStageInfoSet[idx];
+
+            // LOGI("<<<<idx:%d>>>>",idx);
+          if(infoSet.size()==0)continue;
+            // LOGI("<<<<infoSet tid:%d  size:%d>>>>",infoSet[0]->trigger_id,infoSet.size());
+          if(infoSet[0]->trigger_id!=targetTID)continue;
+          targetIdx=i;
+          break;
+        }
+
+      }
+
+      if(targetIdx>=0)
+      {
+        auto &infoSet=recentSrcStageInfoSet[targetIdx];
+
+
+
+
+
+        for(int j=0;j<infoSet.size();j++)
+        {
+
+          auto src = dynamic_cast<StageInfo_Image*>(infoSet[j].get());
+
+
+          if(src==NULL)continue;
+          
+          LOGI("SEND....");
+          shared_ptr<StageInfo_Image> pkt(new StageInfo_Image());
+          pkt->img=src->img;
+          pkt->img_prop=src->img_prop;
+          pkt->img_show=src->img_show;
+          pkt->process_time_us=src->process_time_us;
+          pkt->sharedInfo=src->sharedInfo;
+
+          pkt->source=src->source;
+          pkt->source_id=src->source_id;
+
+
+          pkt->trigger_tags=src->trigger_tags;
+          pkt->trigger_tags.push_back("s_uInspCache_");
+          cacheStageInfoTID--;
+          pkt->trigger_id=cacheStageInfoTID;//cacheStageInfoIssueTID-src->trigger_id;
+          belongMan->dispatch(pkt);
+
+
+
+
+
+
+
+
+        }
+        while (belongMan->inspTarProcess())
+        {
+        }
+        return true;
+      }
+
+          LOGI("END....");
+      return true;
+    }
+
+
+
+
     return false;
   }
 
@@ -1135,55 +1291,322 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     
     LOGI("InspectionTarget_UART_JSON_Peripheral processGroup:  trigger_id:%d =========",trigger_id);
 
-    int catSum=STAGEINFO_CAT_OK;
     for(int i=0;i<group.size();i++)
     {
-      LOGI("[%d]:from:%s  =========",i,group[i]->source_id.c_str());
+
+      auto d_img_info = dynamic_cast<StageInfo_Image*>(group[i].get());
+      if(d_img_info==NULL)continue;
+      
+      LOGI("tstmp_ms:%" PRIu64 ,d_img_info->img_prop.fi.timeStamp_us);
+
+    }
+
+    int holeIdx=-1;
+    for(int i=0;i<group.size();i++)
+    {
+
+      auto d_img_info = dynamic_cast<StageInfo_Orientation*>(group[i].get());
+      if(d_img_info==NULL)continue;
+      // LOGI(">>>>>orientation size:%d",d_img_info->orientation.size());
+      if(d_img_info->orientation.size()==0)continue;
+
+      if(d_img_info->orientation[0].confidence==0)continue;
 
 
-      auto d_sinfo = dynamic_cast<StageInfo_Category *>(group[i].get());
-
-
-
-      if(d_sinfo)
+      if(find(d_img_info->trigger_tags,"SBM_HOLE_A")>=0)
       {
-        int cur_cat=d_sinfo->category;
-
-        if(cur_cat==STAGEINFO_CAT_NOT_EXIST)cur_cat=STAGEINFO_CAT_NA;
-
-        switch ((catSum))
+      LOGI("SBM_HOLE_A");
+        if(holeIdx!=-1)
         {
-        case STAGEINFO_CAT_OK:
-          if(cur_cat==STAGEINFO_CAT_NG)catSum=STAGEINFO_CAT_NG;
-          if(cur_cat==STAGEINFO_CAT_NA)catSum=STAGEINFO_CAT_NA;
-
-
-
-          break;
-        
-        case STAGEINFO_CAT_NG:
-        
-          if(cur_cat==STAGEINFO_CAT_NA)catSum=STAGEINFO_CAT_NA;
-          break;
-        
-        case STAGEINFO_CAT_NA:
-          break;
-        default://unknown
-          catSum=STAGEINFO_CAT_NA;
+          holeIdx=-2;
           break;
         }
+        holeIdx=0;
+        continue;
       }
-      else
+
+
+      if(find(d_img_info->trigger_tags,"SBM_HOLE_B")>=0)
       {
-        catSum=STAGEINFO_CAT_NA;
+      LOGI("SBM_HOLE_B");
+        if(holeIdx!=-1)
+        {
+          holeIdx=-2;
+          break;
+        }
+        holeIdx=1;
+        continue;
       }
+      // d_img_info->orientation.size();
+    }
+
+
+    std::vector<std::shared_ptr<StageInfo>> surfaceReps;
+
+    int catSum=STAGEINFO_CAT_OK;
+    int curTrigID=-1;
+    for(int i=0;i<group.size();i++)
+    {
+
+      auto d_sinfo = dynamic_cast<StageInfo_SurfaceCheckSimple *>(group[i].get());
+
+
+
+      if(d_sinfo==NULL)continue;
+
+
+    
+      curTrigID=d_sinfo->trigger_id;
+      int cur_cat=d_sinfo->category;
+
+      LOGI("[%d]:from:%s  =========cat:%d",i,group[i]->source_id.c_str(),cur_cat);
+
+
+      // cJSON *surRep=cJSON_CreateObject();
+      // d_sinfo->attachJsonRep(surRep,true);
+      surfaceReps.push_back(group[i]);
+
+
+      if(0){
+
+        LOGI("match_reg_info size:%d",d_sinfo->match_reg_info.size());
+        for(int j=0;j<d_sinfo->match_reg_info.size();j++)
+        {
+          // 
+          auto &sr=d_sinfo->match_reg_info[j].subregions;
+
+          LOGI("[%d]:%d",j,d_sinfo->match_reg_info[j].category);
+          for(int k=0;k<sr.size();k++)
+          {
+            LOGI("[%d]:>>>>>",k);
+            LOGI("blob_area:%d",sr[k].info_stat.blob_area);
+            LOGI("element_area:%d",sr[k].info_stat.element_area);
+
+
+
+          }
+        }
+      }
+      
+
+
+      //from now on we only look one side
+
+      // if(holeIdx==0)//
+      // {
+      //   cur_cat=STAGEINFO_CAT_NA;
+      // }
+
+
+
+      if(cur_cat==STAGEINFO_CAT_NOT_EXIST || cur_cat==STAGEINFO_CAT_UNSET)cur_cat=STAGEINFO_CAT_NA;
+
+      if(holeIdx==i)//the hole is here ignore the inspection
+      {
+        if(cur_cat==STAGEINFO_CAT_NG)
+          cur_cat=STAGEINFO_CAT_OK;
+      }
+      else if(holeIdx<0)
+      {
+        cur_cat=STAGEINFO_CAT_NA;
+      }
+
+
+
+      // if(i==1)break;
+
+
+      
+      int bk_catSum=catSum;
+
+      switch ((catSum))
+      {
+      case STAGEINFO_CAT_OK:
+        if(cur_cat==STAGEINFO_CAT_NG)catSum=STAGEINFO_CAT_NG;
+        else if(cur_cat==STAGEINFO_CAT_NA)catSum=STAGEINFO_CAT_NA;
+        else if(cur_cat==STAGEINFO_CAT_UNSET)catSum=STAGEINFO_CAT_NA;
+
+        break;
+      
+      case STAGEINFO_CAT_NG:
+      
+        if(cur_cat==STAGEINFO_CAT_NA)catSum=STAGEINFO_CAT_NA;
+        else if(cur_cat==STAGEINFO_CAT_UNSET)catSum=STAGEINFO_CAT_NA;
+        
+        break;
+      
+      case STAGEINFO_CAT_NA:
+        break;
+      default://unknown
+        catSum=STAGEINFO_CAT_NA;
+        break;
+      }
+      LOGI("catSum %d +cur_cat:%d  =>:%d  ",bk_catSum,cur_cat,catSum);
 
 
     }
 
+    bool doSave=false;
+    if(catSum==STAGEINFO_CAT_OK &&  ImgSaveCountDown_OK>0)
+    {
+      ImgSaveCountDown_OK--;
+      doSave=true;
+    }
+    if(catSum==STAGEINFO_CAT_NG &&  ImgSaveCountDown_NG>0)
+    {
+      ImgSaveCountDown_NG--;
+      doSave=true;
+    }
+    if(catSum==STAGEINFO_CAT_NA &&  ImgSaveCountDown_NA>0)
+    {
+      ImgSaveCountDown_NA--;
+      doSave=true;
+    }
+
+
+    if(doSave)
+    {
+
+      for(int i=0;i<group.size();i++)
+      {
+
+        auto d_img_info = dynamic_cast<StageInfo_Image*>(group[i].get());
+        if(d_img_info==NULL)continue;
+        LOGI("IMG>>src:%s",d_img_info->source_id.c_str());
+
+
+        shared_ptr<StageInfo_Image> reportInfo(new StageInfo_Image());
+
+        reportInfo->img_show=d_img_info->img_show;
+        reportInfo->img_prop=d_img_info->img_prop;
+        reportInfo->img=d_img_info->img;
+        reportInfo->create_time_sysTick=d_img_info->create_time_sysTick;
+        reportInfo->source=this;
+        reportInfo->source_id=id;
+        reportInfo->trigger_id=d_img_info->trigger_id;
+
+        reportInfo->trigger_tags=d_img_info->trigger_tags;
+        reportInfo->trigger_tags.push_back("CAT_"+to_string(catSum));
+        reportInfo->trigger_tags.push_back("IMG_SAVE");
+
+        belongMan->dispatch(reportInfo,NULL,"ImDataSave");
+
+
+      }
+
+    }
+
+
+
+
+
+
+    if(trigger_id>cacheStageInfoTID_START)//exclude NA
+    {
+      std::lock_guard<std::mutex> lock(recentSrcLock); 
+
+      if(recentSrcStageInfoSetIdx.space()==0)
+      {//if full, wipe tail
+        int tail_idx = recentSrcStageInfoSetIdx.getTail();
+        recentSrcStageInfoSetIdx.consumeTail();
+        recentSrcStageInfoSet[tail_idx].clear();
+      }
+      
+      {//push new info in head
+        int head_idx = recentSrcStageInfoSetIdx.getHead();
+        recentSrcStageInfoSet[head_idx]=group;
+        recentSrcStageInfoSetIdx.pushHead();
+
+      }
+    }
+
+
+
     LOGI("final CAT:%d",catSum);
 
 
+
+    shared_ptr<StageInfo_Category> reportInfo(new StageInfo_Category());
+    reportInfo->category=catSum;
+    reportInfo->process_time_us=0;
+    reportInfo->trigger_id=curTrigID;
+    reportInfo->source=this;
+    reportInfo->source_id=id;
+    reportInfo->trigger_tags.push_back(id);
+    reportInfo->genJsonRepTojInfo();
+
+    {
+      cJSON* repInfoObj=JFetch_OBJECT(reportInfo->jInfo,"report");
+      cJSON_AddNumberToObject(repInfoObj,"hole_location_index",holeIdx);
+
+
+
+      cJSON* jSurRepsArr=cJSON_CreateArray();
+      cJSON_AddItemToObject(repInfoObj,"surface_check_reports",jSurRepsArr);
+      for(int i=0;i<surfaceReps.size();i++)
+      {
+        cJSON* srep=cJSON_CreateObject();
+        surfaceReps[i]->attachJsonRep(srep,0);
+        cJSON_AddItemToArray(jSurRepsArr,srep);
+      }
+    }
+    // reportInfo->jInfo
+
+
+
+    reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
+    reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",1);
+
+
+    belongMan->dispatch(reportInfo);
+
+    if(TEST_mode.length()!=0)
+    {
+      if(TEST_mode=="OK_OK")
+      {
+        catSum=STAGEINFO_CAT_OK;
+      }
+      else if(TEST_mode=="NG_NG")
+      {
+        catSum=STAGEINFO_CAT_NG;
+      }
+      else if(TEST_mode=="NA_NA")
+      {
+        catSum=STAGEINFO_CAT_NA;
+      }
+      else if(TEST_mode=="OK_NG")
+      {
+        catSum=((TEST_mode_counter<TEST_mode_count1))?STAGEINFO_CAT_OK:STAGEINFO_CAT_NG;
+      }
+      else if(TEST_mode=="OK_NA")
+      {
+        catSum=((TEST_mode_counter<TEST_mode_count1))?STAGEINFO_CAT_OK:STAGEINFO_CAT_NA;
+      }
+      else if(TEST_mode=="NG_NA")
+      {
+        catSum=((TEST_mode_counter&1)==0)?STAGEINFO_CAT_NG:STAGEINFO_CAT_NA;
+        catSum=((TEST_mode_counter<TEST_mode_count1))?STAGEINFO_CAT_NG:STAGEINFO_CAT_NA;
+      }
+      else if(TEST_mode=="OK_NG_NA")
+      {
+        int tt=TEST_mode_counter%3;
+        catSum=STAGEINFO_CAT_OK;
+        if(tt==1)catSum=STAGEINFO_CAT_NG;
+        if(tt==2)catSum=STAGEINFO_CAT_NA;
+      }
+      TEST_mode_counter=(TEST_mode_counter+1)%TEST_mode_counter_MOD;
+
+    }
+
+
+
+
+
+
+    if(curTrigID<0)
+    {
+      LOGI("TEST set don't send to Peripheral....");
+    }
     if(pCH)
     {
       switch ((catSum))
@@ -1289,7 +1712,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
     while(true)
     {
       std::shared_ptr<StageInfo> curInput;
-      LOGI("<<<<<size():%d",datTransferQueue.size());
+      // LOGI("<<<<<size():%d",datTransferQueue.size());
       // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
             
       try{
@@ -1305,30 +1728,42 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
 
 
       int DBG_USECOUNT=curInput.use_count();
-      LOGI("<<<<<size():%d usecount:%d",datTransferQueue.size(),DBG_USECOUNT);
+      // LOGI("<<<<<size():%d usecount:%d",datTransferQueue.size(),DBG_USECOUNT);
 
-      LOGI("DataTransfer thread pop data: name:%s ",curInput->source_id.c_str());
-      LOGI("DataTransfer thread pop data: type:%s ",curInput->typeName().c_str());
+      // LOGI("DataTransfer thread pop data: name:%s ",curInput->source_id.c_str());
+      // LOGI("DataTransfer thread pop data: type:%s ",curInput->typeName().c_str());
 
       // for ( const auto &kyim : curInput->imgSets ) {
       //     LOGI("[%s]:%p",kyim.first.c_str(),kyim.second.get());
       // }
 
-      LOGI("curInput->jInfo:%p ",curInput->jInfo);
+      // LOGI("curInput->jInfo:%p ",curInput->jInfo);
       int imgCHID=curInput->img_prop.StreamInfo.channel_id;
       int downSample=curInput->img_prop.StreamInfo.downsample;
       if(downSample<1)
       {
         downSample=1;
       }
+      //downSampleAdj=datTransferQueue.size();
 
-      int downSampleAdj=datTransferQueue.size();
-      downSample+=downSampleAdj;
+      int sameCHID_inQ_count=datTransferQueue.size();
+      sameCHID_inQ_count-=5;
+      if(sameCHID_inQ_count<0)sameCHID_inQ_count=0;
+      // {
+
+      //   int QL=datTransferQueue.size();
+      //   for(int i=0;i<QL;i++)
+      //   {
+      //     datTransferQueue.
+      //   }
+      // }
+
+      downSample+=(int)(sameCHID_inQ_count*downSampFactor);
       // curInput->imgSets./
 
       
 
-      LOGI("imgCHID:%d ",imgCHID);
+      // LOGI("imgCHID:%d ",imgCHID);
 
       {
         // CameraLayer::BasicCameraInfo data=headImgPipe->img_prop.StreamInfo.camera->getConnectionData();
@@ -1349,10 +1784,36 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
 
 
         std::shared_ptr<acvImage> im2send=curInput->img_show;
-        if(im2send!=NULL)
+
+        // if(im2send)
+        // {
+
+        //   Mat CV_Img(im2send->GetHeight(),im2send->GetWidth(),CV_8UC3,im2send->CVector[0]);
+        //   int compressionRate=80;
+        //   std::vector<int> param(2);
+        //   param[0] = cv::IMWRITE_JPEG_QUALITY;
+        //   param[1] = compressionRate;//default(95) 0-100
+
+
+        //   vector<unsigned char> img_encode;
+        //   cv::imencode(".jpg", CV_Img, img_encode, param);
+
+        //   LOGI("COMPRESSION:: %dx%d  jpeg:rate:%d size:%d",
+        //     im2send->GetWidth(),im2send->GetHeight(),compressionRate,img_encode.size());
+
+        // }
+
+
+
+        if(im2send!=NULL && force_down_scale<999)
         {
-          float pscale=sqrt(im2send->GetHeight()*im2send->GetWidth()/500000.0);
-          downSample=pscale<=0?1:(int)pscale;
+
+          
+
+          float pscale=sqrt(im2send->GetHeight()*im2send->GetWidth()/(downSampResolutionCap));
+          int new_downSample=pscale<=0?1:(int)pscale;
+          if(downSample<new_downSample)downSample=new_downSample;
+          if(force_down_scale!=-1)downSample=force_down_scale;
           BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)downSample};
           iminfo.fullHeight = im2send->GetHeight();
           iminfo.fullWidth = im2send->GetWidth();
@@ -1406,6 +1867,16 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
   }
 
 
+
+
+  virtual int processInputPool()
+  {
+
+    int ret = InspectionTarget_DataThreadedProcess::processInputPool();
+
+    // LOGI("PPUSH:datTransferQueue:size:%d",datTransferQueue.size());
+    return ret;
+  }
   virtual cJSON* genITIOInfo()
   {
 
@@ -1450,7 +1921,7 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
       // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
             
       try{
-        LOGI("TryReadNew");
+        // LOGI("TryReadNew");
         if(datTransferQueue.pop_blocking(curInput)==false)
         {
           LOGI("TryReadTailed");
@@ -1488,13 +1959,12 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
       
       int trigID=d_sinfo->trigger_id;
 
-      std::string filename="t="+to_string(timeInMilliseconds())+" tid="+to_string(trigID)+" tags="+mark;
-
+      string tags_str=mark;
       for(int i=0;i<tags.size();i++)
       {
-        filename+=","+tags[i];
+        tags_str+=","+tags[i];
       }
-      filename+=".png";
+      std::string filename="tid="+to_string(trigID)+" tags="+tags_str+" t="+to_string(timeInMilliseconds())+".png";
 
       LOGI("SAVE image filename:%s ",filename.c_str());
       LOGI("local_env_path:%s ",local_env_path.c_str());
