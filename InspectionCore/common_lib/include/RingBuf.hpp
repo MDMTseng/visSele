@@ -31,6 +31,11 @@ class RingBufIdxCounter
 
   void clear(){headIdx=0;tailIdx=0;dataSize=0;}
   RB_Idx_Type getHead(){return headIdx;}
+  RB_Idx_Type getHead(RB_Idx_Type idx){
+    int real_idx=getHead()-idx;
+    if(real_idx<0)real_idx+=RBLen;
+    return real_idx;
+  }
   RB_Idx_Type getTail(){return tailIdx;}
   RB_Idx_Type getTail(RB_Idx_Type idx){
     int real_idx=getTail()+idx;
