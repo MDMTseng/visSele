@@ -415,3 +415,112 @@ std::string run_exe(const char* cmd) {
     }
     return result;
 }
+
+
+static const unsigned char base64_table[65] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+
+
+std::string base64_encode(const char *b64header,const unsigned char *src, size_t len)
+{
+    unsigned char *out, *pos;
+    const unsigned char *end, *in;
+
+
+
+    int header_len = b64header==NULL?0:strlen(b64header);
+
+
+
+    size_t olen;
+
+    olen = header_len+4*((len + 2) / 3); /* 3-byte blocks to 4-byte */
+
+    if (olen < len)
+        return std::string(); /* integer overflow */
+
+    std::string outStr;
+    outStr.resize(olen);
+
+    if(header_len>0)
+    {
+        memcpy(&outStr[0],b64header,header_len);
+    }
+
+
+    out = (unsigned char*)&outStr[header_len];
+
+    end = src + len;
+    in = src;
+    pos = out;
+    while (end - in >= 3) {
+        *pos++ = base64_table[in[0] >> 2];
+        *pos++ = base64_table[((in[0] & 0x03) << 4) | (in[1] >> 4)];
+        *pos++ = base64_table[((in[1] & 0x0f) << 2) | (in[2] >> 6)];
+        *pos++ = base64_table[in[2] & 0x3f];
+        in += 3;
+    }
+
+    if (end - in) {
+        *pos++ = base64_table[in[0] >> 2];
+        if (end - in == 1) {
+            *pos++ = base64_table[(in[0] & 0x03) << 4];
+            *pos++ = '=';
+        }
+        else {
+            *pos++ = base64_table[((in[0] & 0x03) << 4) |
+                (in[1] >> 4)];
+            *pos++ = base64_table[(in[1] & 0x0f) << 2];
+        }
+        *pos++ = '=';
+    }
+
+    return outStr;
+}
+
+// static char encoding_table[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
+//                                 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
+//                                 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
+//                                 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
+//                                 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
+//                                 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
+//                                 'w', 'x', 'y', 'z', '0', '1', '2', '3',
+//                                 '4', '5', '6', '7', '8', '9', '+', '/'};
+// static char *decoding_table = NULL;
+// static int mod_table[] = {0, 2, 1};
+
+
+// char *base64_encode(const char *b64header,const unsigned char *data,
+//                     size_t input_length,
+//                     size_t *output_length) {
+    
+//     int header_len = b64header==NULL?0:strlen(b64header);
+//     *output_length = header_len+4 * ((input_length + 2) / 3)+1;
+
+//     char *buffer_data = new char[*output_length];
+//     if (buffer_data == NULL) return NULL;
+
+//     if(header_len)
+//       memcpy(buffer_data,b64header,header_len);
+
+//     char *encoded_data=buffer_data+header_len;
+
+//     for (int i = 0, j = 0; i < input_length;) {
+
+//         uint32_t octet_a = i < input_length ? (unsigned char)data[i++] : 0;
+//         uint32_t octet_b = i < input_length ? (unsigned char)data[i++] : 0;
+//         uint32_t octet_c = i < input_length ? (unsigned char)data[i++] : 0;
+
+//         uint32_t triple = (octet_a << 0x10) + (octet_b << 0x08) + octet_c;
+
+//         encoded_data[j++] = encoding_table[(triple >> 3 * 6) & 0x3F];
+//         encoded_data[j++] = encoding_table[(triple >> 2 * 6) & 0x3F];
+//         encoded_data[j++] = encoding_table[(triple >> 1 * 6) & 0x3F];
+//         encoded_data[j++] = encoding_table[(triple >> 0 * 6) & 0x3F];
+//     }
+
+//     for (int i = 0; i < mod_table[input_length % 3]; i++)
+//         encoded_data[*output_length - 1 - i-1] = '=';
+//     return buffer_data;
+// }

@@ -83,4 +83,7 @@ int cross_mkdir(const char *path);
 char systemPathSEP();
 bool rw_create_dir(const char *name);
 std::string run_exe(const char* cmd);
+
+
+std::string base64_encode(const char *b64header,const unsigned char *src, size_t len);
 #endif
