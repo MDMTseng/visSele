@@ -18,8 +18,7 @@ import 'reactflow/dist/style.css';
 
 // import ResponsiveReactGridLayout from 'react-grid-layout';
 
-import { Responsive, WidthProvider } from "react-grid-layout";
-
+import { ResponsiveReactGridLayoutX } from './UICardComp';
 import type { MenuProps, MenuTheme } from 'antd/es/menu';
 import { UserOutlined, LaptopOutlined, NotificationOutlined,DownOutlined,
   DisconnectOutlined,LinkOutlined } from '@ant-design/icons';
@@ -52,9 +51,8 @@ import {SingleTargetVIEWUI_ColorRegionDetection,
   SingleTargetVIEWUI_Orientation_ShapeBasedMatching,
   SingleTargetVIEWUI_SurfaceCheckSimple,
   SingleTargetVIEWUI_JSON_Peripheral,
-  CompParam_InspTarUI } from './InspTarView';
+  CompParam_InspTarUI,CompParam_UIOption } from './InspTarView';
 
-const ResponsiveGridLayout = WidthProvider(Responsive);
 const { Option } = Select;
 const { SubMenu } = Menu;
   
@@ -146,7 +144,7 @@ type MenuItem = Required<MenuProps>['items'][number];
 
 var enc = new TextEncoder();
 
-const _DEF_FOLDER_PATH_="data/Test1.xprj";
+const _DEF_FOLDER_PATH_="data/SP1.xprj";
 // import ReactJsoneditor from 'jsoneditor-for-react';
 
 // declare module 'jsoneditor-react'jsoneditor-for-react"
@@ -218,8 +216,10 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
           let ctx2nd = _this.imgCanvas.getContext('2d');
           if(ctx2nd)
           {
-            ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
-
+            if(IMCM.image_info.image instanceof ImageData)
+              ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+            else if(IMCM.image_info.image instanceof HTMLImageElement)
+              ctx2nd.drawImage(IMCM.image_info.image, 0, 0);
           }
 
 
@@ -409,6 +409,7 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
 
 
 
+
 function InspTargetUI_MUX(param:CompParam_InspTarUI)
 {
   if(param.def.type=="ColorRegionDetection")
@@ -434,87 +435,486 @@ function InspTargetUI_MUX(param:CompParam_InspTarUI)
 }
 
 
-function TargetViewUIShow({displayIDList,defConfig,EditPermitFlag,onDefChange,renderHook}:{displayIDList:string[],defConfig:any,EditPermitFlag:number, onDefChange:(updatedDef:any)=>void,renderHook:any})
+
+
+
+function UICard_Config({inspTarList,config,onConfChange}:{inspTarList:any[],config:any,onConfChange:(newConf:any)=>any})
 {
-  let InspTarList=defConfig.InspTars_main;
-  let displayInspTarIdx:number[]=[];
-  let displayInspTarIdx_hide:number[]=[];
-  if(defConfig!==undefined)
+
+
+  // const [newUIEleID,setNewUIEleID]= useState("");
+  // const [newUIEleType,setNewUIEleType]= useState("");
+  
+  let _config={id:"",type:"",...config};
+
+
+  function setCompleteFlag(config:any)
   {
-    displayInspTarIdx=displayIDList
-      .map(itarID=>InspTarList.findIndex((itar:any)=>itar.id==itarID))
-      .filter(idx=>idx>=0)
-  
-    displayInspTarIdx_hide
-      =InspTarList.map((itar:any,idx:number)=>idx).filter((idx:number)=>{
-        if(displayInspTarIdx.find(idx_to_show=>idx_to_show==idx)===undefined)
-          return true;
-        return false;
-      });
-  
+    return {...config,complete:(config.id.length!==0 && config.type.length!==0 )}
   }
+
+  let SubSelUI:any=null;
+
+  switch(_config.type)
+  {
+    case "InspTar":
+      
+    SubSelUI=<><br/>
+    
+
+    
+    InspTarID:
+    <Dropdown
+    trigger={["click"]}
+    overlay={<>
+      <Menu>
+        {
+          inspTarList.map(it=><Menu.Item key={it.id} 
+            onClick={()=>{
+
+              onConfChange(setCompleteFlag({..._config,itid:it.id}))
+
+        
+            }}>
+              {it.id}
+            </Menu.Item>)
+        }
+        </Menu>
+      </>}
+    >
+      
+      <a onClick={(e) => e.preventDefault()}>
+        <Space>
+          {_config.itid}
+          <DownOutlined />
+        </Space>
+      </a>
+
+
+    </Dropdown>
+    
+    
+    </>
+    break;
+
+    case "Util":
+      
+    SubSelUI=<><br/>
+    
+    
+    
+    
+    
+    
+    </>
+    break;
+
+  }
+
+  return <>
+  
+  
+
+    <Input value={_config.id} placeholder={"卡片名稱"}
+      onChange={(e)=>{
+        let value=e.target.value;
+        // setNewUIEleID(value);
+        onConfChange(setCompleteFlag({..._config,id:value}))
+      }}
+      />
+
+
+
+
+    <br/>
+    <Dropdown
+    trigger={["click"]}
+    overlay={<>
+      <Menu>
+        {
+          ["InspTar","Util"].map(uitype=><Menu.Item key={uitype} 
+            onClick={()=>{
+              // let newDefConfig=ObjShellingAssign(defConfig,["main","WidgetLayout",idx],{...uilayoutInfo,type:uitype})
+              // onDefChange(newDefConfig)
+
+              onConfChange(setCompleteFlag({..._config,type:uitype}))
+            }}>
+              {uitype}
+            </Menu.Item>)
+
+        }
+        </Menu>
+      </>}
+    >
+      
+      <a onClick={(e) => e.preventDefault()}>
+        <Space>
+          {_config.type}
+          <DownOutlined />
+        </Space>
+      </a>
+
+
+    </Dropdown>
+    <br/>
+
+
+    {SubSelUI}
+        
+  </>
+}
+
+
+
+
+
+
+function UtilUI_MUX({UIOption,onUIOptionUpdate}:CompParam_UIOption)
+
+
+// CompParam_UIOption
+{
+  switch(UIOption.subtype)
+  {
+    case "ASS":
+      break;
+    case "uInsp_Ctrl_Panel":
+
+
+
+
+
+
+
+
+    
+      break;
+    default:
+
+
+      return  <>
+      
+        <Dropdown
+          trigger={["click"]}
+          overlay={<>
+            <Menu>
+              {
+                ["ASS","uInsp_Ctrl_Panel"].map(uitype=><Menu.Item key={uitype} 
+                  onClick={()=>{
+                    onUIOptionUpdate({...UIOption,subtype:uitype})
+                  }}>
+                    {uitype}
+                  </Menu.Item>)
+
+              }
+            </Menu>
+          </>}
+        >
+      
+        <a onClick={(e) => e.preventDefault()}>
+          <Space>
+            ...
+            <DownOutlined />
+          </Space>
+        </a>
+
+
+        </Dropdown>
+
+      
+      
+      
+      </>;
+  }
+
+  return  <>UTIL..ddd..:{UIOption.subtype}</>;
+}
+
+
+
+
+function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onDefChange,renderHook}:{displayIDList:string[],defConfig:any,UIEditFlag:boolean,EditPermitFlag:number, onDefChange:(updatedDef:any)=>void,renderHook:any})
+{
+  
+  
+  const [newUIEleConf,setNewUIEleConf]= useState<any>({});
+  let InspTarList=defConfig.InspTars_main;
+  // let displayInspTarIdx:number[]=[];
+  // let displayInspTarIdx_hide:number[]=[];
+  // if(defConfig!==undefined)
+  // {
+  //   displayInspTarIdx=displayIDList
+  //     .map(itarID=>InspTarList.findIndex((itar:any)=>itar.id==itarID))
+  //     .filter(idx=>idx>=0)
+  
+  //   displayInspTarIdx_hide
+  //     =InspTarList.map((itar:any,idx:number)=>idx).filter((idx:number)=>{
+  //       if(displayInspTarIdx.find(idx_to_show=>idx_to_show==idx)===undefined)
+  //         return true;
+  //       return false;
+  //     });
+  
+  // }
 
   useEffect(()=>{//load default
     console.log(">>TargetViewUIShow>>>>>>>>>>>>>>");
   },[])
+
+
+  useEffect(()=>{//load default
+    setNewUIEleConf({});
+  },[UIEditFlag])
   // console.log(InspTarList);
   // console.log(displayIDList,displayInspTarIdx,displayInspTarIdx_hide);
 
 
 
 
-  let wseg=displayInspTarIdx.length;
-  let hseg=1;
+  let defalutLayoutInfo={
+    "w": 1,
+    "h": 1,
+    "x": 0,
+    "y": 999,
+    "i":undefined,
+    "isDraggable": true,
+    "isResizable": true
+    }
+  let WidgetLayout=defConfig.main.WidgetLayout===undefined?[]:defConfig.main.WidgetLayout;
 
-  if(wseg>3)
+  // WidgetLayout=InspTarList.map((itar:any)=>{
+  //   let layoutInfo=WidgetLayout.find((layoutInfo:any)=>layoutInfo.i==itar.id);
+  //   return layoutInfo?layoutInfo:{...defalutLayoutInfo,"i": itar.id};
+  // });
+
+
+
+  WidgetLayout=WidgetLayout.map((ilayout:any)=>({
+    ...ilayout,
+    isDraggable:UIEditFlag,
+    isResizable:UIEditFlag
+  }));
+
+
+
+  
+  let ID_ADD_NEW_ELE="ADD_NEW_ELE"
+  WidgetLayout=WidgetLayout.filter((uii:any)=>uii.i!==ID_ADD_NEW_ELE);
+  
+  if(UIEditFlag)
   {
-    hseg=Math.ceil(wseg/3);
-    wseg=3;
+    WidgetLayout.push({...defalutLayoutInfo,i:ID_ADD_NEW_ELE,type:ID_ADD_NEW_ELE})
   }
 
-  // function SingleTargetVIEWUI_ColorRegionDetection({readonly,width,height,style=undefined,renderHook,IMCM_group,def,report,onDefChange}:CompParam_InspTarUI)
-  return <>{
-    // displayInspTarIdx.map((idx:number)=>InspTarList[idx]).map((inspTar:any)=>inspTar.id+":"+inspTar.type+",")
-    [...displayInspTarIdx,-1,...displayInspTarIdx_hide].map((idx:number)=>idx>=0?InspTarList[idx]:undefined).map((inspTar:any,idx:number)=>{
-    
-      if(inspTar===undefined)
-      {
-        return  null;//<><br/>---hide----<br/></>
-      }
-      //console.log(defConfig.path,inspTar.id);
-      return  <InspTargetUI_MUX 
-        display={idx<displayInspTarIdx.length} 
-        width={100/wseg} 
-        height={100/hseg} 
-        stream_id={50120}
-        style={{float:"left"}} 
-        EditPermitFlag={EditPermitFlag}
-        key={inspTar.id} 
-        systemInspTarList={InspTarList}
-        def={inspTar} 
-        report={undefined} 
-        fsPath={defConfig.path+"/it_"+inspTar.id}
-        renderHook={renderHook} 
-        onDefChange={(new_rule,doInspUpdate=true)=>{
 
-          let newDefConfig={...defConfig,InspTars_main:[...InspTarList]};
-          if(new_rule===undefined)
-          {
-            newDefConfig.InspTars_main=newDefConfig.InspTars_main.filter((itar:any,cidx:number)=>cidx!=idx);
-          }
-          else
-          {
-            console.log(new_rule);
-            let idx = InspTarList.findIndex((itar:any)=>itar.id==new_rule.id);
-            if(idx<0)return;
-            newDefConfig.InspTars_main[idx]=new_rule;
-          }
+
+
+
+  let layoutSrcEle=WidgetLayout.map((layoutInfo:any)=>{
+    let tatId=layoutInfo.i;
+
+    //  let eleInfo = InspTarList.find((it:any)=>it.id==tatId);
+    //  if(eleInfo)return eleInfo;
+
+    let eleInfo = defConfig.main.WidgetInfo.find((uu:any)=>uu.id==tatId);
+    
+
+
+
+    if(eleInfo)
+    {
+      if(eleInfo.type=="InspTar" && eleInfo.itid!==undefined)
+      {
+        let itDef = InspTarList.find((it:any)=>it.id==eleInfo.itid);
+        eleInfo={...eleInfo,inspTarDef:itDef}
+      }
+      return eleInfo;
+    }
+
+    return undefined;
+  })
+  console.log(layoutSrcEle);
+
+
+
+  return <ResponsiveReactGridLayoutX layouts={{lg:WidgetLayout}}
+    style={{height:"100%",overflow:"scroll"}}
+      //  onDrop={(e) => onDrop(e)} 
+    onLayoutChange={(curL,allL)=>{
+      console.log(curL,allL)
+
+      let newWidgetLayout=WidgetLayout.map((layo:any,index:number)=>{
+        return {...layo,...curL[index]}
+      })
+      
+      let newDefConfig=ObjShellingAssign(defConfig,["main","WidgetLayout"],newWidgetLayout)
+      onDefChange(newDefConfig)
+
+
+
+
+    }}
+    className="layout" 
+    //  layouts={layouts} 
+    breakpoints={{ lg: 4, md: 3, sm: 2, xs: 1, xxs: 0 }}//{{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+    cols={{ lg: 20, md: 20, sm: 20, xs: 20, xxs: 20 }}
+    //  // rowHeight={300}
+    //  // width={1000}
+    resizeHandles={["se"]}
+    isDroppable={true}
+    autoSize={true}
+    >
+    {/* <div key="a" style={{ backgroundColor: "#ccc" }}><span>a</span></div>
+    <div key="b" style={{ backgroundColor: "#ccc" }}>b</div>
+    <div key="c" style={{ backgroundColor: "#ccc" }}>c</div>
+    <div key="d" style={{ backgroundColor: "#ccc" }}> */}
+
+      {WidgetLayout.map((uilayoutInfo:any,idx:number)=>{
+
+        // if(layoutSrcEle[idx]===undefined)return null;
+        let UI:JSX.Element=<></>
+        let UIEditUI:JSX.Element=<></>
+        switch(uilayoutInfo.type)
+        {
+          case "InspTar":
+            UI=<InspTargetUI_MUX 
+              display={uilayoutInfo.display!=false} 
+              style={{float:"left",width:"100%",height:"100%",overflow:"scroll"}} 
+              EditPermitFlag={EditPermitFlag}
+              key={uilayoutInfo.i} 
+              systemInspTarList={InspTarList}
+              def={layoutSrcEle[idx].inspTarDef} 
+              report={undefined} 
+              fsPath={defConfig.path+"/it_"+layoutSrcEle[idx].inspTarDef.id}
+              renderHook={renderHook} 
+              onDefChange={(new_rule,doInspUpdate=true)=>{
+                let newDefConfig={...defConfig,InspTars_main:[...InspTarList]};
+                if(new_rule===undefined)
+                {
+                  // newDefConfig.InspTars_main=newDefConfig.InspTars_main.filter((itar:any,cidx:number)=>cidx!=idx);
+                }
+                else
+                {
+                  console.log(new_rule);
+                  let idx = InspTarList.findIndex((itar:any)=>itar.id==new_rule.id);
+                  if(idx<0)return;
+                  newDefConfig.InspTars_main[idx]=new_rule;
+                }
+                
+                onDefChange(newDefConfig)
+              }}
+              APIExport={undefined}
+
+              UIOption={uilayoutInfo}
+              showUIOptionConfigUI={UIEditFlag}
+              onUIOptionUpdate={(newUIOption)=>{
+                console.log(newUIOption)
+              }}
+            />
+              
+          break;
+
+          case "Util":
+            console.log(layoutSrcEle[idx]);
+            UI=<UtilUI_MUX UIOption={layoutSrcEle[idx]}   
+            showUIOptionConfigUI={false}            
+            onUIOptionUpdate={(new_conf:any,doInspUpdate=true)=>{
+              console.log(new_conf)
+              let tar_idx = defConfig.main.WidgetInfo.findIndex((uu:any)=>uu.id==uilayoutInfo.i);
+              console.log(tar_idx,new_conf)
+              if(tar_idx<0)return;
+
+              let new_defConfig=ObjShellingAssign(defConfig,["main","WidgetInfo",tar_idx],new_conf);
+              console.log(new_defConfig)
+              onDefChange(new_defConfig)
+    
+
+            }}/>
+            break;
           
-          onDefChange(newDefConfig)
-        }}
-        APIExport={undefined}
-      />})
-  } </>;
+          case ID_ADD_NEW_ELE:
+            return <div key={uilayoutInfo.i}>
+
+              
+
+
+
+
+              <UICard_Config 
+                inspTarList={InspTarList}
+                config={newUIEleConf}
+                onConfChange={(nconf)=>{
+                  setNewUIEleConf(nconf)
+                }}
+              
+              />
+
+
+            <br/>
+
+
+              <Button disabled={newUIEleConf.complete!=true}  onClick={()=>{
+
+                let newWidgetInfo=[...defConfig.main.WidgetInfo];
+                newWidgetInfo.push({
+                  ...newUIEleConf
+                });
+
+                let newDefConfig=ObjShellingAssign(defConfig,["main","WidgetInfo"],newWidgetInfo)
+
+
+                let new_WidgetLayout=[...WidgetLayout];
+                new_WidgetLayout[new_WidgetLayout.length-1]={
+                  ...new_WidgetLayout[new_WidgetLayout.length-1],
+                  i:newUIEleConf.id,
+                  type:newUIEleConf.type
+                }
+                newDefConfig=ObjShellingAssign(newDefConfig,["main","WidgetLayout"],new_WidgetLayout)
+                console.log(newDefConfig);
+                onDefChange(newDefConfig)
+          
+                setNewUIEleConf({});
+
+
+              }}>
+
+                +
+
+              </Button>
+            
+            </div>
+            break;
+          default:
+            
+            break;
+        }
+        return <div key={uilayoutInfo.i}>
+          {UI}
+      
+        
+        {
+          UIEditFlag==false?null: <div  style={{background:UIEditFlag?"rgba(255,255,255,0.7)":undefined,position: "absolute",width:"100%",height:"100%",top:"0px"}}>
+            {uilayoutInfo.i}
+
+            <br/>
+            {uilayoutInfo.type}
+
+            <br/>
+
+            <Switch checkedChildren="顯示" unCheckedChildren="隱藏" checked={uilayoutInfo.display!=false} onChange={(check)=>{
+
+              console.log(uilayoutInfo,check);
+              let newDefConfig=ObjShellingAssign(defConfig,["main","WidgetLayout",idx],{...uilayoutInfo,display:check})
+              onDefChange(newDefConfig)
+            }}/>
+
+          </div>
+        }
+         
+      
+      </div>})}
+      
+    </ResponsiveReactGridLayoutX>
+
 }
 
 
@@ -582,42 +982,6 @@ function NodeFlow_DEMO({defConfig}:any) {
 
 
 
-
-const DraggableGridLayout_DEMO = () => {
-  const layout = [
-    { i: 'a', x: 0, y: 0, w: 4, h: 2 },
-    { i: 'b', x: 4, y: 0, w: 4, h: 2 },
-    { i: 'c', x: 8, y: 0, w: 4, h: 2 },
-    { i: 'd', x: 0, y: 2, w: 4, h: 2 }
-  ];
-
-
-
-  const onDrop = (event: any) => {
-    console.log(event);
-  };
-
-
-
-  return (
-    <div className="App" style={{width:"100%",height:"100%",overflow:"hidden"}}>
-      <ResponsiveGridLayout
-         onDrop={(e) => onDrop(e)} className="layout" layouts={{ lg: layout }} breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-          cols={{ lg: 5, md: 4, sm: 3, xs: 2, xxs: 1 }}
-          // rowHeight={300}
-          // width={1000}
-         
-         
-         >
-        <div key="a" style={{ backgroundColor: "#ccc" }}>a</div>
-        <div key="b" style={{ backgroundColor: "#ccc" }}>b</div>
-        <div key="c" style={{ backgroundColor: "#ccc" }}>c</div>
-        <div key="d" style={{ backgroundColor: "#ccc" }}>d</div>
-      </ResponsiveGridLayout>
-    </div>
-  );
-}
-
 function VIEWUI(){
 
 
@@ -666,7 +1030,7 @@ function VIEWUI(){
     type:"",
     onOK:()=>{},
     onCancel:()=>{},
-    title:"",
+    title:"" as string|undefined,
     DATA:DAT_ANY_UNDEF,
     content:DAT_ANY_UNDEF
 
@@ -865,6 +1229,7 @@ function VIEWUI(){
   const [crunInfo,setCRunInfo]=useState("");
   const [crunAbortCtrl,setCRunAbortCtrl]=useState<AbortController|undefined>(undefined);
   const [editPermitFlag,setEditPermitFlag]=useState<number>(0);
+  const [UIEditFlag,setUIEditFlag]=useState<boolean>(false);
 
   function menuCol(
     label: React.ReactNode,
@@ -967,9 +1332,8 @@ function VIEWUI(){
     
                       return <InspTargetUI_MUX 
                         display={true} 
-                        width={80} 
-                        height={70} 
-                        stream_id={50120}
+                        // width={80} 
+                        // height={70} 
                         style={{float:"left"}} 
                         EditPermitFlag={EDIT_PERMIT_FLAG.OPONLY}
                         key={id} 
@@ -983,6 +1347,13 @@ function VIEWUI(){
                         }}
               
                         APIExport={opt.APIExport}
+
+
+                        UIOption={undefined}
+                        showUIOptionConfigUI={false}
+                        onUIOptionUpdate={(newUIOption)=>{
+                          console.log(newUIOption)
+                        }}
                       />
                     }
     
@@ -1166,6 +1537,57 @@ function VIEWUI(){
           }),
           menuCol(<div onClick={()=>{
               
+
+
+            const layout = 
+            [
+              {
+                  "w": 1,
+                  "h": 1,
+                  "x": 0,
+                  "y": 0,
+                  "i": "a",
+                  "moved": false,
+                  "static": false,
+                  "isDraggable": true,
+                  "isResizable": true
+              },
+              {
+                  "w": 2,
+                  "h": 1,
+                  "x": 1,
+                  "y": 0,
+                  "i": "b",
+                  "moved": false,
+                  "static": false,
+                  "isDraggable": true,
+                  "isResizable": true
+              },
+              {
+                  "w": 2,
+                  "h": 1,
+                  "x": 0,
+                  "y": 1,
+                  "i": "c",
+                  "moved": false,
+                  "static": false,
+                  "isDraggable": true,
+                  "isResizable": true
+              },
+              {
+                  "w": 1,
+                  "h": 1,
+                  "x": 3,
+                  "y": 0,
+                  "i": "d",
+                  "moved": false,
+                  "static": false,
+                  "isDraggable": true,
+                  "isResizable": true
+              }
+            ]
+            
+
             setModalInfo({
               timeTag:Date.now(),
               type:"AA",
@@ -1176,11 +1598,40 @@ function VIEWUI(){
               onCancel:()=>{
                 setModalInfo({...modalInfo,visible:false})
               },
-              title:"><>>>",
+              title:undefined,
               DATA:"",
               content:<>
                 {/* <NodeFlow_DEMO defConfig={defConfig}/> */}
-                <DraggableGridLayout_DEMO/>
+
+                <ResponsiveReactGridLayoutX layouts={undefined}
+                          //  onDrop={(e) => onDrop(e)} 
+                  onLayoutChange={(curL,allL)=>{
+                    console.log(curL,allL)
+                  }}
+                  className="layout" 
+                  //  layouts={layouts} 
+                  breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+                  cols={{ lg: 5, md: 5, sm: 5, xs: 5, xxs: 5 }}
+                  //  // rowHeight={300}
+                  //  // width={1000}
+                  resizeHandles={["se"]}
+                  isDroppable={true}
+                  autoSize={true}
+                  //  onWidthChange={(containerWidth,margin,cols,cpadding)=>{
+                  //   console.log(containerWidth,margin,cols,cpadding);
+                  //  }}
+                  
+                
+                
+                >
+                  <div key="a" style={{ backgroundColor: "#ccc" }}><span>a</span></div>
+                  <div key="b" style={{ backgroundColor: "#ccc" }}>b</div>
+                  <div key="c" style={{ backgroundColor: "#ccc" }}>c</div>
+                  <div key="d" style={{ backgroundColor: "#ccc" }}>
+
+
+                  </div>
+                </ResponsiveReactGridLayoutX>
               </>
             })
 
@@ -1256,7 +1707,7 @@ function VIEWUI(){
                     console.log(ncam);
                     let trigMode=ncam.trigger_mode;
                    
-                    await BPG_API.CameraSetup({...ncam,frame_rate:5},trigMode);
+                    await BPG_API.CameraSetup({...ncam,frame_rate:15},trigMode);
                   })()
                   
 
@@ -1343,7 +1794,26 @@ function VIEWUI(){
       
     }}>+
     </div>
+
+
+
     </Dropdown>, 'Add'),
+    menuCol(
+    
+    <div onClick={()=>{
+      (async ()=>{
+        let newPrjDef={...defConfig};
+        newPrjDef.main.CameraInfo= await CameraInfoDoConnection(defConfig.main.CameraInfo,true)
+
+
+        setDefConfig(newPrjDef);
+      })();
+      
+    }}>Refresh
+    </div>, 'Refresh')
+
+
+
   ])
 
 
@@ -1605,9 +2075,21 @@ function VIEWUI(){
           // if(editPermitFlag&EDIT_PERMIT_FLAG.XXFLAGXX)
           // {
           // }
-          
-          setEditPermitFlag(editPermitFlag^EDIT_PERMIT_FLAG.XXFLAGXX)
+          let newFlag=editPermitFlag^EDIT_PERMIT_FLAG.XXFLAGXX;
+          setEditPermitFlag(newFlag)
+
+          if(newFlag==0)
+          {
+            setUIEditFlag(false);
+          }
+
         }}>EDIT_LEVEL {editPermitFlag}</Menu.Item>
+
+
+        <Menu.Item key="UIEditCtrl" onClick={()=>{
+          setUIEditFlag(!UIEditFlag)
+        }}>UIEdit mode: {UIEditFlag?"O":"X"}</Menu.Item>
+
         {
           (editPermitFlag&EDIT_PERMIT_FLAG.XXFLAGXX)==0?null:<>
         <Menu.Item key="1" onClick={()=>{
@@ -1655,7 +2137,7 @@ function VIEWUI(){
     } */}
     { 
     (defConfig===undefined)?"WAIT": 
-      <TargetViewUIShow displayIDList={displayInspTarId} defConfig={defConfig} EditPermitFlag={editPermitFlag}  onDefChange={(newdef:any)=>{
+      <TargetViewUIShow displayIDList={displayInspTarId} defConfig={defConfig} UIEditFlag={UIEditFlag} EditPermitFlag={editPermitFlag}  onDefChange={(newdef:any)=>{
         console.log(newdef);
         setDefConfig(newdef)
         }}  renderHook={_this.listCMD_Vairable.renderHook}/>}
@@ -1693,8 +2175,10 @@ function App() {
 
     ACT_EXT_API_REGISTER(core_api.id,core_api);
     
+    const { REACT_APP_MY_ENV } = process.env;
+    console.log(REACT_APP_MY_ENV)
     core_api.connect({
-      url:"ws://127.0.0.1:4090"
+      url:"ws://127.0.0.1:4039"
     });
 
 

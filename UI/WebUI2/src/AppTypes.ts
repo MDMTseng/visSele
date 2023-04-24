@@ -40,7 +40,7 @@ export type type_IMCM=
     full_height: number
     full_width: number
     height: number
-    image: ImageData
+    image: ImageData|HTMLImageElement
     offsetX: number
     offsetY: number
     scale: number

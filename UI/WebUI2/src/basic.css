@@ -9,6 +9,13 @@
 
 }
 
+
+.scrollContent {
+	overflow: scroll;
+}
+
+
+
 .HXF {
 	height: 100%;
 }

@@ -59,12 +59,15 @@ import {
   DownOutlined, TrophyOutlined,
   SubnodeOutlined
 } from '@ant-design/icons';
-import Ajv from "ajv"
+
+
+import {useDivDimensions} from "../UTIL/ReactUtils"
+// import Ajv from "ajv"
+// const ajv = new Ajv()
 
 const { CheckableTag } = Tag;
 const { TextArea } = Input;
 
-const ajv = new Ajv()
 let xState=xstate_GetCurrentMainState;
 
 const SubMenu = Menu.SubMenu;
@@ -410,41 +413,6 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.mouseStatus.pstatus=this.mouseStatus.status
 
   }
-}
-
-
-function useDivDimensions(divRef:React.RefObject<HTMLDivElement | undefined>) {
-  const [dimensions, setDimensions] = useState([0, 0]);
-
-
-  const _this = useRef({isInitSable:false,initQueryInterval:-1,bkClientRect:{width:-1,height:-1},bkDim:[0,0]}).current;
-
-  useLayoutEffect(() => {
-
-    function updateSize()
-    {
-      if (divRef.current) {
-        _this.isInitSable=true;
-        const { current } = divRef
-        const boundingRect = current.getBoundingClientRect()
-        const { width, height } = boundingRect
-        if(width==0 && height==0)return;
-        const rwh  = [  Math.round(width), Math.round(height) ]
-        if(rwh[0]==_this.bkDim[0] &&rwh[1]==_this.bkDim[1])return;
-        setDimensions(rwh)
-        _this.bkDim=rwh;
-      }
-    }
-
-    const ro =new ResizeObserver(updateSize);
-    
-    ro.observe(divRef.current as Element);
-    return () =>{
-      console.log("REMOVE....");
-      ro.unobserve(divRef.current as Element);
-    }
-  }, []);
-  return dimensions;
 }
 
 export function HookCanvasComponent( {dhook,style={}}:{

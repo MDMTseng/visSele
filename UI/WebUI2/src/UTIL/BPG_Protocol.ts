@@ -74,8 +74,9 @@ let raw2obj_IM=(ws_evt:any, offset = 0)=>{
   let full_height=(headerArray[13]<<8)|headerArray[14];
 
 
-  let image:ImageData|undefined;
-  // console.log(ret_obj,headerArray);
+  let image:ImageData|HTMLImageElement|undefined=undefined;
+  let image_b64:string|undefined=undefined;
+  console.log(ws_evt);
   if(format==0)
   {
     let RGBA_pix_Num = 4*width*height;
@@ -85,7 +86,20 @@ let raw2obj_IM=(ws_evt:any, offset = 0)=>{
   }
   else if(format==50)
   {
+    let narr=new Uint8Array(ws_evt.data,offset+BPG_header_L+headerL) as any;
+    // console.log(narr);
+
+
+    var enc = new TextDecoder("ascii");
+    image_b64=enc.decode(narr);
     
+    // image_b64=(String.fromCharCode.apply(null, narr))
+    // console.log(image_b64);
+    
+    image= new Image();
+    
+    image.src=image_b64;
+
   }
 
   return {

@@ -106,12 +106,15 @@ public:
   
   int fromUpperLayer_DATA(const char*TL,int pgID,cJSON* json);
   int fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_acvImage_Send_info* imgInfo);
+  int fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_ImgB64_Send_info* imgInfo);
   int fromUpperLayer_DATA(const char*TL,int pgID,char* str);
   int fromUpperLayer_SS(int pgID,bool isACK,const char*fromTL=NULL,const char* error_msg=NULL);
   void delete_PeripheralChannel();
   static BPG_protocol_data GenStrBPGData(const char *TL, char *jsonStr);
   
   static int SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
+
+  static int SEND_base64Image(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 };
 
 
