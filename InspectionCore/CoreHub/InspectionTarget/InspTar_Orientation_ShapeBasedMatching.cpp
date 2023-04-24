@@ -454,7 +454,7 @@ cv::Point2f rotatePoint(const cv::Point2f& inPoint, const cv::Point2f& center, c
 }
 
 
-cv::Mat rotCrop(cv::Mat& srcImg,float obj_x,float obj_y,float temp_rel_x,float temp_rel_y,float temp_w,float temp_h, float angRad,int margin=5,int downSamp=1 ,cv::Point2f *ret_center=NULL)
+cv::Mat rotCrop(cv::Mat& srcImg,float obj_x,float obj_y,bool y_flip,float temp_rel_x,float temp_rel_y,float temp_w,float temp_h, float angRad,int margin=5,int downSamp=1 ,cv::Point2f *ret_center=NULL)
 {
 
   // LOGI("temp:: %f,%f,%f,%f  margin:%d  angRad:%f",temp_rel_x,temp_rel_y,temp_w,temp_h,margin,angRad);
@@ -465,11 +465,16 @@ cv::Mat rotCrop(cv::Mat& srcImg,float obj_x,float obj_y,float temp_rel_x,float t
   temp_w+=margin*2;
   temp_h+=margin*2;
 
+  int yMult=y_flip?-1:1;
   // LOGI(">>temp:: %f,%f,%f,%f",temp_rel_x,temp_rel_y,temp_w,temp_h);
 
 
   Point2f objPos = Point2f( obj_x, obj_y );
-  Point2f temp_rel = Point2f( temp_rel_x, temp_rel_y );
+  if(y_flip)
+  {
+    temp_rel_y=-temp_rel_y;//+temp_h;
+  }
+  Point2f temp_rel = Point2f( temp_rel_x, temp_rel_y);
   Point2f srcTri[3];      //point 2f object for input file
   srcTri[0] = Point2f( 0.f, 0.f );
   srcTri[1] = Point2f( 0  , temp_h);        //Before transformation selecting points
@@ -496,7 +501,7 @@ cv::Mat rotCrop(cv::Mat& srcImg,float obj_x,float obj_y,float temp_rel_x,float t
 
   Point2f dstTri[3];      //point 2f object for destination file
   dstTri[0] = Point2f( 0.f, 0.f );
-  dstTri[1] = Point2f( 0  , temp_h/downSamp);        //Before transformation selecting points
+  dstTri[1] = Point2f( 0  , yMult*temp_h/downSamp);        //Before transformation selecting points
   dstTri[2] = Point2f( temp_w/downSamp, 0   );
   Mat warp_mat = getAffineTransform( srcTri, dstTri );  //apply an affine transforation to image and storing it
   Mat warp_dst = Mat::zeros( temp_h/downSamp, temp_w/downSamp, srcImg.type() );
@@ -514,6 +519,7 @@ float PoseRefine(
   float marginFactor,
   Point2f &anchorPt,
   float &angleRad,
+  bool yFlip=false,
   float minAcceptedScore=0.2,
   bool allowMatchingOnSearchRegionEdge=false,
   int downSamp=1,
@@ -545,6 +551,7 @@ float PoseRefine(
       srcImg,
       anchorPt.x,
       anchorPt.y,
+      yFlip,
       reg.x,
       reg.y,
       reg.width,
@@ -686,6 +693,8 @@ float PoseRefine(
     float offsetThres=allowMatchingOnSearchRegionEdge?margin+999:margin-1;
     levelXPt.x-=margin;
     levelXPt.y-=margin;
+
+    if(yFlip)levelXPt.y=-levelXPt.y;
     LOGI("[%d]:matchResult:%f offset:%f,%f",i,matchResult,levelXPt.x,levelXPt.y);
     if(matchResult!=matchResult || matchResult<minAcceptedScore ||levelXPt.x<-offsetThres || levelXPt.x>offsetThres || levelXPt.y<-offsetThres || levelXPt.y>offsetThres)
     {
@@ -1192,12 +1201,13 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
     {
       float tmpAngle=refinedAngleRad;
       cv::Point2f tmp_anchorPt=anchorPt;
-      int margin=(int)(30+(1/matching_downScale));
+      bool y_flip=hasEnding(match.class_id,"_f");
+      int margin=(int)(50+(1/matching_downScale));
       DBG_STR=id+"_"+to_string(i)+"_"+to_string(0);
 
       int refine_block_count=0;
       bool allowMatchingOnSearchRegionEdge=refine_angle_only;
-      refine_score = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt,tmpAngle,0.2,allowMatchingOnSearchRegionEdge,1,&refine_block_count,DBG_STR);
+      refine_score = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt,tmpAngle,y_flip,0.2,allowMatchingOnSearchRegionEdge,1,&refine_block_count,DBG_STR);
       
       // if(refine_score>0.3)
       if(1)//further refine
@@ -1214,7 +1224,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
           if(refine_angle_only)tmp_anchorPt2=anchorPt;//if adjust the angle only use the unrefined position every time
           DBG_STR=id+"_"+to_string(i)+"_"+to_string(j);
-          refine_score2 = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt2,tmpAngle2,0.2,allowMatchingOnSearchRegionEdge,1,&refine_block_count2,DBG_STR);
+          refine_score2 = PoseRefine(CV_srcImg,refine_region_set,margin,tmp_anchorPt2,tmpAngle2,y_flip,0.2,allowMatchingOnSearchRegionEdge,1,&refine_block_count2,DBG_STR);
 
           LOGI("[%d]-----refine_score:%f . tmpAngle2:%f",i,refine_score2,tmpAngle2);
           if(refine_score<=refine_score2)
@@ -1319,8 +1329,8 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   
   reportInfo->img_prop=sinfo->img_prop;
   reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",1);
-  // LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
+  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
+  LOGI("id:%s   downsample:%d",id.c_str(),reportInfo->img_prop.StreamInfo.downsample);
 
   {
     int64 t1 = cv::getTickCount();

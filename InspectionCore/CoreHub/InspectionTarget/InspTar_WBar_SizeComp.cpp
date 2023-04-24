@@ -299,7 +299,7 @@ void InspTar_WBar_SizeComp::singleProcess(shared_ptr<StageInfo> sinfo)
   reportInfo->category=category;
 
   reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",2);
+  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
   LOGI("CHID:%d category:%d",reportInfo->img_prop.StreamInfo.channel_id,category);
 
   // reportInfo->jInfo=NULL;

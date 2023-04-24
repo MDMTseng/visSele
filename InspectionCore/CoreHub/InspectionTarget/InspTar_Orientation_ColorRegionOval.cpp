@@ -377,7 +377,7 @@ void InspectionTarget_Orientation_ColorRegionOval::singleProcess(shared_ptr<Stag
   
 
   reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",4);
+  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
   LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
   {
     int64 t1 = cv::getTickCount();

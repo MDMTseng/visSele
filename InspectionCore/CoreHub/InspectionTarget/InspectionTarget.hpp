@@ -26,6 +26,17 @@ typedef struct BPG_protocol_data_acvImage_Send_info
 }BPG_protocol_data_acvImage_Send_info;
 
 
+typedef struct BPG_protocol_data_ImgB64_Send_info
+{
+    char* imgb64;
+    size_t imgb64_L;
+    uint16_t scale;
+    uint16_t offsetX,offsetY;
+    uint16_t fullWidth,fullHeight;
+
+}BPG_protocol_data_ImgB64_Send_info;
+
+
        
 // struct InspectionTarget_EXCHANGE
 // {

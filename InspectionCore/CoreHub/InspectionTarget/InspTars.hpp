@@ -499,7 +499,7 @@ public:
     // reportInfo->trigger_tag=sinfo->trigger_tag;
 
     reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-    reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",-1);
+    reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
     LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
 
     
@@ -641,7 +641,7 @@ class InspectionTarget_StageInfoCollect_Base :public InspectionTarget
   void setInspDef(cJSON* def)
   {
     InspectionTarget::setInspDef(def);
-    LOGE("akjdfjkaflkajsndfklasjkldj=============");
+    // LOGE("akjdfjkaflkajsndfklasjkldj=============");
     match_tag_sets=NULL;
     if(def)
     {

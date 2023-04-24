@@ -144,6 +144,7 @@ class StageInfo_Image:public StageInfo
 #define STAGEINFO_CAT_UNSET (-999999)
 #define STAGEINFO_CAT_NA (0)
 #define STAGEINFO_CAT_OK (1)
+#define STAGEINFO_CAT_OK2 (2)
 #define STAGEINFO_CAT_NG (-1)
 #define STAGEINFO_CAT_NG2 (-2)
 #define STAGEINFO_CAT_NG3 (-3)
@@ -203,11 +204,20 @@ class StageInfo_Value:public StageInfo
 // #define STAGEINFO_CAT_SCS_MAX_LINE_LENGTH (-50073)
 // #define STAGEINFO_CAT_SCS_TOTAL_BLOB_AREA (-50075)
 
+
+int STAGEINFO_SCS_CAT_BASIC_reducer(int sum_cat,int cat);
 class StageInfo_SurfaceCheckSimple:public StageInfo_Category
 {
   public:
   static std::string stypeName(){return "SurfaceCheckSimple";}
   virtual std::string typeName(){return this->stypeName();}
+
+
+
+
+
+  const static int id_HSVSeg=1;
+  const static int id_SigmaThres=2;
 
   float pixel_size;
   struct Ele_info{//in subregion we have several elements(dot line....)
@@ -256,23 +266,29 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
 
   };
 
-
-
-
-
   struct SubRegion_Info{//for every oriantation info we may have multiple subregions
     int category;
-    int score;
+    float score;
     vector<Ele_info> elements;
+    int type;
 
-    struct
-    {
-      int element_count;//in pixel
-      int element_area;
-      int blob_area;
-      int max_line_length;
+    union {
+      struct
+      {
+        int element_count;//in pixel
+        int element_area;
+        int blob_area;
+        int max_line_length;
 
-    } info_stat;
+      } hsvseg_stat;
+
+
+      struct
+      {
+      } sigmathres_stat;
+
+
+    };
   };
   
   struct MatchRegion_Info{//per oriantation info
@@ -315,22 +331,23 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
         cJSON_AddNumberToObject(jsubreg,"category",subreg.category);
         cJSON_AddNumberToObject(jsubreg,"score",subreg.score);
 
-        cJSON* elements=cJSON_CreateArray();
-
-        cJSON_AddItemToObject(jsubreg,"elements",elements);
-
 
 
         {
-          cJSON_AddNumberToObject(jsubreg,"blob_area",subreg.info_stat.blob_area);
-          cJSON_AddNumberToObject(jsubreg,"element_area",subreg.info_stat.element_area);
-          cJSON_AddNumberToObject(jsubreg,"element_count",subreg.info_stat.element_count);
-          cJSON_AddNumberToObject(jsubreg,"max_line_length",subreg.info_stat.max_line_length);
+          cJSON_AddNumberToObject(jsubreg,"blob_area",subreg.hsvseg_stat.blob_area);
+          cJSON_AddNumberToObject(jsubreg,"element_area",subreg.hsvseg_stat.element_area);
+          cJSON_AddNumberToObject(jsubreg,"element_count",subreg.hsvseg_stat.element_count);
+          cJSON_AddNumberToObject(jsubreg,"max_line_length",subreg.hsvseg_stat.max_line_length);
           
         }
 
 
-        if(brifVector!=0)
+        if(brifVector!=0){
+
+        cJSON* elements=cJSON_CreateArray();
+
+        cJSON_AddItemToObject(jsubreg,"elements",elements);
+
         for(int k=0;k<subreg.elements.size();k++)
         {
           Ele_info &einfo =subreg.elements[k];
@@ -393,7 +410,8 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
 
 
         }
-
+        
+        }
 
       }
 

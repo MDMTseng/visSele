@@ -2,7 +2,7 @@
 #include "InspTar_SurfaceCheckSimple.hpp"
 #include "StageInfo_Orientation.hpp"
 #include "StageInfo.hpp"
-
+#include <iostream>
 using namespace cv;
 
 using namespace std;
@@ -352,26 +352,43 @@ cJSON* InspectionTarget_SurfaceCheckSimple::genITIOInfo()
 }
 
 
-static Mat getRotTranMat(acv_XY pt1,acv_XY pt2,float theta)
+static Mat getRotTranMat(acv_XY pt1,acv_XY pt2,float theta,bool flipX=false,bool flipY=false)
 {
+  
   float s=sin(theta);
   float c=cos(theta);
 
   Point2f srcPoints[3];//原圖中的三點 ,一個包含三維點（x，y）的數組，其中x、y是浮點型數
-	Point2f dstPoints[3];//目標圖中的三點  
+  Point2f dstPoints[3];//目標圖中的三點  
 
+  int yMult=flipY?-1:1;
     //第一種仿射變換的調用方式：三點法
-	//三個點對的值,上面也說了，只要知道你想要變換後圖的三個點的座標，就可以實現仿射變換  
-	srcPoints[0] = Point2f(pt1.X, pt1.Y);
-	srcPoints[1] = Point2f(pt1.X+s, pt1.Y+c);
-	srcPoints[2] = Point2f(pt1.X+c, pt1.Y-s);
-	//映射後的三個座標值
+  //三個點對的值,上面也說了，只要知道你想要變換後圖的三個點的座標，就可以實現仿射變換  
+  srcPoints[0] = Point2f(pt1.X, pt1.Y);
+  srcPoints[1] = Point2f(pt1.X+s, pt1.Y+c);
+  srcPoints[2] = Point2f(pt1.X+c, pt1.Y-s);
 	dstPoints[0] = Point2f(pt2.X, pt2.Y);
-	dstPoints[1] = Point2f(pt2.X, pt2.Y+1);
+	dstPoints[1] = Point2f(pt2.X, pt2.Y+yMult);
 	dstPoints[2] = Point2f(pt2.X+1, pt2.Y);
 
-	return getAffineTransform(srcPoints, dstPoints);//由三個點對計算變換矩陣  
-								
+  Mat rotTranMat = getAffineTransform(srcPoints, dstPoints);
+
+  // if(flipY)
+  // {
+  //   Mat flipMat = (Mat_<double>(3,3) << 1, 0, 0, 0, -1, 0, 0, 0, 1);
+    
+  //   std::cout << "rotTranMat: " << rotTranMat << std::endl;
+  //   std::cout << " flipMat:"<< flipMat << std::endl;
+  //   rotTranMat=rotTranMat*flipMat;
+  //   std::cout << "rotTranMat: " << rotTranMat<< std::endl;
+  // }
+  // if(flipX)
+  // {
+  //   Mat flipMat = (Mat_<double>(2,3) << -1, 0, 0, 0, 1, 0);
+  //   rotTranMat=flipMat*rotTranMat;
+  // }
+
+  return rotTranMat;
 }
 
 // def getRotTranMat(pt1,pt2,Theta):
@@ -435,7 +452,7 @@ void alphaBlend(Mat& img1, Mat&img2, Mat& mask, Mat& blended){
 
 
 
-int STAGEINFO_CAT_BASIC_reducer(int sum_cat,int cat)
+int STAGEINFO_SCS_CAT_BASIC_reducer(int sum_cat,int cat)
 {
 
   switch(sum_cat)
@@ -444,17 +461,22 @@ int STAGEINFO_CAT_BASIC_reducer(int sum_cat,int cat)
       sum_cat=cat;
     break;
     case STAGEINFO_CAT_OK:
-      if(cat==STAGEINFO_CAT_NG)
-        sum_cat=STAGEINFO_CAT_NG;
-      else if(cat==STAGEINFO_CAT_NA)
-        sum_cat=STAGEINFO_CAT_NA;
+      if(cat==STAGEINFO_CAT_NG2 || cat==STAGEINFO_CAT_NG||cat==STAGEINFO_CAT_NA)
+        sum_cat=cat;
+
     break;
+    case STAGEINFO_CAT_NG2:
+      if(cat==STAGEINFO_CAT_NG|| cat==STAGEINFO_CAT_NA)
+        sum_cat=cat;
+    break;
+
     case STAGEINFO_CAT_NG:
-      if(cat==STAGEINFO_CAT_NA)
-        sum_cat=STAGEINFO_CAT_NA;
+      if( cat==STAGEINFO_CAT_NA)
+        sum_cat=cat;
     break;
+
+    default:
     case STAGEINFO_CAT_NA:
-    break;
     case STAGEINFO_CAT_NOT_EXIST:
 
     break;
@@ -766,7 +788,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         // if(angle>M_PI_2)angle-=M_PI;
         // if(angle<-M_PI_2)angle+=M_PI;
         angle+=angle_offset;
-        Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset,H/2+Y_offset},-angle);
+
+        bool xFlip=false;
+        bool yFlip=orientation.flip;
+        Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset,H/2+Y_offset},-angle,xFlip,yFlip);
 
         cv::warpAffine(CV_srcImg, _def_temp_img_ROI, rot,_def_temp_img_ROI.size());
 
@@ -793,7 +818,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         indexArr_w_priority.resize(jsub_regions_L);
 
 
-
         float xShift=0;
         float yShift=0;
 
@@ -811,14 +835,21 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
             cJSON *jsub_region= cJSON_GetArrayItem(jsub_regions,j);
 
+
             bool x_locating_mark =JFetch_TRUE(jsub_region,"x_locating_mark");
             bool y_locating_mark =JFetch_TRUE(jsub_region,"y_locating_mark");
+            bool x_mirror_mark =JFetch_TRUE(jsub_region,"x_mirror_mark");
+            bool y_mirror_mark =JFetch_TRUE(jsub_region,"y_mirror_mark");
             if(x_locating_mark==false && y_locating_mark==false)
             {
               indexArr_w_priority[h1++]=j;
               continue;
             }
 
+            if(JFetch_STRING_ex(jsub_region,"type","HSVSeg")!="HSVSeg")
+            {
+              continue;
+            }
             indexArr_w_priority[h2--]=j;
 
 
@@ -974,7 +1005,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
         if(xShift!=0 || yShift!=0)
         {
-          Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset+xShift,H/2+Y_offset+yShift},-angle);
+          Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset+xShift,H/2+Y_offset+yShift},-angle,xFlip,yFlip);
           cv::warpAffine(CV_srcImg, _def_temp_img_ROI, rot,_def_temp_img_ROI.size());
 
           if(color_ch_mul_r!=1 || color_ch_mul_g!=1 || color_ch_mul_b!=1)
@@ -1011,7 +1042,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           cJSON *jsub_region= cJSON_GetArrayItem(jsub_regions,subregIdx);
 
 
-          bool general_NG_as_NA =JFetch_TRUE(jsub_region,"general_NG_as_NA");
+          sri.type=StageInfo_SurfaceCheckSimple::id_HSVSeg;
+
+          string NG_Map_To=JFetch_STRING_ex(jsub_region,"NG_Map_To","NG");
+
 
           bool x_locating_mark =JFetch_TRUE(jsub_region,"x_locating_mark");
           bool y_locating_mark =JFetch_TRUE(jsub_region,"y_locating_mark");
@@ -1037,6 +1071,169 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           Mat sub_region_ROI_origin_img = _def_temp_img_ROI(Rect(srX, srY, srW, srH));
           resultMarkRegion[subregIdx]=sub_region_ROI_origin_img;
           Mat sub_region_ROI = sub_region_ROI_origin_img.clone();
+
+
+          string subRegType=JFetch_STRING_ex(jsub_region,"type","HSVSeg");
+
+          if(subRegType!="HSVSeg")
+          {
+            if(subRegType=="SigmaThres")
+            {
+
+
+              float colorSigma=JFetch_NUMBER_ex(jsub_region,"colorSigma");
+
+
+              LOGE("SigmaThres is HERE....colorSigma:%f",colorSigma);
+
+
+
+              vector<cv::Rect> igRegs;
+              {
+
+                cv::Scalar igs_sum(0);
+                int igs_PixCount=0;
+                cJSON* ignore_regions = JFetch_ARRAY(jsub_region,"ignore_regions");
+                int ignore_regions_L=ignore_regions==NULL?0:cJSON_GetArraySize(ignore_regions);
+                for(int k=0;k<ignore_regions_L;k++)
+                {
+                  cJSON *ig_reg= cJSON_GetArrayItem(ignore_regions,k);
+                  
+                  int x=(int)JFetch_NUMBER_ex(ig_reg,"x");
+                  int y=(int)JFetch_NUMBER_ex(ig_reg,"y");
+                  int w=(int)JFetch_NUMBER_ex(ig_reg,"w");
+                  int h=(int)JFetch_NUMBER_ex(ig_reg,"h");
+
+                  XYWH_clipping(x,y,w,h, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+
+                  igRegs.push_back(cv::Rect(x,y,w,h));
+
+                }
+              }
+
+
+
+              float comp_sigma0=NAN;
+              Mat vectors=cv::Mat::zeros(cv::Size(), CV_8UC3);
+          
+              // Loop over rows and columns of the image
+              for (int row = 0; row < sub_region_ROI.rows; ++row) {
+                  for (int col = 0; col < sub_region_ROI.cols; ++col) {
+                    bool isPixInRect;
+                    for(int k=0;k<igRegs.size();k++){
+                      isPixInRect=igRegs[k].contains(cv::Point(col,row));
+                      if(isPixInRect)break;
+                    }
+                    if(isPixInRect)continue;
+
+                    // Get pixel value at (row, col)
+                    cv::Vec3b pixel = sub_region_ROI.at<cv::Vec3b>(row, col);
+
+                    vectors.push_back(pixel);
+                  }
+              }
+              vectors=vectors.reshape(1, vectors.rows * vectors.cols);
+
+              // std::cout << "vectors size " << std::endl << vectors.size() << std::endl;
+              // LOGE("????>>>>>> ");
+
+              if(1)
+              {//PCA
+
+                vectors.convertTo(vectors, CV_32F);
+                // Perform PCA analysis on the vectors
+                PCA pca_analysis(vectors, Mat(), PCA::DATA_AS_ROW);
+
+                // Print the eigenvectors and eigenvalues
+                std::cout << "Eigenvectors: " << std::endl << pca_analysis.eigenvectors << std::endl;
+
+                auto eigenvalues=pca_analysis.eigenvalues;
+                std::cout << "Eigenvalues: " << std::endl << eigenvalues << std::endl;
+
+
+                float sigma0 = sqrt(eigenvalues.at<float>(0,0));
+                // float sigma1 = sqrt(eigenvalues.at<float>(1,0));
+                // float sigma2 = sqrt(eigenvalues.at<float>(2,0));
+
+
+                comp_sigma0=sigma0;
+
+              }
+
+              if(0)
+              {
+                Mat A = (Mat_<double>(3, 1) << 1, 2, 3); // Define vector A
+                Mat B = (Mat_<double>(3, 1) << 10, 11, 12);
+
+                Mat result = A.cross(B); // Calculate cross product of A with each vector in B
+
+                std::cout << "Cross product result:\n" << result << std::endl;
+
+              }
+
+
+
+
+              
+              if(JFetch_TRUE(jsub_region,"brightnessCompensation"))
+              {
+                Scalar avgPixel = mean(sub_region_ROI);
+                float absAvg=norm(avgPixel);
+                comp_sigma0/=absAvg;
+                comp_sigma0*=128;
+
+              }
+              // std::cout << "Eigenvalues: " << std::endl << sigma0<< ",comp:"<<comp_sigma0 << std::endl;
+
+              sri.type=StageInfo_SurfaceCheckSimple::id_SigmaThres;
+              sri.score=comp_sigma0;
+              if(comp_sigma0==comp_sigma0)
+              {
+                sri.category=(comp_sigma0>colorSigma)?STAGEINFO_CAT_NG:STAGEINFO_CAT_OK;
+              }
+              else
+              {
+                sri.category=STAGEINFO_CAT_NG;
+              }
+
+
+
+              if(sri.category==STAGEINFO_CAT_NG)
+              {
+
+                if(NG_Map_To=="NG2")
+                {
+                  sri.category=STAGEINFO_CAT_NG2;
+                }
+                else if(NG_Map_To=="NA")
+                {
+                  sri.category=STAGEINFO_CAT_NA;
+                }
+                else //if(NG_Map_To=="NG")
+                {
+
+                }
+
+              }
+
+              LOGE("NG_Map_To:%s",NG_Map_To.c_str());
+
+              // MATCH_REGION_score+=area_sum;
+              MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,sri.category);
+
+
+              mri.subregions[subregIdx]=sri;
+
+            }
+
+
+
+
+
+
+            continue;
+          }
+
 
 
 
@@ -1105,8 +1302,20 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
               mri.subregions[subregIdx]=sri;
 
 
+              if(NG_Map_To=="NG2")
+              {
+                SUBR_category=STAGEINFO_CAT_NG2;
+              }
+              else if(NG_Map_To=="NA")
+              {
+                SUBR_category=STAGEINFO_CAT_NA;
+              }
+              else //if(NG_Map_To=="NG")
+              {
 
-              MATCH_REGION_category=STAGEINFO_CAT_BASIC_reducer(MATCH_REGION_category,
+              }
+
+              MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,
               JFetch_TRUE(jsub_region,"color_compensation_diff_NG_as_NA")?
               STAGEINFO_CAT_NA:STAGEINFO_CAT_NG);
 
@@ -1480,23 +1689,38 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                                   SUBR_category=STAGEINFO_CAT_NG;
             else                   SUBR_category=STAGEINFO_CAT_OK;
 
-            if(general_NG_as_NA && SUBR_category==STAGEINFO_CAT_NG)
+            if(SUBR_category==STAGEINFO_CAT_NG)
             {
-              SUBR_category=STAGEINFO_CAT_NA;
+
+              if(NG_Map_To=="NG2")
+              {
+                SUBR_category=STAGEINFO_CAT_NG2;
+              }
+              else if(NG_Map_To=="NA")
+              {
+                SUBR_category=STAGEINFO_CAT_NA;
+              }
+              else //if(NG_Map_To=="NG")
+              {
+
+              }
+
             }
 
+            LOGE("NG_Map_To:%s",NG_Map_To.c_str());
+
             MATCH_REGION_score+=area_sum;
-            MATCH_REGION_category=STAGEINFO_CAT_BASIC_reducer(MATCH_REGION_category,SUBR_category);
+            MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,SUBR_category);
 
             sri.category=SUBR_category;
             sri.score=area_sum; 
 
 
             {
-              sri.info_stat.blob_area=area_sum;
-              sri.info_stat.element_area=element_total_area;
-              sri.info_stat.element_count=elementCount;
-              sri.info_stat.max_line_length=line_max_length;
+              sri.hsvseg_stat.blob_area=area_sum;
+              sri.hsvseg_stat.element_area=element_total_area;
+              sri.hsvseg_stat.element_count=elementCount;
+              sri.hsvseg_stat.max_line_length=line_max_length;
               
             }
 
@@ -1575,7 +1799,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   int category=STAGEINFO_CAT_UNSET;
   for(auto catInfo:reportInfo->match_reg_info)
   {
-    category=STAGEINFO_CAT_BASIC_reducer(category,catInfo.category);
+    category=STAGEINFO_SCS_CAT_BASIC_reducer(category,catInfo.category);
   }
 
   reportInfo->source=this;
@@ -1596,7 +1820,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   reportInfo->img_prop=sinfo->img_prop;
   reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",1);
+  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
   LOGI("CHID:%d category:%d . id:%s",reportInfo->img_prop.StreamInfo.channel_id,category,id.c_str());
 
   // reportInfo->jInfo=NULL;
