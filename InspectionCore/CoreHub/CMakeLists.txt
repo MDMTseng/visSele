@@ -149,11 +149,11 @@ target_link_libraries(visSele
   $ENV{MODULE_circleFitting}/CircleFitting.a
   $ENV{MODULE_lodepng}/lodepng.a 
   $ENV{MODULE_polyfit}/polyfit.a 
-  $ENV{MODULE_zlib}/staticlib/libz.a
   $ENV{MODULE_mjpegLib}/mjpegLib.a 
   $ENV{MODULE_MJPEG_Streamer}/MJPEG_Streamer.a
   $ENV{MODULE_BPG_Protocol}/BPG_Protocol.a
   $ENV{MODULE_simple_uart}/simple_uart.a
+  #$ENV{MODULE_zlib}/staticlib/libz.a
   # $ENV{MODULE_libuvc}/libuvc.a
 
   $ENV{MODULE_shape_based_matching}/libshape_based_matching.a
@@ -174,7 +174,7 @@ include_directories (
   $ENV{MODULE_common_lib}/include 
   $ENV{MODULE_cJSON} 
   $ENV{MODULE_logctrl}/include 
-  $ENV{MODULE_zlib}/src 
+  #$ENV{MODULE_zlib}/src 
   $ENV{MODULE_CameraLayer}/include 
   $ENV{MODULE_MindVision_GIGE}/include 
   $ENV{MODULE_Compat_dirent}/include 

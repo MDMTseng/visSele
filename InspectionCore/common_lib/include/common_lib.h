@@ -3,7 +3,7 @@
 
 #include "cJSON.h"
 #include "acvImage_BasicTool.hpp"
-#include "zlib.h"
+// #include "zlib.h"
 #include <string>
 
 
@@ -46,8 +46,8 @@ double JFetch_NUMBER_ex(cJSON * obj,const char *path,double defaultNumber=NAN);
 #define JxOBJ(obj,path) JFetEx_OBJECT(obj,path)
 
 
-size_t zlibDeflate(uint8_t *dst,size_t dstLen, uint8_t *src, size_t srcLen,int effort);
-size_t zlibInflate(uint8_t *dst,size_t dstLen, uint8_t *src, size_t srcLen);
+// size_t zlibDeflate(uint8_t *dst,size_t dstLen, uint8_t *src, size_t srcLen,int effort);
+// size_t zlibInflate(uint8_t *dst,size_t dstLen, uint8_t *src, size_t srcLen);
 
 
 
