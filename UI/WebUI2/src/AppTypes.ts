@@ -23,6 +23,7 @@ export type type_CameraInfo={
   BGain:number,
   gamma:number,
   black_level:number,
+  pixel_size:number,
   frame_rate:number,
   mirrorX:boolean,
   mirrorY:boolean
@@ -39,7 +40,7 @@ export type type_IMCM=
     full_height: number
     full_width: number
     height: number
-    image: ImageData
+    image: ImageData|HTMLImageElement
     offsetX: number
     offsetY: number
     scale: number

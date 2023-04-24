@@ -70,16 +70,6 @@ class InspectionTarget_TEST_IT :public InspectionTarget
   {
   }
 
-  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
-  {
-    for(auto tag : sinfo->trigger_tags )
-    {
-      if( matchTriggerTag(tag))
-        return true;
-    }
-    return false;
-  }
-
   virtual cJSON* genITIOInfo()
   {
 
@@ -147,23 +137,6 @@ public:
   }
 
   static std::string TYPE(){ return "ColorRegionDetection"; }
-  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
-  {
-    // if(sinfo->typeName())
-
-
-
-    for(auto tag : sinfo->trigger_tags )
-    {
-      if(tag=="_STREAM_")
-      {
-        return false;
-      }
-      if( matchTriggerTag(tag))
-        return true;
-    }
-    return false;
-  }
 
   std::future<int> futureInputStagePool()
   {
@@ -191,7 +164,6 @@ public:
 
   bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
   {
-    //LOGI(">>>>>>>>>>>>");
     bool ret = InspectionTarget::exchangeCMD(info,id,act);
     if(ret)return ret;
     std::string type=JFetch_STRING_ex(info,"type");
@@ -527,7 +499,7 @@ public:
     // reportInfo->trigger_tag=sinfo->trigger_tag;
 
     reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-    reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",-1);
+    reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
     LOGI("CHID:%d",reportInfo->img_prop.StreamInfo.channel_id);
 
     
@@ -552,58 +524,33 @@ public:
 };
 
 
-class InspectionTarget_DataTransfer :public InspectionTarget
+class InspectionTarget_DataThreadedProcess :public InspectionTarget
 {
+  protected:
   TSQueue<std::shared_ptr<StageInfo>> datTransferQueue;
   std::thread runThread;
   int realTimeDropFlag;
   public:
   
   static std::string TYPE(){ return "DataTransfer"; }
-  InspectionTarget_DataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):InspectionTarget(id,def,belongMan,local_env_path),datTransferQueue(30),runThread(&InspectionTarget_DataTransfer::thread_run,this)
+  InspectionTarget_DataThreadedProcess(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
+    InspectionTarget(id,def,belongMan,local_env_path),
+    datTransferQueue(10),
+    runThread(&InspectionTarget_DataThreadedProcess::thread_run,this)
   {
     realTimeDropFlag=-1;
   }
-  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
-  {
-    for(auto tag : sinfo->trigger_tags )
-    {
-      if( matchTriggerTag(tag))
-        return true;
-    }
-    return false;
-  }
-
 
   std::future<int> futureInputStagePool()
   {
-    return std::async(launch::async,&InspectionTarget_DataTransfer::processInputStagePool,this);
+    return std::async(launch::async,&InspectionTarget_DataThreadedProcess::processInputStagePool,this);
   }
 
 
   
 
-  virtual cJSON* genITIOInfo()
-  {
 
-    cJSON* arr= cJSON_CreateArray();
-
-    {
-      cJSON* opt= cJSON_CreateObject();
-      cJSON_AddItemToArray(arr,opt);
-
-      {
-        cJSON* sarr= cJSON_CreateArray();
-        
-        cJSON_AddItemToObject(opt, "i",sarr );
-        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo::stypeName().c_str() ));
-      }
-    }
-
-    return arr;
-  }
-
-  int processInputPool()
+  virtual int processInputPool()
   {
     int poolSize=input_pool.size();
     for(int i=0;i<poolSize;i++)
@@ -613,17 +560,18 @@ class InspectionTarget_DataTransfer :public InspectionTarget
       
       try{
         
-        if(curInput->img_prop.StreamInfo.channel_id==0)
-        {//no enough info return...
-          LOGE("---no channel_id available");
+        // if(curInput->img_prop.StreamInfo.channel_id==0)
+        // {//no enough info return...
+        //   LOGE("---no channel_id available");
           
-          LOGE("PUSH Failed....");
-        }
-        else if(realTimeDropFlag<=0 && datTransferQueue.push(curInput))
+        //   LOGE("PUSH Failed....");
+        // }
+        // else 
+        if(realTimeDropFlag<=0 && datTransferQueue.push(curInput))
         {
           if(realTimeDropFlag>=0)
             realTimeDropFlag++;
-          LOGI("PUSH PUSH");
+          // LOGI("PUSH PUSH datTransferQueue.size:%d",datTransferQueue.size());
         }
         else
         {
@@ -646,12 +594,11 @@ class InspectionTarget_DataTransfer :public InspectionTarget
     return poolSize;//run all
 
   }
-  void thread_run();
-  ~InspectionTarget_DataTransfer()
+  virtual void thread_run()=0;
+  ~InspectionTarget_DataThreadedProcess()
   {
     datTransferQueue.termination_trigger();
     runThread.join();
-    StageInfo *sinfo=NULL;
     
   }
 
@@ -663,37 +610,168 @@ class InspectionTarget_DataTransfer :public InspectionTarget
 class InspectionTarget_StageInfoCollect_Base :public InspectionTarget
 {
   
+  protected:
+
+
   struct infoGroupinfo{
-    int trigger_id;
-    std::vector< std::string > tagList;
+    // int trigger_id;
     std::vector< std::shared_ptr<StageInfo> >  group;
     
   };
-  std::map<int,  struct infoGroupinfo> id_info_grup;
 
+  std::map<int,  struct infoGroupinfo> input_stage_sets;
+  std::map<int,  struct infoGroupinfo> input_pool_sets;
   
+  cJSON * match_tag_sets;
   public:
   
   static std::string TYPE(){ return "StageInfoCollect_Base"; }
   InspectionTarget_StageInfoCollect_Base(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
     InspectionTarget(id,def,belongMan,local_env_path)
   {
+    setInspDef(def);
   }
-  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
-  {
-    for(auto tag : sinfo->trigger_tags )
-    {
-      if( matchTriggerTag(tag))
-        return true;
-    }
-    return false;
-  }
-
 
   std::future<int> futureInputStagePool()
   {
     return std::async(launch::async,&InspectionTarget_StageInfoCollect_Base::processInputStagePool,this);
   }
+
+
+  void setInspDef(cJSON* def)
+  {
+    InspectionTarget::setInspDef(def);
+    // LOGE("akjdfjkaflkajsndfklasjkldj=============");
+    match_tag_sets=NULL;
+    if(def)
+    {
+      match_tag_sets=JFetch_ARRAY(this->def,"match_tag_sets");
+    }
+  }
+
+
+  bool tagMatchingWhiteListIndex(int whiteListidx,vector<string> &tagArr)
+  {
+    if(match_tag_sets==NULL)return false;
+    
+    int set_size=cJSON_GetArraySize(match_tag_sets);
+    if(whiteListidx>=set_size)return false;
+    
+
+
+    cJSON *tags = cJSON_GetArrayItem(match_tag_sets,whiteListidx);
+
+    return tagMatching(tags,tagArr);
+  }
+
+  int tagMatchingWhiteList(vector<string> &tagArr)
+  {
+
+    int set_size=cJSON_GetArraySize(match_tag_sets);
+    for(int i=0;i<set_size;i++)
+    {
+      if(tagMatchingWhiteListIndex(i,tagArr))
+      {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+
+
+
+  int processInputStagePool()
+  {
+    {
+      std::lock_guard<std::mutex> _(input_stage_lock);
+      for (auto const& stage_set : input_stage_sets)
+      {
+        auto &igi=stage_set.second;
+        bool isFullMatch=true;
+        for(int i=0;i<igi.group.size();i++)
+        {
+          if(igi.group[i].get()==NULL)
+          {
+            isFullMatch=false;
+            break;
+          }
+        }
+
+        if(isFullMatch)
+        {
+          input_pool_sets.insert ( std::pair<int, struct infoGroupinfo >(stage_set.first,stage_set.second) );
+
+        }
+
+      }
+
+
+      for (auto const& stage_set : input_pool_sets)
+      {
+
+          input_stage_sets.erase(stage_set.first);
+      }
+
+    }
+
+
+    int processCount = processInputPool();
+    
+    inputPoolInsufficient=(processCount==0);
+
+    return processCount;
+
+  }
+
+
+
+  virtual bool feedStageInfo(std::shared_ptr<StageInfo> sinfo)
+  {
+    std::lock_guard<std::mutex> _(input_stage_lock);
+    int info_tid=sinfo->trigger_id;
+    bool isMatched=false;
+
+    if (input_stage_sets.find(info_tid) == input_stage_sets.end()) 
+    { 
+      int matching_idx=tagMatchingWhiteList(sinfo->trigger_tags);
+
+      if(matching_idx>=0)//matched with idx in WhiteList
+      {
+        struct infoGroupinfo igi;
+        int set_size=cJSON_GetArraySize(match_tag_sets);
+        for(int i=0;i<set_size;i++)
+        {
+          igi.group.push_back(NULL);//fill with empty slot
+        }
+        igi.group[matching_idx]=sinfo;
+        input_stage_sets.insert ( std::pair<int, struct infoGroupinfo >(info_tid,igi) );
+        isMatched=true;
+      }
+
+    }
+    else
+    { 
+      auto &stage_set=input_stage_sets[info_tid];
+      for(int i=0;i<stage_set.group.size();i++)
+      {
+        if(stage_set.group[i].get()==NULL)//a slot need to be fill
+        {
+          if(tagMatchingWhiteListIndex(i,sinfo->trigger_tags))//try match
+          {
+            isMatched=true;
+            stage_set.group[i]=sinfo;
+            break;
+          }
+        }
+      }
+
+    }
+
+
+    return isMatched;
+  }
+
 
 
   
@@ -720,57 +798,16 @@ class InspectionTarget_StageInfoCollect_Base :public InspectionTarget
 
   int processInputPool()
   {
-    int poolSize=input_pool.size();
-    for(int i=0;i<poolSize;i++)
+    int processedSize=0;
+    for (auto const& stage_set : input_pool_sets)
     {
-      std::shared_ptr<StageInfo> curInput=input_pool[i];
-      
-      int id=curInput->trigger_id;
-
-      if (id_info_grup.find(id) == id_info_grup.end()) {
-        //no existing record
-        struct infoGroupinfo igi;
-        igi.tagList=trigger_tags;
-        igi.trigger_id=id;
-        id_info_grup.insert ( std::pair<int, struct infoGroupinfo >(id,igi) );
-      }
-      auto &container=id_info_grup[id];
-
-      container.group.push_back(curInput);
-
-      bool isMatched=false;
-      for(int j=0;j<container.tagList.size();j++)
-      {
-        string tagRem=container.tagList[j];
-        for(string inTag:curInput->trigger_tags)
-        {
-          if(inTag==tagRem)
-          {
-            container.tagList.erase(container.tagList.begin()+j);
-            isMatched=true;
-            break;
-          }
-        }
-        if(isMatched)break;
-      }
-
-      
-      LOGI("Group:%d add input from:%s size:%d",id,curInput->source_id.c_str(),container.group.size() );
-      LOGI("tagList.size:%d",container.tagList.size());
-      
-
-      if(container.tagList.size()==0)
-      {
-        processGroup(id,container.group);
-
-        id_info_grup.erase(id);
-      }
-      input_pool[i]=NULL;
-      // reutrnStageInfo(curInput);//remember to recycle the StageInfo
+      processGroup(stage_set.first,stage_set.second.group);
+      processedSize++;
     }
-    input_pool.clear();
 
-    return poolSize;//run all
+    input_pool_sets.clear();
+
+    return processedSize;//run all
 
   }
 
@@ -809,9 +846,7 @@ class InspectionTarget_ReduceCategorize :public InspectionTarget_StageInfoCollec
 
     shared_ptr<StageInfo_Category> reportInfo(new StageInfo_Category());
 
-    
-
-    LOGI(">>>>>>>>");
+  
     reportInfo->source=this;
     reportInfo->source_id=id;
     

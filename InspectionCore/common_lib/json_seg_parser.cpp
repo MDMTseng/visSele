@@ -45,8 +45,16 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
   //   printf("%d,",levelStack[i]);
   // }
   // printf("\n");
+  json_seg_parser::JSonState shead=getStackHead();
 
-  switch(getStackHead())
+  // printf("[");
+
+  // for(int i=0;i<stackSize;i++)
+  // {
+  //   printf((i==stackSize-1)?"%d":"%d,",getStackHead(i));
+  // }
+  // printf("]<=%c\n",ch);
+  switch(shead)
   {
     case OBJ_KEY:
     {
@@ -127,6 +135,14 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
         pushStackHead(JSonState::ARR_END);
         pushStackHead(JSonState::DAT);
         return RESULT::ARRAY_START;
+      }
+      else if(ch==']')//empty array cornor? case
+      {
+        if(getStackHead(1)==JSonState::ARR_END)
+        {
+          popStackHead();
+          return newChar(ch);
+        }
       }
       else if(ch=='"')
       {

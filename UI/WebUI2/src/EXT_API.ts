@@ -79,7 +79,7 @@ export class BPG_WS
     
     let header = BPG_Protocol.raw2header(evt);
     if(header===undefined)return;
-    // log.info("onMessage:["+header.type+"]");
+    // console.log("onMessage:["+header.type+"]");
     let pgID = header.pgID;
 
     let parsed_pkt:any = undefined;
@@ -667,8 +667,333 @@ export class BPG_WS
   async InspTargetExchange(inspTarId:string,data:any,_PGID_:number|undefined=undefined)
   {
     
-    return await this.send_P("IT",0,{type:"exchange",id:inspTarId,data})
+    return await this.send_P("IT",0,{type:"exchange",id:inspTarId,data,_PGID_})
   }
+
+
+
+
+
+
+
+
+
+  StrInfoDec(str:string) {
+
+
+
+    let info = str.replace(/\.[^/.]+$/, "").split(' ').reduce((info:any, seg:string) => {
+      let idx =seg.indexOf("=");
+      let key = seg.substring(0,idx);
+      let cont = seg.substring(idx+1);
+      
+      {
+        let fnum=parseFloat(cont);
+        if(fnum==fnum)
+        {
+          return {
+            ...info,
+            [key]: fnum
+          }
+        }
+      }
+
+
+      if (seg.startsWith("$[") && seg.charAt[seg.length-1]=="]") {
+        return {
+          ...info,
+          [key]: seg.substring(idx+3,seg.length-1).split(',')
+        }
+      }
+
+
+      if (key=="tags" || key=="atags" ) {//cheat
+        return {
+          ...info,
+          [key]: seg.substring(idx+1,seg.length).split(',')
+        }
+      }
+
+
+      if ((seg.charAt[0]=="{" &&seg.charAt[seg.length-1]=="}") || (seg.charAt[0]=="[" &&seg.charAt[seg.length-1]=="]"))
+      {
+        try{
+
+
+          return {
+            ...info,
+            [key]: JSON.parse(cont)
+          }
+        }
+        catch(e)
+        {
+
+        }
+      }
+
+      return {
+        ...info,
+        [key]: cont
+      }
+    }, {
+    }) as any;
+  
+    return info;
+  }
+
+  Enc2StrInfo(json:any){
+    let str=""
+    Object.keys(json).forEach((key)=>{
+        let v=json[key];
+
+
+        if((key =="tags" || key =="atags" )&& v.length==0)return;
+        str+=key+"=";
+        if(key =="tags" || key =="atags")
+        {
+            v.forEach((t:string,idx:number)=>{
+                if(idx!=v.length-1)
+                {
+                    str+=t+","
+                }
+                else
+                {
+                    str+=t
+                }
+            })
+            str+=" "
+            return;
+        }
+        if(typeof v == 'number')
+        {
+
+            str+=v
+
+            str+=" "
+            return;
+        }
+    })
+    if(str=="")return undefined;
+    return str.slice(0,-1);//remove last " "
+  }
+
+  FileNnameParse(name:string) {
+
+
+
+    let imgInfo = name.replace(/\.[^/.]+$/, "").split(' ').reduce((info:any, seg:string) => {
+      if (seg.startsWith('t=')) {
+        return {
+          ...info,
+          t: parseInt(seg.slice(2))
+        }
+      }
+      if (seg.startsWith('tid=')) {
+        return {
+          ...info,
+          tid: parseInt(seg.slice(4))
+        }
+      }
+      if (seg.startsWith('tags=')) {
+        return {
+          ...info,
+          tags: seg.slice(5).split(',')
+        }
+      }
+    }, {
+      t: undefined,
+      tid: undefined,
+      tags: []
+    }) as {
+      t:number|undefined,
+      tid:number|undefined,
+      tags:string[]
+    };
+  
+    return imgInfo;
+  }
+
+
+  FileStructFilter(folderStruct:any, filter:(fileInfo:{
+    name:string,
+    type:string,
+    size_bytes:number,
+    atime_ms:number,
+    ctime_ms:number,
+    mtime_ms:number,
+  },folderPath:string)=>boolean|undefined) {
+    if (folderStruct === undefined || folderStruct.files === undefined) return folderStruct;
+    // console.log(folderStruct);
+  
+    let newStruct = { ...folderStruct };
+    newStruct.files = [];
+    for (let i = 0; i < folderStruct.files.length; i++) {
+      let file = folderStruct.files[i];
+      if (file.type == "DIR") {
+        let newFilderInfo = { ...file };
+        newFilderInfo.struct = this.FileStructFilter(file.struct, filter);
+        newStruct.files.push(newFilderInfo);
+      }
+      else if (file.type == "REG") {
+        if(filter(file,newStruct.path)==true)
+          newStruct.files.push(file);
+  
+      }
+    }
+    return newStruct;
+  }
+
+  FileStructFilter_XX(folderStruct:any, partial_tags:string[], trigger_tags:string[], trigger_id:number|undefined, start_time_ms:number = NaN, end_time_ms:number = NaN) {
+    if (folderStruct === undefined || folderStruct.files === undefined) return folderStruct;
+    // console.log(folderStruct);
+  
+    let newStruct = { ...folderStruct };
+    newStruct.files = [];
+    for (let i = 0; i < folderStruct.files.length; i++) {
+      let file = folderStruct.files[i];
+      if (file.type == "DIR") {
+        let newFilderInfo = { ...file };
+        newFilderInfo.struct = this.FileStructFilter_XX(file.struct, partial_tags, trigger_tags, trigger_id);
+        newStruct.files.push(newFilderInfo);
+      }
+      else if (file.type == "REG") {
+        let imgInfo = this.FileNnameParse(file.name);
+  
+        if (imgInfo === undefined) continue;
+        if (imgInfo.tags === undefined) continue;
+        if (trigger_id !== undefined && imgInfo.tid != trigger_id) continue;
+  
+        if (imgInfo.t !== undefined) {
+          if (imgInfo.t < start_time_ms) continue;
+          if (imgInfo.t > end_time_ms) continue;
+        }
+  
+        let findAll = true;
+        for (let j = 0; j < partial_tags.length; j++) {
+  
+          if (imgInfo.tags.find((tag:string) => tag.includes(partial_tags[j])) === undefined) {
+            findAll = false;
+            break;
+          }
+        }
+  
+  
+        if (findAll == false) continue;
+  
+  
+        for (let j = 0; j < trigger_tags.length; j++) {
+  
+          if (imgInfo.tags.find((tag:string) => tag == trigger_tags[j]) === undefined) {
+            findAll = false;
+            break;
+          }
+        }
+  
+        if (findAll == false) continue;
+  
+        newStruct.files.push({
+          ...file,
+          info: imgInfo
+        });
+  
+      }
+    }
+    return newStruct;
+  }
+  
+  FileStructFlatten(folderStruct:any):any {
+    if (folderStruct === undefined) return [];
+    let FileList = [];
+    let path = folderStruct.path;
+  
+    if (folderStruct.files === undefined) return [];
+    for (let i = 0; i < folderStruct.files.length; i++) {
+  
+      let file = folderStruct.files[i];
+      if (file.type == "DIR") {
+        FileList.push(this.FileStructFlatten(file.struct))
+      }
+  
+      else if (file.type == "REG") {
+        FileList.push({
+          ...file,
+          path: path
+        })
+      }
+    }
+    return FileList.flat();
+  }
+
+  async InspTargetEnvPath(inspTarId:string)
+  {
+          
+    let pkts=await this.InspTargetExchange(inspTarId,{type:"get_info"}) as any[];
+
+    
+    let IFInfo=pkts.find((pkt)=>pkt.type=="IF");
+    if(IFInfo===undefined || IFInfo.data===undefined)
+    {
+      return undefined
+    }
+
+    return IFInfo.data.env_path;
+  }
+
+
+  async InspTargetEnvFolderStructure(inspTarId:string,subpath:string="",depth:number=1)
+  {
+    let env_path = await this.InspTargetEnvPath(inspTarId)
+    if(env_path === undefined)
+    {
+      return undefined
+    }
+    return (await this.Folder_Struct(env_path+"/"+subpath,depth));
+  }
+
+  
+  async ImageLoadFromInspTar_ex(IMSV_IT_id:string, sub_path:string, partial_tags:string[], trigger_tags:string[], trigger_id:number|undefined, folderDepth = 2, candSelectCB:(((candList:any)=>Promise<any>)|undefined) = undefined) {
+    let fStruct = await this.InspTargetEnvFolderStructure(IMSV_IT_id, sub_path, folderDepth);
+  
+    let filteredStruct = this.FileStructFilter_XX(fStruct, partial_tags, trigger_tags, trigger_id);
+  
+    // console.log(filteredStruct,FileStructFlatten(filteredStruct))
+  
+    let candList = this.FileStructFlatten(filteredStruct);
+    // let path=fStruct.path
+    // let imageInfo =(fStruct.files).filter((finfo) => /.+\.png/i.test(finfo.name))
+  
+    // console.log(path,imageInfo);
+  
+    if (candList.length > 0) {
+      let cand = undefined
+      if (candSelectCB === undefined)
+        cand = candList[0]
+      else {
+        cand = await candSelectCB(candList);
+      }
+      if(cand===undefined)return undefined;
+      // console.log(cand.info.tags);
+      await this.InjectImage(cand.path + "/" + cand.name, cand.info.tags, cand.info.tid)
+      return cand;
+    }
+    return undefined;
+  }
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   async InspTargetSetStreamChannelID(inspTarId:string,channel_id:number,
     cbs:{ reject(...arg: any[]): any; resolve(...arg: any[]): any; })

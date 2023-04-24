@@ -56,3 +56,4 @@ InspectionCore/Core0_1/visSele_bk
 InspectionCore/contrib/simple_uart/test/simple_uart_test
 UI/WebUI2/build/
 .DS_Store
+UI/WebUI2/package-lock.json

@@ -6,7 +6,25 @@
 .overlay {
 	position: absolute;
 	background: none;
+
 }
+
+
+.scrollContent {
+	overflow: scroll;
+}
+
+
+
+.HXF {
+	height: 100%;
+}
+
+.scroll {
+	overflow: scroll;
+}
+
+
 
 .antd_menu_item_no_padding{
   padding-left: 0px !important;

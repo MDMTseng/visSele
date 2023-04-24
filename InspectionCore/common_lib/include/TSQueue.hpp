@@ -33,6 +33,7 @@ protected:
   void termination_avalanche_and_throw_excption();
 public:
   TSQueue(int maxCount=-1);
+  void resize(int size);
   size_t size();
   size_t capacity();
   bool is_terminated();
@@ -80,6 +81,12 @@ template<typename T>
 TSQueue<T>::TSQueue(int maxCount){
   maxDataCount=maxCount;
 };
+
+
+template<typename T>
+void TSQueue<T>::resize(int size) {
+  maxDataCount=size;
+}
 
 template<typename T>
 size_t TSQueue<T>::size() {

@@ -64,8 +64,8 @@ int g_flash_off_time=2000;//flash how long
 int encStepSkip=4;
 
 
-int encStepsPerObject=4;
-int ObjCountPreSet=5;
+int enc_steps_per_object=4;
+int obj_count_pre_set=5;
 
 struct triggerInfo{
   char* p_camera_id;
@@ -91,6 +91,8 @@ void genMachineSetup(JsonDocument &jdoc)
   jdoc["I_POS_RERADY_PIN_ON"]=I_POS_RERADY_PIN_ON;
 
 
+  jdoc["enc_steps_per_object"]=enc_steps_per_object;
+  jdoc["obj_count_pre_set"]=obj_count_pre_set;
 
   jdoc["trig_camera_id"]=std::string(CAM_ID_BUFF);
 
@@ -112,6 +114,12 @@ void setMachineSetup(JsonDocument &jdoc)
   JSON_SETIF_ABLE(I_Enc_Inv,jdoc,"I_Enc_Inv");
   JSON_SETIF_ABLE(I_POS_RERADY_WARN_ENABLE,jdoc,"I_POS_RERADY_WARN_ENABLE");
   JSON_SETIF_ABLE(I_POS_RERADY_PIN_ON,jdoc,"I_POS_RERADY_PIN_ON");
+
+
+
+  JSON_SETIF_ABLE(enc_steps_per_object,jdoc,"enc_steps_per_object");
+  JSON_SETIF_ABLE(obj_count_pre_set,jdoc,"obj_count_pre_set");
+
 
 
   if(jdoc["trig_camera_id"].is<std::string>()  )
@@ -154,7 +162,7 @@ static IRAM_ATTR void enc_cb(void* arg) {
   }
   // digitalWrite(O_LEDPin, leds);
   // leds=!leds;
-  int t=count%(encStepsPerObject*ObjCountPreSet);
+  int t=count%(enc_steps_per_object*obj_count_pre_set);
   if(t==0)
   {
       

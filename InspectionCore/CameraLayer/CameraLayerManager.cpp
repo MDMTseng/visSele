@@ -94,10 +94,6 @@
     CameraLayer_BMP_carousel::listAddDevices(camBasicInfo);
     bmpcarousel_driver_idx=count++;
 
-    for(int i=0;i<camBasicInfo.size();i++)
-    {
-    LOGI("name:%s  sn:%s",camBasicInfo[i].name.c_str(),camBasicInfo[i].serial_number.c_str());
-    }
   }
 
 

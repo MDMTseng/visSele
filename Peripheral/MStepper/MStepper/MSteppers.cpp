@@ -533,8 +533,8 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
 
   segBuf=buffer;
   segBufL=bufferL;
-  int segBufHeadIdx=0;
-  int segBufTailIdx=0;
+  segBufHeadIdx=0;
+  segBufTailIdx=0;
   minSpeed=100;
   main_junctionMaxSpeedJump=300;
 
@@ -567,7 +567,7 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
 
 void MStp::SystemClear()
 {
-  StepperForceStop();
+  MT_StepperForceStop();
   curPos_c=
   curPos_mod=
   lastTarLoc=(xVec){0};
@@ -575,15 +575,15 @@ void MStp::SystemClear()
   T_next=0;
   minSpeed=2;
   main_acc=1000;
-  doCheckHardLimit=true;
+  doCheckSoftLimit=true;
   fatalErrorCode=0;
 }
 
-void MStp::StepperForceStop()
+void MStp::MT_StepperForceStop()
 {
   stopTimer();
-  SegQ_Clear();
-  p_runSeg=NULL;
+  MT_SegQ_Clear();
+  // p_runSeg=NULL;
   lastTarLoc=curPos_c;
   T_next=0;
   // axis_pul_1st=axis_pul_2nd=
@@ -594,10 +594,52 @@ void MStp::StepperForceStop()
   
 }
 
+void MStp::MT_SegQ_Clear() MSTP_SEG_PREFIX
+{
+  MT_SegQ_Clear_Flag=true;
+  while(SegQ_IsEmpty()==false)
+  {
+    yield();
+  }
+  MT_SegQ_Clear_Flag=false;
+}
+
+
+
+void MStp::IT_StepperForceStop()
+{
+  stopTimer();
+  SegQ_Clear();
+  p_runSeg=NULL;
+
+
+
+  lastTarLoc=curPos_c;
+  T_next=0;
+  // axis_pul_1st=axis_pul_2nd=
+  axis_pul=axis_dir=0;
+  tskrun_state=0;
+  curPos_mod=(xVec){0};
+  
+}
+
 
 void MStp::SegQ_Clear() MSTP_SEG_PREFIX
 {
+  int headIdx=segBufHeadIdx;
+  int tailIdx=segBufTailIdx;
+
   segBufHeadIdx=segBufTailIdx;
+
+  while(tailIdx!=headIdx)
+  {
+    BlockCtxReturn(segBuf+tailIdx);
+    tailIdx++;
+    if(tailIdx==segBufL)
+    {
+      tailIdx=0;
+    }
+  }
 }
 bool MStp::SegQ_IsEmpty() MSTP_SEG_PREFIX
 {
@@ -658,7 +700,7 @@ MSTP_SEG_PREFIX bool MStp::SegQ_Tail_Pop() MSTP_SEG_PREFIX
 
 void MStp::_FatalError(int errorCode,const char* errorText)
 {
-  StepperForceStop();
+  MT_StepperForceStop();
   fatalErrorCode=errorCode;
   FatalError(errorCode,errorText);
 }
@@ -710,14 +752,14 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
 
 
-  if(doCheckHardLimit)
+  if(doCheckSoftLimit)
   {
     for(int i=0;i<MSTP_VEC_SIZE;i++)
     {
       if(VECTo.vec[i]<limit1.vec[i] ||VECTo.vec[i]>limit2.vec[i])
       {
         //ERROR
-        _FatalError(1,"Hard limit hit");
+        _FatalError(MSTP_ERR_CODE_SOFT_LIMIT,"SOFT limit hit");
         return false;
       }
     }
@@ -911,8 +953,9 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
         // __PRT_D_("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n DIFF:",newSeg.JunctionNormMaxDiff,preSeg->vto,newSeg.vcur);
 
-        if(newSeg.JunctionNormMaxDiff<0.01)
-          newSeg.JunctionNormMaxDiff=0.01;//min diff cap to prevent value explosion
+        if(newSeg.JunctionNormMaxDiff<0.0001)
+          newSeg.JunctionNormMaxDiff=0.0001;//min diff cap to prevent value explosion
+
 
 
         //max allowed end speed of pre block, so that at junction the max speed jump is within the limit, this is fixed
@@ -920,15 +963,22 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
         //vcur is the current speed, for un-executed block it's the starting speed
         newSeg.vcur=preSeg->vto_JunctionMax*newSeg.JunctionNormCoeff;
-
-        {
-          float vto_JunctionMax=preSeg->vto_JunctionMax;
-          float JunctionNormMaxDiff=newSeg.JunctionNormMaxDiff;
-          float vcur=newSeg.vcur;
-          float vcen=newSeg.vcen;
-          //__PRT_I_("===JunctionMax:%f ndiff:%f vcur:%f  vcen:%f==\n",vto_JunctionMax,JunctionNormMaxDiff,vcur,vcen);
+        // char PrtBuff[100];
+        // sprintf(PrtBuff,"coeff:%.4f dMax:%.4f  jMax:%.4f vcur:%.4f",
+        //   newSeg.JunctionNormCoeff,
+        //   newSeg.JunctionNormMaxDiff,
+        //   preSeg->vto_JunctionMax,
+        //   newSeg.vcur
           
-        }
+        //   );G_LOG(PrtBuff);
+        // {
+        //   float vto_JunctionMax=preSeg->vto_JunctionMax;
+        //   float JunctionNormMaxDiff=newSeg.JunctionNormMaxDiff;
+        //   float vcur=newSeg.vcur;
+        //   float vcen=newSeg.vcen;
+        //   //__PRT_I_("===JunctionMax:%f ndiff:%f vcur:%f  vcen:%f==\n",vto_JunctionMax,JunctionNormMaxDiff,vcur,vcen);
+          
+        // }
         if(newSeg.vcur>newSeg.vcen)//check if the max initial speed is higher than target speed
         {
           newSeg.vcur=newSeg.vcen;//cap the speed
@@ -1461,225 +1511,167 @@ void MStp::CalcNextStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
 
 uint32_t MStp::taskRun()
 {
-  // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=0);
-  
-  //First, if there is an current runSeg=> 
-  if(p_runSeg!=NULL)
-  {
+  float prevcur=0;
+
+LOAD_AGAIN:
+    if(p_runSeg==NULL)//Try to load new segment
+    {
+      T_next=0;
+      // axis_pul_1st=axis_pul_2nd=0;
+      axis_pul=0;
+      p_runSeg=SegQ_Tail();
+      if(p_runSeg==NULL)
+      {
+        stopTimer();
+        // xSemaphoreGive(motionFinishMutex);
+        BlockPinInfoUpdate(axis_dir,0,0);//keep pin update
+        BlockPulEffect(0,0);//wait for spi input
+
+        setTimer(0);
+        return 0;//EXIT, no new segment,go idle
+      }
+      else
+      {
+        p_runSeg->cur_step=0;
+        curPos_mod=(xVec){0};
+        // vecAssign(curPos_residue,vec0);
+        // vecAssign(posvec,vec0);
+        if(MSTP_segment_type::seg_line==p_runSeg->type)
+        {
+
+          __PRT_D_(">[%f\n",prevcur);
+          p_runSeg->vcur= prevcur*p_runSeg->JunctionNormCoeff;
+          axis_dir=p_runSeg->dir_bit;
+          vec_abs=p_runSeg->runvec_abs;
+        }
+        else if(MSTP_segment_type::seg_wait==p_runSeg->type)
+        {
+
+          p_runSeg->vcur= prevcur;//keeps the speed info
+        }
+
+        BlockInitEffect(p_runSeg);
+          
+      }
+    }
+
+
+
+    //__PRT_D_("type:%d\n",p_runSeg->type);
+
+    switch(p_runSeg->type)//========Run with current segment (short work)
+    {
+      case MSTP_segment_type::seg_line:
+      {
+        BlockPulEffect(0,0);//Toggle pin update========================
+        BlockPinInfoUpdate(axis_dir,0,0);//VVVVVVVVVVVVVVVVVVVVVVVVVV
+        auto *cp_vec=curPos_c.vec;
+        for(int i=0;i<MSTP_VEC_SIZE;i++)//calc run psition
+        {
+          uint32_t sele=(1<<i);
+          if(axis_pul&sele)
+          {
+            if(axis_dir&sele)
+            {
+              cp_vec[i]--;
+            }
+            else
+            {
+              cp_vec[i]++;
+            }
+          }
+        }
+      
+      }
+
+      break;
+      case MSTP_segment_type::seg_wait :
+      {
+        __PRT_D_(">[%d~%f\n",p_runSeg->cur_step,p_runSeg->vcur);
+
+        float vcur=p_runSeg->vcur;
+        if(p_runSeg->step_period==0)//force to end
+        {
+          p_runSeg->cur_step=p_runSeg->steps;
+        }
+      }
+      break;
+
+    }
+
+
+
+
+    if(MT_SegQ_Clear_Flag || p_runSeg==NULL || p_runSeg->cur_step==p_runSeg->steps) //========segment reaches the end
+    {
+
+      __PRT_D_(">[%f\n",prevcur);
+      if(MT_SegQ_Clear_Flag  || p_runSeg==NULL)
+      {
+        prevcur=0;
+        MT_SegQ_Clear_Flag=false;
+        SegQ_Clear();
+      }
+      else
+      {
+        prevcur= p_runSeg->vcur;
+        BlockEndEffect(p_runSeg,SegQ_Tail(1));
+        SegQ_Tail_Pop();
+      }
+      p_runSeg=NULL;
+      goto LOAD_AGAIN;
+    } 
+
+
+
     switch(p_runSeg->type)//========Run with current segment
     {
       case MSTP_segment_type::seg_line:
-        BlockPulEffect(0,0);
-        // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
-        // delIdxResidue(pre_indexes);
-
-      break;
-    }
-  }
-
-  //tskrun_state ==0 means () or ()
-  float prevcur=0;
-  if(tskrun_state==0)//
-  {
-
-    do
-    {
-      
-      if(p_runSeg==NULL)//========if current runSeg==NULL Try to load new segment
-      {
-        T_next=0;
-        // axis_pul_1st=axis_pul_2nd=0;
-        axis_pul=0;
-        p_runSeg=SegQ_Tail();
-        if(p_runSeg==NULL)
-        {
-          stopTimer();
-          // xSemaphoreGive(motionFinishMutex);
-          BlockPinInfoUpdate(axis_dir,0,0);//keep pin update
-          BlockPulEffect(0,0);//wait for spi input
-
-          return 0;//EXIT, no new segment,go idle
-        }
-        else
-        {
-          p_runSeg->cur_step=0;
-          BlockInitEffect(p_runSeg);
-          curPos_mod=(xVec){0};
-          // vecAssign(curPos_residue,vec0);
-          // vecAssign(posvec,vec0);
-          if(MSTP_segment_type::seg_line==p_runSeg->type)
-          {
-            if(axis_dir!=p_runSeg->dir_bit)
-            {
-            axis_dir=p_runSeg->dir_bit;
-
-              // for(volatile int i=0;i<2000;i++)//HACK: to extend time before axis_dir do changing, to prevent dir change and step pulse (posedge) too close
-              // {
-
-              // }
-            }
-          }
-        }
-      }
-
-
-      __PRT_D_("type:%d\n",p_runSeg->type);
-
-      switch(p_runSeg->type)//========Run with current segment (short work)
-      {
-        case MSTP_segment_type::seg_line:
-        {
-          BlockPinInfoUpdate(axis_dir,0,0);
-          auto *cp_vec=curPos_c.vec;
-          for(int i=0;i<MSTP_VEC_SIZE;i++)//calc run psition
-          {
-            uint32_t sele=(1<<i);
-            if(axis_pul&sele)
-            {
-              if(axis_dir&sele)
-              {
-                cp_vec[i]--;
-              }
-              else
-              {
-                cp_vec[i]++;
-              }
-            }
-          }
         
-        }
 
-        break;
-        case MSTP_segment_type::seg_wait :
+        CalcNextStep(p_runSeg);
+
+        p_runSeg->cur_step++;
+
+
+      
+        nextIntervalCalc(p_runSeg, minSpeed, maxSpeedInc);
+        
         {
-          __PRT_D_(">[%d~%f\n",p_runSeg->cur_step,p_runSeg->vcur);
-          if(p_runSeg->cur_step==0)
+          uint32_t vcur=p_runSeg->vcur;
+          if(vcur<(uint32_t)minSpeed)
           {
-            p_runSeg->vcur= prevcur;//keeps the speed info
+            vcur=(uint32_t)minSpeed;
           }
-          else if(p_runSeg->cur_step==p_runSeg->steps)
-          {
-            setTimer(0);
-          }
-          float vcur=p_runSeg->vcur;
-          if(p_runSeg->step_period==0)
-          {
-            p_runSeg->cur_step=p_runSeg->steps;
-          }
+
+          uint32_t uT = 1000*1000/(uint32_t)vcur;
+          p_runSeg->step_period=(uT);
+          T_next=p_runSeg->step_period;
         }
-        break;
 
-      }
+        
+        setTimer(T_next);
+        BlockPulEffect(0,0);
+        
+        BlockPinInfoUpdate(axis_dir,axis_pul,0);
 
-
-
-
-      if(p_runSeg->cur_step==p_runSeg->steps) //========segment reaches the end
-      {
-
-        prevcur= p_runSeg->vcur;
-        __PRT_D_(">[%f\n",prevcur);
-        BlockEndEffect(p_runSeg,SegQ_Tail(1));
-        SegQ_Tail_Pop();
-        p_runSeg=NULL;
-        continue;
-      } 
-
-
-
-      switch(p_runSeg->type)//========Run with current segment
-      {
-        case MSTP_segment_type::seg_line:
-          if(p_runSeg->cur_step==0)
-          {
+        return T_next;
             
-            __PRT_D_(">[%f\n",prevcur);
-            p_runSeg->vcur= prevcur*p_runSeg->JunctionNormCoeff;
-            axis_dir=p_runSeg->dir_bit;
-            vec_abs=p_runSeg->runvec_abs;
-          }
-          
-
-          CalcNextStep(p_runSeg);
-
-          tskrun_state=1;
-          p_runSeg->cur_step++;
-          
-        break;
-        case MSTP_segment_type::seg_wait :
-          if(p_runSeg->cur_step==0)
-          {
-            p_runSeg->vcur= prevcur;//keeps the speed info
-          }
-          __PRT_D_("blk_wait:::Go wait:%d\n",p_runSeg->step_period);
-          p_runSeg->cur_step++;
-          setTimer(p_runSeg->step_period);
-          return p_runSeg->step_period;
-        break;
-
-      }
-
-    }while(p_runSeg==NULL);
-
-
-
-
-  }
-
-  __PRT_D_("tskrun_state:%d isMidPulTrig:%d \n",tskrun_state,isMidPulTrig);
-  if(tskrun_state==1)
-  {
-    if(p_runSeg==NULL)
-    {
-      tskrun_state=0;
-      return 0;
-    }
-    __PRT_D_("cur_step:%d \n",p_runSeg->cur_step);
-    // if(isMidPulTrig==false)
-    // {
-    //   if(p_runSeg->cur_step==1)
-    //   {
-    //     axis_pul_1st=0;
-    //     _axis_collectpul1=(1<<MSTP_VEC_SIZE)-1;
-    //   }
-    //   isMidPulTrig=true;
-    //   pre_indexes=axis_pul_1st;
-    // }
-    // else
-    {
-      // if(p_runSeg->cur_step==1)
-      // {
-      //   BlockDirEffect(axis_dir);
-      // }
-      tskrun_state=0;
-    }
-
-
-    
-    {
-      
-      nextIntervalCalc(p_runSeg, minSpeed, maxSpeedInc);
-      
-      {
-        uint32_t vcur=p_runSeg->vcur;
-        if(vcur<(uint32_t)minSpeed)
+      break;
+      case MSTP_segment_type::seg_wait :
+        if(p_runSeg->cur_step==0)
         {
-          vcur=(uint32_t)minSpeed;
+          p_runSeg->vcur= prevcur;//keeps the speed info
         }
+        __PRT_D_("blk_wait:::Go wait:%d\n",p_runSeg->step_period);
+        p_runSeg->cur_step++;
+        setTimer(p_runSeg->step_period);
+        return p_runSeg->step_period;
+      break;
 
-        uint32_t T = TICK2SEC_BASE/(uint32_t)vcur;
-        p_runSeg->step_period=(T);
-        T_next=p_runSeg->step_period;
-      }
-      
     }
-    setTimer(T_next);
-    BlockPulEffect(0,0);
-    
-    BlockPinInfoUpdate(axis_dir,axis_pul,0);
 
-    return T_next;
-  }
+
   
   return 0;
 }

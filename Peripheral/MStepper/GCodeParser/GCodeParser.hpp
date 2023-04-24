@@ -1,5 +1,5 @@
 #pragma once
-
+#include <stdint.h>
 const int MAX_LINE_SIZE = 256; // Maximun GCode line size.
 
 
@@ -21,6 +21,7 @@ public:
 
 
     TASK_WARN_OK= 100, 
+    TASK_OK_NO_RSP= 1, 
     TASK_OK= 0, 
     TASK_FAILED= -1, 
     TASK_UNSUPPORTED= -3000, 
@@ -42,7 +43,21 @@ public:
 
 	GCodeParser_Status statusReducer(GCodeParser_Status st,GCodeParser_Status new_st);
 
-  virtual GCodeParser_Status parseLine()=0;
+  virtual int FindGMEnd_idx(char **blkIdxes,int blkIdxesL);
+  virtual GCodeParser_Status parseLine();
+
+  virtual GCodeParser_Status parseCMD(char **blks, char blkCount)=0;
   virtual void onError(int code)=0;
 	void INIT();
 };
+
+
+
+int FindFloat(const char *prefix,char **blkIdxes,int blkIdxesL,float &retNum);
+int FindInt32(const char *prefix,char **blkIdxes,int blkIdxesL,int32_t &retNum);
+
+int FindUint32(const char *prefix,char **blkIdxes,int blkIdxesL,uint32_t &retNum);
+int FindStr(const char *prefix,char **blkIdxes,int blkIdxesL,char* retStr);
+
+bool FindExist(const char *prefix,char **blkIdxes,int blkIdxesL);
+bool CheckHead(const char *str1,const char *str2);

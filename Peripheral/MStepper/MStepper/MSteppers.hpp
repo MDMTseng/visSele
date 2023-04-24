@@ -59,15 +59,24 @@ struct MSTP_segment
 struct MSTP_axisSetup
 {
   
-//it's to find the speed factor(SF) that add on the main physical axis speed, so that virtual main axis 
+//VirtualStep is to addon the main axis selection logic and feed speed adjustment
+//Every axis's "effect" on every step may vary, Note that the MSTP is pulse frequency based system.
+
 //for example:
-//
 // vector virtual step -> is to compensate every axis "effects" speed difference 
 // (the pulse speed will alter according to virtual step number)
-// virtual step  [10  1 1]
-// vector To     [10 60 3], speed 100   => the axis [1] is the physical main axis  => speed
-// virtual effect[100 60 3]  => the axis [0] is the  virtual main axis  so the speed should act on it
-// physical speed 100*(  SF=60/100 ) =60   => virtual speed on axis[0] is 100
+// virtual step  [2  1 3]
+// vector To     [50 60 3], speed 100   => the axis [1] is the physical main axis, if there is no virtual step
+// virtual effect[100 60 9]  => the axis [0] is the  virtual main axis  so the speed should act on it(main axis selects the largest effect axis)
+// phy speed on axis[0] is 100/2,  speed on axis[1] is 100/2*60/50
+
+//Other case
+// virtual step  [2  1  3]
+// vector To     [20 60 3], speed 100   => the axis [1] is the physical main axis
+// virtual effect[40 60 9]  => the axis [1] is the  virtual main axis  so the speed should act on it
+// phy speed on axis[0] is 100/1*20/60 speed on axis[1] is 100
+
+//In short higher(go more virtual steps), go slower, and under the hood this will affects which axis is the main axis;
   float VirtualStep;//it's the effect multiplier that 
 
 
@@ -92,6 +101,11 @@ struct MSTP_segment_extra_info
   float deacc;
 };
 char* toStr(const MSTP_SEG_PREFIX xVec &vec);
+
+#define MSTP_ERR_CODE_PHY_LIMIT 1
+#define MSTP_ERR_CODE_SOFT_LIMIT 2
+
+
 
 class MStp{
 
@@ -126,7 +140,7 @@ public:
   int fatalErrorCode;
   void _FatalError(int errorCode,const char* errorText);
   virtual void FatalError(int errorCode,const char* errorText)=0;
-  bool doCheckHardLimit=false;
+  bool doCheckSoftLimit=false;
   xVec limit1,limit2;
 
   xVec vec_abs;
@@ -144,21 +158,24 @@ public:
 
   void SystemClear();
 
-
-  void SegQ_Clear() MSTP_SEG_PREFIX;
-  bool SegQ_IsEmpty() MSTP_SEG_PREFIX;
-  bool SegQ_IsFull() MSTP_SEG_PREFIX;
+  bool MT_SegQ_Clear_Flag=false;
   int SegQ_Size() MSTP_SEG_PREFIX;
   int SegQ_Space() MSTP_SEG_PREFIX;
   int SegQ_Capacity() MSTP_SEG_PREFIX;
+  bool SegQ_IsEmpty() MSTP_SEG_PREFIX;
+  bool SegQ_IsFull() MSTP_SEG_PREFIX;
+protected:
+  void SegQ_Clear() MSTP_SEG_PREFIX;
   MSTP_SEG_PREFIX MSTP_segment* SegQ_Head(int idx=0) MSTP_SEG_PREFIX;
   bool SegQ_Head_Push() MSTP_SEG_PREFIX;
   MSTP_SEG_PREFIX MSTP_segment* SegQ_Tail(int idx=0) MSTP_SEG_PREFIX;
   MSTP_SEG_PREFIX bool SegQ_Tail_Pop() MSTP_SEG_PREFIX;
-
+public:
 
   void printSEGInfo();
-  void StepperForceStop();
+  virtual void MT_StepperForceStop();
+  void MT_SegQ_Clear();
+  virtual void IT_StepperForceStop();
 
   MStp(MSTP_segment *buffer, int bufferL);
   bool AddWait(uint32_t period,int times=1, void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
@@ -177,6 +194,8 @@ public:
 
   virtual void BlockInitEffect(MSTP_SEG_PREFIX MSTP_segment* blk)=0;
   virtual void BlockEndEffect(MSTP_SEG_PREFIX MSTP_segment* seg,MSTP_SEG_PREFIX MSTP_segment* n_seg)=0;
+
+  virtual void BlockCtxReturn(MSTP_SEG_PREFIX MSTP_segment* seg)=0;
   virtual int MachZeroRet(uint32_t axis_index,uint32_t sensor_pin,int distance,int speed,void* context)=0;
   
   bool timerRunning=false;
@@ -185,7 +204,7 @@ public:
   virtual void setTimer(uint64_t) =0;
 
   int tskrun_state=0;
-  uint32_t taskRun();
+  virtual uint32_t taskRun();
 
 
   uint32_t findMidIdx(uint32_t from_idxes,uint32_t totSteps);

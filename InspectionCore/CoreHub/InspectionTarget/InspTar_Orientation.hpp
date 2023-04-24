@@ -31,7 +31,6 @@ public:
   InspectionTarget_Orientation_ColorRegionOval(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
   static string TYPE(){ return "Orientation_ColorRegionOval"; }
-  bool stageInfoFilter(shared_ptr<StageInfo> sinfo);
   future<int> futureInputStagePool();
 
   int processInputPool();
@@ -56,6 +55,10 @@ class InspectionTarget_Orientation_ShapeBasedMatching :public InspectionTarget
   protected:
   SBM_if *sbm;
   line2Dup::TemplatePyramid insp_tp;
+  
+  float origin_offset_angle;
+
+
   float matching_downScale=0.5;
   string template_class_name="tNAME";
 
@@ -66,10 +69,12 @@ public:
     cv::Rect2d regionInRef;
   };
   vector<refine_region_info> refine_region_set;
+  bool refine_angle_only;
+
+
   InspectionTarget_Orientation_ShapeBasedMatching(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
   static string TYPE(){ return "Orientation_ShapeBasedMatching"; }
-  bool stageInfoFilter(shared_ptr<StageInfo> sinfo);
   future<int> futureInputStagePool();
 
   void setInspDef(cJSON* def);

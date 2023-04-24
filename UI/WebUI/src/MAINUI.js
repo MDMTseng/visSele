@@ -991,6 +991,7 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
   let InspectionModeOption={
     CI:"檢驗",
     FI:"全檢",
+    FI_C:"觸發檢驗",
   }
   
   const InspectionModeOptionMenu = (

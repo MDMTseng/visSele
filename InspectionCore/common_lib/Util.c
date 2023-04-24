@@ -54,6 +54,7 @@ int getDataFromJsonObj(cJSON * obj,const char *name,void **ret_ptr)
 
 int getDataFromJson(cJSON * obj,const char *path,void **ret_ptr)
 {
+  if(obj==NULL)return cJSON_Invalid;
   // if(path==NULL || path[0]=='\0')return cJSON_Invalid;
   if(path[0]=='[')
   {

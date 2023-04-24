@@ -1,10 +1,6 @@
 
 import {PostfixExpCalc,ESP2POST_FuncSet,ESP2POST_FuncCallBack} from './MISC_Util';
 
-
-import * as logX from 'loglevel';
-let log = logX.getLogger("BPG_Protocol");
-
 var enc = new TextEncoder();
 
 const BPG_header_L = 9;
@@ -67,7 +63,7 @@ let raw2obj_IM=(ws_evt:any, offset = 0)=>{
 
 
   let camera_id=headerArray[0];
-  let session_id=headerArray[1];
+  let format=headerArray[1];
   let offsetX=(headerArray[2]<<8)|headerArray[3];
   let offsetY=(headerArray[4]<<8)|headerArray[5];
   let width=(headerArray[6]<<8)|headerArray[7];
@@ -78,14 +74,37 @@ let raw2obj_IM=(ws_evt:any, offset = 0)=>{
   let full_height=(headerArray[13]<<8)|headerArray[14];
 
 
-  // console.log(ret_obj,headerArray);
-  let RGBA_pix_Num = 4*width*height;
-  let _image=new Uint8ClampedArray(ws_evt.data,
-    offset+BPG_header_L+headerL,4*width*height);
-  let image=new ImageData(_image, width);
+  let image:ImageData|HTMLImageElement|undefined=undefined;
+  let image_b64:string|undefined=undefined;
+  console.log(ws_evt);
+  if(format==0)
+  {
+    let RGBA_pix_Num = 4*width*height;
+    let _image=new Uint8ClampedArray(ws_evt.data,
+      offset+BPG_header_L+headerL,4*width*height);
+    image=new ImageData(_image, width);
+  }
+  else if(format==50)
+  {
+    let narr=new Uint8Array(ws_evt.data,offset+BPG_header_L+headerL) as any;
+    // console.log(narr);
+
+
+    var enc = new TextDecoder("ascii");
+    image_b64=enc.decode(narr);
+    
+    // image_b64=(String.fromCharCode.apply(null, narr))
+    // console.log(image_b64);
+    
+    image= new Image();
+    
+    image.src=image_b64;
+
+  }
+
   return {
     camera_id,
-    session_id,
+    format,
     offsetX,
     offsetY,
     width,height,

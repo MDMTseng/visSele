@@ -2,7 +2,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
-
+#include<sys/time.h>
 //#include "MLNN.hpp"
 #include "cJSON.h"
 #include "logctrl.h"
@@ -22,7 +22,9 @@
 #include "CameraLayerManager.hpp"
 
 #include "InspectionTarget.hpp"
+#include "InspTar_SpriteDraw.hpp"
 #include "InspTars.hpp"
+#include "RingBuf.hpp"
 
 #include <opencv2/calib3d.hpp>
 #include "opencv2/imgproc.hpp"
@@ -59,17 +61,19 @@ struct sttriggerInfo_mix{
 
 
 
-TSQueue<sttriggerInfo_mix> triggerInfoMatchingQueue(10);
+TSQueue<sttriggerInfo_mix> triggerInfoMatchingQueue(100);
 TSVector<sttriggerInfo_mix> triggerInfoMatchingBuffer;
 
 
 
 
-TSQueue<std::shared_ptr<StageInfo_Image>> inspQueue(10);
+TSQueue<std::shared_ptr<StageInfo_Image>> inspQueue(100);
 // TSQueue<image_pipe_info *> datViewQueue(10);
 // TSQueue<image_pipe_info *> inspSnapQueue(5);
 
 
+int CAM1_Counter=0;
+int CAM2_Counter=0;
 
 uint64_t lastImgSendTime=0;
 
@@ -91,9 +95,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
     lastImgSendTime=cur_ms;
 
 
-    LOGE("============DO INSP>> waterLvL: insp:%d/%d  trigInfoMatchingSize:%d  cur_Interval:%" PRIu64 "<<<cur_ms:%" PRIu64 "",
-        inspQueue.size(), inspQueue.capacity(),triggerInfoMatchingBuffer.size(),cur_Interval,cur_ms);
-
+    
     // LOGE("============DO INSP>> waterLvL: insp:%d/%d dview:%d/%d  snap:%d/%d   poolSize:%d trigInfoMatchingSize:%d",
     //     inspQueue.size(), inspQueue.capacity(),
     //     datViewQueue.size(), datViewQueue.capacity(),
@@ -103,6 +105,12 @@ class InspectionTargetManager_m:public InspectionTargetManager
     std::shared_ptr<StageInfo_Image> newStateInfo(new StageInfo_Image());
 
     CameraLayer::frameInfo finfo = info.camera->GetFrameInfo();
+
+    
+    
+    LOGE("============DO INSP>> waterLvL: insp:%d/%d  trigInfoMatchingSize:%d  cur_Interval:%" PRIu64 "<<<tstmp_ms:%" PRIu64 "   from:%s",
+        inspQueue.size(), inspQueue.capacity(),triggerInfoMatchingBuffer.size(),cur_Interval,finfo.timeStamp_us,info.camera->getConnectionData().id.c_str());
+
 
     std::shared_ptr<acvImage> img(new acvImage(finfo.width,finfo.height,3));
     CameraLayer::status st = info.camera->ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
@@ -122,6 +130,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
     // }
     
     // newStateInfo->trigger_tag="";
+    newStateInfo->img_show=
     newStateInfo->img=img;
     // LOGI(">>>CAM:%s  WH:%d %d",info->camera_id.c_str(),finfo.width,finfo.height);
 
@@ -156,6 +165,8 @@ int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trig
   finfo.height=H;
   finfo.width=W;
   finfo.timeStamp_us=0;
+  finfo.pixel_size_mm=NAN;
+
   newStateInfo->img_prop.mmpp=0;
   newStateInfo->img_prop.fi=finfo;
 
@@ -180,7 +191,7 @@ int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trig
   { //TODO: recycle the newStateInfo
     return -2;
   }
-
+  LOGE("inspQueue.size()=%d ",inspQueue.size());
   inspQueue.push_blocking(newStateInfo);
 
   return 0;
@@ -208,17 +219,26 @@ bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
-  LOGI("Ready to kill.....");
+  LOGI("Ready to kill..... buffersize:%d",triggerInfoMatchingBuffer.size());
   for(int i=0;i<triggerInfoMatchingBuffer.size();i++)
   {
     if(triggerInfoMatchingBuffer[i].stInfo!=NULL)
     {
+
+      LOGE("[%d] SRC:%s",i,triggerInfoMatchingBuffer[i].stInfo->source_id.c_str());
+      
       // bpg_pi.resPool.retResrc(triggerInfoMatchingBuffer[i].pipeInfo);
 
 
       //since triggerInfoMatchingBuffer[i].stInfo is not yet dispatched, it shouldn't use recycle to delete, so deal(DELETE) it here 
       // inspTarMan.recycleStageInfo(triggerInfoMatchingBuffer[i].stInfo);
       triggerInfoMatchingBuffer[i].stInfo=NULL;
+    }
+    else
+    {
+
+      LOGE("[%d] trig info trigger_id:%d",i,triggerInfoMatchingBuffer[i].triggerInfo.trigger_id);
+      
     }
   }
   triggerInfoMatchingBuffer.clear();
@@ -299,8 +319,11 @@ void TriggerInfoMatchingThread(bool *terminationflag)
 
             auto _triggerInfo=triggerInfoMatchingBuffer[i].triggerInfo;
            
-            if(_triggerInfo.camera_id!=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
-
+            // if(_triggerInfo.camera_id!=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
+            auto curCamID=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
+            if (curCamID.find(_triggerInfo.camera_id) == std::string::npos) {
+              continue;
+            }
 
             int cost;
             
@@ -334,8 +357,13 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             if(triggerInfoMatchingBuffer[i].stInfo==NULL)continue;//skip trigger info
 
             auto _stInfo=triggerInfoMatchingBuffer[i].stInfo;
-            if(targetTriggerInfo.camera_id!=_stInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not matching
+            //if(targetTriggerInfo.camera_id!=_stInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not fully matched
 
+            auto curCamID=_stInfo->img_prop.StreamInfo.camera->getConnectionData().id;
+
+            if (curCamID.find(targetTriggerInfo.camera_id) == std::string::npos) {
+              continue;
+            }
             
             int cost;
             
@@ -371,8 +399,9 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         {
           LOGI("Get matching. idx:%d cost:%d  psss to next Q stInfo:%p",minMatchingIdx,minMatchingCost,targetStageInfo.get() );
           targetStageInfo->trigger_tags=targetTriggerInfo.tags;
-          targetStageInfo->trigger_tags.push_back(targetTriggerInfo.camera_id);
-          LOGI("cam id:%s  ch_id:%d",targetTriggerInfo.camera_id.c_str(),targetStageInfo->img_prop.StreamInfo.channel_id);
+          auto fullCamID=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
+          targetStageInfo->trigger_tags.push_back(fullCamID);
+          LOGI("cam id:%s  ch_id:%d",fullCamID.c_str(),targetStageInfo->img_prop.StreamInfo.channel_id);
           LOGI("TId:%d  info TId:%d",targetStageInfo->trigger_id,targetTriggerInfo.trigger_id);
           targetStageInfo->trigger_id=targetTriggerInfo.trigger_id;
 
@@ -421,11 +450,11 @@ void ImgPipeProcessThread(bool *terminationflag)
 
 
       // LOGI(">>>CAM:%s",headImgPipe->camera_id.c_str());
-      LOGI("id:%d trigger:",stInfo->trigger_id);
-      for(auto tag:stInfo->trigger_tags)
-        LOGI("%s",tag.c_str());
+      // LOGI("id:%d trigger:",stInfo->trigger_id);
+      // for(auto tag:stInfo->trigger_tags)
+      //   LOGI("%s",tag.c_str());
       int acceptCount=inspTarMan.dispatch(stInfo);
-      LOGI("acceptCount:%d",acceptCount);
+      // LOGI("acceptCount:%d",acceptCount);
       if(acceptCount)
       {
         int processCount = inspTarMan.inspTarProcess();
@@ -438,7 +467,7 @@ void ImgPipeProcessThread(bool *terminationflag)
         // inspTarMan.unregNrecycleStageInfo(stInfo,NULL);
       }
 
-      LOGI("......<>>>>>.....");
+      // LOGI("......<>>>>>.....");
 
     }
   }
@@ -552,7 +581,34 @@ int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
           string tag=JFetch_STRING_ex(json,"tag");
           if(tag.length()>0)
           {
-            trigInfo.triggerInfo.tags.push_back(tag);
+
+
+            // split tag by ','
+            char delim=',';
+            int start = 0;
+            auto len = 0;
+
+            auto tag_cstr=tag.c_str();
+            for(len=0;;len++)
+            {
+
+              if(tag_cstr[start+len]=='\0')
+              { 
+                if(len)trigInfo.triggerInfo.tags.push_back(tag.substr(start,len));
+                break;
+              }
+              if(tag_cstr[start+len]==delim)
+              {
+
+                if(len)trigInfo.triggerInfo.tags.push_back(tag.substr(start,len));
+                start+=len+1;
+                len=0;
+              }
+            }
+
+            // trigInfo.triggerInfo.tags.push_back(tag);// push tag string in as is
+
+
           }
           
           triggerInfoMatchingQueue.push_blocking(trigInfo);
@@ -567,7 +623,7 @@ int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     
     sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", raw, ID);
-    // LOGI("MSG:%s", tmp);
+    LOGI("<<:%s", tmp);
     bpg_pi.fromUpperLayer_DATA("PD",conn_pgID,tmp);
     bpg_pi.fromUpperLayer_DATA("SS",conn_pgID,"{}");
     return 0;
@@ -629,109 +685,1570 @@ void InspectionTarget_GroupResultSave::thread_run()
       LOGI("No StageInfo_Category.... skip");
     }
   }
+
 }
 
 
-void InspectionTarget_DataTransfer::thread_run()
+
+
+
+
+
+class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect_Base
+{
+  protected:
+  int comm_pgID=-1;
+  class PerifChannel2:public Data_JsonRaw_Layer
+  {
+    
+    public:
+    int comm_pgID=-1;
+    std::mutex sendMutex;
+
+    void lock(){
+      sendMutex.lock();
+    }
+    void unlock(){
+      sendMutex.unlock();
+    }
+
+
+
+    int pkt_count = 0;
+    PerifChannel2():Data_JsonRaw_Layer()// throw(std::runtime_error)
+    {
+    }
+
+    int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)
+    {
+      static int CCC=0;
+      if(opcode==1 )
+      {
+
+        
+        char tmp[1024];
+
+        if(strstr((char*)raw, "\"type\":\"bTrigInfo\"") != NULL)
+        {
+          
+          cJSON *json = cJSON_Parse((char *)raw);
+          if(json)
+          {
+            int tidx=JFetch_NUMBER_ex(json,"tidx",-1);
+            int tid=JFetch_NUMBER_ex(json,"tid",-1);
+
+
+            int64_t usH=JFetch_NUMBER_ex(json,"usH",-1);
+            int64_t usL=JFetch_NUMBER_ex(json,"usL",-1);
+
+            int64_t uInsp_time_us=(usH==-1 || usL==-1)?0:((usH<<32)|usL);
+
+            cJSON_Delete(json);
+
+            LOGI("bTrigInfo tidx:%d tid:%d", tidx,tid);
+
+            //TODO:translate to trigger info
+            if(tidx==1)
+            {
+
+              {
+
+                int64_t time_us=0;
+                {//convert uInsp_time_us to camera time_us
+                  time_us=uInsp_time_us*0;
+                }
+
+
+
+                sttriggerInfo_mix trigInfo;
+                trigInfo.stInfo=NULL;
+                trigInfo.triggerInfo.camera_id="2BDF44478350";
+                trigInfo.triggerInfo.trigger_id=tid;
+                trigInfo.triggerInfo.est_trigger_time_us=time_us;//force matching
+                trigInfo.triggerInfo.tags.push_back("CAM_A");
+                trigInfo.triggerInfo.tags.push_back("s_uINSP_A");
+                triggerInfoMatchingQueue.push_blocking(trigInfo);
+              }
+
+              {
+
+                int64_t time_us=0;
+                {//convert uInsp_time_us to camera time_us
+                  time_us=uInsp_time_us*0;
+                }
+                sttriggerInfo_mix trigInfo;
+                trigInfo.triggerInfo.camera_id="2BDF44478343";
+                trigInfo.triggerInfo.trigger_id=tid;
+                trigInfo.triggerInfo.est_trigger_time_us=time_us;//force matching
+                trigInfo.triggerInfo.tags.push_back("CAM_B");
+                trigInfo.triggerInfo.tags.push_back("s_uINSP_B");
+                triggerInfoMatchingQueue.push_blocking(trigInfo);
+              }
+
+
+
+
+            }
+
+
+
+
+            // if(tidx==2)//Fake report test;
+            // {
+            //   CCC++;
+            //   std::lock_guard<std::mutex> lock(sendMutex);
+              
+            //   cJSON *rep = cJSON_CreateObject();
+            //   cJSON_AddStringToObject(rep,"type","report");
+            //   cJSON_AddNumberToObject(rep,"tid",tid);
+            //   cJSON_AddNumberToObject(rep,"cat",2);
+
+            //   uint8_t _buf[1000];
+            //   LOGE(">>>>>>>");
+            //   int ret= sendcJSONTo_perifCH(this,_buf, sizeof(_buf),true,rep);
+            //   cJSON_Delete(rep);
+            // }
+
+
+
+
+
+
+
+
+
+          }
+          json=NULL;
+        }
+        sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s}", raw);
+        LOGI("<<:%s  comm_pgID:%d", tmp,comm_pgID);
+        bpg_pi.fromUpperLayer_DATA("PD",comm_pgID,tmp);
+        bpg_pi.fromUpperLayer_DATA("SS",comm_pgID,"{}");
+        return 0;
+
+      }
+      printf(">>opcode:%d\n",opcode);
+      return 0;
+    }
+    int recv_RESET()
+    {
+      // printf("Get recv_RESET\n");
+      return 0;
+    }
+    int recv_ERROR(ERROR_TYPE errorcode)
+    {
+      // printf("Get recv_ERROR:%d\n",errorcode);
+      return 0;
+    }
+    
+    void connected(Data_Layer_IF* ch){
+      
+      printf(">>>%X connected\n",ch);
+    }
+
+    void disconnected(Data_Layer_IF* ch){
+      printf(">>>%X disconnected\n",ch);
+    }
+
+    ~PerifChannel2()
+    {
+      close();
+      printf("MData_uInsp DISTRUCT:%p\n",this);
+    }
+
+    // int send_data(int head_room,uint8_t *data,int len,int leg_room){
+      
+    //   // printf("==============\n");
+    //   // for(int i=0;i<len;i++)
+    //   // {
+    //   //   printf("%d ",data[i]);
+    //   // }
+    //   // printf("\n");
+    //   return recv_data(data,len, false);//LOOP back
+    // }
+  };
+  PerifChannel2 *pCH= NULL;
+  int ImgSaveCountDown_OK=0;
+  int ImgSaveCountDown_NG=0;
+  int ImgSaveCountDown_NG2=0;
+  int ImgSaveCountDown_NG3=0;
+  int ImgSaveCountDown_NA=0;
+
+  int FetchCountDown_OK=0;
+  int FetchCountDown_NG=0;
+  int FetchCountDown_NG2=0;
+  int FetchCountDown_NG3=0;
+  int FetchCountDown_NA=0;
+
+  std::mutex recentSrcLock;
+  vector<vector<std::shared_ptr<StageInfo>>> recentSrcStageInfoSet;
+  RingBufIdxCounter<int> recentSrcStageInfoSetIdx;
+
+  class uInspTStmp2CamTSmp
+  {
+    float mult;
+    float offset1;
+    float offset2;
+    //(uInsp+offset1)*mult+offset2=Cam
+  };
+
+
+  public:
+
+
+  static std::string TYPE(){ return "JSON_Peripheral"; }
+  InspectionTarget_JSON_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
+    InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path),
+    recentSrcStageInfoSetIdx(100)
+  {
+
+    comm_pgID=-1;
+    recentSrcStageInfoSet.resize(recentSrcStageInfoSetIdx.space());
+  }
+
+  ~InspectionTarget_JSON_Peripheral()
+  {
+
+    if (pCH)
+    {
+      LOGI("DELETING");
+      delete pCH;
+      pCH = NULL;
+    }
+  }
+
+  virtual void setInspDef(cJSON* def)
+  {
+    InspectionTarget::setInspDef(def);
+
+    // pCH=
+  }
+
+
+
+  virtual bool feedStageInfo(std::shared_ptr<StageInfo> sinfo)
+  {
+    if(sinfo->source==this)return false;
+    return InspectionTarget_StageInfoCollect_Base::feedStageInfo(sinfo);
+  }
+
+
+  virtual cJSON* genITIOInfo()
+  {
+
+
+    cJSON* arr= cJSON_CreateArray();
+
+    {
+      cJSON* opt= cJSON_CreateObject();
+      cJSON_AddItemToArray(arr,opt);
+
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        
+        cJSON_AddItemToObject(opt, "i",sarr );
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Category::stypeName().c_str() ));
+      }
+
+    }
+
+    return arr;
+  }
+
+  std::future<int> futureInputStagePool()
+  {
+    return std::async(launch::async,&InspectionTarget_JSON_Peripheral::processInputStagePool,this);
+  }
+
+  string TEST_mode="";
+  int TEST_mode_counter=0;
+  int TEST_mode_counter_MOD=0;
+  int TEST_mode_count1=0;
+  int TEST_mode_count2=0;
+
+
+  int cacheStageInfoTID_START=-100000000;
+  int cacheStageInfoTID=-100000000;
+  bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
+  {
+    bool ret = InspectionTarget::exchangeCMD(info,id,act);
+    if(ret)return ret;
+    string type=JFetch_STRING_ex(info,"type");
+
+    if(type=="MESSAGE")
+    {
+      if(pCH==NULL)
+      {
+        return false;
+      }
+
+      LOGE(">>>>>>>");
+      bool session_ACK=false;
+      cJSON *msg_obj = JFetch_OBJECT(info, "msg");
+      if (msg_obj)
+      {
+
+        std::lock_guard<std::mutex> lock(pCH->sendMutex);
+        uint8_t _buf[2000];
+        LOGE(">>>>>>>");
+        int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,msg_obj);
+        session_ACK = (ret>=0);
+      }
+      else
+      {
+        session_ACK=false;//send nothing
+      }
+      LOGE(">>>>>>>");
+
+      return session_ACK;
+    }
+
+    if(type=="is_CONNECTED")
+    {
+      return pCH!=NULL;
+    }
+
+
+    if(type=="timer_conv_seq")
+    {
+      return false;
+    }
+
+    if(type=="CONNECT")
+    {
+
+      int comm_id=JFetch_NUMBER_ex(info,"comm_id",-1);
+
+      bool session_ACK=false;
+      string errMsg="";
+      do{
+      if (pCH)
+      {
+        LOGI("DELETING");
+        delete pCH;
+        pCH = NULL;
+      }
+      LOGI("DELETED...  ");
+      LOGI("comm_id:%d  ",comm_id);
+      
+      
+      Data_Layer_IF *PHYLayer=NULL;
+      char *uart_name = NULL;
+      
+
+      cJSON* src_info=def;
+
+      char *IP = NULL;
+      if ( (uart_name=JFetch_STRING(src_info, "uart_name")) !=NULL)
+      {
+        int baudrate = (int)JFetch_NUMBER_ex(src_info, "baudrate",-1);
+        if(baudrate==-1)
+        {
+          break;
+        }
+
+
+        string default_mode=JFetch_STRING_ex(src_info, "mode","8N1");
+
+        try{
+          
+          PHYLayer=new Data_UART_Layer(uart_name,baudrate, default_mode.c_str());
+
+
+        }
+        catch(std::runtime_error &e){
+          
+        }
+
+      }
+      else if( (IP=JFetch_STRING(src_info, "ip"))!=NULL)
+      {
+
+        double *port_number = JFetch_NUMBER(src_info, "port");
+        if (port_number == NULL)
+        {
+          // sprintf(err_str, "IP(%d) port_number(%d)", IP!=NULL,port_number!=NULL);
+          break;
+        }
+      
+
+        try{
+          
+          PHYLayer=new Data_TCP_Layer(IP,(int)*port_number);
+
+        }
+        catch(std::runtime_error &e){
+        }
+
+
+
+      }
+
+      if(PHYLayer!=NULL)
+      {
+        pCH=new PerifChannel2();
+        comm_pgID=comm_id;
+        pCH->comm_pgID=comm_id;
+        pCH->setDLayer(PHYLayer);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        pCH->send_RESET();
+        pCH->RESET();
+
+
+        session_ACK = true;
+  
+      }
+      else
+      {
+        session_ACK = false;
+
+        LOGE("PHYLayer is not able to eatablish");
+        // sprintf(err_str, "PHYLayer is not able to eatablish");
+      }
+    
+    
+    
+      }while(0);
+
+      return session_ACK;
+    }
+
+    if(type=="DISCONNECT")
+    {
+      if(pCH==NULL)
+      {
+        return false;
+      }
+      
+      if (pCH)
+      {
+        LOGI("DELETING");
+        delete pCH;
+        pCH = NULL;
+      }
+      return true;
+    }
+
+    if(type=="TEST_MODE")
+    {
+      string mode=JFetch_STRING_ex(info,"mode");
+      TEST_mode=mode;
+      TEST_mode_count1=JFetch_NUMBER_ex(info,"space[0]",1);
+      TEST_mode_count2=JFetch_NUMBER_ex(info,"space[1]",1);
+      TEST_mode_counter_MOD=TEST_mode_count1+TEST_mode_count2;
+      if(TEST_mode=="OK_OK")
+      {
+        return true;
+      }
+      if(TEST_mode=="NG_NG")
+      {
+        return true;
+      }
+      if(TEST_mode=="NA_NA")
+      {
+        return true;
+      }
+      if(TEST_mode=="OK_NG")
+      {
+        return true;
+      }
+      if(TEST_mode=="OK_NG_NA")
+      {
+        TEST_mode_counter_MOD=3;
+        return true;
+      }
+      if(TEST_mode=="OK_NA")
+      {
+        return true;
+      }
+      if(TEST_mode=="NG_NA")
+      {
+        return true;
+      }
+
+
+      TEST_mode="";
+      return true;
+
+    }
+    
+
+    if(type=="SrcImgSaveCountDown")
+    {
+      ImgSaveCountDown_OK=JFetch_NUMBER_ex(info,"count_OK",ImgSaveCountDown_OK);
+      ImgSaveCountDown_NG=JFetch_NUMBER_ex(info,"count_NG",ImgSaveCountDown_NG);
+      ImgSaveCountDown_NG2=JFetch_NUMBER_ex(info,"count_NG2",ImgSaveCountDown_NG2);
+      ImgSaveCountDown_NG3=JFetch_NUMBER_ex(info,"count_NG3",ImgSaveCountDown_NG3);
+      ImgSaveCountDown_NA=JFetch_NUMBER_ex(info,"count_NA",ImgSaveCountDown_NA);
+      return true;
+    }
+
+
+    if(type=="GetFetchSrcTIDList")
+    {
+        
+      std::lock_guard<std::mutex> lock(recentSrcLock); 
+      cJSON* arr= cJSON_CreateArray();
+
+      for(int i=0;i<recentSrcStageInfoSetIdx.size();i++)
+      {
+        int idx = recentSrcStageInfoSetIdx.getHead(i+1);
+        if(recentSrcStageInfoSet[idx].size()==0)continue;
+        cJSON_AddItemToArray(arr,cJSON_CreateNumber(recentSrcStageInfoSet[idx][0]->trigger_id));
+
+      }
+
+      act.send("RP",id,arr);
+      cJSON_Delete(arr);arr=NULL;
+      return true;
+    }
+
+
+    if(type=="FetchCountDown")
+    {
+        
+      FetchCountDown_OK=JFetch_NUMBER_ex(info,"count_OK",FetchCountDown_OK);
+      FetchCountDown_NG=JFetch_NUMBER_ex(info,"count_NG",FetchCountDown_NG);
+      FetchCountDown_NG2=JFetch_NUMBER_ex(info,"count_NG2",FetchCountDown_NG2);
+      FetchCountDown_NG3=JFetch_NUMBER_ex(info,"count_NG3",FetchCountDown_NG3);
+      FetchCountDown_NA=JFetch_NUMBER_ex(info,"count_NA",FetchCountDown_NA);
+      return true;
+    }
+
+
+
+
+    if(type=="TriggerFetchSrc")
+    {
+      int targetIdx=-1;
+      {
+        
+        std::lock_guard<std::mutex> lock(recentSrcLock); 
+        
+
+        float ftargetTID=JFetch_NUMBER_ex(info,"trigger_id");
+        if(ftargetTID!=ftargetTID)return false;
+        int targetTID=ftargetTID;
+            // LOGI("<<<<targetTID:%d>>>>",targetTID);
+        for(int i=0;i<recentSrcStageInfoSetIdx.size();i++)
+        {
+          int idx = recentSrcStageInfoSetIdx.getTail(i);
+          auto &infoSet=recentSrcStageInfoSet[idx];
+
+            // LOGI("<<<<idx:%d>>>>",idx);
+          if(infoSet.size()==0)continue;
+            // LOGI("<<<<infoSet tid:%d  size:%d>>>>",infoSet[0]->trigger_id,infoSet.size());
+          if(infoSet[0]->trigger_id!=targetTID)continue;
+          targetIdx=i;
+          break;
+        }
+
+      }
+
+      if(targetIdx>=0)
+      {
+        auto &infoSet=recentSrcStageInfoSet[targetIdx];
+
+
+
+
+
+        for(int j=0;j<infoSet.size();j++)
+        {
+
+          auto src = dynamic_cast<StageInfo_Image*>(infoSet[j].get());
+
+
+          if(src==NULL)continue;
+          
+          LOGI("SEND....");
+          shared_ptr<StageInfo_Image> pkt(new StageInfo_Image());
+          pkt->img=src->img;
+          pkt->img_prop=src->img_prop;
+          pkt->img_show=src->img_show;
+          pkt->process_time_us=src->process_time_us;
+          pkt->sharedInfo=src->sharedInfo;
+
+          pkt->source=src->source;
+          pkt->source_id=src->source_id;
+
+
+          pkt->trigger_tags=src->trigger_tags;
+          pkt->trigger_tags.push_back("s_uInspCache_");
+          cacheStageInfoTID--;
+          pkt->trigger_id=cacheStageInfoTID;//cacheStageInfoIssueTID-src->trigger_id;
+          belongMan->dispatch(pkt);
+
+
+
+
+
+
+
+
+        }
+        while (belongMan->inspTarProcess())
+        {
+        }
+        return true;
+      }
+
+          LOGI("END....");
+      return true;
+    }
+
+
+    if(type=="ClearFetchSrc")
+    {
+      recentSrcStageInfoSetIdx.clear();
+      return true;
+    }
+
+
+    return false;
+  }
+
+
+  int find(std::vector< string > tags,string target)
+  {
+    for(int i=0;i<tags.size();i++)
+    {
+      if(tags[i]==target)return i;
+    }
+    return -1;
+  }
+
+
+  // int ResultA()
+  // {
+    
+  // }
+
+int ResultA(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group,int &result,int &holeIdx)
 {
   
-  acvImage cacheImage;
-  while(true)
+  LOGI("InspectionTarget_UART_JSON_Peripheral processGroup:  trigger_id:%d =========",trigger_id);
+
+  for(int i=0;i<group.size();i++)
   {
-    std::shared_ptr<StageInfo> curInput;
-    LOGI("<<<<<size():%d",datTransferQueue.size());
-    // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
-          
-    try{
-      if(datTransferQueue.pop_blocking(curInput)==false)
+
+    auto d_img_info = dynamic_cast<StageInfo_Image*>(group[i].get());
+    if(d_img_info==NULL)continue;
+    
+    LOGI("tstmp_ms:%" PRIu64 ,d_img_info->img_prop.fi.timeStamp_us);
+
+  }
+
+  holeIdx=-1;
+  for(int i=0;i<group.size();i++)
+  {
+
+    auto d_img_info = dynamic_cast<StageInfo_Orientation*>(group[i].get());
+    if(d_img_info==NULL)continue;
+    // LOGI(">>>>>orientation size:%d",d_img_info->orientation.size());
+    if(d_img_info->orientation.size()==0)continue;
+
+    if(d_img_info->orientation[0].confidence==0)continue;
+
+
+    if(find(d_img_info->trigger_tags,"SBM_HOLE_A")>=0)
+    {
+    LOGI("SBM_HOLE_A");
+      if(holeIdx!=-1)
       {
+        holeIdx=-2;
         break;
       }
-    }
-    catch(TS_Termination_Exception e)
-    {
-      break;
+      holeIdx=0;
+      continue;
     }
 
-    int DBG_USECOUNT=curInput.use_count();
-    LOGI("<<<<<size():%d usecount:%d",datTransferQueue.size(),DBG_USECOUNT);
 
-    LOGI("DataTransfer thread pop data: name:%s ",curInput->source_id.c_str());
-    LOGI("DataTransfer thread pop data: type:%s ",curInput->typeName().c_str());
-
-    // for ( const auto &kyim : curInput->imgSets ) {
-    //     LOGI("[%s]:%p",kyim.first.c_str(),kyim.second.get());
-    // }
-
-    LOGI("curInput->jInfo:%p ",curInput->jInfo);
-    int imgCHID=curInput->img_prop.StreamInfo.channel_id;
-    int downSample=curInput->img_prop.StreamInfo.downsample;
-    if(downSample<1)
+    if(find(d_img_info->trigger_tags,"SBM_HOLE_B")>=0)
     {
-      downSample=10;
-    }
-
-    int downSampleAdj=datTransferQueue.size();
-    downSample+=downSampleAdj;
-    // curInput->imgSets./
-
-    LOGI("imgCHID:%d ",imgCHID);
-
-    {
-      // CameraLayer::BasicCameraInfo data=headImgPipe->img_prop.StreamInfo.camera->getConnectionData();
-      // cJSON* caminfo=CameraManager::cameraInfo2Json(data);
-
-
-      cJSON* camBrifInfo=cJSON_CreateObject();
-      // cJSON_AddStringToObject(camBrifInfo, "trigger_tag", curInput->trigger_tag.c_str());
-      cJSON_AddNumberToObject(camBrifInfo, "trigger_id", curInput->trigger_id);
-      // cJSON_AddStringToObject(camBrifInfo, "camera_id",curInput->camera_id.c_str());
-
-      bpg_pi.fromUpperLayer_DATA("CM",imgCHID,camBrifInfo);
-      cJSON_Delete(camBrifInfo);
-
-
-      if(curInput->jInfo)
-        bpg_pi.fromUpperLayer_DATA("RP",imgCHID,curInput->jInfo);
-
-
-      std::shared_ptr<acvImage> im2send=curInput->img;
-      if(im2send!=NULL)
+    LOGI("SBM_HOLE_B");
+      if(holeIdx!=-1)
       {
-        BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)downSample};
-        iminfo.fullHeight = im2send->GetHeight();
-        iminfo.fullWidth = im2send->GetWidth();
-        if(iminfo.scale>1)
-        {
-          //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-          //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-          ImageDownSampling(cacheImage, *im2send, iminfo.scale, NULL);
-        }
-        else
-        {
-          iminfo.scale=1;
-          iminfo.img=im2send.get();
-        }
-        bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
-
+        holeIdx=-2;
+        break;
       }
-      
-      bpg_pi.fromUpperLayer_SS(imgCHID,true);
-      
-      if(realTimeDropFlag>0)
-        realTimeDropFlag--;
-
-
+      holeIdx=1;
+      continue;
     }
+    // d_img_info->orientation.size();
+  }
+
+
+  std::vector<std::shared_ptr<StageInfo>> surfaceReps;
+
+  int catSum=STAGEINFO_CAT_OK;
+  int curTrigID=-1;
+  for(int i=0;i<group.size();i++)
+  {
+
+    auto d_sinfo = dynamic_cast<StageInfo_SurfaceCheckSimple *>(group[i].get());
+
+
+
+    if(d_sinfo==NULL)continue;
+
+
   
+    curTrigID=d_sinfo->trigger_id;
+    int cur_cat=d_sinfo->category;
+
+    LOGI("[%d]:from:%s  =========cat:%d",i,group[i]->source_id.c_str(),cur_cat);
+
+
+    // cJSON *surRep=cJSON_CreateObject();
+    // d_sinfo->attachJsonRep(surRep,true);
+    surfaceReps.push_back(group[i]);
+
+
+    if(0){
+
+      LOGI("match_reg_info size:%d",d_sinfo->match_reg_info.size());
+      for(int j=0;j<d_sinfo->match_reg_info.size();j++)
+      {
+        // 
+        auto &sr=d_sinfo->match_reg_info[j].subregions;
+
+        LOGI("[%d]:%d",j,d_sinfo->match_reg_info[j].category);
+        for(int k=0;k<sr.size();k++)
+        {
+          LOGI("[%d]:>>>>>type:%d",k,sr[k].type);
+          LOGI("blob_area:%d",sr[k].hsvseg_stat.blob_area);
+          LOGI("element_area:%d",sr[k].hsvseg_stat.element_area);
+
+
+
+        }
+      }
+    }
     
 
 
+    //from now on we only look one side
+
+    // if(holeIdx==0)//
+    // {
+    //   cur_cat=STAGEINFO_CAT_NA;
+    // }
+
+
+
+    if(cur_cat==STAGEINFO_CAT_NOT_EXIST || cur_cat==STAGEINFO_CAT_UNSET)cur_cat=STAGEINFO_CAT_NA;
+
+    if(holeIdx==i)//the hole is here ignore the inspection
+    {
+      if(cur_cat!=STAGEINFO_CAT_NA)
+        cur_cat=STAGEINFO_CAT_OK;
+    }
+    else if(holeIdx<0)
+    {
+      cur_cat=STAGEINFO_CAT_NA;
+    }
+
+
+
+    // if(i==1)break;
+
+
+    
+    int bk_catSum=catSum;
+
+    catSum=STAGEINFO_SCS_CAT_BASIC_reducer(catSum,cur_cat);
+    // switch ((catSum))
+    // {
+    // case STAGEINFO_CAT_OK:
+    //   if(cur_cat==STAGEINFO_CAT_NG)catSum=STAGEINFO_CAT_NG;
+    //   else if(cur_cat==STAGEINFO_CAT_NA)catSum=STAGEINFO_CAT_NA;
+    //   else if(cur_cat==STAGEINFO_CAT_UNSET)catSum=STAGEINFO_CAT_NA;
+
+    //   break;
+    
+    // case STAGEINFO_CAT_NG:
+    
+    //   if(cur_cat==STAGEINFO_CAT_NA)catSum=STAGEINFO_CAT_NA;
+    //   else if(cur_cat==STAGEINFO_CAT_UNSET)catSum=STAGEINFO_CAT_NA;
+      
+    //   break;
+    
+    // case STAGEINFO_CAT_NA:
+    //   break;
+    // default://unknown
+    //   catSum=STAGEINFO_CAT_NA;
+    //   break;
+    // }
+    LOGI("catSum %d +cur_cat:%d  =>:%d  ",bk_catSum,cur_cat,catSum);
+
+
   }
+
+  result=catSum;
+  return 0;
+
 }
 
 
 
+
+int ResultB(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group,int &result,int &holeIdx)
+{
+  
+  LOGI("InspectionTarget_UART_JSON_Peripheral processGroup:  trigger_id:%d =========",trigger_id);
+
+  for(int i=0;i<group.size();i++)
+  {
+
+    auto d_img_info = dynamic_cast<StageInfo_Image*>(group[i].get());
+    if(d_img_info==NULL)continue;
+    
+    LOGI("tstmp_ms:%" PRIu64 ,d_img_info->img_prop.fi.timeStamp_us);
+
+  }
+
+  holeIdx=-1;
+  for(int i=0;i<group.size();i++)
+  {
+
+    auto d_img_info = dynamic_cast<StageInfo_Orientation*>(group[i].get());
+    if(d_img_info==NULL)continue;
+    // LOGI(">>>>>orientation size:%d",d_img_info->orientation.size());
+    if(d_img_info->orientation.size()==0)continue;
+
+    if(d_img_info->orientation[0].confidence==0)continue;
+
+
+    if(find(d_img_info->trigger_tags,"SBM_HOLE_A")>=0)
+    {
+    LOGI("SBM_HOLE_A");
+      if(holeIdx!=-1)
+      {
+        holeIdx=-2;
+        break;
+      }
+      holeIdx=0;
+      continue;
+    }
+
+
+    if(find(d_img_info->trigger_tags,"SBM_HOLE_B")>=0)
+    {
+    LOGI("SBM_HOLE_B");
+      if(holeIdx!=-1)
+      {
+        holeIdx=-2;
+        break;
+      }
+      holeIdx=1;
+      continue;
+    }
+    // d_img_info->orientation.size();
+  }
+
+
+  std::vector<std::shared_ptr<StageInfo>> surfaceReps;
+
+  int catSum=STAGEINFO_CAT_OK;
+  int curTrigID=-1;
+  for(int i=0;i<group.size();i++)
+  {
+    auto d_sinfo = dynamic_cast<StageInfo_SurfaceCheckSimple *>(group[i].get());
+    if(d_sinfo==NULL)continue;
+
+
+  
+    curTrigID=d_sinfo->trigger_id;
+    int cur_cat=d_sinfo->category;
+    LOGI("[%d]:from:%s  =========cat:%d",i,group[i]->source_id.c_str(),cur_cat);
+    if(cur_cat==STAGEINFO_CAT_NOT_EXIST || cur_cat==STAGEINFO_CAT_UNSET)cur_cat=STAGEINFO_CAT_NA;
+    
+    if(holeIdx<0)
+    {
+      cur_cat=STAGEINFO_CAT_NA;
+    }
+
+    int bk_catSum=catSum;
+
+    catSum=STAGEINFO_SCS_CAT_BASIC_reducer(catSum,cur_cat);
+    
+    LOGI("catSum %d +cur_cat:%d  =>:%d  ",bk_catSum,cur_cat,catSum);
+    surfaceReps.push_back(group[i]);
+  }
+
+  result=catSum;
+  return 0;
+
+}
+
+
+
+
+void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
+{
+  int catSum,holeIdx;
+
+  if(ResultB(trigger_id,group,catSum,holeIdx)!=0)
+  {
+    return;
+  }
+
+
+
+  std::vector<std::shared_ptr<StageInfo>> surfaceReps;
+  for(int i=0;i<group.size();i++)
+  {
+
+    auto d_sinfo = dynamic_cast<StageInfo_SurfaceCheckSimple *>(group[i].get());
+    if(d_sinfo==NULL)continue;
+    surfaceReps.push_back(group[i]);
+  }
+
+
+    {
+
+      bool doSave=false;
+      if(catSum==STAGEINFO_CAT_OK &&  ImgSaveCountDown_OK>0)
+      {
+        ImgSaveCountDown_OK--;
+        doSave=true;
+      }
+      if(catSum==STAGEINFO_CAT_NG &&  ImgSaveCountDown_NG>0)
+      {
+        ImgSaveCountDown_NG--;
+        doSave=true;
+      }
+      if(catSum==STAGEINFO_CAT_NG2 &&  ImgSaveCountDown_NG2>0)
+      {
+        ImgSaveCountDown_NG2--;
+        doSave=true;
+      }
+      if(catSum==STAGEINFO_CAT_NG3 &&  ImgSaveCountDown_NG3>0)
+      {
+        ImgSaveCountDown_NG3--;
+        doSave=true;
+      }
+      if(catSum==STAGEINFO_CAT_NA &&  ImgSaveCountDown_NA>0)
+      {
+        ImgSaveCountDown_NA--;
+        doSave=true;
+      }
+
+
+      if(doSave)
+      {
+
+        for(int i=0;i<group.size();i++)
+        {
+
+          auto d_img_info = dynamic_cast<StageInfo_Image*>(group[i].get());
+          if(d_img_info==NULL)continue;
+          LOGI("IMG>>src:%s",d_img_info->source_id.c_str());
+
+
+          shared_ptr<StageInfo_Image> reportInfo(new StageInfo_Image());
+
+          reportInfo->img_show=d_img_info->img_show;
+          reportInfo->img_prop=d_img_info->img_prop;
+          reportInfo->img=d_img_info->img;
+          reportInfo->create_time_sysTick=d_img_info->create_time_sysTick;
+          reportInfo->source=this;
+          reportInfo->source_id=id;
+          reportInfo->trigger_id=d_img_info->trigger_id;
+
+          reportInfo->trigger_tags=d_img_info->trigger_tags;
+          reportInfo->trigger_tags.push_back("CAT_"+to_string(catSum));
+          reportInfo->trigger_tags.push_back("IMG_SAVE");
+
+          belongMan->dispatch(reportInfo,NULL,"ImDataSave");
+
+
+        }
+
+      }
+
+
+
+
+
+    }
+
+    {
+      bool doFetch=false;
+      if(catSum==STAGEINFO_CAT_OK && FetchCountDown_OK!=0)
+      {
+        if(FetchCountDown_OK>0)
+          FetchCountDown_OK--;
+        doFetch=true;
+      }
+      if(catSum==STAGEINFO_CAT_NG && FetchCountDown_NG!=0)
+      {
+        if(FetchCountDown_NG>0)
+          FetchCountDown_NG--;
+        doFetch=true;
+      }
+      if(catSum==STAGEINFO_CAT_NG2 && FetchCountDown_NG2!=0)
+      {
+        if(FetchCountDown_NG2>0)
+          FetchCountDown_NG2--;
+        doFetch=true;
+      }
+      if(catSum==STAGEINFO_CAT_NG3 && FetchCountDown_NG3!=0)
+      {
+        if(FetchCountDown_NG3>0)
+          FetchCountDown_NG3--;
+        doFetch=true;
+      }
+      if(catSum==STAGEINFO_CAT_NA && FetchCountDown_NA!=0)
+      {
+        if(FetchCountDown_NA>0)
+          FetchCountDown_NA--;
+        doFetch=true;
+      }
+
+
+      if(doFetch)
+      {
+        std::lock_guard<std::mutex> lock(recentSrcLock); 
+
+        if(recentSrcStageInfoSetIdx.space()==0)
+        {//if full, wipe tail
+          int tail_idx = recentSrcStageInfoSetIdx.getTail();
+          recentSrcStageInfoSetIdx.consumeTail();
+          recentSrcStageInfoSet[tail_idx].clear();
+        }
+        
+        {//push new info in head
+          int head_idx = recentSrcStageInfoSetIdx.getHead();
+          recentSrcStageInfoSet[head_idx]=group;
+          recentSrcStageInfoSetIdx.pushHead();
+
+        }
+      }
+    }
+
+
+
+    LOGI("final CAT:%d",catSum);
+
+
+
+    shared_ptr<StageInfo_Category> reportInfo(new StageInfo_Category());
+    reportInfo->category=catSum;
+    reportInfo->process_time_us=0;
+    reportInfo->trigger_id=trigger_id;
+    reportInfo->source=this;
+    reportInfo->source_id=id;
+    reportInfo->trigger_tags.push_back(id);
+    reportInfo->genJsonRepTojInfo();
+
+    {
+      cJSON* repInfoObj=JFetch_OBJECT(reportInfo->jInfo,"report");
+      cJSON_AddNumberToObject(repInfoObj,"hole_location_index",holeIdx);
+
+
+
+      cJSON* jSurRepsArr=cJSON_CreateArray();
+      cJSON_AddItemToObject(repInfoObj,"surface_check_reports",jSurRepsArr);
+      for(int i=0;i<surfaceReps.size();i++)
+      {
+        cJSON* srep=cJSON_CreateObject();
+        surfaceReps[i]->attachJsonRep(srep,0);
+        cJSON_AddItemToArray(jSurRepsArr,srep);
+      }
+    }
+    // reportInfo->jInfo
+
+
+
+    reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
+    reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",1);
+
+
+    belongMan->dispatch(reportInfo);
+
+    if(TEST_mode.length()!=0)
+    {
+      if(TEST_mode=="OK_OK")
+      {
+        catSum=STAGEINFO_CAT_OK;
+      }
+      else if(TEST_mode=="NG_NG")
+      {
+        catSum=STAGEINFO_CAT_NG;
+      }
+      else if(TEST_mode=="NA_NA")
+      {
+        catSum=STAGEINFO_CAT_NA;
+      }
+      else if(TEST_mode=="OK_NG")
+      {
+        catSum=((TEST_mode_counter<TEST_mode_count1))?STAGEINFO_CAT_OK:STAGEINFO_CAT_NG;
+      }
+      else if(TEST_mode=="OK_NA")
+      {
+        catSum=((TEST_mode_counter<TEST_mode_count1))?STAGEINFO_CAT_OK:STAGEINFO_CAT_NA;
+      }
+      else if(TEST_mode=="NG_NA")
+      {
+        catSum=((TEST_mode_counter&1)==0)?STAGEINFO_CAT_NG:STAGEINFO_CAT_NA;
+        catSum=((TEST_mode_counter<TEST_mode_count1))?STAGEINFO_CAT_NG:STAGEINFO_CAT_NA;
+      }
+      else if(TEST_mode=="OK_NG_NA")
+      {
+        int tt=TEST_mode_counter%3;
+        catSum=STAGEINFO_CAT_OK;
+        if(tt==1)catSum=STAGEINFO_CAT_NG;
+        if(tt==2)catSum=STAGEINFO_CAT_NA;
+      }
+      TEST_mode_counter=(TEST_mode_counter+1)%TEST_mode_counter_MOD;
+
+    }
+
+
+
+
+
+
+    if(trigger_id<0)
+    {
+      LOGI("TEST set don't send to Peripheral....");
+    }
+    else if(pCH)
+    {
+      switch ((catSum))
+      {
+      case STAGEINFO_CAT_OK:
+        catSum=1;
+        break;
+      
+      case STAGEINFO_CAT_NG:
+      
+        catSum=2;
+        break;
+      case STAGEINFO_CAT_NG2:
+      
+        catSum=3;
+        break;
+      case STAGEINFO_CAT_NG3:
+      
+        catSum=4;
+        break;
+      
+      case STAGEINFO_CAT_NA:
+      default://unknown
+        catSum=0xFFFF;
+        break;
+      }
+      
+      std::lock_guard<std::mutex> lock(pCH->sendMutex); 
+      
+      cJSON *rep = cJSON_CreateObject();
+      cJSON_AddStringToObject(rep,"type","report");
+      cJSON_AddNumberToObject(rep,"tid",trigger_id);
+      cJSON_AddNumberToObject(rep,"cat",catSum);
+
+      uint8_t _buf[1000];
+      LOGE(">>>>>>>pCH:%p");
+      int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,rep);
+      cJSON_Delete(rep);
+    }
+    else
+    {
+      LOGI("Peripheral is not connected yet....");
+    }
+
+  }
+
+};
+
+class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
+{
+  public:
+
+  static std::string TYPE(){ return "DataTransfer"; }
+  InspectionTarget_DataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+    :InspectionTarget_DataThreadedProcess(id,def,belongMan,local_env_path)
+  {
+    datTransferQueue.resize(300);
+  }
+
+
+  virtual cJSON* genITIOInfo()
+  {
+
+    cJSON* arr= cJSON_CreateArray();
+
+    {
+      cJSON* opt= cJSON_CreateObject();
+      cJSON_AddItemToArray(arr,opt);
+
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        
+        cJSON_AddItemToObject(opt, "i",sarr );
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo::stypeName().c_str() ));
+      }
+    }
+
+    return arr;
+  }
+
+  int force_down_scale=-1;
+  float downSampFactor=1;
+  int downSampResolutionCap=500000;
+
+  bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
+  {
+    bool ret = InspectionTarget::exchangeCMD(info,id,act);
+    if(ret)return ret;
+    string type=JFetch_STRING_ex(info,"type");
+    if(type=="force_down_scale")
+    {
+      force_down_scale=JFetch_NUMBER_ex(info,"scale",-1);
+      return true;
+    }
+    if(type=="down_samp_factor")
+    {
+      downSampFactor=JFetch_NUMBER_ex(info,"factor",1);
+      return true;
+    }
+    if(type=="down_samp_resolution_cap")
+    {
+      downSampResolutionCap=JFetch_NUMBER_ex(info,"cap",5000000);
+      return true;
+    }
+    return false;
+  }
+
+  void thread_run()
+  {
+    
+    acvImage cacheImage;
+    while(true)
+    {
+      std::shared_ptr<StageInfo> curInput;
+      // LOGI("<<<<<size():%d",datTransferQueue.size());
+      // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
+            
+      try{
+        if(datTransferQueue.pop_blocking(curInput)==false)
+        {
+          break;
+        }
+      }
+      catch(TS_Termination_Exception e)
+      {
+        break;
+      }
+
+
+      int DBG_USECOUNT=curInput.use_count();
+      // LOGI("<<<<<size():%d usecount:%d",datTransferQueue.size(),DBG_USECOUNT);
+
+      // LOGI("DataTransfer thread pop data: name:%s ",curInput->source_id.c_str());
+      // LOGI("DataTransfer thread pop data: type:%s ",curInput->typeName().c_str());
+
+      // for ( const auto &kyim : curInput->imgSets ) {
+      //     LOGI("[%s]:%p",kyim.first.c_str(),kyim.second.get());
+      // }
+
+      // LOGI("curInput->jInfo:%p ",curInput->jInfo);
+      int imgCHID=curInput->img_prop.StreamInfo.channel_id;
+      int downSample=curInput->img_prop.StreamInfo.downsample;
+      if(downSample<1)
+      {
+        downSample=1;
+      }
+      //downSampleAdj=datTransferQueue.size();
+
+      // int sameCHID_inQ_count=datTransferQueue.size();
+      // sameCHID_inQ_count-=5;
+      // if(sameCHID_inQ_count<0)sameCHID_inQ_count=0;
+      // // {
+
+      // //   int QL=datTransferQueue.size();
+      // //   for(int i=0;i<QL;i++)
+      // //   {
+      // //     datTransferQueue.
+      // //   }
+      // // }
+
+      // downSample+=(int)(sameCHID_inQ_count*downSampFactor);
+      // curInput->imgSets./
+
+      
+
+      // LOGI("imgCHID:%d ",imgCHID);
+
+      {
+        // CameraLayer::BasicCameraInfo data=headImgPipe->img_prop.StreamInfo.camera->getConnectionData();
+        // cJSON* caminfo=CameraManager::cameraInfo2Json(data);
+
+
+        cJSON* camBrifInfo=cJSON_CreateObject();
+        // cJSON_AddStringToObject(camBrifInfo, "trigger_tag", curInput->trigger_tag.c_str());
+        cJSON_AddNumberToObject(camBrifInfo, "trigger_id", curInput->trigger_id);
+        // cJSON_AddStringToObject(camBrifInfo, "camera_id",curInput->camera_id.c_str());
+
+        bpg_pi.fromUpperLayer_DATA("CM",imgCHID,camBrifInfo);
+        cJSON_Delete(camBrifInfo);
+
+
+        if(curInput->jInfo)
+          bpg_pi.fromUpperLayer_DATA("RP",imgCHID,curInput->jInfo);
+
+
+        std::shared_ptr<acvImage> im2send=curInput->img_show;
+
+        LOGE("downSample %d src:%s im2send:%p",downSample,curInput->source_id.c_str(),im2send.get());
+        if(im2send && downSample<5)
+        {
+
+          Mat CV_Img(im2send->GetHeight(),im2send->GetWidth(),CV_8UC3,im2send->CVector[0]);
+          int compressionRate=95-datTransferQueue.size()*5;
+          if(compressionRate<20)compressionRate=20;
+
+          vector<unsigned char> img_encode;
+          string base64Header="";
+          if(1)//use jpg
+          {
+            std::vector<int> param(2);
+            param[0] = cv::IMWRITE_JPEG_QUALITY;
+            param[1] = compressionRate;//default(95) 0-100
+
+
+            cv::imencode(".jpeg", CV_Img, img_encode, param);
+            base64Header="data:image/jpg;base64,";
+          }
+          else//webp slow
+          {
+            std::vector<int> param(2);
+            param[0] = cv::IMWRITE_WEBP_QUALITY;
+            param[1] = compressionRate;//default(95) 0-100
+            cv::imencode(".webp", CV_Img, img_encode, param);
+            base64Header="data:image/webp;base64,";
+          }
+
+        // LOGE("OK..");
+          //convert img_encode into base64 format
+          string base64_img_encode=base64_encode(base64Header.c_str(),(unsigned char*)img_encode.data(), img_encode.size());
+
+        // LOGE("OK..");
+          if(base64_img_encode.length()>0)
+          {
+          // LOGI("base64_img_encode:%c %c...",base64_img_encode[0],base64_img_encode[1]);
+
+            // printf("\n\nbase64_img_encode_size:%d\n\n",base64_img_encode.size());
+            // printf(base64_img_encode.c_str());
+            // printf("\n\n\n\n");
+            BPG_protocol_data_ImgB64_Send_info imgb64Info;
+
+            imgb64Info.imgb64=&base64_img_encode[0];
+            imgb64Info.imgb64_L=base64_img_encode.length();
+            imgb64Info.offsetX=imgb64Info.offsetY=0;
+            imgb64Info.fullHeight=CV_Img.rows;
+            imgb64Info.fullWidth=CV_Img.cols;
+            imgb64Info.scale=1;
+            
+            bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&imgb64Info);
+            
+          }
+
+
+          LOGI("COMPRESSION:: %dx%d  jpeg:rate:%d size:%d",
+            im2send->GetWidth(),im2send->GetHeight(),compressionRate,img_encode.size());
+
+        }
+        else
+        {
+        }
+
+
+        if(0&&im2send!=NULL && force_down_scale<999)
+        {
+
+          
+
+          float pscale=sqrt(im2send->GetHeight()*im2send->GetWidth()/(downSampResolutionCap));
+          int new_downSample=pscale<=0?1:(int)pscale;
+          if(downSample<new_downSample)downSample=new_downSample;
+          if(force_down_scale!=-1)downSample=force_down_scale;
+          BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)downSample};
+          iminfo.fullHeight = im2send->GetHeight();
+          iminfo.fullWidth = im2send->GetWidth();
+          if(iminfo.scale>1)
+          {
+            //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
+            //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+            ImageDownSampling(cacheImage, *im2send, iminfo.scale, NULL);
+          }
+          else
+          {
+            iminfo.scale=1;
+            iminfo.img=im2send.get();
+          }
+          bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
+
+        }
+        
+        // LOGE("OK..");
+        bpg_pi.fromUpperLayer_SS(imgCHID,true);
+        
+        if(realTimeDropFlag>0)
+          realTimeDropFlag--;
+
+        // LOGE("OK..");
+      }
+    
+      
+
+
+    }
+  }
+
+
+
+
+};
+
+
+
+
+
+class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedProcess
+{
+  public:
+  std::string mark="SIIS";
+  static std::string TYPE(){ return "StageInfoImageSave"; }
+  InspectionTarget_StageInfoImageSave(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+    :InspectionTarget_DataThreadedProcess(id,def,belongMan,local_env_path),mark("SIIS")
+  {
+    datTransferQueue.resize(9999);
+  }
+
+
+
+
+  virtual int processInputPool()
+  {
+
+    int ret = InspectionTarget_DataThreadedProcess::processInputPool();
+
+    // LOGI("PPUSH:datTransferQueue:size:%d",datTransferQueue.size());
+    return ret;
+  }
+  virtual cJSON* genITIOInfo()
+  {
+
+    cJSON* arr= cJSON_CreateArray();
+
+    {
+      cJSON* opt= cJSON_CreateObject();
+      cJSON_AddItemToArray(arr,opt);
+
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        
+        cJSON_AddItemToObject(opt, "i",sarr );
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Image::stypeName().c_str() ));
+      }
+    }
+
+    return arr;
+  }
+
+  long long timeInMilliseconds(void) {
+      struct timeval tv;
+
+      gettimeofday(&tv,NULL);
+      return (((long long)tv.tv_sec)*1000)+(tv.tv_usec/1000);
+  }
+  bool exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
+  {
+    std::string type=JFetch_STRING_ex(info,"type");
+
+    return InspectionTarget_DataThreadedProcess::exchangeCMD(info,info_ID,act);
+  }
+  int saveCount=0;
+  void thread_run()
+  {
+    
+    // acvImage cacheImage;
+    while(true)
+    {
+      std::shared_ptr<StageInfo> curInput;
+      // LOGI("<<<<<size():%d",datTransferQueue.size());
+      // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
+            
+      try{
+        // LOGI("TryReadNew");
+        if(datTransferQueue.pop_blocking(curInput)==false)
+        {
+          LOGI("TryReadTailed");
+          break;
+        }
+      }
+      catch(TS_Termination_Exception e)
+      {
+        LOGI("TS_Termination_Exception");
+        break;
+      }
+
+
+      auto d_sinfo = dynamic_cast<StageInfo_Image *>(curInput.get());
+      if(d_sinfo==NULL) {
+        LOGE("sinfo type is StageInfo_Image only, does not match.....");
+        continue;
+      }
+      std::vector<std::string> &tags=d_sinfo->trigger_tags;
+
+      bool doSkip=false;
+      for(int i=0;i<tags.size();i++)
+      {
+        if(tags[i]==mark)
+        {//this is from saved image here
+          doSkip=true;
+          break;
+        }
+      }
+      if(doSkip)continue;
+
+
+      //[ms][trigger id][tags]
+      //t:3409329 tid:451 tags:test1,fff,wfgh
+      
+      int trigID=d_sinfo->trigger_id;
+
+      string tags_str=mark;
+      for(int i=0;i<tags.size();i++)
+      {
+        tags_str+=","+tags[i];
+      }
+      std::string filename="tid="+to_string(trigID)+" tags="+tags_str+" t="+to_string(timeInMilliseconds())+".png";
+
+      LOGI("SAVE image filename:%s ",filename.c_str());
+      LOGI("local_env_path:%s ",local_env_path.c_str());
+
+
+      auto srcImg=d_sinfo->img;
+
+      Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+        
+      imwrite(local_env_path+"/"+filename, CV_srcImg);  
+      saveCount++;
+      LOGI("SAVE image DONE c:%d",saveCount);
+    }
+
+
+    LOGI("InspectionTarget_StageInfoImageSave ended.....");
+  }
+
+
+
+
+};
 
 
 int _argc;
@@ -1244,6 +2761,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             LOGI("black_level:%f",*black_level);
           }
 
+
+          double *pixel_size = JFetch_NUMBER(json, "pixel_size");
+          if(pixel_size)
+          {
+            cami->camera->SetPixelSize (*pixel_size);
+            LOGI("pixel_size:%f",*pixel_size);
+          }
+
           if(JFetch_TRUE(json, "mirrorX"))
           {
             cami->camera->SetMirror(0,1);
@@ -1305,10 +2830,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
             cJSON* trigger_tags = JFetch_ARRAY(json, "trigger_tags");
             if(trigger_tags)
-          {
+            {
               int tagsLen=cJSON_GetArraySize(trigger_tags);
               for(int i=0;i<tagsLen;i++)
-            {
+              {
                 cJSON * item= cJSON_GetArrayItem(trigger_tags,i);
                 if(item->type & cJSON_String)
                 {
@@ -1441,6 +2966,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             inspTar = new InspectionTarget_DataTransfer(id,defInfo,&inspTarMan,env_path);
           }
+          else if(type==InspectionTarget_StageInfoImageSave::TYPE())
+          {
+            inspTar = new InspectionTarget_StageInfoImageSave(id,defInfo,&inspTarMan,env_path);
+          }
           
           else if(type==InspectionTarget_ReduceCategorize::TYPE())
           {
@@ -1463,6 +2992,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           else if(type==InspectionTarget_Orientation_ShapeBasedMatching::TYPE())
           {
             inspTar = new InspectionTarget_Orientation_ShapeBasedMatching(id,defInfo,&inspTarMan,env_path);
+          }
+          else if(type==InspectionTarget_JSON_Peripheral::TYPE())
+          {
+            inspTar = new InspectionTarget_JSON_Peripheral(id,defInfo,&inspTarMan,env_path);
+          }
+          else if(type==InspectionTarget_StageInfoCollect_Base::TYPE())
+          {
+            inspTar = new InspectionTarget_StageInfoCollect_Base(id,defInfo,&inspTarMan,env_path);
+          }
+          else if(type==InspectionTarget_SpriteDraw::TYPE())
+          {
+            inspTar = new InspectionTarget_SpriteDraw(id,defInfo,&inspTarMan,env_path);
           }
           else
           {
@@ -1682,16 +3223,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     else if (checkTL("PD", dat)) //[P]eripheral [D]evice
     {
       char *type = JFetch_STRING(json, "type");
-
-      double *_CONN_ID = JFetch_NUMBER(json, "CONN_ID");
-      int CONN_ID=-1;
-      if(_CONN_ID)
-      {
-        CONN_ID=(int)*_CONN_ID;
-      }
-
+      int CONN_ID=JFetch_NUMBER_ex(json, "CONN_ID",-1);
 
       do{
+        if(CONN_ID==-1)break;
         if(strcmp(type, "CONNECT") == 0)
         {
           if(CONN_ID!=-1)
@@ -1772,15 +3307,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
           if(PHYLayer!=NULL)
           {
-            perifCH=new PerifChannel();
-            perifCH->ID=avail_CONN_ID;
-            perifCH->conn_pgID=dat->pgID;
-            perifCH->setDLayer(PHYLayer);
+            PerifChannel* pch=new PerifChannel();
+            perifCH=pch;
+            pch->ID=avail_CONN_ID;
+            pch->conn_pgID=dat->pgID;
+            pch->setDLayer(PHYLayer);
 
-            perifCH->send_RESET();
-            perifCH->send_RESET();
-            perifCH->RESET();
-
+            pch->send_RESET();
+            pch->send_RESET();
+            pch->RESET();
+ 
 
             session_ACK = true;
 
@@ -1875,7 +3411,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
   return 0;
 }
 
-int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us,int count)
+int sendResultTo_perifCH(Data_JsonRaw_Layer *perifCH,int uInspStatus, uint64_t timeStamp_100us,int count)
 {
   uint8_t buffx[200];
   
@@ -1968,7 +3504,7 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
 
 
 bool terminationFlag = false;
-int mainLoop(bool realCamera = false)
+int mainLoop(int chPort = 4090)
 {
   /**/
 
@@ -1979,9 +3515,8 @@ int mainLoop(bool realCamera = false)
   {
     try
     {
-      int port = 4090;
-      LOGI("Try to open websocket... port:%d\n", port);
-      ifwebsocket=new m_BPG_Link_Interface_WebSocket(port);
+      LOGI("Try to open websocket... port:%d\n", chPort);
+      ifwebsocket=new m_BPG_Link_Interface_WebSocket(chPort);
 
       //
       pass = true;
@@ -2099,7 +3634,7 @@ int cp_main(int argc, char **argv)
   setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
 
 #endif
-
+  int chPort=4090;
   _argc = argc;
   _argv = argv;
   for (int i = 0; i < argc; i++)
@@ -2131,6 +3666,18 @@ int cp_main(int argc, char **argv)
       chdir(str);
     }
 
+
+
+    {
+      str=PatternRest(argv[i], "port=");
+      if(str!=NULL)
+      {
+        chPort=atoi(str);
+        doMatch=true;
+      }
+    }
+
+
     if (doMatch)
     {
       LOGE("CMD param[%d]:%s ...OK", i, argv[i]);
@@ -2146,5 +3693,5 @@ int cp_main(int argc, char **argv)
   signal(SIGPIPE, SIG_IGN);
 #endif
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
-  return mainLoop(true);
+  return mainLoop(chPort);
 }

@@ -17,24 +17,24 @@ InspTar_WBar_SizeComp::InspTar_WBar_SizeComp(string id,cJSON* def,InspectionTarg
   LOGI("sodkoskoskad;aks;dkas;dk");
 }
 
-bool InspTar_WBar_SizeComp::stageInfoFilter(shared_ptr<StageInfo> sinfo)
-{
-  // if(sinfo->typeName())
+// bool InspTar_WBar_SizeComp::stageInfoFilter(shared_ptr<StageInfo> sinfo)
+// {
+//   // if(sinfo->typeName())
 
 
 
-  for(auto tag : sinfo->trigger_tags )
-  {
-    if(tag=="_STREAM_")
-    {
-      return false;
-    }
-    if(tag==id)return true;
-    if( matchTriggerTag(tag))
-      return true;
-  }
-  return false;
-}
+//   for(auto tag : sinfo->trigger_tags )
+//   {
+//     if(tag=="_STREAM_")
+//     {
+//       return false;
+//     }
+//     if(tag==id)return true;
+//     if( matchTriggerTag(tag))
+//       return true;
+//   }
+//   return false;
+// }
 
 future<int> InspTar_WBar_SizeComp::futureInputStagePool()
 {
@@ -144,7 +144,7 @@ void InspTar_WBar_SizeComp::singleProcess(shared_ptr<StageInfo> sinfo)
 
   auto d_sinfo = dynamic_cast<StageInfo_Orientation *>(sinfo.get());
   if(d_sinfo==NULL) {
-    LOGE("sinfo type is not match.....");
+    LOGE("sinfo type does not match.....");
     return;
   }
   auto srcImg=d_sinfo->img;
@@ -299,7 +299,7 @@ void InspTar_WBar_SizeComp::singleProcess(shared_ptr<StageInfo> sinfo)
   reportInfo->category=category;
 
   reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",2);
+  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
   LOGI("CHID:%d category:%d",reportInfo->img_prop.StreamInfo.channel_id,category);
 
   // reportInfo->jInfo=NULL;

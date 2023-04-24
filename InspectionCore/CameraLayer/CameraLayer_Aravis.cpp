@@ -363,7 +363,7 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
 
 void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
 {
-
+  frameCount++;
   if (takeCount >= 0)
     LOGI(">>>>>takeCount:%d", takeCount);
 
@@ -398,6 +398,7 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     _fi.offset_y = y;
     _fi.width = w;
     _fi.height = h;
+    _fi.pixel_size_mm=pixel_size_mm;
     fi=_fi;
     callback(*this, CameraLayer::EV_IMG, context);
 
