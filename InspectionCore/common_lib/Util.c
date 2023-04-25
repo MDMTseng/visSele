@@ -2,6 +2,7 @@
 #include "logctrl.h"
 #include <stdexcept>
 #include <stdlib.h>
+#include <unistd.h>
 
 int getDataFromJsonObj(cJSON * obj,void **ret_ptr)
 {
@@ -197,55 +198,55 @@ void* JFetEx(cJSON * obj,const char *path,int type)
 }
 
 
-size_t zlibDeflate(uint8_t *dst,size_t dstLen, uint8_t *src, size_t srcLen,int effort)
-{
-    if(effort<0)effort=0;
-    if(effort>9)effort=9;
+// size_t zlibDeflate(uint8_t *dst,size_t dstLen, uint8_t *src, size_t srcLen,int effort)
+// {
+//     if(effort<0)effort=0;
+//     if(effort>9)effort=9;
 
-    if(dst==NULL || src==NULL)return 0;
+//     if(dst==NULL || src==NULL)return 0;
 
-    z_stream defstream;
-    defstream.zalloc = Z_NULL;
-    defstream.zfree = Z_NULL;
-    defstream.opaque = Z_NULL;
-    // setup "a" as the input and "b" as the compressed output
-    defstream.avail_in = srcLen; // size of input, string + terminator
-    defstream.next_in = (Bytef *)src; // input char array
-    defstream.avail_out = dstLen; // size of output
-    defstream.next_out = (Bytef *)dst; // output char array
+//     z_stream defstream;
+//     defstream.zalloc = Z_NULL;
+//     defstream.zfree = Z_NULL;
+//     defstream.opaque = Z_NULL;
+//     // setup "a" as the input and "b" as the compressed output
+//     defstream.avail_in = srcLen; // size of input, string + terminator
+//     defstream.next_in = (Bytef *)src; // input char array
+//     defstream.avail_out = dstLen; // size of output
+//     defstream.next_out = (Bytef *)dst; // output char array
 
-    // the actual compression work.
-    deflateInit(&defstream, effort);
-    deflate(&defstream, Z_FINISH);
-    deflateEnd(&defstream);
+//     // the actual compression work.
+//     deflateInit(&defstream, effort);
+//     deflate(&defstream, Z_FINISH);
+//     deflateEnd(&defstream);
 
-    return (size_t)((char*)defstream.next_out-(char*)dst);
-}
+//     return (size_t)((char*)defstream.next_out-(char*)dst);
+// }
 
-size_t zlibInflate(uint8_t *dst,size_t dstLen, uint8_t *src, size_t srcLen)
-{
-    if(dst==NULL || src==NULL)return 0;
+// size_t zlibInflate(uint8_t *dst,size_t dstLen, uint8_t *src, size_t srcLen)
+// {
+//     if(dst==NULL || src==NULL)return 0;
 
-    z_stream infstream;
-    infstream.zalloc = Z_NULL;
-    infstream.zfree = Z_NULL;
-    infstream.opaque = Z_NULL;
-    // setup "a" as the input and "b" as the compressed output
-    infstream.avail_in = srcLen; // size of input, string + terminator
-    infstream.next_in = (Bytef *)src; // input char array
-    infstream.avail_out = dstLen; // size of output
-    infstream.next_out = (Bytef *)dst; // output char array
-
-
-    // the actual DE-compression work.
-    inflateInit(&infstream);
-    inflate(&infstream, Z_NO_FLUSH);
-    inflateEnd(&infstream);
+//     z_stream infstream;
+//     infstream.zalloc = Z_NULL;
+//     infstream.zfree = Z_NULL;
+//     infstream.opaque = Z_NULL;
+//     // setup "a" as the input and "b" as the compressed output
+//     infstream.avail_in = srcLen; // size of input, string + terminator
+//     infstream.next_in = (Bytef *)src; // input char array
+//     infstream.avail_out = dstLen; // size of output
+//     infstream.next_out = (Bytef *)dst; // output char array
 
 
-    return (size_t)((char*)infstream.next_out-(char*)dst);
+//     // the actual DE-compression work.
+//     inflateInit(&infstream);
+//     inflate(&infstream, Z_NO_FLUSH);
+//     inflateEnd(&infstream);
 
-}
+
+//     return (size_t)((char*)infstream.next_out-(char*)dst);
+
+// }
 
 
 

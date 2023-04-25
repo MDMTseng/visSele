@@ -568,11 +568,12 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(
 
     if(pixFormat.nCurValue==PixelType_Gvsp_BayerGB8)
     {
-      int pixF=MV_CC_SetPixelFormat(handle,PixelType_Gvsp_BGR8_Packed);
     }
+
+    int pixFSetRet=MV_CC_SetPixelFormat(handle,PixelType_Gvsp_BGR8_Packed);
     ret = MV_CC_GetPixelFormat(handle,&pixFormat);
 
-    // LOGI(">>nCurValue:%X",pixFormat.nCurValue);
+    LOGI("pixFSetRet:%d>>nCurValue:%X",pixFSetRet,pixFormat.nCurValue);
 
   }
 

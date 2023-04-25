@@ -75,7 +75,6 @@ IDIR=	include/ \
 			$(MODULE_MatchingEngine)/include \
 			$(MODULE_MatchingEngine)/include_priv \
 			$(MODULE_MatchingEngine)/MorphEngine/include \
-			$(MODULE_zlib)/src \
 			$(MODULE_CameraLayer)/include \
 			$(MODULE_Compat_dirent)/include \
 			$(MODULE_polyfit)/include \
@@ -88,6 +87,8 @@ IDIR=	include/ \
       $(MODULE_simple_uart)/include \
 			$(MODULE_libuvc)/include \
       # /usr/local/include/opencv4
+
+			# $(MODULE_zlib)/src \
 			# $(MODULE_DataChannel)/include\
 			# $(MODULE_MLNN)/include/  \
 
@@ -121,7 +122,7 @@ EXT_OBJS= $(MODULE_circleFitting)/CircleFitting.a \
 
 $(info platform:$(platform))
 ifeq ($(platform),win_x64)
-	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a 
+	#EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a 
 	FLAGS+= -D_MINGW -D_WINDOWS
 	FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=1
 	FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=1
@@ -169,10 +170,11 @@ else
 									$(MODULE_polyfit) \
 									$(MODULE_mjpegLib) \
 									$(MODULE_MJPEG_Streamer) \
-									$(MODULE_zlib) \
 									$(MODULE_smem_channel)\
 									$(MODULE_BPG_Protocol) \
                   $(MODULE_simple_uart) \
+
+									# $(MODULE_zlib) \
 									# $(MODULE_shape_based_matching)\
 									# $(MODULE_DataChannel) \
 									# $(MODULE_SOIL) \
