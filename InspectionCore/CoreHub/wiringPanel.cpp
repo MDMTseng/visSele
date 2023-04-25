@@ -762,7 +762,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
                 sttriggerInfo_mix trigInfo;
                 trigInfo.stInfo=NULL;
-                trigInfo.triggerInfo.camera_id="2BDF44478350";
+                trigInfo.triggerInfo.camera_id="K44478350";
                 trigInfo.triggerInfo.trigger_id=tid;
                 trigInfo.triggerInfo.est_trigger_time_us=time_us;//force matching
                 trigInfo.triggerInfo.tags.push_back("CAM_A");
@@ -777,7 +777,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
                   time_us=uInsp_time_us*0;
                 }
                 sttriggerInfo_mix trigInfo;
-                trigInfo.triggerInfo.camera_id="2BDF44478343";
+                trigInfo.triggerInfo.camera_id="K44478343";
                 trigInfo.triggerInfo.trigger_id=tid;
                 trigInfo.triggerInfo.est_trigger_time_us=time_us;//force matching
                 trigInfo.triggerInfo.tags.push_back("CAM_B");
