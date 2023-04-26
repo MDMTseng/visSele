@@ -664,7 +664,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   }
 
   int downSampleF=JFetch_NUMBER_ex(def,"down_sample_factor",1);
-  int downSampleAreaF=downSampleF*downSampleF;
 
   int64 t0 = cv::getTickCount();
   LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
@@ -1394,7 +1393,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           float line_total_length_thres=JFetch_NUMBER_ex(jsub_region,"line_total_length_thres",1000000000);
 
 
-          float area_thres = JFetch_NUMBER_ex(jsub_region,"area_thres",99999)/downSampleAreaF;
+          float area_thres = JFetch_NUMBER_ex(jsub_region,"area_thres",99999);
           resultImage[subregIdx]=sub_region_ROI;
           Mat img_HSV;
           cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);
@@ -1556,8 +1555,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
             for(int k=0;k<contours.size();k++)
             {
-              int area = contourArea(contours[k],false);
-              int a_area=area+contours[k].size()*downSampleF*downSampleF;
+              int area = contourArea(contours[k],false)*downSampleF*downSampleF;
+              int a_area=area+contours[k].size()*downSampleF;
               area_sum+=a_area;
 
 
@@ -1695,7 +1694,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
               
             }
 
-            element_total_area*=downSampleF*downSampleF;
             int element_area_thres = JFetch_NUMBER_ex(jsub_region,"element_area_thres",-1);
             if(element_area_thres>0 && element_area_thres<element_total_area)
             {
@@ -1739,7 +1737,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
             }
 
-            LOGE("NG_Map_To:%s",NG_Map_To.c_str());
+            LOGE("NG_Map_To:%s  area_sum:%d",NG_Map_To.c_str(),area_sum);
 
             MATCH_REGION_score+=area_sum;
             MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,SUBR_category);
