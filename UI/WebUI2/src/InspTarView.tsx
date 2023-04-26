@@ -4411,6 +4411,14 @@ function SurfaceCheckSimple_EDIT_UI(param:
                     <Switch checkedChildren="左至右" unCheckedChildren="右至左" checked={def_Filled.img_order_reverse == true} onChange={(check) => {
                         onDefChange(ObjShellingAssign(def_Filled, ["img_order_reverse"], check));
                     }} />
+
+
+                    {"  "}降採樣倍率:
+                    <InputNumber min={1} max={20} step={1} value={def_Filled.down_sample_factor}
+                        onChange={(num) => {
+                            let newDef = { ...def_Filled, down_sample_factor: num }
+                            onDefChange(newDef, true);
+                        }} />
                 </>
 
             case "子區域設定":
@@ -4481,6 +4489,8 @@ function SurfaceCheckSimple_EDIT_UI(param:
                 }
             }])
         }}>擷取參數設定</Button>
+
+
         <br />
         子區域設定:
         {
@@ -5275,7 +5285,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                 let camMag = canvas_obj.camera.GetCameraScale();
                 if (Local_IMCM !== undefined) {
                     g.ctx.save();
-                    let scale = Local_IMCM.image_info.scale;
+                    let scale = Local_IMCM.image_info.scale*(cacheDef?.down_sample_factor);
                     g.ctx.scale(scale, scale);
                     g.ctx.translate(-0.5, -0.5);
                     g.ctx.drawImage(_this.imgCanvas, 0, 0);
