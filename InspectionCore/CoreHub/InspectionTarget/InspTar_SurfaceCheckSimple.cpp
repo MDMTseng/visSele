@@ -1363,7 +1363,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
 
-          float sharpening_blurRad = JFetch_NUMBER_ex(jsub_region,"sharpening_blurRad",10);
+          float sharpening_blurRad = JFetch_NUMBER_ex(jsub_region,"sharpening_blurRad",0);
           float sharpening_alpha = JFetch_NUMBER_ex(jsub_region,"sharpening_alpha",0);
           float sharpening_beta = JFetch_NUMBER_ex(jsub_region,"sharpening_beta",1+sharpening_alpha);
           float sharpening_gamma = JFetch_NUMBER_ex(jsub_region,"sharpening_gamma",0);
@@ -1373,6 +1373,16 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             // cv::GaussianBlur(sub_region_ROI, image, cv::Size(0, 0), sharpening_blurRad);
             cv::blur(sub_region_ROI,image,cv::Size(sharpening_blurRad,sharpening_blurRad));
             cv::addWeighted(sub_region_ROI, 1+sharpening_alpha, image, -sharpening_alpha, sharpening_gamma, sub_region_ROI);
+          }
+          else if(sharpening_blurRad>1 && sharpening_alpha==0)
+          {
+            // cv::Mat channels[3];
+            // cv::split(sub_region_ROI, channels);
+            // for (int i = 0; i < 3; i++) {
+            //   cv::Laplacian(channels[i], channels[i], CV_8U, sharpening_blurRad);
+            // }
+            int size=sharpening_blurRad*2+1;
+            cv::Laplacian(sub_region_ROI, sub_region_ROI, CV_8U, size,0.1);
           }
 
 
