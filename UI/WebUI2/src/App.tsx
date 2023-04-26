@@ -2178,7 +2178,7 @@ function App() {
     const { REACT_APP_MY_ENV } = process.env;
     console.log(REACT_APP_MY_ENV)
     core_api.connect({
-      url:"ws://127.0.0.1:4039"
+      url:"ws://127.0.0.1:4090"//4039"
     });
 
 

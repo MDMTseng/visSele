@@ -58,16 +58,16 @@ int InspectionTarget_SurfaceCheckSimple::processInputPool()
 
 }
 
-cv::Scalar ImgRegionAveraging(Mat &img,cJSON *refRegion)
+cv::Scalar ImgRegionAveraging(Mat &img,cJSON *refRegion,int dowmSapleF=1)
 {
   if(refRegion==NULL)return cv::Scalar(NAN,NAN,NAN);
 
   cJSON *region= refRegion;
 
-  int x=(int)JFetch_NUMBER_ex(region,"x");
-  int y=(int)JFetch_NUMBER_ex(region,"y");
-  int w=(int)JFetch_NUMBER_ex(region,"w");
-  int h=(int)JFetch_NUMBER_ex(region,"h");
+  int x=(int)JFetch_NUMBER_ex(region,"x")/dowmSapleF;
+  int y=(int)JFetch_NUMBER_ex(region,"y")/dowmSapleF;
+  int w=(int)JFetch_NUMBER_ex(region,"w")/dowmSapleF;
+  int h=(int)JFetch_NUMBER_ex(region,"h")/dowmSapleF;
 
 
   LOGI("xywh:%d,%d,%d,%d",x,y,w,h);
@@ -109,7 +109,7 @@ cv::Scalar ImgRegionAveraging(Mat &img,cJSON *refRegion)
   return avgPix;
 }
 
-cv::Scalar ImgRegionsAveraging(Mat &img,cJSON *refRegionArray)
+cv::Scalar ImgRegionsAveraging(Mat &img,cJSON *refRegionArray,int dowmSapleF=1)
 {
   if(refRegionArray==NULL)return cv::Scalar(NAN,NAN,NAN);
 
@@ -122,10 +122,10 @@ cv::Scalar ImgRegionsAveraging(Mat &img,cJSON *refRegionArray)
     
     cJSON *region= cJSON_GetArrayItem(refRegionArray,i);
 
-    int x=(int)JFetch_NUMBER_ex(region,"x");
-    int y=(int)JFetch_NUMBER_ex(region,"y");
-    int w=(int)JFetch_NUMBER_ex(region,"w");
-    int h=(int)JFetch_NUMBER_ex(region,"h");
+    int x=(int)JFetch_NUMBER_ex(region,"x")/dowmSapleF;
+    int y=(int)JFetch_NUMBER_ex(region,"y")/dowmSapleF;
+    int w=(int)JFetch_NUMBER_ex(region,"w")/dowmSapleF;
+    int h=(int)JFetch_NUMBER_ex(region,"h")/dowmSapleF;
 
 
     LOGI("xywh:%d,%d,%d,%d",x,y,w,h);
@@ -663,6 +663,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
     return;
   }
 
+  int downSampleF=JFetch_NUMBER_ex(def,"down_sample_factor",1);
+  int downSampleAreaF=downSampleF*downSampleF;
 
   int64 t0 = cv::getTickCount();
   LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
@@ -676,7 +678,17 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   auto srcImg=d_sinfo->img;
 
 
-  Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+  Mat _CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+  Mat CV_srcImg;
+
+  if(downSampleF==1)
+  {
+    CV_srcImg=_CV_srcImg;
+  }
+  else
+  {
+    resize(_CV_srcImg,CV_srcImg,Size(_CV_srcImg.cols/downSampleF,_CV_srcImg.rows/downSampleF));
+  }
 
 
 
@@ -693,12 +705,23 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   // cJSON_AddItemToObject(report,"regionInfo",rep_regionInfo);
 
 
+  float X_offset_O=JFetch_NUMBER_ex(def,"x_offset",0);
+  float Y_offset_O=JFetch_NUMBER_ex(def,"y_offset",0);
 
-  float X_offset=JFetch_NUMBER_ex(def,"x_offset",0);
-  float Y_offset=JFetch_NUMBER_ex(def,"y_offset",0);
+  float W_O=JFetch_NUMBER_ex(def,"w");
+  float H_O=JFetch_NUMBER_ex(def,"h");
 
-  float W=JFetch_NUMBER_ex(def,"w");
-  float H=JFetch_NUMBER_ex(def,"h");
+
+  float X_offset=X_offset_O/downSampleF;
+  float Y_offset=X_offset_O/downSampleF;
+
+  float W=W_O/downSampleF;
+  float H=H_O/downSampleF;
+
+
+
+
+
   float angle_offset=JFetch_NUMBER_ex(def,"angle_offset",0)*M_PI/180;
 
 
@@ -712,7 +735,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   shared_ptr<StageInfo_SurfaceCheckSimple> reportInfo(new StageInfo_SurfaceCheckSimple());
   
-  int default_blurRadius=(int)JFetch_NUMBER_ex(def,"blur_radius",0);
+  int default_blurRadius=(int)JFetch_NUMBER_ex(def,"blur_radius",0)/downSampleF;
   vector<StageInfo_Orientation::orient> *orienList=&(d_sinfo->orientation);
 
 
@@ -740,8 +763,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         orient.angle=JFetch_NUMBER_ex(jorient,"angle",0);
         orient.confidence=JFetch_NUMBER_ex(jorient,"confidence",0);
 
-        orient.center.X=JFetch_NUMBER_ex(jorient,"center.x");
-        orient.center.Y=JFetch_NUMBER_ex(jorient,"center.y");
+        orient.center.X=JFetch_NUMBER_ex(jorient,"center.x")/downSampleF;
+        orient.center.Y=JFetch_NUMBER_ex(jorient,"center.y")/downSampleF;
         orienList_ext.push_back(orient);
       }
     }
@@ -791,6 +814,9 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
         bool xFlip=false;
         bool yFlip=orientation.flip;
+        orientation.center.X/=downSampleF;
+        orientation.center.Y/=downSampleF;
+
         Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset,H/2+Y_offset},-angle,xFlip,yFlip);
 
         cv::warpAffine(CV_srcImg, _def_temp_img_ROI, rot,_def_temp_img_ROI.size());
@@ -853,11 +879,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             indexArr_w_priority[h2--]=j;
 
 
-            int srW=(int)JFetch_NUMBER_ex(jsub_region,"region.w",-1);
-            int srH=(int)JFetch_NUMBER_ex(jsub_region,"region.h",-1);
+            int srW=(int)JFetch_NUMBER_ex(jsub_region,"region.w",-1)/downSampleF;
+            int srH=(int)JFetch_NUMBER_ex(jsub_region,"region.h",-1)/downSampleF;
 
-            int srX=(int)JFetch_NUMBER_ex(jsub_region,"region.x",-1)+xShift;
-            int srY=(int)JFetch_NUMBER_ex(jsub_region,"region.y",-1)+yShift;
+            int srX=(int)JFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF+xShift;
+            int srY=(int)JFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF+yShift;
             // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
             XYWH_clipping(srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
             if(srW<=1 || srH<=1)
@@ -888,10 +914,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                 {
                   cJSON *ig_reg= cJSON_GetArrayItem(ignore_regions,k);
                   
-                  int x=(int)JFetch_NUMBER_ex(ig_reg,"x");
-                  int y=(int)JFetch_NUMBER_ex(ig_reg,"y");
-                  int w=(int)JFetch_NUMBER_ex(ig_reg,"w");
-                  int h=(int)JFetch_NUMBER_ex(ig_reg,"h");
+                  int x=(int)JFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
+                  int y=(int)JFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
+                  int w=(int)JFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
+                  int h=(int)JFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
                   XYWH_clipping(x,y,w,h, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
 
@@ -1051,11 +1077,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           bool y_locating_mark =JFetch_TRUE(jsub_region,"y_locating_mark");
 
 
-          int srW=(int)JFetch_NUMBER_ex(jsub_region,"region.w",-1);
-          int srH=(int)JFetch_NUMBER_ex(jsub_region,"region.h",-1);
+          int srW=(int)JFetch_NUMBER_ex(jsub_region,"region.w",-1)/downSampleF;
+          int srH=(int)JFetch_NUMBER_ex(jsub_region,"region.h",-1)/downSampleF;
 
-          int srX=(int)JFetch_NUMBER_ex(jsub_region,"region.x",-1);
-          int srY=(int)JFetch_NUMBER_ex(jsub_region,"region.y",-1);
+          int srX=(int)JFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF;
+          int srY=(int)JFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF;
           // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
           XYWH_clipping(srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
           if(srW<=1 || srH<=1)
@@ -1099,10 +1125,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                 {
                   cJSON *ig_reg= cJSON_GetArrayItem(ignore_regions,k);
                   
-                  int x=(int)JFetch_NUMBER_ex(ig_reg,"x");
-                  int y=(int)JFetch_NUMBER_ex(ig_reg,"y");
-                  int w=(int)JFetch_NUMBER_ex(ig_reg,"w");
-                  int h=(int)JFetch_NUMBER_ex(ig_reg,"h");
+                  int x=(int)JFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
+                  int y=(int)JFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
+                  int w=(int)JFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
+                  int h=(int)JFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
                   XYWH_clipping(x,y,w,h, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
 
@@ -1255,10 +1281,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
               {
                 cJSON *ig_reg= cJSON_GetArrayItem(ignore_regions,k);
                 
-                int x=(int)JFetch_NUMBER_ex(ig_reg,"x");
-                int y=(int)JFetch_NUMBER_ex(ig_reg,"y");
-                int w=(int)JFetch_NUMBER_ex(ig_reg,"w");
-                int h=(int)JFetch_NUMBER_ex(ig_reg,"h");
+                int x=(int)JFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
+                int y=(int)JFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
+                int w=(int)JFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
+                int h=(int)JFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
                 XYWH_clipping(x,y,w,h, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
 
@@ -1368,7 +1394,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           float line_total_length_thres=JFetch_NUMBER_ex(jsub_region,"line_total_length_thres",1000000000);
 
 
-          float area_thres = JFetch_NUMBER_ex(jsub_region,"area_thres",99999);
+          float area_thres = JFetch_NUMBER_ex(jsub_region,"area_thres",99999)/downSampleAreaF;
           resultImage[subregIdx]=sub_region_ROI;
           Mat img_HSV;
           cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);
@@ -1456,10 +1482,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             {
               cJSON *ig_reg= cJSON_GetArrayItem(ignore_regions,k);
               
-              int x=(int)JFetch_NUMBER_ex(ig_reg,"x");
-              int y=(int)JFetch_NUMBER_ex(ig_reg,"y");
-              int w=(int)JFetch_NUMBER_ex(ig_reg,"w");
-              int h=(int)JFetch_NUMBER_ex(ig_reg,"h");
+              int x=(int)JFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
+              int y=(int)JFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
+              int w=(int)JFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
+              int h=(int)JFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
               XYWH_clipping(x,y,w,h, 0,0,img_HSV_threshold.cols,img_HSV_threshold.rows);
               img_HSV_threshold(Rect(x,y,w,h)) = 0;
@@ -1531,7 +1557,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             for(int k=0;k<contours.size();k++)
             {
               int area = contourArea(contours[k],false);
-              int a_area=area+contours[k].size();
+              int a_area=area+contours[k].size()*downSampleF*downSampleF;
               area_sum+=a_area;
 
 
@@ -1539,8 +1565,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
               StageInfo_SurfaceCheckSimple::Ele_info einfo;
               einfo.category=STAGEINFO_CAT_UNSET;
               bool isALine=false;
-
-
               {
                 RotatedRect rrect;
                 bool isEllipse=false;
@@ -1564,6 +1588,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                 int rrectw=rrect.size.width;
                 int longestSide=rrecth>rrectw?rrecth:rrectw;
                 int shortestSide=rrecth<rrectw?rrecth:rrectw;
+
+
+                longestSide*=downSampleF;
+
+
                 if((float)longestSide/shortestSide>2.5){//consider as a line
                   line_total_length+=longestSide;
                   if(line_max_length<longestSide)
@@ -1571,6 +1600,9 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                     line_max_length=longestSide;
                   }
                   isALine=true;
+
+
+
 
 
 
@@ -1663,7 +1695,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
               
             }
 
-
+            element_total_area*=downSampleF*downSampleF;
             int element_area_thres = JFetch_NUMBER_ex(jsub_region,"element_area_thres",-1);
             if(element_area_thres>0 && element_area_thres<element_total_area)
             {
