@@ -5282,10 +5282,11 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
             }
             else//drawvv
             {
+                let insp_down_sample_factor=(cacheDef?.down_sample_factor)
                 let camMag = canvas_obj.camera.GetCameraScale();
                 if (Local_IMCM !== undefined) {
                     g.ctx.save();
-                    let scale = Local_IMCM.image_info.scale*(cacheDef?.down_sample_factor);
+                    let scale = Local_IMCM.image_info.scale*insp_down_sample_factor;
                     g.ctx.scale(scale, scale);
                     g.ctx.translate(-0.5, -0.5);
                     g.ctx.drawImage(_this.imgCanvas, 0, 0);
@@ -5434,14 +5435,14 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
 
                                     ctx.fillStyle = ctx.strokeStyle;
-                                    canvas_obj.rUtil.drawCross(ctx, { x: ele.x, y: ele.y }, 5);
+                                    canvas_obj.rUtil.drawCross(ctx, { x: ele.x*insp_down_sample_factor, y: ele.y*insp_down_sample_factor }, 5);
 
 
                                     // let fontSize_eq=10/camMag;
                                     // if(fontSize_eq>10)fontSize_eq=40;
                                     // ctx.font = (fontSize_eq)+"px Arial";
                                     ctx.font = "1px Arial";
-                                    ctx.fillText(id_name + ":" + ele.area, ele.x, ele.y);
+                                    ctx.fillText(id_name + ":" + ele.area, ele.x*insp_down_sample_factor, ele.y*insp_down_sample_factor);
 
 
 

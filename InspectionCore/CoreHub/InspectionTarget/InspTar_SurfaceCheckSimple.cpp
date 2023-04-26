@@ -664,7 +664,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   }
 
   int downSampleF=JFetch_NUMBER_ex(def,"down_sample_factor",1);
-  int downSampleAreaF=downSampleF*downSampleF;
 
   int64 t0 = cv::getTickCount();
   LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
@@ -1364,7 +1363,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
 
-          float sharpening_blurRad = JFetch_NUMBER_ex(jsub_region,"sharpening_blurRad",10);
+          float sharpening_blurRad = JFetch_NUMBER_ex(jsub_region,"sharpening_blurRad",0);
           float sharpening_alpha = JFetch_NUMBER_ex(jsub_region,"sharpening_alpha",0);
           float sharpening_beta = JFetch_NUMBER_ex(jsub_region,"sharpening_beta",1+sharpening_alpha);
           float sharpening_gamma = JFetch_NUMBER_ex(jsub_region,"sharpening_gamma",0);
@@ -1374,6 +1373,16 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             // cv::GaussianBlur(sub_region_ROI, image, cv::Size(0, 0), sharpening_blurRad);
             cv::blur(sub_region_ROI,image,cv::Size(sharpening_blurRad,sharpening_blurRad));
             cv::addWeighted(sub_region_ROI, 1+sharpening_alpha, image, -sharpening_alpha, sharpening_gamma, sub_region_ROI);
+          }
+          else if(sharpening_blurRad>1 && sharpening_alpha==0)
+          {
+            // cv::Mat channels[3];
+            // cv::split(sub_region_ROI, channels);
+            // for (int i = 0; i < 3; i++) {
+            //   cv::Laplacian(channels[i], channels[i], CV_8U, sharpening_blurRad);
+            // }
+            int size=sharpening_blurRad*2+1;
+            cv::Laplacian(sub_region_ROI, sub_region_ROI, CV_8U, size,0.1);
           }
 
 
@@ -1394,7 +1403,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           float line_total_length_thres=JFetch_NUMBER_ex(jsub_region,"line_total_length_thres",1000000000);
 
 
-          float area_thres = JFetch_NUMBER_ex(jsub_region,"area_thres",99999)/downSampleAreaF;
+          float area_thres = JFetch_NUMBER_ex(jsub_region,"area_thres",99999);
           resultImage[subregIdx]=sub_region_ROI;
           Mat img_HSV;
           cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);
@@ -1556,8 +1565,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
             for(int k=0;k<contours.size();k++)
             {
-              int area = contourArea(contours[k],false);
-              int a_area=area+contours[k].size()*downSampleF*downSampleF;
+              int area = contourArea(contours[k],false)*downSampleF*downSampleF;
+              int a_area=area+contours[k].size()*downSampleF;
               area_sum+=a_area;
 
 
@@ -1695,7 +1704,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
               
             }
 
-            element_total_area*=downSampleF*downSampleF;
             int element_area_thres = JFetch_NUMBER_ex(jsub_region,"element_area_thres",-1);
             if(element_area_thres>0 && element_area_thres<element_total_area)
             {
@@ -1739,7 +1747,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
             }
 
-            LOGE("NG_Map_To:%s",NG_Map_To.c_str());
+            LOGE("NG_Map_To:%s  area_sum:%d",NG_Map_To.c_str(),area_sum);
 
             MATCH_REGION_score+=area_sum;
             MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,SUBR_category);
