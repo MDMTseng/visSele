@@ -5699,10 +5699,14 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
     const [defReport, setDefReport] = useState<any>(undefined);
 
-    const [freq, setFreq] = useState(1500);
-    const [CAM_T, setCAM_T] = useState(3510);
-    const [SEL1_T, setSEL1_T] = useState(10865);
-    const [SEL2_T, setSEL2_T] = useState(13038);
+    // const [freq, setFreq] = useState(1800);
+    // const [CAM_T, setCAM_T] = useState(3510);
+    // const [SEL1_T, setSEL1_T] = useState(10845);
+    // const [SEL2_T, setSEL2_T] = useState(13038);
+
+
+
+    const [machConfig, setMachConfig] = useState<any>(undefined);
 
 
     const [uInspCount, setuInspCount] = useState({});
@@ -5737,6 +5741,14 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     const PeripheralCONNID = 3455;
     async function delay(ms = 1000) {
         return new Promise((resolve, reject) => setTimeout(resolve, ms))
+    }
+
+    async function fetchSetup()
+    {
+
+        let setupInfo=await _this.send({ type: "get_setup" })
+        // setMachConfig(setupInfo)
+        // onDefChange({...def,mach_config:setupInfo},false);
     }
 
     _this.fileCandList = fileCandList;
@@ -5903,7 +5915,8 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
             is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
             console.error("is_CONNECTED:", is_CONNECTED);
-
+            
+            setMachConfig(cacheDef.mach_config)
         })()
 
 
@@ -5919,30 +5932,74 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
     if (display == false) return null;
-    async function sendX(cam: number, set1_t: number, set2_t: number) {
 
-        let Freq = freq;
+    function getCurrentMachInfo(config=machConfig) {
+        if(machConfig===undefined)return {};
+        let originalInfo={
+            plateFreq:config.plateFreq,
+            // CAM1:machConfig.CAM1_on,
+            // CAM1_span:machConfig.CAM1_off-machConfig.CAM1_on,
 
-        let CAM1_T = cam;
-
-
-        let SWTime = 9000;
-
-        let pulsesPerRev = 28800
-
-        let airBlowHL = Math.round(10 * Freq / 1000 / 2);
+            // L1A:machConfig.L1A_on,
+            // L1A_span:machConfig.L1A_off-machConfig.L1A_on,
 
 
+        };
 
 
+        ["CAM1","L1A","CAM2","L2A","SEL1","SEL2","SEL3"].forEach(key=>{
+            originalInfo[key]=config.stage_pulse_offset[key+"_on"];
+            originalInfo[key+"_span"]=config.stage_pulse_offset[key+"_off"]-config.stage_pulse_offset[key+"_on"];
+        })
+
+        console.error(originalInfo);
+        return originalInfo as any;
+    }
+
+    function calcMachConf(newInfo:{
+        plateFreq:number,
+        CAM1:number,
+        CAM1_span:number,
+        L1A:number,
+        L1A_span:number,
+        CAM2:number,
+        CAM2_span:number,
+        L2A:number,
+        L2A_span:number,
+        SEL1:number,
+        SEL1_span:number,
+        SEL2:number,
+        SEL2_span:number,
+        SEL3:number,
+        SEL3_span:number}) {
+        
+        let newConfig={
+            plateFreq:newInfo.plateFreq,
+            stage_pulse_offset:{}
+        }as any;
+
+
+        ["CAM1","L1A","CAM2","L2A","SEL1","SEL2","SEL3"].forEach(key=>{
+            newConfig.stage_pulse_offset[key+"_on"]=newInfo[key];
+            newConfig.stage_pulse_offset[key+"_off"]=newInfo[key]+newInfo[key+"_span"];
+        })
+
+        newConfig.stage_pulse_offset["SWITCH"]=newConfig.stage_pulse_offset.SEL1_on-10;
+
+        console.error(newConfig);
+        return newConfig;
+    }
+
+
+    async function sendMachConf(info:any) {
+
+
+        let newMachConf=calcMachConf({...getCurrentMachInfo(),...info});
+        console.error(newMachConf);
+        setMachConfig(newMachConf)
+        onDefChange({...def,mach_config:newMachConf},false);
         console.log(await _this.send({
-            type: "set_setup", plateFreq: Freq, stepRun: -1, stage_pulse_offset: {
-                CAM1_on: CAM1_T, CAM1_off: CAM1_T + 2,
-                L1A_on: CAM1_T - 5, L1A_off: CAM1_T + 10,
-                SWITCH: SWTime,
-                SEL1_on: set1_t - airBlowHL, SEL1_off: set1_t + airBlowHL,
-                SEL2_on: set2_t - airBlowHL, SEL2_off: set2_t + airBlowHL
-            }
+            type: "set_setup", stepRun: -1,...newMachConf
         }));
     }
 
@@ -6028,35 +6085,28 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         }
 
     }
-
+    let machInfo  = getCurrentMachInfo();
+    console.log(machConfig,machInfo);
     let setupOption = spanSetupOptionUI == false ? null : <>
 
+
         <Button onClick={() => {
 
-            (async () => {
+        (async () => {
+            sendMachConf({...machInfo,plateFreq:machInfo.plateFreq+100});
+        })()
 
-                let CAM1_T = CAM_T + 10;
-
-                setCAM_T(CAM1_T);
-
-                sendX(CAM1_T, SEL1_T, SEL2_T);
-            })()
-
-        }}>CAM+ {CAM_T}</Button>
+        }}>Freq+ {machInfo.plateFreq}</Button>
 
 
 
         <Button onClick={() => {
 
-            (async () => {
-
-                let CAM1_T = CAM_T - 10;
-
-                setCAM_T(CAM1_T);
-
-                sendX(CAM1_T, SEL1_T, SEL2_T);
-            })()
-
+        (async () => {
+            let plateFreq=machInfo.plateFreq-100;
+            if(plateFreq<0)plateFreq=0;
+            sendMachConf({...machInfo,plateFreq});
+        })()
         }}>-</Button>
 
 
@@ -6064,52 +6114,51 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         <Button onClick={() => {
 
             (async () => {
-
-                let _SEL1_T = SEL1_T + 5;
-
-                setSEL1_T(_SEL1_T);
-
-                sendX(CAM_T, _SEL1_T, SEL2_T);
+                sendMachConf({...machInfo,CAM1:machInfo.CAM1+10});
             })()
 
-        }}>SE1+5 {SEL1_T}</Button>
+        }}>CAM+ {machInfo.CAM1}</Button>
+
+
 
         <Button onClick={() => {
 
             (async () => {
+                sendMachConf({...machInfo,CAM1:machInfo.CAM1-10});
+            })()
+        }}>-</Button>
 
-                let _SEL1_T = SEL1_T + 1;
 
-                setSEL1_T(_SEL1_T);
 
-                sendX(CAM_T, _SEL1_T, SEL2_T);
+        <Button onClick={() => {
+
+
+            (async () => {
+                sendMachConf({...machInfo,SEL1:machInfo.SEL1+5});
             })()
 
+
+        }}>SE1+5 {machInfo.SEL1}</Button>
+
+        <Button onClick={() => {
+
+            (async () => {
+                sendMachConf({...machInfo,SEL1:machInfo.SEL1+1});
+            })()
         }}>+</Button>
 
 
         <Button onClick={() => {
 
             (async () => {
-
-                let _SEL1_T = SEL1_T - 1;
-
-                setSEL1_T(_SEL1_T);
-
-                sendX(CAM_T, _SEL1_T, SEL2_T);
+                sendMachConf({...machInfo,SEL1:machInfo.SEL1-1});
             })()
-
         }}>-</Button>
 
         <Button onClick={() => {
 
             (async () => {
-
-                let _SEL1_T = SEL1_T - 5;
-
-                setSEL1_T(_SEL1_T);
-
-                sendX(CAM_T, _SEL1_T, SEL2_T);
+                sendMachConf({...machInfo,SEL1:machInfo.SEL1-5});
             })()
 
         }}>-5</Button>
@@ -6119,37 +6168,21 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         <Button onClick={() => {
 
             (async () => {
-
-                let _SEL2_T = SEL2_T + 5;
-
-                setSEL2_T(_SEL2_T);
-
-                sendX(CAM_T, SEL1_T, _SEL2_T);
+                sendMachConf({...machInfo,SEL2:machInfo.SEL2+5});
             })()
 
-        }}>SE2+5 {SEL2_T}</Button>
+        }}>SE2+5 {machInfo.SEL2}</Button>
 
         <Button onClick={() => {
 
             (async () => {
-
-                let _SEL2_T = SEL2_T + 1;
-
-                setSEL2_T(_SEL2_T);
-
-                sendX(CAM_T, SEL1_T, _SEL2_T);
+                sendMachConf({...machInfo,SEL2:machInfo.SEL2+1});
             })()
-
         }}>+</Button>
         <Button onClick={() => {
 
             (async () => {
-
-                let _SEL2_T = SEL2_T - 1;
-
-                setSEL2_T(_SEL2_T);
-
-                sendX(CAM_T, SEL1_T, _SEL2_T);
+                sendMachConf({...machInfo,SEL2:machInfo.SEL2-1});
             })()
 
         }}>-</Button>
@@ -6158,12 +6191,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         <Button onClick={() => {
 
             (async () => {
-
-                let _SEL2_T = SEL2_T - 5;
-
-                setSEL2_T(_SEL2_T);
-
-                sendX(CAM_T, SEL1_T, _SEL2_T);
+                sendMachConf({...machInfo,SEL2:machInfo.SEL2-5});
             })()
 
         }}>-5</Button>
@@ -6359,8 +6387,9 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
             <Button onClick={() => {
 
                 (async () => {
-
-                    sendX(CAM_T, SEL1_T, SEL2_T);
+                    (async () => {
+                        await sendMachConf({...machInfo});
+                    })()
                     console.log(await _this.send({ type: "clear_error" }));
                     console.log(await _this.send({ type: "enter_insp_mode" }));
                 })()
@@ -6407,7 +6436,8 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
             <Button onClick={() => {
 
                 (async () => {
-                    console.log(await _this.send({ type: "get_setup" }));
+                   
+                    await fetchSetup();
                 })()
 
             }}>GetSetup</Button>
@@ -6422,6 +6452,9 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                     if (is_CONNECTED == false) {
                         await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
                     }
+
+                    
+                    // await fetchSetup();
                 })()
 
             }}>CONNECT</Button>
