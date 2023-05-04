@@ -5997,7 +5997,9 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         let newMachConf=calcMachConf({...getCurrentMachInfo(),...info});
         console.error(newMachConf);
         setMachConfig(newMachConf)
-        onDefChange({...def,mach_config:newMachConf},false);
+        let newDef={...def,mach_config:newMachConf}
+        onDefChange(newDef,true);
+        await BPG_API.InspTargetUpdate(newDef)
         console.log(await _this.send({
             type: "set_setup", stepRun: -1,...newMachConf
         }));
