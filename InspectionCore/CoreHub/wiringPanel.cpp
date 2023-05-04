@@ -919,7 +919,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
   virtual void setInspDef(cJSON* def)
   {
-    InspectionTarget::setInspDef(def);
+    InspectionTarget_StageInfoCollect_Base::setInspDef(def);
 
     // pCH=
   }
