@@ -29,8 +29,12 @@
 #include <opencv2/calib3d.hpp>
 #include "opencv2/imgproc.hpp"
 #include <opencv2/imgcodecs.hpp>
-
+#include <Python.h>
 using namespace cv;
+
+#include <pybind11/pybind11.h>
+#include <pybind11/embed.h>
+namespace py = pybind11;
 #define _VERSION_ "1.2"
 std::timed_mutex mainThreadLock;
 
@@ -698,6 +702,9 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 {
   protected:
   int comm_pgID=-1;
+  // py::module pyscript;
+
+  public:
   class PerifChannel2:public Data_JsonRaw_Layer
   {
     
@@ -727,6 +734,21 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
         
         char tmp[1024];
+
+
+
+        // if(pyscript.is_none()==false)
+        // {
+        //   auto pyMapFunc=pyscript.attr("jsonPerifMsgProcess");
+        //   if(pyMapFunc.is_none()==false)
+        //   {
+        //     pyMapFunc(json);
+        //   }
+        // }
+
+        //call a python function "TT" in pyscript
+
+
 
         if(strstr((char*)raw, "\"type\":\"bTrigInfo\"") != NULL)
         {
@@ -789,31 +811,6 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
 
             }
-
-
-
-
-            // if(tidx==2)//Fake report test;
-            // {
-            //   CCC++;
-            //   std::lock_guard<std::mutex> lock(sendMutex);
-              
-            //   cJSON *rep = cJSON_CreateObject();
-            //   cJSON_AddStringToObject(rep,"type","report");
-            //   cJSON_AddNumberToObject(rep,"tid",tid);
-            //   cJSON_AddNumberToObject(rep,"cat",2);
-
-            //   uint8_t _buf[1000];
-            //   LOGE(">>>>>>>");
-            //   int ret= sendcJSONTo_perifCH(this,_buf, sizeof(_buf),true,rep);
-            //   cJSON_Delete(rep);
-            // }
-
-
-
-
-
-
 
 
 
@@ -917,11 +914,21 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     }
   }
 
+  void replaceAll(std::string& str, const std::string& from, const std::string& to) {
+    if(from.empty())
+        return;
+    size_t start_pos = 0;
+    while((start_pos = str.find(from, start_pos)) != std::string::npos) {
+        str.replace(start_pos, from.length(), to);
+        start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'yx'
+    }
+  }
+
   virtual void setInspDef(cJSON* def)
   {
     InspectionTarget_StageInfoCollect_Base::setInspDef(def);
 
-    // pCH=
+    scriptNeedInit=true;
   }
 
 
@@ -1584,12 +1591,87 @@ int ResultB(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group,int &
 
 
 
+bool scriptNeedInit=true;
+void ddd(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
+{
+  py::module pyscript;
+    
+  py::scoped_interpreter guard{};
 
+
+  if(scriptNeedInit)
+  {
+    LOGI("><>>");
+
+
+    LOGI("local_env_path:%s",local_env_path.c_str());
+    string xpath=local_env_path;//=local_env_path.replace("/",".");
+    replaceAll(xpath, "/", ".");
+    LOGI("xpath:%s",xpath.c_str());
+
+    pyscript = py::module::import((xpath+".script").c_str());
+
+    LOGE("pyscript:%d",pyscript.is_none());
+    scriptNeedInit=false;
+  }
+
+
+
+  LOGI(">>>>>");
+  int finalResult=STAGEINFO_CAT_NA;
+
+  vector<char*> jsonstr;
+
+  do{
+    if(pyscript.is_none())break;
+    LOGI(">>>>>");
+    auto pyProcessReportGroup=pyscript.attr("processReportGroup");
+    if(pyProcessReportGroup.is_none())break;
+LOGI(">>>>>");
+    for(int i=0;i<group.size();i++)
+    {
+      if(group[i]->jInfo)
+      {
+        jsonstr.push_back(cJSON_PrintUnformatted(group[i]->jInfo));
+      }
+      else
+      {
+        jsonstr.push_back(NULL);
+      }
+    }
+    LOGI(">>>>>");
+    py::list pyGroup;
+    for(int i=0;i<jsonstr.size();i++)
+    {
+      if(jsonstr[i])
+        pyGroup.append(py::str(jsonstr[i]));
+      else
+        pyGroup.append(py::none());
+
+    }
+    LOGI(">>>>>");
+    py::object result=pyProcessReportGroup(trigger_id,pyGroup);
+    if (!result.is_none()) {
+        finalResult = result.cast<int>();
+    }
+
+  }while(0);
+
+  for(int i=0;i<jsonstr.size();i++)//clean up
+  {
+    if(jsonstr[i])delete jsonstr[i];
+    jsonstr[i]=NULL;
+  }
+
+
+  LOGI("finalResult:%d",finalResult);
+
+}
 void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
 {
   int catSum,holeIdx;
 
-  if(ResultB(trigger_id,group,catSum,holeIdx)!=0)
+  if(ResultA(trigger_id,group,catSum,holeIdx)!=0)
   {
     return;
   }
@@ -3607,6 +3689,73 @@ int cp_main(int argc, char **argv)
   // }
 
   srand(time(NULL));
+
+  {
+    py::scoped_interpreter guard{};
+  }
+
+  if(0)
+  {
+    // py::scoped_interpreter guard{};
+
+    //check if py is initialized
+    // py::finalize_interpreter();
+    for(int i=0;i<4;i++)
+    {
+      
+      py::initialize_interpreter();
+      {
+        // py::scoped_interpreter guard{};
+        py::list sys_path = py::module::import("sys").attr("path");
+        sys_path.insert(0, "/Users/mdm/workspace/visSele/InspectionCore/CoreHub/data/DDD");
+        // sys_path.append("/Users/mdm/workspace/visSele/InspectionCore/CoreHub/data/DDD");
+
+        py::module script1 = py::module::import("SP1_xprj.it_uInspPeripheral.testA");
+
+
+        py::module script2 = py::module::import("SP1_xprj.data2.testA");
+
+
+        script1.attr("test1")();
+
+        script2.attr("test1")();
+      }
+      py::finalize_interpreter();
+
+
+
+      py::initialize_interpreter();
+      {
+        // py::scoped_interpreter guard{};
+        py::list sys_path = py::module::import("sys").attr("path");
+        sys_path.append("/Users/mdm/workspace/visSele/InspectionCore/CoreHub/data");
+
+        py::module script1 = py::module::import("SP1_xprj.it_uInspPeripheral.testA");
+
+
+        py::module script2 = py::module::import("SP1_xprj.data2.testA");
+
+
+        script1.attr("test1")();
+
+        script2.attr("test1")();
+      }
+
+      py::finalize_interpreter();
+
+
+
+      LOGI(">>>>");
+
+    }
+
+
+
+
+
+  }
+
+
 
   // calib_bacpac.sampler = new ImageSampler();
   // neutral_bacpac.sampler = new ImageSampler();
