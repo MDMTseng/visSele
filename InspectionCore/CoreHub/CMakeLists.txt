@@ -26,7 +26,6 @@ endif()
 
 set(OpenCV_DIR C:/OpenCV-MinGW)
 
-
 # opencv
 set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} /opt/ros/kinetic)
 find_package(OpenCV 4 REQUIRED)
@@ -42,6 +41,32 @@ endif()
 
 find_package(PkgConfig REQUIRED)
 
+
+
+# set(PYTHON_EXECUTABLE "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.8/")
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+# pkg_search_module(LLL REQUIRED python3-embed)
+
+message(STATUS "Python3_LIBRARIES: ${Python3_LIBRARIES}")
+message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
+
+
+# using find package to load pybind11
+find_package(pybind11 REQUIRED)
+message(STATUS "pybind11_INCLUDE_DIRS: ${pybind11_INCLUDE_DIRS}")
+message(STATUS "pybind11_LIBRARIES: ${pybind11_LIBRARIES}")
+message(STATUS "pybind11_DEFINITIONS: ${pybind11_DEFINITIONS}")
+message(STATUS "pybind11_FOUND: ${pybind11_FOUND}")
+
+
+# message(STATUS "=== PYTHON LIBRARIES: ${LLL_LIBRARIES}")
+# message(STATUS "=== PYTHON LIBRARY_DIRS: ${LLL_LIBRARY_DIRS}")
+# message(STATUS "=== PYTHON INCLUDE_DIRS: ${LLL_INCLUDE_DIRS}")
+
+
+# find_package(PythonLibs REQUIRED)
+
+# include_directories(/Library/Python/3.8/include)
 
   
 if(MSVC OR MSYS OR MINGW)
@@ -128,6 +153,7 @@ if($ENV{FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK} EQUAL 1)
   
 endif()
 
+
 add_executable (visSele main.cpp wiringPanel.cpp wiringPanel_ext.cpp 
 InspectionTarget/InspectionTarget.cpp 
 InspectionTarget/InspTar_Orientation_ColorRegionOval.cpp 
@@ -135,7 +161,6 @@ InspectionTarget/InspTar_SpriteDraw.cpp
 InspectionTarget/InspTar_Orientation_ShapeBasedMatching.cpp
 InspectionTarget/InspTar_SurfaceCheckSimple.cpp
 InspectionTarget/InspTar_WBar_SizeComp.cpp)
-
 add_dependencies(visSele mod_target MatchingEngine shape_based_matching)
 
 target_link_libraries(visSele
@@ -159,11 +184,12 @@ target_link_libraries(visSele
   $ENV{MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
   ${OpenCV_LIBS}
+  ${Python3_LIBRARIES}
+  C:/msys64/mingw64/lib/libpython3.10.dll.a
   ${PLAT_LIBS}
   ${LINK_LIBS_CAMERA}
   )
 
-message(------------${INCLUDE_DIRECTORIES})
 include_directories (
   ${INCLUDE_DIRECTORIES}
   "." 
@@ -194,5 +220,7 @@ include_directories (
   $ENV{MODULE_lodepng}
   ${OS_SP_inc}
   ${OpenCV_INCLUDE_DIRS}
+  ${Python3_INCLUDE_DIRS}
+  ${pybind11_INCLUDE_DIRS}
   )
   

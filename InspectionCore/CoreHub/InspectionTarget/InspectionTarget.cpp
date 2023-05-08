@@ -8,6 +8,10 @@ using namespace std;
 #include<opencv2/highgui/highgui.hpp>
 using namespace cv;
 
+#include <pybind11/pybind11.h>
+#include <pybind11/embed.h>
+
+namespace py = pybind11;
 cJSON* CameraManager::cameraInfo2Json(CameraLayer::BasicCameraInfo &info)
 {
   std::string jsinstr=clm.CamInfo2Json(info);
@@ -606,7 +610,7 @@ bool InspectionTargetManager::delInspTar(std::string id)
 }
 bool InspectionTargetManager::clearInspTar(bool rmService)
 {
-  
+  // isPyBindInited=false;
   for(int i=0;i<inspTars.size();i++)
   {
     printf("i:%d  =>%p :%s   \n ",i,inspTars[i],inspTars[i]->id.c_str());
@@ -625,6 +629,20 @@ bool InspectionTargetManager::clearInspTar(bool rmService)
     }
   }
   inspTars.resize(remainCount);
+
+
+  //reset the python 
+  // if(Py_IsInitialized()!=0)
+  // {
+  //   py::finalize_interpreter();
+  // }
+  // if(Py_IsInitialized()==0)
+  // {
+  //   py::initialize_interpreter();
+  // }
+  // py::gil_scoped_release release;
+
+  // py::list sys_path = py::module::import("sys").attr("path");
   return true;
 }
 
