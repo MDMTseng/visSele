@@ -8,10 +8,10 @@ using namespace std;
 #include<opencv2/highgui/highgui.hpp>
 using namespace cv;
 
-#include <pybind11/pybind11.h>
-#include <pybind11/embed.h>
+// #include <pybind11/pybind11.h>
+// #include <pybind11/embed.h>
 
-namespace py = pybind11;
+// namespace py = pybind11;
 cJSON* CameraManager::cameraInfo2Json(CameraLayer::BasicCameraInfo &info)
 {
   std::string jsinstr=clm.CamInfo2Json(info);
