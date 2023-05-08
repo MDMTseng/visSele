@@ -43,6 +43,7 @@ float SYS_CUR_FREQ=0;
 float SYS_FREQ_ADV_STEP=5;
 bool SYS_STEPPER_DISABLED=false;
 
+uint32_t SYS_MIN_PULSE_TIME_SEP_us=(1000000/15);
 int SEL1_ACT_COUNTDOWN=-1;
 
 #define _PLAT_DIAMITER_mm 350
@@ -461,11 +462,16 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli);
 
 
 uint32_t _prePulse=0;
+uint64_t _preTime=0;
 int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
   static uint32_t acc_tid=1;
-
-  if(middle_pulse-_prePulse<(_PLAT_DIST_step(4000)))return -9;
+  uint32_t _prePulse_BK=_prePulse;
+  _prePulse=middle_pulse;
+  if(middle_pulse-_prePulse_BK<(_PLAT_DIST_step(3500)))return -9;
+  uint64_t curTime = esp_timer_get_time();
+  if(curTime-_preTime<SYS_MIN_PULSE_TIME_SEP_us)return -8;
+  _preTime=curTime;
 
 
   if(blockNewDetectedObject)return -1;
@@ -487,7 +493,6 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   }
   RBuf.pushHead();
   acc_tid++;
-  _prePulse=middle_pulse;
   return 0;
 }
 int ActRegister_pipeLineInfo(pipeLineInfo *pli)
@@ -658,6 +663,11 @@ int Run_ACTS(uint32_t cur_pulse)
         case 2:
           ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_on, 1, _task_->src =NULL; );
           ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_off, 0, _task_->src =NULL; );
+          break;
+        case 3:
+          SEL3_Count++;
+          // ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_on, 1, _task_->src =NULL; );
+          // ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_off, 0, _task_->src =NULL; );
           break;
         case 0xFFFF:
           NA_Count++;
@@ -2099,6 +2109,7 @@ void genMachineSetup(JsonDocument &jdoc)
   // auto obj=jdoc.createNestedObject("obj");
 
   jdoc["plateFreq"]=SETUP_TAR_FREQ;
+  jdoc["minDetectTimeSep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
 
 
   {
@@ -2149,6 +2160,7 @@ void setMachineSetup(JsonDocument &jdoc)
   
 
   JSON_SETIF_ABLE(SETUP_TAR_FREQ,jdoc,"plateFreq");
+  JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jdoc,"minDetectTimeSep_us");
   JSON_SETIF_ABLE(stepRun,jdoc,"stepRun");
 
   if (jdoc.containsKey("stage_pulse_offset")) {
