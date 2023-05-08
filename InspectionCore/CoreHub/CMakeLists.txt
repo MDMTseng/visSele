@@ -185,6 +185,7 @@ target_link_libraries(visSele
   ${OS_DEP_LIB}
   ${OpenCV_LIBS}
   ${Python3_LIBRARIES}
+  C:/msys64/mingw64/lib/libpython3.10.dll.a
   ${PLAT_LIBS}
   ${LINK_LIBS_CAMERA}
   )
