@@ -5937,6 +5937,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         if(machConfig===undefined)return {};
         let originalInfo={
             plateFreq:config.plateFreq,
+            minDetectTimeSep_us:config.minDetectTimeSep_us,
             // CAM1:machConfig.CAM1_on,
             // CAM1_span:machConfig.CAM1_off-machConfig.CAM1_on,
 
@@ -5958,6 +5959,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
     function calcMachConf(newInfo:{
         plateFreq:number,
+        minDetectTimeSep_us:number,
         CAM1:number,
         CAM1_span:number,
         L1A:number,
@@ -5975,6 +5977,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         
         let newConfig={
             plateFreq:newInfo.plateFreq,
+            minDetectTimeSep_us:newInfo.minDetectTimeSep_us,
             stage_pulse_offset:{}
         }as any;
 
@@ -6089,6 +6092,10 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     }
     let machInfo  = getCurrentMachInfo();
     console.log(machConfig,machInfo);
+
+
+
+    let curTPS=Math.round(1000000/(machInfo.minDetectTimeSep_us));
     let setupOption = spanSetupOptionUI == false ? null : <>
 
 
@@ -6115,8 +6122,28 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
         <Button onClick={() => {
 
+        (async () => {
+            curTPS+=1;
+            sendMachConf({...machInfo,minDetectTimeSep_us:Math.round(1000000/curTPS)});
+        })()
+
+        }}>TPS+ {curTPS}</Button>
+
+        <Button onClick={() => {
+
+        (async () => {
+
+            curTPS-=1;
+            if(curTPS<1)curTPS=1;
+            sendMachConf({...machInfo,minDetectTimeSep_us:Math.round(1000000/curTPS)});
+        })()
+        }}>-</Button>
+
+
+        <Button onClick={() => {
+
             (async () => {
-                sendMachConf({...machInfo,CAM1:machInfo.CAM1+10});
+                sendMachConf({...machInfo,CAM1:machInfo.CAM1+10,L1A:machInfo.CAM1+10});
             })()
 
         }}>CAM+ {machInfo.CAM1}</Button>
@@ -6126,7 +6153,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         <Button onClick={() => {
 
             (async () => {
-                sendMachConf({...machInfo,CAM1:machInfo.CAM1-10});
+                sendMachConf({...machInfo,CAM1:machInfo.CAM1-10,L1A:machInfo.CAM1-10});
             })()
         }}>-</Button>
 
