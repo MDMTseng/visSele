@@ -2099,6 +2099,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
   int downSampResolutionCap=500000;
 
   int queue_size_image_transfer_skip=10;
+  int image_transfer_rest_ms=10;
 
   bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
   {
@@ -2269,6 +2270,11 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
 
           LOGI("COMPRESSION:: %dx%d  jpeg:rate:%d size:%d",
             im2send->GetWidth(),im2send->GetHeight(),compressionRate,img_encode.size());
+
+          if(image_transfer_rest_ms>0)
+          {
+            std::this_thread::sleep_for(std::chrono::milliseconds(image_transfer_rest_ms));
+          }
 
         }
         else
