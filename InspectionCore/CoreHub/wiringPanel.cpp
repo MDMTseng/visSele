@@ -711,6 +711,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   std::map <int,int64_t> processTimeRecord;
   float processTime_MaxDelay=0;
   float processTime_AvgDelay=0;
+  float processTime_LPDelay=0;
   int processTime_AvgDelay_Count=0;
 
 
@@ -1364,9 +1365,10 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       {
         cJSON* ret_info= cJSON_CreateObject();
 
-        cJSON_AddNumberToObject(ret_info,"processTime_MaxDelay",processTime_MaxDelay);
-        cJSON_AddNumberToObject(ret_info,"processTime_AvgDelay",processTime_AvgDelay);
-        cJSON_AddNumberToObject(ret_info,"processTime_AvgDelay_Count",processTime_AvgDelay_Count);
+        cJSON_AddNumberToObject(ret_info,"MaxDelay",processTime_MaxDelay);
+        cJSON_AddNumberToObject(ret_info,"AvgDelay",processTime_AvgDelay);
+        cJSON_AddNumberToObject(ret_info,"AvgDelay_Count",processTime_AvgDelay_Count);
+        cJSON_AddNumberToObject(ret_info,"LPDelay",processTime_LPDelay);
 
         act.send("RP",id,ret_info);
         cJSON_Delete(ret_info);
@@ -1378,6 +1380,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       {
         processTime_AvgDelay_Count=0;
         processTime_MaxDelay=0;
+        processTime_LPDelay=NAN;
       }
       return true;
     }
@@ -1968,20 +1971,33 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
     if(processTimeRecord.find(trigger_id)!=processTimeRecord.end())
     {
       auto recTime=processTimeRecord[trigger_id];
+      auto curTime=cv::getTickCount();
       
-      double timeDIff_us = 1000000*(cv::getTickCount()-recTime)/cv::getTickFrequency();
+      double timeDIff_ms = 1000*(curTime-recTime)/cv::getTickFrequency();
 
-      LOGI("tid:%d processTime:%f",trigger_id,timeDIff_us);
+      LOGI("tid:%d processTime:%f",trigger_id,timeDIff_ms);
 
-      if(processTime_MaxDelay<timeDIff_us)
+      if(processTime_MaxDelay<timeDIff_ms)
       {
-        processTime_MaxDelay=timeDIff_us;
+        processTime_MaxDelay=timeDIff_ms;
       }
 
-      processTime_AvgDelay=(processTime_AvgDelay*processTime_AvgDelay_Count+timeDIff_us)/(++processTime_AvgDelay_Count);
+      processTime_AvgDelay=(processTime_AvgDelay*processTime_AvgDelay_Count+timeDIff_ms)/(++processTime_AvgDelay_Count);
       
-      //remove this key
+      static int64 preT;
+      if(processTime_LPDelay!=processTime_LPDelay)
+      {
+        processTime_LPDelay=timeDIff_ms;
+      }
+      else
+      {
+        float sampTDiff=(float)(curTime-preT)/cv::getTickFrequency();//sec
+        float alpha=1-exp(-sampTDiff/0.5);
+        processTime_LPDelay=processTime_LPDelay*(1-alpha)+timeDIff_ms*alpha;
+      }
+
       processTimeRecord.erase(trigger_id);
+      preT=curTime;
     }
     else
     {
