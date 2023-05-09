@@ -2082,6 +2082,8 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
   float downSampFactor=1;
   int downSampResolutionCap=500000;
 
+  int queue_size_image_transfer_skip=10;
+
   bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
   {
     bool ret = InspectionTarget::exchangeCMD(info,id,act);
@@ -2102,6 +2104,15 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
       downSampResolutionCap=JFetch_NUMBER_ex(info,"cap",5000000);
       return true;
     }
+
+
+    if(type=="queue_size_image_transfer_skip")
+    {
+      int queue_size_image_transfer_skip=JFetch_NUMBER_ex(info,"size",10);
+      return true;
+    }
+
+
     return false;
   }
 
@@ -2186,7 +2197,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
         std::shared_ptr<acvImage> im2send=curInput->img_show;
 
         LOGE("downSample %d src:%s im2send:%p",downSample,curInput->source_id.c_str(),im2send.get());
-        if(im2send && downSample<5)
+        if(im2send && downSample<5 && datTransferQueue.size()<queue_size_image_transfer_skip)
         {
 
           Mat CV_Img(im2send->GetHeight(),im2send->GetWidth(),CV_8UC3,im2send->CVector[0]);
