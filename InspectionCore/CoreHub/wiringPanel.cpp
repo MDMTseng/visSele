@@ -1365,10 +1365,10 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       {
         cJSON* ret_info= cJSON_CreateObject();
 
-        cJSON_AddNumberToObject(ret_info,"MaxDelay",processTime_MaxDelay);
-        cJSON_AddNumberToObject(ret_info,"AvgDelay",processTime_AvgDelay);
-        cJSON_AddNumberToObject(ret_info,"AvgDelay_Count",processTime_AvgDelay_Count);
-        cJSON_AddNumberToObject(ret_info,"LPDelay",processTime_LPDelay);
+        cJSON_AddNumberToObject(ret_info,"MaxDelay",(int)processTime_MaxDelay);
+        cJSON_AddNumberToObject(ret_info,"AvgDelay",(int)processTime_AvgDelay);
+        cJSON_AddNumberToObject(ret_info,"AvgDelay_Count",(int)processTime_AvgDelay_Count);
+        cJSON_AddNumberToObject(ret_info,"LPDelay",(int)processTime_LPDelay);
 
         act.send("RP",id,ret_info);
         cJSON_Delete(ret_info);
@@ -1992,7 +1992,7 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
       else
       {
         float sampTDiff=(float)(curTime-preT)/cv::getTickFrequency();//sec
-        float alpha=1-exp(-sampTDiff/0.5);
+        float alpha=1-exp(-sampTDiff/0.05);
         processTime_LPDelay=processTime_LPDelay*(1-alpha)+timeDIff_ms*alpha;
       }
 
@@ -2101,6 +2101,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
   int queue_size_image_transfer_skip=10;
   int image_transfer_rest_ms=10;
 
+  std::map<int, int64_t> imageSendLastTime_ms;
   bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
   {
     bool ret = InspectionTarget::exchangeCMD(info,id,act);
@@ -2214,7 +2215,44 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
         std::shared_ptr<acvImage> im2send=curInput->img_show;
 
         LOGE("downSample %d src:%s im2send:%p",downSample,curInput->source_id.c_str(),im2send.get());
-        if(im2send && downSample<5 && datTransferQueue.size()<queue_size_image_transfer_skip)
+
+        bool okToSend=(im2send && downSample<5);
+        
+
+
+        auto curTime=cv::getTickCount();
+
+        if(okToSend)
+        { 
+          int diffTime_ms=99999;
+
+          if(imageSendLastTime_ms.find(imgCHID)==imageSendLastTime_ms.end())
+          {
+        // double timeDIff_ms = 1000*(curTime-recTime)/cv::getTickFrequency();
+            imageSendLastTime_ms[imgCHID]=curTime;
+          }
+          else
+          {
+            diffTime_ms=1000*(curTime-imageSendLastTime_ms[imgCHID])/cv::getTickFrequency();
+          }
+
+          if(diffTime_ms>500)//just send
+          {
+            okToSend=true;
+          }
+          else if(datTransferQueue.size()>queue_size_image_transfer_skip)
+          {
+            okToSend=false;
+          }
+
+          if(okToSend)
+          {
+            imageSendLastTime_ms[imgCHID]=curTime;
+          }
+
+        }
+
+        if(okToSend)
         {
 
           Mat CV_Img(im2send->GetHeight(),im2send->GetWidth(),CV_8UC3,im2send->CVector[0]);
