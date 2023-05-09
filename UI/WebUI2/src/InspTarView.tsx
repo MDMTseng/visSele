@@ -5710,6 +5710,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
     const [uInspCount, setuInspCount] = useState({});
+    const [processTimeInfo, setProcessTimeInfo] = useState({});
 
     const [fileCandList, setFileCandList] = useState({});
     const [fileCandSelectTID, setFileCandSelectTID] = useState("");
@@ -6382,8 +6383,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
         }}>NO SAVE</Button>
 
-        <br />
-
+{/* 
         <Button onClick={() => {
 
 
@@ -6403,7 +6403,29 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
             console.log(_this.send({ type: "sel1_act_countdown", count: -1 }));
 
-        }}>sel1_no limit</Button>
+        }}>sel1_no limit</Button> */}
+        <br />
+
+        <Button onClick={() => {
+            (async () => {
+                let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetProcessTimeInfo" }) as any
+                let pti=pt_info[0].data;
+                console.log(pti);
+                setProcessTimeInfo(pti)
+            })()
+        }}>GetProcessTime</Button>
+        {JSON.stringify(processTimeInfo)}
+        <Button onClick={() => {
+            (async () => {
+                let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetProcessTimeInfo",reset:true }) as any
+                setProcessTimeInfo({})
+            })()
+        }}>reset</Button>
+
+
+        
+
+
 
         <br />
     </>

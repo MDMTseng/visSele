@@ -16,6 +16,7 @@
 #include <main.h>
 #include <playground.h>
 #include <stdexcept>
+#include <map>
 #include <compat_dirent.h>
 #include <smem_channel.hpp>
 #include <ctime>
@@ -704,11 +705,22 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   int comm_pgID=-1;
   // py::module pyscript;
 
+
   public:
+
+  std::map <int,int64_t> processTimeRecord;
+  float processTime_MaxDelay=0;
+  float processTime_AvgDelay=0;
+  int processTime_AvgDelay_Count=0;
+
+
+
+
   class PerifChannel2:public Data_JsonRaw_Layer
   {
     
     public:
+    int fastTestRetCatFlag=STAGEINFO_CAT_UNSET;
     int comm_pgID=-1;
     std::mutex sendMutex;
 
@@ -720,10 +732,11 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     }
 
 
-
+    InspectionTarget_JSON_Peripheral *master;
     int pkt_count = 0;
-    PerifChannel2():Data_JsonRaw_Layer()// throw(std::runtime_error)
+    PerifChannel2(InspectionTarget_JSON_Peripheral *master):Data_JsonRaw_Layer()// throw(std::runtime_error)
     {
+      this->master=master;
     }
 
     int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)
@@ -807,7 +820,32 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
                 triggerInfoMatchingQueue.push_blocking(trigInfo);
               }
 
+              if(fastTestRetCatFlag!=STAGEINFO_CAT_UNSET)
+              {
+                          
+                std::lock_guard<std::mutex> lock(sendMutex); 
+                
+                cJSON *rep = cJSON_CreateObject();
+                cJSON_AddStringToObject(rep,"type","report");
+                cJSON_AddNumberToObject(rep,"tid",tid);
+                cJSON_AddNumberToObject(rep,"cat",fastTestRetCatFlag);
 
+                uint8_t _buf[1000];
+                LOGE(">>>>>>>pCH:%p");
+                int ret= sendcJSONTo_perifCH(this,_buf, sizeof(_buf),true,rep);
+                cJSON_Delete(rep);
+              }
+              else
+              {
+                //check if processTimeRecord[tid] exists
+
+                master->processTimeRecord[tid]=cv::getTickCount();
+                // if(processTimeRecord.find(tid)!=processTimeRecord.end())
+                // {
+                //   int64 t1 = cv::getTickCount();
+                //   uint64_t processTime=processTimeRecord[tid];
+                // }
+              }
 
 
             }
@@ -972,8 +1010,6 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   int TEST_mode_counter_MOD=0;
   int TEST_mode_count1=0;
   int TEST_mode_count2=0;
-
-
   int cacheStageInfoTID_START=-100000000;
   int cacheStageInfoTID=-100000000;
   bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
@@ -1093,7 +1129,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
       if(PHYLayer!=NULL)
       {
-        pCH=new PerifChannel2();
+        pCH=new PerifChannel2(this);
         comm_pgID=comm_id;
         pCH->comm_pgID=comm_id;
         pCH->setDLayer(PHYLayer);
@@ -1287,6 +1323,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
           belongMan->dispatch(pkt);
 
 
+          processTimeRecord[cacheStageInfoTID]=cv::getTickCount();  
 
 
 
@@ -1310,6 +1347,41 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       recentSrcStageInfoSetIdx.clear();
       return true;
     }
+
+
+    if(type=="FastTestRetCatFlag")
+    {
+      if(pCH==NULL)return false;
+
+      pCH->fastTestRetCatFlag=JFetch_NUMBER_ex(info,"cat",STAGEINFO_CAT_UNSET);
+      return true;
+    }
+
+
+
+    if(type=="GetProcessTimeInfo")//processTime_MaxDelay
+    {
+      {
+        cJSON* ret_info= cJSON_CreateObject();
+
+        cJSON_AddNumberToObject(ret_info,"processTime_MaxDelay",processTime_MaxDelay);
+        cJSON_AddNumberToObject(ret_info,"processTime_AvgDelay",processTime_AvgDelay);
+        cJSON_AddNumberToObject(ret_info,"processTime_AvgDelay_Count",processTime_AvgDelay_Count);
+
+        act.send("RP",id,ret_info);
+        cJSON_Delete(ret_info);
+
+      }
+
+
+      if(JFetch_TRUE(info,"reset"))
+      {
+        processTime_AvgDelay_Count=0;
+        processTime_MaxDelay=0;
+      }
+      return true;
+    }
+
 
 
     return false;
@@ -1893,9 +1965,35 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
 
 
 
+    if(processTimeRecord.find(trigger_id)!=processTimeRecord.end())
+    {
+      auto recTime=processTimeRecord[trigger_id];
+      
+      double timeDIff_us = 1000000*(cv::getTickCount()-recTime)/cv::getTickFrequency();
+
+      LOGI("tid:%d processTime:%f",trigger_id,timeDIff_us);
+
+      if(processTime_MaxDelay<timeDIff_us)
+      {
+        processTime_MaxDelay=timeDIff_us;
+      }
+
+      processTime_AvgDelay=(processTime_AvgDelay*processTime_AvgDelay_Count+timeDIff_us)/(++processTime_AvgDelay_Count);
+      
+      //remove this key
+      processTimeRecord.erase(trigger_id);
+    }
+    else
+    {
+      LOGI("tid:%d No processed time",trigger_id);
+    }
 
 
-    if(trigger_id<0)
+    if(pCH && pCH->fastTestRetCatFlag!=STAGEINFO_CAT_UNSET)
+    {
+      LOGI("fastTestRetCatFlag:%d...trigger_id:%d.",pCH->fastTestRetCatFlag,trigger_id);
+    }
+    else if(trigger_id<0)
     {
       LOGI("TEST set don't send to Peripheral....");
     }
@@ -1937,6 +2035,7 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
       LOGE(">>>>>>>pCH:%p");
       int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,rep);
       cJSON_Delete(rep);
+
     }
     else
     {
