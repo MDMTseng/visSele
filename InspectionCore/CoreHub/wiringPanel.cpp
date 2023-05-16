@@ -56,6 +56,7 @@ struct sttriggerInfo_mix{
     std::vector<std::string> tags;
     std::string camera_id;
     uint64_t est_trigger_time_us;
+    int64_t trigger_time_match_error_thres_us;
   };
   _triggerInfo triggerInfo;
 };
@@ -400,7 +401,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
 
 
 
-        if( minMatchingIdx!=-1 && minMatchingCost<1000)
+        if( minMatchingIdx!=-1 && (minMatchingCost<targetTriggerInfo.trigger_time_match_error_thres_us||targetTriggerInfo.est_trigger_time_us==0))
         {
           LOGI("Get matching. idx:%d cost:%d  psss to next Q stInfo:%p",minMatchingIdx,minMatchingCost,targetStageInfo.get() );
           targetStageInfo->trigger_tags=targetTriggerInfo.tags;
@@ -695,7 +696,58 @@ void InspectionTarget_GroupResultSave::thread_run()
 
 
 
+struct TimeStampConvertParam{
+  uint64_t pCoreT;//previous core time
+  uint64_t pCamT;  //previous camera time
+  float alpha;  //core time delta to camera time delta ratio (adjust clock speed difference)
+};
+/*
 
+-step1 init param
+trigger two image events and get 
+pCoreT,nCoreT, //previous and next core time
+pCamT,nCamT //previous and next camera time
+alpha = (nCamT-pCamT)/(nCoreT-pCoreT)  //update alpha
+pCoreT=nCoreT
+pCamT=nCamT
+
+
+
+-step2 predict camera time from new core time
+nCamT'=(nCoreT-pCoreT)*alpha+pCamT
+
+-step3 match real camera time (nCamT) from predicted nCamT'
+nCamT
+
+-step4 update param
+alpha = (nCamT-pCamT)/(nCoreT-pCoreT)
+pCoreT=nCoreT
+pCamT=nCamT
+
+
+
+*/
+
+uint64_t CamStampPred(TimeStampConvertParam* param,uint64_t newCoreTime)
+{
+  if(param->pCoreT==0 || param->pCamT==0 || param->alpha==0)
+  {
+    return 0;
+  }
+  return (newCoreTime-param->pCoreT)*param->alpha+param->pCamT;
+}
+
+TimeStampConvertParam CamStampParamUpdate(TimeStampConvertParam param,uint64_t newCoreTime,uint64_t newCamTime)
+{
+  TimeStampConvertParam newParam=param;
+
+  if(newParam.pCamT!=0 && newParam.pCoreT!=0)
+    newParam.alpha=(double)(newCamTime-newParam.pCamT)/(newCoreTime-newParam.pCoreT);
+  newParam.pCoreT=newCoreTime;
+  newParam.pCamT=newCamTime;
+
+  return newParam;
+}
 
 
 
@@ -709,6 +761,14 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   public:
 
   std::map <int,int64_t> processTimeRecord;
+  struct triggerInfoCacheData{
+    int tid;
+    uint64_t uInsp_time_us;
+  };
+  std::mutex bTrigInfoRecord_LOCK;
+  std::vector <triggerInfoCacheData> bTrigInfoRecordBuffer;
+  std::map <string,TimeStampConvertParam> CamStampConvertSet;
+
   float processTime_MaxDelay=0;
   float processTime_AvgDelay=0;
   float processTime_LPDelay=0;
@@ -773,36 +833,46 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
           if(json)
           {
             int tidx=JFetch_NUMBER_ex(json,"tidx",-1);
-            int tid=JFetch_NUMBER_ex(json,"tid",-1);
-
-
-            int64_t usH=JFetch_NUMBER_ex(json,"usH",-1);
-            int64_t usL=JFetch_NUMBER_ex(json,"usL",-1);
-
-            int64_t uInsp_time_us=(usH==-1 || usL==-1)?0:((usH<<32)|usL);
-
-            cJSON_Delete(json);
-
-            LOGI("bTrigInfo tidx:%d tid:%d", tidx,tid);
-
             //TODO:translate to trigger info
             if(tidx==1)
             {
 
+              std::lock_guard<std::mutex> lock(master->bTrigInfoRecord_LOCK);
+              int tid=JFetch_NUMBER_ex(json,"tid",-1);
+
+
+              int64_t usH=JFetch_NUMBER_ex(json,"usH",-1);
+              int64_t usL=JFetch_NUMBER_ex(json,"usL",-1);
+
+              int64_t uInsp_time_us=(usH==-1 || usL==-1)?0:((usH<<32)|usL);
+
+
+              LOGI("bTrigInfo tidx:%d tid:%d", tidx,tid);
+
               {
+                string cam_id="K44478350";
 
                 int64_t time_us=0;
-                {//convert uInsp_time_us to camera time_us
-                  time_us=uInsp_time_us*0;
+                if(master->CamStampConvertSet.find(cam_id)!=master->CamStampConvertSet.end())
+                {
+                  TimeStampConvertParam camParm= master->CamStampConvertSet[cam_id];
+                  time_us=CamStampPred(&camParm,uInsp_time_us);
+                  if(time_us==0)time_us=0;//NOTE: CamStampPred return 0 means not ready
                 }
-
-
+                else
+                {
+                  master->CamStampConvertSet[cam_id].alpha=
+                  master->CamStampConvertSet[cam_id].pCamT=
+                  master->CamStampConvertSet[cam_id].pCoreT=0;
+                }
 
                 sttriggerInfo_mix trigInfo;
                 trigInfo.stInfo=NULL;
-                trigInfo.triggerInfo.camera_id="K44478350";
+                trigInfo.triggerInfo.camera_id=cam_id;
+
                 trigInfo.triggerInfo.trigger_id=tid;
                 trigInfo.triggerInfo.est_trigger_time_us=time_us;//force matching
+                trigInfo.triggerInfo.trigger_time_match_error_thres_us=2000;
                 trigInfo.triggerInfo.tags.push_back("CAM_A");
                 trigInfo.triggerInfo.tags.push_back("s_uINSP_A");
                 triggerInfoMatchingQueue.push_blocking(trigInfo);
@@ -810,14 +880,27 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
               {
 
+                string cam_id="K44478343";
+
                 int64_t time_us=0;
-                {//convert uInsp_time_us to camera time_us
-                  time_us=uInsp_time_us*0;
+ 
+                if(master->CamStampConvertSet.find(cam_id)!=master->CamStampConvertSet.end())
+                {
+                  TimeStampConvertParam camParm= master->CamStampConvertSet[cam_id];
+                  time_us=CamStampPred(&camParm,uInsp_time_us);
+                  if(time_us==0)time_us=0;//NOTE: CamStampPred return 0 means not ready
                 }
+                else
+                {
+                  master->CamStampConvertSet[cam_id].alpha=
+                  master->CamStampConvertSet[cam_id].pCamT=
+                  master->CamStampConvertSet[cam_id].pCoreT=0;
+                }
+
                 sttriggerInfo_mix trigInfo;
-                trigInfo.triggerInfo.camera_id="K44478343";
                 trigInfo.triggerInfo.trigger_id=tid;
                 trigInfo.triggerInfo.est_trigger_time_us=time_us;//force matching
+                trigInfo.triggerInfo.trigger_time_match_error_thres_us=2000;
                 trigInfo.triggerInfo.tags.push_back("CAM_B");
                 trigInfo.triggerInfo.tags.push_back("s_uINSP_B");
                 triggerInfoMatchingQueue.push_blocking(trigInfo);
@@ -849,12 +932,21 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
                 //   uint64_t processTime=processTimeRecord[tid];
                 // }
               }
+              {
 
-
+                for(int i=0;i<master->bTrigInfoRecordBuffer.size();i++)
+                {
+                  if(master->bTrigInfoRecordBuffer[i].tid==-1)
+                  {
+                    master->bTrigInfoRecordBuffer[i].tid=tid;
+                    master->bTrigInfoRecordBuffer[i].uInsp_time_us=uInsp_time_us;
+                    break;
+                  }
+                }
+              }
             }
 
-
-
+            cJSON_Delete(json);
           }
           json=NULL;
         }
@@ -922,13 +1014,6 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   vector<vector<std::shared_ptr<StageInfo>>> recentSrcStageInfoSet;
   RingBufIdxCounter<int> recentSrcStageInfoSetIdx;
 
-  class uInspTStmp2CamTSmp
-  {
-    float mult;
-    float offset1;
-    float offset2;
-    //(uInsp+offset1)*mult+offset2=Cam
-  };
 
 
   public:
@@ -937,11 +1022,15 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   static std::string TYPE(){ return "JSON_Peripheral"; }
   InspectionTarget_JSON_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
     InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path),
-    recentSrcStageInfoSetIdx(100)
+    recentSrcStageInfoSetIdx(100),bTrigInfoRecordBuffer(100)
   {
 
     comm_pgID=-1;
     recentSrcStageInfoSet.resize(recentSrcStageInfoSetIdx.space());
+    for(int i=0;i<bTrigInfoRecordBuffer.size();i++)
+    {
+      bTrigInfoRecordBuffer[i].tid=-1;
+    }
   }
 
   ~InspectionTarget_JSON_Peripheral()
@@ -1748,6 +1837,55 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
   }
 
 
+
+
+  {
+    std::lock_guard<std::mutex> lock(bTrigInfoRecord_LOCK);
+    vector<triggerInfoCacheData> cachedData;
+    for(int i=0;i<bTrigInfoRecordBuffer.size();i++)
+    {
+      triggerInfoCacheData &info=bTrigInfoRecordBuffer[i];
+      if(info.tid==trigger_id)
+      {
+        cachedData.push_back(info);
+        info.tid=-1;//mark unocupied
+      }
+    }
+
+    if(cachedData.size()>0)
+    for(int i=0;i<group.size();i++)
+    {
+
+      auto d_img_info = dynamic_cast<StageInfo_Image*>(group[i].get());
+      if(d_img_info==NULL)continue;
+      
+
+      for(int j=0;j<cachedData.size();j++)
+      {
+        triggerInfoCacheData info=cachedData[i];
+        
+        LOGI("tstmp_us:%" PRIu64 " trig_us:%" PRIu64,d_img_info->img_prop.fi.timeStamp_us,info.uInsp_time_us);
+        if(d_img_info->img_prop.StreamInfo.camera==NULL)continue;
+
+        CameraLayer::BasicCameraInfo camInfo=d_img_info->img_prop.StreamInfo.camera->getConnectionData();
+
+
+        for(auto it = CamStampConvertSet.begin(); it != CamStampConvertSet.end(); ++it) {
+          //check if camInfo.name contains it->first
+          if(camInfo.name.find(it->first)==string::npos)continue;
+
+          it->second=CamStampParamUpdate(it->second,info.uInsp_time_us,d_img_info->img_prop.fi.timeStamp_us);
+
+
+
+        }
+      }
+    }
+
+
+
+
+  }
 
   std::vector<std::shared_ptr<StageInfo>> surfaceReps;
   for(int i=0;i<group.size();i++)
