@@ -712,6 +712,8 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   float processTime_MaxDelay=0;
   float processTime_AvgDelay=0;
   float processTime_LPDelay=0;
+  int processTime_OverTimeCount=0;
+  int processTime_OverTimeCountMax=0;
   int processTime_AvgDelay_Count=0;
 
 
@@ -1369,6 +1371,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
         cJSON_AddNumberToObject(ret_info,"AvgDelay",(int)processTime_AvgDelay);
         cJSON_AddNumberToObject(ret_info,"AvgDelay_Count",(int)processTime_AvgDelay_Count);
         cJSON_AddNumberToObject(ret_info,"LPDelay",(int)processTime_LPDelay);
+        cJSON_AddNumberToObject(ret_info,"OverTimeCountMax",(int)processTime_OverTimeCountMax);
 
         act.send("RP",id,ret_info);
         cJSON_Delete(ret_info);
@@ -1381,6 +1384,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
         processTime_AvgDelay_Count=0;
         processTime_MaxDelay=0;
         processTime_LPDelay=NAN;
+        processTime_OverTimeCountMax=0;
       }
       return true;
     }
@@ -1410,16 +1414,6 @@ int ResultA(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group,int &
 {
   
   LOGI("InspectionTarget_UART_JSON_Peripheral processGroup:  trigger_id:%d =========",trigger_id);
-
-  for(int i=0;i<group.size();i++)
-  {
-
-    auto d_img_info = dynamic_cast<StageInfo_Image*>(group[i].get());
-    if(d_img_info==NULL)continue;
-    
-    LOGI("tstmp_ms:%" PRIu64 ,d_img_info->img_prop.fi.timeStamp_us);
-
-  }
 
   holeIdx=-1;
   for(int i=0;i<group.size();i++)
@@ -1994,6 +1988,27 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
         float sampTDiff=(float)(curTime-preT)/cv::getTickFrequency();//sec
         float alpha=1-exp(-sampTDiff/0.05);
         processTime_LPDelay=processTime_LPDelay*(1-alpha)+timeDIff_ms*alpha;
+      }
+      if(timeDIff_ms>100)
+      {
+
+        LOGE("OVERTIME......");
+        catSum=STAGEINFO_CAT_NA;
+        processTime_OverTimeCount++;
+        if(processTime_OverTimeCount>200)
+        {
+          trigger_id=99999999;
+        }
+
+        if(processTime_OverTimeCountMax<processTime_OverTimeCount)
+        {
+          processTime_OverTimeCountMax=processTime_OverTimeCount;
+        }
+
+      }
+      else
+      {
+        processTime_OverTimeCount=0;
       }
 
       processTimeRecord.erase(trigger_id);
