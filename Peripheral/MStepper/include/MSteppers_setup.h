@@ -40,7 +40,9 @@
 
 
 #define AXIS_IDX_Z 12
-#define AXIS_IDX_MAX AXIS_IDX_Z
+
+#define AXIS_IDX_A 13
+#define AXIS_IDX_MAX AXIS_IDX_A
 
 
 
@@ -65,6 +67,7 @@
 #define AXIS_GDX_X "X"
 #define AXIS_GDX_Y "Y"
 #define AXIS_GDX_Z "Z"
+#define AXIS_GDX_A "A"
 
 #define AXIS_GDX_Z1 "Z1_"
 #define AXIS_GDX_R1 "R1_"

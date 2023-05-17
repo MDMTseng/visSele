@@ -78,6 +78,7 @@ int GCodeParser_M::ReadxVecData(char **blkIdxes,int blkIdxesL,xVec &retVec)
 
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Y,AXIS_GDX_Y);
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z,AXIS_GDX_Z);
+  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_A,AXIS_GDX_A);
 
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z1,AXIS_GDX_Z1);
   ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R1,AXIS_GDX_R1);
@@ -109,6 +110,10 @@ int axisGDX2IDX(char *GDXCode,int fallback=-1)
   else if(CheckHead(GDXCode,AXIS_GDX_Z))
   {
     return AXIS_IDX_Z;
+  }
+  else if(CheckHead(GDXCode,AXIS_GDX_A))
+  {
+    return AXIS_IDX_A;
   }
 
   else if(CheckHead(GDXCode,AXIS_GDX_Z1))
@@ -175,6 +180,7 @@ const char* axisIDX2GDX(int IDXCode)
     case AXIS_IDX_X:return AXIS_GDX_X;
     case AXIS_IDX_Y:return AXIS_GDX_Y;
     case AXIS_IDX_Z:return AXIS_GDX_Z;
+    case AXIS_IDX_A:return AXIS_GDX_A;
     case AXIS_IDX_Z1:return AXIS_GDX_Z1;
     case AXIS_IDX_R1:return AXIS_GDX_R1;
     case AXIS_IDX_Z2:return AXIS_GDX_Z2;

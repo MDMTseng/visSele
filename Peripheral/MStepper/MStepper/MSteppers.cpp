@@ -1524,8 +1524,8 @@ LOAD_AGAIN:
       {
         stopTimer();
         // xSemaphoreGive(motionFinishMutex);
-        BlockPinInfoUpdate(axis_dir,0,0);//keep pin update
-        BlockPulEffect(0,0);//wait for spi input
+        BlockPinInfoUpdate(p_runSeg,axis_dir,0,0);//keep pin update
+        BlockPulEffect(p_runSeg,0,0);//wait for spi input
 
         setTimer(0);
         return 0;//EXIT, no new segment,go idle
@@ -1563,8 +1563,8 @@ LOAD_AGAIN:
     {
       case MSTP_segment_type::seg_line:
       {
-        BlockPulEffect(0,0);//Toggle pin update========================
-        BlockPinInfoUpdate(axis_dir,0,0);//VVVVVVVVVVVVVVVVVVVVVVVVVV
+        BlockPulEffect(p_runSeg,0,0);//Toggle pin update========================
+        BlockPinInfoUpdate(p_runSeg,axis_dir,0,0);//VVVVVVVVVVVVVVVVVVVVVVVVVV
         auto *cp_vec=curPos_c.vec;
         for(int i=0;i<MSTP_VEC_SIZE;i++)//calc run psition
         {
@@ -1651,9 +1651,9 @@ LOAD_AGAIN:
 
         
         setTimer(T_next);
-        BlockPulEffect(0,0);
+        BlockPulEffect(p_runSeg,0,0);
         
-        BlockPinInfoUpdate(axis_dir,axis_pul,0);
+        BlockPinInfoUpdate(p_runSeg,axis_dir,axis_pul,0);
 
         return T_next;
             

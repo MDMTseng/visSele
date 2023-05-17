@@ -185,10 +185,10 @@ public:
   void CalcNextStep(MSTP_SEG_PREFIX MSTP_segment *curSeg) MSTP_SEG_PREFIX;
 
   // virtual void BlockRunEffect(uint32_t idxes)=0;
-  virtual void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)=0;
-  virtual void BlockDirEffect(uint32_t idxes)=0;
+  virtual void BlockPulEffect(MSTP_SEG_PREFIX MSTP_segment* seg,uint32_t idxes_T,uint32_t idxes_R)=0;
+  virtual void BlockDirEffect(MSTP_SEG_PREFIX MSTP_segment* seg,uint32_t idxes)=0;
 
-  virtual void BlockPinInfoUpdate(uint32_t dir,uint32_t idxes_T,uint32_t idxes_R)=0;
+  virtual void BlockPinInfoUpdate(MSTP_SEG_PREFIX MSTP_segment* seg,uint32_t dir,uint32_t idxes_T,uint32_t idxes_R)=0;
 
 
 

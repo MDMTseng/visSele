@@ -321,7 +321,7 @@ class MStp_M:public MStp{
     dspi_device_select(spi1,1);
 
     ShiftRegAssign(0,0);
-    ShiftRegUpdate();
+    ShiftRegUpdate(NULL);
 
 
     endstopPins_normalState=0x3ff;
@@ -391,9 +391,9 @@ class MStp_M:public MStp{
       }
       setTimer(t);
 
-      BlockPulEffect(0,0);
+      BlockPulEffect(p_runSeg,0,0);
       
-      BlockPinInfoUpdate(axis_dir,axis_pul,0);
+      BlockPinInfoUpdate(p_runSeg,axis_dir,axis_pul,0);
       return t;
     }
     return MStp::taskRun();
@@ -526,6 +526,16 @@ class MStp_M:public MStp{
         lastTarLoc=curPos_c;
         break;
       }
+
+
+      case AXIS_IDX_A:
+        //TODO: add homing for A axis
+        // runUntil_ExtPIN=-155;
+        // int axisIdx=axis_index;
+        // runUntil_sensorVal=55;
+        // cpos.vec[axis]=distance;
+
+      break;
     }
 
     return 0;
@@ -673,9 +683,9 @@ class MStp_M:public MStp{
     { //if there is a Pin_= need to be updated yet next segment isn't IOCtrl => then do IO update right now
       if(isIOCtrl(n_seg)==false)//if update pin is needed
       {
-        ShiftRegUpdate();
+        ShiftRegUpdate(seg);
         ShiftRegAssign(latest_dir_pins,0);
-        ShiftRegUpdate();
+        ShiftRegUpdate(seg);
       }
     }
 
@@ -716,7 +726,7 @@ class MStp_M:public MStp{
     sctx_pool.returnResource(ctx);
     seg->ctx=NULL;
   }
-  void BlockDirEffect(uint32_t dir_idxes)
+  void BlockDirEffect(MSTP_segment* seg,uint32_t dir_idxes)
   {
     // pre_seg->ctx;//do sth... start
     
@@ -804,7 +814,7 @@ class MStp_M:public MStp{
 
 
     |( ((BIT_CUT2(m_step,AXIS_IDX_R1,AXIS_IDX_G2_RS)<< ( 4))|(BIT_CUT2(m_dir,AXIS_IDX_R1,AXIS_IDX_G2_RS)<<( 9))))//axis idx step & dir 2~ 6
-
+    |0//TODO: axis A pin mapping
 
     //HW V0.1.0 board bug FIX: the dir10 would use pin 25 as backup and needs air wire to route 
     |   (BIT_CUT2(m_step,AXIS_IDX_Z1,AXIS_IDX_G1_RS)<< (14)) //axis idx step 7 ~11, step is OK
@@ -851,7 +861,7 @@ class MStp_M:public MStp{
   }
   int preENC=0;
   int EncV=0;
-  void ShiftRegUpdate()
+  void ShiftRegUpdate(MSTP_segment* seg)
   {
     static_Pin_update_needed=false;//will
     while (direct_spi_in_use(spi1));//wait for SPI bus available
@@ -935,15 +945,15 @@ class MStp_M:public MStp{
   }
 
 
-  void BlockPinInfoUpdate(uint32_t dir,uint32_t idxes_T,uint32_t idxes_R)
+  void BlockPinInfoUpdate(MSTP_segment* seg,uint32_t dir,uint32_t idxes_T,uint32_t idxes_R)
   {
-     ShiftRegAssign(dir,idxes_T);
+    ShiftRegAssign(dir,idxes_T);
   }
   
   
-  void BlockPulEffect(uint32_t idxes_T,uint32_t idxes_R)
+  void BlockPulEffect(MSTP_segment* seg,uint32_t idxes_T,uint32_t idxes_R)
   {
-    ShiftRegUpdate();
+    ShiftRegUpdate(seg);
   }
 };
 
@@ -1049,6 +1059,7 @@ inline float mm2Pulse_conv(int axisIdx,float dist)
     case AXIS_IDX_Z:return dist*SUBDIV/mm_PER_REV;//-1 for reverse the direction
     case AXIS_IDX_Y:return -1*dist*SUBDIV/mm_PER_REV;
     
+    case AXIS_IDX_A:return dist;//TODO add A axis convert
 
     case AXIS_IDX_Z1:
     case AXIS_IDX_Z2:
