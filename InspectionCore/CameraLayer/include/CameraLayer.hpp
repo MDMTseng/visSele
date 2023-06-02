@@ -72,6 +72,7 @@ class CameraLayer{
         NAK,
         CB,
         NAK_OVER_CAPACITY,
+        NOT_SUPPORTED,
     }status;
 
 
@@ -177,6 +178,7 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
     virtual CameraLayer::status SetAnalogGain(float gain){return NAK;}
+    virtual CameraLayer::status SetFormatStr(std::string fstr){return NOT_SUPPORTED;}
     virtual CameraLayer::status SetRGain(float gain){return NAK;}
     virtual CameraLayer::status SetGGain(float gain){return NAK;}
     virtual CameraLayer::status SetBGain(float gain){return NAK;}

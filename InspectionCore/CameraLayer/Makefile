@@ -7,6 +7,7 @@ IDIR = include \
 			$(MODULE_acvImage)/include/ \
 			$(MODULE_logctrl)/include \
 			$(MODULE_common_lib)/include \
+			${MODULE_libuvc}/include
 
 
 _OBJ = CameraLayer.opp CameraLayer_BMP.opp CameraLayer_BMP_carousel.opp CameraLayerManager.opp

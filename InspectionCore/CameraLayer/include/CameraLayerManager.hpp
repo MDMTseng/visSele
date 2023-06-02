@@ -204,6 +204,8 @@ class CameraLayerManager
 
 
   void discover();
+  void discoverListClear();
+  int discoveredCameraCount();
 
   std::string genJsonStringList();
 

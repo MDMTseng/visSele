@@ -9,10 +9,20 @@
 #include <mutex>
 #include <queue>
 #include <thread>
-#include "libuvc.h"
+
+#include "openpnp-capture.h"
 
 class CameraLayer_UVC : public CameraLayer
 {
+  CapContext ctx=NULL;
+  int32_t streamID=-1;
+
+  CapFormatInfo streamfinfo;
+  // std::vector<uint8_t> m_buffer;
+  
+  bool cameraThreadTerminationFlag;
+  std::thread *cameraThread;
+
 
 public:
 
@@ -58,6 +68,7 @@ public:
 
 
 
+  CameraLayer::status SetFormatStr(std::string fstr);
   CameraLayer::status isInOperation();
   CameraLayer::status TriggerCount(int count);
   CameraLayer::status Trigger();

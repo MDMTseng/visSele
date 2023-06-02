@@ -32,9 +32,20 @@
 
   }
 
-  void CameraLayerManager::discover()
+  void CameraLayerManager::discoverListClear()
   {
     camBasicInfo.clear();
+  }
+
+  int CameraLayerManager::discoveredCameraCount()
+  {
+    return camBasicInfo.size();
+  }
+
+
+  void CameraLayerManager::discover()
+  {
+    discoverListClear();
     int count=0;
 
 
