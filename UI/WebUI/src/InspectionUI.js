@@ -856,6 +856,9 @@ class ObjInfoList extends React.Component {
 
     // console.log(this.props.SLID_API_ID_CONN_INFO);
 
+    let openAllsubMenuKeyList = resultMenu.map(function (item, index, array) {
+      return "sub1" + index;
+    });
     return (
       <>
         <Menu
@@ -863,8 +866,9 @@ class ObjInfoList extends React.Component {
           // selectedKeys={[this.current]}
           selectable={true}
           // style={{align: 'left', width: 200}}
-          defaultSelectedKeys={['functionMenu']}
-          // defaultOpenKeys={['functionMenu']}
+          defaultSelectedKeys={openAllsubMenuKeyList}
+          defaultOpenKeys={[]}
+          openKeys={openAllsubMenuKeyList}
           mode="inline">
           {uInspUI}
           {SLIDUI}
