@@ -721,6 +721,7 @@ bool MStp::AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info 
   newSeg.type=MSTP_segment_type::seg_wait;
   newSeg.vcen=0;
   newSeg.JunctionNormCoeff=0;
+  newSeg.steps_real=
   newSeg.steps=times;
   newSeg.step_period=period;
   if(SegQ_Head_Push())
@@ -767,6 +768,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
 
   MSTP_SEG_PREFIX MSTP_segment* hrb=SegQ_Head();
   MSTP_SEG_PREFIX MSTP_segment &newSeg=*hrb;
+  newSeg.steps_real=
   newSeg.steps=vecMachStepCount(VECTo,lastTarLoc,&newSeg.main_axis_idx);
   if(newSeg.steps==0)
   {
@@ -1361,7 +1363,7 @@ void MStp::CalcNextStep(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
   // uint32_t _axis_pul_1st=0;
   // uint32_t _axis_pul_2nd=0;
   uint32_t _axis_pul=0;
-  uint32_t steps_main=seg->steps;
+  uint32_t steps_main=seg->steps_real;
   for(int k=0;k<MSTP_VEC_SIZE;k++)
   {
     //The algo to find when should pulse of each axis happen

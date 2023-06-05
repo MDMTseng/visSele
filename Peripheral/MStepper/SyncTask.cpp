@@ -24,8 +24,8 @@ inline float mm2Pulse_conv(int axisIdx,float dist);
 
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc);
-uint32_t g_step_trigger_edge=(1<<AXIS_IDX_X);//0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
-uint32_t g_dir_inv=0^(1<<AXIS_IDX_Z1)^(1<<AXIS_IDX_Z2)^(1<<AXIS_IDX_Z3)^(1<<AXIS_IDX_Z4);
+uint32_t g_step_trigger_edge=0;//(1<<AXIS_IDX_X);//0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
+uint32_t g_dir_inv=0;//^(1<<AXIS_IDX_Z1)^(1<<AXIS_IDX_Z2)^(1<<AXIS_IDX_Z3)^(1<<AXIS_IDX_Z4);
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
 {
@@ -105,6 +105,7 @@ enum MSTP_SegCtx_TYPE{
   IO_CTRL=1,
   INPUT_MON_CTRL=2,
   ON_TIME_REPLY=3,
+  KEEP_RUN_UNTIL_ENC=10,
 
 };
 
@@ -157,6 +158,14 @@ struct MSTP_SegCtx_OnTimeReply{
   bool isAck;
 };
 
+
+
+struct MSTP_SegCtx_RunUntilEnc{
+  int tar_ENC;
+  int stepsMult;
+  xVec tarVec;
+};
+
 struct MSTP_SegCtx{
   MSTP_SegCtx(){}
   ~MSTP_SegCtx(){}
@@ -167,6 +176,7 @@ struct MSTP_SegCtx{
     struct MSTP_SegCtx_IOCTRL IO_CTRL;
     struct MSTP_SegCtx_INPUTMON INPUT_MON;
     struct MSTP_SegCtx_OnTimeReply ON_TIME_REP;
+    struct MSTP_SegCtx_RunUntilEnc RUN_UNTIL_ENC;
   }; 
   string CID;
   string TTAG;
@@ -311,6 +321,11 @@ class MStp_M:public MStp{
 
 
     
+    axisInfo[AXIS_IDX_A].VirtualStep=RX_VS;
+    axisInfo[AXIS_IDX_A].AccW=RXAccW;
+    axisInfo[AXIS_IDX_A].MaxSpeedJumpW=JW;
+    axisInfo[AXIS_IDX_A].MaxSpeed=general_max_freq;
+
     // axisInfo[AXIS_IDX_R12].VirtualStep=3;
     // axisInfo[AXIS_IDX_R12].AccW=SUBDIV*1500/mm_PER_REV/main_acc/axisInfo[AXIS_IDX_Y].VirtualStep;
     // axisInfo[AXIS_IDX_R12].MaxSpeedJumpW=1/axisInfo[AXIS_IDX_Y].VirtualStep;
@@ -640,6 +655,7 @@ class MStp_M:public MStp{
       }
     
       case MSTP_SegCtx_TYPE::INPUT_MON_CTRL:
+      {
         if(ctx->INPUT_MON.existField&(1<<0))
         {
           endstopPins=ctx->INPUT_MON.PINS;
@@ -655,9 +671,10 @@ class MStp_M:public MStp{
         ctx->isProcessed=true;
 
       break;
+      }
 
       case MSTP_SegCtx_TYPE::ON_TIME_REPLY :
-        
+      {
         struct Mstp2CommInfo tinfo={
         .type=Mstp2CommInfo_Type::respFrame,
         .isAck=ctx->ON_TIME_REP.isAck,
@@ -670,7 +687,20 @@ class MStp_M:public MStp{
         Mstp2CommInfoQ.pushHead();
         ctx->isProcessed=true;
       break;
+      }
 
+
+      case MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC:
+        
+        // char ddd[100];
+        // sprintf(ddd,"steps:%d",seg->steps);
+        // G_LOG(ddd);
+        
+        seg->steps*=ctx->RUN_UNTIL_ENC.stepsMult;//keep tunning until encoder value is reached
+
+        // sprintf(ddd,">>steps:%d",seg->steps);
+        // G_LOG(ddd);
+      break;
 
     }
   }
@@ -693,6 +723,34 @@ class MStp_M:public MStp{
 
     if(seg!=NULL)
     {
+      if(seg->ctx)
+      {
+        MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
+        if(ctx->type==MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC)
+        {
+
+
+
+
+          if(ctx->isProcessed==true)
+            curPos_c=ctx->RUN_UNTIL_ENC.tarVec;
+
+          
+
+          struct Mstp2CommInfo tinfo={
+          .type=Mstp2CommInfo_Type::ext_log,
+          .log="BlockEndEffect..cur_step:"+to_string(seg->cur_step)+" isProcessed:"+to_string(ctx->isProcessed)
+          };
+
+          Mstp2CommInfo* Qhead=NULL;
+          while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+          *Qhead=tinfo;
+          Mstp2CommInfoQ.pushHead();
+
+
+        }
+      }
+
       BlockCtxReturn(seg);
     }
   }
@@ -814,13 +872,13 @@ class MStp_M:public MStp{
 
 
     |( ((BIT_CUT2(m_step,AXIS_IDX_R1,AXIS_IDX_G2_RS)<< ( 4))|(BIT_CUT2(m_dir,AXIS_IDX_R1,AXIS_IDX_G2_RS)<<( 9))))//axis idx step & dir 2~ 6
-    |0//TODO: axis A pin mapping
 
     //HW V0.1.0 board bug FIX: the dir10 would use pin 25 as backup and needs air wire to route 
     |   (BIT_CUT2(m_step,AXIS_IDX_Z1,AXIS_IDX_G1_RS)<< (14)) //axis idx step 7 ~11, step is OK
     |   (BIT_CUT2(m_dir ,AXIS_IDX_Z1,   AXIS_IDX_Z1)<< (19)) | (BIT_CUT2(m_dir,AXIS_IDX_Z3,  AXIS_IDX_G1_RS)<<(20)) //dir 7 8 9 11, 
     |   (BIT_CUT2(m_dir ,AXIS_IDX_Z2,   AXIS_IDX_Z2)<< (31))//
-    |   ((uint32_t)0<<24)|((uint32_t)0<<23)//pin 24 => XY disable value (1 as disable 0 as enable)
+    |   ((uint32_t)0<<25)|((uint32_t)0<<26)//pin 24 => XY disable value (1 as disable 0 as enable)
+    |  ( ((BIT_CUT2(m_step,AXIS_IDX_A,AXIS_IDX_A)<< ( 27))|(BIT_CUT2(m_dir,AXIS_IDX_A,AXIS_IDX_A)<<( 28))))//XY
     ;
 
     // uint32_t portPins=
@@ -871,8 +929,18 @@ class MStp_M:public MStp{
       latest_input_pins=spi1->host->hw->data_buf[0];
       if(runUntil_ExtPIN!=-1)//in zeroing state
       {
-        if(runUntilDetected(latest_input_pins)==true)//if reaches, do not let 595 update pins, to prevent further movement
-          return;
+        if(runUntil_ExtPIN>=0)
+        {
+          if(runUntilDetected(latest_input_pins)==true)//if reaches, do not let 595 update pins, to prevent further movement
+            return;
+        }
+        else
+        {
+          if(runUntil_ExtPIN==-155)
+          {
+            return;
+          }
+        }
       }
       else
       {//or check end stop hit
@@ -934,6 +1002,32 @@ class MStp_M:public MStp{
         break;
       }
       preENC=cur_ENC;
+      if(seg && seg->ctx)
+      {
+        MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
+        if(ctx->type==MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC)
+        {
+          if(EncV==ctx->RUN_UNTIL_ENC.tar_ENC && ctx->isProcessed==false)
+          {
+            struct Mstp2CommInfo tinfo={
+            .type=Mstp2CommInfo_Type::ext_log,
+            .log="ENC HIT..cur_step:"+to_string(seg->cur_step)
+            };
+
+            Mstp2CommInfo* Qhead=NULL;
+            while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+            *Qhead=tinfo;
+            Mstp2CommInfoQ.pushHead();
+
+
+            seg->cur_step=seg->steps;// stop
+            ctx->isProcessed=true;
+
+            
+          }
+        }
+        // seg-
+      }
     }
 
 
@@ -1192,7 +1286,7 @@ public:
       else if(CheckHead(cblk, "M400"))//Wait for motion stop, non blocking
       {
 
-        MSTP_SegCtx *p_res;
+        MSTP_SegCtx *p_res=NULL;
         while((p_res=sctx_pool.applyResource())==NULL)//check release
         {
           yield();
@@ -1219,6 +1313,93 @@ public:
 
 
         
+      }
+      else if(CheckHead(cblk, "MDBG_INFO"))//Wait for motion stop, non blocking
+      {
+
+    
+        struct Mstp2CommInfo tinfo={
+        .type=Mstp2CommInfo_Type::ext_log,
+        .log="pulse_offset:"+to_string(pulse_offset.vec[AXIS_IDX_A])+" lastTarLoc:"+to_string(mstp.lastTarLoc.vec[AXIS_IDX_A])+" mstp:"+to_string(mstp.curPos_c.vec[AXIS_IDX_A])
+        
+        };
+
+        Mstp2CommInfo* Qhead=NULL;
+        while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+        *Qhead=tinfo;
+        Mstp2CommInfoQ.pushHead();
+
+
+        return GCodeParser_Status::TASK_OK;
+        
+      }
+
+    }
+    else if(cblk[0]=='G')
+    {
+      if(CheckHead(cblk, "G01.ENC "))//Wait for motion stop, non blocking
+      {
+
+
+        if(isMTPLocked)
+        {
+          return GCodeParser_Status::TASK_FATAL_FAILED;
+        }
+        __PRT_D_("G1 baby!!!\n");
+
+        xVec vec;
+        float F;
+        ReadG1Data(blks,blkCount,vec,F);
+        // F=1;
+        MSTP_segment_extra_info exinfo={.speedOnAxisIdx=-1,.acc=NAN,.deacc=NAN};
+
+
+        MSTP_SegCtx *p_res=NULL;
+        {
+
+          while((p_res=sctx_pool.applyResource())==NULL)//check release
+          {
+            yield();
+          }
+          p_res->type=MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC;
+          p_res->isProcessed=false;
+          p_res->RUN_UNTIL_ENC.tarVec=vec;
+          p_res->RUN_UNTIL_ENC.stepsMult=100;
+          p_res->RUN_UNTIL_ENC.tar_ENC=0;
+
+          float tmpF=NAN;
+          if(FindFloat("ENC",blks,blkCount,tmpF)==0)
+          {
+            p_res->RUN_UNTIL_ENC.tar_ENC=tmpF;
+
+          }
+          else 
+          {
+            return GCodeParser_Status::GCODE_PARSE_ERROR;
+          }
+
+
+          int SMULT=NAN;
+          if(FindInt32("SMULT",blks,blkCount,SMULT)==0)
+          {
+            p_res->RUN_UNTIL_ENC.stepsMult=SMULT;
+
+          }
+          else 
+          {
+            return GCodeParser_Status::GCODE_PARSE_ERROR;
+          }
+
+
+
+
+        }
+
+
+
+        MTPSYS_VecTo(vecAdd(vec,pulse_offset),F,p_res,&exinfo);
+        retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+          
       }
     }
 
@@ -1442,30 +1623,25 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     else if(strcmp(type,"GCODE")==0)
     {
       
-      int space = mstp.SegQ_Space();
+      int space = 0;
       int safe_Margin=3;
-
-      space-=safe_Margin;
-      if(space<0)space=0;
+      space = mstp.SegQ_Space()-safe_Margin;
+      // if(space<0)space=0;
+      // space=0;
 
       const char* code = doc["code"];
+      doRsp=true;
+      rspAck=false;
       if(code==NULL)
       {
-        doRsp=true;
-        rspAck=false;
-        retdoc["buffer_space"]=space;
+        // retdoc["buffer_space"]=space;
       }
       else if(gcodewait_id!=-1)
       {
-        doRsp=true;
-        rspAck=false;
-        retdoc["buffer_space"]=space;
+        retdoc["gcodewait_id"]=gcodewait_id;
       }
       else
       {
-        doRsp=true;
-        rspAck=false;
-        
         if( space>0)
         {
           gcpm.putJSONNote(&retdoc);
@@ -1487,7 +1663,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         {
           //wait
           doRsp=false;
-          
+          // djrl.dbg_printf("IN....");
           strcpy(gcodewait_gcode,code);
 
           gcodewait_id=doc["id"];
@@ -1612,9 +1788,18 @@ void MData_JR::loop()
     {
       retdoc.clear();
       gcpm.putJSONNote(&retdoc);
-      bool rspAck=(gcpm.runLine(gcodewait_gcode)==GCodeParser::GCodeParser_Status::TASK_OK);
+
+      GCodeParser::GCodeParser_Status gret=gcpm.runLine(gcodewait_gcode);
+      
       gcpm.putJSONNote(NULL);
+
+      if(gret==GCodeParser::GCodeParser_Status::TASK_OK_NO_RSP)
       {
+        // doRsp=false;
+      }
+      else
+      {
+        bool rspAck=(gret==GCodeParser::GCodeParser_Status::TASK_OK);
         space = mstp.SegQ_Space()-safe_Margin;
         if(space<0)space=0;
         retdoc["buffer_space"]=space;

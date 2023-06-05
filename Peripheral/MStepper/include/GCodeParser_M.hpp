@@ -8,6 +8,7 @@
 using namespace std;
 
 
+int axisGDX2IDX(char *GDXCode,int fallback=-1);
 class GCodeParser_M:public GCodeParser{
 public:
   xVec pulse_offset=(xVec){0};

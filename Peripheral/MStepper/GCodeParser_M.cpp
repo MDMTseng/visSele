@@ -97,7 +97,7 @@ int GCodeParser_M::ReadxVecData(char **blkIdxes,int blkIdxesL,xVec &retVec)
 }
 
 
-int axisGDX2IDX(char *GDXCode,int fallback=-1)
+int axisGDX2IDX(char *GDXCode,int fallback)
 {
   if(CheckHead(GDXCode,AXIS_GDX_X))
   {
@@ -340,8 +340,16 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseCMD(char **blks, char blkCou
       xVec xvLast = MTPSYS_getLastLocInStepperSystem();
       xVec vec=xvLast;
       ReadxVecData(blks,blkCount,vec);
+      xVec vdiff=vecSub(xvLast,vec);
 
-      pulse_offset=vecSub(xvLast,vec);
+      xVec tmp=pulse_offset;
+      for(int i=0;i<MSTP_VEC_SIZE;i++)
+      {
+        if(vdiff.vec[i]!=0)
+          tmp.vec[i]=vdiff.vec[i];
+      }
+
+      pulse_offset=tmp;
       __PRT_D_("vec:%s ",toStr(vec));
       __PRT_D_("pulse_offset:%s\n",toStr(pulse_offset));
       __PRT_D_("sys last tar loc:%s\n",toStr(MTPSYS_getLastLocInStepperSystem()));

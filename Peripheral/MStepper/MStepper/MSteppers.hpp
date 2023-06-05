@@ -43,6 +43,7 @@ struct MSTP_segment
   int main_axis_idx;
   int virtual_axis_idx;
   uint32_t steps;
+  uint32_t steps_real;
   uint32_t cur_step;
   
   uint32_t dir_bit;
