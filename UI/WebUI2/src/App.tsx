@@ -679,7 +679,26 @@ function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onD
     "isDraggable": true,
     "isResizable": true
     }
-  let WidgetLayout=defConfig.main.WidgetLayout===undefined?[]:defConfig.main.WidgetLayout;
+  let WidgetTabKey=0;
+
+  
+  let WidgetLayout=GetObjElement(defConfig,["main","UIInfo",WidgetTabKey,"WidgetLayout"])??[];
+  let WidgetInfo=GetObjElement(defConfig,["main","UIInfo",WidgetTabKey,"WidgetInfo"])??[];
+  
+
+  function updateWidgetLayout(newWidgetInfo :any,new_WidgetLayout:any)
+  {
+    let newDefConfig=defConfig;
+
+    if(newWidgetInfo!==undefined)
+      newDefConfig=ObjShellingAssign(newDefConfig,["main","UIInfo",WidgetTabKey,"WidgetInfo"],newWidgetInfo)
+
+    if(new_WidgetLayout!==undefined)
+      newDefConfig=ObjShellingAssign(newDefConfig,["main","UIInfo",WidgetTabKey,"WidgetLayout"],new_WidgetLayout)
+    // console.log(newDefConfig);
+    if(newWidgetInfo!==undefined || new_WidgetLayout!==undefined)
+      onDefChange(newDefConfig)
+  }
 
   // WidgetLayout=InspTarList.map((itar:any)=>{
   //   let layoutInfo=WidgetLayout.find((layoutInfo:any)=>layoutInfo.i==itar.id);
@@ -715,7 +734,7 @@ function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onD
     //  let eleInfo = InspTarList.find((it:any)=>it.id==tatId);
     //  if(eleInfo)return eleInfo;
 
-    let eleInfo = defConfig.main.WidgetInfo.find((uu:any)=>uu.id==tatId);
+    let eleInfo = WidgetInfo.find((uu:any)=>uu.id==tatId);
     
 
 
@@ -746,11 +765,7 @@ function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onD
         return {...layo,...curL[index]}
       })
       
-      let newDefConfig=ObjShellingAssign(defConfig,["main","WidgetLayout"],newWidgetLayout)
-      onDefChange(newDefConfig)
-
-
-
+      updateWidgetLayout(undefined,newWidgetLayout);
 
     }}
     className="layout" 
@@ -819,15 +834,12 @@ function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onD
             showUIOptionConfigUI={false}            
             onUIOptionUpdate={(new_conf:any,doInspUpdate=true)=>{
               console.log(new_conf)
-              let tar_idx = defConfig.main.WidgetInfo.findIndex((uu:any)=>uu.id==uilayoutInfo.i);
+              let tar_idx = WidgetInfo.findIndex((uu:any)=>uu.id==uilayoutInfo.i);
               console.log(tar_idx,new_conf)
               if(tar_idx<0)return;
-
-              let new_defConfig=ObjShellingAssign(defConfig,["main","WidgetInfo",tar_idx],new_conf);
-              console.log(new_defConfig)
-              onDefChange(new_defConfig)
-    
-
+              let new_WidgetInfo=[...WidgetInfo];
+              new_WidgetInfo[tar_idx]=new_conf;
+              updateWidgetLayout(new_WidgetInfo,undefined);
             }}/>
             break;
           
@@ -854,12 +866,10 @@ function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onD
 
               <Button disabled={newUIEleConf.complete!=true}  onClick={()=>{
 
-                let newWidgetInfo=[...defConfig.main.WidgetInfo];
+                let newWidgetInfo=[...WidgetInfo];
                 newWidgetInfo.push({
                   ...newUIEleConf
                 });
-
-                let newDefConfig=ObjShellingAssign(defConfig,["main","WidgetInfo"],newWidgetInfo)
 
 
                 let new_WidgetLayout=[...WidgetLayout];
@@ -868,9 +878,7 @@ function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onD
                   i:newUIEleConf.id,
                   type:newUIEleConf.type
                 }
-                newDefConfig=ObjShellingAssign(newDefConfig,["main","WidgetLayout"],new_WidgetLayout)
-                console.log(newDefConfig);
-                onDefChange(newDefConfig)
+                updateWidgetLayout(newWidgetInfo,new_WidgetLayout);
           
                 setNewUIEleConf({});
 
@@ -903,8 +911,9 @@ function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onD
             <Switch checkedChildren="顯示" unCheckedChildren="隱藏" checked={uilayoutInfo.display!=false} onChange={(check)=>{
 
               console.log(uilayoutInfo,check);
-              let newDefConfig=ObjShellingAssign(defConfig,["main","WidgetLayout",idx],{...uilayoutInfo,display:check})
-              onDefChange(newDefConfig)
+              let new_WidgetLayout=[...WidgetLayout];
+              new_WidgetLayout[idx]={...uilayoutInfo,display:check};
+              updateWidgetLayout(undefined,new_WidgetLayout);
             }}/>
 
           </div>
