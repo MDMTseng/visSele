@@ -200,6 +200,7 @@ typedef struct run_mode_info
 
 
 
+#define insp_status_SKIP -2100 //mark the inspection result is yet arrive
 #define insp_status_UNSET -2000 //mark the inspection result is yet arrive
 #define insp_status_DEL -1000    // mark the object can be deleted
 

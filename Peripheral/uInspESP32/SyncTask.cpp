@@ -71,6 +71,7 @@ uint64_t SEL1_Count=0;
 uint64_t SEL2_Count=0;
 uint64_t SEL3_Count=0;
 uint64_t NA_Count=0;
+uint64_t SKIP_Count=0;
 
 typedef struct stagePulseOffset{
   uint32_t CAM1_on;
@@ -674,6 +675,9 @@ int Run_ACTS(uint32_t cur_pulse)
           // inspResCount.NA++;
           break;
 
+        case insp_status_SKIP: 
+          SKIP_Count++;
+          break;
         case insp_status_DEL: //ERROR
           break;
 
@@ -1330,15 +1334,19 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         tarP=pipe;
         break;
       }
+      if(pipe->insp_status==insp_status_UNSET)
+      {
+        pipe->insp_status=insp_status_SKIP;
+      }
     }
 
     if(tarP)
     {
       uint32_t pressure=tarP->gate_pulse+STAGE_PULSE_OFFSET.SWITCH-SYS_STEP_COUNT;
-      if(pressure<1000)
-      {
-        SETUP_TAR_FREQ=SETUP_TAR_FREQ*19/20;
-      }
+      // if(pressure<1000)
+      // {
+      //   SETUP_TAR_FREQ=SETUP_TAR_FREQ*19/20;
+      // }
       retdoc["tr"]=pressure;
       tarP->insp_status=cat;
       rspAck=true;
