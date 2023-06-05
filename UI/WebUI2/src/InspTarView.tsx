@@ -2440,6 +2440,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
             // console.log(ctrl_or_draw);
 
             let ctx = g.ctx;
+            let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
 
             let camMag = canvas_obj.camera.GetCameraScale();
             if (ctrl_or_draw == true)//ctrl
@@ -2465,11 +2466,12 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                 // _this.fetchedPixInfo = imageData;
             }
             if (editState == EditState.Normal_Show || editState == EditState.Search_Region_Edit || editState == EditState.Test_Saved_Files) {
+
                 if (ctrl_or_draw == true)//ctrl
                 {
                     if (onMouseClick !== undefined && (g.mouseStatus.status == 1 && g.mouseEdge)) {
                         console.log(onMouseClick);
-                        let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
+                        // let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
                         let cb = onMouseClick.callback;
                         setOnMouseClick(undefined)
                         cb(mouseOnCanvas);
@@ -2477,6 +2479,8 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                 }
                 else//draw
                 {
+
+
 
                     if (Local_IMCM !== undefined) {
                         g.ctx.save();
@@ -2487,29 +2491,38 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                         g.ctx.restore();
                     }
 
-
-
-
+                    
                     if (defReport !== undefined) {
                         // console.log(defReport)
                         defReport.report.forEach((match: any, idx: number) => {
 
                             if (match.confidence <= 0) return;
-                            ctx.lineWidth = 4 / camMag;
-                            ctx.strokeStyle = `HSLA(0, 100%, 50%,1)`;
-                            canvas_obj.rUtil.drawCross(ctx, { x: match.center.x, y: match.center.y }, 12 / camMag);
-
                             let angle = match.angle;
 
-                            ctx.font = "40px Arial";
+                            // let distance=Math.abs(match.center.x-mouseOnCanvas.x)+Math.abs(match.center.y-mouseOnCanvas.y)
+                            // ctx.font = (100*Math.pow(1000/(distance+1000),5)+10)+"px Arial";
+                            ctx.font = "50px Arial";
+
+                            ctx.fillStyle = 'hsl('+ Math.floor(idx/10)*100 +',100%,50%)';
+                            ctx.strokeStyle = 'black';
+                            let text="idx:" + idx;
+                            ctx.fillText(text, match.center.x, match.center.y - 40)
+                            ctx.lineWidth = 2;
+                            ctx.strokeText(text, match.center.x, match.center.y - 40)
                             ctx.fillStyle = "rgba(150,100, 100,0.8)";
-                            ctx.fillText("idx:" + idx, match.center.x, match.center.y - 40)
+
+
+
                             ctx.font = "20px Arial";
                             ctx.fillText("ang:" + (angle * 180 / 3.14159).toFixed(2)+(match.flip?" 反 ":""), match.center.x, match.center.y - 20)
 
                             if (match.confidence !== undefined)
                                 ctx.fillText("sim:" + match.confidence.toFixed(3), match.center.x, match.center.y - 0)
 
+
+                            ctx.lineWidth = 4 / camMag;
+                            ctx.strokeStyle = `HSLA(0, 100%, 50%,1)`;
+                            canvas_obj.rUtil.drawCross(ctx, { x: match.center.x, y: match.center.y }, 12 / camMag);
 
 
 
@@ -2585,9 +2598,25 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                                 let template = featureInfo.templatePyramid[i]
                                 template.features.forEach((temp_pt: any) => {
                                     // ctx.strokeStyle = "rgba(255, 0, 0,1)";
-                                    ctx.lineWidth = 4 / mult;
+                                    ctx.lineWidth = 4 / mult/camMag;
                                     ctx.strokeStyle = `HSLA(${300 * i / featureInfo.templatePyramid.length}, 100%, 50%,1)`;
-                                    canvas_obj.rUtil.drawCross(ctx, { x: (temp_pt.x + template.tl_x) * mult, y: (temp_pt.y + template.tl_y) * mult }, 12 / mult);
+                                    let X=(temp_pt.x + template.tl_x) * mult;
+                                    let Y=(temp_pt.y + template.tl_y) * mult;
+                                    canvas_obj.rUtil.drawCross(ctx, { x:X, y:Y}, 12 / mult/camMag);
+                                    
+                                    let ptheta=temp_pt.theta*Math.PI/180;
+                                    let dirMag=50/camMag;
+                                    if(dirMag>10)dirMag=10;
+                                    let vX=Math.cos(ptheta)*dirMag;
+                                    let vY=Math.sin(ptheta)*dirMag;
+
+                                    canvas_obj.rUtil.drawLine(ctx, {
+                                        x1: X-vX,
+                                        y1: Y-vY,
+                                        x2: X+vX,
+                                        y2: Y+vY
+                                    })
+
                                 })
                             }
 
@@ -2637,7 +2666,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                         ctx.setLineDash([0, 0, 0, 0]);
                         let oriInfo = featureInfo.origin_info;
-                        canvas_obj.rUtil.drawCross(ctx, { x: oriInfo.pt.x, y: oriInfo.pt.y }, 10);
+                        canvas_obj.rUtil.drawCross(ctx, { x: oriInfo.pt.x, y: oriInfo.pt.y }, 10/camMag);
 
                         canvas_obj.rUtil.drawLine(ctx, {
                             x1: oriInfo.pt.x,
@@ -2661,7 +2690,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                         drawRegion(g, canvas_obj, _this.sel_region, canvas_obj.rUtil.getIndicationLineSize());
                     }
                     if (_this.sel_region_type == "vector") {
-                        canvas_obj.rUtil.drawCross(ctx, { x: _this.sel_region.pt1.x, y: _this.sel_region.pt1.y }, 10);
+                        canvas_obj.rUtil.drawCross(ctx, { x: _this.sel_region.pt1.x, y: _this.sel_region.pt1.y }, 10/camMag);
 
                         ctx.setLineDash([0, 0, 0, 0]);
                         canvas_obj.rUtil.drawLine(ctx, {
@@ -2695,7 +2724,6 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     ctx.fillStyle = "rgba(250,100, 50,1)";
 
 
-                    let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
                     // console.log(mouseOnCanvas)
                     ctx.fillText(`${mouseOnCanvas.x.toFixed(1)},${mouseOnCanvas.y.toFixed(1)}`, g.mouseStatus.x, g.mouseStatus.y)
                     ctx.restore();
@@ -3600,7 +3628,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
         let ctx=g.ctx;
         g.ctx.strokeStyle = "rgba(255, 200, 255,1)";
         drawRegion(g, canvas_obj, region, canvas_obj.rUtil.getIndicationLineSize());
-        console.log("<<<<><",_this.canvasDrawCB);
+        // console.log("<<<<><",_this.canvasDrawCB);
 
 
 
@@ -3791,6 +3819,11 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
                 }} />
     
     
+
+                背景差分
+                <Switch checkedChildren="開" unCheckedChildren="無" checked={def.bg_diff == true} onChange={(check) => {
+                    onDefChange({ ...def, bg_diff: check }, true);
+                }} />
                 <br />
 
                 X ng鏡像
@@ -4412,6 +4445,13 @@ function SurfaceCheckSimple_EDIT_UI(param:
                         onDefChange(ObjShellingAssign(def_Filled, ["img_order_reverse"], check));
                     }} />
 
+                    多目標列數:
+                    <InputNumber value={def_Filled.multi_target_column_count}
+                        onChange={(num) => {
+                            let newDef = { ...def_Filled, multi_target_column_count: num }
+                            onDefChange(newDef, true);
+                        }} />
+
 
                     {"  "}降採樣倍率:
                     <InputNumber min={1} max={20} step={1} value={def_Filled.down_sample_factor}
@@ -4419,6 +4459,32 @@ function SurfaceCheckSimple_EDIT_UI(param:
                             let newDef = { ...def_Filled, down_sample_factor: num }
                             onDefChange(newDef, true);
                         }} />
+
+
+
+                    <Button danger onClick={() => {
+                        let BG_IMG_NAME="background_temp.png";
+                        (async () => {
+
+                            let pkts = await BPG_API.InspTargetExchange(def_Filled.id, {
+                                type: "cache_image_save",
+                                folder_path: fsPath + "/",
+                                image_name: BG_IMG_NAME,
+                            }) as any[];
+
+                            await BPG_API.InspTargetExchange(def_Filled.id, {
+                                type: "reload_background_temp"
+                            }) as any[];
+
+
+                            console.log(pkts,fsPath,BG_IMG_NAME);
+
+                        })()
+
+                        
+                    }}>{"儲存背景模板"}</Button>
+
+                    
                 </>
 
             case "子區域設定":
@@ -4580,6 +4646,18 @@ function SurfaceCheckSimple_EDIT_UI(param:
                 onDefChange(ObjShellingAssign(def_Filled, ["bilateral", "sigmaSpace"], num));
             }} />
 
+
+
+
+
+
+
+
+        <br />
+        直方等化:
+        <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def_Filled.equalize_hist == true} onChange={(check) => {
+            onDefChange(ObjShellingAssign(def_Filled, ["equalize_hist"], check));
+        }} />
         {/* _pixelSize(mm)
         <InputNumber min={0.001} step={0.001} defaultValue={1} value={def_Filled.pxSize}
             onChange={(num) => {
@@ -5283,6 +5361,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
             else//drawvv
             {
                 let insp_down_sample_factor=(cacheDef?.down_sample_factor)
+                
                 let camMag = canvas_obj.camera.GetCameraScale();
                 if (Local_IMCM !== undefined) {
                     g.ctx.save();
@@ -5356,7 +5435,16 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                         ctx.restore();
                     }
                     g_cat.forEach((catInfo: any, _index: number) => {
+                        
+                        g.ctx.save();
+                        let multi_target_column_count=cacheDef.multi_target_column_count||9999;
 
+                        let blockX=_index%multi_target_column_count;
+                        let blockY=Math.floor(_index/multi_target_column_count);
+                        
+                        g.ctx.translate(cacheDef.w*blockX, cacheDef.h*blockY);
+                        // console.log(catInfo.category);
+                        
                         if (catInfo.sub_regions.length == cacheDef.sub_regions.length)
                             catInfo.sub_regions.forEach((subreg: any, subreg_index: number) => {
                                 let regionInfo = cacheDef.sub_regions[subreg_index]
@@ -5413,6 +5501,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                     ctx.strokeStyle = ctx.fillStyle = `rgba(${overlayColor.r}, ${overlayColor.g},${overlayColor.b},1)`;
                                     ctx.arc(loc.x + fLoc, loc.y - lineHeight, 3, 0, 2 * Math.PI, false);
                                     ctx.fill();
+                                    ctx.closePath();
 
                                 }
 
@@ -5468,11 +5557,48 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                         ctx.moveTo(regionInfo.region.x, regionInfo.region.y);
                                         ctx.lineTo(igr.x, igr.y);
                                         ctx.stroke();
+                                        ctx.closePath();
                                     })
                                 }
 
 
                             })
+                        
+                        
+                        {
+                            let id_name = CAT_ID_NAME[catInfo.category + ""];
+                            if (id_name == "OK")
+                                ctx.strokeStyle = ctx.fillStyle = "rgba(0, 179, 0,1)";
+                            else if (id_name == "NG") {
+                                ctx.strokeStyle = ctx.fillStyle = "rgba(179, 0, 0,1)";
+                            }
+                            else if (id_name == "NG2") {
+                                ctx.strokeStyle = ctx.fillStyle = "rgba(200, 100, 0,1)";
+                            }
+                            else {
+                                ctx.strokeStyle = ctx.fillStyle = "rgba(150, 150, 150,1)";
+                            }
+
+                            ctx.lineWidth = 3/camMag;
+                            ctx.strokeStyle="rgba(0,0,0,1)";
+                            ctx.setLineDash([]);
+                            ctx.beginPath();
+                            ctx.lineTo(0, 0);
+                            ctx.arc(0, 0, 18/camMag, 0, Math.PI/2, false);
+                            ctx.lineTo(0, 0);
+                            ctx.fill();
+                            ctx.fillStyle = "rgba(255, 255, 255,1)";
+                            let tsize=10/camMag
+                            ctx.font = tsize+"px Arial";
+                            ctx.fillText(_index+"", tsize/5,tsize);
+
+
+
+                            ctx.closePath();
+                            ctx.stroke();
+
+                        }
+                        ctx.restore();
                     })
                 }
                 else {
@@ -6898,6 +7024,338 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 BPG_API.InspTargetExchange(cacheDef.id, { type: "ClearFetchSrc" });
             }}>CLEAR</Button>
 
+
+        </div>
+
+
+    </div>;
+
+}
+
+
+
+
+
+
+
+export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarUI) {
+    let { display, fsPath, EditPermitFlag, style = undefined, renderHook, systemInspTarList, def, report, onDefChange } = props;
+    const _ = useRef<any>({
+        imgCanvas: document.createElement('canvas'),
+        canvasComp: undefined,
+        groupTestTIDList: {}
+    });
+    let TID_OFFSET = -10100;
+    let _this = _.current;
+    const [cacheDef, setCacheDef] = useState<any>(def);
+
+    const [defReport, setDefReport] = useState<any>(undefined);
+
+    // const [freq, setFreq] = useState(1800);
+    // const [CAM_T, setCAM_T] = useState(3510);
+    // const [SEL1_T, setSEL1_T] = useState(10845);
+    // const [SEL2_T, setSEL2_T] = useState(13038);
+
+
+
+    const [machConfig, setMachConfig] = useState<any>(undefined);
+
+
+    const [uInspCount, setuInspCount] = useState({});
+    const [processTimeInfo, setProcessTimeInfo] = useState({});
+
+    const [fileCandList, setFileCandList] = useState({});
+    const [fileCandSelectTID, setFileCandSelectTID] = useState("");
+    const [fetchSrcTIDList, setFetchSrcTIDList] = useState<number[]>([]);
+
+
+
+
+
+    const [spanSetupOptionUI, setSpanSetupOptionUI] = useState(false);
+
+    const [inspStatistic, setInspStatistic] = useState<any>({});
+    const [spanStatisticUI, setSpanStatisticUI] = useState(false);
+
+
+    useEffect(() => {
+        console.log("fsPath:" + fsPath)
+        setCacheDef(def);
+        return (() => {
+        });
+
+    }, [def]);
+    const [Local_IMCM, setLocal_IMCM] =
+        useState<IMCM_type | undefined>(undefined);
+
+    const dispatch = useDispatch();
+    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+
+    const PeripheralCONNID = 3456;
+    async function delay(ms = 1000) {
+        return new Promise((resolve, reject) => setTimeout(resolve, ms))
+    }
+
+    async function fetchSetup()
+    {
+
+        let setupInfo=await _this.send({ type: "get_setup" })
+        console.log(setupInfo);
+        // setMachConfig(setupInfo)
+        // onDefChange({...def,mach_config:setupInfo},false);
+    }
+
+    _this.fileCandList = fileCandList;
+    _this.inspStatistic = inspStatistic;
+    useEffect(() => {//////////////////////
+
+        _this.send_id = 0;
+        _this.sendCBDict = {};
+        async function pSend(data: any, timeout = 0) {
+            if (data.id === undefined) {
+                data.id = _this.send_id;
+                _this.send_id++;
+            }
+
+            let retPkgs=await BPG_API.InspTargetExchange(cacheDef.id, { type: "MESSAGE", msg: data }) as any[];
+            let retMsg = retPkgs.find((p: any) => p.type == "PD");
+            return retMsg?.data?.msg;
+            // return new Promise((resolve, reject) => {
+            //     _this.sendCBDict[data.id] = {
+            //         resolve,
+            //         reject
+            //     }
+
+            //     BPG_API.InspTargetExchange(cacheDef.id, { type: "MESSAGE", msg: data });
+            //     if (timeout > 0)
+            //         setTimeout(reject, timeout)
+            // })
+        }
+        _this.send = pSend;
+
+
+        BPG_API.send(undefined, 0, { _PGID_: PeripheralCONNID, _PGINFO_: { keep: true } }, undefined,
+            {
+
+                resolve: (stacked_pkts) => {
+                    let msg = stacked_pkts[0].data.msg;
+
+                    console.log(">>>>>",msg,_this.sendCBDict);
+                    // if (_this.sendCBDict[msg.id] !== undefined) {
+                    //     _this.sendCBDict[msg.id].resolve(msg)
+                    //     delete _this.sendCBDict[msg.id];
+                    // }
+
+
+
+                },
+                reject: (stacked_pkts) => {
+                    // console.error(">>>>>",stacked_pkts);
+                }
+            });
+
+        
+        let cbsKey="_"+Math.random();
+
+        (async () => {
+
+            let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
+
+
+
+            await BPG_API.send_cbs_attach(
+                cacheDef.stream_id, cbsKey, {
+
+                resolve: (pkts) => {
+                    console.log(pkts);
+                    let CM = pkts.find((p: any) => p.type == "CM");
+                    if (CM === undefined) return;
+                    let RP = pkts.find((p: any) => p.type == "RP");
+                    if (RP === undefined) return;
+                    // console.log("++++++++\n", CM, RP);
+
+                    if (RP.data.trigger_id < TID_OFFSET) {
+                        let otid = TID_OFFSET - RP.data.trigger_id;
+                        if (_this.fileCandList[otid] !== undefined) {
+                            let newFileCandList = { ..._this.fileCandList };
+
+                            delete _this.groupTestTIDList[otid]
+                            // console.log("otid:", otid);
+                            newFileCandList[otid] = { ...newFileCandList[otid], result: RP.data.report.category }
+                            setFileCandList(newFileCandList);
+                        }
+
+                    }
+
+
+                    if (1) do {
+
+                        if (RP.data.report.hole_location_index == -1) break;
+                        // if(RP.data.trigger_id<0)break;
+
+                        let tarRepIdx = RP.data.report.hole_location_index == 0 ? 1 : 0;
+                        let surface_check_reports = RP.data.report.surface_check_reports;
+                        let tarRepId = surface_check_reports[tarRepIdx].InspTar_id;
+
+                        let regionsReps = surface_check_reports[tarRepIdx].report.sub_reports[0].sub_regions;
+                        let repDef = systemInspTarList.find(def => def.id == tarRepId)
+                        // console.log(tarRepIdx,surface_check_reports,regionsReps,repDef)
+
+                        let stat = { ..._this.inspStatistic[tarRepId] };
+
+                        regionsReps.forEach((rrep: any, index: number) => {
+                            let rdef = repDef.sub_regions[index];
+                            // repDef
+                            let name = rdef.name;
+                            // console.log(name, rrep, repDef.sub_regions[index])
+                            let cstat = {name, rec: [], OK: 0, NG: 0, NG2: 0, NG3: 0, NA: 0, ...stat[index] };
+
+                            if (rrep.category == 1) {
+                                cstat.OK++;
+                            }
+                            else if (rrep.category == -1) {
+                                cstat.NG++;
+                            }
+                            else if (rrep.category == -2) {
+                                cstat.NG2++;
+                            }
+                            else if (rrep.category == -3) {
+                                cstat.NG3++;
+                            }
+                            else {
+                                cstat.NA++;
+                            }
+
+
+                            cstat.rec.push(rrep);
+                            stat[index] = cstat;
+                        })
+
+
+
+                        console.log(_this.inspStatistic)
+
+                        setInspStatistic({
+                            ..._this.inspStatistic,
+                            [tarRepId]: stat
+                        })
+                    } while (false);
+
+
+
+
+                },
+                reject: (pkts) => {
+
+                }
+            }
+
+            )
+
+
+            console.log(ret);
+            console.log(def);
+
+            let is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
+            console.error("is_CONNECTED:", is_CONNECTED, " PeripheralCONNID", PeripheralCONNID);
+
+            if (is_CONNECTED == false) {
+
+                await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
+
+                await delay(1000);
+            }
+
+            // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+
+            is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
+            console.error("is_CONNECTED:", is_CONNECTED);
+            
+            setMachConfig(cacheDef.mach_config)
+        })()
+
+
+
+        return (() => {
+            (async () => {
+                await BPG_API.send_cbs_detach(
+                    cacheDef.stream_id, cbsKey);
+            })()
+
+        })
+    }, []);
+
+
+    if (display == false) return null;
+
+
+    return <div style={{ ...style }} className={"overlayCon"}>
+        <div className={"overlay scroll HXF"} >
+
+
+        <Button onClick={() => {
+
+        (async () => {
+        
+            await fetchSetup();
+        })()
+
+        }}>GetSetup</Button>
+
+
+
+
+
+
+        <Button onClick={() => {
+
+        (async () => {
+            let is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
+            console.error("is_CONNECTED:", is_CONNECTED, " PeripheralCONNID", PeripheralCONNID);
+            if (is_CONNECTED == false) {
+                await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
+            }
+
+            
+            // await fetchSetup();
+        })()
+
+        }}>CONNECT</Button>
+
+
+
+        <Button onClick={() => {
+
+        (async () => {
+            await BPG_API.InspTargetExchange(cacheDef.id, { type: "DISCONNECT", comm_id: PeripheralCONNID });
+
+        })()
+
+        }}>DISCONNECT</Button>
+
+
+
+
+
+        <Button onClick={() => {
+            (async () => {
+                navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+                
+                let devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind == "videoinput");
+                console.log(devices);
+                // await fetchSetup();
+            })()
+
+        }}>DDDDDD</Button>
+
+
+        <Button onClick={() => {
+            (async () => {
+
+                await BPG_API.CameraSWTrigger("Hikvision-2BDF73541011-00E73541011","CAM_FB",0,true);
+            })()
+
+        }}>CAM_TRIG</Button>
 
         </div>
 

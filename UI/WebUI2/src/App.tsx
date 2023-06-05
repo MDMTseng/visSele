@@ -51,7 +51,8 @@ import {SingleTargetVIEWUI_ColorRegionDetection,
   SingleTargetVIEWUI_Orientation_ShapeBasedMatching,
   SingleTargetVIEWUI_SurfaceCheckSimple,
   SingleTargetVIEWUI_JSON_Peripheral,
-  CompParam_InspTarUI,CompParam_UIOption } from './InspTarView';
+  CompParam_InspTarUI,CompParam_UIOption,
+  SingleTargetVIEWUI_JSON_CNC_Peripheral } from './InspTarView';
 
 const { Option } = Select;
 const { SubMenu } = Menu;
@@ -429,6 +430,10 @@ function InspTargetUI_MUX(param:CompParam_InspTarUI)
 
   if(param.def.type=="JSON_Peripheral")
   return <SingleTargetVIEWUI_JSON_Peripheral {...param} />;
+
+
+  if(param.def.type=="JSON_CNC_Peripheral")
+  return <SingleTargetVIEWUI_JSON_CNC_Peripheral {...param} />;
 
 
   return  <></>;
@@ -1343,7 +1348,7 @@ function VIEWUI(){
                         display={true} 
                         // width={80} 
                         // height={70} 
-                        style={{float:"left"}} 
+                        // style={{float:"left"}} 
                         EditPermitFlag={EDIT_PERMIT_FLAG.OPONLY}
                         key={id} 
                         systemInspTarList={defConfig.InspTars_main}
@@ -1355,14 +1360,13 @@ function VIEWUI(){
     
                         }}
               
-                        APIExport={opt.APIExport}
-
-
                         UIOption={undefined}
                         showUIOptionConfigUI={false}
                         onUIOptionUpdate={(newUIOption)=>{
                           console.log(newUIOption)
                         }}
+
+                        {...opt.params}
                       />
                     }
     
