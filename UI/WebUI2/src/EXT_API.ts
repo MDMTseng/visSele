@@ -19,6 +19,7 @@ export class BPG_WS
     {
       time: number,
       pkts: any[],
+      latest_cached_pkts: any[],
       promiseCBs:{
         reject(...arg:any[]):any,
         resolve(...arg:any[]):any,
@@ -146,6 +147,7 @@ export class BPG_WS
             this.reqWindow.delete(pgID)
           }
           else {
+            req_pkt.latest_cached_pkts=req_pkt.pkts;
             req_pkt.pkts = [];
           }
           if (req_pkt.promiseCBs !== undefined) {
@@ -174,6 +176,7 @@ export class BPG_WS
             {
               time: new Date().getTime(),
               pkts: [parsed_pkt],
+              latest_cached_pkts: [],
               promiseCBs:undefined,
               _PGINFO_:undefined
             })
@@ -228,6 +231,7 @@ export class BPG_WS
       req_pkt={
         time: new Date().getTime(),
         pkts: [],
+        latest_cached_pkts: [],
         promiseCBs:undefined,
         _PGINFO_: undefined
       }
@@ -245,6 +249,10 @@ export class BPG_WS
     }
 
     req_pkt._PGINFO_.hookedCBs[cbs_key]=promiseCBs;
+    if(req_pkt.latest_cached_pkts.length>0)
+    {
+      promiseCBs.resolve(req_pkt.latest_cached_pkts);
+    }
   }
   send_cbs_detach(PGID:number,cbs_key:string|undefined)
   {
@@ -362,6 +370,7 @@ export class BPG_WS
       this.reqWindow.set(PGID,{
         time: new Date().getTime(),
         pkts: [],
+        latest_cached_pkts: [],
         promiseCBs:info.promiseCBs,
         _PGINFO_: set_PGINFO_
       });

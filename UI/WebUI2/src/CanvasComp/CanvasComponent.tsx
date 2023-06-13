@@ -21,7 +21,8 @@ import {EverCheckCanvasComponent_proto} from './CanvasInterface';
 import {
   round as roundX,
   GetObjElement, Exp2PostfixExp, PostfixExpCalc,xstate_GetCurrentMainState,
-  LocalStorageTools
+  LocalStorageTools,
+  ID_throttle
 } from '../UTIL/MISC_Util';
 
 
@@ -145,6 +146,8 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   drawHook:type_DrawHook|undefined
 
+  maxFPS:number
+  maxFPSthrottleInfo:any
 
   constructor(canvasDOM:HTMLCanvasElement) {
     super(canvasDOM);
@@ -157,6 +160,8 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.onMouseStatUpdate=(pt,pcvst)=>0;
 
     this.scaleHeadToFitScreen();
+    this.maxFPS=65;
+    this.maxFPSthrottleInfo=undefined;
   }
 
 
@@ -307,7 +312,18 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
       matrix.d, matrix.e, matrix.f);
   }
 
-  draw() {
+  draw()
+  {
+    
+
+
+    this.maxFPSthrottleInfo=
+    ID_throttle(this.maxFPSthrottleInfo,()=>{
+      this._draw();
+    },()=>this.maxFPSthrottleInfo=undefined,1000/this.maxFPS);
+    
+  }
+  _draw() {
 
     if(this.g===undefined)return;
     // console.log(this.c_state);
@@ -436,9 +452,9 @@ export function HookCanvasComponent( {dhook,style={}}:{
     _this.canvComp=new DrawHook_CanvasComponent(canvas.current);
     
     _this.canvComp.pixelRatio=pixelRatio;
-    setTimeout(()=>{
-      _this.canvComp?.scaleHeadToFitScreen();
-    },1000)
+    // setTimeout(()=>{
+    //   _this.canvComp?.scaleHeadToFitScreen();
+    // },1000)
     return () => {
       _this.canvComp=undefined;//delete the canvas component
     };

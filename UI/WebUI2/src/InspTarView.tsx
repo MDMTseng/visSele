@@ -1459,7 +1459,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
         ctrlHooks: [],
 
 
-
+        extDrawHook: undefined,
         featureImgCanvas: document.createElement('canvas'),
     });
     const SBM_FEAT_REF_IMG_NAME = "FeatureRefImage.png"
@@ -1488,7 +1488,6 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
 
     const [onMouseClick, setOnMouseClick] = useState<any>(undefined);
-
 
     let c_report: any = undefined;
     if (_this.cache_report !== report) {
@@ -1548,18 +1547,6 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
 
     // console.log(">>>>>>>",onMouseClick);
-    if (APIExport !== undefined)//keeps update for every state change
-    {
-        APIExport({
-            onMouseClick: (callback: any) => {
-                setOnMouseClick({ callback })
-            },
-            getLatestReport: () => {
-                return defReport;
-            }
-        })
-    }
-
 
     // console.log(IMCM_group,report);
     // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
@@ -1717,7 +1704,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                     let ctx2nd = _this.imgCanvas.getContext('2d');
 
-                    console.log(IMCM.image_info);
+                    // console.log(IMCM.image_info);
                     if(IMCM.image_info.image instanceof ImageData)
                         ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
                     else if(IMCM.image_info.image instanceof HTMLImageElement)
@@ -2415,6 +2402,26 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
     }
 
+    if (APIExport !== undefined)//keeps update for every state change
+    {
+        APIExport({
+            onMouseClick: (callback: any) => {
+                setOnMouseClick({ callback })
+            },
+            setDrawHook: (hook:any) => {
+                _this.extDrawHook=hook;
+            },
+            getLatestReport: () => {
+                return defReport;
+            },
+
+            defInfo: def,
+            latest_RP: defReport,
+            latest_IMCM: Local_IMCM,
+            
+        })
+    }
+
 
 
     return <div style={{ ...style}} className={"overlayCon"}>
@@ -2438,7 +2445,10 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
         <HookCanvasComponent style={{}} dhook={(ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent) => {
             _this.canvasComp = canvas_obj;
             // console.log(ctrl_or_draw);
-
+            if(_this.extDrawHook!==undefined && _this.extDrawHook.preDraw!==undefined)
+            {
+                _this.extDrawHook.preDraw(ctrl_or_draw, g, canvas_obj);
+            }
             let ctx = g.ctx;
             let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
 
@@ -2733,6 +2743,10 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
 
 
+            if(_this.extDrawHook!==undefined && _this.extDrawHook.postDraw!==undefined)
+            {
+                _this.extDrawHook.postDraw(ctrl_or_draw, g, canvas_obj);
+            }
             if (renderHook) {
                 // renderHook(ctrl_or_draw,g,canvas_obj,newDef);
             }
@@ -5034,7 +5048,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                     if (CM === undefined) return;
                     let RP = pkts.find((p: any) => p.type == "RP");
                     if (RP === undefined) return;
-                    console.log("++++++++\n", IM, CM, RP);
+                    // console.log("++++++++\n", IM, CM, RP);
 
 
                     // setDefReport(RP.data)
@@ -5149,7 +5163,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
         showEditUI=true;
         showGraphic=true;
     }
-    console.log(UIOption);
+    // console.log(UIOption);
 
     if (display == false) return null;
 
@@ -5578,17 +5592,17 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                             else {
                                 ctx.strokeStyle = ctx.fillStyle = "rgba(150, 150, 150,1)";
                             }
-
-                            ctx.lineWidth = 3/camMag;
+                            let size=2;
+                            ctx.lineWidth = size*3/camMag;
                             ctx.strokeStyle="rgba(0,0,0,1)";
                             ctx.setLineDash([]);
                             ctx.beginPath();
                             ctx.lineTo(0, 0);
-                            ctx.arc(0, 0, 18/camMag, 0, Math.PI/2, false);
+                            ctx.arc(0, 0, size*18/camMag, 0, Math.PI/2, false);
                             ctx.lineTo(0, 0);
                             ctx.fill();
                             ctx.fillStyle = "rgba(255, 255, 255,1)";
-                            let tsize=10/camMag
+                            let tsize=size*10/camMag
                             ctx.font = tsize+"px Arial";
                             ctx.fillText(_index+"", tsize/5,tsize);
 

@@ -53,6 +53,7 @@ import {SingleTargetVIEWUI_ColorRegionDetection,
   SingleTargetVIEWUI_JSON_Peripheral,
   CompParam_InspTarUI,CompParam_UIOption,
   SingleTargetVIEWUI_JSON_CNC_Peripheral } from './InspTarView';
+import { info } from 'console';
 
 const { Option } = Select;
 const { SubMenu } = Menu;
@@ -638,7 +639,7 @@ function UtilUI_MUX({UIOption,onUIOptionUpdate}:CompParam_UIOption)
 
 
 
-function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onDefChange,renderHook}:{displayIDList:string[],defConfig:any,UIEditFlag:boolean,EditPermitFlag:number, onDefChange:(updatedDef:any)=>void,renderHook:any})
+function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDefChange,renderHook}:{WidgetSetID:string,defConfig:any,UIEditFlag:boolean,EditPermitFlag:number, onDefChange:(updatedDef:any)=>void,renderHook:any})
 {
   
   
@@ -684,12 +685,17 @@ function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onD
     "isDraggable": true,
     "isResizable": true
     }
-  let WidgetTabKey=0;
+
+  let WidgetTabKey=(GetObjElement(defConfig,["main","UIInfo"])??[])
+    .findIndex((info:any)=>info.id==WidgetSetID);
+  if(WidgetTabKey<0)WidgetTabKey=0;
 
   
   let WidgetLayout=GetObjElement(defConfig,["main","UIInfo",WidgetTabKey,"WidgetLayout"])??[];
   let WidgetInfo=GetObjElement(defConfig,["main","UIInfo",WidgetTabKey,"WidgetInfo"])??[];
-  
+  //cross check
+  WidgetLayout=WidgetLayout.filter((layout:any)=>WidgetInfo.find((info:any)=>info.id==layout.i)!==undefined);
+  WidgetInfo=WidgetInfo.filter((info:any)=>WidgetLayout.find((layout:any)=>layout.i==info.id)!==undefined);
 
   function updateWidgetLayout(newWidgetInfo :any,new_WidgetLayout:any)
   {
@@ -796,6 +802,7 @@ function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onD
         switch(uilayoutInfo.type)
         {
           case "InspTar":
+          {
             UI=<InspTargetUI_MUX 
               display={uilayoutInfo.display!=false} 
               style={{float:"left",width:"100%",height:"100%",overflow:"scroll"}} 
@@ -831,9 +838,11 @@ function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onD
               }}
             />
               
+          }
           break;
 
           case "Util":
+          {
             console.log(layoutSrcEle[idx]);
             UI=<UtilUI_MUX UIOption={layoutSrcEle[idx]}   
             showUIOptionConfigUI={false}            
@@ -847,6 +856,7 @@ function TargetViewUIShow({displayIDList,defConfig,UIEditFlag,EditPermitFlag,onD
               updateWidgetLayout(new_WidgetInfo,undefined);
             }}/>
             break;
+          }
           
           case ID_ADD_NEW_ELE:
             return <div key={uilayoutInfo.i}>
@@ -1005,6 +1015,7 @@ function VIEWUI(){
       inCMD_Promise:false,
       InspTarDispIDList:undefined,
       cur_defInfo:{},
+      widgetSetID:"",
       reportListener:{
         _key_:{//example
           time:0,
@@ -1022,6 +1033,7 @@ function VIEWUI(){
     }
 
   }).current;
+
   const dispatch = useDispatch();
   
   const [BPG_API,setBPG_API]=useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
@@ -1035,6 +1047,7 @@ function VIEWUI(){
   const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
 
   const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
+  const [newUIID,setNewUIID]=useState("");
 
 
 
@@ -2077,6 +2090,7 @@ function VIEWUI(){
   </Sider>
     
 
+  let WidgetTableInfo=(GetObjElement(defConfig,["main","UIInfo"])??[])
 
   return <>
 
@@ -2149,11 +2163,90 @@ function VIEWUI(){
       })
     } */}
     { 
-    (defConfig===undefined)?"WAIT": 
-      <TargetViewUIShow displayIDList={displayInspTarId} defConfig={defConfig} UIEditFlag={UIEditFlag} EditPermitFlag={editPermitFlag}  onDefChange={(newdef:any)=>{
+    (defConfig===undefined)?"WAIT": <>
+      <Space wrap>
+      {
+        WidgetTableInfo.map((tableInfo:any,idx:number)=>(<div>
+          <Button type={_this.listCMD_Vairable.widgetSetID==tableInfo.id?'primary':undefined}
+          onClick={()=>{
+            _this.listCMD_Vairable.widgetSetID=tableInfo.id;
+            setForceUpdateCounter(forceUpdateCounter+1);
+          }}>
+            {tableInfo.id}
+          </Button>
+
+          {UIEditFlag?
+
+          
+          // <Button danger
+          // onClick={()=>{
+              
+          //     setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo"],
+          //        defConfig.main.UIInfo.filter((info:any)=>info.id!=tableInfo.id)))
+          // }}>
+          //   X
+          // </Button>
+          
+          
+          <Popconfirm
+          title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
+          onConfirm={()=>{
+            
+          }}
+          okButtonProps={{danger:true,onClick:()=>{
+            if(delConfirmCounter==0)
+            {
+              setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo"],
+              defConfig.main.UIInfo.filter((info:any)=>info.id!=tableInfo.id)))
+
+            }
+            else
+            {
+              setDelConfirmCounter(delConfirmCounter-1);
+            }
+          }}}
+          onCancel={()=>{}}
+          okText={"Yes:"+delConfirmCounter}
+          cancelText="No"
+          >
+          <Button danger type="primary" onClick={()=>{
+          setDelConfirmCounter(5);
+          }}>X</Button>
+          </Popconfirm> 
+          :null}
+
+        </div>
+        ))
+        
+      }
+
+      {UIEditFlag?<Input placeholder={"新的UI頁面 ID"} status={newUIID.length==0?"error":undefined}
+        style={{width:"100px"}}
+        onChange={(e:any)=>setNewUIID(e.target.value)}
+        value={newUIID}
+        onPressEnter={(e:any)=>{
+
+          let value=e.target.value;
+          console.log(value)
+          if(value.length==0)return;
+          setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo",WidgetTableInfo.length],{
+            id:value,
+          }))
+          setNewUIID("");
+        }}
+      />:null}
+
+      </Space>
+
+
+
+
+      <TargetViewUIShow WidgetSetID={_this.listCMD_Vairable.widgetSetID} defConfig={defConfig} UIEditFlag={UIEditFlag} EditPermitFlag={editPermitFlag}  onDefChange={(newdef:any)=>{
         console.log(newdef);
         setDefConfig(newdef)
-        }}  renderHook={_this.listCMD_Vairable.renderHook}/>}
+        }}  renderHook={_this.listCMD_Vairable.renderHook}
+        />
+      </>}
     </Content>
   
     </Layout>

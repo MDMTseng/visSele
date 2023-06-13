@@ -1,5 +1,7 @@
 import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_API';
 
+import { GetObjElement, ID_debounce, ID_throttle, ObjShellingAssign } from './UTIL/MISC_Util';
+import * as _THREE from 'three';
 
 
 function startsWith (str:string, needle:string) {
@@ -58,6 +60,10 @@ export async function listCMDPromise(
   {
     return new Promise((resolve,reject)=>setTimeout(resolve,ms))
   }
+
+  let objEleGet=GetObjElement;
+  let objShellingAssign=ObjShellingAssign
+
   async function LS_Save(key:string,msg:any)
   {
     localStorage.setItem("_listCMDPromise_"+key, JSON.stringify(msg))
@@ -421,8 +427,12 @@ export async function listCMDPromise(
   async function INCLUDE(fileName:string)
   {
     let file= await READFILE(fileName);
-    return eval(file)
+    let fev=eval(file);
+    await fev.INIT?.();
+    return fev;
   }
+
+  let THREE=_THREE;
   
 
   let $async=0;//just for a mark

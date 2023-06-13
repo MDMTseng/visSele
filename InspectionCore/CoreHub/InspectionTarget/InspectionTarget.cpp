@@ -198,6 +198,27 @@ cJSON* InspectionTarget::genITInfo_basic()
 }
 
 
+// cJSON* InspectionTarget::genCacheResourceInfo()
+// {
+//   cJSON *obj=cJSON_CreateObject();
+
+//   // {
+//   //   cJSON *otherInfo=cJSON_CreateObject();
+//   //   cJSON_AddItemToObject(obj, "inspInfo", otherInfo);
+//   // }
+
+//   {
+//     // cJSON_AddNumberToObject(obj, "channel_id", channel_id);
+//     cJSON_AddStringToObject(obj, "id", id.c_str());
+//     cJSON_AddStringToObject(obj, "type",this->type.c_str());
+//     cJSON_AddStringToObject(obj, "name",this->name.c_str());
+//   }
+//   return obj;
+// }
+
+
+
+
 bool InspectionTarget::tagMatching(cJSON* tagWhiteList, vector<std::string> &tagArr)
 {
     if(tagWhiteList==NULL)return false;
@@ -408,11 +429,19 @@ InspectionTarget::~InspectionTarget()
 
 string CameraManager::cameraDiscovery(bool doDiscover)
 {
-  if(doDiscover)
+
+  std::lock_guard<std::mutex> lock(discover_lock);
+  if(doDiscover || clm.discoveredCameraCount()==0)
   {
     clm.discover();
   }
   return clm.genJsonStringList();
+}
+
+
+void CameraManager::cameraDiscoveryListClear()
+{
+  clm.discoverListClear();
 }
 
 CameraManager::StreamingInfo* CameraManager::addCamera(CameraLayer *cam)

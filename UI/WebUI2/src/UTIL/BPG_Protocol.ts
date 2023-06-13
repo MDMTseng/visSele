@@ -76,7 +76,7 @@ let raw2obj_IM=(ws_evt:any, offset = 0)=>{
 
   let image:ImageData|HTMLImageElement|undefined=undefined;
   let image_b64:string|undefined=undefined;
-  console.log(ws_evt);
+  // console.log(ws_evt);
   if(format==0)
   {
     let RGBA_pix_Num = 4*width*height;

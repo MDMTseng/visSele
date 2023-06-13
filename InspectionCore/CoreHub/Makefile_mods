@@ -57,7 +57,7 @@ export SO_EXPORT_PATH=$(abspath .)
 export FEATURE_COMPILE_W_ARAVIS=0
 export FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=0
 export FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=0
-export FEATURE_COMPILE_W_UVC=0
+export FEATURE_COMPILE_W_UVC=1
 
 # export GLEWSRCDir=$(abspath ../../$(moduleRoot)/glew-2.1.0)
 # export GLFWSRCDir=$(abspath ../../$(moduleRoot)/glfw-3.2.1)

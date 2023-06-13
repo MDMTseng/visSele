@@ -9,6 +9,7 @@ class CameraManager
        
 
   inline static CameraLayerManager clm;
+  inline static std::mutex discover_lock;
   public:
   struct StreamingInfo
   {
@@ -39,6 +40,7 @@ class CameraManager
   int findConnectedCameraIdx(std::string driverName,std::string camera_id);
   public:
   static std::string cameraDiscovery(bool doDiscover=true);
+  static void cameraDiscoveryListClear();
   
   cJSON* ConnectedCameraList();
   const vector<CameraManager::StreamingInfo> &ConnectedCamera_ex();

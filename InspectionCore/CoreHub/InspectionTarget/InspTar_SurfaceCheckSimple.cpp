@@ -15,6 +15,23 @@ InspectionTarget_SurfaceCheckSimple::InspectionTarget_SurfaceCheckSimple(string 
   :InspectionTarget(id,def,belongMan,local_env_path)
 {
   type=InspectionTarget_SurfaceCheckSimple::TYPE();
+  setInspDef(def);
+}
+
+
+
+void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
+{
+  InspectionTarget::setInspDef(def);
+
+  //check if background_temp is loaded
+  if(background_temp.empty())
+    background_temp=imread(local_env_path+"/background_temp.png", IMREAD_COLOR);
+
+  
+
+  LOGE("background_temp empty:%d",background_temp.empty());
+  // featureInfo
 }
 
 // bool InspectionTarget_SurfaceCheckSimple::stageInfoFilter(shared_ptr<StageInfo> sinfo)
@@ -175,7 +192,12 @@ bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchang
   bool ret = InspectionTarget::exchangeCMD(info,id,act);
   if(ret)return ret;
   string type=JFetch_STRING_ex(info,"type");
-
+  
+  if(type=="reload_background_temp")
+  {
+    background_temp=imread(local_env_path+"/background_temp.png", IMREAD_COLOR);
+    return true;
+  }
 
   if(type=="useExtParam")
   {
@@ -690,8 +712,17 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   }
 
 
+  //check if background_temp is loaded and has the same size as CV_srcImg
+  LOGE("background_temp empty:%d",background_temp.empty());
+  if(background_temp.size()!=CV_srcImg.size())
+  {
+    if(!background_temp.empty())
+      background_temp.release();
+  }
 
 
+
+  LOGE("background_temp empty:%d",background_temp.empty());
 
   // if()
   
@@ -722,6 +753,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
   float angle_offset=JFetch_NUMBER_ex(def,"angle_offset",0)*M_PI/180;
+  int multi_target_column_count=(int)JFetch_NUMBER_ex(def,"multi_target_column_count",99999);
 
 
   float color_ch_mul_r=JFetch_NUMBER_ex(def,"color_ch_mul.r",1);
@@ -779,10 +811,20 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   float bilateral_sigmaColor= JFetch_NUMBER_ex(def,"bilateral.sigmaColor",2);
   float bilateral_sigmaSpace=JFetch_NUMBER_ex(def,"bilateral.sigmaSpace",2);
 
+
+  bool do_equalize_hist=JFetch_TRUE(def,"equalize_hist");
   // LOGI("orientation info size:%d",orientationList.size());
   if(orientationList.size()>0)
   {  
-    retImage=new acvImage(W*orientationList.size(),H,3);
+
+    {
+      int columnCount=orientationList.size()<multi_target_column_count?orientationList.size():multi_target_column_count;
+      int rowCount=((orientationList.size()+multi_target_column_count-1)/multi_target_column_count);
+
+      LOGE("columnCount:%d rowCount:%d",columnCount,rowCount);
+      retImage=new acvImage(W*columnCount,H*rowCount,3);
+    }
+    
     Mat def_temp_img(retImage->GetHeight(),retImage->GetWidth(),CV_8UC3,retImage->CVector[0]);
     
 
@@ -804,7 +846,13 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         }
         // cJSON* idxRegion=JFetch_ARRAY(def,("[+"+std::to_string(i)+"+]").c_str());
         int imgOrderIdx=img_order_reverse?(orientationList.size()-1-i):i;
-        Mat _def_temp_img_ROI = def_temp_img(Rect(imgOrderIdx*W, 0, W, H));
+
+        int o_col=imgOrderIdx%multi_target_column_count;
+        int o_row=imgOrderIdx/multi_target_column_count;
+
+        Mat _def_temp_img_ROI = def_temp_img(Rect(o_col*W, o_row*H, W, H));
+
+
 
         float angle = orientation.angle;
         // if(angle>M_PI_2)angle-=M_PI;
@@ -820,13 +868,34 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
         cv::warpAffine(CV_srcImg, _def_temp_img_ROI, rot,_def_temp_img_ROI.size());
 
+        Mat _def_temp_img_ROI_BK;
+        _def_temp_img_ROI.copyTo(_def_temp_img_ROI_BK);
         if(color_ch_mul_r!=1 || color_ch_mul_g!=1 || color_ch_mul_b!=1)
         {
           cv::Scalar compScalar(color_ch_mul_b,color_ch_mul_g,color_ch_mul_r);
           multiply(_def_temp_img_ROI,compScalar, _def_temp_img_ROI);
         }
 
+        if(do_equalize_hist)
+        {
 
+          cv::Mat &image=_def_temp_img_ROI;
+          cv::Mat yuvImage;
+          cv::cvtColor(image, yuvImage, cv::COLOR_BGR2YUV);
+
+          // Split the YUV image into separate channels
+          std::vector<cv::Mat> channels;
+          cv::split(yuvImage, channels);
+
+          // Apply histogram equalization on the Y channel
+          cv::equalizeHist(channels[0], channels[0]);
+
+          // Merge the channels back into a YUV image
+          cv::merge(channels, yuvImage);
+
+          // Convert the YUV image back to the original color space
+          cv::cvtColor(yuvImage, image, cv::COLOR_YUV2BGR);
+        }
 
 
 
@@ -1028,17 +1097,56 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
         }
 
+
+        Mat bg_img_ROI;
+        if(background_temp.empty()==false)
+        {
+          Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset+xShift,H/2+Y_offset+yShift},-angle,xFlip,yFlip);
+          cv::warpAffine(background_temp, bg_img_ROI, rot,_def_temp_img_ROI.size());
+
+        }
+
         if(xShift!=0 || yShift!=0)
         {
           Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset+xShift,H/2+Y_offset+yShift},-angle,xFlip,yFlip);
           cv::warpAffine(CV_srcImg, _def_temp_img_ROI, rot,_def_temp_img_ROI.size());
+
+
 
           if(color_ch_mul_r!=1 || color_ch_mul_g!=1 || color_ch_mul_b!=1)
           {
             cv::Scalar compScalar(color_ch_mul_b,color_ch_mul_g,color_ch_mul_r);
             multiply(_def_temp_img_ROI,compScalar, _def_temp_img_ROI);
           }
+          LOGE(">>>>>");
+
+
+
+          if(do_equalize_hist)
+          {
+
+            cv::Mat &image=_def_temp_img_ROI;
+            cv::Mat yuvImage;
+            cv::cvtColor(image, yuvImage, cv::COLOR_BGR2YUV);
+
+            // Split the YUV image into separate channels
+            std::vector<cv::Mat> channels;
+            cv::split(yuvImage, channels);
+
+            // Apply histogram equalization on the Y channel
+            cv::equalizeHist(channels[0], channels[0]);
+
+            // Merge the channels back into a YUV image
+            cv::merge(channels, yuvImage);
+
+            // Convert the YUV image back to the original color space
+            cv::cvtColor(yuvImage, image, cv::COLOR_YUV2BGR);
+          }
+
+
         }
+
+
 
 
         {
@@ -1063,6 +1171,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           int SUBR_category=STAGEINFO_CAT_UNSET;
           StageInfo_SurfaceCheckSimple::SubRegion_Info sri;
           int subregIdx=indexArr_w_priority[j];
+
+
           
           cJSON *jsub_region= cJSON_GetArrayItem(jsub_regions,subregIdx);
 
@@ -1090,13 +1200,91 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
 
+
+
           // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
 
 
-          Mat sub_region_ROI_origin_img = _def_temp_img_ROI(Rect(srX, srY, srW, srH));
+          Mat sub_region_ROI_origin_img =_def_temp_img_ROI(Rect(srX, srY, srW, srH));
+          
+
           resultMarkRegion[subregIdx]=sub_region_ROI_origin_img;
           Mat sub_region_ROI = sub_region_ROI_origin_img.clone();
 
+
+
+
+          bool bgDiff=JFetch_TRUE(jsub_region,"bg_diff");
+          if(bgDiff&& bg_img_ROI.empty()==false)
+          {
+            float brightness_comp_ratio=0;
+
+            cv::Mat sreg_bg=bg_img_ROI(Rect(srX, srY, srW, srH));
+            cv::Mat sreg_img=_def_temp_img_ROI_BK(Rect(srX, srY, srW, srH));;
+            cv::Mat sreg_img_BK=sreg_img.clone();
+
+
+            cJSON* ignore_regions = JFetch_ARRAY(jsub_region,"ignore_regions");
+            int ignore_regions_L=ignore_regions==NULL?0:cJSON_GetArraySize(ignore_regions);
+            for(int k=0;k<ignore_regions_L;k++)
+            {
+              cJSON *ig_reg= cJSON_GetArrayItem(ignore_regions,k);
+              
+              int padding=2;
+              int x=padding+(int)JFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
+              int y=padding+(int)JFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
+              int w=-2*padding+(int)JFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
+              int h=-2*padding+(int)JFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
+
+              XYWH_clipping(x,y,w,h, 0,0,sreg_bg.cols,sreg_bg.rows);
+              sreg_bg(Rect(x,y,w,h)) = 0;
+              sreg_img_BK(Rect(x,y,w,h)) = 0;
+
+              // auto igregion=_def_temp_img_ROI(Rect(x,y,w,h));
+              
+
+              // cv::Scalar ig_sum= cv::sum(igregion);
+
+            }
+
+            cv::Scalar bg_sum= cv::sum(sreg_bg);            
+            cv::Scalar img_sum= cv::sum(sreg_img_BK);
+            // LOGI("bg_sum:%f %f %f img_sum:%f %f %f  ",bg_sum[0],bg_sum[1],bg_sum[2],img_sum[0],img_sum[1],img_sum[2]);
+            cv::Scalar compScalar;//=refAvgPix/avgPix;
+            compScalar[0]=img_sum[0]/bg_sum[0];
+            compScalar[1]=img_sum[1]/bg_sum[1];
+            compScalar[2]=img_sum[2]/bg_sum[2];
+            // LOGI("[%d]  compScalar:%f %f %f",i,compScalar[0],compScalar[1],compScalar[2]);
+
+            // // def_temp_img_innerROI*=compScalar;
+            multiply(sreg_bg,compScalar, sreg_bg);
+
+
+            // if(i<30)
+            // {
+            //   cv::Mat dbgImg(Size(srW*2,srH),CV_8UC3);
+            //   sreg_bg.copyTo(dbgImg(Rect(0, 0, srW, srH)));
+            //   sreg_img_BK.copyTo(dbgImg(Rect(srW, 0, srW, srH)));
+
+            //   imwrite("data/ZZA/dbgImg_"+to_string(i)+"_"+to_string(j)+".jpg",dbgImg); 
+            // }
+
+
+            {
+              cv::Mat matTemp;
+              cv::subtract(sreg_img,sreg_bg, matTemp, cv::noArray(), CV_32S);
+              matTemp = cv::abs(matTemp);
+              matTemp.convertTo(sub_region_ROI, CV_8U); // Or other precisions (depths).
+
+
+              // sub_region_ROI=sreg_bg;
+
+            }
+
+
+
+
+          }
 
           string subRegType=JFetch_STRING_ex(jsub_region,"type","HSVSeg");
 
@@ -1747,7 +1935,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
             }
 
-            LOGE("NG_Map_To:%s  area_sum:%d",NG_Map_To.c_str(),area_sum);
+            // LOGE("NG_Map_To:%s  area_sum:%d",NG_Map_To.c_str(),area_sum);
 
             MATCH_REGION_score+=area_sum;
             MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,SUBR_category);

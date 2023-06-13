@@ -111,6 +111,7 @@ _________________________________________
 class exchangeCMD_ACT
 { 
   public:
+  bool doSendAck;
   virtual void send(const char *TL, int pgID,cJSON* def)=0;
   virtual void send(const char *TL, int pgID,acvImage* img,int downSample)=0;
 
@@ -181,6 +182,10 @@ class InspectionTarget
 
   void attachSstaticInfo( cJSON* jobj,int trigger_id );
   virtual cJSON* genITInfo_basic();
+
+
+  // virtual cJSON* genCacheResourceInfo();
+
   // virtual std::vector<StageInfo*> inputPick(std::vector<StageInfo*> infoPool)=0;//returns input processed
   virtual void acceptStageInfo(std::shared_ptr<StageInfo> sinfo);
 

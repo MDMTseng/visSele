@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.26.4)
 set (CMAKE_CXX_STANDARD 14)
 project(CORE0_1)
 
@@ -23,6 +23,7 @@ elseif(APPLE)
   set ( platform mac_x64)
 endif()
 
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
 set(OpenCV_DIR C:/OpenCV-MinGW)
 
@@ -40,7 +41,6 @@ endif()
 
 
 find_package(PkgConfig REQUIRED)
-
 
 
 # # set(PYTHON_EXECUTABLE "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.8/")
@@ -72,6 +72,7 @@ find_package(PkgConfig REQUIRED)
 if(MSVC OR MSYS OR MINGW)
   set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
 elseif(APPLEARM64)
+  set(CMAKE_EXE_LINKER_FLAGS " -Wl,-framework,IOKit -Wl,-framework,CoreFoundation -Wl,-framework,Security")
 
 elseif(APPLE)
 
@@ -94,7 +95,8 @@ add_custom_target(
 )
 
 
-SET(COMMON_COMPILE_FLAGS "-Wall -Wno-sign-compare -Wno-write-strings -Wno-unused-variable")
+SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS}  -fobjc-arc  -fmodules")
+SET(COMMON_COMPILE_FLAGS "-Wall -Wno-sign-compare -Wno-write-strings -Wno-unused-variable ")
 SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${COMMON_COMPILE_FLAGS}")
 
 if($ENV{FEATURE_COMPILE_W_ARAVIS} EQUAL 1)
@@ -158,10 +160,18 @@ add_executable (visSele main.cpp wiringPanel.cpp wiringPanel_ext.cpp
 InspectionTarget/InspectionTarget.cpp 
 InspectionTarget/InspTar_Orientation_ColorRegionOval.cpp 
 InspectionTarget/InspTar_SpriteDraw.cpp 
+InspectionTarget/InspTar_ImgSrc.cpp
 InspectionTarget/InspTar_Orientation_ShapeBasedMatching.cpp
 InspectionTarget/InspTar_SurfaceCheckSimple.cpp
-InspectionTarget/InspTar_WBar_SizeComp.cpp)
+InspectionTarget/InspTar_WBar_SizeComp.cpp
+
+
+
+PlatUtil/macUtil.mm
+
+)
 add_dependencies(visSele mod_target MatchingEngine shape_based_matching)
+
 
 target_link_libraries(visSele
   $ENV{MODULE_MatchingEngine}/libMatchingEngine.a
@@ -179,8 +189,7 @@ target_link_libraries(visSele
   $ENV{MODULE_BPG_Protocol}/BPG_Protocol.a
   $ENV{MODULE_simple_uart}/simple_uart.a
   #$ENV{MODULE_zlib}/staticlib/libz.a
-  # $ENV{MODULE_libuvc}/libuvc.a
-
+  $ENV{MODULE_libuvc}/libopenpnp-capture.0.0.28.dylib
   $ENV{MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
   ${OpenCV_LIBS}
@@ -193,6 +202,7 @@ include_directories (
   ${INCLUDE_DIRECTORIES}
   "." 
   "./include"
+  "./PlatUtil"
   "./InspectionTarget"
   $ENV{MODULE_acvImage}/include/ 
   $ENV{MODULE_circleFitting} 
@@ -213,7 +223,7 @@ include_directories (
   $ENV{MODULE_MJPEG_Streamer}/include
   $ENV{MODULE_BPG_Protocol}/include 
   $ENV{MODULE_simple_uart}/include
-  # $ENV{MODULE_libuvc}/include
+  $ENV{MODULE_libuvc}/include
   $ENV{MODULE_smem_channel}
   $ENV{MODULE_wfqueue}
   $ENV{MODULE_lodepng}
@@ -223,3 +233,11 @@ include_directories (
   # ${pybind11_INCLUDE_DIRS}
   )
   
+
+
+set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE) 
+set(CMAKE_INSTALL_RPATH "@rpath")
+
+set_target_properties(visSele PROPERTIES 
+                      BUILD_WITH_INSTALL_RPATH TRUE 
+                      INSTALL_RPATH "./")

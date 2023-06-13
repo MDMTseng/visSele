@@ -4,7 +4,7 @@
 #include "InspectionTarget.hpp"
 
 #include <CameraManager.hpp>
-
+#include <atomic>
 class InspectionTarget;
 class CameraManager;
 using namespace std;

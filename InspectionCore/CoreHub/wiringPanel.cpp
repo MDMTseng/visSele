@@ -24,6 +24,7 @@
 
 #include "InspectionTarget.hpp"
 #include "InspTar_SpriteDraw.hpp"
+#include "InspTar_ImgSrc.hpp"
 #include "InspTars.hpp"
 #include "RingBuf.hpp"
 
@@ -85,9 +86,6 @@ uint64_t lastImgSendTime=0;
 
 class InspectionTargetManager_m:public InspectionTargetManager
 {
-  vector<uint8_t> frameDataBuff;
-
-
   void CamStream_CallBack(CameraManager::StreamingInfo &info){
 
 
@@ -307,7 +305,8 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             sttriggerInfo_mix::_triggerInfo mocktrig;
             mocktrig.camera_id=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
             LOGI(">>>>>>>>>timeStamp_us::%d",targetStageInfo->img_prop.fi.timeStamp_us);
-            mocktrig.est_trigger_time_us=targetStageInfo->img_prop.fi.timeStamp_us+123;//
+            mocktrig.trigger_time_match_error_thres_us=1000000;
+            mocktrig.est_trigger_time_us=targetStageInfo->img_prop.fi.timeStamp_us;//
             mocktrig.trigger_id=-(int)(targetStageInfo->img_prop.fi.timeStamp_us);
 
             std::string mockTag=triggerMockFlags[mocktrig.camera_id];
@@ -749,6 +748,376 @@ TimeStampConvertParam CamStampParamUpdate(TimeStampConvertParam param,uint64_t n
   return newParam;
 }
 
+
+
+class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCollect_Base
+{
+  protected:
+  int comm_pgID=-1;
+  // py::module pyscript;
+
+
+  std::map <int,int> CNCMsgID_PGID;
+  public:
+
+
+
+  class PerifChannel2:public Data_JsonRaw_Layer
+  {
+    
+    public:
+    int comm_pgID=-1;
+    std::mutex sendMutex;
+
+    void lock(){
+      sendMutex.lock();
+    }
+    void unlock(){
+      sendMutex.unlock();
+    }
+
+
+    InspectionTarget_JSON_CNC_Peripheral *master;
+    int pkt_count = 0;
+    PerifChannel2(InspectionTarget_JSON_CNC_Peripheral *master):Data_JsonRaw_Layer()// throw(std::runtime_error)
+    {
+      this->master=master;
+    }
+
+    int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)
+    {
+      static int CCC=0;
+      if(opcode==1 )
+      {
+
+
+        char tmp[1024];
+        cJSON *json = cJSON_Parse((char *)raw);
+        int msgID=JFetch_NUMBER_ex(json,"id",-1);
+
+        int retPGID=comm_pgID;
+        if(msgID!=-1 && (master->CNCMsgID_PGID.find(msgID)!=master->CNCMsgID_PGID.end()))
+        {
+          retPGID=master->CNCMsgID_PGID[msgID];
+          master->CNCMsgID_PGID.erase(msgID);
+        }
+      
+        sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s}", raw);
+        LOGI("<<:%s  retPGID:%d", tmp,retPGID);
+        bpg_pi.fromUpperLayer_DATA("PD",retPGID,tmp);
+        bpg_pi.fromUpperLayer_DATA("SS",retPGID,"{}");
+
+
+
+        
+        return 0;
+
+      }
+      printf(">>opcode:%d\n",opcode);
+      return 0;
+    }
+    int recv_RESET()
+    {
+      // printf("Get recv_RESET\n");
+      return 0;
+    }
+    int recv_ERROR(ERROR_TYPE errorcode)
+    {
+      // printf("Get recv_ERROR:%d\n",errorcode);
+      return 0;
+    }
+    
+    void connected(Data_Layer_IF* ch){
+      
+      printf(">>>%X connected\n",ch);
+    }
+
+    void disconnected(Data_Layer_IF* ch){
+      printf(">>>%X disconnected\n",ch);
+    }
+
+    ~PerifChannel2()
+    {
+      close();
+      printf("MData_uInsp DISTRUCT:%p\n",this);
+    }
+
+    // int send_data(int head_room,uint8_t *data,int len,int leg_room){
+      
+    //   // printf("==============\n");
+    //   // for(int i=0;i<len;i++)
+    //   // {
+    //   //   printf("%d ",data[i]);
+    //   // }
+    //   // printf("\n");
+    //   return recv_data(data,len, false);//LOOP back
+    // }
+  };
+  PerifChannel2 *pCH= NULL;
+  
+  public:
+
+
+  static std::string TYPE(){ return "JSON_CNC_Peripheral"; }
+  InspectionTarget_JSON_CNC_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
+    InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path)
+  {
+
+    comm_pgID=-1;
+  }
+
+  ~InspectionTarget_JSON_CNC_Peripheral()
+  {
+
+    if (pCH)
+    {
+      LOGI("DELETING");
+      delete pCH;
+      pCH = NULL;
+    }
+  }
+
+  void replaceAll(std::string& str, const std::string& from, const std::string& to) {
+    if(from.empty())
+        return;
+    size_t start_pos = 0;
+    while((start_pos = str.find(from, start_pos)) != std::string::npos) {
+        str.replace(start_pos, from.length(), to);
+        start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'yx'
+    }
+  }
+
+  virtual void setInspDef(cJSON* def)
+  {
+    InspectionTarget_StageInfoCollect_Base::setInspDef(def);
+
+  }
+
+
+
+  virtual bool feedStageInfo(std::shared_ptr<StageInfo> sinfo)
+  {
+    if(sinfo->source==this)return false;
+    return InspectionTarget_StageInfoCollect_Base::feedStageInfo(sinfo);
+  }
+
+
+  virtual cJSON* genITIOInfo()
+  {
+
+
+    cJSON* arr= cJSON_CreateArray();
+
+    {
+      cJSON* opt= cJSON_CreateObject();
+      cJSON_AddItemToArray(arr,opt);
+
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        
+        cJSON_AddItemToObject(opt, "i",sarr );
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Category::stypeName().c_str() ));
+      }
+
+    }
+
+    return arr;
+  }
+
+  std::future<int> futureInputStagePool()
+  {
+    return std::async(launch::async,&InspectionTarget_JSON_CNC_Peripheral::processInputStagePool,this);
+  }
+
+  bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
+  {
+    bool ret = InspectionTarget::exchangeCMD(info,id,act);
+    if(ret)return ret;
+    string type=JFetch_STRING_ex(info,"type");
+
+    if(type=="MESSAGE")
+    {
+      if(pCH==NULL)
+      {
+        return false;
+      }
+
+      LOGE(">>>>>>>");
+      bool session_ACK=false;
+      cJSON *msg_obj = JFetch_OBJECT(info, "msg");
+      if (msg_obj)
+      {
+
+        std::lock_guard<std::mutex> lock(pCH->sendMutex);
+        uint8_t _buf[2000];
+        LOGE(">>>>>>>");
+        int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,msg_obj);
+        session_ACK = (ret>=0);
+
+        int msg_id=JFetch_NUMBER_ex(msg_obj,"id",-1);
+
+        if(session_ACK && msg_id!=-1)
+        {
+          act.doSendAck=false;
+          CNCMsgID_PGID[msg_id]=id;
+        }
+      }
+      else
+      {
+        session_ACK=false;//send nothing
+      }
+      LOGE(">>>>>>>");
+
+      return session_ACK;
+    }
+
+    if(type=="is_CONNECTED")
+    {
+      return pCH!=NULL;
+    }
+
+
+    if(type=="timer_conv_seq")
+    {
+      return false;
+    }
+
+    if(type=="CONNECT")
+    {
+
+      int comm_id=JFetch_NUMBER_ex(info,"comm_id",-1);
+
+      bool session_ACK=false;
+      string errMsg="";
+      do{
+      if (pCH)
+      {
+        LOGI("DELETING");
+        delete pCH;
+        pCH = NULL;
+      }
+      LOGI("DELETED...  ");
+      LOGI("comm_id:%d  ",comm_id);
+      
+      
+      Data_Layer_IF *PHYLayer=NULL;
+      char *uart_name = NULL;
+      
+
+      cJSON* src_info=def;
+
+      char *IP = NULL;
+      if ( (uart_name=JFetch_STRING(src_info, "uart_name")) !=NULL)
+      {
+        int baudrate = (int)JFetch_NUMBER_ex(src_info, "baudrate",-1);
+        if(baudrate==-1)
+        {
+          break;
+        }
+
+
+        string default_mode=JFetch_STRING_ex(src_info, "mode","8N1");
+
+        try{
+          
+          PHYLayer=new Data_UART_Layer(uart_name,baudrate, default_mode.c_str());
+
+
+        }
+        catch(std::runtime_error &e){
+          
+        }
+
+      }
+      else if( (IP=JFetch_STRING(src_info, "ip"))!=NULL)
+      {
+
+        double *port_number = JFetch_NUMBER(src_info, "port");
+        if (port_number == NULL)
+        {
+          // sprintf(err_str, "IP(%d) port_number(%d)", IP!=NULL,port_number!=NULL);
+          break;
+        }
+      
+
+        try{
+          
+          PHYLayer=new Data_TCP_Layer(IP,(int)*port_number);
+
+        }
+        catch(std::runtime_error &e){
+        }
+
+
+
+      }
+
+      if(PHYLayer!=NULL)
+      {
+        pCH=new PerifChannel2(this);
+        comm_pgID=comm_id;
+        pCH->comm_pgID=comm_id;
+        pCH->setDLayer(PHYLayer);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        pCH->send_RESET();
+        pCH->RESET();
+
+
+        session_ACK = true;
+  
+      }
+      else
+      {
+        session_ACK = false;
+
+        LOGE("PHYLayer is not able to eatablish");
+        // sprintf(err_str, "PHYLayer is not able to eatablish");
+      }
+    
+    
+    
+      }while(0);
+
+      return session_ACK;
+    }
+
+    if(type=="DISCONNECT")
+    {
+      if(pCH==NULL)
+      {
+        return false;
+      }
+      
+      if (pCH)
+      {
+        LOGI("DELETING");
+        delete pCH;
+        pCH = NULL;
+      }
+      return true;
+    }
+
+
+
+    return false;
+  }
+
+
+  int find(std::vector< string > tags,string target)
+  {
+    for(int i=0;i<tags.size();i++)
+    {
+      if(tags[i]==target)return i;
+    }
+    return -1;
+  }
+
+
+  void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
+  {
+
+  }
+};
 
 
 class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect_Base
@@ -2408,7 +2777,28 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
         if(okToSend)
         {
 
-          Mat CV_Img(im2send->GetHeight(),im2send->GetWidth(),CV_8UC3,im2send->CVector[0]);
+          int W=im2send->GetWidth();
+          int H=im2send->GetHeight();
+          int downSampleAdj=(int)round(sqrt(W*H/(5000000)));
+          LOGI("%dx%d=%d,ds:%d",W,H,W*H,downSampleAdj);
+          if(downSampleAdj<1)downSampleAdj=1;
+
+          Mat _CV_Img(im2send->GetHeight(),im2send->GetWidth(),CV_8UC3,im2send->CVector[0]);
+
+          int dsW=im2send->GetWidth()/downSampleAdj;
+          int dsH=im2send->GetHeight()/downSampleAdj;
+          Mat CV_Img=_CV_Img;
+          if(downSampleAdj==1)
+          {
+            CV_Img=_CV_Img;
+          }
+          else
+          {
+
+            resize(_CV_Img, CV_Img, Size(dsW,dsH), INTER_LINEAR);
+          }
+
+
           int compressionRate=95-datTransferQueue.size()*5;
           if(compressionRate<20)compressionRate=20;
 
@@ -2452,15 +2842,15 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
             imgb64Info.offsetX=imgb64Info.offsetY=0;
             imgb64Info.fullHeight=CV_Img.rows;
             imgb64Info.fullWidth=CV_Img.cols;
-            imgb64Info.scale=1;
+            imgb64Info.scale=downSampleAdj;
             
             bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&imgb64Info);
             
           }
 
 
-          LOGI("COMPRESSION:: %dx%d  jpeg:rate:%d size:%d",
-            im2send->GetWidth(),im2send->GetHeight(),compressionRate,img_encode.size());
+          LOGI("COMPRESSION:: %dx%d =>%dx%d ds:%d  jpeg:rate:%d size:%d",
+            im2send->GetWidth(),im2send->GetHeight(),dsW,dsH,downSampleAdj,compressionRate,img_encode.size());
 
           if(image_transfer_rest_ms>0)
           {
@@ -2658,6 +3048,10 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
 };
 
 
+
+
+
+
 int _argc;
 char **_argv;
 
@@ -2717,7 +3111,6 @@ BGLightNodeInfo extractInfoFromJson(cJSON *nodeRoot) //have exception
 
 class exchangeCMD_ACTx: public exchangeCMD_ACT
 { 
-  
   acvImage dataSend_buff;
   virtual void send(const char *TL, int pgID,cJSON* def){
     
@@ -2756,7 +3149,7 @@ exchangeCMD_ACTx exchCMDact;
 int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat) 
 {
   //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
-
+  exchCMDact.doSendAck=true;
     BPG_protocol_data *dat = &bpgdat;
 
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
@@ -3113,6 +3506,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           }
 
 
+          char *FormatStr = JFetch_STRING(json, "FormatStr");
+          if(FormatStr)
+          {
+            cami->camera->SetFormatStr(string(FormatStr));
+            LOGI("FormatStr:%s",FormatStr);
+          }
+
+
           double *RGain = JFetch_NUMBER(json, "RGain");
           if(RGain)
           {
@@ -3404,6 +3805,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             inspTar = new InspectionTarget_JSON_Peripheral(id,defInfo,&inspTarMan,env_path);
           }
+          else if(type==InspectionTarget_JSON_CNC_Peripheral::TYPE())
+          {
+            inspTar = new InspectionTarget_JSON_CNC_Peripheral(id,defInfo,&inspTarMan,env_path);
+          }
           else if(type==InspectionTarget_StageInfoCollect_Base::TYPE())
           {
             inspTar = new InspectionTarget_StageInfoCollect_Base(id,defInfo,&inspTarMan,env_path);
@@ -3412,6 +3817,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             inspTar = new InspectionTarget_SpriteDraw(id,defInfo,&inspTarMan,env_path);
           }
+          else if(type==InspectionTarget_ImgSrc::TYPE())
+          {
+            inspTar = new InspectionTarget_ImgSrc(id,defInfo,&inspTarMan,env_path);
+          }
+
+          
           else
           {
             //failed
@@ -3489,6 +3900,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         if(insptar==NULL)break;
 
         session_ACK=insptar->exchangeCMD(JFetch_OBJECT(json,"data"),dat->pgID,exchCMDact);
+        
+        if(exchCMDact.doSendAck==false)
+        {
+          noInstantACK=true;
+        }
         // if(reply!=NULL)
         // {
         //   session_ACK=true;

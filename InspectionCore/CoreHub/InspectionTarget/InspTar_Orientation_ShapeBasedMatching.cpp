@@ -1063,6 +1063,13 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   bool must_refine_result = JFetch_TRUE(def, "must_refine_result");
   bool remove_refine_failed_result = JFetch_TRUE(def, "remove_refine_failed_result");
 
+
+  std::sort(idxs.begin(), idxs.end(), [&](int a, int b) {
+    int sa=matches[a].y*10+matches[a].x;//tilt the score a bit, assume the arrangment is like a grid
+    int sb=matches[b].y*10+matches[b].x;
+    return sa < sb;
+  });
+
   for (int i = 0; i < idxs.size(); i++)
   {
     auto idx = idxs[i];
