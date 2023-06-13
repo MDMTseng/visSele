@@ -2195,8 +2195,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             }
 
             doImgProcessThread = true;
-            imageQueueSkipSize=3;
-            datViewQueueSkipSize=2;
+            imageQueueSkipSize=1;
+            datViewQueueSkipSize=1;
           }
           else if (dat->tl[0] == 'F') //"FI" is for full inspection
           {                           //no manual trigger and process in thread
