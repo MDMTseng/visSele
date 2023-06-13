@@ -2098,10 +2098,10 @@ int ResultB(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group,int &
     LOGI("[%d]:from:%s  =========cat:%d",i,group[i]->source_id.c_str(),cur_cat);
     if(cur_cat==STAGEINFO_CAT_NOT_EXIST || cur_cat==STAGEINFO_CAT_UNSET)cur_cat=STAGEINFO_CAT_NA;
     
-    if(holeIdx<0)
-    {
-      cur_cat=STAGEINFO_CAT_NA;
-    }
+    // if(holeIdx<0)
+    // {
+    //   cur_cat=STAGEINFO_CAT_NA;
+    // }
 
     int bk_catSum=catSum;
 
@@ -2200,7 +2200,7 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
 {
   int catSum,holeIdx;
 
-  if(ResultA(trigger_id,group,catSum,holeIdx)!=0)
+  if(ResultB(trigger_id,group,catSum,holeIdx)!=0)
   {
     return;
   }
@@ -3817,10 +3817,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             inspTar = new InspectionTarget_SpriteDraw(id,defInfo,&inspTarMan,env_path);
           }
-          else if(type==InspectionTarget_ImgSrc::TYPE())
-          {
-            inspTar = new InspectionTarget_ImgSrc(id,defInfo,&inspTarMan,env_path);
-          }
+          // else if(type==InspectionTarget_ImgSrc::TYPE())
+          // {
+          //   inspTar = new InspectionTarget_ImgSrc(id,defInfo,&inspTarMan,env_path);
+          // }
 
           
           else
