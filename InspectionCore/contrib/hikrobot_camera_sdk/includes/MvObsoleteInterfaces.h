@@ -300,7 +300,7 @@ MV_CAMCTRL_API int __stdcall MV_CC_SaveImageEx(IN OUT MV_SAVE_IMAGE_PARAM_EX* pS
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Bayer噪声估计（该接口已弃用，建议改用 MV_CC_NoiseEstimate接口）
+ *  @brief  Bayer噪声估计（该接口已弃用，建议改用ISP Tool方式进行标定）
  *  @param  handle                      [IN]            设备句柄
  *  @param  pstNoiseEstimateParam       [IN][OUT]       Bayer噪声估计参数结构体
  *  @return 成功，返回MV_OK；错误，返回错误码 
@@ -319,7 +319,7 @@ MV_CAMCTRL_API int __stdcall MV_CC_BayerNoiseEstimate(IN void* handle, IN OUT MV
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Bayer空域降噪（该接口已弃用，建议改用 MV_CC_SpatialDenoise接口）
+ *  @brief  Bayer空域降噪（该接口已弃用，建议改用ISP Tool方式进行降噪）
  *  @param  handle                      [IN]            设备句柄
  *  @param  pstSpatialDenoiseParam      [IN][OUT]       Bayer空域降噪参数结构体
  *  @return 成功，返回MV_OK；错误，返回错误码 
@@ -335,6 +335,118 @@ MV_CAMCTRL_API int __stdcall MV_CC_BayerNoiseEstimate(IN void* handle, IN OUT MV
              This API is only available when the camera is turned on, and when the camera is disconnected or disconnected, continuing to use This API will return an error.
  ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CC_BayerSpatialDenoise(IN void* handle, IN OUT MV_CC_BAYER_SPATIAL_DENOISE_PARAM* pstSpatialDenoiseParam);
+
+/********************************************************************//**
+ *  @~chinese
+ *  @brief  设置Bayer格式的CLUT使能和信息（该接口已弃用，建议改用ISP Tool方式进行设置）
+ *  @param  handle                      [IN]            设备句柄
+ *  @param  pstCLUTParam                [IN]            CLUT参数
+ *  @return 成功，返回MV_OK；错误，返回错误码 
+ *  @remarks 开启CLUT并设置CLUT信息后，在调用MV_CC_ConvertPixelType、MV_CC_SaveImageEx2接口将Bayer8/10/12/16格式转成RGB24/48， RGBA32/64，BGR24/48，BGRA32/64时起效。
+
+ *  @~english
+ *  @brief  Set CLUT param
+ *  @param  handle                      [IN]            Device handle
+ *  @param  pstCLUTParam                [IN]            CLUT parameter structure
+ *  @return Success, return MV_OK. Failure, return error code
+ *  @remarks After enable the CLUT and set CLUT, It work in the calling MV_CC_ConvertPixelType\MV_CC_SaveImageEx2 API convert Bayer8/10/12/16 to RGB24/48， RGBA32/64，BGR24/48，BGRA32/64.
+ ************************************************************************/
+MV_CAMCTRL_API int __stdcall MV_CC_SetBayerCLUTParam(IN void* handle, IN MV_CC_CLUT_PARAM* pstCLUTParam);
+
+/********************************************************************//**
+ *  @~chinese
+ *  @brief  图像锐化（该接口已弃用，建议改用ISP Tool方式进行锐化）
+ *  @param  handle                      [IN]            设备句柄
+ *  @param  pstSharpenParam             [IN]            锐化参数
+ *  @return 成功，返回MV_OK；错误，返回错误码 
+
+ *  @~english
+ *  @brief  Image sharpen
+ *  @param  handle                      [IN]            Device handle
+ *  @param  pstSharpenParam             [IN]            Sharpen parameter structure
+ *  @return Success, return MV_OK. Failure, return error code
+ ************************************************************************/
+MV_CAMCTRL_API int __stdcall MV_CC_ImageSharpen(IN void* handle, IN OUT MV_CC_SHARPEN_PARAM* pstSharpenParam);
+
+/********************************************************************//**
+ *  @~chinese
+ *  @brief  色彩校正（包括CCM和CLUT）（该接口已弃用，建议改用ISP Tool方式进行校正）
+ *  @param  handle                      [IN]            设备句柄
+ *  @param  pstColorCorrectParam        [IN]            色彩校正参数
+ *  @return 成功，返回MV_OK；错误，返回错误码 
+ *  @remarks 该接口支持单独CCM或者CLUT，也支持同时进行CCM和CLUT，用户可以通过CCM和CLUT信息中的使能开关进行选择。
+
+ *  @~english
+ *  @brief  Color Correct(include CCM and CLUT)
+ *  @param  handle                      [IN]            Device handle
+ *  @param  pstColorCorrectParam        [IN]            Color Correct parameter structure
+ *  @return Success, return MV_OK. Failure, return error code
+ *  @remarks This API supports CCM or CLUT alone, as well as CCM and CLUT at the same time. The user can select by means of the enable switch in CCM and CLUT information.
+ ************************************************************************/
+MV_CAMCTRL_API int __stdcall MV_CC_ColorCorrect(IN void* handle, IN OUT MV_CC_COLOR_CORRECT_PARAM* pstColorCorrectParam);
+
+/********************************************************************//**
+ *  @~chinese
+ *  @brief  噪声估计（该接口已弃用，建议改用ISP Tool方式进行标定）
+ *  @param  handle                      [IN]            设备句柄
+ *  @param  pstNoiseEstimateParam       [IN]            噪声估计参数
+ *  @return 成功，返回MV_OK；错误，返回错误码 
+ *  @remarks 如果用户选择全图做噪声估计，nROINum可输入0，pstROIRect可置空。
+
+ *  @~english
+ *  @brief  Noise Estimate
+ *  @param  handle                      [IN]            Device handle
+ *  @param  pstNoiseEstimateParam       [IN]            Noise Estimate parameter structure
+ *  @return Success, return MV_OK. Failure, return error code
+ *  @remarks If the user selects the full image, nROINum can be typed with 0 and pstROIRect empty.
+ ************************************************************************/
+MV_CAMCTRL_API int __stdcall MV_CC_NoiseEstimate(IN void* handle, IN OUT MV_CC_NOISE_ESTIMATE_PARAM* pstNoiseEstimateParam);
+
+/********************************************************************//**
+ *  @~chinese
+ *  @brief  空域降噪（该接口已弃用，建议改用ISP Tool方式进行降噪）
+ *  @param  handle                      [IN]            设备句柄
+ *  @param  pstSpatialDenoiseParam      [IN]            空域降噪参数
+ *  @return 成功，返回MV_OK；错误，返回错误码 
+
+ *  @~english
+ *  @brief  Spatial Denoise
+ *  @param  handle                      [IN]            Device handle
+ *  @param  pstSpatialDenoiseParam      [IN]            Spatial Denoise parameter structure
+ *  @return Success, return MV_OK. Failure, return error code
+ ************************************************************************/
+MV_CAMCTRL_API int __stdcall MV_CC_SpatialDenoise(IN void* handle, IN OUT MV_CC_SPATIAL_DENOISE_PARAM* pstSpatialDenoiseParam);
+
+
+/********************************************************************//**
+ *  @~chinese
+ *  @brief  LSC标定
+ *  @param  handle                      [IN]            设备句柄
+ *  @param  pstLSCCalibParam            [IN]            标定参数
+ *  @return 成功，返回MV_OK；错误，返回错误码 
+
+ *  @~english
+ *  @brief  LSC Calib
+ *  @param  handle                      [IN]            Device handle
+ *  @param  pstLSCCalibParam            [IN]            LSC Calib parameter structure
+ *  @return Success, return MV_OK. Failure, return error code
+ ************************************************************************/
+MV_CAMCTRL_API int __stdcall MV_CC_LSCCalib(IN void* handle, IN OUT MV_CC_LSC_CALIB_PARAM* pstLSCCalibParam);
+
+/********************************************************************//**
+ *  @~chinese
+ *  @brief  LSC校正
+ *  @param  handle                      [IN]            设备句柄
+ *  @param  pstLSCCorrectParam          [IN]            校正参数
+ *  @return 成功，返回MV_OK；错误，返回错误码 
+
+ *  @~english
+ *  @brief  LSC Correct
+ *  @param  handle                      [IN]            Device handle
+ *  @param  pstLSCCorrectParam          [IN]            LSC Correct parameter structure
+ *  @return Success, return MV_OK. Failure, return error code
+ ************************************************************************/
+MV_CAMCTRL_API int __stdcall MV_CC_LSCCorrect(IN void* handle, IN OUT MV_CC_LSC_CORRECT_PARAM* pstLSCCorrectParam);
 
 /************************************************************************
  *  @fn     MV_GIGE_ForceIp
@@ -1717,6 +1829,73 @@ MV_CAMCTRL_API int __stdcall MV_CAML_GetDeviceBauderate(IN void* handle,unsigned
  *  @remarks (This interface is abandoned, it is recommended to use the MV_CAML_GetSupportBaudrates)
 ************************************************************************/
 MV_CAMCTRL_API int __stdcall MV_CAML_GetSupportBauderates(IN void* handle,unsigned int* pnBaudrateAblity);
+
+
+
+/********************************************************************//**
+ *  @~chinese
+ *  @brief  保存图片，支持Bmp和Jpeg.
+ *  @param  handle                      [IN]            设备句柄
+ *  @param  pstSaveParam                [IN][OUT]       保存图片参数结构体
+ *  @return 成功，返回MV_OK；错误，返回错误码 
+ *  @remarks 通过将接口可以将从设备采集到的原始图像数据转换成JPEG或者BMP等格式并存放在指定内存中，然后用户可以将转换之后的数据直接保存成图片文件。
+             该接口调用无接口顺序要求，有图像源数据就可以进行转换，可以先调用MV_CC_GetOneFrameTimeout或者MV_CC_RegisterImageCallBackEx设置回调函数，获取一帧图像数据，然后再通过该接口转换格式。
+             MV_CC_SaveImageEx2比MV_CC_SaveImageEx增加参数handle，为了保证与其他接口的统一。
+ 
+ *  @~english
+ *  @brief  Save image, support Bmp and Jpeg.
+ *  @param  handle                      [IN]            Device handle
+ *  @param  pstSaveParam                [IN][OUT]       Save image parameters structure
+ *  @return Success, return MV_OK. Failure, return error code
+ *  @remarks Once there is image data, you can call this API to convert the data.
+             You can also call MV_CC_GetOneFrameTimeout or MV_CC_RegisterImageCallBackEx or MV_CC_GetImageBuffer to get one image frame and set the callback function, and then call this API to convert the format.
+             Comparing with the API MV_CC_SaveImageEx, this API added the parameter handle to ensure the unity with other API. 
+ ************************************************************************/
+MV_CAMCTRL_API int __stdcall MV_CC_SaveImageEx2(IN void* handle, MV_SAVE_IMAGE_PARAM_EX* pstSaveParam);
+
+
+/********************************************************************//**
+ *  @~chinese
+ *  @brief  保存图像到文件
+ *  @param  handle                      [IN]            设备句柄
+ *  @param  pstSaveFileParam            [IN][OUT]       保存图片文件参数结构体
+ *  @return 成功，返回MV_OK；错误，返回错误码 
+ *  @remarks 该接口支持BMP/JPEG/PNG/TIFF。
+ 
+ *  @~english
+ *  @brief  Save the image file.
+ *  @param  handle                      [IN]            Device handle
+ *  @param  pstSaveFileParam            [IN][OUT]       Save the image file parameter structure
+ *  @return Success, return MV_OK. Failure, return error code
+ *  @remarks This API support BMP/JPEG/PNG/TIFF.
+ ************************************************************************/
+MV_CAMCTRL_API int __stdcall MV_CC_SaveImageToFile(IN void* handle, MV_SAVE_IMG_TO_FILE_PARAM* pstSaveFileParam);
+
+
+/********************************************************************//**
+ *  @~chinese
+ *  @brief  像素格式转换
+ *  @param  handle                      [IN]            设备句柄
+ *  @param  pstCvtParam                 [IN][OUT]       像素格式转换参数结构体
+ *  @return 成功，返回MV_OK；错误，返回错误码 
+ *  @remarks 通过将接口可以将从设备采集到的原始图像数据转换成用户所需的像素格式并存放在指定内存中。
+             该接口调用无接口顺序要求，有图像源数据就可以进行转换，可以先调用MV_CC_GetOneFrameTimeout或者MV_CC_RegisterImageCallBackEx设置回调函数，
+             获取一帧图像数据，然后再通过该接口转换格式。如果设备当前采集图像是JPEG压缩的格式，则不支持调用该接口进行转换。
+ 
+ *  @~english
+ *  @brief  Pixel format conversion
+ *  @param  handle                      [IN]            Device handle
+ *  @param  pstCvtParam                 [IN][OUT]       Convert Pixel Type parameter structure
+ *  @return Success, return MV_OK. Failure, return error code
+ *  @remarks This API is used to transform the collected original data to pixel format and save to specified memory. 
+             There is no order requirement to call this API, the transformation will execute when there is image data. 
+             First call MV_CC_GetOneFrameTimeout or MV_CC_RegisterImageCallBackEx to set callback function, and get a frame of image data,
+             then call this API to transform the format.
+ ************************************************************************/
+MV_CAMCTRL_API int __stdcall MV_CC_ConvertPixelType(IN void* handle, IN OUT MV_CC_PIXEL_CONVERT_PARAM* pstCvtParam);
+
+
+
 
 #ifdef __cplusplus
 }

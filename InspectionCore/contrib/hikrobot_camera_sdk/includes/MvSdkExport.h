@@ -38,16 +38,16 @@ extern "C" {
 #endif
     
 /************************************************************************/
-/* Éè±¸µÄ»ù±¾Ö¸ÁîºÍ²Ù×÷                                         		*/
+/* è®¾å¤‡çš„åŸºæœ¬æŒ‡ä»¤å’Œæ“ä½œ                                         		*/
 /* Camera basic instructions and operations                             */
 /************************************************************************/
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡SDK°æ±¾ºÅ
- *  @return ·µ»Ø4×Ö½Ú°æ±¾ºÅ
-            |Ö÷    |´Î    |ĞŞÕı  |  ²âÊÔ|
+ *  @brief  è·å–SDKç‰ˆæœ¬å·
+ *  @return è¿”å›4å­—èŠ‚ç‰ˆæœ¬å·
+            |ä¸»    |æ¬¡    |ä¿®æ­£  |  æµ‹è¯•|
              8bits  8bits  8bits  8bits
- *  @remarks ±ÈÈç·µ»ØÖµÎª0x01000001£¬¼´SDK°æ±¾ºÅÎªV1.0.0.1¡£
+ *  @remarks æ¯”å¦‚è¿”å›å€¼ä¸º0x01000001ï¼Œå³SDKç‰ˆæœ¬å·ä¸ºV1.0.0.1ã€‚
  
  *  @~english
  *  @brief  Get SDK Version
@@ -60,8 +60,8 @@ MVSDKEXPORT_API unsigned int __stdcall MV_CC_GetSDKVersion();
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Ö§³ÖµÄ´«Êä²ã
- *  @return Ö§³ÖµÄ´«Êä²ã±àºÅ 
+ *  @brief  è·å–æ”¯æŒçš„ä¼ è¾“å±‚
+ *  @return æ”¯æŒçš„ä¼ è¾“å±‚ç¼–å· 
 
  *  @~english
  *  @brief  Get supported Transport Layer
@@ -71,12 +71,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_EnumerateTls();
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ã¶¾ÙÉè±¸
- *  @param  nTLayerType                 [IN]            Ã¶¾Ù´«Êä²ã
- *  @param  pstDevList                  [OUT]           Éè±¸ÁĞ±í
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Éè±¸ÁĞ±íµÄÄÚ´æÊÇÔÚSDKÄÚ²¿·ÖÅäµÄ£¬¶àÏß³Ìµ÷ÓÃ¸Ã½Ó¿ÚÊ±»á½øĞĞÉè±¸ÁĞ±íÄÚ´æµÄÊÍ·ÅºÍÉêÇë£¬\n
-             ½¨Òé¾¡Á¿±ÜÃâ¶àÏß³ÌÃ¶¾Ù²Ù×÷¡£
+ *  @brief  æšä¸¾è®¾å¤‡
+ *  @param  nTLayerType                 [IN]            æšä¸¾ä¼ è¾“å±‚
+ *  @param  pstDevList                  [OUT]           è®¾å¤‡åˆ—è¡¨
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è®¾å¤‡åˆ—è¡¨çš„å†…å­˜æ˜¯åœ¨SDKå†…éƒ¨åˆ†é…çš„ï¼Œå¤šçº¿ç¨‹è°ƒç”¨è¯¥æ¥å£æ—¶ä¼šè¿›è¡Œè®¾å¤‡åˆ—è¡¨å†…å­˜çš„é‡Šæ”¾å’Œç”³è¯·ï¼Œ\n
+             å»ºè®®å°½é‡é¿å…å¤šçº¿ç¨‹æšä¸¾æ“ä½œã€‚
 
  *  @~english
  *  @brief  Enumerate Device
@@ -90,13 +90,13 @@ MVSDKEXPORT_API int __stdcall MV_CC_EnumDevices(IN unsigned int nTLayerType, IN 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ¸ù¾İ³§ÉÌÃû×ÖÃ¶¾ÙÉè±¸
- *  @param  nTLayerType                 [IN]            Ã¶¾Ù´«Êä²ã
- *  @param  pstDevList                  [OUT]           Éè±¸ÁĞ±í
- *  @param  strManufacturerName           [IN]            ³§ÉÌÃû×Ö
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Éè±¸ÁĞ±íµÄÄÚ´æÊÇÔÚSDKÄÚ²¿·ÖÅäµÄ£¬¶àÏß³Ìµ÷ÓÃ¸Ã½Ó¿ÚÊ±»á½øĞĞÉè±¸ÁĞ±íÄÚ´æµÄÊÍ·ÅºÍÉêÇë£¬\n
-             ½¨Òé¾¡Á¿±ÜÃâ¶àÏß³ÌÃ¶¾Ù²Ù×÷¡£
+ *  @brief  æ ¹æ®å‚å•†åå­—æšä¸¾è®¾å¤‡
+ *  @param  nTLayerType                 [IN]            æšä¸¾ä¼ è¾“å±‚
+ *  @param  pstDevList                  [OUT]           è®¾å¤‡åˆ—è¡¨
+ *  @param  strManufacturerName           [IN]            å‚å•†åå­—
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è®¾å¤‡åˆ—è¡¨çš„å†…å­˜æ˜¯åœ¨SDKå†…éƒ¨åˆ†é…çš„ï¼Œå¤šçº¿ç¨‹è°ƒç”¨è¯¥æ¥å£æ—¶ä¼šè¿›è¡Œè®¾å¤‡åˆ—è¡¨å†…å­˜çš„é‡Šæ”¾å’Œç”³è¯·ï¼Œ\n
+             å»ºè®®å°½é‡é¿å…å¤šçº¿ç¨‹æšä¸¾æ“ä½œã€‚
 
  *  @~english
  *  @brief  Enumerate device according to manufacture name
@@ -111,13 +111,13 @@ MVSDKEXPORT_API int __stdcall MV_CC_EnumDevicesEx(IN unsigned int nTLayerType, I
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Éè±¸ÊÇ·ñ¿É´ï
- *  @param  pstDevInfo                  [IN]            Éè±¸ĞÅÏ¢½á¹¹Ìå
- *  @param  nAccessMode                 [IN]            ·ÃÎÊÈ¨ÏŞ
- *  @return ¿É´ï£¬·µ»Øtrue£»²»¿É´ï£¬·µ»Øfalse
- *  @remarks ¶ÁÈ¡Éè±¸CCP¼Ä´æÆ÷µÄÖµ£¬ÅĞ¶Ïµ±Ç°×´Ì¬ÊÇ·ñ¾ßÓĞÄ³ÖÖ·ÃÎÊÈ¨ÏŞ¡£ \n
-             Èç¹ûÉè±¸²»Ö§³ÖMV_ACCESS_ExclusiveWithSwitch¡¢MV_ACCESS_ControlWithSwitch¡¢MV_ACCESS_ControlSwitchEnableWithKeyÕâÈıÖÖÄ£Ê½£¬½Ó¿Ú·µ»Øfalse¡£Ä¿Ç°Éè±¸²»Ö§³ÖÕâ3ÖÖÇÀÕ¼Ä£Ê½£¬¹ú¼ÊÉÏÖ÷Á÷µÄ³§ÉÌµÄÉè±¸Ò²¶¼Ôİ²»Ö§³ÖÕâ3ÖÖÄ£Ê½¡£ \n
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  è®¾å¤‡æ˜¯å¦å¯è¾¾
+ *  @param  pstDevInfo                  [IN]            è®¾å¤‡ä¿¡æ¯ç»“æ„ä½“
+ *  @param  nAccessMode                 [IN]            è®¿é—®æƒé™
+ *  @return å¯è¾¾ï¼Œè¿”å›trueï¼›ä¸å¯è¾¾ï¼Œè¿”å›false
+ *  @remarks è¯»å–è®¾å¤‡CCPå¯„å­˜å™¨çš„å€¼ï¼Œåˆ¤æ–­å½“å‰çŠ¶æ€æ˜¯å¦å…·æœ‰æŸç§è®¿é—®æƒé™ã€‚ \n
+             å¦‚æœè®¾å¤‡ä¸æ”¯æŒMV_ACCESS_ExclusiveWithSwitchã€MV_ACCESS_ControlWithSwitchã€MV_ACCESS_ControlSwitchEnableWithKeyè¿™ä¸‰ç§æ¨¡å¼ï¼Œæ¥å£è¿”å›falseã€‚ç›®å‰è®¾å¤‡ä¸æ”¯æŒè¿™3ç§æŠ¢å æ¨¡å¼ï¼Œå›½é™…ä¸Šä¸»æµçš„å‚å•†çš„è®¾å¤‡ä¹Ÿéƒ½æš‚ä¸æ”¯æŒè¿™3ç§æ¨¡å¼ã€‚ \n
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Is the device accessible
@@ -132,11 +132,11 @@ MVSDKEXPORT_API bool __stdcall MV_CC_IsDeviceAccessible(IN MV_CC_DEVICE_INFO* ps
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ´´½¨Éè±¸¾ä±ú
- *  @param  handle                      [OUT]           Éè±¸¾ä±ú
- *  @param  pstDevInfo                  [IN]            Éè±¸ĞÅÏ¢½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸ù¾İÊäÈëµÄÉè±¸ĞÅÏ¢£¬´´½¨¿âÄÚ²¿±ØĞëµÄ×ÊÔ´ºÍ³õÊ¼»¯ÄÚ²¿Ä£¿é¡£Í¨¹ı¸Ã½Ó¿Ú´´½¨¾ä±ú£¬µ÷ÓÃSDK½Ó¿Ú£¬»áÄ¬ÈÏÉú³ÉSDKÈÕÖ¾ÎÄ¼ş£¬Èç¹û²»ĞèÒªÉú³ÉÈÕÖ¾ÎÄ¼ş£¬¿ÉÒÔÍ¨¹ıMV_CC_CreateHandleWithoutLog´´½¨¾ä±ú¡£
+ *  @brief  åˆ›å»ºè®¾å¤‡å¥æŸ„
+ *  @param  handle                      [OUT]           è®¾å¤‡å¥æŸ„
+ *  @param  pstDevInfo                  [IN]            è®¾å¤‡ä¿¡æ¯ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks æ ¹æ®è¾“å…¥çš„è®¾å¤‡ä¿¡æ¯ï¼Œåˆ›å»ºåº“å†…éƒ¨å¿…é¡»çš„èµ„æºå’Œåˆå§‹åŒ–å†…éƒ¨æ¨¡å—ã€‚é€šè¿‡è¯¥æ¥å£åˆ›å»ºå¥æŸ„ï¼Œè°ƒç”¨SDKæ¥å£ï¼Œä¼šé»˜è®¤ç”ŸæˆSDKæ—¥å¿—æ–‡ä»¶ï¼Œå¦‚æœä¸éœ€è¦ç”Ÿæˆæ—¥å¿—æ–‡ä»¶ï¼Œå¯ä»¥é€šè¿‡MV_CC_CreateHandleWithoutLogåˆ›å»ºå¥æŸ„ã€‚
  
  *  @~english
  *  @brief  Create Device Handle
@@ -149,11 +149,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_CreateHandle(OUT void ** handle, IN const MV
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ´´½¨Éè±¸¾ä±ú£¬²»Éú³ÉÈÕÖ¾
- *  @param  handle                      [OUT]           Éè±¸¾ä±ú
- *  @param  pstDevInfo                  [IN]            Éè±¸ĞÅÏ¢½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸ù¾İÊäÈëµÄÉè±¸ĞÅÏ¢£¬´´½¨¿âÄÚ²¿±ØĞëµÄ×ÊÔ´ºÍ³õÊ¼»¯ÄÚ²¿Ä£¿é¡£Í¨¹ı¸Ã½Ó¿Ú´´½¨¾ä±ú£¬µ÷ÓÃSDK½Ó¿Ú£¬²»»áÄ¬ÈÏÉú³ÉSDKÈÕÖ¾ÎÄ¼ş£¬Èç¹ûĞèÒªÉú³ÉÈÕÖ¾ÎÄ¼ş¿ÉÒÔÍ¨¹ıMV_CC_CreateHandle´´½¨¾ä±ú£¬ÈÕÖ¾ÎÄ¼ş×Ô¶¯Éú³É¡£
+ *  @brief  åˆ›å»ºè®¾å¤‡å¥æŸ„ï¼Œä¸ç”Ÿæˆæ—¥å¿—
+ *  @param  handle                      [OUT]           è®¾å¤‡å¥æŸ„
+ *  @param  pstDevInfo                  [IN]            è®¾å¤‡ä¿¡æ¯ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks æ ¹æ®è¾“å…¥çš„è®¾å¤‡ä¿¡æ¯ï¼Œåˆ›å»ºåº“å†…éƒ¨å¿…é¡»çš„èµ„æºå’Œåˆå§‹åŒ–å†…éƒ¨æ¨¡å—ã€‚é€šè¿‡è¯¥æ¥å£åˆ›å»ºå¥æŸ„ï¼Œè°ƒç”¨SDKæ¥å£ï¼Œä¸ä¼šé»˜è®¤ç”ŸæˆSDKæ—¥å¿—æ–‡ä»¶ï¼Œå¦‚æœéœ€è¦ç”Ÿæˆæ—¥å¿—æ–‡ä»¶å¯ä»¥é€šè¿‡MV_CC_CreateHandleåˆ›å»ºå¥æŸ„ï¼Œæ—¥å¿—æ–‡ä»¶è‡ªåŠ¨ç”Ÿæˆã€‚
  
  *  @~english
  *  @brief  Create Device Handle without log
@@ -166,9 +166,9 @@ MVSDKEXPORT_API int __stdcall MV_CC_CreateHandleWithoutLog(OUT void ** handle, I
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ïú»ÙÉè±¸¾ä±ú
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  é”€æ¯è®¾å¤‡å¥æŸ„
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
  
  *  @~english
  *  @brief  Destroy Device Handle
@@ -179,14 +179,14 @@ MVSDKEXPORT_API int __stdcall MV_CC_DestroyHandle(IN void * handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ´ò¿ªÉè±¸
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nAccessMode                 [IN]            ·ÃÎÊÈ¨ÏŞ
- *  @param  nSwitchoverKey              [IN]            ÇĞ»»·ÃÎÊÈ¨ÏŞÊ±µÄÃÜÔ¿
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸ù¾İÉèÖÃµÄÉè±¸²ÎÊı£¬ÕÒµ½¶ÔÓ¦µÄÉè±¸£¬Á¬½ÓÉè±¸¡£\n 
-             µ÷ÓÃ½Ó¿ÚÊ±¿É²»´«ÈënAccessModeºÍnSwitchoverKey£¬´ËÊ±Ä¬ÈÏÉè±¸·ÃÎÊÄ£Ê½Îª¶ÀÕ¼È¨ÏŞ¡£Ä¿Ç°Éè±¸Ôİ²»Ö§³ÖMV_ACCESS_ExclusiveWithSwitch¡¢MV_ACCESS_ControlWithSwitch¡¢MV_ACCESS_ControlSwitchEnable¡¢MV_ACCESS_ControlSwitchEnableWithKeyÕâËÄÖÖÇÀÕ¼Ä£Ê½¡£\n 
-             ¶ÔÓÚU3VÉè±¸£¬nAccessMode¡¢nSwitchoverKeyÕâÁ½¸ö²ÎÊıÎŞĞ§¡£ 
+ *  @brief  æ‰“å¼€è®¾å¤‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nAccessMode                 [IN]            è®¿é—®æƒé™
+ *  @param  nSwitchoverKey              [IN]            åˆ‡æ¢è®¿é—®æƒé™æ—¶çš„å¯†é’¥
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks æ ¹æ®è®¾ç½®çš„è®¾å¤‡å‚æ•°ï¼Œæ‰¾åˆ°å¯¹åº”çš„è®¾å¤‡ï¼Œè¿æ¥è®¾å¤‡ã€‚\n 
+             è°ƒç”¨æ¥å£æ—¶å¯ä¸ä¼ å…¥nAccessModeå’ŒnSwitchoverKeyï¼Œæ­¤æ—¶é»˜è®¤è®¾å¤‡è®¿é—®æ¨¡å¼ä¸ºç‹¬å æƒé™ã€‚ç›®å‰è®¾å¤‡æš‚ä¸æ”¯æŒMV_ACCESS_ExclusiveWithSwitchã€MV_ACCESS_ControlWithSwitchã€MV_ACCESS_ControlSwitchEnableã€MV_ACCESS_ControlSwitchEnableWithKeyè¿™å››ç§æŠ¢å æ¨¡å¼ã€‚\n 
+             å¯¹äºU3Vè®¾å¤‡ï¼ŒnAccessModeã€nSwitchoverKeyè¿™ä¸¤ä¸ªå‚æ•°æ— æ•ˆã€‚ 
  
  *  @~english
  *  @brief  Open Device
@@ -202,10 +202,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_OpenDevice(IN void* handle, IN unsigned int 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ¹Ø±ÕÉè±¸
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ıMV_CC_OpenDeviceÁ¬½ÓÉè±¸ºó£¬¿ÉÒÔÍ¨¹ı¸Ã½Ó¿Ú¶Ï¿ªÉè±¸Á¬½Ó£¬ÊÍ·Å×ÊÔ´
+ *  @brief  å…³é—­è®¾å¤‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks é€šè¿‡MV_CC_OpenDeviceè¿æ¥è®¾å¤‡åï¼Œå¯ä»¥é€šè¿‡è¯¥æ¥å£æ–­å¼€è®¾å¤‡è¿æ¥ï¼Œé‡Šæ”¾èµ„æº
  
  *  @~english
  *  @brief  Close Device
@@ -217,9 +217,9 @@ MVSDKEXPORT_API int __stdcall MV_CC_CloseDevice(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÅĞ¶ÏÉè±¸ÊÇ·ñ´¦ÓÚÁ¬½Ó×´Ì¬
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return Éè±¸´¦ÓÚÁ¬½Ó×´Ì¬£¬·µ»Øtrue£»Ã»Á¬½Ó»òÊ§È¥Á¬½Ó£¬·µ»Øfalse
+ *  @brief  åˆ¤æ–­è®¾å¤‡æ˜¯å¦å¤„äºè¿æ¥çŠ¶æ€
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return è®¾å¤‡å¤„äºè¿æ¥çŠ¶æ€ï¼Œè¿”å›trueï¼›æ²¡è¿æ¥æˆ–å¤±å»è¿æ¥ï¼Œè¿”å›false
  
  *  @~english
  *  @brief  Is The Device Connected
@@ -230,16 +230,16 @@ MVSDKEXPORT_API bool __stdcall MV_CC_IsDeviceConnected(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áÍ¼ÏñÊı¾İ»Øµ÷
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  cbOutput                    [IN]            »Øµ÷º¯ÊıÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ı¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃÍ¼ÏñÊı¾İ»Øµ÷º¯Êı£¬ÔÚMV_CC_CreateHandleÖ®ºó¼´¿Éµ÷ÓÃ¡£ \n
-             Í¼ÏñÊı¾İ²É¼¯ÓĞÁ½ÖÖ·½Ê½£¬Á½ÖÖ·½Ê½²»ÄÜ¸´ÓÃ£º\n
-             ·½Ê½Ò»£ºµ÷ÓÃMV_CC_RegisterImageCallBackExÉèÖÃÍ¼ÏñÊı¾İ»Øµ÷º¯Êı£¬È»ºóµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬²É¼¯µÄÍ¼ÏñÊı¾İÔÚÉèÖÃµÄ»Øµ÷º¯ÊıÖĞ·µ»Ø¡£\n
-             ·½Ê½¶ş£ºµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬È»ºóÔÚÓ¦ÓÃ²ãÑ­»·µ÷ÓÃMV_CC_GetOneFrameTimeout»ñÈ¡Ö¸¶¨ÏñËØ¸ñÊ½µÄÖ¡Êı¾İ£¬»ñÈ¡Ö¡Êı¾İÊ±ÉÏ²ãÓ¦ÓÃ³ÌĞòĞèÒª¸ù¾İÖ¡ÂÊ¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£ \n
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£ 
+ *  @brief  æ³¨å†Œå›¾åƒæ•°æ®å›è°ƒ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  cbOutput                    [IN]            å›è°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æ¥å£å¯ä»¥è®¾ç½®å›¾åƒæ•°æ®å›è°ƒå‡½æ•°ï¼Œåœ¨MV_CC_CreateHandleä¹‹åå³å¯è°ƒç”¨ã€‚ \n
+             å›¾åƒæ•°æ®é‡‡é›†æœ‰ä¸¤ç§æ–¹å¼ï¼Œä¸¤ç§æ–¹å¼ä¸èƒ½å¤ç”¨ï¼š\n
+             æ–¹å¼ä¸€ï¼šè°ƒç”¨MV_CC_RegisterImageCallBackExè®¾ç½®å›¾åƒæ•°æ®å›è°ƒå‡½æ•°ï¼Œç„¶åè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œé‡‡é›†çš„å›¾åƒæ•°æ®åœ¨è®¾ç½®çš„å›è°ƒå‡½æ•°ä¸­è¿”å›ã€‚\n
+             æ–¹å¼äºŒï¼šè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œç„¶ååœ¨åº”ç”¨å±‚å¾ªç¯è°ƒç”¨MV_CC_GetOneFrameTimeoutè·å–æŒ‡å®šåƒç´ æ ¼å¼çš„å¸§æ•°æ®ï¼Œè·å–å¸§æ•°æ®æ—¶ä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§ç‡æ§åˆ¶å¥½è°ƒç”¨è¯¥æ¥å£çš„é¢‘ç‡ã€‚ \n
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚ 
  
  *  @~english
  *  @brief  Register the image callback function
@@ -259,16 +259,16 @@ MVSDKEXPORT_API int __stdcall MV_CC_RegisterImageCallBackEx(void* handle,
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áÍ¼ÏñÊı¾İ»Øµ÷£¬RGB
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  cbOutput                    [IN]            »Øµ÷º¯ÊıÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ı¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃÍ¼ÏñÊı¾İ»Øµ÷º¯Êı£¬ÔÚMV_CC_CreateHandleÖ®ºó¼´¿Éµ÷ÓÃ¡£ \n
-             Í¼ÏñÊı¾İ²É¼¯ÓĞÁ½ÖÖ·½Ê½£¬Á½ÖÖ·½Ê½²»ÄÜ¸´ÓÃ£º\n
-             ·½Ê½Ò»£ºµ÷ÓÃMV_CC_RegisterImageCallBackForRGBÉèÖÃRGB24¸ñÊ½Í¼ÏñÊı¾İ»Øµ÷º¯Êı£¬È»ºóµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬²É¼¯µÄÍ¼ÏñÊı¾İÔÚÉèÖÃµÄ»Øµ÷º¯ÊıÖĞ·µ»Ø¡£\n
-             ·½Ê½¶ş£ºµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬È»ºóÔÚÓ¦ÓÃ²ãÑ­»·µ÷ÓÃMV_CC_GetImageForRGB»ñÈ¡RGB24¸ñÊ½µÄÖ¡Êı¾İ£¬»ñÈ¡Ö¡Êı¾İÊ±ÉÏ²ãÓ¦ÓÃ³ÌĞòĞèÒª¸ù¾İÖ¡ÂÊ¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£ \n
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£ 
+ *  @brief  æ³¨å†Œå›¾åƒæ•°æ®å›è°ƒï¼ŒRGB
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  cbOutput                    [IN]            å›è°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æ¥å£å¯ä»¥è®¾ç½®å›¾åƒæ•°æ®å›è°ƒå‡½æ•°ï¼Œåœ¨MV_CC_CreateHandleä¹‹åå³å¯è°ƒç”¨ã€‚ \n
+             å›¾åƒæ•°æ®é‡‡é›†æœ‰ä¸¤ç§æ–¹å¼ï¼Œä¸¤ç§æ–¹å¼ä¸èƒ½å¤ç”¨ï¼š\n
+             æ–¹å¼ä¸€ï¼šè°ƒç”¨MV_CC_RegisterImageCallBackForRGBè®¾ç½®RGB24æ ¼å¼å›¾åƒæ•°æ®å›è°ƒå‡½æ•°ï¼Œç„¶åè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œé‡‡é›†çš„å›¾åƒæ•°æ®åœ¨è®¾ç½®çš„å›è°ƒå‡½æ•°ä¸­è¿”å›ã€‚\n
+             æ–¹å¼äºŒï¼šè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œç„¶ååœ¨åº”ç”¨å±‚å¾ªç¯è°ƒç”¨MV_CC_GetImageForRGBè·å–RGB24æ ¼å¼çš„å¸§æ•°æ®ï¼Œè·å–å¸§æ•°æ®æ—¶ä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§ç‡æ§åˆ¶å¥½è°ƒç”¨è¯¥æ¥å£çš„é¢‘ç‡ã€‚ \n
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚ 
  
  *  @~english
  *  @brief  register image data callback, RGB
@@ -288,16 +288,16 @@ MVSDKEXPORT_API int __stdcall MV_CC_RegisterImageCallBackForRGB(void* handle,
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áÍ¼ÏñÊı¾İ»Øµ÷£¬BGR
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  cbOutput                    [IN]            »Øµ÷º¯ÊıÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ı¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃÍ¼ÏñÊı¾İ»Øµ÷º¯Êı£¬ÔÚMV_CC_CreateHandleÖ®ºó¼´¿Éµ÷ÓÃ¡£\n
-             Í¼ÏñÊı¾İ²É¼¯ÓĞÁ½ÖÖ·½Ê½£¬Á½ÖÖ·½Ê½²»ÄÜ¸´ÓÃ£º\n
-             ·½Ê½Ò»£ºµ÷ÓÃMV_CC_RegisterImageCallBackForBGRÉèÖÃBGR24Í¼ÏñÊı¾İ»Øµ÷º¯Êı£¬È»ºóµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬²É¼¯µÄÍ¼ÏñÊı¾İÔÚÉèÖÃµÄ»Øµ÷º¯ÊıÖĞ·µ»Ø¡£\n
-             ·½Ê½¶ş£ºµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼²É¼¯£¬È»ºóÔÚÓ¦ÓÃ²ãÑ­»·µ÷ÓÃMV_CC_GetImageForBGR»ñÈ¡BGR24¸ñÊ½µÄÖ¡Êı¾İ£¬»ñÈ¡Ö¡Êı¾İÊ±ÉÏ²ãÓ¦ÓÃ³ÌĞòĞèÒª¸ù¾İÖ¡ÂÊ¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£ \n
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£ 
+ *  @brief  æ³¨å†Œå›¾åƒæ•°æ®å›è°ƒï¼ŒBGR
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  cbOutput                    [IN]            å›è°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æ¥å£å¯ä»¥è®¾ç½®å›¾åƒæ•°æ®å›è°ƒå‡½æ•°ï¼Œåœ¨MV_CC_CreateHandleä¹‹åå³å¯è°ƒç”¨ã€‚\n
+             å›¾åƒæ•°æ®é‡‡é›†æœ‰ä¸¤ç§æ–¹å¼ï¼Œä¸¤ç§æ–¹å¼ä¸èƒ½å¤ç”¨ï¼š\n
+             æ–¹å¼ä¸€ï¼šè°ƒç”¨MV_CC_RegisterImageCallBackForBGRè®¾ç½®BGR24å›¾åƒæ•°æ®å›è°ƒå‡½æ•°ï¼Œç„¶åè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œé‡‡é›†çš„å›¾åƒæ•°æ®åœ¨è®¾ç½®çš„å›è°ƒå‡½æ•°ä¸­è¿”å›ã€‚\n
+             æ–¹å¼äºŒï¼šè°ƒç”¨MV_CC_StartGrabbingå¼€å§‹é‡‡é›†ï¼Œç„¶ååœ¨åº”ç”¨å±‚å¾ªç¯è°ƒç”¨MV_CC_GetImageForBGRè·å–BGR24æ ¼å¼çš„å¸§æ•°æ®ï¼Œè·å–å¸§æ•°æ®æ—¶ä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§ç‡æ§åˆ¶å¥½è°ƒç”¨è¯¥æ¥å£çš„é¢‘ç‡ã€‚ \n
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚ 
  
  *  @~english
  *  @brief  register image data callback, BGR
@@ -317,10 +317,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_RegisterImageCallBackForBGR(void* handle,
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ¿ªÊ¼È¡Á÷
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  å¼€å§‹å–æµ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Start Grabbing
@@ -332,10 +332,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_StartGrabbing(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í£Ö¹È¡Á÷
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£ 
+ *  @brief  åœæ­¢å–æµ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚ 
  
  *  @~english
  *  @brief  Stop Grabbing
@@ -347,17 +347,17 @@ MVSDKEXPORT_API int __stdcall MV_CC_StopGrabbing(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Ò»Ö¡RGBÊı¾İ£¬´Ëº¯ÊıÎª²éÑ¯Ê½»ñÈ¡£¬Ã¿´Îµ÷ÓÃ²éÑ¯ÄÚ²¿
-            »º´æÓĞÎŞÊı¾İ£¬ÓĞÊı¾İÔò»ñÈ¡Êı¾İ£¬ÎŞÊı¾İ·µ»Ø´íÎóÂë
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pData                       [OUT]           Í¼ÏñÊı¾İ½ÓÊÕÖ¸Õë
- *  @param  nDataSize                   [IN]            ½ÓÊÕ»º´æ´óĞ¡
- *  @param  pstFrameInfo                [OUT]           Í¼ÏñĞÅÏ¢½á¹¹Ìå
- *  @param  nMsec                       [IN]            µÈ´ı³¬Ê±Ê±¼ä
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Ã¿´Îµ÷ÓÃ¸Ã½Ó¿Ú£¬½«²éÑ¯ÄÚ²¿»º´æÊÇ·ñÓĞÊı¾İ£¬Èç¹ûÓĞÊı¾İÔò×ª»»³ÉRGB24¸ñÊ½·µ»Ø£¬Èç¹ûÃ»ÓĞÊı¾İÔò·µ»Ø´íÎóÂë¡£ÒòÎªÍ¼Ïñ×ª»»³ÉRGB24¸ñÊ½ÓĞºÄÊ±£¬ËùÒÔµ±Êı¾İÖ¡ÂÊ¹ı¸ßÊ±¸Ã½Ó¿Ú¿ÉÄÜ»áµ¼ÖÂ¶ªÖ¡¡£\n 
-             µ÷ÓÃ¸Ã½Ó¿Ú»ñÈ¡Í¼ÏñÊı¾İÖ¡Ö®Ç°ĞèÒªÏÈµ÷ÓÃMV_CC_StartGrabbingÆô¶¯Í¼Ïñ²É¼¯¡£¸Ã½Ó¿ÚÎªÖ÷¶¯Ê½»ñÈ¡Ö¡Êı¾İ£¬ÉÏ²ãÓ¦ÓÃ³ÌĞòĞèÒª¸ù¾İÖ¡ÂÊ£¬¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£ \n
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  è·å–ä¸€å¸§RGBæ•°æ®ï¼Œæ­¤å‡½æ•°ä¸ºæŸ¥è¯¢å¼è·å–ï¼Œæ¯æ¬¡è°ƒç”¨æŸ¥è¯¢å†…éƒ¨
+            ç¼“å­˜æœ‰æ— æ•°æ®ï¼Œæœ‰æ•°æ®åˆ™è·å–æ•°æ®ï¼Œæ— æ•°æ®è¿”å›é”™è¯¯ç 
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pData                       [OUT]           å›¾åƒæ•°æ®æ¥æ”¶æŒ‡é’ˆ
+ *  @param  nDataSize                   [IN]            æ¥æ”¶ç¼“å­˜å¤§å°
+ *  @param  pstFrameInfo                [OUT]           å›¾åƒä¿¡æ¯ç»“æ„ä½“
+ *  @param  nMsec                       [IN]            ç­‰å¾…è¶…æ—¶æ—¶é—´
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks æ¯æ¬¡è°ƒç”¨è¯¥æ¥å£ï¼Œå°†æŸ¥è¯¢å†…éƒ¨ç¼“å­˜æ˜¯å¦æœ‰æ•°æ®ï¼Œå¦‚æœæœ‰æ•°æ®åˆ™è½¬æ¢æˆRGB24æ ¼å¼è¿”å›ï¼Œå¦‚æœæ²¡æœ‰æ•°æ®åˆ™è¿”å›é”™è¯¯ç ã€‚å› ä¸ºå›¾åƒè½¬æ¢æˆRGB24æ ¼å¼æœ‰è€—æ—¶ï¼Œæ‰€ä»¥å½“æ•°æ®å¸§ç‡è¿‡é«˜æ—¶è¯¥æ¥å£å¯èƒ½ä¼šå¯¼è‡´ä¸¢å¸§ã€‚\n 
+             è°ƒç”¨è¯¥æ¥å£è·å–å›¾åƒæ•°æ®å¸§ä¹‹å‰éœ€è¦å…ˆè°ƒç”¨MV_CC_StartGrabbingå¯åŠ¨å›¾åƒé‡‡é›†ã€‚è¯¥æ¥å£ä¸ºä¸»åŠ¨å¼è·å–å¸§æ•°æ®ï¼Œä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§ç‡ï¼Œæ§åˆ¶å¥½è°ƒç”¨è¯¥æ¥å£çš„é¢‘ç‡ã€‚ \n
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Get one frame of RGB data, this function is using query to get data
@@ -376,17 +376,17 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetImageForRGB(IN void* handle, IN OUT unsig
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Ò»Ö¡BGRÊı¾İ£¬´Ëº¯ÊıÎª²éÑ¯Ê½»ñÈ¡£¬Ã¿´Îµ÷ÓÃ²éÑ¯ÄÚ²¿
-            »º´æÓĞÎŞÊı¾İ£¬ÓĞÊı¾İÔò»ñÈ¡Êı¾İ£¬ÎŞÊı¾İ·µ»Ø´íÎóÂë
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pData                       [OUT]           Í¼ÏñÊı¾İ½ÓÊÕÖ¸Õë
- *  @param  nDataSize                   [IN]            ½ÓÊÕ»º´æ´óĞ¡
- *  @param  pstFrameInfo                [OUT]           Í¼ÏñĞÅÏ¢½á¹¹Ìå
- *  @param  nMsec                       [IN]            µÈ´ı³¬Ê±Ê±¼ä
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks Ã¿´Îµ÷ÓÃ¸Ã½Ó¿Ú£¬½«²éÑ¯ÄÚ²¿»º´æÊÇ·ñÓĞÊı¾İ£¬Èç¹ûÓĞÊı¾İÔò×ª»»³ÉBGR24¸ñÊ½·µ»Ø£¬Èç¹ûÃ»ÓĞÊı¾İÔò·µ»Ø´íÎóÂë¡£ÒòÎªÍ¼Ïñ×ª»»³ÉBGR24¸ñÊ½ÓĞºÄÊ±£¬ËùÒÔµ±Êı¾İÖ¡ÂÊ¹ı¸ßÊ±¸Ã½Ó¿Ú¿ÉÄÜ»áµ¼ÖÂ¶ªÖ¡¡£ \n
-             µ÷ÓÃ¸Ã½Ó¿Ú»ñÈ¡Í¼ÏñÊı¾İÖ¡Ö®Ç°ĞèÒªÏÈµ÷ÓÃMV_CC_StartGrabbingÆô¶¯Í¼Ïñ²É¼¯¡£¸Ã½Ó¿ÚÎªÖ÷¶¯Ê½»ñÈ¡Ö¡Êı¾İ£¬ÉÏ²ãÓ¦ÓÃ³ÌĞòĞèÒª¸ù¾İÖ¡ÂÊ£¬¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£\n 
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  è·å–ä¸€å¸§BGRæ•°æ®ï¼Œæ­¤å‡½æ•°ä¸ºæŸ¥è¯¢å¼è·å–ï¼Œæ¯æ¬¡è°ƒç”¨æŸ¥è¯¢å†…éƒ¨
+            ç¼“å­˜æœ‰æ— æ•°æ®ï¼Œæœ‰æ•°æ®åˆ™è·å–æ•°æ®ï¼Œæ— æ•°æ®è¿”å›é”™è¯¯ç 
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pData                       [OUT]           å›¾åƒæ•°æ®æ¥æ”¶æŒ‡é’ˆ
+ *  @param  nDataSize                   [IN]            æ¥æ”¶ç¼“å­˜å¤§å°
+ *  @param  pstFrameInfo                [OUT]           å›¾åƒä¿¡æ¯ç»“æ„ä½“
+ *  @param  nMsec                       [IN]            ç­‰å¾…è¶…æ—¶æ—¶é—´
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks æ¯æ¬¡è°ƒç”¨è¯¥æ¥å£ï¼Œå°†æŸ¥è¯¢å†…éƒ¨ç¼“å­˜æ˜¯å¦æœ‰æ•°æ®ï¼Œå¦‚æœæœ‰æ•°æ®åˆ™è½¬æ¢æˆBGR24æ ¼å¼è¿”å›ï¼Œå¦‚æœæ²¡æœ‰æ•°æ®åˆ™è¿”å›é”™è¯¯ç ã€‚å› ä¸ºå›¾åƒè½¬æ¢æˆBGR24æ ¼å¼æœ‰è€—æ—¶ï¼Œæ‰€ä»¥å½“æ•°æ®å¸§ç‡è¿‡é«˜æ—¶è¯¥æ¥å£å¯èƒ½ä¼šå¯¼è‡´ä¸¢å¸§ã€‚ \n
+             è°ƒç”¨è¯¥æ¥å£è·å–å›¾åƒæ•°æ®å¸§ä¹‹å‰éœ€è¦å…ˆè°ƒç”¨MV_CC_StartGrabbingå¯åŠ¨å›¾åƒé‡‡é›†ã€‚è¯¥æ¥å£ä¸ºä¸»åŠ¨å¼è·å–å¸§æ•°æ®ï¼Œä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§ç‡ï¼Œæ§åˆ¶å¥½è°ƒç”¨è¯¥æ¥å£çš„é¢‘ç‡ã€‚\n 
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Get one frame of BGR data, this function is using query to get data
@@ -407,17 +407,17 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetImageForBGR(IN void* handle, IN OUT unsig
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ê¹ÓÃÄÚ²¿»º´æ»ñÈ¡Ò»Ö¡Í¼Æ¬£¨ÓëMV_CC_Display²»ÄÜÍ¬Ê±Ê¹ÓÃ£©
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFrame                    [OUT]           Í¼ÏñÊı¾İºÍÍ¼ÏñĞÅÏ¢
- *  @param  nMsec                       [IN]            µÈ´ı³¬Ê±Ê±¼ä£¬ÊäÈëINFINITEÊ±±íÊ¾ÎŞÏŞµÈ´ı£¬Ö±µ½ÊÕµ½Ò»Ö¡Êı¾İ»òÕßÍ£Ö¹È¡Á÷
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks µ÷ÓÃ¸Ã½Ó¿Ú»ñÈ¡Í¼ÏñÊı¾İÖ¡Ö®Ç°ĞèÒªÏÈµ÷ÓÃMV_CC_StartGrabbingÆô¶¯Í¼Ïñ²É¼¯¡£¸Ã½Ó¿ÚÎªÖ÷¶¯Ê½»ñÈ¡Ö¡Êı¾İ£¬ÉÏ²ãÓ¦ÓÃ³ÌĞòĞèÒª¸ù¾İÖ¡ÂÊ£¬¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£¸Ã½Ó¿ÚÖ§³ÖÉèÖÃ³¬Ê±Ê±¼ä£¬SDKÄÚ²¿µÈ´ıÖ±µ½ÓĞÊı¾İÊ±·µ»Ø£¬¿ÉÒÔÔö¼ÓÈ¡Á÷Æ½ÎÈĞÔ£¬ÊÊºÏÓÃÓÚ¶ÔÆ½ÎÈĞÔÒªÇó½Ï¸ßµÄ³¡ºÏ¡£ \n
-             ¸Ã½Ó¿ÚÓëMV_CC_FreeImageBufferÅäÌ×Ê¹ÓÃ£¬µ±´¦ÀíÍêÈ¡µ½µÄÊı¾İºó£¬ĞèÒªÓÃMV_CC_FreeImageBuffer½Ó¿Ú½«pFrameÄÚµÄÊı¾İÖ¸ÕëÈ¨ÏŞ½øĞĞÊÍ·Å¡£ \n
-             ¸Ã½Ó¿ÚÓëMV_CC_GetOneFrameTimeoutÏà±È£¬ÓĞ×Å¸ü¸ßµÄĞ§ÂÊ¡£ÇÒÆäÈ¡Á÷»º´æµÄ·ÖÅäÊÇÓÉsdkÄÚ²¿×Ô¶¯·ÖÅäµÄ£¬¶øMV_CC_GetOneFrameTimeout½Ó¿ÚÊÇĞèÒª¿Í»§×ÔĞĞ·ÖÅä¡£\n 
-             ¸Ã½Ó¿ÚÔÚµ÷ÓÃMV_CC_DisplayºóÎŞ·¨È¡Á÷¡£ \n
-             ¸Ã½Ó¿Ú¶ÔÓÚU3V¡¢GIGEÉè±¸¾ù¿ÉÖ§³Ö¡£ \n
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  ä½¿ç”¨å†…éƒ¨ç¼“å­˜è·å–ä¸€å¸§å›¾ç‰‡ï¼ˆä¸MV_CC_Displayä¸èƒ½åŒæ—¶ä½¿ç”¨ï¼‰
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFrame                    [OUT]           å›¾åƒæ•°æ®å’Œå›¾åƒä¿¡æ¯
+ *  @param  nMsec                       [IN]            ç­‰å¾…è¶…æ—¶æ—¶é—´ï¼Œè¾“å…¥INFINITEæ—¶è¡¨ç¤ºæ— é™ç­‰å¾…ï¼Œç›´åˆ°æ”¶åˆ°ä¸€å¸§æ•°æ®æˆ–è€…åœæ­¢å–æµ
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks è°ƒç”¨è¯¥æ¥å£è·å–å›¾åƒæ•°æ®å¸§ä¹‹å‰éœ€è¦å…ˆè°ƒç”¨MV_CC_StartGrabbingå¯åŠ¨å›¾åƒé‡‡é›†ã€‚è¯¥æ¥å£ä¸ºä¸»åŠ¨å¼è·å–å¸§æ•°æ®ï¼Œä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§ç‡ï¼Œæ§åˆ¶å¥½è°ƒç”¨è¯¥æ¥å£çš„é¢‘ç‡ã€‚è¯¥æ¥å£æ”¯æŒè®¾ç½®è¶…æ—¶æ—¶é—´ï¼ŒSDKå†…éƒ¨ç­‰å¾…ç›´åˆ°æœ‰æ•°æ®æ—¶è¿”å›ï¼Œå¯ä»¥å¢åŠ å–æµå¹³ç¨³æ€§ï¼Œé€‚åˆç”¨äºå¯¹å¹³ç¨³æ€§è¦æ±‚è¾ƒé«˜çš„åœºåˆã€‚ \n
+             è¯¥æ¥å£ä¸MV_CC_FreeImageBufferé…å¥—ä½¿ç”¨ï¼Œå½“å¤„ç†å®Œå–åˆ°çš„æ•°æ®åï¼Œéœ€è¦ç”¨MV_CC_FreeImageBufferæ¥å£å°†pFrameå†…çš„æ•°æ®æŒ‡é’ˆæƒé™è¿›è¡Œé‡Šæ”¾ã€‚ \n
+             è¯¥æ¥å£ä¸MV_CC_GetOneFrameTimeoutç›¸æ¯”ï¼Œæœ‰ç€æ›´é«˜çš„æ•ˆç‡ã€‚ä¸”å…¶å–æµç¼“å­˜çš„åˆ†é…æ˜¯ç”±sdkå†…éƒ¨è‡ªåŠ¨åˆ†é…çš„ï¼Œè€ŒMV_CC_GetOneFrameTimeoutæ¥å£æ˜¯éœ€è¦å®¢æˆ·è‡ªè¡Œåˆ†é…ã€‚\n 
+             è¯¥æ¥å£åœ¨è°ƒç”¨MV_CC_Displayåæ— æ³•å–æµã€‚ \n
+             è¯¥æ¥å£å¯¹äºU3Vã€GIGEè®¾å¤‡å‡å¯æ”¯æŒã€‚ \n
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Get a frame of an image using an internal cache
@@ -436,14 +436,14 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetImageBuffer(IN void* handle, OUT MV_FRAME
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÊÍ·ÅÍ¼Ïñ»º´æ(´Ë½Ó¿ÚÓÃÓÚÊÍ·Å²»ÔÙÊ¹ÓÃµÄÍ¼Ïñ»º´æ£¬ÓëMV_CC_GetImageBufferÅäÌ×Ê¹ÓÃ)
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFrame                    [IN]            Í¼ÏñÊı¾İºÍÍ¼ÏñÊı¾İ
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÓëMV_CC_GetImageBufferÅäÌ×Ê¹ÓÃ£¬Ê¹ÓÃMV_CC_GetImageBuffer½Ó¿ÚÈ¡µ½µÄÍ¼ÏñÊı¾İpFrame£¬ĞèÒªÓÃMV_CC_FreeImageBuffer½Ó¿Ú½øĞĞÈ¨ÏŞÊÍ·Å¡£ \n
-             ¸Ã½Ó¿Ú¶ÔÓÚÈ¡Á÷Ğ§ÂÊ¸ßÓÚGetOneFrameTimeout½Ó¿Ú£¬ÇÒGetImageBufferÔÚ²»½øĞĞFreeµÄÇé¿öÏÂ£¬×î´óÖ§³ÖÊä³öµÄ½ÚµãÊıÓëSetImageNode½Ó¿ÚËùÉèÖÃµÄ½ÚµãÊıÏàµÈ£¬Ä¬ÈÏ½ÚµãÊıÊÇ1¡£\n 
-             ¸Ã½Ó¿Ú¶ÔÓÚU3V¡¢GIGEÉè±¸¾ù¿ÉÖ§³Ö¡£ \n
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  é‡Šæ”¾å›¾åƒç¼“å­˜(æ­¤æ¥å£ç”¨äºé‡Šæ”¾ä¸å†ä½¿ç”¨çš„å›¾åƒç¼“å­˜ï¼Œä¸MV_CC_GetImageBufferé…å¥—ä½¿ç”¨)
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFrame                    [IN]            å›¾åƒæ•°æ®å’Œå›¾åƒæ•°æ®
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£ä¸MV_CC_GetImageBufferé…å¥—ä½¿ç”¨ï¼Œä½¿ç”¨MV_CC_GetImageBufferæ¥å£å–åˆ°çš„å›¾åƒæ•°æ®pFrameï¼Œéœ€è¦ç”¨MV_CC_FreeImageBufferæ¥å£è¿›è¡Œæƒé™é‡Šæ”¾ã€‚ \n
+             è¯¥æ¥å£å¯¹äºå–æµæ•ˆç‡é«˜äºGetOneFrameTimeoutæ¥å£ï¼Œä¸”GetImageBufferåœ¨ä¸è¿›è¡ŒFreeçš„æƒ…å†µä¸‹ï¼Œæœ€å¤§æ”¯æŒè¾“å‡ºçš„èŠ‚ç‚¹æ•°ä¸SetImageNodeæ¥å£æ‰€è®¾ç½®çš„èŠ‚ç‚¹æ•°ç›¸ç­‰ï¼Œé»˜è®¤èŠ‚ç‚¹æ•°æ˜¯1ã€‚\n 
+             è¯¥æ¥å£å¯¹äºU3Vã€GIGEè®¾å¤‡å‡å¯æ”¯æŒã€‚ \n
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Free image buffer(this interface can free image buffer, used with MV_CC_GetImageBuffer)
@@ -459,16 +459,16 @@ MVSDKEXPORT_API int __stdcall MV_CC_FreeImageBuffer(IN void* handle, IN MV_FRAME
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ²ÉÓÃ³¬Ê±»úÖÆ»ñÈ¡Ò»Ö¡Í¼Æ¬£¬SDKÄÚ²¿µÈ´ıÖ±µ½ÓĞÊı¾İÊ±·µ»Ø
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pData                       [OUT]           Í¼ÏñÊı¾İ½ÓÊÕÖ¸Õë
- *  @param  nDataSize                   [IN]            ½ÓÊÕ»º´æ´óĞ¡
- *  @param  pstFrameInfo                [OUT]           Í¼ÏñĞÅÏ¢½á¹¹Ìå
- *  @param  nMsec                       [IN]            µÈ´ı³¬Ê±Ê±¼ä
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks µ÷ÓÃ¸Ã½Ó¿Ú»ñÈ¡Í¼ÏñÊı¾İÖ¡Ö®Ç°ĞèÒªÏÈµ÷ÓÃMV_CC_StartGrabbingÆô¶¯Í¼Ïñ²É¼¯¡£¸Ã½Ó¿ÚÎªÖ÷¶¯Ê½»ñÈ¡Ö¡Êı¾İ£¬ÉÏ²ãÓ¦ÓÃ³ÌĞòĞèÒª¸ù¾İÖ¡ÂÊ£¬¿ØÖÆºÃµ÷ÓÃ¸Ã½Ó¿ÚµÄÆµÂÊ¡£¸Ã½Ó¿ÚÖ§³ÖÉèÖÃ³¬Ê±Ê±¼ä£¬SDKÄÚ²¿µÈ´ıÖ±µ½ÓĞÊı¾İÊ±·µ»Ø£¬¿ÉÒÔÔö¼ÓÈ¡Á÷Æ½ÎÈĞÔ£¬ÊÊºÏÓÃÓÚ¶ÔÆ½ÎÈĞÔÒªÇó½Ï¸ßµÄ³¡ºÏ¡£\n 
-             ¸Ã½Ó¿Ú¶ÔÓÚU3V¡¢GIGEÉè±¸¾ù¿ÉÖ§³Ö¡£\n 
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  é‡‡ç”¨è¶…æ—¶æœºåˆ¶è·å–ä¸€å¸§å›¾ç‰‡ï¼ŒSDKå†…éƒ¨ç­‰å¾…ç›´åˆ°æœ‰æ•°æ®æ—¶è¿”å›
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pData                       [OUT]           å›¾åƒæ•°æ®æ¥æ”¶æŒ‡é’ˆ
+ *  @param  nDataSize                   [IN]            æ¥æ”¶ç¼“å­˜å¤§å°
+ *  @param  pstFrameInfo                [OUT]           å›¾åƒä¿¡æ¯ç»“æ„ä½“
+ *  @param  nMsec                       [IN]            ç­‰å¾…è¶…æ—¶æ—¶é—´
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks è°ƒç”¨è¯¥æ¥å£è·å–å›¾åƒæ•°æ®å¸§ä¹‹å‰éœ€è¦å…ˆè°ƒç”¨MV_CC_StartGrabbingå¯åŠ¨å›¾åƒé‡‡é›†ã€‚è¯¥æ¥å£ä¸ºä¸»åŠ¨å¼è·å–å¸§æ•°æ®ï¼Œä¸Šå±‚åº”ç”¨ç¨‹åºéœ€è¦æ ¹æ®å¸§ç‡ï¼Œæ§åˆ¶å¥½è°ƒç”¨è¯¥æ¥å£çš„é¢‘ç‡ã€‚è¯¥æ¥å£æ”¯æŒè®¾ç½®è¶…æ—¶æ—¶é—´ï¼ŒSDKå†…éƒ¨ç­‰å¾…ç›´åˆ°æœ‰æ•°æ®æ—¶è¿”å›ï¼Œå¯ä»¥å¢åŠ å–æµå¹³ç¨³æ€§ï¼Œé€‚åˆç”¨äºå¯¹å¹³ç¨³æ€§è¦æ±‚è¾ƒé«˜çš„åœºåˆã€‚\n 
+             è¯¥æ¥å£å¯¹äºU3Vã€GIGEè®¾å¤‡å‡å¯æ”¯æŒã€‚\n 
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Timeout mechanism is used to get image, and the SDK waits inside until the data is returned
@@ -486,14 +486,14 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetOneFrameTimeout(IN void* handle, IN OUT u
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Çå³ıÈ¡Á÷Êı¾İ»º´æ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÔÊĞíÓÃ»§ÔÚ²»Í£Ö¹È¡Á÷µÄÊ±ºò£¬¾ÍÄÜÇå³ı»º´æÖĞ²»ĞèÒªµÄÍ¼Ïñ¡£\n
-             ¸Ã½Ó¿ÚÔÚÁ¬ĞøÄ£Ê½ÇĞ´¥·¢Ä£Ê½ºó£¬¿ÉÒÔÇå³ıÀúÊ·Êı¾İ¡£
+ *  @brief  æ¸…é™¤å–æµæ•°æ®ç¼“å­˜
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£å…è®¸ç”¨æˆ·åœ¨ä¸åœæ­¢å–æµçš„æ—¶å€™ï¼Œå°±èƒ½æ¸…é™¤ç¼“å­˜ä¸­ä¸éœ€è¦çš„å›¾åƒã€‚\n
+             è¯¥æ¥å£åœ¨è¿ç»­æ¨¡å¼åˆ‡è§¦å‘æ¨¡å¼åï¼Œå¯ä»¥æ¸…é™¤å†å²æ•°æ®ã€‚
  
  *  @~english
- *  @brief  if Image buffers has retrieved the data£¬Clear them
+ *  @brief  if Image buffers has retrieved the dataï¼ŒClear them
  *  @param  handle                      [IN]            Device handle
  *  @return Success, return MV_OK. Failure, return error code
  *  @remarks This interface allows user to clear the unnecessary images from the buffer memory without stopping acquisition. \n
@@ -503,12 +503,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_ClearImageBuffer(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÏÔÊ¾Ò»Ö¡Í¼Ïñ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstDisplayInfo              [IN]            Í¼ÏñĞÅÏ¢
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿Ú¶ÔÓÚU3V¡¢GIGEÉè±¸¾ù¿ÉÖ§³Ö¡£\n 
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£ 
+ *  @brief  æ˜¾ç¤ºä¸€å¸§å›¾åƒ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstDisplayInfo              [IN]            å›¾åƒä¿¡æ¯
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£å¯¹äºU3Vã€GIGEè®¾å¤‡å‡å¯æ”¯æŒã€‚\n 
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚ 
  
  *  @~english
  *  @brief  Display one frame image
@@ -522,13 +522,13 @@ MVSDKEXPORT_API int __stdcall MV_CC_DisplayOneFrame(IN void* handle, IN MV_DISPL
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃSDKÄÚ²¿Í¼Ïñ»º´æ½Úµã¸öÊı£¬´óÓÚµÈÓÚ1£¬ÔÚ×¥Í¼Ç°µ÷ÓÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nNum                        [IN]            »º´æ½Úµã¸öÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks µ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃSDKÄÚ²¿Í¼Ïñ»º´æ½Úµã¸öÊı£¬ÔÚµ÷ÓÃMV_CC_StartGrabbing¿ªÊ¼×¥Í¼Ç°µ÷ÓÃ¡£\n
-             ÔÚSDKÖĞÄ¬ÈÏÊÇ1¸ö½Úµã¡£\n
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  è®¾ç½®SDKå†…éƒ¨å›¾åƒç¼“å­˜èŠ‚ç‚¹ä¸ªæ•°ï¼Œå¤§äºç­‰äº1ï¼Œåœ¨æŠ“å›¾å‰è°ƒç”¨
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nNum                        [IN]            ç¼“å­˜èŠ‚ç‚¹ä¸ªæ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks è°ƒç”¨è¯¥æ¥å£å¯ä»¥è®¾ç½®SDKå†…éƒ¨å›¾åƒç¼“å­˜èŠ‚ç‚¹ä¸ªæ•°ï¼Œåœ¨è°ƒç”¨MV_CC_StartGrabbingå¼€å§‹æŠ“å›¾å‰è°ƒç”¨ã€‚\n
+             åœ¨SDKä¸­é»˜è®¤æ˜¯1ä¸ªèŠ‚ç‚¹ã€‚\n
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Set the number of the internal image cache nodes in SDK, Greater than or equal to 1, to be called before the capture
@@ -542,15 +542,15 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetImageNodeNum(IN void* handle, unsigned in
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÈ¡Á÷²ßÂÔ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  enGrabStrategy              [IN]            ²ßÂÔÃ¶¾ÙÖµ
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿Ú¶¨ÒåÁËËÄÖÖÈ¡Á÷²ßÂÔ£¬ÓÃ»§¿ÉÒÔ¸ù¾İÊµ¼ÊĞèÇó½øĞĞÑ¡Ôñ¡£¾ßÌåÃèÊöÈçÏÂ£º
-             -OneByOne:´Ó¾Éµ½ĞÂÒ»Ö¡Ò»Ö¡µÄ´ÓÊä³ö»º´æÁĞ±íÖĞ»ñÈ¡Í¼Ïñ£¬´ò¿ªÉè±¸ºóÄ¬ÈÏÎª¸Ã²ßÂÔ
-             -LatestImagesOnly:½ö´ÓÊä³ö»º´æÁĞ±íÖĞ»ñÈ¡×îĞÂµÄÒ»Ö¡Í¼Ïñ£¬Í¬Ê±Çå¿ÕÊä³ö»º´æÁĞ±í
-             -LatestImages:´ÓÊä³ö»º´æÁĞ±íÖĞ»ñÈ¡×îĞÂµÄOutputQueueSizeÖ¡Í¼Ïñ£¬ÆäÖĞOutputQueueSize·¶Î§Îª1-ImageNodeNum£¬¿ÉÓÃMV_CC_SetOutputQueueSize½Ó¿ÚÉèÖÃ£¬ImageNodeNumÄ¬ÈÏÎª1£¬¿ÉÓÃMV_CC_SetImageNodeNum½Ó¿ÚÉèÖÃ OutputQueueSizeÉèÖÃ³É1µÈÍ¬ÓÚLatestImagesOnly²ßÂÔ£¬OutputQueueSizeÉèÖÃ³ÉImageNodeNumµÈÍ¬ÓÚOneByOne²ßÂÔ
-             -UpcomingImage:ÔÚµ÷ÓÃÈ¡Á÷½Ó¿ÚÊ±ºöÂÔÊä³ö»º´æÁĞ±íÖĞËùÓĞÍ¼Ïñ£¬²¢µÈ´ıÉè±¸¼´½«Éú³ÉµÄÒ»Ö¡Í¼Ïñ¡£¸Ã²ßÂÔÖ»Ö§³ÖGigEÉè±¸£¬²»Ö§³ÖU3VÉè±¸
+ *  @brief  è®¾ç½®å–æµç­–ç•¥
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  enGrabStrategy              [IN]            ç­–ç•¥æšä¸¾å€¼
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£å®šä¹‰äº†å››ç§å–æµç­–ç•¥ï¼Œç”¨æˆ·å¯ä»¥æ ¹æ®å®é™…éœ€æ±‚è¿›è¡Œé€‰æ‹©ã€‚å…·ä½“æè¿°å¦‚ä¸‹ï¼š
+             -OneByOne:ä»æ—§åˆ°æ–°ä¸€å¸§ä¸€å¸§çš„ä»è¾“å‡ºç¼“å­˜åˆ—è¡¨ä¸­è·å–å›¾åƒï¼Œæ‰“å¼€è®¾å¤‡åé»˜è®¤ä¸ºè¯¥ç­–ç•¥
+             -LatestImagesOnly:ä»…ä»è¾“å‡ºç¼“å­˜åˆ—è¡¨ä¸­è·å–æœ€æ–°çš„ä¸€å¸§å›¾åƒï¼ŒåŒæ—¶æ¸…ç©ºè¾“å‡ºç¼“å­˜åˆ—è¡¨
+             -LatestImages:ä»è¾“å‡ºç¼“å­˜åˆ—è¡¨ä¸­è·å–æœ€æ–°çš„OutputQueueSizeå¸§å›¾åƒï¼Œå…¶ä¸­OutputQueueSizeèŒƒå›´ä¸º1-ImageNodeNumï¼Œå¯ç”¨MV_CC_SetOutputQueueSizeæ¥å£è®¾ç½®ï¼ŒImageNodeNumé»˜è®¤ä¸º1ï¼Œå¯ç”¨MV_CC_SetImageNodeNumæ¥å£è®¾ç½® OutputQueueSizeè®¾ç½®æˆ1ç­‰åŒäºLatestImagesOnlyç­–ç•¥ï¼ŒOutputQueueSizeè®¾ç½®æˆImageNodeNumç­‰åŒäºOneByOneç­–ç•¥
+             -UpcomingImage:åœ¨è°ƒç”¨å–æµæ¥å£æ—¶å¿½ç•¥è¾“å‡ºç¼“å­˜åˆ—è¡¨ä¸­æ‰€æœ‰å›¾åƒï¼Œå¹¶ç­‰å¾…è®¾å¤‡å³å°†ç”Ÿæˆçš„ä¸€å¸§å›¾åƒã€‚è¯¥ç­–ç•¥åªæ”¯æŒGigEè®¾å¤‡ï¼Œä¸æ”¯æŒU3Vè®¾å¤‡
  
  *  @~english
  *  @brief  Set Grab Strategy
@@ -567,14 +567,14 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetGrabStrategy(IN void* handle, IN MV_GRAB_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÊä³ö»º´æ¸öÊı£¨Ö»ÓĞÔÚMV_GrabStrategy_LatestImages²ßÂÔÏÂ²ÅÓĞĞ§£¬·¶Î§£º1-ImageNodeNum£©
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nOutputQueueSize            [IN]            Êä³ö»º´æ¸öÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚĞèÓëLatestImagesÈ¡Á÷²ßÂÔÅäÌ×µ÷ÓÃ£¬ÓÃÓÚÉèÖÃLatestImages²ßÂÔÏÂ×î¶àÔÊĞí»º´æÍ¼ÏñµÄ¸öÊı¡£¿ÉÒÔÔÚÈ¡Á÷¹ı³ÌÖĞ¶¯Ì¬µ÷½ÚÊä³ö»º´æ¸öÊı
+ *  @brief  è®¾ç½®è¾“å‡ºç¼“å­˜ä¸ªæ•°ï¼ˆåªæœ‰åœ¨MV_GrabStrategy_LatestImagesç­–ç•¥ä¸‹æ‰æœ‰æ•ˆï¼ŒèŒƒå›´ï¼š1-ImageNodeNumï¼‰
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nOutputQueueSize            [IN]            è¾“å‡ºç¼“å­˜ä¸ªæ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£éœ€ä¸LatestImageså–æµç­–ç•¥é…å¥—è°ƒç”¨ï¼Œç”¨äºè®¾ç½®LatestImagesç­–ç•¥ä¸‹æœ€å¤šå…è®¸ç¼“å­˜å›¾åƒçš„ä¸ªæ•°ã€‚å¯ä»¥åœ¨å–æµè¿‡ç¨‹ä¸­åŠ¨æ€è°ƒèŠ‚è¾“å‡ºç¼“å­˜ä¸ªæ•°
  
  *  @~english
- *  @brief  Set The Size of Output Queue(Only work under the strategy of MV_GrabStrategy_LatestImages£¬rang£º1-ImageNodeNum)
+ *  @brief  Set The Size of Output Queue(Only work under the strategy of MV_GrabStrategy_LatestImagesï¼Œrangï¼š1-ImageNodeNum)
  *  @param  handle                      [IN]            Device handle
  *  @param  nOutputQueueSize            [IN]            The Size of Output Queue
  *  @return Success, return MV_OK. Failure, return error code
@@ -584,12 +584,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetOutputQueueSize(IN void* handle, IN unsig
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éè±¸ĞÅÏ¢£¬È¡Á÷Ö®Ç°µ÷ÓÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstDevInfo                  [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÉè±¸ĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Ö§³ÖÓÃ»§ÔÚ´ò¿ªÉè±¸ºó»ñÈ¡Éè±¸ĞÅÏ¢¡£\n 
-             Èô¸ÃÉè±¸ÊÇGigEÉè±¸£¬Ôòµ÷ÓÃ¸Ã½Ó¿Ú´æÔÚ×èÈû·çÏÕ£¬Òò´Ë²»½¨ÒéÔÚÈ¡Á÷¹ı³ÌÖĞµ÷ÓÃ¸Ã½Ó¿Ú¡£
+ *  @brief  è·å–è®¾å¤‡ä¿¡æ¯ï¼Œå–æµä¹‹å‰è°ƒç”¨
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstDevInfo                  [IN][OUT]       è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks æ”¯æŒç”¨æˆ·åœ¨æ‰“å¼€è®¾å¤‡åè·å–è®¾å¤‡ä¿¡æ¯ã€‚\n 
+             è‹¥è¯¥è®¾å¤‡æ˜¯GigEè®¾å¤‡ï¼Œåˆ™è°ƒç”¨è¯¥æ¥å£å­˜åœ¨é˜»å¡é£é™©ï¼Œå› æ­¤ä¸å»ºè®®åœ¨å–æµè¿‡ç¨‹ä¸­è°ƒç”¨è¯¥æ¥å£ã€‚
  
  *  @~english
  *  @brief  Get device information
@@ -603,13 +603,13 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetDeviceInfo(IN void * handle, IN OUT MV_CC
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡¸÷ÖÖÀàĞÍµÄĞÅÏ¢
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstInfo                     [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÉè±¸¸÷ÖÖÀàĞÍµÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ½Ó¿ÚÀïÃæÊäÈëĞèÒª»ñÈ¡µÄĞÅÏ¢ÀàĞÍ£¨Ö¸¶¨MV_ALL_MATCH_INFO½á¹¹ÌåÖĞµÄnTypeÀàĞÍ£©£¬»ñÈ¡¶ÔÓ¦µÄĞÅÏ¢£¨ÔÚMV_ALL_MATCH_INFO½á¹¹ÌåÖĞpInfoÀï·µ»Ø£©¡£ \n
-             ¸Ã½Ó¿ÚµÄµ÷ÓÃÇ°ÖÃÌõ¼şÈ¡¾öÓÚËù»ñÈ¡µÄĞÅÏ¢ÀàĞÍ£¬»ñÈ¡GigEÉè±¸µÄMV_MATCH_TYPE_NET_DETECTĞÅÏ¢ĞèÔÚ¿ªÆô×¥Í¼Ö®ºóµ÷ÓÃ£¬»ñÈ¡U3VÉè±¸µÄMV_MATCH_TYPE_USB_DETECTĞÅÏ¢ĞèÔÚ´ò¿ªÉè±¸Ö®ºóµ÷ÓÃ¡£ \n
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£ 
+ *  @brief  è·å–å„ç§ç±»å‹çš„ä¿¡æ¯
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstInfo                     [IN][OUT]       è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å„ç§ç±»å‹çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks æ¥å£é‡Œé¢è¾“å…¥éœ€è¦è·å–çš„ä¿¡æ¯ç±»å‹ï¼ˆæŒ‡å®šMV_ALL_MATCH_INFOç»“æ„ä½“ä¸­çš„nTypeç±»å‹ï¼‰ï¼Œè·å–å¯¹åº”çš„ä¿¡æ¯ï¼ˆåœ¨MV_ALL_MATCH_INFOç»“æ„ä½“ä¸­pInfoé‡Œè¿”å›ï¼‰ã€‚ \n
+             è¯¥æ¥å£çš„è°ƒç”¨å‰ç½®æ¡ä»¶å–å†³äºæ‰€è·å–çš„ä¿¡æ¯ç±»å‹ï¼Œè·å–GigEè®¾å¤‡çš„MV_MATCH_TYPE_NET_DETECTä¿¡æ¯éœ€åœ¨å¼€å¯æŠ“å›¾ä¹‹åè°ƒç”¨ï¼Œè·å–U3Vè®¾å¤‡çš„MV_MATCH_TYPE_USB_DETECTä¿¡æ¯éœ€åœ¨æ‰“å¼€è®¾å¤‡ä¹‹åè°ƒç”¨ã€‚ \n
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚ 
  
  *  @~english
  *  @brief  Get various type of information
@@ -624,17 +624,17 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetAllMatchInfo(IN void* handle, IN OUT MV_A
 
 
 /************************************************************************/
-/* ÉèÖÃºÍ»ñÈ¡Éè±¸²ÎÊıµÄÍòÄÜ½Ó¿Ú                                         */
+/* è®¾ç½®å’Œè·å–è®¾å¤‡å‚æ•°çš„ä¸‡èƒ½æ¥å£                                         */
 /* General interface for getting and setting camera parameters          */
 /************************************************************************/
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡IntegerÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ£¬Èç»ñÈ¡¿í¶ÈĞÅÏ¢ÔòÎª"Width"
- *  @param  pstIntValue                 [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÉè±¸ÊôĞÔ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡intÀàĞÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°IInteger¡±µÄ½ÚµãÖµ¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿Ú»ñÈ¡£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è·å–Integerå±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼ï¼Œå¦‚è·å–å®½åº¦ä¿¡æ¯åˆ™ä¸º"Width"
+ *  @param  pstIntValue                 [IN][OUT]       è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å±æ€§ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è·å–intç±»å‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œIIntegerâ€çš„èŠ‚ç‚¹å€¼éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è·å–ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Get Integer value
@@ -648,12 +648,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetIntValueEx(IN void* handle,IN const char*
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃIntegerĞÍÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ£¬Èç»ñÈ¡¿í¶ÈĞÅÏ¢ÔòÎª"Width"
- *  @param  nValue                      [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôĞÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃintÀàĞÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°IInteger¡±µÄ½ÚµãÖµ¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿ÚÉèÖÃ£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è®¾ç½®Integerå‹å±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼ï¼Œå¦‚è·å–å®½åº¦ä¿¡æ¯åˆ™ä¸º"Width"
+ *  @param  nValue                      [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±æ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è®¾ç½®intç±»å‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œIIntegerâ€çš„èŠ‚ç‚¹å€¼éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è®¾ç½®ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Set Integer value
@@ -667,12 +667,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetIntValueEx(IN void* handle,IN const char*
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡EnumÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ£¬Èç»ñÈ¡ÏñËØ¸ñÊ½ĞÅÏ¢ÔòÎª"PixelFormat"
- *  @param  pstEnumValue                [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÉè±¸ÊôĞÔ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡EnumÀàĞÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°IEnumeration¡±µÄ½ÚµãÖµ¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿Ú»ñÈ¡£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è·å–Enumå±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼ï¼Œå¦‚è·å–åƒç´ æ ¼å¼ä¿¡æ¯åˆ™ä¸º"PixelFormat"
+ *  @param  pstEnumValue                [IN][OUT]       è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å±æ€§ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è·å–Enumç±»å‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œIEnumerationâ€çš„èŠ‚ç‚¹å€¼éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è·å–ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Get Enum value
@@ -686,12 +686,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetEnumValue(IN void* handle,IN const char* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃEnumĞÍÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ£¬Èç»ñÈ¡ÏñËØ¸ñÊ½ĞÅÏ¢ÔòÎª"PixelFormat"
- *  @param  nValue                      [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôĞÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃEnumÀàĞÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°IEnumeration¡±µÄ½ÚµãÖµ¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿ÚÉèÖÃ£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è®¾ç½®Enumå‹å±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼ï¼Œå¦‚è·å–åƒç´ æ ¼å¼ä¿¡æ¯åˆ™ä¸º"PixelFormat"
+ *  @param  nValue                      [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±æ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è®¾ç½®Enumç±»å‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œIEnumerationâ€çš„èŠ‚ç‚¹å€¼éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è®¾ç½®ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Set Enum value
@@ -705,12 +705,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetEnumValue(IN void* handle,IN const char* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃEnumĞÍÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ£¬Èç»ñÈ¡ÏñËØ¸ñÊ½ĞÅÏ¢ÔòÎª"PixelFormat"
- *  @param  strValue                    [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôĞÔ×Ö·û´®
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃEnumÀàĞÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°IEnumeration¡±µÄ½ÚµãÖµ¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿ÚÉèÖÃ£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è®¾ç½®Enumå‹å±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼ï¼Œå¦‚è·å–åƒç´ æ ¼å¼ä¿¡æ¯åˆ™ä¸º"PixelFormat"
+ *  @param  strValue                    [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±æ€§å­—ç¬¦ä¸²
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è®¾ç½®Enumç±»å‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œIEnumerationâ€çš„èŠ‚ç‚¹å€¼éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è®¾ç½®ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Set Enum value
@@ -724,12 +724,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetEnumValueByString(IN void* handle,IN cons
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡FloatÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ
- *  @param  pstFloatValue               [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÉè±¸ÊôĞÔ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡floatÀàĞÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°IFloat¡±µÄ½ÚµãÖµ¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿Ú»ñÈ¡£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è·å–Floatå±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼
+ *  @param  pstFloatValue               [IN][OUT]       è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å±æ€§ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è·å–floatç±»å‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œIFloatâ€çš„èŠ‚ç‚¹å€¼éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è·å–ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Get Float value
@@ -743,12 +743,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetFloatValue(IN void* handle,IN const char*
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃfloatĞÍÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ
- *  @param  fValue                      [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôĞÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃfloatÀàĞÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°IFloat¡±µÄ½ÚµãÖµ¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿ÚÉèÖÃ£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è®¾ç½®floatå‹å±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼
+ *  @param  fValue                      [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±æ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è®¾ç½®floatç±»å‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œIFloatâ€çš„èŠ‚ç‚¹å€¼éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è®¾ç½®ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Set float value
@@ -762,12 +762,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetFloatValue(IN void* handle,IN const char*
 	
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡BooleanÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ
- *  @param  pbValue                     [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÉè±¸ÊôĞÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡boolÀàĞÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°IBoolean¡±µÄ½ÚµãÖµ¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿Ú»ñÈ¡£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è·å–Booleanå±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼
+ *  @param  pbValue                     [IN][OUT]       è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å±æ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è·å–boolç±»å‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œIBooleanâ€çš„èŠ‚ç‚¹å€¼éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è·å–ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Get Boolean value
@@ -781,12 +781,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetBoolValue(IN void* handle,IN const char* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃBooleanĞÍÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ
- *  @param  bValue                      [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôĞÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃboolÀàĞÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°IBoolean¡±µÄ½ÚµãÖµ¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿ÚÉèÖÃ£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è®¾ç½®Booleanå‹å±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼
+ *  @param  bValue                      [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±æ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è®¾ç½®boolç±»å‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œIBooleanâ€çš„èŠ‚ç‚¹å€¼éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è®¾ç½®ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Set Boolean value
@@ -800,12 +800,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetBoolValue(IN void* handle,IN const char* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡StringÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ
- *  @param  pstStringValue              [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÉè±¸ÊôĞÔ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡stringÀàĞÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°IString¡±µÄ½ÚµãÖµ¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿Ú»ñÈ¡£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è·å–Stringå±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼
+ *  @param  pstStringValue              [IN][OUT]       è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³è®¾å¤‡å±æ€§ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è·å–stringç±»å‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œIStringâ€çš„èŠ‚ç‚¹å€¼éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è·å–ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Get String value
@@ -819,12 +819,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetStringValue(IN void* handle,IN const char
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃStringĞÍÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ
- *  @param  strValue                    [IN]            ÏëÒªÉèÖÃµÄÉè±¸µÄÊôĞÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃstringÀàĞÍµÄÖ¸¶¨½ÚµãµÄÖµ¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°IString¡±µÄ½ÚµãÖµ¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿ÚÉèÖÃ£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è®¾ç½®Stringå‹å±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼
+ *  @param  strValue                    [IN]            æƒ³è¦è®¾ç½®çš„è®¾å¤‡çš„å±æ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è®¾ç½®stringç±»å‹çš„æŒ‡å®šèŠ‚ç‚¹çš„å€¼ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œIStringâ€çš„èŠ‚ç‚¹å€¼éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è®¾ç½®ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Set String value
@@ -838,11 +838,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetStringValue(IN void* handle,IN const char
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃCommandĞÍÊôĞÔÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strKey                      [IN]            ÊôĞÔ¼üÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃÖ¸¶¨µÄCommandÀàĞÍ½Úµã¡£strKeyÈ¡Öµ¿ÉÒÔ²Î¿¼XML½Úµã²ÎÊıÀàĞÍÁĞ±í£¬±í¸ñÀïÃæÊı¾İÀàĞÍÎª¡°ICommand¡±µÄ½Úµã¶¼¿ÉÒÔÍ¨¹ı¸Ã½Ó¿ÚÉèÖÃ£¬strKey²ÎÊıÈ¡Öµ¶ÔÓ¦ÁĞ±íÀïÃæµÄ¡°Ãû³Æ¡±Ò»ÁĞ¡£
+ *  @brief  è®¾ç½®Commandå‹å±æ€§å€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strKey                      [IN]            å±æ€§é”®å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è®¾ç½®æŒ‡å®šçš„Commandç±»å‹èŠ‚ç‚¹ã€‚strKeyå–å€¼å¯ä»¥å‚è€ƒXMLèŠ‚ç‚¹å‚æ•°ç±»å‹åˆ—è¡¨ï¼Œè¡¨æ ¼é‡Œé¢æ•°æ®ç±»å‹ä¸ºâ€œICommandâ€çš„èŠ‚ç‚¹éƒ½å¯ä»¥é€šè¿‡è¯¥æ¥å£è®¾ç½®ï¼ŒstrKeyå‚æ•°å–å€¼å¯¹åº”åˆ—è¡¨é‡Œé¢çš„â€œåç§°â€ä¸€åˆ—ã€‚
  
  *  @~english
  *  @brief  Send Command
@@ -855,9 +855,9 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetCommandValue(IN void* handle,IN const cha
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Çå³ıGenICam½Úµã»º´æ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief  æ¸…é™¤GenICamèŠ‚ç‚¹ç¼“å­˜
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
  
  *  @~english
  *  @brief  Invalidate GenICam Nodes
@@ -868,16 +868,16 @@ MVSDKEXPORT_API int __stdcall MV_CC_InvalidateNodes(IN void* handle);
 
 
 /************************************************************************/
-/* Éè±¸Éı¼¶ ºÍ ¼Ä´æÆ÷¶ÁĞ´ ºÍÒì³£¡¢ÊÂ¼ş»Øµ÷                            	*/
+/* è®¾å¤‡å‡çº§ å’Œ å¯„å­˜å™¨è¯»å†™ å’Œå¼‚å¸¸ã€äº‹ä»¶å›è°ƒ                            	*/
 /* Device upgrade, register read and write and exception callback       */
 /************************************************************************/
 /********************************************************************//**
  *  @~chinese
- *  @brief  Éè±¸±¾µØÉı¼¶
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strFilePathName             [IN]            ÎÄ¼şÃû
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ı¸Ã½Ó¿Ú¿ÉÒÔ½«Éı¼¶¹Ì¼şÎÄ¼ş·¢ËÍ¸øÉè±¸½øĞĞÉı¼¶¡£¸Ã½Ó¿ÚĞèÒªµÈ´ıÉı¼¶¹Ì¼şÎÄ¼ş³É¹¦´«¸øÉè±¸¶ËÖ®ºóÔÙ·µ»Ø£¬ÏìÓ¦Ê±¼ä¿ÉÄÜ½Ï³¤¡£
+ *  @brief  è®¾å¤‡æœ¬åœ°å‡çº§
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strFilePathName             [IN]            æ–‡ä»¶å
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æ¥å£å¯ä»¥å°†å‡çº§å›ºä»¶æ–‡ä»¶å‘é€ç»™è®¾å¤‡è¿›è¡Œå‡çº§ã€‚è¯¥æ¥å£éœ€è¦ç­‰å¾…å‡çº§å›ºä»¶æ–‡ä»¶æˆåŠŸä¼ ç»™è®¾å¤‡ç«¯ä¹‹åå†è¿”å›ï¼Œå“åº”æ—¶é—´å¯èƒ½è¾ƒé•¿ã€‚
  
  *  @~english
  *  @brief  Device Local Upgrade
@@ -891,10 +891,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_LocalUpgrade(IN void* handle, const void *st
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éı¼¶½ø¶È
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnProcess                   [OUT]           ½ø¶È½ÓÊÕµØÖ·
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–å‡çº§è¿›åº¦
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnProcess                   [OUT]           è¿›åº¦æ¥æ”¶åœ°å€
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @~english
  *  @brief  Get Upgrade Progress
@@ -906,13 +906,13 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetUpgradeProcess(IN void* handle, unsigned 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ¶ÁÄÚ´æ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pBuffer                     [IN][OUT]       ×÷Îª·µ»ØÖµÊ¹ÓÃ£¬±£´æ¶Áµ½µÄÄÚ´æÖµ£¨GEVÉè±¸ÄÚ´æÖµÊÇ°´ÕÕ´ó¶ËÄ£Ê½´æ´¢µÄ£¬ÆäËüĞ­ÒéÉè±¸°´ÕÕĞ¡¶Ë´æ´¢£©
- *  @param  nAddress                    [IN]            ´ı¶ÁÈ¡µÄÄÚ´æµØÖ·£¬¸ÃµØÖ·¿ÉÒÔ´ÓÉè±¸µÄCamera.xmlÎÄ¼şÖĞ»ñÈ¡£¬ĞÎÈçxxx_RegAddrµÄxml½ÚµãÖµ
- *  @param  nLength                     [IN]            ´ı¶ÁÈ¡µÄÄÚ´æ³¤¶È
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ·ÃÎÊÉè±¸£¬¶ÁÈ¡Ä³¶Î¼Ä´æÆ÷µÄÊı¾İ¡£
+ *  @brief  è¯»å†…å­˜
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pBuffer                     [IN][OUT]       ä½œä¸ºè¿”å›å€¼ä½¿ç”¨ï¼Œä¿å­˜è¯»åˆ°çš„å†…å­˜å€¼ï¼ˆGEVè®¾å¤‡å†…å­˜å€¼æ˜¯æŒ‰ç…§å¤§ç«¯æ¨¡å¼å­˜å‚¨çš„ï¼Œå…¶å®ƒåè®®è®¾å¤‡æŒ‰ç…§å°ç«¯å­˜å‚¨ï¼‰
+ *  @param  nAddress                    [IN]            å¾…è¯»å–çš„å†…å­˜åœ°å€ï¼Œè¯¥åœ°å€å¯ä»¥ä»è®¾å¤‡çš„Camera.xmlæ–‡ä»¶ä¸­è·å–ï¼Œå½¢å¦‚xxx_RegAddrçš„xmlèŠ‚ç‚¹å€¼
+ *  @param  nLength                     [IN]            å¾…è¯»å–çš„å†…å­˜é•¿åº¦
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è®¿é—®è®¾å¤‡ï¼Œè¯»å–æŸæ®µå¯„å­˜å™¨çš„æ•°æ®ã€‚
  
  *  @~english
  *  @brief  Read Memory
@@ -927,13 +927,13 @@ MVSDKEXPORT_API int __stdcall MV_CC_ReadMemory(IN void* handle , void *pBuffer, 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ğ´ÄÚ´æ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pBuffer                     [IN]            ´ıĞ´ÈëµÄÄÚ´æÖµ£¨×¢ÒâGEVÉè±¸ÄÚ´æÖµÒª°´ÕÕ´ó¶ËÄ£Ê½´æ´¢£¬ÆäËüĞ­ÒéÉè±¸°´ÕÕĞ¡¶Ë´æ´¢£©
- *  @param  nAddress                    [IN]            ´ıĞ´ÈëµÄÄÚ´æµØÖ·£¬¸ÃµØÖ·¿ÉÒÔ´ÓÉè±¸µÄCamera.xmlÎÄ¼şÖĞ»ñÈ¡£¬ĞÎÈçxxx_RegAddrµÄxml½ÚµãÖµ
- *  @param  nLength                     [IN]            ´ıĞ´ÈëµÄÄÚ´æ³¤¶È
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ·ÃÎÊÉè±¸£¬°ÑÒ»¶ÎÊı¾İĞ´ÈëÄ³¶Î¼Ä´æÆ÷¡£
+ *  @brief  å†™å†…å­˜
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pBuffer                     [IN]            å¾…å†™å…¥çš„å†…å­˜å€¼ï¼ˆæ³¨æ„GEVè®¾å¤‡å†…å­˜å€¼è¦æŒ‰ç…§å¤§ç«¯æ¨¡å¼å­˜å‚¨ï¼Œå…¶å®ƒåè®®è®¾å¤‡æŒ‰ç…§å°ç«¯å­˜å‚¨ï¼‰
+ *  @param  nAddress                    [IN]            å¾…å†™å…¥çš„å†…å­˜åœ°å€ï¼Œè¯¥åœ°å€å¯ä»¥ä»è®¾å¤‡çš„Camera.xmlæ–‡ä»¶ä¸­è·å–ï¼Œå½¢å¦‚xxx_RegAddrçš„xmlèŠ‚ç‚¹å€¼
+ *  @param  nLength                     [IN]            å¾…å†™å…¥çš„å†…å­˜é•¿åº¦
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è®¿é—®è®¾å¤‡ï¼ŒæŠŠä¸€æ®µæ•°æ®å†™å…¥æŸæ®µå¯„å­˜å™¨ã€‚
  
  *  @~english
  *  @brief  Write Memory
@@ -948,12 +948,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_WriteMemory(IN void* handle , const void *pB
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áÒì³£ÏûÏ¢»Øµ÷£¬ÔÚ´ò¿ªÉè±¸Ö®ºóµ÷ÓÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  cbException                 [IN]            Òì³£»Øµ÷º¯ÊıÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚĞèÒªÔÚMV_CC_OpenDevice´ò¿ªÉè±¸Ö®ºóµ÷ÓÃ¡£Éè±¸Òì³£¶Ï¿ªÁ¬½Óºó¿ÉÒÔÔÚ»Øµ÷ÀïÃæ»ñÈ¡µ½Òì³£ÏûÏ¢£¬GigEÉè±¸µôÏßÖ®ºóĞèÒªÏÈµ÷ÓÃMV_CC_CloseDevice½Ó¿Ú¹Ø±ÕÉè±¸£¬ÔÙµ÷ÓÃMV_CC_OpenDevice½Ó¿ÚÖØĞÂ´ò¿ªÉè±¸¡£
+ *  @brief  æ³¨å†Œå¼‚å¸¸æ¶ˆæ¯å›è°ƒï¼Œåœ¨æ‰“å¼€è®¾å¤‡ä¹‹åè°ƒç”¨
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  cbException                 [IN]            å¼‚å¸¸å›è°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£éœ€è¦åœ¨MV_CC_OpenDeviceæ‰“å¼€è®¾å¤‡ä¹‹åè°ƒç”¨ã€‚è®¾å¤‡å¼‚å¸¸æ–­å¼€è¿æ¥åå¯ä»¥åœ¨å›è°ƒé‡Œé¢è·å–åˆ°å¼‚å¸¸æ¶ˆæ¯ï¼ŒGigEè®¾å¤‡æ‰çº¿ä¹‹åéœ€è¦å…ˆè°ƒç”¨MV_CC_CloseDeviceæ¥å£å…³é—­è®¾å¤‡ï¼Œå†è°ƒç”¨MV_CC_OpenDeviceæ¥å£é‡æ–°æ‰“å¼€è®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Register Exception Message CallBack, call after open device
@@ -968,13 +968,13 @@ MVSDKEXPORT_API int __stdcall MV_CC_RegisterExceptionCallBack(IN void* handle,
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áÈ«²¿ÊÂ¼ş»Øµ÷£¬ÔÚ´ò¿ªÉè±¸Ö®ºóµ÷ÓÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  cbEvent                     [IN]            ÊÂ¼ş»Øµ÷º¯ÊıÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ı¸Ã½Ó¿ÚÉèÖÃÊÂ¼ş»Øµ÷£¬¿ÉÒÔÔÚ»Øµ÷º¯ÊıÀïÃæ»ñÈ¡²É¼¯¡¢ÆØ¹âµÈÊÂ¼şĞÅÏ¢¡£ \n
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£
+ *  @brief  æ³¨å†Œå…¨éƒ¨äº‹ä»¶å›è°ƒï¼Œåœ¨æ‰“å¼€è®¾å¤‡ä¹‹åè°ƒç”¨
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  cbEvent                     [IN]            äº‹ä»¶å›è°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æ¥å£è®¾ç½®äº‹ä»¶å›è°ƒï¼Œå¯ä»¥åœ¨å›è°ƒå‡½æ•°é‡Œé¢è·å–é‡‡é›†ã€æ›å…‰ç­‰äº‹ä»¶ä¿¡æ¯ã€‚ \n
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚
  
  *  @~english
  *  @brief  Register event callback, which is called after the device is opened
@@ -989,14 +989,14 @@ MVSDKEXPORT_API int __stdcall MV_CC_RegisterAllEventCallBack(void* handle, void(
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ×¢²áµ¥¸öÊÂ¼ş»Øµ÷£¬ÔÚ´ò¿ªÉè±¸Ö®ºóµ÷ÓÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strEventName                [IN]            ÊÂ¼şÃû³Æ
- *  @param  cbEvent                     [IN]            ÊÂ¼ş»Øµ÷º¯ÊıÖ¸Õë
- *  @param  pUser                       [IN]            ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ı¸Ã½Ó¿ÚÉèÖÃÊÂ¼ş»Øµ÷£¬¿ÉÒÔÔÚ»Øµ÷º¯ÊıÀïÃæ»ñÈ¡²É¼¯¡¢ÆØ¹âµÈÊÂ¼şĞÅÏ¢¡£\n 
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸£¬½öÖ§³Ö"Éè±¸µôÏß"ÕâÒ»ÖÖÊÂ¼ş¡£ 
+ *  @brief  æ³¨å†Œå•ä¸ªäº‹ä»¶å›è°ƒï¼Œåœ¨æ‰“å¼€è®¾å¤‡ä¹‹åè°ƒç”¨
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strEventName                [IN]            äº‹ä»¶åç§°
+ *  @param  cbEvent                     [IN]            äº‹ä»¶å›è°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser                       [IN]            ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æ¥å£è®¾ç½®äº‹ä»¶å›è°ƒï¼Œå¯ä»¥åœ¨å›è°ƒå‡½æ•°é‡Œé¢è·å–é‡‡é›†ã€æ›å…‰ç­‰äº‹ä»¶ä¿¡æ¯ã€‚\n 
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ï¼Œä»…æ”¯æŒ"è®¾å¤‡æ‰çº¿"è¿™ä¸€ç§äº‹ä»¶ã€‚ 
  
  *  @~english
  *  @brief  Register single event callback, which is called after the device is opened
@@ -1013,19 +1013,19 @@ MVSDKEXPORT_API int __stdcall MV_CC_RegisterEventCallBackEx(void* handle, const 
 
 
 /************************************************************************/
-/* GigEVision Éè±¸¶ÀÓĞµÄ½Ó¿Ú                                     		*/
+/* GigEVision è®¾å¤‡ç‹¬æœ‰çš„æ¥å£                                     		*/
 /* GigEVision device specific interface                                 */
 /************************************************************************/
 /********************************************************************//**
  *  @~chinese
- *  @brief  Ç¿ÖÆIP
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nIP                         [IN]            ÉèÖÃµÄIP
- *  @param  nSubNetMask                 [IN]            ×ÓÍøÑÚÂë
- *  @param  nDefaultGateWay             [IN]            Ä¬ÈÏÍø¹Ø
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Ç¿ÖÆÉèÖÃÉè±¸ÍøÂç²ÎÊı£¨°üÀ¨IP¡¢×ÓÍøÑÚÂë¡¢Ä¬ÈÏÍø¹Ø£©£¬Ç¿ÖÆÉèÖÃÖ®ºó½«ĞèÒªÖØĞÂ´´½¨Éè±¸¾ä±ú£¬½öGigEVisionÉè±¸Ö§³Ö¡£\n
-             Èç¹ûÉè±¸ÎªDHCPµÄ×´Ì¬£¬µ÷ÓÃ¸Ã½Ó¿ÚÇ¿ÖÆÉèÖÃÉè±¸ÍøÂç²ÎÊıÖ®ºóÉè±¸½«»áÖØÆô¡£
+ *  @brief  å¼ºåˆ¶IP
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nIP                         [IN]            è®¾ç½®çš„IP
+ *  @param  nSubNetMask                 [IN]            å­ç½‘æ©ç 
+ *  @param  nDefaultGateWay             [IN]            é»˜è®¤ç½‘å…³
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks å¼ºåˆ¶è®¾ç½®è®¾å¤‡ç½‘ç»œå‚æ•°ï¼ˆåŒ…æ‹¬IPã€å­ç½‘æ©ç ã€é»˜è®¤ç½‘å…³ï¼‰ï¼Œå¼ºåˆ¶è®¾ç½®ä¹‹åå°†éœ€è¦é‡æ–°åˆ›å»ºè®¾å¤‡å¥æŸ„ï¼Œä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚\n
+             å¦‚æœè®¾å¤‡ä¸ºDHCPçš„çŠ¶æ€ï¼Œè°ƒç”¨è¯¥æ¥å£å¼ºåˆ¶è®¾ç½®è®¾å¤‡ç½‘ç»œå‚æ•°ä¹‹åè®¾å¤‡å°†ä¼šé‡å¯ã€‚
  
  *  @~english
  *  @brief  Force IP
@@ -1041,11 +1041,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_ForceIpEx(IN void* handle, unsigned int nI
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÅäÖÃIP·½Ê½
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nType                       [IN]            IPÀàĞÍ£¬¼ûMV_IP_CFG_x
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ·¢ËÍÃüÁîÉèÖÃÉè±¸µÄIP·½Ê½£¬ÈçDHCP¡¢LLAµÈ£¬½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief  é…ç½®IPæ–¹å¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nType                       [IN]            IPç±»å‹ï¼Œè§MV_IP_CFG_x
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks å‘é€å‘½ä»¤è®¾ç½®è®¾å¤‡çš„IPæ–¹å¼ï¼Œå¦‚DHCPã€LLAç­‰ï¼Œä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
  
  *  @~english
  *  @brief  IP configuration method
@@ -1058,11 +1058,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetIpConfig(IN void* handle, unsigned int 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃ½öÊ¹ÓÃÄ³ÖÖÄ£Ê½,type: MV_NET_TRANS_x£¬²»ÉèÖÃÊ±£¬Ä¬ÈÏÓÅÏÈÊ¹ÓÃdriver
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nType                       [IN]            ÍøÂç´«ÊäÄ£Ê½£¬¼ûMV_NET_TRANS_x
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ı¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃSDKÄÚ²¿ÓÅÏÈÊ¹ÓÃµÄÍøÂçÄ£Ê½£¬Ä¬ÈÏÓÅÏÈÊ¹ÓÃÇı¶¯Ä£Ê½£¬½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief  è®¾ç½®ä»…ä½¿ç”¨æŸç§æ¨¡å¼,type: MV_NET_TRANS_xï¼Œä¸è®¾ç½®æ—¶ï¼Œé»˜è®¤ä¼˜å…ˆä½¿ç”¨driver
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nType                       [IN]            ç½‘ç»œä¼ è¾“æ¨¡å¼ï¼Œè§MV_NET_TRANS_x
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æ¥å£å¯ä»¥è®¾ç½®SDKå†…éƒ¨ä¼˜å…ˆä½¿ç”¨çš„ç½‘ç»œæ¨¡å¼ï¼Œé»˜è®¤ä¼˜å…ˆä½¿ç”¨é©±åŠ¨æ¨¡å¼ï¼Œä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
  
  *  @~english
  *  @brief  Set to use only one mode,type: MV_NET_TRANS_x. When do not set, priority is to use driver by default
@@ -1075,11 +1075,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetNetTransMode(IN void* handle, unsigned 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡ÍøÂç´«ÊäĞÅÏ¢
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstInfo                     [OUT]           ĞÅÏ¢½á¹¹Ìå
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Í¨¹ı¸Ã½Ó¿Ú¿ÉÒÔ»ñÈ¡ÍøÂç´«ÊäÏà¹ØĞÅÏ¢£¬°üÀ¨ÒÑ½ÓÊÕÊı¾İ´óĞ¡¡¢¶ªÖ¡ÊıÁ¿µÈ£¬ÔÚMV_CC_StartGrabbing¿ªÆô²É¼¯Ö®ºóµ÷ÓÃ¡£½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief  è·å–ç½‘ç»œä¼ è¾“ä¿¡æ¯
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstInfo                     [OUT]           ä¿¡æ¯ç»“æ„ä½“
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks é€šè¿‡è¯¥æ¥å£å¯ä»¥è·å–ç½‘ç»œä¼ è¾“ç›¸å…³ä¿¡æ¯ï¼ŒåŒ…æ‹¬å·²æ¥æ”¶æ•°æ®å¤§å°ã€ä¸¢å¸§æ•°é‡ç­‰ï¼Œåœ¨MV_CC_StartGrabbingå¼€å¯é‡‡é›†ä¹‹åè°ƒç”¨ã€‚ä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
  
  *  @~english
  *  @brief  Get net transmission information
@@ -1092,14 +1092,14 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_GetNetTransInfo(IN void* handle, MV_NETTRA
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÃ¶¾ÙÃüÁîµÄ»Ø¸´°üÀàĞÍ
- *  @param  nMode                       [IN]            »Ø¸´°üÀàĞÍ£¨Ä¬ÈÏ¹ã²¥£©£¬0-µ¥²¥£¬1-¹ã²¥
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÖ»¶ÔGigEÏà»úÓĞĞ§¡£
+ *  @brief  è®¾ç½®æšä¸¾å‘½ä»¤çš„å›å¤åŒ…ç±»å‹
+ *  @param  nMode                       [IN]            å›å¤åŒ…ç±»å‹ï¼ˆé»˜è®¤å¹¿æ’­ï¼‰ï¼Œ0-å•æ’­ï¼Œ1-å¹¿æ’­
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£åªå¯¹GigEç›¸æœºæœ‰æ•ˆã€‚
 
  *  @~english
  *  @brief  Setting the ACK mode of devices Discovery.
- *  @param  nMode                       [IN]            ACK mode£¨Default-Broadcast£©,0-Unicast,1-Broadcast.
+ *  @param  nMode                       [IN]            ACK modeï¼ˆDefault-Broadcastï¼‰,0-Unicast,1-Broadcast.
  *  @return Success, return MV_OK. Failure, return error code 
  *  @remarks This interface is ONLY effective on GigE cameras. \n
  ************************************************************************/
@@ -1107,11 +1107,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetDiscoveryMode(unsigned int nMode);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃGVSPÈ¡Á÷³¬Ê±Ê±¼ä
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nMillisec                   [IN]            ³¬Ê±Ê±¼ä£¬Ä¬ÈÏ300ms£¬·¶Î§£º>10ms
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Á¬½ÓÉè±¸Ö®ºó£¬È¡Á÷¶¯×÷·¢ÉúÇ°£¬µ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃGVSPÈ¡Á÷³¬Ê±Ê±¼ä¡£GVSPÈ¡Á÷³¬Ê±ÉèÖÃ¹ı¶Ì¿ÉÄÜÔì³ÉÍ¼ÏñÒì³££¬ÉèÖÃ¹ı³¤¿ÉÄÜÔì³ÉÈ¡Á÷Ê±¼ä±ä³¤¡£
+ *  @brief  è®¾ç½®GVSPå–æµè¶…æ—¶æ—¶é—´
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nMillisec                   [IN]            è¶…æ—¶æ—¶é—´ï¼Œé»˜è®¤300msï¼ŒèŒƒå›´ï¼š>10ms
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åï¼Œå–æµåŠ¨ä½œå‘ç”Ÿå‰ï¼Œè°ƒç”¨è¯¥æ¥å£å¯ä»¥è®¾ç½®GVSPå–æµè¶…æ—¶æ—¶é—´ã€‚GVSPå–æµè¶…æ—¶è®¾ç½®è¿‡çŸ­å¯èƒ½é€ æˆå›¾åƒå¼‚å¸¸ï¼Œè®¾ç½®è¿‡é•¿å¯èƒ½é€ æˆå–æµæ—¶é—´å˜é•¿ã€‚
  
  *  @~english
  *  @brief  Set GVSP streaming timeout
@@ -1125,11 +1125,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetGvspTimeout(void* handle, unsigned int 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡GVSPÈ¡Á÷³¬Ê±Ê±¼ä
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnMillisec                  [OUT]           ³¬Ê±Ê±¼äÖ¸Õë£¬ÒÔºÁÃëÎ»µ¥Î»
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡µ±Ç°µÄGVSPÈ¡Á÷³¬Ê±Ê±¼ä
+ *  @brief  è·å–GVSPå–æµè¶…æ—¶æ—¶é—´
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnMillisec                  [OUT]           è¶…æ—¶æ—¶é—´æŒ‡é’ˆï¼Œä»¥æ¯«ç§’ä½å•ä½
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£ç”¨äºè·å–å½“å‰çš„GVSPå–æµè¶…æ—¶æ—¶é—´
  
  *  @~english
  *  @brief  Get GVSP streaming timeout
@@ -1142,11 +1142,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_GetGvspTimeout(IN void* handle, unsigned i
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃGVCPÃüÁî³¬Ê±Ê±¼ä
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nMillisec                   [IN]            ³¬Ê±Ê±¼ä£¬Ä¬ÈÏ500ms£¬·¶Î§£º0-10000ms
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃGVCPÃüÁî³¬Ê±Ê±¼ä¡£
+ *  @brief  è®¾ç½®GVCPå‘½ä»¤è¶…æ—¶æ—¶é—´
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nMillisec                   [IN]            è¶…æ—¶æ—¶é—´ï¼Œé»˜è®¤500msï¼ŒèŒƒå›´ï¼š0-10000ms
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è®¾ç½®GVCPå‘½ä»¤è¶…æ—¶æ—¶é—´ã€‚
  
  *  @~english
  *  @brief  Set GVCP cammand timeout
@@ -1159,11 +1159,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetGvcpTimeout(void* handle, unsigned int 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡GVCPÃüÁî³¬Ê±Ê±¼ä
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnMillisec                  [OUT]           ³¬Ê±Ê±¼äÖ¸Õë£¬ÒÔºÁÃëÎ»µ¥Î»
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡µ±Ç°µÄGVCP³¬Ê±Ê±¼ä¡£
+ *  @brief  è·å–GVCPå‘½ä»¤è¶…æ—¶æ—¶é—´
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnMillisec                  [OUT]           è¶…æ—¶æ—¶é—´æŒ‡é’ˆï¼Œä»¥æ¯«ç§’ä½å•ä½
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£ç”¨äºè·å–å½“å‰çš„GVCPè¶…æ—¶æ—¶é—´ã€‚
  
  *  @~english
  *  @brief  Get GVCP cammand timeout
@@ -1176,16 +1176,16 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_GetGvcpTimeout(void* handle, unsigned int*
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÖØ´«GVCPÃüÁî´ÎÊı
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nRetryGvcpTimes             [IN]            ÖØ´«´ÎÊı£¬·¶Î§£º0-100
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚÔÚGVCP°ü´«ÊäÒì³£Ê±£¬Ôö¼ÓÖØ´«µÄ´ÎÊı£¬ÔÚÒ»¶¨³Ì¶ÈÉÏ¿ÉÒÔ±ÜÃâÉè±¸µôÏß£¬·¶Î§Îª0-100¡£
+ *  @brief  è®¾ç½®é‡ä¼ GVCPå‘½ä»¤æ¬¡æ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nRetryGvcpTimes             [IN]            é‡ä¼ æ¬¡æ•°ï¼ŒèŒƒå›´ï¼š0-100
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£ç”¨äºåœ¨GVCPåŒ…ä¼ è¾“å¼‚å¸¸æ—¶ï¼Œå¢åŠ é‡ä¼ çš„æ¬¡æ•°ï¼Œåœ¨ä¸€å®šç¨‹åº¦ä¸Šå¯ä»¥é¿å…è®¾å¤‡æ‰çº¿ï¼ŒèŒƒå›´ä¸º0-100ã€‚
  
  *  @~english
  *  @brief  Set the number of retry GVCP cammand
  *  @param  handle                      [IN]            Device handle
- *  @param  nRetryGvcpTimes             [IN]            The number of retries£¬rang£º0-100
+ *  @param  nRetryGvcpTimes             [IN]            The number of retriesï¼Œrangï¼š0-100
  *  @return Success, return MV_OK. Failure, return error code
  *  @remarks This interface is used to increase The Times of retransmission when GVCP packet transmission is abnormal,and to some extent, it can avoid dropping the camera, with a range of 0-100.
  ************************************************************************/
@@ -1193,11 +1193,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetRetryGvcpTimes(void* handle, unsigned i
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡ÖØ´«GVCPÃüÁî´ÎÊı
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnRetryGvcpTimes            [OUT]           ÖØ´«´ÎÊıÖ¸Õë
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡µ±Ç°µÄGVCPÖØ´«´ÎÊı£¬Ä¬ÈÏ3´Î¡£
+ *  @brief  è·å–é‡ä¼ GVCPå‘½ä»¤æ¬¡æ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnRetryGvcpTimes            [OUT]           é‡ä¼ æ¬¡æ•°æŒ‡é’ˆ
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£ç”¨äºè·å–å½“å‰çš„GVCPé‡ä¼ æ¬¡æ•°ï¼Œé»˜è®¤3æ¬¡ã€‚
  
  *  @~english
  *  @brief  Get the number of retry GVCP cammand
@@ -1210,11 +1210,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_GetRetryGvcpTimes(void* handle, unsigned i
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡×î¼ÑµÄpacket size£¬¸Ã½Ó¿ÚÄ¿Ç°Ö»Ö§³ÖGigEÉè±¸
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ×î¼Ñpacketsize
- *  @remarks »ñÈ¡×î¼ÑµÄpacket size£¬¶ÔÓ¦GigEVisionÉè±¸ÊÇSCPS£¬¶ÔÓ¦U3VÉè±¸ÊÇÃ¿´Î´ÓÇı¶¯¶ÁÈ¡µÄ°ü´óĞ¡£¬¸Ã´óĞ¡¼´ÍøÂçÉÏ´«ÊäÒ»¸ö°üµÄ´óĞ¡¡£¸Ã½Ó¿ÚĞèÒªÔÚMV_CC_OpenDeviceÖ®ºó¡¢MV_CC_StartGrabbingÖ®Ç°µ÷ÓÃ¡£ \n
-             ¸Ã½Ó¿Ú²»Ö§³ÖCameraLinkÉè±¸¡£ 
+ *  @brief  è·å–æœ€ä½³çš„packet sizeï¼Œè¯¥æ¥å£ç›®å‰åªæ”¯æŒGigEè®¾å¤‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æœ€ä½³packetsize
+ *  @remarks è·å–æœ€ä½³çš„packet sizeï¼Œå¯¹åº”GigEVisionè®¾å¤‡æ˜¯SCPSï¼Œå¯¹åº”U3Vè®¾å¤‡æ˜¯æ¯æ¬¡ä»é©±åŠ¨è¯»å–çš„åŒ…å¤§å°ï¼Œè¯¥å¤§å°å³ç½‘ç»œä¸Šä¼ è¾“ä¸€ä¸ªåŒ…çš„å¤§å°ã€‚è¯¥æ¥å£éœ€è¦åœ¨MV_CC_OpenDeviceä¹‹åã€MV_CC_StartGrabbingä¹‹å‰è°ƒç”¨ã€‚ \n
+             è¯¥æ¥å£ä¸æ”¯æŒCameraLinkè®¾å¤‡ã€‚ 
  
  *  @~english
  *  @brief  Get the optimal Packet Size, Only support GigE Camera
@@ -1227,13 +1227,13 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetOptimalPacketSize(IN void* handle);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÊÇ·ñ´ò¿ªÖØ·¢°üÖ§³Ö£¬¼°ÖØ·¢°üÉèÖÃ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  bEnable                     [IN]            ÊÇ·ñÖ§³ÖÖØ·¢°ü
- *  @param  nMaxResendPercent           [IN]            ×î´óÖØ·¢±È
- *  @param  nResendTimeout              [IN]            ÖØ·¢³¬Ê±Ê±¼ä
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Á¬½ÓÉè±¸Ö®ºóµ÷ÓÃ¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃÖØ·¢°üÊôĞÔ£¬½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief  è®¾ç½®æ˜¯å¦æ‰“å¼€é‡å‘åŒ…æ”¯æŒï¼ŒåŠé‡å‘åŒ…è®¾ç½®
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  bEnable                     [IN]            æ˜¯å¦æ”¯æŒé‡å‘åŒ…
+ *  @param  nMaxResendPercent           [IN]            æœ€å¤§é‡å‘æ¯”
+ *  @param  nResendTimeout              [IN]            é‡å‘è¶…æ—¶æ—¶é—´
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¿æ¥è®¾å¤‡ä¹‹åè°ƒç”¨è¯¥æ¥å£å¯ä»¥è®¾ç½®é‡å‘åŒ…å±æ€§ï¼Œä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
  
  *  @~english
  *  @brief  Set whethe to enable resend, and set resend
@@ -1248,16 +1248,16 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetResend(void* handle, unsigned int bEnab
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÖØ´«ÃüÁî×î´ó³¢ÊÔ´ÎÊı
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nRetryTimes                 [IN]            ÖØ´«ÃüÁî×î´ó³¢ÊÔ´ÎÊı£¬Ä¬ÈÏ20
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿Ú±ØĞëÔÚµ÷ÓÃMV_GIGE_SetResend¿ªÆôÖØ´«°ü¹¦ÄÜÖ®ºóµ÷ÓÃ£¬·ñÔòÊ§°ÜÇÒ·µ»ØMV_E_CALLORDER
+ *  @brief  è®¾ç½®é‡ä¼ å‘½ä»¤æœ€å¤§å°è¯•æ¬¡æ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nRetryTimes                 [IN]            é‡ä¼ å‘½ä»¤æœ€å¤§å°è¯•æ¬¡æ•°ï¼Œé»˜è®¤20
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£å¿…é¡»åœ¨è°ƒç”¨MV_GIGE_SetResendå¼€å¯é‡ä¼ åŒ…åŠŸèƒ½ä¹‹åè°ƒç”¨ï¼Œå¦åˆ™å¤±è´¥ä¸”è¿”å›MV_E_CALLORDER
  
  *  @~english
  *  @brief  set the max resend retry times
  *  @param  handle                      [IN]            Device handle
- *  @param  nRetryTimes                 [IN]            The max times to retry resending lost packets£¬default 20
+ *  @param  nRetryTimes                 [IN]            The max times to retry resending lost packetsï¼Œdefault 20
  *  @return Success, return MV_OK. Failure, return error code
  *  @remarks This interface MUST be called after enabling resending lost packets by calling MV_GIGE_SetResend, \n
  *           otherwise would fail and return MV_E_CALLORDER.
@@ -1266,11 +1266,11 @@ MVSDKEXPORT_API int __stdcall  MV_GIGE_SetResendMaxRetryTimes (void* handle, uns
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡ÖØ´«ÃüÁî×î´ó³¢ÊÔ´ÎÊı
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnRetryTimes                [OUT]           ÖØ´«ÃüÁî×î´ó³¢ÊÔ´ÎÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿Ú±ØĞëÔÚµ÷ÓÃMV_GIGE_SetResend¿ªÆôÖØ´«°ü¹¦ÄÜÖ®ºóµ÷ÓÃ£¬·ñÔòÊ§°ÜÇÒ·µ»ØMV_E_CALLORDER
+ *  @brief  è·å–é‡ä¼ å‘½ä»¤æœ€å¤§å°è¯•æ¬¡æ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnRetryTimes                [OUT]           é‡ä¼ å‘½ä»¤æœ€å¤§å°è¯•æ¬¡æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£å¿…é¡»åœ¨è°ƒç”¨MV_GIGE_SetResendå¼€å¯é‡ä¼ åŒ…åŠŸèƒ½ä¹‹åè°ƒç”¨ï¼Œå¦åˆ™å¤±è´¥ä¸”è¿”å›MV_E_CALLORDER
  
  *  @~english
  *  @brief  get the max resend retry times
@@ -1284,11 +1284,11 @@ MVSDKEXPORT_API int __stdcall  MV_GIGE_GetResendMaxRetryTimes (void* handle, uns
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÍ¬Ò»ÖØ´«°ü¶à´ÎÇëÇóÖ®¼äµÄÊ±¼ä¼ä¸ô
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nMillisec                   [IN]            Í¬Ò»ÖØ´«°ü¶à´ÎÇëÇóÖ®¼äµÄÊ±¼ä¼ä¸ô£¬Ä¬ÈÏ10ms
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿Ú±ØĞëÔÚµ÷ÓÃMV_GIGE_SetResend¿ªÆôÖØ´«°ü¹¦ÄÜÖ®ºóµ÷ÓÃ£¬·ñÔòÊ§°ÜÇÒ·µ»ØMV_E_CALLORDER
+ *  @brief  è®¾ç½®åŒä¸€é‡ä¼ åŒ…å¤šæ¬¡è¯·æ±‚ä¹‹é—´çš„æ—¶é—´é—´éš”
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nMillisec                   [IN]            åŒä¸€é‡ä¼ åŒ…å¤šæ¬¡è¯·æ±‚ä¹‹é—´çš„æ—¶é—´é—´éš”ï¼Œé»˜è®¤10ms
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£å¿…é¡»åœ¨è°ƒç”¨MV_GIGE_SetResendå¼€å¯é‡ä¼ åŒ…åŠŸèƒ½ä¹‹åè°ƒç”¨ï¼Œå¦åˆ™å¤±è´¥ä¸”è¿”å›MV_E_CALLORDER
  
  *  @~english
  *  @brief  set time interval between same resend requests
@@ -1302,11 +1302,11 @@ MVSDKEXPORT_API int __stdcall  MV_GIGE_SetResendTimeInterval (void* handle, unsi
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Í¬Ò»ÖØ´«°ü¶à´ÎÇëÇóÖ®¼äµÄÊ±¼ä¼ä¸ô
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnMillisec                  [OUT]           Í¬Ò»ÖØ´«°ü¶à´ÎÇëÇóÖ®¼äµÄÊ±¼ä¼ä¸ô
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿Ú±ØĞëÔÚµ÷ÓÃMV_GIGE_SetResend¿ªÆôÖØ´«°ü¹¦ÄÜÖ®ºóµ÷ÓÃ£¬·ñÔòÊ§°ÜÇÒ·µ»ØMV_E_CALLORDER
+ *  @brief  è·å–åŒä¸€é‡ä¼ åŒ…å¤šæ¬¡è¯·æ±‚ä¹‹é—´çš„æ—¶é—´é—´éš”
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnMillisec                  [OUT]           åŒä¸€é‡ä¼ åŒ…å¤šæ¬¡è¯·æ±‚ä¹‹é—´çš„æ—¶é—´é—´éš”
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£å¿…é¡»åœ¨è°ƒç”¨MV_GIGE_SetResendå¼€å¯é‡ä¼ åŒ…åŠŸèƒ½ä¹‹åè°ƒç”¨ï¼Œå¦åˆ™å¤±è´¥ä¸”è¿”å›MV_E_CALLORDER
  
  *  @~english
  *  @brief  get time interval between same resend requests
@@ -1320,11 +1320,11 @@ MVSDKEXPORT_API int __stdcall  MV_GIGE_GetResendTimeInterval (void* handle, unsi
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃ´«ÊäÄ£Ê½£¬¿ÉÒÔÎªµ¥²¥Ä£Ê½¡¢×é²¥Ä£Ê½µÈ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  stTransmissionType          [IN]            ´«ÊäÄ£Ê½½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Í¨¹ı¸Ã½Ó¿Ú¿ÉÒÔÉèÖÃ´«ÊäÄ£Ê½Îªµ¥²¥¡¢×é²¥µÈÄ£Ê½£¬½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief  è®¾ç½®ä¼ è¾“æ¨¡å¼ï¼Œå¯ä»¥ä¸ºå•æ’­æ¨¡å¼ã€ç»„æ’­æ¨¡å¼ç­‰
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  stTransmissionType          [IN]            ä¼ è¾“æ¨¡å¼ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks é€šè¿‡è¯¥æ¥å£å¯ä»¥è®¾ç½®ä¼ è¾“æ¨¡å¼ä¸ºå•æ’­ã€ç»„æ’­ç­‰æ¨¡å¼ï¼Œä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
 
  *  @~english
  *  @brief  Set transmission type,Unicast or Multicast
@@ -1337,11 +1337,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetTransmissionType(void* handle, MV_TRANS
 
 /********************************************************************//**
  *  @~chinese
- *  @brief   ·¢³ö¶¯×÷ÃüÁî
- *  @param   pstActionCmdInfo           [IN]            ¶¯×÷ÃüÁîĞÅÏ¢
- *  @param   pstActionCmdResults        [OUT]           ¶¯×÷ÃüÁî·µ»ØĞÅÏ¢ÁĞ±í
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ½öGigEVisionÉè±¸Ö§³Ö¡£
+ *  @brief   å‘å‡ºåŠ¨ä½œå‘½ä»¤
+ *  @param   pstActionCmdInfo           [IN]            åŠ¨ä½œå‘½ä»¤ä¿¡æ¯
+ *  @param   pstActionCmdResults        [OUT]           åŠ¨ä½œå‘½ä»¤è¿”å›ä¿¡æ¯åˆ—è¡¨
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks ä»…GigEVisionè®¾å¤‡æ”¯æŒã€‚
 
  *  @~english
  *  @brief  Issue Action Command
@@ -1354,11 +1354,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_IssueActionCommand(IN MV_ACTION_CMD_INFO* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡×é²¥×´Ì¬
- *  @param  pstDevInfo                  [IN]            Éè±¸ĞÅÏ¢½á¹¹Ìå
- *  @param  pbStatus                    [OUT]           ×é²¥×´Ì¬,true:×é²¥×´Ì¬£¬false:·Ç×é²¥
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚÅĞ¶ÏÉè±¸µ±Ç°ÊÇ·ñ´¦ÓÚ×é²¥×´Ì¬£¬½â¾ö¿Í»§¶ËÃ¶¾ÙÊ±ĞèÒª´ò¿ªÉè±¸ÅĞ¶Ï×é²¥µÄÎÊÌâ¡£
+ *  @brief  è·å–ç»„æ’­çŠ¶æ€
+ *  @param  pstDevInfo                  [IN]            è®¾å¤‡ä¿¡æ¯ç»“æ„ä½“
+ *  @param  pbStatus                    [OUT]           ç»„æ’­çŠ¶æ€,true:ç»„æ’­çŠ¶æ€ï¼Œfalse:éç»„æ’­
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£ç”¨äºåˆ¤æ–­è®¾å¤‡å½“å‰æ˜¯å¦å¤„äºç»„æ’­çŠ¶æ€ï¼Œè§£å†³å®¢æˆ·ç«¯æšä¸¾æ—¶éœ€è¦æ‰“å¼€è®¾å¤‡åˆ¤æ–­ç»„æ’­çš„é—®é¢˜ã€‚
 
  *  @~english
  *  @brief  Get Multicast Status
@@ -1371,15 +1371,15 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_GetMulticastStatus(IN MV_CC_DEVICE_INFO* p
 
 
 /************************************************************************/
-/* CameraLink Éè±¸¶ÀÓĞµÄ½Ó¿Ú                                            */
+/* CameraLink è®¾å¤‡ç‹¬æœ‰çš„æ¥å£                                            */
 /************************************************************************/
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÉè±¸²¨ÌØÂÊ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nBaudrate                   [IN]            ÉèÖÃµÄ²¨ÌØÂÊÖµ£¬ÊıÖµ²Î¿¼CameraParams.hÖĞºê¶¨Òå£¬Èç#define MV_CAML_BAUDRATE_9600  0x00000001
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÖ§³ÖÔÚÉè±¸Î´Á¬½ÓÊ±µ÷ÓÃ¡£
+ *  @brief  è®¾ç½®è®¾å¤‡æ³¢ç‰¹ç‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nBaudrate                   [IN]            è®¾ç½®çš„æ³¢ç‰¹ç‡å€¼ï¼Œæ•°å€¼å‚è€ƒCameraParams.hä¸­å®å®šä¹‰ï¼Œå¦‚#define MV_CAML_BAUDRATE_9600  0x00000001
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£æ”¯æŒåœ¨è®¾å¤‡æœªè¿æ¥æ—¶è°ƒç”¨ã€‚
  
  *  @~english
  *  @brief  Set device baudrate using one of the CL_BAUDRATE_XXXX value
@@ -1393,11 +1393,11 @@ MVSDKEXPORT_API int __stdcall MV_CAML_SetDeviceBaudrate(IN void* handle, unsigne
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éè±¸²¨ÌØÂÊ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnCurrentBaudrate           [OUT]           ²¨ÌØÂÊĞÅÏ¢Ö¸Õë£¬ÊıÖµ²Î¿¼CameraParams.hÖĞºê¶¨Òå£¬Èç#define MV_CAML_BAUDRATE_9600  0x00000001
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÖ§³ÖÔÚÉè±¸Î´Á¬½ÓÊ±µ÷ÓÃ¡£
+ *  @brief  è·å–è®¾å¤‡æ³¢ç‰¹ç‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnCurrentBaudrate           [OUT]           æ³¢ç‰¹ç‡ä¿¡æ¯æŒ‡é’ˆï¼Œæ•°å€¼å‚è€ƒCameraParams.hä¸­å®å®šä¹‰ï¼Œå¦‚#define MV_CAML_BAUDRATE_9600  0x00000001
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£æ”¯æŒåœ¨è®¾å¤‡æœªè¿æ¥æ—¶è°ƒç”¨ã€‚
  
  *  @~english
  *  @brief  Returns the current device baudrate, using one of the CL_BAUDRATE_XXXX value
@@ -1411,11 +1411,11 @@ MVSDKEXPORT_API int __stdcall MV_CAML_GetDeviceBaudrate(IN void* handle,unsigned
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éè±¸ÓëÖ÷»ú¼äÁ¬½ÓÖ§³ÖµÄ²¨ÌØÂÊ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnBaudrateAblity            [OUT]           Ö§³ÖµÄ²¨ÌØÂÊĞÅÏ¢µÄÖ¸Õë¡£ËùÖ§³Ö²¨ÌØÂÊµÄ»òÔËËã½á¹û£¬µ¥¸öÊıÖµ²Î¿¼CameraParams.hÖĞºê¶¨Òå£¬ÈçMV_CAML_BAUDRATE_9600  0x00000001
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÖ§³ÖÔÚÉè±¸Î´Á¬½ÓÊ±µ÷ÓÃ¡£
+ *  @brief  è·å–è®¾å¤‡ä¸ä¸»æœºé—´è¿æ¥æ”¯æŒçš„æ³¢ç‰¹ç‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnBaudrateAblity            [OUT]           æ”¯æŒçš„æ³¢ç‰¹ç‡ä¿¡æ¯çš„æŒ‡é’ˆã€‚æ‰€æ”¯æŒæ³¢ç‰¹ç‡çš„æˆ–è¿ç®—ç»“æœï¼Œå•ä¸ªæ•°å€¼å‚è€ƒCameraParams.hä¸­å®å®šä¹‰ï¼Œå¦‚MV_CAML_BAUDRATE_9600  0x00000001
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£æ”¯æŒåœ¨è®¾å¤‡æœªè¿æ¥æ—¶è°ƒç”¨ã€‚
  
  *  @~english
  *  @brief  Returns supported baudrates of the combined device and host interface
@@ -1429,10 +1429,10 @@ MVSDKEXPORT_API int __stdcall MV_CAML_GetSupportBaudrates(IN void* handle,unsign
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃ´®¿Ú²Ù×÷µÈ´ıÊ±³¤
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nMillisec                   [IN]            ´®¿Ú²Ù×÷µÄµÈ´ıÊ±³¤, µ¥Î»Îªms
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®ä¸²å£æ“ä½œç­‰å¾…æ—¶é•¿
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nMillisec                   [IN]            ä¸²å£æ“ä½œçš„ç­‰å¾…æ—¶é•¿, å•ä½ä¸ºms
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
 
  *  @~english
  *  @brief  Sets the timeout for operations on the serial port
@@ -1444,20 +1444,20 @@ MVSDKEXPORT_API int __stdcall MV_CAML_SetGenCPTimeOut(IN void* handle, unsigned 
 
 
 /************************************************************************/
-/* U3V Éè±¸¶ÀÓĞµÄ½Ó¿Ú                                            */
+/* U3V è®¾å¤‡ç‹¬æœ‰çš„æ¥å£                                            */
 /************************************************************************/
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃU3VµÄ´«Êä°ü´óĞ¡
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nTransferSize               [IN]            ´«ÊäµÄ°ü´óĞ¡, Byte£¬Ä¬ÈÏÎª1M£¬rang£º>=0x10000
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks Ôö¼Ó´«Êä°ü´óĞ¡¿ÉÒÔÊÊµ±½µµÍÈ¡Á÷Ê±µÄCPUÕ¼ÓÃÂÊ¡£µ«²»Í¬µÄPCºÍ²»Í¬USBÀ©Õ¹¿¨´æÔÚ²»Í¬µÄ¼æÈİĞÔ£¬Èç¹û¸Ã²ÎÊıÉèÖÃ¹ı´ó¿ÉÄÜ»á³öÏÖÈ¡²»µ½Í¼ÏñµÄ·çÏÕ¡£
+ *  @brief  è®¾ç½®U3Vçš„ä¼ è¾“åŒ…å¤§å°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nTransferSize               [IN]            ä¼ è¾“çš„åŒ…å¤§å°, Byteï¼Œé»˜è®¤ä¸º1Mï¼Œrangï¼š>=0x10000
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks å¢åŠ ä¼ è¾“åŒ…å¤§å°å¯ä»¥é€‚å½“é™ä½å–æµæ—¶çš„CPUå ç”¨ç‡ã€‚ä½†ä¸åŒçš„PCå’Œä¸åŒUSBæ‰©å±•å¡å­˜åœ¨ä¸åŒçš„å…¼å®¹æ€§ï¼Œå¦‚æœè¯¥å‚æ•°è®¾ç½®è¿‡å¤§å¯èƒ½ä¼šå‡ºç°å–ä¸åˆ°å›¾åƒçš„é£é™©ã€‚
  
  *  @~english
  *  @brief  Set transfer size of U3V device
  *  @param  handle                      [IN]            Device handle
- *  @param  nTransferSize               [IN]            Transfer size£¬Byte£¬default£º1M£¬rang£º>=0x10000
+ *  @param  nTransferSize               [IN]            Transfer sizeï¼ŒByteï¼Œdefaultï¼š1Mï¼Œrangï¼š>=0x10000
  *  @return Success, return MV_OK. Failure, return error code 
  *  @remarks Increasing the transmission packet size can reduce the CPU utilization at the time of fetching. However, different PCS and different USB extension CARDS have different compatibility, and if this parameter is set too large, there may be the risk of not getting the image.
 ************************************************************************/
@@ -1465,16 +1465,16 @@ MVSDKEXPORT_API int __stdcall MV_USB_SetTransferSize(IN void* handle, unsigned i
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡U3VµÄ´«Êä°ü´óĞ¡
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnTransferSize              [OUT]           ´«ÊäµÄ°ü´óĞ¡Ö¸Õë, Byte
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡µ±Ç°µÄU3V´«Êä°ü´óĞ¡£¬Ä¬ÈÏ1M¡£
+ *  @brief  è·å–U3Vçš„ä¼ è¾“åŒ…å¤§å°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnTransferSize              [OUT]           ä¼ è¾“çš„åŒ…å¤§å°æŒ‡é’ˆ, Byte
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£ç”¨äºè·å–å½“å‰çš„U3Vä¼ è¾“åŒ…å¤§å°ï¼Œé»˜è®¤1Mã€‚
  
  *  @~english
  *  @brief  Get transfer size of U3V device
  *  @param  handle                      [IN]            Device handle
- *  @param  pnTransferSize              [OUT]           Transfer size£¬Byte
+ *  @param  pnTransferSize              [OUT]           Transfer sizeï¼ŒByte
  *  @return Success, return MV_OK. Failure, return error code 
  *  @remarks This interface is used to get the current U3V transfer packet size, default 1M.
 ************************************************************************/
@@ -1482,16 +1482,16 @@ MVSDKEXPORT_API int __stdcall MV_USB_GetTransferSize(IN void* handle, unsigned i
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃU3VµÄ´«ÊäÍ¨µÀ¸öÊı
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nTransferWays               [IN]            ´«ÊäÍ¨µÀ¸öÊı£¬·¶Î§£º1-10
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ÓÃ»§¿ÉÒÔ¸ù¾İPCµÄĞÔÄÜ¡¢Éè±¸³öÍ¼Ö¡ÂÊ¡¢Í¼Ïñ´óĞ¡ºÍÄÚ´æÊ¹ÓÃÂÊµÈÒòËØ¶Ô¸Ã²ÎÊı½øĞĞµ÷½Ú¡£µ«²»Í¬µÄPCºÍ²»Í¬µÄUSBÀ©Õ¹¿¨´æÔÚ²»Í¬µÄ¼æÈİĞÔ¡£
+ *  @brief  è®¾ç½®U3Vçš„ä¼ è¾“é€šé“ä¸ªæ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nTransferWays               [IN]            ä¼ è¾“é€šé“ä¸ªæ•°ï¼ŒèŒƒå›´ï¼š1-10
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks ç”¨æˆ·å¯ä»¥æ ¹æ®PCçš„æ€§èƒ½ã€è®¾å¤‡å‡ºå›¾å¸§ç‡ã€å›¾åƒå¤§å°å’Œå†…å­˜ä½¿ç”¨ç‡ç­‰å› ç´ å¯¹è¯¥å‚æ•°è¿›è¡Œè°ƒèŠ‚ã€‚ä½†ä¸åŒçš„PCå’Œä¸åŒçš„USBæ‰©å±•å¡å­˜åœ¨ä¸åŒçš„å…¼å®¹æ€§ã€‚
  
  *  @~english
  *  @brief  Set transfer ways of U3V device
  *  @param  handle                      [IN]            Device handle
- *  @param  nTransferWays               [IN]            Transfer ways£¬rang£º1-10
+ *  @param  nTransferWays               [IN]            Transfer waysï¼Œrangï¼š1-10
  *  @return Success, return MV_OK. Failure, return error code 
  *  @remarks Users can adjust this parameter according to PC performance, camera image frame rate, image size, memory utilization and other factors. But different PCS and different USB expansion CARDS have different compatibility.
 ************************************************************************/
@@ -1499,11 +1499,11 @@ MVSDKEXPORT_API int __stdcall MV_USB_SetTransferWays(IN void* handle, unsigned i
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡U3VµÄ´«ÊäÍ¨µÀ¸öÊı
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnTransferWays              [OUT]           ´«ÊäÍ¨µÀ¸öÊıÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿ÚÓÃÓÚ»ñÈ¡µ±Ç°µÄU3VÒì²½È¡Á÷½Úµã¸öÊı£¬2000WÉè±¸µÄMONO8Ä¬ÈÏÎª3¸ö£¬YUVÎªÄ¬ÈÏ2¸ö£¬RGBÎªÄ¬ÈÏ1¸ö£¬ÆäËüÇé¿öÄ¬ÈÏ8¸ö½Úµã¡£
+ *  @brief  è·å–U3Vçš„ä¼ è¾“é€šé“ä¸ªæ•°
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnTransferWays              [OUT]           ä¼ è¾“é€šé“ä¸ªæ•°æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£ç”¨äºè·å–å½“å‰çš„U3Vå¼‚æ­¥å–æµèŠ‚ç‚¹ä¸ªæ•°ï¼Œ2000Wè®¾å¤‡çš„MONO8é»˜è®¤ä¸º3ä¸ªï¼ŒYUVä¸ºé»˜è®¤2ä¸ªï¼ŒRGBä¸ºé»˜è®¤1ä¸ªï¼Œå…¶å®ƒæƒ…å†µé»˜è®¤8ä¸ªèŠ‚ç‚¹ã€‚
  
  *  @~english
  *  @brief  Get transfer ways of U3V device
@@ -1515,16 +1515,16 @@ MVSDKEXPORT_API int __stdcall MV_USB_SetTransferWays(IN void* handle, unsigned i
 MVSDKEXPORT_API int __stdcall MV_USB_GetTransferWays(IN void* handle, unsigned int* pnTransferWays);
 
 /************************************************************************/
-/* GenTLÏà¹Ø½Ó¿Ú£¬ÆäËü½Ó¿Ú¿ÉÒÔ¸´ÓÃ£¨²¿·Ö½Ó¿Ú²»Ö§³Ö£©                    */
+/* GenTLç›¸å…³æ¥å£ï¼Œå…¶å®ƒæ¥å£å¯ä»¥å¤ç”¨ï¼ˆéƒ¨åˆ†æ¥å£ä¸æ”¯æŒï¼‰                    */
 /************************************************************************/
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í¨¹ıGenTLÃ¶¾ÙInterfaces
- *  @param  pstIFList                   [OUT]           InterfacesÁĞ±í
- *  @param  strGenTLPath                [IN]            GenTLµÄctiÎÄ¼şÂ·¾¶
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks InterfacesÁĞ±íµÄÄÚ´æÊÇÔÚSDKÄÚ²¿·ÖÅäµÄ£¬¶àÏß³Ìµ÷ÓÃ¸Ã½Ó¿ÚÊ±»á½øĞĞÉè±¸ÁĞ±íÄÚ´æµÄÊÍ·ÅºÍÉêÇë£¬\n
-             ½¨Òé¾¡Á¿±ÜÃâ¶àÏß³ÌÃ¶¾Ù²Ù×÷¡£
+ *  @brief  é€šè¿‡GenTLæšä¸¾Interfaces
+ *  @param  pstIFList                   [OUT]           Interfacesåˆ—è¡¨
+ *  @param  strGenTLPath                [IN]            GenTLçš„ctiæ–‡ä»¶è·¯å¾„
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks Interfacesåˆ—è¡¨çš„å†…å­˜æ˜¯åœ¨SDKå†…éƒ¨åˆ†é…çš„ï¼Œå¤šçº¿ç¨‹è°ƒç”¨è¯¥æ¥å£æ—¶ä¼šè¿›è¡Œè®¾å¤‡åˆ—è¡¨å†…å­˜çš„é‡Šæ”¾å’Œç”³è¯·ï¼Œ\n
+             å»ºè®®å°½é‡é¿å…å¤šçº¿ç¨‹æšä¸¾æ“ä½œã€‚
  
  *  @~english
  *  @brief  Enumerate Interfaces with GenTL
@@ -1538,12 +1538,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_EnumInterfacesByGenTL(IN OUT MV_GENTL_IF_INF
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í¨¹ıGenTL InterfaceÃ¶¾ÙÉè±¸
- *  @param  pstIFInfo                   [IN]            InterfaceĞÅÏ¢
- *  @param  pstDevList                  [OUT]           Éè±¸ÁĞ±í
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Éè±¸ÁĞ±íµÄÄÚ´æÊÇÔÚSDKÄÚ²¿·ÖÅäµÄ£¬¶àÏß³Ìµ÷ÓÃ¸Ã½Ó¿ÚÊ±»á½øĞĞÉè±¸ÁĞ±íÄÚ´æµÄÊÍ·ÅºÍÉêÇë£¬\n
-             ½¨Òé¾¡Á¿±ÜÃâ¶àÏß³ÌÃ¶¾Ù²Ù×÷¡£
+ *  @brief  é€šè¿‡GenTL Interfaceæšä¸¾è®¾å¤‡
+ *  @param  pstIFInfo                   [IN]            Interfaceä¿¡æ¯
+ *  @param  pstDevList                  [OUT]           è®¾å¤‡åˆ—è¡¨
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è®¾å¤‡åˆ—è¡¨çš„å†…å­˜æ˜¯åœ¨SDKå†…éƒ¨åˆ†é…çš„ï¼Œå¤šçº¿ç¨‹è°ƒç”¨è¯¥æ¥å£æ—¶ä¼šè¿›è¡Œè®¾å¤‡åˆ—è¡¨å†…å­˜çš„é‡Šæ”¾å’Œç”³è¯·ï¼Œ\n
+             å»ºè®®å°½é‡é¿å…å¤šçº¿ç¨‹æšä¸¾æ“ä½œã€‚
  
  *  @~english
  *  @brief  Enumerate Devices with GenTL interface
@@ -1557,11 +1557,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_EnumDevicesByGenTL(IN MV_GENTL_IF_INFO* pstI
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í¨¹ıGenTLÉè±¸ĞÅÏ¢´´½¨Éè±¸¾ä±ú
- *  @param  handle                      [OUT]           Éè±¸¾ä±ú
- *  @param  pstDevInfo                  [IN]            Éè±¸ĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸ù¾İÊäÈëµÄÉè±¸ĞÅÏ¢£¬´´½¨¿âÄÚ²¿±ØĞëµÄ×ÊÔ´ºÍ³õÊ¼»¯ÄÚ²¿Ä£¿é¡£
+ *  @brief  é€šè¿‡GenTLè®¾å¤‡ä¿¡æ¯åˆ›å»ºè®¾å¤‡å¥æŸ„
+ *  @param  handle                      [OUT]           è®¾å¤‡å¥æŸ„
+ *  @param  pstDevInfo                  [IN]            è®¾å¤‡ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks æ ¹æ®è¾“å…¥çš„è®¾å¤‡ä¿¡æ¯ï¼Œåˆ›å»ºåº“å†…éƒ¨å¿…é¡»çš„èµ„æºå’Œåˆå§‹åŒ–å†…éƒ¨æ¨¡å—ã€‚
  
  *  @~english
  *  @brief  Create Device Handle with GenTL Device Info
@@ -1574,19 +1574,19 @@ MVSDKEXPORT_API int __stdcall MV_CC_CreateHandleByGenTL(OUT void ** handle, IN c
 
 
 /************************************************************************/
-/* XML½âÎöÊ÷µÄÉú³É                                                      */
+/* XMLè§£ææ ‘çš„ç”Ÿæˆ                                                      */
 /* XML parse tree generation                                            */
 /************************************************************************/
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éè±¸ÊôĞÔÊ÷XML
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pData                       [OUT]           XMLÊı¾İ½ÓÊÕ»º´æ
- *  @param  nDataSize                   [IN]            ½ÓÊÕ»º´æ´óĞ¡
- *  @param  pnDataLen                   [OUT]           Êµ¼ÊÊı¾İ´óĞ¡
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks µ±pDataÎªNULL»ònDataSize±ÈÊµ¼ÊµÄxmlÎÄ¼şĞ¡Ê±£¬²»¿½±´Êı¾İ£¬ÓÉpnDataLen·µ»ØxmlÎÄ¼ş´óĞ¡£»\n
-             µ±pDataÎªÓĞĞ§»º´æµØÖ·£¬ÇÒ»º´æ×ã¹»´óÊ±£¬¿½±´ÍêÕûÊı¾İ±£´æÔÚ¸Ã»º´æÀïÃæ£¬²¢ÓÉpnDataLen·µ»ØxmlÎÄ¼şÊµ¼Ê´óĞ¡¡£
+ *  @brief  è·å–è®¾å¤‡å±æ€§æ ‘XML
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pData                       [OUT]           XMLæ•°æ®æ¥æ”¶ç¼“å­˜
+ *  @param  nDataSize                   [IN]            æ¥æ”¶ç¼“å­˜å¤§å°
+ *  @param  pnDataLen                   [OUT]           å®é™…æ•°æ®å¤§å°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks å½“pDataä¸ºNULLæˆ–nDataSizeæ¯”å®é™…çš„xmlæ–‡ä»¶å°æ—¶ï¼Œä¸æ‹·è´æ•°æ®ï¼Œç”±pnDataLenè¿”å›xmlæ–‡ä»¶å¤§å°ï¼›\n
+             å½“pDataä¸ºæœ‰æ•ˆç¼“å­˜åœ°å€ï¼Œä¸”ç¼“å­˜è¶³å¤Ÿå¤§æ—¶ï¼Œæ‹·è´å®Œæ•´æ•°æ®ä¿å­˜åœ¨è¯¥ç¼“å­˜é‡Œé¢ï¼Œå¹¶ç”±pnDataLenè¿”å›xmlæ–‡ä»¶å®é™…å¤§å°ã€‚
  
  *  @~english
  *  @brief  Get camera feature tree XML
@@ -1602,11 +1602,11 @@ MVSDKEXPORT_API int __stdcall MV_XML_GetGenICamXML(IN void* handle, IN OUT unsig
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñµÃµ±Ç°½ÚµãµÄ·ÃÎÊÄ£Ê½
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strName                     [IN]            ½ÚµãÃû³Æ
- *  @param  penAccessMode               [OUT]           ½ÚµãµÄ·ÃÎÊÄ£Ê½
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief  è·å¾—å½“å‰èŠ‚ç‚¹çš„è®¿é—®æ¨¡å¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strName                     [IN]            èŠ‚ç‚¹åç§°
+ *  @param  penAccessMode               [OUT]           èŠ‚ç‚¹çš„è®¿é—®æ¨¡å¼
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
 
  *  @~english
  *  @brief  Get Access mode of cur node
@@ -1619,12 +1619,12 @@ MVSDKEXPORT_API int __stdcall MV_XML_GetNodeAccessMode(IN void* handle, IN const
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñµÃµ±Ç°½ÚµãµÄÀàĞÍ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strName                     [IN]            ½ÚµãÃû³Æ
- *  @param  penInterfaceType            [OUT]           ½ÚµãµÄÀàĞÍ
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
- *  @remarks ¸Ã½Ó¿Ú¿ÉÒÔÔÚµ÷ÓÃÍòÄÜ½Ó¿ÚÖ®Ç°£¬ÌáÇ°ÖªµÀ½ÚµãÀàĞÍ£¬·½±ãÓÃ»§Ñ¡ÔñºÏÊÊµÄÍòÄÜ½Ó¿Ú½øĞĞ½ÚµãÖµµÄÉèÖÃºÍ»ñÈ¡¡£
+ *  @brief  è·å¾—å½“å‰èŠ‚ç‚¹çš„ç±»å‹
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strName                     [IN]            èŠ‚ç‚¹åç§°
+ *  @param  penInterfaceType            [OUT]           èŠ‚ç‚¹çš„ç±»å‹
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
+ *  @remarks è¯¥æ¥å£å¯ä»¥åœ¨è°ƒç”¨ä¸‡èƒ½æ¥å£ä¹‹å‰ï¼Œæå‰çŸ¥é“èŠ‚ç‚¹ç±»å‹ï¼Œæ–¹ä¾¿ç”¨æˆ·é€‰æ‹©åˆé€‚çš„ä¸‡èƒ½æ¥å£è¿›è¡ŒèŠ‚ç‚¹å€¼çš„è®¾ç½®å’Œè·å–ã€‚
 
  *  @~english
  *  @brief  Get Interface Type of cur node
@@ -1637,17 +1637,17 @@ MVSDKEXPORT_API int __stdcall MV_XML_GetNodeAccessMode(IN void* handle, IN const
 MVSDKEXPORT_API int __stdcall MV_XML_GetNodeInterfaceType(IN void* handle, IN const char * pstrName, OUT MV_XML_InterfaceType *penInterfaceType);
 
 /************************************************************************/
-/* ¸½¼Ó½Ó¿Ú                                   							*/
+/* é™„åŠ æ¥å£                                   							*/
 /* Additional interface                                                 */
 /************************************************************************/
 /********************************************************************//**
  *  @~chinese
- *  @brief  ±£´æÍ¼Æ¬£¬Ö§³ÖBmpºÍJpeg.
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstSaveParam                [IN][OUT]       ±£´æÍ¼Æ¬²ÎÊı½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Í¨¹ı½«½Ó¿Ú¿ÉÒÔ½«´ÓÉè±¸²É¼¯µ½µÄÔ­Ê¼Í¼ÏñÊı¾İ×ª»»³ÉJPEG»òÕßBMPµÈ¸ñÊ½²¢´æ·ÅÔÚÖ¸¶¨ÄÚ´æÖĞ£¬È»ºóÓÃ»§¿ÉÒÔ½«×ª»»Ö®ºóµÄÊı¾İÖ±½Ó±£´æ³ÉÍ¼Æ¬ÎÄ¼ş¡£¸Ã½Ó¿Úµ÷ÓÃÎŞ½Ó¿ÚË³ĞòÒªÇó£¬ÓĞÍ¼ÏñÔ´Êı¾İ¾Í¿ÉÒÔ½øĞĞ×ª»»£¬¿ÉÒÔÏÈµ÷ÓÃMV_CC_GetOneFrameTimeout»òÕßMV_CC_RegisterImageCallBackExÉèÖÃ»Øµ÷º¯Êı£¬»ñÈ¡Ò»Ö¡Í¼ÏñÊı¾İ£¬È»ºóÔÙÍ¨¹ı¸Ã½Ó¿Ú×ª»»¸ñÊ½¡£ \n
-             MV_CC_SaveImageEx2±ÈMV_CC_SaveImageExÔö¼Ó²ÎÊıhandle£¬ÎªÁË±£Ö¤ÓëÆäËû½Ó¿ÚµÄÍ³Ò»¡£
+ *  @brief  ä¿å­˜å›¾ç‰‡ï¼Œæ”¯æŒBmpå’ŒJpeg.
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstSaveParam                [IN][OUT]       ä¿å­˜å›¾ç‰‡å‚æ•°ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks é€šè¿‡å°†æ¥å£å¯ä»¥å°†ä»è®¾å¤‡é‡‡é›†åˆ°çš„åŸå§‹å›¾åƒæ•°æ®è½¬æ¢æˆJPEGæˆ–è€…BMPç­‰æ ¼å¼å¹¶å­˜æ”¾åœ¨æŒ‡å®šå†…å­˜ä¸­ï¼Œç„¶åç”¨æˆ·å¯ä»¥å°†è½¬æ¢ä¹‹åçš„æ•°æ®ç›´æ¥ä¿å­˜æˆå›¾ç‰‡æ–‡ä»¶ã€‚è¯¥æ¥å£è°ƒç”¨æ— æ¥å£é¡ºåºè¦æ±‚ï¼Œæœ‰å›¾åƒæºæ•°æ®å°±å¯ä»¥è¿›è¡Œè½¬æ¢ï¼Œå¯ä»¥å…ˆè°ƒç”¨MV_CC_GetOneFrameTimeoutæˆ–è€…MV_CC_RegisterImageCallBackExè®¾ç½®å›è°ƒå‡½æ•°ï¼Œè·å–ä¸€å¸§å›¾åƒæ•°æ®ï¼Œç„¶åå†é€šè¿‡è¯¥æ¥å£è½¬æ¢æ ¼å¼ã€‚ \n
+             MV_CC_SaveImageEx2æ¯”MV_CC_SaveImageExå¢åŠ å‚æ•°handleï¼Œä¸ºäº†ä¿è¯ä¸å…¶ä»–æ¥å£çš„ç»Ÿä¸€ã€‚
  
  *  @~english
  *  @brief  Save image, support Bmp and Jpeg.
@@ -1662,11 +1662,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_SaveImageEx2(IN void* handle, MV_SAVE_IMAGE_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ±£´æÍ¼Ïñµ½ÎÄ¼ş
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstSaveFileParam            [IN][OUT]       ±£´æÍ¼Æ¬ÎÄ¼ş²ÎÊı½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÖ§³ÖBMP/JPEG/PNG/TIFF¡£
+ *  @brief  ä¿å­˜å›¾åƒåˆ°æ–‡ä»¶
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstSaveFileParam            [IN][OUT]       ä¿å­˜å›¾ç‰‡æ–‡ä»¶å‚æ•°ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£æ”¯æŒBMP/JPEG/PNG/TIFFã€‚
  
  *  @~english
  *  @brief  Save the image file.
@@ -1679,30 +1679,30 @@ MVSDKEXPORT_API int __stdcall MV_CC_SaveImageToFile(IN void* handle, MV_SAVE_IMG
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ±£´æ3DµãÔÆÊı¾İ£¬Ö§³ÖPLY¡¢CSVºÍOBJÈıÖÖ¸ñÊ½
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstPointDataParam           [IN][OUT]       ±£´æµãÔÆÊı¾İ²ÎÊı½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks 3DÊı¾İ¸ñÊ½±£´æ³É3DÎÄ¼ş¸ñÊ½£¬Ö§³ÖPLY/CSV/OBJ£¬/n
-             Ä¿Ç°Ö§³ÖPixelType_Gvsp_Coord3D_ABC32¡¢PixelType_Gvsp_Coord3D_ABC32f¡¢PixelType_Gvsp_Coord3D_AB32¡¢PixelType_Gvsp_Coord3D_AB32f¡¢PixelType_Gvsp_Coord3D_AC32¡¢PixelType_Gvsp_Coord3D_AC32f,Ôİ²»Ö§³ÖÆäËû3D¸ñÊ½¡£
+ *  @brief  ä¿å­˜3Dç‚¹äº‘æ•°æ®ï¼Œæ”¯æŒPLYã€CSVå’ŒOBJä¸‰ç§æ ¼å¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstPointDataParam           [IN][OUT]       ä¿å­˜ç‚¹äº‘æ•°æ®å‚æ•°ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks 3Dæ•°æ®æ ¼å¼ä¿å­˜æˆ3Dæ–‡ä»¶æ ¼å¼ï¼Œæ”¯æŒPLY/CSV/OBJï¼Œ/n
+             ç›®å‰æ”¯æŒPixelType_Gvsp_Coord3D_ABC32ã€PixelType_Gvsp_Coord3D_ABC32fã€PixelType_Gvsp_Coord3D_AB32ã€PixelType_Gvsp_Coord3D_AB32fã€PixelType_Gvsp_Coord3D_AC32ã€PixelType_Gvsp_Coord3D_AC32f,æš‚ä¸æ”¯æŒå…¶ä»–3Dæ ¼å¼ã€‚
  
  *  @~english
- *  @brief  Save 3D point data, support PLY¡¢CSV and OBJ
+ *  @brief  Save 3D point data, support PLYã€CSV and OBJ
  *  @param  handle                      [IN]            Device handle
  *  @param  pstPointDataParam           [IN][OUT]       Save 3D point data parameters structure
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks Save the 3D data format to 3D file format£¬support PLY¡¢CSV and OBJ£¬/n
-             only support PixelType_Gvsp_Coord3D_ABC32¡¢PixelType_Gvsp_Coord3D_ABC32f¡¢PixelType_Gvsp_Coord3D_AB32¡¢PixelType_Gvsp_Coord3D_AB32f¡¢PixelType_Gvsp_Coord3D_AC32¡¢PixelType_Gvsp_Coord3D_AC32f,Other 3D format is not supported now.
+ *  @remarks Save the 3D data format to 3D file formatï¼Œsupport PLYã€CSV and OBJï¼Œ/n
+             only support PixelType_Gvsp_Coord3D_ABC32ã€PixelType_Gvsp_Coord3D_ABC32fã€PixelType_Gvsp_Coord3D_AB32ã€PixelType_Gvsp_Coord3D_AB32fã€PixelType_Gvsp_Coord3D_AC32ã€PixelType_Gvsp_Coord3D_AC32f,Other 3D format is not supported now.
  ************************************************************************/
 MVSDKEXPORT_API int __stdcall MV_CC_SavePointCloudData(IN void* handle, MV_SAVE_POINT_CLOUD_PARAM* pstPointDataParam);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í¼ÏñĞı×ª
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstRotateParam              [IN][OUT]       Í¼ÏñĞı×ª²ÎÊı½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÖ»Ö§³ÖMONO8/RGB24/BGR24¸ñÊ½Êı¾İµÄ90/180/270¶ÈĞı×ª¡£
+ *  @brief  å›¾åƒæ—‹è½¬
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstRotateParam              [IN][OUT]       å›¾åƒæ—‹è½¬å‚æ•°ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£åªæ”¯æŒMONO8/RGB24/BGR24æ ¼å¼æ•°æ®çš„90/180/270åº¦æ—‹è½¬ã€‚
  
  *  @~english
  *  @brief  Rotate Image
@@ -1715,11 +1715,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_RotateImage(IN void* handle, IN OUT MV_CC_RO
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í¼Ïñ·­×ª
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFlipParam                [IN][OUT]       Í¼Ïñ·­×ª²ÎÊı½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÖ»Ö§³ÖMONO8/RGB24/BGR24¸ñÊ½Êı¾İµÄ´¹Ö±ºÍË®Æ½·­×ª¡£
+ *  @brief  å›¾åƒç¿»è½¬
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFlipParam                [IN][OUT]       å›¾åƒç¿»è½¬å‚æ•°ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£åªæ”¯æŒMONO8/RGB24/BGR24æ ¼å¼æ•°æ®çš„å‚ç›´å’Œæ°´å¹³ç¿»è½¬ã€‚
  
  *  @~english
  *  @brief  Flip Image
@@ -1732,11 +1732,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_FlipImage(IN void* handle, IN OUT MV_CC_FLIP
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÏñËØ¸ñÊ½×ª»»
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstCvtParam                 [IN][OUT]       ÏñËØ¸ñÊ½×ª»»²ÎÊı½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Í¨¹ı½«½Ó¿Ú¿ÉÒÔ½«´ÓÉè±¸²É¼¯µ½µÄÔ­Ê¼Í¼ÏñÊı¾İ×ª»»³ÉÓÃ»§ËùĞèµÄÏñËØ¸ñÊ½²¢´æ·ÅÔÚÖ¸¶¨ÄÚ´æÖĞ¡£¸Ã½Ó¿Úµ÷ÓÃÎŞ½Ó¿ÚË³ĞòÒªÇó£¬ÓĞÍ¼ÏñÔ´Êı¾İ¾Í¿ÉÒÔ½øĞĞ×ª»»£¬¿ÉÒÔÏÈµ÷ÓÃMV_CC_GetOneFrameTimeout»òÕßMV_CC_RegisterImageCallBackExÉèÖÃ»Øµ÷º¯Êı£¬»ñÈ¡Ò»Ö¡Í¼ÏñÊı¾İ£¬È»ºóÔÙÍ¨¹ı¸Ã½Ó¿Ú×ª»»¸ñÊ½¡£Èç¹ûÉè±¸µ±Ç°²É¼¯Í¼ÏñÊÇJPEGÑ¹ËõµÄ¸ñÊ½£¬Ôò²»Ö§³Öµ÷ÓÃ¸Ã½Ó¿Ú½øĞĞ×ª»»¡£ \n
+ *  @brief  åƒç´ æ ¼å¼è½¬æ¢
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstCvtParam                 [IN][OUT]       åƒç´ æ ¼å¼è½¬æ¢å‚æ•°ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks é€šè¿‡å°†æ¥å£å¯ä»¥å°†ä»è®¾å¤‡é‡‡é›†åˆ°çš„åŸå§‹å›¾åƒæ•°æ®è½¬æ¢æˆç”¨æˆ·æ‰€éœ€çš„åƒç´ æ ¼å¼å¹¶å­˜æ”¾åœ¨æŒ‡å®šå†…å­˜ä¸­ã€‚è¯¥æ¥å£è°ƒç”¨æ— æ¥å£é¡ºåºè¦æ±‚ï¼Œæœ‰å›¾åƒæºæ•°æ®å°±å¯ä»¥è¿›è¡Œè½¬æ¢ï¼Œå¯ä»¥å…ˆè°ƒç”¨MV_CC_GetOneFrameTimeoutæˆ–è€…MV_CC_RegisterImageCallBackExè®¾ç½®å›è°ƒå‡½æ•°ï¼Œè·å–ä¸€å¸§å›¾åƒæ•°æ®ï¼Œç„¶åå†é€šè¿‡è¯¥æ¥å£è½¬æ¢æ ¼å¼ã€‚å¦‚æœè®¾å¤‡å½“å‰é‡‡é›†å›¾åƒæ˜¯JPEGå‹ç¼©çš„æ ¼å¼ï¼Œåˆ™ä¸æ”¯æŒè°ƒç”¨è¯¥æ¥å£è¿›è¡Œè½¬æ¢ã€‚ \n
  
  *  @~english
  *  @brief  Pixel format conversion
@@ -1749,11 +1749,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_ConvertPixelType(IN void* handle, IN OUT MV_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃ²åÖµËã·¨ÀàĞÍ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nBayerCvtQuality            [IN]            BayerµÄ²åÖµ·½·¨  0-¿ìËÙ 1-¾ùºâ 2-×îÓÅ£¨Ä¬ÈÏÎª×îÓÅ£©
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ÉèÖÃÄÚ²¿Í¼Ïñ×ª»»½Ó¿ÚµÄBayer²åÖµËã·¨ÀàĞÍ²ÎÊı£¬MV_CC_ConvertPixelType¡¢MV_CC_GetImageForRGB/BGR½Ó¿ÚÄÚ²¿Ê¹ÓÃµÄ²åÖµËã·¨ÊÇ¸Ã½Ó¿ÚËùÉè¶¨µÄ¡£
+ *  @brief  è®¾ç½®æ’å€¼ç®—æ³•ç±»å‹
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nBayerCvtQuality            [IN]            Bayerçš„æ’å€¼æ–¹æ³•  0-å¿«é€Ÿ 1-å‡è¡¡ 2-æœ€ä¼˜ï¼ˆé»˜è®¤ä¸ºæœ€ä¼˜ï¼‰
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è®¾ç½®å†…éƒ¨å›¾åƒè½¬æ¢æ¥å£çš„Bayeræ’å€¼ç®—æ³•ç±»å‹å‚æ•°ï¼ŒMV_CC_ConvertPixelTypeã€MV_CC_GetImageForRGB/BGRæ¥å£å†…éƒ¨ä½¿ç”¨çš„æ’å€¼ç®—æ³•æ˜¯è¯¥æ¥å£æ‰€è®¾å®šçš„ã€‚
  
  *  @~english
  *  @brief  Interpolation algorithm type setting
@@ -1766,95 +1766,95 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetBayerCvtQuality(IN void* handle, IN unsig
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃBayer¸ñÊ½µÄGammaÖµ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  fBayerGammaValue            [IN]            GammaÖµ[0.1,4.0]
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ÉèÖÃ¸ÃÖµºó£¬ÔÚµ÷ÓÃMV_CC_ConvertPixelType¡¢MV_CC_SaveImageEx2½Ó¿Ú½«Bayer8/10/12/16¸ñÊ½×ª³ÉRGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64Ê±ÆğĞ§¡£
+ *  @brief  è®¾ç½®Bayeræ ¼å¼çš„Gammaå€¼
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  fBayerGammaValue            [IN]            Gammaå€¼[0.1,4.0]
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è®¾ç½®è¯¥å€¼åï¼Œåœ¨è°ƒç”¨MV_CC_ConvertPixelTypeã€MV_CC_SaveImageEx2æ¥å£å°†Bayer8/10/12/16æ ¼å¼è½¬æˆRGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64æ—¶èµ·æ•ˆã€‚
  
  *  @~english
  *  @brief  Set Gamma value
  *  @param  handle                      [IN]            Device handle
  *  @param  fBayerGammaValue            [IN]            Gamma value[0.1,4.0]
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks After setting the value, it work in the calling MV_CC_ConvertPixelType\MV_CC_SaveImageEx2 API convert Bayer8/10/12/16 to RGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64.
+ *  @remarks After setting the value, it work in the calling MV_CC_ConvertPixelType\MV_CC_SaveImageEx2 API convert Bayer8/10/12/16 to RGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64.
  ************************************************************************/
 MVSDKEXPORT_API int __stdcall MV_CC_SetBayerGammaValue(IN void* handle, IN float fBayerGammaValue);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃBayer¸ñÊ½µÄGammaĞÅÏ¢
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstGammaParam               [IN]            GammaĞÅÏ¢   
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ÉèÖÃ¸ÃĞÅÏ¢ºó£¬ÔÚµ÷ÓÃMV_CC_ConvertPixelType¡¢MV_CC_SaveImageEx2½Ó¿Ú½«Bayer8/10/12/16¸ñÊ½×ª³ÉRGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64Ê±ÆğĞ§¡£
+ *  @brief  è®¾ç½®Bayeræ ¼å¼çš„Gammaä¿¡æ¯
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstGammaParam               [IN]            Gammaä¿¡æ¯   
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è®¾ç½®è¯¥ä¿¡æ¯åï¼Œåœ¨è°ƒç”¨MV_CC_ConvertPixelTypeã€MV_CC_SaveImageEx2æ¥å£å°†Bayer8/10/12/16æ ¼å¼è½¬æˆRGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64æ—¶èµ·æ•ˆã€‚
 
  *  @~english
  *  @brief  Set Gamma param
  *  @param  handle                      [IN]            Device handle
  *  @param  pstGammaParam               [IN]            Gamma param
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks After setting the param, it work in the calling MV_CC_ConvertPixelType\MV_CC_SaveImageEx2 API convert Bayer8/10/12/16 to RGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64.
+ *  @remarks After setting the param, it work in the calling MV_CC_ConvertPixelType\MV_CC_SaveImageEx2 API convert Bayer8/10/12/16 to RGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64.
  ************************************************************************/
 MVSDKEXPORT_API int __stdcall MV_CC_SetBayerGammaParam(IN void* handle, IN MV_CC_GAMMA_PARAM* pstGammaParam);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃBayer¸ñÊ½µÄCCMÊ¹ÄÜºÍ¾ØÕó£¬Á¿»¯ÏµÊıÄ¬ÈÏ1024
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstCCMParam                 [IN]            CCM²ÎÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¿ªÆôCCM²¢ÉèÖÃCCM¾ØÕóºó£¬ÔÚµ÷ÓÃMV_CC_ConvertPixelType¡¢MV_CC_SaveImageEx2½Ó¿Ú½«Bayer8/10/12/16¸ñÊ½×ª³ÉRGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64Ê±ÆğĞ§¡£
+ *  @brief  è®¾ç½®Bayeræ ¼å¼çš„CCMä½¿èƒ½å’ŒçŸ©é˜µï¼Œé‡åŒ–ç³»æ•°é»˜è®¤1024
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstCCMParam                 [IN]            CCMå‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks å¼€å¯CCMå¹¶è®¾ç½®CCMçŸ©é˜µåï¼Œåœ¨è°ƒç”¨MV_CC_ConvertPixelTypeã€MV_CC_SaveImageEx2æ¥å£å°†Bayer8/10/12/16æ ¼å¼è½¬æˆRGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64æ—¶èµ·æ•ˆã€‚
  
  *  @~english
  *  @brief  Set CCM param,Scale default 1024
  *  @param  handle                      [IN]            Device handle
  *  @param  pstCCMParam                 [IN]            CCM parameter structure
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks After enable the color correction and set the color correction matrix, It work in the calling MV_CC_ConvertPixelType\MV_CC_SaveImageEx2 API convert Bayer8/10/12/16 to RGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64.
+ *  @remarks After enable the color correction and set the color correction matrix, It work in the calling MV_CC_ConvertPixelType\MV_CC_SaveImageEx2 API convert Bayer8/10/12/16 to RGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64.
  ************************************************************************/
 MVSDKEXPORT_API int __stdcall MV_CC_SetBayerCCMParam(IN void* handle, IN MV_CC_CCM_PARAM* pstCCMParam);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃBayer¸ñÊ½µÄCCMÊ¹ÄÜºÍ¾ØÕó
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstCCMParam                 [IN]            CCM²ÎÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¿ªÆôCCM²¢ÉèÖÃCCM¾ØÕóºó£¬ÔÚµ÷ÓÃMV_CC_ConvertPixelType¡¢MV_CC_SaveImageEx2½Ó¿Ú½«Bayer8/10/12/16¸ñÊ½×ª³ÉRGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64Ê±ÆğĞ§¡£
+ *  @brief  è®¾ç½®Bayeræ ¼å¼çš„CCMä½¿èƒ½å’ŒçŸ©é˜µ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstCCMParam                 [IN]            CCMå‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks å¼€å¯CCMå¹¶è®¾ç½®CCMçŸ©é˜µåï¼Œåœ¨è°ƒç”¨MV_CC_ConvertPixelTypeã€MV_CC_SaveImageEx2æ¥å£å°†Bayer8/10/12/16æ ¼å¼è½¬æˆRGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64æ—¶èµ·æ•ˆã€‚
 
  *  @~english
  *  @brief  Set CCM param
  *  @param  handle                      [IN]            Device handle
  *  @param  pstCCMParam                 [IN]            CCM parameter structure
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks After enable the color correction and set the color correction matrix, It work in the calling MV_CC_ConvertPixelType\MV_CC_SaveImageEx2 API convert Bayer8/10/12/16 to RGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64.
+ *  @remarks After enable the color correction and set the color correction matrix, It work in the calling MV_CC_ConvertPixelType\MV_CC_SaveImageEx2 API convert Bayer8/10/12/16 to RGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64.
  ************************************************************************/
 MVSDKEXPORT_API int __stdcall MV_CC_SetBayerCCMParamEx(IN void* handle, IN MV_CC_CCM_PARAM_EX* pstCCMParam);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃBayer¸ñÊ½µÄCLUTÊ¹ÄÜºÍĞÅÏ¢
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstCLUTParam                [IN]            CLUT²ÎÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¿ªÆôCLUT²¢ÉèÖÃCLUTĞÅÏ¢ºó£¬ÔÚµ÷ÓÃMV_CC_ConvertPixelType¡¢MV_CC_SaveImageEx2½Ó¿Ú½«Bayer8/10/12/16¸ñÊ½×ª³ÉRGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64Ê±ÆğĞ§¡£
+ *  @brief  è®¾ç½®Bayeræ ¼å¼çš„CLUTä½¿èƒ½å’Œä¿¡æ¯
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstCLUTParam                [IN]            CLUTå‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks å¼€å¯CLUTå¹¶è®¾ç½®CLUTä¿¡æ¯åï¼Œåœ¨è°ƒç”¨MV_CC_ConvertPixelTypeã€MV_CC_SaveImageEx2æ¥å£å°†Bayer8/10/12/16æ ¼å¼è½¬æˆRGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64æ—¶èµ·æ•ˆã€‚
 
  *  @~english
  *  @brief  Set CLUT param
  *  @param  handle                      [IN]            Device handle
  *  @param  pstCLUTParam                [IN]            CLUT parameter structure
  *  @return Success, return MV_OK. Failure, return error code
- *  @remarks After enable the CLUT and set CLUT, It work in the calling MV_CC_ConvertPixelType\MV_CC_SaveImageEx2 API convert Bayer8/10/12/16 to RGB24/48£¬ RGBA32/64£¬BGR24/48£¬BGRA32/64.
+ *  @remarks After enable the CLUT and set CLUT, It work in the calling MV_CC_ConvertPixelType\MV_CC_SaveImageEx2 API convert Bayer8/10/12/16 to RGB24/48ï¼Œ RGBA32/64ï¼ŒBGR24/48ï¼ŒBGRA32/64.
  ************************************************************************/
 MVSDKEXPORT_API int __stdcall MV_CC_SetBayerCLUTParam(IN void* handle, IN MV_CC_CLUT_PARAM* pstCLUTParam);
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í¼Ïñ¶Ô±È¶Èµ÷½Ú
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstContrastParam            [IN]            ¶Ô±È¶Èµ÷½Ú²ÎÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  å›¾åƒå¯¹æ¯”åº¦è°ƒèŠ‚
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstContrastParam            [IN]            å¯¹æ¯”åº¦è°ƒèŠ‚å‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
 
  *  @~english
  *  @brief  Adjust image contrast
@@ -1866,10 +1866,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_ImageContrast(IN void* handle, IN OUT MV_CC_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í¼ÏñÈñ»¯
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstSharpenParam             [IN]            Èñ»¯²ÎÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  å›¾åƒé”åŒ–
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstSharpenParam             [IN]            é”åŒ–å‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
 
  *  @~english
  *  @brief  Image sharpen
@@ -1881,11 +1881,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_ImageSharpen(IN void* handle, IN OUT MV_CC_S
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  É«²ÊĞ£Õı£¨°üÀ¨CCMºÍCLUT£©
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstColorCorrectParam        [IN]            É«²ÊĞ£Õı²ÎÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÖ§³Öµ¥¶ÀCCM»òÕßCLUT£¬Ò²Ö§³ÖÍ¬Ê±½øĞĞCCMºÍCLUT£¬ÓÃ»§¿ÉÒÔÍ¨¹ıCCMºÍCLUTĞÅÏ¢ÖĞµÄÊ¹ÄÜ¿ª¹Ø½øĞĞÑ¡Ôñ¡£
+ *  @brief  è‰²å½©æ ¡æ­£ï¼ˆåŒ…æ‹¬CCMå’ŒCLUTï¼‰
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstColorCorrectParam        [IN]            è‰²å½©æ ¡æ­£å‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£æ”¯æŒå•ç‹¬CCMæˆ–è€…CLUTï¼Œä¹Ÿæ”¯æŒåŒæ—¶è¿›è¡ŒCCMå’ŒCLUTï¼Œç”¨æˆ·å¯ä»¥é€šè¿‡CCMå’ŒCLUTä¿¡æ¯ä¸­çš„ä½¿èƒ½å¼€å…³è¿›è¡Œé€‰æ‹©ã€‚
 
  *  @~english
  *  @brief  Color Correct(include CCM and CLUT)
@@ -1898,11 +1898,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_ColorCorrect(IN void* handle, IN OUT MV_CC_C
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÔëÉù¹À¼Æ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstNoiseEstimateParam       [IN]            ÔëÉù¹À¼Æ²ÎÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks Èç¹ûÓÃ»§Ñ¡ÔñÈ«Í¼×öÔëÉù¹À¼Æ£¬nROINum¿ÉÊäÈë0£¬pstROIRect¿ÉÖÃ¿Õ¡£
+ *  @brief  å™ªå£°ä¼°è®¡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstNoiseEstimateParam       [IN]            å™ªå£°ä¼°è®¡å‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks å¦‚æœç”¨æˆ·é€‰æ‹©å…¨å›¾åšå™ªå£°ä¼°è®¡ï¼ŒnROINumå¯è¾“å…¥0ï¼ŒpstROIRectå¯ç½®ç©ºã€‚
 
  *  @~english
  *  @brief  Noise Estimate
@@ -1915,10 +1915,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_NoiseEstimate(IN void* handle, IN OUT MV_CC_
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ¿ÕÓò½µÔë
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstSpatialDenoiseParam      [IN]            ¿ÕÓò½µÔë²ÎÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  ç©ºåŸŸé™å™ª
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstSpatialDenoiseParam      [IN]            ç©ºåŸŸé™å™ªå‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
 
  *  @~english
  *  @brief  Spatial Denoise
@@ -1930,10 +1930,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_SpatialDenoise(IN void* handle, IN OUT MV_CC
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  LSC±ê¶¨
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstLSCCalibParam            [IN]            ±ê¶¨²ÎÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  LSCæ ‡å®š
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstLSCCalibParam            [IN]            æ ‡å®šå‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
 
  *  @~english
  *  @brief  LSC Calib
@@ -1945,10 +1945,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_LSCCalib(IN void* handle, IN OUT MV_CC_LSC_C
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  LSCĞ£Õı
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstLSCCorrectParam          [IN]            Ğ£Õı²ÎÊı
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  LSCæ ¡æ­£
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstLSCCorrectParam          [IN]            æ ¡æ­£å‚æ•°
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
 
  *  @~english
  *  @brief  LSC Correct
@@ -1960,11 +1960,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_LSCCorrect(IN void* handle, IN OUT MV_CC_LSC
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÎŞËğ½âÂë
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstDecodeParam              [IN][OUT]       ÎŞËğ½âÂë²ÎÊı½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ½«´ÓÏà»úÖĞÈ¡µ½µÄÎŞËğÑ¹ËõÂëÁ÷½âÂë³ÉÂãÊı¾İ£¬Í¬Ê±Ö§³Ö½âÎöµ±Ç°Ïà»úÊµÊ±Í¼ÏñµÄË®Ó¡ĞÅÏ¢£¨Èç¹ûÊäÈëµÄÎŞËğÂëÁ÷²»ÊÇµ±Ç°Ïà»ú»òÕß²»ÊÇÊµÊ±È¡Á÷µÄ£¬ÔòË®Ó¡½âÎö¿ÉÄÜÒì³££©
+ *  @brief  æ— æŸè§£ç 
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstDecodeParam              [IN][OUT]       æ— æŸè§£ç å‚æ•°ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks å°†ä»ç›¸æœºä¸­å–åˆ°çš„æ— æŸå‹ç¼©ç æµè§£ç æˆè£¸æ•°æ®ï¼ŒåŒæ—¶æ”¯æŒè§£æå½“å‰ç›¸æœºå®æ—¶å›¾åƒçš„æ°´å°ä¿¡æ¯ï¼ˆå¦‚æœè¾“å…¥çš„æ— æŸç æµä¸æ˜¯å½“å‰ç›¸æœºæˆ–è€…ä¸æ˜¯å®æ—¶å–æµçš„ï¼Œåˆ™æ°´å°è§£æå¯èƒ½å¼‚å¸¸ï¼‰
  
  *  @~english
  *  @brief  High Bandwidth Decode
@@ -1977,10 +1977,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_HB_Decode(IN void* handle, IN OUT MV_CC_HB_D
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ±£´æÉè±¸ÊôĞÔ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strFileName                 [IN]            ÊôĞÔÎÄ¼şÃû
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  ä¿å­˜è®¾å¤‡å±æ€§
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strFileName                 [IN]            å±æ€§æ–‡ä»¶å
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
  
  *  @~english
  *  @brief  Save camera feature
@@ -1992,10 +1992,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_FeatureSave(IN void* handle, IN const char* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  µ¼ÈëÉè±¸ÊôĞÔ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  strFileName                 [IN]            ÊôĞÔÎÄ¼şÃû
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  å¯¼å…¥è®¾å¤‡å±æ€§
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  strFileName                 [IN]            å±æ€§æ–‡ä»¶å
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
  
  *  @~english
  *  @brief  Load camera feature
@@ -2007,10 +2007,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_FeatureLoad(IN void* handle, IN const char* 
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ´ÓÉè±¸¶ÁÈ¡ÎÄ¼ş
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFileAccess               [IN]            ÎÄ¼ş´æÈ¡½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  ä»è®¾å¤‡è¯»å–æ–‡ä»¶
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFileAccess               [IN]            æ–‡ä»¶å­˜å–ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
  
  *  @~english
  *  @brief  Read the file from the camera
@@ -2022,10 +2022,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_FileAccessRead(IN void* handle, IN MV_CC_FIL
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ½«ÎÄ¼şĞ´ÈëÉè±¸
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFileAccess               [IN]            ÎÄ¼ş´æÈ¡½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  å°†æ–‡ä»¶å†™å…¥è®¾å¤‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFileAccess               [IN]            æ–‡ä»¶å­˜å–ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
  
  *  @~english
  *  @brief  Write the file to camera
@@ -2037,10 +2037,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_FileAccessWrite(IN void* handle, IN MV_CC_FI
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡ÎÄ¼ş´æÈ¡µÄ½ø¶È
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstFileAccessProgress       [IN]            ½ø¶ÈÄÚÈİ
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë £¨µ±Ç°ÎÄ¼ş´æÈ¡µÄ×´Ì¬£©
+ *  @brief  è·å–æ–‡ä»¶å­˜å–çš„è¿›åº¦
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstFileAccessProgress       [IN]            è¿›åº¦å†…å®¹
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  ï¼ˆå½“å‰æ–‡ä»¶å­˜å–çš„çŠ¶æ€ï¼‰
  
  *  @~english
  *  @brief  Get File Access Progress 
@@ -2052,10 +2052,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetFileAccessProgress(IN void* handle, OUT M
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ¿ªÊ¼Â¼Ïñ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstRecordParam              [IN]            Â¼Ïñ²ÎÊı½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  å¼€å§‹å½•åƒ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstRecordParam              [IN]            å½•åƒå‚æ•°ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
  
  *  @~english
  *  @brief  Start Record
@@ -2067,10 +2067,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_StartRecord(IN void* handle, IN MV_CC_RECORD
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÊäÈëÂ¼ÏñÊı¾İ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstInputFrameInfo           [IN]            Â¼ÏñÊı¾İ½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  è¾“å…¥å½•åƒæ•°æ®
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstInputFrameInfo           [IN]            å½•åƒæ•°æ®ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
  
  *  @~english
  *  @brief  Input RAW data to Record
@@ -2082,9 +2082,9 @@ MVSDKEXPORT_API int __stdcall MV_CC_InputOneFrame(IN void* handle, IN MV_CC_INPU
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Í£Ö¹Â¼Ïñ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  åœæ­¢å½•åƒ
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
  
  *  @~english
  *  @brief  Stop Record
@@ -2095,15 +2095,15 @@ MVSDKEXPORT_API int __stdcall MV_CC_StopRecord(IN void* handle);
 
 
 /************************************************************************/
-/* ²»½¨ÒéÊ¹ÓÃµÄ½Ó¿Ú                     	                    		*/
+/* ä¸å»ºè®®ä½¿ç”¨çš„æ¥å£                     	                    		*/
 /* Interfaces not recommended                                           */
 /************************************************************************/
 /************************************************************************
  *  @fn     MV_CC_GetImageInfo
- *  @brief  »ñÈ¡Í¼Ïñ»ù±¾ĞÅÏ¢
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstInfo                     [IN][OUT]       ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÍ¼Ïñ»ù±¾ĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–å›¾åƒåŸºæœ¬ä¿¡æ¯
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstInfo                     [IN][OUT]       è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºå›¾åƒåŸºæœ¬ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MV_CC_GetImageInfo
  *  @brief  Get basic information of image
@@ -2115,9 +2115,9 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetImageInfo(IN void* handle, IN OUT MV_IMAG
 
 /************************************************************************
  *  @fn     MV_CC_SetSDKLogPath()
- *  @brief  ÉèÖÃSDKÈÕÖ¾Â·¾¶£¨Èç¹ûÈÕÖ¾·şÎñMvLogServerÒÑÆôÓÃ£¬Ôò¸Ã½Ó¿ÚÎŞĞ§£¬Ä¬ÈÏÈÕÖ¾·şÎñÎª¿ªÆô×´Ì¬£©
- *  @param  pSDKLogPath             [IN]           SDKÈÕÖ¾Â·¾¶
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  è®¾ç½®SDKæ—¥å¿—è·¯å¾„ï¼ˆå¦‚æœæ—¥å¿—æœåŠ¡MvLogServerå·²å¯ç”¨ï¼Œåˆ™è¯¥æ¥å£æ— æ•ˆï¼Œé»˜è®¤æ—¥å¿—æœåŠ¡ä¸ºå¼€å¯çŠ¶æ€ï¼‰
+ *  @param  pSDKLogPath             [IN]           SDKæ—¥å¿—è·¯å¾„
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
  
  *  @fn     MV_CC_SetSDKLogPath()
  *  @brief  Set SDK log path
@@ -2128,9 +2128,9 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetSDKLogPath(IN const char * pSDKLogPath);
 
 /************************************************************************
  *  @fn     MV_CC_GetTlProxy
- *  @brief  »ñÈ¡GenICam´úÀí
- *  @param  handle                 [IN]           ¾ä±úµØÖ·
- *  @return GenICam´úÀíÀàÖ¸Õë £¬Õı³£·µ»ØÖµ·ÇNULL£»Òì³£·µ»ØNULL
+ *  @brief  è·å–GenICamä»£ç†
+ *  @param  handle                 [IN]           å¥æŸ„åœ°å€
+ *  @return GenICamä»£ç†ç±»æŒ‡é’ˆ ï¼Œæ­£å¸¸è¿”å›å€¼éNULLï¼›å¼‚å¸¸è¿”å›NULL
  
  *  @fn     MV_CC_GetTlProxy
  *  @brief  Get GenICam proxy
@@ -2141,10 +2141,10 @@ MVSDKEXPORT_API void* __stdcall MV_CC_GetTlProxy(IN void* handle);
 
 /***********************************************************************
  *  @fn         MV_XML_GetRootNode
- *  @brief      »ñÈ¡¸ù½Úµã
- *  @param       handle                 [IN]          ¾ä±ú
- *  @param       pstNode                [OUT]         ¸ù½ÚµãĞÅÏ¢½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief      è·å–æ ¹èŠ‚ç‚¹
+ *  @param       handle                 [IN]          å¥æŸ„
+ *  @param       pstNode                [OUT]         æ ¹èŠ‚ç‚¹ä¿¡æ¯ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
  
  *  @fn         MV_XML_GetRootNode
  *  @brief      Get root node
@@ -2156,11 +2156,11 @@ MVSDKEXPORT_API int __stdcall MV_XML_GetRootNode(IN void* handle, IN OUT MV_XML_
 
 /***********************************************************************
  *  @fn         MV_XML_GetChildren
- *  @brief      ´ÓxmlÖĞ»ñÈ¡Ö¸¶¨½ÚµãµÄËùÓĞ×Ó½Úµã£¬¸ù½ÚµãÎªRoot
- *  @param       handle                 [IN]          ¾ä±ú
- *  @param       pstNode                [IN]          ¸ù½ÚµãĞÅÏ¢½á¹¹Ìå
- *  @param       pstNodesList           [OUT]         ½ÚµãÁĞ±í½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief      ä»xmlä¸­è·å–æŒ‡å®šèŠ‚ç‚¹çš„æ‰€æœ‰å­èŠ‚ç‚¹ï¼Œæ ¹èŠ‚ç‚¹ä¸ºRoot
+ *  @param       handle                 [IN]          å¥æŸ„
+ *  @param       pstNode                [IN]          æ ¹èŠ‚ç‚¹ä¿¡æ¯ç»“æ„ä½“
+ *  @param       pstNodesList           [OUT]         èŠ‚ç‚¹åˆ—è¡¨ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
  
  *  @fn         MV_XML_GetChildren
  *  @brief      Get all children node of specific node from xml, root node is Root
@@ -2173,12 +2173,12 @@ MVSDKEXPORT_API int __stdcall MV_XML_GetChildren(IN void* handle, IN MV_XML_NODE
 
 /***********************************************************************
  *  @fn         MV_XML_GetNodeFeature
- *  @brief      »ñµÃµ±Ç°½ÚµãµÄÊôĞÔ
- *  @param       handle                 [IN]          ¾ä±ú
- *  @param       pstNode                [IN]          ¸ù½ÚµãĞÅÏ¢½á¹¹Ìå
- *  @param       pstFeature             [OUT]         µ±Ç°½ÚµãÊôĞÔ½á¹¹Ìå£¬
-                           pstFeature ¾ßÌå½á¹¹ÌåÄÚÈİ²Î¿¼ MV_XML_FEATURE_x
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief      è·å¾—å½“å‰èŠ‚ç‚¹çš„å±æ€§
+ *  @param       handle                 [IN]          å¥æŸ„
+ *  @param       pstNode                [IN]          æ ¹èŠ‚ç‚¹ä¿¡æ¯ç»“æ„ä½“
+ *  @param       pstFeature             [OUT]         å½“å‰èŠ‚ç‚¹å±æ€§ç»“æ„ä½“ï¼Œ
+                           pstFeature å…·ä½“ç»“æ„ä½“å†…å®¹å‚è€ƒ MV_XML_FEATURE_x
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
  
  *  @fn         MV_XML_GetNodeFeature
  *  @brief      Get current node feature
@@ -2192,11 +2192,11 @@ MVSDKEXPORT_API int __stdcall MV_XML_GetNodeFeature(IN void* handle, IN MV_XML_N
 
 /***********************************************************************
  *  @fn         MV_XML_UpdateNodeFeature
- *  @brief      ¸üĞÂ½Úµã
- *  @param       handle                 [IN]          ¾ä±ú
- *  @param       enType                 [IN]          ½ÚµãÀàĞÍ
- *  @param       pstFeature             [OUT]         µ±Ç°½ÚµãÊôĞÔ½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief      æ›´æ–°èŠ‚ç‚¹
+ *  @param       handle                 [IN]          å¥æŸ„
+ *  @param       enType                 [IN]          èŠ‚ç‚¹ç±»å‹
+ *  @param       pstFeature             [OUT]         å½“å‰èŠ‚ç‚¹å±æ€§ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
  
  *  @fn         MV_XML_UpdateNodeFeature
  *  @brief      Update node
@@ -2207,15 +2207,15 @@ MVSDKEXPORT_API int __stdcall MV_XML_GetNodeFeature(IN void* handle, IN MV_XML_N
  ***********************************************************************/
 MVSDKEXPORT_API int __stdcall MV_XML_UpdateNodeFeature(IN void* handle, IN enum MV_XML_InterfaceType enType, IN void* pstFeature);
 
-// ÓĞ½ÚµãĞèÒª¸üĞÂÊ±µÄ»Øµ÷º¯Êı
-// µ±µ÷ÓÃMV_XML_UpdateNodeFeature½Ó¿Ú¸üĞÂ½ÚµãÊôĞÔÊ±£¬×¢²áµÄ»Øµ÷º¯ÊıcbUpdate»áÔÚpstNodesListÖĞ·µ»ØÓëÖ®Ïà¹ØÁªµÄ½Úµã
+// æœ‰èŠ‚ç‚¹éœ€è¦æ›´æ–°æ—¶çš„å›è°ƒå‡½æ•°
+// å½“è°ƒç”¨MV_XML_UpdateNodeFeatureæ¥å£æ›´æ–°èŠ‚ç‚¹å±æ€§æ—¶ï¼Œæ³¨å†Œçš„å›è°ƒå‡½æ•°cbUpdateä¼šåœ¨pstNodesListä¸­è¿”å›ä¸ä¹‹ç›¸å…³è”çš„èŠ‚ç‚¹
 /***********************************************************************
  *  @fn         MV_XML_RegisterUpdateCallBack
- *  @brief      ×¢²á¸üĞÂ»Øµ÷
- *  @param       handle                 [IN]          ¾ä±ú
- *  @param       cbUpdate               [IN]          »Øµ÷º¯ÊıÖ¸Õë
- *  @param       pUser                  [IN]          ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief      æ³¨å†Œæ›´æ–°å›è°ƒ
+ *  @param       handle                 [IN]          å¥æŸ„
+ *  @param       cbUpdate               [IN]          å›è°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param       pUser                  [IN]          ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
  
  *  @fn         MV_XML_RegisterUpdateCallBack
  *  @brief      Register update callback
@@ -2229,19 +2229,19 @@ MVSDKEXPORT_API int __stdcall MV_XML_RegisterUpdateCallBack(IN void* handle,
                                                            IN void* pUser);
 
 /************************************************************************/
-/* ÆúÓÃµÄ½Ó¿Ú£¨´æÔÚ¸üÓÅ»¯µÄ½Ó¿Ú¿ÉÌæ»»£©                     			*/
+/* å¼ƒç”¨çš„æ¥å£ï¼ˆå­˜åœ¨æ›´ä¼˜åŒ–çš„æ¥å£å¯æ›¿æ¢ï¼‰                     			*/
 /* Abandoned interface                                                  */
 /************************************************************************/
 /***********************************************************************
  *  @fn         MV_CC_GetOneFrame
- *  @brief      »ñÈ¡Ò»Ö¡Í¼Ïñ£¬´Ëº¯ÊıÎª²éÑ¯Ê½»ñÈ¡£¬Ã¿´Îµ÷ÓÃ²éÑ¯ÄÚ²¿»º´æÓĞ
-                ÎŞÊı¾İ£¬ÓĞÊı¾İÔò·¶Î§Êı¾İ£¬ÎŞÊı¾İ·µ»Ø´íÎóÂë
-                £¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_CC_GetOneFrameTimeOut½Ó¿Ú£©
- *  @param       handle                 [IN]          ¾ä±ú
- *  @param       pData                  [OUT]         Í¼ÏñÊı¾İ½ÓÊÕÖ¸Õë
- *  @param       nDataSize              [IN]          ½ÓÊÕ»º´æ´óĞ¡
- *  @param       pFrameInfo             [OUT]         Í¼ÏñĞÅÏ¢½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief      è·å–ä¸€å¸§å›¾åƒï¼Œæ­¤å‡½æ•°ä¸ºæŸ¥è¯¢å¼è·å–ï¼Œæ¯æ¬¡è°ƒç”¨æŸ¥è¯¢å†…éƒ¨ç¼“å­˜æœ‰
+                æ— æ•°æ®ï¼Œæœ‰æ•°æ®åˆ™èŒƒå›´æ•°æ®ï¼Œæ— æ•°æ®è¿”å›é”™è¯¯ç 
+                ï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_CC_GetOneFrameTimeOutæ¥å£ï¼‰
+ *  @param       handle                 [IN]          å¥æŸ„
+ *  @param       pData                  [OUT]         å›¾åƒæ•°æ®æ¥æ”¶æŒ‡é’ˆ
+ *  @param       nDataSize              [IN]          æ¥æ”¶ç¼“å­˜å¤§å°
+ *  @param       pFrameInfo             [OUT]         å›¾åƒä¿¡æ¯ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
  
  *  @fn         MV_CC_GetOneFrame
  *  @brief      Get one frame data, this function is using query to get data, 
@@ -2257,14 +2257,14 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetOneFrame(IN void* handle, IN OUT unsigned
 
 /***********************************************************************
  *  @fn         MV_CC_GetOneFrameEx
- *  @brief      »ñÈ¡Ò»Ö¡trunckÊı¾İ£¬´Ëº¯ÊıÎª²éÑ¯Ê½»ñÈ¡£¬Ã¿´Îµ÷ÓÃ²éÑ¯ÄÚ²¿
-                »º´æÓĞÎŞÊı¾İ£¬ÓĞÊı¾İÔò·¶Î§Êı¾İ£¬ÎŞÊı¾İ·µ»Ø´íÎóÂë
-                £¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_CC_GetOneFrameTimeOut½Ó¿Ú£©
- *  @param       handle                 [IN]          ¾ä±ú
- *  @param       pData                  [OUT]         Í¼ÏñÊı¾İ½ÓÊÕÖ¸Õë
- *  @param       nDataSize              [IN]          ½ÓÊÕ»º´æ´óĞ¡
- *  @param       pFrameInfo             [OUT]         Í¼ÏñĞÅÏ¢½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief      è·å–ä¸€å¸§trunckæ•°æ®ï¼Œæ­¤å‡½æ•°ä¸ºæŸ¥è¯¢å¼è·å–ï¼Œæ¯æ¬¡è°ƒç”¨æŸ¥è¯¢å†…éƒ¨
+                ç¼“å­˜æœ‰æ— æ•°æ®ï¼Œæœ‰æ•°æ®åˆ™èŒƒå›´æ•°æ®ï¼Œæ— æ•°æ®è¿”å›é”™è¯¯ç 
+                ï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_CC_GetOneFrameTimeOutæ¥å£ï¼‰
+ *  @param       handle                 [IN]          å¥æŸ„
+ *  @param       pData                  [OUT]         å›¾åƒæ•°æ®æ¥æ”¶æŒ‡é’ˆ
+ *  @param       nDataSize              [IN]          æ¥æ”¶ç¼“å­˜å¤§å°
+ *  @param       pFrameInfo             [OUT]         å›¾åƒä¿¡æ¯ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
  
  *  @fn         MV_CC_GetOneFrameEx
  *  @brief      Get one frame of trunck data, this function is using query to get data, 
@@ -2280,11 +2280,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetOneFrameEx(IN void* handle, IN OUT unsign
 
 /***********************************************************************
  *  @fn         MV_CC_RegisterImageCallBack
- *  @brief      ×¢²áÍ¼ÏñÊı¾İ»Øµ÷£¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_CC_RegisterImageCallBackEx½Ó¿Ú£©
- *  @param       handle                 [IN]          ¾ä±ú
- *  @param       cbOutput               [IN]          »Øµ÷º¯ÊıÖ¸Õë
- *  @param       pUser                  [IN]          ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief      æ³¨å†Œå›¾åƒæ•°æ®å›è°ƒï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_CC_RegisterImageCallBackExæ¥å£ï¼‰
+ *  @param       handle                 [IN]          å¥æŸ„
+ *  @param       cbOutput               [IN]          å›è°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param       pUser                  [IN]          ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
  
  *  @fn         MV_CC_RegisterImageCallBack
  *  @brief      Register image data callback (This interface is abandoned, it is recommended to use the MV_CC_RegisterImageCallBackEx)
@@ -2299,18 +2299,18 @@ MVSDKEXPORT_API int __stdcall MV_CC_RegisterImageCallBack(void* handle,
 
 /************************************************************************
  *  @fn     MV_CC_SaveImage
- *  @brief  ±£´æÍ¼Æ¬£¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_CC_SaveImageEx2½Ó¿Ú£©
- *  @param  pSaveParam             [IN][OUT]          ±£´æÍ¼Æ¬²ÎÊı½á¹¹Ìå
-                       pData;              // [IN]     ÊäÈëÊı¾İ»º´æ
-                       nDataLen;           // [IN]     ÊäÈëÊı¾İ´óĞ¡
-                       enPixelType;        // [IN]     ÊäÈëÊı¾İµÄÏñËØ¸ñÊ½
-                       nWidth;             // [IN]     Í¼Ïñ¿í
-                       nHeight;            // [IN]     Í¼Ïñ¸ß
-                       pImageBuffer;       // [OUT]    Êä³öÍ¼Æ¬»º´æ
-                       nImageLen;          // [OUT]    Êä³öÍ¼Æ¬´óĞ¡
-                       nBufferSize;        // [IN]     Ìá¹©µÄÊä³ö»º³åÇø´óĞ¡
-                       enImageType;        // [IN]     Êä³öÍ¼Æ¬¸ñÊ½
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @brief  ä¿å­˜å›¾ç‰‡ï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_CC_SaveImageEx2æ¥å£ï¼‰
+ *  @param  pSaveParam             [IN][OUT]          ä¿å­˜å›¾ç‰‡å‚æ•°ç»“æ„ä½“
+                       pData;              // [IN]     è¾“å…¥æ•°æ®ç¼“å­˜
+                       nDataLen;           // [IN]     è¾“å…¥æ•°æ®å¤§å°
+                       enPixelType;        // [IN]     è¾“å…¥æ•°æ®çš„åƒç´ æ ¼å¼
+                       nWidth;             // [IN]     å›¾åƒå®½
+                       nHeight;            // [IN]     å›¾åƒé«˜
+                       pImageBuffer;       // [OUT]    è¾“å‡ºå›¾ç‰‡ç¼“å­˜
+                       nImageLen;          // [OUT]    è¾“å‡ºå›¾ç‰‡å¤§å°
+                       nBufferSize;        // [IN]     æä¾›çš„è¾“å‡ºç¼“å†²åŒºå¤§å°
+                       enImageType;        // [IN]     è¾“å‡ºå›¾ç‰‡æ ¼å¼
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
  
  *  @fn     MV_CC_SaveImage
  *  @brief  Save image (This interface is abandoned, it is recommended to use the MV_CC_SaveImageEx)
@@ -2330,20 +2330,20 @@ MVSDKEXPORT_API int __stdcall MV_CC_SaveImage(IN OUT MV_SAVE_IMAGE_PARAM* pSaveP
 
 /************************************************************************
  *  @fn     MV_CC_SaveImageEx
- *  @brief  ±£´æÍ¼Æ¬£¬Ö§³ÖBmpºÍJpeg.±àÂëÖÊÁ¿ÔÚ50-99Ö®Ç° £¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_CC_SaveImageEx2½Ó¿Ú£©
- *  @param  pSaveParam             [IN][OUT]          ±£´æÍ¼Æ¬²ÎÊı½á¹¹Ìå
-                       pData;              // [IN]     ÊäÈëÊı¾İ»º´æ
-                       nDataLen;           // [IN]     ÊäÈëÊı¾İ´óĞ¡
-                       enPixelType;        // [IN]     ÊäÈëÊı¾İµÄÏñËØ¸ñÊ½
-                       nWidth;             // [IN]     Í¼Ïñ¿í
-                       nHeight;            // [IN]     Í¼Ïñ¸ß
-                       pImageBuffer;       // [OUT]    Êä³öÍ¼Æ¬»º´æ
-                       nImageLen;          // [OUT]    Êä³öÍ¼Æ¬´óĞ¡
-                       nBufferSize;        // [IN]     Ìá¹©µÄÊä³ö»º³åÇø´óĞ¡
-                       enImageType;        // [IN]     Êä³öÍ¼Æ¬¸ñÊ½
-                       nJpgQuality;        // [IN]     ±àÂëÖÊÁ¿, (50-99]
+ *  @brief  ä¿å­˜å›¾ç‰‡ï¼Œæ”¯æŒBmpå’ŒJpeg.ç¼–ç è´¨é‡åœ¨50-99ä¹‹å‰ ï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_CC_SaveImageEx2æ¥å£ï¼‰
+ *  @param  pSaveParam             [IN][OUT]          ä¿å­˜å›¾ç‰‡å‚æ•°ç»“æ„ä½“
+                       pData;              // [IN]     è¾“å…¥æ•°æ®ç¼“å­˜
+                       nDataLen;           // [IN]     è¾“å…¥æ•°æ®å¤§å°
+                       enPixelType;        // [IN]     è¾“å…¥æ•°æ®çš„åƒç´ æ ¼å¼
+                       nWidth;             // [IN]     å›¾åƒå®½
+                       nHeight;            // [IN]     å›¾åƒé«˜
+                       pImageBuffer;       // [OUT]    è¾“å‡ºå›¾ç‰‡ç¼“å­˜
+                       nImageLen;          // [OUT]    è¾“å‡ºå›¾ç‰‡å¤§å°
+                       nBufferSize;        // [IN]     æä¾›çš„è¾“å‡ºç¼“å†²åŒºå¤§å°
+                       enImageType;        // [IN]     è¾“å‡ºå›¾ç‰‡æ ¼å¼
+                       nJpgQuality;        // [IN]     ç¼–ç è´¨é‡, (50-99]
                        nReserved[4];
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
  
  *  @fn     MV_CC_SaveImageEx
  *  @brief  Save image, support Bmp and Jpeg. Encoding quality, (50-99]
@@ -2365,12 +2365,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SaveImageEx(IN OUT MV_SAVE_IMAGE_PARAM_EX* p
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  BayerÔëÉù¹À¼Æ£¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_CC_NoiseEstimate½Ó¿Ú£©
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstNoiseEstimateParam       [IN][OUT]       BayerÔëÉù¹À¼Æ²ÎÊı½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÖ»Ö§³ÖBayer8/Bayer10/Bayer12¸ñÊ½,ÆäËüBayer¸ñÊ½ĞèÏÈ×ª³ÉBayer8/Bayer10/Bayer12¸ñÊ½¡£\n
-             ¸Ã½Ó¿ÚÖ»ÓĞÔÚ´ò¿ªÎÒË¾ÌØ¶¨²ÊÉ«Ïà»úºó²Å¿ÉÒÔÕı³£Ê¹ÓÃ£¬µ±Ïà»ú±»¶Ï¿ª»òÕßµôÏßºó£¬¼ÌĞøÊ¹ÓÃ¸Ã½Ó¿Ú»á±¨´í¡£
+ *  @brief  Bayerå™ªå£°ä¼°è®¡ï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_CC_NoiseEstimateæ¥å£ï¼‰
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstNoiseEstimateParam       [IN][OUT]       Bayerå™ªå£°ä¼°è®¡å‚æ•°ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£åªæ”¯æŒBayer8/Bayer10/Bayer12æ ¼å¼,å…¶å®ƒBayeræ ¼å¼éœ€å…ˆè½¬æˆBayer8/Bayer10/Bayer12æ ¼å¼ã€‚\n
+             è¯¥æ¥å£åªæœ‰åœ¨æ‰“å¼€æˆ‘å¸ç‰¹å®šå½©è‰²ç›¸æœºåæ‰å¯ä»¥æ­£å¸¸ä½¿ç”¨ï¼Œå½“ç›¸æœºè¢«æ–­å¼€æˆ–è€…æ‰çº¿åï¼Œç»§ç»­ä½¿ç”¨è¯¥æ¥å£ä¼šæŠ¥é”™ã€‚
  
  *  @~english
  *  @brief  Noise estimate of Bayer format
@@ -2384,12 +2384,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_BayerNoiseEstimate(IN void* handle, IN OUT M
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  Bayer¿ÕÓò½µÔë£¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_CC_SpatialDenoise½Ó¿Ú£©
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pstSpatialDenoiseParam      [IN][OUT]       Bayer¿ÕÓò½µÔë²ÎÊı½á¹¹Ìå
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë 
- *  @remarks ¸Ã½Ó¿ÚÖ»Ö§³ÖBayer8/Bayer10/Bayer12¸ñÊ½,ÆäËüBayer¸ñÊ½ĞèÏÈ×ª³ÉBayer8/Bayer10/Bayer12¸ñÊ½¡£\n
-             ¸Ã½Ó¿ÚÖ»ÓĞÔÚ´ò¿ªÎÒË¾ÌØ¶¨²ÊÉ«Ïà»úºó²Å¿ÉÒÔÕı³£Ê¹ÓÃ£¬µ±Ïà»ú±»¶Ï¿ª»òÕßµôÏßºó£¬¼ÌĞøÊ¹ÓÃ¸Ã½Ó¿Ú»á±¨´í¡£
+ *  @brief  Bayerç©ºåŸŸé™å™ªï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_CC_SpatialDenoiseæ¥å£ï¼‰
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pstSpatialDenoiseParam      [IN][OUT]       Bayerç©ºåŸŸé™å™ªå‚æ•°ç»“æ„ä½“
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç  
+ *  @remarks è¯¥æ¥å£åªæ”¯æŒBayer8/Bayer10/Bayer12æ ¼å¼,å…¶å®ƒBayeræ ¼å¼éœ€å…ˆè½¬æˆBayer8/Bayer10/Bayer12æ ¼å¼ã€‚\n
+             è¯¥æ¥å£åªæœ‰åœ¨æ‰“å¼€æˆ‘å¸ç‰¹å®šå½©è‰²ç›¸æœºåæ‰å¯ä»¥æ­£å¸¸ä½¿ç”¨ï¼Œå½“ç›¸æœºè¢«æ–­å¼€æˆ–è€…æ‰çº¿åï¼Œç»§ç»­ä½¿ç”¨è¯¥æ¥å£ä¼šæŠ¥é”™ã€‚
  
  *  @~english
  *  @brief  Spatial Denoise of Bayer format
@@ -2403,10 +2403,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_BayerSpatialDenoise(IN void* handle, IN OUT 
 
 /************************************************************************
  *  @fn     MV_GIGE_ForceIp
- *  @brief  Ç¿ÖÆIP£¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_GIGE_ForceIpEx½Ó¿Ú£©
- *  @param  handle£ºÉè±¸¾ä±ú
- *  @param  nIP               [IN]      ÉèÖÃµÄIP
- *  @return ¼û·µ»Ø´íÎóÂë
+ *  @brief  å¼ºåˆ¶IPï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_GIGE_ForceIpExæ¥å£ï¼‰
+ *  @param  handleï¼šè®¾å¤‡å¥æŸ„
+ *  @param  nIP               [IN]      è®¾ç½®çš„IP
+ *  @return è§è¿”å›é”™è¯¯ç 
  
  *  @fn     MV_GIGE_ForceIp
  *  @brief  Force IP (This interface is abandoned, it is recommended to use the MV_GIGE_ForceIpEx)
@@ -2418,27 +2418,27 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_ForceIp(IN void* handle, unsigned int nIP)
 
 /************************************************************************
  *  @fn     MV_CC_RegisterEventCallBack
- *  @brief  ×¢²áÊÂ¼ş»Øµ÷£¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_CC_RegisterEventCallBackEx½Ó¿Ú£©
- *  @param  handle£ºÉè±¸¾ä±ú
- *  @param  cbEvent           [IN]      ÊÂ¼ş»Øµ÷º¯ÊıÖ¸Õë
- *  @param  pUser             [IN]      ÓÃ»§×Ô¶¨Òå±äÁ¿
- *  @return ¼û·µ»Ø´íÎóÂë
+ *  @brief  æ³¨å†Œäº‹ä»¶å›è°ƒï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_CC_RegisterEventCallBackExæ¥å£ï¼‰
+ *  @param  handleï¼šè®¾å¤‡å¥æŸ„
+ *  @param  cbEvent           [IN]      äº‹ä»¶å›è°ƒå‡½æ•°æŒ‡é’ˆ
+ *  @param  pUser             [IN]      ç”¨æˆ·è‡ªå®šä¹‰å˜é‡
+ *  @return è§è¿”å›é”™è¯¯ç 
  
  *  @fn     MV_CC_RegisterEventCallBack
  *  @brief  Register event callback (this interface has been deprecated and is recommended to be converted to the MV_CC_RegisterEventCallBackEx interface)
- *  @param  handle£ºÉè±¸¾ä±ú
+ *  @param  handleï¼šè®¾å¤‡å¥æŸ„
  *  @param  cbEvent           [IN]      event callback pointer
  *  @param  pUser             [IN]      User defined value
- *  @return ¼û·µ»Ø´íÎóÂë
+ *  @return è§è¿”å›é”™è¯¯ç 
 ************************************************************************/
 MVSDKEXPORT_API int __stdcall MV_CC_RegisterEventCallBack(void* handle, void(__stdcall* cbEvent)(unsigned int nExternalEventId, void* pUser), void* pUser);
 
 /***********************************************************************
  *  @fn         MV_CC_Display
- *  @brief      ÏÔÊ¾Í¼Ïñ£¬×¢²áÏÔÊ¾´°¿Ú£¬ÄÚ²¿×Ô¶¯ÏÔÊ¾£¨ÓëMV_CC_GetImageBuffer²»ÄÜÍ¬Ê±Ê¹ÓÃ£¬½¨Òé¸ÄÓÃMV_CC_DisplayOneFrame½Ó¿Ú£©
- *  @param       handle                 [IN]          ¾ä±ú
- *  @param       hWnd                   [IN]          ÏÔÊ¾´°¿Ú¾ä±ú
- *  @return ³É¹¦£¬·µ»ØMV_OK£»´íÎó£¬·µ»Ø´íÎóÂë
+ *  @brief      æ˜¾ç¤ºå›¾åƒï¼Œæ³¨å†Œæ˜¾ç¤ºçª—å£ï¼Œå†…éƒ¨è‡ªåŠ¨æ˜¾ç¤ºï¼ˆä¸MV_CC_GetImageBufferä¸èƒ½åŒæ—¶ä½¿ç”¨ï¼Œå»ºè®®æ”¹ç”¨MV_CC_DisplayOneFrameæ¥å£ï¼‰
+ *  @param       handle                 [IN]          å¥æŸ„
+ *  @param       hWnd                   [IN]          æ˜¾ç¤ºçª—å£å¥æŸ„
+ *  @return æˆåŠŸï¼Œè¿”å›MV_OKï¼›é”™è¯¯ï¼Œè¿”å›é”™è¯¯ç 
  
  *  @fn         MV_CC_Display
  *  @brief      Display one frame image, register display window, automatic display internally
@@ -2452,11 +2452,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_Display(IN void* handle, void* hWnd);
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetIntValue(IN void* handle,
                                                            IN const char* strKey,
                                                            OUT MVCC_INTVALUE *pIntValue);
- *  @brief  »ñÈ¡IntegerÊôĞÔÖµ£¨½¨Òé¸ÄÓÃMV_CC_GetIntValueEx½Ó¿Ú£©
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  char* strKey                [IN]        ÊôĞÔ¼üÖµ£¬Èç»ñÈ¡¿í¶ÈĞÅÏ¢ÔòÎª"Width"
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÊôĞÔ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–Integerå±æ€§å€¼ï¼ˆå»ºè®®æ”¹ç”¨MV_CC_GetIntValueExæ¥å£ï¼‰
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  char* strKey                [IN]        å±æ€§é”®å€¼ï¼Œå¦‚è·å–å®½åº¦ä¿¡æ¯åˆ™ä¸º"Width"
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºå±æ€§ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetIntValue(IN void* handle,
                                                            IN const char* strKey,
@@ -2473,11 +2473,11 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetIntValue(IN void* handle,IN const char* s
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetIntValue(IN void* handle,
                                                            IN const char* strKey,
                                                            IN unsigned int nValue);
- *  @brief  ÉèÖÃIntegerĞÍÊôĞÔÖµ£¨½¨Òé¸ÄÓÃMV_CC_SetIntValueEx½Ó¿Ú£©
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  char* strKey                [IN]        ÊôĞÔ¼üÖµ£¬Èç»ñÈ¡¿í¶ÈĞÅÏ¢ÔòÎª"Width"
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÏà»úµÄÊôĞÔÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®Integerå‹å±æ€§å€¼ï¼ˆå»ºè®®æ”¹ç”¨MV_CC_SetIntValueExæ¥å£ï¼‰
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  char* strKey                [IN]        å±æ€§é”®å€¼ï¼Œå¦‚è·å–å®½åº¦ä¿¡æ¯åˆ™ä¸º"Width"
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ç›¸æœºçš„å±æ€§å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetIntValue(IN void* handle,
                                                            IN const char* strKey,
@@ -2492,22 +2492,22 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetIntValue(IN void* handle,IN const char* s
 
 
 /************************************************************************/
-/* Ïà»ú²ÎÊı»ñÈ¡ºÍÉèÖÃ£¬´ËÄ£¿éµÄËùÓĞ½Ó¿ÚÒÑ·ÏÆú£¬½¨ÒéÊ¹ÓÃÍòÄÜ½Ó¿Ú´úÌæ   */
+/* ç›¸æœºå‚æ•°è·å–å’Œè®¾ç½®ï¼Œæ­¤æ¨¡å—çš„æ‰€æœ‰æ¥å£å·²åºŸå¼ƒï¼Œå»ºè®®ä½¿ç”¨ä¸‡èƒ½æ¥å£ä»£æ›¿   */
 /* Get and set camara parameters, all interfaces of this module will be replaced by general interface*/
 /************************************************************************/
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetWidth(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡Í¼Ïñ¿í¶È
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»ú¿í¶ÈµÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *          ·µ»ØµÄpstValue½á¹¹ÌåµÄÒâÒå
- *                  unsigned int    nCurValue;      // ´ú±íÏà»úµ±Ç°µÄ¿í¶ÈÖµ
- *                  unsigned int    nMax;           // ±íÊ¾Ïà»úÔÊĞíµÄ×î´ó¿ÉÉèÖÃµÄ¿í¶ÈÖµ
- *                  unsigned int    nMin;           // ±íÊ¾Ïà»úÔÊĞíµÄ×îĞ¡¿ÉÉèÖÃµÄ¿í¶ÈÖµ
- *                  unsigned int    nInc;           // ±íÊ¾Ïà»úÉèÖÃµÄ¿í¶ÈÔöÁ¿±ØĞëÊÇnIncµÄ±¶Êı£¬·ñÔòÎŞĞ§
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–å›¾åƒå®½åº¦
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºå®½åº¦çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *          è¿”å›çš„pstValueç»“æ„ä½“çš„æ„ä¹‰
+ *                  unsigned int    nCurValue;      // ä»£è¡¨ç›¸æœºå½“å‰çš„å®½åº¦å€¼
+ *                  unsigned int    nMax;           // è¡¨ç¤ºç›¸æœºå…è®¸çš„æœ€å¤§å¯è®¾ç½®çš„å®½åº¦å€¼
+ *                  unsigned int    nMin;           // è¡¨ç¤ºç›¸æœºå…è®¸çš„æœ€å°å¯è®¾ç½®çš„å®½åº¦å€¼
+ *                  unsigned int    nInc;           // è¡¨ç¤ºç›¸æœºè®¾ç½®çš„å®½åº¦å¢é‡å¿…é¡»æ˜¯nIncçš„å€æ•°ï¼Œå¦åˆ™æ— æ•ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
- *          ÆäËûÕûĞÍ½á¹¹Ìå²ÎÊıµÄ½Ó¿Ú¿É²ÎÕÕ´Ë½Ó¿Ú
+ *          å…¶ä»–æ•´å‹ç»“æ„ä½“å‚æ•°çš„æ¥å£å¯å‚ç…§æ­¤æ¥å£
  
  * @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetWidth(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get image width
@@ -2526,10 +2526,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetWidth(IN void* handle, IN OUT MVCC_INTVAL
 
 /************************************************************************
 *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetWidth(IN void* handle, IN const unsigned int nValue);
-*  @brief  ÉèÖÃÍ¼Ïñ¿í¶È
-*  @param  void* handle                [IN]        Ïà»ú¾ä±ú
-*          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÏà»ú¿í¶ÈµÄÖµ,×¢Òâ´Ë¿í¶ÈÖµ±ØĞëÊÇMV_CC_GetWidth½Ó¿Ú·µ»ØµÄpstValueÖĞµÄnIncµÄ±¶Êı²ÅÄÜÉèÖÃ³É¹¦
-*  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú¿í¶È½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+*  @brief  è®¾ç½®å›¾åƒå®½åº¦
+*  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+*          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ç›¸æœºå®½åº¦çš„å€¼,æ³¨æ„æ­¤å®½åº¦å€¼å¿…é¡»æ˜¯MV_CC_GetWidthæ¥å£è¿”å›çš„pstValueä¸­çš„nIncçš„å€æ•°æ‰èƒ½è®¾ç½®æˆåŠŸ
+*  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºå®½åº¦å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
 
 * @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetWidth(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set image width
@@ -2541,12 +2541,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetWidth(IN void* handle, IN const unsigned 
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetHeight(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡Í¼Ïñ¸ß¶È
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»ú¸ß¶ÈµÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,²¢½«¸ß¶ÈĞÅÏ¢·µ»Øµ½½á¹¹ÌåÖĞ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–å›¾åƒé«˜åº¦
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºé«˜åº¦çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶å°†é«˜åº¦ä¿¡æ¯è¿”å›åˆ°ç»“æ„ä½“ä¸­ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetHeight(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get image height
@@ -2560,10 +2560,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetHeight(IN void* handle, IN OUT MVCC_INTVA
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetHeight(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÍ¼Ïñ¸ß¶È
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÏà»ú¿í¶ÈµÄÖµ,×¢Òâ´Ë¿í¶ÈÖµ±ØĞëÊÇMV_CC_GetWidth½Ó¿Ú·µ»ØµÄpstValueÖĞµÄnIncµÄ±¶Êı²ÅÄÜÉèÖÃ³É¹¦
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú¸ß¶È½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®å›¾åƒé«˜åº¦
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ç›¸æœºå®½åº¦çš„å€¼,æ³¨æ„æ­¤å®½åº¦å€¼å¿…é¡»æ˜¯MV_CC_GetWidthæ¥å£è¿”å›çš„pstValueä¸­çš„nIncçš„å€æ•°æ‰èƒ½è®¾ç½®æˆåŠŸ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºé«˜åº¦å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetHeight(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set image height
@@ -2575,12 +2575,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetHeight(IN void* handle, IN const unsigned
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAOIoffsetX(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡Í¼ÏñXÆ«ÒÆ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úXÆ«ÒÆµÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–å›¾åƒXåç§»
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºXåç§»çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAOIoffsetX(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get image X offset
@@ -2594,10 +2594,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetAOIoffsetX(IN void* handle, IN OUT MVCC_I
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAOIoffsetX(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÍ¼ÏñAOIÆ«ÒÆ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÏà»úAOIµÄÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úAOIÆ«ÒÆ½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®å›¾åƒAOIåç§»
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ç›¸æœºAOIçš„å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºAOIåç§»å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAOIoffsetX(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set image X offset
@@ -2609,12 +2609,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetAOIoffsetX(IN void* handle, IN const unsi
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAOIoffsetY(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡Í¼ÏñYÆ«ÒÆ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úYÆ«ÒÆµÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–å›¾åƒYåç§»
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºYåç§»çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAOIoffsetY(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get image Y offset
@@ -2628,10 +2628,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetAOIoffsetY(IN void* handle, IN OUT MVCC_I
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAOIoffsetX(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÍ¼ÏñAOIÆ«ÒÆ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÏà»úAOIµÄÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úAOIÆ«ÒÆ½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®å›¾åƒAOIåç§»
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ç›¸æœºAOIçš„å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºAOIåç§»å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAOIoffsetY(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set image Y offset
@@ -2643,12 +2643,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetAOIoffsetY(IN void* handle, IN const unsi
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAutoExposureTimeLower(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡ÆØ¹âÏÂÏŞ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÆØ¹âÖµÏÂÏŞ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–æ›å…‰ä¸‹é™
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºæ›å…‰å€¼ä¸‹é™ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAutoExposureTimeLower(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get exposure lower limit
@@ -2662,10 +2662,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetAutoExposureTimeLower(IN void* handle, IN
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAutoExposureTimeLower(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÆØ¹âÖµÏÂÏŞ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÆØ¹âÖµÏÂÏŞ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÆØ¹âÏÂÏŞ½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®æ›å…‰å€¼ä¸‹é™
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„æ›å…‰å€¼ä¸‹é™
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºæ›å…‰ä¸‹é™å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAutoExposureTimeLower(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set exposure lower limit
@@ -2677,12 +2677,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetAutoExposureTimeLower(IN void* handle, IN
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAutoExposureTimeUpper(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡ÆØ¹âÉÏÏŞ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÆØ¹âÖµÉÏÏŞ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–æ›å…‰ä¸Šé™
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºæ›å…‰å€¼ä¸Šé™ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAutoExposureTimeUpper(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get exposure upper limit
@@ -2696,10 +2696,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetAutoExposureTimeUpper(IN void* handle, IN
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAutoExposureTimeUpper(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÆØ¹âÖµÉÏÏŞ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÆØ¹âÖµÉÏÏŞ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÆØ¹âÉÏÏŞ½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®æ›å…‰å€¼ä¸Šé™
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„æ›å…‰å€¼ä¸Šé™
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºæ›å…‰ä¸Šé™å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAutoExposureTimeUpper(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set exposure upper limit
@@ -2711,12 +2711,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetAutoExposureTimeUpper(IN void* handle, IN
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBrightness(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡ÁÁ¶ÈÖµ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÁÁ¶È½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–äº®åº¦å€¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºäº®åº¦ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBrightness(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get brightness
@@ -2730,10 +2730,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetBrightness(IN void* handle, IN OUT MVCC_I
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBrightness(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÁÁ¶ÈÖµ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÁÁ¶ÈÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÁÁ¶È½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®äº®åº¦å€¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„äº®åº¦å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºäº®åº¦å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBrightness(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set brightness
@@ -2745,16 +2745,16 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetBrightness(IN void* handle, IN const unsi
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetFrameRate(IN void* handle, IN OUT MVCC_FLOATVALUE* pstValue);
- *  @brief  »ñÈ¡Ö¡ÂÊ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_FLOATVALUE* pstValue   [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÖ¡ÂÊµÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *          ·µ»ØµÄpstValue½á¹¹ÌåµÄÒâÒå
- *                                      float           fCurValue;      // ±íÊ¾Ïà»úµ±Ç°µÄÖ¡ÂÊ
- *                                      float           fMax;           // ±íÊ¾Ïà»úÔÊĞíÉèÖÃµÄ×î´óÖ¡ÂÊ
- *                                      float           fMin;           // ±íÊ¾Ïà»úÔÊĞíÉèÖÃµÄ×îĞ¡Ö¡ÂÊ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–å¸§ç‡
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_FLOATVALUE* pstValue   [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºå¸§ç‡çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *          è¿”å›çš„pstValueç»“æ„ä½“çš„æ„ä¹‰
+ *                                      float           fCurValue;      // è¡¨ç¤ºç›¸æœºå½“å‰çš„å¸§ç‡
+ *                                      float           fMax;           // è¡¨ç¤ºç›¸æœºå…è®¸è®¾ç½®çš„æœ€å¤§å¸§ç‡
+ *                                      float           fMin;           // è¡¨ç¤ºç›¸æœºå…è®¸è®¾ç½®çš„æœ€å°å¸§ç‡
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
- *          ÆäËû¸¡µãĞÍ½á¹¹Ìå²ÎÊıµÄ½Ó¿Ú¿É²ÎÕÕ´Ë½Ó¿Ú
+ *          å…¶ä»–æµ®ç‚¹å‹ç»“æ„ä½“å‚æ•°çš„æ¥å£å¯å‚ç…§æ­¤æ¥å£
  
  * @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetFrameRate(IN void* handle, IN OUT MVCC_FLOATVALUE* pstValue);
  *  @brief  Get Frame Rate
@@ -2772,10 +2772,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetFrameRate(IN void* handle, IN OUT MVCC_FL
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetFrameRate(IN void* handle, IN const float fValue);
- *  @brief  ÉèÖÃÖ¡ÂÊ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const float fValue          [IN]        ÏëÒªÉèÖÃµÄÏà»úÖ¡ÂÊ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÖ¡ÂÊ½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®å¸§ç‡
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const float fValue          [IN]        æƒ³è¦è®¾ç½®çš„ç›¸æœºå¸§ç‡
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºå¸§ç‡å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  * @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetFrameRate(IN void* handle, IN const float fValue);
  *  @brief  Set frame rate
@@ -2787,16 +2787,16 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetFrameRate(IN void* handle, IN const float
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetGain(IN void* handle, IN OUT MVCC_FLOATVALUE* pstValue);
- *  @brief  »ñÈ¡ÔöÒæ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_FLOATVALUE* pstValue   [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÔöÒæµÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *          ·µ»ØµÄpstValue½á¹¹ÌåµÄÒâÒå
- *                                      float           fCurValue;      // ±íÊ¾Ïà»úµ±Ç°µÄÖ¡ÂÊ
- *                                      float           fMax;           // ±íÊ¾Ïà»úÔÊĞíÉèÖÃµÄ×î´óÖ¡ÂÊ
- *                                      float           fMin;           // ±íÊ¾Ïà»úÔÊĞíÉèÖÃµÄ×îĞ¡Ö¡ÂÊ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–å¢ç›Š
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_FLOATVALUE* pstValue   [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºå¢ç›Šçš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *          è¿”å›çš„pstValueç»“æ„ä½“çš„æ„ä¹‰
+ *                                      float           fCurValue;      // è¡¨ç¤ºç›¸æœºå½“å‰çš„å¸§ç‡
+ *                                      float           fMax;           // è¡¨ç¤ºç›¸æœºå…è®¸è®¾ç½®çš„æœ€å¤§å¸§ç‡
+ *                                      float           fMin;           // è¡¨ç¤ºç›¸æœºå…è®¸è®¾ç½®çš„æœ€å°å¸§ç‡
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
- *          ÆäËû¸¡µãĞÍ½á¹¹Ìå²ÎÊıµÄ½Ó¿Ú¿É²ÎÕÕ´Ë½Ó¿Ú
+ *          å…¶ä»–æµ®ç‚¹å‹ç»“æ„ä½“å‚æ•°çš„æ¥å£å¯å‚ç…§æ­¤æ¥å£
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetGain(IN void* handle, IN OUT MVCC_FLOATVALUE* pstValue);
  *  @brief  Get Gain
@@ -2814,10 +2814,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetGain(IN void* handle, IN OUT MVCC_FLOATVA
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetGain(IN void* handle, IN const float fValue);
- *  @brief  ÉèÖÃÖ¡ÂÊ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const float fValue          [IN]        ÏëÒªÉèÖÃµÄÏà»úÖ¡ÂÊ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÖ¡ÂÊ½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®å¸§ç‡
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const float fValue          [IN]        æƒ³è¦è®¾ç½®çš„ç›¸æœºå¸§ç‡
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºå¸§ç‡å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetGain(IN void* handle, IN const float fValue);
  *  @brief  Set Gain
@@ -2829,16 +2829,16 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetGain(IN void* handle, IN const float fVal
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetExposureTime(IN void* handle, IN OUT MVCC_FLOATVALUE* pstValue);
- *  @brief  »ñÈ¡ÆØ¹âÊ±¼ä
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_FLOATVALUE* pstValue   [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÆØ¹âÊ±¼äµÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *          ·µ»ØµÄpstValue½á¹¹ÌåµÄÒâÒå
- *                                      float           fCurValue;      // ±íÊ¾Ïà»úµ±Ç°µÄÖ¡ÂÊ
- *                                      float           fMax;           // ±íÊ¾Ïà»úÔÊĞíÉèÖÃµÄ×î´óÖ¡ÂÊ
- *                                      float           fMin;           // ±íÊ¾Ïà»úÔÊĞíÉèÖÃµÄ×îĞ¡Ö¡ÂÊ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–æ›å…‰æ—¶é—´
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_FLOATVALUE* pstValue   [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºæ›å…‰æ—¶é—´çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *          è¿”å›çš„pstValueç»“æ„ä½“çš„æ„ä¹‰
+ *                                      float           fCurValue;      // è¡¨ç¤ºç›¸æœºå½“å‰çš„å¸§ç‡
+ *                                      float           fMax;           // è¡¨ç¤ºç›¸æœºå…è®¸è®¾ç½®çš„æœ€å¤§å¸§ç‡
+ *                                      float           fMin;           // è¡¨ç¤ºç›¸æœºå…è®¸è®¾ç½®çš„æœ€å°å¸§ç‡
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
- *          ÆäËû¸¡µãĞÍ½á¹¹Ìå²ÎÊıµÄ½Ó¿Ú¿É²ÎÕÕ´Ë½Ó¿Ú
+ *          å…¶ä»–æµ®ç‚¹å‹ç»“æ„ä½“å‚æ•°çš„æ¥å£å¯å‚ç…§æ­¤æ¥å£
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetExposureTime(IN void* handle, IN OUT MVCC_FLOATVALUE* pstValue);
  *  @brief  Get exposure time
@@ -2856,10 +2856,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetExposureTime(IN void* handle, IN OUT MVCC
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetExposureTime(IN void* handle, IN const float fValue);
- *  @brief  ÉèÖÃÆØ¹âÊ±¼ä
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const float fValue          [IN]        ÏëÒªÉèÖÃµÄÏà»úÖ¡ÂÊ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÖ¡ÂÊ½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®æ›å…‰æ—¶é—´
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const float fValue          [IN]        æƒ³è¦è®¾ç½®çš„ç›¸æœºå¸§ç‡
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºå¸§ç‡å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetExposureTime(IN void* handle, IN const float fValue);
  *  @brief  Set exposure time
@@ -2871,16 +2871,16 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetExposureTime(IN void* handle, IN const fl
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetPixelFormat(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
- *  @brief  »ñÈ¡ÏñËØ¸ñÊ½
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßµÄÓĞ¹ØÏñËØ¸ñÊ½µÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *          ·µ»ØµÄpstValue½á¹¹ÌåµÄÒâÒå
- *          unsigned int    nCurValue;                              //  Ïà»úµ±Ç°µÄÏñËØ¸ñÊ½£¬ÊÇÃ¶¾ÙÀàĞÍ,±ÈÈçËµPixelType_Gvsp_Mono8, ÕâÀï»ñµÃµÄÊÇÆäÕûĞÍÖµ,¾ßÌåÊıÖµ²ÎÕÕPixelType.hµÄMvGvspPixelTypeÃ¶¾ÙÀàĞÍ
- *          unsigned int    nSupportedNum;                          //  Ïà»úÖ§³ÖµÄÏñËØ¸ñÊ½µÄ¸öÊı
- *          unsigned int    nSupportValue[MV_MAX_XML_SYMBOLIC_NUM]; //  Ïà»úËùÓĞÖ§³ÖµÄÏñËØ¸ñÊ½¶ÔÓ¦µÄÕûĞÍÖµÁĞ±í£¬ºóÃæÒªÉèÖÃÏñËØ¸ñÊ½Ê±£¬²ÎÊı±ØĞëÊÇÕâ¸öÊı×éÖĞµÄÒ»ÖÖ£¬·ñÔòÎŞĞ§
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–åƒç´ æ ¼å¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…çš„æœ‰å…³åƒç´ æ ¼å¼çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *          è¿”å›çš„pstValueç»“æ„ä½“çš„æ„ä¹‰
+ *          unsigned int    nCurValue;                              //  ç›¸æœºå½“å‰çš„åƒç´ æ ¼å¼ï¼Œæ˜¯æšä¸¾ç±»å‹,æ¯”å¦‚è¯´PixelType_Gvsp_Mono8, è¿™é‡Œè·å¾—çš„æ˜¯å…¶æ•´å‹å€¼,å…·ä½“æ•°å€¼å‚ç…§PixelType.hçš„MvGvspPixelTypeæšä¸¾ç±»å‹
+ *          unsigned int    nSupportedNum;                          //  ç›¸æœºæ”¯æŒçš„åƒç´ æ ¼å¼çš„ä¸ªæ•°
+ *          unsigned int    nSupportValue[MV_MAX_XML_SYMBOLIC_NUM]; //  ç›¸æœºæ‰€æœ‰æ”¯æŒçš„åƒç´ æ ¼å¼å¯¹åº”çš„æ•´å‹å€¼åˆ—è¡¨ï¼Œåé¢è¦è®¾ç½®åƒç´ æ ¼å¼æ—¶ï¼Œå‚æ•°å¿…é¡»æ˜¯è¿™ä¸ªæ•°ç»„ä¸­çš„ä¸€ç§ï¼Œå¦åˆ™æ— æ•ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
-            ÆäËûÃ¶¾ÙÀàĞÍ²ÎÊı½Ó¿Ú¿É²ÎÕÕ´Ë½Ó¿Ú£¬ÓĞ¹ØÏàÓ¦²ÎÊıµÄÃ¶¾ÙÀàĞÍ¶ÔÓ¦µÄÕûĞÍÖµÇë²éÕÒPixelType.h ºÍ CameraParams.hÖĞÏàÓ¦µÄ¶¨Òå
+            å…¶ä»–æšä¸¾ç±»å‹å‚æ•°æ¥å£å¯å‚ç…§æ­¤æ¥å£ï¼Œæœ‰å…³ç›¸åº”å‚æ•°çš„æšä¸¾ç±»å‹å¯¹åº”çš„æ•´å‹å€¼è¯·æŸ¥æ‰¾PixelType.h å’Œ CameraParams.hä¸­ç›¸åº”çš„å®šä¹‰
  
  * @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetPixelFormat(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
  *  @brief  Get Pixel Format
@@ -2898,12 +2898,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetPixelFormat(IN void* handle, IN OUT MVCC_
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetPixelFormat(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÏñËØ¸ñÊ½
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÒªÉèÖÃµÄÏñËØ¸ñÊ½¶ÔÓ¦µÄÕûĞÍÖµ£¬µ÷ÓÃ´Ë½Ó¿ÚÊ±¿ÉÒÔÖ±½ÓÌîĞ´Ã¶¾ÙÖµ£¬ÈçMV_CC_SetPixelFormat(m_handle, PixelType_Gvsp_RGB8_Packed);
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÏñËØ¸ñÊ½½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®åƒç´ æ ¼å¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        è¦è®¾ç½®çš„åƒç´ æ ¼å¼å¯¹åº”çš„æ•´å‹å€¼ï¼Œè°ƒç”¨æ­¤æ¥å£æ—¶å¯ä»¥ç›´æ¥å¡«å†™æšä¸¾å€¼ï¼Œå¦‚MV_CC_SetPixelFormat(m_handle, PixelType_Gvsp_RGB8_Packed);
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºåƒç´ æ ¼å¼å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ÒªÉèÖÃµÄÃ¶¾ÙÀàĞÍ±ØĞëÊÇGet½Ó¿Ú·µ»ØµÄnSupportValue[MV_MAX_XML_SYMBOLIC_NUM]ÖĞµÄÒ»ÖÖ£¬·ñÔò»áÊ§°Ü
+ *          è¦è®¾ç½®çš„æšä¸¾ç±»å‹å¿…é¡»æ˜¯Getæ¥å£è¿”å›çš„nSupportValue[MV_MAX_XML_SYMBOLIC_NUM]ä¸­çš„ä¸€ç§ï¼Œå¦åˆ™ä¼šå¤±è´¥
  
  * @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetPixelFormat(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set Pixel Format
@@ -2917,12 +2917,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetPixelFormat(IN void* handle, IN const uns
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAcquisitionMode(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
- *  @brief  »ñÈ¡²É¼¯Ä£Ê½
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßµÄÓĞ¹Ø²É¼¯Ä£Ê½µÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–é‡‡é›†æ¨¡å¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…çš„æœ‰å…³é‡‡é›†æ¨¡å¼çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
-            ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetPixelFormat£¬²Î¿¼ CameraParam.h ÖĞµÄ MV_CAM_ACQUISITION_MODE ¶¨Òå
+            å¯å‚ç…§æ¥å£MV_CC_GetPixelFormatï¼Œå‚è€ƒ CameraParam.h ä¸­çš„ MV_CAM_ACQUISITION_MODE å®šä¹‰
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAcquisitionMode(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
  *  @brief  Get acquisition mode
@@ -2936,10 +2936,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetAcquisitionMode(IN void* handle, IN OUT M
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAcquisitionMode(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÏñËØ¸ñÊ½
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÒªÉèÖÃµÄ²É¼¯Ä£Ê½¶ÔÓ¦µÄÕûĞÍÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú²É¼¯Ä£Ê½½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®åƒç´ æ ¼å¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        è¦è®¾ç½®çš„é‡‡é›†æ¨¡å¼å¯¹åº”çš„æ•´å‹å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºé‡‡é›†æ¨¡å¼å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAcquisitionMode(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set acquisition mode
@@ -2951,12 +2951,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetAcquisitionMode(IN void* handle, IN const
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetGainMode(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
- *  @brief  »ñÈ¡ÔöÒæÄ£Ê½
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßµÄÓĞ¹ØÔöÒæÄ£Ê½µÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–å¢ç›Šæ¨¡å¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…çš„æœ‰å…³å¢ç›Šæ¨¡å¼çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
-            ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetPixelFormat£¬²Î¿¼ CameraParam.h ÖĞµÄ MV_CAM_GAIN_MODE ¶¨Òå
+            å¯å‚ç…§æ¥å£MV_CC_GetPixelFormatï¼Œå‚è€ƒ CameraParam.h ä¸­çš„ MV_CAM_GAIN_MODE å®šä¹‰
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetGainMode(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
  *  @brief  Get gain mode
@@ -2970,10 +2970,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetGainMode(IN void* handle, IN OUT MVCC_ENU
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetGainMode(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÔöÒæÄ£Ê½
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÒªÉèÖÃµÄÔöÒæÄ£Ê½¶ÔÓ¦µÄÕûĞÍÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÔöÒæÄ£Ê½½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®å¢ç›Šæ¨¡å¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        è¦è®¾ç½®çš„å¢ç›Šæ¨¡å¼å¯¹åº”çš„æ•´å‹å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºå¢ç›Šæ¨¡å¼å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetGainMode(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set gain mode
@@ -2985,12 +2985,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetGainMode(IN void* handle, IN const unsign
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetExposureAutoMode(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
- *  @brief  »ñÈ¡×Ô¶¯ÆØ¹âÄ£Ê½
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßµÄÓĞ¹Ø×Ô¶¯ÆØ¹âÄ£Ê½µÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–è‡ªåŠ¨æ›å…‰æ¨¡å¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…çš„æœ‰å…³è‡ªåŠ¨æ›å…‰æ¨¡å¼çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
-            ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetPixelFormat£¬²Î¿¼ CameraParam.h ÖĞµÄ MV_CAM_EXPOSURE_AUTO_MODE ¶¨Òå
+            å¯å‚ç…§æ¥å£MV_CC_GetPixelFormatï¼Œå‚è€ƒ CameraParam.h ä¸­çš„ MV_CAM_EXPOSURE_AUTO_MODE å®šä¹‰
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetExposureAutoMode(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
  *  @brief  Get auto exposure mode
@@ -3004,10 +3004,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetExposureAutoMode(IN void* handle, IN OUT 
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetExposureAutoMode(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃ×Ô¶¯ÆØ¹âÄ£Ê½
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÒªÉèÖÃµÄ×Ô¶¯ÆØ¹âÄ£Ê½¶ÔÓ¦µÄÕûĞÍÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú×Ô¶¯ÆØ¹âÄ£Ê½½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®è‡ªåŠ¨æ›å…‰æ¨¡å¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        è¦è®¾ç½®çš„è‡ªåŠ¨æ›å…‰æ¨¡å¼å¯¹åº”çš„æ•´å‹å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºè‡ªåŠ¨æ›å…‰æ¨¡å¼å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetExposureAutoMode(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set auto exposure mode
@@ -3019,12 +3019,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetExposureAutoMode(IN void* handle, IN cons
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetTriggerMode(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
- *  @brief  »ñÈ¡´¥·¢Ä£Ê½
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßµÄÓĞ¹Ø´¥·¢Ä£Ê½µÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–è§¦å‘æ¨¡å¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…çš„æœ‰å…³è§¦å‘æ¨¡å¼çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
-            ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetPixelFormat£¬²Î¿¼ CameraParam.h ÖĞµÄ MV_CAM_TRIGGER_MODE ¶¨Òå
+            å¯å‚ç…§æ¥å£MV_CC_GetPixelFormatï¼Œå‚è€ƒ CameraParam.h ä¸­çš„ MV_CAM_TRIGGER_MODE å®šä¹‰
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetTriggerMode(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
  *  @brief  Get trigger mode
@@ -3038,10 +3038,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetTriggerMode(IN void* handle, IN OUT MVCC_
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetTriggerMode(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃ´¥·¢Ä£Ê½
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÒªÉèÖÃµÄ´¥·¢Ä£Ê½¶ÔÓ¦µÄÕûĞÍÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú´¥·¢Ä£Ê½½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®è§¦å‘æ¨¡å¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        è¦è®¾ç½®çš„è§¦å‘æ¨¡å¼å¯¹åº”çš„æ•´å‹å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºè§¦å‘æ¨¡å¼å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetTriggerMode(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set trigger mode
@@ -3053,12 +3053,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetTriggerMode(IN void* handle, IN const uns
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetTriggerDelay(IN void* handle, IN OUT MVCC_FLOATVALUE* pstValue);
- *  @brief  »ñÈ¡´¥·¢ÑÓÊ±
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_FLOATVALUE* pstValue   [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»ú´¥·¢ÑÓÊ±µÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–è§¦å‘å»¶æ—¶
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_FLOATVALUE* pstValue   [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºè§¦å‘å»¶æ—¶çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetFrameRate
+ *          å¯å‚ç…§æ¥å£MV_CC_GetFrameRate
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetTriggerDelay(IN void* handle, IN OUT MVCC_FLOATVALUE* pstValue);
  *  @brief  Get tigger delay
@@ -3072,10 +3072,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetTriggerDelay(IN void* handle, IN OUT MVCC
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetTriggerDelay(IN void* handle, IN const float fValue);
- *  @brief  ÉèÖÃ´¥·¢ÑÓÊ±
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const float fValue          [IN]        ÏëÒªÉèÖÃµÄÏà»ú´¥·¢ÑÓÊ±
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú´¥·¢ÑÓÊ±½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®è§¦å‘å»¶æ—¶
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const float fValue          [IN]        æƒ³è¦è®¾ç½®çš„ç›¸æœºè§¦å‘å»¶æ—¶
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºè§¦å‘å»¶æ—¶å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetTriggerDelay(IN void* handle, IN const float fValue);
  *  @brief  Set tigger delay
@@ -3087,12 +3087,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetTriggerDelay(IN void* handle, IN const fl
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetTriggerSource(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
- *  @brief  »ñÈ¡´¥·¢Ô´
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßµÄÓĞ¹Ø´¥·¢Ô´µÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–è§¦å‘æº
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…çš„æœ‰å…³è§¦å‘æºçš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
-            ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetPixelFormat£¬²Î¿¼ CameraParam.h ÖĞµÄ MV_CAM_TRIGGER_SOURCE ¶¨Òå
+            å¯å‚ç…§æ¥å£MV_CC_GetPixelFormatï¼Œå‚è€ƒ CameraParam.h ä¸­çš„ MV_CAM_TRIGGER_SOURCE å®šä¹‰
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetTriggerSource(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
  *  @brief  Get trigger source
@@ -3106,10 +3106,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetTriggerSource(IN void* handle, IN OUT MVC
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetTriggerSource(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃ´¥·¢Ô´
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÒªÉèÖÃµÄ´¥·¢Ô´¶ÔÓ¦µÄÕûĞÍÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú´¥·¢Ô´½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®è§¦å‘æº
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        è¦è®¾ç½®çš„è§¦å‘æºå¯¹åº”çš„æ•´å‹å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºè§¦å‘æºå°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetTriggerSource(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set trigger source
@@ -3121,9 +3121,9 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetTriggerSource(IN void* handle, IN const u
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_TriggerSoftwareExecute(IN void* handle);
- *  @brief  Èí´¥·¢Ò»´Î£¨½Ó¿Ú½öÔÚÒÑÑ¡ÔñµÄ´¥·¢Ô´ÎªÈí¼ş´¥·¢Ê±ÓĞĞ§£©
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @return ³É¹¦,·µ»ØMV_OK, Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è½¯è§¦å‘ä¸€æ¬¡ï¼ˆæ¥å£ä»…åœ¨å·²é€‰æ‹©çš„è§¦å‘æºä¸ºè½¯ä»¶è§¦å‘æ—¶æœ‰æ•ˆï¼‰
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @return æˆåŠŸ,è¿”å›MV_OK, å¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_TriggerSoftwareExecute(IN void* handle);
  *  @brief  Execute software trigger once (this interface only valid when the trigger source is set to software)
@@ -3134,12 +3134,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_TriggerSoftwareExecute(IN void* handle);
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetGammaSelector(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
- *  @brief  »ñÈ¡GammaÀàĞÍ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßµÄÓĞ¹ØGammaÀàĞÍµÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–Gammaç±»å‹
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…çš„æœ‰å…³Gammaç±»å‹çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
-            ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetPixelFormat£¬²Î¿¼ CameraParam.h ÖĞµÄ MV_CAM_GAMMA_SELECTOR ¶¨Òå
+            å¯å‚ç…§æ¥å£MV_CC_GetPixelFormatï¼Œå‚è€ƒ CameraParam.h ä¸­çš„ MV_CAM_GAMMA_SELECTOR å®šä¹‰
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetGammaSelector(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
  *  @brief  Get Gamma mode
@@ -3153,10 +3153,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetGammaSelector(IN void* handle, IN OUT MVC
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetGammaSelector(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃGammaÀàĞÍ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÒªÉèÖÃµÄGammaÀàĞÍ¶ÔÓ¦µÄÕûĞÍÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úGammaÀàĞÍ½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®Gammaç±»å‹
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        è¦è®¾ç½®çš„Gammaç±»å‹å¯¹åº”çš„æ•´å‹å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºGammaç±»å‹å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetGammaSelector(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set Gamma mode
@@ -3168,12 +3168,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetGammaSelector(IN void* handle, IN const u
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetGamma(IN void* handle, IN OUT MVCC_FLOATVALUE* pstValue);
- *  @brief  »ñÈ¡GammaÖµ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_FLOATVALUE* pstValue   [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úGammaÖµµÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–Gammaå€¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_FLOATVALUE* pstValue   [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºGammaå€¼çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetFrameRate
+ *          å¯å‚ç…§æ¥å£MV_CC_GetFrameRate
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetGamma(IN void* handle, IN OUT MVCC_FLOATVALUE* pstValue);
  *  @brief  Get Gamma value
@@ -3187,10 +3187,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetGamma(IN void* handle, IN OUT MVCC_FLOATV
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetGamma(IN void* handle, IN const float fValue);
- *  @brief  ÉèÖÃGammaÖµ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const float fValue          [IN]        ÏëÒªÉèÖÃµÄÏà»úGammaÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úGammaÖµ½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®Gammaå€¼
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const float fValue          [IN]        æƒ³è¦è®¾ç½®çš„ç›¸æœºGammaå€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºGammaå€¼å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetGamma(IN void* handle, IN const float fValue);
  *  @brief  Set Gamma value
@@ -3202,12 +3202,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetGamma(IN void* handle, IN const float fVa
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetSharpness(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡Èñ¶È
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÈñ¶È½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–é”åº¦
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºé”åº¦ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetSharpness(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get sharpness
@@ -3221,10 +3221,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetSharpness(IN void* handle, IN OUT MVCC_IN
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetSharpness(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÈñ¶È
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÈñ¶È
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÈñ¶È½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®é”åº¦
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„é”åº¦
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºé”åº¦å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetSharpness(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set sharpness
@@ -3236,12 +3236,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetSharpness(IN void* handle, IN const unsig
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetHue(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡»Ò¶È
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»ú»Ò¶È½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–ç°åº¦
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºç°åº¦ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetHue(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get Hue
@@ -3255,10 +3255,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetHue(IN void* handle, IN OUT MVCC_INTVALUE
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetHue(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃ»Ò¶È
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄ»Ò¶È
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú»Ò¶È½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®ç°åº¦
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ç°åº¦
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºç°åº¦å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetHue(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set Hue
@@ -3270,12 +3270,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetHue(IN void* handle, IN const unsigned in
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetSaturation(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡±¥ºÍ¶È
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»ú±¥ºÍ¶È½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–é¥±å’Œåº¦
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºé¥±å’Œåº¦ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
   *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetSaturation(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get Saturation
@@ -3289,10 +3289,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetSaturation(IN void* handle, IN OUT MVCC_I
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetSaturation(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃ±¥ºÍ¶È
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄ±¥ºÍ¶È
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú±¥ºÍ¶È½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®é¥±å’Œåº¦
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„é¥±å’Œåº¦
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºé¥±å’Œåº¦å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
 *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetSaturation(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set Saturation
@@ -3304,12 +3304,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetSaturation(IN void* handle, IN const unsi
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceWhiteAuto(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
- *  @brief  »ñÈ¡×Ô¶¯°×Æ½ºâ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßµÄÓĞ¹Ø×Ô¶¯°×Æ½ºâµÄĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,²¢»ñµÃÏàÓ¦²ÎÊıĞÅÏ¢µÄ½á¹¹Ìå, Ê§°Ü, ·µ»Ø´íÎóÂë
+ *  @brief  è·å–è‡ªåŠ¨ç™½å¹³è¡¡
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_ENUMVALUE* pstValue    [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…çš„æœ‰å…³è‡ªåŠ¨ç™½å¹³è¡¡çš„ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶è·å¾—ç›¸åº”å‚æ•°ä¿¡æ¯çš„ç»“æ„ä½“, å¤±è´¥, è¿”å›é”™è¯¯ç 
  *  
-            ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetPixelFormat£¬²Î¿¼ CameraParam.h ÖĞµÄ MV_CAM_BALANCEWHITE_AUTO ¶¨Òå
+            å¯å‚ç…§æ¥å£MV_CC_GetPixelFormatï¼Œå‚è€ƒ CameraParam.h ä¸­çš„ MV_CAM_BALANCEWHITE_AUTO å®šä¹‰
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceWhiteAuto(IN void* handle, IN OUT MVCC_ENUMVALUE* pstValue);
  *  @brief  Get Auto white balance
@@ -3323,10 +3323,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceWhiteAuto(IN void* handle, IN OUT 
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceWhiteAuto(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃ×Ô¶¯°×Æ½ºâ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÒªÉèÖÃµÄ×Ô¶¯°×Æ½ºâ¶ÔÓ¦µÄÕûĞÍÖµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú×Ô¶¯°×Æ½ºâ½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®è‡ªåŠ¨ç™½å¹³è¡¡
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        è¦è®¾ç½®çš„è‡ªåŠ¨ç™½å¹³è¡¡å¯¹åº”çš„æ•´å‹å€¼
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºè‡ªåŠ¨ç™½å¹³è¡¡å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceWhiteAuto(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set Auto white balance
@@ -3338,12 +3338,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceWhiteAuto(IN void* handle, IN cons
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceRatioRed(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡°×Æ½ºâ ºì
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»ú°×Æ½ºâ ºì½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–ç™½å¹³è¡¡ çº¢
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºç™½å¹³è¡¡ çº¢ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceRatioRed(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get white balance red
@@ -3357,10 +3357,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceRatioRed(IN void* handle, IN OUT M
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceRatioRed(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃ°×Æ½ºâ ºì
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄ°×Æ½ºâ ºì
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú°×Æ½ºâ ºì½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®ç™½å¹³è¡¡ çº¢
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ç™½å¹³è¡¡ çº¢
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºç™½å¹³è¡¡ çº¢å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceRatioRed(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set white balance red
@@ -3372,12 +3372,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceRatioRed(IN void* handle, IN const
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceRatioGreen(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡°×Æ½ºâ ÂÌ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»ú°×Æ½ºâ ÂÌ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–ç™½å¹³è¡¡ ç»¿
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºç™½å¹³è¡¡ ç»¿ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceRatioGreen(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get white balance green
@@ -3391,10 +3391,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceRatioGreen(IN void* handle, IN OUT
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceRatioGreen(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃ°×Æ½ºâ ÂÌ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄ°×Æ½ºâ ÂÌ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú°×Æ½ºâ ÂÌ½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®ç™½å¹³è¡¡ ç»¿
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ç™½å¹³è¡¡ ç»¿
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºç™½å¹³è¡¡ ç»¿å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceRatioGreen(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set white balance green
@@ -3406,12 +3406,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceRatioGreen(IN void* handle, IN con
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceRatioBlue(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡°×Æ½ºâ À¶
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»ú°×Æ½ºâ À¶½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–ç™½å¹³è¡¡ è“
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºç™½å¹³è¡¡ è“ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceRatioBlue(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get white balance blue
@@ -3425,10 +3425,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetBalanceRatioBlue(IN void* handle, IN OUT 
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceRatioBlue(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃ°×Æ½ºâ À¶
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄ°×Æ½ºâ À¶
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú°×Æ½ºâ À¶½«»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®ç™½å¹³è¡¡ è“
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ç™½å¹³è¡¡ è“
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºç™½å¹³è¡¡ è“å°†ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceRatioBlue(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set white balance blue
@@ -3440,12 +3440,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetBalanceRatioBlue(IN void* handle, IN cons
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetFrameSpecInfoAbility(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡Ë®Ó¡ĞÅÏ¢ÄÚ°üº¬µÄĞÅÏ¢ÀàĞÍ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úË®Ó¡ĞÅÏ¢ÄÚ°üº¬µÄĞÅÏ¢ÀàĞÍ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–æ°´å°ä¿¡æ¯å†…åŒ…å«çš„ä¿¡æ¯ç±»å‹
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºæ°´å°ä¿¡æ¯å†…åŒ…å«çš„ä¿¡æ¯ç±»å‹ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetFrameSpecInfoAbility(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get information type included by frame stamp
@@ -3459,10 +3459,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetFrameSpecInfoAbility(IN void* handle, IN 
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetFrameSpecInfoAbility(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃË®Ó¡ĞÅÏ¢ÄÚ°üº¬µÄĞÅÏ¢ÀàĞÍ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄË®Ó¡ĞÅÏ¢ÄÚ°üº¬µÄĞÅÏ¢ÀàĞÍ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úË®Ó¡ĞÅÏ¢ÄÚ°üº¬µÄĞÅÏ¢ÀàĞÍ»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®æ°´å°ä¿¡æ¯å†…åŒ…å«çš„ä¿¡æ¯ç±»å‹
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„æ°´å°ä¿¡æ¯å†…åŒ…å«çš„ä¿¡æ¯ç±»å‹
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºæ°´å°ä¿¡æ¯å†…åŒ…å«çš„ä¿¡æ¯ç±»å‹ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetFrameSpecInfoAbility(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set information type included by frame stamp
@@ -3474,10 +3474,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetFrameSpecInfoAbility(IN void* handle, IN 
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetDeviceUserID(IN void* handle, IN OUT MVCC_STRINGVALUE* pstValue);
- *  @brief  »ñÈ¡Éè±¸×Ô¶¨ÒåÃû×Ö
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          MVCC_STRINGVALUE* pstValue  [IN OUT]    ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÃû×Ö½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒ»ñÈ¡µ½Ïà»úµÄ×Ô¶¨ÒåÃû×Ö£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–è®¾å¤‡è‡ªå®šä¹‰åå­—
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          MVCC_STRINGVALUE* pstValue  [IN OUT]    è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºåå­—ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”è·å–åˆ°ç›¸æœºçš„è‡ªå®šä¹‰åå­—ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetDeviceUserID(IN void* handle, IN OUT MVCC_STRINGVALUE* pstValue);
  *  @brief  Get device user defined name
@@ -3489,10 +3489,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetDeviceUserID(IN void* handle, IN OUT MVCC
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetDeviceUserID(IN void* handle, IN const char* chValue);
- *  @brief  ÉèÖÃÉè±¸×Ô¶¨ÒåÃû×Ö
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          IN const char* chValue      [IN]        Éè±¸Ãû×Ö
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÉèÖÃÉè±¸×Ô¶¨ÒåÃû×Ö£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®è®¾å¤‡è‡ªå®šä¹‰åå­—
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          IN const char* chValue      [IN]        è®¾å¤‡åå­—
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”è®¾ç½®è®¾å¤‡è‡ªå®šä¹‰åå­—ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetDeviceUserID(IN void* handle, IN const char* chValue);
  *  @brief  Set device user defined name
@@ -3504,12 +3504,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetDeviceUserID(IN void* handle, IN const ch
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBurstFrameCount(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡Ò»´Î´¥·¢µÄÖ¡Êı
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÒ»´Î´¥·¢µÄÖ¡Êı½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–ä¸€æ¬¡è§¦å‘çš„å¸§æ•°
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºä¸€æ¬¡è§¦å‘çš„å¸§æ•°ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetBurstFrameCount(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get frame number trigger by once
@@ -3523,10 +3523,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetBurstFrameCount(IN void* handle, IN OUT M
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBurstFrameCount(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÒ»´Î´¥·¢µÄÖ¡Êı
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÒ»´Î´¥·¢µÄÖ¡Êı
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÒ»´Î´¥·¢µÄÖ¡Êı»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®ä¸€æ¬¡è§¦å‘çš„å¸§æ•°
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ä¸€æ¬¡è§¦å‘çš„å¸§æ•°
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºä¸€æ¬¡è§¦å‘çš„å¸§æ•°ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetBurstFrameCount(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set frame number trigger by once
@@ -3538,12 +3538,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetBurstFrameCount(IN void* handle, IN const
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAcquisitionLineRate(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡ĞĞÆµ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úĞĞÆµ½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–è¡Œé¢‘
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºè¡Œé¢‘ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetAcquisitionLineRate(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get line rate
@@ -3557,10 +3557,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetAcquisitionLineRate(IN void* handle, IN O
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAcquisitionLineRate(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃĞĞÆµ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄĞĞÆµ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úĞĞÆµ»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®è¡Œé¢‘
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„è¡Œé¢‘
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºè¡Œé¢‘ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetAcquisitionLineRate(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set line rate
@@ -3572,12 +3572,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetAcquisitionLineRate(IN void* handle, IN c
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetHeartBeatTimeout(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡ĞÄÌøĞÅÏ¢
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úĞÄÌøĞÅÏ¢½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–å¿ƒè·³ä¿¡æ¯
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºå¿ƒè·³ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_GetHeartBeatTimeout(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get heartbeat information
@@ -3591,10 +3591,10 @@ MVSDKEXPORT_API int __stdcall MV_CC_GetHeartBeatTimeout(IN void* handle, IN OUT 
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetHeartBeatTimeout(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃĞÄÌøĞÅÏ¢
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄĞÄÌøĞÅÏ¢
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úĞÄÌøĞÅÏ¢»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®å¿ƒè·³ä¿¡æ¯
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„å¿ƒè·³ä¿¡æ¯
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºå¿ƒè·³ä¿¡æ¯ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_CC_SetHeartBeatTimeout(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set heartbeat information
@@ -3606,12 +3606,12 @@ MVSDKEXPORT_API int __stdcall MV_CC_SetHeartBeatTimeout(IN void* handle, IN cons
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCPSPacketSize(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡ÍøÂç°ü´óĞ¡
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÍøÂç°ü´óĞ¡½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–ç½‘ç»œåŒ…å¤§å°
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºç½‘ç»œåŒ…å¤§å°ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCPSPacketSize(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get network packet size
@@ -3625,10 +3625,10 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCPSPacketSize(IN void* handle, IN O
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCPSPacketSize(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÍøÂç°ü´óĞ¡
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÍøÂç°ü´óĞ¡
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÍøÂç°ü´óĞ¡»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®ç½‘ç»œåŒ…å¤§å°
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ç½‘ç»œåŒ…å¤§å°
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºç½‘ç»œåŒ…å¤§å°ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCPSPacketSize(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set network packet size
@@ -3640,12 +3640,12 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCPSPacketSize(IN void* handle, IN c
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCPD(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
- *  @brief  »ñÈ¡ÍøÂç°ü·¢ËÍ¼ä¸ô
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕßÓĞ¹ØÏà»úÍøÂç°ü·¢ËÍ¼ä¸ô½á¹¹ÌåÖ¸Õë
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–ç½‘ç»œåŒ…å‘é€é—´éš”
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  MVCC_INTVALUE* pstValue     [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æœ‰å…³ç›¸æœºç½‘ç»œåŒ…å‘é€é—´éš”ç»“æ„ä½“æŒ‡é’ˆ
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  *  
- *          ¿É²ÎÕÕ½Ó¿ÚMV_CC_GetWidth
+ *          å¯å‚ç…§æ¥å£MV_CC_GetWidth
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCPD(IN void* handle, IN OUT MVCC_INTVALUE* pstValue);
  *  @brief  Get network packet sending delay
@@ -3659,10 +3659,10 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCPD(IN void* handle, IN OUT MVCC_IN
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCPD(IN void* handle, IN const unsigned int nValue);
- *  @brief  ÉèÖÃÍøÂç°ü·¢ËÍ¼ä¸ô
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          const unsigned int nValue   [IN]        ÏëÒªÉèÖÃµÄÍøÂç°ü·¢ËÍ¼ä¸ô
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»úÍøÂç°ü·¢ËÍ¼ä¸ô»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®ç½‘ç»œåŒ…å‘é€é—´éš”
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          const unsigned int nValue   [IN]        æƒ³è¦è®¾ç½®çš„ç½‘ç»œåŒ…å‘é€é—´éš”
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºç½‘ç»œåŒ…å‘é€é—´éš”ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCPD(IN void* handle, IN const unsigned int nValue);
  *  @brief  Set network packet sending delay
@@ -3674,10 +3674,10 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCPD(IN void* handle, IN const unsig
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCDA(IN void* handle, unsigned int* pnIP);
- *  @brief  »ñÈ¡½ÓÊÕ¶ËIPµØÖ·£¬0xa9fe0102 ±íÊ¾ 169.254.1.2
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  unsigned int* pnIP          [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕß½ÓÊÕ¶ËIPµØÖ·
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–æ¥æ”¶ç«¯IPåœ°å€ï¼Œ0xa9fe0102 è¡¨ç¤º 169.254.1.2
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  unsigned int* pnIP          [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…æ¥æ”¶ç«¯IPåœ°å€
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCDA(IN void* handle, unsigned int* pnIP);
  *  @brief  Get receiver IP address, 0xa9fe0102 indicates 169.254.1.2
@@ -3689,10 +3689,10 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCDA(IN void* handle, unsigned int* 
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCDA(IN void* handle, unsigned int nIP);
- *  @brief  ÉèÖÃ½ÓÊÕ¶ËIPµØÖ·
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          unsigned int nIP            [IN]        ÏëÒªÉèÖÃµÄ½ÓÊÕ¶ËIPµØÖ·
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú½ÓÊÕ¶ËIPµØÖ·»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®æ¥æ”¶ç«¯IPåœ°å€
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          unsigned int nIP            [IN]        æƒ³è¦è®¾ç½®çš„æ¥æ”¶ç«¯IPåœ°å€
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºæ¥æ”¶ç«¯IPåœ°å€ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCDA(IN void* handle, unsigned int nIP);
  *  @brief  Set receiver IP address
@@ -3704,10 +3704,10 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCDA(IN void* handle, unsigned int n
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCSP(IN void* handle, unsigned int* pnPort);
- *  @brief  »ñÈ¡·¢ËÍ¶ËµÄ¶Ë¿ÚºÅ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *  @param  unsigned int* pnPort        [IN][OUT]   ·µ»Ø¸øµ÷ÓÃÕß·¢ËÍ¶ËµÄ¶Ë¿ÚºÅ
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è·å–å‘é€ç«¯çš„ç«¯å£å·
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *  @param  unsigned int* pnPort        [IN][OUT]   è¿”å›ç»™è°ƒç”¨è€…å‘é€ç«¯çš„ç«¯å£å·
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCSP(IN void* handle, unsigned int* pnPort);
  *  @brief  Get transmitter port number
@@ -3719,10 +3719,10 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_GetGevSCSP(IN void* handle, unsigned int* 
 
 /************************************************************************
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCSP(IN void* handle, unsigned int nPort);
- *  @brief  ÉèÖÃ·¢ËÍ¶ËµÄ¶Ë¿ÚºÅ
- *  @param  void* handle                [IN]        Ïà»ú¾ä±ú
- *          unsigned int nPort          [IN]        ÏëÒªÉèÖÃµÄ·¢ËÍ¶ËµÄ¶Ë¿ÚºÅ
- *  @return ³É¹¦,·µ»ØMV_OK,²¢ÇÒÏà»ú·¢ËÍ¶ËµÄ¶Ë¿ÚºÅ»á¸ü¸ÄÎªÏàÓ¦Öµ£¬Ê§°Ü,·µ»Ø´íÎóÂë
+ *  @brief  è®¾ç½®å‘é€ç«¯çš„ç«¯å£å·
+ *  @param  void* handle                [IN]        ç›¸æœºå¥æŸ„
+ *          unsigned int nPort          [IN]        æƒ³è¦è®¾ç½®çš„å‘é€ç«¯çš„ç«¯å£å·
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¹¶ä¸”ç›¸æœºå‘é€ç«¯çš„ç«¯å£å·ä¼šæ›´æ”¹ä¸ºç›¸åº”å€¼ï¼Œå¤±è´¥,è¿”å›é”™è¯¯ç 
  
  *  @fn     MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCSP(IN void* handle, unsigned int nPort);
  *  @brief  Set transmitter port number
@@ -3734,11 +3734,11 @@ MVSDKEXPORT_API int __stdcall MV_GIGE_SetGevSCSP(IN void* handle, unsigned int n
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  ÉèÖÃÉè±¸²¨ÌØÂÊ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  nBaudrate                   [IN]            ÉèÖÃµÄ²¨ÌØÂÊÖµ£¬ÊıÖµ²Î¿¼CameraParams.hÖĞºê¶¨Òå£¬Èç#define MV_CAML_BAUDRATE_9600  0x00000001
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks £¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_CAML_SetDeviceBaudrate½Ó¿Ú£©
+ *  @brief  è®¾ç½®è®¾å¤‡æ³¢ç‰¹ç‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  nBaudrate                   [IN]            è®¾ç½®çš„æ³¢ç‰¹ç‡å€¼ï¼Œæ•°å€¼å‚è€ƒCameraParams.hä¸­å®å®šä¹‰ï¼Œå¦‚#define MV_CAML_BAUDRATE_9600  0x00000001
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks ï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_CAML_SetDeviceBaudrateæ¥å£ï¼‰
  
  *  @~english
  *  @brief  Set device baudrate using one of the CL_BAUDRATE_XXXX value
@@ -3751,11 +3751,11 @@ MVSDKEXPORT_API int __stdcall MV_CAML_SetDeviceBauderate(IN void* handle, unsign
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éè±¸²¨ÌØÂÊ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnCurrentBaudrate           [OUT]           ²¨ÌØÂÊĞÅÏ¢Ö¸Õë£¬ÊıÖµ²Î¿¼CameraParams.hÖĞºê¶¨Òå£¬Èç#define MV_CAML_BAUDRATE_9600  0x00000001
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks £¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_CAML_GetDeviceBaudrate½Ó¿Ú£©
+ *  @brief  è·å–è®¾å¤‡æ³¢ç‰¹ç‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnCurrentBaudrate           [OUT]           æ³¢ç‰¹ç‡ä¿¡æ¯æŒ‡é’ˆï¼Œæ•°å€¼å‚è€ƒCameraParams.hä¸­å®å®šä¹‰ï¼Œå¦‚#define MV_CAML_BAUDRATE_9600  0x00000001
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks ï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_CAML_GetDeviceBaudrateæ¥å£ï¼‰
  
  *  @~english
  *  @brief  Returns the current device baudrate, using one of the CL_BAUDRATE_XXXX value
@@ -3768,11 +3768,11 @@ MVSDKEXPORT_API int __stdcall MV_CAML_GetDeviceBauderate(IN void* handle,unsigne
 
 /********************************************************************//**
  *  @~chinese
- *  @brief  »ñÈ¡Éè±¸ÓëÖ÷»ú¼äÁ¬½ÓÖ§³ÖµÄ²¨ÌØÂÊ
- *  @param  handle                      [IN]            Éè±¸¾ä±ú
- *  @param  pnBaudrateAblity            [OUT]           Ö§³ÖµÄ²¨ÌØÂÊĞÅÏ¢µÄÖ¸Õë¡£ËùÖ§³Ö²¨ÌØÂÊµÄ»òÔËËã½á¹û£¬µ¥¸öÊıÖµ²Î¿¼CameraParams.hÖĞºê¶¨Òå£¬ÈçMV_CAML_BAUDRATE_9600  0x00000001
- *  @return ³É¹¦,·µ»ØMV_OK,Ê§°Ü,·µ»Ø´íÎóÂë
- *  @remarks £¨¸Ã½Ó¿ÚÒÑÆúÓÃ£¬½¨Òé¸ÄÓÃ MV_CAML_GetSupportBaudrates½Ó¿Ú£©
+ *  @brief  è·å–è®¾å¤‡ä¸ä¸»æœºé—´è¿æ¥æ”¯æŒçš„æ³¢ç‰¹ç‡
+ *  @param  handle                      [IN]            è®¾å¤‡å¥æŸ„
+ *  @param  pnBaudrateAblity            [OUT]           æ”¯æŒçš„æ³¢ç‰¹ç‡ä¿¡æ¯çš„æŒ‡é’ˆã€‚æ‰€æ”¯æŒæ³¢ç‰¹ç‡çš„æˆ–è¿ç®—ç»“æœï¼Œå•ä¸ªæ•°å€¼å‚è€ƒCameraParams.hä¸­å®å®šä¹‰ï¼Œå¦‚MV_CAML_BAUDRATE_9600  0x00000001
+ *  @return æˆåŠŸ,è¿”å›MV_OK,å¤±è´¥,è¿”å›é”™è¯¯ç 
+ *  @remarks ï¼ˆè¯¥æ¥å£å·²å¼ƒç”¨ï¼Œå»ºè®®æ”¹ç”¨ MV_CAML_GetSupportBaudratesæ¥å£ï¼‰
  
  *  @~english
  *  @brief  Returns supported baudrates of the combined device and host interface
