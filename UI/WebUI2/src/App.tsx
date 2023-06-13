@@ -700,7 +700,10 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
   function updateWidgetLayout(newWidgetInfo :any,new_WidgetLayout:any)
   {
     let newDefConfig=defConfig;
-
+    if(newDefConfig.main.UIInfo===undefined)
+    {
+      newDefConfig.main.UIInfo=[];
+    }
     if(newWidgetInfo!==undefined)
       newDefConfig=ObjShellingAssign(newDefConfig,["main","UIInfo",WidgetTabKey,"WidgetInfo"],newWidgetInfo)
 
