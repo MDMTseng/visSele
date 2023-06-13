@@ -256,7 +256,7 @@ static int simple_uart_set_config(struct simple_uart *sc, int speed, const char 
 #endif
 
     default:
-        sp = B38400;
+        sp = speed;
 #ifdef __linux__
         non_standard = 1;
 #endif
