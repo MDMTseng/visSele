@@ -134,6 +134,174 @@ typedef struct _MV_CC_BAYER_SPATIAL_DENOISE_PARAM_T_
 
 }MV_CC_BAYER_SPATIAL_DENOISE_PARAM;
 
+/// \~chinese CLUT参数                  \~english CLUT param
+typedef struct _MV_CC_CLUT_PARAM_T_
+{
+    bool                bCLUTEnable;                                ///< [IN]  \~chinese 是否启用CLUT           \~english CLUT enable
+    unsigned int        nCLUTScale;                                 ///< [IN]  \~chinese 量化系数(2的整数幂,最大65536)  \~english Quantitative scale(Integer power of 2, <= 65536)
+    unsigned int        nCLUTSize;                                  ///< [IN]  \~chinese CLUT大小,[17,33]（建议值17）     \~english CLUT size[17,33](Recommended values of 17)
+    unsigned char*      pCLUTBuf;                                   ///< [IN]  \~chinese 量化CLUT表             \~english CLUT buffer
+    unsigned int        nCLUTBufLen;                                ///< [IN]  \~chinese 量化CLUT缓存大小(nCLUTSize*nCLUTSize*nCLUTSize*sizeof(int)*3)  \~english CLUT buffer length(nCLUTSize*nCLUTSize*nCLUTSize*sizeof(int)*3)
+
+    unsigned int        nRes[8];                                    ///<       \~chinese 预留                   \~english Reserved
+
+}MV_CC_CLUT_PARAM;
+
+/// \~chinese 锐化结构体                \~english Sharpen structure
+typedef struct _MV_CC_SHARPEN_PARAM_T_
+{
+    unsigned int            nWidth;                                 ///< [IN]  \~chinese 图像宽度(最小8)        \~english Image Width
+    unsigned int            nHeight;                                ///< [IN]  \~chinese 图像高度(最小8)        \~english Image Height
+    unsigned char*          pSrcBuf;                                ///< [IN]  \~chinese 输入数据缓存           \~english Input data buffer
+    unsigned int            nSrcBufLen;                             ///< [IN]  \~chinese 输入数据大小           \~english Input data length
+    enum MvGvspPixelType    enPixelType;                            ///< [IN]  \~chinese 像素格式               \~english Pixel format
+
+    unsigned char*          pDstBuf;                                ///< [OUT] \~chinese 输出数据缓存           \~english Output data buffer
+    unsigned int            nDstBufSize;                            ///< [IN]  \~chinese 提供的输出缓冲区大小   \~english Provided output buffer size
+    unsigned int            nDstBufLen;                             ///< [OUT] \~chinese 输出数据长度           \~english Output data length
+
+    unsigned int            nSharpenAmount;                         ///< [IN]  \~chinese 锐度调节强度，[0,500]  \~english Sharpen amount,[0,500]
+    unsigned int            nSharpenRadius;                         ///< [IN]  \~chinese 锐度调节半径(半径越大，耗时越长)，[1,21]   \~english Sharpen radius(The larger the radius, the longer it takes),[1,21]
+    unsigned int            nSharpenThreshold;                      ///< [IN]  \~chinese 锐度调节阈值，[0,255]  \~english Sharpen threshold,[0,255]
+
+    unsigned int            nRes[8];                                ///<       \~chinese 预留                   \~english Reserved
+
+}MV_CC_SHARPEN_PARAM;
+
+/// \~chinese 色彩校正结构体            \~english Color correct structure
+typedef struct _MV_CC_COLOR_CORRECT_PARAM_T_
+{
+    unsigned int            nWidth;                                 ///< [IN]  \~chinese 图像宽度               \~english Image Width
+    unsigned int            nHeight;                                ///< [IN]  \~chinese 图像高度               \~english Image Height
+    unsigned char*          pSrcBuf;                                ///< [IN]  \~chinese 输入数据缓存           \~english Input data buffer
+    unsigned int            nSrcBufLen;                             ///< [IN]  \~chinese 输入数据大小           \~english Input data length
+    enum MvGvspPixelType    enPixelType;                            ///< [IN]  \~chinese 像素格式               \~english Pixel format
+
+    unsigned char*          pDstBuf;                                ///< [OUT] \~chinese 输出数据缓存           \~english Output data buffer
+    unsigned int            nDstBufSize;                            ///< [IN]  \~chinese 提供的输出缓冲区大小   \~english Provided output buffer size
+    unsigned int            nDstBufLen;                             ///< [OUT] \~chinese 输出数据长度           \~english Output data length
+
+    unsigned int            nImageBit;                              ///< [IN]  \~chinese 有效图像位数(8,10,12,16)   \~english Image bit(8 or 10 or 12 or 16)
+    MV_CC_GAMMA_PARAM       stGammaParam;                           ///< [IN]  \~chinese Gamma信息              \~english Gamma info
+    MV_CC_CCM_PARAM_EX      stCCMParam;                             ///< [IN]  \~chinese CCM信息                \~english CCM info
+    MV_CC_CLUT_PARAM        stCLUTParam;                            ///< [IN]  \~chinese CLUT信息               \~english CLUT info
+
+    unsigned int            nRes[8];                                ///<       \~chinese 预留                   \~english Reserved
+
+}MV_CC_COLOR_CORRECT_PARAM;
+
+/// \~chinese 矩形ROI结构体             \~english Rect ROI structure
+typedef struct _MV_CC_RECT_I_
+{
+    unsigned int nX;                                                ///< \~chinese 矩形左上角X轴坐标            \~english X Position
+    unsigned int nY;                                                ///< \~chinese 矩形左上角Y轴坐标            \~english Y Position
+    unsigned int nWidth;                                            ///< \~chinese 矩形宽度                     \~english Rect Width
+    unsigned int nHeight;                                           ///< \~chinese 矩形高度                     \~english Rect Height
+
+}MV_CC_RECT_I;
+
+/// \~chinese 噪声估计结构体            \~english Noise estimate structure
+typedef struct _MV_CC_NOISE_ESTIMATE_PARAM_T_
+{
+    unsigned int            nWidth;                                 ///< [IN]  \~chinese 图像宽度(最小8)        \~english Image Width
+    unsigned int            nHeight;                                ///< [IN]  \~chinese 图像高度(最小8)        \~english Image Height
+    enum MvGvspPixelType    enPixelType;                            ///< [IN]  \~chinese 像素格式               \~english Pixel format
+    unsigned char*          pSrcBuf;                                ///< [IN]  \~chinese 输入数据缓存           \~english Input data buffer
+    unsigned int            nSrcBufLen;                             ///< [IN]  \~chinese 输入数据大小           \~english Input data length
+
+    MV_CC_RECT_I*           pstROIRect;                             ///< [IN]  \~chinese 图像ROI                \~english Image ROI
+    unsigned int            nROINum;                                ///< [IN]  \~chinese ROI个数                \~english ROI number
+
+    ///< \~chinese Bayer域噪声估计参数，Mono8/RGB域无效     \~english Bayer Noise estimate param,Mono8/RGB formats are invalid
+    unsigned int            nNoiseThreshold;                        ///< [IN]  \~chinese 噪声阈值[0,4095]       \~english Noise threshold[0,4095]
+    ///< \~chinese 建议值:8bit,0xE0;10bit,0x380;12bit,0xE00     \~english Suggestive value:8bit,0xE0;10bit,0x380;12bit,0xE00
+
+    unsigned char*          pNoiseProfile;                          ///< [OUT] \~chinese 输出噪声特性           \~english Output Noise Profile
+    unsigned int            nNoiseProfileSize;                      ///< [IN]  \~chinese 提供的输出缓冲区大小   \~english Provided output buffer size
+    unsigned int            nNoiseProfileLen;                       ///< [OUT] \~chinese 输出噪声特性长度       \~english Output Noise Profile length
+
+    unsigned int            nRes[8];                                ///<       \~chinese 预留                   \~english Reserved
+
+}MV_CC_NOISE_ESTIMATE_PARAM;
+
+/// \~chinese 空域降噪结构体            \~english Spatial denoise structure
+typedef struct _MV_CC_SPATIAL_DENOISE_PARAM_T_
+{
+    unsigned int            nWidth;                                 ///< [IN]  \~chinese 图像宽度(最小8)        \~english Image Width
+    unsigned int            nHeight;                                ///< [IN]  \~chinese 图像高度(最小8)        \~english Image Height
+    enum MvGvspPixelType    enPixelType;                            ///< [IN]  \~chinese 像素格式               \~english Pixel format
+    unsigned char*          pSrcBuf;                                ///< [IN]  \~chinese 输入数据缓存           \~english Input data buffer
+    unsigned int            nSrcBufLen;                             ///< [IN]  \~chinese 输入数据大小           \~english Input data length
+
+    unsigned char*          pDstBuf;                                ///< [OUT] \~chinese 输出降噪后的数据       \~english Output data buffer
+    unsigned int            nDstBufSize;                            ///< [IN]  \~chinese 提供的输出缓冲区大小   \~english Provided output buffer size
+    unsigned int            nDstBufLen;                             ///< [OUT] \~chinese 输出降噪后的数据长度   \~english Output data length
+
+    unsigned char*          pNoiseProfile;                          ///< [IN]  \~chinese 输入噪声特性           \~english Input Noise Profile
+    unsigned int            nNoiseProfileLen;                       ///< [IN]  \~chinese 输入噪声特性长度       \~english Input Noise Profile length
+
+    ///< \~chinese Bayer域空域降噪参数，Mono8/RGB域无效     \~english Bayer Spatial denoise param,Mono8/RGB formats are invalid
+    unsigned int            nBayerDenoiseStrength;                  ///< [IN]  \~chinese 降噪强度[0,100]        \~english Denoise Strength[0,100]
+    unsigned int            nBayerSharpenStrength;                  ///< [IN]  \~chinese 锐化强度[0,32]         \~english Sharpen Strength[0,32]
+    unsigned int            nBayerNoiseCorrect;                     ///< [IN]  \~chinese 噪声校正系数[0,1280]   \~english Noise Correct[0,1280]
+
+    ///< \~chinese Mono8/RGB域空域降噪参数，Bayer域无效     \~english Mono8/RGB Spatial denoise param,Bayer formats are invalid
+    unsigned int            nNoiseCorrectLum;                       ///< [IN]  \~chinese 亮度校正系数[1,2000]   \~english Noise Correct Lum[1,2000]
+    unsigned int            nNoiseCorrectChrom;                     ///< [IN]  \~chinese 色调校正系数[1,2000]   \~english Noise Correct Chrom[1,2000]
+    unsigned int            nStrengthLum;                           ///< [IN]  \~chinese 亮度降噪强度[0,100]    \~english Strength Lum[0,100]
+    unsigned int            nStrengthChrom;                         ///< [IN]  \~chinese 色调降噪强度[0,100]    \~english Strength Chrom[0,100]
+    unsigned int            nStrengthSharpen;                       ///< [IN]  \~chinese 锐化强度[1,1000]       \~english Strength Sharpen[1,1000]
+
+    unsigned int            nRes[8];                                ///<       \~chinese 预留                   \~english Reserved
+
+}MV_CC_SPATIAL_DENOISE_PARAM;
+
+/// \~chinese LSC标定结构体             \~english LSC calib structure
+typedef struct _MV_CC_LSC_CALIB_PARAM_T_
+{
+    unsigned int            nWidth;                                 ///< [IN]  \~chinese 图像宽度[16,65535]     \~english Image Width
+    unsigned int            nHeight;                                ///< [IN]  \~chinese 图像高度[16-65535]     \~english Image Height
+    enum MvGvspPixelType    enPixelType;                            ///< [IN]  \~chinese 像素格式               \~english Pixel format
+    unsigned char*          pSrcBuf;                                ///< [IN]  \~chinese 输入数据缓存           \~english Input data buffer
+    unsigned int            nSrcBufLen;                             ///< [IN]  \~chinese 输入数据长度           \~english Input data length
+
+    unsigned char*          pCalibBuf;                              ///< [OUT] \~chinese 输出标定表缓存         \~english Output calib buffer
+    unsigned int            nCalibBufSize;                          ///< [IN]  \~chinese 提供的标定表缓冲大小(nWidth*nHeight*sizeof(unsigned short))    \~english Provided output buffer size
+    unsigned int            nCalibBufLen;                           ///< [OUT] \~chinese 输出标定表缓存长度     \~english Output calib buffer length
+
+    unsigned int            nSecNumW;                               ///< [IN]  \~chinese 宽度分块数             \~english Width Sec num
+    unsigned int            nSecNumH;                               ///< [IN]  \~chinese 高度分块数             \~english Height Sec num
+    unsigned int            nPadCoef;                               ///< [IN]  \~chinese 边缘填充系数[1,5]      \~english Pad Coef[1,5]
+    unsigned int            nCalibMethod;                           ///< [IN]  \~chinese 标定方式(0-中心为基准;1-最亮区域为基准;2-目标亮度为基准) \~english Calib method
+    unsigned int            nTargetGray;                            ///< [IN]  \~chinese 目标亮度(标定方式为2时有效)    \~english Target Gray
+    ///< \~chinese 8位,范围：[0,255]            \~english 8bit,range:[0,255]
+    ///< \~chinese 10位,范围：[0,1023]          \~english 10bit,range:[0,1023]
+    ///< \~chinese 12位,范围：[0,4095]          \~english 12bit,range:[0,4095]
+
+    unsigned int            nRes[8];                                ///<       \~chinese 预留                   \~english Reserved
+
+}MV_CC_LSC_CALIB_PARAM;
+
+/// \~chinese LSC校正结构体             \~english LSC correct structure
+typedef struct _MV_CC_LSC_CORRECT_PARAM_T_
+{
+    unsigned int            nWidth;                                 ///< [IN]  \~chinese 图像宽度[16,65535]     \~english Image Width
+    unsigned int            nHeight;                                ///< [IN]  \~chinese 图像高度[16,65535]     \~english Image Height
+    enum MvGvspPixelType    enPixelType;                            ///< [IN]  \~chinese 像素格式               \~english Pixel format
+    unsigned char*          pSrcBuf;                                ///< [IN]  \~chinese 输入数据缓存           \~english Input data buffer
+    unsigned int            nSrcBufLen;                             ///< [IN]  \~chinese 输入数据长度           \~english Input data length
+
+    unsigned char*          pDstBuf;                                ///< [OUT] \~chinese 输出数据缓存           \~english Output data buffer
+    unsigned int            nDstBufSize;                            ///< [IN]  \~chinese 提供的输出缓冲区大小   \~english Provided output buffer size
+    unsigned int            nDstBufLen;                             ///< [OUT] \~chinese 输出数据长度           \~english Output data length
+
+    unsigned char*          pCalibBuf;                              ///< [IN]  \~chinese 输入标定表缓存         \~english Input calib buffer
+    unsigned int            nCalibBufLen;                           ///< [IN]  \~chinese 输入标定表缓存长度     \~english Input calib buffer length
+
+    unsigned int            nRes[8];                                ///<       \~chinese 预留                   \~english Reserved
+
+}MV_CC_LSC_CORRECT_PARAM;
+
 /// \~chinese 某个节点对应的子节点个数最大值    \~english The maximum number of child nodes corresponding to a node
 #define MV_MAX_XML_NODE_NUM_C       128
 
@@ -369,5 +537,72 @@ typedef struct _MV_XML_CAMERA_FEATURE_
     }SpecialFeature;
 
 }MV_XML_CAMERA_FEATURE;
+
+
+
+/// \~chinese 图片保存参数              \~english Save Image Parameters
+typedef struct _MV_SAVE_IMAGE_PARAM_T_EX_
+{
+    unsigned char*          pData;                                  ///< [IN]  \~chinese 输入数据缓存           \~english Input Data Buffer
+    unsigned int            nDataLen;                               ///< [IN]  \~chinese 输入数据长度           \~english Input Data length
+    enum MvGvspPixelType    enPixelType;                            ///< [IN]  \~chinese 输入数据的像素格式     \~english Input Data Pixel Format
+    unsigned short          nWidth;                                 ///< [IN]  \~chinese 图像宽                 \~english Image Width
+    unsigned short          nHeight;                                ///< [IN]  \~chinese 图像高                 \~english Image Height
+
+    unsigned char*          pImageBuffer;                           ///< [OUT] \~chinese 输出图片缓存           \~english Output Image Buffer
+    unsigned int            nImageLen;                              ///< [OUT] \~chinese 输出图片长度           \~english Output Image length
+    unsigned int            nBufferSize;                            ///< [IN]  \~chinese 提供的输出缓冲区大小   \~english Output buffer size provided
+    enum MV_SAVE_IAMGE_TYPE enImageType;                            ///< [IN]  \~chinese 输出图片格式           \~english Output Image Format
+    unsigned int            nJpgQuality;                            ///< [IN]  \~chinese JPG编码质量(50-99]，其它格式无效   \~english Encoding quality(50-99]，Other formats are invalid
+
+
+    unsigned int            iMethodValue;                           ///< [IN]  \~chinese 插值方法 0-快速 1-均衡 2-最优（其它值默认为最优）  \~english Bayer interpolation method  0-Fast 1-Equilibrium 2-Optimal
+
+    unsigned int            nReserved[3];                           ///<       \~chinese 预留                   \~english Reserved
+
+}MV_SAVE_IMAGE_PARAM_EX;
+
+
+
+/// \~chinese 图片保存参数              \~english Save Image Parameters
+typedef struct _MV_SAVE_IMG_TO_FILE_PARAM_
+{
+    enum MvGvspPixelType    enPixelType;                            ///< [IN]  \~chinese输入数据的像素格式      \~english The pixel format of the input data
+    unsigned char*          pData;                                  ///< [IN]  \~chinese 输入数据缓存           \~english Input Data Buffer
+    unsigned int            nDataLen;                               ///< [IN]  \~chinese 输入数据长度           \~english Input Data length
+    unsigned short          nWidth;                                 ///< [IN]  \~chinese 图像宽                 \~english Image Width
+    unsigned short          nHeight;                                ///< [IN]  \~chinese 图像高                 \~english Image Height
+    enum MV_SAVE_IAMGE_TYPE enImageType;                            ///< [IN]  \~chinese 输入图片格式           \~english Input Image Format
+    unsigned int            nQuality;                               ///< [IN]  \~chinese JPG编码质量(50-99]，PNG编码质量[0-9]，其它格式无效 \~english JPG Encoding quality(50-99],PNG Encoding quality[0-9]，Other formats are invalid
+    char                    pImagePath[256];                        ///< [IN]  \~chinese 输入文件路径           \~english Input file path
+
+    int                     iMethodValue;                           ///< [IN]  \~chinese 插值方法 0-快速 1-均衡 2-最优（其它值默认为最优）  \~english Bayer interpolation method  0-Fast 1-Equilibrium 2-Optimal
+
+    unsigned int            nReserved[8];                           ///<       \~chinese 预留                   \~english Reserved
+
+}MV_SAVE_IMG_TO_FILE_PARAM;
+
+
+// \~chinese 像素转换结构体            \~english Pixel convert structure
+typedef struct _MV_CC_PIXEL_CONVERT_PARAM_
+{
+    unsigned short          nWidth;                                 ///< [IN]  \~chinese 图像宽                 \~english Width
+    unsigned short          nHeight;                                ///< [IN]  \~chinese 图像高                 \~english Height
+
+    enum MvGvspPixelType    enSrcPixelType;                         ///< [IN]  \~chinese 源像素格式             \~english Source pixel format
+    unsigned char*          pSrcData;                               ///< [IN]  \~chinese 输入数据缓存           \~english Input data buffer
+    unsigned int            nSrcDataLen;                            ///< [IN]  \~chinese 输入数据长度           \~english Input data length
+
+    enum MvGvspPixelType    enDstPixelType;                         ///< [IN]  \~chinese 目标像素格式           \~english Destination pixel format
+    unsigned char*          pDstBuffer;                             ///< [OUT] \~chinese 输出数据缓存           \~english Output data buffer
+    unsigned int            nDstLen;                                ///< [OUT] \~chinese 输出数据长度           \~english Output data length
+    unsigned int            nDstBufferSize;                         ///< [IN]  \~chinese 提供的输出缓冲区大小   \~english Provided output buffer size
+
+    unsigned int            nRes[4];                                ///<       \~chinese 预留                   \~english Reserved
+
+}MV_CC_PIXEL_CONVERT_PARAM;
+
+
+
 
 #endif /* _MV_OBSOLETE_CAM_PARAMS_H_ */

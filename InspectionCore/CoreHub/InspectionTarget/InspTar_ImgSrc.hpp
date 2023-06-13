@@ -39,7 +39,7 @@ public:
 
   virtual bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act);
 
-  virtual virtual cJSON* genITIOInfo();
+  virtual cJSON* genITIOInfo();
 
   virtual void singleProcess(shared_ptr<StageInfo> sinfo);
   virtual ~InspectionTarget_ImgSrc();

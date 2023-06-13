@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.26.4)
+cmake_minimum_required(VERSION 3.24.1)
 set (CMAKE_CXX_STANDARD 14)
 project(CORE0_1)
 
@@ -19,6 +19,7 @@ if(MSVC OR MSYS OR MINGW)
 
 elseif(APPLEARM64)
   set ( platform mac_arm64)
+  set (PLAT_LIBS $ENV{MODULE_libuvc}/libopenpnp-capture.0.0.28.dylib)
 elseif(APPLE)
   set ( platform mac_x64)
 endif()
@@ -74,6 +75,8 @@ if(MSVC OR MSYS OR MINGW)
 elseif(APPLEARM64)
   set(CMAKE_EXE_LINKER_FLAGS " -Wl,-framework,IOKit -Wl,-framework,CoreFoundation -Wl,-framework,Security")
 
+  SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS}  -fobjc-arc  -fmodules")
+  SET(PLAT_FILES  "PlatUtil/macUtil.mm")
 elseif(APPLE)
 
 endif()
@@ -95,7 +98,6 @@ add_custom_target(
 )
 
 
-SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS}  -fobjc-arc  -fmodules")
 SET(COMMON_COMPILE_FLAGS "-Wall -Wno-sign-compare -Wno-write-strings -Wno-unused-variable ")
 SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${COMMON_COMPILE_FLAGS}")
 
@@ -160,14 +162,12 @@ add_executable (visSele main.cpp wiringPanel.cpp wiringPanel_ext.cpp
 InspectionTarget/InspectionTarget.cpp 
 InspectionTarget/InspTar_Orientation_ColorRegionOval.cpp 
 InspectionTarget/InspTar_SpriteDraw.cpp 
-InspectionTarget/InspTar_ImgSrc.cpp
+# InspectionTarget/InspTar_ImgSrc.cpp
 InspectionTarget/InspTar_Orientation_ShapeBasedMatching.cpp
 InspectionTarget/InspTar_SurfaceCheckSimple.cpp
 InspectionTarget/InspTar_WBar_SizeComp.cpp
+${PLAT_FILES}
 
-
-
-PlatUtil/macUtil.mm
 
 )
 add_dependencies(visSele mod_target MatchingEngine shape_based_matching)
@@ -189,7 +189,6 @@ target_link_libraries(visSele
   $ENV{MODULE_BPG_Protocol}/BPG_Protocol.a
   $ENV{MODULE_simple_uart}/simple_uart.a
   #$ENV{MODULE_zlib}/staticlib/libz.a
-  $ENV{MODULE_libuvc}/libopenpnp-capture.0.0.28.dylib
   $ENV{MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
   ${OpenCV_LIBS}

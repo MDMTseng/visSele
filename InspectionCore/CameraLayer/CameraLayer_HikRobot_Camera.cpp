@@ -644,7 +644,6 @@ CameraLayer_HikRobot_Camera::~CameraLayer_HikRobot_Camera()
   imgQueue.termination_trigger();
   CLOSE();
   imgQueueThread.join();
-  delete imgQueueThread;
 }
 
 
