@@ -1790,37 +1790,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
 
 
-                    <Popconfirm key={"SAVE feat ref image " + updateC}
-                        title={`確定要儲存此圖為特徵參考圖？ 再按:${delConfirmCounter + 1}次`}
-                        onConfirm={() => { }}
-                        onCancel={() => { }}
-                        okButtonProps={{
-                            danger: true, onClick: () => {
-                                if (delConfirmCounter != 0) {
-                                    setDelConfirmCounter(delConfirmCounter - 1);
-                                }
-                                else {
-                                    (async () => {
 
-                                        let pkts = await BPG_API.InspTargetExchange(cacheDef.id, {
-                                            type: "cache_image_save",
-                                            folder_path: fsPath + "/",
-                                            image_name: SBM_FEAT_REF_IMG_NAME,
-                                        }) as any[];
-                                        console.log(pkts,fsPath,SBM_FEAT_REF_IMG_NAME);
-
-                                    })()
-                                    setUpdateC(updateC + 1);
-                                }
-                            }
-                        }}
-                        okText={"Yes:" + delConfirmCounter}
-                        cancelText="No"
-                    >
-                        <Button danger type="primary" onClick={() => {
-                            setDelConfirmCounter(5);
-                        }}>存為特徵參考圖</Button>
-                    </Popconfirm>
 
 
 
@@ -1975,59 +1945,39 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
 
 
+                
+                <Popconfirm key={"SAVE feat ref image " + updateC}
+                        title={`確定要儲存此圖為特徵參考圖？ 再按:${delConfirmCounter + 1}次`}
+                        onConfirm={() => { }}
+                        onCancel={() => { }}
+                        okButtonProps={{
+                            danger: true, onClick: () => {
+                                if (delConfirmCounter != 0) {
+                                    setDelConfirmCounter(delConfirmCounter - 1);
+                                }
+                                else {
+                                    (async () => {
 
+                                        let pkts = await BPG_API.InspTargetExchange(cacheDef.id, {
+                                            type: "cache_image_save",
+                                            folder_path: fsPath + "/",
+                                            image_name: SBM_FEAT_REF_IMG_NAME,
+                                        }) as any[];
+                                        console.log(pkts,fsPath,SBM_FEAT_REF_IMG_NAME);
 
+                                    })()
+                                    setUpdateC(updateC + 1);
+                                }
+                            }
+                        }}
+                        okText={"Yes:" + delConfirmCounter}
+                        cancelText="No"
+                    >
+                        <Button danger type="primary" onClick={() => {
+                            setDelConfirmCounter(5);
+                        }}>儲存最新圖片為特徵參考圖</Button>
+                    </Popconfirm>
 
-
-                <Button key={"_" + 10000} onClick={() => {
-
-
-                    (async () => {
-
-                        let obj = {
-                            type: "extract_feature",
-                            image_path: fsPath + "/" + SBM_FEAT_REF_IMG_NAME,
-                            num_features: cacheDef.num_features,
-                            weak_thresh: featureInfo.weak_thresh,
-                            strong_thresh: featureInfo.strong_thresh,
-                            T: [2, 2],
-                            image_transfer_downsampling: -1,
-                            mask_regions: featureInfo.mask_regions
-                        }
-                        console.log(obj)
-                        let pkts = await BPG_API.InspTargetExchange(cacheDef.id, obj) as any[];
-                        console.log(pkts);
-
-                        let newFeatureInfo: any = {};
-                        let newFeatureInfoExt: any = {};
-
-
-                        let IM = pkts.find((p: any) => p.type == "IM");
-                        if (IM !== undefined) {
-                            _this.featureImgCanvas.width = IM.image_info.width;
-                            _this.featureImgCanvas.height = IM.image_info.height;
-
-                            let ctx2nd = _this.featureImgCanvas.getContext('2d');
-                            ctx2nd.putImageData(IM.image_info.image, 0, 0);
-                            newFeatureInfoExt.IM = IM;
-
-                        }
-
-
-                        let RP = pkts.find((p: any) => p.type == "RP");
-                        if (RP !== undefined) {
-                            newFeatureInfo.templatePyramid = RP.data;
-                        }
-
-
-                        setFeatureInfo({ ...featureInfo, ...newFeatureInfo })
-                        setFeatureInfoExt({ ...featureInfoExt, ...newFeatureInfoExt })
-
-
-
-                    })()
-
-                }}>Templ</Button>
 
                 特徵數:
                 <InputNumber min={10} value={cacheDef.num_features}
@@ -2119,6 +2069,57 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                         }
                     })
                 }}>+特徵範圍</Button>
+
+
+                <Button key={"_" + 10000} onClick={() => {
+
+
+                (async () => {
+
+                    let obj = {
+                        type: "extract_feature",
+                        image_path: fsPath + "/" + SBM_FEAT_REF_IMG_NAME,
+                        num_features: cacheDef.num_features,
+                        weak_thresh: featureInfo.weak_thresh,
+                        strong_thresh: featureInfo.strong_thresh,
+                        T: [2, 2],
+                        image_transfer_downsampling: -1,
+                        mask_regions: featureInfo.mask_regions
+                    }
+                    console.log(obj)
+                    let pkts = await BPG_API.InspTargetExchange(cacheDef.id, obj) as any[];
+                    console.log(pkts);
+
+                    let newFeatureInfo: any = {};
+                    let newFeatureInfoExt: any = {};
+
+
+                    let IM = pkts.find((p: any) => p.type == "IM");
+                    if (IM !== undefined) {
+                        _this.featureImgCanvas.width = IM.image_info.width;
+                        _this.featureImgCanvas.height = IM.image_info.height;
+
+                        let ctx2nd = _this.featureImgCanvas.getContext('2d');
+                        ctx2nd.putImageData(IM.image_info.image, 0, 0);
+                        newFeatureInfoExt.IM = IM;
+
+                    }
+
+
+                    let RP = pkts.find((p: any) => p.type == "RP");
+                    if (RP !== undefined) {
+                        newFeatureInfo.templatePyramid = RP.data;
+                    }
+
+
+                    setFeatureInfo({ ...featureInfo, ...newFeatureInfo })
+                    setFeatureInfoExt({ ...featureInfoExt, ...newFeatureInfoExt })
+
+
+
+                })()
+
+                }}>生成特徵點</Button>
 
 
 
@@ -2228,7 +2229,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                             _this.canvasComp.UserRegionSelect(undefined)
                         }
                     })
-                }}>設定原點與方向</Button>
+                }}>設定中心與方向</Button>
             </>
 
             break;
@@ -2245,13 +2246,13 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     setEditState(EditState.Normal_Show)
                 }}>{"<"}</Button>
 
-                <Button onClick={() => {
+                <Button type="primary" onClick={() => {
 
                     onCacheDefChange(cacheDef, false);
                     BPG_API.InspTargetExchange(cacheDef.id, { type: "revisit_cache_stage_info" });
-                }}>ReCheck</Button>
+                }}>驗證</Button>
 
-                scaleD:
+                計算縮放:
                 <InputNumber value={cacheDef.matching_downScale} step={0.05}
                     onChange={(num) => {
 
@@ -2259,7 +2260,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     }} />
 
 
-                Sim:
+                相似度:
                 <InputNumber value={cacheDef.similarity_thres}
                     onChange={(num) => {
 
@@ -2267,7 +2268,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     }} />
 
 
-                MagThres:
+                邊緣強度:
                 <InputNumber value={cacheDef.magnitude_thres}
                     onChange={(num) => {
                         setCacheDef({ ...cacheDef, magnitude_thres: num })
@@ -2287,7 +2288,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                         setCacheDef(ObjShellingAssign(cacheDef, ["featureInfo", "match_front_face_angle_range", 1], num));
                     }} />
 
-                {" "}
+                <br />
                 校位下限(0~1):
                 <InputNumber min={0} step={0.05} max={1} value={cacheDef.refine_score_thres}
                     onChange={(num) => {
@@ -3840,14 +3841,14 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
                 }} />
                 <br />
 
-                X ng鏡像
+                {/* X ng鏡像
                 <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.x_flip_mark == true} onChange={(check) => {
                     onDefChange({ ...def, x_flip_mark: check }, true);
                 }} />
                 Y ng鏡像
                 <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.y_flip_mark == true} onChange={(check) => {
                     onDefChange({ ...def, y_flip_mark: check }, true);
-                }} />
+                }} /> */}
 
 
 
@@ -4855,10 +4856,10 @@ export function InspTarView_basicInfo({ display, fsPath, EditPermitFlag, style =
             onDefChange(cacheDef, true)
         }}>SAVE</Button>
 
-        <Switch checkedChildren="隱藏" unCheckedChildren="顯示" checked={cacheDef.default_hide == true} onChange={(check) => {
+        {/* <Switch checkedChildren="隱藏" unCheckedChildren="顯示" checked={cacheDef.default_hide == true} onChange={(check) => {
 
             onDefChange({ ...cacheDef, default_hide: check }, false)
-        }} />
+        }} /> */}
     </>
 
 }
