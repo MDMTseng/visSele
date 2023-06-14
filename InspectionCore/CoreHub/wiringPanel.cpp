@@ -1825,11 +1825,11 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       {
         cJSON* ret_info= cJSON_CreateObject();
 
-        cJSON_AddNumberToObject(ret_info,"MaxDelay",(int)processTime_MaxDelay);
-        cJSON_AddNumberToObject(ret_info,"AvgDelay",(int)processTime_AvgDelay);
-        cJSON_AddNumberToObject(ret_info,"AvgDelay_Count",(int)processTime_AvgDelay_Count);
-        cJSON_AddNumberToObject(ret_info,"LPDelay",(int)processTime_LPDelay);
-        cJSON_AddNumberToObject(ret_info,"OverTimeCountMax",(int)processTime_OverTimeCountMax);
+        cJSON_AddNumberToObject(ret_info,"Max",(int)processTime_MaxDelay);
+        cJSON_AddNumberToObject(ret_info,"Avg",(int)processTime_AvgDelay);
+        cJSON_AddNumberToObject(ret_info,"LP",(int)processTime_LPDelay);
+        cJSON_AddNumberToObject(ret_info,"OTCountMax",(int)processTime_OverTimeCountMax);
+        cJSON_AddNumberToObject(ret_info,"Count",(int)processTime_AvgDelay_Count);
 
         act.send("RP",id,ret_info);
         cJSON_Delete(ret_info);
