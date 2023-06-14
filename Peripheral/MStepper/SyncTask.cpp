@@ -1147,7 +1147,7 @@ inline float mm2Pulse_conv(int axisIdx,float dist)
     case AXIS_IDX_FEEDRATE:
     case AXIS_IDX_ACCELERATION:
     case AXIS_IDX_DEACCELERATION:
-    case AXIS_IDX_X:return dist*5000/mm_PER_REV;
+    case AXIS_IDX_X:return dist*6400/mm_PER_REV;
 
 
     case AXIS_IDX_Z:return dist*SUBDIV/mm_PER_REV;//-1 for reverse the direction
@@ -1253,7 +1253,7 @@ public:
         p_res->type=MSTP_SegCtx_TYPE::INPUT_MON_CTRL;
 
 
-
+        p_res->INPUT_MON.existField=0;
         uint32_t PINS;
         if(FindUint32("PINS",blks,blkCount,PINS)==0)
         {
