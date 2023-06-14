@@ -4957,6 +4957,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
     const [queryCameraList, setQueryCameraList] = useState<any[] | undefined>(undefined);
     const [delConfirmCounter, setDelConfirmCounter] = useState(0);
+    const [showNonNAOnly, setShowNonNAOnly] = useState(false);
 
 
     function onCacheDefChange(updatedDef: any, ddd: boolean) {
@@ -5028,6 +5029,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
     _this.TMP_NGInfoList = NGInfoList;
     _this.perifConnState = perifConnState;
+    _this.showNonNAOnly = showNonNAOnly;
     useEffect(() => {//////////////////////
 
         let cbsKey="_"+Math.random();
@@ -5049,7 +5051,19 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                     if (CM === undefined) return;
                     let RP = pkts.find((p: any) => p.type == "RP");
                     if (RP === undefined) return;
-                    // console.log("++++++++\n", IM, CM, RP);
+                    console.log("++++++++\n", IM, CM, RP);
+
+                    if(_this.showNonNAOnly)
+                    {
+                        let sub_reports=RP?.data?.report?.sub_reports;
+                        if(sub_reports!==undefined)
+                        {
+                            let NARep=sub_reports.find((rep:any)=>rep.category==0);
+                            if(NARep!==undefined)return;
+                        }
+
+                    }
+
 
 
                     // setDefReport(RP.data)
@@ -5205,6 +5219,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
 
                     <Button key={"_" + 10000} onClick={() => {
+                        setShowNonNAOnly(false);
                         setEditState(EditState.Region_Edit);
                     }}>EDIT</Button>
 
@@ -5219,6 +5234,9 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                     onChange={(e) => {
                     }} />
                 {EDIT_UI}
+                <Switch checkedChildren="僅顯示可驗" unCheckedChildren="全顯示圖像" checked={showNonNAOnly} onChange={(check) => {
+                    setShowNonNAOnly(check)
+                }} />
                 {"  "}
                 {
                     (perifConnState) ? <>
@@ -6573,7 +6591,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
     return <div style={{ ...style }} className={"overlayCon"}>
-        <div className={"overlay scroll HXF"} >
+        <div className={"overlay scroll HXF"} style={{width:"100%"}} >
 
             {/* {EDIT_UI} */}
             <Button onClick={() => {
