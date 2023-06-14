@@ -1321,8 +1321,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     int tid=(doc["tid"].is<int>()==true)?doc["tid"]:-1;
     int cat=(doc["cat"].is<int>()==true)?doc["cat"]:-1;
 
-
     pipeLineInfo *tarP=NULL;
+
+    if(tid!=-1 && cat!=-1)
     for (int i = 0; i < RBuf.size(); i++)
     {
       pipeLineInfo *pipe = RBuf.getTail(i);
@@ -1338,6 +1339,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       {
         pipe->insp_status=insp_status_SKIP;
       }
+      // if(i>30)
+      // {//only check the last 3 info in the queue
+      //   break;
+      // }
     }
 
     if(tarP)
