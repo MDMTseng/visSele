@@ -21,7 +21,7 @@ import 'reactflow/dist/style.css';
 import { ResponsiveReactGridLayoutX } from './UICardComp';
 import type { MenuProps, MenuTheme } from 'antd/es/menu';
 import { UserOutlined, LaptopOutlined, NotificationOutlined,DownOutlined,
-  DisconnectOutlined,LinkOutlined } from '@ant-design/icons';
+  DisconnectOutlined,LinkOutlined,CopyOutlined } from '@ant-design/icons';
 
 import clone from 'clone';
 
@@ -478,7 +478,12 @@ function UICard_Config({inspTarList,config,onConfChange}:{inspTarList:any[],conf
           inspTarList.map(it=><Menu.Item key={it.id} 
             onClick={()=>{
 
-              onConfChange(setCompleteFlag({..._config,itid:it.id}))
+              let card_id=_config.id;
+              if(card_id=="" || card_id.startsWith("$"))
+              {
+                card_id="$IT_"+it.id;
+              }
+              onConfChange(setCompleteFlag({..._config,itid:it.id,id:card_id}))
 
         
             }}>
@@ -735,7 +740,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
   
   if(UIEditFlag)
   {
-    WidgetLayout.push({...defalutLayoutInfo,i:ID_ADD_NEW_ELE,type:ID_ADD_NEW_ELE})
+    WidgetLayout.push({...defalutLayoutInfo,i:ID_ADD_NEW_ELE,type:ID_ADD_NEW_ELE,w:4,h:2})
   }
 
 
@@ -919,6 +924,22 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
         
         {
           UIEditFlag==false?null: <div  style={{background:UIEditFlag?"rgba(255,255,255,0.7)":undefined,position: "absolute",width:"100%",height:"100%",top:"0px"}}>
+
+            <Popconfirm
+              title="確定刪除?"
+              onConfirm={()=>{
+                let newWidgetInfo=[...WidgetInfo];
+                newWidgetInfo=newWidgetInfo.filter((info:any)=>info.id!=uilayoutInfo.i);
+                updateWidgetLayout(newWidgetInfo,undefined);
+              }}
+              onCancel={()=>{
+              }}
+              okText="Yes"
+              cancelText="No"
+            >
+              <Button danger type='primary'>X</Button>
+            </Popconfirm>
+            <br/>
             {uilayoutInfo.i}
 
             <br/>
@@ -1050,6 +1071,7 @@ function VIEWUI(){
   const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
 
   const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
+  const [refUISetIdx,setrefUISetIdx]=useState(-1);
   const [newUIID,setNewUIID]=useState("");
 
 
@@ -2179,43 +2201,40 @@ function VIEWUI(){
           </Button>
 
           {UIEditFlag?
-
-          
-          // <Button danger
-          // onClick={()=>{
-              
-          //     setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo"],
-          //        defConfig.main.UIInfo.filter((info:any)=>info.id!=tableInfo.id)))
-          // }}>
-          //   X
-          // </Button>
-          
-          
-          <Popconfirm
-          title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
-          onConfirm={()=>{
+          <>
+            <Button type={_this.listCMD_Vairable.widgetSetID==tableInfo.id?'primary':undefined}
+              onClick={()=>{
+                setrefUISetIdx(idx);
+              }}>
+                <CopyOutlined/>
+            </Button>
             
-          }}
-          okButtonProps={{danger:true,onClick:()=>{
-            if(delConfirmCounter==0)
-            {
-              setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo"],
-              defConfig.main.UIInfo.filter((info:any)=>info.id!=tableInfo.id)))
+            <Popconfirm
+            title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
+            onConfirm={()=>{
+              
+            }}
+            okButtonProps={{danger:true,onClick:()=>{
+              if(delConfirmCounter==0)
+              {
+                setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo"],
+                defConfig.main.UIInfo.filter((info:any)=>info.id!=tableInfo.id)))
 
-            }
-            else
-            {
-              setDelConfirmCounter(delConfirmCounter-1);
-            }
-          }}}
-          onCancel={()=>{}}
-          okText={"Yes:"+delConfirmCounter}
-          cancelText="No"
-          >
-          <Button danger type="primary" onClick={()=>{
-          setDelConfirmCounter(5);
-          }}>X</Button>
-          </Popconfirm> 
+              }
+              else
+              {
+                setDelConfirmCounter(delConfirmCounter-1);
+              }
+            }}}
+            onCancel={()=>{}}
+            okText={"Yes:"+delConfirmCounter}
+            cancelText="No"
+            >
+            <Button danger type="primary" onClick={()=>{
+            setDelConfirmCounter(5);
+            }}>X</Button>
+            </Popconfirm> 
+          </>
           :null}
 
         </div>
@@ -2223,7 +2242,10 @@ function VIEWUI(){
         
       }
 
-      {UIEditFlag?<Input placeholder={"新的UI頁面 ID"} status={newUIID.length==0?"error":undefined}
+      {UIEditFlag?<>
+      {/* Add a vertical split bar */}
+      <Divider type="vertical" style={{height:"30px"}}/>
+      <Input placeholder={"新的UI頁面 ID"} status={newUIID.length==0?"error":undefined}
         style={{width:"100px"}}
         onChange={(e:any)=>setNewUIID(e.target.value)}
         value={newUIID}
@@ -2232,12 +2254,27 @@ function VIEWUI(){
           let value=e.target.value;
           console.log(value)
           if(value.length==0)return;
-          setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo",WidgetTableInfo.length],{
+
+
+
+          let newUIInfo={
             id:value,
-          }))
+          }
+          if(refUISetIdx>=0)
+          {
+            newUIInfo={
+              ...WidgetTableInfo[refUISetIdx],
+              id:value,
+            }
+          }
+          setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo",WidgetTableInfo.length],newUIInfo))
+          setrefUISetIdx(-1)
+
           setNewUIID("");
         }}
-      />:null}
+      />
+      {<Button danger disabled={refUISetIdx<0} onClick={()=>{setrefUISetIdx(-1)}}>{refUISetIdx<0?"建立空白頁面":"複製頁面:"+WidgetTableInfo[refUISetIdx].id}</Button> }
+      </>:null}
 
       </Space>
 
