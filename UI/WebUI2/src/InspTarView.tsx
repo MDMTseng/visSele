@@ -6,8 +6,8 @@ import { Layout, Button, Tabs, Slider, Menu, Divider, Dropdown, Popconfirm, Radi
 
 import type { MenuProps, MenuTheme } from 'antd/es/menu';
 import {
-    UserOutlined, LaptopOutlined, NotificationOutlined, DownOutlined, MoreOutlined, PlayCircleOutlined,
-    DisconnectOutlined, LinkOutlined
+    UserOutlined, LaptopOutlined, NotificationOutlined, DownOutlined, MoreOutlined, PlayCircleFilled,PauseCircleOutlined,
+    DisconnectOutlined, LinkOutlined,CameraOutlined,SyncOutlined,DeleteOutlined,FrownOutlined,LoadingOutlined
 } from '@ant-design/icons';
 
 import clone from 'clone';
@@ -5868,8 +5868,10 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     const [machConfig, setMachConfig] = useState<any>(undefined);
 
 
-    const [uInspCount, setuInspCount] = useState({});
+    const [uInspCount, setuInspCount] = useState({SEL1:0,SEL2:0,SEL3:0,NA:0});
     const [processTimeInfo, setProcessTimeInfo] = useState({});
+    const [errResetingInfo, setErrResetingInfo] = useState<string|undefined>(undefined);
+
 
     const [fileCandList, setFileCandList] = useState({});
     const [fileCandSelectTID, setFileCandSelectTID] = useState("");
@@ -5880,9 +5882,10 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
     const [spanSetupOptionUI, setSpanSetupOptionUI] = useState(false);
-
+    const [imgReviewOptionUI, setImgReviewOptionUI] = useState(false);
     const [inspStatistic, setInspStatistic] = useState<any>({});
     const [spanStatisticUI, setSpanStatisticUI] = useState(false);
+    const [isRunning, setIsRunning] = useState(false);
 
 
     useEffect(() => {
@@ -5898,7 +5901,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     const dispatch = useDispatch();
     const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
 
-    const PeripheralCONNID = 3455;
+    const PeripheralCONNID = cacheDef.stream_id+1000;
     async function delay(ms = 1000) {
         return new Promise((resolve, reject) => setTimeout(resolve, ms))
     }
@@ -5945,10 +5948,22 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 resolve: (stacked_pkts) => {
                     let msg = stacked_pkts[0].data.msg;
 
-                    // console.log(">>>>>",msg,_this.sendCBDict);
                     if (_this.sendCBDict[msg.id] !== undefined) {
                         _this.sendCBDict[msg.id].resolve(msg)
                         delete _this.sendCBDict[msg.id];
+                    }
+                    else
+                    {
+                        let PD = stacked_pkts.find((p: any) => p.type == "PD");
+                        if(PD!==undefined)
+                        {
+                            console.log("PD:",PD?.data?.msg);
+                            return;
+                        }
+
+
+                        console.log("event:",stacked_pkts);
+
                     }
 
 
@@ -5972,7 +5987,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 cacheDef.stream_id, cbsKey, {
 
                 resolve: (pkts) => {
-                    // console.log(pkts);
+
                     let CM = pkts.find((p: any) => p.type == "CM");
                     if (CM === undefined) return;
                     let RP = pkts.find((p: any) => p.type == "RP");
@@ -6259,6 +6274,43 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     let setupOption = spanSetupOptionUI == false ? null : <>
 
 
+
+        <Button onClick={() => {
+
+        (async () => {
+        
+            await fetchSetup();
+        })()
+
+        }}>GetSetup</Button>
+
+        <Button onClick={() => {
+
+        (async () => {
+            let is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
+            console.error("is_CONNECTED:", is_CONNECTED, " PeripheralCONNID", PeripheralCONNID);
+            if (is_CONNECTED == false) {
+                await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
+            }
+
+            
+            // await fetchSetup();
+        })()
+
+        }}>CONNECT</Button>
+
+
+
+        <Button onClick={() => {
+
+        (async () => {
+            await BPG_API.InspTargetExchange(cacheDef.id, { type: "DISCONNECT", comm_id: PeripheralCONNID });
+
+        })()
+
+        }}>DISCONNECT</Button>
+        <br />
+
         <Button onClick={() => {
 
         (async () => {
@@ -6428,26 +6480,6 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         }}>SEL3</Button>
 
 
-        <Button onClick={() => {
-
-            (async () => {
-
-                console.log(await _this.send({ type: "stepper_enable" }));
-            })()
-
-        }}>MOTER ON</Button>
-
-
-        <Button onClick={() => {
-
-            (async () => {
-
-                console.log(await _this.send({ type: "stepper_disable" }));
-            })()
-
-        }}>OFF</Button>
-
-
 
 
         <br />
@@ -6480,67 +6512,6 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         <br />
 
 
-        <Button onClick={() => {
-
-
-        BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 1000000, count_NG: 1000000, count_NA: 0 });
-
-        }}>SAVE ALL OK NG</Button>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 1000000, count_NG: 0, count_NA: 0 });
-
-        }}>SAVE OK</Button>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 1, count_NG: 0, count_NA: 0 });
-
-        }}>1 OK</Button>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 20,count_NG2: 20, count_NA: 0 });
-
-        }}>SAVE NG</Button>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 1,count_NG2: 1, count_NA: 0 });
-
-        }}>1 NG</Button>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 0, count_NA: 100 });
-
-        }}>SAVE NA</Button>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 20, count_NG: 20,count_NG2: 20, count_NA: 5 });
-
-        }}>SAVE20 20 5</Button>
-
-
-
-
-
-
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 0,count_NG2: 0, count_NA: 0 });
-
-        }}>NO SAVE</Button>
 
 {/* 
         <Button onClick={() => {
@@ -6565,21 +6536,6 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         }}>sel1_no limit</Button> */}
         <br />
 
-        <Button onClick={() => {
-            (async () => {
-                let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetProcessTimeInfo" }) as any
-                let pti=pt_info[0].data;
-                console.log(pti);
-                setProcessTimeInfo(pti)
-            })()
-        }}>GetProcessTime</Button>
-        {JSON.stringify(processTimeInfo)}
-        <Button onClick={() => {
-            (async () => {
-                let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetProcessTimeInfo",reset:true }) as any
-                setProcessTimeInfo({})
-            })()
-        }}>reset</Button>
 
 
         
@@ -6590,120 +6546,634 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     </>
 
 
+
+    let ImgReviewOption=imgReviewOptionUI == false ? null : <>
+    
+        存檔
+        <Button onClick={() => {
+
+
+        BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 1000000, count_NG: 1000000, count_NA: 0 });
+
+        }}>ALL OK NG</Button>
+
+        <Button onClick={() => {
+
+
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 1000000, count_NG: 0, count_NA: 0 });
+
+        }}>OK</Button>
+
+        <Button onClick={() => {
+
+
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 1, count_NG: 0, count_NA: 0 });
+
+        }}>1OK</Button>
+
+        <Button onClick={() => {
+
+
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 20,count_NG2: 20, count_NA: 0 });
+
+        }}>NG</Button>
+
+        <Button onClick={() => {
+
+
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 1,count_NG2: 1, count_NA: 0 });
+
+        }}>1NG</Button>
+
+        <Button onClick={() => {
+
+
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 0, count_NA: 100 });
+
+        }}>NA</Button>
+
+        <Divider  type="vertical"></Divider>
+        <Button onClick={() => {
+
+
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 20, count_NG: 20,count_NG2: 20, count_NA: 5 });
+
+        }}>20OK&NG 5NA</Button>
+
+
+
+
+
+
+        <Divider  type="vertical"></Divider>
+
+        <Button onClick={() => {
+
+
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 0,count_NG2: 0, count_NA: 0 });
+
+        }}>不存</Button>
+        {
+            (() => {
+
+
+                if (fileCandSelectTID.length == 0) return null;
+
+                let fileCandInfo = fileCandList[fileCandSelectTID];
+                if (fileCandInfo === undefined) return null;
+
+
+
+                function chooseNextUNSET(_fileCandList = fileCandList) {
+                    let keys = Object.keys(_fileCandList);
+                    let tar_tid = "";
+                    for (let i = 0; i < keys.length; i++) {
+                        let tid = keys[i];
+                        let tag = _fileCandList[tid].additionalTags.find((tag: string) => tag.startsWith("$CAT_"));
+                        console.log(tag);
+                        if (tag === undefined) {
+                            tar_tid = tid;
+                            trigSimInsp(tar_tid);
+                            break;
+                        }
+
+                    }
+
+                    setFileCandSelectTID(tar_tid);
+                }
+
+
+                let additionalTags = fileCandInfo.additionalTags as string[];
+                if (additionalTags === undefined) additionalTags = [];
+                console.log(fileCandInfo);
+
+                function CATChange(toCAT: string) {
+                    let newTags = [...additionalTags.filter(tag => !tag.startsWith("$CAT_"))];
+                    if (toCAT != "") {
+                        newTags = [...newTags, "$CAT_" + toCAT]
+                    }
+                    let newFileCandList = ObjShellingAssign(fileCandList, [fileCandSelectTID, "additionalTags"], newTags);
+                    setFileCandList(newFileCandList);
+                    chooseNextUNSET(newFileCandList);
+                }
+
+                return <>
+                    {JSON.stringify(fileCandInfo.list[0].info)}
+                    {JSON.stringify(fileCandInfo.additionalTags)}
+                    <br />
+                    <Button type="primary" onClick={() => {
+                        CATChange("OK");
+                    }}>OK</Button>
+                    <Button danger onClick={() => {
+                        CATChange("NG_1");
+                    }}>NG1</Button>
+                    <Button danger onClick={() => {
+                        CATChange("NG_2");
+                    }}>NG2</Button>
+                    <Button type="dashed" onClick={() => {
+                        CATChange("NA");
+                    }}>NA</Button>
+                    <Button onClick={() => {
+                        CATChange("");
+                    }}>UNSET</Button>
+
+
+                    <Button onClick={() => {
+                        trigSimInsp(fileCandSelectTID);
+                    }}>CHECK</Button>
+                    <br />
+                </>
+            })()
+        }
+
+        <Divider orientation="left"></Divider>
+
+
+        <Button onClick={() => {
+
+            LoadFileCandList();
+        }}>Update</Button>
+
+        <Button onClick={() => {
+            _this.groupTestTIDList = {};
+            BPG_API.InspTargetExchange("ImTran", { type: "force_down_scale", scale: -1 });
+
+            fileCheck(Object.keys(fileCandList))
+
+        }}>TEST ALL:{
+                Object.keys(_this.groupTestTIDList).length + "/" + Object.keys(fileCandList).length}</Button>
+
+        <Button onClick={() => {
+            Object.keys(fileCandList).forEach((tid, index) => {
+                let fileInfo = fileCandList[tid];
+                let atags = fileInfo.additionalTags;
+                fileInfo.list.forEach((file: any, findex: number) => {
+
+                    let info = file.info;
+                    info.atags = atags;
+                    let fileExt = file.name.split('.').pop();
+                    let name = BPG_API.Enc2StrInfo(file.info)
+                    let newName = name + "." + fileExt;
+                    if (file.name != newName) {
+                        console.log(fileInfo);
+                        // console.log(file.name,">",newName);
+
+                        let folderPath = fileInfo.path;
+
+                        BPG_API.FileRename(folderPath + "/" + file.name, folderPath + "/" + newName)
+
+                    }
+                })
+
+
+            })
+
+
+            LoadFileCandList();
+
+
+
+        }}>SAVE ATAGS</Button>
+
+        <Row justify="center" align="top">
+            <Col>
+
+                <Button onClick={() => {
+
+                    _this.groupTestTIDList = {};
+                    Object.keys(fileCandList)
+
+
+                    fileCheck(Object.keys(fileCandList)
+                        .filter(tid => fileCandList[tid].additionalTags.every((tag: string) => !tag.startsWith("$CAT"))))
+
+                }}>UNSET</Button>
+                <br />
+
+
+
+                {
+                    Object.keys(fileCandList)
+                        .filter(tid => fileCandList[tid].additionalTags.every((tag: string) => !tag.startsWith("$CAT_")))
+                        .map((tid) => {
+
+
+                            return <Button size='small' key={tid} onClick={() => {
+                                trigSimInsp(tid);
+                            }}>{tid + ":" + fileCandList[tid].result}</Button>
+                        })
+                }
+            </Col>
+        </Row>
+        <Row justify="center" align="top">
+            <Col span={7}>
+                <Button onClick={() => {
+
+                    _this.groupTestTIDList = {};
+                    Object.keys(fileCandList)
+
+
+                    fileCheck(Object.keys(fileCandList)
+                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_OK"))))
+
+                }}>OK</Button>
+                <br />
+
+
+                {
+                    Object.keys(fileCandList)
+                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_OK")))
+                        .map((tid) => {
+
+
+                            return <Button size='small' danger={fileCandList[tid].result != 1} key={tid} onClick={() => {
+                                trigSimInsp(tid);
+                            }}>{tid + ":" + fileCandList[tid].result}</Button>
+                        })
+                }
+            </Col>
+            <Col span={7}>
+                <Button onClick={() => {
+
+                    _this.groupTestTIDList = {};
+
+                    fileCheck(Object.keys(fileCandList)
+                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NG"))))
+
+                }}>NG</Button>
+                <br />
+                {
+                    Object.keys(fileCandList)
+                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NG_1")))
+                        .map((tid) => {
+
+
+                            return <Button size='small' danger={fileCandList[tid].result != -1} key={tid} onClick={() => {
+                                trigSimInsp(tid);
+                            }}>{tid + ":" + fileCandList[tid].result}</Button>
+                        })
+                }
+
+            </Col>
+            <Col span={7}>
+                NG2:<br />
+                {
+                    Object.keys(fileCandList)
+                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NG_2")))
+                        .map((tid) => {
+
+
+                            return <Button size='small' key={tid} danger={fileCandList[tid].result != -1} onClick={() => {
+                                trigSimInsp(tid);
+                            }}>{tid + ":" + fileCandList[tid].result}</Button>
+                        })
+                }
+
+            </Col>
+            <Col span={3}>
+                <Button type='primary' onClick={() => {
+
+                    _this.groupTestTIDList = {};
+
+                    fileCheck(Object.keys(fileCandList)
+                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NA"))))
+
+                }}>NA</Button>
+                <br />
+
+                {
+                    Object.keys(fileCandList)
+                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NA")))
+                        .map((tid) => {
+
+
+                            return <Button size='small' key={tid} danger={fileCandList[tid].result != 0} onClick={() => {
+                                trigSimInsp(tid);
+                            }}>{tid + ":" + fileCandList[tid].result}</Button>
+                        })
+                }
+            </Col>
+        </Row>
+
+
+       <Divider orientation="left">暫存圖訊</Divider>
+
+
+        
+        <Button onClick={() => {
+            if(fetchSrcTIDList.length!=0)
+            {
+                setFetchSrcTIDList([]);
+                return;
+            }
+            (async () => {
+                let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetFetchSrcTIDList" }) as any;
+                console.log(ret[0].data);
+                setFetchSrcTIDList(ret[0].data);
+            })()
+        }}>更新</Button>
+
+        <Button onClick={() => {
+
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: -1, count_NG: 0, count_NG2: 0, count_NA: 0 });
+        }}>OK only</Button>
+
+        <Button onClick={() => {
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: 0, count_NG: -1, count_NG2: 0, count_NA: 0 });
+        }}>NG only</Button>
+        <Button onClick={() => {
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: 0, count_NG: 0, count_NG2: -1, count_NA: 0 });
+        }}>NG2 only</Button>
+        <Button onClick={() => {
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: 0, count_NG: 0, count_NG2: 0, count_NA: -1 });
+        }}>NA only</Button>
+        <Button onClick={() => {
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: -1, count_NG: -1, count_NG2: -1, count_NA:0 });
+        }}>not NA only</Button>
+        <Button onClick={() => {
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: -1, count_NG: -1, count_NG2: 0, count_NA: -1 });
+        }}>ALL</Button>
+
+        <br/>
+        {
+            fetchSrcTIDList.map((tid, index) => {
+                return <Button key={"trigTID_" + tid + "_" + index} onClick={() => {
+                    BPG_API.InspTargetExchange(cacheDef.id, { type: "TriggerFetchSrc", trigger_id: tid })
+                }}>{tid}</Button>
+            })
+        }   
+        {
+
+            (fetchSrcTIDList.length==0)?null:<Button onClick={() => {
+
+                (async () => {
+                for(let i=0;i<fetchSrcTIDList.length;i++)
+                {
+                    await BPG_API.InspTargetExchange(cacheDef.id, { type: "TriggerFetchSrc", trigger_id: fetchSrcTIDList[i] })
+                }
+                })()
+
+
+            }}>測試全部暫存圖檔</Button>
+        }
+
+        <Button danger onClick={() => {
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "ClearFetchSrc" });
+        }}>清除暫存圖</Button>
+
+    </>;
+
+    function NumToStrWithPadding(num:any,padding:number=4)
+    {
+
+        let str=(typeof num === 'number')?num.toString():"";
+        while(str.length<padding)
+        {
+            str="0"+str;
+        }
+        return str;
+    }
+
+    let iconSize_B='50px'
+    let iconSize_S='30px'
+    let RoundBGSize_S='40px'
     return <div style={{ ...style }} className={"overlayCon"}>
-        <div className={"overlay scroll HXF"} style={{width:"100%"}} >
+        <div className={"overlay scroll HXF"} style={{width:"100%",pointerEvents:errResetingInfo===undefined?undefined: 'none'}} >
 
-            {/* {EDIT_UI} */}
-            <Button onClick={() => {
 
-                (async () => {
+
+            <Row align="middle">
+                <Button  size="large" style={{ width: '150px' }} onClick={() => {
+                    if(isRunning)
+                    {
+                        setIsRunning(false);
+                        (async () => {
+                            console.log(await _this.send({ type: "set_setup", plateFreq: 0 }));
+                        })();
+                        return;
+                    }
+
+                    setIsRunning(true);
                     (async () => {
-                        await sendMachConf({...machInfo});
-                    })()
-                    console.log(await _this.send({ type: "clear_error" }));
-                    console.log(await _this.send({ type: "enter_insp_mode" }));
-                })()
+                        (async () => {
+                            await sendMachConf({...machInfo});
+                        })()
+                        console.log(await _this.send({ type: "clear_error" }));
+                        console.log(await _this.send({ type: "enter_insp_mode" }));
+                    })();
+                }}>
+                    {isRunning?<>停機<PauseCircleOutlined style={{color: '#555'}} /></>:<>啟動<PlayCircleFilled  style={{color: '#5F5'}}/></>}
+                </Button>
+                {/* <div style={{width:"20px"}} ></div> */}
 
-            }}>RUN</Button>
+                <Divider type="vertical" style={{height:"50px"}}/>
 
-
-
-
-
-            <Button onClick={() => {
-
-                (async () => {
-
-                    console.log(await _this.send({ type: "set_setup", plateFreq: 0 }));
-                })()
-
-            }}>STOP</Button>
-
-
-
-            <Button onClick={() => {
-
-                (async () => {
-                    for (let i = 0; i < 1; i++) {
-                        _this.send({ type: "trig_phamton_pulse" })
-                        await delay(30);
-                    }
-                })()
-
-            }}>FakeTrig</Button>
-
-
-
-            <Button onClick={() => {
-
-                (async () => {
-                    console.log(await _this.send({ type: "clear_error" }));
-                })()
-
-            }}>ErrorClear</Button>
-
-
-            <Button onClick={() => {
-
-                (async () => {
-                   
-                    await fetchSetup();
-                })()
-
-            }}>GetSetup</Button>
-
-
-
-            <Button onClick={() => {
-
-                (async () => {
-                    let is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
-                    console.error("is_CONNECTED:", is_CONNECTED, " PeripheralCONNID", PeripheralCONNID);
-                    if (is_CONNECTED == false) {
-                        await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
-                    }
-
-                    
-                    // await fetchSetup();
-                })()
-
-            }}>CONNECT</Button>
-
-
-
-            <Button onClick={() => {
-
-                (async () => {
-                    await BPG_API.InspTargetExchange(cacheDef.id, { type: "DISCONNECT", comm_id: PeripheralCONNID });
-
-                })()
-
-            }}>DISCONNECT</Button>
-
-
-            <br />
-
-
-
-            <Button onClick={() => {
+                <Button  size="large" onClick={() => {
 
                 (async () => {
                     let ret = await _this.send({ type: "get_running_stat" });
                     setuInspCount(ret.count)
                 })()
 
-            }}>get_running_stat</Button>
+                }}>
 
-            {JSON.stringify(uInspCount)}
 
-            <Button onClick={() => {
+                <Tag color="green" >{NumToStrWithPadding(uInspCount?.SEL1)}</Tag>
+                <Tag color="yellow">{NumToStrWithPadding(uInspCount?.SEL2)}</Tag>
+                <Tag color="red">{NumToStrWithPadding(uInspCount?.SEL3)}</Tag>
+                <Tag color="gray">{NumToStrWithPadding(uInspCount?.NA)}</Tag>
+
+
+                </Button>
+
+                {/* <Button  size="large" danger onClick={() => {
 
                 (async () => {
                     let ret = await _this.send({ type: "reset_running_stat" });
                     setuInspCount(ret.count)
                 })()
 
-            }}>reset</Button>
+                }}>
+                </Button> */}
+
+
+                <Popconfirm
+                title="確定重置計數?"
+                onConfirm={()=>{
+                    (async () => {
+                        let ret = await _this.send({ type: "reset_running_stat" });
+                        setuInspCount(ret.count)
+                    })()
+                }}
+                onCancel={()=>{
+                }}
+                okText=" "
+                cancelText="___No___"
+                >
+                    
+                    <Button  size="large" danger>
+                        <DeleteOutlined/>
+                    </Button>
+                </Popconfirm>
+
+
+                <Divider type="vertical" style={{height:"50px"}}/>
+                <Button  size="large" onClick={() => {
+                    
+                    (async () => {
+                        for (let i = 0; i < 1; i++) {
+                            _this.send({ type: "trig_phamton_pulse" })
+                            await delay(30);
+                        }
+                    })()
+                }}>
+                <CameraOutlined/>
+                </Button>
+
+                <Divider type="vertical" style={{height:"50px"}}/>
+
+
+                <Button onClick={() => {
+
+                (async () => {
+
+                    console.log(await _this.send({ type: "stepper_enable" }));
+                })()
+
+                }}>MOTER ON</Button>
+
+
+                <Button onClick={() => {
+
+                (async () => {
+
+                console.log(await _this.send({ type: "stepper_disable" }));
+                })()
+
+                }}>OFF</Button>
+
+
+
+
+            </Row>
+
+
+
+            
+            <Row align="middle">
+
+
+                
+            </Row>
+
+            {/* <Button onClick={() => {
+
+                (async () => {
+                    console.log(await _this.send({ type: "clear_error" }));
+                })()
+
+            }}>錯誤重置</Button> */}
+
+
+            <br />
+
+
+
+            <Popconfirm
+                disabled={errResetingInfo!==undefined}
+                title="確定重置錯誤?"
+                onConfirm={()=>{
+                   
+                    (async () => {
+                        
+
+                        try{
+
+                            setErrResetingInfo("機台:停轉");
+                            console.log(await _this.send({ type: "set_setup", plateFreq: 0 },1000));
+                            await delay(500);
+
+
+                        
+                            setErrResetingInfo("機台:離開檢驗模式");await delay(500)
+                            console.log(await _this.send({ type: "exit_insp_mode" }));
+    
+                            setErrResetingInfo("機台:等待停止3");
+                            await delay(1000)
+                            setErrResetingInfo("機台:等待停止2");
+                            await delay(1000)
+                            setErrResetingInfo("機台:等待停止1");
+                            await delay(1000)
+
+                            setErrResetingInfo("機台:清理錯誤Flag");await delay(500)
+                            console.log(await _this.send({ type: "clear_error" }));
+                        }
+                        catch(e)
+                        {
+
+                        }
+                        setIsRunning(false);
+
+                        setErrResetingInfo("核心:清理暫存圖像");
+                        await BPG_API.CameraClearTriggerInfo();
+                        setErrResetingInfo("核心:清理檢驗超時偵測");await delay(500)
+                        let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetProcessTimeInfo",reset:true }) as any
+
+
+                        setProcessTimeInfo({})
+                        setErrResetingInfo("結束...");await delay(500)
+                        setErrResetingInfo(undefined);
+                    })()
+                }}
+                onCancel={()=>{
+                }}
+                okText=" "
+                cancelText="___No___"
+                >
+                    
+                    <Button danger disabled={errResetingInfo!==undefined} onClick={() => {
+                    }}>錯誤重置{errResetingInfo!==undefined?<><LoadingOutlined/>{errResetingInfo}</>:""}</Button>
+
+
+                </Popconfirm>
+
+
+
+
+            <Button onClick={() => {
+                (async () => {
+                    let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetProcessTimeInfo" }) as any
+                    let pti=pt_info[0].data;
+                    console.log(pti);
+                    setProcessTimeInfo(pti)
+                })()
+            }}>處理時間:{JSON.stringify(processTimeInfo)}</Button>
+            
+
+
+
+
+
+
+
+            <Divider orientation="left">
+                <Button onClick={() => {
+                    setImgReviewOptionUI(!imgReviewOptionUI)
+                }}>圖像測試{imgReviewOptionUI ? ' -' : ' +'}</Button>
+            </Divider>
+            {ImgReviewOption}
+
+
+
+            <Divider orientation="left">
+                <Button onClick={() => {
+                    setSpanSetupOptionUI(!spanSetupOptionUI)
+                }}>細部設定{spanSetupOptionUI ? ' -' : ' +'}</Button>
+            </Divider>
+
+            {setupOption}
+
+
 
 
             <Divider orientation="left">
@@ -6744,318 +7214,6 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 </>
             }
 
-
-
-
-
-            <Divider orientation="left">
-                <Button onClick={() => {
-                    setSpanSetupOptionUI(!spanSetupOptionUI)
-                }}>細部設定{spanSetupOptionUI ? ' -' : ' +'}</Button>
-            </Divider>
-
-            {setupOption}
-
-
-
-
-            {
-                (() => {
-
-
-                    if (fileCandSelectTID.length == 0) return null;
-
-                    let fileCandInfo = fileCandList[fileCandSelectTID];
-                    if (fileCandInfo === undefined) return null;
-
-
-
-                    function chooseNextUNSET(_fileCandList = fileCandList) {
-                        let keys = Object.keys(_fileCandList);
-                        let tar_tid = "";
-                        for (let i = 0; i < keys.length; i++) {
-                            let tid = keys[i];
-                            let tag = _fileCandList[tid].additionalTags.find((tag: string) => tag.startsWith("$CAT_"));
-                            console.log(tag);
-                            if (tag === undefined) {
-                                tar_tid = tid;
-                                trigSimInsp(tar_tid);
-                                break;
-                            }
-
-                        }
-
-                        setFileCandSelectTID(tar_tid);
-                    }
-
-
-                    let additionalTags = fileCandInfo.additionalTags as string[];
-                    if (additionalTags === undefined) additionalTags = [];
-                    console.log(fileCandInfo);
-
-                    function CATChange(toCAT: string) {
-                        let newTags = [...additionalTags.filter(tag => !tag.startsWith("$CAT_"))];
-                        if (toCAT != "") {
-                            newTags = [...newTags, "$CAT_" + toCAT]
-                        }
-                        let newFileCandList = ObjShellingAssign(fileCandList, [fileCandSelectTID, "additionalTags"], newTags);
-                        setFileCandList(newFileCandList);
-                        chooseNextUNSET(newFileCandList);
-                    }
-
-                    return <>
-                        {JSON.stringify(fileCandInfo.list[0].info)}
-                        {JSON.stringify(fileCandInfo.additionalTags)}
-                        <br />
-                        <Button type="primary" onClick={() => {
-                            CATChange("OK");
-                        }}>OK</Button>
-                        <Button danger onClick={() => {
-                            CATChange("NG_1");
-                        }}>NG1</Button>
-                        <Button danger onClick={() => {
-                            CATChange("NG_2");
-                        }}>NG2</Button>
-                        <Button type="dashed" onClick={() => {
-                            CATChange("NA");
-                        }}>NA</Button>
-                        <Button onClick={() => {
-                            CATChange("");
-                        }}>UNSET</Button>
-
-
-                        <Button onClick={() => {
-                            trigSimInsp(fileCandSelectTID);
-                        }}>CHECK</Button>
-                        <br />
-                    </>
-                })()
-            }
-
-            <Divider orientation="left"></Divider>
-
-
-            <Button onClick={() => {
-
-                LoadFileCandList();
-            }}>Update</Button>
-
-            <Button onClick={() => {
-                _this.groupTestTIDList = {};
-                BPG_API.InspTargetExchange("ImTran", { type: "force_down_scale", scale: -1 });
-
-                fileCheck(Object.keys(fileCandList))
-
-            }}>TEST ALL:{
-                    Object.keys(_this.groupTestTIDList).length + "/" + Object.keys(fileCandList).length}</Button>
-
-            <Button onClick={() => {
-                Object.keys(fileCandList).forEach((tid, index) => {
-                    let fileInfo = fileCandList[tid];
-                    let atags = fileInfo.additionalTags;
-                    fileInfo.list.forEach((file: any, findex: number) => {
-
-                        let info = file.info;
-                        info.atags = atags;
-                        let fileExt = file.name.split('.').pop();
-                        let name = BPG_API.Enc2StrInfo(file.info)
-                        let newName = name + "." + fileExt;
-                        if (file.name != newName) {
-                            console.log(fileInfo);
-                            // console.log(file.name,">",newName);
-
-                            let folderPath = fileInfo.path;
-
-                            BPG_API.FileRename(folderPath + "/" + file.name, folderPath + "/" + newName)
-
-                        }
-                    })
-
-
-                })
-
-
-                LoadFileCandList();
-
-
-
-            }}>SAVE ATAGS</Button>
-
-            <Row justify="center" align="top">
-                <Col>
-
-                    <Button onClick={() => {
-
-                        _this.groupTestTIDList = {};
-                        Object.keys(fileCandList)
-
-
-                        fileCheck(Object.keys(fileCandList)
-                            .filter(tid => fileCandList[tid].additionalTags.every((tag: string) => !tag.startsWith("$CAT"))))
-
-                    }}>UNSET</Button>
-                    <br />
-
-
-
-                    {
-                        Object.keys(fileCandList)
-                            .filter(tid => fileCandList[tid].additionalTags.every((tag: string) => !tag.startsWith("$CAT_")))
-                            .map((tid) => {
-
-
-                                return <Button size='small' key={tid} onClick={() => {
-                                    trigSimInsp(tid);
-                                }}>{tid + ":" + fileCandList[tid].result}</Button>
-                            })
-                    }
-                </Col>
-            </Row>
-            <Row justify="center" align="top">
-                <Col span={7}>
-                    <Button onClick={() => {
-
-                        _this.groupTestTIDList = {};
-                        Object.keys(fileCandList)
-
-
-                        fileCheck(Object.keys(fileCandList)
-                            .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_OK"))))
-
-                    }}>OK</Button>
-                    <br />
-
-
-                    {
-                        Object.keys(fileCandList)
-                            .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_OK")))
-                            .map((tid) => {
-
-
-                                return <Button size='small' danger={fileCandList[tid].result != 1} key={tid} onClick={() => {
-                                    trigSimInsp(tid);
-                                }}>{tid + ":" + fileCandList[tid].result}</Button>
-                            })
-                    }
-                </Col>
-                <Col span={7}>
-
-
-                    <Button onClick={() => {
-
-                        _this.groupTestTIDList = {};
-
-                        fileCheck(Object.keys(fileCandList)
-                            .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NG"))))
-
-                    }}>NG</Button>
-                    <br />
-                    {
-                        Object.keys(fileCandList)
-                            .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NG_1")))
-                            .map((tid) => {
-
-
-                                return <Button size='small' danger={fileCandList[tid].result != -1} key={tid} onClick={() => {
-                                    trigSimInsp(tid);
-                                }}>{tid + ":" + fileCandList[tid].result}</Button>
-                            })
-                    }
-
-                </Col>
-                <Col span={7}>
-                    NG2:<br />
-                    {
-                        Object.keys(fileCandList)
-                            .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NG_2")))
-                            .map((tid) => {
-
-
-                                return <Button size='small' key={tid} danger={fileCandList[tid].result != -1} onClick={() => {
-                                    trigSimInsp(tid);
-                                }}>{tid + ":" + fileCandList[tid].result}</Button>
-                            })
-                    }
-
-                </Col>
-                <Col span={3}>
-                    <Button type='primary' onClick={() => {
-
-                        _this.groupTestTIDList = {};
-
-                        fileCheck(Object.keys(fileCandList)
-                            .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NA"))))
-
-                    }}>NA</Button>
-                    <br />
-
-                    {
-                        Object.keys(fileCandList)
-                            .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NA")))
-                            .map((tid) => {
-
-
-                                return <Button size='small' key={tid} danger={fileCandList[tid].result != 0} onClick={() => {
-                                    trigSimInsp(tid);
-                                }}>{tid + ":" + fileCandList[tid].result}</Button>
-                            })
-                    }
-                </Col>
-            </Row>
-
-
-            <br />
-
-
-
-
-            <Button onClick={() => {
-                if(fetchSrcTIDList.length!=0)
-                {
-                    setFetchSrcTIDList([]);
-                    return;
-                }
-                (async () => {
-                    let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetFetchSrcTIDList" }) as any;
-                    console.log(ret[0].data);
-                    setFetchSrcTIDList(ret[0].data);
-                })()
-            }}>UpdateFetchList</Button>
-
-            <Button onClick={() => {
-
-                BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: -1, count_NG: 0, count_NG2: 0, count_NA: 0 });
-            }}>OK only</Button>
-
-            <Button onClick={() => {
-                BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: 0, count_NG: -1, count_NG2: 0, count_NA: 0 });
-            }}>NG only</Button>
-            <Button onClick={() => {
-                BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: 0, count_NG: 0, count_NG2: -1, count_NA: 0 });
-            }}>NG2 only</Button>
-            <Button onClick={() => {
-                BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: 0, count_NG: 0, count_NG2: 0, count_NA: -1 });
-            }}>NA only</Button>
-            <Button onClick={() => {
-                BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: -1, count_NG: -1, count_NG2: -1, count_NA:0 });
-            }}>not NA only</Button>
-            <Button onClick={() => {
-                BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: -1, count_NG: -1, count_NG2: 0, count_NA: -1 });
-            }}>ALL</Button>
-
-            <br/>
-            {
-                fetchSrcTIDList.map((tid, index) => {
-                    return <Button key={"trigTID_" + tid + "_" + index} onClick={() => {
-                        BPG_API.InspTargetExchange(cacheDef.id, { type: "TriggerFetchSrc", trigger_id: tid })
-                    }}>{tid}</Button>
-                })
-            }
-
-            <br />
-            <Button danger onClick={() => {
-                BPG_API.InspTargetExchange(cacheDef.id, { type: "ClearFetchSrc" });
-            }}>CLEAR</Button>
 
 
         </div>

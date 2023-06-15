@@ -185,7 +185,7 @@ export class BPG_WS
           // let act = BPG_Protocol.map_BPG_Packet2Act(parsed_pkt);
           // if (act !== undefined)
           // comp.props.DISPATCH(act);
-          console.log("LOSS TRACK pkts", parsed_pkt,this.reqWindow);
+          console.log("UNTRACK pkts", parsed_pkt,this.reqWindow);
         }
       }
 
