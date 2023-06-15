@@ -32,6 +32,27 @@ bool isDirExist(const char* dir_path)
   return false;
 }
 
+
+bool isFileExist(const char* dir_path)
+{
+  FILE* fp = fopen(dir_path,"r");
+  if (fp) {
+      /* Directory exists. */
+      fclose(fp);
+      return true;
+  } else if (ENOENT == errno) {
+      /* Directory does not exist. */
+  } else {
+      /* opendir() failed for some other reason. */
+  }
+  return false;
+}
+
+
+
+
+
+
 int Save2PNG(uint8_t *data, int width, int height, int channelCount, const char *filePath)
 {
   // we're going to encode with a state rather than a convenient function, because enforcing a color type requires setting options

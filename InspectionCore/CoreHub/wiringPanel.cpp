@@ -1825,11 +1825,11 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       {
         cJSON* ret_info= cJSON_CreateObject();
 
-        cJSON_AddNumberToObject(ret_info,"MaxDelay",(int)processTime_MaxDelay);
-        cJSON_AddNumberToObject(ret_info,"AvgDelay",(int)processTime_AvgDelay);
-        cJSON_AddNumberToObject(ret_info,"AvgDelay_Count",(int)processTime_AvgDelay_Count);
-        cJSON_AddNumberToObject(ret_info,"LPDelay",(int)processTime_LPDelay);
-        cJSON_AddNumberToObject(ret_info,"OverTimeCountMax",(int)processTime_OverTimeCountMax);
+        cJSON_AddNumberToObject(ret_info,"Max",(int)processTime_MaxDelay);
+        cJSON_AddNumberToObject(ret_info,"Avg",(int)processTime_AvgDelay);
+        cJSON_AddNumberToObject(ret_info,"LP",(int)processTime_LPDelay);
+        cJSON_AddNumberToObject(ret_info,"OTCountMax",(int)processTime_OverTimeCountMax);
+        cJSON_AddNumberToObject(ret_info,"Count",(int)processTime_AvgDelay_Count);
 
         act.send("RP",id,ret_info);
         cJSON_Delete(ret_info);
@@ -2467,11 +2467,12 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
     }
 
 
-
+    int send_trigger_id=trigger_id;
 
     if(processTimeRecord.find(trigger_id)!=processTimeRecord.end())
     {
       auto recTime=processTimeRecord[trigger_id];
+      processTimeRecord.erase(trigger_id);
       auto curTime=cv::getTickCount();
       
       double timeDIff_ms = 1000*(curTime-recTime)/cv::getTickFrequency();
@@ -2496,7 +2497,9 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
         float alpha=1-exp(-sampTDiff/0.05);
         processTime_LPDelay=processTime_LPDelay*(1-alpha)+timeDIff_ms*alpha;
       }
-      if(timeDIff_ms>100)
+
+
+      if(timeDIff_ms>JFetch_NUMBER_ex(def,"overtime_ms",130))
       {
 
         LOGE("OVERTIME......");
@@ -2504,7 +2507,7 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
         processTime_OverTimeCount++;
         if(processTime_OverTimeCount>200)
         {
-          trigger_id=99999999;
+          send_trigger_id=9999999;
         }
 
         if(processTime_OverTimeCountMax<processTime_OverTimeCount)
@@ -2518,7 +2521,6 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
         processTime_OverTimeCount=0;
       }
 
-      processTimeRecord.erase(trigger_id);
       preT=curTime;
     }
     else
@@ -2566,7 +2568,7 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
       
       cJSON *rep = cJSON_CreateObject();
       cJSON_AddStringToObject(rep,"type","report");
-      cJSON_AddNumberToObject(rep,"tid",trigger_id);
+      cJSON_AddNumberToObject(rep,"tid",send_trigger_id);
       cJSON_AddNumberToObject(rep,"cat",catSum);
 
       uint8_t _buf[1000];
@@ -3236,9 +3238,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         else
         {
 
-          LOGI("DataType_BPG>>BIN>>%s", byteArrString(dat->dat_raw + strinL, dat->size - strinL));
+          // LOGI("DataType_BPG>>BIN>>%s", byteArrString(dat->dat_raw + strinL, dat->size - strinL));
 
           FILE *write_ptr;
+
+          //In windows we disable the readonly flag
+          #ifdef _WIN32
+            _chmod(fileName, _S_IWRITE);
+          #endif
 
           write_ptr = fopen(fileName, "wb"); // w for write, b for binary
           if (write_ptr == NULL)
