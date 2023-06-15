@@ -1171,13 +1171,14 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       this->master=master;
     }
 
+    int testCounter=0;
     int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)
     {
       static int CCC=0;
       if(opcode==1 )
       {
 
-        
+        bool passUp=true;
         char tmp[1024];
 
 
@@ -1197,7 +1198,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
         if(strstr((char*)raw, "\"type\":\"bTrigInfo\"") != NULL)
         {
-          
+          passUp=false;
           cJSON *json = cJSON_Parse((char *)raw);
           if(json)
           {
@@ -1286,7 +1287,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
                 cJSON_AddNumberToObject(rep,"cat",fastTestRetCatFlag);
 
                 uint8_t _buf[1000];
-                LOGE(">>>>>>>pCH:%p");
+                // LOGE(">>>>>>>pCH:%p");
                 int ret= sendcJSONTo_perifCH(this,_buf, sizeof(_buf),true,rep);
                 cJSON_Delete(rep);
               }
@@ -1314,15 +1315,47 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
                 }
               }
             }
+            if(tidx==99)//Just for test
+            {
+              testCounter++;
+              
+              int tid=JFetch_NUMBER_ex(json,"tid",-1);
+              cJSON *rep = cJSON_CreateObject();
+              cJSON_AddStringToObject(rep,"type","report");
+              if(testCounter>20)
+                tid=-1;
 
+              cJSON_AddNumberToObject(rep,"tid",tid);
+              
+              cJSON_AddNumberToObject(rep,"cat",0xFFFF);
+
+              uint8_t _buf[1000];
+              // LOGE(">>>>>>>pCH:%p");
+              int ret= sendcJSONTo_perifCH(this,_buf, sizeof(_buf),true,rep);
+              cJSON_Delete(rep);
+
+            }
             cJSON_Delete(json);
           }
           json=NULL;
         }
-        sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s}", raw);
-        LOGI("<<:%s  comm_pgID:%d", tmp,comm_pgID);
-        bpg_pi.fromUpperLayer_DATA("PD",comm_pgID,tmp);
-        bpg_pi.fromUpperLayer_DATA("SS",comm_pgID,"{}");
+        
+        
+        if(strstr((char*)raw, "\"type\":\"systemInfo\")") != NULL)
+        {
+        }
+        
+        if(passUp)
+        {
+          sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s}", raw);
+          // LOGI("<<:%s  comm_pgID:%d", tmp,comm_pgID);
+          // int stream_id =JFetch_NUMBER_ex(master->additionalInfo,"stream_info.stream_id",-1);
+          // if(stream_id!=-1)
+          {
+            bpg_pi.fromUpperLayer_DATA("PD",comm_pgID,tmp);
+            bpg_pi.fromUpperLayer_DATA("SS",comm_pgID,"{}");
+          }
+        }
         return 0;
 
       }
@@ -1341,7 +1374,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     }
     
     void connected(Data_Layer_IF* ch){
-      
+      testCounter=0;
       printf(">>>%X connected\n",ch);
     }
 
@@ -2570,7 +2603,7 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
       cJSON_AddNumberToObject(rep,"cat",catSum);
 
       uint8_t _buf[1000];
-      LOGE(">>>>>>>pCH:%p");
+      // LOGE(">>>>>>>pCH:%p");
       int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,rep);
       cJSON_Delete(rep);
 
