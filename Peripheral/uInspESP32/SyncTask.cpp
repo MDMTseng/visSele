@@ -5,7 +5,7 @@
 #include "soc/rtc_wdt.h"
 #include <Data_Layer_Protocol.hpp>
 #include "driver/timer.h"
-
+#include <string>
 
 extern "C" {
 #include "direct_spi.h"
@@ -219,6 +219,7 @@ void RESET_ALL_PIPELINE_QUEUE()
 enum TaskQ2CommInfo_Type{
   trigInfo=1000,
   btrigInfo=1005,//brif trigger info
+  systemInfo=1006,
   ext_log=1001,
   respFrame=1002,
 };
@@ -440,11 +441,25 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
   
   if (sysinfo.state != state)
   { //state changed
+
+
+    {
+      TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
+      if(commInfo){
+        commInfo->type=TaskQ2CommInfo_Type::systemInfo;
+        char numberStr[100];  // Assuming the number will fit within 10 characters
+        sprintf(numberStr, "State changed from  %d to %d",sysinfo.state,state);
+        commInfo->log=numberStr;
+        TaskQ2CommInfoQ.pushHead();
+      }
+    }
+
     sysinfo.pre_state = sysinfo.state;
     sysinfo.state = state;
     sysinfo.extra_code=extraCode;
     // DEBUG_printf("=========s:%d=>%d\n",sysinfo.pre_state,sysinfo.state);
     SYS_STATE_LIFECYCLE(sysinfo.pre_state, sysinfo.state );
+
   }
   else
   {
@@ -1197,7 +1212,7 @@ StaticJsonDocument<1024> ret_doc;
 
 
 StaticJsonDocument <1024>doc;
-StaticJsonDocument  <1024>retdoc;
+StaticJsonDocument <1024>retdoc;
 
 
 
@@ -1339,8 +1354,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       {
         pipe->insp_status=insp_status_SKIP;
       }
+
       // if(i>30)
-      // {//only check the last 3 info in the queue
+      // {//only check the last 30 info in the queue
       //   break;
       // }
     }
@@ -1940,6 +1956,31 @@ void loop()
 
           retdoc["tid"]=info.trig_id;
           retdoc["Qs"]=RBuf.size();
+          int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+          djrl.send_json_string(0,buff,slen,0);
+          break;
+        }
+
+        case TaskQ2CommInfo_Type::systemInfo :
+        {
+          retdoc["type"]="systemInfo"; 
+
+          retdoc["state"]=(int)sysinfo.state;
+          
+
+          {
+            JsonArray jERROR_HIST = retdoc.createNestedArray("ERROR_HIST");
+
+            for(int i=0;i<ERROR_HIST.size();i++)
+            {
+              jERROR_HIST.add((int)*ERROR_HIST.getTail(i));
+            }
+          }
+
+
+          retdoc["log"]=info.log;
+
+
           int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
           djrl.send_json_string(0,buff,slen,0);
           break;
