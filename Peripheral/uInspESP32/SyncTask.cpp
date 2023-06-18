@@ -1307,14 +1307,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   else if(strcmp(type,"get_running_stat")==0)
   {
 
-    // {
-    //   JsonArray jERROR_HIST = jdoc.createNestedArray("ERROR_HIST");
+    {
+      JsonArray jERROR_HIST = retdoc.createNestedArray("ERROR_HIST");
 
-    //   for(int i=0;i<ERROR_HIST.size();i++)
-    //   {
-    //     jERROR_HIST.add((int)*ERROR_HIST.getTail(i));
-    //   }
-    // }
+      for(int i=0;i<ERROR_HIST.size();i++)
+      {
+        jERROR_HIST.add((int)*ERROR_HIST.getTail(i));
+      }
+    }
 
 
     JsonObject jCountInfo  = retdoc.createNestedObject("count");
@@ -1323,6 +1323,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     jCountInfo["SEL3"]=SEL3_Count;
     jCountInfo["NA"]=NA_Count;
 
+    //current state
+    retdoc["state"]=(int)sysinfo.state;
+
+    retdoc["plateFreq"]=SYS_TAR_FREQ;//SYS_CUR_FREQ;
 
 
     // retdoc["plateFreq"]=NA_Count;
@@ -1384,16 +1388,22 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
 
 
-    doRsp=true;
+    doRsp=false;
 
   }
-  
+
   else if(strcmp(type,"clear_error")==0)
   {
     RESET_ALL_PIPELINE_QUEUE(); 
+
     SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR_REDEEM);
 
     
+    doRsp=rspAck=true;
+  }
+  else if(strcmp(type,"clear_error_history")==0)
+  {
+    ERROR_HIST.clear();
     doRsp=rspAck=true;
   }
 

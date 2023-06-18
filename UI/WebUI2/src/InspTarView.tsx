@@ -6,8 +6,8 @@ import { Layout, Button, Tabs, Slider, Menu, Divider, Dropdown, Popconfirm, Radi
 
 import type { MenuProps, MenuTheme } from 'antd/es/menu';
 import {
-    UserOutlined, LaptopOutlined, NotificationOutlined, DownOutlined, MoreOutlined, PlayCircleFilled,PauseCircleOutlined,
-    DisconnectOutlined, LinkOutlined,CameraOutlined,SyncOutlined,DeleteOutlined,FrownOutlined,LoadingOutlined
+    UserOutlined, LaptopOutlined, NotificationOutlined, DownOutlined, MoreOutlined, PlayCircleFilled,PauseCircleOutlined,PauseCircleFilled,
+    DisconnectOutlined, LinkOutlined,CameraOutlined,SyncOutlined,DeleteOutlined,ExclamationCircleOutlined,LoadingOutlined,StopOutlined
 } from '@ant-design/icons';
 
 import clone from 'clone';
@@ -26,7 +26,7 @@ import { VEC2D, SHAPE_ARC, SHAPE_LINE_seg, PtRotate2d } from './UTIL/MathTools';
 import { HookCanvasComponent, DrawHook_CanvasComponent, type_DrawHook_g, type_DrawHook } from './CanvasComp/CanvasComponent';
 import { CORE_ID, CNC_PERIPHERAL_ID, BPG_WS, CNC_Perif, InspCamera_API } from './EXT_API';
 
-import { Row, Col, Input, Tag, Modal, message, Space,Statistic } from 'antd';
+import { Row, Col, Input, Tag, Modal, message, Space,Statistic,Avatar } from 'antd';
 
 
 import { type_CameraInfo, type_IMCM } from './AppTypes';
@@ -4454,6 +4454,13 @@ function SurfaceCheckSimple_EDIT_UI(param:
                             onDefChange(newDef, true);
                         }} />
 
+                    {"  "}區域名稱尺寸:
+                    <InputNumber min={0.1} max={10} step={0.1} value={def_Filled.subRegionNameSize}
+                        onChange={(num) => {
+                            let newDef = { ...def_Filled, subRegionNameSize: num }
+                            onDefChange(newDef, true);
+                        }} />
+
 
                     圖序反轉:
                     <Switch checkedChildren="左至右" unCheckedChildren="右至左" checked={def_Filled.img_order_reverse == true} onChange={(check) => {
@@ -4775,7 +4782,22 @@ function TagsEdit_DropDown({ tags, onTagsChange, children }: { tags: (string | s
 
 }
 
+const CAT_ID_Color = {
+    "": "gray",
+    "0": "gray",
+    "1": "green",
+    "-1": "red",
+    "-2": "red",
+    "-3": "red",
+    "-40000": "gray",
+
+    "-700": "red",
+    "-701": "red",
+    "-750": "red",
+}
+
 const CAT_ID_NAME = {
+    "": "NA",
     "0": "NA",
     "1": "OK",
     "-1": "NG",
@@ -5433,6 +5455,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
                 if (defReport !== undefined) {
 
+                    let subRegionNameSize=cacheDef.subRegionNameSize||1;
                     let g_cat = defReport.report.sub_reports;
 
                     {
@@ -5503,8 +5526,6 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
                                 {
 
-                                    // ctx.strokeStyle = "rgba(100, 100, 100,0.6)";
-
                                     ctx.fillStyle = ctx.strokeStyle;
                                     let lineHeight = 15;
                                     ctx.font = lineHeight + "px Arial";
@@ -5515,26 +5536,25 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                     let idText = prefix + (regionInfo.name === undefined || regionInfo.name == "" ? "$" + subreg_index : regionInfo.name);// +"["+id_name+"]";
                                     drawRegion(g, canvas_obj, regionInfo.region, lsz);
 
-
-
                                     let loc=regionInfo.name_loc_offset!==undefined?regionInfo.name_loc_offset:regionInfo.region;
-                                    ctx.fillText(idText, loc.x, loc.y);
+                                    g.ctx.save();
+                                    g.ctx.translate(loc.x, loc.y);
+                                    g.ctx.scale(subRegionNameSize,subRegionNameSize);
+
+                                    ctx.fillText(idText, 0, 0);
                                     let fLoc = ctx.measureText(idText).width;
                                     let yoffset = 0;
                                     ctx.strokeStyle = ctx.fillStyle = `rgba(200,200,200,0.6)`;
-                                    ctx.fillText((subreg.score===null)?"N/A":subreg.score.toFixed(2) , loc.x + fLoc, loc.y + yoffset); yoffset += 19;
-
-
-
-
-
+                                    ctx.fillText((subreg.score===null)?"N/A":subreg.score.toFixed(2) , fLoc, yoffset); yoffset += 19;
 
                                     let overlayColor = { r: 255, g: 0, b: 0, ...regionInfo.overlayColor }
 
                                     ctx.strokeStyle = ctx.fillStyle = `rgba(${overlayColor.r}, ${overlayColor.g},${overlayColor.b},1)`;
-                                    ctx.arc(loc.x + fLoc, loc.y - lineHeight, 3, 0, 2 * Math.PI, false);
+                                    ctx.arc(0, 0, 3, 0, 2 * Math.PI, false);
                                     ctx.fill();
                                     ctx.closePath();
+
+                                    ctx.restore();
 
                                 }
 
@@ -5844,6 +5864,7 @@ export function SingleTargetVIEWUI_BASE(props: CompParam_InspTarUI) {
 }
 
 
+let btn_boxshadow="-3px -3px 5px rgba(255,255,255,0.5),3px 3px 5px rgba(70,70,70,0.3), inset -3px -3px 5px rgba(70, 70, 70, 0.3), inset 3px 3px 5px rgba(255, 255, 255, 0.4)"
 
 export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     let { display, fsPath, EditPermitFlag, style = undefined, renderHook, systemInspTarList, def, report, onDefChange } = props;
@@ -5884,9 +5905,32 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     const [spanSetupOptionUI, setSpanSetupOptionUI] = useState(false);
     const [imgReviewOptionUI, setImgReviewOptionUI] = useState(false);
     const [inspStatistic, setInspStatistic] = useState<any>({});
+    const [latestReport, setLatestReport] = useState<any>(undefined);
+
+
     const [spanStatisticUI, setSpanStatisticUI] = useState(false);
     const [isRunning, setIsRunning] = useState(false);
+    const [connSendBlock, setConnSendBlock] = useState(false);
 
+
+    const [periodicPullCMDs, _setPeriodicPullCMDs] = useState<any[]>([]);
+    const [runningState, setRunningState] = useState<any>(undefined);
+    
+
+
+    function setPeriodicPullCMDs(CMDs:any[])
+    {
+        _setPeriodicPullCMDs(CMDs);
+        let dataCMDs=CMDs.map(cmd=>{
+            let ncmd={...cmd};
+            delete ncmd["receive"];
+            return ncmd;
+        });
+        
+
+        console.log(dataCMDs)
+        BPG_API.InspTargetExchange(cacheDef.id, { type: "setPeriodicPullCMDs",cmds:dataCMDs });
+    }
 
     useEffect(() => {
         console.log("fsPath:" + fsPath)
@@ -5914,8 +5958,11 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         // onDefChange({...def,mach_config:setupInfo},false);
     }
 
+    // console.log(">>>",runningState)
     _this.fileCandList = fileCandList;
     _this.inspStatistic = inspStatistic;
+    _this.periodicPullCMDs=periodicPullCMDs;
+    _this.runningState=runningState;
     useEffect(() => {//////////////////////
 
         _this.send_id = 0;
@@ -5941,7 +5988,6 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         }
         _this.send = pSend;
 
-
         BPG_API.send(undefined, 0, { _PGID_: PeripheralCONNID, _PGINFO_: { keep: true } }, undefined,
             {
 
@@ -5957,7 +6003,23 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                         let PD = stacked_pkts.find((p: any) => p.type == "PD");
                         if(PD!==undefined)
                         {
-                            console.log("PD:",PD?.data?.msg);
+                            // console.log("PD:",PD?.data?.msg);
+
+                            let msg=PD?.data?.msg;
+                            if(msg!==undefined && msg.id<0)
+                            {
+
+                                // console.log("PD:",msg);
+
+                                let tarCMD=_this.periodicPullCMDs.find((cmd:any)=>cmd.id==msg.id)
+                                if(tarCMD)
+                                { 
+                                    
+                                    // console.log("PD:",msg,"tarCMD:",tarCMD);
+                                    tarCMD.receive(msg);
+                                }
+                                // ?.receive(msg);
+                            }
                             return;
                         }
 
@@ -5975,12 +6037,34 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
             });
 
         
+            
+        _this.periodicWatchDog=setInterval(()=>{
+            if(_this.runningState===undefined)return;
+            if(Date.now()-_this.runningState.timeStamp>3000)
+            {
+                setRunningState(undefined);
+            }
+        },1000);
+
+        
         let cbsKey="_"+Math.random();
 
         (async () => {
 
             let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
 
+
+
+            {
+                let pCMDs=[];
+                let id=-1000;
+                pCMDs.push({type:"get_running_stat",id,receive:(msg:any)=>{
+                    setRunningState({...msg,timeStamp:Date.now()});
+                }});id--;
+
+
+                setPeriodicPullCMDs(pCMDs);
+            }
 
 
             await BPG_API.send_cbs_attach(
@@ -5992,7 +6076,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                     if (CM === undefined) return;
                     let RP = pkts.find((p: any) => p.type == "RP");
                     if (RP === undefined) return;
-                    // console.log("++++++++\n", CM, RP);
+                    console.log("++++++++\n", CM, RP);
 
                     if (RP.data.trigger_id < TID_OFFSET) {
                         let otid = TID_OFFSET - RP.data.trigger_id;
@@ -6010,58 +6094,66 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
                     if (1) do {
 
-                        if (RP.data.report.hole_location_index == -1) break;
+                        // if (RP.data.report.hole_location_index == -1) break;
                         // if(RP.data.trigger_id<0)break;
 
-                        let tarRepIdx = RP.data.report.hole_location_index == 0 ? 1 : 0;
+                        // let tarRepIdx = RP.data.report.hole_location_index == 0 ? 1 : 0;
                         let surface_check_reports = RP.data.report.surface_check_reports;
-                        let tarRepId = surface_check_reports[tarRepIdx].InspTar_id;
-
-                        let regionsReps = surface_check_reports[tarRepIdx].report.sub_reports[0].sub_regions;
-                        let repDef = systemInspTarList.find(def => def.id == tarRepId)
-                        // console.log(tarRepIdx,surface_check_reports,regionsReps,repDef)
-
-                        let stat = { ..._this.inspStatistic[tarRepId] };
-
-                        regionsReps.forEach((rrep: any, index: number) => {
-                            let rdef = repDef.sub_regions[index];
-                            // repDef
-                            let name = rdef.name;
-                            // console.log(name, rrep, repDef.sub_regions[index])
-                            let cstat = {name, rec: [], OK: 0, NG: 0, NG2: 0, NG3: 0, NA: 0, ...stat[index] };
-
-                            if (rrep.category == 1) {
-                                cstat.OK++;
-                            }
-                            else if (rrep.category == -1) {
-                                cstat.NG++;
-                            }
-                            else if (rrep.category == -2) {
-                                cstat.NG2++;
-                            }
-                            else if (rrep.category == -3) {
-                                cstat.NG3++;
-                            }
-                            else {
-                                cstat.NA++;
-                            }
 
 
-                            cstat.rec.push(rrep);
-                            stat[index] = cstat;
-                        })
+                        let newStat={..._this.inspStatistic};
+                        console.log();
+                        for(let i=0;i<surface_check_reports.length;i++)
+                        {
+                            console.log(i,surface_check_reports[i].InspTar_id)
+                            let tarRepIdx=i;
 
+                            let tarRepId = surface_check_reports[tarRepIdx].InspTar_id;
 
+                            let regionsReps = surface_check_reports[tarRepIdx].report.sub_reports[0].sub_regions;
+                            let repDef = systemInspTarList.find(def => def.id == tarRepId)
+                            // console.log(tarRepIdx,surface_check_reports,regionsReps,repDef)
+    
+                            let stat = { ..._this.inspStatistic[tarRepId] };
+    
+                            regionsReps.forEach((rrep: any, index: number) => {
+                                let rdef = repDef.sub_regions[index];
+                                // repDef
+                                let name = rdef.name;
+                                // console.log(name, rrep, repDef.sub_regions[index])
+                                let cstat = {name, rec: [], OK: 0, NG: 0, NG2: 0, NG3: 0, NA: 0, ...stat[index] };
+    
+                                if (rrep.category == 1) {
+                                    cstat.OK++;
+                                }
+                                else if (rrep.category == -1) {
+                                    cstat.NG++;
+                                }
+                                else if (rrep.category == -2) {
+                                    cstat.NG2++;
+                                }
+                                else if (rrep.category == -3) {
+                                    cstat.NG3++;
+                                }
+                                else {
+                                    cstat.NA++;
+                                }
+    
+    
+                                cstat.rec.push(rrep);
+                                stat[index] = cstat;
+                            })
+    
+                            newStat[tarRepId]=stat;
+                        }
 
-                        console.log(_this.inspStatistic)
+                        // console.log(_this.inspStatistic)
 
-                        setInspStatistic({
-                            ..._this.inspStatistic,
-                            [tarRepId]: stat
-                        })
+                        setInspStatistic(newStat)
                     } while (false);
 
 
+                    setLatestReport(RP.data);
 
 
                 },
@@ -6090,6 +6182,8 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
             is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
             console.error("is_CONNECTED:", is_CONNECTED);
+
+            
             
             setMachConfig(cacheDef.mach_config)
         })()
@@ -6101,6 +6195,8 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 await BPG_API.send_cbs_detach(
                     cacheDef.stream_id, cbsKey);
             })()
+
+            clearInterval(_this.periodicWatchDog);
 
         })
     }, []);
@@ -6128,7 +6224,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
             originalInfo[key+"_span"]=config.stage_pulse_offset[key+"_off"]-config.stage_pulse_offset[key+"_on"];
         })
 
-        console.error(originalInfo);
+        // console.error(originalInfo);
         return originalInfo as any;
     }
 
@@ -6266,7 +6362,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
     }
     let machInfo  = getCurrentMachInfo();
-    console.log(machConfig,machInfo);
+    // console.log(machConfig,machInfo);
 
 
 
@@ -6274,6 +6370,55 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     let setupOption = spanSetupOptionUI == false ? null : <>
 
 
+
+        錯誤歷史:   
+        {runningState?.ERROR_HIST?.map((err:number)=><Tag color="red">{err}</Tag>)}
+        
+
+
+
+        <Popconfirm
+        title="確定重置錯誤列表?"
+        onConfirm={()=>{
+            (async () => {
+                let ret = await _this.send({ type: "clear_error_history" });
+                // setuInspCount(ret.count)
+            })()
+        }}
+        onCancel={()=>{
+        }}
+        okText="OK"
+        cancelText="NO"
+        >
+            
+            <Button  size="large" danger>
+                <DeleteOutlined/>
+            </Button>
+        </Popconfirm>
+
+
+
+        <Popconfirm
+        title="確定重置計數?"
+        onConfirm={()=>{
+            (async () => {
+                let ret = await _this.send({ type: "reset_running_stat" });
+                // setuInspCount(ret.count)
+            })()
+        }}
+        onCancel={()=>{
+        }}
+        okText="OK"
+        cancelText="NO"
+        >
+            
+            <Button  size="large" danger>
+            重置全檢計數<DeleteOutlined/>
+            </Button>
+        </Popconfirm>
+
+
+        <br/>
 
         <Button onClick={() => {
 
@@ -6287,13 +6432,13 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         <Button onClick={() => {
 
         (async () => {
-            let is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
-            console.error("is_CONNECTED:", is_CONNECTED, " PeripheralCONNID", PeripheralCONNID);
-            if (is_CONNECTED == false) {
-                await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
-            }
+            // let is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
+            // console.error("is_CONNECTED:", is_CONNECTED, " PeripheralCONNID", PeripheralCONNID);
+            // if (is_CONNECTED == false) {
+            //     await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
+            // }
 
-            
+            await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
             // await fetchSetup();
         })()
 
@@ -6309,7 +6454,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         })()
 
         }}>DISCONNECT</Button>
-        <br />
+
 
         <Button onClick={() => {
 
@@ -6317,7 +6462,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
             sendMachConf({...machInfo,plateFreq:machInfo.plateFreq+100});
         })()
 
-        }}>Freq+ {machInfo.plateFreq}</Button>
+        }}>轉速+ {machInfo.plateFreq}</Button>
 
 
 
@@ -6339,7 +6484,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
             sendMachConf({...machInfo,minDetectTimeSep_us:Math.round(1000000/curTPS)});
         })()
 
-        }}>TPS+ {curTPS}</Button>
+        }}>偵速+ {curTPS}</Button>
 
         <Button onClick={() => {
 
@@ -6351,14 +6496,14 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         })()
         }}>-</Button>
 
-
+        <br/>
         <Button onClick={() => {
 
             (async () => {
                 sendMachConf({...machInfo,CAM1:machInfo.CAM1+10,L1A:machInfo.CAM1+10});
             })()
 
-        }}>CAM+ {machInfo.CAM1}</Button>
+        }}>CAM1+ {machInfo.CAM1}</Button>
 
 
 
@@ -6509,8 +6654,8 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
             BPG_API.InspTargetExchange(cacheDef.id, { type: "TEST_MODE", mode: "" });
         }}>T_NORMAL</Button>
 
-        <br />
 
+        <br />
 
 
 {/* 
@@ -6937,54 +7082,81 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     let iconSize_B='50px'
     let iconSize_S='30px'
     let RoundBGSize_S='40px'
+
+    let tagSize={ fontSize: '15px', padding: '4px 8px' }
+
+
+    let evStateRunning=(runningState?.plateFreq!=0);
+    let isRealRunning=isRunning||(evStateRunning);
+
     return <div style={{ ...style }} className={"overlayCon"}>
         <div className={"overlay scroll HXF"} style={{width:"100%",pointerEvents:errResetingInfo===undefined?undefined: 'none'}} >
 
 
 
             <Row align="middle">
-                <Button  size="large" style={{ width: '150px' }} onClick={() => {
-                    if(isRunning)
-                    {
-                        setIsRunning(false);
-                        (async () => {
-                            console.log(await _this.send({ type: "set_setup", plateFreq: 0 }));
-                        })();
-                        return;
-                    }
+                <Divider type="vertical"/>
+                {
+                runningState===undefined?<Avatar size={100} icon={connSendBlock?<LoadingOutlined/>:<LinkOutlined />}  style={{boxShadow:btn_boxshadow, backgroundColor:connSendBlock?"#AAA":"#5F5" }} 
+                    onClick={()=>{
+                        if(connSendBlock)return;
 
-                    setIsRunning(true);
-                    (async () => {
+                        setConnSendBlock(true);
+                        BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID })
+                        setTimeout(()=>{
+                            setConnSendBlock(false);
+                        },2000);
+                    }}/>:
+                <Avatar size={100} icon={isRealRunning?<><PauseCircleFilled /></>:<><PlayCircleFilled /></>}  style={{ 
+                    boxShadow:btn_boxshadow,
+                    backgroundColor:
+                    (runningState===undefined || evStateRunning!=isRealRunning)?undefined:( isRealRunning?"#F55":'#5F5') }} 
+                    onClick={()=>{
+
+
+                        if(isRealRunning)
+                        {
+                            setIsRunning(false);
+                            (async () => {
+                                console.log(await _this.send({ type: "set_setup", plateFreq: 0 }));
+                                console.log(await _this.send({ type: "exit_insp_mode" }));
+    
+                            })();
+                            return;
+                        }
+    
+                        setIsRunning(true);
                         (async () => {
-                            await sendMachConf({...machInfo});
-                        })()
-                        console.log(await _this.send({ type: "clear_error" }));
-                        console.log(await _this.send({ type: "enter_insp_mode" }));
-                    })();
-                }}>
-                    {isRunning?<>停機<PauseCircleOutlined style={{color: '#555'}} /></>:<>啟動<PlayCircleFilled  style={{color: '#5F5'}}/></>}
-                </Button>
+                            (async () => {
+                                await sendMachConf({...machInfo});
+                            })()
+                            console.log(await _this.send({ type: "clear_error" }));
+                            console.log(await _this.send({ type: "enter_insp_mode" }));
+                        })();
+
+                    }}
+                    
+                    
+                    />
+                }
                 {/* <div style={{width:"20px"}} ></div> */}
 
-                <Divider type="vertical" style={{height:"50px"}}/>
+                <Divider type="vertical"/>
 
-                <Button  size="large" onClick={() => {
+                <Col>
 
-                (async () => {
-                    let ret = await _this.send({ type: "get_running_stat" });
-                    setuInspCount(ret.count)
-                })()
+                <Row align="middle">
 
-                }}>
+                <div>
 
 
-                <Tag color="green" >{NumToStrWithPadding(uInspCount?.SEL1)}</Tag>
-                <Tag color="yellow">{NumToStrWithPadding(uInspCount?.SEL2)}</Tag>
-                <Tag color="red">{NumToStrWithPadding(uInspCount?.SEL3)}</Tag>
-                <Tag color="gray">{NumToStrWithPadding(uInspCount?.NA)}</Tag>
+                <Tag color="green" style={tagSize}>{NumToStrWithPadding(runningState?.count?.SEL1)}</Tag>
+                <Tag color="red" style={tagSize}>{NumToStrWithPadding(runningState?.count?.SEL2)}</Tag>
+                <Tag color="yellow" style={tagSize}>{NumToStrWithPadding(runningState?.count?.SEL3)}</Tag>
+                <Tag color="gray" style={tagSize}>{NumToStrWithPadding(runningState?.count?.NA)}</Tag>
 
 
-                </Button>
+                </div>
 
                 {/* <Button  size="large" danger onClick={() => {
 
@@ -6996,88 +7168,63 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 }}>
                 </Button> */}
 
+                </Row>
 
-                <Popconfirm
-                title="確定重置計數?"
-                onConfirm={()=>{
-                    (async () => {
-                        let ret = await _this.send({ type: "reset_running_stat" });
-                        setuInspCount(ret.count)
-                    })()
-                }}
-                onCancel={()=>{
-                }}
-                okText=" "
-                cancelText="___No___"
-                >
-                    
-                    <Button  size="large" danger>
-                        <DeleteOutlined/>
-                    </Button>
-                </Popconfirm>
+                <Row align="middle">
+
+                <Tag color={runningState?.state!==undefined?"green":"red"} style={tagSize}>狀態{runningState?.state||"離線"}</Tag>
+
+            
+                <Tag key={latestReport?.report?.category+"__"} color={CAT_ID_Color[latestReport?.report?.category+""]} style={{...tagSize}}>{CAT_ID_NAME[latestReport?.report?.category+""]}</Tag>
 
 
-                <Divider type="vertical" style={{height:"50px"}}/>
-                <Button  size="large" onClick={() => {
-                    
-                    (async () => {
-                        for (let i = 0; i < 1; i++) {
-                            _this.send({ type: "trig_phamton_pulse" })
-                            await delay(30);
-                        }
-                    })()
-                }}>
-                <CameraOutlined/>
-                </Button>
-
-                <Divider type="vertical" style={{height:"50px"}}/>
 
 
-                <Button onClick={() => {
 
-                (async () => {
-
-                    console.log(await _this.send({ type: "stepper_enable" }));
-                })()
-
-                }}>MOTER ON</Button>
-
-
-                <Button onClick={() => {
-
-                (async () => {
-
-                console.log(await _this.send({ type: "stepper_disable" }));
-                })()
-
-                }}>OFF</Button>
-
-
+                </Row>
+                </Col>
 
 
             </Row>
 
+            <br/>
+            <br/>
 
-
-            
             <Row align="middle">
+            <Button onClick={() => {
+
+            (async () => {
+
+                console.log(await _this.send({ type: "stepper_enable" }));
+            })()
+
+            }}>馬達ON</Button>
+
+
+            <Button onClick={() => {
+
+            (async () => {
+
+            console.log(await _this.send({ type: "stepper_disable" }));
+            })()
+
+            }}>OFF</Button>
+            <Divider type="vertical"/>
+            <Button  size="large" onClick={() => {
+                
+                (async () => {
+                    for (let i = 0; i < 1; i++) {
+                        _this.send({ type: "trig_phamton_pulse" })
+                        await delay(1000/25);
+                    }
+                })()
+            }}>
+            <CameraOutlined/>
+            </Button>
 
 
                 
             </Row>
-
-            {/* <Button onClick={() => {
-
-                (async () => {
-                    console.log(await _this.send({ type: "clear_error" }));
-                })()
-
-            }}>錯誤重置</Button> */}
-
-
-            <br />
-
-
 
             <Popconfirm
                 disabled={errResetingInfo!==undefined}
@@ -7127,31 +7274,42 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 }}
                 onCancel={()=>{
                 }}
-                okText=" "
-                cancelText="___No___"
+                okText="OK"
+                cancelText="NO"
                 >
                     
                     <Button danger disabled={errResetingInfo!==undefined} onClick={() => {
-                    }}>錯誤重置{errResetingInfo!==undefined?<><LoadingOutlined/>{errResetingInfo}</>:""}</Button>
+                    }}>系統重置{errResetingInfo!==undefined?<><LoadingOutlined/>{errResetingInfo}</>:""}</Button>
 
 
                 </Popconfirm>
 
 
-
-
-            <Button onClick={() => {
-                (async () => {
-                    let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetProcessTimeInfo" }) as any
-                    let pti=pt_info[0].data;
-                    console.log(pti);
-                    setProcessTimeInfo(pti)
-                })()
-            }}>處理時間:{JSON.stringify(processTimeInfo)}</Button>
             
 
+                <Button onClick={() => {
+                    (async () => {
+                        let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetProcessTimeInfo" }) as any
+                        let pti=pt_info[0].data;
+                        console.log(pti);
+                        setProcessTimeInfo(pti)
+                    })()
+                }}>處理時間:{JSON.stringify(processTimeInfo)}</Button>
+                
+
+            
+            {/* <Button onClick={() => {
+
+                (async () => {
+                    console.log(await _this.send({ type: "clear_error" }));
+                })()
+
+            }}>錯誤重置</Button> */}
 
 
+            <br />
+
+            
 
 
 
@@ -7192,12 +7350,10 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                         {key}<br/>
                         {
                             Object.keys(inspTarStat).map(itskey=><>
-                                {inspTarStat[itskey].name}<br/>
                                 {"O:"+inspTarStat[itskey].OK}
-                                {" X:"+inspTarStat[itskey].NG}
-                                {" X2:"+inspTarStat[itskey].NG2}
-                                {" X3:"+inspTarStat[itskey].NG3}
-                                {" _:"+inspTarStat[itskey].NA}<br/>
+                                {" X:"+inspTarStat[itskey].NG+","+inspTarStat[itskey].NG2+","+inspTarStat[itskey].NG3}
+                                {" N:"+inspTarStat[itskey].NA} 
+                                ---{inspTarStat[itskey].name}<br/>
                             </>)
 
                             // inspStatistic[key].map((stat:any,index:number)=>{
@@ -7227,8 +7383,6 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
 
-
-
 export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarUI) {
     let { display, fsPath, EditPermitFlag, style = undefined, renderHook, systemInspTarList, def, report, onDefChange } = props;
     const _ = useRef<any>({
@@ -7247,12 +7401,8 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
     // const [SEL1_T, setSEL1_T] = useState(10845);
     // const [SEL2_T, setSEL2_T] = useState(13038);
 
-
-
     const [machConfig, setMachConfig] = useState<any>(undefined);
 
-
-    const [uInspCount, setuInspCount] = useState({});
     const [processTimeInfo, setProcessTimeInfo] = useState({});
 
     const [fileCandList, setFileCandList] = useState({});
@@ -7282,6 +7432,28 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
     const dispatch = useDispatch();
     const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
 
+
+
+    const [connSendBlock, setConnSendBlock] = useState(false);
+    const [periodicPullCMDs, _setPeriodicPullCMDs] = useState<any[]>([]);
+    const [runningState, setRunningState] = useState<any>(undefined);
+    function setPeriodicPullCMDs(CMDs:any[])
+    {
+        _setPeriodicPullCMDs(CMDs);
+        let dataCMDs=CMDs.map(cmd=>{
+            let ncmd={...cmd};
+            delete ncmd["receive"];
+            return ncmd;
+        });
+        
+
+        console.log(dataCMDs)
+        BPG_API.InspTargetExchange(cacheDef.id, { type: "setPeriodicPullCMDs",cmds:dataCMDs });
+    }
+
+
+
+
     const PeripheralCONNID = 3456;
     async function delay(ms = 1000) {
         return new Promise((resolve, reject) => setTimeout(resolve, ms))
@@ -7298,6 +7470,8 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
 
     _this.fileCandList = fileCandList;
     _this.inspStatistic = inspStatistic;
+    _this.runningState = runningState;
+    _this.periodicPullCMDs=periodicPullCMDs;
     useEffect(() => {//////////////////////
 
         _this.send_id = 0;
@@ -7324,18 +7498,48 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
         }
         _this.send = pSend;
 
+        _this.periodicWatchDog=setInterval(()=>{
+            if(_this.runningState===undefined)return;
+            if(Date.now()-_this.runningState.timeStamp>2000)
+            {
+                setRunningState(undefined);
+                console.log("runningState timeout...");
+            }
+        },1000);
+
+
+
+        {
+            let pCMDs=[];
+            let id=-1000;
+            pCMDs.push({type:"get_running_stat",id,receive:(msg:any)=>{
+                // console.log(">>");
+                setRunningState({...msg,timeStamp:Date.now()});
+            }});id--;
+
+
+            setPeriodicPullCMDs(pCMDs);
+        }
+
 
         BPG_API.send(undefined, 0, { _PGID_: PeripheralCONNID, _PGINFO_: { keep: true } }, undefined,
             {
 
                 resolve: (stacked_pkts) => {
-                    let msg = stacked_pkts[0].data.msg;
+                    let PD = stacked_pkts[0];
+                    
+                    let msg=PD?.data?.msg;
+                    if(msg!==undefined && msg.id<0)
+                    {
 
-                    console.log(">>>>>",msg,_this.sendCBDict);
-                    // if (_this.sendCBDict[msg.id] !== undefined) {
-                    //     _this.sendCBDict[msg.id].resolve(msg)
-                    //     delete _this.sendCBDict[msg.id];
-                    // }
+
+                        let tarCMD=_this.periodicPullCMDs.find((cmd:any)=>cmd.id==msg.id)
+                        if(tarCMD)
+                        { 
+                            tarCMD.receive(msg);
+                        }
+                        // ?.receive(msg);
+                    }
 
 
 
@@ -7351,7 +7555,6 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
         (async () => {
 
             let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
-
 
 
             await BPG_API.send_cbs_attach(
@@ -7381,55 +7584,62 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
 
                     if (1) do {
 
-                        if (RP.data.report.hole_location_index == -1) break;
+                        // if (RP.data.report.hole_location_index == -1) break;
                         // if(RP.data.trigger_id<0)break;
 
-                        let tarRepIdx = RP.data.report.hole_location_index == 0 ? 1 : 0;
+                        // let tarRepIdx = RP.data.report.hole_location_index == 0 ? 1 : 0;
                         let surface_check_reports = RP.data.report.surface_check_reports;
-                        let tarRepId = surface_check_reports[tarRepIdx].InspTar_id;
-
-                        let regionsReps = surface_check_reports[tarRepIdx].report.sub_reports[0].sub_regions;
-                        let repDef = systemInspTarList.find(def => def.id == tarRepId)
-                        // console.log(tarRepIdx,surface_check_reports,regionsReps,repDef)
-
-                        let stat = { ..._this.inspStatistic[tarRepId] };
-
-                        regionsReps.forEach((rrep: any, index: number) => {
-                            let rdef = repDef.sub_regions[index];
-                            // repDef
-                            let name = rdef.name;
-                            // console.log(name, rrep, repDef.sub_regions[index])
-                            let cstat = {name, rec: [], OK: 0, NG: 0, NG2: 0, NG3: 0, NA: 0, ...stat[index] };
-
-                            if (rrep.category == 1) {
-                                cstat.OK++;
-                            }
-                            else if (rrep.category == -1) {
-                                cstat.NG++;
-                            }
-                            else if (rrep.category == -2) {
-                                cstat.NG2++;
-                            }
-                            else if (rrep.category == -3) {
-                                cstat.NG3++;
-                            }
-                            else {
-                                cstat.NA++;
-                            }
 
 
-                            cstat.rec.push(rrep);
-                            stat[index] = cstat;
-                        })
+                        let newStat={..._this.inspStatistic};
+                        console.log();
+                        for(let i=0;i<surface_check_reports.length;i++)
+                        {
+                            console.log(i,surface_check_reports[i].InspTar_id)
+                            let tarRepIdx=i;
 
+                            let tarRepId = surface_check_reports[tarRepIdx].InspTar_id;
 
+                            let regionsReps = surface_check_reports[tarRepIdx].report.sub_reports[0].sub_regions;
+                            let repDef = systemInspTarList.find(def => def.id == tarRepId)
+                            // console.log(tarRepIdx,surface_check_reports,regionsReps,repDef)
+    
+                            let stat = { ..._this.inspStatistic[tarRepId] };
+    
+                            regionsReps.forEach((rrep: any, index: number) => {
+                                let rdef = repDef.sub_regions[index];
+                                // repDef
+                                let name = rdef.name;
+                                // console.log(name, rrep, repDef.sub_regions[index])
+                                let cstat = {name, rec: [], OK: 0, NG: 0, NG2: 0, NG3: 0, NA: 0, ...stat[index] };
+    
+                                if (rrep.category == 1) {
+                                    cstat.OK++;
+                                }
+                                else if (rrep.category == -1) {
+                                    cstat.NG++;
+                                }
+                                else if (rrep.category == -2) {
+                                    cstat.NG2++;
+                                }
+                                else if (rrep.category == -3) {
+                                    cstat.NG3++;
+                                }
+                                else {
+                                    cstat.NA++;
+                                }
+    
+    
+                                cstat.rec.push(rrep);
+                                stat[index] = cstat;
+                            })
+    
+                            newStat[tarRepId]=stat;
+                        }
 
-                        console.log(_this.inspStatistic)
+                        // console.log(_this.inspStatistic)
 
-                        setInspStatistic({
-                            ..._this.inspStatistic,
-                            [tarRepId]: stat
-                        })
+                        setInspStatistic(newStat)
                     } while (false);
 
 
@@ -7473,6 +7683,8 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
                     cacheDef.stream_id, cbsKey);
             })()
 
+            clearInterval(_this.periodicWatchDog);
+
         })
     }, []);
 
@@ -7484,51 +7696,45 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
         <div className={"overlay scroll HXF"} >
 
 
+        {runningState!==undefined?<Avatar size={100} icon={<DisconnectOutlined />}  style={{boxShadow:btn_boxshadow, backgroundColor:"#F55" }} 
+        onClick={()=>{
+            
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "DISCONNECT", comm_id: PeripheralCONNID });
+            setRunningState(undefined);
+        }}/>:
+        <Avatar size={100} icon={connSendBlock?<LoadingOutlined/>:<LinkOutlined />}  style={{boxShadow:btn_boxshadow, backgroundColor:connSendBlock?"#AAA":"#5F5" }} 
+        onClick={()=>{
+            if(connSendBlock)return;
+
+            setConnSendBlock(true);
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID })
+            setTimeout(()=>{
+                setConnSendBlock(false);
+            },2000);
+        }}/>}
+
+
+
+
+
+
+
+{/* 
+
         <Button onClick={() => {
 
         (async () => {
-        
+
             await fetchSetup();
         })()
 
-        }}>GetSetup</Button>
+        }}>GetSetup</Button> */}
 
 
 
 
 
-
-        <Button onClick={() => {
-
-        (async () => {
-            let is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
-            console.error("is_CONNECTED:", is_CONNECTED, " PeripheralCONNID", PeripheralCONNID);
-            if (is_CONNECTED == false) {
-                await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
-            }
-
-            
-            // await fetchSetup();
-        })()
-
-        }}>CONNECT</Button>
-
-
-
-        <Button onClick={() => {
-
-        (async () => {
-            await BPG_API.InspTargetExchange(cacheDef.id, { type: "DISCONNECT", comm_id: PeripheralCONNID });
-
-        })()
-
-        }}>DISCONNECT</Button>
-
-
-
-
-
-        <Button onClick={() => {
+        {/* <Button onClick={() => {
             (async () => {
                 navigator.mediaDevices.getUserMedia({ audio: true, video: true })
                 
@@ -7537,7 +7743,7 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
                 // await fetchSetup();
             })()
 
-        }}>DDDDDD</Button>
+        }}>DDDDDD</Button> */}
 
 
         <Button onClick={() => {

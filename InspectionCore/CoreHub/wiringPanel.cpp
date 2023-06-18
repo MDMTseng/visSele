@@ -760,6 +760,11 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
   std::map <int,int> CNCMsgID_PGID;
   public:
 
+  mutex pCH_mutex;
+  std::thread periodicThread;
+  bool liveFlag=true;
+  vector<cJSON *> periodicPullJsonCMDs;
+
 
 
   class PerifChannel2:public Data_JsonRaw_Layer
@@ -860,7 +865,8 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
 
   static std::string TYPE(){ return "JSON_CNC_Peripheral"; }
   InspectionTarget_JSON_CNC_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
-    InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path)
+    InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path),
+    periodicThread(&InspectionTarget_JSON_CNC_Peripheral::periodicFunction,this)
   {
 
     comm_pgID=-1;
@@ -869,11 +875,52 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
   ~InspectionTarget_JSON_CNC_Peripheral()
   {
 
+    liveFlag=false;
+    periodicThread.join();
     if (pCH)
     {
       LOGI("DELETING");
       delete pCH;
       pCH = NULL;
+    }
+
+    for(int i=0;i<periodicPullJsonCMDs.size();i++)
+    {
+      cJSON_Delete(periodicPullJsonCMDs[i]);
+    }
+    periodicPullJsonCMDs.clear();
+  }
+
+
+
+
+  void periodicFunction()
+  {
+    uint8_t _buf[1000];
+    while(1)
+    {
+
+      for(int i=0;i<10;i++)//just to prevent long wait before exit
+      {
+        if(liveFlag==false) return;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+
+      {
+        lock_guard<mutex> lock(pCH_mutex);
+        if(pCH==NULL)continue;
+        std::lock_guard<std::mutex> lock2(pCH->sendMutex);
+        
+        // LOGE("<periodicPullJsonCMDs.size():%d",periodicPullJsonCMDs.size());
+        for(int i=0;i<periodicPullJsonCMDs.size();i++)
+        {
+          int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,periodicPullJsonCMDs[i]);
+        }
+        // LOGE(">>>>>>>pCH:%p");
+
+
+
+      }
     }
   }
 
@@ -935,6 +982,7 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
     if(ret)return ret;
     string type=JFetch_STRING_ex(info,"type");
 
+    lock_guard<mutex> lock(pCH_mutex);
     if(type=="MESSAGE")
     {
       if(pCH==NULL)
@@ -1098,6 +1146,26 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
     }
 
 
+    if(type=="setPeriodicPullCMDs")
+    {
+      cJSON* cmds=JFetch_ARRAY(info,"cmds");
+      if(cmds==NULL)return false;
+      for(int i=0;i<periodicPullJsonCMDs.size();i++)
+      {
+        cJSON_Delete(periodicPullJsonCMDs[i]);
+      }
+      periodicPullJsonCMDs.clear();
+
+      for(int i=0;i<cJSON_GetArraySize(cmds);i++)
+      {
+        cJSON* cmd=cJSON_GetArrayItem(cmds,i);
+        if(cmd==NULL)continue;
+        cJSON* clonedCMD=cJSON_Duplicate(cmd,true);
+        periodicPullJsonCMDs.push_back(clonedCMD);
+      }
+
+      return true;
+    }
 
     return false;
   }
@@ -1146,7 +1214,8 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   int processTime_AvgDelay_Count=0;
 
 
-
+  std::thread periodicThread;
+  bool liveFlag=true;
 
   class PerifChannel2:public Data_JsonRaw_Layer
   {
@@ -1162,6 +1231,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     void unlock(){
       sendMutex.unlock();
     }
+
 
 
     InspectionTarget_JSON_Peripheral *master;
@@ -1203,6 +1273,8 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
           if(json)
           {
             int tidx=JFetch_NUMBER_ex(json,"tidx",-1);
+            
+            tidx+=98;
             //TODO:translate to trigger info
             if(tidx==1)
             {
@@ -1323,7 +1395,10 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
               cJSON *rep = cJSON_CreateObject();
               cJSON_AddStringToObject(rep,"type","report");
               if(testCounter>20)
-                tid=-1;
+              {
+                // tid=-1;
+                testCounter=0;
+              }
 
               cJSON_AddNumberToObject(rep,"tid",tid);
               
@@ -1338,11 +1413,6 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
             cJSON_Delete(json);
           }
           json=NULL;
-        }
-        
-        
-        if(strstr((char*)raw, "\"type\":\"systemInfo\")") != NULL)
-        {
         }
         
         if(passUp)
@@ -1400,6 +1470,9 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     // }
   };
   PerifChannel2 *pCH= NULL;
+  mutex pCH_mutex;
+  vector<cJSON *> periodicPullJsonCMDs;
+
   int ImgSaveCountDown_OK=0;
   int ImgSaveCountDown_NG=0;
   int ImgSaveCountDown_NG2=0;
@@ -1424,7 +1497,8 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   static std::string TYPE(){ return "JSON_Peripheral"; }
   InspectionTarget_JSON_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
     InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path),
-    recentSrcStageInfoSetIdx(100),bTrigInfoRecordBuffer(100)
+    recentSrcStageInfoSetIdx(100),bTrigInfoRecordBuffer(100),liveFlag(true),
+    periodicThread(&InspectionTarget_JSON_Peripheral::periodicFunction,this)
   {
 
     comm_pgID=-1;
@@ -1435,15 +1509,55 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     }
   }
 
+
+  void periodicFunction()
+  {
+    uint8_t _buf[1000];
+    while(1)
+    {
+
+      for(int i=0;i<10;i++)//just to prevent long wait before exit
+      {
+        if(liveFlag==false) return;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+
+      {
+        lock_guard<mutex> lock(pCH_mutex);
+        if(pCH==NULL)continue;
+        std::lock_guard<std::mutex> lock2(pCH->sendMutex);
+        
+        // LOGE("<periodicPullJsonCMDs.size():%d",periodicPullJsonCMDs.size());
+        for(int i=0;i<periodicPullJsonCMDs.size();i++)
+        {
+          int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,periodicPullJsonCMDs[i]);
+        }
+        // LOGE(">>>>>>>pCH:%p");
+
+
+
+      }
+    }
+  }
+
   ~InspectionTarget_JSON_Peripheral()
   {
 
+    liveFlag=false;
+    periodicThread.join();
     if (pCH)
     {
       LOGI("DELETING");
       delete pCH;
       pCH = NULL;
     }
+
+    for(int i=0;i<periodicPullJsonCMDs.size();i++)
+    {
+      cJSON_Delete(periodicPullJsonCMDs[i]);
+    }
+    periodicPullJsonCMDs.clear();
+
   }
 
   void replaceAll(std::string& str, const std::string& from, const std::string& to) {
@@ -1510,6 +1624,8 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   {
     bool ret = InspectionTarget::exchangeCMD(info,id,act);
     if(ret)return ret;
+
+    lock_guard<mutex> lock(pCH_mutex);
     string type=JFetch_STRING_ex(info,"type");
 
     if(type=="MESSAGE")
@@ -1880,7 +1996,26 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       return true;
     }
 
+    if(type=="setPeriodicPullCMDs")
+    {
+      cJSON* cmds=JFetch_ARRAY(info,"cmds");
+      if(cmds==NULL)return false;
+      for(int i=0;i<periodicPullJsonCMDs.size();i++)
+      {
+        cJSON_Delete(periodicPullJsonCMDs[i]);
+      }
+      periodicPullJsonCMDs.clear();
 
+      for(int i=0;i<cJSON_GetArraySize(cmds);i++)
+      {
+        cJSON* cmd=cJSON_GetArrayItem(cmds,i);
+        if(cmd==NULL)continue;
+        cJSON* clonedCMD=cJSON_Duplicate(cmd,true);
+        periodicPullJsonCMDs.push_back(clonedCMD);
+      }
+
+      return true;
+    }
 
     return false;
   }
