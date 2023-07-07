@@ -148,7 +148,7 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   maxFPS:number
   maxFPSthrottleInfo:any
-
+  firstCanvasResize:boolean
   constructor(canvasDOM:HTMLCanvasElement) {
     super(canvasDOM);
     this.reset();
@@ -162,15 +162,24 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.scaleHeadToFitScreen();
     this.maxFPS=65;
     this.maxFPSthrottleInfo=undefined;
+    this.firstCanvasResize=false;
   }
 
 
   canvasResize(canvas:HTMLCanvasElement,width:number,height:number)
   {
-    width = Math.floor(width);
-    height = Math.floor(height);
-    canvas.width = width;
-    canvas.height = height;
+    // width = Math.floor(width);
+    // height = Math.floor(height);
+    // canvas.width = width;
+    // canvas.height = height;
+    console.log("firstCanvasResize",width,height);
+    if(this.firstCanvasResize==false)
+    {
+      let scale=this.camera.GetCameraScale();
+      this.camera.SetOffset({x:-width/scale,y:-height/scale+200});
+
+      this.firstCanvasResize=true;
+    }
   }
 
   regionSelectUpdate(pcvst:VEC2D,selState:number)
@@ -336,7 +345,6 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     if(ctx==null )return;
     ctx.resetTransform();
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
     this.setTransform(this.g.ctx,this.g.worldTransform);
 
     ctx.setLineDash([]);
@@ -466,6 +474,8 @@ export function HookCanvasComponent( {dhook,style={}}:{
     if(_this.canvComp===undefined)return;
 
     _this.canvComp.drawHook=dhook;
+    if(width*height>0)
+      _this.canvComp.canvasResize(canvas.current,width,height);
     _this.canvComp.ctrlLogic();
     _this.canvComp.draw();
   }, [width, height,dhook]);

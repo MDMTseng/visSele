@@ -1166,6 +1166,68 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         resultMarkOverlay.resize(jsub_regions_L);
         resultMarkRegion.resize(jsub_regions_L);
         resultImage.resize(jsub_regions_L);
+
+
+        float mult_bri_Count=0;
+        cv::Scalar mult_bri=0;
+        for(int j=0;j<jsub_regions_L;j++)
+        {
+
+          int subregIdx=indexArr_w_priority[j];
+          cJSON *jsub_region= cJSON_GetArrayItem(jsub_regions,subregIdx);
+          string subRegType=JFetch_STRING_ex(jsub_region,"type");
+          if(subRegType!="BrightnessBalance")continue;
+
+          if(JFetch_TRUE(jsub_region,"enable")==false)continue;
+
+          int srW=(int)JFetch_NUMBER_ex(jsub_region,"region.w",-1)/downSampleF;
+          int srH=(int)JFetch_NUMBER_ex(jsub_region,"region.h",-1)/downSampleF;
+
+          int srX=(int)JFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF;
+          int srY=(int)JFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF;
+          // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+          XYWH_clipping(srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+          if(srW<=1 || srH<=1)
+          {
+            //invalid number
+          }
+
+          Mat sub_region_ROI_origin_img =_def_temp_img_ROI(Rect(srX, srY, srW, srH));
+          
+          cv::Scalar pixSum= cv::sum(sub_region_ROI_origin_img);  
+          pixSum/=(srW*srH);
+
+
+
+          double bTarR=JFetch_NUMBER_ex(jsub_region,"bTar.r",128);
+          double bTarG=JFetch_NUMBER_ex(jsub_region,"bTar.g",128);
+          double bTarB=JFetch_NUMBER_ex(jsub_region,"bTar.b",128);
+          cv::Scalar pixTar={bTarB,bTarG,bTarR};
+
+          LOGI("pixTar:%f %f %f  pixSum:%f %f %f",pixTar[0],pixTar[1],pixTar[2],pixSum[0],pixSum[1],pixSum[2]);
+          cv::Scalar multTar;
+          
+          multTar[0]=pixTar[0]/pixSum[0];
+          multTar[1]=pixTar[1]/pixSum[1];
+          multTar[2]=pixTar[2]/pixSum[2];
+          mult_bri_Count++;  
+          mult_bri+=multTar;
+
+        }
+        if(mult_bri_Count==0)
+        {
+          mult_bri={1,1,1};
+        }
+        else
+        {
+          mult_bri/=mult_bri_Count;
+          LOGI("mult_bri:%f %f %f",mult_bri[0],mult_bri[1],mult_bri[2]);
+          multiply(_def_temp_img_ROI,mult_bri, _def_temp_img_ROI);
+        }
+
+
+
+
         for(int j=0;j<jsub_regions_L;j++)
         {
           int SUBR_category=STAGEINFO_CAT_UNSET;
@@ -1439,6 +1501,158 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
             }
 
+
+
+            if(subRegType=="ScanPoint")
+            {
+
+
+              bool centerOrEdge=JFetch_TRUE(jsub_region,"centerOrEdge");
+              float scanAngle=JFetch_NUMBER_ex(jsub_region,"scanAngle");
+
+
+              {
+
+                double l_h=JFetch_NUMBER_ex(jsub_region,"rangel.h",0);
+                double l_s=JFetch_NUMBER_ex(jsub_region,"rangel.s",0);
+                double l_v=JFetch_NUMBER_ex(jsub_region,"rangel.v",0);
+
+                double h_h=JFetch_NUMBER_ex(jsub_region,"rangeh.h",180);
+                double h_s=JFetch_NUMBER_ex(jsub_region,"rangeh.s",255);
+                double h_v=JFetch_NUMBER_ex(jsub_region,"rangeh.v",255);
+                Mat img_HSV;
+                cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);
+                // LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
+                Scalar rangeH=Scalar(h_h,h_s,h_v);
+                Scalar rangeL=Scalar(l_h,l_s,l_v);
+
+                Mat img_HSV_range;
+                Mat img_HSV_threshold;
+                inRange(img_HSV, rangeL, rangeH, img_HSV_range);
+
+
+                double detect_detail=JFetch_NUMBER_ex(jsub_region,"detect_detail",100);
+                cv::blur(img_HSV_range,img_HSV_range,cv::Size(5,5));
+
+                threshold(img_HSV_range, img_HSV_threshold, detect_detail, 255, THRESH_BINARY);
+
+
+                if(JFetch_TRUE(jsub_region,"invert_detection")==false)
+                  bitwise_not(img_HSV_threshold , img_HSV_threshold);//need bit not by default, so the "invert" will be NOT to bit not
+
+
+
+                resultMarkOverlay[subregIdx]=img_HSV_threshold.clone();
+                if(show_display_overlay)
+                {
+                  float resultOverlayAlpha = JFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
+
+                  if(resultOverlayAlpha>0)
+                  {
+                    // cv::cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
+                    Mat img_HSV_threshold_rgb;
+                    cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
+
+                    addWeighted( 
+                    img_HSV_threshold_rgb, resultOverlayAlpha, 
+                    sub_region_ROI, 1, 0, 
+                    sub_region_ROI);
+
+
+                    // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
+                    // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
+                  }
+                }
+
+
+                {
+                  Mat axisSum;
+                  int axisIdx=(scanAngle==0 || scanAngle==180)?0:1;
+                  cv::reduce(img_HSV_threshold, axisSum, axisIdx, REDUCE_AVG, CV_8U);
+                  if(axisIdx==1)
+                    axisSum=axisSum.t();
+
+                  cv::GaussianBlur(axisSum, axisSum, cv::Size(5, 1), 5);
+                  // LOGE("X . axisSum:%d . %d",axisSum.size().width,axisSum.size().height);
+
+                  Mat axisSum2;
+                  double otsu_threshold = cv::threshold(axisSum, axisSum2, 0 /*ignored value*/, 255, cv::THRESH_OTSU);
+                  // LOGE("otsu_threshold:%f",otsu_threshold);
+                  int xLoc1 = findCrossLoc(axisSum,otsu_threshold,false);
+                  int xLoc2 = findCrossLoc(axisSum,otsu_threshold,true);
+                  // LOGE("xLoc1:%d xLoc2:%d",xLoc1,xLoc2);
+
+                  sri.category=STAGEINFO_CAT_OK;
+                  int NA_margin=2;
+                  if(axisIdx==0)
+                  {
+
+                    if(scanAngle==0 || centerOrEdge)
+                    {
+                      if(xLoc1<=NA_margin||xLoc1>=srW-NA_margin)
+                      {
+                        sri.category=STAGEINFO_SCS_CAT_BASIC_reducer(sri.category,STAGEINFO_CAT_NA);
+                      }
+                    }
+                    if(scanAngle==180|| centerOrEdge)
+                    {
+                      if(xLoc2<=NA_margin||xLoc2>=srW-NA_margin)
+                      {
+                        sri.category=STAGEINFO_SCS_CAT_BASIC_reducer(sri.category,STAGEINFO_CAT_NA);
+                      }
+                    }
+
+                    xLoc1+=srX;
+                    xLoc2+=srX;
+                    sri.score=centerOrEdge?(xLoc2+xLoc1)/2:(scanAngle==0?xLoc1:xLoc2);
+
+                  }
+                  else
+                  {
+
+                    if(scanAngle==90 || centerOrEdge)
+                    {
+                      if(xLoc1<=NA_margin||xLoc1>=srH-NA_margin)
+                      {
+                        sri.category=STAGEINFO_SCS_CAT_BASIC_reducer(sri.category,STAGEINFO_CAT_NA);
+                      }
+                    }
+                    if(scanAngle==270|| centerOrEdge)
+                    {
+                      if(xLoc2<=NA_margin||xLoc2>=srH-NA_margin)
+                      {
+                        sri.category=STAGEINFO_SCS_CAT_BASIC_reducer(sri.category,STAGEINFO_CAT_NA);
+                      }
+                    }
+
+
+                    xLoc1+=srY;
+                    xLoc2+=srY;
+                    sri.score=centerOrEdge?(xLoc2+xLoc1)/2:(scanAngle==90?xLoc1:xLoc2);
+
+                    // LOGE("xLoc1:%d xLoc2:%d",xLoc1,xLoc2);
+                    // sri.category=(xLoc1<=NA_margin||xLoc2<=NA_margin||
+                    // xLoc1>=srW-NA_margin||xLoc2>=srW-NA_margin||
+                    // )?STAGEINFO_CAT_NA:STAGEINFO_CAT_OK;
+                  }
+
+                  sri.type=StageInfo_SurfaceCheckSimple::id_ScanPoint;
+
+                  LOGE("NG_Map_To:%s",NG_Map_To.c_str());
+
+                  // MATCH_REGION_score+=area_sum;
+                  MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,sri.category);
+
+
+                  mri.subregions[subregIdx]=sri;
+                  
+                }
+
+              }
+
+              resultImage[subregIdx]=sub_region_ROI;
+
+            }
 
 
 

@@ -1361,6 +1361,7 @@ public:
           {
             yield();
           }
+          vec=vecAdd(vec,pulse_offset);
           p_res->type=MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC;
           p_res->isProcessed=false;
           p_res->RUN_UNTIL_ENC.tarVec=vec;
