@@ -885,6 +885,176 @@ bool hasEnding(std::string const &fullString, std::string const &ending)
   }
 }
 
+vector<StageInfo_Orientation::orient> MatchPoseRefine(
+  cv::Mat &CV_srcImg,
+  std::vector<line2Dup::Match> &matches,
+  SBM_if *sbm,vector<int> &idxs,
+  vector<InspectionTarget_Orientation_ShapeBasedMatching::refine_region_info> &refine_region_set,
+  float matching_downScale,
+  float refine_score_thres,
+  float origin_offset_angle,
+  bool  refine_angle_only,
+  bool  must_refine_result,
+  bool remove_refine_failed_result)
+{
+  vector<StageInfo_Orientation::orient> retOrient;
+  for (int i = 0; i < idxs.size(); i++)
+  {
+    auto idx = idxs[i];
+    line2Dup::Match match = matches[idx];
+    if (match.similarity == 0) // for regional search, that needs to give a yes/no answer
+    {
+      continue;
+    }
+
+    auto templ = sbm->detector.getTemplates(match.class_id, match.template_id);
+
+    // calc the position relative to the first point
+    cv::Point2f f0Pt = cv::Point2f((float)templ[0].features[0].x + match.x, (float)templ[0].features[0].y + match.y) / matching_downScale;
+    SBM_if::anchorInfo Aoffset = sbm->fetchTemplateOffset(match.class_id);
+    // LOGI("[%d]>>>ang:%f <<id:%s",i,templ[0].angle,match.class_id.c_str());
+    cv::Point2f anchorPt = rotate2d(Aoffset.offset, templ[0].angle * M_PI / 180);
+
+    float offset = (1 / matching_downScale - 1) / 2;
+    f0Pt += cv::Point2f(offset, offset);
+    anchorPt += f0Pt;
+
+    float refine_score = 0;
+    float refinedAngleRad = templ[0].angle * M_PI / 180;
+
+    std::string DBG_STR;
+    // LOGI("refine_score_thres:%f must_refine_result:%d",refine_score_thres,must_refine_result);
+    int refineCount = 2;
+    if (refine_region_set.size() > 0 && refine_score_thres > 0)
+    {
+      float tmpAngle = refinedAngleRad;
+      cv::Point2f tmp_anchorPt = anchorPt;
+      bool y_flip = hasEnding(match.class_id, "_f");
+      int margin = (int)(50 + (1 / matching_downScale));
+      // DBG_STR = id + "_" + to_string(i) + "_" + to_string(0);
+
+      int refine_block_count = 0;
+      bool allowMatchingOnSearchRegionEdge = refine_angle_only;
+      refine_score = PoseRefine(CV_srcImg, refine_region_set, margin, tmp_anchorPt, tmpAngle, y_flip, 0.2, allowMatchingOnSearchRegionEdge, 1, &refine_block_count, DBG_STR);
+
+      // if(refine_score>0.3)
+      if (1) // further refine
+      {
+        // LOGI("[%d]-----refine_score:%f", i, refine_score);
+        auto tmp_anchorPt2 = tmp_anchorPt;
+        auto tmpAngle2 = tmpAngle;
+        float refine_score2;
+        int refine_block_count2 = 0;
+
+        for (int j = 1; j < refineCount; j++)
+        {
+          // margin/=2;
+
+          if (refine_angle_only)
+            tmp_anchorPt2 = anchorPt; // if adjust the angle only use the unrefined position every time
+          // DBG_STR = id + "_" + to_string(i) + "_" + to_string(j);
+          refine_score2 = PoseRefine(CV_srcImg, refine_region_set, margin, tmp_anchorPt2, tmpAngle2, y_flip, 0.2, allowMatchingOnSearchRegionEdge, 1, &refine_block_count2, DBG_STR);
+
+          // LOGI("[%d]-----refine_score:%f . tmpAngle2:%f", i, refine_score2, tmpAngle2);
+          if (refine_score <= refine_score2)
+          {
+            refine_score = refine_score2;
+            tmpAngle = tmpAngle2;
+            refine_block_count = refine_block_count2;
+          }
+          else
+          {
+            break; // early stop
+          }
+        }
+
+        if (refine_angle_only == true && refine_block_count != refine_region_set.size())
+        {
+          refine_score = 0;
+        }
+      }
+
+      if (refine_angle_only)
+        tmp_anchorPt = anchorPt; // ignore the refined location if needed
+
+      LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
+      // LOGI(" %f =>  %f",refinedAngleRad*180/M_PI,tmpAngle*180/M_PI);
+      // LOGI(" %f,%f, a:%f  =>  %f,%f a:%f ",anchorPt.x,anchorPt.y,refinedAngleRad*180/M_PI,tmp_anchorPt.x,tmp_anchorPt.y,tmpAngle*180/M_PI);
+
+      if (refine_score > refine_score_thres)
+      { // accept the refinement
+        refinedAngleRad = tmpAngle;
+        anchorPt = tmp_anchorPt;
+      }
+      else if (must_refine_result == true) // for regional search, that needs to give yes/no answer
+      {
+        if (remove_refine_failed_result == true)
+          continue;
+        StageInfo_Orientation::orient orie;
+
+        orie.angle = 0;
+        orie.flip = false;
+        orie.center = {0, 0};
+        orie.confidence = 0;
+
+        retOrient.push_back(orie);
+        continue;
+
+        // refinedAngleRad=tmpAngle;
+        // anchorPt=tmp_anchorPt;
+        // match.similarity=0.1;
+      }
+    }
+    if (refine_score > 0.999)
+      refine_score = 0.999;
+
+    StageInfo_Orientation::orient orie;
+
+    orie.angle = refinedAngleRad + origin_offset_angle;
+    orie.flip = hasEnding(match.class_id, "_f");
+    orie.center = {anchorPt.x, anchorPt.y};
+    orie.confidence = round(match.similarity) + refine_score; // HACK to store refine info
+
+    retOrient.push_back(orie);
+  }
+
+  return retOrient;
+
+}
+
+void CloseMatchFilter(std::vector<line2Dup::Match> &matches,SBM_if *sbm,vector<int> &idxs)
+{
+
+  vector<Rect> boxes;
+  vector<float> scores;
+
+  for (auto match : matches)
+  {
+    Rect box;
+    box.x = match.x;
+    box.y = match.y;
+
+    auto templ = sbm->detector.getTemplates(match.class_id,
+                                            match.template_id);
+
+    box.width = templ[0].width;
+    box.height = templ[0].height;
+    boxes.push_back(box);
+    scores.push_back(match.similarity);
+  }
+
+  cv_dnn::NMSBoxes(boxes, scores, 0, 0.5f, idxs);
+
+  std::sort(idxs.begin(), idxs.end(), [&](int a, int b) {
+    int sa=matches[a].y*10+matches[a].x;//tilt the score a bit, assume the arrangment is like a grid
+    int sb=matches[b].y*10+matches[b].x;
+    return sa < sb;
+  });
+
+
+}
+
+
 void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<StageInfo> sinfo)
 {
 
@@ -921,12 +1091,17 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
   bool regional_most_similar_match = JFetch_TRUE(def, "regional_most_similar_match");
 
-  vector<int> idxs;
-  {
-    bool doMatchFilter = false;
+  double refine_score_thres = JFetch_NUMBER_ex(def, "refine_score_thres", 0.5);
+  bool must_refine_result = JFetch_TRUE(def, "must_refine_result");
+  bool remove_refine_failed_result = JFetch_TRUE(def, "remove_refine_failed_result");
 
+  vector<int> idxs;
+
+  shared_ptr<StageInfo_Orientation> reportInfo(new StageInfo_Orientation());
+  {
     cJSON *search_regions = JFetch_ARRAY(def, "search_regions");
     float similarity_thres = JFetch_NUMBER_ex(def, "similarity_thres", 60);
+
     if (search_regions && cJSON_GetArraySize(search_regions))
     {
       int arrL = cJSON_GetArraySize(search_regions);
@@ -978,38 +1153,68 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
             magnitude_thres,
             {template_class_name, template_class_name + "_f"});
 
-        if (false && regional_most_similar_match)
+        LOGI("sub_matches.size():%d", sub_matches.size());
+        vector<int> SubIdxs;
+        if(1)
         {
-          line2Dup::Match maxMatch;
-          maxMatch.similarity = 0;
-          float maxSim = 0;
-          for (auto &sub_match : sub_matches)
-          {
-            if (maxSim < sub_match.similarity)
-            {
-              maxSim = sub_match.similarity;
-              maxMatch = sub_match;
-              maxMatch.x += x;
-              maxMatch.y += y;
-            }
-          }
-
-          // LOGI(">>>maxMatch sim:%f",maxMatch.similarity);
-          idxs.push_back(matches.size());
-          matches.push_back(maxMatch);
-          doMatchFilter = false;
+          CloseMatchFilter(sub_matches,sbm,SubIdxs);
         }
         else
         {
-          for (auto &sub_match : sub_matches)
+          for (int i = 0; i < sub_matches.size(); i++)
           {
-
-            sub_match.x += x;
-            sub_match.y += y;
-            matches.push_back(sub_match);
+            SubIdxs.push_back(i);
           }
-          doMatchFilter = true;
         }
+
+        LOGI("SubIdxs.size():%d", SubIdxs.size());
+
+        for(auto &index:SubIdxs)
+        {
+          sub_matches[index].x+=x;
+          sub_matches[index].y+=y;
+        }
+        vector<StageInfo_Orientation::orient> orientList;
+        orientList =MatchPoseRefine(CV_srcImg,sub_matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,false,false);
+
+        if(regional_most_similar_match)
+        {//keep the most similar(confident) one
+          if(orientList.size()>0)
+          {
+            float maxScore=orientList[0].confidence;
+            int maxIdx=0;
+            for(int i=1;i<orientList.size();i++)
+            {
+              if(orientList[i].confidence>maxScore)
+              {
+                maxScore=orientList[i].confidence;
+                maxIdx=i;
+              }
+            }
+            reportInfo->orientation.push_back(orientList[maxIdx]);
+          }
+          else
+          {
+            //construct a place holder result
+            StageInfo_Orientation::orient orie;
+                      
+            orie.angle = 0;
+            orie.flip = false;
+            orie.center = {0, 0};
+            orie.confidence = -1;
+            reportInfo->orientation.push_back(orie);
+          }
+
+
+
+
+
+        }
+        else
+        {
+          reportInfo->orientation.insert(reportInfo->orientation.end(), orientList.begin(), orientList.end());
+        }
+
       }
     }
     else
@@ -1019,208 +1224,45 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
           similarity_thres,
           magnitude_thres,
           {template_class_name, template_class_name + "_f"});
-      LOGI(">>>>>>>>");
-      doMatchFilter = true;
-    }
 
-    if (doMatchFilter)
-    {
 
-      vector<Rect> boxes;
-      vector<float> scores;
+      
+      vector<int> SubIdxs;
+      CloseMatchFilter(matches,sbm,SubIdxs);
+      vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(CV_srcImg,matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,false,false);
 
-      for (auto match : matches)
-      {
-        Rect box;
-        box.x = match.x;
-        box.y = match.y;
 
-        auto templ = sbm->detector.getTemplates(match.class_id,
-                                                match.template_id);
-
-        box.width = templ[0].width;
-        box.height = templ[0].height;
-        boxes.push_back(box);
-        scores.push_back(match.similarity);
+      if(regional_most_similar_match)
+      {//keep the most similar(confident) one
+        if(orientList.size()>0)
+        {
+          float maxScore=orientList[0].confidence;
+          int maxIdx=0;
+          for(int i=1;i<orientList.size();i++)
+          {
+            if(orientList[i].confidence>maxScore)
+            {
+              maxScore=orientList[i].confidence;
+              maxIdx=i;
+            }
+          }
+          reportInfo->orientation.push_back(orientList[maxIdx]);
+        }
       }
-
-      cv_dnn::NMSBoxes(boxes, scores, 0, 0.5f, idxs);
+      else
+      {
+        reportInfo->orientation.insert(reportInfo->orientation.end(), orientList.begin(), orientList.end());
+      }
     }
+
   }
 
   {
     LOGI(">>>>>>>>process_time_us:%f", 1000000 * (cv::getTickCount() - t0) / cv::getTickFrequency());
   }
 
-  // LOGI("=====idxs.size():%d",idxs.size());
-
-  // // std::cout << "matches.size(): " << matches.size() << std::endl;
-
-  // LOGI("matches.size():%d",matches.size());
-  shared_ptr<StageInfo_Orientation> reportInfo(new StageInfo_Orientation());
-
-  double refine_score_thres = JFetch_NUMBER_ex(def, "refine_score_thres", 0.5);
-  bool must_refine_result = JFetch_TRUE(def, "must_refine_result");
-  bool remove_refine_failed_result = JFetch_TRUE(def, "remove_refine_failed_result");
 
 
-  std::sort(idxs.begin(), idxs.end(), [&](int a, int b) {
-    int sa=matches[a].y*10+matches[a].x;//tilt the score a bit, assume the arrangment is like a grid
-    int sb=matches[b].y*10+matches[b].x;
-    return sa < sb;
-  });
-
-  for (int i = 0; i < idxs.size(); i++)
-  {
-    auto idx = idxs[i];
-    line2Dup::Match match = matches[idx];
-    if (match.similarity == 0) // for regional search, that needs to give yes/no answer
-    {
-
-      StageInfo_Orientation::orient orie;
-
-      orie.angle = 0;
-      orie.flip = false;
-      orie.center = {0, 0};
-      orie.confidence = 0;
-
-      reportInfo->orientation.push_back(orie);
-      continue;
-    }
-
-    auto templ = sbm->detector.getTemplates(match.class_id, match.template_id);
-
-    // calc the position relative to the first point
-    cv::Point2f f0Pt = cv::Point2f((float)templ[0].features[0].x + match.x, (float)templ[0].features[0].y + match.y) / matching_downScale;
-    SBM_if::anchorInfo Aoffset = sbm->fetchTemplateOffset(match.class_id);
-    // LOGI("[%d]>>>ang:%f <<id:%s",i,templ[0].angle,match.class_id.c_str());
-    cv::Point2f anchorPt = rotate2d(Aoffset.offset, templ[0].angle * M_PI / 180);
-
-    float offset = (1 / matching_downScale - 1) / 2;
-    f0Pt += cv::Point2f(offset, offset);
-    anchorPt += f0Pt;
-
-    float refine_score = 0;
-    float refinedAngleRad = templ[0].angle * M_PI / 180;
-
-    std::string DBG_STR;
-    // LOGI("refine_score_thres:%f must_refine_result:%d",refine_score_thres,must_refine_result);
-    int refineCount = 2;
-    if (refine_region_set.size() > 0 && refine_score_thres > 0)
-    {
-      float tmpAngle = refinedAngleRad;
-      cv::Point2f tmp_anchorPt = anchorPt;
-      bool y_flip = hasEnding(match.class_id, "_f");
-      int margin = (int)(50 + (1 / matching_downScale));
-      DBG_STR = id + "_" + to_string(i) + "_" + to_string(0);
-
-      int refine_block_count = 0;
-      bool allowMatchingOnSearchRegionEdge = refine_angle_only;
-      refine_score = PoseRefine(CV_srcImg, refine_region_set, margin, tmp_anchorPt, tmpAngle, y_flip, 0.2, allowMatchingOnSearchRegionEdge, 1, &refine_block_count, DBG_STR);
-
-      // if(refine_score>0.3)
-      if (1) // further refine
-      {
-        LOGI("[%d]-----refine_score:%f", i, refine_score);
-        auto tmp_anchorPt2 = tmp_anchorPt;
-        auto tmpAngle2 = tmpAngle;
-        float refine_score2;
-        int refine_block_count2 = 0;
-
-        for (int j = 1; j < refineCount; j++)
-        {
-          // margin/=2;
-
-          if (refine_angle_only)
-            tmp_anchorPt2 = anchorPt; // if adjust the angle only use the unrefined position every time
-          DBG_STR = id + "_" + to_string(i) + "_" + to_string(j);
-          refine_score2 = PoseRefine(CV_srcImg, refine_region_set, margin, tmp_anchorPt2, tmpAngle2, y_flip, 0.2, allowMatchingOnSearchRegionEdge, 1, &refine_block_count2, DBG_STR);
-
-          LOGI("[%d]-----refine_score:%f . tmpAngle2:%f", i, refine_score2, tmpAngle2);
-          if (refine_score <= refine_score2)
-          {
-            refine_score = refine_score2;
-            tmpAngle = tmpAngle2;
-            refine_block_count = refine_block_count2;
-          }
-          else
-          {
-            break; // early stop
-          }
-        }
-
-        if (refine_angle_only == true && refine_block_count != refine_region_set.size())
-        {
-          refine_score = 0;
-        }
-      }
-
-      if (refine_angle_only)
-        tmp_anchorPt = anchorPt; // ignore the refined location if needed
-
-      // LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
-      // LOGI(" %f =>  %f",refinedAngleRad*180/M_PI,tmpAngle*180/M_PI);
-      // LOGI(" %f,%f, a:%f  =>  %f,%f a:%f ",anchorPt.x,anchorPt.y,refinedAngleRad*180/M_PI,tmp_anchorPt.x,tmp_anchorPt.y,tmpAngle*180/M_PI);
-
-      if (refine_score > refine_score_thres)
-      { // accept the refinement
-        refinedAngleRad = tmpAngle;
-        anchorPt = tmp_anchorPt;
-      }
-      else if (must_refine_result == true) // for regional search, that needs to give yes/no answer
-      {
-        if (remove_refine_failed_result == true)
-          continue;
-        StageInfo_Orientation::orient orie;
-
-        orie.angle = 0;
-        orie.flip = false;
-        orie.center = {0, 0};
-        orie.confidence = 0;
-
-        reportInfo->orientation.push_back(orie);
-        continue;
-
-        // refinedAngleRad=tmpAngle;
-        // anchorPt=tmp_anchorPt;
-        // match.similarity=0.1;
-      }
-    }
-    if (refine_score > 0.999)
-      refine_score = 0.999;
-
-    StageInfo_Orientation::orient orie;
-
-    orie.angle = refinedAngleRad + origin_offset_angle;
-    orie.flip = hasEnding(match.class_id, "_f");
-    orie.center = {anchorPt.x, anchorPt.y};
-    orie.confidence = round(match.similarity) + refine_score; // HACK to store refine info
-
-    reportInfo->orientation.push_back(orie);
-  }
-
-  if (regional_most_similar_match)
-  {
-    if (reportInfo->orientation.size() > 1)
-    {
-      float maxConf = 0;
-      float maxConfIdx = -1;
-      for (int i = 0; i < reportInfo->orientation.size(); i++)
-      {
-        if (maxConf < reportInfo->orientation[i].confidence)
-        {
-          maxConf = reportInfo->orientation[i].confidence;
-          maxConfIdx = i;
-        }
-      }
-
-      if (maxConfIdx > 0)
-      {
-        reportInfo->orientation[0] = reportInfo->orientation[maxConfIdx];
-      }
-      reportInfo->orientation.resize(1);
-    }
-  }
 
   // LOGI(">>>>>>>>");
   reportInfo->source = this;

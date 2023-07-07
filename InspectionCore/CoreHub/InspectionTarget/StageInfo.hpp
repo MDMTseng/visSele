@@ -218,6 +218,8 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
 
   const static int id_HSVSeg=1;
   const static int id_SigmaThres=2;
+  const static int id_ScanPoint=3;
+
 
   float pixel_size;
   struct Ele_info{//in subregion we have several elements(dot line....)
@@ -287,6 +289,9 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
       {
       } sigmathres_stat;
 
+      struct
+      {
+      } scanpoint_stat;
 
     };
   };

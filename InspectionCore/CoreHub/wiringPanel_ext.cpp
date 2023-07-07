@@ -389,7 +389,7 @@ int sendcJSONTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool
   char *padded_buf=(char*)buf+buff_head_room;
 
   int ret= cJSON_PrintPreallocated(json, padded_buf, buffSize-perifCH->max_leg_room_size(), false);
-  LOGI(">>%s",padded_buf);
+  // LOGI(">>%s",padded_buf);
   if(ret == false)
   {
     return -1;

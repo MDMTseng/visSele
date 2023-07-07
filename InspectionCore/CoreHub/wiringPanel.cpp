@@ -31,6 +31,10 @@
 #include <opencv2/calib3d.hpp>
 #include "opencv2/imgproc.hpp"
 #include <opencv2/imgcodecs.hpp>
+
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 // #include <Python.h>
 using namespace cv;
 
@@ -1269,6 +1273,13 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
         if(strstr((char*)raw, "\"type\":\"bTrigInfo\"") != NULL)
         {
           passUp=false;
+          master->sCH->send_data(0,(uint8_t*)raw,strlen((char*)raw),0);
+          master->sCH->send_data(0,(uint8_t*)"\n",1,0);
+        }
+
+        if(false && strstr((char*)raw, "\"type\":\"bTrigInfo\"") != NULL)
+        {
+          passUp=false;
           cJSON *json = cJSON_Parse((char *)raw);
           if(json)
           {
@@ -1470,6 +1481,156 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     // }
   };
   PerifChannel2 *pCH= NULL;
+
+  class ScriptChannel:public Data_JsonRaw_Layer
+  {
+    
+    public:
+    int fastTestRetCatFlag=STAGEINFO_CAT_UNSET;
+    int comm_pgID=-1;
+    std::mutex sendMutex;
+
+    void lock(){
+      sendMutex.lock();
+    }
+    void unlock(){
+      sendMutex.unlock();
+    }
+
+
+
+    InspectionTarget_JSON_Peripheral *master;
+    int pkt_count = 0;
+    std::unique_ptr<FILE, decltype(&pclose)> scriptCMD_pipe;
+    ScriptChannel(InspectionTarget_JSON_Peripheral *master):Data_JsonRaw_Layer(),
+    
+    scriptCMD_pipe(popen(("python3 "+master->local_env_path+"/script.py").c_str(), "r"), pclose)// throw(std::runtime_error)
+    {
+      this->master=master;
+
+
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      Data_Layer_IF *PHYLayer=new Data_TCP_Layer("127.0.0.1",7758);
+
+      setDLayer(PHYLayer);
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      send_RESET();
+      send_data(0,(uint8_t*)"\n",1,0);
+      RESET();
+
+      // char tmp[128];
+      
+      // // for(int i=0;i<5;i++)
+      // // {
+      // int len=sprintf(tmp,"{\"type\":\"bTrigInfo\",\"tidx\":1,\"tid\":436345,\"usH\":1,\"usL\":2}\n");
+      // send_data(0,(uint8_t*)tmp,len,0);
+      // // }
+
+
+
+    }
+
+    int testCounter=0;
+    int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)
+    {
+      static int CCC=0;
+      if(opcode==1 )
+      {
+        char tmp[1024];
+        LOGI("raw:%s",raw);
+        cJSON *json = cJSON_Parse((char *)raw);
+
+        std::string type(JFetch_STRING_ex(json,"type"));
+
+        if(type=="trigInfo")
+        {
+          LOGI("trigInfo");
+
+          sttriggerInfo_mix trigInfo;
+          trigInfo.stInfo=NULL;
+          trigInfo.triggerInfo.camera_id=(JFetch_STRING_ex(json,"camera_id"));
+
+          trigInfo.triggerInfo.trigger_id=(JFetch_NUMBER_ex(json,"trigger_id",-1));
+          trigInfo.triggerInfo.est_trigger_time_us=JFetch_NUMBER_ex(json,"est_trigger_time_us",-1);
+          trigInfo.triggerInfo.trigger_time_match_error_thres_us=JFetch_NUMBER_ex(json,"trigger_time_match_error_thres_us",-1);
+
+          {
+            cJSON* tags=JFetch_ARRAY(json,"tags");
+            if(tags)
+            {
+              for(int i=0;i<cJSON_GetArraySize(tags);i++)
+              {
+                cJSON* tag=cJSON_GetArrayItem(tags,i);
+                if(tag)
+                {
+                  trigInfo.triggerInfo.tags.push_back(std::string(tag->valuestring));
+                }
+              }
+            }
+          }
+
+          triggerInfoMatchingQueue.push_blocking(trigInfo);
+          
+        }
+
+        
+        return 0;
+
+      }
+      printf(">>opcode:%d\n",opcode);
+      return 0;
+    }
+    int recv_RESET()
+    {
+      // printf("Get recv_RESET\n");
+      return 0;
+    }
+    int recv_ERROR(ERROR_TYPE errorcode)
+    {
+      // printf("Get recv_ERROR:%d\n",errorcode);
+      return 0;
+    }
+    
+    void connected(Data_Layer_IF* ch){
+      testCounter=0;
+      printf(">>>%X connected\n",ch);
+    }
+
+    void disconnected(Data_Layer_IF* ch){
+      printf(">>>%X disconnected\n",ch);
+    }
+
+    ~ScriptChannel()
+    {
+
+      {
+        char tmp[128];
+        int len=sprintf(tmp,"{\"type\":\"EXIT\"}\n");
+        send_data(0,(uint8_t*)tmp,len,0);
+      }
+
+
+      close();
+      printf("MData_uInsp DISTRUCT:%p\n",this);
+    }
+
+    // int send_data(int head_room,uint8_t *data,int len,int leg_room){
+      
+    //   // printf("==============\n");
+    //   // for(int i=0;i<len;i++)
+    //   // {
+    //   //   printf("%d ",data[i]);
+    //   // }
+    //   // printf("\n");
+    //   return recv_data(data,len, false);//LOOP back
+    // }
+  };
+  
+  
+  ScriptChannel *sCH= NULL;
+
+
   mutex pCH_mutex;
   vector<cJSON *> periodicPullJsonCMDs;
 
@@ -1490,8 +1651,59 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   RingBufIdxCounter<int> recentSrcStageInfoSetIdx;
 
 
-
   public:
+
+  bool file_exists(const std::string& filename) {
+      std::ifstream file(filename.c_str());
+      return file.good();
+  }
+
+
+  std::string exec(const char* cmd) {
+      std::array<char, 128> buffer;
+      std::string result;
+
+
+
+      std::ofstream out_file("cpdata.txt");
+      if (!out_file) {
+          std::cerr << "Cannot open the file: data.txt" << std::endl;
+      }
+      // Read from the file
+      std::ifstream in_file("pcdata.txt");
+      if (!in_file) {
+          std::cerr << "Cannot open the file: data.txt" << std::endl;
+      }
+
+
+      std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+      if (!pipe) {
+          throw std::runtime_error("popen() failed!");
+      }
+
+
+      out_file << "Hello from C++\n"<< std::endl;
+      out_file << "sssss\n"<< std::endl;
+
+      std::string data;
+
+      while(std::getline(in_file, data))
+      {
+        std::cout << "1>cReceived: " << data << std::endl;
+      }
+
+      while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+      }
+
+
+      in_file.close();
+      out_file.close();
+
+
+
+      return result;
+  }
 
 
   static std::string TYPE(){ return "JSON_Peripheral"; }
@@ -1506,6 +1718,42 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     for(int i=0;i<bTrigInfoRecordBuffer.size();i++)
     {
       bTrigInfoRecordBuffer[i].tid=-1;
+    }
+
+
+    // LOGE("PY script output:%s",exec(("python3 "+local_env_path+"/script.py").c_str()).c_str());
+
+    {
+
+      sCH=new ScriptChannel(this);
+
+
+      uint8_t _buf[1024];
+      cJSON *json = cJSON_CreateObject();
+      cJSON_AddStringToObject(json,"type","defInfo");
+      {
+        cJSON_AddItemToObject(json,"info",def);
+        int ret= sendcJSONTo_perifCH(sCH,_buf, sizeof(_buf),true,json);
+        cJSON_DetachItemFromObject(json,"info");
+      }
+      cJSON_Delete(json);
+      sCH->send_data(0,(uint8_t*)"\n",1,0);
+
+
+
+      // {
+      //   int len=sprintf((char*)_buf,"{\"type\":\"EXIT\"}\n");
+      //   sCH->send_data(0,(uint8_t*)_buf,len,0);
+      // }
+
+
+      // std::string result;
+      // std::array<char, 128> buffer;
+      // while (fgets(buffer.data(), buffer.size(), sCH->scriptCMD_pipe.get()) != nullptr) {
+      //   result += buffer.data();
+      // }
+      // LOGE("PY script output:%s",result.c_str());
+
     }
   }
 
@@ -1552,6 +1800,11 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       pCH = NULL;
     }
 
+    if(sCH)
+    {
+      delete sCH;
+      sCH=NULL;
+    }
     for(int i=0;i<periodicPullJsonCMDs.size();i++)
     {
       cJSON_Delete(periodicPullJsonCMDs[i]);
@@ -4584,6 +4837,7 @@ void sigroutine(int dunno)
   switch (dunno)
   {
   case SIGINT:
+    inspTarMan.clearInspTar();
     LOGE("Get a signal -- SIGINT \n");
     LOGE("Tear down websocket.... \n");
     delete ifwebsocket;
