@@ -146,6 +146,36 @@ export async function listCMDPromise(
     return api.Folder_Struct(folder_path,depth);
   }
 
+
+
+  /*{
+    let key="key";
+    let exitFlag=false;
+    SigWait_Clear(key);
+
+    SigWait_Reg(key);
+
+
+    (async () => {//run thread, KIND OF
+      SigWait_Trig(key,{data:"data"}});
+
+    })().catch((e) => {
+      console.log(dT(), "Feeder run end", e)
+      isTheEnd = true;
+    })
+
+    for(;;){
+
+
+      let info = await SigWait(key);
+      if(exitFlag)break;
+    }
+    
+
+    SigWait_Trig_Reject(key,{Err:"Err"});//clear up the wait
+    SigWait_Clear(key);
+
+  }*/
   function SigWait_Clear(key:string)
   {
     if(v.sigListener===undefined)return;
@@ -166,12 +196,12 @@ export async function listCMDPromise(
     if(v.sigListener[key]===undefined)throw `The key:[${key}] is not registered with SigWait_Reg`
     if(v.sigListener[key].reject===undefined)
     {
-      v.sigListener[key].ERR=info;
+      v.sigListener[key].err=info;
       return
     }
     v.sigListener[key].reject(info);
   }
-  function SigWait_Trig(key:string,info:any)
+  function SigWait_Trig(key:string,info:any={})
   {
     if(v.sigListener[key]===undefined)throw `The key:[${key}] is not registered with SigWait_Reg`
     if(v.sigListener[key].resolve===undefined)
@@ -182,7 +212,7 @@ export async function listCMDPromise(
     v.sigListener[key].resolve(info);
   }
 
-
+//SigWait_Trig_ex is
   function SigWait_Trig_ex(key:string,info:any)
   {
     if(v.sigListener===undefined)v.sigListener={};
@@ -215,7 +245,12 @@ export async function listCMDPromise(
   function SigFetch(key:string)
   {
     if(v.sigListener[key])
-    {
+    {      
+      if(v.sigListener[key].err)
+      {
+        throw (v.sigListener[key].err);
+      }
+
       if(v.sigListener[key].info)
       {
         return (v.sigListener[key].info);
@@ -279,8 +314,6 @@ export async function listCMDPromise(
       throw err;
     })
   }
-
-
 
 
 
@@ -416,9 +449,9 @@ export async function listCMDPromise(
     onRunCmdIdexChanged(run_cmd_idx,info);
   }
 
-  function NOT_ABORT()
+  function NOT_ABORT(asig=abortSig)
   {
-    if(abortSig&&abortSig.aborted)
+    if(asig&&asig.aborted)
     {
       throw("ACMD ABORT")
     }

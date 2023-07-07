@@ -2082,7 +2082,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                         num_features: cacheDef.num_features,
                         weak_thresh: featureInfo.weak_thresh,
                         strong_thresh: featureInfo.strong_thresh,
-                        T: [2, 2],
+                        T: [2,2],
                         image_transfer_downsampling: -1,
                         mask_regions: featureInfo.mask_regions
                     }
@@ -2516,7 +2516,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                             ctx.fillStyle = 'hsl('+ Math.floor(idx/10)*100 +',100%,50%)';
                             ctx.strokeStyle = 'black';
-                            let text="idx:" + idx;
+                            let text="[" + idx+"]";
                             ctx.fillText(text, match.center.x, match.center.y - 40)
                             ctx.lineWidth = 2;
                             ctx.strokeText(text, match.center.x, match.center.y - 40)
@@ -3723,6 +3723,341 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
 
     let ConfigUI:JSX.Element=<></>;
 
+
+    let ProcessDisplayUI=<>
+    
+    <Row>
+        <Col span={4}>
+            結果顯示:{def.resultOverlayAlpha * 100}%
+        </Col>
+        <Col span={6}>
+            <Slider defaultValue={def.resultOverlayAlpha} min={0} max={1} step={0.1} onChange={(v) => {
+
+                _this.trigTO = ID_debounce(_this.trigTO, () => {
+                    onDefChange(ObjShellingAssign(def, ["resultOverlayAlpha"], v));
+                }, () => _this.trigTO = undefined, 500);
+
+
+            }} />
+
+        </Col>
+        <Col span={14}>
+            R
+            <InputNumber value={def.overlayColor?.r}
+                onChange={(num) => {
+                    onDefChange(ObjShellingAssign(def, ["overlayColor", "r"], num));
+                }} />
+            G
+            <InputNumber value={def.overlayColor?.g}
+                onChange={(num) => {
+                    onDefChange(ObjShellingAssign(def, ["overlayColor", "g"], num));
+                }} />
+            B:
+            <InputNumber value={def.overlayColor?.b}
+                onChange={(num) => {
+                    onDefChange(ObjShellingAssign(def, ["overlayColor", "b"], num));
+                }} />
+
+
+        </Col>
+
+    </Row>
+
+    處理圖片顯示
+    <Switch checkedChildren="顯示" unCheckedChildren="原圖" checked={def.show_processed_image == true} onChange={(check) => {
+        onDefChange({ ...def, show_processed_image: check }, true);
+    }} />
+
+</>
+    let HSVEditUI= <>
+    
+    
+
+
+
+    
+    
+    偵測反轉
+    <Switch checkedChildren="反轉" unCheckedChildren="正常" checked={def.invert_detection == true} onChange={(check) => {
+        onDefChange({ ...def, invert_detection: check }, true);
+    }} />
+
+
+
+    背景差分
+    <Switch checkedChildren="開" unCheckedChildren="無" checked={def.bg_diff == true} onChange={(check) => {
+        onDefChange({ ...def, bg_diff: check }, true);
+    }} />
+    <br />
+
+    {/* X ng鏡像
+    <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.x_flip_mark == true} onChange={(check) => {
+        onDefChange({ ...def, x_flip_mark: check }, true);
+    }} />
+    Y ng鏡像
+    <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.y_flip_mark == true} onChange={(check) => {
+        onDefChange({ ...def, y_flip_mark: check }, true);
+    }} /> */}
+
+
+
+    X定位
+    <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.x_locating_mark == true} onChange={(check) => {
+        onDefChange({ ...def, x_locating_mark: check }, true);
+    }} />
+    X定位方向
+    <Switch checkedChildren="方向1" unCheckedChildren="方向2" checked={def.x_locating_dir == true} onChange={(check) => {
+        onDefChange({ ...def, x_locating_dir: check }, true);
+    }} />
+    Y定位
+    <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.y_locating_mark == true} onChange={(check) => {
+        onDefChange({ ...def, y_locating_mark: check }, true);
+    }} />
+    Y定位方向
+    <Switch checkedChildren="方向1" unCheckedChildren="方向2" checked={def.y_locating_dir == true} onChange={(check) => {
+        onDefChange({ ...def, y_locating_dir: check }, true);
+    }} />
+
+
+    <br />
+
+    色彩補償:
+
+    <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.color_compensation_enable == true} onChange={(check) => {
+        onDefChange({ ...def, color_compensation_enable: check }, true);
+    }} />
+
+    {
+        def.color_compensation_enable != true ? null : <>
+
+            補償差異過大
+            <Switch checkedChildren="NA" unCheckedChildren="NG" checked={def.color_compensation_diff_NG_as_NA == true} onChange={(check) => {
+                onDefChange({ ...def, color_compensation_diff_NG_as_NA: check }, true);
+            }} />
+            <Button onClick={() => {
+                if (_this.is_in_overlay_disable) {
+
+                    BPG_API.InspTargetExchange(id,
+                        {
+                            type: "show_display_overlay",
+                            enable: true
+                        });
+
+                    onDefChange(def)
+                    _this.is_in_overlay_disable = false;
+                    canvas_obj.UserRegionSelect(undefined);
+                    return;
+                }
+                BPG_API.InspTargetExchange(id,
+                    {
+                        type: "show_display_overlay",
+                        enable: false
+                    });
+
+
+                onDefChange(def)
+
+                _this.is_in_overlay_disable = true;
+
+                canvas_obj.UserRegionSelect((info, draggingState) => {
+                    if (draggingState == 1) {
+                    }
+                    else if (draggingState == 2) {
+                        console.log(info);
+
+
+
+                        (async () => {
+                            canvas_obj.UserRegionSelect(undefined);
+                            let extColor = (await BPG_API.InspTargetExchange(id,
+                                {
+                                    type: "extract_color",
+                                    region: PtsToXYWH(info.pt1, info.pt2)
+                                }) as any)[0].data.report;
+
+
+
+                            await BPG_API.InspTargetExchange(id,
+                                {
+                                    type: "show_display_overlay",
+                                    enable: true
+                                });
+
+                            extColor.r = Math.round(extColor.r);
+                            extColor.g = Math.round(extColor.g);
+                            extColor.b = Math.round(extColor.b);
+                            onDefChange({ ...def, color_compensation_target: extColor })
+                            _this.is_in_overlay_disable = false;
+
+                            console.log(extColor);
+                        })();
+
+                    }
+                });
+            }}>抽取色彩補償標的 </Button>
+
+            {JSON.stringify(def.color_compensation_target)}
+
+            <Row>
+                <Col span={8}>
+                    色彩補償差異閾值
+                </Col>
+                <Col span={14}>
+
+
+                    <Slider defaultValue={def.color_compensation_diff_thres} max={255} onChange={(v) => {
+
+                        _this.trigTO =
+                            ID_debounce(_this.trigTO, () => {
+                                onDefChange({ ...def, color_compensation_diff_thres: v });
+                            }, () => _this.trigTO = undefined, 500);
+
+                    }} />
+
+
+                </Col>
+            </Row>
+
+
+
+        </>
+    }
+
+
+
+    銳化半徑
+    <InputNumber value={def.sharpening_blurRad} step={1} min={0} max={40}
+        onChange={(num) => {
+            let newDef = { ...def, sharpening_blurRad: num }
+            onDefChange(newDef, true);
+        }} />
+
+    銳化
+    <InputNumber value={def.sharpening_alpha} step={1} min={0}
+        onChange={(num) => {
+            let newDef = { ...def, sharpening_alpha: num }
+            onDefChange(newDef, true);
+        }} />
+
+    <Row>
+        <Col span={2}>
+            H[{def.rangel?.h}:{def.rangeh?.h}]
+        </Col>
+        <Col span={20}>
+            {/* <Slider defaultValue={def.rangeh?.h} max={180} onChange={(v) => {
+
+        _this.trigTO =
+            ID_debounce(_this.trigTO, () => {
+                let newL=ObjShellingAssign(def, ["rangeh", "h"], v)
+                console.log(def,newL);
+                onDefChange(newL);
+            }, () => _this.trigTO = undefined, 500);
+
+        }} />
+        <Slider defaultValue={def.rangel?.h} max={180} onChange={(v) => {
+
+        _this.trigTO =
+            ID_debounce(_this.trigTO, () => {
+                onDefChange(ObjShellingAssign(def, ["rangel", "h"], v));
+            }, () => _this.trigTO = undefined, 500);
+
+        }} /> */}
+
+
+            <Slider
+                range
+                step={1} max={180}
+                defaultValue={[def.rangel?.h, def.rangeh?.h]}
+                onChange={([vl, vh]) => {
+
+                    ID_debounce(_this.trigTO, () => {
+                        let nedf = def;
+                        nedf = ObjShellingAssign(nedf, ["rangeh", "h"], vh)
+                        nedf = ObjShellingAssign(nedf, ["rangel", "h"], vl)
+                        onDefChange(nedf);
+                    }, () => _this.trigTO = undefined, 500);
+                }}
+
+            />
+
+        </Col>
+    </Row>
+
+
+    <Row>
+        <Col span={2}>
+            S[{def.rangel?.s}:{def.rangeh?.s}]
+        </Col>
+        <Col span={20}>
+
+
+            <Slider
+                range
+                step={1} max={255}
+                defaultValue={[def.rangel?.s, def.rangeh?.s]}
+                onChange={([vl, vh]) => {
+
+                    ID_debounce(_this.trigTO, () => {
+                        let nedf = def;
+                        nedf = ObjShellingAssign(nedf, ["rangeh", "s"], vh)
+                        nedf = ObjShellingAssign(nedf, ["rangel", "s"], vl)
+                        onDefChange(nedf);
+                    }, () => _this.trigTO = undefined, 500);
+                }}
+
+            />
+
+
+
+        </Col>
+    </Row>
+
+
+    <Row>
+        <Col span={2}>
+            V[{def.rangel?.v}:{def.rangeh?.v}]
+        </Col>
+        <Col span={20}>
+
+            <Slider
+                range
+                step={1} max={255}
+                defaultValue={[def.rangel?.v, def.rangeh?.v]}
+                onChange={([vl, vh]) => {
+
+                    ID_debounce(_this.trigTO, () => {
+                        let nedf = def;
+                        nedf = ObjShellingAssign(nedf, ["rangeh", "v"], vh)
+                        nedf = ObjShellingAssign(nedf, ["rangel", "v"], vl)
+                        onDefChange(nedf);
+                    }, () => _this.trigTO = undefined, 500);
+                }}
+
+            />
+
+
+
+
+        </Col>
+    </Row>
+
+    細節量
+    <Slider
+        step={1} max={255}
+        value={def.detect_detail}
+        onChange={(val) => {
+
+            ID_debounce(_this.trigTO, () => {
+                let nedf = def;
+                nedf = ObjShellingAssign(nedf, ["detect_detail"], val)
+                onDefChange(nedf);
+            }, () => _this.trigTO = undefined, 500);
+        }}
+
+    />
+
+</>;
+
     switch(def_Filled.type)
     {
         case "HSVSeg":
@@ -3769,345 +4104,14 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
     
             <br />
             <Button onClick={() => { setShowDisplayAdjUI(!showDisplayAdjUI) }}> {showDisplayAdjUI == false ? "+展開顯示調整選項" : "-收起顯示調整選項"}</Button>
-            {showDisplayAdjUI == false ? null : <>
-    
-                <Row>
-                    <Col span={4}>
-                        結果顯示:{def.resultOverlayAlpha * 100}%
-                    </Col>
-                    <Col span={6}>
-                        <Slider defaultValue={def.resultOverlayAlpha} min={0} max={1} step={0.1} onChange={(v) => {
-    
-                            _this.trigTO = ID_debounce(_this.trigTO, () => {
-                                onDefChange(ObjShellingAssign(def, ["resultOverlayAlpha"], v));
-                            }, () => _this.trigTO = undefined, 500);
-    
-    
-                        }} />
-    
-                    </Col>
-                    <Col span={14}>
-                        R
-                        <InputNumber value={def.overlayColor?.r}
-                            onChange={(num) => {
-                                onDefChange(ObjShellingAssign(def, ["overlayColor", "r"], num));
-                            }} />
-                        G
-                        <InputNumber value={def.overlayColor?.g}
-                            onChange={(num) => {
-                                onDefChange(ObjShellingAssign(def, ["overlayColor", "g"], num));
-                            }} />
-                        B:
-                        <InputNumber value={def.overlayColor?.b}
-                            onChange={(num) => {
-                                onDefChange(ObjShellingAssign(def, ["overlayColor", "b"], num));
-                            }} />
-    
-    
-                    </Col>
-    
-                </Row>
-    
-                處理圖片顯示
-                <Switch checkedChildren="顯示" unCheckedChildren="原圖" checked={def.show_processed_image == true} onChange={(check) => {
-                    onDefChange({ ...def, show_processed_image: check }, true);
-                }} />
-    
-            </>}
+            {showDisplayAdjUI == false ? null :ProcessDisplayUI}
     
     
     
             <br />
             <Button onClick={() => { setShowDetectAdjUI(!showDetectAdjUI) }}> {showDetectAdjUI == false ? "+展開偵測調整選項" : "-收起偵測調整選項"}</Button>
     
-            {showDetectAdjUI == false ? null : <>
-    
-    
-
-
-
-    
-    
-                偵測反轉
-                <Switch checkedChildren="反轉" unCheckedChildren="正常" checked={def.invert_detection == true} onChange={(check) => {
-                    onDefChange({ ...def, invert_detection: check }, true);
-                }} />
-    
-    
-
-                背景差分
-                <Switch checkedChildren="開" unCheckedChildren="無" checked={def.bg_diff == true} onChange={(check) => {
-                    onDefChange({ ...def, bg_diff: check }, true);
-                }} />
-                <br />
-
-                {/* X ng鏡像
-                <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.x_flip_mark == true} onChange={(check) => {
-                    onDefChange({ ...def, x_flip_mark: check }, true);
-                }} />
-                Y ng鏡像
-                <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.y_flip_mark == true} onChange={(check) => {
-                    onDefChange({ ...def, y_flip_mark: check }, true);
-                }} /> */}
-
-
-
-                X定位
-                <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.x_locating_mark == true} onChange={(check) => {
-                    onDefChange({ ...def, x_locating_mark: check }, true);
-                }} />
-                X定位方向
-                <Switch checkedChildren="方向1" unCheckedChildren="方向2" checked={def.x_locating_dir == true} onChange={(check) => {
-                    onDefChange({ ...def, x_locating_dir: check }, true);
-                }} />
-                Y定位
-                <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.y_locating_mark == true} onChange={(check) => {
-                    onDefChange({ ...def, y_locating_mark: check }, true);
-                }} />
-                Y定位方向
-                <Switch checkedChildren="方向1" unCheckedChildren="方向2" checked={def.y_locating_dir == true} onChange={(check) => {
-                    onDefChange({ ...def, y_locating_dir: check }, true);
-                }} />
-    
-    
-                <br />
-    
-                色彩補償:
-    
-                <Switch checkedChildren="使用" unCheckedChildren="停用" checked={def.color_compensation_enable == true} onChange={(check) => {
-                    onDefChange({ ...def, color_compensation_enable: check }, true);
-                }} />
-    
-                {
-                    def.color_compensation_enable != true ? null : <>
-    
-                        補償差異過大
-                        <Switch checkedChildren="NA" unCheckedChildren="NG" checked={def.color_compensation_diff_NG_as_NA == true} onChange={(check) => {
-                            onDefChange({ ...def, color_compensation_diff_NG_as_NA: check }, true);
-                        }} />
-                        <Button onClick={() => {
-                            if (_this.is_in_overlay_disable) {
-    
-                                BPG_API.InspTargetExchange(id,
-                                    {
-                                        type: "show_display_overlay",
-                                        enable: true
-                                    });
-    
-                                onDefChange(def)
-                                _this.is_in_overlay_disable = false;
-                                canvas_obj.UserRegionSelect(undefined);
-                                return;
-                            }
-                            BPG_API.InspTargetExchange(id,
-                                {
-                                    type: "show_display_overlay",
-                                    enable: false
-                                });
-    
-    
-                            onDefChange(def)
-    
-                            _this.is_in_overlay_disable = true;
-    
-                            canvas_obj.UserRegionSelect((info, draggingState) => {
-                                if (draggingState == 1) {
-                                }
-                                else if (draggingState == 2) {
-                                    console.log(info);
-    
-    
-    
-                                    (async () => {
-                                        canvas_obj.UserRegionSelect(undefined);
-                                        let extColor = (await BPG_API.InspTargetExchange(id,
-                                            {
-                                                type: "extract_color",
-                                                region: PtsToXYWH(info.pt1, info.pt2)
-                                            }) as any)[0].data.report;
-    
-    
-    
-                                        await BPG_API.InspTargetExchange(id,
-                                            {
-                                                type: "show_display_overlay",
-                                                enable: true
-                                            });
-    
-                                        extColor.r = Math.round(extColor.r);
-                                        extColor.g = Math.round(extColor.g);
-                                        extColor.b = Math.round(extColor.b);
-                                        onDefChange({ ...def, color_compensation_target: extColor })
-                                        _this.is_in_overlay_disable = false;
-    
-                                        console.log(extColor);
-                                    })();
-    
-                                }
-                            });
-                        }}>抽取色彩補償標的 </Button>
-    
-                        {JSON.stringify(def.color_compensation_target)}
-    
-                        <Row>
-                            <Col span={8}>
-                                色彩補償差異閾值
-                            </Col>
-                            <Col span={14}>
-    
-    
-                                <Slider defaultValue={def.color_compensation_diff_thres} max={255} onChange={(v) => {
-    
-                                    _this.trigTO =
-                                        ID_debounce(_this.trigTO, () => {
-                                            onDefChange({ ...def, color_compensation_diff_thres: v });
-                                        }, () => _this.trigTO = undefined, 500);
-    
-                                }} />
-    
-    
-                            </Col>
-                        </Row>
-    
-    
-    
-                    </>
-                }
-    
-    
-    
-                銳化半徑
-                <InputNumber value={def.sharpening_blurRad} step={1} min={0} max={40}
-                    onChange={(num) => {
-                        let newDef = { ...def, sharpening_blurRad: num }
-                        onDefChange(newDef, true);
-                    }} />
-    
-                銳化
-                <InputNumber value={def.sharpening_alpha} step={1} min={0}
-                    onChange={(num) => {
-                        let newDef = { ...def, sharpening_alpha: num }
-                        onDefChange(newDef, true);
-                    }} />
-    
-                <Row>
-                    <Col span={2}>
-                        H[{def.rangel?.h}:{def.rangeh?.h}]
-                    </Col>
-                    <Col span={20}>
-                        {/* <Slider defaultValue={def.rangeh?.h} max={180} onChange={(v) => {
-    
-                    _this.trigTO =
-                        ID_debounce(_this.trigTO, () => {
-                            let newL=ObjShellingAssign(def, ["rangeh", "h"], v)
-                            console.log(def,newL);
-                            onDefChange(newL);
-                        }, () => _this.trigTO = undefined, 500);
-    
-                    }} />
-                    <Slider defaultValue={def.rangel?.h} max={180} onChange={(v) => {
-    
-                    _this.trigTO =
-                        ID_debounce(_this.trigTO, () => {
-                            onDefChange(ObjShellingAssign(def, ["rangel", "h"], v));
-                        }, () => _this.trigTO = undefined, 500);
-    
-                    }} /> */}
-    
-    
-                        <Slider
-                            range
-                            step={1} max={180}
-                            defaultValue={[def.rangel?.h, def.rangeh?.h]}
-                            onChange={([vl, vh]) => {
-    
-                                ID_debounce(_this.trigTO, () => {
-                                    let nedf = def;
-                                    nedf = ObjShellingAssign(nedf, ["rangeh", "h"], vh)
-                                    nedf = ObjShellingAssign(nedf, ["rangel", "h"], vl)
-                                    onDefChange(nedf);
-                                }, () => _this.trigTO = undefined, 500);
-                            }}
-    
-                        />
-    
-                    </Col>
-                </Row>
-    
-    
-                <Row>
-                    <Col span={2}>
-                        S[{def.rangel?.s}:{def.rangeh?.s}]
-                    </Col>
-                    <Col span={20}>
-    
-    
-                        <Slider
-                            range
-                            step={1} max={255}
-                            defaultValue={[def.rangel?.s, def.rangeh?.s]}
-                            onChange={([vl, vh]) => {
-    
-                                ID_debounce(_this.trigTO, () => {
-                                    let nedf = def;
-                                    nedf = ObjShellingAssign(nedf, ["rangeh", "s"], vh)
-                                    nedf = ObjShellingAssign(nedf, ["rangel", "s"], vl)
-                                    onDefChange(nedf);
-                                }, () => _this.trigTO = undefined, 500);
-                            }}
-    
-                        />
-    
-    
-    
-                    </Col>
-                </Row>
-    
-    
-                <Row>
-                    <Col span={2}>
-                        V[{def.rangel?.v}:{def.rangeh?.v}]
-                    </Col>
-                    <Col span={20}>
-    
-                        <Slider
-                            range
-                            step={1} max={255}
-                            defaultValue={[def.rangel?.v, def.rangeh?.v]}
-                            onChange={([vl, vh]) => {
-    
-                                ID_debounce(_this.trigTO, () => {
-                                    let nedf = def;
-                                    nedf = ObjShellingAssign(nedf, ["rangeh", "v"], vh)
-                                    nedf = ObjShellingAssign(nedf, ["rangel", "v"], vl)
-                                    onDefChange(nedf);
-                                }, () => _this.trigTO = undefined, 500);
-                            }}
-    
-                        />
-    
-    
-    
-    
-                    </Col>
-                </Row>
-    
-                細節量
-                <Slider
-                    step={1} max={255}
-                    value={def.detect_detail}
-                    onChange={(val) => {
-    
-                        ID_debounce(_this.trigTO, () => {
-                            let nedf = def;
-                            nedf = ObjShellingAssign(nedf, ["detect_detail"], val)
-                            onDefChange(nedf);
-                        }, () => _this.trigTO = undefined, 500);
-                    }}
-    
-                />
-    
-            </>}
+            {showDetectAdjUI == false ? null : HSVEditUI}
     
     
             {/* <pre>{ JSON.stringify( def, null, 2)}</pre> */}
@@ -4130,6 +4134,100 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
                 onDefChange(ObjShellingAssign(def_Filled, ["brightnessCompensation"], check));
             }} />
 
+
+            </>
+            break;
+        case "BrightnessBalance":
+            ConfigUI= <>
+            
+                <Switch checkedChildren="開啟" unCheckedChildren="關閉" checked={def_Filled.enable == true} onChange={(check) => {
+                    onDefChange(ObjShellingAssign(def_Filled, ["enable"], check));
+                }} />
+                R<InputNumber value={def_Filled?.bTar?.r} min={0} max={255} step={1}
+                    onChange={(num) => {
+                        onDefChange(ObjShellingAssign(def_Filled, ["bTar","r"], num));
+                }} />
+                G<InputNumber value={def_Filled?.bTar?.g} min={0} max={255} step={1}
+                    onChange={(num) => {
+                        onDefChange(ObjShellingAssign(def_Filled, ["bTar","g"], num));
+                }} />
+                B<InputNumber value={def_Filled?.bTar?.b} min={0} max={255} step={1}
+                    onChange={(num) => {
+                        onDefChange(ObjShellingAssign(def_Filled, ["bTar","b"], num));
+                }} />
+            </>
+            break;
+
+        case "ScanPoint":
+            ConfigUI= <>
+
+                {["x","y","-x","-y","cx","cy"].map((str)=>
+                {
+                    let scanAngle = def_Filled?.scanAngle||0;
+                    let centerOrEdge = (def_Filled?.centerOrEdge)==true;//true or false
+                    let scanDirStr="x";
+
+
+                    switch(scanAngle)
+                    {
+                        case 0:
+                            scanDirStr=(centerOrEdge)?"cx":"x";
+                            break;
+                        case 90:
+                            scanDirStr=(centerOrEdge)?"cy":"y";
+                            break;
+                        case 270:
+                        case -90:
+                            scanDirStr=(centerOrEdge)?"cy":"-y";
+                            break;
+                        case 180:
+                            scanDirStr=(centerOrEdge)?"cx":"-x";
+                            break;
+
+                    }
+                    return <Button type={scanDirStr==str?"primary":undefined} onClick={()=>{
+                        let scanAngle=0;
+                        let centerOrEdge=false;
+                        switch(str)
+                        {
+                            case "x":
+                                scanAngle=0;
+                                break;
+                            case "y":
+                                scanAngle=90;
+                                break;
+                            case "-y":
+                                scanAngle=-90;
+                                break;
+                            case "-x":
+                                scanAngle=180;
+                                break;
+
+                            case "cy":
+                                scanAngle=90;
+                                centerOrEdge=true;
+                                break;
+                            case "cx":
+                                scanAngle=180;
+                                centerOrEdge=true;
+                                break;
+                        }
+                        let newDef=def_Filled;
+                        newDef=ObjShellingAssign(newDef, ["scanAngle"], scanAngle);
+                        newDef=ObjShellingAssign(newDef, ["centerOrEdge"], centerOrEdge);
+                        onDefChange(newDef);
+                        
+                    }}>{str}</Button>
+                })}
+            
+            <br />
+            <Button onClick={() => { setShowDisplayAdjUI(!showDisplayAdjUI) }}> {showDisplayAdjUI == false ? "+展開顯示調整選項" : "-收起顯示調整選項"}</Button>
+            {showDisplayAdjUI == false ? null :ProcessDisplayUI}
+            <br/>
+                
+            <Button onClick={() => { setShowDetectAdjUI(!showDetectAdjUI) }}> {showDetectAdjUI == false ? "+展開偵測調整選項" : "-收起偵測調整選項"}</Button>
+    
+            {showDetectAdjUI == false ? null : HSVEditUI}
 
             </>
             break;
@@ -4234,14 +4332,11 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
 
         <Dropdown overlay={
             <Menu>
-                <Menu.Item onClick={()=>{
-                    let newDef = { ...def_Filled, type:"HSVSeg" }
+                {["HSVSeg","SigmaThres","BrightnessBalance","ScanPoint"].map(str=><Menu.Item onClick={()=>{
+                    let newDef = { ...def_Filled, type:str }
                     onDefChange(newDef, true);
-                }}>HSVSeg</Menu.Item>
-                <Menu.Item onClick={()=>{
-                    let newDef = { ...def_Filled, type:"SigmaThres" }
-                    onDefChange(newDef, true);
-                }}>SigmaThres</Menu.Item>
+                }}>{str}</Menu.Item>
+                )}
             </Menu>}>
            
             <Button>
@@ -4533,8 +4628,9 @@ function SurfaceCheckSimple_EDIT_UI(param:
                         }}
                         onCopy={(def) => {
                             let newDef = clone(def);
-                            newDef.region.x += 10;
-                            newDef.region.y += 10;
+                            newDef.region.x += 0;
+                            newDef.region.y += 0;
+                            newDef.name = newDef.name+"_COPY";
                             def_Filled.sub_regions.push(newDef);
                             console.log(def_Filled);
                             onDefChange(def_Filled);
@@ -5534,7 +5630,18 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                     if (regionInfo.y_locating_mark == true) prefix += "Y"
 
                                     let idText = prefix + (regionInfo.name === undefined || regionInfo.name == "" ? "$" + subreg_index : regionInfo.name);// +"["+id_name+"]";
-                                    drawRegion(g, canvas_obj, regionInfo.region, lsz);
+
+
+                                    if(regionInfo.type=="ScanPoint" || regionInfo.type=="BrightnessBalance")
+                                    {
+
+                                        drawRegion(g, canvas_obj, regionInfo.region, lsz/5);
+                                    }
+                                    else
+                                    {
+
+                                        drawRegion(g, canvas_obj, regionInfo.region, lsz);
+                                    }
 
                                     let loc=regionInfo.name_loc_offset!==undefined?regionInfo.name_loc_offset:regionInfo.region;
                                     g.ctx.save();
@@ -5556,6 +5663,16 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
                                     ctx.restore();
 
+                                }
+
+                                if(regionInfo.type=="ScanPoint")
+                                {
+                                    // canvas_obj.rUtil.drawCross(ctx, { x: ele.x*insp_down_sample_factor, y: ele.y*insp_down_sample_factor }, 5);
+                                    // console.log(subreg,regionInfo);
+                                    if(regionInfo.scanAngle==0 || regionInfo.scanAngle==180)
+                                        canvas_obj.rUtil.drawCross(ctx, { x:subreg.score, y: regionInfo.region.y+regionInfo.region.h/2 }, 5);
+                                    else
+                                        canvas_obj.rUtil.drawCross(ctx, { x:regionInfo.region.x+regionInfo.region.w/2, y: subreg.score }, 5);
                                 }
 
 
@@ -7509,7 +7626,7 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
 
 
 
-        {
+        if(0){
             let pCMDs=[];
             let id=-1000;
             pCMDs.push({type:"get_running_stat",id,receive:(msg:any)=>{
@@ -7718,8 +7835,17 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
 
 
 
+        <Button onClick={() => {
 
-{/* 
+        (async () => {
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "DISCONNECT", comm_id: PeripheralCONNID })
+        })()
+
+        }}>Disconnect</Button>
+
+
+
+
 
         <Button onClick={() => {
 
@@ -7728,7 +7854,7 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
             await fetchSetup();
         })()
 
-        }}>GetSetup</Button> */}
+        }}>GetSetup</Button>
 
 
 
@@ -7746,13 +7872,13 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
         }}>DDDDDD</Button> */}
 
 
-        <Button onClick={() => {
+        {/* <Button onClick={() => {
             (async () => {
 
                 await BPG_API.CameraSWTrigger("Hikvision-2BDF73541011-00E73541011","CAM_FB",0,true);
             })()
 
-        }}>CAM_TRIG</Button>
+        }}>CAM_TRIG</Button> */}
 
         </div>
 

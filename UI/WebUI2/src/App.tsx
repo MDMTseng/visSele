@@ -146,7 +146,7 @@ type MenuItem = Required<MenuProps>['items'][number];
 
 var enc = new TextEncoder();
 
-const _DEF_FOLDER_PATH_="data/Test1_xprj";
+const _DEF_FOLDER_PATH_="data/Pack_xprj";
 // import ReactJsoneditor from 'jsoneditor-for-react';
 
 // declare module 'jsoneditor-react'jsoneditor-for-react"
@@ -171,7 +171,7 @@ const { Header, Content, Footer,Sider } = Layout;
 //   onDefChange:(updatedRule:any,doInspUpdate:boolean)=>void}
 
 
-function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetupInfo:type_CameraInfo, CoreAPI:BPG_WS,onCameraSetupUpdate:(caminfo:type_CameraInfo)=>void}){
+function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetupInfo:type_CameraInfo, CoreAPI:BPG_WS,onCameraSetupUpdate:(caminfo:type_CameraInfo|undefined)=>void}){
 
   const _this = useRef<{canvasComp:DrawHook_CanvasComponent|undefined,imgCanvas:HTMLCanvasElement
   }>({
@@ -405,6 +405,20 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
     <pre>{
       JSON.stringify(camSetupInfo,null,2)
     }</pre>
+    
+    <Popconfirm
+      title="確定刪除?"
+      onConfirm={()=>{
+
+        onCameraSetupUpdate(undefined);
+      }}
+      onCancel={()=>{
+      }}
+      okText="Yes"
+      cancelText="No"
+    >
+      <Button danger type='primary'>X</Button>
+    </Popconfirm>
   </>
 }
 
@@ -644,7 +658,7 @@ function UtilUI_MUX({UIOption,onUIOptionUpdate}:CompParam_UIOption)
 
 
 
-function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDefChange,renderHook}:{WidgetSetID:string,defConfig:any,UIEditFlag:boolean,EditPermitFlag:number, onDefChange:(updatedDef:any)=>void,renderHook:any})
+function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDefChange,renderHook}:{WidgetSetID:string,defConfig:any,UIEditFlag:boolean,EditPermitFlag:number, onDefChange:(updatedDef:any,updateIdx:number)=>void,renderHook:any})
 {
   
   
@@ -716,7 +730,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
       newDefConfig=ObjShellingAssign(newDefConfig,["main","UIInfo",WidgetTabKey,"WidgetLayout"],new_WidgetLayout)
     // console.log(newDefConfig);
     if(newWidgetInfo!==undefined || new_WidgetLayout!==undefined)
-      onDefChange(newDefConfig)
+      onDefChange(newDefConfig,-12)
   }
 
   // WidgetLayout=InspTarList.map((itar:any)=>{
@@ -835,7 +849,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
                   newDefConfig.InspTars_main[idx]=new_rule;
                 }
                 
-                onDefChange(newDefConfig)
+                onDefChange(newDefConfig,idx)
               }}
               APIExport={undefined}
 
@@ -1067,14 +1081,25 @@ function VIEWUI(){
 
 
 
-  const [defConfig,setDefConfig]=useState<any>(undefined);
+  const [defConfig,_setDefConfig]=useState<any>(undefined);
+  const [saveDefConfIndexes,setSaveDefConfIndexes]=useState<number[]>([]);
+
   const [cameraQueryList,setCameraQueryList]=useState<any[]|undefined>([]);
 
   const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
   const [refUISetIdx,setrefUISetIdx]=useState(-1);
   const [newUIID,setNewUIID]=useState("");
 
-
+  console.log(">>saveDefConfIndexes",saveDefConfIndexes);
+  function setDefConfig(newDC:any,inspTarIndex:number=NaN)
+  {
+    if(inspTarIndex==inspTarIndex)
+    {
+      let newIdexes=[...saveDefConfIndexes,inspTarIndex];
+      setSaveDefConfIndexes(newIdexes);
+    }
+    _setDefConfig(newDC);
+  }
 
   const emptyModalInfo={
     timeTag:0,
@@ -1257,6 +1282,7 @@ function VIEWUI(){
     // InspTargetReload(defInfo:any,_PGID_:number)
     // ddd
     setDefConfig(prjDef);
+    setSaveDefConfIndexes([]);
     console.log(prjDef,infoList)
   }
 
@@ -1752,6 +1778,12 @@ function VIEWUI(){
                 title:cam.id,
                 visible:true,
                 content:<CameraSetupEditUI key={keyTime} CoreAPI={BPG_API} camSetupInfo={ncamInfo}  onCameraSetupUpdate={ncam=>{
+                  if(ncam===undefined)
+                  {
+
+                    // setModalInfo(emptyModalInfo)
+                    return;
+                  }
                   console.log(ncam)
                   updater(ncam);
                   (async function(){
@@ -1776,7 +1808,7 @@ function VIEWUI(){
                     await api.CameraClearTriggerInfo();
                   })()
                   // console.log(setModalInfo);
-                  setDefConfig(new_defConfig)
+                  setDefConfig(new_defConfig,-1)
                   setModalInfo(emptyModalInfo)
                   
                 },
@@ -1824,7 +1856,7 @@ function VIEWUI(){
                 CameraInfoDoConnection(new_camInfo).then(result_camInfo=>{
 
                   let new_defConfig= ObjShellingAssign(defConfig,["main","CameraInfo"],result_camInfo);
-                  setDefConfig(new_defConfig)
+                  setDefConfig(new_defConfig,-2)
                 });
               }}>
                 {cam.id}
@@ -1857,7 +1889,7 @@ function VIEWUI(){
         newPrjDef.main.CameraInfo= await CameraInfoDoConnection(defConfig.main.CameraInfo,true)
 
 
-        setDefConfig(newPrjDef);
+        setDefConfig(newPrjDef,-1);
       })();
       
     }}>Refresh
@@ -1917,7 +1949,7 @@ function VIEWUI(){
 
 
           //console.log(defConfig,new_defConfig)
-          setDefConfig(new_defConfig);
+          setDefConfig(new_defConfig,-1);
           setXCMDIdx(-1);
         }}>+</div>,"_ADD_")//new xcmd 
 
@@ -1969,7 +2001,7 @@ function VIEWUI(){
                   let value=e.target.value;
                   let new_defConfig=ObjShellingAssign(defConfig,["XCmds",xCMDIdx,"id"],value);
                   console.log(defConfig,xCMDIdx,new_defConfig);
-                  setDefConfig(new_defConfig);
+                  setDefConfig(new_defConfig,-5);
 
                 }}/>
     {/* {xCMDWidthM==1?
@@ -2002,7 +2034,7 @@ function VIEWUI(){
                     let new_defConfig=ObjShellingAssign(defConfig,["XCmds"],new_xCMDList);
 
 
-                    setDefConfig(new_defConfig);
+                    setDefConfig(new_defConfig,-9);
                     setXCMDIdx(-1);
 
                   }
@@ -2032,7 +2064,7 @@ function VIEWUI(){
                       let new_cmd_list=[...curXCMD.cmds]
                       new_cmd_list.splice(idx, 0, "");
                       let new_defConfig=ObjShellingAssign(defConfig,["XCmds",xCMDIdx,"cmds"],new_cmd_list);
-                      setDefConfig(new_defConfig);
+                      setDefConfig(new_defConfig,-9);
 
 
                     }}>+</Button>
@@ -2041,7 +2073,7 @@ function VIEWUI(){
                       let new_cmd_list=[...curXCMD.cmds]
                       new_cmd_list.splice(idx, 1);
                       let new_defConfig=ObjShellingAssign(defConfig,["XCmds",xCMDIdx,"cmds"],new_cmd_list);
-                      setDefConfig(new_defConfig);
+                      setDefConfig(new_defConfig,-9);
                     }}>-</Button>
                   </>}
                 >
@@ -2072,7 +2104,7 @@ function VIEWUI(){
 
                   let new_defConfig=ObjShellingAssign(defConfig,["XCmds",xCMDIdx,"cmds",idx],value);
                   console.log(new_defConfig);
-                  setDefConfig(new_defConfig);
+                  setDefConfig(new_defConfig,-9);
 
                 }}/>
               </>)
@@ -2083,7 +2115,7 @@ function VIEWUI(){
               let new_cmd_list=[...curXCMD.cmds]
               new_cmd_list.push("");
               let new_defConfig=ObjShellingAssign(defConfig,["XCmds",xCMDIdx,"cmds"],new_cmd_list);
-              setDefConfig(new_defConfig);
+              setDefConfig(new_defConfig,-9);
 
             }}>+</Button>
 
@@ -2148,8 +2180,9 @@ function VIEWUI(){
           BPG_API.CameraClearTriggerInfo();
             }}>ClearTriggerInfo</Menu.Item>
     
-        <Menu.Item key="2" onClick={()=>{
+        <Menu.Item disabled={saveDefConfIndexes.length==0} key="2" onClick={()=>{
           SavePrjDef(_DEF_FOLDER_PATH_,defConfig);
+          setSaveDefConfIndexes([]);
         }}>SAVE</Menu.Item>
           </>
         }
@@ -2218,7 +2251,7 @@ function VIEWUI(){
               if(delConfirmCounter==0)
               {
                 setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo"],
-                defConfig.main.UIInfo.filter((info:any)=>info.id!=tableInfo.id)))
+                defConfig.main.UIInfo.filter((info:any)=>info.id!=tableInfo.id)),-12)
 
               }
               else
@@ -2267,7 +2300,7 @@ function VIEWUI(){
               id:value,
             }
           }
-          setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo",WidgetTableInfo.length],newUIInfo))
+          setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo",WidgetTableInfo.length],newUIInfo),-12)
           setrefUISetIdx(-1)
 
           setNewUIID("");
@@ -2281,9 +2314,9 @@ function VIEWUI(){
 
 
 
-      <TargetViewUIShow WidgetSetID={_this.listCMD_Vairable.widgetSetID} defConfig={defConfig} UIEditFlag={UIEditFlag} EditPermitFlag={editPermitFlag}  onDefChange={(newdef:any)=>{
+      <TargetViewUIShow WidgetSetID={_this.listCMD_Vairable.widgetSetID} defConfig={defConfig} UIEditFlag={UIEditFlag} EditPermitFlag={editPermitFlag}  onDefChange={(newdef:any, updateIdx)=>{
         console.log(newdef);
-        setDefConfig(newdef)
+        setDefConfig(newdef,updateIdx)
         }}  renderHook={_this.listCMD_Vairable.renderHook}
         />
       </>}
@@ -2324,7 +2357,7 @@ function App() {
     const { REACT_APP_MY_ENV } = process.env;
     console.log(REACT_APP_MY_ENV)
     core_api.connect({
-      url:"ws://127.0.0.1:4090"//4039"
+      url:"ws://127.0.0.1:4035"//4039"
     });
 
 
