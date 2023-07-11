@@ -4899,7 +4899,7 @@ const CAT_ID_NAME = {
     "-1": "NG",
     "-2": "NG2",
     "-3": "NG3",
-    "-40000": "空",
+    "-40000": "--",
 
     "-700": "點過大",
     "-701": "邊過長",
@@ -6032,6 +6032,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
     const [periodicPullCMDs, _setPeriodicPullCMDs] = useState<any[]>([]);
     const [runningState, setRunningState] = useState<any>(undefined);
+    const [scriptRunningState, setScriptRunningState] = useState(false);
     
 
 
@@ -6080,6 +6081,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     _this.inspStatistic = inspStatistic;
     _this.periodicPullCMDs=periodicPullCMDs;
     _this.runningState=runningState;
+    _this.scriptRunningState=scriptRunningState;
     useEffect(() => {//////////////////////
 
         _this.send_id = 0;
@@ -6155,7 +6157,25 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
         
             
-        _this.periodicWatchDog=setInterval(()=>{
+        _this.periodicWatchDog=setInterval(async ()=>{
+
+            let is_Script_Running=false;
+            try{
+                is_Script_Running=(await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_Script_Running" }) as any)
+                [0].data.ACK
+            }
+            catch(e)
+            {
+
+            }
+
+            if(is_Script_Running!=_this.scriptRunningState)
+            {
+                console.log("is_Script_Running",is_Script_Running,"scriptRunningState",_this.scriptRunningState);
+                setScriptRunningState(is_Script_Running);
+            }
+
+            
             if(_this.runningState===undefined)return;
             if(Date.now()-_this.runningState.timeStamp>3000)
             {
@@ -6907,7 +6927,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
                 let additionalTags = fileCandInfo.additionalTags as string[];
                 if (additionalTags === undefined) additionalTags = [];
-                console.log(fileCandInfo);
+                // console.log(fileCandInfo);
 
                 function CATChange(toCAT: string) {
                     let newTags = [...additionalTags.filter(tag => !tag.startsWith("$CAT_"))];
@@ -7187,7 +7207,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
     function NumToStrWithPadding(num:any,padding:number=4)
     {
-
+        if(num===undefined)return "----";
         let str=(typeof num === 'number')?num.toString():"";
         while(str.length<padding)
         {
@@ -7289,10 +7309,10 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
                 <Row align="middle">
 
-                <Tag color={runningState?.state!==undefined?"green":"red"} style={tagSize}>狀態{runningState?.state||"離線"}</Tag>
+                <Tag color={runningState?.state!==undefined?"green":"red"} style={tagSize}>檢驗機狀態碼{runningState?.state||"離線"}</Tag>
+                <Tag color={scriptRunningState?"green":"red"} style={tagSize}>腳本{scriptRunningState?"運行中":"離線"}</Tag>
 
-            
-                <Tag key={latestReport?.report?.category+"__"} color={CAT_ID_Color[latestReport?.report?.category+""]} style={{...tagSize}}>{CAT_ID_NAME[latestReport?.report?.category+""]}</Tag>
+
 
 
 
@@ -7301,9 +7321,28 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 </Row>
                 </Col>
 
-
             </Row>
 
+            <Row justify="center">
+
+            
+                <Col>
+                <Avatar shape="square" size={100} icon={CAT_ID_NAME[latestReport?.report?.category+""]}  style={{ 
+                width:"200px",
+                boxShadow:btn_boxshadow,
+                backgroundColor:CAT_ID_Color[latestReport?.report?.category+""],}}
+                onClick={()=>{
+
+
+                }}
+                
+                
+                />
+
+
+                </Col>
+
+            </Row>
             <br/>
             <br/>
 
@@ -7414,6 +7453,11 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 }}>處理時間:{JSON.stringify(processTimeInfo)}</Button>
                 
 
+
+                <Button onClick={() => {
+                    BPG_API.InspTargetExchange(cacheDef.id, { type: "reloadscript" })
+                }}>reloadscript</Button>
+                
             
             {/* <Button onClick={() => {
 

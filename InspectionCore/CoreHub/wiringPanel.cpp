@@ -6,7 +6,7 @@
 //#include "MLNN.hpp"
 #include "cJSON.h"
 #include "logctrl.h"
-
+#include <future>
 #include "MatchingCore.h"
 #include "acvImage_BasicTool.hpp"
 #include "mjpegLib.h"
@@ -1192,6 +1192,165 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
 };
 
 
+
+class ScriptChannel:public Data_JsonRaw_Layer
+{
+  private:
+  std::unique_ptr<FILE, decltype(&pclose)> scriptCMD_pipe;
+  protected:
+  int sendID=0;
+  mutex promiseTable_LOCK;
+  std::map<int, std::promise<cJSON*>> idPromise;
+
+
+  public:
+  ScriptChannel(std::string env_path,std::string cmd,std::string com_ip,int ip_port):Data_JsonRaw_Layer(),
+  scriptCMD_pipe(popen(("cd "+env_path+"&&"+cmd+" --port="+to_string(ip_port)).c_str(), "r"), pclose)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    Data_Layer_IF *PHYLayer=new Data_TCP_Layer(com_ip.c_str(),ip_port);
+
+    setDLayer(PHYLayer);
+    // std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    send_RESET();
+    send_data(0,(uint8_t*)"\n",1,0);
+    RESET();
+
+    LOGE(">>>ScriptChannel>>");
+  }
+
+  int PromiseTryFulfill(int id,cJSON* json)
+  {
+    lock_guard<mutex> lock(promiseTable_LOCK);
+    if(idPromise.find(id)!=idPromise.end())
+    {
+      idPromise[id].set_value(json);
+      idPromise.erase(id);
+      return 0;
+    }
+    return -1;
+  }
+
+  int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)
+  {
+    cJSON *json=NULL;
+
+    do{
+
+      if(opcode==1 )
+      {
+        char tmp[1024];
+        // LOGI("raw:%s",raw);
+        cJSON *json = cJSON_Parse((char *)raw);
+
+        int id=JFetch_NUMBER_ex(json,"id",-1);
+
+        if(id>=0&&PromiseTryFulfill(id,json)==0)break;
+
+
+      }
+
+    }while(false);
+
+    if(json!=NULL)
+    {
+      cJSON_Delete(json);
+    }
+    return 0;
+  }
+  int recv_RESET()
+  {
+    // printf("Get recv_RESET\n");
+    return 0;
+  }
+  int recv_ERROR(ERROR_TYPE errorcode)
+  {
+    // printf("Get recv_ERROR:%d\n",errorcode);
+    return 0;
+  }
+  
+  bool dlayerConnected=false;
+  void connected(Data_Layer_IF* ch){
+    printf(">>>%X connected\n",ch);
+    dlayerConnected=true;
+  }
+
+  void disconnected(Data_Layer_IF* ch){
+    printf(">>>%X disconnected\n",ch);
+    dlayerConnected=false;
+  }
+
+  bool isRunning()
+  {
+    // LOGE("RUN:%d",feof(scriptCMD_pipe.get()));
+    return dlayerConnected && !feof(scriptCMD_pipe.get());
+  }
+
+  ~ScriptChannel()
+  {
+
+    {
+      char tmp[128];
+      int len=sprintf(tmp,"{\"type\":\"EXIT\"}\n");
+      send_data(0,(uint8_t*)tmp,len,0);
+    }
+
+
+    close();
+    printf("MData_uInsp DISTRUCT:%p\n",this);
+  }
+
+  
+
+  std::future<cJSON*> send_future(cJSON* json,int *ret_id=NULL)
+  {
+    lock_guard<mutex> lock(promiseTable_LOCK);
+    sendID++;
+    std::promise<cJSON*> prom;
+    std::future<cJSON*> fut = prom.get_future();
+    idPromise[sendID]=std::move(prom);
+
+    char buffer[5000];
+
+    if(ret_id)*ret_id=sendID;
+    cJSON_AddNumberToObject(json,"id",sendID);
+    cJSON_PrintPreallocated(json,buffer,sizeof(buffer),false);
+    size_t blen=strlen(buffer);
+    // if(buffer[blen-1]=='}')
+    // {
+    //   char* tail=&buffer[blen-1];
+    //   blen+=sprintf(tail,",\"id\":%d}",sendID)-1;
+    // }
+
+    send_data(0,(uint8_t*)buffer,blen,0);
+    send_data(0,(uint8_t*)"\n",1,0);
+    return fut;
+
+  }
+
+
+
+  cJSON* send_waitfor_return(cJSON* json,int waitTime_ms)
+  {
+    int id=-1;
+    auto prom=send_future(json,&id);
+    if(prom.wait_for(std::chrono::milliseconds(waitTime_ms))==std::future_status::ready)
+    {
+      return prom.get();
+    }
+    {
+      lock_guard<mutex> lock(promiseTable_LOCK);
+      idPromise[id].set_exception(std::make_exception_ptr(std::runtime_error("timeout")));
+      idPromise.erase(id);
+    }
+    return NULL;
+  }
+};
+
+
+
+
+
 class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect_Base
 {
   protected:
@@ -1272,9 +1431,63 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
         if(strstr((char*)raw, "\"type\":\"bTrigInfo\"") != NULL)
         {
-          passUp=false;
-          master->sCH->send_data(0,(uint8_t*)raw,strlen((char*)raw),0);
-          master->sCH->send_data(0,(uint8_t*)"\n",1,0);
+
+          if(master->sCH==NULL)
+          {
+            LOGE("sCH==NULL");
+            return -1;
+          }
+          cJSON *json = cJSON_Parse((char *)raw);
+
+          cJSON *rep=master->sCH->send_waitfor_return(json,1000);
+
+          if(rep)
+          {
+
+            cJSON *trigInfoArr=JFetch_ARRAY(rep,"data");
+            int arrl=cJSON_GetArraySize(trigInfoArr);
+            for(int i=0;i<arrl;i++)
+            {
+              cJSON *jtrigInfo=cJSON_GetArrayItem(trigInfoArr,i);
+              if(jtrigInfo==NULL)continue;
+              
+
+
+
+              LOGI("trigInfo");
+              sttriggerInfo_mix trigInfo;
+              trigInfo.stInfo=NULL;
+              trigInfo.triggerInfo.camera_id=(JFetch_STRING_ex(jtrigInfo,"camera_id"));
+
+              trigInfo.triggerInfo.trigger_id=(JFetch_NUMBER_ex(jtrigInfo,"trigger_id",-1));
+              trigInfo.triggerInfo.est_trigger_time_us=JFetch_NUMBER_ex(jtrigInfo,"est_trigger_time_us",-1);
+              trigInfo.triggerInfo.trigger_time_match_error_thres_us=JFetch_NUMBER_ex(jtrigInfo,"trigger_time_match_error_thres_us",-1);
+
+              {
+                cJSON* tags=JFetch_ARRAY(jtrigInfo,"tags");
+                if(tags)
+                {
+                  for(int i=0;i<cJSON_GetArraySize(tags);i++)
+                  {
+                    cJSON* tag=cJSON_GetArrayItem(tags,i);
+                    if(tag)
+                    {
+                      trigInfo.triggerInfo.tags.push_back(std::string(tag->valuestring));
+                    }
+                  }
+                }
+              }
+
+              triggerInfoMatchingQueue.push_blocking(trigInfo);
+
+            }
+
+            cJSON_Delete(rep);
+
+          }
+          cJSON_Delete(json);
+
+
         }
 
         if(false && strstr((char*)raw, "\"type\":\"bTrigInfo\"") != NULL)
@@ -1482,153 +1695,60 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   };
   PerifChannel2 *pCH= NULL;
 
-  class ScriptChannel:public Data_JsonRaw_Layer
+  class ScriptChannel2:public ScriptChannel
   {
     
     public:
-    int fastTestRetCatFlag=STAGEINFO_CAT_UNSET;
-    int comm_pgID=-1;
-    std::mutex sendMutex;
-
-    void lock(){
-      sendMutex.lock();
-    }
-    void unlock(){
-      sendMutex.unlock();
-    }
 
 
-
-    InspectionTarget_JSON_Peripheral *master;
-    int pkt_count = 0;
-    std::unique_ptr<FILE, decltype(&pclose)> scriptCMD_pipe;
-    ScriptChannel(InspectionTarget_JSON_Peripheral *master):Data_JsonRaw_Layer(),
-    
-    scriptCMD_pipe(popen(("python3 "+master->local_env_path+"/script.py").c_str(), "r"), pclose)// throw(std::runtime_error)
+    ScriptChannel2(std::string env_path,std::string cmd,std::string com_ip,int ip_port):
+    ScriptChannel(env_path,cmd,com_ip,ip_port)
     {
-      this->master=master;
-
-
-
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
-      Data_Layer_IF *PHYLayer=new Data_TCP_Layer("127.0.0.1",7758);
-
-      setDLayer(PHYLayer);
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
-      send_RESET();
-      send_data(0,(uint8_t*)"\n",1,0);
-      RESET();
-
-      // char tmp[128];
-      
-      // // for(int i=0;i<5;i++)
-      // // {
-      // int len=sprintf(tmp,"{\"type\":\"bTrigInfo\",\"tidx\":1,\"tid\":436345,\"usH\":1,\"usL\":2}\n");
-      // send_data(0,(uint8_t*)tmp,len,0);
-      // // }
-
-
 
     }
-
+    
     int testCounter=0;
     int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)
     {
-      static int CCC=0;
-      if(opcode==1 )
-      {
+
+
+      cJSON *json=NULL;
+
+      if(opcode==1 )do{
+
+      
         char tmp[1024];
-        LOGI("raw:%s",raw);
+        // LOGI("raw:%s",raw);
         cJSON *json = cJSON_Parse((char *)raw);
 
-        std::string type(JFetch_STRING_ex(json,"type"));
+        int id=JFetch_NUMBER_ex(json,"id",-1);
 
-        if(type=="trigInfo")
+        if(id>=0&&PromiseTryFulfill(id,json)==0)break;
+
+        std::string type=JFetch_STRING_ex(json,"type");
+
+        if(type=="DBGMSG")
         {
-          LOGI("trigInfo");
-
-          sttriggerInfo_mix trigInfo;
-          trigInfo.stInfo=NULL;
-          trigInfo.triggerInfo.camera_id=(JFetch_STRING_ex(json,"camera_id"));
-
-          trigInfo.triggerInfo.trigger_id=(JFetch_NUMBER_ex(json,"trigger_id",-1));
-          trigInfo.triggerInfo.est_trigger_time_us=JFetch_NUMBER_ex(json,"est_trigger_time_us",-1);
-          trigInfo.triggerInfo.trigger_time_match_error_thres_us=JFetch_NUMBER_ex(json,"trigger_time_match_error_thres_us",-1);
-
-          {
-            cJSON* tags=JFetch_ARRAY(json,"tags");
-            if(tags)
-            {
-              for(int i=0;i<cJSON_GetArraySize(tags);i++)
-              {
-                cJSON* tag=cJSON_GetArrayItem(tags,i);
-                if(tag)
-                {
-                  trigInfo.triggerInfo.tags.push_back(std::string(tag->valuestring));
-                }
-              }
-            }
-          }
-
-          triggerInfoMatchingQueue.push_blocking(trigInfo);
-          
+          // LOGI("DBGMSG:%s",JFetch_STRING_ex(json,"msg").c_str());
+          LOGI("DBGMSG:%s",raw);
         }
+      }while(false);
 
-        
-        return 0;
-
+      if(json!=NULL)
+      {
+        cJSON_Delete(json);
       }
-      printf(">>opcode:%d\n",opcode);
-      return 0;
-    }
-    int recv_RESET()
-    {
-      // printf("Get recv_RESET\n");
-      return 0;
-    }
-    int recv_ERROR(ERROR_TYPE errorcode)
-    {
-      // printf("Get recv_ERROR:%d\n",errorcode);
       return 0;
     }
     
-    void connected(Data_Layer_IF* ch){
-      testCounter=0;
-      printf(">>>%X connected\n",ch);
-    }
-
-    void disconnected(Data_Layer_IF* ch){
-      printf(">>>%X disconnected\n",ch);
-    }
-
-    ~ScriptChannel()
+    ~ScriptChannel2()
     {
-
-      {
-        char tmp[128];
-        int len=sprintf(tmp,"{\"type\":\"EXIT\"}\n");
-        send_data(0,(uint8_t*)tmp,len,0);
-      }
-
-
-      close();
-      printf("MData_uInsp DISTRUCT:%p\n",this);
     }
 
-    // int send_data(int head_room,uint8_t *data,int len,int leg_room){
-      
-    //   // printf("==============\n");
-    //   // for(int i=0;i<len;i++)
-    //   // {
-    //   //   printf("%d ",data[i]);
-    //   // }
-    //   // printf("\n");
-    //   return recv_data(data,len, false);//LOOP back
-    // }
   };
   
-  
-  ScriptChannel *sCH= NULL;
+  std::string local_env_path;
+  ScriptChannel2 *sCH= NULL;
 
 
   mutex pCH_mutex;
@@ -1650,7 +1770,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
   vector<vector<std::shared_ptr<StageInfo>>> recentSrcStageInfoSet;
   RingBufIdxCounter<int> recentSrcStageInfoSetIdx;
 
-
+  int64 scriptT;
   public:
 
   bool file_exists(const std::string& filename) {
@@ -1658,53 +1778,77 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       return file.good();
   }
 
-
-  std::string exec(const char* cmd) {
-      std::array<char, 128> buffer;
-      std::string result;
-
-
-
-      std::ofstream out_file("cpdata.txt");
-      if (!out_file) {
-          std::cerr << "Cannot open the file: data.txt" << std::endl;
-      }
-      // Read from the file
-      std::ifstream in_file("pcdata.txt");
-      if (!in_file) {
-          std::cerr << "Cannot open the file: data.txt" << std::endl;
-      }
-
-
-      std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-      if (!pipe) {
-          throw std::runtime_error("popen() failed!");
-      }
-
-
-      out_file << "Hello from C++\n"<< std::endl;
-      out_file << "sssss\n"<< std::endl;
-
-      std::string data;
-
-      while(std::getline(in_file, data))
-      {
-        std::cout << "1>cReceived: " << data << std::endl;
-      }
-
-      while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        result += buffer.data();
-      }
-
-
-      in_file.close();
-      out_file.close();
-
-
-
-      return result;
+  void unloadScript()
+  {
+    if(sCH)
+    {
+      delete sCH;
+      sCH=NULL;
+    }
   }
 
+  bool reloadScript()
+  {
+    unloadScript();
+
+    try{
+      sCH=new ScriptChannel2(local_env_path,
+          JFetch_STRING_ex(def,"scriptInfo.run_cmd"),
+          "127.0.0.1",
+          JFetch_NUMBER_ex(def,"scriptInfo.IPC_port"));
+
+    }
+    catch(std::runtime_error &e){
+      LOGE("ScriptChannel2 fail:%s",e.what());
+      return false;
+    }
+
+
+    {
+      LOGE("Send defInfo....");
+      cJSON *json = cJSON_CreateObject();
+      cJSON_AddStringToObject(json,"type","defInfo");
+      cJSON_AddItemToObject(json,"defInfo",def);
+
+
+      cJSON *rep =sCH->send_waitfor_return(json,5000);
+
+
+
+
+      cJSON_DetachItemFromObject(json,"defInfo");
+      cJSON_Delete(json);
+
+
+      if(rep!=NULL)
+      {
+        LOGE("Send defInfo.... done!");
+        cJSON_Delete(rep);
+      }
+      else
+      {
+        LOGE("Send defInfo.... timeout!");
+        unloadScript();
+        return false;
+      }
+    }
+
+    return true;
+
+    // {
+    //   int len=sprintf((char*)_buf,"{\"type\":\"EXIT\"}\n");
+    //   sCH->send_data(0,(uint8_t*)_buf,len,0);
+    // }
+
+
+    // std::string result;
+    // std::array<char, 128> buffer;
+    // while (fgets(buffer.data(), buffer.size(), sCH->scriptCMD_pipe.get()) != nullptr) {
+    //   result += buffer.data();
+    // }
+    // LOGE("PY script output:%s",result.c_str());
+
+  }
 
   static std::string TYPE(){ return "JSON_Peripheral"; }
   InspectionTarget_JSON_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
@@ -1712,7 +1856,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     recentSrcStageInfoSetIdx(100),bTrigInfoRecordBuffer(100),liveFlag(true),
     periodicThread(&InspectionTarget_JSON_Peripheral::periodicFunction,this)
   {
-
+    this->local_env_path=local_env_path;
     comm_pgID=-1;
     recentSrcStageInfoSet.resize(recentSrcStageInfoSetIdx.space());
     for(int i=0;i<bTrigInfoRecordBuffer.size();i++)
@@ -1721,40 +1865,9 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     }
 
 
+    reloadScript();
     // LOGE("PY script output:%s",exec(("python3 "+local_env_path+"/script.py").c_str()).c_str());
 
-    {
-
-      sCH=new ScriptChannel(this);
-
-
-      uint8_t _buf[1024];
-      cJSON *json = cJSON_CreateObject();
-      cJSON_AddStringToObject(json,"type","defInfo");
-      {
-        cJSON_AddItemToObject(json,"info",def);
-        int ret= sendcJSONTo_perifCH(sCH,_buf, sizeof(_buf),true,json);
-        cJSON_DetachItemFromObject(json,"info");
-      }
-      cJSON_Delete(json);
-      sCH->send_data(0,(uint8_t*)"\n",1,0);
-
-
-
-      // {
-      //   int len=sprintf((char*)_buf,"{\"type\":\"EXIT\"}\n");
-      //   sCH->send_data(0,(uint8_t*)_buf,len,0);
-      // }
-
-
-      // std::string result;
-      // std::array<char, 128> buffer;
-      // while (fgets(buffer.data(), buffer.size(), sCH->scriptCMD_pipe.get()) != nullptr) {
-      //   result += buffer.data();
-      // }
-      // LOGE("PY script output:%s",result.c_str());
-
-    }
   }
 
 
@@ -1778,7 +1891,10 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
         // LOGE("<periodicPullJsonCMDs.size():%d",periodicPullJsonCMDs.size());
         for(int i=0;i<periodicPullJsonCMDs.size();i++)
         {
-          int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,periodicPullJsonCMDs[i]);
+          cJSON* cmd=periodicPullJsonCMDs[i];
+          if(cmd==NULL)continue;
+          int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,cmd);
+
         }
         // LOGE(">>>>>>>pCH:%p");
 
@@ -1790,15 +1906,10 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
   ~InspectionTarget_JSON_Peripheral()
   {
-
+    unloadScript();
     liveFlag=false;
     periodicThread.join();
-    if (pCH)
-    {
-      LOGI("DELETING");
-      delete pCH;
-      pCH = NULL;
-    }
+    
 
     if(sCH)
     {
@@ -1912,6 +2023,11 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     if(type=="is_CONNECTED")
     {
       return pCH!=NULL;
+    }
+    if(type=="reloadscript")
+    {
+      reloadScript();
+      return true;
     }
 
 
@@ -2078,6 +2194,10 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
     }
     
+    if(type=="is_Script_Running")
+    {
+      return sCH!=NULL && sCH->isRunning();
+    }
 
     if(type=="SrcImgSaveCountDown")
     {
@@ -2621,10 +2741,57 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
 {
   int catSum,holeIdx;
 
-  if(ResultB(trigger_id,group,catSum,holeIdx)!=0)
+
+  if(sCH==NULL)
   {
+    LOGE("sCH==NULL");
     return;
   }
+  if(true)
+  {
+    scriptT=cv::getTickCount();
+    cJSON *info = cJSON_CreateObject();
+    cJSON_AddNumberToObject(info, "trigger_id", trigger_id);
+    cJSON_AddStringToObject(info, "type", "reports");
+    cJSON *jgroup = cJSON_CreateArray();
+    cJSON_AddItemToObject(info, "group", jgroup);
+    for (int i = 0; i < group.size(); i++)
+    {
+      cJSON *genrep = cJSON_CreateObject();
+      genrep=group[i]->attachJsonRep(genrep,0);
+      cJSON_AddItemToArray(jgroup,genrep);
+    }
+
+    cJSON* result=sCH->send_waitfor_return(info,1000);
+    cJSON_Delete(info);
+    if(result)
+    {
+        char *buffer = cJSON_PrintUnformatted(result);
+        LOGE(">>:%s",buffer);
+
+        if(result)
+        {
+          catSum=JFetch_NUMBER_ex(result,"category",STAGEINFO_CAT_UNSET);
+          holeIdx=JFetch_NUMBER_ex(result,"holeIdx",-1);
+        }
+        cJSON_Delete(result);
+        delete buffer;
+
+    }
+    else
+    {
+      return;//Error
+    }
+
+
+
+
+  }
+
+  // if(ResultB(trigger_id,group,catSum,holeIdx)!=0)
+  // {
+  //   return;
+  // }
 
 
 
