@@ -176,7 +176,7 @@ done:
 #endif
 
 
-Data_TCP_Layer::Data_TCP_Layer(char *host,int port)//throw(std::runtime_error)
+Data_TCP_Layer::Data_TCP_Layer(const char *host,int port)//throw(std::runtime_error)
 {
     if ((he=gethostbyname(host)) == NULL) {  /* get the host info */
         //herror("gethostbyname");

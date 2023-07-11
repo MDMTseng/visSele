@@ -19,7 +19,7 @@ protected:
     struct sockaddr_in their_addr; /* connector's address information */
     std::timed_mutex sendLock;
 public:
-    Data_TCP_Layer(char *host,int port);//throw(std::runtime_error);
+    Data_TCP_Layer(const char *host,int port);//throw(std::runtime_error);
 
 
 
