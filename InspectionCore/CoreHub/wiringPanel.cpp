@@ -1431,7 +1431,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
         if(strstr((char*)raw, "\"type\":\"bTrigInfo\"") != NULL)
         {
-
+          LOGE(">>>");
           if(master->sCH==NULL)
           {
             LOGE("sCH==NULL");
@@ -1441,6 +1441,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
           cJSON *rep=master->sCH->send_waitfor_return(json,1000);
 
+          LOGE(">>>rep:%p",rep);
           if(rep)
           {
 
@@ -1460,6 +1461,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
               trigInfo.triggerInfo.camera_id=(JFetch_STRING_ex(jtrigInfo,"camera_id"));
 
               trigInfo.triggerInfo.trigger_id=(JFetch_NUMBER_ex(jtrigInfo,"trigger_id",-1));
+              master->processTimeRecord[trigInfo.triggerInfo.trigger_id]=cv::getTickCount();
               trigInfo.triggerInfo.est_trigger_time_us=JFetch_NUMBER_ex(jtrigInfo,"est_trigger_time_us",-1);
               trigInfo.triggerInfo.trigger_time_match_error_thres_us=JFetch_NUMBER_ex(jtrigInfo,"trigger_time_match_error_thres_us",-1);
 
