@@ -2411,338 +2411,13 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     
   // }
 
-int ResultA(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group,int &result,int &holeIdx)
-{
-  
-  LOGI("InspectionTarget_UART_JSON_Peripheral processGroup:  trigger_id:%d =========",trigger_id);
-
-  holeIdx=-1;
-  for(int i=0;i<group.size();i++)
-  {
-
-    auto d_img_info = dynamic_cast<StageInfo_Orientation*>(group[i].get());
-    if(d_img_info==NULL)continue;
-    // LOGI(">>>>>orientation size:%d",d_img_info->orientation.size());
-    if(d_img_info->orientation.size()==0)continue;
-
-    if(d_img_info->orientation[0].confidence==0)continue;
-
-
-    if(find(d_img_info->trigger_tags,"SBM_HOLE_A")>=0)
-    {
-    LOGI("SBM_HOLE_A");
-      if(holeIdx!=-1)
-      {
-        holeIdx=-2;
-        break;
-      }
-      holeIdx=0;
-      continue;
-    }
-
-
-    if(find(d_img_info->trigger_tags,"SBM_HOLE_B")>=0)
-    {
-    LOGI("SBM_HOLE_B");
-      if(holeIdx!=-1)
-      {
-        holeIdx=-2;
-        break;
-      }
-      holeIdx=1;
-      continue;
-    }
-    // d_img_info->orientation.size();
-  }
-
-
-  std::vector<std::shared_ptr<StageInfo>> surfaceReps;
-
-  int catSum=STAGEINFO_CAT_OK;
-  int curTrigID=-1;
-  for(int i=0;i<group.size();i++)
-  {
-
-    auto d_sinfo = dynamic_cast<StageInfo_SurfaceCheckSimple *>(group[i].get());
-
-
-
-    if(d_sinfo==NULL)continue;
-
-
-  
-    curTrigID=d_sinfo->trigger_id;
-    int cur_cat=d_sinfo->category;
-
-    LOGI("[%d]:from:%s  =========cat:%d",i,group[i]->source_id.c_str(),cur_cat);
-
-
-    // cJSON *surRep=cJSON_CreateObject();
-    // d_sinfo->attachJsonRep(surRep,true);
-    surfaceReps.push_back(group[i]);
-
-
-    if(0){
-
-      LOGI("match_reg_info size:%d",d_sinfo->match_reg_info.size());
-      for(int j=0;j<d_sinfo->match_reg_info.size();j++)
-      {
-        // 
-        auto &sr=d_sinfo->match_reg_info[j].subregions;
-
-        LOGI("[%d]:%d",j,d_sinfo->match_reg_info[j].category);
-        for(int k=0;k<sr.size();k++)
-        {
-          LOGI("[%d]:>>>>>type:%d",k,sr[k].type);
-          LOGI("blob_area:%d",sr[k].hsvseg_stat.blob_area);
-          LOGI("element_area:%d",sr[k].hsvseg_stat.element_area);
-
-
-
-        }
-      }
-    }
-    
-
-
-    //from now on we only look one side
-
-    // if(holeIdx==0)//
-    // {
-    //   cur_cat=STAGEINFO_CAT_NA;
-    // }
-
-
-
-    if(cur_cat==STAGEINFO_CAT_NOT_EXIST || cur_cat==STAGEINFO_CAT_UNSET)cur_cat=STAGEINFO_CAT_NA;
-
-    if(holeIdx==i)//the hole is here ignore the inspection
-    {
-      if(cur_cat!=STAGEINFO_CAT_NA)
-        cur_cat=STAGEINFO_CAT_OK;
-    }
-    else if(holeIdx<0)
-    {
-      cur_cat=STAGEINFO_CAT_NA;
-    }
-
-
-
-    // if(i==1)break;
-
-
-    
-    int bk_catSum=catSum;
-
-    catSum=STAGEINFO_SCS_CAT_BASIC_reducer(catSum,cur_cat);
-    // switch ((catSum))
-    // {
-    // case STAGEINFO_CAT_OK:
-    //   if(cur_cat==STAGEINFO_CAT_NG)catSum=STAGEINFO_CAT_NG;
-    //   else if(cur_cat==STAGEINFO_CAT_NA)catSum=STAGEINFO_CAT_NA;
-    //   else if(cur_cat==STAGEINFO_CAT_UNSET)catSum=STAGEINFO_CAT_NA;
-
-    //   break;
-    
-    // case STAGEINFO_CAT_NG:
-    
-    //   if(cur_cat==STAGEINFO_CAT_NA)catSum=STAGEINFO_CAT_NA;
-    //   else if(cur_cat==STAGEINFO_CAT_UNSET)catSum=STAGEINFO_CAT_NA;
-      
-    //   break;
-    
-    // case STAGEINFO_CAT_NA:
-    //   break;
-    // default://unknown
-    //   catSum=STAGEINFO_CAT_NA;
-    //   break;
-    // }
-    LOGI("catSum %d +cur_cat:%d  =>:%d  ",bk_catSum,cur_cat,catSum);
-
-
-  }
-
-  result=catSum;
-  return 0;
-
-}
-
-
-
-
-int ResultB(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group,int &result,int &holeIdx)
-{
-  
-  LOGI("InspectionTarget_UART_JSON_Peripheral processGroup:  trigger_id:%d =========",trigger_id);
-
-  for(int i=0;i<group.size();i++)
-  {
-
-    auto d_img_info = dynamic_cast<StageInfo_Image*>(group[i].get());
-    if(d_img_info==NULL)continue;
-    
-    LOGI("tstmp_ms:%" PRIu64 ,d_img_info->img_prop.fi.timeStamp_us);
-
-  }
-
-  holeIdx=-1;
-  for(int i=0;i<group.size();i++)
-  {
-
-    auto d_img_info = dynamic_cast<StageInfo_Orientation*>(group[i].get());
-    if(d_img_info==NULL)continue;
-    // LOGI(">>>>>orientation size:%d",d_img_info->orientation.size());
-    if(d_img_info->orientation.size()==0)continue;
-
-    if(d_img_info->orientation[0].confidence==0)continue;
-
-
-    if(find(d_img_info->trigger_tags,"SBM_HOLE_A")>=0)
-    {
-    LOGI("SBM_HOLE_A");
-      if(holeIdx!=-1)
-      {
-        holeIdx=-2;
-        break;
-      }
-      holeIdx=0;
-      continue;
-    }
-
-
-    if(find(d_img_info->trigger_tags,"SBM_HOLE_B")>=0)
-    {
-    LOGI("SBM_HOLE_B");
-      if(holeIdx!=-1)
-      {
-        holeIdx=-2;
-        break;
-      }
-      holeIdx=1;
-      continue;
-    }
-    // d_img_info->orientation.size();
-  }
-
-
-  std::vector<std::shared_ptr<StageInfo>> surfaceReps;
-
-  int catSum=STAGEINFO_CAT_OK;
-  int curTrigID=-1;
-  for(int i=0;i<group.size();i++)
-  {
-    auto d_sinfo = dynamic_cast<StageInfo_SurfaceCheckSimple *>(group[i].get());
-    if(d_sinfo==NULL)continue;
-
-
-  
-    curTrigID=d_sinfo->trigger_id;
-    int cur_cat=d_sinfo->category;
-    LOGI("[%d]:from:%s  =========cat:%d",i,group[i]->source_id.c_str(),cur_cat);
-    if(cur_cat==STAGEINFO_CAT_NOT_EXIST || cur_cat==STAGEINFO_CAT_UNSET)cur_cat=STAGEINFO_CAT_NA;
-    
-    // if(holeIdx<0)
-    // {
-    //   cur_cat=STAGEINFO_CAT_NA;
-    // }
-
-    int bk_catSum=catSum;
-
-    catSum=STAGEINFO_SCS_CAT_BASIC_reducer(catSum,cur_cat);
-    
-    LOGI("catSum %d +cur_cat:%d  =>:%d  ",bk_catSum,cur_cat,catSum);
-    surfaceReps.push_back(group[i]);
-  }
-
-  result=catSum;
-  return 0;
-
-}
-
-
-
 bool scriptNeedInit=true;
-// void ddd(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
-// {
-//   py::module pyscript;
-    
-//   py::scoped_interpreter guard{};
-
-
-//   if(scriptNeedInit)
-//   {
-//     LOGI("><>>");
-
-
-//     LOGI("local_env_path:%s",local_env_path.c_str());
-//     string xpath=local_env_path;//=local_env_path.replace("/",".");
-//     replaceAll(xpath, "/", ".");
-//     LOGI("xpath:%s",xpath.c_str());
-
-//     pyscript = py::module::import((xpath+".script").c_str());
-
-//     LOGE("pyscript:%d",pyscript.is_none());
-//     scriptNeedInit=false;
-//   }
-
-
-
-//   LOGI(">>>>>");
-//   int finalResult=STAGEINFO_CAT_NA;
-
-//   vector<char*> jsonstr;
-
-//   do{
-//     if(pyscript.is_none())break;
-//     LOGI(">>>>>");
-//     auto pyProcessReportGroup=pyscript.attr("processReportGroup");
-//     if(pyProcessReportGroup.is_none())break;
-// LOGI(">>>>>");
-//     for(int i=0;i<group.size();i++)
-//     {
-//       if(group[i]->jInfo)
-//       {
-//         jsonstr.push_back(cJSON_PrintUnformatted(group[i]->jInfo));
-//       }
-//       else
-//       {
-//         jsonstr.push_back(NULL);
-//       }
-//     }
-//     LOGI(">>>>>");
-//     py::list pyGroup;
-//     for(int i=0;i<jsonstr.size();i++)
-//     {
-//       if(jsonstr[i])
-//         pyGroup.append(py::str(jsonstr[i]));
-//       else
-//         pyGroup.append(py::none());
-
-//     }
-//     LOGI(">>>>>");
-//     py::object result=pyProcessReportGroup(trigger_id,pyGroup);
-//     if (!result.is_none()) {
-//         finalResult = result.cast<int>();
-//     }
-
-//   }while(0);
-
-//   for(int i=0;i<jsonstr.size();i++)//clean up
-//   {
-//     if(jsonstr[i])delete jsonstr[i];
-//     jsonstr[i]=NULL;
-//   }
-
-
-//   LOGI("finalResult:%d",finalResult);
-
-// }
-
 
 void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
 {
-  int catSum,holeIdx;
+  int catSum;
 
+  cJSON *ignore_indexes=NULL;
 
   if(sCH==NULL)
   {
@@ -2768,16 +2443,17 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
     cJSON_Delete(info);
     if(result)
     {
-        char *buffer = cJSON_PrintUnformatted(result);
-        LOGE(">>:%s",buffer);
+        // char *buffer = cJSON_PrintUnformatted(result);
+        // LOGE(">>:%s",buffer);
 
-        if(result)
+        catSum=JFetch_NUMBER_ex(result,"category",STAGEINFO_CAT_UNSET);
+        ignore_indexes=JFetch_ARRAY(result,"ignore_indexes");
+        if(ignore_indexes)
         {
-          catSum=JFetch_NUMBER_ex(result,"category",STAGEINFO_CAT_UNSET);
-          holeIdx=JFetch_NUMBER_ex(result,"holeIdx",-1);
+          cJSON_DetachItemFromObject(result, "ignore_indexes");
         }
         cJSON_Delete(result);
-        delete buffer;
+        // delete buffer;
 
     }
     else
@@ -2789,14 +2465,6 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
 
 
   }
-
-  // if(ResultB(trigger_id,group,catSum,holeIdx)!=0)
-  // {
-  //   return;
-  // }
-
-
-
 
   {
     std::lock_guard<std::mutex> lock(bTrigInfoRecord_LOCK);
@@ -2844,15 +2512,6 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
 
 
 
-  }
-
-  std::vector<std::shared_ptr<StageInfo>> surfaceReps;
-  for(int i=0;i<group.size();i++)
-  {
-
-    auto d_sinfo = dynamic_cast<StageInfo_SurfaceCheckSimple *>(group[i].get());
-    if(d_sinfo==NULL)continue;
-    surfaceReps.push_back(group[i]);
   }
 
 
@@ -2995,17 +2654,17 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
 
     {
       cJSON* repInfoObj=JFetch_OBJECT(reportInfo->jInfo,"report");
-      cJSON_AddNumberToObject(repInfoObj,"hole_location_index",holeIdx);
+      cJSON_AddItemToObject(repInfoObj,"ignore_indexes",ignore_indexes);
 
 
+      cJSON* jGRepsArr=cJSON_CreateArray();
+      cJSON_AddItemToObject(repInfoObj,"group",jGRepsArr);
 
-      cJSON* jSurRepsArr=cJSON_CreateArray();
-      cJSON_AddItemToObject(repInfoObj,"surface_check_reports",jSurRepsArr);
-      for(int i=0;i<surfaceReps.size();i++)
+      for(int i=0;i<group.size();i++)
       {
         cJSON* srep=cJSON_CreateObject();
-        surfaceReps[i]->attachJsonRep(srep,0);
-        cJSON_AddItemToArray(jSurRepsArr,srep);
+        group[i]->attachJsonRep(srep,0);
+        cJSON_AddItemToArray(jGRepsArr,srep);
       }
     }
     // reportInfo->jInfo
