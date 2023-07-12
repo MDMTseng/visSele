@@ -6235,19 +6235,22 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                         // if(RP.data.trigger_id<0)break;
 
                         // let tarRepIdx = RP.data.report.hole_location_index == 0 ? 1 : 0;
-                        let surface_check_reports = RP.data.report.surface_check_reports;
+                        let ignore_indexes=(RP.data.report.ignore_indexes||[]) as number[];
+                        let group = RP.data.report.group;
 
 
                         let newStat={..._this.inspStatistic};
-                        console.log();
-                        for(let i=0;i<surface_check_reports.length;i++)
+                        console.log(RP.data);
+                        for(let i=0;i<group.length;i++)
                         {
-                            console.log(i,surface_check_reports[i].InspTar_id)
+                            console.log(i,group[i])
+                            if(group[i].InspTar_type!="SurfaceCheckSimple")continue;
+                            if(ignore_indexes.find(idx=>idx==i)!==undefined)continue;
                             let tarRepIdx=i;
 
-                            let tarRepId = surface_check_reports[tarRepIdx].InspTar_id;
+                            let tarRepId = group[tarRepIdx].InspTar_id;
 
-                            let regionsReps = surface_check_reports[tarRepIdx].report.sub_reports[0].sub_regions;
+                            let regionsReps = group[tarRepIdx].report.sub_reports[0].sub_regions;
                             let repDef = systemInspTarList.find(def => def.id == tarRepId)
                             // console.log(tarRepIdx,surface_check_reports,regionsReps,repDef)
     
