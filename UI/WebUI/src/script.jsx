@@ -2040,7 +2040,7 @@ class APPMasterX extends React.Component {
         this.is_in_EM_STOP=false;
         this.EM_STOP_src_list=[];
       }
-      trigger_EM_STOP(keep_ms=10)
+      trigger_EM_STOP(keep_ms=1000)
       {
         this.is_in_EM_STOP=true;
         // this.is_in_EM_STOP_src="TRIG";
