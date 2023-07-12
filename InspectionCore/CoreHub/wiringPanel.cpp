@@ -2418,6 +2418,7 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
   int catSum;
 
   cJSON *ignore_indexes=NULL;
+  cJSON *script_result=NULL;
 
   if(sCH==NULL)
   {
@@ -2452,7 +2453,8 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
         {
           cJSON_DetachItemFromObject(result, "ignore_indexes");
         }
-        cJSON_Delete(result);
+        script_result=result;
+        // cJSON_Delete(result);
         // delete buffer;
 
     }
@@ -2655,6 +2657,7 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
     {
       cJSON* repInfoObj=JFetch_OBJECT(reportInfo->jInfo,"report");
       cJSON_AddItemToObject(repInfoObj,"ignore_indexes",ignore_indexes);
+      cJSON_AddItemToObject(repInfoObj,"script_result",script_result);
 
 
       cJSON* jGRepsArr=cJSON_CreateArray();
