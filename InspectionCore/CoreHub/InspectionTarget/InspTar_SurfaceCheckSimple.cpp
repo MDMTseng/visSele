@@ -1390,11 +1390,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
               float comp_sigma0=NAN;
               Mat vectors=cv::Mat::zeros(cv::Size(), CV_8UC3);
-          
+
               // Loop over rows and columns of the image
               for (int row = 0; row < sub_region_ROI.rows; ++row) {
                   for (int col = 0; col < sub_region_ROI.cols; ++col) {
-                    bool isPixInRect;
+                    bool isPixInRect=false;
                     for(int k=0;k<igRegs.size();k++){
                       isPixInRect=igRegs[k].contains(cv::Point(col,row));
                       if(isPixInRect)break;
@@ -1412,7 +1412,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
               // std::cout << "vectors size " << std::endl << vectors.size() << std::endl;
               // LOGE("????>>>>>> ");
 
-              if(1)
+              int pixCount=vectors.rows;
+              if(pixCount>20)
               {//PCA
 
                 vectors.convertTo(vectors, CV_32F);
@@ -1433,6 +1434,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
                 comp_sigma0=sigma0;
 
+              }
+              else
+              {
+                comp_sigma0=NAN;
               }
 
               if(0)
@@ -1468,7 +1473,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
               }
               else
               {
-                sri.category=STAGEINFO_CAT_NG;
+                sri.category=STAGEINFO_CAT_NA;
               }
 
 
