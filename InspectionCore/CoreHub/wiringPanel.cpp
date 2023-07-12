@@ -2281,6 +2281,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
 
 
+        cacheStageInfoTID--;
         for(int j=0;j<infoSet.size();j++)
         {
 
@@ -2303,19 +2304,18 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
           pkt->trigger_tags=src->trigger_tags;
           pkt->trigger_tags.push_back("s_uInspCache_");
-          cacheStageInfoTID--;
           pkt->trigger_id=cacheStageInfoTID;//cacheStageInfoIssueTID-src->trigger_id;
           belongMan->dispatch(pkt);
-
-
-          processTimeRecord[cacheStageInfoTID]=cv::getTickCount();  
-
 
 
 
 
 
         }
+        processTimeRecord[cacheStageInfoTID]=cv::getTickCount();  
+
+
+
         while (belongMan->inspTarProcess())
         {
         }
