@@ -149,6 +149,8 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
   maxFPS:number
   maxFPSthrottleInfo:any
   firstCanvasResize:boolean
+  latestWidth:number
+  latestHeight:number
   constructor(canvasDOM:HTMLCanvasElement) {
     super(canvasDOM);
     this.reset();
@@ -163,6 +165,7 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.maxFPS=65;
     this.maxFPSthrottleInfo=undefined;
     this.firstCanvasResize=false;
+    this.latestWidth=this.latestHeight=0;
   }
 
 
@@ -176,9 +179,36 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     if(this.firstCanvasResize==false)
     {
       let scale=this.camera.GetCameraScale();
-      this.camera.SetOffset({x:-width/scale,y:-height/scale+200});
+      let newOffset={x:-width/scale,y:-height/scale+200};
+      this.camera.SetOffset(newOffset);
 
+      let offset = this.camera.GetOffset();
+
+      console.log(scale,newOffset,offset);
       this.firstCanvasResize=true;
+      this.latestWidth=width
+      this.latestHeight=height
+    }
+    else
+    {
+      if(this.latestWidth!=width || this.latestHeight!=height)
+      {
+        let scale=this.camera.GetCameraScale();
+        let offset = this.camera.GetOffset();
+        offset.x-=-this.latestWidth;
+        offset.y-=-this.latestHeight;
+
+        offset.x/=scale;
+        offset.y/=scale;
+        console.log(">>>",scale,offset);
+        let newOffset={x:-width/scale,y:-height/scale};
+        this.camera.SetOffset({x:offset.x+newOffset.x,y:offset.y+newOffset.y});
+
+
+        this.latestWidth=width
+        this.latestHeight=height
+      }
+
     }
   }
 

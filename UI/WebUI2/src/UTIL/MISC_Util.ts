@@ -1642,7 +1642,7 @@ export const LocalStorageTools={
 
 
 
-export function ID_debounce(dbid:number|undefined,func:()=>void,func_clear_dbid:()=>void,delay:number=500)
+export function ID_debounce(dbid:number|undefined,func:()=>void,func_clear_dbid:()=>void,delay:number=500,preRun=true)
 {
   if(dbid!==undefined)
   {
@@ -1656,8 +1656,9 @@ export function ID_debounce(dbid:number|undefined,func:()=>void,func_clear_dbid:
   }
   else
   {
-    func();
+    if(preRun)func();
     dbid=window.setTimeout(()=>{
+      if(!preRun)func();
       func_clear_dbid();
     },delay)
   }

@@ -90,6 +90,10 @@ class CameraCtrl {
     this.matrix.translateSelf(location.x, location.y);
   }
 
+  GetOffset() {
+    return { x: this.matrix.m41, y: this.matrix.m42 };
+    // this.matrix.translateSelf(location.x, location.y);
+  }
   GetCameraRotation(matrix = this.matrix) {
     let rot = Math.atan2( matrix.m21-matrix.m12,matrix.m11 + matrix.m22);
     // console.log(rot);
