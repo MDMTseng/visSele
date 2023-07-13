@@ -394,6 +394,7 @@ export class EverCheckCanvasComponent_proto {
   pixelRatio:number
   
   getMousePos(evt:MouseEvent) {
+    this.pixelRatio=window.devicePixelRatio;
     var rect = this.canvas.getBoundingClientRect();
     let mouse = {
       x: (evt.clientX - rect.left)*this.pixelRatio,

@@ -175,11 +175,12 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     // height = Math.floor(height);
     // canvas.width = width;
     // canvas.height = height;
-    console.log("firstCanvasResize",width,height);
+    let dPR=window.devicePixelRatio;
+    console.log("firstCanvasResize",width,height," dPR:",dPR);
     if(this.firstCanvasResize==false)
     {
       let scale=this.camera.GetCameraScale();
-      let newOffset={x:-width/scale,y:-height/scale+200};
+      let newOffset={x:-width/scale/2*dPR,y:(-height/scale/2*dPR+200)};
       this.camera.SetOffset(newOffset);
 
       let offset = this.camera.GetOffset();
@@ -195,13 +196,13 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
       {
         let scale=this.camera.GetCameraScale();
         let offset = this.camera.GetOffset();
-        offset.x-=-this.latestWidth;
-        offset.y-=-this.latestHeight;
+        offset.x-=-this.latestWidth/2*dPR;
+        offset.y-=-this.latestHeight/2*dPR;
 
         offset.x/=scale;
         offset.y/=scale;
         console.log(">>>",scale,offset);
-        let newOffset={x:-width/scale,y:-height/scale};
+        let newOffset={x:-width/scale/2*dPR,y:-height/scale/2*dPR};
         this.camera.SetOffset({x:offset.x+newOffset.x,y:offset.y+newOffset.y});
 
 
