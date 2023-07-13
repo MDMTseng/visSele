@@ -5176,7 +5176,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                         let sub_reports=RP?.data?.report?.sub_reports;
                         if(sub_reports!==undefined)
                         {
-                            let NARep=sub_reports.find((rep:any)=>rep.category==0);
+                            let NARep=sub_reports.find((rep:any)=>rep.category==0 || rep.category<-1000);
                             if(NARep!==undefined)return;
                         }
 
