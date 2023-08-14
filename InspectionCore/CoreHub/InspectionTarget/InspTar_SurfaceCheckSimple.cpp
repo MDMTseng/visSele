@@ -422,7 +422,7 @@ static Mat getRotTranMat(acv_XY pt1,acv_XY pt2,float theta,bool flipX=false,bool
 //   return cv2.getAffineTransform(pts1,pts2)
 
 
-void XYWH_clipping(int &X,int &Y,int &W,int &H, int MX,int MY,int MW,int MH)
+static void XYWH_clipping(int &X,int &Y,int &W,int &H, int MX,int MY,int MW,int MH)
 {
   if(X<MX)
   {
@@ -812,7 +812,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   float bilateral_sigmaSpace=JFetch_NUMBER_ex(def,"bilateral.sigmaSpace",2);
 
 
-  bool do_equalize_hist=JFetch_TRUE(def,"equalize_hist");
+  bool do_equalize_hist=false;//JFetch_TRUE(def,"equalize_hist");
   // LOGI("orientation info size:%d",orientationList.size());
   if(orientationList.size()>0)
   {  
@@ -1660,6 +1660,148 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             }
 
 
+            if(subRegType=="DirectionalDiff")
+            {
+
+
+              float dirAngle=JFetch_NUMBER_ex(jsub_region,"dirAngle");
+              float thres=JFetch_NUMBER_ex(jsub_region,"thres");
+              float diffSupressThres=JFetch_NUMBER_ex(jsub_region,"diffSupressThres");
+
+
+
+              Mat gray_img;
+              cv::cvtColor(sub_region_ROI, gray_img, COLOR_BGR2GRAY);
+
+
+              float diff=0;
+
+              if(0)
+              {
+                // sobel filter with absolute value along the dirAngle
+                
+                Mat sobelDir;
+                if(dirAngle==0 || dirAngle==180)
+                {
+                  cv::Sobel(gray_img, sobelDir, CV_16S, 1, 0, 3);
+                }
+                else
+                {
+                  cv::Sobel(gray_img, sobelDir, CV_16S, 0, 1, 3);
+                  sobelDir=sobelDir.t();
+
+                }
+                sobelDir=abs(sobelDir);
+                Mat sobelMax;
+                cv::reduce(sobelDir, sobelMax, 0, REDUCE_MAX, CV_16S);
+
+                int maxEdge=0;
+                int addEdge=0;
+                int maxEdgeIdx=0;
+
+                printf("idx:%03d>>",i);
+                for(int k=0;k<sobelMax.size().width;k++)
+                {
+                  int edgeV=sobelMax.at<int16_t>(0,k);
+                  printf("%03d ",edgeV);
+
+
+                  if(edgeV>maxEdge)
+                  {
+                    maxEdge=edgeV;
+                    maxEdgeIdx=k;
+                  }
+                }
+                printf("\n");
+                diff=maxEdge;
+              }
+              else
+              {
+
+
+                // //reduce img sub_region_ROI into a line
+                Mat axisSum;
+                int axisIdx=(dirAngle==0 || dirAngle==180)?0:1;
+                cv::reduce(gray_img, axisSum, axisIdx, REDUCE_AVG, CV_16U);
+                if(axisIdx==1)
+                  axisSum=axisSum.t();
+                
+                //on axisSum, do a gaussian blur
+                // cv::GaussianBlur(axisSum, axisSum, cv::Size(5, 1), 5);
+
+                //LOOP thru the axisSum, find the max diff
+                int maxDiff=0;
+                int addDiff=0;
+                int maxDiffIdx=0;
+                int prePixV=axisSum.at<uint16_t>(0,0);
+
+                // printf("idx:%03d>>",i);
+                for(int k=1;k<axisSum.size().width;k++)
+                {
+                  int pix=axisSum.at<uint16_t>(0,k);
+                  int diff=(pix-prePixV);
+                  // printf("%03d ",diff);
+                  diff=abs(diff);
+                  if(diff>diffSupressThres)
+                  
+                    addDiff+=diff-diffSupressThres;
+
+
+                  if(diff>maxDiff)
+                  {
+                    maxDiff=diff;
+                    maxDiffIdx=k;
+                  }
+                  prePixV=pix;
+                }
+                // printf("\n");
+                diff=addDiff;
+              }
+
+
+
+
+
+              sri.type=StageInfo_SurfaceCheckSimple::id_DirectionalDiff;
+              sri.score=diff;
+              if(diff==diff)
+              {
+                sri.category=(diff>thres)?STAGEINFO_CAT_NG:STAGEINFO_CAT_OK;
+              }
+              else
+              {
+                sri.category=STAGEINFO_CAT_NA;
+              }
+
+
+
+              if(sri.category==STAGEINFO_CAT_NG)
+              {
+
+                if(NG_Map_To=="NG2")
+                {
+                  sri.category=STAGEINFO_CAT_NG2;
+                }
+                else if(NG_Map_To=="NA")
+                {
+                  sri.category=STAGEINFO_CAT_NA;
+                }
+                else //if(NG_Map_To=="NG")
+                {
+
+                }
+
+              }
+
+              LOGE("NG_Map_To:%s",NG_Map_To.c_str());
+
+              // MATCH_REGION_score+=area_sum;
+              MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,sri.category);
+
+
+              mri.subregions[subregIdx]=sri;
+
+            }
 
 
 
@@ -1949,7 +2091,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
 
-            findContours( img_HSV_threshold, contours, hierarchy, RETR_LIST, CHAIN_APPROX_SIMPLE );
+
+            findContours( img_HSV_threshold, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE );
             int area_sum=0;
             int element_max_area=0;
             int element_total_area=0;
@@ -1957,6 +2100,26 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             int line_total_length=0;
 
             bool isNG=false;
+
+
+
+            vector<int> cdpeth;
+            cdpeth.resize(contours.size());
+            for(int k=0;k<contours.size();k++)
+            {
+              cdpeth.push_back(-99999);
+            }
+            for(int k=0;k<contours.size();k++)
+            {
+              int pidx = hierarchy[k][3];
+              if(pidx<0)
+              {
+                cdpeth[k]=0;
+                continue;
+              }
+
+              cdpeth[k]=cdpeth[pidx]+1;
+            }
 
             // if(colorBalancingDiff>colorBalancingDiffThres)
             // {elementCount
@@ -1974,8 +2137,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             {
               int area = contourArea(contours[k],false)*downSampleF*downSampleF;
               int a_area=area+contours[k].size()*downSampleF;
-              area_sum+=a_area;
-
+              bool isBlackContour=(cdpeth[k]&1)==0;
+              // LOGI("idx:%d depth:%d  a_area:%d",k,cdpeth[k],a_area);
+              area_sum+=a_area*(isBlackContour?1:-1);
+              if(isBlackContour==false)continue;
 
 
               StageInfo_SurfaceCheckSimple::Ele_info einfo;

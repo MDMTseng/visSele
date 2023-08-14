@@ -283,6 +283,44 @@ cJSON *TemplatePyramid2Json(line2Dup::TemplatePyramid &tp)
   return jtpArr;
 }
 
+
+static void XYWH_clipping(int &X,int &Y,int &W,int &H, int MX,int MY,int MW,int MH)
+{
+  if(X<MX)
+  {
+    W-=MX-X;
+    X=MX;
+  }
+
+  if(Y<MY)
+  {
+    H-=MY-Y;
+    Y=MY;
+  }
+
+
+  if(X>MX+MW)
+  {
+    X=MX+MW-1;
+  }
+  if(Y>MY+MH)
+  {
+    Y=MY+MH-1;
+  }
+
+  if(X+W>MX+MW)
+  {
+    W=MX+MW-X;
+  }
+
+  if(Y+H>MY+MH)
+  {
+    H=MY+MH-Y;
+  }
+}
+
+
+
 bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, int id, exchangeCMD_ACT &act)
 {
   // LOGI(">>>>>>>>>>>>");
@@ -342,13 +380,14 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
             cJSON *regionInfo = cJSON_GetArrayItem(mask_regions, i);
             bool isBlackRegion = JFetch_TRUE(regionInfo, "isBlackRegion");
 
-            double x = JFetch_NUMBER_ex(regionInfo, "x");
-            double y = JFetch_NUMBER_ex(regionInfo, "y");
-            double w = JFetch_NUMBER_ex(regionInfo, "w");
-            double h = JFetch_NUMBER_ex(regionInfo, "h");
+            int x = JFetch_NUMBER_ex(regionInfo, "x",-1);
+            int y = JFetch_NUMBER_ex(regionInfo, "y",-1);
+            int w = JFetch_NUMBER_ex(regionInfo, "w",-1);
+            int h = JFetch_NUMBER_ex(regionInfo, "h",-1);
 
-            LOGI("ROI: %f,%f,%f,%f<<<<", x, y, w, h);
-            if (x == x && y == y && w == w && h == h)
+            XYWH_clipping(x,y,w,h, 0,0,_mask.cols,_mask.rows);
+            LOGI("ROI: %d,%d,%d,%d<<<<", x, y, w, h);
+            if (x>0 && y >0 && w >0 && h >0)
             {
               _mask(Rect(x, y, w, h)) = isBlackRegion ? 0 : 255;
             }
@@ -924,7 +963,7 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
 
     std::string DBG_STR;
     // LOGI("refine_score_thres:%f must_refine_result:%d",refine_score_thres,must_refine_result);
-    int refineCount = 2;
+    int refineCount = 1;
     if (refine_region_set.size() > 0 && refine_score_thres > 0)
     {
       float tmpAngle = refinedAngleRad;
@@ -977,7 +1016,6 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
       if (refine_angle_only)
         tmp_anchorPt = anchorPt; // ignore the refined location if needed
 
-      LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
       // LOGI(" %f =>  %f",refinedAngleRad*180/M_PI,tmpAngle*180/M_PI);
       // LOGI(" %f,%f, a:%f  =>  %f,%f a:%f ",anchorPt.x,anchorPt.y,refinedAngleRad*180/M_PI,tmp_anchorPt.x,tmp_anchorPt.y,tmpAngle*180/M_PI);
 
@@ -1008,6 +1046,7 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
     if (refine_score > 0.999)
       refine_score = 0.999;
 
+    LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
     StageInfo_Orientation::orient orie;
 
     orie.angle = refinedAngleRad + origin_offset_angle;
@@ -1095,6 +1134,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   bool must_refine_result = JFetch_TRUE(def, "must_refine_result");
   bool remove_refine_failed_result = JFetch_TRUE(def, "remove_refine_failed_result");
 
+  LOGI("refine_score_thres:%f must_refine_result:%d  remove_refine_failed_result:%d",refine_score_thres,must_refine_result,remove_refine_failed_result);
   vector<int> idxs;
 
   shared_ptr<StageInfo_Orientation> reportInfo(new StageInfo_Orientation());
@@ -1175,7 +1215,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
           sub_matches[index].y+=y;
         }
         vector<StageInfo_Orientation::orient> orientList;
-        orientList =MatchPoseRefine(CV_srcImg,sub_matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,false,false);
+        orientList =MatchPoseRefine(CV_srcImg,sub_matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,must_refine_result,remove_refine_failed_result);
 
         if(regional_most_similar_match)
         {//keep the most similar(confident) one
@@ -1229,7 +1269,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
       
       vector<int> SubIdxs;
       CloseMatchFilter(matches,sbm,SubIdxs);
-      vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(CV_srcImg,matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,false,false);
+      vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(CV_srcImg,matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,must_refine_result,remove_refine_failed_result);
 
 
       if(regional_most_similar_match)
