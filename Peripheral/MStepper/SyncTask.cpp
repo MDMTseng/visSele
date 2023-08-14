@@ -24,7 +24,7 @@ inline float mm2Pulse_conv(int axisIdx,float dist);
 
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc);
-uint32_t g_step_trigger_edge=0;//(1<<AXIS_IDX_X);//0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
+uint32_t g_step_trigger_edge=(1<<AXIS_IDX_X);//0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
 uint32_t g_dir_inv=0;//^(1<<AXIS_IDX_Z1)^(1<<AXIS_IDX_Z2)^(1<<AXIS_IDX_Z3)^(1<<AXIS_IDX_Z4);
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
@@ -205,11 +205,11 @@ class MStp_M:public MStp{
   {
     
     this->TICK2SEC_BASE=_TICK2SEC_BASE_;
-    main_acc=mm2Pulse_conv(AXIS_IDX_X,2000);//SUBDIV*3200/mm_PER_REV;
-    minSpeed=50;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
+    main_acc=mm2Pulse_conv(AXIS_IDX_X,100);//SUBDIV*3200/mm_PER_REV;
+    // SYS_MINSpeed=5;//SUBDIV*TICK2SEC_BASE/10000/200/10/mm_PER_REV;
     main_junctionMaxSpeedJump=700;//5200;
 
-    maxSpeedInc=100*8;
+    // maxSpeedInc=100*8;
     // pinMode(PIN_Z1_DIR, OUTPUT);
     // pinMode(PIN_Z1_STP, OUTPUT);
     // pinMode(PIN_Z1_SEN1, INPUT);
@@ -372,7 +372,7 @@ class MStp_M:public MStp{
   
   
   uint64_t updateWait_residue=0;
-  uint64_t maxInterval_us=1000000/(1000);
+  uint64_t maxInterval_us=1000000/(5000);
 
 
 
@@ -467,7 +467,9 @@ class MStp_M:public MStp{
     cpos.vec[axis]=distance;
     __UPRT_D_("STP1-2\n");
     runUntil_ExtPIN=ext_pin;
-    VecAdd(cpos,speed);
+
+    MSTP_segment_extra_info exinfo={.speedOnAxisIdx=-1,.acc=speed*speed/2,.deacc=speed*speed/2};
+    VecAdd(cpos,speed,NULL,&exinfo);
     __UPRT_D_("STP1-3  pin:%d\n",runUntil_ExtPIN);
     int cccc=0;
     while(runUntil_ExtPIN!=-1 && SegQ_IsEmpty()==false)
@@ -533,7 +535,7 @@ class MStp_M:public MStp{
 
         delay(100);
         
-        if(runUntil(axisIdx,sensor_pin,!sensorDetectVLvl,-distance/2,runSpeed/100,&retHitPos)!=0)
+        if(runUntil(axisIdx,sensor_pin,!sensorDetectVLvl,-distance/2,runSpeed/5,&retHitPos)!=0)
         {
           return -1;
         }
@@ -1287,6 +1289,7 @@ public:
       {
 
         MSTP_SegCtx *p_res=NULL;
+        __UPRT_I_("M400 applyResource...cmd_id:%d",HACK_cur_cmd_id);
         while((p_res=sctx_pool.applyResource())==NULL)//check release
         {
           yield();
@@ -1303,6 +1306,7 @@ public:
           return GCodeParser_Status::GCODE_PARSE_ERROR;
         }
 
+        __UPRT_I_("AddWait... ");
         while(_mstp->AddWait(0,0,p_res,NULL)==false)
         {
           yield();
@@ -1337,6 +1341,65 @@ public:
     }
     else if(cblk[0]=='G')
     {
+
+      if(     CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))//X Y Z A B C
+      {
+        if(isMTPLocked)
+        {
+          return GCodeParser_Status::TASK_FATAL_FAILED;
+        }
+        __PRT_D_("G1 baby!!!\n");
+
+        xVec vec;
+        float F;
+        ReadG1Data(blks,blkCount,vec,F);
+
+        MSTP_segment_extra_info exinfo={.speedOnAxisIdx=-1,.acc=NAN,.deacc=NAN};
+
+        {
+          
+          float tmpF=NAN;
+          if(FindFloat(AXIS_GDX_ACCELERATION,blks,blkCount,tmpF)==0)
+          {
+            exinfo.deacc=exinfo.acc=unit2Pulse_conv(AXIS_IDX_ACCELERATION,tmpF);
+
+          }
+          tmpF=NAN;
+          
+          if(FindFloat(AXIS_GDX_DEACCELERATION,blks,blkCount,tmpF)==0)
+          {
+            exinfo.deacc=unit2Pulse_conv(AXIS_IDX_DEACCELERATION,tmpF);
+          }
+
+
+          
+          // exinfo.speedOnAxisIdx=AXIS_IDX_X;
+          char AxisCode[10];
+          if(FindStr(AXIS_GDX_FEED_ON_AXIS,blks,blkCount,AxisCode)==0)
+          {
+            exinfo.speedOnAxisIdx=axisGDX2IDX(AxisCode,-1);
+          }
+
+        }
+
+
+        // {
+
+        // char BUF[100];
+        // sprintf(BUF,"vec:%s F:%f",toStr(vec),F);
+        // G_LOG(BUF);
+        // }
+        if(isAbsLoc)
+        {
+          MTPSYS_VecTo(vecAdd(vec,pulse_offset),F,NULL,&exinfo);
+        }
+        else
+        {
+          MTPSYS_VecAdd(vec,F,NULL,&exinfo);
+        }
+        retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+      }
+      else 
       if(CheckHead(cblk, "G01.ENC "))//Wait for motion stop, non blocking
       {
 
@@ -1353,6 +1416,20 @@ public:
         // F=1;
         MSTP_segment_extra_info exinfo={.speedOnAxisIdx=-1,.acc=NAN,.deacc=NAN};
 
+        {
+          float tmpF=NAN;
+          if(FindFloat(AXIS_GDX_ACCELERATION,blks,blkCount,tmpF)==0)
+          {
+            exinfo.deacc=exinfo.acc=unit2Pulse_conv(AXIS_IDX_ACCELERATION,tmpF);
+
+          }
+          tmpF=NAN;
+          
+          if(FindFloat(AXIS_GDX_DEACCELERATION,blks,blkCount,tmpF)==0)
+          {
+            exinfo.deacc=unit2Pulse_conv(AXIS_IDX_DEACCELERATION,tmpF);
+          }
+        }
 
         MSTP_SegCtx *p_res=NULL;
         {
@@ -1365,7 +1442,7 @@ public:
           p_res->type=MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC;
           p_res->isProcessed=false;
           p_res->RUN_UNTIL_ENC.tarVec=vec;
-          p_res->RUN_UNTIL_ENC.stepsMult=100;
+          p_res->RUN_UNTIL_ENC.stepsMult=2;
           p_res->RUN_UNTIL_ENC.tar_ENC=0;
 
           float tmpF=NAN;
@@ -1398,7 +1475,7 @@ public:
 
 
 
-        MTPSYS_VecTo(vecAdd(vec,pulse_offset),F,p_res,&exinfo);
+        MTPSYS_VecTo(vec,F,p_res,&exinfo);
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
           
       }
@@ -1497,13 +1574,100 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     bool doRsp=false;
 
     const char* type = doc["type"];
-    HACK_cur_cmd_id=-1;
-    if(doc["id"].is<int>()==true)
-    {
-      HACK_cur_cmd_id=doc["id"];
-    }
     // const char* id = doc["id"];
-    if(strcmp(type,"RESET")==0)
+
+    if(strcmp(type,"G")==0)
+    {
+      HACK_cur_cmd_id=-1;
+      if(doc["id"].is<int>()==true)
+      {
+        HACK_cur_cmd_id=doc["id"];
+      }
+      
+      int space = 0;
+      int safe_Margin=3;
+      space = mstp.SegQ_Space()-safe_Margin;
+      // if(space<0)space=0;
+      // space=0;
+
+      const char* code = doc["code"];
+      doRsp=true;
+      rspAck=false;
+      if(code==NULL)
+      {
+        // retdoc["buffer_space"]=space;
+      }
+      else if(gcodewait_id!=-1)
+      {
+        retdoc["gcodewait_id"]=gcodewait_id;
+      }
+      else
+      {
+        if( space>0)
+        {
+          gcpm.putJSONNote(&retdoc);
+          GCodeParser::GCodeParser_Status grep=gcpm.runLine(code);
+          if(grep==GCodeParser::GCodeParser_Status::TASK_OK)
+          {
+            rspAck=true;
+          }
+          else if(grep==GCodeParser::GCodeParser_Status::TASK_OK_NO_RSP)
+          {
+            doRsp=false;
+          }
+          gcpm.putJSONNote(NULL);
+          space = mstp.SegQ_Space()-safe_Margin;
+          if(space<0)space=0;
+          retdoc["bs"]=space;
+        }
+        else
+        {
+          //wait
+          doRsp=false;
+          // djrl.dbg_printf("IN....");
+          strcpy(gcodewait_gcode,code);
+
+          gcodewait_id=doc["id"];
+
+        }
+
+
+      }
+
+    }
+    
+    else if(strcmp(type,"get_running_stat")==0)
+    {
+
+      // {
+      //   JsonArray jERROR_HIST = retdoc.createNestedArray("ERROR_HIST");
+
+      //   for(int i=0;i<ERROR_HIST.size();i++)
+      //   {
+      //     jERROR_HIST.add((int)*ERROR_HIST.getTail(i));
+      //   }
+      // }
+
+
+      // JsonObject jCountInfo  = retdoc.createNestedObject("count");
+      // jCountInfo["SEL1"]=SEL1_Count;
+      // jCountInfo["SEL2"]=SEL2_Count;
+      // jCountInfo["SEL3"]=SEL3_Count;
+      // jCountInfo["NA"]=NA_Count;
+
+      //current state
+      // retdoc["state"]=(int)sysinfo.state;
+
+      // retdoc["plateFreq"]=SYS_TAR_FREQ;//SYS_CUR_FREQ;
+
+
+      // retdoc["plateFreq"]=NA_Count;
+
+
+      doRsp=rspAck=true;
+
+    }
+    else if(strcmp(type,"RESET")==0)
     {
       return msg_printf("RESET_OK","");
     }
@@ -1621,60 +1785,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       doRsp=rspAck=true;
 
     }      
-    else if(strcmp(type,"GCODE")==0)
-    {
-      
-      int space = 0;
-      int safe_Margin=3;
-      space = mstp.SegQ_Space()-safe_Margin;
-      // if(space<0)space=0;
-      // space=0;
 
-      const char* code = doc["code"];
-      doRsp=true;
-      rspAck=false;
-      if(code==NULL)
-      {
-        // retdoc["buffer_space"]=space;
-      }
-      else if(gcodewait_id!=-1)
-      {
-        retdoc["gcodewait_id"]=gcodewait_id;
-      }
-      else
-      {
-        if( space>0)
-        {
-          gcpm.putJSONNote(&retdoc);
-          GCodeParser::GCodeParser_Status grep=gcpm.runLine(code);
-          if(grep==GCodeParser::GCodeParser_Status::TASK_OK)
-          {
-            rspAck=true;
-          }
-          else if(grep==GCodeParser::GCodeParser_Status::TASK_OK_NO_RSP)
-          {
-            doRsp=false;
-          }
-          gcpm.putJSONNote(NULL);
-          space = mstp.SegQ_Space()-safe_Margin;
-          if(space<0)space=0;
-          retdoc["buffer_space"]=space;
-        }
-        else
-        {
-          //wait
-          doRsp=false;
-          // djrl.dbg_printf("IN....");
-          strcpy(gcodewait_gcode,code);
-
-          gcodewait_id=doc["id"];
-
-        }
-
-
-      }
-
-    }
     else if(strcmp(type,"motion_buffer_info")==0)
     {
       
@@ -1685,7 +1796,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       int safe_Margin=3;
       space-=safe_Margin;
       if(space<0)space=0;
-      retdoc["buffer_space"]=space;
+      retdoc["bs"]=space;
       retdoc["buffer_size"]= mstp.SegQ_Size();
       retdoc["buffer_capacity"]=mstp.SegQ_Capacity()-safe_Margin;
     }
@@ -1803,7 +1914,7 @@ void MData_JR::loop()
         bool rspAck=(gret==GCodeParser::GCodeParser_Status::TASK_OK);
         space = mstp.SegQ_Space()-safe_Margin;
         if(space<0)space=0;
-        retdoc["buffer_space"]=space;
+        // retdoc["buffer_space"]=space;
         retdoc["id"]=gcodewait_id;
         retdoc["ack"]=rspAck;
         
@@ -1941,6 +2052,15 @@ bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc
     return true;
   }
 
+
+  if(strcmp(type,"AUX_GET_ENC")==0)
+  {
+
+    ret_doc["value"]=mstp.EncV;
+    isACK=true;
+    doRsp=true;
+    return true;
+  }
   if(strcmp(type,"AUX_WAIT_FOR_FINISH")==0)
   {
 
@@ -2117,6 +2237,7 @@ void setup()
 {
   
   // noInterrupts();
+  // Serial.begin(921600);//230400);
   Serial.begin(115200);//230400);
   // Serial.begin(460800);
   Serial.setRxBufferSize(500);
@@ -2231,12 +2352,14 @@ void loop()
       }
 
 
+      xSemaphoreTake(AUX2Comm_Lock, portMAX_DELAY);
       if(hasNewInfo ==false && 0!=(AUX2CommInfoQ.size()))
       {
         info=*AUX2CommInfoQ.getTail();
         AUX2CommInfoQ.consumeTail();
         hasNewInfo=true;
       }
+      xSemaphoreGive(AUX2Comm_Lock);
 
 
 

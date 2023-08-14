@@ -62,8 +62,14 @@ class RingBufIdxCounter
   }
 
 
-  RB_Idx_Type size(){return dataSize;}
-  RB_Idx_Type space(){return RBLen-dataSize;}
+  RB_Idx_Type size(){
+
+    auto L=headIdx-tailIdx;
+    if(L<0)L+=RBLen;
+    return L;
+    
+  }
+  RB_Idx_Type space(){return RBLen-size();}
   RB_Idx_Type capacity(){return RBLen;}
   
   RB_Idx_Type getNextHead(){

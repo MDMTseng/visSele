@@ -221,7 +221,7 @@ xVec GCodeParser_M::MTPSYS_getLastLocInStepperSystem()
 
 float GCodeParser_M::MTPSYS_getMinPulseSpeed()
 {
-  return _mstp->minSpeed;
+  return NAN;//_mstp->minSpeed;
 }
 
 
@@ -245,65 +245,7 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseCMD(char **blks, char blkCou
   
   if(cblk[0]=='G')
   {
-
-    if(     CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))//X Y Z A B C
-    {
-      if(isMTPLocked)
-      {
-        return GCodeParser_Status::TASK_FATAL_FAILED;
-      }
-      __PRT_D_("G1 baby!!!\n");
-
-      xVec vec;
-      float F;
-      ReadG1Data(blks,blkCount,vec,F);
-
-      MSTP_segment_extra_info exinfo={.speedOnAxisIdx=-1,.acc=NAN,.deacc=NAN};
-
-      {
-        
-        float tmpF=NAN;
-        if(FindFloat(AXIS_GDX_ACCELERATION,blks,blkCount,tmpF)==0)
-        {
-          exinfo.deacc=exinfo.acc=unit2Pulse_conv(AXIS_IDX_ACCELERATION,tmpF);
-
-        }
-        tmpF=NAN;
-        
-        if(FindFloat(AXIS_GDX_DEACCELERATION,blks,blkCount,tmpF)==0)
-        {
-          exinfo.deacc=unit2Pulse_conv(AXIS_IDX_DEACCELERATION,tmpF);
-        }
-
-
-        
-        // exinfo.speedOnAxisIdx=AXIS_IDX_X;
-        char AxisCode[10];
-        if(FindStr(AXIS_GDX_FEED_ON_AXIS,blks,blkCount,AxisCode)==0)
-        {
-          exinfo.speedOnAxisIdx=axisGDX2IDX(AxisCode,-1);
-        }
-
-      }
-
-
-      // {
-
-      // char BUF[100];
-      // sprintf(BUF,"vec:%s F:%f",toStr(vec),F);
-      // G_LOG(BUF);
-      // }
-      if(isAbsLoc)
-      {
-        MTPSYS_VecTo(vecAdd(vec,pulse_offset),F,NULL,&exinfo);
-      }
-      else
-      {
-        MTPSYS_VecAdd(vec,F,NULL,&exinfo);
-      }
-      retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
-    }
-    else if(CheckHead(cblk, "G04 ")||CheckHead(cblk, "G4 "))//G04 P10; pause
+    if(CheckHead(cblk, "G04 ")||CheckHead(cblk, "G4 "))//G04 P10; pause
     {
       if(isMTPLocked)
       {
@@ -364,16 +306,17 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseCMD(char **blks, char blkCou
       }
       __PRT_D_("G28 GO HOME!!!:");
       int retErr=0;
-
-      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN2,unit2Pulse_conv(AXIS_IDX_Z1,2000),30*MTPSYS_getMinPulseSpeed(),NULL);
-      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z2,PIN_Z2_SEN2,unit2Pulse_conv(AXIS_IDX_Z2,2000),30*MTPSYS_getMinPulseSpeed(),NULL);
-      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z3,PIN_Z3_SEN2,unit2Pulse_conv(AXIS_IDX_Z3,2000),30*MTPSYS_getMinPulseSpeed(),NULL);
-      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z4,PIN_Z4_SEN2,unit2Pulse_conv(AXIS_IDX_Z4,2000),30*MTPSYS_getMinPulseSpeed(),NULL);
+      int hSp=20;
+      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN2,unit2Pulse_conv(AXIS_IDX_Z1,2000),unit2Pulse_conv(AXIS_IDX_Z1,hSp),NULL);
+      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z2,PIN_Z2_SEN2,unit2Pulse_conv(AXIS_IDX_Z2,2000),unit2Pulse_conv(AXIS_IDX_Z2,hSp),NULL);
+      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z3,PIN_Z3_SEN2,unit2Pulse_conv(AXIS_IDX_Z3,2000),unit2Pulse_conv(AXIS_IDX_Z3,hSp),NULL);
+      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z4,PIN_Z4_SEN2,unit2Pulse_conv(AXIS_IDX_Z4,2000),unit2Pulse_conv(AXIS_IDX_Z4,hSp),NULL);
       
 
+      int xyhSp=70;
 
-      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_X,PIN_X_SEN1,unit2Pulse_conv(AXIS_IDX_X,-2000),50*MTPSYS_getMinPulseSpeed(),NULL);
-      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,PIN_Y_SEN1,unit2Pulse_conv(AXIS_IDX_Y,-2000),50*MTPSYS_getMinPulseSpeed(),NULL);
+      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_X,PIN_X_SEN1,unit2Pulse_conv(AXIS_IDX_X,-2000),unit2Pulse_conv(AXIS_IDX_X,xyhSp),NULL);
+      if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Y,PIN_Y_SEN1,unit2Pulse_conv(AXIS_IDX_Y,-2000),unit2Pulse_conv(AXIS_IDX_Y,xyhSp),NULL);
       
 
       // if(retErr==0)retErr=MTPSYS_MachZeroRet(AXIS_IDX_Z1,PIN_Z1_SEN1,50000,MTPSYS_getMinPulseSpeed()*10,NULL);
