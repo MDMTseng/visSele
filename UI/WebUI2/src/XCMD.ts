@@ -40,7 +40,7 @@ export async function listCMDPromise(
     let retArr=[];
     for(let i=0;i<retryCount;i++)
     {
-      let ret = await CNC_api.send_P({"type":"GCODE","code":code}) as any
+      let ret = await CNC_api.send_P({"type":"G","code":code}) as any
       if(ret.ack==true)return ret;
       retArr.push(ret);
       await delay(5);
@@ -53,7 +53,7 @@ export async function listCMDPromise(
   }
   function G(code:string)
   {
-    return CNC_api.send_P({"type":"GCODE","code":code})
+    return CNC_api.send_P({"type":"G","code":code})
   }
 
   async function delay(ms=1000)

@@ -7,6 +7,7 @@ export type type_CameraInfo={
   enable:boolean,
   model:string,
   name: string,
+  side_name:string,
   serial_nbr:string,
   vendor:string,
   ROI:{

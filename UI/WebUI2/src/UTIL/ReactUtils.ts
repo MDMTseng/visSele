@@ -38,7 +38,7 @@ export function useDivDimensions(divRef:React.RefObject<HTMLDivElement | undefin
             //console.log("updateSize",rwh);
             setDimensions(rwh)
             _this.bkDim=rwh;
-          }, () => _this.debounce_id = undefined,_this.isInitSabled?100:1000,false);
+          }, () => _this.debounce_id = undefined,_this.isInitSabled?100:100,false);
 
 
 

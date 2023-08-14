@@ -171,46 +171,53 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   canvasResize(canvas:HTMLCanvasElement,width:number,height:number)
   {
-    // width = Math.floor(width);
-    // height = Math.floor(height);
-    // canvas.width = width;
-    // canvas.height = height;
-    let dPR=window.devicePixelRatio;
-    console.log("firstCanvasResize",width,height," dPR:",dPR);
-    if(this.firstCanvasResize==false)
-    {
-      let scale=this.camera.GetCameraScale();
-      let newOffset={x:-width/scale/2*dPR,y:(-height/scale/2*dPR+200)};
-      this.camera.SetOffset(newOffset);
 
-      let offset = this.camera.GetOffset();
-
-      console.log(scale,newOffset,offset);
-      this.firstCanvasResize=true;
-      this.latestWidth=width
-      this.latestHeight=height
-    }
-    else
+    if(0)//scale origin from top left
     {
-      if(this.latestWidth!=width || this.latestHeight!=height)
+      // width = Math.floor(width);
+      // height = Math.floor(height);
+      // canvas.width = width;
+      // canvas.height = height;
+      let dPR=window.devicePixelRatio;
+      // console.log("firstCanvasResize",width,height," dPR:",dPR);
+      if(this.firstCanvasResize==false)
       {
         let scale=this.camera.GetCameraScale();
+        let newOffset={x:-width/scale/2*dPR,y:(-height/scale/2*dPR+200)};
+        this.camera.SetOffset(newOffset);
+
         let offset = this.camera.GetOffset();
-        offset.x-=-this.latestWidth/2*dPR;
-        offset.y-=-this.latestHeight/2*dPR;
 
-        offset.x/=scale;
-        offset.y/=scale;
-        console.log(">>>",scale,offset);
-        let newOffset={x:-width/scale/2*dPR,y:-height/scale/2*dPR};
-        this.camera.SetOffset({x:offset.x+newOffset.x,y:offset.y+newOffset.y});
-
-
+        console.log(scale,newOffset,offset);
+        this.firstCanvasResize=true;
         this.latestWidth=width
         this.latestHeight=height
       }
+      else
+      {
+        if(this.latestWidth!=width || this.latestHeight!=height)
+        {
+          let scale=this.camera.GetCameraScale();
+          let offset = this.camera.GetOffset();
+          offset.x-=-this.latestWidth/2*dPR;
+          offset.y-=-this.latestHeight/2*dPR;
 
+          offset.x/=scale;
+          offset.y/=scale;
+          console.log(">>>",scale,offset);
+          let newOffset={x:-width/scale/2*dPR,y:-height/scale/2*dPR};
+          this.camera.SetOffset({x:offset.x+newOffset.x,y:offset.y+newOffset.y});
+
+
+          this.latestWidth=width
+          this.latestHeight=height
+        }
+
+      }
+      return;
     }
+
+
   }
 
   regionSelectUpdate(pcvst:VEC2D,selState:number)
@@ -352,9 +359,14 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
       matrix.d, matrix.e, matrix.f);
   }
 
-  draw()
+  draw(skipThrottle=false)
   {
-    
+    //console.log("draw",skipThrottle);
+    if(skipThrottle)
+    {
+      this._draw();
+      return;
+    }
 
 
     this.maxFPSthrottleInfo=
@@ -364,7 +376,7 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     
   }
   _draw() {
-
+    //console.log("draw");
     if(this.g===undefined)return;
     // console.log(this.c_state);
     let unitConvert = {

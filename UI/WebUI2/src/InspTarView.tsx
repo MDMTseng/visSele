@@ -2287,7 +2287,13 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     onChange={(num) => {
                         setCacheDef(ObjShellingAssign(cacheDef, ["featureInfo", "match_front_face_angle_range", 1], num));
                     }} />
+                {"["}
+                <InputNumber min={-360} max={360} step={1} value={cacheDef.featureInfo.match_front_face_angle_segs}
+                    onChange={(num) => {
+                        setCacheDef(ObjShellingAssign(cacheDef, ["featureInfo", "match_front_face_angle_segs"], num));
+                    }} />
 
+                {"]"}
                 <br />
                 校位下限(0~1):
                 <InputNumber min={0} step={0.05} max={1} value={cacheDef.refine_score_thres}
@@ -2378,6 +2384,39 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     })
                 }}>+搜尋範圍</Button>
 
+                {["<", ">", "v", "^"].map((dir, idx) => {
+
+                    return <Button key={"AddNewRegion" + dir} onClick={() => {
+                        
+                        let new_search_regions = [...cacheDef.search_regions];
+                        console.log(new_search_regions)
+
+                        let offset=[0,0];
+                        let step=5;
+                        switch(dir)
+                        {
+                            case "<":
+                                offset=[-step,0];
+                                break;
+                            case ">":
+                                offset=[step,0];
+                                break;
+                            case "v":
+                                offset=[0,step];
+                                break;
+                            case "^":
+                                offset=[0,-step];
+                                break;
+                        }
+                        new_search_regions=new_search_regions.map((regi:any)=>{
+                            return {...regi,x:regi.x+offset[0],y:regi.y+offset[1]}
+                        })
+                        setCacheDef({ ...cacheDef, search_regions: new_search_regions })
+                        setUpdateC(updateC + 1);
+                    }}>{dir}</Button>
+
+                })}
+
 
             </>
             break;
@@ -2415,10 +2454,24 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
             getLatestReport: () => {
                 return defReport;
             },
+            getCameraState: () => {
+                if(_this.canvasComp===undefined)return undefined;
+                let ccomp=_this.canvasComp as DrawHook_CanvasComponent;
+                return ccomp.camera.toSimpleObj();
+            },
+            setCameraState: (cameraInfo:any) => {
+                if(_this.canvasComp===undefined)return false;
+                let ccomp=_this.canvasComp as DrawHook_CanvasComponent;
+                ccomp.camera.fromSimpleObj(cameraInfo);
+                console.log(">>><><><><jkhkjdshfjksdhkf");
+                ccomp.ctrlLogic();
+                ccomp.draw(true);
+            },
 
             defInfo: def,
             latest_RP: defReport,
             latest_IMCM: Local_IMCM,
+
             
         })
     }
@@ -4137,6 +4190,70 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
 
             </>
             break;
+
+        case "DirectionalDiff":
+            ConfigUI= <>DirectionalDiff 向差偵測
+            
+
+            {["x","y"].map((str)=>
+                {
+                    let dirAngle = def_Filled?.dirAngle||0;
+                    let scanDirStr="x";
+
+
+                    switch(dirAngle)
+                    {
+                        case 0:
+                            scanDirStr="x";
+                            break;
+                        case 90:
+                            scanDirStr="y";
+                            break;
+
+                    }
+                    return <Button type={scanDirStr==str?"primary":undefined} onClick={()=>{
+                        let dirAngle=0;
+                        switch(str)
+                        {
+                            case "x":
+                                dirAngle=0;
+                                break;
+                            case "y":
+                                dirAngle=90;
+                                break;
+                        }
+                        let newDef=def_Filled;
+                        newDef=ObjShellingAssign(newDef, ["dirAngle"], dirAngle);
+                        onDefChange(newDef);
+                        
+                    }}>{str}</Button>
+                })}
+
+
+            閾值:
+            <InputNumber value={def_Filled.thres} step={1}
+                onChange={(num) => {
+                    let newDef = { ...def_Filled, thres:num  }
+                    onDefChange(newDef, true);
+                }} />
+
+
+            低差抑制:
+            <InputNumber value={def_Filled.diffSupressThres} step={1}
+                onChange={(num) => {
+                    let newDef = { ...def_Filled, diffSupressThres:num  }
+                    onDefChange(newDef, true);
+                }} />
+
+{/* 
+            依亮度校正:
+            <Switch checkedChildren="開啟" unCheckedChildren="關閉" checked={def_Filled.brightnessCompensation == true} onChange={(check) => {
+                onDefChange(ObjShellingAssign(def_Filled, ["brightnessCompensation"], check));
+            }} /> */}
+
+
+            </>
+            break;
         case "BrightnessBalance":
             ConfigUI= <>
             
@@ -4332,7 +4449,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
 
         <Dropdown overlay={
             <Menu>
-                {["HSVSeg","SigmaThres","BrightnessBalance","ScanPoint"].map(str=><Menu.Item onClick={()=>{
+                {["HSVSeg","SigmaThres","DirectionalDiff","BrightnessBalance","ScanPoint"].map(str=><Menu.Item onClick={()=>{
                     let newDef = { ...def_Filled, type:str }
                     onDefChange(newDef, true);
                 }}>{str}</Menu.Item>
@@ -4883,8 +5000,8 @@ const CAT_ID_Color = {
     "0": "gray",
     "1": "green",
     "-1": "red",
-    "-2": "red",
-    "-3": "red",
+    "-2": "orange",
+    "-3": "orange",
     "-40000": "gray",
 
     "-700": "red",
@@ -4987,7 +5104,7 @@ export function InspTarView_basicInfo({ display, fsPath, EditPermitFlag, style =
 
 
 export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI) {
-    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange, UIOption,onUIOptionUpdate,showUIOptionConfigUI=false } = props;
+    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange, UIOption,onUIOptionUpdate,showUIOptionConfigUI=false ,APIExport} = props;
     const _ = useRef<any>({
 
         imgCanvas: document.createElement('canvas'),
@@ -5052,6 +5169,38 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
         });
 
     }, [display]);
+
+
+
+
+    if (APIExport !== undefined)//keeps update for every state change
+    {
+        APIExport({
+            setDrawHook: (hook:any) => {
+                _this.extDrawHook=hook;
+            },
+            getLatestReport: () => {
+                return defReport;
+            },
+            getCameraState: () => {
+                if(_this.canvasComp===undefined)return undefined;
+                let ccomp=_this.canvasComp as DrawHook_CanvasComponent;
+                return ccomp.camera.toSimpleObj();
+            },
+            setCameraState: (cameraInfo:any) => {
+                if(_this.canvasComp===undefined)return false;
+                let ccomp=_this.canvasComp as DrawHook_CanvasComponent;
+                ccomp.camera.fromSimpleObj(cameraInfo);
+                console.log(">>><><><><jkhkjdshfjksdhkf");
+                ccomp.ctrlLogic();
+                ccomp.draw(true);
+            },
+
+            defInfo: def,
+            latest_RP: defReport,
+            
+        })
+    }
 
     // console.log(IMCM_group,report);
     // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
@@ -5176,7 +5325,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                         let sub_reports=RP?.data?.report?.sub_reports;
                         if(sub_reports!==undefined)
                         {
-                            let NARep=sub_reports.find((rep:any)=>rep.category==0 || rep.category<-1000);
+                            let NARep=sub_reports.find((rep:any)=>rep.category<-10000);
                             if(NARep!==undefined)return;
                         }
 
@@ -5329,8 +5478,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                         onCacheDefChange(newDef, ddd);
                     }} />
 
-
-                    <br />
+                    {/* <br /> */}
                     {/* <Button onClick={() => {
                         onCacheDefChange(cacheDef, true);
                     }}>SHOT</Button> */}
@@ -5459,9 +5607,10 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
     if(showUIOptionConfigUI)
     {
-        return <div style={{ ...style}}>
-            <>AAA</>
-        </div>
+        // return <div style={{ ...style}}>
+        //     <>AAA</>
+        // </div>
+        console.log(UIOption);
     }
 
 
@@ -6023,6 +6172,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     const [imgReviewOptionUI, setImgReviewOptionUI] = useState(false);
     const [inspStatistic, setInspStatistic] = useState<any>({});
     const [latestReport, setLatestReport] = useState<any>(undefined);
+    const [skipCatRepList, setSkipCatRepList] = useState<number[]>([]);
 
 
     const [spanStatisticUI, setSpanStatisticUI] = useState(false);
@@ -6082,6 +6232,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     _this.periodicPullCMDs=periodicPullCMDs;
     _this.runningState=runningState;
     _this.scriptRunningState=scriptRunningState;
+    _this.skipCatRepList=skipCatRepList;
     useEffect(() => {//////////////////////
 
         _this.send_id = 0;
@@ -6228,6 +6379,15 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
                     }
 
+
+                    {
+                        let category = RP.data?.report?.category
+
+                        if(_this.skipCatRepList.find((cat:number)=>cat==category)!==undefined)
+                        {//skip
+                            return;
+                        }
+                    }
 
                     if (1) do {
 
@@ -6943,8 +7103,11 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 }
 
                 return <>
+                    <div style={{overflow:"scroll"}}>
                     {JSON.stringify(fileCandInfo.list[0].info)}
                     {JSON.stringify(fileCandInfo.additionalTags)}
+                    </div>
+
                     <br />
                     <Button type="primary" onClick={() => {
                         CATChange("OK");
@@ -7325,11 +7488,21 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 </Col>
 
             </Row>
-
             <Row justify="center">
 
-            
+
                 <Col>
+
+                <Switch checkedChildren="僅顯示可驗" unCheckedChildren="全顯示圖像" checked={skipCatRepList.length!=0} onChange={(check) => {
+                    check?setSkipCatRepList([-40000]):setSkipCatRepList([])
+                }} />
+                </Col>
+            </Row>
+            <Row justify="center">
+
+
+                <Col>
+
                 <Avatar shape="square" size={100} icon={CAT_ID_NAME[latestReport?.report?.category+""]}  style={{ 
                 width:"200px",
                 boxShadow:btn_boxshadow,
@@ -7701,6 +7874,10 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
                         if(tarCMD)
                         { 
                             tarCMD.receive(msg);
+                        }
+                        else
+                        {
+                            console.error("no reg msg:",msg);
                         }
                         // ?.receive(msg);
                     }
