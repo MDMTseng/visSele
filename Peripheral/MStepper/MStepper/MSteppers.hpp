@@ -33,6 +33,7 @@ struct MSTP_segment
   float vcur;
   float vcen;
   float vto;
+  float minv;
   float acc;
   float deacc;
   
@@ -135,7 +136,6 @@ public:
   float main_acc;
   float minSpeed;
   float main_junctionMaxSpeedJump;
-  float maxSpeedInc;
   MSTP_axisSetup axisInfo[MSTP_VEC_SIZE];
 
   int fatalErrorCode;

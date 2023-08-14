@@ -535,10 +535,9 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
   segBufL=bufferL;
   segBufHeadIdx=0;
   segBufTailIdx=0;
-  minSpeed=100;
+  minSpeed=10;
   main_junctionMaxSpeedJump=300;
 
-  maxSpeedInc=minSpeed;
   
   TICK2SEC_BASE=10*1000*1000;
   main_acc=1000;
@@ -865,6 +864,7 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
     if(a<0)a=-a;
     if(dea>0)dea=-dea;
     newSeg.acc=a*accWFactor;
+    newSeg.minv=sqrt(newSeg.acc);
     newSeg.deacc=dea*accWFactor;
   }
 
@@ -1266,7 +1266,7 @@ void MStp::printSEGInfo()
 //   return (preV+decision)/2;
 // }
 
-void nextIntervalCalc(MSTP_SEG_PREFIX MSTP_segment *seg,float minSpeed,float maxSpeedInc) MSTP_SEG_PREFIX
+void nextIntervalCalc(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
 {
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
 
