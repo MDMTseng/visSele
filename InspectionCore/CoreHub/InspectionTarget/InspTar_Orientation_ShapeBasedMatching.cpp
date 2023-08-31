@@ -13,10 +13,12 @@ inline bool instanceof (const T)
 }
 
 InspectionTarget_Orientation_ShapeBasedMatching::InspectionTarget_Orientation_ShapeBasedMatching(string id, cJSON *def, InspectionTargetManager *belongMan, std::string local_env_path)
-    : InspectionTarget(id, NULL, belongMan, local_env_path)
+    : InspectionTarget(id, NULL, belongMan, local_env_path),recentSrcStageInfoSetIdx(100)
 {
   type = InspectionTarget_Orientation_ShapeBasedMatching::TYPE();
 
+
+  recentSrcStageInfoSet.resize(recentSrcStageInfoSetIdx.space());
   sbm = NULL;
 
   setInspDef(def);
@@ -432,6 +434,129 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
 
     return true;
   }
+
+
+  if(type=="GetFetchSrcTIDList")
+  {
+      
+    std::lock_guard<std::mutex> lock(recentSrcLock); 
+    cJSON* arr= cJSON_CreateArray();
+
+    for(int i=0;i<recentSrcStageInfoSetIdx.size();i++)
+    {
+      int idx = recentSrcStageInfoSetIdx.getHead(i+1);
+      // cJSON_AddItemToArray(arr,cJSON_CreateNumber(recentSrcStageInfoSet[idx]->trigger_id));
+
+      cJSON_AddItemToArray(arr,cJSON_CreateNumber(i));
+
+    }
+
+    act.send("RP",id,arr);
+    cJSON_Delete(arr);arr=NULL;
+    return true;
+  }
+
+
+  if(type=="FetchCountDown")
+  {
+      
+    // FetchCountDown_OK=JFetch_NUMBER_ex(info,"count_OK",FetchCountDown_OK);
+    // FetchCountDown_NG=JFetch_NUMBER_ex(info,"count_NG",FetchCountDown_NG);
+    // FetchCountDown_NG2=JFetch_NUMBER_ex(info,"count_NG2",FetchCountDown_NG2);
+    // FetchCountDown_NG3=JFetch_NUMBER_ex(info,"count_NG3",FetchCountDown_NG3);
+    // FetchCountDown_NA=JFetch_NUMBER_ex(info,"count_NA",FetchCountDown_NA);
+    return true;
+  }
+
+
+
+
+  if(type=="TriggerFetchSrc")
+  {
+    int targetIdx=-1;
+
+
+    float index=JFetch_NUMBER_ex(info,"index");
+    if(index==index)
+    {
+      targetIdx=recentSrcStageInfoSetIdx.size()-index-1;
+    }
+    else
+    {
+      
+      std::lock_guard<std::mutex> lock(recentSrcLock); 
+      
+
+      float ftargetTID=JFetch_NUMBER_ex(info,"trigger_id");
+      if(ftargetTID!=ftargetTID)return false;
+      int targetTID=ftargetTID;
+          // LOGI("<<<<targetTID:%d>>>>",targetTID);
+      for(int i=0;i<recentSrcStageInfoSetIdx.size();i++)
+      {
+        int idx = recentSrcStageInfoSetIdx.getTail(i);
+        auto &infoSet=recentSrcStageInfoSet[idx];
+
+          // LOGI("<<<<infoSet tid:%d  size:%d>>>>",infoSet[0]->trigger_id,infoSet.size());
+        if(infoSet->trigger_id!=targetTID)continue;
+        targetIdx=i;
+        break;
+      }
+
+    }
+
+    if(targetIdx>=0 && targetIdx<recentSrcStageInfoSetIdx.size())
+    {
+      auto &infoSet=recentSrcStageInfoSet[targetIdx];
+
+      auto *src = dynamic_cast<StageInfo_Image*>(infoSet.get());
+
+      if(src)
+      {
+
+
+
+        
+        LOGI("SEND....");
+        shared_ptr<StageInfo_Image> pkt(new StageInfo_Image());
+        pkt->img=src->img;
+        pkt->img_prop=src->img_prop;
+        pkt->img_show=src->img_show;
+        pkt->process_time_us=src->process_time_us;
+        pkt->sharedInfo=src->sharedInfo;
+
+        pkt->source=src->source;
+        pkt->source_id=src->source_id;
+
+
+        pkt->trigger_tags=src->trigger_tags;
+        pkt->trigger_tags.push_back("s_uInspCache_");
+        pkt->trigger_id=-src->trigger_id;
+        belongMan->dispatch(pkt);
+
+
+
+
+
+      }
+      while (belongMan->inspTarProcess())
+      {
+      }
+      return true;
+    }
+
+        LOGI("END....");
+    return true;
+  }
+
+
+  if(type=="ClearFetchSrc")
+  {
+    recentSrcStageInfoSetIdx.clear();
+    return true;
+  }
+
+  
+
 
   return false;
 }
@@ -1082,7 +1207,7 @@ void CloseMatchFilter(std::vector<line2Dup::Match> &matches,SBM_if *sbm,vector<i
     scores.push_back(match.similarity);
   }
 
-  cv_dnn::NMSBoxes(boxes, scores, 0, 0.5f, idxs);
+  cv_dnn::NMSBoxes(boxes, scores, 0, 0.2f, idxs);
 
   std::sort(idxs.begin(), idxs.end(), [&](int a, int b) {
     int sa=matches[a].y*10+matches[a].x;//tilt the score a bit, assume the arrangment is like a grid
@@ -1096,6 +1221,28 @@ void CloseMatchFilter(std::vector<line2Dup::Match> &matches,SBM_if *sbm,vector<i
 
 void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<StageInfo> sinfo)
 {
+
+
+
+  if(sinfo->trigger_id>0)
+  {
+    LOGI(">>>>fetch save>>>>sinfo->trigger_id:%d",sinfo->trigger_id);
+    std::lock_guard<std::mutex> lock(recentSrcLock); 
+
+    if(recentSrcStageInfoSetIdx.space()==0)
+    {//if full, wipe tail
+      int tail_idx = recentSrcStageInfoSetIdx.getTail();
+      recentSrcStageInfoSetIdx.consumeTail();
+    }
+    
+    {//push new info in head
+      int head_idx = recentSrcStageInfoSetIdx.getHead();
+      recentSrcStageInfoSet[head_idx]=sinfo;
+      recentSrcStageInfoSetIdx.pushHead();
+
+    }
+  }
+
 
   // std::this_thread::sleep_for(std::chrono::milliseconds(100));
   int64 t0 = cv::getTickCount();

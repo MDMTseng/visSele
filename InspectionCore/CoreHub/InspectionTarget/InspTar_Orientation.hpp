@@ -18,6 +18,7 @@
 
 
 
+#include "RingBuf.hpp"
 #include "SBM_if.hpp"
 
 
@@ -70,6 +71,13 @@ public:
   };
   vector<refine_region_info> refine_region_set;
   bool refine_angle_only;
+
+
+
+  std::mutex recentSrcLock;
+  vector<std::shared_ptr<StageInfo>> recentSrcStageInfoSet;
+  RingBufIdxCounter<int> recentSrcStageInfoSetIdx;
+
 
 
   InspectionTarget_Orientation_ShapeBasedMatching(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
