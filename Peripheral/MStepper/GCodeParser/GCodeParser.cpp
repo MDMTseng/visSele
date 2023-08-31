@@ -282,7 +282,7 @@ uint32_t parseUlong(char* str,int strL, bool *isOK)
   char testChar=strBuf[0];
 
 
-  uint32_t num;
+  uint32_t num=0;
   for(int i=0;i<strL;i++)
   {
     testChar=strBuf[i];
