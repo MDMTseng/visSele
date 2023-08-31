@@ -84,7 +84,7 @@ hw_timer_t *timer = NULL;
 
 //#define _HOMING_DBG_FLAG_ 50
 
-#define PIN_DBG 14
+#define PIN_DBG1 14
 #define PIN_DBG2 27
 
 
@@ -106,6 +106,7 @@ enum MSTP_SegCtx_TYPE{
   INPUT_MON_CTRL=2,
   ON_TIME_REPLY=3,
   KEEP_RUN_UNTIL_ENC=10,
+  KEEP_RUN_UNTIL_ENC_EARLY_STOP=11,
 
 };
 
@@ -166,6 +167,13 @@ struct MSTP_SegCtx_RunUntilEnc{
   xVec tarVec;
 };
 
+
+struct MSTP_SegCtx_RunUntilEnc_EarlyStop{
+  int tar_ENC;
+  uint32_t axis_vec;
+};
+
+
 struct MSTP_SegCtx{
   MSTP_SegCtx(){}
   ~MSTP_SegCtx(){}
@@ -177,6 +185,7 @@ struct MSTP_SegCtx{
     struct MSTP_SegCtx_INPUTMON INPUT_MON;
     struct MSTP_SegCtx_OnTimeReply ON_TIME_REP;
     struct MSTP_SegCtx_RunUntilEnc RUN_UNTIL_ENC;
+    struct MSTP_SegCtx_RunUntilEnc_EarlyStop KEEP_RUN_UNTIL_ENC_EARLY_STOP;
   }; 
   string CID;
   string TTAG;
@@ -813,6 +822,9 @@ class MStp_M:public MStp{
   #define ENDIAN_SWITCH(B32)  (((B32)<<24)|(((B32)&0xFF00)<<8)|(((B32)&0xFF0000)>>8)|((B32)>>24))
 
 
+  uint32_t pre_f_dir=0;
+  uint32_t pre_f_step=0;
+
   void ShiftRegAssign(uint32_t dir,uint32_t step)
   {
     _latest_stp_pins=step;
@@ -826,7 +838,8 @@ class MStp_M:public MStp{
     // uint32_t Seg2=V_CUT(dir,0,3)<<8|V_CUT(step,0,3)<<8;
     uint32_t m_dir=dir^g_dir_inv;
     uint32_t m_step=step^g_step_trigger_edge;
-
+    pre_f_dir=m_dir;
+    pre_f_step=m_step;
     // uint32_t portPins=((testCounter&0xff)<<24)|((testCounter&0xff)<<16);
     // testCounter++;
 
@@ -1043,6 +1056,41 @@ class MStp_M:public MStp{
 
   void BlockPinInfoUpdate(MSTP_segment* seg,uint32_t dir,uint32_t idxes_T,uint32_t idxes_R)
   {
+    if(seg && seg->ctx)
+    {
+      
+      MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
+      if(ctx->type==MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC_EARLY_STOP)
+      {
+        if(ctx->isProcessed==false)
+        {
+
+
+          if(EncV==ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.tar_ENC)
+          {
+            // struct Mstp2CommInfo tinfo={
+            // .type=Mstp2CommInfo_Type::ext_log,
+            // .log="ENC HIT..cur_step:"+to_string(seg->cur_step)+" stall axis vec:"+to_string(ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.axis_vec)
+            
+            // };
+
+            // Mstp2CommInfo* Qhead=NULL;
+            // while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+            // *Qhead=tinfo;
+            // Mstp2CommInfoQ.pushHead();
+
+            ctx->isProcessed=true;
+
+            
+          }
+        }
+
+        if(ctx->isProcessed==true)
+        {//block
+          idxes_T&=~(ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.axis_vec);
+        }
+      }
+    }
     ShiftRegAssign(dir,idxes_T);
   }
   
@@ -1272,6 +1320,11 @@ public:
           p_res->INPUT_MON.existField|=1<<1;
         }
 
+
+        // __UPRT_I_("CMD:%s",cblk);
+        
+        __UPRT_I_("M120.1 poolSize:%d",sctx_pool.size());
+
         p_res->INPUT_MON.doMonitor=true;
         p_res->isProcessed=false;
 
@@ -1289,7 +1342,7 @@ public:
       {
 
         MSTP_SegCtx *p_res=NULL;
-        __UPRT_I_("M400 applyResource...cmd_id:%d",HACK_cur_cmd_id);
+        // __UPRT_I_("M400 applyResource...cmd_id:%d",HACK_cur_cmd_id);
         while((p_res=sctx_pool.applyResource())==NULL)//check release
         {
           yield();
@@ -1306,7 +1359,8 @@ public:
           return GCodeParser_Status::GCODE_PARSE_ERROR;
         }
 
-        __UPRT_I_("AddWait... ");
+        __UPRT_I_("M400 poolSize:%d",sctx_pool.size());
+        // __UPRT_I_("AddWait... ");
         while(_mstp->AddWait(0,0,p_res,NULL)==false)
         {
           yield();
@@ -1400,7 +1454,7 @@ public:
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
       }
       else 
-      if(CheckHead(cblk, "G01.ENC "))//Wait for motion stop, non blocking
+      if(CheckHead(cblk, "G01.ENC "))
       {
 
 
@@ -1479,6 +1533,93 @@ public:
         retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
           
       }
+    
+      else 
+      if(CheckHead(cblk, "G01.ENC_ES "))
+      {
+
+
+        if(isMTPLocked)
+        {
+          return GCodeParser_Status::TASK_FATAL_FAILED;
+        }
+        __PRT_D_("G1 baby!!!\n");
+
+        xVec vec;
+        float F;
+        ReadG1Data(blks,blkCount,vec,F);
+        // F=1;
+        MSTP_segment_extra_info exinfo={.speedOnAxisIdx=-1,.acc=NAN,.deacc=NAN};
+
+        {
+          float tmpF=NAN;
+          if(FindFloat(AXIS_GDX_ACCELERATION,blks,blkCount,tmpF)==0)
+          {
+            exinfo.deacc=exinfo.acc=unit2Pulse_conv(AXIS_IDX_ACCELERATION,tmpF);
+
+          }
+          tmpF=NAN;
+          
+          if(FindFloat(AXIS_GDX_DEACCELERATION,blks,blkCount,tmpF)==0)
+          {
+            exinfo.deacc=unit2Pulse_conv(AXIS_IDX_DEACCELERATION,tmpF);
+          }
+
+
+          char AxisCode[10];
+          if(FindStr(AXIS_GDX_FEED_ON_AXIS,blks,blkCount,AxisCode)==0)
+          {
+            exinfo.speedOnAxisIdx=axisGDX2IDX(AxisCode,-1);
+          }
+        }
+
+        MSTP_SegCtx *p_res=NULL;
+        {
+
+          while((p_res=sctx_pool.applyResource())==NULL)//check release
+          {
+            yield();
+          }
+          p_res->type=MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC_EARLY_STOP;
+          p_res->isProcessed=false;
+          p_res->KEEP_RUN_UNTIL_ENC_EARLY_STOP.tar_ENC=0;
+          p_res->KEEP_RUN_UNTIL_ENC_EARLY_STOP.axis_vec=0;
+
+          // exinfo.speedOnAxisIdx=AXIS_IDX_X;
+          char AxisCode[10];
+          if(FindStr("AX_",blks,blkCount,AxisCode)==0)
+          {
+            int idx=axisGDX2IDX(AxisCode,-1);
+            if(idx>=(int)0)
+              p_res->KEEP_RUN_UNTIL_ENC_EARLY_STOP.axis_vec|=1<<idx;
+          }
+
+
+
+          float tmpF=NAN;
+          if(FindFloat("ENC",blks,blkCount,tmpF)==0)
+          {
+            p_res->KEEP_RUN_UNTIL_ENC_EARLY_STOP.tar_ENC=tmpF;
+
+          }
+          else 
+          {
+            return GCodeParser_Status::GCODE_PARSE_ERROR;
+          }
+
+
+
+
+        }
+
+
+
+        MTPSYS_VecTo(vec,F,p_res,&exinfo);
+        retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
+          
+      }
+    
+    
     }
 
     
@@ -2258,7 +2399,7 @@ void setup()
   }
 
 
-  pinMode(PIN_DBG, OUTPUT);
+  pinMode(PIN_DBG1, OUTPUT);
   pinMode(PIN_DBG2, OUTPUT);
   pinMode(pin_TRIG_595, OUTPUT);
   pinMode(pin_SH_165, OUTPUT);
