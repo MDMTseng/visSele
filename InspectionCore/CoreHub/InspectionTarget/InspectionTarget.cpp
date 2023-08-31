@@ -501,7 +501,7 @@ CameraManager::StreamingInfo* CameraManager::addCamera(std::string driverName,st
 
 CameraManager::StreamingInfo* CameraManager::getCamera(std::string driverName,std::string camera_id,std::string side_name)
 {
-  int idx=findConnectedCameraIdx( driverName, camera_id);
+  int idx=findConnectedCameraIdx( driverName, camera_id,side_name);
   if(idx>=0)
   {
     return &camera_streaming_infos[idx];
@@ -525,7 +525,7 @@ int CameraManager::findConnectedCameraIdx(std::string driverName,std::string cam
 
     // if( side_name.length()!=0 && side_name!=sideName)continue;
 
-    if( (driverName.length()==0 || data.driver_name==driverName) && data.id==camera_id)
+    if( (driverName.length()==0 || data.driver_name==driverName) && (data.id==camera_id))
     {
       return i;
     }

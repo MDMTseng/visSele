@@ -3937,28 +3937,32 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       }
       else if(strcmp(type_str, "trigger") ==0)
       {do{
+
+
+        vector<string> tags;
+        {
+
+          cJSON* trigger_tags = JFetch_ARRAY(json, "trigger_tags");
+          if(trigger_tags)
+          {
+            int tagsLen=cJSON_GetArraySize(trigger_tags);
+            for(int i=0;i<tagsLen;i++)
+            {
+              cJSON * item= cJSON_GetArrayItem(trigger_tags,i);
+              if(item->type & cJSON_String)
+              {
+                tags.push_back(string(item->valuestring));
+              }
+            }
+          }
+        }
+
+
+
         char *_img_path = JFetch_STRING(json, "img_path");
         if(_img_path)
         {
           
-          vector<string> tags;
-          {
-
-            cJSON* trigger_tags = JFetch_ARRAY(json, "trigger_tags");
-            if(trigger_tags)
-            {
-              int tagsLen=cJSON_GetArraySize(trigger_tags);
-              for(int i=0;i<tagsLen;i++)
-              {
-                cJSON * item= cJSON_GetArrayItem(trigger_tags,i);
-                if(item->type & cJSON_String)
-                {
-                  tags.push_back(string(item->valuestring));
-                }
-              }
-            }
-          }
-
           LOGI("_img_path:%s tags:%d",_img_path,tags.size());
 
 
@@ -4007,7 +4011,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             mocktrig.triggerInfo.camera_id=id;
             mocktrig.triggerInfo.trigger_id=(int)JFetch_NUMBER_ex(json, "trigger_id",-1);
             mocktrig.triggerInfo.est_trigger_time_us=0;//force matching
-            mocktrig.triggerInfo.tags.push_back( std::string( JFetch_STRING_ex(json, "trigger_tag","_SW_TRIG_")) );
+            if(tags.size()==0)
+            {
+              mocktrig.triggerInfo.tags.push_back( std::string( JFetch_STRING_ex(json, "trigger_tag","_SW_TRIG_")) );
+            }
+            else
+            {
+              mocktrig.triggerInfo.tags=tags;
+            }
             
             triggerInfoMatchingQueue.push_blocking(mocktrig);
           }

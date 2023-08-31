@@ -199,7 +199,6 @@ class InspectionTargetManager
   std::mutex camCBLock;
   std::mutex processLock;
 
-  bool isPyBindInited=false;
   public:
 
 
