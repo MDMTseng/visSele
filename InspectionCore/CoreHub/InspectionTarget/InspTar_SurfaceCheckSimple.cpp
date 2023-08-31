@@ -1118,7 +1118,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             cv::Scalar compScalar(color_ch_mul_b,color_ch_mul_g,color_ch_mul_r);
             multiply(_def_temp_img_ROI,compScalar, _def_temp_img_ROI);
           }
-          LOGE(">>>>>");
+          LOGE(">>>>>shift x:%f  y:%f",xShift,yShift);
 
 
 
@@ -1683,27 +1683,27 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                 Mat sobelDir;
                 if(dirAngle==0 || dirAngle==180)
                 {
-                  cv::Sobel(gray_img, sobelDir, CV_16S, 1, 0, 3);
+                  cv::Sobel(gray_img, sobelDir, CV_32F, 1, 0, 3);
                 }
                 else
                 {
-                  cv::Sobel(gray_img, sobelDir, CV_16S, 0, 1, 3);
+                  cv::Sobel(gray_img, sobelDir, CV_32F, 0, 1, 3);
                   sobelDir=sobelDir.t();
 
                 }
                 sobelDir=abs(sobelDir);
                 Mat sobelMax;
-                cv::reduce(sobelDir, sobelMax, 0, REDUCE_MAX, CV_16S);
+                cv::reduce(sobelDir, sobelMax, 0, REDUCE_MAX, CV_32F);
 
-                int maxEdge=0;
-                int addEdge=0;
+                float maxEdge=0;
+                float addEdge=0;
                 int maxEdgeIdx=0;
 
                 printf("idx:%03d>>",i);
                 for(int k=0;k<sobelMax.size().width;k++)
                 {
-                  int edgeV=sobelMax.at<int16_t>(0,k);
-                  printf("%03d ",edgeV);
+                  float edgeV=sobelMax.at<float>(0,k);
+                  printf("%f ",edgeV);
 
 
                   if(edgeV>maxEdge)
@@ -1722,7 +1722,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                 // //reduce img sub_region_ROI into a line
                 Mat axisSum;
                 int axisIdx=(dirAngle==0 || dirAngle==180)?0:1;
-                cv::reduce(gray_img, axisSum, axisIdx, REDUCE_AVG, CV_16U);
+                cv::reduce(gray_img, axisSum, axisIdx, REDUCE_AVG, CV_32F);
                 if(axisIdx==1)
                   axisSum=axisSum.t();
                 
@@ -1730,16 +1730,16 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                 // cv::GaussianBlur(axisSum, axisSum, cv::Size(5, 1), 5);
 
                 //LOOP thru the axisSum, find the max diff
-                int maxDiff=0;
-                int addDiff=0;
+                float maxDiff=0;
+                float addDiff=0;
                 int maxDiffIdx=0;
-                int prePixV=axisSum.at<uint16_t>(0,0);
+                float prePixV=axisSum.at<float>(0,0);
 
                 // printf("idx:%03d>>",i);
                 for(int k=1;k<axisSum.size().width;k++)
                 {
-                  int pix=axisSum.at<uint16_t>(0,k);
-                  int diff=(pix-prePixV);
+                  float pix=axisSum.at<float>(0,k);
+                  float diff=(pix-prePixV);
                   // printf("%03d ",diff);
                   diff=abs(diff);
                   if(diff>diffSupressThres)
