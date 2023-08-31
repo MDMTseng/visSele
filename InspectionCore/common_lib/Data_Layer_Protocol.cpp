@@ -151,6 +151,8 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
   {
     //is in packet receive state
   }
+
+  auto recvType_bk=recvType;
   int i;
   for(i=0;i<len;i++)
   {
@@ -455,6 +457,20 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
   {
     //is in packet receive state
   }
+
+
+  if(recvType==RTYPE::ERROR_SEC)
+  {
+    if(recvType_bk!=recvType)
+      printf(">>>>Data_JsonRaw_Layer recv ERROR_SEC\n");
+
+    for(int i=0;i<len;i++)
+    {
+        printf("%c",data[i]);
+    }
+    // printf("\n");
+  }
+
   return 0;
 
 
