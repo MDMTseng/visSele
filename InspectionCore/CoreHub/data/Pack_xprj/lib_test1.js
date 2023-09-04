@@ -86,7 +86,7 @@ let SYS_CONFIG = {
 
 
   //sensor in bit field
-  ES_SENSOR_ALL: 0xFF,
+  ES_SENSOR_ALL: 0x4FF,//0x400 is the emergency stop btn
   ES_SENSOR_Z: 0xF,
   ES_SENSOR_Y: 0x80,
 
