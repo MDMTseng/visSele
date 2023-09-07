@@ -750,7 +750,8 @@ class MStp_M:public MStp{
 
           struct Mstp2CommInfo tinfo={
           .type=Mstp2CommInfo_Type::ext_log,
-          .log="BlockEndEffect..cur_step:"+to_string(seg->cur_step)+" isProcessed:"+to_string(ctx->isProcessed)
+          .log="BlockEndEffect..cur_step:"+to_string(seg->cur_step)+" isPd:"+to_string(ctx->isProcessed)+" *seg="+to_string((int)seg)
+          
           };
 
           Mstp2CommInfo* Qhead=NULL;
@@ -1047,6 +1048,7 @@ class MStp_M:public MStp{
 
 
     shiftRegAssignedCount=0;
+    GPIOLS32_SET(pin_TRIG_595);//trigger 595 internal register update to 595 phy pin
     GPIOLS32_SET(pin_TRIG_595);//trigger 595 internal register update to 959 phy pin
     
     latest_stp_pins=_latest_stp_pins;
@@ -1580,6 +1582,7 @@ public:
           {
             yield();
           }
+          vec=vecAdd(vec,pulse_offset);
           p_res->type=MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC_EARLY_STOP;
           p_res->isProcessed=false;
           p_res->KEEP_RUN_UNTIL_ENC_EARLY_STOP.tar_ENC=0;
