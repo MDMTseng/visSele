@@ -87,6 +87,9 @@ hw_timer_t *timer = NULL;
 #define PIN_DBG1 14
 #define PIN_DBG2 27
 
+#define PIN_DBG3 25
+#define PIN_DBG4 26
+
 
 int pin_SH_165=17;
 int pin_TRIG_595=5;
@@ -1049,8 +1052,11 @@ class MStp_M:public MStp{
 
     shiftRegAssignedCount=0;
     GPIOLS32_SET(pin_TRIG_595);//trigger 595 internal register update to 595 phy pin
-    GPIOLS32_SET(pin_TRIG_595);//trigger 595 internal register update to 959 phy pin
     
+    // digitalWrite(PIN_DBG1, pre_f_dir&(1<<AXIS_IDX_X));
+    // digitalWrite(PIN_DBG2, pre_f_step&(1<<AXIS_IDX_X));
+    // digitalWrite(PIN_DBG3, pre_f_dir&(1<<AXIS_IDX_Y));
+    // digitalWrite(PIN_DBG4, pre_f_step&(1<<AXIS_IDX_Y));
     latest_stp_pins=_latest_stp_pins;
     latest_dir_pins=_latest_dir_pins;
   }
@@ -2404,6 +2410,8 @@ void setup()
 
   pinMode(PIN_DBG1, OUTPUT);
   pinMode(PIN_DBG2, OUTPUT);
+  pinMode(PIN_DBG3, OUTPUT);
+  pinMode(PIN_DBG4, OUTPUT);
   pinMode(pin_TRIG_595, OUTPUT);
   pinMode(pin_SH_165, OUTPUT);
   pinMode(PIN_LED, OUTPUT);
