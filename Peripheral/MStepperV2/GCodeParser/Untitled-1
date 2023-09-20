@@ -1,0 +1,30 @@
+
+
+MGroupConvClear $G0 
+MGroupConvExp $G0 INPUT(A1X)
+MGroupConvExp $G0 INPUT(A1Y)
+MGroupConvExp $G0 INPUT(A1Z)
+MGroupConvExp $G0 LET(T0)
+MGroupConvExp $G0 LET(T1)
+MGroupConvExp $G0 T0=acos(A1X)
+MGroupConvExp $G0 T1=acos(A1X)
+
+
+
+
+
+
+
+
+MGroupSetting $G0 A1L_ A1R_ A1_Z 
+MGroupSetting $G1 SA1A1_ SA1A2_ SA2_ SA3_
+MGroupSetting $G2 PPU1_
+
+
+M850 $G2 TRACK_PLATE  T100
+
+G01 $G2 
+
+
+
+M851 $G2 TRACK_PLATE  T100

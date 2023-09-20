@@ -1,7 +1,7 @@
 
 #ifndef __RingBufX_H__
 #define __RingBufX_H__
-
+#include <cstddef>
 // #include <Arduino.h>
 
 /*
@@ -125,41 +125,34 @@ class RingBuf
   RingBufIdxCounter<RB_Idx_Type> RBC;
   RB_Type *buff;
   RB_Type *new_buff;
+
+
+
   RingBuf(RB_Type *buff,RB_Idx_Type len)
   {
     RESET(buff,len);
   }
   
-  RingBuf(RB_Idx_Type len)
+  RingBuf(RB_Idx_Type len=0)
   {
-    new_buff=buff=new RB_Type[len];
+    new_buff=buff=NULL;
     RBC.RESET(len);
   }
   
-  RingBuf()
-  {
-    new_buff=buff=NULL;
-    RBC.RESET(0);
-  }
   void RESET(RB_Type *buff,RB_Idx_Type len)
   {
     if(new_buff)
     {
       delete(new_buff);
-      new_buff=NULL;
     }
+    new_buff=NULL;
     this->buff=buff;
     RBC.RESET(len);
   }
 
   void RESET(RB_Idx_Type len)
   {
-    if(new_buff)
-    {
-      delete(new_buff);
-      new_buff=NULL;
-    }
-    RB_Type *tmpBuff=new RB_Type[len];
+    RB_Type *tmpBuff=(len==0)?NULL:new RB_Type[len];
     RESET(tmpBuff,len);
     new_buff=tmpBuff;
   }
