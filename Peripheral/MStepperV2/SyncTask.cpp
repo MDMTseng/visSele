@@ -444,12 +444,17 @@ StaticJsonDocument <500>doc;
 StaticJsonDocument  <500>retdoc;
 
 
+float txfreq=2.4;
+float tyfreq=2.4;
 
 static int CB_Count=0;
 
 class StpGroup_RX:public StpGroup
 { 
   typedef  xnVec_f<3> RXVec;
+
+  static const int OUTPUT_HIST_DIV=1;
+  RingBuf_Static<RXVec,1024/OUTPUT_HIST_DIV> outputHist;
 
   std::array<RXVec,40> startPtBuffer;
   std::array<RXVec,40> vecBuffer;
@@ -471,6 +476,9 @@ public:
   StpGroup_RX():StpGroup()
   {
 
+    memset(outputHist.buff,0,outputHist.capacity()*sizeof(RXVec));
+    
+
     axisSetup=_axisSetup;
     for(int i=0;i<segsBuffer.size();i++)
     {
@@ -487,7 +495,7 @@ public:
     axisSetup[0].A_Factor=1;
     axisSetup[0].V_Factor=1;
     axisSetup[0].MaxVJump=1;
-    axisSetup[0].V_Max=300;
+    axisSetup[0].V_Max=600;
     axisSetup[0].A_Max=10000;
 
 
@@ -622,9 +630,10 @@ float iir_lp_filter(float input) {
     return output;
 }
 
-
+  uint32_t updCounter=0;
   void update()//every system tick, update the location
   {
+
     updateCount=(updateCount+1)%100000;
     do{
       float T=mstpV2.updatePeriod_s;
@@ -814,7 +823,37 @@ float iir_lp_filter(float input) {
       latestAdvLocation=latestCalcAdvLocation;
     }
 
-    // latestAdvLocation.vec[0]=iir_filter(latestAdvLocation.vec[0]);
+
+
+    // updCounter++;
+    // if((updCounter&(OUTPUT_HIST_DIV-1))==0)
+    // {
+    //   if(outputHist.size()>=outputHist.capacity()-2)
+    //   {
+    //     outputHist.consumeTail();
+    //   }
+      
+    //   outputHist.pushHead(latestAdvLocation);
+    // }
+
+
+    // auto fX_N= outputHist.getHead(1+(int)(1000/OUTPUT_HIST_DIV/(txfreq*2)));
+    // auto fX_2N= outputHist.getHead(1+(int)(1000*2/OUTPUT_HIST_DIV/(txfreq*2)));
+
+
+
+    // auto fY_N= outputHist.getHead(1+(int)(1000/OUTPUT_HIST_DIV/(tyfreq*2)));
+    // auto fY_2N= outputHist.getHead(1+(int)(1000*2/OUTPUT_HIST_DIV/(tyfreq*2)));
+
+
+    // if(fX_N!=NULL && fX_2N!=NULL  && fY_N!=NULL && fY_2N!=NULL)
+    // {
+      
+    //   latestAdvLocation.vec[0]=(fX_2N->vec[0]+2*fX_N->vec[0]+latestAdvLocation.vec[0])/4;
+    //   latestAdvLocation.vec[1]=(fY_2N->vec[1]+2*fY_N->vec[1]+latestAdvLocation.vec[1])/4;
+    //   // latestAdvLocation.vec[3]=latestAdvLocation.vec[3];
+    // }
+
 
   }
 
@@ -1278,6 +1317,25 @@ float iir_lp_filter(float input) {
         return  GCodeParser::GCodeParser_Status::TASK_OK_HOLD_RSP;
       }
 
+      else if(CheckHead(cblk, "M_ZVShaper"))
+      { 
+        float f0=NAN;
+
+        FindFloat("fx0=",blkIdxes,blkIdxesL,f0);
+        if(f0==f0)
+        {
+          txfreq=f0;
+        }
+
+        FindFloat("fy0=",blkIdxes,blkIdxesL,f0);
+        if(f0==f0)
+        {
+          tyfreq=f0;
+        }
+
+
+        return  GCodeParser::GCodeParser_Status::TASK_OK;
+      }
       else if(CheckHead(cblk, "M_NOTCH"))
       { 
         float f0=NAN;
