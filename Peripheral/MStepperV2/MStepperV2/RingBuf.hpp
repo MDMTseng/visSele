@@ -55,8 +55,9 @@ class RingBufIdxCounter
   }
 
 
-  RB_Idx_Type getHead(RB_Idx_Type idx){
+  RB_Idx_Type getHead(RB_Idx_Type idx){//allow negative idx
     int real_idx=headIdx-idx;
+    if(real_idx>=RBLen)real_idx-=RBLen;
     if(real_idx<0)real_idx+=RBLen;
     return real_idx;
   }

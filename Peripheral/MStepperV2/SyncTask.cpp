@@ -16,7 +16,6 @@ extern "C" {
 #include "direct_spi.h"
 }
 
-#pragma once
 #define __UPRT_D_(fmt,...) //Serial.printf("D:"__VA_ARGS__)
 // #define __PRT_I_(...) Serial.printf("I:" __VA_ARGS__)
 #define __UPRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
@@ -42,6 +41,7 @@ class MData_JR:public Data_JsonRaw_Layer
   int recv_RESET()
   {
     doDataLog=false;
+    return 0;
   } 
   int recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0);
   
@@ -646,7 +646,7 @@ float iir_lp_filter(float input) {
       }
 
       RXVec newAdvLocation={{0}};
-      if(curSeg->type!=MSTP_segment_type::seg_line)
+      if(curSeg->type!=MSTP_segment_type::seg_line && curSeg->type!=MSTP_segment_type::seg_arc)
       {
         bool goMove=false;
         if(curSeg->type==MSTP_segment_type::seg_wait)
@@ -660,7 +660,7 @@ float iir_lp_filter(float input) {
               {
                 goMove=true;
 
-                adv_info.dstanceWent=curSeg->distance=-1;
+                adv_info.dstanceWent=curSeg->distanceEnd=-1;
                 T=0;//0 time is used
               }
             }
@@ -682,7 +682,7 @@ float iir_lp_filter(float input) {
       }
       else
       {
-        float ratio=adv_info.dstanceWent/curSeg->distance;
+        float ratio=adv_info.dstanceWent/(curSeg->distanceEnd-curSeg->distanceStart);
         for(int i=0;i<LOC_DIM;i++)
         {
           newAdvLocation.vec[i]=curSeg->vec[i]*(ratio)+curSeg->sp[i];
@@ -706,12 +706,12 @@ float iir_lp_filter(float input) {
           float leftT=mstpV2.updatePeriod_s-T;
           T=leftT;
           MSTP_segment*nxtSeg= segAdvance(T);
-          if(nxtSeg==NULL || nxtSeg->type!=MSTP_segment_type::seg_line)
+          if(nxtSeg==NULL || (nxtSeg->type!=MSTP_segment_type::seg_line && nxtSeg->type!=MSTP_segment_type::seg_arc))
           {
             break;
           }
 
-          float ratio=adv_info.dstanceWent/nxtSeg->distance;
+          float ratio=adv_info.dstanceWent/(nxtSeg->distanceEnd-nxtSeg->distanceStart);
           for(int i=0;i<LOC_DIM;i++)
           {
             newAdvLocation.vec[i]=nxtSeg->vec[i]*(ratio)+nxtSeg->sp[i];
@@ -738,10 +738,10 @@ float iir_lp_filter(float input) {
       {
         ratio=1;
       }
-      else if(trackingAdvInfo.dstanceWent!=trackingMovParam.distance)
+      else if(trackingAdvInfo.dstanceWent!=trackingMovParam.distanceEnd)
       {
         segAdvance(T,&trackingMovParam,&trackingAdvInfo);
-        ratio=trackingAdvInfo.dstanceWent/trackingMovParam.distance;
+        ratio=trackingAdvInfo.dstanceWent/trackingMovParam.distanceEnd;
       }
       else
       {
@@ -1158,7 +1158,10 @@ float iir_lp_filter(float input) {
         trackingMovParam.vcen=exinfo.speed;
         trackingMovParam.vcur=0;
         trackingMovParam.vto=0;
-        trackingMovParam.distance=1000;
+        trackingMovParam.distanceStart=0;
+        trackingMovParam.distanceEnd=
+        trackingMovParam.Mdistance=
+        trackingMovParam.Edistance=1000;
       
 
         trackingAdvInfo=adv_info;
@@ -1196,7 +1199,11 @@ float iir_lp_filter(float input) {
         trackingMovParam.vcur=0;
         trackingMovParam.vto=0;
         trackingMovParam.deacc=exinfo.deacc;
-        trackingMovParam.distance=1000;
+        trackingMovParam.distanceStart=0;
+        trackingMovParam.distanceEnd=
+        trackingMovParam.Mdistance=
+        trackingMovParam.Edistance=1000;
+      
 
 
 
@@ -1391,6 +1398,8 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
   //   dbg_printf("recv_ERROR:%d %s dat:%s",errorcode,dataBuff,string((char*)recv_data,0,9).c_str());
   // else 
   //   dbg_printf("recv_ERROR:%d %s",errorcode,dataBuff);
+
+  return 0;
 }
 
 int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){

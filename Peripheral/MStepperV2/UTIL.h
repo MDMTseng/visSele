@@ -134,11 +134,17 @@ class buffered_print
 
   int write(char ch) 
   {    
-    return this->printf("%c",ch) ;
+    // return this->printf("%c",(int)ch) ;
+    if(_size>=_capacity-2)
+      return -1;
+    buf[_size++]=ch;
+    buf[_size]='\0';
+    return 0;
+
   }
   
   int printf(char *fmt, ...) 
-  {    
+  {
     va_list argptr;
     va_start(argptr,fmt);
     _size+=vsnprintf(buf+_size,_capacity-_size,fmt,argptr);

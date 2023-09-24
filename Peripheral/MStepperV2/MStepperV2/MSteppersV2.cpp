@@ -50,23 +50,6 @@ char *int2bin(uint32_t a, int digits) {
 
 
 
-float* vecAdd(float* vr,float* v1,float* v2,int dim)
-{
-  for(int i=0;i<dim;i++)
-  {
-    vr[i]=v1[i]+v2[i];
-  }
-  return vr;
-}
-float* vecSub(float* vr,float* v1,float* v2,int dim)
-{
-  for(int i=0;i<dim;i++)
-  {
-    vr[i]=v1[i]-v2[i];
-  }
-  return vr;
-}
-
 
 
 xVec_f vecSub(xVec_f v1,xVec_f v2)
@@ -760,27 +743,6 @@ inline int Calc_JunctionNormMaxDiff(float *v1,float dist1,float *v2,float dist2,
 
 
 
-
-inline float vecMaxDistCalc(float *v1,int vecLen,int *ret_idx=NULL)
-{
-  float maxDist=0;
-  int idx=-1;
-  for(int i=0;i<vecLen;i++)
-  {
-    float dist = v1[i];
-    if(dist<0)dist=-dist;
-    if(maxDist<dist)
-    {
-      idx=i;
-      maxDist=dist;
-    }
-  }
-  if(ret_idx)*ret_idx=idx;
-  return maxDist;
-}
-
-
-
 void nextIntervalCalc( MSTP_segment *seg) 
 {
  
@@ -806,7 +768,13 @@ bool StpGroup::pushInPause(uint32_t pause_ms,MSTP_segment_CB startCB,MSTP_segmen
   newSeg.startCB=startCB;
   newSeg.endCB=endCB;
   newSeg.ctx=ctx;
-  newSeg.distance=pause_ms;
+  newSeg.Mdistance=
+  newSeg.Edistance=
+  newSeg.distanceEnd=pause_ms;
+  newSeg.distanceStart=0;
+
+
+
   newSeg.vcur=0;
 
 
@@ -829,16 +797,35 @@ bool StpGroup::pushInInstant(MSTP_segment_CB startCB,MSTP_segment_CB endCB,void*
   newSeg.startCB=startCB;
   newSeg.endCB=endCB;
   newSeg.ctx=ctx;
-  newSeg.distance=-1;
+  newSeg.Mdistance=
+  newSeg.Edistance=
+  newSeg.distanceEnd=-1;
+  newSeg.distanceStart=0;
   newSeg.vcur=0;
   segs.pushHead();
   return true;
 }
 
 
+void MSTP_segment_Copy(MSTP_segment *dst,MSTP_segment *src,int locDim)
+{
+  
+  auto sp=dst->sp;
+  auto vec=dst->vec;
+  auto ctx=dst->ctx;
+
+  *dst=*src;
+
+  dst->sp=sp;
+  dst->vec=vec;
+  dst->ctx=ctx;
+  memcpy(dst->sp,src->sp,locDim*sizeof(*src->sp));
+  memcpy(dst->vec,src->vec,locDim*sizeof(*src->vec));
+}
+
 bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locDim,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
 {
-  if(segs.space()==0)
+  if(segs.space()<2)
   {
     return false;
   }
@@ -846,13 +833,17 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
 
 
   MSTP_SEG_PREFIX MSTP_segment* hrb=segs.getHead();
+  MSTP_segment *ahb=segs.getHead(-1);//get the ahead segment
   MSTP_SEG_PREFIX MSTP_segment &newSeg=*hrb;
+  MSTP_SEG_PREFIX MSTP_segment &aheadSeg=*ahb;
 
 
-  newSeg.distance=vecMaxDistCalc(vec,locDim,&newSeg.main_axis_idx);
+  newSeg.distanceStart=0;
+  newSeg.Mdistance=ManhattanMagnitude(vec,locDim,&newSeg.main_axis_idx);
+  newSeg.distanceEnd=newSeg.Mdistance;
+  newSeg.Edistance=EuclideanMagnitude(vec,locDim);
   
-  
-  if(newSeg.distance==0)
+  if(newSeg.Mdistance==0)
   {
     return true;
   }
@@ -967,22 +958,22 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
   // 
   // timerAlarmDisable(timer);
 
-  MSTP_SEG_PREFIX MSTP_segment *preSeg = NULL;
+  MSTP_SEG_PREFIX MSTP_segment *_preSeg = NULL;
   
   if(segs.size()>0)//get previous block to calc junction info
   {
 
     for(int i=1;;i++){
-       preSeg = segs.getHead(i);
-       if(preSeg==NULL)break;
+       _preSeg = segs.getHead(i);
+       if(_preSeg==NULL)break;
        
         //__PRT_I_("preSeg->type:%d\n",preSeg->type);
-       if(preSeg->type==MSTP_segment_type::seg_wait )//if there is a wait it would NOT need to calc the junction speed(it stops)
+       if(_preSeg->type==MSTP_segment_type::seg_wait )//if there is a wait it would NOT need to calc the junction speed(it stops)
        {
-          preSeg=NULL;
+          _preSeg=NULL;
           break;
        }
-       else if(preSeg->type==MSTP_segment_type::seg_instant_act)
+       else if(_preSeg->type==MSTP_segment_type::seg_instant_act)
        {//skip this and try to load next
          continue;
        }
@@ -996,194 +987,284 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
   
 
 
-  if(preSeg!=NULL)
+  if(_preSeg!=NULL)
   {// you need to deal with the junction speed
     // preSeg->vec;
     // newSeg.vec;
-    
-    float coeff1=NAN;
-    int calcErr= Calc_JunctionNormCoeff(preSeg->vec,preSeg->distance,vec,newSeg.distance,axisSetup,locDim,&coeff1);
-    if(calcErr<0)
-    {
-      newSeg.JunctionNormCoeff=0;
-    }
 
+    MSTP_segment &preSeg = *_preSeg;
+    // newSeg;
+    // aheadSeg;
 
-
-    // __PRT_I_("====coeff:%f    coeffSt:%d==\n",coeff1,coeffSt);
-    newSeg.JunctionNormMaxDiff=99999999;
-    if(calcErr==0)
-    {
-      float maxDiff1=NAN;
-      int retSt=0;
-      retSt |= Calc_JunctionNormMaxDiff(preSeg->vec,preSeg->distance,vec,newSeg.distance,axisSetup,locDim,coeff1,&maxDiff1);
-      // retSt |= Calc_JunctionNormMaxDiff(*preSeg,newSeg,coeff2,maxDiff2);
-
-
-
-
-
-      /*
-        (1+coeff)/maxDiff
-        1 is for the pre speed factor and coeff is for post speed factor
-
-        so 1+coeff would make sure the conbined speed is the larger the better
-
-        To devide maxDiff is to normalize the max difference number
-      */
-
-
-
-
-      newSeg.JunctionNormCoeff=coeff1;
-      newSeg.JunctionNormMaxDiff=maxDiff1;
-      //__PRT_I_("====coeff:%f,%f diff:%f==\n",newSeg.JunctionNormCoeff,coeff1,newSeg.JunctionNormMaxDiff);
-      if(retSt==0)
-      {
-        // newSeg.JunctionNormMaxDiff=maxDiff1;
-
-        // __PRT_D_("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n DIFF:",newSeg.JunctionNormMaxDiff,preSeg->vto,newSeg.vcur);
-
-        if(newSeg.JunctionNormMaxDiff<0.0000001)
-          newSeg.JunctionNormMaxDiff=0.0000001;//min diff cap to prevent value explosion
-
-
-
-
-
-        //max allowed end speed of pre block, so that at junction the max speed jump is within the limit, this is fixed
-        preSeg->vto_JunctionMax=1/newSeg.JunctionNormMaxDiff;
-
-        //vcur is the current speed, for un-executed block it's the starting speed
-        newSeg.vcur=0;//preSeg->vto_JunctionMax*newSeg.JunctionNormCoeff;
-
-
-        // char PrtBuff[100];
-        // sprintf(PrtBuff,"coeff:%.4f dMax:%.4f  jMax:%.4f vcur:%.4f",
-        //   newSeg.JunctionNormCoeff,
-        //   newSeg.JunctionNormMaxDiff,
-        //   preSeg->vto_JunctionMax,
-        //   newSeg.vcur
-          
-        //   );G_LOG(PrtBuff);
-        // {
-        //   float vto_JunctionMax=preSeg->vto_JunctionMax;
-        //   float JunctionNormMaxDiff=newSeg.JunctionNormMaxDiff;
-        //   float vcur=newSeg.vcur;
-        //   float vcen=newSeg.vcen;
-        //   //__PRT_I_("===JunctionMax:%f ndiff:%f vcur:%f  vcen:%f==\n",vto_JunctionMax,JunctionNormMaxDiff,vcur,vcen);
-          
-        // }
-        if(false&&newSeg.vcur>newSeg.vcen)//check if the max initial speed is higher than target speed
-        {
-          newSeg.vcur=newSeg.vcen;//cap the speed
-
-          preSeg->vto_JunctionMax=newSeg.vcur/newSeg.JunctionNormCoeff;//calc speed back to preSeg->vto
-
-          // {
-          //   float vto_JunctionMax=preSeg->vto_JunctionMax;
-          //   float vcur=newSeg.vcur;
-          //   float vcen=newSeg.vcen;
-          //   __PRT_I_("===JunctionMax:%f  vcur:%f  vcen:%f==\n",vto_JunctionMax,vcur,vcen);
-            
-          // }
-          
-        }
-        else 
-        {
-
-        }
+    if(false && exinfo->cornorR_percent==exinfo->cornorR_percent && exinfo->cornorR_percent>0)//arc the cornor
+    {//we need to add a arc segment in between two line segment
+      {//move newSeg info to aheadSeg
+        auto sp=aheadSeg.sp;
+        auto vec=aheadSeg.vec;
+        auto ctx=aheadSeg.ctx;
         
+        aheadSeg=newSeg;
 
-
-        // preSeg->vto=preSeg->vto_JunctionMax;
-
-
-        // {
-        //   float vto_JunctionMax=preSeg->vto_JunctionMax;
-        //   float vto=preSeg->vto;
-        //   float vcur=newSeg.vcur;
-        //   __PRT_I_("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n",vto_JunctionMax,vto,vcur);
-          
-        // }
-
-        // for(int k=0;k<MSTP_VEC_SIZE;k++)
-        // {
-        //   float v1=(preSeg->vto*preSeg->runvec.vec[k]/preSeg->steps);
-        //   float v2=(  newSeg.vcur*   newSeg.runvec.vec[k]/   newSeg.steps);
-        //   float diff = v1-v2;
-        //   __PRT_I_("(A(%f)-B(%f)=%04.2f )\n",v1,v2,diff);
-        // }
-
-
-
-
+        aheadSeg.sp=sp;
+        aheadSeg.vec=vec;
+        aheadSeg.ctx=ctx;
+        // memcpy(aheadSeg.axisSetup,axisSetup,sizeof(axisSetup));
 
       }
-      else
+
+
+
+      MSTP_segment &arcSeg=newSeg;
+
+      MSTP_segment &aheadLineSeg=aheadSeg;
+
+      // float M2ERatio=preSeg->Edistance/newSeg.Mdistance;
+
+      // newSeg.sp;
+      // newSeg.vec;
+
+
+
+/*
+
+                                                                                                                                      
+                                                                                                                                      
+                                            spDistRatio=0.8                                                                           
+                                  -----------------|----|   
+                            [P1]                 [SP2]                                                                                
+                                  --------------------------------------                                                              
+         ret_distance   /        /    /                                [P2]                                                             
+                       /        /__--                                                                                                    
+                      /        /     return ANGLE                                                                                                 
+                     /        /                                                                                                       
+   spDistRatio=0.8  _[SP0]   /                                                                                                        
+                   /        /                                                                                                         
+                  -        /                                                                                                          
+                                                                                                                                      
+                        [P0]                                            
+
+
+*/
+
+
+      typedef  xnVec_f<20> TVec;//assume 20dimension is enough... becasue the input dimentsion is not constant in child class
+      TVec sp0;//spline control point
+      TVec sp2;
+      float distance_p0_ctrlpt0;
+
+
+
       {
-        newSeg.vcur=preSeg->vto=0;
+
+        // Calculate the angle in radians
+        float percent=exinfo->cornorR_percent;
+        if(percent>1)percent=1;
+
+        float angleRadians;
+        {
+          TVec p0;//newSeg.sp-preSeg->vec;
+          TVec p2;//newSeg.sp+newSeg.vec;
+
+          for(int i=0;i<locDim;i++)
+          {
+            p0.vec[i]=newSeg.sp[i]-preSeg.vec[i]*preSeg.distanceStart/preSeg.Mdistance;
+            p2.vec[i]=newSeg.sp[i]+newSeg.vec[i];
+          }
+          angleRadians = calcAngleAndOthers(p0.vec,newSeg.sp,p2.vec,locDim,percent,sp0.vec,sp2.vec,&distance_p0_ctrlpt0);
+
+
+          preSeg.distanceEnd=preSeg.Mdistance*(1-distance_p0_ctrlpt0/preSeg.Edistance);
+          newSeg.distanceStart=newSeg.Mdistance*distance_p0_ctrlpt0/newSeg.Edistance;
+        }
+
+
+
+        float arc_r_div_dist;
+        float kappa;//=Ang2SplineKappa(angleRadians,&arc_r_div_dist);
+
+        kappa=Ang2SplineKappa_PAP(angleRadians);
+        arc_r_div_dist=Ang2RDivDist_PAP(angleRadians);
+
+        double arc_r=arc_r_div_dist*distance_p0_ctrlpt0;
+        // printf("arc_r_div_dist=%f arc_r:%f\n",arc_r_div_dist,arc_r);
+        // printf("\n\n\n");
+
+
+        TVec ctrlpt0;
+        TVec ctrlpt2;
+          
+        vecLerp(ctrlpt0.vec,sp0.vec,newSeg.sp,locDim,kappa);
+        vecLerp(ctrlpt2.vec,sp2.vec,newSeg.sp,locDim,kappa);
+
       }
+
+      
+      // preSeg->;
     }
     else
     {
-      newSeg.vcur=preSeg->vto=0;
+      
+      float coeff1=NAN;
+      int calcErr= Calc_JunctionNormCoeff(preSeg.vec,preSeg.Mdistance,vec,newSeg.Mdistance,axisSetup,locDim,&coeff1);
+      if(calcErr<0)
+      {
+        newSeg.JunctionNormCoeff=0;
+      }
+
+
+
+      // __PRT_I_("====coeff:%f    coeffSt:%d==\n",coeff1,coeffSt);
+      newSeg.JunctionNormMaxDiff=99999999;
+      if(calcErr==0)
+      {
+        float maxDiff1=NAN;
+        int retSt=0;
+        retSt |= Calc_JunctionNormMaxDiff(preSeg.vec,preSeg.Mdistance,vec,newSeg.Mdistance,axisSetup,locDim,coeff1,&maxDiff1);
+        // retSt |= Calc_JunctionNormMaxDiff(*preSeg,newSeg,coeff2,maxDiff2);
+
+
+
+
+
+        /*
+          (1+coeff)/maxDiff
+          1 is for the pre speed factor and coeff is for post speed factor
+
+          so 1+coeff would make sure the conbined speed is the larger the better
+
+          To devide maxDiff is to normalize the max difference number
+        */
+
+
+
+
+        newSeg.JunctionNormCoeff=coeff1;
+        newSeg.JunctionNormMaxDiff=maxDiff1;
+        //__PRT_I_("====coeff:%f,%f diff:%f==\n",newSeg.JunctionNormCoeff,coeff1,newSeg.JunctionNormMaxDiff);
+        if(retSt==0)
+        {
+          // newSeg.JunctionNormMaxDiff=maxDiff1;
+
+          // __PRT_D_("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n DIFF:",newSeg.JunctionNormMaxDiff,preSeg->vto,newSeg.vcur);
+
+          if(newSeg.JunctionNormMaxDiff<0.0000001)
+            newSeg.JunctionNormMaxDiff=0.0000001;//min diff cap to prevent value explosion
+
+
+
+
+
+          //max allowed end speed of pre block, so that at junction the max speed jump is within the limit, this is fixed
+          preSeg.vto_JunctionMax=1/newSeg.JunctionNormMaxDiff;
+
+          //vcur is the current speed, for un-executed block it's the starting speed
+          newSeg.vcur=0;//preSeg->vto_JunctionMax*newSeg.JunctionNormCoeff;
+
+
+          // char PrtBuff[100];
+          // sprintf(PrtBuff,"coeff:%.4f dMax:%.4f  jMax:%.4f vcur:%.4f",
+          //   newSeg.JunctionNormCoeff,
+          //   newSeg.JunctionNormMaxDiff,
+          //   preSeg->vto_JunctionMax,
+          //   newSeg.vcur
+            
+          //   );G_LOG(PrtBuff);
+          // {
+          //   float vto_JunctionMax=preSeg->vto_JunctionMax;
+          //   float JunctionNormMaxDiff=newSeg.JunctionNormMaxDiff;
+          //   float vcur=newSeg.vcur;
+          //   float vcen=newSeg.vcen;
+          //   //__PRT_I_("===JunctionMax:%f ndiff:%f vcur:%f  vcen:%f==\n",vto_JunctionMax,JunctionNormMaxDiff,vcur,vcen);
+            
+          // }
+          if(false&&newSeg.vcur>newSeg.vcen)//check if the max initial speed is higher than target speed
+          {
+            newSeg.vcur=newSeg.vcen;//cap the speed
+
+            preSeg.vto_JunctionMax=newSeg.vcur/newSeg.JunctionNormCoeff;//calc speed back to preSeg->vto
+
+            // {
+            //   float vto_JunctionMax=preSeg->vto_JunctionMax;
+            //   float vcur=newSeg.vcur;
+            //   float vcen=newSeg.vcen;
+            //   __PRT_I_("===JunctionMax:%f  vcur:%f  vcen:%f==\n",vto_JunctionMax,vcur,vcen);
+              
+            // }
+            
+          }
+          else 
+          {
+
+          }
+          
+
+
+          // preSeg->vto=preSeg->vto_JunctionMax;
+
+
+          // {
+          //   float vto_JunctionMax=preSeg->vto_JunctionMax;
+          //   float vto=preSeg->vto;
+          //   float vcur=newSeg.vcur;
+          //   __PRT_I_("====CALC DIFF==JMax:%f  tvto:%f  rvcur:%f==\n",vto_JunctionMax,vto,vcur);
+            
+          // }
+
+          // for(int k=0;k<MSTP_VEC_SIZE;k++)
+          // {
+          //   float v1=(preSeg->vto*preSeg->runvec.vec[k]/preSeg->steps);
+          //   float v2=(  newSeg.vcur*   newSeg.runvec.vec[k]/   newSeg.steps);
+          //   float diff = v1-v2;
+          //   __PRT_I_("(A(%f)-B(%f)=%04.2f )\n",v1,v2,diff);
+          // }
+
+
+
+
+
+        }
+        else
+        {
+          newSeg.vcur=preSeg.vto=0;
+        }
+      }
+      else
+      {
+        newSeg.vcur=preSeg.vto=0;
+      }
+
+
+      print_D((">>>"+to_string(__LINE__)+ " acc,dea,dist:"+to_string(newSeg.acc)+","+to_string(newSeg.deacc)+","+to_string(newSeg.distance)).c_str());
+
+      print_D((">>>"+to_string(__LINE__)+ " C: JNC,JNMD,JM,vcur,ven,vto:"+
+        to_string(newSeg.JunctionNormCoeff)+","+
+        to_string(newSeg.JunctionNormMaxDiff)+","+
+        to_string(newSeg.vto_JunctionMax)+","+
+        to_string(newSeg.vcur)+","+
+        to_string(newSeg.vcen)+","+
+        to_string(newSeg.vto)).c_str());
+
+
+
+
+      print_D((">>>"+to_string(__LINE__)+ " P: JNC,JNMD,JM,vcur,ven,vto:"+
+        to_string(preSeg.JunctionNormCoeff)+","+
+        to_string(preSeg.JunctionNormMaxDiff)+","+
+        to_string(preSeg.vto_JunctionMax)+","+
+        to_string(preSeg.vcur)+","+
+        to_string(preSeg.vcen)+","+
+        to_string(preSeg.vto)).c_str());
     }
 
 
-  print_D((">>>"+to_string(__LINE__)+ " acc,dea,dist:"+to_string(newSeg.acc)+","+to_string(newSeg.deacc)+","+to_string(newSeg.distance)).c_str());
-
-  print_D((">>>"+to_string(__LINE__)+ " C: JNC,JNMD,JM,vcur,ven,vto:"+
-    to_string(newSeg.JunctionNormCoeff)+","+
-    to_string(newSeg.JunctionNormMaxDiff)+","+
-    to_string(newSeg.vto_JunctionMax)+","+
-    to_string(newSeg.vcur)+","+
-    to_string(newSeg.vcen)+","+
-    to_string(newSeg.vto)).c_str());
-
-
-
-
-  print_D((">>>"+to_string(__LINE__)+ " P: JNC,JNMD,JM,vcur,ven,vto:"+
-    to_string(preSeg->JunctionNormCoeff)+","+
-    to_string(preSeg->JunctionNormMaxDiff)+","+
-    to_string(preSeg->vto_JunctionMax)+","+
-    to_string(preSeg->vcur)+","+
-    to_string(preSeg->vcen)+","+
-    to_string(preSeg->vto)).c_str());
-
-
-    // {
-    //   float vto=preSeg->vto;
-    //   float vcen=preSeg->vcen;
-    //   float nvcur=newSeg.vcur;
-    //   float nvcen=newSeg.vcen;
-    //   __PRT_I_("pre vcen:%0.3f vto:%0.3f =>new vcur:%0.3f vcen:%0.3f\n",vcen,vto,nvcur,nvcen);
-      
-    // }
-
-
-    // newSeg.vcur=
-    // preSeg->vto=0;//cosinSim*newSeg.vcen;
-    
-
-
-
-
-
-
-
-    // Serial.printf("preSeg vcur:%f  vcen:%f  vto:%f    newSeg:vcur:%f  vcen:%f  vto:%f   \n",preSeg->vcur,preSeg->vcen,preSeg->vto,   newSeg.vcur,newSeg.vcen,newSeg.vto );
-
-
-
-
+    segs.pushHead();
 
   }
   else
   {
     // newSeg.vcur=100;
     // T_next=TICK2SEC_BASE/minSpeed;
+    segs.pushHead();
   }
 
 
@@ -1191,7 +1272,6 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
   print_D((">>>"+to_string(__LINE__) +" newLLoc:"+vec_to_string(getLatestLocation())).c_str());
 
 
-  segs.pushHead();
 
   
   if(1)
@@ -1288,7 +1368,7 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
       }
 
       // if(preSeg==NULL)break;
-      int32_t curDeAccSteps=(int32_t)curblk->distance-stoppingMargin;
+      int32_t curDeAccSteps=(int32_t)curblk->distanceEnd-curblk->distanceStart-stoppingMargin;
 
 
 
@@ -1397,7 +1477,7 @@ MSTP_segment* StpGroup::segAdvance(float &T)
 RELOAD:
 
 
-  if(adv_info.dstanceWent==trb->distance)//previous seg finished. Load new segment, the endCB should be called previously, so no need to call it again
+  if(adv_info.dstanceWent==trb->distanceEnd)//previous seg finished. Load new segment, the endCB should be called previously, so no need to call it again
   {
     float trb_BK_vcur=trb->vcur;
 
@@ -1414,9 +1494,12 @@ RELOAD:
     {
       return NULL;
     }
+
+    adv_info.dstanceWent=trb->distanceStart;
     //new segment
     switch(trb->type)
     {
+      case MSTP_segment_type::seg_arc :
       case MSTP_segment_type::seg_line :
         trb->vcur=trb_BK_vcur*trb->JunctionNormCoeff;
       break;
@@ -1434,6 +1517,7 @@ RELOAD:
 
   switch(trb->type)
   {
+    case MSTP_segment_type::seg_arc :
     case MSTP_segment_type::seg_line :
     {
       
@@ -1452,9 +1536,9 @@ RELOAD:
     {
       int distW = adv_info.dstanceWent;
       distW++;
-      if(distW>=(int)(trb->distance))
+      if(distW>=(int)(trb->distanceEnd))
       {
-        adv_info.dstanceWent=trb->distance;
+        adv_info.dstanceWent=trb->distanceEnd;
         if(trb->endCB)trb->endCB(trb,&adv_info);
         trb->endCB=NULL;
       }
@@ -1467,7 +1551,7 @@ RELOAD:
     }
     case MSTP_segment_type::seg_instant_act ://keep the speed
     {
-      adv_info.dstanceWent=trb->distance;
+      adv_info.dstanceWent=trb->distanceEnd;
       if(trb->endCB)trb->endCB(trb,&adv_info);
 
       trb->endCB=NULL;
@@ -1492,7 +1576,7 @@ StpGroup::MSTP_segment_adv_state StpGroup::segAdvance(float &T,MSTP_segment* trb
 
 
 
-  if(info->dstanceWent==trb->distance)
+  if(info->dstanceWent==trb->distanceEnd)
   {
     return StpGroup::MSTP_segment_adv_state::FINISH;
   }
@@ -1500,7 +1584,7 @@ StpGroup::MSTP_segment_adv_state StpGroup::segAdvance(float &T,MSTP_segment* trb
 
   MSTP_SEG_PREFIX MSTP_segment &curSeg=*trb;
 
-  if(curSeg.type!=MSTP_segment_type::seg_line)
+  if(curSeg.type!=MSTP_segment_type::seg_line && curSeg.type!=MSTP_segment_type::seg_arc)
   {
     return StpGroup::MSTP_segment_adv_state::ERROR_TYPE_NOT_SUPPORT;
   }
@@ -1521,7 +1605,7 @@ StpGroup::MSTP_segment_adv_state StpGroup::segAdvance(float &T,MSTP_segment* trb
   float vtoSQ_sub_vcurSQ_div2=(vto_sq-vcur*vcur)/2;
   float distance_require=vtoSQ_sub_vcurSQ_div2/normalDEA;
 
-  float distanceLeft=curSeg.distance-info->dstanceWent;
+  float distanceLeft=curSeg.distanceEnd-info->dstanceWent;
   float distanceDiff=distance_require-distanceLeft;
 
   float aug_dea=normalDEA;
@@ -1585,13 +1669,13 @@ StpGroup::MSTP_segment_adv_state StpGroup::segAdvance(float &T,MSTP_segment* trb
   curSeg.vcur=vcur;
   
   info->dstanceWent+=eqvcur*T;
-  if(info->dstanceWent>=curSeg.distance)
+  if(info->dstanceWent>=curSeg.distanceEnd)
   {
     
-    float overD=info->dstanceWent-curSeg.distance;
+    float overD=info->dstanceWent-curSeg.distanceEnd;
     float overT=overD/eqvcur;
     T-=overT;
-    info->dstanceWent=curSeg.distance;
+    info->dstanceWent=curSeg.distanceEnd;
     
     return StpGroup::MSTP_segment_adv_state::FINISH;
   }

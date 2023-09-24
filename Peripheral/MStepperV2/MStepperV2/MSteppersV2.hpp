@@ -3,6 +3,10 @@
 // #include <Arduino.h>
 #include <MSteppers_setup.h>
 #include <MStepperStruct.hpp>
+
+extern "C" {
+#include <MStepperUtil.h>
+}
 #include "RingBuf.hpp"
 #include <array>
 #include <vector>
@@ -32,7 +36,7 @@ xVec_f vecSub(xVec_f v1,xVec_f v2);
 xVec vecAdd(xVec v1,xVec v2);
 xVec vecSub(xVec v1,xVec v2);
 
-enum MSTP_segment_type { seg_line=0,seg_wait=1 ,seg_instant_act=2 };
+enum MSTP_segment_type { seg_line=0,seg_arc=1,seg_wait=100 ,seg_instant_act=150 };
 
 struct MSTP_segment;
 struct MSTP_segment_adv_info;
@@ -48,10 +52,13 @@ struct MSTP_segment
   float deacc;
 
   float* vec;
-  float* sp;
+  float* sp;//start point
   int vecL;
 
-  float distance;
+  float distanceStart;
+  float distanceEnd;
+  float Mdistance;
+  float Edistance;
 
 
   int main_axis_idx;
@@ -103,6 +110,9 @@ struct MSTP_segment_extra_info
   int speedOnAxisIdx;
   float acc;
   float deacc;
+  // float cornorR_unit;
+  float cornorR_percent;
+
 };
 char* toStr(const MSTP_SEG_PREFIX xVec &vec);
 
