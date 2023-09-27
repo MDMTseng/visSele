@@ -364,7 +364,7 @@ int ReadxVec_fData(char **blkIdxes,int blkIdxesL,xVec_f &retVec)
 MSTP_segment_extra_info ReadSegment_extra_info(char **blkIdxes,int blkIdxesL)
 {
 
-  MSTP_segment_extra_info sei;
+  MSTP_segment_extra_info sei={0};
   sei.speed=NAN;
   sei.acc=NAN;
   sei.deacc=NAN;
@@ -421,6 +421,31 @@ MSTP_segment_extra_info ReadSegment_extra_info(char **blkIdxes,int blkIdxesL)
     if(FindStr(AXIS_GDX_FEED_ON_AXIS,blkIdxes,blkIdxesL,AxisCode)==0)
     {
       sei.speedOnAxisIdx=axisGDX2IDX(AxisCode,-1);
+    }
+  }
+
+
+  {
+    float tmpF=NAN;
+    int ret = FindFloat("RCor",blkIdxes,blkIdxesL,tmpF);
+    if(ret==0)
+    {
+      if(tmpF>0 && tmpF<=1)
+      {
+        sei.cornorR=tmpF;
+      }
+    }
+    else
+    {
+      tmpF=NAN;
+      ret = FindFloat("RCmm",blkIdxes,blkIdxesL,tmpF);
+      if(ret==0)
+      {
+        if(tmpF>1)
+        {
+          sei.cornorR=tmpF;
+        }
+      }
     }
   }
 

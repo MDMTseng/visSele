@@ -53,6 +53,11 @@ struct MSTP_segment
 
   float* vec;
   float* sp;//start point
+
+  float* aux_pt2;
+  float* aux_pt3;
+  float* aux_pt4;
+
   int vecL;
 
   float distanceStart;
@@ -111,7 +116,7 @@ struct MSTP_segment_extra_info
   float acc;
   float deacc;
   // float cornorR_unit;
-  float cornorR_percent;
+  float cornorR;
 
 };
 char* toStr(const MSTP_SEG_PREFIX xVec &vec);
@@ -136,7 +141,8 @@ class StpGroup
 
   float main_junctionMaxSpeedJump=1;
 
-
+  char bufferGCMD[100];
+  int bufferGCMD_ID=-1;
   MSTP_axisSetup *axisSetup;
   RingBuf <struct MSTP_segment> segs;
   // bool VecAdd(xVec VECTo,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);

@@ -13,7 +13,7 @@ using namespace std;
 
 #define print_E(c) print(c)
 #define print_I(c) print(c)
-#define print_D(c) //print(c)
+#define print_D(c) //G_LOG(c)
 
 #define IO_WRITE_DBG(pinno,val) //digitalWrite(pinno,val)
 #define IO_SET_DBG(pinno,val) //pinMode(pinno,val)
@@ -814,13 +814,15 @@ void MSTP_segment_Copy(MSTP_segment *dst,MSTP_segment *src,int locDim)
   auto vec=dst->vec;
   auto ctx=dst->ctx;
 
-  *dst=*src;
+  *dst=*src;//value copy it would override the pointer
 
-  dst->sp=sp;
+  dst->sp=sp;//recover the pointer
   dst->vec=vec;
   dst->ctx=ctx;
-  memcpy(dst->sp,src->sp,locDim*sizeof(*src->sp));
-  memcpy(dst->vec,src->vec,locDim*sizeof(*src->vec));
+  if(dst->sp!=NULL && src->sp!=NULL)//copy content if possible
+    memcpy(dst->sp,src->sp,locDim*sizeof(*src->sp));
+  if(dst->vec!=NULL && src->vec!=NULL)//copy content if possible
+    memcpy(dst->vec,src->vec,locDim*sizeof(*src->vec));
 }
 
 bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locDim,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
@@ -831,6 +833,8 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
   }
 
 
+  // char PrtBuff[100];
+
 
   MSTP_SEG_PREFIX MSTP_segment* hrb=segs.getHead();
   MSTP_segment *ahb=segs.getHead(-1);//get the ahead segment
@@ -840,16 +844,16 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
 
   newSeg.distanceStart=0;
   newSeg.Mdistance=ManhattanMagnitude(vec,locDim,&newSeg.main_axis_idx);
-  newSeg.distanceEnd=newSeg.Mdistance;
   newSeg.Edistance=EuclideanMagnitude(vec,locDim);
+  newSeg.distanceEnd=newSeg.Edistance;
   
-  if(newSeg.Mdistance==0)
+  if(newSeg.Edistance==0)
   {
     return true;
   }
 
 
-  print_D((">>>"+to_string(__LINE__)+" dist:"+to_string(newSeg.distance)).c_str());
+  print_D((">>>"+to_string(__LINE__)+" dist:"+to_string(newSeg.Edistance)).c_str());
 
   newSeg.ctx=ctx;
   
@@ -996,27 +1000,17 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
     // newSeg;
     // aheadSeg;
 
-    if(false && exinfo->cornorR_percent==exinfo->cornorR_percent && exinfo->cornorR_percent>0)//arc the cornor
-    {//we need to add a arc segment in between two line segment
-      {//move newSeg info to aheadSeg
-        auto sp=aheadSeg.sp;
-        auto vec=aheadSeg.vec;
-        auto ctx=aheadSeg.ctx;
-        
-        aheadSeg=newSeg;
+    bool doLineJunction=true;
 
-        aheadSeg.sp=sp;
-        aheadSeg.vec=vec;
-        aheadSeg.ctx=ctx;
-        // memcpy(aheadSeg.axisSetup,axisSetup,sizeof(axisSetup));
+    if(exinfo->cornorR==exinfo->cornorR && exinfo->cornorR>0 &&segs.size()>1 )//arc the cornor
+    do{//we need to add a arc segment in between two line segment
 
-      }
+      doLineJunction=false;
+      MSTP_segment aheadLineSeg=newSeg;//value copy
+      MSTP_segment arcSeg=aheadSeg;
 
 
 
-      MSTP_segment &arcSeg=newSeg;
-
-      MSTP_segment &aheadLineSeg=aheadSeg;
 
       // float M2ERatio=preSeg->Edistance/newSeg.Mdistance;
 
@@ -1050,42 +1044,166 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
       typedef  xnVec_f<20> TVec;//assume 20dimension is enough... becasue the input dimentsion is not constant in child class
       TVec sp0;//spline control point
       TVec sp2;
-      float distance_p0_ctrlpt0;
+      float distance_turnPt_cornorPt;
 
 
 
       {
 
         // Calculate the angle in radians
-        float percent=exinfo->cornorR_percent;
-        if(percent>1)percent=1;
+        float percent=exinfo->cornorR;
+        float cornorR_mm=NAN;
+        if(percent>1)
+        {
+          cornorR_mm=percent;
+          percent=1;
+        }
 
-        float angleRadians;
+
+        float angleRad=NAN;
         {
           TVec p0;//newSeg.sp-preSeg->vec;
           TVec p2;//newSeg.sp+newSeg.vec;
 
+          float avaLengthShrink=0.95;
+          float presegDistRatioLeft=(1-preSeg.distanceStart/preSeg.Edistance)*avaLengthShrink;
           for(int i=0;i<locDim;i++)
           {
-            p0.vec[i]=newSeg.sp[i]-preSeg.vec[i]*preSeg.distanceStart/preSeg.Mdistance;
-            p2.vec[i]=newSeg.sp[i]+newSeg.vec[i];
+            p0.vec[i]=aheadLineSeg.sp[i]-preSeg.vec[i]*presegDistRatioLeft;
+
+            
+            p2.vec[i]=aheadLineSeg.sp[i]+aheadLineSeg.vec[i]*avaLengthShrink;
+
+
+            // sprintf(PrtBuff,"[%d]:%f,%f,%f    ",i,p0.vec[i],aheadLineSeg.sp[i],p2.vec[i]);G_LOG(PrtBuff);
           }
-          angleRadians = calcAngleAndOthers(p0.vec,newSeg.sp,p2.vec,locDim,percent,sp0.vec,sp2.vec,&distance_p0_ctrlpt0);
 
 
-          preSeg.distanceEnd=preSeg.Mdistance*(1-distance_p0_ctrlpt0/preSeg.Edistance);
-          newSeg.distanceStart=newSeg.Mdistance*distance_p0_ctrlpt0/newSeg.Edistance;
+          float preSegdist=preSeg.Edistance-preSeg.distanceStart;
+          float newSegdist=aheadLineSeg.Edistance;
+          float targetDist=newSegdist*percent;
+
+          if(preSegdist<newSegdist)//new segment longer, percentage will affect on previous segment
+          {
+            percent=targetDist/preSegdist;
+
+            if(percent>1)percent=1;
+          }
+          else//new segment shorter
+          {
+          }
+
+
+        // percent/=presegDistRatioLeft;
+
+          // sprintf(PrtBuff,"distanceStart:%f  Edistance:%f",preSeg.distanceStart,preSeg.Edistance);G_LOG(PrtBuff);
+
+
+          angleRad = calcAngleAndOthers(
+            p0.vec,
+            aheadLineSeg.sp,
+            p2.vec,
+            locDim,
+            percent,
+            sp0.vec,
+            sp2.vec,
+            &distance_turnPt_cornorPt);
+
+
         }
 
 
+        if(angleRad<5*M_PI/180 || angleRad>175*M_PI/180 )//too small to arc
+        {
 
-        float arc_r_div_dist;
-        float kappa;//=Ang2SplineKappa(angleRadians,&arc_r_div_dist);
+          doLineJunction=true;
+          break;
+        }
 
-        kappa=Ang2SplineKappa_PAP(angleRadians);
-        arc_r_div_dist=Ang2RDivDist_PAP(angleRadians);
+        // sprintf(PrtBuff,"percent:%f angleRad:%f  distance_turnPt_cornorPt:%f",percent,angleRad*180/3.14159,distance_turnPt_cornorPt);G_LOG(PrtBuff);
 
-        double arc_r=arc_r_div_dist*distance_p0_ctrlpt0;
+
+
+
+
+
+
+
+        float arc_r_div_dist=NAN;
+        float kappa=NAN;//=Ang2SplineKappa(angleRadians,&arc_r_div_dist);
+
+        kappa=Ang2SplineKappa_PAP(angleRad);
+        arc_r_div_dist=Ang2RDivDist_PAP(angleRad);
+
+        double arc_r=arc_r_div_dist*distance_turnPt_cornorPt;
+
+        if(cornorR_mm==cornorR_mm)
+        {
+          if(arc_r>cornorR_mm)
+          {
+
+            float shrinkRatio=cornorR_mm/arc_r;
+
+
+            for(int i=0;i<locDim;i++)
+            {
+              float apexP=aheadLineSeg.sp[i];
+              sp0.vec[i]=(sp0.vec[i]-apexP)*shrinkRatio+apexP;
+              sp2.vec[i]=(sp2.vec[i]-apexP)*shrinkRatio+apexP;
+            }
+
+
+
+
+
+            arc_r=cornorR_mm;
+            distance_turnPt_cornorPt=arc_r/arc_r_div_dist;
+          }
+          else
+          {//arc_r cannot match cornorR_mm requirement, just let it be
+
+          }
+        }
+
+        preSeg.distanceEnd=preSeg.Edistance-distance_turnPt_cornorPt;
+        aheadLineSeg.distanceStart=distance_turnPt_cornorPt;
+        // sprintf(PrtBuff,"arc_r:%f",arc_r);G_LOG(PrtBuff);
+        arcSeg.Mdistance=
+        arcSeg.Edistance=
+        arcSeg.distanceEnd=arc_r*(M_PI-angleRad);
+        arcSeg.distanceStart=0;
+
+
+        // sprintf(PrtBuff,"arcSeg.distanceEnd:%f",arcSeg.distanceEnd);G_LOG(PrtBuff);
+        
+        float minAcc=(preSeg.acc<-aheadLineSeg.deacc)?preSeg.acc:-aheadLineSeg.deacc;
+        float vmax=sqrt(arc_r*minAcc);//a=w^2*r= v^2/r => vmax=sqrt(r*a)
+        if(vmax>aheadLineSeg.vcen)vmax=aheadLineSeg.vcen;
+        // vmax=aheadLineSeg.vcen;
+
+
+
+        // sprintf(PrtBuff,"vcen:%f",vmax);G_LOG(PrtBuff);
+        arcSeg.vcen=vmax;//make sure the arc speed is not too high according to centripetal acceleration
+        arcSeg.vcur=0;
+        arcSeg.vto=0;
+        
+        arcSeg.acc=preSeg.acc;
+        arcSeg.deacc=aheadLineSeg.deacc;
+
+        arcSeg.JunctionNormCoeff=1;
+        arcSeg.JunctionNormMaxDiff=0;
+        arcSeg.vto_JunctionMax=999999;
+
+        arcSeg.ctx=NULL;
+        arcSeg.endCB=arcSeg.startCB=NULL;
+        arcSeg.main_axis_idx=-1;
+        arcSeg.type=MSTP_segment_type::seg_arc;
+
+        preSeg.vto_JunctionMax=999999;
+
+
+
         // printf("arc_r_div_dist=%f arc_r:%f\n",arc_r_div_dist,arc_r);
         // printf("\n\n\n");
 
@@ -1093,19 +1211,72 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
         TVec ctrlpt0;
         TVec ctrlpt2;
           
-        vecLerp(ctrlpt0.vec,sp0.vec,newSeg.sp,locDim,kappa);
-        vecLerp(ctrlpt2.vec,sp2.vec,newSeg.sp,locDim,kappa);
+        vecLerp(ctrlpt0.vec,sp0.vec,aheadLineSeg.sp,locDim,kappa);
+        vecLerp(ctrlpt2.vec,sp2.vec,aheadLineSeg.sp,locDim,kappa);
 
+
+
+/*
+                                       
+                             /\                                          
+                            /  \                                         
+                           /    \                                        
+                          /      \                                       
+                         /        \                                      
+                        /          \                                     
+                       /            \                                    
+                      /              \                                   
+                     /                \                                  
+                    /                  \                                 
+                   /                    \                                
+                  /                      \                               
+                 /                        \                              
+                /                          \                             
+             +-+                           +-+                           
+             +^+  control point1           +^+   control point2                        
+             / [pt2 (ctrlpt0)]             \[pt3 (ctrlpt2)]        
+            /         ----------------\        \                         
+           /    -----/                 --\      \                        
+          /   -/               ---\       --\    \                       
+         / --/                     -->       ---\ \                      
+        / /                                      -\\                     
+       / /   >                               \     -\                    
+      /-/   /                                 \     \\                   
+     //   -/                                   \     \\                  
+   +-+   /                                      v     +-+                
+   +^+                                                +^+                
+ [SP(sp0)]                                         [pt4(sp2)]
+                                                                                                                                
+*/
+
+
+        vecAssign(arcSeg.sp,sp0.vec,locDim);
+        vecAssign(arcSeg.aux_pt2,ctrlpt0.vec,locDim);
+        vecAssign(arcSeg.aux_pt3,ctrlpt2.vec,locDim);
+        vecAssign(arcSeg.aux_pt4,sp2.vec,locDim);
+        vecSub(arcSeg.vec,sp2.vec,sp0.vec,locDim);
+
+
+        aheadLineSeg.JunctionNormCoeff=1;
+        aheadLineSeg.JunctionNormMaxDiff=0;
+        aheadLineSeg.vto_JunctionMax=999999;
+        
       }
 
       
       // preSeg->;
+
+
+      segs.pushHead(arcSeg);//push twosegments
+      segs.pushHead(aheadLineSeg);
     }
-    else
+    while(0);
+
+    if(doLineJunction)
     {
       
       float coeff1=NAN;
-      int calcErr= Calc_JunctionNormCoeff(preSeg.vec,preSeg.Mdistance,vec,newSeg.Mdistance,axisSetup,locDim,&coeff1);
+      int calcErr= Calc_JunctionNormCoeff(preSeg.vec,preSeg.Edistance,vec,newSeg.Edistance,axisSetup,locDim,&coeff1);
       if(calcErr<0)
       {
         newSeg.JunctionNormCoeff=0;
@@ -1119,7 +1290,7 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
       {
         float maxDiff1=NAN;
         int retSt=0;
-        retSt |= Calc_JunctionNormMaxDiff(preSeg.vec,preSeg.Mdistance,vec,newSeg.Mdistance,axisSetup,locDim,coeff1,&maxDiff1);
+        retSt |= Calc_JunctionNormMaxDiff(preSeg.vec,preSeg.Edistance,vec,newSeg.Edistance,axisSetup,locDim,coeff1,&maxDiff1);
         // retSt |= Calc_JunctionNormMaxDiff(*preSeg,newSeg,coeff2,maxDiff2);
 
 
@@ -1234,7 +1405,8 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
       }
 
 
-      print_D((">>>"+to_string(__LINE__)+ " acc,dea,dist:"+to_string(newSeg.acc)+","+to_string(newSeg.deacc)+","+to_string(newSeg.distance)).c_str());
+        // sprintf(PrtBuff,"percent:%f angleRad:%f  distance_turnPt_cornorPt:%f",percent,angleRad*180/3.14159,distance_turnPt_cornorPt);G_LOG(PrtBuff);
+      // sprintf(PrtBuff,(">>>"+to_string(__LINE__)+ " acc,dea,dist:"+to_string(newSeg.acc)+","+to_string(newSeg.deacc)+","+to_string(newSeg.Edistance)).c_str());G_LOG(PrtBuff);
 
       print_D((">>>"+to_string(__LINE__)+ " C: JNC,JNMD,JM,vcur,ven,vto:"+
         to_string(newSeg.JunctionNormCoeff)+","+
@@ -1254,10 +1426,9 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
         to_string(preSeg.vcur)+","+
         to_string(preSeg.vcen)+","+
         to_string(preSeg.vto)).c_str());
+      segs.pushHead();
     }
-
-
-    segs.pushHead();
+    
 
   }
   else
@@ -1280,7 +1451,7 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
     /*
 
 
-               preSeg |     curblk
+               preSeg |     curSeg
            
             ________      ________
            /        \    /        \
@@ -1292,7 +1463,7 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
 
 
 
-       CASE1:  curblk is too short(less than stoppingMargin)
+       CASE1:  curSeg is too short(less than stoppingMargin)
             ________    
            /        \    
           /          \       /.....
@@ -1301,11 +1472,11 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
        /              |    |
 
 
-      CASE2:  curblk is not long enough to be able to de-accelerate from curblk.vcen(v center max speed) to curblk.vto
-              so the preSeg need to reduce the vto speed, so curblk.vcur is low enough to safely de-accelerate to curblk.vto
+      CASE2:  curSeg is not long enough to be able to de-accelerate from curSeg.vcen(v center max speed) to curSeg.vto
+              so the preSeg need to reduce the vto speed, so curSeg.vcur is low enough to safely de-accelerate to curSeg.vto
                          
-      example:curblk.steps=4                    
-              curblk.vto is 0(stop), but without changing preSeg.vto. it's impossible
+      example:curSeg.steps=4                    
+              curSeg.vto is 0(stop), but without changing preSeg.vto. it's impossible
 
           
             _________V  preSeg.vto 
@@ -1315,9 +1486,9 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
     /                |      |
   /                  |      |
                       <-----> 
-                      curblk.steps
+                      curSeg.steps
 
-            recalc preSeg.vto'(lower the vto value) so that curblk can reach curblk.vto in the end
+            recalc preSeg.vto'(lower the vto value) so that curSeg can reach curSeg.vto in the end
             ______   
           /        \   
         /            \V  preSeg.vto'   
@@ -1325,12 +1496,12 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
     /                |   \
   /                  |     \
                       <-----> 
-                      curblk.steps
+                      curSeg.steps
 
 
 
 
-    CASE3 :the curblk has enough steps to de-accelerate to curblk.vto, so change preSeg is not needed 
+    CASE3 :the curSeg has enough steps to de-accelerate to curSeg.vto, so change preSeg is not needed 
             _________V___  preSeg.vto 
           /          |    \   
         /            |      \  
@@ -1342,17 +1513,17 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
 
 
     //look back
-    int stoppingMargin=5;
+    int stoppingMargin=0;
     float Vdiff=0;
     //look ahead planing, to reduce
-    //{oldest blk}.....preSeg, curblk, {newest blk}
-    MSTP_SEG_PREFIX MSTP_segment* curblk;
+    //{oldest blk}.....preSeg, curSeg, {newest blk}
+    MSTP_SEG_PREFIX MSTP_segment* curSeg;
     MSTP_SEG_PREFIX MSTP_segment* preSeg = segs.getHead(1);
 
     print_D((">>>"+to_string(__LINE__) + "Size:"+to_string(segs.size())).c_str());
     for(int i=1;i<segs.size();i++)
     {//can only adjust vto
-      curblk = preSeg;
+      curSeg = preSeg;
       preSeg = segs.getHead(1+i);
       //__PRT_I_("preSeg:%p type:%d\n",preSeg,preSeg->type);
 
@@ -1363,50 +1534,50 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
       }
       else if(preSeg->type==MSTP_segment_type::seg_instant_act)
       {//skip this and try to load next
-        preSeg=curblk;
+        preSeg=curSeg;
         continue;
       }
 
       // if(preSeg==NULL)break;
-      int32_t curDeAccSteps=(int32_t)curblk->distanceEnd-curblk->distanceStart-stoppingMargin;
+      int32_t curDeAccSteps=(int32_t)curSeg->distanceEnd-curSeg->distanceStart-stoppingMargin;
 
 
 
 
-      float cur_vfrom=NAN;
+      float cur_vstart=NAN;
       if(curDeAccSteps<0)
       {//CASE 1
         //here is the steps that's too short so we don't do speed change, so vcur(v start)=vto
         __PRT_D_("ACC skip\n");
-        // curblk->vcur=curblk->vto;
-        cur_vfrom=curblk->vto;
+        // curSeg->vcur=curSeg->vto;
+        cur_vstart=curSeg->vto;
       }
       else
       {
         //find minimum distance needed
-        int32_t minDistNeeded= DeAccDistNeeded_f(curblk->vcen,curblk->vto, curblk->deacc);
+        int32_t minDistNeeded= DeAccDistNeeded_f(curSeg->vcen,curSeg->vto, curSeg->deacc);
 
 
-        print_D(("curDeAccSteps:"+to_string(curDeAccSteps)+ " minDistNeeded:"+to_string(minDistNeeded)+" curblk->vto"+to_string(curblk->vto)  ).c_str());
+        print_D(("curDeAccSteps:"+to_string(curDeAccSteps)+ " minDistNeeded:"+to_string(minDistNeeded)+" curSeg->vto"+to_string(curSeg->vto)  ).c_str());
 
-        cur_vfrom = findV1(curDeAccSteps, curblk->deacc, curblk->vto);
+        cur_vstart = findV1(curDeAccSteps, curSeg->deacc, curSeg->vto);
         // if( curDeAccSteps <= minDistNeeded )
         // {
-        //   cur_vfrom = findV1(curDeAccSteps, curblk->deacc, curblk->vto);
+        //   cur_vstart = findV1(curDeAccSteps, curSeg->deacc, curSeg->vto);
         //   //CASE 2
         // }
         // else
-        // {//CASE 3 the curblk has enough steps to de-accelerate to curblk.vto, so exit 
+        // {//CASE 3 the curSeg has enough steps to de-accelerate to curSeg.vto, so exit 
 
-        //   //(curblk)the steps is long enough to de acc from vcen to vto, 
+        //   //(curSeg)the steps is long enough to de acc from vcen to vto, 
         //   //so we don't need to change the speed vto of (preSeg)
-        //   cur_vfrom=curblk->vto;
+        //   cur_vstart=curSeg->vto;
         //   break;
         // }
       }
 
 
-      if(cur_vfrom!=cur_vfrom)
+      if(cur_vstart!=cur_vstart)
       {
         //unset, ERROR
         break;
@@ -1414,11 +1585,19 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
 
 
 
-      float preSeg_vto_max=(curblk->JunctionNormCoeff<0.1)?0:cur_vfrom/(curblk->JunctionNormCoeff+0.01);
+      float preSeg_vto_max=(curSeg->JunctionNormCoeff<0.1)?0:cur_vstart/(curSeg->JunctionNormCoeff+0.01);
       float new_preSeg_vto=preSeg_vto_max<preSeg->vto_JunctionMax?preSeg_vto_max:preSeg->vto_JunctionMax;
+      if(new_preSeg_vto>curSeg->vcen)
+      {
+        new_preSeg_vto=curSeg->vcen;
+      }
+      uint32_t curAddr=(0xFFF&(uint32_t)curSeg);
+      uint32_t preAddr=(0xFFF&(uint32_t)preSeg);
+// sprintf(PrtBuff,"percent:%f angleRad:%f  distance_turnPt_cornorPt:%f",percent,angleRad*180/3.14159,distance_turnPt_cornorPt);G_LOG(PrtBuff);
+      print_D(("cur.t:"+ to_string(curSeg->type)+" cur_vstart:"+to_string(cur_vstart)+ " preJunM:"+to_string(preSeg->vto_JunctionMax)+ " curJCoeff:"+to_string(curSeg->JunctionNormCoeff) + " curAddr:"+to_string(curAddr)).c_str());
+      // print_D(("sp[0]:"+ to_string(preSeg->sp[0]+preSeg->vec[0])+" new_preSeg_vto:"+to_string(new_preSeg_vto)).c_str());
 
-      print_D(("preSeg_vto_max:"+to_string(preSeg_vto_max)+ " cur_vfrom:"+to_string(cur_vfrom)+ " curblk->JunctionNormCoeff:"+to_string(curblk->JunctionNormCoeff)).c_str());
-      print_D(("sp[0]:"+ to_string(preSeg->sp[0]+preSeg->vec[0])+" new_preSeg_vto:"+to_string(new_preSeg_vto)).c_str());
+      print_D((" pre.t:"+ to_string(preSeg->type)+" pre_vto:"+to_string(preSeg->vto)+" new_pre_vto:"+to_string(new_preSeg_vto) + " preAddr:"+to_string(preAddr)).c_str());
       if(preSeg->vto == new_preSeg_vto)
       {//if the preSeg vto is exactly the same ,then, following adjustment is not needed
 

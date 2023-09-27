@@ -45,7 +45,6 @@ class MData_JR:public Data_JsonRaw_Layer
   } 
   int recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0);
   
-
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode);
   void connected(Data_Layer_IF* ch){}
 
@@ -63,19 +62,22 @@ class MData_JR:public Data_JsonRaw_Layer
   void loop();
 
 
+  GCodeParser::GCodeParser_Status insertCMD(StpGroup *stpG,const char* code);
+
 };
 MData_JR djrl;
 
-struct STPG_CMD_INFO{
-  int cmd_id;
-  char cmd[100];
-};
-RingBuf_Static <STPG_CMD_INFO,10> STPG_CMD_INFO_Buffer;
+// struct STPG_CMD_INFO{
+//   int cmd_id;
+//   int groupIndex;
+//   char cmd[100];
+// };
+// RingBuf_Static <STPG_CMD_INFO,10> STPG_CMD_INFO_Buffer;
 
 int HACK_cur_cmd_id=-1;
 
 
-void G_LOG(char* str)
+void G_LOG(const char* str)
 {
   djrl.dbg_printf(str);
 }
@@ -138,13 +140,13 @@ struct Mstp2CommInfo{//TODO: rename the infoQ to be more versatile
   Mstp2CommInfo_Type type;
 
   //trigInfo
-  char trig_tag[40];
+  char strinfo[40];
   int trig_id;
   float curFreq;
   int curReelLocation;
 
   //log
-  char log[40];
+  // char log[40];
 
   //respFrame
   bool isAck;
@@ -453,11 +455,17 @@ class StpGroup_RX:public StpGroup
 { 
   typedef  xnVec_f<3> RXVec;
 
-  static const int OUTPUT_HIST_DIV=1;
-  RingBuf_Static<RXVec,1024/OUTPUT_HIST_DIV> outputHist;
+  // static const int OUTPUT_HIST_DIV=1;
+  // RingBuf_Static<RXVec,1024/OUTPUT_HIST_DIV> outputHist;
 
   std::array<RXVec,40> startPtBuffer;
   std::array<RXVec,40> vecBuffer;
+
+  std::array<RXVec,40> aux_pt2;
+  std::array<RXVec,40> aux_pt3;
+  std::array<RXVec,40> aux_pt4;
+
+
   std::array<struct MSTP_segment,40> segsBuffer;
 
   MSTP_axisSetup _axisSetup[sizeof(RXVec)/sizeof(float)];
@@ -476,7 +484,7 @@ public:
   StpGroup_RX():StpGroup()
   {
 
-    memset(outputHist.buff,0,outputHist.capacity()*sizeof(RXVec));
+    // memset(outputHist.buff,0,outputHist.capacity()*sizeof(RXVec));
     
 
     axisSetup=_axisSetup;
@@ -484,12 +492,18 @@ public:
     {
       segsBuffer[i].vec=(vecBuffer[i].vec);
       segsBuffer[i].sp=(startPtBuffer[i].vec);
+
+      segsBuffer[i].aux_pt2=(aux_pt2[i].vec);
+      segsBuffer[i].aux_pt3=(aux_pt3[i].vec);
+      segsBuffer[i].aux_pt4=(aux_pt4[i].vec);
+
+
     }
 
     segs.RESET(segsBuffer.data(),segsBuffer.size());
 
 
-    float ppmm=200;
+    float ppmm=50;
 
     axisSetup[0].ppmm=ppmm;
     axisSetup[0].A_Factor=1;
@@ -630,6 +644,21 @@ float iir_lp_filter(float input) {
     return output;
 }
 
+  RXVec cubicBezier_comp(MSTP_segment *seg,float dstanceWent)
+  {
+    
+    float ratio=dstanceWent/(seg->Edistance);
+
+
+
+    float cb_coeff[4];
+    cubicBezier_TCoeff(ratio,cb_coeff);
+    RXVec ret={{0}};
+    cubicBezier_Vec(ret.vec,seg->sp,seg->aux_pt2,seg->aux_pt3,seg->aux_pt4,LOC_DIM,cb_coeff);
+
+    return ret;
+  }
+
   uint32_t updCounter=0;
   void update()//every system tick, update the location
   {
@@ -680,14 +709,21 @@ float iir_lp_filter(float input) {
           break;
         }
       }
-      else
+      else if(curSeg->type==MSTP_segment_type::seg_line)
       {
-        float ratio=adv_info.dstanceWent/(curSeg->distanceEnd-curSeg->distanceStart);
+        float ratio=adv_info.dstanceWent/(curSeg->Edistance);
         for(int i=0;i<LOC_DIM;i++)
         {
           newAdvLocation.vec[i]=curSeg->vec[i]*(ratio)+curSeg->sp[i];
         }
         latestCalcAdvLocation=newAdvLocation;
+
+
+      }
+      else  if(curSeg->type==MSTP_segment_type::seg_arc)
+      {
+        latestCalcAdvLocation=newAdvLocation=cubicBezier_comp(curSeg,adv_info.dstanceWent);
+
 
       }
 
@@ -701,6 +737,48 @@ float iir_lp_filter(float input) {
       if(T!=mstpV2.updatePeriod_s)
       {
 
+        
+        if(0){
+
+          Mstp2CommInfo* Qhead=NULL;
+          {
+            while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+            Qhead->type=Mstp2CommInfo_Type::ext_log;
+            
+
+            uint32_t curAddr=(0xFFF&(uint32_t)curSeg);
+            int strPadding=0;
+            strPadding+= sprintf(Qhead->strinfo+strPadding,"EL_%d:%0.2f,%0.2f  ",curSeg->type,
+              latestCalcAdvLocation.vec[0],latestCalcAdvLocation.vec[1]);
+
+            strPadding+= sprintf(Qhead->strinfo+strPadding,"v:%0.1f:%0.1f>%0.1f  curAddr:%d",curSeg->vcur,curSeg->vcen,curSeg->vto,curAddr);
+
+
+            Mstp2CommInfoQ.pushHead();
+
+          }
+
+
+          {
+            while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);Qhead->type=Mstp2CommInfo_Type::ext_log;
+  
+            int strPadding=0;
+
+            strPadding+= sprintf(Qhead->strinfo+strPadding,"d:%0.1f/%0.1f",
+            adv_info.dstanceWent,curSeg->Edistance);
+
+            strPadding+= sprintf(Qhead->strinfo+strPadding,"a:%0.1f,%0.1f",
+            curSeg->acc,
+            curSeg->deacc);
+
+            Mstp2CommInfoQ.pushHead();
+          }
+
+
+        }
+
+
+
 
         do{
           float leftT=mstpV2.updatePeriod_s-T;
@@ -711,13 +789,62 @@ float iir_lp_filter(float input) {
             break;
           }
 
-          float ratio=adv_info.dstanceWent/(nxtSeg->distanceEnd-nxtSeg->distanceStart);
-          for(int i=0;i<LOC_DIM;i++)
+
+          if(nxtSeg->type==MSTP_segment_type::seg_line)
           {
-            newAdvLocation.vec[i]=nxtSeg->vec[i]*(ratio)+nxtSeg->sp[i];
+
+            float ratio=adv_info.dstanceWent/(nxtSeg->Edistance);
+            for(int i=0;i<LOC_DIM;i++)
+            {
+              newAdvLocation.vec[i]=nxtSeg->vec[i]*(ratio)+nxtSeg->sp[i];
+            }
+
+            latestCalcAdvLocation=newAdvLocation;
+
+          }
+          else  if(nxtSeg->type==MSTP_segment_type::seg_arc)
+          {
+            latestCalcAdvLocation=newAdvLocation=cubicBezier_comp(nxtSeg,adv_info.dstanceWent);
+
+
           }
 
-          latestCalcAdvLocation=newAdvLocation;
+          if(0){
+
+            Mstp2CommInfo* Qhead=NULL;
+
+            {
+              while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);Qhead->type=Mstp2CommInfo_Type::ext_log;
+    
+              int strPadding=0;
+              strPadding+= sprintf(Qhead->strinfo+strPadding,"SL_%d:%0.2f,%0.2f  ",nxtSeg->type,
+                latestCalcAdvLocation.vec[0],latestCalcAdvLocation.vec[1]);
+
+              strPadding+= sprintf(Qhead->strinfo+strPadding,"v:%0.1f:%0.1f>%0.1f",nxtSeg->vcur,nxtSeg->vcen,nxtSeg->vto);
+
+              Mstp2CommInfoQ.pushHead();
+
+
+            }
+            if(1){
+              while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);Qhead->type=Mstp2CommInfo_Type::ext_log;
+    
+              int strPadding=0;
+
+              strPadding+= sprintf(Qhead->strinfo+strPadding,"d:%0.1f/%0.1f",
+              adv_info.dstanceWent,nxtSeg->Edistance);
+
+              strPadding+= sprintf(Qhead->strinfo+strPadding,"a:%0.1f,%0.1f",
+              nxtSeg->acc,
+              nxtSeg->deacc);
+
+              Mstp2CommInfoQ.pushHead();
+            }
+
+
+          }
+
+
 
 
         }while(0);
@@ -895,10 +1022,24 @@ float iir_lp_filter(float input) {
   }
   void backward(xVec_f *mot_vec_dst,const float* loc_vec_src){
     
-    for(int i=0;i<LOC_DIM;i++)
-    {
-      mot_vec_dst->vec[i]=loc_vec_src[i]*axisSetup[i].ppmm;
-    }
+    float *loc_vec=(float*)loc_vec_src;
+    
+    float x=loc_vec[0];//in mm
+    float y=loc_vec[1];
+    float z=loc_vec[2];
+    float R=62.5;
+    float RotAngle=asinf(z/R);
+    x+=R*(cosf(RotAngle));
+
+    // for(int i=0;i<LOC_DIM;i++)
+    // {
+    //   mot_vec_dst->vec[i]=loc_vec_src[i]*axisSetup[i].ppmm;
+    // }
+
+    mot_vec_dst->vec[1]=-x*axisSetup[0].ppmm;
+    mot_vec_dst->vec[0]=-y*axisSetup[1].ppmm;
+    mot_vec_dst->vec[2]=-RotAngle/M_PI*850;
+    
   }
   void forward(float* loc_vec_dst,const xVec_f *mot_vec_src)
   {
@@ -991,6 +1132,15 @@ float iir_lp_filter(float input) {
   }
 
 
+
+  MSTP_segment_extra_info latestExtInfo={
+    .speed=100,
+    .speedOnAxisIdx=-1,
+    .acc=1000,
+    .deacc=-1000,
+    .cornorR=0,
+
+  };
   int GcodeParse(char **blkIdxes,int blkIdxesL)
   {
 
@@ -1016,7 +1166,7 @@ float iir_lp_filter(float input) {
         __PRT_D_("G1 baby!!!\n");
 
 
-        RXVec vec_coord={{NAN}};
+        RXVec vec_coord=latestLocation;
         float x=NAN;
         FindFloat("X",blkIdxes,blkIdxesL,x);
         float y=NAN;
@@ -1024,14 +1174,21 @@ float iir_lp_filter(float input) {
         float z=NAN;
         FindFloat("Z",blkIdxes,blkIdxesL,z);
 
-        vec_coord.vec[0]=x;
-        vec_coord.vec[1]=y;
-        vec_coord.vec[2]=z;
+        if(x==x)vec_coord.vec[0]=x;
+        if(y==y)vec_coord.vec[1]=y;
+        if(z==z)vec_coord.vec[2]=z;
+
 
         // xVec_f vec_mot=foward(vec_coord);
 
         MSTP_segment_extra_info exinfo = ReadSegment_extra_info(blkIdxes,blkIdxesL);
 
+        if(exinfo.acc!=exinfo.acc)exinfo.acc=latestExtInfo.acc;
+        if(exinfo.deacc!=exinfo.deacc)exinfo.deacc=latestExtInfo.deacc;
+        if(exinfo.speed!=exinfo.speed)exinfo.speed=latestExtInfo.speed;
+
+        if(exinfo.cornorR!=exinfo.cornorR)exinfo.cornorR=latestExtInfo.cornorR;
+        if(exinfo.speedOnAxisIdx!=exinfo.speedOnAxisIdx)exinfo.speedOnAxisIdx=latestExtInfo.speedOnAxisIdx;
 
         // __UPRT_I_("vec_coord:%f %f %f  exinfo:f:%f a:%f d:%f aidx:%d\n",vec_coord.vec[0],vec_coord.vec[1],vec_coord.vec[2],
         // exinfo.speed,exinfo.acc,exinfo.deacc,exinfo.speedOnAxisIdx);
@@ -1044,7 +1201,7 @@ float iir_lp_filter(float input) {
         pushInMoveVec(moveVec.vec,&exinfo,LOC_DIM,NULL,NULL,NULL);
         latestLocation=vec_coord;
 
-
+        latestExtInfo=exinfo;
                 // ReadGVecData(blks,blkCount,vec_f,&exinfo);
 
         // ConvUnitVecToPulseVec(&vec_f,&exinfo);
@@ -1402,6 +1559,34 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
   return 0;
 }
 
+
+int GCMD_Magic_SafeSpace=3;
+
+GCodeParser::GCodeParser_Status MData_JR::insertCMD(StpGroup *stpG,const char* code)
+{
+  gcpm.putJSONNote(&retdoc);
+  gcpm.putTargetStepperGroup(stpG);
+  auto grep=gcpm.runLine(code);
+  // if(grep==GCodeParser::GCodeParser_Status::TASK_OK)
+  // {
+  //   rspAck=true;
+  // }
+  // else if(grep==GCodeParser::GCodeParser_Status::TASK_OK_HOLD_RSP)
+  // {
+  //   rspAck=true;
+  //   doRsp=false;
+  // }
+  // else
+  // {
+  //   rspAck=false;
+  // }
+  gcpm.putJSONNote(NULL);
+  gcpm.putTargetStepperGroup(NULL);
+
+  return grep;
+}
+
+
 int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   
   if(opcode==1 )
@@ -1434,27 +1619,31 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         if(groupIdx<0)break;
         if(groupIdx>=mstpV2.stepperGroup.size())break;
 
+        auto &stpG=*(mstpV2.stepperGroup[groupIdx]);
+
+        if(stpG.bufferGCMD_ID>=0)
+        {
+          rspAck=false;
+          break;
+        }
 
 
         int cmd_id=HACK_cur_cmd_id=doc["id"];
         const char* code = doc["code"];
 
-        auto &stpG=*(mstpV2.stepperGroup[groupIdx]);
 
-
-        if(stpG.segs.space()!=0)
+        if(stpG.segs.space()>GCMD_Magic_SafeSpace)//gives a magic safe space
         {
 
           doRsp=true;
 
-          gcpm.putJSONNote(&retdoc);
-          gcpm.putTargetStepperGroup(&stpG);
-          auto grep=gcpm.runLine(code);
-          if(grep==GCodeParser::GCodeParser_Status::TASK_OK)
+
+          auto retSt=insertCMD(&stpG,code);
+          if(retSt==GCodeParser::GCodeParser_Status::TASK_OK)
           {
             rspAck=true;
           }
-          else if(grep==GCodeParser::GCodeParser_Status::TASK_OK_HOLD_RSP)
+          else if(retSt==GCodeParser::GCodeParser_Status::TASK_OK_HOLD_RSP)
           {
             rspAck=true;
             doRsp=false;
@@ -1463,30 +1652,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
           {
             rspAck=false;
           }
-          gcpm.putJSONNote(NULL);
-          gcpm.putTargetStepperGroup(NULL);
-          // retdoc["bs"]=stpG.segs.space();
         }
-        else if(false)
-        {//no space in stpG.segs buffer, save it for now, and respond this afterward(not here)
+        else
+        {
+          
           doRsp=false;
-          STPG_CMD_INFO *head=NULL;
-          while( (head=STPG_CMD_INFO_Buffer.getHead()) ==NULL)
-            break;
-            yield();//loop until the buffer has space
-            
-          if(head==NULL)
-          {//if no space in infoBuffer then respond nak
-            doRsp=true;
-            rspAck=false;
-            break;
-          }
-          else
-          {
-            head->cmd_id=cmd_id;
-            strcpy(head->cmd,code);
-            STPG_CMD_INFO_Buffer.pushHead();
-          }
+          strcpy(stpG.bufferGCMD,code);
+          stpG.bufferGCMD_ID=cmd_id;
 
         }
 
@@ -1763,7 +1935,47 @@ int MData_JR::msg_printf(const char *type,const char *fmt, ...)
 
 void MData_JR::loop()
 {
+  for(int i=0;i<mstpV2.stepperGroup.size();i++)
+  {//check for buffered G cmd
+    if(mstpV2.stepperGroup[i]->bufferGCMD_ID<0)continue;
+    if(mstpV2.stepperGroup[i]->segs.space()<GCMD_Magic_SafeSpace)continue;
 
+    bool rspAck=false;
+    bool doRsp=true;
+
+    int cmd_id=mstpV2.stepperGroup[i]->bufferGCMD_ID;
+    const char* code = mstpV2.stepperGroup[i]->bufferGCMD;
+
+
+    auto retSt=insertCMD(mstpV2.stepperGroup[i],code);
+    if(retSt==GCodeParser::GCodeParser_Status::TASK_OK)
+    {
+      rspAck=true;
+    }
+    else if(retSt==GCodeParser::GCodeParser_Status::TASK_OK_HOLD_RSP)
+    {
+      rspAck=true;
+      doRsp=false;
+    }
+    else
+    {
+      rspAck=false;
+    }
+
+
+    mstpV2.stepperGroup[i]->bufferGCMD_ID=-1;
+
+    if(doRsp)
+    {
+      retdoc["id"]=(int)doc["id"];
+      retdoc["ack"]=rspAck;
+      
+      uint8_t buff[700];
+      int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+      send_json_string(0,buff,slen,0);
+
+    }
+  }
 }
 
 #define AUX_COUNT 5
@@ -2180,7 +2392,7 @@ void loop()
         case Mstp2CommInfo_Type::ext_log :
         {
 
-          djrl.dbg_printf("%s",info.log);
+          djrl.dbg_printf("%s",info.strinfo);
 
           break;
         }

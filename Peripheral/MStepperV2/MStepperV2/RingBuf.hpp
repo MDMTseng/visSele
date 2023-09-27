@@ -18,7 +18,7 @@
  * Intermediate computation may need an uint32_t (BiggerType below).
  */
 
-template <typename RB_Idx_Type=uint32_t>
+template <typename RB_Idx_Type=int32_t>
 class RingBufIdxCounter
 {
   RB_Idx_Type headIdx;
@@ -118,7 +118,7 @@ class RingBufIdxCounter
 };
 
 template <
-  typename RB_Type,typename RB_Idx_Type=uint32_t
+  typename RB_Type,typename RB_Idx_Type=int32_t
 >
 class RingBuf
 {
@@ -202,7 +202,7 @@ class RingBuf
     return buff+RBC.getHead();
   }
   
-  RB_Type* getHead(uint32_t idx)
+  RB_Type* getHead(int32_t idx)
   {
     // printf("@idx:%d RBC.size():%d\n",idx,RBC.size());
     if(idx>RBC.size())return NULL;//if(idx-1>=RBC.size())return NULL;
@@ -212,7 +212,7 @@ class RingBuf
     return buff+idxx;
   }
 
-  RB_Idx_Type getTail_Idx(uint32_t idx)
+  RB_Idx_Type getTail_Idx(int32_t idx)
   {
     return RBC.getTail(idx);
   }

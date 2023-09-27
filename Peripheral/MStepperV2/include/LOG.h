@@ -11,5 +11,5 @@
 
 
 
-void G_LOG(char* str);
+void G_LOG(const char* str);
 #endif

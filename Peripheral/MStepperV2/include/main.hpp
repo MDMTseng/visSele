@@ -29,7 +29,7 @@ void setup_comm();
 void loop_comm();
 
 
-void G_LOG(char* str);
+// void G_LOG(char* str);
 
 
 // void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,

@@ -18,6 +18,14 @@ float* vecSub(float* vr,float* v1,float* v2,int dim)
   return vr;
 }
 
+float* vecAssign(float* v_dst,float* v_src,int dim)
+{
+    for(int i=0;i<dim;i++)
+    {
+        v_dst[i]=v_src[i];
+    }
+    return v_dst;
+}
 
 
 float* vecLerp(float* vr,float* v0,float* v1,int dim,float ratio)
@@ -48,7 +56,7 @@ float EuclideanDistance(float *v1,float *v2,int vecL)
     float dist = v1[i]-v2[i];
     sum+=dist*dist;
   }
-  return sqrt(sum);
+  return sqrtf(sum);
 }
 
 float EuclideanMagnitude(float *vec,int vecL)
@@ -59,7 +67,7 @@ float EuclideanMagnitude(float *vec,int vecL)
     float dist = vec[i];
     sum+=dist*dist;
   }
-  return sqrt(sum);
+  return sqrtf(sum);
 }
 
 
@@ -109,7 +117,7 @@ float ManhattanMagnitude(float *vec,int vecL,int *ret_idx)
                                             spDistRatio=0.8                                                                           
                                   -----------------|----|   we need to choose the shortest one between P0 and P2 to be the control point                                                                      
                             [P1]                 [SP2]                                                                                
-                                  --------------------------------------                                                              
+          |P1-SP0|                --------------------------------------                                                              
          ret_distance   /        /    /                                [P2]                                                             
                        /        /__--                                                                                                    
                       /        /     return ANGLE                                                                                                 
@@ -139,8 +147,8 @@ float calcAngleAndOthers(float* p0,float*p1,float* p2,int dim,float spDistRatio,
         magS10+=dist10*dist10;
         magS12+=dist12*dist12;
     }
-    magS10=sqrt(magS10);
-    magS12=sqrt(magS12);
+    magS10=sqrtf(magS10);
+    magS12=sqrtf(magS12);
 
 
     if(magS10<magS12)
@@ -157,8 +165,6 @@ float calcAngleAndOthers(float* p0,float*p1,float* p2,int dim,float spDistRatio,
             vecLerp(ret_sp0,p0,p1,dim,1-spDistRatio*magS12/magS10);
         if(ret_sp2)
             vecLerp(ret_sp2,p2,p1,dim,1-spDistRatio);
-
-
         if(ret_distance)*ret_distance=magS12*(spDistRatio);
     }
 
@@ -166,7 +172,7 @@ float calcAngleAndOthers(float* p0,float*p1,float* p2,int dim,float spDistRatio,
     float cosAngle = dotProd / (magS10 * magS12);
 
     // Calculate the angle in radians
-    return acos(cosAngle);
+    return acosf(cosAngle);
 
 
 }
@@ -191,7 +197,7 @@ void ArcBezierCtrlPoints_2D( float* p1, float* pc,float* p4, float *ret_p2, floa
     vecSub(b,p4,pc,2);
     float q1=vecDotProduct(a,a,2);
     float q2=q1+vecDotProduct(a,b,2);
-    float k2=4.0/3.0*(sqrt(2*q1*q2)-q2)/(a[0]*b[1]-a[1]*b[0]);
+    float k2=4.0/3.0*(sqrtf(2*q1*q2)-q2)/(a[0]*b[1]-a[1]*b[0]);
     
     float p2[2],p3[2];
     vecAdd(p2,pc,a,2);
@@ -302,9 +308,9 @@ float Ang2SplineKappa(float angle_rad,float *ret_r) {
     float tan_H_theda=tan(theta/2);
     float a=tan_H_theda;
     float b=a*a;
-    float r=a/cos(theta/2);
+    float r=a/cosf(theta/2);
     // float J=1/cos(theta/2);
-    if(ret_r)*ret_r=r*cos(theta/2);//r/J;
+    if(ret_r)*ret_r=r*cosf(theta/2);//r/J;
 
     float p1[]={a,-1};
     float p4[]={-a,-1};
@@ -509,8 +515,8 @@ static int TEST()
 
 
 
-void cubicBezier_TCoeff(double t,float *coeff_4) {
-    double one_minus_t = 1.0 - t;
+void cubicBezier_TCoeff(float t,float *coeff_4) {
+    float one_minus_t = 1.0 - t;
 
     float t_sq=t*t;
     float one_minus_t_sq=one_minus_t*one_minus_t;
@@ -525,6 +531,16 @@ void cubicBezier_TCoeff(double t,float *coeff_4) {
 float cubicBezier_Ele(float p0, float p1, float p2, float p3,float *coeff_4) {
     return coeff_4[0]*p0+coeff_4[1]*p1+coeff_4[2]*p2+coeff_4[3]*p3;
 }
+
+
+
+void cubicBezier_Vec(float *resultVec, float *p0, float *p1, float *p2, float *p3,int dim,float *coeff_4) {
+    for(int i=0;i<dim;i++)
+    {
+        resultVec[i]=coeff_4[0]*p0[i]+coeff_4[1]*p1[i]+coeff_4[2]*p2[i]+coeff_4[3]*p3[i];
+    }
+}
+
 
 // static int vecAngleTest() 
 // {
