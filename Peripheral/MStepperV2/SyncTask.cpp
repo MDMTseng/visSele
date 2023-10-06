@@ -362,10 +362,12 @@ public:
 
 
 
-    digitalWrite(PIN_DBG1, pre_f_dir&(1<<AXIS_IDX_X));
-    digitalWrite(PIN_DBG2, pre_f_step&(1<<AXIS_IDX_X));
-    digitalWrite(PIN_DBG3, pre_f_dir&(1<<AXIS_IDX_Y));
-    digitalWrite(PIN_DBG4, pre_f_step&(1<<AXIS_IDX_Y));
+    digitalWrite(PIN_DBG1, pre_f_dir&(1<<0));
+    digitalWrite(PIN_DBG2, pre_f_step&(1<<0));
+
+    digitalWrite(PIN_DBG3, pre_f_dir&(1<<1));
+    digitalWrite(PIN_DBG4, pre_f_step&(1<<1));
+    
     digitalWrite(PIN_DBG5, pre_f_dir&(1<<2));
     digitalWrite(PIN_DBG6, pre_f_step&(1<<2));
   }
