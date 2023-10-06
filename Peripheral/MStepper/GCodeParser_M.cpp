@@ -298,6 +298,11 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseCMD(char **blks, char blkCou
 
       retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_OK);
     }
+    else if(CheckHead(cblk, "G92.SYNC "))//G92 Set pos
+    {
+
+      retStatus=statusReducer(retStatus,GCodeParser_Status::TASK_UNSUPPORTED);
+    }
     else if(CheckHead(cblk, "G28"))//G28 GO HOME!!!:
     {
       if(isMTPLocked)

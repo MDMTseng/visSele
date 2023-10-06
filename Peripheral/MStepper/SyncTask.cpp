@@ -1026,11 +1026,11 @@ class MStp_M:public MStp{
         MSTP_SegCtx *ctx=(MSTP_SegCtx*)seg->ctx;
         if(ctx->type==MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC)
         {
-          if(EncV==ctx->RUN_UNTIL_ENC.tar_ENC && ctx->isProcessed==false)
+          if(EncV>=ctx->RUN_UNTIL_ENC.tar_ENC && ctx->isProcessed==false)
           {
             struct Mstp2CommInfo tinfo={
             .type=Mstp2CommInfo_Type::ext_log,
-            .log="ENC HIT..cur_step:"+to_string(seg->cur_step)
+            .log="ENC HIT..EncV:"+to_string(EncV)
             };
 
             Mstp2CommInfo* Qhead=NULL;
@@ -1331,7 +1331,7 @@ public:
 
         // __UPRT_I_("CMD:%s",cblk);
         
-        __UPRT_I_("M120.1 poolSize:%d",sctx_pool.size());
+        // __UPRT_I_("M120.1 poolSize:%d",sctx_pool.size());
 
         p_res->INPUT_MON.doMonitor=true;
         p_res->isProcessed=false;
@@ -1367,7 +1367,7 @@ public:
           return GCodeParser_Status::GCODE_PARSE_ERROR;
         }
 
-        __UPRT_I_("M400 poolSize:%d",sctx_pool.size());
+        // __UPRT_I_("M400 poolSize:%d",sctx_pool.size());
         // __UPRT_I_("AddWait... ");
         while(_mstp->AddWait(0,0,p_res,NULL)==false)
         {
@@ -1691,6 +1691,7 @@ public:
 
 GCodeParser_M2 gcpm(&mstp);
 StaticJsonDocument <500>doc;
+uint8_t retdoc_buff[700];
 StaticJsonDocument  <500>retdoc;
 
 
@@ -1960,9 +1961,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       retdoc["id"]=doc["id"];
       retdoc["ack"]=rspAck;
       
-      uint8_t buff[700];
-      int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-      send_json_string(0,buff,slen,0);
+      int slen=serializeJson(retdoc, (char*)retdoc_buff,sizeof(retdoc_buff));
+      send_json_string(0,retdoc_buff,slen,0);
     }
   }
 
@@ -2068,10 +2068,8 @@ void MData_JR::loop()
         retdoc["id"]=gcodewait_id;
         retdoc["ack"]=rspAck;
         
-        char *buff=dbgBuff;
-        int buffL=sizeof(dbgBuff);
-        int slen=serializeJson(retdoc, buff,buffL);
-        send_json_string(0,(uint8_t*)buff,slen,0);
+        int slen=serializeJson(retdoc, retdoc_buff,sizeof(retdoc_buff));
+        send_json_string(0,(uint8_t*)retdoc_buff,slen,0);
       }
       gcodewait_id=-1;
     }
@@ -2491,7 +2489,6 @@ void loop()
 
 
   {
-    uint8_t buff[700];
     while(1)
     {
       bool hasNewInfo=false;
@@ -2539,8 +2536,8 @@ void loop()
 
 
 
-          int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-          djrl.send_json_string(0,buff,slen,0);
+          int slen=serializeJson(retdoc, (char*)retdoc_buff,sizeof(retdoc_buff));
+          djrl.send_json_string(0,retdoc_buff,slen,0);
           break;
         }
         
@@ -2559,8 +2556,8 @@ void loop()
           retdoc["id"]=info.resp_id;
           retdoc["ack"]=info.isAck;
           
-          int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
-          djrl.send_json_string(0,buff,slen,0);
+          int slen=serializeJson(retdoc, (char*)retdoc_buff,sizeof(retdoc_buff));
+          djrl.send_json_string(0,retdoc_buff,slen,0);
           break;
         }
       }
