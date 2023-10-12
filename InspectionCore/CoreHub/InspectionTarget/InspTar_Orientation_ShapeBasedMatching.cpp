@@ -13,10 +13,12 @@ inline bool instanceof (const T)
 }
 
 InspectionTarget_Orientation_ShapeBasedMatching::InspectionTarget_Orientation_ShapeBasedMatching(string id, cJSON *def, InspectionTargetManager *belongMan, std::string local_env_path)
-    : InspectionTarget(id, NULL, belongMan, local_env_path)
+    : InspectionTarget(id, NULL, belongMan, local_env_path),recentSrcStageInfoSetIdx(100)
 {
   type = InspectionTarget_Orientation_ShapeBasedMatching::TYPE();
 
+
+  recentSrcStageInfoSet.resize(recentSrcStageInfoSetIdx.space());
   sbm = NULL;
 
   setInspDef(def);
@@ -283,6 +285,44 @@ cJSON *TemplatePyramid2Json(line2Dup::TemplatePyramid &tp)
   return jtpArr;
 }
 
+
+static void XYWH_clipping(int &X,int &Y,int &W,int &H, int MX,int MY,int MW,int MH)
+{
+  if(X<MX)
+  {
+    W-=MX-X;
+    X=MX;
+  }
+
+  if(Y<MY)
+  {
+    H-=MY-Y;
+    Y=MY;
+  }
+
+
+  if(X>MX+MW)
+  {
+    X=MX+MW-1;
+  }
+  if(Y>MY+MH)
+  {
+    Y=MY+MH-1;
+  }
+
+  if(X+W>MX+MW)
+  {
+    W=MX+MW-X;
+  }
+
+  if(Y+H>MY+MH)
+  {
+    H=MY+MH-Y;
+  }
+}
+
+
+
 bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, int id, exchangeCMD_ACT &act)
 {
   // LOGI(">>>>>>>>>>>>");
@@ -342,13 +382,14 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
             cJSON *regionInfo = cJSON_GetArrayItem(mask_regions, i);
             bool isBlackRegion = JFetch_TRUE(regionInfo, "isBlackRegion");
 
-            double x = JFetch_NUMBER_ex(regionInfo, "x");
-            double y = JFetch_NUMBER_ex(regionInfo, "y");
-            double w = JFetch_NUMBER_ex(regionInfo, "w");
-            double h = JFetch_NUMBER_ex(regionInfo, "h");
+            int x = JFetch_NUMBER_ex(regionInfo, "x",-1);
+            int y = JFetch_NUMBER_ex(regionInfo, "y",-1);
+            int w = JFetch_NUMBER_ex(regionInfo, "w",-1);
+            int h = JFetch_NUMBER_ex(regionInfo, "h",-1);
 
-            LOGI("ROI: %f,%f,%f,%f<<<<", x, y, w, h);
-            if (x == x && y == y && w == w && h == h)
+            XYWH_clipping(x,y,w,h, 0,0,_mask.cols,_mask.rows);
+            LOGI("ROI: %d,%d,%d,%d<<<<", x, y, w, h);
+            if (x>0 && y >0 && w >0 && h >0)
             {
               _mask(Rect(x, y, w, h)) = isBlackRegion ? 0 : 255;
             }
@@ -393,6 +434,129 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
 
     return true;
   }
+
+
+  if(type=="GetFetchSrcTIDList")
+  {
+      
+    std::lock_guard<std::mutex> lock(recentSrcLock); 
+    cJSON* arr= cJSON_CreateArray();
+
+    for(int i=0;i<recentSrcStageInfoSetIdx.size();i++)
+    {
+      int idx = recentSrcStageInfoSetIdx.getHead(i+1);
+      // cJSON_AddItemToArray(arr,cJSON_CreateNumber(recentSrcStageInfoSet[idx]->trigger_id));
+
+      cJSON_AddItemToArray(arr,cJSON_CreateNumber(i));
+
+    }
+
+    act.send("RP",id,arr);
+    cJSON_Delete(arr);arr=NULL;
+    return true;
+  }
+
+
+  if(type=="FetchCountDown")
+  {
+      
+    // FetchCountDown_OK=JFetch_NUMBER_ex(info,"count_OK",FetchCountDown_OK);
+    // FetchCountDown_NG=JFetch_NUMBER_ex(info,"count_NG",FetchCountDown_NG);
+    // FetchCountDown_NG2=JFetch_NUMBER_ex(info,"count_NG2",FetchCountDown_NG2);
+    // FetchCountDown_NG3=JFetch_NUMBER_ex(info,"count_NG3",FetchCountDown_NG3);
+    // FetchCountDown_NA=JFetch_NUMBER_ex(info,"count_NA",FetchCountDown_NA);
+    return true;
+  }
+
+
+
+
+  if(type=="TriggerFetchSrc")
+  {
+    int targetIdx=-1;
+
+
+    float index=JFetch_NUMBER_ex(info,"index");
+    if(index==index)
+    {
+        targetIdx = recentSrcStageInfoSetIdx.getHead(index);
+    }
+    else
+    {
+      
+      std::lock_guard<std::mutex> lock(recentSrcLock); 
+      
+
+      float ftargetTID=JFetch_NUMBER_ex(info,"trigger_id");
+      if(ftargetTID!=ftargetTID)return false;
+      int targetTID=ftargetTID;
+          // LOGI("<<<<targetTID:%d>>>>",targetTID);
+      for(int i=0;i<recentSrcStageInfoSetIdx.size();i++)
+      {
+        int idx = recentSrcStageInfoSetIdx.getTail(i);
+        auto &infoSet=recentSrcStageInfoSet[idx];
+
+          // LOGI("<<<<infoSet tid:%d  size:%d>>>>",infoSet[0]->trigger_id,infoSet.size());
+        if(infoSet->trigger_id!=targetTID)continue;
+        targetIdx=i;
+        break;
+      }
+
+    }
+
+    if(targetIdx>=0 && targetIdx<recentSrcStageInfoSetIdx.size())
+    {
+      auto &infoSet=recentSrcStageInfoSet[targetIdx];
+
+      auto *src = dynamic_cast<StageInfo_Image*>(infoSet.get());
+
+      if(src)
+      {
+
+
+
+        
+        LOGI("SEND....");
+        shared_ptr<StageInfo_Image> pkt(new StageInfo_Image());
+        pkt->img=src->img;
+        pkt->img_prop=src->img_prop;
+        pkt->img_show=src->img_show;
+        pkt->process_time_us=src->process_time_us;
+        pkt->sharedInfo=src->sharedInfo;
+
+        pkt->source=src->source;
+        pkt->source_id=src->source_id;
+
+
+        pkt->trigger_tags=src->trigger_tags;
+        pkt->trigger_tags.push_back("s_uInspCache_");
+        pkt->trigger_id=-src->trigger_id;
+        belongMan->dispatch(pkt);
+
+
+
+
+
+      }
+      while (belongMan->inspTarProcess())
+      {
+      }
+      return true;
+    }
+
+        LOGI("END....");
+    return true;
+  }
+
+
+  if(type=="ClearFetchSrc")
+  {
+    recentSrcStageInfoSetIdx.clear();
+    return true;
+  }
+
+  
+
 
   return false;
 }
@@ -924,7 +1088,7 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
 
     std::string DBG_STR;
     // LOGI("refine_score_thres:%f must_refine_result:%d",refine_score_thres,must_refine_result);
-    int refineCount = 2;
+    int refineCount = 1;
     if (refine_region_set.size() > 0 && refine_score_thres > 0)
     {
       float tmpAngle = refinedAngleRad;
@@ -977,7 +1141,6 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
       if (refine_angle_only)
         tmp_anchorPt = anchorPt; // ignore the refined location if needed
 
-      LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
       // LOGI(" %f =>  %f",refinedAngleRad*180/M_PI,tmpAngle*180/M_PI);
       // LOGI(" %f,%f, a:%f  =>  %f,%f a:%f ",anchorPt.x,anchorPt.y,refinedAngleRad*180/M_PI,tmp_anchorPt.x,tmp_anchorPt.y,tmpAngle*180/M_PI);
 
@@ -1008,6 +1171,7 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
     if (refine_score > 0.999)
       refine_score = 0.999;
 
+    LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
     StageInfo_Orientation::orient orie;
 
     orie.angle = refinedAngleRad + origin_offset_angle;
@@ -1043,7 +1207,7 @@ void CloseMatchFilter(std::vector<line2Dup::Match> &matches,SBM_if *sbm,vector<i
     scores.push_back(match.similarity);
   }
 
-  cv_dnn::NMSBoxes(boxes, scores, 0, 0.5f, idxs);
+  cv_dnn::NMSBoxes(boxes, scores, 0, 0.2f, idxs);
 
   std::sort(idxs.begin(), idxs.end(), [&](int a, int b) {
     int sa=matches[a].y*10+matches[a].x;//tilt the score a bit, assume the arrangment is like a grid
@@ -1057,6 +1221,28 @@ void CloseMatchFilter(std::vector<line2Dup::Match> &matches,SBM_if *sbm,vector<i
 
 void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<StageInfo> sinfo)
 {
+
+
+
+  if(sinfo->trigger_id>0)
+  {
+    LOGI(">>>>fetch save>>>>sinfo->trigger_id:%d",sinfo->trigger_id);
+    std::lock_guard<std::mutex> lock(recentSrcLock); 
+
+    if(recentSrcStageInfoSetIdx.space()==0)
+    {//if full, wipe tail
+      int tail_idx = recentSrcStageInfoSetIdx.getTail();
+      recentSrcStageInfoSetIdx.consumeTail();
+    }
+    
+    {//push new info in head
+      int head_idx = recentSrcStageInfoSetIdx.getHead();
+      recentSrcStageInfoSet[head_idx]=sinfo;
+      recentSrcStageInfoSetIdx.pushHead();
+
+    }
+  }
+
 
   // std::this_thread::sleep_for(std::chrono::milliseconds(100));
   int64 t0 = cv::getTickCount();
@@ -1095,6 +1281,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   bool must_refine_result = JFetch_TRUE(def, "must_refine_result");
   bool remove_refine_failed_result = JFetch_TRUE(def, "remove_refine_failed_result");
 
+  LOGI("refine_score_thres:%f must_refine_result:%d  remove_refine_failed_result:%d",refine_score_thres,must_refine_result,remove_refine_failed_result);
   vector<int> idxs;
 
   shared_ptr<StageInfo_Orientation> reportInfo(new StageInfo_Orientation());
@@ -1175,7 +1362,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
           sub_matches[index].y+=y;
         }
         vector<StageInfo_Orientation::orient> orientList;
-        orientList =MatchPoseRefine(CV_srcImg,sub_matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,false,false);
+        orientList =MatchPoseRefine(CV_srcImg,sub_matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,must_refine_result,remove_refine_failed_result);
 
         if(regional_most_similar_match)
         {//keep the most similar(confident) one
@@ -1229,7 +1416,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
       
       vector<int> SubIdxs;
       CloseMatchFilter(matches,sbm,SubIdxs);
-      vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(CV_srcImg,matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,false,false);
+      vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(CV_srcImg,matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,must_refine_result,remove_refine_failed_result);
 
 
       if(regional_most_similar_match)

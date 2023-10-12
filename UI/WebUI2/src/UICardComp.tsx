@@ -29,7 +29,7 @@ const ResponsiveReactGridLayout = WidthProvider(Responsive);
 
 
 export function ResponsiveReactGridLayoutX (props:
-  ReactGridLayout.ResponsiveProps & ReactGridLayout.WidthProviderProps)  {
+  ReactGridLayout.ResponsiveProps & ReactGridLayout.WidthProviderProps & {rows:number})  {
 
   const _this = useRef<any>({}).current;
   const divRef = useRef<HTMLDivElement>(null)
@@ -44,7 +44,7 @@ export function ResponsiveReactGridLayoutX (props:
     },()=>_this.trigTO=undefined,500);
 
 
-
+    console.log(height,props.rows);
   }, [width, height]);
 
   
@@ -56,7 +56,7 @@ export function ResponsiveReactGridLayoutX (props:
       <div className="App" style={{width:"100%",height:"100%",overflow:"hidden"}}  ref={divRef}>
         <ResponsiveReactGridLayout
           {...props}
-
+          rowHeight={(height)/props.rows-10}
           //  onDrop={(e) => onDrop(e)} 
           //  onLayoutChange={(curL,allL)=>{
           //   console.log(curL,allL)

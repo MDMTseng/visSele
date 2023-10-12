@@ -33,6 +33,8 @@ struct MSTP_segment
   float vcur;
   float vcen;
   float vto;
+  float minv;
+  float minv2;
   float acc;
   float deacc;
   
@@ -133,9 +135,8 @@ public:
   //preset cannot be touched
   uint32_t TICK2SEC_BASE=1000*1000;
   float main_acc;
-  float minSpeed;
+  // float SYS_MINSpeed;
   float main_junctionMaxSpeedJump;
-  float maxSpeedInc;
   MSTP_axisSetup axisInfo[MSTP_VEC_SIZE];
 
   int fatalErrorCode;

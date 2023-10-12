@@ -75,7 +75,7 @@ if(MSVC OR MSYS OR MINGW)
 elseif(APPLEARM64)
   set(CMAKE_EXE_LINKER_FLAGS " -Wl,-framework,IOKit -Wl,-framework,CoreFoundation -Wl,-framework,Security")
 
-  SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS}  -fobjc-arc  -fmodules")
+  SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS}  -fobjc-arc  -fmodules -gfull")
   SET(PLAT_FILES  "PlatUtil/macUtil.mm")
 elseif(APPLE)
 

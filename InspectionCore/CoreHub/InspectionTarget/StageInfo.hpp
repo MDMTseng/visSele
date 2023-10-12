@@ -219,6 +219,7 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
   const static int id_HSVSeg=1;
   const static int id_SigmaThres=2;
   const static int id_ScanPoint=3;
+  const static int id_DirectionalDiff=4;
 
 
   float pixel_size;

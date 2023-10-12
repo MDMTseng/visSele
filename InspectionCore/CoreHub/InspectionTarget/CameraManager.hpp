@@ -28,7 +28,7 @@ class CameraManager
   StreamingInfo* addCamera(int idx,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx);
   StreamingInfo* addCamera(std::string driverName,std::string camera_id,std::string misc_str,CameraLayer::CameraLayer_Callback callback, void *ctx);
   
-  StreamingInfo* getCamera(std::string driverName,std::string camera_id);
+  StreamingInfo* getCamera(std::string driverName,std::string camera_id,std::string side_name="");
 
   // StreamingInfo* getCameraStreamingInfo(std::string driverName,std::string camera_id);
   // StreamingInfo* getCameraStreamingInfo(CameraLayer* camera);
@@ -37,7 +37,7 @@ class CameraManager
   bool delCamera(int idx);
   bool delCamera(std::string driverName,std::string camera_id);
   
-  int findConnectedCameraIdx(std::string driverName,std::string camera_id);
+  int findConnectedCameraIdx(std::string driverName,std::string camera_id,std::string side_name="");
   public:
   static std::string cameraDiscovery(bool doDiscover=true);
   static void cameraDiscoveryListClear();

@@ -499,9 +499,9 @@ CameraManager::StreamingInfo* CameraManager::addCamera(std::string driverName,st
   return addCamera(cam);
 }
 
-CameraManager::StreamingInfo* CameraManager::getCamera(std::string driverName,std::string camera_id)
+CameraManager::StreamingInfo* CameraManager::getCamera(std::string driverName,std::string camera_id,std::string side_name)
 {
-  int idx=findConnectedCameraIdx( driverName, camera_id);
+  int idx=findConnectedCameraIdx( driverName, camera_id,side_name);
   if(idx>=0)
   {
     return &camera_streaming_infos[idx];
@@ -510,13 +510,22 @@ CameraManager::StreamingInfo* CameraManager::getCamera(std::string driverName,st
 }
 
 
-int CameraManager::findConnectedCameraIdx(std::string driverName,std::string camera_id)
+int CameraManager::findConnectedCameraIdx(std::string driverName,std::string camera_id,std::string side_name)
 {
   int i=0;
   for( i=0;i<camera_streaming_infos.size();i++)
   {
     CameraLayer::BasicCameraInfo data=camera_streaming_infos[i].camera->getConnectionData();
-    if( (driverName.length()==0 || data.driver_name==driverName) && data.id==camera_id)
+    // if( driverName.length()!=0 && data.driver_name!=driverName)continue;
+
+
+    // if( camera_id.length()!=0 && data.id==camera_id)continue;
+
+    // auto sideName=camera_streaming_infos[i].camera->GetSideName();
+
+    // if( side_name.length()!=0 && side_name!=sideName)continue;
+
+    if( (driverName.length()==0 || data.driver_name==driverName) && (data.id==camera_id))
     {
       return i;
     }

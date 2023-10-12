@@ -16,16 +16,59 @@ import {VEC2D,SHAPE_ARC,SHAPE_LINE_seg} from '../UTIL/MathTools';
 
 import dclone from 'clone';
 
+
+function domMatrixToObj(matrix:DOMMatrix) {
+  return ({
+    a: matrix.a,
+    b: matrix.b,
+    c: matrix.c,
+    d: matrix.d,
+    e: matrix.e,
+    f: matrix.f,
+  });
+}
+
+// Convert JSON to DOMMatrix
+function jsonToDomMatrix(json:{a:number,b:number,c:number,d:number,e:number,f:number}) {
+  const data = json;
+  const { a, b, c, d, e, f } = data;
+  const matrix = new DOMMatrix();
+  matrix.a = a;
+  matrix.b = b;
+  matrix.c = c;
+  matrix.d = d;
+  matrix.e = e;
+  matrix.f = f;
+  return matrix;
+}
+
+
 class CameraCtrl {
   matrix:DOMMatrix
   tmpMatrix:DOMMatrix
   identityMat:DOMMatrix
 
-  constructor() {
+  constructor(sobj:any|undefined=undefined) {
     this.matrix = new DOMMatrix();
     this.tmpMatrix = new DOMMatrix();
     this.identityMat = new DOMMatrix();
     this.Scale(1);
+    if(sobj!==undefined)
+      this.fromSimpleObj(sobj);
+  }
+
+  toSimpleObj()
+  {
+    return {
+      matrix:domMatrixToObj(this.matrix),
+      tmpMatrix:domMatrixToObj(this.tmpMatrix)
+    }
+  }
+
+  fromSimpleObj(sobj:any)
+  {
+    this.matrix=jsonToDomMatrix(sobj.matrix);
+    this.tmpMatrix=jsonToDomMatrix(sobj.tmpMatrix);
   }
 
   Scale(scale:number, center = { x: 0, y: 0 }) {
@@ -394,6 +437,7 @@ export class EverCheckCanvasComponent_proto {
   pixelRatio:number
   
   getMousePos(evt:MouseEvent) {
+    this.pixelRatio=window.devicePixelRatio;
     var rect = this.canvas.getBoundingClientRect();
     let mouse = {
       x: (evt.clientX - rect.left)*this.pixelRatio,

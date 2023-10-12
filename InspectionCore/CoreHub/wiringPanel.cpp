@@ -410,12 +410,21 @@ void TriggerInfoMatchingThread(bool *terminationflag)
           targetStageInfo->trigger_tags=targetTriggerInfo.tags;
           auto fullCamID=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
           targetStageInfo->trigger_tags.push_back(fullCamID);
+          // auto sideName = targetStageInfo->img_prop.StreamInfo.camera->GetSideName();
+          // if(sideName.length()>0)
+          // {
+          //   targetStageInfo->trigger_tags.push_back("s_"+sideName);
+          // }
+
           LOGI("cam id:%s  ch_id:%d",fullCamID.c_str(),targetStageInfo->img_prop.StreamInfo.channel_id);
           LOGI("TId:%d  info TId:%d",targetStageInfo->trigger_id,targetTriggerInfo.trigger_id);
           targetStageInfo->trigger_id=targetTriggerInfo.trigger_id;
 
           inspQueue.push_blocking(targetStageInfo);
+
+          LOGI("push_blocking ok");
           triggerInfoMatchingBuffer.erase(minMatchingIdx);//remove from buffer 
+          LOGI("Erase ok");
         }
         else
         {
@@ -760,7 +769,7 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
   int comm_pgID=-1;
   // py::module pyscript;
 
-
+  mutex CNCMsgID_PGID_LOCK;
   std::map <int,int> CNCMsgID_PGID;
   public:
 
@@ -805,14 +814,17 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
         int msgID=JFetch_NUMBER_ex(json,"id",-1);
 
         int retPGID=comm_pgID;
+
+        master->CNCMsgID_PGID_LOCK.lock();
         if(msgID!=-1 && (master->CNCMsgID_PGID.find(msgID)!=master->CNCMsgID_PGID.end()))
         {
           retPGID=master->CNCMsgID_PGID[msgID];
           master->CNCMsgID_PGID.erase(msgID);
         }
+        master->CNCMsgID_PGID_LOCK.unlock();
       
         sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s}", raw);
-        LOGI("<<:%s  retPGID:%d", tmp,retPGID);
+        LOGI("<<:%s  retPGID:%d", raw,retPGID);
         bpg_pi.fromUpperLayer_DATA("PD",retPGID,tmp);
         bpg_pi.fromUpperLayer_DATA("SS",retPGID,"{}");
 
@@ -994,7 +1006,7 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
         return false;
       }
 
-      LOGE(">>>>>>>");
+      // LOGE(">>>>>>>");
       bool session_ACK=false;
       cJSON *msg_obj = JFetch_OBJECT(info, "msg");
       if (msg_obj)
@@ -1002,23 +1014,42 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
 
         std::lock_guard<std::mutex> lock(pCH->sendMutex);
         uint8_t _buf[2000];
-        LOGE(">>>>>>>");
-        int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,msg_obj);
-        session_ACK = (ret>=0);
+
+
 
         int msg_id=JFetch_NUMBER_ex(msg_obj,"id",-1);
 
-        if(session_ACK && msg_id!=-1)
+        cJSON_PrintPreallocated(msg_obj,(char *) _buf, sizeof(_buf), false);
+
+        LOGE(">>>>>>>:%s id:%d",(char *)_buf,id);
+        if(msg_id!=-1)
         {
+          lock_guard<mutex> lock(CNCMsgID_PGID_LOCK);
           act.doSendAck=false;
           CNCMsgID_PGID[msg_id]=id;
         }
+
+
+
+        int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,msg_obj);
+        session_ACK = (ret>=0);
+
+        if(session_ACK==false)
+        {
+          CNCMsgID_PGID.erase(msg_id);
+        }
+
+
+
+
+
+
       }
       else
       {
         session_ACK=false;//send nothing
       }
-      LOGE(">>>>>>>");
+      // LOGE(">>>>>>>");
 
       return session_ACK;
     }
@@ -3717,11 +3748,29 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
         LOGI("CAMERA:%s",id.c_str());
 
-        double *exposure = JFetch_NUMBER(json, "exposure");
-        if(exposure)
+
         {
-          cami->camera->SetExposureTime(*exposure);
-          LOGI("Exposure:%f",*exposure);
+
+          char *cstr_sideName=JFetch_STRING(json, "side_name");
+          if(cstr_sideName)
+          {
+            cami->camera->SetSideName(std::string(cstr_sideName));
+
+            LOGI("sideName:%s",cstr_sideName);
+          }
+
+        }
+
+
+
+        {
+          double *exposure = JFetch_NUMBER(json, "exposure");
+          if(exposure)
+          {
+            cami->camera->SetExposureTime(*exposure);
+            LOGI("Exposure:%f",*exposure);
+          }
+
         }
 
         {
@@ -3888,28 +3937,32 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       }
       else if(strcmp(type_str, "trigger") ==0)
       {do{
+
+
+        vector<string> tags;
+        {
+
+          cJSON* trigger_tags = JFetch_ARRAY(json, "trigger_tags");
+          if(trigger_tags)
+          {
+            int tagsLen=cJSON_GetArraySize(trigger_tags);
+            for(int i=0;i<tagsLen;i++)
+            {
+              cJSON * item= cJSON_GetArrayItem(trigger_tags,i);
+              if(item->type & cJSON_String)
+              {
+                tags.push_back(string(item->valuestring));
+              }
+            }
+          }
+        }
+
+
+
         char *_img_path = JFetch_STRING(json, "img_path");
         if(_img_path)
         {
           
-          vector<string> tags;
-          {
-
-            cJSON* trigger_tags = JFetch_ARRAY(json, "trigger_tags");
-            if(trigger_tags)
-            {
-              int tagsLen=cJSON_GetArraySize(trigger_tags);
-              for(int i=0;i<tagsLen;i++)
-              {
-                cJSON * item= cJSON_GetArrayItem(trigger_tags,i);
-                if(item->type & cJSON_String)
-                {
-                  tags.push_back(string(item->valuestring));
-                }
-              }
-            }
-          }
-
           LOGI("_img_path:%s tags:%d",_img_path,tags.size());
 
 
@@ -3931,13 +3984,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           std::string id=std::string(_cam_id);
           if(JFetch_TRUE(json, "soft_trigger"))
           {
-            {
-              auto xx = inspTarMan.camman.ConnectedCamera_ex();
-              for(auto cam : xx)
-              {
-                LOGI(">>CAM>%s",cam.camera->getConnectionData().id.c_str());
-              }
-            }
+            // {
+            //   auto xx = inspTarMan.camman.ConnectedCamera_ex();
+            //   for(auto cam : xx)
+            //   {
+            //     LOGI(">>CAM>%s",cam.camera->getConnectionData().id.c_str());
+            //   }
+            // }
             CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
             if(cami)
             {
@@ -3958,7 +4011,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             mocktrig.triggerInfo.camera_id=id;
             mocktrig.triggerInfo.trigger_id=(int)JFetch_NUMBER_ex(json, "trigger_id",-1);
             mocktrig.triggerInfo.est_trigger_time_us=0;//force matching
-            mocktrig.triggerInfo.tags.push_back( std::string( JFetch_STRING_ex(json, "trigger_tag","_SW_TRIG_")) );
+            if(tags.size()==0)
+            {
+              mocktrig.triggerInfo.tags.push_back( std::string( JFetch_STRING_ex(json, "trigger_tag","_SW_TRIG_")) );
+            }
+            else
+            {
+              mocktrig.triggerInfo.tags=tags;
+            }
             
             triggerInfoMatchingQueue.push_blocking(mocktrig);
           }

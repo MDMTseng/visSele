@@ -99,6 +99,7 @@ class CameraLayer{
     int maxWidth,maxHeight;
     frameInfo fi;
     std::string cam_json_info;
+    std::string side_name;
 
     
     float ROI_x;
@@ -230,6 +231,15 @@ class CameraLayer{
 
     virtual CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param,int type=0, int timeout_ms=-1);
 
+    virtual CameraLayer::status SetSideName(std::string side_name)
+    {
+        this->side_name=side_name;
+        return ACK;
+    }
+    virtual std::string GetSideName()
+    {
+        return side_name;
+    }
 
     virtual frameInfo GetFrameInfo()
     {

@@ -1,4 +1,7 @@
-
+::-webkit-scrollbar{
+	width: 0px;
+  }
+  
 .overlayCon {
 	position: relative;
 	overflow:hidden;

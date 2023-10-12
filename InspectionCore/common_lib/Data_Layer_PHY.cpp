@@ -329,6 +329,7 @@ int Data_UART_Layer::recv_data_thread()
 
     int datLen = simple_uart_read_timed(uart, buffer, sizeof(buffer),1000);
 
+    if(datLen==0)continue;
     // printf(">>>>simple_uart datLen:%d\n",datLen);
     // for(int i=0;i<datLen;i++)
     // {
@@ -338,7 +339,6 @@ int Data_UART_Layer::recv_data_thread()
 
 
     if(datLen<0)break;
-    if(datLen==0)continue;
     recv_data(buffer, datLen,false);
   }
   

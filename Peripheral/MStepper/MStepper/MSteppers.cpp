@@ -535,10 +535,9 @@ MStp::MStp(MSTP_segment *buffer, int bufferL)
   segBufL=bufferL;
   segBufHeadIdx=0;
   segBufTailIdx=0;
-  minSpeed=100;
+  // SYS_MINSpeed=10;
   main_junctionMaxSpeedJump=300;
 
-  maxSpeedInc=minSpeed;
   
   TICK2SEC_BASE=10*1000*1000;
   main_acc=1000;
@@ -573,7 +572,7 @@ void MStp::SystemClear()
   lastTarLoc=(xVec){0};
   // curPos_residue=(xVec){0};
   T_next=0;
-  minSpeed=2;
+  // SYS_MINSpeed=2;
   main_acc=1000;
   doCheckSoftLimit=true;
   fatalErrorCode=0;
@@ -856,16 +855,19 @@ bool MStp::VecTo(xVec VECTo,float speed,void* ctx,MSTP_segment_extra_info *exinf
     if(exinfo!=NULL)
     {
       if(exinfo->acc==exinfo->acc)
-        a=exinfo->acc;
+        dea=a=exinfo->acc;
         
       if(exinfo->deacc==exinfo->deacc)
         dea=exinfo->deacc;
     }
 
     if(a<0)a=-a;
-    if(dea>0)dea=-dea;
+    if(dea<0)dea=-dea;
     newSeg.acc=a*accWFactor;
+    newSeg.minv=sqrt(newSeg.acc);
     newSeg.deacc=dea*accWFactor;
+    newSeg.minv2=sqrt(newSeg.deacc);
+    newSeg.deacc=-newSeg.deacc;
   }
 
 
@@ -1266,7 +1268,7 @@ void MStp::printSEGInfo()
 //   return (preV+decision)/2;
 // }
 
-void nextIntervalCalc(MSTP_SEG_PREFIX MSTP_segment *seg,float minSpeed,float maxSpeedInc) MSTP_SEG_PREFIX
+void nextIntervalCalc(MSTP_SEG_PREFIX MSTP_segment *seg) MSTP_SEG_PREFIX
 {
   // IO_WRITE_DBG(PIN_DBG0, PIN_DBG0_st=1);
 
@@ -1287,14 +1289,13 @@ void nextIntervalCalc(MSTP_SEG_PREFIX MSTP_segment *seg,float minSpeed,float max
 
   float vcur=seg->vcur;
 
-  if(vcur<minSpeed)
-  {
-    vcur=minSpeed;
-  }
+  if(vcur<1)vcur=1;
   int deAccBuffer=D-deAccReqD;
   if(deAccBuffer<4)
   {
     // float alpha=-((deAccBuffer)/4);
+
+
     float speedInc=a2/vcur;//*(1+alpha);
     // float newV=seg->vcur+speedInc;
     // if(newV<minSpeed)
@@ -1305,16 +1306,18 @@ void nextIntervalCalc(MSTP_SEG_PREFIX MSTP_segment *seg,float minSpeed,float max
     vcur+=speedInc;
     // __PRT_D_("a2:%d  T_next:%d  TICK2SEC_BASE:%d\n",a2,T_next,TICK2SEC_BASE);
 
+
+
     if(vcur<seg->vto)
     {
       vcur=seg->vto;
     }
 
-    if(vcur<0)
-    {
-      vcur=0;
-    }
 
+    if(vcur<seg->minv2)
+    {
+      vcur=seg->minv2;
+    }
   // __PRT_D_("seg->vcur:%f a2:%d  T_next:%d  TICK2SEC_BASE:%d\n",seg->vcur,a2,T_next,TICK2SEC_BASE);
 
   }
@@ -1322,12 +1325,8 @@ void nextIntervalCalc(MSTP_SEG_PREFIX MSTP_segment *seg,float minSpeed,float max
   {
     if(seg->cur_step>2)
     {
-      float speedInc=a1/vcur;
-      if(speedInc>maxSpeedInc)
-      {
-        speedInc=maxSpeedInc;
-      }        
-     vcur+=(speedInc);
+      float speedInc=a1/vcur;      
+      vcur+=(speedInc);
     }
     
     // __PRT_D_("a1:%d  seg->vcur:%f\n",a1,seg->vcur);
@@ -1543,6 +1542,10 @@ LOAD_AGAIN:
 
           __PRT_D_(">[%f\n",prevcur);
           p_runSeg->vcur= prevcur*p_runSeg->JunctionNormCoeff;
+          if(p_runSeg->vcur<p_runSeg->minv)
+          {
+            p_runSeg->vcur=p_runSeg->minv;
+          }
           axis_dir=p_runSeg->dir_bit;
           vec_abs=p_runSeg->runvec_abs;
         }
@@ -1637,15 +1640,10 @@ LOAD_AGAIN:
 
 
       
-        nextIntervalCalc(p_runSeg, minSpeed, maxSpeedInc);
+        nextIntervalCalc(p_runSeg);
         
         {
           uint32_t vcur=p_runSeg->vcur;
-          if(vcur<(uint32_t)minSpeed)
-          {
-            vcur=(uint32_t)minSpeed;
-          }
-
           uint32_t uT = 1000*1000/(uint32_t)vcur;
           p_runSeg->step_period=(uT);
           T_next=p_runSeg->step_period;

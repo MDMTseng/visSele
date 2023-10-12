@@ -40,7 +40,7 @@ export async function listCMDPromise(
     let retArr=[];
     for(let i=0;i<retryCount;i++)
     {
-      let ret = await CNC_api.send_P({"type":"GCODE","code":code}) as any
+      let ret = await CNC_api.send_P({"type":"G","code":code}) as any
       if(ret.ack==true)return ret;
       retArr.push(ret);
       await delay(5);
@@ -53,7 +53,7 @@ export async function listCMDPromise(
   }
   function G(code:string)
   {
-    return CNC_api.send_P({"type":"GCODE","code":code})
+    return CNC_api.send_P({"type":"G","code":code})
   }
 
   async function delay(ms=1000)
@@ -260,6 +260,15 @@ export async function listCMDPromise(
     return undefined;
   }
 
+  function SigCfg_HACK_DisableTimeout()
+  {
+    v.sigListenerTimeoutDisable=true;
+  }
+
+  function SigCfg_HACK_EnableTimeout()
+  {
+    v.sigListenerTimeoutDisable=false;
+  }
 
   function SigWait(key:string,timeout_ms:number=5000)
   {
@@ -285,6 +294,7 @@ export async function listCMDPromise(
           if(timeout_ms>=0)
           {
             timeoutID=window.setTimeout(()=>{
+              if(v.sigListenerTimeoutDisable==true)return;
               reject("TIMEOUT("+timeout_ms+").... key:"+key)
               delete v.sigListener[key];
             },timeout_ms)

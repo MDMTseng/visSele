@@ -276,7 +276,7 @@ export class CameraCtrl {
     if (this.ev_emptyResultCountChange === undefined)
       this.ev_emptyResultCountChange = () => { };
 
-    this.setSpeedSwitchingCount(1000);
+    this.setSpeedSwitchingCount(100);
     this.setCameraSpeed_HIGH();
   }
 
@@ -321,7 +321,7 @@ export class CameraCtrl {
 
 
 
-  setSpeedSwitchingCount(speedSwitchingCount = 1000) {
+  setSpeedSwitchingCount(speedSwitchingCount = 100) {
     this.data.speedSwitchingCount = speedSwitchingCount;
   }
 

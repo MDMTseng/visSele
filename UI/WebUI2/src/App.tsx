@@ -83,6 +83,11 @@ type IMCM_type=
 }
 
 
+let WidgetWSegs=60;
+let WidgetHSegs=40;
+// let WidgetSegHeight=20;
+
+
 function PtsToXYWH( pt1:VEC2D, pt2:VEC2D)
 {
   let x,y,w,h;
@@ -145,6 +150,8 @@ type IMCM_group={[trigID:string]:IMCM_type}
 type MenuItem = Required<MenuProps>['items'][number];
 
 var enc = new TextEncoder();
+
+// const _DEF_FOLDER_PATH_="data/Test1_xprj";
 
 const _DEF_FOLDER_PATH_="data/Pack_xprj";
 // import ReactJsoneditor from 'jsoneditor-for-react';
@@ -263,6 +270,11 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
 
 
   return <> 
+    別名:<Input value={camSetupInfo.side_name} onChange={(side_name)=>{
+      onCameraSetupUpdate({...camSetupInfo,side_name:side_name.target.value})
+    }}/>
+    <br/>
+    
     trigger_on:
     <Switch checkedChildren="O" unCheckedChildren="X" checked={camSetupInfo.trigger_mode==1} onChange={(check)=>{
       onCameraSetupUpdate({...camSetupInfo,trigger_mode:check?1:0})
@@ -661,9 +673,14 @@ function UtilUI_MUX({UIOption,onUIOptionUpdate}:CompParam_UIOption)
 function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDefChange,renderHook}:{WidgetSetID:string,defConfig:any,UIEditFlag:boolean,EditPermitFlag:number, onDefChange:(updatedDef:any,updateIdx:number)=>void,renderHook:any})
 {
   
-  
+  const _this = useRef<any>({
+    apiTable:{}
+
+  }).current;
   const [newUIEleConf,setNewUIEleConf]= useState<any>({});
+  const [FSIdx,setFSIdx]= useState<number>(-1);
   let InspTarList=defConfig.InspTars_main;
+
   // let displayInspTarIdx:number[]=[];
   // let displayInspTarIdx_hide:number[]=[];
   // if(defConfig!==undefined)
@@ -689,6 +706,13 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
   useEffect(()=>{//load default
     setNewUIEleConf({});
   },[UIEditFlag])
+
+
+  useEffect(()=>{
+    console.log("WidgetSetID:",WidgetSetID);
+    _this.apiTable={};
+    setFSIdx(-1);
+  },[WidgetSetID])
   // console.log(InspTarList);
   // console.log(displayIDList,displayInspTarIdx,displayInspTarIdx_hide);
 
@@ -784,14 +808,33 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
 
     return undefined;
   })
-  console.log(layoutSrcEle);
+  console.log(WidgetLayout);
 
 
+  
+  let ID_CLOSE_FS="CLOSE_FS"
+  if(FSIdx!=-1)
+  {
+    WidgetLayout=WidgetLayout.map((lao:any)=>{
+      return {...lao,display:false,y:999,w:1,h:1}
+    });
+    WidgetLayout.push({...defalutLayoutInfo,i:ID_CLOSE_FS,type:ID_CLOSE_FS,w:WidgetWSegs,h:1,y:0,x:0})
+
+    WidgetLayout[FSIdx]={...WidgetLayout[FSIdx]};
+    WidgetLayout[FSIdx].display=true;
+    WidgetLayout[FSIdx].x=0;
+    WidgetLayout[FSIdx].y=1;
+    WidgetLayout[FSIdx].w=WidgetWSegs;
+    WidgetLayout[FSIdx].h=WidgetHSegs-1;
+
+
+  }
 
   return <ResponsiveReactGridLayoutX layouts={{lg:WidgetLayout}}
-    style={{height:"100%",overflow:"scroll"}}
+    style={{height:"100%",overflow:"scroll",background:FSIdx!=-1?"rgba(255,0,0,0.1)":undefined}}
       //  onDrop={(e) => onDrop(e)} 
     onLayoutChange={(curL,allL)=>{
+      if(FSIdx!=-1)return;
       console.log(curL,allL)
 
       let newWidgetLayout=WidgetLayout.map((layo:any,index:number)=>{
@@ -804,7 +847,9 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
     className="layout" 
     //  layouts={layouts} 
     breakpoints={{ lg: 4, md: 3, sm: 2, xs: 1, xxs: 0 }}//{{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-    cols={{ lg: 20, md: 20, sm: 20, xs: 20, xxs: 20 }}
+    cols={{ lg: WidgetWSegs, md: WidgetWSegs, sm: WidgetWSegs, xs: WidgetWSegs, xxs: WidgetWSegs }}
+    rows={WidgetHSegs}
+    // rowHeight={WidgetSegHeight}
     //  // rowHeight={300}
     //  // width={1000}
     resizeHandles={["se"]}
@@ -817,7 +862,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
     <div key="d" style={{ backgroundColor: "#ccc" }}> */}
 
       {WidgetLayout.map((uilayoutInfo:any,idx:number)=>{
-
+        console.log(uilayoutInfo);
         // if(layoutSrcEle[idx]===undefined)return null;
         let UI:JSX.Element=<></>
         let UIEditUI:JSX.Element=<></>
@@ -827,7 +872,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
           {
             UI=<InspTargetUI_MUX 
               display={uilayoutInfo.display!=false} 
-              style={{float:"left",width:"100%",height:"100%",overflow:"scroll"}} 
+              style={{float:"left",width:"100%",height:"100%",overflow:"scroll",borderColor:"#AAA",borderStyle:"solid",borderWidth:"2px",borderRadius:"10px"}} 
               EditPermitFlag={EditPermitFlag}
               key={uilayoutInfo.i} 
               systemInspTarList={InspTarList}
@@ -851,7 +896,20 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
                 
                 onDefChange(newDefConfig,idx)
               }}
-              APIExport={undefined}
+              APIExport={(apis)=>{
+                if(_this.apiTable[uilayoutInfo.i]===undefined)//set initial camera state
+                {
+                  setTimeout(()=>{
+                    let CamInfo=WidgetLayout[idx]?.CamInfo;
+                    if(CamInfo!==undefined)
+                    {
+                      console.log(_this.apiTable[uilayoutInfo.i]?.setCameraState(CamInfo));
+                      
+                    }
+                  },300);
+                }
+                _this.apiTable[uilayoutInfo.i]=apis;
+              }}
 
               UIOption={uilayoutInfo}
               showUIOptionConfigUI={UIEditFlag}
@@ -928,6 +986,19 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
             
             </div>
             break;
+              
+          case ID_CLOSE_FS:
+            return <div key={uilayoutInfo.i}><Button  onClick={()=>{
+
+              setFSIdx(-1);
+
+            }}>
+
+              收回設定全螢幕模式
+
+            </Button>
+            </div>
+          
           default:
             
             break;
@@ -968,6 +1039,31 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
               new_WidgetLayout[idx]={...uilayoutInfo,display:check};
               updateWidgetLayout(undefined,new_WidgetLayout);
             }}/>
+
+            <Button onClick={()=>{
+              console.log(WidgetLayout,idx);
+            }}>...</Button>
+
+
+            <Button onClick={()=>{
+              setFSIdx((FSIdx==-1)?idx:-1);
+            }}>FullScreen</Button>
+
+            <br/>
+            <Button onClick={()=>{
+              let CamInfo=_this.apiTable[uilayoutInfo.i]?.getCameraState();
+              // console.log(_this.apiTable[uilayoutInfo.i]?.getCameraState());
+
+              let new_WidgetLayout=[...WidgetLayout];
+              new_WidgetLayout[idx]={...uilayoutInfo,CamInfo};
+              updateWidgetLayout(undefined,new_WidgetLayout);
+            }}>SaveCam</Button>
+
+            <Button onClick={()=>{
+              let CamInfo=WidgetLayout[idx]?.CamInfo;
+              if(CamInfo!==undefined)
+                console.log(_this.apiTable[uilayoutInfo.i]?.setCameraState(CamInfo));
+            }}>SetCam</Button>
 
           </div>
         }
@@ -1384,16 +1480,23 @@ function VIEWUI(){
       if(setting.type==="SEL_CBS")
       {//preset
         await new Promise((resolve,reject)=>{
-          _this.listCMD_Vairable.USER_INPUT=setting.data.map((info:any)=>info.default);
+          console.log("setting:",setting)
+          let data=(typeof setting.data === 'function')?setting.data():setting.data;
+          _this.listCMD_Vairable.USER_INPUT=data.map((info:any)=>info.default);
           _this.listCMD_Vairable.USER_INPUT_LOCK=false;
-          let updateUI=(data:any)=>
+          let updateUI=(data_:any)=>
           {
 
-            let content=data.map((info:any,dataIndex:number)=>{
+            let data=(typeof data_ === 'function')?data_():data_;
+            let content=data.map((info_:any,dataIndex:number)=>{
 
+              if(info_==null)return null;
+              let info=(typeof info_ === 'function')?info_():info_;
+
+              let opts=(typeof info.opts === 'function')?info.opts():info.opts;
               let doms=
 
-              info.opts.map((opt:any)=>{
+              opts.map((opt:any)=>{
 
 
 
@@ -1510,10 +1613,10 @@ function VIEWUI(){
                   }}>{opt}</Button>
               })
 
-              console.log(doms)
+              console.log(info)
               return <>
                 
-                {(info.text===undefined || info.text===null)?null:<Divider> {(typeof info.text === 'string')?info.text:info.text(dataIndex)} </Divider>}
+                {(info.text===undefined || info.text===null)?null:<Divider> <p onClick={(info.onClick!==undefined)?(()=>info.onClick(updateUI)):undefined}>{(typeof info.text === 'string')?info.text:info.text(dataIndex)}</p> </Divider>}
     
 
                 {doms}
@@ -1689,6 +1792,7 @@ function VIEWUI(){
                   //  layouts={layouts} 
                   breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
                   cols={{ lg: 5, md: 5, sm: 5, xs: 5, xxs: 5 }}
+                  rows={5}
                   //  // rowHeight={300}
                   //  // width={1000}
                   resizeHandles={["se"]}
@@ -1830,7 +1934,7 @@ function VIEWUI(){
             console.log(cam,index)}
           
           
-          }>{cam.id}</div>,cam.id,
+          }>{cam.side_name||cam.id}</div>,cam.id,
           cam.available?<LinkOutlined/>:<DisconnectOutlined/>) )))
     ),
     menuCol(<Dropdown
