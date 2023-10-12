@@ -111,15 +111,15 @@ let SYS_CONFIG = {
   Reel_Hole_Distance: 4,
   HeadReleaseLoc:[171,279,60],
 
-  PickReadyLoc:[300,100],
+  PickReadyLoc:[300,140],//[300,100],
   Feeder_prePick_lift:2,
   Feeder_postPick_lift:7,
 
 
 
   SideCam_mmpp:0.07,
-  SideCam_InspLoc:[305,156,28],
-  SideCam_RAngOffset:[20+20,10+20,-10+20,-10+20],
+  SideCam_InspLoc:[298,156,30],
+  SideCam_RAngOffset:[20+25,15+25,0+25,-10+25],
   // SideCam_RAngOffset_Side:[17,6,-10,-10],
 
   SideCam_RAngOffset_Side:[17,6,-10,-10],
@@ -139,6 +139,19 @@ let SYS_CONFIG = {
   Reel_postPick_Z:50,
 
 
+
+  Calib_Target_Info:
+    {
+        "nloc_btm": {
+            "x": 616.1170654296875,
+            "y": 694.7062377929688
+        },
+        "nloc_side": {
+            "x": 1637.7774658203125,
+            "y": 665.2476196289062
+        }
+    }
+  
 }
 
 
@@ -393,7 +406,7 @@ function calibInfoSafeCheck(calibInfo = undefined) {
       zMaxAbsOffset = Math.max(zMaxAbsOffset, Math.abs(zoffset));
     }
 
-    let maxOffsetThres = 2;
+    let maxOffsetThres = 2.3;
     let maxOffsetThres_Z = 3;
     if (xMaxAbsOffset > maxOffsetThres || xMaxAbsOffset < -maxOffsetThres ||
       yMaxAbsOffset > maxOffsetThres || yMaxAbsOffset < -maxOffsetThres ||
@@ -685,7 +698,9 @@ async function HeadCalibCalc(actRec) {
       return new tv3(xsum, ysum, 0);
     });
 
-    let nozzleCenter0 = nozzleCenter[0].clone();
+    let nozzleCenter0 = SYS_CONFIG.Calib_Target_Info.nloc_btm;
+    nozzleCenter0=new tv3(nozzleCenter0.x,nozzleCenter0.y,0);
+    
     let nozzleXYOffset = nozzleCenter.map(nc => nc.sub(nozzleCenter0).applyMatrix3(M_Pix2XY).multiplyScalar(-1))
     XYCalibInfo = {
       conv: {
@@ -712,10 +727,12 @@ async function HeadCalibCalc(actRec) {
     console.log(Zdiff, nLocDiffZ, nLocDiffZ / Zdiff);
     let zUpP = Zdiff / nLocDiffZ;
 
-
+  
+    
+    console.log(actRec);
     let zuOffset = actRec.map(rec => {
 
-      return -(rec[6].nloc_side.x - actRec[0][6].nloc_side.x) * zUpP;
+      return -(rec[0].nloc_side.x - SYS_CONFIG.Calib_Target_Info.nloc_side.x) * zUpP;
     });
     console.log("Z zUpP:", zUpP, " offset:", zuOffset);
     ZCalibInfo = {
@@ -1181,18 +1198,18 @@ async function FeederPickAct(availItems, Feeder_loc_Convert, F = 500, ACC = 1000
 
     let pickAngle = -availItems_pick[objIndex].angle * 180 / Math.PI;
     pickAngle %= 180;
-    await G(`G1  X${Xtar + xyPreOffset} Y${Ytar + xyPreOffset}` +
-      ` Z${preZIdx + 1}_${restZ} Z${i + 1}_${tarZ + Zprelift} ` +
-      ` R${preZIdx + 1}_${0} R${i + 1}_${pickAngle} ${FA}`)
+    await G(`G1  X${(Xtar + xyPreOffset).toFixed(4)} Y${(Ytar + xyPreOffset).toFixed(4)}` +
+      ` Z${preZIdx + 1}_${restZ} Z${i + 1}_${(tarZ + Zprelift).toFixed(4)} ` +
+      ` R${preZIdx + 1}_${0} R${i + 1}_${(pickAngle).toFixed(4)} ${FA}`)
 
     if (await EMCheckStopPointCB({ type: "FeederPicking", state: "prep", headIdx: i }) == false) break;
     // await G(`G04 P10`);
-    await G(`G1  X${Xtar} Y${Ytar} Z${i + 1}_${tarZ+1} ${FA}`)
+    await G(`G1  X${(Xtar).toFixed(4)} Y${(Ytar).toFixed(4)} Z${i + 1}_${(tarZ+1).toFixed(4)} ${FA}`)
 
     if (await EMCheckStopPointCB({ type: "FeederPicking", state: "pick", headIdx: i }) == false) break;
 
     await G(`M42 P${SYS_OUT_PIN_DEF["Arm_A_Pick" + (i + 1)]} S1`)
-    await G(`G1  X${Xtar} Y${Ytar} Z${i + 1}_${tarZ} ${FA}`)
+    await G(`G1  X${(Xtar).toFixed(4)} Y${(Ytar).toFixed(4)} Z${i + 1}_${(tarZ).toFixed(4)} ${FA}`)
 
     await G(`G04 P5`);
 
@@ -1223,7 +1240,7 @@ const abortController = new AbortController();
 
 
 let ReelENC = 0;
-async function ReelGoAdv(adv_mm = 1, RunSTR = ` F20 ACC${50}`) {
+async function ReelGoAdv2(adv_mm = 1, RunSTR = ` F20 ACC${50}`) {
 
 
   // console.log("AUX_SET_ENC>>>>>",await Lib.CNCSend({ "type": "AUX_SET_ENC",value:0, aid: 0 }));
@@ -1246,6 +1263,35 @@ async function ReelGoAdv(adv_mm = 1, RunSTR = ` F20 ACC${50}`) {
 
   // await G("G04 P0");
   await G(`G01.ENC A${A_Tar} ENC${ReelENC} SMULT500 F50 ACC100`);
+
+}
+
+async function ReelGoAdv(adv_mm = 1, RunSTR = ` F20 ACC${50}`) {
+
+
+  // console.log("AUX_SET_ENC>>>>>",await Lib.CNCSend({ "type": "AUX_SET_ENC",value:0, aid: 0 }));
+  // ReelENC=0
+
+
+  let encStep = adv_mm;
+  ReelENC += encStep;
+  let A_Tar = Math.round((SYS_CONFIG.A_Axis_Units_to_mm*1.2) * encStep);
+
+  await G("G92 A0");
+
+  let DRunSpace = 0;
+  if (adv_mm>0) {
+    //ENC_ES will cutoff the motion when the encoder is hit
+    await G(`G01.ENC_ES A${A_Tar + DRunSpace} AX_A ENC${ReelENC} ${RunSTR}`);
+    
+    
+    //G01.ENC will run extended steps until the encoder is hit
+    await G(`G01.ENC A${A_Tar + DRunSpace+SYS_CONFIG.A_Axis_Units_to_mm}  ENC${ReelENC} SMULT100 F500`);
+  }
+  else {
+    await G(`G01 ${RunSTR}`);
+  }
+
 
 }
 
@@ -1538,8 +1584,8 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
   let GoRun = true;
 
-  let ACC = 4500;
-  let F = 1500;
+  let ACC = 4800;
+  let F = 1700;
   let FA = `F${F} ACC${ACC}`
   let FA_SZ = `F${2000} ACC${5500}`
   await Enter_Z2SafeZone_n_Check();
@@ -1616,7 +1662,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
 
       await G(`G1 X${SYS_CONFIG.PickReadyLoc[0]} Y${SYS_CONFIG.PickReadyLoc[1]} ${FA}`)
-      await G(`M400`)
+
 
       let curTime = Date.now();
 
@@ -1635,7 +1681,11 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
       if (await EMCheckStopPointCB({ type: "Begin", count: PassCount, speed: speed }) == false) break;
       // console.log("____FeederReadyInfo:",FeederReadyInfo);
-      SigWait_Trig(ReelClear2Check_key);
+
+
+
+      // await delay(500);
+      // await G(`M400`)
       //1.1 picking
 
       // console.log("____Picking");
@@ -1647,10 +1697,12 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
       let pickHeadIndexs = headState.map((st, i) => st == E_headState.empty ? i : -1).filter(i => i != -1);
       console.log("$$pickHeadIndexs:", pickHeadIndexs);
       let headPickedIndexs = await FeederPickAct(FeederReadyInfo, Feeder_loc_Convert, F, ACC, pickHeadIndexs, feederFetchAdj,false, EMCheckStopPointCB);
+      
       headPickedIndexs.forEach(i => headState[i] = E_headState.mayHaveObj);
       console.log("$$headState:", headState);
 
       await G(`M400`)
+      SigWait_Trig(ReelClear2Check_key);
       if (await EMCheckStopPointCB({ type: "PickDone" }) == false) break;
 
 
@@ -1708,9 +1760,9 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
           if (await EMCheckStopPointCB({ type: "SideCheck",state:"side_side" }) == false) break;
 
 
-          Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_L_Light2, "state": 0, aid: 0 })
 
           await Enter_Z2SafeZone_n_Check();
+          Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_L_Light2, "state": 0, aid: 0 })
 
 
 
@@ -1914,6 +1966,8 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
       let RestPlaceNumber=0;
 
+
+      let pickNGCount=0;
       ///////////////////////////////////////////Reel loc check///////////////////////////////////////////////
       {
         let ReelSlotAdvCount = ReelReadyInfo.advCount;
@@ -1990,6 +2044,26 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
           if (await EMCheckStopPointCB({ type: "ReelLocating" }) == false) break;
 
           await G(`M400`)
+
+          if(1){
+            let CurENCReading=(await Lib.CNCSend({ "type": "AUX_ENC_V", aid: 0 })).enc_v
+            console.log("ENC_CHECK:",CurENCReading,ReelENC);
+
+            if(CurENCReading!=ReelENC && (CurENCReading-1)!=ReelENC)
+            {
+              await Enter_Z2SafeZone_n_Check();
+              // break;
+              throw new Error(`ENC_CHECK_FAIL  CurENCReading:${CurENCReading}!=tarENC:${ReelENC}`);
+            }
+          }
+          else
+          {
+
+            await delay(4);
+          }
+          
+
+
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 1, aid: 0 })
 
           await api.CameraSWTrigger("Hikrobot-2BDF79315117-00K79315117", "CAM_ReelLoc", reelLocRepTID, true);
@@ -2020,7 +2094,6 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
         SigWait_Trig(FeederClear2Check_key);
 
 
-        let no
         // let FA = `F${F} ACC${ACC}`
         if (true) {
 
@@ -2108,6 +2181,13 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
                       - j * SYS_CONFIG.Head_Base_Dist;
             let Ypos = reelOffset.y + baseLoc[1] + yoffset + objXErr[headIdx];
             // await G(`M400`)
+            if(headIdx==4-1 &&preHeadIdx ==1)
+            {
+              let GCode = `Z${preHeadIdx}_${SYS_CONFIG.Reel_postPlace_Z}  R${j + 1}_${hRs[j]} ${FA_SZ}`
+              
+              await G(`G01 ${GCode}`);
+
+            }
             let GCode = `X${Xpos.toFixed(3)} Y${Ypos.toFixed(3)} Z${preHeadIdx}_${SYS_CONFIG.Reel_postPlace_Z} Z${headIdx + 1}_${cZ + SYS_CONFIG.Reel_prePlace_lift}   R${j + 1}_${hRs[j]} ${FA_SZ}`
             
             await G(`G01 ${GCode}`);
@@ -2161,7 +2241,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
             let slotIdx = cleanSlotList[slotFillCount++];
             if (slotIdx < 0) break;
             if (slotIdx >= objInspResult.length - ReelSlotAdvCount) break;//do not pick slots that are not quality inspected yet
-
+            pickNGCount++;
             headState[headIdx] = E_headState.NG;
 
             let xoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[headIdx].x);
@@ -2279,8 +2359,9 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
         break;
       }
 
-
-      if(XYRelocCD<=0&&headState[0]==E_headState.empty)
+      //HACK fix, somehow the XY robot would drift after a while, so adjust it back here
+      //Also, do adjust only if head0 is empty.
+      if(XYRelocCD<=0 &&pickNGCount==0 &&headState[0]==E_headState.empty)
       {
 
         let X=SYS_CONFIG.PickReadyLoc[0];
@@ -2298,7 +2379,8 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
           break;
         }
         let cur_nloc_btm=actRec3[0][0].nloc_btm;
-        let ref_nloc_btm=v.CalibInfo.actInfo.actRec[0][0].nloc_btm;
+        let ref_nloc_btm=SYS_CONFIG.Calib_Target_Info.nloc_btm;
+
         let tv3 = THREE.Vector3
         let locDiff_pix=new tv3(cur_nloc_btm.x-ref_nloc_btm.x,cur_nloc_btm.y-ref_nloc_btm.y,0)
 
@@ -2360,11 +2442,11 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 function vof(v_f) {
   return (typeof v_f === 'function')?v_f():v_f;
 }
-async function test3() {
+async function PackingCtrlPanelUI() {
 
-  let initM114 = (await G("M114")).M114;
+  // let initM114 = (await G("M114")).M114;
   await G("M121")
-  // let initM114={X:0,Y:0,Z1_:0,Z2_:0,Z3_:0,Z4_:0}
+  let initM114={X:0,Y:0,Z1_:0,Z2_:0,Z3_:0,Z4_:0}
 
   initM114.X = Math.round(initM114.X * 100) / 100;
   initM114.Y = Math.round(initM114.Y * 100) / 100;
@@ -2862,7 +2944,7 @@ async function test3() {
       },
       {
         type: "button",
-        text: "SHOT_Feeder",
+        text: "柔震照相",
         onClick: async (updateCB) => {
 
           let FA = `F${F} ACC${ACC}`
@@ -2879,7 +2961,7 @@ async function test3() {
 
       {
         type: "button",
-        text: "SHOT_Side",
+        text: "側照照相",
         onClick: async (updateCB) => {
 
           let hRs = [];
@@ -3087,7 +3169,9 @@ async function test3() {
 
       {
         type: "button", key: "Update",
-        text: () => ">>" + JSON.stringify(Feeder_loc_conv_offset),
+        text: () => ">>" + JSON.stringify(Feeder_loc_conv_offset,(key, val)=>val===undefined?val:
+          (val.toFixed ? Number(val.toFixed(4)) : val)
+          ),
         onClick: async (updateCB) => {
 
 
@@ -3403,6 +3487,13 @@ async function test3() {
         text: "Adv1",
         onClick: async (updateCB) => {
           await ReelGoAdv(1);
+          await G("M400")
+          
+          let CurENCReading=(await Lib.CNCSend({ "type": "AUX_ENC_V", aid: 0 })).enc_v
+
+
+          console.log("ENC_CHECK:",CurENCReading,ReelENC);
+
 
         }
       },
@@ -3422,6 +3513,14 @@ async function test3() {
           await ReelGoAdv(4 * 4);
         }
       },
+      {
+        type: "button",
+        text: "+4*16",
+        onClick: async (updateCB) => {
+
+          await ReelGoAdv(4 * 16);
+        }
+      },
     ]
   }
 
@@ -3432,9 +3531,10 @@ async function test3() {
 
 
 
+      "$t:柔震:",
       {
         type: "button",
-        text: "FV1",
+        text: "震",
         onClick: async (updateCB) => {
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_A_Run1, "state": 1, aid: 0 })
@@ -3454,7 +3554,7 @@ async function test3() {
 
       {
         type: "button",
-        text: "FV2",
+        text: "補料",
         onClick: async (updateCB) => {
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_F_Run1, "state": 1, aid: 0 })
@@ -3475,7 +3575,7 @@ async function test3() {
 
       {
         type: "button",
-        text: "FL1",
+        text: "柔震打光",
         onClick: async (updateCB) => {
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_L_Light1, "state": 1, aid: 0 })
@@ -3493,7 +3593,7 @@ async function test3() {
       },
       {
         type: "button",
-        text: "FL2",
+        text: "側照光",
         onClick: async (updateCB) => {
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_L_Light2, "state": 1, aid: 0 })
@@ -3511,9 +3611,11 @@ async function test3() {
       },
 
 
+      "$\n",
+      "$t:編帶:",
       {
         type: "button",
-        text: "RL1",
+        text: "光",
         onClick: async (updateCB) => {
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 1, aid: 0 })
@@ -3535,7 +3637,7 @@ async function test3() {
 
       {
         type: "button",
-        text: "RP1",
+        text: "下壓",
         onClick: async (updateCB) => {
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_A_Run1, "state": 1, aid: 0 })
@@ -3554,9 +3656,39 @@ async function test3() {
 
 
 
+      "$\n",
+
+      "$t:吸嘴: ",
+      ...[0,1,2,3].map((i)=>({
+          type: "button",
+          text: "N"+i, id: "N"+i+"_open",
+          onClick: async (updateCB) => {
+            await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": i, "state": 1, aid: 0 })
+
+          }
+      }))
+      ,
+      "$t:   ",
       {
         type: "button",
-        text: "IL1",
+        text: "X", id: "Nclose",
+        onClick: async (updateCB) => {
+          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": 0, "state": 0, aid: 0 })
+          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": 1, "state": 0, aid: 0 })
+          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": 2, "state": 0, aid: 0 })
+          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": 3, "state": 0, aid: 0 })
+
+        }
+      },
+
+
+
+      "$\n",
+      "$\n",
+
+      {
+        type: "button",
+        text: "校正站光",
         onClick: async (updateCB) => {
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Insp_L_Light1, "state": 1, aid: 0 })
@@ -3572,30 +3704,6 @@ async function test3() {
 
         }
       },
-
-      "$\n",
-
-      ...[0,1,2,3].map((i)=>({
-          type: "button",
-          text: "N"+i, id: "N"+i+"_open",
-          onClick: async (updateCB) => {
-            await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": i, "state": 1, aid: 0 })
-
-          }
-      }))
-      ,
-      "$\n",
-      {
-        type: "button",
-        text: "NX", id: "Nclose",
-        onClick: async (updateCB) => {
-          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": 0, "state": 0, aid: 0 })
-          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": 1, "state": 0, aid: 0 })
-          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": 2, "state": 0, aid: 0 })
-          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": 3, "state": 0, aid: 0 })
-
-        }
-      }
 
     ]
   }
@@ -3644,8 +3752,9 @@ async function test3() {
         disabled:CycleRunStat.pausePromise===undefined,
         onClick: async (updateCB) => {
           v.ReelPackingInfo={
-            // packingSeq:[2000,-10,2,-10]//-160]
-            packingSeq:[5500]//-160]
+            // packingSeq:[75,-5,75,-5]//-160]
+            packingSeq:[1,-40,5500,-97,1]//-160]
+            // packingSeq:[5000,-97,1]//-160]
             // packingSeq:[-1,1,-2,2,-3,3,-4,4,-5,5,-6,6,-7,7,-8,8,-9,9,-10,10]
           }
           
@@ -3819,22 +3928,22 @@ async function test3() {
 
 
   let lv = {}
-  let hideOPT=false
+  let hideTestFunction=true
+  //hideTestFunction?[]: 
   let cbInfo =()=>[
     {
       text: () => "UI... ",
-      onClick:(updateCB)=>{
-        console.log("UI... ");
-        hideOPT=!hideOPT;
+      // onClick:(updateCB)=>{
+      //   console.log("UI... ");
+      //   hideOPT=!hideOPT;
 
-        updateCB(UIStack_Current().UI)
-      },
-      opts:hideOPT?[]: [
-
+      //   updateCB(UIStack_Current().UI)
+      // },
+      opts:[
 
         {
-          type: "button", key: "CalibCenter",
-          text: () => "CalibCenter",
+          type: "button", key: "1: 歸零並校正",
+          text: () => "1: 歸零並校正",
           onClick: async (updateCB) => {
 
             let cInfo = [
@@ -3852,7 +3961,7 @@ async function test3() {
                   "$t: ",
                   {
                     type: "button", key: "HOMING",
-                    text: () => "HOMING",
+                    text: () => "機械歸零",
                     onClick: async (updateCB) => {
 
                       await SimpHoming();
@@ -3861,16 +3970,16 @@ async function test3() {
                   "$t:           ",
                   {
                     type: "button", key: "DO_CALIB",
-                    text: () => "DO_CALIB",
+                    text: () => "精細校正",
                     onClick: async (updateCB) => {
 
                       await HeadCalib();
-                      await HeadCalib();
+                      // await HeadCalib();
                     }
                   },
                   {
                     type: "button", key: "DO_CHECK",
-                    text: () => "DO_CHECK",
+                    text: () => "驗證校正",
                     onClick: async (updateCB) => {
 
                       await HeadVerification(
@@ -3884,7 +3993,7 @@ async function test3() {
                   "$t:           ",
                   {
                     type: "button", key: "RST_CALIB",
-                    text: () => "RST_CALIB",
+                    text: () => "刪除校正資料",
                     onClick: async (updateCB) => {
 
                       v.CalibInfo = undefined
@@ -3911,14 +4020,58 @@ async function test3() {
               console.log(result)
             })
           }
-        },
-        {
+        },"$\n",{
           type: "button", key: "FeederLocMapping",
-          text: () => "FeederLocMapping",
+          text: () => "2:料盤定位",
+
+
+          onClick: async (updateCB) => {
+
+
+
+
+            let cInfo = [
+              {
+                text: () => "",
+                opts: [
+                  {
+                    type: "button", key: "back",
+                    text: () => "<=",
+                    onClick: async (updateCB) => {
+                      UIStackBack(updateCB, { ok: "OK" });
+                    }
+                  },],
+                callback: async (idx, key, updateCB) => {
+
+                  // cbInfo[idx].text =  " <<<距離:"+advUnit+" 速度:"+F,
+
+                  updateCB(cInfo)
+                }, default: 0
+              },
+              FACC_setup_UI,
+              JOG_UI,
+              Feeder_loc_UI,
+            ]
+            UIStackGo(updateCB, cInfo, (result) => {
+              console.log(result)
+            })
+
+
+
+
+
+
+
+
+
+          }
+
+        },"$\n",{
+          type: "button", key: "ReelLocMapping",
+          text: () => "3:料帶定位",
           onClick: async (updateCB) => {
 
             let JOG_HIDE = true;
-            let SIMP_CTRL_IO_HIDE = true;
             let cInfo =()=> [
 
               {
@@ -3952,6 +4105,41 @@ async function test3() {
               JOG_HIDE?null:JOG_UI,
               // Feeder_loc_UI,
               Reel_loc_UI,
+              // Reel_loc_UI,
+            ]
+            UIStackGo(updateCB, cInfo, (result) => {
+              console.log(result)
+            })
+          }
+        },"$\n",{
+          type: "button", key: "ExeLocMapping",
+          text: () => "4:走位定位確認",
+
+        },"$\n",{
+          type: "button", key: "PackUI",
+          text: () => "5:包裝介面",
+          onClick: async (updateCB) => {
+
+            let SIMP_CTRL_IO_HIDE = false;
+            let cInfo =()=> [
+
+              {
+                text: () => "Feeder Loc Mapping",
+                opts: [
+                  {
+                    type: "button", key: "back",
+                    text: () => "<=",
+                    onClick: async (updateCB) => {
+                      UIStackBack(updateCB, { ok: "OK" });
+                    }
+                  },],
+                callback: async (idx, key, updateCB) => {
+
+                  // cbInfo[idx].text =  " <<<距離:"+advUnit+" 速度:"+F,
+
+                  updateCB(cInfo)
+                }, default: 0
+              },
               GCtrl_UI2(),
               ,
               {
@@ -3965,67 +4153,27 @@ async function test3() {
                 opts:SIMP_CTRL_IO_HIDE?[]:Simple_IO_Ctrl_UI.opts
               },
 
-              {
-                text: () => "XXXXX",
-                opts: [
-                  {
-                    type: "button", key: "DFF",
-                    text: () => "Feeder loc Calib",
-                    onClick: async (updateCB) => {
-
-
-
-
-                      let cInfo = [
-                        {
-                          text: () => "",
-                          opts: [
-                            {
-                              type: "button", key: "back",
-                              text: () => "<=",
-                              onClick: async (updateCB) => {
-                                UIStackBack(updateCB, { ok: "OK" });
-                              }
-                            },],
-                          callback: async (idx, key, updateCB) => {
-          
-                            // cbInfo[idx].text =  " <<<距離:"+advUnit+" 速度:"+F,
-          
-                            updateCB(cInfo)
-                          }, default: 0
-                        },
-                        FACC_setup_UI,
-                        JOG_UI,
-                        Feeder_loc_UI,
-                      ]
-                      UIStackGo(updateCB, cInfo, (result) => {
-                        console.log(result)
-                      })
-
-
-
-
-
-
-
-
-
-                    }
-                  },],
-                callback: async (idx, key, updateCB) => {
-
-                  // cbInfo[idx].text =  " <<<距離:"+advUnit+" 速度:"+F,
-
-                  updateCB(cInfo)
-                }, default: 0
-              },
               // Reel_loc_UI,
             ]
             UIStackGo(updateCB, cInfo, (result) => {
               console.log(result)
             })
           }
-        },
+        }
+
+
+      ],
+    },
+    {
+      text: () => "測試 ",
+      onClick:(updateCB)=>{
+        hideTestFunction=!hideTestFunction;
+
+        updateCB(UIStack_Current().UI)
+      },
+      opts:hideTestFunction?[]: 
+      [
+        ,
         {
           type: "button", key: "ReelTest",
           text: () => "ReelTest",
@@ -4033,6 +4181,8 @@ async function test3() {
 
             let speed_mmps=30;
             let distance_mm=100;
+
+            let latestEncReading=0;
 
             let cInfo =  () => [
 
@@ -4158,6 +4308,22 @@ async function test3() {
                     }
                   },
 
+                  "$\n",
+
+                  {
+                    type: "button",
+                    text: "ReelRead:"+ReelENC,
+                    onClick: async (updateCB) => {
+
+                      ReelENC =(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value
+                      // await ReelGoAdv(1);
+
+                      updateCB(UIStack_Current().UI)
+                    }
+                  },
+
+  
+
 
                 ]
               },
@@ -4218,10 +4384,9 @@ async function test3() {
         //     console.log(`>>end`)
         //   }
         // }
+      ]
+    }
 
-
-      ],
-    },
 
     // Feeder_loc_UI,
   ]
@@ -4512,13 +4677,120 @@ async function TESTPrmoise() {
 }
 
 
+async function testV2()
+{
+  // await Lib.CNCSend({ "type": "TTTT", vec:[1000,23],seg_time_us:100000 });
+  // await Lib.CNCSend({ "type": "TTTT", vec:[-1000,23],seg_time_us:100000 });
+  // await Lib.CNCSend({ "type": "TTTT", vec:[0,-46] ,seg_time_us:4600});
+  let segs=160;
+  let circle_segs=segs;
+  let preP=undefined
+  let prepreP=undefined
+
+  let approachX=0;
+  let approachY=0;
+
+  let updatePeriod=30*1000;//200*20*1000/segs ;
+
+
+
+
+  let filterInfo={
+    locVec:[0,0],
+
+    preSpeed:[0,0],
+    alpha:0.3,
+  }
+  function locFilterUpdate(newLoc)
+  {
+    filterInfo.locVec=filterInfo.locVec.map((v,idx)=>
+    {
+      let diff=(newLoc[idx]-v)*filterInfo.alpha;
+      let speed=diff/updatePeriod;
+
+      {
+        let speedDiff=speed-filterInfo.preSpeed[idx];
+        let speedDiffLimit=0.002;
+        if(speedDiff>speedDiffLimit)  speedDiff=speedDiffLimit;
+        if(speedDiff<-speedDiffLimit) speedDiff=-speedDiffLimit;
+  
+        speed=filterInfo.preSpeed[idx]+speedDiff;
+        speed*=0.9;
+        if(speed>0.05) speed=0.05;
+        if(speed<-0.05) speed=-0.05;
+        filterInfo.preSpeed[idx]=speed;
+  
+      }
+
+
+      return v+speed*updatePeriod;
+    });
+    // console.log(filterInfo.preSpeed);
+
+    return filterInfo.locVec;
+  }
+
+  let preLocVec=[0,0];
+
+  for(let i=0;i<segs*2;i++)
+  {
+    let x=10000*Math.sin(6*i/circle_segs*3.14159*2);
+    let y=10000*Math.cos(i/circle_segs*3.14159*2);
+
+    let locVec=locFilterUpdate([x,y]);
+    let locAdvVec=locVec.map((locEle,idx)=>Math.round(locEle-preLocVec[idx]));
+    preLocVec=locVec;
+    
+    let p= Lib.CNCSend({ "type": "TTTT", vec:locAdvVec,seg_time_us:updatePeriod });
+
+    prepreP=preP;
+    preP=p;
+    if(prepreP!==undefined)await prepreP
+  }
+
+  // for(let i=0;i<segs;i++)
+  // {
+  //   let x=100000*(i%40<2?-1:1);
+  //   let y=0;
+
+  //   let locVec=locFilterUpdate([x,y]);
+  //   let locAdvVec=locVec.map((locEle,idx)=>Math.round(locEle-preLocVec[idx]));
+  //   preLocVec=locVec;
+    
+  //   let p= Lib.CNCSend({ "type": "TTTT", vec:locAdvVec,seg_time_us:updatePeriod });
+  //   prepreP=preP;
+  //   preP=p;
+  //   if(prepreP!==undefined)await prepreP
+  // }
+
+
+  for(let i=0;i<300;i++)
+  {
+    let x=0;
+    let y=0;
+
+    let locVec=locFilterUpdate([x,y]);
+    let locAdvVec=locVec.map((locEle,idx)=>Math.round(locEle-preLocVec[idx]));
+    preLocVec=locVec;
+    
+    let p= Lib.CNCSend({ "type": "TTTT", vec:locAdvVec,seg_time_us:updatePeriod });
+    prepreP=preP;
+    preP=p;
+    if(prepreP!==undefined)await prepreP
+  }
+
+
+  // await preP
+}
+
 ; ({
   INIT,
   HeadGo,
   CNCTestRun,
   SimpHoming,
   test2,
-  test3,
+  PackingCtrlPanelUI,
+  testV2,
   testInit,
   testtest,
   CYCLERun_test,

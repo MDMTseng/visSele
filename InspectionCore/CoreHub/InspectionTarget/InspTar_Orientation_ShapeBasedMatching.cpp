@@ -479,7 +479,7 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
     float index=JFetch_NUMBER_ex(info,"index");
     if(index==index)
     {
-      targetIdx=recentSrcStageInfoSetIdx.size()-index-1;
+        targetIdx = recentSrcStageInfoSetIdx.getHead(index);
     }
     else
     {

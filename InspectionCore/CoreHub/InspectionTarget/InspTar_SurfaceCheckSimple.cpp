@@ -508,7 +508,41 @@ int STAGEINFO_SCS_CAT_BASIC_reducer(int sum_cat,int cat)
 }
 
 
+template <class MAT_ValueType=uint8_t>
 float findCrossLoc(Mat &m,float value,bool reverseDir=false)
+{
+  int idx1=-1;
+  int val1;
+  int idx2=-1;
+  int val2;
+
+
+  int width=m.size().width;
+  for(int _i=0;_i<width;_i++)
+  {
+    int i=(reverseDir==false)?_i:width-_i-1;
+    MAT_ValueType v=m.at<MAT_ValueType>(0,i);
+    // printf("%03d ",v);
+    if(v<value)
+    {
+      idx1=i;
+      val1=v;
+    }
+    else
+    {
+      idx2=i;
+      val2=v;
+    }
+
+    if(idx1!=-1 && idx2!=-1)break;
+  }
+  // printf("\n");
+
+
+  return (idx2+idx1)/2;
+}
+
+float findCrossLoc_021(Mat &m,bool reverseDir=false)
 {
   int idx1=-1;
   int val1;
@@ -522,7 +556,7 @@ float findCrossLoc(Mat &m,float value,bool reverseDir=false)
     int i=(reverseDir==false)?_i:width-_i-1;
     int v=m.at<uint8_t>(0,i);
     // printf("%03d ",v);
-    if(v<value)
+    if(v==0)
     {
       idx1=i;
       val1=v;
@@ -912,6 +946,94 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         indexArr_w_priority.resize(jsub_regions_L);
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+        float mult_bri_Count=0;
+        cv::Scalar mult_bri=0;
+        for(int j=0;j<jsub_regions_L;j++)
+        {
+
+          int subregIdx=j;
+          cJSON *jsub_region= cJSON_GetArrayItem(jsub_regions,subregIdx);
+          string subRegType=JFetch_STRING_ex(jsub_region,"type");
+          if(subRegType!="BrightnessBalance")continue;
+
+          if(JFetch_TRUE(jsub_region,"enable")==false)continue;
+
+          int srW=(int)JFetch_NUMBER_ex(jsub_region,"region.w",-1)/downSampleF;
+          int srH=(int)JFetch_NUMBER_ex(jsub_region,"region.h",-1)/downSampleF;
+
+          int srX=(int)JFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF;
+          int srY=(int)JFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF;
+          // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+          XYWH_clipping(srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+          if(srW<=1 || srH<=1)
+          {
+            //invalid number
+          }
+
+          Mat sub_region_ROI_origin_img =_def_temp_img_ROI(Rect(srX, srY, srW, srH));
+          
+          cv::Scalar pixSum= cv::sum(sub_region_ROI_origin_img);  
+          pixSum/=(srW*srH);
+
+
+
+          double bTarR=JFetch_NUMBER_ex(jsub_region,"bTar.r",128);
+          double bTarG=JFetch_NUMBER_ex(jsub_region,"bTar.g",128);
+          double bTarB=JFetch_NUMBER_ex(jsub_region,"bTar.b",128);
+          cv::Scalar pixTar={bTarB,bTarG,bTarR};
+
+          LOGI("pixTar:%f %f %f  pixSum:%f %f %f",pixTar[0],pixTar[1],pixTar[2],pixSum[0],pixSum[1],pixSum[2]);
+          cv::Scalar multTar;
+          
+          multTar[0]=pixTar[0]/pixSum[0];
+          multTar[1]=pixTar[1]/pixSum[1];
+          multTar[2]=pixTar[2]/pixSum[2];
+          mult_bri_Count++;  
+          mult_bri+=multTar;
+
+        }
+
+        if(mult_bri_Count==0)
+        {
+          mult_bri={1,1,1};
+        }
+        else
+        {
+          mult_bri/=mult_bri_Count;
+          LOGI("mult_bri:%f %f %f",mult_bri[0],mult_bri[1],mult_bri[2]);
+          // multiply(_def_temp_img_ROI,mult_bri, _def_temp_img_ROI);
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+
+
         float xShift=0;
         float yShift=0;
 
@@ -1035,34 +1157,44 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
 
-            double l_h=JFetch_NUMBER_ex(jsub_region,"rangel.h",0);
-            double l_s=JFetch_NUMBER_ex(jsub_region,"rangel.s",0);
-            double l_v=JFetch_NUMBER_ex(jsub_region,"rangel.v",0);
+            // double l_h=JFetch_NUMBER_ex(jsub_region,"rangel.h",0);
+            // double l_s=JFetch_NUMBER_ex(jsub_region,"rangel.s",0);
+            // double l_v=JFetch_NUMBER_ex(jsub_region,"rangel.v",0);
 
-            double h_h=JFetch_NUMBER_ex(jsub_region,"rangeh.h",180);
-            double h_s=JFetch_NUMBER_ex(jsub_region,"rangeh.s",255);
-            double h_v=JFetch_NUMBER_ex(jsub_region,"rangeh.v",255);
-            Mat img_HSV;
-            cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);
-            // LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
-            Scalar rangeH=Scalar(h_h,h_s,h_v);
-            Scalar rangeL=Scalar(l_h,l_s,l_v);
+            // double h_h=JFetch_NUMBER_ex(jsub_region,"rangeh.h",180);
+            // double h_s=JFetch_NUMBER_ex(jsub_region,"rangeh.s",255);
+            // double h_v=JFetch_NUMBER_ex(jsub_region,"rangeh.v",255);
+            // Mat img_HSV;
+            // cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);
+            // // LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
+            // Scalar rangeH=Scalar(h_h,h_s,h_v);
+            // Scalar rangeL=Scalar(l_h,l_s,l_v);
+
+            // Mat img_HSV_threshold;
+            // inRange(img_HSV, rangeL, rangeH, img_HSV_threshold);
+
+
 
             Mat img_HSV_threshold;
-            inRange(img_HSV, rangeL, rangeH, img_HSV_threshold);
+            cv::cvtColor(sub_region_ROI, img_HSV_threshold, cv::COLOR_BGR2GRAY);
+
+
 
             if(x_locating_mark)
             {
-              Mat axisSum;
-              cv::reduce(img_HSV_threshold, axisSum, 0, REDUCE_AVG, CV_8U);
+              Mat axisSum_f;
+              cv::reduce(img_HSV_threshold, axisSum_f, 0, REDUCE_AVG, CV_32F);
+              cv::GaussianBlur(axisSum_f, axisSum_f, cv::Size(3, 1), 3);
 
-              cv::GaussianBlur(axisSum, axisSum, cv::Size(5, 1), 5);
+              Mat axisSum;
+              axisSum_f.convertTo(axisSum, CV_8U);
+
               // LOGE("X . axisSum:%d . %d",axisSum.size().width,axisSum.size().height);
 
               Mat axisSum2;
               double otsu_threshold = cv::threshold(axisSum, axisSum2, 0 /*ignored value*/, 255, cv::THRESH_OTSU);
               // LOGE("otsu_threshold:%f",otsu_threshold);
-              int cL = findCrossLoc(axisSum,otsu_threshold,JFetch_TRUE(jsub_region,"x_locating_dir"));
+              int cL = findCrossLoc<float>(axisSum_f,otsu_threshold,JFetch_TRUE(jsub_region,"x_locating_dir"));
               // LOGE("cL:%d",cL);
 
               _xShift+=axisSum.size().width/2-cL;
@@ -1072,17 +1204,21 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
             if(y_locating_mark)
             {
+              Mat axisSum_f;
+              cv::reduce(img_HSV_threshold, axisSum_f, 1, REDUCE_AVG, CV_32F);
+              axisSum_f=axisSum_f.t();
+              cv::GaussianBlur(axisSum_f, axisSum_f, cv::Size(3, 1), 3);
+
               Mat axisSum;
-              cv::reduce(img_HSV_threshold, axisSum, 1, REDUCE_AVG, CV_8U);
-              axisSum=axisSum.t();
-              cv::GaussianBlur(axisSum, axisSum, cv::Size(5, 1), 5);
-              int factor = img_HSV_threshold.size().width;
+              axisSum_f.convertTo(axisSum, CV_8U);
+
+              // int factor = img_HSV_threshold.size().width;
               // LOGE("Y . axisSum:%d . %d . factor:%d",axisSum.size().width,axisSum.size().height,factor);
 
               Mat axisSum2;
               double otsu_threshold = cv::threshold(axisSum, axisSum2, 0 /*ignored value*/, 255, cv::THRESH_OTSU);
               // LOGE("otsu_threshold:%f",otsu_threshold);
-              int cL = findCrossLoc(axisSum,otsu_threshold,JFetch_TRUE(jsub_region,"y_locating_dir"));
+              int cL = findCrossLoc<float>(axisSum_f,otsu_threshold,JFetch_TRUE(jsub_region,"y_locating_dir"));
               // LOGE("cL:%d",cL);
 
               _yShift+=axisSum.size().width/2-cL;
@@ -1096,7 +1232,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           yShift+=_yShift;
 
         }
-
 
         Mat bg_img_ROI;
         if(background_temp.empty()==false)
@@ -1148,6 +1283,12 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
 
+        if(mult_bri_Count!=0)
+        {
+          multiply(_def_temp_img_ROI,mult_bri, _def_temp_img_ROI);
+        }
+
+
 
         {
           if(bilateral_d>1)
@@ -1166,66 +1307,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         resultMarkOverlay.resize(jsub_regions_L);
         resultMarkRegion.resize(jsub_regions_L);
         resultImage.resize(jsub_regions_L);
-
-
-        float mult_bri_Count=0;
-        cv::Scalar mult_bri=0;
-        for(int j=0;j<jsub_regions_L;j++)
-        {
-
-          int subregIdx=indexArr_w_priority[j];
-          cJSON *jsub_region= cJSON_GetArrayItem(jsub_regions,subregIdx);
-          string subRegType=JFetch_STRING_ex(jsub_region,"type");
-          if(subRegType!="BrightnessBalance")continue;
-
-          if(JFetch_TRUE(jsub_region,"enable")==false)continue;
-
-          int srW=(int)JFetch_NUMBER_ex(jsub_region,"region.w",-1)/downSampleF;
-          int srH=(int)JFetch_NUMBER_ex(jsub_region,"region.h",-1)/downSampleF;
-
-          int srX=(int)JFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF;
-          int srY=(int)JFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF;
-          // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
-          XYWH_clipping(srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
-          if(srW<=1 || srH<=1)
-          {
-            //invalid number
-          }
-
-          Mat sub_region_ROI_origin_img =_def_temp_img_ROI(Rect(srX, srY, srW, srH));
-          
-          cv::Scalar pixSum= cv::sum(sub_region_ROI_origin_img);  
-          pixSum/=(srW*srH);
-
-
-
-          double bTarR=JFetch_NUMBER_ex(jsub_region,"bTar.r",128);
-          double bTarG=JFetch_NUMBER_ex(jsub_region,"bTar.g",128);
-          double bTarB=JFetch_NUMBER_ex(jsub_region,"bTar.b",128);
-          cv::Scalar pixTar={bTarB,bTarG,bTarR};
-
-          LOGI("pixTar:%f %f %f  pixSum:%f %f %f",pixTar[0],pixTar[1],pixTar[2],pixSum[0],pixSum[1],pixSum[2]);
-          cv::Scalar multTar;
-          
-          multTar[0]=pixTar[0]/pixSum[0];
-          multTar[1]=pixTar[1]/pixSum[1];
-          multTar[2]=pixTar[2]/pixSum[2];
-          mult_bri_Count++;  
-          mult_bri+=multTar;
-
-        }
-        if(mult_bri_Count==0)
-        {
-          mult_bri={1,1,1};
-        }
-        else
-        {
-          mult_bri/=mult_bri_Count;
-          LOGI("mult_bri:%f %f %f",mult_bri[0],mult_bri[1],mult_bri[2]);
-          multiply(_def_temp_img_ROI,mult_bri, _def_temp_img_ROI);
-        }
-
-
 
 
         for(int j=0;j<jsub_regions_L;j++)
