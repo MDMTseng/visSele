@@ -443,15 +443,27 @@ export class BPG_WS
       })
   }
 
-  async CameraSWTrigger(camera_id:string,trigger_tag:string,trigger_id:number,doTriggerInfoMocking:boolean=true)
+  async CameraSWTrigger(camera_id:string,ttags:string|string[],trigger_id:number,doTriggerInfoMocking:boolean=true)
   {
+    let trigger_tag:string|undefined=undefined;
+    let trigger_tags:string[]|undefined=undefined;
+    //check if trigger_tag is string array
+    if(typeof ttags==="string")
+    {
+      trigger_tag=ttags;
+    }
+    else if(ttags instanceof Array)
+    {
+      trigger_tags=ttags;
+    }
     return this.send_P(
       "CM",0,{
         type:"trigger",
         soft_trigger:true,
         mocking_trigger_info:doTriggerInfoMocking,
         id:camera_id,
-        trigger_tag:trigger_tag,
+        trigger_tag,
+        trigger_tags,
         // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
         trigger_id:trigger_id,
       })

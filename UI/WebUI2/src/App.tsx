@@ -1480,16 +1480,23 @@ function VIEWUI(){
       if(setting.type==="SEL_CBS")
       {//preset
         await new Promise((resolve,reject)=>{
-          _this.listCMD_Vairable.USER_INPUT=setting.data.map((info:any)=>info.default);
+          console.log("setting:",setting)
+          let data=(typeof setting.data === 'function')?setting.data():setting.data;
+          _this.listCMD_Vairable.USER_INPUT=data.map((info:any)=>info.default);
           _this.listCMD_Vairable.USER_INPUT_LOCK=false;
-          let updateUI=(data:any)=>
+          let updateUI=(data_:any)=>
           {
 
-            let content=data.map((info:any,dataIndex:number)=>{
+            let data=(typeof data_ === 'function')?data_():data_;
+            let content=data.map((info_:any,dataIndex:number)=>{
 
+              if(info_==null)return null;
+              let info=(typeof info_ === 'function')?info_():info_;
+
+              let opts=(typeof info.opts === 'function')?info.opts():info.opts;
               let doms=
 
-              info.opts.map((opt:any)=>{
+              opts.map((opt:any)=>{
 
 
 
@@ -1606,10 +1613,10 @@ function VIEWUI(){
                   }}>{opt}</Button>
               })
 
-              console.log(doms)
+              console.log(info)
               return <>
                 
-                {(info.text===undefined || info.text===null)?null:<Divider> {(typeof info.text === 'string')?info.text:info.text(dataIndex)} </Divider>}
+                {(info.text===undefined || info.text===null)?null:<Divider> <p onClick={(info.onClick!==undefined)?(()=>info.onClick(updateUI)):undefined}>{(typeof info.text === 'string')?info.text:info.text(dataIndex)}</p> </Divider>}
     
 
                 {doms}

@@ -260,6 +260,15 @@ export async function listCMDPromise(
     return undefined;
   }
 
+  function SigCfg_HACK_DisableTimeout()
+  {
+    v.sigListenerTimeoutDisable=true;
+  }
+
+  function SigCfg_HACK_EnableTimeout()
+  {
+    v.sigListenerTimeoutDisable=false;
+  }
 
   function SigWait(key:string,timeout_ms:number=5000)
   {
@@ -285,6 +294,7 @@ export async function listCMDPromise(
           if(timeout_ms>=0)
           {
             timeoutID=window.setTimeout(()=>{
+              if(v.sigListenerTimeoutDisable==true)return;
               reject("TIMEOUT("+timeout_ms+").... key:"+key)
               delete v.sigListener[key];
             },timeout_ms)

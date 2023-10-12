@@ -1209,7 +1209,7 @@ function rgb2hsv(r: number, g: number, b: number) {
 }
 
 
-function TestInputSelectUI({ folderPath, stream_id, testTags = [] }: { folderPath: string, stream_id: number, testTags: string[] }) {
+function TestInputSelectUI({def, folderPath, stream_id, testTags = [] }: {def:any, folderPath: string, stream_id: number, testTags: string[] }) {
     const _this = useRef<any>({}).current;
     const dispatch = useDispatch();
     const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
@@ -1217,6 +1217,7 @@ function TestInputSelectUI({ folderPath, stream_id, testTags = [] }: { folderPat
     const [finalReports, setFinalReports] = useState<any>({});
     const [latestSelect, setLatestSelect] = useState<any>(undefined);
 
+    const [fetchIdxList, setFetchIdxList] = useState<number[]>([]);
     const injectID_Prefix = "s_InjectID:";
     const cbs_key = "xxxx";
     _this.finalReports = finalReports;
@@ -1300,17 +1301,34 @@ function TestInputSelectUI({ folderPath, stream_id, testTags = [] }: { folderPat
     }, []);
 
     function ImgTest(folder_path: string, fileInfo: { name: string }, tags: string[] = []) {
-        let sIDTag = injectID_Prefix + fileInfo.name;
-        // let final_tags=[sIDTag,...tags];
+
+
+        
         let final_tags = [...tags];
+        let tid=Date.now();
+        try {
+            let name =fileInfo.name+"";
+            name=name.replace(/\.[^/.]+$/, "")
+            console.log(name);
+            let nameJson = JSON.parse(name);
+            final_tags=[...final_tags,...nameJson.tags]
+            tid|=nameJson.tid;
+        } catch (e) {
+            // return console.error(e); // error in the above string (in this case, yes)!
+        }
+
+
+        // let sIDTag = injectID_Prefix + fileInfo.name;
+        // let final_tags=[sIDTag,...tags];
 
         console.log(final_tags);
-        BPG_API.InjectImage(folder_path + "/" + fileInfo.name, final_tags, Date.now());
+        BPG_API.InjectImage(folder_path + "/" + fileInfo.name, final_tags, tid);
 
         setLatestSelect({
             ...imageFolderInfo,
-            sIDTag,
-            file: fileInfo
+            file: fileInfo,
+            tags: final_tags,
+            tid:tid
         });
 
     }
@@ -1442,9 +1460,37 @@ function TestInputSelectUI({ folderPath, stream_id, testTags = [] }: { folderPat
             <Button key={"no insp"} type="dashed" ghost>
                 無可檢
             </Button>
+
+
+
+
+            <br/>
+            <br/>
+
+            <Button danger type="primary" onClick={async () => {
+
+                let pkts = await BPG_API.InspTargetExchange(def.id, {
+                    type: "GetFetchSrcTIDList",
+                }) as any[];
+                let list=pkts[0].data as number[];
+                setFetchIdxList(list);
+                console.log(list);
+
+            }}>UpdateFetch</Button>
+
+            {fetchIdxList.map((idx:number)=>
+                <Button key={idx} onClick={async () => {
+                    await BPG_API.InspTargetExchange(def.id, {
+                        type: "TriggerFetchSrc",
+                        index:idx,
+                    }) 
+                }}>
+                    {idx}
+                </Button>
+            )}
         </div>
 
-
+        
     </>
 }
 
@@ -1842,11 +1888,19 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                 <br />
 
 
-                <Button onClick={() => {
+                <Button disabled={defReport===undefined} onClick={() => {
 
 
 
-                    let default_name = Date.now();
+                    // let default_name = `tid=${defReport.trigger_id} tags=${defReport.tags.toString()} t=${Date.now()}`
+                    let default_name = JSON.stringify({
+                        tid: defReport.trigger_id,
+                        tags: defReport.tags,
+                        t: Date.now()
+                    })
+                    
+                    // `tid=${defReport.trigger_id} tags=${defReport.tags.toString()} t=${Date.now()}`
+                    
 
                     setModalInfo({
                         timeTag: Date.now(),
@@ -1884,9 +1938,12 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                         title: "儲存當前圖檔",
                         DATA: {
                             prefix: "",
-                            name: default_name
+                            name: default_name,
+                            report: defReport,
                         },
-                        contentCB: (minfo: typeof modalInfo) => <>
+                        contentCB: (minfo: typeof modalInfo) =>{ 
+                        console.log(minfo)
+                        return<>
 
                             檔案名稱:
                             <Input addonBefore={
@@ -1901,6 +1958,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                                 }} />
 
                         </>
+                        }
                     })
                 }}>
                     儲存當前圖檔
@@ -2433,7 +2491,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                     setEditState(EditState.Normal_Show)
                 }}>{"<"}</Button>
-                <TestInputSelectUI testTags={[def.id + "_Inject"]} folderPath={folderPath} stream_id={result_InspTar_stream_id}></TestInputSelectUI>
+                <TestInputSelectUI def={cacheDef} testTags={[def.id + "_Inject"]} folderPath={folderPath} stream_id={result_InspTar_stream_id}></TestInputSelectUI>
             </>
         } break;
 
@@ -2463,7 +2521,6 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                 if(_this.canvasComp===undefined)return false;
                 let ccomp=_this.canvasComp as DrawHook_CanvasComponent;
                 ccomp.camera.fromSimpleObj(cameraInfo);
-                console.log(">>><><><><jkhkjdshfjksdhkf");
                 ccomp.ctrlLogic();
                 ccomp.draw(true);
             },
@@ -3661,12 +3718,13 @@ function SurfaceCheckSimple_RefImg_EDIT_UI({ BPG_API, fsPath, def, onDefChange, 
 }
 
 
-function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def, onDefChange, onCopy, onFinish, canvas_obj, canvas_hook_update }:
+function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,rootDef, def, onDefChange, onCopy, onFinish, canvas_obj, canvas_hook_update }:
     {
         BPG_API: BPG_WS,
         fsPath: string,
         id: string,
         pxSize: number,
+        rootDef: any,
         def: any,
         onDefChange: (...param: any) => void,
         onFinish: (...param: any) => void,
@@ -4231,7 +4289,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
 
 
             閾值:
-            <InputNumber value={def_Filled.thres} step={1}
+            <InputNumber value={def_Filled.thres} step={0.05}
                 onChange={(num) => {
                     let newDef = { ...def_Filled, thres:num  }
                     onDefChange(newDef, true);
@@ -4239,7 +4297,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
 
 
             低差抑制:
-            <InputNumber value={def_Filled.diffSupressThres} step={1}
+            <InputNumber value={def_Filled.diffSupressThres} step={0.05}
                 onChange={(num) => {
                     let newDef = { ...def_Filled, diffSupressThres:num  }
                     onDefChange(newDef, true);
@@ -4473,10 +4531,20 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize, def
                 if (draggingState == 1) {
                 }
                 else if (draggingState == 2) {
-                    console.log(info);
+
+                    let pt1={...info.pt1};
+                    let pt2={...info.pt2};
+                    pt1.x%=rootDef.w;
+                    pt2.x%=rootDef.w;
+                    
+                    pt1.y%=rootDef.h;
+                    pt2.y%=rootDef.h;
+                    console.log(info,rootDef,pt1,pt2);
+
                     canvas_obj.UserRegionSelect(undefined)
 
-                    onDefChange(ObjShellingAssign(def, ["region"], PtsToXYWH(info.pt1, info.pt2)));
+
+                    onDefChange(ObjShellingAssign(def, ["region"], PtsToXYWH(pt1, pt2)));
                 }
             });
         }}>設定範圍</Button>
@@ -4728,6 +4796,7 @@ function SurfaceCheckSimple_EDIT_UI(param:
 
                         id={def.id!==undefined?def.id:("$"+topUI.info.index)}
                         pxSize={1}
+                        rootDef={def_Filled}
                         def={GetObjElement(def_Filled, topUI.info.opath)}
                         onDefChange={(newDef) => {
                             console.log(newDef);
@@ -5191,7 +5260,6 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                 if(_this.canvasComp===undefined)return false;
                 let ccomp=_this.canvasComp as DrawHook_CanvasComponent;
                 ccomp.camera.fromSimpleObj(cameraInfo);
-                console.log(">>><><><><jkhkjdshfjksdhkf");
                 ccomp.ctrlLogic();
                 ccomp.draw(true);
             },
@@ -5662,6 +5730,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
             {
                 let insp_down_sample_factor=(cacheDef?.down_sample_factor)
                 
+                let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
                 let camMag = canvas_obj.camera.GetCameraScale();
                 if (Local_IMCM !== undefined) {
                     g.ctx.save();
@@ -5684,7 +5753,11 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                     // g.ctx.fillText(rgb2hsv(pixInfo[0], pixInfo[1], pixInfo[2]).map(num => num.toFixed(1)).toString(), g.mouseStatus.x, g.mouseStatus.y)
 
                     g.ctx.fillText((pixInfo as number[]).map(num => num.toFixed(1)).toString(), g.mouseStatus.x, g.mouseStatus.y)
+
+                    g.ctx.fillText(`${mouseOnCanvas.x.toFixed(1)},${mouseOnCanvas.y.toFixed(1)}`, g.mouseStatus.x, g.mouseStatus.y-23)
                     g.ctx.restore();
+
+                    
                 }
 
                 let ctx = g.ctx;
@@ -5775,8 +5848,8 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                     let lineHeight = 15;
                                     ctx.font = lineHeight + "px Arial";
                                     let prefix = "";
-                                    if (regionInfo.x_locating_mark == true) prefix += "X"
-                                    if (regionInfo.y_locating_mark == true) prefix += "Y"
+                                    if (regionInfo.x_locating_mark == true) prefix += "X$"
+                                    if (regionInfo.y_locating_mark == true) prefix += "Y$"
 
                                     let idText = prefix + (regionInfo.name === undefined || regionInfo.name == "" ? "$" + subreg_index : regionInfo.name);// +"["+id_name+"]";
 
