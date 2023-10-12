@@ -133,7 +133,9 @@ struct Mstp2CommInfo{//TODO: rename the infoQ to be more versatile
   int curReelLocation;
 
   //log
-  string log;
+  // string log;
+
+  char log[50];
 
   //respFrame
   bool isAck;
@@ -751,16 +753,16 @@ class MStp_M:public MStp{
 
           
 
-          struct Mstp2CommInfo tinfo={
-          .type=Mstp2CommInfo_Type::ext_log,
-          .log="BlockEndEffect..cur_step:"+to_string(seg->cur_step)+" isPd:"+to_string(ctx->isProcessed)+" *seg="+to_string((int)seg)
+          // struct Mstp2CommInfo tinfo={
+          // .type=Mstp2CommInfo_Type::ext_log,
+          // .log="BlockEndEffect..cur_step:"+to_string(seg->cur_step)+" isPd:"+to_string(ctx->isProcessed)+" *seg="+to_string((int)seg)
           
-          };
+          // };
 
-          Mstp2CommInfo* Qhead=NULL;
-          while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
-          *Qhead=tinfo;
-          Mstp2CommInfoQ.pushHead();
+          // Mstp2CommInfo* Qhead=NULL;
+          // while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+          // *Qhead=tinfo;
+          // Mstp2CommInfoQ.pushHead();
 
 
         }
@@ -973,10 +975,12 @@ class MStp_M:public MStp{
               
               struct Mstp2CommInfo tinfo={
               .type=Mstp2CommInfo_Type::ext_log,
-              .log="End_stop hit, EM STOP....pin"+
-              to_string(endstopPins)+" ns"+to_string(endstopPins_normalState)+
-              " cs"+to_string(latest_input_pins),
               };
+
+            string str="End_stop hit, EM STOP....pin"+
+              to_string(endstopPins)+" ns"+to_string(endstopPins_normalState)+
+              " cs"+to_string(latest_input_pins);
+            strncpy(tinfo.log,str.c_str(),sizeof(tinfo.log)-1);
 
               Mstp2CommInfo* Qhead=NULL;
               while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
@@ -1028,15 +1032,15 @@ class MStp_M:public MStp{
         {
           if(EncV>=ctx->RUN_UNTIL_ENC.tar_ENC && ctx->isProcessed==false)
           {
-            struct Mstp2CommInfo tinfo={
-            .type=Mstp2CommInfo_Type::ext_log,
-            .log="ENC HIT..EncV:"+to_string(EncV)
-            };
+            // struct Mstp2CommInfo tinfo={
+            // .type=Mstp2CommInfo_Type::ext_log
+            // };
+            // sprintf(tinfo.log,"ENC HIT..EncV:%d",EncV);
 
-            Mstp2CommInfo* Qhead=NULL;
-            while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
-            *Qhead=tinfo;
-            Mstp2CommInfoQ.pushHead();
+            // Mstp2CommInfo* Qhead=NULL;
+            // while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+            // *Qhead=tinfo;
+            // Mstp2CommInfoQ.pushHead();
 
 
             seg->cur_step=seg->steps;// stop
@@ -1357,7 +1361,10 @@ public:
         }
         p_res->type=MSTP_SegCtx_TYPE::ON_TIME_REPLY;
         p_res->isProcessed=false;
-
+        // if(p_jnote)
+        // {
+        //   (*p_jnote)["res_size"]=sctx_pool.size();
+        // }
 
         p_res->ON_TIME_REP.isAck=true;
         p_res->ON_TIME_REP.id=HACK_cur_cmd_id;
@@ -1386,10 +1393,12 @@ public:
     
         struct Mstp2CommInfo tinfo={
         .type=Mstp2CommInfo_Type::ext_log,
-        .log="pulse_offset:"+to_string(pulse_offset.vec[AXIS_IDX_A])+" lastTarLoc:"+to_string(mstp.lastTarLoc.vec[AXIS_IDX_A])+" mstp:"+to_string(mstp.curPos_c.vec[AXIS_IDX_A])
+        // .log=
         
         };
+        string d="pulse_offset:"+to_string(pulse_offset.vec[AXIS_IDX_A])+" lastTarLoc:"+to_string(mstp.lastTarLoc.vec[AXIS_IDX_A])+" mstp:"+to_string(mstp.curPos_c.vec[AXIS_IDX_A]);
 
+        strncpy(tinfo.log,d.c_str(),sizeof(tinfo.log)-1);
         Mstp2CommInfo* Qhead=NULL;
         while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
         *Qhead=tinfo;
@@ -1500,6 +1509,12 @@ public:
           {
             yield();
           }
+
+          if(p_jnote)
+          {
+            (*p_jnote)["res_size"]=sctx_pool.size();
+          }
+
           vec=vecAdd(vec,pulse_offset);
           p_res->type=MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC;
           p_res->isProcessed=false;
@@ -1587,6 +1602,10 @@ public:
           while((p_res=sctx_pool.applyResource())==NULL)//check release
           {
             yield();
+          }
+          if(p_jnote)
+          {
+            (*p_jnote)["res_size"]=sctx_pool.size();
           }
           vec=vecAdd(vec,pulse_offset);
           p_res->type=MSTP_SegCtx_TYPE::KEEP_RUN_UNTIL_ENC_EARLY_STOP;
@@ -2544,7 +2563,7 @@ void loop()
         case Mstp2CommInfo_Type::ext_log :
         {
 
-          djrl.dbg_printf("%s",info.log.c_str());
+          djrl.dbg_printf(info.log);
 
           break;
         }
