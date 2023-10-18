@@ -488,7 +488,7 @@ async function HeadCalibVerificationAct(ActPts = [], calibInfo = undefined,retur
 
       await G(`M400`);
 
-      await api.CameraSWTrigger("Hikrobot-2BDF71598890-00F71598890", "CAM_Calib", trigID, true);
+      await Lib.CameraSNameSWTrigger("HeadCalibCam", "CAM_Calib", trigID, true);
 
       await delay(30);
       step++;
@@ -645,8 +645,6 @@ async function HeadCalibCalc2(actRec) {
   return CalibInfo;
 }
 
-
-
 async function HeadCalibCalc(actRec) {
 
 
@@ -736,6 +734,11 @@ async function HeadCalibCalc(actRec) {
     });
     console.log("Z zUpP:", zUpP, " offset:", zuOffset);
     ZCalibInfo = {
+      conv: {
+
+        M_Z2Pix:1/zUpP,
+        M_Pix2Z:zUpP
+      },
       offset: zuOffset,
     };
   }
@@ -754,10 +757,87 @@ async function HeadVerification(vpts = [[0, 0, 0, 0], [0, 0, 0, 90], [0, 0, 0, 1
     let actRec3 = await HeadCalibVerificationAct(vpts, v.CalibInfo,`G01 X${20} Y${200} F1000 ACC2000`,checkIndexes);
     // let CalibInfo3=await HeadCalibCalc(actRec3);
     console.log(actRec3);
+    return actRec3;
   }
   return;
 
 }
+
+
+async function HeadVerificationSimpleStat()
+{
+  let headLocReps=await HeadVerification(
+    [0].map((v) => [0, 0, 0, v])
+  );
+
+  let tv3 = THREE.Vector3
+  let ref_nloc_btm=SYS_CONFIG.Calib_Target_Info.nloc_btm;
+  let ref_nloc_side=SYS_CONFIG.Calib_Target_Info.nloc_side;
+
+  // 
+  // let locDiff_pix=new tv3(cur_nloc_btm.x-ref_nloc_btm.x,cur_nloc_btm.y-ref_nloc_btm.y,0)
+
+  // console.log(">running Calib>>> cur:",cur_nloc_btm," ref:",ref_nloc_btm)
+
+  // console.log(">running Calib>>>locDiff_pix", locDiff_pix, " M_Pix2MM ",v.CalibInfo.XY.conv.M_Pix2XY)
+  // let locDiff_mm=locDiff_pix.clone().applyMatrix3(v.CalibInfo.XY.conv.M_Pix2XY);
+
+
+  console.log(headLocReps);
+
+  
+  let diffXYZ_mm=headLocReps.map(rep=>{
+
+
+
+    let cur_nloc_btm=rep[0].nloc_btm;
+    let cur_nloc_side=rep[0].nloc_side;
+
+
+    let locDiff_pix=new tv3(cur_nloc_btm.x-ref_nloc_btm.x,cur_nloc_btm.y-ref_nloc_btm.y,0)
+    let locDiff_mm=locDiff_pix.clone().applyMatrix3(v.CalibInfo.XY.conv.M_Pix2XY);
+
+    let zDiff_pix=cur_nloc_side.x-ref_nloc_side.x;
+    return {
+      x:locDiff_mm.x,
+      y:locDiff_mm.y,
+      z:zDiff_pix*v.CalibInfo.Z.conv.M_Pix2Z
+    }
+  });
+
+
+  let diffXYZ_mm_stat=diffXYZ_mm.reduce((acc,cur)=>{
+    acc.max_xyz.x=(acc.max_xyz.x<cur.x)?cur.x:acc.max_xyz.x;
+    acc.max_xyz.y=(acc.max_xyz.y<cur.y)?cur.y:acc.max_xyz.y;
+    acc.max_xyz.z=(acc.max_xyz.z<cur.z)?cur.z:acc.max_xyz.z;
+
+    acc.absAvg_xyz.x+=Math.abs(cur.x)/diffXYZ_mm.length;
+    acc.absAvg_xyz.y+=Math.abs(cur.y)/diffXYZ_mm.length;
+    acc.absAvg_xyz.z+=Math.abs(cur.z)/diffXYZ_mm.length;
+
+
+    acc.max=Math.max(acc.max,acc.max_xyz.x,acc.max_xyz.y,acc.max_xyz.z);
+    return acc;
+  },{
+
+    max:0,
+    max_xyz:{
+      x:0,y:0,z:0
+    },
+
+    absAvg_xyz:{
+      x:0,y:0,z:0
+    },
+
+    
+
+  })
+
+
+  console.log(diffXYZ_mm,diffXYZ_mm_stat);
+  return diffXYZ_mm_stat;
+}
+
 
 async function HeadCalib() {
   let pts = [[0, 0, 0, 0],
@@ -766,7 +846,11 @@ async function HeadCalib() {
   [0, 0, 1, 0], [0, 0, -2, 0]];
 
   let calibRecord = undefined;//||Lib.calibRecord;
-  let actRec = calibRecord !== undefined ? calibRecord : await HeadCalibVerificationAct(pts, v.CalibInfo)
+
+
+  let calibReturnLoc={x:20,y:200};
+
+  let actRec = calibRecord !== undefined ? calibRecord : await HeadCalibVerificationAct(pts, v.CalibInfo,`G01 X${calibReturnLoc.x} Y${calibReturnLoc.y} F1000 ACC2000`)
   // console.log(comlib,actRec);
 
   if (actRec === undefined) return;
@@ -796,6 +880,7 @@ async function HeadCalib() {
     CalibInfo.XY.conv.M_XY2Pix=CalibInfo2.XY.conv.M_XY2Pix;
     CalibInfo.XY.conv.M_Pix2XY=CalibInfo2.XY.conv.M_Pix2XY;
 
+    CalibInfo.Z.conv=CalibInfo2.Z.conv;
 
     CalibInfo.XY.offset = CalibInfo.XY.offset.map((v, i) => v.clone().add(CalibInfo2.XY.offset[i].clone().multiplyScalar(alpha)));
     CalibInfo.Z.offset = CalibInfo.Z.offset.map((v, i) => v + CalibInfo2.Z.offset[i] * (alpha));
@@ -803,6 +888,24 @@ async function HeadCalib() {
   }
   else {
     CalibInfo = CalibInfo2;
+  }
+
+
+
+  if(1)//offset corrdinate according to the first head
+  {
+    let coffset=CalibInfo.XY.offset[0].clone();
+
+
+
+    await G(`M400`);
+    await G(`G92 X${calibReturnLoc.x-coffset.x} Y${calibReturnLoc.y-coffset.y}`)//
+
+
+    
+    CalibInfo.XY.offset = CalibInfo.XY.offset.map((v, i) => v.clone().sub(coffset));
+
+
   }
 
 
@@ -1030,7 +1133,7 @@ async function test2() {
     await delay(40);
     // await G(`G04 P2000`);
 
-    await api.CameraSWTrigger("Hikvision-2BDF73541011-00E73541011", "CAM_FB", 0, true);
+    await Lib.CameraSNameSWTrigger("FeederCam", "CAM_FB", 0, true);
     await delay(20);
 
     await G(`M42 PORT${cam_led_pins}    S${0}`)
@@ -1045,7 +1148,7 @@ function FixedStringify(obj, fixedDig = 3) {
   return JSON.stringify(obj, function (key, val) {
     if (typeof val !== "number") return val;
     return val.toFixed ? Number(val.toFixed(fixedDig)) : val;
-  })
+  },2)
 
 }
 
@@ -1057,7 +1160,7 @@ async function ReelCheck(trigID = -990, AUX_THREAD_ID = 0) {
   await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 1, aid: AUX_THREAD_ID })
 
   await Lib.CNCSend({ "type": "AUX_WAIT_FOR_FINISH", aid: AUX_THREAD_ID })
-  await api.CameraSWTrigger("Hikrobot-2BDF79315117-00K79315117", "CAM_Reel", trigID, true);
+  await Lib.CameraSNameSWTrigger("ReelCheckCam", "CAM_Reel", trigID, true);
 
   await Lib.CNCSend({ "type": "AUX_DELAY", "P": 50, aid: 0, aid: AUX_THREAD_ID })
   await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 0, aid: AUX_THREAD_ID })
@@ -1082,7 +1185,7 @@ async function FeederCheck(doFeederAct = true, AUX_THREAD_ID = 0) {
 
   // await Lib.CNCSend({ "type": "AUX_WAIT_FOR_FINISH", aid: AUX_THREAD_ID })
 
-  await api.CameraSWTrigger("Hikvision-2BDF73541011-00E73541011", "CAM_FB", 4459, true);
+  await Lib.CameraSNameSWTrigger("FeederCam", "CAM_FB", 4459, true);
   await Lib.CNCSend({ "type": "AUX_DELAY", "P": 2, aid: 0, aid: AUX_THREAD_ID })
   await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_L_Light1, "state": 0, aid: AUX_THREAD_ID })
 
@@ -1275,7 +1378,7 @@ async function ReelGoAdv(adv_mm = 1, RunSTR = ` F20 ACC${50}`) {
 
   let encStep = adv_mm;
   ReelENC += encStep;
-  let A_Tar = Math.round((SYS_CONFIG.A_Axis_Units_to_mm*1.2) * encStep);
+  let A_Tar = Math.round((SYS_CONFIG.A_Axis_Units_to_mm*1.0) * encStep);
 
   await G("G92 A0");
 
@@ -1366,7 +1469,7 @@ async function ReelLocating()
 
       await Lib.CNCSend({ "type": "AUX_DELAY", "P": 500, aid: 0 })
 
-      await api.CameraSWTrigger("Hikrobot-2BDF79315117-00K79315117", "CAM_ReelLoc", reelLocRepTID, true);
+      await Lib.CameraSNameSWTrigger("ReelCheckCam", "CAM_ReelLoc", reelLocRepTID, true);
 
       await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 0, aid: 0 })
 
@@ -1458,7 +1561,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
         console.log(step++, FStr + ":Feeder vib ...");
 
-        await ShakeFeeder(vibExtendCD > 0 ? 600 : 400);
+        await ShakeFeeder(vibExtendCD > 0 ? 1200 : 400);
 
         vibExtendCD--;
         await SigWait(FeederClear2Check_key, 30000);
@@ -1678,8 +1781,11 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
         "Speed:", (speed).toFixed(1),"("+LPSpeed.toFixed(1)+")", "pcs/min", " TimeElapse:", ((elapsedTime) / 1000 / 60).toFixed(3), "min");
       preTime = curTime;
       prePassCount=PassCount;
+      if (await EMCheckStopPointCB({ type:"STATISTIC", count: PassCount,overall_speed: speed, current_speed:LPSpeed }) == false) break;
+      
 
-      if (await EMCheckStopPointCB({ type: "Begin", count: PassCount, speed: speed }) == false) break;
+      if (await EMCheckStopPointCB({ type:"CYCLE_STATE", state: "begin" }) == false) break;
+      
       // console.log("____FeederReadyInfo:",FeederReadyInfo);
 
 
@@ -1743,7 +1849,9 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
             reportWait_reg(repSideCheckWaitKey + "_check", "SurfaceCheck_CAM_A", trigID);
           }
 
-          await api.CameraSWTrigger("Hikrobot-2BDF50664114-00F50664114", ["CAM_A","s_SIDE_FLAT"], trigID, true);
+          await Lib.CameraSNameSWTrigger("SideCheckCam", ["CAM_A","s_SIDE_FLAT"], trigID, true);
+
+          // await Lib.CameraSNameSWTrigger("", ["CAM_A","s_SIDE_FLAT"], trigID, true);
 
           if (await EMCheckStopPointCB({ type: "SideCheck",state:"side_flat" }) == false) break;
 
@@ -1754,7 +1862,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
           await G(`M400`)
 
           reportWait_reg(repSideCheckWaitKey + "_side", "SurfaceCheck_CAM_SIDE", trigID+2);
-          await api.CameraSWTrigger("Hikrobot-2BDF50664114-00F50664114", ["CAM_A","s_SIDE_SIDE"], trigID+2, true);
+          await Lib.CameraSNameSWTrigger("SideCheckCam", ["CAM_A","s_SIDE_SIDE"], trigID+2, true);
 
 
           if (await EMCheckStopPointCB({ type: "SideCheck",state:"side_side" }) == false) break;
@@ -1784,9 +1892,9 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
                 let new_report_loc = report_loc;
 
                 new_report_loc.report[0].angle = (-4-1) * Math.PI / 180;
-                new_report_loc.report[1].angle = (-2+-2) * Math.PI / 180;
-                new_report_loc.report[2].angle = ( 2-3) * Math.PI / 180;
-                new_report_loc.report[3].angle = ( 4-4) * Math.PI / 180;
+                new_report_loc.report[1].angle = (-2+-1) * Math.PI / 180;
+                new_report_loc.report[2].angle = ( 2-1) * Math.PI / 180;
+                new_report_loc.report[3].angle = ( 3.5) * Math.PI / 180;
                 await InspTargetExchange("SurfaceCheck_CAM_A", { type: "extParam", orientation: new_report_loc.report })
                 report_check = await reportWait(repSideCheckWaitKey + "_check")
                 //and disable the extParam of SurfaceCheck_CAM_A at last
@@ -1815,7 +1923,17 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
                 if (rep.sub_regions.length == 0)
                 {
-                  failVec.push({r:"ShapeCheck data.lenth"+rep.sub_regions.length});
+                  failVec.push({r:"ShapeCheck data.lenth:"+rep.sub_regions.length});
+                  failInfo.push(failVec)
+                  return undefined;
+                }
+
+
+                let sideCheck=report_check_side.report.sub_reports[idx]
+
+                if (sideCheck.sub_regions.length == 0)
+                {
+                  failVec.push({r:"SideCheck data.lenth:"+sideCheck.sub_regions.length});
                   failInfo.push(failVec)
                   return undefined;
                 }
@@ -1823,7 +1941,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
 
 
-                let sideCheck=report_check_side.report.sub_reports[idx]
+
                 {
                   let prhibitZone=sideCheck.sub_regions[4].category;
                   if (prhibitZone!= 1) 
@@ -1914,7 +2032,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
               }
 
               // console.log("distDiff:",distDiff,"objXErr:",objXErr,"hRs:",hRs);
-              // await api.CameraSWTrigger("Hikrobot-2BDF50664114-00F50664114","CAM_A",trigID+1,true);
+              // await Lib.CameraSNameSWTrigger("Hikrobot-2BDF50664114-00F50664114","CAM_A",trigID+1,true);
               // console.log(report_loc,report_check,dir);
               // await delay(500);
               // await Enter_Z2SafeZone_n_Check();
@@ -2029,7 +2147,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
           let reelLocRepTID = 556;
 
           reportWait_reg(reelLocRepKey, "SBM_ReelLoc", reelLocRepTID);
-          let xyGCode = `X${baseLoc[0]} Y${baseLoc[1]} ${ReelSlotAdvCount > 4 ? "" : ""} ${FA}`;
+          let xyGCode = `X${baseLoc[0]} Y${baseLoc[1]} ${ReelSlotAdvCount > 6 ? `F${F} ACC${(ACC*3/4).toFixed(1)}` : ""} ${FA}`;
           if (ReelSlotAdvCount > 0) {
 
             await ReelGoAdv(ReelSlotAdvCount * SYS_CONFIG.Reel_Hole_Distance*SYS_CONFIG.Holes_per_Slot, xyGCode);
@@ -2049,12 +2167,13 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
             let CurENCReading=(await Lib.CNCSend({ "type": "AUX_ENC_V", aid: 0 })).enc_v
             console.log("ENC_CHECK:",CurENCReading,ReelENC);
 
-            if(CurENCReading!=ReelENC && (CurENCReading-1)!=ReelENC)
+            if(Math.abs(CurENCReading-ReelENC)>2)
             {
               await Enter_Z2SafeZone_n_Check();
               // break;
-              throw new Error(`ENC_CHECK_FAIL  CurENCReading:${CurENCReading}!=tarENC:${ReelENC}`);
+              throw new Error(`ENC_CHECK_FAIL  abs(CurENCReading:${CurENCReading}-tarENC:${ReelENC})>2`);
             }
+            ReelENC=CurENCReading;
           }
           else
           {
@@ -2066,7 +2185,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 1, aid: 0 })
 
-          await api.CameraSWTrigger("Hikrobot-2BDF79315117-00K79315117", "CAM_ReelLoc", reelLocRepTID, true);
+          await Lib.CameraSNameSWTrigger("ReelCheckCam", "CAM_ReelLoc", reelLocRepTID, true);
           await Lib.CNCSend({ "type": "AUX_DELAY", "P": 5, aid: 0, aid: 0 })
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 0, aid: 0 })
@@ -2132,6 +2251,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
             else {
 
               console.log("ReelLoc Fail!");
+              throw new Error("Reel Locating Failed! (locating circle/slot is not able to be found)");
               // break;
             }
             return undefined;
@@ -2222,6 +2342,8 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
             await Enter_Z2SafeZone_n_Check();
             break;
           }
+
+          console.log(`ReelOffset:${reelOffset.x.toFixed(3)},${reelOffset.y.toFixed(3)}`);
           await G(`G01 Z${preHeadIdx}_${SYS_CONFIG.Reel_postPlace_Z} ${FA_SZ}`);
           if (await EMCheckStopPointCB({ type: "ReelPlacing", state: "end" }) == false) break;
           // if(avaHeadIdx>=0)
@@ -2420,6 +2542,13 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
     }
   }
   catch (e) {
+
+    function stacktrace() {
+      var err = new Error();
+      return err.stack;
+    }
+
+    (await EMCheckStopPointCB({ type: "ERROR", e,trace:stacktrace()}) == false)
     console.log(">>>", e);
   }
 
@@ -2980,7 +3109,7 @@ async function PackingCtrlPanelUI() {
               reportWait_reg(repWaitKey + "_check", "SurfaceCheck_CAM_A", trigID);
             }
 
-            await api.CameraSWTrigger("Hikrobot-2BDF50664114-00F50664114", "CAM_A", trigID, true);
+            await Lib.CameraSNameSWTrigger("SideCheckCam", "CAM_A", trigID, true);
 
 
             let report_loc = await reportWait(repWaitKey + "_loc")
@@ -3047,7 +3176,7 @@ async function PackingCtrlPanelUI() {
               }
             }
 
-            // await api.CameraSWTrigger("Hikrobot-2BDF50664114-00F50664114","CAM_A",trigID+1,true);
+            // await Lib.CameraSNameSWTrigger("Hikrobot-2BDF50664114-00F50664114","CAM_A",trigID+1,true);
             // console.log(report_loc,report_check,dir);
             // await delay(500);
             // await Enter_Z2SafeZone_n_Check();
@@ -3402,8 +3531,15 @@ async function PackingCtrlPanelUI() {
 
               console.log("click");
               await G("M400")
+
+              let headIdx=0;
+              console.log(v.CalibInfo);
+              let xoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[headIdx].x);
+              let yoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[headIdx].y);
+              let zoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.Z.offset[headIdx]);
+
               let M114 = (await G("M114")).M114;
-              Reel_loc_UIInfo[ptn].headXY = [M114.X, M114.Y, M114.Z1_]
+              Reel_loc_UIInfo[ptn].headXY = [M114.X-xoffset, M114.Y-yoffset, M114.Z1_-zoffset]
 
               updateCB(UIStack_Current().UI)
               // updateCB(cbInfo)
@@ -3688,7 +3824,7 @@ async function PackingCtrlPanelUI() {
 
       {
         type: "button",
-        text: "校正站光",
+        text: "校正站打光",
         onClick: async (updateCB) => {
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Insp_L_Light1, "state": 1, aid: 0 })
@@ -3753,8 +3889,8 @@ async function PackingCtrlPanelUI() {
         onClick: async (updateCB) => {
           v.ReelPackingInfo={
             // packingSeq:[75,-5,75,-5]//-160]
-            packingSeq:[1,-40,5500,-97,1]//-160]
-            // packingSeq:[5000,-97,1]//-160]
+            // packingSeq:[1,-40,5500,-97,1]//-160]
+            packingSeq:[5000,-97,1]//-160]
             // packingSeq:[-1,1,-2,2,-3,3,-4,4,-5,5,-6,6,-7,7,-8,8,-9,9,-10,10]
           }
           
@@ -3786,9 +3922,10 @@ async function PackingCtrlPanelUI() {
               //   await G(`M400`)
               //   await delay(200);
               // }
-              if(CycleRunStat.doPause || 
-                // (info.type == "ReelPlacing" && info.state=="begin")||
-                false)
+              if(CycleRunStat.doPause
+                &&(info.type !== "STATISTIC")//blacklist
+                // || (info.type == "ReelPlacing" && info.state=="begin")//whitelist
+              )
               {              
                 SigCfg_HACK_DisableTimeout();
                 await new Promise((resolve, reject) => {
@@ -3796,9 +3933,9 @@ async function PackingCtrlPanelUI() {
                   
                   CycleRunStat.pausePromise ={resolve,reject}
   
-                  setTimeout(() => {
-                    reject("user input timeout")
-                  }, 50000);
+                  // setTimeout(() => {
+                  //   reject("user input timeout")
+                  // }, 50000);
                   updateCB(UIStack_Current().UI)
                   
                 })
@@ -3808,7 +3945,12 @@ async function PackingCtrlPanelUI() {
                 updateCB(UIStack_Current().UI)
               }
 
+              CycleRunStat.currentStateInfo=info;
 
+
+              if (info.type == "STATISTIC") {
+                CycleRunStat.statistic=info;
+              }
               if (info.type == "ReelAdvancing") {
                 console.log(">>>>", info);
               }
@@ -3829,11 +3971,19 @@ async function PackingCtrlPanelUI() {
               {
 
 
-                if(info.state=="finish")
-                {
-                }
+                // if(info.state=="finish")
                 updateCB(UIStack_Current().UI)
                 console.log("CYCLE STATE....", info,v.ReelPackingInfo);
+              }
+
+
+              if(info.type == "ERROR")
+              {
+
+
+                CycleRunStat.errorInfo=info;
+                // console.log("kjhsdilfdsajhfl",info)
+                updateCB(UIStack_Current().UI)
               }
 
               if (info.type == "NGDrop") {
@@ -3855,7 +4005,6 @@ async function PackingCtrlPanelUI() {
 
 
       },
-
 
       // {
 
@@ -3921,6 +4070,25 @@ async function PackingCtrlPanelUI() {
         }
       },
       "$\n",
+      "$\n",
+      "$t:----檢驗數據----","$\n",
+      "$t:"+FixedStringify(CycleRunStat.statistic),
+      "$\n",
+      "$t:----運行階段----","$\n",
+      "$t:"+FixedStringify(CycleRunStat.currentStateInfo),
+      "$\n",
+      {
+        type: "button", key: "----錯誤----",
+        text:"----錯誤----",
+        onClick: async (updateCB) => {
+          CycleRunStat.errorInfo=undefined;
+          updateCB(UIStack_Current().UI)
+
+        }
+      },"$\n",
+      "$pre:"+((CycleRunStat.errorInfo===undefined)?"":CycleRunStat.errorInfo.e),
+      "$pre:"+((CycleRunStat.errorInfo===undefined)?"":CycleRunStat.errorInfo.trace),
+
     ]
   })
 
@@ -3929,6 +4097,8 @@ async function PackingCtrlPanelUI() {
 
   let lv = {}
   let hideTestFunction=true
+  let latestCalibStat = undefined;
+  let latestCalibLog = "請進行精細校正";
   //hideTestFunction?[]: 
   let cbInfo =()=>[
     {
@@ -3946,7 +4116,7 @@ async function PackingCtrlPanelUI() {
           text: () => "1: 歸零並校正",
           onClick: async (updateCB) => {
 
-            let cInfo = [
+            let cInfo =()=> [
 
               {
                 text: () => "CalibCenter",
@@ -3973,8 +4143,25 @@ async function PackingCtrlPanelUI() {
                     text: () => "精細校正",
                     onClick: async (updateCB) => {
 
-                      await HeadCalib();
-                      // await HeadCalib();
+                      let maxCalibCount = 3;
+                      let i=0;
+                      for(i=0;i<maxCalibCount;i++)
+                      {
+                        await HeadCalib();
+  
+                        let diffXYZ_mm_stat = await HeadVerificationSimpleStat();
+                        console.log(diffXYZ_mm_stat);
+                        // await HeadCalib();
+                        latestCalibStat=diffXYZ_mm_stat;
+                        
+                        let maxAllowedError=0.05;
+                        if(latestCalibStat.max<maxAllowedError)break;//good enough
+                        latestCalibLog=`校正${i+1}/${maxCalibCount}次: 誤差${latestCalibStat.max}mm 超過${maxAllowedError}mm 再次進行精細校正`;
+                        updateCB(UIStack_Current().UI)
+                      }
+
+                      latestCalibLog=`校正完畢 ${i+1}次: 誤差${latestCalibStat.max.toFixed(3)}mm `;
+                      updateCB(UIStack_Current().UI)
                     }
                   },
                   {
@@ -3982,12 +4169,12 @@ async function PackingCtrlPanelUI() {
                     text: () => "驗證校正",
                     onClick: async (updateCB) => {
 
-                      await HeadVerification(
-                        [0].map((v) => [0, 0, 0, v])
-                      );
-                      // await HeadVerification(
-                      //   [0, 60, 120, 180, 240, 300].map((v) => [0, 0, 0, v])
-                      // );
+
+                      let diffXYZ_mm_stat = await HeadVerificationSimpleStat();
+                      console.log(diffXYZ_mm_stat);
+                      latestCalibStat=diffXYZ_mm_stat;
+                      
+                      updateCB(UIStack_Current().UI)
                     }
                   },
                   "$t:           ",
@@ -4010,6 +4197,12 @@ async function PackingCtrlPanelUI() {
                     }
                   }
 
+                  ,"$\n"
+                  ,"$\n"
+                  ,"$\n"
+                  ,"$t:"+latestCalibLog
+                  ,"$\n"
+                  ,`$pre:`+FixedStringify(latestCalibStat,3)
 
                 ]
               },
