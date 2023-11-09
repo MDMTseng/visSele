@@ -507,6 +507,41 @@ int STAGEINFO_SCS_CAT_BASIC_reducer(int sum_cat,int cat)
   return sum_cat;
 }
 
+float findBlobCount(Mat &m,float value)
+{
+  int crossCount=0;
+  int width=m.size().width;
+  bool inBlob=false;
+  for(int i=0;i<width;i++)
+  {
+    int v=m.at<uint8_t>(0,i);
+
+
+    bool cur_inBlob=(v>value)?true:false;
+
+    if(inBlob==false && cur_inBlob==true)
+    {
+      crossCount++;
+    }
+    inBlob=cur_inBlob;
+    // printf("%03d ",v);
+    if(inBlob)
+    {
+      if(i==0)return -1;
+    }
+    else
+    {
+
+    }
+  }
+  if(inBlob)
+  {
+    return -2;
+  }
+
+  return crossCount;
+
+}
 
 template <class MAT_ValueType=uint8_t>
 float findCrossLoc(Mat &m,float value,bool reverseDir=false)
@@ -777,7 +812,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
   float X_offset=X_offset_O/downSampleF;
-  float Y_offset=X_offset_O/downSampleF;
+  float Y_offset=Y_offset_O/downSampleF;
 
   float W=W_O/downSampleF;
   float H=H_O/downSampleF;
@@ -1328,12 +1363,17 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           bool x_locating_mark =JFetch_TRUE(jsub_region,"x_locating_mark");
           bool y_locating_mark =JFetch_TRUE(jsub_region,"y_locating_mark");
 
+          float x_f=JFetch_NUMBER_ex(jsub_region,"region.x",-1);
+          float y_f=JFetch_NUMBER_ex(jsub_region,"region.y",-1);
+          float w_f=JFetch_NUMBER_ex(jsub_region,"region.w",-1);
+          float h_f=JFetch_NUMBER_ex(jsub_region,"region.h",-1);
 
-          int srW=(int)JFetch_NUMBER_ex(jsub_region,"region.w",-1)/downSampleF;
-          int srH=(int)JFetch_NUMBER_ex(jsub_region,"region.h",-1)/downSampleF;
+          int srX=ceil(x_f/downSampleF);
+          int srY=ceil(y_f/downSampleF);
 
-          int srX=(int)JFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF;
-          int srY=(int)JFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF;
+
+          int srW=floor((x_f+w_f)/downSampleF)-srX;
+          int srH=floor((y_f+h_f)/downSampleF)-srY;
           // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
           XYWH_clipping(srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
           if(srW<=1 || srH<=1)
@@ -1429,6 +1469,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
           }
 
+          std::string subRegId=JFetch_STRING_ex(jsub_region,"name","");
           string subRegType=JFetch_STRING_ex(jsub_region,"type","HSVSeg");
 
           if(subRegType!="HSVSeg")
@@ -1577,7 +1618,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
               }
 
-              LOGE("NG_Map_To:%s",NG_Map_To.c_str());
+              // LOGE("NG_Map_To:%s",NG_Map_To.c_str());
 
               // MATCH_REGION_score+=area_sum;
               MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,sri.category);
@@ -1592,9 +1633,9 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             if(subRegType=="ScanPoint")
             {
 
-
               bool centerOrEdge=JFetch_TRUE(jsub_region,"centerOrEdge");
               float scanAngle=JFetch_NUMBER_ex(jsub_region,"scanAngle");
+              bool sense0to1=JFetch_TRUE(jsub_region,"sense0to1");
 
 
               {
@@ -1618,9 +1659,18 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
                 double detect_detail=JFetch_NUMBER_ex(jsub_region,"detect_detail",100);
-                cv::blur(img_HSV_range,img_HSV_range,cv::Size(5,5));
 
-                threshold(img_HSV_range, img_HSV_threshold, detect_detail, 255, THRESH_BINARY);
+                if(sense0to1==false)
+                {
+                  cv::blur(img_HSV_range,img_HSV_range,cv::Size(5,5));
+                  threshold(img_HSV_range, img_HSV_threshold, detect_detail, 255, THRESH_BINARY);
+
+                }
+                else
+                {
+                  img_HSV_threshold=img_HSV_range;
+                }
+
 
 
                 if(JFetch_TRUE(jsub_region,"invert_detection")==false)
@@ -1658,15 +1708,17 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                   if(axisIdx==1)
                     axisSum=axisSum.t();
 
-                  cv::GaussianBlur(axisSum, axisSum, cv::Size(5, 1), 5);
+                  if(sense0to1==false)
+                    cv::GaussianBlur(axisSum, axisSum, cv::Size(5, 1), 5);
                   // LOGE("X . axisSum:%d . %d",axisSum.size().width,axisSum.size().height);
 
                   Mat axisSum2;
-                  double otsu_threshold = cv::threshold(axisSum, axisSum2, 0 /*ignored value*/, 255, cv::THRESH_OTSU);
+                  double otsu_threshold = (sense0to1)?1:cv::threshold(axisSum, axisSum2, 0 /*ignored value*/, 255, cv::THRESH_OTSU);
                   // LOGE("otsu_threshold:%f",otsu_threshold);
-                  int xLoc1 = findCrossLoc(axisSum,otsu_threshold,false);
-                  int xLoc2 = findCrossLoc(axisSum,otsu_threshold,true);
-                  // LOGE("xLoc1:%d xLoc2:%d",xLoc1,xLoc2);
+                  float xLoc1 = findCrossLoc(axisSum,otsu_threshold,false);
+                  float xLoc2 = findCrossLoc(axisSum,otsu_threshold,true);
+                  int blobCount=findBlobCount(axisSum,otsu_threshold);
+                  LOGE("id:%s xLoc1:%f xLoc2:%f blobCount:%d",subRegId.c_str(),xLoc1,xLoc2,blobCount);
 
                   sri.category=STAGEINFO_CAT_OK;
                   int NA_margin=2;
@@ -1715,7 +1767,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                     xLoc1+=srY;
                     xLoc2+=srY;
                     sri.score=centerOrEdge?(xLoc2+xLoc1)/2:(scanAngle==90?xLoc1:xLoc2);
-
+                    sri.scanPoint_stat.blob_count=blobCount;
                     // LOGE("xLoc1:%d xLoc2:%d",xLoc1,xLoc2);
                     // sri.category=(xLoc1<=NA_margin||xLoc2<=NA_margin||
                     // xLoc1>=srW-NA_margin||xLoc2>=srW-NA_margin||
@@ -1724,7 +1776,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
                   sri.type=StageInfo_SurfaceCheckSimple::id_ScanPoint;
 
-                  LOGE("NG_Map_To:%s",NG_Map_To.c_str());
+                  // LOGE("NG_Map_To:%s",NG_Map_To.c_str());
 
                   // MATCH_REGION_score+=area_sum;
                   MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,sri.category);
@@ -1739,6 +1791,177 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
               resultImage[subregIdx]=sub_region_ROI;
 
             }
+
+
+
+
+            if(subRegType=="PassThru")
+            {
+
+              string scanDir=JFetch_STRING_ex(jsub_region,"scanDir");
+
+
+              {
+
+                double l_h=JFetch_NUMBER_ex(jsub_region,"rangel.h",0);
+                double l_s=JFetch_NUMBER_ex(jsub_region,"rangel.s",0);
+                double l_v=JFetch_NUMBER_ex(jsub_region,"rangel.v",0);
+
+                double h_h=JFetch_NUMBER_ex(jsub_region,"rangeh.h",180);
+                double h_s=JFetch_NUMBER_ex(jsub_region,"rangeh.s",255);
+                double h_v=JFetch_NUMBER_ex(jsub_region,"rangeh.v",255);
+                Mat img_HSV;
+                cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);
+                // LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
+                Scalar rangeH=Scalar(h_h,h_s,h_v);
+                Scalar rangeL=Scalar(l_h,l_s,l_v);
+
+                Mat img_HSV_range;
+                Mat img_HSV_threshold;
+                inRange(img_HSV, rangeL, rangeH, img_HSV_range);
+
+
+                double detect_detail=JFetch_NUMBER_ex(jsub_region,"detect_detail",100);
+                cv::blur(img_HSV_range,img_HSV_range,cv::Size(5,5));
+
+                threshold(img_HSV_range, img_HSV_threshold, detect_detail, 255, THRESH_BINARY);
+
+
+                if(JFetch_TRUE(jsub_region,"invert_detection")==false)
+                  bitwise_not(img_HSV_threshold , img_HSV_threshold);//need bit not by default, so the "invert" will be NOT to bit not
+
+
+                {
+                
+
+                  Mat clonedImg=img_HSV_threshold.clone();
+
+                  int w=clonedImg.cols;
+                  int h=clonedImg.rows;
+
+                  {
+                    Point p_tl(0, 0), p_bl(0, h); 
+
+                    Point p_tr(w-1, 0), p_br(w-1, h); 
+
+
+                    int thickness = 1; 
+                    if(scanDir=="x" || scanDir=="-x")//draw RL side bar
+                    {
+                      line(clonedImg, p_tl, p_bl,Scalar(0, 0, 0),  thickness, LINE_4); 
+                      line(clonedImg, p_tr, p_br,Scalar(0, 0, 0),  thickness, LINE_4); 
+                    }
+
+                    if(scanDir=="y" || scanDir=="-y")//draw top bottom bar
+                    {
+                      line(clonedImg, p_tl, p_tr,Scalar(0, 0, 0),  thickness, LINE_4); 
+                      line(clonedImg, p_bl, p_br,Scalar(0, 0, 0),  thickness, LINE_4); 
+                    }
+
+                  }
+
+
+                  int floodVal=60;
+
+                  {//do flood fill
+                    Point seedPoint(0,0); // Coordinates (x: 100, y: 50)
+
+                    if(scanDir=="x"  || scanDir=="y" )seedPoint=Point(0,0);
+                    else if(scanDir=="-x" || scanDir=="-y")seedPoint=Point(w-1,h-1);
+
+
+                    Rect boundingRect; // The rectangle that flood fill will affect
+
+                    Scalar newVal(floodVal, floodVal, floodVal); // Fill color (white)
+                    floodFill(clonedImg, seedPoint, newVal, &boundingRect, 200, 0, 4);
+                    
+                  }
+
+                  {//check pixel value if flood to the oppsite side
+                    Point checkPoint(0,0); // Coordinates (x: 100, y: 50)
+
+                    if(scanDir=="x"  || scanDir=="y" )checkPoint=Point(w-1,h-1);
+                    else if(scanDir=="-x" || scanDir=="-y")checkPoint=Point(0,0);
+
+                    Scalar checkVal=clonedImg.at<uchar>(checkPoint);
+                    int val=checkVal[0];
+                    // LOGI("checkVal:%d",val);
+                    if(val==floodVal)
+                    {//panetrated
+                      sri.category=STAGEINFO_CAT_OK;
+                    }
+                    else
+                    {//blocked somewhere in the middle
+                      sri.category=STAGEINFO_CAT_NG;
+                    }
+
+                  }
+                  // {
+
+                  //   Point seedPoint(w-1,h-1); // Coordinates (x: 100, y: 50)
+                  //   Rect boundingRect; // The rectangle that flood fill will affect
+
+                  //   Scalar newVal(128, 128, 128); // Fill color (white)
+                  //   floodFill(clonedImg, seedPoint, newVal, &boundingRect, 200, 0, 4);
+                    
+                  // }
+
+
+
+
+                  // imwrite("data/ZZA/"+id+"_"+std::to_string(i)+"_"+std::to_string(j)+".jpg",img_HSV_threshold);
+                  // imwrite("data/ZZA/"+id+"_"+std::to_string(i)+"_"+std::to_string(j)+"flood.jpg",clonedImg);
+                }
+
+
+                {
+
+                  // sri.category=STAGEINFO_SCS_CAT_BASIC_reducer(sri.category,STAGEINFO_CAT_OK);
+                  sri.score=0;
+                  sri.type=StageInfo_SurfaceCheckSimple::id_PassThru;
+
+                  // LOGE("NG_Map_To:%s",NG_Map_To.c_str());
+
+                  // MATCH_REGION_score+=area_sum;
+                  MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,sri.category);
+
+
+                  mri.subregions[subregIdx]=sri;
+                  
+                }
+
+
+
+                resultMarkOverlay[subregIdx]=img_HSV_threshold.clone();
+                if(show_display_overlay)
+                {
+                  float resultOverlayAlpha = JFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
+
+                  if(resultOverlayAlpha>0)
+                  {
+                    // cv::cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
+                    Mat img_HSV_threshold_rgb;
+                    cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
+
+                    addWeighted( 
+                    img_HSV_threshold_rgb, resultOverlayAlpha, 
+                    sub_region_ROI, 1, 0, 
+                    sub_region_ROI);
+
+
+                    // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
+                    // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
+                  }
+                }
+
+
+              }
+
+              resultImage[subregIdx]=sub_region_ROI;
+
+            }
+
+
 
 
             if(subRegType=="DirectionalDiff")
@@ -1874,7 +2097,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
               }
 
-              LOGE("NG_Map_To:%s",NG_Map_To.c_str());
+              // LOGE("NG_Map_To:%s",NG_Map_To.c_str());
 
               // MATCH_REGION_score+=area_sum;
               MATCH_REGION_category=STAGEINFO_SCS_CAT_BASIC_reducer(MATCH_REGION_category,sri.category);
