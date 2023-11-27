@@ -29,7 +29,6 @@ export MODULE_cJSON=$(abspath $(moduleRoot)/contrib/cJSON)
 export MODULE_mjpegLib=$(abspath $(moduleRoot)/contrib/mjpegLib)
 export MODULE_logctrl=$(abspath $(moduleRoot)/logctrl)
 export MODULE_common_lib=$(abspath $(moduleRoot)/common_lib)
-export MODULE_zlib=$(abspath $(moduleRoot)/contrib/zlib-1.2.11)
 export MODULE_SOIL=$(abspath $(moduleRoot)/contrib/SOIL)
 export MODULE_polyfit=$(abspath $(moduleRoot)/contrib/polyfit)
 export MODULE_lodepng=$(abspath $(moduleRoot)/contrib/lodepng)
@@ -74,7 +73,6 @@ IDIR=	include/ \
 			$(MODULE_MatchingEngine)/include \
 			$(MODULE_MatchingEngine)/include_priv \
 			$(MODULE_MatchingEngine)/MorphEngine/include \
-			$(MODULE_zlib)/src \
 			$(MODULE_CameraLayer)/include \
 			$(MODULE_Compat_dirent)/include \
 			$(MODULE_polyfit)/include \
@@ -115,7 +113,6 @@ EXT_OBJS= $(MODULE_circleFitting)/CircleFitting.a \
 
 # ifeq ($(OS)$(CC),Windows_NTcc)
 ifeq ($(findstring MINGW64, $(OS)),MINGW64)
-	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a 
 	FLAGS+= -D_MINGW -D_WINDOWS
 	FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=1
 	FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=1
@@ -170,7 +167,6 @@ else
 									$(MODULE_polyfit) \
 									$(MODULE_mjpegLib) \
 									$(MODULE_MJPEG_Streamer) \
-									$(MODULE_zlib) \
 									$(MODULE_smem_channel)\
 									$(MODULE_BPG_Protocol) \
                   $(MODULE_simple_uart) \

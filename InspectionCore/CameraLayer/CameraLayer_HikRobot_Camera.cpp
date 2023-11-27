@@ -772,11 +772,14 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRate(float frame_rate)
   }
   MV_CC_SetBoolValue(handle, "AcquisitionFrameRateEnable", true);
   MVCC_FLOATVALUE resFPS;
-  int ret2 = GetFloatValue("ResultingFrameRate",&resFPS);
+  int ret = GetFloatValue("ResultingFrameRate",&resFPS);
 
-  if(frame_rate>resFPS.fCurValue)frame_rate=resFPS.fMax;
-  int ret = SetFloatValue("AcquisitionFrameRate",frame_rate);
-  // LOGI(">%d> %f<%f<%f   ,%d",ret,resFPS.fMin,resFPS.fCurValue,resFPS.fMax,ret2);
+  if(frame_rate>resFPS.fMax)frame_rate=resFPS.fMax;
+  int ret2 = SetFloatValue("AcquisitionFrameRate",frame_rate);
+  LOGI(">ret%x,%x>  set:%.1f  m:%.1f<cur:%.1f<M:%.1f",
+    ret,ret2,
+    frame_rate,
+    resFPS.fMin,  resFPS.fCurValue,  resFPS.fMax);
 
 
   return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
