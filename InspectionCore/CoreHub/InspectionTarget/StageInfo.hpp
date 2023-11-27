@@ -226,6 +226,8 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
   const static int id_PassThru=5;
 
 
+  const static int id_CALC=100;
+
   float pixel_size;
   struct Ele_info{//in subregion we have several elements(dot line....)
     // int type;
@@ -276,6 +278,7 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
   struct SubRegion_Info{//for every oriantation info we may have multiple subregions
     int category;
     float score;
+    string name;
     vector<Ele_info> elements;
     int type;
 
@@ -302,6 +305,11 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
       {
         int blob_count;
       } scanPoint_stat;
+
+      struct
+      {
+        std::vector<std::string> *p_compile_fail_info;
+      } calc_stat;
 
     };
   };
@@ -435,7 +443,24 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
             cJSON_AddNumberToObject(jsubreg,"blob_count",subreg.scanPoint_stat.blob_count);
             break;
           }
+          case id_CALC:
+          {
 
+            auto &compile_fail_info=*(subreg.calc_stat.p_compile_fail_info);
+            if(compile_fail_info.size()>0 && i==0)//attach compile error only to the first subregion
+            {
+
+              cJSON* compile_error=cJSON_CreateArray();
+
+              cJSON_AddItemToObject(jsubreg,"compile_error",compile_error);
+
+              for(int k=0;k<compile_fail_info.size();k++)
+              {
+                cJSON_AddItemToArray(compile_error,cJSON_CreateString(compile_fail_info[k].c_str()));
+              }
+            }
+            break;
+          }
 
         }
 

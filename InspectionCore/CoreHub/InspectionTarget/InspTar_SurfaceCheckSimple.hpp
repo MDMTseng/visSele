@@ -26,6 +26,7 @@
 #include "opencv2/imgproc.hpp"
 #include <opencv2/imgcodecs.hpp>
 
+#include "CompScript.hpp"
 
 using namespace cv;
 
@@ -37,6 +38,8 @@ class InspectionTarget_SurfaceCheckSimple :public InspectionTarget
   cJSON* extParam=NULL;
   bool show_display_overlay=true;
   cv::Mat background_temp;
+
+  map<string,CompScript*> scriptTable;
 public:
   InspectionTarget_SurfaceCheckSimple(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
