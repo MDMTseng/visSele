@@ -21,8 +21,7 @@ import 'reactflow/dist/style.css';
 import { ResponsiveReactGridLayoutX } from './UICardComp';
 import type { MenuProps, MenuTheme } from 'antd/es/menu';
 import { UserOutlined, LaptopOutlined, NotificationOutlined,DownOutlined,
-  DisconnectOutlined,LinkOutlined,CopyOutlined } from '@ant-design/icons';
-
+  DisconnectOutlined,LinkOutlined,CopyOutlined,LoadingOutlined,ReloadOutlined } from '@ant-design/icons';
 import clone from 'clone';
 
 import {StoreTypes} from './redux/store';
@@ -30,6 +29,7 @@ import {EXT_API_ACCESS, EXT_API_CONNECTED,EXT_API_DISCONNECTED, EXT_API_REGISTER
 
 
 import { GetObjElement,ID_debounce,ID_throttle,ObjShellingAssign} from './UTIL/MISC_Util';
+import { DDDD } from './InspTarConfigUI';
 
 import {listCMDPromise} from './XCMD';
 
@@ -1083,63 +1083,6 @@ let DAT_ANY_UNDEF:any=undefined;
 
 
 
-const initialNodes = [
-  { id: '1', position: { x: 0, y: 0 }, data: { label: '1' } },
-  { id: '2', position: { x: 0, y: 100 }, data: { label: '2' } },
-  { id: '3', position: { x: 0, y: 200 }, data: { label: '3' } },
-];
-
-const initialEdges = [{ id: 'e1-2', source: '1', target: '2' },{ id: 'e2-3', source: '2', target: '3' },{ id: 'e1-3', source: '1', target: '3' }];
-
-function NodeFlow_DEMO({defConfig}:any) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-
-  const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
-
-  console.log(defConfig.InspTars_main);
-
-  useEffect(() => {
-    let nodes=defConfig.InspTars_main.map((it:any,idx:any)=>({
-      id:it.id,
-      position:{x:0,y:idx*100},
-      data:{label:it.id}
-    })).filter((node:any)=>node.id!=="ImTran")
-
-    let edges=defConfig.InspTars_main.map((it:any,idx:number,arr:any[])=>{
-      let cid=it.id;
-      let cand_it=arr
-        .filter((sit:any)=>sit.match_tags.find((tag:string)=>tag==cid)!==undefined)
-      
-      return cand_it
-        .map((it:any)=>it.id)
-        .map((id:string)=>(
-          { id: `${cid}-${id}`, source:cid, target: id }
-        ))
-    }).flat()
-    console.log(nodes,edges);
-    setNodes(nodes);
-    setEdges(edges);
-
-  },defConfig)
-
-  return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onConnect={onConnect}
-    >
-      <MiniMap />
-      <Controls />
-      <Background />
-    </ReactFlow>
-  );
-}
-
-
-
 function VIEWUI(){
 
 
@@ -1148,7 +1091,7 @@ function VIEWUI(){
       $DEFPATH:"",
       inCMD_Promise:false,
       InspTarDispIDList:undefined,
-      cur_defInfo:{},
+      defConfig:undefined,
       widgetSetID:"",
       reportListener:{
         _key_:{//example
@@ -1185,6 +1128,7 @@ function VIEWUI(){
   const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
   const [refUISetIdx,setrefUISetIdx]=useState(-1);
   const [newUIID,setNewUIID]=useState("");
+  const [cameraLoading,setCameraLoading]=useState(false);
 
   console.log(">>saveDefConfIndexes",saveDefConfIndexes);
   function setDefConfig(newDC:any,inspTarIndex:number=NaN)
@@ -1194,6 +1138,8 @@ function VIEWUI(){
       let newIdexes=[...saveDefConfIndexes,inspTarIndex];
       setSaveDefConfIndexes(newIdexes);
     }
+    
+    _this.listCMD_Vairable.DefConfig=newDC;
     _setDefConfig(newDC);
   }
 
@@ -1205,7 +1151,8 @@ function VIEWUI(){
     onCancel:()=>{},
     title:"" as string|undefined,
     DATA:DAT_ANY_UNDEF,
-    content:DAT_ANY_UNDEF
+    content:DAT_ANY_UNDEF,
+    footer:null as any|undefined,
 
   }
   const [modalInfo,setModalInfo]=useState(emptyModalInfo);
@@ -1276,10 +1223,16 @@ function VIEWUI(){
   {
     let api = BPG_API
     let connCameraInfo = await api.CameraCheckAndConnect(CameraInfo,froceReconnect)
-    return CameraInfo.map((ci:type_CameraInfo)=>{
-     let connTar = connCameraInfo.find(cCam=>cCam.id==ci.id);
-     return {...ci,available:connTar!==undefined}
-    })
+    
+
+    let camAvaInfo=CameraInfo.map((ci:type_CameraInfo)=>{
+      let connTar = connCameraInfo.find(cCam=>cCam.id==ci.id);
+      return {...ci,available:connTar!==undefined}
+     })
+
+
+    _this.listCMD_Vairable.CameraInfo=camAvaInfo;
+    return camAvaInfo;
   }
   async function ReloadPrjDef(path:string)  
   {
@@ -1297,7 +1250,13 @@ function VIEWUI(){
     console.log(_this.listCMD_Vairable.InspTarDispIDList,prjDef)
     let api = BPG_API
 
+    setCameraLoading(true);
     prjDef.main.CameraInfo= await CameraInfoDoConnection(prjDef.main.CameraInfo,true)
+    setCameraLoading(false);
+    
+
+
+
     // updateDefInfo();
     await api.InspTargetRemoveAll()
 
@@ -1591,6 +1550,10 @@ function VIEWUI(){
                   return opt.slice(3).replace(/ /g, "\u00A0")
                 }
 
+                if(opt.startsWith("$pre:")){
+                  return <pre style={{flexShrink: 0,overflow:"scroll"}}>{opt.slice(5).replace(/ /g, "\u00A0")}</pre>
+                }
+
 
 
                 if(opt.startsWith("$divider:")){
@@ -1626,6 +1589,8 @@ function VIEWUI(){
             });
 
             setModalInfo({
+
+              ...emptyModalInfo,
               timeTag:Date.now(),
               visible:true,
               type:setting.type,
@@ -1636,9 +1601,11 @@ function VIEWUI(){
               },
               onCancel:()=>{
                 abortController.abort();
-                reject(false)
+                resolve(true)
                 setModalInfo({...modalInfo,visible:false})
               },
+              footer:null,
+              
               title:setting.title,
               DATA:_setting,
               content:content
@@ -1669,6 +1636,8 @@ function VIEWUI(){
       if(e.e!==undefined)
         e.e=e.e.toString();
       setModalInfo({
+
+        ...emptyModalInfo,
         timeTag:Date.now(),
         visible:true,
         type:"CHECK",
@@ -1678,6 +1647,7 @@ function VIEWUI(){
         onCancel:()=>{
           setModalInfo({...modalInfo,visible:false})
         },
+        footer:null,
         title:"!!!!錯誤 例外!!!!",
         DATA:{info:`${JSON.stringify(e,null,2)}`},
         content:JSON.stringify(e,null,2)
@@ -1719,56 +1689,8 @@ function VIEWUI(){
               
 
 
-            const layout = 
-            [
-              {
-                  "w": 1,
-                  "h": 1,
-                  "x": 0,
-                  "y": 0,
-                  "i": "a",
-                  "moved": false,
-                  "static": false,
-                  "isDraggable": true,
-                  "isResizable": true
-              },
-              {
-                  "w": 2,
-                  "h": 1,
-                  "x": 1,
-                  "y": 0,
-                  "i": "b",
-                  "moved": false,
-                  "static": false,
-                  "isDraggable": true,
-                  "isResizable": true
-              },
-              {
-                  "w": 2,
-                  "h": 1,
-                  "x": 0,
-                  "y": 1,
-                  "i": "c",
-                  "moved": false,
-                  "static": false,
-                  "isDraggable": true,
-                  "isResizable": true
-              },
-              {
-                  "w": 1,
-                  "h": 1,
-                  "x": 3,
-                  "y": 0,
-                  "i": "d",
-                  "moved": false,
-                  "static": false,
-                  "isDraggable": true,
-                  "isResizable": true
-              }
-            ]
-            
-
             setModalInfo({
+              ...emptyModalInfo,
               timeTag:Date.now(),
               type:"AA",
               visible:true,
@@ -1779,45 +1701,41 @@ function VIEWUI(){
                 setModalInfo({...modalInfo,visible:false})
               },
               title:undefined,
+              footer:null,
               DATA:"",
               content:<>
                 {/* <NodeFlow_DEMO defConfig={defConfig}/> */}
 
-                <ResponsiveReactGridLayoutX layouts={undefined}
-                          //  onDrop={(e) => onDrop(e)} 
-                  onLayoutChange={(curL,allL)=>{
-                    console.log(curL,allL)
-                  }}
-                  className="layout" 
-                  //  layouts={layouts} 
-                  breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-                  cols={{ lg: 5, md: 5, sm: 5, xs: 5, xxs: 5 }}
-                  rows={5}
-                  //  // rowHeight={300}
-                  //  // width={1000}
-                  resizeHandles={["se"]}
-                  isDroppable={true}
-                  autoSize={true}
-                  //  onWidthChange={(containerWidth,margin,cols,cpadding)=>{
-                  //   console.log(containerWidth,margin,cols,cpadding);
-                  //  }}
-                  
-                
-                
-                >
-                  <div key="a" style={{ backgroundColor: "#ccc" }}><span>a</span></div>
-                  <div key="b" style={{ backgroundColor: "#ccc" }}>b</div>
-                  <div key="c" style={{ backgroundColor: "#ccc" }}>c</div>
-                  <div key="d" style={{ backgroundColor: "#ccc" }}>
+                <DDDD defConfig={defConfig} nodeInfo={defConfig.main.InspTarNodeInfo} onNodesInfoChange={(nInfo)=>{
+                  console.log(nInfo)
 
 
-                  </div>
-                </ResponsiveReactGridLayoutX>
+                  setDefConfig(ObjShellingAssign(defConfig,["main","InspTarNodeInfo"],nInfo),-12)
+
+
+
+                  // let new_defConfig=ObjShellingAssign(defConfig,["XCmds"],new_xCMDList);
+
+
+                  // //console.log(defConfig,new_defConfig)
+                  // setDefConfig(new_defConfig,-1);
+
+
+
+                }}
+                
+                nodeUpdateMinInterval={500}
+                onNodeEvent={(event)=>{
+                  console.log(event)
+                }}></DDDD>
+
+
               </>
             })
-
           }}>
             ------------
+            
+            
           </div>,"divLine"),
           ...displayInspTarIdx_hide.map((InspTarIdx:number,listIndex:number)=>{
             let inspTar=defConfig.InspTars_main[InspTarIdx];
@@ -1868,8 +1786,24 @@ function VIEWUI(){
         //   </div>,inspTar.id) )))
     )])
 
+  async function reConnectCamera()
+  {
+    let newPrjDef={...defConfig};
+
+    setCameraLoading(true);
+    newPrjDef.main.CameraInfo= await CameraInfoDoConnection(defConfig.main.CameraInfo,true)
+    setCameraLoading(false);
+
+
+    setDefConfig(newPrjDef,-1);
+  }
+
   let cameraMenu=
-  menuCol('相機', 'cam',undefined, [
+  menuCol('相機', 'cam',cameraLoading?<LoadingOutlined/>:
+    <ReloadOutlined onClick={(e)=>{
+      reConnectCamera();
+      e.preventDefault();
+    }}/>, [
     ...(
       defConfig===undefined?[ menuCol("WAIT...","WAITCam")]:
       (defConfig.main.CameraInfo
@@ -1881,6 +1815,7 @@ function VIEWUI(){
               setModalInfo({...emptyModalInfo,
                 title:cam.id,
                 visible:true,
+                footer:undefined,
                 content:<CameraSetupEditUI key={keyTime} CoreAPI={BPG_API} camSetupInfo={ncamInfo}  onCameraSetupUpdate={ncam=>{
                   if(ncam===undefined)
                   {
@@ -1926,7 +1861,8 @@ function VIEWUI(){
                   })()
                   
                   setModalInfo(emptyModalInfo)
-                }
+                },
+
               })
             }
             updater(cam);
@@ -1956,12 +1892,14 @@ function VIEWUI(){
                 console.log(cam)
                 cam.available=false;
                 let new_camInfo=[...defConfig.main.CameraInfo,cam];
-                
+                setCameraLoading(true);
                 CameraInfoDoConnection(new_camInfo).then(result_camInfo=>{
 
                   let new_defConfig= ObjShellingAssign(defConfig,["main","CameraInfo"],result_camInfo);
                   setDefConfig(new_defConfig,-2)
                 });
+
+                setCameraLoading(false);
               }}>
                 {cam.id}
               </Menu.Item>)
@@ -1987,16 +1925,7 @@ function VIEWUI(){
     </Dropdown>, 'Add'),
     menuCol(
     
-    <div onClick={()=>{
-      (async ()=>{
-        let newPrjDef={...defConfig};
-        newPrjDef.main.CameraInfo= await CameraInfoDoConnection(defConfig.main.CameraInfo,true)
-
-
-        setDefConfig(newPrjDef,-1);
-      })();
-      
-    }}>Refresh
+    <div onClick={reConnectCamera}>Refresh
     </div>, 'Refresh')
 
 
@@ -2303,6 +2232,7 @@ function VIEWUI(){
         onOk={modalInfo.onOK}
         // confirmLoading={confirmLoading}
         onCancel={modalInfo.onCancel}
+        footer={modalInfo.footer}
       >
         {modalInfo.content}
     </DraggableModal>

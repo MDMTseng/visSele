@@ -2386,6 +2386,8 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                                 onCancel={() => { }}
                                 okButtonProps={{
                                     danger: true, onClick: () => {
+                                        if (_this.canvasComp !== undefined) 
+                                            _this.canvasComp.UserRegionSelect(undefined);
                                         if (delConfirmCounter != 0) {
                                             setDelConfirmCounter(delConfirmCounter - 1);
                                         }
@@ -2404,6 +2406,37 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                             >
                                 <Button danger type="primary" onClick={() => {
                                     setDelConfirmCounter(3);
+                                    console.log(">>>");
+                                    if (_this.canvasComp !== undefined)
+                                    {
+                                        _this.sel_region = undefined;
+                                        _this.sel_region_type = "region"
+
+                                        let search_regions = cacheDef.search_regions === undefined ? [] : [...cacheDef.search_regions];
+                                        if(idx<search_regions.length)
+                                        {
+
+                                            _this.canvasComp.UserRegionSelect((info: any, state: number) => {
+                                                if (state == 2) {
+                                                    console.log(info);
+                        
+                                                    let x, y, w, h;
+                        
+                                                    let roi_region = PtsToXYWH(info.pt1, info.pt2);
+                                                    console.log(roi_region)
+                                                    let regInfo = { ...roi_region, isBlackRegion: false };
+                                                    
+                                                    search_regions[idx]=regInfo;
+                                                    setCacheDef({ ...cacheDef, search_regions })
+                        
+                                                    _this.sel_region_type = undefined;
+                                                    if (_this.canvasComp !== undefined) 
+                                                        _this.canvasComp.UserRegionSelect(undefined)
+                                                }
+                                            })
+                                        }
+                                    }
+        
                                 }}>{idx}</Button>
                             </Popconfirm>
 
@@ -2442,32 +2475,45 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     })
                 }}>+搜尋範圍</Button>
 
-                {["<", ">", "v", "^"].map((dir, idx) => {
+                {["<", ">", "v", "^","↦","↤","↧","↥","s"].map((dir, idx) => {
 
                     return <Button key={"AddNewRegion" + dir} onClick={() => {
                         
                         let new_search_regions = [...cacheDef.search_regions];
                         console.log(new_search_regions)
 
-                        let offset=[0,0];
+                        let offset={x:0,y:0,w:0,h:0};//x,y,w,h
                         let step=5;
                         switch(dir)
                         {
                             case "<":
-                                offset=[-step,0];
+                                offset.x=-step;
                                 break;
                             case ">":
-                                offset=[step,0];
+                                offset.x=step;
                                 break;
                             case "v":
-                                offset=[0,step];
+                                offset.y=step;
                                 break;
                             case "^":
-                                offset=[0,-step];
+                                offset.y=-step;
+                                break;
+                            case "↦":
+                                offset.w=step;
+                                break;
+                            case "↤":
+                                offset.w=-step;
+                                break;
+
+                            case "↧":
+                                offset.h=step;
+                                break;
+                            case "↥":
+                                offset.h=-step;
                                 break;
                         }
                         new_search_regions=new_search_regions.map((regi:any)=>{
-                            return {...regi,x:regi.x+offset[0],y:regi.y+offset[1]}
+                            return {...regi,x:regi.x+offset.x,y:regi.y+offset.y,w:regi.w+offset.w,h:regi.h+offset.h}
                         })
                         setCacheDef({ ...cacheDef, search_regions: new_search_regions })
                         setUpdateC(updateC + 1);
@@ -2676,7 +2722,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
 
                                 drawRegion(g, canvas_obj, { x: regi.x, y: regi.y, w: regi.w, h: regi.h }, canvas_obj.rUtil.getIndicationLineSize(), false);
-                                ctx.font = "20px Arial";
+                                ctx.font = "40px Arial";
                                 ctx.fillStyle = "rgba(50,150, 50,0.8)";
                                 ctx.fillText("idx:" + idx, regi.x, regi.y)
 
@@ -3735,6 +3781,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
 
     const _this = useRef<any>({}).current;
 
+    const CALC_SCRIPT_INPUT_Ref = useRef<any>(null);
 
     const [delConfirmCounter, setDelConfirmCounter] = useState(0);
 
@@ -3927,6 +3974,11 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
     Y定位方向
     <Switch checkedChildren="方向1" unCheckedChildren="方向2" checked={def.y_locating_dir == true} onChange={(check) => {
         onDefChange({ ...def, y_locating_dir: check }, true);
+    }} />
+
+    定位方式
+    <Switch checkedChildren="無至有" unCheckedChildren="自動閾值" checked={def.locating_type_z2o_or_auto == true} onChange={(check) => {
+        onDefChange({ ...def, locating_type_z2o_or_auto: check }, true);
     }} />
 
 
@@ -4394,6 +4446,10 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
                         
                     }}>{str}</Button>
                 })}
+
+                <Switch checkedChildren="無->有" unCheckedChildren="自動閾值" checked={def_Filled.sense0to1 == true} onChange={(check) => {
+                    onDefChange(ObjShellingAssign(def_Filled, ["sense0to1"], check));
+                }} />
             
             <br />
             <Button onClick={() => { setShowDisplayAdjUI(!showDisplayAdjUI) }}> {showDisplayAdjUI == false ? "+展開顯示調整選項" : "-收起顯示調整選項"}</Button>
@@ -4404,6 +4460,129 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
     
             {showDetectAdjUI == false ? null : HSVEditUI}
 
+            </>
+            break;
+
+        case "PassThru":
+            ConfigUI= <>
+                {["x","y"].map((str)=>
+                {
+                    let scanDir = def_Filled?.scanDir;
+                    return <Button type={scanDir==str?"primary":undefined} onClick={()=>{
+                        let newDef=def_Filled;
+                        newDef=ObjShellingAssign(newDef, ["scanDir"], str);
+                        onDefChange(newDef);
+                        
+                    }}>{str}</Button>
+                })}
+            
+            <br />
+            <Button onClick={() => { setShowDisplayAdjUI(!showDisplayAdjUI) }}> {showDisplayAdjUI == false ? "+展開顯示調整選項" : "-收起顯示調整選項"}</Button>
+            {showDisplayAdjUI == false ? null :ProcessDisplayUI}
+            <br/>
+                
+            <Button onClick={() => { setShowDetectAdjUI(!showDetectAdjUI) }}> {showDetectAdjUI == false ? "+展開偵測調整選項" : "-收起偵測調整選項"}</Button>
+
+            {showDetectAdjUI == false ? null : HSVEditUI}
+
+            </>
+            break;
+        
+        case "CALC":
+            ConfigUI= <>
+
+
+                        
+                <Dropdown overlay={
+                    <Menu> 
+                        {rootDef.sub_regions.map((reg:any)=><Menu.Item onClick={()=>{
+                            let newV="N_"+reg.name;
+                            if(def_Filled.variables.find((vs:string)=>vs==newV)!==undefined)return;
+                            let newDef = { ...def_Filled, variables:[...def_Filled.variables,newV] }
+                            onDefChange(newDef, true);
+                        }}>{"N_"+reg.name}</Menu.Item>)}
+                        
+                        {rootDef.sub_regions.map((reg:any)=><Menu.Item onClick={()=>{
+
+                            let newV="N_"+reg.name+".cat";
+                            if(def_Filled.variables.find((vs:string)=>vs==newV)!==undefined)return;
+                            let newDef = { ...def_Filled, variables:[...def_Filled.variables,newV] }
+                            onDefChange(newDef, true);
+                        }}>{"N_"+reg.name+".cat"}</Menu.Item>)}
+                    </Menu>}>
+                
+                    <Button>+</Button>
+                </Dropdown>
+
+                {def_Filled.variables.map((str:string,index:number)=>{ 
+
+
+                    let idx=def_Filled.script.indexOf(str);
+
+
+
+                    return <>
+                    
+                    <Button type={idx==-1?"dashed":undefined} onClick={()=>{
+                        if(CALC_SCRIPT_INPUT_Ref.current===null)return;
+                        let textArea= CALC_SCRIPT_INPUT_Ref.current.resizableTextArea.textArea;
+                        let selectionStart=textArea.selectionStart;
+                        let selectionEnd=textArea.selectionEnd;
+
+                        let scriptStr=def_Filled.script;
+                        //insert str at selectionStart
+                        scriptStr=scriptStr.slice(0,selectionStart)+" "+str+" "+scriptStr.slice(selectionEnd);
+
+
+                        onDefChange({ ...def, script:scriptStr })
+
+                    }}>{str}</Button>
+
+
+                    <Button disabled={idx!=-1} style={{width:"10px",padding:0,marginRight:"5px"}} danger onClick={()=>{
+                        //remove idx from variables
+                        let newDef = { ...def_Filled, variables:def_Filled.variables.filter((vs:string)=>vs!=str) }
+                        onDefChange(newDef, true);
+                    }}>{" "}</Button>
+
+                    </>
+                })}
+
+
+
+
+
+                <Input.TextArea ref={CALC_SCRIPT_INPUT_Ref}
+                value={def_Filled.script} 
+                autoSize
+                tabIndex={-1}
+                onKeyDown={(e)=>{
+                  if (e.key == 'Tab') {
+                    // e.preventDefault();
+
+                  }
+                }}
+                style={{margin:"1px"}}
+                onChange={(e)=>{
+                  
+                    console.log(e.target.value);
+                    onDefChange({ ...def, script: e.target.value })
+
+                }}/>
+
+
+
+                範圍:<InputNumber value={def_Filled.rangeFrom}
+                    step={0.1}
+                        onChange={(num) => {
+                            onDefChange({ ...def,  rangeFrom:num})
+                        }} />
+
+                ~<InputNumber value={def_Filled.rangeTo}
+                    step={0.1}
+                        onChange={(num) => {
+                            onDefChange({ ...def,  rangeTo:num})
+                        }} />
             </>
             break;
         default:
@@ -4499,7 +4678,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
            
             <Button>
                 <Space>
-                差異過大:{def_Filled.NG_Map_To}
+                NG變換:{def_Filled.NG_Map_To}
                 <DownOutlined />
                 </Space>
             </Button>
@@ -4507,8 +4686,18 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
 
         <Dropdown overlay={
             <Menu>
-                {["HSVSeg","SigmaThres","DirectionalDiff","BrightnessBalance","ScanPoint"].map(str=><Menu.Item onClick={()=>{
+                {["HSVSeg","SigmaThres","DirectionalDiff","BrightnessBalance","ScanPoint","PassThru","CALC"].map(str=><Menu.Item onClick={()=>{
                     let newDef = { ...def_Filled, type:str }
+
+                    if(str=="CALC")
+                    {
+                        newDef={
+                            ...newDef,
+                            variables:[],
+                            script:"0"
+                            // post_exp:["N_SC2.v","2","$,$","max$"]
+                        }
+                    }
                     onDefChange(newDef, true);
                 }}>{str}</Menu.Item>
                 )}
@@ -5854,7 +6043,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                     let idText = prefix + (regionInfo.name === undefined || regionInfo.name == "" ? "$" + subreg_index : regionInfo.name);// +"["+id_name+"]";
 
 
-                                    if(regionInfo.type=="ScanPoint" || regionInfo.type=="BrightnessBalance")
+                                    if(regionInfo.type=="ScanPoint" || regionInfo.type=="BrightnessBalance" || regionInfo.type=="PassThru")//thinner line
                                     {
 
                                         drawRegion(g, canvas_obj, regionInfo.region, lsz/5);
@@ -5875,6 +6064,19 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                     let yoffset = 0;
                                     ctx.strokeStyle = ctx.fillStyle = `rgba(200,200,200,0.6)`;
                                     ctx.fillText((subreg.score===null)?"N/A":subreg.score.toFixed(2) , fLoc, yoffset); yoffset += 19;
+
+                                    if(regionInfo.type=="CALC")
+                                    {
+                                        if(subreg.compile_error!==undefined)
+                                        {
+                                            ctx.strokeStyle = ctx.fillStyle = "rgba(179, 0, 0,0.8)";
+                                            for(let i=0;i<subreg.compile_error.length;i++)
+                                            {
+                                                ctx.fillText(subreg.compile_error[i] , fLoc, yoffset); yoffset += 19;
+                                            }
+                                        }
+                                    }
+
 
                                     let overlayColor = { r: 255, g: 0, b: 0, ...regionInfo.overlayColor }
 
@@ -5897,11 +6099,15 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                         canvas_obj.rUtil.drawCross(ctx, { x:regionInfo.region.x+regionInfo.region.w/2, y: subreg.score }, 5);
                                 }
 
+                                if(regionInfo.type=="PassThru")
+                                {
 
+                                }
 
 
 
                                 // console.log(subreg);
+                                if(subreg.elements!==undefined)
                                 subreg.elements.forEach((ele: any, _index: number) => {
                                     // console.log(subreg);
 
