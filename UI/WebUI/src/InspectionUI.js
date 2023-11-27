@@ -2624,7 +2624,7 @@ class APP_INSP_MODE extends React.Component {
         <div className="flex_div">
           {/* <$CSSTG transitionName="fadeIn"> */}
             <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height}
-              style={{ opacity: menuOpacity, width: "250px" }}>
+              style={{ opacity: menuOpacity, width: "250px",maxHeight:"90%" }}>
               {MenuSet}
             </div>
           {/* </$CSSTG> */}
