@@ -40,6 +40,9 @@ class InspectionTarget_SurfaceCheckSimple :public InspectionTarget
   cv::Mat background_temp;
 
   map<string,CompScript*> scriptTable;
+
+
+  CompScript *orientationAlter=NULL;//=new CompScript();
 public:
   InspectionTarget_SurfaceCheckSimple(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 

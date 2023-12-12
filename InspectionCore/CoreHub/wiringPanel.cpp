@@ -4049,9 +4049,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       // }
 
 
-
-
-      if(strcmp(type_str, "create") ==0)
+      if(strcmp(type_str, "global_value") ==0)
+      {
+        LOGE("global_value SET!!!!!!");
+        inspTarMan.setGlobalValue(JFetch_OBJECT(json, "data"));
+      }
+      else if(strcmp(type_str, "create") ==0)
       {
         char *_id = JFetch_STRING(json, "id");
         if(_id==NULL)break;

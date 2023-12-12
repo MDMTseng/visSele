@@ -28,17 +28,17 @@ public:
     }
 
 template <typename T>
-    void set_variable(std::string name, T &value)
+    T& set_variable(std::string name, T &value)
     {
         varTable[name]=value;
+        return *(&varTable[name]);
     }
     
 template <typename T>
     void add_variable(std::string name, T &value)
     {
         varTable[name]=value;
-        float &v=varTable[name];
-        symbol_table.add_variable(name,v);
+        symbol_table.add_variable(name,*(&varTable[name]));
     }
 
 template <typename T>
@@ -90,13 +90,13 @@ CompScript::CompScript()
 
 
 
-void CompScript::set_variable(std::string name, float &value)
+float & CompScript::set_variable(std::string name, float value)
 {
     scriptImpl *impl=(scriptImpl*)this->scriptImplObj;
-    impl->set_variable<float>(name,value);
+    return impl->set_variable<float>(name,value);
 }
 
-void CompScript::add_variable(std::string name, float &value)
+void CompScript::add_variable(std::string name, float value)
 {
     scriptImpl *impl=(scriptImpl*)this->scriptImplObj;
     impl->add_variable<float>(name,value);

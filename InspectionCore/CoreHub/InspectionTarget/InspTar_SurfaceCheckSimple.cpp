@@ -50,6 +50,28 @@ void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
   LOGI("scriptTable.clear()");
 
 
+  // {
+    
+  //   cJSON* d_value_dicts = JFetch_OBJECT(def,"value_dicts.default");
+  //   if(d_value_dicts)
+  //   {
+  //     if(value_dict)
+  //     {
+  //       cJSON_Delete(value_dict);
+  //       value_dict=NULL;
+  //     }
+
+  //     value_dict=cJSON_Duplicate(d_value_dicts, cJSON_True);
+  //   }
+
+    
+  // }
+
+
+
+
+
+
   for (auto& scriptv : scriptTable)
   {
     if(scriptv.second==NULL)  continue;
@@ -60,7 +82,43 @@ void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
 
 
 
+  if(orientationAlter!=NULL)
+  {
+    delete orientationAlter;
+    orientationAlter=NULL;
+  }
+  
+  {
 
+    string script=JFetch_STRING_ex(def,"script");
+    LOGI("DEF.script:%s",script.c_str());
+    if(script.length()>0)
+    {
+      orientationAlter=new CompScript();
+      orientationAlter->add_variable("nan",NAN);
+      orientationAlter->add_variable("INDEX");
+      orientationAlter->add_variable("x_offset");
+      orientationAlter->add_variable("y_offset");
+
+      orientationAlter->add_variable("angle_offset");
+
+
+      orientationAlter->add_variable("color_ch_mul.r");
+      orientationAlter->add_variable("color_ch_mul.g");
+      orientationAlter->add_variable("color_ch_mul.b");
+
+
+      
+      orientationAlter->compile(script);
+
+
+
+
+
+    }
+
+
+  }
 
 
 
@@ -97,6 +155,12 @@ void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
             cJSON* vname = cJSON_GetArrayItem(variableArr,j);
             string full_name(vname->valuestring);
 
+            if(full_name=="INDEX")
+            {
+            float n=NAN;
+              cs->add_variable(full_name,n);
+              continue;
+            }
 
             string v_name;
             string v_attr;
@@ -191,10 +255,10 @@ cv::Scalar ImgRegionAveraging(Mat &img,cJSON *refRegion,int dowmSapleF=1)
 
   cJSON *region= refRegion;
 
-  int x=(int)JFetch_NUMBER_ex(region,"x")/dowmSapleF;
-  int y=(int)JFetch_NUMBER_ex(region,"y")/dowmSapleF;
-  int w=(int)JFetch_NUMBER_ex(region,"w")/dowmSapleF;
-  int h=(int)JFetch_NUMBER_ex(region,"h")/dowmSapleF;
+  int x=(int)DFetch_NUMBER_ex(region,"x")/dowmSapleF;
+  int y=(int)DFetch_NUMBER_ex(region,"y")/dowmSapleF;
+  int w=(int)DFetch_NUMBER_ex(region,"w")/dowmSapleF;
+  int h=(int)DFetch_NUMBER_ex(region,"h")/dowmSapleF;
 
 
   LOGI("xywh:%d,%d,%d,%d",x,y,w,h);
@@ -249,10 +313,10 @@ cv::Scalar ImgRegionsAveraging(Mat &img,cJSON *refRegionArray,int dowmSapleF=1)
     
     cJSON *region= cJSON_GetArrayItem(refRegionArray,i);
 
-    int x=(int)JFetch_NUMBER_ex(region,"x")/dowmSapleF;
-    int y=(int)JFetch_NUMBER_ex(region,"y")/dowmSapleF;
-    int w=(int)JFetch_NUMBER_ex(region,"w")/dowmSapleF;
-    int h=(int)JFetch_NUMBER_ex(region,"h")/dowmSapleF;
+    int x=(int)DFetch_NUMBER_ex(region,"x")/dowmSapleF;
+    int y=(int)DFetch_NUMBER_ex(region,"y")/dowmSapleF;
+    int w=(int)DFetch_NUMBER_ex(region,"w")/dowmSapleF;
+    int h=(int)DFetch_NUMBER_ex(region,"h")/dowmSapleF;
 
 
     LOGI("xywh:%d,%d,%d,%d",x,y,w,h);
@@ -410,7 +474,7 @@ bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchang
     //   src_acvImg.CVector[i][j*3+1]=0;
     //   src_acvImg.CVector[i][j*3+2]=0;
     // }
-    int image_transfer_downsampling=(int)JFetch_NUMBER_ex(info,"image_transfer_downsampling",-1);
+    int image_transfer_downsampling=(int)DFetch_NUMBER_ex(info,"image_transfer_downsampling",-1);
     if(image_transfer_downsampling>=1)
     {
       act.send("IM",id,&src_acvImg,image_transfer_downsampling);
@@ -863,307 +927,12 @@ void inRangeV2(cv::Mat src, Scalar rangeFrom,Scalar rangeTo,Scalar w,int add_gam
 }
 
 
-
-
-class PostExpExe
-{
-  public:
-
-  PostExpExe()
-  {
-
-  }
-
-  int string_find_count(const char *str, char ch)
-  {
-    int count = 0;
-    for (int i = 0; str[i]; i++)
-    {
-      if (str[i] == ch)
-      {
-        count++;
-      }
-    }
-    return count;
-  }
-  int parse_CALC_Id(const char *post_exp)
-  {
-    if (post_exp[0] != '[')
-      return -1;
-    int idx = 0;
-    for (int i = 1; post_exp[i]; i++)
-    {
-      char cc = post_exp[i];
-      if ((cc < '0') || (cc > '9'))
-        break;
-      idx = idx * 10 + cc - '0';
-    }
-    return idx;
-  }
-
-  bool isParamsCache(const char *exp)
-  {
-    if (*exp != '$')
-      return false;
-    for (int i = 1; exp[i]; i += 2)
-    {
-      if (exp[i] != ',')
-        return false;
-      if (exp[i + 1] != '$')
-        return false;
-    }
-
-    return true;
-  }
-
-  bool strMatchExact(const char *src, const char *pat)
-  {
-    for (int i = 0;; i++)
-    {
-      if (src[i] != pat[i])
-        return false;
-      if (src[i] == '\0')
-        break;
-    }
-    return true;
-  }
-  
-  
-  double JfetchStrNUM(cJSON *obj, char *path)
-  {
-    double *num = JFetch_NUMBER(obj, path);
-    if (num)
-      return *num;
-
-    char *str_num = JFetch_STRING(obj, path);
-    if (str_num == NULL)
-      return NAN;
-    try
-    {
-      double dou = std::stod(str_num);
-
-      return dou;
-    }
-    catch (...)
-    {
-    }
-    LOGI("EXP.....");
-    return NAN;
-  }
-  int functionExec_(const char *exp, float *params, int paramL, float *ret_result)
-  {
-    for (int i = 0; i < paramL; i++)
-    {
-      printf("[%d]:%f   ", i, params[i]);
-    }
-    printf("\n");
-    if (ret_result)
-      *ret_result = 0;
-    if (strMatchExact(exp, "$+$"))
-    {
-      if (paramL != 2)
-        return -1;
-      *ret_result = params[0] + params[1];
-      return 0;
-    }
-    else if (strMatchExact(exp, "$-$"))
-    {
-
-      if (paramL != 2)
-        return -1;
-      *ret_result = params[0] - params[1];
-      return 0;
-    }
-    else if (strMatchExact(exp, "$*$"))
-    {
-
-      if (paramL != 2)
-        return -1;
-      *ret_result = params[0] * params[1];
-      return 0;
-    }
-    else if (strMatchExact(exp, "$/$"))
-    {
-
-      if (paramL != 2)
-        return -1;
-      *ret_result = params[0] / params[1];
-      return 0;
-    }
-    else if (strMatchExact(exp, "max$"))
-    {
-      float max = params[0];
-      for (int i = 1; i < paramL; i++)
-      {
-        if (max < params[i])
-          max = params[i];
-      }
-      *ret_result = max;
-      return 0;
-    }
-    else if (strMatchExact(exp, "min$"))
-    {
-      float min = params[0];
-      for (int i = 1; i < paramL; i++)
-      {
-        if (min > params[i])
-          min = params[i];
-      }
-      *ret_result = min;
-      return 0;
-    }
-
-    return -2;
-  }
-
-
-  float CALC(std::vector<string> postexp, vector<StageInfo_SurfaceCheckSimple::SubRegion_Info> &paramList,float *result)
-  {
-    if(result)*result=NAN;
-    vector<float> calcStack;
-
-    //funcParamHeadIdx indicates the function params starts from
-    //exp: [5,64,11]
-    int funcParamCount = 0;
-
-    //"exp": "max(sin([3]*3),0)",
-    //"post_exp": ["[3]","3","$*$","sin$","0","$,$","max$"]
-    for (int i = 0; i < postexp.size(); i++)
-    {
-      const string post_exp = postexp[i];
-      //LOGI("post_exp[%d]:%s",i,post_exp.c_str());
-
-
-      LOGI("====%d===exp:%s",i,post_exp.c_str());
-      if (post_exp.rfind("N_", 0) == 0) { //refrence param
-
-        string name_str,attr_str;
-        expEleRefSplit(post_exp,name_str,attr_str);
-        
-        if(name_str.empty())
-        {
-          return -81;
-        }
-
-        StageInfo_SurfaceCheckSimple::SubRegion_Info *p_info=NULL;
-        for(int j=0;j<paramList.size();j++)
-        {
-          if(name_str==paramList[j].name)
-          {
-            p_info=&(paramList[j]);
-            break;
-          }
-        }
-
-        if(p_info==NULL)
-        {
-          return -80;
-        }
-
-        StageInfo_SurfaceCheckSimple::SubRegion_Info &info=*p_info;
-
-
-        if(attr_str.empty()||attr_str=="v" ||attr_str=="val"||attr_str=="value" ||attr_str=="score")
-        {
-          calcStack.push_back(p_info->score);
-        }
-        else if(attr_str=="cat"||attr_str=="category")
-        {
-          calcStack.push_back(p_info->category);
-        }
-        else
-        {
-          calcStack.push_back(NAN);
-        }
-
-      }
-      else
-      { //if it's not an id refence
-        int paramSymbolCount = string_find_count(post_exp.c_str(), '$');
-        if (paramSymbolCount > 0)
-        { //if it's a function (sin$, cos$, max$)
-
-          if (isParamsCache(post_exp.c_str()))
-          { //If it's  $,$,.... just save the funcParamCount
-
-            //LOGI("isParamsCache:%s>>>%d",post_exp.c_str(),paramSymbolCount);
-            funcParamCount = paramSymbolCount;
-          }
-          else
-          {
-            if (funcParamCount > 1)
-            {
-              paramSymbolCount = funcParamCount;
-            }
-            funcParamCount = 1;
-
-            //LOGI("isParamsCache:%s>>>%d",post_exp.c_str(),paramSymbolCount);
-            float res;
-            int err_code =
-                functionExec_(
-                    post_exp.c_str(),
-                    &(calcStack[calcStack.size() - paramSymbolCount]),
-                    paramSymbolCount,
-                    &res);
-
-            //LOGI("%f, %d",res,err_code);
-            if (err_code != 0)
-            {
-              return -50;
-            }
-            for (int k = 0; k < paramSymbolCount; k++)
-            {
-              calcStack.pop_back();
-            }
-            calcStack.push_back(res);
-          }
-        }
-        else
-        { //then it might be a number, try
-
-          float val=NAN;
-          try
-          {
-            val = std::stof(post_exp);
-          }
-          catch (...)
-          {
-            //val = NAN;
-            return -3;
-          }
-          calcStack.push_back(val);
-        }
-      }
-
-
-      for(int k=0;k<calcStack.size();k++)
-      {
-        printf("%0.5f,",calcStack[k]);
-      }
-      printf("\n");
-
-    }
-
-    // if (calcStack.size() != 1)
-    // {
-    //   if (ret_result)
-    //     *ret_result = NAN;
-    //   return -50;
-    // }
-    if(result)*result= calcStack[0];
-    return 0;
-  }
-
-};
-
-
-PostExpExe pee;
-
 int PerformInsp(
-  int idx,
+  int objIndex,int subregIdx,
   vector<StageInfo_SurfaceCheckSimple::SubRegion_Info> &regionResultList,
   map<string,CompScript*> &scriptTable,
   cJSON *jsub_regions,
+  InspectionTargetManager* itm,
 
   int downSampleF,
   bool show_display_overlay,
@@ -1178,19 +947,18 @@ int PerformInsp(
   
   )
 {
-  if(regionResultList[idx].type!=StageInfo_SurfaceCheckSimple::id_UNSET || callDepth>10)
-    return regionResultList[idx].type;
+  if(regionResultList[subregIdx].type!=StageInfo_SurfaceCheckSimple::id_UNSET || callDepth>10)
+    return regionResultList[subregIdx].type;
 
   
-  LOGI("PerformInsp idx:%d",idx);
+  LOGI("PerformInsp idx:%d",subregIdx);
 
-  int subregIdx=idx;
 
   cJSON *jsub_region= cJSON_GetArrayItem(jsub_regions,subregIdx);
 
   if(jsub_region==NULL)return StageInfo_SurfaceCheckSimple::id_UNSET;
 
-  std::string subRegName=regionResultList[idx].name;//JFetch_STRING_ex(jsub_region,"name","");
+  std::string subRegName=regionResultList[subregIdx].name;//JFetch_STRING_ex(jsub_region,"name","");
   string subRegType=JFetch_STRING_ex(jsub_region,"type","HSVSeg");
 
   int SUBR_category=STAGEINFO_CAT_UNSET;
@@ -1231,6 +999,12 @@ int PerformInsp(
 
           string name(vname->valuestring);
           
+          if(name=="INDEX")
+          {
+            float n=objIndex;
+            c_script->set_variable(name,n);
+            continue;
+          }
           
           float xv=NAN;
           string subRegName;
@@ -1253,7 +1027,7 @@ int PerformInsp(
               // LOGI("subRegName:%s type:%d",subRegName.c_str(),regionResultList[k].type);
               if(regionResultList[k].type==StageInfo_SurfaceCheckSimple::id_UNSET)
               {
-                PerformInsp(k,regionResultList,scriptTable,jsub_regions,downSampleF,show_display_overlay,_def_temp_img_ROI,_def_temp_img_ROI_BK,resultMarkOverlay,resultMarkRegion,resultImage,bg_img_ROI,callDepth+1);
+                PerformInsp(objIndex,k,regionResultList,scriptTable,jsub_regions,itm,downSampleF,show_display_overlay,_def_temp_img_ROI,_def_temp_img_ROI_BK,resultMarkOverlay,resultMarkRegion,resultImage,bg_img_ROI,callDepth+1);
 
                 if(regionResultList[k].type==StageInfo_SurfaceCheckSimple::id_UNSET)
                 {
@@ -1313,8 +1087,10 @@ int PerformInsp(
     }
     else
     {
-      double rangeFrom=JFetch_NUMBER_ex(jsub_region,"rangeFrom",0);
-      double rangeTo=JFetch_NUMBER_ex(jsub_region,"rangeTo",1000000);
+      cJSON* gval=itm->getNLockGlobalValue();
+      double rangeFrom=DFetch_NUMBER_ex(jsub_region,"rangeFrom",0,gval);
+      double rangeTo=DFetch_NUMBER_ex(jsub_region,"rangeTo",1000000,gval);
+      itm->unLockGlobalValue();
       if(rangeFrom<=rangeTo)//inner section, within
       {
         if(v<rangeFrom || v>rangeTo)//not in the range, NG
@@ -1356,10 +1132,10 @@ int PerformInsp(
     bool x_locating_mark =JFetch_TRUE(jsub_region,"x_locating_mark");
     bool y_locating_mark =JFetch_TRUE(jsub_region,"y_locating_mark");
 
-    float x_f=JFetch_NUMBER_ex(jsub_region,"region.x",-1);
-    float y_f=JFetch_NUMBER_ex(jsub_region,"region.y",-1);
-    float w_f=JFetch_NUMBER_ex(jsub_region,"region.w",-1);
-    float h_f=JFetch_NUMBER_ex(jsub_region,"region.h",-1);
+    float x_f=DFetch_NUMBER_ex(jsub_region,"region.x",-1);
+    float y_f=DFetch_NUMBER_ex(jsub_region,"region.y",-1);
+    float w_f=DFetch_NUMBER_ex(jsub_region,"region.w",-1);
+    float h_f=DFetch_NUMBER_ex(jsub_region,"region.h",-1);
 
     int srX=ceil(x_f/downSampleF);
     int srY=ceil(y_f/downSampleF);
@@ -1407,10 +1183,10 @@ int PerformInsp(
         cJSON *ig_reg= cJSON_GetArrayItem(ignore_regions,k);
         
         int padding=2;
-        int x=padding+(int)JFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
-        int y=padding+(int)JFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
-        int w=-2*padding+(int)JFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
-        int h=-2*padding+(int)JFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
+        int x=padding+(int)DFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
+        int y=padding+(int)DFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
+        int w=-2*padding+(int)DFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
+        int h=-2*padding+(int)DFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
         XYWH_clipping(x,y,w,h, 0,0,sreg_bg.cols,sreg_bg.rows);
         sreg_bg(Rect(x,y,w,h)) = 0;
@@ -1468,8 +1244,9 @@ int PerformInsp(
       if(subRegType=="SigmaThres")
       {
 
-
-        float colorSigma=JFetch_NUMBER_ex(jsub_region,"colorSigma");
+        cJSON* gval=itm->getNLockGlobalValue();
+        float colorSigma=DFetch_NUMBER_ex(jsub_region,"colorSigma",NAN,gval);
+        itm->unLockGlobalValue();
 
 
         LOGE("SigmaThres is HERE....colorSigma:%f",colorSigma);
@@ -1487,10 +1264,10 @@ int PerformInsp(
           {
             cJSON *ig_reg= cJSON_GetArrayItem(ignore_regions,k);
             
-            int x=(int)JFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
-            int y=(int)JFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
-            int w=(int)JFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
-            int h=(int)JFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
+            int x=(int)DFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
+            int y=(int)DFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
+            int w=(int)DFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
+            int h=(int)DFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
             XYWH_clipping(x,y,w,h, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
 
@@ -1602,19 +1379,22 @@ int PerformInsp(
       {
 
         bool centerOrEdge=JFetch_TRUE(jsub_region,"centerOrEdge");
-        float scanAngle=JFetch_NUMBER_ex(jsub_region,"scanAngle");
+        float scanAngle=DFetch_NUMBER_ex(jsub_region,"scanAngle");
         bool sense0to1=JFetch_TRUE(jsub_region,"sense0to1");
 
 
         {
 
-          double l_h=JFetch_NUMBER_ex(jsub_region,"rangel.h",0);
-          double l_s=JFetch_NUMBER_ex(jsub_region,"rangel.s",0);
-          double l_v=JFetch_NUMBER_ex(jsub_region,"rangel.v",0);
+          cJSON* gval=itm->getNLockGlobalValue();
+          double l_h=DFetch_NUMBER_ex(jsub_region,"rangel.h",0,gval);
+          double l_s=DFetch_NUMBER_ex(jsub_region,"rangel.s",0,gval);
+          double l_v=DFetch_NUMBER_ex(jsub_region,"rangel.v",0,gval);
 
-          double h_h=JFetch_NUMBER_ex(jsub_region,"rangeh.h",180);
-          double h_s=JFetch_NUMBER_ex(jsub_region,"rangeh.s",255);
-          double h_v=JFetch_NUMBER_ex(jsub_region,"rangeh.v",255);
+          double h_h=DFetch_NUMBER_ex(jsub_region,"rangeh.h",180,gval);
+          double h_s=DFetch_NUMBER_ex(jsub_region,"rangeh.s",255,gval);
+          double h_v=DFetch_NUMBER_ex(jsub_region,"rangeh.v",255,gval);
+          double detect_detail=DFetch_NUMBER_ex(jsub_region,"detect_detail",100,gval);
+          itm->unLockGlobalValue();
           Mat img_HSV;
           cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);
           // LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
@@ -1626,7 +1406,6 @@ int PerformInsp(
           inRange(img_HSV, rangeL, rangeH, img_HSV_range);
 
 
-          double detect_detail=JFetch_NUMBER_ex(jsub_region,"detect_detail",100);
 
           if(sense0to1==false)
           {
@@ -1649,7 +1428,7 @@ int PerformInsp(
           resultMarkOverlay[subregIdx]=img_HSV_threshold.clone();
           if(show_display_overlay)
           {
-            float resultOverlayAlpha = JFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
+            float resultOverlayAlpha = DFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
 
             if(resultOverlayAlpha>0)
             {
@@ -1769,13 +1548,16 @@ int PerformInsp(
 
         {
 
-          double l_h=JFetch_NUMBER_ex(jsub_region,"rangel.h",0);
-          double l_s=JFetch_NUMBER_ex(jsub_region,"rangel.s",0);
-          double l_v=JFetch_NUMBER_ex(jsub_region,"rangel.v",0);
+          cJSON* gval=itm->getNLockGlobalValue();
+          double l_h=DFetch_NUMBER_ex(jsub_region,"rangel.h",0,gval);
+          double l_s=DFetch_NUMBER_ex(jsub_region,"rangel.s",0,gval);
+          double l_v=DFetch_NUMBER_ex(jsub_region,"rangel.v",0,gval);
 
-          double h_h=JFetch_NUMBER_ex(jsub_region,"rangeh.h",180);
-          double h_s=JFetch_NUMBER_ex(jsub_region,"rangeh.s",255);
-          double h_v=JFetch_NUMBER_ex(jsub_region,"rangeh.v",255);
+          double h_h=DFetch_NUMBER_ex(jsub_region,"rangeh.h",180,gval);
+          double h_s=DFetch_NUMBER_ex(jsub_region,"rangeh.s",255,gval);
+          double h_v=DFetch_NUMBER_ex(jsub_region,"rangeh.v",255,gval);
+          double detect_detail=DFetch_NUMBER_ex(jsub_region,"detect_detail",100,gval);
+          itm->unLockGlobalValue();
           Mat img_HSV;
           cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);
           // LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
@@ -1787,7 +1569,6 @@ int PerformInsp(
           inRange(img_HSV, rangeL, rangeH, img_HSV_range);
 
 
-          double detect_detail=JFetch_NUMBER_ex(jsub_region,"detect_detail",100);
           cv::blur(img_HSV_range,img_HSV_range,cv::Size(5,5));
 
           threshold(img_HSV_range, img_HSV_threshold, detect_detail, 255, THRESH_BINARY);
@@ -1899,7 +1680,7 @@ int PerformInsp(
           resultMarkOverlay[subregIdx]=img_HSV_threshold.clone();
           if(show_display_overlay)
           {
-            float resultOverlayAlpha = JFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
+            float resultOverlayAlpha = DFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
 
             if(resultOverlayAlpha>0)
             {
@@ -1931,10 +1712,12 @@ int PerformInsp(
       else if(subRegType=="DirectionalDiff")
       {
 
+        cJSON* gval=itm->getNLockGlobalValue();
 
-        float dirAngle=JFetch_NUMBER_ex(jsub_region,"dirAngle");
-        float thres=JFetch_NUMBER_ex(jsub_region,"thres");
-        float diffSupressThres=JFetch_NUMBER_ex(jsub_region,"diffSupressThres");
+        float dirAngle=DFetch_NUMBER_ex(jsub_region,"dirAngle",NAN,gval);
+        float thres=DFetch_NUMBER_ex(jsub_region,"thres",NAN,gval);
+        float diffSupressThres=DFetch_NUMBER_ex(jsub_region,"diffSupressThres",NAN,gval);
+        itm->unLockGlobalValue();
 
 
 
@@ -2073,10 +1856,10 @@ int PerformInsp(
           {
             cJSON *ig_reg= cJSON_GetArrayItem(ignore_regions,k);
             
-            int x=(int)JFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
-            int y=(int)JFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
-            int w=(int)JFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
-            int h=(int)JFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
+            int x=(int)DFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
+            int y=(int)DFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
+            int w=(int)DFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
+            int h=(int)DFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
             XYWH_clipping(x,y,w,h, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
 
@@ -2102,12 +1885,15 @@ int PerformInsp(
         cv::Scalar avgPix= sum/pixCount;
         // LOGE("avgPix:%f %f %f",avgPix[0],avgPix[1],avgPix[2]);
 
-        int cct_r=JFetch_NUMBER_ex(jsub_region,"color_compensation_target.r",-1);
-        int cct_g=JFetch_NUMBER_ex(jsub_region,"color_compensation_target.g",-1);
-        int cct_b=JFetch_NUMBER_ex(jsub_region,"color_compensation_target.b",-1);
-
+        cJSON* gval=itm->getNLockGlobalValue();
+        int cct_r=DFetch_NUMBER_ex(jsub_region,"color_compensation_target.r",-1,gval);
+        int cct_g=DFetch_NUMBER_ex(jsub_region,"color_compensation_target.g",-1,gval);
+        int cct_b=DFetch_NUMBER_ex(jsub_region,"color_compensation_target.b",-1,gval);
         cv::Scalar refAvgPix=cv::Scalar(cct_b,cct_g,cct_r);
-        int color_compensation_diff_thres=JFetch_NUMBER_ex(jsub_region,"color_compensation_diff_thres",-1);
+        int color_compensation_diff_thres=DFetch_NUMBER_ex(jsub_region,"color_compensation_diff_thres",-1);
+
+        itm->unLockGlobalValue();
+
 
         float color_compensation_diff= norm(refAvgPix,avgPix,NORM_L2);
 
@@ -2140,12 +1926,14 @@ int PerformInsp(
 
       }
 
+      cJSON* gval=itm->getNLockGlobalValue();
 
 
-      float sharpening_blurRad = JFetch_NUMBER_ex(jsub_region,"sharpening_blurRad",0);
-      float sharpening_alpha = JFetch_NUMBER_ex(jsub_region,"sharpening_alpha",0);
-      float sharpening_beta = JFetch_NUMBER_ex(jsub_region,"sharpening_beta",1+sharpening_alpha);
-      float sharpening_gamma = JFetch_NUMBER_ex(jsub_region,"sharpening_gamma",0);
+      float sharpening_blurRad = DFetch_NUMBER_ex(jsub_region,"sharpening_blurRad",0,gval);
+      float sharpening_alpha = DFetch_NUMBER_ex(jsub_region,"sharpening_alpha",0,gval);
+      float sharpening_beta = DFetch_NUMBER_ex(jsub_region,"sharpening_beta",1+sharpening_alpha,gval);
+      float sharpening_gamma = DFetch_NUMBER_ex(jsub_region,"sharpening_gamma",0,gval);
+      
       if(sharpening_blurRad>1 && sharpening_alpha>0){
 
         Mat image(sub_region_ROI.rows,sub_region_ROI.cols,CV_8UC3);
@@ -2166,35 +1954,46 @@ int PerformInsp(
 
 
 
-
       // {
 
-      //   int blurRadius=(int)JFetch_NUMBER_ex(jsub_region,"blurRadius",default_blurRadius);
+      //   int blurRadius=(int)DFetch_NUMBER_ex(jsub_region,"blurRadius",default_blurRadius);
       //   if(blurRadius>0)
       //     cv::GaussianBlur(sub_region_ROI, sub_region_ROI, cv::Size(blurRadius, blurRadius), blurRadius);
 
       // }
 
-      float line_length_thres=JFetch_NUMBER_ex(jsub_region,"line_length_thres",99999);
-      float point_area_thres = JFetch_NUMBER_ex(jsub_region,"point_area_thres",99999);
+      float line_length_thres=DFetch_NUMBER_ex(jsub_region,"line_length_thres",99999,gval);
+      float point_area_thres = DFetch_NUMBER_ex(jsub_region,"point_area_thres",99999,gval);
 
-      float point_total_area_thres=JFetch_NUMBER_ex(jsub_region,"point_total_area_thres",1000000000);
-      float line_total_length_thres=JFetch_NUMBER_ex(jsub_region,"line_total_length_thres",1000000000);
+      float point_total_area_thres=DFetch_NUMBER_ex(jsub_region,"point_total_area_thres",1000000000,gval);
+      float line_total_length_thres=DFetch_NUMBER_ex(jsub_region,"line_total_length_thres",1000000000,gval);
 
 
-      float area_thres = JFetch_NUMBER_ex(jsub_region,"area_thres",99999);
+      LOGE("gval:%p",gval);
+      float area_thres = DFetch_NUMBER_ex(jsub_region,"area_thres",99999,gval);
+
+
+
+      double l_h=DFetch_NUMBER_ex(jsub_region,"rangel.h",0,gval);
+      double l_s=DFetch_NUMBER_ex(jsub_region,"rangel.s",0,gval);
+      double l_v=DFetch_NUMBER_ex(jsub_region,"rangel.v",0,gval);
+
+      double h_h=DFetch_NUMBER_ex(jsub_region,"rangeh.h",180,gval);
+      double h_s=DFetch_NUMBER_ex(jsub_region,"rangeh.s",255,gval);
+      double h_v=DFetch_NUMBER_ex(jsub_region,"rangeh.v",255,gval);
+
+
+      double detect_detail=DFetch_NUMBER_ex(jsub_region,"detect_detail",100,gval);
+      itm->unLockGlobalValue();
+
+
+
+      LOGE("area_thres:%f",area_thres);
       resultImage[subregIdx]=sub_region_ROI;
       Mat img_HSV;
       cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);
 
       // imwrite("data/ZZA/"+id+"_"+std::to_string(j)+".jpg",img_HSV); 
-      double l_h=JFetch_NUMBER_ex(jsub_region,"rangel.h",0);
-      double l_s=JFetch_NUMBER_ex(jsub_region,"rangel.s",0);
-      double l_v=JFetch_NUMBER_ex(jsub_region,"rangel.v",0);
-
-      double h_h=JFetch_NUMBER_ex(jsub_region,"rangeh.h",180);
-      double h_s=JFetch_NUMBER_ex(jsub_region,"rangeh.s",255);
-      double h_v=JFetch_NUMBER_ex(jsub_region,"rangeh.v",255);
       // LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
       Scalar rangeH=Scalar(h_h,h_s,h_v);
       Scalar rangeL=Scalar(l_h,l_s,l_v);
@@ -2217,10 +2016,10 @@ int PerformInsp(
           
       //     cJSON *region= cJSON_GetArrayItem(blackRegions,i);
           
-      //     int x=(int)JFetch_NUMBER_ex(region,"x");
-      //     int y=(int)JFetch_NUMBER_ex(region,"y");
-      //     int w=(int)JFetch_NUMBER_ex(region,"w");
-      //     int h=(int)JFetch_NUMBER_ex(region,"h");
+      //     int x=(int)DFetch_NUMBER_ex(region,"x");
+      //     int y=(int)DFetch_NUMBER_ex(region,"y");
+      //     int w=(int)DFetch_NUMBER_ex(region,"w");
+      //     int h=(int)DFetch_NUMBER_ex(region,"h");
 
 
       //     XYWH_clipping(x,y,w,h, 0,0,img_HSV_threshold.cols,img_HSV_threshold.rows);
@@ -2243,7 +2042,6 @@ int PerformInsp(
       //   }
       // }
 
-      double detect_detail=JFetch_NUMBER_ex(jsub_region,"detect_detail",100);
       cv::blur(img_HSV_range,img_HSV_range,cv::Size(5,5));
 
       threshold(img_HSV_range, img_HSV_threshold, detect_detail, 255, THRESH_BINARY);
@@ -2270,10 +2068,10 @@ int PerformInsp(
         {
           cJSON *ig_reg= cJSON_GetArrayItem(ignore_regions,k);
           
-          int x=(int)JFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
-          int y=(int)JFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
-          int w=(int)JFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
-          int h=(int)JFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
+          int x=(int)DFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
+          int y=(int)DFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
+          int w=(int)DFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
+          int h=(int)DFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
           XYWH_clipping(x,y,w,h, 0,0,img_HSV_threshold.cols,img_HSV_threshold.rows);
           img_HSV_threshold(Rect(x,y,w,h)) = 0;
@@ -2288,7 +2086,7 @@ int PerformInsp(
       resultMarkOverlay[subregIdx]=img_HSV_threshold.clone();
       if(show_display_overlay)
       {
-        float resultOverlayAlpha = JFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
+        float resultOverlayAlpha = DFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
 
         if(resultOverlayAlpha>0)
         {
@@ -2497,7 +2295,10 @@ int PerformInsp(
 
 
 
-        int element_count_thres = JFetch_NUMBER_ex(jsub_region,"element_count_thres",0);
+        cJSON* gval=itm->getNLockGlobalValue();
+        int element_count_thres = DFetch_NUMBER_ex(jsub_region,"element_count_thres",0,gval);
+        int element_area_thres = DFetch_NUMBER_ex(jsub_region,"element_area_thres",-1,gval);
+        itm->unLockGlobalValue();
 
         if(element_count_thres<elementCount)
         {
@@ -2506,7 +2307,6 @@ int PerformInsp(
           
         }
 
-        int element_area_thres = JFetch_NUMBER_ex(jsub_region,"element_area_thres",-1);
         if(element_area_thres>0 && element_area_thres<element_total_area)
         {
           isNG=true;
@@ -2599,7 +2399,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
     return;
   }
 
-  int downSampleF=JFetch_NUMBER_ex(def,"down_sample_factor",1);
+  int downSampleF=DFetch_NUMBER_ex(def,"down_sample_factor",1);
 
   int64 t0 = cv::getTickCount();
   LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
@@ -2649,11 +2449,18 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   // cJSON_AddItemToObject(report,"regionInfo",rep_regionInfo);
 
 
-  float X_offset_O=JFetch_NUMBER_ex(def,"x_offset",0);
-  float Y_offset_O=JFetch_NUMBER_ex(def,"y_offset",0);
+  float X_offset_O=DFetch_NUMBER_ex(def,"x_offset",0);
+  float Y_offset_O=DFetch_NUMBER_ex(def,"y_offset",0);
 
-  float W_O=JFetch_NUMBER_ex(def,"w");
-  float H_O=JFetch_NUMBER_ex(def,"h");
+  float angle_offset=DFetch_NUMBER_ex(def,"angle_offset",0);
+
+  float color_ch_mul_r=DFetch_NUMBER_ex(def,"color_ch_mul.r",1);
+  float color_ch_mul_g=DFetch_NUMBER_ex(def,"color_ch_mul.g",1);
+  float color_ch_mul_b=DFetch_NUMBER_ex(def,"color_ch_mul.b",1);
+
+
+  float W_O=DFetch_NUMBER_ex(def,"w");
+  float H_O=DFetch_NUMBER_ex(def,"h");
 
 
   float X_offset=X_offset_O/downSampleF;
@@ -2663,16 +2470,12 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   float H=H_O/downSampleF;
 
 
+  InspectionTargetManager* itm=belongMan;
 
 
-
-  float angle_offset=JFetch_NUMBER_ex(def,"angle_offset",0)*M_PI/180;
-  int multi_target_column_count=(int)JFetch_NUMBER_ex(def,"multi_target_column_count",99999);
+  int multi_target_column_count=(int)DFetch_NUMBER_ex(def,"multi_target_column_count",99999);
 
 
-  float color_ch_mul_r=JFetch_NUMBER_ex(def,"color_ch_mul.r",1);
-  float color_ch_mul_g=JFetch_NUMBER_ex(def,"color_ch_mul.g",1);
-  float color_ch_mul_b=JFetch_NUMBER_ex(def,"color_ch_mul.b",1);
 
   // LOGE("color_ch_mul:%f %f %f",color_ch_mul_r,color_ch_mul_g,color_ch_mul_b);
 
@@ -2680,7 +2483,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   shared_ptr<StageInfo_SurfaceCheckSimple> reportInfo(new StageInfo_SurfaceCheckSimple());
   
-  int default_blurRadius=(int)JFetch_NUMBER_ex(def,"blur_radius",0)/downSampleF;
+  int default_blurRadius=(int)DFetch_NUMBER_ex(def,"blur_radius",0)/downSampleF;
   vector<StageInfo_Orientation::orient> *orienList=&(d_sinfo->orientation);
 
 
@@ -2705,11 +2508,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
         orient.flip=JFetch_TRUE(jorient,"flip")==true;
-        orient.angle=JFetch_NUMBER_ex(jorient,"angle",0);
-        orient.confidence=JFetch_NUMBER_ex(jorient,"confidence",0);
+        orient.angle=DFetch_NUMBER_ex(jorient,"angle",0);
+        orient.confidence=DFetch_NUMBER_ex(jorient,"confidence",0);
 
-        orient.center.X=JFetch_NUMBER_ex(jorient,"center.x")/downSampleF;
-        orient.center.Y=JFetch_NUMBER_ex(jorient,"center.y")/downSampleF;
+        orient.center.X=DFetch_NUMBER_ex(jorient,"center.x")/downSampleF;
+        orient.center.Y=DFetch_NUMBER_ex(jorient,"center.y")/downSampleF;
         orienList_ext.push_back(orient);
       }
     }
@@ -2721,9 +2524,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   
 
-  int bilateral_d= (int)JFetch_NUMBER_ex(def,"bilateral.d",-1);
-  float bilateral_sigmaColor= JFetch_NUMBER_ex(def,"bilateral.sigmaColor",2);
-  float bilateral_sigmaSpace=JFetch_NUMBER_ex(def,"bilateral.sigmaSpace",2);
+  cJSON* gval=itm->getNLockGlobalValue();
+  int bilateral_d= (int)DFetch_NUMBER_ex(def,"bilateral.d",-1,gval);
+  float bilateral_sigmaColor= DFetch_NUMBER_ex(def,"bilateral.sigmaColor",2,gval);
+  float bilateral_sigmaSpace=DFetch_NUMBER_ex(def,"bilateral.sigmaSpace",2,gval);
+  itm->unLockGlobalValue();
 
 
   bool do_equalize_hist=false;//JFetch_TRUE(def,"equalize_hist");
@@ -2768,25 +2573,68 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
 
-        float angle = orientation.angle;
+
+
+        float n_idx=i, n_x_offset=X_offset, n_y_offset=Y_offset, n_angle_offset=angle_offset, n_color_ch_mul_r=color_ch_mul_r, n_color_ch_mul_g=color_ch_mul_g, n_color_ch_mul_b=color_ch_mul_b,n_result=NAN;
+
+        if(orientationAlter!=NULL)
+        {
+          float &_idx=orientationAlter->set_variable("INDEX",i);
+
+          float &_x_offset=orientationAlter->set_variable("x_offset",X_offset);
+          float &_y_offset=orientationAlter->set_variable("y_offset",Y_offset);
+          float &_angle_offset=orientationAlter->set_variable("angle_offset",angle_offset);
+
+
+          float &_color_ch_mul_r=orientationAlter->set_variable("color_ch_mul.r",color_ch_mul_r);
+          float &_color_ch_mul_g=orientationAlter->set_variable("color_ch_mul.g",color_ch_mul_g);
+          float &_color_ch_mul_b=orientationAlter->set_variable("color_ch_mul.b",color_ch_mul_b);
+
+
+          n_result = orientationAlter->value();
+
+          n_idx=_idx;
+          n_x_offset=_x_offset;
+          n_y_offset=_y_offset;
+          n_angle_offset=_angle_offset;
+
+          n_color_ch_mul_r=_color_ch_mul_r;
+          n_color_ch_mul_g=_color_ch_mul_g;
+          n_color_ch_mul_b=_color_ch_mul_b;
+          LOGI("script result:%f  n_angle_offset:%f",n_result,n_angle_offset);
+        }
+
+
+
+        float angle = orientation.angle+n_angle_offset*M_PI/180;
         // if(angle>M_PI_2)angle-=M_PI;
         // if(angle<-M_PI_2)angle+=M_PI;
-        angle+=angle_offset;
+
+
+
+
+
+
 
         bool xFlip=false;
         bool yFlip=orientation.flip;
         orientation.center.X/=downSampleF;
         orientation.center.Y/=downSampleF;
 
-        Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset,H/2+Y_offset},-angle,xFlip,yFlip);
+
+
+
+
+
+        Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+n_x_offset,H/2+n_y_offset},-angle,xFlip,yFlip);
 
         cv::warpAffine(CV_srcImg, _def_temp_img_ROI, rot,_def_temp_img_ROI.size());
 
         Mat _def_temp_img_ROI_BK;
         _def_temp_img_ROI.copyTo(_def_temp_img_ROI_BK);
-        if(color_ch_mul_r!=1 || color_ch_mul_g!=1 || color_ch_mul_b!=1)
+        if(n_color_ch_mul_r!=1 || n_color_ch_mul_g!=1 || n_color_ch_mul_b!=1)
         {
-          cv::Scalar compScalar(color_ch_mul_b,color_ch_mul_g,color_ch_mul_r);
+          cv::Scalar compScalar(n_color_ch_mul_b,n_color_ch_mul_g,n_color_ch_mul_r);
           multiply(_def_temp_img_ROI,compScalar, _def_temp_img_ROI);
         }
 
@@ -2842,11 +2690,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
           if(JFetch_TRUE(jsub_region,"enable")==false)continue;
 
-          int srW=(int)JFetch_NUMBER_ex(jsub_region,"region.w",-1)/downSampleF;
-          int srH=(int)JFetch_NUMBER_ex(jsub_region,"region.h",-1)/downSampleF;
+          int srW=(int)DFetch_NUMBER_ex(jsub_region,"region.w",-1)/downSampleF;
+          int srH=(int)DFetch_NUMBER_ex(jsub_region,"region.h",-1)/downSampleF;
 
-          int srX=(int)JFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF;
-          int srY=(int)JFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF;
+          int srX=(int)DFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF;
+          int srY=(int)DFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF;
           // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
           XYWH_clipping(srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
           if(srW<=1 || srH<=1)
@@ -2861,9 +2709,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
 
-          double bTarR=JFetch_NUMBER_ex(jsub_region,"bTar.r",128);
-          double bTarG=JFetch_NUMBER_ex(jsub_region,"bTar.g",128);
-          double bTarB=JFetch_NUMBER_ex(jsub_region,"bTar.b",128);
+          cJSON* gval=itm->getNLockGlobalValue();
+          double bTarR=DFetch_NUMBER_ex(jsub_region,"bTar.r",128,gval);
+          double bTarG=DFetch_NUMBER_ex(jsub_region,"bTar.g",128,gval);
+          double bTarB=DFetch_NUMBER_ex(jsub_region,"bTar.b",128,gval);
+          itm->unLockGlobalValue();
           cv::Scalar pixTar={bTarB,bTarG,bTarR};
 
           LOGI("pixTar:%f %f %f  pixSum:%f %f %f",pixTar[0],pixTar[1],pixTar[2],pixSum[0],pixSum[1],pixSum[2]);
@@ -2946,11 +2796,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             indexArr_w_priority[h2--]=j;
 
 
-            int srW=(int)JFetch_NUMBER_ex(jsub_region,"region.w",-1)/downSampleF;
-            int srH=(int)JFetch_NUMBER_ex(jsub_region,"region.h",-1)/downSampleF;
+            int srW=(int)DFetch_NUMBER_ex(jsub_region,"region.w",-1)/downSampleF;
+            int srH=(int)DFetch_NUMBER_ex(jsub_region,"region.h",-1)/downSampleF;
 
-            int srX=(int)JFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF+xShift;
-            int srY=(int)JFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF+yShift;
+            int srX=(int)DFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF+xShift;
+            int srY=(int)DFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF+yShift;
             // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
             XYWH_clipping(srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
             if(srW<=1 || srH<=1)
@@ -2981,10 +2831,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                 {
                   cJSON *ig_reg= cJSON_GetArrayItem(ignore_regions,k);
                   
-                  int x=(int)JFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
-                  int y=(int)JFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
-                  int w=(int)JFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
-                  int h=(int)JFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
+                  int x=(int)DFetch_NUMBER_ex(ig_reg,"x")/downSampleF;
+                  int y=(int)DFetch_NUMBER_ex(ig_reg,"y")/downSampleF;
+                  int w=(int)DFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
+                  int h=(int)DFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
                   XYWH_clipping(x,y,w,h, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
 
@@ -3008,12 +2858,14 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 
 
-              int cct_r=JFetch_NUMBER_ex(jsub_region,"color_compensation_target.r",-1);
-              int cct_g=JFetch_NUMBER_ex(jsub_region,"color_compensation_target.g",-1);
-              int cct_b=JFetch_NUMBER_ex(jsub_region,"color_compensation_target.b",-1);
+              cJSON* gval=itm->getNLockGlobalValue();
+              int cct_r=DFetch_NUMBER_ex(jsub_region,"color_compensation_target.r",-1,gval);
+              int cct_g=DFetch_NUMBER_ex(jsub_region,"color_compensation_target.g",-1,gval);
+              int cct_b=DFetch_NUMBER_ex(jsub_region,"color_compensation_target.b",-1,gval);
+              int color_compensation_diff_thres=DFetch_NUMBER_ex(jsub_region,"color_compensation_diff_thres",-1,gval);
+              itm->unLockGlobalValue();
 
               cv::Scalar refAvgPix=cv::Scalar(cct_b,cct_g,cct_r);
-              int color_compensation_diff_thres=JFetch_NUMBER_ex(jsub_region,"color_compensation_diff_thres",-1);
 
               float color_compensation_diff= norm(refAvgPix,avgPix,NORM_L2);
 
@@ -3037,13 +2889,15 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
             if(1)
             {
 
-              double l_h=JFetch_NUMBER_ex(jsub_region,"rangel.h",0);
-              double l_s=JFetch_NUMBER_ex(jsub_region,"rangel.s",0);
-              double l_v=JFetch_NUMBER_ex(jsub_region,"rangel.v",0);
+              cJSON* gval=itm->getNLockGlobalValue();
+              double l_h=DFetch_NUMBER_ex(jsub_region,"rangel.h",0,gval);
+              double l_s=DFetch_NUMBER_ex(jsub_region,"rangel.s",0,gval);
+              double l_v=DFetch_NUMBER_ex(jsub_region,"rangel.v",0,gval);
 
-              double h_h=JFetch_NUMBER_ex(jsub_region,"rangeh.h",180);
-              double h_s=JFetch_NUMBER_ex(jsub_region,"rangeh.s",255);
-              double h_v=JFetch_NUMBER_ex(jsub_region,"rangeh.v",255);
+              double h_h=DFetch_NUMBER_ex(jsub_region,"rangeh.h",180,gval);
+              double h_s=DFetch_NUMBER_ex(jsub_region,"rangeh.s",255,gval);
+              double h_v=DFetch_NUMBER_ex(jsub_region,"rangeh.v",255,gval);
+              itm->unLockGlobalValue();
               Mat img_HSV;
               cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);
               // LOGI("%f %f %f     %f %f %f",l_h,l_s,l_v,  h_h,h_s,h_v);
@@ -3233,10 +3087,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           // PerformInsp(j,mri.subregions,jsub_regions,downSampleF,_def_temp_img_ROI);
 
           PerformInsp(
-          j,
+          i,j,
           mri.subregions,
           scriptTable,
           jsub_regions,
+          belongMan,
 
            downSampleF,
            show_display_overlay,
@@ -3289,13 +3144,13 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
          
           if(resultMarkOverlay[j].empty()==true)continue;
           cJSON *jsub_region= cJSON_GetArrayItem(jsub_regions,j);
-          float resultOverlayAlpha = JFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
+          float resultOverlayAlpha = DFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
           
           if(resultOverlayAlpha<=0)continue;
 
-          float overlay_r = JFetch_NUMBER_ex(jsub_region,"overlayColor.r",255);
-          float overlay_g = JFetch_NUMBER_ex(jsub_region,"overlayColor.g",0);
-          float overlay_b = JFetch_NUMBER_ex(jsub_region,"overlayColor.b",0);
+          float overlay_r = DFetch_NUMBER_ex(jsub_region,"overlayColor.r",255);
+          float overlay_g = DFetch_NUMBER_ex(jsub_region,"overlayColor.g",0);
+          float overlay_b = DFetch_NUMBER_ex(jsub_region,"overlayColor.b",0);
 
           {
             // cv::cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
@@ -3353,8 +3208,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   reportInfo->pixel_size=sinfo->img_prop.fi.pixel_size_mm;
 
   reportInfo->img_prop=sinfo->img_prop;
-  reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-  reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
+  reportInfo->img_prop.StreamInfo.channel_id=DFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
+  reportInfo->img_prop.StreamInfo.downsample=DFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
   LOGI("CHID:%d category:%d . id:%s",reportInfo->img_prop.StreamInfo.channel_id,category,id.c_str());
 
   // reportInfo->jInfo=NULL;
@@ -3381,6 +3236,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 InspectionTarget_SurfaceCheckSimple::~InspectionTarget_SurfaceCheckSimple()
 {
+  if(orientationAlter)
+  {
+    delete orientationAlter;
+    orientationAlter=NULL;
+  }
   for (auto & scriptv : scriptTable)
   {
     if(scriptv.second==NULL)  continue;

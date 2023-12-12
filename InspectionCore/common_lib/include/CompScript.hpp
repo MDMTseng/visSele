@@ -1,6 +1,7 @@
 
 #include <string>
 #include <vector>
+#include <math.h>
 class CompScript
 {
 private:
@@ -8,8 +9,8 @@ private:
 public:
     std::vector<std::string> failInfo;
     CompScript();
-    void set_variable(std::string name, float &value);
-    void add_variable(std::string name, float &value);
+    float &set_variable(std::string name, float value);
+    void add_variable(std::string name, float value=NAN);
 
     void add_function(std::string name, float &value);
 
