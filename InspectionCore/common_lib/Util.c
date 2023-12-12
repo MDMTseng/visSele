@@ -490,3 +490,64 @@ std::string JFetch_STRING_ex(cJSON * obj,const char *path,std::string default_st
   if(pstr)return std::string(pstr);
   return default_str;
 }
+
+
+
+double DFetch_NUMBER_ex(cJSON *dSrc,char* path,double fallback,cJSON *dictSrc)
+{ 
+  if(dSrc==NULL)return fallback;
+
+  void* tmp_ptr=NULL;
+  int type= getDataFromJson(dSrc,path,&tmp_ptr);
+  // LOGE("getDataFromJson:%d",type);
+  if(type==cJSON_Number)
+  {
+    return *(double*)tmp_ptr;
+  }
+  // LOGE("dictSrc:%p",dictSrc);
+  if(dictSrc==NULL)return fallback;
+  if(type==cJSON_String)
+  {
+    char *dictKey=(char*)tmp_ptr;
+    // LOGE("dictKey:%s",dictKey);
+    return JFetch_NUMBER_ex(dictSrc,dictKey,fallback);
+  }
+  return fallback;
+}
+
+
+int DFetch_TFN(cJSON *dSrc,char* path,int fallback,cJSON *dictSrc)
+{ 
+  if(dSrc==NULL)return fallback;
+
+  void* tmp_ptr=NULL;
+  int type= getDataFromJson(dSrc,path,&tmp_ptr);
+  LOGE("getDataFromJson:%d",type);
+  if(type==cJSON_True)
+  {
+    return 1;
+  }
+
+  if(type==cJSON_False)
+  {
+    return 0;
+  }
+  if(dictSrc==NULL)return fallback;
+
+  if(type==cJSON_String)
+  {
+    char *dictKey=(char*)tmp_ptr;
+    return DFetch_TFN(dictSrc,dictKey,fallback);
+  }
+
+  return fallback;
+
+
+}
+
+
+
+int JFetch_TFN(cJSON *dSrc,char* path,int fallback)
+{ 
+  return DFetch_TFN(dSrc,path,fallback,NULL);
+}

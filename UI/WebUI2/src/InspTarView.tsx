@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useEffect, useRef, useMemo, useContext } from 'react';
+import { useState, useEffect, useRef, useMemo, useContext,createContext } from 'react';
 import { useDispatch, useSelector } from "react-redux";
 import { Layout, Button, Tabs, Slider, Menu, Divider, Dropdown, Popconfirm, Radio, InputNumber, Switch, Select } from 'antd';
 
@@ -28,6 +28,7 @@ import { CORE_ID, CNC_PERIPHERAL_ID, BPG_WS, CNC_Perif, InspCamera_API } from '.
 
 import { Row, Col, Input, Tag, Modal, message, Space,Statistic,Avatar } from 'antd';
 
+import {ITGlobalVariableContext,CompParam_GlobalVariable } from './App';
 
 import { type_CameraInfo, type_IMCM } from './AppTypes';
 import './basic.css';
@@ -40,7 +41,6 @@ const { Option } = Select;
 enum EDIT_PERMIT_FLAG {
     XXFLAGXX = 1 << 0
 }
-
 
 
 type IMCM_type =
@@ -129,10 +129,6 @@ export type CompParam_InspTar = {
     APIExport: ((api_set: any) => void) | undefined,
 
 
-    // UIOption:any,
-    
-    // onUIOptionUpdate:((new_UIOption: any) => void) | undefined,
-
 
 }
 
@@ -147,6 +143,35 @@ export type CompParam_UIOption = {
 
 export type CompParam_InspTarUI =CompParam_InspTar & CompParam_UIOption;
 
+
+
+
+
+export function ObjTree( {obj,padding=0,onLeafSelect}:{obj:any,padding:number,onLeafSelect:(value:any,name:string,path:string[])=>void }):any{
+
+    return Object.entries(obj).map(([key, value]:any)=>{
+      if(typeof value === 'object')
+      {
+        return <>
+          <div style={{marginLeft:padding}}>{key+"{-}"}</div>
+          <ObjTree obj={value} padding={padding+15} onLeafSelect={(value,name,path)=>{
+            return onLeafSelect(value,name,[key,...path])
+          }}/>
+        </>
+      }
+      else
+      {
+        return <>
+        <Button size='small' style={{marginLeft:padding,display:"block"}} onClick={()=>{
+          onLeafSelect(value,key,[])
+        }}>{key}: {value}</Button>
+        </>
+      }
+    })
+  
+  } 
+  
+  
 
 type MenuItem = Required<MenuProps>['items'][number];
 
@@ -166,1008 +191,367 @@ const { Header, Content, Footer, Sider } = Layout;
 
 
 
-function ColorRegionDetection_SingleRegion({ srule, onDefChange, canvas_obj }:
-    {
-        srule: any,
-        onDefChange: (...param: any) => void,
-        canvas_obj: DrawHook_CanvasComponent
-    }) {
 
-    const [delConfirmCounter, setDelConfirmCounter] = useState(0);
-    let srule_Filled = {
+let INPUT_LINK = {
+    InputNumber:(props:any)=>{
+        const {
+            global_variable,
 
-        region: [0, 0, 0, 0],
-        colorThres: 10,
-        hough_circle: {
-            dp: 1,
-            minDist: 5,
-            param1: 100,
-            param2: 30,
-            minRadius: 5,
-            maxRadius: 15
-        },
-        hsv: {
-            rangeh: {
-                h: 180, s: 255, v: 255
-            },
-            rangel: {
-                h: 0, s: 0, v: 0
-            },
-        },
+            set_global_variable,
+        } = useContext(ITGlobalVariableContext);
 
-        ...srule
-    }
-    const _this = useRef<any>({}).current;
-    return <>
-        <Button key={">>>"} onClick={() => {
-            canvas_obj.UserRegionSelect((info, state) => {
-                if (state == 2) {
-                    console.log(info);
+        const [linkStrExpand, setLinkStrExpand] = useState<boolean>(false);
 
-                    let x, y, w, h;
+        console.log(props.value);
 
-                    x = info.pt1.x;
-                    w = info.pt2.x - info.pt1.x;
 
-                    y = info.pt1.y;
-                    h = info.pt2.y - info.pt1.y;
 
+        let isLinkMode=(typeof props.value!="number")&&(props.value!==undefined);
+        let isEmptyInput=(isLinkMode==false)?props.value==0:props.value=="";
 
-                    if (w < 0) {
-                        x += w;
-                        w = -w;
-                    }
-
-                    if (h < 0) {
-                        y += h;
-                        h = -h;
-                    }
-
-                    let newRule = { ...srule_Filled, region: [Math.round(x), Math.round(y), Math.round(w), Math.round(h)] };
-                    onDefChange(newRule)
-
-                    canvas_obj.UserRegionSelect(undefined)
-                }
-            })
-        }}>設定範圍</Button>
-
-        <Popconfirm
-            title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
-            onConfirm={() => { }}
-            onCancel={() => { }}
-            okButtonProps={{
-                danger: true, onClick: () => {
-                    if (delConfirmCounter != 0) {
-                        setDelConfirmCounter(delConfirmCounter - 1);
-                    }
-                    else {
-                        onDefChange(undefined);
-                        // onDefChange(undefined,false)
-                    }
-                }
-            }}
-            okText={"Yes:" + delConfirmCounter}
-            cancelText="No"
-        >
-            <Button danger type="primary" onClick={() => {
-                setDelConfirmCounter(5);
-            }}>DEL</Button>
-        </Popconfirm>
-        {/* 
-      <br/>hough_circle
-      <Slider defaultValue={srule_Filled.hough_circle.minRadius} max={100} onChange={(v)=>{
-  
-      _this.trigTO=
-      ID_debounce(_this.trigTO,()=>{
-        let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,minRadius:v}};
-        onDefChange(newRule)
-      },()=>_this.trigTO=undefined,500);
-  
-      }}/>
-      
-      <Slider defaultValue={srule_Filled.hough_circle.maxRadius} max={100} onChange={(v)=>{
-  
-        _this.trigTO=
-        ID_debounce(_this.trigTO,()=>{
-          let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,maxRadius:v}};
-          onDefChange(newRule)
-        },()=>_this.trigTO=undefined,500);
-  
-      }}/>  */}
-
-
-
-
-        <>
-
-
-            <br />結果顯示
-            <Slider defaultValue={srule_Filled.resultOverlayAlpha} min={0} max={1} step={0.1} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["resultOverlayAlpha"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-
-            <br />HSV
-            <Slider defaultValue={srule_Filled.hsv.rangeh.h} max={180} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangeh", "h"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-            <Slider defaultValue={srule_Filled.hsv.rangel.h} max={180} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangel", "h"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-
-
-
-            <Slider defaultValue={srule_Filled.hsv.rangeh.s} max={255} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangeh", "s"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-            <Slider defaultValue={srule_Filled.hsv.rangel.s} max={255} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangel", "s"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-
-
-
-
-            <Slider defaultValue={srule_Filled.hsv.rangeh.v} max={255} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangeh", "v"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-            <Slider defaultValue={srule_Filled.hsv.rangel.v} max={255} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_throttle(_this.trigTO, () => {
-
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangel", "v"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-
-
-
-
-
-        </>
-
-        <br />細節量
-        <Slider defaultValue={srule_Filled.colorThres} max={255} onChange={(v) => {
-
-            _this.trigTO =
-                ID_throttle(_this.trigTO, () => {
-                    onDefChange(ObjShellingAssign(srule_Filled, ["colorThres"], v));
-                }, () => _this.trigTO = undefined, 200);
-
-        }} />
-
-
-
-
-    </>
-
-}
-
-
-
-
-
-export function SingleTargetVIEWUI_ColorRegionDetection({ display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange }: CompParam_InspTarUI) {
-    const _ = useRef<any>({
-
-        imgCanvas: document.createElement('canvas'),
-        canvasComp: undefined,
-        drawHooks: [],
-        ctrlHooks: []
-
-
-    });
-    const [cacheDef, setCacheDef] = useState<any>(def);
-    const [cameraQueryList, setCameraQueryList] = useState<any[] | undefined>([]);
-
-
-    const [defReport, setDefReport] = useState<any>(undefined);
-    const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
-    let _this = _.current;
-    let c_report: any = undefined;
-    if (_this.cache_report !== report) {
-        if (report !== undefined) {
-            _this.cache_report = report;
+        let inputShow=null;
+        if(isLinkMode==false)
+        {
+            inputShow= <InputNumber {...props} 
+                onChange={(num) => {
+                    console.log(num);
+                    props.onChange(num)
+                }}
+                style={{width: isEmptyInput?'calc(100% - 10px)':"100%"}}/>
         }
-    }
-    c_report = _this.cache_report;
+        else 
+        {
+           
 
+            let path_str=props.value as string;
+            let path=path_str.split(".");
+            let value=GetObjElement(global_variable,path);
 
-    useEffect(() => {
-        console.log("fsPath:" + fsPath)
-        _this.cache_report = undefined;
-        setCacheDef(def);
-        // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
-        // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
-        return (() => {
-        });
+            console.log(global_variable,path,value);
 
-    }, [def]);
-    // console.log(IMCM_group,report);
-    // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
-    // const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);
-    const [Local_IMCM, setLocal_IMCM] =
-        useState<IMCM_type | undefined>(undefined);
 
 
-    enum editState {
-        Normal_Show = 0,
-        Region_Edit = 1,
-    }
 
-    const [stateInfo, setStateInfo] = useState<{ st: editState, info: any }[]>([{
-        st: editState.Normal_Show,
-        info: undefined
-    }]);
 
 
-    const dispatch = useDispatch();
-    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
-    const [CNC_API, setCNC_API] = useState<CNC_Perif>(dispatch(EXT_API_ACCESS(CNC_PERIPHERAL_ID)) as any);
+            inputShow=<> 
 
+                <Dropdown 
+                    trigger={['click']}
+                    overlay={
+                        <div style={{background:"#FFF",border:"5px" }}>
+                            <ObjTree obj={global_variable} padding={0} onLeafSelect={(value,name,path)=>{
+                                let newPath=[...path,name].join(".");
+                                console.log(value,name,path);
+                                props.onChange(newPath)
+                            }}/>
+                        </div>
+                    } >
+                    
+                    <Button 
+                    
+                    onFocus={()=>setLinkStrExpand(true)}
+                    onBlur={()=>setLinkStrExpand(false)}
+                    style={{padding:0,margin:0,width: linkStrExpand?'calc(100% - 10px)':"10px"}} onClick={()=>{
+                                    }}>{props.value+" "}</Button>
 
-    const [queryCameraList, setQueryCameraList] = useState<any[] | undefined>(undefined);
-    const [delConfirmCounter, setDelConfirmCounter] = useState(0);
+                </Dropdown>
+                    
+                <InputNumber {...props} value={value}
+                onChange={(number) => {
+                    // let new_global_variable=ObjShellingAssign(global_variable,path,number);
+                    if(set_global_variable!==undefined)
+                        set_global_variable(path,number);
+                    
+                    props.onChange(props.value)
+                }}
+                style={{width: 'calc(100% - 20px)'}}/>
+            </>
+        }
+
+
+
+
+        return <div style={{width:"100px",...props.style,display: "inline-block",whiteSpace:"nowrap",overflow:"hidden",verticalAlign: "middle"}}>
+
+
+            {inputShow}
+            <Button style={{padding:0,margin:0,width:10}} onClick={()=>{
+                    if(isLinkMode==false)
+                    {
+                        props.onChange("")
+                    }
+                    else
+                    {
+                        props.onChange(undefined)
+                    }
+    
+                }}>_</Button>
+
+
+
+        </div>
+    },
+    RangeSlider:(props:any)=>{
+        const {
+            global_variable,
+            set_global_variable,
+        } = useContext(ITGlobalVariableContext);
+
+        const [linkStrExpand, setLinkStrExpand] = useState<boolean>(false);
+
+
+
+        let isLinkMode=(typeof props.defaultValue[0]=="string")&&(typeof props.defaultValue[1]=="string");
+
+        let inputShow=null;
+        if(isLinkMode==false)
+        {
+            inputShow= <Slider range {...props} 
+                onChange={(nums) => {
+                    props.onChange(nums)
+                }}
+                style={{width: 'calc(100% - 10px)'}}/>
+        }
+        else    if(isLinkMode==true)
+        {
+           
+
+
+            let path_strs=props.defaultValue as string[];
+            let paths=path_strs.map(str=>str.split("."));
+            let values=paths.map(path=>GetObjElement(global_variable,path));
+
+            console.log(global_variable,paths,values);
+
+
+
+
+            inputShow=<> 
+
+                <Dropdown 
+                    trigger={['click']}
+                    overlay={
+                        <div style={{background:"#FFF",border:"5px" }}>
+                            <ObjTree obj={global_variable} padding={0} onLeafSelect={(value,name,path)=>{
+                                let newPath=[...path,name].join(".");
+                                console.log(value,name,path);
+                                props.onChange(newPath)
+                                props.onChange([newPath,props.defaultValue[1]])
+                            }}/>
+                        </div>
+                    } >
+                    
+                    <Button 
+                    
+                    onFocus={()=>setLinkStrExpand(true)}
+                    onBlur={()=>setLinkStrExpand(false)}
+                    style={{padding:0,margin:0,width: linkStrExpand?'calc(50% - 5px)':"0px",overflow:"hidden"}} onClick={()=>{
+                                    }}>{props.defaultValue[0]+" "}</Button>
+
+                </Dropdown>
+
+                <Dropdown 
+                    trigger={['click']}
+                    overlay={
+                        <div style={{background:"#FFF",border:"5px" }}>
+                            <ObjTree obj={global_variable} padding={0} onLeafSelect={(value,name,path)=>{
+                                let newPath=[...path,name].join(".");
+                                console.log(value,name,path);
+                                props.onChange(newPath)
+                                props.onChange([props.defaultValue[0],newPath])
+                            }}/>
+                        </div>
+                    } >
+                    
+                    <Button 
+                    
+                    onFocus={()=>setLinkStrExpand(true)}
+                    onBlur={()=>setLinkStrExpand(false)}
+                    style={{padding:0,margin:0,width: linkStrExpand?'calc(50% - 5px)':"10px",overflow:"hidden"}} onClick={()=>{
+                                    }}>{props.defaultValue[1]+" "}</Button>
 
-
-    let stateInfo_tail = stateInfo[stateInfo.length - 1];
-
-
-
-    function onCacheDefChange(updatedDef: any, ddd: boolean) {
-        console.log(updatedDef);
-        setCacheDef(updatedDef);
-
-
-
-        (async () => {
-            await BPG_API.InspTargetUpdate(updatedDef)
-
-            // await BPG_API.CameraSWTrigger("Hikrobot-00F71598890", "TTT", 4433)
-
-            // await BPG_API.CameraSWTrigger("BMP_carousel_0","TTT",4433)
-
-        })()
-
-    }
-
-
-    useEffect(() => {//////////////////////
-        let cbsKey="_"+Math.random();
-        (async () => {
-
-            let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
-            console.log(ret);
-
-            // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
-
-            await BPG_API.send_cbs_attach(
-                cacheDef.stream_id,cbsKey, {
-
-                resolve: (pkts) => {
-                    // console.log(pkts);
-                    let IM = pkts.find((p: any) => p.type == "IM");
-                    if (IM === undefined) return;
-                    let CM = pkts.find((p: any) => p.type == "CM");
-                    if (CM === undefined) return;
-                    let RP = pkts.find((p: any) => p.type == "RP");
-                    if (RP === undefined) return;
-                    console.log("++++++++\n", IM, CM, RP);
-
-
-                    setDefReport(RP.data)
-                    let IMCM = {
-                        image_info: IM.image_info,
-                        camera_id: CM.data.camera_id,
-                        trigger_id: CM.data.trigger_id,
-                        trigger_tag: CM.data.trigger_tag,
-                    } as type_IMCM
-
-                    _this.imgCanvas.width = IMCM.image_info.width;
-                    _this.imgCanvas.height = IMCM.image_info.height;
-
-                    let ctx2nd = _this.imgCanvas.getContext('2d');
-
-                    if(IMCM.image_info.image instanceof ImageData)
-                        ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
-                    else if(IMCM.image_info.image instanceof HTMLImageElement)
-                        ctx2nd.drawImage(IMCM.image_info.image, 0, 0);
-
-                    setLocal_IMCM(IMCM)
-                    // console.log(IMCM)
-
-                },
-                reject: (pkts) => {
-
-                }
-            }
-
-            )
-            // await BPG_API.InspTargetSetStreamChannelID(
-            //   cacheDef.id,stream_id,
-            //   {
-            //     resolve:(pkts)=>{
-            //       // console.log(pkts);
-            //       let IM=pkts.find((p:any)=>p.type=="IM");
-            //       if(IM===undefined)return;
-            //       let CM=pkts.find((p:any)=>p.type=="CM");
-            //       if(CM===undefined)return;
-            //       let RP=pkts.find((p:any)=>p.type=="RP");
-            //       if(RP===undefined)return;
-            //       console.log("++++++++\n",IM,CM,RP);
-
-
-            //       setDefReport(RP.data)
-            //       let IMCM={
-            //         image_info:IM.image_info,
-            //         camera_id:CM.data.camera_id,
-            //         trigger_id:CM.data.trigger_id,
-            //         trigger_tag:CM.data.trigger_tag,
-            //       } as type_IMCM
-
-            //       _this.imgCanvas.width = IMCM.image_info.width;
-            //       _this.imgCanvas.height = IMCM.image_info.height;
-
-            //       let ctx2nd = _this.imgCanvas.getContext('2d');
-            //       ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
-
-
-            //       setLocal_IMCM(IMCM)
-            //       // console.log(IMCM)
-
-            //     },
-            //     reject:(pkts)=>{
-
-            //     }
-            //   }
-            // )
-
-        })()
-        return (() => {
-            (async () => {
-                await BPG_API.send_cbs_detach(
-                    cacheDef.stream_id, cbsKey);
-
-                // await BPG_API.InspTargetSetStreamChannelID(
-                //   cacheDef.id,0,
-                //   {
-                //     resolve:(pkts)=>{
-                //     },
-                //     reject:(pkts)=>{
-
-                //     }
-                //   }
-                // )
-            })()
-
-        })
-    }, []);
-    // function pushInSendGCodeQ()
-    // {
-    //   if(_this.isSendWaiting==true || _this.gcodeSeq.length==0)
-    //   {
-    //     return;
-    //   }
-    //   const gcode = _this.gcodeSeq.shift();
-    //   if(gcode==undefined || gcode==null)return;
-    //   _this.isSendWaiting=true;
-    //   ACT_WS_GET_OBJ((api)=>{
-    //     api.send({"type":"GCODE","code":gcode},
-    //     (ret)=>{
-    //       console.log(ret);
-    //       _this.isSendWaiting=false;
-    //       pushInSendGCodeQ(_this.gcodeSeq);
-
-    //     },(e)=>console.log(e));
-    //   })
-    // }
-
-
-    if (display == false) return null;
-
-
-
-    let EDIT_UI = null;
-
-    switch (stateInfo_tail.st) {
-
-        case editState.Normal_Show:
-
-
-            let EditUI = null;
-            if (true)//allow edit
-            {
-                EditUI = <>
-                    <Button key={"_" + 10000} onClick={() => {
-
-                        let newDef = { ...cacheDef };
-                        newDef.regionInfo.push({ region: [0, 0, 0, 0], colorThres: 10 });
-                        onCacheDefChange(newDef, false)
-
-
-                        setStateInfo([...stateInfo, {
-                            st: editState.Region_Edit,
-                            info: {
-                                idx: newDef.regionInfo.length - 1
-                            }
-                        }])
-
-                    }}>+</Button>
-
-
-
-                    {cacheDef.regionInfo.map((region: any, idx: number) => {
-                        return <Button key={"_" + idx} onClick={() => {
-                            if (_this.canvasComp === undefined) return;
-
-
-                            setStateInfo([...stateInfo, {
-                                st: editState.Region_Edit,
-                                info: {
-                                    idx: idx
-                                }
-                            }])
-
-
-
-
-                        }}>{"idx:" + idx}</Button>
-                    })}
-                </>
-            }
-
-            EDIT_UI = <>
-
-                <Input maxLength={100} value={cacheDef.id}
-                    style={{ width: "100px" }}
-                    onChange={(e) => {
-                        console.log(e.target.value);
-
-                        let newDef = { ...cacheDef };
-                        newDef.id = e.target.value;
-                        onCacheDefChange(newDef, false)
-
-
-                    }} />
-
-                <Input maxLength={100} value={cacheDef.type} disabled
-                    style={{ width: "100px" }}
-                    onChange={(e) => {
-
-                    }} />
-
-                <Input maxLength={100} value={cacheDef.sampleImageFolder} disabled
-                    style={{ width: "100px" }}
-                    onChange={(e) => {
-                    }} />
-
-
-                <Dropdown
-                    overlay={<>
-                        <Menu>
-                            {
-                                queryCameraList === undefined ?
-                                    <Menu.Item disabled danger>
-                                        <a target="_blank" rel="noopener noreferrer" href="https://www.antgroup.com">
-                                            Press to update
-                                        </a>
-                                    </Menu.Item>
-                                    :
-                                    queryCameraList.map(cam => <Menu.Item key={cam.id}
-                                        onClick={() => {
-                                            let newDef = { ...cacheDef };
-                                            newDef.camera_id = cam.id;
-                                            // HACK_do_Camera_Check=true;
-                                            onCacheDefChange(newDef, true)
-                                        }}>
-                                        {cam.id}
-                                    </Menu.Item>)
-
-                            }
-                        </Menu>
-                    </>}
-                >
-                    <Button onClick={() => {
-                        // queryCameraList
-                        setQueryCameraList(undefined);
-                        BPG_API.queryDiscoverList()
-                            .then((e: any) => {
-                                console.log(e);
-                                setQueryCameraList(e[0].data)
-                            })
-                        // let api=await getAPI(CORE_ID) as BPG_WS;
-                        // let cameraListInfos=await api.cameraDiscovery() as any[];
-                        // let CM=cameraListInfos.find(info=>info.type=="CM")
-                        // if(CM===undefined)throw "CM not found"
-                        // console.log(CM.data);
-                        // return CM.data as {name:string,id:string,driver_name:string}[];
-
-                    }}>{cacheDef.camera_id}</Button>
                 </Dropdown>
 
 
 
-                <Input maxLength={100} value={cacheDef.trigger_tag}
-                    style={{ width: "100px" }}
-                    onChange={(e) => {
-                        let newDef = { ...cacheDef };
-                        newDef.trigger_tag = e.target.value;
-                        onCacheDefChange(newDef, false)
-                    }} />
-
-                <Popconfirm
-                    title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
-                    onConfirm={() => { }}
-                    onCancel={() => { }}
-                    okButtonProps={{
-                        danger: true, onClick: () => {
-                            if (delConfirmCounter != 0) {
-                                setDelConfirmCounter(delConfirmCounter - 1);
-                            }
-                            else {
-                                onCacheDefChange(undefined, false)
-                            }
-                        }
-                    }}
-                    okText={"Yes:" + delConfirmCounter}
-                    cancelText="No"
-                >
-                    <Button danger type="primary" onClick={() => {
-                        setDelConfirmCounter(5);
-                    }}>DEL</Button>
-                </Popconfirm>
-                <br />
-                <Button onClick={() => {
-                    onCacheDefChange(cacheDef, true);
-                }}>SHOT</Button>
-                {/* <Button onClick={() => {
-                    onDefChange(cacheDef, true)
-                }}>SAVE</Button> */}
-
-                {EditUI}
+            <Slider range  {...props} value={values}
+                onChange={(nums) => {
+                    props.onChange(nums)
+                    // let new_global_variable=global_variable;
 
 
+                    // new_global_variable=ObjShellingAssign(new_global_variable,paths[0],nums[0]);
+                    // new_global_variable=ObjShellingAssign(new_global_variable,paths[1],nums[1]);
+
+
+                    if(set_global_variable!==undefined)
+                    {
+                        if(values[0]!=nums[0])
+                            set_global_variable(paths[0],nums[0]);
+                        else if(values[1]!=nums[1])
+                            set_global_variable(paths[1],nums[1]);
+                    }
+                    
+                    props.onChange(props.defaultValue)
+
+                }}
+                style={{width: 'calc(100% - 10px)'}}/>
             </>
+        }
 
 
-            break;
-
-        case editState.Region_Edit:
 
 
-            if (cacheDef.regionInfo.length <= stateInfo_tail.info.idx) {
-                break;
-            }
-
-            let regionInfo = cacheDef.regionInfo[stateInfo_tail.info.idx];
-
-            EDIT_UI = <>
-                <Button key={"_" + -1} onClick={() => {
-
-                    let new_stateInfo = [...stateInfo]
-                    new_stateInfo.pop();
-
-                    setStateInfo(new_stateInfo)
-                }}>{"<"}</Button>
-                <ColorRegionDetection_SingleRegion
-                    srule={regionInfo}
-                    onDefChange={(newDef_sregion) => {
-                        // console.log(newDef);
+        return <div style={{width:"100%",...props.style,display: "flex",whiteSpace:"nowrap",overflow:"hidden",verticalAlign: "middle"}}>
 
 
-                        let newDef = { ...cacheDef };
-                        if (newDef_sregion !== undefined) {
-                            newDef.regionInfo[stateInfo_tail.info.idx] = newDef_sregion;
-                        }
-                        else {
-
-                            newDef.regionInfo.splice(stateInfo_tail.info.idx, 1);
-
-                            let new_stateInfo = [...stateInfo]
-                            new_stateInfo.pop();
-
-                            setStateInfo(new_stateInfo)
-
-                        }
-
-                        onCacheDefChange(newDef, true)
-                        // _this.sel_region=undefined
-
+            {/* <InputNumber {...props} 
+                    onChange={(num) => {
+                        console.log(num);
+                        props.onChange(num)
                     }}
-                    canvas_obj={_this.canvasComp} />
-            </>
-
-            break;
-    }
+                    style={{width:"50%"}}/> */}
 
 
+            {inputShow}
+            <Button style={{padding:0,margin:0,width:10}} onClick={()=>{
+                    if(isLinkMode==false)
+                    {
+                        props.onChange(["",""])
+                    }
+                    else
+                    {
+                        props.onChange([0,0])
+                    }
+    
+                }}>_</Button>
 
-    return <div style={{ ...style}} className={"overlayCon"}>
+            {/* <Select style={{padding:"0px",margin:"0px"}} defaultValue="a" className="select-after" 
+                onChange={ (value: string) => {
+                    console.log(`selected ${value}`);
+                    if(value=="a")
+                    {
+                        setData(0);
+                    }
+                    else if(value=="b")
+                    {
+                        setData("b");
+                    }
+                }}>
+                <Option value="a">a</Option>
+                <Option value="b">b</Option>
+            </Select> */}
 
-        <div className={"overlay"} >
-
-            {EDIT_UI}
 
         </div>
+    },
+    Slider:(props:any)=>{
+        const {
+            global_variable,
+            set_global_variable,
+        } = useContext(ITGlobalVariableContext);
 
-
-        <HookCanvasComponent style={{}} dhook={(ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent) => {
-            _this.canvasComp = canvas_obj;
-            // console.log(ctrl_or_draw);
-            if (ctrl_or_draw == true)//ctrl
-            {
-                // if(canvas_obj.regionSelect===undefined)
-                // canvas_obj.UserRegionSelect((onSelect,draggingState)=>{
-                //   if(draggingState==1)
-                //   {
-
-                //   }
-                //   else if(draggingState==2)
-                //   {
-                //     console.log(onSelect);
-                //     canvas_obj.UserRegionSelect(undefined)
-                //   }
-                // });
-
-                // ctrlHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
-                if (canvas_obj.regionSelect !== undefined) {
-                    if (canvas_obj.regionSelect.pt1 === undefined || canvas_obj.regionSelect.pt2 === undefined) {
-                        return;
-                    }
-                    _this.sel_region = PtsToXYWH(canvas_obj.regionSelect.pt1, canvas_obj.regionSelect.pt2);
-
-                }
-            }
-            else//draw
-            {
-                if (Local_IMCM !== undefined) {
-                    g.ctx.save();
-                    let scale = Local_IMCM.image_info.scale;
-                    g.ctx.scale(scale, scale);
-                    g.ctx.translate(-0.5, -0.5);
-                    g.ctx.drawImage(_this.imgCanvas, 0, 0);
-                    g.ctx.restore();
-                }
-                // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
-
-
-                let ctx = g.ctx;
-
-                {
-                    cacheDef.regionInfo.forEach((region: any, idx: number) => {
-
-                        let region_ROI =
-                        {
-                            x: region.region[0],
-                            y: region.region[1],
-                            w: region.region[2],
-                            h: region.region[3]
-                        }
-
-                        ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
-                        drawRegion(g, canvas_obj, region_ROI, canvas_obj.rUtil.getIndicationLineSize());
-
-                        ctx.font = "40px Arial";
-                        ctx.fillStyle = "rgba(0, 179, 0,0.5)";
-                        ctx.fillText("idx:" + idx, region_ROI.x, region_ROI.y)
-
-
-                        let region_components = GetObjElement(c_report, ["regionInfo", idx, "components"]);
-                        // console.log(report,region_components);
-                        if (region_components !== undefined) {
-                            region_components.forEach((regComp: any) => {
-
-                                canvas_obj.rUtil.drawCross(ctx, { x: regComp.x, y: regComp.y }, 5);
-
-                                ctx.font = "4px Arial";
-                                ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
-                                ctx.fillText(regComp.area, regComp.x, regComp.y)
-
-                                ctx.font = "4px Arial";
-                                ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
-                                ctx.fillText(`${regComp.x},${regComp.y}`, regComp.x, regComp.y + 5)
-                            })
-
-                        }
+        const [linkStrExpand, setLinkStrExpand] = useState<boolean>(false);
 
 
 
-                    })
-                }
+        let isLinkMode=(typeof props.value=="string");
 
-
-                if (canvas_obj.regionSelect !== undefined && _this.sel_region !== undefined) {
-                    ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-
-                    drawRegion(g, canvas_obj, _this.sel_region, canvas_obj.rUtil.getIndicationLineSize());
-
-                }
-            }
-
-
-            if (renderHook) {
-                // renderHook(ctrl_or_draw,g,canvas_obj,newDef);
-            }
+        let inputShow=null;
+        if(isLinkMode==false)
+        {
+            inputShow= <Slider {...props} 
+                onChange={(nums) => {
+                    props.onChange(nums)
+                }}
+                style={{width: 'calc(100% - 10px)'}}/>
         }
-        } />
-
-    </div>;
-
-}
+        else    if(isLinkMode==true)
+        {
+           
 
 
+            let path_str=props.value as string;
+            let path=path_str.split(".");
+            let value=GetObjElement(global_variable,path);
 
-function Orientation_ColorRegionOval_SingleRegion({ srule, onDefChange, canvas_obj }:
-    {
-        srule: any,
-        onDefChange: (...param: any) => void,
-        canvas_obj: DrawHook_CanvasComponent
-    }) {
+            console.log(global_variable,path,value);
 
-    const [delConfirmCounter, setDelConfirmCounter] = useState(0);
-    let srule_Filled = {
 
-        region: [0, 0, 0, 0],
-        colorThres: 10,
-        hsv: {
-            rangeh: {
-                h: 180, s: 255, v: 255
-            },
-            rangel: {
-                h: 0, s: 0, v: 0
-            },
-        },
 
-        contour: {
-            lengthh: 400000,
-            lengthl: 70,
 
-            areah: 639030,
-            areal: 400,
 
-        },
 
-        ...srule
+            inputShow=<> 
+
+
+            <Dropdown 
+                trigger={['click']}
+                overlay={
+                    <div style={{background:"#FFF",border:"5px" }}>
+                        <ObjTree obj={global_variable} padding={0} onLeafSelect={(value,name,path)=>{
+                            let newPath=[...path,name].join(".");
+                            console.log(value,name,path);
+                            props.onChange(newPath)
+                        }}/>
+                    </div>
+                } >
+                
+                <Button 
+                
+                onFocus={()=>setLinkStrExpand(true)}
+                onBlur={()=>setLinkStrExpand(false)}
+                style={{padding:0,margin:0,width: linkStrExpand?'calc(100% - 10px)':"10px"}} onClick={()=>{
+                                }}>{props.value+" "}</Button>
+
+            </Dropdown>
+
+
+
+
+            <Slider  {...props} value={value}
+                onChange={(num) => {
+                    props.onChange(num)
+                    let new_global_variable=global_variable;
+                    new_global_variable=ObjShellingAssign(new_global_variable,path,num);
+
+
+                    if(set_global_variable!==undefined)
+                        set_global_variable(path,num);
+                    
+                    props.onChange(props.defaultValue)
+
+                }}
+                style={{width: 'calc(100% - 10px)'}}/>
+            </>
+        }
+
+
+
+
+        return <div style={{width:"100%",...props.style,display: "flex",whiteSpace:"nowrap",overflow:"hidden",verticalAlign: "middle"}}>
+
+
+            {inputShow}
+            <Button style={{padding:0,margin:0,width:10}} onClick={()=>{
+                    if(isLinkMode==false)
+                    {
+                        props.onChange("")
+                    }
+                    else
+                    {
+                        props.onChange(NaN)
+                    }
+    
+                }}>_</Button>
+
+
+
+        </div>
     }
-    const _this = useRef<any>({}).current;
-    return <>
-        <Button key={">>>"} onClick={() => {
-            canvas_obj.UserRegionSelect((info, state) => {
-                if (state == 2) {
-                    console.log(info);
-
-                    let x, y, w, h;
-
-                    x = info.pt1.x;
-                    w = info.pt2.x - info.pt1.x;
-
-                    y = info.pt1.y;
-                    h = info.pt2.y - info.pt1.y;
-
-
-                    if (w < 0) {
-                        x += w;
-                        w = -w;
-                    }
-
-                    if (h < 0) {
-                        y += h;
-                        h = -h;
-                    }
-
-                    let newRule = { ...srule_Filled, region: [Math.round(x), Math.round(y), Math.round(w), Math.round(h)] };
-                    onDefChange(newRule)
-
-                    canvas_obj.UserRegionSelect(undefined)
-                }
-            })
-        }}>設定範圍</Button>
-
-        <Popconfirm
-            title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
-            onConfirm={() => { }}
-            onCancel={() => { }}
-            okButtonProps={{
-                danger: true, onClick: () => {
-                    if (delConfirmCounter != 0) {
-                        setDelConfirmCounter(delConfirmCounter - 1);
-                    }
-                    else {
-                        onDefChange(undefined);
-                        // onDefChange(undefined,false)
-                    }
-                }
-            }}
-            okText={"Yes:" + delConfirmCounter}
-            cancelText="No"
-        >
-            <Button danger type="primary" onClick={() => {
-                setDelConfirmCounter(5);
-            }}>DEL</Button>
-        </Popconfirm>
-        {/* 
-      <br/>hough_circle
-      <Slider defaultValue={srule_Filled.hough_circle.minRadius} max={100} onChange={(v)=>{
-  
-      _this.trigTO=
-      ID_debounce(_this.trigTO,()=>{
-        let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,minRadius:v}};
-        onDefChange(newRule)
-      },()=>_this.trigTO=undefined,500);
-  
-      }}/>
-      
-      <Slider defaultValue={srule_Filled.hough_circle.maxRadius} max={100} onChange={(v)=>{
-  
-        _this.trigTO=
-        ID_debounce(_this.trigTO,()=>{
-          let newRule={...srule_Filled,hough_circle:{...srule_Filled.hough_circle,maxRadius:v}};
-          onDefChange(newRule)
-        },()=>_this.trigTO=undefined,500);
-  
-      }}/>  */}
-
-
-
-
-        <>
-
-
-            <br />結果顯示
-            <Slider defaultValue={srule_Filled.resultOverlayAlpha} min={0} max={1} step={0.1} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["resultOverlayAlpha"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-
-            <br />HSV
-            <Slider defaultValue={srule_Filled.hsv.rangeh.h} max={180} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangeh", "h"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-            <Slider defaultValue={srule_Filled.hsv.rangel.h} max={180} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangel", "h"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-
-
-
-            <Slider defaultValue={srule_Filled.hsv.rangeh.s} max={255} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangeh", "s"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-            <Slider defaultValue={srule_Filled.hsv.rangel.s} max={255} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangel", "s"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-
-
-
-
-            <Slider defaultValue={srule_Filled.hsv.rangeh.v} max={255} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangeh", "v"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-            <Slider defaultValue={srule_Filled.hsv.rangel.v} max={255} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_throttle(_this.trigTO, () => {
-
-                        onDefChange(ObjShellingAssign(srule_Filled, ["hsv", "rangel", "v"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-
-
-
-            <br />Edge thres
-            <Slider defaultValue={srule_Filled.contour.lengthh} max={3000} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["contour", "lengthh"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-            <Slider defaultValue={srule_Filled.contour.lengthl} max={3000} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["contour", "lengthl"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-
-
-            <br />Area thres
-            <Slider defaultValue={srule_Filled.contour.areah} max={10000} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["contour", "areah"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-            <Slider defaultValue={srule_Filled.contour.areal} max={10000} onChange={(v) => {
-
-                _this.trigTO =
-                    ID_debounce(_this.trigTO, () => {
-                        onDefChange(ObjShellingAssign(srule_Filled, ["contour", "areal"], v));
-                    }, () => _this.trigTO = undefined, 500);
-
-            }} />
-
-
-        </>
-
-        <br />細節量
-        <Slider defaultValue={srule_Filled.colorThres} max={255} onChange={(v) => {
-
-            _this.trigTO =
-                ID_throttle(_this.trigTO, () => {
-                    onDefChange(ObjShellingAssign(srule_Filled, ["colorThres"], v));
-                }, () => _this.trigTO = undefined, 200);
-
-        }} />
-
-
-
-
-    </>
-
 }
+
 
 function rgb2hsv(r: number, g: number, b: number) {
     let rabs, gabs, babs, rr, gg, bb, h = 0, s, v: number, diff: number, diffc, percentRoundFn;
@@ -2386,6 +1770,8 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                                 onCancel={() => { }}
                                 okButtonProps={{
                                     danger: true, onClick: () => {
+                                        if (_this.canvasComp !== undefined) 
+                                            _this.canvasComp.UserRegionSelect(undefined);
                                         if (delConfirmCounter != 0) {
                                             setDelConfirmCounter(delConfirmCounter - 1);
                                         }
@@ -2404,6 +1790,37 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                             >
                                 <Button danger type="primary" onClick={() => {
                                     setDelConfirmCounter(3);
+                                    console.log(">>>");
+                                    if (_this.canvasComp !== undefined)
+                                    {
+                                        _this.sel_region = undefined;
+                                        _this.sel_region_type = "region"
+
+                                        let search_regions = cacheDef.search_regions === undefined ? [] : [...cacheDef.search_regions];
+                                        if(idx<search_regions.length)
+                                        {
+
+                                            _this.canvasComp.UserRegionSelect((info: any, state: number) => {
+                                                if (state == 2) {
+                                                    console.log(info);
+                        
+                                                    let x, y, w, h;
+                        
+                                                    let roi_region = PtsToXYWH(info.pt1, info.pt2);
+                                                    console.log(roi_region)
+                                                    let regInfo = { ...roi_region, isBlackRegion: false };
+                                                    
+                                                    search_regions[idx]=regInfo;
+                                                    setCacheDef({ ...cacheDef, search_regions })
+                        
+                                                    _this.sel_region_type = undefined;
+                                                    if (_this.canvasComp !== undefined) 
+                                                        _this.canvasComp.UserRegionSelect(undefined)
+                                                }
+                                            })
+                                        }
+                                    }
+        
                                 }}>{idx}</Button>
                             </Popconfirm>
 
@@ -2442,32 +1859,45 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     })
                 }}>+搜尋範圍</Button>
 
-                {["<", ">", "v", "^"].map((dir, idx) => {
+                {["<", ">", "v", "^","↦","↤","↧","↥","s"].map((dir, idx) => {
 
                     return <Button key={"AddNewRegion" + dir} onClick={() => {
                         
                         let new_search_regions = [...cacheDef.search_regions];
                         console.log(new_search_regions)
 
-                        let offset=[0,0];
+                        let offset={x:0,y:0,w:0,h:0};//x,y,w,h
                         let step=5;
                         switch(dir)
                         {
                             case "<":
-                                offset=[-step,0];
+                                offset.x=-step;
                                 break;
                             case ">":
-                                offset=[step,0];
+                                offset.x=step;
                                 break;
                             case "v":
-                                offset=[0,step];
+                                offset.y=step;
                                 break;
                             case "^":
-                                offset=[0,-step];
+                                offset.y=-step;
+                                break;
+                            case "↦":
+                                offset.w=step;
+                                break;
+                            case "↤":
+                                offset.w=-step;
+                                break;
+
+                            case "↧":
+                                offset.h=step;
+                                break;
+                            case "↥":
+                                offset.h=-step;
                                 break;
                         }
                         new_search_regions=new_search_regions.map((regi:any)=>{
-                            return {...regi,x:regi.x+offset[0],y:regi.y+offset[1]}
+                            return {...regi,x:regi.x+offset.x,y:regi.y+offset.y,w:regi.w+offset.w,h:regi.h+offset.h}
                         })
                         setCacheDef({ ...cacheDef, search_regions: new_search_regions })
                         setUpdateC(updateC + 1);
@@ -2676,7 +2106,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
 
                                 drawRegion(g, canvas_obj, { x: regi.x, y: regi.y, w: regi.w, h: regi.h }, canvas_obj.rUtil.getIndicationLineSize(), false);
-                                ctx.font = "20px Arial";
+                                ctx.font = "40px Arial";
                                 ctx.fillStyle = "rgba(50,150, 50,0.8)";
                                 ctx.fillText("idx:" + idx, regi.x, regi.y)
 
@@ -2868,527 +2298,6 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
 }
 
-
-export function SingleTargetVIEWUI_Orientation_ColorRegionOval(props: CompParam_InspTarUI) {
-    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange } = props;
-    const _ = useRef<any>({
-
-        imgCanvas: document.createElement('canvas'),
-        canvasComp: undefined,
-        drawHooks: [],
-        ctrlHooks: []
-
-
-    });
-    const [cacheDef, setCacheDef] = useState<any>(def);
-    const [cameraQueryList, setCameraQueryList] = useState<any[] | undefined>([]);
-
-
-    const [defReport, setDefReport] = useState<any>(undefined);
-    const [forceUpdateCounter, setForceUpdateCounter] = useState(0);
-    let _this = _.current;
-    let c_report: any = undefined;
-    if (_this.cache_report !== report) {
-        if (report !== undefined) {
-            _this.cache_report = report;
-        }
-    }
-    c_report = _this.cache_report;
-
-
-    useEffect(() => {
-        console.log("fsPath:" + fsPath)
-        _this.cache_report = undefined;
-        setCacheDef(def);
-        // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
-        // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
-        return (() => {
-        });
-
-    }, [def]);
-    // console.log(IMCM_group,report);
-    // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
-    // const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);
-    const [Local_IMCM, setLocal_IMCM] =
-        useState<IMCM_type | undefined>(undefined);
-
-
-    enum editState {
-        Normal_Show = 0,
-        Region_Edit = 1,
-    }
-
-    const [stateInfo, setStateInfo] = useState<{ st: editState, info: any }[]>([{
-        st: editState.Normal_Show,
-        info: undefined
-    }]);
-
-
-    const dispatch = useDispatch();
-    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
-    const [CNC_API, setCNC_API] = useState<CNC_Perif>(dispatch(EXT_API_ACCESS(CNC_PERIPHERAL_ID)) as any);
-
-
-    const [queryCameraList, setQueryCameraList] = useState<any[] | undefined>(undefined);
-    const [delConfirmCounter, setDelConfirmCounter] = useState(0);
-
-
-    let stateInfo_tail = stateInfo[stateInfo.length - 1];
-
-
-
-    function onCacheDefChange(updatedDef: any, ddd: boolean) {
-        console.log(updatedDef);
-        setCacheDef(updatedDef);
-
-
-
-        (async () => {
-            console.log(">>>");
-            await BPG_API.InspTargetUpdate(updatedDef)
-
-        })()
-
-        BPG_API.InspTargetExchange(cacheDef.id, { type: "revisit_cache_stage_info" });
-
-        onDefChange(updatedDef, ddd);
-    }
-
-
-    useEffect(() => {//////////////////////
-
-        let cbsKey="_"+Math.random();
-        (async () => {
-
-            let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
-            console.log(ret);
-
-            // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
-
-            await BPG_API.send_cbs_attach(
-                cacheDef.stream_id,cbsKey, {
-
-                resolve: (pkts) => {
-                    // console.log(pkts);
-                    let IM = pkts.find((p: any) => p.type == "IM");
-                    if (IM === undefined) return;
-                    let CM = pkts.find((p: any) => p.type == "CM");
-                    if (CM === undefined) return;
-                    let RP = pkts.find((p: any) => p.type == "RP");
-                    if (RP === undefined) return;
-                    console.log("++++++++\n", IM, CM, RP);
-
-
-                    setDefReport(RP.data)
-                    let IMCM = {
-                        image_info: IM.image_info,
-                        camera_id: CM.data.camera_id,
-                        trigger_id: CM.data.trigger_id,
-                        trigger_tag: CM.data.trigger_tag,
-                    } as type_IMCM
-
-                    _this.imgCanvas.width = IMCM.image_info.width;
-                    _this.imgCanvas.height = IMCM.image_info.height;
-
-                    let ctx2nd = _this.imgCanvas.getContext('2d');
-
-                    if(IMCM.image_info.image instanceof ImageData)
-                        ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
-                    else if(IMCM.image_info.image instanceof HTMLImageElement)
-                        ctx2nd.drawImage(IMCM.image_info.image, 0, 0);
-
-                    setLocal_IMCM(IMCM)
-                    // console.log(IMCM)
-
-                },
-                reject: (pkts) => {
-
-                }
-            }
-
-            )
-
-        })()
-        return (() => {
-            (async () => {
-                await BPG_API.send_cbs_detach(
-                    cacheDef.stream_id, cbsKey);
-
-                // await BPG_API.InspTargetSetStreamChannelID(
-                //   cacheDef.id,0,
-                //   {
-                //     resolve:(pkts)=>{
-                //     },
-                //     reject:(pkts)=>{
-
-                //     }
-                //   }
-                // )
-            })()
-
-        })
-    }, []);
-    // function pushInSendGCodeQ()
-    // {
-    //   if(_this.isSendWaiting==true || _this.gcodeSeq.length==0)
-    //   {
-    //     return;
-    //   }
-    //   const gcode = _this.gcodeSeq.shift();
-    //   if(gcode==undefined || gcode==null)return;
-    //   _this.isSendWaiting=true;
-    //   ACT_WS_GET_OBJ((api)=>{
-    //     api.send({"type":"GCODE","code":gcode},
-    //     (ret)=>{
-    //       console.log(ret);
-    //       _this.isSendWaiting=false;
-    //       pushInSendGCodeQ(_this.gcodeSeq);
-
-    //     },(e)=>console.log(e));
-    //   })
-    // }
-
-
-    if (display == false) return null;
-
-
-    let EDIT_UI = null;
-
-    switch (stateInfo_tail.st) {
-
-        case editState.Normal_Show:
-
-
-            let EditUI = null;
-            if ((EditPermitFlag & EDIT_PERMIT_FLAG.XXFLAGXX) != 0)//allow edit
-            {
-                EditUI = <>
-
-                    <InspTarView_basicInfo {...props} def={cacheDef} onDefChange={(newDef, ddd) => {
-                        onCacheDefChange(newDef, ddd);
-                    }} />
-                    <Button key={"_" + 10000} onClick={() => {
-
-                        let newDef = { ...cacheDef };
-                        newDef.regionInfo.push({ region: [0, 0, 0, 0], colorThres: 10 });
-                        onCacheDefChange(newDef, false)
-
-
-                        setStateInfo([...stateInfo, {
-                            st: editState.Region_Edit,
-                            info: {
-                                idx: newDef.regionInfo.length - 1
-                            }
-                        }])
-
-                    }}>+</Button>
-
-
-
-                    {cacheDef.regionInfo.map((region: any, idx: number) => {
-                        return <Button key={"_" + idx} onClick={() => {
-                            if (_this.canvasComp === undefined) return;
-
-
-                            setStateInfo([...stateInfo, {
-                                st: editState.Region_Edit,
-                                info: {
-                                    idx: idx
-                                }
-                            }])
-
-
-
-
-                        }}>{"idx:" + idx}</Button>
-                    })}
-                </>
-            }
-
-            EDIT_UI = <>
-
-                <Input maxLength={100} value={cacheDef.id} disabled
-                    style={{ width: "200px" }}
-                    onChange={(e) => {
-                    }} />
-                {/* <Input maxLength={100} value={cacheDef.type} disabled
-                    style={{ width: "100px" }}
-                    onChange={(e) => {
-
-                    }} /> */}
-
-                <Input maxLength={100} value={cacheDef.sampleImageFolder} disabled
-                    style={{ width: "100px" }}
-                    onChange={(e) => {
-                    }} />
-
-
-                <Dropdown
-                    overlay={<>
-                        <Menu>
-                            {
-                                queryCameraList === undefined ?
-                                    <Menu.Item disabled danger>
-                                        <a target="_blank" rel="noopener noreferrer" href="https://www.antgroup.com">
-                                            Press to update
-                                        </a>
-                                    </Menu.Item>
-                                    :
-                                    queryCameraList.map(cam => <Menu.Item key={cam.id}
-                                        onClick={() => {
-                                            let newDef = { ...cacheDef };
-                                            newDef.camera_id = cam.id;
-                                            // HACK_do_Camera_Check=true;
-                                            onCacheDefChange(newDef, true)
-                                        }}>
-                                        {cam.id}
-                                    </Menu.Item>)
-
-                            }
-                        </Menu>
-                    </>}
-                >
-                    <Button onClick={() => {
-                        // queryCameraList
-                        setQueryCameraList(undefined);
-                        BPG_API.queryDiscoverList()
-                            .then((e: any) => {
-                                console.log(e);
-                                setQueryCameraList(e[0].data)
-                            })
-                        // let api=await getAPI(CORE_ID) as BPG_WS;
-                        // let cameraListInfos=await api.cameraDiscovery() as any[];
-                        // let CM=cameraListInfos.find(info=>info.type=="CM")
-                        // if(CM===undefined)throw "CM not found"
-                        // console.log(CM.data);
-                        // return CM.data as {name:string,id:string,driver_name:string}[];
-
-                    }}>{cacheDef.camera_id}</Button>
-                </Dropdown>
-
-
-
-                <Input maxLength={100} value={cacheDef.trigger_tag}
-                    style={{ width: "100px" }}
-                    onChange={(e) => {
-                        let newDef = { ...cacheDef };
-                        newDef.trigger_tag = e.target.value;
-                        onCacheDefChange(newDef, false)
-                    }} />
-
-                <Popconfirm
-                    title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
-                    onConfirm={() => { }}
-                    onCancel={() => { }}
-                    okButtonProps={{
-                        danger: true, onClick: () => {
-                            if (delConfirmCounter != 0) {
-                                setDelConfirmCounter(delConfirmCounter - 1);
-                            }
-                            else {
-                                onCacheDefChange(undefined, false)
-                            }
-                        }
-                    }}
-                    okText={"Yes:" + delConfirmCounter}
-                    cancelText="No"
-                >
-                    <Button danger type="primary" onClick={() => {
-                        setDelConfirmCounter(5);
-                    }}>DEL</Button>
-                </Popconfirm>
-                <br />
-                <Button onClick={() => {
-                    onCacheDefChange(cacheDef, true);
-                }}>SHOT</Button>
-
-
-                {/* <Button onClick={() => {
-                    onDefChange(cacheDef, true)
-                }}>SAVE</Button> */}
-
-                {EditUI}
-
-
-            </>
-
-
-            break;
-
-        case editState.Region_Edit:
-
-
-            if (cacheDef.regionInfo.length <= stateInfo_tail.info.idx) {
-                break;
-            }
-
-            let regionInfo = cacheDef.regionInfo[stateInfo_tail.info.idx];
-
-            EDIT_UI = <>
-                <Button key={"_" + -1} onClick={() => {
-
-                    let new_stateInfo = [...stateInfo]
-                    new_stateInfo.pop();
-
-                    setStateInfo(new_stateInfo)
-                }}>{"<"}</Button>
-                <Orientation_ColorRegionOval_SingleRegion
-                    srule={regionInfo}
-                    onDefChange={(newDef_sregion) => {
-                        // console.log(newDef);
-                        let newDef = { ...cacheDef };
-                        if (newDef_sregion !== undefined) {
-                            newDef.regionInfo[stateInfo_tail.info.idx] = newDef_sregion;
-                        }
-                        else {
-
-                            newDef.regionInfo.splice(stateInfo_tail.info.idx, 1);
-
-                            let new_stateInfo = [...stateInfo]
-                            new_stateInfo.pop();
-
-                            setStateInfo(new_stateInfo)
-
-                        }
-
-                        onCacheDefChange(newDef, true)
-                        // _this.sel_region=undefined
-
-                    }}
-                    canvas_obj={_this.canvasComp} />
-            </>
-
-            break;
-    }
-
-
-
-    return <div style={{ ...style}} className={"overlayCon"}>
-
-        <div className={"overlay"} >
-
-            {EDIT_UI}
-
-        </div>
-
-
-        <HookCanvasComponent style={{}} dhook={(ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent) => {
-            _this.canvasComp = canvas_obj;
-            // console.log(ctrl_or_draw);
-            if (ctrl_or_draw == true)//ctrl
-            {
-                // if(canvas_obj.regionSelect===undefined)
-                // canvas_obj.UserRegionSelect((onSelect,draggingState)=>{
-                //   if(draggingState==1)
-                //   {
-
-                //   }
-                //   else if(draggingState==2)
-                //   {
-                //     console.log(onSelect);
-                //     canvas_obj.UserRegionSelect(undefined)
-                //   }
-                // });
-
-                // ctrlHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
-                if (canvas_obj.regionSelect !== undefined) {
-                    if (canvas_obj.regionSelect.pt1 === undefined || canvas_obj.regionSelect.pt2 === undefined) {
-                        return;
-                    }
-
-                    _this.sel_region = PtsToXYWH(canvas_obj.regionSelect.pt1, canvas_obj.regionSelect.pt2)
-                }
-            }
-            else//draw
-            {
-                if (Local_IMCM !== undefined) {
-                    g.ctx.save();
-                    let scale = Local_IMCM.image_info.scale;
-                    g.ctx.scale(scale, scale);
-                    g.ctx.translate(-0.5, -0.5);
-                    g.ctx.drawImage(_this.imgCanvas, 0, 0);
-                    g.ctx.restore();
-                }
-                // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
-
-
-                let ctx = g.ctx;
-
-                {
-                    cacheDef.regionInfo.forEach((region: any, idx: number) => {
-
-                        let region_ROI =
-                        {
-                            x: region.region[0],
-                            y: region.region[1],
-                            w: region.region[2],
-                            h: region.region[3]
-                        }
-
-                        ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
-                        drawRegion(g, canvas_obj, region_ROI, canvas_obj.rUtil.getIndicationLineSize());
-
-                        ctx.font = "40px Arial";
-                        ctx.fillStyle = "rgba(0, 179, 0,0.5)";
-                        ctx.fillText("idx:" + idx, region_ROI.x, region_ROI.y)
-
-
-                        let region_components = GetObjElement(c_report, ["regionInfo", idx, "components"]);
-                        // console.log(report,region_components);
-                        if (region_components !== undefined) {
-                            region_components.forEach((regComp: any) => {
-
-                                canvas_obj.rUtil.drawCross(ctx, { x: regComp.x, y: regComp.y }, 5);
-
-                                ctx.font = "4px Arial";
-                                ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
-                                ctx.fillText(regComp.area, regComp.x, regComp.y)
-
-                                ctx.font = "4px Arial";
-                                ctx.strokeStyle = "rgba(0, 179, 0,0.5)";
-                                ctx.fillText(`${regComp.x},${regComp.y}`, regComp.x, regComp.y + 5)
-                            })
-
-                        }
-
-
-
-                    })
-                }
-
-
-                if (canvas_obj.regionSelect !== undefined && _this.sel_region !== undefined) {
-                    ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-
-                    drawRegion(g, canvas_obj, _this.sel_region, canvas_obj.rUtil.getIndicationLineSize());
-
-                }
-
-                if (defReport) {
-
-                    ctx.strokeStyle = "rgba(255,0,100,0.5)";
-                    defReport.report.forEach((reg: any) => {
-                        if (reg.center === undefined || reg.angle === undefined) return;
-                        canvas_obj.rUtil.drawCross(ctx, { x: reg.center.x, y: reg.center.y }, 5);
-                        let angle = reg.angle;
-                        if (angle > Math.PI / 2) angle -= Math.PI;
-                        let vec = PtRotate2d({ x: 30, y: 0 }, angle, 1);
-                        canvas_obj.rUtil.drawLine(ctx, { x1: reg.center.x, y1: reg.center.y, x2: reg.center.x + vec.x, y2: reg.center.y + vec.y })
-                        // console.log(reg,canvas_obj)
-                    })
-                }
-            }
-
-
-            if (renderHook) {
-                // renderHook(ctrl_or_draw,g,canvas_obj,newDef);
-            }
-        }
-        } />
-
-    </div>;
-
-}
 
 const SCS_REF_IMG_NAME = "FeatureRefImage.png"
 
@@ -3718,12 +2627,11 @@ function SurfaceCheckSimple_RefImg_EDIT_UI({ BPG_API, fsPath, def, onDefChange, 
 }
 
 
-function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,rootDef, def, onDefChange, onCopy, onFinish, canvas_obj, canvas_hook_update }:
+function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id,rootDef, def, onDefChange, onCopy, onFinish, canvas_obj, canvas_hook_update }:
     {
         BPG_API: BPG_WS,
         fsPath: string,
         id: string,
-        pxSize: number,
         rootDef: any,
         def: any,
         onDefChange: (...param: any) => void,
@@ -3735,6 +2643,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
 
     const _this = useRef<any>({}).current;
 
+    const CALC_SCRIPT_INPUT_Ref = useRef<any>(null);
 
     const [delConfirmCounter, setDelConfirmCounter] = useState(0);
 
@@ -3929,6 +2838,11 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
         onDefChange({ ...def, y_locating_dir: check }, true);
     }} />
 
+    定位方式
+    <Switch checkedChildren="無至有" unCheckedChildren="自動閾值" checked={def.locating_type_z2o_or_auto == true} onChange={(check) => {
+        onDefChange({ ...def, locating_type_z2o_or_auto: check }, true);
+    }} />
+
 
     <br />
 
@@ -4075,11 +2989,11 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
         }} /> */}
 
 
-            <Slider
+            <INPUT_LINK.RangeSlider
                 range
                 step={1} max={180}
                 defaultValue={[def.rangel?.h, def.rangeh?.h]}
-                onChange={([vl, vh]) => {
+                onChange={([vl, vh] : [any,any]) => {
 
                     ID_debounce(_this.trigTO, () => {
                         let nedf = def;
@@ -4102,11 +3016,11 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
         <Col span={20}>
 
 
-            <Slider
+            <INPUT_LINK.RangeSlider
                 range
                 step={1} max={255}
                 defaultValue={[def.rangel?.s, def.rangeh?.s]}
-                onChange={([vl, vh]) => {
+                onChange={([vl, vh]:any) => {
 
                     ID_debounce(_this.trigTO, () => {
                         let nedf = def;
@@ -4130,11 +3044,11 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
         </Col>
         <Col span={20}>
 
-            <Slider
+            <INPUT_LINK.RangeSlider
                 range
                 step={1} max={255}
                 defaultValue={[def.rangel?.v, def.rangeh?.v]}
-                onChange={([vl, vh]) => {
+                onChange={([vl, vh]:any) => {
 
                     ID_debounce(_this.trigTO, () => {
                         let nedf = def;
@@ -4153,11 +3067,11 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
     </Row>
 
     細節量
-    <Slider
+    <INPUT_LINK.Slider
         step={1} max={255}
         value={def.detect_detail}
-        onChange={(val) => {
-
+        onChange={(val:number|string) => {
+            
             ID_debounce(_this.trigTO, () => {
                 let nedf = def;
                 nedf = ObjShellingAssign(nedf, ["detect_detail"], val)
@@ -4169,6 +3083,9 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
 
 </>;
 
+
+    console.log("_________rootDef",rootDef);
+
     switch(def_Filled.type)
     {
         case "HSVSeg":
@@ -4177,39 +3094,42 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
         ConfigUI=<>
     
     
-        單物件偵測閾值:
-            <InputNumber value={def.point_area_thres * (pxSize * pxSize)} step={0.1}
-                onChange={(num) => {
-                    let newDef = { ...def, point_area_thres: num / (pxSize * pxSize) }
+    單物件偵測閾值:
+            <INPUT_LINK.InputNumber value={def.point_area_thres} step={0.1}
+                onChange={(num:number|string) => {
+                    let newDef = { ...def, point_area_thres: num }
                     onDefChange(newDef, true);
                 }} />
     
-            物件面積閾值:
-            <InputNumber value={def.element_area_thres * (pxSize * pxSize)} step={0.001}
-                onChange={(num) => {
-                    let newDef = { ...def, element_area_thres: num / (pxSize * pxSize) }
+            
+    物件面積閾值:
+            <INPUT_LINK.InputNumber value={def.element_area_thres} step={0.001}
+                onChange={(num:number|string) => {
+                    let newDef = { ...def, element_area_thres: num }
                     onDefChange(newDef, true);
                 }} />
-            物件數量閾值:
-            <InputNumber value={def.element_count_thres}
-                onChange={(num) => {
+    物件數量閾值
+            <INPUT_LINK.InputNumber value={def.element_count_thres}
+                onChange={(num:number|string) => {
                     let newDef = { ...def, element_count_thres: num }
                     onDefChange(newDef, true);
                 }} />
     
             <br />
-    
-            總面積閾值:
-            <InputNumber value={def.area_thres * (pxSize * pxSize)} step={0.005}
-                onChange={(num) => {
-                    let newDef = { ...def, area_thres: num / (pxSize * pxSize) }
+    總面積閾值:
+            <INPUT_LINK.InputNumber style={{width:"200px"}} step={0.005}
+                value={def.area_thres} 
+                onChange={(num:number|string) => {
+                    let newDef = { ...def, area_thres: num}
                     onDefChange(newDef, true);
-                }} />
+                }} 
+                
+                />
     
-            單線長閾值:
-            <InputNumber value={def.line_length_thres * pxSize} min={0.001} step={0.1}
-                onChange={(num) => {
-                    let newDef = { ...def, line_length_thres: num / pxSize }
+    單線長閾值:
+            <INPUT_LINK.InputNumber value={def.line_length_thres} min={0.001} step={0.1}
+                onChange={(num:number|string) => {
+                    let newDef = { ...def, line_length_thres: num  }
                     onDefChange(newDef, true);
                 }} />
     
@@ -4233,8 +3153,8 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
             
             
             色差偵測:
-            <InputNumber value={def_Filled.colorSigma} step={0.1}
-                onChange={(num) => {
+            <INPUT_LINK.InputNumber value={def_Filled.colorSigma} step={0.1}
+                onChange={(num:number|string) => {
                     let newDef = { ...def_Filled, colorSigma:num  }
                     onDefChange(newDef, true);
                 }} />
@@ -4394,6 +3314,10 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
                         
                     }}>{str}</Button>
                 })}
+
+                <Switch checkedChildren="無->有" unCheckedChildren="自動閾值" checked={def_Filled.sense0to1 == true} onChange={(check) => {
+                    onDefChange(ObjShellingAssign(def_Filled, ["sense0to1"], check));
+                }} />
             
             <br />
             <Button onClick={() => { setShowDisplayAdjUI(!showDisplayAdjUI) }}> {showDisplayAdjUI == false ? "+展開顯示調整選項" : "-收起顯示調整選項"}</Button>
@@ -4404,6 +3328,138 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
     
             {showDetectAdjUI == false ? null : HSVEditUI}
 
+            </>
+            break;
+
+        case "PassThru":
+            ConfigUI= <>
+                {["x","y"].map((str)=>
+                {
+                    let scanDir = def_Filled?.scanDir;
+                    return <Button type={scanDir==str?"primary":undefined} onClick={()=>{
+                        let newDef=def_Filled;
+                        newDef=ObjShellingAssign(newDef, ["scanDir"], str);
+                        onDefChange(newDef);
+                        
+                    }}>{str}</Button>
+                })}
+            
+            <br />
+            <Button onClick={() => { setShowDisplayAdjUI(!showDisplayAdjUI) }}> {showDisplayAdjUI == false ? "+展開顯示調整選項" : "-收起顯示調整選項"}</Button>
+            {showDisplayAdjUI == false ? null :ProcessDisplayUI}
+            <br/>
+                
+            <Button onClick={() => { setShowDetectAdjUI(!showDetectAdjUI) }}> {showDetectAdjUI == false ? "+展開偵測調整選項" : "-收起偵測調整選項"}</Button>
+
+            {showDetectAdjUI == false ? null : HSVEditUI}
+
+            </>
+            break;
+        
+        case "CALC":
+            ConfigUI= <>
+
+
+                        
+                <Dropdown overlay={
+                    <Menu> 
+                        <Menu.Item onClick={()=>{
+                            let newV="INDEX";
+                            if(def_Filled.variables.find((vs:string)=>vs==newV)!==undefined)return;
+                            let newDef = { ...def_Filled, variables:[...def_Filled.variables,newV] }
+                            onDefChange(newDef, true);
+                        }}>{"INDEX"}</Menu.Item>
+
+
+
+                        {rootDef.sub_regions.map((reg:any)=><Menu.Item onClick={()=>{
+                            let newV="N_"+reg.name;
+                            if(def_Filled.variables.find((vs:string)=>vs==newV)!==undefined)return;
+                            let newDef = { ...def_Filled, variables:[...def_Filled.variables,newV] }
+                            onDefChange(newDef, true);
+                        }}>{"N_"+reg.name}</Menu.Item>)}
+                        
+                        {rootDef.sub_regions.map((reg:any)=><Menu.Item onClick={()=>{
+
+                            let newV="N_"+reg.name+".cat";
+                            if(def_Filled.variables.find((vs:string)=>vs==newV)!==undefined)return;
+                            let newDef = { ...def_Filled, variables:[...def_Filled.variables,newV] }
+                            onDefChange(newDef, true);
+                        }}>{"N_"+reg.name+".cat"}</Menu.Item>)}
+                    </Menu>}>
+                
+                    <Button>+</Button>
+                </Dropdown>
+
+                {def_Filled.variables.map((str:string,index:number)=>{ 
+
+
+                    let idx=def_Filled.script.indexOf(str);
+
+
+
+                    return <>
+                    
+                    <Button type={idx==-1?"dashed":undefined} onClick={()=>{
+                        if(CALC_SCRIPT_INPUT_Ref.current===null)return;
+                        let textArea= CALC_SCRIPT_INPUT_Ref.current.resizableTextArea.textArea;
+                        let selectionStart=textArea.selectionStart;
+                        let selectionEnd=textArea.selectionEnd;
+
+                        let scriptStr=def_Filled.script;
+                        //insert str at selectionStart
+                        scriptStr=scriptStr.slice(0,selectionStart)+" "+str+" "+scriptStr.slice(selectionEnd);
+
+
+                        onDefChange({ ...def, script:scriptStr })
+
+                    }}>{str}</Button>
+
+
+                    <Button disabled={idx!=-1} style={{width:"10px",padding:0,marginRight:"5px"}} danger onClick={()=>{
+                        //remove idx from variables
+                        let newDef = { ...def_Filled, variables:def_Filled.variables.filter((vs:string)=>vs!=str) }
+                        onDefChange(newDef, true);
+                    }}>{" "}</Button>
+
+                    </>
+                })}
+
+
+
+
+
+                <Input.TextArea ref={CALC_SCRIPT_INPUT_Ref}
+                value={def_Filled.script} 
+                autoSize
+                tabIndex={-1}
+                onKeyDown={(e)=>{
+                  if (e.key == 'Tab') {
+                    // e.preventDefault();
+
+                  }
+                }}
+                style={{margin:"1px"}}
+                onChange={(e)=>{
+                  
+                    console.log(e.target.value);
+                    onDefChange({ ...def, script: e.target.value })
+
+                }}/>
+
+
+
+                範圍:<InputNumber value={def_Filled.rangeFrom}
+                    step={0.1}
+                        onChange={(num) => {
+                            onDefChange({ ...def,  rangeFrom:num})
+                        }} />
+
+                ~<InputNumber value={def_Filled.rangeTo}
+                    step={0.1}
+                        onChange={(num) => {
+                            onDefChange({ ...def,  rangeTo:num})
+                        }} />
             </>
             break;
         default:
@@ -4499,7 +3555,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
            
             <Button>
                 <Space>
-                差異過大:{def_Filled.NG_Map_To}
+                NG變換:{def_Filled.NG_Map_To}
                 <DownOutlined />
                 </Space>
             </Button>
@@ -4507,8 +3563,18 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
 
         <Dropdown overlay={
             <Menu>
-                {["HSVSeg","SigmaThres","DirectionalDiff","BrightnessBalance","ScanPoint"].map(str=><Menu.Item onClick={()=>{
+                {["HSVSeg","SigmaThres","DirectionalDiff","BrightnessBalance","ScanPoint","PassThru","CALC"].map(str=><Menu.Item onClick={()=>{
                     let newDef = { ...def_Filled, type:str }
+
+                    if(str=="CALC")
+                    {
+                        newDef={
+                            ...newDef,
+                            variables:[],
+                            script:"0"
+                            // post_exp:["N_SC2.v","2","$,$","max$"]
+                        }
+                    }
                     onDefChange(newDef, true);
                 }}>{str}</Menu.Item>
                 )}
@@ -4633,6 +3699,13 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id, pxSize,root
 
         }}>+忽略區域</Button>
         <br />
+        <Input maxLength={500} value={def.note}
+            addonBefore='備註'
+            onChange={(e) => {
+                onDefChange({ ...def, note: e.target.value })
+            }} />
+
+        <br />
         {ConfigUI}
     </>//<pre>{ JSON.stringify( def, null, 2)}</pre>
 }
@@ -4734,6 +3807,32 @@ function SurfaceCheckSimple_EDIT_UI(param:
                             onDefChange(newDef, true);
                         }} />
 
+
+
+                    
+                    <br />
+
+                    <Input.TextArea
+                    value={def_Filled.script} 
+                    autoSize
+                    tabIndex={-1}
+                    onKeyDown={(e)=>{
+                    if (e.key == 'Tab') {
+                        // e.preventDefault();
+
+                    }
+                    }}
+                    style={{margin:"1px"}}
+                    onChange={(e)=>{
+                    
+                        console.log(e.target.value);
+                        onDefChange({ ...def_Filled, script: e.target.value })
+
+                    }}/>
+
+
+                    <br />
+
                     {"  "}區域名稱尺寸:
                     <InputNumber min={0.1} max={10} step={0.1} value={def_Filled.subRegionNameSize}
                         onChange={(num) => {
@@ -4795,7 +3894,6 @@ function SurfaceCheckSimple_EDIT_UI(param:
                         {...param}
 
                         id={def.id!==undefined?def.id:("$"+topUI.info.index)}
-                        pxSize={1}
                         rootDef={def_Filled}
                         def={GetObjElement(def_Filled, topUI.info.opath)}
                         onDefChange={(newDef) => {
@@ -5725,6 +4823,8 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                     _this.sel_region = PtsToXYWH(canvas_obj.regionSelect.pt1, canvas_obj.regionSelect.pt2);
                 }
 
+                
+
             }
             else//drawvv
             {
@@ -5759,6 +4859,8 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
                     
                 }
+
+
 
                 let ctx = g.ctx;
 
@@ -5808,6 +4910,9 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
                         ctx.restore();
                     }
+
+
+
                     g_cat.forEach((catInfo: any, _index: number) => {
                         
                         g.ctx.save();
@@ -5816,7 +4921,9 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                         let blockX=_index%multi_target_column_count;
                         let blockY=Math.floor(_index/multi_target_column_count);
                         
-                        g.ctx.translate(cacheDef.w*blockX, cacheDef.h*blockY);
+                        let bX=cacheDef.w*blockX;
+                        let bY=cacheDef.h*blockY;
+                        g.ctx.translate(bX,bY);
                         // console.log(catInfo.category);
                         
                         if (catInfo.sub_regions.length == cacheDef.sub_regions.length)
@@ -5854,7 +4961,32 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                     let idText = prefix + (regionInfo.name === undefined || regionInfo.name == "" ? "$" + subreg_index : regionInfo.name);// +"["+id_name+"]";
 
 
-                                    if(regionInfo.type=="ScanPoint" || regionInfo.type=="BrightnessBalance")
+                                    let x=regionInfo.region.x+bX;
+                                    let y=regionInfo.region.y+bY;
+
+                                    let dist_Mouse2Frame=Math.max(Math.abs(x-mouseOnCanvas.x),Math.abs(y-mouseOnCanvas.y));
+
+                                    let loc=regionInfo.name_loc_offset!==undefined?regionInfo.name_loc_offset:regionInfo.region;
+
+                                    let dist_Mouse2Name=Math.max(Math.abs(loc.x+bX-mouseOnCanvas.x),Math.abs(loc.y+bY-mouseOnCanvas.y));
+
+                                    if(dist_Mouse2Frame<5 || dist_Mouse2Name<5)
+                                    {
+                                        ctx.strokeStyle = ctx.fillStyle = "rgba(100, 00, 255,0.8)";
+
+                                        ctx.lineWidth = canvas_obj.rUtil.getIndicationLineSize()/2;
+                                        
+                                        ctx.beginPath();
+                                        ctx.setLineDash([]);
+                                        ctx.moveTo(regionInfo.region.x, regionInfo.region.y);
+                                        ctx.lineTo(loc.x, loc.y);
+                                        ctx.stroke();
+                                        ctx.closePath();
+                                    }
+                                    ctx.lineWidth = lsz;
+
+
+                                    if(regionInfo.type=="ScanPoint" || regionInfo.type=="BrightnessBalance" || regionInfo.type=="PassThru")//thinner line
                                     {
 
                                         drawRegion(g, canvas_obj, regionInfo.region, lsz/5);
@@ -5865,16 +4997,39 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                         drawRegion(g, canvas_obj, regionInfo.region, lsz);
                                     }
 
-                                    let loc=regionInfo.name_loc_offset!==undefined?regionInfo.name_loc_offset:regionInfo.region;
                                     g.ctx.save();
                                     g.ctx.translate(loc.x, loc.y);
                                     g.ctx.scale(subRegionNameSize,subRegionNameSize);
 
-                                    ctx.fillText(idText, 0, 0);
-                                    let fLoc = ctx.measureText(idText).width;
                                     let yoffset = 0;
-                                    ctx.strokeStyle = ctx.fillStyle = `rgba(200,200,200,0.6)`;
-                                    ctx.fillText((subreg.score===null)?"N/A":subreg.score.toFixed(2) , fLoc, yoffset); yoffset += 19;
+
+                                    if(regionInfo.type=="CALC")
+                                    {
+                                        ctx.fillText(idText, 0, 0);
+                                        if(subreg.compile_error!==undefined)
+                                        {
+                                            ctx.strokeStyle = ctx.fillStyle = "rgba(179, 0, 0,0.8)";
+                                            for(let i=0;i<subreg.compile_error.length;i++)
+                                            {
+                                                ctx.fillText(subreg.compile_error[i] , 0, yoffset); yoffset += 19;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            ctx.strokeStyle = ctx.fillStyle = `rgba(100,100,100,0.6)`;
+                                            // regionInfo.note
+                                            ctx.fillText((subreg.score===null)?"N/A":subreg.score.toFixed(2) , 0, yoffset+subRegionNameSize*15*2); yoffset += 19;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        ctx.fillText(idText, 0, 0);
+                                        ctx.strokeStyle = ctx.fillStyle = `rgba(100,100,100,0.6)`;
+                                        let fLoc = ctx.measureText(idText).width;
+                                        
+                                        ctx.fillText((subreg.score===null)?"N/A":subreg.score.toFixed(2) , fLoc, yoffset); yoffset += 19;
+                                    }
+
 
                                     let overlayColor = { r: 255, g: 0, b: 0, ...regionInfo.overlayColor }
 
@@ -5895,13 +5050,21 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                         canvas_obj.rUtil.drawCross(ctx, { x:subreg.score, y: regionInfo.region.y+regionInfo.region.h/2 }, 5);
                                     else
                                         canvas_obj.rUtil.drawCross(ctx, { x:regionInfo.region.x+regionInfo.region.w/2, y: subreg.score }, 5);
+
+                                    
+                                    
+                                
+                                }
+
+                                if(regionInfo.type=="PassThru")
+                                {
+
                                 }
 
 
 
-
-
                                 // console.log(subreg);
+                                if(subreg.elements!==undefined)
                                 subreg.elements.forEach((ele: any, _index: number) => {
                                     // console.log(subreg);
 
@@ -5992,6 +5155,72 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                         }
                         ctx.restore();
                     })
+
+
+                    {
+                        let closestInfo={
+                            text:"",
+                            x:NaN,y:NaN,
+                            distance:Infinity,
+                            regionInfo:{}
+                        }
+                        //draw note when cursor close to it
+                        g_cat.forEach((catInfo: any, _index: number) => {
+                            
+                            g.ctx.save();
+                            let multi_target_column_count=cacheDef.multi_target_column_count||9999;
+
+                            let blockX=_index%multi_target_column_count;
+                            let blockY=Math.floor(_index/multi_target_column_count);
+
+
+                            catInfo.sub_regions.forEach((subreg: any, subreg_index: number) => {
+                                let regionInfo = cacheDef.sub_regions[subreg_index]
+                                if(regionInfo===undefined)return;
+
+                                let loc=regionInfo.name_loc_offset!==undefined?regionInfo.name_loc_offset:regionInfo.region;
+                                let x=cacheDef.w*blockX+loc.x;
+                                let y=cacheDef.h*blockY+loc.y;
+                                //calc loc to mouseOnCanvas distance
+                                let dist=Math.max(Math.abs(x-mouseOnCanvas.x),Math.abs(y-mouseOnCanvas.y));
+                                
+                                if(regionInfo.note!==undefined &&regionInfo.note.length>0 && dist<closestInfo.distance)
+                                {
+                                    closestInfo.text=regionInfo.note;
+                                    closestInfo.x=x;
+                                    closestInfo.y=y;
+                                    closestInfo.distance=dist;
+                                    closestInfo.regionInfo=regionInfo;
+                                }
+
+                            })
+                        
+
+
+
+
+                            ctx.restore();
+                        })
+                        
+                        if(closestInfo.distance<5)
+                        {
+                            // console.log(closestInfo);
+                            ctx.save();
+
+                            g.ctx.translate(closestInfo.x, closestInfo.y+subRegionNameSize*15);
+                            g.ctx.scale(subRegionNameSize,subRegionNameSize);
+
+                            ctx.fillText(closestInfo.text, 0, 0);
+
+
+
+                            ctx.restore();
+                        }
+
+
+
+                    }
+
                 }
                 else {
                     if (cacheDef.sub_regions !== undefined)
@@ -6249,6 +5478,10 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
     const [spanStatisticUI, setSpanStatisticUI] = useState(false);
+    const [spanSELCountDownSetupUI, setSpanSELCountDownSetupUI] = useState(false);
+
+
+    
     const [isRunning, setIsRunning] = useState(false);
     const [connSendBlock, setConnSendBlock] = useState(false);
 
@@ -6256,6 +5489,9 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     const [periodicPullCMDs, _setPeriodicPullCMDs] = useState<any[]>([]);
     const [runningState, setRunningState] = useState<any>(undefined);
     const [scriptRunningState, setScriptRunningState] = useState(false);
+    
+
+    const [OKSEL_CountDown, setOKSEL_CountDown] = useState(-1);
     
 
 
@@ -6306,6 +5542,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     _this.runningState=runningState;
     _this.scriptRunningState=scriptRunningState;
     _this.skipCatRepList=skipCatRepList;
+    _this.OKSEL_CountDown=OKSEL_CountDown;
     useEffect(() => {//////////////////////
 
         _this.send_id = 0;
@@ -6399,12 +5636,35 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 setScriptRunningState(is_Script_Running);
             }
 
+            if(is_Script_Running)
+            {
+                let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { 
+                    type: "ScriptCMD",
+                    cmd:{
+                        type:"Get_OKCountDown"
+                    }
+                
+                }) as any
+                let pti=pt_info[0].data;
+                if(pti.OKCountDown!=_this.OKSEL_CountDown)
+                    setOKSEL_CountDown(pti.OKCountDown);
+            }
+
+
+
+
+
             
             if(_this.runningState===undefined)return;
             if(Date.now()-_this.runningState.timeStamp>3000)
             {
                 setRunningState(undefined);
             }
+            
+
+
+
+
         },1000);
 
         
@@ -7782,6 +7042,47 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
 
+
+
+            <Divider orientation="left">
+                <Button danger={OKSEL_CountDown==0} type={OKSEL_CountDown<0?"dashed":"primary"} onClick={() => {
+                    setSpanSELCountDownSetupUI(!spanSELCountDownSetupUI)
+                }}>數量限制 {OKSEL_CountDown<0?"無限制":`OK:${OKSEL_CountDown}`} {spanSELCountDownSetupUI ? ' -' : ' +'}</Button>
+            </Divider>
+
+
+            {spanSELCountDownSetupUI==false?null:<>
+            
+                <Button onClick={() => {
+                   BPG_API.InspTargetExchange(cacheDef.id, { 
+                    type: "ScriptCMD",
+                    cmd:{
+                        type:"Set_OKCountDown",
+                        OKCountDown:-1
+                    }
+                
+                    })
+                }}>無限制</Button>
+                <br/>
+                {
+
+                    [0,100,500,1000,5000].map((count)=> <Button key={count} onClick={() => {
+                        BPG_API.InspTargetExchange(cacheDef.id, { 
+                        type: "ScriptCMD",
+                        cmd:{
+                            type:"Set_OKCountDown",
+                            OKCountDown:count
+                        }
+                    
+                        })
+                    }}>{count}</Button>)
+                }
+               
+
+
+            </>}
+
+
         </div>
 
 
@@ -8184,3 +7485,31 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
 
 }
 
+
+
+
+
+
+
+
+
+export function InspTargetUI_MUX(param:CompParam_InspTarUI)
+{
+  if(param.def.type=="Orientation_ShapeBasedMatching")
+  return <SingleTargetVIEWUI_Orientation_ShapeBasedMatching {...param} />;
+
+
+  if(param.def.type=="SurfaceCheckSimple")
+  return <SingleTargetVIEWUI_SurfaceCheckSimple {...param} />;
+
+
+  if(param.def.type=="JSON_Peripheral")
+  return <SingleTargetVIEWUI_JSON_Peripheral {...param} />;
+
+
+  if(param.def.type=="JSON_CNC_Peripheral")
+  return <SingleTargetVIEWUI_JSON_CNC_Peripheral {...param} />;
+
+
+  return  <></>;
+}

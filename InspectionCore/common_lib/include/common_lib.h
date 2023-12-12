@@ -28,11 +28,20 @@ void* JFetEx(cJSON * obj,const char *path,int type);
 std::string JFetch_STRING_ex(cJSON * obj,const char *path,std::string default_str="");
 double JFetch_NUMBER_ex(cJSON * obj,const char *path,double defaultNumber=NAN);
 
+double DFetch_NUMBER_ex(cJSON *dSrc,char* path,double fallback=NAN,cJSON *dictSrc=NULL);
+
 #define JFetch_ARRAY(obj,path) ((cJSON*)JFetch(obj,path,cJSON_Array))
 #define JFetch_OBJECT(obj,path) ((cJSON*)JFetch(obj,path,cJSON_Object))
 
 #define JFetch_TRUE(obj,path)  (NULL!=JFetch(obj,path,cJSON_True))
 #define JFetch_FALSE(obj,path) (NULL!=JFetch(obj,path,cJSON_False))
+
+
+//1 for true, 0 for false, fallback(-1) for not found or not bool, if the value is a string, try to find in dictSrc
+int DFetch_TFN(cJSON *dSrc,char* path,int fallback=-1,cJSON *dictSrc=NULL);
+int JFetch_TFN(cJSON *dSrc,char* path,int fallback=-1);
+
+
 
 #define JFetEx_STRING(obj,path) ((char*)JFetEx(obj,path,cJSON_String))
 #define JFetEx_NUMBER(obj,path) ((double*)JFetEx(obj,path,cJSON_Number))

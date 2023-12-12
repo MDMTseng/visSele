@@ -1,7 +1,11 @@
 import React from 'react';
-import { useState, useEffect,useRef,useMemo,useContext, useCallback } from 'react';
+import { useState, useEffect,useRef,useMemo,useContext, useCallback,createContext } from 'react';
 import { useDispatch, useSelector } from "react-redux";
-import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio, InputNumber, Switch,Select } from 'antd';
+import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio, InputNumber, Switch,Select,TreeSelect } from 'antd';
+import type { TreeSelectProps } from 'antd';
+
+
+
 import { DraggableModal, DraggableModalProvider } from 'ant-design-draggable-modal'
 import 'ant-design-draggable-modal/dist/index.css'
 
@@ -21,15 +25,15 @@ import 'reactflow/dist/style.css';
 import { ResponsiveReactGridLayoutX } from './UICardComp';
 import type { MenuProps, MenuTheme } from 'antd/es/menu';
 import { UserOutlined, LaptopOutlined, NotificationOutlined,DownOutlined,
-  DisconnectOutlined,LinkOutlined,CopyOutlined } from '@ant-design/icons';
-
+  DisconnectOutlined,LinkOutlined,CopyOutlined,LoadingOutlined,ReloadOutlined } from '@ant-design/icons';
 import clone from 'clone';
 
 import {StoreTypes} from './redux/store';
 import {EXT_API_ACCESS, EXT_API_CONNECTED,EXT_API_DISCONNECTED, EXT_API_REGISTER,EXT_API_UNREGISTER, EXT_API_UPDATE} from './redux/actions/EXT_API_ACT';
 
 
-import { GetObjElement,ID_debounce,ID_throttle,ObjShellingAssign} from './UTIL/MISC_Util';
+import { GetObjElement,ID_debounce,ID_throttle,ObjShellingAssign,ObjReccursiveOverride} from './UTIL/MISC_Util';
+import { DDDD } from './InspTarConfigUI';
 
 import {listCMDPromise} from './XCMD';
 
@@ -46,14 +50,13 @@ import { type_CameraInfo,type_IMCM} from './AppTypes';
 import './basic.css';
 
 
-import {SingleTargetVIEWUI_ColorRegionDetection,
-  SingleTargetVIEWUI_Orientation_ColorRegionOval,
-  SingleTargetVIEWUI_Orientation_ShapeBasedMatching,
-  SingleTargetVIEWUI_SurfaceCheckSimple,
-  SingleTargetVIEWUI_JSON_Peripheral,
-  CompParam_InspTarUI,CompParam_UIOption,
-  SingleTargetVIEWUI_JSON_CNC_Peripheral } from './InspTarView';
+import {CompParam_UIOption,InspTargetUI_MUX,ObjTree } from './InspTarView';
+
+
+
+
 import { info } from 'console';
+import { type } from '@testing-library/user-event/dist/type';
 
 const { Option } = Select;
 const { SubMenu } = Menu;
@@ -62,6 +65,19 @@ enum EDIT_PERMIT_FLAG {
   OPONLY=0,
   XXFLAGXX=1<<0
 }
+
+export type CompParam_GlobalVariable = {
+  global_variable: any,
+
+  // global_variable_selector: () =>Promise<string|undefined>,
+  set_global_variable: ((path: string[],new_value:any) => void) | undefined,
+}
+
+export const ITGlobalVariableContext = createContext<CompParam_GlobalVariable>({
+  global_variable: {},
+  // global_variable_selector: () => { return new Promise<string>((resolve, reject) => { reject("") }) },
+  set_global_variable: (ngv)=>{},
+});
 
 
 
@@ -434,37 +450,6 @@ function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetup
   </>
 }
 
-
-
-
-
-function InspTargetUI_MUX(param:CompParam_InspTarUI)
-{
-  if(param.def.type=="ColorRegionDetection")
-  return <SingleTargetVIEWUI_ColorRegionDetection {...param} />;
-
-  if(param.def.type=="Orientation_ColorRegionOval")
-  return <SingleTargetVIEWUI_Orientation_ColorRegionOval {...param} />;
-
-
-  if(param.def.type=="Orientation_ShapeBasedMatching")
-  return <SingleTargetVIEWUI_Orientation_ShapeBasedMatching {...param} />;
-
-
-  if(param.def.type=="SurfaceCheckSimple")
-  return <SingleTargetVIEWUI_SurfaceCheckSimple {...param} />;
-
-
-  if(param.def.type=="JSON_Peripheral")
-  return <SingleTargetVIEWUI_JSON_Peripheral {...param} />;
-
-
-  if(param.def.type=="JSON_CNC_Peripheral")
-  return <SingleTargetVIEWUI_JSON_CNC_Peripheral {...param} />;
-
-
-  return  <></>;
-}
 
 
 
@@ -916,6 +901,15 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
               onUIOptionUpdate={(newUIOption)=>{
                 console.log(newUIOption)
               }}
+
+
+              // global_variable={defConfig.main?.global_variable}
+
+              // onGlobalVariableUpdate={(new_global_variable)=>{
+              //   let newDefConfig={...defConfig,main:{...defConfig.main,global_variable:new_global_variable}};
+              //   onDefChange(newDefConfig,-12);
+
+              // }}
             />
               
           }
@@ -1082,62 +1076,122 @@ let DAT_ANY_UNDEF:any=undefined;
 
 
 
+function GlobalVariableEditor({variables,onGlobalVariableUpdate,onGlobalVariableIDSelect}:{variables:any,onGlobalVariableUpdate:(new_global_variable:any)=>void,onGlobalVariableIDSelect:(id:string)=>void})
+{
 
-const initialNodes = [
-  { id: '1', position: { x: 0, y: 0 }, data: { label: '1' } },
-  { id: '2', position: { x: 0, y: 100 }, data: { label: '2' } },
-  { id: '3', position: { x: 0, y: 200 }, data: { label: '3' } },
-];
 
-const initialEdges = [{ id: 'e1-2', source: '1', target: '2' },{ id: 'e2-3', source: '2', target: '3' },{ id: 'e1-3', source: '1', target: '3' }];
+  const [curGVName,_setCurGVName]= useState(Object.keys(variables)[0]);
 
-function NodeFlow_DEMO({defConfig}:any) {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
+  function setCurGVName(newName:string)
+  {
+    _setCurGVName(newName);
+    onGlobalVariableIDSelect(newName);
+  }
 
-  console.log(defConfig.InspTars_main);
+// {Object.keys(GVs).map((key:string)=>{
+//   let GV=GVs[key];
+//   return  <div>
+//     ________{key}_________
+//     <ObjTree obj={GV} padding={0} onLeafSelect={(value,name,path)=>{
+//       console.log(name,path)
+//     }}/>
+//   </div>
 
-  useEffect(() => {
-    let nodes=defConfig.InspTars_main.map((it:any,idx:any)=>({
-      id:it.id,
-      position:{x:0,y:idx*100},
-      data:{label:it.id}
-    })).filter((node:any)=>node.id!=="ImTran")
+// })
+// }
 
-    let edges=defConfig.InspTars_main.map((it:any,idx:number,arr:any[])=>{
-      let cid=it.id;
-      let cand_it=arr
-        .filter((sit:any)=>sit.match_tags.find((tag:string)=>tag==cid)!==undefined)
-      
-      return cand_it
-        .map((it:any)=>it.id)
-        .map((id:string)=>(
-          { id: `${cid}-${id}`, source:cid, target: id }
-        ))
-    }).flat()
-    console.log(nodes,edges);
-    setNodes(nodes);
-    setEdges(edges);
+  let tGV=variables[curGVName];
 
-  },defConfig)
+  let srcKey=tGV?.["$base"];
 
-  return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onConnect={onConnect}
-    >
-      <MiniMap />
-      <Controls />
-      <Background />
-    </ReactFlow>
-  );
+  return <>
+    <Radio.Group onChange={(e)=>{setCurGVName(e.target.value)}} defaultValue={curGVName}>
+    {Object.keys(variables).map((key:string)=><Radio.Button value={key}>{key}</Radio.Button>)}
+    </Radio.Group>
+
+    <ObjTree obj={tGV} padding={0} onLeafSelect={(value,name,path)=>{
+      console.log(name,path,value)
+      if(name=="$base")
+      {
+        setCurGVName(value)
+      }
+    }}/>
+
+
+    { 
+      (srcKey===undefined)?null:
+      <>
+      連結源頭:{srcKey}
+      <ObjTree obj={variables[srcKey]} padding={0} onLeafSelect={(value,name,path)=>{
+      }}/>
+  
+      </>
+
+
+    }
+  
+  </>
 }
 
+
+/*
+
+let objBase=
+{
+  base:{
+  "a": 1,
+  "b": {
+    "c": 2,
+    "d": {
+      "g": 3000,
+      "k": 5000
+    }
+  }
+} ,
+
+  b2: {
+    b:{
+      d:{g:3}
+    },
+    $base:"base"
+  },
+  top: {
+    b:{
+      d:{k:5}
+    },
+    $base:"b2"
+  },
+
+};
+
+
+console.log(GV_LayersFlating(objBase,"top"));
+
+=>{
+  "a": 1,
+  "b": {
+    "c": 2,
+    "d": {
+      "g": 3,
+      "k": 5
+    }
+  },
+  "$base": "b2"
+} 
+
+*/
+function GV_LayersFlating(GVs:any,key:string)
+{
+  if(GVs===undefined)return {};
+  let tGV=GVs[key];
+  let srcKey=tGV?.["$base"];
+  if(srcKey===undefined)return tGV;
+  let baseGV=GV_LayersFlating(GVs,srcKey) as any;
+  if(baseGV===undefined)return tGV;
+
+  return ObjReccursiveOverride(baseGV,tGV);
+}
 
 
 function VIEWUI(){
@@ -1148,7 +1202,7 @@ function VIEWUI(){
       $DEFPATH:"",
       inCMD_Promise:false,
       InspTarDispIDList:undefined,
-      cur_defInfo:{},
+      defConfig:undefined,
       widgetSetID:"",
       reportListener:{
         _key_:{//example
@@ -1176,6 +1230,7 @@ function VIEWUI(){
   const [xCMDIdx,setXCMDIdx]=useState(-1);
 
 
+  const [GlobalVariableID,setGlobalVariableID]=useState("base");
 
   const [defConfig,_setDefConfig]=useState<any>(undefined);
   const [saveDefConfIndexes,setSaveDefConfIndexes]=useState<number[]>([]);
@@ -1185,6 +1240,7 @@ function VIEWUI(){
   const [forceUpdateCounter,setForceUpdateCounter]=useState(0);
   const [refUISetIdx,setrefUISetIdx]=useState(-1);
   const [newUIID,setNewUIID]=useState("");
+  const [cameraLoading,setCameraLoading]=useState(false);
 
   console.log(">>saveDefConfIndexes",saveDefConfIndexes);
   function setDefConfig(newDC:any,inspTarIndex:number=NaN)
@@ -1194,6 +1250,8 @@ function VIEWUI(){
       let newIdexes=[...saveDefConfIndexes,inspTarIndex];
       setSaveDefConfIndexes(newIdexes);
     }
+    
+    _this.listCMD_Vairable.DefConfig=newDC;
     _setDefConfig(newDC);
   }
 
@@ -1205,7 +1263,8 @@ function VIEWUI(){
     onCancel:()=>{},
     title:"" as string|undefined,
     DATA:DAT_ANY_UNDEF,
-    content:DAT_ANY_UNDEF
+    content:DAT_ANY_UNDEF,
+    footer:null as any|undefined,
 
   }
   const [modalInfo,setModalInfo]=useState(emptyModalInfo);
@@ -1276,10 +1335,16 @@ function VIEWUI(){
   {
     let api = BPG_API
     let connCameraInfo = await api.CameraCheckAndConnect(CameraInfo,froceReconnect)
-    return CameraInfo.map((ci:type_CameraInfo)=>{
-     let connTar = connCameraInfo.find(cCam=>cCam.id==ci.id);
-     return {...ci,available:connTar!==undefined}
-    })
+    
+
+    let camAvaInfo=CameraInfo.map((ci:type_CameraInfo)=>{
+      let connTar = connCameraInfo.find(cCam=>cCam.id==ci.id);
+      return {...ci,available:connTar!==undefined}
+     })
+
+
+    _this.listCMD_Vairable.CameraInfo=camAvaInfo;
+    return camAvaInfo;
   }
   async function ReloadPrjDef(path:string)  
   {
@@ -1297,7 +1362,13 @@ function VIEWUI(){
     console.log(_this.listCMD_Vairable.InspTarDispIDList,prjDef)
     let api = BPG_API
 
+    setCameraLoading(true);
     prjDef.main.CameraInfo= await CameraInfoDoConnection(prjDef.main.CameraInfo,true)
+    setCameraLoading(false);
+    
+
+    let value_dict={};
+
     // updateDefInfo();
     await api.InspTargetRemoveAll()
 
@@ -1330,6 +1401,13 @@ function VIEWUI(){
         }
       )
 
+  
+
+      // await api.send("IT",0,{
+      //   type:"exchange",
+      //   id:inspTar.id,
+      //   data:{type:"value_dict",data:value_dict}
+      // })
 
 
 
@@ -1371,6 +1449,9 @@ function VIEWUI(){
       })
       
     }
+
+
+    
     
     let infoList = await api.InspTargetGetInfo();
     
@@ -1404,6 +1485,10 @@ function VIEWUI(){
   const [crunAbortCtrl,setCRunAbortCtrl]=useState<AbortController|undefined>(undefined);
   const [editPermitFlag,setEditPermitFlag]=useState<number>(0);
   const [UIEditFlag,setUIEditFlag]=useState<boolean>(false);
+
+
+
+
 
   function menuCol(
     label: React.ReactNode,
@@ -1591,6 +1676,10 @@ function VIEWUI(){
                   return opt.slice(3).replace(/ /g, "\u00A0")
                 }
 
+                if(opt.startsWith("$pre:")){
+                  return <pre style={{flexShrink: 0,overflow:"scroll"}}>{opt.slice(5).replace(/ /g, "\u00A0")}</pre>
+                }
+
 
 
                 if(opt.startsWith("$divider:")){
@@ -1626,6 +1715,8 @@ function VIEWUI(){
             });
 
             setModalInfo({
+
+              ...emptyModalInfo,
               timeTag:Date.now(),
               visible:true,
               type:setting.type,
@@ -1636,9 +1727,11 @@ function VIEWUI(){
               },
               onCancel:()=>{
                 abortController.abort();
-                reject(false)
+                resolve(true)
                 setModalInfo({...modalInfo,visible:false})
               },
+              footer:null,
+              
               title:setting.title,
               DATA:_setting,
               content:content
@@ -1669,6 +1762,8 @@ function VIEWUI(){
       if(e.e!==undefined)
         e.e=e.e.toString();
       setModalInfo({
+
+        ...emptyModalInfo,
         timeTag:Date.now(),
         visible:true,
         type:"CHECK",
@@ -1678,6 +1773,7 @@ function VIEWUI(){
         onCancel:()=>{
           setModalInfo({...modalInfo,visible:false})
         },
+        footer:null,
         title:"!!!!錯誤 例外!!!!",
         DATA:{info:`${JSON.stringify(e,null,2)}`},
         content:JSON.stringify(e,null,2)
@@ -1719,56 +1815,8 @@ function VIEWUI(){
               
 
 
-            const layout = 
-            [
-              {
-                  "w": 1,
-                  "h": 1,
-                  "x": 0,
-                  "y": 0,
-                  "i": "a",
-                  "moved": false,
-                  "static": false,
-                  "isDraggable": true,
-                  "isResizable": true
-              },
-              {
-                  "w": 2,
-                  "h": 1,
-                  "x": 1,
-                  "y": 0,
-                  "i": "b",
-                  "moved": false,
-                  "static": false,
-                  "isDraggable": true,
-                  "isResizable": true
-              },
-              {
-                  "w": 2,
-                  "h": 1,
-                  "x": 0,
-                  "y": 1,
-                  "i": "c",
-                  "moved": false,
-                  "static": false,
-                  "isDraggable": true,
-                  "isResizable": true
-              },
-              {
-                  "w": 1,
-                  "h": 1,
-                  "x": 3,
-                  "y": 0,
-                  "i": "d",
-                  "moved": false,
-                  "static": false,
-                  "isDraggable": true,
-                  "isResizable": true
-              }
-            ]
-            
-
             setModalInfo({
+              ...emptyModalInfo,
               timeTag:Date.now(),
               type:"AA",
               visible:true,
@@ -1779,45 +1827,41 @@ function VIEWUI(){
                 setModalInfo({...modalInfo,visible:false})
               },
               title:undefined,
+              footer:null,
               DATA:"",
               content:<>
                 {/* <NodeFlow_DEMO defConfig={defConfig}/> */}
 
-                <ResponsiveReactGridLayoutX layouts={undefined}
-                          //  onDrop={(e) => onDrop(e)} 
-                  onLayoutChange={(curL,allL)=>{
-                    console.log(curL,allL)
-                  }}
-                  className="layout" 
-                  //  layouts={layouts} 
-                  breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-                  cols={{ lg: 5, md: 5, sm: 5, xs: 5, xxs: 5 }}
-                  rows={5}
-                  //  // rowHeight={300}
-                  //  // width={1000}
-                  resizeHandles={["se"]}
-                  isDroppable={true}
-                  autoSize={true}
-                  //  onWidthChange={(containerWidth,margin,cols,cpadding)=>{
-                  //   console.log(containerWidth,margin,cols,cpadding);
-                  //  }}
-                  
-                
-                
-                >
-                  <div key="a" style={{ backgroundColor: "#ccc" }}><span>a</span></div>
-                  <div key="b" style={{ backgroundColor: "#ccc" }}>b</div>
-                  <div key="c" style={{ backgroundColor: "#ccc" }}>c</div>
-                  <div key="d" style={{ backgroundColor: "#ccc" }}>
+                <DDDD defConfig={defConfig} nodeInfo={defConfig.main.InspTarNodeInfo} onNodesInfoChange={(nInfo)=>{
+                  console.log(nInfo)
 
 
-                  </div>
-                </ResponsiveReactGridLayoutX>
+                  setDefConfig(ObjShellingAssign(defConfig,["main","InspTarNodeInfo"],nInfo),-12)
+
+
+
+                  // let new_defConfig=ObjShellingAssign(defConfig,["XCmds"],new_xCMDList);
+
+
+                  // //console.log(defConfig,new_defConfig)
+                  // setDefConfig(new_defConfig,-1);
+
+
+
+                }}
+                
+                nodeUpdateMinInterval={500}
+                onNodeEvent={(event)=>{
+                  console.log(event)
+                }}></DDDD>
+
+
               </>
             })
-
           }}>
             ------------
+            
+            
           </div>,"divLine"),
           ...displayInspTarIdx_hide.map((InspTarIdx:number,listIndex:number)=>{
             let inspTar=defConfig.InspTars_main[InspTarIdx];
@@ -1868,8 +1912,24 @@ function VIEWUI(){
         //   </div>,inspTar.id) )))
     )])
 
+  async function reConnectCamera()
+  {
+    let newPrjDef={...defConfig};
+
+    setCameraLoading(true);
+    newPrjDef.main.CameraInfo= await CameraInfoDoConnection(defConfig.main.CameraInfo,true)
+    setCameraLoading(false);
+
+
+    setDefConfig(newPrjDef,-1);
+  }
+
   let cameraMenu=
-  menuCol('相機', 'cam',undefined, [
+  menuCol('相機', 'cam',cameraLoading?<LoadingOutlined/>:
+    <ReloadOutlined onClick={(e)=>{
+      reConnectCamera();
+      e.preventDefault();
+    }}/>, [
     ...(
       defConfig===undefined?[ menuCol("WAIT...","WAITCam")]:
       (defConfig.main.CameraInfo
@@ -1881,6 +1941,7 @@ function VIEWUI(){
               setModalInfo({...emptyModalInfo,
                 title:cam.id,
                 visible:true,
+                footer:undefined,
                 content:<CameraSetupEditUI key={keyTime} CoreAPI={BPG_API} camSetupInfo={ncamInfo}  onCameraSetupUpdate={ncam=>{
                   if(ncam===undefined)
                   {
@@ -1926,7 +1987,8 @@ function VIEWUI(){
                   })()
                   
                   setModalInfo(emptyModalInfo)
-                }
+                },
+
               })
             }
             updater(cam);
@@ -1956,12 +2018,14 @@ function VIEWUI(){
                 console.log(cam)
                 cam.available=false;
                 let new_camInfo=[...defConfig.main.CameraInfo,cam];
-                
+                setCameraLoading(true);
                 CameraInfoDoConnection(new_camInfo).then(result_camInfo=>{
 
                   let new_defConfig= ObjShellingAssign(defConfig,["main","CameraInfo"],result_camInfo);
                   setDefConfig(new_defConfig,-2)
                 });
+
+                setCameraLoading(false);
               }}>
                 {cam.id}
               </Menu.Item>)
@@ -1987,16 +2051,7 @@ function VIEWUI(){
     </Dropdown>, 'Add'),
     menuCol(
     
-    <div onClick={()=>{
-      (async ()=>{
-        let newPrjDef={...defConfig};
-        newPrjDef.main.CameraInfo= await CameraInfoDoConnection(defConfig.main.CameraInfo,true)
-
-
-        setDefConfig(newPrjDef,-1);
-      })();
-      
-    }}>Refresh
+    <div onClick={reConnectCamera}>Refresh
     </div>, 'Refresh')
 
 
@@ -2061,10 +2116,71 @@ function VIEWUI(){
       
     )
 
+  
+    
+
+    _this.GVEX=defConfig?.main?.global_variable;
+    let globalVMenu=
+    menuCol(<div onClick={()=>{
+      }}>變數設定:{GlobalVariableID}</div>, 'globalV',undefined,
+        [
+          ...Object.keys({..._this.GVEX}).map((key:string)=>menuCol(<div onClick={()=>{
+            setGlobalVariableID(key);
+          }}>{key}</div>,key)),
+
+          menuCol(        <div onClick={()=>{
+            
+            // _this.defCon_global_variable=defConfig.main?.global_variable?.base;
+
+
+            let GVs=defConfig.main?.global_variable;
+
+            setModalInfo({
+              ...emptyModalInfo,
+              timeTag:Date.now(),
+              type:"AA",
+              visible:true,
+              onOK:()=>{
+                setModalInfo({...modalInfo,visible:false})
+              },
+              onCancel:()=>{
+                setModalInfo({...modalInfo,visible:false})
+              },
+              title:undefined,
+              footer:null,
+              DATA:"",
+              content:()=><>
+
+              <GlobalVariableEditor variables={_this.GVEX} 
+                onGlobalVariableUpdate={(nV)=>{
+                  console.log(nV)
+                }}
+                
+                onGlobalVariableIDSelect={(ID)=>{
+                  setGlobalVariableID(ID);
+                }}
+                
+                />
+ 
+
+
+              </>
+            })
+            
+          }}>...</div>,"_ADD_")//new xcmd 
+          
+
+
+
+        ]
+        
+      )
+
   const items: MenuItem[] = [
     cameraMenu,
     InspMenu,
-    xcmdMenu
+    xcmdMenu,
+    globalVMenu
   ];
 
 
@@ -2253,6 +2369,8 @@ function VIEWUI(){
 
   let WidgetTableInfo=(GetObjElement(defConfig,["main","UIInfo"])??[])
 
+
+
   return <>
 
     <Layout style={{ height: '100%' }}>
@@ -2292,6 +2410,30 @@ function VIEWUI(){
         }
 
 
+
+
+
+        <Dropdown 
+          // trigger={['click']}
+          overlay={
+            <>{[...Object.keys({..._this.GVEX}).
+              map((key:string)=><Button onClick={()=> 
+                {
+                  setGlobalVariableID(key);
+                }
+              }> {key}</Button>)
+            ]}</>} 
+        > 
+              
+        
+          <Menu.Item disabled={true} key="999" onClick={()=>{
+          }}>----{GlobalVariableID}----</Menu.Item>
+
+        </Dropdown>
+
+
+        
+
     </Menu>
     
 
@@ -2303,8 +2445,9 @@ function VIEWUI(){
         onOk={modalInfo.onOK}
         // confirmLoading={confirmLoading}
         onCancel={modalInfo.onCancel}
+        footer={modalInfo.footer}
       >
-        {modalInfo.content}
+        {typeof modalInfo.content === 'function'?modalInfo.content():modalInfo.content }
     </DraggableModal>
     </DraggableModalProvider>
 
@@ -2416,13 +2559,37 @@ function VIEWUI(){
       </Space>
 
 
+      <ITGlobalVariableContext.Provider value={
+        {
 
+          global_variable:GV_LayersFlating(defConfig.main?.global_variable,GlobalVariableID),
+          set_global_variable:(path, new_value)=>{
+
+            let curGV=defConfig.main?.global_variable;
+
+
+            //HACK, sometimes after this callback is called, the onDefChange will be called right after, however the global_variable there is the old one, so the global_variable change is override back
+            //so we cache the new_global_variable here, and use it in the onDefChange
+            _this.CACHED_GLOBAL_VARIABLE=ObjShellingAssign(curGV,[GlobalVariableID,...path],new_value);
+
+            console.log(curGV,path,new_value,_this.CACHED_GLOBAL_VARIABLE)
+            let new_defConfig=ObjShellingAssign(defConfig,["main","global_variable"],_this.CACHED_GLOBAL_VARIABLE);
+
+            BPG_API.InspTargetSetGlobalVariable(GV_LayersFlating(_this.CACHED_GLOBAL_VARIABLE,GlobalVariableID));
+            setDefConfig(new_defConfig,-1);
+          }
+        }}>
 
       <TargetViewUIShow WidgetSetID={_this.listCMD_Vairable.widgetSetID} defConfig={defConfig} UIEditFlag={UIEditFlag} EditPermitFlag={editPermitFlag}  onDefChange={(newdef:any, updateIdx)=>{
-        console.log(newdef);
+
+        if(_this.CACHED_GLOBAL_VARIABLE!==undefined)//HACK, look above
+          newdef=ObjShellingAssign(defConfig,["main","global_variable"],_this.CACHED_GLOBAL_VARIABLE);
         setDefConfig(newdef,updateIdx)
+
+        
         }}  renderHook={_this.listCMD_Vairable.renderHook}
         />
+      </ITGlobalVariableContext.Provider>
       </>}
     </Content>
   

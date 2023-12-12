@@ -329,6 +329,22 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
     return true;
   }
 
+
+
+  // if(type=="set_value_dict")
+  // {
+
+  //   if(value_dict)
+  //   {
+  //     cJSON_Delete(value_dict);
+  //     value_dict=NULL;
+  //   }
+
+  //   value_dict=cJSON_Duplicate(JFetch_OBJECT(info,"value_dict"), cJSON_True);
+    
+  //   return true;
+  // }
+
   if(type=="revisit_cache_stage_info")
   {
     LOGI("cache_stage_info.get():%p",cache_stage_info.get());
@@ -409,6 +425,11 @@ InspectionTarget::~InspectionTarget()
     additionalInfo=NULL;
   }
 
+  // if(value_dict)
+  // {
+  //   cJSON_Delete(value_dict);
+  //   value_dict=NULL;
+  // }
   
   // for(int i=0;i<input_stage.size();i++)
   // {
@@ -646,6 +667,41 @@ bool InspectionTargetManager::delInspTar(std::string id)
   inspTars.erase(inspTars.begin()+idx);
   return true;
 }
+
+void InspectionTargetManager::setGlobalValue(cJSON* obj)
+{
+  std::lock_guard<std::mutex> lock(globalValueLock);
+
+  if(globalValue)
+  {
+    cJSON_Delete(globalValue);
+    globalValue=NULL;
+  }
+  globalValue=cJSON_Duplicate(obj, cJSON_True);
+}
+
+cJSON* InspectionTargetManager::getNLockGlobalValue()
+{
+  globalValueLock.lock();
+  return globalValue;
+}
+
+void InspectionTargetManager::unLockGlobalValue()
+{
+  globalValueLock.unlock();
+}
+
+InspectionTargetManager::~InspectionTargetManager()
+{
+  clearInspTar();
+  if(globalValue)
+  {
+    cJSON_Delete(globalValue);
+    globalValue=NULL;
+  }
+}
+
+
 bool InspectionTargetManager::clearInspTar(bool rmService)
 {
   // isPyBindInited=false;

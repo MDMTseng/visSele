@@ -147,6 +147,24 @@ export function ObjShellingAssign(rootObj:{[key:string]:any}|undefined,keyTrace:
 }
 
 
+
+
+
+export function ObjReccursiveOverride(objBase:any, objOverride:any)
+{
+  if(objBase===undefined)return objOverride;
+  if(objOverride===undefined)return objBase;
+  if(typeof(objBase)!=="object")return objOverride;
+  if(typeof(objOverride)!=="object")return objOverride;
+  let newObj={...objBase};
+  for(let key in objOverride)
+  {
+    newObj[key]=ObjReccursiveOverride(newObj[key],objOverride[key]);
+  }
+  return newObj;
+}
+
+
 export function isString (value:any) {
   return typeof value === 'string' || value instanceof String;
 }

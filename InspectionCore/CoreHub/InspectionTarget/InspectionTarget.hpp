@@ -132,6 +132,9 @@ class InspectionTarget
   std::string name;
   int stream_id;
   bool inputPoolInsufficient;
+
+
+  // cJSON *value_dict=NULL;
   cJSON *def=NULL;
   cJSON *additionalInfo=NULL;
   InspectionTargetManager* belongMan;
@@ -199,6 +202,9 @@ class InspectionTargetManager
   std::mutex camCBLock;
   std::mutex processLock;
 
+  cJSON* globalValue=NULL;
+
+  std::mutex globalValueLock;
   public:
 
 
@@ -225,6 +231,17 @@ class InspectionTargetManager
   // int _unregNrecycleStageInfo(StageInfo* sinfo,InspectionTarget* from );//return 0 as destroy, other positive number means how many other inspTar still holds it 
 
   int inspTarProcess();
+
+
+  ~InspectionTargetManager();
+
+  
+  void setGlobalValue(cJSON* obj);
+  cJSON* getNLockGlobalValue();
+  void unLockGlobalValue();
+
+
+
 
   bool isAllInspTarBufferClear();
 

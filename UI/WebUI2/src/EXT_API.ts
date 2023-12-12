@@ -666,9 +666,16 @@ export class BPG_WS
   // }
   
 
+
+
+  async InspTargetSetGlobalVariable(new_global_variable:any)
+  {
+    return await this.send_P("IT",0,{type:"global_value",data:new_global_variable})
+  }
+
   async InspTargetRemoveAll()
   {
-    let ret = await this.send_P("IT",0,{type:"delete_all"})
+    return await this.send_P("IT",0,{type:"delete_all"})
   }
 
 

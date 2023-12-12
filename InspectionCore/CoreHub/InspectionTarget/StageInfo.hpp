@@ -216,11 +216,17 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
 
 
 
+  const static int id_UNSET=-1;
   const static int id_HSVSeg=1;
   const static int id_SigmaThres=2;
   const static int id_ScanPoint=3;
   const static int id_DirectionalDiff=4;
 
+
+  const static int id_PassThru=5;
+
+
+  const static int id_CALC=100;
 
   float pixel_size;
   struct Ele_info{//in subregion we have several elements(dot line....)
@@ -272,6 +278,7 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
   struct SubRegion_Info{//for every oriantation info we may have multiple subregions
     int category;
     float score;
+    string name;
     vector<Ele_info> elements;
     int type;
 
@@ -293,6 +300,16 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
       struct
       {
       } scanpoint_stat;
+
+      struct
+      {
+        int blob_count;
+      } scanPoint_stat;
+
+      struct
+      {
+        std::vector<std::string> *p_compile_fail_info;
+      } calc_stat;
 
     };
   };
@@ -338,85 +355,113 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
         cJSON_AddNumberToObject(jsubreg,"score",subreg.score);
 
 
-
+        switch(subreg.type)
         {
-          cJSON_AddNumberToObject(jsubreg,"blob_area",subreg.hsvseg_stat.blob_area);
-          cJSON_AddNumberToObject(jsubreg,"element_area",subreg.hsvseg_stat.element_area);
-          cJSON_AddNumberToObject(jsubreg,"element_count",subreg.hsvseg_stat.element_count);
-          cJSON_AddNumberToObject(jsubreg,"max_line_length",subreg.hsvseg_stat.max_line_length);
-          
-        }
-
-
-        if(brifVector!=0){
-
-        cJSON* elements=cJSON_CreateArray();
-
-        cJSON_AddItemToObject(jsubreg,"elements",elements);
-
-        for(int k=0;k<subreg.elements.size();k++)
-        {
-          Ele_info &einfo =subreg.elements[k];
-
-
-
-          cJSON *ele=cJSON_CreateObject();
-          cJSON_AddItemToArray(elements,ele);
-          cJSON_AddNumberToObject(ele,"category",einfo.category);
-          
-
-          switch(einfo.category)
+          case id_HSVSeg:
           {
-            case STAGEINFO_CAT_SCS_PT_OVER_SIZE:
+            cJSON_AddNumberToObject(jsubreg,"element_count",subreg.hsvseg_stat.element_count);
+            cJSON_AddNumberToObject(jsubreg,"element_area",subreg.hsvseg_stat.element_area);
+            cJSON_AddNumberToObject(jsubreg,"blob_area",subreg.hsvseg_stat.blob_area);
+            cJSON_AddNumberToObject(jsubreg,"max_line_length",subreg.hsvseg_stat.max_line_length);
+
+
+            if(brifVector!=0){
+
+            cJSON* elements=cJSON_CreateArray();
+
+            cJSON_AddItemToObject(jsubreg,"elements",elements);
+
+            for(int k=0;k<subreg.elements.size();k++)
             {
-
-              cJSON_AddNumberToObject(ele,"area",einfo.data.point.area);
-              cJSON_AddNumberToObject(ele,"perimeter",einfo.data.point.perimeter);
-              cJSON_AddNumberToObject(ele,"x",einfo.data.point.x);
-              cJSON_AddNumberToObject(ele,"y",einfo.data.point.y);
-              cJSON_AddNumberToObject(ele,"w",einfo.data.point.w);
-              cJSON_AddNumberToObject(ele,"h",einfo.data.point.h);
-              cJSON_AddNumberToObject(ele,"angle",einfo.data.point.angle);
-              break;
-            }
-
-
-            case STAGEINFO_CAT_SCS_LINE_OVER_LEN:
-            {
-
-              cJSON_AddNumberToObject(ele,"area",einfo.data.line.area);
-              cJSON_AddNumberToObject(ele,"perimeter",einfo.data.line.perimeter);
-              cJSON_AddNumberToObject(ele,"x",einfo.data.line.x);
-              cJSON_AddNumberToObject(ele,"y",einfo.data.line.y);
-              cJSON_AddNumberToObject(ele,"w",einfo.data.line.w);
-              cJSON_AddNumberToObject(ele,"h",einfo.data.line.h);
-              cJSON_AddNumberToObject(ele,"angle",einfo.data.line.angle);
-              cJSON_AddNumberToObject(ele,"length",einfo.data.line.length);
-              break;
-            }
-
-            case STAGEINFO_CAT_SCS_EXTRA_STAT:
-            {
-              cJSON_AddStringToObject(ele,"type",einfo.data.extra_stat.type);
-              cJSON_AddNumberToObject(ele,"value",einfo.data.extra_stat.value);
-              cJSON_AddNumberToObject(ele,"difference",einfo.data.extra_stat.difference);
+              Ele_info &einfo =subreg.elements[k];
 
 
 
+              cJSON *ele=cJSON_CreateObject();
+              cJSON_AddItemToArray(elements,ele);
+              cJSON_AddNumberToObject(ele,"category",einfo.category);
               
-              break;
+
+              switch(einfo.category)
+              {
+                case STAGEINFO_CAT_SCS_PT_OVER_SIZE:
+                {
+
+                  cJSON_AddNumberToObject(ele,"area",einfo.data.point.area);
+                  cJSON_AddNumberToObject(ele,"perimeter",einfo.data.point.perimeter);
+                  cJSON_AddNumberToObject(ele,"x",einfo.data.point.x);
+                  cJSON_AddNumberToObject(ele,"y",einfo.data.point.y);
+                  cJSON_AddNumberToObject(ele,"w",einfo.data.point.w);
+                  cJSON_AddNumberToObject(ele,"h",einfo.data.point.h);
+                  cJSON_AddNumberToObject(ele,"angle",einfo.data.point.angle);
+                  break;
+                }
+
+
+                case STAGEINFO_CAT_SCS_LINE_OVER_LEN:
+                {
+
+                  cJSON_AddNumberToObject(ele,"area",einfo.data.line.area);
+                  cJSON_AddNumberToObject(ele,"perimeter",einfo.data.line.perimeter);
+                  cJSON_AddNumberToObject(ele,"x",einfo.data.line.x);
+                  cJSON_AddNumberToObject(ele,"y",einfo.data.line.y);
+                  cJSON_AddNumberToObject(ele,"w",einfo.data.line.w);
+                  cJSON_AddNumberToObject(ele,"h",einfo.data.line.h);
+                  cJSON_AddNumberToObject(ele,"angle",einfo.data.line.angle);
+                  cJSON_AddNumberToObject(ele,"length",einfo.data.line.length);
+                  break;
+                }
+
+                case STAGEINFO_CAT_SCS_EXTRA_STAT:
+                {
+                  cJSON_AddStringToObject(ele,"type",einfo.data.extra_stat.type);
+                  cJSON_AddNumberToObject(ele,"value",einfo.data.extra_stat.value);
+                  cJSON_AddNumberToObject(ele,"difference",einfo.data.extra_stat.difference);
+
+
+
+                  
+                  break;
+                }
+
+
+                default:
+                break;
+                
+              }
+
+
+
+            }
+            
             }
 
-
-            default:
             break;
-            
+          }
+          case id_ScanPoint:
+          {
+            cJSON_AddNumberToObject(jsubreg,"blob_count",subreg.scanPoint_stat.blob_count);
+            break;
+          }
+          case id_CALC:
+          {
+
+            auto &compile_fail_info=*(subreg.calc_stat.p_compile_fail_info);
+            if(compile_fail_info.size()>0 && i==0)//attach compile error only to the first subregion
+            {
+
+              cJSON* compile_error=cJSON_CreateArray();
+
+              cJSON_AddItemToObject(jsubreg,"compile_error",compile_error);
+
+              for(int k=0;k<compile_fail_info.size();k++)
+              {
+                cJSON_AddItemToArray(compile_error,cJSON_CreateString(compile_fail_info[k].c_str()));
+              }
+            }
+            break;
           }
 
-
-
-        }
-        
         }
 
       }

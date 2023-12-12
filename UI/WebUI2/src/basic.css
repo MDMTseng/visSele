@@ -36,3 +36,17 @@
 .antd_menu_item_8px_padding{
   padding-left: 8px !important;
 }
+
+
+
+.react-flow__node-Orientation_ShapeBasedMatching {
+	font-size: 12px;
+	background: #eee;
+	border: 1px solid #555;
+	border-radius: 5px;
+	/* padding: 0px 10px 0px 10px; */
+	text-align: center;
+	overflow: hidden;
+	/* min-height: 100px; */
+  }
+  
