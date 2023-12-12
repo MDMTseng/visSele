@@ -2032,7 +2032,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
         return false;
       }
 
-      LOGE(">>>>>>>");
+      // LOGE(">>>>>>>");
       bool session_ACK=false;
       cJSON *msg_obj = JFetch_OBJECT(info, "msg");
       if (msg_obj)
@@ -2040,7 +2040,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
         std::lock_guard<std::mutex> lock(pCH->sendMutex);
         uint8_t _buf[2000];
-        LOGE(">>>>>>>");
+        // LOGE(">>>>>>>");
         int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,msg_obj);
         session_ACK = (ret>=0);
       }
@@ -2048,10 +2048,12 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       {
         session_ACK=false;//send nothing
       }
-      LOGE(">>>>>>>");
+      // LOGE(">>>>>>>");
 
       return session_ACK;
     }
+
+
 
     if(type=="is_CONNECTED")
     {
@@ -2230,6 +2232,23 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     if(type=="is_Script_Running")
     {
       return sCH!=NULL && sCH->isRunning();
+    }
+
+    if(type=="ScriptCMD")
+    {
+      if(sCH==NULL)return false;
+      // std::lock_guard<std::mutex> lock(sCH->sendMutex);
+      // cJSON* cmd=JFetch_OBJECT(info,"cmd");
+      // if(cmd==NULL)return false;
+
+
+      cJSON* result=sCH->send_waitfor_return(info,1000);
+
+      if(result==NULL)return false;
+
+      act.send("SC",id,result);
+      cJSON_Delete(result);
+      return true;
     }
 
     if(type=="SrcImgSaveCountDown")
@@ -2446,7 +2465,7 @@ bool scriptNeedInit=true;
 
 void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
 {
-  int catSum;
+  int catSum=STAGEINFO_CAT_NA;
 
   cJSON *ignore_indexes=NULL;
   cJSON *script_result=NULL;

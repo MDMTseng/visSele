@@ -5478,6 +5478,10 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
     const [spanStatisticUI, setSpanStatisticUI] = useState(false);
+    const [spanSELCountDownSetupUI, setSpanSELCountDownSetupUI] = useState(false);
+
+
+    
     const [isRunning, setIsRunning] = useState(false);
     const [connSendBlock, setConnSendBlock] = useState(false);
 
@@ -5485,6 +5489,9 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     const [periodicPullCMDs, _setPeriodicPullCMDs] = useState<any[]>([]);
     const [runningState, setRunningState] = useState<any>(undefined);
     const [scriptRunningState, setScriptRunningState] = useState(false);
+    
+
+    const [OKSEL_CountDown, setOKSEL_CountDown] = useState(-1);
     
 
 
@@ -5535,6 +5542,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     _this.runningState=runningState;
     _this.scriptRunningState=scriptRunningState;
     _this.skipCatRepList=skipCatRepList;
+    _this.OKSEL_CountDown=OKSEL_CountDown;
     useEffect(() => {//////////////////////
 
         _this.send_id = 0;
@@ -5628,12 +5636,35 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 setScriptRunningState(is_Script_Running);
             }
 
+            if(is_Script_Running)
+            {
+                let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { 
+                    type: "ScriptCMD",
+                    cmd:{
+                        type:"Get_OKCountDown"
+                    }
+                
+                }) as any
+                let pti=pt_info[0].data;
+                if(pti.OKCountDown!=_this.OKSEL_CountDown)
+                    setOKSEL_CountDown(pti.OKCountDown);
+            }
+
+
+
+
+
             
             if(_this.runningState===undefined)return;
             if(Date.now()-_this.runningState.timeStamp>3000)
             {
                 setRunningState(undefined);
             }
+            
+
+
+
+
         },1000);
 
         
@@ -7009,6 +7040,47 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 </>
             }
 
+
+
+
+
+            <Divider orientation="left">
+                <Button danger={OKSEL_CountDown==0} type={OKSEL_CountDown<0?"dashed":"primary"} onClick={() => {
+                    setSpanSELCountDownSetupUI(!spanSELCountDownSetupUI)
+                }}>數量限制 {OKSEL_CountDown<0?"無限制":`OK:${OKSEL_CountDown}`} {spanSELCountDownSetupUI ? ' -' : ' +'}</Button>
+            </Divider>
+
+
+            {spanSELCountDownSetupUI==false?null:<>
+            
+                <Button onClick={() => {
+                   BPG_API.InspTargetExchange(cacheDef.id, { 
+                    type: "ScriptCMD",
+                    cmd:{
+                        type:"Set_OKCountDown",
+                        OKCountDown:-1
+                    }
+                
+                    })
+                }}>無限制</Button>
+                <br/>
+                {
+
+                    [0,100,500,1000,5000].map((count)=> <Button key={count} onClick={() => {
+                        BPG_API.InspTargetExchange(cacheDef.id, { 
+                        type: "ScriptCMD",
+                        cmd:{
+                            type:"Set_OKCountDown",
+                            OKCountDown:count
+                        }
+                    
+                        })
+                    }}>{count}</Button>)
+                }
+               
+
+
+            </>}
 
 
         </div>

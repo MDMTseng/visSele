@@ -1183,6 +1183,7 @@ console.log(GV_LayersFlating(objBase,"top"));
 */
 function GV_LayersFlating(GVs:any,key:string)
 {
+  if(GVs===undefined)return {};
   let tGV=GVs[key];
   let srcKey=tGV?.["$base"];
   if(srcKey===undefined)return tGV;
