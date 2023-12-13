@@ -14,6 +14,9 @@ IDIR=	./include/ \
 ODIR=obj
 _OBJ = Util.o Util2.o ImageSampler.opp Data_Layer_PHY.opp Data_Layer_Protocol.opp json_seg_parser.opp CompScript.opp
 
+
+FLAGS+= -Wa,-mbig-obj
+
 target_a= $(addsuffix .a ,$(MODULE_NAME))
 ESS_TRACK=$(wildcard $(addsuffix /*.h* ,$(IDIR)))
 include ../Makefile.in
