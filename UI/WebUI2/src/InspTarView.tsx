@@ -5432,6 +5432,55 @@ export function SingleTargetVIEWUI_BASE(props: CompParam_InspTarUI) {
 }
 
 
+
+function SimpNumpad( props:{value:number,onChange:(v:number)=>void} )
+{
+    const [v, setV] = useState(props.value||0);
+
+
+    let width=50;
+    return <div>
+        <InputNumber value={v} style={{width:width*3}} onChange={(v)=>{
+            setV(v as number);
+            // props.onChange(v as number);
+        }}/>
+        <br/>
+        {
+        
+        [7,8,9,"\n",4,5,6,"\n",1,2,3,"\n","C",0,"<","."].map((ele,index)=>{
+
+            if(typeof ele=="string")
+            {
+                if(ele=="\n")
+                    return <br/>
+                if(ele=="C")
+                    return <Button key={ele} style={{width}} onClick={()=>{
+                        setV(0);
+                    }}>{ele}</Button>
+                if(ele=="<")
+                    return <Button key={ele} style={{width}} onClick={()=>{
+                        setV(Math.floor(v/10));
+                    }}>{ele}</Button>
+            }
+            else
+            {
+                return <Button key={ele} style={{width}} onClick={()=>{
+                    setV(v*10+ele);
+                    // props.onChange(v*10+ele);
+                }}>{ele}</Button>
+            }
+            return <></>;
+        })}
+      
+        <br/>
+        <Button style={{width:width*3}} onClick={()=>{
+            props.onChange(v);
+        }}>OK</Button>
+
+    </div>
+}
+
+
 let btn_boxshadow="-3px -3px 5px rgba(255,255,255,0.5),3px 3px 5px rgba(70,70,70,0.3), inset -3px -3px 5px rgba(70, 70, 70, 0.3), inset 3px 3px 5px rgba(255, 255, 255, 0.4)"
 
 export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
@@ -5489,10 +5538,8 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     const [periodicPullCMDs, _setPeriodicPullCMDs] = useState<any[]>([]);
     const [runningState, setRunningState] = useState<any>(undefined);
     const [scriptRunningState, setScriptRunningState] = useState(false);
-    
 
-    const [OKSEL_CountDown, setOKSEL_CountDown] = useState(-1);
-    
+
 
 
     function setPeriodicPullCMDs(CMDs:any[])
@@ -5542,7 +5589,6 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     _this.runningState=runningState;
     _this.scriptRunningState=scriptRunningState;
     _this.skipCatRepList=skipCatRepList;
-    _this.OKSEL_CountDown=OKSEL_CountDown;
     useEffect(() => {//////////////////////
 
         _this.send_id = 0;
@@ -5636,22 +5682,6 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 setScriptRunningState(is_Script_Running);
             }
 
-            if(is_Script_Running)
-            {
-                let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { 
-                    type: "ScriptCMD",
-                    cmd:{
-                        type:"Get_OKCountDown"
-                    }
-                
-                }) as any
-                let pti=pt_info[0].data;
-                if(pti.OKCountDown!=_this.OKSEL_CountDown)
-                    setOKSEL_CountDown(pti.OKCountDown);
-            }
-
-
-
 
 
             
@@ -5680,6 +5710,19 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
                 let pCMDs=[];
                 let id=-1000;
                 pCMDs.push({type:"get_running_stat",id,receive:(msg:any)=>{
+
+
+                    let old_sel1_cd=_this.runningState?.sel1_cd;
+                    let new_sel1_cd=msg?.sel1_cd;
+
+                    if(old_sel1_cd!=new_sel1_cd && new_sel1_cd==0)
+                    {
+                        setIsRunning(false);
+                        console.log(_this.send({ type: "set_setup", plateFreq: 0 }));
+                        console.log(_this.send({ type: "exit_insp_mode" }));
+                    }
+
+
                     setRunningState({...msg,timeStamp:Date.now()});
                 }});id--;
 
@@ -7045,40 +7088,21 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
             <Divider orientation="left">
-                <Button danger={OKSEL_CountDown==0} type={OKSEL_CountDown<0?"dashed":"primary"} onClick={() => {
+                <Button danger={runningState?.sel1_cd==0} type={runningState?.sel1_cd<0?"dashed":"primary"} onClick={() => {
                     setSpanSELCountDownSetupUI(!spanSELCountDownSetupUI)
-                }}>數量限制 {OKSEL_CountDown<0?"無限制":`OK:${OKSEL_CountDown}`} {spanSELCountDownSetupUI ? ' -' : ' +'}</Button>
+                }}>數量限制 {runningState?.sel1_cd<0?"無限制":`OK:${runningState?.sel1_cd}`} {spanSELCountDownSetupUI ? ' -' : ' +'}</Button>
             </Divider>
 
 
             {spanSELCountDownSetupUI==false?null:<>
             
                 <Button onClick={() => {
-                   BPG_API.InspTargetExchange(cacheDef.id, { 
-                    type: "ScriptCMD",
-                    cmd:{
-                        type:"Set_OKCountDown",
-                        OKCountDown:-1
-                    }
-                
-                    })
+                    _this.send({ type: "set_sel1_cd",count:-1 });
                 }}>無限制</Button>
                 <br/>
-                {
-
-                    [0,100,500,1000,5000].map((count)=> <Button key={count} onClick={() => {
-                        BPG_API.InspTargetExchange(cacheDef.id, { 
-                        type: "ScriptCMD",
-                        cmd:{
-                            type:"Set_OKCountDown",
-                            OKCountDown:count
-                        }
-                    
-                        })
-                    }}>{count}</Button>)
-                }
-               
-
+                <SimpNumpad value={-1} onChange={(value)=>{ 
+                    _this.send({ type: "set_sel1_cd",count:value });
+                }}/>
 
             </>}
 
