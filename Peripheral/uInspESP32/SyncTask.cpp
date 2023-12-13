@@ -303,6 +303,8 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       {//For INIT state "EXIT"(i==2) is the first and the last action it would run
         blockNewDetectedObject=true;
         SYS_TAR_FREQ=0;
+
+        pinMode(FEEDER_PIN, OUTPUT);
       } //exit
       break;
       
@@ -348,6 +350,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       if (i == 0)//enter
       {
         blockNewDetectedObject=false;
+        digitalWrite(FEEDER_PIN, 0);
 
         // 
       } 
@@ -358,6 +361,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       else
       {
         blockNewDetectedObject=true;
+        digitalWrite(FEEDER_PIN, 1);
       } //exit
       break;
     }
@@ -745,7 +749,7 @@ int Run_ACTS(uint32_t cur_pulse)
                   }
                   else 
                   {         
-                  GPIOLS32_CLR(PIN_O_SEL2);
+                    GPIOLS32_CLR(PIN_O_SEL2);
                   }
                 
                   
@@ -1327,7 +1331,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["state"]=(int)sysinfo.state;
 
     retdoc["plateFreq"]=SYS_TAR_FREQ;//SYS_CUR_FREQ;
-
+    // if(SEL1_ACT_COUNTDOWN>=0)
+    // {
+    // }
+    retdoc["sel1_cd"]=SEL1_ACT_COUNTDOWN;
 
     // retdoc["plateFreq"]=NA_Count;
 
@@ -1451,7 +1458,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=rspAck=true;
   }
 
-  else if(strcmp(type,"sel1_act_countdown")==0)
+  else if(strcmp(type,"sel1_act_countdown")==0 || strcmp(type,"set_sel1_cd")==0)
   {
     
     if(doc["count"].is<int>()==true)
@@ -1465,6 +1472,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=rspAck=true;
   }
 
+  else if(strcmp(type,"get_sel1_cd")==0)
+  {
+    retdoc["sel1_cd"]=SEL1_ACT_COUNTDOWN;
+    doRsp=rspAck=true;
+  }
 
   else if(strcmp(type,"stepper_enable")==0)
   {
