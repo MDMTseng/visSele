@@ -182,7 +182,7 @@ typedef struct run_mode_info
 
 
 #define STEPPER_PLS_PIN 22
-#define STEPPER_DIR_PIN 21
+#define STEPPER_DIR_PIN 23
 
 #define STEPPER_EN_ACTIVATION 0
 #define STEPPER_EN_PIN 13
@@ -196,6 +196,7 @@ typedef struct run_mode_info
 #define PIN_O_SEL3 32
 
 
+#define FEEDER_PIN 21
 #define PIN_I_GATE 27
 
 
