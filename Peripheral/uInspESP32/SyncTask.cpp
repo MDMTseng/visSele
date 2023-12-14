@@ -952,8 +952,8 @@ void RESET_GateSensing()
 
 bool _senseInv_=true;
 
-const int  minWidth = 0;
-const int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
+int  minWidth = 0;
+int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
 const int  DEBOUNCE_L_THRES = 1+20/_PLAT_DIST_um_PER_STEP;//object inner connection
 const int  DEBOUNCE_H_THRES = 1;
 
@@ -1108,7 +1108,7 @@ void GateSensing()
 
       gateInfo.end_pulse=SYS_STEP_COUNT;
       uint32_t diff=gateInfo.end_pulse-gateInfo.start_pulse;
-      // if( diff>minWidth && diff<maxWidth )
+      if( diff>minWidth && diff<maxWidth )
       {
         uint32_t middle_pulse=gateInfo.start_pulse+(diff>>1);
 
@@ -2238,6 +2238,10 @@ void setMachineSetup(JsonDocument &jdoc)
   JSON_SETIF_ABLE(SETUP_TAR_FREQ,jdoc,"plateFreq");
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jdoc,"minDetectTimeSep_us");
   JSON_SETIF_ABLE(stepRun,jdoc,"stepRun");
+
+  JSON_SETIF_ABLE(minWidth,jdoc,"pulse_minWidth");
+  JSON_SETIF_ABLE(maxWidth,jdoc,"pulse_maxWidth");
+  
 
   if (jdoc.containsKey("stage_pulse_offset")) {
     JsonObject jSPO  = jdoc["stage_pulse_offset"];
