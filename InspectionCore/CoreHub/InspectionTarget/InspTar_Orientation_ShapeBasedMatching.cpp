@@ -13,7 +13,7 @@ inline bool instanceof (const T)
 }
 
 InspectionTarget_Orientation_ShapeBasedMatching::InspectionTarget_Orientation_ShapeBasedMatching(string id, cJSON *def, InspectionTargetManager *belongMan, std::string local_env_path)
-    : InspectionTarget(id, NULL, belongMan, local_env_path),recentSrcStageInfoSetIdx(100)
+    : InspectionTarget(id, NULL, belongMan, local_env_path),recentSrcStageInfoSetIdx(10)
 {
   type = InspectionTarget_Orientation_ShapeBasedMatching::TYPE();
 
