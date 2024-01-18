@@ -530,7 +530,7 @@ inline int Calc_JunctionNormMaxDiff(MSTP_SEG_PREFIX MSTP_segment *blk1,MSTP_SEG_
 
 MStp::MStp(MSTP_segment *buffer, int bufferL)
 {
-
+  MTP_INIT_Lock=true;
   segBuf=buffer;
   segBufL=bufferL;
   segBufHeadIdx=0;
@@ -674,7 +674,7 @@ MSTP_SEG_PREFIX MSTP_segment* MStp::SegQ_Head(int idx) MSTP_SEG_PREFIX
 }
 bool MStp::SegQ_Head_Push() MSTP_SEG_PREFIX
 {
-  if(endStopHitLock || SegQ_IsFull() )return false;
+  if(MTP_INIT_Lock ||endStopHitLock || SegQ_IsFull() )return false;
   int newIdx=(segBufHeadIdx+1)%segBufL;
   segBufHeadIdx=newIdx;
   return true;
@@ -707,7 +707,7 @@ void MStp::_FatalError(int errorCode,const char* errorText)
 bool MStp::AddWait(uint32_t period,int times, void* ctx,MSTP_segment_extra_info *exinfo)
 {
 
-  if(endStopHitLock || fatalErrorCode!=0)return false;
+  if(MTP_INIT_Lock ||endStopHitLock || fatalErrorCode!=0)return false;
 
   if(SegQ_Space() <=2)
   {

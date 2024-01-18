@@ -21,10 +21,6 @@ extern "C" {
 #define __UPRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
 
 
-
-
-inline float mm2Pulse_conv(int axisIdx,float dist);
-
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc);
 uint32_t g_step_trigger_edge=(1<<AXIS_IDX_X);//0xFFFFFFF;//each bits means trigger edge setting on each axis, 0 for posedge 1 for negedge
@@ -101,6 +97,10 @@ hw_timer_t *timer = NULL;
 
 #define PIN_DBG5 32
 #define PIN_DBG6 33
+
+
+
+#define PIN_PSENSOR_N 21
 
 int pin_SH_165=17;
 int pin_TRIG_595=5;
@@ -362,57 +362,18 @@ public:
 
 
 
-    digitalWrite(PIN_DBG1, pre_f_dir&(1<<0));
-    digitalWrite(PIN_DBG2, pre_f_step&(1<<0));
+    digitalWrite(PIN_DBG1, pre_f_dir&(1<<3));
+    digitalWrite(PIN_DBG2, pre_f_step&(1<<3));
 
-    digitalWrite(PIN_DBG3, pre_f_dir&(1<<1));
-    digitalWrite(PIN_DBG4, pre_f_step&(1<<1));
+    // digitalWrite(PIN_DBG3, pre_f_dir&(1<<1));
+    // digitalWrite(PIN_DBG4, pre_f_step&(1<<1));
     
-    digitalWrite(PIN_DBG5, pre_f_dir&(1<<2));
-    digitalWrite(PIN_DBG6, pre_f_step&(1<<2));
+    // digitalWrite(PIN_DBG5, pre_f_dir&(1<<2));
+    // digitalWrite(PIN_DBG6, pre_f_step&(1<<2));
   }
 };
 
 PulseGenerator_M PG_M;
-
-
-inline float mm2Pulse_conv(int axisIdx,float dist)
-{
-  // __UPRT_D_("unitConv[%s]:%f\n",code,dist);
-
-  // return unit2Pulse(
-  switch(axisIdx)
-  {
-    case AXIS_IDX_FEEDRATE:
-    case AXIS_IDX_ACCELERATION:
-    case AXIS_IDX_DEACCELERATION:
-    case AXIS_IDX_X:return dist*6400/mm_PER_REV;
-
-
-    case AXIS_IDX_Z:return dist*SUBDIV/mm_PER_REV;//-1 for reverse the direction
-    case AXIS_IDX_Y:return -1*dist*SUBDIV/mm_PER_REV;
-    
-    case AXIS_IDX_A:return dist;//TODO add A axis convert
-
-    case AXIS_IDX_Z1:
-    case AXIS_IDX_Z2:
-    case AXIS_IDX_Z3:
-    case AXIS_IDX_Z4:return dist*200*8/40;//as pulse count
-
-    case AXIS_IDX_R1:
-    case AXIS_IDX_R2:
-    case AXIS_IDX_R3:
-    case AXIS_IDX_R4://assume it's 800 pulses pre rev
-      return dist*(200*4)/360;//-1 for reverse the direction
-
-
-
-
-  }
-
-  return NAN;
-}
-
 
 MStpV2 mstpV2(&PG_M);
 uint32_t cp0_regs[18];
@@ -511,12 +472,16 @@ public:
     axisSetup[0].A_Factor=1;
     axisSetup[0].V_Factor=1;
     axisSetup[0].MaxVJump=1;
-    axisSetup[0].V_Max=600;
-    axisSetup[0].A_Max=10000;
+    axisSetup[0].V_Max=2000;
+    axisSetup[0].A_Max=100000;
 
 
 
     axisSetup[1]=axisSetup[2]=axisSetup[0];
+
+
+    axisSetup[1].ppmm=(4000)/(140);
+    axisSetup[2].ppmm=(1000*5)/(160*2*M_PI);
     adv_info.minSpeed=5;
 
     design_notch_filter(5.85,1000,0.9);
@@ -986,14 +951,14 @@ float iir_lp_filter(float input) {
 
   }
 
-  float* getTmpVec(int idx)
-  {
-    if(idx==0)
-      return tmpVec1.vec;
-    else if(idx==1)
-      return tmpVec2.vec;
-    return NULL;
-  }
+  // float* getTmpVec(int idx)
+  // {
+  //   if(idx==0)
+  //     return tmpVec1.vec;
+  //   else if(idx==1)
+  //     return tmpVec2.vec;
+  //   return NULL;
+  // }
 
 
   void copyTo(float*dst,float*src)
@@ -1024,23 +989,25 @@ float iir_lp_filter(float input) {
   }
   void backward(xVec_f *mot_vec_dst,const float* loc_vec_src){
     
-    float *loc_vec=(float*)loc_vec_src;
+    // float *loc_vec=(float*)loc_vec_src;
     
-    float x=loc_vec[0];//in mm
-    float y=loc_vec[1];
-    float z=loc_vec[2];
-    float R=62.5;
-    float RotAngle=asinf(z/R);
-    x+=R*(cosf(RotAngle));
+    // float x=loc_vec[0];//in mm
+    // float y=loc_vec[1];
+    // float z=loc_vec[2];
+    // float R=62.5;
+    // float RotAngle=asinf(z/R);
+    // x+=R*(cosf(RotAngle));
 
-    // for(int i=0;i<LOC_DIM;i++)
-    // {
-    //   mot_vec_dst->vec[i]=loc_vec_src[i]*axisSetup[i].ppmm;
-    // }
 
-    mot_vec_dst->vec[1]=-x*axisSetup[0].ppmm;
-    mot_vec_dst->vec[0]=-y*axisSetup[1].ppmm;
-    mot_vec_dst->vec[2]=-RotAngle/M_PI*850;
+
+    // mot_vec_dst->vec[1]=-x*axisSetup[0].ppmm;
+    // mot_vec_dst->vec[0]=-y*axisSetup[1].ppmm;
+    // mot_vec_dst->vec[2]=-RotAngle/M_PI*850;
+
+    for(int i=0;i<LOC_DIM;i++)
+    {
+      mot_vec_dst->vec[i]=loc_vec_src[i]*axisSetup[i].ppmm;
+    }
     
   }
   void forward(float* loc_vec_dst,const xVec_f *mot_vec_src)
@@ -1537,6 +1504,755 @@ float iir_lp_filter(float input) {
 };
 
 StpGroup_RX SG_RX;
+
+
+
+class StpGroup_SIMP:public StpGroup
+{ 
+  typedef  xnVec_f<3> RXVec;
+
+  // static const int OUTPUT_HIST_DIV=1;
+  // RingBuf_Static<RXVec,1024/OUTPUT_HIST_DIV> outputHist;
+
+  std::array<RXVec,40> startPtBuffer;
+  std::array<RXVec,40> vecBuffer;
+
+
+  std::array<struct MSTP_segment,40> segsBuffer;
+
+  MSTP_axisSetup _axisSetup[sizeof(RXVec)/sizeof(float)];
+
+  const int LOC_DIM=sizeof(RXVec)/sizeof(float);
+
+  RXVec latestLocation={{0}};
+  RXVec latestVec={{0}};
+
+
+  int homingStatus=-1;
+  int homingCMDID=-1;
+
+public:
+  StpGroup_SIMP():StpGroup()
+  {
+
+    // memset(outputHist.buff,0,outputHist.capacity()*sizeof(RXVec));
+    
+
+    axisSetup=_axisSetup;
+    for(int i=0;i<segsBuffer.size();i++)
+    {
+      segsBuffer[i].vec=(vecBuffer[i].vec);
+      segsBuffer[i].sp=(startPtBuffer[i].vec);
+
+      segsBuffer[i].aux_pt2=
+      segsBuffer[i].aux_pt3=
+      segsBuffer[i].aux_pt4=NULL;
+
+
+    }
+
+    segs.RESET(segsBuffer.data(),segsBuffer.size());
+
+
+    float ppmm=50;
+
+    axisSetup[0].ppmm=ppmm;
+    axisSetup[0].A_Factor=1;
+    axisSetup[0].V_Factor=1;
+    axisSetup[0].MaxVJump=1;
+    axisSetup[0].V_Max=2000;
+    axisSetup[0].A_Max=100000;
+
+
+
+    axisSetup[1]=axisSetup[2]=axisSetup[0];
+
+
+    axisSetup[1].ppmm=(4000)/(140);
+    axisSetup[2].ppmm=(1000*5)/(160*2*M_PI);
+    adv_info.minSpeed=5;
+
+    // design_lowpass_filter(10,1000);
+  }
+
+  void print(const char* str)
+  {
+    djrl.dbg_printf(str);
+  }
+  float* getLatestLocation()
+  {
+    return latestLocation.vec;
+  }
+  float* getLatestVec()
+  {
+    return latestVec.vec;
+  }
+
+  float preDistWent=0;
+  float prePercent=0;
+
+  uint32_t preCount=0;
+  uint32_t updateCount=0;
+  MSTP_segment* preSeg=0;
+
+
+  RXVec latestCalcAdvLocation={{0}};
+  RXVec latestAdvLocation={{0}};
+  float pre_ratio=0;
+
+
+
+
+
+  enum TrackingState{
+    NOP=0,
+    Syncing=1,
+    InSync=2,
+    Leaving=3,
+
+  };
+
+
+
+  int TRAJECT_ID=-1;
+  float TRAJECT_params[10];
+  MSTP_segment_adv_info trackingAdvInfo;
+  MSTP_segment trackingMovParam;
+  TrackingState trackingState=TrackingState::NOP;
+  RXVec virtualTrackingCenter={{0}};
+
+
+
+
+  int TESTCOuntdown=0;
+  float homingSpeed=0;
+  void homingACT()
+  {
+
+    float T=mstpV2.updatePeriod_s;
+    if(homingStatus==0)
+    {
+      TESTCOuntdown=-1;
+      homingStatus=1;
+    }
+    switch (homingStatus)
+    {
+    case 1:
+      /* code */
+      if(TESTCOuntdown==-1)
+      {
+        TESTCOuntdown=500;
+        homingSpeed=0.1;
+      }
+      else if(TESTCOuntdown)
+      {
+        latestAdvLocation.vec[0]-=homingSpeed*T;
+        homingSpeed+=5;
+        if(homingSpeed>30)homingSpeed=30;
+
+        if(digitalRead(PIN_PSENSOR_N)==1)
+          TESTCOuntdown=0;
+      }
+      else
+      {
+        if(homingSpeed<=0.1)
+        {
+          TESTCOuntdown=-1;
+          homingStatus=2;
+        }
+        else
+        {
+          latestAdvLocation.vec[0]-=homingSpeed*T;
+          homingSpeed-=0.4;
+        }
+
+      }
+      break;
+
+    case 2:
+      /* code */
+
+      if(TESTCOuntdown==-1)
+      {
+        TESTCOuntdown=100;
+        homingSpeed=5;
+      }
+      else if(TESTCOuntdown)
+      {
+        latestAdvLocation.vec[0]+=homingSpeed*T;
+        if(digitalRead(PIN_PSENSOR_N)==0)
+          TESTCOuntdown=0;
+      }
+      else
+      {
+        TESTCOuntdown=-1;
+        homingStatus=3;
+      }
+      break;
+
+    case 3:
+      /* code */
+
+      if(TESTCOuntdown==-1)
+      {
+        TESTCOuntdown=1000;
+        homingSpeed=0.5;
+      }
+      else if(TESTCOuntdown)
+      {
+        latestAdvLocation.vec[0]-=homingSpeed/axisSetup[0].ppmm;
+        if(digitalRead(PIN_PSENSOR_N)==1)
+          TESTCOuntdown=0;
+      }
+      else
+      {
+        preMotloc.vec[0]=0;//reset
+        latestAdvLocation.vec[0]=0;
+        TESTCOuntdown=-1;
+        homingStatus=-1;
+      }
+      break;
+
+
+    
+    default:
+      homingStatus=-1;
+      break;
+    }
+
+    if(homingStatus==-1)//finished
+    {
+      
+
+      struct Mstp2CommInfo tinfo={
+      .type=Mstp2CommInfo_Type::respFrame,
+      .isAck=true,
+      .resp_id=homingCMDID
+      };
+
+      {
+        Mstp2CommInfo* Qhead=NULL;
+        while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+        *Qhead=tinfo;
+        Mstp2CommInfoQ.pushHead();
+      }
+
+    }
+
+  }
+
+
+  uint32_t updCounter=0;
+  void update()//every system tick, update the location
+  {
+    updateCount=(updateCount+1)%100000;
+    if(homingStatus!=-1)
+    {
+      homingACT();
+      latestCalcAdvLocation=latestAdvLocation;
+      return;
+    }
+    do{
+      float T=mstpV2.updatePeriod_s;
+      MSTP_segment*curSeg= segAdvance(T);//The T will be updated to the used time
+      if(curSeg==NULL)
+      {
+        pre_ratio=0;
+        // adv_info.dstanceWent=0;
+        break;
+      }
+
+      RXVec newAdvLocation={{0}};
+      if(curSeg->type!=MSTP_segment_type::seg_line && curSeg->type!=MSTP_segment_type::seg_arc)
+      {
+        bool goMove=false;
+        if(curSeg->type==MSTP_segment_type::seg_wait)
+        {
+          if(curSeg->ctx!=NULL)
+          {
+            MSTP_SegCtx *p_res=(MSTP_SegCtx *)curSeg->ctx;
+            if(p_res->type==MSTP_SegCtx_TYPE::HALT_UNTIL_TRACKING_SATTLED )
+            {
+              if(trackingState==TrackingState::NOP || trackingState==TrackingState::InSync)//sattled
+              {
+                goMove=true;
+
+                adv_info.dstanceWent=curSeg->distanceEnd=-1;
+                T=0;//0 time is used
+              }
+            }
+
+
+
+
+
+
+          }
+
+          
+        }
+        pre_ratio=0;
+        if(goMove==false)
+        {
+          break;
+        }
+      }
+      else if(curSeg->type==MSTP_segment_type::seg_line)
+      {
+        float ratio=adv_info.dstanceWent/(curSeg->Edistance);
+        for(int i=0;i<LOC_DIM;i++)
+        {
+          newAdvLocation.vec[i]=curSeg->vec[i]*(ratio)+curSeg->sp[i];
+        }
+        latestCalcAdvLocation=newAdvLocation;
+
+
+      }
+
+
+
+      if(T!=mstpV2.updatePeriod_s)
+      {
+
+        
+        if(0){
+
+          Mstp2CommInfo* Qhead=NULL;
+          {
+            while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+            Qhead->type=Mstp2CommInfo_Type::ext_log;
+            
+
+            uint32_t curAddr=(0xFFF&(uint32_t)curSeg);
+            int strPadding=0;
+            strPadding+= sprintf(Qhead->strinfo+strPadding,"EL_%d:%0.2f,%0.2f  ",curSeg->type,
+              latestCalcAdvLocation.vec[0],latestCalcAdvLocation.vec[1]);
+
+            strPadding+= sprintf(Qhead->strinfo+strPadding,"v:%0.1f:%0.1f>%0.1f  curAddr:%d",curSeg->vcur,curSeg->vcen,curSeg->vto,curAddr);
+
+
+            Mstp2CommInfoQ.pushHead();
+
+          }
+
+
+          {
+            while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);Qhead->type=Mstp2CommInfo_Type::ext_log;
+  
+            int strPadding=0;
+
+            strPadding+= sprintf(Qhead->strinfo+strPadding,"d:%0.1f/%0.1f",
+            adv_info.dstanceWent,curSeg->Edistance);
+
+            strPadding+= sprintf(Qhead->strinfo+strPadding,"a:%0.1f,%0.1f",
+            curSeg->acc,
+            curSeg->deacc);
+
+            Mstp2CommInfoQ.pushHead();
+          }
+
+
+        }
+
+
+
+
+        do{
+          float leftT=mstpV2.updatePeriod_s-T;
+          T=leftT;
+          MSTP_segment*nxtSeg= segAdvance(T);
+          if(nxtSeg==NULL || (nxtSeg->type!=MSTP_segment_type::seg_line && nxtSeg->type!=MSTP_segment_type::seg_arc))
+          {
+            break;
+          }
+
+
+          if(nxtSeg->type==MSTP_segment_type::seg_line)
+          {
+
+            float ratio=adv_info.dstanceWent/(nxtSeg->Edistance);
+            for(int i=0;i<LOC_DIM;i++)
+            {
+              newAdvLocation.vec[i]=nxtSeg->vec[i]*(ratio)+nxtSeg->sp[i];
+            }
+
+            latestCalcAdvLocation=newAdvLocation;
+
+          }
+
+          if(0){
+
+            Mstp2CommInfo* Qhead=NULL;
+
+            {
+              while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);Qhead->type=Mstp2CommInfo_Type::ext_log;
+    
+              int strPadding=0;
+              strPadding+= sprintf(Qhead->strinfo+strPadding,"SL_%d:%0.2f,%0.2f  ",nxtSeg->type,
+                latestCalcAdvLocation.vec[0],latestCalcAdvLocation.vec[1]);
+
+              strPadding+= sprintf(Qhead->strinfo+strPadding,"v:%0.1f:%0.1f>%0.1f",nxtSeg->vcur,nxtSeg->vcen,nxtSeg->vto);
+
+              Mstp2CommInfoQ.pushHead();
+
+
+            }
+            if(1){
+              while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);Qhead->type=Mstp2CommInfo_Type::ext_log;
+    
+              int strPadding=0;
+
+              strPadding+= sprintf(Qhead->strinfo+strPadding,"d:%0.1f/%0.1f",
+              adv_info.dstanceWent,nxtSeg->Edistance);
+
+              strPadding+= sprintf(Qhead->strinfo+strPadding,"a:%0.1f,%0.1f",
+              nxtSeg->acc,
+              nxtSeg->deacc);
+
+              Mstp2CommInfoQ.pushHead();
+            }
+
+
+          }
+
+
+
+
+        }while(0);
+
+      }
+      
+    }while(0);
+  
+
+
+    latestAdvLocation=latestCalcAdvLocation;
+
+
+  }
+
+  // float* getTmpVec(int idx)
+  // {
+  //   return NULL;
+  // }
+
+
+  void copyTo(float*dst,float*src)
+  {
+    memcpy(dst,src,sizeof(RXVec));
+  }
+
+
+  std::string vec_to_string(float*dst)
+  {
+    std::string ret="[";
+    for(int i=0;i<LOC_DIM;i++)
+    {
+      ret+=std::to_string(dst[i]);
+
+      if(i<LOC_DIM-1)
+        ret+=",";
+    }
+
+    return ret+"]";
+  }
+
+
+  xVec preMotloc={0};
+  virtual void getMotMoveVec(xVec_f *mot_vec_dst)
+  {
+    xVec_f curMotLoc={0};
+    backward(&curMotLoc,latestAdvLocation.vec);
+    mot_vec_dst->vec[3]=(int32_t)curMotLoc.vec[0]-preMotloc.vec[0];
+    preMotloc.vec[0]=curMotLoc.vec[0];
+  }
+  void backward(xVec_f *mot_vec_dst,const float* loc_vec_src){
+    for(int i=0;i<LOC_DIM;i++)
+    {
+      mot_vec_dst->vec[i]=loc_vec_src[i]*axisSetup[i].ppmm;
+    }
+  }
+  void forward(float* loc_vec_dst,const xVec_f *mot_vec_src)
+  {
+    for(int i=0;i<LOC_DIM;i++)
+    {
+      loc_vec_dst[i]=mot_vec_src->vec[i]/axisSetup[i].ppmm;
+    }
+  }
+
+
+  // static int fadeInTracking(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  // {
+  //   MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
+  //   if(p_res==NULL)return -1;
+
+  //   seg->ctx=NULL;
+  //   sctx_pool.returnResource(p_res);
+  //   return 0;
+  // }
+
+
+
+  static int instEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  {
+    CB_Count+=1;
+    MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
+    if(p_res==NULL)return -1;
+
+    seg->ctx=NULL;
+    sctx_pool.returnResource(p_res);
+    return 0;
+  }
+  static int IOCtrlEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  {
+
+    CB_Count+=100;
+    MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
+    if(p_res==NULL)return -1;
+    
+    if(p_res->IO_CTRL.S){
+      GPIOLS32_SET(p_res->IO_CTRL.P);
+    }
+    else
+    {
+      GPIOLS32_CLR(p_res->IO_CTRL.P);
+    }
+    
+    seg->ctx=NULL;
+    sctx_pool.returnResource(p_res);
+    return 0;
+  }
+
+
+  static int OnTimeRepEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  {
+    CB_Count+=10000;
+    MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
+    if(p_res==NULL)return -1;
+
+
+
+    struct Mstp2CommInfo tinfo={
+    .type=Mstp2CommInfo_Type::respFrame,
+    .isAck=p_res->ON_TIME_REP.isAck,
+    .resp_id=p_res->ON_TIME_REP.id
+    };
+
+    {
+      Mstp2CommInfo* Qhead=NULL;
+      while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+      *Qhead=tinfo;
+      Mstp2CommInfoQ.pushHead();
+    }
+
+
+    p_res->isProcessed=true;
+    seg->ctx=NULL;
+    sctx_pool.returnResource(p_res);
+    return 0;
+  }
+
+  static int CtxRecycleEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  {
+
+    CB_Count+=1000000;
+    MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
+    if(p_res==NULL)return -1;
+    
+    p_res->isProcessed=true;
+    seg->ctx=NULL;
+    sctx_pool.returnResource(p_res);
+    return 0;
+  }
+
+
+
+  MSTP_segment_extra_info latestExtInfo={
+    .speed=100,
+    .speedOnAxisIdx=-1,
+    .acc=1000,
+    .deacc=-1000,
+    .cornorR=0,
+
+  };
+  int GcodeParse(char **blkIdxes,int blkIdxesL)
+  {
+
+    
+    if(blkIdxesL==0)
+      return GCodeParser::GCodeParser_Status::LINE_EMPTY;
+    GCodeParser::GCodeParser_Status retStatus=GCodeParser::GCodeParser_Status::LINE_EMPTY;
+
+
+
+
+    char *cblk=blkIdxes[0];
+    // int cblkL=blks[1]-blks[0];
+
+    blkIdxes++;//move to next block
+    blkIdxesL--;
+
+
+    if(cblk[0]=='G')
+    {
+      if(CheckHead(cblk, "G28"))//G28 GO HOME!!!:
+      {
+        homingStatus=0;
+        homingCMDID=HACK_cur_cmd_id;
+
+        return  GCodeParser::GCodeParser_Status::TASK_OK_HOLD_RSP;
+      }
+      else if(CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))
+      {
+        __PRT_D_("G1 baby!!!\n");
+
+
+        RXVec vec_coord=latestLocation;
+        float P=NAN;
+        FindFloat("P",blkIdxes,blkIdxesL,P);
+        float R1_=NAN;
+        FindFloat("R1_",blkIdxes,blkIdxesL,R1_);
+
+        if(P==P)vec_coord.vec[0]=P;
+        if(R1_==R1_)vec_coord.vec[1]=R1_;
+        // if(z==z)vec_coord.vec[2]=z;
+
+
+        // xVec_f vec_mot=foward(vec_coord);
+
+        MSTP_segment_extra_info exinfo = ReadSegment_extra_info(blkIdxes,blkIdxesL);
+
+        if(exinfo.acc!=exinfo.acc)exinfo.acc=latestExtInfo.acc;
+        if(exinfo.deacc!=exinfo.deacc)exinfo.deacc=latestExtInfo.deacc;
+        if(exinfo.speed!=exinfo.speed)exinfo.speed=latestExtInfo.speed;
+
+        if(exinfo.cornorR!=exinfo.cornorR)exinfo.cornorR=latestExtInfo.cornorR;
+        if(exinfo.speedOnAxisIdx!=exinfo.speedOnAxisIdx)exinfo.speedOnAxisIdx=latestExtInfo.speedOnAxisIdx;
+
+        // __UPRT_I_("vec_coord:%f %f %f  exinfo:f:%f a:%f d:%f aidx:%d\n",vec_coord.vec[0],vec_coord.vec[1],vec_coord.vec[2],
+        // exinfo.speed,exinfo.acc,exinfo.deacc,exinfo.speedOnAxisIdx);
+        
+
+        RXVec moveVec;
+        vecSub(moveVec.vec,vec_coord.vec,latestLocation.vec,LOC_DIM);
+        
+        // __UPRT_I_("vec:%s",vec_to_string(moveVec.vec).c_str());
+        pushInMoveVec(moveVec.vec,&exinfo,LOC_DIM,NULL,NULL,NULL);
+        latestLocation=vec_coord;
+
+        latestExtInfo=exinfo;
+                // ReadGVecData(blks,blkCount,vec_f,&exinfo);
+
+        // ConvUnitVecToPulseVec(&vec_f,&exinfo);
+        
+        // xVec newLoc=stpG.pulse_latestLoc;
+        // SetxVec_fToxVec(newLoc,vec_f);
+        // // xVec goVec=vecSub(newLoc,stpG.pulse_latestLoc);
+        
+        // stpG.MoveTo(newLoc,NULL,&exinfo);
+
+        return  GCodeParser::GCodeParser_Status::TASK_OK;
+      }
+
+      else if(CheckHead(cblk, "G4 ") || CheckHead(cblk, "G04 "))//pause
+      {
+
+        float P=NAN;
+        FindFloat("P",blkIdxes,blkIdxesL,P);
+        if(P==P && P>=0)
+        {
+          pushInPause(P,NULL,NULL,NULL);
+          return  GCodeParser::GCodeParser_Status::TASK_OK;
+        }
+        else
+        {
+          return GCodeParser::GCodeParser_Status::TASK_FAILED;
+        }
+      }
+    }
+    else if(cblk[0]=='M')
+    {
+      if(CheckHead(cblk, "M42 "))//IO ctrl
+      { 
+        float P=NAN;
+        FindFloat("P",blkIdxes,blkIdxesL,P);
+        float S=NAN;
+        FindFloat("S",blkIdxes,blkIdxesL,S);
+        if(P!=P || S!=S)
+        {
+          return GCodeParser::GCodeParser_Status::TASK_FAILED;
+        }
+
+
+        MSTP_SegCtx *p_res;
+        while((p_res=sctx_pool.applyResource())==NULL)
+        {
+          yield();
+        }
+        p_res->type=MSTP_SegCtx_TYPE::IO_CTRL;
+
+        p_res->IO_CTRL.P=P;
+        p_res->IO_CTRL.S=S;
+        pushInInstant(NULL,IOCtrlEndCB,(void*)p_res);
+        return  GCodeParser::GCodeParser_Status::TASK_OK;
+      }
+
+
+      else if(CheckHead(cblk, "M42.MODE "))//IO ctrl
+      { 
+        float P=NAN;
+        FindFloat("P",blkIdxes,blkIdxesL,P);
+        float M=NAN;
+        FindFloat("M",blkIdxes,blkIdxesL,M);
+        if(P!=P || M!=M)
+        {
+          return GCodeParser::GCodeParser_Status::TASK_FAILED;
+        }
+        pinMode(P,M);
+        return  GCodeParser::GCodeParser_Status::TASK_OK;
+      }
+
+      else if(CheckHead(cblk, "M400.BLOCKING"))
+      { 
+        
+        while(segs.size())
+        {
+          yield();
+        }
+
+        while( trackingState!=TrackingState::InSync && trackingState!=TrackingState::NOP) 
+        {
+          yield();
+        }
+        
+        return  GCodeParser::GCodeParser_Status::TASK_OK;
+      }
+
+      else if(CheckHead(cblk, "M400"))
+      { 
+
+        MSTP_SegCtx *p_res;
+        int retryCount=0;
+        while((p_res=sctx_pool.applyResource())==NULL)
+        {
+          if(retryCount++>100)
+            return GCodeParser::GCodeParser_Status::TASK_FAILED;
+          yield();
+        }
+        p_res->type=MSTP_SegCtx_TYPE::ON_TIME_REPLY;
+
+        p_res->ON_TIME_REP.id=HACK_cur_cmd_id;
+        p_res->ON_TIME_REP.isAck=true;
+        pushInInstant(NULL,OnTimeRepEndCB,(void*)p_res);
+        return  GCodeParser::GCodeParser_Status::TASK_OK_HOLD_RSP;
+      }
+    }
+    return  GCodeParser::GCodeParser_Status::TASK_UNSUPPORTED;
+  }
+
+};
+
+StpGroup_SIMP SG_SIMP;
 
 
 GCodeParser_M gcpm;
@@ -2211,7 +2927,7 @@ void AUX_task(void *pvParameter)
 void SEG_CALC_task(void *pvParameter)
 {
 
-  xVec pre_mot_iloc={0};
+  // xVec pre_mot_iloc={0};
   while(1)
   { 
     xSemaphoreTake(SeqCalcTaskLock, portMAX_DELAY);//LOCK
@@ -2226,9 +2942,9 @@ void SEG_CALC_task(void *pvParameter)
     xVec mot_ivec={0};
     for(int i=0;i<MSTP_VEC_SIZE;i++)
     {
-      mot_ivec.vec[i]=((uint32_t)mot_loc.vec[i]-pre_mot_iloc.vec[i]);
+      mot_ivec.vec[i]=(uint32_t)mot_loc.vec[i];//-pre_mot_iloc.vec[i]);
 
-      pre_mot_iloc.vec[i]=(uint32_t)mot_loc.vec[i];
+      // pre_mot_iloc.vec[i]=(uint32_t)mot_loc.vec[i];
     }
 
  
@@ -2247,6 +2963,9 @@ void setup()
 
   
   mstpV2.stepperGroup.push_back(&SG_RX);
+  mstpV2.stepperGroup.push_back(&SG_SIMP);
+
+  
   // noInterrupts();
   // Serial.begin(921600);//230400);
   Serial.begin(115200);//230400);
@@ -2280,6 +2999,10 @@ void setup()
   pinMode(pin_TRIG_595, OUTPUT);
   pinMode(pin_SH_165, OUTPUT);
   pinMode(PIN_LED, OUTPUT);
+  pinMode(PIN_PSENSOR_N, INPUT_PULLUP);
+
+
+  
 
   // CameraIDList[0]="ABC";
   // CameraIDList[1]="DEF";

@@ -234,7 +234,7 @@ bool GCodeParser_M::MTPSYS_AddWait(uint32_t period_ms,int times, void* ctx,MSTP_
 GCodeParser::GCodeParser_Status GCodeParser_M::parseCMD(char **blks, char blkCount)
 {
 
-  bool isMTPLocked=( _mstp->endStopHitLock || _mstp->fatalErrorCode!=0);
+  bool isMTPLocked=( _mstp->MTP_INIT_Lock ||_mstp->endStopHitLock || _mstp->fatalErrorCode!=0);
   GCodeParser_Status retStatus=GCodeParser_Status::LINE_EMPTY;
   char *cblk=blks[0];
   int cblkL=blks[1]-blks[0];
@@ -305,7 +305,8 @@ GCodeParser::GCodeParser_Status GCodeParser_M::parseCMD(char **blks, char blkCou
     }
     else if(CheckHead(cblk, "G28"))//G28 GO HOME!!!:
     {
-      if(isMTPLocked)
+      _mstp->MTP_INIT_Lock=false;
+      if(_mstp->MTP_INIT_Lock && isMTPLocked)
       {
         return GCodeParser_Status::TASK_FATAL_FAILED;
       }
