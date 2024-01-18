@@ -176,6 +176,8 @@ struct MSTP_SegCtx_RunUntilEnc{
 struct MSTP_SegCtx_RunUntilEnc_EarlyStop{
   int tar_ENC;
   uint32_t axis_vec;
+  bool isHit;
+  int STPCD;
 };
 
 
@@ -1077,8 +1079,15 @@ class MStp_M:public MStp{
         if(ctx->isProcessed==false)
         {
 
+          if(ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.isHit==false)
+          {
+            if(EncV==ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.tar_ENC)
+            {
+              ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.isHit=true;
+            }
+          }
 
-          if(EncV==ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.tar_ENC)
+          if(ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.isHit==true)
           {
             // struct Mstp2CommInfo tinfo={
             // .type=Mstp2CommInfo_Type::ext_log,
@@ -1090,15 +1099,19 @@ class MStp_M:public MStp{
             // while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
             // *Qhead=tinfo;
             // Mstp2CommInfoQ.pushHead();
-
-            ctx->isProcessed=true;
+            if(ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.STPCD==0)
+              ctx->isProcessed=true;
+            else if(idxes_T&(ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.axis_vec))
+            {
+              ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.STPCD--;
+            }
 
             
           }
         }
 
         if(ctx->isProcessed==true)
-        {//block
+        {//block pulse
           idxes_T&=~(ctx->KEEP_RUN_UNTIL_ENC_EARLY_STOP.axis_vec);
         }
       }
@@ -1287,7 +1300,7 @@ public:
 
     if(st!=GCodeParser_Status::TASK_UNSUPPORTED)return st;
 
-    bool isMTPLocked=( _mstp->endStopHitLock || _mstp->fatalErrorCode!=0);
+    bool isMTPLocked=( _mstp->MTP_INIT_Lock || _mstp->endStopHitLock || _mstp->fatalErrorCode!=0);
 
     if(isMTPLocked) 
       return GCodeParser_Status::TASK_FATAL_FAILED;
@@ -1612,6 +1625,8 @@ public:
           p_res->isProcessed=false;
           p_res->KEEP_RUN_UNTIL_ENC_EARLY_STOP.tar_ENC=0;
           p_res->KEEP_RUN_UNTIL_ENC_EARLY_STOP.axis_vec=0;
+          p_res->KEEP_RUN_UNTIL_ENC_EARLY_STOP.isHit=false;
+          p_res->KEEP_RUN_UNTIL_ENC_EARLY_STOP.STPCD=0;
 
           // exinfo.speedOnAxisIdx=AXIS_IDX_X;
           char AxisCode[10];
@@ -1636,6 +1651,11 @@ public:
           }
 
 
+          if(FindFloat("STPCD",blks,blkCount,tmpF)==0)
+          {
+            p_res->KEEP_RUN_UNTIL_ENC_EARLY_STOP.STPCD=tmpF;
+
+          }
 
 
         }
@@ -2216,6 +2236,7 @@ bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc
       return true;
     }
     mstp.EncV=doc["value"];
+    isACK=true;
     return true;
   }
 

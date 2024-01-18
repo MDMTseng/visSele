@@ -747,13 +747,13 @@ float findCrossLoc(Mat &m,float value,bool reverseDir=false)
 
 
 
-  for(int _i=0;_i<width;_i++)
-  {
-    int i=(reverseDir==false)?_i:width-_i-1;
-    MAT_ValueType v=m.at<MAT_ValueType>(0,i);
-    printf("%03f ",v);
-  }
-  printf("\n value:%f",value);
+  // for(int _i=0;_i<width;_i++)
+  // {
+  //   int i=(reverseDir==false)?_i:width-_i-1;
+  //   MAT_ValueType v=m.at<MAT_ValueType>(0,i);
+  //   printf("%03f ",v);
+  // }
+  // printf("\n value:%f",value);
 
 
   return (idx2+idx1)/2;
@@ -793,6 +793,74 @@ float findCrossLoc_021(Mat &m,bool reverseDir=false)
 }
 
 
+
+
+
+float locRefine(float cLoc,Mat &m,float l_v,float h_v,float reverseDir=false)
+{
+  int idx1=-1;
+  int val1;
+  int idx2=-1;
+  int val2;
+
+
+  int tar_crossSecLoc=-1;
+  int minDist=INT_MAX;
+
+  int preState=-1;
+  int width=m.size().width;
+  for(int _i=0;_i<width;_i++)
+  {
+    int i=(reverseDir==false)?_i:width-_i-1;
+    int v=m.at<uint8_t>(0,i);
+
+    printf("%d ",v);
+  
+    int curState=-1;
+    if(v<h_v)
+    {
+      curState=0;
+    }
+    else
+    {
+      curState=1;
+    }
+    if(_i==0)
+    {
+      preState=curState;
+      continue;
+    }
+
+    if(curState!=preState)
+    {//cross sec
+      int dist2_cLoc=abs(cLoc-i);
+      if(minDist>dist2_cLoc)
+      {
+        minDist=dist2_cLoc;
+        tar_crossSecLoc=(reverseDir==false)?i:(i+1);
+      }
+    }
+
+    preState=curState;
+  }
+
+  printf("\n tar_crossSecLoc:%d  h_v:%f\n",tar_crossSecLoc,h_v);
+  if(tar_crossSecLoc==-1)
+  {
+    return cLoc;
+  }
+
+  //find the subPixel location
+
+
+  float v1=m.at<uint8_t>(0,tar_crossSecLoc-1);
+  float v2=m.at<uint8_t>(0,tar_crossSecLoc);
+
+  float subStep=((v2-h_v)/(v2-v1));
+  float ret_loc=(float)tar_crossSecLoc-subStep;
+  LOGI("v: %f %f subStep:%f ret_loc:%f",v1,v2,subStep,ret_loc);
+  return ret_loc;
+}
 // // example matrix
 // Mat img = Mat::zeros(256, 128, CV_32FC3);
 
@@ -1381,6 +1449,7 @@ int PerformInsp(
         bool centerOrEdge=JFetch_TRUE(jsub_region,"centerOrEdge");
         float scanAngle=DFetch_NUMBER_ex(jsub_region,"scanAngle");
         bool sense0to1=JFetch_TRUE(jsub_region,"sense0to1");
+        bool locatingRefinement=JFetch_TRUE(jsub_region,"locatingRefinement");
 
 
         {
@@ -1426,26 +1495,26 @@ int PerformInsp(
 
 
           resultMarkOverlay[subregIdx]=img_HSV_threshold.clone();
-          if(show_display_overlay)
-          {
-            float resultOverlayAlpha = DFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
+          // if(show_display_overlay)
+          // {
+          //   float resultOverlayAlpha = DFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
 
-            if(resultOverlayAlpha>0)
-            {
-              // cv::cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
-              Mat img_HSV_threshold_rgb;
-              cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
+          //   if(resultOverlayAlpha>0)
+          //   {
+          //     // cv::cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
+          //     Mat img_HSV_threshold_rgb;
+          //     cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
 
-              addWeighted( 
-              img_HSV_threshold_rgb, resultOverlayAlpha, 
-              sub_region_ROI, 1, 0, 
-              sub_region_ROI);
+          //     addWeighted( 
+          //     img_HSV_threshold_rgb, resultOverlayAlpha, 
+          //     sub_region_ROI, 1, 0, 
+          //     sub_region_ROI);
 
 
-              // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
-              // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
-            }
-          }
+          //     // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
+          //     // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
+          //   }
+          // }
 
 
           {
@@ -1455,7 +1524,8 @@ int PerformInsp(
             if(axisIdx==1)
               axisSum=axisSum.t();
 
-            if(sense0to1==false)
+
+            if(sense0to1==false && locatingRefinement==false)
               cv::GaussianBlur(axisSum, axisSum, cv::Size(5, 1), 5);
             // LOGE("X . axisSum:%d . %d",axisSum.size().width,axisSum.size().height);
 
@@ -1464,6 +1534,28 @@ int PerformInsp(
             // LOGE("otsu_threshold:%f",otsu_threshold);
             float xLoc1 = findCrossLoc(axisSum,otsu_threshold,false);
             float xLoc2 = findCrossLoc(axisSum,otsu_threshold,true);
+            LOGE(">>>>");
+            if(locatingRefinement)
+            {
+
+              Mat matV;//extract V channel from img_HSV
+              int from_to[] = {2,0};
+              matV.create( img_HSV.size(), img_HSV.depth() );
+              mixChannels( &img_HSV, 1, &matV, 1, from_to, 1 );
+
+
+
+              Mat axisVSum;
+              cv::reduce(matV, axisVSum, axisIdx, REDUCE_AVG, CV_8U);
+              if(axisIdx==1)
+                axisVSum=axisVSum.t();
+
+              xLoc1 = locRefine(xLoc1,axisVSum,l_v,h_v,false);
+              xLoc2 = locRefine(xLoc2,axisVSum,l_v,h_v,true);
+
+            }
+
+
             int blobCount=findBlobCount(axisSum,otsu_threshold);
             LOGE("id:%s xLoc1:%f xLoc2:%f blobCount:%d",subRegName.c_str(),xLoc1,xLoc2,blobCount);
 
@@ -1536,7 +1628,6 @@ int PerformInsp(
         resultImage[subregIdx]=sub_region_ROI;
 
       }
-
 
 
 
@@ -1678,26 +1769,26 @@ int PerformInsp(
 
 
           resultMarkOverlay[subregIdx]=img_HSV_threshold.clone();
-          if(show_display_overlay)
-          {
-            float resultOverlayAlpha = DFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
+          // if(show_display_overlay)
+          // {
+          //   float resultOverlayAlpha = DFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
 
-            if(resultOverlayAlpha>0)
-            {
-              // cv::cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
-              Mat img_HSV_threshold_rgb;
-              cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
+          //   if(resultOverlayAlpha>0)
+          //   {
+          //     // cv::cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
+          //     Mat img_HSV_threshold_rgb;
+          //     cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
 
-              addWeighted( 
-              img_HSV_threshold_rgb, resultOverlayAlpha, 
-              sub_region_ROI, 1, 0, 
-              sub_region_ROI);
+          //     addWeighted( 
+          //     img_HSV_threshold_rgb, resultOverlayAlpha, 
+          //     sub_region_ROI, 1, 0, 
+          //     sub_region_ROI);
 
 
-              // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
-              // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
-            }
-          }
+          //     // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
+          //     // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
+          //   }
+          // }
 
 
         }
@@ -1971,6 +2062,7 @@ int PerformInsp(
 
       LOGE("gval:%p",gval);
       float area_thres = DFetch_NUMBER_ex(jsub_region,"area_thres",99999,gval);
+      float area_min_thres = DFetch_NUMBER_ex(jsub_region,"area_min_thres",-1,gval);
 
 
 
@@ -2084,32 +2176,32 @@ int PerformInsp(
 
 
       resultMarkOverlay[subregIdx]=img_HSV_threshold.clone();
-      if(show_display_overlay)
-      {
-        float resultOverlayAlpha = DFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
+      // if(show_display_overlay)
+      // {
+      //   float resultOverlayAlpha = DFetch_NUMBER_ex(jsub_region,"resultOverlayAlpha",0);
 
-        if(resultOverlayAlpha>0)
-        {
-          // cv::cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
-          Mat img_HSV_threshold_rgb;
-          cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
+      //   if(resultOverlayAlpha>0)
+      //   {
+      //     // cv::cvtColor(img_HSV_threshold,def_temp_img_innerROI,COLOR_GRAY2RGB);
+      //     Mat img_HSV_threshold_rgb;
+      //     cv::cvtColor(img_HSV_threshold,img_HSV_threshold_rgb,COLOR_GRAY2RGB);
 
-          if(x_locating_mark||y_locating_mark)
-            multiply(img_HSV_threshold_rgb,cv::Scalar(0,1,0), img_HSV_threshold_rgb);
-          else
-            multiply(img_HSV_threshold_rgb,cv::Scalar(0,0,1), img_HSV_threshold_rgb);
-
-
-          addWeighted( 
-          img_HSV_threshold_rgb, resultOverlayAlpha, 
-          sub_region_ROI, 1, 0, 
-          sub_region_ROI);
+      //     if(x_locating_mark||y_locating_mark)
+      //       multiply(img_HSV_threshold_rgb,cv::Scalar(0,1,0), img_HSV_threshold_rgb);
+      //     else
+      //       multiply(img_HSV_threshold_rgb,cv::Scalar(0,0,1), img_HSV_threshold_rgb);
 
 
-          // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
-          // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
-        }
-      }
+      //     addWeighted( 
+      //     img_HSV_threshold_rgb, resultOverlayAlpha, 
+      //     sub_region_ROI, 1, 0, 
+      //     sub_region_ROI);
+
+
+      //     // cv::GaussianBlur( img_HSV_threshold, img_HSV_threshold, Size( 11, 11), 0, 0 );
+      //     // cv::threshold(img_HSV_threshold, img_HSV_threshold, *colorThres, 255, cv::THRESH_BINARY);
+      //   }
+      // }
 
       {
 
@@ -2314,7 +2406,7 @@ int PerformInsp(
         }
 
 
-        if(area_sum>area_thres)
+        if(area_sum>area_thres || area_sum<area_min_thres)
         {
           isNG=true;
           

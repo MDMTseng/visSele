@@ -153,7 +153,7 @@ class StpGroup
   virtual float* getLatestLocation()=0;
   virtual float* getLatestVec()=0;
   virtual void copyTo(float*dst,float*src)=0;
-  virtual float* getTmpVec(int idx)=0;
+  // virtual float* getTmpVec(int idx)=0;
 
   virtual int GcodeParse(char **blkIdxes,int blkIdxesL)=0;
   virtual void getMotMoveVec(xVec_f *mot_vec_dst)=0;

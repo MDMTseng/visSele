@@ -17,6 +17,7 @@
 #include <playground.h>
 #include <stdexcept>
 #include <map>
+#include <array>
 #include <compat_dirent.h>
 #include <smem_channel.hpp>
 #include <ctime>
@@ -3222,16 +3223,31 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
 {
   public:
   std::string mark="SIIS";
+  std::string cache_mark="IMG_CACHE";
+
+  std::mutex cacheQueue_lock;
+  std::array<std::shared_ptr<StageInfo>,100> cacheQueue_buff;
+  RingBufIdxCounter<int> cacheQueueRBC;
+
   static std::string TYPE(){ return "StageInfoImageSave"; }
   InspectionTarget_StageInfoImageSave(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
-    :InspectionTarget_DataThreadedProcess(id,def,belongMan,local_env_path),mark("SIIS")
+    :InspectionTarget_DataThreadedProcess(id,def,belongMan,local_env_path),mark("SIIS"),cacheQueueRBC(cacheQueue_buff.size())
   {
     datTransferQueue.resize(9999);
   }
 
 
 
+  ~InspectionTarget_StageInfoImageSave()
+  {
+    LOGE("InspectionTarget_StageInfoImageSave::~InspectionTarget_StageInfoImageSave()");
+    for(int i=0;i<cacheQueue_buff.size();i++)
+    {
+      cacheQueue_buff[i].reset();
+    }
 
+    LOGE("InspectionTarget_StageInfoImageSave::~InspectionTarget_StageInfoImageSave() done");
+  }
   virtual int processInputPool()
   {
 
@@ -3266,11 +3282,303 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
       gettimeofday(&tv,NULL);
       return (((long long)tv.tv_sec)*1000)+(tv.tv_usec/1000);
   }
+
+
+  bool saveStageInfoImage(StageInfo_Image* d_sinfo,string path,vector<std::string> addon_tags=vector<std::string>(),string name="")
+  {
+
+
+    int trigID=d_sinfo->trigger_id;
+
+    string tags_str="";
+
+    std::string filename=name;
+
+    if(filename.length()==0)//if not set, use info as default
+    {
+      vector<string> &tags=d_sinfo->trigger_tags;
+
+      for(int i=0;i<addon_tags.size();i++)
+      {
+        tags_str+=addon_tags[i]+",";
+      }
+      
+      for(int i=0;i<tags.size();i++)
+      {
+        if(tags[i]==mark|| tags[i]=="IMG_SAVE" || tags[i]==cache_mark)continue;
+
+        tags_str+=tags[i]+",";
+      }
+
+
+      filename="tid="+to_string(trigID)+" tags="+tags_str+mark+" t="+to_string(timeInMilliseconds());
+    }
+    
+    filename+=".png";
+
+    LOGI("save path:%s  name:%s",path.c_str(),filename.c_str());
+
+
+    auto srcImg=d_sinfo->img;
+
+    Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+      
+    imwrite(path+"/"+filename, CV_srcImg);  
+    saveCount++;
+    LOGI("SAVE image DONE c:%d",saveCount);
+
+
+
+    return true;
+
+  }
+
+
+
   bool exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
   {
-    std::string type=JFetch_STRING_ex(info,"type");
+    bool ret = InspectionTarget_DataThreadedProcess::exchangeCMD(info,info_ID,act);
+    if(ret)return ret;
+    string type=JFetch_STRING_ex(info,"type");
 
-    return InspectionTarget_DataThreadedProcess::exchangeCMD(info,info_ID,act);
+
+    if(type=="INJECT_CACHE")
+    {
+
+      std::lock_guard<std::mutex> lock(cacheQueue_lock);
+      int tar_trigger_id=JFetch_NUMBER_ex(info,"trigger_id");
+      vector<string> tar_tags;//=JFetch_STRING_ARRAY_ex(info,"tags");
+      LOGI("tar_trigger_id:%d",tar_trigger_id);
+      {
+        cJSON* tags_arr=JFetch_ARRAY(info,"tags");
+        if(tags_arr)
+        {
+          for(int i=0;i<cJSON_GetArraySize(tags_arr);i++)
+          {
+            cJSON* tag=cJSON_GetArrayItem(tags_arr,i);
+            if(tag==NULL)continue;
+            tar_tags.push_back(tag->valuestring);
+          }
+        }
+      }
+
+
+
+      StageInfo_Image* matchedRec=NULL;
+      {
+      
+        for(int i=0;i<cacheQueueRBC.size();i++)
+        {
+          int buffIdx=cacheQueueRBC.getHead(i);
+          auto sinfo=dynamic_cast<StageInfo_Image*>(cacheQueue_buff[buffIdx].get());
+          if(sinfo==NULL)continue;
+
+
+          LOGI("i:%d tid:%d",buffIdx,sinfo->trigger_id);
+          if(sinfo->trigger_id!=tar_trigger_id)continue;
+
+
+
+          {
+            const std::vector<std::string> &tags=sinfo->trigger_tags;
+
+            bool match=true;
+            int j=0;
+            for(j=0;j<tar_tags.size();j++)
+            {
+
+              bool imatch=false;
+              for(int k=0;k<tags.size();k++)
+              {
+                if(tags[k]==tar_tags[j])
+                {
+                  imatch=true;
+                  break;
+                }
+              }
+              if(imatch==false)//does not fully match
+              {
+                match=false;
+                break;
+              }
+            }
+
+            if(match==false)continue;//does not fully match
+
+            matchedRec=sinfo;
+
+            break;
+          }
+
+
+        }
+
+        if(matchedRec==NULL)
+        {
+          LOGI("No matched cache found");
+          return false;
+        }
+        auto src=matchedRec;
+
+
+        {
+          {
+
+
+
+            
+            LOGI("SEND....");
+            shared_ptr<StageInfo_Image> pkt(new StageInfo_Image());
+            pkt->img=src->img;
+            pkt->img_prop=src->img_prop;
+            pkt->img_show=src->img_show;
+            pkt->process_time_us=src->process_time_us;
+            pkt->sharedInfo=src->sharedInfo;
+
+            pkt->source=src->source;
+            pkt->source_id=src->source_id;
+
+
+            // pkt->trigger_tags=src->trigger_tags;
+
+            // pkt->trigger_tags.push_back("s_uInspCache_");
+            for (size_t i = 0; i < src->trigger_tags.size(); i++)
+            {
+              /* code */
+              if(src->trigger_tags[i]==cache_mark)continue;
+
+              pkt->trigger_tags.push_back(src->trigger_tags[i]);
+            }
+
+
+            pkt->trigger_id=-src->trigger_id;
+            belongMan->dispatch(pkt);
+
+
+
+
+
+          }
+          while (belongMan->inspTarProcess())
+          {
+          }
+          return true;
+        }
+      }
+  
+      return true;
+
+    }
+
+    if(type=="SAVE_CACHE")
+    {
+
+      string saveToFolder=JFetch_STRING_ex(info,"path",local_env_path);
+      string saveName=JFetch_STRING_ex(info,"name","");
+
+
+      int tar_trigger_id=JFetch_NUMBER_ex(info,"trigger_id");
+      vector<string> tar_tags;//=JFetch_STRING_ARRAY_ex(info,"tags");
+
+      {
+        cJSON* tags_arr=JFetch_ARRAY(info,"tags");
+        if(tags_arr)
+        {
+          for(int i=0;i<cJSON_GetArraySize(tags_arr);i++)
+          {
+            cJSON* tag=cJSON_GetArrayItem(tags_arr,i);
+            if(tag==NULL)continue;
+            tar_tags.push_back(tag->valuestring);
+          }
+        }
+      }
+
+
+      vector<string> name_addon_tags;//=JFetch_STRING_ARRAY_ex(info,"tags");
+      if(saveName.length()==0)//no target name, use default info name
+      {
+        LOGI("No target name, use default info name");
+        cJSON* tags_arr=JFetch_ARRAY(info,"addon_tags");
+        if(tags_arr)
+        {
+          LOGI("addon_tags ptr:%p",tags_arr);
+          for(int i=0;i<cJSON_GetArraySize(tags_arr);i++)
+          {
+
+            cJSON* tag=cJSON_GetArrayItem(tags_arr,i);
+            if(tag==NULL)continue;
+            LOGI("tag->valuestring:%s",tag->valuestring);
+            name_addon_tags.push_back(tag->valuestring);
+          }
+        }
+
+      }
+
+      StageInfo_Image* matchedRec=NULL;
+      {
+
+        std::lock_guard<std::mutex> lock(cacheQueue_lock);
+        for(int i=0;i<cacheQueue_buff.size();i++)
+        {
+          auto sinfo=dynamic_cast<StageInfo_Image*>(cacheQueue_buff[i].get());
+          if(sinfo==NULL)continue;
+          if(sinfo->trigger_id!=tar_trigger_id)continue;
+
+
+
+          {
+            const std::vector<std::string> &tags=sinfo->trigger_tags;
+
+            bool match=true;
+            int j=0;
+            for(j=0;j<tar_tags.size();j++)
+            {
+
+              bool imatch=false;
+              for(int k=0;k<tags.size();k++)
+              {
+                if(tags[k]==tar_tags[j])
+                {
+                  imatch=true;
+                  break;
+                }
+              }
+              if(imatch==false)//does not fully match
+              {
+                match=false;
+                break;
+              }
+            }
+
+            if(match==false)continue;//does not fully match
+
+            matchedRec=sinfo;
+
+            break;
+          }
+
+
+        }
+
+
+      }
+
+      if(matchedRec==NULL)
+      {
+        LOGI("No matched cache found");
+        return false;
+      }
+
+  
+
+      //saveName could be empty "", then use info as name as default
+      return saveStageInfoImage(matchedRec,saveToFolder,name_addon_tags,saveName);
+
+
+    }
+
+    
+    return false;
   }
   int saveCount=0;
   void thread_run()
@@ -3296,6 +3604,7 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
         LOGI("TS_Termination_Exception");
         break;
       }
+      
 
 
       auto d_sinfo = dynamic_cast<StageInfo_Image *>(curInput.get());
@@ -3304,6 +3613,53 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
         continue;
       }
       std::vector<std::string> &tags=d_sinfo->trigger_tags;
+
+
+      bool senseMark=false;
+      for(int i=0;i<tags.size();i++)
+      {
+        if(tags[i]==mark)
+        {
+          senseMark=true;
+          break;
+        }
+      }
+      if(senseMark)
+      {
+        continue;//skip this one
+      }
+
+      bool pushInCache=false;
+      for(int i=0;i<tags.size();i++)
+      {
+        if(tags[i]==cache_mark)
+        {
+          pushInCache=true;
+          break;
+        }
+      }
+
+      if(pushInCache)//if it's a cache data, push it into cache queue, and do not save it for now
+      {
+
+        LOGI("pushInCache.......tid:%d",d_sinfo->trigger_id);
+        std::lock_guard<std::mutex> lock(cacheQueue_lock);
+        if(cacheQueueRBC.size()==cacheQueue_buff.size())//if full, drop the oldest one
+        {
+          LOGI("cacheQueue is full, drop oldest one");
+          int tail_idx = cacheQueueRBC.getTail();
+          cacheQueue_buff[tail_idx].reset();
+          cacheQueueRBC.consumeTail();
+        }
+        int head_idx = cacheQueueRBC.getHead();
+        cacheQueue_buff[head_idx]=curInput;
+        cacheQueueRBC.pushHead();
+
+        
+        continue;
+      }
+
+
 
       bool doSkip=false;
       for(int i=0;i<tags.size();i++)
@@ -3320,26 +3676,8 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
       //[ms][trigger id][tags]
       //t:3409329 tid:451 tags:test1,fff,wfgh
       
-      int trigID=d_sinfo->trigger_id;
 
-      string tags_str=mark;
-      for(int i=0;i<tags.size();i++)
-      {
-        tags_str+=","+tags[i];
-      }
-      std::string filename="tid="+to_string(trigID)+" tags="+tags_str+" t="+to_string(timeInMilliseconds())+".png";
-
-      LOGI("SAVE image filename:%s ",filename.c_str());
-      LOGI("local_env_path:%s ",local_env_path.c_str());
-
-
-      auto srcImg=d_sinfo->img;
-
-      Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
-        
-      imwrite(local_env_path+"/"+filename, CV_srcImg);  
-      saveCount++;
-      LOGI("SAVE image DONE c:%d",saveCount);
+      saveStageInfoImage(d_sinfo,local_env_path);
     }
 
 

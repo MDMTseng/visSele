@@ -147,23 +147,41 @@ export type CompParam_InspTarUI =CompParam_InspTar & CompParam_UIOption;
 
 
 
-export function ObjTree( {obj,padding=0,onLeafSelect}:{obj:any,padding:number,onLeafSelect:(value:any,name:string,path:string[])=>void }):any{
+export function ObjTree( {obj,padding=0,onLeafSelect,renderer}:{obj:any,padding:number,onLeafSelect?:(value:any,name:string,path:string[])=>void,renderer?:(value:any,name:string,path:string[])=>any  }):any{
 
     return Object.entries(obj).map(([key, value]:any)=>{
+      let renderResult=renderer===undefined?undefined:renderer(value,key,[]);
       if(typeof value === 'object')
       {
+
         return <>
-          <div style={{marginLeft:padding}}>{key+"{-}"}</div>
+
+          {
+            renderResult!==undefined?    renderResult:      
+                <div style={{marginLeft:padding ,display:"block"}}  onClick={()=>{
+                if(onLeafSelect)onLeafSelect(value,key,[])
+                }}>{key+"[-]"}</div>
+          }
+
+
+
+
+
           <ObjTree obj={value} padding={padding+15} onLeafSelect={(value,name,path)=>{
-            return onLeafSelect(value,name,[key,...path])
+            if(onLeafSelect)
+                return onLeafSelect(value,name,[key,...path])
+          }} renderer={renderer===undefined?undefined:(value,name,path)=>{
+            return renderer(value,name,[key,...path])
           }}/>
         </>
       }
       else
       {
+        if(renderResult!==undefined)return renderResult;
+        
         return <>
         <Button size='small' style={{marginLeft:padding,display:"block"}} onClick={()=>{
-          onLeafSelect(value,key,[])
+          if(onLeafSelect)onLeafSelect(value,key,[])
         }}>{key}: {value}</Button>
         </>
       }
@@ -223,8 +241,8 @@ let INPUT_LINK = {
         {
            
 
-            let path_str=props.value as string;
-            let path=path_str.split(".");
+            let path_str=props.value as string |null;
+            let path=path_str===null?[]:path_str.split(".");
             let value=GetObjElement(global_variable,path);
 
             console.log(global_variable,path,value);
@@ -696,7 +714,7 @@ function TestInputSelectUI({def, folderPath, stream_id, testTags = [] }: {def:an
             console.log(name);
             let nameJson = JSON.parse(name);
             final_tags=[...final_tags,...nameJson.tags]
-            tid|=nameJson.tid;
+            tid=nameJson.tid;
         } catch (e) {
             // return console.error(e); // error in the above string (in this case, yes)!
         }
@@ -3103,7 +3121,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id,rootDef, def
     
             
     物件面積閾值:
-            <INPUT_LINK.InputNumber value={def.element_area_thres} step={0.001}
+            <INPUT_LINK.InputNumber value={def.element_area_thres} step={0.1}
                 onChange={(num:number|string) => {
                     let newDef = { ...def, element_area_thres: num }
                     onDefChange(newDef, true);
@@ -3117,7 +3135,17 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id,rootDef, def
     
             <br />
     總面積閾值:
-            <INPUT_LINK.InputNumber style={{width:"200px"}} step={0.005}
+
+            <INPUT_LINK.InputNumber style={{width:"50px"}} step={0.5}
+                value={def.area_min_thres} 
+                onChange={(num:number|string) => {
+                    let newDef = { ...def, area_min_thres: num}
+                    onDefChange(newDef, true);
+                }} 
+                
+                />
+            ~
+            <INPUT_LINK.InputNumber style={{width:"100px"}} step={0.5}
                 value={def.area_thres} 
                 onChange={(num:number|string) => {
                     let newDef = { ...def, area_thres: num}
@@ -3125,6 +3153,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id,rootDef, def
                 }} 
                 
                 />
+    
     
     單線長閾值:
             <INPUT_LINK.InputNumber value={def.line_length_thres} min={0.001} step={0.1}
@@ -3317,6 +3346,10 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id,rootDef, def
 
                 <Switch checkedChildren="無->有" unCheckedChildren="自動閾值" checked={def_Filled.sense0to1 == true} onChange={(check) => {
                     onDefChange(ObjShellingAssign(def_Filled, ["sense0to1"], check));
+                }} />
+
+                <Switch checkedChildren="次像素定位" unCheckedChildren="像素定位" checked={def_Filled.locatingRefinement == true} onChange={(check) => {
+                    onDefChange(ObjShellingAssign(def_Filled, ["locatingRefinement"], check));
                 }} />
             
             <br />
@@ -5439,7 +5472,7 @@ function SimpNumpad( props:{value:number,onChange:(v:number)=>void} )
 
 
     let width=50;
-    return <div>
+    return <div style={{boxShadow:"rgba(0,0,0,0.5) 5px 5px 5px" , display:"inline-block"  }}>
         <InputNumber value={v} style={{width:width*3}} onChange={(v)=>{
             setV(v as number);
             // props.onChange(v as number);
@@ -5885,6 +5918,10 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         let originalInfo={
             plateFreq:config.plateFreq,
             minDetectTimeSep_us:config.minDetectTimeSep_us,
+            
+
+            pulse_minWidth:config.pulse_minWidth||0,
+            pulse_maxWidth:config.pulse_maxWidth||1000,
             // CAM1:machConfig.CAM1_on,
             // CAM1_span:machConfig.CAM1_off-machConfig.CAM1_on,
 
@@ -5907,6 +5944,8 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
     function calcMachConf(newInfo:{
         plateFreq:number,
         minDetectTimeSep_us:number,
+        pulse_minWidth:number,
+        pulse_maxWidth:number,
         CAM1:number,
         CAM1_span:number,
         L1A:number,
@@ -5925,6 +5964,8 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         let newConfig={
             plateFreq:newInfo.plateFreq,
             minDetectTimeSep_us:newInfo.minDetectTimeSep_us,
+            pulse_minWidth:newInfo.pulse_minWidth,
+            pulse_maxWidth:newInfo.pulse_maxWidth,
             stage_pulse_offset:{}
         }as any;
 
@@ -6043,6 +6084,18 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
     let curTPS=Math.round(1000000/(machInfo.minDetectTimeSep_us));
+
+    let accSmlBtn={
+        width: "25px",
+        margin: "0px",
+        padding: "0px"
+    }
+
+    let accMidBtn={
+        width: "10px",
+        margin: "0px",
+        padding: "0px"
+    }
     let setupOption = spanSetupOptionUI == false ? null : <>
 
 
@@ -6131,7 +6184,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
         }}>DISCONNECT</Button>
 
-
+&ensp;
         <Button onClick={() => {
 
         (async () => {
@@ -6142,7 +6195,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
 
-        <Button onClick={() => {
+        <Button style={accSmlBtn} onClick={() => {
 
         (async () => {
             let plateFreq=machInfo.plateFreq-100;
@@ -6151,7 +6204,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         })()
         }}>-</Button>
 
-
+&ensp;
 
         <Button onClick={() => {
 
@@ -6162,7 +6215,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
         }}>偵速+ {curTPS}</Button>
 
-        <Button onClick={() => {
+        <Button style={accSmlBtn} onClick={() => {
 
         (async () => {
 
@@ -6183,7 +6236,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
 
-        <Button onClick={() => {
+        <Button style={accSmlBtn} onClick={() => {
 
             (async () => {
                 sendMachConf({...machInfo,CAM1:machInfo.CAM1-10,L1A:machInfo.CAM1-10});
@@ -6191,8 +6244,8 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         }}>-</Button>
 
 
-
-        <Button onClick={() => {
+&ensp;
+        <Button  onClick={() => {
 
 
             (async () => {
@@ -6202,7 +6255,11 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
         }}>SE1+5 {machInfo.SEL1}</Button>
 
-        <Button onClick={() => {
+
+
+
+
+        <Button style={accSmlBtn} onClick={() => {
 
             (async () => {
                 sendMachConf({...machInfo,SEL1:machInfo.SEL1+1});
@@ -6210,7 +6267,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
         }}>+</Button>
 
 
-        <Button onClick={() => {
+        <Button style={accSmlBtn} onClick={() => {
 
             (async () => {
                 sendMachConf({...machInfo,SEL1:machInfo.SEL1-1});
@@ -6225,7 +6282,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
         }}>-5</Button>
 
-
+&ensp;
 
         <Button onClick={() => {
 
@@ -6235,13 +6292,13 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
         }}>SE2+5 {machInfo.SEL2}</Button>
 
-        <Button onClick={() => {
+        <Button style={accSmlBtn} onClick={() => {
 
             (async () => {
                 sendMachConf({...machInfo,SEL2:machInfo.SEL2+1});
             })()
         }}>+</Button>
-        <Button onClick={() => {
+        <Button style={accSmlBtn} onClick={() => {
 
             (async () => {
                 sendMachConf({...machInfo,SEL2:machInfo.SEL2-1});
@@ -6258,6 +6315,51 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
         }}>-5</Button>
 
+
+
+
+        <br/>
+
+
+
+        <Dropdown 
+            trigger={['click']}
+            overlay={
+                <SimpNumpad value={(machInfo.pulse_maxWidth)} onChange={(value)=>{ 
+
+                    sendMachConf({...machInfo,
+                        pulse_maxWidth:value
+                    
+                    });
+                }}/>
+            } >
+            
+            <Button > 脈寬上限{(machInfo.pulse_maxWidth)}</Button>
+
+        </Dropdown>
+
+
+
+        <Dropdown 
+            trigger={['click']}
+            overlay={
+                <SimpNumpad value={(machInfo.pulse_minWidth)} onChange={(value)=>{ 
+
+                    sendMachConf({...machInfo,
+                        pulse_minWidth:value
+                    
+                    });
+                }}/>
+            } >
+            
+            <Button > 脈寬下限{(machInfo.pulse_minWidth)}</Button>
+
+        </Dropdown>
+
+
+
+
+&ensp;
         <br />
 
 
@@ -6277,7 +6379,7 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
         }}>LOFF</Button>
 
-
+&ensp;
         <Button onClick={() => {
 
             (async () => {
@@ -6299,6 +6401,8 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
             })()
 
         }}>SEL3</Button>
+
+
 
 
 
@@ -7025,24 +7129,28 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
             
 
 
-
-
             <Divider orientation="left">
-                <Button onClick={() => {
-                    setImgReviewOptionUI(!imgReviewOptionUI)
-                }}>圖像測試{imgReviewOptionUI ? ' -' : ' +'}</Button>
-            </Divider>
-            {ImgReviewOption}
-
-
-
-            <Divider orientation="left">
-                <Button onClick={() => {
-                    setSpanSetupOptionUI(!spanSetupOptionUI)
-                }}>細部設定{spanSetupOptionUI ? ' -' : ' +'}</Button>
+                <Button danger={runningState?.sel1_cd==0} type={runningState?.sel1_cd<0?"dashed":"primary"} onClick={() => {
+                    setSpanSELCountDownSetupUI(!spanSELCountDownSetupUI)
+                }}>數量限制 {runningState?.sel1_cd<0?"無限制":`OK:${runningState?.sel1_cd}`} {spanSELCountDownSetupUI ? ' -' : ' +'}</Button>
             </Divider>
 
-            {setupOption}
+
+            {spanSELCountDownSetupUI==false?null:<>
+            
+                
+                <SimpNumpad value={-1} onChange={(value)=>{ 
+                    _this.send({ type: "set_sel1_cd",count:value });
+                }}/>
+                
+                <br/>
+                <Button onClick={() => {
+                    _this.send({ type: "set_sel1_cd",count:-1 });
+                }}>無限制</Button>
+
+            </>}
+
+
 
 
 
@@ -7088,23 +7196,21 @@ export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
 
 
             <Divider orientation="left">
-                <Button danger={runningState?.sel1_cd==0} type={runningState?.sel1_cd<0?"dashed":"primary"} onClick={() => {
-                    setSpanSELCountDownSetupUI(!spanSELCountDownSetupUI)
-                }}>數量限制 {runningState?.sel1_cd<0?"無限制":`OK:${runningState?.sel1_cd}`} {spanSELCountDownSetupUI ? ' -' : ' +'}</Button>
+                <Button onClick={() => {
+                    setImgReviewOptionUI(!imgReviewOptionUI)
+                }}>圖像測試{imgReviewOptionUI ? ' -' : ' +'}</Button>
+            </Divider>
+            {ImgReviewOption}
+
+
+            <Divider orientation="left">
+                <Button onClick={() => {
+                    setSpanSetupOptionUI(!spanSetupOptionUI)
+                }}>細部設定{spanSetupOptionUI ? ' -' : ' +'}</Button>
             </Divider>
 
+            {setupOption}
 
-            {spanSELCountDownSetupUI==false?null:<>
-            
-                <Button onClick={() => {
-                    _this.send({ type: "set_sel1_cd",count:-1 });
-                }}>無限制</Button>
-                <br/>
-                <SimpNumpad value={-1} onChange={(value)=>{ 
-                    _this.send({ type: "set_sel1_cd",count:value });
-                }}/>
-
-            </>}
 
 
         </div>
@@ -7511,6 +7617,35 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
 
 
 
+export function SingleTargetVIEWUI_StageInfoImageSave(props: CompParam_InspTarUI) {
+    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange, UIOption,onUIOptionUpdate,showUIOptionConfigUI=false ,APIExport} = props;
+
+    const dispatch = useDispatch();
+    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+    return <div style={{ ...style }} className={"overlayCon"}>
+    <div className={"overlay scroll HXF"} >
+
+    <Button onClick={() => {
+        (async () => {
+
+            let pkts = await BPG_API.InspTargetExchange(def.id, {
+                type: "SAVE_CACHE",
+                // path:"/Users/mdm/workspace",
+                // name:"test",
+                trigger_id: -4564,
+                tags:["s_SIDE_FLAT"],
+                addon_tags:["$CAT_OK"]
+            }) as any[];
+            console.log(pkts);
+
+        })()
+    }}>SAVE</Button>
+    
+    </div>
+
+
+    </div>;
+}
 
 
 
@@ -7533,6 +7668,11 @@ export function InspTargetUI_MUX(param:CompParam_InspTarUI)
 
   if(param.def.type=="JSON_CNC_Peripheral")
   return <SingleTargetVIEWUI_JSON_CNC_Peripheral {...param} />;
+
+
+  if(param.def.type=="StageInfoImageSave")
+  return <SingleTargetVIEWUI_StageInfoImageSave {...param} />;
+
 
 
   return  <></>;
