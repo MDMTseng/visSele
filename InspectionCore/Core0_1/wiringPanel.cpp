@@ -1382,7 +1382,26 @@ CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
   LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
   img->ReSize(finfo.width,finfo.height,3);
 
-  return cl_obj.ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
+
+
+
+
+  auto ret=cl_obj.ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
+
+
+  {//change BGR image to RRR
+    for (int i = 0; i < img->GetHeight(); i++)
+    {
+      for (int j = 0; j < img->GetWidth(); j++)
+      {
+
+        int tmp = img->CVector[i][3 * j+2];
+        img->CVector[i][3 * j] = img->CVector[i][3 * j + 1]=tmp;
+      }
+    }
+  }
+
+  return ret;
 }
 
 int getImage(CameraLayer *camera,acvImage *dst_img,int trig_type=0,int timeout_ms=-1)
@@ -3301,6 +3320,19 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   headImgPipe->occupyFlag=0;
   headImgPipe->img.ReSize(finfo.width,finfo.height,3);
   cl_GMV.ExtractFrame(headImgPipe->img.CVector[0],3,finfo.width*finfo.height);
+
+
+  {//change BGR image to RRR
+    for (int i = 0; i < headImgPipe->img.GetHeight(); i++)
+    {
+      for (int j = 0; j < headImgPipe->img.GetWidth(); j++)
+      {
+
+        int tmp = headImgPipe->img.CVector[i][3 * j+2];
+        headImgPipe->img.CVector[i][3 * j] = headImgPipe->img.CVector[i][3 * j + 1]=tmp;
+      }
+    }
+  }
 
   headImgPipe->bacpac = &calib_bacpac;
 
