@@ -43,7 +43,7 @@ import {VEC2D,SHAPE_ARC,SHAPE_LINE_seg,PtRotate2d} from './UTIL/MathTools';
 import {HookCanvasComponent,DrawHook_CanvasComponent,type_DrawHook_g,type_DrawHook} from './CanvasComp/CanvasComponent';
 import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_API';
 
-import { Row, Col,Input,Tag,Modal,message,Space } from 'antd';
+import { Row, Col,Input,Tag,Modal,message,Space,Popover } from 'antd';
 
 
 import { type_CameraInfo,type_IMCM} from './AppTypes';
@@ -1073,14 +1073,30 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
 
 let DAT_ANY_UNDEF:any=undefined;
 
+function GV_LayersFlating(GVs:any,key:string)
+{
+  if(GVs===undefined)return {};
+  let tGV=GVs[key];
+  let srcKey=tGV?.["$base"];
+  if(srcKey===undefined)return tGV;
+  let baseGV=GV_LayersFlating(GVs,srcKey) as any;
+  if(baseGV===undefined)return tGV;
 
+  return ObjReccursiveOverride(baseGV,tGV);
+}
 
 
 function GlobalVariableEditor({variables,onGlobalVariableUpdate,onGlobalVariableIDSelect}:{variables:any,onGlobalVariableUpdate:(new_global_variable:any)=>void,onGlobalVariableIDSelect:(id:string)=>void})
 {
 
-
+  
   const [curGVName,_setCurGVName]= useState(Object.keys(variables)[0]);
+  const [showCollapsedGV,setShowCollapsedGV]= useState(false);
+
+
+  const [UIUpdCD,setUIUpdCD]= useState(0);
+  const [newItemID,setNewItemID]= useState("");
+
 
 
   function setCurGVName(newName:string)
@@ -1106,30 +1122,147 @@ function GlobalVariableEditor({variables,onGlobalVariableUpdate,onGlobalVariable
   let srcKey=tGV?.["$base"];
 
   return <>
+
+
+    <Switch checkedChildren="顯示結果" unCheckedChildren="顯示分離" checked={showCollapsedGV} onChange={()=>{setShowCollapsedGV(!showCollapsedGV)}}/>
     <Radio.Group onChange={(e)=>{setCurGVName(e.target.value)}} defaultValue={curGVName}>
     {Object.keys(variables).map((key:string)=><Radio.Button value={key}>{key}</Radio.Button>)}
     </Radio.Group>
-
-    <ObjTree obj={tGV} padding={0} onLeafSelect={(value,name,path)=>{
-      console.log(name,path,value)
-      if(name=="$base")
-      {
-        setCurGVName(value)
-      }
-    }}/>
+    <br/>
 
 
-    { 
-      (srcKey===undefined)?null:
-      <>
-      連結源頭:{srcKey}
-      <ObjTree obj={variables[srcKey]} padding={0} onLeafSelect={(value,name,path)=>{
+
+    {showCollapsedGV?<>
+      <ObjTree obj={GV_LayersFlating(variables,curGVName)} padding={0} />
+      
+    
+    </>:<>
+      
+      <ObjTree obj={tGV} padding={0} 
+      renderer={
+        (value,name,path)=>{
+          console.log(value);
+          if(typeof value=="object") 
+          {
+            let allow2Add=newItemID.length>0 && value[newItemID]===undefined;
+          return<div id={name} style={{position:"relative",left:`${path.length*15}px`}}>
+            <Popover id={"pvf_"+name+"_"+UIUpdCD} trigger="click" content={<div>
+              <Input value={newItemID} onChange={(e)=>{
+                setNewItemID(e.target.value);
+              }} />
+              <Button disabled={!allow2Add} size='small' type="primary" onClick={()=>{
+
+                let objX={...GetObjElement(variables,[curGVName,...path,name])};
+                objX[newItemID]=0;
+
+                let newGV=ObjShellingAssign(variables,[curGVName,...path,name],objX);
+                onGlobalVariableUpdate(newGV);
+
+                setUIUpdCD(UIUpdCD+1);
+              }}>變數</Button>
+              <Button  disabled={!allow2Add} size='small'onClick={()=>{
+                
+                let objX={...GetObjElement(variables,[curGVName,...path,name])};
+                objX[newItemID]={};
+
+                let newGV=ObjShellingAssign(variables,[curGVName,...path,name],objX);
+                onGlobalVariableUpdate(newGV);
+              }} >組合</Button>
+              <br/>
+              <Button size='small' onClick={()=>{
+                  let objX={...GetObjElement(variables,[curGVName,...path])};
+                  delete objX[name];
+
+                  let newGV=ObjShellingAssign(variables,[curGVName,...path],objX);
+                  onGlobalVariableUpdate(newGV);
+
+              }} danger type="primary" >刪除</Button>
+
+
+            </div>} title="新增內容">
+              <Button size='small' type="primary" onClick={()=>{
+
+              }}>{name}[+]</Button>
+            </Popover>
+          </div>;
+          }
+
+
+          if(path.length==0 && name=="$base")//at first layer
+            return <Dropdown
+              overlay={<>
+                <Menu>
+                  {[...Object.keys(variables).filter(key=>key!==curGVName),"_NON_"].map((key)=> <Menu.Item onClick={()=>{
+                    onGlobalVariableUpdate(ObjShellingAssign(variables,[curGVName,"$base"],key))
+
+                  }}>
+                  <p>
+                    {key}
+                  </p>
+                </Menu.Item>)}
+              
+                </Menu>
+
+                {/* setCurGVName(value) */}
+              </>}
+            >
+              <Button size='small' type="primary">{name}:{value}</Button>
+            </Dropdown>
+
+          
+            return <div id={name} style={{position:"relative",left:`${path.length*15}px`}}>
+              <Popover id={"pv_"+name} trigger="focus" content={<div>
+                {/* OK or cancel */}
+                <Button id={"pv_"+name+"del"} danger size='small'  onClick={()=>{
+
+                  let objX={...GetObjElement(variables,[curGVName,...path])};
+                  delete objX[name];
+
+                  let newGV=ObjShellingAssign(variables,[curGVName,...path],objX);
+                  onGlobalVariableUpdate(newGV);
+                }}>刪除</Button>
+              </div>} title="確定要刪除？">
+
+                <Button size='small' onClick={()=>{
+
+                }}>{name}:{value}</Button>
+
+              </Popover>
+
+          </div>
+            
+          return undefined;
+
+
+
+
+
+
+
+
+        }
+      } onLeafSelect={(value,name,path)=>{
       }}/>
-  
-      </>
 
 
-    }
+      { 
+        (srcKey===undefined || variables[srcKey]===undefined)?null:
+        <>
+
+        <br/>
+        ----連結源頭:{srcKey}
+
+        <br/>
+        <ObjTree obj={variables[srcKey]} padding={0} onLeafSelect={(value,name,path)=>{
+
+        }}/>
+    
+        </>
+
+
+      }
+    
+    </>}
   
   </>
 }
@@ -1181,17 +1314,7 @@ console.log(GV_LayersFlating(objBase,"top"));
 } 
 
 */
-function GV_LayersFlating(GVs:any,key:string)
-{
-  if(GVs===undefined)return {};
-  let tGV=GVs[key];
-  let srcKey=tGV?.["$base"];
-  if(srcKey===undefined)return tGV;
-  let baseGV=GV_LayersFlating(GVs,srcKey) as any;
-  if(baseGV===undefined)return tGV;
 
-  return ObjReccursiveOverride(baseGV,tGV);
-}
 
 
 function VIEWUI(){
@@ -1533,6 +1656,164 @@ function VIEWUI(){
   
   }
 
+  function constructListCMDUI(UIData:any,updateUI:(data_:any)=>any)
+  {
+
+    let data=(typeof UIData === 'function')?UIData():UIData;
+    let content=data.map((info_:any,dataIndex:number)=>{
+
+      if(info_==null)return null;
+      let info=(typeof info_ === 'function')?info_():info_;
+
+      let opts=(typeof info.opts === 'function')?info.opts():info.opts;
+      let doms=
+
+      opts.map((opt:any)=>{
+
+
+
+        if (typeof opt === 'object' ) {
+
+          switch(opt.type)
+          {
+            case "InspTar_UI":{
+              let id = opt.id
+
+              let itar=defConfig.InspTars_main.find( (ipt:any)=>ipt.id==id)
+              // console.log(itar)
+              if(itar===undefined)return "InspTar NotFound"
+
+              return <InspTargetUI_MUX 
+                display={true} 
+                // width={80} 
+                // height={70} 
+                // style={{float:"left"}} 
+                EditPermitFlag={EDIT_PERMIT_FLAG.OPONLY}
+                key={id} 
+                systemInspTarList={defConfig.InspTars_main}
+                def={itar} 
+                report={undefined} 
+                fsPath={defConfig.path+"/it_"+id}
+                renderHook={undefined} 
+                onDefChange={(new_rule,doInspUpdate=true)=>{
+
+                }}
+      
+                UIOption={undefined}
+                showUIOptionConfigUI={false}
+                onUIOptionUpdate={(newUIOption)=>{
+                  console.log(newUIOption)
+                }}
+
+                {...opt.params}
+              />
+            }
+
+
+            case "button":{
+              let key = opt.key || opt.text
+              let text= opt.text || key
+              
+
+              return <Button 
+              
+                {...opt}
+                
+                onClick={()=>{
+                  console.log(opt)
+                if(_this.listCMD_Vairable.USER_INPUT_LOCK==true)return;//skip
+                _this.listCMD_Vairable.USER_INPUT_LOCK=true;
+                (async ()=>{
+                  try{
+                  if(opt.onClick!==undefined)
+                    await opt.onClick(updateUI);
+                  else 
+                    await info.callback(dataIndex,key,updateUI);
+                  _this.listCMD_Vairable.USER_INPUT_LOCK=false;
+                  }
+                  catch(e)
+                  {
+                    console.error(e)
+                  }
+                })().catch(e=>{
+                  console.error(e)
+                })
+
+
+                }}
+                
+                type={opt.btnType}
+                
+                >{(typeof text === 'string')?text:text(dataIndex)}</Button>
+            }
+
+            case "divider":{
+              return <Divider {...opt}>{(typeof opt.text === 'string')?opt.text:opt.text(dataIndex)}</Divider>
+            }
+          }
+          return "OBJ INFO IS NOT HANDLED"
+        }
+
+
+
+
+        if(opt=="$\n")return <br/>;
+
+
+        // if(opt.startsWith("$\s")){
+        //   let count=opt.slice(2);
+        //   return 
+        // }
+
+        if(opt=="$\s")return " ";
+
+
+
+        if(opt.startsWith("$t:")){
+          return opt.slice(3).replace(/ /g, "\u00A0")
+        }
+
+        if(opt.startsWith("$pre:")){
+          return <pre style={{flexShrink: 0,overflow:"scroll"}}>{opt.slice(5).replace(/ /g, "\u00A0")}</pre>
+        }
+
+
+
+        if(opt.startsWith("$divider:")){
+          return <Divider> {opt.slice(8)} </Divider>
+        }
+
+
+
+        return<Button onClick={()=>{
+
+          if(_this.listCMD_Vairable.USER_INPUT_LOCK==true)return;//skip
+          _this.listCMD_Vairable.USER_INPUT_LOCK=true;
+
+          (async ()=>{
+            await info.callback(dataIndex,opt,updateUI);
+            _this.listCMD_Vairable.USER_INPUT_LOCK=false;
+          })();
+
+
+          }}>{opt}</Button>
+      })
+
+      console.log(info)
+      return <>
+        
+        {(info.text===undefined || info.text===null)?null:<Divider> <p onClick={(info.onClick!==undefined)?(()=>info.onClick(updateUI)):undefined}>{(typeof info.text === 'string')?info.text:info.text(dataIndex)}</p> </Divider>}
+
+
+        {doms}
+
+
+      </>
+    });
+
+    return content;
+
+  }
 
   function listCMDPromiseRun(cmds:string[])
   {
@@ -1572,147 +1853,157 @@ function VIEWUI(){
           let updateUI=(data_:any)=>
           {
 
-            let data=(typeof data_ === 'function')?data_():data_;
-            let content=data.map((info_:any,dataIndex:number)=>{
+            // let data=(typeof data_ === 'function')?data_():data_;
+            // let content=data.map((info_:any,dataIndex:number)=>{
 
-              if(info_==null)return null;
-              let info=(typeof info_ === 'function')?info_():info_;
+            //   if(info_==null)return null;
+            //   let info=(typeof info_ === 'function')?info_():info_;
 
-              let opts=(typeof info.opts === 'function')?info.opts():info.opts;
-              let doms=
+            //   let opts=(typeof info.opts === 'function')?info.opts():info.opts;
+            //   let doms=
 
-              opts.map((opt:any)=>{
+            //   opts.map((opt:any)=>{
 
 
 
-                if (typeof opt === 'object' ) {
+            //     if (typeof opt === 'object' ) {
 
-                  switch(opt.type)
-                  {
-                    case "InspTar_UI":{
-                      let id = opt.id
+            //       switch(opt.type)
+            //       {
+            //         case "InspTar_UI":{
+            //           let id = opt.id
 
-                      let itar=defConfig.InspTars_main.find( (ipt:any)=>ipt.id==id)
-                      // console.log(itar)
-                      if(itar===undefined)return "InspTar NotFound"
+            //           let itar=defConfig.InspTars_main.find( (ipt:any)=>ipt.id==id)
+            //           // console.log(itar)
+            //           if(itar===undefined)return "InspTar NotFound"
     
-                      return <InspTargetUI_MUX 
-                        display={true} 
-                        // width={80} 
-                        // height={70} 
-                        // style={{float:"left"}} 
-                        EditPermitFlag={EDIT_PERMIT_FLAG.OPONLY}
-                        key={id} 
-                        systemInspTarList={defConfig.InspTars_main}
-                        def={itar} 
-                        report={undefined} 
-                        fsPath={defConfig.path+"/it_"+id}
-                        renderHook={undefined} 
-                        onDefChange={(new_rule,doInspUpdate=true)=>{
+            //           return <InspTargetUI_MUX 
+            //             display={true} 
+            //             // width={80} 
+            //             // height={70} 
+            //             // style={{float:"left"}} 
+            //             EditPermitFlag={EDIT_PERMIT_FLAG.OPONLY}
+            //             key={id} 
+            //             systemInspTarList={defConfig.InspTars_main}
+            //             def={itar} 
+            //             report={undefined} 
+            //             fsPath={defConfig.path+"/it_"+id}
+            //             renderHook={undefined} 
+            //             onDefChange={(new_rule,doInspUpdate=true)=>{
     
-                        }}
+            //             }}
               
-                        UIOption={undefined}
-                        showUIOptionConfigUI={false}
-                        onUIOptionUpdate={(newUIOption)=>{
-                          console.log(newUIOption)
-                        }}
+            //             UIOption={undefined}
+            //             showUIOptionConfigUI={false}
+            //             onUIOptionUpdate={(newUIOption)=>{
+            //               console.log(newUIOption)
+            //             }}
 
-                        {...opt.params}
-                      />
-                    }
+            //             {...opt.params}
+            //           />
+            //         }
     
 
-                    case "button":{
-                      let key = opt.key || opt.text
-                      let text= opt.text || key
+            //         case "button":{
+            //           let key = opt.key || opt.text
+            //           let text= opt.text || key
 
     
-                      return <Button onClick={()=>{
+            //           return <Button 
+                      
+            //             {...opt}
+                        
+            //             onClick={()=>{
 
-                        if(_this.listCMD_Vairable.USER_INPUT_LOCK==true)return;//skip
-                        _this.listCMD_Vairable.USER_INPUT_LOCK=true;
-                        (async ()=>{
-                          try{
-                          if(opt.onClick!==undefined)
-                            await opt.onClick(updateUI);
-                          else 
-                            await info.callback(dataIndex,key,updateUI);
-                          _this.listCMD_Vairable.USER_INPUT_LOCK=false;
-                          }
-                          catch(e)
-                          {
-                            console.error(e)
-                          }
-                        })().catch(e=>{
-                          console.error(e)
-                        })
+            //             if(_this.listCMD_Vairable.USER_INPUT_LOCK==true)return;//skip
+            //             _this.listCMD_Vairable.USER_INPUT_LOCK=true;
+            //             (async ()=>{
+            //               try{
+            //               if(opt.onClick!==undefined)
+            //                 await opt.onClick(updateUI);
+            //               else 
+            //                 await info.callback(dataIndex,key,updateUI);
+            //               _this.listCMD_Vairable.USER_INPUT_LOCK=false;
+            //               }
+            //               catch(e)
+            //               {
+            //                 console.error(e)
+            //               }
+            //             })().catch(e=>{
+            //               console.error(e)
+            //             })
       
       
-                        }}>{(typeof text === 'string')?text:text(dataIndex)}</Button>
-                    }
+            //             }}
+                        
+            //             type={opt.btnType}
+                        
+            //             >{(typeof text === 'string')?text:text(dataIndex)}</Button>
+            //         }
     
 
-                  }
-                  return "OBJ INFO IS NOT HANDLED"
-                }
+            //       }
+            //       return "OBJ INFO IS NOT HANDLED"
+            //     }
 
 
 
 
-                if(opt=="$\n")return <br/>;
+            //     if(opt=="$\n")return <br/>;
 
 
-                // if(opt.startsWith("$\s")){
-                //   let count=opt.slice(2);
-                //   return 
-                // }
+            //     // if(opt.startsWith("$\s")){
+            //     //   let count=opt.slice(2);
+            //     //   return 
+            //     // }
 
-                if(opt=="$\s")return " ";
-
-
-
-                if(opt.startsWith("$t:")){
-                  return opt.slice(3).replace(/ /g, "\u00A0")
-                }
-
-                if(opt.startsWith("$pre:")){
-                  return <pre style={{flexShrink: 0,overflow:"scroll"}}>{opt.slice(5).replace(/ /g, "\u00A0")}</pre>
-                }
+            //     if(opt=="$\s")return " ";
 
 
 
-                if(opt.startsWith("$divider:")){
-                  return <Divider> {opt.slice(8)} </Divider>
-                }
+            //     if(opt.startsWith("$t:")){
+            //       return opt.slice(3).replace(/ /g, "\u00A0")
+            //     }
+
+            //     if(opt.startsWith("$pre:")){
+            //       return <pre style={{flexShrink: 0,overflow:"scroll"}}>{opt.slice(5).replace(/ /g, "\u00A0")}</pre>
+            //     }
 
 
 
-                return<Button onClick={()=>{
-
-                  if(_this.listCMD_Vairable.USER_INPUT_LOCK==true)return;//skip
-                  _this.listCMD_Vairable.USER_INPUT_LOCK=true;
-
-                  (async ()=>{
-                    await info.callback(dataIndex,opt,updateUI);
-                    _this.listCMD_Vairable.USER_INPUT_LOCK=false;
-                  })();
+            //     if(opt.startsWith("$divider:")){
+            //       return <Divider> {opt.slice(8)} </Divider>
+            //     }
 
 
-                  }}>{opt}</Button>
-              })
 
-              console.log(info)
-              return <>
+            //     return<Button onClick={()=>{
+
+            //       if(_this.listCMD_Vairable.USER_INPUT_LOCK==true)return;//skip
+            //       _this.listCMD_Vairable.USER_INPUT_LOCK=true;
+
+            //       (async ()=>{
+            //         await info.callback(dataIndex,opt,updateUI);
+            //         _this.listCMD_Vairable.USER_INPUT_LOCK=false;
+            //       })();
+
+
+            //       }}>{opt}</Button>
+            //   })
+
+            //   console.log(info)
+            //   return <>
                 
-                {(info.text===undefined || info.text===null)?null:<Divider> <p onClick={(info.onClick!==undefined)?(()=>info.onClick(updateUI)):undefined}>{(typeof info.text === 'string')?info.text:info.text(dataIndex)}</p> </Divider>}
+            //     {(info.text===undefined || info.text===null)?null:<Divider> <p onClick={(info.onClick!==undefined)?(()=>info.onClick(updateUI)):undefined}>{(typeof info.text === 'string')?info.text:info.text(dataIndex)}</p> </Divider>}
     
 
-                {doms}
+            //     {doms}
 
 
-              </>
-            });
+            //   </>
+            // });
+
+            let content = constructListCMDUI(data_,updateUI);
 
             setModalInfo({
 
@@ -2118,7 +2409,7 @@ function VIEWUI(){
 
   
     
-
+    _this.cached_defConfig=defConfig;
     _this.GVEX=defConfig?.main?.global_variable;
     let globalVMenu=
     menuCol(<div onClick={()=>{
@@ -2153,7 +2444,10 @@ function VIEWUI(){
 
               <GlobalVariableEditor variables={_this.GVEX} 
                 onGlobalVariableUpdate={(nV)=>{
-                  console.log(nV)
+                  // console.log(nV)
+                  
+                  setDefConfig(ObjShellingAssign(_this.cached_defConfig,["main","global_variable"],nV),-1);
+  
                 }}
                 
                 onGlobalVariableIDSelect={(ID)=>{
@@ -2586,7 +2880,7 @@ function VIEWUI(){
           newdef=ObjShellingAssign(defConfig,["main","global_variable"],_this.CACHED_GLOBAL_VARIABLE);
         setDefConfig(newdef,updateIdx)
 
-        
+        _this.CACHED_GLOBAL_VARIABLE=undefined;
         }}  renderHook={_this.listCMD_Vairable.renderHook}
         />
       </ITGlobalVariableContext.Provider>

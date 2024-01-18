@@ -147,23 +147,41 @@ export type CompParam_InspTarUI =CompParam_InspTar & CompParam_UIOption;
 
 
 
-export function ObjTree( {obj,padding=0,onLeafSelect}:{obj:any,padding:number,onLeafSelect:(value:any,name:string,path:string[])=>void }):any{
+export function ObjTree( {obj,padding=0,onLeafSelect,renderer}:{obj:any,padding:number,onLeafSelect?:(value:any,name:string,path:string[])=>void,renderer?:(value:any,name:string,path:string[])=>any  }):any{
 
     return Object.entries(obj).map(([key, value]:any)=>{
+      let renderResult=renderer===undefined?undefined:renderer(value,key,[]);
       if(typeof value === 'object')
       {
+
         return <>
-          <div style={{marginLeft:padding}}>{key+"{-}"}</div>
+
+          {
+            renderResult!==undefined?    renderResult:      
+                <div style={{marginLeft:padding ,display:"block"}}  onClick={()=>{
+                if(onLeafSelect)onLeafSelect(value,key,[])
+                }}>{key+"[-]"}</div>
+          }
+
+
+
+
+
           <ObjTree obj={value} padding={padding+15} onLeafSelect={(value,name,path)=>{
-            return onLeafSelect(value,name,[key,...path])
+            if(onLeafSelect)
+                return onLeafSelect(value,name,[key,...path])
+          }} renderer={renderer===undefined?undefined:(value,name,path)=>{
+            return renderer(value,name,[key,...path])
           }}/>
         </>
       }
       else
       {
+        if(renderResult!==undefined)return renderResult;
+        
         return <>
         <Button size='small' style={{marginLeft:padding,display:"block"}} onClick={()=>{
-          onLeafSelect(value,key,[])
+          if(onLeafSelect)onLeafSelect(value,key,[])
         }}>{key}: {value}</Button>
         </>
       }
@@ -223,8 +241,8 @@ let INPUT_LINK = {
         {
            
 
-            let path_str=props.value as string;
-            let path=path_str.split(".");
+            let path_str=props.value as string |null;
+            let path=path_str===null?[]:path_str.split(".");
             let value=GetObjElement(global_variable,path);
 
             console.log(global_variable,path,value);
@@ -696,7 +714,7 @@ function TestInputSelectUI({def, folderPath, stream_id, testTags = [] }: {def:an
             console.log(name);
             let nameJson = JSON.parse(name);
             final_tags=[...final_tags,...nameJson.tags]
-            tid|=nameJson.tid;
+            tid=nameJson.tid;
         } catch (e) {
             // return console.error(e); // error in the above string (in this case, yes)!
         }
@@ -3103,7 +3121,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id,rootDef, def
     
             
     物件面積閾值:
-            <INPUT_LINK.InputNumber value={def.element_area_thres} step={0.001}
+            <INPUT_LINK.InputNumber value={def.element_area_thres} step={0.1}
                 onChange={(num:number|string) => {
                     let newDef = { ...def, element_area_thres: num }
                     onDefChange(newDef, true);
@@ -3117,7 +3135,17 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id,rootDef, def
     
             <br />
     總面積閾值:
-            <INPUT_LINK.InputNumber style={{width:"200px"}} step={0.005}
+
+            <INPUT_LINK.InputNumber style={{width:"50px"}} step={0.5}
+                value={def.area_min_thres} 
+                onChange={(num:number|string) => {
+                    let newDef = { ...def, area_min_thres: num}
+                    onDefChange(newDef, true);
+                }} 
+                
+                />
+            ~
+            <INPUT_LINK.InputNumber style={{width:"100px"}} step={0.5}
                 value={def.area_thres} 
                 onChange={(num:number|string) => {
                     let newDef = { ...def, area_thres: num}
@@ -3125,6 +3153,7 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id,rootDef, def
                 }} 
                 
                 />
+    
     
     單線長閾值:
             <INPUT_LINK.InputNumber value={def.line_length_thres} min={0.001} step={0.1}
@@ -3317,6 +3346,10 @@ function SurfaceCheckSimple_SubRegion_EDIT_UI({ BPG_API, fsPath, id,rootDef, def
 
                 <Switch checkedChildren="無->有" unCheckedChildren="自動閾值" checked={def_Filled.sense0to1 == true} onChange={(check) => {
                     onDefChange(ObjShellingAssign(def_Filled, ["sense0to1"], check));
+                }} />
+
+                <Switch checkedChildren="次像素定位" unCheckedChildren="像素定位" checked={def_Filled.locatingRefinement == true} onChange={(check) => {
+                    onDefChange(ObjShellingAssign(def_Filled, ["locatingRefinement"], check));
                 }} />
             
             <br />
@@ -7584,6 +7617,35 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
 
 
 
+export function SingleTargetVIEWUI_StageInfoImageSave(props: CompParam_InspTarUI) {
+    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange, UIOption,onUIOptionUpdate,showUIOptionConfigUI=false ,APIExport} = props;
+
+    const dispatch = useDispatch();
+    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+    return <div style={{ ...style }} className={"overlayCon"}>
+    <div className={"overlay scroll HXF"} >
+
+    <Button onClick={() => {
+        (async () => {
+
+            let pkts = await BPG_API.InspTargetExchange(def.id, {
+                type: "SAVE_CACHE",
+                // path:"/Users/mdm/workspace",
+                // name:"test",
+                trigger_id: -4564,
+                tags:["s_SIDE_FLAT"],
+                addon_tags:["$CAT_OK"]
+            }) as any[];
+            console.log(pkts);
+
+        })()
+    }}>SAVE</Button>
+    
+    </div>
+
+
+    </div>;
+}
 
 
 
@@ -7606,6 +7668,11 @@ export function InspTargetUI_MUX(param:CompParam_InspTarUI)
 
   if(param.def.type=="JSON_CNC_Peripheral")
   return <SingleTargetVIEWUI_JSON_CNC_Peripheral {...param} />;
+
+
+  if(param.def.type=="StageInfoImageSave")
+  return <SingleTargetVIEWUI_StageInfoImageSave {...param} />;
+
 
 
   return  <></>;

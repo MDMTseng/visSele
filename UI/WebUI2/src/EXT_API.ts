@@ -629,6 +629,7 @@ export class BPG_WS
     
     let data = await this.send_P("LD",0,{filename}) as any;
 
+    console.log(filename,data);
     let FL=data.find((info:any)=>info.type=="FL")
     if(FL===undefined)
     {
