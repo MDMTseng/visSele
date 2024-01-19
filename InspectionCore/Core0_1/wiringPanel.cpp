@@ -45,7 +45,7 @@ cJSON *cache_deffile_JSON = NULL;
 
 cJSON *cache_camera_param = NULL;
 
-
+bool img_transpose=false;
 bool saveInspFailSnap = true;
 bool saveInspNASnap = true;
 int saveInspQFullSkipCount=0;
@@ -263,8 +263,20 @@ class PerifChannel:public Data_JsonRaw_Layer
 
 
 
-
-
+void transpose(acvImage* dst,acvImage* src)
+{
+  dst->ReSize(src->GetHeight(),src->GetWidth());
+  for(int i=0;i<src->GetHeight();i++)
+  {
+    for(int j=0;j<src->GetWidth();j++)
+    {
+      // dst->CVector[j][i*3+0]=src->CVector[i][j*3+0];
+      // dst->CVector[j][i*3+1]=src->CVector[i][j*3+1];
+      // dst->CVector[j][i*3+2]=src->CVector[i][j*3+2];
+      memcpy(dst->CVector[j]+i*3,src->CVector[i]+j*3,3);
+    }
+  }
+}
 
 
 
@@ -975,6 +987,18 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   }
 
 
+  {
+    int type=getDataFromJson(&settingJson, "transpose", NULL);
+    if(type==cJSON_True)
+    {
+      img_transpose=true;
+    }
+
+    if(type==cJSON_False)
+    {
+      img_transpose=false;
+    }
+  }
 
 
   {
@@ -1011,6 +1035,30 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     CameraLayer::status st = camera.SetOnceWB();
     LOGI("SetOnceWB:%d", st);
     retV = 0;
+  }
+
+
+  {
+    val = JFetch_NUMBER(&settingJson, "RGain");
+    if (val)
+    {
+      camera.SetRGain(*val);
+    }
+
+    val = JFetch_NUMBER(&settingJson, "GGain");
+    if (val)
+    {
+      camera.SetGGain(*val);
+    }
+
+
+    val = JFetch_NUMBER(&settingJson, "BGain");
+    if (val)
+    {
+      camera.SetBGain(*val);
+    }
+
+
   }
 
 
@@ -1062,17 +1110,35 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     double *roi_y = JFetch_NUMBER(&settingJson, "ROI[1]");
     double *roi_w = JFetch_NUMBER(&settingJson, "ROI[2]");
     double *roi_h = JFetch_NUMBER(&settingJson, "ROI[3]");
+
+
     LOGI("ROI ptr:%p %p %p %p", roi_x, roi_y, roi_w, roi_h);
-    if (roi_x && roi_y && roi_w && roi_h && ((*roi_w) * (*roi_h)) != 0)
+    if (roi_x && roi_y && roi_w && roi_h && ((*roi_w) * (*roi_h))>100)
     {
-      camera.SetROI(*roi_x, *roi_y, *roi_w, *roi_h, 0, 0);
+
+      int x,y,w,h;
+      if(img_transpose)
+      {
+        x = *roi_y;
+        y = *roi_x;
+        w = *roi_h;
+        h = *roi_w;
+      }
+      else
+      {
+        x = *roi_x;
+        y = *roi_y;
+        w = *roi_w;
+        h = *roi_h;
+      }
+      camera.SetROI(x,y,w,h, 0, 0);
       // LOGI("ROI v:%f %f %f %f", *roi_x, *roi_y, *roi_w, *roi_h);
       int ox, oy;
       camera.GetROI(&ox, &oy, NULL, NULL, NULL, NULL);
       
       // LOGI("ROI v:%d %d", ox, oy);
-      acv_XY offset_o = {(float)ox, (float)oy};
-      calib_bacpac.sampler->setOriginOffset(offset_o);
+      // acv_XY offset_o = {(float)ox, (float)oy};
+      // calib_bacpac.sampler->setOriginOffset(offset_o);
       //sampler
     }
     else
@@ -1379,14 +1445,20 @@ CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
   acvImage *img=(acvImage*)obj;
 
   CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
-  LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
-  img->ReSize(finfo.width,finfo.height,3);
+  LOGI("finfo:WH:%d,%d  img_transpose:%d",finfo.width,finfo.height,img_transpose);
 
+  acvImage *tmp_img=img_transpose?new acvImage():img;
 
-
-
-
+  tmp_img->ReSize(finfo.width,finfo.height);
   auto ret=cl_obj.ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
+
+  if(img_transpose==true)
+  {
+    transpose(img,tmp_img);
+
+    delete tmp_img;
+    tmp_img=NULL;
+  }
 
 
   {//change BGR image to RRR
@@ -3318,21 +3390,35 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   headImgPipe->context = context;
   headImgPipe->fi = finfo;
   headImgPipe->occupyFlag=0;
-  headImgPipe->img.ReSize(finfo.width,finfo.height,3);
-  cl_GMV.ExtractFrame(headImgPipe->img.CVector[0],3,finfo.width*finfo.height);
+  acvImage *tmp_img=&(headImgPipe->img);
+  tmp_img->ReSize(finfo.width,finfo.height);
+  auto ret=cl_obj.ExtractFrame(tmp_img->CVector[0],3,finfo.width*finfo.height);
+
+  // acvImage *tmp_img=img_transpose?new acvImage():&(headImgPipe->img);
+
+  // tmp_img->ReSize(finfo.width,finfo.height);
+  // auto ret=cl_obj.ExtractFrame(tmp_img->CVector[0],3,finfo.width*finfo.height);
+
+  // if(img_transpose==true)
+  // {
+  //   transpose(&(headImgPipe->img),tmp_img);
+
+  //   delete tmp_img;
+  //   tmp_img=NULL;
+  // }
 
 
-  {//change BGR image to RRR
-    for (int i = 0; i < headImgPipe->img.GetHeight(); i++)
-    {
-      for (int j = 0; j < headImgPipe->img.GetWidth(); j++)
-      {
+  // {//change BGR image to RRR
+  //   for (int i = 0; i < headImgPipe->img.GetHeight(); i++)
+  //   {
+  //     for (int j = 0; j < headImgPipe->img.GetWidth(); j++)
+  //     {
 
-        int tmp = headImgPipe->img.CVector[i][3 * j+2];
-        headImgPipe->img.CVector[i][3 * j] = headImgPipe->img.CVector[i][3 * j + 1]=tmp;
-      }
-    }
-  }
+  //       int tmp = headImgPipe->img.CVector[i][3 * j+2];
+  //       headImgPipe->img.CVector[i][3 * j] = headImgPipe->img.CVector[i][3 * j + 1]=tmp;
+  //     }
+  //   }
+  // }
 
   headImgPipe->bacpac = &calib_bacpac;
 
@@ -4075,12 +4161,27 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   }
   clock_t t = clock();
 
+  if(img_transpose==true)
+  {
+    acvImage tmp_img;
+    transpose(&tmp_img,&imgPipe->img);
+  // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+    imgPipe->img.ReSize(tmp_img.GetWidth(),tmp_img.GetHeight());
+    acvCloneImage(&tmp_img,&imgPipe->img,  2);
+  }
+  else
+  {
+    acvCloneImage(&imgPipe->img,&imgPipe->img,  2);
+  }
+
+
   acvImage &capImg = imgPipe->img;
   FeatureManager_BacPac *bacpac = imgPipe->bacpac;
   CameraLayer::frameInfo &fi = imgPipe->fi;
 
   int ret = 0;
 
+  // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   //stackingC=0;
   if(0){
     
@@ -4119,6 +4220,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   //   }
   // }
 
+  // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   {
 
     // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
@@ -4362,6 +4464,7 @@ int initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 CameraLayer *getCamera(int initCameraType = 0)
 {
 
+  img_transpose=false;
   CameraLayer *camera = NULL;
   // if (initCameraType == 0 || initCameraType == 1)
   // {
