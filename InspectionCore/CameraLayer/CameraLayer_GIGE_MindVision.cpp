@@ -232,6 +232,41 @@ CameraLayer::status CameraLayer_GIGE_MindVision::ExtractFrame(uint8_t *imgBuffer
 }
 
 
+CameraLayer::status CameraLayer_GIGE_MindVision::SetRGain(float gain)
+{
+  // CameraSetWbMode(m_hCamera,false);
+  // CameraSetClrTempMode(m_hCamera, CT_MODE_USER_DEF);
+  int rgain,ggain,bgain;
+  CameraGetUserClrTempGain(m_hCamera,&rgain,&ggain,&bgain);
+  rgain=(int)gain;
+  CameraSetUserClrTempGain(m_hCamera,rgain,ggain,bgain);
+  return CameraLayer::ACK;
+}
+
+CameraLayer::status CameraLayer_GIGE_MindVision::SetGGain(float gain)
+{
+  // CameraSetWbMode(m_hCamera,false);
+  // CameraSetClrTempMode(m_hCamera, CT_MODE_USER_DEF);
+  int rgain,ggain,bgain;
+  CameraGetUserClrTempGain(m_hCamera,&rgain,&ggain,&bgain);
+  ggain=(int)gain;
+  CameraSetUserClrTempGain(m_hCamera,rgain,ggain,bgain);
+  return CameraLayer::ACK;
+}
+CameraLayer::status CameraLayer_GIGE_MindVision::SetBGain(float gain)
+{
+  // CameraSetWbMode(m_hCamera,false);
+  // CameraSetClrTempMode(m_hCamera, CT_MODE_USER_DEF);
+  int rgain,ggain,bgain;
+  CameraGetUserClrTempGain(m_hCamera,&rgain,&ggain,&bgain);
+  bgain=(int)gain;
+  CameraSetUserClrTempGain(m_hCamera,rgain,ggain,bgain);
+  return CameraLayer::ACK;
+}
+
+
+
+
 
 CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *devInfo)
 {
@@ -280,6 +315,8 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
   TriggerCount(1);
   CameraSetCallbackFunction(m_hCamera, sGIGEMV_CB, (PVOID)this, NULL);
   CameraSetAeState(m_hCamera, FALSE);
+  CameraSetWbMode(m_hCamera,FALSE);
+  CameraSetClrTempMode(m_hCamera, CT_MODE_USER_DEF);
   //CameraSetAutoConnect(m_hCamera,true);
   //
 
@@ -296,8 +333,12 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
   int retx = CameraSetExtTrigShutterType(m_hCamera, EXT_TRIG_EXP_STANDARD);
   LOGI("CameraSetExtTrigShutterType: ret:%d", retx);
   CameraSetIspOutFormat(m_hCamera, CAMERA_MEDIA_TYPE_BGR8);
+  
   CameraPlay(m_hCamera);
-  CameraLoadParameter(m_hCamera, PARAMETER_TEAM_A);
+  //sleep 1s to wait for the camera to be ready
+  // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  CameraSetOnceWB(m_hCamera);
+
   return CameraLayer::ACK;
 }
 CameraLayer::status CameraLayer_GIGE_MindVision::SetMirror(int Dir, int en)
