@@ -33,7 +33,7 @@ GCodeParser::GCodeParser_Status GCodeParser::statusReducer(GCodeParser::GCodePar
   return st;
 }
 
-GCodeParser::GCodeParser_Status GCodeParser::runLine(const char *line)
+GCodeParser::GCodeParser_Status GCodeParser::runGCode(const char *line)
 {
   for(int i=0;;i++)
   {

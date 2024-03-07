@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <ArduinoJson.h>
 const int MAX_LINE_SIZE = 256; // Maximun GCode line size.
 
 
@@ -21,13 +22,15 @@ public:
 
 
     TASK_WARN_OK= 100, 
+    TASK_WAIT_HOLD_RSP= 10, 
     TASK_OK_HOLD_RSP= 1, 
     TASK_OK= 0, 
     TASK_FAILED= -1, 
+ 
     TASK_UNSUPPORTED= -3000, 
 
 
-    GCODE_PARSE_ERROR= -6000, 
+    PARAM_PARSE_ERROR= -6000, 
     TASK_FATAL_FAILED= -9000, 
 
   } GCodeParser_Status;
@@ -38,7 +41,7 @@ public:
   int blockCount;
   char* blockInitial[30];
 	GCodeParser();
-  GCodeParser_Status runLine(const char *line);
+  GCodeParser_Status runGCode(const char *line);
 	GCodeParser_Status addChar(char c);
 
 	GCodeParser_Status statusReducer(GCodeParser_Status st,GCodeParser_Status new_st);

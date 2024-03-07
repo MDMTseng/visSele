@@ -47,7 +47,7 @@ public:
     {
     
 
-      int32_t vele_abs=vec_abs.vec[k];
+      const int32_t &vele_abs=vec_abs.vec[k];
       int32_t &curPos_mod_vec=cur_vec_mod.vec[k];
       curPos_mod_vec+=vele_abs;
       if(curPos_mod_vec>=steps_main)//a step forward
@@ -120,6 +120,7 @@ public:
 
   void nextStep()
   {
+    bool doLoadNew=false;
     pinUpdate();
     if(segSteps==0)
     {
@@ -136,7 +137,7 @@ public:
         segSteps=segSteps_next;
         segSteps_next=0;
         cur_wait_time_total=0;
-        bufferEmpty();
+        doLoadNew=true;//timming hack, bufferEmpty might take a while to execute, so we call bufferEmpty in the end of this function
       }
       else//still no pulses to generate
       {
@@ -167,6 +168,12 @@ public:
     if(cur_step==segSteps)
     {
       segSteps=0;
+    }
+
+
+    if(doLoadNew)
+    {
+      bufferEmpty();
     }
 
   }

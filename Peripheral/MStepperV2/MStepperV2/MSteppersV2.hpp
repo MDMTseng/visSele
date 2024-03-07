@@ -4,6 +4,8 @@
 #include <MSteppers_setup.h>
 #include <MStepperStruct.hpp>
 
+#include <ArduinoJson.h>
+
 extern "C" {
 #include <MStepperUtil.h>
 }
@@ -62,7 +64,7 @@ struct MSTP_segment
 
   float distanceStart;
   float distanceEnd;
-  float Mdistance;
+  // float Mdistance;
   float Edistance;
 
 
@@ -88,6 +90,7 @@ struct MSTP_segment_adv_info
 
   bool inInDAcc;
   float dstanceWent;
+
 };
 
 
@@ -95,7 +98,7 @@ struct MSTP_axisSetup
 {
 
 
-  float ppmm;//pulse per mm
+  // float ppmm;//pulse per mm
   float V_Factor;// pause/s
 
   float A_Factor;// pause/s^2
@@ -141,8 +144,10 @@ class StpGroup
 
   float main_junctionMaxSpeedJump=1;
 
-  char bufferGCMD[100];
-  int bufferGCMD_ID=-1;
+  // StaticJsonDocument <500>bufferJCMD;
+  char bufferJCMD_raw[200];
+  int bufferJCMD_ID=-1;
+
   MSTP_axisSetup *axisSetup;
   RingBuf <struct MSTP_segment> segs;
   // bool VecAdd(xVec VECTo,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
@@ -151,19 +156,23 @@ class StpGroup
   bool pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locDim,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx);
 
   virtual float* getLatestLocation()=0;
-  virtual float* getLatestVec()=0;
-  virtual void copyTo(float*dst,float*src)=0;
+  virtual void copyCMDVec(float*dst,float*src)=0;
   // virtual float* getTmpVec(int idx)=0;
 
-  virtual int GcodeParse(char **blkIdxes,int blkIdxesL)=0;
+  virtual int GcodeParse(char **blkIdxes,int blkIdxesL,JsonDocument& cmd_ret)=0;
+  virtual int JCMDParse(JsonDocument& cmd,JsonDocument& cmd_ret)=0;
+
+
+
+  // virtual int CMDParse(JsonDocument &cmd)=0;
   virtual void getMotMoveVec(xVec_f *mot_vec_dst)=0;
-  virtual void backward(xVec_f *mot_vec_dst,const float* loc_vec_src)=0;
-  virtual void forward(float* loc_vec_dst,const xVec_f *mot_vec_src)=0;
+  virtual void inverse(float *mot_vec_dst,const float* loc_vec_src)=0;
+  virtual void forward(float* loc_vec_dst,const float *mot_vec_src)=0;
   virtual void update()=0;//update in every system tick
 
 
-  virtual void print(const char*)=0;
-  virtual std::string vec_to_string(float*dst)=0;
+  // virtual void print(const char*)=0;
+  // virtual std::string vec_to_string(float*dst)=0;
   
   MSTP_segment_adv_info adv_info={
     .deaWeagle=1.2,
@@ -207,3 +216,14 @@ public:
 
 };
 
+
+
+
+
+static void cubicBezier_comp(float* dst,int arrL, MSTP_segment *seg,float dstanceWent){
+  float ratio=dstanceWent/(seg->Edistance);
+  float cb_coeff[4];
+  cubicBezier_TCoeff(ratio,cb_coeff);
+  cubicBezier_Vec(dst,seg->sp,seg->aux_pt2,seg->aux_pt3,seg->aux_pt4,arrL,cb_coeff);
+
+}

@@ -768,7 +768,7 @@ bool StpGroup::pushInPause(uint32_t pause_ms,MSTP_segment_CB startCB,MSTP_segmen
   newSeg.startCB=startCB;
   newSeg.endCB=endCB;
   newSeg.ctx=ctx;
-  newSeg.Mdistance=
+  // newSeg.Mdistance=
   newSeg.Edistance=
   newSeg.distanceEnd=pause_ms;
   newSeg.distanceStart=0;
@@ -797,7 +797,7 @@ bool StpGroup::pushInInstant(MSTP_segment_CB startCB,MSTP_segment_CB endCB,void*
   newSeg.startCB=startCB;
   newSeg.endCB=endCB;
   newSeg.ctx=ctx;
-  newSeg.Mdistance=
+  // newSeg.Mdistance=
   newSeg.Edistance=
   newSeg.distanceEnd=-1;
   newSeg.distanceStart=0;
@@ -843,7 +843,7 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
 
 
   newSeg.distanceStart=0;
-  newSeg.Mdistance=ManhattanMagnitude(vec,locDim,&newSeg.main_axis_idx);
+  // newSeg.Mdistance=ManhattanMagnitude(vec,locDim,&newSeg.main_axis_idx);
   newSeg.Edistance=EuclideanMagnitude(vec,locDim);
   newSeg.distanceEnd=newSeg.Edistance;
   
@@ -884,8 +884,8 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
   //   newSeg.dir_bit=_axis_dir;
   // }
 
-  copyTo(newSeg.sp,getLatestLocation());
-  copyTo(newSeg.vec,vec);
+  copyCMDVec(newSeg.sp,getLatestLocation());
+  copyCMDVec(newSeg.vec,vec);
   newSeg.vcur=0;
   int main_idx=0;
   int main_vidx=0;
@@ -1168,7 +1168,7 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
         preSeg.distanceEnd=preSeg.Edistance-distance_turnPt_cornorPt;
         aheadLineSeg.distanceStart=distance_turnPt_cornorPt;
         // sprintf(PrtBuff,"arc_r:%f",arc_r);G_LOG(PrtBuff);
-        arcSeg.Mdistance=
+        // arcSeg.Mdistance=
         arcSeg.Edistance=
         arcSeg.distanceEnd=arc_r*(M_PI-angleRad);
         arcSeg.distanceStart=0;
@@ -1817,11 +1817,14 @@ StpGroup::MSTP_segment_adv_state StpGroup::segAdvance(float &T,MSTP_segment* trb
 
     if(eqvcur<minSpeed)eqvcur=minSpeed;
 
+
   }
   else
   {
+
     if(info->dstanceWent!=0||vcur==0)
       vcur+=acc*T;
+
     {
 
 

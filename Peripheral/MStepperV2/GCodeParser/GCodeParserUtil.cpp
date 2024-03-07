@@ -219,111 +219,6 @@ int FindStr(const char *prefix,char **blkIdxes,int blkIdxesL,char* retStr)
 
 
 
-
-
-int axisGDX2IDX(char *GDXCode,int fallback)
-{
-  if(CheckHead(GDXCode,AXIS_GDX_X))
-  {
-    return AXIS_IDX_X;
-  }
-  else if(CheckHead(GDXCode,AXIS_GDX_Y))
-  {
-    return AXIS_IDX_Y;
-  }
-  else if(CheckHead(GDXCode,AXIS_GDX_Z))
-  {
-    return AXIS_IDX_Z;
-  }
-  else if(CheckHead(GDXCode,AXIS_GDX_A))
-  {
-    return AXIS_IDX_A;
-  }
-
-  else if(CheckHead(GDXCode,AXIS_GDX_Z1))
-  {
-    return AXIS_IDX_Z1;
-  }
-  else if(CheckHead(GDXCode,AXIS_GDX_R1))
-  {
-    return AXIS_IDX_R1;
-  }
-
-  else if(CheckHead(GDXCode,AXIS_GDX_Z2))
-  {
-    return AXIS_IDX_Z2;
-  }
-  else if(CheckHead(GDXCode,AXIS_GDX_R2))
-  {
-    return AXIS_IDX_R2;
-  }
-  
-  else if(CheckHead(GDXCode,AXIS_GDX_Z3))
-  {
-    return AXIS_IDX_Z3;
-  }
-  else if(CheckHead(GDXCode,AXIS_GDX_R3))
-  {
-    return AXIS_IDX_R3;
-  }
-
-  else if(CheckHead(GDXCode,AXIS_GDX_Z4))
-  {
-    return AXIS_IDX_Z4;
-  }
-  else if(CheckHead(GDXCode,AXIS_GDX_R4))
-  {
-    return AXIS_IDX_R4;
-  }
-
-  if(CheckHead(GDXCode,AXIS_GDX_FEEDRATE))
-  {
-    return AXIS_IDX_FEEDRATE;
-  }
-  if(CheckHead(GDXCode,AXIS_GDX_ACCELERATION))
-  {
-    return AXIS_IDX_ACCELERATION;
-  }
-  if(CheckHead(GDXCode,AXIS_GDX_DEACCELERATION))
-  {
-    return AXIS_IDX_DEACCELERATION;
-  }
-  if(CheckHead(GDXCode,AXIS_GDX_FEED_ON_AXIS))
-  {
-    return AXIS_IDX_FEED_ON_AXIS;
-  }
-
-  return fallback;
-}
-
-const char* axisIDX2GDX(int IDXCode)
-{
-  switch(IDXCode)
-  {
-
-    case AXIS_IDX_X:return AXIS_GDX_X;
-    case AXIS_IDX_Y:return AXIS_GDX_Y;
-    case AXIS_IDX_Z:return AXIS_GDX_Z;
-    case AXIS_IDX_A:return AXIS_GDX_A;
-    case AXIS_IDX_Z1:return AXIS_GDX_Z1;
-    case AXIS_IDX_R1:return AXIS_GDX_R1;
-    case AXIS_IDX_Z2:return AXIS_GDX_Z2;
-    case AXIS_IDX_R2:return AXIS_GDX_R2;
-    case AXIS_IDX_Z3:return AXIS_GDX_Z3;
-    case AXIS_IDX_R3:return AXIS_GDX_R3;
-    case AXIS_IDX_Z4:return AXIS_GDX_Z4;
-    case AXIS_IDX_R4:return AXIS_GDX_R4;
-
-    case AXIS_IDX_FEEDRATE:return AXIS_GDX_FEEDRATE;
-    case AXIS_IDX_ACCELERATION:return AXIS_GDX_ACCELERATION;
-    case AXIS_IDX_DEACCELERATION:return AXIS_GDX_DEACCELERATION;
-    case AXIS_IDX_FEED_ON_AXIS:return AXIS_GDX_FEED_ON_AXIS;
-  }
-  return NULL;
-}
-
-
-
 int ReadxVecELE_toPulses(char **blkIdxes,int blkIdxesL,xVec_f &retVec,int axisIdx,const char* axisGIDX)
 {
 
@@ -333,31 +228,6 @@ int ReadxVecELE_toPulses(char **blkIdxes,int blkIdxesL,xVec_f &retVec,int axisId
   int ret = FindFloat(axisGIDX,blkIdxes,blkIdxesL,num);
   if(ret)return ret;
   v=num;
-  return 0;
-}
-
-
-int ReadxVec_fData(char **blkIdxes,int blkIdxesL,xVec_f &retVec)
-{
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_X,AXIS_GDX_X);
-
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Y,AXIS_GDX_Y);
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z,AXIS_GDX_Z);
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_A,AXIS_GDX_A);
-
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z1,AXIS_GDX_Z1);
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R1,AXIS_GDX_R1);
-  
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z2,AXIS_GDX_Z2);
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R2,AXIS_GDX_R2);
-
-  
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z3,AXIS_GDX_Z3);
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R3,AXIS_GDX_R3);
-
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_Z4,AXIS_GDX_Z4);
-  ReadxVecELE_toPulses(blkIdxes,blkIdxesL,retVec,AXIS_IDX_R4,AXIS_GDX_R4);
-
   return 0;
 }
 
@@ -454,60 +324,43 @@ MSTP_segment_extra_info ReadSegment_extra_info(char **blkIdxes,int blkIdxesL)
   return sei;
 }
 
-int ReadGVecData(char **blkIdxes,int blkIdxesL,xVec_f &vec,MSTP_segment_extra_info *moveInfo)
+
+
+
+
+
+int axisGDX2IDX(char *GDXCode,int fallback)
 {
-
-  // vec=vecSub(MTPSYS_getLastLocInStepperSystem(),pulse_offset);
-  ReadxVec_fData(blkIdxes,blkIdxesL,vec);
-
-  if(moveInfo==NULL)return 0;
-
-  moveInfo->speed=NAN;
-  moveInfo->acc=NAN;
-  moveInfo->deacc=NAN;
-  moveInfo->speedOnAxisIdx=-1;
-
+  if(CheckHead(GDXCode,AXIS_GDX_FEEDRATE))
   {
-    float tmpF=NAN;
-    int ret = FindFloat(AXIS_GDX_FEEDRATE,blkIdxes,blkIdxesL,tmpF);
-    if(ret==0)
-    {
-      moveInfo->speed=tmpF;
-    }
+    return AXIS_IDX_FEEDRATE;
+  }
+  if(CheckHead(GDXCode,AXIS_GDX_ACCELERATION))
+  {
+    return AXIS_IDX_ACCELERATION;
+  }
+  if(CheckHead(GDXCode,AXIS_GDX_DEACCELERATION))
+  {
+    return AXIS_IDX_DEACCELERATION;
+  }
+  if(CheckHead(GDXCode,AXIS_GDX_FEED_ON_AXIS))
+  {
+    return AXIS_IDX_FEED_ON_AXIS;
   }
 
-  {
-    float tmpF=NAN;
-    int ret = FindFloat(AXIS_GDX_ACCELERATION,blkIdxes,blkIdxesL,tmpF);
-    if(ret==0)
-    {
-      moveInfo->acc=tmpF;
-    }
-  }
-
-  {
-    float tmpF=NAN;
-    int ret = FindFloat(AXIS_GDX_DEACCELERATION,blkIdxes,blkIdxesL,tmpF);
-    if(ret==0)
-    {
-      moveInfo->acc=tmpF;
-    }
-  }
-
-
-  {
-
-    char AxisCode[10];
-    if(FindStr(AXIS_GDX_FEED_ON_AXIS,blkIdxes,blkIdxesL,AxisCode)==0)
-    {
-      moveInfo->speedOnAxisIdx=axisGDX2IDX(AxisCode,-1);
-    }
-  }
-
-
-
-  return 0;
+  return fallback;
 }
 
+const char* axisIDX2GDX(int IDXCode)
+{
+  switch(IDXCode)
+  {
 
+    case AXIS_IDX_FEEDRATE:return AXIS_GDX_FEEDRATE;
+    case AXIS_IDX_ACCELERATION:return AXIS_GDX_ACCELERATION;
+    case AXIS_IDX_DEACCELERATION:return AXIS_GDX_DEACCELERATION;
+    case AXIS_IDX_FEED_ON_AXIS:return AXIS_GDX_FEED_ON_AXIS;
+  }
+  return NULL;
+}
 
