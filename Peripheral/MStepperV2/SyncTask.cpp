@@ -29,6 +29,7 @@ extern "C" {
 
 
 
+
 void genMachineSetup(JsonDocument &jdoc);
 void setMachineSetup(JsonDocument &jdoc);
 bool doDataLog=false;
@@ -78,7 +79,6 @@ MData_JR djrl;
 
 int HACK_cur_cmd_id=-1;
 
-
 void G_LOG(const char* str)
 {
   djrl.dbg_printf(str);
@@ -115,10 +115,15 @@ enum MSTP_SegCtx_TYPE{
   IO_CTRL=1,
   INPUT_MON_CTRL=2,
   ON_TIME_REPLY=3,
+
+
+  
   HALT_UNTIL_TRACKING_SATTLED=14,
+  ASSERT_TRACKING_SATTLED=15,
 
   TRACKING_PROGRESS=50,
 
+  GENERIC=999,
 };
 
 
@@ -174,6 +179,16 @@ struct MSTP_SegCtx_TrackingInfo{
   float *p_ctrl_progress;
 };
 
+struct MSTP_SegCtx_Generic{
+  void* obj;
+};
+
+
+
+struct MSTP_SegCtx_TrackingHoldUntil{
+  int id;
+};
+
 
 
 struct MSTP_SegCtx_TargetTrackingTransition{
@@ -192,15 +207,18 @@ struct MSTP_SegCtx{
     struct MSTP_SegCtx_INPUTMON INPUT_MON;
     struct MSTP_SegCtx_OnTimeReply ON_TIME_REP;
     struct MSTP_SegCtx_TrackingInfo TRACKING_INFO;
+    struct MSTP_SegCtx_Generic Generic;
+    struct MSTP_SegCtx_TrackingHoldUntil TRACKING_HOLD_UNTIL;
   };
-  char TTAG[40];
-  int TID;
+  // char TTAG[40];
+  // int TID;
 };
 
 
 const int SegCtxSize=10;
 ResourcePool<MSTP_SegCtx>::ResourceData resbuff[SegCtxSize];
 ResourcePool <MSTP_SegCtx>sctx_pool(resbuff,SegCtxSize);
+
 
 
 class GCodeParser_M:public GCodeParser{
@@ -303,7 +321,20 @@ extern void __digitalWrite(uint8_t pin, uint8_t val)
 }
 
 
+void dbg_msg_sendQ(std::string msg)
+{
 
+  struct Mstp2CommInfo tinfo={
+  .type=Mstp2CommInfo_Type::ext_log,
+  };
+
+  strncpy(tinfo.strinfo,msg.c_str(),sizeof(tinfo.strinfo)-1);
+
+  Mstp2CommInfo* Qhead=NULL;
+  while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+  *Qhead=tinfo;
+  Mstp2CommInfoQ.pushHead();
+}
 
 
 uint64_t SystemTick=0;
@@ -319,7 +350,7 @@ static SemaphoreHandle_t SeqCalcTaskLock;
 class PulseGenerator_M :public PulseGenerator
 {
 public:
-  PulseGenerator_M():PulseGenerator()
+  PulseGenerator_M( ):PulseGenerator()
   {
   }
 
@@ -342,7 +373,8 @@ public:
   }
 
 
-  uint32_t static_Pin_info=0;
+  uint32_t static_Pin_info0=0;
+  uint32_t static_Pin_info1=0;
 
   uint32_t _latest_stp_pins=0;//info in the register
   uint32_t _latest_dir_pins=0;
@@ -378,8 +410,8 @@ public:
 
     int groupCount=3;
     int groupIdx=groupCount-1;
-    spi1->host->hw->data_buf[groupIdx--]=ENDIAN_SWITCH(portPins);
-    spi1->host->hw->data_buf[groupIdx--]=ENDIAN_SWITCH(static_Pin_info);
+    spi1->host->hw->data_buf[groupIdx--]=ENDIAN_SWITCH(portPins^static_Pin_info0);
+    spi1->host->hw->data_buf[groupIdx--]=ENDIAN_SWITCH(static_Pin_info1);
     
     GPIOLS32_SET(pin_SH_165);//switch to keep in 165 register(stop 165 load pin to reg)
     GPIOLS32_CLR(pin_TRIG_595);//
@@ -416,10 +448,10 @@ public:
 PulseGenerator_M PG_M;
 
 MStpV2 mstpV2(&PG_M);
-uint32_t cp0_regs[18];
 
 void IRAM_ATTR onTimer()
 {
+  // static uint32_t cp0_regs[18];
   // enable FPU
   // xthal_set_cpenable(1);
   // // Save FPU registers
@@ -771,7 +803,6 @@ class StpGroup_SIMP:public StpGroup
 
 
 
-
   const int CMD_VEC_DIM=sizeof(CMDVec)/sizeof(float);
 
 
@@ -858,6 +889,16 @@ system tick -> update() -> latestAdvLocation=segAdvance() -> curMotLoc_unit=inve
 
 
 
+  struct CTX_TrackingInfo{
+    CMDVec Pr;
+    void (*PtF)(float* retLoc, float*params);
+    float param[5];
+    float acc,deacc,vcen;
+    StpGroup_SIMP *self;
+  };
+
+  std::array<ResourcePool<CTX_TrackingInfo>::ResourceData,10> trackingInfoCTXBuffer;
+
 
   struct TrackingInfo{
 
@@ -888,13 +929,15 @@ system tick -> update() -> latestAdvLocation=segAdvance() -> curMotLoc_unit=inve
 
 
   };
+public:
+
+  ResourcePool <CTX_TrackingInfo>trackingInfoCTX_pool;
 
   TrackingInfo trackingInfo;
 
 
 
-public:
-  StpGroup_SIMP():StpGroup()
+  StpGroup_SIMP():StpGroup(),trackingInfoCTX_pool(trackingInfoCTXBuffer.data(),trackingInfoCTXBuffer.size())
   {
 
     // memset(outputHist.buff,0,outputHist.capacity()*sizeof(RXVec));
@@ -1005,6 +1048,7 @@ public:
         if(((PG_M.latest_input_pins>>hP.sensorPin)&1)==hP.sensorSense)
         {
           hP.status=Forward;
+          ccc=0;
         }
         else
         {
@@ -1016,7 +1060,14 @@ public:
         // if(ccc--<0)
         if(((PG_M.latest_input_pins>>hP.sensorPin)&1)!=hP.sensorSense)
         {
-          hP.status=FineBack;
+          if(ccc++<200)//overshoot slowly
+          {
+            curMotLoc_unit.vec[hP.axisIdx]-=hP.speed_fine*T;
+          }
+          else
+          {
+            hP.status=FineBack;
+          }
         }
         else
         {
@@ -1072,6 +1123,8 @@ public:
   void update()//every system tick, update the location
   {
     updateCount=(updateCount+1)%100000;
+
+    // CTX_TrackingInfo *ti=TrackingInfoQ.getTail();
     do{
       if(homingCMDID!=-1)
       {
@@ -1079,7 +1132,7 @@ public:
         if(homingSeq.size()==0)
         {
 
-          {//set homing actual location
+          {//set homing preset location
             curMotLoc_unit.vec[0]=ArmHomingAngle;//R
             curMotLoc_unit.vec[1]=20;//Z
             curMotLoc_unit.vec[2]=-20;//X
@@ -1122,182 +1175,78 @@ public:
 
 
 
-      float T=mstpV2.updatePeriod_s;
-      MSTP_segment*curSeg= segAdvance(T);//The T will be updated to the time that used
-      if(curSeg==NULL)
-      {
-        // adv_info.dstanceWent=0;
-        break;
-      }
+      float T=0;
+      float timeLeft=mstpV2.updatePeriod_s;
 
-      CMDVec newAdvLocation={{0}};
-      if(curSeg->type==MSTP_segment_type::seg_wait)
+      while(T!=timeLeft)//keep update until the time is used up
       {
-        if(curSeg->ctx!=NULL)
+        timeLeft-=T;
+        T=timeLeft;
+        MSTP_segment*curSeg= segAdvance(T);//The T will be updated to the time that used
+
+
+        // if(ti!=NULL)
+        // {
+        //   if(ti->targetSeg==curSeg)//could be NULL match as well
+        //   {
+        //     //load the tracking info
+        //     loadNextTracking(ti);
+        //     TrackingInfoQ.consumeTail();//tail remove
+        //     ti=TrackingInfoQ.getTail();//load next
+        //   }
+        // }
+        if(curSeg==NULL)
         {
-          MSTP_SegCtx *p_res=(MSTP_SegCtx *)curSeg->ctx;
-          if(p_res->type==MSTP_SegCtx_TYPE::HALT_UNTIL_TRACKING_SATTLED )
-          {
-            if(trackingInfo.progress==-1)//sattled
-            {
-              adv_info.dstanceWent=curSeg->distanceEnd=-1;//this will end the seg_wait, next update will get a new seg
-            }
-          }
+          // adv_info.dstanceWent=0;
+          break;
         }
 
-        break;
-
-      }
-      else if(curSeg->type==MSTP_segment_type::seg_line)
-      {
-        float ratio=adv_info.dstanceWent/(curSeg->Edistance);
-        for(int i=0;i<CMD_VEC_DIM;i++)
+        if(curSeg->type==MSTP_segment_type::seg_wait)
         {
-          newAdvLocation.vec[i]=curSeg->vec[i]*(ratio)+curSeg->sp[i];
-        }
-        latestAdvLocation=newAdvLocation;
-
-
-      }
-      else  if(curSeg->type==MSTP_segment_type::seg_arc)
-      {
-        // latestResultAdvLocation=newAdvLocation=cubicBezier_comp(curSeg,adv_info.dstanceWent);
-
-        cubicBezier_comp(newAdvLocation.vec,CMD_VEC_DIM,curSeg,adv_info.dstanceWent);
-        latestAdvLocation=newAdvLocation;
-
-      }
-
-
-
-      //if the time segment time is not completely used
-      //for example, each time segment is 1ms, but previous update only use 0.5ms
-      //then we need to get new update until the time is completely used,
-      //here I just assume another update would just enough, but theoretically, it may need more than 1 update
-      if(T!=mstpV2.updatePeriod_s)
-      {
-
-        //dbg info print
-        if(0){
-
-          Mstp2CommInfo* Qhead=NULL;
+          if(curSeg->ctx!=NULL)
           {
-            while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
-            Qhead->type=Mstp2CommInfo_Type::ext_log;
-            
-
-            uint32_t curAddr=(0xFFF&(uint32_t)curSeg);
-            int strPadding=0;
-            strPadding+= sprintf(Qhead->strinfo+strPadding,"EL_%d:%0.2f,%0.2f  ",curSeg->type,
-              newAdvLocation.vec[0],newAdvLocation.vec[1]);
-
-            strPadding+= sprintf(Qhead->strinfo+strPadding,"v:%0.1f:%0.1f>%0.1f  curAddr:%d",curSeg->vcur,curSeg->vcen,curSeg->vto,curAddr);
-
-
-            Mstp2CommInfoQ.pushHead();
-
+            MSTP_SegCtx *p_res=(MSTP_SegCtx *)curSeg->ctx;
+            if(p_res->type==MSTP_SegCtx_TYPE::HALT_UNTIL_TRACKING_SATTLED )
+            {
+              if(trackingInfo.progress==-1)//sattled
+              {
+                adv_info.dstanceWent=curSeg->distanceEnd=-1;//this will end the seg_wait, next update will get a new seg
+              }
+            }
           }
 
+          break;
 
+        }
+        else if(curSeg->type==MSTP_segment_type::seg_line)//linear interpolation
+        {
+          float ratio=adv_info.dstanceWent/(curSeg->Edistance);
+          for(int i=0;i<CMD_VEC_DIM;i++)
           {
-            while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);Qhead->type=Mstp2CommInfo_Type::ext_log;
-  
-            int strPadding=0;
-
-            strPadding+= sprintf(Qhead->strinfo+strPadding,"d:%0.1f/%0.1f",
-            adv_info.dstanceWent,curSeg->Edistance);
-
-            strPadding+= sprintf(Qhead->strinfo+strPadding,"a:%0.1f,%0.1f",
-            curSeg->acc,
-            curSeg->deacc);
-
-            Mstp2CommInfoQ.pushHead();
+            latestAdvLocation.vec[i]=curSeg->vec[i]*(ratio)+curSeg->sp[i];
           }
 
 
         }
+        else  if(curSeg->type==MSTP_segment_type::seg_arc)//cubic bezier interpolation
+        {
+          cubicBezier_comp(latestAdvLocation.vec,CMD_VEC_DIM,curSeg,adv_info.dstanceWent);
 
+        }
 
-
-
-        do{
-          float leftT=mstpV2.updatePeriod_s-T;
-          T=leftT;
-          MSTP_segment*nxtSeg= segAdvance(T);
-          if(nxtSeg==NULL || (nxtSeg->type!=MSTP_segment_type::seg_line && nxtSeg->type!=MSTP_segment_type::seg_arc))
-          {
-            break;
-          }
-
-
-          if(nxtSeg->type==MSTP_segment_type::seg_line)
-          {
-
-            float ratio=adv_info.dstanceWent/(nxtSeg->Edistance);
-            for(int i=0;i<CMD_VEC_DIM;i++)
-            {
-              newAdvLocation.vec[i]=nxtSeg->vec[i]*(ratio)+nxtSeg->sp[i];
-            }
-
-            latestAdvLocation=newAdvLocation;
-
-          }
-          else  if(curSeg->type==MSTP_segment_type::seg_arc)
-          {
-            // latestResultAdvLocation=newAdvLocation=cubicBezier_comp(curSeg,adv_info.dstanceWent);
-
-            cubicBezier_comp(newAdvLocation.vec,CMD_VEC_DIM,curSeg,adv_info.dstanceWent);
-            latestAdvLocation=newAdvLocation;
-
-          }
-
-          //dbg info print
-          if(0){
-
-            Mstp2CommInfo* Qhead=NULL;
-
-            {
-              while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);Qhead->type=Mstp2CommInfo_Type::ext_log;
-    
-              int strPadding=0;
-              strPadding+= sprintf(Qhead->strinfo+strPadding,"SL_%d:%0.2f,%0.2f  ",nxtSeg->type,
-                newAdvLocation.vec[0],newAdvLocation.vec[1]);
-
-              strPadding+= sprintf(Qhead->strinfo+strPadding,"v:%0.1f:%0.1f>%0.1f",nxtSeg->vcur,nxtSeg->vcen,nxtSeg->vto);
-
-              Mstp2CommInfoQ.pushHead();
-
-
-            }
-            if(1){
-              while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);Qhead->type=Mstp2CommInfo_Type::ext_log;
-    
-              int strPadding=0;
-
-              strPadding+= sprintf(Qhead->strinfo+strPadding,"d:%0.1f/%0.1f",
-              adv_info.dstanceWent,nxtSeg->Edistance);
-
-              strPadding+= sprintf(Qhead->strinfo+strPadding,"a:%0.1f,%0.1f",
-              nxtSeg->acc,
-              nxtSeg->deacc);
-
-              Mstp2CommInfoQ.pushHead();
-            }
-
-
-          }
-
-
-
-
-        }while(0);
 
       }
-      
+
     }while(0);
 
 
+    if(homingFlag==false)return;//
+
+
+
+
     latestAdvLocation_postTracking=latestAdvLocation;
+
 
     {//tracking process
       //P=Pc+(Pt0-Pr0)*(1-progress)+(Pt1-Pr1)*progress
@@ -1415,6 +1364,7 @@ public:
 
   void motUnit2PulseConversion(int32_t *dst,float *src)
   {
+    
     dst[0]=(int32_t)(src[0]*1600*5/(2*3.14159));//R  arcDeg angle to steps
     dst[1]=(int32_t)(src[1]*1600/60);//Z  mm to steps
     dst[2]=(int32_t)(src[2]*3200/17);//X  mm to steps
@@ -1427,7 +1377,16 @@ public:
     dst[2]=((float)src[2]*17/3200);//X  steps to mm
   }
 
+  void EM_STOP()
+  {
+    homingFlag=false;
+    trackingInfo.PtF0=trackingInfo.PtF1=NULL;
+    segs.clear();
 
+
+
+    dbg_msg_sendQ("EM_STOP");
+  }
 
   virtual void getMotMoveVec(xVec_f *mot_vec_dst)
   {
@@ -1530,14 +1489,22 @@ public:
     CB_Count+=100;
     MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
     if(p_res==NULL)return -1;
-    
     if(p_res->IO_CTRL.S){
-      GPIOLS32_SET(p_res->IO_CTRL.P);
+      PG_M.static_Pin_info0|=((uint32_t)1)<<p_res->IO_CTRL.P;
     }
     else
     {
-      GPIOLS32_CLR(p_res->IO_CTRL.P);
+      PG_M.static_Pin_info0&=~(((uint32_t)1)<<p_res->IO_CTRL.P);
     }
+
+    
+    // if(p_res->IO_CTRL.S){
+    //   GPIOLS32_SET(p_res->IO_CTRL.P);
+    // }
+    // else
+    // {
+    //   GPIOLS32_CLR(p_res->IO_CTRL.P);
+    // }
     
     seg->ctx=NULL;
     sctx_pool.returnResource(p_res);
@@ -1587,7 +1554,85 @@ public:
   }
 
 
+  static int instTrackingCMDEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  {
+    CB_Count+=1;
+    MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
+    if(p_res==NULL)return -1;
 
+    CTX_TrackingInfo *ti=(CTX_TrackingInfo *)p_res->Generic.obj;
+    
+    StpGroup_SIMP::TrackingInfo &trackingInfo=ti->self->trackingInfo;
+
+
+    ti->self->loadNextTracking(ti);
+    
+  
+    ti->self->trackingInfoCTX_pool.returnResource(ti);
+    p_res->Generic.obj=NULL;
+    sctx_pool.returnResource(p_res);
+    seg->ctx=NULL;
+    return 0;
+  }
+
+
+
+
+
+  void loadNextTracking(CTX_TrackingInfo *ti)
+  {
+
+    do{
+      if(trackingInfo.progress!=-1)
+      {
+        ti->self->EM_STOP();
+        break;
+      }
+
+
+      {//Init trackingInfo movParam & advInfo
+
+        trackingInfo.movParam.type=MSTP_segment_type::seg_line;
+
+
+        trackingInfo.movParam.vcur=
+        trackingInfo.movParam.vto=0;
+
+        trackingInfo.movParam.distanceStart=0;
+
+        trackingInfo.movParam.ctx=NULL;
+        trackingInfo.movParam.startCB=
+        trackingInfo.movParam.endCB=NULL;
+
+
+
+
+        trackingInfo.advInfo.deaWeagle=1.2;
+        trackingInfo.advInfo.magicSpace=0,
+        trackingInfo.advInfo.minSpeed=5,
+        trackingInfo.advInfo.inInDAcc=false,
+        trackingInfo.advInfo.dstanceWent=0;
+      }
+
+      
+
+      trackingInfo.PtF1=ti->PtF;
+      trackingInfo.Pr1=ti->Pr;
+      memcpy(trackingInfo.param1,ti->param,sizeof(trackingInfo.param1));
+      trackingInfo.movParam.vcen=ti->vcen;
+      trackingInfo.movParam.deacc=ti->deacc;
+      trackingInfo.movParam.acc=ti->acc;
+
+      trackingInfo.movParam.Edistance=
+      trackingInfo.movParam.distanceEnd=1000;
+
+
+      trackingInfo.progress=0;//kick start the tracking process
+
+
+
+    }while(0);
+  }
 
 
 
@@ -1605,6 +1650,60 @@ public:
     return 0;
   }
 
+
+
+  static int TrackingHoldUntilEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  {
+    CB_Count+=10000;
+    MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
+    if(p_res==NULL)return -1;
+
+
+    if(p_res->TRACKING_HOLD_UNTIL.id>=0)
+    {
+
+      struct Mstp2CommInfo tinfo={
+      .type=Mstp2CommInfo_Type::respFrame,
+      .isAck=true,
+      .resp_id=p_res->TRACKING_HOLD_UNTIL.id
+      };
+
+      {
+        Mstp2CommInfo* Qhead=NULL;
+        while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
+        *Qhead=tinfo;
+        Mstp2CommInfoQ.pushHead();
+      }
+
+    }
+
+
+    p_res->isProcessed=true;
+    seg->ctx=NULL;
+    sctx_pool.returnResource(p_res);
+    return 0;
+  }
+
+  static int AssertTrackingSattledEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  {
+    CB_Count+=10000;
+    MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
+    if(p_res==NULL)return -1;
+    StpGroup_SIMP *self=(StpGroup_SIMP *)p_res->Generic.obj;
+
+    do{
+      if(self->trackingInfo.progress!=-1)
+      {
+        self->EM_STOP();
+        break;
+      }
+    }while(0);
+
+
+    seg->ctx=NULL;
+    sctx_pool.returnResource(p_res);
+    return 0;
+  }
 
 
   MSTP_segment_extra_info latestExtInfo={
@@ -1653,7 +1752,12 @@ public:
 
         return  GCodeParser::GCodeParser_Status::TASK_OK_HOLD_RSP;
       }
-      else if(CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))
+      if(homingFlag==false)
+      {
+        cmd_ret["msg"]="homingFlag==false";
+        return GCodeParser::GCodeParser_Status::TASK_FATAL_FAILED;
+      }
+      if(CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))
       {
         __PRT_D_("G1 baby!!!\n");
 
@@ -1736,6 +1840,11 @@ public:
     }
     else if(cblk[0]=='M')
     {
+      if(homingFlag==false)
+      {
+        cmd_ret["msg"]="homingFlag==false";
+        return GCodeParser::GCodeParser_Status::TASK_FATAL_FAILED;
+      }
       if(CheckHead(cblk, "M42 "))//IO ctrl
       { 
         float P=NAN;
@@ -1793,9 +1902,9 @@ public:
         // cmd_ret["Z"]=curMotLoc_unit.vec[1];
         // cmd_ret["X"]=curMotLoc_unit.vec[2];
         
-        cmd_ret["Rp"]=preMotloc_pls.vec[0];
-        cmd_ret["Zp"]=preMotloc_pls.vec[1];
-        cmd_ret["Xp"]=preMotloc_pls.vec[2];
+        // cmd_ret["Rp"]=preMotloc_pls.vec[0];
+        // cmd_ret["Zp"]=preMotloc_pls.vec[1];
+        // cmd_ret["Xp"]=preMotloc_pls.vec[2];
 
         return  GCodeParser::GCodeParser_Status::TASK_OK;
       }
@@ -2021,6 +2130,13 @@ public:
       cmd_ret["X"]=mot_vec[2];
     }
 
+
+    if(homingFlag==false)
+    {
+      cmd_ret["msg"]="homingFlag==false";
+      return GCodeParser::GCodeParser_Status::TASK_FATAL_FAILED;
+    }
+
     //return trackingInfo.progress
     if(strcmp(type,"TRACKING_PROGRESS")==0)
     {
@@ -2036,7 +2152,141 @@ public:
       return GCodeParser::GCodeParser_Status::TASK_OK;
     }
 
+
+
     if(strcmp(type,"TargetTrack")==0)
+    {
+
+
+      int trackIdx=-1;
+      if(cmdData["trackIdx"].is<float>())
+        trackIdx=cmdData["trackIdx"];
+      else
+      {
+        cmd_ret["msg"]="trackIdx is needed";
+        return GCodeParser::GCodeParser_Status::PARAM_PARSE_ERROR;
+      }
+      
+
+      //get the latst seq pointer in the queue
+
+
+      CTX_TrackingInfo tinfo;
+
+      if(trackIdx==0)
+      {
+        tinfo.PtF=NULL;
+      }
+      else if(trackIdx==1)
+      {
+        float plat_angle=NAN;
+        if(cmdData["plat_angle"].is<float>())
+          plat_angle=cmdData["plat_angle"];
+        
+        float obj_x=NAN;
+        if(cmdData["obj_x"].is<float>())
+          obj_x=cmdData["obj_x"]; 
+
+        float obj_y=NAN;
+        if(cmdData["obj_y"].is<float>())
+          obj_y=cmdData["obj_y"];
+
+        if(plat_angle!=plat_angle || obj_x!=obj_x || obj_y!=obj_y)
+        {
+          cmd_ret["msg"]="plat_angle obj_x obj_y are needed";
+          return GCodeParser::GCodeParser_Status::PARAM_PARSE_ERROR;
+        }
+
+        PlateObjLocParamExtract(tinfo.param,obj_x,obj_y,latestCMDLocation.vec[2],plat_angle);
+
+        tinfo.PtF=PlateObjLocGet;
+
+      }
+
+      {
+        float gox=NAN;
+        if(cmdData["X"].is<float>())
+          gox=cmdData["X"]; 
+
+        float goy=NAN;
+        if(cmdData["Y"].is<float>())
+          goy=cmdData["Y"];
+
+        if(goy!=goy || gox!=gox)
+        {
+          cmd_ret["msg"]="target X,Y are needed";
+          return GCodeParser::GCodeParser_Status::PARAM_PARSE_ERROR;
+        }
+
+
+        tinfo.Pr=latestCMDLocation;
+        tinfo.Pr.vec[0]=gox;
+        tinfo.Pr.vec[1]=goy;
+      }
+
+
+      MSTP_segment_adv_info _advInfo;
+      MSTP_segment _movParam;
+      {
+
+        _movParam.type=MSTP_segment_type::seg_line;
+
+        // float transitionTime=1000;
+        float acc=1000;
+        float deacc=-1000;
+        float vcen=1000;
+
+        if(cmdData["acc"].is<float>())
+          acc=cmdData["acc"];
+        if(acc<0)acc=-acc;
+
+
+        deacc=-1000;
+        if(cmdData["deacc"].is<float>())
+          deacc=cmdData["deacc"];
+        else
+          deacc=acc;
+        if(deacc>0)deacc=-deacc;
+
+        vcen=1000;
+        if(cmdData["f"].is<float>())
+          vcen=cmdData["f"];
+
+        tinfo.acc=acc;
+        tinfo.deacc=deacc;
+        tinfo.vcen=vcen;
+
+        tinfo.self=this;
+
+      }
+
+      CTX_TrackingInfo *p_tinfo;
+      // while( (p_tinfo=TrackingInfoQ.getHead()) ==NULL)yield();//wait until the queue is available
+      while((p_tinfo=trackingInfoCTX_pool.applyResource())==NULL)yield();
+      *p_tinfo=tinfo;
+
+
+      MSTP_SegCtx *p_res;
+      while((p_res=sctx_pool.applyResource())==NULL)yield();
+
+
+
+      
+      p_res->type=MSTP_SegCtx_TYPE::GENERIC;
+      p_res->Generic.obj=(void*)p_tinfo;
+
+      pushInInstant(NULL,instTrackingCMDEndCB,(void*)p_res);
+
+      return  GCodeParser::GCodeParser_Status::TASK_OK;
+
+
+
+
+
+  
+    }
+
+    if(strcmp(type,"TargetTrack.d")==0)
     {
       //The TargetFollow is to let effector follow the moving target location(Pt)
       //it will take the latest CMD location as the refrence point (Pr),
@@ -2052,6 +2302,7 @@ public:
       if(trackingInfo.progress!=-1)
       {
         //still in privious tracking progress
+        retdoc["progress"]=trackingInfo.progress;
         return GCodeParser::GCodeParser_Status::TASK_FAILED;
         // 
       }
@@ -2152,8 +2403,9 @@ public:
 
       
 
-      MSTP_SegCtx *p_res;
       int retryCount=0;
+      MSTP_SegCtx *p_res;
+
       while((p_res=sctx_pool.applyResource())==NULL)
       {
         if(retryCount++>100)
@@ -2170,6 +2422,25 @@ public:
     }
 
 
+
+    if(strcmp(type,"ASSERT_TargetTrack_sattled")==0)
+    {
+
+
+
+      MSTP_SegCtx *p_res;
+
+      while((p_res=sctx_pool.applyResource())==NULL) yield();
+
+      p_res->type=MSTP_SegCtx_TYPE::GENERIC;
+      p_res->Generic.obj=(void*)this;
+
+      
+      pushInInstant(NULL,AssertTrackingSattledEndCB,(void*)p_res);
+
+      return  GCodeParser::GCodeParser_Status::TASK_OK;
+    }
+
     if(strcmp(type,"TargetTrack_sattled")==0)
     {
       MSTP_SegCtx *p_res;
@@ -2183,11 +2454,34 @@ public:
       }
       p_res->type=MSTP_SegCtx_TYPE::HALT_UNTIL_TRACKING_SATTLED;
 
-
+      p_res->TRACKING_HOLD_UNTIL.id=-1;
       //-1 means halt forever
-      pushInPause(-1,NULL,CtxRecycleEndCB,(void*)p_res);
+      pushInPause(-1,NULL,TrackingHoldUntilEndCB,(void*)p_res);
 
       return  GCodeParser::GCodeParser_Status::TASK_OK;
+    }
+
+
+
+    if(strcmp(type,"TargetTrack_sattled.BLOCKING")==0)
+    {
+      MSTP_SegCtx *p_res;
+
+      int retryCount=0;
+      while((p_res=sctx_pool.applyResource())==NULL)
+      {
+        if(retryCount++>100)
+          return GCodeParser::GCodeParser_Status::TASK_FAILED;
+        yield();
+      }
+      p_res->type=MSTP_SegCtx_TYPE::HALT_UNTIL_TRACKING_SATTLED;
+
+      p_res->TRACKING_HOLD_UNTIL.id=cmdData["id"];
+
+      //-1 means halt forever
+      pushInPause(-1,NULL,TrackingHoldUntilEndCB,(void*)p_res);
+
+      return  GCodeParser::GCodeParser_Status::TASK_OK_HOLD_RSP;
     }
       
     return GCodeParser::GCodeParser_Status::TASK_UNSUPPORTED;
@@ -3068,7 +3362,7 @@ void loop()
         case Mstp2CommInfo_Type::ext_log :
         {
 
-          djrl.dbg_printf("%s",info.strinfo);
+          djrl.dbg_printf(info.strinfo);
 
           break;
         }
