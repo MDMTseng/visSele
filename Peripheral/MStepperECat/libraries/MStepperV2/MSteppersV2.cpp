@@ -31,16 +31,6 @@ char *int2bin(uint32_t a, int digits, char *buffer, int buf_size) {
     buffer++;
     return buffer;
 }
-char* toStr(const MSTP_SEG_PREFIX xVec &vec)
-{
-  static char buff[(MSTP_VEC_SIZE)*(10+2)];//format 3433, 43432 ....
-  char* ptr=buff;
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    ptr+=sprintf(ptr,"%d, ",vec.vec[i]);
-  }
-  return buff;
-}
 
 char *int2bin(uint32_t a, int digits) {
   static char binChar[64+1];
@@ -48,86 +38,6 @@ char *int2bin(uint32_t a, int digits) {
   return int2bin(a,digits, binChar, sizeof(binChar));
 }
 
-
-
-
-
-xVec_f vecSub(xVec_f v1,xVec_f v2)
-{
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    v1.vec[i]-=v2.vec[i];
-  }
-  return v1;
-}
-
-xVec_f vecAdd(xVec_f v1,xVec_f v2)
-{
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    v1.vec[i]+=v2.vec[i];
-  }
-  return v1;
-}
-
-xVec vecSub(xVec v1,xVec v2)
-{
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    v1.vec[i]-=v2.vec[i];
-  }
-  return v1;
-}
-
-xVec vecAdd(xVec v1,xVec v2)
-{
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    v1.vec[i]+=v2.vec[i];
-  }
-  return v1;
-}
-
-inline uint32_t vecMachStepCount(xVec vec,int *ret_idx=NULL)
-{
-  uint32_t maxDist=0;
-  int idx=-1;
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    int32_t dist = vec.vec[i];
-    if(dist<0)dist=-dist;
-    if(maxDist<dist)
-    {
-      idx=i;
-      maxDist=dist;
-    }
-  }
-  if(ret_idx)*ret_idx=idx;
-  return maxDist;
-}
-
-
-inline uint32_t vecMachStepCount(xVec v1,xVec v2,int *ret_idx=NULL)
-{
-  return vecMachStepCount(vecSub(v1 ,v2),ret_idx);
-}
-
-inline void vecAssign(MSTP_SEG_PREFIX xVec &to,MSTP_SEG_PREFIX xVec from)
-{
-  
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    to.vec[i]=from.vec[i];
-  }
-}
-inline void vecAssign_ref(MSTP_SEG_PREFIX xVec &to,MSTP_SEG_PREFIX xVec &from)
-{
-  
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    to.vec[i]=from.vec[i];
-  }
-}
 
 
 inline float totalTimeNeeded2(float V1,float a1,float VT, float V2, float a2,float D, float *ret_T1, float *ret_T2)
@@ -289,60 +199,6 @@ inline float SpeedFactor(float *vec,MSTP_axisSetup *axis_setup,int vecL,int *ret
 }
 
 
-inline float SpeedFactor(xVec vec,MSTP_axisSetup *axis_setup,int *ret_idx,int *ret_vidx=NULL)
-{
-  float maxDist=0;
-  float maxVDist=0;
-  int vidx=-1;
-  int idx=-1;
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    int32_t dist = vec.vec[i];
-    if(dist<0)dist=-dist;
-    float virtualDist=dist*axis_setup[i].V_Factor;
-    
-    if(maxVDist<virtualDist)
-    {
-      vidx=i;
-      maxVDist=virtualDist;
-    }
-    
-    if(maxDist<dist)
-    {
-      idx=i;
-      maxDist=dist;
-    }
-  }
-  if(ret_idx)*ret_idx=idx;
-  if(ret_vidx)*ret_vidx=vidx;
-  return maxDist/maxVDist;
-}
-
-inline float SpeedFactor_onRefAxis(xVec vec,MSTP_axisSetup *axis_setup,int *ret_idx,int ref_axis_idx)
-{
-  float maxDist=0;
-  float maxVDist= vec.vec[ref_axis_idx]*axis_setup[ref_axis_idx].V_Factor;
-  if(maxVDist<0)maxVDist=-maxVDist;
-  int idx=-1;
-
-
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    int32_t dist = vec.vec[i];
-    if(dist<0)dist=-dist;
-    
-    if(maxDist<dist)
-    {
-      idx=i;
-      maxDist=dist;
-    }
-  }
-
-  if(ret_idx)*ret_idx=idx;
-  return maxDist/maxVDist;
-}
-
-
 inline float SpeedFactor_onRefAxis(float *vec,MSTP_axisSetup *axis_setup,int vecL,int *ret_idx,int ref_axis_idx)
 {
   float maxDist=0;
@@ -378,30 +234,6 @@ inline float SpeedCap(float *vec,MSTP_axisSetup *axis_setup,int vecL,int phy_mai
   for(int i=0;i<vecL;i++)
   {
     int32_t dist = vec[i];
-    if(dist<0)dist=-dist;
-
-    float cur_allowed_MA_Speed=axis_setup[i].V_Max*mainDist/dist;
-    if(maxAllowed_MA_Speed>cur_allowed_MA_Speed )
-    {
-      maxAllowed_MA_Speed=cur_allowed_MA_Speed;
-    }
-  }
-
-  return maxAllowed_MA_Speed;
-}
-
-
-
-inline float SpeedCap(xVec vec,MSTP_axisSetup *axis_setup,int phy_main_axis,float main_axis_speed)
-{
-  float mainDist= vec.vec[phy_main_axis];
-  if(mainDist<0)mainDist=-mainDist;
-  int idx=-1;
-
-  float maxAllowed_MA_Speed=main_axis_speed;//on main axis
-  for(int i=0;i<MSTP_VEC_SIZE;i++)
-  {
-    int32_t dist = vec.vec[i];
     if(dist<0)dist=-dist;
 
     float cur_allowed_MA_Speed=axis_setup[i].V_Max*mainDist/dist;
@@ -1234,7 +1066,7 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
                 /                          \                             
              +-+                           +-+                           
              +^+  control point1           +^+   control point2                        
-             / [pt2 (ctrlpt0)]             \[pt3 (ctrlpt2)]        
+             / [pt2 (ctrlpt0)]                \[pt3 (ctrlpt2)]        
             /         ----------------\        \                         
            /    -----/                 --\      \                        
           /   -/               ---\       --\    \                       

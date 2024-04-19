@@ -2,8 +2,9 @@
 #define MSteppersV2_h
 
 
+//include int type
+#include <stdint.h>
 // #include <Arduino.h>
-#include "MSteppers_setup.h"
 #include "MStepperStruct.hpp"
 
 // 
@@ -15,7 +16,6 @@ extern "C" {
 #include <array>
 #include <vector>
 float totalTimeNeeded2(float V1,float a1,float VT, float V2, float a2,float D, float *ret_T1=NULL, float *ret_T2=NULL);
-int mainX();
 
 char *int2bin(uint32_t a, int digits, char *buffer, int buf_size);
 char *int2bin(uint32_t a, int digits=8);
@@ -28,16 +28,11 @@ char *int2bin(uint32_t a, int digits=8);
 #else
 #include <Arduino.h>
 #endif
-#include "PulseGenerator.hpp"
 
 // #include <ArduinoJson.h>
 float* vecAdd(float* vr,float* v1,float* v2,int dim);
 float* vecSub(float* vr,float* v1,float* v2,int dim);
 
-xVec_f vecAdd(xVec_f v1,xVec_f v2);
-xVec_f vecSub(xVec_f v1,xVec_f v2);
-xVec vecAdd(xVec v1,xVec v2);
-xVec vecSub(xVec v1,xVec v2);
 
 enum MSTP_segment_type { seg_line=0,seg_arc=1,seg_wait=100 ,seg_instant_act=150 };
 
@@ -123,7 +118,6 @@ struct MSTP_segment_extra_info
   float cornorR;
 
 };
-char* toStr(const MSTP_SEG_PREFIX xVec &vec);
 
 #define MSTP_ERR_CODE_PHY_LIMIT 1
 #define MSTP_ERR_CODE_SOFT_LIMIT 2
@@ -190,26 +184,6 @@ class StpGroup
   static MSTP_segment_adv_state segAdvance(float &T,MSTP_segment* trb,MSTP_segment_adv_info *info);
 };
 
-
-class MStpV2{
-
-public:
-
-  float updatePeriod_s=0.001;
-  PulseGenerator *pGen;
-
-  // std::array<StpGroup, 5> stepperGroup;
-
-  std::vector<StpGroup*> stepperGroup;
-
-  void SystemClear();
-
-  MStpV2(PulseGenerator *pGen)
-  {
-    this->pGen=pGen;
-  }
-
-};
 
 
 
