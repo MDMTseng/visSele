@@ -2040,9 +2040,16 @@ class APPMasterX extends React.Component {
         this.is_in_EM_STOP=false;
         this.EM_STOP_src_list=[];
       }
-      trigger_EM_STOP(keep_ms=1000)
+      trigger_EM_STOP(keep_ms)
       {
         this.is_in_EM_STOP=true;
+
+        if(keep_ms===undefined)
+        {
+          keep_ms=this.machineSetup.EM_STOP_keep_ms;//try to find the keep time from setup first
+          
+        }
+        if(keep_ms===undefined)keep_ms=2000;//if still unset use 2s keep time
         // this.is_in_EM_STOP_src="TRIG";
         this.send({"type":"EM_STOP","keep_ms":keep_ms},
         (ret)=>{
