@@ -44,6 +44,7 @@ endif()
 find_package(PkgConfig REQUIRED)
 
 
+
 # # set(PYTHON_EXECUTABLE "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.8/")
 # find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 # # pkg_search_module(LLL REQUIRED python3-embed)
@@ -73,10 +74,19 @@ find_package(PkgConfig REQUIRED)
 if(MSVC OR MSYS OR MINGW)
   set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
 elseif(APPLEARM64)
-  set(CMAKE_EXE_LINKER_FLAGS " -Wl,-framework,IOKit -Wl,-framework,CoreFoundation -Wl,-framework,Security")
+  set(CMAKE_EXE_LINKER_FLAGS " -Wl,-framework,IOKit -Wl,-framework,CoreFoundation -Wl,-framework,Security -framework AVFoundation")
 
   SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS}  -fobjc-arc  -fmodules -gfull")
   SET(PLAT_FILES  "PlatUtil/macUtil.mm")
+
+
+
+  message(STATUS "OpenCV_LIBS ${OpenCV_LIBS}")
+  foreach(lib ${OpenCV_LIBS})
+      get_target_property(lib_path ${lib} LOCATION)
+      message(STATUS "${lib} is located at ${lib_path}")
+  endforeach()
+
 elseif(APPLE)
 
 endif()
@@ -162,7 +172,7 @@ add_executable (visSele main.cpp wiringPanel.cpp wiringPanel_ext.cpp
 InspectionTarget/InspectionTarget.cpp 
 InspectionTarget/InspTar_Orientation_ColorRegionOval.cpp 
 InspectionTarget/InspTar_SpriteDraw.cpp 
-# InspectionTarget/InspTar_ImgSrc.cpp
+InspectionTarget/InspTar_ImgSrc.cpp
 InspectionTarget/InspTar_Orientation_ShapeBasedMatching.cpp
 InspectionTarget/InspTar_SurfaceCheckSimple.cpp
 InspectionTarget/InspTar_WBar_SizeComp.cpp
@@ -174,6 +184,7 @@ add_dependencies(visSele mod_target MatchingEngine shape_based_matching)
 
 
 target_link_libraries(visSele
+  PUBLIC OpenMP::OpenMP_CXX
   $ENV{MODULE_MatchingEngine}/libMatchingEngine.a
   $ENV{MODULE_circleFitting}/CircleFitting.a 
   $ENV{MODULE_cJSON}/cJSON.a 
@@ -191,10 +202,14 @@ target_link_libraries(visSele
   #$ENV{MODULE_zlib}/staticlib/libz.a
   $ENV{MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
-  ${OpenCV_LIBS}
+  # ${OpenCV_LIBS}
+  opencv_core
+  opencv_imgproc
+  opencv_imgcodecs opencv_calib3d
   # ${Python3_LIBRARIES}
   ${PLAT_LIBS}
   ${LINK_LIBS_CAMERA}
+  
   )
 
 include_directories (
@@ -232,11 +247,16 @@ include_directories (
   # ${pybind11_INCLUDE_DIRS}
   )
   
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+# set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE) 
+# set(CMAKE_INSTALL_RPATH "@rpath")
 
-set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE) 
-set(CMAKE_INSTALL_RPATH "@rpath")
+# set_target_properties(visSele PROPERTIES 
+#                       BUILD_WITH_INSTALL_RPATH TRUE 
+#                       INSTALL_RPATH "./")
+
 
 set_target_properties(visSele PROPERTIES 
-                      BUILD_WITH_INSTALL_RPATH TRUE 
-                      INSTALL_RPATH "./")
+                      INSTALL_RPATH "@executable_path/../contrib/libuvc/mac_arm64/;@executable_path/../contrib/aravis/mac_arm64/src;"
+                      BUILD_WITH_INSTALL_RPATH TRUE )

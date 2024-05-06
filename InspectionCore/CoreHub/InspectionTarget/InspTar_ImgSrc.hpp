@@ -26,10 +26,24 @@
 class InspectionTarget_ImgSrc :public InspectionTarget
 {
   protected:
+
+  void* cam_ctx=NULL;
+  int cam_stream_id=-1;
+
+  
+
+
+
+  string CAM_UID="";
+  struct CAM_FMT_INFO {
+    int w,h;
+    string fourCC;
+  };
+  CAM_FMT_INFO cam_fmt_info;
 public:
 
 
-  InspectionTarget_ImgSrc(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
+  InspectionTarget_ImgSrc(string id, cJSON *def, InspectionTargetManager *belongMan, std::string local_env_path);
 
   static string TYPE(){ return "ImgSrc"; }
   future<int> futureInputStagePool();

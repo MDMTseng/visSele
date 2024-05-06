@@ -3226,7 +3226,7 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
   std::string cache_mark="IMG_CACHE";
 
   std::mutex cacheQueue_lock;
-  std::array<std::shared_ptr<StageInfo>,100> cacheQueue_buff;
+  std::array<std::shared_ptr<StageInfo>,50> cacheQueue_buff;
   RingBufIdxCounter<int> cacheQueueRBC;
 
   static std::string TYPE(){ return "StageInfoImageSave"; }
@@ -4496,10 +4496,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             inspTar = new InspectionTarget_SpriteDraw(id,defInfo,&inspTarMan,env_path);
           }
-          // else if(type==InspectionTarget_ImgSrc::TYPE())
-          // {
-          //   inspTar = new InspectionTarget_ImgSrc(id,defInfo,&inspTarMan,env_path);
-          // }
+          else if(type==InspectionTarget_ImgSrc::TYPE())
+          {
+            inspTar = new InspectionTarget_ImgSrc(id,defInfo,&inspTarMan,env_path);
+          }
 
           
           else
