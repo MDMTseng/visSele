@@ -9,10 +9,14 @@
 #define __PRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
 
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6)
-const int O_CameraPin = 33;
-const int O_BackLight = 32;
-const int O_EM_STOP = 25;
-const int I_gate1Pin = 17;
+int O_CameraPin = 33;
+int O_BackLight = 32;
+int O_EM_STOP = 25;
+int O_BK_PIN = 26;
+
+
+
+int I_gate1Pin = 17;
 
 
 bool O_CameraPin_ON=true;
@@ -54,6 +58,12 @@ void genMachineSetup(JsonDocument &jdoc)
 #define JSON_SETIF_ABLE(tarVar,jsonObj,key) \
   {if(jsonObj[key].is<typeof(tarVar)>()  ) tarVar=jsonObj[key];}
 
+
+#define JSON_SETIF_ABLE_CMD(tarVar,jsonObj,key,CMD) \
+  {if(jsonObj[key].is<typeof(tarVar)>()  ) {tarVar=jsonObj[key]; CMD}}
+
+
+
 void setMachineSetup(JsonDocument &jdoc)
 {
   JSON_SETIF_ABLE(g_cam_trig_delay,jdoc,"cam_trig_delay");
@@ -70,6 +80,16 @@ void setMachineSetup(JsonDocument &jdoc)
   JSON_SETIF_ABLE(O_CameraPin_ON,jdoc,"O_CameraPin_ON");
   JSON_SETIF_ABLE(O_BackLight_ON,jdoc,"O_BackLight_ON");
   JSON_SETIF_ABLE(O_EM_STOP_ON,jdoc,"O_EM_STOP_ON");
+
+
+  JSON_SETIF_ABLE(O_BackLight,jdoc,"O_BackLight_PIN");
+  JSON_SETIF_ABLE(O_CameraPin,jdoc,"O_CameraPin_PIN");
+  JSON_SETIF_ABLE(O_EM_STOP,jdoc,"O_EM_STOP_PIN");
+
+
+  JSON_SETIF_ABLE(I_gate1Pin,jdoc,"I_gate1Pin_PIN");
+
+  
   JSON_SETIF_ABLE(I_gate1Pin_ON,jdoc,"I_gate1Pin_ON");
 
   {
@@ -401,6 +421,7 @@ void setup()
   pinMode(O_CameraPin, OUTPUT);
   pinMode(O_BackLight, OUTPUT);
   pinMode(O_EM_STOP, OUTPUT);
+  pinMode(O_BK_PIN, OUTPUT);
   
   pinMode(I_gate1Pin, INPUT_PULLUP);
   // Serial.begin(921600);
