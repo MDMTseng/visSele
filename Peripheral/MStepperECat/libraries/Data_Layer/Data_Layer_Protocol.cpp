@@ -169,10 +169,10 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
       {
         recvType=RTYPE::JSONRAW;
       }
-      // else if(c==' '||c=='\t'||c=='\n')
-      // {
-      //   continue;
-      // }
+      else if(c==' '||c=='\t'||c=='\n')//allow space in between
+      {
+        continue;
+      }
       else
       {
       //  printf("E:%d  %c\n",c,c);

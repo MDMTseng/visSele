@@ -254,7 +254,7 @@ int MData_JR::dbg_printf(const char *fmt, ...)
   char *str=dbgBuff;
   int restL=sizeof(dbgBuff);
   {//start head
-    int len=sprintf(str,"{\"dbg\":\"");
+    int len=sprintf(str,"{\"d\":\"");
     str+=len;
     restL-=len;
 
@@ -425,9 +425,10 @@ public:
   {
     return latestAdvLocation.vec;
   }
+  float turnNum=6400;
 
-  float tar_speed=0*3.14159/180;//5 deg/s
-  float acc=100/4*3.14159/180;//5 deg/s
+  float tar_speed=0*turnNum/360;//5 deg/s
+  float acc=100/4*turnNum/360;//5 deg/s
   float cur_speed=0;//5 deg/s
 
   bool updated=false;
@@ -454,15 +455,14 @@ public:
     memcpy(dst,src,sizeof(CMDVec));
   }
 
-  float reduction=60;
   void motUnit2PulseConversion(int32_t *pulse_dst,float *unit_src)
   {
-    pulse_dst[0]=(int32_t)(unit_src[0]*1600*reduction/(2*3.14159));
+    pulse_dst[0]=(int32_t)(unit_src[0]*6400/(turnNum));
   }
 
   void motPulse2UnitConversion(float *unit_dst,int32_t *pulse_src)
   {
-    unit_dst[0]=((float)pulse_src[0]*2*3.14159/1600/reduction);//R  steps to arcDeg angle
+    unit_dst[0]=((float)pulse_src[0]*turnNum/6400);//R  steps to arcDeg angle
   }
 
 
@@ -487,15 +487,15 @@ public:
 
 
     bool recalc=false;
-    if(latestAdvLocation.vec[0]>2*3.14159)//warp around
+    if(latestAdvLocation.vec[0]>turnNum)//warp around
     {
-      latestAdvLocation.vec[0]-=2*3.14159;
+      latestAdvLocation.vec[0]-=turnNum;
       turnCount++;
       recalc=true;
     }
     else if(latestAdvLocation.vec[0]<0)//warp around
     {
-      latestAdvLocation.vec[0]+=2*3.14159;
+      latestAdvLocation.vec[0]+=turnNum;
       turnCount--;
       recalc=true;
     }
@@ -716,7 +716,7 @@ system tick -> update() -> latestAdvLocation=segAdvance() -> curMotLoc_unit=inve
   std::vector<HomingSeq> homingSeq;
   // HomingSeq homingSeq[sizeof(RXVec)/sizeof(float)]={{HNOP,0,0,0,0,0}};
 
-  bool DBG_allowSkipHoming=false;
+  bool DBG_allowSkipHoming=true;
   MSTP_axisSetup _axisSetup[sizeof(CMDVec)/sizeof(float)];
 
 
@@ -795,7 +795,7 @@ public:
     axisSetup[0].A_Factor=1;
     axisSetup[0].V_Factor=1;
     axisSetup[0].MaxVJump=1;
-    axisSetup[0].V_Max=2000;
+    axisSetup[0].V_Max=5000;
     axisSetup[0].A_Max=100000;
 
 
@@ -813,15 +813,15 @@ public:
 
     if(DBG_allowSkipHoming)
     {
-      {//set homing actual location
-        curMotLoc_unit.vec[0]=ArmHomingAngle;//R
-        curMotLoc_unit.vec[1]=20;//Z
-        curMotLoc_unit.vec[2]=-20;//X
-        motUnit2PulseConversion(preMotloc_pls.vec,curMotLoc_unit.vec);
-      }
+      // {//set homing actual location
+      //   curMotLoc_unit.vec[0]=ArmHomingAngle;//R
+      //   curMotLoc_unit.vec[1]=20;//Z
+      //   curMotLoc_unit.vec[2]=-20;//X
+      //   motUnit2PulseConversion(preMotloc_pls.vec,curMotLoc_unit.vec);
+      // }
 
-      forward(latestAdvLocation.vec,curMotLoc_unit.vec);
-      latestCMDLocation=latestAdvLocation;
+      // forward(latestAdvLocation.vec,curMotLoc_unit.vec);
+      // latestCMDLocation=latestAdvLocation;
 
       homingFlag=true;
 
@@ -1193,21 +1193,21 @@ public:
     return ret+"]";
   }
 
-
+  float ddd=6400;
 
   void motUnit2PulseConversion(int32_t *dst,float *src)
   {
     
-    dst[0]=(int32_t)(src[0]*1600*5/(2*3.14159));//R  arcDeg angle to steps
-    dst[1]=(int32_t)(src[1]*1600/60);//Z  mm to steps
-    dst[2]=(int32_t)(src[2]*3200/17);//X  mm to steps
+    dst[0]=(int32_t)(src[0]*6400/250);//R  arcDeg angle to steps
+    dst[1]=(int32_t)(src[1]*3200/60);//Z  mm to steps
+    dst[2]=(int32_t)(src[2]*ddd);//X  mm to steps
   }
 
   void motPulse2UnitConversion(float *dst,int32_t *src)
   {
-    dst[0]=((float)src[0]*2*3.14159/5/1600);//R  steps to arcDeg angle
-    dst[1]=((float)src[1]*60/1600);//Z  steps to mm
-    dst[2]=((float)src[2]*17/3200);//X  steps to mm
+    dst[0]=((float)src[0]*250/6400);//R  steps to arcDeg angle
+    dst[1]=((float)src[1]*60/3200);//Z  steps to mm
+    dst[2]=((float)src[2]/ddd);//X  steps to mm
   }
 
   void EM_STOP()
@@ -1221,33 +1221,37 @@ public:
     dbg_msg_sendQ("EM_STOP");
   }
 
-  // virtual void getMotMoveVec(vector<float> &mot_vec_dst)
-  // {
 
-  //   if(homingCMDID==-1 && homingFlag==true)
-  //   {
-  //     // xVec_f curMotLoc_unit={0};
-  //     inverse(curMotLoc_unit.vec,latestAdvLocation_postTracking.vec);
-  //   }
-  //   else//in homing mode
-  //   {
+  
+  int turnCount=0;
+  std::vector<int32_t> mot_vec_dst={0,0,0};
+  virtual const std::vector<int32_t>& getMotMoveVec()
+  { 
 
-  //   }
-  //   MotVec_i _curMotLoc_pls={0};
-  //   // _curMotLoc_pls.vec[0]=(int32_t)(curMotLoc_unit.vec[0]*1600*4.5/(73*2*3.14159));//R  arc angle to steps
+    if(homingCMDID==-1 && homingFlag==true)
+    {
+      // xVec_f curMotLoc_unit={0};
+      inverse(curMotLoc_unit.vec,latestAdvLocation_postTracking.vec);
+    }
+    else//in homing mode
+    {
 
-  //   motUnit2PulseConversion(_curMotLoc_pls.vec,curMotLoc_unit.vec);
+    }
+    MotVec_i _curMotLoc_pls={0};
+    // _curMotLoc_pls.vec[0]=(int32_t)(curMotLoc_unit.vec[0]*1600*4.5/(73*2*3.14159));//R  arc angle to steps
+
+    motUnit2PulseConversion(_curMotLoc_pls.vec,curMotLoc_unit.vec);
 
 
 
-  //   mot_vec_dst[0]=-(_curMotLoc_pls.vec[0]-preMotloc_pls.vec[0]);//invert polarity
-  //   mot_vec_dst[1]=-(_curMotLoc_pls.vec[1]-preMotloc_pls.vec[1]);//Z
-  //   mot_vec_dst[2]=-(_curMotLoc_pls.vec[2]-preMotloc_pls.vec[2]);//invert polarity
-  //   // mot_vec_dst->vec[3]=_curMotLoc_stp.vec[3]-preMotloc.vec[3];
-  //   // mot_vec_dst->vec[4]=_curMotLoc_stp.vec[4]-preMotloc.vec[4];
-  //   preMotloc_pls=_curMotLoc_pls;
-
-  // }
+    mot_vec_dst[0]=-(_curMotLoc_pls.vec[0]-preMotloc_pls.vec[0]);//invert polarity
+    mot_vec_dst[1]=-(_curMotLoc_pls.vec[1]-preMotloc_pls.vec[1]);//Z
+    mot_vec_dst[2]=-(_curMotLoc_pls.vec[2]-preMotloc_pls.vec[2]);//invert polarity
+    // mot_vec_dst->vec[3]=_curMotLoc_stp.vec[3]-preMotloc.vec[3];
+    // mot_vec_dst->vec[4]=_curMotLoc_stp.vec[4]-preMotloc.vec[4];
+    preMotloc_pls=_curMotLoc_pls;
+    return mot_vec_dst;
+  }
 
   // float 
   int solveQuadratic_real(float a, float b, float c, float *x1, float *x2) {
@@ -1273,56 +1277,72 @@ public:
   }
 
 
+  // void inverse(float *mot_vec_dst,const float* loc_vec_src){
+
+  //   // for(int i=0;i<CMD_VEC_DIM;i++)
+  //   // {
+  //   //   mot_vec_dst->vec[i]=loc_vec_src[i];
+  //   // }
+
+
+
+
+  //   float cx=loc_vec_src[0],cy=loc_vec_src[1];
+
+  //   float x1,x2;
+  //   volatile int res=findIntersection(XVecX,XVecY,cx,cy,Arm_r,&x1,&x2);
+
+
+
+
+  //   float mx=x1<x2?x1:x2;
+
+  //   float vx=cx-mx*XVecX;
+  //   float vy=cy-mx*XVecY;
+    
+  //   mot_vec_dst[0]=atan2f(vy,vx);//R
+
+  //   mot_vec_dst[1]=loc_vec_src[2];//Z
+
+  //   mot_vec_dst[2]=mx;//X
+
+  //   // volatile int res=findIntersection(vx,vy,cx,cy,r,&t1,&t2);
+  // }
+  // void forward(float* loc_vec_dst,const float *mot_vec_src)
+  // {
+  //   // for(int i=0;i<CMD_VEC_DIM;i++)
+  //   // {
+  //   //   loc_vec_dst[i]=mot_vec_src->vec[i];
+  //   // }
+
+
+  //   float R= mot_vec_src[0];//R
+  //   float Z= mot_vec_src[1];//R
+  //   float X= mot_vec_src[2];//R
+    
+  //   float ArmX=cosf(R)*Arm_r+X*XVecX;
+  //   float ArmY=sinf(R)*Arm_r+X*XVecY;
+
+    
+  //   loc_vec_dst[0]=ArmX;
+  //   loc_vec_dst[1]=ArmY;
+  //   loc_vec_dst[2]=Z;
+  // }
   void inverse(float *mot_vec_dst,const float* loc_vec_src){
 
-    // for(int i=0;i<CMD_VEC_DIM;i++)
-    // {
-    //   mot_vec_dst->vec[i]=loc_vec_src[i];
-    // }
+    mot_vec_dst[0]=loc_vec_src[0];//R
 
+    mot_vec_dst[1]=loc_vec_src[1];//Z
 
-
-
-    float cx=loc_vec_src[0],cy=loc_vec_src[1];
-
-    float x1,x2;
-    volatile int res=findIntersection(XVecX,XVecY,cx,cy,Arm_r,&x1,&x2);
-
-
-
-
-    float mx=x1<x2?x1:x2;
-
-    float vx=cx-mx*XVecX;
-    float vy=cy-mx*XVecY;
-    
-    mot_vec_dst[0]=atan2f(vy,vx);//R
-
-    mot_vec_dst[1]=loc_vec_src[2];//Z
-
-    mot_vec_dst[2]=mx;//X
+    mot_vec_dst[2]=loc_vec_src[2];//X
 
     // volatile int res=findIntersection(vx,vy,cx,cy,r,&t1,&t2);
   }
   void forward(float* loc_vec_dst,const float *mot_vec_src)
   {
-    // for(int i=0;i<CMD_VEC_DIM;i++)
-    // {
-    //   loc_vec_dst[i]=mot_vec_src->vec[i];
-    // }
-
-
-    float R= mot_vec_src[0];//R
-    float Z= mot_vec_src[1];//R
-    float X= mot_vec_src[2];//R
-    
-    float ArmX=cosf(R)*Arm_r+X*XVecX;
-    float ArmY=sinf(R)*Arm_r+X*XVecY;
-
-    
-    loc_vec_dst[0]=ArmX;
-    loc_vec_dst[1]=ArmY;
-    loc_vec_dst[2]=Z;
+    loc_vec_dst[0]= mot_vec_src[0];
+    loc_vec_dst[1]= mot_vec_src[1];
+    loc_vec_dst[2]= mot_vec_src[2];
   }
 
 
@@ -1561,10 +1581,10 @@ public:
 
 
   MSTP_segment_extra_info latestExtInfo={
-    .speed=100,
+    .speed=7.0,
     .speedOnAxisIdx=-1,
-    .acc=1000,
-    .deacc=-1000,
+    .acc=10.0,
+    .deacc=-10.0,
     .cornorR=0,
 
   };
@@ -1574,428 +1594,107 @@ public:
   {
     return strncmp(str1, str2, strlen(str2))==0;
   }
-  // int GcodeParse(char **blkIdxes,int blkIdxesL,JsonDocument& cmd_ret)
-  // {
-
-    
-  //   if(blkIdxesL==0)
-  //     return MCMD_Status::LINE_EMPTY;
-  //   MCMD_Status retStatus=MCMD_Status::LINE_EMPTY;
-
-
-
-
-  //   char *cblk=blkIdxes[0];
-  //   // int cblkL=blks[1]-blks[0];
-
-  //   blkIdxes++;//move to next block
-  //   blkIdxesL--;
-
-
-  //   if(cblk[0]=='G')
-  //   {
-  //     if(CheckHead(cblk, "G28"))//G28 GO HOME!!!:
-  //     {
-  //       // homingStatus=HomingStatus::Start;
-  //       // homingAxisIdx=0;
-  //       homingSeq.clear();
-  //       float fineSpeed=1;
-  //       homingSeq.push_back({.status=HomingStatus::Start,.axisIdx=1,.speed=50,.speed_fine=fineSpeed,.sensorPin=1,.sensorSense=1});
-  //       homingSeq.push_back({.status=HomingStatus::Start,.axisIdx=0,.speed=50*5/Arm_r,.speed_fine=fineSpeed*5/Arm_r,.sensorPin=0,.sensorSense=0});
-  //       homingSeq.push_back({.status=HomingStatus::Start,.axisIdx=2,.speed=-50,.speed_fine=-fineSpeed,.sensorPin=2,.sensorSense=0});
-  //       // homingSeq.push_back({.status=HomingStatus::Start,.axisIdx=1,.speed=5,.speed_fine=1,.sensorPin=1,.sensorSense=0});
-  //       // homingSeq.push_back({.status=HomingStatus::Start,.axisIdx=2,.speed=5,.speed_fine=1,.sensorPin=2,.sensorSense=0});
-
-    
-
-  //       homingCMDID=HACK_cur_cmd_id;
-
-  //       return  MCMD_Status::TASK_OK_HOLD_RSP;
-  //     }
-  //     if(homingFlag==false)
-  //     {
-  //       cmd_ret["msg"]="homingFlag==false";
-  //       return MCMD_Status::TASK_FATAL_FAILED;
-  //     }
-  //     if(CheckHead(cblk, "G01 ")||CheckHead(cblk, "G1 "))
-  //     {
-  //       // __PRT_D_("G1 baby!!!\n");
-
-
-  //       CMDVec vec_coord=latestCMDLocation;
-  //       float Tmp=NAN;
-
-
-
-  //       Tmp=NAN;
-  //       FindFloat("X",blkIdxes,blkIdxesL,Tmp);
-  //       if(Tmp==Tmp)vec_coord.vec[0]=Tmp;
-
-  //       Tmp=NAN;
-  //       FindFloat("Y",blkIdxes,blkIdxesL,Tmp);
-  //       if(Tmp==Tmp)vec_coord.vec[1]=Tmp;
-        
-  //       Tmp=NAN;
-  //       FindFloat("Z",blkIdxes,blkIdxesL,Tmp);
-  //       if(Tmp==Tmp)vec_coord.vec[2]=Tmp;
-
-
-
-
-
-  //       // if(z==z)vec_coord.vec[2]=z;
-
-
-  //       // xVec_f vec_mot=foward(vec_coord);
-
-  //       MSTP_segment_extra_info exinfo = ReadSegment_extra_info(blkIdxes,blkIdxesL);
-
-  //       if(exinfo.acc!=exinfo.acc)exinfo.acc=latestExtInfo.acc;
-  //       if(exinfo.deacc!=exinfo.deacc)exinfo.deacc=latestExtInfo.deacc;
-  //       if(exinfo.speed!=exinfo.speed)exinfo.speed=latestExtInfo.speed;
-
-  //       if(exinfo.cornorR!=exinfo.cornorR)exinfo.cornorR=latestExtInfo.cornorR;
-  //       if(exinfo.speedOnAxisIdx!=exinfo.speedOnAxisIdx)exinfo.speedOnAxisIdx=latestExtInfo.speedOnAxisIdx;
-
-  //       // __UPRT_I_("vec_coord:%f %f %f  exinfo:f:%f a:%f d:%f aidx:%d\n",vec_coord.vec[0],vec_coord.vec[1],vec_coord.vec[2],
-  //       // exinfo.speed,exinfo.acc,exinfo.deacc,exinfo.speedOnAxisIdx);
-        
-
-  //       CMDVec moveVec;
-  //       vecSub(moveVec.vec,vec_coord.vec,latestCMDLocation.vec,CMD_VEC_DIM);
-        
-  //       // __UPRT_I_("vec:%s",vec_to_string(moveVec.vec).c_str());
-  //       pushInMoveVec(moveVec.vec,&exinfo,CMD_VEC_DIM,NULL,NULL,NULL);
-  //       latestCMDLocation=vec_coord;
-
-  //       latestExtInfo=exinfo;
-  //               // ReadGVecData(blks,blkCount,vec_f,&exinfo);
-
-  //       // ConvUnitVecToPulseVec(&vec_f,&exinfo);
-        
-  //       // xVec newLoc=stpG.pulse_latestLoc;
-  //       // SetxVec_fToxVec(newLoc,vec_f);
-  //       // // xVec goVec=vecSub(newLoc,stpG.pulse_latestLoc);
-        
-  //       // stpG.MoveTo(newLoc,NULL,&exinfo);
-
-  //       return  MCMD_Status::TASK_OK;
-  //     }
-
-  //     else if(CheckHead(cblk, "G4 ") || CheckHead(cblk, "G04 "))//pause
-  //     {
-
-  //       float P=NAN;
-  //       FindFloat("P",blkIdxes,blkIdxesL,P);
-  //       if(P==P && P>=0)
-  //       {
-  //         pushInPause(P,NULL,NULL,NULL);
-  //         return  MCMD_Status::TASK_OK;
-  //       }
-  //       else
-  //       {
-  //         return MCMD_Status::TASK_FAILED;
-  //       }
-  //     }
-  //   }
-  //   else if(cblk[0]=='M')
-  //   {
-  //     if(homingFlag==false)
-  //     {
-  //       cmd_ret["msg"]="homingFlag==false";
-  //       return MCMD_Status::TASK_FATAL_FAILED;
-  //     }
-  //     if(CheckHead(cblk, "M42 "))//IO ctrl
-  //     { 
-  //       float P=NAN;
-  //       FindFloat("P",blkIdxes,blkIdxesL,P);
-  //       float S=NAN;
-  //       FindFloat("S",blkIdxes,blkIdxesL,S);
-  //       if(P!=P || S!=S)
-  //       {
-  //         return MCMD_Status::TASK_FAILED;
-  //       }
-
-
-  //       MSTP_SegCtx *p_res;
-  //       while((p_res=sctx_pool.applyResource())==NULL)
-  //       {
-  //         yield();
-  //       }
-  //       p_res->type=MSTP_SegCtx_TYPE::IO_CTRL;
-
-  //       p_res->IO_CTRL.P=P;
-  //       p_res->IO_CTRL.S=S;
-  //       pushInInstant(NULL,IOCtrlEndCB,(void*)p_res);
-  //       return  MCMD_Status::TASK_OK;
-  //     }
-
-
-  //     else if(CheckHead(cblk, "M42.MODE "))//IO ctrl
-  //     { 
-  //       float P=NAN;
-  //       FindFloat("P",blkIdxes,blkIdxesL,P);
-  //       float M=NAN;
-  //       FindFloat("M",blkIdxes,blkIdxesL,M);
-  //       if(P!=P || M!=M)
-  //       {
-  //         return MCMD_Status::TASK_FAILED;
-  //       }
-  //       pinMode(P,M);
-  //       return  MCMD_Status::TASK_OK;
-  //     }
-
-  //     else if(CheckHead(cblk, "M400.BLOCKING"))
-  //     { 
-        
-  //       while(segs.size())
-  //       {
-  //         yield();
-  //       }
-
-  //       // while( trackingState!=TrackingState::InSync && trackingState!=TrackingState::NOP) 
-  //       // {
-  //       //   yield();
-  //       // }
-
-  //       // cmd_ret["R"]=curMotLoc_unit.vec[0];
-  //       // cmd_ret["Z"]=curMotLoc_unit.vec[1];
-  //       // cmd_ret["X"]=curMotLoc_unit.vec[2];
-        
-  //       // cmd_ret["Rp"]=preMotloc_pls.vec[0];
-  //       // cmd_ret["Zp"]=preMotloc_pls.vec[1];
-  //       // cmd_ret["Xp"]=preMotloc_pls.vec[2];
-
-  //       return  MCMD_Status::TASK_OK;
-  //     }
-
-  //     else if(CheckHead(cblk, "M400"))
-  //     { 
-
-  //       MSTP_SegCtx *p_res;
-  //       int retryCount=0;
-  //       while((p_res=sctx_pool.applyResource())==NULL)
-  //       {
-  //         if(retryCount++>100)
-  //           return MCMD_Status::TASK_FAILED;
-  //         yield();
-  //       }
-  //       p_res->type=MSTP_SegCtx_TYPE::ON_TIME_REPLY;
-
-  //       p_res->ON_TIME_REP.id=HACK_cur_cmd_id;
-  //       p_res->ON_TIME_REP.isAck=true;
-  //       pushInInstant(NULL,OnTimeRepEndCB,(void*)p_res);
-  //       return  MCMD_Status::TASK_OK_HOLD_RSP;
-  //     }
-
-  //     else if(CheckHead(cblk, "M119"))
-  //     {
-  //       cmd_ret["input"]=TMP_HACK_latest_input_pins;
-        
-  //       return  MCMD_Status::TASK_OK;
-  //     }
-  //   }
-  //   return  MCMD_Status::TASK_UNSUPPORTED;
-  // }
 
 
 
   float vars[20]={0};
-  int JCMDParse(JsonDocument& cmd,JsonDocument& cmd_ret)
+  int CMDProcess(JsonDocument& cmd,JsonDocument& cmd_ret)
   {
-    JsonObject cmdData=cmd["cmd"];
-    if(cmdData.isNull())
+    if(!cmd["cmd"].is<const char*>())
     {
       return MCMD_Status::TASK_UNSUPPORTED;
     }
 
-    if(!cmdData["type"].is<const char*>())
-    {
-      return MCMD_Status::TASK_UNSUPPORTED;
-    }
-
-    int test_runCount=0;
-    if(cmdData["runCount"].is<float>())
-      test_runCount=cmdData["runCount"];
-
-    int ret_vars_count=9999;
-    if(cmdData["ret_vars_count"].is<float>())
-      ret_vars_count=(int)cmdData["ret_vars_count"];
+    
 
 
-    const char* type = cmdData["type"];
+    // if(homingFlag==false)
+    // {
+    //   cmd_ret["msg"]="homingFlag==false";
+    //   return MCMD_Status::TASK_FATAL_FAILED;
+    // }
+    // int test_runCount=0;
+    // if(cmd["runCount"].is<float>())
+    //   test_runCount=cmd["runCount"];
+
+    // int ret_vars_count=9999;
+    // if(cmd["ret_vars_count"].is<float>())
+    //   ret_vars_count=(int)cmd["ret_vars_count"];
+
+
+    const char* type = cmd["cmd"];
     if(strcmp(type,"G01")==0)
     {
       
-      cmd_ret["this"]="G01 yay~";
-    }
-
-
-    // if(strcmp(type,"COMP")==0)
-    // {
-
-    //   if(!cmdData["expr"].is<const char*>())
-    //   {
-    //     return MCMD_Status::PARAM_PARSE_ERROR;
-    //   }
-
-    //   const char* expr = cmdData["expr"];
-
-
-    //   do{
-    //     //Get arduinoJson array "vars"
-    //     JsonArray arr = cmdData["vars"];
-    //     if(arr.isNull())break;
-
-    //     int len = sizeof(vars)/sizeof(vars[0]);
-    //     if(arr.size()<len)len=arr.size();
-
-    //     for (size_t i = 0; i <len; i++) {
-    //       //check is number
-    //       if(arr[i].is<float>())
-    //       {
-    //         vars[i] = arr[i].as<float>(); // Convert each element to float and store it.
-    //       }
-    //       else 
-    //       {
-    //         vars[i]=NAN;
-    //       }
-    //     }
-    //     //fill vars with cmdData["vars"] number array
-
-
-    //   }while(0);
-
-
-
-    //   te_variable te_vars[] = {
-       
-    //     {"g", (void*)get_var, TE_CLOSURE1, vars},
-    //     {"s", (void*)set_var, TE_CLOSURE2, vars}};
     
 
-
-    //   auto stime=millis();
-    //   int err;
-    //   te_expr *n = te_compile(expr, te_vars, sizeof(te_vars)/sizeof(te_vars[0]), &err);
-
-    //   auto etime=millis();
-    //   cmd_ret["compileTime"]=etime-stime;
-    //   stime=etime;
+      CMDVec vec_coord=latestCMDLocation;
 
 
-    //   if (n) {
+      if(cmd["X"].is<float>())
+      {
+        vec_coord.vec[0]=cmd["X"].as<float>(); // Convert each element to float and store it.
+      }
+
+      if(cmd["Y"].is<float>())
+      {
+        vec_coord.vec[1]=cmd["Y"].as<float>(); // Convert each element to float and store it.
+      }
+
+      if(cmd["Z"].is<float>())
+      {
+        vec_coord.vec[2]=cmd["Z"].as<float>(); // Convert each element to float and store it.
+      }
 
 
 
-
-    //     float result = te_eval(n);
-    //     for(int i=1;i<test_runCount;i++)
-    //     {
-    //       result = te_eval(n);
-    //     }
-    //     etime=millis();
-    //     cmd_ret["exeTime"]=etime-stime;
-    //     cmd_ret["result"]=result;
-
-    //     //put vars back to cmd_ret
-    //     JsonArray arr = cmd_ret.createNestedArray("vars");
-    //     if(ret_vars_count>sizeof(vars)/sizeof(vars[0])) 
-    //     {
-    //       ret_vars_count=sizeof(vars)/sizeof(vars[0]);
-    //     }
-    //     for (size_t i = 0; i < ret_vars_count; i++) {
-    //       arr.add(vars[i]);
-    //     }
+      CMDVec moveVec;
+      vecSub(moveVec.vec,vec_coord.vec,latestCMDLocation.vec,CMD_VEC_DIM);
+      
 
 
-    //     te_free(n);
+      MSTP_segment_extra_info exinfo = latestExtInfo;
 
-    //     return MCMD_Status::TASK_OK;
-    //   } else {
-    //     cmd_ret["test2_error"]=err;
-    //   }
-    //   return MCMD_Status::TASK_FAILED;
+      if(cmd["F"].is<float>())
+      {
+        exinfo.speed=cmd["F"].as<float>(); // Convert each element to float and store it.
+      }
 
-    // }
+      if(cmd["ACC"].is<float>())
+      {
+        exinfo.acc=cmd["ACC"].as<float>(); // Convert each element to float and store it.
+      }
 
-    
-    // if(strcmp(type,"LC_intersect")==0)
-    // {
-
-    //   //call findIntersection
-
-    //   int test_runCount=1;
-    //   if(cmdData["runCount"].is<float>())
-    //     test_runCount=cmdData["runCount"];
-        
-    //   float vx=cmdData["vx"].as<float>();
-    //   float vy=cmdData["vy"].as<float>();
-    //   float cx=cmdData["cx"].as<float>();
-    //   float cy=cmdData["cy"].as<float>();
-    //   float r=cmdData["r"].as<float>();
-
-    //   auto stime=millis();
-    //   float t1,t2;
-    //   volatile int res=findIntersection(vx,vy,cx,cy,r,&t1,&t2);
-    //   for(int i=1;i<test_runCount;i++)
-    //   {
-    //     res=findIntersection(vx,vy,cx,cy,r,&t1,&t2);
-    //   }
-    //   auto etime=millis();
-    //   cmd_ret["exeTime"]=etime-stime;
-    //   //put result to cmd_ret
+      if(cmd["DEA"].is<float>())
+      {
+        exinfo.deacc=cmd["DEA"].as<float>(); // Convert each element to float and store it.
+      }
 
 
-    //   JsonArray arr = cmd_ret.createNestedArray("pt_params");
-    //   if(res>0)
-    //   {
-    //     arr.add(t1);
-    //     if(res>1)
-    //       arr.add(t2);
-    //   }
-    //   return MCMD_Status::TASK_OK;
+      if(cmd["Corm"].is<float>())
+      {
+        exinfo.cornorR=cmd["Corm"].as<float>(); // Convert each element to float and store it.
+      }
 
-    // }
+      latestExtInfo=exinfo;
+      // __UPRT_I_("vec:%s",vec_to_string(moveVec.vec).c_str());
+      pushInMoveVec(moveVec.vec,&exinfo,CMD_VEC_DIM,NULL,NULL,NULL);
+      latestCMDLocation=vec_coord;
 
-    // if(strcmp(type,"FORWARD")==0)//motor location to head location
-    // {
-    //   float R=cmdData["R"].as<float>();
-    //   float Z=cmdData["Z"].as<float>();
-    //   float X=cmdData["X"].as<float>();
+              // ReadGVecData(blks,blkCount,vec_f,&exinfo);
 
-    //   float mot_vec[3]={R,Z,X};
-    //   float loc[3]={0};
+      // ConvUnitVecToPulseVec(&vec_f,&exinfo);
+      
+      // xVec newLoc=stpG.pulse_latestLoc;
+      // SetxVec_fToxVec(newLoc,vec_f);
+      // // xVec goVec=vecSub(newLoc,stpG.pulse_latestLoc);
+      
+      // stpG.MoveTo(newLoc,NULL,&exinfo);
 
-    //   forward(loc,mot_vec);
+      return  MCMD_Status::TASK_OK;
 
-    //   cmd_ret["X"]=loc[0];
-    //   cmd_ret["Y"]=loc[1];
-    //   cmd_ret["Z"]=loc[2];
-    // }
-
-    // if(strcmp(type,"INVERSE")==0)
-    // {
-    //   float X=cmdData["X"].as<float>();
-    //   float Y=cmdData["Y"].as<float>();
-    //   float Z=cmdData["Z"].as<float>();
-
-    //   float loc[3]={X,Y,Z};
-    //   float mot_vec[3]={0};
-
-    //   inverse(mot_vec,loc);
-
-    //   cmd_ret["R"]=mot_vec[0];
-    //   cmd_ret["Z"]=mot_vec[1];
-    //   cmd_ret["X"]=mot_vec[2];
-    // }
-
-
-    if(homingFlag==false)
-    {
-      cmd_ret["msg"]="homingFlag==false";
-      return MCMD_Status::TASK_FATAL_FAILED;
     }
+
 
     //return trackingInfo.progress
     if(strcmp(type,"TRACKING_PROGRESS")==0)
@@ -2019,8 +1718,8 @@ public:
 
 
       int trackIdx=-1;
-      if(cmdData["trackIdx"].is<float>())
-        trackIdx=cmdData["trackIdx"];
+      if(cmd["trackIdx"].is<float>())
+        trackIdx=cmd["trackIdx"];
       else
       {
         cmd_ret["msg"]="trackIdx is needed";
@@ -2040,16 +1739,17 @@ public:
       else if(trackIdx==1)
       {
         float plat_angle=NAN;
-        if(cmdData["plat_angle"].is<float>())
-          plat_angle=cmdData["plat_angle"];
+        if(cmd["plat_angle"].is<float>())
+          plat_angle=cmd["plat_angle"];
         
         float obj_x=NAN;
-        if(cmdData["obj_x"].is<float>())
-          obj_x=cmdData["obj_x"]; 
+        if(cmd["obj_x"].is<float>())
+          obj_x=cmd["obj_x"]; 
 
         float obj_y=NAN;
-        if(cmdData["obj_y"].is<float>())
-          obj_y=cmdData["obj_y"];
+        if(cmd["obj_y"].is<float>())
+          obj_y=cmd["obj_y"];
+          
 
         if(plat_angle!=plat_angle || obj_x!=obj_x || obj_y!=obj_y)
         {
@@ -2065,12 +1765,12 @@ public:
 
       {
         float gox=NAN;
-        if(cmdData["X"].is<float>())
-          gox=cmdData["X"]; 
+        if(cmd["X"].is<float>())
+          gox=cmd["X"]; 
 
         float goy=NAN;
-        if(cmdData["Y"].is<float>())
-          goy=cmdData["Y"];
+        if(cmd["Y"].is<float>())
+          goy=cmd["Y"];
 
         if(goy!=goy || gox!=gox)
         {
@@ -2096,21 +1796,21 @@ public:
         float deacc=-1000;
         float vcen=1000;
 
-        if(cmdData["acc"].is<float>())
-          acc=cmdData["acc"];
+        if(cmd["acc"].is<float>())
+          acc=cmd["acc"];
         if(acc<0)acc=-acc;
 
 
         deacc=-1000;
-        if(cmdData["deacc"].is<float>())
-          deacc=cmdData["deacc"];
+        if(cmd["deacc"].is<float>())
+          deacc=cmd["deacc"];
         else
           deacc=acc;
         if(deacc>0)deacc=-deacc;
 
         vcen=1000;
-        if(cmdData["f"].is<float>())
-          vcen=cmdData["f"];
+        if(cmd["f"].is<float>())
+          vcen=cmd["f"];
 
         tinfo.acc=acc;
         tinfo.deacc=deacc;
@@ -2171,8 +1871,8 @@ public:
 
 
       int trackIdx=NAN;
-      if(cmdData["trackIdx"].is<float>())
-        trackIdx=cmdData["trackIdx"];
+      if(cmd["trackIdx"].is<float>())
+        trackIdx=cmd["trackIdx"];
 
 
       if(trackIdx==0)
@@ -2182,16 +1882,16 @@ public:
       else if(trackIdx==1)
       {
         float plat_angle=NAN;
-        if(cmdData["plat_angle"].is<float>())
-          plat_angle=cmdData["plat_angle"];
+        if(cmd["plat_angle"].is<float>())
+          plat_angle=cmd["plat_angle"];
         
         float obj_x=NAN;
-        if(cmdData["obj_x"].is<float>())
-          obj_x=cmdData["obj_x"]; 
+        if(cmd["obj_x"].is<float>())
+          obj_x=cmd["obj_x"]; 
 
         float obj_y=NAN;
-        if(cmdData["obj_y"].is<float>())
-          obj_y=cmdData["obj_y"];
+        if(cmd["obj_y"].is<float>())
+          obj_y=cmd["obj_y"];
 
         if(plat_angle!=plat_angle || obj_x!=obj_x || obj_y!=obj_y)
           return MCMD_Status::PARAM_PARSE_ERROR;
@@ -2219,22 +1919,22 @@ public:
         // float transitionTime=1000;
         trackingInfo.movParam.acc=1000;
 
-        if(cmdData["acc"].is<float>())
-          trackingInfo.movParam.acc=cmdData["acc"];
+        if(cmd["acc"].is<float>())
+          trackingInfo.movParam.acc=cmd["acc"];
         if(trackingInfo.movParam.acc<0)trackingInfo.movParam.acc=-trackingInfo.movParam.acc;
 
 
         trackingInfo.movParam.deacc=-1000;
-        if(cmdData["deacc"].is<float>())
-          trackingInfo.movParam.deacc=cmdData["deacc"];
+        if(cmd["deacc"].is<float>())
+          trackingInfo.movParam.deacc=cmd["deacc"];
         else
           trackingInfo.movParam.deacc=trackingInfo.movParam.acc;
         if(trackingInfo.movParam.deacc>0)trackingInfo.movParam.deacc=-trackingInfo.movParam.deacc;
 
 
         trackingInfo.movParam.vcen=1000;
-        if(cmdData["f"].is<float>())
-          trackingInfo.movParam.vcen=cmdData["f"];
+        if(cmd["f"].is<float>())
+          trackingInfo.movParam.vcen=cmd["f"];
 
 
 
@@ -2336,7 +2036,7 @@ public:
       }
       p_res->type=MSTP_SegCtx_TYPE::HALT_UNTIL_TRACKING_SATTLED;
 
-      p_res->TRACKING_HOLD_UNTIL.id=cmdData["id"];
+      p_res->TRACKING_HOLD_UNTIL.id=cmd["id"];
 
       //-1 means halt forever
       pushInPause(-1,NULL,TrackingHoldUntilEndCB,(void*)p_res);
@@ -2346,6 +2046,8 @@ public:
       
     return MCMD_Status::TASK_UNSUPPORTED;
   }
+
+
 };
 
 StpGroup_SIMP SG_SIMP;
@@ -2405,6 +2107,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=true;
   }
   
+  
+  if(strcmp(type,"m1")==0 )//{"type":"m0","cmd":"get_centre"}
+  {
+    rspAck=SG_SIMP.CMDProcess(doc,retdoc)==MCMD_Status::TASK_OK;
+    doRsp=true;
+  }
+  
   // else if(AUX_Task_Try_Read(doc,type,retdoc,doRsp,rspAck))
   // {
   // }
@@ -2430,19 +2139,31 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 //
 
 
-#define MAX_DRIVES (2) // Define the maximum number of drives
+#define MAX_DRIVES (3) // Define the maximum number of drives
 
 EthercatMaster master;  // Create an EtherCAT Master Object
 EthercatDevice_CiA402 motor[MAX_DRIVES];  // Create an array of EtherCAT CiA402 Objects for multiple drives
-
-
+// EthercatDevice_Generic dmp0;
+EthercatDevice_DmpDIQ_Generic dmp0;
 float speed=0;
 int loopTimes=0;
-int init_enc_offsets[MAX_DRIVES];
-int inputL=0;
-int M2PosAcc=0;
-int M1PosAcc=0;
+int32_t init_enc_offsets[MAX_DRIVES];
+float inputL0=0;
+float inputL1=0;
 
+
+
+int32_t  pre_posDiff1=0;
+int32_t  pre_posDiff2=0;
+int MnPosAcc[MAX_DRIVES];
+int MnPosInit[MAX_DRIVES];
+
+int testCounter=0;
+int testCounter2=0;
+
+int stadyCounter=0;
+
+int motorState=0;
 void myCallback()
 {
 
@@ -2460,81 +2181,152 @@ void myCallback()
              CIA402_FAULT_REACTION_ACTIVE = 6
              CIA402_QUICK_STOP_ACTIVE = 7
     */
-    
+    // for (int i = 0; i < MAX_DRIVES; i++) {
+    //   if(i!=1)continue;
+    //   if (motor[i].driveGetState() == CIA402_SWITCHED_ON) {
+    //     // motor[i].driveSetHomeOffset(-motor[i].driveGetPositionActualValue());
+    //     // motor[i].driveSetTargetPosition(0);
+    //     M2PosAcc=0;
+    //   }
+    //   if (motor[i].driveGetState() == CIA402_OPERATION_ENABLED) {
+    //     // if(M2PosAcc>1000)
+    //     // {
+
+    //     //   inputL=motor[i].driveSetHomeOffset(-motor[i].driveGetPositionActualValue());
+    //     //   // M2PosAcc=0;
+    //     // }
+    //     // M2PosAcc+=2;
+    //     // motor[i].driveSetTargetPosition(0);
+    //     motor[i].driveSetTargetVelocity(2);
+    //   }
+    // }
+
+    // return;
     // Uses motor.driveSetTargetPosition(int32_t value) to set target position
     // Uses motor.driveGetPositionActualValue() to get current position value
     for (int i = 0; i < MAX_DRIVES; i++) {
         // If drive state is SWITCHED_ON, set target position to the current position
         if (motor[i].driveGetState() == CIA402_SWITCHED_ON) {
-          motor[i].driveSetPositionOffset(-motor[i].driveGetPositionActualValue());
-          init_enc_offsets[i]=motor[i].driveGetAdditionalActualPosition();
-          // motor[i].driveSetTargetPosition(motor[i].driveGetPositionActualValue()); // Maintain current position
 
-          M2PosAcc=0;
-          // if(i==1)
-          {
-            motor[i].driveSetMaxMotorSpeed(1000000 );
-          }
-          // motor[i].driveSetPositionOffset(motor[i].driveGetAdditionalActualPosition()-motor[i].driveGetPositionActualValue());
+          stadyCounter=2000;
+          motorState=1;
+          loopTimes=0;
         }
+
+
         // If drive state is OPERATION_ENABLED, increment the target position by 10
         if (motor[i].driveGetState() == CIA402_OPERATION_ENABLED) {
-          SG_PLATE.update();
-          
-          const std::vector<int32_t> &plateSteps=SG_PLATE.getMotMoveVec();
-          // int32_t loc=motor[i].driveGetTargetPosition();
-          // if(loc>100000)
+
+          // if(i==1)
           // {
-          //   motor[i].driveSetPositionOffset(-100000);
-          //   // loc-=100000;
+          //   MnPosAcc[i]+=plateSteps[0];
+          //   int32_t curPos=motor[i].driveGetPositionActualValue();
+
+          //   inputL=MnPosAcc[i]-curPos;
+
+          //   motor[i].driveSetTargetVelocity((plateSteps[0])*1000);
+          //   // motor[i].driveSetTargetPosition((int32_t)(init_offsets[i] + 1000*sin(loopTimes/1000.0*2*M_PI*1))); 
           // }
-          // motor[i].driveSetTargetPosition((int32_t)(loc + speed*updatePeriod_s)); // Increment position
-          if(i==1)
-          {
-            // inputL=plateSteps[0];
-            M2PosAcc=motor[i].driveGetTargetPosition();
-            M2PosAcc+=plateSteps[0];
-            int newM2PosAcc=M2PosAcc;
-            // if(M2PosAcc>1000)
-            // {
-            //   motor[i].driveSetHomeOffset(-newM2PosAcc);
-            //   newM2PosAcc=0;
-            //   // loc-=100000;
-            // }
-            // else if(M2PosAcc<-1000)
-            // {
-            //   motor[i].driveSetHomeOffset(newM2PosAcc);
-            //   newM2PosAcc=0;
-            // }
-
-            motor[i].driveSetTargetPosition(M2PosAcc); 
-            inputL=M2PosAcc;
-            M2PosAcc=newM2PosAcc;
-
-            // motor[i].driveSetTargetPosition((int32_t)(init_offsets[i] + 1000*sin(loopTimes/1000.0*2*M_PI*1))); 
-          }
-          else 
-          {
-            // int32_t cpos=motor[i].driveGetTargetPosition();
-            // motor[i].driveSetTargetPosition((int32_t)(cpos + speed*updatePeriod_s));
-          }
+          // else 
+          // {
+          // }
           // inputL=motor[i].touchProbeReadPositiveValue(0)<<i;
         }
     }
-
-    if(loopTimes<10000)
+    if(motorState==1)
     {
-      speed+=10;
-    }
-    else
-    {
-      if(speed>=0)speed-=10;
-      if(speed<=0)
+      stadyCounter--;    
+      for (int i = 0; i < MAX_DRIVES; i++) 
       {
-        // loopTimes=0;
-        speed=0;
+
+        init_enc_offsets[i]=(int32_t)((uint32_t)(motor[i].driveGetAdditionalActualPosition(i))<<1)/2;
+        MnPosAcc[i]=MnPosInit[i]=motor[i].driveGetPositionActualValue();
+        testCounter=0;
+        testCounter2=10;
+        pre_posDiff2=pre_posDiff1=0;
+
       }
+      if(stadyCounter==0)
+      {
+
+        motorState=2;
+      }
+      inputL0=stadyCounter;
     }
+    inputL1=motorState;
+    if(motorState==2)
+    {
+      int motorIdx=0;
+      int32_t cur_Enc=(int32_t)((uint32_t)(motor[motorIdx].driveGetAdditionalActualPosition(motorIdx))<<1)/2;
+      int32_t  EncDiff=cur_Enc-init_enc_offsets[motorIdx];
+      static int32_t  pre_speed=0;
+      int32_t  posDiff=motor[motorIdx].driveGetPositionActualValue()-MnPosInit[motorIdx];
+      int32_t preCMDSpeed=pre_speed<0?-pre_speed:pre_speed;
+      inputL0=EncDiff;
+      inputL1=-(pre_posDiff2+pre_posDiff1)/2*8192.0/6400;
+
+
+
+
+/*{"id":0,"ack":true}
+{"d":"i:-2004.00 -1992.96"}
+{"d":"i:-1166.00 -1181.44"}
+{"d":"i:-349.00 -362.24"}
+{"d":"i:466.00 455.68"}
+{"d":"i:1284.00 1274.88"}
+{"d":"i:2104.00 2094.08"}
+{"d":"i:2457.00 2457.60"}
+{"d":"i:2222.00 2219.52"}
+{"d":"i:1419.00 1400.32"}
+{"d":"i:601.00 581.12"}
+{"d":"i:-218.00 -236.80"}
+{"d":"i:-1034.00 -1056.00"}
+{"d":"i:-1848.00 -1875.20"}
+{"d":"i:-2450.00 -2457.60"}*/
+      if(abs(inputL0-inputL1)>50)//step skip detection
+      {
+        motor[motorIdx].driveDisable();
+
+      }
+
+      SG_PLATE.update();
+      
+      const std::vector<int32_t> &plateSteps=SG_PLATE.getMotMoveVec();
+
+      SG_SIMP.update();
+      const std::vector<int32_t> &simpSteps=SG_SIMP.getMotMoveVec();
+
+
+      MnPosAcc[0]+=simpSteps[0];
+      MnPosAcc[1]+=simpSteps[1];
+      MnPosAcc[2]+=simpSteps[2];
+
+
+
+      
+      pre_posDiff2=pre_posDiff1;
+      pre_posDiff1=posDiff;
+      pre_speed=simpSteps[0];
+//      inputL0=motor[0].driveGetPositionActualValue();
+//      inputL1=motor[1].driveGetPositionActualValue();
+      // motor[0].driveSetTargetVelocity((simpSteps[0])*1000);
+      // motor[1].driveSetTargetVelocity((simpSteps[1])*1000);
+      // motor[2].driveSetTargetVelocity((simpSteps[2])*1000);
+
+      motor[0].driveSetTargetPosition(MnPosAcc[0]); 
+      motor[1].driveSetTargetPosition(MnPosAcc[1]); 
+      motor[2].driveSetTargetPosition(MnPosAcc[2]); 
+    }
+
+
+
+    // uint32_t inputD=dmp0.pdoRead16(0);//dmp0.digitalReadAll();
+    uint32_t inputD=dmp0.digitalReadAll();
+    if(inputD==0)inputD=(1<<((((uint32_t)MnPosAcc[0])>>10)%4))|(1<<( 4+ ((((uint32_t)MnPosAcc[1])>>10)%4)  ));
+    dmp0.digitalWriteAll(inputD);
+
+    // dmp0.pdoWrite16(0, inputD);
+
     loopTimes++;
 }
 
@@ -2552,37 +2344,78 @@ bool startECat()
 
   if(isECatStarted==true)return false;
   // Initialize the EtherCAT Master. All slaves enter PRE-OPERATIONAL state if successful
+  motorState=0;
   djrl.dbg_printf("master.begin:%d",master.begin());
+  uint32_t syncT_ns=updatePeriod_s*1000000000;
 
+  int slaveCount=master.getSlaveCount();
+  for(int i=0;i<slaveCount;i++)
+  {
+    djrl.dbg_printf("=========slave :[%d]=========",i);
+
+    djrl.dbg_printf("AliasAddress:%d",master.getAliasAddress(i));
+    djrl.dbg_printf("VendorID:%d ProductCode:%d",master.getVendorID(i),master.getProductCode(i));
+    djrl.dbg_printf("RevisionNumber:%d SerialNumber:%d",master.getRevisionNumber(i),master.getSerialNumber(i));
+
+    
+
+
+  }
+  djrl.dbg_printf("try write aliasAddr ret:%d",master.writeSII_AliasAddress(1,1234));
+
+  djrl.dbg_printf("=========slave  Count:%d =========",master.getSlaveCount());
+  
   //Configure each motor in the array
    for (int i = 0; i < MAX_DRIVES; i++)
    {
        motor[i].attach(0,i, master); // Attach each CiA402 device (motor) to the EtherCAT Master
-       motor[i].setDc(updatePeriod_s*1000000000); // Set Distributed Clock (DC) parameters for the motor
-       /*
-           Uses motor.driveSetMode(CIA402_CSP_MODE) to set drive operation mode.
-           EtherCAT CiA402 Mode as below:
-              CIA402_PP_MODE      = 1
-              CIA402_PV_MODE      = 3
-              CIA402_PT_MODE      = 4
-              CIA402_HOMING_MODE  = 6
-              CIA402_CSP_MODE     = 8
-              CIA402_CSV_MODE     = 9
-              CIA402_CST_MODE     = 10
-       */
-       motor[i].driveSetMode(CIA402_CSP_MODE); // Set each motor to Cyclic Synchronous Position (CSP) mode
+       motor[i].setDc(syncT_ns); // Set Distributed Clock (DC) parameters for the motor
+       
+       
+      //  motor[i].driveSetMaxMotorSpeed(10000 );
+      //  motor[i].driveSetMode(CIA402_CSV_MODE); // Set each motor to Cyclic Synchronous Position (CSP) mode
+      //  motor[i].sdoDownload32(0x5011, i+1, 6400, 10000);//Motor Pulse 
+      //  motor[i].sdoDownload8(0x608c+i*0x80, 0, 0, 10000); //Velocity dimension index 
+
+      motor[i].driveSetMaxMotorSpeed(30*60 );
+      motor[i].driveSetMode(CIA402_CSP_MODE); 
+
+
+
+      djrl.dbg_printf(" mot[%d] alias Address:%d",i,
+        motor[i].getAliasAddress());
+
    }
 
+   {
+      djrl.dbg_printf("attach IO ret:%d",
+        dmp0.attach(1, master));
+
+      djrl.dbg_printf(" IO alias Address:%d",
+        dmp0.getAliasAddress());
+
+      // djrl.dbg_printf("try write aliasAddr2 ret:%d",dmp0.writeSII_AliasAddress(1234));
+      // uint16_t index = 0xF030; // Example index, replace with correct index from documentation
+      // uint8_t subindex = 0x01; // Example subindex, replace with correct subindex
+
+      // djrl.dbg_printf("sdo write 16  idx:%d sidx:%d ret:%d",
+      //   index,subindex,dmp0.sdoDownload16(index,subindex,1234));
+
+      djrl.dbg_printf("setDC  IO ret:%d",
+        dmp0.setDc(syncT_ns));
+
+   }
    djrl.dbg_printf("attachCyclicCallback");
    master.attachCyclicCallback(myCallback); // Register a cyclic callback function
 
-   int ret=master.start(updatePeriod_s*1000000000, ECAT_SYNC); // Start the EtherCAT Master. All slaves enter OPERATIONAL state if successful
+   int ret=master.start(syncT_ns, ECAT_SYNC); // Start the EtherCAT Master. All slaves enter OPERATIONAL state if successful
    djrl.dbg_printf("master.start:%d",ret);
    
    djrl.dbg_printf("driveEnable");
    for (int i = 0; i < MAX_DRIVES; i++) motor[i].driveEnable(); // Enable each motor in the array
 
    isECatStarted=true;
+   loopTimes=0;
    return true;
 }
 
@@ -2595,8 +2428,10 @@ bool stopECat()
   master.stop();
    
   master.detachCyclicCallback();
+  dmp0.detach();
   for (int i = 0; i < MAX_DRIVES; i++)
   {
+    motor[i].driveDisable();
     motor[i].detach(); 
   }
   isECatStarted=false;
@@ -2611,9 +2446,9 @@ void loop()
   static int32_t preInputL=0;
 
   if (millis()>taskRunTime){ // Switch resistor off
-    djrl.dbg_printf("inputL:%d",inputL-preInputL);
-    preInputL=inputL;
-    taskRunTime+=1000; // Reset timer
+    djrl.dbg_printf("i:%.2f %.2f",inputL0,inputL1);
+    preInputL=inputL0;
+    taskRunTime+=100; // Reset timer
   }
 
 
@@ -2630,6 +2465,7 @@ void loop()
       //
       djrl.dbg_printf("recvLen:%d",recvLen);
       djrl.recv_data((uint8_t*)recvBuf,recvLen);
+
       // if(doDataLog)
       // {
       //   for(int i=0;i<recvLen;i++) 
