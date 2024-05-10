@@ -18,9 +18,14 @@ cJSON* CameraManager::cameraInfo2Json(CameraLayer::BasicCameraInfo &info)
   return cJSON_Parse(jsinstr.c_str());
 }
 
-InspectionTarget::InspectionTarget(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+
+InspectionTarget::InspectionTarget()
 {
-  this->inputPoolInsufficient=false;
+}
+
+void InspectionTarget::INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+{
+  InspectionTarget_Runnable::INIT();
   this->def=NULL;
   this->id=id;
   this->additionalInfo=NULL;
@@ -63,57 +68,15 @@ void InspectionTarget::attachSstaticInfo( cJSON* jobj,int trigger_id )
 }
 
 
-void InspectionTarget::acceptStageInfo(std::shared_ptr<StageInfo> sinfo)
-{
-  {
-    // LOGI("accept StageInfo: src:%s",sinfo->source.c_str());
-    inputPoolInsufficient=false;
-    input_stage.push_back(sinfo);
-  }
-}
-
-
-
 bool InspectionTarget::feedStageInfo(std::shared_ptr<StageInfo> sinfo)
 {
 
-  std::lock_guard<std::mutex> _(input_stage_lock);
   if(stageInfoFilter(sinfo))
   {
-    acceptStageInfo(sinfo);
+    input_queue.push_blocking(sinfo);
     return true;
   }
   return false;
-}
-
-
-
-
-int InspectionTarget::processInputStagePool()
-{
-  if(input_stage.size())
-  {
-    input_stage_lock.lock();
-
-    for(int i=0;i<input_stage.size();i++)
-    {
-      input_pool.push_back(input_stage[i]);
-    }
-    input_stage.clear();
-    input_stage_lock.unlock();
-    inputPoolInsufficient=false;
-  }
-  else
-  {
-    if(inputPoolInsufficient)return 0;
-  }
-
-  int processCount = processInputPool();
-  
-  inputPoolInsufficient=(processCount==0);
-
-  return processCount;
-
 }
 
 
@@ -121,7 +84,6 @@ void InspectionTarget::setInspDef(cJSON* def)
 {
 
   match_tags=NULL;
-  black_tags=NULL;
   if(this->def)cJSON_Delete(this->def);
   this->def=NULL;
   // this->depSrc.clear();
@@ -134,7 +96,7 @@ void InspectionTarget::setInspDef(cJSON* def)
 
 
     match_tags=JFetch_ARRAY(this->def,"match_tags");
-    black_tags=JFetch_ARRAY(this->def,"trigger_tags");
+    // black_tags=JFetch_ARRAY(this->def,"trigger_tags");
 
 
 
@@ -168,18 +130,17 @@ void InspectionTarget::setInspDef(cJSON* def)
 
 
 
-cJSON* InspectionTarget::genITInfo()
+cJSON* InspectionTarget::genITIOInfo()
 {
-  cJSON* info= genITInfo_basic();
+  cJSON* info= genITInfo();
   
   {
-    cJSON_AddItemToObject(info, "io",genITIOInfo() );
-    cJSON_AddStringToObject(info, "env_path",local_env_path.c_str());
+    cJSON_AddItemToObject(info, "io",genIOInfo({},{}) );
   }
   return info;
 }
 
-cJSON* InspectionTarget::genITInfo_basic()
+cJSON* InspectionTarget::genITInfo()
 {
   cJSON *obj=cJSON_CreateObject();
 
@@ -193,8 +154,46 @@ cJSON* InspectionTarget::genITInfo_basic()
     cJSON_AddStringToObject(obj, "id", id.c_str());
     cJSON_AddStringToObject(obj, "type",this->type.c_str());
     cJSON_AddStringToObject(obj, "name",this->name.c_str());
+    cJSON_AddStringToObject(obj, "env_path",local_env_path.c_str());
   }
   return obj;
+}
+cJSON* InspectionTarget::genIOInfo(std::vector<std::string>input,std::vector<std::string>output)
+{
+
+  
+  cJSON* arr= cJSON_CreateArray();
+
+
+  if(input.size()>0 || output.size()>0)
+  {
+    cJSON* opt= cJSON_CreateObject();
+    cJSON_AddItemToArray(arr,opt);
+
+    if(input.size()>0)
+    {
+      cJSON* sarr= cJSON_CreateArray();
+      cJSON_AddItemToObject(opt, "i",sarr );
+
+      for(int i=0;i<input.size();i++)
+      {
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(input[i].c_str() ));
+      }
+    }
+
+    if(output.size()>0)
+    {
+      cJSON* sarr= cJSON_CreateArray();
+      cJSON_AddItemToObject(opt, "o",sarr );
+      
+      for(int i=0;i<output.size();i++)
+      {
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(output[i].c_str() ));
+      }
+    }
+  }
+
+  return arr;
 }
 
 
@@ -347,14 +346,14 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
 
   if(type=="revisit_cache_stage_info")
   {
-    LOGI("cache_stage_info.get():%p",cache_stage_info.get());
-    if(cache_stage_info.get()==NULL)return false;
+    LOGI("cache_stage_info.get():%p",cache_latest_input.get());
+    if(cache_latest_input.get()==NULL)return false;
     
-    belongMan->dispatch(cache_stage_info,this);
+    belongMan->dispatch(cache_latest_input,this);
 
-    while (belongMan->inspTarProcess())
-    {
-    }
+    // while (belongMan->inspTarProcess())
+    // {
+    // }
     return true;
   }
 
@@ -362,11 +361,11 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
   
   if(type=="cache_image_save")
   {
-    if(cache_stage_info==NULL)return false;
+    if(cache_latest_input==NULL)return false;
     string folder_path=JFetch_STRING_ex(info,"folder_path");
     if(folder_path.length()==0)return false;
 
-    auto srcImg=cache_stage_info->img;
+    auto srcImg=cache_latest_input->img;
     if(srcImg==NULL)return false;
 
     Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
@@ -387,11 +386,11 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
 
   if(type=="result_cache_image_save")
   {
-    if(result_cache_stage_info==NULL)return false;
+    if(cache_latest_result==NULL)return false;
     string folder_path=JFetch_STRING_ex(info,"folder_path");
     if(folder_path.length()==0)return false;
 
-    auto srcImg=result_cache_stage_info->img_show;
+    auto srcImg=cache_latest_result->img_show;
     if(srcImg==NULL)return false;
 
     Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
@@ -435,15 +434,16 @@ InspectionTarget::~InspectionTarget()
   // {
   //   reutrnStageInfo(input_stage[i]);
   // }
-  input_stage.clear();
+
+  input_queue.termination_trigger();
 
   // for(int i=0;i<input_pool.size();i++)
   // {
   //   reutrnStageInfo(input_pool[i]);
   // }
-  input_pool.clear();
-  cache_stage_info=NULL;
-  result_cache_stage_info=NULL;
+  // input_pool.clear();
+  cache_latest_input=NULL;
+  cache_latest_result=NULL;
 }
 
 
@@ -764,7 +764,7 @@ int InspectionTargetManager::dispatch(std::shared_ptr<StageInfo> sinfo, Inspecti
   {
     if(it_id.length()>0)
     {
-      for(int i=0;i<inspTars.size();i++)
+      for(int i=0;i<inspTars.size();i++)//by it_id
       {
         
         LOGE("n:%s . <> . s:%s",inspTars[i]->id.c_str(),it_id.c_str());
@@ -782,7 +782,7 @@ int InspectionTargetManager::dispatch(std::shared_ptr<StageInfo> sinfo, Inspecti
       }
     }
     else
-    for(int i=0;i<inspTars.size();i++)
+    for(int i=0;i<inspTars.size();i++)// to All
     {
       
       if(inspTars[i]->feedStageInfo(sinfo)==true)
@@ -794,7 +794,7 @@ int InspectionTargetManager::dispatch(std::shared_ptr<StageInfo> sinfo, Inspecti
   }
   else
   {
-    if(targetIT->feedStageInfo(sinfo)==true)
+    if(targetIT->feedStageInfo(sinfo)==true)//to targetIT
     {
       // LOGE("tar:%s accepted",targetIT->id.c_str());
       acceptCount++;
@@ -821,35 +821,35 @@ int InspectionTargetManager::dispatch(std::shared_ptr<StageInfo> sinfo, Inspecti
 
 
 
-int InspectionTargetManager::inspTarProcess()
-{
+// int InspectionTargetManager::inspTarProcess()
+// {
   
-  std::lock_guard<std::mutex> lock(processLock);
-  int totalProcessCount=0;
-  while(1)
-  {
+//   std::lock_guard<std::mutex> lock(processLock);
+//   int totalProcessCount=0;
+//   while(1)
+//   {
 
-    std::vector<std::future<int>> fut_vec;
-    int curProcessCount=0;
-    for (int i = 0; i < inspTars.size(); i++)
-      fut_vec.push_back(inspTars[i]->futureInputStagePool());
+//     std::vector<std::future<int>> fut_vec;
+//     int curProcessCount=0;
+//     for (int i = 0; i < inspTars.size(); i++)
+//       fut_vec.push_back(inspTars[i]->futureInputStagePool());
 
-    for (int i = 0; i < fut_vec.size(); ++i)
-      curProcessCount += fut_vec[i].get();
+//     for (int i = 0; i < fut_vec.size(); ++i)
+//       curProcessCount += fut_vec[i].get();
 
-    // LOGI(">>>curProcessCount:%d",curProcessCount);
-    if(curProcessCount==0)
-    {
-      break;
-    }
-    totalProcessCount+=curProcessCount;
-  }
-
-
+//     // LOGI(">>>curProcessCount:%d",curProcessCount);
+//     if(curProcessCount==0)
+//     {
+//       break;
+//     }
+//     totalProcessCount+=curProcessCount;
+//   }
 
 
-  return totalProcessCount;
-}
+
+
+//   return totalProcessCount;
+// }
 
 bool InspectionTargetManager::isAllInspTarBufferClear()
 {

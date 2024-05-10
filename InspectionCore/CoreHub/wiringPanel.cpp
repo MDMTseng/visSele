@@ -24,7 +24,6 @@
 #include "CameraLayerManager.hpp"
 
 #include "InspectionTarget.hpp"
-#include "InspTar_SpriteDraw.hpp"
 #include "InspTar_ImgSrc.hpp"
 #include "InspTars.hpp"
 #include "RingBuf.hpp"
@@ -474,17 +473,17 @@ void ImgPipeProcessThread(bool *terminationflag)
       //   LOGI("%s",tag.c_str());
       int acceptCount=inspTarMan.dispatch(stInfo);
       // LOGI("acceptCount:%d",acceptCount);
-      if(acceptCount)
-      {
-        int processCount = inspTarMan.inspTarProcess();
-        LOGI("processCount:%d",processCount);
-      }
-      else
-      {
-        LOGE("NO InspTar accepts stage Info recycle.....");
-        //no one accept the stage info
-        // inspTarMan.unregNrecycleStageInfo(stInfo,NULL);
-      }
+      // if(acceptCount)
+      // {
+      //   int processCount = inspTarMan.inspTarProcess();
+      //   LOGI("processCount:%d",processCount);
+      // }
+      // else
+      // {
+      //   LOGE("NO InspTar accepts stage Info recycle.....");
+      //   //no one accept the stage info
+      //   // inspTarMan.unregNrecycleStageInfo(stInfo,NULL);
+      // }
 
       // LOGI("......<>>>>>.....");
 
@@ -654,7 +653,7 @@ int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
 }
 
-
+/*
 
 void InspectionTarget_GroupResultSave::thread_run()
 {
@@ -707,7 +706,7 @@ void InspectionTarget_GroupResultSave::thread_run()
 
 }
 
-
+*/
 
 struct TimeStampConvertParam{
   uint64_t pCoreT;//previous core time
@@ -765,7 +764,7 @@ TimeStampConvertParam CamStampParamUpdate(TimeStampConvertParam param,uint64_t n
 
 
 class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCollect_Base
-{
+{ 
   protected:
   int comm_pgID=-1;
   // py::module pyscript;
@@ -880,14 +879,34 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
   public:
 
 
-  static std::string TYPE(){ return "JSON_CNC_Peripheral"; }
-  InspectionTarget_JSON_CNC_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
-    InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path),
-    periodicThread(&InspectionTarget_JSON_CNC_Peripheral::periodicFunction,this)
+
+  static std::string sTYPE()
+  {return "JSON_CNC_Peripheral";}
+  virtual std::string TYPE()
+  {return sTYPE();}
+
+
+  // InspectionTarget_JSON_CNC_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
+  //   InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path)
+  // {
+  //   comm_pgID=-1;
+  // }
+
+
+
+
+
+  void INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
   {
 
     comm_pgID=-1;
+    periodicThread=std::thread(&InspectionTarget_JSON_CNC_Peripheral::periodicFunction,this);
+    InspectionTarget::INIT(id,def,belongMan,local_env_path);
   }
+
+
+
+
 
   ~InspectionTarget_JSON_CNC_Peripheral()
   {
@@ -988,10 +1007,10 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
     return arr;
   }
 
-  std::future<int> futureInputStagePool()
-  {
-    return std::async(launch::async,&InspectionTarget_JSON_CNC_Peripheral::processInputStagePool,this);
-  }
+  // std::future<int> futureInputStagePool()
+  // {
+  //   return std::async(launch::async,&InspectionTarget_JSON_CNC_Peripheral::processInputStagePool,this);
+  // }
 
   bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
   {
@@ -1217,12 +1236,11 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
   }
 
 
-  void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
+  void singleGroupProcess(shared_ptr<StageInfo> sinfo)
   {
 
   }
 };
-
 
 
 class ScriptChannel:public Data_JsonRaw_Layer
@@ -1378,7 +1396,6 @@ class ScriptChannel:public Data_JsonRaw_Layer
     return NULL;
   }
 };
-
 
 
 
@@ -1727,6 +1744,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     //   return recv_data(data,len, false);//LOOP back
     // }
   };
+
   PerifChannel2 *pCH= NULL;
 
   class ScriptChannel2:public ScriptChannel
@@ -1884,14 +1902,27 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
   }
 
-  static std::string TYPE(){ return "JSON_Peripheral"; }
-  InspectionTarget_JSON_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
-    InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path),
-    recentSrcStageInfoSetIdx(100),bTrigInfoRecordBuffer(100),liveFlag(true),
-    periodicThread(&InspectionTarget_JSON_Peripheral::periodicFunction,this)
+  // InspectionTarget_JSON_Peripheral(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path):
+  //   InspectionTarget_StageInfoCollect_Base(id,def,belongMan,local_env_path),
+  //   recentSrcStageInfoSetIdx(100),bTrigInfoRecordBuffer(100)
+  // {
+  //   // LOGE("PY script output:%s",exec(("python3 "+local_env_path+"/script.py").c_str()).c_str());
+
+  // }
+
+
+
+
+  void INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
   {
     this->local_env_path=local_env_path;
+    liveFlag=true;
     comm_pgID=-1;
+
+    periodicThread=std::thread(&InspectionTarget_JSON_Peripheral::periodicFunction,this);
+
+    recentSrcStageInfoSetIdx.RESET(100);
+    bTrigInfoRecordBuffer.resize(100);
     recentSrcStageInfoSet.resize(recentSrcStageInfoSetIdx.space());
     for(int i=0;i<bTrigInfoRecordBuffer.size();i++)
     {
@@ -1900,9 +1931,19 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
 
     reloadScript();
-    // LOGE("PY script output:%s",exec(("python3 "+local_env_path+"/script.py").c_str()).c_str());
-
+    InspectionTarget::INIT(id,def,belongMan,local_env_path);
   }
+
+
+  static std::string sTYPE()
+  {return "StageInfoCollect_Base";}
+  virtual std::string TYPE()
+  {return sTYPE();}
+
+
+
+
+
 
 
   void periodicFunction()
@@ -2006,10 +2047,10 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     return arr;
   }
 
-  std::future<int> futureInputStagePool()
-  {
-    return std::async(launch::async,&InspectionTarget_JSON_Peripheral::processInputStagePool,this);
-  }
+  // std::future<int> futureInputStagePool()
+  // {
+  //   return std::async(launch::async,&InspectionTarget_JSON_Peripheral::processInputStagePool,this);
+  // }
 
   string TEST_mode="";
   int TEST_mode_counter=0;
@@ -2367,9 +2408,9 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
 
 
-        while (belongMan->inspTarProcess())
-        {
-        }
+        // while (belongMan->inspTarProcess())
+        // {
+        // }
         return true;
       }
 
@@ -2464,8 +2505,15 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
 bool scriptNeedInit=true;
 
-void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
+// void singleGroupProcess(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
+virtual void singleGroupProcess(shared_ptr<StageInfo> sinfo)
 {
+  
+  auto d_img_info = dynamic_cast<StageInfo_SIGroup*>(sinfo.get());
+
+
+  auto &group=d_img_info->group;
+  int trigger_id=d_img_info->trigger_id;
   int catSum=STAGEINFO_CAT_NA;
 
   cJSON *ignore_indexes=NULL;
@@ -2889,37 +2937,28 @@ void processGroup(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group
 
 };
 
-class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
+
+class InspectionTarget_DataTransfer :public InspectionTarget
 {
   public:
 
-  static std::string TYPE(){ return "DataTransfer"; }
-  InspectionTarget_DataTransfer(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
-    :InspectionTarget_DataThreadedProcess(id,def,belongMan,local_env_path)
-  {
-    datTransferQueue.resize(300);
-  }
+  static std::string sTYPE()
+  {return "DataTransfer";}
+  virtual std::string TYPE()
+  {return sTYPE();}
+
 
 
   virtual cJSON* genITIOInfo()
   {
-
-    cJSON* arr= cJSON_CreateArray();
-
+    cJSON* info= genITInfo();
+    
     {
-      cJSON* opt= cJSON_CreateObject();
-      cJSON_AddItemToArray(arr,opt);
-
-      {
-        cJSON* sarr= cJSON_CreateArray();
-        
-        cJSON_AddItemToObject(opt, "i",sarr );
-        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo::stypeName().c_str() ));
-      }
+      cJSON_AddItemToObject(info, "io",genIOInfo({"$ALL"},{}) );
     }
-
-    return arr;
+    return info;
   }
+
 
   int force_down_scale=-1;
   float downSampFactor=1;
@@ -2961,7 +3000,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
     return false;
   }
 
-  void thread_run()
+  void run()
   {
     
     acvImage cacheImage;
@@ -2972,7 +3011,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
       // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
             
       try{
-        if(datTransferQueue.pop_blocking(curInput)==false)
+        if(input_queue.pop_blocking(curInput)==false)
         {
           break;
         }
@@ -3067,7 +3106,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
           {
             okToSend=true;
           }
-          else if(datTransferQueue.size()>queue_size_image_transfer_skip)
+          else if(input_queue.size()>queue_size_image_transfer_skip)
           {
             okToSend=false;
           }
@@ -3104,7 +3143,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
           }
 
 
-          int compressionRate=95-datTransferQueue.size()*5;
+          int compressionRate=95-input_queue.size()*5;
           if(compressionRate<20)compressionRate=20;
 
           vector<unsigned char> img_encode;
@@ -3198,8 +3237,8 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
         // LOGE("OK..");
         bpg_pi.fromUpperLayer_SS(imgCHID,true);
         
-        if(realTimeDropFlag>0)
-          realTimeDropFlag--;
+        // if(realTimeDropFlag>0)
+        //   realTimeDropFlag--;
 
         // LOGE("OK..");
       }
@@ -3215,66 +3254,52 @@ class InspectionTarget_DataTransfer :public InspectionTarget_DataThreadedProcess
 
 };
 
-
-
-
-
-class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedProcess
+class InspectionTarget_StageInfoImageSave :public InspectionTarget
 {
   public:
   std::string mark="SIIS";
   std::string cache_mark="IMG_CACHE";
 
+
+
   std::mutex cacheQueue_lock;
   std::array<std::shared_ptr<StageInfo>,50> cacheQueue_buff;
   RingBufIdxCounter<int> cacheQueueRBC;
 
-  static std::string TYPE(){ return "StageInfoImageSave"; }
-  InspectionTarget_StageInfoImageSave(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
-    :InspectionTarget_DataThreadedProcess(id,def,belongMan,local_env_path),mark("SIIS"),cacheQueueRBC(cacheQueue_buff.size())
+  static std::string sTYPE()
+  {return "StageInfoImageSave";}
+  virtual std::string TYPE()
+  {return sTYPE();}
+
+
+
+  void INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
   {
-    datTransferQueue.resize(9999);
+    cacheQueueRBC.RESET(cacheQueue_buff.size());
+    InspectionTarget::INIT(id,def,belongMan,local_env_path);
   }
 
 
 
   ~InspectionTarget_StageInfoImageSave()
   {
-    LOGE("InspectionTarget_StageInfoImageSave::~InspectionTarget_StageInfoImageSave()");
-    for(int i=0;i<cacheQueue_buff.size();i++)
-    {
-      cacheQueue_buff[i].reset();
-    }
 
     LOGE("InspectionTarget_StageInfoImageSave::~InspectionTarget_StageInfoImageSave() done");
   }
-  virtual int processInputPool()
-  {
 
-    int ret = InspectionTarget_DataThreadedProcess::processInputPool();
-
-    // LOGI("PPUSH:datTransferQueue:size:%d",datTransferQueue.size());
-    return ret;
-  }
+  
   virtual cJSON* genITIOInfo()
   {
-
-    cJSON* arr= cJSON_CreateArray();
-
+    cJSON* info= genITInfo();
+    
     {
-      cJSON* opt= cJSON_CreateObject();
-      cJSON_AddItemToArray(arr,opt);
-
-      {
-        cJSON* sarr= cJSON_CreateArray();
-        
-        cJSON_AddItemToObject(opt, "i",sarr );
-        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Image::stypeName().c_str() ));
-      }
+      cJSON_AddItemToObject(info, "io",genIOInfo({StageInfo_Image::stypeName()},{}) );
     }
-
-    return arr;
+    return info;
   }
+
+
+
 
   long long timeInMilliseconds(void) {
       struct timeval tv;
@@ -3337,14 +3362,13 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
 
   bool exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
   {
-    bool ret = InspectionTarget_DataThreadedProcess::exchangeCMD(info,info_ID,act);
+    bool ret = InspectionTarget::exchangeCMD(info,info_ID,act);
     if(ret)return ret;
     string type=JFetch_STRING_ex(info,"type");
 
 
     if(type=="INJECT_CACHE")
     {
-
       std::lock_guard<std::mutex> lock(cacheQueue_lock);
       int tar_trigger_id=JFetch_NUMBER_ex(info,"trigger_id");
       vector<string> tar_tags;//=JFetch_STRING_ARRAY_ex(info,"tags");
@@ -3444,7 +3468,6 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
             // pkt->trigger_tags.push_back("s_uInspCache_");
             for (size_t i = 0; i < src->trigger_tags.size(); i++)
             {
-              /* code */
               if(src->trigger_tags[i]==cache_mark)continue;
 
               pkt->trigger_tags.push_back(src->trigger_tags[i]);
@@ -3459,9 +3482,9 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
 
 
           }
-          while (belongMan->inspTarProcess())
-          {
-          }
+          // while (belongMan->inspTarProcess())
+          // {
+          // }
           return true;
         }
       }
@@ -3581,7 +3604,7 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
     return false;
   }
   int saveCount=0;
-  void thread_run()
+  virtual void run()
   {
     
     // acvImage cacheImage;
@@ -3593,7 +3616,7 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
             
       try{
         // LOGI("TryReadNew");
-        if(datTransferQueue.pop_blocking(curInput)==false)
+        if(input_queue.pop_blocking(curInput)==false)
         {
           LOGI("TryReadTailed");
           break;
@@ -3688,8 +3711,6 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget_DataThreadedP
 
 
 };
-
-
 
 
 
@@ -4441,71 +4462,69 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           std::string id=JFetch_STRING_ex(defInfo,"id");
           
           LOGI(">>>id:%s Add type:%s",id.c_str(),type.c_str());
-          if(type==InspectionTarget_ColorRegionDetection::TYPE())
-          {
-            inspTar = new InspectionTarget_ColorRegionDetection(id,defInfo,&inspTarMan,env_path);
-          }
-          else if(type==InspectionTarget_TEST_IT::TYPE())
-          {
-            inspTar = new InspectionTarget_TEST_IT(id,defInfo,&inspTarMan,env_path);
-          }
-          else if(type==InspectionTarget_DataTransfer::TYPE())
-          {
-            inspTar = new InspectionTarget_DataTransfer(id,defInfo,&inspTarMan,env_path);
-          }
-          else if(type==InspectionTarget_StageInfoImageSave::TYPE())
-          {
-            inspTar = new InspectionTarget_StageInfoImageSave(id,defInfo,&inspTarMan,env_path);
-          }
-          
-          else if(type==InspectionTarget_ReduceCategorize::TYPE())
-          {
-            inspTar = new InspectionTarget_ReduceCategorize(id,defInfo,&inspTarMan,env_path);
-          }
-          
-          else if(type==InspectionTarget_GroupResultSave::TYPE())
-          {
-            inspTar = new InspectionTarget_GroupResultSave(id,defInfo,&inspTarMan,env_path);
-          }
 
-          else if(type==InspectionTarget_Orientation_ColorRegionOval::TYPE())
+          if(type==InspectionTarget_TEST_IT::sTYPE())
           {
-            inspTar = new InspectionTarget_Orientation_ColorRegionOval(id,defInfo,&inspTarMan,env_path);
+            inspTar = new InspectionTarget_TEST_IT();
+            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
           }
-          else if(type==InspectionTarget_SurfaceCheckSimple::TYPE())
+          else if(type==InspectionTarget_DataTransfer::sTYPE())
           {
-            inspTar = new InspectionTarget_SurfaceCheckSimple(id,defInfo,&inspTarMan,env_path);
+            inspTar = new InspectionTarget_DataTransfer();
+            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
           }
-          else if(type==InspectionTarget_Orientation_ShapeBasedMatching::TYPE())
+          else if(type==InspectionTarget_StageInfoImageSave::sTYPE())
           {
-            inspTar = new InspectionTarget_Orientation_ShapeBasedMatching(id,defInfo,&inspTarMan,env_path);
+            inspTar = new InspectionTarget_StageInfoImageSave();
+            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
           }
-          else if(type==InspectionTarget_JSON_Peripheral::TYPE())
+          
+          // else if(type==InspectionTarget_ReduceCategorize::TYPE())
+          // {
+          //   inspTar = new InspectionTarget_ReduceCategorize(id,defInfo,&inspTarMan,env_path);
+          // }
+          
+          // else if(type==InspectionTarget_GroupResultSave::TYPE())
+          // {
+          //   inspTar = new InspectionTarget_GroupResultSave(id,defInfo,&inspTarMan,env_path);
+          // }
+
+          else if(type==InspectionTarget_SurfaceCheckSimple::sTYPE())
           {
-            inspTar = new InspectionTarget_JSON_Peripheral(id,defInfo,&inspTarMan,env_path);
+            inspTar = new InspectionTarget_SurfaceCheckSimple();
+            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
           }
-          else if(type==InspectionTarget_JSON_CNC_Peripheral::TYPE())
+          else if(type==InspectionTarget_Orientation_ShapeBasedMatching::sTYPE())
           {
-            inspTar = new InspectionTarget_JSON_CNC_Peripheral(id,defInfo,&inspTarMan,env_path);
+            // inspTar = new InspectionTarget_Orientation_ShapeBasedMatching(id,defInfo,&inspTarMan,env_path);
+
+            inspTar = new InspectionTarget_Orientation_ShapeBasedMatching();
+            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
           }
-          else if(type==InspectionTarget_StageInfoCollect_Base::TYPE())
+          else if(type==InspectionTarget_JSON_Peripheral::sTYPE())
           {
-            inspTar = new InspectionTarget_StageInfoCollect_Base(id,defInfo,&inspTarMan,env_path);
+            inspTar = new InspectionTarget_JSON_Peripheral();
+            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
           }
-          else if(type==InspectionTarget_SpriteDraw::TYPE())
+          else if(type==InspectionTarget_JSON_CNC_Peripheral::sTYPE())
           {
-            inspTar = new InspectionTarget_SpriteDraw(id,defInfo,&inspTarMan,env_path);
+            inspTar = new InspectionTarget_JSON_CNC_Peripheral();
+            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
           }
-          else if(type==InspectionTarget_ImgSrc::TYPE())
-          {
-            inspTar = new InspectionTarget_ImgSrc(id,defInfo,&inspTarMan,env_path);
-          }
+          // else if(type==InspectionTarget_StageInfoCollect_Base::TYPE())
+          // {
+          //   inspTar = new InspectionTarget_StageInfoCollect_Base(id,defInfo,&inspTarMan,env_path);
+          // }
+          // else if(type==InspectionTarget_ImgSrc::TYPE())
+          // {
+          //   inspTar = new InspectionTarget_ImgSrc(id,defInfo,&inspTarMan,env_path);
+          // }
 
           
-          else
-          {
-            //failed
-          }
+          // else
+          // {
+          //   //failed
+          // }
         }
 
 

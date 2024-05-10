@@ -26,26 +26,6 @@ using namespace cv;
 
 using namespace std;
 
-class InspectionTarget_Orientation_ColorRegionOval :public InspectionTarget
-{
-public:
-  InspectionTarget_Orientation_ColorRegionOval(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
-
-  static string TYPE(){ return "Orientation_ColorRegionOval"; }
-  future<int> futureInputStagePool();
-
-  int processInputPool();
-
-  bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act);
-
-  virtual cJSON* genITIOInfo();
-
-  void singleProcess(shared_ptr<StageInfo> sinfo);
-  virtual ~InspectionTarget_Orientation_ColorRegionOval();
-
-};
-
-
 
 
 
@@ -80,22 +60,35 @@ public:
 
 
 
-  InspectionTarget_Orientation_ShapeBasedMatching(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
+  virtual void INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
-  static string TYPE(){ return "Orientation_ShapeBasedMatching"; }
-  future<int> futureInputStagePool();
+
+  static std::string sTYPE()
+  {return "Orientation_ShapeBasedMatching";}
+  virtual std::string TYPE()
+  {return sTYPE();}
+
+
+
+  
+  virtual cJSON* genITIOInfo()
+  {
+    cJSON* info= genITInfo();
+    
+    {
+      cJSON_AddItemToObject(info, "io",genIOInfo({StageInfo_Image::stypeName()},{StageInfo_Orientation::stypeName()}) );
+    }
+    return info;
+  }
 
   void setInspDef(cJSON* def);
-  int processInputPool();
+  void run();
 
   bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act);
 
-  virtual cJSON* genITIOInfo();
 
   void singleProcess(shared_ptr<StageInfo> sinfo);
   virtual ~InspectionTarget_Orientation_ShapeBasedMatching();
 
 };
-
-
 

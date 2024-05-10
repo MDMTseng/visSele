@@ -11,13 +11,11 @@ template<typename Base, typename T> inline bool instanceof(const T) {
    return is_base_of<Base, T>::value;
 }
 
-InspectionTarget_SurfaceCheckSimple::InspectionTarget_SurfaceCheckSimple(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
-  :InspectionTarget(id,def,belongMan,local_env_path)
-{
-  type=InspectionTarget_SurfaceCheckSimple::TYPE();
-  setInspDef(def);
-}
 
+void InspectionTarget_SurfaceCheckSimple::INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+{
+  InspectionTarget::INIT(id,def,belongMan,local_env_path);
+}
 
 
 int expEleRefSplit(string expEle,string &name,string &attr)
@@ -227,25 +225,39 @@ void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
 //   return false;
 // }
 
-future<int> InspectionTarget_SurfaceCheckSimple::futureInputStagePool()
-{
-  return async(launch::async,&InspectionTarget_SurfaceCheckSimple::processInputStagePool,this);
-}
+// future<int> InspectionTarget_SurfaceCheckSimple::futureInputStagePool()
+// {
+//   return async(launch::async,&InspectionTarget_SurfaceCheckSimple::processInputStagePool,this);
+// }
 
-int InspectionTarget_SurfaceCheckSimple::processInputPool()
+void InspectionTarget_SurfaceCheckSimple::run()
 {
-  int poolSize=input_pool.size();
-  for(int i=0;i<poolSize;i++)
+
+  // acvImage cacheImage;
+  while(true)
   {
-    shared_ptr<StageInfo> curInput=input_pool[i];
-    singleProcess(curInput);
+    std::shared_ptr<StageInfo> curInput;
+    // LOGI("<<<<<size():%d",datTransferQueue.size());
+    // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
+          
+    try{
+      // LOGI("TryReadNew");
+      if(input_queue.pop_blocking(curInput)==false)
+      {
+        LOGI("TryReadTailed");
+        break;
+      }
 
-    input_pool[i]=NULL;
+      singleProcess(curInput);
+    }
+    catch(TS_Termination_Exception e)
+    {
+      LOGI("TS_Termination_Exception");
+      break;
+    }
+    
   }
-  input_pool.clear();
 
-
-  return poolSize;//run all
 
 }
 
@@ -402,13 +414,13 @@ bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchang
 
     if(extParam && useExtParam)
     {
-      if(cache_stage_info.get()==NULL)return false;
+      if(cache_latest_input.get()==NULL)return false;
     
-      belongMan->dispatch(cache_stage_info,this);
+      belongMan->dispatch(cache_latest_input,this);
 
-      while (belongMan->inspTarProcess())
-      {
-      }
+      // while (belongMan->inspTarProcess())
+      // {
+      // }
     }
 
 
@@ -424,9 +436,9 @@ bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchang
 
   if(type=="extract_color")
   {
-    if(result_cache_stage_info.get()==NULL)return false;
+    if(cache_latest_input.get()==NULL)return false;
 
-    acvImage* acv_img= result_cache_stage_info->img_show.get();
+    acvImage* acv_img= cache_latest_input->img_show.get();
     Mat cv_img(acv_img->GetHeight(),acv_img->GetWidth(),CV_8UC3,acv_img->CVector[0]);
 
     
@@ -512,40 +524,6 @@ bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchang
   return false;
 }
 
-
-cJSON* InspectionTarget_SurfaceCheckSimple::genITIOInfo()
-{
-
-
-  
-  cJSON* arr= cJSON_CreateArray();
-
-  {
-    cJSON* opt= cJSON_CreateObject();
-    cJSON_AddItemToArray(arr,opt);
-
-    {
-      cJSON* sarr= cJSON_CreateArray();
-      
-      cJSON_AddItemToObject(opt, "i",sarr );
-      cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Orientation::stypeName().c_str() ));
-    }
-
-    {
-      cJSON* sarr= cJSON_CreateArray();
-      
-      cJSON_AddItemToObject(opt, "o",sarr );
-      cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_SurfaceCheckSimple::stypeName().c_str() ));
-    }
-
-
-
-
-  }
-
-  return arr;
-
-}
 
 
 static Mat getRotTranMat(acv_XY pt1,acv_XY pt2,float theta,bool flipX=false,bool flipY=false)
@@ -1530,7 +1508,7 @@ int PerformInsp(
             // LOGE("X . axisSum:%d . %d",axisSum.size().width,axisSum.size().height);
 
             Mat axisSum2;
-            double otsu_threshold = (sense0to1)?1:cv::threshold(axisSum, axisSum2, 0 /*ignored value*/, 255, cv::THRESH_OTSU);
+            double otsu_threshold = (sense0to1)?1:cv::threshold(axisSum, axisSum2, 0, 255, cv::THRESH_OTSU);
             // LOGE("otsu_threshold:%f",otsu_threshold);
             float xLoc1 = findCrossLoc(axisSum,otsu_threshold,false);
             float xLoc2 = findCrossLoc(axisSum,otsu_threshold,true);
@@ -2487,7 +2465,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   if(useExtParam==true && extParam==NULL )
   {
     
-    cache_stage_info=sinfo;
+    cache_latest_input=sinfo;
     return;
   }
 
@@ -3030,7 +3008,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                 // LOGE("X . axisSum:%d . %d",axisSum.size().width,axisSum.size().height);
 
                 Mat axisSum2;
-                otsu_threshold = cv::threshold(axisSum, axisSum2, 0 /*ignored value*/, 255, cv::THRESH_OTSU);
+                otsu_threshold = cv::threshold(axisSum, axisSum2, 0, 255, cv::THRESH_OTSU);
 
               }
 
@@ -3061,7 +3039,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                 // LOGE("X . axisSum:%d . %d",axisSum.size().width,axisSum.size().height);
 
                 Mat axisSum2;
-                otsu_threshold = cv::threshold(axisSum, axisSum2, 0 /*ignored value*/, 255, cv::THRESH_OTSU);
+                otsu_threshold = cv::threshold(axisSum, axisSum2, 0, 255, cv::THRESH_OTSU);
 
               }
 
@@ -3319,8 +3297,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   reportInfo->genJsonRepTojInfo();
   belongMan->dispatch(reportInfo);
-  result_cache_stage_info=reportInfo;
-  cache_stage_info=sinfo;
+  cache_latest_input=reportInfo;
+  cache_latest_input=sinfo;
 }
 
 

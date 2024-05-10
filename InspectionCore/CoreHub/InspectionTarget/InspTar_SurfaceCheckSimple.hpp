@@ -31,7 +31,6 @@
 using namespace cv;
 
 using namespace std;
-
 class InspectionTarget_SurfaceCheckSimple :public InspectionTarget
 {
   bool useExtParam=false;
@@ -44,22 +43,42 @@ class InspectionTarget_SurfaceCheckSimple :public InspectionTarget
 
   CompScript *orientationAlter=NULL;//=new CompScript();
 public:
-  InspectionTarget_SurfaceCheckSimple(string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
-  static string TYPE(){ return "SurfaceCheckSimple"; }
-  future<int> futureInputStagePool();
+  void INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
+
+
+  static std::string sTYPE()
+  {return "SurfaceCheckSimple";}
+  virtual std::string TYPE()
+  {return sTYPE();}
+
+
+
+
+  
+  virtual cJSON* genITIOInfo()
+  {
+    cJSON* info= genITInfo();
+    
+    {
+      cJSON_AddItemToObject(info, "io",genIOInfo({StageInfo_Orientation::stypeName()},{StageInfo_SurfaceCheckSimple::stypeName()}) );
+    }
+    return info;
+  }
+
+
+
+  // future<int> futureInputStagePool();
 
   void setInspDef(cJSON* def);
-  int processInputPool();
-
   bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act);
 
-  virtual cJSON* genITIOInfo();
 
+  void run();
   void singleProcess(shared_ptr<StageInfo> sinfo);
+
+
   virtual ~InspectionTarget_SurfaceCheckSimple();
 
 };
-
-
 

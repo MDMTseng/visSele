@@ -472,19 +472,6 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
 };
 
 
-
-class StageInfo_Group:public StageInfo
-{
-  public:
-  static string stypeName(){return "Group";}
-  string typeName(){return StageInfo_Group::stypeName();}
-
-
-  
-
-};
-
-
 class StageInfo_Orientation:public StageInfo
 {
   public:

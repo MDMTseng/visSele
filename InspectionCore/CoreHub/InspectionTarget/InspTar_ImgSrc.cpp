@@ -13,7 +13,7 @@ inline bool instanceof (const T)
 }
 
 
-
+/*
 InspectionTarget_ImgSrc::InspectionTarget_ImgSrc(string id, cJSON *def, InspectionTargetManager *belongMan, std::string local_env_path)
     : InspectionTarget(id, def, belongMan, local_env_path)
 {
@@ -25,10 +25,10 @@ InspectionTarget_ImgSrc::InspectionTarget_ImgSrc(string id, cJSON *def, Inspecti
   setInspDef(def);
 }
 
-future<int> InspectionTarget_ImgSrc::futureInputStagePool()
-{
-  return async(launch::async, &InspectionTarget_ImgSrc::processInputStagePool, this);
-}
+// future<int> InspectionTarget_ImgSrc::futureInputStagePool()
+// {
+//   return async(launch::async, &InspectionTarget_ImgSrc::processInputStagePool, this);
+// }
 
 int InspectionTarget_ImgSrc::processInputPool()
 {
@@ -609,3 +609,6 @@ InspectionTarget_ImgSrc::~InspectionTarget_ImgSrc()
     cam_ctx=NULL; 
   }
 }
+
+
+*/

@@ -117,22 +117,46 @@ class exchangeCMD_ACT
 
 };
 
+
+
+class InspectionTarget_Runnable {
+public:
+    InspectionTarget_Runnable(){
+    }
+
+    void INIT() {
+        m_thread = std::thread(&InspectionTarget_Runnable::run, this);
+    }
+
+    void join() {
+        if (m_thread.joinable()) {
+            m_thread.join();
+        }
+    }
+
+    virtual ~InspectionTarget_Runnable() {
+        join();
+    }
+    virtual void run()=0;
+
+protected:
+    std::thread m_thread;
+};
+
+
 class InspectionTargetManager;
 class StageInfo;
-class InspectionTarget
+class InspectionTarget:public InspectionTarget_Runnable
 {
   protected:
   std::string local_env_path;
-  bool asService=false;
-  shared_ptr<StageInfo> cache_stage_info=NULL;
-  shared_ptr<StageInfo> result_cache_stage_info=NULL;
+  shared_ptr<StageInfo> cache_latest_input=NULL;
+  shared_ptr<StageInfo> cache_latest_result=NULL;
   public:
   std::string id;
   std::string type;
   std::string name;
   int stream_id;
-  bool inputPoolInsufficient;
-
 
   // cJSON *value_dict=NULL;
   cJSON *def=NULL;
@@ -140,62 +164,66 @@ class InspectionTarget
   InspectionTargetManager* belongMan;
 
   cJSON * match_tags;
-  cJSON * black_tags;
+  // cJSON * black_tags;
   
-  static std::string TYPE(){ return "IT"; }
+
+  static std::string sTYPE()
+  {return "IT";}
+  virtual std::string TYPE()
+  {return sTYPE();}
+
+
   // std::vector<StageInfo_CAT> acceptTags;
-  InspectionTarget(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
-  
+  InspectionTarget();
 
-
+  virtual void INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);
 
 
 
   virtual ~InspectionTarget();
-  virtual void setInspDef(cJSON* def);
 
+
+
+  virtual void setInspDef(cJSON* def);
+  
+  
   virtual bool exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act);
 
-  virtual cJSON* genITIOInfo()=0;
+
+  virtual cJSON* genITIOInfo();
+  virtual cJSON* genIOInfo(std::vector<std::string>input,std::vector<std::string>output);
   virtual cJSON* genITInfo();
 
-  
-  std::mutex input_stage_lock;
-  std::vector<std::shared_ptr<StageInfo>> input_stage;
-  std::vector<std::shared_ptr<StageInfo>> input_pool;
-  
+
+
+public:
+  TSQueue<std::shared_ptr<StageInfo>> input_queue;
   virtual bool feedStageInfo(std::shared_ptr<StageInfo> sinfo);
 
 
-  virtual int processInputStagePool();  
+
+protected:
+
+  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo);
 
 
-  virtual std::future<int> futureInputStagePool()=0;
+  virtual void run()=0;
 
 
+public:
 
-  // bool matchTriggerTag(string tarTag);
-  protected:
+protected:
 
   static bool tagMatching(cJSON* tagWhiteList, vector<std::string> &tagArr);
 
-  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo);
   
   void insertInputTagsWPrefix(std::vector<std::string> &insertTo,std::vector<std::string> &fromList,std::string prefixToMatch);
 
   void attachSstaticInfo( cJSON* jobj,int trigger_id );
-  virtual cJSON* genITInfo_basic();
-
-
-  // virtual cJSON* genCacheResourceInfo();
-
-  // virtual std::vector<StageInfo*> inputPick(std::vector<StageInfo*> infoPool)=0;//returns input processed
-  virtual void acceptStageInfo(std::shared_ptr<StageInfo> sinfo);
 
   void additionalInfoAssign(std::string key,cJSON* info);
-  virtual int processInputPool()=0; 
-};
 
+};
 
 class InspectionTargetManager
 {

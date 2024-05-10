@@ -45,8 +45,11 @@ public:
 
   InspectionTarget_ImgSrc(string id, cJSON *def, InspectionTargetManager *belongMan, std::string local_env_path);
 
-  static string TYPE(){ return "ImgSrc"; }
-  future<int> futureInputStagePool();
+  virtual std::string TYPE()
+  {
+      return "ImgSrc";
+  }
+  // future<int> futureInputStagePool();
 
   virtual void setInspDef(cJSON* def);
   virtual int processInputPool();

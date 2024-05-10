@@ -12,37 +12,51 @@ inline bool instanceof (const T)
   return is_base_of<Base, T>::value;
 }
 
-InspectionTarget_Orientation_ShapeBasedMatching::InspectionTarget_Orientation_ShapeBasedMatching(string id, cJSON *def, InspectionTargetManager *belongMan, std::string local_env_path)
-    : InspectionTarget(id, NULL, belongMan, local_env_path),recentSrcStageInfoSetIdx(10)
+
+void InspectionTarget_Orientation_ShapeBasedMatching::INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
 {
-  type = InspectionTarget_Orientation_ShapeBasedMatching::TYPE();
 
-
-  recentSrcStageInfoSet.resize(recentSrcStageInfoSetIdx.space());
+  // LOGE("InspectionTarget_Orientation_ShapeBasedMatching::INIT");
   sbm = NULL;
+  recentSrcStageInfoSetIdx.RESET(20);
+  recentSrcStageInfoSet.resize(recentSrcStageInfoSetIdx.space());
+  InspectionTarget::INIT(id,def,belongMan,local_env_path);
 
-  setInspDef(def);
-  // sbm=new SBM_if(60, {4,6,12},30,80);
 }
 
-future<int> InspectionTarget_Orientation_ShapeBasedMatching::futureInputStagePool()
-{
-  return async(launch::async, &InspectionTarget_Orientation_ShapeBasedMatching::processInputStagePool, this);
-}
+// future<int> InspectionTarget_Orientation_ShapeBasedMatching::futureInputStagePool()
+// {
+//   return async(launch::async, &InspectionTarget_Orientation_ShapeBasedMatching::processInputStagePool, this);
+// }
 
-int InspectionTarget_Orientation_ShapeBasedMatching::processInputPool()
+void InspectionTarget_Orientation_ShapeBasedMatching::run()
 {
-  int poolSize = input_pool.size();
-  for (int i = 0; i < poolSize; i++)
+
+  // acvImage cacheImage;
+  while(true)
   {
-    shared_ptr<StageInfo> curInput = input_pool[i];
-    singleProcess(curInput);
+    std::shared_ptr<StageInfo> curInput;
+    // LOGI("<<<<<size():%d",datTransferQueue.size());
+    // std::this_thread::sleep_for(std::chrono::milliseconds(500));//SLOW load test
+          
+    try{
+      // LOGI("TryReadNew");
+      if(input_queue.pop_blocking(curInput)==false)
+      {
+        LOGI("TryReadTailed");
+        break;
+      }
 
-    input_pool[i] = NULL;
+      singleProcess(curInput);
+    }
+    catch(TS_Termination_Exception e)
+    {
+      LOGI("TS_Termination_Exception");
+      break;
+    }
+    
   }
-  input_pool.clear();
 
-  return poolSize; // run all
 }
 
 line2Dup::Template Json2Template(cJSON *jtpTemp)
@@ -132,33 +146,33 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON *def)
 
     insp_tp = Json2TemplatePyramid(jtemplatePyramid);
 
-    /*
+    
 
 
 
-      float originOffsetX=JFetch_NUMBER_ex(def,"featureInfo.origin_info.pt.x");
-      float originOffsetY=JFetch_NUMBER_ex(def,"featureInfo.origin_info.pt.y");
+    // float originOffsetX=JFetch_NUMBER_ex(def,"featureInfo.origin_info.pt.x");
+    // float originOffsetY=JFetch_NUMBER_ex(def,"featureInfo.origin_info.pt.y");
 
-      if(originOffsetX==originOffsetX && originOffsetY==originOffsetY)
-      {
-        originOffsetX-=insp_tp[0].tl_x;
-        originOffsetY-=insp_tp[0].tl_y;
+    // if(originOffsetX==originOffsetX && originOffsetY==originOffsetY)
+    // {
+    //   originOffsetX-=insp_tp[0].tl_x;
+    //   originOffsetY-=insp_tp[0].tl_y;
 
-      }
-      else
-      {
-        originOffsetX=originOffsetY=0;
-      }
+    // }
+    // else
+    // {
+    //   originOffsetX=originOffsetY=0;
+    // }
 
 
-      float originVecX=JFetch_NUMBER_ex(def,"featureInfo.origin_info.vec.x",1);
-      float originVecY=JFetch_NUMBER_ex(def,"featureInfo.origin_info.vec.y",0);
+    // float originVecX=JFetch_NUMBER_ex(def,"featureInfo.origin_info.vec.x",1);
+    // float originVecY=JFetch_NUMBER_ex(def,"featureInfo.origin_info.vec.y",0);
 
-      float originOffsetAngle=atan2(originVecY,originVecX);
+    // float originOffsetAngle=atan2(originVecY,originVecX);
 
-      LOGI("originOffset:%f %f, ang:%f",originOffsetX,originOffsetY,originOffsetAngle*180/3.14159);
+    // LOGI("originOffset:%f %f, ang:%f",originOffsetX,originOffsetY,originOffsetAngle*180/3.14159);
 
-    */
+  
 
     float originVecX = JFetch_NUMBER_ex(featureInfo, "origin_info.vec.x", 1);
     float originVecY = JFetch_NUMBER_ex(featureInfo, "origin_info.vec.y", 0);
@@ -538,9 +552,7 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
 
 
       }
-      while (belongMan->inspTarProcess())
-      {
-      }
+      
       return true;
     }
 
@@ -1010,33 +1022,6 @@ float PoseRefine(
   // anchorPt+=ofsSum;
 }
 
-cJSON *InspectionTarget_Orientation_ShapeBasedMatching::genITIOInfo()
-{
-
-  cJSON *arr = cJSON_CreateArray();
-
-  {
-    cJSON *opt = cJSON_CreateObject();
-    cJSON_AddItemToArray(arr, opt);
-
-    {
-      cJSON *sarr = cJSON_CreateArray();
-
-      cJSON_AddItemToObject(opt, "i", sarr);
-      cJSON_AddItemToArray(sarr, cJSON_CreateString(StageInfo_Image::stypeName().c_str()));
-    }
-
-    {
-      cJSON *sarr = cJSON_CreateArray();
-
-      cJSON_AddItemToObject(opt, "o", sarr);
-      cJSON_AddItemToArray(sarr, cJSON_CreateString(StageInfo_Orientation::stypeName().c_str()));
-    }
-  }
-
-  return arr;
-}
-
 bool hasEnding(std::string const &fullString, std::string const &ending)
 {
   if (fullString.length() >= ending.length())
@@ -1226,8 +1211,13 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
   if(sinfo->trigger_id>0)
   {
-    LOGI(">>>>fetch save>>>>sinfo->trigger_id:%d",sinfo->trigger_id);
+
+    
+    // LOGI("recentSrcStageInfoSet:%d  recentSrcStageInfoSetIdx:%d ",recentSrcStageInfoSet.size(),recentSrcStageInfoSetIdx.space());
+    // LOGI(">>>>fetch save>>>>sinfo->trigger_id:%d",sinfo->trigger_id);
     std::lock_guard<std::mutex> lock(recentSrcLock); 
+
+  
 
     if(recentSrcStageInfoSetIdx.space()==0)
     {//if full, wipe tail
@@ -1235,28 +1225,34 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
       recentSrcStageInfoSetIdx.consumeTail();
     }
     
+  
+
     {//push new info in head
       int head_idx = recentSrcStageInfoSetIdx.getHead();
+  
       recentSrcStageInfoSet[head_idx]=sinfo;
+  
       recentSrcStageInfoSetIdx.pushHead();
 
     }
   }
 
+  
+
 
   // std::this_thread::sleep_for(std::chrono::milliseconds(100));
   int64 t0 = cv::getTickCount();
-  cache_stage_info = sinfo;
+  cache_latest_input = sinfo;
   // LOGI(">>>>>>>>InspectionTarget_Orientation_ShapeBasedMatching>>>>>>>>");
   // LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
 
   auto srcImg = sinfo->img;
 
-  // LOGI(">>>>>>>>");
+  
 
   Mat CV_srcImg(srcImg->GetHeight(), srcImg->GetWidth(), CV_8UC3, srcImg->CVector[0]);
 
-  // LOGI(">>>>>>>>");
+  
 
   cv::Size size1 = CV_srcImg.size();
   size1.width = ((int)(size1.width * matching_downScale)) / 8 * 8;
@@ -1266,17 +1262,19 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   resize(CV_srcImg, CV_srcImg_ds, size1, cv::INTER_AREA);
 
   cv::cvtColor(CV_srcImg_ds, CV_srcImg_ds, cv::COLOR_BGR2GRAY);
-  // LOGI(">>>>>>>>");
+  
 
   float magThres_eq_alpha = 0.3;
   float magnitude_thres = JFetch_NUMBER_ex(def, "magnitude_thres", 20) / (magThres_eq_alpha + (1 - magThres_eq_alpha) * matching_downScale);
   if (magnitude_thres > 128)
     magnitude_thres = 128;
 
+  
   std::vector<line2Dup::Match> matches;
 
   bool regional_most_similar_match = JFetch_TRUE(def, "regional_most_similar_match");
 
+  
   double refine_score_thres = JFetch_NUMBER_ex(def, "refine_score_thres", 0.5);
   bool must_refine_result = JFetch_TRUE(def, "must_refine_result");
   bool remove_refine_failed_result = JFetch_TRUE(def, "remove_refine_failed_result");
@@ -1284,13 +1282,16 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   LOGI("refine_score_thres:%f must_refine_result:%d  remove_refine_failed_result:%d",refine_score_thres,must_refine_result,remove_refine_failed_result);
   vector<int> idxs;
 
+  
   shared_ptr<StageInfo_Orientation> reportInfo(new StageInfo_Orientation());
   {
     cJSON *search_regions = JFetch_ARRAY(def, "search_regions");
     float similarity_thres = JFetch_NUMBER_ex(def, "similarity_thres", 60);
 
+  
     if (search_regions && cJSON_GetArraySize(search_regions))
     {
+  
       int arrL = cJSON_GetArraySize(search_regions);
       for (int i = 0; i < arrL; i++)
       {
@@ -1334,12 +1335,14 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
         Mat CV_srcImg_region = CV_srcImg_ds(Rect(x, y, w, h));
 
+  LOGI(">>>>>i:%d>>>",i);
         std::vector<line2Dup::Match> sub_matches = sbm->detector.match(
             CV_srcImg_region,
             similarity_thres,
             magnitude_thres,
             {template_class_name, template_class_name + "_f"});
 
+  LOGI(">>>>>i:%d>>>",i);
         LOGI("sub_matches.size():%d", sub_matches.size());
         vector<int> SubIdxs;
         if(1)
@@ -1403,9 +1406,12 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
         }
 
       }
+    
+  
     }
     else
     {
+  
       matches = sbm->detector.match(
           CV_srcImg_ds,
           similarity_thres,
@@ -1418,6 +1424,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
       CloseMatchFilter(matches,sbm,SubIdxs);
       vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(CV_srcImg,matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,must_refine_result,remove_refine_failed_result);
 
+  
 
       if(regional_most_similar_match)
       {//keep the most similar(confident) one
@@ -1451,7 +1458,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
 
 
-  // LOGI(">>>>>>>>");
+  
   reportInfo->source = this;
   reportInfo->source_id = id;
   reportInfo->img_show =
@@ -1462,7 +1469,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   reportInfo->trigger_tags.push_back(id);
   insertInputTagsWPrefix(reportInfo->trigger_tags, sinfo->trigger_tags, "s_");
 
-  // LOGI(">>>>>>>>");
+  
 
   reportInfo->img_prop = sinfo->img_prop;
   reportInfo->img_prop.StreamInfo.channel_id = JFetch_NUMBER_ex(additionalInfo, "stream_info.stream_id", 0);
@@ -1481,6 +1488,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
   reportInfo->genJsonRepTojInfo();
 
+  cache_latest_result = reportInfo;
   belongMan->dispatch(reportInfo);
 }
 
