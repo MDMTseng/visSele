@@ -88,7 +88,7 @@ void insert_fake_pulse()
 
 const int  SINGLE_PULSE_DIST_um = (int)(240000/perRevPulseCount*2*3.141);
 const int  minWidth = 0;
-const int  maxWidth = 1+40000/SINGLE_PULSE_DIST_um;
+const int  maxWidth = 1+100000/SINGLE_PULSE_DIST_um;
 const int  DEBOUNCE_L_THRES = 1+2000/SINGLE_PULSE_DIST_um;//object inner connection
 const int  DEBOUNCE_H_THRES = 1;
 
