@@ -1541,8 +1541,9 @@ class RelatedUsageInfo extends React.Component{
             let tags2={};
             Array.from(uniSet2).forEach(function(key){
                 tags2[key]=0;
-            });
 
+                if(key=="測試")tags2[key]=-1;
+            });
             this.setState( {tags:tags2});
 
             this.props.onTagStateChange(tags2);
@@ -1572,6 +1573,7 @@ class RelatedUsageInfo extends React.Component{
             Array.from(uniSet2).forEach(function(key){
               if(tags2[key]===undefined)
                 tags2[key]=0;
+              if(key=="測試")tags2[key]=-1;
             });
             if(prevState.init==true)
             {
