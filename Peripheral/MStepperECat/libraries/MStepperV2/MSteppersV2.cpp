@@ -224,26 +224,69 @@ inline float SpeedFactor_onRefAxis(float *vec,MSTP_axisSetup *axis_setup,int vec
 }
 
 
-inline float SpeedCap(float *vec,MSTP_axisSetup *axis_setup,int vecL,int phy_main_axis,float main_axis_speed)
+inline float MaxAllowedSpeed(float *vec,MSTP_axisSetup *axis_setup,int vecL,float distance,int *ret_capIdx=NULL)
 {
-  float mainDist= vec[phy_main_axis];
-  if(mainDist<0)mainDist=-mainDist;
-  int idx=-1;
 
-  float maxAllowed_MA_Speed=main_axis_speed;//on main axis
+  if(ret_capIdx)
+  {
+    *ret_capIdx=-1;
+  }
+  float maxAllowedSpeed=9999999999;
   for(int i=0;i<vecL;i++)
   {
-    int32_t dist = vec[i];
+    float dist = vec[i];
     if(dist<0)dist=-dist;
+    if(dist<0.01)continue;
+    float allowedV=axis_setup[i].V_Max*distance/dist;
 
-    float cur_allowed_MA_Speed=axis_setup[i].V_Max*mainDist/dist;
-    if(maxAllowed_MA_Speed>cur_allowed_MA_Speed )
+    if(maxAllowedSpeed>allowedV)
     {
-      maxAllowed_MA_Speed=cur_allowed_MA_Speed;
+      maxAllowedSpeed=allowedV;
+      if(ret_capIdx)
+      {
+        *ret_capIdx=i;
+      }
     }
   }
 
-  return maxAllowed_MA_Speed;
+
+
+
+  return maxAllowedSpeed;
+}
+
+
+
+
+inline float MaxAllowedAcc(float *vec,MSTP_axisSetup *axis_setup,int vecL,float distance,int *ret_capIdx=NULL)
+{
+
+  if(ret_capIdx)
+  {
+    *ret_capIdx=-1;
+  }
+  float maxAllowedAcc=9999999999;
+  for(int i=0;i<vecL;i++)
+  {
+    float dist = vec[i];
+    if(dist<0)dist=-dist;
+    if(dist<0.01)continue;
+    float allowedA=axis_setup[i].A_Max*distance/dist;
+
+    if(maxAllowedAcc>allowedA)
+    {
+      maxAllowedAcc=allowedA;
+      if(ret_capIdx)
+      {
+        *ret_capIdx=i;
+      }
+    }
+  }
+
+
+
+
+  return maxAllowedAcc;
 }
 
 
@@ -586,7 +629,7 @@ StpGroup::StpGroup()
 
 }
 
-bool StpGroup::pushInPause(uint32_t pause_ms,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
+bool StpGroup::pushInPause(int id,uint32_t pause_ms,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
 {
 
   if(segs.space()==0)
@@ -608,6 +651,7 @@ bool StpGroup::pushInPause(uint32_t pause_ms,MSTP_segment_CB startCB,MSTP_segmen
 
 
   newSeg.vcur=0;
+  newSeg.id=id*10;
 
 
   segs.pushHead();
@@ -615,7 +659,7 @@ bool StpGroup::pushInPause(uint32_t pause_ms,MSTP_segment_CB startCB,MSTP_segmen
 }
 
 
-bool StpGroup::pushInInstant(MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
+bool StpGroup::pushInInstant(int id,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
 {
 
   if(segs.space()==0)
@@ -634,6 +678,8 @@ bool StpGroup::pushInInstant(MSTP_segment_CB startCB,MSTP_segment_CB endCB,void*
   newSeg.distanceEnd=-1;
   newSeg.distanceStart=0;
   newSeg.vcur=0;
+  
+  newSeg.id=id*10;
   segs.pushHead();
   return true;
 }
@@ -657,7 +703,7 @@ void MSTP_segment_Copy(MSTP_segment *dst,MSTP_segment *src,int locDim)
     memcpy(dst->vec,src->vec,locDim*sizeof(*src->vec));
 }
 
-bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locDim,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
+bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,int locDim,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
 {
   if(segs.space()<2)
   {
@@ -672,10 +718,14 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
   MSTP_segment *ahb=segs.getHead(-1);//get the ahead segment
   MSTP_SEG_PREFIX MSTP_segment &newSeg=*hrb;
   MSTP_SEG_PREFIX MSTP_segment &aheadSeg=*ahb;
+  
 
+  for(int i=0;i<locDim;i++)
+  {
+    vec[i]*=axisSetup[i].P_PreMult;
+  }
 
   newSeg.distanceStart=0;
-  // newSeg.Mdistance=ManhattanMagnitude(vec,locDim,&newSeg.main_axis_idx);
   newSeg.Edistance=EuclideanMagnitude(vec,locDim);
   newSeg.distanceEnd=newSeg.Edistance;
   
@@ -717,27 +767,26 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
   // }
 
   copyCMDVec(newSeg.sp,getLatestLocation());
+
+  for(int i=0;i<locDim;i++)
+  {
+    newSeg.sp[i]*=axisSetup[i].P_PreMult;
+  }
   copyCMDVec(newSeg.vec,vec);
   newSeg.vcur=0;
   int main_idx=0;
   int main_vidx=0;
   float vfactor=1;
-  if(exinfo==NULL || exinfo->speedOnAxisIdx==-1)
+  vfactor=SpeedFactor(vec,axisSetup,locDim,&main_idx,&main_vidx);
+  newSeg.vcen=exinfo->speed*vfactor;
+
+  
+  float maxAllowedSpeed=MaxAllowedSpeed(vec,axisSetup,locDim,newSeg.Edistance);
+  
+  if(newSeg.vcen>maxAllowedSpeed)//cap
   {
-
-
-    vfactor=SpeedFactor(vec,axisSetup,locDim,&main_idx,&main_vidx);
-    newSeg.virtual_axis_idx=main_vidx;
+    newSeg.vcen=maxAllowedSpeed;
   }
-  else
-  {
-
-    vfactor=SpeedFactor_onRefAxis(vec,axisSetup,locDim,&main_idx,exinfo->speedOnAxisIdx);
-
-    newSeg.virtual_axis_idx=exinfo->speedOnAxisIdx;
-  }
-
-  newSeg.vcen=SpeedCap(vec,axisSetup,locDim,main_idx,exinfo->speed*vfactor);
 
 
   print_D((
@@ -749,16 +798,13 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
   ).c_str());
 
 
-  // newSeg.vcen=speed*vfactor;
-  newSeg.main_axis_idx=main_idx;
-
   newSeg.vto=0;
 
   newSeg.JunctionNormCoeff=0;
   newSeg.JunctionNormMaxDiff=NAN;
   newSeg.vto_JunctionMax=0;
 
-
+  newSeg.id=id*10;
   {
 
     int acc_constrain_axis=-1;
@@ -773,7 +819,7 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
         acc_constrain_axis=i;
       }
     }
-    float accWFactor=axisSetup[acc_constrain_axis].A_Factor*vec[main_idx]/vec[acc_constrain_axis];
+    float accWFactor=axisSetup[acc_constrain_axis].A_Factor*newSeg.Edistance/vec[acc_constrain_axis];
 
     if(accWFactor<0)accWFactor=-accWFactor;
     float acc=exinfo->acc;
@@ -782,8 +828,19 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
 
     if(acc<0)acc=-acc;
     if(dea>0)dea=-dea;
+    
+    float maxAllowedAcc=MaxAllowedAcc(vec,axisSetup,locDim,newSeg.Edistance);
+
     newSeg.acc=acc*accWFactor;
+    if(newSeg.acc>maxAllowedAcc)
+    {
+      newSeg.acc=maxAllowedAcc;
+    }
     newSeg.deacc=dea*accWFactor;
+    if(newSeg.deacc<-maxAllowedAcc)
+    {
+      newSeg.deacc=-maxAllowedAcc;
+    }
   }
 
 
@@ -944,8 +1001,8 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
 
         }
 
-
-        if(angleRad<5*M_PI/180 || angleRad>175*M_PI/180 )//too small to arc
+        const int skipAngleMargin=1;
+        if(angleRad<skipAngleMargin*M_PI/180 || angleRad>(180-skipAngleMargin)*M_PI/180 )//too small to arc
         {
 
           doLineJunction=true;
@@ -1008,9 +1065,15 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
 
         // sprintf(PrtBuff,"arcSeg.distanceEnd:%f",arcSeg.distanceEnd);G_LOG(PrtBuff);
         
-        float minAcc=(preSeg.acc<-aheadLineSeg.deacc)?preSeg.acc:-aheadLineSeg.deacc;
-        float vmax=sqrt(arc_r*minAcc);//a=w^2*r= v^2/r => vmax=sqrt(r*a)
-        if(vmax>aheadLineSeg.vcen)vmax=aheadLineSeg.vcen;
+        arcSeg.acc=aheadLineSeg.acc<preSeg.acc?aheadLineSeg.acc:preSeg.acc;
+        arcSeg.deacc=aheadLineSeg.deacc>preSeg.deacc?aheadLineSeg.deacc:preSeg.deacc;
+
+
+
+        float minAcc=(arcSeg.acc<-arcSeg.deacc)?arcSeg.acc:-arcSeg.deacc;
+        float minV=(preSeg.vcen<aheadLineSeg.vcen)?preSeg.vcen:aheadLineSeg.vcen;
+        float vmax=sqrt(arc_r*minAcc);//a=w^2*r= v^2/r => vmax=sqrt(r*a) centripetal force
+        if(vmax>minV)vmax=minV;
         // vmax=aheadLineSeg.vcen;
 
 
@@ -1020,8 +1083,9 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
         arcSeg.vcur=0;
         arcSeg.vto=0;
         
-        arcSeg.acc=preSeg.acc;
-        arcSeg.deacc=aheadLineSeg.deacc;
+
+        arcSeg.acc=aheadLineSeg.acc<preSeg.acc?aheadLineSeg.acc:preSeg.acc;
+        arcSeg.deacc=aheadLineSeg.deacc>preSeg.deacc?aheadLineSeg.deacc:preSeg.deacc;
 
         arcSeg.JunctionNormCoeff=1;
         arcSeg.JunctionNormMaxDiff=0;
@@ -1029,7 +1093,6 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
 
         arcSeg.ctx=NULL;
         arcSeg.endCB=arcSeg.startCB=NULL;
-        arcSeg.main_axis_idx=-1;
         arcSeg.type=MSTP_segment_type::seg_arc;
 
         preSeg.vto_JunctionMax=999999;
@@ -1097,7 +1160,8 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
 
       
       // preSeg->;
-
+      arcSeg.id=id*10-1;
+      aheadLineSeg.id=id*10;
 
       segs.pushHead(arcSeg);//push twosegments
       segs.pushHead(aheadLineSeg);
@@ -1258,6 +1322,7 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
         to_string(preSeg.vcur)+","+
         to_string(preSeg.vcen)+","+
         to_string(preSeg.vto)).c_str());
+      newSeg.id=id*10;
       segs.pushHead();
     }
     
@@ -1265,6 +1330,9 @@ bool StpGroup::pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locD
   }
   else
   {
+    //No previous seg
+    
+    newSeg.id=id*10;
     // newSeg.vcur=100;
     // T_next=TICK2SEC_BASE/minSpeed;
     segs.pushHead();

@@ -50,6 +50,14 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
   {
     case OBJ_KEY:
     {
+      if(ch=='}')
+      {
+        popStackHead();
+        popStackHead();
+        popStackHead();
+        popStackHead();
+        return RESULT::OBJECT_COMPLETE;
+      }
       if(ch=='"')
       {
         popStackHead();
@@ -127,6 +135,23 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
         pushStackHead(JSonState::ARR_END);
         pushStackHead(JSonState::DAT);
         return RESULT::ARRAY_START;
+      }
+      
+      else if(ch==']')
+      {
+
+        
+        if(getStackHead(1)==JSonState::ARR_END)
+        {
+          popStackHead();
+          popStackHead();
+          return RESULT::ARRAY_COMPLETE;
+        }
+        else
+        {//shouldn't be here
+          return RESULT::ERROR;
+        }
+        
       }
       else if(ch=='"')
       {

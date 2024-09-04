@@ -1,0 +1,128 @@
+
+
+{"type":"m1","cmd":"G1","R":-20,"Z":-5,"V":5,"F":1000,"ACC":1000,"DEA":1000}
+
+{"type":"m1","cmd":"TargetTrack","trackIdx":2, "progress_type":2,  "R":-20,"Z":-5,"V":5, "start":{"R":-20,"Z":-5,"V":5}, "end":{"R":-50,"Z":-5,"V":10}, "BlockFeedOnLocRZV":{"R":-20,"Z":-5,"V":5} }   
+      
+
+{"type":"m1","cmd":"G1","R":-70,"F":1000,"ACC":1000,"DEA":1000,"id":356} id:129
+{"type":"m1","cmd":"G1","Z":-2,"F":1000,"ACC":1000,"DEA":1000,"id":357} id:130
+{"type":"m1","cmd":"G1","V":10,"F":1000,"ACC":1000,"DEA":1000,"id":358} id:131
+{"type":"m1","cmd":"SetAxisPos","R":87.577052,"Z":0,"V":0,"id":359} id:132
+
+
+
+
+
+
+
+{"type":"m0","cmd":"MACHPARAM","x":19.265899390571576,"y":160.34667641473854,"r":115.43829841975194,"s":0.012245486074890205,"iter":0,"angleToPlatEnc":61264.131675687095,"id":362} id:136
+{"type":"m1","cmd":"MACHPARAM","y_axis_inverted":false,"arc":{"x":44.777025817609342,"y":-107.32411249491962,"r":146.30440793738643,"angleOffset":-1.5687409165198005},"linear":{"c0":{"x":96.201878635471758,"y":29.616528111195436},"vec":{"x":0.66805570622346166,"y":0.74797240234838869}},"id":363} id:137
+{"type":"m1","cmd":"COORD_ADJ_MAP","mult_factor":1,"map":[{"tar":[97,78],"res":[96.450615195959784,78.08167637727307]},{"tar":[93,83],"res":[92.615874543488474,83.019957847890254]},{"tar":[83,65],"res":[82.470761453800733,65.097421386406367]},{"tar":[63,52],"res":[62.642948784852123,52.010285531568485]},{"tar":[92,67],"res":[91.44540328901985,67.060702837218628]}],"id":364} id:138
+{"type":"m1","cmd":"Domain and Device XY points pair","device_pt1":{"x":105.3201599,"y":109.8491364,"z":0},"device_pt2":{"x":65.78779602,"y":44.57145691,"z":1},"domain_pt1":{"x":1156.0466523222915,"y":886.25349299378786,"z":0},"domain_pt2":{"x":799.55923539210949,"y":1479.0974420376217,"z":1},"id":365} id:139
+{"type":"m0","cmd":"Domain and Device XY points pair","device_pt1":{"x":124.94751640386554,"y":125.58952687725923,"z":0},"device_pt2":{"x":86.37557789201982,"y":61.443811590716408,"z":1},"domain_pt1":{"x":1156.0466523222915,"y":886.25349299378786,"z":0},"domain_pt2":{"x":799.55923539210949,"y":1479.0974420376217,"z":1},"id":366} id:140
+{"type":"m1","cmd":"M114.XYZ","id":367} id:141
+{"type":"m1","cmd":"M114.domXYZ","id":368} id:142
+{"type":"m1","cmd":"SET_DBG_COUNTER_IDX","idx":1,"id":369} id:143
+{"type":"m1","cmd":"SET_MOTOR_VAMAX","axis":0,"V_Max":1800,"A_Max":30000,"id":370} id:144
+{"type":"m1","cmd":"SET_MOTOR_VAMAX","axis":1,"V_Max":370,"A_Max":8000,"id":371} id:145
+{"type":"m1","cmd":"SET_MOTOR_VAMAX","axis":2,"V_Max":150,"A_Max":2000,"id":372} id:146
+
+
+
+
+{"type":"PPU","cmd":"G1","X":1,"F":1000,"ACC":1000,"DEA":1000}  
+
+
+{"type":"PPU","cmd":"G28"}  
+
+{"type":"PPU","cmd":"G1","X":-75,"F":2000,"ACC":10000,"DEA":10000}  
+{"type":"PPU","cmd":"G1","X":-70,"F":2000,"ACC":10000,"DEA":10000}  
+{"type":"PPU","cmd":"G1","X":0}  
+{"type":"PPU","cmd":"G1","X":-75}  
+{"type":"PPU","cmd":"G1","X":0}  
+
+
+{"type":"MOFF"}{"type":"MON"}
+{"type":"EON"}
+{"type":"m1","cmd":"G28","S":20,"s":0.5}
+{"type":"m1","cmd":"G1","R":-20,"Z":-5,"V":5,"F":1000,"ACC":1000,"DEA":1000}  
+{"type":"m1","cmd":"G1","R":-20,"Z":-5,"V":15,"F":1000,"ACC":1000,"DEA":1000}  
+
+
+
+{"type":"m1","cmd":"SET_DBG_COUNTER_IDX","idx":2}  
+{"type":"m1","cmd":"ENABLE_MOTOR_MONITOR","enable":true}  
+{"type":"m1","cmd":"BLOCKING_DELAY","time":100} 
+{"type":"m1","cmd":"DUMP_MOTOR_MONITOR"}  
+
+
+
+
+{"type":"m1","cmd":"SET_DBG_COUNTER_IDX","idx":2}  
+{"type":"m1","cmd":"ENABLE_MOTOR_MONITOR","enable":true}  
+{"type":"m1","cmd":"G1","V":10,"F":20000,"ACC":20000,"DEA":20000}
+{"type":"m1","cmd":"G1","V":0,"F":20000,"ACC":20000,"DEA":20000}
+
+
+
+{"type":"m1","cmd":"G1","V":10,"F":20000,"ACC":20000,"DEA":20000}
+{"type":"m1","cmd":"BLOCKING_DELAY","time":100}  
+{"type":"m1","cmd":"MOTOR_SKIP_COMP","idx":2}
+{"type":"m1","cmd":"G1","V":0,"F":20000,"ACC":20000,"DEA":20000}
+{"type":"m1","cmd":"BLOCKING_DELAY","time":100}  
+{"type":"m1","cmd":"MOTOR_SKIP_COMP","idx":2}
+
+    {"type":"m1","cmd":"MOTOR_SKIP_COMP","idx":2,"enable":true}
+
+
+{"type":"m1","cmd":"SET_DBG_COUNTER_IDX","idx":2}
+{"type":"m1","cmd":"ENABLE_MOTOR_MONITOR","enable":true}
+{"type":"m1","cmd":"G1","V":10,"F":20000,"ACC":20000,"DEA":20000}
+{"type":"m1","cmd":"G1","V":0,"F":20000,"ACC":20000,"DEA":20000}
+
+
+
+{"type":"m1","cmd":"SET_DBG_COUNTER_IDX","idx":2}
+{"type":"m1","cmd":"ENABLE_MOTOR_MONITOR","enable":true}
+{"type":"m1","cmd":"G1","V":30,"F":5000,"ACC":5000,"DEA":5000}
+{"type":"m1","cmd":"G1","V":0}
+{"type":"m1","cmd":"BLOCKING_DELAY","time":1000} 
+{"type":"m1","cmd":"DUMP_MOTOR_MONITOR"}  
+
+
+
+
+
+{"type":"m1","cmd":"SET_DBG_COUNTER_IDX","idx":0}
+{"type":"m1","cmd":"ENABLE_MOTOR_MONITOR","enable":true}
+{"type":"m1","cmd":"G1","R":-70,"F":20000,"ACC":20000,"DEA":20000}
+{"type":"m1","cmd":"G1","R":0,"F":20000,"ACC":20000,"DEA":20000}
+
+
+{"type":"m1","cmd":"G1","R":-20,"Z":-5,"V":5,"F":1000,"ACC":1000,"DEA":1000}  
+
+{"type":"m1","cmd":"SET_DBG_COUNTER_IDX","idx":2}
+{"type":"m1","cmd":"ENABLE_MOTOR_MONITOR","enable":true}
+{"type":"m1","cmd":"BLOCKING_DELAY","time":100}  
+{"type":"m1","cmd":"DUMP_MOTOR_MONITOR"}  
+
+{"type":"m1","cmd":"SET_DBG_COUNTER_IDX","idx":1}
+{"type":"m1","cmd":"ENABLE_MOTOR_MONITOR","enable":true}
+{"type":"m1","cmd":"G1","Z":-30,"F":20000,"ACC":20000,"DEA":20000}
+{"type":"m1","cmd":"G1","Z":0,"F":20000,"ACC":20000,"DEA":20000}
+
+
+{"type":"m1","cmd":"MOTOR_PARAMS","idx":0}  
+
+
+{"type":"m1","cmd":"MOTOR_PARAMS","idx":0,"COMP_DELAY":130,"ALLOWED_ERROR":20}  
+{"type":"m1","cmd":"MOTOR_PARAMS","idx":1,"COMP_DELAY":240,"ALLOWED_ERROR":999970}  
+{"type":"m1","cmd":"MOTOR_PARAMS","idx":2,"COMP_DELAY":240,"ALLOWED_ERROR":999970}  
+
+
+
+
+{"type":"m0","cmd":"set_speed","speed":30000,"acc":1000000}
+{"type":"m1","cmd":"BLOCKING_DELAY","time":6000}  
+{"type":"m0","cmd":"set_speed","speed":0}

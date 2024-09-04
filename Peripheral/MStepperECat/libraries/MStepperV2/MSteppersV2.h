@@ -64,8 +64,6 @@ struct MSTP_segment
   float Edistance;
 
 
-  int main_axis_idx;
-  int virtual_axis_idx;
   float JunctionNormCoeff;
   float JunctionNormMaxDiff;
   float vto_JunctionMax;
@@ -73,6 +71,7 @@ struct MSTP_segment
 
   MSTP_segment_CB startCB,endCB;
   void* ctx;
+  int id;
 
 };
 
@@ -92,7 +91,7 @@ struct MSTP_segment_adv_info
 
 struct MSTP_axisSetup
 {
-
+  float P_PreMult;
 
   // float ppmm;//pulse per mm
   float V_Factor;// pause/s
@@ -111,7 +110,6 @@ struct MSTP_axisSetup
 struct MSTP_segment_extra_info
 {
   float speed;
-  int speedOnAxisIdx;
   float acc;
   float deacc;
   // float cornorR_unit;
@@ -152,11 +150,11 @@ class StpGroup
   // int bufferJCMD_ID=-1;
 
   MSTP_axisSetup *axisSetup;
-  RingBuf <struct MSTP_segment> segs;
+  RingBuf_ExternalBuffer <struct MSTP_segment> segs;
   // bool VecAdd(xVec VECTo,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
-  bool pushInPause(uint32_t pause_ms,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx=NULL);
-  bool pushInInstant(MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx=NULL);
-  bool pushInMoveVec(float* vec,MSTP_segment_extra_info *exinfo,int locDim,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx);
+  bool pushInPause(int id,uint32_t pause_ms,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx=NULL);
+  bool pushInInstant(int id,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx=NULL);
+  bool pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,int locDim,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx);
 
   virtual float* getLatestLocation()=0;
   virtual void copyCMDVec(float*dst,float*src)=0;

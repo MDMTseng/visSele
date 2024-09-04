@@ -1,39 +1,23 @@
-
-#ifndef __RingBufX_H__
-#define __RingBufX_H__
-#include <cstddef>
-// #include <Arduino.h>
-
-/*
- * Set the integer size used to store the size of the buffer according of
- * the size given in the template instanciation. Thanks to Niklas Gürtler
- * to share his knowledge of C++ template meta programming.
- * https://niklas-guertler.de/
- *
- * If Index argument is true, the ring buffer has a size and an index
- * stored in an uint8_t (Type below) because its size is within [1,255].
- * Intermediate computation may need an uint16_t (BiggerType below).
- * If Index argument is false, the ring buffer has a size and an index
- * stored in an uint16_t (Type below) because its size is within [256,65535].
- * Intermediate computation may need an uint32_t (BiggerType below).
- */
-
-
+#include <iostream>
+#include <array>
+#include <stdexcept>
+#include <thread>
 #include <stack>
 
 
 template<typename RB_Type>
 class RingBuf {
 protected:
+    RB_Type* buffer;      // Internal fixed-size array to store the ring buffer elements.
+    const size_t bufferL;    // Maximum capacity of the buffer.
+public: 
+
     size_t whead_index = 0;  // Index for the write head; determines where new data is written.
     size_t tail_index = 0;   // Index for the tail; marks the position of the oldest data.
 
 
-    RB_Type* buffer;      // Internal fixed-size array to store the ring buffer elements.
-    size_t bufferL;    // Maximum capacity of the buffer.
-public: 
     RingBuf(RB_Type *buffer, size_t size) : buffer(buffer), bufferL(size) {
-        clear();
+        RESET();
     }
 
 
@@ -79,7 +63,7 @@ public:
      *
      * This method sets both the write head and tail indices to zero, effectively clearing the buffer.
      */
-    void clear() {
+    void RESET() {
         whead_index = tail_index = 0;
     }
 
@@ -112,18 +96,13 @@ public:
      *
      * @return RB_Type* Pointer to the data that was just pushed to the buffer, or NULL if the buffer was full.
      */
-    RB_Type* pushHead(const RB_Type *assign_data=NULL) {
+    RB_Type* pushHead() {
         RB_Type* dat = getHead(0);
         if (dat == NULL) return NULL;
-        if(assign_data)
-          *dat = *assign_data;
         whead_index = (whead_index + 1) % (2 * bufferL);
         return dat;
     }
 
-    RB_Type* pushHead(RB_Type data) {
-        return pushHead(&data);
-    }
     /**
      * @brief Retrieves a pointer to the buffer element at the specified index from the tail.
      *
@@ -158,27 +137,6 @@ public:
 };
 
 
-template <
-  typename RB_Type
->
-class RingBuf_ExternalBuffer:public RingBuf<RB_Type>
-{
-  public:
-  RingBuf_ExternalBuffer():RingBuf<RB_Type>(NULL,0)
-  {
-
-  }
-
-  void setBuffer(RB_Type *buffer, size_t size)
-  {
-    RingBuf<RB_Type>::buffer=buffer;
-    RingBuf<RB_Type>::bufferL=size;
-    RingBuf<RB_Type>::clear();
-  }
-};
-
-
-
 
 template <
   typename RB_Type, unsigned N
@@ -195,182 +153,120 @@ class RingBuf_Static:public RingBuf<RB_Type>
 };
 
 
+const int N = 100;
+RingBuf_Static<int, N> rb;
 
-template <typename RP_Type, typename RP_Idx_Type = uint32_t>
-class ResourcePool_stack {
-public:
-    struct ResourceData {
-        ResourceData() : occupied(false) {}
-        ~ResourceData() {}
-        bool occupied;
-        RP_Type data;
-    };
 
-protected:
-    ResourceData *buff;
-    RP_Idx_Type buffL;
-    int _size;
-    std::stack<RP_Idx_Type> availableIndices;
-
-public:
-    ResourcePool_stack(ResourceData *buff, RP_Idx_Type len) : buff(buff), buffL(len), _size(len) {
-        RESET_occupation();
-    }
-
-    void RESET_occupation() {
-        while (!availableIndices.empty()) {
-            availableIndices.pop();
+void producer() {
+    int pushCount=N*2*3+3;
+    int latestNumber=0;
+    for (int i = 0;i<pushCount; ++i) {
+        int *item =rb.getHead();
+        if(item==NULL){
+            std::cerr << "FULL    wait." << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            i--;
+            continue;
         }
-        for (RP_Idx_Type i = 0; i < buffL; ++i) {
-            buff[i].occupied = false;
-            availableIndices.push(i);
+        *item = i;
+        latestNumber=*item;
+        printf(">>>>> %d:%d<%d>%d:  \n",i,rb.whead_index,rb.size(),rb.tail_index);
+        rb.pushHead();
+        std::this_thread::sleep_for(std::chrono::milliseconds(std::rand() % 10));
+    }
+    printf("--------producer count:%d latestNum:%d end \n",pushCount,latestNumber);
+}
+
+void consumer() {
+    int emptyTryCounter=0;
+    for (int i = 0; ; ++i) {
+        int *item =rb.getTail();
+        if(item==NULL){
+            // std::cerr << "Empty wait...." << std::endl;
+            emptyTryCounter++;
+            if(emptyTryCounter>20){
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
         }
+        emptyTryCounter=0;
+        printf("<<<<<<<<<<<<<<<<<<<<<<<< t:%d\n",*item);
+        rb.consumeTail();
+        std::this_thread::sleep_for(std::chrono::milliseconds(std::rand() % 11));
     }
 
-    RP_Type* applyResource() {
-        if (availableIndices.empty()) {
-            return nullptr; // No available resource
-        }
-        RP_Idx_Type index = availableIndices.top();
-        availableIndices.pop();
-        buff[index].occupied = true;
-        --_size;
-        return &(buff[index].data);
-    }
-
-    bool returnResource(RP_Type *res) {
-        // Calculate index based on pointer offset
-        RP_Idx_Type index = res - &(buff[0].data);
-
-        // Check if the index is within bounds and the resource is occupied
-        if (index >= 0 && index < buffL && buff[index].occupied) {
-            buff[index].occupied = false;
-            availableIndices.push(index);
-            ++_size;
-            return true;
-        }
-        return false; // Resource not found or already not occupied
-    }
-
-    int size() const {
-        return _size;
-    }
-};
+    printf("--------consumer end at %d<%d>%d:  \n",rb.whead_index,rb.size(),rb.tail_index);
+}
 
 
 
+int main() {
 
-template <
-  typename RP_Type,typename RP_Idx_Type=uint32_t
->
-class ResourcePool
-{
+    // Producer thread simulation
+   
+    std::thread producer_thread(producer);
+    std::thread consumer_thread(consumer);
 
-
-public:
-
-  struct ResourceData{
-    ResourceData(){};
-    ~ResourceData(){};
-    bool occupied;
-    RP_Type data;
-  };
-protected:
-  
-  ResourceData *buff;
-  int buffL;
-
-  int _size;
-
-public:
-
-  ResourcePool(struct ResourceData *buff,RP_Idx_Type len)
-  {
-    this->buff=buff;
-    buffL=len;
-    
-    for(int i=0;i<buffL;i++)
-    {
-      buff[i].occupied=false;
-    }
-    _size=buffL;
-  }
-
-  RP_Type* applyResource()
-  {
-    for(int i=0;i<buffL;i++)
-    {
-      if(buff[i].occupied==false)
-      {
-        buff[i].occupied=true;
-        _size--;
-        return &(buff[i].data);
-      }
-    }
-    return NULL;
-  }
-
-
-  bool returnResource(RP_Type *res)
-  {
-    
-    for(int i=0;i<buffL;i++)
-    {
-      if(&(buff[i].data)==res)
-      {
-        buff[i].occupied=false;
-
-        _size++;
-        return true;
-      }
-    }
-    return false;
-  //   int addrDiff =(res-( &(buff[0].data) ));
-  //   int idx=addrDiff/sizeof(ResourceData);
-  //   if(idx<0)return false;
-  //   if(idx>=buffL)return false;
-  //   if(buff[idx].occupied==false)return false;
-
-  //   buff[idx].occupied=false;
-  //   return true;
-
-
-  }
-
-
-  void RESET_occupation() {
-      for (RP_Idx_Type i = 0; i < buffL; ++i) {
-          buff[i].occupied = false;
-      }
-  }
-
-  int size()
-  {
-    return _size;
-  }
-  
-};
+    producer_thread.join();
+    consumer_thread.join();
 
 
 
+    // for (int i = 0; i < 12; ++i) {
+    //     int *item =rb.getHead();
+    //     if(item==NULL){
+    //         std::cerr << "Buffer is full" << std::endl;
+    //         break;
+    //     }
+    //     *item = i;
+    //     rb.pushHead();
 
 
+    //     printf("pushing %d:%d<%d>%d:  ",i,rb.whead_index,rb.size(),rb.tail_index);
+    //     for (int j = 0; j < rb.size(); j++)
+    //     {
+    //         int *item =rb.getTail(j);
+    //         if(item==NULL){
+    //             printf("\nBuffer ends at %d\n",j);
+    //             break;
+    //         }
+    //         printf("%d,",*item);
+    //     }
+    //     printf("\n");
 
-// template <
-//   typename RP_Type, unsigned N ,typename RP_Idx_Type=uint32_t
-// >
-// class ResourcePool_Static:public ResourcePool<RP_Type,RP_Idx_Type>
-// {
-//   protected:
-//   ResourcePool_Static::ResourceData array[N];
+    //     while((std::rand() % 100)>40)
+    //     {
+    //         rb.consumeTail();
+    //         printf("Consume....\n");
 
-//   public:
-//   ResourcePool_Static():ResourcePool<RP_Type,RP_Idx_Type>(array,N)
-//   {
+    //     }
+    // }
 
-//   }
-// };
+    // printf("==============\n");
+
+    // for (int i = 0; i < 12; ++i) {
+    //     int *item =rb.getTail();
+    //     if(item==NULL){
+    //         std::cerr << "Buffer is empty" << std::endl;
+    //         break;
+    //     }
 
 
+    //     printf("pushing %d:%d<%d>%d:  ",i,rb.whead_index,rb.size(),rb.tail_index);
+    //     for (int j = 0; j < rb.size(); j++)
+    //     {
+    //         int *item =rb.getTail(j);
+    //         if(item==NULL){
+    //             printf("\nBuffer ends at %d\n",j);
+    //             break;
+    //         }
+    //         printf("%d,",*item);
+    //     }
+    //     printf("\n");
 
-#endif /* __RingBufX_H__ */
+    //     rb.consumeTail();
+    // }
+
+    return 0;
+}
