@@ -2903,7 +2903,7 @@ public:
         if(skipCounter>=motorMonitor_recordSkipMod)
           skipCounter=0;
 
-        if(motorMonitor_recordCD==0 && skipCounter==0 && motorMonitor.size()<480)
+        if(motorMonitor_recordCD==0 && skipCounter==0 && motorMonitor.space()>0)
           motorMonitor.pushHead(encDiff);
         skipCounter++;
 

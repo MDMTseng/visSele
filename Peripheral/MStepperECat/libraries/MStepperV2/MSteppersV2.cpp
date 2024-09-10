@@ -685,23 +685,23 @@ bool StpGroup::pushInInstant(int id,MSTP_segment_CB startCB,MSTP_segment_CB endC
 }
 
 
-void MSTP_segment_Copy(MSTP_segment *dst,MSTP_segment *src,int locDim)
-{
+// void MSTP_segment_Copy(MSTP_segment *dst,MSTP_segment *src,int locDim)
+// {
   
-  auto sp=dst->sp;
-  auto vec=dst->vec;
-  auto ctx=dst->ctx;
+//   auto sp=dst->sp;
+//   auto vec=dst->vec;
+//   auto ctx=dst->ctx;
 
-  *dst=*src;//value copy it would override the pointer
+//   *dst=*src;//value copy it would override the pointer
 
-  dst->sp=sp;//recover the pointer
-  dst->vec=vec;
-  dst->ctx=ctx;
-  if(dst->sp!=NULL && src->sp!=NULL)//copy content if possible
-    memcpy(dst->sp,src->sp,locDim*sizeof(*src->sp));
-  if(dst->vec!=NULL && src->vec!=NULL)//copy content if possible
-    memcpy(dst->vec,src->vec,locDim*sizeof(*src->vec));
-}
+//   dst->sp=sp;//recover the pointer
+//   dst->vec=vec;
+//   dst->ctx=ctx;
+//   if(dst->sp!=NULL && src->sp!=NULL)//copy content if possible
+//     memcpy(dst->sp,src->sp,locDim*sizeof(*src->sp));
+//   if(dst->vec!=NULL && src->vec!=NULL)//copy content if possible
+//     memcpy(dst->vec,src->vec,locDim*sizeof(*src->vec));
+// }
 
 bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,int locDim,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
 {
@@ -715,9 +715,7 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
 
 
   MSTP_SEG_PREFIX MSTP_segment* hrb=segs.getHead();
-  MSTP_segment *ahb=segs.getHead(-1);//get the ahead segment
   MSTP_SEG_PREFIX MSTP_segment &newSeg=*hrb;
-  MSTP_SEG_PREFIX MSTP_segment &aheadSeg=*ahb;
   
 
   for(int i=0;i<locDim;i++)
@@ -894,9 +892,36 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
     if(exinfo->cornorR==exinfo->cornorR && exinfo->cornorR>0 &&segs.size()>1 )//arc the cornor
     do{//we need to add a arc segment in between two line segment
 
+
+
+      //the queue was
+      //preSeg || newSeg
+      //Where newSeg = head(0)
+      //and to arc the corner we need to insert a arc segment and two line segment
+      //preSeg || arcSeg | newSeg
+
+      
+      //where newSeg = head(0)
+      //and arcSeg = head(-1) //the buffer even after the Q write head
+      //note the buffer has the aux information 
+
+
+
+
+      //But the newSeg we 
+
+
+
       doLineJunction=false;
-      MSTP_segment aheadLineSeg=newSeg;//value copy
+      MSTP_segment *ahb=segs.getHead(-1);//get the ahead segment
+
+      MSTP_SEG_PREFIX MSTP_segment &aheadSeg=*ahb;
       MSTP_segment arcSeg=aheadSeg;
+
+
+
+      MSTP_segment aheadLineSeg=newSeg;//value copy
+  
 
 
 
@@ -1053,9 +1078,6 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
 
           }
         }
-
-        preSeg.distanceEnd=preSeg.Edistance-distance_turnPt_cornorPt;
-        aheadLineSeg.distanceStart=distance_turnPt_cornorPt;
         // sprintf(PrtBuff,"arc_r:%f",arc_r);G_LOG(PrtBuff);
         // arcSeg.Mdistance=
         arcSeg.Edistance=
@@ -1094,8 +1116,6 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
         arcSeg.ctx=NULL;
         arcSeg.endCB=arcSeg.startCB=NULL;
         arcSeg.type=MSTP_segment_type::seg_arc;
-
-        preSeg.vto_JunctionMax=999999;
 
 
 
@@ -1146,12 +1166,19 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
 
 
         vecAssign(arcSeg.sp,sp0.vec,locDim);
+
+
         vecAssign(arcSeg.aux_pt2,ctrlpt0.vec,locDim);
         vecAssign(arcSeg.aux_pt3,ctrlpt2.vec,locDim);
         vecAssign(arcSeg.aux_pt4,sp2.vec,locDim);
         vecSub(arcSeg.vec,sp2.vec,sp0.vec,locDim);
 
 
+        preSeg.distanceEnd=preSeg.Edistance-distance_turnPt_cornorPt;
+        preSeg.vto_JunctionMax=999999;
+
+
+        aheadLineSeg.distanceStart=distance_turnPt_cornorPt;
         aheadLineSeg.JunctionNormCoeff=1;
         aheadLineSeg.JunctionNormMaxDiff=0;
         aheadLineSeg.vto_JunctionMax=999999;
@@ -1190,9 +1217,6 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
         // retSt |= Calc_JunctionNormMaxDiff(*preSeg,newSeg,coeff2,maxDiff2);
 
 
-
-
-
         /*
           (1+coeff)/maxDiff
           1 is for the pre speed factor and coeff is for post speed factor
@@ -1201,9 +1225,6 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
 
           To devide maxDiff is to normalize the max difference number
         */
-
-
-
 
         newSeg.JunctionNormCoeff=coeff1;
         newSeg.JunctionNormMaxDiff=maxDiff1;
@@ -1216,10 +1237,6 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
 
           if(newSeg.JunctionNormMaxDiff<0.0000001)
             newSeg.JunctionNormMaxDiff=0.0000001;//min diff cap to prevent value explosion
-
-
-
-
 
           //max allowed end speed of pre block, so that at junction the max speed jump is within the limit, this is fixed
           preSeg.vto_JunctionMax=1/newSeg.JunctionNormMaxDiff;
