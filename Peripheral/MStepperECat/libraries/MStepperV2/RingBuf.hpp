@@ -90,13 +90,17 @@ public:
      * Index 0 refers to the next position to write (not yet in the queue),
      * Index 1 refers to the most recently written data,
      * Index 2 refers to the second most recent data, and so on.
+     * **Negative indices can be used to access future buffer positions.
      * If the requested index exceeds the size or the buffer is full at index 0, it returns NULL.
      *
      * @param idx The index from the write head to retrieve data from.
      * @return RB_Type* Pointer to the requested buffer element, or NULL if out of bounds or full.
      */
     RB_Type* getHead(int idx = 0) {
-        if (size() < idx) return NULL;
+        if (idx > (int)size()) return NULL;
+        // Allow negative indices to access future buffer positions
+        // Return NULL if the requested negative index is beyond available space
+        if(idx < 0 && (-idx >= space())) return NULL;
         if (idx == 0 && space() == 0) return NULL;
 
         int oidx = whead_index - idx;
