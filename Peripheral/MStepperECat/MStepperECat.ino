@@ -464,6 +464,12 @@ int MData_JR::msg_printf(const char *type,const char *fmt, ...)
 
 
 
+void G_LOG(const char* str)
+{
+  djrl.dbg_DIRECT_PRINT(str);
+}
+
+
 
 typedef enum { 
 
@@ -1893,14 +1899,14 @@ class StpGroup_SIMP:public StpGroup_XY_Coord_Conv
   private:
   // static const int OUTPUT_HIST_DIV=1;
   // RingBuf_Static<RXVec,1024/OUTPUT_HIST_DIV> outputHist;
+#define SEGBUFFER_L 40
+  std::array<CMDVec,SEGBUFFER_L> startPtBuffer;
+  std::array<CMDVec,SEGBUFFER_L> vecBuffer;
+  std::array<CMDVec,SEGBUFFER_L> aux_pt2;
+  std::array<CMDVec,SEGBUFFER_L> aux_pt3;
+  std::array<CMDVec,SEGBUFFER_L> aux_pt4;
 
-  std::array<CMDVec,40> startPtBuffer;
-  std::array<CMDVec,40> vecBuffer;
-  std::array<CMDVec,40> aux_pt2;
-  std::array<CMDVec,40> aux_pt3;
-  std::array<CMDVec,40> aux_pt4;
-
-  std::array<struct MSTP_segment,40> segsBuffer;
+  std::array<struct MSTP_segment,SEGBUFFER_L> segsBuffer;
 
 
 
@@ -2126,7 +2132,8 @@ public:
 
     // motorV.encoder_check=false;
     axisSetup=_axisSetup;
-    for(int i=0;i<segsBuffer.size();i++)//setup buffer
+    
+    for(int i=0;i<SEGBUFFER_L;i++)//setup buffer
     {
       segsBuffer[i].vec=(vecBuffer[i].vec);
       segsBuffer[i].sp=(startPtBuffer[i].vec);
@@ -3757,6 +3764,10 @@ public:
       {
         exinfo.cornorR=Corm; // Convert each element to float and store it.
       }
+      if(latestSegHaltCtx==NULL)
+      {//NOT in Queue blocking status
+        exinfo.cornorR=0;
+      }
 
       latestExtInfo=exinfo;
       // __UPRT_I_("vec:%s",vec_to_string(moveVec.vec).c_str());
@@ -4988,6 +4999,8 @@ class AUXTaskExecutor{
       AUX_DELAY=1,
       AUX_WAIT_CHECKPOINT=2,
       AUX_IO_CTRL=3,
+      
+      AUX_WAIT_PROGRESS=101,
     } type;
 
     
@@ -4996,6 +5009,20 @@ class AUXTaskExecutor{
       struct {
         int time_ms;
       }delay;
+      struct {
+        float target_progress;
+        int approaching_dir;
+        
+        //assume target_progress=0.4
+        //approaching_dir >0 means approach target_progress from smaller number (0.1->0.2->0.5(hit))
+        //approaching_dir ==0 means exact hit  (0.1->0.2->0.5 -> 0.3->0.4(hit))
+        //approaching_dir <0 ...(0.6->0.5->0.3(hit))
+        
+
+        
+        int timeout;
+      }wait_progress;
+
 
       struct {
         int target;
@@ -5040,6 +5067,52 @@ class AUXTaskExecutor{
         {
           TaskQ.consumeTail();
         }
+        return;
+      }
+      case AUX_TASK_INFO::AUX_WAIT_PROGRESS:
+      {
+        float progress=SG_SIMP.trackingInfo.progress;
+
+        if(taskInfo->wait_progress.approaching_dir>0)//approaching from smaller
+        {
+          if(progress>=taskInfo->wait_progress.target_progress)
+          {
+            TaskQ.consumeTail();
+            return;
+          }
+        }
+        else if(taskInfo->wait_progress.approaching_dir<0)//approaching from bigger
+        {
+          if(progress<=taskInfo->wait_progress.target_progress)
+          {
+            TaskQ.consumeTail();
+            return;
+          }
+        }
+        else
+        {
+          float diff=progress-taskInfo->wait_progress.target_progress;
+          if(diff<0)diff=-diff;
+          float range=0;
+          if(diff<=range)//exact hit
+          {
+            TaskQ.consumeTail();
+            return;
+          }
+        }
+
+        if(taskInfo->wait_progress.timeout)
+        {
+          taskInfo->wait_progress.timeout--;
+        }
+
+        if(taskInfo->wait_progress.timeout==0)
+        {
+          TaskQ.consumeTail();//error, cannot reach target
+          return;
+        }
+
+
         return;
       }
 
@@ -5275,6 +5348,83 @@ class AUXTaskExecutor{
     }
 
 
+    if(strcmp(type,"TRIG_CTRL_WAIT_PROGRESS")==0)
+    {
+    
+      float target_progress = jgetNum(cmd, "target_progress");
+      int approaching_dir = jgetInt32(cmd, "approaching_dir", -43243);
+      int timeout = jgetInt32(cmd, "timeout", -1000);  // Default timeout of 1000 ms
+      
+      int bank=jgetInt32(cmd,"bank",0);
+      int mask=jgetInt32(cmd,"mask",0);
+      int pout=jgetInt32(cmd,"pout",0);
+
+
+
+      if(target_progress!=target_progress || approaching_dir==-43243 || timeout<=0 || mask==0)
+      {
+        return MCMD_Status::TASK_FAILED;
+      }
+
+
+
+      {//wait 
+
+
+        AUX_TASK_INFO *taskInfo = spinWaitQ();
+        taskInfo->type = AUX_TASK_INFO::AUX_WAIT_PROGRESS;
+        taskInfo->wait_progress.target_progress = target_progress;
+        taskInfo->wait_progress.approaching_dir = approaching_dir;
+        taskInfo->wait_progress.timeout = timeout;
+        TaskQ.pushHead();
+
+      }
+
+
+
+
+      {//on
+        AUX_TASK_INFO *taskInfo=spinWaitQ();
+        taskInfo->type=AUX_TASK_INFO::AUX_IO_CTRL;
+        taskInfo->io_ctrl.bank=bank;
+        taskInfo->io_ctrl.mask=mask;
+        taskInfo->io_ctrl.pout=pout;
+        taskInfo->io_ctrl.cid=jgetInt32(cmd,"cid",0);
+        taskInfo->io_ctrl.tid=jgetInt32(cmd,"tid",0);
+        taskInfo->io_ctrl.ttagbf=jgetInt32(cmd,"ttagbf",0);
+        TaskQ.pushHead();
+
+      }
+
+
+      {//wait
+
+        AUX_TASK_INFO *taskInfo=spinWaitQ();
+        taskInfo->type=AUX_TASK_INFO::AUX_DELAY;
+        taskInfo->delay.time_ms=jgetInt32(cmd,"ontime",10);
+        TaskQ.pushHead();
+      }
+
+
+
+
+      {//off
+        AUX_TASK_INFO *taskInfo=spinWaitQ();
+        taskInfo->type=AUX_TASK_INFO::AUX_IO_CTRL;
+        taskInfo->io_ctrl.bank=bank;
+        taskInfo->io_ctrl.mask=mask;
+        taskInfo->io_ctrl.pout=~pout;
+        taskInfo->io_ctrl.cid=0;
+        taskInfo->io_ctrl.tid=0;
+        taskInfo->io_ctrl.ttagbf=0;
+        TaskQ.pushHead();
+
+      }
+
+
+
+      return MCMD_Status::TASK_OK;
+    }
 
 
     if(strcmp(type,"TRIG_CTRL")==0)
