@@ -4274,7 +4274,7 @@ public:
         tinfo.tro.progress_type= CTX_TrackingRouteOption::VAD;
         tinfo.tro.progress_VAD.movParam.acc=F;
         tinfo.tro.progress_VAD.movParam.deacc=DEA;
-        tinfo.tro.progress_VAD.movParam.vcen=ACC;
+        tinfo.tro.progress_VAD.movParam.vmax=ACC;
         tinfo.tro.progress_VAD.movParam.Edistance=
         tinfo.tro.progress_VAD.movParam.distanceEnd=distance;
         tinfo.tro.progress_VAD.movParam.distanceStart=0;

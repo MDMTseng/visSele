@@ -762,20 +762,20 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
   int main_vidx=0;
   float vfactor=1;
   vfactor=SpeedFactor(vec.vec,axisSetup,VEC_DIM,&main_idx,&main_vidx);
-  newSeg.vcen=exinfo.speed*vfactor;
+  newSeg.vmax=exinfo.speed*vfactor;
 
   
   float maxAllowedSpeed=MaxAllowedSpeed(vec.vec,axisSetup,VEC_DIM,newSeg.Edistance);
   
-  if(newSeg.vcen>maxAllowedSpeed)//cap
+  if(newSeg.vmax>maxAllowedSpeed)//cap
   {
-    newSeg.vcen=maxAllowedSpeed;
+    newSeg.vmax=maxAllowedSpeed;
   }
 
 
   print_D((
     ">>>"+to_string(__LINE__)+
-    " vcen:"+to_string(newSeg.vcen)+
+    " vmax:"+to_string(newSeg.vmax)+
     " main_idx:"+to_string(main_idx)+
     " main_vidx:"+to_string(main_vidx)+
     " vfactor:"+to_string(vfactor)
@@ -830,7 +830,7 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
 
 
   // __PRT_I_("\n");
-  // __PRT_I_("==========NEW runvec[%s:%f,%f,%f]======idx: h:%d t:%d===\n",toStr(newSeg.runvec),newSeg.vcen,newSeg.acc,newSeg.deacc,segBufHeadIdx,segBufTailIdx);
+  // __PRT_I_("==========NEW runvec[%s:%f,%f,%f]======idx: h:%d t:%d===\n",toStr(newSeg.runvec),newSeg.vmax,newSeg.acc,newSeg.deacc,segBufHeadIdx,segBufTailIdx);
 
   // 
   // timerAlarmDisable(timer);
@@ -1074,15 +1074,15 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
 
 
         float minAcc=(arcSeg.acc<-arcSeg.deacc)?arcSeg.acc:-arcSeg.deacc;
-        float minV=(preSeg.vcen<aheadLineSeg.vcen)?preSeg.vcen:aheadLineSeg.vcen;
+        float minV=(preSeg.vmax<aheadLineSeg.vmax)?preSeg.vmax:aheadLineSeg.vmax;
         float vmax=sqrt(arc_r*minAcc);//a=w^2*r= v^2/r => vmax=sqrt(r*a) centripetal force
         if(vmax>minV)vmax=minV;
-        // vmax=aheadLineSeg.vcen;
+        // vmax=aheadLineSeg.vmax;
 
 
 
-        // sprintf(PrtBuff,"vcen:%f",vmax);G_LOG(PrtBuff);
-        arcSeg.vcen=vmax;//make sure the arc speed is not too high according to centripetal acceleration
+        // sprintf(PrtBuff,"vmax:%f",vmax);G_LOG(PrtBuff);
+        arcSeg.vmax=vmax;//make sure the arc speed is not too high according to centripetal acceleration
         arcSeg.vcur=0;
         arcSeg.vto=0;
         
@@ -1232,21 +1232,21 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
           //   float vto_JunctionMax=preSeg->vto_JunctionMax;
           //   float JunctionNormMaxDiff=newSeg.JunctionNormMaxDiff;
           //   float vcur=newSeg.vcur;
-          //   float vcen=newSeg.vcen;
-          //   //__PRT_I_("===JunctionMax:%f ndiff:%f vcur:%f  vcen:%f==\n",vto_JunctionMax,JunctionNormMaxDiff,vcur,vcen);
+          //   float vmax=newSeg.vmax;
+          //   //__PRT_I_("===JunctionMax:%f ndiff:%f vcur:%f  vmax:%f==\n",vto_JunctionMax,JunctionNormMaxDiff,vcur,vmax);
             
           // }
-          if(false&&newSeg.vcur>newSeg.vcen)//check if the max initial speed is higher than target speed
+          if(false&&newSeg.vcur>newSeg.vmax)//check if the max initial speed is higher than target speed
           {
-            newSeg.vcur=newSeg.vcen;//cap the speed
+            newSeg.vcur=newSeg.vmax;//cap the speed
 
             preSeg.vto_JunctionMax=newSeg.vcur/newSeg.JunctionNormCoeff;//calc speed back to preSeg->vto
 
             // {
             //   float vto_JunctionMax=preSeg->vto_JunctionMax;
             //   float vcur=newSeg.vcur;
-            //   float vcen=newSeg.vcen;
-            //   __PRT_I_("===JunctionMax:%f  vcur:%f  vcen:%f==\n",vto_JunctionMax,vcur,vcen);
+            //   float vmax=newSeg.vmax;
+            //   __PRT_I_("===JunctionMax:%f  vcur:%f  vmax:%f==\n",vto_JunctionMax,vcur,vmax);
               
             // }
             
@@ -1301,7 +1301,7 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
         to_string(newSeg.JunctionNormMaxDiff)+","+
         to_string(newSeg.vto_JunctionMax)+","+
         to_string(newSeg.vcur)+","+
-        to_string(newSeg.vcen)+","+
+        to_string(newSeg.vmax)+","+
         to_string(newSeg.vto)).c_str());
 
 
@@ -1312,7 +1312,7 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
         to_string(preSeg.JunctionNormMaxDiff)+","+
         to_string(preSeg.vto_JunctionMax)+","+
         to_string(preSeg.vcur)+","+
-        to_string(preSeg.vcen)+","+
+        to_string(preSeg.vmax)+","+
         to_string(preSeg.vto)).c_str());
       newSeg.id=id*10;
       segs.pushHead();
@@ -1364,7 +1364,7 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
        /              |    |
 
 
-      CASE2:  curSeg is not long enough to be able to de-accelerate from curSeg.vcen(v center max speed) to curSeg.vto
+      CASE2:  curSeg is not long enough to be able to de-accelerate from curSeg.vmax(v center max speed) to curSeg.vto
               so the preSeg need to reduce the vto speed, so curSeg.vcur is low enough to safely de-accelerate to curSeg.vto
                          
       example:curSeg.steps=4                    
@@ -1447,7 +1447,7 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
       else
       {
         //find minimum distance needed
-        int32_t minDistNeeded= DeAccDistNeeded_f(curSeg->vcen,curSeg->vto, curSeg->deacc);
+        int32_t minDistNeeded= DeAccDistNeeded_f(curSeg->vmax,curSeg->vto, curSeg->deacc);
 
 
         print_D(("curDeAccSteps:"+to_string(curDeAccSteps)+ " minDistNeeded:"+to_string(minDistNeeded)+" curSeg->vto"+to_string(curSeg->vto)  ).c_str());
@@ -1461,7 +1461,7 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
         // else
         // {//CASE 3 the curSeg has enough steps to de-accelerate to curSeg.vto, so exit 
 
-        //   //(curSeg)the steps is long enough to de acc from vcen to vto, 
+        //   //(curSeg)the steps is long enough to de acc from vmax to vto, 
         //   //so we don't need to change the speed vto of (preSeg)
         //   cur_vstart=curSeg->vto;
         //   break;
@@ -1479,9 +1479,9 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
 
       float preSeg_vto_max=(curSeg->JunctionNormCoeff<0.1)?0:cur_vstart/(curSeg->JunctionNormCoeff+0.01);
       float new_preSeg_vto=preSeg_vto_max<preSeg->vto_JunctionMax?preSeg_vto_max:preSeg->vto_JunctionMax;
-      if(new_preSeg_vto>curSeg->vcen)
+      if(new_preSeg_vto>curSeg->vmax)
       {
-        new_preSeg_vto=curSeg->vcen;
+        new_preSeg_vto=curSeg->vmax;
       }
       uint32_t curAddr=(0xFFF&(uint32_t)curSeg);
       uint32_t preAddr=(0xFFF&(uint32_t)preSeg);
@@ -1669,7 +1669,7 @@ typename StpGroup<VEC_DIM,SEG_BUF_SIZE>::MSTP_segment_adv_state StpGroup<VEC_DIM
   float normalDEA=dea;
   float vto=curSeg.vto;
   float vcur=curSeg.vcur;
-  float vcen=curSeg.vcen;
+  float vmax=curSeg.vmax;
 
 
 
@@ -1737,7 +1737,7 @@ typename StpGroup<VEC_DIM,SEG_BUF_SIZE>::MSTP_segment_adv_state StpGroup<VEC_DIM
       }
     }
 
-    if(vcur>vcen)vcur=vcen;
+    if(vcur>vmax)vcur=vmax;
     eqvcur=vcur;
   } 
 

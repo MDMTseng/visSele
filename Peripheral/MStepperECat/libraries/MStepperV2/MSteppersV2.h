@@ -120,7 +120,7 @@ class StpGroup
   {
     MSTP_segment_type type;
     float vcur;
-    float vcen;
+    float vmax;
     float vto;
 
     float acc;
