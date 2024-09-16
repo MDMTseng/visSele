@@ -2421,24 +2421,10 @@ public:
           break;
 
         }
-        else if(curSeg->type==MSTP_segment_type::seg_line)//linear interpolation
+        else if(curSeg->type==MSTP_segment_type::seg_line || curSeg->type==MSTP_segment_type::seg_arc)//linear interpolation
         {
-          float ratio=MotorGroup.adv_info.dstanceWent/(curSeg->Edistance);
-          latestSegRatio=ratio;
-
-          for(int i=0; i<MotorGroup.vec_dim; i++)
-          {
-            latestAdvLocation.vec[i] = curSeg->vec.vec[i] * ratio + curSeg->sp.vec[i];
-          }
-
-        }
-        else  if(curSeg->type==MSTP_segment_type::seg_arc)//cubic bezier interpolation
-        {
-          
-          float ratio=MotorGroup.adv_info.dstanceWent/(curSeg->Edistance);
-          latestSegRatio=ratio;
-          cubicBezier_comp<StpGroup3_50>(latestAdvLocation.vec,curSeg,MotorGroup.adv_info.dstanceWent);
-
+          bool ret=MotorGroup.getSegLocation(curSeg,latestAdvLocation);
+    
         }
 
 

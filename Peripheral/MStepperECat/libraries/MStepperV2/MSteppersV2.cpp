@@ -920,19 +920,19 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
 
 
     /*                                                                                                                               
-                                            spDistRatio=0.8                                                                           
-                                  -----------------|----|   
-                            [P1]                 [SP2]                                                                                
-                                  --------------------------------------                                                              
-         ret_distance   /        /    /                                [P2]                                                             
-                       /        /__--                                                                                                    
-                      /        /     return ANGLE                                                                                                 
-                     /        /                                                                                                       
-   spDistRatio=0.8  _[SP0]   /                                                                                                        
-                   /        /                                                                                                         
-                  -        /                                                                                                          
-                                                                                                                                      
-                        [P0]                                            
+                                                  spDistRatio=0.8                                                                           
+                                        -----------------|----|   
+                                  [P1]                 [SP2]                                                                                
+                                        --------------------------------------                                                              
+              ret_distance    /        /    /                                [P2]                                                             
+   (distance_turnPt_cornorPt)/        /__--                                                                                                    
+                            /        /     return ANGLE                                                                                                 
+                           /        /                                                                                                       
+         spDistRatio=0.8  _[SP0]   /                                                                                                        
+                         /        /                                                                                                         
+                        -        /                                                                                                          
+                                                                                                                                            
+                              [P0]                                            
 
 
     */
@@ -946,6 +946,9 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
       {
 
         // Calculate the angle in radians
+
+        //if cornorR>1 then it's in mm
+        //if cornorR 0~1 then it's in avaliable percentage
         float percent=exinfo.cornorR;
         float cornorR_mm=NAN;
         if(percent>1)
@@ -955,16 +958,21 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
         }
 
 
-        float angleRad=NAN;
+        float cornor_angle_rad=NAN;
         {
-          CMDVec p0;//newSeg.sp-preSeg->vec;
-          CMDVec p2;//newSeg.sp+newSeg.vec;
+          CMDVec p0;//the earliest start point that we can use on preSeg
+          CMDVec p2;//the latest   end point that we can use on aheadLineSeg
 
-          float avaLengthShrink=0.95;
-          float presegDistRatioLeft=(1-preSeg.distanceStart/preSeg.Edistance)*avaLengthShrink;
+          float avaLengthShrink=0.95;//it's to make sure there is still a line segment
+
+
+          float preSegdist=(preSeg.Edistance-preSeg.distanceStart)*avaLengthShrink;//dist(p0,cornor)
+          float newSegdist=(aheadLineSeg.Edistance)*avaLengthShrink;//dist(cornor,p2)
+
+
           for(int i=0;i<VEC_DIM;i++)
           {
-            p0.vec[i]=aheadLineSeg.sp.vec[i]-preSeg.vec.vec[i]*presegDistRatioLeft;
+            p0.vec[i]=aheadLineSeg.sp.vec[i]-preSeg.vec.vec[i]*preSegdist/preSeg.Edistance;
 
             
             p2.vec[i]=aheadLineSeg.sp.vec[i]+aheadLineSeg.vec.vec[i]*avaLengthShrink;
@@ -973,9 +981,8 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
             // sprintf(PrtBuff,"[%d]:%f,%f,%f    ",i,p0.vec[i],aheadLineSeg.sp[i],p2.vec[i]);G_LOG(PrtBuff);
           }
 
+          //now we have p0->cornor(sp)->p2
 
-          float preSegdist=preSeg.Edistance-preSeg.distanceStart;
-          float newSegdist=aheadLineSeg.Edistance;
           float targetDist=newSegdist*percent;
 
           if(preSegdist<newSegdist)//new segment longer, percentage will affect on previous segment
@@ -994,7 +1001,7 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
           // sprintf(PrtBuff,"distanceStart:%f  Edistance:%f",preSeg.distanceStart,preSeg.Edistance);G_LOG(PrtBuff);
 
 
-          angleRad = calcAngleAndOthers(
+          cornor_angle_rad = calcAngleAndOthers(
             p0.vec,
             aheadLineSeg.sp.vec,
             p2.vec,
@@ -1008,14 +1015,14 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
         }
 
         const int skipAngleMargin=1;
-        if(angleRad<skipAngleMargin*M_PI/180 || angleRad>(180-skipAngleMargin)*M_PI/180 )//too small to arc
+        if(cornor_angle_rad<skipAngleMargin*M_PI/180 || cornor_angle_rad>(180-skipAngleMargin)*M_PI/180 )//too small to arc
         {
 
           doLineJunction=true;
           break;
         }
 
-        // sprintf(PrtBuff,"percent:%f angleRad:%f  distance_turnPt_cornorPt:%f",percent,angleRad*180/3.14159,distance_turnPt_cornorPt);G_LOG(PrtBuff);
+        // sprintf(PrtBuff,"percent:%f cornor_angle_rad:%f  distance_turnPt_cornorPt:%f",percent,cornor_angle_rad*180/3.14159,distance_turnPt_cornorPt);G_LOG(PrtBuff);
 
 
 
@@ -1023,12 +1030,10 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
 
 
 
+        // float kappa=Ang2SplineKappa(cornor_angle_radians,&arc_r_div_dist);
 
-        float arc_r_div_dist=NAN;
-        float kappa=NAN;//=Ang2SplineKappa(angleRadians,&arc_r_div_dist);
-
-        kappa=Ang2SplineKappa_PAP(angleRad);
-        arc_r_div_dist=Ang2RDivDist_PAP(angleRad);
+        float kappa=Ang2SplineKappa_PAP(cornor_angle_rad);
+        float arc_r_div_dist=Ang2RDivDist(cornor_angle_rad);
 
         double arc_r=arc_r_div_dist*distance_turnPt_cornorPt;
 
@@ -1062,7 +1067,7 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
         // sprintf(PrtBuff,"arc_r:%f",arc_r);G_LOG(PrtBuff);
         // arcSeg.Mdistance=
         arcSeg.Edistance=
-        arcSeg.distanceEnd=arc_r*(M_PI-angleRad);
+        arcSeg.distanceEnd=arc_r*(M_PI-cornor_angle_rad);
         arcSeg.distanceStart=0;
 
 
@@ -1293,7 +1298,7 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
       }
 
 
-        // sprintf(PrtBuff,"percent:%f angleRad:%f  distance_turnPt_cornorPt:%f",percent,angleRad*180/3.14159,distance_turnPt_cornorPt);G_LOG(PrtBuff);
+        // sprintf(PrtBuff,"percent:%f cornor_angle_rad:%f  distance_turnPt_cornorPt:%f",percent,cornor_angle_rad*180/3.14159,distance_turnPt_cornorPt);G_LOG(PrtBuff);
       // sprintf(PrtBuff,(">>>"+to_string(__LINE__)+ " acc,dea,dist:"+to_string(newSeg.acc)+","+to_string(newSeg.deacc)+","+to_string(newSeg.Edistance)).c_str());G_LOG(PrtBuff);
 
       print_D((">>>"+to_string(__LINE__)+ " C: JNC,JNMD,JM,vcur,ven,vto:"+
@@ -1485,7 +1490,7 @@ bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec star
       }
       uint32_t curAddr=(0xFFF&(uint32_t)curSeg);
       uint32_t preAddr=(0xFFF&(uint32_t)preSeg);
-// sprintf(PrtBuff,"percent:%f angleRad:%f  distance_turnPt_cornorPt:%f",percent,angleRad*180/3.14159,distance_turnPt_cornorPt);G_LOG(PrtBuff);
+// sprintf(PrtBuff,"percent:%f cornor_angle_rad:%f  distance_turnPt_cornorPt:%f",percent,cornor_angle_rad*180/3.14159,distance_turnPt_cornorPt);G_LOG(PrtBuff);
       print_D(("cur.t:"+ to_string(curSeg->type)+" cur_vstart:"+to_string(cur_vstart)+ " preJunM:"+to_string(preSeg->vto_JunctionMax)+ " curJCoeff:"+to_string(curSeg->JunctionNormCoeff) + " curAddr:"+to_string(curAddr)).c_str());
       // print_D(("sp[0]:"+ to_string(preSeg->sp[0]+preSeg->vec[0])+" new_preSeg_vto:"+to_string(new_preSeg_vto)).c_str());
 

@@ -140,6 +140,7 @@ class StpGroup
     float Edistance;
 
 
+    
     float JunctionNormCoeff;
     float JunctionNormMaxDiff;
     float vto_JunctionMax;
