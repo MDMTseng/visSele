@@ -4,6 +4,7 @@
 #include <string>
 #undef min
 #undef max
+#include "Arduino.h"
 #include "TestGround.h"
 #include "ArduinoJson.h"
 #include <Data_Layer_Protocol.h>
@@ -22,6 +23,8 @@
 #define PPU_ECAT_STATION_ID 2
 #define ARM_ECAT_STATION_ID 4
 #define PLAT_ECAT_STATION_ID 3
+
+#include "MSteppersV2.cpp"
 
 
 
@@ -285,8 +288,6 @@ class MData_JR:public Data_JsonRaw_Layer
   void loop();
 
 
-  int insertCMD(StpGroup *stpG,JsonDocument &cmd);
-
 };
 MData_JR djrl;
 
@@ -311,36 +312,6 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
 }
 
 
-
-
-int MData_JR::insertCMD(StpGroup *stpG,JsonDocument &cmd)
-{
-
-
-  int res=-2;
-  // check if the key "code" exists
-  if(cmd["code"].is<const char*>())
-  {
-    // gcpm.putJSONNote(&retdoc);
-    // gcpm.putTargetStepperGroup(stpG);
-
-    // const char* code = cmd["code"];
-
-    //   // __PRT_I_("insertCMD:%s",code);
-    // // res= gcpm.runGCode(code);
-
-    // gcpm.putJSONNote(NULL);
-    // gcpm.putTargetStepperGroup(NULL);
-  }
-  else
-  {
-    // res=stpG->JCMDParse(cmd,retdoc);
-  }
-
-  // retdoc["cmd"]=cmd;
-
-  return res;
-}
 
 int MData_JR::send_data(int head_room,uint8_t *data,int len,int leg_room){
   Serial.write(data,len);
@@ -498,7 +469,7 @@ typedef enum {
 std::array<std::string,32> camTriggerTagArr;
 
 
-class StpGroup_XY_Coord_Conv:public StpGroup
+class XY_Coord_Conv
 {
 
   std::array<float,3> device_pt1;
@@ -509,7 +480,7 @@ class StpGroup_XY_Coord_Conv:public StpGroup
   std::array<float,3> domain_pt2;
 
   public:
-  StpGroup_XY_Coord_Conv():StpGroup()
+  XY_Coord_Conv()
   {
     resetMapping();
 
@@ -606,8 +577,11 @@ class StpGroup_XY_Coord_Conv:public StpGroup
 
 
 
-class StpGroup_PPU:public StpGroup_XY_Coord_Conv
+class MotionGroup_PPU:public XY_Coord_Conv
 { 
+  protected:
+  typedef StpGroup<1,5> StpGroup1_5;
+  StpGroup1_5 MotorGroup;
   public:
   MotorCtrlCiA402_position_deltaB3 motorPPU;
   
@@ -630,19 +604,6 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
     motorPPU.enable(en);
   }
   
-  typedef  xnVec_f<1> CMDVec;//X Y Z
-  typedef  xnVec_f<1> MotVec;//R Z X
-  typedef  xnVec<1> MotVec_i;
-
-  
-  std::array<CMDVec,5> startPtBuffer;
-  std::array<CMDVec,5> vecBuffer;
-
-  std::array<struct MSTP_segment,5> segsBuffer;
-
-
-  const int CMD_VEC_DIM=sizeof(CMDVec)/sizeof(float);
-
 
 
   void inverse(float *mot_vec_dst,const float* loc_vec_src){
@@ -662,20 +623,19 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
 
   }
 
-  CMDVec latestCMDLocation={{0}};//updated by the latest command
-  CMDVec latestAdvLocation={{0}};//updated by update(), every update, the segAdvance will give a new progress/location for this tick  
-  CMDVec latestAdvLocation_addOffset={{0}};
-  MotVec curMotLoc_unit={0};
+  StpGroup1_5::CMDVec latestCMDLocation={{0}};//updated by the latest command
+  StpGroup1_5::CMDVec latestAdvLocation={{0}};//updated by update(), every update, the segAdvance will give a new progress/location for this tick  
+  StpGroup1_5::CMDVec latestAdvLocation_addOffset={{0}};
+  StpGroup1_5::CMDVec curMotLoc_unit={0};
 
-  MotVec_i preMotloc_pls={0};
+  StpGroup1_5::CMDiVec preMotloc_pls={0};
 
   float progressiveOffset=NAN;
   void RESET_Queue()
   {
     progressiveOffset=NAN;
     homedFlag=false;
-    segs.clear();
-    adv_info.dstanceWent=0;
+    MotorGroup.RESET();
 
     latestCMDLocation={{0}};
     latestAdvLocation={{0}};
@@ -875,7 +835,7 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
       {
         timeLeft-=T;
         T=timeLeft;
-        MSTP_segment*curSeg= segAdvance(T);//The T will be updated to the time that used
+        StpGroup1_5::MSTP_segment*curSeg= MotorGroup.segAdvance(T);//The T will be updated to the time that used
 
         // if(ti!=NULL)
         // {
@@ -909,11 +869,11 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
               if(p_res->SEG_HALT.haltFlag ==false)//isInSegHoldState is released by the user command
               {
                 // djrl.async_printf(0,"haltFlag==false");
-                adv_info.dstanceWent=curSeg->distanceEnd=-1;//this will end the seg_wait, next update will get a new seg
+                MotorGroup.adv_info.dstanceWent=curSeg->distanceEnd=-1;//this will end the seg_wait, next update will get a new seg
               }
               else
               {
-                adv_info.dstanceWent=0;
+                MotorGroup.adv_info.dstanceWent=0;
               }
             }
           }
@@ -921,15 +881,10 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
           break;
 
         }
-        else if(curSeg->type==MSTP_segment_type::seg_line)//linear interpolation
+        else if(curSeg->type==MSTP_segment_type::seg_line || curSeg->type==MSTP_segment_type::seg_arc)//linear interpolation
         {
-          float ratio=adv_info.dstanceWent/(curSeg->Edistance);
-          latestSegRatio=ratio;
-          for(int i=0;i<CMD_VEC_DIM;i++)
-          {
-            latestAdvLocation.vec[i]=curSeg->vec[i]*(ratio)+curSeg->sp[i];
-          }
-
+          bool ret=MotorGroup.getSegLocation(curSeg,latestAdvLocation);
+    
         }
 
 
@@ -960,29 +915,17 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
   }
 
       
-  MSTP_axisSetup _axisSetup[sizeof(CMDVec)/sizeof(float)];
+  MSTP_axisSetup _axisSetup[1];
       
   std::vector<int32_t>mot_step_vec;
 
-  StpGroup_PPU():StpGroup_XY_Coord_Conv(),
-   mot_step_vec(CMD_VEC_DIM),
+  MotionGroup_PPU():XY_Coord_Conv(),
+   mot_step_vec(1),
     motorPPU(PPU_ECAT_STATION_ID,-1,30*60,updatePeriod_s*1000000000)
   {
 
     motorPPU.gearRatioB=motorPulseCountPerRev;
     // motorV.encoder_check=false;
-    axisSetup=_axisSetup;
-    for(int i=0;i<segsBuffer.size();i++)//setup buffer
-    {
-      segsBuffer[i].vec=(vecBuffer[i].vec);
-      segsBuffer[i].sp=(startPtBuffer[i].vec);
-
-    }
-
-
-    segs.setBuffer(segsBuffer.data(),segsBuffer.size());
-
-
     /*
     
     axis unit
@@ -991,12 +934,12 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
     axis3: V unit mm
     */
    
-    axisSetup[0].P_PreMult=1;
-    axisSetup[0].A_Factor=1;
-    axisSetup[0].V_Factor=1;
-    axisSetup[0].MaxVJump=1;
-    axisSetup[0].V_Max=10000;
-    axisSetup[0].A_Max=200000;
+    MotorGroup.axisSetup[0].P_PreMult=1;
+    MotorGroup.axisSetup[0].A_Factor=1;
+    MotorGroup.axisSetup[0].V_Factor=1;
+    MotorGroup.axisSetup[0].MaxVJump=1;
+    MotorGroup.axisSetup[0].V_Max=10000;
+    MotorGroup.axisSetup[0].A_Max=200000;
 
 
 
@@ -1007,7 +950,7 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
 
 
 
-    adv_info.minSpeed=1;
+    MotorGroup.adv_info.minSpeed=1;
 
 
     bool DBG_allowSkipHoming=false;
@@ -1050,7 +993,9 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
     {
 
     }
-    MotVec_i _curMotLoc_pls={0};
+
+    
+    StpGroup1_5::CMDiVec _curMotLoc_pls={0};
     motUnit2PulseConversion(_curMotLoc_pls.vec,curMotLoc_unit.vec);
     mot_step_vec[0]=(_curMotLoc_pls.vec[0]-preMotloc_pls.vec[0]);
     preMotloc_pls=_curMotLoc_pls;
@@ -1077,7 +1022,7 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
   int CMDProcess(JsonDocument& cmd,JsonDocument& cmd_ret)
   {
     {
-      auto ret = StpGroup_XY_Coord_Conv::CMDProcess(cmd,cmd_ret);
+      auto ret = XY_Coord_Conv::CMDProcess(cmd,cmd_ret);
       if(ret!=MCMD_Status::TASK_UNSUPPORTED)
       {
         return ret;
@@ -1098,7 +1043,7 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
     if(strcmp(type,"G1")==0)//X
     {
 
-      CMDVec vec_coord=latestCMDLocation;
+      auto vec_coord=latestCMDLocation;
       vec_coord.vec[0]=jgetNum(cmd,"X",vec_coord.vec[0]);
 
       
@@ -1112,11 +1057,8 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
       latestExtInfo=exinfo;
 
 
-      CMDVec moveVec;
-      vecSub(moveVec.vec,vec_coord.vec,latestCMDLocation.vec,CMD_VEC_DIM);
-      
-
-      pushInMoveVec(HACK_LATEST_CMD_ID,moveVec.vec,&exinfo,CMD_VEC_DIM,NULL,NULL,NULL);
+      auto moveVec=MotorGroup.sub(vec_coord,latestCMDLocation);
+      MotorGroup.pushInMoveVec(HACK_LATEST_CMD_ID,moveVec,latestCMDLocation,exinfo,NULL,NULL,NULL);
       latestCMDLocation=vec_coord;
       return  MCMD_Status::TASK_OK;
 
@@ -1223,18 +1165,11 @@ class StpGroup_PPU:public StpGroup_XY_Coord_Conv
   }
 
 
-
-  void copyCMDVec(float*dst,float*src)
-  {
-    memcpy(dst,src,sizeof(CMDVec));
-  }
-
-
 };
-StpGroup_PPU SG_PPU;
+MotionGroup_PPU MG_PPU;
 
 
-class StpGroup_PLATE:public StpGroup_XY_Coord_Conv
+class MotionGroup_PLATE:public XY_Coord_Conv
 { 
    
   public:
@@ -1255,38 +1190,26 @@ class StpGroup_PLATE:public StpGroup_XY_Coord_Conv
   }
 
 
+  typedef StpGroup<1,5> StpGroup1_5;
+  StpGroup1_5 MotorGroup;
 
-  typedef  xnVec_f<1> RXVec;
-
-  typedef  xnVec_f<1> CMDVec;//X Y Z
-  typedef  xnVec_f<1> MotVec;//R Z X
-  typedef  xnVec<1> MotVec_i;
+  
 
   // std::array<struct MSTP_segment,1> segsBuffer;
 
 
   // MSTP_axisSetup _axisSetup[1];
 
-  CMDVec latestAdvLocation={{0}};
+  StpGroup1_5::CMDVec latestAdvLocation={{0}};
 
-  MotVec_i preMotloc_pls={0};
+  StpGroup1_5::CMDiVec preMotloc_pls={0};
 
-  std::array<struct MSTP_segment,10> segsBuffer;
-  
   std::vector<int32_t>mot_step_vec;
 public:
   float cx,cy;
   float angleToPlatEnc=NAN;
-  StpGroup_PLATE():StpGroup_XY_Coord_Conv(),mot_step_vec(1), motor(PLAT_ECAT_STATION_ID,0,100000,updatePeriod_s*1000000000)
+  MotionGroup_PLATE():XY_Coord_Conv(),mot_step_vec(1), motor(PLAT_ECAT_STATION_ID,0,100000,updatePeriod_s*1000000000)
   {
-    
-    segs.setBuffer(segsBuffer.data(),segsBuffer.size());
-
-    // memset(outputHist.buff,0,outputHist.capacity()*sizeof(RXVec));
-    
-
-    // axisSetup=_axisSetup;
-
     // segs.setBuffer(segsBuffer.data(),segsBuffer.size());
     motor.encoder_check=false;
 
@@ -1521,11 +1444,6 @@ public:
 
 
 
-  void copyCMDVec(float*dst,float*src)
-  {
-    memcpy(dst,src,sizeof(CMDVec));
-  }
-
   void motUnit2PulseConversion(int32_t *pulse_dst,float *unit_src)
   {
     pulse_dst[0]=(int32_t)(unit_src[0]);
@@ -1543,11 +1461,11 @@ public:
   virtual const std::vector<int32_t>& getMotMoveVec()
   { 
     if(updated==false)return mot_step_vec;
-    CMDVec curMotLoc_unit={0};
+    StpGroup1_5::CMDVec curMotLoc_unit={{0}};
     inverse(curMotLoc_unit.vec,latestAdvLocation.vec);
 
-    MotVec_i _curMotLoc_pls={0};
-    // _curMotLoc_pls.vec[0]=(int32_t)(curMotLoc_unit.vec[0]*1600*4.5/(73*2*3.14159));//R  arc angle to steps
+    StpGroup1_5::CMDiVec _curMotLoc_pls={0};
+    _curMotLoc_pls.vec[0]=(int32_t)(curMotLoc_unit.vec[0]*1600*4.5/(73*2*3.14159));//R  arc angle to steps
 
     motUnit2PulseConversion(_curMotLoc_pls.vec,curMotLoc_unit.vec);
 
@@ -1641,7 +1559,7 @@ public:
   int CMDProcess(JsonDocument& cmd,JsonDocument& cmd_ret)
   {
     {
-      auto ret = StpGroup_XY_Coord_Conv::CMDProcess(cmd,cmd_ret);
+      auto ret = XY_Coord_Conv::CMDProcess(cmd,cmd_ret);
       if(ret!=MCMD_Status::TASK_UNSUPPORTED)
       {
         return ret;
@@ -1813,7 +1731,7 @@ public:
   }
 };
 
-StpGroup_PLATE SG_PLATE;
+MotionGroup_PLATE MG_PLATE;
 
 
 
@@ -1825,10 +1743,8 @@ uint32_t checkpointCounter=0;
 
 
 
-
-
 EthercatMaster master;  // Create an EtherCAT Master Object
-class StpGroup_SIMP:public StpGroup_XY_Coord_Conv
+class MotionGroup_SIMP:public XY_Coord_Conv
 { 
   public:
   
@@ -1861,12 +1777,16 @@ class StpGroup_SIMP:public StpGroup_XY_Coord_Conv
 
   uint32_t checkpointAdeadCounter=0;
 
-  typedef  xnVec_f<3> CMDVec;//X Y Z
-  typedef  xnVec_f<3> MotVec;//R Z X
-  typedef  xnVec<3> MotVec_i;
 
-  RingBuf_Static<CMDVec,50> motor_FilterBuffer;
 
+  typedef StpGroup<3,50> StpGroup3_50;
+  StpGroup3_50 MotorGroup;
+
+  typedef StpGroup3_50::MSTP_segment MSTP_segment;
+
+  typedef  StpGroup3_50::CMDVec CMDVec;//X Y Z
+  typedef  StpGroup3_50::CMDVec MotVec;//R Z X
+  typedef  StpGroup3_50::CMDiVec MotVec_i;
 
 
   int motor_FilterBufferSampling(float idx,CMDVec &ret)
@@ -1884,35 +1804,17 @@ class StpGroup_SIMP:public StpGroup_XY_Coord_Conv
 
       return 0;
     }
-    CMDVec d0=*motor_FilterBuffer.getHead((idx0+1));
-    CMDVec d1=*motor_FilterBuffer.getHead((idx1+1));
+    MotionGroup_SIMP::CMDVec d0=*motor_FilterBuffer.getHead((idx0+1));
+    MotionGroup_SIMP::CMDVec d1=*motor_FilterBuffer.getHead((idx1+1));
 
 
-    float ratio=idx-idx0;
-    for(int i=0;i<CMD_VEC_DIM;i++)
-    {
-      ret.vec[i]=d0.vec[i]*(1-ratio)+d1.vec[i]*ratio;
-    }
+    ret = MotorGroup.lerp(d0, d1, idx - idx0);
     return 0;
   }
 
   private:
   // static const int OUTPUT_HIST_DIV=1;
   // RingBuf_Static<RXVec,1024/OUTPUT_HIST_DIV> outputHist;
-#define SEGBUFFER_L 40
-  std::array<CMDVec,SEGBUFFER_L> startPtBuffer;
-  std::array<CMDVec,SEGBUFFER_L> vecBuffer;
-  std::array<CMDVec,SEGBUFFER_L> aux_pt2;
-  std::array<CMDVec,SEGBUFFER_L> aux_pt3;
-  std::array<CMDVec,SEGBUFFER_L> aux_pt4;
-
-  std::array<struct MSTP_segment,SEGBUFFER_L> segsBuffer;
-
-
-
-
-
-  const int CMD_VEC_DIM=sizeof(CMDVec)/sizeof(float);
 
 
   //XYZ
@@ -2019,9 +1921,6 @@ class StpGroup_SIMP:public StpGroup_XY_Coord_Conv
   // HomingSeq homingSeq[sizeof(RXVec)/sizeof(float)]={{HNOP,0,0,0,0,0}};
 
   bool DBG_allowSkipHoming=true;
-  MSTP_axisSetup _axisSetup[sizeof(CMDVec)/sizeof(float)];
-
-
 
   struct CTX_TrackingRouteOption{
 
@@ -2039,10 +1938,10 @@ class StpGroup_SIMP:public StpGroup_XY_Coord_Conv
         MSTP_segment movParam;
       }progress_VAD;
       struct {
-        MotVec start;
-        MotVec end;
+        CMDVec start;
+        CMDVec end;
 
-        MotVec vec;
+        CMDVec vec;
         float distance;
 
       }progress_LOC;
@@ -2059,7 +1958,7 @@ class StpGroup_SIMP:public StpGroup_XY_Coord_Conv
 
 
     CTX_TrackingRouteOption tro;
-    StpGroup_SIMP *self;
+    MotionGroup_SIMP *self;
   };
 
   std::array<ResourcePool<CTX_TrackingInfo>::ResourceData,30> trackingInfoCTXBuffer;
@@ -2105,9 +2004,9 @@ public:
 
   TrackingInfo trackingInfo;
 
+  RingBuf_Static<MotionGroup_SIMP::CMDVec, 100> motor_FilterBuffer;
 
-
-  StpGroup_SIMP():StpGroup_XY_Coord_Conv(),trackingInfoCTX_pool(trackingInfoCTXBuffer.data(),trackingInfoCTXBuffer.size()),
+  MotionGroup_SIMP():XY_Coord_Conv(),trackingInfoCTX_pool(trackingInfoCTXBuffer.data(),trackingInfoCTXBuffer.size()),
   
     motorR(ARM_ECAT_STATION_ID,0,30*60,updatePeriod_s*1000000000),
     motorZ(ARM_ECAT_STATION_ID,1,30*60,updatePeriod_s*1000000000),
@@ -2131,22 +2030,7 @@ public:
     motorZ.motor_skip_adjust_thres=5000000;
 
     // motorV.encoder_check=false;
-    axisSetup=_axisSetup;
-    
-    for(int i=0;i<SEGBUFFER_L;i++)//setup buffer
-    {
-      segsBuffer[i].vec=(vecBuffer[i].vec);
-      segsBuffer[i].sp=(startPtBuffer[i].vec);
 
-      segsBuffer[i].aux_pt2=(aux_pt2[i].vec);
-      segsBuffer[i].aux_pt3=(aux_pt3[i].vec);
-      segsBuffer[i].aux_pt4=(aux_pt4[i].vec);
-
-
-    }
-
-
-    segs.setBuffer(segsBuffer.data(),segsBuffer.size());
 
     /*
     
@@ -2156,41 +2040,41 @@ public:
     axis3: V unit mm
     */
    
-    axisSetup[0].P_PreMult=1;
-    axisSetup[0].A_Factor=1;
-    axisSetup[0].V_Factor=1;
-    axisSetup[0].MaxVJump=1;
-    axisSetup[0].V_Max=10000;
-    axisSetup[0].A_Max=200000;
+    MotorGroup.axisSetup[0].P_PreMult=1;
+    MotorGroup.axisSetup[0].A_Factor=1;
+    MotorGroup.axisSetup[0].V_Factor=1;
+    MotorGroup.axisSetup[0].MaxVJump=1;
+    MotorGroup.axisSetup[0].V_Max=10000;
+    MotorGroup.axisSetup[0].A_Max=200000;
 
 
-    axisSetup[1]=axisSetup[2]=
-    axisSetup[0];
+    MotorGroup.axisSetup[1]=MotorGroup.axisSetup[2]=
+    MotorGroup.axisSetup[0];
 
 
-    axisSetup[0].V_Max=1800;
-    axisSetup[0].A_Max=30000;
+    MotorGroup.axisSetup[0].V_Max=1800;
+    MotorGroup.axisSetup[0].A_Max=30000;
 
-    axisSetup[1].V_Max=450;
-    axisSetup[1].A_Max=30000;
+    MotorGroup.axisSetup[1].V_Max=450;
+    MotorGroup.axisSetup[1].A_Max=30000;
 
-    // axisSetup[2].V_Max=220;
-    axisSetup[2].V_Max=180;
-    axisSetup[2].A_Max=4000;
+    // MotorGroup.axisSetup[2].V_Max=220;
+    MotorGroup.axisSetup[2].V_Max=180;
+    MotorGroup.axisSetup[2].A_Max=4000;
 
 
-    axisSetup[1].V_Max=300;
-    axisSetup[1].A_Max=17000;
+    MotorGroup.axisSetup[1].V_Max=300;
+    MotorGroup.axisSetup[1].A_Max=17000;
 
 
 
 
     //to make each speed and acc even, we need to adjust the R speed V_factor x2*PI*R/360deg
-    axisSetup[0].P_PreMult=300*M_PI/360;//R is 150mm
+    MotorGroup.axisSetup[0].P_PreMult=300*M_PI/360;//R is 150mm
 
 
 
-    adv_info.minSpeed=5;
+    MotorGroup.adv_info.minSpeed=5;
 
 
     if(DBG_allowSkipHoming)
@@ -2220,14 +2104,6 @@ public:
     // design_lowpass_filter(10,1000);
   }
 
-  // void print(const char* str)
-  // {
-  //   djrl.dbg_printf(str);
-  // }
-  float* getLatestLocation()
-  {
-    return latestCMDLocation.vec;
-  }
 
   uint32_t preCount=0;
   uint32_t updateCount=0;
@@ -2399,7 +2275,7 @@ public:
                 tinfo.checkPointInterval=checkpointInterval_latest;//just to attach the latest checkpointInterval
                 // checkpointInterval_latest;
                 tinfo.resp_id=task->cmdID;
-                tinfo.segQSpace=segs.space();
+                tinfo.segQSpace=MotorGroup.segs.space();
                 Mstp2CommInfo* Qhead=NULL;
                 while( (Qhead=Mstp2CommInfoQ.getHead()) ==NULL);
                 *Qhead=tinfo;
@@ -2471,7 +2347,7 @@ public:
       if(homedFlag==false)break;//
       
 
-      SG_PPU.progressiveProgress=0;
+      MG_PPU.progressiveProgress=0;
 
 
 
@@ -2488,7 +2364,7 @@ public:
       {
         timeLeft-=T;
         T=timeLeft;
-        MSTP_segment*curSeg= segAdvance(T);//The T will be updated to the time that used
+        MSTP_segment*curSeg= MotorGroup.segAdvance(T);//The T will be updated to the time that used
 
         // if(ti!=NULL)
         // {
@@ -2521,11 +2397,11 @@ public:
             {
               if(trackingInfo.progress==-1)//sattled
               {
-                adv_info.dstanceWent=curSeg->distanceEnd=-1;//this will end the seg_wait, next update will get a new seg
+                MotorGroup.adv_info.dstanceWent=curSeg->distanceEnd=-1;//this will end the seg_wait, next update will get a new seg
               }
               else
               {
-                adv_info.dstanceWent=0;
+                MotorGroup.adv_info.dstanceWent=0;
               }
             }
             else if(p_res->type==MSTP_SegCtx_TYPE::SEG_HALT )
@@ -2533,11 +2409,11 @@ public:
               if(p_res->SEG_HALT.haltFlag ==false)//isInSegHoldState is released by the user command
               {
                 // djrl.async_printf(0,"haltFlag==false");
-                adv_info.dstanceWent=curSeg->distanceEnd=-1;//this will end the seg_wait, next update will get a new seg
+                MotorGroup.adv_info.dstanceWent=curSeg->distanceEnd=-1;//this will end the seg_wait, next update will get a new seg
               }
               else
               {
-                adv_info.dstanceWent=0;
+                MotorGroup.adv_info.dstanceWent=0;
               }
             }
           }
@@ -2547,20 +2423,21 @@ public:
         }
         else if(curSeg->type==MSTP_segment_type::seg_line)//linear interpolation
         {
-          float ratio=adv_info.dstanceWent/(curSeg->Edistance);
+          float ratio=MotorGroup.adv_info.dstanceWent/(curSeg->Edistance);
           latestSegRatio=ratio;
-          for(int i=0;i<CMD_VEC_DIM;i++)
+
+          for(int i=0; i<MotorGroup.vec_dim; i++)
           {
-            latestAdvLocation.vec[i]=curSeg->vec[i]*(ratio)+curSeg->sp[i];
+            latestAdvLocation.vec[i] = curSeg->vec.vec[i] * ratio + curSeg->sp.vec[i];
           }
 
         }
         else  if(curSeg->type==MSTP_segment_type::seg_arc)//cubic bezier interpolation
         {
           
-          float ratio=adv_info.dstanceWent/(curSeg->Edistance);
+          float ratio=MotorGroup.adv_info.dstanceWent/(curSeg->Edistance);
           latestSegRatio=ratio;
-          cubicBezier_comp(latestAdvLocation.vec,CMD_VEC_DIM,curSeg,adv_info.dstanceWent);
+          cubicBezier_comp<StpGroup3_50>(latestAdvLocation.vec,curSeg,MotorGroup.adv_info.dstanceWent);
 
         }
 
@@ -2577,10 +2454,6 @@ public:
     latestAdvLocation_postTracking=latestAdvLocation;
 
 
-    for(int i=0;i<CMD_VEC_DIM;i++)
-    {
-      latestAdvLocation_postTracking.vec[i]/=axisSetup[i].P_PreMult;
-    }
 
     static int pptt=0;
     {//tracking process
@@ -2611,7 +2484,7 @@ public:
 
         if(trackingInfo.tro.progress_type==CTX_TrackingRouteOption::VAD){
 
-          StpGroup::MSTP_segment_adv_state  st=segAdvance(T,&trackingInfo.tro.progress_VAD.movParam,&trackingInfo.advInfo);
+          StpGroup3_50::MSTP_segment_adv_state  st=StpGroup3_50::segAdvance(T,&trackingInfo.tro.progress_VAD.movParam,&trackingInfo.advInfo);
 
           dbgInfo.progress_count++;
 
@@ -2654,7 +2527,7 @@ public:
 
           if(progress<0)progress=0;
           if(progress>0.99999)progress=0.99999;//will not be 1
-          SG_PPU.progressiveProgress=progress;
+          MG_PPU.progressiveProgress=progress;
         }
 
         if(progress>=1)
@@ -2708,7 +2581,7 @@ public:
         CMDVec tarLoc0=latestAdvLocation_postTracking;
         trackingInfo.PtF0(tarLoc0.vec,trackingInfo.param0);
 
-        for(int i=0;i<CMD_VEC_DIM;i++)
+        for(int i=0;i<MotorGroup.vec_dim;i++)
         {
           float diff=(tarLoc0.vec[i]-trackingInfo.Pr0.vec[i]);
 
@@ -2735,7 +2608,7 @@ public:
         CMDVec tarLoc1;
         trackingInfo.PtF1(tarLoc1.vec,trackingInfo.param1);
 
-        for(int i=0;i<CMD_VEC_DIM;i++)
+        for(int i=0;i<MotorGroup.vec_dim;i++)
         {
 
           float diff=(tarLoc1.vec[i]-trackingInfo.Pr1.vec[i]);
@@ -2944,11 +2817,11 @@ public:
   std::string vec_to_string(float*dst)
   {
     std::string ret="[";
-    for(int i=0;i<CMD_VEC_DIM;i++)
+    for(int i=0;i<MotorGroup.vec_dim;i++)
     {
       ret+=std::to_string(dst[i]);
 
-      if(i<CMD_VEC_DIM-1)
+      if(i<MotorGroup.vec_dim-1)
         ret+=",";
     }
 
@@ -2977,9 +2850,7 @@ public:
   void RESET_Queue()
   {
     homedFlag=false;
-    segs.clear();
-    adv_info.dstanceWent=0;
-
+    MotorGroup.RESET();
 
     homingSeq.resize(0);
     trackingInfo.progress=-1;
@@ -3056,7 +2927,7 @@ public:
 
   // void inverse(float *mot_vec_dst,const float* loc_vec_src){
 
-  //   // for(int i=0;i<CMD_VEC_DIM;i++)
+  //   // for(int i=0;i<MotorGroup.vec_dim;i++)
   //   // {
   //   //   mot_vec_dst->vec[i]=loc_vec_src[i];
   //   // }
@@ -3086,7 +2957,7 @@ public:
   // }
   // void forward(float* loc_vec_dst,const float *mot_vec_src)
   // {
-  //   // for(int i=0;i<CMD_VEC_DIM;i++)
+  //   // for(int i=0;i<MotorGroup.vec_dim;i++)
   //   // {
   //   //   loc_vec_dst[i]=mot_vec_src->vec[i];
   //   // }
@@ -3260,7 +3131,7 @@ public:
   }
 
 
-  static int IOCtrlEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  static int IOCtrlEndCB( MSTP_segment* seg,MSTP_segment_adv_info *info)
   {
 
     CB_Count+=100;
@@ -3308,7 +3179,7 @@ public:
             //check contain with "s_PLAT_LOC="
             if(strstr(ctag,"s_PLAT_LOC=")!=NULL)
             {
-              float platLoc=SG_PLATE.getLatestLocation()[0];
+              float platLoc=MG_PLATE.getLatestLocation()[0];
               str+=sprintf(str,ctag,platLoc);
             }
             else if(strstr(ctag,"s_SYSTIME=")!=NULL)
@@ -3339,7 +3210,7 @@ public:
   }
 
   
-  static int BumpCheckPointCounterEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  static int BumpCheckPointCounterEndCB( MSTP_segment* seg,MSTP_segment_adv_info *info)
   {
     {
 
@@ -3362,7 +3233,7 @@ public:
   }
 
 
-  static int OnTimeRepEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  static int OnTimeRepEndCB( MSTP_segment* seg,MSTP_segment_adv_info *info)
   {
     CB_Count+=10000;
     MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
@@ -3415,7 +3286,7 @@ public:
 
     CTX_TrackingInfo *ti=(CTX_TrackingInfo *)p_res->Generic.obj;
     
-    StpGroup_SIMP::TrackingInfo &trackingInfo=ti->self->trackingInfo;
+    MotionGroup_SIMP::TrackingInfo &trackingInfo=ti->self->trackingInfo;
 
 
     ti->self->loadNextTracking(ti);
@@ -3577,7 +3448,7 @@ public:
     CB_Count+=10000;
     MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
     if(p_res==NULL)return -1;
-    StpGroup_SIMP *self=(StpGroup_SIMP *)p_res->Generic.obj;
+    MotionGroup_SIMP *self=(MotionGroup_SIMP *)p_res->Generic.obj;
 
     do{
       if(self->trackingInfo.progress!=-1)
@@ -3738,10 +3609,6 @@ public:
 
 
 
-      CMDVec moveVec;
-      vecSub(moveVec.vec,vec_coord.vec,latestCMDLocation.vec,CMD_VEC_DIM);
-      
-
 
       MSTP_segment_extra_info exinfo = latestExtInfo;
 
@@ -3772,8 +3639,16 @@ public:
       latestExtInfo=exinfo;
       // __UPRT_I_("vec:%s",vec_to_string(moveVec.vec).c_str());
       HACK_segComRequest=true;
+
+      
+      CMDVec moveVec;
+
+      moveVec=MotorGroup.sub(vec_coord,latestCMDLocation);
+      
+
+
       while(HACK_segComRequest)yield();//wait for the moment that the segComRequest turned off by timer thread, but, it is not a good way to do it
-      pushInMoveVec(HACK_LATEST_CMD_ID,moveVec.vec,&exinfo,CMD_VEC_DIM,NULL,NULL,NULL);
+      MotorGroup.pushInMoveVec(HACK_LATEST_CMD_ID,moveVec,latestCMDLocation,exinfo,NULL,NULL,NULL);
       latestCMDLocation=vec_coord;
 
               // ReadGVecData(blks,blkCount,vec_f,&exinfo);
@@ -3805,7 +3680,7 @@ public:
 
 
 
-    if(segs.space()<segsSafeSpace)
+    if( MotorGroup.segs.space()<segsSafeSpace)
     {
       if(cachedCMD[0]!='\0')return MCMD_Status::TASK_FAILED;//the cached CMD is not empty
       int slen=serializeJson(cmd, cachedCMD,sizeof(cachedCMD));
@@ -3895,10 +3770,10 @@ public:
 
 
         float param[3];
-        SG_PLATE.convertDomainXYZToObjParam(param,domX,domY,domZ,OBJ_PLATE_ENC);
+        MG_PLATE.convertDomainXYZToObjParam(param,domX,domY,domZ,OBJ_PLATE_ENC);
         
         float domXYZ[3];
-        SG_PLATE.predictObj_DomainLocation(domXYZ,param,MOVE_TO_PLATE_ENC);
+        MG_PLATE.predictObj_DomainLocation(domXYZ,param,MOVE_TO_PLATE_ENC);
 
         domX=domXYZ[0];
         domY=domXYZ[1];
@@ -3923,7 +3798,7 @@ public:
 
       float platXYZ[3]={X,Y,Z};
       float domXYZ[3];
-      SG_PLATE.coord_dev2dom(domXYZ,platXYZ);//might have NAN in the XYZ
+      MG_PLATE.coord_dev2dom(domXYZ,platXYZ);//might have NAN in the XYZ
       
       float F=jgetNum(cmd,"F");
       float ACC=jgetNum(cmd,"ACC");
@@ -4034,7 +3909,7 @@ public:
 
     if(strcmp(type,"COORD_ADJ_MAP")==0)//XYZ
     {
-      if(segs.size()!=0)//make sure there is no move in progress
+      if( MotorGroup.segs.size()!=0)//make sure there is no move in progress
       {
         cmd_ret["msg"]="segs.size()!=0";
         return MCMD_Status::TASK_FAILED;
@@ -4117,7 +3992,7 @@ public:
       }
 
       
-      pushInPause(HACK_LATEST_CMD_ID,pauseTime,NULL,NULL,NULL);
+      MotorGroup.pushInPause(HACK_LATEST_CMD_ID,pauseTime,NULL,NULL,NULL);
 
       return  MCMD_Status::TASK_OK;
 
@@ -4126,7 +4001,7 @@ public:
     if(strcmp(type,"BumpCheckPoint")==0)
     {
       checkpointAdeadCounter++;
-      pushInInstant(HACK_LATEST_CMD_ID,NULL,BumpCheckPointCounterEndCB,NULL);
+      MotorGroup.pushInInstant(HACK_LATEST_CMD_ID,NULL,BumpCheckPointCounterEndCB,NULL);
 
       cmd_ret["checkpoint"]=checkpointAdeadCounter;
       return MCMD_Status::TASK_OK;
@@ -4212,7 +4087,7 @@ public:
       p_res->IO_CTRL.cid=cid;
       p_res->IO_CTRL.tid=tid;
       p_res->IO_CTRL.ttagbf=ttagbf;
-      pushInInstant(HACK_LATEST_CMD_ID,NULL,IOCtrlEndCB,(void*)p_res);
+      MotorGroup.pushInInstant(HACK_LATEST_CMD_ID,NULL,IOCtrlEndCB,(void*)p_res);
 
 
       return MCMD_Status::TASK_OK;
@@ -4233,7 +4108,7 @@ public:
 
       p_res->ON_TIME_REP.id=cmd["id"].as<int>();;
       p_res->ON_TIME_REP.isAck=true;
-      pushInPause(HACK_LATEST_CMD_ID,0,NULL,OnTimeRepEndCB,(void*)p_res);
+      MotorGroup.pushInPause(HACK_LATEST_CMD_ID,0,NULL,OnTimeRepEndCB,(void*)p_res);
       return  MCMD_Status::TASK_OK_HOLD_RSP;
     }
     //return trackingInfo.progress
@@ -4255,7 +4130,7 @@ public:
     if(strcmp(type,"TargetTrack_Abort")==0)
     {
 
-      pushInInstant(HACK_LATEST_CMD_ID,NULL,instTrackingAbortCMDEndCB,NULL);
+      MotorGroup.pushInInstant(HACK_LATEST_CMD_ID,NULL,instTrackingAbortCMDEndCB,NULL);
 
 
 
@@ -4266,7 +4141,7 @@ public:
     if(strcmp(type,"TargetTrack_Abort_force")==0)
     {
 
-      pushInInstant(HACK_LATEST_CMD_ID,NULL,instTrackingAbortCMD_froce_EndCB,NULL);
+      MotorGroup.pushInInstant(HACK_LATEST_CMD_ID,NULL,instTrackingAbortCMD_froce_EndCB,NULL);
 
 
 
@@ -4310,7 +4185,7 @@ public:
         }
 
 
-        SG_PLATE.convertDomainXYZToObjParam(tinfo.param,obj_dom_x,obj_dom_y,latestCMDLocation.vec[1]-Z_offset,plat_angle);
+        MG_PLATE.convertDomainXYZToObjParam(tinfo.param,obj_dom_x,obj_dom_y,latestCMDLocation.vec[1]-Z_offset,plat_angle);
 
         
         djrl.dbg_printf("tinfo.param: %.3f,%.3f,%.3f,%.3f",
@@ -4536,7 +4411,7 @@ public:
       p_res->type=MSTP_SegCtx_TYPE::GENERIC;
       p_res->Generic.obj=(void*)p_tinfo;
 
-      pushInInstant(HACK_LATEST_CMD_ID,NULL,instTrackingCMDEndCB,(void*)p_res);
+      MotorGroup.pushInInstant(HACK_LATEST_CMD_ID,NULL,instTrackingCMDEndCB,(void*)p_res);
 
       return  MCMD_Status::TASK_OK;
 
@@ -4556,7 +4431,7 @@ public:
       p_res->Generic.obj=(void*)this;
 
       
-      pushInInstant(HACK_LATEST_CMD_ID,NULL,AssertTrackingSattledEndCB,(void*)p_res);
+      MotorGroup.pushInInstant(HACK_LATEST_CMD_ID,NULL,AssertTrackingSattledEndCB,(void*)p_res);
 
       return  MCMD_Status::TASK_OK;
     }
@@ -4576,7 +4451,7 @@ public:
 
       p_res->TRACKING_HOLD_UNTIL.id=-1;
       //-1 means halt forever
-      pushInPause(HACK_LATEST_CMD_ID,-1,NULL,TrackingHoldUntilEndCB,(void*)p_res);
+      MotorGroup.pushInPause(HACK_LATEST_CMD_ID,-1,NULL,TrackingHoldUntilEndCB,(void*)p_res);
 
       return  MCMD_Status::TASK_OK;
     }
@@ -4599,7 +4474,7 @@ public:
       p_res->TRACKING_HOLD_UNTIL.id=cmd["id"];
 
       //-1 means halt forever
-      pushInPause(-HACK_LATEST_CMD_ID,1,NULL,TrackingHoldUntilEndCB,(void*)p_res);
+      MotorGroup.pushInPause(-HACK_LATEST_CMD_ID,1,NULL,TrackingHoldUntilEndCB,(void*)p_res);
 
       return  MCMD_Status::TASK_OK_HOLD_RSP;
     }
@@ -4641,7 +4516,7 @@ public:
 
       latestSegHaltCtx=p_res;
       //-1 means halt forever
-      pushInPause(HACK_LATEST_CMD_ID,99999999,SegHoldUntilStartCB,SegHoldUntilEndCB,(void*)p_res);
+      MotorGroup.pushInPause(HACK_LATEST_CMD_ID,99999999,SegHoldUntilStartCB,SegHoldUntilEndCB,(void*)p_res);
 
       return  MCMD_Status::TASK_OK;
     }
@@ -4662,7 +4537,7 @@ public:
 
       
     {
-      auto ret = StpGroup_XY_Coord_Conv::CMDProcess(cmd,cmd_ret);
+      auto ret = XY_Coord_Conv::CMDProcess(cmd,cmd_ret);
       if(ret!=MCMD_Status::TASK_UNSUPPORTED)
       {
         return ret;
@@ -4756,8 +4631,8 @@ HOMINGSEC:
       int axis=jgetInt32(cmd,"axis",-1);
       if(axis<0||axis>2)return MCMD_Status::TASK_FAILED;
 
-      retdoc["V_Max"]=axisSetup[axis].V_Max=jgetInt32(cmd,"V_Max",axisSetup[axis].V_Max);
-      retdoc["A_Max"]=axisSetup[axis].A_Max=jgetInt32(cmd,"A_Max",axisSetup[axis].A_Max);
+      retdoc["V_Max"]=MotorGroup.axisSetup[axis].V_Max=jgetInt32(cmd,"V_Max",MotorGroup.axisSetup[axis].V_Max);
+      retdoc["A_Max"]=MotorGroup.axisSetup[axis].A_Max=jgetInt32(cmd,"A_Max",MotorGroup.axisSetup[axis].A_Max);
       
       return  MCMD_Status::TASK_OK;
     }
@@ -4914,7 +4789,7 @@ HOMINGSEC:
   int try_cachedCMDProcess(JsonDocument& blank_jobj,JsonDocument& cmd_ret)
   {
     if(cachedCMD[0]=='\0')return MCMD_Status::NOP;
-    if(segs.space()<segsSafeSpace)return MCMD_Status::NOP;
+    if( MotorGroup.segs.space()<segsSafeSpace)return MCMD_Status::NOP;
     djrl.dbg_printf("try_cachedCMDProcess");
     blank_jobj.clear();
 
@@ -4936,10 +4811,10 @@ HOMINGSEC:
 
 };
 
-StpGroup_SIMP SG_SIMP;
+MotionGroup_SIMP MG_SIMP;
 
 
-int StpGroup_SIMP::instTrackingAbortCMDEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+int MotionGroup_SIMP::instTrackingAbortCMDEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
 {
   {
 
@@ -4954,11 +4829,11 @@ int StpGroup_SIMP::instTrackingAbortCMDEndCB(MSTP_segment* seg,MSTP_segment_adv_
   
   }
 
-  djrl.async_printf(0,"abort curProg:%0.5f",SG_SIMP.trackingInfo.progress*100);
-  if(SG_SIMP.trackingInfo.PtF1!=NULL && SG_SIMP.trackingInfo.progress<0.0001)
+  djrl.async_printf(0,"abort curProg:%0.5f",MG_SIMP.trackingInfo.progress*100);
+  if(MG_SIMP.trackingInfo.PtF1!=NULL && MG_SIMP.trackingInfo.progress<0.0001)
   {
-    SG_SIMP.trackingInfo.PtF1=NULL;
-    SG_SIMP.trackingInfo.progress=-1;
+    MG_SIMP.trackingInfo.PtF1=NULL;
+    MG_SIMP.trackingInfo.progress=-1;
   }
   else
   {}
@@ -4966,7 +4841,7 @@ int StpGroup_SIMP::instTrackingAbortCMDEndCB(MSTP_segment* seg,MSTP_segment_adv_
   return 0;
 }
 
-int StpGroup_SIMP::instTrackingAbortCMD_froce_EndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+int MotionGroup_SIMP::instTrackingAbortCMD_froce_EndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
 {
   {
 
@@ -4981,9 +4856,9 @@ int StpGroup_SIMP::instTrackingAbortCMD_froce_EndCB(MSTP_segment* seg,MSTP_segme
   
   }
 
-  djrl.async_printf(0,"froce abort curProg:%0.5f",SG_SIMP.trackingInfo.progress*100);
-  SG_SIMP.trackingInfo.PtF1=NULL;
-  SG_SIMP.trackingInfo.progress=-1;
+  djrl.async_printf(0,"froce abort curProg:%0.5f",MG_SIMP.trackingInfo.progress*100);
+  MG_SIMP.trackingInfo.PtF1=NULL;
+  MG_SIMP.trackingInfo.progress=-1;
   return 0;
 }
 
@@ -5071,7 +4946,7 @@ class AUXTaskExecutor{
       }
       case AUX_TASK_INFO::AUX_WAIT_PROGRESS:
       {
-        float progress=SG_SIMP.trackingInfo.progress;
+        float progress=MG_SIMP.trackingInfo.progress;
 
         if(taskInfo->wait_progress.approaching_dir>0)//approaching from smaller
         {
@@ -5233,7 +5108,7 @@ class AUXTaskExecutor{
 
             if(strstr(ctag,"s_PLAT_LOC=")!=NULL)
             {
-              float platLoc=SG_PLATE.getLatestLocation()[0];
+              float platLoc=MG_PLATE.getLatestLocation()[0];
               str+=sprintf(str,ctag,platLoc);
             }
             else if(strstr(ctag,"s_SYSTIME=")!=NULL)
@@ -5321,7 +5196,7 @@ class AUXTaskExecutor{
       AUX_TASK_INFO *taskInfo=spinWaitQ();
       taskInfo->type=AUX_TASK_INFO::AUX_WAIT_CHECKPOINT;
       taskInfo->wait_checkpoint.target=1;
-      taskInfo->wait_checkpoint.checkpoint=jgetInt32(cmd,"checkpoint",SG_SIMP.checkpointAdeadCounter);
+      taskInfo->wait_checkpoint.checkpoint=jgetInt32(cmd,"checkpoint",MG_SIMP.checkpointAdeadCounter);
       taskInfo->wait_checkpoint.ret_id=jgetInt32(cmd,"id",-1);
       taskInfo->wait_checkpoint.timeout_ms=jgetInt32(cmd,"timeout",1000);
       TaskQ.pushHead();
@@ -5529,10 +5404,10 @@ int GetPlateObjLocOnArmRZV(float* ret_ArmRZV, float*params_in_arm_coord)
   float platObjDomXYZ[3];
   float platObjArmXYZ[3];
 
-  SG_PLATE.predictCurObj_DomainLocation(platObjDomXYZ, params_in_arm_coord);
-  SG_SIMP.coord_dom2dev(platObjArmXYZ,platObjDomXYZ);//convert domain corrdinate to arm device corrdinate
+  MG_PLATE.predictCurObj_DomainLocation(platObjDomXYZ, params_in_arm_coord);
+  MG_SIMP.coord_dom2dev(platObjArmXYZ,platObjDomXYZ);//convert domain corrdinate to arm device corrdinate
   GetPlateObjLocOnArmRZV_DBG[0]=platObjArmXYZ[2];
-  SG_SIMP.XYZ2RZV_w_offset(ret_ArmRZV,platObjArmXYZ);
+  MG_SIMP.XYZ2RZV_w_offset(ret_ArmRZV,platObjArmXYZ);
   GetPlateObjLocOnArmRZV_DBG[1]=ret_ArmRZV[1];
 
   return 0;
@@ -5627,17 +5502,17 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   
   if(strcmp(type,"MOFF")==0)
   {
-    SG_SIMP.motor_enable(false);
-    SG_PLATE.motor_enable(false);
-    SG_PPU.motor_enable(false);
+    MG_SIMP.motor_enable(false);
+    MG_PLATE.motor_enable(false);
+    MG_PPU.motor_enable(false);
     rspAck=true;
     doRsp=true;
   } 
   if(strcmp(type,"MON")==0)
   {
-    SG_SIMP.motor_enable(true);
-    SG_PLATE.motor_enable(true);
-    SG_PPU.motor_enable(true);
+    MG_SIMP.motor_enable(true);
+    MG_PLATE.motor_enable(true);
+    MG_PPU.motor_enable(true);
     rspAck=true;
     doRsp=true;
   } 
@@ -5696,16 +5571,16 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
   else if(strcmp(type,"m0")==0 )//{"type":"m0","cmd":"get_centre"}
   {
-    rspAck=SG_PLATE.CMDProcess(doc,retdoc)==MCMD_Status::TASK_OK;
+    rspAck=MG_PLATE.CMDProcess(doc,retdoc)==MCMD_Status::TASK_OK;
     doRsp=true;
   }
   
   else if(strcmp(type,"PPU")==0 )//{"type":"m0","cmd":"get_centre"}
   {
-    NAKReason=SG_PPU.CMDProcess(doc,retdoc);
+    NAKReason=MG_PPU.CMDProcess(doc,retdoc);
     rspAck=(NAKReason==MCMD_Status::TASK_OK);
     doRsp=true;
-    segAvaSpace=SG_SIMP.segs.space();
+    segAvaSpace=MG_SIMP.MotorGroup.segs.space();
     if(NAKReason==MCMD_Status::TASK_WAIT_HOLD_RSP || NAKReason==MCMD_Status::TASK_OK_HOLD_RSP)
     {
       doRsp=false;
@@ -5715,10 +5590,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   
   else if(strcmp(type,"m1")==0 )//{"type":"m0","cmd":"get_centre"}
   {
-    int ret=SG_SIMP.CMDProcess(doc,retdoc);
+    int ret=MG_SIMP.CMDProcess(doc,retdoc);
     rspAck=(ret==MCMD_Status::TASK_OK);
     doRsp=true;
-    segAvaSpace=SG_SIMP.segs.space();
+    segAvaSpace=MG_SIMP.MotorGroup.segs.space();
     if(ret==MCMD_Status::TASK_WAIT_HOLD_RSP || ret==MCMD_Status::TASK_OK_HOLD_RSP)
     {
       doRsp=false;
@@ -5791,12 +5666,12 @@ void loopTaskQ_tryStagedCMD()
 
 
     {
-      int ret = SG_SIMP.try_cachedCMDProcess(doc,retdoc);
+      int ret = MG_SIMP.try_cachedCMDProcess(doc,retdoc);
       if(ret==MCMD_Status::NOP)break;
       if(ret==MCMD_Status::TASK_OK_HOLD_RSP)break;
       if(ret==MCMD_Status::TASK_WAIT_HOLD_RSP)break;
       doRsp=true;
-      segAvaSpace=SG_SIMP.segs.space();
+      segAvaSpace=MG_SIMP.MotorGroup.segs.space();
       if(ret==MCMD_Status::TASK_OK)
       {
         rspAck=true;
@@ -5874,13 +5749,13 @@ void myCallback()
   TMP_HACK_IO_Input1=dmp1.pdoRead16(0);
   loopTimeSS++;
   aux0.update();
-  SG_PLATE.update();
-  SG_SIMP.update();
-  SG_PPU.update();
+  MG_PLATE.update();
+  MG_SIMP.update();
+  MG_PPU.update();
 
-  SG_PLATE.updateMotor();
-  SG_SIMP.updateMotor();
-  SG_PPU.updateMotor();
+  MG_PLATE.updateMotor();
+  MG_SIMP.updateMotor();
+  MG_PPU.updateMotor();
 
   dmp0.digitalWriteAll(TMP_HACK_IO_Output0);
   dmp1.pdoWrite16(0,TMP_HACK_IO_Output1);
@@ -6099,14 +5974,14 @@ bool startECat()
 
 
 
-  SG_SIMP.motor_attach(master);
-  SG_PLATE.motor_attach(master);
-  SG_PPU.motor_attach(master);
+  MG_SIMP.motor_attach(master);
+  MG_PLATE.motor_attach(master);
+  MG_PPU.motor_attach(master);
 
 
 
-  // printPdoList(&(SG_SIMP.motorPPU.motdrv));
-  //  printEthercatDeviceInfo(&(SG_SIMP.motorPPU.motdrv));
+  // printPdoList(&(MG_SIMP.motorPPU.motdrv));
+  //  printEthercatDeviceInfo(&(MG_SIMP.motorPPU.motdrv));
 
    {
       djrl.dbg_printf("attach IO0 ret:%d",
@@ -6138,22 +6013,22 @@ bool startECat()
 
 
 
-   SG_SIMP.motor_enable();
-   SG_PLATE.motor_enable();
-   SG_PPU.motor_enable();
+   MG_SIMP.motor_enable();
+   MG_PLATE.motor_enable();
+   MG_PPU.motor_enable();
    isECatStarted=true;
 
    
-  //  printODList(&(SG_PPU.motorPPU.motdrv),0x1800,0x1A00);
-  //  printODList(&(SG_PPU.motorPPU.motdrv),0x1801,0x1A01);
-  //  printODList(&(SG_PPU.motorPPU.motdrv),0x1802,0x1A02);
-  //  printODList(&(SG_PPU.motorPPU.motdrv),0x1803,0x1A03);
+  //  printODList(&(MG_PPU.motorPPU.motdrv),0x1800,0x1A00);
+  //  printODList(&(MG_PPU.motorPPU.motdrv),0x1801,0x1A01);
+  //  printODList(&(MG_PPU.motorPPU.motdrv),0x1802,0x1A02);
+  //  printODList(&(MG_PPU.motorPPU.motdrv),0x1803,0x1A03);
 
 
-  //  printODList(&(SG_PPU.motorPPU.motdrv),0x1800,0x1600);
-  //  printODList(&(SG_PPU.motorPPU.motdrv),0x1801,0x1601);
-  //  printODList(&(SG_PPU.motorPPU.motdrv),0x1802,0x1602);
-  //  printODList(&(SG_PPU.motorPPU.motdrv),0x1803,0x1603);
+  //  printODList(&(MG_PPU.motorPPU.motdrv),0x1800,0x1600);
+  //  printODList(&(MG_PPU.motorPPU.motdrv),0x1801,0x1601);
+  //  printODList(&(MG_PPU.motorPPU.motdrv),0x1802,0x1602);
+  //  printODList(&(MG_PPU.motorPPU.motdrv),0x1803,0x1603);
 
 
    return true;
@@ -6164,9 +6039,9 @@ bool stopECat()
 {
   if(isECatStarted==false)return false;
   djrl.dbg_printf("motor disable");
-  SG_SIMP.motor_enable(false);
-  SG_PPU.motor_enable(false);
-  SG_PLATE.motor_enable(false);
+  MG_SIMP.motor_enable(false);
+  MG_PPU.motor_enable(false);
+  MG_PLATE.motor_enable(false);
   
   djrl.dbg_printf("master.stop()");
   master.stop();
@@ -6179,9 +6054,9 @@ bool stopECat()
   dmp1.detach();
 
   djrl.dbg_printf("CNC detatch");
-  SG_SIMP.motor_detach();
-  SG_PLATE.motor_detach();
-  SG_PPU.motor_detach();
+  MG_SIMP.motor_detach();
+  MG_PLATE.motor_detach();
+  MG_PPU.motor_detach();
   isECatStarted=false;
   master.end();
   return true;
@@ -6202,31 +6077,31 @@ void loop()
   
 
 
-    djrl.dbg_printf("SG_SIMP dDiff:%0.3f ,size:%d sp:%d cap:%d",
-    SG_SIMP.dDiff,
-    SG_SIMP.motor_FilterBuffer.size(),
-    SG_SIMP.motor_FilterBuffer.space(),
-    SG_SIMP.motor_FilterBuffer.capacity()
+    djrl.dbg_printf("MG_SIMP dDiff:%0.3f ,size:%d sp:%d cap:%d",
+    MG_SIMP.dDiff,
+    MG_SIMP.motor_FilterBuffer.size(),
+    MG_SIMP.motor_FilterBuffer.space(),
+    MG_SIMP.motor_FilterBuffer.capacity()
     );
 
 
     // 
     // preInputL=inputL0;
     // djrl.dbg_printf("motorV:a:%d,v:%d cpC:%d PPU.prog:%0.3f",
-    // SG_SIMP.dbg_maxStepDiff,
-    // SG_SIMP.dbg_maxVStep,
-    // SG_SIMP.segs.size(),
-    // SG_PPU.progressiveProgress);
+    // MG_SIMP.dbg_maxStepDiff,
+    // MG_SIMP.dbg_maxVStep,
+    // MG_SIMP.segs.size(),
+    // MG_PPU.progressiveProgress);
 
     // djrl.dbg_printf("motor st:%d,%d,%d",
-    // SG_SIMP.motorR.state,SG_SIMP.motorR.stableCD,SG_SIMP.motorR.init_enc_offset,
-    // SG_SIMP.motorZ.state,
-    // SG_SIMP.motorV.state);
+    // MG_SIMP.motorR.state,MG_SIMP.motorR.stableCD,MG_SIMP.motorR.init_enc_offset,
+    // MG_SIMP.motorZ.state,
+    // MG_SIMP.motorV.state);
     
 
     // static int outputTest=0;
     // outputTest++;
-    // SG_PPU.motorPPU.motdrv.sdoDownload8(0x2406,0,outputTest&0x3);
+    // MG_PPU.motorPPU.motdrv.sdoDownload8(0x2406,0,outputTest&0x3);
     if(0)
     {
     int addr=0x40C;
@@ -6235,11 +6110,11 @@ void loop()
 
 
 
-    uint8_t pdoBufferL=SG_PPU.motorPPU.motdrv.pdoGetInputBytes();
-    uint8_t *pdoBuffer=SG_PPU.motorPPU.motdrv.pdoGetInputBuffer();
+    uint8_t pdoBufferL=MG_PPU.motorPPU.motdrv.pdoGetInputBytes();
+    uint8_t *pdoBuffer=MG_PPU.motorPPU.motdrv.pdoGetInputBuffer();
     
-    uint8_t pdoBufferOutputL=SG_PPU.motorPPU.motdrv.pdoGetOutputBytes();
-    uint8_t *pdoBufferOutput=SG_PPU.motorPPU.motdrv.pdoGetOutputBuffer();
+    uint8_t pdoBufferOutputL=MG_PPU.motorPPU.motdrv.pdoGetOutputBytes();
+    uint8_t *pdoBufferOutput=MG_PPU.motorPPU.motdrv.pdoGetOutputBuffer();
     if(pdoBuffer && pdoBufferL){
 
       
@@ -6279,14 +6154,14 @@ void loop()
 
 
     djrl.dbg_printf("motorPPU:ctrl:%X st:%X mod:%X er:%X",
-       SG_PPU.motorPPU.motdrv.driveGetControlword(),
-       SG_PPU.motorPPU.motdrv.driveGetState(),
-       SG_PPU.motorPPU.motdrv.driveGetMode(),
-       SG_PPU.motorPPU.motdrv.driveGetErrorCode()
+       MG_PPU.motorPPU.motdrv.driveGetControlword(),
+       MG_PPU.motorPPU.motdrv.driveGetState(),
+       MG_PPU.motorPPU.motdrv.driveGetMode(),
+       MG_PPU.motorPPU.motdrv.driveGetErrorCode()
 
-      //  SG_SIMP.motorPPU.motdrv.sdoDownload16(addr,0,value),
+      //  MG_SIMP.motorPPU.motdrv.sdoDownload16(addr,0,value),
        
-      //  SG_SIMP.motorPPU.motdrv.pdoWrite16(addr,value)
+      //  MG_SIMP.motorPPU.motdrv.pdoWrite16(addr,value)
       // motorPPU.motdrv.driveGet
       
       );
@@ -6295,47 +6170,47 @@ void loop()
 
 
     // djrl.dbg_printf("motorPPU:input:%X  CCCx:%X 0x60FD:%X pdoBufferL:%d inputIO:%08X",
-    //    SG_PPU.motorPPU.motdrv.driveGetDigitalInputs(),
-    //    SG_PPU.CCCx,
-    //    SG_PPU.motorPPU.motdrv.sdoUpload32(0x60FD,0),
+    //    MG_PPU.motorPPU.motdrv.driveGetDigitalInputs(),
+    //    MG_PPU.CCCx,
+    //    MG_PPU.motorPPU.motdrv.sdoUpload32(0x60FD,0),
     //    pdoBufferL,TMP_HACK_IO_Input0
     //   );
-    // if(SG_PPU.homingSeq.size()>0)
+    // if(MG_PPU.homingSeq.size()>0)
     // {
-    //   auto homeNode=SG_PPU.homingSeq[0];
+    //   auto homeNode=MG_PPU.homingSeq[0];
     //   djrl.dbg_printf("home status:%d  sensor:%d == %d  counterddd:%d",
     //     homeNode.status,
-    //     (SG_PPU.getlimitSensor()>>homeNode.sensorPin)&1,
+    //     (MG_PPU.getlimitSensor()>>homeNode.sensorPin)&1,
     //     homeNode.sensorSense,
-    //     SG_PPU.counterddd
+    //     MG_PPU.counterddd
     //     );
     // }
 
 
     // djrl.dbg_printf("motorPPU:%d,%d,%d  %d,%d,%d,%d",
-    //    SG_PPU.motorPPU.motdrv.driveGetPositionActualValue(),
-    //    SG_PPU.motorPPU.motdrv.driveGetPositionAcutalInternalValue(),
-    //    SG_PPU.motorPPU.motdrv.driveGetAdditionalActualPosition(),
+    //    MG_PPU.motorPPU.motdrv.driveGetPositionActualValue(),
+    //    MG_PPU.motorPPU.motdrv.driveGetPositionAcutalInternalValue(),
+    //    MG_PPU.motorPPU.motdrv.driveGetAdditionalActualPosition(),
 
-    //    SG_PPU.motorPPU.motdrv.driveGetTargetPosition(),
-    //   SG_PPU.motorPPU.motdrv.driveGetInternalPositionDemandValue(),
-    //     SG_PPU.motorPPU.MnPosAcc,
+    //    MG_PPU.motorPPU.motdrv.driveGetTargetPosition(),
+    //   MG_PPU.motorPPU.motdrv.driveGetInternalPositionDemandValue(),
+    //     MG_PPU.motorPPU.MnPosAcc,
 
-    //     SG_PPU.motorPPU.waitForStableCounter
+    //     MG_PPU.motorPPU.waitForStableCounter
 
-    //   //  SG_SIMP.motorPPU.motdrv.sdoDownload16(addr,0,value),
+    //   //  MG_SIMP.motorPPU.motdrv.sdoDownload16(addr,0,value),
        
-    //   //  SG_SIMP.motorPPU.motdrv.pdoWrite16(addr,value)
+    //   //  MG_SIMP.motorPPU.motdrv.pdoWrite16(addr,value)
     //   // motorPPU.motdrv.driveGet
       
     //   );
 
       
-      // SG_PPU.motorPPU.motdrv.driveSetFaultReactionOptionCode(0x0000);
-        // SG_SIMP.motorPPU.motdrv.sdoDownload32(0x6093,1,100)
-        // SG_SIMP.motorPPU.motdrv.sdoDownload32(0x6093,2,1)
-    // SG_SIMP.motorPPU.motdrv.__updateInputPDO__
-    // SG_SIMP.motorPPU.motdrv.sdoDownload16(0x40D,0,2);
+      // MG_PPU.motorPPU.motdrv.driveSetFaultReactionOptionCode(0x0000);
+        // MG_SIMP.motorPPU.motdrv.sdoDownload32(0x6093,1,100)
+        // MG_SIMP.motorPPU.motdrv.sdoDownload32(0x6093,2,1)
+    // MG_SIMP.motorPPU.motdrv.__updateInputPDO__
+    // MG_SIMP.motorPPU.motdrv.sdoDownload16(0x40D,0,2);
   }
 
   loopTaskQ_tryStagedCMD();

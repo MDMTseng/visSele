@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <math.h>
+#include <MStepperUtil.h>
 
 float* vecAdd(float* vr,float* v1,float* v2,int dim)
 {
@@ -515,7 +516,7 @@ static int TEST()
 
 
 
-void cubicBezier_TCoeff(float t,float *coeff_4) {
+void cubicBezier_TCoeff4(float t,float *coeff_4) {
     float one_minus_t = 1.0 - t;
 
     float t_sq=t*t;
@@ -540,6 +541,28 @@ void cubicBezier_Vec(float *resultVec, float *p0, float *p1, float *p2, float *p
         resultVec[i]=coeff_4[0]*p0[i]+coeff_4[1]*p1[i]+coeff_4[2]*p2[i]+coeff_4[3]*p3[i];
     }
 }
+
+
+
+char *int2bin_buffer(uint32_t a, int digits, char *buffer, int buf_size) {
+    buffer += (buf_size - 1);
+
+    for (int i = digits-1; i >= 0; i--) {
+        *buffer-- = (a & 1) + '0';
+
+        a >>= 1;
+    }
+    buffer++;
+    return buffer;
+}
+
+char *int2bin_static(uint32_t a, int digits) {
+  static char binChar[64+1];
+  binChar[sizeof(binChar)-1]='\0';
+  return int2bin(a,digits, binChar, sizeof(binChar));
+}
+
+
 
 
 // static int vecAngleTest() 

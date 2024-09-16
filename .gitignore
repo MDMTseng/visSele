@@ -57,3 +57,11 @@ InspectionCore/contrib/simple_uart/test/simple_uart_test
 UI/WebUI2/build/
 .DS_Store
 UI/WebUI2/package-lock.json
+Peripheral/MStepperV2/MStepperV2/experiment/out.dSYM/Contents/Info.plist
+Peripheral/MStepperV2/MStepperV2/experiment/out.dSYM/Contents/Resources/DWARF/out
+Peripheral/MStepperV2/MStepperV2/experiment/out
+Peripheral/MStepperV2/MStepperV2/experiment/run
+Peripheral/misc/experiment/out.dSYM/Contents/Info.plist
+Peripheral/misc/experiment/out.dSYM/Contents/Resources/DWARF/out
+Peripheral/misc/experiment/out
+Peripheral/MStepperECat/.sync/

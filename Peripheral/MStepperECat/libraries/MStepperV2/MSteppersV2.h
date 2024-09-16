@@ -5,13 +5,26 @@
 //include int type
 #include <stdint.h>
 // #include <Arduino.h>
-#include "MStepperStruct.hpp"
-
 // 
 
 extern "C" {
 #include <MStepperUtil.h>
 }
+
+
+
+template <int VEC_DIM>
+struct xnVec_f
+{
+  float vec[VEC_DIM];
+};
+template <int VEC_DIM>
+struct xnVec_i
+{
+  int32_t vec[VEC_DIM];
+};
+
+
 #include "RingBuf.hpp"
 #include <array>
 #include <vector>
@@ -36,45 +49,12 @@ float* vecSub(float* vr,float* v1,float* v2,int dim);
 
 enum MSTP_segment_type { seg_line=0,seg_arc=1,seg_wait=100 ,seg_instant_act=150 };
 
-struct MSTP_segment;
+
+template<int VEC_DIM,int SEG_BUF_SIZE>
+class StpGroup;
+
+
 struct MSTP_segment_adv_info;
-typedef int (*MSTP_segment_CB)(MSTP_segment*,MSTP_segment_adv_info *);
-struct MSTP_segment
-{
-  MSTP_segment_type type;
-  float vcur;
-  float vcen;
-  float vto;
-
-  float acc;
-  float deacc;
-
-  float* vec;
-  float* sp;//start point
-
-  float* aux_pt2;
-  float* aux_pt3;
-  float* aux_pt4;
-
-  int vecL;
-
-  float distanceStart;
-  float distanceEnd;
-  // float Mdistance;
-  float Edistance;
-
-
-  float JunctionNormCoeff;
-  float JunctionNormMaxDiff;
-  float vto_JunctionMax;
-  // uint32_t step_period;
-
-  MSTP_segment_CB startCB,endCB;
-  void* ctx;
-  int id;
-
-};
-
 
 struct MSTP_segment_adv_info
 {
@@ -122,11 +102,64 @@ struct MSTP_segment_extra_info
 
 class MStpV2;
 
-
+template<int VEC_DIM,int SEG_BUF_SIZE>
 class StpGroup
 {
   public:
-  StpGroup();
+
+
+
+  struct MSTP_segment;
+
+  typedef  int (*MSTP_segment_CB)(MSTP_segment*,MSTP_segment_adv_info *);
+
+
+  typedef  xnVec_f<VEC_DIM> CMDVec;
+  typedef  xnVec_i<VEC_DIM> CMDiVec;
+  struct MSTP_segment
+  {
+    MSTP_segment_type type;
+    float vcur;
+    float vcen;
+    float vto;
+
+    float acc;
+    float deacc;
+
+    CMDVec sp;
+    CMDVec vec;
+
+    CMDVec aux_pt2;
+    CMDVec aux_pt3;
+    CMDVec aux_pt4;
+
+
+    float distanceStart;
+    float distanceEnd;
+    // float Mdistance;
+    float Edistance;
+
+
+    float JunctionNormCoeff;
+    float JunctionNormMaxDiff;
+    float vto_JunctionMax;
+    // uint32_t step_period;
+
+    MSTP_segment_CB startCB,endCB;
+    void* ctx;
+    int id;
+
+  };
+
+
+  RingBuf_Static <struct MSTP_segment,SEG_BUF_SIZE> segs;
+
+
+  static const int vec_dim=VEC_DIM;
+  StpGroup():segs()
+  {
+
+  }
   // xVec pulse_latestRunVec={{0}};
   // xVec pulse_latestLoc={{0}};
   // xVec pulse_offset={{0}};
@@ -149,28 +182,22 @@ class StpGroup
   // char bufferJCMD_raw[200];
   // int bufferJCMD_ID=-1;
 
-  MSTP_axisSetup *axisSetup;
-  RingBuf_ExternalBuffer <struct MSTP_segment> segs;
-  // bool VecAdd(xVec VECTo,void* ctx=NULL,MSTP_segment_extra_info *exinfo=NULL);
+  MSTP_axisSetup axisSetup[VEC_DIM];
   bool pushInPause(int id,uint32_t pause_ms,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx=NULL);
   bool pushInInstant(int id,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx=NULL);
-  bool pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,int locDim,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx);
+  bool pushInMoveVec(int id,CMDVec vec,CMDVec startPoint,MSTP_segment_extra_info exinfo,MSTP_segment_CB startCB=NULL,MSTP_segment_CB endCB=NULL,void* ctx=NULL);
 
-  virtual float* getLatestLocation()=0;
-  virtual void copyCMDVec(float*dst,float*src)=0;
-  // virtual float* getTmpVec(int idx)=0;
-
-  // virtual int GcodeParse(char **blkIdxes,int blkIdxesL,JsonDocument& cmd_ret)=0;
-  // virtual int JCMDParse(JsonDocument& cmd,JsonDocument& cmd_ret)=0;
+  // virtual void inverse(float *mot_vec_dst,const float* loc_vec_src)=0;
+  // virtual void forward(float* loc_vec_dst,const float *mot_vec_src)=0;
+  // virtual void update()=0;//update in every system tick
 
 
-  virtual void inverse(float *mot_vec_dst,const float* loc_vec_src)=0;
-  virtual void forward(float* loc_vec_dst,const float *mot_vec_src)=0;
-  virtual void update()=0;//update in every system tick
+  void RESET();
 
   // virtual void segAdvance();//update in every system tick
-  virtual MSTP_segment* segAdvance(float &T);
+  MSTP_segment* segAdvance(float &T);
 
+  bool getSegLocation(MSTP_segment* seg,CMDVec &retLoc);
 
 
   enum MSTP_segment_adv_state{
@@ -180,20 +207,17 @@ class StpGroup
     FINISH
   };
   static MSTP_segment_adv_state segAdvance(float &T,MSTP_segment* trb,MSTP_segment_adv_info *info);
+
+
+
+
+  static CMDVec sub(CMDVec v1,CMDVec v2);
+  static CMDVec add(CMDVec v1,CMDVec v2);
+  static CMDVec lerp(const CMDVec& a, const CMDVec& b, float t);
+  static float dotProduct(CMDVec v1,CMDVec v2);
+  static float magnitude(CMDVec v1);
+  static float distance(CMDVec v1,CMDVec v2);
 };
-
-
-
-
-
-
-static void cubicBezier_comp(float* dst,int arrL, MSTP_segment *seg,float dstanceWent){
-  float ratio=dstanceWent/(seg->Edistance);
-  float cb_coeff[4];
-  cubicBezier_TCoeff(ratio,cb_coeff);
-  cubicBezier_Vec(dst,seg->sp,seg->aux_pt2,seg->aux_pt3,seg->aux_pt4,arrL,cb_coeff);
-
-}
 
 
 #endif

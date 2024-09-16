@@ -9,33 +9,20 @@ using namespace std;
 
 #include "LOG.h"
 
-
-
 #define print_E(c) print(c)
 #define print_I(c) print(c)
 #define print_D(c) //G_LOG(c)
 
-#define IO_WRITE_DBG(pinno,val) //digitalWrite(pinno,val)
-#define IO_SET_DBG(pinno,val) //pinMode(pinno,val)
 
 
-#define PIN_DBG0 18
-char *int2bin(uint32_t a, int digits, char *buffer, int buf_size) {
-    buffer += (buf_size - 1);
+//StpGroupType is chaild class of StpGroup
+template<typename StpGroupType>
+static void cubicBezier_comp(float* dst, typename StpGroupType::MSTP_segment *seg,float dstanceWent) {
+  float ratio = dstanceWent / (seg->Edistance);
+  float cb_coeff[4];
+  cubicBezier_TCoeff4(ratio, cb_coeff);
 
-    for (int i = digits-1; i >= 0; i--) {
-        *buffer-- = (a & 1) + '0';
-
-        a >>= 1;
-    }
-    buffer++;
-    return buffer;
-}
-
-char *int2bin(uint32_t a, int digits) {
-  static char binChar[64+1];
-  binChar[sizeof(binChar)-1]='\0';
-  return int2bin(a,digits, binChar, sizeof(binChar));
+  cubicBezier_Vec(dst, seg->sp.vec, seg->aux_pt2.vec, seg->aux_pt3.vec, seg->aux_pt4.vec, StpGroupType::vec_dim, cb_coeff);
 }
 
 
@@ -617,19 +604,8 @@ inline int Calc_JunctionNormMaxDiff(float *v1,float dist1,float *v2,float dist2,
 }
 
 
-
-void nextIntervalCalc( MSTP_segment *seg) 
-{
- 
-}
-
-
-StpGroup::StpGroup()
-{
-
-}
-
-bool StpGroup::pushInPause(int id,uint32_t pause_ms,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
+template<int VEC_DIM,int SEG_BUF_SIZE>
+bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInPause(int id,uint32_t pause_ms,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
 {
 
   if(segs.space()==0)
@@ -659,7 +635,8 @@ bool StpGroup::pushInPause(int id,uint32_t pause_ms,MSTP_segment_CB startCB,MSTP
 }
 
 
-bool StpGroup::pushInInstant(int id,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
+template<int VEC_DIM,int SEG_BUF_SIZE>
+bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInInstant(int id,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
 {
 
   if(segs.space()==0)
@@ -685,7 +662,15 @@ bool StpGroup::pushInInstant(int id,MSTP_segment_CB startCB,MSTP_segment_CB endC
 }
 
 
-// void MSTP_segment_Copy(MSTP_segment *dst,MSTP_segment *src,int locDim)
+template<int VEC_DIM,int SEG_BUF_SIZE>
+void StpGroup<VEC_DIM, SEG_BUF_SIZE>::RESET()
+{
+  segs.clear();
+  adv_info.dstanceWent=0;
+  adv_info.inInDAcc = false;
+}
+
+// void MSTP_segment_Copy(MSTP_segment *dst,MSTP_segment *src,int VEC_DIM)
 // {
   
 //   auto sp=dst->sp;
@@ -698,12 +683,13 @@ bool StpGroup::pushInInstant(int id,MSTP_segment_CB startCB,MSTP_segment_CB endC
 //   dst->vec=vec;
 //   dst->ctx=ctx;
 //   if(dst->sp!=NULL && src->sp!=NULL)//copy content if possible
-//     memcpy(dst->sp,src->sp,locDim*sizeof(*src->sp));
+//     memcpy(dst->sp,src->sp,VEC_DIM*sizeof(*src->sp));
 //   if(dst->vec!=NULL && src->vec!=NULL)//copy content if possible
-//     memcpy(dst->vec,src->vec,locDim*sizeof(*src->vec));
+//     memcpy(dst->vec,src->vec,VEC_DIM*sizeof(*src->vec));
 // }
 
-bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,int locDim,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
+template<int VEC_DIM,int SEG_BUF_SIZE>
+bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::pushInMoveVec(int id,CMDVec vec,CMDVec startPoint,MSTP_segment_extra_info exinfo,MSTP_segment_CB startCB,MSTP_segment_CB endCB,void* ctx)
 {
   if(segs.space()<2)
   {
@@ -718,13 +704,13 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
   MSTP_SEG_PREFIX MSTP_segment &newSeg=*hrb;
   
 
-  for(int i=0;i<locDim;i++)
+  for(int i=0;i<vec_dim;i++)
   {
-    vec[i]*=axisSetup[i].P_PreMult;
+    vec.vec[i]*=axisSetup[i].P_PreMult;
   }
 
   newSeg.distanceStart=0;
-  newSeg.Edistance=EuclideanMagnitude(vec,locDim);
+  newSeg.Edistance=EuclideanMagnitude(vec.vec,VEC_DIM);
   newSeg.distanceEnd=newSeg.Edistance;
   
   if(newSeg.Edistance==0)
@@ -763,23 +749,23 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
   //   newSeg.runvec_abs=_vec_abs;
   //   newSeg.dir_bit=_axis_dir;
   // }
-
-  copyCMDVec(newSeg.sp,getLatestLocation());
-
-  for(int i=0;i<locDim;i++)
+  newSeg.sp=startPoint;
+  for(int i=0;i<VEC_DIM;i++)
   {
-    newSeg.sp[i]*=axisSetup[i].P_PreMult;
+    newSeg.sp.vec[i]*=axisSetup[i].P_PreMult;
   }
-  copyCMDVec(newSeg.vec,vec);
+
+  newSeg.vec=vec;
+  // copyCMDVec(newSeg.vec,vec);
   newSeg.vcur=0;
   int main_idx=0;
   int main_vidx=0;
   float vfactor=1;
-  vfactor=SpeedFactor(vec,axisSetup,locDim,&main_idx,&main_vidx);
-  newSeg.vcen=exinfo->speed*vfactor;
+  vfactor=SpeedFactor(vec.vec,axisSetup,VEC_DIM,&main_idx,&main_vidx);
+  newSeg.vcen=exinfo.speed*vfactor;
 
   
-  float maxAllowedSpeed=MaxAllowedSpeed(vec,axisSetup,locDim,newSeg.Edistance);
+  float maxAllowedSpeed=MaxAllowedSpeed(vec.vec,axisSetup,VEC_DIM,newSeg.Edistance);
   
   if(newSeg.vcen>maxAllowedSpeed)//cap
   {
@@ -807,9 +793,9 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
 
     int acc_constrain_axis=-1;
     float maxK=0;
-    for(int i=0;i<locDim;i++)
+    for(int i=0;i<VEC_DIM;i++)
     {
-      float K=vec[i]/axisSetup[i].A_Factor;
+      float K=vec.vec[i]/axisSetup[i].A_Factor;
       if(K<0)K=-K;
       if(maxK<K)
       {
@@ -817,17 +803,17 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
         acc_constrain_axis=i;
       }
     }
-    float accWFactor=axisSetup[acc_constrain_axis].A_Factor*newSeg.Edistance/vec[acc_constrain_axis];
+    float accWFactor=axisSetup[acc_constrain_axis].A_Factor*newSeg.Edistance/vec.vec[acc_constrain_axis];
 
     if(accWFactor<0)accWFactor=-accWFactor;
-    float acc=exinfo->acc;
-    float dea=exinfo->deacc;
+    float acc=exinfo.acc;
+    float dea=exinfo.deacc;
 
 
     if(acc<0)acc=-acc;
     if(dea>0)dea=-dea;
     
-    float maxAllowedAcc=MaxAllowedAcc(vec,axisSetup,locDim,newSeg.Edistance);
+    float maxAllowedAcc=MaxAllowedAcc(vec.vec,axisSetup,VEC_DIM,newSeg.Edistance);
 
     newSeg.acc=acc*accWFactor;
     if(newSeg.acc>maxAllowedAcc)
@@ -889,7 +875,7 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
 
     bool doLineJunction=true;
 
-    if(exinfo->cornorR==exinfo->cornorR && exinfo->cornorR>0 &&segs.size()>1 )//arc the cornor
+    if(exinfo.cornorR==exinfo.cornorR && exinfo.cornorR>0 &&segs.size()>1 )//arc the cornor
     do{//we need to add a arc segment in between two line segment
 
 
@@ -933,10 +919,7 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
 
 
 
-/*
-
-                                                                                                                                      
-                                                                                                                                      
+    /*                                                                                                                               
                                             spDistRatio=0.8                                                                           
                                   -----------------|----|   
                             [P1]                 [SP2]                                                                                
@@ -952,12 +935,10 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
                         [P0]                                            
 
 
-*/
+    */
 
-
-      typedef  xnVec_f<20> TVec;//assume 20dimension is enough... becasue the input dimentsion is not constant in child class
-      TVec sp0;//spline control point
-      TVec sp2;
+      CMDVec sp0;//spline control point
+      CMDVec sp2;
       float distance_turnPt_cornorPt;
 
 
@@ -965,7 +946,7 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
       {
 
         // Calculate the angle in radians
-        float percent=exinfo->cornorR;
+        float percent=exinfo.cornorR;
         float cornorR_mm=NAN;
         if(percent>1)
         {
@@ -976,17 +957,17 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
 
         float angleRad=NAN;
         {
-          TVec p0;//newSeg.sp-preSeg->vec;
-          TVec p2;//newSeg.sp+newSeg.vec;
+          CMDVec p0;//newSeg.sp-preSeg->vec;
+          CMDVec p2;//newSeg.sp+newSeg.vec;
 
           float avaLengthShrink=0.95;
           float presegDistRatioLeft=(1-preSeg.distanceStart/preSeg.Edistance)*avaLengthShrink;
-          for(int i=0;i<locDim;i++)
+          for(int i=0;i<VEC_DIM;i++)
           {
-            p0.vec[i]=aheadLineSeg.sp[i]-preSeg.vec[i]*presegDistRatioLeft;
+            p0.vec[i]=aheadLineSeg.sp.vec[i]-preSeg.vec.vec[i]*presegDistRatioLeft;
 
             
-            p2.vec[i]=aheadLineSeg.sp[i]+aheadLineSeg.vec[i]*avaLengthShrink;
+            p2.vec[i]=aheadLineSeg.sp.vec[i]+aheadLineSeg.vec.vec[i]*avaLengthShrink;
 
 
             // sprintf(PrtBuff,"[%d]:%f,%f,%f    ",i,p0.vec[i],aheadLineSeg.sp[i],p2.vec[i]);G_LOG(PrtBuff);
@@ -1015,9 +996,9 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
 
           angleRad = calcAngleAndOthers(
             p0.vec,
-            aheadLineSeg.sp,
+            aheadLineSeg.sp.vec,
             p2.vec,
-            locDim,
+            VEC_DIM,
             percent,
             sp0.vec,
             sp2.vec,
@@ -1059,9 +1040,9 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
             float shrinkRatio=cornorR_mm/arc_r;
 
 
-            for(int i=0;i<locDim;i++)
+            for(int i=0;i<VEC_DIM;i++)
             {
-              float apexP=aheadLineSeg.sp[i];
+              float apexP=aheadLineSeg.sp.vec[i];
               sp0.vec[i]=(sp0.vec[i]-apexP)*shrinkRatio+apexP;
               sp2.vec[i]=(sp2.vec[i]-apexP)*shrinkRatio+apexP;
             }
@@ -1123,11 +1104,9 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
         // printf("\n\n\n");
 
 
-        TVec ctrlpt0;
-        TVec ctrlpt2;
-          
-        vecLerp(ctrlpt0.vec,sp0.vec,aheadLineSeg.sp,locDim,kappa);
-        vecLerp(ctrlpt2.vec,sp2.vec,aheadLineSeg.sp,locDim,kappa);
+        CMDVec ctrlpt0=lerp(sp0,aheadLineSeg.sp,kappa);
+        CMDVec ctrlpt2=lerp(sp2,aheadLineSeg.sp,kappa);
+        
 
 
 
@@ -1164,15 +1143,11 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
                                                                                                                                 
 */
 
-
-        vecAssign(arcSeg.sp,sp0.vec,locDim);
-
-
-        vecAssign(arcSeg.aux_pt2,ctrlpt0.vec,locDim);
-        vecAssign(arcSeg.aux_pt3,ctrlpt2.vec,locDim);
-        vecAssign(arcSeg.aux_pt4,sp2.vec,locDim);
-        vecSub(arcSeg.vec,sp2.vec,sp0.vec,locDim);
-
+        arcSeg.sp=sp0;
+        arcSeg.aux_pt2=ctrlpt0;
+        arcSeg.aux_pt3=ctrlpt2;
+        arcSeg.aux_pt4=sp2;
+        arcSeg.vec=sub(sp2,sp0);
 
         preSeg.distanceEnd=preSeg.Edistance-distance_turnPt_cornorPt;
         preSeg.vto_JunctionMax=999999;
@@ -1199,7 +1174,7 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
     {
       
       float coeff1=NAN;
-      int calcErr= Calc_JunctionNormCoeff(preSeg.vec,preSeg.Edistance,vec,newSeg.Edistance,axisSetup,locDim,&coeff1);
+      int calcErr= Calc_JunctionNormCoeff(preSeg.vec.vec,preSeg.Edistance,vec.vec,newSeg.Edistance,axisSetup,VEC_DIM,&coeff1);
       if(calcErr<0)
       {
         newSeg.JunctionNormCoeff=0;
@@ -1213,7 +1188,7 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
       {
         float maxDiff1=NAN;
         int retSt=0;
-        retSt |= Calc_JunctionNormMaxDiff(preSeg.vec,preSeg.Edistance,vec,newSeg.Edistance,axisSetup,locDim,coeff1,&maxDiff1);
+        retSt |= Calc_JunctionNormMaxDiff(preSeg.vec.vec,preSeg.Edistance,vec.vec,newSeg.Edistance,axisSetup,VEC_DIM,coeff1,&maxDiff1);
         // retSt |= Calc_JunctionNormMaxDiff(*preSeg,newSeg,coeff2,maxDiff2);
 
 
@@ -1551,7 +1526,8 @@ bool StpGroup::pushInMoveVec(int id,float* vec,MSTP_segment_extra_info *exinfo,i
 
 
 
-MSTP_segment* StpGroup::segAdvance(float &T)
+template<int VEC_DIM,int SEG_BUF_SIZE>  
+typename StpGroup<VEC_DIM,SEG_BUF_SIZE>::MSTP_segment* StpGroup<VEC_DIM,SEG_BUF_SIZE>::segAdvance(float &T)
 {
 
 
@@ -1663,7 +1639,8 @@ RELOAD:
 
 
 
-StpGroup::MSTP_segment_adv_state StpGroup::segAdvance(float &T,MSTP_segment* trb,MSTP_segment_adv_info *info)
+template<int VEC_DIM,int SEG_BUF_SIZE> 
+typename StpGroup<VEC_DIM,SEG_BUF_SIZE>::MSTP_segment_adv_state StpGroup<VEC_DIM,SEG_BUF_SIZE >::segAdvance(float &T,MSTP_segment* trb,MSTP_segment_adv_info *info)
 {
   if(trb==NULL||info==NULL)
   {
@@ -1781,4 +1758,104 @@ StpGroup::MSTP_segment_adv_state StpGroup::segAdvance(float &T,MSTP_segment* trb
 
 
   return StpGroup::MSTP_segment_adv_state::ADV;//percentage=dstanceWent/curSeg.distance;
+}
+
+
+template<int VEC_DIM,int SEG_BUF_SIZE> 
+bool StpGroup<VEC_DIM,SEG_BUF_SIZE>::getSegLocation(MSTP_segment* seg,CMDVec &retLoc)
+{
+  if(seg==NULL)return false;
+  if(seg->type!=MSTP_segment_type::seg_line && seg->type!=MSTP_segment_type::seg_arc)return false;
+
+
+  
+  if(seg->type==MSTP_segment_type::seg_line)//linear interpolation
+  {
+    float ratio=adv_info.dstanceWent/(seg->Edistance);
+    for(int i=0;i<VEC_DIM;i++)
+    {
+      retLoc.vec[i]=seg->vec.vec[i]*(ratio)+seg->sp.vec[i];
+    }
+
+  }
+  else  if(seg->type==MSTP_segment_type::seg_arc)//cubic bezier interpolation
+  {
+    cubicBezier_comp<StpGroup<VEC_DIM,SEG_BUF_SIZE>>(retLoc.vec,seg,adv_info.dstanceWent);
+
+  }
+
+
+  for(int i=0;i<VEC_DIM;i++)
+  {
+    retLoc.vec[i]/=axisSetup[i].P_PreMult;
+  }
+
+
+
+
+
+  return true;
+}
+
+
+/*
+  static CMDVec sub(CMDVec v1,CMDVec v2);
+  static CMDVec add(CMDVec v1,CMDVec v2);
+  static CMDVec lerp(CMDVec v1,CMDVec v2,float ratio);
+  static float dotProduct(CMDVec v1,CMDVec v2);
+  static float magnitude(CMDVec v1);
+  static float distance(CMDVec v1,CMDVec v2);*/
+
+template<int VEC_DIM,int SEG_BUF_SIZE>
+typename StpGroup<VEC_DIM, SEG_BUF_SIZE>::CMDVec StpGroup<VEC_DIM, SEG_BUF_SIZE>::sub(CMDVec v1, CMDVec v2) {
+  CMDVec result;
+  for (int i = 0; i < VEC_DIM; i++) {
+    result.vec[i] = v1.vec[i] - v2.vec[i];
+  }
+  
+  return result;
+
+}
+
+template<int VEC_DIM,int SEG_BUF_SIZE>
+typename StpGroup<VEC_DIM, SEG_BUF_SIZE>::CMDVec StpGroup<VEC_DIM, SEG_BUF_SIZE>::add(CMDVec v1, CMDVec v2) {
+  CMDVec result;
+  for (int i = 0; i < VEC_DIM; i++) {
+    result.vec[i] = v1.vec[i] + v2.vec[i];
+  }
+  return result;
+}
+
+
+template<int N, int S>
+typename StpGroup<N, S>::CMDVec StpGroup<N, S>::lerp(const CMDVec& a, const CMDVec& b, float t) {
+    CMDVec result;
+    for (int i = 0; i < N; i++) {
+        result.vec[i] = a.vec[i] + (b.vec[i] - a.vec[i]) * t;
+    }
+    return result;
+}
+
+
+template<int VEC_DIM,int SEG_BUF_SIZE>
+float StpGroup<VEC_DIM, SEG_BUF_SIZE>::dotProduct(CMDVec v1, CMDVec v2) {
+  float result = 0;
+  for (int i = 0; i < VEC_DIM; i++) {
+    result += v1.vec[i] * v2.vec[i];
+  }
+  return result;
+}
+
+template<int VEC_DIM,int SEG_BUF_SIZE>
+float StpGroup<VEC_DIM, SEG_BUF_SIZE>::magnitude(CMDVec v1) {
+  float sum = 0;
+  for (int i = 0; i < VEC_DIM; i++) {
+    sum += v1.vec[i] * v1.vec[i];
+  }
+  return sqrt(sum);
+}
+
+template<int VEC_DIM,int SEG_BUF_SIZE>
+float StpGroup<VEC_DIM, SEG_BUF_SIZE>::distance(CMDVec v1, CMDVec v2) {
+  return magnitude(sub(v1, v2));
 }
