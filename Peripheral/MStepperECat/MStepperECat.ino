@@ -69,6 +69,7 @@ enum MSTP_SegCtx_TYPE{
   ASSERT_TRACKING_SATTLED=15,
 
   SEG_HALT=20,
+  SEG_HALT_FOR_CHECKPOINT=21,
   TRACKING_PROGRESS=50,
 
   GENERIC=999
@@ -145,6 +146,9 @@ struct MSTP_SegCtx_SegHalt{
 };
 
 
+struct MSTP_SegCtx_SegHalt_for_CheckPoint{
+  int target_checkpoint;
+};
 
 struct MSTP_SegCtx_TargetTrackingTransition{
   int tar_ENC;
@@ -165,6 +169,7 @@ struct MSTP_SegCtx{
     struct MSTP_SegCtx_Generic Generic;
     struct MSTP_SegCtx_TrackingHoldUntil TRACKING_HOLD_UNTIL;
     struct MSTP_SegCtx_SegHalt SEG_HALT;
+    struct MSTP_SegCtx_SegHalt_for_CheckPoint SEG_HALT_FOR_CHECKPOINT;
   };
   // char TTAG[40];
   // int TID;
@@ -1977,6 +1982,8 @@ class MotionGroup_SIMP:public XY_Coord_Conv
 
 
   typedef StpGroup<1,5> StpGroup1_5;
+  
+  typedef StpGroup1_5::MSTP_segment MSTP_segment1_5;
   StpGroup1_5  planer_S,planer_ReelAdv;
 
   Motor_run_data_1Axis planer_S_rdata;
@@ -2553,6 +2560,23 @@ public:
           
           if(curSeg->type==MSTP_segment_type::seg_wait)
           {
+            if(curSeg->ctx!=NULL)
+            {
+              MSTP_SegCtx *p_res=(MSTP_SegCtx *)curSeg->ctx;
+              if(p_res->type==MSTP_SegCtx_TYPE::SEG_HALT_FOR_CHECKPOINT )
+              {
+
+                if(checkpointCounter>=p_res->SEG_HALT_FOR_CHECKPOINT.target_checkpoint)
+                {
+                  planer_S.adv_info.dstanceWent=curSeg->distanceEnd=-1;//Set dstanceWent and distanceEnd equal and this will end this seg_wait
+                }
+                else
+                {
+                  planer_S.adv_info.dstanceWent=0;//reset progress. ie, run forever
+                }
+              }
+            }
+
             break;
           }
           else if(curSeg->type==MSTP_segment_type::seg_line)//linear interpolation
@@ -2587,7 +2611,18 @@ public:
           
           if(curSeg->type==MSTP_segment_type::seg_wait)
           {
-            break;
+            if(curSeg->ctx!=NULL)
+            {
+              MSTP_SegCtx *p_res=(MSTP_SegCtx *)curSeg->ctx;
+              if(p_res->type==MSTP_SegCtx_TYPE::SEG_HALT_FOR_CHECKPOINT )
+              {
+
+                if(checkpointCounter>=p_res->SEG_HALT_FOR_CHECKPOINT.target_checkpoint)
+                {
+                  planer_ReelAdv.adv_info.dstanceWent=curSeg->distanceEnd=-1;//Set dstanceWent and distanceEnd equal and this will end this seg_wait
+                }
+              }
+            }
           }
           else if(curSeg->type==MSTP_segment_type::seg_line)//linear interpolation
           {
@@ -3054,25 +3089,27 @@ public:
   }
 
 
-  std::string vec_to_string(float*dst)
-  {
-    std::string ret="[";
-    for(int i=0;i<MotorGroup.vec_dim;i++)
-    {
-      ret+=std::to_string(dst[i]);
+  // std::string vec_to_string(float*dst)
+  // {
+  //   std::string ret="[";
+  //   for(int i=0;i<MotorGroup.vec_dim;i++)
+  //   {
+  //     ret+=std::to_string(dst[i]);
 
-      if(i<MotorGroup.vec_dim-1)
-        ret+=",";
-    }
+  //     if(i<MotorGroup.vec_dim-1)
+  //       ret+=",";
+  //   }
 
-    return ret+"]";
-  }
+  //   return ret+"]";
+  // }
 
 
   void RESET_Queue()
   {
     homedFlag=false;
     MotorGroup.RESET();
+    planer_S.RESET();
+    planer_ReelAdv.RESET();
 
     homingSeq.resize(0);
     trackingInfo.progress=-1;
@@ -3649,6 +3686,35 @@ public:
     return 0;
   }
 
+  
+  
+  static int ReturnCtxEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
+  {
+    MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
+    if(p_res==NULL)return -1;
+
+    // p_res->SEG_HALT.haltFlag=false;
+    p_res->isProcessed=true;
+    seg->ctx=NULL;
+    sctx_pool.returnResource(p_res);
+    return 0;
+  }
+
+
+  static int ReturnCtxEndCB(MSTP_segment1_5* seg,MSTP_segment_adv_info *info)
+  {
+    MSTP_SegCtx *p_res=(MSTP_SegCtx *)seg->ctx;
+    if(p_res==NULL)return -1;
+
+    // p_res->SEG_HALT.haltFlag=false;
+    p_res->isProcessed=true;
+    seg->ctx=NULL;
+    sctx_pool.returnResource(p_res);
+    return 0;
+  }
+
+
+
 
   static int AssertTrackingSattledEndCB(MSTP_segment* seg,MSTP_segment_adv_info *info)
   {
@@ -3996,16 +4062,16 @@ public:
 
     {
 
-      if(strcmp(type,"G1.S")==0)
+      if(strcmp(type,"STATION.G1")==0)
       {
-        float S=jgetNum(cmd,"S");
+        float R=jgetNum(cmd,"R");
 
-        if(S!=S)
+        if(R!=R)
         {
           return MCMD_Status::TASK_FAILED;
         }
         StpGroup1_5::CMDVec newLoc;
-        newLoc.vec[0]=S;
+        newLoc.vec[0]=R;
 
         
         MSTP_segment_extra_info exinfo;
@@ -4022,20 +4088,50 @@ public:
         return MCMD_Status::TASK_OK;
 
       }
+          
+      if(strcmp(type,"STATION.SegHalt")==0)
+      {
+        
+
+
+        float target_checkpoint=jgetNum(cmd,"checkpoint");
+        if(target_checkpoint!=target_checkpoint)
+        {
+          return MCMD_Status::TASK_FAILED;
+        }
+
+        MSTP_SegCtx *p_res;
+
+        int retryCount=0;
+        while((p_res=sctx_pool.applyResource())==NULL)
+        {
+          if(retryCount++>100)
+            return MCMD_Status::TASK_FAILED;
+          yield();
+        }
+        p_res->type=MSTP_SegCtx_TYPE::SEG_HALT_FOR_CHECKPOINT;
+        p_res->SEG_HALT_FOR_CHECKPOINT.target_checkpoint=target_checkpoint;
+
+        planer_S.pushInPause(HACK_LATEST_CMD_ID,99999999,NULL,ReturnCtxEndCB,(void*)p_res);
+        return  MCMD_Status::TASK_OK;
+      }
+
+
+
     }
 
     
     {
-      if(strcmp(type,"G1.ReelAdv")==0)
+      if(strcmp(type,"REELADV.G1")==0)
       {
-        float adv=jgetNum(cmd,"ADV");
-        if(adv!=adv)
+        float R=jgetNum(cmd,"R");
+        if(R!=R)
         {
           return MCMD_Status::TASK_FAILED;
         }
         
         StpGroup1_5::CMDVec newLoc;
-        newLoc.vec[0]=adv;
+        newLoc.vec[0]=R;
 
         MSTP_segment_extra_info exinfo;
         exinfo.speed=jgetNum(cmd,"F",planer_ReelAdv_rdata.speed_exinfo.speed);
@@ -4051,6 +4147,35 @@ public:
         return MCMD_Status::TASK_OK;
 
       }
+
+      if(strcmp(type,"REELADV.SegHalt")==0)
+      {
+        
+
+
+        float target_checkpoint=jgetNum(cmd,"checkpoint");
+        if(target_checkpoint!=target_checkpoint)
+        {
+          return MCMD_Status::TASK_FAILED;
+        }
+
+        MSTP_SegCtx *p_res;
+
+        int retryCount=0;
+        while((p_res=sctx_pool.applyResource())==NULL)
+        {
+          if(retryCount++>100)
+            return MCMD_Status::TASK_FAILED;
+          yield();
+        }
+        p_res->type=MSTP_SegCtx_TYPE::SEG_HALT_FOR_CHECKPOINT;
+        p_res->SEG_HALT_FOR_CHECKPOINT.target_checkpoint=target_checkpoint;
+
+        planer_ReelAdv.pushInPause(HACK_LATEST_CMD_ID,99999999,NULL,ReturnCtxEndCB,(void*)p_res);
+        return  MCMD_Status::TASK_OK;
+      }
+
+
     }
 
     if(strcmp(type,"G1.PlatXYZ")==0)//XYZ
