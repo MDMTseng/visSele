@@ -2,7 +2,7 @@ import {CORE_ID,CNC_PERIPHERAL_ID,BPG_WS,CNC_Perif,InspCamera_API} from './EXT_A
 
 import { GetObjElement, ID_debounce, ID_throttle, ObjShellingAssign } from './UTIL/MISC_Util';
 import * as _THREE from 'three';
-
+import _clone from 'clone';
 
 function startsWith (str:string, needle:string) {
   var len = needle.length
@@ -34,7 +34,7 @@ export async function listCMDPromise(
   // {
   //   return Promise.all()
   // }
-
+  let clone:any=_clone;
   async function ackG(code:string,retryCount=5)
   {
     let retArr=[];
@@ -92,6 +92,27 @@ export async function listCMDPromise(
     return api.InspTargetExchange(id, data,_PGID_);
   }
 
+
+  async function CoreSend(tl_cmd:string,data:any)
+  {
+    return await api.send_P(tl_cmd,0,data);
+  }
+
+
+
+
+
+
+
+  async function SAVEJSON(fileName:string,data:any)
+  {
+    return await api.FILE_Save(fileName,data);
+  }
+
+  async function READJSON(fileName:string)
+  {
+    return await api.FILE_Load(fileName);
+  }
 
 
   async function READFILE(fileName:string)
@@ -326,6 +347,23 @@ export async function listCMDPromise(
   }
 
 
+  function reportCallback_reg(key:string,inspTar_id:string,trigger_id?:number,callback?:(report:any,info:any)=>void)
+  {
+    let listInfo={
+      inspTar_id,
+      trigger_id,
+      listen_style:"persist_callback",
+      callback
+    }
+    v.reportListener[key]=listInfo
+    return listInfo;
+  }
+  function reportCallback_delete(key:string)
+  {
+    v.reportListener[key].detached=true;
+    delete v.reportListener[key];
+  }
+
 
   function reportWait_reg(key:string,inspTar_id:string,trigger_id?:number)
   {
@@ -355,6 +393,7 @@ export async function listCMDPromise(
         if(v.reportListener[key].report)
         {
           resolve(v.reportListener[key].report);
+          delete v.reportListener[key];
         }
         else
         {
@@ -467,6 +506,7 @@ export async function listCMDPromise(
     }
   }
 
+
   async function INCLUDE(fileName:string)
   {
     let file= await READFILE(fileName);
@@ -495,7 +535,7 @@ export async function listCMDPromise(
       console.error(e)
       run_cmd_idx=-100;
       progressUpdate();
-      throw({type:"ACMD exception",cmd,index:run_cmd_idx,e})
+      throw({type:"ACMD exception",cmd,index:run_cmd_idx,e,stackTrace:(e as Error ).stack});
     }
     // console.log("$>",ret)
   }

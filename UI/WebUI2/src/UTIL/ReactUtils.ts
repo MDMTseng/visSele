@@ -22,7 +22,9 @@ export function useDivDimensions(divRef:React.RefObject<HTMLDivElement | undefin
         if (divRef.current) {
           const { current } = divRef
           const boundingRect = current.getBoundingClientRect()
+          _this.boundingRect=boundingRect;
           const { width, height } = boundingRect
+          // console.log("useDivDimensions>>>>",width,height);
           if(width==0 && height==0)return;
           const rwh  = [  Math.round(width), Math.round(height) ]
           if(rwh[0]==_this.bkDim[0] &&rwh[1]==_this.bkDim[1])return;
@@ -30,10 +32,11 @@ export function useDivDimensions(divRef:React.RefObject<HTMLDivElement | undefin
           //console.log(">>>");
           _this.debounce_id =
           ID_debounce(_this.debounce_id, () => {
-
+            // const { current } = _this.divRef
             _this.isInitSabled=true;
-            const boundingRect = current.getBoundingClientRect()
+            const boundingRect = _this.boundingRect
             const { width, height } = boundingRect
+            // console.log("useDivDimensions>>X>>",width,height);
             const rwh  = [  Math.round(width), Math.round(height) ]
             //console.log("updateSize",rwh);
             setDimensions(rwh)

@@ -680,6 +680,11 @@ export class BPG_WS
   }
 
 
+  async InspTargetRemove(it_id:string)
+  {
+    return await this.send_P("IT",0,{type:"delete",id:it_id})
+  }
+
   async InspTargetGetInfo()
   {
     return await this.send_P("IT",0,{type:"list"})
@@ -687,18 +692,19 @@ export class BPG_WS
   
   async InspTargetCreate(defInfo:any,env_path:string)
   {
-    await this.send_P("IT",0,{type:"create",id:defInfo.id,defInfo,env_path})
-  }
-  async InspTargetUpdate(defInfo:any)
-  {
-    await this.send_P("IT",0,{type:"update",id:defInfo.id,defInfo})
-  }
-  async InspTargetExchange(inspTarId:string,data:any,_PGID_:number|undefined=undefined)
-  {
-    
-    return await this.send_P("IT",0,{type:"exchange",id:inspTarId,data,_PGID_})
+    return await this.send_P("IT",0,{type:"create",id:defInfo.id,defInfo,env_path})
   }
 
+  async InspTargetUpdate(defInfo:any)
+  {
+    return await this.send_P("IT",0,{type:"update",id:defInfo.id,defInfo})
+  }
+
+
+  async InspTargetExchange(inspTarId:string,data:any,_PGID_:number|undefined=undefined)
+  {
+    return await this.send_P("IT",0,{type:"exchange",id:inspTarId,data,_PGID_})
+  }
 
 
 

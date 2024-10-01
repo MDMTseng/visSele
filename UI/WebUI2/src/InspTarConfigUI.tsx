@@ -112,6 +112,7 @@ let Orientation_ShapeBasedMatching_NodeUI= (({ data, isConnectable , selected}:{
               renderHook={undefined} 
               onDefChange={(new_rule,doInspUpdate=true)=>{}}
               APIExport={(apis)=>{}}
+              defDoReload={()=>{}}
 
               UIOption={undefined}
               showUIOptionConfigUI={false}
@@ -257,10 +258,12 @@ function NodeFlow_DEMO({defConfig,nodeInfo,onNodesInfoChange,onNodeEvent}:{defCo
   
 
 
+
 export function DDDD({defConfig, nodeInfo,onNodesInfoChange, nodeUpdateMinInterval=500,onNodeEvent=(event)=>{}}: { defConfig: any, nodeInfo?: any[], onNodesInfoChange: (changes: any[]) => void,nodeUpdateMinInterval:number,onNodeEvent:(event:any)=>void }) {
 
     const [nodes, setNodes] = useState<any[]>([]);
     const _this = useRef<any>({}).current;
+
 
     useEffect(() => {
         setNodes(nodeInfo===undefined?[]:nodeInfo)

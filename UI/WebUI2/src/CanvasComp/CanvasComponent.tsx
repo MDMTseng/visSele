@@ -129,6 +129,7 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     pcvst2:VEC2D|undefined,
     onSelect:(info:any,ctx:any)=>any,
     start:boolean
+    actionType:string
   }|undefined
 
   
@@ -269,7 +270,15 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     else
     {
       // console.log(this.regionSelect);
-      this.regionSelectUpdate(pos,2);
+      if(this.regionSelect.actionType=="drag")
+        this.regionSelectUpdate(pos,2);
+      else if(this.regionSelect.actionType=="click")
+      {
+        if(this.regionSelect.pt1===undefined)
+          this.regionSelectUpdate(pos,0);
+        else
+          this.regionSelectUpdate(pos,2);
+      }
     }
     this.ctrlLogic();
     this.draw();
@@ -297,7 +306,14 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     }
     else
     {
-      this.regionSelectUpdate(this.mouseStatus,1);
+      if(this.regionSelect.actionType=="drag")
+        this.regionSelectUpdate(this.mouseStatus,1);
+      else if(this.regionSelect.actionType=="click")
+      {
+        if(this.regionSelect.pt1!==undefined)
+          this.regionSelectUpdate(this.mouseStatus,1);
+      }
+
     }
 
 
@@ -320,7 +336,7 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   
   UserRegionSelect(onSelect:
-    ((info:{pt1: VEC2D,pt2: VEC2D,pcvst1: VEC2D,pcvst2: VEC2D},SeleState:number)=>void) |undefined)
+    ((info:{pt1: VEC2D,pt2: VEC2D,pcvst1: VEC2D,pcvst2: VEC2D},SeleState:number)=>void) |undefined,selectActionType:string="drag")
   {
     if(onSelect==undefined)
     {
@@ -335,7 +351,8 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
       pcvst1:undefined,
       pcvst2:undefined,
       onSelect,
-      start:false
+      start:false,
+      actionType:selectActionType
     };
   }
   onmousedown(evt:MouseEvent) 
@@ -346,7 +363,8 @@ export class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
     
     if(this.regionSelect!==undefined)
     {
-      this.regionSelectUpdate(this.mouseStatus,0);
+      if(this.regionSelect.actionType=="drag")
+        this.regionSelectUpdate(this.mouseStatus,0);
     }
 
   }
@@ -497,10 +515,12 @@ export function HookCanvasComponent( {dhook,style={}}:{
   const _r = useRef<{canvComp:DrawHook_CanvasComponent|undefined}>({canvComp:undefined});
   let _this=_r.current;
 
+  
   // responsive width and height
   useEffect(() => {
     if(canvas===null || canvas.current===null)return;
-    _this.canvComp=new DrawHook_CanvasComponent(canvas.current);
+    if(_this.canvComp===undefined)
+      _this.canvComp=new DrawHook_CanvasComponent(canvas.current);
     
     _this.canvComp.pixelRatio=pixelRatio;
     // setTimeout(()=>{
@@ -509,8 +529,9 @@ export function HookCanvasComponent( {dhook,style={}}:{
     return () => {
       _this.canvComp=undefined;//delete the canvas component
     };
-  }, []);
+  }, [pixelRatio]);
 
+  console.log(">>>>",width, height,pixelRatio)
   useLayoutEffect(() => {
     if(canvas===null || canvas.current===null)return;
     
@@ -518,7 +539,10 @@ export function HookCanvasComponent( {dhook,style={}}:{
 
     _this.canvComp.drawHook=dhook;
     if(width*height>0)
+    {
+      console.log(">>canvasResize>>",width, height)
       _this.canvComp.canvasResize(canvas.current,width,height);
+    }
     _this.canvComp.ctrlLogic();
     _this.canvComp.draw();
   }, [width, height,dhook]);
@@ -526,6 +550,7 @@ export function HookCanvasComponent( {dhook,style={}}:{
   // console.log(width_,height_);
   const displayWidth = Math.floor(pixelRatio * width);
   const displayHeight = Math.floor(pixelRatio * height);
+  console.log(displayWidth,displayHeight);
   return (
     <div style={{ width: '100%', height: '100%',...style }} ref={divRef}>
       <canvas

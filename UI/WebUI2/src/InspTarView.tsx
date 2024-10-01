@@ -6,8 +6,8 @@ import { Layout, Button, Tabs, Slider, Menu, Divider, Dropdown, Popconfirm, Radi
 
 import type { MenuProps, MenuTheme } from 'antd/es/menu';
 import {
-    UserOutlined, LaptopOutlined, NotificationOutlined, DownOutlined, MoreOutlined, PlayCircleFilled,PauseCircleOutlined,PauseCircleFilled,
-    DisconnectOutlined, LinkOutlined,CameraOutlined,SyncOutlined,DeleteOutlined,ExclamationCircleOutlined,LoadingOutlined,StopOutlined
+    UserOutlined, LaptopOutlined, NotificationOutlined, DownOutlined, MoreOutlined, PlayCircleFilled,PauseCircleOutlined,PauseCircleFilled,SettingOutlined,
+    DisconnectOutlined, LinkOutlined,CameraOutlined,SyncOutlined,DeleteOutlined,ExclamationCircleOutlined,LoadingOutlined,StopOutlined,CloseOutlined,TagsOutlined,ToTopOutlined
 } from '@ant-design/icons';
 
 import clone from 'clone';
@@ -126,6 +126,7 @@ export type CompParam_InspTar = {
     def: any,
     report: any,
     onDefChange: (updatedDef: any, ddd: boolean) => void,
+    defDoReload: () => void,
     APIExport: ((api_set: any) => void) | undefined,
 
 
@@ -898,7 +899,7 @@ function TestInputSelectUI({def, folderPath, stream_id, testTags = [] }: {def:an
 
 
 export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompParam_InspTarUI) {
-    let { display, fsPath, style = undefined, renderHook, def, EditPermitFlag, report, onDefChange, APIExport } = props;
+    let { display, fsPath, style = undefined, renderHook, def, EditPermitFlag, report, onDefChange,defDoReload, APIExport } = props;
     const _ = useRef<any>({
 
         imgCanvas: document.createElement('canvas'),
@@ -1008,13 +1009,22 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
         Feature_Edit = 1,
         Search_Region_Edit = 2,
         Test_Saved_Files = 3,
+
+
+        MISC_Settings = 9,
         NA = -99999
     }
 
     const [editState, _setEditState] = useState<EditState>(EditState.Normal_Show);
 
     function setEditState(newEditState: EditState) {
-        let state3Ev: EditState[] = [];//3 elements, leave,stay,enter
+        _this.sel_region = 
+        _this.sel_region_type = undefined;
+        if (_this.canvasComp == undefined) return;
+            _this.canvasComp.UserRegionSelect(undefined)
+
+
+    let state3Ev: EditState[] = [];//3 elements, leave,stay,enter
         if (newEditState != editState) {
             state3Ev = [editState, EditState.NA, newEditState]
         }
@@ -1043,7 +1053,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                             let pkts = await BPG_API.InspTargetExchange(cacheDef.id, {
                                 type: "extract_feature",
                                 image_path: fsPath + "/" + SBM_FEAT_REF_IMG_NAME,
-                                feature_count: -1,
+                                num_features: -1,
                                 image_transfer_downsampling: 1,
                             }) as any[];
 
@@ -1104,6 +1114,12 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
 
     function onCacheDefChange(updatedDef: any, doTakeNewImage: boolean = true) {
+
+        if(updatedDef===undefined)
+        {
+            onDefChange(undefined,false);
+            return;   
+        }
         console.log(updatedDef);
         setCacheDef(updatedDef);
 
@@ -1231,7 +1247,11 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     <InspTarView_basicInfo {...props} def={cacheDef} onDefChange={(newDef, ddd) => {
                         console.log(cacheDef, newDef)
                         onCacheDefChange(newDef, ddd);
-                    }} />
+                    }} 
+                    
+                    defDoReload={()=>defDoReload()}
+                    
+                    />
                     {/* <Button onClick={()=>{
             BPG_API.InspTargetExchange(cacheDef.id,{type:"revisit_cache_stage_info"});
           }}>重試</Button> */}
@@ -1246,6 +1266,13 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     {/* <Button onClick={() => {
                         onDefChange(cacheDef, true)
                     }}>Commit</Button> */}
+
+                    <Button onClick={() => {
+
+                    setEditState(EditState.MISC_Settings);
+
+                    }}><SettingOutlined/></Button>
+
                     <Button onClick={() => {
 
                         setEditState(EditState.Feature_Edit);
@@ -1536,13 +1563,15 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                 (async () => {
 
+
+                    let tarT=[2,4,8];
                     let obj = {
                         type: "extract_feature",
                         image_path: fsPath + "/" + SBM_FEAT_REF_IMG_NAME,
                         num_features: cacheDef.num_features,
                         weak_thresh: featureInfo.weak_thresh,
                         strong_thresh: featureInfo.strong_thresh,
-                        T: [2,2],
+                        T: tarT,
                         image_transfer_downsampling: -1,
                         mask_regions: featureInfo.mask_regions
                     }
@@ -1571,8 +1600,18 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                         newFeatureInfo.templatePyramid = RP.data;
                     }
 
+                    newFeatureInfo.templatePyramid=newFeatureInfo.templatePyramid.filter((pyr: any) => pyr.features.length > 0)
 
-                    setFeatureInfo({ ...featureInfo, ...newFeatureInfo })
+                    if(tarT.length>newFeatureInfo.templatePyramid.length)
+                    {
+                        tarT=tarT.slice(0,newFeatureInfo.templatePyramid.length);
+                        
+                    }
+
+                    console.log(newFeatureInfo.templatePyramid,tarT )
+
+
+                    setFeatureInfo({ ...featureInfo, ...newFeatureInfo, T:tarT})
                     setFeatureInfoExt({ ...featureInfoExt, ...newFeatureInfoExt })
 
 
@@ -1877,7 +1916,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     })
                 }}>+搜尋範圍</Button>
 
-                {["<", ">", "v", "^","↦","↤","↧","↥","s"].map((dir, idx) => {
+                {["<", ">", "v", "^","↦","↤","↧","↥"].map((dir, idx) => {
 
                     return <Button key={"AddNewRegion" + dir} onClick={() => {
                         
@@ -1923,6 +1962,37 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
                 })}
 
+                
+                <Switch checkedChildren="開啟顏色預處理" unCheckedChildren="關閉顏色預處理" checked={cacheDef?.mask?.enable == true} onChange={(check) => {
+                    setCacheDef(ObjShellingAssign(cacheDef, ["mask","enable"], check));
+                }} />
+
+                <Slider defaultValue={def?.mask?.hh} min={0} max={180} step={1} onChange={(v) => {
+                    _this.trigTO = ID_debounce(_this.trigTO, () => {
+                        setCacheDef(ObjShellingAssign(cacheDef, ["mask","hh"], v));
+                    }, () => _this.trigTO = undefined, 500);
+                }} />
+
+                <Slider defaultValue={def?.mask?.lh} min={0} max={180} step={1} onChange={(v) => {
+                    _this.trigTO = ID_debounce(_this.trigTO, () => {
+                        setCacheDef(ObjShellingAssign(cacheDef, ["mask","lh"], v));
+                    }, () => _this.trigTO = undefined, 500);
+                }} />
+
+                <Slider defaultValue={def?.mask?.blur1_size} min={0} max={50} step={1} onChange={(v) => {
+                    _this.trigTO = ID_debounce(_this.trigTO, () => {
+                        setCacheDef(ObjShellingAssign(cacheDef, ["mask","blur1_size"], v));
+                    }, () => _this.trigTO = undefined, 500);
+                }} />
+
+                <Slider defaultValue={def?.mask?.blur2_size} min={0} max={50} step={1} onChange={(v) => {
+                    _this.trigTO = ID_debounce(_this.trigTO, () => {
+                        setCacheDef(ObjShellingAssign(cacheDef, ["mask","blur2_size"], v));
+                    }, () => _this.trigTO = undefined, 500);
+                }} />
+
+
+
 
             </>
             break;
@@ -1944,6 +2014,92 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
         } break;
 
 
+        case EditState.MISC_Settings: {
+            let folderPath = cacheDef.testInputFolder || fsPath;
+            EDIT_UI = <>
+                <Button danger type="primary" onClick={() => {
+                    setEditState(EditState.Normal_Show)
+                }}>{"<"}</Button>
+
+                <Button 
+                    danger={cacheDef.display_origin!==undefined}
+                    onClick={() => {
+                    if (_this.canvasComp == undefined) return;
+                    if(cacheDef.display_origin!==undefined)
+                    {   
+                        let redef={ ...cacheDef}
+                        delete redef.display_origin;
+                        setCacheDef(redef)
+                        return;
+                    }
+                    _this.sel_region = undefined;
+                    _this.sel_region_type = "point"
+                    _this.canvasComp.UserRegionSelect((info: any, state: number) => {
+                        if (state == 2) {
+
+                            // info.pt2.x;
+                            // info.pt2.y;
+
+
+
+
+                            setCacheDef({ ...cacheDef, display_origin: info.pt2 })
+                            setUpdateC(updateC + 1);
+
+                            console.log(info);
+                            _this.sel_region_type = undefined;
+                            _this.canvasComp.UserRegionSelect(undefined)
+                        }
+                    })
+                }}>{`${cacheDef.display_origin!==undefined?"刪除":"設定"}"顯示"座標原點`}</Button>
+
+                <Button onClick={() => {
+                    if (_this.canvasComp == undefined) return;
+                    _this.sel_region = undefined;
+                    _this.sel_region_type = "measure"
+                    _this.canvasComp.UserRegionSelect((info: any, state: number) => {
+                        if (state == 2) {
+
+                            // info.pt2.x;
+                            // info.pt2.y;
+
+
+
+
+                            // setCacheDef({ ...cacheDef, display_origin: info.pt2 })
+                            // setUpdateC(updateC + 1);
+
+                            console.log(info);
+                            _this.sel_region_type = undefined;
+                            _this.canvasComp.UserRegionSelect(undefined)
+                        }
+                    },"click")
+                }}>測試距離</Button>
+
+
+
+
+                <br/>
+                {/* Y軸:<Switch checkedChildren="正常向" unCheckedChildren="圖向" checked={cacheDef.display_origin_use_normal_Y_direction ==true} onChange={(check) => {
+                    setCacheDef({ ...cacheDef, display_origin_use_normal_Y_direction: check })
+                }} /> */}
+
+                Y軸轉換 (unit/pix):<InputNumber value={cacheDef.display_y_axis_scale??1} 
+                onChange={(num) => {
+                    setCacheDef({ ...cacheDef, display_y_axis_scale:num})
+                    setUpdateC(updateC + 1);
+
+                }}/>
+                <br/>
+                X軸轉換 (unit/pix):<InputNumber value={cacheDef.display_x_axis_scale??1} 
+                onChange={(num) => {
+                    setCacheDef({ ...cacheDef, display_x_axis_scale:num})
+                    setUpdateC(updateC + 1);
+
+                }}/>
+
+            </>
+        } break;
 
 
     }
@@ -1980,7 +2136,6 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
             
         })
     }
-
 
 
     return <div style={{ ...style}} className={"overlayCon"}>
@@ -2034,7 +2189,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                 // // 
                 // _this.fetchedPixInfo = imageData;
             }
-            if (editState == EditState.Normal_Show || editState == EditState.Search_Region_Edit || editState == EditState.Test_Saved_Files) {
+            if (editState == EditState.Normal_Show || editState == EditState.Search_Region_Edit || editState == EditState.Test_Saved_Files|| editState == EditState.MISC_Settings) {
 
                 if (ctrl_or_draw == true)//ctrl
                 {
@@ -2068,36 +2223,41 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                             if (match.confidence <= 0) return;
                             let angle = match.angle;
 
+                            g.ctx.save();
+
+                            g.ctx.translate(match.center.x, match.center.y );
                             // let distance=Math.abs(match.center.x-mouseOnCanvas.x)+Math.abs(match.center.y-mouseOnCanvas.y)
                             // ctx.font = (100*Math.pow(1000/(distance+1000),5)+10)+"px Arial";
                             ctx.font = "50px Arial";
+                            g.ctx.scale(1.5/camMag,1.5/camMag);
 
                             ctx.fillStyle = 'hsl('+ Math.floor(idx/10)*100 +',100%,50%)';
                             ctx.strokeStyle = 'black';
                             let text="[" + idx+"]";
-                            ctx.fillText(text, match.center.x, match.center.y - 40)
+                            ctx.fillText(text,0,0- 40)
                             ctx.lineWidth = 2;
-                            ctx.strokeText(text, match.center.x, match.center.y - 40)
+                            ctx.strokeText(text, 0,0- 40)
                             ctx.fillStyle = "rgba(150,100, 100,0.8)";
 
 
 
                             ctx.font = "20px Arial";
-                            ctx.fillText("ang:" + (angle * 180 / 3.14159).toFixed(2)+(match.flip?" 反 ":""), match.center.x, match.center.y - 20)
+                            ctx.fillText("ang:" + (angle * 180 / 3.14159).toFixed(2)+(match.flip?" 反 ":""), 0,0- 20)
 
                             if (match.confidence !== undefined)
-                                ctx.fillText("sim:" + match.confidence.toFixed(3), match.center.x, match.center.y - 0)
+                                ctx.fillText("sim:" + match.confidence.toFixed(3), 0,0 - 0)
 
 
-                            ctx.lineWidth = 4 / camMag;
+                            ctx.lineWidth = 4;
                             ctx.strokeStyle = `HSLA(0, 100%, 50%,1)`;
-                            canvas_obj.rUtil.drawCross(ctx, { x: match.center.x, y: match.center.y }, 12 / camMag);
+                            canvas_obj.rUtil.drawCross(ctx, { x:0, y: 0}, 12);
 
 
 
-                            ctx.lineWidth = 4 / camMag;
+                            ctx.lineWidth = 4;
                             let vec = PtRotate2d({ x: 100, y: 0 }, angle, 1);
-                            canvas_obj.rUtil.drawLine(ctx, { x1: match.center.x, y1: match.center.y, x2: match.center.x + vec.x, y2: match.center.y + vec.y })
+                            canvas_obj.rUtil.drawLine(ctx, { x1: 0, y1: 0, x2: 0 + vec.x, y2:0+ vec.y })
+                            g.ctx.restore();
 
                         })
 
@@ -2107,6 +2267,17 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                             ctx.font = "20px Arial";
                             ctx.fillStyle = "rgba(150,100, 100,0.5)";
                             ctx.fillText("ProcessTime:" + (defReport.process_time_us / 1000).toFixed(2) + " ms", 20, 400)
+                            
+
+                            let tagsStr="";
+                            if(defReport.tags!==undefined)
+                            {
+                                tagsStr=defReport.tags.join(",");
+                            }
+                            ctx.fillText("tags:"+tagsStr, 20, 400+20*(1))
+
+
+
                             ctx.restore();
                         }
                     }
@@ -2252,9 +2423,98 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
 
 
             if (ctrl_or_draw == false) {
+
+                {
+                    ctx.save();
+
+                    // let lineLengthMult=500/camMag;
+                    //offset draw oirigin
+                    {
+                        let x=0;
+                        let y=0;
+                        if(cacheDef.display_origin!==undefined)
+                        {
+                            x=cacheDef.display_origin.x;
+                            y=cacheDef.display_origin.y;
+                        }
+                        ctx.translate(x, y);
+                    }
+
+                    ctx.scale(5, 5);
+
+                    ctx.lineWidth = 1/camMag;
+                    //reset dash
+                    ctx.setLineDash([0, 0, 0, 0]);
+
+                    //font size
+                    ctx.font = (1/camMag)+"em Arial";
+                    //aline text to XY center
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+
+                    let X_mult=1;
+                    if(cacheDef.display_x_axis_scale<0)
+                    {
+                        X_mult=-1;
+                    }
+
+                    let Y_mult=1;
+                    if(cacheDef.display_y_axis_scale<0)
+                    {
+                        Y_mult=-1;
+                    }
+                    //draw origin and axis arrow
+                    //draw x axis
+                    ctx.strokeStyle = "rgba(255, 0, 0,1)";
+                    ctx.fillStyle = "rgba(255, 0, 0,1)";
+                    canvas_obj.rUtil.drawLine(ctx, { x1: 0, y1: 0, x2: 100*X_mult, y2: 0 })
+                    canvas_obj.rUtil.drawLine(ctx, { x1: 100*X_mult, y1: 0, x2: 90*X_mult, y2: 10 })
+                    canvas_obj.rUtil.drawLine(ctx, { x1: 100*X_mult, y1: 0, x2: 90*X_mult, y2: -10 })
+                    
+                    // ctx.strokeStyle = "rgba(0, 0, 0,1)";
+                    // ctx.strokeText("X", 100*X_mult, -10*Y_mult)
+                    // ctx.fillText("X", 100*X_mult, -10*Y_mult)
+
+                    //draw y axis
+                    ctx.fillStyle =
+                    ctx.strokeStyle = "rgba(0, 255, 0,1)";
+
+
+                    canvas_obj.rUtil.drawLine(ctx, { x1: 0, y1: 0, x2: 0, y2: 100*Y_mult })
+                    canvas_obj.rUtil.drawLine(ctx, { x1: 0, y1: 100*Y_mult, x2: 10, y2: 90*Y_mult })
+                    canvas_obj.rUtil.drawLine(ctx, { x1: 0, y1: 100*Y_mult, x2: -10, y2: 90*Y_mult })
+
+                    // ctx.strokeStyle = "rgba(0, 0, 0,1)";
+                    // ctx.strokeText("Y", -10*X_mult, 100*Y_mult)
+                    // ctx.fillText("Y", -10*X_mult, 100*Y_mult)
+
+                    //scale x5
+
+
+                    ctx.restore();
+                    
+
+                }
+
+
+
+
+                if (_this.sel_region_type == "point") {
+                    // console.log(mouseOnCanvas)
+
+                    drawRegion(g, canvas_obj,{
+                        x: mouseOnCanvas.x-5,
+                        y: mouseOnCanvas.y-5,
+                        w: 10,
+                        h: 10
+                    }, canvas_obj.rUtil.getIndicationLineSize());
+                }
+
+
                 if (canvas_obj.regionSelect !== undefined && _this.sel_region !== undefined) {
                     ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
 
+                    
                     if (_this.sel_region_type == "region") {
                         drawRegion(g, canvas_obj, _this.sel_region, canvas_obj.rUtil.getIndicationLineSize());
                     }
@@ -2268,6 +2528,32 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                             x2: _this.sel_region.pt2.x,
                             y2: _this.sel_region.pt2.y
                         })
+
+                    }
+
+                    if (_this.sel_region_type == "measure") {
+                        // canvas_obj.rUtil.drawCross(ctx, { x: _this.sel_region.pt1.x, y: _this.sel_region.pt1.y }, 10/camMag);
+
+                        ctx.setLineDash([0, 0, 0, 0]);
+                        canvas_obj.rUtil.drawLine(ctx, {
+                            x1: _this.sel_region.pt1.x,
+                            y1: _this.sel_region.pt1.y,
+                            x2: _this.sel_region.pt2.x,
+                            y2: _this.sel_region.pt2.y
+                        })
+                        
+
+                        let dx=(_this.sel_region.pt2.x-_this.sel_region.pt1.x)*(cacheDef.display_x_axis_scale??1);
+                        let dy=(_this.sel_region.pt2.y-_this.sel_region.pt1.y)*(cacheDef.display_y_axis_scale??1);
+
+                        let dist=Math.sqrt(dx*dx+dy*dy);
+                        ctx.save();
+                        ctx.resetTransform();
+                        ctx.font = "1.5em Arial";
+                        ctx.fillStyle = "rgba(250,100, 50,1)";
+                        ctx.fillText(`距離: ${dist.toFixed(2)}`,  g.mouseStatus.x+10, g.mouseStatus.y+35)
+
+                        ctx.restore();
 
                     }
                 }
@@ -2289,12 +2575,46 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     ctx.resetTransform();
                     // console.log(_this.fetchedPixInfo)
                     // let pixInfo = _this.fetchedPixInfo.data;
-                    ctx.font = "1.5em Arial";
+                    
                     ctx.fillStyle = "rgba(250,100, 50,1)";
 
+                    let dispX=mouseOnCanvas.x;
+                    let dispY=mouseOnCanvas.y;
 
+                    let altered=false;
+                    if(cacheDef.display_origin!==undefined)
+                    {
+                        dispX-=cacheDef.display_origin.x;
+                        dispY-=cacheDef.display_origin.y;  
+                        
+                        altered=true;
+                    }
+                    if(cacheDef.display_x_axis_scale!==undefined)
+                    {
+                        dispX*=cacheDef.display_x_axis_scale;  
+                        altered=true;
+                    }
+                    if(cacheDef.display_y_axis_scale!==undefined)
+                    {    
+                        dispY*=cacheDef.display_y_axis_scale;  
+                        altered=true;
+
+                    }
+
+                    ctx.font = "2em Arial";
+                    ctx.fillStyle = "rgba(250,100, 50,1)";
+                    ctx.fillText(`${dispX.toFixed(1)},${dispY.toFixed(1)}`, g.mouseStatus.x, g.mouseStatus.y)
+
+                    ctx.font = "1.5em Arial";
+                    ctx.fillStyle = "rgba(150,0, 200,1)";
+                    ctx.fillText(`${mouseOnCanvas.x.toFixed(1)},${mouseOnCanvas.y.toFixed(1)}`, g.mouseStatus.x+25, g.mouseStatus.y+15)
                     // console.log(mouseOnCanvas)
-                    ctx.fillText(`${mouseOnCanvas.x.toFixed(1)},${mouseOnCanvas.y.toFixed(1)}`, g.mouseStatus.x, g.mouseStatus.y)
+                    // ctx.font = "5em Arial";
+                    // ctx.fillText(`${mouseOnCanvas.x.toFixed(1)},${mouseOnCanvas.y.toFixed(1)}`, g.mouseStatus.x, g.mouseStatus.y)
+
+
+
+
                     ctx.restore();
                 }
             }
@@ -4229,7 +4549,7 @@ const _OBJ_SEP_DIST_ = 4;
 
 
 
-export function InspTarView_basicInfo({ display, fsPath, EditPermitFlag, style = undefined, renderHook, def, report, onDefChange }: CompParam_InspTarUI) {
+export function InspTarView_basicInfo({ display, fsPath, EditPermitFlag, style = undefined, renderHook, def, report, onDefChange,defDoReload }: CompParam_InspTarUI) {
 
     const [cacheDef, _setCacheDef] = useState<any>(def);
 
@@ -4258,7 +4578,7 @@ export function InspTarView_basicInfo({ display, fsPath, EditPermitFlag, style =
 
                 onDefChange({ ...cacheDef, match_tags: newTags }, false)
             }}>
-            <a>TAGS</a>
+            <Button><TagsOutlined /></Button>
         </TagsEdit_DropDown>
 
 
@@ -4283,13 +4603,37 @@ export function InspTarView_basicInfo({ display, fsPath, EditPermitFlag, style =
         >
             <Button danger type="primary" onClick={() => {
                 setDelConfirmCounter(5);
-            }}>DEL</Button>
+            }}><CloseOutlined /></Button>
         </Popconfirm>
 
 
+
+
+        <Popconfirm
+            title={`確定要重新載入？ 再按:${delConfirmCounter + 1}次`}
+            onConfirm={() => { }}
+            onCancel={() => { }}
+            okButtonProps={{
+                danger: true, onClick: () => {
+                    if (delConfirmCounter != 0) {
+                        setDelConfirmCounter(delConfirmCounter - 1);
+                    }
+                    else {
+                        defDoReload()
+                    }
+                }
+            }}
+            okText={"Yes:" + delConfirmCounter}
+            cancelText="No"
+        >
+            <Button danger type="primary" onClick={() => {
+                setDelConfirmCounter(5);
+            }}><SyncOutlined /></Button>
+        </Popconfirm>
+
         <Button onClick={() => {
             onDefChange(cacheDef, true)
-        }}>SAVE</Button>
+        }}><ToTopOutlined /></Button>
 
         {/* <Switch checkedChildren="隱藏" unCheckedChildren="顯示" checked={cacheDef.default_hide == true} onChange={(check) => {
 
@@ -4304,7 +4648,7 @@ export function InspTarView_basicInfo({ display, fsPath, EditPermitFlag, style =
 
 
 export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI) {
-    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange, UIOption,onUIOptionUpdate,showUIOptionConfigUI=false ,APIExport} = props;
+    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange, defDoReload,UIOption,onUIOptionUpdate,showUIOptionConfigUI=false ,APIExport} = props;
     const _ = useRef<any>({
 
         imgCanvas: document.createElement('canvas'),
@@ -4427,6 +4771,11 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
 
 
     function onCacheDefChange(updatedDef: any, ddd: boolean) {
+        if(updatedDef===undefined)
+        {
+            onDefChange(undefined,ddd);
+            return;   
+        }
         console.log(updatedDef);
         setCacheDef(updatedDef);
 
@@ -4675,7 +5024,11 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
             }}/> */}
                     <InspTarView_basicInfo {...props} def={cacheDef} onDefChange={(newDef, ddd) => {
                         onCacheDefChange(newDef, ddd);
-                    }} />
+                    }} 
+                    
+                    defDoReload={()=>defDoReload()}
+                    
+                    />
 
                     {/* <br /> */}
                     {/* <Button onClick={() => {
@@ -5057,7 +5410,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                                     else
                                     {
                                         ctx.fillText(idText, 0, 0);
-                                        ctx.strokeStyle = ctx.fillStyle = `rgba(100,100,100,0.6)`;
+                                        ctx.strokeStyle = ctx.fillStyle = `rgba(200,0,200,0.6)`;
                                         let fLoc = ctx.measureText(idText).width;
                                         
                                         ctx.fillText((subreg.score===null)?"N/A":subreg.score.toFixed(2) , fLoc, yoffset); yoffset += 19;
@@ -5197,7 +5550,7 @@ export function SingleTargetVIEWUI_SurfaceCheckSimple(props: CompParam_InspTarUI
                             distance:Infinity,
                             regionInfo:{}
                         }
-                        //draw note when cursor close to it
+                        //draw note line when cursor is close to it
                         g_cat.forEach((catInfo: any, _index: number) => {
                             
                             g.ctx.save();
@@ -7572,9 +7925,6 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
         }}>Disconnect</Button>
 
 
-
-
-
         <Button onClick={() => {
 
         (async () => {
@@ -7585,6 +7935,26 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
         }}>GetSetup</Button>
 
 
+
+
+        <Button onClick={() => {
+
+        (async () => {
+            BPG_API.InspTargetExchange(cacheDef.id, { type: "reloadScript" })
+        })()
+
+        }}>reloadScript</Button>
+
+
+
+
+        <Button onClick={() => {
+
+        (async () => {
+            BPG_API.send_P("FO",0,{type:"open",path:fsPath+"/script.py"})
+        })()
+
+        }}>openScriptInEditor</Button>
 
 
 
@@ -7649,6 +8019,137 @@ export function SingleTargetVIEWUI_StageInfoImageSave(props: CompParam_InspTarUI
 
 
 
+export function SingleTargetVIEWUI_ImgSrc(props: CompParam_InspTarUI) {
+    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange, UIOption,onUIOptionUpdate,showUIOptionConfigUI=false ,APIExport} = props;
+
+    const dispatch = useDispatch();
+    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+    const [CameraList, setCameraList] = useState<any[]>([]);
+
+    return <div style={{ ...style }} className={"overlayCon"}>
+    <div className={"overlay scroll HXF"} >
+
+
+        <Dropdown 
+            trigger={['click']}
+            overlay={
+                <div style={{background:"#FFF",border:"5px" }}>
+                   
+
+                    {CameraList.map((cam:any,index:number)=>{
+                        return cam.formats.map((format:any,findex:number)=>{
+                            return <><Button key={index+"-"+findex} onClick={() => {
+
+                                let newDef={...def,CAM_UID:cam.UID,format};
+                                console.log(newDef);
+                                onDefChange(newDef,true);
+
+                                BPG_API.InspTargetUpdate(newDef)
+    
+                            }}>{cam.name+" "+format.w+"x"+format.h+" fourcc:"+format.fourcc}</Button>
+                            <br/></>
+                        })
+                       
+                    }).flat()
+                    }
+                </div>
+            } 
+        >
+
+            <Button onClick={() => {
+                (async () => {
+
+                    let pkts = await BPG_API.InspTargetExchange(def.id, {
+                        type: "GetCameraList",
+                    }) as any[];
+                    console.log(pkts);
+
+                    setCameraList(pkts[0].data);
+
+                })()
+            }}>{def.CAM_UID||"Empty"}</Button>
+        </Dropdown>
+                    
+
+
+
+
+
+    </div>
+
+
+    </div>;
+}
+
+
+
+
+export function SingleTargetVIEWUI_DataTransfer(props: CompParam_InspTarUI) {
+    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange,defDoReload, UIOption,onUIOptionUpdate,showUIOptionConfigUI=false ,APIExport} = props;
+
+
+    const dispatch = useDispatch();
+    const [cacheDef, setCacheDef] = useState<any>(def);
+    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+
+
+
+    useEffect(() => {
+        setCacheDef(def);
+        // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
+        // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
+        return (() => {
+        });
+
+    }, [def]);
+
+
+    function onCacheDefChange(updatedDef: any, doTakeNewImage: boolean = true) {
+
+        if(updatedDef===undefined)
+        {
+            onDefChange(undefined,false);
+            return;   
+        }
+        console.log(updatedDef);
+        setCacheDef(updatedDef);
+
+
+
+        (async () => {
+            await BPG_API.InspTargetUpdate(updatedDef)
+        })()
+        onDefChange(updatedDef, doTakeNewImage);
+    }
+
+    console.log("SingleTargetVIEWUI_DataTransfer", cacheDef,def);
+    return <div style={{ ...style }} className={"overlayCon"}>
+    <div className={"overlay scroll HXF"} >
+
+        <Input maxLength={100} value={cacheDef.id} disabled
+                    style={{ width: "200px" }}
+                    onChange={(e) => {
+                    }} />
+
+        {((EditPermitFlag & EDIT_PERMIT_FLAG.XXFLAGXX) == 0)?null:
+            <InspTarView_basicInfo {...props} def={cacheDef} onDefChange={(newDef, ddd) => {
+                onCacheDefChange(newDef, ddd);
+            }} 
+            
+            defDoReload={()=>defDoReload()}
+            
+            />
+        }
+
+
+    
+    </div>
+
+
+    </div>;
+}
+
+
 
 
 
@@ -7673,7 +8174,12 @@ export function InspTargetUI_MUX(param:CompParam_InspTarUI)
   if(param.def.type=="StageInfoImageSave")
   return <SingleTargetVIEWUI_StageInfoImageSave {...param} />;
 
+  if(param.def.type=="ImgSrc")
+  return <SingleTargetVIEWUI_ImgSrc {...param} />;
 
+
+  if(param.def.type=="DataTransfer")
+    return <SingleTargetVIEWUI_DataTransfer {...param} />;
 
   return  <></>;
 }

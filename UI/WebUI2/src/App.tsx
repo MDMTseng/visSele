@@ -494,7 +494,7 @@ function UICard_Config({inspTarList,config,onConfChange}:{inspTarList:any[],conf
               {
                 card_id="$IT_"+it.id;
               }
-              onConfChange(setCompleteFlag({..._config,itid:it.id,id:card_id}))
+              onConfChange(setCompleteFlag({..._config,itid:it.id,ittype:it.type,id:card_id}))
 
         
             }}>
@@ -655,7 +655,13 @@ function UtilUI_MUX({UIOption,onUIOptionUpdate}:CompParam_UIOption)
 
 
 
-function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDefChange,renderHook}:{WidgetSetID:string,defConfig:any,UIEditFlag:boolean,EditPermitFlag:number, onDefChange:(updatedDef:any,updateIdx:number)=>void,renderHook:any})
+function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDefChange,defDoReload,onDefDelete,renderHook}:{WidgetSetID:string,defConfig:any,UIEditFlag:boolean,EditPermitFlag:number, 
+  onDefChange:(updatedDef:any,updateIdx:number)=>void,
+  defDoReload:(it_id:string)=>void
+  onDefDelete:(it_id:string)=>void,
+  renderHook:any},
+
+)
 {
   
   const _this = useRef<any>({
@@ -793,7 +799,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
 
     return undefined;
   })
-  console.log(WidgetLayout);
+  // console.log(WidgetLayout);
 
 
   
@@ -847,7 +853,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
     <div key="d" style={{ backgroundColor: "#ccc" }}> */}
 
       {WidgetLayout.map((uilayoutInfo:any,idx:number)=>{
-        console.log(uilayoutInfo);
+        // console.log(uilayoutInfo);
         // if(layoutSrcEle[idx]===undefined)return null;
         let UI:JSX.Element=<></>
         let UIEditUI:JSX.Element=<></>
@@ -855,6 +861,12 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
         {
           case "InspTar":
           {
+            if(layoutSrcEle[idx].inspTarDef===undefined)
+            {
+              console.log(layoutSrcEle[idx],uilayoutInfo);
+              UI= <>檢驗項目已移除: 原InspTar id:{layoutSrcEle[idx].itid}  type:{layoutSrcEle[idx].ittype}</>;
+            }
+            else
             UI=<InspTargetUI_MUX 
               display={uilayoutInfo.display!=false} 
               style={{float:"left",width:"100%",height:"100%",overflow:"scroll",borderColor:"#AAA",borderStyle:"solid",borderWidth:"2px",borderRadius:"10px"}} 
@@ -869,6 +881,14 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
                 let newDefConfig={...defConfig,InspTars_main:[...InspTarList]};
                 if(new_rule===undefined)
                 {
+
+
+                  let newWidgetInfo=[...WidgetInfo];
+                  newWidgetInfo=newWidgetInfo.filter((info:any)=>info.id!=uilayoutInfo.i);
+                  updateWidgetLayout(undefined,WidgetLayout);
+
+
+                  onDefDelete(layoutSrcEle[idx].inspTarDef.id as string);
                   // newDefConfig.InspTars_main=newDefConfig.InspTars_main.filter((itar:any,cidx:number)=>cidx!=idx);
                 }
                 else
@@ -880,6 +900,9 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
                 }
                 
                 onDefChange(newDefConfig,idx)
+              }}
+              defDoReload={()=>{
+                defDoReload(layoutSrcEle[idx].inspTarDef.id as string);
               }}
               APIExport={(apis)=>{
                 if(_this.apiTable[uilayoutInfo.i]===undefined)//set initial camera state
@@ -955,6 +978,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
 
               <Button disabled={newUIEleConf.complete!=true}  onClick={()=>{
 
+                console.log(newUIEleConf);
                 let newWidgetInfo=[...WidgetInfo];
                 newWidgetInfo.push({
                   ...newUIEleConf
@@ -965,7 +989,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
                 new_WidgetLayout[new_WidgetLayout.length-1]={
                   ...new_WidgetLayout[new_WidgetLayout.length-1],
                   i:newUIEleConf.id,
-                  type:newUIEleConf.type
+                  type:newUIEleConf.type,
                 }
                 updateWidgetLayout(newWidgetInfo,new_WidgetLayout);
           
@@ -1325,7 +1349,7 @@ function VIEWUI(){
       $DEFPATH:"",
       inCMD_Promise:false,
       InspTarDispIDList:undefined,
-      defConfig:undefined,
+      DefConfig:undefined,
       widgetSetID:"",
       reportListener:{
         _key_:{//example
@@ -1365,7 +1389,7 @@ function VIEWUI(){
   const [newUIID,setNewUIID]=useState("");
   const [cameraLoading,setCameraLoading]=useState(false);
 
-  console.log(">>saveDefConfIndexes",saveDefConfIndexes);
+  // console.log(">>saveDefConfIndexes",saveDefConfIndexes);
   function setDefConfig(newDC:any,inspTarIndex:number=NaN)
   {
     if(inspTarIndex==inspTarIndex)
@@ -1392,6 +1416,17 @@ function VIEWUI(){
   }
   const [modalInfo,setModalInfo]=useState(emptyModalInfo);
 
+
+
+  async function _LOADDef(PrjDefFolderPath:string,it_id:string)
+  {
+
+    let path = PrjDefFolderPath+"/it_"+it_id+"/main.json"
+
+    return await  BPG_API.FILE_Load(path);
+  }
+
+
   async function LOADPrjDef(PrjDefFolderPath:string)
   {
     let api = BPG_API
@@ -1401,11 +1436,14 @@ function VIEWUI(){
     let InspTars_main:any[]=[];
     {
       let InspTars=main.InspTars;
+
+      
+
+
       let InspTars_ids:string[]= InspTars.map((t:{id:string})=>t.id)
       for(let id of InspTars_ids)
       {
-        let path = PrjDefFolderPath+"/it_"+id+"/main.json"
-        InspTars_main.push(await  api.FILE_Load(path));
+        InspTars_main.push(await _LOADDef(PrjDefFolderPath,id));
       }
     }
 
@@ -1420,20 +1458,20 @@ function VIEWUI(){
         })
       }
     }
-    CNC_API.disconnect();
-    if(main.PeripheralInfo && main.PeripheralInfo.connection_info)
-    {
-      CNC_API.machineSetup=main.PeripheralInfo.machine_setup;
+    // CNC_API.disconnect();
+    // if(main.PeripheralInfo && main.PeripheralInfo.connection_info)
+    // {
+    //   CNC_API.machineSetup=main.PeripheralInfo.machine_setup;
 
-      CNC_API.connect(main.PeripheralInfo.connection_info);
-    }
+    //   CNC_API.connect(main.PeripheralInfo.connection_info);
+    // }
 
 
     let XCmds=await  api.FILE_Load( PrjDefFolderPath+"/XCmds.json");
     _this.listCMD_Vairable.$DEFPATH=PrjDefFolderPath;
     return {
       path:PrjDefFolderPath,
-      _folderInfo:await api.Folder_Struct(PrjDefFolderPath,9),
+      // _folderInfo:await api.Folder_Struct(PrjDefFolderPath,9),
       main,
       InspTars_main,
       XCmds
@@ -1469,6 +1507,84 @@ function VIEWUI(){
     _this.listCMD_Vairable.CameraInfo=camAvaInfo;
     return camAvaInfo;
   }
+
+  async function setupInspTarToCore(inspTar:any,inspTarStreamingId:number)
+  {
+
+    let api = BPG_API
+    let id=inspTar.id;
+    // if(inspTar.stream_id===undefined)
+    // {
+    inspTar.stream_id=inspTarStreamingId;
+    // }
+
+    // console.log(id,inspTar)
+
+
+    await api.InspTargetCreate(inspTar,_this.listCMD_Vairable.$DEFPATH+"/it_"+inspTar.id);
+
+    await api.InspTargetSetStreamChannelID(
+      inspTar.id,inspTar.stream_id,
+      {
+        resolve:(pkts)=>{
+          // console.log(pkts);
+        },
+        reject:(pkts)=>{
+          console.log(pkts);
+
+        }
+      }
+    )
+
+    let cbKey="TargetVIEWUI_CB";
+    await api.send_cbs_attach(inspTar.stream_id,cbKey,{
+      resolve:(pkts)=>{
+        
+        let RP=pkts.find((info:any)=>info.type=="RP")
+        if(RP===undefined)return;
+        RP=RP.data;
+        let filteredKey=Object.keys(_this.listCMD_Vairable.reportListener)
+          .filter(key=>{
+            let repListener=_this.listCMD_Vairable.reportListener[key];
+            if(repListener.inspTar_id && repListener.inspTar_id!==RP.InspTar_id)return false;
+            if(repListener.trigger_id && repListener.trigger_id!==RP.trigger_id)return false;
+            if(repListener.type && repListener.type!==RP.type)return false;
+            if(repListener.report!==undefined)return false;
+            return true;
+
+          })
+        
+        filteredKey.forEach(key=>{
+          let liInfo=_this.listCMD_Vairable.reportListener[key];
+          if(liInfo.listen_style=="persist_callback" )
+          {
+            if(liInfo.callback!==undefined)
+            {
+              liInfo.callback(RP,liInfo);
+            }
+            return;
+          }
+
+
+          if(liInfo.resolve!==undefined)
+          {
+            liInfo.resolve(RP);
+          }
+          else
+          {
+            liInfo.report=RP;
+          }
+        })
+        // console.log(RP.data);
+      },
+      reject:(pkts)=>{
+
+      }
+    })
+    
+  }
+
+
   async function ReloadPrjDef(path:string)  
   {
     let prjDef = await LOADPrjDef( path)
@@ -1485,9 +1601,17 @@ function VIEWUI(){
     console.log(_this.listCMD_Vairable.InspTarDispIDList,prjDef)
     let api = BPG_API
 
-    setCameraLoading(true);
-    prjDef.main.CameraInfo= await CameraInfoDoConnection(prjDef.main.CameraInfo,true)
-    setCameraLoading(false);
+    if(prjDef.main.DisableCameraReload==true)
+    {//do not reload camera
+      
+    }
+    else
+    {
+      setCameraLoading(true);
+      prjDef.main.CameraInfo= await CameraInfoDoConnection(prjDef.main.CameraInfo,true)
+      setCameraLoading(false);
+    }
+   
     
 
     let value_dict={};
@@ -1499,77 +1623,11 @@ function VIEWUI(){
     for(let inspTar of prjDef.InspTars_main)
     {
       
-      let id=inspTar.id;
-      // if(inspTar.stream_id===undefined)
-      // {
-      inspTar.stream_id=inspTarStreamingId;
-      inspTarStreamingId++;
       // }
 
       // console.log(id,inspTar)
-
-
-      await api.InspTargetCreate(inspTar,prjDef.path+"/it_"+inspTar.id);
-
-      await api.InspTargetSetStreamChannelID(
-        inspTar.id,inspTar.stream_id,
-        {
-          resolve:(pkts)=>{
-            // console.log(pkts);
-          },
-          reject:(pkts)=>{
-            console.log(pkts);
-  
-          }
-        }
-      )
-
-  
-
-      // await api.send("IT",0,{
-      //   type:"exchange",
-      //   id:inspTar.id,
-      //   data:{type:"value_dict",data:value_dict}
-      // })
-
-
-
-
-      let collection_PGID=53450
-      let cbKey="TargetVIEWUI_CB";
-      await api.send_cbs_attach(inspTar.stream_id,cbKey,{
-        resolve:(pkts)=>{
-          
-          let RP=pkts.find((info:any)=>info.type=="RP")
-          if(RP===undefined)return;
-          RP=RP.data;
-          let filteredKey=Object.keys(_this.listCMD_Vairable.reportListener)
-            .filter(key=>{
-              let repListener=_this.listCMD_Vairable.reportListener[key];
-              if(repListener.inspTar_id && repListener.inspTar_id!==RP.InspTar_id)return false;
-              if(repListener.trigger_id && repListener.trigger_id!==RP.trigger_id)return false;
-              if(repListener.type && repListener.type!==RP.type)return false;
-              if(repListener.report!==undefined)return false;
-              return true;
-
-            })
-          
-          filteredKey.forEach(key=>{
-            if(_this.listCMD_Vairable.reportListener[key].resolve!==undefined)
-            {
-              _this.listCMD_Vairable.reportListener[key].resolve(RP);
-            }
-            else
-            {
-              _this.listCMD_Vairable.reportListener[key].report=RP;
-            }
-          })
-          // console.log(RP.data);
-        },
-        reject:(pkts)=>{
-
-        }
-      })
+      setupInspTarToCore(inspTar,inspTarStreamingId);
+      inspTarStreamingId++;
       
     }
 
@@ -1585,6 +1643,82 @@ function VIEWUI(){
     setSaveDefConfIndexes([]);
     console.log(prjDef,infoList)
   }
+
+  async function remove_InspTarget(id:string)
+  {
+    //remove from defConfig
+    let newDefConfig={...defConfig};
+
+    //check if it is in newDefConfig.main.InspTars
+    console.log(newDefConfig.main.InspTars,id);
+    if(newDefConfig.main.InspTars.find((itar:any)=>itar.id==id)===undefined)
+    {
+      console.log("Not in main.InspTars");
+      return false;
+    }
+
+
+
+    let bkFolder=_this.listCMD_Vairable.$DEFPATH+"/IT_BK";
+
+    let tarIT_Folder=_this.listCMD_Vairable.$DEFPATH+"/it_"+id;
+    
+    await BPG_API.InspTargetRemove(id);
+
+    await BPG_API.send_P("FO",0,{type:"create",path:bkFolder})//create a backup folder
+    await BPG_API.send_P("FO",0,{type:"move",from:tarIT_Folder,to:bkFolder+"/it_"+id})//create a backup folder
+
+    newDefConfig.InspTars_main=newDefConfig.InspTars_main.filter((itar:any)=>itar.id!==id);
+    newDefConfig.main.InspTars=newDefConfig.main.InspTars.filter((itar:any)=>itar.id!==id);
+    setDefConfig(newDefConfig);
+    return true;
+  }
+
+
+  async function reload_InspTarget(id:string)
+  {
+    let newDefConfig={...defConfig};
+    let idx = newDefConfig.InspTars_main.findIndex((itar:any)=>itar.id==id);
+    if(idx<0)return;
+
+
+
+    let loadedDef=await _LOADDef(defConfig.path,id);
+
+
+    newDefConfig.InspTars_main[idx]=loadedDef;
+    setDefConfig(newDefConfig);
+    await BPG_API.InspTargetUpdate(loadedDef);
+    
+  }
+
+  async function create_new_InspTarget(type:string,id:string)
+  {
+    
+    // console.log({type:"copy",from:"data/InspectionTarget_Template/"+type,to:_this.listCMD_Vairable.$DEFPATH+"/it_"+id});
+
+    let templatePath="data/SYSDAT/InspectionTarget_Template/"+type;
+    let targetPath=_this.listCMD_Vairable.$DEFPATH+"/it_"+id;
+    await BPG_API.send_P("FO",0,{type:"copy",from:templatePath,to:targetPath})//create a backup folder
+
+    //try to read targetPath/main.json
+    let def=await BPG_API.FILE_Load(targetPath+"/main.json");
+    def.id=id;//alter the id
+    def.match_tags=[id+"_Inject"];
+
+    await BPG_API.FILE_Save(targetPath+"/main.json",def);
+    // def.type=type;//should be the same as the template
+
+    let newDefConfig={...defConfig};
+    newDefConfig.InspTars_main.push(def);
+    newDefConfig.main.InspTars.push({id});
+    setDefConfig(newDefConfig);
+
+    
+    await setupInspTarToCore(def,new Date().getTime());
+    
+  }
+
 
   useEffect(()=>{//load default
 
@@ -1611,6 +1745,11 @@ function VIEWUI(){
 
 
 
+  const [newITType, setNewITType] = useState<string|undefined>(undefined);
+  const [newITName, setNewITName] = useState<string|undefined>(undefined);
+
+  
+
 
 
   function menuCol(
@@ -1630,31 +1769,6 @@ function VIEWUI(){
   }
 
 
-
-  let displayInspTarId=_this.listCMD_Vairable.InspTarDispIDList as string[];//=defInfo.rules.map((rule,idx)=>def.id+" ");
-  
-  let displayInspTarIdx:number[]=[];
-  let displayInspTarIdx_hide:number[]=[];
-  if(defConfig!==undefined)
-  {
-    if(_this.listCMD_Vairable.InspTarDispIDList===undefined)
-    {
-      displayInspTarId=defConfig.InspTars_main.map((itar:any)=>itar.id);
-    }
-  
-   
-    displayInspTarIdx=displayInspTarId
-      .map(itarID=>defConfig.InspTars_main.findIndex((itar:any)=>itar.id==itarID))
-      .filter(idx=>idx>=0)
-  
-    displayInspTarIdx_hide
-      =defConfig.InspTars_main.map((itar:any,idx:number)=>idx).filter((idx:number)=>{
-        if(displayInspTarIdx.find(idx_to_show=>idx_to_show==idx)===undefined)
-          return true;
-        return false;
-      });
-  
-  }
 
   function constructListCMDUI(UIData:any,updateUI:(data_:any)=>any)
   {
@@ -1748,7 +1862,15 @@ function VIEWUI(){
             }
 
             case "divider":{
-              return <Divider {...opt}>{(typeof opt.text === 'string')?opt.text:opt.text(dataIndex)}</Divider>
+              let filterd_opt={...opt}
+              filterd_opt.type=opt.divider_type;
+              if(opt.onClick!==undefined)
+              {
+                filterd_opt.onClick=()=>{
+                  opt.onClick(updateUI);
+                }
+              }
+              return <Divider {...filterd_opt}>{opt.text}</Divider>
             }
           }
           return "OBJ INFO IS NOT HANDLED"
@@ -1760,10 +1882,10 @@ function VIEWUI(){
         if(opt=="$\n")return <br/>;
 
 
-        // if(opt.startsWith("$\s")){
-        //   let count=opt.slice(2);
-        //   return 
-        // }
+        if(opt.startsWith("$space:")){
+          let count=opt.slice(7);
+          return <div style={{width:count,float:"left"}}/>
+        }
 
         if(opt=="$\s")return " ";
 
@@ -2052,6 +2174,9 @@ function VIEWUI(){
       delete e.cmd
       if(e.e!==undefined)
         e.e=e.e.toString();
+
+      let stackTrace=e.stackTrace??(new Error().stack);
+
       setModalInfo({
 
         ...emptyModalInfo,
@@ -2066,8 +2191,11 @@ function VIEWUI(){
         },
         footer:null,
         title:"!!!!錯誤 例外!!!!",
-        DATA:{info:`${JSON.stringify(e,null,2)}`},
-        content:JSON.stringify(e,null,2)
+        DATA:{},
+        content:<>
+          {JSON.stringify(e,null,2)}
+          <pre>{stackTrace}</pre>
+        </>
       })
     });
   }
@@ -2076,105 +2204,123 @@ function VIEWUI(){
 
   // console.log(displayInspTarId,displayInspTarIdx,displayInspTarIdx_hide);
 
+
+  _this.newITName=newITName;
+  _this.newITType=newITType;
+
+
+  function InspTarBluePrintUI()
+  {
+    let latestModalInfo={
+      ...emptyModalInfo,
+      timeTag:Date.now(),
+      type:"AA",
+      visible:true,
+      onOK:()=>{
+        setModalInfo({...modalInfo,visible:false})
+      },
+      onCancel:()=>{
+        setModalInfo({...modalInfo,visible:false})
+      },
+      title:undefined,
+      footer:null,
+      DATA:"",
+      content:()=><>
+        {/* <NodeFlow_DEMO defConfig={defConfig}/> */}
+
+        <div style={{width:"100%",height:"100%"}}  className={"overlayCon"}>
+
+          <div className={"overlay"} style={{zIndex:1}}  >
+
+
+            <Input placeholder="newITName" onChange={(e)=>{setNewITName(e.target.value)}} value={_this.newITName}/>
+
+            <Dropdown 
+                trigger={['click']}
+                overlay={
+                  <Menu>
+                    <Menu.Item key="1" onClick={()=>{setNewITType("Orientation_ShapeBasedMatching")}}>Orientation_ShapeBasedMatching</Menu.Item>
+                    <Menu.Item key="2" onClick={()=>{setNewITType("SurfaceCheckSimple")}}>SurfaceCheckSimple</Menu.Item>
+
+                  </Menu>
+                } >
+                
+                <Button > 檢驗類型:{_this.newITType}</Button>
+
+            </Dropdown>
+
+            <br/>
+
+            <Button disabled={_this.newITType===undefined || _this.newITName===undefined} onClick={()=>{
+              create_new_InspTarget(_this.newITType,_this.newITName);
+              setNewITName(undefined);
+              setNewITType(undefined);
+              setTimeout(()=>{
+                InspTarBluePrintUI();
+              },1);
+            }}>AddNew</Button>
+          </div>
+
+
+
+
+          <DDDD defConfig={defConfig} nodeInfo={defConfig.main.InspTarNodeInfo} onNodesInfoChange={(nInfo)=>{
+            console.log(nInfo)
+
+
+            setDefConfig(ObjShellingAssign(defConfig,["main","InspTarNodeInfo"],nInfo),-12)
+
+
+
+            // let new_defConfig=ObjShellingAssign(defConfig,["XCmds"],new_xCMDList);
+
+
+            // //console.log(defConfig,new_defConfig)
+            // setDefConfig(new_defConfig,-1);
+
+
+
+          }}
+          
+          nodeUpdateMinInterval={500}
+          onNodeEvent={(event)=>{
+            console.log(event)
+          }}></DDDD>
+        </div>
+
+
+      </>
+    };
+
+    setModalInfo(latestModalInfo)
+  }
+
+
   let InspMenu=
   menuCol('檢驗', 'insp',undefined, [
     ...(
       defConfig===undefined?[ menuCol("WAIT...","WAIT...")]:
       (
         [
-          ...displayInspTarIdx.map((InspTarIdx:number,listIndex:number)=>{
-            let inspTar=defConfig.InspTars_main[InspTarIdx];
 
-            return  menuCol(<div onClick={()=>{
-              
-
-
-              displayInspTarId.splice(listIndex, 1);
-              _this.listCMD_Vairable.InspTarDispIDList=displayInspTarId;
-
-
-              console.log(displayInspTarId)
-              setForceUpdateCounter(forceUpdateCounter+1);
-
-
-
-            }}>
-              {inspTar.id}
-            </div>,inspTar.id)
-          }),
           menuCol(<div onClick={()=>{
-              
-
-
-            setModalInfo({
-              ...emptyModalInfo,
-              timeTag:Date.now(),
-              type:"AA",
-              visible:true,
-              onOK:()=>{
-                setModalInfo({...modalInfo,visible:false})
-              },
-              onCancel:()=>{
-                setModalInfo({...modalInfo,visible:false})
-              },
-              title:undefined,
-              footer:null,
-              DATA:"",
-              content:<>
-                {/* <NodeFlow_DEMO defConfig={defConfig}/> */}
-
-                <DDDD defConfig={defConfig} nodeInfo={defConfig.main.InspTarNodeInfo} onNodesInfoChange={(nInfo)=>{
-                  console.log(nInfo)
-
-
-                  setDefConfig(ObjShellingAssign(defConfig,["main","InspTarNodeInfo"],nInfo),-12)
-
-
-
-                  // let new_defConfig=ObjShellingAssign(defConfig,["XCmds"],new_xCMDList);
-
-
-                  // //console.log(defConfig,new_defConfig)
-                  // setDefConfig(new_defConfig,-1);
-
-
-
-                }}
-                
-                nodeUpdateMinInterval={500}
-                onNodeEvent={(event)=>{
-                  console.log(event)
-                }}></DDDD>
-
-
-              </>
-            })
+            InspTarBluePrintUI();
           }}>
             ------------
             
             
           </div>,"divLine"),
-          ...displayInspTarIdx_hide.map((InspTarIdx:number,listIndex:number)=>{
-            let inspTar=defConfig.InspTars_main[InspTarIdx];
+      
+          ...defConfig.InspTars_main.map((inspTar:any)=>{
 
             return  menuCol(<div onClick={()=>{
               
-
-
-              displayInspTarId.push(inspTar.id);
-              _this.listCMD_Vairable.InspTarDispIDList=displayInspTarId;
-
-
-              console.log(displayInspTarId)
-              setForceUpdateCounter(forceUpdateCounter+1);
-
 
 
             }}>
               {inspTar.id}
             </div>,inspTar.id)
           }),
-      
       
       
         ]
@@ -2401,7 +2547,7 @@ function VIEWUI(){
           //console.log(defConfig,new_defConfig)
           setDefConfig(new_defConfig,-1);
           setXCMDIdx(-1);
-        }}>+</div>,"_ADD_")//new xcmd 
+        }}>+</div>,"_ADD_xcmd")//new xcmd 
 
       ]
       
@@ -2700,6 +2846,7 @@ function VIEWUI(){
           SavePrjDef(_DEF_FOLDER_PATH_,defConfig);
           setSaveDefConfIndexes([]);
         }}>SAVE</Menu.Item>
+
           </>
         }
 
@@ -2882,6 +3029,16 @@ function VIEWUI(){
 
         _this.CACHED_GLOBAL_VARIABLE=undefined;
         }}  renderHook={_this.listCMD_Vairable.renderHook}
+
+        onDefDelete={(id:string)=>{
+
+          remove_InspTarget(id);
+        }}
+
+        defDoReload={(id:string)=>{
+          
+          reload_InspTarget(id);
+        }}
         />
       </ITGlobalVariableContext.Provider>
       </>}
