@@ -169,7 +169,6 @@ class StpGroup
   // float latestAcc=100;
   // float latestDeacc=100;
 
-  float main_junctionMaxSpeedJump=1;
   
   MSTP_segment_adv_info adv_info={
     .deaWeagle=1.2,// when do deacc the end time estimation might not be accurate, so we need to alter the deacc number to match 

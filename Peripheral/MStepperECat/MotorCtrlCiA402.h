@@ -49,6 +49,8 @@ public:
         state = RunningState::detached;
     }
 
+    virtual uint32_t getDigitalInput()=0;
+
     int adj_steps=0;
     virtual void enable(bool en = true)
     {
@@ -185,7 +187,10 @@ public:
         //   motor[i].getAliasAddress());
     }
 
-
+    uint32_t getDigitalInput()
+    {
+        return (motdrv.driveGetDigitalInputs()>>16)&1;
+    }
 
     bool setDO(uint16_t DO_pdo_reg)
     {
@@ -250,6 +255,12 @@ public:
     {
         
         encoder_check=true;
+    }
+
+    
+    uint32_t getDigitalInput()
+    {
+        return motdrv.driveGetDigitalInputs()&1;
     }
 
 
