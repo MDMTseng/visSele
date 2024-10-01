@@ -114,6 +114,87 @@ CameraLayer::status CameraLayer_Aravis::isInOperation()
 {//TODO: check availability
     return CameraLayer::ACK;
 }
+
+
+CameraLayer::status bayerToRGB(uint8_t* img_dat, uint8_t* imgBuffer, int width, int height, int channelCount, uint64_t format)
+{
+    if (channelCount != 3) return CameraLayer::NAK; // Only support RGB output
+
+    int redRowStart, blueRowStart, redFirst;
+    
+    // Set parameters based on Bayer pattern
+    switch (format) {
+        case ARV_PIXEL_FORMAT_BAYER_RG_8:
+            redRowStart = 0; // Red on even rows
+            blueRowStart = 1; // Blue on odd rows
+            redFirst = 1; // Red is on the first pixel of even rows
+            break;
+        case ARV_PIXEL_FORMAT_BAYER_GR_8:
+            redRowStart = 0; // Red on even rows
+            blueRowStart = 1; // Blue on odd rows
+            redFirst = 0; // Green is on the first pixel of even rows
+            break;
+        case ARV_PIXEL_FORMAT_BAYER_GB_8:
+            redRowStart = 1; // Red on odd rows
+            blueRowStart = 0; // Blue on even rows
+            redFirst = 0; // Green is on the first pixel of odd rows
+            break;
+        case ARV_PIXEL_FORMAT_BAYER_BG_8:
+            redRowStart = 1; // Red on odd rows
+            blueRowStart = 0; // Blue on even rows
+            redFirst = 1; // Blue is on the first pixel of even rows
+            break;
+        default:
+            return CameraLayer::NAK; // Invalid format
+    }
+
+    // Loop through the image (excluding the borders for safety)
+    for (int i = 1; i < height - 1; i++) {
+        int rowIsRed = (i % 2 == redRowStart); // Determine if current row is a "Red" row
+        uint8_t* bayerRow = img_dat + i * width;
+        uint8_t* prevRow = img_dat + (i - 1) * width;
+        uint8_t* nextRow = img_dat + (i + 1) * width;
+        uint8_t* rgbRow = imgBuffer + i * width * channelCount;
+
+        for (int j = 1; j < width - 1; j++) {
+            int colIsRed = (j % 2 == redFirst); // Determine if current pixel is a Red pixel
+            int colIsBlue = !colIsRed; // If not Red, then it's Blue (or Green)
+
+            int R = 0, G = 0, B = 0;
+
+            // Determine pixel type and interpolate based on its neighbors
+            if (rowIsRed && colIsRed) {
+                // Red pixel
+                R = bayerRow[j];
+                G = (bayerRow[j - 1] + bayerRow[j + 1] + prevRow[j] + nextRow[j]) / 4;
+                B = (prevRow[j - 1] + prevRow[j + 1] + nextRow[j - 1] + nextRow[j + 1]) / 4;
+            } else if (!rowIsRed && colIsBlue) {
+                // Blue pixel
+                B = bayerRow[j];
+                G = (bayerRow[j - 1] + bayerRow[j + 1] + prevRow[j] + nextRow[j]) / 4;
+                R = (prevRow[j - 1] + prevRow[j + 1] + nextRow[j - 1] + nextRow[j + 1]) / 4;
+            } else if (rowIsRed && !colIsRed) {
+                // Green pixel in a Red row (Green-Red pixel)
+                G = bayerRow[j];
+                R = (bayerRow[j - 1] + bayerRow[j + 1]) / 2;
+                B = (prevRow[j] + nextRow[j]) / 2;
+            } else {
+                // Green pixel in a Blue row (Green-Blue pixel)
+                G = bayerRow[j];
+                B = (bayerRow[j - 1] + bayerRow[j + 1]) / 2;
+                R = (prevRow[j] + nextRow[j]) / 2;
+            }
+
+            // Store the result in the RGB buffer
+            rgbRow[j * 3 + 0] = B;
+            rgbRow[j * 3 + 1] = G;
+            rgbRow[j * 3 + 2] = R;
+        }
+    }
+
+    return CameraLayer::ACK;
+}
+
 CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int channelCount, size_t pixelCount)
 {
 
@@ -167,6 +248,8 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
   {
     
     if(channelCount!=3)return NAK;
+    // memcpy(imgBuffer,img_dat, w * h*3);
+
     memcpy(imgBuffer,img_dat, w * h*3);
     // LOGI("fi.timeStamp_us:%llu",fi.timeStamp_us);
     // LOGI("xywh:%d,%d %d,%d",x,y,w,h);
@@ -175,181 +258,77 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
     return ACK;
 
   }
-  else if(format == ARV_PIXEL_FORMAT_BAYER_GR_8)
+  else if(format == ARV_PIXEL_FORMAT_BAYER_GR_8 || format == ARV_PIXEL_FORMAT_BAYER_GB_8)
   {
-    if(channelCount!=3)return NAK;
-
-
-    //G R G R G R
-    //B G B G B G
-    //G R G R G R
-    //B G B G B G
-    //G R G R G R
-
-    // int h2=h-2;
-    // int w2=w-2;
-
-
-    for(int i=1;i<h-2;i++)
-    {
-      int skipX=1;
-      uint8_t* bayerPix=img_dat+i*w+skipX;
-      uint8_t* bayerPix_NL=img_dat+(i+1)*w+skipX;
-      uint8_t* bayerPix_PL=img_dat+(i-1)*w+skipX;
-      uint8_t* tarPix=imgBuffer+((i*w)+skipX)*channelCount;
-
-      int y_type=2*(i&1);
-      for(int j=1;j<w-2;j++)
-      {
-        
-        int x_type=j&1;
-        int pix_Type=x_type+y_type;
-        int R=0,G=0,B=0;
-
-        if(pix_Type==0)
-        {
-          
-          //B G B G B G
-          //G R[G]R G R
-          //B G B G B G
-          G=(bayerPix[0]+bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/5;
-          R=(bayerPix[1]+bayerPix[-1])/2;
-          B=(bayerPix_NL[0]+bayerPix_PL[0])/2;
-
-        }
-        else if(pix_Type==1)
-        {
-          
-          //B G B G B G
-          //G R G[R]G R
-          //B G B G B G
-          G=(bayerPix[1]+bayerPix[-1]+bayerPix_NL[0]+bayerPix_PL[0])/4;
-          R=bayerPix[0];
-          B=(bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/4;
-        }
-        else if(pix_Type==2)
-        {
-          //G R G R G R
-          //B G[B]G B G
-          //G R G R G R
-          G=(bayerPix[1]+bayerPix[-1]+bayerPix_NL[0]+bayerPix_PL[0])/4;
-          B=bayerPix[0];
-          R=(bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/4;
-        }
-        else//3
-        {
-          //G R G R G R
-          //B G B[G]B G
-          //G R G R G R
-          G=(bayerPix[0]+bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/5;
-          B=(bayerPix[1]+bayerPix[-1])/2;
-          R=(bayerPix_NL[0]+bayerPix_PL[0])/2;
-        }
-
-
-
-
-
-
-        tarPix[0]=B;
-        tarPix[1]=G;
-        tarPix[2]=R;
-        bayerPix++;
-        bayerPix_NL++;
-        bayerPix_PL++;
-        tarPix+=channelCount;
-      }
-
-    }
-    return ACK;
+    return bayerToRGB(img_dat, imgBuffer, w, h, channelCount, ARV_PIXEL_FORMAT_BAYER_GB_8);
   }
-  else if(format == ARV_PIXEL_FORMAT_BAYER_GB_8)
+  else if(format == ARV_PIXEL_FORMAT_BAYER_RG_8)
   {
-    if(channelCount!=3)return NAK;
 
+    if(channelCount != 3) return NAK;
 
-    //G B G B G
-    //R G R G R
-    //G B G B G
-    //R G R G R
-
-    // int h2=h-2;
-    // int w2=w-2;
-
-
-    for(int i=1;i<h-2;i++)
+    // Iterate over the image (excluding the borders)
+    for(int i = 1; i < h - 2; i++)
     {
-      int skipX=1;
-      uint8_t* bayerPix=img_dat+i*w+skipX;
-      uint8_t* bayerPix_NL=img_dat+(i+1)*w+skipX;
-      uint8_t* bayerPix_PL=img_dat+(i-1)*w+skipX;
-      uint8_t* tarPix=imgBuffer+((i*w)+skipX)*channelCount;
+        int skipX = 1;
+        uint8_t* bayerPix = img_dat + i * w + skipX;
+        uint8_t* bayerPix_NL = img_dat + (i + 1) * w + skipX;
+        uint8_t* bayerPix_PL = img_dat + (i - 1) * w + skipX;
+        uint8_t* tarPix = imgBuffer + ((i * w) + skipX) * channelCount;
 
-      int y_type=2*((i-1)&1);
-      for(int j=1;j<w-2;j++)
-      {
-        
-        int x_type=(j-1)&1;
-        int pix_Type=x_type+y_type;
-        int R=0,G=0,B=0;
-
-        if(pix_Type==0)
+        int y_type = 2 * ((i - 1) & 1);  // Determine row type (even or odd)
+        for(int j = 1; j < w - 2; j++)
         {
-          
-          //B G B G B G
-          //G R[G]R G R
-          //B G B G B G
-          G=(bayerPix[0]+bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/5;
-          R=(bayerPix[1]+bayerPix[-1])/2;
-          B=(bayerPix_NL[0]+bayerPix_PL[0])/2;
+            int x_type = (j - 1) & 1;  // Determine column type (even or odd)
+            int pix_Type = x_type + y_type;
+            int R = 0, G = 0, B = 0;
 
+            if(pix_Type == 0)
+            {
+                // Red pixel (even row, even column)
+                R = bayerPix[0];
+                G = (bayerPix[1] + bayerPix[-1] + bayerPix_NL[0] + bayerPix_PL[0]) / 4;
+                B = (bayerPix_NL[1] + bayerPix_NL[-1] + bayerPix_PL[1] + bayerPix_PL[-1]) / 4;
+            }
+            else if(pix_Type == 1)
+            {
+                // Green pixel (even row, odd column)
+                R = (bayerPix[-1] + bayerPix[1]) / 2;
+                G = bayerPix[0];
+                B = (bayerPix_NL[0] + bayerPix_PL[0]) / 2;
+            }
+            else if(pix_Type == 2)
+            {
+                // Green pixel (odd row, even column)
+                R = (bayerPix_PL[0] + bayerPix_NL[0]) / 2;
+                G = bayerPix[0];
+                B = (bayerPix[-1] + bayerPix[1]) / 2;
+            }
+            else // pix_Type == 3
+            {
+                // Blue pixel (odd row, odd column)
+                R = (bayerPix_PL[1] + bayerPix_PL[-1] + bayerPix_NL[1] + bayerPix_NL[-1]) / 4;
+                G = (bayerPix[-1] + bayerPix[1] + bayerPix_NL[0] + bayerPix_PL[0]) / 4;
+                B = bayerPix[0];
+            }
+
+            // Assign RGB values to the output buffer
+            tarPix[0] = R;
+            tarPix[1] = G;
+            tarPix[2] = B;
+
+            // Move to the next pixel
+            bayerPix++;
+            bayerPix_NL++;
+            bayerPix_PL++;
+            tarPix += channelCount;
         }
-        else if(pix_Type==1)
-        {
-          
-          //B G B G B G
-          //G R G[R]G R
-          //B G B G B G
-          G=(bayerPix[1]+bayerPix[-1]+bayerPix_NL[0]+bayerPix_PL[0])/4;
-          R=bayerPix[0];
-          B=(bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/4;
-        }
-        else if(pix_Type==2)
-        {
-          //G R G R G R
-          //B G[B]G B G
-          //G R G R G R
-          G=(bayerPix[1]+bayerPix[-1]+bayerPix_NL[0]+bayerPix_PL[0])/4;
-          B=bayerPix[0];
-          R=(bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/4;
-        }
-        else//3
-        {
-          //G R G R G R
-          //B G B[G]B G
-          //G R G R G R
-          G=(bayerPix[0]+bayerPix_NL[-1]+bayerPix_NL[1]+bayerPix_PL[-1]+bayerPix_PL[1])/5;
-          B=(bayerPix[1]+bayerPix[-1])/2;
-          R=(bayerPix_NL[0]+bayerPix_PL[0])/2;
-        }
-
-
-
-
-
-
-        tarPix[0]=B;
-        tarPix[1]=G;
-        tarPix[2]=R;
-        bayerPix++;
-        bayerPix_NL++;
-        bayerPix_PL++;
-        tarPix+=channelCount;
-      }
-
     }
+
     return ACK;
-  }
+}
+
+
   else
   {
     LOGE("format:%0x transform is not impl yet.... ",format);
@@ -518,7 +497,32 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
 
   arv_camera_set_trigger(camera, "Software", NULL);
 
-  arv_camera_set_pixel_format(camera,ARV_PIXEL_FORMAT_BGR_8_PACKED,NULL);//this need to be before arv_camera_create_stream
+
+
+  
+  {
+    GError *err = NULL;
+
+    {
+      guint n_pixel_formats;
+      gint64 *format=arv_camera_dup_available_pixel_formats			(camera,&n_pixel_formats,NULL);
+      for(int i=0;i<n_pixel_formats;i++)
+      {
+        LOGI("format:%0X",format[i]);
+      }
+    }
+      
+    err=NULL;
+    arv_camera_set_pixel_format(camera,ARV_PIXEL_FORMAT_BGR_8_PACKED,&err);//this need to be before arv_camera_create_stream
+
+    if (err)
+    {
+      LOGE("ERR code:%d msg:%s", err->code, err->message);
+      g_clear_error(&err);
+    }
+
+  }
+
   stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
   
   // arv_camera_set_chunk_mode(camera,true,NULL);
