@@ -62,7 +62,7 @@ function isString(val){
   return (typeof val === 'string' || val instanceof String)
 }
 
-function pjsonp(url,timeout=10000)
+function pjsonp(url,timeout=60000)
 {
   return new Promise((res,rej)=>{
     try{
