@@ -3996,7 +3996,7 @@ public:
 
     {
 
-      if(strcmp(type,"G1.S1")==0)
+      if(strcmp(type,"G1.S")==0)
       {
         float S=jgetNum(cmd,"S");
 
@@ -5770,6 +5770,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     MG_PLATE.motor_enable(false);
     MG_PPU.motor_enable(false);
     motorS1.enable(false);
+    motorReelAdv.enable(false);
     rspAck=true;
     doRsp=true;
   } 
@@ -5779,6 +5780,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     MG_PLATE.motor_enable(true);
     MG_PPU.motor_enable(true);
     motorS1.enable();
+    motorReelAdv.enable();
     rspAck=true;
     doRsp=true;
   } 
@@ -6041,6 +6043,12 @@ void myCallback()
         isEveryMotorOK=false;
         break;
       }
+      if(motorReelAdv.state!=MotorCtrlCiA402::RunningState::running)
+      {
+        isEveryMotorOK=false;
+        break;
+      }
+      
       if(motorPPU.state!=MotorCtrlCiA402::RunningState::running)
       {
         isEveryMotorOK=false;
@@ -6054,6 +6062,7 @@ void myCallback()
       MG_SIMP.motor_enable(false);
       MG_PPU.motor_enable(false);
       motorS1.enable(false);
+      motorReelAdv.enable(false);
     }
     else
     {
@@ -6078,6 +6087,7 @@ void myCallback()
         motorZ.update(simp_mot_adv->at(1));
         motorV.update(simp_mot_adv->at(2));
         motorS1.update(simp_mot_adv->at(3));
+        motorReelAdv.update(simp_mot_adv->at(4));
       }
       if(ppu_mot_adv)
       {
@@ -6119,6 +6129,7 @@ void setup()
     motorPLATE.encoder_check=false;
 
     motorS1.encoder_check=false;
+    motorReelAdv.encoder_check=false;
 
     motorPPU.gearRatioB=6400;//64pulse/rev
   }
@@ -6332,6 +6343,7 @@ bool startECat()
   MG_PPU.motor_attach(master);
 
   motorS1.attach(master);
+  motorReelAdv.attach(master);
 
   // printPdoList(&(MG_SIMP.motorPPU.motdrv));
   //  printEthercatDeviceInfo(&(MG_SIMP.motorPPU.motdrv));
@@ -6370,6 +6382,7 @@ bool startECat()
    MG_PLATE.motor_enable();
    MG_PPU.motor_enable();
    motorS1.enable();
+   motorReelAdv.enable();
    isECatStarted=true;
 
    
@@ -6397,6 +6410,7 @@ bool stopECat()
   MG_PPU.motor_enable(false);
   MG_PLATE.motor_enable(false);
   motorS1.enable(false);
+  motorReelAdv.enable(false);
   
   djrl.dbg_printf("master.stop()");
   master.stop();
@@ -6413,6 +6427,7 @@ bool stopECat()
   MG_PLATE.motor_detach();
   MG_PPU.motor_detach();
   motorS1.detach();
+  motorReelAdv.detach();
   isECatStarted=false;
   master.end();
   return true;
