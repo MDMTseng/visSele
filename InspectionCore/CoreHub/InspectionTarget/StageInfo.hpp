@@ -49,6 +49,8 @@ class StageInfo{
     cJSON_AddStringToObject(rep,"InspTar_type",typeName().c_str());
     cJSON_AddNumberToObject(rep,"trigger_id",trigger_id);
     cJSON_AddNumberToObject(rep,"process_time_us",process_time_us);
+    cJSON_AddNumberToObject(rep,"time_stamp_us",img_prop.fi.timeStamp_us);
+
 
     cJSON* tagset=cJSON_CreateArray();
     cJSON_AddItemToObject(rep,"tags",tagset);

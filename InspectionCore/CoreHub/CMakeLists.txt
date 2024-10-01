@@ -124,7 +124,14 @@ if($ENV{FEATURE_COMPILE_W_ARAVIS} EQUAL 1)
   elseif(APPLEARM64)
   
     pkg_search_module(GLIB REQUIRED glib-2.0)
-    # message( >>>> ${GLIB_INCLUDE_DIRS} )
+    message( >>>> ${GLIB_INCLUDE_DIRS} )
+    message( >>GLIB_INCLUDE_DIRS>> ${GLIB_INCLUDE_DIRS} )
+
+    message("GLIB_INCLUDE_DIRS: ${GLIB_INCLUDE_DIRS}")
+    message("GLIB_LIBRARY_DIRS: ${GLIB_LIBRARY_DIRS}")
+    message("GLIB_CFLAGS_OTHER: ${GLIB_CFLAGS_OTHER}")
+
+
     set ( OS_SP_inc "${OS_SP_inc} ${GLIB_INCLUDE_DIRS}")
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
     
@@ -136,7 +143,7 @@ if($ENV{FEATURE_COMPILE_W_ARAVIS} EQUAL 1)
   elseif(APPLE)
     
     pkg_search_module(GLIB REQUIRED glib-2.0)
-    # message( >>>> ${GLIB_INCLUDE_DIRS} )
+    message( >>GLIB_INCLUDE_DIRS>> ${GLIB_INCLUDE_DIRS} )
     set ( OS_SP_inc "${OS_SP_inc} ${GLIB_INCLUDE_DIRS}")
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
     
@@ -170,12 +177,9 @@ endif()
 
 add_executable (visSele main.cpp wiringPanel.cpp wiringPanel_ext.cpp 
 InspectionTarget/InspectionTarget.cpp 
-InspectionTarget/InspTar_Orientation_ColorRegionOval.cpp 
-InspectionTarget/InspTar_SpriteDraw.cpp 
 InspectionTarget/InspTar_ImgSrc.cpp
 InspectionTarget/InspTar_Orientation_ShapeBasedMatching.cpp
 InspectionTarget/InspTar_SurfaceCheckSimple.cpp
-InspectionTarget/InspTar_WBar_SizeComp.cpp
 ${PLAT_FILES}
 
 

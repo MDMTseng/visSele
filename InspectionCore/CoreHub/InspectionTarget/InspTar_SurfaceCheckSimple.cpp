@@ -997,7 +997,7 @@ int PerformInsp(
     return regionResultList[subregIdx].type;
 
   
-  LOGI("PerformInsp idx:%d",subregIdx);
+  // LOGI("PerformInsp idx:%d",subregIdx);
 
 
   cJSON *jsub_region= cJSON_GetArrayItem(jsub_regions,subregIdx);
@@ -2038,7 +2038,7 @@ int PerformInsp(
       float line_total_length_thres=DFetch_NUMBER_ex(jsub_region,"line_total_length_thres",1000000000,gval);
 
 
-      LOGE("gval:%p",gval);
+      // LOGE("gval:%p",gval);
       float area_thres = DFetch_NUMBER_ex(jsub_region,"area_thres",99999,gval);
       float area_min_thres = DFetch_NUMBER_ex(jsub_region,"area_min_thres",-1,gval);
 
@@ -2058,7 +2058,7 @@ int PerformInsp(
 
 
 
-      LOGE("area_thres:%f",area_thres);
+      // LOGE("area_thres:%f",area_thres);
       resultImage[subregIdx]=sub_region_ROI;
       Mat img_HSV;
       cvtColor(sub_region_ROI, img_HSV, COLOR_BGR2HSV);

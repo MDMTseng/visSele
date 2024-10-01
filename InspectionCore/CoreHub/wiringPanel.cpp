@@ -321,18 +321,22 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             // triggerInfoMatchingBuffer.w_lock();
           }
 
-          
+          auto curCamID=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
+          auto curCamSideName=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().side_name;
+
           for(int i=0;i<triggerInfoMatchingBuffer.size();i++)//try to find trigger info matching
           {//
             if(triggerInfoMatchingBuffer[i].stInfo!=NULL)continue;//skip image/pipe info
 
             auto _triggerInfo=triggerInfoMatchingBuffer[i].triggerInfo;
-           
-            // if(_triggerInfo.camera_id!=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not match
-            auto curCamID=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
-            if (curCamID.find(_triggerInfo.camera_id) == std::string::npos) {
+          
+
+            LOGE("curCamID:%s curCamSideName:%s _triggerInfo.camera_id:%s",curCamID.c_str(),curCamSideName.c_str(),_triggerInfo.camera_id.c_str());
+            if (
+              curCamID.find(_triggerInfo.camera_id) == std::string::npos && 
+            curCamSideName.find(_triggerInfo.camera_id) == std::string::npos){
               continue;
-            }
+            } 
 
             int cost;
             
@@ -345,7 +349,6 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             {
               cost=_triggerInfo.est_trigger_time_us-targetStageInfo->img_prop.fi.timeStamp_us;
               if(cost<0)cost=-cost;
-
             }
           
             if(minMatchingCost>cost)
@@ -369,8 +372,12 @@ void TriggerInfoMatchingThread(bool *terminationflag)
             //if(targetTriggerInfo.camera_id!=_stInfo->img_prop.StreamInfo.camera->getConnectionData().id)continue;//camera id is not fully matched
 
             auto curCamID=_stInfo->img_prop.StreamInfo.camera->getConnectionData().id;
+            auto curCamSideName=_stInfo->img_prop.StreamInfo.camera->getConnectionData().side_name;
 
-            if (curCamID.find(targetTriggerInfo.camera_id) == std::string::npos) {
+            LOGE("curCamID:%s curCamSideName:%s targetTriggerInfo.camera_id:%s",curCamID.c_str(),curCamSideName.c_str(),targetTriggerInfo.camera_id.c_str());
+            if (
+              curCamID.find(targetTriggerInfo.camera_id) == std::string::npos &&
+            curCamSideName.find(targetTriggerInfo.camera_id) == std::string::npos ) {
               continue;
             }
             
@@ -763,6 +770,162 @@ TimeStampConvertParam CamStampParamUpdate(TimeStampConvertParam param,uint64_t n
 
 
 
+class ScriptChannel:public Data_JsonRaw_Layer
+{
+  private:
+  std::unique_ptr<FILE, decltype(&pclose)> scriptCMD_pipe;
+  protected:
+  int sendID=0;
+  mutex promiseTable_LOCK;
+  std::map<int, std::promise<cJSON*>> idPromise;
+
+
+  public:
+  ScriptChannel(std::string env_path,std::string cmd,std::string com_ip,int ip_port):Data_JsonRaw_Layer(),
+  scriptCMD_pipe(popen(("cd "+env_path+"&&"+cmd+" --port="+to_string(ip_port)).c_str(), "r"), pclose)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    Data_Layer_IF *PHYLayer=new Data_TCP_Layer(com_ip.c_str(),ip_port);
+
+    setDLayer(PHYLayer);
+    // std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    send_RESET();
+    send_data(0,(uint8_t*)"\n",1,0);
+    RESET();
+
+    LOGE(">>>ScriptChannel>>");
+  }
+
+  int PromiseTryFulfill(int id,cJSON* json)
+  {
+    lock_guard<mutex> lock(promiseTable_LOCK);
+    if(idPromise.find(id)!=idPromise.end())
+    {
+      idPromise[id].set_value(json);
+      idPromise.erase(id);
+      return 0;
+    }
+    return -1;
+  }
+
+  int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)
+  {
+    cJSON *json=NULL;
+
+    do{
+
+      if(opcode==1 )
+      {
+        char tmp[1024];
+        LOGI("raw:%s",raw);
+        cJSON *json = cJSON_Parse((char *)raw);
+
+        int id=JFetch_NUMBER_ex(json,"id",-1);
+
+        if(id>=0&&PromiseTryFulfill(id,json)==0)break;
+
+
+      }
+
+    }while(false);
+
+    if(json!=NULL)
+    {
+      cJSON_Delete(json);
+    }
+    return 0;
+  }
+  int recv_RESET()
+  {
+    // printf("Get recv_RESET\n");
+    return 0;
+  }
+  int recv_ERROR(ERROR_TYPE errorcode)
+  {
+    // printf("Get recv_ERROR:%d\n",errorcode);
+    return 0;
+  }
+  
+  bool dlayerConnected=false;
+  virtual void connected(Data_Layer_IF* ch){
+    printf(">>>%X connected\n",ch);
+    dlayerConnected=true;
+  }
+
+   virtual void disconnected(Data_Layer_IF* ch){
+    printf(">>>%X disconnected\n",ch);
+    dlayerConnected=false;
+  }
+
+  bool isRunning()
+  {
+    // LOGE("RUN:%d",feof(scriptCMD_pipe.get()));
+    return dlayerConnected && !feof(scriptCMD_pipe.get());
+  }
+
+  ~ScriptChannel()
+  {
+
+    {
+      char tmp[128];
+      int len=sprintf(tmp,"{\"type\":\"EXIT\"}\n");
+      send_data(0,(uint8_t*)tmp,len,0);
+    }
+
+
+    close();
+    printf("MData_uInsp DISTRUCT:%p\n",this);
+  }
+
+  
+
+  std::future<cJSON*> send_future(cJSON* json,int *ret_id=NULL)
+  {
+    lock_guard<mutex> lock(promiseTable_LOCK);
+    sendID++;
+    std::promise<cJSON*> prom;
+    std::future<cJSON*> fut = prom.get_future();
+    idPromise[sendID]=std::move(prom);
+
+    char buffer[5000];
+
+    if(ret_id)*ret_id=sendID;
+    cJSON_AddNumberToObject(json,"id",sendID);
+    cJSON_PrintPreallocated(json,buffer,sizeof(buffer),false);
+    size_t blen=strlen(buffer);
+    // if(buffer[blen-1]=='}')
+    // {
+    //   char* tail=&buffer[blen-1];
+    //   blen+=sprintf(tail,",\"id\":%d}",sendID)-1;
+    // }
+
+    send_data(0,(uint8_t*)buffer,blen,0);
+    send_data(0,(uint8_t*)"\n",1,0);
+    return fut;
+
+  }
+
+
+
+  cJSON* send_waitfor_return(cJSON* json,int waitTime_ms)
+  {
+    int id=-1;
+    auto prom=send_future(json,&id);
+    if(prom.wait_for(std::chrono::milliseconds(waitTime_ms))==std::future_status::ready)
+    {
+      return prom.get();
+    }
+    {
+      lock_guard<mutex> lock(promiseTable_LOCK);
+      idPromise[id].set_exception(std::make_exception_ptr(std::runtime_error("timeout")));
+      idPromise.erase(id);
+    }
+    return NULL;
+  }
+};
+
+
+
 class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCollect_Base
 { 
   protected:
@@ -778,6 +941,60 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
   bool liveFlag=true;
   vector<cJSON *> periodicPullJsonCMDs;
 
+
+  class ScriptChannel2:public ScriptChannel
+  {
+    
+    public:
+
+
+    ScriptChannel2(std::string env_path,std::string cmd,std::string com_ip,int ip_port):
+    ScriptChannel(env_path,cmd,com_ip,ip_port)
+    {
+      LOGI("ScriptChannel2");
+    }
+    
+    int testCounter=0;
+    int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)
+    {
+
+
+      cJSON *json=NULL;
+
+      if(opcode==1 )do{
+
+      
+        char tmp[1024];
+        cJSON *json = cJSON_Parse((char *)raw);
+
+        int id=JFetch_NUMBER_ex(json,"id",-1);
+
+        // LOGI("raw:%s id:%d",raw,id);
+        if(id>=0&&PromiseTryFulfill(id,json)==0)break;
+
+        std::string type=JFetch_STRING_ex(json,"type");
+
+        if(type=="DBGMSG")
+        {
+          // LOGI("DBGMSG:%s",JFetch_STRING_ex(json,"msg").c_str());
+          LOGI("DBGMSG:%s",raw);
+        }
+      }while(false);
+
+      if(json!=NULL)
+      {
+        cJSON_Delete(json);
+      }
+      return 0;
+    }
+    
+    ~ScriptChannel2()
+    {
+    }
+
+  };
+  
+  ScriptChannel2 *sCH= NULL;
 
 
   class PerifChannel2:public Data_JsonRaw_Layer
@@ -809,26 +1026,88 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
       {
 
 
-        char tmp[1024];
         cJSON *json = cJSON_Parse((char *)raw);
         int msgID=JFetch_NUMBER_ex(json,"id",-1);
 
         int retPGID=comm_pgID;
 
-        master->CNCMsgID_PGID_LOCK.lock();
-        if(msgID!=-1 && (master->CNCMsgID_PGID.find(msgID)!=master->CNCMsgID_PGID.end()))
+        char tmp[1024];
+        //CNCMsgID_PGID_LOCK lock
         {
-          retPGID=master->CNCMsgID_PGID[msgID];
-          master->CNCMsgID_PGID.erase(msgID);
+          lock_guard<mutex> lock(master->CNCMsgID_PGID_LOCK);
+          if(msgID!=-1 && (master->CNCMsgID_PGID.find(msgID)!=master->CNCMsgID_PGID.end()))
+          {
+            retPGID=master->CNCMsgID_PGID[msgID];
+            master->CNCMsgID_PGID.erase(msgID);
+          }
         }
-        master->CNCMsgID_PGID_LOCK.unlock();
+        if(retPGID==comm_pgID)//not in track
+        {
+
+          string type=JFetch_STRING_ex(json,"type");
+          // sCH->send_data(0,raw,rawL,0);
+
+          tmp[0]='\0';
+          if(type=="bTrig")
+          {
+            cJSON* rep=master->sCH->send_waitfor_return(json,1000);
+
+
+            if(rep)
+            {
+
+
+              sttriggerInfo_mix trigInfo;
+              trigInfo.stInfo=NULL;
+              trigInfo.triggerInfo.camera_id=(JFetch_STRING_ex(rep,"camera_id"));
+
+              trigInfo.triggerInfo.trigger_id=(JFetch_NUMBER_ex(rep,"trigger_id",-1));
+              // master->processTimeRecord[trigInfo.triggerInfo.trigger_id]=cv::getTickCount();  
+              trigInfo.triggerInfo.est_trigger_time_us=JFetch_NUMBER_ex(rep,"est_trigger_time_us",0);
+              trigInfo.triggerInfo.trigger_time_match_error_thres_us=JFetch_NUMBER_ex(rep,"trigger_time_match_error_thres_us",-1);
+
+
+
+              LOGE("id:%s  tid:%d",trigInfo.triggerInfo.camera_id.c_str(),trigInfo.triggerInfo.trigger_id);
+              {
+                cJSON* tags=JFetch_ARRAY(rep,"tags");
+
+                if(tags)
+                {
+                  
+                  // LOGE("cJSON_GetArraySize(tags):%d",cJSON_GetArraySize(tags));
+                  for(int i=0;i<cJSON_GetArraySize(tags);i++)
+                  {
+                    cJSON* tag=cJSON_GetArrayItem(tags,i);
+                    if(tag)
+                    {
+                      // printf("tag[%d]:%s\n",i,tag->valuestring);
+                      trigInfo.triggerInfo.tags.push_back(std::string(tag->valuestring));
+                    }
+                  }
+                }
+              }
+
+              triggerInfoMatchingQueue.push_blocking(trigInfo);
+
+              cJSON_Delete(rep);
+
+            }
+            cJSON_Delete(json);
+
+
+
+            return 0;
+          }
+          // cJSON *rep =sCH->send_waitfor_return(json,5000);
+        }
       
         sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s}", raw);
         LOGI("<<:%s  retPGID:%d", raw,retPGID);
         bpg_pi.fromUpperLayer_DATA("PD",retPGID,tmp);
         bpg_pi.fromUpperLayer_DATA("SS",retPGID,"{}");
 
-
+        cJSON_Delete(json);
 
         
         return 0;
@@ -876,6 +1155,91 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
   };
   PerifChannel2 *pCH= NULL;
   
+
+
+
+
+
+  bool file_exists(const std::string& filename) {
+      std::ifstream file(filename.c_str());
+      return file.good();
+  }
+
+  void unloadScript()
+  {
+    if(sCH)
+    {
+      delete sCH;
+      sCH=NULL;
+    }
+  }
+
+  bool reloadScript()
+  {
+    unloadScript();
+
+    try{
+      sCH=new ScriptChannel2(local_env_path,
+          JFetch_STRING_ex(def,"scriptInfo.run_cmd"),
+          "127.0.0.1",
+          JFetch_NUMBER_ex(def,"scriptInfo.IPC_port"));
+
+    }
+    catch(std::runtime_error &e){
+      LOGE("ScriptChannel2 fail:%s",e.what());
+      return false;
+    }
+
+
+    {
+      LOGE("Send defInfo....");
+      cJSON *json = cJSON_CreateObject();
+      cJSON_AddStringToObject(json,"type","defInfo");
+      cJSON_AddItemToObject(json,"defInfo",def);
+
+
+      cJSON *rep =sCH->send_waitfor_return(json,5000);
+
+
+
+
+      cJSON_DetachItemFromObject(json,"defInfo");
+      cJSON_Delete(json);
+
+
+      if(rep!=NULL)
+      {
+        LOGE("Send defInfo.... done!");
+        cJSON_Delete(rep);
+      }
+      else
+      {
+        LOGE("Send defInfo.... timeout!");
+        unloadScript();
+        return false;
+      }
+    }
+
+    return true;
+
+    // {
+    //   int len=sprintf((char*)_buf,"{\"type\":\"EXIT\"}\n");
+    //   sCH->send_data(0,(uint8_t*)_buf,len,0);
+    // }
+
+
+    // std::string result;
+    // std::array<char, 128> buffer;
+    // while (fgets(buffer.data(), buffer.size(), sCH->scriptCMD_pipe.get()) != nullptr) {
+    //   result += buffer.data();
+    // }
+    // LOGE("PY script output:%s",result.c_str());
+
+  }
+
+
+
+
   public:
 
 
@@ -902,6 +1266,8 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
     comm_pgID=-1;
     periodicThread=std::thread(&InspectionTarget_JSON_CNC_Peripheral::periodicFunction,this);
     InspectionTarget::INIT(id,def,belongMan,local_env_path);
+
+    reloadScript();
   }
 
 
@@ -910,7 +1276,7 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
 
   ~InspectionTarget_JSON_CNC_Peripheral()
   {
-
+    unloadScript();
     liveFlag=false;
     periodicThread.join();
     if (pCH)
@@ -1201,6 +1567,13 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
     }
 
 
+    if(type=="reloadScript")
+    {
+
+      reloadScript();
+      return true;
+    }
+
     if(type=="setPeriodicPullCMDs")
     {
       cJSON* cmds=JFetch_ARRAY(info,"cmds");
@@ -1239,164 +1612,18 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
   void singleGroupProcess(shared_ptr<StageInfo> sinfo)
   {
 
+    auto sginfo = dynamic_cast<StageInfo_SIGroup*>(sinfo.get());
+
+    LOGE(">>>>>>>>HERE>>>>>>>>");
+    for(int i=0;i<sginfo->group.size();i++)
+    {
+      auto curInput=sginfo->group[i];
+      LOGE(">>%d>>>:%s   stype:%s",i,curInput->source_id.c_str(),curInput->typeName().c_str());
+      
+    }
+
   }
 };
-
-
-class ScriptChannel:public Data_JsonRaw_Layer
-{
-  private:
-  std::unique_ptr<FILE, decltype(&pclose)> scriptCMD_pipe;
-  protected:
-  int sendID=0;
-  mutex promiseTable_LOCK;
-  std::map<int, std::promise<cJSON*>> idPromise;
-
-
-  public:
-  ScriptChannel(std::string env_path,std::string cmd,std::string com_ip,int ip_port):Data_JsonRaw_Layer(),
-  scriptCMD_pipe(popen(("cd "+env_path+"&&"+cmd+" --port="+to_string(ip_port)).c_str(), "r"), pclose)
-  {
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    Data_Layer_IF *PHYLayer=new Data_TCP_Layer(com_ip.c_str(),ip_port);
-
-    setDLayer(PHYLayer);
-    // std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    send_RESET();
-    send_data(0,(uint8_t*)"\n",1,0);
-    RESET();
-
-    LOGE(">>>ScriptChannel>>");
-  }
-
-  int PromiseTryFulfill(int id,cJSON* json)
-  {
-    lock_guard<mutex> lock(promiseTable_LOCK);
-    if(idPromise.find(id)!=idPromise.end())
-    {
-      idPromise[id].set_value(json);
-      idPromise.erase(id);
-      return 0;
-    }
-    return -1;
-  }
-
-  int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)
-  {
-    cJSON *json=NULL;
-
-    do{
-
-      if(opcode==1 )
-      {
-        char tmp[1024];
-        // LOGI("raw:%s",raw);
-        cJSON *json = cJSON_Parse((char *)raw);
-
-        int id=JFetch_NUMBER_ex(json,"id",-1);
-
-        if(id>=0&&PromiseTryFulfill(id,json)==0)break;
-
-
-      }
-
-    }while(false);
-
-    if(json!=NULL)
-    {
-      cJSON_Delete(json);
-    }
-    return 0;
-  }
-  int recv_RESET()
-  {
-    // printf("Get recv_RESET\n");
-    return 0;
-  }
-  int recv_ERROR(ERROR_TYPE errorcode)
-  {
-    // printf("Get recv_ERROR:%d\n",errorcode);
-    return 0;
-  }
-  
-  bool dlayerConnected=false;
-  void connected(Data_Layer_IF* ch){
-    printf(">>>%X connected\n",ch);
-    dlayerConnected=true;
-  }
-
-  void disconnected(Data_Layer_IF* ch){
-    printf(">>>%X disconnected\n",ch);
-    dlayerConnected=false;
-  }
-
-  bool isRunning()
-  {
-    // LOGE("RUN:%d",feof(scriptCMD_pipe.get()));
-    return dlayerConnected && !feof(scriptCMD_pipe.get());
-  }
-
-  ~ScriptChannel()
-  {
-
-    {
-      char tmp[128];
-      int len=sprintf(tmp,"{\"type\":\"EXIT\"}\n");
-      send_data(0,(uint8_t*)tmp,len,0);
-    }
-
-
-    close();
-    printf("MData_uInsp DISTRUCT:%p\n",this);
-  }
-
-  
-
-  std::future<cJSON*> send_future(cJSON* json,int *ret_id=NULL)
-  {
-    lock_guard<mutex> lock(promiseTable_LOCK);
-    sendID++;
-    std::promise<cJSON*> prom;
-    std::future<cJSON*> fut = prom.get_future();
-    idPromise[sendID]=std::move(prom);
-
-    char buffer[5000];
-
-    if(ret_id)*ret_id=sendID;
-    cJSON_AddNumberToObject(json,"id",sendID);
-    cJSON_PrintPreallocated(json,buffer,sizeof(buffer),false);
-    size_t blen=strlen(buffer);
-    // if(buffer[blen-1]=='}')
-    // {
-    //   char* tail=&buffer[blen-1];
-    //   blen+=sprintf(tail,",\"id\":%d}",sendID)-1;
-    // }
-
-    send_data(0,(uint8_t*)buffer,blen,0);
-    send_data(0,(uint8_t*)"\n",1,0);
-    return fut;
-
-  }
-
-
-
-  cJSON* send_waitfor_return(cJSON* json,int waitTime_ms)
-  {
-    int id=-1;
-    auto prom=send_future(json,&id);
-    if(prom.wait_for(std::chrono::milliseconds(waitTime_ms))==std::future_status::ready)
-    {
-      return prom.get();
-    }
-    {
-      lock_guard<mutex> lock(promiseTable_LOCK);
-      idPromise[id].set_exception(std::make_exception_ptr(std::runtime_error("timeout")));
-      idPromise.erase(id);
-    }
-    return NULL;
-  }
-};
-
 
 
 
@@ -1720,17 +1947,17 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
     
     void connected(Data_Layer_IF* ch){
       testCounter=0;
-      printf(">>>%X connected\n",ch);
+      LOGI(">>>%X connected",ch);
     }
 
     void disconnected(Data_Layer_IF* ch){
-      printf(">>>%X disconnected\n",ch);
+      LOGI(">>>%X disconnected",ch);
     }
 
     ~PerifChannel2()
     {
       close();
-      printf("MData_uInsp DISTRUCT:%p\n",this);
+      LOGI("MData_uInsp DISTRUCT:%p",this);
     }
 
     // int send_data(int head_room,uint8_t *data,int len,int leg_room){
@@ -3809,6 +4036,55 @@ class exchangeCMD_ACTx: public exchangeCMD_ACT
 
 exchangeCMD_ACTx exchCMDact;
 
+int folder_move(const char *oldpath, const char *newpath) {
+    #ifdef _WIN32
+    // On Windows, use MoveFile function
+    return MoveFile(oldpath, newpath);
+    #else
+    // On Unix-like systems, use rename function from unistd.h
+    return rename(oldpath, newpath);
+    #endif
+}
+
+int folder_copy(const char *source, const char *destination) {
+    char command[1024];
+    
+    #ifdef _WIN32
+    // On Windows, use xcopy
+    snprintf(command, sizeof(command), "xcopy /E /I \"%s\" \"%s\"", source, destination);
+    #else
+    // On Unix-like systems, use cp command
+    snprintf(command, sizeof(command), "cp -r \"%s\" \"%s\"", source, destination);
+    #endif
+    
+    LOGE("command:%s",command);
+    return system(command);
+}
+
+
+
+int open_default_editor(const char *filename) {
+    char command[512];
+
+    #ifdef _WIN32
+    // On Windows, use 'start' to open the default editor
+    snprintf(command, sizeof(command), "start \"%s\"", filename);
+    #else
+    // On Unix-like systems, use 'xdg-open' or 'open' for macOS
+    #ifdef __APPLE__
+    snprintf(command, sizeof(command), "open \"%s\"", filename);
+    #else
+    // Assuming a Linux system
+    snprintf(command, sizeof(command), "xdg-open \"%s\"", filename);
+    #endif
+    #endif
+
+    // Execute the command
+    return system(command);
+}
+
+
+
 int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat) 
 {
   //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
@@ -3826,8 +4102,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
   {
 
     // if (checkTL("GS", dat) == false)
-    // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
-    //       dat->pgID);
+    LOGI(">>>[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
+          dat->pgID);
     if (checkTL("HR", dat))
     {
       LOGI("DataType_BPG>>>>%s", dat->dat_raw);
@@ -3977,10 +4253,138 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
       } while (false);
     }
+    else if (checkTL("FO", dat)) //[F]older [O]peration
+    {
+      do
+      {
+
+        if (json == NULL)
+        {
+          snprintf(err_str, sizeof(err_str), "JSON parse failed");
+          LOGE("%s", err_str);
+          break;
+        }
+
+        string fo_type= JFetch_STRING_ex(json, "type");
+
+        if(fo_type=="create")
+        {
+
+          string path= JFetch_STRING_ex(json, "path");
+          if (path == "")
+          {
+            //ERROR
+            snprintf(err_str, sizeof(err_str), "No 'path' entry in the JSON");
+            LOGE("%s", err_str);
+            break;
+          }
+
+          int ret = cross_mkdir(path.c_str());
+          if (ret == 0)
+          {
+            session_ACK = true;
+          }
+          else
+          {
+            session_ACK = false;
+          }
+        }
+
+        if(fo_type=="isExist")
+        {
+          string path= JFetch_STRING_ex(json, "path");
+          if (path == "")
+          {
+            //ERROR
+            snprintf(err_str, sizeof(err_str), "No 'path' entry in the JSON");
+            LOGE("%s", err_str);
+            break;
+          }
+
+          session_ACK = isDirExist(path.c_str());
+
+        }
+        if(fo_type=="move")
+        {
+          
+          string from= JFetch_STRING_ex(json, "from");
+          string to= JFetch_STRING_ex(json, "to");
+          if (from == "" || to == "")
+          {
+            //ERROR
+            snprintf(err_str, sizeof(err_str), "No 'from' or 'to' entry in the JSON");
+            LOGE("%s", err_str);
+            break;
+          }
+
+          //move folder into a folder
+          session_ACK = (folder_move(from.c_str(), to.c_str())==0);
+
+          // session_ACK = (rename(from.c_str(), to.c_str())==0);
+        }
+
+        if(fo_type=="copy")
+        {
+          
+          string from= JFetch_STRING_ex(json, "from");
+          string to= JFetch_STRING_ex(json, "to");
+          if (from == "" || to == "")
+          {
+            //ERROR
+            snprintf(err_str, sizeof(err_str), "No 'from' or 'to' entry in the JSON");
+            LOGE("%s", err_str);
+            break;
+          }
+
+          //move folder into a folder
+          session_ACK = (folder_copy(from.c_str(), to.c_str())==0);
+
+          // session_ACK = (rename(from.c_str(), to.c_str())==0);
+        }
+
+
+
+        if(fo_type=="open")
+        {
+          string path= JFetch_STRING_ex(json, "path");
+          if (path == "")
+          {
+            //ERROR
+            snprintf(err_str, sizeof(err_str), "No 'path' entry in the JSON");
+            LOGE("%s", err_str);
+            break;
+          }
+
+          session_ACK = (open_default_editor(path.c_str())==0);
+
+        }
+        // char *pathStr = (char *)JFetch(json, "path", cJSON_String);
+        // if (pathStr == NULL)
+        // {
+        //   //ERROR
+        //   snprintf(err_str, sizeof(err_str), "No 'path' entry in the JSON");
+        //   LOGE("%s", err_str);
+        //   break;
+        // }
+
+        // int ret = cross_mkdir(pathStr);
+        // if (ret == 0)
+        // {
+        //   session_ACK = true;
+        // }
+        // else
+        // {
+        //   session_ACK = false;
+        // }
+
+      } while (false);
+    }
     else if (checkTL("CM", dat)) //[C]amera [M]anager
     {
       session_ACK = false;
       char *type_str = JFetch_STRING(json, "type");
+
+      LOGI("CM:type:%s",type_str);
       if (strcmp(type_str, "discover") ==0)
       {
         session_ACK = true;
@@ -4020,10 +4424,27 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           char *_driver_name = JFetch_STRING(json, "driver_name");
           std::string driver_name=_driver_name==NULL?"":std::string(_driver_name);
           char *_cam_id = JFetch_STRING(json, "id");
-          std::string cam_id=_cam_id==NULL?"":std::string(_cam_id);
+
+          LOGI(">>>>>");
+
+
           if(_cam_id)
           {
+            std::string cam_id=_cam_id==NULL?"":std::string(_cam_id);
             gcami = inspTarMan.camman.addCamera(driver_name,cam_id,miscStr,InspectionTargetManager::sCAM_CallBack,&inspTarMan);
+
+            if(gcami)
+            {
+              LOGI(">>>>>");
+
+              char *_side_name = JFetch_STRING(json, "side_name");
+              LOGI(">>>>>");
+              std::string side_name=_side_name==NULL?"":std::string(side_name);
+              LOGI(">>gcami:%p",gcami);
+              LOGI(">>cam:%p>side_name:%s>>",gcami->camera,side_name.c_str());
+              gcami->camera->SetSideName(side_name);
+              LOGI(">>>>>");
+            }
           }
         }
 
@@ -4353,6 +4774,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
               tags,
               (int)JFetch_NUMBER_ex(json, "trigger_id",-1),
               (int)JFetch_NUMBER_ex(json,"channel_id",-1));
+
+          LOGE("ReadImageAndPushToInspQueue:%d",ret);
         }
         else
         {
@@ -4910,7 +5333,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
     }
     
-    
+    LOGE(">>>");
     if(noInstantACK==false)
     {
       sprintf(tmp, "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",

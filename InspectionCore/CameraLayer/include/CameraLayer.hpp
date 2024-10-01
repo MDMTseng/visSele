@@ -33,6 +33,7 @@ class CameraLayer{
     struct BasicCameraInfo{
       std::string driver_name;
       std::string name;
+      std::string side_name;
       std::string id;
       std::string model;
       std::string serial_number;
@@ -99,7 +100,6 @@ class CameraLayer{
     int maxWidth,maxHeight;
     frameInfo fi;
     std::string cam_json_info;
-    std::string side_name;
 
     
     float ROI_x;
@@ -233,12 +233,13 @@ class CameraLayer{
 
     virtual CameraLayer::status SetSideName(std::string side_name)
     {
-        this->side_name=side_name;
+        // connection_data.side_name=side_name;
+        connection_data.side_name=side_name;
         return ACK;
     }
     virtual std::string GetSideName()
     {
-        return side_name;
+        return connection_data.side_name;
     }
 
     virtual frameInfo GetFrameInfo()

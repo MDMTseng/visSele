@@ -1,6 +1,6 @@
 
 #include "InspectionTarget.hpp"
-
+#include <opencv2/dnn.hpp>
 #include "logctrl.h"
 #include "common_lib.h"
 #include <future>
@@ -83,6 +83,7 @@ bool InspectionTarget::feedStageInfo(std::shared_ptr<StageInfo> sinfo)
 void InspectionTarget::setInspDef(cJSON* def)
 {
 
+  std::lock_guard<std::mutex> lock_(process_lock);
   match_tags=NULL;
   if(this->def)cJSON_Delete(this->def);
   this->def=NULL;

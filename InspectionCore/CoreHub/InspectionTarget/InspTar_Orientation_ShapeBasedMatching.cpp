@@ -95,6 +95,10 @@ line2Dup::TemplatePyramid Json2TemplatePyramid(cJSON *jtpArr)
 
     if (layerTemp == NULL)
       break;
+    // if(cJSON_GetArraySize(JFetch_ARRAY(jtpArr,"features"))==0)
+    // {
+    //   break;
+    // }
     line2Dup::Template temp = Json2Template(layerTemp);
     tp.push_back(temp);
   }
@@ -148,7 +152,12 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON *def)
 
     
 
+    while(insp_tp.size()<T.size())
+    {
+      T.pop_back();
+    }
 
+    LOGE("insp_tp.size():%d T.size():%d",insp_tp.size(),T.size());
 
     // float originOffsetX=JFetch_NUMBER_ex(def,"featureInfo.origin_info.pt.x");
     // float originOffsetY=JFetch_NUMBER_ex(def,"featureInfo.origin_info.pt.y");
@@ -178,6 +187,8 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON *def)
     float originVecY = JFetch_NUMBER_ex(featureInfo, "origin_info.vec.y", 0);
 
     origin_offset_angle = atan2(originVecY, originVecX);
+
+    LOGE("origin_offset_angle:%f",origin_offset_angle*180/3.14159);
 
     int templateCenter_x = JFetch_NUMBER_ex(featureInfo, "origin_info.pt.x", insp_tp[0].tl_x);
     int templateCenter_y = JFetch_NUMBER_ex(featureInfo, "origin_info.pt.y", insp_tp[0].tl_y);
@@ -335,11 +346,98 @@ static void XYWH_clipping(int &X,int &Y,int &W,int &H, int MX,int MY,int MW,int 
   }
 }
 
+struct PointFeature {
+    cv::Point2f point;
+    float a1;
+    cv::Vec2f v1;
+    float a2;
+    cv::Vec2f v2;
+};
+
+struct AlignmentResult {
+    cv::Mat transformationMatrix;
+    float error;
+};
+
+float computeError(const std::vector<PointFeature>& features, const cv::Mat& transform) {
+    float totalError = 0.0f;
+
+    for (const auto& feature : features) {
+        cv::Point2f transformedPoint;
+        cv::Mat pointMat = (cv::Mat_<float>(3, 1) << feature.point.x, feature.point.y, 1.0f);
+        cv::Mat transformedPointMat = transform * pointMat;
+        transformedPoint.x = transformedPointMat.at<float>(0, 0);
+        transformedPoint.y = transformedPointMat.at<float>(1, 0);
+
+        cv::Vec2f diff = transformedPoint - feature.point;
+        float error = feature.a1 * diff.dot(feature.v1) + feature.a2 * diff.dot(feature.v2);
+        totalError += error * error;
+    }
+
+    return totalError;
+}
+
+AlignmentResult alignPoints(const std::vector<PointFeature>& features) {
+    AlignmentResult result;
+    result.transformationMatrix = cv::Mat::eye(3, 3, CV_32F);
+    result.error = std::numeric_limits<float>::max();
+
+    // Parameters for gradient descent
+    float learningRate = 0.01f;
+    int maxIterations = 1000;
+    float tolerance = 1e-6f;
+
+    cv::Mat currentTransform = cv::Mat::eye(3, 3, CV_32F);
+    float currentError = computeError(features, currentTransform);
+
+    for (int iter = 0; iter < maxIterations; ++iter) {
+        cv::Mat gradient = cv::Mat::zeros(3, 3, CV_32F);
+
+        // Compute gradient of the error with respect to the transformation matrix
+        // (using numerical differentiation for simplicity)
+        float epsilon = 1e-6f;
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+                cv::Mat perturbedTransform = currentTransform.clone();
+                perturbedTransform.at<float>(i, j) += epsilon;
+                float perturbedError = computeError(features, perturbedTransform);
+                gradient.at<float>(i, j) = (perturbedError - currentError) / epsilon;
+            }
+        }
+
+        // Update the transformation matrix using gradient descent
+        currentTransform -= learningRate * gradient;
+
+        // Recompute the error
+        float newError = computeError(features, currentTransform);
+
+        // Check for convergence
+        if (std::abs(currentError - newError) < tolerance) {
+            break;
+        }
+
+        currentError = newError;
+    }
+
+    result.transformationMatrix = currentTransform;
+    result.error = currentError;
+    return result;
+}
+
+
+
+
+
+
+
+
 
 
 bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, int id, exchangeCMD_ACT &act)
 {
-  // LOGI(">>>>>>>>>>>>");
+
+  std::lock_guard<std::mutex> lock_(process_lock);
+  LOGI(">>>>>>>LOCK>>>>>");
   bool ret = InspectionTarget::exchangeCMD(info, id, act); // apply framework layer exchange
   if (ret)
     return ret;
@@ -350,12 +448,12 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
     string path = JFetch_STRING_ex(info, "image_path");
     if (path == "")
     {
-      return NULL;
+      return false;
     }
     Mat img = imread(path, IMREAD_COLOR);
     if (img.empty())
     {
-      return NULL;
+      return false;
     }
 
     // acvImage src_acvImg(img.cols,img.rows,3);
@@ -432,8 +530,8 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
         }
         if (T.size() == 0) // default
         {
+          T.push_back(2);
           T.push_back(4);
-          T.push_back(6);
         }
         SBM_if t_sbm(num_features, T, weak_thresh, strong_thresh);
         t_sbm.TemplateFeatureExtraction(img, _mask, num_features, tp);
@@ -567,9 +665,105 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
     return true;
   }
 
+
+  // if(type=="test")
+  // {
+  //   //info={
+  //   //  "type":"test",
+  //   //  "srcPoints":[[0,0],[1,0],[0,1],[2,2]],
+  //   //  "dstPoints":[[1,1],[2,1],[1,2],[3,3]],
+  //   //  "accuracyVectors":[[1,1],[0.707,0.707],[1,1],[0.866,0.5]]}
+
+  //   cJSON *jsrcPoints = JFetch_ARRAY(info, "srcPoints");
+  //   cJSON *jdstPoints = JFetch_ARRAY(info, "dstPoints");
+  //   cJSON *jaccuracyVectors = JFetch_ARRAY(info, "accuracyVectors");
+  //   std::vector<cv::Point2f> srcPoints;
+  //   std::vector<cv::Point2f> dstPoints;
+  //   std::vector<cv::Vec2f> accuracyVectors;
+  //   if (jsrcPoints && jdstPoints && jaccuracyVectors && cJSON_GetArraySize(jsrcPoints) == cJSON_GetArraySize(jdstPoints) && cJSON_GetArraySize(jsrcPoints) == cJSON_GetArraySize(jaccuracyVectors)) {
+
+
+  //     for (int i = 0; i < cJSON_GetArraySize(jsrcPoints); ++i) {
+  //         cJSON *srcPoint = cJSON_GetArrayItem(jsrcPoints, i);
+  //         cJSON *dstPoint = cJSON_GetArrayItem(jdstPoints, i);
+  //         cJSON *accuracyVector = cJSON_GetArrayItem(jaccuracyVectors, i);
+
+  //         srcPoints.push_back(cv::Point2f(JFetch_NUMBER_ex(srcPoint, "[0]"), JFetch_NUMBER_ex(srcPoint, "[1]")));
+  //         dstPoints.push_back(cv::Point2f(JFetch_NUMBER_ex(dstPoint, "[0]"), JFetch_NUMBER_ex(dstPoint, "[1]")));
+  //         accuracyVectors.push_back(cv::Vec2f(JFetch_NUMBER_ex(accuracyVector, "[0]"), JFetch_NUMBER_ex(accuracyVector, "[1]")));
+  //     }
+
+  //   }
+  //   else
+  //   {
+  //     return false;
+  //   }
+
+  //   // Convert points to cv::Mat
+  //   cv::Mat srcMat(srcPoints);
+  //   cv::Mat dstMat(dstPoints);
+
+  //   // Create weight matrix
+  //   cv::Mat W = createWeightMatrix(accuracyVectors);
+
+  //   // Formulate the weighted least squares problem
+  //   cv::Mat A = cv::Mat::zeros(2 * srcPoints.size(), 6, CV_64F);
+  //   cv::Mat b = cv::Mat::zeros(2 * srcPoints.size(), 1, CV_64F);
+
+  //   for (size_t i = 0; i < srcPoints.size(); ++i) {
+  //       A.at<double>(2 * i, 0) = srcPoints[i].x;
+  //       A.at<double>(2 * i, 1) = srcPoints[i].y;
+  //       A.at<double>(2 * i, 2) = 1;
+  //       A.at<double>(2 * i + 1, 3) = srcPoints[i].x;
+  //       A.at<double>(2 * i + 1, 4) = srcPoints[i].y;
+  //       A.at<double>(2 * i + 1, 5) = 1;
+
+  //       b.at<double>(2 * i, 0) = dstPoints[i].x;
+  //       b.at<double>(2 * i + 1, 0) = dstPoints[i].y;
+  //   }
+
+  //   // Apply the weight matrix
+  //   cv::Mat WtW = W.t() * W;
+  //   cv::Mat WtA = W.t() * A;
+  //   cv::Mat Wtb = W.t() * b;
+
+  //   // Solve for the affine transformation parameters
+  //   cv::Mat affineParams;
+  //   cv::solve(WtA, Wtb, affineParams, cv::DECOMP_SVD);
+
+  //   // Reshape the solution into a 2x3 affine transformation matrix
+  //   cv::Mat affineMatrix = (cv::Mat_<double>(2, 3) << affineParams.at<double>(0), affineParams.at<double>(1), affineParams.at<double>(2),
+  //                                                    affineParams.at<double>(3), affineParams.at<double>(4), affineParams.at<double>(5));
+
+  //   // Output the transformation matrix
+  //   std::cout << "Affine Transformation Matrix:\n" << affineMatrix << std::endl;
+
+  //   // Extract rotation and translation information
+  //   double angle = atan2(affineMatrix.at<double>(1, 0), affineMatrix.at<double>(0, 0)) * 180.0 / CV_PI;
+  //   cv::Point2f translation(affineMatrix.at<double>(0, 2), affineMatrix.at<double>(1, 2));
+
+  //   std::cout << "Rotation Angle: " << angle << " degrees" << std::endl;
+  //   std::cout << "Translation: (" << translation.x << ", " << translation.y << ")" << std::endl;
+
+  //   return true;
+  // }
   
 
+  if(type=="test2")
+  {
+    std::vector<PointFeature> features = {
+        {{0.0f, 0.0f}, 1.0f, {1.0f, 0.0f}, 1.0f, {0.0f, 1.0f}},
+        {{1.0f, 1.0f}, 1.0f, {0.414f, -0.414f}, 0.0f, {0.414f, -0.414f}},
+        // Add more features as needed
+    };
 
+    AlignmentResult result = alignPoints(features);
+
+    std::cout << "Transformation Matrix:\n" << result.transformationMatrix << std::endl;
+    std::cout << "Alignment Error: " << result.error << std::endl;
+
+    return true;
+  }
   return false;
 }
 
@@ -704,20 +898,25 @@ float PoseRefine(
     cv::cvtColor(temp_gray, temp_gray, cv::COLOR_BGR2GRAY);
     // equalizeHist( temp_gray, temp_gray );
 
-    float sharpBlurSigma = 3;
-    float beta = 2;
-    float sharpC1 = 1.0 * beta;
-    float sharpC2 = -0.6 * beta;
-    {
-      Mat buf;
-      cv::GaussianBlur(mat, buf, cv::Size(0, 0), sharpBlurSigma);
-      cv::addWeighted(buf, sharpC1, mat, sharpC2, 0, mat);
-    }
 
+    //try to sharpen the image, it might help to reduce the lighting difference
     {
-      Mat buf;
-      cv::GaussianBlur(temp_gray, buf, cv::Size(0, 0), sharpBlurSigma);
-      cv::addWeighted(buf, sharpC1, temp_gray, sharpC2, 0, temp_gray);
+      
+      // float sharpBlurSigma = 3;
+      // float beta = 2;
+      // float sharpC1 = 1.0 * beta;
+      // float sharpC2 = -0.6 * beta;
+      // {
+      //   Mat buf;
+      //   cv::GaussianBlur(mat, buf, cv::Size(0, 0), sharpBlurSigma);
+      //   cv::addWeighted(buf, sharpC1, mat, sharpC2, 0, mat);
+      // }
+
+      // {
+      //   Mat buf;
+      //   cv::GaussianBlur(temp_gray, buf, cv::Size(0, 0), sharpBlurSigma);
+      //   cv::addWeighted(buf, sharpC1, temp_gray, sharpC2, 0, temp_gray);
+      // }
     }
 
     Point2f levelXPt = TemplateMatching_Pix(mat, temp_gray, result, isResForMax, TM_CCOEFF_NORMED);
@@ -769,7 +968,7 @@ float PoseRefine(
       cv::Mat mat_cp = mat.clone();
 
       auto rect = Rect(levelXPt.x, levelXPt.y, temp_gray.cols, temp_gray.rows);
-      temp_gray.copyTo(mat_cp(rect));
+      // temp_gray.copyTo(mat_cp(rect));
       cv::rectangle(mat_cp, rect, cv::Scalar(255, 0, 0));
       cv::rectangle(mat_cp, Rect(mat_cp.cols / 2 - 1, mat_cp.rows / 2 - 1, 2, 2), cv::Scalar(200, 200, 200));
       imwrite("data/ZZZ/" + prefix + "_TOP_" + std::to_string(i) + ".jpg", mat_cp);
@@ -815,7 +1014,7 @@ float PoseRefine(
 
     if (yFlip)
       levelXPt.y = -levelXPt.y;
-    LOGI("[%d]:matchResult:%f offset:%f,%f", i, matchResult, levelXPt.x, levelXPt.y);
+    // LOGI("[%d]:matchResult:%f offset:%f,%f", i, matchResult, levelXPt.x, levelXPt.y);
     if (matchResult != matchResult || matchResult < minAcceptedScore || levelXPt.x < -offsetThres || levelXPt.x > offsetThres || levelXPt.y < -offsetThres || levelXPt.y > offsetThres)
     {
       levelXPt.x = levelXPt.y = NAN;
@@ -1064,7 +1263,7 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
     // LOGI("[%d]>>>ang:%f <<id:%s",i,templ[0].angle,match.class_id.c_str());
     cv::Point2f anchorPt = rotate2d(Aoffset.offset, templ[0].angle * M_PI / 180);
 
-    float offset = (1 / matching_downScale - 1) / 2;
+    float offset = (2 / matching_downScale);
     f0Pt += cv::Point2f(offset, offset);
     anchorPt += f0Pt;
 
@@ -1073,13 +1272,14 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
 
     std::string DBG_STR;
     // LOGI("refine_score_thres:%f must_refine_result:%d",refine_score_thres,must_refine_result);
+    // LOGE(">>matching_downScale:%f",matching_downScale);
     int refineCount = 1;
     if (refine_region_set.size() > 0 && refine_score_thres > 0)
     {
       float tmpAngle = refinedAngleRad;
       cv::Point2f tmp_anchorPt = anchorPt;
       bool y_flip = hasEnding(match.class_id, "_f");
-      int margin = (int)(50 + (1 / matching_downScale));
+      int margin = (int)(3 + (2 / matching_downScale))*1;
       // DBG_STR = id + "_" + to_string(i) + "_" + to_string(0);
 
       int refine_block_count = 0;
@@ -1156,10 +1356,12 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
     if (refine_score > 0.999)
       refine_score = 0.999;
 
-    LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
+    // LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
     StageInfo_Orientation::orient orie;
 
     orie.angle = refinedAngleRad + origin_offset_angle;
+
+    // LOGE("refAng:%f + offset:%f = res:%f",refinedAngleRad*180/3.14159,origin_offset_angle*180/3.14159,orie.angle*180/3.14159);
     orie.flip = hasEnding(match.class_id, "_f");
     orie.center = {anchorPt.x, anchorPt.y};
     orie.confidence = round(match.similarity) + refine_score; // HACK to store refine info
@@ -1186,13 +1388,15 @@ void CloseMatchFilter(std::vector<line2Dup::Match> &matches,SBM_if *sbm,vector<i
     auto templ = sbm->detector.getTemplates(match.class_id,
                                             match.template_id);
 
+    
+    // LOGE(">>>>>match.class_id:%s  wh:%d,%d",match.class_id.c_str(),templ[0].width,templ[0].height);
     box.width = templ[0].width;
     box.height = templ[0].height;
     boxes.push_back(box);
     scores.push_back(match.similarity);
   }
 
-  cv_dnn::NMSBoxes(boxes, scores, 0, 0.2f, idxs);
+  cv_dnn::NMSBoxes(boxes, scores, 0, 0.7f, idxs,0.8);
 
   std::sort(idxs.begin(), idxs.end(), [&](int a, int b) {
     int sa=matches[a].y*10+matches[a].x;//tilt the score a bit, assume the arrangment is like a grid
@@ -1207,7 +1411,8 @@ void CloseMatchFilter(std::vector<line2Dup::Match> &matches,SBM_if *sbm,vector<i
 void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<StageInfo> sinfo)
 {
 
-
+  std::lock_guard<std::mutex> lock_(process_lock);
+  LOGI(">>>>>>>LOCK>>>>>");
 
   if(sinfo->trigger_id>0)
   {
@@ -1250,18 +1455,48 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
   
 
-  Mat CV_srcImg(srcImg->GetHeight(), srcImg->GetWidth(), CV_8UC3, srcImg->CVector[0]);
+  Mat _CV_srcImg(srcImg->GetHeight(), srcImg->GetWidth(), CV_8UC3, srcImg->CVector[0]);
+
+  //crop CV_srcImg to make width and height multiples of 8
+
 
   
 
-  cv::Size size1 = CV_srcImg.size();
-  size1.width = ((int)(size1.width * matching_downScale)) / 8 * 8;
-  size1.height = ((int)(size1.height * matching_downScale)) / 8 * 8;
+  cv::Size size_origin = _CV_srcImg.size();
 
-  Mat CV_srcImg_ds(size1, CV_8UC3);
-  resize(CV_srcImg, CV_srcImg_ds, size1, cv::INTER_AREA);
 
-  cv::cvtColor(CV_srcImg_ds, CV_srcImg_ds, cv::COLOR_BGR2GRAY);
+
+
+
+
+  cv::Size size_sd;
+  size_sd.width = ((int)(size_origin.width * matching_downScale)) / 8 * 8;
+  size_sd.height = ((int)(size_origin.height * matching_downScale)) / 8 * 8;
+
+
+
+
+  cv::Size size_crop;
+
+  size_crop.width = (int)(size_sd.width/matching_downScale);
+  size_crop.height = (int)(size_sd.height/matching_downScale);
+
+
+
+  Mat CV_srcImg=_CV_srcImg(Rect(0,0,size_crop.width,size_crop.height));
+
+  Mat CV_srcImg_ds;
+
+  if(matching_downScale==1)
+  {
+    CV_srcImg_ds=CV_srcImg;
+  }
+  else
+  {
+    resize(CV_srcImg, CV_srcImg_ds, size_sd, cv::INTER_AREA);
+  }
+
+  // cv::cvtColor(CV_srcImg_color, CV_srcImg_ds, cv::COLOR_BGR2GRAY);
   
 
   float magThres_eq_alpha = 0.3;
@@ -1288,10 +1523,34 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
     cJSON *search_regions = JFetch_ARRAY(def, "search_regions");
     float similarity_thres = JFetch_NUMBER_ex(def, "similarity_thres", 60);
 
-  
+
+
+    bool mask_enable=JFetch_TRUE(def,"mask.enable");
+
+          
+    cJSON* gval=belongMan->getNLockGlobalValue();
+    double l_h=DFetch_NUMBER_ex(def,"mask.lh",0,gval);
+    double l_s=DFetch_NUMBER_ex(def,"mask.ls",0,gval);
+    double l_v=DFetch_NUMBER_ex(def,"mask.lv",0,gval);
+
+    double h_h=DFetch_NUMBER_ex(def,"mask.hh",180,gval);
+    double h_s=DFetch_NUMBER_ex(def,"mask.hs",255,gval);
+    double h_v=DFetch_NUMBER_ex(def,"mask.hv",255,gval);
+
+
+
+    int blur1_size=DFetch_NUMBER_ex(def,"mask.blur1_size",25,gval);
+    double thres1_l=DFetch_NUMBER_ex(def,"mask.thres1_l",130,gval);
+    double thres1_h=DFetch_NUMBER_ex(def,"mask.thres1_h",255,gval);
+    int blur2_size=DFetch_NUMBER_ex(def,"mask.blur2_size",25,gval);
+    double thres2_l=DFetch_NUMBER_ex(def,"mask.thres2_l",1,gval);
+    double thres2_h=DFetch_NUMBER_ex(def,"mask.thres2_h",255,gval);
+    belongMan->unLockGlobalValue();
+
+   
     if (search_regions && cJSON_GetArraySize(search_regions))
     {
-  
+
       int arrL = cJSON_GetArraySize(search_regions);
       for (int i = 0; i < arrL; i++)
       {
@@ -1335,6 +1594,66 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
         Mat CV_srcImg_region = CV_srcImg_ds(Rect(x, y, w, h));
 
+
+   
+        //apply color based(HSV) mask first to avoid background noise.... kind of
+        if(mask_enable)
+        {
+          // make a HSV filtered mask to remove the background
+          Mat CV_srcImg_region_hsv;
+          cv::cvtColor(CV_srcImg_region, CV_srcImg_region_hsv, cv::COLOR_BGR2HSV);
+
+   
+   
+          Mat img_HSV_threshold;
+          {
+
+
+
+            Scalar rangeH=Scalar(h_h,h_s,h_v);
+            Scalar rangeL=Scalar(l_h,l_s,l_v);
+
+            Mat img_HSV_range;
+            inRange(CV_srcImg_region_hsv, rangeL, rangeH, img_HSV_range);
+
+
+   
+            cv::blur(img_HSV_range,img_HSV_range,cv::Size(blur1_size,blur1_size));
+            threshold(img_HSV_range, img_HSV_range, thres1_l , thres1_h, THRESH_BINARY);
+
+
+            // cv::imwrite("data/img_HSV_range_"+id+"_"+std::to_string(i)+".jpg",img_HSV_range);
+
+            cv::blur(img_HSV_range,img_HSV_range,cv::Size(blur2_size,blur2_size));
+
+
+   
+
+            threshold(img_HSV_range, img_HSV_threshold, thres2_l, thres2_h, THRESH_BINARY);
+
+          }
+
+          //and the mask to the image
+
+          Mat CV_srcImg_region_masked;
+          CV_srcImg_region.copyTo(CV_srcImg_region_masked,img_HSV_threshold);
+
+          //copy CV_srcImg_region_masked to CV_srcImg_region
+          CV_srcImg_region=CV_srcImg_region_masked;
+
+          //save the mask for debugging
+          // if(1)
+          // {
+          //   cv::imwrite("data/mask_"+id+"_"+std::to_string(i)+".jpg",img_HSV_threshold);
+          //   cv::imwrite("data/masked_"+id+"_"+std::to_string(i)+".jpg",CV_srcImg_region);
+          // }
+
+
+        }
+
+   
+
+
   LOGI(">>>>>i:%d>>>",i);
         std::vector<line2Dup::Match> sub_matches = sbm->detector.match(
             CV_srcImg_region,
@@ -1365,7 +1684,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
           sub_matches[index].y+=y;
         }
         vector<StageInfo_Orientation::orient> orientList;
-        orientList =MatchPoseRefine(CV_srcImg,sub_matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,must_refine_result,remove_refine_failed_result);
+        orientList =MatchPoseRefine(CV_srcImg,sub_matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,origin_offset_angle,false,must_refine_result,remove_refine_failed_result);
 
         if(regional_most_similar_match)
         {//keep the most similar(confident) one
@@ -1422,7 +1741,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
       
       vector<int> SubIdxs;
       CloseMatchFilter(matches,sbm,SubIdxs);
-      vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(CV_srcImg,matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,0,false,must_refine_result,remove_refine_failed_result);
+      vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(CV_srcImg,matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,origin_offset_angle,false,must_refine_result,remove_refine_failed_result);
 
   
 

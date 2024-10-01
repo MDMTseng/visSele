@@ -152,6 +152,8 @@ class InspectionTarget:public InspectionTarget_Runnable
   std::string local_env_path;
   shared_ptr<StageInfo> cache_latest_input=NULL;
   shared_ptr<StageInfo> cache_latest_result=NULL;
+
+  std::mutex process_lock;
   public:
   std::string id;
   std::string type;
@@ -228,7 +230,7 @@ protected:
 class InspectionTargetManager
 {
   std::mutex camCBLock;
-  std::mutex processLock;
+  // std::mutex processLock;
 
   cJSON* globalValue=NULL;
 

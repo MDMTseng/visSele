@@ -41,5 +41,7 @@ if [ "$1" == "release" ]; then
 
 else
    make -f Makefile_mods runCMake
+   ret_code=$?
    echo "Debug mode"
+   exit $ret_code
 fi
