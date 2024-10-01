@@ -14,6 +14,8 @@
 #include "Ethercat.h" // Include the EtherCAT Library
 #include "MotorCtrlCiA402.h"
 
+#include "StateMachine.h"
+
 
 #include "ValueMapping.h" // Include the EtherCAT Library
 
