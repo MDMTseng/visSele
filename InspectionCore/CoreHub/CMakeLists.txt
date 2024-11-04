@@ -174,12 +174,12 @@ if($ENV{FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK} EQUAL 1)
   
 endif()
 
+file(GLOB INSPECTION_TARGET_SOURCES "InspectionTarget/InspTar_*.cpp")
 
 add_executable (visSele main.cpp wiringPanel.cpp wiringPanel_ext.cpp 
 InspectionTarget/InspectionTarget.cpp 
-InspectionTarget/InspTar_ImgSrc.cpp
-InspectionTarget/InspTar_Orientation_ShapeBasedMatching.cpp
-InspectionTarget/InspTar_SurfaceCheckSimple.cpp
+InspectionTarget/InspTarUtil.cpp 
+${INSPECTION_TARGET_SOURCES}
 ${PLAT_FILES}
 
 
@@ -210,6 +210,7 @@ target_link_libraries(visSele
   opencv_core
   opencv_imgproc
   opencv_imgcodecs opencv_calib3d
+  opencv_video
   # ${Python3_LIBRARIES}
   ${PLAT_LIBS}
   ${LINK_LIBS_CAMERA}

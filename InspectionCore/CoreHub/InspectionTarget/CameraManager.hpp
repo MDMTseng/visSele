@@ -1,8 +1,9 @@
-#pragma once
+#ifndef CAMERAMANAGER_HPP
+#define CAMERAMANAGER_HPP
 
 
 #include "CameraLayerManager.hpp"
-
+class StageInfo_Image;
 class CameraManager
 {
 
@@ -14,6 +15,7 @@ class CameraManager
   struct StreamingInfo
   {
     CameraLayer* camera;
+    std::shared_ptr<acvImage> latest_img;
     int channel_id;
     int downsample;
   };
@@ -51,4 +53,6 @@ class CameraManager
 
   ~CameraManager();
 };
+
+#endif
 

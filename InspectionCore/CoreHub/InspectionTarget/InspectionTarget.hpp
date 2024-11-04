@@ -206,7 +206,7 @@ public:
 
 protected:
 
-  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo);
+  virtual bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo);
 
 
   virtual void run()=0;
@@ -224,6 +224,9 @@ protected:
   void attachSstaticInfo( cJSON* jobj,int trigger_id );
 
   void additionalInfoAssign(std::string key,cJSON* info);
+
+
+  void StageInfoFillDefault(StageInfo* reportInfo,StageInfo* inputInfo);
 
 };
 

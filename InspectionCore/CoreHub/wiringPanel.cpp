@@ -31,10 +31,14 @@
 #include <opencv2/calib3d.hpp>
 #include "opencv2/imgproc.hpp"
 #include <opencv2/imgcodecs.hpp>
-
+#include <opencv2/video/tracking.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <circleFitting.h>
+#include <data.h>
+#include <cpJson.h>
+
 // #include <Python.h>
 using namespace cv;
 
@@ -127,6 +131,8 @@ class InspectionTargetManager_m:public InspectionTargetManager
     newStateInfo->source=NULL;//info.camera->getConnectionData().id;
     newStateInfo->source_id=info.camera->getConnectionData().id;
     newStateInfo->img_prop.fi=finfo;
+
+    info.latest_img=img;
     // if(info.channel_id)
     // {
     //   newStateInfo->jInfo=cJSON_CreateObject();
@@ -154,6 +160,8 @@ class InspectionTargetManager_m:public InspectionTargetManager
 };
 
 
+
+
 int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trigger_id,int channel_id)
 {
   
@@ -164,7 +172,30 @@ int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trig
   newStateInfo->img_prop.StreamInfo.channel_id=channel_id;
   newStateInfo->trigger_tags=trigger_tags;
 
-  Mat mat=imread(path.c_str());
+  Mat mat_origin=imread(path.c_str());
+
+  
+  Mat mat;
+
+  if(0)
+  {
+
+    Mat cameraMatrix = (Mat_<double>(3, 3) << 11775.33981935765, 0, 1300.919341080545,
+                                            0, 11764.9763003154, 988.9958350064916,
+                                            0, 0, 1);
+
+  // // Define the distortion coefficients 
+    Mat distCoeffs = (Mat_<double>(5, 1) << -0.370482288257829, -2.57889743589971,
+                                            -0.0004007172176641259, 0.001292566228390161, 0);
+
+    undistort(mat_origin, mat, cameraMatrix, distCoeffs);
+
+  }
+  else
+  {
+    mat=mat_origin;
+  }
+
 
   int H = mat.rows;
   int W = mat.cols;
@@ -2615,7 +2646,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
           pkt->img_prop=src->img_prop;
           pkt->img_show=src->img_show;
           pkt->process_time_us=src->process_time_us;
-          pkt->sharedInfo=src->sharedInfo;
+          pkt->refInfo=src->refInfo;
 
           pkt->source=src->source;
           pkt->source_id=src->source_id;
@@ -3477,6 +3508,11 @@ class InspectionTarget_DataTransfer :public InspectionTarget
   }
 
 
+  bool stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
+  {
+    return true;
+
+  }
 
 
 };
@@ -3684,7 +3720,7 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget
             pkt->img_prop=src->img_prop;
             pkt->img_show=src->img_show;
             pkt->process_time_us=src->process_time_us;
-            pkt->sharedInfo=src->sharedInfo;
+            pkt->refInfo=src->refInfo;
 
             pkt->source=src->source;
             pkt->source_id=src->source_id;
@@ -4734,6 +4770,36 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           }
         }
       }
+      else if(strcmp(type_str, "save_latest_image") ==0)
+      {do{
+
+
+        char *_cam_id = JFetch_STRING(json, "id");
+        if(_cam_id==NULL)break;
+        std::string id=std::string(_cam_id);
+        CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
+        if(cami==NULL)break;
+
+        auto aimg=cami->latest_img.get();
+        if(aimg==NULL)break;
+
+        //get path from json
+        char *_img_path = JFetch_STRING(json, "path");
+        if(_img_path==NULL)break;
+        std::string img_path=std::string(_img_path);
+
+        
+      Mat CV_srcImg(aimg->GetHeight(),aimg->GetWidth(),CV_8UC3,aimg->CVector[0]);
+
+        cv::imwrite(img_path,CV_srcImg);
+        // img->img-;
+        // cami->
+
+
+
+
+
+      }while(0);}
       else if(strcmp(type_str, "trigger") ==0)
       {do{
 
@@ -4886,68 +4952,41 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           
           LOGI(">>>id:%s Add type:%s",id.c_str(),type.c_str());
 
-          if(type==InspectionTarget_TEST_IT::sTYPE())
-          {
-            inspTar = new InspectionTarget_TEST_IT();
-            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
-          }
-          else if(type==InspectionTarget_DataTransfer::sTYPE())
+          //custom types
+          if(type==InspectionTarget_DataTransfer::sTYPE())
           {
             inspTar = new InspectionTarget_DataTransfer();
-            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
           }
           else if(type==InspectionTarget_StageInfoImageSave::sTYPE())
           {
             inspTar = new InspectionTarget_StageInfoImageSave();
-            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
-          }
-          
-          // else if(type==InspectionTarget_ReduceCategorize::TYPE())
-          // {
-          //   inspTar = new InspectionTarget_ReduceCategorize(id,defInfo,&inspTarMan,env_path);
-          // }
-          
-          // else if(type==InspectionTarget_GroupResultSave::TYPE())
-          // {
-          //   inspTar = new InspectionTarget_GroupResultSave(id,defInfo,&inspTarMan,env_path);
-          // }
-
-          else if(type==InspectionTarget_SurfaceCheckSimple::sTYPE())
-          {
-            inspTar = new InspectionTarget_SurfaceCheckSimple();
-            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
-          }
-          else if(type==InspectionTarget_Orientation_ShapeBasedMatching::sTYPE())
-          {
-            // inspTar = new InspectionTarget_Orientation_ShapeBasedMatching(id,defInfo,&inspTarMan,env_path);
-
-            inspTar = new InspectionTarget_Orientation_ShapeBasedMatching();
-            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
           }
           else if(type==InspectionTarget_JSON_Peripheral::sTYPE())
           {
             inspTar = new InspectionTarget_JSON_Peripheral();
-            inspTar->INIT(id,defInfo,&inspTarMan,env_path);
+            
           }
           else if(type==InspectionTarget_JSON_CNC_Peripheral::sTYPE())
           {
             inspTar = new InspectionTarget_JSON_CNC_Peripheral();
+            
+          }
+          if(inspTar==NULL)//not custom type, try stock type
+          {
+            inspTar=createInspectionTarget(type);
+          }
+
+
+          if(inspTar==NULL)
+          {
+            LOGI("createInspectionTarget failed!! type:%s",type.c_str());
+            // break;
+          }
+          else
+          {
             inspTar->INIT(id,defInfo,&inspTarMan,env_path);
           }
-          // else if(type==InspectionTarget_StageInfoCollect_Base::TYPE())
-          // {
-          //   inspTar = new InspectionTarget_StageInfoCollect_Base(id,defInfo,&inspTarMan,env_path);
-          // }
-          // else if(type==InspectionTarget_ImgSrc::TYPE())
-          // {
-          //   inspTar = new InspectionTarget_ImgSrc(id,defInfo,&inspTarMan,env_path);
-          // }
-
           
-          // else
-          // {
-          //   //failed
-          // }
         }
 
 
@@ -5543,6 +5582,492 @@ void sigroutine(int dunno)
 }
 
 
+
+
+int opencv_rotCrop() {
+  // Load the image
+  cv::Mat src = cv::imread("image.png", cv::IMREAD_GRAYSCALE);
+  if (src.empty()) {
+      std::cout << "Could not open or find the image!" << std::endl;
+      return -1;
+  }
+
+  // sssimgProcess_TEST(src,NULL);
+  TEST_InspTar_LineFitting(src,NULL);
+  return 0;
+}
+
+
+void CalibProcess(string imgPath, Size boardSize = Size(42, 35))
+{
+
+    Mat image = imread(imgPath, IMREAD_GRAYSCALE);
+
+    Size gridSize=boardSize;
+
+    // Set up 3D points (object points) for the grid
+    vector<Point3f> objectPoints;
+    for (int i = 0; i < boardSize.height; i++) {
+        for (int j = 0; j < boardSize.width; j++) {
+            objectPoints.push_back(Point3f(j, i, 0));
+        }
+    }
+
+    // Detect the grid corners in the image
+    vector<Point2f> imagePoints;
+    bool found = findChessboardCorners(image, gridSize, imagePoints,
+                                       CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
+
+    LOGI("found:%d corners:%d",found,imagePoints.size());
+    if (!found) {
+        cout << "Could not find chessboard corners" << endl;
+    }
+
+    // Refine corner positions for higher accuracy
+    cornerSubPix(image, imagePoints, Size(11, 11), Size(-1, -1),
+                 TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 30, 0.1));
+
+    // Draw the corners on the image for visualization
+    drawChessboardCorners(image, gridSize, Mat(imagePoints), found);
+
+    cv::imwrite("data/calibImg_corners2.png",image);
+
+
+    Mat cameraMatrix = Mat::eye(3, 3, CV_64F);
+    Mat distCoeffs = Mat::zeros(8, 1, CV_64F);
+    vector<vector<Point2f>> imgPointsVec = { imagePoints };
+    vector<vector<Point3f>> objPointsVec = { objectPoints };
+
+        vector<Mat> rvecs, tvecs;
+    double rms = calibrateCamera(objPointsVec, imgPointsVec, image.size(), cameraMatrix,
+                                 distCoeffs, rvecs, tvecs,
+                                 CALIB_FIX_K3 | CALIB_FIX_K4 | CALIB_FIX_K5);
+
+    cout << "RMS error: " << rms << endl;
+    cout << "Camera Matrix: \n" << cameraMatrix << endl;
+    cout << "Distortion Coefficients: \n" << distCoeffs << endl;
+
+    Mat undistortedImage;
+    undistort(image, undistortedImage, cameraMatrix, distCoeffs);
+
+    cv::imwrite("data/calibImg_undistorted.png",undistortedImage);
+}
+
+
+
+void getEulerAngles(const cv::Mat &rotCamerMatrix, cv::Vec3d &eulerAngles)
+{
+    cv::Mat cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ;
+    const double* _r = rotCamerMatrix.ptr<double>();
+    double projMatrix[12] = {_r[0], _r[1], _r[2], 0,
+                             _r[3], _r[4], _r[5], 0,
+                             _r[6], _r[7], _r[8], 0};
+
+    cv::decomposeProjectionMatrix(cv::Mat(3, 4, CV_64FC1, projMatrix),
+                                  cameraMatrix,
+                                  rotMatrix,
+                                  transVect,
+                                  rotMatrixX,
+                                  rotMatrixY,
+                                  rotMatrixZ,
+                                  eulerAngles);
+}
+
+void warpImageToCompensateRotation(const cv::Mat &image, const cv::Mat &cameraMatrix, const cv::Mat &distCoeffs, const std::vector<cv::Point2f> &imagePoints, const std::vector<cv::Point3f> &objectPoints, cv::Mat &outputImage)
+{
+    // Estimate pose
+    cv::Mat rvec, tvec;
+    cv::solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, rvec, tvec);
+
+    std::cout << "rvec: \n" << rvec << std::endl;
+    std::cout << "tvec: \n" << tvec << std::endl;
+
+    // Convert rotation vector to rotation matrix
+    cv::Mat rotMatrix;
+    cv::Rodrigues(rvec, rotMatrix);
+
+    std::cout << "rotMatrix: \n" << rotMatrix << std::endl;
+
+
+
+    // Compute the inverse rotation matrix
+    cv::Mat invRotMatrix = rotMatrix.inv();
+
+    // Create a 3x3 identity matrix for the transformation
+    cv::Mat transformMatrix = cv::Mat::eye(3, 3, CV_64F);
+
+    // Copy the inverse rotation matrix into the top-left 3x3 part of the transformation matrix
+    invRotMatrix.copyTo(transformMatrix(cv::Rect(0, 0, 3, 3)));
+
+
+    std::cout << "transformMatrix: \n" << transformMatrix << std::endl;
+    std::cout << "invRotMatrix: \n" << invRotMatrix << std::endl;
+    // Apply the warp
+    cv::warpPerspective(image, outputImage, transformMatrix, image.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT);
+
+    imwrite("data/calibImg_warp.png",outputImage);
+}
+
+
+
+
+static Point2f distortPoint(const Point2f& undistortedPoint, const Mat& cameraMatrix, const Mat& distCoeffs, int iterations = 5) {
+    // Camera matrix parameters
+    double fx = cameraMatrix.at<double>(0, 0);
+    double fy = cameraMatrix.at<double>(1, 1);
+    double cx = cameraMatrix.at<double>(0, 2);
+    double cy = cameraMatrix.at<double>(1, 2);
+
+    // Distortion coefficients
+    double k1 = distCoeffs.at<double>(0, 0);
+    double k2 = distCoeffs.at<double>(1, 0);
+    double p1 = distCoeffs.at<double>(2, 0);
+    double p2 = distCoeffs.at<double>(3, 0);
+    double k3 = distCoeffs.at<double>(4, 0);
+
+    // Start with the undistorted point in normalized coordinates
+    double x = (undistortedPoint.x - cx) / fx;
+    double y = (undistortedPoint.y - cy) / fy;
+
+    // Iteratively apply distortion
+    for (int i = 0; i < iterations; ++i) {
+        double r2 = x * x + y * y;
+        double radialDistortion = 1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2;
+
+        double xDistorted = x * radialDistortion + 2 * p1 * x * y + p2 * (r2 + 2 * x * x);
+        double yDistorted = y * radialDistortion + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
+
+        // Update x and y with the distorted values
+        x = xDistorted;
+        y = yDistorted;
+    }
+
+    // Convert back to pixel coordinates
+    Point2f distortedPoint;
+    distortedPoint.x = fx * x + cx;
+    distortedPoint.y = fy * y + cy;
+    return distortedPoint;
+}
+
+
+void CalibProcess2(string imgPath, Size boardSize = Size(42, 35))
+{
+
+    Mat image = imread(imgPath, IMREAD_GRAYSCALE);
+
+    Size gridSize=boardSize;
+
+    // Set up 3D points (object points) for the grid
+    vector<Point3f> objectPoints;
+    for (int i = 0; i < boardSize.height; i++) {
+        for (int j = 0; j < boardSize.width; j++) {
+            objectPoints.push_back(Point3f(j, i, 0));
+        }
+    }
+
+    // Detect the grid corners in the image
+    vector<Point2f> imagePoints;
+    bool found = findChessboardCorners(image, gridSize, imagePoints,
+                                       CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
+
+    LOGI("found:%d corners:%d",found,imagePoints.size());
+    if (!found) {
+        cout << "Could not find chessboard corners" << endl;
+    }
+
+    // Refine corner positions for higher accuracy
+    cornerSubPix(image, imagePoints, Size(11, 11), Size(-1, -1),
+                 TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 30, 0.1));
+
+    // Draw the corners on the image for visualization
+    drawChessboardCorners(image, gridSize, Mat(imagePoints), found);
+
+    // cv::imwrite("data/calibImg_corners2.png",image);
+
+
+    Mat cameraMatrix = Mat::eye(3, 3, CV_64F);
+    Mat distCoeffs = Mat::zeros(8, 1, CV_64F);
+    vector<vector<Point2f>> imgPointsVec = { imagePoints };
+    vector<vector<Point3f>> objPointsVec = { objectPoints };
+
+        vector<Mat> rvecs, tvecs;
+    double rms = calibrateCamera(objPointsVec, imgPointsVec, image.size(), cameraMatrix,
+                                 distCoeffs, rvecs, tvecs,
+                                 CALIB_FIX_K3 | CALIB_FIX_K4 | CALIB_FIX_K5);
+
+    cout << "RMS error: " << rms << endl;
+    cout << "Camera Matrix: \n" << cameraMatrix << endl;
+    cout << "Distortion Coefficients: \n" << distCoeffs << endl;
+
+
+    Mat undistortedImage;
+    undistort(image, undistortedImage, cameraMatrix, distCoeffs);
+    cv::imwrite("data/calibImg_undistorted.png",undistortedImage);
+
+
+    // {
+
+    //   cv::Mat rvec, tvec;
+    //   cv::solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, rvec, tvec);
+
+    //   // Convert rotation vector to rotation matrix
+    //   cv::Mat rotMatrix;
+    //   cv::Rodrigues(rvec, rotMatrix);
+
+    //   // Convert rotation matrix to Euler angles
+    //   cv::Vec3d eulerAngles;
+    //   getEulerAngles(rotMatrix, eulerAngles);
+
+    //   std::cout << "Roll: " << eulerAngles[2] << " Pitch: " << eulerAngles[0] << " Yaw: " << eulerAngles[1] << std::endl;
+
+
+    // }
+
+
+    {
+      // cv::Mat outputImage;
+      // warpImageToCompensateRotation(image, cameraMatrix, distCoeffs, imagePoints, objectPoints, outputImage);
+
+
+
+      int idx_p0=0;
+      int idx_p1=boardSize.width-1;
+      int idx_p2=boardSize.width*(boardSize.height-1);  
+      int idx_p3=boardSize.width*(boardSize.height)-1;
+      std::vector<cv::Point2f> corners_original;
+      corners_original.push_back(imagePoints[idx_p0]);
+      corners_original.push_back(imagePoints[idx_p1]);
+      corners_original.push_back(imagePoints[idx_p2]);
+      corners_original.push_back(imagePoints[idx_p3]);
+
+      std::vector<cv::Point2f> corners_undistorted;
+
+      cout << "corners_original:" << corners_original << endl;
+      undistortPoints(corners_original,corners_undistorted,cameraMatrix,distCoeffs, noArray(), cameraMatrix);
+
+      {
+        for(auto &p:corners_undistorted)
+        {
+          cv::Point2f np=distortPoint(p,cameraMatrix,distCoeffs);
+          cout << "undistorted:" << p << " distorted:" << np << endl;
+        }
+      }
+
+
+
+      std::vector<cv::Point3f> referencePoints_3f;
+      referencePoints_3f.push_back(objectPoints[0]);
+      referencePoints_3f.push_back(objectPoints[idx_p1]);
+      referencePoints_3f.push_back(objectPoints[idx_p2]);
+      referencePoints_3f.push_back(objectPoints[idx_p3]);
+
+      std::vector<cv::Point2f> referencePoints_2f;
+      for(auto &p:referencePoints_3f)
+      {
+        referencePoints_2f.push_back(cv::Point2f(p.x,p.y)*10*5.5);
+      }
+
+
+      cout << "corners_undistorted: \n" << corners_undistorted << std::endl;
+      cout << "referencePoints: \n" << referencePoints_2f << std::endl;
+
+      cv::Mat M = cv::getPerspectiveTransform(corners_undistorted, referencePoints_2f);
+      cv::Mat dst;
+      cv::warpPerspective(undistortedImage, dst, M, undistortedImage.size());
+      cv::imwrite("data/calibImg_warp.png",dst);
+
+
+
+      // cv::Mat affineTransform = cv::getAffineTransform(corners, referencePoints_2f);
+
+      // // Warp the image to correct for distortion and rotation
+      // cv::Mat unwarpedImage;
+      // cv::warpAffine(image, unwarpedImage, affineTransform, image.size());
+
+      // imwrite("data/calibImg_unwarp.png",unwarpedImage);
+
+
+      // Display the result
+      // imwrite("data/calibImg_warp.png",outputImage);
+    }
+    // Mat undistortedImage;
+    // undistort(image, undistortedImage, cameraMatrix, distCoeffs);
+
+    // cv::imwrite("data/calibImg_undistorted.png",undistortedImage);
+
+
+
+
+
+}
+
+
+// namespace fs = std::filesystem;
+void CalibProcessFolder(string calibFolderPath, Size boardSize = Size(48, 48), float squareSize = 1.0) {
+
+    // Parameters for calibration
+    vector<vector<Point2f>> imagePoints;  // Points in 2D image space
+    vector<vector<Point3f>> objectPoints; // Points in 3D object space
+
+    // Generate the 3D object points for the chessboard pattern
+    vector<Point3f> objP;
+    for (int i = 0; i < boardSize.height; i++) {
+        for (int j = 0; j < boardSize.width; j++) {
+            objP.push_back(Point3f(j * squareSize, i * squareSize, 0));
+        }
+    }
+
+    namespace fs = std::__fs::filesystem; 
+    // Read images from the folder
+    for (const auto& entry : fs::directory_iterator(calibFolderPath)) {
+        Mat gray = imread(entry.path().string(),IMREAD_GRAYSCALE);
+        if (gray.empty()) {
+            cerr << "Could not open or find the image: " << entry.path() << endl;
+            continue;
+        }
+
+
+        // Find chessboard corners
+        vector<Point2f> corners;
+        bool found = findChessboardCorners(gray, boardSize, corners,
+                                           CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
+
+        LOGI("found:%d corners:%d",found,corners.size());
+        if(corners.size()>0)
+        cornerSubPix(gray, corners, Size(11, 11), Size(-1, -1),
+                         TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 30, 0.1));
+
+        // Draw and show the corners
+        // drawChessboardCorners(image, boardSize, Mat(corners), found);
+        //   fs::path outPath = entry.path();
+        // outPath=outPath.replace_extension("_cross.png");
+        // cv::imwrite(outPath,image);
+
+
+        if (found) {
+            // Refine corner positions for higher accuracy
+            
+            // Store detected points
+            imagePoints.push_back(corners);
+            objectPoints.push_back(objP);
+
+            // imshow("Corners", image);
+            // waitKey(100);  // Display each detected pattern briefly
+        } else {
+            cerr << "Chessboard corners not found in image: " << entry.path() << endl;
+        }
+    }
+
+    if (imagePoints.size() < 3) {
+        cerr << "Not enough valid calibration images found. Need at least 10." << endl;
+        return;
+    }
+
+    // Camera matrix and distortion coefficients
+    Mat cameraMatrix = Mat::eye(3, 3, CV_64F);
+    Mat distCoeffs = Mat::zeros(8, 1, CV_64F);
+    vector<Mat> rvecs, tvecs;
+
+    // Calibrate the camera
+    double rms = calibrateCamera(objectPoints, imagePoints, boardSize, cameraMatrix, distCoeffs, rvecs, tvecs,
+                                 CALIB_FIX_K3 | CALIB_FIX_K4 | CALIB_FIX_K5);
+
+    cout << "Calibration RMS error: " << rms << endl;
+    cout << "Camera Matrix: \n" << cameraMatrix << endl;
+    cout << "Distortion Coefficients: \n" << distCoeffs << endl;
+
+    // Save the results
+    // FileStorage fs("calibration_result.xml", FileStorage::WRITE);
+    // fs << "CameraMatrix" << cameraMatrix;
+    // fs << "DistCoeffs" << distCoeffs;
+    // fs.release();
+
+    cout << "Calibration completed and saved to 'calibration_result.xml'" << endl;
+    // destroyAllWindows();
+}
+
+
+
+
+
+
+int CalibProcess_try() {
+    // Define the camera matrix
+    Mat cameraMatrix = (Mat_<double>(3, 3) << 11775.33981935765, 0, 1300.919341080545,
+                                              0, 11764.9763003154, 988.9958350064916,
+                                              0, 0, 1);
+
+    // Define the distortion coefficients
+    Mat distCoeffs = (Mat_<double>(5, 1) << -0.370482288257829, -2.57889743589971,
+                                             -0.0004007172176641259, 0.001292566228390161, 0);
+
+    // Define the pixel location in the original image
+    vector<Point2f> originalPoints = { Point2f(134.0, 36.0) };  // Example point
+
+    // Convert the points to normalized coordinates on the undistorted image
+    vector<Point2f> undistortedPoints;
+    undistortPoints(originalPoints, undistortedPoints, cameraMatrix, distCoeffs, noArray(), cameraMatrix);
+
+    // Print the result
+    cout << "Original Point: " << originalPoints[0] << endl;
+    cout << "Undistorted Point: " << undistortedPoints[0] << endl;
+
+    return 0;
+}
+
+int tetcpJson() {
+    // Create an empty JSON object
+    {
+      cJSON *jobj = cJSON_Parse("{\"a\":1,\"b\":2,\"c\":3}");
+
+      // cpJSON_Value jv(jobj,"a");
+      // jv="a";
+      // Print the final JSON structure
+
+      cJSON *item=cJSON_GetObjectItem(jobj,"a");
+
+      cJSON_SetNumberValue(item,100);
+      //print json 
+      char *str=cJSON_Print(jobj);
+      std::cout << str << std::endl;
+      free(str);
+
+    }
+    {
+
+        cJSON *jarr = cJSON_Parse("[0,1,2,{\"a\":1,\"b\":2,\"c\":3}]");
+        //set jarr[2]="ss"
+        cJSON *item=cJSON_GetArrayItem(jarr,2);
+        
+        //print json 
+        char *str=cJSON_Print(jarr);
+        std::cout << str << std::endl;
+        free(str);
+    }
+
+
+    {
+
+        cJSON *jarr = cJSON_Parse("[0,1,2,{\"a\":1,\"b\":2,\"c\":3}]");
+        //set jarr[2]="ss"
+        cJSON *item=cJSON_GetArrayItem(jarr,2);
+        // cJSON_SetValuestring(item,"ss");
+        //print json 
+        char *str=cJSON_Print(jarr);
+        std::cout << str << std::endl;
+        free(str);
+    }
+
+
+
+
+
+    return 0;
+}
+
+#include <vector>
+int cp_main(int argc, char **argv)
+{
 #include <vector>
 int cp_main(int argc, char **argv)
 {

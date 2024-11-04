@@ -29,6 +29,11 @@
 #include <InspTar_Orientation.hpp>
 #include <InspTar_SurfaceCheckSimple.hpp>
 
+#include <InspTar_Empty.hpp>
+#include <InspTar_ArcFitting.hpp>
+#include <InspTar_LineFitting.hpp>
+#include <InspTar_DirectionalCaliper.hpp>
+
 using namespace cv;
 // class InspectionTarget_s :public InspectionTarget
 // {
@@ -290,6 +295,51 @@ class InspectionTarget_StageInfoCollect_Base :public InspectionTarget
   }
 };
 
+
+
+static InspectionTarget* createInspectionTarget(std::string type)
+{
+  InspectionTarget* inspTar=NULL;
+
+  if(type==InspectionTarget_TEST_IT::sTYPE())
+  {
+    inspTar = new InspectionTarget_TEST_IT();
+    
+  }
+  else if(type==InspectionTarget_SurfaceCheckSimple::sTYPE())
+  {
+    inspTar = new InspectionTarget_SurfaceCheckSimple();
+    
+  }
+  else if(type==InspectionTarget_DirectionalCaliper::sTYPE())
+  {
+    inspTar = new InspectionTarget_DirectionalCaliper();
+    
+  }
+  else if(type==InspectionTarget_ArcFitting::sTYPE())
+  {
+    inspTar = new InspectionTarget_ArcFitting();
+  }
+  else if(type==InspectionTarget_LineFitting::sTYPE())
+  {
+    inspTar = new InspectionTarget_LineFitting();
+  }
+  else if(type==InspectionTarget_DirectionalCaliper::sTYPE())
+  {
+    inspTar = new InspectionTarget_DirectionalCaliper();
+  }
+  else if(type==InspectionTarget_Empty::sTYPE())
+  {
+    inspTar = new InspectionTarget_Empty();
+  }
+  else if(type==InspectionTarget_Orientation_ShapeBasedMatching::sTYPE())
+  {
+    inspTar = new InspectionTarget_Orientation_ShapeBasedMatching();
+    
+  }
+  
+  return inspTar;
+}
 
 /*
 

@@ -634,7 +634,7 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
         pkt->img_prop=src->img_prop;
         pkt->img_show=src->img_show;
         pkt->process_time_us=src->process_time_us;
-        pkt->sharedInfo=src->sharedInfo;
+        pkt->refInfo=src->refInfo;
 
         pkt->source=src->source;
         pkt->source_id=src->source_id;
@@ -1784,7 +1784,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
       reportInfo->img = srcImg;
   reportInfo->trigger_id = sinfo->trigger_id;
 
-  reportInfo->sharedInfo.push_back(sinfo);
+  reportInfo->refInfo.push_back(sinfo);
   reportInfo->trigger_tags.push_back(id);
   insertInputTagsWPrefix(reportInfo->trigger_tags, sinfo->trigger_tags, "s_");
 

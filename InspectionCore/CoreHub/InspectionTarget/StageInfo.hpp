@@ -1,4 +1,6 @@
-#pragma once
+
+#ifndef STAGEINFO_HPP
+#define STAGEINFO_HPP
 
 
 #include "InspectionTarget.hpp"
@@ -16,11 +18,9 @@ static std::atomic<int> StageInfoLiveCounter={0};
 
 class StageInfo{
   public:
+  //BASIC--------------------------------
   std::string source_id;
   InspectionTarget *source;
-  
-  std::shared_ptr<acvImage> img;
-  std::shared_ptr<acvImage> img_show;
   struct _img_prop{
     CameraLayer::frameInfo fi;
     float mmpp;
@@ -28,19 +28,35 @@ class StageInfo{
     
   };
   struct _img_prop img_prop;
-  
-  
-  static std::string stypeName(){return "Base";}
-  virtual std::string typeName(){return this->stypeName();}
-  
-  // std::vector<StageInfo_CAT> catInfo;
-  std::vector<std::string> trigger_tags;
   int trigger_id;
-  float process_time_us;
-  int64_t create_time_sysTick;
-  // std::map<std::string,std::shared_ptr<acvImage>> imgSets;
-  cJSON* jInfo;
   
+
+  //TAG--------------------------------
+  //pass the static tags, and other tags from inspTar
+  std::vector<std::string> trigger_tags;
+
+
+  //TIME--------------------------------
+  //to track the process time
+  float process_time_us;
+  //to keep the highest resolution time
+  int64_t create_time_sysTick;
+
+
+
+  //REFERENCE--------------------------------
+  std::vector<std::shared_ptr<StageInfo>> refInfo;//meaningful reference info, mainly for track
+
+  //IMAGE--------------------------------
+  std::shared_ptr<acvImage> img;//the output image, to pass to next stage, and next stage can use it
+  std::shared_ptr<acvImage> img_show;//the output image, to show in UI, 
+  //it might have some debug draw on it, so it's different from img
+
+  //ERROR info--------------------------------
+  int error_code;
+  std::string error_msg;
+
+  cJSON* jInfo;//generated json info from this object
   virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
   {
     if(rep==NULL)
@@ -59,10 +75,18 @@ class StageInfo{
       
       cJSON_AddItemToArray(tagset,cJSON_CreateString(tag.c_str()));
     }
+
+    if(error_code!=0)
+    {
+      cJSON_AddNumberToObject(rep,"error_code",error_code);
+      cJSON_AddStringToObject(rep,"error_msg",error_msg.c_str());
+    }
     return rep;
   }
 
 
+  static std::string stypeName(){return "Base";}
+  virtual std::string typeName(){return this->stypeName();}
 
 
 
@@ -80,7 +104,6 @@ class StageInfo{
 
   std::mutex lock;
 
-  std::vector<std::shared_ptr<StageInfo>> sharedInfo;
   StageInfo(){
     img_prop.StreamInfo=(CameraManager::StreamingInfo){0};
     img_prop.mmpp=0;
@@ -113,24 +136,22 @@ class StageInfo{
       jInfo=NULL;
     }
 
-    // for(int i=0;i<sharedInfo.size();i++)
+    // for(int i=0;i<refInfo.size();i++)
     // {
-    //   StageInfo* info=sharedInfo[i];
+    //   StageInfo* info=refInfo[i];
     //   if(info && info->isStillInUse()==false )
     //   {
     //     delete info;
     //   }
-    //   sharedInfo[i]=NULL;
+    //   refInfo[i]=NULL;
     // }
-    sharedInfo.clear();
+    refInfo.clear();
     StageInfoLiveCounter--;
 #if STAGEINFO_LIFECYCLE_DEBUG
     LOGE("-->StageInfoLiveCounter:%d  :%p",(int)StageInfoLiveCounter,this);
 #endif
 
   }
-
-  
 
 };
 
@@ -154,6 +175,7 @@ class StageInfo_Image:public StageInfo
 
 #define STAGEINFO_CAT_NOT_EXIST (-40000)
 
+#define IS_STAGEINFO_CAT_NOT_AVAILABLE(cat) ((cat)==STAGEINFO_CAT_NA || (cat)==STAGEINFO_CAT_NOT_EXIST || (cat)==STAGEINFO_CAT_UNSET)
 
 class StageInfo_Category:public StageInfo
 {
@@ -474,6 +496,143 @@ class StageInfo_SurfaceCheckSimple:public StageInfo_Category
 };
 
 
+class StageInfo_Empty:public StageInfo_Category
+{
+  public:
+  static std::string stypeName(){return "Empty";}
+  virtual std::string typeName(){return this->stypeName();}
+
+
+
+  virtual cJSON* attachJsonRep(cJSON* _rootRep,uint64_t brifVector=-1)
+  {
+    cJSON* rootRep=StageInfo_Category::attachJsonRep(_rootRep,brifVector);
+
+    cJSON* report=cJSON_GetObjectItem(rootRep,"report");
+    cJSON_AddNumberToObject(report,"category",STAGEINFO_CAT_UNSET);
+    return rootRep;
+  }
+};
+
+
+
+class StageInfo_LineFitting:public StageInfo_Category
+{
+  public:
+  static std::string stypeName(){return "LineFitting";}
+  virtual std::string typeName(){return this->stypeName();}
+
+  float pt1_x,pt1_y,pt2_x,pt2_y;
+
+  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
+  {
+    LOGE("StageInfo_LineFitting::attachJsonRep");
+    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
+
+
+    cJSON* report=cJSON_CreateObject();
+    cJSON_AddItemToObject(rootRep,"report",report);
+
+    //add result_cat
+    cJSON_AddNumberToObject(rootRep,"category",category);
+
+    if(!IS_STAGEINFO_CAT_NOT_AVAILABLE(category))
+    {//add pt1 and pt2
+      cJSON *pt1=cJSON_CreateObject();
+      cJSON_AddItemToObject(report,"pt1",pt1);
+      cJSON_AddNumberToObject(pt1,"x",pt1_x);
+      cJSON_AddNumberToObject(pt1,"y",pt1_y);
+
+      cJSON *pt2=cJSON_CreateObject();
+      cJSON_AddItemToObject(report,"pt2",pt2);
+      cJSON_AddNumberToObject(pt2,"x",pt2_x);
+      cJSON_AddNumberToObject(pt2,"y",pt2_y);
+
+    }
+
+
+    return rootRep;
+  }
+};
+
+
+
+class StageInfo_ArcFitting:public StageInfo_Category
+{
+  public:
+  static std::string stypeName(){return "ArcFitting";}
+  virtual std::string typeName(){return this->stypeName();}
+
+  float center_x,center_y,radius;
+  float angle_start,angle_end;
+  float sigma;
+
+  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
+  {
+    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
+
+    cJSON* report=cJSON_CreateObject();
+    cJSON_AddItemToObject(rootRep,"report",report);
+
+    //add result_cat
+    cJSON_AddNumberToObject(rootRep,"category",category);
+
+    LOGE("MAKE json rep for ArcFitting");
+    if(!IS_STAGEINFO_CAT_NOT_AVAILABLE(category))
+    {//add pt1 and pt2
+      cJSON *center=cJSON_CreateObject();
+      cJSON_AddItemToObject(report,"center",center);
+      cJSON_AddNumberToObject(center,"x",center_x);
+      cJSON_AddNumberToObject(center,"y",center_y);
+
+      cJSON_AddNumberToObject(report,"radius",radius);
+      cJSON_AddNumberToObject(report,"sigma",sigma);
+      cJSON_AddNumberToObject(report,"angle_start",angle_start);
+      cJSON_AddNumberToObject(report,"angle_end",angle_end);
+
+    }
+
+
+    return rootRep;
+  }
+};
+
+
+
+class StageInfo_DirectionalCaliper:public StageInfo_Category
+{
+  public:
+  static std::string stypeName(){return "DirectionalCaliper";}
+  virtual std::string typeName(){return this->stypeName();}
+
+  float location_x,location_y;
+
+  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
+  {
+    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
+
+    cJSON* report=cJSON_CreateObject();
+    cJSON_AddItemToObject(rootRep,"report",report);
+
+    //add result_cat
+    cJSON_AddNumberToObject(rootRep,"category",category);
+
+    if(!IS_STAGEINFO_CAT_NOT_AVAILABLE(category))
+    {//add pt1 and pt2
+      cJSON *location=cJSON_CreateObject();
+      cJSON_AddItemToObject(report,"location",location);
+      cJSON_AddNumberToObject(location,"x",location_x);
+      cJSON_AddNumberToObject(location,"y",location_y);
+    }
+
+
+    return rootRep;
+  }
+};
+
+
+
+
 class StageInfo_Orientation:public StageInfo
 {
   public:
@@ -549,3 +708,6 @@ class StageInfo_SorterInfo:public StageInfo_Category
     return rootRep;
   }
 };
+
+
+#endif

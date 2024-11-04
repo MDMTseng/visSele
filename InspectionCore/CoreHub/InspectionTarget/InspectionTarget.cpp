@@ -236,6 +236,7 @@ bool InspectionTarget::tagMatching(cJSON* tagWhiteList, vector<std::string> &tag
       
       for(auto tag : tagArr )
       {
+        // LOGE("match:%s,%s",strInDef.c_str(),tag.c_str());
         if(strInDef==tag)
           return true;
       }
@@ -446,6 +447,28 @@ InspectionTarget::~InspectionTarget()
   cache_latest_input=NULL;
   cache_latest_result=NULL;
 }
+
+void InspectionTarget::StageInfoFillDefault(StageInfo* reportInfo,StageInfo* inputInfo)
+{
+
+  
+  reportInfo->source = this;
+  reportInfo->source_id = id;
+  reportInfo->trigger_tags.push_back(id);
+  if(inputInfo)
+  {
+    reportInfo->trigger_id = inputInfo->trigger_id;
+    insertInputTagsWPrefix(reportInfo->trigger_tags, inputInfo->trigger_tags, "s_");
+    reportInfo->img_prop = inputInfo->img_prop;
+  }
+  reportInfo->img_prop.StreamInfo.channel_id = JFetch_NUMBER_ex(additionalInfo, "stream_info.stream_id", 0);
+  reportInfo->img_prop.StreamInfo.downsample = JFetch_NUMBER_ex(additionalInfo, "stream_info.downsample", 10);
+  
+
+}
+
+
+
 
 
 
@@ -783,13 +806,20 @@ int InspectionTargetManager::dispatch(std::shared_ptr<StageInfo> sinfo, Inspecti
       }
     }
     else
-    for(int i=0;i<inspTars.size();i++)// to All
     {
-      
-      if(inspTars[i]->feedStageInfo(sinfo)==true)
+      // {//print tags
+      //   for(auto tag:sinfo->trigger_tags)
+      //     LOGE("%s",tag.c_str());
+      // }
+      for(int i=0;i<inspTars.size();i++)// to All
       {
-        // LOGE("tar:%s accepted",inspTars[i]->id.c_str());
-        acceptCount++;
+        
+        // LOGE("try:%s",inspTars[i]->id.c_str());
+        if(inspTars[i]->feedStageInfo(sinfo)==true)
+        {
+          LOGE("tar:%s accepted",inspTars[i]->id.c_str());
+          acceptCount++;
+        }
       }
     }
   }
