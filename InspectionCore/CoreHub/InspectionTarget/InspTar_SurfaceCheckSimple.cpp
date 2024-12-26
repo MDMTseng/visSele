@@ -438,8 +438,7 @@ bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchang
   {
     if(cache_latest_input.get()==NULL)return false;
 
-    acvImage* acv_img= cache_latest_input->img_show.get();
-    Mat cv_img(acv_img->GetHeight(),acv_img->GetWidth(),CV_8UC3,acv_img->CVector[0]);
+    Mat cv_img=cache_latest_input->img;
 
     
 
@@ -486,10 +485,10 @@ bool InspectionTarget_SurfaceCheckSimple::exchangeCMD(cJSON* info,int id,exchang
     //   src_acvImg.CVector[i][j*3+1]=0;
     //   src_acvImg.CVector[i][j*3+2]=0;
     // }
-    int image_transfer_downsampling=(int)DFetch_NUMBER_ex(info,"image_transfer_downsampling",-1);
-    if(image_transfer_downsampling>=1)
+    int image_scale=(int)DFetch_NUMBER_ex(info,"image_scale",1);
+    if(image_scale>0)
     {
-      act.send("IM",id,&src_acvImg,image_transfer_downsampling);
+      act.send(id,img,"jpg",90);
     }
 
     cJSON *refRegions=JFetch_ARRAY(info,"colorExtractInfo.refRegions");
@@ -982,8 +981,8 @@ int PerformInsp(
 
   int downSampleF,
   bool show_display_overlay,
-  Mat &_def_temp_img_ROI,
-  Mat &_def_temp_img_ROI_BK,
+  Mat &retImage_ROI,
+  Mat &retImage_ROI_BK,
   
   vector<Mat> &resultMarkOverlay,
   vector<Mat> &resultMarkRegion,
@@ -1073,7 +1072,7 @@ int PerformInsp(
               // LOGI("subRegName:%s type:%d",subRegName.c_str(),regionResultList[k].type);
               if(regionResultList[k].type==StageInfo_SurfaceCheckSimple::id_UNSET)
               {
-                PerformInsp(objIndex,k,regionResultList,scriptTable,jsub_regions,itm,downSampleF,show_display_overlay,_def_temp_img_ROI,_def_temp_img_ROI_BK,resultMarkOverlay,resultMarkRegion,resultImage,bg_img_ROI,callDepth+1);
+                PerformInsp(objIndex,k,regionResultList,scriptTable,jsub_regions,itm,downSampleF,show_display_overlay,retImage_ROI,retImage_ROI_BK,resultMarkOverlay,resultMarkRegion,resultImage,bg_img_ROI,callDepth+1);
 
                 if(regionResultList[k].type==StageInfo_SurfaceCheckSimple::id_UNSET)
                 {
@@ -1189,8 +1188,8 @@ int PerformInsp(
 
     int srW=floor((x_f+w_f)/downSampleF)-srX;
     int srH=floor((y_f+h_f)/downSampleF)-srY;
-    // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
-    XYWH_clipping(srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+    // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,retImage_ROI.cols,retImage_ROI.rows);
+    XYWH_clipping(srX,srY,srW,srH, 0,0,retImage_ROI.cols,retImage_ROI.rows);
     if(srW<=1 || srH<=1)
     {
       //invalid number
@@ -1200,10 +1199,10 @@ int PerformInsp(
 
 
 
-    // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+    // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,retImage_ROI.cols,retImage_ROI.rows);
 
 
-    Mat sub_region_ROI_origin_img =_def_temp_img_ROI(Rect(srX, srY, srW, srH));
+    Mat sub_region_ROI_origin_img =retImage_ROI(Rect(srX, srY, srW, srH));
     
 
     resultMarkRegion[subregIdx]=sub_region_ROI_origin_img;
@@ -1218,7 +1217,7 @@ int PerformInsp(
       float brightness_comp_ratio=0;
 
       cv::Mat sreg_bg=bg_img_ROI(Rect(srX, srY, srW, srH));
-      cv::Mat sreg_img=_def_temp_img_ROI_BK(Rect(srX, srY, srW, srH));;
+      cv::Mat sreg_img=retImage_ROI_BK(Rect(srX, srY, srW, srH));;
       cv::Mat sreg_img_BK=sreg_img.clone();
 
 
@@ -1238,7 +1237,7 @@ int PerformInsp(
         sreg_bg(Rect(x,y,w,h)) = 0;
         sreg_img_BK(Rect(x,y,w,h)) = 0;
 
-        // auto igregion=_def_temp_img_ROI(Rect(x,y,w,h));
+        // auto igregion=retImage_ROI(Rect(x,y,w,h));
         
 
         // cv::Scalar ig_sum= cv::sum(igregion);
@@ -1315,7 +1314,7 @@ int PerformInsp(
             int w=(int)DFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
             int h=(int)DFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
-            XYWH_clipping(x,y,w,h, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+            XYWH_clipping(x,y,w,h, 0,0,retImage_ROI.cols,retImage_ROI.rows);
 
             igRegs.push_back(cv::Rect(x,y,w,h));
 
@@ -1930,9 +1929,9 @@ int PerformInsp(
             int w=(int)DFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
             int h=(int)DFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
-            XYWH_clipping(x,y,w,h, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+            XYWH_clipping(x,y,w,h, 0,0,retImage_ROI.cols,retImage_ROI.rows);
 
-            auto igregion=_def_temp_img_ROI(Rect(x,y,w,h));
+            auto igregion=retImage_ROI(Rect(x,y,w,h));
 
             cv::Scalar ig_sum= cv::sum(igregion);
 
@@ -2475,15 +2474,14 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
   
 
-  auto d_sinfo = dynamic_cast<StageInfo_Orientation *>(sinfo.get());
+  auto d_sinfo = dynamic_cast<StageInfo_Image *>(sinfo.get());
+  // auto d_sinfo = dynamic_cast<StageInfo_Orientation *>(sinfo.get());
   if(d_sinfo==NULL) {
     LOGE("sinfo type does not match.....");
     return;
   }
-  auto srcImg=d_sinfo->img;
 
-
-  Mat _CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+  Mat _CV_srcImg=d_sinfo->img;
   Mat CV_srcImg;
 
   if(downSampleF==1)
@@ -2549,13 +2547,24 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   // LOGE("color_ch_mul:%f %f %f",color_ch_mul_r,color_ch_mul_g,color_ch_mul_b);
 
-  acvImage *retImage=NULL;
+  cv::Mat retImage;
 
   shared_ptr<StageInfo_SurfaceCheckSimple> reportInfo(new StageInfo_SurfaceCheckSimple());
   
   int default_blurRadius=(int)DFetch_NUMBER_ex(def,"blur_radius",0)/downSampleF;
-  vector<StageInfo_Orientation::orient> *orienList=&(d_sinfo->orientation);
+  // vector<StageInfo_Orientation::orient> *orienList=&(d_sinfo->orientation);
+  vector<StageInfo_Orientation::orient> _orienList;
 
+  _orienList.push_back({
+    center:{0,0},
+    angle:0,
+    flip:false,
+    confidence:1
+  });
+  vector<StageInfo_Orientation::orient> *orienList=&_orienList;
+
+
+  
 
   vector<StageInfo_Orientation::orient> orienList_ext;
 
@@ -2581,8 +2590,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         orient.angle=DFetch_NUMBER_ex(jorient,"angle",0);
         orient.confidence=DFetch_NUMBER_ex(jorient,"confidence",0);
 
-        orient.center.X=DFetch_NUMBER_ex(jorient,"center.x")/downSampleF;
-        orient.center.Y=DFetch_NUMBER_ex(jorient,"center.y")/downSampleF;
+        orient.center.x=DFetch_NUMBER_ex(jorient,"center.x")/downSampleF;
+        orient.center.y=DFetch_NUMBER_ex(jorient,"center.y")/downSampleF;
         orienList_ext.push_back(orient);
       }
     }
@@ -2606,19 +2615,13 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   if(orientationList.size()>0)
   {  
 
-    {
-      int columnCount=orientationList.size()<multi_target_column_count?orientationList.size():multi_target_column_count;
-      int rowCount=((orientationList.size()+multi_target_column_count-1)/multi_target_column_count);
+    int columnCount=orientationList.size()<multi_target_column_count?orientationList.size():multi_target_column_count;
+    int rowCount=((orientationList.size()+multi_target_column_count-1)/multi_target_column_count);
 
-      LOGE("columnCount:%d rowCount:%d",columnCount,rowCount);
-      retImage=new acvImage(W*columnCount,H*rowCount,3);
-    }
-    
-    Mat def_temp_img(retImage->GetHeight(),retImage->GetWidth(),CV_8UC3,retImage->CVector[0]);
+    LOGE("columnCount:%d rowCount:%d",columnCount,rowCount);
+    retImage=cv::Mat(H*rowCount,W*columnCount,CV_8UC3);
     
 
-
-    def_temp_img={0};
 
     for(int i=0;i<orientationList.size();i++)
     {
@@ -2639,7 +2642,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         int o_col=imgOrderIdx%multi_target_column_count;
         int o_row=imgOrderIdx/multi_target_column_count;
 
-        Mat _def_temp_img_ROI = def_temp_img(Rect(o_col*W, o_row*H, W, H));
+        Mat retImage_ROI = retImage(Rect(o_col*W, o_row*H, W, H));
 
 
 
@@ -2688,30 +2691,30 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
         bool xFlip=false;
         bool yFlip=orientation.flip;
-        orientation.center.X/=downSampleF;
-        orientation.center.Y/=downSampleF;
+        orientation.center.x/=downSampleF;
+        orientation.center.y/=downSampleF;
 
 
 
 
 
+        acv_XY orien_center={orientation.center.x,orientation.center.y};
+        Mat rot= getRotTranMat( orien_center,(acv_XY){W/2+n_x_offset,H/2+n_y_offset},-angle,xFlip,yFlip);
 
-        Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+n_x_offset,H/2+n_y_offset},-angle,xFlip,yFlip);
+        cv::warpAffine(CV_srcImg, retImage_ROI, rot,retImage_ROI.size());
 
-        cv::warpAffine(CV_srcImg, _def_temp_img_ROI, rot,_def_temp_img_ROI.size());
-
-        Mat _def_temp_img_ROI_BK;
-        _def_temp_img_ROI.copyTo(_def_temp_img_ROI_BK);
+        Mat retImage_ROI_BK;
+        retImage_ROI.copyTo(retImage_ROI_BK);
         if(n_color_ch_mul_r!=1 || n_color_ch_mul_g!=1 || n_color_ch_mul_b!=1)
         {
           cv::Scalar compScalar(n_color_ch_mul_b,n_color_ch_mul_g,n_color_ch_mul_r);
-          multiply(_def_temp_img_ROI,compScalar, _def_temp_img_ROI);
+          multiply(retImage_ROI,compScalar, retImage_ROI);
         }
 
         if(do_equalize_hist)
         {
 
-          cv::Mat &image=_def_temp_img_ROI;
+          cv::Mat &image=retImage_ROI;
           cv::Mat yuvImage;
           cv::cvtColor(image, yuvImage, cv::COLOR_BGR2YUV);
 
@@ -2765,14 +2768,14 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
           int srX=(int)DFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF;
           int srY=(int)DFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF;
-          // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
-          XYWH_clipping(srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+          // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,retImage_ROI.cols,retImage_ROI.rows);
+          XYWH_clipping(srX,srY,srW,srH, 0,0,retImage_ROI.cols,retImage_ROI.rows);
           if(srW<=1 || srH<=1)
           {
             //invalid number
           }
 
-          Mat sub_region_ROI_origin_img =_def_temp_img_ROI(Rect(srX, srY, srW, srH));
+          Mat sub_region_ROI_origin_img =retImage_ROI(Rect(srX, srY, srW, srH));
           
           cv::Scalar pixSum= cv::sum(sub_region_ROI_origin_img);  
           pixSum/=(srW*srH);
@@ -2805,7 +2808,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         {
           mult_bri/=mult_bri_Count;
           LOGI("mult_bri:%f %f %f",mult_bri[0],mult_bri[1],mult_bri[2]);
-          // multiply(_def_temp_img_ROI,mult_bri, _def_temp_img_ROI);
+          // multiply(retImage_ROI,mult_bri, retImage_ROI);
         }
 
 
@@ -2871,15 +2874,15 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
             int srX=(int)DFetch_NUMBER_ex(jsub_region,"region.x",-1)/downSampleF+xShift;
             int srY=(int)DFetch_NUMBER_ex(jsub_region,"region.y",-1)/downSampleF+yShift;
-            // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
-            XYWH_clipping(srX,srY,srW,srH, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+            // LOGI("%d %d %d %d   %d %d %d %d ",srX,srY,srW,srH, 0,0,retImage_ROI.cols,retImage_ROI.rows);
+            XYWH_clipping(srX,srY,srW,srH, 0,0,retImage_ROI.cols,retImage_ROI.rows);
             if(srW<=1 || srH<=1)
             {
               //invalid number
               continue;
             }
 
-            Mat sub_region_ROI = _def_temp_img_ROI(Rect(srX, srY, srW, srH)).clone();
+            Mat sub_region_ROI = retImage_ROI(Rect(srX, srY, srW, srH)).clone();
             if(show_display_overlay && JFetch_TRUE(jsub_region,"color_compensation_enable"))
             {
               cv::Scalar sum= cv::sum(sub_region_ROI);
@@ -2906,9 +2909,9 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
                   int w=(int)DFetch_NUMBER_ex(ig_reg,"w")/downSampleF;
                   int h=(int)DFetch_NUMBER_ex(ig_reg,"h")/downSampleF;
 
-                  XYWH_clipping(x,y,w,h, 0,0,_def_temp_img_ROI.cols,_def_temp_img_ROI.rows);
+                  XYWH_clipping(x,y,w,h, 0,0,retImage_ROI.cols,retImage_ROI.rows);
 
-                  auto igregion=_def_temp_img_ROI(Rect(x,y,w,h));
+                  auto igregion=retImage_ROI(Rect(x,y,w,h));
 
                   cv::Scalar ig_sum= cv::sum(igregion);
 
@@ -3060,24 +3063,28 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         }
 
         Mat bg_img_ROI;
+
         if(background_temp.empty()==false)
         {
-          Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset+xShift,H/2+Y_offset+yShift},-angle,xFlip,yFlip);
-          cv::warpAffine(background_temp, bg_img_ROI, rot,_def_temp_img_ROI.size());
+          acv_XY orien_center={orientation.center.x,orientation.center.y};
+          Mat rot= getRotTranMat( orien_center,(acv_XY){W/2+X_offset+xShift,H/2+Y_offset+yShift},-angle,xFlip,yFlip);
+          cv::warpAffine(background_temp, bg_img_ROI, rot,retImage_ROI.size());
 
         }
 
         if(xShift!=0 || yShift!=0)
         {
-          Mat rot= getRotTranMat( orientation.center,(acv_XY){W/2+X_offset+xShift,H/2+Y_offset+yShift},-angle,xFlip,yFlip);
-          cv::warpAffine(CV_srcImg, _def_temp_img_ROI, rot,_def_temp_img_ROI.size());
+
+          acv_XY orien_center={orientation.center.x,orientation.center.y};
+          Mat rot= getRotTranMat( orien_center,(acv_XY){W/2+X_offset+xShift,H/2+Y_offset+yShift},-angle,xFlip,yFlip);
+          cv::warpAffine(CV_srcImg, retImage_ROI, rot,retImage_ROI.size());
 
 
 
           if(color_ch_mul_r!=1 || color_ch_mul_g!=1 || color_ch_mul_b!=1)
           {
             cv::Scalar compScalar(color_ch_mul_b,color_ch_mul_g,color_ch_mul_r);
-            multiply(_def_temp_img_ROI,compScalar, _def_temp_img_ROI);
+            multiply(retImage_ROI,compScalar, retImage_ROI);
           }
           LOGE(">>>>>shift x:%f  y:%f",xShift,yShift);
 
@@ -3086,7 +3093,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           if(do_equalize_hist)
           {
 
-            cv::Mat &image=_def_temp_img_ROI;
+            cv::Mat &image=retImage_ROI;
             cv::Mat yuvImage;
             cv::cvtColor(image, yuvImage, cv::COLOR_BGR2YUV);
 
@@ -3112,7 +3119,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
         if(mult_bri_Count!=0)
         {
-          multiply(_def_temp_img_ROI,mult_bri, _def_temp_img_ROI);
+          multiply(retImage_ROI,mult_bri, retImage_ROI);
         }
 
 
@@ -3120,9 +3127,9 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
         {
           if(bilateral_d>1)
           {
-            Mat filterRes=_def_temp_img_ROI.clone();
+            Mat filterRes=retImage_ROI.clone();
             // LOGE("bilateral d:%d . sC:%f sS:%f",d,sigmaColor,sigmaSpace);
-            cv::bilateralFilter(filterRes,_def_temp_img_ROI,
+            cv::bilateralFilter(filterRes,retImage_ROI,
               bilateral_d,bilateral_sigmaColor,bilateral_sigmaSpace);
           }
         }
@@ -3154,7 +3161,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
         for(int j=0;j<mri.subregions.size();j++)
         {
-          // PerformInsp(j,mri.subregions,jsub_regions,downSampleF,_def_temp_img_ROI);
+          // PerformInsp(j,mri.subregions,jsub_regions,downSampleF,retImage_ROI);
 
           PerformInsp(
           i,j,
@@ -3165,8 +3172,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
            downSampleF,
            show_display_overlay,
-          _def_temp_img_ROI,
-          _def_temp_img_ROI_BK,
+          retImage_ROI,
+          retImage_ROI_BK,
           
           resultMarkOverlay,
           resultMarkRegion,
@@ -3263,8 +3270,8 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
   reportInfo->source=this;
   reportInfo->source_id=id;
-  reportInfo->img_show=shared_ptr<acvImage>(retImage);
-  reportInfo->img=srcImg;
+  reportInfo->img_show=retImage;
+  reportInfo->img=d_sinfo->img;
   
   reportInfo->trigger_id=sinfo->trigger_id;
   reportInfo->refInfo.push_back(sinfo);

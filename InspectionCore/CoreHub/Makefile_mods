@@ -36,6 +36,7 @@ export MODULE_lodepng=$(abspath $(moduleRoot)/contrib/lodepng)
 export MODULE_CameraLayer=$(abspath $(moduleRoot)/CameraLayer)
 export MODULE_simple_uart=$(abspath $(moduleRoot)/contrib/simple_uart)
 export MODULE_exprtk=$(abspath $(moduleRoot)/contrib/exprtk)
+export MODULE_quickjs=$(abspath $(moduleRoot)/contrib/quickjs/$(platform))
 
 
 

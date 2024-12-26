@@ -6,86 +6,86 @@
 
 
 std::vector<uint8_t> image_send_buffer(40000);
-int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
-{
-  if(callbackInfo==NULL)return -1;
-  BPG_protocol_data send_dat;
-  BPG_protocol_data_acvImage_Send_info *img_info = (BPG_protocol_data_acvImage_Send_info*)callbackInfo;
+// int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
+// {
+//   if(callbackInfo==NULL)return -1;
+//   BPG_protocol_data send_dat;
+//   BPG_protocol_data_acvImage_Send_info *img_info = (BPG_protocol_data_acvImage_Send_info*)callbackInfo;
 
-  acvImage *img=img_info->img;
+//   acvImage *img=img_info->img;
 
-  uint8_t header[]={
-    0,0,
+//   uint8_t header[]={
+//     0,0,
     
-    (uint8_t)(img_info->offsetX >>8),
-    (uint8_t)(img_info->offsetX),
-    (uint8_t)(img_info->offsetY >>8),
-    (uint8_t)(img_info->offsetY),
+//     (uint8_t)(img_info->offsetX >>8),
+//     (uint8_t)(img_info->offsetX),
+//     (uint8_t)(img_info->offsetY >>8),
+//     (uint8_t)(img_info->offsetY),
 
-    (uint8_t)(img->GetWidth()>>8),
-    (uint8_t)(img->GetWidth()),
-    (uint8_t)(img->GetHeight()>>8),
-    (uint8_t)(img->GetHeight()),
-    (uint8_t)(img_info->scale),
+//     (uint8_t)(img->GetWidth()>>8),
+//     (uint8_t)(img->GetWidth()),
+//     (uint8_t)(img->GetHeight()>>8),
+//     (uint8_t)(img->GetHeight()),
+//     (uint8_t)(img_info->scale),
     
-    (uint8_t)(img_info->fullWidth >>8),
-    (uint8_t)(img_info->fullWidth),
-    (uint8_t)(img_info->fullHeight >>8),
-    (uint8_t)(img_info->fullHeight),
-  };
+//     (uint8_t)(img_info->fullWidth >>8),
+//     (uint8_t)(img_info->fullWidth),
+//     (uint8_t)(img_info->fullHeight >>8),
+//     (uint8_t)(img_info->fullHeight),
+//   };
 
-  {
-    image_send_buffer.resize(dch.getHeaderSize()+sizeof(header));
-    dch.headerSetup(&image_send_buffer[0], image_send_buffer.size(), data);
+//   {
+//     image_send_buffer.resize(dch.getHeaderSize()+sizeof(header));
+//     dch.headerSetup(&image_send_buffer[0], image_send_buffer.size(), data);
 
-    memcpy(&image_send_buffer[dch.getHeaderSize()], header, sizeof(header));
-    dch.toLinkLayer(&image_send_buffer[0], dch.getHeaderSize()+sizeof(header), false);
+//     memcpy(&image_send_buffer[dch.getHeaderSize()], header, sizeof(header));
+//     dch.toLinkLayer(&image_send_buffer[0], dch.getHeaderSize()+sizeof(header), false);
 
-  }
+//   }
 
-  const int headerOffset=10;
-  image_send_buffer.resize(headerOffset+10000);
+//   const int headerOffset=10;
+//   image_send_buffer.resize(headerOffset+10000);
   
 
-  int rest_len =
-    img->GetWidth()*
-    img->GetHeight();
+//   int rest_len =
+//     img->GetWidth()*
+//     img->GetHeight();
 
-  uint8_t *img_pix_ptr=img->CVector[0];
+//   uint8_t *img_pix_ptr=img->CVector[0];
 
-  for(bool isKeepGoing=true;isKeepGoing && rest_len;)
-  {
-    int imgBufferDataSize=image_send_buffer.size()-headerOffset;
-    uint8_t* imgBufferDataPtr=&image_send_buffer[headerOffset];
-    int sendL = 0;
-    for(int i=0;i<imgBufferDataSize-4;i+=4,img_pix_ptr+=3)
-    {
-      imgBufferDataPtr[i]=img_pix_ptr[2];
-      imgBufferDataPtr[i+1]=img_pix_ptr[1];
-      imgBufferDataPtr[i+2]=img_pix_ptr[0];
-      imgBufferDataPtr[i+3]=255;
-      sendL+=4;
-      rest_len--;
-      if(rest_len==0)
-      {
-        isKeepGoing=false;
-        break;
-      }
-    }
-    // LOGI("b[..]:%d %d %d %d... sendL:%d isKeepGoing:%d"
-    // ,image_send_buffer[0]
-    // ,image_send_buffer[1]
-    // ,image_send_buffer[2]
-    // ,image_send_buffer[3]
-    // ,sendL,isKeepGoing);
+//   for(bool isKeepGoing=true;isKeepGoing && rest_len;)
+//   {
+//     int imgBufferDataSize=image_send_buffer.size()-headerOffset;
+//     uint8_t* imgBufferDataPtr=&image_send_buffer[headerOffset];
+//     int sendL = 0;
+//     for(int i=0;i<imgBufferDataSize-4;i+=4,img_pix_ptr+=3)
+//     {
+//       imgBufferDataPtr[i]=img_pix_ptr[2];
+//       imgBufferDataPtr[i+1]=img_pix_ptr[1];
+//       imgBufferDataPtr[i+2]=img_pix_ptr[0];
+//       imgBufferDataPtr[i+3]=255;
+//       sendL+=4;
+//       rest_len--;
+//       if(rest_len==0)
+//       {
+//         isKeepGoing=false;
+//         break;
+//       }
+//     }
+//     // LOGI("b[..]:%d %d %d %d... sendL:%d isKeepGoing:%d"
+//     // ,image_send_buffer[0]
+//     // ,image_send_buffer[1]
+//     // ,image_send_buffer[2]
+//     // ,image_send_buffer[3]
+//     // ,sendL,isKeepGoing);
 
-    //gives linklayer enough(according to linklayer's requirment 
-    //can be much bigger(find possible maximum size header of all linklayer types))
-    dch.toLinkLayer(imgBufferDataPtr, sendL, isKeepGoing==false,headerOffset,0);
-  }
-  return 0;
+//     //gives linklayer enough(according to linklayer's requirment 
+//     //can be much bigger(find possible maximum size header of all linklayer types))
+//     dch.toLinkLayer(imgBufferDataPtr, sendL, isKeepGoing==false,headerOffset,0);
+//   }
+//   return 0;
 
-} 
+// } 
 
 
 
@@ -192,7 +192,6 @@ uint16_t m_BPG_Protocol_Interface::TLCode(const char *TL)
 
 m_BPG_Protocol_Interface::m_BPG_Protocol_Interface()
 {
-  cacheImage.ReSize(1, 1);
 }
 
 void m_BPG_Protocol_Interface::delete_PeripheralChannel()
@@ -225,14 +224,14 @@ int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*TL,int pgID,cJSON* 
   delete jstr;
   return ret;
 }
-int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_acvImage_Send_info* imgInfo)
-{
-  BPG_protocol_data bpg_dat = GenStrBPGData(TL, NULL);
-  bpg_dat.callbackInfo = (uint8_t *)imgInfo;
-  bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
-  bpg_dat.pgID = pgID;
-  return fromUpperLayer(bpg_dat);
-}
+// int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_acvImage_Send_info* imgInfo)
+// {
+//   BPG_protocol_data bpg_dat = GenStrBPGData(TL, NULL);
+//   bpg_dat.callbackInfo = (uint8_t *)imgInfo;
+//   bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
+//   bpg_dat.pgID = pgID;
+//   return fromUpperLayer(bpg_dat);
+// }
 
 
 int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_ImgB64_Send_info* imgInfo)
@@ -768,20 +767,20 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
 
 
 
-BPG_protocol_data_acvImage_Send_info ImageDownSampling_Info(acvImage &dstBuff, acvImage &src, int downScale, ImageSampler *sampler, int doNearest,
-                       int X, int Y, int W, int H)
-{
-  BPG_protocol_data_acvImage_Send_info iminfo = {img : &dstBuff, scale : (uint16_t)downScale};
-  //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+// BPG_protocol_data_acvImage_Send_info ImageDownSampling_Info(acvImage &dstBuff, acvImage &src, int downScale, ImageSampler *sampler, int doNearest,
+//                        int X, int Y, int W, int H)
+// {
+//   BPG_protocol_data_acvImage_Send_info iminfo = {img : &dstBuff, scale : (uint16_t)downScale};
+//   //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
 
-  iminfo.offsetX = (X / downScale) * downScale;
-  iminfo.offsetY = (X / downScale) * downScale;
+//   iminfo.offsetX = (X / downScale) * downScale;
+//   iminfo.offsetY = (X / downScale) * downScale;
 
-  ImageDownSampling(dstBuff, src, downScale, sampler, doNearest,iminfo.offsetX,iminfo.offsetY,W,H);
+//   ImageDownSampling(dstBuff, src, downScale, sampler, doNearest,iminfo.offsetX,iminfo.offsetY,W,H);
 
-  iminfo.fullHeight = src.GetHeight();
-  iminfo.fullWidth = src.GetWidth();
-  return iminfo;
+//   iminfo.fullHeight = src.GetHeight();
+//   iminfo.fullWidth = src.GetWidth();
+//   return iminfo;
 
 
-}
+// }

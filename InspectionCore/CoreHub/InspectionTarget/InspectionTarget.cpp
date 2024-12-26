@@ -113,6 +113,12 @@ void InspectionTarget::setInspDef(cJSON* def)
   }
 }
 
+
+void InspectionTarget::setEnvPath(std::string path)
+{
+  local_env_path=path;
+}
+
 // void InspectionTarget::inputPick(StageInfo* pool,int poolL,std::vector<StageInfo*> ret_pick)
 // {
 //   ret_pick.clear();
@@ -368,13 +374,11 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
     if(folder_path.length()==0)return false;
 
     auto srcImg=cache_latest_input->img;
-    if(srcImg==NULL)return false;
-
-    Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+    if(srcImg.empty())return false;
 
 
     string image_name=JFetch_STRING_ex(info,"image_name","test.png");
-    imwrite(folder_path+"/"+image_name, CV_srcImg);  
+    imwrite(folder_path+"/"+image_name, srcImg);  
 
 
 
@@ -393,13 +397,10 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
     if(folder_path.length()==0)return false;
 
     auto srcImg=cache_latest_result->img_show;
-    if(srcImg==NULL)return false;
-
-    Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
-
+    if(srcImg.empty())return false;
 
     string image_name=JFetch_STRING_ex(info,"image_name","test.png");
-    imwrite(folder_path+"/"+image_name, CV_srcImg);  
+    imwrite(folder_path+"/"+image_name, srcImg);  
 
     return true;
 
@@ -466,7 +467,6 @@ void InspectionTarget::StageInfoFillDefault(StageInfo* reportInfo,StageInfo* inp
   
 
 }
-
 
 
 

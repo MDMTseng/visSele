@@ -38,6 +38,11 @@ std::vector<int> findClosestGroup(const std::vector<cv::RotatedRect>& circle, fl
 
 cv::RotatedRect fitCircleByRansac(std::vector<cv::Point3f>& points, int tryCount = 20, int batch_size = 100);
 
+
+
+cv::Point2f rotate2d(const cv::Point2f inPoint, float sin, float cos);
+cv::Point2f rotate2d(const cv::Point2f inPoint, const double angRad);
+
 } // namespace InspTarUTIL
 
 #endif // UTIL_H

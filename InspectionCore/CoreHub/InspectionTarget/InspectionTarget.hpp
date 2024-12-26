@@ -16,14 +16,14 @@
 #include <StageInfo.hpp>
 
 
-typedef struct BPG_protocol_data_acvImage_Send_info
-{
-    acvImage* img;
-    uint16_t scale;
-    uint16_t offsetX,offsetY;
-    uint16_t fullWidth,fullHeight;
+// typedef struct BPG_protocol_data_acvImage_Send_info
+// {
+//     acvImage* img;
+//     uint16_t scale;
+//     uint16_t offsetX,offsetY;
+//     uint16_t fullWidth,fullHeight;
 
-}BPG_protocol_data_acvImage_Send_info;
+// }BPG_protocol_data_acvImage_Send_info;
 
 
 typedef struct BPG_protocol_data_ImgB64_Send_info
@@ -113,7 +113,7 @@ class exchangeCMD_ACT
   public:
   bool doSendAck;
   virtual void send(const char *TL, int pgID,cJSON* def)=0;
-  virtual void send(const char *TL, int pgID,acvImage* img,int downSample)=0;
+  virtual void send(int pgID,cv::Mat& img,const char *format_lowercase,float quality)=0;//send image
 
 };
 
@@ -187,6 +187,8 @@ class InspectionTarget:public InspectionTarget_Runnable
 
 
   virtual void setInspDef(cJSON* def);
+
+  virtual void setEnvPath(std::string path);
   
   
   virtual bool exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act);

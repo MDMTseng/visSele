@@ -232,7 +232,7 @@ static void sssimgProcess_TEST_EllipseFitting(cv::Mat& srcImg,cJSON* param)
     }
   }
 
-  cv::imwrite("srcImg_rotated_cropped.png", srcImg_cropped);
+  // cv::imwrite("srcImg_rotated_cropped.png", srcImg_cropped);
 
   
 
@@ -412,7 +412,7 @@ static void sssimgProcess_TEST_CircleFitting_Simple(cv::Mat& srcImg,cJSON* param
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
   std::cout << "Time taken: " << duration.count() << " milliseconds" << std::endl;
 
-  cv::imwrite("srcImg_rotated_cropped.png", srcImg_cropped);
+  // cv::imwrite("srcImg_rotated_cropped.png", srcImg_cropped);
 
   
 
@@ -421,7 +421,7 @@ static void sssimgProcess_TEST_CircleFitting_Simple(cv::Mat& srcImg,cJSON* param
 static void genWarpPolarXYMap(const cv::Point2f& center, 
                          float minRadius, float maxRadius, 
                          float startAngle_deg, float endAngle_deg,
-                         cv::Mat& mapX, cv::Mat& mapY,float scale_R = 1,float scale_ANG = 1 ) {
+                         cv::Mat& mapX, cv::Mat& mapY,float scale_R = 1,float scale_ANG = 1,int direction = 1 ) {
     float angleRange_rad = (endAngle_deg - startAngle_deg) * CV_PI / 180.0;
     float radiusRange=maxRadius-minRadius;
     // Determine the output size based on the radius and angle range
@@ -440,8 +440,14 @@ static void genWarpPolarXYMap(const cv::Point2f& center,
         float cos_angle=cosf(angle);
         float sin_angle=sinf(angle);
         for (int x = 0; x < outputWidth; ++x) {
-            float radius = minRadius + radiusRange*((float)x/(outputWidth-1)); // Current radius
-
+            float radius = radiusRange*((float)x/(outputWidth-1)); // Current radius
+            if(direction==1){
+              radius=minRadius+radius;
+            }
+            else if(direction==-1){//reverse direction
+              radius=maxRadius-radius;
+            }
+            
             float x_cart=center.x + radius * cos_angle;
             float y_cart=center.y + radius * sin_angle;
             // Map polar coordinates to Cartesian
@@ -737,71 +743,173 @@ static void sArcFitting(shared_ptr<StageInfo_ArcFitting>& report,cv::Mat& srcImg
 
 
 
-static Mat cameraMatrix = (Mat_<double>(3, 3) << 11775.33981935765, 0, 1300.919341080545,
-                                          0, 11764.9763003154, 988.9958350064916,
-                                          0, 0, 1);
+// static Mat cameraMatrix = (Mat_<double>(3, 3) << 11775.33981935765, 0, 1300.919341080545,
+//                                           0, 11764.9763003154, 988.9958350064916,
+//                                           0, 0, 1);
 
-// // Define the distortion coefficients 
-static Mat distCoeffs = (Mat_<double>(5, 1) << -0.370482288257829, -2.57889743589971,
-                                          -0.0004007172176641259, 0.001292566228390161, 0);
+// // // Define the distortion coefficients 
+// static Mat distCoeffs = (Mat_<double>(5, 1) << -0.370482288257829, -2.57889743589971,
+//                                           -0.0004007172176641259, 0.001292566228390161, 0);
 
 
 
-Point2f pixUndistortion(Point2f pix)
-{
-  vector<Point2f> originalPoints = { pix }, undistortedPoints;
-  undistortPoints(originalPoints, undistortedPoints, cameraMatrix, distCoeffs, noArray(), cameraMatrix);
-  return undistortedPoints[0];
+// Point2f pixUndistortion(Point2f pix)
+// {
+//   vector<Point2f> originalPoints = { pix }, undistortedPoints;
+//   undistortPoints(originalPoints, undistortedPoints, cameraMatrix, distCoeffs, noArray(), cameraMatrix);
+//   return undistortedPoints[0];
+// }
+
+
+
+// Point2f distortPoint(const Point2f& undistortedPoint, const Mat& cameraMatrix, const Mat& distCoeffs, int iterations = 5) {
+//     // Camera matrix parameters
+//     double fx = cameraMatrix.at<double>(0, 0);
+//     double fy = cameraMatrix.at<double>(1, 1);
+//     double cx = cameraMatrix.at<double>(0, 2);
+//     double cy = cameraMatrix.at<double>(1, 2);
+
+//     // Distortion coefficients
+//     double k1 = distCoeffs.at<double>(0, 0);
+//     double k2 = distCoeffs.at<double>(1, 0);
+//     double p1 = distCoeffs.at<double>(2, 0);
+//     double p2 = distCoeffs.at<double>(3, 0);
+//     double k3 = distCoeffs.at<double>(4, 0);
+
+//     // Start with the undistorted point in normalized coordinates
+//     double x = (undistortedPoint.x - cx) / fx;
+//     double y = (undistortedPoint.y - cy) / fy;
+
+//     // Iteratively apply distortion
+//     for (int i = 0; i < iterations; ++i) {
+//         double r2 = x * x + y * y;
+//         double radialDistortion = 1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2;
+
+//         double xDistorted = x * radialDistortion + 2 * p1 * x * y + p2 * (r2 + 2 * x * x);
+//         double yDistorted = y * radialDistortion + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
+
+//         // Update x and y with the distorted values
+//         x = xDistorted;
+//         y = yDistorted;
+//     }
+
+//     // Convert back to pixel coordinates
+//     Point2f distortedPoint;
+//     distortedPoint.x = fx * x + cx;
+//     distortedPoint.y = fy * y + cy;
+//     return distortedPoint;
+// }
+
+// Point2f pixDistortion(Point2f pix)
+// {
+//   return distortPoint(pix,cameraMatrix,distCoeffs);
+// }
+
+
+
+// Function to compute the mean of points
+void computeMeans(const std::vector<cv::Point3f>& points, double& meanX, double& meanY, double& sumW) {
+    meanX = 0;
+    meanY = 0;
+    sumW = 0;
+
+    for (const auto& point : points) {
+        meanX += point.x * point.z;
+        meanY += point.y * point.z;
+        sumW += point.z;
+    }
+    meanX /= sumW;
+    meanY /= sumW;
 }
 
+// RMS error function for the fitted circle
+float computeSigma(const std::vector<cv::Point3f>& points, const cv::RotatedRect& circle) {
+    float sum = 0;
 
+    float cx=circle.center.x;
+    float cy=circle.center.y;
+    float r=circle.size.width/2;
+    for (const auto& point : points) {
+        float dx = point.x - cx;
+        float dy = point.y - cy;
+        float distance = std::hypot(dx, dy);
+        float error = distance - r; // Assuming the circle's radius is half of its width
+        sum += point.z * error * error;
+    }
+    return std::sqrt(sum / points.size());
+}
+cv::RotatedRect CircleFit_Hyper(const std::vector<cv::Point3f>& points, float* rms) {
+    int iter, IterMAX = 999;
+    const double Four = 4.0f, Three = 3.0f, Two = 2.0f;
 
-Point2f distortPoint(const Point2f& undistortedPoint, const Mat& cameraMatrix, const Mat& distCoeffs, int iterations = 5) {
-    // Camera matrix parameters
-    double fx = cameraMatrix.at<double>(0, 0);
-    double fy = cameraMatrix.at<double>(1, 1);
-    double cx = cameraMatrix.at<double>(0, 2);
-    double cy = cameraMatrix.at<double>(1, 2);
+    double meanX, meanY, sumW;
+    computeMeans(points, meanX, meanY, sumW);
 
-    // Distortion coefficients
-    double k1 = distCoeffs.at<double>(0, 0);
-    double k2 = distCoeffs.at<double>(1, 0);
-    double p1 = distCoeffs.at<double>(2, 0);
-    double p2 = distCoeffs.at<double>(3, 0);
-    double k3 = distCoeffs.at<double>(4, 0);
+    // Moments calculation
+    double Mxx = 0, Myy = 0, Mxy = 0, Mxz = 0, Myz = 0, Mzz = 0;
+    for (const auto& point : points) {
+        double Xi = point.x - meanX;
+        double Yi = point.y - meanY;
+        double Zi = Xi * Xi + Yi * Yi;
 
-    // Start with the undistorted point in normalized coordinates
-    double x = (undistortedPoint.x - cx) / fx;
-    double y = (undistortedPoint.y - cy) / fy;
+        Mxy += Xi * Yi * point.z;
+        Mxx += Xi * Xi * point.z;
+        Myy += Yi * Yi * point.z;
+        Mxz += Xi * Zi * point.z;
+        Myz += Yi * Zi * point.z;
+        Mzz += Zi * Zi * point.z;
+    }
+    Mxx /= sumW;
+    Myy /= sumW;
+    Mxy /= sumW;
+    Mxz /= sumW;
+    Myz /= sumW;
+    Mzz /= sumW;
 
-    // Iteratively apply distortion
-    for (int i = 0; i < iterations; ++i) {
-        double r2 = x * x + y * y;
-        double radialDistortion = 1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2;
+    // Characteristic polynomial coefficients
+    double Mz = Mxx + Myy;
+    double Cov_xy = Mxx * Myy - Mxy * Mxy;
+    double Var_z = Mzz - Mz * Mz;
 
-        double xDistorted = x * radialDistortion + 2 * p1 * x * y + p2 * (r2 + 2 * x * x);
-        double yDistorted = y * radialDistortion + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
+    double A2 = Four * Cov_xy - Three * Mz * Mz - Mzz;
+    double A1 = Var_z * Mz + Four * Cov_xy * Mz - Mxz * Mxz - Myz * Myz;
+    double A0 = Mxz * (Mxz * Myy - Myz * Mxy) + Myz * (Myz * Mxx - Mxz * Mxy) - Var_z * Cov_xy;
+    double A22 = A2 + A2;
 
-        // Update x and y with the distorted values
-        x = xDistorted;
-        y = yDistorted;
+    // Newton's method to find the root of the characteristic polynomial
+    double x = 0, y = A0;
+    for (iter = 0; iter < IterMAX; ++iter) {
+        double Dy = A1 + x * (A22 + 16.0f * x * x);
+        double xnew = x - y / Dy;
+        if (std::fabs(xnew - x) < std::numeric_limits<double>::epsilon()) break;
+        double ynew = A0 + xnew * (A1 + xnew * (A2 + Four * xnew * xnew));
+        if (std::fabs(ynew) >= std::fabs(y)) break;
+        x = xnew;
+        y = ynew;
     }
 
-    // Convert back to pixel coordinates
-    Point2f distortedPoint;
-    distortedPoint.x = fx * x + cx;
-    distortedPoint.y = fy * y + cy;
-    return distortedPoint;
+    // Calculate the circle parameters
+    double DET = x * x - x * Mz + Cov_xy;
+    double Xcenter = (Mxz * (Myy - x) - Myz * Mxy) / (DET * Two);
+    double Ycenter = (Myz * (Mxx - x) - Mxz * Mxy) / (DET * Two);
+
+    cv::RotatedRect rect;
+    rect.center = cv::Point2f(Xcenter + meanX, Ycenter + meanY);
+    double r=std::sqrt(Xcenter * Xcenter + Ycenter * Ycenter + Mz - x - x);
+    rect.size = cv::Size2f(r*2,r*2);
+
+    float sigma=computeSigma(points, rect); // RMS error
+    rect.angle = sigma; //just to overload the fitting sigma
+
+
+    if(rms)
+      *rms = sigma; // RMS error
+
+    return rect;
 }
 
-Point2f pixDistortion(Point2f pix)
-{
-  return distortPoint(pix,cameraMatrix,distCoeffs);
-}
 
-
-
-static Point3f sArcFitting_direct(shared_ptr<StageInfo_ArcFitting>& report,cv::Mat& srcImg,acvImage *sendImg,cJSON* param,Point3f newCenterRadius=Point3f(NAN,NAN,NAN),bool undistort=false,float scale_R=1,float scale_ANG=1)
+static Point3f sArcFitting_direct(shared_ptr<StageInfo_ArcFitting>& report,cv::Mat& srcImg,cv::Mat& sendImg,cJSON* param,Point3f newCenterRadius=Point3f(NAN,NAN,NAN),bool undistort=false,float scale_R=1,float scale_ANG=1)
 {
   //add noise to srcImg
 
@@ -892,11 +1000,6 @@ static Point3f sArcFitting_direct(shared_ptr<StageInfo_ArcFitting>& report,cv::M
 
     vector<Point3f> edge_points;
     
-    Mat CV_sendImg;
-    if(sendImg)
-      CV_sendImg=Mat(sendImg->GetHeight(),sendImg->GetWidth(),CV_8UC3,sendImg->CVector[0]);
-
-
 
     for(int i=0;i<sobelImageX.rows;i++){
       for(int j=0;j<sobelImageX.cols;j++){
@@ -922,8 +1025,8 @@ static Point3f sArcFitting_direct(shared_ptr<StageInfo_ArcFitting>& report,cv::M
           continue;
         }
 
-        if(sendImg)
-          CV_sendImg.at<cv::Vec3b>(i,j)=cv::Vec3b(100,0,100);
+        if(!sendImg.empty())
+          sendImg.at<cv::Vec3b>(i,j)=cv::Vec3b(100,0,100);
         //normalize
         normal_vec=normal_vec/magnitude;
         //rotate sobel_xy  by normal_vec
@@ -957,16 +1060,17 @@ static Point3f sArcFitting_direct(shared_ptr<StageInfo_ArcFitting>& report,cv::M
         if(slentedRatio<0)slentedRatio=-slentedRatio;
         if(slentedRatio>0.3)continue;//ignore too slented edge
 
-        Point2f undistorted_pix=undistort?pixUndistortion(Point2f(j,i)):Point2f(j,i);
+        // Point2f undistorted_pix=undistort?pixUndistortion(Point2f(j,i)):Point2f(j,i);
+        Point2f undistorted_pix=Point2f(j,i);
         edge_points.push_back(cv::Point3f(undistorted_pix.x,undistorted_pix.y,normal_mag));
         // sobelImageX.at<int16_t>(i,j)=(int16_t)(normal_mag);
-        if(sendImg)
+        if(!sendImg.empty())
         {
           normal_mag/=2;
           if(normal_mag<0)normal_mag=0;
           if(normal_mag>255)normal_mag=255;
           uint8_t normal_mag_u8=normal_mag;
-          CV_sendImg.at<cv::Vec3b>(i,j)=cv::Vec3b(normal_mag_u8,normal_mag_u8,normal_mag_u8);
+          sendImg.at<cv::Vec3b>(i,j)=cv::Vec3b(normal_mag_u8,normal_mag_u8,normal_mag_u8);
         }
 
       }
@@ -1034,7 +1138,7 @@ static Point3f sArcFitting_direct(shared_ptr<StageInfo_ArcFitting>& report,cv::M
 
 
 
-static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Mat& srcImg,acvImage *sendImg,cJSON* param,Point3f newCenterRadius=Point3f(NAN,NAN,NAN),bool undistort=false,float scale_R=1,float scale_ANG=1)
+static Point3f  sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,vector<Point3f> &extracted_edge_points,cv::Mat& srcImg,cv::Mat& sendImg,cJSON* param,Point3f newCenterRadius=Point3f(NAN,NAN,NAN),bool undistort=false,float scale_R=1,float scale_ANG=1)
 {
   //add noise to srcImg
 
@@ -1060,21 +1164,6 @@ static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Ma
     return Point3f(NAN,NAN,NAN);
   }
 
-  float outerMargin=JFetch_NUMBER_ex(param,"outerMargin",100);
-  float innerMargin=JFetch_NUMBER_ex(param,"innerMargin",100);
-
-  float noise_threshold=JFetch_NUMBER_ex(param,"noise_threshold",3);
-  int edge_type=JFetch_NUMBER_ex(param,"edge_type",1);
-  float blur_sigma=JFetch_NUMBER_ex(param,"blur_sigma",3);
-  int blur_size=JFetch_NUMBER_ex(param,"blur_size",5);
-
-
-  int w_drop_border_ratio=JFetch_NUMBER_ex(param,"w_drop_border_ratio",0);
-
-  noise_threshold/=scale_R;
-  //outer pixel minus inner pixel as edge strength
-  //1 for positive edge, -1 for negative edge, 0 for both
-
 
 
 
@@ -1083,6 +1172,29 @@ static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Ma
   float startAngle, endAngle;
   InspTarUtil::findCircleFrom3PointsWithArc(circle_pt1,circle_pt2,circle_pt3,center,radius,startAngle,endAngle);
   std::cout<<"center:"<<center.x<<","<<center.y<<",R"<<radius<<",ang:"<<startAngle* 180.0f / CV_PI<<","<<endAngle* 180.0f / CV_PI<<std::endl;
+
+
+
+  float outerMargin=JFetch_NUMBER_ex(param,"outerMargin",100);
+  float innerMargin=JFetch_NUMBER_ex(param,"innerMargin",100);
+
+  float noise_threshold=JFetch_NUMBER_ex(param,"noise_threshold",3);
+  int edge_type=JFetch_NUMBER_ex(param,"edge_type",1);
+  float blur_sigma=JFetch_NUMBER_ex(param,"blur_sigma",3);
+  int blur_size=JFetch_NUMBER_ex(param,"blur_size",5);
+  if(blur_size<=0)blur_size=0;
+  else
+  {
+    blur_size=blur_size/2*2+1;//make sure it is odd
+  }
+
+
+  int w_drop_border_ratio=JFetch_NUMBER_ex(param,"w_drop_border_ratio",0);
+
+  noise_threshold/=scale_R;
+  //outer pixel minus inner pixel as edge strength
+  //1 for positive edge, -1 for negative edge, 0 for both
+
   
   if(newCenterRadius.x==newCenterRadius.x && newCenterRadius.y==newCenterRadius.y)
   {
@@ -1102,17 +1214,23 @@ static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Ma
     double endAngle_deg = endAngle*180/CV_PI;         // End angle in degrees
 
 
+    // LOGI("c:%f,%f,minR:%f,maxR:%f,start:%f,end:%f",center.x,center.y,minRadius,maxRadius,startAngle_deg,endAngle_deg);
+
+    
     cv::Mat mapX, mapY;
-    genWarpPolarXYMap(center, minRadius, maxRadius, startAngle_deg, endAngle_deg, mapX, mapY,scale_R,scale_ANG);
+    int map_r_direction=edge_type;
+    genWarpPolarXYMap(center, minRadius, maxRadius, startAngle_deg, endAngle_deg, mapX, mapY,scale_R,scale_ANG,map_r_direction);
     // Remap the source image to polar coordinates
     cv::Mat polarSegment;
     cv::remap(srcImg  , polarSegment, mapX, mapY, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
 
+
+    
     int searchShrink=0;
     if(blur_sigma>0 && blur_size>0)
     {
       //blur
-      cv::GaussianBlur(polarSegment, polarSegment, cv::Size(blur_size,blur_size), blur_sigma);
+      cv::GaussianBlur(polarSegment, polarSegment, cv::Size(1,blur_size), blur_sigma);
       searchShrink+=blur_size;
     }
     
@@ -1127,34 +1245,36 @@ static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Ma
     //find X max edge for every row
     for(int i=blur_size;i<sobelX.rows-blur_size;i++){
       int W=sobelX.cols;
-      for(int j=blur_size;j<W-blur_size;j++){//filter
+      for(int j=0;j<W;j++){//filter
         int16_t val=sobelX.at<int16_t>(i,j);
 
-        if(edge_type>0)
-        {
-          if(val<0)val=0;
-        }
-        else if(edge_type<0)
-        {
-          if(val>0)val=0;
-          val=-val;
-        }
-        else
-        {
-          if(val<0)val=-val;
-        }
+        // if(edge_type>0)
+        // {
+        //   if(val<0)val=0;
+        // }
+        // else if(edge_type<0)
+        // {
+        //   if(val>0)val=0;
+        //   val=-val;
+        // }
+        // else
+        // {
+        //   if(val<0)val=-val;
+        // }
 
-
-
-        // sobelX.at<int16_t>(i,j)=(int16_t)val;//filter
 
         val-=noise_threshold;
 
         if(val<0)val=0;
 
+
+        sobelX.at<int16_t>(i,j)=(int16_t)val;//filter
+
         edgeValueCache[j]=val;
 
       }
+
+
       //float find max blob location in edgeValueCache
       float max_blob_start=-1;
       float max_blob_len=0;
@@ -1166,6 +1286,8 @@ static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Ma
       float cur_xEST=0;
       float cur_xEST_w=0;
 
+      cur_blob_start=max_blob_start=0;
+
       // for(int j=0;j<W;j++){
       //   if(edgeValueCache[j]>0){
       //     if(cur_blob_start==-1)cur_blob_start=j;
@@ -1173,7 +1295,7 @@ static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Ma
       //     cur_xEST+=j*edgeValueCache[j];
       //     cur_xEST_w+=edgeValueCache[j];
       //   }else{
-      //     if(cur_blob_len>max_blob_len){
+      //     if(cur_xEST_w>max_xEST_w){
       //       max_blob_len=cur_blob_len;
       //       max_blob_start=cur_blob_start;
       //       max_xEST=cur_xEST/cur_xEST_w;
@@ -1186,36 +1308,220 @@ static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Ma
       // }
 
 
-      cur_blob_start=max_blob_start=0;
-      for(int j=0;j<W;j++){
-        cur_blob_len++;
-        cur_xEST+=j*edgeValueCache[j];
-        cur_xEST_w+=edgeValueCache[j];
-      }
-      if(cur_blob_len>max_blob_len){
-        max_blob_len=cur_blob_len;
-        max_blob_start=cur_blob_start;
-        max_xEST=cur_xEST/cur_xEST_w;
-        max_xEST_w=cur_xEST_w;
-      }
+      // for(int j=0;j<W;j++){
+      //   cur_blob_len++;
+      //   cur_xEST+=j*edgeValueCache[j];
+      //   cur_xEST_w+=edgeValueCache[j];
+      // }
 
-   
-      if(max_blob_start!=-1){
-        edgeLoc[i].x=max_xEST;
-        edgeLoc[i].y=max_xEST_w;
-        //set pixel to 0
-        polarSegment.at<uint8_t>(i,(int)max_xEST)=0;
+
+
+      if(1)
+      {//first blob and mean
+
+        for(int j=0;j<W;j++){
+          if(edgeValueCache[j]>0){
+            if(cur_blob_start==-1)cur_blob_start=j;
+            cur_blob_len++;
+            cur_xEST+=j*edgeValueCache[j];
+            cur_xEST_w+=edgeValueCache[j];
+          }else{
+            if(cur_blob_len!=0)break;
+            if(cur_xEST_w>max_xEST_w){
+              max_blob_len=cur_blob_len;
+              max_blob_start=cur_blob_start;
+              max_xEST=cur_xEST/cur_xEST_w;
+              max_xEST_w=cur_xEST_w;
+            }
+
+            cur_blob_len=0;
+            cur_blob_start=-1;
+          }
+        }
+
+
+
+        if(cur_xEST_w>max_xEST_w){
+          max_blob_len=cur_blob_len;
+          max_blob_start=cur_blob_start;
+          max_xEST=cur_xEST/cur_xEST_w;
+          max_xEST_w=cur_xEST_w;
+        }
+
+
+
+    
+        if(max_blob_start!=-1){
+          edgeLoc[i].x=max_xEST;
+          edgeLoc[i].y=max_xEST_w;
+          //set pixel to 0
+          polarSegment.at<uint8_t>(i,(int)max_xEST)=0;
+        }
+        else
+        {
+          edgeLoc[i].x=-1;
+          edgeLoc[i].y=0;//weight
+        }
+
+
+        // if(i%100==0){
+        //   std::cout<<"row:"<<i<<",max_blob_start:"<<max_blob_start<<",max_blob_len:"<<max_blob_len<<",edgeLoc:"<<edgeLoc[i]<<std::endl;
+        // }
+      
       }
       else
-      {
-        edgeLoc[i].x=-1;
-        edgeLoc[i].y=0;//weight
+      {//find first peak(local max) location
+
+        float max_value=0;
+        float max_idx=-1;
+
+        int avgRange=2;
+        float drop_thres=5;
+        for(int j=avgRange;j<W-avgRange;j++){
+          if(edgeValueCache[j]<max_value-drop_thres){
+            break;
+          }
+          else
+          {
+            if(edgeValueCache[j]>max_value){
+              max_value=edgeValueCache[j];
+              max_idx=j;
+            }
+          }
+        }
+
+
+        if(max_idx==-1){//ignore
+          edgeLoc[i].x=-1;
+          edgeLoc[i].y=0;
+          continue;
+        }
+
+        float idxSum=0;
+        float wSum=0;
+
+        for(int i=max_idx-avgRange;i<=max_idx+avgRange;i++){
+
+          wSum+=edgeValueCache[i];
+          idxSum+=i*edgeValueCache[i];
+
+          
+        }
+
+
+        edgeLoc[i].x=idxSum/wSum;
+        edgeLoc[i].y=wSum;
       }
 
-      if(i%100==0){
-        std::cout<<"row:"<<i<<",max_blob_start:"<<max_blob_start<<",max_blob_len:"<<max_blob_len<<",edgeLoc:"<<edgeLoc[i]<<std::endl;
+
+
+
+
+
+    }
+
+
+
+
+    float LP_diff_thres=1;
+    int boxFilterSize=5;
+    if(boxFilterSize%2==1)//make sure it is oddx`
+    {//lowpass filter for edge_points
+
+      int boxFilterSingleSideSize=boxFilterSize/2;
+      {//surpreess head and tail
+        for(int i=0;i<boxFilterSingleSideSize;i++){
+          edgeLoc[i].y=0;
+          edgeLoc[edgeLoc.size()-1-i].y=0;
+        }
+
       }
-      
+      // vector<int> edge_points_Loc_LP;
+
+      // int target_size=edgeLoc.size()-boxFilterSingleSideSize*2;
+      // edge_points_Loc_LP.reserve(target_size);
+
+      // {//pass 1: to find anomaly points
+
+      //   edge_points_Loc_LP.clear();
+      //   int sum_x=0;
+      //   for(int i=0;i<boxFilterSize;i++){
+      //     sum_x+=(int)(edgeLoc[i].x*1000);
+      //   }
+      //   edge_points_Loc_LP.push_back(sum_x);
+      //   for(int i=1;i<target_size;i++){
+      //     int ei=i+boxFilterSingleSideSize;
+      //     sum_x-=(int)(edgeLoc[ei-boxFilterSingleSideSize-1].x*1000);
+      //     sum_x+=(int)(edgeLoc[ei+boxFilterSingleSideSize].x*1000);
+      //     edge_points_Loc_LP.push_back(sum_x);
+      //   }
+
+      //   {//compare edge_points_Loc_LP and edgeLoc and surpress edgeLoc if the difference is too large
+      //     for(int i=0;i<edge_points_Loc_LP.size();i++){
+
+      //       int ei=i+boxFilterSingleSideSize;
+      //       float LPx=(float)edge_points_Loc_LP[i]/1000/boxFilterSize;
+      //       float diff=abs(LPx-edgeLoc[ei].x);
+      //       if(diff>LP_diff_thres){
+      //         LOGE("surpress edgeLoc[%d]:%f,%f,diff:%f",ei,edgeLoc[ei].x,edgeLoc[ei].y,diff);
+      //         edgeLoc[ei].y*=-1;//preserve the value, but mark it is invalid
+      //         edgeLoc[ei].y=0;
+      //       }
+      //     }
+      //   }
+
+
+
+      // }
+
+
+
+      {//pass 2: to find valid points
+
+        float IIR_alpha=0.1;
+        float IIR_value=NAN;
+        for(int i=0;i<edgeLoc.size();i++){//foward pass
+          if(edgeLoc[i].y<=0)continue;
+          float nIIR_value=IIR_value*(1-IIR_alpha)+edgeLoc[i].x*IIR_alpha;
+          if(IIR_value!=IIR_value){//NAN
+            IIR_value=edgeLoc[i].x;
+            continue;
+          }
+          float diff=abs(IIR_value-edgeLoc[i].x);
+          if(diff>LP_diff_thres){
+            LOGE("surpress1 >>edgeLoc[%d]:%f,%f,diff:%f",i,edgeLoc[i].x,edgeLoc[i].y,diff);
+            edgeLoc[i].y=0;
+          }
+          else
+          {
+            IIR_value=nIIR_value;
+          }
+        }
+
+
+        IIR_value=NAN;
+        for(int i=edgeLoc.size()-1;i>=0;i--){//backward pass
+          if(edgeLoc[i].y<=0)continue;
+          float nIIR_value=IIR_value*(1-IIR_alpha)+edgeLoc[i].x*IIR_alpha;
+          if(IIR_value!=IIR_value){//NAN
+            IIR_value=edgeLoc[i].x;
+            continue;
+          }
+          float diff=abs(IIR_value-edgeLoc[i].x);
+          if(diff>LP_diff_thres){
+            LOGE("surpress2 <<edgeLoc[%d]:%f,%f,diff:%f",i,edgeLoc[i].x,edgeLoc[i].y,diff);
+            edgeLoc[i].y=0;
+          }
+          else
+          {
+            IIR_value=nIIR_value;
+          }
+        }
+
+
+      }
+
+
 
     }
 
@@ -1224,6 +1530,12 @@ static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Ma
       edge_points.clear();
       int edge_len=edgeLoc.size();
       for(int i=0;i<edge_len;i++){
+        float w=edgeLoc[i].y;
+        if(w==0)
+        {
+          // LOGE("surpress edgeLoc[%d]:%f,%f",i,edgeLoc[i].x,edgeLoc[i].y);
+          // continue;
+        }
         float x=edgeLoc[i].x;
         int y=i;
         //find mapX,mapY
@@ -1242,20 +1554,22 @@ static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Ma
 
         float progress_rate=(float)i/(edge_len-1);
 
+
+        // LOGI("%d,%f,%f,%f",i,edge_point.x,edge_point.y,edgeLoc[i].y);
         float ratio=1;
         if(progress_rate<w_drop_border_ratio)
           ratio=progress_rate/w_drop_border_ratio;
         else if(progress_rate>1-w_drop_border_ratio)
           ratio=(1-progress_rate)/(1-w_drop_border_ratio);
         edge_point.z=edgeLoc[i].y*ratio;//weight
+        // edge_point.z=1;
 
-
-        if(undistort)
-        {
-          Point2f undistorted_pix=pixUndistortion(Point2f(edge_point.x,edge_point.y));
-          edge_point.x=undistorted_pix.x;
-          edge_point.y=undistorted_pix.y;
-        }
+        // if(undistort)
+        // {
+        //   Point2f undistorted_pix=pixUndistortion(Point2f(edge_point.x,edge_point.y));
+        //   edge_point.x=undistorted_pix.x;
+        //   edge_point.y=undistorted_pix.y;
+        // }
         edge_points.push_back(edge_point);
 
 
@@ -1271,9 +1585,20 @@ static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Ma
     }
 
 
+    // sobelX
+    if(0){
+      // scale sobelX to 0-255
+      //find min and max
+      // double minVal, maxVal;
+      // cv::minMaxIdx(sobelX, &minVal, &maxVal);
+      // sobelX=(sobelX-minVal)/(maxVal-minVal)*255;
 
-    cv::imwrite("polarSegment.png", polarSegment);
-    cv::imwrite("sobelX.png", sobelX);
+      uint64_t current_ms=cv::getTickCount();
+      string filename_prefix=std::to_string(current_ms);
+      cv::imwrite(filename_prefix+"_sobelX.png", sobelX);
+      cv::imwrite(filename_prefix+"_polarSegment.png", polarSegment);
+
+    }
     
   }
 
@@ -1288,13 +1613,20 @@ static Point3f sArcFitting_polar(shared_ptr<StageInfo_ArcFitting>& report,cv::Ma
       // }
       // cv::RotatedRect circle= InspTarUtil::fitCircleByRansac(edge_points,tryCount,batch_size);
 
-      cv::RotatedRect circle= InspTarUtil::circleFitting(edge_points);
+      // cv::RotatedRect circle= InspTarUtil::circleFitting(edge_points);
 
-      report->center_x=circle.center.x+0.5;
-      report->center_y=circle.center.y+0.5;
-      report->radius=circle.size.width/2;
+      // extracted_edge_points=edge_points;
+      // report->center_x=circle.center.x;
+      // report->center_y=circle.center.y;
+      // report->radius=circle.size.width/2;
+      // report->category=STAGEINFO_CAT_OK;
+      cv::RotatedRect res= CircleFit_Hyper(edge_points,&report->sigma);
+      extracted_edge_points=edge_points;
+      report->center_x=res.center.x;
+      report->center_y=res.center.y;
+      report->radius=res.size.width/2;
       report->category=STAGEINFO_CAT_OK;
-      std::cout<<"circle:"<<report->center_x<<","<<report->center_y<<",R"<<circle.size.width/2<<std::endl;
+      std::cout<<"circle:"<<report->center_x<<","<<report->center_y<<",R"<<report->radius<<std::endl;
 
     }
 
@@ -1414,23 +1746,22 @@ void InspectionTarget_ArcFitting::singleProcess(shared_ptr<StageInfo> sinfo)
     LOGE("sinfo type does not match.....");
     return;
   }
-  shared_ptr<acvImage> srcImg=d_sinfo->img;
-
   cache_latest_input = sinfo;
 
-  Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+  Mat CV_srcImg=d_sinfo->img;
   LOGE("srcImg size:%d,%d",CV_srcImg.cols,CV_srcImg.rows);
   Mat CV_srcImg_gray(CV_srcImg.rows,CV_srcImg.cols,CV_8UC1);
 
   cvtColor(CV_srcImg, CV_srcImg_gray, COLOR_BGR2GRAY);  
   LOGE("CV_srcImg_gray size:%d,%d",CV_srcImg_gray.cols,CV_srcImg_gray.rows);
+
+
   shared_ptr<StageInfo_ArcFitting> reportInfo(new StageInfo_ArcFitting());
 
   reportInfo->category=STAGEINFO_CAT_NA;
 
 
-  shared_ptr<acvImage> sendImg(new acvImage(CV_srcImg.cols,CV_srcImg.rows,3));
-
+  Mat sendImg(CV_srcImg.rows,CV_srcImg.cols,CV_8UC3);
 
 
 
@@ -1451,6 +1782,7 @@ void InspectionTarget_ArcFitting::singleProcess(shared_ptr<StageInfo> sinfo)
   LOGE(">>>>>>sArcFitting");
 
 
+  vector<Point3f> extracted_edge_points;
 
   float scale_R=JFetch_NUMBER_ex(def,"scale_R",1);
   float scale_ANG=JFetch_NUMBER_ex(def,"scale_ANG",1);
@@ -1462,15 +1794,14 @@ void InspectionTarget_ArcFitting::singleProcess(shared_ptr<StageInfo> sinfo)
 
     Point3f newCenterRadius(NAN,NAN,NAN);
 
+    cv::Mat EmptyImg;
     int op_mode=(int)JFetch_NUMBER_ex(def,"op_mode",0);
     if(op_mode==0)//using polar coordinate to find edge and fit circle
     {
-
-
-      newCenterRadius=sArcFitting_polar(reportInfo,CV_srcImg_gray,NULL,def,newCenterRadius,do_undistort,1,1);
+      newCenterRadius=sArcFitting_polar(reportInfo,extracted_edge_points,CV_srcImg_gray,EmptyImg,def,newCenterRadius,do_undistort,1,1);
       // LOGI("templateOffse1t:%f,%f",templateOffset.x,templateOffset.y);
-      memset(sendImg->CVector[0],0,3*sendImg->GetHeight()*sendImg->GetWidth());
-      newCenterRadius=sArcFitting_polar(reportInfo,CV_srcImg_gray,sendImg.get(),def,newCenterRadius,do_undistort,scale_R,scale_ANG);
+      memset(sendImg.data,0,3*sendImg.rows*sendImg.cols);
+      newCenterRadius=sArcFitting_polar(reportInfo,extracted_edge_points,CV_srcImg_gray,sendImg,def,newCenterRadius,do_undistort,scale_R,scale_ANG);
     }
     else 
     {
@@ -1478,10 +1809,10 @@ void InspectionTarget_ArcFitting::singleProcess(shared_ptr<StageInfo> sinfo)
         GaussianBlur(CV_srcImg_gray, CV_srcImg_gray, Size(blur_size, blur_size), blur_sigma);
       }
 
-      newCenterRadius=sArcFitting_direct(reportInfo,CV_srcImg_gray,NULL,def,newCenterRadius,do_undistort,1,1);
+      newCenterRadius=sArcFitting_direct(reportInfo,CV_srcImg_gray,EmptyImg,def,newCenterRadius,do_undistort,1,1);
       // LOGI("templateOffse1t:%f,%f",templateOffset.x,templateOffset.y);
-      memset(sendImg->CVector[0],0,3*sendImg->GetHeight()*sendImg->GetWidth());
-      newCenterRadius=sArcFitting_direct(reportInfo,CV_srcImg_gray,sendImg.get(),def,newCenterRadius,do_undistort,scale_R,scale_ANG);
+      memset(sendImg.data,0,3*sendImg.rows*sendImg.cols);
+      newCenterRadius=sArcFitting_direct(reportInfo,CV_srcImg_gray,sendImg,def,newCenterRadius,do_undistort,scale_R,scale_ANG);
 
     }
 
@@ -1499,17 +1830,16 @@ void InspectionTarget_ArcFitting::singleProcess(shared_ptr<StageInfo> sinfo)
   LOGE(">>>>>>sArcFitting");
 
 
-  {
-    Mat undistortedImage;
-    undistort(CV_srcImg_gray, undistortedImage, cameraMatrix, distCoeffs);
+  // {
+  //   Mat undistortedImage;
+  //   undistort(CV_srcImg_gray, undistortedImage, cameraMatrix, distCoeffs);
 
-    Mat undistortedImage_RGB(sendImg->GetHeight(),sendImg->GetWidth(),CV_8UC3,sendImg->CVector[0]);
-    cvtColor(undistortedImage, undistortedImage_RGB, COLOR_GRAY2BGR);
-  }
-  reportInfo->img_show =srcImg;
+  //   cvtColor(undistortedImage, sendImg, COLOR_GRAY2BGR);
+  // }
+  reportInfo->img_show =d_sinfo->img;
   
 
-  reportInfo->img = srcImg;
+  reportInfo->img = d_sinfo->img;
   
 
   StageInfoFillDefault(reportInfo.get(),sinfo.get());
@@ -1526,6 +1856,14 @@ void InspectionTarget_ArcFitting::singleProcess(shared_ptr<StageInfo> sinfo)
 
 
   reportInfo->genJsonRepTojInfo();
+
+  if(reportInfo->jInfo)
+  {//extracted_edge_points
+    cJSON* jpoints=cJSON_CreateArray();
+    StageInfo::Point3fArray2cJSONArray(jpoints,extracted_edge_points);
+    cJSON_AddItemToObject(reportInfo->jInfo,"extracted_edge_points",jpoints);
+  
+  }
 
   // cache_latest_result = reportInfo;
   belongMan->dispatch(reportInfo);

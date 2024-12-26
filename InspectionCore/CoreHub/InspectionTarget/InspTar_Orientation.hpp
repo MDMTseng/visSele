@@ -36,11 +36,21 @@ class InspectionTarget_Orientation_ShapeBasedMatching :public InspectionTarget
   protected:
   SBM_if *sbm;
   line2Dup::TemplatePyramid insp_tp;
-  
   float origin_offset_angle;
+  Point2f templateCenter;
+
+  float front_face_angle_start;
+  float front_face_angle_end;
+  int front_face_angle_segs;
+
+  float back_face_angle_start;
+  float back_face_angle_end;
+  int back_face_angle_segs;
+  void RegisterTemplate(float scale);
 
 
   float matching_downScale=0.5;
+  float matching_angle_apart=360;
   string template_class_name="tNAME";
 
 public:

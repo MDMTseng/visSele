@@ -403,11 +403,9 @@ void InspectionTarget_LineFitting::singleProcess(shared_ptr<StageInfo> sinfo)
     LOGE("sinfo type does not match.....");
     return;
   }
-  auto srcImg=d_sinfo->img;
-
   cache_latest_input = sinfo;
 
-  Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
+  Mat CV_srcImg=d_sinfo->img;
   LOGE("srcImg size:%d,%d",CV_srcImg.cols,CV_srcImg.rows);
   Mat CV_srcImg_gray(CV_srcImg.rows,CV_srcImg.cols,CV_8UC1);
 
@@ -432,7 +430,7 @@ void InspectionTarget_LineFitting::singleProcess(shared_ptr<StageInfo> sinfo)
 
 
   reportInfo->img_show =
-      reportInfo->img = srcImg;
+      reportInfo->img = d_sinfo->img;
   
 
   StageInfoFillDefault(reportInfo.get(),sinfo.get());

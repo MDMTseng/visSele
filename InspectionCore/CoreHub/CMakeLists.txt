@@ -205,6 +205,7 @@ target_link_libraries(visSele
   $ENV{MODULE_simple_uart}/simple_uart.a
   #$ENV{MODULE_zlib}/staticlib/libz.a
   $ENV{MODULE_shape_based_matching}/libshape_based_matching.a
+  $ENV{MODULE_quickjs}/libquickjs.a
   ${OS_DEP_LIB}
   # ${OpenCV_LIBS}
   opencv_core
@@ -246,6 +247,7 @@ include_directories (
   $ENV{MODULE_smem_channel}
   $ENV{MODULE_wfqueue}
   $ENV{MODULE_lodepng}
+  $ENV{MODULE_quickjs}/include
   ${OS_SP_inc}
   ${OpenCV_INCLUDE_DIRS}
   # ${Python3_INCLUDE_DIRS}
@@ -265,3 +267,22 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 set_target_properties(visSele PROPERTIES 
                       INSTALL_RPATH "@executable_path/../contrib/libuvc/mac_arm64/;@executable_path/../contrib/aravis/mac_arm64/src;"
                       BUILD_WITH_INSTALL_RPATH TRUE )
+
+add_executable(playground playground.cpp)
+target_link_libraries(playground
+  PUBLIC OpenMP::OpenMP_CXX
+  $ENV{MODULE_MatchingEngine}/libMatchingEngine.a
+  $ENV{MODULE_common_lib}/common_lib.a 
+  $ENV{MODULE_acvImage}/acvImage.a 
+  ${OpenCV_LIBS}
+  ${PLAT_LIBS}
+)
+
+target_include_directories(playground PRIVATE
+  ${INCLUDE_DIRECTORIES}
+  "."
+  "./include"
+  $ENV{MODULE_acvImage}/include/
+  $ENV{MODULE_common_lib}/include
+  ${OpenCV_INCLUDE_DIRS}
+)

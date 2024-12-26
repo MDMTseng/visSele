@@ -119,20 +119,19 @@ class InspectionTargetManager_m:public InspectionTargetManager
     CameraLayer::frameInfo finfo = info.camera->GetFrameInfo();
 
     
-    
     LOGE("============DO INSP>> waterLvL: insp:%d/%d  trigInfoMatchingSize:%d  cur_Interval:%" PRIu64 "<<<tstmp_ms:%" PRIu64 "   from:%s",
         inspQueue.size(), inspQueue.capacity(),triggerInfoMatchingBuffer.size(),cur_Interval,finfo.timeStamp_us,info.camera->getConnectionData().id.c_str());
 
 
-    std::shared_ptr<acvImage> img(new acvImage(finfo.width,finfo.height,3));
-    CameraLayer::status st = info.camera->ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
+    cv::Mat img_cv(finfo.height,finfo.width,CV_8UC3);
+    CameraLayer::status st = info.camera->ExtractFrame(img_cv.data,3,finfo.width*finfo.height);
 
     newStateInfo->img_prop.StreamInfo=info;
     newStateInfo->source=NULL;//info.camera->getConnectionData().id;
     newStateInfo->source_id=info.camera->getConnectionData().id;
     newStateInfo->img_prop.fi=finfo;
 
-    info.latest_img=img;
+    info.latest_img=img_cv;
     // if(info.channel_id)
     // {
     //   newStateInfo->jInfo=cJSON_CreateObject();
@@ -145,7 +144,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
     
     // newStateInfo->trigger_tag="";
     newStateInfo->img_show=
-    newStateInfo->img=img;
+    newStateInfo->img=img_cv;
     // LOGI(">>>CAM:%s  WH:%d %d",info->camera_id.c_str(),finfo.width,finfo.height);
 
     sttriggerInfo_mix pmix;
@@ -209,12 +208,9 @@ int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trig
   newStateInfo->img_prop.mmpp=0;
   newStateInfo->img_prop.fi=finfo;
 
-  std::shared_ptr<acvImage> img(new acvImage(W,H,3));
-  newStateInfo->img=img;
+  cv::Mat dst_mat(H,W,CV_8UC3);
+  newStateInfo->img=dst_mat;//
   newStateInfo->trigger_id=trigger_id;
-  
-  cv::Mat dst_mat(H,W,CV_8UC3,img->CVector[0]);
-
   
 
 
@@ -3199,7 +3195,7 @@ virtual void singleGroupProcess(shared_ptr<StageInfo> sinfo)
 class InspectionTarget_DataTransfer :public InspectionTarget
 {
   public:
-
+  uint32_t imageID=0;
   static std::string sTYPE()
   {return "DataTransfer";}
   virtual std::string TYPE()
@@ -3336,11 +3332,11 @@ class InspectionTarget_DataTransfer :public InspectionTarget
           bpg_pi.fromUpperLayer_DATA("RP",imgCHID,curInput->jInfo);
 
 
-        std::shared_ptr<acvImage> im2send=curInput->img_show;
+        auto im2send=curInput->img_show;
 
-        LOGE("downSample %d src:%s im2send:%p",downSample,curInput->source_id.c_str(),im2send.get());
+        LOGE("downSample %d src:%s im2send empty:%d",downSample,curInput->source_id.c_str(),im2send.empty());
 
-        bool okToSend=(im2send && downSample<5);
+        bool okToSend=(!im2send.empty() && downSample<5);
         
 
 
@@ -3375,30 +3371,61 @@ class InspectionTarget_DataTransfer :public InspectionTarget
           }
 
         }
-
+        
         if(okToSend)
         {
 
-          int W=im2send->GetWidth();
-          int H=im2send->GetHeight();
-          int downSampleAdj=(int)round(sqrt(W*H/(5000000)));
+          int W=im2send.cols;
+          int H=im2send.rows;
+          int downSampleAdj=1;//(int)round(sqrt(W*H/(5000000)));
           LOGI("%dx%d=%d,ds:%d",W,H,W*H,downSampleAdj);
           if(downSampleAdj<1)downSampleAdj=1;
 
-          Mat _CV_Img(im2send->GetHeight(),im2send->GetWidth(),CV_8UC3,im2send->CVector[0]);
+          int dsW=W/downSampleAdj;
+          int dsH=H/downSampleAdj;
 
-          int dsW=im2send->GetWidth()/downSampleAdj;
-          int dsH=im2send->GetHeight()/downSampleAdj;
-          Mat CV_Img=_CV_Img;
-          if(downSampleAdj==1)
+
+          Mat CV_Img;
+          if(downSampleAdj!=1)
           {
-            CV_Img=_CV_Img;
+            CV_Img=im2send.clone();
           }
           else
           {
 
-            resize(_CV_Img, CV_Img, Size(dsW,dsH), INTER_LINEAR);
+            resize(im2send, CV_Img, Size(dsW,dsH), INTER_LINEAR);
           }
+
+
+          if(false)//embed imageID into the image
+          {
+            imageID++;//32bit
+            //embed imageID into the image 4bits each pixel
+            int bitstoreEachPixel=2;
+            int pixel_need=sizeof(imageID)*8/bitstoreEachPixel; 
+            auto tmp_imageID=imageID;
+
+            int pixEmbedCount=0;
+            for(int y=0;y<CV_Img.rows;y++)
+            {
+              for(int x=0;x<CV_Img.cols;x++)
+              {
+                int pix2set=tmp_imageID&((1<<bitstoreEachPixel)-1);
+                tmp_imageID>>=bitstoreEachPixel;
+
+                CV_Img.at<uint8_t>(y,x)=(pix2set<<(8-bitstoreEachPixel));
+
+                LOGI("pix2set:%X tmp_imageID:%X pixEmbedCount:%d pixel_need:%d pix:%X",pix2set,tmp_imageID,pixEmbedCount,pixel_need,CV_Img.at<uint8_t>(y,x));
+
+                pixEmbedCount++;
+                if(pixEmbedCount>=pixel_need)break;
+
+              }
+              if(pixEmbedCount>=pixel_need)break;
+            }
+          }
+
+          // imwrite("test"+to_string(imageID)+".png",CV_Img);
 
 
           int compressionRate=95-input_queue.size()*5;
@@ -3452,7 +3479,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget
 
 
           LOGI("COMPRESSION:: %dx%d =>%dx%d ds:%d  jpeg:rate:%d size:%d",
-            im2send->GetWidth(),im2send->GetHeight(),dsW,dsH,downSampleAdj,compressionRate,img_encode.size());
+            W,H,dsW,dsH,downSampleAdj,compressionRate,img_encode.size());
 
           if(image_transfer_rest_ms>0)
           {
@@ -3465,32 +3492,32 @@ class InspectionTarget_DataTransfer :public InspectionTarget
         }
 
 
-        if(0&&im2send!=NULL && force_down_scale<999)
-        {
+        // if(0&&!im2send.empty() && force_down_scale<999)
+        // {
 
           
 
-          float pscale=sqrt(im2send->GetHeight()*im2send->GetWidth()/(downSampResolutionCap));
-          int new_downSample=pscale<=0?1:(int)pscale;
-          if(downSample<new_downSample)downSample=new_downSample;
-          if(force_down_scale!=-1)downSample=force_down_scale;
-          BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)downSample};
-          iminfo.fullHeight = im2send->GetHeight();
-          iminfo.fullWidth = im2send->GetWidth();
-          if(iminfo.scale>1)
-          {
-            //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-            //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-            ImageDownSampling(cacheImage, *im2send, iminfo.scale, NULL);
-          }
-          else
-          {
-            iminfo.scale=1;
-            iminfo.img=im2send.get();
-          }
-          bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
+        //   float pscale=sqrt(H*W/(downSampResolutionCap));
+        //   int new_downSample=pscale<=0?1:(int)pscale;
+        //   if(downSample<new_downSample)downSample=new_downSample;
+        //   if(force_down_scale!=-1)downSample=force_down_scale;
+        //   BPG_protocol_data_acvImage_Send_info iminfo = {img : &cacheImage, scale : (uint16_t)downSample};
+        //   iminfo.fullHeight = H;
+        //   iminfo.fullWidth = W;
+        //   if(iminfo.scale>1)
+        //   {
+        //     //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
+        //     //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+        //     ImageDownSampling(cacheImage, *im2send, iminfo.scale, NULL);
+        //   }
+        //   else
+        //   {
+        //     iminfo.scale=1;
+        //     iminfo.img=im2send.get();
+        //   }
+        //   bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
 
-        }
+        // }
         
         // LOGE("OK..");
         bpg_pi.fromUpperLayer_SS(imgCHID,true);
@@ -3609,9 +3636,7 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget
 
     auto srcImg=d_sinfo->img;
 
-    Mat CV_srcImg(srcImg->GetHeight(),srcImg->GetWidth(),CV_8UC3,srcImg->CVector[0]);
-      
-    imwrite(path+"/"+filename, CV_srcImg);  
+    imwrite(path+"/"+filename, srcImg);  
     saveCount++;
     LOGI("SAVE image DONE c:%d",saveCount);
 
@@ -4037,35 +4062,126 @@ BGLightNodeInfo extractInfoFromJson(cJSON *nodeRoot) //have exception
 
 class exchangeCMD_ACTx: public exchangeCMD_ACT
 { 
-  acvImage dataSend_buff;
-  virtual void send(const char *TL, int pgID,cJSON* def){
+  public:
+  virtual void send(const char *TL, int pgID,cJSON* cjson){
     
-    bpg_pi.fromUpperLayer_DATA(TL,pgID,def);
+    bpg_pi.fromUpperLayer_DATA(TL,pgID,cjson);
 
   };
-  virtual void send(const char *TL, int pgID,acvImage* img,int downSample){
-    acvImage* p_img=img;
-    if(p_img==NULL)return;
-    BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)downSample};
+  // virtual void send(const char *TL, int pgID,acvImage* img,int downSample){
+  //   acvImage* p_img=img;
+  //   if(p_img==NULL)return;
+  //   BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)downSample};
 
-    iminfo.fullHeight = p_img->GetHeight();
-    iminfo.fullWidth = p_img->GetWidth();
-    iminfo.offsetX=0;
-    iminfo.offsetY=0;
-    if(downSample<=1)
+  //   iminfo.fullHeight = p_img->GetHeight();
+  //   iminfo.fullWidth = p_img->GetWidth();
+  //   iminfo.offsetX=0;
+  //   iminfo.offsetY=0;
+  //   if(downSample<=1)
+  //   {
+  //     iminfo.scale=1;
+  //     iminfo.img=p_img;
+  //     bpg_pi.fromUpperLayer_DATA(TL,pgID,&iminfo);
+  //     return;
+  //   }
+
+
+  //   //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
+  //   //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+  //   ImageDownSampling(dataSend_buff, *p_img, iminfo.scale, NULL);
+
+  //   bpg_pi.fromUpperLayer_DATA(TL,pgID,&iminfo);
+  // };
+
+
+  virtual void send(int pgID,cv::Mat& img,const char *format_lowercase,float quality){
+    if(img.empty())return;
+
+    float downSampleAdj=1;
+
+
+    int W=img.cols;
+    int H=img.rows;
+
+    int dsW=W*downSampleAdj;
+    int dsH=H*downSampleAdj;
+    Mat im2send;
+    if(downSampleAdj!=1)
     {
-      iminfo.scale=1;
-      iminfo.img=p_img;
-      bpg_pi.fromUpperLayer_DATA(TL,pgID,&iminfo);
-      return;
+      im2send=img;
+    }
+    else
+    {
+
+      resize(img, im2send, Size(dsW,dsH), INTER_LINEAR);
     }
 
 
-    //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-    //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-    ImageDownSampling(dataSend_buff, *p_img, iminfo.scale, NULL);
+    int compressionRate=quality;
 
-    bpg_pi.fromUpperLayer_DATA(TL,pgID,&iminfo);
+    vector<unsigned char> img_encode;
+    string base64Header="";
+    if(strcmp(format_lowercase,"jpg")==0)//use jpg
+    {
+      std::vector<int> param(2);
+      param[0] = cv::IMWRITE_JPEG_QUALITY;
+      param[1] = compressionRate;//default(95) 0-100
+
+
+      cv::imencode(".jpeg", im2send, img_encode, param);
+      base64Header="data:image/jpg;base64,";
+    }
+    else 
+    if(strcmp(format_lowercase,"png")==0)//use png
+    {
+      std::vector<int> param(2);
+      param[0] = cv::IMWRITE_PNG_COMPRESSION;
+      param[1] = compressionRate;//default(95) 0-100
+
+
+      cv::imencode(".png", im2send, img_encode, param);
+      base64Header="data:image/png;base64,";
+    }
+    else if(strcmp(format_lowercase,"webp")==0)//webp slow
+    {
+      std::vector<int> param(2);
+      param[0] = cv::IMWRITE_WEBP_QUALITY;
+      param[1] = compressionRate;//default(95) 0-100
+      cv::imencode(".webp", im2send, img_encode, param);
+      base64Header="data:image/webp;base64,";
+    }
+
+  // LOGE("OK..");
+    //convert img_encode into base64 format
+    string base64_img_encode=base64_encode(base64Header.c_str(),(unsigned char*)img_encode.data(), img_encode.size());
+
+  // LOGE("OK..");
+    if(base64_img_encode.length()>0)
+    {
+    // LOGI("base64_img_encode:%c %c...",base64_img_encode[0],base64_img_encode[1]);
+
+      // printf("\n\nbase64_img_encode_size:%d\n\n",base64_img_encode.size());
+      // printf(base64_img_encode.c_str());
+      // printf("\n\n\n\n");
+      BPG_protocol_data_ImgB64_Send_info imgb64Info;
+
+      imgb64Info.imgb64=&base64_img_encode[0];
+      imgb64Info.imgb64_L=base64_img_encode.length();
+      imgb64Info.offsetX=imgb64Info.offsetY=0;
+      imgb64Info.fullHeight=im2send.rows;
+      imgb64Info.fullWidth=im2send.cols;
+      imgb64Info.scale=downSampleAdj;
+      
+      bpg_pi.fromUpperLayer_DATA("IM",pgID,&imgb64Info);
+      
+    }
+
+
+
+
+
+
+
   };
 
 };
@@ -4780,8 +4896,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
         if(cami==NULL)break;
 
-        auto aimg=cami->latest_img.get();
-        if(aimg==NULL)break;
+        auto aimg=cami->latest_img;
+        if(aimg.empty())break;
 
         //get path from json
         char *_img_path = JFetch_STRING(json, "path");
@@ -4789,9 +4905,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         std::string img_path=std::string(_img_path);
 
         
-      Mat CV_srcImg(aimg->GetHeight(),aimg->GetWidth(),CV_8UC3,aimg->CVector[0]);
-
-        cv::imwrite(img_path,CV_srcImg);
+        cv::imwrite(img_path,aimg);
         // img->img-;
         // cami->
 
@@ -5025,6 +5139,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         session_ACK=true;
         iptar->setInspDef(defInfo);
 
+        //new def path
+        std::string env_path=JFetch_STRING_ex(defInfo,"env_path");
+        if(env_path!="")
+        {
+          iptar->setEnvPath(env_path);
+        }
+
+
       }
       else if(strcmp(type_str, "delete") ==0)
       {
@@ -5161,42 +5283,21 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         if (imgSrcPath != NULL)
         {
 
-          int ret_val = LoadIMGFile(&tmp_buff, imgSrcPath);
-          if (ret_val == 0)
+          cv::Mat img;
+          img=cv::imread(imgSrcPath);
+          if(img.empty())
           {
-            acvImage *srcImg = NULL;
-            srcImg = &tmp_buff;
-            cacheImage.ReSize(srcImg);
-            acvCloneImage(srcImg, &cacheImage, -1);
-
-            int default_scale = 2;
-
-            double *DS_level = JFetch_NUMBER(json, "down_samp_level");
-            if (DS_level)
-            {
-              default_scale = (int)*DS_level;
-              if (default_scale <= 0)
-                default_scale = 1;
-            }
-            //TODO:HACK: 4 times scale down for transmission speed, bpg_dat.scale is not used for now
-
-            BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)default_scale};
-
-            iminfo.fullHeight = srcImg->GetHeight();
-            iminfo.fullWidth = srcImg->GetWidth();
-            //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-            //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-            ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, NULL);
-
-            fromUpperLayer_DATA("IM",dat->pgID,&iminfo);
-
-
-          }
-          else
-          {
-            
             session_ACK=false;
             break;
+          }else
+          {
+          
+
+            float downSampleAdj = JFetch_NUMBER_ex(json, "down_samp_adj",1);
+            exchCMDact.send(dat->pgID,img,"jpg",90);
+
+
+
           }
         }
 
@@ -6068,13 +6169,15 @@ int tetcpJson() {
 #include <vector>
 int cp_main(int argc, char **argv)
 {
-#include <vector>
-int cp_main(int argc, char **argv)
-{
-  // {
 
-  //   tmpMain();
+  // {
+  //   CalibProcess2("./data/calibImg/calibImg2.png");
+  //   // CalibProcessFolder("./data/calibImg");
+  //   // CalibProcess_try();
+  //   return 0;
   // }
+  // opencv_rotCrop();
+  // return 0;
 
   srand(time(NULL));
 

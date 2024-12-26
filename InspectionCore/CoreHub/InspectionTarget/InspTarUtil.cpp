@@ -168,7 +168,7 @@ float normalizeAngle_nPI_PI(float angle) {
 
 // Function to compute the center, radius, and arc angles (start and end) from three points
 bool findCircleFrom3PointsWithArc(const cv::Point2f& p1, const cv::Point2f& p2, const cv::Point2f& p3, 
-                                  cv::Point2f& center, float& radius, float& startAngle, float& endAngle) {
+                                  cv::Point2f& center, float& radius, float& startAngle_rad, float& endAngle_rad) {
     // Calculate midpoints of two segments (p1-p2 and p2-p3)
     cv::Point2f mid1 = (p1 + p2) * 0.5f;
     cv::Point2f mid2 = (p2 + p3) * 0.5f;
@@ -207,15 +207,19 @@ bool findCircleFrom3PointsWithArc(const cv::Point2f& p1, const cv::Point2f& p2, 
 
     if (angle31 > angle21)
     {
-      startAngle = angle1;
-      endAngle = angle3;
+      startAngle_rad = angle1;
+      endAngle_rad = angle3;
     }
     else
     {
-      startAngle = angle3;
-      endAngle = angle1;
+      startAngle_rad = angle3;
+      endAngle_rad = angle1;
     }
 
+    if(endAngle_rad<startAngle_rad)
+    {
+      endAngle_rad+=2*CV_PI;
+    }
     // Convert angles to degrees for easier understanding (optional)
     // startAngle = startAngle * 180.0f / CV_PI;
     // endAngle = endAngle * 180.0f / CV_PI;
@@ -399,6 +403,26 @@ void drawSmoothCircle(cv::Mat& img, cv::Point2f center, float radius, int segmen
         cv::line(img, points[i], points[(i + 1) % segments], color, thickness);
     }
 }
+
+
+
+
+cv::Point2f rotate2d(const cv::Point2f inPoint, float sin, float cos)
+{
+    cv::Point2f outPoint;
+    //CW rotation
+    outPoint.x = cos*inPoint.x - sin*inPoint.y;
+    outPoint.y = sin*inPoint.x + cos*inPoint.y;
+    return outPoint;
+}
+cv::Point2f rotate2d(const cv::Point2f inPoint, const double angRad)
+{
+    return rotate2d(inPoint,sin(angRad),cos(angRad));
+}
+
+
+
+
 
 
 } // namespace InspTarUTIL

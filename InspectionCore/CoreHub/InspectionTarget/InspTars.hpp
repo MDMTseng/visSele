@@ -29,11 +29,12 @@
 #include <InspTar_Orientation.hpp>
 #include <InspTar_SurfaceCheckSimple.hpp>
 
-#include <InspTar_Empty.hpp>
+// #include <InspTar_Empty.hpp>
 #include <InspTar_ArcFitting.hpp>
 #include <InspTar_LineFitting.hpp>
 #include <InspTar_DirectionalCaliper.hpp>
-
+#include <InspTar_CameraCalib.hpp>
+#include <InspTar_DimMeasure.hpp>
 using namespace cv;
 // class InspectionTarget_s :public InspectionTarget
 // {
@@ -328,14 +329,22 @@ static InspectionTarget* createInspectionTarget(std::string type)
   {
     inspTar = new InspectionTarget_DirectionalCaliper();
   }
-  else if(type==InspectionTarget_Empty::sTYPE())
+  // else if(type==InspectionTarget_Empty::sTYPE())
+  // {
+  //   inspTar = new InspectionTarget_Empty();
+  // }
+  else if(type==InspectionTarget_CameraCalib::sTYPE())
   {
-    inspTar = new InspectionTarget_Empty();
+    inspTar = new InspectionTarget_CameraCalib();
   }
   else if(type==InspectionTarget_Orientation_ShapeBasedMatching::sTYPE())
   {
     inspTar = new InspectionTarget_Orientation_ShapeBasedMatching();
     
+  }
+  else if(type==InspectionTarget_DimMeasure::sTYPE())
+  {
+    inspTar = new InspectionTarget_DimMeasure();
   }
   
   return inspTar;

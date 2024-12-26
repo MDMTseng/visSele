@@ -1,7 +1,7 @@
 #ifndef CAMERAMANAGER_HPP
 #define CAMERAMANAGER_HPP
 
-
+#include "opencv2/imgproc.hpp"
 #include "CameraLayerManager.hpp"
 class StageInfo_Image;
 class CameraManager
@@ -15,7 +15,8 @@ class CameraManager
   struct StreamingInfo
   {
     CameraLayer* camera;
-    std::shared_ptr<acvImage> latest_img;
+    // std::shared_ptr<acvImage> latest_img;
+    cv::Mat latest_img;
     int channel_id;
     int downsample;
   };

@@ -91,9 +91,9 @@ public:
   uint16_t CI_pgID;
   int cameraFramesLeft = 0;
 
-  acvImage tmp_buff;
-  acvImage cacheImage;
-  acvImage dataSend_buff;
+  // acvImage tmp_buff;
+  // acvImage cacheImage;
+  // acvImage dataSend_buff;
 
   
   PerifChannel *perifCH= NULL;
@@ -105,14 +105,15 @@ public:
   uint16_t TLCode(const char *TL);
   
   int fromUpperLayer_DATA(const char*TL,int pgID,cJSON* json);
-  int fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_acvImage_Send_info* imgInfo);
+  // int fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_acvImage_Send_info* imgInfo);
+  int fromUpperLayer_DATA(const char*TL,int pgID,cv::Mat& img,int downSample);
   int fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_ImgB64_Send_info* imgInfo);
   int fromUpperLayer_DATA(const char*TL,int pgID,char* str);
   int fromUpperLayer_SS(int pgID,bool isACK,const char*fromTL=NULL,const char* error_msg=NULL);
   void delete_PeripheralChannel();
   static BPG_protocol_data GenStrBPGData(const char *TL, char *jsonStr);
   
-  static int SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
+  // static int SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 
   static int SEND_base64Image(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 };
@@ -226,7 +227,7 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
                        int X = -1, int Y = -1, int W = -1, int H = -1);
 
 
-BPG_protocol_data_acvImage_Send_info ImageDownSampling_Info(acvImage &dstBuff, acvImage &src, int downScale, ImageSampler *sampler, int doNearest,
-                       int X, int Y, int W, int H);
+// BPG_protocol_data_acvImage_Send_info ImageDownSampling_Info(acvImage &dstBuff, acvImage &src, int downScale, ImageSampler *sampler, int doNearest,
+//                        int X, int Y, int W, int H);
 
 #endif

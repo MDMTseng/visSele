@@ -12,7 +12,6 @@ inline bool instanceof (const T)
   return is_base_of<Base, T>::value;
 }
 
-
 void InspectionTarget_Orientation_ShapeBasedMatching::INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
 {
 
@@ -105,9 +104,50 @@ line2Dup::TemplatePyramid Json2TemplatePyramid(cJSON *jtpArr)
   return tp;
 }
 
+
+void  InspectionTarget_Orientation_ShapeBasedMatching::RegisterTemplate(float scale)
+{
+
+  LOGE("origin_offset_angle:%f",origin_offset_angle*180/3.14159);
+
+
+  cv::Point2f f0Pos(insp_tp[0].tl_x + insp_tp[0].features[0].x, insp_tp[0].tl_y + insp_tp[0].features[0].y);
+  cv::Point2f cenOffset = templateCenter - f0Pos;
+  sbm->regTemplateOffset(template_class_name, {cenOffset, false});
+
+
+  sbm->detector.removeClass(template_class_name);
+  if (front_face_angle_segs>0)
+  {
+    sbm->train(template_class_name, insp_tp, cv::Point2f(0, 0), false,
+                matching_downScale*scale,
+                front_face_angle_start,
+                front_face_angle_end,
+                front_face_angle_segs);
+  }
+
+
+  cenOffset.y *= -1;
+  sbm->regTemplateOffset(template_class_name + "_f", {cenOffset, true});
+  sbm->detector.removeClass(template_class_name + "_f");
+
+
+  if (back_face_angle_segs>0)
+  {
+    sbm->train(template_class_name + "_f", insp_tp, cv::Point2f(0, 0), true,
+                matching_downScale*scale,
+                back_face_angle_start,
+                back_face_angle_end,
+                back_face_angle_segs);
+  }
+
+}
+
+
 void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON *def)
 {
   InspectionTarget::setInspDef(def);
+
   // featureInfo
   if (sbm)
   {
@@ -116,13 +156,13 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON *def)
   }
   refine_region_set.clear();
   matching_downScale = JFetch_NUMBER_ex(def, "matching_downScale", 1);
+
+  matching_angle_apart=JFetch_NUMBER_ex(def,"matching_angle_apart",360);
   if (matching_downScale < 0.01)
     matching_downScale = 0.01;
   cJSON *featureInfo = JFetch_OBJECT(def, "featureInfo");
   if (featureInfo)
   {
-    bool match_front_face = JFetch_TRUE(featureInfo, "match_front_face");
-    bool match_back_face = JFetch_TRUE(featureInfo, "match_back_face");
 
     int num_features = JFetch_NUMBER_ex(featureInfo, "num_features", 60);
     int weak_thresh = JFetch_NUMBER_ex(featureInfo, "weak_thresh", 30);
@@ -144,11 +184,11 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON *def)
     }
 
     LOGI(">>>%d,%d,%d", num_features, weak_thresh, strong_thresh);
-    sbm = new SBM_if(num_features, T, weak_thresh, strong_thresh);
+    this->sbm = new SBM_if(num_features, T, weak_thresh, strong_thresh);
 
     cJSON *jtemplatePyramid = JFetch_ARRAY(featureInfo, "templatePyramid");
 
-    insp_tp = Json2TemplatePyramid(jtemplatePyramid);
+    this->insp_tp = Json2TemplatePyramid(jtemplatePyramid);
 
     
 
@@ -159,71 +199,43 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON *def)
 
     LOGE("insp_tp.size():%d T.size():%d",insp_tp.size(),T.size());
 
-    // float originOffsetX=JFetch_NUMBER_ex(def,"featureInfo.origin_info.pt.x");
-    // float originOffsetY=JFetch_NUMBER_ex(def,"featureInfo.origin_info.pt.y");
-
-    // if(originOffsetX==originOffsetX && originOffsetY==originOffsetY)
-    // {
-    //   originOffsetX-=insp_tp[0].tl_x;
-    //   originOffsetY-=insp_tp[0].tl_y;
-
-    // }
-    // else
-    // {
-    //   originOffsetX=originOffsetY=0;
-    // }
-
-
-    // float originVecX=JFetch_NUMBER_ex(def,"featureInfo.origin_info.vec.x",1);
-    // float originVecY=JFetch_NUMBER_ex(def,"featureInfo.origin_info.vec.y",0);
-
-    // float originOffsetAngle=atan2(originVecY,originVecX);
-
-    // LOGI("originOffset:%f %f, ang:%f",originOffsetX,originOffsetY,originOffsetAngle*180/3.14159);
-
-  
 
     float originVecX = JFetch_NUMBER_ex(featureInfo, "origin_info.vec.x", 1);
     float originVecY = JFetch_NUMBER_ex(featureInfo, "origin_info.vec.y", 0);
 
-    origin_offset_angle = atan2(originVecY, originVecX);
+    this->origin_offset_angle = atan2(originVecY, originVecX);
 
-    LOGE("origin_offset_angle:%f",origin_offset_angle*180/3.14159);
 
     int templateCenter_x = JFetch_NUMBER_ex(featureInfo, "origin_info.pt.x", insp_tp[0].tl_x);
     int templateCenter_y = JFetch_NUMBER_ex(featureInfo, "origin_info.pt.y", insp_tp[0].tl_y);
+    this->templateCenter.x=templateCenter_x;
+    this->templateCenter.y=templateCenter_y;
 
-    cv::Point2f f0Pos(insp_tp[0].tl_x + insp_tp[0].features[0].x, insp_tp[0].tl_y + insp_tp[0].features[0].y);
-    cv::Point2f cenOffset = cv::Point2f(templateCenter_x, templateCenter_y) - f0Pos;
-    sbm->regTemplateOffset(template_class_name, {cenOffset, false});
-    cenOffset.y *= -1;
-    sbm->regTemplateOffset(template_class_name + "_f", {cenOffset, true});
 
-    if (match_front_face)
+    bool match_front_face = JFetch_TRUE(featureInfo, "match_front_face");
+    bool match_back_face = JFetch_TRUE(featureInfo, "match_back_face");
+    this->front_face_angle_segs=0;
+    this->back_face_angle_segs=0;
+
+
+    if(match_front_face)
     {
-      float AngleStart = JFetch_NUMBER_ex(featureInfo, "match_front_face_angle_range[0]", -179.999);
-      float AngleEnd = JFetch_NUMBER_ex(featureInfo, "match_front_face_angle_range[1]", 180);
-      int AngleSegs = (int)round(JFetch_NUMBER_ex(featureInfo, "match_front_face_angle_segs", (AngleEnd - AngleStart)));
-
-      sbm->train(template_class_name, insp_tp, cv::Point2f(0, 0), false,
-                 matching_downScale,
-                 AngleStart,
-                 AngleEnd,
-                 AngleSegs);
+      this->front_face_angle_start = JFetch_NUMBER_ex(featureInfo, "match_front_face_angle_range[0]", -179.999);
+      this->front_face_angle_end = JFetch_NUMBER_ex(featureInfo, "match_front_face_angle_range[1]", 180);
+      this->front_face_angle_segs = (int)round(JFetch_NUMBER_ex(featureInfo, "match_front_face_angle_segs", (front_face_angle_end - front_face_angle_start)));
     }
 
-    if (match_back_face)
+    if(match_back_face)
     {
-      float AngleStart = JFetch_NUMBER_ex(featureInfo, "match_back_face_angle_range[0]", -179.999);
-      float AngleEnd = JFetch_NUMBER_ex(featureInfo, "match_back_face_angle_range[1]", 180);
-      int AngleSegs = (int)round(JFetch_NUMBER_ex(featureInfo, "match_back_face_angle_segs", (AngleEnd - AngleStart)));
-
-      sbm->train(template_class_name + "_f", insp_tp, cv::Point2f(0, 0), true,
-                 matching_downScale,
-                 AngleStart,
-                 AngleEnd,
-                 AngleSegs);
+      this->back_face_angle_start = JFetch_NUMBER_ex(featureInfo, "match_back_face_angle_range[0]", -179.999);
+      this->back_face_angle_end = JFetch_NUMBER_ex(featureInfo, "match_back_face_angle_range[1]", 180);
+      this->back_face_angle_segs = (int)round(JFetch_NUMBER_ex(featureInfo, "match_back_face_angle_segs", (back_face_angle_end - back_face_angle_start)));
     }
+
+
+    // RegisterTemplate();
+
+
 
     cJSON *refine_match_regions = JFetch_ARRAY(featureInfo, "refine_match_regions");
     if (refine_match_regions)
@@ -463,12 +475,10 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
     //   src_acvImg.CVector[i][j*3+1]=0;
     //   src_acvImg.CVector[i][j*3+2]=0;
     // }
-    int image_transfer_downsampling = (int)JFetch_NUMBER_ex(info, "image_transfer_downsampling", -1);
-    if (image_transfer_downsampling >= 1)
+    int image_scale = (int)JFetch_NUMBER_ex(info, "image_scale", 1);
+    if (image_scale > 0)
     {
-      acvImage src_acvImg;
-      src_acvImg.useExtBuffer((BYTE *)img.data, img.rows * img.cols * 3, img.cols, img.rows);
-      act.send("IM", id, &src_acvImg, image_transfer_downsampling);
+      act.send(id, img, "jpg", 90);
     }
 
     int num_features = JFetch_NUMBER_ex(info, "num_features", 60);
@@ -866,6 +876,9 @@ float PoseRefine(
   {
 
     auto reg = regions_n_TempImgs[i].regionInRef;
+
+
+
     int margin = (int)(marginFactor);
     cv::Point2f crop_center;
 
@@ -1075,7 +1088,6 @@ float PoseRefine(
   // exit(0);
 
   // LOGE(">>>>updatedPts.size():%d",updatedPts.size());
-
   if (true && updatedPts.size() >= 3)
   {
     cv::Mat R = estimateAffine2D(initPts_temp, updatedPts);
@@ -1206,7 +1218,6 @@ float PoseRefine(
   if (true && updatedPts.size() == 2)
   {
     anchorPt += (updatedPts[0] + updatedPts[1] - initPts[0] - initPts[1]) / 2;
-
     // anchorPt+=updatedPts[1]-initPts[1];
     angleRad +=
         atan2(updatedPts[1].y - updatedPts[0].y, updatedPts[1].x - updatedPts[0].x) - atan2(initPts[1].y - initPts[0].y, initPts[1].x - initPts[0].x);
@@ -1220,6 +1231,11 @@ float PoseRefine(
   // ofsSum/=ofsCount;
   // anchorPt+=ofsSum;
 }
+
+
+
+
+
 
 bool hasEnding(std::string const &fullString, std::string const &ending)
 {
@@ -1373,30 +1389,83 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
 
 }
 
-void CloseMatchFilter(std::vector<line2Dup::Match> &matches,SBM_if *sbm,vector<int> &idxs)
+
+
+template<typename _Tp> static inline
+static double  jaccardDistance__(const Rect_<_Tp>& a, const Rect_<_Tp>& b) {
+    _Tp Aa = a.area();
+    _Tp Ab = b.area();
+
+    if ((Aa + Ab) <= std::numeric_limits<_Tp>::epsilon()) {
+        // jaccard_index = 1 -> distance = 0
+        return 0.0;
+    }
+
+    float Aab = (a & b).area();
+    float dist=1.0f - Aab / (Aa + Ab - Aab);
+
+    return dist;
+}
+
+
+
+
+template <typename T>
+inline float rectOverlap_angle(const T& a, const T& b,void* ctx)
+{
+  float *angle_diff_thres = (float*)ctx;
+  if(a.isFlip!=b.isFlip)
+  {
+    return 0.f;
+  }
+  if(*angle_diff_thres>0)
+  {
+    float angle_diff = fmod(fabs(a.angle_deg - b.angle_deg), 360.0f);
+    if (angle_diff > 180.0f) {
+        angle_diff = 360.0f - angle_diff;
+    }
+    if(angle_diff>*angle_diff_thres)//large angle diff, consider as no overlap
+    {
+        return 0.f;
+    }
+  }
+
+
+
+
+    
+    return 1.f - static_cast<float>(jaccardDistance__(a.rect, b.rect));
+}
+void CloseMatchFilter(std::vector<line2Dup::Match> &matches,SBM_if *sbm,vector<int> &idxs,float matching_angle_apart)
 {
 
-  vector<Rect> boxes;
+  vector<cv_dnn::NMSBoxesStruct> boxes;
   vector<float> scores;
 
   for (auto match : matches)
   {
-    Rect box;
-    box.x = match.x;
-    box.y = match.y;
-
+    cv_dnn::NMSBoxesStruct box;
+    box.rect.x = match.x;
+    box.rect.y = match.y;
+    box.isFlip = hasEnding(match.class_id, "_f");
     auto templ = sbm->detector.getTemplates(match.class_id,
                                             match.template_id);
 
     
     // LOGE(">>>>>match.class_id:%s  wh:%d,%d",match.class_id.c_str(),templ[0].width,templ[0].height);
-    box.width = templ[0].width;
-    box.height = templ[0].height;
+    box.rect.width = templ[0].width;
+    box.rect.height = templ[0].height;
+    box.angle_deg = templ[0].angle;
     boxes.push_back(box);
     scores.push_back(match.similarity);
   }
 
-  cv_dnn::NMSBoxes(boxes, scores, 0, 0.7f, idxs,0.8);
+  // cv_dnn::NMSBoxes(boxes, scores, 0, 0.7f, idxs,0.8);
+  float angle_diff_thres = matching_angle_apart;
+  cv_dnn::NMSFast_(boxes, scores, 0, 0.7f,0.8,0, idxs,rectOverlap_angle,&angle_diff_thres);
+
+
+
 
   std::sort(idxs.begin(), idxs.end(), [&](int a, int b) {
     int sa=matches[a].y*10+matches[a].x;//tilt the score a bit, assume the arrangment is like a grid
@@ -1407,6 +1476,8 @@ void CloseMatchFilter(std::vector<line2Dup::Match> &matches,SBM_if *sbm,vector<i
 
 }
 
+
+float mag_test=1.1;
 
 void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<StageInfo> sinfo)
 {
@@ -1451,15 +1522,12 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   // LOGI(">>>>>>>>InspectionTarget_Orientation_ShapeBasedMatching>>>>>>>>");
   // LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
 
-  auto srcImg = sinfo->img;
-
-  
-
-  Mat _CV_srcImg(srcImg->GetHeight(), srcImg->GetWidth(), CV_8UC3, srcImg->CVector[0]);
+  Mat _CV_srcImg=sinfo->img;
 
   //crop CV_srcImg to make width and height multiples of 8
 
 
+  RegisterTemplate(mag_test);
   
 
   cv::Size size_origin = _CV_srcImg.size();
@@ -1666,7 +1734,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
         vector<int> SubIdxs;
         if(1)
         {
-          CloseMatchFilter(sub_matches,sbm,SubIdxs);
+          CloseMatchFilter(sub_matches,sbm,SubIdxs,matching_angle_apart);
         }
         else
         {
@@ -1740,8 +1808,8 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
       
       vector<int> SubIdxs;
-      CloseMatchFilter(matches,sbm,SubIdxs);
-      vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(CV_srcImg,matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,origin_offset_angle,false,must_refine_result,remove_refine_failed_result);
+      CloseMatchFilter(matches,sbm,SubIdxs,matching_angle_apart);
+      vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(CV_srcImg,matches,sbm,SubIdxs,refine_region_set,matching_downScale*mag_test,refine_score_thres,origin_offset_angle,false,must_refine_result,remove_refine_failed_result);
 
   
 
@@ -1781,7 +1849,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   reportInfo->source = this;
   reportInfo->source_id = id;
   reportInfo->img_show =
-      reportInfo->img = srcImg;
+      reportInfo->img = sinfo->img;
   reportInfo->trigger_id = sinfo->trigger_id;
 
   reportInfo->refInfo.push_back(sinfo);
