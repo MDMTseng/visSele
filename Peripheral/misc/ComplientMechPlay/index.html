@@ -1,0 +1,1280 @@
+<!-- <!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script language="javascript" type="text/javascript" src="../libraries/p5.js"></script>
+  <script language="javascript" type="text/javascript" src="../libraries/matter.js"></script>
+  <script language="javascript" type="text/javascript" src="sketch.js"></script>
+  <script language="javascript" type="text/javascript" src="../classes/BlockCore.js"></script>
+  <script language="javascript" type="text/javascript" src="../classes/Block.js"></script>
+  <script language="javascript" type="text/javascript" src="../classes/Mouse.js"></script>
+  <style> body {padding: 0; margin: 0;} </style>
+</head>
+<body>
+</body>
+</html>
+
+
+
+/Users/mdm/workspace/playground/p5-matter-examples/3-x
+ -->
+
+
+ <!DOCTYPE html>
+ <html>
+ <head>
+     <title>Springy Stick with Matter.js</title>
+     <script language="javascript" type="text/javascript" src="./matter.js"></script>
+     <script language="javascript" type="text/javascript" src="./resurrect.js"></script>
+     <style>
+         body {
+             margin: 0;
+             position: relative;
+         }
+         canvas {
+             position: absolute;
+             top: 0;
+             left: 0;
+         }
+     </style>
+ </head>
+
+ <body>
+ <div id="controlPanel" style="position: fixed; top: 0; left: 0; z-index: 1000; background-color: rgba(255,255,255,0.8); padding: 10px; width: 100%;">
+    <div id="mainControls">
+        <button onclick="setMode('add')">Add Rod (a)</button>
+        <button onclick="setMode('add_chain')">Add Chain (A)</button>
+        <button onclick="setMode('add_link')">Add Strong Link (L)</button>
+        <button onclick="setMode('add_weak_link')">Add Weak Link (l)</button>
+        <button onclick="setMode('remove_link')">Remove Link (k)</button>
+        <button onclick="setMode('move')">Move (m)</button>
+        <button onclick="setMode('no_rotation_move')">Move No Rotation (M)</button>
+        <button onclick="setMode('remove')">Remove (r)</button>
+        <button onclick="setMode('toggle_static')">Toggle Static (t)</button>
+        <button onclick="toggleDetailPanel()">Toggle Details (d)</button>
+    </div>
+    <div id="detailControls">
+        <button onclick="saveWorld()">Save Current (s)</button>
+        <button onclick="saveNewWorld()">Save New</button>
+        <button onclick="loadWorld(loadName)">Reload Current</button>
+        <button onclick="deleteCurrentWorld()" style="background-color: #ffcccc;">Delete Current</button>
+        <select id="worldSelect" onchange="loadWorld(this.value)">
+            <option value="">Load World...</option>
+        </select>
+        <hr>
+        <button onclick="modifyAllRodProperties(0.1)">Ultra Light Rods</button>
+        <button onclick="modifyAllRodProperties(0.5)">Very Light Rods</button>
+        <button onclick="modifyAllRodProperties(1)">Normal Rods</button>
+        <button onclick="modifyAllRodProperties(2)">Heavy Rods</button>
+        <button onclick="modifyAllRodProperties(5)">Very Heavy Rods</button>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label for="dampingSlider">Damping:</label>
+                <input type="range" id="dampingSlider" min="0" max="100" value="10" 
+                       oninput="adjustDamping(this.value)">
+                <span id="dampingValue">0.1</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label for="stiffnessSlider">Stiffness:</label>
+                <input type="range" id="stiffnessSlider" min="0" max="100" value="10" 
+                       oninput="adjustStiffness(this.value)">
+                <span id="stiffnessValue">0.1</span>
+            </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <label for="speedSlider">Simulation Speed:</label>
+            <input type="range" id="speedSlider" min="100" max="1000" value="100" 
+                   oninput="adjustSimulationSpeed(this.value)">
+            <span id="speedValue">1x</span>
+        </div>
+    </div>
+</div>
+<div class="MatterjsCanvas"></div>
+
+ 
+ </body>
+
+
+ <script>
+  // Include Matter.js
+
+  let loadName="world_save_1";
+  
+  // Aliases
+  var Engine = Matter.Engine,
+      Render = Matter.Render,
+      Runner = Matter.Runner,
+      World = Matter.World,
+      Bodies = Matter.Bodies,
+      Body = Matter.Body,
+      Constraint = Matter.Constraint,
+      Vertices = Matter.Vertices,
+      Mouse = Matter.Mouse,
+      MouseConstraint = Matter.MouseConstraint,
+      Events = Matter.Events;
+      Composite = Matter.Composite;
+  
+  
+  var necromancer = new Resurrect();
+  function poly_contains(body,point)
+  {
+    if(body.vertices!==undefined)
+    {
+      return Vertices.contains(body.vertices, point);
+    }
+    else
+    {
+      return Matter.Bounds.contains(body.bounds, point)
+    }
+    return false
+  }
+  
+  // Create engine
+  var engine = Engine.create();
+  var    world = engine.world;
+  
+  // Create renderer
+  var render = Render.create({
+    //find the canvas element
+      element: document.querySelector('.MatterjsCanvas'),
+      engine: engine,
+      options: {
+          width: 2000,
+          height: 1000,
+          wireframes: false
+      }
+  });
+  
+  
+  var mouse = Mouse.create(render.canvas);
+  let mouseConstraint=MouseConstraint.create(engine, {
+            mouse: mouse,
+            // constraint: {
+            //     stiffness: 0.00,
+            //     render: {
+            //         visible: false
+            //     }
+            // }
+        });
+  
+  function worldSetup(world)
+  {
+  
+    //no gravity
+    engine.world.gravity.y = 0;
+    //airfriction
+    engine.world.frictionAir = 0.1;
+  
+  
+    World.add(world, mouseConstraint);
+  }
+  worldSetup(engine.world);
+  
+  
+
+  
+  // // Create ground
+  // var ground = Bodies.rectangle(400, 590, 810, 60, { isStatic: true });
+  // World.add(world, ground);
+  
+  // Mouse interaction setup
+  
+  // Function to calculate distance between two points
+  function distanceBetweenPoints(pointA, pointB) {
+      return Math.hypot(pointB.x - pointA.x, pointB.y - pointA.y);
+  }
+  
+  
+  let latestMousePosition = {x: 0, y: 0};
+  
+  let OPMode="move";
+  let keyDown="";
+  
+  let linkrange=50;
+  
+  
+  let stickN1=null;
+  let linkLocN1=null;
+  let linkLocM1=null;
+  let stickN2=null;
+  let linkLocN2=null;
+  let linkLocM2=null;
+  
+  
+  
+  function createBlock(pointA,pointB, thickness=20)
+  {
+
+    // calculate the length of the rod (distance between A and B)
+    const length = Math.sqrt(Math.pow(pointB.x - pointA.x, 2) + Math.pow(pointB.y - pointA.y, 2));
+
+    // calculate the angle of the rod (angle with the horizontal)
+    const angle = Math.atan2(pointB.y - pointA.y, pointB.x - pointA.x);
+
+    // calculate the midpoint for the rod's position
+    const midPointX = (pointA.x + pointB.x) / 2;
+    const midPointY = (pointA.y + pointB.y) / 2;
+
+
+    // create the rod
+    const block = Bodies.rectangle(midPointX, midPointY, length, thickness, {
+      frictionAir: 0.01,
+        angle: angle
+    });
+    return block
+  }
+  
+  
+  
+  function addStick(stiffness=0.98,renderProp=undefined)
+  {
+    if(stickN1==null||stickN2==null)
+      return undefined;
+    var stick = Constraint.create({ 
+        bodyA: stickN1, 
+        bodyB: stickN2,
+        pointA:linkLocN1,
+        pointB: linkLocN2,
+  
+        length: distanceBetweenPoints({x:linkLocN1.x+stickN1.position.x,y:linkLocN1.y+stickN1.position.y}, {x:linkLocN2.x+stickN2.position.x,y:linkLocN2.y+stickN2.position.y}),
+        stiffness: stiffness,
+        angleAStiffness: 1,
+        angleBStiffness: 1,
+  
+        //hide the stick
+        render:{...renderProp}
+        
+    });
+  
+    World.add(world, stick);
+  
+    return stick;
+  }
+  
+  
+  function removeStick()
+  {
+    if(stickN1==null||stickN2==null)
+      return undefined;
+  
+    let sticks=engine.world.constraints;
+    for (let i = sticks.length - 1; i >= 0; i--) {
+          if( (sticks[i].bodyA === stickN1 && sticks[i].bodyB === stickN2) ||
+              (sticks[i].bodyA === stickN2 && sticks[i].bodyB === stickN1)) {
+              Matter.World.remove(world, sticks[i]);
+              // sticks.splice(i, 1); // Remove the constraint from the array
+          }
+      }
+  }
+  
+  
+  function addNode2(x, y,w,h)
+  {
+      //set circle color red
+      // var node = Bodies.circle(x, y, 20, { isStatic: false, render: { fillStyle: '#F35e66' }});
+  
+      //mass =1
+      var node = Bodies.rectangle(x, y, w, h, { isStatic: false,frictionAir: 0.01, render: { fillStyle: '#F35e66'}});
+      Body.setMass(node, 0.001);
+      World.add(world, node);
+  }
+  
+  function removeNodeAndConstraints(nodeToRemove) {
+      let sticks = engine.world.constraints;
+      // Find and remove associated constraints
+      for (let i = sticks.length - 1; i >= 0; i--) {
+          if (sticks[i].bodyA === nodeToRemove || sticks[i].bodyB === nodeToRemove) {
+              Matter.World.remove(world, sticks[i]);
+              // sticks.splice(i, 1); // Remove the constraint from the array
+          }
+      }
+  
+      // Remove the node
+      console.log(nodeToRemove);
+      Matter.World.remove(world, nodeToRemove);
+  
+  
+      // // Optionally, remove the node from the nodes array
+      // const index = nodes.indexOf(nodeToRemove);
+      // if (index !== -1) {
+      //     nodes.splice(index, 1);
+      // }
+  }
+  
+
+  function addSpringyJoint(body1,point1,body2,point2,stiffness=0.95,springyFactor=0.2)
+  {
+    let body1_BK={...body1};
+    let body2_BK={...body2};
+    let point_vector={x:point1.x-point2.x,y:point1.y-point2.y};
+    let point_vector_normal={x:point_vector.y,y:-point_vector.x};
+
+    // addStick(OPMode=="add_link"?1:0.01);
+    let VMult=1;
+
+    let angle_stiffness_factor=springyFactor;
+
+    addStick(0.00001,{strokeStyle:"red",lineWidth:3});//just for indication, doesn't really comtribute much
+
+    // stiffness/=2;
+    //hide stick
+    let renderProp={ visible: true };
+
+    {
+      let vmag=Math.hypot(point_vector.x,point_vector.y);
+      let point_vector_normalized={x:point_vector.x/vmag,y:point_vector.y/vmag};
+      let point_vector_normal_normalized={x:point_vector_normal.x/vmag,y:point_vector_normal.y/vmag};
+
+      VMult=100;
+      stiffness/=2;
+      //modify linkLocN1
+      
+
+      let body1_BK={
+
+      x:point2.x-stickN1.position.x,
+      y:point2.y-stickN1.position.y,
+      };
+
+      if(0){
+        linkLocN1={x:body1_BK.x+(point_vector_normalized.x*1+point_vector_normal_normalized.x)*VMult,y:body1_BK.y+(point_vector_normalized.y*1+point_vector_normal_normalized.y)*VMult};
+        linkLocN2={...body2_BK};
+        addStick(stiffness,{...renderProp});
+        // linkLocN1={x:body1_BK.x+(point_vector_normalized.x*1-point_vector_normal_normalized.x)*VMult,y:body1_BK.y+(point_vector_normalized.y*1-point_vector_normal_normalized.y)*VMult};
+        // linkLocN2={...body2_BK};
+        // addStick(stiffness,{...renderProp});
+
+
+        linkLocN1={x:body1_BK.x-(point_vector_normalized.x*1+point_vector_normal_normalized.x)*VMult,y:body1_BK.y-(point_vector_normalized.y*1+point_vector_normal_normalized.y)*VMult};
+        linkLocN2={...body2_BK};
+        addStick(stiffness,{...renderProp});
+        // linkLocN1={x:body1_BK.x-(point_vector_normalized.x*1-point_vector_normal_normalized.x)*VMult,y:body1_BK.y-(point_vector_normalized.y*1-point_vector_normal_normalized.y)*VMult};
+        // linkLocN2={...body2_BK};
+        // addStick(stiffness,{...renderProp});
+
+
+
+      }
+
+
+
+
+
+      VMult*=angle_stiffness_factor ;
+      {//rotate stiffness
+        let nd=1.001;
+        linkLocN1={x:body1_BK.x-(point_vector_normal_normalized.x*1)*VMult,y:body1_BK.y-(point_vector_normal_normalized.y*1)*VMult};
+        linkLocN2={
+          x:body2_BK.x-(point_vector_normal_normalized.x*1)*VMult*nd,
+          y:body2_BK.y-(point_vector_normal_normalized.y*1)*VMult*nd,
+        };
+        addStick(stiffness,{...renderProp});
+
+
+
+        linkLocN1={x:body1_BK.x+(point_vector_normal_normalized.x*1)*VMult,y:body1_BK.y+(point_vector_normal_normalized.y*1)*VMult};
+        linkLocN2={
+          x:body2_BK.x+(point_vector_normal_normalized.x*1)*VMult*nd,
+          y:body2_BK.y+(point_vector_normal_normalized.y*1)*VMult*nd,
+        };
+        addStick(stiffness,{...renderProp});
+
+
+      }
+
+
+    }
+  
+  
+  }
+  
+  
+
+
+
+  let mouseDragConstraint=null;
+  
+  let mouseDownPos={x:0,y:0};
+  
+  
+  let addPolygonPoints=[];
+  let addChainPrevBlock=null;
+  let addChainPrevBlockEndPoint=null;
+  
+  Events.on(mouseConstraint, 'mouseup', function(event) {
+      var mousePosition = event.mouse.position;
+    // console.log("mouse up",mouseDownPos,event.mouse.position);
+      if(OPMode=="add" )
+      {
+  
+        //add block
+        if(0){
+          let x=mousePosition.x<mouseDownPos.x?mousePosition.x:mouseDownPos.x;
+          let y=mousePosition.y<mouseDownPos.y?mousePosition.y:mouseDownPos.y;
+          let w=Math.abs(mousePosition.x-mouseDownPos.x);
+          let h=Math.abs(mousePosition.y-mouseDownPos.y);
+  
+          if(w<5)
+          {
+            w=5
+          }
+          if(h<5)
+          {
+            h=5
+          }
+          addNode2(x+w/2,y+h/2,w,h);
+        }
+  
+  
+        if(1)//add rod with two points{mouseDownPos,mousePosition}
+        {
+          
+
+          let block=createBlock({...mouseDownPos},{...mousePosition})
+          Body.setMass(block, 0.0001);
+          Body.setInertia(block, 4);
+          World.add(world, block);
+
+        }
+  
+  
+  
+      }
+      else if(OPMode=="add_in_group")
+      {
+        //if close to first point <10px
+        if(addPolygonPoints.length>1 && distanceBetweenPoints(addPolygonPoints[0], mousePosition)<10)
+        {
+          //add polygon
+          
+  
+          let RectSets=addPolygonPoints.map((point,idx)=>{
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+            return [point,addPolygonPoints[(idx+1)%addPolygonPoints.length]];
+          }).map(ptSet=>{
+            return createBlock({...ptSet[0]},{...ptSet[1]});
+  
+  
+          });
+          console.log(RectSets);
+          let polygon = Body.create({
+              parts: RectSets,
+              frictionAir: 0.01,
+          });
+          World.add(world, polygon);
+          addPolygonPoints=[];
+        }
+        else  
+        {
+          addPolygonPoints.push({...mousePosition});
+        }
+  
+  
+  
+      }
+      else if(OPMode=="add_polygon")
+      {
+        //if close to first point <10px
+        if(addPolygonPoints.length>1 && distanceBetweenPoints(addPolygonPoints[0], mousePosition)<10)
+        {
+          //add polygon
+          let center=addPolygonPoints.reduce((a,b)=>{return {x:a.x+b.x,y:a.y+b.y};},{x:0,y:0});
+          center.x/=addPolygonPoints.length;
+          center.y/=addPolygonPoints.length;
+  
+          // let vertices=addPolygonPoints.map((point,idx)=>
+          //   ({x:addPolygonPoints[0].x-center.x,y:addPolygonPoints[0].y-center.y})
+          // );
+  
+          let vertices=addPolygonPoints.map((point,idx)=>
+            ({x:point.x-center.x,y:point.y-center.y})
+          );
+          const polygon = Bodies.fromVertices(center.x,center.y, vertices, {
+            frictionAir: 0.01,
+               // optional properties
+          }, true);
+          // let RectSets=addPolygonPoints.map((point,idx)=>{
+  
+          Body.setMass(polygon, 0.0001);
+          Body.setInertia(block, 4);
+  
+          World.add(world, polygon);
+          addPolygonPoints=[];
+  
+            
+        }
+        else  
+        {
+          addPolygonPoints.push({...mousePosition});
+        }
+      }
+      else if(OPMode=="add_chain")
+      {
+        let lastPoint=addPolygonPoints.length>0?addPolygonPoints[addPolygonPoints.length-1]:null;
+        if(lastPoint!==null && distanceBetweenPoints(lastPoint, mousePosition)<25)
+        {
+          //skip
+
+        }
+        else
+        {
+          let newPoint={...mousePosition};
+          addPolygonPoints.push(newPoint);
+
+          if(addPolygonPoints.length>1)
+          {
+            let vec={x:newPoint.x-lastPoint.x,y:newPoint.y-lastPoint.y};
+            let vec_abs= Math.hypot(vec.x,vec.y);
+            let vec_normalize= {x:vec.x/vec_abs,y:vec.y/vec_abs};
+            let backDist=20;
+            let _newPoint={x:newPoint.x-vec_normalize.x*backDist,y:newPoint.y-vec_normalize.y*backDist};
+            let block=createBlock(lastPoint,_newPoint);
+            
+            Body.setMass(block, 0.000000001);
+            World.add(world, block);
+
+            if(addChainPrevBlock!==null)
+            {
+
+            }
+
+            addChainPrevBlock=block;
+            addChainPrevBlockEndPoint={..._newPoint};
+            //pop the first element
+            addPolygonPoints=[newPoint];
+          }
+        }
+
+      }
+      else if(OPMode=="move")
+      {
+      }
+  
+      if (mouseDragConstraint) {
+          let bodyB=mouseDragConstraint.bodyB;
+          World.remove(engine.world, mouseDragConstraint);
+          mouseDragConstraint = null;
+  
+          setTimeout(()=>{
+            Body.setInertia(bodyB, bodyB.inertia_BK);
+            Body.setAngularVelocity(bodyB, 0);
+            Body.setVelocity(bodyB, {x:0,y:0})
+          },50);
+      }
+  
+  });
+  
+  
+  // Handle mouse click
+  Events.on(mouseConstraint, 'mousedown', function(event) {
+      var mousePosition = event.mouse.position;
+      mouseDownPos={...mousePosition};
+      if(OPMode=="add" || OPMode=="add_polygon"|| OPMode=="add_in_group")
+      {} 
+      if(OPMode=="move"||OPMode=="no_rotation_move")
+      {
+        let onObjInfo=null;
+        
+        if (mouseDragConstraint) {
+  
+          let bodyB=mouseDragConstraint.bodyB;
+          World.remove(engine.world, mouseDragConstraint);
+          mouseDragConstraint = null;
+  
+          setTimeout(()=>{
+            Body.setInertia(bodyB, bodyB.inertia_BK);
+            Body.setAngularVelocity(bodyB, 0);
+            Body.setVelocity(bodyB, {x:0,y:0})
+          },50);
+        }
+        
+        for(let i=0;i<engine.world.bodies.length;i++)
+        {
+          let box=engine.world.bodies[i];
+          if (poly_contains(box, mousePosition)) {
+            const relativeX = mousePosition.x - box.position.x;
+            const relativeY = mousePosition.y - box.position.y;
+
+
+            console.log(`Box ID: ${box.id}, Mouse relative coordinates: x=${relativeX}, y=${relativeY}`,mousePosition,box);
+            onObjInfo= {x:relativeX,y:relativeY,box:box};
+            break;
+          }
+        }
+     
+  
+        if(onObjInfo==null)
+          return;
+  
+        console.log(onObjInfo);
+  
+        console.log(onObjInfo.box.inertia );
+        onObjInfo.box.inertia_BK=onObjInfo.box.inertia;
+        Body.setAngularVelocity(onObjInfo.box, 0);
+        if(OPMode=="no_rotation_move")
+          Body.setInertia(onObjInfo.box, Infinity)//prevent rotation
+        mouseDragConstraint = Matter.Constraint.create({
+            pointA: mousePosition,
+            bodyB: onObjInfo.box,
+            pointB: { x: onObjInfo.x, y: onObjInfo.y },
+            stiffness: 0.02,
+            length: 0
+        });
+  
+        console.log(mouseDragConstraint);
+        World.add(engine.world, mouseDragConstraint);
+  
+  
+      } 
+      else if(OPMode=="remove")
+      {
+
+
+
+        for(let i=0;i<engine.world.bodies.length;i++)
+        {
+          let box=engine.world.bodies[i];
+          if (poly_contains(box, mousePosition)) {
+            
+            removeNodeAndConstraints(box);
+            break;
+          }
+        }
+  
+
+  
+      }
+  
+      else if(OPMode=="add_link" || OPMode=="add_weak_link")
+      {
+  
+        let onObjInfo=null;
+        
+        for(let i=0;i<engine.world.bodies.length;i++)
+        {
+          let box=engine.world.bodies[i];
+          if (poly_contains(box, mousePosition)) {
+            const relativeX = mousePosition.x - box.position.x;
+            const relativeY = mousePosition.y - box.position.y;
+            console.log(`Box ID: ${box.id}, Mouse relative coordinates: x=${relativeX}, y=${relativeY}`);
+            onObjInfo= {x:relativeX,y:relativeY,box:box};
+            break;
+          }
+        }
+  
+        if(onObjInfo==null)
+          return;
+     
+        
+        if(stickN1==null)
+        {
+          stickN1=null;
+          if (poly_contains(onObjInfo.box, mousePosition)) {
+              const relativeX = mousePosition.x - onObjInfo.box.position.x;
+              const relativeY = mousePosition.y - onObjInfo.box.position.y;
+              console.log(`Mouse relative coordinates: x=${relativeX}, y=${relativeY}`);
+  
+              stickN1=onObjInfo.box;
+              linkLocM1={...mousePosition};
+              linkLocN1={x:relativeX,y:relativeY};
+  
+          }
+        }
+        else if(stickN2==null)
+        {
+          stickN2=null;
+          if (poly_contains(onObjInfo.box, mousePosition)) {
+              const relativeX = mousePosition.x - onObjInfo.box.position.x;
+              const relativeY = mousePosition.y - onObjInfo.box.position.y;
+              console.log(`Mouse relative coordinates: x=${relativeX}, y=${relativeY}`);
+  
+              stickN2=onObjInfo.box;
+              linkLocM2={...mousePosition};
+              linkLocN2={x:relativeX,y:relativeY};
+          }
+        }
+  
+        if(stickN1!=null && stickN2!=null)
+        {
+
+          let angle_stiffness_factor=0.2;
+          let stiffness=OPMode=="add_link"?1:0.01;
+          addSpringyJoint(linkLocN1,linkLocM1,linkLocN2,linkLocM2,stiffness,angle_stiffness_factor);
+         
+  
+  
+          // //modify linkLocN2
+          // {
+          //   linkLocN1={...linkLocN1_BK};
+          //   linkLocN2={x:linkLocN2_BK.x+(-linkLocM_vrctor.x*1+linkLocM_vrctor_normal.x)*VMult,y:linkLocN2_BK.y+(-linkLocM_vrctor.y*1+linkLocM_vrctor_normal.y)*VMult};
+          //   addStick(stiffness,{...renderProp});
+          //   linkLocN1={...linkLocN1_BK};
+          //   linkLocN2={x:linkLocN2_BK.x+(-linkLocM_vrctor.x*1-linkLocM_vrctor_normal.x)*VMult,y:linkLocN2_BK.y+(-linkLocM_vrctor.y*1-linkLocM_vrctor_normal.y)*VMult};
+          //   addStick(stiffness,{...renderProp});
+          // }
+  
+  
+  
+          // addStick(OPMode=="add_link"?1:0.01);
+  
+          stickN1=null;
+          stickN2=null;
+        }
+      }
+  
+      else if(OPMode=="remove_link")
+      {
+  
+        let onObjInfo=null;
+        
+        for(let i=0;i<engine.world.bodies.length;i++)
+        {
+          let box=engine.world.bodies[i];
+          if (poly_contains(box, mousePosition)) {
+            const relativeX = mousePosition.x - box.position.x;
+            const relativeY = mousePosition.y - box.position.y;
+            console.log(`Box ID: ${box.id}, Mouse relative coordinates: x=${relativeX}, y=${relativeY}`,mousePosition,box);
+            onObjInfo= {x:relativeX,y:relativeY,box:box};
+            break;
+          }
+        }
+  
+        if(onObjInfo==null)
+          return;
+     
+        
+        if(stickN1==null)
+        {
+          stickN1=null;
+          if (poly_contains(onObjInfo.box, mousePosition)) {
+              const relativeX = mousePosition.x - onObjInfo.box.position.x;
+              const relativeY = mousePosition.y - onObjInfo.box.position.y;
+              console.log(`Mouse relative coordinates: x=${relativeX}, y=${relativeY}`);
+  
+              stickN1=onObjInfo.box;
+              linkLocN1={x:relativeX,y:relativeY};
+          }
+        }
+        else if(stickN2==null)
+        {
+          stickN2=null;
+          if (poly_contains(onObjInfo.box, mousePosition)) {
+              const relativeX = mousePosition.x - onObjInfo.box.position.x;
+              const relativeY = mousePosition.y - onObjInfo.box.position.y;
+              console.log(`Mouse relative coordinates: x=${relativeX}, y=${relativeY}`);
+  
+              stickN2=onObjInfo.box;
+              linkLocN2={x:relativeX,y:relativeY};
+          }
+        }
+  
+        if(stickN1!=null && stickN2!=null)
+        {
+          removeStick();
+  
+          stickN1=null;
+          stickN2=null;
+        }
+      }
+      else if(OPMode=="toggle_static")
+      {
+        //find the closest node
+        var closestnode = engine.world.bodies.reduce((a, b) => {
+              let distanceA = distanceBetweenPoints(a.position, mousePosition);
+              let distanceB = distanceBetweenPoints(b.position, mousePosition);
+              return distanceA < distanceB ? a : b;
+          });
+        
+        if(closestnode===undefined || distanceBetweenPoints(closestnode.position, mousePosition)>linkrange)
+          return;
+        console.log(closestnode);
+        closestnode.isStatic=!closestnode.isStatic;
+      }
+  });
+  
+  // handle mouse move
+  Events.on(mouseConstraint, 'mousemove', function(event) {
+      var mousePosition = event.mouse.position;
+      // console.log(mousePosition);
+      latestMousePosition = mousePosition;
+      let nodes=engine.world.bodies;
+      //change color of circle when close to mouse
+      nodes.forEach(node => {
+        // console.log(node);
+        if (poly_contains(node, mousePosition)) 
+        {
+            node.render.fillStyle = 'blue';
+        } else {
+            node.render.fillStyle = node.isStatic?"red":'yellow';
+        }
+      });
+  });
+  
+  
+  
+  //read key
+  document.addEventListener('keydown', function(event) {
+  
+    keyDown=event.key;
+    
+  
+    //press a
+      if (event.key == 'a') {
+        OPMode="add";
+          // addNode(latestMousePosition.x, latestMousePosition.y);
+      }
+  
+  
+      // if (event.key == 'A') {
+      //   OPMode="add_in_group";
+      //     // addNode(latestMousePosition.x, latestMousePosition.y);
+      //   addPolygonPoints=[];
+      // }
+  
+      if (event.key == 'A') {
+        OPMode="add_chain";
+          // addNode(latestMousePosition.x, latestMousePosition.y);
+        addPolygonPoints=[];
+        addChainPrevBlock=null;
+      }
+  
+  
+  
+      if (event.key == 'L') {
+        OPMode="add_link";
+        stickN1=null;
+        stickN2=null;
+          // addNode(latestMousePosition.x, latestMousePosition.y);
+      }
+  
+      if (event.key == 'l') {
+        OPMode="add_weak_link";
+        stickN1=null;
+        stickN2=null;
+          // addNode(latestMousePosition.x, latestMousePosition.y);
+      }
+  
+  
+      if (event.key == 'k') {
+        OPMode="remove_link";
+        stickN1=null;
+        stickN2=null;
+          // addNode(latestMousePosition.x, latestMousePosition.y);
+      }
+  
+  
+  
+      if (event.key == 's') {
+  
+        saveWorld();
+      }
+  
+      // if(event.key == 'd')
+      // {
+      //   //load string(data) from storage
+      //   var data = localStorage.getItem(loadName);
+      //   //load world
+      //   var _world = necromancer.resurrect(data);
+  
+      //   world=_world;
+      //   //add world to engine
+      //   engine.world = world;
+      //   console.log(world);
+      //   OPMode="no_rotation_move";
+      // }
+
+
+
+      if(event.key == '1'||event.key == '2'||event.key == '3'||event.key == '4'||event.key == '5'||event.key == '6'||event.key == '7'||event.key == '8'||event.key == '9')
+      {
+        //load string(data) from storage
+        loadName="world_save_"+event.key;
+        var data = localStorage.getItem(loadName);
+        console.log(data);
+        if(data===null)
+          World.clear(world);
+        else
+        {
+          //load world
+          var _world = necromancer.resurrect(data);
+    
+          world=_world;
+          //add world to engine
+          engine.world = world;
+          console.log(world);
+          OPMode="move";
+        }
+      }
+      // {
+      //   //load string(data) from storage
+      //   loadName="world_save_1";
+      //   var data = localStorage.getItem(loadName);
+      //   //load world
+      //   var _world = necromancer.resurrect(data);
+  
+      //   world=_world;
+      //   //add world to engine
+      //   engine.world = world;
+      //   console.log(world);
+      //   OPMode="no_rotation_move";
+      // }
+  
+      if (event.key == 't') {
+        OPMode="toggle_static"
+      }
+      // if (event.key == 'S') {
+      //   //stop all motion
+      //   nodes.forEach(node => {
+      //     Body.setVelocity(node, {x:0,y:0});
+      //     Body.setAngularVelocity(node, 0);
+      //   });
+      // }
+      //c
+      else if (event.key ==  'm') {
+        OPMode="move";
+          // addNode(latestMousePosition.x, latestMousePosition.y);
+      }
+      else if (event.key ==  'M') {
+        OPMode="no_rotation_move";
+          // addNode(latestMousePosition.x, latestMousePosition.y);
+      }
+      else if (event.key ==  'r') {
+        OPMode="remove";
+          // addNode(latestMousePosition.x, latestMousePosition.y);
+      }
+      
+  
+      
+  });
+  
+  //draw text on screen render
+  function drawText(context, text, x, y, fontSize = '20px', fontFamily = 'Arial', color = 'black') {
+      context.font = fontSize + ' ' + fontFamily;
+      context.fillStyle = color;
+      context.fillText(text, x, y);
+  }
+  
+  // Add a beforeRender event to draw text
+  Matter.Events.on(render, 'afterRender', function() {
+      var context = render.context;
+      drawText(context,OPMode, 30, 50, '30px', 'Arial', 'red');
+  
+      if(OPMode=="add_in_group" || OPMode=="add_polygon" || OPMode=="add_chain")
+      {
+        //draw polygons
+        if(addPolygonPoints.length>0)
+        {
+          context.beginPath();
+          context.moveTo(addPolygonPoints[0].x,addPolygonPoints[0].y);
+          for(let i=1;i<addPolygonPoints.length;i++)
+          {
+            context.lineTo(addPolygonPoints[i].x,addPolygonPoints[i].y);
+          }
+  
+          context.lineTo(latestMousePosition.x,latestMousePosition.y);
+          context.stroke();
+        }
+        
+      }
+  });
+  
+  
+  
+  engine.positionIterations = 2;  // Reduced from 400 for better performance
+  engine.velocityIterations = 1;  // Reduced from 200 for better performance
+  engine.enableSleeping = true;   // Enable sleeping for better performance
+
+
+  // Run the engine
+  // Engine.run(engine);
+  
+  // let runner = Runner.create();
+  // Runner.delta = 1000 / 60;
+  // Runner.run(runner, engine);
+  // Run the renderer
+  // Render.run(render);
+  
+
+
+
+  // Move these function definitions to the top of the script section, after the Matter.js aliases
+  function setMode(mode) {
+    OPMode = mode;
+    if (mode.includes('link')) {
+        stickN1 = null;
+        stickN2 = null;
+    }
+    if (mode === 'add_chain') {
+        addPolygonPoints = [];
+        addChainPrevBlock = null;
+    }
+  }
+
+  function saveWorld() {
+    if (!loadName || loadName === 'world_save_1') {
+        // If no world is loaded or using default name, prompt for new name
+        saveNewWorld();
+        return;
+    }
+    
+    // Get existing worlds
+    const worlds = JSON.parse(localStorage.getItem('worlds') || '{}');
+    
+    // Update the current world
+    worlds[loadName] = necromancer.stringify(engine.world);
+    
+    // Save back to localStorage
+    localStorage.setItem('worlds', JSON.stringify(worlds));
+  }
+
+  function loadWorld(worldName) {
+    if (!worldName) return;
+    
+    // Only ask for confirmation if there's already a world loaded
+    if (loadName && loadName !== worldName && loadName !== "world_save_1") {
+        if (!confirm(`Load world "${worldName}"? Any unsaved changes to the current world will be lost.`)) {
+            // Reset the dropdown to current selection if user cancels
+            const worldSelect = document.getElementById('worldSelect');
+            worldSelect.value = loadName;
+            return;
+        }
+    }
+    
+    const worlds = JSON.parse(localStorage.getItem('worlds') || '{}');
+    const worldData = worlds[worldName];
+    
+    if (!worldData) {
+        World.clear(world);
+    } else {
+        var _world = necromancer.resurrect(worldData);
+        world = _world;
+        engine.world = world;
+        loadName = worldName;
+        OPMode = "move";
+
+        // Apply current damping and stiffness values
+        const currentDamping = document.getElementById('dampingSlider').value / 100;
+        const currentStiffness = document.getElementById('stiffnessSlider').value / 100;
+        
+        // Update all constraints with current values
+        for(let i = 0; i < engine.world.constraints.length; i++) {
+            let constraint = engine.world.constraints[i];
+            constraint.damping = currentDamping;
+            constraint.stiffness = currentStiffness;
+        }
+    }
+  }
+
+  // Add these new functions
+  function updateWorldsList() {
+    const worldSelect = document.getElementById('worldSelect');
+    const worlds = JSON.parse(localStorage.getItem('worlds') || '{}');
+    
+    // Clear existing options except the first one
+    while (worldSelect.options.length > 1) {
+        worldSelect.remove(1);
+    }
+    
+    // Add saved worlds to dropdown
+    Object.keys(worlds).forEach(worldName => {
+        const option = document.createElement('option');
+        option.value = worldName;
+        option.textContent = worldName;
+        worldSelect.appendChild(option);
+    });
+  }
+
+  function saveNewWorld() {
+    const worldName = prompt('Enter a name for this world:');
+    if (!worldName) return; // User cancelled or entered empty name
+    
+    // Get existing worlds or initialize empty object
+    const worlds = JSON.parse(localStorage.getItem('worlds') || '{}');
+    
+    // Save the current world with the new name
+    worlds[worldName] = necromancer.stringify(engine.world);
+    
+    // Save back to localStorage
+    localStorage.setItem('worlds', JSON.stringify(worlds));
+    loadName = worldName;
+    
+    // Update the dropdown list
+    updateWorldsList();
+  }
+
+  // Add this to initialize the worlds list when the page loads
+  document.addEventListener('DOMContentLoaded', function() {
+    updateWorldsList();
+  });
+
+  // Add this near the top with other variable declarations
+  let timeScale = 1.0; // Adjust this to change simulation speed (1.0 = normal, 2.0 = 2x speed, etc.)
+
+  // Replace the update loop with this version
+  let updateLoop = function(time) {
+    // Number of updates scales with timeScale
+    const updates = Math.ceil(timeScale);
+    for(let i = 0; i < updates; i++) {
+        Engine.update(engine, 1000/60);
+    }
+    Render.world(render);
+    requestAnimationFrame(updateLoop);
+  };
+
+  // Start the loop
+  requestAnimationFrame(updateLoop);
+
+    
+  
+   </script>
+
+  <script>
+  function deleteCurrentWorld() {
+    if (!loadName) {
+        alert('No world currently loaded');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete the world "${loadName}"?`)) {
+        return;
+    }
+    
+    // Get existing worlds
+    const worlds = JSON.parse(localStorage.getItem('worlds') || '{}');
+    
+    // Delete the current world
+    delete worlds[loadName];
+    
+    // Save back to localStorage
+    localStorage.setItem('worlds', JSON.stringify(worlds));
+    
+    // Clear current world
+    World.clear(world);
+    loadName = null;
+    
+    // Update the dropdown list
+    updateWorldsList();
+  }
+  </script>
+
+  <script>
+  function modifyAllRodProperties(scaleFactor) {
+    const baseMass = 0.0001; // Base mass value
+    const baseStiffness = 0.1; // Base stiffness value
+    
+    for(let i = 0; i < engine.world.bodies.length; i++) {
+        let body = engine.world.bodies[i];
+        // Only modify non-static bodies
+        if (!body.isStatic) {
+            // Scale mass proportionally
+            let newMass = baseMass * scaleFactor;
+            Body.setMass(body, newMass);
+            Body.setInertia(body, newMass * body.area);
+        }
+    }
+
+    // Update all constraints
+    for(let i = 0; i < engine.world.constraints.length; i++) {
+        let constraint = engine.world.constraints[i];
+        // Scale stiffness proportionally
+        constraint.stiffness = baseStiffness * scaleFactor;
+        // Adjust damping to maintain stability
+        constraint.damping = 0.1 * Math.sqrt(scaleFactor);
+    }
+  }
+  </script>
+
+  <script>
+  function adjustSimulationSpeed(speedPercent) {
+    // Convert percentage to 1x-10x range
+    timeScale = speedPercent / 100;  // This will give us 1-10x range
+    
+    // Update display value
+    document.getElementById('speedValue').textContent = timeScale.toFixed(1) + 'x';
+  }
+  </script>
+
+  <script>
+  function adjustDamping(value) {
+    const dampingValue = value / 100; // Convert to 0-1 range
+    
+    // Update all constraints
+    for(let i = 0; i < engine.world.constraints.length; i++) {
+        let constraint = engine.world.constraints[i];
+        constraint.damping = dampingValue;
+    }
+    
+    // Update display value
+    document.getElementById('dampingValue').textContent = dampingValue.toFixed(2);
+  }
+
+  function adjustStiffness(value) {
+    const stiffnessValue = value / 100; // Convert to 0-1 range
+    
+    // Update all constraints
+    for(let i = 0; i < engine.world.constraints.length; i++) {
+        let constraint = engine.world.constraints[i];
+        constraint.stiffness = stiffnessValue;
+    }
+    
+    // Update display value
+    document.getElementById('stiffnessValue').textContent = stiffnessValue.toFixed(2);
+  }
+  </script>
+
+  <script>
+  // Add these new functions
+  let controlPanelVisible = true;
+
+  function toggleControlPanel() {
+      const controlPanel = document.getElementById('controlPanel');
+      const controls = controlPanel.querySelectorAll('*:not(:first-child)');
+      
+      controlPanelVisible = !controlPanelVisible;
+      
+      controls.forEach(element => {
+          element.style.display = controlPanelVisible ? '' : 'none';
+      });
+  }
+
+  // Modify the existing keydown event listener
+  document.addEventListener('keydown', function(event) {
+      // ... existing key handlers ...
+      
+      if (event.key === 'h' || event.key === 'H') {
+          toggleControlPanel();
+      }
+      
+      // ... rest of existing key handlers ...
+  });
+
+  let detailPanelVisible = true;
+
+  function toggleDetailPanel() {
+      const detailControls = document.getElementById('detailControls');
+      detailPanelVisible = !detailPanelVisible;
+      detailControls.style.display = detailPanelVisible ? 'block' : 'none';
+  }
+
+  // Add to existing keydown event listener
+  document.addEventListener('keydown', function(event) {
+      // ... existing key handlers ...
+      
+      if (event.key === 'd' || event.key === 'D') {
+          toggleDetailPanel();
+      }
+      
+      // ... rest of existing key handlers ...
+  });
+  </script>
+ </html>
