@@ -30,11 +30,15 @@ double JFetch_NUMBER_ex(cJSON * obj,const char *path,double defaultNumber=NAN);
 
 double DFetch_NUMBER_ex(cJSON *dSrc,char* path,double fallback=NAN,cJSON *dictSrc=NULL);
 
+std::vector<std::string> JFetch_STRING_ARRAY_ex(cJSON * obj,const char *path, bool* isExist=NULL);
+std::vector<float> JFetch_NUMBER_ARRAY_ex(cJSON * obj,const char *path, bool* isExist=NULL);
+
 #define JFetch_ARRAY(obj,path) ((cJSON*)JFetch(obj,path,cJSON_Array))
 #define JFetch_OBJECT(obj,path) ((cJSON*)JFetch(obj,path,cJSON_Object))
 
 #define JFetch_TRUE(obj,path)  (NULL!=JFetch(obj,path,cJSON_True))
 #define JFetch_FALSE(obj,path) (NULL!=JFetch(obj,path,cJSON_False))
+bool JFetch_BOOL(cJSON * obj,const char *path,bool default_value=false);
 
 
 //1 for true, 0 for false, fallback(-1) for not found or not bool, if the value is a string, try to find in dictSrc

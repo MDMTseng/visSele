@@ -107,7 +107,7 @@ public:
   int fromUpperLayer_DATA(const char*TL,int pgID,cJSON* json);
   // int fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_acvImage_Send_info* imgInfo);
   int fromUpperLayer_DATA(const char*TL,int pgID,cv::Mat& img,int downSample);
-  int fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_ImgB64_Send_info* imgInfo);
+  int fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_Img_Send_info* imgInfo);
   int fromUpperLayer_DATA(const char*TL,int pgID,char* str);
   int fromUpperLayer_SS(int pgID,bool isACK,const char*fromTL=NULL,const char* error_msg=NULL);
   void delete_PeripheralChannel();
@@ -115,7 +115,7 @@ public:
   
   // static int SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 
-  static int SEND_base64Image(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
+  static int SEND_Image(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 };
 
 
@@ -208,7 +208,7 @@ char* PatternRest(char *str, const char *pattern);
 
 int printfTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...);
 
-int sendcJSONTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json);
+int sendcJSONTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char* jsonStr,int jsonStrL);
 
 int sendResultTo_perifCH(Data_JsonRaw_Layer *perifCH,int uInspStatus, uint64_t timeStamp_100us);
 

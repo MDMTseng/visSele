@@ -111,6 +111,8 @@ void CameraLayer_HikRobot_Camera::ExceptionCallBack(unsigned int nMsgType)
 {
   inNoError=false;
   LOGI("ExceptionCallBack");
+  error_code_list.push_back(nMsgType);
+  callback(*this, CameraLayer::EV_ERROR, context);
 }
 
 
@@ -313,6 +315,8 @@ void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_O
   _fi.offset_y =  pFrameInfo->nOffsetY;
   _fi.width =  pFrameInfo->nWidth;
   _fi.height = pFrameInfo->nHeight;
+  _fi.channelCount=3;
+  _fi.bits_per_pixel=8*_fi.channelCount;
   fi=_fi;
   callback(*this, CameraLayer::EV_IMG, context);
 

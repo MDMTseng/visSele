@@ -27,7 +27,10 @@ export type type_CameraInfo={
   pixel_size:number,
   frame_rate:number,
   mirrorX:boolean,
-  mirrorY:boolean
+  mirrorY:boolean,
+
+  //for UI`
+  previewWindowHeight?:number
 }
 
 

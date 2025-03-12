@@ -834,6 +834,8 @@ class StageInfo_Orientation:public StageInfo
   static string stypeName(){return "Orientation";}
   string typeName(){return StageInfo_Orientation::stypeName();}
 
+
+  float mmpp=1;
   struct orient{
     cv::Point2f center;
     float angle;
@@ -851,6 +853,8 @@ class StageInfo_Orientation:public StageInfo
     StageInfo::load(json);
     cJSON* repArray=JFetch_ARRAY(json,"report");
     if(repArray==NULL)return false;
+
+    mmpp=JFetch_NUMBER_ex(json,"mmpp",1);
 
     int size=cJSON_GetArraySize(repArray);
     for(int i=0;i<size;i++)
@@ -881,6 +885,9 @@ class StageInfo_Orientation:public StageInfo
 
     cJSON* repArray=cJSON_CreateArray();
     cJSON_AddItemToObject(rootRep,"report",repArray);
+
+    cJSON_AddNumberToObject(rootRep,"mmpp",mmpp);
+
     for(int i=0;i<orientation.size();i++)
     {
       cJSON *jorient=cJSON_CreateObject();
@@ -1085,6 +1092,8 @@ class StageInfo_DimMeasure:public StageInfo_Orientation
     cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
 
     cJSON* repArray=cJSON_CreateArray();
+
+    cJSON_AddNumberToObject(rootRep,"mmpp",mmpp);
     cJSON_AddItemToObject(rootRep,"report",repArray);
     for(int i=0;i<orientation.size();i++)
     {
@@ -1115,7 +1124,7 @@ class StageInfo_DimMeasure:public StageInfo_Orientation
         auto &result=DimMeasureResultList[i];
         for(int j=0;j<result.measureList.size();j++)
         {
-          LOGE("genjRes:%d",j);
+          // LOGE("genjRes:%d",j);
           cJSON* jresult=GenJsonFromResult(result.measureList[j]);
           cJSON_AddItemToArray(jmresultArray,jresult);
         }
@@ -1125,7 +1134,7 @@ class StageInfo_DimMeasure:public StageInfo_Orientation
         cJSON_AddItemToObject(jorient,"category_report",jcatArray);
         for(int j=0;j<result.categoryList.size();j++)
         {
-          LOGE("genjRes:%d",j);
+          // LOGE("genjRes:%d",j);
           cJSON* jresult=GenJsonFromResult(result.categoryList[j]);
           cJSON_AddItemToArray(jcatArray,jresult);
         }

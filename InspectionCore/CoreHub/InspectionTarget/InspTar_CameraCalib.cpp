@@ -48,153 +48,175 @@ void InspectionTarget_CameraCalib::run()
 }
 
 
-
 void c_initUndistortRectifyMap(const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs,
-                                   const cv::Mat& R, const cv::Mat& newCameraMatrix,
-                                   cv::Size imageSize, int m1type, cv::Mat& map1, cv::Mat& map2,const cv::Mat& inv_perspective=cv::Mat()) {
+                              const cv::Mat& R, const cv::Mat& newCameraMatrix,
+                              cv::Size imageSize, int m1type, cv::Mat& map1, cv::Mat& map2, 
+                              const cv::Mat& inv_perspective=cv::Mat()) {
+    // Pre-allocate output maps
     map1.create(imageSize, m1type);
     map2.create(imageSize, m1type);
 
-    // Camera matrix parameters
-    double fx = cameraMatrix.at<double>(0, 0);
-    double fy = cameraMatrix.at<double>(1, 1);
-    double cx = cameraMatrix.at<double>(0, 2);
-    double cy = cameraMatrix.at<double>(1, 2);
+    // Pre-compute camera parameters
+    const double fx = cameraMatrix.at<double>(0, 0);
+    const double fy = cameraMatrix.at<double>(1, 1);
+    const double cx = cameraMatrix.at<double>(0, 2);
+    const double cy = cameraMatrix.at<double>(1, 2);
 
-    // New camera matrix parameters
-    double newFx = newCameraMatrix.at<double>(0, 0);
-    double newFy = newCameraMatrix.at<double>(1, 1);
-    double newCx = newCameraMatrix.at<double>(0, 2);
-    double newCy = newCameraMatrix.at<double>(1, 2);
+    const double newFx = newCameraMatrix.at<double>(0, 0);
+    const double newFy = newCameraMatrix.at<double>(1, 1);
+    const double newCx = newCameraMatrix.at<double>(0, 2);
+    const double newCy = newCameraMatrix.at<double>(1, 2);
 
-    // Distortion coefficients
-    double k1 = distCoeffs.at<double>(0, 0);
-    double k2 = distCoeffs.at<double>(1, 0);
-    double p1 = distCoeffs.at<double>(2, 0);
-    double p2 = distCoeffs.at<double>(3, 0);
-    double k3 = distCoeffs.at<double>(4, 0);
+    // Pre-compute distortion coefficients
+    const double k1 = distCoeffs.at<double>(0, 0);
+    const double k2 = distCoeffs.at<double>(1, 0);
+    const double p1 = distCoeffs.at<double>(2, 0);
+    const double p2 = distCoeffs.at<double>(3, 0);
+    const double k3 = distCoeffs.at<double>(4, 0);
 
-    std::vector<cv::Point2f> perspPoints;
-    std::vector<cv::Point2f> pre_perspPoints;
+    const int width = imageSize.width;
 
-    perspPoints.reserve(imageSize.width);
-    pre_perspPoints.reserve(imageSize.width);
+    // Use OpenMP for parallel processing
+    #pragma omp parallel for schedule(static)
     for (int y = 0; y < imageSize.height; ++y) {
+        // Thread-local vectors
+        std::vector<cv::Point2f> pre_perspPoints(width);
+        
+        // Get direct pointer access to output maps for current row
+        float* map1_row = map1.ptr<float>(y);
+        float* map2_row = map2.ptr<float>(y);
 
+        // Pre-fill perspPoints for current row
+        for (int x = 0; x < width; ++x) {
+            pre_perspPoints[x] = cv::Point2f(x, y);
+        }
 
-      pre_perspPoints.clear();
-      perspPoints.clear();
-      for (int x = 0; x < imageSize.width; ++x) {
-        perspPoints.push_back(cv::Point2f(x,y));
-      }
-      if(!inv_perspective.empty())
-        cv::perspectiveTransform(perspPoints,pre_perspPoints,inv_perspective);
-      else
-        pre_perspPoints=perspPoints;
+        // Handle perspective transform for entire row
+        if (!inv_perspective.empty()) {
+            cv::perspectiveTransform(pre_perspPoints, pre_perspPoints, inv_perspective);
+        } else {
+            // pre_perspPoints = perspPoints;
+        }
 
-        for (int x = 0; x < imageSize.width; ++x) {
-
- 
+        // Process each point in the row
+        for (int x = 0; x < width; ++x) {
             // Normalize the point
-            double xNorm = (pre_perspPoints[x].x - newCx) / newFx;
-            double yNorm = (pre_perspPoints[x].y - newCy) / newFy;
+            const double xNorm = (pre_perspPoints[x].x - newCx) / newFx;
+            const double yNorm = (pre_perspPoints[x].y - newCy) / newFy;
 
-            cv::Matx31d rectifiedPoint;
-
-            if(R.empty())
-            {
-              rectifiedPoint=cv::Matx31d(xNorm, yNorm, 1.0);
-            }
-            else
-            {
-              cv::Matx31d point(xNorm, yNorm, 1.0);
-              cv::Mat rectifiedMat = R * cv::Mat(point); // Convert Matx31d to Mat for multiplication
-              rectifiedPoint=cv::Matx31d(rectifiedMat.at<double>(0), rectifiedMat.at<double>(1), rectifiedMat.at<double>(2));
+            // Handle rectification
+            double xDistorted, yDistorted;
+            if (R.empty()) {
+                xDistorted = xNorm;
+                yDistorted = yNorm;
+            } else {
+                cv::Matx31d point(xNorm, yNorm, 1.0);
+                cv::Mat rectifiedMat = R * cv::Mat(point);
+                xDistorted = rectifiedMat.at<double>(0) / rectifiedMat.at<double>(2);
+                yDistorted = rectifiedMat.at<double>(1) / rectifiedMat.at<double>(2);
             }
 
             // Apply distortion correction
-            double xDistorted = rectifiedPoint(0) / rectifiedPoint(2);
-            double yDistorted = rectifiedPoint(1) / rectifiedPoint(2);
-            double r2 = xDistorted * xDistorted + yDistorted * yDistorted;
-            double radialDistortion = 1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2;
+            const double r2 = xDistorted * xDistorted + yDistorted * yDistorted;
+            const double r4 = r2 * r2;
+            const double r6 = r4 * r2;
+            const double radialDistortion = 1.0 + k1 * r2 + k2 * r4 + k3 * r6;
 
-            xDistorted = xDistorted * radialDistortion + 2 * p1 * xDistorted * yDistorted + p2 * (r2 + 2 * xDistorted * xDistorted);
-            yDistorted = yDistorted * radialDistortion + p1 * (r2 + 2 * yDistorted * yDistorted) + 2 * p2 * xDistorted * yDistorted;
+            const double xy_d = xDistorted * yDistorted;
+            xDistorted = xDistorted * radialDistortion + 2.0 * p1 * xy_d + p2 * (r2 + 2.0 * xDistorted * xDistorted);
+            yDistorted = yDistorted * radialDistortion + p1 * (r2 + 2.0 * yDistorted * yDistorted) + 2.0 * p2 * xy_d;
 
-            // Convert back to pixel coordinates
-            map1.at<float>(y, x) = static_cast<float>(fx * xDistorted + cx);
-            map2.at<float>(y, x) = static_cast<float>(fy * yDistorted + cy);
+            // Store results directly using row pointers
+            map1_row[x] = static_cast<float>(fx * xDistorted + cx);
+            map2_row[x] = static_cast<float>(fy * yDistorted + cy);
         }
     }
 }
-
-
 
 
 
 void initDistortBackMap(const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs,
-                      cv::Size imageSize, cv::Mat& mapX, cv::Mat& mapY, int maxIterations = 5, double epsilon = 1e-5) {
+                      cv::Size imageSize, cv::Mat& mapX, cv::Mat& mapY, 
+                      int maxIterations = 5, double epsilon = 1e-5) {
     // Initialize the maps
-    mapX = cv::Mat(imageSize, CV_32FC1);
-    mapY = cv::Mat(imageSize, CV_32FC1);
+    mapX.create(imageSize, CV_32FC1);
+    mapY.create(imageSize, CV_32FC1);
 
-    // Get the camera matrix parameters
-    double fx = cameraMatrix.at<double>(0, 0);
-    double fy = cameraMatrix.at<double>(1, 1);
-    double cx = cameraMatrix.at<double>(0, 2);
-    double cy = cameraMatrix.at<double>(1, 2);
+    // Pre-compute camera matrix parameters
+    const double fx = cameraMatrix.at<double>(0, 0);
+    const double fy = cameraMatrix.at<double>(1, 1);
+    const double cx = cameraMatrix.at<double>(0, 2);
+    const double cy = cameraMatrix.at<double>(1, 2);
+    const double inv_fx = 1.0 / fx;
+    const double inv_fy = 1.0 / fy;
 
-    // Get the distortion coefficients
-    double k1 = distCoeffs.at<double>(0, 0);
-    double k2 = distCoeffs.at<double>(0, 1);
-    double p1 = distCoeffs.at<double>(0, 2);
-    double p2 = distCoeffs.at<double>(0, 3);
-    double k3 = distCoeffs.at<double>(0, 4);
+    // Pre-compute distortion coefficients
+    const double k1 = distCoeffs.at<double>(0, 0);
+    const double k2 = distCoeffs.at<double>(0, 1);
+    const double p1 = distCoeffs.at<double>(0, 2);
+    const double p2 = distCoeffs.at<double>(0, 3);
+    const double k3 = distCoeffs.at<double>(0, 4);
 
-    // Iterate through each pixel in the undistorted image
+    // Pre-compute epsilon squared for faster convergence check
+    const double epsilon_squared = epsilon * epsilon;
+
+    // Use OpenMP for parallel processing
+    #pragma omp parallel for schedule(static) collapse(2)
     for (int v = 0; v < imageSize.height; v++) {
         for (int u = 0; u < imageSize.width; u++) {
+            // Get direct pointer access to output maps
+            float* mapX_ptr = mapX.ptr<float>(v);
+            float* mapY_ptr = mapY.ptr<float>(v);
+            
             // Convert undistorted pixel coordinates to normalized coordinates
-            double x_u = (u - cx) / fx;
-            double y_u = (v - cy) / fy;
+            const double x_u = (u - cx) * inv_fx;
+            const double y_u = (v - cy) * inv_fy;
 
-            // Initialize distorted coordinates as the starting point
+            // Initialize distorted coordinates
             double x_d = x_u;
             double y_d = y_u;
 
-            // Iteratively adjust (x_d, y_d) to approximate the correct distorted position
+            // Newton-Raphson iteration
             for (int iter = 0; iter < maxIterations; iter++) {
-                // Calculate radial and tangential distortion
-                double r2 = x_d * x_d + y_d * y_d;
-                double radial_distortion = 1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2;
+                const double x_d2 = x_d * x_d;
+                const double y_d2 = y_d * y_d;
+                const double r2 = x_d2 + y_d2;
+                const double r4 = r2 * r2;
+                const double r6 = r4 * r2;
                 
-                double x_t = 2 * p1 * x_d * y_d + p2 * (r2 + 2 * x_d * x_d);
-                double y_t = p1 * (r2 + 2 * y_d * y_d) + 2 * p2 * x_d * y_d;
+                // Compute radial distortion
+                const double radial_distortion = 1.0 + k1 * r2 + k2 * r4 + k3 * r6;
+                
+                // Compute tangential distortion
+                const double xy_d = x_d * y_d;
+                const double x_t = 2.0 * p1 * xy_d + p2 * (r2 + 2.0 * x_d2);
+                const double y_t = p1 * (r2 + 2.0 * y_d2) + 2.0 * p2 * xy_d;
 
-                // Calculate undistorted coordinates from current distorted guess
-                double x_approx = x_d * radial_distortion + x_t;
-                double y_approx = y_d * radial_distortion + y_t;
+                // Calculate approximated coordinates
+                const double x_approx = x_d * radial_distortion + x_t;
+                const double y_approx = y_d * radial_distortion + y_t;
 
-                // Adjust distorted coordinates based on the difference to target undistorted coordinates
-                double dx = x_u - x_approx;
-                double dy = y_u - y_approx;
+                // Calculate error
+                const double dx = x_u - x_approx;
+                const double dy = y_u - y_approx;
 
-                // Update the distorted guess
+                // Update distorted coordinates
                 x_d += dx;
                 y_d += dy;
 
-                // Check for convergence
-                if (std::abs(dx) < epsilon && std::abs(dy) < epsilon) {
+                // Check convergence using squared distance
+                if ((dx * dx + dy * dy) < epsilon_squared) {
                     break;
                 }
             }
 
-            // Convert final distorted normalized coordinates back to pixel coordinates
-            mapX.at<float>(v, u) = static_cast<float>(fx * x_d + cx);
-            mapY.at<float>(v, u) = static_cast<float>(fy * y_d + cy);
+            // Store results directly using pointers
+            mapX_ptr[u] = static_cast<float>(fx * x_d + cx);
+            mapY_ptr[u] = static_cast<float>(fy * y_d + cy);
         }
     }
 }
+
 
 void InspectionTarget_CameraCalib::setInspDef(cJSON *def)
 {
@@ -236,10 +258,21 @@ void InspectionTarget_CameraCalib::setInspDef(cJSON *def)
   if(!perspectiveMatrix.empty())
     cv::invert(perspectiveMatrix, inv_perspective);
 
+
+  //timer start
+  auto t0=cv::getTickCount();
   c_initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Mat(),
                             cameraMatrix, Size(img_width,img_height), CV_32FC1, undistortMapX, undistortMapY,inv_perspective);
+  //timer end
+  auto t1=cv::getTickCount();
+  LOGE("c_initUndistortRectifyMap time:%f ms",(t1-t0)*1000/cv::getTickFrequency());
 
+  //timer start
+  t0=cv::getTickCount();
   initDistortBackMap(cameraMatrix,distCoeffs,Size(img_width,img_height),distortMapX,distortMapY);
+  //timer end
+  t1=cv::getTickCount();
+  LOGE("initDistortBackMap time:%f ms",(t1-t0)*1000/cv::getTickFrequency());
 
 
 }

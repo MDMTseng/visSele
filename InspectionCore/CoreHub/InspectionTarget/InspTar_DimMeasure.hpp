@@ -120,10 +120,10 @@ public:
 
 	void run();
 
-	bool executeFeature(vector<itemInfo> &fqList, int featureIdx);
+	bool executeFeature(const cv::Mat &mat_img2template,float mmpp,vector<itemInfo> &fqList, int featureIdx);
 
 	bool executeCategory(const vector<itemInfo> &fqList,vector<cat_itemInfo> &catList, int categoryIdx);
-	shared_ptr<StageInfo_DimMeasure> singleProcess(shared_ptr<StageInfo> sinfo);
+	shared_ptr<StageInfo_DimMeasure> singleProcess(shared_ptr<StageInfo> sinfo,bool skipCache);
 
 	virtual ~InspectionTarget_DimMeasure();
 };

@@ -185,6 +185,24 @@ void* JFetch(cJSON * obj,const char *path,int type)
 
 }
 
+
+
+bool JFetch_BOOL(cJSON * obj,const char *path,bool default_value)
+{
+  void* tmp_ptr=NULL;
+  int type = getDataFromJson(obj,path,&tmp_ptr);
+  if(type==cJSON_True)
+  {
+    return true;
+  }
+  if(type==cJSON_False)
+  {
+    return false;
+  }
+  return default_value;
+
+}
+
 void* JFetEx(cJSON * obj,const char *path,int type)
 {
   void *ptr = JFetch(obj,path,type);
@@ -492,6 +510,58 @@ std::string JFetch_STRING_ex(cJSON * obj,const char *path,std::string default_st
 }
 
 
+
+std::vector<std::string> JFetch_STRING_ARRAY_ex(cJSON * obj,const char *path, bool* isExist)
+{
+  if(isExist)
+  {
+    *isExist=false;
+  }
+  std::vector<std::string> ret;
+  cJSON* pstr=JFetch_ARRAY(obj,path);
+  if(pstr)
+  {
+    int size=cJSON_GetArraySize(pstr);
+    for(int i=0;i<size;i++)
+    {
+      ret.push_back(cJSON_GetStringValue(cJSON_GetArrayItem(pstr,i)));
+    }
+    if(isExist)
+    {
+      *isExist=true;
+    }
+  }
+  return ret;
+}
+
+
+std::vector<float> JFetch_NUMBER_ARRAY_ex(cJSON * obj,const char *path, bool* isExist)
+{
+  if(isExist)
+  {
+    *isExist=false;
+  }
+  std::vector<float> ret;
+  cJSON* pnum=JFetch_ARRAY(obj,path);
+  if(pnum)
+  {
+    int size=cJSON_GetArraySize(pnum);
+    for(int i=0;i<size;i++)
+    {
+      auto item=cJSON_GetArrayItem(pnum,i);
+      if(item==NULL)continue;
+      if(cJSON_IsNumber(item))
+      {
+        ret.push_back((float)item->valuedouble);
+      }
+    }
+    if(isExist)
+    {
+      *isExist=true;
+    }
+  }
+  return ret;
+}
 
 double DFetch_NUMBER_ex(cJSON *dSrc,char* path,double fallback,cJSON *dictSrc)
 { 

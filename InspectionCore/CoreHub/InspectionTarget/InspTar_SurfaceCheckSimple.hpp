@@ -26,7 +26,12 @@
 #include "opencv2/imgproc.hpp"
 #include <opencv2/imgcodecs.hpp>
 
+
+// #define USE_COMP_SCRIPT
+
+#ifdef USE_COMP_SCRIPT
 #include "CompScript.hpp"
+#endif
 
 using namespace cv;
 
@@ -38,10 +43,12 @@ class InspectionTarget_SurfaceCheckSimple :public InspectionTarget
   bool show_display_overlay=true;
   cv::Mat background_temp;
 
-  map<string,CompScript*> scriptTable;
+#ifdef USE_COMP_SCRIPT
+  map<string,CompScript*> scriptTable;//it's for CALC type sub_regions result
+  CompScript *orientationAdjComp=NULL;//=new CompScript(); //it's to alter the orientation rotation, orientation etc...
+#endif
 
 
-  CompScript *orientationAlter=NULL;//=new CompScript();
 public:
 
   void INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path);

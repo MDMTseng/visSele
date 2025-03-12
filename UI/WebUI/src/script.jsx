@@ -1840,9 +1840,11 @@ class APPMasterX extends React.Component {
         this.is_in_EM_STOP=false;
         this.EM_STOP_src_list=[];
         this.no_obj_detected_time_ms=-1;
-        this.EM_STOP_Rule=this.readLocalstorage_SLID_EM_STOP_RULE({
+        this.no_ava_detected_time_ms=-1;
+        this.EM_STOP_Rule=this.readLocalstorage_SLID_EM_STOP_RULE({//set default value
           enable_EM_STOP:false,
           no_obj_detected_time_max_ms:60*5*1000,
+          no_ava_detected_time_max_ms:60*5*1000,
           SNG_Max:10,
           CNG_Max:20,
 
@@ -1939,7 +1941,7 @@ class APPMasterX extends React.Component {
         if(m_state.state==UIAct.UI_SM_STATES.INSP_MODE && this.EM_STOP_Rule.enable_EM_STOP==true)
         {
           this.no_obj_detected_time_ms=-1;
-          if(this.reportCount==reportStatisticState.reportCount)
+          if(this.reportCount==reportStatisticState.reportCount)//no change
           {
             if(this.noreport_timestamp===undefined)
               this.noreport_timestamp=Date.now();
@@ -1956,11 +1958,31 @@ class APPMasterX extends React.Component {
             this.reportCount=reportStatisticState.reportCount;
           }
 
+          this.no_ava_detected_time_ms=-1;
+          let ava_report_count=reportStatisticState.reportCount-reportStatisticState.emptyReportCount;
+          if(this.ava_report_count==ava_report_count)//no change
+          {
+            if(this.latest_ava_report_timestamp===undefined)
+              this.latest_ava_report_timestamp=Date.now();
+            else
+            {
+              
+              this.no_ava_detected_time_ms= Date.now()-this.latest_ava_report_timestamp;
+              
+            }
+          }
+          else
+          {
+            this.latest_ava_report_timestamp=undefined
+            this.ava_report_count=ava_report_count;
+          }
+          console.log(reportStatisticState)
+
           ////
 
 
           if(this.is_in_EM_STOP==false)
-          {
+          {//check status to EM_STOP
 
             let needToTrigEM_STOP=false;
             let EM_STOP_src_list=[];
@@ -1969,7 +1991,13 @@ class APPMasterX extends React.Component {
               EM_STOP_src_list.push("no_obj_detected_time_ms");
               needToTrigEM_STOP=true
             }
+            if(this.EM_STOP_Rule.no_ava_detected_time_max_ms>0 && this.no_ava_detected_time_ms>=this.EM_STOP_Rule.no_ava_detected_time_max_ms)
+            {
+              EM_STOP_src_list.push("no_ava_detected_time_ms");
+              needToTrigEM_STOP=true
+            }
             else
+            {
             reportStatisticState.statisticValue.measureList.forEach(msure=>{
               let stat_sp=msure.statistic.sp;//find every 
 
@@ -2009,6 +2037,8 @@ class APPMasterX extends React.Component {
               }
               
             })
+
+            }
             if(needToTrigEM_STOP)
             {
               this.EM_STOP_src_list=EM_STOP_src_list;
@@ -2036,7 +2066,8 @@ class APPMasterX extends React.Component {
       
       clear_EM_STOP_state()
       {
-        this.noreport_timestamp=undefined
+        this.noreport_timestamp=undefined;
+        this.latest_ava_report_timestamp=undefined;
         this.is_in_EM_STOP=false;
         this.EM_STOP_src_list=[];
       }

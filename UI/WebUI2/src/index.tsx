@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import 'antd/dist/antd.css'; 
+import 'antd/dist/antd.min.css'
 import { Provider } from 'react-redux';
 
 import { PointsFitCircle,intersectPoint, VEC2D} from './UTIL/MathTools';
@@ -11,19 +11,59 @@ import { ResultType } from 'antd/lib/result';
 
 
 let StoreX = ReduxStoreSetUp({});
+const rootEl = document.getElementById("root");
 ReactDOM.render(
   <React.StrictMode>
     <Provider store={StoreX}>
       <App />
     </Provider>
   </React.StrictMode>,
-  document.getElementById('root')
+  rootEl
 );
 
+
+if (module.hot) {
+    // Log when the module is hot reloaded
+    module.hot.accept('./App.tsx', function() {
+        console.log('Hot reload occurred for App.tsx module.');
+    });
+
+
+    module.hot.accept('./UtilUIView.tsx', function() {
+        console.log('Hot reload occurred for UtilUIView.tsx module.');
+    });
+
+
+    module.hot.accept('./InspTarView.tsx', function() {
+        console.log('Hot reload occurred for InspTarView.tsx module.');
+    });
+    // Log HMR status changes
+    module.hot.addStatusHandler(status => {
+        console.log(`HMR status: ${status}`);
+    });
+}
+
+
+function isElectron() {
+    console.log(window,window.process);
+    return typeof window !== 'undefined' && typeof window.process === 'object' && window.process.versions && !!window.process.versions.electron;
+}
+
+if (isElectron()) {
+    const { ipcRenderer } = window.require('electron');
+
+    // Use ipcRenderer as needed
+    ipcRenderer.send('your-channel', 'some-data');
+    ipcRenderer.on('your-channel-reply', (event:any, data:any) => {
+        console.log('Received data from main process:', data);
+    });
+} else {
+    console.log("Running in a regular browser environment");
+}
 // If you want to start measuring performance in your app, pass a function
 // to log results (for example: reportWebVitals(console.log))
 // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals();
+// reportWebVitals();
 
 
 

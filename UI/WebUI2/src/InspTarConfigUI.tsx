@@ -80,6 +80,8 @@ let Orientation_ShapeBasedMatching_NodeUI= (({ data, isConnectable , selected}:{
 
     if(data._.it===undefined)return null;
     //Add NodeResizer to the node
+
+    let path=data._.defConfig.InspTars_exInfo.find((exInfo:any)=>exInfo.id==data._.it.id).path;
     return (
       <>
       <div className="nowheel" style={{width:_this.windowSize.width,height:_this.windowSize.height}} >
@@ -106,9 +108,10 @@ let Orientation_ShapeBasedMatching_NodeUI= (({ data, isConnectable , selected}:{
               EditPermitFlag={0}
               key={"sdsdff"} 
               systemInspTarList={data._.defConfig}
+              cameraList={[]}
               def={data._.it} 
               report={undefined} 
-              fsPath={data._.defConfig.path+"/it_"+data._.it.id}
+              fsPath={path}
               renderHook={undefined} 
               onDefChange={(new_rule,doInspUpdate=true)=>{}}
               APIExport={(apis)=>{}}

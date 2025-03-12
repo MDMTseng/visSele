@@ -103,6 +103,14 @@ class RingBuf
     counterLock.unlock();
     return size;
   }
+
+  RB_Idx_Type space()
+  {
+    counterLock.lock();
+    int space=RBC.space();
+    counterLock.unlock();
+    return space;
+  }
   
   void clear()
   {

@@ -153,7 +153,7 @@ public:
   bool checkTL(const char *TL, const BPG_protocol_data *dat);
   uint16_t TLCode(const char *TL);
   void delete_PeripheralChannel();
-  static BPG_protocol_data GenStrBPGData(char *TL, char *jsonStr);
+  static BPG_protocol_data GenStrBPGData(char *TL,const char *jsonStr);
   
   static int SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 };

@@ -121,7 +121,15 @@ export function closestPointOnLine(line:SHAPE_LINE_ext|any, point:VEC2D):VEC2D_W
 }
 
 
-
+/**
+ * Calculates the intersection point of two lines defined by two points each.
+ * 
+ * @param p1 The first point of the first line.
+ * @param p2 The second point of the first line.
+ * @param p3 The first point of the second line.
+ * @param p4 The second point of the second line.
+ * @returns The intersection point of the two lines.
+ */
 export function  intersectPoint( p1:VEC2D, p2:VEC2D, p3:VEC2D, p4:VEC2D):VEC2D
 {
   let intersec={x:0,y:0};
@@ -140,6 +148,15 @@ export function  intersectPoint( p1:VEC2D, p2:VEC2D, p3:VEC2D, p4:VEC2D):VEC2D
   intersec.y=( V12 * V4 - V3 * V34 )/denominator;
 
   return intersec;
+}
+
+
+export function vecXY_add(v1:VEC2D,v2:VEC2D,multV2:number=1)
+{
+  return {
+    x:v1.x+v2.x*multV2,
+    y:v1.y+v2.y*multV2
+  };
 }
 
 export function vecXY_addin(v1:VEC2D,v2:VEC2D)

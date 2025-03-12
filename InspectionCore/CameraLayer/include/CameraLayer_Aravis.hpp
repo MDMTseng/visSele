@@ -91,6 +91,15 @@ public:
   
   CameraLayer::FrameExtractPixelFormat GetFrameFormat();
 
+
+  int prev_MirrorX;
+  int prev_MirrorY;
+  int prev_ROI_X;
+  int prev_ROI_Y;
+  int prev_ROI_W;
+  int prev_ROI_H;
+
+
   ~CameraLayer_Aravis();
 };
 

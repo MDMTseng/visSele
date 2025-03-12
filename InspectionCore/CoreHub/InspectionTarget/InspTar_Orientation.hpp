@@ -39,6 +39,8 @@ class InspectionTarget_Orientation_ShapeBasedMatching :public InspectionTarget
   float origin_offset_angle;
   Point2f templateCenter;
 
+  float template_mmpp;
+
   float front_face_angle_start;
   float front_face_angle_end;
   int front_face_angle_segs;

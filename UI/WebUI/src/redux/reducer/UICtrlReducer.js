@@ -362,7 +362,12 @@ function StateReducer(newState, action) {
                   
 
                   let reportStatisticState = newState.edit_info.reportStatisticState;
+                  // console.log(report,reportStatisticState)
                   reportStatisticState.reportCount++;
+                  if(report.reports===undefined||report.reports.length==0)
+                  {
+                    reportStatisticState.emptyReportCount++;
+                  }
 
                   reportStatisticState.newAddedReport = [];
 

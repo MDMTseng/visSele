@@ -1718,3 +1718,294 @@ export function ID_throttle(thid:{timeout:number,last_func:(()=>void)|undefined}
   }
   return thid;
 }
+
+
+
+/**
+ * Creates a throttled function that only invokes the provided function at most once per
+ * every `wait` milliseconds. The throttled function comes with a `cancel` method to
+ * cancel delayed invocations.
+ *
+ * @param func - The function to throttle
+ * @param wait - The number of milliseconds to throttle invocations to
+ * @param options - The options object
+ * @param options.leading - Specify invoking on the leading edge of the timeout
+ * @param options.trailing - Specify invoking on the trailing edge of the timeout
+ * @returns A throttled version of the provided function
+ */
+export function throttle<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number = 0,
+  options: { leading?: boolean; trailing?: boolean } = {}
+): T & { cancel: () => void } {
+  let timeoutId: number | undefined;
+  let lastCallTime: number | undefined;
+  let lastArgs: Parameters<T> | undefined;
+  
+  // Default options
+  const leading = options.leading !== false;
+  const trailing = options.trailing !== false;
+
+  function invoke(time: number) {
+    if (lastArgs) {
+      func.apply(null, lastArgs);
+      lastArgs = undefined;
+      lastCallTime = time;
+    }
+  }
+
+  function throttled(this: any, ...args: Parameters<T>) {
+    const time = Date.now();
+
+    // Reset last call time if it's the first call or leading is true
+    if (!lastCallTime && !leading) {
+      lastCallTime = time;
+    }
+
+    const remaining = wait - (time - (lastCallTime ?? 0));
+
+    // Store the latest arguments
+    lastArgs = args;
+
+    if (remaining <= 0) {
+      // Clear any existing timeout
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+        timeoutId = undefined;
+      }
+      invoke(time);
+    } else if (!timeoutId && trailing) {
+      // Schedule trailing call
+      timeoutId = window.setTimeout(() => {
+        invoke(Date.now());
+        timeoutId = undefined;
+      }, remaining);
+    }
+  }
+
+  // Add cancel method to clear the timeout
+  throttled.cancel = () => {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+      timeoutId = undefined;
+    }
+    lastCallTime = undefined;
+    lastArgs = undefined;
+  };
+
+  return throttled as T & { cancel: () => void };
+}
+
+// Usage examples:
+/*
+// Basic usage
+const throttledScroll = throttle(() => {
+  console.log('Scrolled!');
+}, 1000);
+
+window.addEventListener('scroll', throttledScroll);
+
+// With options
+const throttledResize = throttle(
+  (event: UIEvent) => {
+    console.log('Resized!', event);
+  },
+  1000,
+  { leading: true, trailing: false }
+);
+
+window.addEventListener('resize', throttledResize);
+
+// Cleanup
+throttledScroll.cancel();
+throttledResize.cancel();
+*/
+
+
+
+/**
+ * Creates a debounced function that delays invoking `func` until after `wait` milliseconds have elapsed
+ * since the last time the debounced function was invoked. The debounced function comes with a `cancel`
+ * method to cancel delayed invocations and a `flush` method to immediately invoke them.
+ *
+ * @param func - The function to debounce
+ * @param wait - The number of milliseconds to delay
+ * @param options - The options object
+ * @param options.leading - Specify invoking on the leading edge of the timeout
+ * @param options.maxWait - The maximum time `func` is allowed to be delayed before it's invoked
+ * @returns A debounced version of the provided function
+ */
+export function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number = 0,
+  options: { leading?: boolean; maxWait?: number } = {}
+): T & { cancel: () => void; flush: () => void } {
+  let timeoutId: number | undefined;
+  let maxTimeoutId: number | undefined;
+  let lastCallTime: number | undefined;
+  let lastInvokeTime = 0;
+  let lastArgs: Parameters<T> | undefined;
+  let lastThis: any;
+  let result: ReturnType<T>;
+
+  const leading = !!options.leading;
+  const maxWait = options.maxWait;
+
+  function invokeFunc(time: number): ReturnType<T> {
+    const args = lastArgs;
+    const thisArg = lastThis;
+
+    lastArgs = lastThis = undefined;
+    lastInvokeTime = time;
+    result = func.apply(thisArg, args!);
+    return result;
+  }
+
+  function startTimer(pendingFunc: () => void, wait: number): number {
+    return window.setTimeout(pendingFunc, wait);
+  }
+
+  function cancelTimer(id: number | undefined): void {
+    if (id !== undefined) {
+      window.clearTimeout(id);
+    }
+  }
+
+  function leadingEdge(time: number): ReturnType<T> {
+    lastInvokeTime = time;
+    // Start the timer for the trailing edge
+    timeoutId = startTimer(timerExpired, wait);
+    // Invoke the leading edge
+    return leading ? invokeFunc(time) : result;
+  }
+
+  function remainingWait(time: number): number {
+    const timeSinceLastCall = time - (lastCallTime ?? 0);
+    const timeSinceLastInvoke = time - lastInvokeTime;
+    const timeWaiting = wait - timeSinceLastCall;
+
+    return maxWait === undefined
+      ? timeWaiting
+      : Math.min(timeWaiting, maxWait - timeSinceLastInvoke);
+  }
+
+  function shouldInvoke(time: number): boolean {
+    const timeSinceLastCall = time - (lastCallTime ?? 0);
+    const timeSinceLastInvoke = time - lastInvokeTime;
+
+    return (
+      lastCallTime === undefined ||
+      timeSinceLastCall >= wait ||
+      timeSinceLastCall < 0 ||
+      (maxWait !== undefined && timeSinceLastInvoke >= maxWait)
+    );
+  }
+
+  function timerExpired(): void {
+    const time = Date.now();
+    if (shouldInvoke(time)) {
+      return trailingEdge(time);
+    }
+    // Restart the timer
+    timeoutId = startTimer(timerExpired, remainingWait(time));
+  }
+
+  function trailingEdge(time: number): ReturnType<T> {
+    timeoutId = undefined;
+
+    // Only invoke if we have `lastArgs` which means `func` has been debounced at
+    // least once
+    if (lastArgs) {
+      return invokeFunc(time);
+    }
+    lastArgs = lastThis = undefined;
+    return result;
+  }
+
+  function cancel(): void {
+    if (timeoutId !== undefined) {
+      cancelTimer(timeoutId);
+    }
+    if (maxTimeoutId !== undefined) {
+      cancelTimer(maxTimeoutId);
+    }
+    lastInvokeTime = 0;
+    lastArgs = lastCallTime = lastThis = timeoutId = maxTimeoutId = undefined;
+  }
+
+  function flush(): ReturnType<T> {
+    return timeoutId === undefined ? result : trailingEdge(Date.now());
+  }
+
+  function debounced(this: any, ...args: Parameters<T>): ReturnType<T> {
+    const time = Date.now();
+    const isInvoking = shouldInvoke(time);
+
+    lastArgs = args;
+    lastThis = this;
+    lastCallTime = time;
+
+    if (isInvoking) {
+      if (timeoutId === undefined) {
+        return leadingEdge(lastCallTime);
+      }
+      if (maxWait !== undefined) {
+        // Handle invocations in a tight loop
+        cancelTimer(timeoutId);
+        timeoutId = startTimer(timerExpired, wait);
+        return invokeFunc(lastCallTime);
+      }
+    }
+    if (timeoutId === undefined) {
+      timeoutId = startTimer(timerExpired, wait);
+    }
+    return result;
+  }
+
+  debounced.cancel = cancel;
+  debounced.flush = flush;
+
+  return debounced as unknown as T & { cancel: () => void; flush: () => void };
+}
+
+// Usage examples:
+/*
+// Basic debounce
+const debouncedScroll = debounce(() => {
+  console.log('Scrolled!');
+}, 1000);
+
+window.addEventListener('scroll', debouncedScroll);
+
+// With leading option
+const debouncedResize = debounce(
+  (event: UIEvent) => {
+    console.log('Resized!', event);
+  },
+  1000,
+  { leading: true }
+);
+
+window.addEventListener('resize', debouncedResize);
+
+// With maxWait option
+const debouncedInput = debounce(
+  (value: string) => {
+    console.log('Input value:', value);
+  },
+  1000,
+  { maxWait: 2000 }
+);
+
+inputElement.addEventListener('input', (e) => {
+  debouncedInput(e.target.value);
+});
+
+// Cleanup
+debouncedScroll.cancel();
+debouncedResize.cancel();
+debouncedInput.cancel();
+
+// Immediate execution
+debouncedInput.flush();
+*/

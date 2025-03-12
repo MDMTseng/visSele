@@ -400,7 +400,7 @@ void InspectionTarget_DimMeasure::run()
         break;
       }
 
-      auto ret = singleProcess(curInput);
+      auto ret = singleProcess(curInput,false);
 
       if (ret != NULL)
       {
@@ -434,6 +434,8 @@ shared_ptr<StageInfo_Orientation> loadOrientation(string path)
     }
   }
 
+  reporn_temp->img_prop.mmpp=reporn_temp->mmpp;
+
   reporn_temp->genJsonRepTojInfo();
   LOGI("=========orientation size:%d", reporn_temp->orientation.size());
 
@@ -448,14 +450,47 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
     return ret;
   string type = JFetch_STRING_ex(info, "type");
 
-  if (type == "save_as_template")
+  if (type == "save_cached_orientation_info")
   {
     if (cache_latest_input == NULL)
       return false;
 
     shared_ptr<StageInfo_Orientation> sinfo_orientation = std::static_pointer_cast<StageInfo_Orientation>(cache_latest_input);
-    string file_name = JFetch_STRING_ex(info, "file_name", "template");
+    
+
+    if(sinfo_orientation==NULL)
+    {
+      act.sendACK(id,false,"cache_latest_input is NULL, fetch a new data first...");
+      return false;
+    }
+
+    LOGI(">>>");
+
+    string file_name = JFetch_STRING_ex(info, "file_name", "");
     string folder_path = JFetch_STRING_ex(info, "folder_path", "");
+
+    LOGI(">>>");
+
+    {
+
+      //remove file extension
+      auto pos=file_name.find_last_of(".");
+      if(pos!=string::npos)
+      {
+        file_name=file_name.substr(0,pos);
+      }
+    }
+
+    if(file_name.length()==0)
+    {
+      act.sendACK(id,false,"file_name is empty...");
+      return false;
+    }
+
+
+
+    LOGI(">>>");
+
     if (folder_path.find(":\\") == 1 || folder_path.find("/") == 0)
     { // windows absolute path or linux absolute path
     }
@@ -493,39 +528,56 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
 
     return true;
   }
-
-  if (type == "load_template")
+  if (type == "load_orientation_info")
   {
 
-    string file_name = JFetch_STRING_ex(info, "file_name", "template");
-    string folder_path = JFetch_STRING_ex(info, "folder_path", "");
-    if (folder_path.find(":\\") == 1 || folder_path.find("/") == 0)
-    { // windows absolute path or linux absolute path
+    std::__1::shared_ptr<StageInfo_Orientation> template_input_info;
+
+    bool use_cached_input=JFetch_TRUE(info,"use_cached_input");
+
+    if(use_cached_input)
+    {
+      template_input_info=std::static_pointer_cast<StageInfo_Orientation>(cache_latest_input);
     }
     else
     {
-      folder_path = local_env_path + folder_path; // add local env path
+
+      string file_name = JFetch_STRING_ex(info, "file_name", "template");
+      string folder_path = JFetch_STRING_ex(info, "folder_path", "");
+      if (folder_path.find(":\\") == 1 || folder_path.find("/") == 0)
+      { // windows absolute path or linux absolute path
+      }
+      else
+      {
+        folder_path = local_env_path + folder_path; // add local env path
+      }
+
+      if (folder_path.length() == 0)
+        return false;
+
+      string path = folder_path + "/" + file_name;
+      template_input_info = loadOrientation(path);
+
     }
 
-    if (folder_path.length() == 0)
-      return false;
-
-    string path = folder_path + "/" + file_name;
-    auto template_input_info = loadOrientation(path);
 
     this->template_input_info = template_input_info;
 
-
+    if(template_input_info==NULL)
+    {
+      act.sendACK(id,false,"template_input_info is NULL");
+      return false;
+    }
 
 
     int imageQuality = JFetch_NUMBER_ex(info, "imageQuality", 90);
     if (imageQuality > 0 && imageQuality <= 100)
     {
-      if (imageQuality == 100)
-      {
-        act.send(id, template_input_info->img, "png", imageQuality);
-      }
-      else
+      // if (imageQuality == 100)
+      // {
+      //   act.send(id, template_input_info->img, "png", imageQuality);
+      // }
+      // else
       {
         act.send(id, template_input_info->img, "jpg", imageQuality);
       }
@@ -551,6 +603,10 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
   {
     shared_ptr<StageInfo> input;
 
+
+
+    bool use_cached_input=JFetch_TRUE(info,"use_cached_input");
+    if(use_cached_input==false)
     {
 
       string file_name = JFetch_STRING_ex(info, "file_name", "template");
@@ -575,6 +631,10 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
         input = loadOrientation(folder_path + "/" + file_name);
       }
     }
+    else
+    {
+      input=cache_latest_input;
+    }
 
     LOGI("=========execute_inspection");
     if (input == NULL)
@@ -597,7 +657,11 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
         dbg_feature_info=cJSON_Duplicate(jtmp,true);
       }
     }
+    
 
+
+
+    
     shared_ptr<StageInfo_Orientation> input_orien = std::static_pointer_cast<StageInfo_Orientation>(input);
     if (input_orien == NULL)
     {
@@ -615,7 +679,7 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
       input_orien->orientation[0]=input_orien->orientation[dbg_object_idx];
       input_orien->orientation.resize(1);
     }
-    auto report = singleProcess(input_orien);
+    auto report = singleProcess(input_orien,true);
 
     if(dbg_feature_info!=NULL)
     {
@@ -629,22 +693,22 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
     int imageQuality = JFetch_NUMBER_ex(info, "imageQuality", -1);
     if (imageQuality > 0 && imageQuality <= 100)
     {
-      if (imageQuality == 100)
-      {
-        act.send(id, report->img, "png", imageQuality);
-      }
-      else
-      {
-        act.send(id, report->img, "jpg", imageQuality);
-      }
+      // if (imageQuality == 100)
+      // {
+      //   act.send(id, report->img, "png", imageQuality);
+      // }
+      // else
+      // {
+      //   act.send(id, report->img, "jpg", imageQuality);
+      // }
 
       for(int i=0;i<dbg_Images.size();i++)
       {
-        if (imageQuality == 100)
-        {
-          act.send(id, dbg_Images[i], "png", imageQuality);
-        }
-        else
+        // if (imageQuality == 100)
+        // {
+        //   act.send(id, dbg_Images[i], "png", imageQuality);
+        // }
+        // else
         {
           act.send(id, dbg_Images[i], "jpg", imageQuality);
         }
@@ -695,101 +759,112 @@ static int STAGEINFO_SCS_CAT_BASIC_reducer_(int sum_cat, int cat)
   return sum_cat;
 }
 
-static void genWarpPolarXYMap(const cv::Point2f &center,
-                              float minRadius, float maxRadius,
-                              float startAngle_deg, float endAngle_deg,
-                              cv::Mat &mapX, cv::Mat &mapY, float scale_R = 1, float scale_ANG = 1, int direction = 1)
-{
-  float angleRange_rad = (endAngle_deg - startAngle_deg) * CV_PI / 180.0;
-  float radiusRange = maxRadius - minRadius;
-  // Determine the output size based on the radius and angle range
-  int outputHeight = ((int)(angleRange_rad * maxRadius * scale_ANG) + 1); // Width based on arc length(angle range)
-  int outputWidth = (int)(radiusRange * scale_R);                         // Height based on radius range
-  // Prepare the mapping matrices
-  mapX.create(outputHeight, outputWidth, CV_32FC1);
-  mapY.create(outputHeight, outputWidth, CV_32FC1);
-  // Fill the mapping matrices
 
-  float startAngle_rad = startAngle_deg * CV_PI / 180.0;
-  for (int y = 0; y < outputHeight; ++y)
-  {
-    // Calculate the angle in radians for this pixel
-    float angle = -(startAngle_rad + (angleRange_rad * ((float)y) / (outputHeight - 1))); // flip angle for image coordinate (-y)
+/**
+ * @brief Generate the warp polar XY map
+ * 
+ * @param center The center of the polar coordinate system
+ * @param minRadius The minimum radius of the polar coordinate system
+ * @param maxRadius The maximum radius of the polar coordinate system
+ * @param startAngle_rad The start angle in radians
+ * @param endAngle_rad The end angle in radians
+ * @param mapX The output X map
+ * @param mapY The output Y map
+ * @param scale_R The scale factor for the radius
+ * @param scale_ANG The scale factor for the angle
+ * @param direction The direction of the polar coordinate system (1 for inner to left(outer to the right), -1 for inner to right(outer to the left))
+ */
+static void genWarpPolarXYMap1(const cv::Point2f& center, 
+                         float minRadius, float maxRadius, 
+                         float startAngle_rad, float endAngle_rad,
+                         cv::Mat& mapX, cv::Mat& mapY,float scale_R,float scale_ANG,bool inner_to_left,float mmpp) {
 
-    float cos_angle = cosf(angle);
-    float sin_angle = sinf(angle);
-    for (int x = 0; x < outputWidth; ++x)
-    {
-      float radius = radiusRange * ((float)x / (outputWidth - 1)); // Current radius
-      if (direction == 1)
-      {
-        radius = minRadius + radius;
-      }
-      else if (direction == -1)
-      { // reverse direction
-        radius = maxRadius - radius;
-      }
+    float angleRange_rad = (endAngle_rad - startAngle_rad);
+    float radiusRange=(maxRadius-minRadius);
+    // Determine the output size based on the radius and angle range
+    int outputHeight = ((int)(angleRange_rad*maxRadius*scale_ANG)+1); // Width based on arc length(angle range)
+    int outputWidth = (int)(radiusRange*scale_R);          // Height based on radius range
+    // Prepare the mapping matrices
+    mapX.create(outputHeight, outputWidth, CV_32FC1);
+    mapY.create(outputHeight, outputWidth, CV_32FC1);
+    // Fill the mapping matrices
 
-      float x_cart = center.x + radius * cos_angle;
-      float y_cart = center.y + radius * sin_angle;
-      // Map polar coordinates to Cartesian
-      mapX.at<float>(y, x) = x_cart;
-      mapY.at<float>(y, x) = y_cart;
+    for (int y = 0; y < outputHeight; ++y) {
+        // Calculate the angle in radians for this pixel
+        float angle = -(startAngle_rad + (angleRange_rad*((float)y) / (outputHeight-1)));//flip angle for image coordinate (-y)
+
+        float cos_angle=cosf(angle);
+        float sin_angle=sinf(angle);
+        for (int x = 0; x < outputWidth; ++x) {
+            float radius = radiusRange*((float)x/(outputWidth-1)); // Current radius
+            
+            if(inner_to_left==false){
+              radius=minRadius+radius;
+            }
+            else{//reverse direction
+              radius=maxRadius-radius;
+            }
+            
+            float x_cart=center.x + radius * cos_angle;
+            float y_cart=center.y + radius * sin_angle;
+            // Map polar coordinates to Cartesian
+            mapX.at<float>(y, x) = x_cart;
+            mapY.at<float>(y, x) = y_cart;
+        }
     }
-  }
-}
-
-
-namespace cvM3x3{
-  //just a note, opencv matrix operation is Max*Vec=newVec
-  //So the matrix compose is from right(first) to left(last) 
-  //ie, if you want transform order m1,m2,m3, then =>   m3*m2*m1*vec=newVec
-
-  cv::Mat rotate(float angle_rad) 
-  {
-    double cos_val = cos(angle_rad);  
-    double sin_val = sin(angle_rad);
-    cv::Mat mat33 = cv::Mat::eye(3,3,CV_64F);
-    mat33.at<double>(0,0) = cos_val;
-    mat33.at<double>(0,1) = -sin_val;  // Correct
-    mat33.at<double>(1,0) = sin_val;   // Correct 
-    mat33.at<double>(1,1) = cos_val;
-    return mat33;
-  }
-
-  cv::Mat translate(Point2f pt)
-  {
-    cv::Mat mat33=cv::Mat::eye(3,3,CV_64F);
-    mat33.at<double>(0,2)=pt.x;
-    mat33.at<double>(1,2)=pt.y;
-    return mat33;
-  }
-
-
-  Mat mat23to33(const Mat& matrix23) {
-      Mat matrix33 = Mat::eye(3, 3, CV_64F);
-      matrix23.copyTo(matrix33(Rect(0, 0, 3, 2)));
-      return matrix33;
-  }
-
-  Mat mat33to23(const Mat& matrix33) {
-      return matrix33(Rect(0, 0, 3, 2)).clone();
-  }
+    
+                  
 
 }
 
+static void genWarpPolarXYMap(const cv::Point2f& center, 
+                         float minRadius, float maxRadius, 
+                         float startAngle_rad, float endAngle_rad,
+                         cv::Mat& mapX, cv::Mat& mapY,
+                         float scale_R, float scale_ANG,
+                         bool inner_to_left, float mmpp) {
 
 
+    float angleRange_rad = (endAngle_rad - startAngle_rad);
+    float radiusRange = (maxRadius - minRadius);
+    int outputHeight = ((int)(angleRange_rad*maxRadius*scale_ANG)+1);
+    int outputWidth = (int)(radiusRange*scale_R);
+    
+    mapX.create(outputHeight, outputWidth, CV_32FC1);
+    mapY.create(outputHeight, outputWidth, CV_32FC1);
+
+    float radiusStep = radiusRange / (outputWidth - 1);
+    float angleStep = angleRange_rad / (outputHeight - 1);
+
+    float radiusIncrement = inner_to_left ? -radiusStep : radiusStep;
+    float initRadius=inner_to_left ? maxRadius : minRadius;
+    #pragma omp parallel for schedule(static)
+    for (int y = 0; y < outputHeight; ++y) {
+        float angle = -(startAngle_rad + angleStep * y);
+        float cos_angle = cosf(angle);
+        float sin_angle = sinf(angle);
+        
+        float* mapX_row = mapX.ptr<float>(y);
+        float* mapY_row = mapY.ptr<float>(y);
+        
+        float radius = initRadius;
+
+        for (int x = 0; x < outputWidth; ++x) {
+            mapX_row[x] = center.x + radius * cos_angle;
+            mapY_row[x] = center.y + radius * sin_angle;
+            radius += radiusIncrement;
+        }
+    }
+    
+}
 
 
-static cv::Mat template_from_img(StageInfo_Orientation::orient objpose) //coordinate transform from image to template
+static cv::Mat template_from_img(StageInfo_Orientation::orient objpose,float img_scale) //coordinate transform from image to template
 {
 
     float angle_rad=(objpose.angle);
 
-    float angle_deg=(angle_rad)*180/M_PI;
-
-    return cvM3x3::rotate(-angle_rad)*cvM3x3::translate(-objpose.center);
+    return cvM3x3::scale(img_scale)*cvM3x3::rotate(-angle_rad)*cvM3x3::translate(-objpose.center);
     
 }
 
@@ -806,9 +881,111 @@ static cv::Mat line_from_template(Point2f template_pt1, Point2f template_pt2,dou
 static cv::Mat spoint_from_template(Point2f template_pt1,float spoint_angle,Point2f ref_template_pt1, Point2f ref_template_pt2,double addtional_angle_rad) {
 
     float defLineAngle=atan2f((ref_template_pt2.y-ref_template_pt1.y),ref_template_pt2.x-ref_template_pt1.x);
-    return cvM3x3::rotate(defLineAngle+addtional_angle_rad+spoint_angle)*cvM3x3::translate(-template_pt1);
+    LOGE("defLineAngle:%f,addtional_angle:%f,spoint_angle:%f",defLineAngle*180/M_PI,addtional_angle_rad*180/M_PI,spoint_angle*180/M_PI);
+    return cvM3x3::rotate(-defLineAngle+addtional_angle_rad-spoint_angle)*cvM3x3::translate(-template_pt1);
 
 }
+
+
+
+
+inline Mat edgeValueTrace(Mat &x_pos_sobelImg,float centerCoeff,float spreadCoeff){
+  
+  spreadCoeff/=2;
+  Mat FilteredImg(x_pos_sobelImg.size(),CV_32F);
+
+  vector<float> filterBuff1(x_pos_sobelImg.cols);
+  vector<float> filterBuff2(x_pos_sobelImg.cols);
+
+
+  { //init filterBuff1,filterBuff2
+    int16_t *row=x_pos_sobelImg.ptr<int16_t>(0);
+
+    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
+    {
+      filterBuff1[x]=filterBuff2[x]=row[x];
+    }
+
+  }
+
+  int filter_width=3;
+  int filter_side=(filter_width-1)/2;
+
+
+
+
+  float nPixCoeff=(1-centerCoeff-2*spreadCoeff);
+  for(int y=0;y<x_pos_sobelImg.rows;y+=1)
+  {
+    int16_t *cur_row=x_pos_sobelImg.ptr<int16_t>(y);
+
+    float* filterBuff=(y&1==0)?filterBuff1.data():filterBuff2.data();
+    float* filterOutput=(y&1==0)?filterBuff1.data():filterBuff2.data();
+
+
+    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
+    {
+
+      float f_m1=(x==0)?0:filterBuff[x-1];
+      float f_c=filterBuff[x];
+      float f_p1=(x>=x_pos_sobelImg.cols-1)?0:filterBuff[x+1];
+      float i_c=cur_row[x];
+
+
+      filterOutput[x]=nPixCoeff*i_c+centerCoeff*f_c+spreadCoeff*(f_m1+f_p1);
+    }
+
+
+    float *cur_frow=FilteredImg.ptr<float>(y);
+    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
+    {
+      cur_frow[x]=filterOutput[x];
+    }
+  }
+
+
+  { //init filterBuff1,filterBuff2
+    int16_t *row=x_pos_sobelImg.ptr<int16_t>(x_pos_sobelImg.rows-1);
+
+    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
+    {
+      filterBuff1[x]=filterBuff2[x]=row[x];
+    }
+
+  }
+
+  for(int _y=0;_y<x_pos_sobelImg.rows;_y+=1)//reverse
+  {
+    int y=x_pos_sobelImg.rows-_y-1;
+    int16_t *cur_row=x_pos_sobelImg.ptr<int16_t>(y);
+
+    float* filterBuff=(y&1)?filterBuff1.data():filterBuff2.data();
+    float* filterOutput=(y&1)?filterBuff1.data():filterBuff2.data();
+
+
+    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
+    {
+
+      float f_m1=(x==0)?0:filterBuff[x-1];
+      float f_c=filterBuff[x];
+      float f_p1=(x>=x_pos_sobelImg.cols-1)?0:filterBuff[x+1];
+      float i_c=cur_row[x];
+
+
+      filterOutput[x]=nPixCoeff*i_c+centerCoeff*f_c+spreadCoeff*(f_m1+f_p1);
+    }
+
+
+    float *cur_frow=FilteredImg.ptr<float>(y);
+    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
+    {
+      cur_frow[x]+=filterOutput[x];
+    }
+  }
+
+  return FilteredImg;
+}
+
 
 
 
@@ -955,9 +1132,7 @@ void sobelProcess(Mat grayXSobel,float edge_surpress,EdgeType edgeType)
 // }
 
 
-
-
-inline float getCenter_LOCAL_MEAN(int16_t *sobeled_line,int line_width,CenterType centerType, float &w,float &sigma){
+inline float getCenter_LOCAL_MEANd(const int16_t *sobeled_line,int line_width,CenterType centerType, float &w,float &sigma){
   
 
   float blob_w = 0;
@@ -1017,6 +1192,71 @@ inline float getCenter_LOCAL_MEAN(int16_t *sobeled_line,int line_width,CenterTyp
 }
 
 
+inline float getCenter_LOCAL_MEAN(const int16_t *sobeled_line, int line_width, CenterType centerType, float &w, float &sigma) {
+    float blob_w = 0;
+    float blob_xw = 0;
+    float blob_xw_sq = 0;
+    
+    float blob_w_max = 0;
+    float blob_xw_max = 0;
+    float blob_xw_sq_max = 0;
+    
+    // Pre-calculate array bounds
+    const int16_t* const line_end = sobeled_line + line_width;
+    const int16_t* ptr = sobeled_line;
+
+    // Process continuous memory blocks
+    while (ptr < line_end) {
+        // Skip until we find start of blob
+        while (ptr < line_end && *ptr <= 0) {
+            ptr++;
+        }
+        
+        // Process blob if we found one
+        if (ptr < line_end) {
+            blob_w = 0;
+            blob_xw = 0;
+            blob_xw_sq = 0;
+            const int start_x = ptr - sobeled_line;
+            
+            // Process until end of blob or array
+            while (ptr < line_end && *ptr > 0) {
+                const int x = ptr - sobeled_line;
+                const float edgeRsp = *ptr;
+                
+                // Accumulate in one pass
+                blob_w += edgeRsp;
+                blob_xw += x * edgeRsp;
+                blob_xw_sq += x * x * edgeRsp;
+                
+                ptr++;
+            }
+            
+            // Update max values if current blob is larger
+            if (blob_w > blob_w_max) {
+                blob_w_max = blob_w;
+                blob_xw_max = blob_xw;
+                blob_xw_sq_max = blob_xw_sq;
+            }
+        }
+    }
+
+    // Handle edge case where no blobs were found
+    if (blob_w_max == 0) {
+        w = 0;
+        sigma = 0;
+        return 0;
+    }
+
+    // Calculate final results
+    const float center = blob_xw_max / blob_w_max;
+    const float variance = (blob_xw_sq_max / blob_w_max) - (center * center);
+    
+    w = blob_w_max;
+    sigma = std::sqrt(std::max(0.0f, variance));  // Protect against small negative values from floating point errors
+    
+    return center;
+}
 
 
 inline float getCenter_LOCAL_FIRST(int16_t *sobeled_line,int line_width,CenterType centerType, float &w,float &sigma){
@@ -1114,6 +1354,179 @@ inline float getCenter_LOCAL_FIRSTMax(int16_t *sobeled_line,int line_width,Cente
 }
 
 
+
+static vector<Point3f> getLocalMeanEdgePoints(const Mat& grayXSobel, CenterType centerType) {
+    vector<Point3f> edge_points(grayXSobel.rows);
+
+    #pragma omp parallel for schedule(static)
+    for (int y = 0; y < grayXSobel.rows; y++) {
+        float edge_w, edge_sigma;
+        const int16_t* row = grayXSobel.ptr<int16_t>(y);
+        
+
+        float edge_loc = getCenter_LOCAL_MEAN(row, grayXSobel.cols, centerType, edge_w, edge_sigma);
+        
+        if (edge_w > 0 && edge_loc >= 2 && edge_loc<grayXSobel.cols-2) {
+            edge_points[y] = {edge_loc, (float)y,edge_w/(edge_sigma+1)};
+        }
+        else
+        {
+            edge_points[y].z=0;
+        }
+    }
+
+    //remove zero weight points
+    int valid_count=0;
+    for(int i=0;i<edge_points.size();i++)
+    {
+        if(edge_points[i].z>0)
+        {
+            edge_points[valid_count]=edge_points[i];
+            valid_count++;
+        }
+    }
+    edge_points.resize(valid_count);
+    return edge_points;
+}
+
+
+
+
+vector<Point3f> EdgeLocExtraction(string name,Mat &featureCoordImg,cJSON *def,vector<cv::Mat> &dbg_Images)
+{
+
+
+  Mat featureCoordImg_gray;
+  if(featureCoordImg.channels()==3)
+    cv::cvtColor(featureCoordImg, featureCoordImg_gray, cv::COLOR_BGR2GRAY);
+  else if(featureCoordImg.channels()==1)//is gray
+    featureCoordImg_gray=featureCoordImg;
+  else 
+  {
+    LOGE("featureCoordImg is not gray or BGR");
+    return {};
+  }
+
+  dbg_Images.push_back(featureCoordImg_gray);
+  int blur_size=JFetch_NUMBER_ex(def,"blur_size",3);
+  blur_size=(blur_size+1)/2*2;
+  
+  Mat featureCoordImg_YBlur;
+  if(blur_size>0)
+    cv::blur(featureCoordImg_gray, featureCoordImg_YBlur, cv::Size(1, blur_size));
+  else
+    featureCoordImg_YBlur=featureCoordImg_gray;
+
+  Mat XSobel;
+  cv::Sobel(featureCoordImg_YBlur, XSobel, CV_16S, 1, 0); // 1 for x-derivative to detect vertical edges
+
+
+  EdgeType edgeType=DARK_TO_LIGHT;
+  {
+
+    string str_edgeType=JFetch_STRING_ex(def,"edge_type","DARK_TO_LIGHT");
+    LOGI("str_edgeType:%s",str_edgeType.c_str());
+    if(str_edgeType=="LIGHT_TO_DARK")
+      edgeType=LIGHT_TO_DARK;
+    else if(str_edgeType=="DARK_TO_LIGHT")
+      edgeType=DARK_TO_LIGHT;
+    else if(str_edgeType=="BOTH")
+      edgeType=BOTH;
+  }
+
+
+  float alpha1=JFetch_NUMBER_ex(def,"alpha1",0);
+  float alpha2=JFetch_NUMBER_ex(def,"alpha2",0);
+  float edge_surpress=JFetch_NUMBER_ex(def,"edge_surpress",10);
+
+  Mat edgeValueTraceMat;
+  if(alpha1>0||alpha2>0)
+  {
+    sobelProcess(XSobel,0,edgeType);
+    edgeValueTraceMat=edgeValueTrace(XSobel,alpha1,alpha2);
+    //convert to 16S
+    edgeValueTraceMat.convertTo(XSobel,CV_16S);
+    edgeType=DARK_TO_LIGHT;//the edge value(signess) is already flipped, so just use DARK_TO_LIGHT
+
+  }
+  else
+  {
+  }
+  sobelProcess(XSobel,edge_surpress,edgeType);
+  dbg_Images.push_back(XSobel);
+
+  // cv::imwrite("data/"+name+"_polarSegment_gray.png", polarSegment_gray);
+  vector<Point3f> edgeLoc=getLocalMeanEdgePoints(XSobel,LOCAL_AVG);
+
+
+
+  // if(0)
+  // {//edge filtering
+
+  //   int coeffOrder=3;
+  //   vector<float> resCoeff(coeffOrder+1,0);
+  //   int dataJumpSize=sizeof(edgeLoc[0]);
+
+
+  //   float diviate_threshold=5;
+  //   int iterration_count=5;
+  //   for(int iter=0;iter<iterration_count;iter++)
+  //   {
+
+  //     int result = polyfit_opencv(&(edgeLoc[0].pt.Y),
+  //                         &(edgeLoc[0].pt.X),
+  //                         &(edgeLoc[0].w),
+  //                         edgeLoc.size(),
+  //                         coeffOrder,
+  //                         resCoeff.data(),
+  //                         dataJumpSize,
+  //                         dataJumpSize,
+  //                         dataJumpSize
+  //                         );
+      
+  //     // LOGE("result:%d",result);
+  //     // for(int i=0;i<coeffOrder+1;i++)
+  //     // {
+  //     //   LOGE("resCoeff[%d]:%f",i,resCoeff[i]);
+  //     // }
+  //     for(int i=0;i<edgeLoc.size();i++)
+  //     {
+  //       float output=polycalc_opencv(edgeLoc[i].pt.Y,resCoeff.data(),coeffOrder);
+
+  //       float diviate=abs(output-edgeLoc[i].pt.X);
+  //       if(diviate<diviate_threshold)
+  //       {
+  //         if(edgeLoc[i].w<0)
+  //           edgeLoc[i].w*=-1;//consider this point for next iteration
+  //         // if(iter==iterration_count-1)
+  //         //   edgeLoc[i].pt.X=output;
+  //       }
+  //       else
+  //       {
+  //         if(edgeLoc[i].w>0)
+  //           edgeLoc[i].w*=-1;//ignore this point
+  //       }
+  //     }
+
+
+  //     diviate_threshold*0.8;
+
+  //     // for(int i=0;i<edgeLoc.size();i++)
+  //     // {
+  //     //   float output=polycalc_opencv(edgeLoc[i].pt.Y,resCoeff.data(),coeffOrder);
+  //     //   LOGE("Y:%f => X:%f output:%f",edgeLoc[i].pt.Y,edgeLoc[i].pt.X,output);
+
+  //     //   edgeLoc[i].pt.X=output;
+  //     // }
+
+  //   }
+
+
+  // }
+
+  return edgeLoc;
+}
+
 inline float sobelRowValueFilter(int16_t *sobeled_line,int line_width,int16_t noise_surpress_threshold,EdgeType edgeType){
   
 
@@ -1141,109 +1554,6 @@ inline float sobelRowValueFilter(int16_t *sobeled_line,int line_width,int16_t no
   return 0;
 }
 
-inline Mat edgeValueTrace(Mat &x_pos_sobelImg,float centerCoeff,float spreadCoeff){
-  
-  Mat FilteredImg(x_pos_sobelImg.size(),CV_32F);
-
-  vector<float> filterBuff1(x_pos_sobelImg.cols);
-  vector<float> filterBuff2(x_pos_sobelImg.cols);
-
-
-  { //init filterBuff1,filterBuff2
-    int16_t *row=x_pos_sobelImg.ptr<int16_t>(0);
-
-    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
-    {
-      filterBuff1[x]=filterBuff2[x]=row[x];
-    }
-
-  }
-
-  int filter_width=3;
-  int filter_side=(filter_width-1)/2;
-
-
-
-
-  float nPixCoeff=(1-centerCoeff-2*spreadCoeff);
-  for(int y=0;y<x_pos_sobelImg.rows;y+=1)
-  {
-    int16_t *cur_row=x_pos_sobelImg.ptr<int16_t>(y);
-
-    float* filterBuff=(y&1==0)?filterBuff1.data():filterBuff2.data();
-    float* filterOutput=(y&1==0)?filterBuff1.data():filterBuff2.data();
-
-
-    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
-    {
-
-      float f_m1=(x==0)?0:filterBuff[x-1];
-      float f_c=filterBuff[x];
-      float f_p1=(x>=x_pos_sobelImg.cols-1)?0:filterBuff[x+1];
-      float i_c=cur_row[x];
-
-
-      filterOutput[x]=nPixCoeff*i_c+centerCoeff*f_c+spreadCoeff*(f_m1+f_p1);
-    }
-
-
-    float *cur_frow=FilteredImg.ptr<float>(y);
-    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
-    {
-      cur_frow[x]=filterOutput[x];
-    }
-  }
-
-
-  { //init filterBuff1,filterBuff2
-    int16_t *row=x_pos_sobelImg.ptr<int16_t>(x_pos_sobelImg.rows-1);
-
-    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
-    {
-      filterBuff1[x]=filterBuff2[x]=row[x];
-    }
-
-  }
-
-  for(int _y=0;_y<x_pos_sobelImg.rows;_y+=1)//reverse
-  {
-    int y=x_pos_sobelImg.rows-_y-1;
-    int16_t *cur_row=x_pos_sobelImg.ptr<int16_t>(y);
-
-    float* filterBuff=(y&1)?filterBuff1.data():filterBuff2.data();
-    float* filterOutput=(y&1)?filterBuff1.data():filterBuff2.data();
-
-
-    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
-    {
-
-      float f_m1=(x==0)?0:filterBuff[x-1];
-      float f_c=filterBuff[x];
-      float f_p1=(x>=x_pos_sobelImg.cols-1)?0:filterBuff[x+1];
-      float i_c=cur_row[x];
-
-
-      filterOutput[x]=nPixCoeff*i_c+centerCoeff*f_c+spreadCoeff*(f_m1+f_p1);
-    }
-
-
-    float *cur_frow=FilteredImg.ptr<float>(y);
-    for(int x=0;x<x_pos_sobelImg.cols;x+=1)
-    {
-      cur_frow[x]+=filterOutput[x];
-    }
-  }
-
-  return FilteredImg;
-}
-
-
-
-typedef struct ptInfo
-{
-  acv_XY pt;
-  float w;
-};
 
 // inline float getCenter_LOCAL_MEAN(int16_t *sobeled_line,int line_width,int16_t noise_surpress_threshold,EdgeType edgeType,CenterType centerType, vector<ptInfo> &pushInedgeVec){
   
@@ -1313,7 +1623,8 @@ typedef struct ptInfo
 
 
 
-bool InspectSearchPointFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList,int featureIdx,vector<cv::Mat> &dbg_Images)
+
+bool InspectSearchPointFeature(const cv::Mat &mat_img2template,float mmpp,vector<InspectionTarget_DimMeasure::itemInfo> &fqList,int featureIdx,vector<cv::Mat> &dbg_Images)
 {
 
   auto &info=fqList[featureIdx];
@@ -1333,6 +1644,13 @@ bool InspectSearchPointFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fq
     }
 
     auto &refIdIdx=info.refIdIdx[0];//only use the first ref
+
+    LOGE("refIdIdx.idx:%d id:%d",refIdIdx.idx,refIdIdx.id);
+
+
+    
+
+
     auto &refInfo=fqList[refIdIdx.idx];
 
     if(refInfo.result.result_type!=StageInfo_DimMeasure::LINE)
@@ -1382,100 +1700,95 @@ bool InspectSearchPointFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fq
   float width=JFetch_NUMBER_ex(def,"width");//search width
   float angle=JFetch_NUMBER_ex(def,"angle");//search angle
 
-  float edge_surpress=JFetch_NUMBER_ex(def,"edge_surpress",10);
-  int blur_size=JFetch_NUMBER_ex(def,"blur_size",3);
-  cv::Size cropSize(margin*2,width);
+  cv::Size cropSize(margin*2/mmpp,width/mmpp);
   cv::Mat temp2spoint_view=
       cvM3x3::translate({(float)cropSize.width/2,(float)cropSize.height/2})*
-      spoint_from_template(pt1,-angle,refLineInfo.pt1,refLineInfo.pt2,M_PI/2);
+      cvM3x3::scale(1/mmpp)*
+      spoint_from_template(pt1,angle,refLineInfo.pt1,refLineInfo.pt2,-M_PI/2);
 
 
-  cv::Mat img2spoint_view=temp2spoint_view*template_from_img(pose);
+  cv::Mat img2spoint_view=temp2spoint_view*mat_img2template;
 
   img2spoint_view=cvM3x3::mat33to23(img2spoint_view);
 
 
 
+  {//check if the spoint region is in the image
+
+    cv::Mat mat_template2img=mat_img2template.inv();
+    cv::Mat mat_template2img_23 = cvM3x3::mat33to23(mat_template2img);
+    float delta = cv::determinant(mat_template2img);
+
+    LOGE("delta(mat_template2img):%f",delta);
+    vector<cv::Point2f> pts_on_template_coord={pt1};
+    vector<cv::Point2f> pts_on_line_coord;
+    cv::transform(pts_on_template_coord,pts_on_line_coord, mat_template2img_23); 
+
+    cv::Point2f pt1_img=pts_on_line_coord[0];
+    float margin_img=margin/delta;
+    if(pt1_img.x-margin_img<0 || pt1_img.x+margin_img>srcImg.cols ||
+       pt1_img.y-margin_img<0 || pt1_img.y+margin_img>srcImg.rows)
+    {
+      info.result.error_code=-1;
+      info.result.error_msg="spoint is out of image";
+      return false;
+    }
+  }
+
+
   Mat transformSpointImg;
   cv::warpAffine(srcImg, transformSpointImg, img2spoint_view,cropSize, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  Mat transformSpointImg_gray;
-  cv::cvtColor(transformSpointImg, transformSpointImg_gray, cv::COLOR_BGR2GRAY);
-
-  Mat transformSpointImg_gray_YBlur;
-  if(blur_size>1)
-    cv::blur(transformSpointImg_gray, transformSpointImg_gray_YBlur, cv::Size(1, blur_size));
-  else
-    transformSpointImg_gray_YBlur=transformSpointImg_gray;
-
-  Mat transformSpointImg_gray_XBlur;
-  cv::Sobel(transformSpointImg_gray_YBlur, transformSpointImg_gray_XBlur, CV_16S, 1, 0); // 1 for x-derivative to detect vertical edges
-
-  EdgeType edgeType=DARK_TO_LIGHT;
-
-  CenterType centerType=LOCAL_AVG;
-
-  vector<ptInfo> edge_points;
+  
+  
+  vector<cv::Mat> _dbg_Images;
+  vector<Point3f> edge_points=EdgeLocExtraction(name,transformSpointImg,def,_dbg_Images);
   float xPosMin=999999;
-  for(int y=0;y<transformSpointImg_gray_XBlur.rows;y+=1)
+  for(int y=0;y<edge_points.size();y+=1)
   {
-    int16_t *row=transformSpointImg_gray_XBlur.ptr<int16_t>(y);
-
-
-    float edge_w,edge_sigma;
-
-    float edge_loc=getCenter_LOCAL_MEAN(
-      row,
-      transformSpointImg_gray_XBlur.cols,
-      edge_surpress,
-      edgeType,centerType,edge_w,edge_sigma);
-
-    if(edge_w==0 || edge_loc<2 || edge_sigma==0)continue;
-    // row[(int)edge_loc]=255;
-
-    LOGE("edge_loc:%f,%d   edge_w:%f,edge_sigma:%f",edge_loc,y,edge_w,edge_sigma);
-
-    int8_t *imgrow=transformSpointImg.ptr<int8_t>(y);
-    imgrow[(int)edge_loc*3]=255;
-    imgrow[(int)edge_loc*3+1]=0;
-    imgrow[(int)edge_loc*3+2]=0;
-
-    ptInfo pt;
-    pt.pt.X=edge_loc;
-    pt.pt.Y=y;
-    pt.w=edge_w/(edge_sigma+1);
-
-
-    if(xPosMin>edge_loc)xPosMin=edge_loc;
-
-    edge_points.push_back(pt);
+    Point3f &ept=edge_points[y];
+    if(xPosMin>ept.x)xPosMin=ept.x;
   }
 
   float Wsum=0;
   float YWsum=0;
   float XWsum=0;
 
-  int consideredDist=1;
-  int alphaKeepDist=0.5;
-  for(int y=0;y<edge_points.size();y+=1)
-  {
-    ptInfo &ept=edge_points[y];
-    float dist=ept.pt.X-xPosMin;
-    if(dist>consideredDist)
-    {
-      continue;
-    }
-    float alpha=1-(dist-alphaKeepDist)/(consideredDist-alphaKeepDist);
-    if(alpha>1)alpha=1;
-    float w=ept.w*alpha;
 
-    Wsum+=w;
-    YWsum+=ept.pt.Y*w;
-    XWsum+=ept.pt.X*w;
+
+  float consider_range=JFetch_NUMBER_ex(def,"consider_range",1);
+  float alpha_keep_range=JFetch_NUMBER_ex(def,"alpha_keep_range",0.5);
+
+  if(alpha_keep_range>consider_range)
+  {
+    // LOGE("alpha_keep_range>consider_range, set to consider_range");
+    alpha_keep_range=consider_range;
   }
 
 
+  vector<cv::Point3f> consider_edge_points;
+  for(int y=0;y<edge_points.size();y+=1)
+  {
+    Point3f &ept=edge_points[y];
+    float dist=ept.x-xPosMin;
+    if(dist>consider_range)
+    {
+      continue;
+    }
+
+    float alpha=1-(dist-alpha_keep_range)/(consider_range-alpha_keep_range);
+    if(alpha>1)alpha=1;
+    float w=ept.z*alpha;
+
+    Wsum+=w;
+    YWsum+=ept.y*w;
+    XWsum+=ept.x*w;
+    consider_edge_points.push_back(ept);  
+  }
+
+
+  float loc_offset=JFetch_NUMBER_ex(def,"loc_offset",0);
   Point2f pt;
-  pt.x=XWsum/Wsum;
+  pt.x=XWsum/Wsum+loc_offset;
   pt.y=YWsum/Wsum;
 
   //drow red point on the image at the spoint
@@ -1518,28 +1831,53 @@ bool InspectSearchPointFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fq
 
 
   if(info.result.dbg_info!=NULL)
-  {
+  {//attach dbg info
 
     
-    vector<cv::Point2f> pts_on_line_coord;
-    for(int i=0;i<edge_points.size();i++)
-    {
-      pts_on_line_coord.push_back({edge_points[i].pt.X,edge_points[i].pt.Y});
-    }
-
     vector<cv::Point2f> pts_on_template_coord;
-    cv::transform(pts_on_line_coord, pts_on_template_coord, spoint_view2temp); 
 
-    cJSON* jpts=cJSON_CreateArray();
-    cJSON_AddItemToObject(info.result.dbg_info,"edge_points",jpts);
-    for(int i=0;i<pts_on_template_coord.size();i++)
     {
-      cJSON* jpt=cJSON_CreateObject();
-      cJSON_AddItemToArray(jpts,jpt);
-      cJSON_AddNumberToObject(jpt,"x",pts_on_template_coord[i].x);
-      cJSON_AddNumberToObject(jpt,"y",pts_on_template_coord[i].y);
-      cJSON_AddNumberToObject(jpt,"w",edge_points[i].w);
+      vector<cv::Point2f> pts_on_line_coord;
+      for(int i=0;i<edge_points.size();i++)
+      {
+        pts_on_line_coord.push_back({edge_points[i].x,edge_points[i].y});
+      }
+
+      cv::transform(pts_on_line_coord, pts_on_template_coord, spoint_view2temp); 
+
+      cJSON* jpts=cJSON_CreateArray();
+      cJSON_AddItemToObject(info.result.dbg_info,"edge_points",jpts);
+      for(int i=0;i<pts_on_template_coord.size();i++)
+      {
+        cJSON* jpt=cJSON_CreateObject();
+        cJSON_AddItemToArray(jpts,jpt);
+        cJSON_AddNumberToObject(jpt,"x",pts_on_template_coord[i].x);
+        cJSON_AddNumberToObject(jpt,"y",pts_on_template_coord[i].y);
+        cJSON_AddNumberToObject(jpt,"w",edge_points[i].z);
+      }
     }
+
+    {
+      vector<cv::Point2f> pts_on_line_coord;
+      for(int i=0;i<consider_edge_points.size();i++)
+      {
+        pts_on_line_coord.push_back({consider_edge_points[i].x,consider_edge_points[i].y});
+      }
+      cv::transform(pts_on_line_coord, pts_on_template_coord, spoint_view2temp); 
+
+      cJSON* jpts=cJSON_CreateArray();
+      cJSON_AddItemToObject(info.result.dbg_info,"consider_edge_points",jpts);
+      for(int i=0;i<pts_on_template_coord.size();i++)
+      {
+        cJSON* jpt=cJSON_CreateObject();
+        cJSON_AddItemToArray(jpts,jpt);
+        cJSON_AddNumberToObject(jpt,"x",pts_on_template_coord[i].x);
+        cJSON_AddNumberToObject(jpt,"y",pts_on_template_coord[i].y);
+        cJSON_AddNumberToObject(jpt,"w",consider_edge_points[i].z);
+      }
+    }
+
+
   }
 
   info.result.error_code=0;
@@ -1550,10 +1888,7 @@ bool InspectSearchPointFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fq
 
 
 
-
-
-
-bool InspectLineFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList,int featureIdx,vector<cv::Mat> &dbg_Images)
+bool InspectLineFitFeature(const cv::Mat &mat_img2template,float mmpp,vector<InspectionTarget_DimMeasure::itemInfo> &fqList,int featureIdx,vector<cv::Mat> &dbg_Images)
 {
   auto &info=fqList[featureIdx];
   LOGE("=========LineFit");
@@ -1588,81 +1923,64 @@ bool InspectLineFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList
   float margin=JFetch_NUMBER_ex(def,"margin");
 
   float edge_surpress=JFetch_NUMBER_ex(def,"edge_surpress",10);
-  int blur_size=JFetch_NUMBER_ex(def,"blur_size",3);
-
-  blur_size=blur_size/2*2+1;
 
 
   float cropHeight=hypotf(pt1.x-pt2.x,pt1.y-pt2.y);
 
-  cv::Size cropSize(margin*2,cropHeight);
+  cv::Size cropSize(margin*2/mmpp,cropHeight/mmpp);
+
+
+
 
 
   cv::Mat temp2line_view=
       cvM3x3::translate({(float)cropSize.width/2,(float)cropSize.height/2})*
+      cvM3x3::scale(1/mmpp)*
       line_from_template(pt1,pt2,-M_PI/2);
 
 
-  cv::Mat img2line_view=temp2line_view*template_from_img(pose);
+  cv::Mat img2line_view=temp2line_view*mat_img2template;
 
   img2line_view=cvM3x3::mat33to23(img2line_view);
+
+  std::cout<<"cropSize:"<<cropSize<<std::endl;
   std::cout<<"img2line_view:"<<std::endl<<img2line_view<<std::endl;
 
+
+
+  cv::Mat line_view2temp;
+  cv::invert(temp2line_view,line_view2temp);
+  line_view2temp=cvM3x3::mat33to23(line_view2temp);
+
+  if(0){//check if the line is in the image
+
+    cv::Mat mat_template2img=mat_img2template.inv();
+    cv::Mat mat_template2img_23 = cvM3x3::mat33to23(mat_template2img);
+    float delta = cv::determinant(mat_template2img);
+
+    vector<cv::Point2f> pts_on_template_coord={pt1,pt2};
+    vector<cv::Point2f> pts_on_line_coord;
+    cv::transform(pts_on_template_coord,pts_on_line_coord, mat_template2img_23); 
+    cv::Point2f pt1_img=pts_on_line_coord[0];
+    cv::Point2f pt2_img=pts_on_line_coord[1];
+    if(pt1_img.x-margin<0 || pt1_img.x+margin>srcImg.cols ||
+       pt1_img.y-margin<0 || pt1_img.y+margin>srcImg.rows ||
+       pt2_img.x-margin<0 || pt2_img.x+margin>srcImg.cols ||
+       pt2_img.y-margin<0 || pt2_img.y+margin>srcImg.rows)
+    {
+      info.result.error_msg="line is out of image";
+      LOGE("%s",info.result.error_msg.c_str());
+      return false;
+    }
+  }
 
   Mat transformLineImg;
   //it would be a vertical line image(top center is pt1, bottom center is pt2)
   //scan from left to right, and find the edge point
   cv::warpAffine(srcImg, transformLineImg, img2line_view,cropSize, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  Mat transformLineImg_gray;
-  cv::cvtColor(transformLineImg, transformLineImg_gray, cv::COLOR_BGR2GRAY);
 
-  Mat transformLineImg_gray_YBlur;
-  cv::blur(transformLineImg_gray, transformLineImg_gray_YBlur, cv::Size(1, blur_size));
-
-  Mat transformLineXSobel;
-  cv::Sobel(transformLineImg_gray_YBlur, transformLineXSobel, CV_16S, 1, 0); // 1 for x-derivative to detect vertical edges
-
-  EdgeType edgeType=DARK_TO_LIGHT;
-
-  CenterType centerType=LOCAL_AVG;
-
-  typedef struct ptInfo
-  {
-    acv_XY pt;
-    float w;
-  };
-
-  vector<ptInfo> edge_points;
-
-  for(int y=0;y<transformLineImg.rows;y+=1)
-  {
-    int16_t *row=transformLineXSobel.ptr<int16_t>(y);
-
-
-    float edge_w,edge_sigma;
-
-    float edge_loc=getCenter_LOCAL_MEAN(
-      row,
-      transformLineXSobel.cols,
-      edge_surpress,
-      edgeType,centerType,edge_w,edge_sigma);
-
-    if(edge_w==0 || edge_loc<2)continue;
-    // row[(int)edge_loc]=255;
-
-    int8_t *imgrow=transformLineImg.ptr<int8_t>(y);
-    imgrow[(int)edge_loc*3]=255;
-    imgrow[(int)edge_loc*3+1]=0;
-    imgrow[(int)edge_loc*3+2]=0;
-
-    ptInfo pt;
-    pt.pt.X=edge_loc;
-    pt.pt.Y=y;
-    pt.w=edge_w/(edge_sigma+1);
-
-    edge_points.push_back(pt);
-  }
-
+  vector<cv::Mat> _dbg_Images;
+  vector<Point3f> edge_points=EdgeLocExtraction(name,transformLineImg,def,_dbg_Images);
 
   {//TODO:edge_points filter, remove deviant points
 
@@ -1670,31 +1988,160 @@ bool InspectLineFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList
   
   if (!edge_points.empty()) {
     
+
+
     acv_Line tmp_line;
     float sigma;
-    acvFitLine(
-        &(edge_points[0].pt), sizeof(ptInfo),
-        &(edge_points[0].w), sizeof(ptInfo), edge_points.size(), &tmp_line, &sigma);
-
-    // std::cout<<"tmp_line:"<<tmp_line.line_anchor.X<<","<<tmp_line.line_anchor.Y<<","<<tmp_line.line_vec.X<<","<<tmp_line.line_vec.Y<<std::endl;
-
-    //draw the line on the image
-    {//TODO:check if to stick to outmost edge point 
 
 
+    bool is_dual_apex_line=JFetch_BOOL(def,"dual_apex_line",false);
 
-      float edge_offset=JFetch_NUMBER_ex(def,"edge_offset");
-      if(edge_offset==edge_offset && edge_offset!=0)
-      {
-        tmp_line.line_anchor.X+=-tmp_line.line_vec.Y*edge_offset;
-        tmp_line.line_anchor.Y+=tmp_line.line_vec.X*edge_offset;  
-      }
-     
-    }
-    if(tmp_line.line_vec.Y<0)
+
+    bool go_normal_fitting_seq=is_dual_apex_line==false;
+
+    if(is_dual_apex_line==true)
     {
-      tmp_line.line_vec.Y=-tmp_line.line_vec.Y;
-      tmp_line.line_vec.X=-tmp_line.line_vec.X;
+      // info.result.error_code=-1;
+      // info.result.error_msg="is_dual_apex_line is not implemented";
+
+      float dual_apex_line_length_ratio_threshold=JFetch_NUMBER_ex(def,"dual_apex_line_length_ratio_threshold",0.5);
+
+      // edge_points
+      vector<Point2f> consider_points;
+      for(int i=0;i<edge_points.size();i++)
+      {
+        if(edge_points[i].z>0)
+          consider_points.push_back({edge_points[i].x,edge_points[i].y});
+      }
+
+
+      float extDist=10000000;
+      consider_points.push_back({extDist, extDist});
+      consider_points.push_back({extDist,-extDist});
+      
+      std::vector<cv::Point2f> hull;
+      cv::convexHull(consider_points, hull);
+
+
+
+
+
+      int lineSize=transformLineImg.rows;
+
+
+      float max_dist=0;
+      int max_dist_idx=-1;
+
+      cv::Point2f pre_point=hull[hull.size()-1];
+      for(int i=0;i<hull.size();i++)
+      {
+        cv::Point2f cur_point=hull[i];
+
+        float dist=hypotf(pre_point.x-cur_point.x,pre_point.y-cur_point.y);
+        LOGE("[%d]:line hull (%.2f,%.2f)->(%.2f,%.2f),dist:%.2f",i,pre_point.x,pre_point.y,cur_point.x,cur_point.y,dist);
+        if(dist>extDist/2)//extension points involved
+        {
+          LOGE("line hull extension points involved");
+          pre_point=cur_point;
+          continue;
+        }
+
+        if(max_dist<dist)
+        {
+          max_dist=dist;
+          max_dist_idx=i;
+          LOGE("max_dist:%f,max_dist_idx:%d",max_dist,max_dist_idx);
+        }
+        pre_point=cur_point;
+      }
+
+      if(max_dist>lineSize*dual_apex_line_length_ratio_threshold)
+      {//the distance is good enough, construct a line
+
+
+        LOGE("max_dist_idx:%d",max_dist_idx);
+        int max_dist_pre_idx=max_dist_idx-1;
+        if(max_dist_pre_idx<0)max_dist_pre_idx=hull.size()-1;
+        
+
+        tmp_line.line_anchor.X=hull[max_dist_pre_idx].x;
+        tmp_line.line_anchor.Y=hull[max_dist_pre_idx].y;
+        tmp_line.line_vec.X=hull[max_dist_idx].x-hull[max_dist_pre_idx].x;
+        tmp_line.line_vec.Y=hull[max_dist_idx].y-hull[max_dist_pre_idx].y;
+
+        LOGE("line anchor:%f,%f,vec:%f,%f",tmp_line.line_anchor.X,tmp_line.line_anchor.Y,tmp_line.line_vec.X,tmp_line.line_vec.Y);
+
+        // info.result.error_code=-1;
+        // info.result.error_msg="dual_apex_line mode failed";
+        // return false;
+      }
+      else
+      {//the distance is not good enough, go to normal matching seq
+
+        go_normal_fitting_seq=true;
+
+      }
+
+    }
+
+
+
+
+    if(go_normal_fitting_seq==true)
+    {
+      acvFitLine(
+          &(edge_points[0].x), sizeof(Point3f),
+          &(edge_points[0].z), sizeof(Point3f), edge_points.size(), &tmp_line, &sigma);
+
+      // std::cout<<"tmp_line:"<<tmp_line.line_anchor.X<<","<<tmp_line.line_anchor.Y<<","<<tmp_line.line_vec.X<<","<<tmp_line.line_vec.Y<<std::endl;
+
+
+      if(tmp_line.line_vec.Y<0)//make sure the line is from top to bottom
+      {
+        tmp_line.line_vec.Y=-tmp_line.line_vec.Y;
+        tmp_line.line_vec.X=-tmp_line.line_vec.X;
+      }
+      //draw the line on the image
+      {//TODO:check if to stick to outmost edge point 
+
+        bool align_to_apex=JFetch_TRUE(def,"align_to_apex");
+        if(align_to_apex)
+        {//find the 
+          Point2f lineVec={tmp_line.line_vec.X,tmp_line.line_vec.Y};
+          Point2f normalVec={-lineVec.y,lineVec.x};
+
+          Point3f apex_pt;
+          float max_score=-FLT_MAX;
+          for(int i=0;i<edge_points.size();i++)
+          {
+            Point3f &ept=edge_points[i];
+            if(ept.z<=0)continue;
+            float score=normalVec.x*ept.x+normalVec.y*ept.y;
+            if(max_score<score)
+            {
+              max_score=score;
+              apex_pt=ept;
+            }
+          }
+
+          if(max_score!=-FLT_MAX)
+          {
+            tmp_line.line_anchor.X=apex_pt.x;
+            tmp_line.line_anchor.Y=apex_pt.y;
+          }
+
+
+
+        }
+
+        float edge_offset=JFetch_NUMBER_ex(def,"edge_offset");
+        if(edge_offset==edge_offset && edge_offset!=0)
+        {
+          tmp_line.line_anchor.X+=-tmp_line.line_vec.Y*edge_offset;
+          tmp_line.line_anchor.Y+=tmp_line.line_vec.X*edge_offset;  
+        }
+      
+      }
     }
     cv::Point2f pto(tmp_line.line_anchor.X,tmp_line.line_anchor.Y);
     cv::Point2f vo(tmp_line.line_vec.X,tmp_line.line_vec.Y);
@@ -1713,9 +2160,6 @@ bool InspectLineFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList
 
 
 
-    cv::Mat line_view2temp;
-    cv::invert(temp2line_view,line_view2temp);
-    line_view2temp=cvM3x3::mat33to23(line_view2temp);
     // cv::Mat invTransformMatrix = InspTarUtil::invertAffineTransform(transformMatrix);
 
 
@@ -1738,11 +2182,11 @@ bool InspectLineFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList
     if(info.result.dbg_info!=NULL)
     {
 
-      
+      dbg_Images=_dbg_Images;
       vector<cv::Point2f> pts_on_line_coord;
       for(int i=0;i<edge_points.size();i++)
       {
-        pts_on_line_coord.push_back({edge_points[i].pt.X,edge_points[i].pt.Y});
+        pts_on_line_coord.push_back({edge_points[i].x,edge_points[i].y});
       }
 
       vector<cv::Point2f> pts_on_template_coord;
@@ -1756,13 +2200,18 @@ bool InspectLineFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList
         cJSON_AddItemToArray(jpts,jpt);
         cJSON_AddNumberToObject(jpt,"x",pts_on_template_coord[i].x);
         cJSON_AddNumberToObject(jpt,"y",pts_on_template_coord[i].y);
-        cJSON_AddNumberToObject(jpt,"w",edge_points[i].w);
+        cJSON_AddNumberToObject(jpt,"w",edge_points[i].z);
       }
     }
 
 
   }
-
+  else
+  {
+    info.result.error_code=-1;
+    info.result.error_msg="No edge points found";
+    return false;
+  }
 
   // cv::imwrite("data/"+name+"_transformLineImg.png", transformLineImg);
   // cv::imwrite("data/"+name+"_transformLineXSobel.png", transformLineXSobel);
@@ -1778,106 +2227,47 @@ bool InspectLineFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList
 
 
 
-/**
- * @brief Generate the warp polar XY map
- * 
- * @param center The center of the polar coordinate system
- * @param minRadius The minimum radius of the polar coordinate system
- * @param maxRadius The maximum radius of the polar coordinate system
- * @param startAngle_rad The start angle in radians
- * @param endAngle_rad The end angle in radians
- * @param mapX The output X map
- * @param mapY The output Y map
- * @param scale_R The scale factor for the radius
- * @param scale_ANG The scale factor for the angle
- * @param direction The direction of the polar coordinate system (1 for inner to left(outer to the right), -1 for inner to right(outer to the left))
- */
-static void genWarpPolarXYMap(const cv::Point2f& center, 
-                         float minRadius, float maxRadius, 
-                         float startAngle_rad, float endAngle_rad,
-                         cv::Mat& mapX, cv::Mat& mapY,float scale_R = 1,float scale_ANG = 1,bool inner_to_left = false ) {
-
-    float angleRange_rad = (endAngle_rad - startAngle_rad);
-    float radiusRange=maxRadius-minRadius;
-    // Determine the output size based on the radius and angle range
-    int outputHeight = ((int)(angleRange_rad*maxRadius*scale_ANG)+1); // Width based on arc length(angle range)
-    int outputWidth = (int)(radiusRange*scale_R);          // Height based on radius range
-    // Prepare the mapping matrices
-    mapX.create(outputHeight, outputWidth, CV_32FC1);
-    mapY.create(outputHeight, outputWidth, CV_32FC1);
-    // Fill the mapping matrices
-
-    for (int y = 0; y < outputHeight; ++y) {
-        // Calculate the angle in radians for this pixel
-        float angle = -(startAngle_rad + (angleRange_rad*((float)y) / (outputHeight-1)));//flip angle for image coordinate (-y)
-
-        float cos_angle=cosf(angle);
-        float sin_angle=sinf(angle);
-        for (int x = 0; x < outputWidth; ++x) {
-            float radius = radiusRange*((float)x/(outputWidth-1)); // Current radius
-            
-            if(inner_to_left==false){
-              radius=minRadius+radius;
-            }
-            else{//reverse direction
-              radius=maxRadius-radius;
-            }
-            
-            float x_cart=center.x + radius * cos_angle;
-            float y_cart=center.y + radius * sin_angle;
-            // Map polar coordinates to Cartesian
-            mapX.at<float>(y, x) = x_cart;
-            mapY.at<float>(y, x) = y_cart;
-        }
-    }
-    
-                  
-
-}
-
-static vector<ptInfo>  getLocalMeanEdgePoints(Mat grayXSobel,CenterType centerType)
-{
+// static vector<ptInfo>  getLocalMeanEdgePoints(Mat grayXSobel,CenterType centerType)
+// {
 
 
-  vector<ptInfo> edge_points;
+//   vector<ptInfo> edge_points;
 
-  for(int y=0;y<grayXSobel.rows;y+=1)
-  {
-    int16_t *row=grayXSobel.ptr<int16_t>(y);
-
-
-    float edge_w,edge_sigma;  
-
-    float edge_loc=getCenter_LOCAL_MEAN(
-      row,
-      grayXSobel.cols,
-      centerType,
-      edge_w,edge_sigma);
+//   for(int y=0;y<grayXSobel.rows;y+=1)
+//   {
+//     int16_t *row=grayXSobel.ptr<int16_t>(y);
 
 
-    // float edge_loc=getCenter_LOCAL_FIRSTMax(
-    //   row,grayXSobel.cols,centerType,edge_w,edge_sigma);
+//     float edge_w,edge_sigma;  
 
-    if(edge_w==0 || edge_loc<2)continue;
-    // row[(int)edge_loc]=255;
-
-    // int8_t *imgrow=grayFeatureCoordImg.ptr<int8_t>(y);
-    // imgrow[(int)edge_loc*3]=255;
-    // imgrow[(int)edge_loc*3+1]=0;
-    // imgrow[(int)edge_loc*3+2]=0;
-
-    ptInfo pt;
-    pt.pt.X=edge_loc;
-    pt.pt.Y=y;
-    pt.w=edge_w/(edge_sigma+1);
-
-    edge_points.push_back(pt);
-  }
-
-  return edge_points;
-}
+//     float edge_loc=getCenter_LOCAL_MEAN(
+//       row,
+//       grayXSobel.cols,
+//       centerType,
+//       edge_w,edge_sigma);
 
 
+//     // float edge_loc=getCenter_LOCAL_FIRSTMax(
+//     //   row,grayXSobel.cols,centerType,edge_w,edge_sigma);
+
+//     if(edge_w==0 || edge_loc<2)continue;
+//     // row[(int)edge_loc]=255;
+
+//     // int8_t *imgrow=grayFeatureCoordImg.ptr<int8_t>(y);
+//     // imgrow[(int)edge_loc*3]=255;
+//     // imgrow[(int)edge_loc*3+1]=0;
+//     // imgrow[(int)edge_loc*3+2]=0;
+
+//     ptInfo pt;
+//     pt.pt.X=edge_loc;
+//     pt.pt.Y=y;
+//     pt.w=edge_w/(edge_sigma+1);
+
+//     edge_points.push_back(pt);
+//   }
+
+//   return edge_points;
+// }
 
 
 // Function to compute the mean of points
@@ -1885,7 +2275,7 @@ static void computeMeans(const std::vector<cv::Point3f>& points, double& meanX, 
     meanX = 0;
     meanY = 0;
     sumW = 0;
-
+    #pragma omp parallel for reduction(+:meanX,meanY,sumW)
     for (const auto& point : points) {
         float w=point.z;
         if(w<0)continue;
@@ -1987,7 +2377,7 @@ static cv::RotatedRect CircleFit_Hyper(const std::vector<cv::Point3f>& points, f
 
 
 
-bool InspectArcFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList,int featureIdx,vector<cv::Mat> &dbg_Images)
+bool InspectArcFitFeature(const cv::Mat &mat_img2template,float mmpp,vector<InspectionTarget_DimMeasure::itemInfo> &fqList,int featureIdx,vector<cv::Mat> &dbg_Images)
 {
   auto &info=fqList[featureIdx];
   LOGE("=========ArcFit");
@@ -2020,28 +2410,17 @@ bool InspectArcFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList,
 
 
 
-  float margin=JFetch_NUMBER_ex(def,"margin");
+  float margin=JFetch_NUMBER_ex(def,"margin")/mmpp;//in image scale
 
   float edge_surpress=JFetch_NUMBER_ex(def,"edge_surpress",10);
-  int blur_size=JFetch_NUMBER_ex(def,"blur_size",3);
-
-  blur_size=blur_size/2*2+1;
 
   bool from_outer_margin=JFetch_TRUE(def,"from_outer_margin");
+  bool is_full_circle=JFetch_TRUE(def,"is_full_circle");
 
-  EdgeType edgeType=DARK_TO_LIGHT;
-  string str_edgeType=JFetch_STRING_ex(def,"edge_type","DARK_TO_LIGHT");
-  LOGI("str_edgeType:%s",str_edgeType.c_str());
-  if(str_edgeType=="LIGHT_TO_DARK")
-    edgeType=LIGHT_TO_DARK;
-  else if(str_edgeType=="DARK_TO_LIGHT")
-    edgeType=DARK_TO_LIGHT;
-  else if(str_edgeType=="BOTH")
-    edgeType=BOTH;
   // CenterType centerType=JFetch_STRING_ex(def,"center_type","local_avg");  
 
   LOGI("=========execute_inspection");
-  cv::Mat img2spoint_view=template_from_img(pose);
+  cv::Mat img2spoint_view=mat_img2template;
   cv::Mat img2spoint_view_inv=img2spoint_view.inv();
   img2spoint_view_inv=cvM3x3::mat33to23(img2spoint_view_inv);
   img2spoint_view=cvM3x3::mat33to23(img2spoint_view);
@@ -2061,53 +2440,38 @@ bool InspectArcFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList,
 
 
 
-
   cv::Point2f center;
   float radius;
   float startAngle, endAngle;
   InspTarUtil::findCircleFrom3PointsWithArc(pt1,pt2,pt3,center,radius,startAngle,endAngle);
+  if(is_full_circle)
+  {
+    endAngle=startAngle+M_PI*2;
+  }
   std::cout<<"center:"<<center.x<<","<<center.y<<",R"<<radius<<",ang:"<<startAngle* 180.0f / CV_PI<<","<<endAngle* 180.0f / CV_PI<<std::endl;
+  std::cout<<"*margin:"<<margin<<" mmpp:"<<mmpp<<std::endl;
+
+  // {//check if the circle is in the image
+  //   if(center.x-radius-margin<0 || center.x+radius+margin>srcImg.cols ||
+  //      center.y-radius-margin<0 || center.y+radius+margin>srcImg.rows)
+  //   {
+  //     LOGE("circle is out of image");
+  //     return false;
+  //   }
+  // }
+
 
   cv::Mat mapX,mapY;
-  genWarpPolarXYMap(center,radius-margin,radius+margin  ,startAngle,endAngle,mapX,mapY,1,1,from_outer_margin);
+  genWarpPolarXYMap(center,radius-margin,radius+margin  ,startAngle,endAngle,mapX,mapY,1,1,from_outer_margin,mmpp);
 
   std::cout<<"mapX:"<<mapX.size()<<std::endl;
   std::cout<<"mapY:"<<mapY.size()<<std::endl;
   cv::Mat polarSegment;
   cv::remap(srcImg  , polarSegment, mapX, mapY, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
 
-  Mat polarSegment_gray;
-  cv::cvtColor(polarSegment, polarSegment_gray, cv::COLOR_BGR2GRAY);
-  
-  Mat polarSegment_YBlur;
-  cv::blur(polarSegment_gray, polarSegment_YBlur, cv::Size(1, blur_size));
 
-  Mat XSobel;
-  cv::Sobel(polarSegment_YBlur, XSobel, CV_16S, 1, 0); // 1 for x-derivative to detect vertical edges
-
-  float alpha1=JFetch_NUMBER_ex(def,"alpha1",0);
-  float alpha2=JFetch_NUMBER_ex(def,"alpha2",0);
-
-  Mat edgeValueTraceMat;
-  if(alpha1>0||alpha2>0)
-  {
-    sobelProcess(XSobel,0,edgeType);
-    edgeValueTraceMat=edgeValueTrace(XSobel,alpha1,alpha2);
-    //convert to 16S
-    edgeValueTraceMat.convertTo(XSobel,CV_16S);
-    sobelProcess(XSobel,edge_surpress,DARK_TO_LIGHT);//the edge value is already flipped, so just use DARK_TO_LIGHT
-
-  }
-  else
-  {
-    sobelProcess(XSobel,edge_surpress,edgeType);
-  }
-  
-
-
-  // cv::imwrite("data/"+name+"_polarSegment_gray.png", polarSegment_gray);
-  vector<ptInfo> edgeLoc=getLocalMeanEdgePoints(XSobel,LOCAL_AVG);
-
+  vector<cv::Mat> _dbg_Images;
+  vector<Point3f> edgeLoc=EdgeLocExtraction(name,polarSegment,def,_dbg_Images);
 
 
   // cv::imwrite("data/"+name+"_edgeValueTraceMat.png", edgeValueTraceMat);
@@ -2130,76 +2494,11 @@ bool InspectArcFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList,
 
 
 
-
-    {//edge filtering
-
-      int coeffOrder=3;
-      vector<float> resCoeff(coeffOrder+1,0);
-      int dataJumpSize=sizeof(edgeLoc[0]);
-
-
-      float diviate_threshold=5;
-      int iterration_count=5;
-      for(int iter=0;iter<iterration_count;iter++)
-      {
-
-        int result = polyfit_opencv(&(edgeLoc[0].pt.Y),
-                            &(edgeLoc[0].pt.X),
-                            &(edgeLoc[0].w),
-                            edgeLoc.size(),
-                            coeffOrder,
-                            resCoeff.data(),
-                            dataJumpSize,
-                            dataJumpSize,
-                            dataJumpSize
-                            );
-        
-        LOGE("result:%d",result);
-        for(int i=0;i<coeffOrder+1;i++)
-        {
-          LOGE("resCoeff[%d]:%f",i,resCoeff[i]);
-        }
-        for(int i=0;i<edgeLoc.size();i++)
-        {
-          float output=polycalc_opencv(edgeLoc[i].pt.Y,resCoeff.data(),coeffOrder);
-
-          float diviate=abs(output-edgeLoc[i].pt.X);
-          if(diviate<diviate_threshold)
-          {
-            if(edgeLoc[i].w<0)
-              edgeLoc[i].w*=-1;//consider this point for next iteration
-            // if(iter==iterration_count-1)
-            //   edgeLoc[i].pt.X=output;
-          }
-          else
-          {
-            if(edgeLoc[i].w>0)
-              edgeLoc[i].w*=-1;//ignore this point
-          }
-        }
-
-
-        diviate_threshold*0.8;
-
-        // for(int i=0;i<edgeLoc.size();i++)
-        // {
-        //   float output=polycalc_opencv(edgeLoc[i].pt.Y,resCoeff.data(),coeffOrder);
-        //   LOGE("Y:%f => X:%f output:%f",edgeLoc[i].pt.Y,edgeLoc[i].pt.X,output);
-
-        //   edgeLoc[i].pt.X=output;
-        // }
-
-      }
-
-
-    }
-
-
     {//convert edgeLoc(polar coordinate) to pix_edge_points(XY image coordinate)
 
       int edge_len=edgeLoc.size();
       for(int i=0;i<edge_len;i++){
-        float w=edgeLoc[i].w;
+        float w=edgeLoc[i].z;
         if(w<=0)
         {
           // LOGE("surpress edgeLoc[%d]:%f,%f",i,edgeLoc[i].x,edgeLoc[i].y);
@@ -2208,8 +2507,8 @@ bool InspectArcFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList,
           // continue;
           w=0;
         }
-        float x=edgeLoc[i].pt.X;
-        int y=edgeLoc[i].pt.Y;
+        float x=edgeLoc[i].x;
+        int y=edgeLoc[i].y;
         //find mapX,mapY
         int floor_x=floor(x);
         int ceil_x=ceil(x);
@@ -2227,7 +2526,7 @@ bool InspectArcFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList,
 
 
         edge_point.z=w;
-        LOGE("edgeLoc[%d]:%f,%d  => %f,%f,w:%f",i,x,y,edge_point.x,edge_point.y,w);
+        // LOGE("edgeLoc[%d]:%f,%d  => %f,%f,w:%f",i,x,y,edge_point.x,edge_point.y,w);
 
         pix_edge_points.push_back(edge_point);
 
@@ -2241,14 +2540,15 @@ bool InspectArcFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList,
     LOGE("=========CircleFit_Hyper");
     float sigma=NAN;
     cv::RotatedRect res= CircleFit_Hyper(pix_edge_points,&sigma);
-
-    vector<cv::Point2f> center_on_img={res.center};
+    Point2f ptOnRight=res.center+Point2f{res.size.width/2,0};
+    vector<cv::Point2f> center_on_img={res.center,ptOnRight};
     vector<cv::Point2f> center_on_template;
     cv::transform(center_on_img, center_on_template, img2spoint_view); 
     
     info.result.report.circle.c.x=center_on_template[0].x;
     info.result.report.circle.c.y=center_on_template[0].y;
-    info.result.report.circle.r=res.size.width/2;
+    // info.result.report.circle.r=res.size.width/2;//it's the radius on the image
+    info.result.report.circle.r=norm(center_on_template[1]-center_on_template[0]);//it's the radius on the template
     // info.result.report.circle.sigma=sigma;
     info.result.error_code=0;
     info.result.error_msg="";
@@ -2258,12 +2558,14 @@ bool InspectArcFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList,
 
 
   }
+  
   //attach dbg_info
   if(info.result.dbg_info!=NULL)
   {
 
-    dbg_Images.push_back(XSobel);
-    dbg_Images.push_back(edgeValueTraceMat);
+    // dbg_Images.push_back(XSobel);
+    // dbg_Images.push_back(edgeValueTraceMat);
+    dbg_Images=_dbg_Images;
     LOGE("=========attach dbg_info");
 
     if(pix_edge_points.size()>0)
@@ -2280,7 +2582,7 @@ bool InspectArcFitFeature(vector<InspectionTarget_DimMeasure::itemInfo> &fqList,
       cv::transform(pts_on_line_coord, pts_on_template_coord, img2spoint_view); 
 
       cJSON* jpts=cJSON_CreateArray();
-      cJSON_AddItemToObject(info.result.dbg_info,"pix_edge_points",jpts);
+      cJSON_AddItemToObject(info.result.dbg_info,"edge_points",jpts);
       for(int i=0;i<pts_on_template_coord.size();i++)
       {
         cJSON* jpt=cJSON_CreateObject();
@@ -2686,10 +2988,15 @@ bool InspectMeasureDiameterFeature(vector<InspectionTarget_DimMeasure::itemInfo>
   return true;
 }
 
-bool InspectionTarget_DimMeasure::executeFeature(vector<itemInfo> &fqList,int featureIdx)
+bool InspectionTarget_DimMeasure::executeFeature(const cv::Mat &mat_img2template,float mmpp,vector<itemInfo> &fqList,int featureIdx)
 {
 
 LOGE("wwwwwwfeatureIdx:%d,fqList.size:%d",featureIdx,fqList.size());
+  if(featureIdx<0 || featureIdx>=fqList.size())
+  {
+    LOGE("featureIdx out of range,featureIdx:%d,fqList.size:%d",featureIdx,fqList.size());
+    return false;
+  }
   if(fqList[featureIdx].processed)
     return true;
 
@@ -2702,7 +3009,7 @@ LOGE("wwwwwwfeatureIdx:%d,fqList.size:%d",featureIdx,fqList.size());
     {
       if(fqList[refIdIdx[i].idx].processed==false)
       {
-        executeFeature(fqList,refIdIdx[i].idx);
+        executeFeature(mat_img2template,mmpp,fqList,refIdIdx[i].idx);
 
       }
     }
@@ -2716,44 +3023,60 @@ LOGE("wwwwwwfeatureIdx:%d,fqList.size:%d",featureIdx,fqList.size());
   info.result.error_msg="Not implemented";
 
 
+  //timer start
+  auto t0=cv::getTickCount();
 
+  bool processed=false;
+  bool procRet=false;
   if(type=="LineFit")
   {
     LOGE("=========LineFit");
-    return InspectLineFitFeature(fqList,featureIdx,dbg_Images);
+    procRet=InspectLineFitFeature(mat_img2template,mmpp,fqList,featureIdx,dbg_Images);
+    processed=true;
   }
   else if(type=="SearchPoint")
   {
     LOGE("=========SearchPoint");
-
-    return InspectSearchPointFeature(fqList,featureIdx,dbg_Images);
+    procRet=InspectSearchPointFeature(mat_img2template,mmpp,fqList,featureIdx,dbg_Images);
+    processed=true;
   }
   else if(type=="ArcFit")
   {
     LOGE("=========ArcFit");
-    return InspectArcFitFeature(fqList,featureIdx,dbg_Images);
+    procRet=InspectArcFitFeature(mat_img2template,mmpp,fqList,featureIdx,dbg_Images);
+    processed=true;
   }
   else if(type=="Measure_Distance")
   {
     LOGE("=========Measure_Distance");
-    return InspectMeasureDistanceFeature(fqList,featureIdx,dbg_Images);
+    procRet=InspectMeasureDistanceFeature(fqList,featureIdx,dbg_Images);
+    processed=true;
   }
   else if(type=="Measure_Angle")
   {
     LOGE("=========Measure_Distance");
-    return InspectMeasureAngleFeature(fqList,featureIdx,dbg_Images);
+    procRet=InspectMeasureAngleFeature(fqList,featureIdx,dbg_Images);
+    processed=true;
   }
   else if(type=="Measure_Diameter")
   {
     LOGE("=========Measure_Diameter");
-    return InspectMeasureDiameterFeature(fqList,featureIdx,dbg_Images);
+    procRet=InspectMeasureDiameterFeature(fqList,featureIdx,dbg_Images);
+    processed=true;
   }
   else if(type=="Calc")
   {
     LOGE("=========Calc");
   }
-  
 
+  //timer end
+  auto t1=cv::getTickCount();
+  // LOGE("TIME!! featureIdx:%d,type:%s,time:%f ms",featureIdx,type.c_str(),(t1-t0)*1000/cv::getTickFrequency()); 
+
+  if(processed==true)
+  {
+    return procRet;
+  }
   info.result.error_code=-9991;
   info.result.error_msg=std::string("Unknown feature type:")+type;
   //execute feature
@@ -2857,19 +3180,46 @@ bool InspectionTarget_DimMeasure::executeCategory(const vector<itemInfo> &fqList
   return true;
 }
 
-shared_ptr<StageInfo_DimMeasure> InspectionTarget_DimMeasure::singleProcess(shared_ptr<StageInfo> sinfo)
+shared_ptr<StageInfo_DimMeasure> InspectionTarget_DimMeasure::singleProcess(shared_ptr<StageInfo> sinfo,bool skipCache)
 {
   // try to convert sinfo to StageInfo_Image
-  shared_ptr<StageInfo_Orientation> sinfo_img = std::static_pointer_cast<StageInfo_Orientation>(sinfo);
+  shared_ptr<StageInfo_Orientation> sinfo_img = std::dynamic_pointer_cast<StageInfo_Orientation>(sinfo);
   if (sinfo_img == NULL)
   {
     LOGE("sinfo is not a StageInfo_Image");
     return shared_ptr<StageInfo_DimMeasure>();
   }
-  cache_latest_input = sinfo_img;
-  cv::Mat srcImg = sinfo_img->img;
 
-  auto orientation = sinfo_img->orientation;
+
+  // {//test dycast speed
+  //   int runtimes=1000000;
+  //   int64 t0;
+  //   t0 = cv::getTickCount();
+  //   for(int i=0;i<runtimes;i++)
+  //   {
+  //     std::dynamic_pointer_cast<StageInfo_Orientation>(sinfo);
+  //   }
+  //   LOGE("dycast speed: %f us", (cv::getTickCount() - t0)*1000000 / cv::getTickFrequency()/runtimes);
+
+
+  //   t0 = cv::getTickCount();
+  //   for(int i=0;i<runtimes;i++)
+  //   {
+  //     std::static_pointer_cast<StageInfo_Orientation>(sinfo);
+  //   }
+  //   LOGE("stcast speed: %f us", (cv::getTickCount() - t0)*1000000 / cv::getTickFrequency()/runtimes);
+
+
+
+
+  // }
+
+
+  if(skipCache==false)
+  {
+    cache_latest_input = sinfo_img;
+  }
+  cv::Mat srcImg = sinfo_img->img;
 
   auto t0 = cv::getTickCount();
 
@@ -2881,20 +3231,25 @@ shared_ptr<StageInfo_DimMeasure> InspectionTarget_DimMeasure::singleProcess(shar
 
   reportInfo->source = this;
   
-  float template_angle=JFetch_NUMBER_ex(def,"featureInfo.template_angle",0);
+  float mmpp=sinfo_img->mmpp;
+  float template_angle=0;//JFetch_NUMBER_ex(def,"featureInfo.template_angle",0);
 
-LOGE("wwwwww");
-  for (int i = 0; i < orientation.size(); i++)
+  LOGE("wwwwww");
+  // LOGE("sinfo_img use_count: %ld  p:%p from:%s", sinfo_img.use_count(),sinfo.get(),sinfo_img->source->name.c_str());
+  LOGE("Orientation vector size: %zu  empty: %d", sinfo_img->orientation.size(),sinfo_img->orientation.empty());
+  for (int i = 0; i < sinfo_img->orientation.size(); i++)
   {
     // std::cout<<"orientation["<<i<<"]:"<<orientation[i]<<std::endl;
 
-    auto pose = orientation[i];
+    auto pose = sinfo_img->orientation[i];
 
     
 
     reportInfo->orientation.push_back(pose);
+    pose.angle-=template_angle;
 
-
+    LOGE("mmpp:%f",sinfo_img->mmpp);
+    Mat mat_img2template=template_from_img(pose,sinfo_img->mmpp);
 
 // LOGE("wwwwww");
 //     cv::Mat rotationMatrix = cv::getRotationMatrix2D(pose.center, pose.angle-template_angle, 1.0);
@@ -2907,7 +3262,7 @@ LOGE("wwwwww");
 
 // std::cout<<rotationMatrix<<std::endl;
 
-LOGE("wwwwww");
+    LOGE("wwwwww");
     // cJSON* jrep=cJSON_CreateArray();
     //reset featureQuickList processed flag
     for (int j = 0; j < featureQuickList.size(); j++)
@@ -2924,11 +3279,11 @@ LOGE("wwwwww");
         featureQuickList[j].result.dbg_info=cJSON_Duplicate(dbg_feature_info,cJSON_True);
       }
     }
-LOGE("wwwwww  featureQuickList.size():%d",featureQuickList.size());
+    LOGE("wwwwww  featureQuickList.size():%d",featureQuickList.size());
     vector<StageInfo_DimMeasure::MeasureResultInfo> MeasureReport;
     for (int j = 0; j < featureQuickList.size(); j++)
     {
-      executeFeature(featureQuickList,j);
+      executeFeature(mat_img2template,mmpp,featureQuickList,j);
       
 
       MeasureReport.push_back(featureQuickList[j].result);
@@ -2939,8 +3294,8 @@ LOGE("wwwwww  featureQuickList.size():%d",featureQuickList.size());
 
 
 
- vector<StageInfo_DimMeasure::CategoryResultInfo> CategoryReport;
-LOGE("wwwwww  report.size():%d",MeasureReport.size());
+    vector<StageInfo_DimMeasure::CategoryResultInfo> CategoryReport;
+    LOGE("wwwwww  report.size():%d",MeasureReport.size());
 
 
     for (int j = 0; j < categoryQuickList.size(); j++)
@@ -2973,7 +3328,7 @@ LOGE("wwwwww  report.size():%d",MeasureReport.size());
   }
 
 
-
+  reportInfo->mmpp=sinfo_img->mmpp;
   reportInfo->img = sinfo_img->img;
   reportInfo->img_show = sinfo_img->img_show;
 

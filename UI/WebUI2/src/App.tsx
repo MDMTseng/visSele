@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio, InputNumber, Switch,Select,TreeSelect } from 'antd';
 import type { TreeSelectProps } from 'antd';
 
-
+import {CameraSetupEditUI} from './CameraSetupEditUI';
 
 import { DraggableModal, DraggableModalProvider } from 'ant-design-draggable-modal'
 import 'ant-design-draggable-modal/dist/index.css'
@@ -25,7 +25,7 @@ import 'reactflow/dist/style.css';
 import { ResponsiveReactGridLayoutX } from './UICardComp';
 import type { MenuProps, MenuTheme } from 'antd/es/menu';
 import { UserOutlined, LaptopOutlined, NotificationOutlined,DownOutlined,
-  DisconnectOutlined,LinkOutlined,CopyOutlined,LoadingOutlined,ReloadOutlined } from '@ant-design/icons';
+  DisconnectOutlined,LinkOutlined,CopyOutlined,LoadingOutlined,ReloadOutlined,BorderOuterOutlined,FullscreenOutlined,FullscreenExitOutlined  } from '@ant-design/icons';
 import clone from 'clone';
 
 import {StoreTypes} from './redux/store';
@@ -50,9 +50,11 @@ import { type_CameraInfo,type_IMCM} from './AppTypes';
 import './basic.css';
 
 
-import {CompParam_UIOption,InspTargetUI_MUX,ObjTree } from './InspTarView';
+import {InspTargetUI_MUX ,InspTargetTypes} from './InspTarView';
 
+import {UtilUI_MUX,UtilUI_TYPES} from './UtilUIView';
 
+import {ObjTree,IMCM_type,EDIT_PERMIT_FLAG} from './SingleTargetVIEWUI_UTIL';
 
 
 import { info } from 'console';
@@ -61,10 +63,6 @@ import { type } from '@testing-library/user-event/dist/type';
 const { Option } = Select;
 const { SubMenu } = Menu;
   
-enum EDIT_PERMIT_FLAG {
-  OPONLY=0,
-  XXFLAGXX=1<<0
-}
 
 export type CompParam_GlobalVariable = {
   global_variable: any,
@@ -81,81 +79,10 @@ export const ITGlobalVariableContext = createContext<CompParam_GlobalVariable>({
 
 
 
-type IMCM_type=
-{
-  camera_id:string,
-  trigger_id:number,
-  trigger_tag:string,
-  image_info:{
-    full_height: number
-    full_width: number
-    height: number
-    image: ImageData
-    offsetX: number
-    offsetY: number
-    scale: number
-    width: number
-  }
-}
-
-
 let WidgetWSegs=60;
 let WidgetHSegs=40;
 // let WidgetSegHeight=20;
 
-
-function PtsToXYWH( pt1:VEC2D, pt2:VEC2D)
-{
-  let x,y,w,h;
-
-  x=pt1.x;
-  w=pt2.x-pt1.x;
-
-  y=pt1.y;
-  h=pt2.y-pt1.y;
-
-
-  if(w<0){
-    x+=w;
-    w=-w;
-  }
-  
-  if(h<0){
-    y+=h;
-    h=-h;
-  }
-  return {
-    x,y,w,h
-  }
-}
-
-function drawRegion(g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent,region:{x:number,y:number,w:number,h:number},lineWidth:number,drawCenterPoint:boolean=true)
-{
-  let ctx = g.ctx;
-  // ctx.lineWidth = 5;
-
-  let x = region.x;
-  let y = region.y;
-  let w = region.w;
-  let h = region.h;
-  ctx.beginPath();
-  ctx.setLineDash([lineWidth*10,lineWidth*3,lineWidth*3,lineWidth*3]);
-  // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-  ctx.lineWidth = lineWidth;
-  ctx.rect(x,y,w,h);
-  ctx.stroke();
-  ctx.closePath();
-
-  if(drawCenterPoint)
-  {
-    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-    ctx.lineWidth = lineWidth*2/3;
-    canvas_obj.rUtil.drawCross(ctx, {x:x+w/2,y:y+h/2}, lineWidth*2/3);
-  }
-
-
-
-}
 
 
 type IMCM_group={[trigID:string]:IMCM_type}
@@ -176,7 +103,6 @@ const _DEF_FOLDER_PATH_="data/Pack_xprj";
 
 // import 'jsoneditor-react/es/editor.min.css';
 
-let INSPTAR_BASE_STREAM_ID = 51000
 
 const { TabPane } = Tabs;
 const { Header, Content, Footer,Sider } = Layout;
@@ -192,264 +118,6 @@ const { Header, Content, Footer,Sider } = Layout;
 //   rule:any,
 //   report:any,
 //   onDefChange:(updatedRule:any,doInspUpdate:boolean)=>void}
-
-
-function CameraSetupEditUI({camSetupInfo,CoreAPI,onCameraSetupUpdate}:{ camSetupInfo:type_CameraInfo, CoreAPI:BPG_WS,onCameraSetupUpdate:(caminfo:type_CameraInfo|undefined)=>void}){
-
-  const _this = useRef<{canvasComp:DrawHook_CanvasComponent|undefined,imgCanvas:HTMLCanvasElement
-  }>({
-    canvasComp:undefined,
-    imgCanvas:document.createElement('canvas') as HTMLCanvasElement
-  }).current;
-
-  const _this2 = useRef<any>({}).current;
-
-
-  const [Local_IMCM,setLocal_IMCM]=
-    useState<type_IMCM|undefined>(undefined);
-  
-  useEffect(()=>{//load default
-
-    (async ()=>{
-      let api =CoreAPI
-      // await api.InspTargetExchange(camSetupInfo.id,{
-      //   id:"",
-      //   data:{
-          
-
-      //   }
-      // });
-
-      await api.CameraSetChannelID([camSetupInfo.id],51009,{
-        resolve:(pkts)=>{
-          // console.log(pkts);
-          let IM=pkts.find((p:any)=>p.type=="IM");
-          if(IM===undefined)return;
-          let CM=pkts.find((p:any)=>p.type=="CM");
-          if(CM===undefined)return;
-          // console.log("++++++++\n",IM,CM);
-          let IMCM={
-            image_info:IM.image_info,
-            camera_id:CM.data.camera_id,
-            trigger_id:CM.data.trigger_id,
-            trigger_tag:CM.data.trigger_tag,
-          } as type_IMCM
-
-          _this.imgCanvas.width = IMCM.image_info.width;
-          _this.imgCanvas.height = IMCM.image_info.height;
-
-          let ctx2nd = _this.imgCanvas.getContext('2d');
-          if(ctx2nd)
-          {
-            if(IMCM.image_info.image instanceof ImageData)
-              ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
-            else if(IMCM.image_info.image instanceof HTMLImageElement)
-              ctx2nd.drawImage(IMCM.image_info.image, 0, 0);
-          }
-
-
-          setLocal_IMCM(IMCM)
-          // console.log(IMCM)
-
-        },
-        reject:(pkts)=>{
-
-        }
-      })
-
-
-      await api.CameraTriggerInfoMocking(camSetupInfo.id);
-
-
-      // await api.CameraSetup(camSetupInfo,0);
-      onCameraSetupUpdate(camSetupInfo);
-    })()
-
-    return ()=>{
-      (async ()=>{
-        let api =CoreAPI
-        await api.CameraSetChannelID([camSetupInfo.id],0,{
-          resolve:()=>0,
-          reject:()=>0
-        });
-
-
-        await api.CameraTriggerInfoMocking(camSetupInfo.id,"",true);
-
-      })()
-    }
-  },[])
-
-
-
-
-
-
-  return <> 
-    別名:<Input value={camSetupInfo.side_name} onChange={(side_name)=>{
-      onCameraSetupUpdate({...camSetupInfo,side_name:side_name.target.value})
-    }}/>
-    <br/>
-    
-    trigger_on:
-    <Switch checkedChildren="O" unCheckedChildren="X" checked={camSetupInfo.trigger_mode==1} onChange={(check)=>{
-      onCameraSetupUpdate({...camSetupInfo,trigger_mode:check?1:0})
-    }}/>
-    <br/>
-    exposure:<InputNumber value={camSetupInfo.exposure} onChange={(num)=>{
-      onCameraSetupUpdate({...camSetupInfo,exposure:num})
-    }}/>
-    <br/>
-    analog_gain:<InputNumber value={camSetupInfo.analog_gain} onChange={(num)=>{
-      onCameraSetupUpdate({...camSetupInfo,analog_gain:num})
-    }}/>
-    <br/>
-    frame_rate:<InputNumber value={camSetupInfo.frame_rate} onChange={(num)=>{
-      onCameraSetupUpdate({...camSetupInfo,frame_rate:num})
-    }}/>
-    <br/>
-    RGain:<InputNumber value={camSetupInfo.RGain} onChange={(num)=>{
-      onCameraSetupUpdate({...camSetupInfo,RGain:num})
-    }}/>
-    GGain:<InputNumber value={camSetupInfo.GGain} onChange={(num)=>{
-      onCameraSetupUpdate({...camSetupInfo,GGain:num})
-    }}/>
-    BGain:<InputNumber value={camSetupInfo.BGain} onChange={(num)=>{
-      onCameraSetupUpdate({...camSetupInfo,BGain:num})
-    }}/>
-    <br/>
-    gamma:<InputNumber value={camSetupInfo.gamma} onChange={(num)=>{
-      onCameraSetupUpdate({...camSetupInfo,gamma:num})
-    }}/>
-    <br/> 
-    black_level:<InputNumber value={camSetupInfo.black_level} onChange={(num)=>{
-      onCameraSetupUpdate({...camSetupInfo,black_level:num})
-    }}/>
-    <br/>
-    pixel_size(mm):<InputNumber value={camSetupInfo.pixel_size} onChange={(num)=>{
-      onCameraSetupUpdate({...camSetupInfo,pixel_size:num})
-    }}/>
-    <br/>
-    <Switch checkedChildren="反X" unCheckedChildren="正X" checked={camSetupInfo.mirrorX} onChange={(check)=>{
-      onCameraSetupUpdate({...camSetupInfo,mirrorX:check})
-    }}/>
-    <Switch checkedChildren="反Y" unCheckedChildren="正Y" checked={camSetupInfo.mirrorY} onChange={(check)=>{
-      onCameraSetupUpdate({...camSetupInfo,mirrorY:check})
-    }}/>
-    <Button key={">ROI>>"} onClick={()=>{
-      
-      if(_this.canvasComp==undefined)return;
-      
-      onCameraSetupUpdate({...camSetupInfo,ROI:{x:0,y:0,w:999999,h:999999}});
-      _this.canvasComp.UserRegionSelect((info,state)=>{
-        if(state==2)
-        {
-          console.log(info);
-          
-          let x,y,w,h;
-          
-          let roi_region=PtsToXYWH(info.pt1,info.pt2);
-          console.log(roi_region)
-          // onDefChange(newRule)
-          onCameraSetupUpdate({...camSetupInfo,ROI:roi_region})
-          if(_this.canvasComp==undefined)return;
-          _this.canvasComp.UserRegionSelect(undefined)
-        }
-      })
-    }}>ROI</Button>
-    <br/>
-    <HookCanvasComponent style={{height:"300px"}} dhook={(ctrl_or_draw:boolean,g:type_DrawHook_g,canvas_obj:DrawHook_CanvasComponent)=>{
-      _this.canvasComp=canvas_obj;
-      if(ctrl_or_draw==true)//ctrl
-      {
-        
-
-
-        const imageData = g.ctx.getImageData(g.mouseStatus.x-2, g.mouseStatus.y-2, 1, 1);
-        _this2.fetchedPixInfo = imageData;
-
-      }
-      else//draw
-      {
-        if(Local_IMCM!==undefined)
-        {
-          // g.ctx.save();
-          // let scale=Local_IMCM.image_info.scale;
-          // g.ctx.translate(-Local_IMCM.image_info.full_width/2,-Local_IMCM.image_info.full_height/2);
-          // g.ctx.scale(scale,scale);
-          // g.ctx.translate(-0.5, -0.5);
-          
-          // g.ctx.drawImage(_this.imgCanvas, 0, 0);
-          // g.ctx.restore();
-
-          
-          g.ctx.save();
-          let scale=Local_IMCM.image_info.scale;
-          g.ctx.scale(scale,scale);
-          g.ctx.translate(-0.5, -0.5);
-          g.ctx.drawImage(_this.imgCanvas, 0, 0);
-          g.ctx.restore();
-        }
-        // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
-       
-        if (_this2.fetchedPixInfo !== undefined) {
-            g.ctx.save();
-            g.ctx.resetTransform();
-            // console.log(_this.fetchedPixInfo)
-            let pixInfo = _this2.fetchedPixInfo.data;
-            g.ctx.font = "1.5em Arial";
-            g.ctx.fillStyle = "rgba(250,100, 50,1)";
-
-            // g.ctx.fillText(rgb2hsv(pixInfo[0], pixInfo[1], pixInfo[2]).map(num => num.toFixed(1)).toString(), g.mouseStatus.x, g.mouseStatus.y)
-
-            g.ctx.fillText((pixInfo as number[]).map(num => num.toFixed(1)).toString(), g.mouseStatus.x, g.mouseStatus.y)
-            g.ctx.restore();
-        }
-
-
-        // console.log(canvas_obj);
-        
-
-        if(canvas_obj.regionSelect!==undefined && (canvas_obj.regionSelect.pt1!==undefined && canvas_obj.regionSelect.pt2!==undefined))
-        {
-
-          let ctx = g.ctx;
-          ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-          
-          {
-            let sel_region=PtsToXYWH(canvas_obj.regionSelect.pt1,canvas_obj.regionSelect.pt2);
-            drawRegion(g,canvas_obj,sel_region,canvas_obj.rUtil.getIndicationLineSize());
-          }
-
-      
-        }
-        let ctx = g.ctx;
-        
-      }
-    }
-    }/>
-
-
-    <pre>{
-      JSON.stringify(camSetupInfo,null,2)
-    }</pre>
-    
-    <Popconfirm
-      title="確定刪除?"
-      onConfirm={()=>{
-
-        onCameraSetupUpdate(undefined);
-      }}
-      onCancel={()=>{
-      }}
-      okText="Yes"
-      cancelText="No"
-    >
-      <Button danger type='primary'>X</Button>
-    </Popconfirm>
-  </>
-}
-
 
 
 
@@ -472,6 +140,10 @@ function UICard_Config({inspTarList,config,onConfChange}:{inspTarList:any[],conf
 
   let SubSelUI:any=null;
 
+  function randomUUID(len:number=10)
+  {
+    return "U_"+Math.random().toString(36).substring(2, 2+len);
+  }
   switch(_config.type)
   {
     case "InspTar":
@@ -522,6 +194,44 @@ function UICard_Config({inspTarList,config,onConfChange}:{inspTarList:any[],conf
     case "Util":
       
     SubSelUI=<><br/>
+    
+    
+    ddss:
+    <Dropdown
+    trigger={["click"]}
+    overlay={<>
+      <Menu>
+        {
+          UtilUI_TYPES.map(U_Typoe=><Menu.Item key={U_Typoe} 
+            onClick={()=>{
+
+
+              let card_id=_config.id;
+              if(card_id=="" || card_id.startsWith("$"))
+              {
+                card_id="$U_"+Date.now()+"_"+U_Typoe;
+              }
+              onConfChange(setCompleteFlag({..._config,itid:card_id,ittype:U_Typoe,id:card_id}))
+
+        
+            }}>
+              {U_Typoe}
+            </Menu.Item>)
+        }
+        </Menu>
+      </>}
+    >
+      
+      <a onClick={(e) => e.preventDefault()}>
+        <Space>
+          {_config.type}
+          <DownOutlined />
+        </Space>
+      </a>
+
+
+    </Dropdown>
+    
     
     
     
@@ -591,71 +301,8 @@ function UICard_Config({inspTarList,config,onConfChange}:{inspTarList:any[],conf
 
 
 
-function UtilUI_MUX({UIOption,onUIOptionUpdate}:CompParam_UIOption)
 
-
-// CompParam_UIOption
-{
-  switch(UIOption.subtype)
-  {
-    case "ASS":
-      break;
-    case "uInsp_Ctrl_Panel":
-
-
-
-
-
-
-
-
-    
-      break;
-    default:
-
-
-      return  <>
-      
-        <Dropdown
-          trigger={["click"]}
-          overlay={<>
-            <Menu>
-              {
-                ["ASS","uInsp_Ctrl_Panel"].map(uitype=><Menu.Item key={uitype} 
-                  onClick={()=>{
-                    onUIOptionUpdate({...UIOption,subtype:uitype})
-                  }}>
-                    {uitype}
-                  </Menu.Item>)
-
-              }
-            </Menu>
-          </>}
-        >
-      
-        <a onClick={(e) => e.preventDefault()}>
-          <Space>
-            ...
-            <DownOutlined />
-          </Space>
-        </a>
-
-
-        </Dropdown>
-
-      
-      
-      
-      </>;
-  }
-
-  return  <>UTIL..ddd..:{UIOption.subtype}</>;
-}
-
-
-
-
-function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDefChange,defDoReload,onDefDelete,renderHook}:{WidgetSetID:string,defConfig:any,UIEditFlag:boolean,EditPermitFlag:number, 
+function TargetViewUIShow({globalVariable,WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDefChange,defDoReload,onDefDelete,renderHook}:{globalVariable:any,WidgetSetID:string,defConfig:any,UIEditFlag:boolean,EditPermitFlag:number, 
   onDefChange:(updatedDef:any,updateIdx:number)=>void,
   defDoReload:(it_id:string)=>void
   onDefDelete:(it_id:string)=>void,
@@ -733,6 +380,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
 
   function updateWidgetLayout(newWidgetInfo :any,new_WidgetLayout:any)
   {
+    console.log("updateWidgetLayout",newWidgetInfo,new_WidgetLayout);
     let newDefConfig=defConfig;
     if(newDefConfig.main.UIInfo===undefined)
     {
@@ -745,7 +393,10 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
       newDefConfig=ObjShellingAssign(newDefConfig,["main","UIInfo",WidgetTabKey,"WidgetLayout"],new_WidgetLayout)
     // console.log(newDefConfig);
     if(newWidgetInfo!==undefined || new_WidgetLayout!==undefined)
+    {
+      console.log("updateWidgetLayout",newWidgetInfo,new_WidgetLayout);
       onDefChange(newDefConfig,-12)
+    }
   }
 
   // WidgetLayout=InspTarList.map((itar:any)=>{
@@ -776,7 +427,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
 
 
 
-  let layoutSrcEle=WidgetLayout.map((layoutInfo:any)=>{
+  let layoutSrcEle=WidgetLayout.map((layoutInfo:any)=>{//make sure the order of WidgetLayout and WidgetInfo is same
     let tatId=layoutInfo.i;
 
     //  let eleInfo = InspTarList.find((it:any)=>it.id==tatId);
@@ -789,7 +440,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
 
     if(eleInfo)
     {
-      if(eleInfo.type=="InspTar" && eleInfo.itid!==undefined)
+      if(eleInfo.type=="InspTar" && eleInfo.itid!==undefined)//if it's inspTar, attach it's def
       {
         let itDef = InspTarList.find((it:any)=>it.id==eleInfo.itid);
         eleInfo={...eleInfo,inspTarDef:itDef}
@@ -855,27 +506,48 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
       {WidgetLayout.map((uilayoutInfo:any,idx:number)=>{
         // console.log(uilayoutInfo);
         // if(layoutSrcEle[idx]===undefined)return null;
+
         let UI:JSX.Element=<></>
         let UIEditUI:JSX.Element=<></>
-        switch(uilayoutInfo.type)
+
+
+        let type=layoutSrcEle[idx]?.type??uilayoutInfo.type;//use layoutSrcEle to fetch type first, if not found, use WidgetInfo to fetch type(usually for temporary UI ie.ADD_NEW_ELE....)
+        switch(type)
         {
           case "InspTar":
           {
+
+
+
+            console.log(">>>>>layoutSrcEle>>>>>>",defConfig,layoutSrcEle);
             if(layoutSrcEle[idx].inspTarDef===undefined)
             {
               console.log(layoutSrcEle[idx],uilayoutInfo);
               UI= <>檢驗項目已移除: 原InspTar id:{layoutSrcEle[idx].itid}  type:{layoutSrcEle[idx].ittype}</>;
             }
             else
-            UI=<InspTargetUI_MUX 
-              display={uilayoutInfo.display!=false} 
-              style={{float:"left",width:"100%",height:"100%",overflow:"scroll",borderColor:"#AAA",borderStyle:"solid",borderWidth:"2px",borderRadius:"10px"}} 
-              EditPermitFlag={EditPermitFlag}
-              key={uilayoutInfo.i} 
-              systemInspTarList={InspTarList}
+            {
+              let it_id=layoutSrcEle[idx].inspTarDef.id;
+              let path=defConfig.path+"/it_"+it_id;//OK
+
+              {
+                let it_path=defConfig.InspTars_exInfo.find((exInfo:any)=>exInfo.id==it_id);
+                if(it_path!==undefined)
+                {
+                  path=it_path.path;
+                }
+              }
+              
+              UI=<InspTargetUI_MUX 
+                display={uilayoutInfo.display!=false} 
+                style={{float:"left",width:"100%",height:"100%",overflow:"scroll",borderColor:"#AAA",borderStyle:"solid",borderWidth:"2px",borderRadius:"10px"}} 
+                EditPermitFlag={EditPermitFlag}
+                key={uilayoutInfo.i} 
+                systemInspTarList={InspTarList}
               def={layoutSrcEle[idx].inspTarDef} 
+              cameraList={defConfig.main.CameraInfo}
               report={undefined} 
-              fsPath={defConfig.path+"/it_"+layoutSrcEle[idx].inspTarDef.id}
+              fsPath={path}
               renderHook={renderHook} 
               onDefChange={(new_rule,doInspUpdate=true)=>{
                 let newDefConfig={...defConfig,InspTars_main:[...InspTarList]};
@@ -893,8 +565,8 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
                 }
                 else
                 {
-                  console.log(new_rule);
                   let idx = InspTarList.findIndex((itar:any)=>itar.id==new_rule.id);
+                  console.log(new_rule,"idx",idx);
                   if(idx<0)return;
                   newDefConfig.InspTars_main[idx]=new_rule;
                 }
@@ -917,6 +589,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
                   },300);
                 }
                 _this.apiTable[uilayoutInfo.i]=apis;
+
               }}
 
               UIOption={uilayoutInfo}
@@ -924,7 +597,7 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
               onUIOptionUpdate={(newUIOption)=>{
                 console.log(newUIOption)
               }}
-
+            
 
               // global_variable={defConfig.main?.global_variable}
 
@@ -933,7 +606,8 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
               //   onDefChange(newDefConfig,-12);
 
               // }}
-            />
+              />
+            }
               
           }
           break;
@@ -942,7 +616,23 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
           {
             console.log(layoutSrcEle[idx]);
             UI=<UtilUI_MUX UIOption={layoutSrcEle[idx]}   
-            showUIOptionConfigUI={false}            
+            globalVariable={globalVariable}
+
+            IT_defReload={(id:string)=>{
+              defDoReload(id);
+            }}
+            showUIOptionConfigUI={false}    
+            defConfig={defConfig}
+
+            WidgetLayout={WidgetLayout}
+            WidgetInfo={WidgetInfo}
+            updateWidgetLayout={(newWidgetInfo :any,new_WidgetLayout:any)=>{
+              updateWidgetLayout(newWidgetInfo,new_WidgetLayout);
+            }}
+
+
+            systemInspTarList={InspTarList}      
+            cameraList={defConfig.main.CameraInfo}
             onUIOptionUpdate={(new_conf:any,doInspUpdate=true)=>{
               console.log(new_conf)
               let tar_idx = WidgetInfo.findIndex((uu:any)=>uu.id==uilayoutInfo.i);
@@ -951,7 +641,12 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
               let new_WidgetInfo=[...WidgetInfo];
               new_WidgetInfo[tar_idx]=new_conf;
               updateWidgetLayout(new_WidgetInfo,undefined);
-            }}/>
+            }}
+            APIExport={(apis:any)=>{
+              _this.apiTable[uilayoutInfo.i]=apis;
+            }}
+            UI_API_Table={_this.apiTable}
+            />
             break;
           }
           
@@ -1006,22 +701,76 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
             break;
               
           case ID_CLOSE_FS:
-            return <div key={uilayoutInfo.i}><Button  onClick={()=>{
+            // return <div key={uilayoutInfo.i}><Button  onClick={()=>{
 
-              setFSIdx(-1);
+            //   setFSIdx(-1);
 
-            }}>
+            // }}>
 
-              收回設定全螢幕模式
+            //   收回設定全螢幕模式
 
-            </Button>
-            </div>
+            // </Button>
+            // </div>
+            return <></>;
           
           default:
             
             break;
         }
         return <div key={uilayoutInfo.i}>
+            <div style={{
+              position: "absolute", 
+              top: "2px",
+              right: "2px",
+              zIndex: 100,
+              cursor: "pointer",
+              fontSize: "10px",
+              transition: "transform 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "scale(2)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "scale(1)";
+            }}
+            >
+              <Popover 
+                trigger="hover"
+                content={
+                  <>
+                    {FSIdx!=-1&&FSIdx!=idx?null:<Button 
+                      size="small" 
+                      onClick={() => {
+                        // Add fullscreen functionality here
+                        setFSIdx((FSIdx==-1)?idx:-1);
+                      }}
+                    >
+                      {FSIdx==-1?<FullscreenOutlined />:<FullscreenExitOutlined />}
+                    </Button>}
+
+
+                    {/* <Button 
+                      size="small" 
+                      onClick={() => {
+                      }}
+                    >
+                      ResetCamera
+                    </Button> */}
+                  </>
+                }
+              >
+                <Button 
+                  type="text"
+                  icon={<BorderOuterOutlined style={{ fontSize: '10px' }} />}
+                  size="small"
+                  style={{ padding: '2px' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Add your menu/action handling here
+                  }}
+                />
+              </Popover>
+            </div>
           {UI}
       
         
@@ -1055,6 +804,17 @@ function TargetViewUIShow({WidgetSetID,defConfig,UIEditFlag,EditPermitFlag,onDef
               console.log(uilayoutInfo,check);
               let new_WidgetLayout=[...WidgetLayout];
               new_WidgetLayout[idx]={...uilayoutInfo,display:check};
+              updateWidgetLayout(undefined,new_WidgetLayout);
+            }}/>
+
+            <Input value={uilayoutInfo.name} 
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseMove={(e) => e.stopPropagation()} 
+            onMouseUp={(e) => e.stopPropagation()}
+            
+            onChange={(e)=>{
+              let new_WidgetLayout=[...WidgetLayout];
+              new_WidgetLayout[idx]={...uilayoutInfo,name:e.target.value};
               updateWidgetLayout(undefined,new_WidgetLayout);
             }}/>
 
@@ -1348,7 +1108,6 @@ function VIEWUI(){
     listCMD_Vairable:{
       $DEFPATH:"",
       inCMD_Promise:false,
-      InspTarDispIDList:undefined,
       DefConfig:undefined,
       widgetSetID:"",
       reportListener:{
@@ -1418,22 +1177,13 @@ function VIEWUI(){
 
 
 
-  async function _LOADDef(PrjDefFolderPath:string,it_id:string)
-  {
-
-    let path = PrjDefFolderPath+"/it_"+it_id+"/main.json"
-
-    return await  BPG_API.FILE_Load(path);
-  }
-
-
   async function LOADPrjDef(PrjDefFolderPath:string)
   {
     let api = BPG_API
     let main= await api.FILE_Load(PrjDefFolderPath+"/main.json");
 
-    
     let InspTars_main:any[]=[];
+    let InspTars_exInfo:{path:string,id:string}[]=[];
     {
       let InspTars=main.InspTars;
 
@@ -1441,9 +1191,19 @@ function VIEWUI(){
 
 
       let InspTars_ids:string[]= InspTars.map((t:{id:string})=>t.id)
+      InspTars_exInfo=InspTars_ids.map(id=>
+        ({
+          path:PrjDefFolderPath+"/it_"+id+"/",//OK
+          id
+        })
+      )
+
+      let idx=0;
       for(let id of InspTars_ids)
       {
-        InspTars_main.push(await _LOADDef(PrjDefFolderPath,id));
+        let path=InspTars_exInfo[idx].path;
+        InspTars_main.push(await  BPG_API.FILE_Load(path+"main.json"));
+        idx++;
       }
     }
 
@@ -1471,6 +1231,7 @@ function VIEWUI(){
     _this.listCMD_Vairable.$DEFPATH=PrjDefFolderPath;
     return {
       path:PrjDefFolderPath,
+      InspTars_exInfo,
       // _folderInfo:await api.Folder_Struct(PrjDefFolderPath,9),
       main,
       InspTars_main,
@@ -1484,11 +1245,13 @@ function VIEWUI(){
     await api.FILE_Save(PrjDefFolderPath+"/main.json",PrjDef.main,true)
     await api.FILE_Save(PrjDefFolderPath+"/XCmds.json",PrjDef.XCmds,true)
 
+    
     for(let it of PrjDef.InspTars_main)
     {
-      let path = PrjDefFolderPath+"/it_"+it.id+"/main.json"
+
+      let path = defConfig.InspTars_exInfo.find((exInfo:any)=>exInfo.id==it.id).path;
       console.log(path,it)
-      await api.FILE_Save(path,it,true)
+      await api.FILE_Save(path+"/main.json",it,true)
     }
     return true
   }
@@ -1507,24 +1270,33 @@ function VIEWUI(){
     _this.listCMD_Vairable.CameraInfo=camAvaInfo;
     return camAvaInfo;
   }
-
-  async function setupInspTarToCore(inspTar:any,inspTarStreamingId:number)
+  
+  async function setupInspTarToCore(defConfig:any,inspTar:any)
   {
 
     let api = BPG_API
-    let id=inspTar.id;
     // if(inspTar.stream_id===undefined)
     // {
-    inspTar.stream_id=inspTarStreamingId;
     // }
 
     // console.log(id,inspTar)
+    let it_idx=defConfig.main.InspTars.findIndex((tar:any)=>tar.id==inspTar.id);
+    if(it_idx<0)return;
+    
+    let it_path=defConfig.InspTars_exInfo.find((exInfo:any)=>exInfo.id==inspTar.id).path;
+
+    await api.InspTargetCreate(inspTar,it_path);
+    await setUpITStreamID(inspTar,api.getInspTarStreamingID(defConfig,inspTar.id));
+  }
+
+  async function setUpITStreamID(inspTar:any,inspTarStreamingId:number)
+  {
 
 
-    await api.InspTargetCreate(inspTar,_this.listCMD_Vairable.$DEFPATH+"/it_"+inspTar.id);
-
+    inspTar.stream_id=inspTarStreamingId;
+    let api = BPG_API
     await api.InspTargetSetStreamChannelID(
-      inspTar.id,inspTar.stream_id,
+      inspTar.id,inspTarStreamingId,
       {
         resolve:(pkts)=>{
           // console.log(pkts);
@@ -1560,15 +1332,16 @@ function VIEWUI(){
           {
             if(liInfo.callback!==undefined)
             {
-              liInfo.callback(RP,liInfo);
+              liInfo.callback(RP,pkts,liInfo);
             }
+
             return;
           }
 
 
           if(liInfo.resolve!==undefined)
           {
-            liInfo.resolve(RP);
+            liInfo.resolve(RP,pkts);
           }
           else
           {
@@ -1581,24 +1354,13 @@ function VIEWUI(){
 
       }
     })
-    
   }
-
 
   async function ReloadPrjDef(path:string)  
   {
     let prjDef = await LOADPrjDef( path)
 
-    _this.listCMD_Vairable.InspTarDispIDList=prjDef.InspTars_main.reduce((pval,cval)=>{
-      console.log(cval);
-      if(cval.default_hide!==true)
-        pval.push(cval.id);
-      return pval;
-    },[] as string[]);
-
-
-
-    console.log(_this.listCMD_Vairable.InspTarDispIDList,prjDef)
+    console.log(prjDef)
     let api = BPG_API
 
     if(prjDef.main.DisableCameraReload==true)
@@ -1612,22 +1374,18 @@ function VIEWUI(){
       setCameraLoading(false);
     }
    
-    
-
-    let value_dict={};
-
     // updateDefInfo();
     await api.InspTargetRemoveAll()
 
-    let inspTarStreamingId=INSPTAR_BASE_STREAM_ID;
+    
     for(let inspTar of prjDef.InspTars_main)
     {
       
       // }
-
+      let inspTarId:string=inspTar.id;
       // console.log(id,inspTar)
-      setupInspTarToCore(inspTar,inspTarStreamingId);
-      inspTarStreamingId++;
+
+      setupInspTarToCore(prjDef,inspTar);
       
     }
 
@@ -1661,12 +1419,12 @@ function VIEWUI(){
 
     let bkFolder=_this.listCMD_Vairable.$DEFPATH+"/IT_BK";
 
-    let tarIT_Folder=_this.listCMD_Vairable.$DEFPATH+"/it_"+id;
+    let tarIT_Folder=defConfig.InspTars_exInfo.find((exInfo:any)=>exInfo.id==id).path;
     
     await BPG_API.InspTargetRemove(id);
 
     await BPG_API.send_P("FO",0,{type:"create",path:bkFolder})//create a backup folder
-    await BPG_API.send_P("FO",0,{type:"move",from:tarIT_Folder,to:bkFolder+"/it_"+id})//create a backup folder
+    await BPG_API.send_P("FO",0,{type:"move",from:tarIT_Folder,to:bkFolder+"/it_"+id})//create a backup folder OK
 
     newDefConfig.InspTars_main=newDefConfig.InspTars_main.filter((itar:any)=>itar.id!==id);
     newDefConfig.main.InspTars=newDefConfig.main.InspTars.filter((itar:any)=>itar.id!==id);
@@ -1682,23 +1440,26 @@ function VIEWUI(){
     if(idx<0)return;
 
 
+    let path=defConfig.InspTars_exInfo.find((exInfo:any)=>exInfo.id==id).path;
 
-    let loadedDef=await _LOADDef(defConfig.path,id);
+
+    let loadedDef=await  BPG_API.FILE_Load(path+"/main.json")
+    
+    loadedDef.stream_id=BPG_API.getInspTarStreamingID(defConfig,id);
+    console.log("reload_InspTarget","loadedDef:",loadedDef,"path:",path,"defConfig:",defConfig)
 
 
     newDefConfig.InspTars_main[idx]=loadedDef;
     setDefConfig(newDefConfig);
-    await BPG_API.InspTargetUpdate(loadedDef);
+    await BPG_API.InspTargetUpdate(loadedDef,path);
     
   }
 
   async function create_new_InspTarget(type:string,id:string)
   {
     
-    // console.log({type:"copy",from:"data/InspectionTarget_Template/"+type,to:_this.listCMD_Vairable.$DEFPATH+"/it_"+id});
-
     let templatePath="data/SYSDAT/InspectionTarget_Template/"+type;
-    let targetPath=_this.listCMD_Vairable.$DEFPATH+"/it_"+id;
+    let targetPath=_this.listCMD_Vairable.$DEFPATH+"/it_"+id;//new inspTar default path
     await BPG_API.send_P("FO",0,{type:"copy",from:templatePath,to:targetPath})//create a backup folder
 
     //try to read targetPath/main.json
@@ -1711,11 +1472,12 @@ function VIEWUI(){
 
     let newDefConfig={...defConfig};
     newDefConfig.InspTars_main.push(def);
+    newDefConfig.InspTars_exInfo.push({path:targetPath,id});//make sure the path keep up to InspTars_main
     newDefConfig.main.InspTars.push({id});
     setDefConfig(newDefConfig);
 
     
-    await setupInspTarToCore(def,new Date().getTime());
+    await setupInspTarToCore(newDefConfig,def);
     
   }
 
@@ -1797,6 +1559,7 @@ function VIEWUI(){
               // console.log(itar)
               if(itar===undefined)return "InspTar NotFound"
 
+              let path=defConfig.InspTars_exInfo.find((exInfo:any)=>exInfo.id==id).path;
               return <InspTargetUI_MUX 
                 display={true} 
                 // width={80} 
@@ -1805,9 +1568,10 @@ function VIEWUI(){
                 EditPermitFlag={EDIT_PERMIT_FLAG.OPONLY}
                 key={id} 
                 systemInspTarList={defConfig.InspTars_main}
+                cameraList={[]}
                 def={itar} 
                 report={undefined} 
-                fsPath={defConfig.path+"/it_"+id}
+                fsPath={path}
                 renderHook={undefined} 
                 onDefChange={(new_rule,doInspUpdate=true)=>{
 
@@ -1975,155 +1739,6 @@ function VIEWUI(){
           let updateUI=(data_:any)=>
           {
 
-            // let data=(typeof data_ === 'function')?data_():data_;
-            // let content=data.map((info_:any,dataIndex:number)=>{
-
-            //   if(info_==null)return null;
-            //   let info=(typeof info_ === 'function')?info_():info_;
-
-            //   let opts=(typeof info.opts === 'function')?info.opts():info.opts;
-            //   let doms=
-
-            //   opts.map((opt:any)=>{
-
-
-
-            //     if (typeof opt === 'object' ) {
-
-            //       switch(opt.type)
-            //       {
-            //         case "InspTar_UI":{
-            //           let id = opt.id
-
-            //           let itar=defConfig.InspTars_main.find( (ipt:any)=>ipt.id==id)
-            //           // console.log(itar)
-            //           if(itar===undefined)return "InspTar NotFound"
-    
-            //           return <InspTargetUI_MUX 
-            //             display={true} 
-            //             // width={80} 
-            //             // height={70} 
-            //             // style={{float:"left"}} 
-            //             EditPermitFlag={EDIT_PERMIT_FLAG.OPONLY}
-            //             key={id} 
-            //             systemInspTarList={defConfig.InspTars_main}
-            //             def={itar} 
-            //             report={undefined} 
-            //             fsPath={defConfig.path+"/it_"+id}
-            //             renderHook={undefined} 
-            //             onDefChange={(new_rule,doInspUpdate=true)=>{
-    
-            //             }}
-              
-            //             UIOption={undefined}
-            //             showUIOptionConfigUI={false}
-            //             onUIOptionUpdate={(newUIOption)=>{
-            //               console.log(newUIOption)
-            //             }}
-
-            //             {...opt.params}
-            //           />
-            //         }
-    
-
-            //         case "button":{
-            //           let key = opt.key || opt.text
-            //           let text= opt.text || key
-
-    
-            //           return <Button 
-                      
-            //             {...opt}
-                        
-            //             onClick={()=>{
-
-            //             if(_this.listCMD_Vairable.USER_INPUT_LOCK==true)return;//skip
-            //             _this.listCMD_Vairable.USER_INPUT_LOCK=true;
-            //             (async ()=>{
-            //               try{
-            //               if(opt.onClick!==undefined)
-            //                 await opt.onClick(updateUI);
-            //               else 
-            //                 await info.callback(dataIndex,key,updateUI);
-            //               _this.listCMD_Vairable.USER_INPUT_LOCK=false;
-            //               }
-            //               catch(e)
-            //               {
-            //                 console.error(e)
-            //               }
-            //             })().catch(e=>{
-            //               console.error(e)
-            //             })
-      
-      
-            //             }}
-                        
-            //             type={opt.btnType}
-                        
-            //             >{(typeof text === 'string')?text:text(dataIndex)}</Button>
-            //         }
-    
-
-            //       }
-            //       return "OBJ INFO IS NOT HANDLED"
-            //     }
-
-
-
-
-            //     if(opt=="$\n")return <br/>;
-
-
-            //     // if(opt.startsWith("$\s")){
-            //     //   let count=opt.slice(2);
-            //     //   return 
-            //     // }
-
-            //     if(opt=="$\s")return " ";
-
-
-
-            //     if(opt.startsWith("$t:")){
-            //       return opt.slice(3).replace(/ /g, "\u00A0")
-            //     }
-
-            //     if(opt.startsWith("$pre:")){
-            //       return <pre style={{flexShrink: 0,overflow:"scroll"}}>{opt.slice(5).replace(/ /g, "\u00A0")}</pre>
-            //     }
-
-
-
-            //     if(opt.startsWith("$divider:")){
-            //       return <Divider> {opt.slice(8)} </Divider>
-            //     }
-
-
-
-            //     return<Button onClick={()=>{
-
-            //       if(_this.listCMD_Vairable.USER_INPUT_LOCK==true)return;//skip
-            //       _this.listCMD_Vairable.USER_INPUT_LOCK=true;
-
-            //       (async ()=>{
-            //         await info.callback(dataIndex,opt,updateUI);
-            //         _this.listCMD_Vairable.USER_INPUT_LOCK=false;
-            //       })();
-
-
-            //       }}>{opt}</Button>
-            //   })
-
-            //   console.log(info)
-            //   return <>
-                
-            //     {(info.text===undefined || info.text===null)?null:<Divider> <p onClick={(info.onClick!==undefined)?(()=>info.onClick(updateUI)):undefined}>{(typeof info.text === 'string')?info.text:info.text(dataIndex)}</p> </Divider>}
-    
-
-            //     {doms}
-
-
-            //   </>
-            // });
 
             let content = constructListCMDUI(data_,updateUI);
 
@@ -2239,8 +1854,10 @@ function VIEWUI(){
                 trigger={['click']}
                 overlay={
                   <Menu>
-                    <Menu.Item key="1" onClick={()=>{setNewITType("Orientation_ShapeBasedMatching")}}>Orientation_ShapeBasedMatching</Menu.Item>
-                    <Menu.Item key="2" onClick={()=>{setNewITType("SurfaceCheckSimple")}}>SurfaceCheckSimple</Menu.Item>
+                    {InspTargetTypes.map(
+                      (type,index)=><Menu.Item key={index} onClick={()=>{setNewITType(type)}}>{type}</Menu.Item>)}
+
+
 
                   </Menu>
                 } >
@@ -2391,8 +2008,11 @@ function VIEWUI(){
                   (async function(){
                     console.log(ncam);
                     let trigMode=ncam.trigger_mode;
-                   
-                    await BPG_API.CameraSetup({...ncam,frame_rate:15},trigMode);
+                    let capFrameRate=10;
+                    let curFrameRate=ncam.frame_rate;
+                    if(curFrameRate>capFrameRate)
+                      curFrameRate=capFrameRate;
+                    await BPG_API.CameraSetup({...ncam,frame_rate:curFrameRate},trigMode);
                   })()
                   
 
@@ -2433,7 +2053,7 @@ function VIEWUI(){
             console.log(cam,index)}
           
           
-          }>{cam.side_name||cam.id}</div>,cam.id,
+          }>{cam.side_name||cam.id}</div>,cam.id+"_"+index,
           cam.available?<LinkOutlined/>:<DisconnectOutlined/>) )))
     ),
     menuCol(<Dropdown
@@ -2444,12 +2064,17 @@ function VIEWUI(){
           {
             cameraQueryList===undefined || cameraQueryList.length===0?
               <Menu.Item disabled danger>
-              <a target="_blank" rel="noopener noreferrer" href="https://www.antgroup.com">
+              <a target="_blank" rel="noopener noreferrer">
                 just a sec...
               </a>
               </Menu.Item>
               :
-              cameraQueryList.map(cam=><Menu.Item key={cam.id} 
+              cameraQueryList
+              .filter(camFound=>{  
+                let foundCam=defConfig.main.CameraInfo.find((cam:any)=>cam.id===camFound.id);
+                return foundCam===undefined;
+              })
+              .map((cam,idx)=><Menu.Item key={cam.id+"_"+idx} 
               onClick={()=>{
                 console.log(defConfig.main.CameraInfo)
                 console.log(cam)
@@ -2925,7 +2550,10 @@ function VIEWUI(){
           <>
             <Button type={_this.listCMD_Vairable.widgetSetID==tableInfo.id?'primary':undefined}
               onClick={()=>{
-                setrefUISetIdx(idx);
+                if(idx==refUISetIdx)
+                  setrefUISetIdx(-1);
+                else
+                  setrefUISetIdx(idx);
               }}>
                 <CopyOutlined/>
             </Button>
@@ -2972,29 +2600,32 @@ function VIEWUI(){
         value={newUIID}
         onPressEnter={(e:any)=>{
 
-          let value=e.target.value;
-          console.log(value)
-          if(value.length==0)return;
 
-
-
-          let newUIInfo={
-            id:value,
-          }
-          if(refUISetIdx>=0)
-          {
-            newUIInfo={
-              ...WidgetTableInfo[refUISetIdx],
-              id:value,
-            }
-          }
-          setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo",WidgetTableInfo.length],newUIInfo),-12)
-          setrefUISetIdx(-1)
-
-          setNewUIID("");
         }}
       />
-      {<Button danger disabled={refUISetIdx<0} onClick={()=>{setrefUISetIdx(-1)}}>{refUISetIdx<0?"建立空白頁面":"複製頁面:"+WidgetTableInfo[refUISetIdx].id}</Button> }
+      {<Button danger disabled={newUIID.length==0} onClick={()=>{
+        
+
+        if(newUIID.length==0)return;
+
+
+
+        let newUIInfo={
+          id:newUIID,
+        }
+        if(refUISetIdx>=0)
+        {
+          newUIInfo={
+            ...WidgetTableInfo[refUISetIdx],
+            id:newUIID,
+          }
+        }
+        setDefConfig(ObjShellingAssign(defConfig,["main","UIInfo",WidgetTableInfo.length],newUIInfo),-12)
+        setrefUISetIdx(-1)
+
+        setNewUIID("");
+
+      }}>{refUISetIdx<0?"建立空白頁面":"複製頁面:"+WidgetTableInfo[refUISetIdx].id}</Button> }
       </>:null}
 
       </Space>
@@ -3021,14 +2652,18 @@ function VIEWUI(){
           }
         }}>
 
-      <TargetViewUIShow WidgetSetID={_this.listCMD_Vairable.widgetSetID} defConfig={defConfig} UIEditFlag={UIEditFlag} EditPermitFlag={editPermitFlag}  onDefChange={(newdef:any, updateIdx)=>{
+      <TargetViewUIShow globalVariable={_this.listCMD_Vairable} WidgetSetID={_this.listCMD_Vairable.widgetSetID} defConfig={defConfig} UIEditFlag={UIEditFlag} EditPermitFlag={editPermitFlag}  
+        
+        onDefChange={(newdef:any, updateIdx)=>{
 
-        if(_this.CACHED_GLOBAL_VARIABLE!==undefined)//HACK, look above
-          newdef=ObjShellingAssign(defConfig,["main","global_variable"],_this.CACHED_GLOBAL_VARIABLE);
-        setDefConfig(newdef,updateIdx)
+          if(_this.CACHED_GLOBAL_VARIABLE!==undefined)//HACK, look above
+            newdef=ObjShellingAssign(defConfig,["main","global_variable"],_this.CACHED_GLOBAL_VARIABLE);
+          setDefConfig(newdef,updateIdx)
 
-        _this.CACHED_GLOBAL_VARIABLE=undefined;
-        }}  renderHook={_this.listCMD_Vairable.renderHook}
+          _this.CACHED_GLOBAL_VARIABLE=undefined;
+        }}  
+        
+        renderHook={_this.listCMD_Vairable.renderHook}
 
         onDefDelete={(id:string)=>{
 
@@ -3067,6 +2702,21 @@ function App() {
   const ACT_EXT_API_CONNECTED= (...p:Parameters<typeof EXT_API_CONNECTED>) => dispatch(EXT_API_CONNECTED(...p));
   const ACT_EXT_API_DISCONNECTED= (...p:Parameters<typeof EXT_API_DISCONNECTED>) => dispatch(EXT_API_DISCONNECTED(...p));
 
+  useEffect(() => {
+    const handleBeforeUnload = (event:any) => {
+      event.preventDefault();
+      // Custom message text is ignored in most modern browsers, but it is required for some legacy support
+      event.returnValue = "Are you sure you want to leave this site?";
+    };
+
+    // Add event listener when the component mounts
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    // Clean up the event listener when the component unmounts
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
   // const [camList,setCamList]=useState<{[key:string]:{[key:string]:any,list:any[]}}>({});
   useEffect(() => {
     

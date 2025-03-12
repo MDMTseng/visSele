@@ -1207,6 +1207,15 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
         INSP:  (SLID_api.no_obj_detected_time_ms/1000/60).toFixed(2),
       },
       {
+        SEC:"無可檢時長(分鐘)",
+        SEC_SRC:"no_ava_detected_time_ms",
+        SETUP: <><InputNumber 
+          value={(SLID_api.EM_STOP_Rule.no_ava_detected_time_max_ms/1000/60).toFixed(2)} 
+          onChange={(value) => update_EM_Stop_Rule({no_ava_detected_time_max_ms:value*1000*60})}/>
+          </>,
+        INSP:  (SLID_api.no_ava_detected_time_ms/1000/60).toFixed(2),
+      },
+      {
         SEC: '總規格NG數',
         SEC_SRC:"SNG_count",
         SETUP: <InputNumber value={SLID_api.EM_STOP_Rule.SNG_Max} onChange={(value) => update_EM_Stop_Rule({SNG_Max:value})}/>,

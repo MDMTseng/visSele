@@ -68,6 +68,7 @@ void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
 
 
 
+#ifdef USE_COMP_SCRIPT
 
 
   for (auto& scriptv : scriptTable)
@@ -79,11 +80,10 @@ void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
   scriptTable.clear();
 
 
-
-  if(orientationAlter!=NULL)
+  if(orientationAdjComp!=NULL)
   {
-    delete orientationAlter;
-    orientationAlter=NULL;
+    delete orientationAdjComp;
+    orientationAdjComp=NULL;
   }
   
   {
@@ -92,22 +92,22 @@ void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
     LOGI("DEF.script:%s",script.c_str());
     if(script.length()>0)
     {
-      orientationAlter=new CompScript();
-      orientationAlter->add_variable("nan",NAN);
-      orientationAlter->add_variable("INDEX");
-      orientationAlter->add_variable("x_offset");
-      orientationAlter->add_variable("y_offset");
+      orientationAdjComp=new CompScript();
+      orientationAdjComp->add_variable("nan",NAN);
+      orientationAdjComp->add_variable("INDEX");
+      orientationAdjComp->add_variable("x_offset");
+      orientationAdjComp->add_variable("y_offset");
 
-      orientationAlter->add_variable("angle_offset");
+      orientationAdjComp->add_variable("angle_offset");
 
 
-      orientationAlter->add_variable("color_ch_mul.r");
-      orientationAlter->add_variable("color_ch_mul.g");
-      orientationAlter->add_variable("color_ch_mul.b");
+      orientationAdjComp->add_variable("color_ch_mul.r");
+      orientationAdjComp->add_variable("color_ch_mul.g");
+      orientationAdjComp->add_variable("color_ch_mul.b");
 
 
       
-      orientationAlter->compile(script);
+      orientationAdjComp->compile(script);
 
 
 
@@ -117,6 +117,7 @@ void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
 
 
   }
+#endif
 
 
 
@@ -127,6 +128,7 @@ void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
     background_temp=imread(local_env_path+"/background_temp.png", IMREAD_COLOR);
 
 
+#ifdef USE_COMP_SCRIPT
   cJSON* jsub_regions = JFetch_ARRAY(def,"sub_regions");
 
   if(jsub_regions!=NULL)
@@ -138,6 +140,7 @@ void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
       cJSON* jsub_region = cJSON_GetArrayItem(jsub_regions,i);
       string type=JFetch_STRING_ex(jsub_region,"type");
       string sr_name=JFetch_STRING_ex(jsub_region,"name");
+
       if(type=="CALC")
       {
         string script=JFetch_STRING_ex(jsub_region,"script");
@@ -197,10 +200,13 @@ void InspectionTarget_SurfaceCheckSimple::setInspDef(cJSON *def)
         scriptTable[sr_name]=cs;
         // LOGI(">>> sr_name:%s v:%f,%f",sr_name.c_str(),cs->value(),scriptTable[sr_name]->value());
       }
+
+
     }
 
   }
 
+#endif
 
   LOGE("background_temp empty:%d",background_temp.empty());
   // featureInfo
@@ -975,7 +981,10 @@ void inRangeV2(cv::Mat src, Scalar rangeFrom,Scalar rangeTo,Scalar w,int add_gam
 int PerformInsp(
   int objIndex,int subregIdx,
   vector<StageInfo_SurfaceCheckSimple::SubRegion_Info> &regionResultList,
+
+#ifdef USE_COMP_SCRIPT
   map<string,CompScript*> &scriptTable,
+#endif
   cJSON *jsub_regions,
   InspectionTargetManager* itm,
 
@@ -1018,6 +1027,7 @@ int PerformInsp(
   if(subRegType=="CALC")
   {
 
+#ifdef USE_COMP_SCRIPT
     sri.type=StageInfo_SurfaceCheckSimple::id_CALC;
     // LOGI(scriptTable.find(subRegName)== scriptTable.end());
     if(scriptTable.find(subRegName)== scriptTable.end())
@@ -1072,7 +1082,11 @@ int PerformInsp(
               // LOGI("subRegName:%s type:%d",subRegName.c_str(),regionResultList[k].type);
               if(regionResultList[k].type==StageInfo_SurfaceCheckSimple::id_UNSET)
               {
-                PerformInsp(objIndex,k,regionResultList,scriptTable,jsub_regions,itm,downSampleF,show_display_overlay,retImage_ROI,retImage_ROI_BK,resultMarkOverlay,resultMarkRegion,resultImage,bg_img_ROI,callDepth+1);
+                PerformInsp(objIndex,k,regionResultList,
+                #ifdef USE_COMP_SCRIPT
+                scriptTable,
+                #endif
+                jsub_regions,itm,downSampleF,show_display_overlay,retImage_ROI,retImage_ROI_BK,resultMarkOverlay,resultMarkRegion,resultImage,bg_img_ROI,callDepth+1);
 
                 if(regionResultList[k].type==StageInfo_SurfaceCheckSimple::id_UNSET)
                 {
@@ -1160,7 +1174,14 @@ int PerformInsp(
       }
     } 
     
+
+#else
+    sri.category=STAGEINFO_CAT_NA;
+#endif
+
+
     break;
+
 
   }
 
@@ -2650,21 +2671,22 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
         float n_idx=i, n_x_offset=X_offset, n_y_offset=Y_offset, n_angle_offset=angle_offset, n_color_ch_mul_r=color_ch_mul_r, n_color_ch_mul_g=color_ch_mul_g, n_color_ch_mul_b=color_ch_mul_b,n_result=NAN;
 
-        if(orientationAlter!=NULL)
+#ifdef USE_COMP_SCRIPT
+        if(orientationAdjComp!=NULL)
         {
-          float &_idx=orientationAlter->set_variable("INDEX",i);
+          float &_idx=orientationAdjComp->set_variable("INDEX",i);
 
-          float &_x_offset=orientationAlter->set_variable("x_offset",X_offset);
-          float &_y_offset=orientationAlter->set_variable("y_offset",Y_offset);
-          float &_angle_offset=orientationAlter->set_variable("angle_offset",angle_offset);
-
-
-          float &_color_ch_mul_r=orientationAlter->set_variable("color_ch_mul.r",color_ch_mul_r);
-          float &_color_ch_mul_g=orientationAlter->set_variable("color_ch_mul.g",color_ch_mul_g);
-          float &_color_ch_mul_b=orientationAlter->set_variable("color_ch_mul.b",color_ch_mul_b);
+          float &_x_offset=orientationAdjComp->set_variable("x_offset",X_offset);
+          float &_y_offset=orientationAdjComp->set_variable("y_offset",Y_offset);
+          float &_angle_offset=orientationAdjComp->set_variable("angle_offset",angle_offset);
 
 
-          n_result = orientationAlter->value();
+          float &_color_ch_mul_r=orientationAdjComp->set_variable("color_ch_mul.r",color_ch_mul_r);
+          float &_color_ch_mul_g=orientationAdjComp->set_variable("color_ch_mul.g",color_ch_mul_g);
+          float &_color_ch_mul_b=orientationAdjComp->set_variable("color_ch_mul.b",color_ch_mul_b);
+
+
+          n_result = orientationAdjComp->value();
 
           n_idx=_idx;
           n_x_offset=_x_offset;
@@ -2676,7 +2698,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           n_color_ch_mul_b=_color_ch_mul_b;
           LOGI("script result:%f  n_angle_offset:%f",n_result,n_angle_offset);
         }
-
+#endif
 
 
         float angle = orientation.angle+n_angle_offset*M_PI/180;
@@ -3166,7 +3188,9 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
           PerformInsp(
           i,j,
           mri.subregions,
+#ifdef USE_COMP_SCRIPT
           scriptTable,
+#endif
           jsub_regions,
           belongMan,
 
@@ -3313,10 +3337,11 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
 
 InspectionTarget_SurfaceCheckSimple::~InspectionTarget_SurfaceCheckSimple()
 {
-  if(orientationAlter)
+#ifdef USE_COMP_SCRIPT
+  if(orientationAdjComp)
   {
-    delete orientationAlter;
-    orientationAlter=NULL;
+    delete orientationAdjComp;
+    orientationAdjComp=NULL;
   }
   for (auto & scriptv : scriptTable)
   {
@@ -3326,6 +3351,7 @@ InspectionTarget_SurfaceCheckSimple::~InspectionTarget_SurfaceCheckSimple()
   }
   scriptTable.clear();
 
+#endif
 
 
 

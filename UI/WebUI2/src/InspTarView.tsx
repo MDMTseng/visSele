@@ -19,9 +19,9 @@ import { EXT_API_ACCESS, EXT_API_CONNECTED, EXT_API_DISCONNECTED, EXT_API_REGIST
 import { GetObjElement, ID_debounce, ID_throttle, ObjShellingAssign } from './UTIL/MISC_Util';
 
 import { listCMDPromise } from './XCMD';
+import { CameraSetupEditUI } from './CameraSetupEditUI';
 
-
-import { VEC2D, SHAPE_ARC, SHAPE_LINE_seg, PtRotate2d } from './UTIL/MathTools';
+import { VEC2D, SHAPE_ARC, SHAPE_LINE_seg, PtRotate2d,threePointToArc} from './UTIL/MathTools';
 
 import { HookCanvasComponent, DrawHook_CanvasComponent, type_DrawHook_g, type_DrawHook } from './CanvasComp/CanvasComponent';
 import { CORE_ID, CNC_PERIPHERAL_ID, BPG_WS, CNC_Perif, InspCamera_API } from './EXT_API';
@@ -33,182 +33,25 @@ import {ITGlobalVariableContext,CompParam_GlobalVariable } from './App';
 import { type_CameraInfo, type_IMCM } from './AppTypes';
 import './basic.css';
 
-let DAT_ANY_UNDEF: any = undefined;
-
-const { SubMenu } = Menu;
-const { Option } = Select;
-
-enum EDIT_PERMIT_FLAG {
-    XXFLAGXX = 1 << 0
-}
+import { SingleTargetVIEWUI_DimMeasure } from './SingleTargetVIEWUI_DimMeasure';
 
 
-type IMCM_type =
-    {
-        camera_id: string,
-        trigger_id: number,
-        trigger_tag: string,
-        image_info: {
-            full_height: number
-            full_width: number
-            height: number
-            image: ImageData|HTMLImageElement
-            offsetX: number
-            offsetY: number
-            scale: number
-            width: number
-        }
-    }
+import { SingleTargetVIEWUI_ArcFitting } from './SingleTargetVIEWUI_ArcFitting';
 
+import { SingleTargetVIEWUI_CameraCalib } from './SingleTargetVIEWUI_CameraCalib';
 
-function PtsToXYWH(pt1: VEC2D, pt2: VEC2D) {
-    let x, y, w, h;
+import { SingleTargetVIEWUI_Orientation_ShapeBasedMatching } from './SingleTargetVIEWUI_Orientation_ShapeBasedMatching';
 
-    x = pt1.x;
-    w = pt2.x - pt1.x;
-
-    y = pt1.y;
-    h = pt2.y - pt1.y;
-
-
-    if (w < 0) {
-        x += w;
-        w = -w;
-    }
-
-    if (h < 0) {
-        y += h;
-        h = -h;
-    }
-    return {
-        x, y, w, h
-    }
-}
-
-function drawRegion(g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent, region: { x: number, y: number, w: number, h: number }, lineWidth: number, drawCenterPoint: boolean = true, lineDeshInfo = [lineWidth * 10, lineWidth * 3, lineWidth * 3, lineWidth * 3]) {
-    let ctx = g.ctx;
-    // ctx.lineWidth = 5;
-
-    let x = region.x;
-    let y = region.y;
-    let w = region.w;
-    let h = region.h;
-    ctx.beginPath();
-    ctx.setLineDash(lineDeshInfo);
-    // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-    ctx.lineWidth = lineWidth;
-    ctx.rect(x, y, w, h);
-    ctx.stroke();
-    ctx.closePath();
-
-    if (drawCenterPoint) {
-        // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-        ctx.lineWidth = lineWidth * 2 / 3;
-        canvas_obj.rUtil.drawCross(ctx, { x: x + w / 2, y: y + h / 2 }, lineWidth * 2 / 3);
-    }
-
-
-
-}
-
-
-type IMCM_group = { [trigID: string]: IMCM_type }
-
-
-export type CompParam_InspTar = {
-    display: boolean,
-    style?: any,
-    fsPath: string,
-    EditPermitFlag: number,
-    renderHook: ((ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent, rule: any) => void) | undefined,
-    // IMCM_group:IMCM_group,
-    systemInspTarList: any[],
-    def: any,
-    report: any,
-    onDefChange: (updatedDef: any, ddd: boolean) => void,
-    defDoReload: () => void,
-    APIExport: ((api_set: any) => void) | undefined,
-
-
-
-}
-
-export type CompParam_UIOption = {
-
-    UIOption:any|undefined,
-    showUIOptionConfigUI:boolean,
-    onUIOptionUpdate:((new_UIOption: any) => void),
-
-
-}
-
-export type CompParam_InspTarUI =CompParam_InspTar & CompParam_UIOption;
-
-
-
-
-
-export function ObjTree( {obj,padding=0,onLeafSelect,renderer}:{obj:any,padding:number,onLeafSelect?:(value:any,name:string,path:string[])=>void,renderer?:(value:any,name:string,path:string[])=>any  }):any{
-
-    return Object.entries(obj).map(([key, value]:any)=>{
-      let renderResult=renderer===undefined?undefined:renderer(value,key,[]);
-      if(typeof value === 'object')
-      {
-
-        return <>
-
-          {
-            renderResult!==undefined?    renderResult:      
-                <div style={{marginLeft:padding ,display:"block"}}  onClick={()=>{
-                if(onLeafSelect)onLeafSelect(value,key,[])
-                }}>{key+"[-]"}</div>
-          }
-
-
-
-
-
-          <ObjTree obj={value} padding={padding+15} onLeafSelect={(value,name,path)=>{
-            if(onLeafSelect)
-                return onLeafSelect(value,name,[key,...path])
-          }} renderer={renderer===undefined?undefined:(value,name,path)=>{
-            return renderer(value,name,[key,...path])
-          }}/>
-        </>
-      }
-      else
-      {
-        if(renderResult!==undefined)return renderResult;
-        
-        return <>
-        <Button size='small' style={{marginLeft:padding,display:"block"}} onClick={()=>{
-          if(onLeafSelect)onLeafSelect(value,key,[])
-        }}>{key}: {value}</Button>
-        </>
-      }
-    })
-  
-  } 
-  
-  
-
-type MenuItem = Required<MenuProps>['items'][number];
-
-var enc = new TextEncoder();
-
-const _DEF_FOLDER_PATH_ = "data/Test1.xprj";
-// import ReactJsoneditor from 'jsoneditor-for-react';
-
-// declare module 'jsoneditor-react'jsoneditor-for-react"
-
-// import 'jsoneditor-react/es/editor.min.css';
-
-let INSPTAR_BASE_STREAM_ID = 51000
-
-const { TabPane } = Tabs;
-const { Header, Content, Footer, Sider } = Layout;
-
-
+import { 
+    ObjTree,
+    PtsToXYWH,drawRegion ,
+    CompParam_InspTarUI,
+    IMCM_type,
+    EDIT_PERMIT_FLAG,
+    TagsEdit_DropDown,
+    InspTarView_basicInfo,
+    TestInputSelectUI
+} from './SingleTargetVIEWUI_UTIL';
 
 
 let INPUT_LINK = {
@@ -569,2071 +412,6 @@ let INPUT_LINK = {
 
         </div>
     }
-}
-
-
-function rgb2hsv(r: number, g: number, b: number) {
-    let rabs, gabs, babs, rr, gg, bb, h = 0, s, v: number, diff: number, diffc, percentRoundFn;
-    rabs = r / 255;
-    gabs = g / 255;
-    babs = b / 255;
-    v = Math.max(rabs, gabs, babs);
-    diff = v - Math.min(rabs, gabs, babs);
-    diffc = (c: number) => (v - c) / 6 / diff + 1 / 2;
-    percentRoundFn = (num: number) => Math.round(num * 100) / 100;
-    if (diff == 0) {
-        h = s = 0;
-    } else {
-        s = diff / v;
-        rr = diffc(rabs);
-        gg = diffc(gabs);
-        bb = diffc(babs);
-
-        if (rabs === v) {
-            h = bb - gg;
-        } else if (gabs === v) {
-            h = (1 / 3) + rr - bb;
-        } else if (babs === v) {
-            h = (2 / 3) + gg - rr;
-        }
-        if (h < 0) {
-            h += 1;
-        } else if (h > 1) {
-            h -= 1;
-        }
-    }
-    // return {
-    //     h: Math.round(h * 360),
-    //     s: percentRoundFn(s * 100),
-    //     v: percentRoundFn(v * 100)
-    // };
-
-    return [h * 180, s * 255, v * 255];
-}
-
-
-function TestInputSelectUI({def, folderPath, stream_id, testTags = [] }: {def:any, folderPath: string, stream_id: number, testTags: string[] }) {
-    const _this = useRef<any>({}).current;
-    const dispatch = useDispatch();
-    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
-    const [imageFolderInfo, setImageFolderInfo] = useState<any>(undefined);
-    const [finalReports, setFinalReports] = useState<any>({});
-    const [latestSelect, setLatestSelect] = useState<any>(undefined);
-
-    const [fetchIdxList, setFetchIdxList] = useState<number[]>([]);
-    const injectID_Prefix = "s_InjectID:";
-    const cbs_key = "xxxx";
-    _this.finalReports = finalReports;
-
-
-
-
-    function FileListReset() {
-        (async () => {
-            let folderContent = await BPG_API.Folder_Struct(folderPath, 2);
-            let regex = /.+\.png/i;
-
-            let imageInfo = folderContent.files
-                .filter((finfo: any) => (finfo.name != "FeatureRefImage.png") && regex.test(finfo.name))
-                .sort((finfo1: any, finfo2: any) => finfo1.mtime_ms - finfo2.mtime_ms)
-
-            console.log(imageInfo);
-
-            folderContent.files = imageInfo;
-            setImageFolderInfo(folderContent);
-
-            setFinalReports({})//clear
-            setLatestSelect(undefined);
-            console.log(folderContent)
-
-
-        })()
-    }
-
-
-
-    useEffect(() => {//////////////////////
-        console.log("TestInputSelectUI INIT");
-
-
-
-
-        BPG_API.send_cbs_attach(
-            stream_id, cbs_key, {
-
-            resolve: (pkts) => {
-                let RP = pkts.find((p: any) => p.type == "RP");
-                if (RP === undefined) return;
-
-                let tags = RP.data.tags as string[];
-                let injID = tags.find((tag: string) => tag.startsWith(injectID_Prefix));
-
-                if (injID === undefined) return;
-                injID = injID.replace(injectID_Prefix, "");
-
-
-                setFinalReports({ ..._this.finalReports, [injID]: RP.data })
-
-
-            },
-            reject: (pkts) => {
-
-            }
-        }
-
-        )
-
-
-        FileListReset();
-
-
-
-
-
-
-
-
-
-
-        return (() => {
-
-            BPG_API.send_cbs_detach(stream_id, cbs_key);
-
-            console.log("TestInputSelectUI EXIT");
-        });
-    }, []);
-
-    function ImgTest(folder_path: string, fileInfo: { name: string }, tags: string[] = []) {
-
-
-        
-        let final_tags = [...tags];
-        let tid=Date.now();
-        try {
-            let name =fileInfo.name+"";
-            name=name.replace(/\.[^/.]+$/, "")
-            console.log(name);
-            let nameJson = JSON.parse(name);
-            final_tags=[...final_tags,...nameJson.tags]
-            tid=nameJson.tid;
-        } catch (e) {
-            // return console.error(e); // error in the above string (in this case, yes)!
-        }
-
-
-        // let sIDTag = injectID_Prefix + fileInfo.name;
-        // let final_tags=[sIDTag,...tags];
-
-        console.log(final_tags);
-        BPG_API.InjectImage(folder_path + "/" + fileInfo.name, final_tags, tid);
-
-        setLatestSelect({
-            ...imageFolderInfo,
-            file: fileInfo,
-            tags: final_tags,
-            tid:tid
-        });
-
-    }
-
-    let bottonRunAll = imageFolderInfo === undefined ? null :
-        <Button onClick={() => {
-
-            setFinalReports({})//clear
-            setLatestSelect(undefined);
-            imageFolderInfo.files.forEach((file: any) => {
-                // let resultType=NaN;
-                // let report=finalReports[file.name];
-                // if(report!==undefined)
-                // {
-                //   resultType=report.report.category
-                // }
-                if (file.name.startsWith("IG_")) return;
-                //console.log(testTags);
-                ImgTest(imageFolderInfo.path, file, testTags);
-            })
-
-        }}>
-
-            群組測試
-        </Button>
-
-    // console.log(finalReports,latestSelect)
-    let bottonS = imageFolderInfo === undefined ? null :
-        imageFolderInfo.files.map((file: any) => {
-            let hasGenOK = false;
-            let hasGenNG = false;
-            let report = finalReports[file.name];
-            if (report !== undefined) {
-                report.report.sub_reports.forEach((subrep: any) => {
-                    if (subrep.category == 1) hasGenOK = true;
-                    if (subrep.category == -1) hasGenNG = true;
-                })
-            }
-            let pureGenOK = hasGenOK && !hasGenNG;
-            let pureGenNG = !hasGenOK && hasGenNG;
-
-            // console.log(hasGenOK,hasGenNG)
-            // console.log(file.name,pureGenOK,pureGenNG)
-
-            return <Button key={file.name} type={(pureGenOK || pureGenNG) ? "primary" : "dashed"} danger={hasGenNG} ghost={!hasGenOK && !hasGenNG}
-                onClick={() => {
-                    ImgTest(imageFolderInfo.path, file, testTags);
-
-                }}>
-                {file.name.replace(".png", "")}
-            </Button>
-        })
-
-
-    async function fileRename(folder_path: string, cName: string, nName: string) {
-        let renameResult = await BPG_API.FileRename(folder_path + "/" + cName, folder_path + "/" + nName);
-        console.log(renameResult);
-        FileListReset();
-
-    }
-
-    //`確定命名為OK?`
-    function Btn_LatestSelectFile_Rename(prefix: string, btnText: string, confirmText: string) {
-        return <Popconfirm
-            title={confirmText}
-            onConfirm={() => { }}
-            onCancel={() => { }}
-            okButtonProps={{
-                danger: true, onClick: () => {
-
-                    let fname = latestSelect.file.name;
-                    fname = prefix + fname.replace(/^[a-zA-Z]+_/g, "");
-                    fileRename(latestSelect.path, latestSelect.file.name, fname);
-                }
-            }}
-            okText={"好"}
-            cancelText="No"
-        >
-            <Button onClick={() => { }}>
-                {btnText}
-            </Button>
-        </Popconfirm>
-    }
-
-    return <>
-
-        <Button danger type="primary" onClick={() => {
-            FileListReset();
-
-        }}>檔案重整</Button>
-
-        {bottonRunAll}
-
-        <br />
-        {latestSelect === undefined ? null : <>
-            {latestSelect.file.name}
-
-            {/* 
-        {Btn_LatestSelectFile_Rename("NG_","NG",`確定命名為NG?`)}
-  
-  
-  
-        {Btn_LatestSelectFile_Rename("OK_","OK",`確定命名為OK?`)}
-   */}
-
-
-            {latestSelect.file.name.startsWith("IG_") ?
-                Btn_LatestSelectFile_Rename("", "加入群組測試", `確定設定至群組測試清單?`) :
-                Btn_LatestSelectFile_Rename("IG_", "忽略群組測試", `確定設定至群組測試 忽略清單?`)}
-
-
-        </>}
-        <div style={{ width: "100%", height: "400px", background: "rgba(0,0,0,0.8)", overflow: "scroll" }}>
-            {bottonS}
-
-            <br /><br />說明:
-            <Button key={"all OK log"} type="primary">
-                可檢全OK
-            </Button>
-
-            <Button key={"all NG log"} type="primary" danger>
-                可檢全NG
-            </Button>
-
-            <Button key={"all NG OK Mix"} type="dashed" danger>
-                可檢OK NG混合
-            </Button>
-
-            <Button key={"no insp"} type="dashed" ghost>
-                無可檢
-            </Button>
-
-
-
-
-            <br/>
-            <br/>
-
-            <Button danger type="primary" onClick={async () => {
-
-                let pkts = await BPG_API.InspTargetExchange(def.id, {
-                    type: "GetFetchSrcTIDList",
-                }) as any[];
-                let list=pkts[0].data as number[];
-                setFetchIdxList(list);
-                console.log(list);
-
-            }}>UpdateFetch</Button>
-
-            {fetchIdxList.map((idx:number)=>
-                <Button key={idx} onClick={async () => {
-                    await BPG_API.InspTargetExchange(def.id, {
-                        type: "TriggerFetchSrc",
-                        index:idx,
-                    }) 
-                }}>
-                    {idx}
-                </Button>
-            )}
-        </div>
-
-        
-    </>
-}
-
-
-export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompParam_InspTarUI) {
-    let { display, fsPath, style = undefined, renderHook, def, EditPermitFlag, report, onDefChange,defDoReload, APIExport } = props;
-    const _ = useRef<any>({
-
-        imgCanvas: document.createElement('canvas'),
-        canvasComp: undefined,
-        drawHooks: [],
-        ctrlHooks: [],
-
-
-        extDrawHook: undefined,
-        featureImgCanvas: document.createElement('canvas'),
-    });
-    const SBM_FEAT_REF_IMG_NAME = "FeatureRefImage.png"
-    let _this = _.current;
-    const [cacheDef, setCacheDef] = useState<any>(def);
-    const [featureInfoExt, setFeatureInfoExt] = useState<any>({});
-
-    const [featureInfo, setFeatureInfo] = useState<any>({});
-
-    const [defReport, setDefReport] = useState<any>(undefined);
-
-
-
-    const emptyModalInfo = {
-        timeTag: 0,
-        visible: false,
-        type: "",
-        onOK: (minfo: any) => { },
-        onCancel: (minfo: any) => { },
-        title: "",
-        DATA: DAT_ANY_UNDEF,
-        contentCB: (minfo: any) => <></>
-
-    }
-    const [modalInfo, setModalInfo] = useState(emptyModalInfo);
-
-
-    const [onMouseClick, setOnMouseClick] = useState<any>(undefined);
-
-    let c_report: any = undefined;
-    if (_this.cache_report !== report) {
-        if (report !== undefined) {
-            _this.cache_report = report;
-        }
-    }
-    c_report = _this.cache_report;
-
-
-    useEffect(() => {
-        console.log("fsPath:" + fsPath)
-        _this.cache_report = undefined;
-        setCacheDef(def);
-        // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
-        // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
-        return (() => {
-        });
-
-    }, [def]);
-
-
-    useEffect(() => {
-
-
-        console.log(def);
-        BPG_API.InspTargetExchange(def.id, {
-            type: "stream_info",
-            downsample: display ? 1 : 10,
-            stream_id: def.stream_id
-        });
-
-        return (() => {
-        });
-
-    }, [display]);
-
-
-
-
-    // useEffect(() => {
-    //     console.log(APIExport)
-
-    //     if(APIExport!==undefined)
-    //     {
-    //         APIExport({
-    //             api1:()=>"hello world"
-    //         })
-    //     }
-
-
-
-    //     return (() => {
-    //     });
-
-    // }, [APIExport]);
-
-
-    // console.log(">>>>>>>",onMouseClick);
-
-    // console.log(IMCM_group,report);
-    // const [drawHooks,setDrawHooks]=useState<type_DrawHook[]>([]);
-    // const [ctrlHooks,setCtrlHooks]=useState<type_DrawHook[]>([]);
-    const [Local_IMCM, setLocal_IMCM] =
-        useState<IMCM_type | undefined>(undefined);
-
-
-    enum EditState {
-        Normal_Show = 0,
-        Feature_Edit = 1,
-        Search_Region_Edit = 2,
-        Test_Saved_Files = 3,
-
-
-        MISC_Settings = 9,
-        NA = -99999
-    }
-
-    const [editState, _setEditState] = useState<EditState>(EditState.Normal_Show);
-
-    function setEditState(newEditState: EditState) {
-        _this.sel_region = 
-        _this.sel_region_type = undefined;
-        if (_this.canvasComp == undefined) return;
-            _this.canvasComp.UserRegionSelect(undefined)
-
-
-    let state3Ev: EditState[] = [];//3 elements, leave,stay,enter
-        if (newEditState != editState) {
-            state3Ev = [editState, EditState.NA, newEditState]
-        }
-        state3Ev.forEach((st, idx) => {
-
-            switch (st)//current state
-            {
-                case EditState.Normal_Show:
-                    if (idx == 2)//enter
-                    {
-
-                    }
-                    else if (idx == 0)//leave
-                    {
-
-                    }
-                    break;
-                case EditState.Feature_Edit:
-                    if (idx == 2)//enter
-                    {
-                        setFeatureInfo(cacheDef.featureInfo === undefined ? {} : cacheDef.featureInfo);
-
-                        //if(featureInfoExt.IM===undefined)//do a init image fetch
-                        (async () => {
-
-                            let pkts = await BPG_API.InspTargetExchange(cacheDef.id, {
-                                type: "extract_feature",
-                                image_path: fsPath + "/" + SBM_FEAT_REF_IMG_NAME,
-                                num_features: -1,
-                                image_transfer_downsampling: 1,
-                            }) as any[];
-
-                            let newFeatureInfoExt: any = {};
-
-
-                            let IM = pkts.find((p: any) => p.type == "IM");
-                            if (IM !== undefined) {
-                                _this.featureImgCanvas.width = IM.image_info.width;
-                                _this.featureImgCanvas.height = IM.image_info.height;
-
-                                let ctx2nd = _this.featureImgCanvas.getContext('2d');
-                                ctx2nd.putImageData(IM.image_info.image, 0, 0);
-                                newFeatureInfoExt.IM = IM;
-
-                            }
-
-                            setFeatureInfoExt({ ...featureInfoExt, ...newFeatureInfoExt })
-
-
-
-                        })()
-                    }
-                    else if (idx == 0)//leave
-                    {
-                        setFeatureInfo({})
-                    }
-                    break;
-
-                case EditState.Search_Region_Edit:
-                    if (idx == 2)//enter
-                    {
-                    }
-                    else if (idx == 0)//leave
-                    {
-                    }
-                    break;
-
-                case EditState.Test_Saved_Files:
-                    if (idx == 2)//enter
-                    {
-                    }
-                    else if (idx == 0)//leave
-                    {
-                    }
-                    break;
-
-            }
-        })
-        _setEditState(newEditState);
-    }
-
-    const dispatch = useDispatch();
-    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
-
-    const [delConfirmCounter, setDelConfirmCounter] = useState(0);
-    const [updateC, setUpdateC] = useState(0);
-
-
-    function onCacheDefChange(updatedDef: any, doTakeNewImage: boolean = true) {
-
-        if(updatedDef===undefined)
-        {
-            onDefChange(undefined,false);
-            return;   
-        }
-        console.log(updatedDef);
-        setCacheDef(updatedDef);
-
-
-
-        (async () => {
-            await BPG_API.InspTargetUpdate(updatedDef)
-        })()
-        onDefChange(updatedDef, doTakeNewImage);
-    }
-
-
-    useEffect(() => {//////////////////////
-
-        let cbsKey="_"+Math.random();
-        (async () => {
-
-            let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
-            console.log(ret);
-
-            // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
-            await BPG_API.send_cbs_attach(
-                cacheDef.stream_id, cbsKey, {
-
-                resolve: (pkts) => {
-                    // console.log(pkts);
-                    let IM = pkts.find((p: any) => p.type == "IM");
-                    if (IM === undefined) return;
-                    let CM = pkts.find((p: any) => p.type == "CM");
-                    if (CM === undefined) return;
-                    let RP = pkts.find((p: any) => p.type == "RP");
-                    if (RP === undefined) return;
-                    // console.log("++++++++\n",IM,CM,RP);
-
-
-                    setDefReport(RP.data)
-                    let IMCM = {
-                        image_info: IM.image_info,
-                        camera_id: CM.data.camera_id,
-                        trigger_id: CM.data.trigger_id,
-                        trigger_tag: CM.data.trigger_tag,
-                    } as type_IMCM
-
-                    _this.imgCanvas.width = IMCM.image_info.width;
-                    _this.imgCanvas.height = IMCM.image_info.height;
-
-                    let ctx2nd = _this.imgCanvas.getContext('2d');
-
-                    // console.log(IMCM.image_info);
-                    if(IMCM.image_info.image instanceof ImageData)
-                        ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
-                    else if(IMCM.image_info.image instanceof HTMLImageElement)
-                        ctx2nd.drawImage(IMCM.image_info.image, 0, 0);
-
-                    setLocal_IMCM(IMCM)
-                    // console.log(IMCM)
-                    //console.log(def.id)
-
-                },
-                reject: (pkts) => {
-
-                }
-            }
-
-            )
-
-        })()
-        return (() => {
-            (async () => {
-                await BPG_API.send_cbs_detach(
-                    cacheDef.stream_id, cbsKey);
-
-                // await BPG_API.InspTargetSetStreamChannelID(
-                //   cacheDef.id,0,
-                //   {
-                //     resolve:(pkts)=>{
-                //     },
-                //     reject:(pkts)=>{
-
-                //     }
-                //   }
-                // )
-            })()
-
-        })
-    }, []);
-    // function pushInSendGCodeQ()
-    // {
-    //   if(_this.isSendWaiting==true || _this.gcodeSeq.length==0)
-    //   {
-    //     return;
-    //   }
-    //   const gcode = _this.gcodeSeq.shift();
-    //   if(gcode==undefined || gcode==null)return;
-    //   _this.isSendWaiting=true;
-    //   ACT_WS_GET_OBJ((api)=>{
-    //     api.send({"type":"GCODE","code":gcode},
-    //     (ret)=>{
-    //       console.log(ret);
-    //       _this.isSendWaiting=false;
-    //       pushInSendGCodeQ(_this.gcodeSeq);
-
-    //     },(e)=>console.log(e));
-    //   })
-    // }
-
-
-    if (display == false) return null;
-
-
-
-
-    let EDIT_UI = null;
-
-    switch (editState) {
-
-        case EditState.Normal_Show:
-
-
-            let EditUI = null;
-            if ((EditPermitFlag & EDIT_PERMIT_FLAG.XXFLAGXX) != 0)//allow edit
-            {
-                EditUI = <>
-
-                    <InspTarView_basicInfo {...props} def={cacheDef} onDefChange={(newDef, ddd) => {
-                        console.log(cacheDef, newDef)
-                        onCacheDefChange(newDef, ddd);
-                    }} 
-                    
-                    defDoReload={()=>defDoReload()}
-                    
-                    />
-                    {/* <Button onClick={()=>{
-            BPG_API.InspTargetExchange(cacheDef.id,{type:"revisit_cache_stage_info"});
-          }}>重試</Button> */}
-
-
-
-
-
-
-
-
-                    {/* <Button onClick={() => {
-                        onDefChange(cacheDef, true)
-                    }}>Commit</Button> */}
-
-                    <Button onClick={() => {
-
-                    setEditState(EditState.MISC_Settings);
-
-                    }}><SettingOutlined/></Button>
-
-                    <Button onClick={() => {
-
-                        setEditState(EditState.Feature_Edit);
-
-                    }}>編輯特徵</Button>
-
-                    <Button onClick={() => {
-
-                        setEditState(EditState.Search_Region_Edit);
-
-                    }}>編輯搜尋範圍</Button>
-
-                </>
-            }
-
-            EDIT_UI = <>
-
-                <Input maxLength={100} value={cacheDef.id} disabled
-                    style={{ width: "200px" }}
-                    onChange={(e) => {
-                    }} />
-                {/* 
-          <Input maxLength={100} value={cacheDef.type} disabled
-            style={{width:"100px"}}
-            onChange={(e)=>{
-            }}/>
-  
-          <Input maxLength={100} value={cacheDef.sampleImageFolder}  disabled
-            style={{width:"100px"}}
-            onChange={(e)=>{
-            }}/> */}
-
-                {/* <Button onClick={()=>{
-            onCacheDefChange(cacheDef,true);
-          }}>照相</Button> */}
-
-
-
-                {EditUI}
-
-
-                <br />
-
-
-                <Button disabled={defReport===undefined} onClick={() => {
-
-
-
-                    // let default_name = `tid=${defReport.trigger_id} tags=${defReport.tags.toString()} t=${Date.now()}`
-                    let default_name = JSON.stringify({
-                        tid: defReport.trigger_id,
-                        tags: defReport.tags,
-                        t: Date.now()
-                    })
-                    
-                    // `tid=${defReport.trigger_id} tags=${defReport.tags.toString()} t=${Date.now()}`
-                    
-
-                    setModalInfo({
-                        timeTag: Date.now(),
-                        visible: true,
-                        type: ">>",
-                        onOK: (minfo: typeof modalInfo) => {
-                            // resolve(true)
-
-
-                            (async () => {
-                                let name = minfo.DATA.prefix + minfo.DATA.name + ".png";
-                                let pkts = await BPG_API.InspTargetExchange(cacheDef.id, {
-                                    type: "cache_image_save",
-                                    folder_path: fsPath + "/",
-                                    image_name: name,
-                                }) as any[];
-                                console.log(pkts);
-                                // if(pkts[0].data.ACK)
-                                // {
-                                // }
-                                // else
-                                // {
-                                //   message.info(`${name} 儲存失敗`);
-                                // }
-
-                                message.info(`${name} 儲存...`);
-                                setModalInfo({ ...minfo, visible: false })
-
-                            })()
-                        },
-                        onCancel: (minfo: typeof modalInfo) => {
-                            // reject(false)
-                            setModalInfo({ ...minfo, visible: false })
-                        },
-                        title: "儲存當前圖檔",
-                        DATA: {
-                            prefix: "",
-                            name: default_name,
-                            report: defReport,
-                        },
-                        contentCB: (minfo: typeof modalInfo) =>{ 
-                        console.log(minfo)
-                        return<>
-
-                            檔案名稱:
-                            <Input addonBefore={
-                                <Select key={default_name} defaultValue="___" onChange={value => setModalInfo(ObjShellingAssign(minfo, ["DATA", "prefix"], value))}>
-                                    <Option value="___">{"___"}</Option>
-                                    <Option value="[OK]">OK</Option>
-                                    <Option value="[NG]">NG</Option>
-                                </Select>} value={minfo.DATA.name}
-                                onChange={(ev) => {
-                                    setModalInfo(ObjShellingAssign(minfo, ["DATA", "name"], ev.target.value))
-
-                                }} />
-
-                        </>
-                        }
-                    })
-                }}>
-                    儲存當前圖檔
-                </Button>
-
-
-                <Button onClick={() => {
-                    setEditState(EditState.Test_Saved_Files);
-                }}>測試儲存圖檔</Button>
-            </>
-
-
-            break;
-
-        case EditState.Feature_Edit:
-
-
-            EDIT_UI = <>
-                <Popconfirm
-                    key={"UIBack"}
-                    title={`確定要更新？`}
-                    onConfirm={() => { }}
-                    onCancel={() => {
-
-                        setEditState(EditState.Normal_Show)
-
-                    }}
-                    okButtonProps={{
-                        danger: true, onClick: () => {
-                            setCacheDef({ ...cacheDef, featureInfo: featureInfo })
-                            setEditState(EditState.Normal_Show)
-
-                        }
-                    }}
-                    okText={"Yes"}
-                    cancelText="No"
-                >
-                    <Button danger type="primary" onClick={() => {
-
-                    }}>{"<"}</Button>
-                </Popconfirm>
-
-
-
-                
-                <Popconfirm key={"SAVE feat ref image " + updateC}
-                        title={`確定要儲存此圖為特徵參考圖？ 再按:${delConfirmCounter + 1}次`}
-                        onConfirm={() => { }}
-                        onCancel={() => { }}
-                        okButtonProps={{
-                            danger: true, onClick: () => {
-                                if (delConfirmCounter != 0) {
-                                    setDelConfirmCounter(delConfirmCounter - 1);
-                                }
-                                else {
-                                    (async () => {
-
-                                        let pkts = await BPG_API.InspTargetExchange(cacheDef.id, {
-                                            type: "cache_image_save",
-                                            folder_path: fsPath + "/",
-                                            image_name: SBM_FEAT_REF_IMG_NAME,
-                                        }) as any[];
-                                        console.log(pkts,fsPath,SBM_FEAT_REF_IMG_NAME);
-
-                                    })()
-                                    setUpdateC(updateC + 1);
-                                }
-                            }
-                        }}
-                        okText={"Yes:" + delConfirmCounter}
-                        cancelText="No"
-                    >
-                        <Button danger type="primary" onClick={() => {
-                            setDelConfirmCounter(5);
-                        }}>儲存最新圖片為特徵參考圖</Button>
-                    </Popconfirm>
-
-
-                特徵數:
-                <InputNumber min={10} value={cacheDef.num_features}
-                    onChange={(num) => {
-                        setCacheDef({ ...cacheDef, num_features: num })
-                    }} />
-
-
-                圖像邊緣強度:
-                <InputNumber value={featureInfo.strong_thresh}
-                    onChange={(num) => {
-                        setFeatureInfo({ ...featureInfo, strong_thresh: num })
-                    }} />
-                特徵強度:
-                <InputNumber value={featureInfo.weak_thresh}
-                    onChange={(num) => {
-                        setFeatureInfo({ ...featureInfo, weak_thresh: num })
-                    }} />
-
-                <br />
-
-
-
-
-                {
-                    featureInfo.mask_regions === undefined ? null :
-                        featureInfo.mask_regions.map((regi: any, idx: number) =>
-
-
-
-                            <Popconfirm
-                                key={"regi_del_" + idx + "..." + updateC}
-                                title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
-                                onConfirm={() => { }}
-                                onCancel={() => { }}
-                                okButtonProps={{
-                                    danger: true, onClick: () => {
-                                        if (delConfirmCounter != 0) {
-                                            setDelConfirmCounter(delConfirmCounter - 1);
-                                        }
-                                        else {
-                                            let new_mask_regions = [...featureInfo.mask_regions];
-
-                                            new_mask_regions.splice(idx, 1);
-
-                                            setFeatureInfo({ ...featureInfo, mask_regions: new_mask_regions })
-
-                                        }
-                                    }
-                                }}
-                                okText={"Yes:" + delConfirmCounter}
-                                cancelText="No"
-                            >
-                                <Button danger type="primary" onClick={() => {
-                                    setDelConfirmCounter(3);
-                                }}>{idx}</Button>
-                            </Popconfirm>
-
-
-
-                        )
-                }
-
-                <Button key={"AddNewFeat"} onClick={() => {
-
-
-
-                    if (_this.canvasComp == undefined) return;
-                    _this.sel_region = undefined;
-                    _this.sel_region_type = "region"
-                    _this.canvasComp.UserRegionSelect((info: any, state: number) => {
-                        if (state == 2) {
-                            console.log(info);
-
-                            let x, y, w, h;
-
-                            let roi_region = PtsToXYWH(info.pt1, info.pt2);
-                            console.log(roi_region)
-                            let regInfo = { ...roi_region, isBlackRegion: false };
-
-                            let mask_regions = featureInfo.mask_regions === undefined ? [] : [...featureInfo.mask_regions];
-
-                            mask_regions.push(regInfo);
-                            setFeatureInfo({ ...featureInfo, mask_regions })
-                            _this.sel_region_type = undefined;
-                            // onDefChange(newRule)
-                            if (_this.canvasComp == undefined) return;
-                            _this.canvasComp.UserRegionSelect(undefined)
-                        }
-                    })
-                }}>+特徵範圍</Button>
-
-
-                <Button key={"_" + 10000} onClick={() => {
-
-
-                (async () => {
-
-
-                    let tarT=[2,4,8];
-                    let obj = {
-                        type: "extract_feature",
-                        image_path: fsPath + "/" + SBM_FEAT_REF_IMG_NAME,
-                        num_features: cacheDef.num_features,
-                        weak_thresh: featureInfo.weak_thresh,
-                        strong_thresh: featureInfo.strong_thresh,
-                        T: tarT,
-                        image_transfer_downsampling: -1,
-                        mask_regions: featureInfo.mask_regions
-                    }
-                    console.log(obj)
-                    let pkts = await BPG_API.InspTargetExchange(cacheDef.id, obj) as any[];
-                    console.log(pkts);
-
-                    let newFeatureInfo: any = {};
-                    let newFeatureInfoExt: any = {};
-
-
-                    let IM = pkts.find((p: any) => p.type == "IM");
-                    if (IM !== undefined) {
-                        _this.featureImgCanvas.width = IM.image_info.width;
-                        _this.featureImgCanvas.height = IM.image_info.height;
-
-                        let ctx2nd = _this.featureImgCanvas.getContext('2d');
-                        ctx2nd.putImageData(IM.image_info.image, 0, 0);
-                        newFeatureInfoExt.IM = IM;
-
-                    }
-
-
-                    let RP = pkts.find((p: any) => p.type == "RP");
-                    if (RP !== undefined) {
-                        newFeatureInfo.templatePyramid = RP.data;
-                    }
-
-                    newFeatureInfo.templatePyramid=newFeatureInfo.templatePyramid.filter((pyr: any) => pyr.features.length > 0)
-
-                    if(tarT.length>newFeatureInfo.templatePyramid.length)
-                    {
-                        tarT=tarT.slice(0,newFeatureInfo.templatePyramid.length);
-                        
-                    }
-
-                    console.log(newFeatureInfo.templatePyramid,tarT )
-
-
-                    setFeatureInfo({ ...featureInfo, ...newFeatureInfo, T:tarT})
-                    setFeatureInfoExt({ ...featureInfoExt, ...newFeatureInfoExt })
-
-
-
-                })()
-
-                }}>生成特徵點</Button>
-
-
-
-                <br />
-
-                {
-                    featureInfo.refine_match_regions === undefined ? null :
-                        featureInfo.refine_match_regions.map((regi: any, idx: number) =>
-
-
-
-                            <Popconfirm
-                                key={"regi_del_" + idx + "..." + updateC}
-                                title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
-                                onConfirm={() => { }}
-                                onCancel={() => { }}
-                                okButtonProps={{
-                                    danger: true, onClick: () => {
-                                        if (delConfirmCounter != 0) {
-                                            setDelConfirmCounter(delConfirmCounter - 1);
-                                        }
-                                        else {
-                                            let new_refine_match_regions = [...featureInfo.refine_match_regions];
-
-                                            new_refine_match_regions.splice(idx, 1);
-
-                                            setFeatureInfo({ ...featureInfo, refine_match_regions: new_refine_match_regions })
-
-                                        }
-                                    }
-                                }}
-                                okText={"Yes:" + delConfirmCounter}
-                                cancelText="No"
-                            >
-                                <Button danger type="primary" onClick={() => {
-                                    setDelConfirmCounter(3);
-                                }}>{idx}</Button>
-                            </Popconfirm>
-
-
-
-                        )
-                }
-
-                <Button key={"AddRefineFeat"} onClick={() => {
-
-
-
-                    if (_this.canvasComp == undefined) return;
-                    _this.sel_region = undefined;
-                    _this.sel_region_type = "region"
-                    _this.canvasComp.UserRegionSelect((info: any, state: number) => {
-                        if (state == 2) {
-                            console.log(info);
-
-                            let x, y, w, h;
-
-                            let roi_region = PtsToXYWH(info.pt1, info.pt2);
-                            console.log(roi_region)
-                            let regInfo = { ...roi_region, isBlackRegion: false };
-
-                            let refine_match_regions = featureInfo.refine_match_regions === undefined ? [] : [...featureInfo.refine_match_regions];
-
-                            refine_match_regions.push(regInfo);
-                            setFeatureInfo({ ...featureInfo, refine_match_regions })
-
-                            _this.sel_region_type = undefined;
-                            // onDefChange(newRule)
-                            if (_this.canvasComp == undefined) return;
-                            _this.canvasComp.UserRegionSelect(undefined)
-                        }
-                    })
-                }}>+校位範圍</Button>
-
-
-                <Switch checkedChildren="僅角度" unCheckedChildren="位置與角度" checked={featureInfo.refine_angle_only == true} onChange={(check) => {
-                    setFeatureInfo({ ...featureInfo, refine_angle_only: check })
-                }} />
-
-                <br />
-                <Button key={"AddAnchor"} onClick={() => {
-
-
-
-                    _this.sel_region_type = "vector"
-                    if (_this.canvasComp == undefined) return;
-                    _this.sel_region = undefined;
-                    _this.canvasComp.UserRegionSelect((info: any, state: number) => {
-                        if (state == 2) {
-                            _this.sel_region_type = undefined;
-                            console.log(info)
-                            if (info.pt1.x == info.pt2.x && info.pt1.y == info.pt2.y) {
-                                setFeatureInfo({ ...featureInfo, origin_info: undefined });
-                            }
-                            else {
-                                setFeatureInfo({
-                                    ...featureInfo, origin_info:
-                                    {
-                                        pt: info.pt1,
-                                        vec: {
-                                            x: info.pt2.x - info.pt1.x,
-                                            y: info.pt2.y - info.pt1.y
-                                        }
-                                    }
-                                });
-                            }
-                            _this.canvasComp.UserRegionSelect(undefined)
-                        }
-                    })
-                }}>設定中心與方向</Button>
-            </>
-
-            break;
-
-
-
-
-        case EditState.Search_Region_Edit:
-
-
-            EDIT_UI = <>
-                <Button danger type="primary" onClick={() => {
-
-                    setEditState(EditState.Normal_Show)
-                }}>{"<"}</Button>
-
-                <Button type="primary" onClick={() => {
-
-                    onCacheDefChange(cacheDef, false);
-                    BPG_API.InspTargetExchange(cacheDef.id, { type: "revisit_cache_stage_info" });
-                }}>驗證</Button>
-
-                計算縮放:
-                <InputNumber value={cacheDef.matching_downScale} step={0.05}
-                    onChange={(num) => {
-
-                        setCacheDef({ ...cacheDef, matching_downScale: num })
-                    }} />
-
-
-                相似度:
-                <InputNumber value={cacheDef.similarity_thres}
-                    onChange={(num) => {
-
-                        setCacheDef({ ...cacheDef, similarity_thres: num })
-                    }} />
-
-
-                邊緣強度:
-                <InputNumber value={cacheDef.magnitude_thres}
-                    onChange={(num) => {
-                        setCacheDef({ ...cacheDef, magnitude_thres: num })
-                    }} />
-
-
-
-
-                角度:
-                <InputNumber min={-360} max={360} step={0.5} value={cacheDef.featureInfo.match_front_face_angle_range[0]}
-                    onChange={(num) => {
-                        setCacheDef(ObjShellingAssign(cacheDef, ["featureInfo", "match_front_face_angle_range", 0], num));
-                    }} />
-                ~
-                <InputNumber min={-360} max={360} step={0.5} value={cacheDef.featureInfo.match_front_face_angle_range[1]}
-                    onChange={(num) => {
-                        setCacheDef(ObjShellingAssign(cacheDef, ["featureInfo", "match_front_face_angle_range", 1], num));
-                    }} />
-                {"["}
-                <InputNumber min={-360} max={360} step={1} value={cacheDef.featureInfo.match_front_face_angle_segs}
-                    onChange={(num) => {
-                        setCacheDef(ObjShellingAssign(cacheDef, ["featureInfo", "match_front_face_angle_segs"], num));
-                    }} />
-
-                {"]"}
-                <br />
-                校位下限(0~1):
-                <InputNumber min={0} step={0.05} max={1} value={cacheDef.refine_score_thres}
-                    onChange={(num) => {
-                        setCacheDef({ ...cacheDef, refine_score_thres: num })
-                    }} />
-
-
-                <Switch checkedChildren="強制" unCheckedChildren="盡力" checked={cacheDef.must_refine_result == true} onChange={(check) => {
-                    setCacheDef({ ...cacheDef, must_refine_result: check })
-                }} />
-
-                <Switch checkedChildren="剔除" unCheckedChildren="保留" checked={cacheDef.remove_refine_failed_result == true} onChange={(check) => {
-                    setCacheDef({ ...cacheDef, remove_refine_failed_result: check })
-                }} />
-
-                <Switch checkedChildren="區域最似" unCheckedChildren="區域全部" checked={cacheDef.regional_most_similar_match == true} onChange={(check) => {
-                    setCacheDef({ ...cacheDef, regional_most_similar_match: check })
-                }} />
-                <br />
-
-                {
-                    cacheDef.search_regions === undefined ? null :
-                        cacheDef.search_regions.map((regi: any, idx: number) =>
-
-
-
-                            <Popconfirm
-                                key={"regi_del_" + idx + "..." + updateC}
-                                title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
-                                onConfirm={() => { }}
-                                onCancel={() => { }}
-                                okButtonProps={{
-                                    danger: true, onClick: () => {
-                                        if (_this.canvasComp !== undefined) 
-                                            _this.canvasComp.UserRegionSelect(undefined);
-                                        if (delConfirmCounter != 0) {
-                                            setDelConfirmCounter(delConfirmCounter - 1);
-                                        }
-                                        else {
-                                            let new_search_regions = [...cacheDef.search_regions];
-
-                                            new_search_regions.splice(idx, 1);
-
-                                            setCacheDef({ ...cacheDef, search_regions: new_search_regions })
-                                            setUpdateC(updateC + 1);
-                                        }
-                                    }
-                                }}
-                                okText={"Yes:" + delConfirmCounter}
-                                cancelText="No"
-                            >
-                                <Button danger type="primary" onClick={() => {
-                                    setDelConfirmCounter(3);
-                                    console.log(">>>");
-                                    if (_this.canvasComp !== undefined)
-                                    {
-                                        _this.sel_region = undefined;
-                                        _this.sel_region_type = "region"
-
-                                        let search_regions = cacheDef.search_regions === undefined ? [] : [...cacheDef.search_regions];
-                                        if(idx<search_regions.length)
-                                        {
-
-                                            _this.canvasComp.UserRegionSelect((info: any, state: number) => {
-                                                if (state == 2) {
-                                                    console.log(info);
-                        
-                                                    let x, y, w, h;
-                        
-                                                    let roi_region = PtsToXYWH(info.pt1, info.pt2);
-                                                    console.log(roi_region)
-                                                    let regInfo = { ...roi_region, isBlackRegion: false };
-                                                    
-                                                    search_regions[idx]=regInfo;
-                                                    setCacheDef({ ...cacheDef, search_regions })
-                        
-                                                    _this.sel_region_type = undefined;
-                                                    if (_this.canvasComp !== undefined) 
-                                                        _this.canvasComp.UserRegionSelect(undefined)
-                                                }
-                                            })
-                                        }
-                                    }
-        
-                                }}>{idx}</Button>
-                            </Popconfirm>
-
-
-
-                        )
-                }
-
-                <Button key={"AddNewRegion"} onClick={() => {
-
-
-
-                    if (_this.canvasComp == undefined) return;
-                    _this.sel_region = undefined;
-                    _this.sel_region_type = "region"
-                    _this.canvasComp.UserRegionSelect((info: any, state: number) => {
-                        if (state == 2) {
-                            console.log(info);
-
-                            let x, y, w, h;
-
-                            let roi_region = PtsToXYWH(info.pt1, info.pt2);
-                            console.log(roi_region)
-                            let regInfo = { ...roi_region, isBlackRegion: false };
-
-                            let search_regions = cacheDef.search_regions === undefined ? [] : [...cacheDef.search_regions];
-
-                            search_regions.push(regInfo);
-                            setCacheDef({ ...cacheDef, search_regions })
-
-                            _this.sel_region_type = undefined;
-                            // onDefChange(newRule)
-                            if (_this.canvasComp == undefined) return;
-                            _this.canvasComp.UserRegionSelect(undefined)
-                        }
-                    })
-                }}>+搜尋範圍</Button>
-
-                {["<", ">", "v", "^","↦","↤","↧","↥"].map((dir, idx) => {
-
-                    return <Button key={"AddNewRegion" + dir} onClick={() => {
-                        
-                        let new_search_regions = [...cacheDef.search_regions];
-                        console.log(new_search_regions)
-
-                        let offset={x:0,y:0,w:0,h:0};//x,y,w,h
-                        let step=5;
-                        switch(dir)
-                        {
-                            case "<":
-                                offset.x=-step;
-                                break;
-                            case ">":
-                                offset.x=step;
-                                break;
-                            case "v":
-                                offset.y=step;
-                                break;
-                            case "^":
-                                offset.y=-step;
-                                break;
-                            case "↦":
-                                offset.w=step;
-                                break;
-                            case "↤":
-                                offset.w=-step;
-                                break;
-
-                            case "↧":
-                                offset.h=step;
-                                break;
-                            case "↥":
-                                offset.h=-step;
-                                break;
-                        }
-                        new_search_regions=new_search_regions.map((regi:any)=>{
-                            return {...regi,x:regi.x+offset.x,y:regi.y+offset.y,w:regi.w+offset.w,h:regi.h+offset.h}
-                        })
-                        setCacheDef({ ...cacheDef, search_regions: new_search_regions })
-                        setUpdateC(updateC + 1);
-                    }}>{dir}</Button>
-
-                })}
-
-                
-                <Switch checkedChildren="開啟顏色預處理" unCheckedChildren="關閉顏色預處理" checked={cacheDef?.mask?.enable == true} onChange={(check) => {
-                    setCacheDef(ObjShellingAssign(cacheDef, ["mask","enable"], check));
-                }} />
-
-                <Slider defaultValue={def?.mask?.hh} min={0} max={180} step={1} onChange={(v) => {
-                    _this.trigTO = ID_debounce(_this.trigTO, () => {
-                        setCacheDef(ObjShellingAssign(cacheDef, ["mask","hh"], v));
-                    }, () => _this.trigTO = undefined, 500);
-                }} />
-
-                <Slider defaultValue={def?.mask?.lh} min={0} max={180} step={1} onChange={(v) => {
-                    _this.trigTO = ID_debounce(_this.trigTO, () => {
-                        setCacheDef(ObjShellingAssign(cacheDef, ["mask","lh"], v));
-                    }, () => _this.trigTO = undefined, 500);
-                }} />
-
-                <Slider defaultValue={def?.mask?.blur1_size} min={0} max={50} step={1} onChange={(v) => {
-                    _this.trigTO = ID_debounce(_this.trigTO, () => {
-                        setCacheDef(ObjShellingAssign(cacheDef, ["mask","blur1_size"], v));
-                    }, () => _this.trigTO = undefined, 500);
-                }} />
-
-                <Slider defaultValue={def?.mask?.blur2_size} min={0} max={50} step={1} onChange={(v) => {
-                    _this.trigTO = ID_debounce(_this.trigTO, () => {
-                        setCacheDef(ObjShellingAssign(cacheDef, ["mask","blur2_size"], v));
-                    }, () => _this.trigTO = undefined, 500);
-                }} />
-
-
-
-
-            </>
-            break;
-
-
-
-
-        case EditState.Test_Saved_Files: {
-
-            let folderPath = cacheDef.testInputFolder || fsPath;
-            let result_InspTar_stream_id = 51001;//HACK hard coded
-            EDIT_UI = <>
-                <Button danger type="primary" onClick={() => {
-
-                    setEditState(EditState.Normal_Show)
-                }}>{"<"}</Button>
-                <TestInputSelectUI def={cacheDef} testTags={[def.id + "_Inject"]} folderPath={folderPath} stream_id={result_InspTar_stream_id}></TestInputSelectUI>
-            </>
-        } break;
-
-
-        case EditState.MISC_Settings: {
-            let folderPath = cacheDef.testInputFolder || fsPath;
-            EDIT_UI = <>
-                <Button danger type="primary" onClick={() => {
-                    setEditState(EditState.Normal_Show)
-                }}>{"<"}</Button>
-
-                <Button 
-                    danger={cacheDef.display_origin!==undefined}
-                    onClick={() => {
-                    if (_this.canvasComp == undefined) return;
-                    if(cacheDef.display_origin!==undefined)
-                    {   
-                        let redef={ ...cacheDef}
-                        delete redef.display_origin;
-                        setCacheDef(redef)
-                        return;
-                    }
-                    _this.sel_region = undefined;
-                    _this.sel_region_type = "point"
-                    _this.canvasComp.UserRegionSelect((info: any, state: number) => {
-                        if (state == 2) {
-
-                            // info.pt2.x;
-                            // info.pt2.y;
-
-
-
-
-                            setCacheDef({ ...cacheDef, display_origin: info.pt2 })
-                            setUpdateC(updateC + 1);
-
-                            console.log(info);
-                            _this.sel_region_type = undefined;
-                            _this.canvasComp.UserRegionSelect(undefined)
-                        }
-                    })
-                }}>{`${cacheDef.display_origin!==undefined?"刪除":"設定"}"顯示"座標原點`}</Button>
-
-                <Button onClick={() => {
-                    if (_this.canvasComp == undefined) return;
-                    _this.sel_region = undefined;
-                    _this.sel_region_type = "measure"
-                    _this.canvasComp.UserRegionSelect((info: any, state: number) => {
-                        if (state == 2) {
-
-                            // info.pt2.x;
-                            // info.pt2.y;
-
-
-
-
-                            // setCacheDef({ ...cacheDef, display_origin: info.pt2 })
-                            // setUpdateC(updateC + 1);
-
-                            console.log(info);
-                            _this.sel_region_type = undefined;
-                            _this.canvasComp.UserRegionSelect(undefined)
-                        }
-                    },"click")
-                }}>測試距離</Button>
-
-
-
-
-                <br/>
-                {/* Y軸:<Switch checkedChildren="正常向" unCheckedChildren="圖向" checked={cacheDef.display_origin_use_normal_Y_direction ==true} onChange={(check) => {
-                    setCacheDef({ ...cacheDef, display_origin_use_normal_Y_direction: check })
-                }} /> */}
-
-                Y軸轉換 (unit/pix):<InputNumber value={cacheDef.display_y_axis_scale??1} 
-                onChange={(num) => {
-                    setCacheDef({ ...cacheDef, display_y_axis_scale:num})
-                    setUpdateC(updateC + 1);
-
-                }}/>
-                <br/>
-                X軸轉換 (unit/pix):<InputNumber value={cacheDef.display_x_axis_scale??1} 
-                onChange={(num) => {
-                    setCacheDef({ ...cacheDef, display_x_axis_scale:num})
-                    setUpdateC(updateC + 1);
-
-                }}/>
-
-            </>
-        } break;
-
-
-    }
-
-    if (APIExport !== undefined)//keeps update for every state change
-    {
-        APIExport({
-            onMouseClick: (callback: any) => {
-                setOnMouseClick({ callback })
-            },
-            setDrawHook: (hook:any) => {
-                _this.extDrawHook=hook;
-            },
-            getLatestReport: () => {
-                return defReport;
-            },
-            getCameraState: () => {
-                if(_this.canvasComp===undefined)return undefined;
-                let ccomp=_this.canvasComp as DrawHook_CanvasComponent;
-                return ccomp.camera.toSimpleObj();
-            },
-            setCameraState: (cameraInfo:any) => {
-                if(_this.canvasComp===undefined)return false;
-                let ccomp=_this.canvasComp as DrawHook_CanvasComponent;
-                ccomp.camera.fromSimpleObj(cameraInfo);
-                ccomp.ctrlLogic();
-                ccomp.draw(true);
-            },
-
-            defInfo: def,
-            latest_RP: defReport,
-            latest_IMCM: Local_IMCM,
-
-            
-        })
-    }
-
-
-    return <div style={{ ...style}} className={"overlayCon"}>
-
-        <div className={"overlay"} style={{ width: "100%" }}>
-
-            {EDIT_UI}
-
-        </div>
-
-        <Modal
-            title={modalInfo.title}
-            visible={modalInfo.visible}
-            onOk={() => modalInfo.onOK(modalInfo)}
-            // confirmLoading={confirmLoading}
-            onCancel={() => modalInfo.onCancel(modalInfo)}
-        >
-            {modalInfo.visible ? modalInfo.contentCB(modalInfo) : null}
-        </Modal>
-
-        <HookCanvasComponent style={{}} dhook={(ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent) => {
-            _this.canvasComp = canvas_obj;
-            // console.log(ctrl_or_draw);
-            if(_this.extDrawHook!==undefined && _this.extDrawHook.preDraw!==undefined)
-            {
-                _this.extDrawHook.preDraw(ctrl_or_draw, g, canvas_obj);
-            }
-            let ctx = g.ctx;
-            let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
-
-            let camMag = canvas_obj.camera.GetCameraScale();
-            if (ctrl_or_draw == true)//ctrl
-            {
-                if (canvas_obj.regionSelect !== undefined) {
-                    if (canvas_obj.regionSelect.pt1 === undefined || canvas_obj.regionSelect.pt2 === undefined) {
-                        return;
-                    }
-
-                    let pt1 = canvas_obj.regionSelect.pt1;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
-                    let pt2 = canvas_obj.regionSelect.pt2;//canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
-
-                    _this.sel_region =
-                    {
-                        ...PtsToXYWH(canvas_obj.regionSelect.pt1, canvas_obj.regionSelect.pt2),
-                        pt1, pt2
-                    };
-
-                }
-
-                // const imageData = ctx.getImageData(g.mouseStatus.x, g.mouseStatus.y, 1, 1);
-                // // 
-                // _this.fetchedPixInfo = imageData;
-            }
-            if (editState == EditState.Normal_Show || editState == EditState.Search_Region_Edit || editState == EditState.Test_Saved_Files|| editState == EditState.MISC_Settings) {
-
-                if (ctrl_or_draw == true)//ctrl
-                {
-                    if (onMouseClick !== undefined && (g.mouseStatus.status == 1 && g.mouseEdge)) {
-                        console.log(onMouseClick);
-                        // let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
-                        let cb = onMouseClick.callback;
-                        setOnMouseClick(undefined)
-                        cb(mouseOnCanvas);
-                    }
-                }
-                else//draw
-                {
-
-
-
-                    if (Local_IMCM !== undefined) {
-                        g.ctx.save();
-                        let scale = Local_IMCM.image_info.scale;
-                        g.ctx.scale(scale, scale);
-                        g.ctx.translate(-0.5, -0.5);
-                        g.ctx.drawImage(_this.imgCanvas, 0, 0);
-                        g.ctx.restore();
-                    }
-
-                    
-                    if (defReport !== undefined) {
-                        // console.log(defReport)
-                        defReport.report.forEach((match: any, idx: number) => {
-
-                            if (match.confidence <= 0) return;
-                            let angle = match.angle;
-
-                            g.ctx.save();
-
-                            g.ctx.translate(match.center.x, match.center.y );
-                            // let distance=Math.abs(match.center.x-mouseOnCanvas.x)+Math.abs(match.center.y-mouseOnCanvas.y)
-                            // ctx.font = (100*Math.pow(1000/(distance+1000),5)+10)+"px Arial";
-                            ctx.font = "50px Arial";
-                            g.ctx.scale(1.5/camMag,1.5/camMag);
-
-                            ctx.fillStyle = 'hsl('+ Math.floor(idx/10)*100 +',100%,50%)';
-                            ctx.strokeStyle = 'black';
-                            let text="[" + idx+"]";
-                            ctx.fillText(text,0,0- 40)
-                            ctx.lineWidth = 2;
-                            ctx.strokeText(text, 0,0- 40)
-                            ctx.fillStyle = "rgba(150,100, 100,0.8)";
-
-
-
-                            ctx.font = "20px Arial";
-                            ctx.fillText("ang:" + (angle * 180 / 3.14159).toFixed(2)+(match.flip?" 反 ":""), 0,0- 20)
-
-                            if (match.confidence !== undefined)
-                                ctx.fillText("sim:" + match.confidence.toFixed(3), 0,0 - 0)
-
-
-                            ctx.lineWidth = 4;
-                            ctx.strokeStyle = `HSLA(0, 100%, 50%,1)`;
-                            canvas_obj.rUtil.drawCross(ctx, { x:0, y: 0}, 12);
-
-
-
-                            ctx.lineWidth = 4;
-                            let vec = PtRotate2d({ x: 100, y: 0 }, angle, 1);
-                            canvas_obj.rUtil.drawLine(ctx, { x1: 0, y1: 0, x2: 0 + vec.x, y2:0+ vec.y })
-                            g.ctx.restore();
-
-                        })
-
-                        {
-                            ctx.save();
-                            ctx.resetTransform();
-                            ctx.font = "20px Arial";
-                            ctx.fillStyle = "rgba(150,100, 100,0.5)";
-                            ctx.fillText("ProcessTime:" + (defReport.process_time_us / 1000).toFixed(2) + " ms", 20, 400)
-                            
-
-                            let tagsStr="";
-                            if(defReport.tags!==undefined)
-                            {
-                                tagsStr=defReport.tags.join(",");
-                            }
-                            ctx.fillText("tags:"+tagsStr, 20, 400+20*(1))
-
-
-
-                            ctx.restore();
-                        }
-                    }
-                    // drawHooks.forEach(dh=>dh(ctrl_or_draw,g,canvas_obj))
-                    try {
-
-                        if (cacheDef.search_regions !== undefined) {
-                            cacheDef.search_regions.forEach((regi: any, idx: number) => {
-                                ctx.strokeStyle = "rgba(150,50, 50,0.8)";
-                                if (defReport && defReport.report[idx] !== undefined) {
-                                    if (defReport.report[idx].confidence >= 0)
-                                        ctx.strokeStyle = "rgba(50,150, 50,0.8)";
-
-                                }
-
-
-                                drawRegion(g, canvas_obj, { x: regi.x, y: regi.y, w: regi.w, h: regi.h }, canvas_obj.rUtil.getIndicationLineSize(), false);
-                                ctx.font = "40px Arial";
-                                ctx.fillStyle = "rgba(50,150, 50,0.8)";
-                                ctx.fillText("idx:" + idx, regi.x, regi.y)
-
-                            })
-                        }
-                    }
-                    catch (e) {
-
-                    }
-
-
-                }
-
-            }
-
-            if (editState == EditState.Feature_Edit) {
-                if (ctrl_or_draw == true)//ctrl
-                {
-                }
-                else//draw
-                {
-
-                    let camMag = canvas_obj.camera.GetCameraScale();
-                    if (featureInfoExt.IM !== undefined) {
-                        g.ctx.save();
-                        let scale = featureInfoExt.IM.image_info.scale;
-                        g.ctx.scale(scale, scale);
-                        g.ctx.translate(-0.5, -0.5);
-                        g.ctx.drawImage(_this.featureImgCanvas, 0, 0);
-                        g.ctx.restore();
-                    }
-
-
-                    if (featureInfo.templatePyramid !== undefined) {
-                        if (canvas_obj.regionSelect === undefined)//when in region select, hide the template info
-                        {
-
-                            let mult = 1;
-                            for (let i = 0; i < featureInfo.templatePyramid.length; i++, mult *= 2) {
-                                let template = featureInfo.templatePyramid[i]
-                                template.features.forEach((temp_pt: any) => {
-                                    // ctx.strokeStyle = "rgba(255, 0, 0,1)";
-                                    ctx.lineWidth = 4 / mult/camMag;
-                                    ctx.strokeStyle = `HSLA(${300 * i / featureInfo.templatePyramid.length}, 100%, 50%,1)`;
-                                    let X=(temp_pt.x + template.tl_x) * mult;
-                                    let Y=(temp_pt.y + template.tl_y) * mult;
-                                    canvas_obj.rUtil.drawCross(ctx, { x:X, y:Y}, 12 / mult/camMag);
-                                    
-                                    let ptheta=temp_pt.theta*Math.PI/180;
-                                    let dirMag=50/camMag;
-                                    if(dirMag>10)dirMag=10;
-                                    let vX=Math.cos(ptheta)*dirMag;
-                                    let vY=Math.sin(ptheta)*dirMag;
-
-                                    canvas_obj.rUtil.drawLine(ctx, {
-                                        x1: X-vX,
-                                        y1: Y-vY,
-                                        x2: X+vX,
-                                        y2: Y+vY
-                                    })
-
-                                })
-                            }
-
-                        }
-                        if (featureInfo.mask_regions !== undefined) {
-                            featureInfo.mask_regions.forEach((regi: any, idx: number) => {
-
-                                ctx.strokeStyle =
-                                    ctx.fillStyle = "rgba(150,100, 100,0.8)";
-
-
-                                drawRegion(g, canvas_obj, { x: regi.x, y: regi.y, w: regi.w, h: regi.h }, canvas_obj.rUtil.getIndicationLineSize());
-                                let fontSize_eq = 40 / camMag;
-                                if (fontSize_eq > 40) fontSize_eq = 40;
-                                ctx.font = (fontSize_eq) + "px Arial";
-                                ctx.fillText("idx:" + idx, regi.x, regi.y)
-
-                            })
-                        }
-
-
-                    }
-
-                    if (featureInfo.refine_match_regions !== undefined) {
-                        if (featureInfo.refine_match_regions !== undefined) {
-                            featureInfo.refine_match_regions.forEach((regi: any, idx: number) => {
-
-                                ctx.fillStyle =
-                                    ctx.strokeStyle = "rgba(100,100, 200,0.8)";
-
-
-                                drawRegion(g, canvas_obj, { x: regi.x, y: regi.y, w: regi.w, h: regi.h }, canvas_obj.rUtil.getIndicationLineSize());
-                                let fontSize_eq = 40 / camMag;
-                                if (fontSize_eq > 40) fontSize_eq = 40;
-                                ctx.font = (fontSize_eq) + "px Arial";
-                                ctx.fillText("idx:" + idx, regi.x, regi.y)
-
-                            })
-                        }
-                    }
-
-
-
-
-
-                    if (featureInfo.origin_info !== undefined) {
-
-                        ctx.setLineDash([0, 0, 0, 0]);
-                        let oriInfo = featureInfo.origin_info;
-                        canvas_obj.rUtil.drawCross(ctx, { x: oriInfo.pt.x, y: oriInfo.pt.y }, 10/camMag);
-
-                        canvas_obj.rUtil.drawLine(ctx, {
-                            x1: oriInfo.pt.x,
-                            y1: oriInfo.pt.y,
-                            x2: oriInfo.pt.x + oriInfo.vec.x,
-                            y2: oriInfo.pt.y + oriInfo.vec.y
-                        })
-                    }
-
-
-
-                }
-            }
-
-
-            if (ctrl_or_draw == false) {
-
-                {
-                    ctx.save();
-
-                    // let lineLengthMult=500/camMag;
-                    //offset draw oirigin
-                    {
-                        let x=0;
-                        let y=0;
-                        if(cacheDef.display_origin!==undefined)
-                        {
-                            x=cacheDef.display_origin.x;
-                            y=cacheDef.display_origin.y;
-                        }
-                        ctx.translate(x, y);
-                    }
-
-                    ctx.scale(5, 5);
-
-                    ctx.lineWidth = 1/camMag;
-                    //reset dash
-                    ctx.setLineDash([0, 0, 0, 0]);
-
-                    //font size
-                    ctx.font = (1/camMag)+"em Arial";
-                    //aline text to XY center
-                    ctx.textAlign = "center";
-                    ctx.textBaseline = "middle";
-
-                    let X_mult=1;
-                    if(cacheDef.display_x_axis_scale<0)
-                    {
-                        X_mult=-1;
-                    }
-
-                    let Y_mult=1;
-                    if(cacheDef.display_y_axis_scale<0)
-                    {
-                        Y_mult=-1;
-                    }
-                    //draw origin and axis arrow
-                    //draw x axis
-                    ctx.strokeStyle = "rgba(255, 0, 0,1)";
-                    ctx.fillStyle = "rgba(255, 0, 0,1)";
-                    canvas_obj.rUtil.drawLine(ctx, { x1: 0, y1: 0, x2: 100*X_mult, y2: 0 })
-                    canvas_obj.rUtil.drawLine(ctx, { x1: 100*X_mult, y1: 0, x2: 90*X_mult, y2: 10 })
-                    canvas_obj.rUtil.drawLine(ctx, { x1: 100*X_mult, y1: 0, x2: 90*X_mult, y2: -10 })
-                    
-                    // ctx.strokeStyle = "rgba(0, 0, 0,1)";
-                    // ctx.strokeText("X", 100*X_mult, -10*Y_mult)
-                    // ctx.fillText("X", 100*X_mult, -10*Y_mult)
-
-                    //draw y axis
-                    ctx.fillStyle =
-                    ctx.strokeStyle = "rgba(0, 255, 0,1)";
-
-
-                    canvas_obj.rUtil.drawLine(ctx, { x1: 0, y1: 0, x2: 0, y2: 100*Y_mult })
-                    canvas_obj.rUtil.drawLine(ctx, { x1: 0, y1: 100*Y_mult, x2: 10, y2: 90*Y_mult })
-                    canvas_obj.rUtil.drawLine(ctx, { x1: 0, y1: 100*Y_mult, x2: -10, y2: 90*Y_mult })
-
-                    // ctx.strokeStyle = "rgba(0, 0, 0,1)";
-                    // ctx.strokeText("Y", -10*X_mult, 100*Y_mult)
-                    // ctx.fillText("Y", -10*X_mult, 100*Y_mult)
-
-                    //scale x5
-
-
-                    ctx.restore();
-                    
-
-                }
-
-
-
-
-                if (_this.sel_region_type == "point") {
-                    // console.log(mouseOnCanvas)
-
-                    drawRegion(g, canvas_obj,{
-                        x: mouseOnCanvas.x-5,
-                        y: mouseOnCanvas.y-5,
-                        w: 10,
-                        h: 10
-                    }, canvas_obj.rUtil.getIndicationLineSize());
-                }
-
-
-                if (canvas_obj.regionSelect !== undefined && _this.sel_region !== undefined) {
-                    ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-
-                    
-                    if (_this.sel_region_type == "region") {
-                        drawRegion(g, canvas_obj, _this.sel_region, canvas_obj.rUtil.getIndicationLineSize());
-                    }
-                    if (_this.sel_region_type == "vector") {
-                        canvas_obj.rUtil.drawCross(ctx, { x: _this.sel_region.pt1.x, y: _this.sel_region.pt1.y }, 10/camMag);
-
-                        ctx.setLineDash([0, 0, 0, 0]);
-                        canvas_obj.rUtil.drawLine(ctx, {
-                            x1: _this.sel_region.pt1.x,
-                            y1: _this.sel_region.pt1.y,
-                            x2: _this.sel_region.pt2.x,
-                            y2: _this.sel_region.pt2.y
-                        })
-
-                    }
-
-                    if (_this.sel_region_type == "measure") {
-                        // canvas_obj.rUtil.drawCross(ctx, { x: _this.sel_region.pt1.x, y: _this.sel_region.pt1.y }, 10/camMag);
-
-                        ctx.setLineDash([0, 0, 0, 0]);
-                        canvas_obj.rUtil.drawLine(ctx, {
-                            x1: _this.sel_region.pt1.x,
-                            y1: _this.sel_region.pt1.y,
-                            x2: _this.sel_region.pt2.x,
-                            y2: _this.sel_region.pt2.y
-                        })
-                        
-
-                        let dx=(_this.sel_region.pt2.x-_this.sel_region.pt1.x)*(cacheDef.display_x_axis_scale??1);
-                        let dy=(_this.sel_region.pt2.y-_this.sel_region.pt1.y)*(cacheDef.display_y_axis_scale??1);
-
-                        let dist=Math.sqrt(dx*dx+dy*dy);
-                        ctx.save();
-                        ctx.resetTransform();
-                        ctx.font = "1.5em Arial";
-                        ctx.fillStyle = "rgba(250,100, 50,1)";
-                        ctx.fillText(`距離: ${dist.toFixed(2)}`,  g.mouseStatus.x+10, g.mouseStatus.y+35)
-
-                        ctx.restore();
-
-                    }
-                }
-
-                // if (_this.fetchedPixInfo !== undefined) {
-                //     ctx.save();
-                //     ctx.resetTransform();
-                //     // console.log(_this.fetchedPixInfo)
-                //     let pixInfo = _this.fetchedPixInfo.data;
-                //     ctx.font = "1.5em Arial";
-                //     ctx.fillStyle = "rgba(250,100, 50,1)";
-
-                //     ctx.fillText(rgb2hsv(pixInfo[0], pixInfo[1], pixInfo[2]).map(num => num.toFixed(1)).toString(), g.mouseStatus.x, g.mouseStatus.y)
-                //     ctx.restore();
-                // }
-
-                {
-                    ctx.save();
-                    ctx.resetTransform();
-                    // console.log(_this.fetchedPixInfo)
-                    // let pixInfo = _this.fetchedPixInfo.data;
-                    
-                    ctx.fillStyle = "rgba(250,100, 50,1)";
-
-                    let dispX=mouseOnCanvas.x;
-                    let dispY=mouseOnCanvas.y;
-
-                    let altered=false;
-                    if(cacheDef.display_origin!==undefined)
-                    {
-                        dispX-=cacheDef.display_origin.x;
-                        dispY-=cacheDef.display_origin.y;  
-                        
-                        altered=true;
-                    }
-                    if(cacheDef.display_x_axis_scale!==undefined)
-                    {
-                        dispX*=cacheDef.display_x_axis_scale;  
-                        altered=true;
-                    }
-                    if(cacheDef.display_y_axis_scale!==undefined)
-                    {    
-                        dispY*=cacheDef.display_y_axis_scale;  
-                        altered=true;
-
-                    }
-
-                    ctx.font = "2em Arial";
-                    ctx.fillStyle = "rgba(250,100, 50,1)";
-                    ctx.fillText(`${dispX.toFixed(1)},${dispY.toFixed(1)}`, g.mouseStatus.x, g.mouseStatus.y)
-
-                    ctx.font = "1.5em Arial";
-                    ctx.fillStyle = "rgba(150,0, 200,1)";
-                    ctx.fillText(`${mouseOnCanvas.x.toFixed(1)},${mouseOnCanvas.y.toFixed(1)}`, g.mouseStatus.x+25, g.mouseStatus.y+15)
-                    // console.log(mouseOnCanvas)
-                    // ctx.font = "5em Arial";
-                    // ctx.fillText(`${mouseOnCanvas.x.toFixed(1)},${mouseOnCanvas.y.toFixed(1)}`, g.mouseStatus.x, g.mouseStatus.y)
-
-
-
-
-                    ctx.restore();
-                }
-            }
-
-
-
-
-            if(_this.extDrawHook!==undefined && _this.extDrawHook.postDraw!==undefined)
-            {
-                _this.extDrawHook.postDraw(ctrl_or_draw, g, canvas_obj);
-            }
-            if (renderHook) {
-                // renderHook(ctrl_or_draw,g,canvas_obj,newDef);
-            }
-        }
-        } />
-
-    </div>;
-
 }
 
 
@@ -4424,97 +2202,6 @@ function SurfaceCheckSimple_EDIT_UI(param:
 }
 
 
-
-function tagsMatching(tags1: string[], tags2: string[]) {
-    for (let i = 0; i < tags1.length; i++) {
-        let isMatched = false;
-        for (let j = 0; j < tags2.length; j++) {
-            if (tags1[i] == tags2[j]) {
-                isMatched = true;
-                break;
-            }
-        }
-        if (isMatched == false) return false;
-    }
-    return true;
-}
-
-function TagsEdit_DropDown({ tags, onTagsChange, children }: { tags: (string | string[])[], onTagsChange: (tags: (string | string[])[]) => void, children: React.ReactChild }) {
-    const [visible, _setVisible] = useState(false);
-    const [newTagTxt, setNewTagTxt] = useState("");
-
-
-    const [tagDelInfo, setTagDelInfo] = useState<{ tarTag: (string | string[]), countdown: number }>({ tarTag: "", countdown: 0 });
-
-
-    function setVisible(enable: boolean) {
-        setTagDelInfo({ ...tagDelInfo, tarTag: "" });
-        _setVisible(enable);
-    }
-    if (tags === undefined)
-        tags = []
-
-    let newTags = newTagTxt.split(',');
-
-
-
-    let isNewTagTxtDuplicated = tags.find(tag => tagsMatching(Array.isArray(tag) ? tag : [tag], newTags)) != undefined;
-
-
-
-    return <Dropdown onVisibleChange={setVisible} visible={visible}
-        overlay={<Menu>
-            {
-                [...tags.map((tag: string | string[], index: number) => (
-                    <Menu.Item key={tag + "_" + index}
-                        onClick={() => {
-                            if (tagDelInfo.tarTag != tag) {
-                                setTagDelInfo({
-                                    tarTag: tag,
-                                    countdown: 3
-                                });
-                                return;
-                            }
-
-                            if (tagDelInfo.countdown > 0) {
-                                setTagDelInfo({ ...tagDelInfo, countdown: tagDelInfo.countdown - 1 });
-                                return;
-                            }
-
-                            let newList = [...tags]
-                            newList.splice(index, 1);
-                            onTagsChange(newList);
-                        }}>
-                        {tag + ((tagDelInfo.tarTag != tag) ? "" : ("   cd:" + tagDelInfo.countdown))}
-                    </Menu.Item>)),
-
-                <Menu.Item key={"ADD"}
-                    onClick={(e) => {
-                    }}>
-
-                    <Input maxLength={100} value={newTagTxt} status={isNewTagTxtDuplicated ? "error" : undefined}
-                        onChange={(e) => {
-                            setNewTagTxt(e.target.value);
-                        }}
-                        onPressEnter={(e) => {
-                            let new_tags = [...tags, newTags];
-
-                            if (isNewTagTxtDuplicated == false) {
-                                onTagsChange(new_tags);
-                                setNewTagTxt("");
-                            }
-                        }} />
-
-                </Menu.Item>
-                ]
-            }
-        </Menu>}
-    >
-        {children}
-    </Dropdown>
-
-}
-
 const CAT_ID_Color = {
     "": "gray",
     "0": "gray",
@@ -4529,7 +2216,7 @@ const CAT_ID_Color = {
     "-750": "red",
 }
 
-const CAT_ID_NAME = {
+const CAT_ID_NAME: { [key: string]: string } = {
     "": "NA",
     "0": "NA",
     "1": "OK",
@@ -4545,103 +2232,6 @@ const CAT_ID_NAME = {
 const _MM_P_STP_ = 4;
 const _OBJ_SEP_DIST_ = 4;
 
-
-
-
-
-export function InspTarView_basicInfo({ display, fsPath, EditPermitFlag, style = undefined, renderHook, def, report, onDefChange,defDoReload }: CompParam_InspTarUI) {
-
-    const [cacheDef, _setCacheDef] = useState<any>(def);
-
-    useEffect(() => {
-        console.log("fsPath:" + fsPath)
-        _setCacheDef(def);
-        // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
-        // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
-        return (() => {
-        });
-
-    }, [def]);
-
-
-
-    const dispatch = useDispatch();
-    // const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
-    // const [queryCameraList, setQueryCameraList] = useState<any[] | undefined>(undefined);
-    const [delConfirmCounter, setDelConfirmCounter] = useState(0);
-
-
-    return <>
-
-        <TagsEdit_DropDown tags={cacheDef.match_tags}
-            onTagsChange={(newTags) => {
-
-                onDefChange({ ...cacheDef, match_tags: newTags }, false)
-            }}>
-            <Button><TagsOutlined /></Button>
-        </TagsEdit_DropDown>
-
-
-
-
-        <Popconfirm
-            title={`確定要刪除？ 再按:${delConfirmCounter + 1}次`}
-            onConfirm={() => { }}
-            onCancel={() => { }}
-            okButtonProps={{
-                danger: true, onClick: () => {
-                    if (delConfirmCounter != 0) {
-                        setDelConfirmCounter(delConfirmCounter - 1);
-                    }
-                    else {
-                        onDefChange(undefined, false)
-                    }
-                }
-            }}
-            okText={"Yes:" + delConfirmCounter}
-            cancelText="No"
-        >
-            <Button danger type="primary" onClick={() => {
-                setDelConfirmCounter(5);
-            }}><CloseOutlined /></Button>
-        </Popconfirm>
-
-
-
-
-        <Popconfirm
-            title={`確定要重新載入？ 再按:${delConfirmCounter + 1}次`}
-            onConfirm={() => { }}
-            onCancel={() => { }}
-            okButtonProps={{
-                danger: true, onClick: () => {
-                    if (delConfirmCounter != 0) {
-                        setDelConfirmCounter(delConfirmCounter - 1);
-                    }
-                    else {
-                        defDoReload()
-                    }
-                }
-            }}
-            okText={"Yes:" + delConfirmCounter}
-            cancelText="No"
-        >
-            <Button danger type="primary" onClick={() => {
-                setDelConfirmCounter(5);
-            }}><SyncOutlined /></Button>
-        </Popconfirm>
-
-        <Button onClick={() => {
-            onDefChange(cacheDef, true)
-        }}><ToTopOutlined /></Button>
-
-        {/* <Switch checkedChildren="隱藏" unCheckedChildren="顯示" checked={cacheDef.default_hide == true} onChange={(check) => {
-
-            onDefChange({ ...cacheDef, default_hide: check }, false)
-        }} /> */}
-    </>
-
-}
 
 
 
@@ -5869,1712 +3459,10 @@ function SimpNumpad( props:{value:number,onChange:(v:number)=>void} )
 
 let btn_boxshadow="-3px -3px 5px rgba(255,255,255,0.5),3px 3px 5px rgba(70,70,70,0.3), inset -3px -3px 5px rgba(70, 70, 70, 0.3), inset 3px 3px 5px rgba(255, 255, 255, 0.4)"
 
-export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) {
-    let { display, fsPath, EditPermitFlag, style = undefined, renderHook, systemInspTarList, def, report, onDefChange } = props;
-    const _ = useRef<any>({
-        imgCanvas: document.createElement('canvas'),
-        canvasComp: undefined,
-        groupTestTIDList: {}
-    });
-    let TID_OFFSET = -10100;
-    let _this = _.current;
-    const [cacheDef, setCacheDef] = useState<any>(def);
-
-    const [defReport, setDefReport] = useState<any>(undefined);
-
-    // const [freq, setFreq] = useState(1800);
-    // const [CAM_T, setCAM_T] = useState(3510);
-    // const [SEL1_T, setSEL1_T] = useState(10845);
-    // const [SEL2_T, setSEL2_T] = useState(13038);
-
-
-
-    const [machConfig, setMachConfig] = useState<any>(undefined);
-
-
-    const [uInspCount, setuInspCount] = useState({SEL1:0,SEL2:0,SEL3:0,NA:0});
-    const [processTimeInfo, setProcessTimeInfo] = useState({});
-    const [errResetingInfo, setErrResetingInfo] = useState<string|undefined>(undefined);
-
-
-    const [fileCandList, setFileCandList] = useState({});
-    const [fileCandSelectTID, setFileCandSelectTID] = useState("");
-    const [fetchSrcTIDList, setFetchSrcTIDList] = useState<number[]>([]);
-
-
-
-
-
-    const [spanSetupOptionUI, setSpanSetupOptionUI] = useState(false);
-    const [imgReviewOptionUI, setImgReviewOptionUI] = useState(false);
-    const [inspStatistic, setInspStatistic] = useState<any>({});
-    const [latestReport, setLatestReport] = useState<any>(undefined);
-    const [skipCatRepList, setSkipCatRepList] = useState<number[]>([]);
-
-
-    const [spanStatisticUI, setSpanStatisticUI] = useState(false);
-    const [spanSELCountDownSetupUI, setSpanSELCountDownSetupUI] = useState(false);
-
-
-    
-    const [isRunning, setIsRunning] = useState(false);
-    const [connSendBlock, setConnSendBlock] = useState(false);
-
-
-    const [periodicPullCMDs, _setPeriodicPullCMDs] = useState<any[]>([]);
-    const [runningState, setRunningState] = useState<any>(undefined);
-    const [scriptRunningState, setScriptRunningState] = useState(false);
-
-
-
-
-    function setPeriodicPullCMDs(CMDs:any[])
-    {
-        _setPeriodicPullCMDs(CMDs);
-        let dataCMDs=CMDs.map(cmd=>{
-            let ncmd={...cmd};
-            delete ncmd["receive"];
-            return ncmd;
-        });
-        
-
-        console.log(dataCMDs)
-        BPG_API.InspTargetExchange(cacheDef.id, { type: "setPeriodicPullCMDs",cmds:dataCMDs });
-    }
-
-    useEffect(() => {
-        console.log("fsPath:" + fsPath)
-        setCacheDef(def);
-        return (() => {
-        });
-
-    }, [def]);
-    const [Local_IMCM, setLocal_IMCM] =
-        useState<IMCM_type | undefined>(undefined);
-
-    const dispatch = useDispatch();
-    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
-
-    const PeripheralCONNID = cacheDef.stream_id+1000;
-    async function delay(ms = 1000) {
-        return new Promise((resolve, reject) => setTimeout(resolve, ms))
-    }
-
-    async function fetchSetup()
-    {
-
-        let setupInfo=await _this.send({ type: "get_setup" })
-        // setMachConfig(setupInfo)
-        // onDefChange({...def,mach_config:setupInfo},false);
-    }
-
-    // console.log(">>>",runningState)
-    _this.fileCandList = fileCandList;
-    _this.inspStatistic = inspStatistic;
-    _this.periodicPullCMDs=periodicPullCMDs;
-    _this.runningState=runningState;
-    _this.scriptRunningState=scriptRunningState;
-    _this.skipCatRepList=skipCatRepList;
-    useEffect(() => {//////////////////////
-
-        _this.send_id = 0;
-        _this.sendCBDict = {};
-        async function pSend(data: any, timeout = 0) {
-            if (data.id === undefined) {
-                data.id = _this.send_id;
-                _this.send_id++;
-            }
-
-
-
-            return new Promise((resolve, reject) => {
-                _this.sendCBDict[data.id] = {
-                    resolve,
-                    reject
-                }
-
-                BPG_API.InspTargetExchange(cacheDef.id, { type: "MESSAGE", msg: data });
-                if (timeout > 0)
-                    setTimeout(reject, timeout)
-            })
-        }
-        _this.send = pSend;
-
-        BPG_API.send(undefined, 0, { _PGID_: PeripheralCONNID, _PGINFO_: { keep: true } }, undefined,
-            {
-
-                resolve: (stacked_pkts) => {
-                    let msg = stacked_pkts[0].data.msg;
-
-                    if (_this.sendCBDict[msg.id] !== undefined) {
-                        _this.sendCBDict[msg.id].resolve(msg)
-                        delete _this.sendCBDict[msg.id];
-                    }
-                    else
-                    {
-                        let PD = stacked_pkts.find((p: any) => p.type == "PD");
-                        if(PD!==undefined)
-                        {
-                            // console.log("PD:",PD?.data?.msg);
-
-                            let msg=PD?.data?.msg;
-                            if(msg!==undefined && msg.id<0)
-                            {
-
-                                // console.log("PD:",msg);
-
-                                let tarCMD=_this.periodicPullCMDs.find((cmd:any)=>cmd.id==msg.id)
-                                if(tarCMD)
-                                { 
-                                    
-                                    // console.log("PD:",msg,"tarCMD:",tarCMD);
-                                    tarCMD.receive(msg);
-                                }
-                                // ?.receive(msg);
-                            }
-                            return;
-                        }
-
-
-                        console.log("event:",stacked_pkts);
-
-                    }
-
-
-
-                },
-                reject: (stacked_pkts) => {
-                    // console.error(">>>>>",stacked_pkts);
-                }
-            });
-
-        
-            
-        _this.periodicWatchDog=setInterval(async ()=>{
-
-            let is_Script_Running=false;
-            try{
-                is_Script_Running=(await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_Script_Running" }) as any)
-                [0].data.ACK
-            }
-            catch(e)
-            {
-
-            }
-
-            if(is_Script_Running!=_this.scriptRunningState)
-            {
-                console.log("is_Script_Running",is_Script_Running,"scriptRunningState",_this.scriptRunningState);
-                setScriptRunningState(is_Script_Running);
-            }
-
-
-
-            
-            if(_this.runningState===undefined)return;
-            if(Date.now()-_this.runningState.timeStamp>3000)
-            {
-                setRunningState(undefined);
-            }
-            
-
-
-
-
-        },1000);
-
-        
-        let cbsKey="_"+Math.random();
-
-        (async () => {
-
-            let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
-
-
-
-            {
-                let pCMDs=[];
-                let id=-1000;
-                pCMDs.push({type:"get_running_stat",id,receive:(msg:any)=>{
-
-
-                    let old_sel1_cd=_this.runningState?.sel1_cd;
-                    let new_sel1_cd=msg?.sel1_cd;
-
-                    if(old_sel1_cd!=new_sel1_cd && new_sel1_cd==0)
-                    {
-                        setIsRunning(false);
-                        console.log(_this.send({ type: "set_setup", plateFreq: 0 }));
-                        console.log(_this.send({ type: "exit_insp_mode" }));
-                    }
-
-
-                    setRunningState({...msg,timeStamp:Date.now()});
-                }});id--;
-
-
-                setPeriodicPullCMDs(pCMDs);
-            }
-
-
-            await BPG_API.send_cbs_attach(
-                cacheDef.stream_id, cbsKey, {
-
-                resolve: (pkts) => {
-
-                    let CM = pkts.find((p: any) => p.type == "CM");
-                    if (CM === undefined) return;
-                    let RP = pkts.find((p: any) => p.type == "RP");
-                    if (RP === undefined) return;
-                    console.log("++++++++\n", CM, RP);
-
-                    if (RP.data.trigger_id < TID_OFFSET) {
-                        let otid = TID_OFFSET - RP.data.trigger_id;
-                        if (_this.fileCandList[otid] !== undefined) {
-                            let newFileCandList = { ..._this.fileCandList };
-
-                            delete _this.groupTestTIDList[otid]
-                            // console.log("otid:", otid);
-                            newFileCandList[otid] = { ...newFileCandList[otid], result: RP.data.report.category }
-                            setFileCandList(newFileCandList);
-                        }
-
-                    }
-
-
-                    {
-                        let category = RP.data?.report?.category
-
-                        if(_this.skipCatRepList.find((cat:number)=>cat==category)!==undefined)
-                        {//skip
-                            return;
-                        }
-                    }
-
-                    if (1) do {
-
-                        // if (RP.data.report.hole_location_index == -1) break;
-                        // if(RP.data.trigger_id<0)break;
-
-                        // let tarRepIdx = RP.data.report.hole_location_index == 0 ? 1 : 0;
-                        let ignore_indexes=(RP.data.report.ignore_indexes||[]) as number[];
-                        let group = RP.data.report.group;
-
-
-                        let newStat={..._this.inspStatistic};
-                        console.log(RP.data);
-                        for(let i=0;i<group.length;i++)
-                        {
-                            console.log(i,group[i])
-                            if(group[i].InspTar_type!="SurfaceCheckSimple")continue;
-                            if(ignore_indexes.find(idx=>idx==i)!==undefined)continue;
-                            let tarRepIdx=i;
-
-                            let tarRepId = group[tarRepIdx].InspTar_id;
-
-                            let regionsReps = group[tarRepIdx].report.sub_reports[0].sub_regions;
-                            let repDef = systemInspTarList.find(def => def.id == tarRepId)
-                            // console.log(tarRepIdx,surface_check_reports,regionsReps,repDef)
-    
-                            let stat = { ..._this.inspStatistic[tarRepId] };
-    
-                            regionsReps.forEach((rrep: any, index: number) => {
-                                let rdef = repDef.sub_regions[index];
-                                // repDef
-                                let name = rdef.name;
-                                // console.log(name, rrep, repDef.sub_regions[index])
-                                let cstat = {name, rec: [], OK: 0, NG: 0, NG2: 0, NG3: 0, NA: 0, ...stat[index] };
-    
-                                if (rrep.category == 1) {
-                                    cstat.OK++;
-                                }
-                                else if (rrep.category == -1) {
-                                    cstat.NG++;
-                                }
-                                else if (rrep.category == -2) {
-                                    cstat.NG2++;
-                                }
-                                else if (rrep.category == -3) {
-                                    cstat.NG3++;
-                                }
-                                else {
-                                    cstat.NA++;
-                                }
-    
-    
-                                cstat.rec.push(rrep);
-                                stat[index] = cstat;
-                            })
-    
-                            newStat[tarRepId]=stat;
-                        }
-
-                        // console.log(_this.inspStatistic)
-
-                        setInspStatistic(newStat)
-                    } while (false);
-
-
-                    setLatestReport(RP.data);
-
-
-                },
-                reject: (pkts) => {
-
-                }
-            }
-
-            )
-
-
-            console.log(ret);
-            console.log(def);
-
-            let is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
-            console.error("is_CONNECTED:", is_CONNECTED, " PeripheralCONNID", PeripheralCONNID);
-
-            if (is_CONNECTED == false) {
-
-                await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
-
-                await delay(1000);
-            }
-
-            // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
-
-            is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
-            console.error("is_CONNECTED:", is_CONNECTED);
-
-            
-            
-            setMachConfig(cacheDef.mach_config)
-        })()
-
-
-
-        return (() => {
-            (async () => {
-                await BPG_API.send_cbs_detach(
-                    cacheDef.stream_id, cbsKey);
-            })()
-
-            clearInterval(_this.periodicWatchDog);
-
-        })
-    }, []);
-
-
-    if (display == false) return null;
-
-    function getCurrentMachInfo(config=machConfig) {
-        if(machConfig===undefined)return {};
-        let originalInfo={
-            plateFreq:config.plateFreq,
-            minDetectTimeSep_us:config.minDetectTimeSep_us,
-            
-
-            pulse_minWidth:config.pulse_minWidth||0,
-            pulse_maxWidth:config.pulse_maxWidth||1000,
-            // CAM1:machConfig.CAM1_on,
-            // CAM1_span:machConfig.CAM1_off-machConfig.CAM1_on,
-
-            // L1A:machConfig.L1A_on,
-            // L1A_span:machConfig.L1A_off-machConfig.L1A_on,
-
-
-        };
-
-
-        ["CAM1","L1A","CAM2","L2A","SEL1","SEL2","SEL3"].forEach(key=>{
-            originalInfo[key]=config.stage_pulse_offset[key+"_on"];
-            originalInfo[key+"_span"]=config.stage_pulse_offset[key+"_off"]-config.stage_pulse_offset[key+"_on"];
-        })
-
-        // console.error(originalInfo);
-        return originalInfo as any;
-    }
-
-    function calcMachConf(newInfo:{
-        plateFreq:number,
-        minDetectTimeSep_us:number,
-        pulse_minWidth:number,
-        pulse_maxWidth:number,
-        CAM1:number,
-        CAM1_span:number,
-        L1A:number,
-        L1A_span:number,
-        CAM2:number,
-        CAM2_span:number,
-        L2A:number,
-        L2A_span:number,
-        SEL1:number,
-        SEL1_span:number,
-        SEL2:number,
-        SEL2_span:number,
-        SEL3:number,
-        SEL3_span:number}) {
-        
-        let newConfig={
-            plateFreq:newInfo.plateFreq,
-            minDetectTimeSep_us:newInfo.minDetectTimeSep_us,
-            pulse_minWidth:newInfo.pulse_minWidth,
-            pulse_maxWidth:newInfo.pulse_maxWidth,
-            stage_pulse_offset:{}
-        }as any;
-
-
-        ["CAM1","L1A","CAM2","L2A","SEL1","SEL2","SEL3"].forEach(key=>{
-            newConfig.stage_pulse_offset[key+"_on"]=newInfo[key];
-            newConfig.stage_pulse_offset[key+"_off"]=newInfo[key]+newInfo[key+"_span"];
-        })
-
-        newConfig.stage_pulse_offset["SWITCH"]=newConfig.stage_pulse_offset.SEL1_on-10;
-
-        console.error(newConfig);
-        return newConfig;
-    }
-
-
-    async function sendMachConf(info:any) {
-
-
-        let newMachConf=calcMachConf({...getCurrentMachInfo(),...info});
-        console.error(newMachConf);
-        setMachConfig(newMachConf)
-        let newDef={...def,mach_config:newMachConf}
-        onDefChange(newDef,true);
-        await BPG_API.InspTargetUpdate(newDef)
-        console.log(await _this.send({
-            type: "set_setup", stepRun: -1,...newMachConf
-        }));
-    }
-
-    function trigSimInsp(tid: string) {
-        fileCandList[tid].list.forEach((finfo: any) => {
-            // console.log(finfo);
-            let tags = finfo.info.tags;//.filter((tag:string)=>tag!="SIIS");
-            BPG_API.InjectImage(fileCandList[tid].path + "/" + finfo.name, tags, TID_OFFSET - finfo.info.tid)
-            setFileCandSelectTID(tid);
-        })
-    }
-
-
-
-    async function LoadFileCandList() {
-
-        let fStruct = await BPG_API.InspTargetEnvFolderStructure("ImDataSave", "", 1);
-
-        let candList = {
-
-        }
-        BPG_API.FileStructFilter(fStruct, (fileInfo, folder_path) => {
-            // console.log(fileInfo.name,BPG_API.StrInfoParse(fileInfo.name));
-            let parseInfo = BPG_API.StrInfoDec(fileInfo.name);
-            if (Object.keys(parseInfo).length == 0) return false;
-            if (parseInfo === undefined || parseInfo.tid == undefined) return false;
-            if (parseInfo.tags.find((tag: string) => tag == "CAM_A" || tag == "CAM_B") === undefined) return false;
-
-            parseInfo.atags = parseInfo.atags || [];
-            // if(parseInfo.tags.find(tag=>tag=="CAT_0")===undefined)return false;
-
-            if (candList[parseInfo.tid] === undefined) candList[parseInfo.tid] = { path: folder_path, list: [], additionalTags: [], additionalTagsDict: {}, result: "UN" };
-            let curT = candList[parseInfo.tid];
-            curT.list.push({ ...fileInfo, info: parseInfo });
-
-
-            parseInfo.atags.forEach((tag: string) => {
-                if (tag.startsWith("$") == false) return;
-                curT.additionalTagsDict[tag] = 1;
-            })
-
-            return false;
-        });
-
-        Object.keys(candList).forEach((candKey: any) => {
-            let candInfo = candList[candKey]
-            console.log(candInfo);
-            candInfo.additionalTags = Object.keys(candInfo.additionalTagsDict);
-            delete candInfo["additionalTagsDict"]
-        })
-
-        console.log(candList);
-        setFileCandList(candList);
-        setFileCandSelectTID("");
-    }
-
-
-
-
-    async function fileCheck(fileTIDList: string[]) {
-        let newFileCandList = { ...fileCandList }
-
-        fileTIDList.forEach((tid: string, index: number) => {
-            newFileCandList[tid] = { ...newFileCandList[tid], result: "" }
-        })
-        setFileCandList(newFileCandList);
-        let injectCand: Promise<unknown>[] = [];
-        for (let idx = 0; idx < fileTIDList.length; idx++) {
-            let tid = fileTIDList[idx];
-            let cand = fileCandList[tid];
-
-            let new_injectCand = cand.list.map((finfo: any) => {
-                let tags = finfo.info.tags;//.filter((tag:string)=>tag!="SIIS");
-                _this.groupTestTIDList[tid] = 1;
-
-                return BPG_API.InjectImage(fileCandList[tid].path + "/" + finfo.name, tags, TID_OFFSET - finfo.info.tid)
-            })
-            injectCand = injectCand.concat(new_injectCand);
-            if (injectCand.length > 20 || idx == fileTIDList.length - 1) {
-                await Promise.all(injectCand);
-                injectCand = []
-            }
-        }
-
-    }
-    let machInfo  = getCurrentMachInfo();
-    // console.log(machConfig,machInfo);
-
-
-
-    let curTPS=Math.round(1000000/(machInfo.minDetectTimeSep_us));
-
-    let accSmlBtn={
-        width: "25px",
-        margin: "0px",
-        padding: "0px"
-    }
-
-    let accMidBtn={
-        width: "10px",
-        margin: "0px",
-        padding: "0px"
-    }
-    let setupOption = spanSetupOptionUI == false ? null : <>
-
-
-
-        錯誤歷史:   
-        {runningState?.ERROR_HIST?.map((err:number)=><Tag color="red">{err}</Tag>)}
-        
-
-
-
-        <Popconfirm
-        title="確定重置錯誤列表?"
-        onConfirm={()=>{
-            (async () => {
-                let ret = await _this.send({ type: "clear_error_history" });
-                // setuInspCount(ret.count)
-            })()
-        }}
-        onCancel={()=>{
-        }}
-        okText="OK"
-        cancelText="NO"
-        >
-            
-            <Button  size="large" danger>
-                <DeleteOutlined/>
-            </Button>
-        </Popconfirm>
-
-
-
-        <Popconfirm
-        title="確定重置計數?"
-        onConfirm={()=>{
-            (async () => {
-                let ret = await _this.send({ type: "reset_running_stat" });
-                // setuInspCount(ret.count)
-            })()
-        }}
-        onCancel={()=>{
-        }}
-        okText="OK"
-        cancelText="NO"
-        >
-            
-            <Button  size="large" danger>
-            重置全檢計數<DeleteOutlined/>
-            </Button>
-        </Popconfirm>
-
-
-        <br/>
-
-        <Button onClick={() => {
-
-        (async () => {
-        
-            await fetchSetup();
-        })()
-
-        }}>GetSetup</Button>
-
-        <Button onClick={() => {
-
-        (async () => {
-            // let is_CONNECTED = (await BPG_API.InspTargetExchange(cacheDef.id, { type: "is_CONNECTED" }) as any)[0].data.ACK;
-            // console.error("is_CONNECTED:", is_CONNECTED, " PeripheralCONNID", PeripheralCONNID);
-            // if (is_CONNECTED == false) {
-            //     await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
-            // }
-
-            await BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID });
-            // await fetchSetup();
-        })()
-
-        }}>CONNECT</Button>
-
-
-
-        <Button onClick={() => {
-
-        (async () => {
-            await BPG_API.InspTargetExchange(cacheDef.id, { type: "DISCONNECT", comm_id: PeripheralCONNID });
-
-        })()
-
-        }}>DISCONNECT</Button>
-
-&ensp;
-        <Button onClick={() => {
-
-        (async () => {
-            sendMachConf({...machInfo,plateFreq:machInfo.plateFreq+100});
-        })()
-
-        }}>轉速+ {machInfo.plateFreq}</Button>
-
-
-
-        <Button style={accSmlBtn} onClick={() => {
-
-        (async () => {
-            let plateFreq=machInfo.plateFreq-100;
-            if(plateFreq<0)plateFreq=0;
-            sendMachConf({...machInfo,plateFreq});
-        })()
-        }}>-</Button>
-
-&ensp;
-
-        <Button onClick={() => {
-
-        (async () => {
-            curTPS+=1;
-            sendMachConf({...machInfo,minDetectTimeSep_us:Math.round(1000000/curTPS)});
-        })()
-
-        }}>偵速+ {curTPS}</Button>
-
-        <Button style={accSmlBtn} onClick={() => {
-
-        (async () => {
-
-            curTPS-=1;
-            if(curTPS<1)curTPS=1;
-            sendMachConf({...machInfo,minDetectTimeSep_us:Math.round(1000000/curTPS)});
-        })()
-        }}>-</Button>
-
-        <br/>
-        <Button onClick={() => {
-
-            (async () => {
-                sendMachConf({...machInfo,CAM1:machInfo.CAM1+10,L1A:machInfo.CAM1+10});
-            })()
-
-        }}>CAM1+ {machInfo.CAM1}</Button>
-
-
-
-        <Button style={accSmlBtn} onClick={() => {
-
-            (async () => {
-                sendMachConf({...machInfo,CAM1:machInfo.CAM1-10,L1A:machInfo.CAM1-10});
-            })()
-        }}>-</Button>
-
-
-&ensp;
-        <Button  onClick={() => {
-
-
-            (async () => {
-                sendMachConf({...machInfo,SEL1:machInfo.SEL1+5});
-            })()
-
-
-        }}>SE1+5 {machInfo.SEL1}</Button>
-
-
-
-
-
-        <Button style={accSmlBtn} onClick={() => {
-
-            (async () => {
-                sendMachConf({...machInfo,SEL1:machInfo.SEL1+1});
-            })()
-        }}>+</Button>
-
-
-        <Button style={accSmlBtn} onClick={() => {
-
-            (async () => {
-                sendMachConf({...machInfo,SEL1:machInfo.SEL1-1});
-            })()
-        }}>-</Button>
-
-        <Button onClick={() => {
-
-            (async () => {
-                sendMachConf({...machInfo,SEL1:machInfo.SEL1-5});
-            })()
-
-        }}>-5</Button>
-
-&ensp;
-
-        <Button onClick={() => {
-
-            (async () => {
-                sendMachConf({...machInfo,SEL2:machInfo.SEL2+5});
-            })()
-
-        }}>SE2+5 {machInfo.SEL2}</Button>
-
-        <Button style={accSmlBtn} onClick={() => {
-
-            (async () => {
-                sendMachConf({...machInfo,SEL2:machInfo.SEL2+1});
-            })()
-        }}>+</Button>
-        <Button style={accSmlBtn} onClick={() => {
-
-            (async () => {
-                sendMachConf({...machInfo,SEL2:machInfo.SEL2-1});
-            })()
-
-        }}>-</Button>
-
-
-        <Button onClick={() => {
-
-            (async () => {
-                sendMachConf({...machInfo,SEL2:machInfo.SEL2-5});
-            })()
-
-        }}>-5</Button>
-
-
-
-
-        <br/>
-
-
-
-        <Dropdown 
-            trigger={['click']}
-            overlay={
-                <SimpNumpad value={(machInfo.pulse_maxWidth)} onChange={(value)=>{ 
-
-                    sendMachConf({...machInfo,
-                        pulse_maxWidth:value
-                    
-                    });
-                }}/>
-            } >
-            
-            <Button > 脈寬上限{(machInfo.pulse_maxWidth)}</Button>
-
-        </Dropdown>
-
-
-
-        <Dropdown 
-            trigger={['click']}
-            overlay={
-                <SimpNumpad value={(machInfo.pulse_minWidth)} onChange={(value)=>{ 
-
-                    sendMachConf({...machInfo,
-                        pulse_minWidth:value
-                    
-                    });
-                }}/>
-            } >
-            
-            <Button > 脈寬下限{(machInfo.pulse_minWidth)}</Button>
-
-        </Dropdown>
-
-
-
-
-&ensp;
-        <br />
-
-
-        <Button onClick={() => {
-
-            (async () => {
-                console.log(await _this.send({ type: "PIN_ON", pin: 16 }));
-            })()
-
-        }}>LON</Button>
-
-        <Button onClick={() => {
-
-            (async () => {
-                console.log(await _this.send({ type: "PIN_OFF", pin: 16 }));
-            })()
-
-        }}>LOFF</Button>
-
-&ensp;
-        <Button onClick={() => {
-
-            (async () => {
-                console.log(await _this.send({ type: "sel_act", idx: 1 }));
-            })()
-
-        }}>SEL1</Button>
-        <Button onClick={() => {
-
-            (async () => {
-                console.log(await _this.send({ type: "sel_act", idx: 2 }));
-            })()
-
-        }}>SEL2</Button>
-        <Button onClick={() => {
-
-            (async () => {
-                console.log(await _this.send({ type: "sel_act", idx: 3 }));
-            })()
-
-        }}>SEL3</Button>
-
-
-
-
-
-
-        <br />
-
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "TEST_MODE", mode: "OK_OK" });
-        }}>T_OKOK</Button>
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "TEST_MODE", mode: "OK_NA", space: [1, 20] });
-        }}>T_OKNA</Button>
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "TEST_MODE", mode: "OK_NG", space: [1, 1] });
-        }}>T_OKNG</Button>
-
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "TEST_MODE", mode: "NG_NG" });
-        }}>T_NGNG</Button>
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "TEST_MODE", mode: "NG_NA", space: [1, 20] });
-        }}>T_NGNA</Button>
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "TEST_MODE", mode: "NA_NA" });
-        }}>T_NANA</Button>
-
-
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "TEST_MODE", mode: "" });
-        }}>T_NORMAL</Button>
-
-
-        <br />
-
-
-{/* 
-        <Button onClick={() => {
-
-
-            console.log(_this.send({ type: "sel1_act_countdown", count: 10 }));
-
-        }}>sel1_10</Button>
-
-        <Button onClick={() => {
-
-
-            console.log(_this.send({ type: "sel1_act_countdown", count: 100 }));
-
-        }}>sel1_100</Button>
-
-        <Button onClick={() => {
-
-
-            console.log(_this.send({ type: "sel1_act_countdown", count: -1 }));
-
-        }}>sel1_no limit</Button> */}
-        <br />
-
-
-
-        
-
-
-
-        <br />
-    </>
-
-
-
-    let ImgReviewOption=imgReviewOptionUI == false ? null : <>
-    
-        存檔
-        <Button onClick={() => {
-
-
-        BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 1000000, count_NG: 1000000, count_NA: 0 });
-
-        }}>ALL OK NG</Button>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 1000000, count_NG: 0, count_NA: 0 });
-
-        }}>OK</Button>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 1, count_NG: 0, count_NA: 0 });
-
-        }}>1OK</Button>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 20,count_NG2: 20, count_NA: 0 });
-
-        }}>NG</Button>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 1,count_NG2: 1, count_NA: 0 });
-
-        }}>1NG</Button>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 0, count_NA: 100 });
-
-        }}>NA</Button>
-
-        <Divider  type="vertical"></Divider>
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 20, count_NG: 20,count_NG2: 20, count_NA: 5 });
-
-        }}>20OK&NG 5NA</Button>
-
-
-
-
-
-
-        <Divider  type="vertical"></Divider>
-
-        <Button onClick={() => {
-
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "SrcImgSaveCountDown", count_OK: 0, count_NG: 0,count_NG2: 0, count_NA: 0 });
-
-        }}>不存</Button>
-        {
-            (() => {
-
-
-                if (fileCandSelectTID.length == 0) return null;
-
-                let fileCandInfo = fileCandList[fileCandSelectTID];
-                if (fileCandInfo === undefined) return null;
-
-
-
-                function chooseNextUNSET(_fileCandList = fileCandList) {
-                    let keys = Object.keys(_fileCandList);
-                    let tar_tid = "";
-                    for (let i = 0; i < keys.length; i++) {
-                        let tid = keys[i];
-                        let tag = _fileCandList[tid].additionalTags.find((tag: string) => tag.startsWith("$CAT_"));
-                        console.log(tag);
-                        if (tag === undefined) {
-                            tar_tid = tid;
-                            trigSimInsp(tar_tid);
-                            break;
-                        }
-
-                    }
-
-                    setFileCandSelectTID(tar_tid);
-                }
-
-
-                let additionalTags = fileCandInfo.additionalTags as string[];
-                if (additionalTags === undefined) additionalTags = [];
-                // console.log(fileCandInfo);
-
-                function CATChange(toCAT: string) {
-                    let newTags = [...additionalTags.filter(tag => !tag.startsWith("$CAT_"))];
-                    if (toCAT != "") {
-                        newTags = [...newTags, "$CAT_" + toCAT]
-                    }
-                    let newFileCandList = ObjShellingAssign(fileCandList, [fileCandSelectTID, "additionalTags"], newTags);
-                    setFileCandList(newFileCandList);
-                    chooseNextUNSET(newFileCandList);
-                }
-
-                return <>
-                    <div style={{overflow:"scroll"}}>
-                    {JSON.stringify(fileCandInfo.list[0].info)}
-                    {JSON.stringify(fileCandInfo.additionalTags)}
-                    </div>
-
-                    <br />
-                    <Button type="primary" onClick={() => {
-                        CATChange("OK");
-                    }}>OK</Button>
-                    <Button danger onClick={() => {
-                        CATChange("NG_1");
-                    }}>NG1</Button>
-                    <Button danger onClick={() => {
-                        CATChange("NG_2");
-                    }}>NG2</Button>
-                    <Button type="dashed" onClick={() => {
-                        CATChange("NA");
-                    }}>NA</Button>
-                    <Button onClick={() => {
-                        CATChange("");
-                    }}>UNSET</Button>
-
-
-                    <Button onClick={() => {
-                        trigSimInsp(fileCandSelectTID);
-                    }}>CHECK</Button>
-                    <br />
-                </>
-            })()
-        }
-
-        <Divider orientation="left"></Divider>
-
-
-        <Button onClick={() => {
-
-            LoadFileCandList();
-        }}>Update</Button>
-
-        <Button onClick={() => {
-            _this.groupTestTIDList = {};
-            BPG_API.InspTargetExchange("ImTran", { type: "force_down_scale", scale: -1 });
-
-            fileCheck(Object.keys(fileCandList))
-
-        }}>TEST ALL:{
-                Object.keys(_this.groupTestTIDList).length + "/" + Object.keys(fileCandList).length}</Button>
-
-        <Button onClick={() => {
-            Object.keys(fileCandList).forEach((tid, index) => {
-                let fileInfo = fileCandList[tid];
-                let atags = fileInfo.additionalTags;
-                fileInfo.list.forEach((file: any, findex: number) => {
-
-                    let info = file.info;
-                    info.atags = atags;
-                    let fileExt = file.name.split('.').pop();
-                    let name = BPG_API.Enc2StrInfo(file.info)
-                    let newName = name + "." + fileExt;
-                    if (file.name != newName) {
-                        console.log(fileInfo);
-                        // console.log(file.name,">",newName);
-
-                        let folderPath = fileInfo.path;
-
-                        BPG_API.FileRename(folderPath + "/" + file.name, folderPath + "/" + newName)
-
-                    }
-                })
-
-
-            })
-
-
-            LoadFileCandList();
-
-
-
-        }}>SAVE ATAGS</Button>
-
-        <Row justify="center" align="top">
-            <Col>
-
-                <Button onClick={() => {
-
-                    _this.groupTestTIDList = {};
-                    Object.keys(fileCandList)
-
-
-                    fileCheck(Object.keys(fileCandList)
-                        .filter(tid => fileCandList[tid].additionalTags.every((tag: string) => !tag.startsWith("$CAT"))))
-
-                }}>UNSET</Button>
-                <br />
-
-
-
-                {
-                    Object.keys(fileCandList)
-                        .filter(tid => fileCandList[tid].additionalTags.every((tag: string) => !tag.startsWith("$CAT_")))
-                        .map((tid) => {
-
-
-                            return <Button size='small' key={tid} onClick={() => {
-                                trigSimInsp(tid);
-                            }}>{tid + ":" + fileCandList[tid].result}</Button>
-                        })
-                }
-            </Col>
-        </Row>
-        <Row justify="center" align="top">
-            <Col span={7}>
-                <Button onClick={() => {
-
-                    _this.groupTestTIDList = {};
-                    Object.keys(fileCandList)
-
-
-                    fileCheck(Object.keys(fileCandList)
-                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_OK"))))
-
-                }}>OK</Button>
-                <br />
-
-
-                {
-                    Object.keys(fileCandList)
-                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_OK")))
-                        .map((tid) => {
-
-
-                            return <Button size='small' danger={fileCandList[tid].result != 1} key={tid} onClick={() => {
-                                trigSimInsp(tid);
-                            }}>{tid + ":" + fileCandList[tid].result}</Button>
-                        })
-                }
-            </Col>
-            <Col span={7}>
-                <Button onClick={() => {
-
-                    _this.groupTestTIDList = {};
-
-                    fileCheck(Object.keys(fileCandList)
-                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NG"))))
-
-                }}>NG</Button>
-                <br />
-                {
-                    Object.keys(fileCandList)
-                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NG_1")))
-                        .map((tid) => {
-
-
-                            return <Button size='small' danger={fileCandList[tid].result != -1} key={tid} onClick={() => {
-                                trigSimInsp(tid);
-                            }}>{tid + ":" + fileCandList[tid].result}</Button>
-                        })
-                }
-
-            </Col>
-            <Col span={7}>
-                NG2:<br />
-                {
-                    Object.keys(fileCandList)
-                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NG_2")))
-                        .map((tid) => {
-
-
-                            return <Button size='small' key={tid} danger={fileCandList[tid].result != -1} onClick={() => {
-                                trigSimInsp(tid);
-                            }}>{tid + ":" + fileCandList[tid].result}</Button>
-                        })
-                }
-
-            </Col>
-            <Col span={3}>
-                <Button type='primary' onClick={() => {
-
-                    _this.groupTestTIDList = {};
-
-                    fileCheck(Object.keys(fileCandList)
-                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NA"))))
-
-                }}>NA</Button>
-                <br />
-
-                {
-                    Object.keys(fileCandList)
-                        .filter(tid => fileCandList[tid].additionalTags.some((tag: string) => tag.startsWith("$CAT_NA")))
-                        .map((tid) => {
-
-
-                            return <Button size='small' key={tid} danger={fileCandList[tid].result != 0} onClick={() => {
-                                trigSimInsp(tid);
-                            }}>{tid + ":" + fileCandList[tid].result}</Button>
-                        })
-                }
-            </Col>
-        </Row>
-
-
-       <Divider orientation="left">暫存圖訊</Divider>
-
-
-        
-        <Button onClick={() => {
-            if(fetchSrcTIDList.length!=0)
-            {
-                setFetchSrcTIDList([]);
-                return;
-            }
-            (async () => {
-                let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetFetchSrcTIDList" }) as any;
-                console.log(ret[0].data);
-                setFetchSrcTIDList(ret[0].data);
-            })()
-        }}>更新</Button>
-
-        <Button onClick={() => {
-
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: -1, count_NG: 0, count_NG2: 0, count_NA: 0 });
-        }}>OK only</Button>
-
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: 0, count_NG: -1, count_NG2: 0, count_NA: 0 });
-        }}>NG only</Button>
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: 0, count_NG: 0, count_NG2: -1, count_NA: 0 });
-        }}>NG2 only</Button>
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: 0, count_NG: 0, count_NG2: 0, count_NA: -1 });
-        }}>NA only</Button>
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: -1, count_NG: -1, count_NG2: -1, count_NA:0 });
-        }}>not NA only</Button>
-        <Button onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "FetchCountDown", count_OK: -1, count_NG: -1, count_NG2: 0, count_NA: -1 });
-        }}>ALL</Button>
-
-        <br/>
-        {
-            fetchSrcTIDList.map((tid, index) => {
-                return <Button key={"trigTID_" + tid + "_" + index} onClick={() => {
-                    BPG_API.InspTargetExchange(cacheDef.id, { type: "TriggerFetchSrc", trigger_id: tid })
-                }}>{tid}</Button>
-            })
-        }   
-        {
-
-            (fetchSrcTIDList.length==0)?null:<Button onClick={() => {
-
-                (async () => {
-                for(let i=0;i<fetchSrcTIDList.length;i++)
-                {
-                    await BPG_API.InspTargetExchange(cacheDef.id, { type: "TriggerFetchSrc", trigger_id: fetchSrcTIDList[i] })
-                }
-                })()
-
-
-            }}>測試全部暫存圖檔</Button>
-        }
-
-        <Button danger onClick={() => {
-            BPG_API.InspTargetExchange(cacheDef.id, { type: "ClearFetchSrc" });
-        }}>清除暫存圖</Button>
-
-    </>;
-
-    function NumToStrWithPadding(num:any,padding:number=4)
-    {
-        if(num===undefined)return "----";
-        let str=(typeof num === 'number')?num.toString():"";
-        while(str.length<padding)
-        {
-            str="0"+str;
-        }
-        return str;
-    }
-
-    let iconSize_B='50px'
-    let iconSize_S='30px'
-    let RoundBGSize_S='40px'
-
-    let tagSize={ fontSize: '15px', padding: '4px 8px' }
-
-
-    let evStateRunning=(runningState?.plateFreq!=0);
-    let isRealRunning=isRunning||(evStateRunning);
-
-    return <div style={{ ...style }} className={"overlayCon"}>
-        <div className={"overlay scroll HXF"} style={{width:"100%",pointerEvents:errResetingInfo===undefined?undefined: 'none'}} >
-
-
-
-            <Row align="middle">
-                <Divider type="vertical"/>
-                {
-                runningState===undefined?<Avatar size={100} icon={connSendBlock?<LoadingOutlined/>:<LinkOutlined />}  style={{boxShadow:btn_boxshadow, backgroundColor:connSendBlock?"#AAA":"#5F5" }} 
-                    onClick={()=>{
-                        if(connSendBlock)return;
-
-                        setConnSendBlock(true);
-                        BPG_API.InspTargetExchange(cacheDef.id, { type: "CONNECT", comm_id: PeripheralCONNID })
-                        setTimeout(()=>{
-                            setConnSendBlock(false);
-                        },2000);
-                    }}/>:
-                <Avatar size={100} icon={isRealRunning?<><PauseCircleFilled /></>:<><PlayCircleFilled /></>}  style={{ 
-                    boxShadow:btn_boxshadow,
-                    backgroundColor:
-                    (runningState===undefined || evStateRunning!=isRealRunning)?undefined:( isRealRunning?"#F55":'#5F5') }} 
-                    onClick={()=>{
-
-
-                        if(isRealRunning)
-                        {
-                            setIsRunning(false);
-                            (async () => {
-                                console.log(await _this.send({ type: "set_setup", plateFreq: 0 }));
-                                console.log(await _this.send({ type: "exit_insp_mode" }));
-    
-                            })();
-                            return;
-                        }
-    
-                        setIsRunning(true);
-                        (async () => {
-                            (async () => {
-                                await sendMachConf({...machInfo});
-                            })()
-                            console.log(await _this.send({ type: "clear_error" }));
-                            console.log(await _this.send({ type: "enter_insp_mode" }));
-                        })();
-
-                    }}
-                    
-                    
-                    />
-                }
-                {/* <div style={{width:"20px"}} ></div> */}
-
-                <Divider type="vertical"/>
-
-                <Col>
-
-                <Row align="middle">
-
-                <div>
-
-
-                <Tag color="green" style={tagSize}>{NumToStrWithPadding(runningState?.count?.SEL1)}</Tag>
-                <Tag color="red" style={tagSize}>{NumToStrWithPadding(runningState?.count?.SEL2)}</Tag>
-                <Tag color="yellow" style={tagSize}>{NumToStrWithPadding(runningState?.count?.SEL3)}</Tag>
-                <Tag color="gray" style={tagSize}>{NumToStrWithPadding(runningState?.count?.NA)}</Tag>
-
-
-                </div>
-
-                {/* <Button  size="large" danger onClick={() => {
-
-                (async () => {
-                    let ret = await _this.send({ type: "reset_running_stat" });
-                    setuInspCount(ret.count)
-                })()
-
-                }}>
-                </Button> */}
-
-                </Row>
-
-                <Row align="middle">
-
-                <Tag color={runningState?.state!==undefined?"green":"red"} style={tagSize}>檢驗機狀態碼{runningState?.state||"離線"}</Tag>
-                <Tag color={scriptRunningState?"green":"red"} style={tagSize}>腳本{scriptRunningState?"運行中":"離線"}</Tag>
-
-
-
-
-
-
-
-                </Row>
-                </Col>
-
-            </Row>
-            <Row justify="center">
-
-
-                <Col>
-
-                <Switch checkedChildren="僅顯示可驗" unCheckedChildren="全顯示圖像" checked={skipCatRepList.length!=0} onChange={(check) => {
-                    check?setSkipCatRepList([-40000]):setSkipCatRepList([])
-                }} />
-                </Col>
-            </Row>
-            <Row justify="center">
-
-
-                <Col>
-
-                <Avatar shape="square" size={100} icon={CAT_ID_NAME[latestReport?.report?.category+""]}  style={{ 
-                width:"200px",
-                boxShadow:btn_boxshadow,
-                backgroundColor:CAT_ID_Color[latestReport?.report?.category+""],}}
-                onClick={()=>{
-
-
-                }}
-                
-                
-                />
-
-
-                </Col>
-
-            </Row>
-            <br/>
-            <br/>
-
-            <Row align="middle">
-            <Button onClick={() => {
-
-            (async () => {
-
-                console.log(await _this.send({ type: "stepper_enable" }));
-            })()
-
-            }}>馬達ON</Button>
-
-
-            <Button onClick={() => {
-
-            (async () => {
-
-            console.log(await _this.send({ type: "stepper_disable" }));
-            })()
-
-            }}>OFF</Button>
-            <Divider type="vertical"/>
-            <Button  size="large" onClick={() => {
-                
-                (async () => {
-                    for (let i = 0; i < 1; i++) {
-                        _this.send({ type: "trig_phamton_pulse" })
-                        await delay(1000/25);
-                    }
-                })()
-            }}>
-            <CameraOutlined/>
-            </Button>
-
-
-                
-            </Row>
-
-            <Popconfirm
-                disabled={errResetingInfo!==undefined}
-                title="確定重置錯誤?"
-                onConfirm={()=>{
-                   
-                    (async () => {
-                        
-
-                        try{
-
-                            setErrResetingInfo("機台:停轉");
-                            console.log(await _this.send({ type: "set_setup", plateFreq: 0 },1000));
-                            await delay(500);
-
-
-                        
-                            setErrResetingInfo("機台:離開檢驗模式");await delay(500)
-                            console.log(await _this.send({ type: "exit_insp_mode" }));
-    
-                            setErrResetingInfo("機台:等待停止3");
-                            await delay(1000)
-                            setErrResetingInfo("機台:等待停止2");
-                            await delay(1000)
-                            setErrResetingInfo("機台:等待停止1");
-                            await delay(1000)
-
-                            setErrResetingInfo("機台:清理錯誤Flag");await delay(500)
-                            console.log(await _this.send({ type: "clear_error" }));
-                        }
-                        catch(e)
-                        {
-
-                        }
-                        setIsRunning(false);
-
-                        setErrResetingInfo("核心:清理暫存圖像");
-                        await BPG_API.CameraClearTriggerInfo();
-                        setErrResetingInfo("核心:清理檢驗超時偵測");await delay(500)
-                        let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetProcessTimeInfo",reset:true }) as any
-
-
-                        setProcessTimeInfo({})
-                        setErrResetingInfo("結束...");await delay(500)
-                        setErrResetingInfo(undefined);
-                    })()
-                }}
-                onCancel={()=>{
-                }}
-                okText="OK"
-                cancelText="NO"
-                >
-                    
-                    <Button danger disabled={errResetingInfo!==undefined} onClick={() => {
-                    }}>系統重置{errResetingInfo!==undefined?<><LoadingOutlined/>{errResetingInfo}</>:""}</Button>
-
-
-                </Popconfirm>
-
-
-            
-
-                <Button onClick={() => {
-                    (async () => {
-                        let pt_info=await BPG_API.InspTargetExchange(cacheDef.id, { type: "GetProcessTimeInfo" }) as any
-                        let pti=pt_info[0].data;
-                        console.log(pti);
-                        setProcessTimeInfo(pti)
-                    })()
-                }}>處理時間:{JSON.stringify(processTimeInfo)}</Button>
-                
-
-
-                <Button onClick={() => {
-                    BPG_API.InspTargetExchange(cacheDef.id, { type: "reloadscript" })
-                }}>reloadscript</Button>
-                
-            
-            {/* <Button onClick={() => {
-
-                (async () => {
-                    console.log(await _this.send({ type: "clear_error" }));
-                })()
-
-            }}>錯誤重置</Button> */}
-
-
-            <br />
-
-            
-
-
-            <Divider orientation="left">
-                <Button danger={runningState?.sel1_cd==0} type={runningState?.sel1_cd<0?"dashed":"primary"} onClick={() => {
-                    setSpanSELCountDownSetupUI(!spanSELCountDownSetupUI)
-                }}>數量限制 {runningState?.sel1_cd<0?"無限制":`OK:${runningState?.sel1_cd}`} {spanSELCountDownSetupUI ? ' -' : ' +'}</Button>
-            </Divider>
-
-
-            {spanSELCountDownSetupUI==false?null:<>
-            
-                
-                <SimpNumpad value={-1} onChange={(value)=>{ 
-                    _this.send({ type: "set_sel1_cd",count:value });
-                }}/>
-                
-                <br/>
-                <Button onClick={() => {
-                    _this.send({ type: "set_sel1_cd",count:-1 });
-                }}>無限制</Button>
-
-            </>}
-
-
-
-
-
-
-            <Divider orientation="left">
-                <Button onClick={() => {
-                    setSpanStatisticUI(!spanStatisticUI)
-                }}>統計顯示{spanStatisticUI ? ' -' : ' +'}</Button>
-            </Divider>
-
-            {
-                spanStatisticUI==false?null:<>{
-                    
-                    Object.keys(inspStatistic).map(key=>{
-                
-                    let inspTarStat=inspStatistic[key];
-                    return <>
-                        {key}<br/>
-                        {
-                            Object.keys(inspTarStat).map(itskey=><>
-                                {"O:"+inspTarStat[itskey].OK}
-                                {" X:"+inspTarStat[itskey].NG+","+inspTarStat[itskey].NG2+","+inspTarStat[itskey].NG3}
-                                {" N:"+inspTarStat[itskey].NA} 
-                                ---{inspTarStat[itskey].name}<br/>
-                            </>)
-
-                            // inspStatistic[key].map((stat:any,index:number)=>{
-
-                            //     <Statistic title={index+"_"} value={stat} />
-                            // })
-                        }
-                    </>})
-
-                }
-                <Button onClick={() => {
-                    setInspStatistic({})
-                }}>RESET</Button>
-                </>
-            }
-
-
-
-
-
-            <Divider orientation="left">
-                <Button onClick={() => {
-                    setImgReviewOptionUI(!imgReviewOptionUI)
-                }}>圖像測試{imgReviewOptionUI ? ' -' : ' +'}</Button>
-            </Divider>
-            {ImgReviewOption}
-
-
-            <Divider orientation="left">
-                <Button onClick={() => {
-                    setSpanSetupOptionUI(!spanSetupOptionUI)
-                }}>細部設定{spanSetupOptionUI ? ' -' : ' +'}</Button>
-            </Divider>
-
-            {setupOption}
-
-
-
-        </div>
-
-
-    </div>;
-
+export function SingleTargetVIEWUI_JSON_Peripheral(props: CompParam_InspTarUI) 
+{
+    return <>Not implemented</>;
 }
-
-
-
 
 
 export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarUI) {
@@ -8152,34 +4040,1366 @@ export function SingleTargetVIEWUI_DataTransfer(props: CompParam_InspTarUI) {
 
 
 
+export function SingleTargetVIEWUI_TEMPLATE___(props: CompParam_InspTarUI) {
+    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange,defDoReload, UIOption,onUIOptionUpdate,showUIOptionConfigUI=false ,APIExport} = props;
+    const _this = useRef<any>({
 
-export function InspTargetUI_MUX(param:CompParam_InspTarUI)
-{
-  if(param.def.type=="Orientation_ShapeBasedMatching")
-  return <SingleTargetVIEWUI_Orientation_ShapeBasedMatching {...param} />;
+        imgCanvas: document.createElement('canvas'),
+        canvasComp: undefined,
+        canvasHook: undefined,
+
+        drawHooks: [],
+        ctrlHooks: [],
+
+    }).current;
+    const dispatch = useDispatch();
+    const [cacheDef, setCacheDef] = useState<any>(def);
+
+    const [defReport, setDefReport] = useState<any>(report);
+    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+    const [Local_IMCM, setLocal_IMCM] =
+        useState<IMCM_type | undefined>(undefined);
+
+    console.log("Local_IMCM",Local_IMCM,"defReport",defReport);
+
+    enum EditState {
+        Normal_Show = 0,
+        Feature_Edit = 1,
+        Test_Saved_Files = 3,
 
 
-  if(param.def.type=="SurfaceCheckSimple")
-  return <SingleTargetVIEWUI_SurfaceCheckSimple {...param} />;
+        MISC_Settings = 999,
+        NA = -99999
+    }
+
+    const [editState, _setEditState] = useState<EditState>(EditState.Normal_Show);
+
+    function setEditState(newEditState: EditState) {
+        // _this.sel_region = 
+        // _this.sel_region_type = undefined;
+        // if (_this.canvasComp == undefined) return;
+        //     _this.canvasComp.UserRegionSelect(undefined)
 
 
-  if(param.def.type=="JSON_Peripheral")
-  return <SingleTargetVIEWUI_JSON_Peripheral {...param} />;
+        let state3Ev: EditState[] = [];//3 elements, leave,stay,enter
+        if (newEditState != editState) {
+            state3Ev = [editState, EditState.NA, newEditState]
+        }
+        state3Ev.forEach((st, idx) => {
+
+            switch (st)//current state
+            {
+                case EditState.Normal_Show:
+                    if (idx == 2)//enter
+                    {
+
+                    }
+                    else if (idx == 0)//leave
+                    {
+
+                    }
+                    break;
+
+                case EditState.Test_Saved_Files:
+                    if (idx == 2)//enter
+                    {
+                    }
+                    else if (idx == 0)//leave
+                    {
+                    }
+                    break;
+
+            }
+        })
+        _setEditState(newEditState);
+    }
 
 
-  if(param.def.type=="JSON_CNC_Peripheral")
-  return <SingleTargetVIEWUI_JSON_CNC_Peripheral {...param} />;
+    useEffect(() => {
+        setCacheDef(def);
+        // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
+        // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
+        return (() => {
+        });
+
+    }, [def]);
 
 
-  if(param.def.type=="StageInfoImageSave")
-  return <SingleTargetVIEWUI_StageInfoImageSave {...param} />;
-
-  if(param.def.type=="ImgSrc")
-  return <SingleTargetVIEWUI_ImgSrc {...param} />;
+    useEffect(() => {
 
 
-  if(param.def.type=="DataTransfer")
-    return <SingleTargetVIEWUI_DataTransfer {...param} />;
+        console.log(def);
+        BPG_API.InspTargetExchange(def.id, {
+            type: "stream_info",
+            downsample: display ? 1 : 10,
+            stream_id: def.stream_id
+        });
 
-  return  <></>;
+        return (() => {
+        });
+
+    }, [display]);
+
+
+
+
+
+    useEffect(() => {//////////////////////
+
+        let cbsKey="_"+Math.random();
+        (async () => {
+
+            let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
+            console.log(ret);
+
+            // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+            await BPG_API.send_cbs_attach(
+                cacheDef.stream_id, cbsKey, {
+
+                resolve: (pkts) => {
+                    // console.log(pkts);
+                    let IM = pkts.find((p: any) => p.type == "IM");
+                    if (IM === undefined) return;
+                    let CM = pkts.find((p: any) => p.type == "CM");
+                    if (CM === undefined) return;
+                    let RP = pkts.find((p: any) => p.type == "RP");
+                    if (RP === undefined) return;
+                    console.log("++++++++\n",IM,CM,RP);
+
+
+                    setDefReport(RP.data)
+                    let IMCM = {
+                        image_info: IM.image_info,
+                        camera_id: CM.data.camera_id,
+                        trigger_id: CM.data.trigger_id,
+                        trigger_tag: CM.data.trigger_tag,
+                    } as type_IMCM
+
+                    _this.imgCanvas.width = IMCM.image_info.width;
+                    _this.imgCanvas.height = IMCM.image_info.height;
+
+                    let ctx2nd = _this.imgCanvas.getContext('2d');
+
+                    // console.log(IMCM.image_info);
+                    if(IMCM.image_info.image instanceof ImageData)
+                        ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+                    else if(IMCM.image_info.image instanceof HTMLImageElement)
+                        ctx2nd.drawImage(IMCM.image_info.image, 0, 0);
+
+                    setLocal_IMCM(IMCM)
+                    // console.log(IMCM)
+                    //console.log(def.id)
+
+                },
+                reject: (pkts) => {
+
+                }
+            }
+
+            )
+
+        })()
+        return (() => {
+            (async () => {
+                await BPG_API.send_cbs_detach(
+                    cacheDef.stream_id, cbsKey);
+
+                // await BPG_API.InspTargetSetStreamChannelID(
+                //   cacheDef.id,0,
+                //   {
+                //     resolve:(pkts)=>{
+                //     },
+                //     reject:(pkts)=>{
+
+                //     }
+                //   }
+                // )
+            })()
+
+        })
+    }, []);
+
+    function onCacheDefChange(updatedDef: any, doTakeNewImage: boolean = true) {
+
+        if(updatedDef===undefined)
+        {
+            onDefChange(undefined,false);
+            return;   
+        }
+        console.log(updatedDef);
+        setCacheDef(updatedDef);
+
+
+
+        (async () => {
+            await BPG_API.InspTargetUpdate(updatedDef)
+        })()
+        onDefChange(updatedDef, doTakeNewImage);
+    }
+
+    console.log("SingleTargetVIEWUI_DataTransfer", cacheDef,def);
+
+
+
+
+    let EDIT_UI = null;
+    console.log("editState",editState);
+    switch (editState) {
+
+        case EditState.Normal_Show:
+
+
+
+        EDIT_UI = <>
+                <Input maxLength={100} value={cacheDef.id} disabled
+                    style={{ width: "200px" }}
+                    onChange={(e) => {
+                    }} />
+        
+                {((EditPermitFlag & EDIT_PERMIT_FLAG.XXFLAGXX) == 0)?null:
+                    <>
+                    <InspTarView_basicInfo {...props} def={cacheDef} onDefChange={(newDef, ddd) => {
+                        onCacheDefChange(newDef, ddd);
+                    }} 
+                    
+                    defDoReload={()=>defDoReload()}
+                    
+                    />
+        
+                    
+                    </>
+                }   
+
+                <Button onClick={() => {
+                    console.log(">>>")
+                    setEditState(EditState.Test_Saved_Files);
+                    }}>測試儲存圖檔</Button>
+            </>
+            break;
+        case EditState.Test_Saved_Files:
+
+            let folderPath = cacheDef.testInputFolder || fsPath;
+            let result_InspTar_stream_id = 51001;//HACK hard coded
+            EDIT_UI = <>
+                <Button danger type="primary" onClick={() => {
+
+                    setEditState(EditState.Normal_Show)
+                }}>{"<"}</Button>
+                <TestInputSelectUI def={cacheDef} testTags={[def.id + "_Inject"]} folderPath={folderPath} stream_id={result_InspTar_stream_id}></TestInputSelectUI>
+            </>
+            break;
+
+    }
+
+
+
+    return <div style={{ ...style }} className={"overlayCon"}>
+    <div className={"overlay scroll HXF"} >
+        {EDIT_UI}
+
+
+    
+    </div>
+
+        <HookCanvasComponent style={{}} dhook={(ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent) => {
+            _this.canvasComp = canvas_obj;
+            // console.log(ctrl_or_draw);
+            if(_this.extDrawHook!==undefined && _this.extDrawHook.preDraw!==undefined)
+            {
+                _this.extDrawHook.preDraw(ctrl_or_draw, g, canvas_obj);
+            }
+            let ctx = g.ctx;
+            let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
+
+            let camMag = canvas_obj.camera.GetCameraScale();
+
+            if (ctrl_or_draw == true)//ctrl
+            {
+                
+            }
+            else//draw
+            {
+
+
+
+                if (Local_IMCM !== undefined) {
+                    g.ctx.save();
+                    let scale = Local_IMCM.image_info.scale;
+                    g.ctx.scale(scale, scale);
+                    g.ctx.translate(-0.5, -0.5);
+                    g.ctx.drawImage(_this.imgCanvas, 0, 0);
+                    g.ctx.restore();
+                }
+
+
+
+            }
+
+        }
+        } />
+
+
+    </div>;
 }
+
+
+
+
+
+
+export function LineFitting_drawreport(def:any, report:any,ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent)
+{   
+
+    let pt1=report?.report?.pt1;
+    let pt2=report?.report?.pt2;
+    if(report!==undefined && pt1!==undefined && pt2!==undefined)
+    {
+
+        // console.log("report",report);
+        //draw line defReport.pt1,defReport.pt2
+        g.ctx.strokeStyle="red";
+        g.ctx.beginPath();
+        g.ctx.moveTo(pt1.x,pt1.y);
+        g.ctx.lineTo(pt2.x,pt2.y);
+        g.ctx.stroke();
+        g.ctx.closePath();
+    }
+    
+}
+
+
+
+export function SingleTargetVIEWUI_LineFitting(props: CompParam_InspTarUI) {
+    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange,defDoReload, UIOption,onUIOptionUpdate,showUIOptionConfigUI=false ,APIExport} = props;
+    const _this = useRef<any>({
+
+        imgCanvas: document.createElement('canvas'),
+        canvasComp: undefined,
+        canvasHook: undefined,
+
+        drawHooks: [],
+        ctrlHooks: [],
+
+    }).current;
+    const dispatch = useDispatch();
+    const [cacheDef, setCacheDef] = useState<any>(def);
+
+    const [defReport, setDefReport] = useState<any>(report);
+    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+    const [Local_IMCM, setLocal_IMCM] =
+        useState<IMCM_type | undefined>(undefined);
+
+    console.log("Local_IMCM",Local_IMCM,"defReport",defReport);
+
+    enum EditState {
+        Normal_Show = 0,
+        Feature_Edit = 1,
+        Test_Saved_Files = 3,
+
+
+        MISC_Settings = 999,
+        NA = -99999
+    }
+
+    const [editState, _setEditState] = useState<EditState>(EditState.Normal_Show);
+
+    function setEditState(newEditState: EditState) {
+        // _this.sel_region = 
+        // _this.sel_region_type = undefined;
+        // if (_this.canvasComp == undefined) return;
+        //     _this.canvasComp.UserRegionSelect(undefined)
+
+
+        let state3Ev: EditState[] = [];//3 elements, leave,stay,enter
+        if (newEditState != editState) {
+            state3Ev = [editState, EditState.NA, newEditState]
+        }
+        state3Ev.forEach((st, idx) => {
+
+            switch (st)//current state
+            {
+                case EditState.Normal_Show:
+                    if (idx == 2)//enter
+                    {
+
+                    }
+                    else if (idx == 0)//leave
+                    {
+
+                    }
+                    break;
+
+                case EditState.Test_Saved_Files:
+                    if (idx == 2)//enter
+                    {
+                    }
+                    else if (idx == 0)//leave
+                    {
+                    }
+                    break;
+
+            }
+        })
+        _setEditState(newEditState);
+    }
+
+
+    useEffect(() => {
+        setCacheDef(def);
+        // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
+        // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
+        return (() => {
+        });
+
+    }, [def]);
+
+
+    useEffect(() => {
+
+
+        console.log(def);
+        BPG_API.InspTargetExchange(def.id, {
+            type: "stream_info",
+            downsample: display ? 1 : 10,
+            stream_id: def.stream_id
+        });
+
+        return (() => {
+        });
+
+    }, [display]);
+
+
+
+
+
+    useEffect(() => {//////////////////////
+
+        let cbsKey="_"+Math.random();
+        (async () => {
+
+            let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
+            console.log(ret);
+
+            // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+            await BPG_API.send_cbs_attach(
+                cacheDef.stream_id, cbsKey, {
+
+                resolve: (pkts) => {
+                    // console.log(pkts);
+                    let IM = pkts.find((p: any) => p.type == "IM");
+                    if (IM === undefined) return;
+                    let CM = pkts.find((p: any) => p.type == "CM");
+                    if (CM === undefined) return;
+                    let RP = pkts.find((p: any) => p.type == "RP");
+                    if (RP === undefined) return;
+                    console.log("++++++++\n",IM,CM,RP);
+
+
+                    setDefReport(RP.data)
+                    let IMCM = {
+                        image_info: IM.image_info,
+                        camera_id: CM.data.camera_id,
+                        trigger_id: CM.data.trigger_id,
+                        trigger_tag: CM.data.trigger_tag,
+                    } as type_IMCM
+
+                    _this.imgCanvas.width = IMCM.image_info.width;
+                    _this.imgCanvas.height = IMCM.image_info.height;
+
+                    let ctx2nd = _this.imgCanvas.getContext('2d');
+
+                    // console.log(IMCM.image_info);
+                    if(IMCM.image_info.image instanceof ImageData)
+                        ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+                    else if(IMCM.image_info.image instanceof HTMLImageElement)
+                        ctx2nd.drawImage(IMCM.image_info.image, 0, 0);
+
+                    setLocal_IMCM(IMCM)
+                    // console.log(IMCM)
+                    //console.log(def.id)
+
+                },
+                reject: (pkts) => {
+
+                }
+            }
+
+            )
+
+        })()
+        return (() => {
+            (async () => {
+                await BPG_API.send_cbs_detach(
+                    cacheDef.stream_id, cbsKey);
+
+                // await BPG_API.InspTargetSetStreamChannelID(
+                //   cacheDef.id,0,
+                //   {
+                //     resolve:(pkts)=>{
+                //     },
+                //     reject:(pkts)=>{
+
+                //     }
+                //   }
+                // )
+            })()
+
+        })
+    }, []);
+
+    function onCacheDefChange(updatedDef: any, doTakeNewImage: boolean = true) {
+
+        if(updatedDef===undefined)
+        {
+            onDefChange(undefined,false);
+            return;   
+        }
+        console.log(updatedDef);
+        setCacheDef(updatedDef);
+
+
+
+        (async () => {
+            await BPG_API.InspTargetUpdate(updatedDef)
+        })()
+        onDefChange(updatedDef, doTakeNewImage);
+    }
+
+    console.log("SingleTargetVIEWUI_DataTransfer", cacheDef,def);
+
+
+
+
+    let EDIT_UI = null;
+    console.log("editState",editState);
+    switch (editState) {
+
+        case EditState.Normal_Show:
+
+
+
+        EDIT_UI = <>
+                <Input maxLength={100} value={cacheDef.id} disabled
+                    style={{ width: "200px" }}
+                    onChange={(e) => {
+                    }} />
+        
+                {((EditPermitFlag & EDIT_PERMIT_FLAG.XXFLAGXX) == 0)?null:
+                    <>
+                    <InspTarView_basicInfo {...props} def={cacheDef} onDefChange={(newDef, ddd) => {
+                        onCacheDefChange(newDef, ddd);
+                    }} 
+                    
+                    defDoReload={()=>defDoReload()}
+                    
+                    />
+        
+                    
+                    </>
+                }   
+
+                <Button onClick={() => {
+                    console.log(">>>")
+                    setEditState(EditState.Test_Saved_Files);
+                    }}>測試儲存圖檔</Button>
+            </>
+            break;
+        case EditState.Test_Saved_Files:
+
+            let folderPath = cacheDef.testInputFolder || fsPath;
+            let result_InspTar_stream_id = 51001;//HACK hard coded
+            EDIT_UI = <>
+                <Button danger type="primary" onClick={() => {
+
+                    setEditState(EditState.Normal_Show)
+                }}>{"<"}</Button>
+                <TestInputSelectUI def={cacheDef} testTags={[def.id + "_Inject"]} folderPath={folderPath} stream_id={result_InspTar_stream_id}></TestInputSelectUI>
+            </>
+            break;
+
+    }
+
+
+
+    return <div style={{ ...style }} className={"overlayCon"}>
+    <div className={"overlay scroll"} >
+        {EDIT_UI}
+
+
+    
+    </div>
+
+        <HookCanvasComponent style={{}} dhook={(ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent) => {
+            _this.canvasComp = canvas_obj;
+            // console.log(ctrl_or_draw);
+            if(_this.extDrawHook!==undefined && _this.extDrawHook.preDraw!==undefined)
+            {
+                _this.extDrawHook.preDraw(ctrl_or_draw, g, canvas_obj);
+            }
+            let ctx = g.ctx;
+            let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
+
+            let camMag = canvas_obj.camera.GetCameraScale();
+
+
+
+
+            let cDef={...cacheDef,..._this.UI_def};
+            let boxAngle=cDef.region.angle;
+            let rotation_control_point={x:0,y:-cDef.region.h/2*1.1};
+            let center_control_point={x:0,y:0};
+            let sizing_control_point={x:cDef.region.w/2,y:-    cDef.region.h/2};
+            let mouseOnCanvas_BOX={x:0,y:0};
+            {
+                //offset by cDef.region
+                let _mouseOnCanvas_BOX = {...mouseOnCanvas};
+                _mouseOnCanvas_BOX.x -= cDef.region.x;
+                _mouseOnCanvas_BOX.y -= cDef.region.y;
+                //rotate by cDef.region.angle
+                let angle = boxAngle*Math.PI/180;
+                let cos = Math.cos(angle);
+                let sin = Math.sin(angle);
+
+                mouseOnCanvas_BOX.x = _mouseOnCanvas_BOX.x*cos - _mouseOnCanvas_BOX.y*sin;
+                mouseOnCanvas_BOX.y = _mouseOnCanvas_BOX.x*sin + _mouseOnCanvas_BOX.y*cos;
+                // console.log("mouseOnCanvas_BOX",mouseOnCanvas_BOX);
+            }
+
+            let nearRange = 10/camMag;
+            let isMouseCloseToRotationControlPoint = (mouseOnCanvas_BOX.x-rotation_control_point.x)**2 + (mouseOnCanvas_BOX.y-rotation_control_point.y)**2 < nearRange**2;
+            let isMouseCloseToSizingControlPoint = (mouseOnCanvas_BOX.x-sizing_control_point.x)**2 + (mouseOnCanvas_BOX.y-sizing_control_point.y)**2 < nearRange**2;
+            let isMouseCloseToCenterControlPoint = (mouseOnCanvas_BOX.x-center_control_point.x)**2 + (mouseOnCanvas_BOX.y-center_control_point.y)**2 < nearRange**2;
+            if (ctrl_or_draw == true)//ctrl
+            {
+                let isMousePressed=g.mouseStatus.status==1;
+                let ispreMousePressed=g.mouseStatus.pstatus==1;
+
+
+                _this.mouseOnCanvas=mouseOnCanvas;
+
+                _this.mouseOnCanvas_BOX=mouseOnCanvas_BOX;
+                if(isMousePressed && !ispreMousePressed)//mouse down
+                {
+                    if(isMouseCloseToCenterControlPoint)
+                    {
+                        console.log("center");
+                        _this.UI_def=clone(cacheDef);
+
+                        _this.mouseControlCB=()=>{
+                            _this.UI_def.region.x=_this.mouseOnCanvas.x;
+                            _this.UI_def.region.y=_this.mouseOnCanvas.y;
+                        };
+                        canvas_obj.UserRegionSelect(()=>{});
+                    }
+                    else if(isMouseCloseToRotationControlPoint)
+                    {
+                        console.log("rotation");
+                        _this.UI_def=clone(cacheDef);
+
+                        _this.mouseControlCB=()=>{
+                            _this.UI_def.region.angle=-Math.atan2(
+                                _this.mouseOnCanvas.y-_this.UI_def.region.y,
+                                _this.mouseOnCanvas.x-_this.UI_def.region.x)*180/Math.PI-90;
+                        };
+                        canvas_obj.UserRegionSelect(()=>{});
+                    }
+                    else if(isMouseCloseToSizingControlPoint)
+                    {
+                        console.log("sizing");
+
+                        _this.UI_def=clone(cacheDef);
+
+                        _this.mouseControlCB=()=>{
+                            // _this.mouseOnCanvas_BOX.x;
+                            // _this.mouseOnCanvas_BOX.y;
+                            
+                            _this.UI_def.region.w=Math.abs(_this.mouseOnCanvas_BOX.x*2);
+                            _this.UI_def.region.h=Math.abs(_this.mouseOnCanvas_BOX.y*2);
+
+                        
+                        };
+                        canvas_obj.UserRegionSelect(()=>{});
+                    }
+
+                }
+                if(!isMousePressed && ispreMousePressed)//mouse up
+                {   
+                    if(_this.UI_def!==undefined)
+                        onCacheDefChange(_this.UI_def);
+                    _this.mouseControlCB=undefined;
+                    _this.UI_def=undefined;
+                    canvas_obj.UserRegionSelect(undefined);
+                }
+
+
+                if(isMousePressed)//dragging
+                {
+                    console.log("UI_def",_this.UI_def);
+                    if(_this.mouseControlCB!==undefined)
+                    {
+                        _this.mouseControlCB();
+                    }
+   
+                   
+                }
+            }
+            else//draw
+            {
+
+
+
+                if (Local_IMCM !== undefined) {
+                    g.ctx.save();
+                    let scale = Local_IMCM.image_info.scale;
+                    g.ctx.scale(scale, scale);
+                    g.ctx.translate(-0.5, -0.5);
+                    g.ctx.drawImage(_this.imgCanvas, 0, 0);
+                    g.ctx.restore();
+                }
+
+                LineFitting_drawreport(cDef,defReport,ctrl_or_draw,g,canvas_obj);
+              
+
+
+                {
+                    //draw cDef
+                    // console.log("cDef",cDef);
+                    //draw box 10x10
+                    g.ctx.save();
+                    g.ctx.strokeStyle = "red";
+                    g.ctx.translate(cDef.region.x, cDef.region.y);
+                    g.ctx.rotate(-boxAngle*Math.PI/180);
+                    //in box orientation
+
+
+                    g.ctx.strokeRect(-cDef.region.w/2, -cDef.region.h/2, cDef.region.w, cDef.region.h);
+
+
+
+                    {//draw sizing control point(size control point)
+                        g.ctx.fillStyle = isMouseCloseToSizingControlPoint?"blue":"red";
+                        g.ctx.beginPath();
+                        g.ctx.arc(sizing_control_point.x, sizing_control_point.y, 5, 0, Math.PI*2);
+                        g.ctx.fill();
+                        g.ctx.closePath();
+                    }
+                    {
+                        //draw center control point(translation control point)
+                        g.ctx.fillStyle = isMouseCloseToCenterControlPoint?"blue":"red";
+                        g.ctx.beginPath();
+                        g.ctx.arc(center_control_point.x, center_control_point.y, 5, 0, Math.PI*2);
+                        g.ctx.fill();
+                        g.ctx.closePath();
+                    }
+                    {
+
+                        //draw rotation control point on top of the box
+                        g.ctx.fillStyle = isMouseCloseToRotationControlPoint?"blue":"red";
+                        g.ctx.beginPath();
+                        g.ctx.arc(rotation_control_point.x, rotation_control_point.y, 5, 0, Math.PI*2);
+                        g.ctx.fill();
+                        g.ctx.closePath();
+                    }
+
+
+
+                    {
+                        g.ctx.strokeStyle = "red";
+
+                        // g.ctx.strokeRect(mouseOnCanvas_BOX.x, mouseOnCanvas_BOX.y, 10, 10);
+                        //arc
+                        g.ctx.beginPath();
+                        g.ctx.arc(mouseOnCanvas_BOX.x, mouseOnCanvas_BOX.y, 5, 0, Math.PI*2);
+                        g.ctx.stroke();
+                        g.ctx.closePath();
+    
+                    }
+
+                    g.ctx.restore();
+
+                }
+
+
+            }
+
+        }
+        } />
+
+
+    </div>;
+}
+
+
+
+
+export function DirectionalCaliper_drawreport(def:any, report:any,ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent)
+{
+    if(report!==undefined && report.report.location!==undefined)
+    {
+
+        let boxAngle=def.region.angle;
+        g.ctx.strokeStyle="red";
+        g.ctx.beginPath();
+        g.ctx.moveTo(report.report.location.x - 5, report.report.location.y );
+        g.ctx.lineTo(report.report.location.x + 5, report.report.location.y);
+        g.ctx.moveTo(report.report.location.x    , report.report.location.y + 5);
+        g.ctx.lineTo(report.report.location.x    , report.report.location.y - 5);
+        g.ctx.stroke();
+        g.ctx.closePath();
+
+
+        {//draw refence line with angle
+            
+            g.ctx.save();
+            g.ctx.strokeStyle = "blue";
+            g.ctx.translate(report.report.location.x,report.report.location.y);
+            g.ctx.rotate(-boxAngle*Math.PI/180);
+            g.ctx.moveTo(0,-def.region.h/2);
+            g.ctx.lineTo(0,def.region.h/2);
+            g.ctx.stroke();
+            g.ctx.closePath();
+            g.ctx.restore();
+
+        }
+    }
+    
+}
+
+export function SingleTargetVIEWUI_DirectionalCaliper(props: CompParam_InspTarUI) {
+    let { display, fsPath,EditPermitFlag, style = undefined, renderHook, def, report, onDefChange,defDoReload, UIOption,onUIOptionUpdate,showUIOptionConfigUI=false ,APIExport} = props;
+    const _this = useRef<any>({
+
+        imgCanvas: document.createElement('canvas'),
+        canvasComp: undefined,
+        canvasHook: undefined,
+
+        drawHooks: [],
+        ctrlHooks: [],
+
+    }).current;
+    const dispatch = useDispatch();
+    const [cacheDef, setCacheDef] = useState<any>(def);
+
+    const [defReport, setDefReport] = useState<any>(report);
+    const [BPG_API, setBPG_API] = useState<BPG_WS>(dispatch(EXT_API_ACCESS(CORE_ID)) as any);
+    const [Local_IMCM, setLocal_IMCM] =
+        useState<IMCM_type | undefined>(undefined);
+
+    console.log("Local_IMCM",Local_IMCM,"defReport",defReport);
+
+    enum EditState {
+        Normal_Show = 0,
+        Feature_Edit = 1,
+        Test_Saved_Files = 3,
+
+
+        MISC_Settings = 999,
+        NA = -99999
+    }
+
+    const [editState, _setEditState] = useState<EditState>(EditState.Normal_Show);
+
+    function setEditState(newEditState: EditState) {
+        // _this.sel_region = 
+        // _this.sel_region_type = undefined;
+        // if (_this.canvasComp == undefined) return;
+        //     _this.canvasComp.UserRegionSelect(undefined)
+
+
+        let state3Ev: EditState[] = [];//3 elements, leave,stay,enter
+        if (newEditState != editState) {
+            state3Ev = [editState, EditState.NA, newEditState]
+        }
+        state3Ev.forEach((st, idx) => {
+
+            switch (st)//current state
+            {
+                case EditState.Normal_Show:
+                    if (idx == 2)//enter
+                    {
+
+                    }
+                    else if (idx == 0)//leave
+                    {
+
+                    }
+                    break;
+
+                case EditState.Test_Saved_Files:
+                    if (idx == 2)//enter
+                    {
+                    }
+                    else if (idx == 0)//leave
+                    {
+                    }
+                    break;
+
+            }
+        })
+        _setEditState(newEditState);
+    }
+
+
+    useEffect(() => {
+        setCacheDef(def);
+        // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
+        // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
+        return (() => {
+        });
+
+    }, [def]);
+
+
+    useEffect(() => {
+
+
+        console.log(def);
+        BPG_API.InspTargetExchange(def.id, {
+            type: "stream_info",
+            downsample: display ? 1 : 10,
+            stream_id: def.stream_id
+        });
+
+        return (() => {
+        });
+
+    }, [display]);
+
+
+
+
+
+    useEffect(() => {//////////////////////
+
+        let cbsKey="_"+Math.random();
+        (async () => {
+
+            let ret = await BPG_API.InspTargetExchange(cacheDef.id, { type: "get_io_setting" });
+            console.log(ret);
+
+            // await BPG_API.InspTargetExchange(cacheDef.id,{type:"get_io_setting"});
+            await BPG_API.send_cbs_attach(
+                cacheDef.stream_id, cbsKey, {
+
+                resolve: (pkts) => {
+                    // console.log(pkts);
+                    let IM = pkts.find((p: any) => p.type == "IM");
+                    if (IM === undefined) return;
+                    let CM = pkts.find((p: any) => p.type == "CM");
+                    if (CM === undefined) return;
+                    let RP = pkts.find((p: any) => p.type == "RP");
+                    if (RP === undefined) return;
+                    console.log("++++++++\n",IM,CM,RP);
+
+
+                    setDefReport(RP.data)
+                    let IMCM = {
+                        image_info: IM.image_info,
+                        camera_id: CM.data.camera_id,
+                        trigger_id: CM.data.trigger_id,
+                        trigger_tag: CM.data.trigger_tag,
+                    } as type_IMCM
+
+                    _this.imgCanvas.width = IMCM.image_info.width;
+                    _this.imgCanvas.height = IMCM.image_info.height;
+
+                    let ctx2nd = _this.imgCanvas.getContext('2d');
+
+                    // console.log(IMCM.image_info);
+                    if(IMCM.image_info.image instanceof ImageData)
+                        ctx2nd.putImageData(IMCM.image_info.image, 0, 0);
+                    else if(IMCM.image_info.image instanceof HTMLImageElement)
+                        ctx2nd.drawImage(IMCM.image_info.image, 0, 0);
+
+                    setLocal_IMCM(IMCM)
+                    // console.log(IMCM)
+                    //console.log(def.id)
+
+                },
+                reject: (pkts) => {
+
+                }
+            }
+
+            )
+
+        })()
+        return (() => {
+            (async () => {
+                await BPG_API.send_cbs_detach(
+                    cacheDef.stream_id, cbsKey);
+
+                // await BPG_API.InspTargetSetStreamChannelID(
+                //   cacheDef.id,0,
+                //   {
+                //     resolve:(pkts)=>{
+                //     },
+                //     reject:(pkts)=>{
+
+                //     }
+                //   }
+                // )
+            })()
+
+        })
+    }, []);
+
+    function onCacheDefChange(updatedDef: any, doTakeNewImage: boolean = true) {
+
+        if(updatedDef===undefined)
+        {
+            onDefChange(undefined,false);
+            return;   
+        }
+        console.log(updatedDef);
+        setCacheDef(updatedDef);
+
+
+
+        (async () => {
+            await BPG_API.InspTargetUpdate(updatedDef)
+            await BPG_API.InspTargetExchange(cacheDef.id, { type: "revisit_cache_stage_info" });
+        })()
+        onDefChange(updatedDef, doTakeNewImage);
+    }
+
+    console.log("SingleTargetVIEWUI_DataTransfer", cacheDef,def);
+
+
+
+
+    let EDIT_UI = null;
+    console.log("editState",editState);
+    switch (editState) {
+
+        case EditState.Normal_Show:
+
+
+
+        EDIT_UI = <>
+                <Input maxLength={100} value={cacheDef.id} disabled
+                    style={{ width: "200px" }}
+                    onChange={(e) => {
+                    }} />
+        
+                {((EditPermitFlag & EDIT_PERMIT_FLAG.XXFLAGXX) == 0)?null:
+                    <>
+                    <InspTarView_basicInfo {...props} def={cacheDef} onDefChange={(newDef, ddd) => {
+                        onCacheDefChange(newDef, ddd);
+                    }} 
+                    
+                    defDoReload={()=>defDoReload()}
+                    
+                    />
+        
+                    
+                    </>
+                }   
+
+                <Button onClick={() => {
+                    console.log(">>>")
+                    setEditState(EditState.Test_Saved_Files);
+                    }}>測試儲存圖檔</Button>
+
+                
+                edge_type:
+                <InputNumber min={-1} max={1} precision={1} value={cacheDef.edge_type} onChange={(e) => {
+                    console.log("edge_type", e);
+                    onCacheDefChange({ ...cacheDef, edge_type: e });
+                }} />
+
+                sobelLowSurpress:
+                <InputNumber min={0} max={1000} precision={1} value={cacheDef.sobelLowSurpress} onChange={(e) => {
+                    console.log("sobelLowSurpress", e);
+                    onCacheDefChange({ ...cacheDef, sobelLowSurpress: e });
+                }} />
+
+
+                angle:
+                <InputNumber min={-360} max={360} precision={0.1} value={cacheDef.region.angle} onChange={(e) => {
+                    console.log("angle", e);
+                    onCacheDefChange({ ...cacheDef, region: { ...cacheDef.region, angle: e } });
+                }} />
+            </>
+            break;
+        case EditState.Test_Saved_Files:
+
+            let folderPath = cacheDef.testInputFolder || fsPath;
+            let result_InspTar_stream_id = 51001;//HACK hard coded
+            EDIT_UI = <>
+                <Button danger type="primary" onClick={() => {
+
+                    setEditState(EditState.Normal_Show)
+                }}>{"<"}</Button>
+                <TestInputSelectUI def={cacheDef} testTags={[def.id + "_Inject"]} folderPath={folderPath} stream_id={result_InspTar_stream_id}></TestInputSelectUI>
+            </>
+            break;
+
+    }
+
+
+
+    return <div style={{ ...style }} className={"overlayCon"}>
+        
+    <div className={"overlay scroll"} >
+        {EDIT_UI}
+
+
+    
+    </div>
+
+        <HookCanvasComponent style={{}} dhook={(ctrl_or_draw: boolean, g: type_DrawHook_g, canvas_obj: DrawHook_CanvasComponent) => {
+            _this.canvasComp = canvas_obj;
+            // console.log(ctrl_or_draw);
+            if(_this.extDrawHook!==undefined && _this.extDrawHook.preDraw!==undefined)
+            {
+                _this.extDrawHook.preDraw(ctrl_or_draw, g, canvas_obj);
+            }
+            let ctx = g.ctx;
+            let mouseOnCanvas = canvas_obj.VecX2DMat(g.mouseStatus, g.worldTransform_inv);
+
+            let camMag = canvas_obj.camera.GetCameraScale();
+
+
+
+
+            let cDef={...cacheDef,..._this.UI_def};
+            let boxAngle=cDef.region.angle;
+            let rotation_control_point={x:0,y:-cDef.region.h/2*1.1};
+            let center_control_point={x:0,y:0};
+            let sizing_control_point={x:cDef.region.w/2,y:-    cDef.region.h/2};
+            let mouseOnCanvas_BOX={x:0,y:0};
+            {
+                //offset by cDef.region
+                let _mouseOnCanvas_BOX = {...mouseOnCanvas};
+                _mouseOnCanvas_BOX.x -= cDef.region.x;
+                _mouseOnCanvas_BOX.y -= cDef.region.y;
+                //rotate by cDef.region.angle
+                let angle = boxAngle*Math.PI/180;
+                let cos = Math.cos(angle);
+                let sin = Math.sin(angle);
+
+                mouseOnCanvas_BOX.x = _mouseOnCanvas_BOX.x*cos - _mouseOnCanvas_BOX.y*sin;
+                mouseOnCanvas_BOX.y = _mouseOnCanvas_BOX.x*sin + _mouseOnCanvas_BOX.y*cos;
+                // console.log("mouseOnCanvas_BOX",mouseOnCanvas_BOX);
+            }
+
+            let nearRange = 10/camMag;
+            let isMouseCloseToRotationControlPoint = (mouseOnCanvas_BOX.x-rotation_control_point.x)**2 + (mouseOnCanvas_BOX.y-rotation_control_point.y)**2 < nearRange**2;
+            let isMouseCloseToSizingControlPoint = (mouseOnCanvas_BOX.x-sizing_control_point.x)**2 + (mouseOnCanvas_BOX.y-sizing_control_point.y)**2 < nearRange**2;
+            let isMouseCloseToCenterControlPoint = (mouseOnCanvas_BOX.x-center_control_point.x)**2 + (mouseOnCanvas_BOX.y-center_control_point.y)**2 < nearRange**2;
+            if (ctrl_or_draw == true)//ctrl
+            {
+                let isMousePressed=g.mouseStatus.status==1;
+                let ispreMousePressed=g.mouseStatus.pstatus==1;
+
+
+                _this.mouseOnCanvas=mouseOnCanvas;
+
+                _this.mouseOnCanvas_BOX=mouseOnCanvas_BOX;
+                if(isMousePressed && !ispreMousePressed)//mouse down
+                {
+                    if(isMouseCloseToCenterControlPoint)
+                    {
+                        console.log("center");
+                        _this.UI_def=clone(cacheDef);
+
+                        _this.mouseControlCB=()=>{
+                            _this.UI_def.region.x=_this.mouseOnCanvas.x;
+                            _this.UI_def.region.y=_this.mouseOnCanvas.y;
+                        };
+                        canvas_obj.UserRegionSelect(()=>{});
+                    }
+                    else if(isMouseCloseToRotationControlPoint)
+                    {
+                        console.log("rotation");
+                        _this.UI_def=clone(cacheDef);
+
+                        _this.mouseControlCB=()=>{
+                            _this.UI_def.region.angle=-Math.atan2(
+                                _this.mouseOnCanvas.y-_this.UI_def.region.y,
+                                _this.mouseOnCanvas.x-_this.UI_def.region.x)*180/Math.PI-90;
+                        };
+                        canvas_obj.UserRegionSelect(()=>{});
+                    }
+                    else if(isMouseCloseToSizingControlPoint)
+                    {
+                        console.log("sizing");
+
+                        _this.UI_def=clone(cacheDef);
+
+                        _this.mouseControlCB=()=>{
+                            // _this.mouseOnCanvas_BOX.x;
+                            // _this.mouseOnCanvas_BOX.y;
+                            
+                            _this.UI_def.region.w=Math.abs(_this.mouseOnCanvas_BOX.x*2);
+                            _this.UI_def.region.h=Math.abs(_this.mouseOnCanvas_BOX.y*2);
+
+                        
+                        };
+                        canvas_obj.UserRegionSelect(()=>{});
+                    }
+
+                }
+                if(!isMousePressed && ispreMousePressed)//mouse up
+                {   
+                    if(_this.UI_def!==undefined)
+                        onCacheDefChange(_this.UI_def);
+                    _this.mouseControlCB=undefined;
+                    _this.UI_def=undefined;
+                    canvas_obj.UserRegionSelect(undefined);
+                }
+
+
+                if(isMousePressed)//dragging
+                {
+                    console.log("UI_def",_this.UI_def);
+                    if(_this.mouseControlCB!==undefined)
+                    {
+                        _this.mouseControlCB();
+                    }
+   
+                   
+                }
+            }
+            else//draw
+            {
+
+
+
+                if (Local_IMCM !== undefined) {
+                    g.ctx.save();
+                    let scale = Local_IMCM.image_info.scale;
+                    g.ctx.scale(scale, scale);
+                    g.ctx.translate(-0.5, -0.5);
+                    g.ctx.drawImage(_this.imgCanvas, 0, 0);
+                    g.ctx.restore();
+                }
+
+
+                DirectionalCaliper_drawreport(cDef,defReport,ctrl_or_draw, g, canvas_obj);
+
+
+                {
+                    //draw cDef
+                    // console.log("cDef",cDef);
+                    //draw box 10x10
+                    g.ctx.save();
+                    g.ctx.strokeStyle = "red";
+                    g.ctx.translate(cDef.region.x, cDef.region.y);
+                    g.ctx.rotate(-boxAngle*Math.PI/180);
+                    //in box orientation
+
+
+                    g.ctx.strokeRect(-cDef.region.w/2, -cDef.region.h/2, cDef.region.w, cDef.region.h);
+
+
+
+                    {//draw sizing control point(size control point)
+                        g.ctx.fillStyle = isMouseCloseToSizingControlPoint?"blue":"red";
+                        g.ctx.beginPath();
+                        g.ctx.arc(sizing_control_point.x, sizing_control_point.y, 5, 0, Math.PI*2);
+                        g.ctx.fill();
+                        g.ctx.closePath();
+                    }
+                    {
+                        //draw center control point(translation control point)
+                        g.ctx.fillStyle = isMouseCloseToCenterControlPoint?"blue":"red";
+                        g.ctx.beginPath();
+                        g.ctx.arc(center_control_point.x, center_control_point.y, 5, 0, Math.PI*2);
+                        g.ctx.fill();
+                        g.ctx.closePath();
+                    }
+                    {
+
+                        //draw rotation control point on top of the box
+                        g.ctx.fillStyle = isMouseCloseToRotationControlPoint?"blue":"red";
+                        g.ctx.beginPath();
+                        g.ctx.arc(rotation_control_point.x, rotation_control_point.y, 5, 0, Math.PI*2);
+                        g.ctx.fill();
+                        g.ctx.closePath();
+                    }
+
+
+
+                    {
+                        g.ctx.strokeStyle = "red";
+
+                        // g.ctx.strokeRect(mouseOnCanvas_BOX.x, mouseOnCanvas_BOX.y, 10, 10);
+                        //arc
+                        g.ctx.beginPath();
+                        g.ctx.arc(mouseOnCanvas_BOX.x, mouseOnCanvas_BOX.y, 5, 0, Math.PI*2);
+                        g.ctx.stroke();
+                        g.ctx.closePath();
+    
+                    }
+
+                    g.ctx.restore();
+
+                }
+
+
+            }
+
+        }
+        } />
+
+
+    </div>;
+}
+
+
+
+// 1. First define the map of components
+const COMPONENT_MAP = {
+    Orientation_ShapeBasedMatching: SingleTargetVIEWUI_Orientation_ShapeBasedMatching,
+    SurfaceCheckSimple: SingleTargetVIEWUI_SurfaceCheckSimple,
+    JSON_Peripheral: SingleTargetVIEWUI_JSON_Peripheral,
+    JSON_CNC_Peripheral: SingleTargetVIEWUI_JSON_CNC_Peripheral,
+    StageInfoImageSave: SingleTargetVIEWUI_StageInfoImageSave,
+    ImgSrc: SingleTargetVIEWUI_ImgSrc,
+    DataTransfer: SingleTargetVIEWUI_DataTransfer,
+    LineFitting: SingleTargetVIEWUI_LineFitting,
+    DirectionalCaliper: SingleTargetVIEWUI_DirectionalCaliper,
+    ArcFitting: SingleTargetVIEWUI_ArcFitting,
+    CameraCalib: SingleTargetVIEWUI_CameraCalib,
+    DimMeasure: SingleTargetVIEWUI_DimMeasure
+} as const;
+
+// 2. Generate types from the map
+type InspTargetType = keyof typeof COMPONENT_MAP;
+
+// 3. Type guard remains similar
+function isValidInspTargetType(type: string): type is InspTargetType {
+    return type in COMPONENT_MAP;
+}
+
+
+// 5. Create the MUX component
+export function InspTargetUI_MUX(param: CompParam_InspTarUI) {
+    const Component = useMemo<React.ComponentType<CompParam_InspTarUI> | null>(() => {
+        const type = param?.def?.type;
+        
+        if (!type) {
+            console.warn('No component type provided');
+            return null;
+        }
+
+        if (!isValidInspTargetType(type)) {
+            console.warn(`Invalid component type: ${type}`);
+            return null;
+        }
+
+        return COMPONENT_MAP[type];
+    }, [param?.def?.type]);
+
+    if (!Component) {
+        return <div className="error-message">unknown type: {param?.def?.type}</div>;
+    }
+
+    return <Component {...param} />;
+}
+
+// 6. Export available types for external use
+export const InspTargetTypes = Object.keys(COMPONENT_MAP) as InspTargetType[];

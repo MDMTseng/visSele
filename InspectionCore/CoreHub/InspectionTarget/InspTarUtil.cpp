@@ -426,3 +426,47 @@ cv::Point2f rotate2d(const cv::Point2f inPoint, const double angRad)
 
 
 } // namespace InspTarUTIL
+
+
+
+namespace cvM3x3 {
+
+cv::Mat rotate(float angle_rad) 
+{
+    double cos_val = cos(angle_rad);  
+    double sin_val = sin(angle_rad);
+    cv::Mat mat33 = cv::Mat::eye(3,3,CV_64F);
+    mat33.at<double>(0,0) = cos_val;
+    mat33.at<double>(0,1) = -sin_val;
+    mat33.at<double>(1,0) = sin_val;
+    mat33.at<double>(1,1) = cos_val;
+    return mat33;
+}
+
+cv::Mat translate(cv::Point2f pt)
+{
+    cv::Mat mat33 = cv::Mat::eye(3,3,CV_64F);
+    mat33.at<double>(0,2) = pt.x;
+    mat33.at<double>(1,2) = pt.y;
+    return mat33;
+}
+
+cv::Mat scale(float scale)
+{
+    cv::Mat mat33 = cv::Mat::eye(3,3,CV_64F);
+    mat33.at<double>(0,0) = scale;
+    mat33.at<double>(1,1) = scale;
+    return mat33;
+}
+
+cv::Mat mat23to33(const cv::Mat& matrix23) {
+    cv::Mat matrix33 = cv::Mat::eye(3, 3, CV_64F);
+    matrix23.copyTo(matrix33(cv::Rect(0, 0, 3, 2)));
+    return matrix33;
+}
+
+cv::Mat mat33to23(const cv::Mat& matrix33) {
+    return matrix33(cv::Rect(0, 0, 3, 2)).clone();
+}
+
+} // namespace cvM3x3

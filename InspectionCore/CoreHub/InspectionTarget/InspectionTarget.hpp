@@ -26,15 +26,14 @@
 // }BPG_protocol_data_acvImage_Send_info;
 
 
-typedef struct BPG_protocol_data_ImgB64_Send_info
+typedef struct BPG_protocol_data_Img_Send_info
 {
-    char* imgb64;
-    size_t imgb64_L;
-    uint16_t scale;
-    uint16_t offsetX,offsetY;
-    uint16_t fullWidth,fullHeight;
+    char* json_header;
+    size_t json_header_L;
+    char* imgData;
+    size_t imgData_L;
 
-}BPG_protocol_data_ImgB64_Send_info;
+}BPG_protocol_data_Img_Send_info;
 
 
        
@@ -112,9 +111,11 @@ class exchangeCMD_ACT
 { 
   public:
   bool doSendAck;
+  string msg;
   virtual void send(const char *TL, int pgID,cJSON* def)=0;
   virtual void send(int pgID,cv::Mat& img,const char *format_lowercase,float quality)=0;//send image
 
+  virtual void sendACK(int pgID,bool isACK,std::string json_content)=0;
 };
 
 

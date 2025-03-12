@@ -144,7 +144,7 @@ class CameraCtrl {
   }
 
   GetCameraScale(matrix = this.matrix) {//It's an over simplified way to get scale for an matrix, change it if nesessary
-    return Math.sqrt(matrix.m11 * matrix.m22 - matrix.m12 * matrix.m21);
+    return Math.sqrt(matrix.m11 * matrix.m22 - matrix.m12 * matrix.m21)/window.devicePixelRatio;
   }
 
 

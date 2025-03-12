@@ -10,6 +10,7 @@ export let CORE_ID= "CORE_ID";
 
 type TYPE_OBJECT ={[key:string]:any}
   
+let INSPTAR_BASE_STREAM_ID = 51000;
 
 var enc = new TextEncoder();
 export class BPG_WS
@@ -429,9 +430,14 @@ export class BPG_WS
     return camList;
   }
 
+  getInspTarStreamingID(defConfig:any,inspTarId:string)
+  {
+    let it_idx=defConfig.main.InspTars.findIndex((tar:any)=>tar.id==inspTarId);
+    if(it_idx<0)return -1;
+    return INSPTAR_BASE_STREAM_ID+it_idx;
+  }
   
-  
-  async InjectImage(imagePath:string,tags:string[],triggerID:number)
+  async InjectImage(imagePath:string,tags:string[],triggerID:number,mmpp:number=1)
   {
     return this.send_P(
       "CM",0,{
@@ -439,11 +445,12 @@ export class BPG_WS
         img_path:imagePath,
         trigger_tags:tags,
         trigger_id:triggerID,
-        channel_id:-1
+        channel_id:-1,
+        mmpp:mmpp,
       })
   }
 
-  async CameraSWTrigger(camera_id:string,ttags:string|string[],trigger_id:number,doTriggerInfoMocking:boolean=true)
+  async CameraSWTrigger(camera_id:string,ttags:string|string[],trigger_id:number,doTriggerInfoMocking:boolean=true,side_name:string|undefined=undefined)
   {
     let trigger_tag:string|undefined=undefined;
     let trigger_tags:string[]|undefined=undefined;
@@ -462,6 +469,7 @@ export class BPG_WS
         soft_trigger:true,
         mocking_trigger_info:doTriggerInfoMocking,
         id:camera_id,
+        side_name:side_name,
         trigger_tag,
         trigger_tags,
         // img_path:"data/TEST_DEF/rule1_Locating1/KKK2.png",
@@ -526,6 +534,15 @@ export class BPG_WS
       remove:doRemove,
     })
     
+  }
+
+  async CameraSaveLatestImage(camID:string,path:string)
+  {
+    return await this.send_P("CM",0,{
+      type:"save_latest_image",
+      id:camID,
+      path,
+    })
   }
 
   async CameraClearTriggerInfo()
@@ -695,9 +712,9 @@ export class BPG_WS
     return await this.send_P("IT",0,{type:"create",id:defInfo.id,defInfo,env_path})
   }
 
-  async InspTargetUpdate(defInfo:any)
+  async InspTargetUpdate(defInfo:any,env_path?:string)
   {
-    return await this.send_P("IT",0,{type:"update",id:defInfo.id,defInfo})
+    return await this.send_P("IT",0,{type:"update",id:defInfo.id,defInfo,env_path:env_path})
   }
 
 

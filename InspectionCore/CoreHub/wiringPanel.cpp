@@ -39,6 +39,12 @@
 #include <data.h>
 #include <cpJson.h>
 
+
+
+extern "C" {
+    #include "quickjs.h"
+}
+
 // #include <Python.h>
 using namespace cv;
 
@@ -122,9 +128,8 @@ class InspectionTargetManager_m:public InspectionTargetManager
     LOGE("============DO INSP>> waterLvL: insp:%d/%d  trigInfoMatchingSize:%d  cur_Interval:%" PRIu64 "<<<tstmp_ms:%" PRIu64 "   from:%s",
         inspQueue.size(), inspQueue.capacity(),triggerInfoMatchingBuffer.size(),cur_Interval,finfo.timeStamp_us,info.camera->getConnectionData().id.c_str());
 
-
-    cv::Mat img_cv(finfo.height,finfo.width,CV_8UC3);
-    CameraLayer::status st = info.camera->ExtractFrame(img_cv.data,3,finfo.width*finfo.height);
+    cv::Mat img_cv(finfo.height,finfo.width,finfo.channelCount==1?CV_8UC1:CV_8UC3);
+    CameraLayer::status st = info.camera->ExtractFrame(img_cv.data,img_cv.channels(),finfo.width*finfo.height);
 
     newStateInfo->img_prop.StreamInfo=info;
     newStateInfo->source=NULL;//info.camera->getConnectionData().id;
@@ -158,10 +163,394 @@ class InspectionTargetManager_m:public InspectionTargetManager
 
 };
 
+static const char base64_chars[] = 
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "abcdefghijklmnopqrstuvwxyz"
+    "0123456789+/";
+
+static void base64_encode(const vector<unsigned char>& data, vector<unsigned char>& output) {
+    size_t input_length = data.size();
+    size_t output_length = 4 * ((input_length + 2) / 3);  // Calculate required output size
+    output.resize(output_length);
+    
+    size_t i = 0, j = 0;
+    size_t char_count = 0;
+    size_t bits = 0;
+
+    while (i < input_length) {
+        unsigned char c = data[i++];
+        bits += c;
+        char_count++;
+
+        if (char_count == 3) {
+            output[j++] = base64_chars[(bits >> 18) & 0x3f];
+            output[j++] = base64_chars[(bits >> 12) & 0x3f];
+            output[j++] = base64_chars[(bits >> 6) & 0x3f];
+            output[j++] = base64_chars[bits & 0x3f];
+            bits = 0;
+            char_count = 0;
+        } else {
+            bits <<= 8;
+        }
+    }
+
+    if (char_count) {
+        bits <<= 16 - (8 * char_count);
+        output[j++] = base64_chars[(bits >> 18) & 0x3f];
+        output[j++] = base64_chars[(bits >> 12) & 0x3f];
+        if (char_count == 1) {
+            output[j++] = '=';
+            output[j++] = '=';
+        } else {
+            output[j++] = base64_chars[(bits >> 6) & 0x3f];
+            output[j++] = '=';
+        }
+    }
+}
+
+static void base64URL_encode(string imgFormat, const vector<unsigned char>& data, vector<unsigned char>& output) {
+    // Calculate required output size including header
+    const string header = "data:image/" + imgFormat + ";base64,";
+    size_t input_length = data.size();
+    size_t base64_length = 4 * ((input_length + 2) / 3);  // Base64 encoded size
+    size_t total_length = header.length() + base64_length;
+    
+    // Resize output buffer to fit header + encoded data
+    output.resize(total_length);
+    
+    // Copy header directly to output buffer
+    memcpy(output.data(), header.c_str(), header.length());
+    
+    // Encode base64 directly after header
+    size_t i = 0, j = header.length();
+    size_t char_count = 0;
+    size_t bits = 0;
+
+    while (i < input_length) {
+        unsigned char c = data[i++];
+        bits += c;
+        char_count++;
+
+        if (char_count == 3) {
+            output[j++] = base64_chars[(bits >> 18) & 0x3f];
+            output[j++] = base64_chars[(bits >> 12) & 0x3f];
+            output[j++] = base64_chars[(bits >> 6) & 0x3f];
+            output[j++] = base64_chars[bits & 0x3f];
+            bits = 0;
+            char_count = 0;
+        } else {
+            bits <<= 8;
+        }
+    }
+
+    if (char_count) {
+        bits <<= 16 - (8 * char_count);
+        output[j++] = base64_chars[(bits >> 18) & 0x3f];
+        output[j++] = base64_chars[(bits >> 12) & 0x3f];
+        if (char_count == 1) {
+            output[j++] = '=';
+            output[j++] = '=';
+        } else {
+            output[j++] = base64_chars[(bits >> 6) & 0x3f];
+            output[j++] = '=';
+        }
+    }
+}
 
 
 
-int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trigger_id,int channel_id)
+
+class exchangeCMD_ACTx: public exchangeCMD_ACT
+{ 
+
+  uint64_t image_hash(cv::Mat& img) {
+    // Start with pointer value for additional uniqueness
+    uint64_t hash = (uint64_t)img.data;
+    
+    // Combine with dimensions
+    hash ^= ((uint64_t)img.rows << 32) | img.cols;
+    
+    if (img.empty() || !img.isContinuous()) {
+        return hash;
+    }
+
+    // Sample a few pixels from start and end
+    const int sample_size = 8;
+    const uint8_t* data = img.data;
+    const size_t total_bytes = img.total() * img.elemSize();
+    
+    // Mix in some bytes from the start
+    for (int i = 0; i < sample_size && i < total_bytes; i++) {
+        hash = (hash * 31) ^ data[i];
+    }
+    
+    // Mix in some bytes from the end
+    for (int i = 0; i < sample_size && i < total_bytes; i++) {
+        hash = (hash * 31) ^ data[total_bytes - 1 - i];
+    }
+
+    return hash;
+  }
+
+  array<uint64_t, 20> imgHashArray;
+  RingBuf<uint64_t> imgHashBuffer;//keep track of the imgHash of the images already sent
+  public:
+  virtual void send(const char *TL, int pgID,cJSON* cjson){
+    
+    bpg_pi.fromUpperLayer_DATA(TL,pgID,cjson);
+
+  };
+
+
+  virtual void send(const char *TL, int pgID,std::string JSONstr){
+
+
+    bpg_pi.fromUpperLayer_DATA(TL,pgID,JSONstr.c_str());
+
+  }
+
+  virtual void sendACK(int pgID,bool isACK,std::string json_content){
+
+    char tmp_str[1024];
+    char *tmp_ptr=tmp_str;
+
+
+    tmp_ptr+=sprintf(tmp_ptr, "{\"start\":false");
+
+    //add ACK info
+    tmp_ptr+=sprintf(tmp_ptr, ",\"ACK\":%s",(isACK) ? "true" : "false");
+
+    //add json_content if it is not empty
+    if(json_content.length()>0)
+    {
+      tmp_ptr+=sprintf(tmp_ptr, ",%s",json_content.c_str());
+    }
+    // if(err_str[0]!='\0')
+    // {
+    //   tmp_ptr+=sprintf(tmp_ptr, ",\"msg\":\"%s\"",err_str);
+    // }
+
+    tmp_ptr+=sprintf(tmp_ptr, "}");
+    bpg_pi.fromUpperLayer_DATA("SS",pgID,tmp_ptr);
+    doSendAck=false;//the ACK is already sent, no need to send again
+
+  }
+
+  public:
+  exchangeCMD_ACTx() :imgHashBuffer(imgHashArray.data(), imgHashArray.size()) {} // Initialize in constructor
+  
+  // virtual void send(const char *TL, int pgID,acvImage* img,int downSample){
+  //   acvImage* p_img=img;
+  //   if(p_img==NULL)return;
+  //   BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)downSample};
+
+  //   iminfo.fullHeight = p_img->GetHeight();
+  //   iminfo.fullWidth = p_img->GetWidth();
+  //   iminfo.offsetX=0;
+  //   iminfo.offsetY=0;
+  //   if(downSample<=1)
+  //   {
+  //     iminfo.scale=1;
+  //     iminfo.img=p_img;
+  //     bpg_pi.fromUpperLayer_DATA(TL,pgID,&iminfo);
+  //     return;
+  //   }
+
+
+  //   //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
+  //   //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+  //   ImageDownSampling(dataSend_buff, *p_img, iminfo.scale, NULL);
+
+  //   bpg_pi.fromUpperLayer_DATA(TL,pgID,&iminfo);
+  // };
+  virtual void send(int pgID,cv::Mat& img,const char *format_lowercase,float quality){
+
+    auto t_start = cv::getTickCount();
+    if(img.empty())return;
+
+
+    uint64_t imgHash=image_hash(img);
+    float scale=1;
+
+
+    BPG_protocol_data_Img_Send_info imgbInfo;
+
+
+    bool base64_encoded=true;
+
+    char headerInfo[1024];
+    imgbInfo.json_header=headerInfo;
+    imgbInfo.json_header_L=sprintf(headerInfo,
+    "{"
+    "\"format\":\"%s\""
+    ",\"offset\":[%d,%d]"
+    ",\"size\":[%d,%d]"
+    ",\"scale\":%.2f"
+    ",\"imbuff_id\":%d"
+    ",\"base64_encoded\":%s"
+    "}",
+    format_lowercase,
+    0,0,
+    img.cols,img.rows,
+    scale,
+    imgHash,
+    base64_encoded?"true":"false");
+
+    imgbInfo.imgData=NULL;
+    imgbInfo.imgData_L=0;
+
+
+    bool imgHashSent=false;
+
+
+
+    LOGE("imgHash:%d",imgHash);
+    {//find the imgHash in the buffer
+
+      for(int i=0;i<imgHashArray.size();i++)
+      {
+        if(imgHashArray[i]==imgHash)
+        {
+          imgHashSent=true;
+          break;
+        }
+      }
+
+    }
+
+    if(imgHashSent==true)//the image is already sent
+    {//only send the header, no image data
+
+      imgbInfo.imgData=NULL;
+      imgbInfo.imgData_L=0;
+      LOGE("SKIP SENDING IMAGE");
+      bpg_pi.fromUpperLayer_DATA("IM",pgID,&imgbInfo);
+    }
+    else
+    {//send the image
+
+
+
+
+      int W=img.cols;
+      int H=img.rows;
+
+      int dsW=W*scale;
+      int dsH=H*scale;
+      Mat im2send;
+      if(scale==1)
+      {
+        im2send=img;
+      }
+      else
+      {
+
+        resize(img, im2send, Size(dsW,dsH), INTER_LINEAR);
+      }
+
+
+      int compressionRate=quality;
+
+      vector<unsigned char> img_encode;
+
+
+      // string base64Header="";
+      if(strcmp(format_lowercase,"jpg")==0)//use jpg
+      {
+
+        std::vector<int> param(2);
+        param[0] = cv::IMWRITE_JPEG_QUALITY;
+        param[1] = compressionRate;//default(95) 0-100
+
+
+        cv::imencode(".jpeg", im2send, img_encode, param);
+        // base64Header="data:image/jpg;base64,";
+      }
+      else 
+      if(strcmp(format_lowercase,"png")==0)//use png
+      {
+
+        std::vector<int> param(2);
+        param[0] = cv::IMWRITE_PNG_COMPRESSION;
+        param[1] = compressionRate;//default(95) 0-100
+
+
+        cv::imencode(".png", im2send, img_encode, param);
+        // base64Header="data:image/png;base64,";
+      }
+      else if(strcmp(format_lowercase,"webp")==0)//webp slow
+      {
+
+        std::vector<int> param(2);
+        param[0] = cv::IMWRITE_WEBP_QUALITY;
+        param[1] = compressionRate;//default(95) 0-100
+        cv::imencode(".webp", im2send, img_encode, param);
+        // base64Header="data:image/webp;base64,";
+      }
+
+      auto float compression_time_ms=0;
+      {
+        auto t_end = cv::getTickCount();
+        compression_time_ms = 1000.0 * (t_end - t_start) / cv::getTickFrequency();
+        t_start=t_end;
+      }
+
+      if(base64_encoded)
+      {
+        vector<unsigned char> img_encode_base64;
+
+
+        auto encode_start = cv::getTickCount();
+        base64URL_encode(format_lowercase,img_encode, img_encode_base64);
+        auto encode_end = cv::getTickCount();
+        auto encode_time_ms = 1000.0 * (encode_end - encode_start) / cv::getTickFrequency();
+        LOGI("Base64 encode took %.2f ms", encode_time_ms);
+        imgbInfo.imgData=(char *)img_encode_base64.data();
+        imgbInfo.imgData_L=img_encode_base64.size();
+      }
+      else
+      {
+        imgbInfo.imgData=(char *)img_encode.data();
+        imgbInfo.imgData_L=img_encode.size();
+      }
+      
+      if(0){
+        if(imgHashBuffer.space()==0)
+        {
+          imgHashBuffer.consumeTail();
+        }
+        auto imgHashSlot=imgHashBuffer.getHead();
+
+        *imgHashSlot=imgHash;
+        imgHashBuffer.pushHead();
+
+      }
+
+      bpg_pi.fromUpperLayer_DATA("IM",pgID,&imgbInfo);
+
+      auto float send_time_ms=0;
+      {
+        auto t_end = cv::getTickCount();
+        send_time_ms = 1000.0 * (t_end - t_start) / cv::getTickFrequency();
+        LOGI("Image send tooks %.2f ms (compression:%.2f ms)  img_encode.size():%d pgID:%d", send_time_ms, compression_time_ms,img_encode.size(),pgID);
+      }
+
+
+
+    }
+
+    
+    
+
+
+  };
+
+};
+
+exchangeCMD_ACTx exchCMDact;
+
+
+int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trigger_id,int channel_id,float mmpp=1)
 {
   
   std::shared_ptr<StageInfo_Image> newStateInfo(new StageInfo_Image());
@@ -174,26 +563,8 @@ int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trig
   Mat mat_origin=imread(path.c_str());
 
   
-  Mat mat;
+  Mat mat=mat_origin;
 
-  if(0)
-  {
-
-    Mat cameraMatrix = (Mat_<double>(3, 3) << 11775.33981935765, 0, 1300.919341080545,
-                                            0, 11764.9763003154, 988.9958350064916,
-                                            0, 0, 1);
-
-  // // Define the distortion coefficients 
-    Mat distCoeffs = (Mat_<double>(5, 1) << -0.370482288257829, -2.57889743589971,
-                                            -0.0004007172176641259, 0.001292566228390161, 0);
-
-    undistort(mat_origin, mat, cameraMatrix, distCoeffs);
-
-  }
-  else
-  {
-    mat=mat_origin;
-  }
 
 
   int H = mat.rows;
@@ -203,9 +574,9 @@ int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trig
   finfo.height=H;
   finfo.width=W;
   finfo.timeStamp_us=0;
-  finfo.pixel_size_mm=NAN;
+  finfo.pixel_size_mm=mmpp;
 
-  newStateInfo->img_prop.mmpp=0;
+  newStateInfo->img_prop.mmpp=mmpp;
   newStateInfo->img_prop.fi=finfo;
 
   cv::Mat dst_mat(H,W,CV_8UC3);
@@ -226,7 +597,7 @@ int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trig
   { //TODO: recycle the newStateInfo
     return -2;
   }
-  LOGE("inspQueue.size()=%d ",inspQueue.size());
+  LOGE("inspQueue.size()=%d mmpp:%f",inspQueue.size(),mmpp);
   inspQueue.push_blocking(newStateInfo);
 
   return 0;
@@ -444,6 +815,8 @@ void TriggerInfoMatchingThread(bool *terminationflag)
           targetStageInfo->trigger_tags=targetTriggerInfo.tags;
           auto fullCamID=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
           targetStageInfo->trigger_tags.push_back(fullCamID);
+
+          targetStageInfo->img_prop.mmpp=targetStageInfo->img_prop.fi.pixel_size_mm;
           // auto sideName = targetStageInfo->img_prop.StreamInfo.camera->GetSideName();
           // if(sideName.length()>0)
           // {
@@ -524,86 +897,6 @@ void ImgPipeProcessThread(bool *terminationflag)
     }
   }
 }
-/*
-void ImgPipeDatViewThread(bool *terminationflag)
-{
-  
-  acvImage dataSend_buff;
-  using Ms = std::chrono::milliseconds;
-  while (terminationflag && *terminationflag == false)
-  {
-    image_pipe_info *headImgPipe = NULL;
-
-    while (datViewQueue.pop_blocking(headImgPipe))
-    {
-
-      if(1)
-      {
-
-
-        int imgCHID=headImgPipe->img_prop.StreamInfo.channel_id;
-    
-        
-        // CameraLayer::BasicCameraInfo data=headImgPipe->img_prop.StreamInfo.camera->getConnectionData();
-        // cJSON* caminfo=CameraManager::cameraInfo2Json(data);
-
-
-        cJSON* camBrifInfo=cJSON_CreateObject();
-        cJSON_AddStringToObject(camBrifInfo, "trigger_tag", headImgPipe->trigger_tag.c_str());
-        cJSON_AddNumberToObject(camBrifInfo, "trigger_id", headImgPipe->trigger_id);
-        cJSON_AddStringToObject(camBrifInfo, "camera_id",headImgPipe->camera_id.c_str());
-
-        bpg_pi.fromUpperLayer_DATA("CM",imgCHID,camBrifInfo);
-        cJSON_Delete(camBrifInfo);
-        
-        
-        BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)6};
-        iminfo.fullHeight = headImgPipe->img.GetHeight();
-        iminfo.fullWidth = headImgPipe->img.GetWidth();
-        if(iminfo.scale>1)
-        {
-          //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-          //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-          ImageDownSampling(dataSend_buff, headImgPipe->img, iminfo.scale, NULL);
-        }
-        else
-        {
-          iminfo.scale=1;
-          iminfo.img=&headImgPipe->img;
-        }
-        bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&iminfo);
-        bpg_pi.fromUpperLayer_SS(imgCHID,true);
-      }
-      
-
-
-
-      if(headImgPipe->report_json)
-      {
-        
-        for (int i = 0 ; i < cJSON_GetArraySize(headImgPipe->report_json) ; i++)
-        {
-          cJSON * report = cJSON_GetArrayItem(headImgPipe->report_json, i);
-          double* channel_id=JFetch_NUMBER(report,"channel_id");
-          int ch_id=channel_id==NULL?0:(int)*channel_id;
-          bpg_pi.fromUpperLayer_DATA("RP",ch_id,report);
-          bpg_pi.fromUpperLayer_SS(ch_id,true);
-        }
-        cJSON_Delete(headImgPipe->report_json);
-        headImgPipe->report_json=NULL;
-
-
-      }
-      
-      LOGI(">>>CAM:%s",headImgPipe->camera_id.c_str());
-      //send data to view
-      bpg_pi.resPool.retResrc(headImgPipe);
-      
-    }
-  }
-}
-
-*/
 
 int PerifChannel::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   
@@ -3192,6 +3485,815 @@ virtual void singleGroupProcess(shared_ptr<StageInfo> sinfo)
 };
 
 
+
+
+class InspectionTarget_Serial_Peripheral :public InspectionTarget_StageInfoCollect_Base
+{
+  protected:
+  int comm_pgID=-1;
+  // py::module pyscript;
+
+  JSRuntime *rt;
+  JSContext *ctx;
+
+  public:
+
+  InspectionTarget_Serial_Peripheral():InspectionTarget_StageInfoCollect_Base()
+  {
+    rt = JS_NewRuntime();
+    ctx = JS_NewContext(rt);
+
+    JS_SetContextOpaque(ctx, this);
+  }
+
+  ~InspectionTarget_Serial_Peripheral()
+  {
+    JS_SetContextOpaque(ctx, nullptr);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+
+  }
+
+
+  string handle_exception(JSContext *ctx, JSValue exception) {
+    // Get the error message
+
+    string ret;
+    const char *error_msg = JS_ToCString(ctx, exception);
+    ret+="ERR:"+std::string(error_msg);
+    if (error_msg) {
+        // LOGE("JavaScript Error: %s", error_msg);
+        JS_FreeCString(ctx, error_msg);
+
+    }
+
+    // Check if there's a stack trace
+    JSValue stack = JS_GetPropertyStr(ctx, exception, "stack");
+    if (!JS_IsUndefined(stack)) {
+        const char *stack_str = JS_ToCString(ctx, stack);
+        if (stack_str) {
+            ret+="\nStack trace: "+std::string(stack_str);
+            // LOGE("Stack trace: %s", stack_str);
+            JS_FreeCString(ctx, stack_str);
+        }
+    }
+    JS_FreeValue(ctx, stack);
+
+    // Free the exception value
+    JS_FreeValue(ctx, exception);
+    return ret;
+  }
+
+
+
+  bool LoadJSScript(string &jscode){
+    JSValue result = JS_Eval(ctx, jscode.c_str(), jscode.length(), "<script>", JS_EVAL_TYPE_GLOBAL);
+    
+    if (JS_IsException(result)) {
+        // Handle any exceptions that occurred during evaluation
+        // JSValue exception = JS_GetException(ctx);
+        // handle_exception(ctx, exception);
+        return false;
+    }
+    
+    // Free the result value
+    JS_FreeValue(ctx, result);
+    return true;
+
+
+  }
+
+
+
+  string QJS_NativeCallback(string funcName, string jsonParam){
+    LOGE("NativeCallback:%s,%s",funcName.c_str(),jsonParam.c_str());
+
+    char tmp[1024];
+    if(funcName=="send_info")
+    {
+      return "{\"result\":\"OK\"}";
+    }
+
+
+
+    if(funcName=="to_DEV")
+    {
+
+      LOGE("send to dev");
+      int ret= sendcJSONTo_perifCH(pCH,(uint8_t*)tmp, sizeof(tmp),true,jsonParam.c_str(),jsonParam.length());
+
+
+
+
+
+
+
+
+      return "{\"result\":\"OK\"}";
+    } 
+
+    if(funcName=="camera_trigger_info")
+    {
+
+      cJSON* rep=cJSON_Parse(jsonParam.c_str());
+      sttriggerInfo_mix trigInfo;
+      trigInfo.stInfo=NULL;
+      trigInfo.triggerInfo.camera_id=(JFetch_STRING_ex(rep,"camera_id"));
+
+      trigInfo.triggerInfo.trigger_id=(JFetch_NUMBER_ex(rep,"trigger_id",-1));
+      // master->processTimeRecord[trigInfo.triggerInfo.trigger_id]=cv::getTickCount();  
+      trigInfo.triggerInfo.est_trigger_time_us=JFetch_NUMBER_ex(rep,"est_trigger_time_us",0);
+      trigInfo.triggerInfo.trigger_time_match_error_thres_us=JFetch_NUMBER_ex(rep,"trigger_time_match_error_thres_us",-1);
+
+
+
+      LOGE("id:%s  tid:%d",trigInfo.triggerInfo.camera_id.c_str(),trigInfo.triggerInfo.trigger_id);
+      {
+        cJSON* tags=JFetch_ARRAY(rep,"tags");
+
+        if(tags)
+        {
+          
+          // LOGE("cJSON_GetArraySize(tags):%d",cJSON_GetArraySize(tags));
+          for(int i=0;i<cJSON_GetArraySize(tags);i++)
+          {
+            cJSON* tag=cJSON_GetArrayItem(tags,i);
+            if(tag)
+            {
+              // printf("tag[%d]:%s\n",i,tag->valuestring);
+              trigInfo.triggerInfo.tags.push_back(std::string(tag->valuestring));
+            }
+          }
+        }
+      }
+
+      triggerInfoMatchingQueue.push_blocking(trigInfo);
+
+      cJSON_Delete(rep);
+    
+
+
+
+
+      return "{\"result\":\"OK\"}";
+    }
+
+
+
+    if(funcName=="to_UI")
+    {
+
+      cJSON* msg=cJSON_Parse(jsonParam.c_str());
+
+      bool session_ACK=true;
+      int id=JFetch_NUMBER_ex(msg,"id",-1);
+
+      char* tmp_ptr=tmp;
+      tmp_ptr+=sprintf(tmp_ptr, "{\"start\":false,\"from\":\"script\",\"ACK\":%s,\"data\":%s",(session_ACK) ? "true" : "false",jsonParam.c_str());
+      // if(err_str[0]!='\0')
+      // {
+      //   tmp_ptr+=sprintf(tmp_ptr, ",\"msg\":\"%s\"",err_str);
+      // }
+
+      tmp_ptr+=sprintf(tmp_ptr, "}");
+      bpg_pi.fromUpperLayer_DATA("SS",id,tmp);
+
+
+      return "{\"result\":\"OK\"}";
+    }
+
+
+
+
+
+    return "{\"error\":\"unsupported\"}";
+  }
+
+
+  static JSValue js_NativeCallback(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+    if (argc !=2)//at least 1 for func name
+      return JS_EXCEPTION;
+    
+    InspectionTarget_Serial_Peripheral *p= (InspectionTarget_Serial_Peripheral*)JS_GetContextOpaque(ctx);
+    if(p==NULL)
+      return JS_EXCEPTION;
+    
+    string funcName =JS_ToCString(ctx,argv[0]);
+    string funcParam=JS_ToCString(ctx,argv[1]);
+    
+    string result = p->QJS_NativeCallback(funcName, funcParam);
+
+    return JS_NewString(ctx, result.c_str());
+  }
+
+  void registerNativeCallBack() {
+      JSValue global_obj = JS_GetGlobalObject(ctx);
+      
+      // Create a new object to hold our methods
+      JSValue cpp_obj = JS_NewObject(ctx);
+      // Register the methods
+      JS_SetPropertyStr(ctx, cpp_obj, "api",
+          JS_NewCFunction(ctx, js_NativeCallback, "api", 2));
+          
+      // Add the object to the global scope
+      JS_SetPropertyStr(ctx, global_obj, "core", cpp_obj);
+      
+      JS_FreeValue(ctx, global_obj);
+  }
+
+  static JSValue js_console_log(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+      InspectionTarget_Serial_Peripheral *p= (InspectionTarget_Serial_Peripheral*)JS_GetContextOpaque(ctx);
+      if(p==NULL)
+        return JS_EXCEPTION;
+
+      LOGE("LOG:START ");
+      for (int i = 0; i < argc; i++) {
+        const char *str = JS_ToCString(ctx, argv[i]);
+        if (str) {
+            printf("%s%s",i>0?" ":"", str);
+            JS_FreeCString(ctx, str);
+        }
+
+      }
+      printf("\n");
+      return JS_UNDEFINED;
+  }
+  static JSValue js_console_error(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+      InspectionTarget_Serial_Peripheral *p= (InspectionTarget_Serial_Peripheral*)JS_GetContextOpaque(ctx);
+      if(p==NULL)
+        return JS_EXCEPTION;
+
+      LOGE("ERR:START ");
+      for (int i = 0; i < argc; i++) {
+          const char *str = JS_ToCString(ctx, argv[i]);
+          if (str) {
+              printf("%s%s",i>0?" ":"", str);
+              JS_FreeCString(ctx, str);
+          }
+      }
+      printf("\n");
+      return JS_UNDEFINED;
+  }
+
+
+
+
+  // In registerPrintFunctions, add:
+  void registerPrintFunctions() {
+      JSValue global_obj = JS_GetGlobalObject(ctx);
+      JSValue console = JS_NewObject(ctx);
+      // Add all console methods
+      JS_SetPropertyStr(ctx, console, "log",
+          JS_NewCFunction(ctx, js_console_log, "log", 1));
+      JS_SetPropertyStr(ctx, console, "error",
+          JS_NewCFunction(ctx, js_console_error, "error", 1));
+      
+      JS_SetPropertyStr(ctx, global_obj, "console", console);
+      JS_FreeValue(ctx, global_obj);
+  }
+
+  string call_js_function(string func_name, const char *func_param) 
+  {
+      // Get global object
+      JSValue global = JS_GetGlobalObject(ctx);
+
+      // Get function reference
+      JSValue initFn = JS_GetPropertyStr(ctx, global, func_name.c_str());
+
+      if (!JS_IsFunction(ctx, initFn)) {
+          LOGE("%s is not a function", func_name.c_str());
+          JS_FreeValue(ctx, initFn);
+          JS_FreeValue(ctx, global);
+          return "";
+      }
+
+      // Create argument array
+      JSValueConst argv[] = { JS_NewString(ctx, func_param) };
+
+      // Call the function with correct this value (undefined/global)
+      JSValue result = JS_Call(ctx, initFn, global, 1, argv); // Changed this line
+
+      string ret;
+      if (JS_IsException(result)) {
+          LOGE("JS_IsException");
+          JSValue exception = JS_GetException(ctx);
+          handle_exception(ctx, exception);
+          JS_FreeValue(ctx, exception);
+      }
+      else {
+          const char* str = JS_ToCString(ctx, result);
+          if (str) {
+              ret = str;
+              JS_FreeCString(ctx, str);
+          }
+      }
+
+      // Cleanup
+      JS_FreeValue(ctx, result);
+      JS_FreeValue(ctx, initFn);
+      JS_FreeValue(ctx, global);
+
+      return ret;
+  }
+  
+  
+  bool reloadScript()
+  {
+
+    LOGE("reloadScript");
+    registerNativeCallBack();
+    registerPrintFunctions();
+
+    
+    std::unique_ptr<char, decltype(&free)> fileStr(ReadText((local_env_path+"/script.js").c_str()), &free);
+    if (!fileStr) {
+        LOGE("No script.js found in %s", local_env_path.c_str());
+        return false;
+    }
+
+    {
+        string jscode = fileStr.get();
+        bool ret=LoadJSScript(jscode);
+        if(ret==false)
+        {
+          return false;
+        }
+    }
+
+    {
+
+      LOGE(">>>>>def:>%p",def);
+      std::unique_ptr<char, decltype(&free)> defStr(cJSON_Print(def), &free);
+      LOGE(">>>>>>%s",defStr.get());
+
+      string ret=call_js_function("init",defStr.get());
+
+      LOGE(">>>>CA>>%s",ret.c_str());
+     
+    }
+    LOGE("DONE");
+    return true;
+  }
+
+  
+  
+  void setInspDef(cJSON *def)
+  {
+    InspectionTarget_StageInfoCollect_Base::setInspDef(def);
+    
+    reloadScript();
+
+    return;
+
+  }
+
+
+  class PerifChannel2:public Data_JsonRaw_Layer
+  {
+    
+    public:
+    int fastTestRetCatFlag=STAGEINFO_CAT_UNSET;
+    int comm_pgID=-1;
+    std::mutex sendMutex;
+
+    void lock(){
+      sendMutex.lock();
+    }
+    void unlock(){
+      sendMutex.unlock();
+    }
+
+
+
+    InspectionTarget_Serial_Peripheral *master;
+    int pkt_count = 0;
+    PerifChannel2(InspectionTarget_Serial_Peripheral *master):Data_JsonRaw_Layer()// throw(std::runtime_error)
+    {
+      this->master=master;
+    }
+
+    int testCounter=0;
+    int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode)
+    {
+      static int CCC=0;
+      if(opcode==1 )
+      {
+
+        bool passUp=true;
+        char tmp[1024];
+
+
+        raw[rawL]='\0';
+        master->call_js_function("from_DEV",(char*)raw);
+
+        // if(pyscript.is_none()==false)
+        // {
+        //   auto pyMapFunc=pyscript.attr("jsonPerifMsgProcess");
+        //   if(pyMapFunc.is_none()==false)
+        //   {
+        //     pyMapFunc(json);
+        //   }
+        // }
+
+        //call a python function "TT" in pyscript
+
+
+
+        return 0;
+
+      }
+      printf(">>opcode:%d\n",opcode);
+      return 0;
+    }
+    int recv_RESET()
+    {
+      // printf("Get recv_RESET\n");
+      return 0;
+    }
+    int recv_ERROR(ERROR_TYPE errorcode)
+    {
+      // printf("Get recv_ERROR:%d\n",errorcode);
+      return 0;
+    }
+    
+    void connected(Data_Layer_IF* ch){
+      testCounter=0;
+      LOGI(">>>%X connected",ch);
+    }
+
+    void disconnected(Data_Layer_IF* ch){
+      LOGI(">>>%X disconnected",ch);
+    }
+
+    ~PerifChannel2()
+    {
+      close();
+      LOGI("MData_uInsp DISTRUCT:%p",this);
+    }
+
+    // int send_data(int head_room,uint8_t *data,int len,int leg_room){
+      
+    //   // printf("==============\n");
+    //   // for(int i=0;i<len;i++)
+    //   // {
+    //   //   printf("%d ",data[i]);
+    //   // }
+    //   // printf("\n");
+    //   return recv_data(data,len, false);//LOOP back
+    // }
+  };
+
+  PerifChannel2 *pCH= NULL;
+
+  std::string local_env_path;
+
+  mutex pCH_mutex;
+  public:
+
+  bool file_exists(const std::string& filename) {
+      std::ifstream file(filename.c_str());
+      return file.good();
+  }
+
+  void unloadScript()
+  {
+  }
+
+
+  void INIT(std::string id,cJSON* def,InspectionTargetManager* belongMan,std::string local_env_path)
+  {
+    this->local_env_path=local_env_path;
+    comm_pgID=-1;
+
+
+    InspectionTarget_StageInfoCollect_Base::INIT(id,def,belongMan,local_env_path);
+  }
+
+
+  static std::string sTYPE()
+  {return "Serial_Peripheral";}
+  virtual std::string TYPE()
+  {return sTYPE();}
+
+
+
+
+
+
+  virtual cJSON* genITIOInfo()
+  {
+
+
+    cJSON* arr= cJSON_CreateArray();
+
+    {
+      cJSON* opt= cJSON_CreateObject();
+      cJSON_AddItemToArray(arr,opt);
+
+      {
+        cJSON* sarr= cJSON_CreateArray();
+        
+        cJSON_AddItemToObject(opt, "i",sarr );
+        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Category::stypeName().c_str() ));
+      }
+
+    }
+
+    return arr;
+  }
+
+  // std::future<int> futureInputStagePool()
+  // {
+  //   return std::async(launch::async,&InspectionTarget_JSON_Peripheral::processInputStagePool,this);
+  // }
+
+
+  std::string escapeForJson(const std::string &input) {
+      std::ostringstream ss;
+
+      for (char c : input) {
+          switch (c) {
+              case '\\': ss << "\\\\"; break;  // Backslash
+              case '\"': ss << "\\\""; break;  // Double quote
+              case '\b': ss << "\\b";  break;  // Backspace
+              case '\f': ss << "\\f";  break;  // Formfeed
+              case '\n': ss << "\\n";  break;  // Newline
+              case '\r': ss << "\\r";  break;  // Carriage return
+              case '\t': ss << "\\t";  break;  // Tab
+              default:
+                  // If control character, encode as \uXXXX
+                  if (static_cast<unsigned char>(c) <= 0x1F) {
+                      // control characters < 0x20 must be escaped in JSON
+                      ss << "\\u"
+                        << std::hex << std::setw(4) << std::setfill('0')
+                        << static_cast<int>(static_cast<unsigned char>(c));
+                  } else {
+                      // No special treatment needed
+                      ss << c;
+                  }
+                  break;
+          }
+      }
+
+      return ss.str();
+  }
+  bool exchangeCMD(cJSON* info,int id,exchangeCMD_ACT &act)
+  {
+    bool ret = InspectionTarget_StageInfoCollect_Base::exchangeCMD(info,id,act);
+    if(ret)return ret;
+
+    lock_guard<mutex> lock(pCH_mutex);
+    string type=JFetch_STRING_ex(info,"type");
+
+    if(type=="reloadscript")
+    {
+      string errMsg;
+      bool ret=reloadScript();
+      if(ret==false)
+      {
+
+        JSValue exception = JS_GetException(ctx);
+        string errMsg=handle_exception(ctx, exception);
+        LOGE("Failed to load script.js");
+        LOGE("errMsg:%s",errMsg.c_str());
+        {
+          //convert errMsg as a json valid string
+
+        }
+
+        act.msg=escapeForJson(errMsg);
+        return false;
+      }
+      return ret;
+    }
+    if(type=="to_Script")
+    {
+
+      bool session_ACK=false;
+      cJSON *msg_obj = JFetch_OBJECT(info, "msg");
+      if (msg_obj)
+      {
+        char _buf[2000];
+        cJSON_PrintPreallocated(msg_obj, _buf, sizeof(_buf), false);
+        LOGE(">>>>>>>%s",_buf);
+        call_js_function("from_UI",_buf);
+        session_ACK = (ret>=0);
+      }
+      else
+      {
+        session_ACK=false;//send nothing
+      }
+      // LOGE(">>>>>>>");
+
+      return session_ACK;
+    }
+
+
+
+    if(type=="is_CONNECTED")
+    {
+      return pCH!=NULL;
+    }
+    if(type=="reloadscript")
+    {
+      reloadScript();
+      return true;
+    }
+
+
+
+
+    if(type=="CONNECT")
+    {
+
+      int comm_id=JFetch_NUMBER_ex(info,"comm_id",-1);
+
+      bool session_ACK=false;
+      string errMsg="";
+      do{
+      if (pCH)
+      {
+        LOGI("DELETING");
+        delete pCH;
+        pCH = NULL;
+      }
+      LOGI("DELETED...  ");
+      LOGI("comm_id:%d  ",comm_id);
+      
+      
+      Data_Layer_IF *PHYLayer=NULL;
+      char *uart_name = NULL;
+      
+
+      cJSON* src_info=def;
+
+      char *IP = NULL;
+      if ( (uart_name=JFetch_STRING(src_info, "uart_name")) !=NULL)
+      {
+        int baudrate = (int)JFetch_NUMBER_ex(src_info, "baudrate",-1);
+        if(baudrate==-1)
+        {
+          break;
+        }
+
+
+        string default_mode=JFetch_STRING_ex(src_info, "mode","8N1");
+
+        try{
+          
+          PHYLayer=new Data_UART_Layer(uart_name,baudrate, default_mode.c_str());
+
+
+        }
+        catch(std::runtime_error &e){
+          
+        }
+
+      }
+      else if( (IP=JFetch_STRING(src_info, "ip"))!=NULL)
+      {
+
+        double *port_number = JFetch_NUMBER(src_info, "port");
+        if (port_number == NULL)
+        {
+          // sprintf(err_str, "IP(%d) port_number(%d)", IP!=NULL,port_number!=NULL);
+          break;
+        }
+      
+
+        try{
+          
+          PHYLayer=new Data_TCP_Layer(IP,(int)*port_number);
+
+        }
+        catch(std::runtime_error &e){
+        }
+
+
+
+      }
+
+      if(PHYLayer!=NULL)
+      {
+        pCH=new PerifChannel2(this);
+        comm_pgID=comm_id;
+        pCH->comm_pgID=comm_id;
+        pCH->setDLayer(PHYLayer);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        pCH->send_RESET();
+        pCH->RESET();
+
+
+        session_ACK = true;
+  
+      }
+      else
+      {
+        session_ACK = false;
+
+        LOGE("PHYLayer is not able to eatablish");
+        // sprintf(err_str, "PHYLayer is not able to eatablish");
+      }
+    
+    
+    
+      }while(0);
+
+      return session_ACK;
+    }
+
+    if(type=="DISCONNECT")
+    {
+      if(pCH==NULL)
+      {
+        return false;
+      }
+      
+      if (pCH)
+      {
+        LOGI("DELETING");
+        delete pCH;
+        pCH = NULL;
+      }
+      return true;
+    }
+
+
+    if(type=="to_DEV")
+    {
+      if(pCH==NULL)
+      {
+        return false;
+      }
+
+      // LOGE(">>>>>>>");
+      bool session_ACK=false;
+      cJSON *msg_obj = JFetch_OBJECT(info, "msg");
+      if (msg_obj)
+      {
+        cJSON_AddNumberToObject(msg_obj,"id",id);
+        char _buf[2000];
+        cJSON_PrintPreallocated(msg_obj,_buf,sizeof(_buf),false);
+        call_js_function("from_UI_to_DEV",_buf);
+
+
+
+  
+        act.doSendAck=false;//no acking, let device handle it
+      }
+      else
+      {
+        session_ACK=false;//send nothing
+      }
+      // LOGE(">>>>>>>");
+
+      return session_ACK;
+    }
+
+    return false;
+  }
+
+
+  // void singleGroupProcess(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
+  virtual void singleGroupProcess(shared_ptr<StageInfo> sinfo)
+  {
+    
+    auto d_img_info = dynamic_cast<StageInfo_SIGroup*>(sinfo.get());
+    // if(d_img_info)
+    // {
+    //   call_js_function("from_IT",sinfo->jInfo);
+    // }
+
+    auto &group=d_img_info->group;
+    int trigger_id=d_img_info->trigger_id;
+    int catSum=STAGEINFO_CAT_NA;
+
+    cJSON *ignore_indexes=NULL;
+    cJSON *script_result=NULL;
+
+    // report_array
+    char tmp_buf[1024];
+
+    string rep_arr="[";
+    for(int i=0;i<group.size();i++)
+    {
+      if(i>0)rep_arr+=",";
+      
+      auto &sinfo=group[i];
+      cJSON_PrintPreallocated(sinfo->jInfo,tmp_buf,sizeof(tmp_buf),false);
+      // string rep_json_str=tmp_buf;
+      rep_arr+=tmp_buf;
+
+    }
+    rep_arr+="]";
+
+    // call_js_function("from_IT",rep_arr.c_str());
+
+  }
+
+};
+
+
 class InspectionTarget_DataTransfer :public InspectionTarget
 {
   public:
@@ -3427,59 +4529,20 @@ class InspectionTarget_DataTransfer :public InspectionTarget
 
           // imwrite("test"+to_string(imageID)+".png",CV_Img);
 
-
-          int compressionRate=95-input_queue.size()*5;
+          int crate=input_queue.size()-5;
+          if(crate<0)crate=0;
+          int compressionRate=90-crate*5;
           if(compressionRate<20)compressionRate=20;
 
-          vector<unsigned char> img_encode;
-          string base64Header="";
-          if(1)//use jpg
-          {
-            std::vector<int> param(2);
-            param[0] = cv::IMWRITE_JPEG_QUALITY;
-            param[1] = compressionRate;//default(95) 0-100
+          int64 t_start = cv::getTickCount();
+          
+          exchCMDact.send(imgCHID,CV_Img,"jpg",compressionRate);
+          
+          //calculate elapsed time in ms
+          double elapsed_ms = 1000.0 * (cv::getTickCount() - t_start) / cv::getTickFrequency();
+          LOGI("Image compression and send took %.2f ms (compression rate: %d) source_id:%s", elapsed_ms, compressionRate,curInput->source_id.c_str());
 
-
-            cv::imencode(".jpeg", CV_Img, img_encode, param);
-            base64Header="data:image/jpg;base64,";
-          }
-          else//webp slow
-          {
-            std::vector<int> param(2);
-            param[0] = cv::IMWRITE_WEBP_QUALITY;
-            param[1] = compressionRate;//default(95) 0-100
-            cv::imencode(".webp", CV_Img, img_encode, param);
-            base64Header="data:image/webp;base64,";
-          }
-
-        // LOGE("OK..");
-          //convert img_encode into base64 format
-          string base64_img_encode=base64_encode(base64Header.c_str(),(unsigned char*)img_encode.data(), img_encode.size());
-
-        // LOGE("OK..");
-          if(base64_img_encode.length()>0)
-          {
-          // LOGI("base64_img_encode:%c %c...",base64_img_encode[0],base64_img_encode[1]);
-
-            // printf("\n\nbase64_img_encode_size:%d\n\n",base64_img_encode.size());
-            // printf(base64_img_encode.c_str());
-            // printf("\n\n\n\n");
-            BPG_protocol_data_ImgB64_Send_info imgb64Info;
-
-            imgb64Info.imgb64=&base64_img_encode[0];
-            imgb64Info.imgb64_L=base64_img_encode.length();
-            imgb64Info.offsetX=imgb64Info.offsetY=0;
-            imgb64Info.fullHeight=CV_Img.rows;
-            imgb64Info.fullWidth=CV_Img.cols;
-            imgb64Info.scale=downSampleAdj;
-            
-            bpg_pi.fromUpperLayer_DATA("IM",imgCHID,&imgb64Info);
-            
-          }
-
-
-          LOGI("COMPRESSION:: %dx%d =>%dx%d ds:%d  jpeg:rate:%d size:%d",
-            W,H,dsW,dsH,downSampleAdj,compressionRate,img_encode.size());
+          
 
           if(image_transfer_rest_ms>0)
           {
@@ -4060,133 +5123,6 @@ BGLightNodeInfo extractInfoFromJson(cJSON *nodeRoot) //have exception
 }
 
 
-class exchangeCMD_ACTx: public exchangeCMD_ACT
-{ 
-  public:
-  virtual void send(const char *TL, int pgID,cJSON* cjson){
-    
-    bpg_pi.fromUpperLayer_DATA(TL,pgID,cjson);
-
-  };
-  // virtual void send(const char *TL, int pgID,acvImage* img,int downSample){
-  //   acvImage* p_img=img;
-  //   if(p_img==NULL)return;
-  //   BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)downSample};
-
-  //   iminfo.fullHeight = p_img->GetHeight();
-  //   iminfo.fullWidth = p_img->GetWidth();
-  //   iminfo.offsetX=0;
-  //   iminfo.offsetY=0;
-  //   if(downSample<=1)
-  //   {
-  //     iminfo.scale=1;
-  //     iminfo.img=p_img;
-  //     bpg_pi.fromUpperLayer_DATA(TL,pgID,&iminfo);
-  //     return;
-  //   }
-
-
-  //   //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-  //   //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-  //   ImageDownSampling(dataSend_buff, *p_img, iminfo.scale, NULL);
-
-  //   bpg_pi.fromUpperLayer_DATA(TL,pgID,&iminfo);
-  // };
-
-
-  virtual void send(int pgID,cv::Mat& img,const char *format_lowercase,float quality){
-    if(img.empty())return;
-
-    float downSampleAdj=1;
-
-
-    int W=img.cols;
-    int H=img.rows;
-
-    int dsW=W*downSampleAdj;
-    int dsH=H*downSampleAdj;
-    Mat im2send;
-    if(downSampleAdj!=1)
-    {
-      im2send=img;
-    }
-    else
-    {
-
-      resize(img, im2send, Size(dsW,dsH), INTER_LINEAR);
-    }
-
-
-    int compressionRate=quality;
-
-    vector<unsigned char> img_encode;
-    string base64Header="";
-    if(strcmp(format_lowercase,"jpg")==0)//use jpg
-    {
-      std::vector<int> param(2);
-      param[0] = cv::IMWRITE_JPEG_QUALITY;
-      param[1] = compressionRate;//default(95) 0-100
-
-
-      cv::imencode(".jpeg", im2send, img_encode, param);
-      base64Header="data:image/jpg;base64,";
-    }
-    else 
-    if(strcmp(format_lowercase,"png")==0)//use png
-    {
-      std::vector<int> param(2);
-      param[0] = cv::IMWRITE_PNG_COMPRESSION;
-      param[1] = compressionRate;//default(95) 0-100
-
-
-      cv::imencode(".png", im2send, img_encode, param);
-      base64Header="data:image/png;base64,";
-    }
-    else if(strcmp(format_lowercase,"webp")==0)//webp slow
-    {
-      std::vector<int> param(2);
-      param[0] = cv::IMWRITE_WEBP_QUALITY;
-      param[1] = compressionRate;//default(95) 0-100
-      cv::imencode(".webp", im2send, img_encode, param);
-      base64Header="data:image/webp;base64,";
-    }
-
-  // LOGE("OK..");
-    //convert img_encode into base64 format
-    string base64_img_encode=base64_encode(base64Header.c_str(),(unsigned char*)img_encode.data(), img_encode.size());
-
-  // LOGE("OK..");
-    if(base64_img_encode.length()>0)
-    {
-    // LOGI("base64_img_encode:%c %c...",base64_img_encode[0],base64_img_encode[1]);
-
-      // printf("\n\nbase64_img_encode_size:%d\n\n",base64_img_encode.size());
-      // printf(base64_img_encode.c_str());
-      // printf("\n\n\n\n");
-      BPG_protocol_data_ImgB64_Send_info imgb64Info;
-
-      imgb64Info.imgb64=&base64_img_encode[0];
-      imgb64Info.imgb64_L=base64_img_encode.length();
-      imgb64Info.offsetX=imgb64Info.offsetY=0;
-      imgb64Info.fullHeight=im2send.rows;
-      imgb64Info.fullWidth=im2send.cols;
-      imgb64Info.scale=downSampleAdj;
-      
-      bpg_pi.fromUpperLayer_DATA("IM",pgID,&imgb64Info);
-      
-    }
-
-
-
-
-
-
-
-  };
-
-};
-
-exchangeCMD_ACTx exchCMDact;
 
 int folder_move(const char *oldpath, const char *newpath) {
     #ifdef _WIN32
@@ -4241,6 +5177,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 {
   //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
   exchCMDact.doSendAck=true;
+  exchCMDact.msg="";
     BPG_protocol_data *dat = &bpgdat;
 
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
@@ -4249,6 +5186,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     char err_str[500] = "\0";
     bool session_ACK = false;
     bool noInstantACK = false;
+    string attachJsonString;
     char tmp[200];    //For string construct json reply
   do
   {
@@ -4542,7 +5480,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         session_ACK = true;
 
         string discoverInfo_str = CameraManager::cameraDiscovery(JFetch_TRUE(json, "do_refresh"));
-            
+        
+        LOGI("discoverInfo_str:%s",discoverInfo_str.c_str());
         cJSON *discoverInfo = cJSON_Parse(discoverInfo_str.c_str());
         fromUpperLayer_DATA("CM",dat->pgID,discoverInfo);
         cJSON_Delete(discoverInfo);
@@ -4563,27 +5502,31 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         }
         
         
-        double *cam_idx = JFetch_NUMBER(json, "idx");
+        double cam_idx = JFetch_NUMBER_ex(json, "idx");
         CameraManager::StreamingInfo* gcami=NULL;
-        if(cam_idx!=NULL)
+        if(cam_idx==cam_idx)
         {
 
-          gcami = inspTarMan.camman.addCamera((int)*cam_idx,miscStr,InspectionTargetManager::sCAM_CallBack,&inspTarMan);
+          LOGI(">>>cam_idx:>%d",(int)cam_idx);
+          gcami = inspTarMan.camman.addCamera((int)cam_idx,miscStr,InspectionTargetManager::sCAM_CallBack,&inspTarMan);
 
         }
-        else
+        else //not set idx NAN
         {
-          char *_driver_name = JFetch_STRING(json, "driver_name");
-          std::string driver_name=_driver_name==NULL?"":std::string(_driver_name);
-          char *_cam_id = JFetch_STRING(json, "id");
+          std::string driver_name = JFetch_STRING_ex(json, "driver_name");
+          std::string cam_id = JFetch_STRING_ex(json, "id");
 
-          LOGI(">>>>>");
+          LOGI(">>>>driver_name:>%s, cam_id:%s",driver_name.c_str(),cam_id.c_str());
 
 
-          if(_cam_id)
+          if(cam_id.length()>0)
           {
-            std::string cam_id=_cam_id==NULL?"":std::string(_cam_id);
-            gcami = inspTarMan.camman.addCamera(driver_name,cam_id,miscStr,InspectionTargetManager::sCAM_CallBack,&inspTarMan);
+            gcami = inspTarMan.camman.addCamera(
+              driver_name,
+              cam_id,
+              miscStr,
+              InspectionTargetManager::sCAM_CallBack,
+              &inspTarMan);
 
             if(gcami)
             {
@@ -4647,6 +5590,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         CameraManager::StreamingInfo *cami = inspTarMan.camman.getCamera("",id);
         if(cami==NULL)break;
         cami->channel_id=dat->pgID;
+
 
         session_ACK = true;
 
@@ -4937,12 +5881,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         }
 
 
-
         char *_img_path = JFetch_STRING(json, "img_path");
         if(_img_path)
         {
           
-          LOGI("_img_path:%s tags:%d",_img_path,tags.size());
+          LOGI("_img_path:%s tags:%d mmpp:%f",_img_path,tags.size());
 
 
 
@@ -4953,17 +5896,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
               std::string(_img_path),
               tags,
               (int)JFetch_NUMBER_ex(json, "trigger_id",-1),
-              (int)JFetch_NUMBER_ex(json,"channel_id",-1));
+              (int)JFetch_NUMBER_ex(json,"channel_id",-1),
+              JFetch_NUMBER_ex(json, "mmpp",1));
 
           LOGE("ReadImageAndPushToInspQueue:%d",ret);
         }
         else
         {
 
-          char *_cam_id = JFetch_STRING(json, "id");
-          if(_cam_id==NULL)break;
-          std::string id=std::string(_cam_id);
-          if(JFetch_TRUE(json, "soft_trigger"))
+          string side_name = JFetch_STRING_ex(json, "side_name");
+          string cam_id = JFetch_STRING_ex(json, "id");
+          CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",cam_id,side_name);
+          if(cami && JFetch_TRUE(json, "soft_trigger"))
           {
             // {
             //   auto xx = inspTarMan.camman.ConnectedCamera_ex();
@@ -4971,8 +5915,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             //   {
             //     LOGI(">>CAM>%s",cam.camera->getConnectionData().id.c_str());
             //   }
+            // }  
+            LOGI("cam_id:%s side_name:%s",cam_id.c_str(),side_name.c_str());
+
+
+            // if(cami==NULL)
+            // {
+            //   cami = inspTarMan.camman.getCamera("","",id);
             // }
-            CameraManager::StreamingInfo * cami = inspTarMan.camman.getCamera("",id);
+
             if(cami)
             {
 
@@ -4982,14 +5933,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
               CameraLayer::status st=cami->camera->Trigger();
               LOGI("Trigger:%d",st);
             }
+            
           }
 
-          if(JFetch_TRUE(json, "mocking_trigger_info"))
+          if(cami && JFetch_TRUE(json, "mocking_trigger_info"))
           {
             
             sttriggerInfo_mix mocktrig;
             mocktrig.stInfo=NULL;
-            mocktrig.triggerInfo.camera_id=id;
+            mocktrig.triggerInfo.camera_id=cami->camera->getConnectionData().id;
             mocktrig.triggerInfo.trigger_id=(int)JFetch_NUMBER_ex(json, "trigger_id",-1);
             mocktrig.triggerInfo.est_trigger_time_us=0;//force matching
             if(tags.size()==0)
@@ -5085,6 +6037,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             inspTar = new InspectionTarget_JSON_CNC_Peripheral();
             
           }
+          
+          else if(type==InspectionTarget_Serial_Peripheral::sTYPE())
+          {
+            inspTar = new InspectionTarget_Serial_Peripheral();
+            
+          }
           if(inspTar==NULL)//not custom type, try stock type
           {
             inspTar=createInspectionTarget(type);
@@ -5113,12 +6071,27 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       }
       else if(strcmp(type_str, "update")==0)
       {
+
+        
          char *_id = JFetch_STRING(json, "id");
         if(_id==NULL)break;
         std::string id=std::string(_id);
 
-
+LOGE(">>>>>>");
         InspectionTarget* iptar=inspTarMan.getInspTar(id);
+
+
+
+        //new def path
+        std::string env_path=JFetch_STRING_ex(json,"env_path");
+        if(env_path!="")
+        {
+          LOGE(">>>>>>env_path:%s",env_path.c_str());
+          iptar->setEnvPath(env_path);
+        }
+
+
+
 
         cJSON *defInfo = JFetch_OBJECT(json, "definfo");
         if(iptar==NULL)
@@ -5127,6 +6100,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           LOGI(">err_str:%s",err_str);
           break;
         }
+LOGE(">>>>>>");
         if(defInfo==NULL)
         {
           snprintf(err_str, sizeof(err_str), "InspTar update: defInfo is not found");
@@ -5134,17 +6108,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           break;
         }
 
+LOGE(">>>>>>");
 
 
         session_ACK=true;
         iptar->setInspDef(defInfo);
-
-        //new def path
-        std::string env_path=JFetch_STRING_ex(defInfo,"env_path");
-        if(env_path!="")
-        {
-          iptar->setEnvPath(env_path);
-        }
 
 
       }
@@ -5186,6 +6154,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         if(exchCMDact.doSendAck==false)
         {
           noInstantACK=true;
+        }
+        if(exchCMDact.msg.size()>0)
+        {
+          sprintf(err_str, "%s",exchCMDact.msg.c_str());
         }
         // if(reply!=NULL)
         // {
@@ -5473,11 +6445,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
     }
     
-    LOGE(">>>");
     if(noInstantACK==false)
     {
-      sprintf(tmp, "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
+      char* tmp_ptr=tmp;
+      tmp_ptr+=sprintf(tmp_ptr, "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s",
               dat->tl[0], dat->tl[1], (session_ACK) ? "true" : "false", err_str);
+      if(err_str[0]!='\0')
+      {
+        tmp_ptr+=sprintf(tmp_ptr, ",\"msg\":\"%s\"",err_str);
+      }
+
+      tmp_ptr+=sprintf(tmp_ptr, "}");
+      
       fromUpperLayer_DATA("SS",dat->pgID,tmp);
     }
     

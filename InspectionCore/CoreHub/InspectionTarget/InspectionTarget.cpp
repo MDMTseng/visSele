@@ -227,9 +227,8 @@ cJSON* InspectionTarget::genIOInfo(std::vector<std::string>input,std::vector<std
 
 bool InspectionTarget::tagMatching(cJSON* tagWhiteList, vector<std::string> &tagArr)
 {
-    if(tagWhiteList==NULL)return false;
+  if(tagWhiteList==NULL)return false;
 
-    
   int size=cJSON_GetArraySize(tagWhiteList);
   for(int i=0;i<size;i++)
   {
@@ -260,7 +259,6 @@ bool InspectionTarget::tagMatching(cJSON* tagWhiteList, vector<std::string> &tag
         if(fullMatchTag->type==cJSON_String)
         {      
           string strFMTag=string(fullMatchTag->valuestring);
-      
           for(auto tag : tagArr )
           {
             if(strFMTag==tag)
@@ -355,7 +353,7 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
   if(type=="revisit_cache_stage_info")
   {
     LOGI("cache_stage_info.get():%p",cache_latest_input.get());
-    if(cache_latest_input.get()==NULL)return false;
+    if(cache_latest_input==NULL)return false;
     
     belongMan->dispatch(cache_latest_input,this);
 
@@ -363,6 +361,27 @@ bool InspectionTarget::exchangeCMD(cJSON* info,int info_ID,exchangeCMD_ACT &act)
     // {
     // }
     return true;
+  }
+
+
+  if(type=="get_cache_image_prop")
+  {
+    if(cache_latest_input==NULL)return false;
+
+    cJSON_AddNumberToObject(info, "mmpp", cache_latest_input->img_prop.mmpp);
+
+    cJSON *img_prop=cJSON_CreateObject();
+    cJSON_AddNumberToObject(img_prop, "mmpp", cache_latest_input->img_prop.mmpp);
+    cJSON_AddNumberToObject(img_prop, "height", cache_latest_input->img.rows);
+    cJSON_AddNumberToObject(img_prop, "width", cache_latest_input->img.cols);
+
+
+    act.send("RP",info_ID,img_prop);
+    cJSON_Delete(img_prop);
+    // cache_stage_info
+
+    return true;
+
   }
 
 
@@ -533,6 +552,7 @@ CameraManager::StreamingInfo* CameraManager::addCamera(std::string driverName,st
   // CameraLayer::BasicCameraInfo bcaminfo = clm.camBasicInfo[idx];
   {
     int idx=findConnectedCameraIdx( driverName, camera_id);
+    LOGI(">>>>>>>idx:%d",idx);
     if(idx>=0)
     {
       return NULL;
@@ -557,6 +577,10 @@ CameraManager::StreamingInfo* CameraManager::getCamera(std::string driverName,st
 
 int CameraManager::findConnectedCameraIdx(std::string driverName,std::string camera_id,std::string side_name)
 {
+
+
+  LOGI("Request: driverName:%s camera_id:%s side_name:%s",driverName.c_str(),camera_id.c_str(),side_name.c_str());
+  LOGI("Request: camera_streaming_infos.size():%d",camera_streaming_infos.size());
   int i=0;
   for( i=0;i<camera_streaming_infos.size();i++)
   {
@@ -569,8 +593,10 @@ int CameraManager::findConnectedCameraIdx(std::string driverName,std::string cam
     // auto sideName=camera_streaming_infos[i].camera->GetSideName();
 
     // if( side_name.length()!=0 && side_name!=sideName)continue;
+    LOGI("cur_driverName:%s camera_id:%s side_name:%s",data.driver_name.c_str(),data.id.c_str(),data.side_name.c_str());
 
-    if( (driverName.length()==0 || data.driver_name==driverName) && (data.id==camera_id))
+    if( (driverName.length()==0 || data.driver_name==driverName) && 
+      ((camera_id.length()!=0 && data.id==camera_id)||(side_name.length()!=0 && data.side_name==side_name)))
     {
       return i;
     }
@@ -608,9 +634,11 @@ bool CameraManager::delCamera(int idx)
 bool CameraManager::delCamera(std::string driverName,std::string camera_id)
 {
 
+  LOGI("Try to find camera driverName:%s camera_id:%s",driverName.c_str(),camera_id.c_str());
   int idx=findConnectedCameraIdx( driverName, camera_id);
   if(idx>=0)
   {
+    LOGI("delCamera driverName:%s camera_id:%s",driverName.c_str(),camera_id.c_str());
     return delCamera(idx);
   }
   return false;
@@ -913,6 +941,13 @@ CameraLayer::status InspectionTargetManager::sCAM_CallBack(CameraLayer &cl_obj, 
 
 CameraLayer::status InspectionTargetManager::CAM_CallBack(CameraLayer &cl_obj, int type, void *context)
 {
+  LOGE("CAM_CallBack type:%d",type);
+  if(type==CameraLayer::EV_CTRL_LOST)
+  {
+    //REMOVE CAMERA
+    camman.delCamera(cl_obj.getConnectionData().driver_name,cl_obj.getConnectionData().id);
+    return CameraLayer::status::NAK;
+  }
   if (type != CameraLayer::EV_IMG)return CameraLayer::status::NAK;
   std::lock_guard<std::mutex> _(camCBLock);
 

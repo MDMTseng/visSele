@@ -44,7 +44,7 @@ Circle CircleFitByHyper (Data& data)
 
 */
 {
-    int i,iter,IterMAX=99;
+    int i,iter,IterMAX=999;
 
     reals Xi,Yi,Zi;
     reals Mz,Mxy,Mxx,Myy,Mxz,Myz,Mzz,Cov_xy,Var_z;

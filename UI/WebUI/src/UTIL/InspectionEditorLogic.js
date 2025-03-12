@@ -290,7 +290,8 @@ export class InspectionEditorLogic {
       ...edit_info.reportStatisticState,
       historyReport: [],
       statisticValue:{measureList},
-      reportCount:0
+      reportCount:0,
+      emptyReportCount:0
     }
 
     return edit_info;
@@ -1208,6 +1209,7 @@ export function Edit_info_Empty() {
       historyReport: [],
       newAddedReport: [],
       reportCount:0,
+      emptyReportCount:0,
       hideTrackingWindowObj:false,
       statisticValue: undefined,
       overallStat: {

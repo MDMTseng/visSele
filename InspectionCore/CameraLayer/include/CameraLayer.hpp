@@ -48,6 +48,8 @@ class CameraLayer{
       float offset_x;
       float offset_y;
       float pixel_size_mm;
+      int channelCount;
+      int pixelBits;
     }frameInfo;
     /*// Camera's device information
     typedef struct
@@ -79,8 +81,14 @@ class CameraLayer{
 
     typedef enum {
         EV_IMG,
-        EV_ERROR
+        EV_INFO,
+        EV_ERROR,
+        EV_CTRL_LOST,
     }ev_type;
+
+
+
+    
 
     //void *cameraInst;
     typedef CameraLayer::status (*CameraLayer_Callback)(
@@ -99,6 +107,8 @@ class CameraLayer{
     uint32_t frameTimeTag;
     int maxWidth,maxHeight;
     frameInfo fi;
+
+    std::vector<uint64_t> error_code_list;
     std::string cam_json_info;
 
     

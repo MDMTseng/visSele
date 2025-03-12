@@ -1,6 +1,7 @@
 
 
 #include "CameraLayerManager.hpp"
+#include "logctrl.h"
 
   std::string CameraLayerManager::CamInfo2Json(CameraLayer::BasicCameraInfo &info)
   {
@@ -102,8 +103,8 @@
     #endif
     
 
-    CameraLayer_BMP_carousel::listAddDevices(camBasicInfo);
-    bmpcarousel_driver_idx=count++;
+    // CameraLayer_BMP_carousel::listAddDevices(camBasicInfo);
+    // bmpcarousel_driver_idx=count++;
 
   }
 
@@ -234,7 +235,7 @@
   {
     for(int i=0;i<camBasicInfo.size();i++)
     {
-      //LOGI("driver_name:%s id:%s",camBasicInfo[i].driver_name.c_str(),camBasicInfo[i].id.c_str());
+      LOGI("driver_name:%s id:%s",camBasicInfo[i].driver_name.c_str(),camBasicInfo[i].id.c_str());
       if((  driver_name.length()==0 ||camBasicInfo[i].driver_name==driver_name) && camBasicInfo[i].id==cam_id)
       {
         return connectCamera(i, misc, callback, ctx);

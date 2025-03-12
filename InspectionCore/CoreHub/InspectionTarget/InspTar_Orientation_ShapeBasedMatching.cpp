@@ -2,6 +2,7 @@
 #include "InspTar_Orientation.hpp"
 
 #include <TemplateMatching_SubPix.h>
+#include <InspTarUtil.hpp>
 using namespace cv;
 
 using namespace std;
@@ -148,6 +149,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON *def)
 {
   InspectionTarget::setInspDef(def);
 
+  template_mmpp=1;
   // featureInfo
   if (sbm)
   {
@@ -163,7 +165,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON *def)
   cJSON *featureInfo = JFetch_OBJECT(def, "featureInfo");
   if (featureInfo)
   {
-
+    template_mmpp=JFetch_NUMBER_ex(featureInfo, "mmpp", 1);
     int num_features = JFetch_NUMBER_ex(featureInfo, "num_features", 60);
     int weak_thresh = JFetch_NUMBER_ex(featureInfo, "weak_thresh", 30);
     int strong_thresh = JFetch_NUMBER_ex(featureInfo, "strong_thresh", 80);
@@ -268,7 +270,9 @@ void InspectionTarget_Orientation_ShapeBasedMatching::setInspDef(cJSON *def)
 
           // imwrite(local_env_path+"/"+"ddd"+std::to_string(i)+".jpg", regInfo.img);
 
-          LOGI("refine reg load:%d,%d,%d,%d", x, y, w, h);
+          LOGI("refine reg ori :%d,%d,%d,%d", x, y, w, h);
+          LOGI("refine reg load:%f,%f,%f,%f", regInfo.regionInRef.x, regInfo.regionInRef.y, regInfo.regionInRef.width, regInfo.regionInRef.height);
+          
           refine_region_set.push_back(regInfo);
         }
       }
@@ -529,6 +533,11 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
       {
         float weak_thresh = JFetch_NUMBER_ex(info, "weak_thresh", 30);
         float strong_thresh = JFetch_NUMBER_ex(info, "strong_thresh", 80);
+
+
+        int feature_min_space = JFetch_NUMBER_ex(info, "feature_min_space", 5);
+
+        LOGE("feature_min_space:%d",feature_min_space);
         vector<int> T;
         for (int i = 0;; i++)
         {
@@ -544,7 +553,7 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
           T.push_back(4);
         }
         SBM_if t_sbm(num_features, T, weak_thresh, strong_thresh);
-        t_sbm.TemplateFeatureExtraction(img, _mask, num_features, tp);
+        t_sbm.TemplateFeatureExtraction(img, _mask, num_features,feature_min_space, tp);
       }
 
       cJSON *jtp = TemplatePyramid2Json(tp);
@@ -846,394 +855,6 @@ cv::Mat rotCrop(cv::Mat &srcImg, float obj_x, float obj_y, bool y_flip, float te
   return warp_dst;
 }
 
-float PoseRefine(
-    cv::Mat &srcImg,
-    std::vector<InspectionTarget_Orientation_ShapeBasedMatching::refine_region_info> &regions_n_TempImgs,
-    float marginFactor,
-    Point2f &anchorPt,
-    float &angleRad,
-    bool yFlip = false,
-    float minAcceptedScore = 0.2,
-    bool allowMatchingOnSearchRegionEdge = false,
-    int downSamp = 1,
-    int *ret_acceptedRegionCount = NULL,
-    std::string DBG_STR = "")
-{
-
-  if (ret_acceptedRegionCount)
-    *ret_acceptedRegionCount = 0;
-  // anchorPt.x+=5;//test shift
-  // anchorPt.y+=5;
-  // angleRad=12.000000*M_PI/180;
-  // LOGI("original theta:%f",angleRad*180/M_PI);
-
-  vector<Point2f> initPts;
-  vector<Point2f> initPts_temp;
-  vector<Point2f> updatedPts;
-  vector<float> matchingPoints;
-  float minAccScore = 1;
-  for (int i = 0; i < regions_n_TempImgs.size(); i++)
-  {
-
-    auto reg = regions_n_TempImgs[i].regionInRef;
-
-
-
-    int margin = (int)(marginFactor);
-    cv::Point2f crop_center;
-
-    // LOGI("====anchorPt:%f %f======",anchorPt.x,anchorPt.y);
-    // LOGI("====reg:xy:%f,%f  wh:%f,%f======",reg.x,reg.y,reg.width,reg.height);
-    cv::Mat mat = rotCrop(
-        srcImg,
-        anchorPt.x,
-        anchorPt.y,
-        yFlip,
-        reg.x,
-        reg.y,
-        reg.width,
-        reg.height,
-        angleRad,
-        margin,
-        downSamp,
-        &crop_center);
-
-    Mat result;
-    bool isResForMax;
-    cv::cvtColor(mat, mat, cv::COLOR_BGR2GRAY);
-
-    // equalizeHist( mat, mat );
-
-    Mat temp_gray;
-
-    resize(regions_n_TempImgs[i].img, temp_gray, Size(reg.width / downSamp, reg.height / downSamp), INTER_LINEAR);
-
-    cv::cvtColor(temp_gray, temp_gray, cv::COLOR_BGR2GRAY);
-    // equalizeHist( temp_gray, temp_gray );
-
-
-    //try to sharpen the image, it might help to reduce the lighting difference
-    {
-      
-      // float sharpBlurSigma = 3;
-      // float beta = 2;
-      // float sharpC1 = 1.0 * beta;
-      // float sharpC2 = -0.6 * beta;
-      // {
-      //   Mat buf;
-      //   cv::GaussianBlur(mat, buf, cv::Size(0, 0), sharpBlurSigma);
-      //   cv::addWeighted(buf, sharpC1, mat, sharpC2, 0, mat);
-      // }
-
-      // {
-      //   Mat buf;
-      //   cv::GaussianBlur(temp_gray, buf, cv::Size(0, 0), sharpBlurSigma);
-      //   cv::addWeighted(buf, sharpC1, temp_gray, sharpC2, 0, temp_gray);
-      // }
-    }
-
-    Point2f levelXPt = TemplateMatching_Pix(mat, temp_gray, result, isResForMax, TM_CCOEFF_NORMED);
-
-    float matchResult = result.at<float>((int)round(levelXPt.x), (int)round(levelXPt.y));
-
-    if (0)
-    {
-      int x = (int)round(levelXPt.x);
-      int y = (int)round(levelXPt.y);
-      float matchResult0 = result.at<float>(x - 1, y - 1);
-      float matchResult1 = result.at<float>(x, y - 1);
-      float matchResult2 = result.at<float>(x + 1, y - 1);
-
-      float matchResult3 = result.at<float>(x - 1, y);
-      float matchResult4 = result.at<float>(x, y);
-      float matchResult5 = result.at<float>(x + 1, y);
-
-      float matchResult6 = result.at<float>(x - 1, y + 1);
-      float matchResult7 = result.at<float>(x, y + 1);
-      float matchResult8 = result.at<float>(x + 1, y + 1);
-
-      LOGE("loc [%d %d]", x, y);
-
-      LOGE("[%0.3f %0.3f %0.3f]", matchResult0, matchResult1, matchResult2);
-      LOGE("[%0.3f %0.3f %0.3f]", matchResult3, matchResult4, matchResult5);
-      LOGE("[%0.3f %0.3f %0.3f]", matchResult6, matchResult7, matchResult8);
-    }
-
-    {
-
-      double minVal = 999;
-      double maxVal = -1;
-      Point minLoc;
-      Point maxLoc;
-      Point matchLoc;
-      minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
-      matchResult = maxVal;
-      levelXPt = maxLoc;
-      // LOGE(">>>>>minLoc:%d %d:%f",minLoc.x,minLoc.y,minVal);
-      // LOGE(">>>>>maxLoc:%d %d:%f",maxLoc.x,maxLoc.y,maxVal);
-    }
-
-    std::string prefix = "S" + DBG_STR + "_";
-    if (0) // save DBG matching image
-    {
-      // imwrite("data/ZZZ/"+prefix+"OOP_"+std::to_string(i)+".jpg",mat);
-
-      cv::Mat mat_cp = mat.clone();
-
-      auto rect = Rect(levelXPt.x, levelXPt.y, temp_gray.cols, temp_gray.rows);
-      // temp_gray.copyTo(mat_cp(rect));
-      cv::rectangle(mat_cp, rect, cv::Scalar(255, 0, 0));
-      cv::rectangle(mat_cp, Rect(mat_cp.cols / 2 - 1, mat_cp.rows / 2 - 1, 2, 2), cv::Scalar(200, 200, 200));
-      imwrite("data/ZZZ/" + prefix + "_TOP_" + std::to_string(i) + ".jpg", mat_cp);
-
-      result *= 200;
-      // imwrite("data/TEMP_"+std::to_string(i)+".jpg", temp_gray);
-      imwrite("data/ZZZ/" + prefix + "RES_" + std::to_string(i) + ".jpg", result);
-    }
-
-    // LOGE("dstr:%s res:%f",DBG_STR.c_str(),matchResult);
-    levelXPt *= downSamp;
-    // // if(ret_acceptedRegionCount)//JUST for DBG
-    // std::string prefix="S"+to_string(DBG_C)+"_";
-    // if(1)
-    // {
-    //   // imwrite("data/ZZZ/"+prefix+"OOP_"+std::to_string(i)+".jpg",mat);
-
-    //   cv::Mat mat_cp =mat.clone();
-
-    //   auto rect=Rect(levelXPt.x,levelXPt.y,temp_gray.cols, temp_gray.rows);
-    //   temp_gray.copyTo(mat_cp(rect));
-    //   cv::rectangle(mat_cp, rect, cv::Scalar(255, 255, 255));
-    //   cv::rectangle(mat_cp, Rect(mat_cp.cols/2-1,mat_cp.rows/2-1,2,2), cv::Scalar(200, 200, 200));
-    //   imwrite("data/ZZZ/"+prefix+"_TOP_"+std::to_string(i)+".jpg",mat_cp);
-
-    //   // result*=200;
-    //   // imwrite("data/TEMP_"+std::to_string(i)+".jpg", temp_gray);
-    //   // imwrite("data/ZZZ/"+prefix+"RES_"+std::to_string(i)+".jpg",result);
-    // }
-    // if(true){//export template diff image for debugging
-    //   string path_p="data/TMP/"+std::to_string(count);
-    //   Mat mat_ROI=mat(cv::Rect(round(levelXPt.x),round(levelXPt.y),regionTempImgs[i].cols, regionTempImgs[i].rows));
-    //   // locatingBlockImg[i].copyTo(mat_ROI);
-
-    //   float diffAmp=2;
-    //   addWeighted( regionTempImgs[i], -0.5*diffAmp, mat_ROI, 0.5*diffAmp, 128.0, mat_ROI);
-    //   imwrite(path_p+"mat_final"+std::to_string(i)+".png", mat);
-    // }
-
-    float offsetThres = allowMatchingOnSearchRegionEdge ? margin + 999 : margin - 1;
-    levelXPt.x -= margin;
-    levelXPt.y -= margin;
-
-    if (yFlip)
-      levelXPt.y = -levelXPt.y;
-    // LOGI("[%d]:matchResult:%f offset:%f,%f", i, matchResult, levelXPt.x, levelXPt.y);
-    if (matchResult != matchResult || matchResult < minAcceptedScore || levelXPt.x < -offsetThres || levelXPt.x > offsetThres || levelXPt.y < -offsetThres || levelXPt.y > offsetThres)
-    {
-      levelXPt.x = levelXPt.y = NAN;
-    }
-    else
-    {
-
-      // if(ret_acceptedRegionCount)//JUST for DBG
-
-      // cv::cvtColor(mat, mat, cv::COLOR_GRAY2BGR);
-      // mat.copyTo(srcImg(Rect(crop_center.x-mat.cols/2,crop_center.y-mat.rows/2,mat.cols, mat.rows)));
-
-      // LOGI("O levelXPt %f,%f",levelXPt.x,levelXPt.y);
-      levelXPt = rotate2d(levelXPt, angleRad);
-      // LOGI("> levelXPt  %f,%f",levelXPt.x,levelXPt.y);
-      // LOGI("initPts     %f,%f",crop_center.x,crop_center.y);
-      // LOGI("crop_center %f,%f",crop_center.x+levelXPt.x,crop_center.y+levelXPt.y);
-
-      cv::Point2f updatedPt = crop_center + levelXPt;
-      cv::Point2f tempPt = cv::Point2f(reg.x + reg.width / 2, reg.y + reg.height / 2);
-      // LOGI("temp        %f,%f",tempPt.x,tempPt.y);
-      // if(i==0)
-      // {
-      //   updatedPt=cv::Point2f(794,230);
-      // }
-      // else if(i==1)
-      // {
-      //   updatedPt=cv::Point2f(799,442);
-      // }
-      // else if(i==2)
-      // {
-      //   updatedPt=cv::Point2f(872,443.5);
-      // }
-
-      // LOGI("DBG_CENTER %f,%f",updatedPt.x,updatedPt.y);
-
-      initPts_temp.push_back(tempPt);
-      initPts.push_back(crop_center);
-      updatedPts.push_back(updatedPt);
-      // LOGI("x:%f y:%f",crop_center.x+levelXPt.x,crop_center.y+levelXPt.y);
-
-      // regions_n_TempImgs[i].img.copyTo(srcImg(Rect(crop_center.x+levelXPt.x-reg.width/2,crop_center.y+levelXPt.y-reg.height/2,temp_gray.cols, temp_gray.rows)));
-
-      if (minAccScore > matchResult)
-      {
-        minAccScore = matchResult;
-      }
-    }
-
-    // printf("matchLoc_subPix:%f %f\n",levelXPt.x,levelXPt.y);
-    // small_image.copyTo(big_image(cv::Rect(x,y,small_image.cols, small_image.rows)));
-
-    // Mat cimg=def_temp_img(cv::Rect(block.x,block.y,block.w,block.h));
-
-    // LOGI("block relXY:%f %f",block.rel_x,block.rel_y);
-    // locatingBlockImg.push_back(cimg);
-  }
-  // exit(0);
-
-  // LOGE(">>>>updatedPts.size():%d",updatedPts.size());
-  if (true && updatedPts.size() >= 3)
-  {
-    cv::Mat R = estimateAffine2D(initPts_temp, updatedPts);
-
-    // cout << "M = " << endl << " "  << R << endl << endl;
-
-    double v_cos = (R.at<double>(0, 0) + R.at<double>(1, 1)) / 2;
-    R.at<double>(0, 0) = R.at<double>(1, 1) = v_cos;
-    double v_sin = (R.at<double>(1, 0) - R.at<double>(0, 1)) / 2;
-    R.at<double>(1, 0) = v_sin;
-    R.at<double>(0, 1) = -v_sin;
-
-    cv::Point2f translate = cv::Point2f(R.at<double>(0, 2), R.at<double>(1, 2)); // first Est
-
-    R.at<double>(0, 2) = R.at<double>(1, 2) = 0; // set to zero, no translation
-
-    if (1)
-    {
-      std::vector<cv::Point2f> outputV;
-
-      transform(initPts_temp, outputV, R);
-
-      // LOGI("pre-translate:%f,%f",translate.x,translate.y);
-      cv::Point2f pt1 = {0};
-      cv::Point2f pt2 = {0};
-      for (int i = 0; i < outputV.size(); i++)
-      {
-        pt1 += updatedPts[i];
-        pt2 += outputV[i];
-
-        // LOGI("[%d] pt1:%f,%f  pt2:%f,%f",i,updatedPts[i].x,updatedPts[i].y,outputV[i].x,outputV[i].y);
-      }
-
-      translate = (pt1 - pt2) / (float)outputV.size();
-
-      for (int i = 0; i < outputV.size(); i++)
-      {
-        pt1 = outputV[i] + translate - updatedPts[i];
-
-        // LOGI(">%d] diff:%f,%f ",i,pt1.x,pt1.y);
-      }
-
-      // LOGI("translate:%f,%f",translate.x,translate.y);
-    }
-
-    float angle = atan2(v_sin, v_cos);
-    // LOGI("theta:%f",angle*180/M_PI);
-    angleRad = angle;
-
-    anchorPt = translate;
-
-    if (ret_acceptedRegionCount)
-      *ret_acceptedRegionCount = updatedPts.size();
-    return minAccScore;
-  }
-
-  if (true && updatedPts.size() == 1)
-  {
-    // cv::Mat R = estimateAffine2D(initPts_temp,updatedPts);
-
-    // cout << "M = " << endl << " "  << R << endl << endl;
-
-    LOGI("---------anchorPt:%f,%f ", anchorPt.x, anchorPt.y);
-    LOGI("---------initPts:%f,%f   updatePt:%f,%f  minAccScore:%f", initPts[0].x, initPts[0].y, updatedPts[0].x, updatedPts[0].y, minAccScore);
-
-    anchorPt += updatedPts[0] - initPts[0];
-    if (ret_acceptedRegionCount)
-      *ret_acceptedRegionCount = updatedPts.size();
-    return minAccScore;
-  }
-
-  if (false && updatedPts.size() >= 3)
-  {
-    for (int i = 0; i < updatedPts.size(); i++)
-    {
-      LOGI("[%d] %.2f,%.2f => %.2f,%.2f", i, initPts[i].x, initPts[i].y, updatedPts[i].x, updatedPts[i].y);
-      // LOGI("crop_center %f,%f",crop_center.x+levelXPt.x,crop_center.y+levelXPt.y);
-    }
-    cv::Mat R = estimateAffine2D(initPts, updatedPts);
-
-    if (R.cols != 0)
-    {
-      std::vector<cv::Point2f> inputV;
-      std::vector<cv::Point2f> outputV;
-
-      inputV.clear();
-      outputV.clear();
-
-      cv::Point2f pt0 = {0};
-      for (int i = 0; i < regions_n_TempImgs.size(); i++)
-      {
-        pt0.x += regions_n_TempImgs[i].regionInRef.x;
-        pt0.y += regions_n_TempImgs[i].regionInRef.y;
-      }
-      pt0 /= (float)regions_n_TempImgs.size();
-      pt0 += anchorPt;
-
-      inputV.push_back(pt0);
-      inputV.push_back((cv::Point2f){pt0.x + 1, pt0.y}); // get offset
-      // inputV.push_back((cv::Point2f){1,0});//get rotation
-
-      transform(inputV, outputV, R);
-      for (int i = 0; i < inputV.size(); i++)
-      {
-        LOGI("..[%d] %.2f,%.2f => %.2f,%.2f", i, inputV[i].x, inputV[i].y, outputV[i].x, outputV[i].y);
-        // LOGI("crop_center %f,%f",crop_center.x+levelXPt.x,crop_center.y+levelXPt.y);
-      }
-
-      // LOGI("a:%f,%f  na:%f,%f",anchorPt.x,anchorPt.y,new_anchorPt.x,new_anchorPt.y);
-
-      Point2f rotation = outputV[1] - outputV[0];
-      float angle = atan2(rotation.y, rotation.x);
-      LOGI("theta:%f", angle * 180 / M_PI);
-      angleRad += 1 * angle - 0.0;
-
-      {
-        LOGI("%f,%f >>>>> %f,%f", inputV[0].x, inputV[0].y, outputV[0].x, outputV[0].y);
-        // Point2f new_anchorPt = outputV[0];
-        anchorPt += (outputV[0] - inputV[0]);
-      }
-
-      if (ret_acceptedRegionCount)
-        *ret_acceptedRegionCount = updatedPts.size();
-      return minAccScore;
-    }
-  }
-
-  if (true && updatedPts.size() == 2)
-  {
-    anchorPt += (updatedPts[0] + updatedPts[1] - initPts[0] - initPts[1]) / 2;
-    // anchorPt+=updatedPts[1]-initPts[1];
-    angleRad +=
-        atan2(updatedPts[1].y - updatedPts[0].y, updatedPts[1].x - updatedPts[0].x) - atan2(initPts[1].y - initPts[0].y, initPts[1].x - initPts[0].x);
-    if (ret_acceptedRegionCount)
-      *ret_acceptedRegionCount = updatedPts.size();
-    return minAccScore;
-  }
-
-  return 0;
-
-  // ofsSum/=ofsCount;
-  // anchorPt+=ofsSum;
-}
-
-
-
 
 
 
@@ -1249,12 +870,465 @@ bool hasEnding(std::string const &fullString, std::string const &ending)
   }
 }
 
+
+
+
+// Function to warp the target image based on initial pose
+Mat warpImage(const Mat& img, const Point2f& offset, double rotation,float scale=1,bool reverse=false) {
+
+    Mat warpMat;
+    if(reverse==false)
+    {
+
+        Mat scaleMat=cvM3x3::scale(scale);
+        Mat rotationMat=cvM3x3::rotate(rotation);
+        Mat translationMat=cvM3x3::translate(offset);
+        warpMat=cvM3x3::mat33to23(translationMat*rotationMat*scaleMat);
+    }
+    else
+    {//an inverse mat of above basically
+        Mat scaleMat=cvM3x3::scale(1/scale);
+        Mat rotationMat=cvM3x3::rotate(-rotation);
+        Mat translationMat=cvM3x3::translate(-offset);
+        warpMat=cvM3x3::mat33to23(scaleMat*rotationMat*translationMat);
+    }
+
+    Mat warpedImg;
+    cv::warpAffine(img, warpedImg, warpMat, img.size());
+    return warpedImg;
+}
+
+
+
+int DBG_iterCount=0;
+// Function to perform subpixel template matching
+Point2f templateMatchSubpixel(const Mat& templateROI, const Mat& searchROI,float &ret_confidence) {
+       Mat result;
+
+    Mat _searchROI;
+
+    if(searchROI.channels()!=templateROI.channels())
+    {
+      if(templateROI.channels()==1)
+      {
+        cvtColor(searchROI, _searchROI, COLOR_BGR2GRAY);
+      }
+      else if(templateROI.channels()==3)
+      {
+        cvtColor(searchROI, _searchROI, COLOR_BGR2GRAY);
+      }
+      else
+      {
+        _searchROI=searchROI;
+      }
+    }
+    else
+    {
+        _searchROI=searchROI;
+    }
+
+    matchTemplate(_searchROI, templateROI, result, TM_CCOEFF_NORMED);
+    
+    // Find the maximum location first
+    double minVal, maxVal;
+    Point minLoc, maxLoc;
+    minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc);
+    LOGE("--------maxVal:%f",maxVal);
+    // static int counter=0;
+    // cv::imwrite("data/result"+to_string(counter)+".png",result*255);
+    // counter++;
+    Point2f subPixelLoc = maxLoc;
+
+    {
+        
+    }
+    if (maxLoc.x > 0 && maxLoc.x < result.cols-1 && 
+        maxLoc.y > 0 && maxLoc.y < result.rows-1) {
+        
+        // Get neighboring values
+        float x0 = result.at<float>(maxLoc.y, maxLoc.x-1);
+        float x1 = result.at<float>(maxLoc.y, maxLoc.x);
+        float x2 = result.at<float>(maxLoc.y, maxLoc.x+1);
+        float y0 = result.at<float>(maxLoc.y-1, maxLoc.x);
+        float y1 = result.at<float>(maxLoc.y, maxLoc.x);
+        float y2 = result.at<float>(maxLoc.y+1, maxLoc.x);
+        
+        // Quadratic interpolation for x and y independently
+        float deltaX = (x2 - x0) / (2 * (2*x1 - x2 - x0));
+        float deltaY = (y2 - y0) / (2 * (2*y1 - y2 - y0));
+        
+        // Update location with subpixel refinement
+        if (isfinite(deltaX) && abs(deltaX) < 1)
+            subPixelLoc.x += deltaX;
+        if (isfinite(deltaY) && abs(deltaY) < 1)
+            subPixelLoc.y += deltaY;
+    }
+
+    ret_confidence=maxVal;
+    if(maxVal<0.2)
+    {
+        return subPixelLoc;
+    }
+
+
+    if(0){
+
+        float concentration=0;
+        // Analyze correlation peak shape using PCA
+        vector<Point3f> points;
+        float threshold = 0.1;  // Adjust threshold to capture peak shape
+
+        // Collect points for PCA
+        for(int y = 0; y < result.rows; y++) {
+            for(int x = 0; x < result.cols; x++) {
+                float val = result.at<float>(y, x);
+                if(val > threshold) {
+
+                    // Normalize weights to be between 0 and 1
+                    float normalized_weight = (val - threshold) / (maxVal - threshold);
+                    points.push_back(Point3f(x, y, normalized_weight));
+                }
+            }
+        }
+
+        // Only proceed if we have enough points
+        if(points.size() >= 3) {
+            // Compute weighted mean
+            Point2f mean(0, 0);
+            float totalWeight = 0;
+            for(const auto& p : points) {
+                mean += Point2f(p.x, p.y) * p.z;
+                totalWeight += p.z;
+            }
+            mean = mean * (1.0f/totalWeight);
+
+            // Compute weighted covariance matrix
+            float cxx = 0, cyy = 0, cxy = 0;
+            for(const auto& p : points) {
+                float dx = p.x - mean.x;
+                float dy = p.y - mean.y;
+                float w = p.z/totalWeight;
+                cxx += dx * dx * w;
+                cyy += dy * dy * w;
+                cxy += dx * dy * w;
+            }
+
+            // Compute eigenvalues
+            float trace = cxx + cyy;
+            float det = cxx * cyy - cxy * cxy;
+            float lambda1 = trace/2 + sqrt((trace*trace/4) - det);  // larger eigenvalue
+            float lambda2 = trace/2 - sqrt((trace*trace/4) - det);  // smaller eigenvalue
+            
+            // Calculate sigmas and direction
+            float sigma1 = sqrt(lambda1);
+            float sigma2 = sqrt(lambda2);
+
+            float normalized_sigma1, normalized_sigma2;
+
+
+            float max_theoretical_sigma = (searchROI.cols)/sqrt(12.0f);  // where N is your template width
+            float threshold_sigma=max_theoretical_sigma*0.7;
+            {
+
+
+                // Normalized sigmas using 1/(1-x) for continuous transition to infinity
+                float ratio = sigma1/threshold_sigma;
+                if(ratio>0.99999)ratio=0.99999;
+                normalized_sigma1 = ratio / (1.0f - ratio);  // approaches inf as ratio approaches 1
+
+                ratio = sigma2/threshold_sigma;
+                if(ratio>0.99999)ratio=0.99999;
+                normalized_sigma2 = ratio / (1.0f - ratio);  // approaches inf as ratio approaches 1
+
+            }
+
+            std::cout << "Normalized Sigmas:" << endl;
+            std::cout << "  Major: " << normalized_sigma1 << endl;
+            std::cout << "  Minor: " << normalized_sigma2 << endl;
+            std::cout << "  threshold_sigma: " << threshold_sigma << endl;
+
+            float principal_direction = atan2(lambda1 - cxx, cxy) * 180/CV_PI;
+            concentration = 1/(normalized_sigma2>normalized_sigma1?normalized_sigma2:normalized_sigma1);  // Lower value means more concentrated
+
+            // std::cout << "Match Quality Metrics:" << endl;
+            // std::cout << "  Peak Value: " << maxVal << endl;
+            // std::cout << "  Concentration (σ₂/σ₁): " << concentration 
+            //     << " (closer to 0 means more concentrated)" << endl;
+            // std::cout << "  Major Sigma: " << sigma1 << endl;
+            // std::cout << "  Minor Sigma: " << sigma2 << endl;
+            // std::cout << "  Principal Direction: " << principal_direction << "°" << endl;
+        }
+        std::cout << "=====concentration:"<<concentration << endl;
+        concentration*=50;
+        if(concentration>1)concentration=1;
+        maxVal*=concentration;
+        
+        static int counter=0;
+        // cv::imwrite("data/result"+to_string(counter)+".png",result*255);
+        counter++;
+        // exit(0);
+    }
+
+    ret_confidence=maxVal;
+
+    return subPixelLoc;
+}
+
+
+Mat Local_Contrast_Normalization(const Mat& input) {
+    Mat processed;
+    
+    // 1. Convert to floating point
+    input.convertTo(processed, CV_32F, 1.0/255.0);
+    
+    // 2. Apply local contrast normalization
+    Mat mean, stddev;
+    int ksize = 21; // Adjust kernel size as needed
+    GaussianBlur(processed, mean, Size(ksize, ksize), 0);
+    
+    Mat squared;
+    multiply(processed, processed, squared);
+    GaussianBlur(squared, stddev, Size(ksize, ksize), 0);
+    subtract(stddev, mean.mul(mean), stddev);
+    sqrt(stddev, stddev);
+    
+    // Avoid division by zero
+    stddev += 1e-5;
+    
+    // Normalize
+    subtract(processed, mean, processed);
+    divide(processed, stddev, processed);
+    
+    // 3. Scale back to original range (optional)
+    processed = (processed + 3) * (255.0/6.0); // Adjust scaling factors as needed
+    processed.convertTo(processed, CV_8U);
+    
+    return processed;
+}
+
+
+// Function to refine pose using template matching
+float refinePoseWithTemplateMatching(
+    const Mat& targetImg,
+    const vector<InspectionTarget_Orientation_ShapeBasedMatching::refine_region_info>& refine_region_set,
+    float rec_scale,//incoming shape how much larger than the template
+    Point2f& initOffset,
+    double& initRotation,
+    int searchBorder=25,
+    float confidence_threshold=0.7,
+    bool useOptFlow=false
+)
+{
+    // Refined offset and rotation
+    Point2f refinedOffset(0, 0);
+    double refinedRotation = 0;
+    int numPoints = 0;
+
+    vector<Point2f> allValidTemplatePoints, allValidTargetPoints;
+
+    float min_confidence=numeric_limits<float>::max();
+    for (const auto& refSegInfo : refine_region_set) {
+        // Extract template ROI
+
+        auto roi=refSegInfo.regionInRef;
+
+        Rect ex_roi=roi;
+
+        // if(!useOptFlow)
+        // {
+        //     ex_roi=Rect(roi.x-searchBorder, roi.y-searchBorder, 
+        //                         roi.width+2*searchBorder, roi.height+2*searchBorder);
+        // }
+
+        if(!useOptFlow)
+        {
+            ex_roi=Rect(roi.x+searchBorder, roi.y+searchBorder, 
+                                roi.width-2*searchBorder, roi.height-2*searchBorder);
+        }
+
+
+
+
+        // Calculate the transformation for this ROI
+        Mat translationMat = cvM3x3::translate(-initOffset);
+        Mat rotationMat = cvM3x3::rotate(-initRotation);
+
+        Mat ROItranslationMat = cvM3x3::translate(Point2f(-ex_roi.x,-ex_roi.y));
+        Mat scaleMat=cvM3x3::scale(1/rec_scale);//scale the incoming shape to the template size
+        Mat warpMat3x3=ROItranslationMat*scaleMat *  rotationMat*translationMat;//map source image to template orientation
+        Mat warpMat = cvM3x3::mat33to23(warpMat3x3);//map source image to template orientation
+        // Adjust the transformation matrix to account for ROI offset
+
+        // Create warped ROI directly
+        Mat warpedTargetROI;
+        cv::warpAffine(targetImg, warpedTargetROI, warpMat, ex_roi.size());
+
+
+        // static int count=0;
+        // imwrite("data/tempRef"+to_string(count)+".png",refSegInfo.img);
+        // imwrite("data/imgeWrp"+to_string(count)+".png",warpedTargetROI);
+        // count++;
+        // Extract expanded template ROI
+        // Mat expandedTemplateROI = refSegInfo.img;
+        
+        float current_match_score=0;
+
+        Point2f displacement;
+
+        if(useOptFlow==false)
+        {
+            // Perform template matching with subpixel refinement
+            Point2f matchLoc = templateMatchSubpixel(warpedTargetROI, refSegInfo.img,current_match_score);
+
+            cout<<"matchLoc:"<<matchLoc<<endl;
+            displacement=-Point2f( matchLoc.x-searchBorder, matchLoc.y-searchBorder);
+        }
+        else 
+        {
+            Mat templateROI = refSegInfo.img;
+            vector<Point2f> templatePoints;
+            // Add multiple points instead of just the center
+            // for(int y = templateROI.rows/4; y < templateROI.rows*3/4; y += templateROI.rows/4) {
+            //     for(int x = templateROI.cols/4; x < templateROI.cols*3/4; x += templateROI.cols/4) {
+            //         templatePoints.push_back(Point2f(x, y));
+            //     }
+            // }
+
+            templatePoints.push_back(Point2f(templateROI.cols/2, templateROI.rows/2));//center of the template
+            
+            vector<Point2f> targetPoints;
+            vector<uchar> status;
+            vector<float> err;
+            
+            // Increase window size for better accuracy
+            int winSize = std::min(templateROI.cols, templateROI.rows) / 2;
+            winSize = std::max(21, winSize); // Larger minimum window
+            winSize = winSize | 1; // Make sure it's odd
+            
+            // Mat preprocessedTemplate = Local_Contrast_Normalization(templateROI);
+            // Mat preprocessedTarget = Local_Contrast_Normalization(warpedTargetROI);
+
+
+            // Mat preprocessedTemplate;
+            // equalizeHist(templateROI, preprocessedTemplate);
+            // Mat preprocessedTarget;
+            // equalizeHist(warpedTargetROI, preprocessedTarget);
+            Mat preprocessedTemplate=templateROI;
+            Mat preprocessedTarget=warpedTargetROI;
+
+            // imwrite("data/preprocessedTemplate"+to_string(count)+".png",preprocessedTemplate);
+            // imwrite("data/preprocessedTarget"+to_string(count)+".png",preprocessedTarget);  
+
+            calcOpticalFlowPyrLK(preprocessedTemplate, preprocessedTarget, templatePoints, targetPoints, status, err,
+                Size(winSize, winSize), 
+                5, // Increase pyramid levels (was 3)
+                TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 1000, 0.01), // More iterations, tighter epsilon
+                OPTFLOW_LK_GET_MIN_EIGENVALS, // Add this flag for better feature tracking
+                1e-6); // Smaller min eigenvalue threshold for better accuracy
+            // Average all valid points for more robust matching
+            Point2f avgDisplacement(0, 0);
+            float totalWeight = 0;
+            int validPoints = 0;
+            
+            for(size_t i = 0; i < templatePoints.size(); i++) {
+                if(status[i]) {
+                    float weight = 1.0f / (err[i] + 1e-6); // Weight by inverse error
+                    avgDisplacement += (targetPoints[i] - templatePoints[i]) * weight;
+                    totalWeight += weight;
+                    validPoints++;
+                }
+            }
+            
+            if(validPoints > 0) {
+                displacement = avgDisplacement * (1.0f / totalWeight);
+                // Adjust confidence based on number of valid points and average error
+                current_match_score = (float)validPoints / templatePoints.size();
+                current_match_score *= 2.0f; // Scale up confidence (adjust as needed)
+            } else {
+                current_match_score = 0.0f;
+            }
+        }
+        
+        cout<<"displacement:"<<displacement<<endl;
+        cout<<"current_match_score:"<<current_match_score<<endl;
+
+
+        // float score_zero_threshold=0.2;
+        // float current_confidence=(current_match_score-score_zero_threshold)/(1-score_zero_threshold);
+        // current_confidence=current_confidence>0?current_confidence:0;
+        float current_confidence=current_match_score;
+        if(current_confidence<confidence_threshold)
+        {
+            printf("conf:%f SKIP\n",current_confidence);
+            continue;//skip this roi
+        }
+        // Convert match location to relative displacement
+        
+        // Add points for affine estimation
+        Point2f templatePoint(roi.x + roi.width/2.0f, roi.y + roi.height/2.0f);
+        Point2f targetPoint = templatePoint + displacement;
+        
+        
+        {
+            if(min_confidence>current_confidence)
+            {
+                min_confidence=current_confidence;
+            }
+            allValidTemplatePoints.push_back(templatePoint);
+            allValidTargetPoints.push_back(targetPoint);
+
+        }
+
+    }
+
+    // the offset result is in template coordinate
+
+    //So we need to map back to the target object coordinate in incoming image 
+
+
+    // Perform single affine estimation with all collected points
+    if (allValidTemplatePoints.size() >= 2) {
+        Mat transform = estimateAffinePartial2D(allValidTemplatePoints, allValidTargetPoints);
+        
+        if (!transform.empty()) {
+            // Decompose transformation matrix into rotation and translation
+            double dx = transform.at<double>(0, 2);
+            double dy = transform.at<double>(1, 2);
+            double theta = atan2(transform.at<double>(1, 0), transform.at<double>(0, 0));
+
+            initRotation += theta;
+
+            Point2f approach_offset=Point2f(dx, dy)*rec_scale;//scale the offset by the rec_scale
+            //rotate approach_offset by theta
+            approach_offset=rotate2d(approach_offset,initRotation);//
+            // Update the initial pose
+            initOffset += approach_offset;
+
+
+        }
+    }
+    else if(allValidTemplatePoints.size()==1)
+    {
+        initRotation+=0;//no rotation adjustment
+        Point2f approach_offset=(allValidTargetPoints[0]-allValidTemplatePoints[0])*rec_scale;
+        approach_offset=rotate2d(approach_offset,initRotation);
+        initOffset+=approach_offset;
+    }
+    else
+    {
+        return 0;//no valid points
+    }
+
+    return min_confidence;
+}
+
 vector<StageInfo_Orientation::orient> MatchPoseRefine(
   cv::Mat &CV_srcImg,
   std::vector<line2Dup::Match> &matches,
   SBM_if *sbm,vector<int> &idxs,
   vector<InspectionTarget_Orientation_ShapeBasedMatching::refine_region_info> &refine_region_set,
   float matching_downScale,
+  float recScale,//incoming shape how much larger than the template
   float refine_score_thres,
   float origin_offset_angle,
   bool  refine_angle_only,
@@ -1289,66 +1363,89 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
     std::string DBG_STR;
     // LOGI("refine_score_thres:%f must_refine_result:%d",refine_score_thres,must_refine_result);
     // LOGE(">>matching_downScale:%f",matching_downScale);
-    int refineCount = 1;
-    if (refine_region_set.size() > 0 && refine_score_thres > 0)
+
+
+
+
+    int refineCount = 3;
+
     {
-      float tmpAngle = refinedAngleRad;
-      cv::Point2f tmp_anchorPt = anchorPt;
       bool y_flip = hasEnding(match.class_id, "_f");
-      int margin = (int)(3 + (2 / matching_downScale))*1;
-      // DBG_STR = id + "_" + to_string(i) + "_" + to_string(0);
-
-      int refine_block_count = 0;
+      int border_search_size = (int)(25 + (2 / matching_downScale))*1;
       bool allowMatchingOnSearchRegionEdge = refine_angle_only;
-      refine_score = PoseRefine(CV_srcImg, refine_region_set, margin, tmp_anchorPt, tmpAngle, y_flip, 0.2, allowMatchingOnSearchRegionEdge, 1, &refine_block_count, DBG_STR);
 
-      // if(refine_score>0.3)
-      if (1) // further refine
+
+      double initRotation = refinedAngleRad;
+      cv::Point2f initOffset = anchorPt;
+
+      
+      float confidence_threshold=0.2;
+      // Iterative refinement loop
+
+      const double CONVERGENCE_THRESHOLD = 0.1; 
+
+      Point2f updatedOffset = initOffset;
+      double updatedRotation = initRotation;
+      LOGE("refine_region_set.size():%d",refine_region_set.size());
+      if(refine_region_set.size()>0)
       {
-        // LOGI("[%d]-----refine_score:%f", i, refine_score);
-        auto tmp_anchorPt2 = tmp_anchorPt;
-        auto tmpAngle2 = tmpAngle;
-        float refine_score2;
-        int refine_block_count2 = 0;
+        Point2f prevOffset = initOffset;
+        double prevRotation = initRotation;
+        for (int iter = 0; iter < refineCount+1; iter++) {
+            DBG_iterCount=iter;
+            float min_confidence=refinePoseWithTemplateMatching(
+                CV_srcImg, 
+                refine_region_set, 
+                recScale,
+                updatedOffset, 
+                updatedRotation,
+                border_search_size,
+                confidence_threshold,
+                false
 
-        for (int j = 1; j < refineCount; j++)
-        {
-          // margin/=2;
+            );
+            if(min_confidence<confidence_threshold)
+            {
+                break;
+            }
 
-          if (refine_angle_only)
-            tmp_anchorPt2 = anchorPt; // if adjust the angle only use the unrefined position every time
-          // DBG_STR = id + "_" + to_string(i) + "_" + to_string(j);
-          refine_score2 = PoseRefine(CV_srcImg, refine_region_set, margin, tmp_anchorPt2, tmpAngle2, y_flip, 0.2, allowMatchingOnSearchRegionEdge, 1, &refine_block_count2, DBG_STR);
 
-          // LOGI("[%d]-----refine_score:%f . tmpAngle2:%f", i, refine_score2, tmpAngle2);
-          if (refine_score <= refine_score2)
-          {
-            refine_score = refine_score2;
-            tmpAngle = tmpAngle2;
-            refine_block_count = refine_block_count2;
-          }
-          else
-          {
-            break; // early stop
-          }
+            refine_score=min_confidence;
+            // Check for convergence
+            double offsetDiff = norm(prevOffset - updatedOffset);
+            double rotationDiff = abs(prevRotation - updatedRotation);
+            
+            cout << "Iteration " << iter + 1 << ":" << endl;
+            cout << "  Offset: (" << updatedOffset.x << ", " << updatedOffset.y << ")" << endl;
+            cout << "  Rotation (degrees): " << updatedRotation * 180.0 / CV_PI << endl;
+            cout << "  Min Confidence: " << min_confidence << endl;
+            if (offsetDiff < CONVERGENCE_THRESHOLD && rotationDiff < CONVERGENCE_THRESHOLD) {
+                cout << "Converged after " << iter + 1 << " iterations" << endl;
+                break;
+            }
+            
+            prevOffset = updatedOffset;
+            prevRotation = updatedRotation;
         }
+        
 
-        if (refine_angle_only == true && refine_block_count != refine_region_set.size())
-        {
-          refine_score = 0;
-        }
+
+
+
+        anchorPt=updatedOffset;
+        refinedAngleRad=updatedRotation;
+
+
+        if (refine_angle_only)
+          anchorPt = initOffset; // ignore the refined location if needed
+
+
       }
-
-      if (refine_angle_only)
-        tmp_anchorPt = anchorPt; // ignore the refined location if needed
-
       // LOGI(" %f =>  %f",refinedAngleRad*180/M_PI,tmpAngle*180/M_PI);
       // LOGI(" %f,%f, a:%f  =>  %f,%f a:%f ",anchorPt.x,anchorPt.y,refinedAngleRad*180/M_PI,tmp_anchorPt.x,tmp_anchorPt.y,tmpAngle*180/M_PI);
 
-      if (refine_score > refine_score_thres)
+      if (refine_score > refine_score_thres || refine_region_set.size()==0)
       { // accept the refinement
-        refinedAngleRad = tmpAngle;
-        anchorPt = tmp_anchorPt;
       }
       else if (must_refine_result == true) // for regional search, that needs to give yes/no answer
       {
@@ -1356,20 +1453,38 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
           continue;
         StageInfo_Orientation::orient orie;
 
-        orie.angle = 0;
-        orie.flip = false;
-        orie.center = {0, 0};
+        orie.angle = refinedAngleRad;
+        orie.flip = hasEnding(match.class_id, "_f");;
+        orie.center = anchorPt;
         orie.confidence = 0;
 
-        retOrient.push_back(orie);
+        retOrient.push_back(orie);//push confidence 0 result
         continue;
 
         // refinedAngleRad=tmpAngle;
         // anchorPt=tmp_anchorPt;
         // match.similarity=0.1;
       }
+
+
+
+
+
+
+
+
     }
-    if (refine_score > 0.999)
+
+
+
+
+
+
+
+
+
+
+    if (refine_score > 0.999)//
       refine_score = 0.999;
 
     // LOGI("[%d]----------refine_score:%f  must_refine_result:%d",i,refine_score,must_refine_result);
@@ -1388,6 +1503,11 @@ vector<StageInfo_Orientation::orient> MatchPoseRefine(
   return retOrient;
 
 }
+
+
+
+
+
 
 
 
@@ -1477,7 +1597,6 @@ void CloseMatchFilter(std::vector<line2Dup::Match> &matches,SBM_if *sbm,vector<i
 }
 
 
-float mag_test=1.1;
 
 void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<StageInfo> sinfo)
 {
@@ -1526,8 +1645,11 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
   //crop CV_srcImg to make width and height multiples of 8
 
+  float im_scale=this->template_mmpp/sinfo->img_prop.mmpp;//incoming image Zoom in scale, big im_scale means the target shape is bigger than the template
 
-  RegisterTemplate(mag_test);
+  LOGE("im_scale>>>>:%f  mmpp:%f  pixel_size_mm:%f",im_scale,sinfo->img_prop.mmpp,sinfo->img_prop.fi.pixel_size_mm);
+
+  RegisterTemplate(im_scale);
   
 
   cv::Size size_origin = _CV_srcImg.size();
@@ -1588,6 +1710,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   
   shared_ptr<StageInfo_Orientation> reportInfo(new StageInfo_Orientation());
   {
+    reportInfo->orientation.clear();
     cJSON *search_regions = JFetch_ARRAY(def, "search_regions");
     float similarity_thres = JFetch_NUMBER_ex(def, "similarity_thres", 60);
 
@@ -1752,7 +1875,19 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
           sub_matches[index].y+=y;
         }
         vector<StageInfo_Orientation::orient> orientList;
-        orientList =MatchPoseRefine(CV_srcImg,sub_matches,sbm,SubIdxs,refine_region_set,matching_downScale,refine_score_thres,origin_offset_angle,false,must_refine_result,remove_refine_failed_result);
+        orientList =MatchPoseRefine(
+          CV_srcImg,
+          sub_matches,
+          sbm,
+          SubIdxs,
+          refine_region_set,
+          matching_downScale,
+          im_scale,
+          refine_score_thres,
+          origin_offset_angle,
+          false,
+          must_refine_result,
+          remove_refine_failed_result);
 
         if(regional_most_similar_match)
         {//keep the most similar(confident) one
@@ -1798,18 +1933,33 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
     }
     else
     {
-  
+      auto t0=cv::getTickCount();
       matches = sbm->detector.match(
           CV_srcImg_ds,
           similarity_thres,
           magnitude_thres,
           {template_class_name, template_class_name + "_f"});
 
+      int64 t1=cv::getTickCount();
+      double secs_us = 1000000 * (t1 - t0) / cv::getTickFrequency();
+      LOGI(">>>>sbm->detector.match>>>>process_time_us:%f", secs_us);
 
       
       vector<int> SubIdxs;
       CloseMatchFilter(matches,sbm,SubIdxs,matching_angle_apart);
-      vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(CV_srcImg,matches,sbm,SubIdxs,refine_region_set,matching_downScale*mag_test,refine_score_thres,origin_offset_angle,false,must_refine_result,remove_refine_failed_result);
+      vector<StageInfo_Orientation::orient> orientList =MatchPoseRefine(
+        CV_srcImg,
+        matches,
+        sbm,
+        SubIdxs,
+        refine_region_set,
+        matching_downScale,
+        im_scale,
+        refine_score_thres,
+        origin_offset_angle,
+        false,
+        must_refine_result,
+        remove_refine_failed_result);
 
   
 
@@ -1845,7 +1995,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
 
 
-  
+  reportInfo->mmpp=sinfo->img_prop.mmpp;
   reportInfo->source = this;
   reportInfo->source_id = id;
   reportInfo->img_show =
@@ -1861,7 +2011,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   reportInfo->img_prop = sinfo->img_prop;
   reportInfo->img_prop.StreamInfo.channel_id = JFetch_NUMBER_ex(additionalInfo, "stream_info.stream_id", 0);
   reportInfo->img_prop.StreamInfo.downsample = JFetch_NUMBER_ex(additionalInfo, "stream_info.downsample", 10);
-  LOGI("id:%s   downsample:%d", id.c_str(), reportInfo->img_prop.StreamInfo.downsample);
+  LOGI("id:%s   reportInfo->orientation.size():%d  p:%p", id.c_str(), reportInfo->orientation.size(),reportInfo.get());
 
   {
     int64 t1 = cv::getTickCount();

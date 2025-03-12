@@ -89,48 +89,36 @@ std::vector<uint8_t> image_send_buffer(40000);
 
 
 
-int m_BPG_Protocol_Interface::SEND_base64Image(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
+int m_BPG_Protocol_Interface::SEND_Image(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
 {
   if(callbackInfo==NULL)return -1;
   BPG_protocol_data send_dat;
-  BPG_protocol_data_ImgB64_Send_info *img_info = (BPG_protocol_data_ImgB64_Send_info*)callbackInfo;
+  BPG_protocol_data_Img_Send_info *img_info = (BPG_protocol_data_Img_Send_info*)callbackInfo;
+  if(img_info==NULL)return -1;
 
-  uint8_t header[]={
-    0,50,
-    
-    (uint8_t)(img_info->offsetX >>8),
-    (uint8_t)(img_info->offsetX),
-    (uint8_t)(img_info->offsetY >>8),
-    (uint8_t)(img_info->offsetY),
-
-    (uint8_t)(img_info->fullWidth>>8),
-    (uint8_t)(img_info->fullWidth),
-    (uint8_t)(img_info->fullHeight>>8),
-    (uint8_t)(img_info->fullHeight),
-    (uint8_t)(img_info->scale),
-    
-    (uint8_t)(img_info->fullWidth >>8),
-    (uint8_t)(img_info->fullWidth),
-    (uint8_t)(img_info->fullHeight >>8),
-    (uint8_t)(img_info->fullHeight),
-  };
-
+  int json_header_Length_field_size=4;
   {
-    image_send_buffer.resize(dch.getHeaderSize()+sizeof(header));
+    image_send_buffer.resize(dch.getHeaderSize()+json_header_Length_field_size+img_info->json_header_L);
     dch.headerSetup(&image_send_buffer[0], image_send_buffer.size(), data);
 
-    memcpy(&image_send_buffer[dch.getHeaderSize()], header, sizeof(header));
-    dch.toLinkLayer(&image_send_buffer[0], dch.getHeaderSize()+sizeof(header), false);
+    {//bpg_header >> json_header_len >> json_header
+      image_send_buffer[dch.getHeaderSize()+0]=img_info->json_header_L>>24;
+      image_send_buffer[dch.getHeaderSize()+1]=img_info->json_header_L>>16;
+      image_send_buffer[dch.getHeaderSize()+2]=img_info->json_header_L>>8;
+      image_send_buffer[dch.getHeaderSize()+3]=img_info->json_header_L;
+    }
+    memcpy(&image_send_buffer[dch.getHeaderSize()+json_header_Length_field_size], img_info->json_header, img_info->json_header_L);
+    dch.toLinkLayer(&image_send_buffer[0], dch.getHeaderSize()+json_header_Length_field_size+img_info->json_header_L, false);
 
   }
   const int headerOffset=10;
   image_send_buffer.resize(headerOffset+10000);
   
+  char imgb64Dummy[1];
+  char *imgb64=img_info->imgData==NULL?imgb64Dummy:img_info->imgData;
 
-  char *imgb64=img_info->imgb64;
 
-
-  size_t rest_len =img_info->imgb64_L;
+  size_t rest_len =img_info->imgData_L;
 
   while(rest_len)
   {
@@ -158,7 +146,7 @@ int m_BPG_Protocol_Interface::SEND_base64Image(BPG_Protocol_Interface &dch, stru
 
 
 
-BPG_protocol_data m_BPG_Protocol_Interface::GenStrBPGData(const char *TL, char *jsonStr)
+BPG_protocol_data m_BPG_Protocol_Interface::GenStrBPGData(const char *TL,const char *jsonStr)
 {
   BPG_protocol_data BPG_dat = {0};
   BPG_dat.tl[0] = TL[0];
@@ -210,7 +198,7 @@ void m_BPG_Protocol_Interface::delete_PeripheralChannel()
 
 
 
-int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*TL,int pgID,char* str)
+int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*TL,int pgID,const char* str)
 {
   BPG_protocol_data bpg_dat = GenStrBPGData(TL, str);
   bpg_dat.pgID = pgID;
@@ -234,12 +222,13 @@ int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*TL,int pgID,cJSON* 
 // }
 
 
-int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_ImgB64_Send_info* imgInfo)
+int m_BPG_Protocol_Interface::fromUpperLayer_DATA(const char*TL,int pgID,BPG_protocol_data_Img_Send_info* imgInfo)
 {
   BPG_protocol_data bpg_dat = GenStrBPGData(TL, NULL);
   bpg_dat.callbackInfo = (uint8_t *)imgInfo;
-  bpg_dat.callback = m_BPG_Protocol_Interface::SEND_base64Image;
+  bpg_dat.callback = m_BPG_Protocol_Interface::SEND_Image;
   bpg_dat.pgID = pgID;
+
   return fromUpperLayer(bpg_dat);
 }
 int m_BPG_Protocol_Interface::fromUpperLayer_SS(int pgID,bool isACK,const char*fromTL,const char* error_msg)
@@ -256,7 +245,7 @@ int m_BPG_Protocol_Interface::fromUpperLayer_SS(int pgID,bool isACK,const char*f
 
           
   if(error_msg)
-    buf+=sprintf(buf, ",\"errMsg\":\"%s\"", error_msg);
+    buf+=sprintf(buf, ",\"msg\":\"%s\"", error_msg);
 
   
   buf+=sprintf(buf, "}");
@@ -388,7 +377,7 @@ int sendcJSONTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool
   char *padded_buf=(char*)buf+buff_head_room;
 
   int ret= cJSON_PrintPreallocated(json, padded_buf, buffSize-perifCH->max_leg_room_size(), false);
-  // LOGI(">>%s",padded_buf);
+  LOGI(">>%s",padded_buf);
   if(ret == false)
   {
     return -1;
@@ -406,6 +395,37 @@ int sendcJSONTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool
   return ret;
 }
 
+
+
+
+int sendcJSONTo_perifCH(Data_JsonRaw_Layer *perifCH,uint8_t* buf, int bufL, bool directStringFormat,const char* jsonStr,int jsonStrL)
+{
+
+  if (perifCH==NULL)
+  {
+    return -1;
+  }
+  int buff_head_room=perifCH->max_head_room_size();
+  int buffSize=bufL-buff_head_room;
+  char *padded_buf=(char*)buf+buff_head_room;
+
+  // int ret= cJSON_PrintPreallocated(json, padded_buf, buffSize-perifCH->max_leg_room_size(), false);
+  memcpy(padded_buf,jsonStr,jsonStrL);
+
+
+  int contentSize=jsonStrL;
+
+  int ret=0;
+  if(directStringFormat)
+  {
+    ret = perifCH->send_json_string(buff_head_room,(uint8_t*)padded_buf,contentSize,buffSize-contentSize);
+  }
+  else
+  {
+    ret = perifCH->send_string(buff_head_room,(uint8_t*)padded_buf,contentSize,buffSize-contentSize);
+  }
+  return ret;
+}
 
 
 

@@ -45,4 +45,18 @@ cv::Point2f rotate2d(const cv::Point2f inPoint, const double angRad);
 
 } // namespace InspTarUTIL
 
+namespace cvM3x3 {
+    // Matrix operations (right to left composition)
+    // For transform order m1,m2,m3: m3*m2*m1*vec = newVec
+    
+    cv::Mat rotate(float angle_rad);
+    cv::Mat translate(cv::Point2f pt);
+    cv::Mat scale(float scale);
+    cv::Mat mat23to33(const cv::Mat& matrix23);
+    cv::Mat mat33to23(const cv::Mat& matrix33);
+}
+
+
+
+
 #endif // UTIL_H

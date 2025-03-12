@@ -223,19 +223,26 @@ CameraLayer::status CameraLayer_Aravis::ExtractFrame(uint8_t *imgBuffer, int cha
   {
     
 
-    for(int i=0;i<h;i++)
+    if(channelCount==3)
     {
-      uint8_t* src_Pix_Gray=img_dat+i*w;
-      uint8_t* tar_Pix=imgBuffer+(i*w)*channelCount;
-      for(int j=0;j<w;j++)
+      for(int i=0;i<h;i++)
       {
-        for(int k=0;k<channelCount;k++)
+        uint8_t* src_Pix_Gray=img_dat+i*w;
+        uint8_t* tar_Pix=imgBuffer+(i*w)*channelCount;
+        for(int j=0;j<w;j++)
         {
-          *tar_Pix=*src_Pix_Gray;
-          tar_Pix++;
+          for(int k=0;k<channelCount;k++)
+          {
+            *tar_Pix=*src_Pix_Gray;
+            tar_Pix++;
+          }
+          src_Pix_Gray++;
         }
-        src_Pix_Gray++;
       }
+    }
+    else if(channelCount==1)
+    {
+      memcpy(imgBuffer,img_dat, w * h*channelCount);
     }
     // LOGI("fi.timeStamp_us:%llu",fi.timeStamp_us);
     // LOGI("xywh:%d,%d %d,%d",x,y,w,h);
@@ -358,11 +365,14 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
   if (buffer == NULL)
   {
     LOGI("buffer pop failed...");
+
+    error_code_list.push_back(130130131);
+    callback(*this, CameraLayer::EV_ERROR, context);
     return;
   }
 
   int bufferStatus = arv_buffer_get_status(buffer);
-  if (bufferStatus == ARV_BUFFER_STATUS_SUCCESS || bufferStatus == ARV_BUFFER_STATUS_SIZE_MISMATCH)
+  if (bufferStatus == ARV_BUFFER_STATUS_SUCCESS)// || bufferStatus == ARV_BUFFER_STATUS_SIZE_MISMATCH)
   {
 
     _frame_cache_buffer = buffer;
@@ -378,6 +388,22 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     _fi.width = w;
     _fi.height = h;
     _fi.pixel_size_mm=pixel_size_mm;
+
+    
+    ArvPixelFormat format = arv_buffer_get_image_pixel_format	(_frame_cache_buffer);
+    if(format==ARV_PIXEL_FORMAT_MONO_8)
+    {
+      _fi.channelCount=1;
+      _fi.pixelBits=8;
+    }
+    else if(true || format==ARV_PIXEL_FORMAT_BGR_8_PACKED || format==ARV_PIXEL_FORMAT_BAYER_GR_8 || format==ARV_PIXEL_FORMAT_BAYER_GB_8 || format==ARV_PIXEL_FORMAT_BAYER_RG_8)
+    {
+      _fi.channelCount=3;//3 channel
+      _fi.pixelBits=8*_fi.channelCount;
+    }
+
+
+
     fi=_fi;
     callback(*this, CameraLayer::EV_IMG, context);
 
@@ -395,6 +421,16 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
   else
   {
     LOGE("bufferStatus:%d", bufferStatus);
+    if(bufferStatus==ARV_BUFFER_STATUS_TIMEOUT||
+    bufferStatus==ARV_BUFFER_STATUS_MISSING_PACKETS||
+    bufferStatus==ARV_BUFFER_STATUS_WRONG_PACKET_ID||
+    bufferStatus==ARV_BUFFER_STATUS_SIZE_MISMATCH||
+    bufferStatus==ARV_BUFFER_STATUS_ABORTED
+    )
+    {
+
+      error_code_list.push_back(bufferStatus);
+    }
     // data->error_count++;
     frameInfo _fi = {
       timeStamp_us : 0,
@@ -453,7 +489,16 @@ void CameraLayer_Aravis::s_STREAM_CONTROL_LOST_CB(ArvStream *stream, CameraLayer
 
 void CameraLayer_Aravis::STREAM_CONTROL_LOST_CB(ArvStream *stream)
 {
-  LOGI("CTRL lost");
+  LOGI("CTRL lost %s",connection_data.name.c_str());
+
+
+  // error_code_list.push_back(130130130);
+  error_code_list.push_back(130130130);
+
+  
+  callback(*this, CameraLayer::EV_CTRL_LOST, context);
+
+
 }
 
 static void
@@ -562,13 +607,13 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   }
   // SetROI(20, 20, 500, 500, 0, 0); //reset the ROI
   
-  SetROI(0,0,999999,999999,0,0);
+  SetROI(0,0,999999,999999,0,0);//MAX ROI
   payloadSize = arv_camera_get_payload(camera, NULL);
 
   LOGI("payloadSize:%d", payloadSize);
   if (stream != NULL)
   { //push 1 buffer for now
-    for (int i = 0; i < 1; i++)
+    for (int i = 0; i < 2; i++)
     {
       arv_stream_push_buffer(stream, arv_buffer_new(payloadSize, NULL));
     }
@@ -587,7 +632,7 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
 
   arv_stream_set_emit_signals(stream, TRUE);
   g_signal_connect(arv_camera_get_device(camera), "control-lost",
-                   G_CALLBACK(s_STREAM_CONTROL_LOST_CB), NULL);
+                   G_CALLBACK(s_STREAM_CONTROL_LOST_CB), this);
 
   arv_camera_set_acquisition_mode (camera, ARV_ACQUISITION_MODE_CONTINUOUS, NULL);
   arv_camera_set_exposure_time_auto (camera,ARV_AUTO_OFF,NULL);
@@ -709,11 +754,30 @@ CameraLayer_Aravis::~CameraLayer_Aravis()
   if (stream)
   {
     g_object_unref(stream);
-    camera = NULL;
+    stream = NULL;
   }
 }
 CameraLayer::status CameraLayer_Aravis::SetMirror(int Dir, int en)
 {
+  bool doChange=false;
+  if(Dir==0)
+  {
+    if(prev_MirrorX!=en)
+    {
+      doChange=true;
+      prev_MirrorX=en;
+    }
+  }
+  if(Dir==1)
+  {
+    if(prev_MirrorY!=en)
+    {
+      doChange=true;
+      prev_MirrorY=en;
+    }
+  }
+
+  if(doChange==false)return CameraLayer::ACK;
 
   arv_camera_stop_acquisition (camera, NULL);
   if(Dir==0)
@@ -777,17 +841,6 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
 
   GError *err = NULL;
 
-  if(acquisition_started)
-  {
-    arv_camera_stop_acquisition (camera, &err);
-    if (err)
-    {
-      LOGI("ERR code:%d msg:%s", err->code, err->message);
-      g_clear_error(&err);
-    }
-    // sleep(1);
-    this_thread::sleep_for(chrono::milliseconds(1000) );
-  }
 
   gint	xo_inc = arv_camera_get_x_offset_increment	(camera,NULL);
   gint	yo_inc = arv_camera_get_y_offset_increment	(camera,NULL);
@@ -800,8 +853,35 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
   h=h/h_inc*h_inc;
 
 
+  bool doChange=false;
+  {
+    if(prev_ROI_X!=x||prev_ROI_Y!=y||prev_ROI_W!=w||prev_ROI_H!=h)
+    {
+      doChange=true;
+      prev_ROI_X=x;
+      prev_ROI_Y=y;
+      prev_ROI_W=w;
+      prev_ROI_H=h;
+    }
+  }
 
+  if(doChange==false)return CameraLayer::ACK;
   LOGI("xywh:%d,%d %d,%d >+>%d,%d %d,%d ", x, y, w, h,xo_inc,yo_inc,w_inc,h_inc);
+
+
+
+  if(acquisition_started)
+  {
+    arv_camera_stop_acquisition (camera, &err);
+    if (err)
+    {
+      LOGI("ERR code:%d msg:%s", err->code, err->message);
+      g_clear_error(&err);
+    }
+    // sleep(1);
+    this_thread::sleep_for(chrono::milliseconds(1000) );
+  }
+
 
 
 

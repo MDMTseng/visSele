@@ -1,10 +1,10 @@
-
 import {PostfixExpCalc,ESP2POST_FuncSet,ESP2POST_FuncCallBack} from './MISC_Util';
 
 var enc = new TextEncoder();
 
 const BPG_header_L = 9;
-let raw2header=(ws_evt:any, offset = 0)=>{
+
+const raw2header=(ws_evt:any, offset = 0)=>{
   if (( ws_evt.data instanceof ArrayBuffer) && ws_evt.data.byteLength>=BPG_header_L) {
     // var aDataArray = new Float64Array(evt.data);
     // var aDataArray = new Uint8Array(evt.data);
@@ -53,56 +53,115 @@ let raw2obj=(ws_evt:any, offset = 0)=>{
     data:str
   }
 };
+
+
+
+
+var Ascii_Decoder = new TextDecoder("ascii");
+let IM_CACHE_BUFF:Map<number,HTMLImageElement> = new Map();
+// const magicCacheThreshold = 5;
+// const blobUrlCache = new Set<Image>();
 let raw2obj_IM=(ws_evt:any, offset = 0)=>{
   let ret_obj = raw2header(ws_evt, offset);
   if(ret_obj==null)return null;
 
-  let headerL=15;
-  let headerArray = new Uint8ClampedArray(ws_evt.data,
-    offset+BPG_header_L,headerL);
 
 
-  let camera_id=headerArray[0];
-  let format=headerArray[1];
-  let offsetX=(headerArray[2]<<8)|headerArray[3];
-  let offsetY=(headerArray[4]<<8)|headerArray[5];
-  let width=(headerArray[6]<<8)|headerArray[7];
-  let height=(headerArray[8]<<8)|headerArray[9];
 
-  let scale=headerArray[10];
-  let full_width=(headerArray[11]<<8)|headerArray[12];
-  let full_height=(headerArray[13]<<8)|headerArray[14];
+  let headerLengthFieldSize=4;
+  let headerLengthField = new Uint8ClampedArray(ws_evt.data,
+    offset+BPG_header_L,headerLengthFieldSize);
+
+  let headerLength = headerLengthField[0]<<24 | headerLengthField[1]<<16 |
+            headerLengthField[2]<<8  | headerLengthField[3];
+
+  let headerJsonBuffer = new Uint8ClampedArray(ws_evt.data,
+    offset+BPG_header_L+headerLengthFieldSize,headerLength);
+
+
+
+  let headerJsonString = new TextDecoder("utf-8").decode(headerJsonBuffer);
+  console.log(headerLength,headerJsonString);
+  let headerJson = JSON.parse(headerJsonString);
+
+  console.log("[IM]img header",headerLength,headerJson);
+
+
+  let camera_id=headerJson.camera_id;
+  let format=headerJson.format;
+  let offsetX=headerJson.offset[0]??0;
+  let offsetY=headerJson.offset[1]??0;
+  let width=headerJson.size[0];
+  let height=headerJson.size[1];
+
+  let scale=headerJson.scale??1;
+  let full_width=headerJson.full_width??width;
+  let full_height=headerJson.full_height??height;
+  let imbuff_id=headerJson.imbuff_id??-999;
+
+  let is_base64_encoded=headerJson.base64_encoded??false;
+
+
+  console.log("format",format,headerLengthFieldSize,headerLength);
 
 
   let image:ImageData|HTMLImageElement|undefined=undefined;
-  let image_b64:string|undefined=undefined;
   // console.log(ws_evt);
-  if(format==0)
+  if(IM_CACHE_BUFF.has(imbuff_id))
+  {
+    image=IM_CACHE_BUFF.get(imbuff_id);
+    console.log("get from cache",image);
+  }
+  else if(format=="raw")
   {
     let RGBA_pix_Num = 4*width*height;
     let _image=new Uint8ClampedArray(ws_evt.data,
-      offset+BPG_header_L+headerL,4*width*height);
+      offset+
+      BPG_header_L+
+      headerLengthFieldSize+
+      headerLength,
+      
+      4*width*height);
     image=new ImageData(_image, width);
   }
-  else if(format==50)
+  else if(format=="jpg"||format=="png")
   {
-    let narr=new Uint8Array(ws_evt.data,offset+BPG_header_L+headerL) as any;
-    // console.log(narr);
+    const narr = new Uint8Array(ws_evt.data, 
+      offset+
+      BPG_header_L+
+      headerLengthFieldSize+
+      headerLength);
 
 
-    var enc = new TextDecoder("ascii");
-    image_b64=enc.decode(narr);
-    
-    // image_b64=(String.fromCharCode.apply(null, narr))
-    // console.log(image_b64);
-    
-    image= new Image();
-    
-    image.src=image_b64;
 
+    if(is_base64_encoded)
+    {
+      // image_b64=(String.fromCharCode.apply(null, narr))
+      // console.log(image_b64);
+      
+      image= new Image();
+      
+      image.src=Ascii_Decoder.decode(narr);;
+  
+    }
+    else
+    {
+      const blob = new Blob([narr], { type: (format=="jpg")?'image/jpeg':'image/png' });
+      const blobUrl = URL.createObjectURL(blob);
+      const img = new Image();
+  
+      // Add onload handler to revoke URL only after image is loaded
+      img.onload = () => {
+        console.log("[IM]img onload");
+        // URL.revokeObjectURL(blobUrl);
+      };
+  
+      img.src = blobUrl;
+      image = img;
+    }
   }
 
-  return {
+  let data={
     camera_id,
     format,
     offsetX,
@@ -113,6 +172,9 @@ let raw2obj_IM=(ws_evt:any, offset = 0)=>{
     // _image,
     image
   };
+
+  console.log("data",data);
+  return data;
 };
 
 let objbarr2raw=(type:string,prop:number,pgID:number,obj:({[key:string]:any}|undefined),barr:(Uint8Array|undefined)=undefined)=>{
