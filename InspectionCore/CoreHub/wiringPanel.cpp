@@ -2935,7 +2935,6 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
           pkt->img_prop=src->img_prop;
           pkt->img_show=src->img_show;
           pkt->process_time_us=src->process_time_us;
-          pkt->refInfo=src->refInfo;
 
           pkt->source=src->source;
           pkt->source_id=src->source_id;
@@ -4808,7 +4807,6 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget
             pkt->img_prop=src->img_prop;
             pkt->img_show=src->img_show;
             pkt->process_time_us=src->process_time_us;
-            pkt->refInfo=src->refInfo;
 
             pkt->source=src->source;
             pkt->source_id=src->source_id;
@@ -6664,20 +6662,6 @@ void sigroutine(int dunno)
 
 
 
-int opencv_rotCrop() {
-  // Load the image
-  cv::Mat src = cv::imread("image.png", cv::IMREAD_GRAYSCALE);
-  if (src.empty()) {
-      std::cout << "Could not open or find the image!" << std::endl;
-      return -1;
-  }
-
-  // sssimgProcess_TEST(src,NULL);
-  TEST_InspTar_LineFitting(src,NULL);
-  return 0;
-}
-
-
 void CalibProcess(string imgPath, Size boardSize = Size(42, 35))
 {
 
@@ -7245,5 +7229,5 @@ int cp_main(int argc, char **argv)
   signal(SIGPIPE, SIG_IGN);
 #endif
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
-  return mainLoop(chPort);
+    return mainLoop(chPort);
 }

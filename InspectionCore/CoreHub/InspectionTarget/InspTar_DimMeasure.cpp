@@ -429,15 +429,21 @@ shared_ptr<StageInfo_Orientation> loadOrientation(string path)
     if (jfile)
     {
       reporn_temp->load(jfile);
-      cJSON_Delete(jfile);
+      // cJSON_Delete(jfile);
+      if(reporn_temp->jInfo)
+      {
+        cJSON_Delete(reporn_temp->jInfo);
+      }
+      reporn_temp->jInfo=jfile;
+
+
       jfile = NULL;
     }
   }
-
-  reporn_temp->img_prop.mmpp=reporn_temp->mmpp;
+  reporn_temp->img_prop.mmpp=reporn_temp->get_mmpp();
 
   reporn_temp->genJsonRepTojInfo();
-  LOGI("=========orientation size:%d", reporn_temp->orientation.size());
+  LOGI("=========orientation size:%d", reporn_temp->get_report_count());
 
   return reporn_temp;
 }
@@ -667,17 +673,19 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
     {
       return false;
     }
-    if(input_orien->orientation.size()==0)
+
+    if(input_orien->get_report_count()==0)
     {
       return false;
     }
 
     int dbg_object_idx=JFetch_NUMBER_ex(info,"dbg_object_idx",-1);
-    if(dbg_object_idx>=0 &&  (dbg_object_idx < input_orien->orientation.size()))//check if dbg_object_idx is valid
+    int count=input_orien->get_report_count();
+    if(dbg_object_idx>=0 &&  (dbg_object_idx < count))//check if dbg_object_idx is valid
     {
       LOGE("=========input_orien->orientation.size()>1");
-      input_orien->orientation[0]=input_orien->orientation[dbg_object_idx];
-      input_orien->orientation.resize(1);
+      // input_orien->orientation[0]=input_orien->orientation[dbg_object_idx];
+      // input_orien-> orientation.resize(1);
     }
     auto report = singleProcess(input_orien,true);
 
@@ -1668,8 +1676,8 @@ bool InspectSearchPointFeature(const cv::Mat &mat_img2template,float mmpp,vector
       return false;
     }
 
-    refLineInfo=refInfo.result.report.line;
-    // Point2f pt1=refInfo.result.report.line.pt1,pt2=refInfo.result.report.line.pt2;
+    refLineInfo=refInfo.result.line;
+    // Point2f pt1=refInfo.result.line.pt1,pt2=refInfo.result.line.pt2;
     // ref_angle=atan2f(pt2.y-pt1.y,pt2.x-pt1.x);
 
 
@@ -1677,7 +1685,8 @@ bool InspectSearchPointFeature(const cv::Mat &mat_img2template,float mmpp,vector
 
 
   auto &inputInfo=info.inputInfo;
-  StageInfo_Orientation::orient pose = inputInfo->orientation[info.orientation_idx];
+  StageInfo_Orientation::orient pose;
+  inputInfo->get_report_object(info.orientation_idx,pose);
   pose.angle-=info.template_angle;
   Mat srcImg=inputInfo->img;
 
@@ -1685,8 +1694,8 @@ bool InspectSearchPointFeature(const cv::Mat &mat_img2template,float mmpp,vector
   cJSON *def=info.cached_feature_def;
 
   info.result.result_type=StageInfo_DimMeasure::POINT;
-  info.result.report.point.pt1.x=NAN;
-  info.result.report.point.pt1.y=NAN;
+  info.result.point.pt1.x=NAN;
+  info.result.point.pt1.y=NAN;
   info.result.error_code=-1;
   // info.result.error_msg="Not implemented";
 
@@ -1818,8 +1827,8 @@ bool InspectSearchPointFeature(const cv::Mat &mat_img2template,float mmpp,vector
   pts_on_template_coord[0].x,pts_on_template_coord[0].y,pts_on_template_coord[1].x,pts_on_template_coord[1].y,pts_on_template_coord[2].x,pts_on_template_coord[2].y);
 
 
-  info.result.report.point.pt1.x=pts_on_template_coord[0].x;
-  info.result.report.point.pt1.y=pts_on_template_coord[0].y;
+  info.result.point.pt1.x=pts_on_template_coord[0].x;
+  info.result.point.pt1.y=pts_on_template_coord[0].y;
 
   if(info.result.dbg_info!=NULL)
   {
@@ -1898,15 +1907,16 @@ bool InspectLineFitFeature(const cv::Mat &mat_img2template,float mmpp,vector<Ins
   cJSON *def=info.cached_feature_def;
 
   info.result.result_type=StageInfo_DimMeasure::LINE;
-  info.result.report.line.pt1.x=NAN;
-  info.result.report.line.pt1.y=NAN;
-  info.result.report.line.pt2.x=NAN;
-  info.result.report.line.pt2.y=NAN;
+  info.result.line.pt1.x=NAN;
+  info.result.line.pt1.y=NAN;
+  info.result.line.pt2.x=NAN;
+  info.result.line.pt2.y=NAN;
   info.result.error_code=-1;
   // info.result.error_msg="Not implemented";
 
 
-  StageInfo_Orientation::orient pose = inputInfo->orientation[info.orientation_idx];
+  StageInfo_Orientation::orient pose;
+  inputInfo->get_report_object(info.orientation_idx,pose);
   pose.angle-=info.template_angle;
   string name=JFetch_STRING_ex(def,"name");
 
@@ -2168,11 +2178,11 @@ bool InspectLineFitFeature(const cv::Mat &mat_img2template,float mmpp,vector<Ins
     LOGE("back:pt1:%f,%f,pt2:%f,%f,pto:%f,%f",
     pts_on_template_coord[0].x,pts_on_template_coord[0].y,pts_on_template_coord[1].x,pts_on_template_coord[1].y,pts_on_template_coord[2].x,pts_on_template_coord[2].y);
 
-    info.result.report.line.pt1.x=pts_on_template_coord[0].x;
-    info.result.report.line.pt1.y=pts_on_template_coord[0].y;
-    info.result.report.line.pt2.x=pts_on_template_coord[1].x;
-    info.result.report.line.pt2.y=pts_on_template_coord[1].y;
-    info.result.report.line.sigma=sigma;
+    info.result.line.pt1.x=pts_on_template_coord[0].x;
+    info.result.line.pt1.y=pts_on_template_coord[0].y;
+    info.result.line.pt2.x=pts_on_template_coord[1].x;
+    info.result.line.pt2.y=pts_on_template_coord[1].y;
+    info.result.line.sigma=sigma;
     info.result.error_code=0;
 
 
@@ -2387,14 +2397,16 @@ bool InspectArcFitFeature(const cv::Mat &mat_img2template,float mmpp,vector<Insp
   cJSON *def=info.cached_feature_def;
 
   info.result.result_type=StageInfo_DimMeasure::CIRCLE;
-  info.result.report.circle.c.x=NAN;
-  info.result.report.circle.c.y=NAN;
-  info.result.report.circle.r=NAN;
+  info.result.circle.c.x=NAN;
+  info.result.circle.c.y=NAN;
+  info.result.circle.r=NAN;
   info.result.error_code=-1;
   // info.result.error_msg="Not implemented";
 
 
-  StageInfo_Orientation::orient pose = inputInfo->orientation[info.orientation_idx];
+  StageInfo_Orientation::orient pose;// = inputInfo->orientation[info.orientation_idx];
+  inputInfo->get_report_object(info.orientation_idx,pose);
+
   pose.angle-=info.template_angle;
   string name=JFetch_STRING_ex(def,"name");
 
@@ -2545,11 +2557,11 @@ bool InspectArcFitFeature(const cv::Mat &mat_img2template,float mmpp,vector<Insp
     vector<cv::Point2f> center_on_template;
     cv::transform(center_on_img, center_on_template, img2spoint_view); 
     
-    info.result.report.circle.c.x=center_on_template[0].x;
-    info.result.report.circle.c.y=center_on_template[0].y;
-    // info.result.report.circle.r=res.size.width/2;//it's the radius on the image
-    info.result.report.circle.r=norm(center_on_template[1]-center_on_template[0]);//it's the radius on the template
-    // info.result.report.circle.sigma=sigma;
+    info.result.circle.c.x=center_on_template[0].x;
+    info.result.circle.c.y=center_on_template[0].y;
+    // info.result.circle.r=res.size.width/2;//it's the radius on the image
+    info.result.circle.r=norm(center_on_template[1]-center_on_template[0]);//it's the radius on the template
+    // info.result.circle.sigma=sigma;
     info.result.error_code=0;
     info.result.error_msg="";
 
@@ -2608,11 +2620,11 @@ Point2f getCenterPt(InspectionTarget_DimMeasure::itemInfo &info)
   switch(info.result.result_type)
   {
     case StageInfo_DimMeasure::LINE:
-      return (info.result.report.line.pt1+info.result.report.line.pt2)/2;
+      return (info.result.line.pt1+info.result.line.pt2)/2;
     case StageInfo_DimMeasure::POINT:
-      return info.result.report.point.pt1;
+      return info.result.point.pt1;
     case StageInfo_DimMeasure::CIRCLE:
-      return info.result.report.circle.c;
+      return info.result.circle.c;
     default:
       return {NAN,NAN};
   }
@@ -2711,7 +2723,7 @@ bool InspectMeasureDistanceFeature(vector<InspectionTarget_DimMeasure::itemInfo>
   Point2f obj1_pt1=getCenterPt(obj1_result);
   Point2f obj2_pt1=getCenterPt(obj2_result);
   Point2f obj_project_pt1=getCenterPt(obj_project_result);
-  Point2f obj_project_vec=obj_project_result.result.report.line.pt2-obj_project_result.result.report.line.pt1;
+  Point2f obj_project_vec=obj_project_result.result.line.pt2-obj_project_result.result.line.pt1;
   obj_project_vec=obj_project_vec/norm(obj_project_vec);//normalize
 
   float projectRotateTheta=JFetch_NUMBER_ex(info.cached_feature_def,"rotate",M_PI/2);
@@ -2787,7 +2799,7 @@ bool InspectMeasureDistanceFeature(vector<InspectionTarget_DimMeasure::itemInfo>
   }
 
   info.result.result_type=StageInfo_DimMeasure::VALUE;
-  info.result.report.value.value=distance;
+  info.result.value.value=distance;
   info.result.error_code=0;
   info.result.error_msg="";
   return true;
@@ -2845,8 +2857,8 @@ bool InspectMeasureAngleFeature(vector<InspectionTarget_DimMeasure::itemInfo> &f
   angle_select%=8;
   if(angle_select<0)angle_select+=8;
 
-  Point2f obj1_vec=obj1_result.result.report.line.pt2-obj1_result.result.report.line.pt1;
-  Point2f obj2_vec=obj2_result.result.report.line.pt2-obj2_result.result.report.line.pt1;
+  Point2f obj1_vec=obj1_result.result.line.pt2-obj1_result.result.line.pt1;
+  Point2f obj2_vec=obj2_result.result.line.pt2-obj2_result.result.line.pt1;
   obj1_vec=obj1_vec/norm(obj1_vec);//normalize
   obj2_vec=obj2_vec/norm(obj2_vec);//normalize
 
@@ -2926,7 +2938,7 @@ bool InspectMeasureAngleFeature(vector<InspectionTarget_DimMeasure::itemInfo> &f
 
 
   info.result.result_type=StageInfo_DimMeasure::VALUE;
-  info.result.report.value.value=angle;
+  info.result.value.value=angle;
   if(angle!=angle)
   {
     info.result.error_code=-1;
@@ -2969,19 +2981,19 @@ bool InspectMeasureDiameterFeature(vector<InspectionTarget_DimMeasure::itemInfo>
   }
 
 
-  Point2f center=obj1_result.result.report.circle.c;
-  float radius=obj1_result.result.report.circle.r;
+  Point2f center=obj1_result.result.circle.c;
+  float radius=obj1_result.result.circle.r;
 
   info.result.result_type=StageInfo_DimMeasure::VALUE;
 
   bool is_radius=JFetch_TRUE(info.cached_feature_def,"is_radius");
   if(is_radius)
   {
-    info.result.report.value.value=radius;
+    info.result.value.value=radius;
   }
   else
   {
-    info.result.report.value.value=radius*2;
+    info.result.value.value=radius*2;
   }
   info.result.error_code=0;
   info.result.error_msg="";
@@ -3121,7 +3133,7 @@ bool InspectionTarget_DimMeasure::executeCategory(const vector<itemInfo> &fqList
         continue;
       }
 
-      float value=ref_info.result.report.value.value;
+      float value=ref_info.result.value.value;
       LOGE("value:%f,low_limit:%f,high_limit:%f",value,limits_setup.low_limit,limits_setup.high_limit);
       if(value==value)
       {
@@ -3231,25 +3243,24 @@ shared_ptr<StageInfo_DimMeasure> InspectionTarget_DimMeasure::singleProcess(shar
 
   reportInfo->source = this;
   
-  float mmpp=sinfo_img->mmpp;
+  float mmpp=sinfo_img->get_mmpp();
   float template_angle=0;//JFetch_NUMBER_ex(def,"featureInfo.template_angle",0);
 
   LOGE("wwwwww");
+  int obj_orientation_count=sinfo_img->get_report_count();
   // LOGE("sinfo_img use_count: %ld  p:%p from:%s", sinfo_img.use_count(),sinfo.get(),sinfo_img->source->name.c_str());
-  LOGE("Orientation vector size: %zu  empty: %d", sinfo_img->orientation.size(),sinfo_img->orientation.empty());
-  for (int i = 0; i < sinfo_img->orientation.size(); i++)
+  LOGE("Orientation vector size: %zu", obj_orientation_count);
+
+  for (int i = 0; i < obj_orientation_count; i++)
   {
     // std::cout<<"orientation["<<i<<"]:"<<orientation[i]<<std::endl;
-
-    auto pose = sinfo_img->orientation[i];
+    StageInfo_Orientation::orient pose;
+    sinfo_img->get_report_object(i,pose);
 
     
-
-    reportInfo->orientation.push_back(pose);
     pose.angle-=template_angle;
 
-    LOGE("mmpp:%f",sinfo_img->mmpp);
-    Mat mat_img2template=template_from_img(pose,sinfo_img->mmpp);
+    Mat mat_img2template=template_from_img(pose,mmpp);
 
 // LOGE("wwwwww");
 //     cv::Mat rotationMatrix = cv::getRotationMatrix2D(pose.center, pose.angle-template_angle, 1.0);
@@ -3309,12 +3320,14 @@ shared_ptr<StageInfo_DimMeasure> InspectionTarget_DimMeasure::singleProcess(shar
 
 
     StageInfo_DimMeasure::DimMeasureResultInfo dimMeasureResultInfo;
+    dimMeasureResultInfo.pose=pose;
     dimMeasureResultInfo.measureList=MeasureReport;
     dimMeasureResultInfo.categoryList=CategoryReport;
 
 
 
-    reportInfo->DimMeasureResultList.push_back(dimMeasureResultInfo);
+    // reportInfo->DimMeasureResultList.push_back(dimMeasureResultInfo);
+    reportInfo->set_report_object(i,dimMeasureResultInfo);
 
   }
 
@@ -3328,7 +3341,8 @@ shared_ptr<StageInfo_DimMeasure> InspectionTarget_DimMeasure::singleProcess(shar
   }
 
 
-  reportInfo->mmpp=sinfo_img->mmpp;
+  reportInfo->set_mmpp(sinfo_img->get_mmpp());
+
   reportInfo->img = sinfo_img->img;
   reportInfo->img_show = sinfo_img->img_show;
 

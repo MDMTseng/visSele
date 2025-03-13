@@ -653,7 +653,6 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
         pkt->img_prop=src->img_prop;
         pkt->img_show=src->img_show;
         pkt->process_time_us=src->process_time_us;
-        pkt->refInfo=src->refInfo;
 
         pkt->source=src->source;
         pkt->source_id=src->source_id;
@@ -1710,7 +1709,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   
   shared_ptr<StageInfo_Orientation> reportInfo(new StageInfo_Orientation());
   {
-    reportInfo->orientation.clear();
+    reportInfo->clear_report();
     cJSON *search_regions = JFetch_ARRAY(def, "search_regions");
     float similarity_thres = JFetch_NUMBER_ex(def, "similarity_thres", 60);
 
@@ -1903,7 +1902,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
                 maxIdx=i;
               }
             }
-            reportInfo->orientation.push_back(orientList[maxIdx]);
+            reportInfo->push_report_object(orientList[maxIdx]);
           }
           else
           {
@@ -1914,7 +1913,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
             orie.flip = false;
             orie.center = {0, 0};
             orie.confidence = -1;
-            reportInfo->orientation.push_back(orie);
+            reportInfo->push_report_object(orie);
           }
 
 
@@ -1924,7 +1923,11 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
         }
         else
         {
-          reportInfo->orientation.insert(reportInfo->orientation.end(), orientList.begin(), orientList.end());
+
+          for(auto &orie:orientList)
+          {
+            reportInfo->push_report_object(orie);
+          }
         }
 
       }
@@ -1977,12 +1980,15 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
               maxIdx=i;
             }
           }
-          reportInfo->orientation.push_back(orientList[maxIdx]);
+          reportInfo->push_report_object(orientList[maxIdx]);
         }
       }
       else
       {
-        reportInfo->orientation.insert(reportInfo->orientation.end(), orientList.begin(), orientList.end());
+        for(auto &orie:orientList)
+        {
+          reportInfo->push_report_object(orie);
+        }
       }
     }
 
@@ -1995,14 +2001,13 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
 
 
-  reportInfo->mmpp=sinfo->img_prop.mmpp;
+  reportInfo->set_mmpp(sinfo->img_prop.mmpp);
   reportInfo->source = this;
   reportInfo->source_id = id;
   reportInfo->img_show =
       reportInfo->img = sinfo->img;
   reportInfo->trigger_id = sinfo->trigger_id;
 
-  reportInfo->refInfo.push_back(sinfo);
   reportInfo->trigger_tags.push_back(id);
   insertInputTagsWPrefix(reportInfo->trigger_tags, sinfo->trigger_tags, "s_");
 
@@ -2011,7 +2016,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   reportInfo->img_prop = sinfo->img_prop;
   reportInfo->img_prop.StreamInfo.channel_id = JFetch_NUMBER_ex(additionalInfo, "stream_info.stream_id", 0);
   reportInfo->img_prop.StreamInfo.downsample = JFetch_NUMBER_ex(additionalInfo, "stream_info.downsample", 10);
-  LOGI("id:%s   reportInfo->orientation.size():%d  p:%p", id.c_str(), reportInfo->orientation.size(),reportInfo.get());
+  LOGI("id:%s   reportInfo->orientation.size():%d  p:%p", id.c_str(), reportInfo->get_report_count(),reportInfo.get());
 
   {
     int64 t1 = cv::getTickCount();

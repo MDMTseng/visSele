@@ -3298,7 +3298,6 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   reportInfo->img=d_sinfo->img;
   
   reportInfo->trigger_id=sinfo->trigger_id;
-  reportInfo->refInfo.push_back(sinfo);
   reportInfo->trigger_tags.push_back(id);
 
   insertInputTagsWPrefix(reportInfo->trigger_tags,sinfo->trigger_tags,"s_");

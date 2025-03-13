@@ -30,9 +30,6 @@
 #include <InspTar_SurfaceCheckSimple.hpp>
 
 // #include <InspTar_Empty.hpp>
-#include <InspTar_ArcFitting.hpp>
-#include <InspTar_LineFitting.hpp>
-#include <InspTar_DirectionalCaliper.hpp>
 #include <InspTar_CameraCalib.hpp>
 #include <InspTar_DimMeasure.hpp>
 using namespace cv;
@@ -311,23 +308,6 @@ static InspectionTarget* createInspectionTarget(std::string type)
   {
     inspTar = new InspectionTarget_SurfaceCheckSimple();
     
-  }
-  else if(type==InspectionTarget_DirectionalCaliper::sTYPE())
-  {
-    inspTar = new InspectionTarget_DirectionalCaliper();
-    
-  }
-  else if(type==InspectionTarget_ArcFitting::sTYPE())
-  {
-    inspTar = new InspectionTarget_ArcFitting();
-  }
-  else if(type==InspectionTarget_LineFitting::sTYPE())
-  {
-    inspTar = new InspectionTarget_LineFitting();
-  }
-  else if(type==InspectionTarget_DirectionalCaliper::sTYPE())
-  {
-    inspTar = new InspectionTarget_DirectionalCaliper();
   }
   // else if(type==InspectionTarget_Empty::sTYPE())
   // {

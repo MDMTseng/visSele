@@ -57,7 +57,7 @@ class StageInfo{
 
 
   //REFERENCE--------------------------------
-  std::vector<std::shared_ptr<StageInfo>> refInfo;//meaningful reference info, mainly for track
+  // std::vector<std::shared_ptr<StageInfo>> refInfo;//meaningful reference info, mainly for track
 
 
 
@@ -115,6 +115,8 @@ class StageInfo{
         if(tag)trigger_tags.push_back(tag->valuestring);
       }
     }
+
+    
     
     error_code=JFetch_NUMBER_ex(json,"error_code",0);
     error_msg=JFetch_STRING_ex(json,"error_msg","");
@@ -183,7 +185,7 @@ class StageInfo{
     //   }
     //   refInfo[i]=NULL;
     // }
-    refInfo.clear();
+    // refInfo.clear();
     StageInfoLiveCounter--;
 #if STAGEINFO_LIFECYCLE_DEBUG
     LOGE("-->StageInfoLiveCounter:%d  :%p",(int)StageInfoLiveCounter,this);
@@ -319,6 +321,31 @@ class StageInfo{
       cJSON_AddItemToArray(jPoint,cJSON_CreateNumber(ret_points[i].z));
     }
   }
+
+
+
+  static int attach_Point2f_to_json(cJSON* dst_jobj,string key,const cv::Point2f &pt){
+    if(dst_jobj==NULL)return -1;
+    cJSON* jpt=cJSON_CreateObject();
+    cJSON_AddItemToObject(dst_jobj,key.c_str(),jpt);
+    cJSON_AddNumberToObject(jpt,"x",pt.x);
+    cJSON_AddNumberToObject(jpt,"y",pt.y);
+    return 0;
+  }
+
+  static int Point2f_from_json(cJSON* src_jobj,string key,cv::Point2f &ret_pt){
+    if(src_jobj==NULL)return -1;
+    cJSON* jpt=cJSON_GetObjectItem(src_jobj,key.c_str());
+    if(jpt==NULL)return -2;
+    ret_pt.x=JFetch_NUMBER_ex(jpt,"x");
+    ret_pt.y=JFetch_NUMBER_ex(jpt,"y");
+    return 0;
+  }
+
+
+
+
+
 
   static void Mat2cJson(cJSON* jObj,cv::Mat mat)
   {
@@ -709,225 +736,171 @@ class StageInfo_Empty:public StageInfo_Category
 
 
 
-class StageInfo_LineFitting:public StageInfo_Category
-{
-  public:
-  static std::string stypeName(){return "LineFitting";}
-  virtual std::string typeName(){return this->stypeName();}
-
-  float pt1_x,pt1_y,pt2_x,pt2_y;
-
-  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
-  {
-    LOGE("StageInfo_LineFitting::attachJsonRep");
-    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
-
-
-    cJSON* report=cJSON_CreateObject();
-    cJSON_AddItemToObject(rootRep,"report",report);
-
-    //add result_cat
-    cJSON_AddNumberToObject(rootRep,"category",category);
-
-    if(!IS_STAGEINFO_CAT_NOT_AVAILABLE(category))
-    {//add pt1 and pt2
-      cJSON *pt1=cJSON_CreateObject();
-      cJSON_AddItemToObject(report,"pt1",pt1);
-      cJSON_AddNumberToObject(pt1,"x",pt1_x);
-      cJSON_AddNumberToObject(pt1,"y",pt1_y);
-
-      cJSON *pt2=cJSON_CreateObject();
-      cJSON_AddItemToObject(report,"pt2",pt2);
-      cJSON_AddNumberToObject(pt2,"x",pt2_x);
-      cJSON_AddNumberToObject(pt2,"y",pt2_y);
-
-    }
-
-
-    return rootRep;
-  }
-};
-
-
-
-class StageInfo_ArcFitting:public StageInfo_Category
-{
-  public:
-  static std::string stypeName(){return "ArcFitting";}
-  virtual std::string typeName(){return this->stypeName();}
-
-  float center_x,center_y,radius;
-  float angle_start,angle_end;
-  float sigma;
-
-  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
-  {
-    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
-
-    cJSON* report=cJSON_CreateObject();
-    cJSON_AddItemToObject(rootRep,"report",report);
-
-    //add result_cat
-    cJSON_AddNumberToObject(rootRep,"category",category);
-
-    LOGE("MAKE json rep for ArcFitting");
-    if(!IS_STAGEINFO_CAT_NOT_AVAILABLE(category))
-    {//add pt1 and pt2
-      cJSON *center=cJSON_CreateObject();
-      cJSON_AddItemToObject(report,"center",center);
-      cJSON_AddNumberToObject(center,"x",center_x);
-      cJSON_AddNumberToObject(center,"y",center_y);
-
-      cJSON_AddNumberToObject(report,"radius",radius);
-      cJSON_AddNumberToObject(report,"sigma",sigma);
-      cJSON_AddNumberToObject(report,"angle_start",angle_start);
-      cJSON_AddNumberToObject(report,"angle_end",angle_end);
-
-    }
-
-
-    return rootRep;
-  }
-};
-
-
-
-class StageInfo_DirectionalCaliper:public StageInfo_Category
-{
-  public:
-  static std::string stypeName(){return "DirectionalCaliper";}
-  virtual std::string typeName(){return this->stypeName();}
-
-  float location_x,location_y;
-
-  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
-  {
-    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
-
-    cJSON* report=cJSON_CreateObject();
-    cJSON_AddItemToObject(rootRep,"report",report);
-
-    //add result_cat
-    cJSON_AddNumberToObject(rootRep,"category",category);
-
-    if(!IS_STAGEINFO_CAT_NOT_AVAILABLE(category))
-    {//add pt1 and pt2
-      cJSON *location=cJSON_CreateObject();
-      cJSON_AddItemToObject(report,"location",location);
-      cJSON_AddNumberToObject(location,"x",location_x);
-      cJSON_AddNumberToObject(location,"y",location_y);
-    }
-
-
-    return rootRep;
-  }
-};
-
-
-
 class StageInfo_Orientation:public StageInfo
 {
   public:
 
+  StageInfo_Orientation(){
+    jInfo=cJSON_CreateObject();
+  }
 
+
+
+  virtual void genJsonRepTojInfo(uint64_t brifVector=0xFFFF)
+  {
+    jInfo=attachJsonRep(jInfo,brifVector);
+
+  }
   
   static string stypeName(){return "Orientation";}
   string typeName(){return StageInfo_Orientation::stypeName();}
 
 
-  float mmpp=1;
   struct orient{
     cv::Point2f center;
     float angle;
     bool flip;
     float confidence;
   };
+  // vector<struct orient> orientation;
 
-
-  
-  vector<struct orient> orientation;
-
-
-  virtual bool load(cJSON* json)
-  {
-    StageInfo::load(json);
-    cJSON* repArray=JFetch_ARRAY(json,"report");
-    if(repArray==NULL)return false;
-
-    mmpp=JFetch_NUMBER_ex(json,"mmpp",1);
-
-    int size=cJSON_GetArraySize(repArray);
-    for(int i=0;i<size;i++)
-    {
-      cJSON* jorient=cJSON_GetArrayItem(repArray,i);
-      if(jorient==NULL)continue;
-
-      struct orient orie;
-      orie.center.x=JFetch_NUMBER_ex(jorient,"center.x",0);
-      orie.center.y=JFetch_NUMBER_ex(jorient,"center.y",0);
-      orie.angle=JFetch_NUMBER_ex(jorient,"angle",0);
-      orie.confidence=JFetch_NUMBER_ex(jorient,"confidence",0);
-      orie.flip=JFetch_TRUE(jorient,"flip");
-
-      orientation.push_back(orie);
-
-    }
-
-    return true;
+  float get_mmpp(){
+    return JFetch_NUMBER_ex(jInfo,"mmpp");
+  }
+  int set_mmpp(float mmpp){
+    cJSON_AddNumberToObject(jInfo,"mmpp",mmpp);
+    return 0;
   }
 
 
 
+  int get_report_count(){
+    
+    cJSON* repArray=cJSON_GetObjectItem(this->jInfo,"report");
 
-  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
-  {
-    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
-
-    cJSON* repArray=cJSON_CreateArray();
-    cJSON_AddItemToObject(rootRep,"report",repArray);
-
-    cJSON_AddNumberToObject(rootRep,"mmpp",mmpp);
-
-    for(int i=0;i<orientation.size();i++)
+    if(repArray==NULL)
     {
-      cJSON *jorient=cJSON_CreateObject();
+      repArray=cJSON_CreateArray();
+      cJSON_AddItemToObject(this->jInfo,"report",repArray);
+    }
+    if(repArray==NULL || !cJSON_IsArray(repArray)) return -1;
+    return cJSON_GetArraySize(repArray);
+  }
+
+  static int get_orient_from_json(cJSON* jObj,orient &ret_orie){
+    ret_orie.center.x=JFetch_NUMBER_ex(jObj,"center.x");
+    ret_orie.center.y=JFetch_NUMBER_ex(jObj,"center.y");
+    ret_orie.angle=JFetch_NUMBER_ex(jObj,"angle");
+    ret_orie.confidence=JFetch_NUMBER_ex(jObj,"confidence");
+    ret_orie.flip=JFetch_TRUE(jObj,"flip");
+    return 0;
+  }
+  static int set_orient_to_json(cJSON* jObj,const orient &orie){
+    attach_Point2f_to_json(jObj,"center",orie.center);
+    cJSON_AddNumberToObject(jObj,"angle",orie.angle);
+    cJSON_AddNumberToObject(jObj,"confidence",orie.confidence);
+    cJSON_AddBoolToObject(jObj,"flip",orie.flip);
+    return 0;
+  }
+
+
+  int get_report_object(int index,orient &ret_orie){
+
+    cJSON* repArray=JFetch_ARRAY(this->jInfo,"report");
+    if(repArray==NULL || !cJSON_IsArray(repArray)) return -1;
+    int asize=cJSON_GetArraySize(repArray);
+    if(index>=asize)return -2;
+    if(index<0)index+=asize;
+    if(index<0)return  -3;
+
+    cJSON* jorient=cJSON_GetArrayItem(repArray,index);
+    if(jorient==NULL)return -4;
+
+    get_orient_from_json(jorient,ret_orie);
+    return 0;
+  }
+  int set_report_object(int index,const orient &orie){
+
+    cJSON* repArray=JFetch_ARRAY(this->jInfo,"report");
+    if(repArray==NULL)
+    {
+      repArray=cJSON_CreateArray();
+      cJSON_AddItemToObject(this->jInfo,"report",repArray);
+    }
+    if(repArray==NULL || !cJSON_IsArray(repArray)) return -1;
+    int asize=cJSON_GetArraySize(repArray);
+    if(index>asize)return -2;
+    if(index<0)index+=asize;
+    if(index<0)return  -3;
+
+
+    LOGE("idx:%d  asize:%d",index,asize);
+    cJSON *jorient=NULL;
+    if(index==asize)//append new
+    {
+      jorient=cJSON_CreateObject();
       cJSON_AddItemToArray(repArray,jorient);
-      orient orie=orientation[i];
-      {
-        cJSON *center=cJSON_CreateObject();
-
-        cJSON_AddItemToObject(jorient,"center",center);
-
-        cJSON_AddNumberToObject(center,"x",orie.center.x);
-        cJSON_AddNumberToObject(center,"y",orie.center.y);
-      }
-      // cJSON_AddNumberToObject(jorient,"area",tarArea);
-
-      cJSON_AddNumberToObject(jorient,"angle",orie.angle);
-      cJSON_AddNumberToObject(jorient,"confidence",orie.confidence);
-      
-      cJSON_AddBoolToObject(jorient,"flip",orie.flip);
-
-
-
     }
-
-    return rootRep;
-  }
+    else
+    {
+      jorient=cJSON_GetArrayItem(repArray,index);
+    }
+    if(jorient==NULL)return -5;
 
   
+
+    {
+      cJSON *center=cJSON_CreateObject();
+
+      cJSON_AddItemToObject(jorient,"center",center);
+
+      cJSON_AddNumberToObject(center,"x",orie.center.x);
+      cJSON_AddNumberToObject(center,"y",orie.center.y);
+    }
+    // cJSON_AddNumberToObject(jorient,"area",tarArea);
+
+    cJSON_AddNumberToObject(jorient,"angle",orie.angle);
+    cJSON_AddNumberToObject(jorient,"confidence",orie.confidence);
+    
+    cJSON_AddBoolToObject(jorient,"flip",orie.flip);
+
+  }
+  int push_report_object(const orient &orie){
+    return set_report_object(get_report_count(),orie);
+  }
+  
+  void clear_report(){
+    cJSON* repArray = cJSON_DetachItemFromObject(this->jInfo, "report");
+    if (repArray != NULL) {
+      cJSON_Delete(repArray);
+    }
+
+    //create new report array
+    repArray=cJSON_CreateArray();
+    cJSON_AddItemToObject(this->jInfo,"report",repArray);
+  }
 };
 
 
-class StageInfo_DimMeasure:public StageInfo_Orientation
+class StageInfo_DimMeasure:public StageInfo
 {
   public:
   static std::string stypeName(){return "DimMeasure";}
   virtual std::string typeName(){return this->stypeName();}
 
 
+  StageInfo_DimMeasure(){
+    jInfo=cJSON_CreateObject();
+    cJSON* repArray=cJSON_CreateArray();
+    cJSON_AddItemToObject(jInfo,"report",repArray);
+  }
 
+  virtual void genJsonRepTojInfo(uint64_t brifVector=0xFFFF)
+  {
+    jInfo=attachJsonRep(jInfo,brifVector);
 
+  }
+  
 
 
 	enum ResultType{
@@ -936,235 +909,340 @@ class StageInfo_DimMeasure:public StageInfo_Orientation
 		CIRCLE=3,
 		VALUE=4,
 		CATEGORY=5,
+
+    UNSET=9999
 	} ;
 
 	// struct Point2D{
 	// 	float x;
 	// 	float y;
 	// };
+
 	struct LINE_RESULT{
 		cv::Point2f pt1;
 		cv::Point2f pt2;
     float sigma;
-
+    static int from_json(cJSON* jObj,LINE_RESULT &ret_result){
+      if(jObj==NULL)return -1;
+      Point2f_from_json(jObj,"pt1",ret_result.pt1);
+      Point2f_from_json(jObj,"pt2",ret_result.pt2);
+      ret_result.sigma=JFetch_NUMBER_ex(jObj,"sigma");
+      return 0;
+    }
+    static int to_json(cJSON* jresult,const LINE_RESULT &result){
+      attach_Point2f_to_json(jresult,"pt1",result.pt1);
+      attach_Point2f_to_json(jresult,"pt2",result.pt2);
+      cJSON_AddNumberToObject(jresult,"sigma",result.sigma);
+    }
 	};
 
 	struct POINT_RESULT{
 		cv::Point2f pt1;//it's the target point
+    static int from_json(cJSON* jObj,POINT_RESULT &ret_result){
+      if(jObj==NULL)return -1;
+      Point2f_from_json(jObj,"pt1",ret_result.pt1);
+      return 0;
+    }
+    static int to_json(cJSON* jresult,const POINT_RESULT &result){
+      attach_Point2f_to_json(jresult,"pt1",result.pt1);
+    }
 	};
 
 	struct CIRCLE_RESULT{
 		cv::Point2f c;
 		float r;
+    static int from_json(cJSON* jObj,CIRCLE_RESULT &ret_result){
+      if(jObj==NULL)return -1;
+      Point2f_from_json(jObj,"c",ret_result.c);
+      ret_result.r=JFetch_NUMBER_ex(jObj,"r");
+      return 0;
+    }
+    static int to_json(cJSON* jresult,const CIRCLE_RESULT &result){
+      attach_Point2f_to_json(jresult,"c",result.c);
+      cJSON_AddNumberToObject(jresult,"r",result.r);
+    }
 	};
 
 	struct VALUE_RESULT{
 		float value;
-    
+    static int from_json(cJSON* jObj,VALUE_RESULT &ret_result){
+      if(jObj==NULL)return -1;
+      ret_result.value=JFetch_NUMBER_ex(jObj,"value");
+      return 0;
+    }
+    static int to_json(cJSON* jresult,const VALUE_RESULT &result){
+      cJSON_AddNumberToObject(jresult,"value",result.value);
+    }
 	};
 
 	struct CATEGORY_RESULT{
 		int category;
+    static int from_json(cJSON* jObj,CATEGORY_RESULT &ret_result){
+      if(jObj==NULL)return -1;
+      ret_result.category=JFetch_NUMBER_ex(jObj,"category");
+      return 0;
+    }
+    static int to_json(cJSON* jresult,const CATEGORY_RESULT &result){
+      cJSON_AddNumberToObject(jresult,"category",result.category);
+    }
 	};
 
   struct MeasureResultInfo
 	{
 			// FeatureType feature_type;
-			ResultType result_type;
-			union{
-				LINE_RESULT line;
-				POINT_RESULT point;
-				CIRCLE_RESULT circle;
-				VALUE_RESULT value;
-				CATEGORY_RESULT category;
-			}report;
+			ResultType result_type=UNSET;
+
+      LINE_RESULT line;
+      POINT_RESULT point;
+      CIRCLE_RESULT circle;
+      VALUE_RESULT value;
+      CATEGORY_RESULT category;
 
       cJSON* dbg_info;
 			int error_code;
 			string error_msg;
-	};
 
-
+      static int from_json(cJSON* jObj,MeasureResultInfo &ret_result)
+      {
+        ret_result.result_type=(ResultType)JFetch_NUMBER_ex(jObj,"result_type",UNSET);
+       
+        
+        switch(ret_result.result_type)
+        {
+          case LINE:
+            LINE_RESULT::from_json(jObj,ret_result.line);
+            break;
+          case POINT:
+            POINT_RESULT::from_json(jObj,ret_result.point);
+            break;
+          case CIRCLE:
+            CIRCLE_RESULT::from_json(jObj,ret_result.circle);
+            break;
+          case VALUE:
+            VALUE_RESULT::from_json(jObj,ret_result.value);
+            break;
+          case CATEGORY:
+            CATEGORY_RESULT::from_json(jObj,ret_result.category);
+            break;
+          default:
+            return -1;
+        }
+        
+        return 0;
+      }
+      static int to_json(cJSON* jresult,const MeasureResultInfo &result){
+        cJSON_AddNumberToObject(jresult,"result_type",result.result_type);
+        cJSON_AddItemToObject(
+          jresult,
+          "dbg_info",
+          cJSON_Duplicate(result.dbg_info,true));
+        switch(result.result_type)
+        {
+          case LINE:
+            LINE_RESULT::to_json(jresult,result.line);
+            break;
+          case POINT:
+            POINT_RESULT::to_json(jresult,result.point);
+            break;
+          case CIRCLE:
+            CIRCLE_RESULT::to_json(jresult,result.circle);
+            break;
+          case VALUE:
+            VALUE_RESULT::to_json(jresult,result.value);
+            break;
+          case CATEGORY:
+            CATEGORY_RESULT::to_json(jresult,result.category);
+            break;
+          default:
+            return -1;
+        }
+        return 0;
+      }
+  };
 
   struct CategoryResultInfo
 	{
     int category;
     vector<int> sub_category;
+    static int from_json(cJSON* jObj,CategoryResultInfo &ret_result){
+      ret_result.category=JFetch_NUMBER_ex(jObj,"category",STAGEINFO_CAT_UNSET);
+      ret_result.sub_category.clear();
+      cJSON* jsub_category=JFetch_ARRAY(jObj,"sub_category");
+      if(jsub_category==NULL || !cJSON_IsArray(jsub_category))
+      {
+        return -1;
+      }
+    
+      int asize=cJSON_GetArraySize(jsub_category);
+      for(int j=0;j<asize;j++)
+      {
+        cJSON* jsub_category_item=cJSON_GetArrayItem(jsub_category,j);
+        if(jsub_category_item==NULL)continue;
+        ret_result.sub_category.push_back(JFetch_NUMBER_ex(jsub_category_item,std::to_string(j).c_str(),STAGEINFO_CAT_UNSET));
+      }
+    
+      return 0;
+    }
+    static int to_json(cJSON* jresult,const CategoryResultInfo &result){
+      cJSON_AddNumberToObject(jresult,"category",result.category);
+      cJSON* jsub_category=cJSON_CreateArray();
+      cJSON_AddItemToObject(jresult,"sub_category",jsub_category);
+      for(int i=0;i<result.sub_category.size();i++)
+      {
+        cJSON_AddNumberToObject(jsub_category,std::to_string(i).c_str(),result.sub_category[i]);
+      }
+    }
   };
   struct DimMeasureResultInfo{
+    StageInfo_Orientation::orient pose;
     vector<MeasureResultInfo> measureList;
 
     vector<CategoryResultInfo> categoryList;
   };
-	vector<DimMeasureResultInfo> DimMeasureResultList;
+	// vector<DimMeasureResultInfo> DimMeasureResultList;
 
 
-  cJSON* GenJsonFromResult(MeasureResultInfo &result)
-  {
-    cJSON* jresult=cJSON_CreateObject();
-    switch(result.result_type)
+  int get_report_count(){
+    
+    cJSON* repArray=JFetch_ARRAY(this->jInfo,"report");
+    if(repArray==NULL)
     {
-      case LINE:
-      {
-        cJSON* jpt1=cJSON_CreateObject();
-        cJSON_AddItemToObject(jresult,"pt1",jpt1);
-        cJSON_AddNumberToObject(jpt1,"x",result.report.line.pt1.x);
-        cJSON_AddNumberToObject(jpt1,"y",result.report.line.pt1.y);
-
-        cJSON* jpt2=cJSON_CreateObject();
-        cJSON_AddItemToObject(jresult,"pt2",jpt2);
-        cJSON_AddNumberToObject(jpt2,"x",result.report.line.pt2.x);
-        cJSON_AddNumberToObject(jpt2,"y",result.report.line.pt2.y);
-
-
-        break;
-      }
-      case POINT:
-      {
-        cJSON* jpt1=cJSON_CreateObject();
-        cJSON_AddItemToObject(jresult,"pt1",jpt1);
-        cJSON_AddNumberToObject(jpt1,"x",result.report.point.pt1.x);
-        cJSON_AddNumberToObject(jpt1,"y",result.report.point.pt1.y);
-
-        break;
-      }
-      case CIRCLE:
-      {
-
-        cJSON* jcentre=cJSON_CreateObject();
-        cJSON_AddItemToObject(jresult,"c",jcentre);
-        cJSON_AddNumberToObject(jcentre,"x",result.report.circle.c.x);
-        cJSON_AddNumberToObject(jcentre,"y",result.report.circle.c.y);
-        cJSON_AddNumberToObject(jresult,"r",result.report.circle.r);
-        break;
-      }
-      case VALUE:
-      {
-        cJSON_AddNumberToObject(jresult,"value",result.report.value.value);
-        break;
-      }
-      case CATEGORY:
-      {
-        cJSON_AddNumberToObject(jresult,"category",result.report.category.category);
-        break;
-      }
-      default:
-      {
-        string error_msg="No serial code for result type:"+std::to_string(result.result_type);
-        cJSON_AddStringToObject(jresult,"serial_error",error_msg.c_str());
-        break;
-      }
-
+      repArray=cJSON_CreateArray();
+      cJSON_AddItemToObject(this->jInfo,"report",repArray);
     }
-    if(result.dbg_info!=NULL)
-    {
-      cJSON_AddItemToObject(jresult,"dbg_info",result.dbg_info);
-      result.dbg_info=NULL;
-    }
-    if(result.error_code!=0)
-    {
-      cJSON_AddNumberToObject(jresult,"error_code",result.error_code);
-      cJSON_AddStringToObject(jresult,"error_msg",result.error_msg.c_str());
-    }
-    return jresult;
+    if(repArray==NULL || !cJSON_IsArray(repArray)) return -1;
+    return cJSON_GetArraySize(repArray);
   }
 
 
 
+  int get_report_object(int index,DimMeasureResultInfo &ret_info){
 
-  cJSON* GenJsonFromResult(CategoryResultInfo &result)
-  {
-    cJSON* jresult=cJSON_CreateObject();
-    cJSON_AddNumberToObject(jresult,"category",result.category);
+    cJSON* repArray=JFetch_ARRAY(this->jInfo,"report");
+    if(repArray==NULL || !cJSON_IsArray(repArray)) return -1;
+    int asize=cJSON_GetArraySize(repArray);
+    if(index>=asize)return -2;
+    if(index<0)index+=asize;
+    if(index<0)return  -3;
 
-    cJSON* jsub_category=cJSON_CreateArray();
-    cJSON_AddItemToObject(jresult,"sub_category",jsub_category);
-    for(int i=0;i<result.sub_category.size();i++)
+    cJSON* info=cJSON_GetArrayItem(repArray,index);
+    if(info==NULL)return -4;
+
+    ret_info.categoryList.clear();
+
+    cJSON* jcategoryList=JFetch_ARRAY(info,"category_list");
+    if(jcategoryList!=NULL && cJSON_IsArray(jcategoryList))
     {
-      cJSON_AddNumberToObject(jsub_category,std::to_string(i).c_str(),result.sub_category[i]);
-    }
-    return jresult;
-  }
-
-
-  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
-  {
-    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
-
-    cJSON* repArray=cJSON_CreateArray();
-
-    cJSON_AddNumberToObject(rootRep,"mmpp",mmpp);
-    cJSON_AddItemToObject(rootRep,"report",repArray);
-    for(int i=0;i<orientation.size();i++)
-    {
-      cJSON *jorient=cJSON_CreateObject();
-      cJSON_AddItemToArray(repArray,jorient);
-      orient orie=orientation[i];
+      int asize=cJSON_GetArraySize(jcategoryList);
+      for(int i=0;i<asize;i++)
       {
-        cJSON *center=cJSON_CreateObject();
+        cJSON* jcategory=cJSON_GetArrayItem(jcategoryList,i);
+        if(jcategory==NULL)continue;
+        CategoryResultInfo category;
+        CategoryResultInfo::from_json(jcategory,category);
 
-        cJSON_AddItemToObject(jorient,"center",center);
-
-        cJSON_AddNumberToObject(center,"x",orie.center.x);
-        cJSON_AddNumberToObject(center,"y",orie.center.y);
-
+        ret_info.categoryList.push_back(category);
       }
-      // cJSON_AddNumberToObject(jorient,"area",tarArea);
-
-      cJSON_AddNumberToObject(jorient,"angle",orie.angle);
-      cJSON_AddNumberToObject(jorient,"confidence",orie.confidence);
       
-      cJSON_AddBoolToObject(jorient,"flip",orie.flip);
-
-
-      {
-
-        cJSON* jmresultArray=cJSON_CreateArray();
-        cJSON_AddItemToObject(jorient,"element_report",jmresultArray);
-        auto &result=DimMeasureResultList[i];
-        for(int j=0;j<result.measureList.size();j++)
-        {
-          // LOGE("genjRes:%d",j);
-          cJSON* jresult=GenJsonFromResult(result.measureList[j]);
-          cJSON_AddItemToArray(jmresultArray,jresult);
-        }
-
-        
-        cJSON* jcatArray=cJSON_CreateArray();
-        cJSON_AddItemToObject(jorient,"category_report",jcatArray);
-        for(int j=0;j<result.categoryList.size();j++)
-        {
-          // LOGE("genjRes:%d",j);
-          cJSON* jresult=GenJsonFromResult(result.categoryList[j]);
-          cJSON_AddItemToArray(jcatArray,jresult);
-        }
-      }
-
-
-
-
-
+      
     }
 
-    return rootRep;
+    ret_info.measureList.clear();
+    cJSON* jmeasureList=JFetch_ARRAY(info,"measure_list");
+    if(jmeasureList!=NULL && cJSON_IsArray(jmeasureList))
+    {
+      int asize=cJSON_GetArraySize(jmeasureList);
+      for(int i=0;i<asize;i++)
+      {
+        cJSON* jmeasure_item=cJSON_GetArrayItem(jmeasureList,i);
+        if(jmeasure_item==NULL)continue;
+        MeasureResultInfo measure;
+        MeasureResultInfo::from_json(jmeasure_item,measure);
+        ret_info.measureList.push_back(measure);
+      }
+    }
+
+    StageInfo_Orientation::get_orient_from_json(info,ret_info.pose);
+    // ret_info.pose.
+
+    return 0;
   }
 
-};
 
-class StageInfo_SorterInfo:public StageInfo_Category
-{
-  public:
-  static std::string stypeName(){return "SorterInfo";}
-  virtual std::string typeName(){return this->stypeName();}
-  int category;
 
-  virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
-  {
-    cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
+  
+  int set_report_object(int index,const DimMeasureResultInfo &result){
+    cJSON* repArray=JFetch_ARRAY(this->jInfo,"report");
+    if(repArray==NULL)
+    {
+      repArray=cJSON_CreateArray();
+      cJSON_AddItemToObject(this->jInfo,"report",repArray);
+    }
+    if(repArray==NULL || !cJSON_IsArray(repArray)) return -1;
+    int asize=cJSON_GetArraySize(repArray);
+    if(index>asize)return -2;
+    if(index<0)index+=asize;
+    if(index<0)return  -3;
+    cJSON* info;
+    if(index==asize)
+    {
+      info=cJSON_CreateObject();
+      cJSON_AddItemToArray(repArray,info);
+    }
+    else
+    {
+      info=cJSON_GetArrayItem(repArray,index);
+    }
+    
+    //clean up child of info
+    if(info->child)
+    {
+      cJSON_Delete(info->child);
+      info->child=NULL;
+    }
 
-    cJSON_AddNumberToObject(rootRep,"category",category);
-    return rootRep;
+    //add new child
+    cJSON* jcategoryList=cJSON_CreateArray();
+    cJSON_AddItemToObject(info,"category_report",jcategoryList);
+    cJSON* jmeasureList=cJSON_CreateArray();
+    cJSON_AddItemToObject(info,"element_report",jmeasureList);
+    
+    // result.pose
+
+    for(int i=0;i<result.categoryList.size();i++)
+    {
+      CategoryResultInfo category=result.categoryList[i];
+      cJSON* jcategory=cJSON_CreateObject();
+      cJSON_AddItemToArray(jcategoryList,jcategory);
+      CategoryResultInfo::to_json(jcategory,category);
+    }
+
+    for(int i=0;i<result.measureList.size();i++)
+    {
+      MeasureResultInfo measure=result.measureList[i];
+      cJSON* jmeasure=cJSON_CreateObject();
+      cJSON_AddItemToArray(jmeasureList,jmeasure);
+      MeasureResultInfo::to_json(jmeasure,measure);
+    }
+    
+
+    
+    StageInfo_Orientation::set_orient_to_json(info,result.pose);
+
+    return 0;
+
   }
+
+  float get_mmpp(){
+    return JFetch_NUMBER_ex(this->jInfo,"mmpp");
+  }
+    
+  int set_mmpp(float mmpp){
+    cJSON_AddNumberToObject(jInfo,"mmpp",mmpp);
+    return 0;
+  }
+
+
 };
 
 
