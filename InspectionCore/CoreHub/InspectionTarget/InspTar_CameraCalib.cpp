@@ -1012,10 +1012,10 @@ void InspectionTarget_CameraCalib::singleProcess(shared_ptr<StageInfo> sinfo)
   int64 t0 = cv::getTickCount();
 
 
-  LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
+  LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->get_source_id().c_str(),sinfo->typeName().c_str());
   
 
-  auto d_sinfo = dynamic_cast<StageInfo_Image *>(sinfo.get());
+  auto d_sinfo = dynamic_cast<StageInfo *>(sinfo.get());
   if(d_sinfo==NULL) {
     LOGE("sinfo type does not match.....");
     return;
@@ -1027,13 +1027,13 @@ void InspectionTarget_CameraCalib::singleProcess(shared_ptr<StageInfo> sinfo)
 
 
 
-  shared_ptr<StageInfo_Image> reportInfo(new StageInfo_Image());
+  shared_ptr<StageInfo> reportInfo(new StageInfo());
 
 
-  reportInfo->source_id=id;
+  reportInfo->set_source_id(id);
   reportInfo->source=this;
   reportInfo->img_prop=sinfo->img_prop;
-  reportInfo->trigger_id=sinfo->trigger_id;
+  reportInfo->set_trigger_id(sinfo->get_trigger_id());
 
 
   Mat img_undistorted; 
@@ -1080,15 +1080,14 @@ void InspectionTarget_CameraCalib::singleProcess(shared_ptr<StageInfo> sinfo)
   reportInfo->img_prop.distCoeffs=
   reportInfo->img_prop.cameraMatrix=this->cameraMatrix;
   reportInfo->img_prop.mmpp=this->mmpp;
-  reportInfo->process_time_us=(cv::getTickCount()-t0)*1000000/cv::getTickFrequency();
+  reportInfo->set_process_time_us((cv::getTickCount()-t0)*1000000/cv::getTickFrequency());
   reportInfo->create_time_sysTick=t0;
-  reportInfo->error_code=0;
-  reportInfo->error_msg="";
+  reportInfo->set_error_code(0,"");
 
 
   StageInfoFillDefault(reportInfo.get(),sinfo.get());
 
-  reportInfo->genJsonRepTojInfo();
+  // reportInfo->genJsonRepTojInfo();
 
   // cache_latest_result = reportInfo;
   belongMan->dispatch(reportInfo);

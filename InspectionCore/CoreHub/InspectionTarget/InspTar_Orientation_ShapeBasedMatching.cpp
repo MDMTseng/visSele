@@ -628,7 +628,7 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
         auto &infoSet=recentSrcStageInfoSet[idx];
 
           // LOGI("<<<<infoSet tid:%d  size:%d>>>>",infoSet[0]->trigger_id,infoSet.size());
-        if(infoSet->trigger_id!=targetTID)continue;
+        if(infoSet->get_trigger_id()!=targetTID)continue;
         targetIdx=i;
         break;
       }
@@ -639,7 +639,7 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
     {
       auto &infoSet=recentSrcStageInfoSet[targetIdx];
 
-      auto *src = dynamic_cast<StageInfo_Image*>(infoSet.get());
+      auto *src = dynamic_cast<StageInfo*>(infoSet.get());
 
       if(src)
       {
@@ -648,19 +648,23 @@ bool InspectionTarget_Orientation_ShapeBasedMatching::exchangeCMD(cJSON *info, i
 
         
         LOGI("SEND....");
-        shared_ptr<StageInfo_Image> pkt(new StageInfo_Image());
+        shared_ptr<StageInfo> pkt(new StageInfo());
         pkt->img=src->img;
         pkt->img_prop=src->img_prop;
         pkt->img_show=src->img_show;
-        pkt->process_time_us=src->process_time_us;
+        pkt->set_process_time_us(src->get_process_time_us());
 
         pkt->source=src->source;
-        pkt->source_id=src->source_id;
+        pkt->set_source_id(src->get_source_id());
 
 
-        pkt->trigger_tags=src->trigger_tags;
-        pkt->trigger_tags.push_back("s_uInspCache_");
-        pkt->trigger_id=-src->trigger_id;
+        {
+          vector<string> tags;
+          src->get_trigger_tags(tags);
+          tags.push_back("s_uInspCache_");
+          pkt->set_trigger_tags(tags);
+        }
+        pkt->set_trigger_id(-src->get_trigger_id());
         belongMan->dispatch(pkt);
 
 
@@ -1603,7 +1607,7 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   std::lock_guard<std::mutex> lock_(process_lock);
   LOGI(">>>>>>>LOCK>>>>>");
 
-  if(sinfo->trigger_id>0)
+  if(sinfo->get_trigger_id()>0)
   {
 
     
@@ -2003,13 +2007,15 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
 
   reportInfo->set_mmpp(sinfo->img_prop.mmpp);
   reportInfo->source = this;
-  reportInfo->source_id = id;
+  reportInfo->set_source_id(id);
   reportInfo->img_show =
       reportInfo->img = sinfo->img;
-  reportInfo->trigger_id = sinfo->trigger_id;
+  reportInfo->set_trigger_id(sinfo->get_trigger_id());
 
-  reportInfo->trigger_tags.push_back(id);
-  insertInputTagsWPrefix(reportInfo->trigger_tags, sinfo->trigger_tags, "s_");
+  vector<string> tags;
+  tags.push_back(id);
+  insertInputTagsWPrefix(tags, sinfo->cached_trigger_tags, "s_");
+  reportInfo->set_trigger_tags(tags);
 
   
 
@@ -2021,14 +2027,14 @@ void InspectionTarget_Orientation_ShapeBasedMatching::singleProcess(shared_ptr<S
   {
     int64 t1 = cv::getTickCount();
     double secs_us = 1000000 * (t1 - t0) / cv::getTickFrequency();
-    reportInfo->process_time_us = secs_us;
+    reportInfo->set_process_time_us(secs_us);
     reportInfo->create_time_sysTick = t1;
     // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
 
     LOGI(">>>>>>>>process_time_us:%f", secs_us);
   }
 
-  reportInfo->genJsonRepTojInfo();
+  // reportInfo->genJsonRepTojInfo();
 
   cache_latest_result = reportInfo;
   belongMan->dispatch(reportInfo);

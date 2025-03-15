@@ -84,7 +84,7 @@ class InspectionTarget_TEST_IT :public InspectionTarget
     cJSON* info= genITInfo();
     
     {
-      cJSON_AddItemToObject(info, "io",genIOInfo({StageInfo_Image::stypeName()},{}) );
+      cJSON_AddItemToObject(info, "io",genIOInfo({StageInfo::stypeName()},{}) );
     }
     return info;
   }
@@ -188,9 +188,10 @@ class InspectionTarget_StageInfoCollect_Base :public InspectionTarget
   virtual bool feedStageInfo(std::shared_ptr<StageInfo> sinfo)
   {
     std::lock_guard<std::mutex> _(input_group_matching_lock);
-    int info_tid=sinfo->trigger_id;
-
-    int matching_idx=tagMatchingWhiteList(sinfo->trigger_tags);
+    int info_tid=sinfo->get_trigger_id();
+    std::vector<std::string> tags;
+    sinfo->get_trigger_tags(tags);
+    int matching_idx=tagMatchingWhiteList(tags);
 
     if(matching_idx<0)return false;
 
@@ -207,7 +208,7 @@ class InspectionTarget_StageInfoCollect_Base :public InspectionTarget
       }
 
       
-      igi->trigger_id=info_tid;
+      igi->set_trigger_id(info_tid);
       input_stage_group_cand.insert ( std::pair<int, shared_ptr<StageInfo_SIGroup> >(info_tid,igi) );
 
     }

@@ -1604,7 +1604,7 @@ int PerformInsp(
               xLoc1+=srY;
               xLoc2+=srY;
               sri.score=centerOrEdge?(xLoc2+xLoc1)/2:(scanAngle==90?xLoc1:xLoc2);
-              sri.scanPoint_stat.blob_count=blobCount;
+              // sri.scanPoint_stat.blob_count=blobCount;
               // LOGE("xLoc1:%d xLoc2:%d",xLoc1,xLoc2);
               // sri.category=(xLoc1<=NA_margin||xLoc2<=NA_margin||
               // xLoc1>=srW-NA_margin||xLoc2>=srW-NA_margin||
@@ -2425,13 +2425,13 @@ int PerformInsp(
         sri.score=area_sum; 
 
 
-        {
-          sri.hsvseg_stat.blob_area=area_sum;
-          sri.hsvseg_stat.element_area=element_total_area;
-          sri.hsvseg_stat.element_count=elementCount;
-          sri.hsvseg_stat.max_line_length=line_max_length;
+        // {
+        //   sri.hsvseg_stat.blob_area=area_sum;
+        //   sri.hsvseg_stat.element_area=element_total_area;
+        //   sri.hsvseg_stat.element_count=elementCount;
+        //   sri.hsvseg_stat.max_line_length=line_max_length;
           
-        }
+        // }
 
 
 
@@ -2492,10 +2492,10 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   int downSampleF=DFetch_NUMBER_ex(def,"down_sample_factor",1);
 
   int64 t0 = cv::getTickCount();
-  LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->source_id.c_str(),sinfo->typeName().c_str());
+  LOGI("RUN:%s   from:%s dataType:%s ",id.c_str(),sinfo->get_source_id().c_str(),sinfo->typeName().c_str());
   
 
-  auto d_sinfo = dynamic_cast<StageInfo_Image *>(sinfo.get());
+  auto d_sinfo = dynamic_cast<StageInfo *>(sinfo.get());
   // auto d_sinfo = dynamic_cast<StageInfo_Orientation *>(sinfo.get());
   if(d_sinfo==NULL) {
     LOGE("sinfo type does not match.....");
@@ -2631,6 +2631,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   itm->unLockGlobalValue();
 
 
+  int final_category=STAGEINFO_CAT_UNSET;
   bool do_equalize_hist=false;//JFetch_TRUE(def,"equalize_hist");
   // LOGI("orientation info size:%d",orientationList.size());
   if(orientationList.size()>0)
@@ -3281,28 +3282,25 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
       }while (0);
       mri.category=MATCH_REGION_category;
       mri.score=MATCH_REGION_score;
-      reportInfo->match_reg_info.push_back(mri);
+      reportInfo->push_report_object(mri);
+      final_category=STAGEINFO_SCS_CAT_BASIC_reducer(final_category,MATCH_REGION_category);
     }
 
 
   }
-  int category=STAGEINFO_CAT_UNSET;
-  for(auto catInfo:reportInfo->match_reg_info)
-  {
-    category=STAGEINFO_SCS_CAT_BASIC_reducer(category,catInfo.category);
-  }
 
   reportInfo->source=this;
-  reportInfo->source_id=id;
+  reportInfo->set_source_id(id);
   reportInfo->img_show=retImage;
   reportInfo->img=d_sinfo->img;
   
-  reportInfo->trigger_id=sinfo->trigger_id;
-  reportInfo->trigger_tags.push_back(id);
+  reportInfo->set_trigger_id(sinfo->get_trigger_id());
 
-  insertInputTagsWPrefix(reportInfo->trigger_tags,sinfo->trigger_tags,"s_");
-
-  reportInfo->category=category;
+  vector<string> tags;
+  tags.push_back(id);
+  insertInputTagsWPrefix(tags,sinfo->cached_trigger_tags,"s_");
+  reportInfo->set_trigger_tags(tags);
+  reportInfo->set_category(final_category);
 
 
   reportInfo->pixel_size=sinfo->img_prop.fi.pixel_size_mm;
@@ -3310,7 +3308,7 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   reportInfo->img_prop=sinfo->img_prop;
   reportInfo->img_prop.StreamInfo.channel_id=DFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
   reportInfo->img_prop.StreamInfo.downsample=DFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",10);
-  LOGI("CHID:%d category:%d . id:%s",reportInfo->img_prop.StreamInfo.channel_id,category,id.c_str());
+  LOGI("CHID:%d category:%d . id:%s",reportInfo->img_prop.StreamInfo.channel_id,final_category,id.c_str());
 
   // reportInfo->jInfo=NULL;
   // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
@@ -3318,14 +3316,14 @@ void InspectionTarget_SurfaceCheckSimple::singleProcess(shared_ptr<StageInfo> si
   {
     int64 t1 = cv::getTickCount();
     double secs_us = 1000000*(t1-t0)/cv::getTickFrequency();
-    reportInfo->process_time_us=secs_us;
+    reportInfo->set_process_time_us(secs_us);
     reportInfo->create_time_sysTick=t1;
     // attachSstaticInfo(reportInfo->jInfo,reportInfo->trigger_id);
 
     LOGI(">>>>>>>>process_time_us:%f",secs_us);
   }
 
-  reportInfo->genJsonRepTojInfo();
+  // reportInfo->genJsonRepTojInfo();
   belongMan->dispatch(reportInfo);
   cache_latest_input=reportInfo;
   cache_latest_input=sinfo;

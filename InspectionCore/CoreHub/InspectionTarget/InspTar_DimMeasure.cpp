@@ -428,7 +428,6 @@ shared_ptr<StageInfo_Orientation> loadOrientation(string path)
     cJSON *jfile = ReadJson((path + ".json").c_str());
     if (jfile)
     {
-      reporn_temp->load(jfile);
       // cJSON_Delete(jfile);
       if(reporn_temp->jInfo)
       {
@@ -442,7 +441,6 @@ shared_ptr<StageInfo_Orientation> loadOrientation(string path)
   }
   reporn_temp->img_prop.mmpp=reporn_temp->get_mmpp();
 
-  reporn_temp->genJsonRepTojInfo();
   LOGI("=========orientation size:%d", reporn_temp->get_report_count());
 
   return reporn_temp;
@@ -515,10 +513,7 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
     string path = folder_path + "/" + file_name;
     imwrite(path + ".png", srcImg);
 
-    if (sinfo_orientation->jInfo == NULL)
-    {
-      sinfo_orientation->genJsonRepTojInfo();
-    }
+
     LOGI("=========save to %s", path.c_str());
 
     // save json
@@ -3238,8 +3233,8 @@ shared_ptr<StageInfo_DimMeasure> InspectionTarget_DimMeasure::singleProcess(shar
   shared_ptr<StageInfo_DimMeasure> reportInfo(new StageInfo_DimMeasure());
 
   reportInfo->img_prop = sinfo_img->img_prop;
-  reportInfo->source_id = this->id;
-  reportInfo->trigger_id = sinfo_img->trigger_id;
+  reportInfo->set_source_id(this->id);
+  reportInfo->set_trigger_id(sinfo_img->get_trigger_id());
 
   reportInfo->source = this;
   
@@ -3346,15 +3341,14 @@ shared_ptr<StageInfo_DimMeasure> InspectionTarget_DimMeasure::singleProcess(shar
   reportInfo->img = sinfo_img->img;
   reportInfo->img_show = sinfo_img->img_show;
 
-  reportInfo->process_time_us = (cv::getTickCount() - t0) * 1000000 / cv::getTickFrequency();
+  reportInfo->set_process_time_us((cv::getTickCount() - t0) * 1000000 / cv::getTickFrequency());
   reportInfo->create_time_sysTick = t0;
-  reportInfo->error_code = 0;
-  reportInfo->error_msg = "";
+  reportInfo->set_error_code(0,"");
 
   StageInfoFillDefault(reportInfo.get(), sinfo.get());
 
 LOGE("wwwwww");
-  reportInfo->genJsonRepTojInfo();
+  // reportInfo->genJsonRepTojInfo();
 
 LOGE("wwwwww");
   // cache_latest_result = reportInfo;

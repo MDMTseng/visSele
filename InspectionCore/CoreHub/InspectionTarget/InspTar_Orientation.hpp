@@ -88,7 +88,7 @@ public:
     cJSON* info= genITInfo();
     
     {
-      cJSON_AddItemToObject(info, "io",genIOInfo({StageInfo_Image::stypeName()},{StageInfo_Orientation::stypeName()}) );
+      cJSON_AddItemToObject(info, "io",genIOInfo({"sss"},{"aaa"}) );
     }
     return info;
   }

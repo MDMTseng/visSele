@@ -62,7 +62,7 @@ m_BPG_Protocol_Interface bpg_pi;
 m_BPG_Link_Interface_WebSocket *ifwebsocket=NULL;
 
 struct sttriggerInfo_mix{
-  std::shared_ptr<StageInfo_Image>stInfo;
+  std::shared_ptr<StageInfo>stInfo;
   
   struct _triggerInfo{
 
@@ -88,7 +88,7 @@ TSVector<sttriggerInfo_mix> triggerInfoMatchingBuffer;
 
 
 
-TSQueue<std::shared_ptr<StageInfo_Image>> inspQueue(100);
+TSQueue<std::shared_ptr<StageInfo>> inspQueue(100);
 // TSQueue<image_pipe_info *> datViewQueue(10);
 // TSQueue<image_pipe_info *> inspSnapQueue(5);
 
@@ -120,7 +120,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
     //     inspSnapQueue.size(), inspSnapQueue.capacity(),
     //     bpg_pi.resPool.rest_size(),triggerInfoMatchingBuffer.size());
 
-    std::shared_ptr<StageInfo_Image> newStateInfo(new StageInfo_Image());
+    std::shared_ptr<StageInfo> newStateInfo(new StageInfo());
 
     CameraLayer::frameInfo finfo = info.camera->GetFrameInfo();
 
@@ -133,7 +133,7 @@ class InspectionTargetManager_m:public InspectionTargetManager
 
     newStateInfo->img_prop.StreamInfo=info;
     newStateInfo->source=NULL;//info.camera->getConnectionData().id;
-    newStateInfo->source_id=info.camera->getConnectionData().id;
+    newStateInfo->set_source_id(info.camera->getConnectionData().id);
     newStateInfo->img_prop.fi=finfo;
 
     info.latest_img=img_cv;
@@ -553,12 +553,12 @@ exchangeCMD_ACTx exchCMDact;
 int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trigger_id,int channel_id,float mmpp=1)
 {
   
-  std::shared_ptr<StageInfo_Image> newStateInfo(new StageInfo_Image());
+  std::shared_ptr<StageInfo> newStateInfo(new StageInfo());
   if(newStateInfo==NULL)return -1;
 
   newStateInfo->img_prop.StreamInfo.camera=NULL;
   newStateInfo->img_prop.StreamInfo.channel_id=channel_id;
-  newStateInfo->trigger_tags=trigger_tags;
+  newStateInfo->set_trigger_tags(trigger_tags);
 
   Mat mat_origin=imread(path.c_str());
 
@@ -581,7 +581,7 @@ int ReadImageAndPushToInspQueue(string path,vector<string> trigger_tags,int trig
 
   cv::Mat dst_mat(H,W,CV_8UC3);
   newStateInfo->img=dst_mat;//
-  newStateInfo->trigger_id=trigger_id;
+  newStateInfo->set_trigger_id(trigger_id);
   
 
 
@@ -631,7 +631,7 @@ bool cleanUp_triggerInfoMatchingBuffer_UNSAFE()
     if(triggerInfoMatchingBuffer[i].stInfo!=NULL)
     {
 
-      LOGE("[%d] SRC:%s",i,triggerInfoMatchingBuffer[i].stInfo->source_id.c_str());
+      LOGE("[%d] SRC:%s",i,triggerInfoMatchingBuffer[i].stInfo->get_source_id().c_str());
       
       // bpg_pi.resPool.retResrc(triggerInfoMatchingBuffer[i].pipeInfo);
 
@@ -691,7 +691,7 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         int minMatchingCost=999999;
         int minMatchingIdx=-1;
 
-        std::shared_ptr<StageInfo_Image> targetStageInfo;
+        std::shared_ptr<StageInfo> targetStageInfo;
         sttriggerInfo_mix::_triggerInfo targetTriggerInfo;
 
         if(headImgStageInfoMixInfo.stInfo!=NULL)
@@ -812,9 +812,9 @@ void TriggerInfoMatchingThread(bool *terminationflag)
         if( minMatchingIdx!=-1 && (minMatchingCost<targetTriggerInfo.trigger_time_match_error_thres_us||targetTriggerInfo.est_trigger_time_us==0))
         {
           LOGI("Get matching. idx:%d cost:%d  psss to next Q stInfo:%p",minMatchingIdx,minMatchingCost,targetStageInfo.get() );
-          targetStageInfo->trigger_tags=targetTriggerInfo.tags;
+          targetStageInfo->set_trigger_tags(targetTriggerInfo.tags);
           auto fullCamID=targetStageInfo->img_prop.StreamInfo.camera->getConnectionData().id;
-          targetStageInfo->trigger_tags.push_back(fullCamID);
+          targetStageInfo->push_trigger_tag(fullCamID);
 
           targetStageInfo->img_prop.mmpp=targetStageInfo->img_prop.fi.pixel_size_mm;
           // auto sideName = targetStageInfo->img_prop.StreamInfo.camera->GetSideName();
@@ -824,8 +824,8 @@ void TriggerInfoMatchingThread(bool *terminationflag)
           // }
 
           LOGI("cam id:%s  ch_id:%d",fullCamID.c_str(),targetStageInfo->img_prop.StreamInfo.channel_id);
-          LOGI("TId:%d  info TId:%d",targetStageInfo->trigger_id,targetTriggerInfo.trigger_id);
-          targetStageInfo->trigger_id=targetTriggerInfo.trigger_id;
+          LOGI("TId:%d  info TId:%d",targetStageInfo->get_trigger_id(),targetTriggerInfo.trigger_id);
+          targetStageInfo->set_trigger_id(targetTriggerInfo.trigger_id);
 
           inspQueue.push_blocking(targetStageInfo);
 
@@ -870,7 +870,7 @@ void ImgPipeProcessThread(bool *terminationflag)
     while (1)
     {
       
-      std::shared_ptr<StageInfo_Image> stInfo;
+      std::shared_ptr<StageInfo> stInfo;
       if(inspQueue.pop_blocking(stInfo)==false)break;
 
 
@@ -1172,7 +1172,7 @@ class ScriptChannel:public Data_JsonRaw_Layer
     dlayerConnected=true;
   }
 
-   virtual void disconnected(Data_Layer_IF* ch){
+  virtual void disconnected(Data_Layer_IF* ch){
     printf(">>>%X disconnected\n",ch);
     dlayerConnected=false;
   }
@@ -1243,7 +1243,6 @@ class ScriptChannel:public Data_JsonRaw_Layer
     return NULL;
   }
 };
-
 
 
 class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCollect_Base
@@ -1685,7 +1684,7 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
         cJSON* sarr= cJSON_CreateArray();
         
         cJSON_AddItemToObject(opt, "i",sarr );
-        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Category::stypeName().c_str() ));
+        cJSON_AddItemToArray(sarr,cJSON_CreateString("JSON_CNC_Peripheral" ));
       }
 
     }
@@ -1938,7 +1937,7 @@ class InspectionTarget_JSON_CNC_Peripheral :public InspectionTarget_StageInfoCol
     for(int i=0;i<sginfo->group.size();i++)
     {
       auto curInput=sginfo->group[i];
-      LOGE(">>%d>>>:%s   stype:%s",i,curInput->source_id.c_str(),curInput->typeName().c_str());
+      LOGE(">>%d>>>:%s   stype:%s",i,curInput->get_source_id().c_str(),curInput->typeName().c_str());
       
     }
 
@@ -2489,7 +2488,8 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
 
 
-
+  virtual void singleGroupProcess(shared_ptr<StageInfo> sinfo)
+  {}
 
 
 
@@ -2586,7 +2586,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
         cJSON* sarr= cJSON_CreateArray();
         
         cJSON_AddItemToObject(opt, "i",sarr );
-        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Category::stypeName().c_str() ));
+        cJSON_AddItemToArray(sarr,cJSON_CreateString("StageInfo" ));
       }
 
     }
@@ -2861,7 +2861,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
       {
         int idx = recentSrcStageInfoSetIdx.getHead(i+1);
         if(recentSrcStageInfoSet[idx].size()==0)continue;
-        cJSON_AddItemToArray(arr,cJSON_CreateNumber(recentSrcStageInfoSet[idx][0]->trigger_id));
+        cJSON_AddItemToArray(arr,cJSON_CreateNumber(recentSrcStageInfoSet[idx][0]->get_trigger_id()));
 
       }
 
@@ -2905,7 +2905,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
             // LOGI("<<<<idx:%d>>>>",idx);
           if(infoSet.size()==0)continue;
             // LOGI("<<<<infoSet tid:%d  size:%d>>>>",infoSet[0]->trigger_id,infoSet.size());
-          if(infoSet[0]->trigger_id!=targetTID)continue;
+          if(infoSet[0]->get_trigger_id()!=targetTID)continue;
           targetIdx=i;
           break;
         }
@@ -2924,25 +2924,25 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
         for(int j=0;j<infoSet.size();j++)
         {
 
-          auto src = dynamic_cast<StageInfo_Image*>(infoSet[j].get());
+          auto src = dynamic_cast<StageInfo*>(infoSet[j].get());
 
 
           if(src==NULL)continue;
           
           LOGI("SEND....");
-          shared_ptr<StageInfo_Image> pkt(new StageInfo_Image());
+          shared_ptr<StageInfo> pkt(new StageInfo());
           pkt->img=src->img;
           pkt->img_prop=src->img_prop;
           pkt->img_show=src->img_show;
-          pkt->process_time_us=src->process_time_us;
+          pkt->set_process_time_us(src->get_process_time_us());
 
           pkt->source=src->source;
-          pkt->source_id=src->source_id;
+          pkt->set_source_id(src->get_source_id());
 
-
-          pkt->trigger_tags=src->trigger_tags;
-          pkt->trigger_tags.push_back("s_uInspCache_");
-          pkt->trigger_id=cacheStageInfoTID;//cacheStageInfoIssueTID-src->trigger_id;
+          std::vector<std::string> src_ttags;
+          src->get_trigger_tags(src_ttags);
+          pkt->set_trigger_tags(src_ttags);
+          pkt->set_trigger_id(cacheStageInfoTID);//cacheStageInfoIssueTID-src->trigger_id;
           belongMan->dispatch(pkt);
 
 
@@ -3051,440 +3051,7 @@ class InspectionTarget_JSON_Peripheral :public InspectionTarget_StageInfoCollect
 
 bool scriptNeedInit=true;
 
-// void singleGroupProcess(int trigger_id,std::vector< std::shared_ptr<StageInfo> > group)
-virtual void singleGroupProcess(shared_ptr<StageInfo> sinfo)
-{
-  
-  auto d_img_info = dynamic_cast<StageInfo_SIGroup*>(sinfo.get());
-
-
-  auto &group=d_img_info->group;
-  int trigger_id=d_img_info->trigger_id;
-  int catSum=STAGEINFO_CAT_NA;
-
-  cJSON *ignore_indexes=NULL;
-  cJSON *script_result=NULL;
-
-  if(sCH==NULL)
-  {
-    LOGE("sCH==NULL");
-    return;
-  }
-  if(true)
-  {
-    scriptT=cv::getTickCount();
-    cJSON *info = cJSON_CreateObject();
-    cJSON_AddNumberToObject(info, "trigger_id", trigger_id);
-    cJSON_AddStringToObject(info, "type", "reports");
-    cJSON *jgroup = cJSON_CreateArray();
-    cJSON_AddItemToObject(info, "group", jgroup);
-    for (int i = 0; i < group.size(); i++)
-    {
-      cJSON *genrep = cJSON_CreateObject();
-      genrep=group[i]->attachJsonRep(genrep,0);
-      cJSON_AddItemToArray(jgroup,genrep);
-    }
-
-    cJSON* result=sCH->send_waitfor_return(info,1000);
-    cJSON_Delete(info);
-    if(result)
-    {
-        // char *buffer = cJSON_PrintUnformatted(result);
-        // LOGE(">>:%s",buffer);
-
-        catSum=JFetch_NUMBER_ex(result,"category",STAGEINFO_CAT_UNSET);
-        ignore_indexes=JFetch_ARRAY(result,"ignore_indexes");
-        if(ignore_indexes)
-        {
-          cJSON_DetachItemFromObject(result, "ignore_indexes");
-        }
-        script_result=result;
-        // cJSON_Delete(result);
-        // delete buffer;
-
-    }
-    else
-    {
-      return;//Error
-    }
-
-
-
-
-  }
-
-  {
-    std::lock_guard<std::mutex> lock(bTrigInfoRecord_LOCK);
-    vector<triggerInfoCacheData> cachedData;
-    for(int i=0;i<bTrigInfoRecordBuffer.size();i++)
-    {
-      triggerInfoCacheData &info=bTrigInfoRecordBuffer[i];
-      if(info.tid==trigger_id)
-      {
-        cachedData.push_back(info);
-        info.tid=-1;//mark unocupied
-      }
-    }
-
-    if(cachedData.size()>0)
-    for(int i=0;i<group.size();i++)
-    {
-
-      auto d_img_info = dynamic_cast<StageInfo_Image*>(group[i].get());
-      if(d_img_info==NULL)continue;
-      
-
-      for(int j=0;j<cachedData.size();j++)
-      {
-        triggerInfoCacheData info=cachedData[i];
-        
-        LOGI("tstmp_us:%" PRIu64 " trig_us:%" PRIu64,d_img_info->img_prop.fi.timeStamp_us,info.uInsp_time_us);
-        if(d_img_info->img_prop.StreamInfo.camera==NULL)continue;
-
-        CameraLayer::BasicCameraInfo camInfo=d_img_info->img_prop.StreamInfo.camera->getConnectionData();
-
-
-        for(auto it = CamStampConvertSet.begin(); it != CamStampConvertSet.end(); ++it) {
-          //check if camInfo.name contains it->first
-          if(camInfo.name.find(it->first)==string::npos)continue;
-
-          it->second=CamStampParamUpdate(it->second,info.uInsp_time_us,d_img_info->img_prop.fi.timeStamp_us);
-
-
-
-        }
-      }
-    }
-
-
-
-
-  }
-
-
-    {
-
-      bool doSave=false;
-      if(catSum==STAGEINFO_CAT_OK &&  ImgSaveCountDown_OK>0)
-      {
-        ImgSaveCountDown_OK--;
-        doSave=true;
-      }
-      if(catSum==STAGEINFO_CAT_NG &&  ImgSaveCountDown_NG>0)
-      {
-        ImgSaveCountDown_NG--;
-        doSave=true;
-      }
-      if(catSum==STAGEINFO_CAT_NG2 &&  ImgSaveCountDown_NG2>0)
-      {
-        ImgSaveCountDown_NG2--;
-        doSave=true;
-      }
-      if(catSum==STAGEINFO_CAT_NG3 &&  ImgSaveCountDown_NG3>0)
-      {
-        ImgSaveCountDown_NG3--;
-        doSave=true;
-      }
-      if(catSum==STAGEINFO_CAT_NA &&  ImgSaveCountDown_NA>0)
-      {
-        ImgSaveCountDown_NA--;
-        doSave=true;
-      }
-
-
-      if(doSave)
-      {
-
-        for(int i=0;i<group.size();i++)
-        {
-
-          auto d_img_info = dynamic_cast<StageInfo_Image*>(group[i].get());
-          if(d_img_info==NULL)continue;
-          LOGI("IMG>>src:%s",d_img_info->source_id.c_str());
-
-
-          shared_ptr<StageInfo_Image> reportInfo(new StageInfo_Image());
-
-          reportInfo->img_show=d_img_info->img_show;
-          reportInfo->img_prop=d_img_info->img_prop;
-          reportInfo->img=d_img_info->img;
-          reportInfo->create_time_sysTick=d_img_info->create_time_sysTick;
-          reportInfo->source=this;
-          reportInfo->source_id=id;
-          reportInfo->trigger_id=d_img_info->trigger_id;
-
-          reportInfo->trigger_tags=d_img_info->trigger_tags;
-          reportInfo->trigger_tags.push_back("CAT_"+to_string(catSum));
-          reportInfo->trigger_tags.push_back("IMG_SAVE");
-
-          belongMan->dispatch(reportInfo,NULL,"ImDataSave");
-
-
-        }
-
-      }
-
-
-
-
-
-    }
-
-    {
-      bool doFetch=false;
-      if(catSum==STAGEINFO_CAT_OK && FetchCountDown_OK!=0)
-      {
-        if(FetchCountDown_OK>0)
-          FetchCountDown_OK--;
-        doFetch=true;
-      }
-      if(catSum==STAGEINFO_CAT_NG && FetchCountDown_NG!=0)
-      {
-        if(FetchCountDown_NG>0)
-          FetchCountDown_NG--;
-        doFetch=true;
-      }
-      if(catSum==STAGEINFO_CAT_NG2 && FetchCountDown_NG2!=0)
-      {
-        if(FetchCountDown_NG2>0)
-          FetchCountDown_NG2--;
-        doFetch=true;
-      }
-      if(catSum==STAGEINFO_CAT_NG3 && FetchCountDown_NG3!=0)
-      {
-        if(FetchCountDown_NG3>0)
-          FetchCountDown_NG3--;
-        doFetch=true;
-      }
-      if(catSum==STAGEINFO_CAT_NA && FetchCountDown_NA!=0)
-      {
-        if(FetchCountDown_NA>0)
-          FetchCountDown_NA--;
-        doFetch=true;
-      }
-
-
-      if(doFetch)
-      {
-        std::lock_guard<std::mutex> lock(recentSrcLock); 
-
-        if(recentSrcStageInfoSetIdx.space()==0)
-        {//if full, wipe tail
-          int tail_idx = recentSrcStageInfoSetIdx.getTail();
-          recentSrcStageInfoSetIdx.consumeTail();
-          recentSrcStageInfoSet[tail_idx].clear();
-        }
-        
-        {//push new info in head
-          int head_idx = recentSrcStageInfoSetIdx.getHead();
-          recentSrcStageInfoSet[head_idx]=group;
-          recentSrcStageInfoSetIdx.pushHead();
-
-        }
-      }
-    }
-
-
-
-    LOGI("final CAT:%d",catSum);
-
-
-
-    shared_ptr<StageInfo_Category> reportInfo(new StageInfo_Category());
-    reportInfo->category=catSum;
-    reportInfo->process_time_us=0;
-    reportInfo->trigger_id=trigger_id;
-    reportInfo->source=this;
-    reportInfo->source_id=id;
-    reportInfo->trigger_tags.push_back(id);
-    reportInfo->genJsonRepTojInfo();
-
-    {
-      cJSON* repInfoObj=JFetch_OBJECT(reportInfo->jInfo,"report");
-      cJSON_AddItemToObject(repInfoObj,"ignore_indexes",ignore_indexes);
-      cJSON_AddItemToObject(repInfoObj,"script_result",script_result);
-
-
-      cJSON* jGRepsArr=cJSON_CreateArray();
-      cJSON_AddItemToObject(repInfoObj,"group",jGRepsArr);
-
-      for(int i=0;i<group.size();i++)
-      {
-        cJSON* srep=cJSON_CreateObject();
-        group[i]->attachJsonRep(srep,0);
-        cJSON_AddItemToArray(jGRepsArr,srep);
-      }
-    }
-    // reportInfo->jInfo
-
-
-
-    reportInfo->img_prop.StreamInfo.channel_id=JFetch_NUMBER_ex(additionalInfo,"stream_info.stream_id",0);
-    reportInfo->img_prop.StreamInfo.downsample=JFetch_NUMBER_ex(additionalInfo,"stream_info.downsample",1);
-
-
-    belongMan->dispatch(reportInfo);
-
-    if(TEST_mode.length()!=0)
-    {
-      if(TEST_mode=="OK_OK")
-      {
-        catSum=STAGEINFO_CAT_OK;
-      }
-      else if(TEST_mode=="NG_NG")
-      {
-        catSum=STAGEINFO_CAT_NG;
-      }
-      else if(TEST_mode=="NA_NA")
-      {
-        catSum=STAGEINFO_CAT_NA;
-      }
-      else if(TEST_mode=="OK_NG")
-      {
-        catSum=((TEST_mode_counter<TEST_mode_count1))?STAGEINFO_CAT_OK:STAGEINFO_CAT_NG;
-      }
-      else if(TEST_mode=="OK_NA")
-      {
-        catSum=((TEST_mode_counter<TEST_mode_count1))?STAGEINFO_CAT_OK:STAGEINFO_CAT_NA;
-      }
-      else if(TEST_mode=="NG_NA")
-      {
-        catSum=((TEST_mode_counter&1)==0)?STAGEINFO_CAT_NG:STAGEINFO_CAT_NA;
-        catSum=((TEST_mode_counter<TEST_mode_count1))?STAGEINFO_CAT_NG:STAGEINFO_CAT_NA;
-      }
-      else if(TEST_mode=="OK_NG_NA")
-      {
-        int tt=TEST_mode_counter%3;
-        catSum=STAGEINFO_CAT_OK;
-        if(tt==1)catSum=STAGEINFO_CAT_NG;
-        if(tt==2)catSum=STAGEINFO_CAT_NA;
-      }
-      TEST_mode_counter=(TEST_mode_counter+1)%TEST_mode_counter_MOD;
-
-    }
-
-
-    int send_trigger_id=trigger_id;
-
-    if(processTimeRecord.find(trigger_id)!=processTimeRecord.end())
-    {
-      auto recTime=processTimeRecord[trigger_id];
-      processTimeRecord.erase(trigger_id);
-      auto curTime=cv::getTickCount();
-      
-      double timeDIff_ms = 1000*(curTime-recTime)/cv::getTickFrequency();
-
-      LOGI("tid:%d processTime:%f",trigger_id,timeDIff_ms);
-
-      if(processTime_MaxDelay<timeDIff_ms)
-      {
-        processTime_MaxDelay=timeDIff_ms;
-      }
-
-      processTime_AvgDelay=(processTime_AvgDelay*processTime_AvgDelay_Count+timeDIff_ms)/(++processTime_AvgDelay_Count);
-      
-      static int64 preT;
-      if(processTime_LPDelay!=processTime_LPDelay)
-      {
-        processTime_LPDelay=timeDIff_ms;
-      }
-      else
-      {
-        float sampTDiff=(float)(curTime-preT)/cv::getTickFrequency();//sec
-        float alpha=1-exp(-sampTDiff/0.05);
-        processTime_LPDelay=processTime_LPDelay*(1-alpha)+timeDIff_ms*alpha;
-      }
-
-
-      if(timeDIff_ms>JFetch_NUMBER_ex(def,"overtime_ms",130))
-      {
-
-        LOGE("OVERTIME......");
-        catSum=STAGEINFO_CAT_NA;
-        processTime_OverTimeCount++;
-        if(processTime_OverTimeCount>200)
-        {
-          send_trigger_id=9999999;
-        }
-
-        if(processTime_OverTimeCountMax<processTime_OverTimeCount)
-        {
-          processTime_OverTimeCountMax=processTime_OverTimeCount;
-        }
-
-      }
-      else
-      {
-        processTime_OverTimeCount=0;
-      }
-
-      preT=curTime;
-    }
-    else
-    {
-      LOGI("tid:%d No processed time",trigger_id);
-    }
-
-
-    if(pCH && pCH->fastTestRetCatFlag!=STAGEINFO_CAT_UNSET)
-    {
-      LOGI("fastTestRetCatFlag:%d...trigger_id:%d.",pCH->fastTestRetCatFlag,trigger_id);
-    }
-    else if(trigger_id<0)
-    {
-      LOGI("TEST set don't send to Peripheral....");
-    }
-    else if(pCH)
-    {
-      switch ((catSum))
-      {
-      case STAGEINFO_CAT_OK:
-        catSum=1;
-        break;
-      
-      case STAGEINFO_CAT_NG:
-      
-        catSum=2;
-        break;
-      case STAGEINFO_CAT_NG2:
-      
-        catSum=3;
-        break;
-      case STAGEINFO_CAT_NG3:
-      
-        catSum=4;
-        break;
-      
-      case STAGEINFO_CAT_NA:
-      default://unknown
-        catSum=0xFFFF;
-        break;
-      }
-      
-      std::lock_guard<std::mutex> lock(pCH->sendMutex); 
-      
-      cJSON *rep = cJSON_CreateObject();
-      cJSON_AddStringToObject(rep,"type","report");
-      cJSON_AddNumberToObject(rep,"tid",send_trigger_id);
-      cJSON_AddNumberToObject(rep,"cat",catSum);
-
-      uint8_t _buf[1000];
-      // LOGE(">>>>>>>pCH:%p");
-      int ret= sendcJSONTo_perifCH(pCH,_buf, sizeof(_buf),true,rep);
-      cJSON_Delete(rep);
-
-    }
-    else
-    {
-      LOGI("Peripheral is not connected yet....");
-    }
-
-  }
-
 };
-
-
-
 
 class InspectionTarget_Serial_Peripheral :public InspectionTarget_StageInfoCollect_Base
 {
@@ -3993,7 +3560,7 @@ class InspectionTarget_Serial_Peripheral :public InspectionTarget_StageInfoColle
         cJSON* sarr= cJSON_CreateArray();
         
         cJSON_AddItemToObject(opt, "i",sarr );
-        cJSON_AddItemToArray(sarr,cJSON_CreateString(StageInfo_Category::stypeName().c_str() ));
+        cJSON_AddItemToArray(sarr,cJSON_CreateString("StageInfo"));
       }
 
     }
@@ -4264,7 +3831,7 @@ class InspectionTarget_Serial_Peripheral :public InspectionTarget_StageInfoColle
     // }
 
     auto &group=d_img_info->group;
-    int trigger_id=d_img_info->trigger_id;
+    int trigger_id=d_img_info->get_trigger_id();
     int catSum=STAGEINFO_CAT_NA;
 
     cJSON *ignore_indexes=NULL;
@@ -4422,7 +3989,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget
 
         cJSON* camBrifInfo=cJSON_CreateObject();
         // cJSON_AddStringToObject(camBrifInfo, "trigger_tag", curInput->trigger_tag.c_str());
-        cJSON_AddNumberToObject(camBrifInfo, "trigger_id", curInput->trigger_id);
+        cJSON_AddNumberToObject(camBrifInfo, "trigger_id", curInput->get_trigger_id());
         // cJSON_AddStringToObject(camBrifInfo, "camera_id",curInput->camera_id.c_str());
 
         bpg_pi.fromUpperLayer_DATA("CM",imgCHID,camBrifInfo);
@@ -4435,7 +4002,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget
 
         auto im2send=curInput->img_show;
 
-        LOGE("downSample %d src:%s im2send empty:%d",downSample,curInput->source_id.c_str(),im2send.empty());
+        LOGE("downSample %d src:%s im2send empty:%d",downSample,curInput->get_source_id().c_str(),im2send.empty());
 
         bool okToSend=(!im2send.empty() && downSample<5);
         
@@ -4539,7 +4106,8 @@ class InspectionTarget_DataTransfer :public InspectionTarget
           
           //calculate elapsed time in ms
           double elapsed_ms = 1000.0 * (cv::getTickCount() - t_start) / cv::getTickFrequency();
-          LOGI("Image compression and send took %.2f ms (compression rate: %d) source_id:%s", elapsed_ms, compressionRate,curInput->source_id.c_str());
+          LOGI("Image compression and send took %.2f ms (compression rate: %d) source_id:%s", elapsed_ms, compressionRate,
+          curInput->get_source_id().c_str());
 
           
 
@@ -4645,7 +4213,7 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget
     cJSON* info= genITInfo();
     
     {
-      cJSON_AddItemToObject(info, "io",genIOInfo({StageInfo_Image::stypeName()},{}) );
+      cJSON_AddItemToObject(info, "io",genIOInfo({"ff"},{}) );
     }
     return info;
   }
@@ -4661,11 +4229,11 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget
   }
 
 
-  bool saveStageInfoImage(StageInfo_Image* d_sinfo,string path,vector<std::string> addon_tags=vector<std::string>(),string name="")
+  bool saveStageInfoImage(StageInfo* d_sinfo,string path,vector<std::string> addon_tags=vector<std::string>(),string name="")
   {
 
 
-    int trigID=d_sinfo->trigger_id;
+    int trigID=d_sinfo->get_trigger_id();
 
     string tags_str="";
 
@@ -4673,7 +4241,8 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget
 
     if(filename.length()==0)//if not set, use info as default
     {
-      vector<string> &tags=d_sinfo->trigger_tags;
+      vector<string> tags;
+      d_sinfo->get_trigger_tags(tags);
 
       for(int i=0;i<addon_tags.size();i++)
       {
@@ -4738,23 +4307,24 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget
 
 
 
-      StageInfo_Image* matchedRec=NULL;
+      StageInfo* matchedRec=NULL;
       {
       
         for(int i=0;i<cacheQueueRBC.size();i++)
         {
           int buffIdx=cacheQueueRBC.getHead(i);
-          auto sinfo=dynamic_cast<StageInfo_Image*>(cacheQueue_buff[buffIdx].get());
+          auto sinfo=dynamic_cast<StageInfo*>(cacheQueue_buff[buffIdx].get());
           if(sinfo==NULL)continue;
 
 
-          LOGI("i:%d tid:%d",buffIdx,sinfo->trigger_id);
-          if(sinfo->trigger_id!=tar_trigger_id)continue;
+          LOGI("i:%d tid:%d",buffIdx,sinfo->get_trigger_id());
+          if(sinfo->get_trigger_id()!=tar_trigger_id)continue;
 
 
 
           {
-            const std::vector<std::string> &tags=sinfo->trigger_tags;
+            std::vector<std::string> tags;
+            sinfo->get_trigger_tags(tags);
 
             bool match=true;
             int j=0;
@@ -4802,28 +4372,31 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget
 
             
             LOGI("SEND....");
-            shared_ptr<StageInfo_Image> pkt(new StageInfo_Image());
+            shared_ptr<StageInfo> pkt(new StageInfo());
             pkt->img=src->img;
             pkt->img_prop=src->img_prop;
             pkt->img_show=src->img_show;
-            pkt->process_time_us=src->process_time_us;
+            pkt->set_process_time_us(src->get_process_time_us());
 
             pkt->source=src->source;
-            pkt->source_id=src->source_id;
+            pkt->set_source_id(src->get_source_id());
 
 
             // pkt->trigger_tags=src->trigger_tags;
 
             // pkt->trigger_tags.push_back("s_uInspCache_");
-            for (size_t i = 0; i < src->trigger_tags.size(); i++)
-            {
-              if(src->trigger_tags[i]==cache_mark)continue;
-
-              pkt->trigger_tags.push_back(src->trigger_tags[i]);
-            }
+            std::vector<std::string> src_ttags;
+            src->get_trigger_tags(src_ttags);
 
 
-            pkt->trigger_id=-src->trigger_id;
+            auto it = std::remove(src_ttags.begin(), src_ttags.end(), cache_mark);
+            src_ttags.erase(it, src_ttags.end());
+
+
+            pkt->set_trigger_tags(src_ttags);
+
+
+            pkt->set_trigger_id(src->get_trigger_id());
             belongMan->dispatch(pkt);
 
 
@@ -4886,20 +4459,21 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget
 
       }
 
-      StageInfo_Image* matchedRec=NULL;
+      StageInfo* matchedRec=NULL;
       {
 
         std::lock_guard<std::mutex> lock(cacheQueue_lock);
         for(int i=0;i<cacheQueue_buff.size();i++)
         {
-          auto sinfo=dynamic_cast<StageInfo_Image*>(cacheQueue_buff[i].get());
+          auto sinfo=dynamic_cast<StageInfo*>(cacheQueue_buff[i].get());
           if(sinfo==NULL)continue;
-          if(sinfo->trigger_id!=tar_trigger_id)continue;
+          if(sinfo->get_trigger_id()!=tar_trigger_id)continue;
 
 
 
           {
-            const std::vector<std::string> &tags=sinfo->trigger_tags;
+            std::vector<std::string> tags;
+            sinfo->get_trigger_tags(tags);
 
             bool match=true;
             int j=0;
@@ -4979,12 +4553,13 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget
       
 
 
-      auto d_sinfo = dynamic_cast<StageInfo_Image *>(curInput.get());
+      auto d_sinfo = dynamic_cast<StageInfo *>(curInput.get());
       if(d_sinfo==NULL) {
-        LOGE("sinfo type is StageInfo_Image only, does not match.....");
+        LOGE("sinfo type is StageInfo only, does not match.....");
         continue;
       }
-      std::vector<std::string> &tags=d_sinfo->trigger_tags;
+      std::vector<std::string> tags;
+      d_sinfo->get_trigger_tags(tags);
 
 
       bool senseMark=false;
@@ -5014,7 +4589,7 @@ class InspectionTarget_StageInfoImageSave :public InspectionTarget
       if(pushInCache)//if it's a cache data, push it into cache queue, and do not save it for now
       {
 
-        LOGI("pushInCache.......tid:%d",d_sinfo->trigger_id);
+        LOGI("pushInCache.......tid:%d",d_sinfo->get_trigger_id());
         std::lock_guard<std::mutex> lock(cacheQueue_lock);
         if(cacheQueueRBC.size()==cacheQueue_buff.size())//if full, drop the oldest one
         {

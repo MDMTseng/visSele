@@ -289,7 +289,7 @@ bool InspectionTarget::tagMatching(cJSON* tagWhiteList, vector<std::string> &tag
 
 bool InspectionTarget::stageInfoFilter(std::shared_ptr<StageInfo> sinfo)
 {
-  return tagMatching(match_tags,sinfo->trigger_tags);
+  return tagMatching(match_tags,sinfo->cached_trigger_tags);
 
 }
 
@@ -473,12 +473,12 @@ void InspectionTarget::StageInfoFillDefault(StageInfo* reportInfo,StageInfo* inp
 
   
   reportInfo->source = this;
-  reportInfo->source_id = id;
-  reportInfo->trigger_tags.push_back(id);
+  reportInfo->set_source_id(id);
+  reportInfo->push_trigger_tag(id);
   if(inputInfo)
   {
-    reportInfo->trigger_id = inputInfo->trigger_id;
-    insertInputTagsWPrefix(reportInfo->trigger_tags, inputInfo->trigger_tags, "s_");
+    reportInfo->set_trigger_id(inputInfo->get_trigger_id());
+    insertInputTagsWPrefix(reportInfo->cached_trigger_tags, inputInfo->cached_trigger_tags, "s_");
     reportInfo->img_prop = inputInfo->img_prop;
   }
   reportInfo->img_prop.StreamInfo.channel_id = JFetch_NUMBER_ex(additionalInfo, "stream_info.stream_id", 0);
@@ -863,10 +863,10 @@ int InspectionTargetManager::dispatch(std::shared_ptr<StageInfo> sinfo, Inspecti
   if(acceptCount==0)
   {
     
-    LOGI("id:%d trigger:",sinfo->trigger_id);
-    for(auto tag:sinfo->trigger_tags)
+    LOGI("id:%d trigger:",sinfo->get_trigger_id());
+    for(auto tag:sinfo->cached_trigger_tags)
       LOGI("%s",tag.c_str());
-    LOGE("No one accepts StageInfo: from:%s type:%s ",sinfo->source_id.c_str(),sinfo->typeName().c_str());
+    LOGE("No one accepts StageInfo: from:%s type:%s ",sinfo->get_source_id().c_str(),sinfo->typeName().c_str());
   }
   else
   {

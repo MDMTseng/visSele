@@ -108,7 +108,7 @@ public:
 		cJSON *info = genITInfo();
 
 		{
-			cJSON_AddItemToObject(info, "io", genIOInfo({StageInfo_Image::stypeName()}, {StageInfo_DimMeasure::stypeName()}));
+			cJSON_AddItemToObject(info, "io", genIOInfo({StageInfo::stypeName()}, {StageInfo_DimMeasure::stypeName()}));
 		}
 		return info;
 	}
