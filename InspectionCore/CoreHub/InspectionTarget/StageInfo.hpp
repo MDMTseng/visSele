@@ -109,6 +109,10 @@ class StageInfo{
   //it might have some debug draw on it, so it's different from img
 
 
+  std::mutex lock;
+  //to keep the highest resolution time
+  int64_t create_time_sysTick;
+
 
 
   //TAG--------------------------------
@@ -180,9 +184,6 @@ class StageInfo{
     return JFetch_NUMBER_ex(jInfo,"process_time_us");
   }
 
-  //to keep the highest resolution time
-  int64_t create_time_sysTick;
-
 
 
   //REFERENCE--------------------------------
@@ -218,17 +219,18 @@ class StageInfo{
   virtual std::string typeName(){return this->stypeName();}
 
 
-  std::mutex lock;
 
   StageInfo(){
+    StageInfoLiveCounter++;
     img_prop.StreamInfo=(CameraManager::StreamingInfo){0};
     img_prop.mmpp=0;
     img_prop.fi=( CameraLayer::frameInfo){0};
-    StageInfoLiveCounter++;
     source=NULL;
     jInfo=cJSON_CreateObject();
     set_source_id("");
     set_trigger_id(-1);
+    
+    cJSON_AddStringToObject(jInfo,"type",this->stypeName().c_str());
 
 #if STAGEINFO_LIFECYCLE_DEBUG
     LOGE("++>StageInfoLiveCounter:%d  :%p",(int)StageInfoLiveCounter,this);
@@ -472,44 +474,6 @@ class StageInfo{
 #define STAGEINFO_CAT_NOT_EXIST (-40000)
 
 #define IS_STAGEINFO_CAT_NOT_AVAILABLE(cat) ((cat)==STAGEINFO_CAT_NA || (cat)==STAGEINFO_CAT_NOT_EXIST || (cat)==STAGEINFO_CAT_UNSET)
-
-// class StageInfo_Category:public StageInfo
-// {
-//   public:
-//   static std::string stypeName(){return "Category";}
-//   virtual std::string typeName(){return this->stypeName();}
-//   int category;
-
-//   virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
-//   {
-//     cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
-
-
-//     cJSON* repInfo=cJSON_CreateObject();
-//     cJSON_AddItemToObject(rootRep,"report",repInfo);
-//     cJSON_AddNumberToObject(repInfo,"category",category);
-
-//     return rootRep;
-//   }
-// };
-
-
-// class StageInfo_Value:public StageInfo
-// {
-//   public:
-//   static std::string stypeName(){return "Value";}
-//   virtual std::string typeName(){return this->stypeName();}
-//   int value;
-
-//   virtual cJSON* attachJsonRep(cJSON* rep=NULL,uint64_t brifVector=-1)
-//   {
-//     cJSON* rootRep=StageInfo::attachJsonRep(rep,brifVector);
-
-//     cJSON_AddNumberToObject(rootRep,"report",value);
-//     return rootRep;
-//   }
-// };
-
 
 
 #define STAGEINFO_CAT_SCS_PT_OVER_SIZE (-700)
@@ -818,9 +782,11 @@ class StageInfo_Orientation:public StageInfo
 {
   public:
 
-  StageInfo_Orientation(){
-  }
+  StageInfo_Orientation():StageInfo(){
+    cJSON* repArray=cJSON_CreateArray();
+    cJSON_AddItemToObject(jInfo,"report",repArray);
 
+  }
 
 
   static string stypeName(){return "Orientation";}
