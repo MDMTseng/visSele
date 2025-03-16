@@ -1,0 +1,46 @@
+# Node.js dependencies
+node_modules/
+
+# Build artifacts
+build/
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# Electron build
+dist/
+out/
+
+# macOS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# npm logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# node-gyp
+.node_gyp/ 
