@@ -286,3 +286,46 @@ target_include_directories(playground PRIVATE
   $ENV{MODULE_common_lib}/include
   ${OpenCV_INCLUDE_DIRS}
 )
+
+# Add PluginTemp executable
+add_executable(PluginTemp PluginTemp.cpp)
+
+# Find Boost components with specific configuration for MSYS2
+if(MSYS OR MINGW)
+  # For MSYS2/MinGW, we need to specify the Boost root directory if it's not in the standard path
+  # Adjust these paths if your Boost installation is in a different location
+  set(BOOST_ROOT "/mingw64")
+  set(BOOST_INCLUDEDIR "/mingw64/include")
+  set(BOOST_LIBRARYDIR "/mingw64/lib")
+  
+  # Add Windows-specific compile definitions
+  add_compile_definitions(BOOST_USE_WINDOWS_H)
+endif()
+
+find_package(Boost REQUIRED COMPONENTS system thread)
+
+target_link_libraries(PluginTemp
+  PUBLIC OpenMP::OpenMP_CXX
+  $ENV{MODULE_cJSON}/cJSON.a
+  ${Boost_LIBRARIES}
+  ${OpenCV_LIBS}
+  ${PLAT_LIBS}
+)
+
+# Add platform-specific libraries
+if(MSYS OR MINGW)
+  target_link_libraries(PluginTemp PUBLIC ws2_32 psapi)
+endif()
+
+target_include_directories(PluginTemp PRIVATE
+  ${INCLUDE_DIRECTORIES}
+  "."
+  "./include"
+  $ENV{MODULE_cJSON}
+  ${Boost_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+)
+
+set_target_properties(PluginTemp PROPERTIES 
+                      INSTALL_RPATH "@executable_path/../contrib/libuvc/mac_arm64/;@executable_path/../contrib/aravis/mac_arm64/src;"
+                      BUILD_WITH_INSTALL_RPATH TRUE )
