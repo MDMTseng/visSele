@@ -3,7 +3,36 @@
 #include <dlfcn.h>
 #include "PluginInterface.h"
 #include "ConversionUtil.h"
-#include "InspectProcess.h"
+// #include "InspectPlugin.h"
+
+// Forward declaration for the function (now this will call the member function through the plugin)
+// The standalone function is not needed anymore
+
+class PluginClass{
+    private:
+        const PluginInterface* interface;
+        void* handle;
+    public:
+        PluginClass(const PluginInterface* interface):interface(interface)
+        {
+            handle=interface->create();
+            
+        }
+        ~PluginClass()
+        {
+            interface->destroy(handle);
+            handle=nullptr;
+        }
+        void processImage(ImageInfo* imgInfo)
+        {
+            interface->processImage(handle, imgInfo);
+        }
+        cJSON* process(cJSON* message)
+        {
+            return interface->process(handle, message);
+        }
+};
+
 
 int main() {
     std::cout << "Plugin Test Program" << std::endl;
@@ -18,25 +47,7 @@ int main() {
     
     std::cout << "Image created with initial blue rectangle" << std::endl;
     
-    // Convert Mat to ImageInfo without copying (shared buffer)
-    ImageInfo* imgInfo = MatToImageInfo(testImage, false);
-    
-    // Process the image - this will add a line to it
-    processImage(imgInfo);
-    
-    // Convert back to Mat without copying (still shared buffer)
-    cv::Mat processedImage = ImageInfoToMat(imgInfo, false);
-    
-    std::cout << "Image processed - green line added" << std::endl;
-    
-    // Save the result
-    cv::imwrite("processed_image.jpg", processedImage);
-    std::cout << "Processed image saved to processed_image.jpg" << std::endl;
-    
-    // Since we shared the buffer with imgInfo but didn't make a copy,
-    // we should not free the buffer when freeing the ImageInfo
-    FreeImageInfo(imgInfo, false);
-    
+   
     // Test loading and using the plugin
     const char* pluginPath = "./lib/libinspect_process_plugin.dylib";
     printf("Loading plugin: %s\n", pluginPath);
@@ -48,36 +59,92 @@ int main() {
         return 1;
     }
     
-    // Load plugin functions
-    CreatePluginInstance createFn = (CreatePluginInstance)dlsym(handle, "CreateInstance");
-    ProcessMessage processFn = (ProcessMessage)dlsym(handle, "ProcessInstanceMessage");
-    
-    if (!createFn || !processFn) {
-        std::cerr << "Error: Failed to load plugin functions: " << dlerror() << std::endl;
-        dlclose(handle);
-        return 1;
+    PluginInterface* interface = nullptr;
+
+    //load the interface
+    {
+
+        // Load the plugin interface structure instead of individual functions
+        typedef PluginInterface* (*GetPluginInterfaceFunc)();
+        GetPluginInterfaceFunc getInterfaceFn = (GetPluginInterfaceFunc)dlsym(handle, "GetPluginInterface");
+        
+        if (!getInterfaceFn) {
+            std::cerr << "Error: Failed to load GetPluginInterface function: " << dlerror() << std::endl;
+            dlclose(handle);
+            return 1;
+        }
+        
+        // Get the plugin interface
+        interface = getInterfaceFn();
+        
     }
     
-    // Create an instance and send a test message
-    void* instance = createFn();
-    cJSON* request = cJSON_CreateObject();
-    cJSON_AddStringToObject(request, "action", "test");
+    //verify the interface
+    {
+
+        if (!interface) {
+            std::cerr << "Error: Plugin interface is null" << std::endl;
+            dlclose(handle);
+            return 1;
+        }
+        
+    }
     
-    cJSON* response = processFn(instance, request);
-    
-    // Process the response
-    char* responseStr = cJSON_Print(response);
-    std::cout << "Plugin response: " << responseStr << std::endl;
-    
-    // Cleanup
-    free(responseStr);
-    cJSON_Delete(request);
-    cJSON_Delete(response);
+
+    {
+        PluginClass plugin(interface);
+        // Create an instance using the interface
+        
+        // Create a request for getInfo
+        cJSON* request = cJSON_CreateObject();
+        cJSON_AddStringToObject(request, "action", "getInfo");
+        
+        // Process the message using the interface
+        cJSON* response = plugin.process(request);
+        
+        // Process the response
+        char* responseStr = cJSON_Print(response);
+        std::cout << "Plugin response: " << responseStr << std::endl;
+        
+        // Create a second test image
+        cv::Mat testImage2 = cv::Mat(500, 500, CV_8UC3, cv::Scalar(255, 255, 255));
+        cv::rectangle(testImage2, cv::Point(100, 100), cv::Point(400, 400), 
+                    cv::Scalar(0, 0, 255), 2);
+        ImageInfo* imgInfo2 = MatToImageInfo(testImage2, false);
+        
+        // Process the image using the interface
+        plugin.processImage(imgInfo2);
+        
+        // Convert back to Mat and save
+        cv::Mat processedImage2 = ImageInfoToMat(imgInfo2, false);
+        cv::imwrite("processed_image2.jpg", processedImage2);
+        std::cout << "Second image processed via plugin interface" << std::endl;
+        
+        // Try to display the second image
+        try {
+            cv::imshow("Processed Image 2", processedImage2);
+        } catch (const cv::Exception& e) {
+            std::cerr << "Warning: Could not display image: " << e.what() << std::endl;
+        }
+        
+        // Cleanup
+        free(responseStr);
+        cJSON_Delete(request);
+        cJSON_Delete(response);
+        FreeImageInfo(imgInfo2, false);
+            
+        
+        // Display the image if running in an environment with display
+        try {
+            cv::imshow("Processed Image", processedImage2);
+            cv::waitKey(0);
+        } catch (const cv::Exception& e) {
+            std::cerr << "Warning: Could not display image: " << e.what() << std::endl;
+        }
+    }
+
     dlclose(handle);
     
-    // Display the image if running in an environment with display
-    cv::imshow("Processed Image", processedImage);
-    cv::waitKey(0);
     
     return 0;
 } 

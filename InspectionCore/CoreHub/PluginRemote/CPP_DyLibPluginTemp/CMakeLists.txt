@@ -23,14 +23,13 @@ link_directories(${CJSON_LIBRARY_DIR})
 # For library - include PluginImpl.cpp for the plugin interface functions
 set(LIB_SOURCES
     PluginImpl.cpp
-    InspectProcess.cpp
+    InspectPlugin.cpp
     ConversionUtil.cpp
 )
 
 # For test executable
 set(TEST_SOURCES
     TestPluginMain.cpp
-    InspectProcess.cpp
     ConversionUtil.cpp
 )
 

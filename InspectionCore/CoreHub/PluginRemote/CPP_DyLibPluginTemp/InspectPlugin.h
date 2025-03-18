@@ -6,32 +6,24 @@
 #include "cJSON.h"
 #include "PluginInterface.h"
 
-class InspectProcess {
+class InspectPlugin {
 private:
     std::string processName;
     int pollInterval;  // in milliseconds
 
 public:
-    InspectProcess();
-    ~InspectProcess();
+    InspectPlugin();
+    ~InspectPlugin();
     
     void setup(const cJSON* config);
     cJSON* processMessage(const cJSON* message);
+    void processImage(ImageInfo* imgInfo);
 
 private:
     cJSON* getProcessInfo();
     cJSON* setPollingInterval(int interval);
+
 };
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// Process an image by drawing a line on it
-void processImage(ImageInfo* imgInfo);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif // INSPECT_PROCESS_H

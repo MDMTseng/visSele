@@ -1,5 +1,5 @@
 #include "PluginInterface.h"
-#include "InspectProcess.h"
+#include "InspectPlugin.h"
 #include "ConversionUtil.h"
 #include <opencv2/opencv.hpp>
 
@@ -7,24 +7,33 @@
 extern "C" {
     PLUGIN_EXPORT void* CreateInstance() {
         // In a real plugin, you would create and return your plugin instance here
-        return nullptr;
+        InspectPlugin* plugin = new InspectPlugin();
+        return plugin;
     }
 
     PLUGIN_EXPORT void DestroyInstance(void* instance) {
         // Cleanup code here
+        InspectPlugin* plugin = static_cast<InspectPlugin*>(instance);
+        delete plugin;
     }
 
     PLUGIN_EXPORT void SetupInstance(void* instance, const cJSON* setup_data) {
         // Setup code here
+        InspectPlugin* plugin = static_cast<InspectPlugin*>(instance);
+        plugin->setup(setup_data);
     }
 
     PLUGIN_EXPORT cJSON* ProcessInstanceMessage(void* instance, const cJSON* message) {
         // This would normally process messages from the host application
         // For this example, let's just return a simple response
-        cJSON* response = cJSON_CreateObject();
-        cJSON_AddStringToObject(response, "status", "success");
-        cJSON_AddStringToObject(response, "message", "Plugin processed message");
+        InspectPlugin* plugin = static_cast<InspectPlugin*>(instance);
+        cJSON* response = plugin->processMessage(message);
         return response;
+    }
+
+    PLUGIN_EXPORT void ProcessInstanceImage(void* instance, ImageInfo* image_info) {
+        InspectPlugin* plugin = static_cast<InspectPlugin*>(instance);
+        plugin->processImage(image_info);
     }
 
     PLUGIN_EXPORT PluginInterface* GetPluginInterface() {
@@ -32,7 +41,8 @@ extern "C" {
             CreateInstance,
             DestroyInstance,
             SetupInstance,
-            ProcessInstanceMessage
+            ProcessInstanceMessage,
+            ProcessInstanceImage
         };
         return &interface;
     }

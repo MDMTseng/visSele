@@ -7,27 +7,6 @@ extern "C" {
 
 #include "cJSON.h"
 
-// Function types for plugin operations
-typedef void* (*CreatePluginInstance)();
-typedef void (*DestroyPluginInstance)(void* instance);
-typedef void (*SetupPluginInstance)(void* instance, const cJSON* setup_data);
-typedef cJSON* (*ProcessMessage)(void* instance, const cJSON* message);
-
-// Plugin interface structure
-typedef struct {
-    CreatePluginInstance create;
-    DestroyPluginInstance destroy;
-    SetupPluginInstance setup;
-    ProcessMessage process;
-} PluginInterface;
-
-// Export these functions from your plugin
-#ifdef _WIN32
-    #define PLUGIN_EXPORT __declspec(dllexport)
-#else
-    #define PLUGIN_EXPORT __attribute__((visibility("default")))
-#endif
-
 struct ImageInfo {
     void* buffer;       // Pointer to the image data
     int width;          // Width of the image in pixels
@@ -47,12 +26,35 @@ struct InfoPack{
     int img_count;
 };
 
-// Required plugin functions
-PLUGIN_EXPORT void* CreateInstance();
-PLUGIN_EXPORT void DestroyInstance(void* instance);
-PLUGIN_EXPORT void SetupInstance(void* instance, const cJSON* setup_data);
+// Function types for plugin operations
+typedef void* (*CreatePluginInstance)();
+typedef void (*DestroyPluginInstance)(void* instance);
+typedef void (*SetupPluginInstance)(void* instance, const cJSON* setup_data);
+typedef cJSON* (*ProcessMessage)(void* instance, const cJSON* message);
+typedef void (*ProcessImage)(void* instance, ImageInfo* imgInfo);
 
-PLUGIN_EXPORT cJSON* ProcessInstanceMessage(void* instance, const cJSON* message);
+// Plugin interface structure
+typedef struct {
+    CreatePluginInstance create;
+    DestroyPluginInstance destroy;
+    SetupPluginInstance setup;
+    ProcessMessage process;
+    ProcessImage processImage;
+} PluginInterface;
+
+// Export these functions from your plugin
+#ifdef _WIN32
+    #define PLUGIN_EXPORT __declspec(dllexport)
+#else
+    #define PLUGIN_EXPORT __attribute__((visibility("default")))
+#endif
+
+// Required plugin functions
+// PLUGIN_EXPORT void* CreateInstance();
+// PLUGIN_EXPORT void DestroyInstance(void* instance);
+// PLUGIN_EXPORT void SetupInstance(void* instance, const cJSON* setup_data);
+// PLUGIN_EXPORT cJSON* ProcessInstanceMessage(void* instance, const cJSON* message);
+// PLUGIN_EXPORT void ProcessInstanceImage(void* instance, ImageInfo* image_info);
 
 // Optional: Get plugin interface structure
 PLUGIN_EXPORT PluginInterface* GetPluginInterface();
