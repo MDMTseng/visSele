@@ -20,26 +20,28 @@ struct ImageInfo {
 };
 
 struct InfoPack{
-    cJSON* info[10];
+    cJSON* info[50];
     int info_count;
-    ImageInfo *img[10];
+    ImageInfo *img[50];
     int img_count;
 };
 
 // Function types for plugin operations
 typedef void* (*CreatePluginInstance)();
 typedef void (*DestroyPluginInstance)(void* instance);
-typedef void (*SetupPluginInstance)(void* instance, const cJSON* setup_data);
-typedef cJSON* (*ProcessMessage)(void* instance, const cJSON* message);
-typedef void (*ProcessImage)(void* instance, ImageInfo* imgInfo);
+typedef int (*PluginSetDef)(void* instance,InfoPack* data);
+typedef int (*PluginCMD)(void* instance,InfoPack* data);
+typedef int (*PluginProcess)(void* instance,InfoPack* data);
+
+
 
 // Plugin interface structure
 typedef struct {
     CreatePluginInstance create;
     DestroyPluginInstance destroy;
-    SetupPluginInstance setup;
-    ProcessMessage process;
-    ProcessImage processImage;
+    PluginSetDef setDef;
+    PluginCMD cmd;
+    PluginProcess process;
 } PluginInterface;
 
 // Export these functions from your plugin
@@ -58,6 +60,9 @@ typedef struct {
 
 // Optional: Get plugin interface structure
 PLUGIN_EXPORT PluginInterface* GetPluginInterface();
+
+
+
 
 #ifdef __cplusplus
 }

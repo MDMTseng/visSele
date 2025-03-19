@@ -287,13 +287,14 @@ target_include_directories(playground PRIVATE
   ${OpenCV_INCLUDE_DIRS}
 )
 
-# Add PluginTemp executable
-add_executable(PluginTemp PluginTemp.cpp)
+# Add SharedMemPluginTemp executable
+add_executable(SharedMemPluginTemp 
+    PluginRemote/CPP_SharedMemPluginTemp/SharedMemPluginTemp.cpp
+)
 
 # Find Boost components with specific configuration for MSYS2
 if(MSYS OR MINGW)
   # For MSYS2/MinGW, we need to specify the Boost root directory if it's not in the standard path
-  # Adjust these paths if your Boost installation is in a different location
   set(BOOST_ROOT "/mingw64")
   set(BOOST_INCLUDEDIR "/mingw64/include")
   set(BOOST_LIBRARYDIR "/mingw64/lib")
@@ -304,7 +305,7 @@ endif()
 
 find_package(Boost REQUIRED COMPONENTS system thread)
 
-target_link_libraries(PluginTemp
+target_link_libraries(SharedMemPluginTemp
   PUBLIC OpenMP::OpenMP_CXX
   $ENV{MODULE_cJSON}/cJSON.a
   ${Boost_LIBRARIES}
@@ -314,18 +315,22 @@ target_link_libraries(PluginTemp
 
 # Add platform-specific libraries
 if(MSYS OR MINGW)
-  target_link_libraries(PluginTemp PUBLIC ws2_32 psapi)
+  target_link_libraries(SharedMemPluginTemp PUBLIC ws2_32 psapi)
 endif()
 
-target_include_directories(PluginTemp PRIVATE
+target_include_directories(SharedMemPluginTemp PRIVATE
   ${INCLUDE_DIRECTORIES}
   "."
   "./include"
+  "./PluginRemote/CPP_SharedMemPluginTemp"  # Add the new source directory
   $ENV{MODULE_cJSON}
   ${Boost_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
 )
 
-set_target_properties(PluginTemp PROPERTIES 
+set_target_properties(SharedMemPluginTemp PROPERTIES 
                       INSTALL_RPATH "@executable_path/../contrib/libuvc/mac_arm64/;@executable_path/../contrib/aravis/mac_arm64/src;"
                       BUILD_WITH_INSTALL_RPATH TRUE )
+set_target_properties(SharedMemPluginTemp PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/PluginRemote/CPP_SharedMemPluginTemp
+)

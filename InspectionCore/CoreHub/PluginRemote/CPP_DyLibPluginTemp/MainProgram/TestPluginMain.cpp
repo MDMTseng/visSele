@@ -63,7 +63,6 @@ int main() {
 
     //load the interface
     {
-
         // Load the plugin interface structure instead of individual functions
         typedef PluginInterface* (*GetPluginInterfaceFunc)();
         GetPluginInterfaceFunc getInterfaceFn = (GetPluginInterfaceFunc)dlsym(handle, "GetPluginInterface");
@@ -76,7 +75,6 @@ int main() {
         
         // Get the plugin interface
         interface = getInterfaceFn();
-        
     }
     
     //verify the interface
@@ -110,13 +108,13 @@ int main() {
         cv::Mat testImage2 = cv::Mat(500, 500, CV_8UC3, cv::Scalar(255, 255, 255));
         cv::rectangle(testImage2, cv::Point(100, 100), cv::Point(400, 400), 
                     cv::Scalar(0, 0, 255), 2);
-        ImageInfo* imgInfo2 = MatToImageInfo(testImage2, false);
+        ImageInfo* imgInfo2 = MatToImageInfo(testImage2);
         
         // Process the image using the interface
         plugin.processImage(imgInfo2);
         
         // Convert back to Mat and save
-        cv::Mat processedImage2 = ImageInfoToMat(imgInfo2, false);
+        cv::Mat processedImage2 = ImageInfoToMat(imgInfo2);
         cv::imwrite("processed_image2.jpg", processedImage2);
         std::cout << "Second image processed via plugin interface" << std::endl;
         
@@ -131,7 +129,7 @@ int main() {
         free(responseStr);
         cJSON_Delete(request);
         cJSON_Delete(response);
-        FreeImageInfo(imgInfo2, false);
+        FreeImageInfo(imgInfo2);
             
         
         // Display the image if running in an environment with display

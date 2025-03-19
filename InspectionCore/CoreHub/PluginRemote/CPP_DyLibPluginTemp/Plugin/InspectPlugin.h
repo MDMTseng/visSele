@@ -1,5 +1,5 @@
-#ifndef INSPECT_PROCESS_H
-#define INSPECT_PROCESS_H
+#ifndef INSPECT_PLUGIN_H
+#define INSPECT_PLUGIN_H
 
 #include <string>
 #include <vector>
@@ -22,8 +22,6 @@ public:
 private:
     cJSON* getProcessInfo();
     cJSON* setPollingInterval(int interval);
-
 };
 
-
-#endif // INSPECT_PROCESS_H
+#endif // INSPECT_PLUGIN_H

@@ -1,7 +1,7 @@
 #include "ConversionUtil.h"
 #include <cstring>
 
-ImageInfo* MatToImageInfo(const cv::Mat& mat, bool copyData) {
+ImageInfo* MatToImageInfo(const cv::Mat& mat, bool refrenceBuffer) {
     if (mat.empty()) {
         return nullptr;
     }
@@ -17,7 +17,7 @@ ImageInfo* MatToImageInfo(const cv::Mat& mat, bool copyData) {
     imgInfo->elemSize = static_cast<int>(mat.elemSize());
     imgInfo->totalSize = static_cast<int>(mat.total() * mat.elemSize());
     
-    if (copyData) {
+    if (!refrenceBuffer) {
         // Allocate and copy the image data
         imgInfo->buffer = malloc(imgInfo->totalSize);
         if (imgInfo->buffer) {
@@ -33,7 +33,7 @@ ImageInfo* MatToImageInfo(const cv::Mat& mat, bool copyData) {
     return imgInfo;
 }
 
-cv::Mat ImageInfoToMat(const ImageInfo* imgInfo, bool copyData) {
+cv::Mat ImageInfoToMat(const ImageInfo* imgInfo, bool refrenceBuffer) {
     if (!imgInfo || !imgInfo->buffer) {
         return cv::Mat();
     }
@@ -44,7 +44,7 @@ cv::Mat ImageInfoToMat(const ImageInfo* imgInfo, bool copyData) {
                 imgInfo->buffer, 
                 imgInfo->step);
     
-    if (copyData) {
+    if (!refrenceBuffer) {
         // Create a deep copy to ensure the data is owned by the Mat
         return mat.clone();
     } else {

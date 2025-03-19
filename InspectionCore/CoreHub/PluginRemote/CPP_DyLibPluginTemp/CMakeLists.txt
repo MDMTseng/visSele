@@ -13,24 +13,29 @@ set(CJSON_LIBRARY_DIR ${CMAKE_SOURCE_DIR}/../../../contrib/cJSON CACHE PATH "Pat
 get_filename_component(CJSON_INCLUDE_DIR "${CJSON_INCLUDE_DIR}" ABSOLUTE)
 get_filename_component(CJSON_LIBRARY_DIR "${CJSON_LIBRARY_DIR}" ABSOLUTE)
 
-
 message(STATUS "CJSON_INCLUDE_DIR: ${CJSON_INCLUDE_DIR}")
 message(STATUS "CJSON_LIBRARY_DIR: ${CJSON_LIBRARY_DIR}")
 
-include_directories(${CJSON_INCLUDE_DIR})
+# Include directories
+include_directories(
+    ${CJSON_INCLUDE_DIR}
+    ${CMAKE_SOURCE_DIR}/include     # Add include directory
+    ${CMAKE_SOURCE_DIR}/common      # Add common directory
+    ${CMAKE_SOURCE_DIR}/Plugin      # Add Plugin directory
+)
 link_directories(${CJSON_LIBRARY_DIR})
 
 # For library - include PluginImpl.cpp for the plugin interface functions
 set(LIB_SOURCES
-    PluginImpl.cpp
-    InspectPlugin.cpp
-    ConversionUtil.cpp
+    Plugin/PluginImpl.cpp
+    Plugin/InspectPlugin.cpp
+    common/ConversionUtil.cpp
 )
 
 # For test executable
 set(TEST_SOURCES
-    TestPluginMain.cpp
-    ConversionUtil.cpp
+    MainProgram/TestPluginMain.cpp
+    common/ConversionUtil.cpp
 )
 
 # Create shared library

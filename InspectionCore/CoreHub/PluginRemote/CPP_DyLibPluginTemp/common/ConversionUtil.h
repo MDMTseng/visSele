@@ -7,11 +7,11 @@
 
 // Convert OpenCV Mat to ImageInfo
 // If copyData is false, ImageInfo will reference Mat's data (Mat must stay alive)
-ImageInfo* MatToImageInfo(const cv::Mat& mat, bool copyData = true);
+ImageInfo* MatToImageInfo(const cv::Mat& mat, bool refrenceBuffer = true);
 
 // Convert ImageInfo back to OpenCV Mat
 // If copyData is false, Mat will reference ImageInfo's buffer (ImageInfo must stay alive)
-cv::Mat ImageInfoToMat(const ImageInfo* imgInfo, bool copyData = true);
+cv::Mat ImageInfoToMat(const ImageInfo* imgInfo, bool refrenceBuffer = true);
 
 // Free memory allocated for ImageInfo
 // If releaseBuffer is false, the buffer pointer will not be freed (useful when buffer is shared)

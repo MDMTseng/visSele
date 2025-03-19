@@ -84,7 +84,7 @@ void InspectPlugin::processImage(ImageInfo* imgInfo) {
     }
     
     // Convert ImageInfo to Mat without copying (shared buffer)
-    cv::Mat image = ImageInfoToMat(imgInfo, false);
+    cv::Mat image = ImageInfoToMat(imgInfo);
     
     std::cout << "Processing image of size: " << image.cols << "x" << image.rows << std::endl;
     
