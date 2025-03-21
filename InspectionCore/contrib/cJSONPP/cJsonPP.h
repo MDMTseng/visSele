@@ -50,6 +50,9 @@ private:
         bool isObject() const;
         bool isArray() const;
         bool isNull() const;
+        
+        // Get array length or -1 if not an array
+        int length() const;
 
         // Write-enabled version of this element
         ElementRef w();
@@ -155,6 +158,9 @@ public:
     
     // Convert to string
     std::string toString(bool formatted = true) const;
+    
+    // Get array length or -1 if not an array
+    int length() const;
 };
 
 #endif // CJSONPP_H

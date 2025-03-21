@@ -77,6 +77,22 @@ int test_string_conversion() {
     obj.w["key"] = "value";
     obj.w["nested"]["a"] = 1;
     obj.w["array"][0] = 10;
+    if(obj.w["array"].isArray()){
+        //check array length
+        std::cout << "array length: " << obj.w["array"].length() << std::endl;
+        std::cout << "array length: " << obj.length() << std::endl;
+    }
+
+    
+    {
+        cJSONPP arr = cJSONPP::newArray();
+        arr.w[0] = 10;
+        arr.w[1] = 20;
+        arr.w[2] = 30;
+        std::cout << "array length: " << arr.length() << std::endl;
+        //print array
+        std::cout << "array: " << arr.toString() << std::endl;
+    }
     
     std::string json = obj.toString(false); // unformatted
     

@@ -90,6 +90,14 @@ bool cJSONPP::ElementRef::isNull() const
     return m_element != nullptr && cJSON_IsNull(m_element); 
 }
 
+int cJSONPP::ElementRef::length() const
+{
+    if (m_element != nullptr && cJSON_IsArray(m_element)) {
+        return cJSON_GetArraySize(m_element);
+    }
+    return -1;
+}
+
 cJSONPP::ElementRef cJSONPP::ElementRef::w() 
 {
     if (!m_element) return ElementRef(nullptr, m_key, false);
@@ -426,4 +434,12 @@ std::string cJSONPP::toString(bool formatted) const
     std::string result = str ? str : "";
     if (str) free(str);
     return result;
+}
+
+int cJSONPP::length() const
+{
+    if (m_json && cJSON_IsArray(m_json)) {
+        return cJSON_GetArraySize(m_json);
+    }
+    return -1;
 } 
