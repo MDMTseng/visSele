@@ -17,30 +17,70 @@ struct ImageInfo {
     int elemSize;       // Size of each element in bytes
     int totalSize;      // Total size of the buffer in bytes
     int refCount;       // Reference counter for memory management
+    int ref_id;         // Reference ID for custom use
 };
 
-struct InfoPack{
-    cJSON* info[50];
-    int info_count;
-    ImageInfo *img[50];
-    int img_count;
+static ImageInfo ImageInfoInit(){
+    ImageInfo imgInfo;
+    imgInfo.buffer = nullptr;
+    imgInfo.width = 0;
+    imgInfo.height = 0;
+    imgInfo.channels = 0;
+    imgInfo.step = 0;
+    imgInfo.type = 0;
+    imgInfo.elemSize = 0;
+    imgInfo.ref_id = -1;
+    return imgInfo;
+}
+
+struct StageInfo_c{
+    char type[32];
+    char source_id[128];
+
+    cJSON* jInfo;
+    struct ImageInfo img_show, img;
 };
+
+// Forward declaration
+struct StageInfo_c;
+
+// Function types 
+typedef int (*DispatchFunc)(void* main_ctx,struct StageInfo_c* data);
+typedef cJSON* (*GetGlobalValueFunc)(void* main_ctx);
+typedef void (*UnlockGlobalValueFunc)(void* main_ctx);
+
+typedef struct ManagerInterface {
+    DispatchFunc dispatch;
+    GetGlobalValueFunc getNLockGlobalValue;
+    UnlockGlobalValueFunc unLockGlobalValue;
+} ManagerInterface;
+
+// Function types for communicating with the plugin host
+typedef int (*SendACKFunc)(int pgID, int isACK, const char *json_content);
+typedef int (*SendFunc)(const char *TL, int pgID, cJSON* def);
+typedef int (*SendImageFunc)(int pgID, struct ImageInfo* img, const char *format_lowercase, float quality);
+
+typedef struct CMDActInterface {
+    SendACKFunc sendACK;
+    SendFunc send;
+    SendImageFunc sendImage;
+} CMDActInterface;
 
 // Function types for plugin operations
-typedef void* (*CreatePluginInstance)();
+typedef void* (*CreatePluginInstance)(const char *id, cJSON* def, const char *local_env_path, struct ManagerInterface* manager, void* main_ctx);
 typedef void (*DestroyPluginInstance)(void* instance);
-typedef int (*PluginSetDef)(void* instance,InfoPack* data);
-typedef int (*PluginCMD)(void* instance,InfoPack* data);
-typedef int (*PluginProcess)(void* instance,InfoPack* data);
-
-
+typedef void (*setEnvPath)(void* instance, const char *path);
+typedef int (*PluginSetDef)(void* instance, cJSON* def);
+typedef int (*PluginExchangeCMD)(void* instance, cJSON *info, int id, struct CMDActInterface act);
+typedef int (*PluginProcess)(void* instance, struct StageInfo_c* data);
 
 // Plugin interface structure
-typedef struct {
+typedef struct PluginInterface {
     CreatePluginInstance create;
     DestroyPluginInstance destroy;
+    setEnvPath setEnvPath;
     PluginSetDef setDef;
-    PluginCMD cmd;
+    PluginExchangeCMD exchangeCMD;
     PluginProcess process;
 } PluginInterface;
 
@@ -59,10 +99,7 @@ typedef struct {
 // PLUGIN_EXPORT void ProcessInstanceImage(void* instance, ImageInfo* image_info);
 
 // Optional: Get plugin interface structure
-PLUGIN_EXPORT PluginInterface* GetPluginInterface();
-
-
-
+PLUGIN_EXPORT struct PluginInterface* GetPluginInterface();
 
 #ifdef __cplusplus
 }

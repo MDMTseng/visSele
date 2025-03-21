@@ -3,124 +3,128 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 
-InspectPlugin::InspectPlugin() : processName("Default Process"), pollInterval(1000) {
+InspectPlugin::InspectPlugin() 
+    : processName("Default Process"), 
+      id("unknown"),
+      local_env_path(""),
+      manager(nullptr) {
     std::cout << "InspectPlugin constructor called" << std::endl;
 }
 
 InspectPlugin::~InspectPlugin() {
-    std::cout << "InspectPlugin destructor called" << std::endl;
+    std::cout << "InspectPlugin destructor called for ID: " << id << std::endl;
 }
 
-void InspectPlugin::setup(const cJSON* config) {
-    if (config == nullptr) {
-        std::cout << "Config is null, using default values" << std::endl;
-        return;
+void InspectPlugin::init(const char *id, cJSON* def, const char *local_env_path, struct ManagerInterface* manager, void* main_ctx) {
+    this->id = id ? id : "unknown";
+    this->local_env_path = local_env_path ? local_env_path : "";
+    this->manager = manager;
+    this->main_ctx = main_ctx;
+    
+    std::cout << "InspectPlugin initialized for ID: " << this->id << std::endl;
+    
+    if (def) {
+        setDef(def);
+    }
+}
+
+void InspectPlugin::setEnvPath(const char *path) {
+    if (path) {
+        local_env_path = path;
+        std::cout << "Environment path set to: " << local_env_path << std::endl;
+    }
+}
+
+int InspectPlugin::setDef(cJSON* def) {
+    if (!def) {
+        std::cout << "Definition is null" << std::endl;
+        return -1;
     }
 
     // Extract the process name if provided
-    cJSON* nameItem = cJSON_GetObjectItem(config, "processName");
+    cJSON* nameItem = cJSON_GetObjectItem(def, "processName");
     if (nameItem && cJSON_IsString(nameItem)) {
         processName = cJSON_GetStringValue(nameItem);
         std::cout << "Process name set to: " << processName << std::endl;
     }
 
-    // Extract the polling interval if provided
-    cJSON* intervalItem = cJSON_GetObjectItem(config, "pollInterval");
-    if (intervalItem && cJSON_IsNumber(intervalItem)) {
-        pollInterval = intervalItem->valueint;
-        std::cout << "Poll interval set to: " << pollInterval << " ms" << std::endl;
-    }
+    std::cout << "Plugin definition set successfully" << std::endl;
+    return 0;
 }
 
-cJSON* InspectPlugin::processMessage(const cJSON* message) {
-    if (message == nullptr) {
-        std::cout << "Message is null" << std::endl;
-        return cJSON_CreateString("Error: Null message");
+int InspectPlugin::exchangeCMD(cJSON* info, int id, struct CMDActInterface act) {
+    if (!info) {
+        std::cout << "Command info is null" << std::endl;
+        return -1;
     }
 
-    // Create a response object
-    cJSON* response = cJSON_CreateObject();
+    std::cout << "Received command with ID: " << id << std::endl;
     
-    // Extract the action from the message
-    cJSON* actionItem = cJSON_GetObjectItem(message, "action");
-    if (actionItem && cJSON_IsString(actionItem)) {
-        std::string action = cJSON_GetStringValue(actionItem);
+    // Example: Send an acknowledgement
+    if (act.sendACK) {
+        cJSON* response = cJSON_CreateObject();
+        cJSON_AddStringToObject(response, "status", "success");
+        cJSON_AddStringToObject(response, "message", "Command received");
         
-        if (action == "getInfo") {
-            // Return process information
-            cJSON* info = getProcessInfo();
-            cJSON_AddItemToObject(response, "info", info);
-            cJSON_AddStringToObject(response, "status", "success");
-        } 
-        else if (action == "setInterval") {
-            // Set polling interval
-            cJSON* intervalItem = cJSON_GetObjectItem(message, "interval");
-            if (intervalItem && cJSON_IsNumber(intervalItem)) {
-                int interval = intervalItem->valueint;
-                cJSON* result = setPollingInterval(interval);
-                cJSON_AddItemToObject(response, "result", result);
-                cJSON_AddStringToObject(response, "status", "success");
-            } else {
-                cJSON_AddStringToObject(response, "status", "error");
-                cJSON_AddStringToObject(response, "message", "Invalid or missing interval parameter");
-            }
+        char* responseStr = cJSON_Print(response);
+        act.sendACK(id, 1, responseStr); // 1 = true for isACK
+        free(responseStr);
+        cJSON_Delete(response);
+    }
+
+    return 0;
+}
+
+int InspectPlugin::process(struct StageInfo_c* data) {
+    if (!data) {
+        std::cout << "Stage info is null" << std::endl;
+        return -1;
+    }
+    
+    std::cout << "Processing stage: " << data->type << " from source: " << data->source_id << std::endl;
+    
+    if (data->img.buffer == nullptr) {
+        std::cout << "Image buffer is null" << std::endl;
+        return -1;
+    }
+
+
+    struct StageInfo_c ret_data;
+    ret_data.jInfo = cJSON_CreateObject();
+    ret_data.img = data->img;
+    ret_data.img_show = data->img_show;
+    // Process the image if available
+    {
+        std::cout << "Processing image of size: " << data->img.width << "x" << data->img.height << std::endl;
+        
+        // Convert ImageInfo to Mat
+        cv::Mat image = ImageInfoToMat(data->img, true);
+        
+        // Draw a green line on the image
+        cv::line(image, cv::Point(50, 300), cv::Point(450, 300), 
+                 cv::Scalar(0, 255, 0), 3);
+        
+        // Add some text with the process name
+        cv::putText(image, processName, cv::Point(50, 50), 
+                    cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 0, 255), 2);
+        
+        // Convert back to ImageInfo (if needed for display)
+        if (data->img_show.buffer == nullptr) {
+            // Create a new ImageInfo for display
+            ImageInfo displayImg = MatToImageInfo(image, true);
+            data->img_show = displayImg;
+            // Don't free the buffer, as it's now owned by img_show
+        } else {
+            // Update existing display image
+            cv::Mat displayImage = ImageInfoToMat(data->img_show, false);
+            image.copyTo(displayImage);
         }
-        else {
-            cJSON_AddStringToObject(response, "status", "error");
-            cJSON_AddStringToObject(response, "message", "Unknown action");
-        }
-    } else {
-        cJSON_AddStringToObject(response, "status", "error");
-        cJSON_AddStringToObject(response, "message", "Missing action parameter");
+
+        // Call the dispatch function
+        manager->dispatch(main_ctx, data);
+        
+        std::cout << "Image processing complete" << std::endl;
     }
     
-    return response;
-}
-
-void InspectPlugin::processImage(ImageInfo* imgInfo) {
-    if (!imgInfo || !imgInfo->buffer) {
-        std::cout << "Image info is null or buffer is null" << std::endl;
-        return;
-    }
-    
-    // Convert ImageInfo to Mat without copying (shared buffer)
-    cv::Mat image = ImageInfoToMat(imgInfo);
-    
-    std::cout << "Processing image of size: " << image.cols << "x" << image.rows << std::endl;
-    
-    // Draw a green line on the image
-    cv::line(image, cv::Point(50, 300), cv::Point(450, 300), 
-             cv::Scalar(0, 255, 0), 3);
-    
-    // Add some text with the process name
-    cv::putText(image, processName, cv::Point(50, 50), 
-                cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 0, 255), 2);
-    
-    // No need to convert back, as we're directly modifying the shared buffer
-    // Changes to the Mat are immediately reflected in the ImageInfo's buffer
-    
-    std::cout << "Image processing complete" << std::endl;
-}
-
-cJSON* InspectPlugin::getProcessInfo() {
-    cJSON* info = cJSON_CreateObject();
-    cJSON_AddStringToObject(info, "name", processName.c_str());
-    cJSON_AddNumberToObject(info, "pollInterval", pollInterval);
-    return info;
-}
-
-cJSON* InspectPlugin::setPollingInterval(int interval) {
-    cJSON* result = cJSON_CreateObject();
-    
-    if (interval > 0) {
-        pollInterval = interval;
-        cJSON_AddBoolToObject(result, "success", true);
-        cJSON_AddNumberToObject(result, "oldInterval", pollInterval);
-        cJSON_AddNumberToObject(result, "newInterval", interval);
-    } else {
-        cJSON_AddBoolToObject(result, "success", false);
-        cJSON_AddStringToObject(result, "error", "Interval must be greater than 0");
-    }
-    
-    return result;
+    return 0;
 }

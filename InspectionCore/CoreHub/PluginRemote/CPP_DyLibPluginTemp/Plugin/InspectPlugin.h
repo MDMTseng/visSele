@@ -9,19 +9,19 @@
 class InspectPlugin {
 private:
     std::string processName;
-    int pollInterval;  // in milliseconds
-
+    std::string id;
+    std::string local_env_path;
+    ManagerInterface* manager;
+    void* main_ctx;
 public:
     InspectPlugin();
     ~InspectPlugin();
     
-    void setup(const cJSON* config);
-    cJSON* processMessage(const cJSON* message);
-    void processImage(ImageInfo* imgInfo);
-
-private:
-    cJSON* getProcessInfo();
-    cJSON* setPollingInterval(int interval);
+    void init(const char *id, cJSON* def, const char *local_env_path, struct ManagerInterface* manager, void* main_ctx);
+    void setEnvPath(const char *path);
+    int setDef(cJSON* def);
+    int exchangeCMD(cJSON* info, int id, struct CMDActInterface act);
+    int process(struct StageInfo_c* data);
 };
 
 #endif // INSPECT_PLUGIN_H
