@@ -192,6 +192,7 @@ target_link_libraries(visSele
   $ENV{MODULE_MatchingEngine}/libMatchingEngine.a
   $ENV{MODULE_circleFitting}/CircleFitting.a 
   $ENV{MODULE_cJSON}/cJSON.a 
+  $ENV{MODULE_cJSONPP}/cJSONPP.a
   $ENV{MODULE_logctrl}/logctrl.a 
   $ENV{MODULE_common_lib}/common_lib.a 
   $ENV{MODULE_acvImage}/acvImage.a 
@@ -228,6 +229,7 @@ include_directories (
   $ENV{MODULE_circleFitting} 
   $ENV{MODULE_common_lib}/include 
   $ENV{MODULE_cJSON} 
+  $ENV{MODULE_cJSONPP}
   $ENV{MODULE_logctrl}/include 
   #$ENV{MODULE_zlib}/src 
   $ENV{MODULE_CameraLayer}/include 

@@ -8,6 +8,7 @@
 #include <circleFitting.h>
 #include <InspTarUtil.hpp>
 #include "polyfit.h"
+#include "cJsonPP.h"
 using namespace cv;
 
 using namespace std;
@@ -220,38 +221,39 @@ float polycalc_opencv(float x, const float* coeffs, int order) {
 
 vector<InspectionTarget_DimMeasure::itemInfo> buildFeatureQuickList(cJSON *featureList)
 {
-
+  cJSONPP jFL(featureList,false);
   vector<InspectionTarget_DimMeasure::itemInfo> infoQList;
-  int list_size = cJSON_GetArraySize(featureList);
+  int list_size = jFL.length();
   for (int i = 0; i < list_size; i++)
   {
-    cJSON *featureEle = cJSON_GetArrayItem(featureList, i);
-    InspectionTarget_DimMeasure::itemInfo info={.cached_feature_def=featureEle};
+    auto featureEle = jFL[i];
+    InspectionTarget_DimMeasure::itemInfo info={.cached_feature_def=featureEle.get()};
 
-    int id = JFetch_NUMBER_ex(featureEle, "id");
+    int id = featureEle["id"].asInt();
     info.id = id;
     info.idx=i;
-    string type=JFetch_STRING_ex(featureEle,"type");
+    string type=featureEle["type"].asString();
     // info.feature_type=getFeatureType(featureEle);
 
-    LOGE("=========id:%d type:%s  featureEle:%p",id,type.c_str(),featureEle);
-    cJSON *refList = JFetch_ARRAY(featureEle, "ref");
+    LOGE("=========id:%d type:%s  featureEle:%p",id,type.c_str(),featureEle.get());
+    auto refList = featureEle["ref"];
 
     info.refIdIdx.clear();
-    if (refList == NULL)
+    if (refList.isArray()==false)
     {
+      LOGI("=========refList is not an array");
     }
     else
     {
-      int ref_size = cJSON_GetArraySize(refList);
+      int ref_size = refList.length();
 
       for (int j = 0; j < ref_size; j++)
       {
-        cJSON *refItem = cJSON_GetArrayItem(refList, j);
-        if (refItem == NULL)
+        auto refItem = refList[j];
+        if (refItem.isObject()==false)
           break;
 
-        int refId = JFetch_NUMBER_ex(refItem, "id", -999);
+        int refId = refItem["id"].asInt(-999);
         if (refId != -999)
         {
           info.refIdIdx.push_back({
@@ -452,7 +454,9 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
   bool ret = InspectionTarget::exchangeCMD(info, id, act);
   if (ret)
     return ret;
-  string type = JFetch_STRING_ex(info, "type");
+
+  cJSONPP jinfo(info);
+  string type = jinfo["type"].asString();
 
   if (type == "save_cached_orientation_info")
   {
@@ -470,8 +474,8 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
 
     LOGI(">>>");
 
-    string file_name = JFetch_STRING_ex(info, "file_name", "");
-    string folder_path = JFetch_STRING_ex(info, "folder_path", "");
+    string file_name = jinfo["file_name"].asString();
+    string folder_path = jinfo["folder_path"].asString();
 
     LOGI(">>>");
 
@@ -534,7 +538,7 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
 
     std::__1::shared_ptr<StageInfo_Orientation> template_input_info;
 
-    bool use_cached_input=JFetch_TRUE(info,"use_cached_input");
+    bool use_cached_input=jinfo["use_cached_input"].asBool();
 
     if(use_cached_input)
     {
@@ -543,8 +547,8 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
     else
     {
 
-      string file_name = JFetch_STRING_ex(info, "file_name", "template");
-      string folder_path = JFetch_STRING_ex(info, "folder_path", "");
+      string file_name = jinfo["file_name"].asString("template");
+      string folder_path = jinfo["folder_path"].asString();
       if (folder_path.find(":\\") == 1 || folder_path.find("/") == 0)
       { // windows absolute path or linux absolute path
       }
@@ -571,7 +575,7 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
     }
 
 
-    int imageQuality = JFetch_NUMBER_ex(info, "imageQuality", 90);
+    int imageQuality = jinfo["imageQuality"].asInt(90);
     if (imageQuality > 0 && imageQuality <= 100)
     {
       // if (imageQuality == 100)
@@ -606,12 +610,12 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
 
 
 
-    bool use_cached_input=JFetch_TRUE(info,"use_cached_input");
+    bool use_cached_input=jinfo["use_cached_input"].asBool();
     if(use_cached_input==false)
     {
 
-      string file_name = JFetch_STRING_ex(info, "file_name", "template");
-      string folder_path = JFetch_STRING_ex(info, "folder_path", "");
+      string file_name = jinfo["file_name"].asString("template");
+      string folder_path = jinfo["folder_path"].asString();
       if (folder_path.find(":\\") == 1 || folder_path.find("/") == 0)
       { // windows absolute path or linux absolute path
       }
@@ -642,7 +646,7 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
       return false;
 
 
-    dbg_feature_id=JFetch_NUMBER_ex(info,"dbg_feature_id",-1);
+    dbg_feature_id=jinfo["dbg_feature_id"].asInt(-1);
 
     if(dbg_feature_info!=NULL)
     {
@@ -652,10 +656,10 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
 
     dbg_Images.clear();
     {
-      cJSON* jtmp=  JFetch_OBJECT(info,"dbg_feature_info");
-      if(jtmp!=NULL)
+      auto jtmp=jinfo["dbg_feature_info"];
+      if(jtmp.isObject())
       {
-        dbg_feature_info=cJSON_Duplicate(jtmp,true);
+        dbg_feature_info=cJSON_Duplicate(jtmp.get(),true);
       }
     }
     
@@ -674,7 +678,7 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
       return false;
     }
 
-    int dbg_object_idx=JFetch_NUMBER_ex(info,"dbg_object_idx",-1);
+    int dbg_object_idx=jinfo["dbg_object_idx"].asInt(-1);
     int count=input_orien->get_report_count();
     if(dbg_object_idx>=0 &&  (dbg_object_idx < count))//check if dbg_object_idx is valid
     {
@@ -693,7 +697,7 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
 
 
     dbg_feature_id=-1;
-    int imageQuality = JFetch_NUMBER_ex(info, "imageQuality", -1);
+    int imageQuality = jinfo["imageQuality"].asInt(-1);
     if (imageQuality > 0 && imageQuality <= 100)
     {
       // if (imageQuality == 100)

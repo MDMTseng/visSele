@@ -7,6 +7,7 @@
 
 #include <CameraManager.hpp>
 #include <atomic>
+#include "cJSONPP.h"
 class InspectionTarget;
 class CameraManager;
 
@@ -71,12 +72,14 @@ class StageInfo{
 
   int set_source_id(const std::string &id){//set to jInfo
     if(jInfo==NULL)return -1;
-    cJSON_AddStringToObject(jInfo,"source_id",id.c_str());
+    cJSONPP jinfo(jInfo);
+    jinfo.w["source_id"]=id;
     return 0;
   }
   std::string get_source_id(){
     if(jInfo==NULL)return "";
-    return JFetch_STRING_ex(jInfo,"source_id","");
+    cJSONPP jinfo(jInfo);
+    return jinfo["source_id"].asString();
   }
 
 
@@ -98,12 +101,13 @@ class StageInfo{
   int set_trigger_id(int id){
     if(jInfo==NULL)return -1;
     //remove the trigger_id
-    cJSON_DeleteItemFromObject(jInfo,"trigger_id");
-    cJSON_AddNumberToObject(jInfo,"trigger_id",id);
+    cJSONPP jinfo(jInfo);
+    jinfo.w["trigger_id"]=id;
     return 0;
   }
   int get_trigger_id(){
-    return JFetch_NUMBER_ex(jInfo,"trigger_id",-1);
+    cJSONPP jinfo(jInfo);
+    return jinfo["trigger_id"].asInt(-1);
   }
   //IMAGE--------------------------------
   cv::Mat img;//the output image, to pass to next stage, and next stage can use it
@@ -124,17 +128,20 @@ class StageInfo{
   public:
   int set_trigger_tags(const std::vector<std::string> &tags){
     if(jInfo==NULL)return -1;
-    cJSON* tags_j=JFetch_OBJECT(jInfo,"trigger_tags");
-    if(tags_j==NULL)
+    cJSONPP jinfo(jInfo);
+    auto tags_j=jinfo["trigger_tags"];
+    if(tags_j.isArray()==false)
     {
-      tags_j=cJSON_CreateArray();
-      cJSON_AddItemToObject(jInfo,"trigger_tags",tags_j);
+      jinfo.w["trigger_tags"]=cJSONPP::newArray();
+      tags_j=jinfo["trigger_tags"];
     }
 
-    clear_array(tags_j);
+    clear_array(tags_j.get());
 
-    for(auto tag:tags){
-      cJSON_AddItemToArray(tags_j,cJSON_CreateString(tag.c_str()));
+
+    for(int i=0;i<tags.size();i++)
+    {
+      tags_j.w()[i]=tags[i];
     }
     cached_trigger_tags=tags;
     return 0;
@@ -179,11 +186,13 @@ class StageInfo{
   //to track the process time
   // float process_time_us;
   int set_process_time_us(double time_us){
-    cJSON_AddNumberToObject(jInfo,"process_time_us",time_us);
+    cJSONPP jinfo(jInfo);
+    jinfo.w["process_time_us"]=time_us;
     return 0;
   }
   float get_process_time_us(){
-    return JFetch_NUMBER_ex(jInfo,"process_time_us");
+    cJSONPP jinfo(jInfo);
+    return jinfo["process_time_us"].asDouble();
   }
 
 
@@ -785,8 +794,8 @@ class StageInfo_Orientation:public StageInfo
   public:
 
   StageInfo_Orientation():StageInfo(){
-    cJSON* repArray=cJSON_CreateArray();
-    cJSON_AddItemToObject(jInfo,"report",repArray);
+    cJSONPP jinfo(jInfo);
+    jinfo.w["report"]=cJSONPP::newArray();
 
   }
 
@@ -804,10 +813,14 @@ class StageInfo_Orientation:public StageInfo
   // vector<struct orient> orientation;
 
   float get_mmpp(){
-    return JFetch_NUMBER_ex(jInfo,"mmpp");
+
+    cJSONPP jinfo(jInfo);
+    return jinfo["mmpp"].asDouble();
   }
   int set_mmpp(float mmpp){
-    cJSON_AddNumberToObject(jInfo,"mmpp",mmpp);
+
+    cJSONPP jinfo(jInfo);
+    jinfo.w["mmpp"]=mmpp;
     return 0;
   }
 
@@ -815,47 +828,47 @@ class StageInfo_Orientation:public StageInfo
 
   int get_report_count(){
     
-    cJSON* repArray=cJSON_GetObjectItem(this->jInfo,"report");
-
-    if(repArray==NULL)
-    {
-      repArray=cJSON_CreateArray();
-      cJSON_AddItemToObject(this->jInfo,"report",repArray);
-    }
-    if(repArray==NULL || !cJSON_IsArray(repArray)) return -1;
-    return cJSON_GetArraySize(repArray);
+    cJSONPP jinfo(jInfo);
+    return jinfo["report"].length();
   }
 
   static int get_orient_from_json(cJSON* jObj,orient &ret_orie){
-    ret_orie.center.x=JFetch_NUMBER_ex(jObj,"center.x");
-    ret_orie.center.y=JFetch_NUMBER_ex(jObj,"center.y");
-    ret_orie.angle=JFetch_NUMBER_ex(jObj,"angle");
-    ret_orie.confidence=JFetch_NUMBER_ex(jObj,"confidence");
-    ret_orie.flip=JFetch_TRUE(jObj,"flip");
+    cJSONPP jinfo(jObj);
+    ret_orie.center.x=jinfo["center"]["x"].asDouble();
+    ret_orie.center.y=jinfo["center"]["y"].asDouble();
+    ret_orie.angle=jinfo["angle"].asDouble();
+    ret_orie.confidence=jinfo["confidence"].asDouble();
+    ret_orie.flip=jinfo["flip"].asBool();
     return 0;
   }
   static int set_orient_to_json(cJSON* jObj,const orient &orie){
-    attach_Point2f_to_json(jObj,"center",orie.center);
-    cJSON_AddNumberToObject(jObj,"angle",orie.angle);
-    cJSON_AddNumberToObject(jObj,"confidence",orie.confidence);
-    cJSON_AddBoolToObject(jObj,"flip",orie.flip);
+    cJSONPP jinfo(jObj);
+    jinfo.w["center"]["x"]=orie.center.x;
+    jinfo.w["center"]["y"]=orie.center.y;
+    jinfo.w["angle"]=orie.angle;
+    jinfo.w["confidence"]=orie.confidence;
+    jinfo.w["flip"]=orie.flip;
     return 0;
   }
 
 
   int get_report_object(int index,orient &ret_orie){
 
-    cJSON* repArray=JFetch_ARRAY(this->jInfo,"report");
-    if(repArray==NULL || !cJSON_IsArray(repArray)) return -1;
-    int asize=cJSON_GetArraySize(repArray);
+    cJSONPP jinfo(jInfo);
+
+    auto repArray=jinfo["report"];
+    if(repArray.isArray()==false) return -1;
+
+
+    int asize=repArray.length();
     if(index>=asize)return -2;
     if(index<0)index+=asize;
     if(index<0)return  -3;
 
-    cJSON* jorient=cJSON_GetArrayItem(repArray,index);
-    if(jorient==NULL)return -4;
+    auto jorient=repArray[index];
+    if(jorient.isObject()==false)return -4;
 
-    get_orient_from_json(jorient,ret_orie);
+    get_orient_from_json(jorient.get(),ret_orie);
     return 0;
   }
   int set_report_object(int index,const orient &orie){
