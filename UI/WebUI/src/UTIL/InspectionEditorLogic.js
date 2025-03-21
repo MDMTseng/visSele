@@ -215,6 +215,7 @@ export class InspectionEditorLogic {
   getInitStatisticSPState()
   {
     return {
+      NA_count: 0,
       CNG_count: 0,
       consecutive_CNG_count: 0,
       max_consecutive_CNG_count: 0,

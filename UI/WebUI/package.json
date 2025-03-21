@@ -80,7 +80,7 @@
   "scripts": {
     "start-electron": "electron .",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "cross-env NODE_ENV=production webpack",
+    "build": "NODE_OPTIONS='--openssl-legacy-provider' cross-env NODE_ENV=production webpack",
     "build_dev": "cross-env NODE_ENV=dev webpack",
     "build-profile": "cross-env NODE_ENV=production webpack --profile --json > wstats.json",
     "bundle-analyzer": "webpack-bundle-analyzer wstats.json -m server",
@@ -90,7 +90,7 @@
     "build-w-android": "set NOTIMON_PRJ=deploy&&webpack --progress --colors --watch",
     "build-opt-android": "NODE_ENV=production NOTIMON_PRJ=deploy webpack --progress --colors --watch",
     "build-win-android": "set NODE_ENV=production&&set NOTIMON_PRJ=deploy&&webpack --progress --colors --watch",
-    "dev": "webpack-dev-server --mode development --hot --define __DEV_MODE__=true",
+    "dev": "NODE_OPTIONS='--openssl-legacy-provider' webpack-dev-server --mode development --hot --define __DEV_MODE__=true",
     "dev_detail": "webpack-dev-server --mode development --hot --colors --progress --profile"
   },
   "repository": {

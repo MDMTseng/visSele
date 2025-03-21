@@ -323,7 +323,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     {
       is_uInsp_Ready=true;//if the uInsp is not set(maybe not the full inspection machine) ig nore it
     }
-    if(SLID_API_ID_CONN_INFO===undefined)
+    // if(SLID_API_ID_CONN_INFO===undefined)
     {
       is_SLID_Ready=true;//if the uInsp is not set(maybe not the full inspection machine) ig nore it
     }

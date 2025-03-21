@@ -66,3 +66,6 @@ Peripheral/misc/experiment/out.dSYM/Contents/Resources/DWARF/out
 Peripheral/misc/experiment/out
 Peripheral/MStepperECat/.sync/
 venv/
+InspectionCore/CoreHub/playground
+InspectionCore/CoreHub/PluginTemp
+UI/Electron_XPLAT/build_
