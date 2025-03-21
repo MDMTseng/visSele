@@ -69,3 +69,4 @@ venv/
 InspectionCore/CoreHub/playground
 InspectionCore/CoreHub/PluginTemp
 UI/Electron_XPLAT/build_
+InspectionCore/contrib/cJSONPP/test/build
