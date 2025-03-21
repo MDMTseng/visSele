@@ -18,7 +18,7 @@ int test_deep_nesting() {
     cJSONPP obj = cJSONPP::newObject();
     
     // Create a deeply nested structure
-    obj.w["level1"]["level2"]["level3"]["level4"]["value"] = 42;
+    obj.w()["level1"]["level2"]["level3"]["level4"]["value"] = 42;
     
     // Test access at each level
     ASSERT_TEST(obj["level1"].isObject(), "Level 1 should be an object");
@@ -36,14 +36,14 @@ int test_deep_nesting() {
 
 int test_array_operations() {
     cJSONPP obj = cJSONPP::newObject();
-    obj.w["array"] = cJSONPP::newArray();
+    obj.w()["array"] = cJSONPP::newArray();
     
     // Add different types to array
-    obj.w["array"][0] = 100;
-    obj.w["array"][1] = "string value";
-    obj.w["array"][2] = true;
-    obj.w["array"][3] = cJSONPP::newObject();
-    obj.w["array"][3].w()["nested"] = "nested value";
+    obj.w()["array"][0] = 100;
+    obj.w()["array"][1] = "string value";
+    obj.w()["array"][2] = true;
+    obj.w()["array"][3] = cJSONPP::newObject();
+    obj.w()["array"][3].w()["nested"] = "nested value";
     
     // Test array contents
     ASSERT_TEST(obj["array"][0].asInt() == 100, "Array int value incorrect");
@@ -53,11 +53,11 @@ int test_array_operations() {
     ASSERT_TEST(obj["array"][3]["nested"].asString() == "nested value", "Nested value in array incorrect");
     
     // Test array of arrays
-    obj.w["matrix"] = cJSONPP::newArray();
+    obj.w()["matrix"] = cJSONPP::newArray();
     for (int i = 0; i < 3; i++) {
-        obj.w["matrix"][i] = cJSONPP::newArray();
+        obj.w()["matrix"][i] = cJSONPP::newArray();
         for (int j = 0; j < 3; j++) {
-            obj.w["matrix"][i][j] = i * 3 + j;
+            obj.w()["matrix"][i][j] = i * 3 + j;
         }
     }
     
@@ -75,14 +75,14 @@ int test_array_operations() {
 int test_copy_ownership() {
     // Create original object
     cJSONPP original = cJSONPP::newObject();
-    original.w["value"] = 42;
+    original.w()["value"] = 42;
     
     // Test copy constructor
     cJSONPP copy(original);
     ASSERT_TEST(copy["value"].asInt() == 42, "Copy constructor didn't preserve values");
     
     // Modify copy and ensure original is unchanged
-    copy.w["value"] = 100;
+    copy.w()["value"] = 100;
     ASSERT_TEST(copy["value"].asInt() == 100, "Modified value incorrect in copy");
     ASSERT_TEST(original["value"].asInt() == 42, "Original was modified when copy was changed");
     
@@ -92,7 +92,7 @@ int test_copy_ownership() {
     ASSERT_TEST(assigned["value"].asInt() == 42, "Assignment operator didn't preserve values");
     
     // Modify assigned and ensure original is unchanged
-    assigned.w["value"] = 200;
+    assigned.w()["value"] = 200;
     ASSERT_TEST(assigned["value"].asInt() == 200, "Modified value incorrect in assigned object");
     ASSERT_TEST(original["value"].asInt() == 42, "Original was modified when assigned object was changed");
     

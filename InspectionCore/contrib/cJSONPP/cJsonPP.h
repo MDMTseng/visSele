@@ -157,9 +157,12 @@ private:
         bool operator[](int index);
     };
 
+protected:
+    WritableProxy _w{*this};
+    DeleteProxy _del{*this};
 public:
-    WritableProxy w{*this};
-    DeleteProxy del{*this};
+    WritableProxy w(){return _w;};
+    DeleteProxy del(){return _del;};
 
     // Default constructor
     cJSONPP();
@@ -218,7 +221,7 @@ cJSON *jobj = cJSON_CreateObject();
 cJSONPP nobj(jobj, true);
 
 // Create a nested path with writes
-nobj.w["x"]["y"]["z"] = 123;
+nobj.w()["x"]["y"]["z"] = 123;
 
 
 */
