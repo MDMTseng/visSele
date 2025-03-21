@@ -97,6 +97,8 @@ class StageInfo{
   // int trigger_id;
   int set_trigger_id(int id){
     if(jInfo==NULL)return -1;
+    //remove the trigger_id
+    cJSON_DeleteItemFromObject(jInfo,"trigger_id");
     cJSON_AddNumberToObject(jInfo,"trigger_id",id);
     return 0;
   }

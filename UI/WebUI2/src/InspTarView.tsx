@@ -3681,10 +3681,10 @@ export function SingleTargetVIEWUI_JSON_CNC_Peripheral(props: CompParam_InspTarU
                         console.log();
                         for(let i=0;i<surface_check_reports.length;i++)
                         {
-                            console.log(i,surface_check_reports[i].InspTar_id)
+                            console.log(i,surface_check_reports[i].source_id)
                             let tarRepIdx=i;
 
-                            let tarRepId = surface_check_reports[tarRepIdx].InspTar_id;
+                            let tarRepId = surface_check_reports[tarRepIdx].source_id;
 
                             let regionsReps = surface_check_reports[tarRepIdx].report.sub_reports[0].sub_regions;
                             let repDef = systemInspTarList.find(def => def.id == tarRepId)

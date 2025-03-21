@@ -827,6 +827,8 @@ void TriggerInfoMatchingThread(bool *terminationflag)
           LOGI("TId:%d  info TId:%d",targetStageInfo->get_trigger_id(),targetTriggerInfo.trigger_id);
           targetStageInfo->set_trigger_id(targetTriggerInfo.trigger_id);
 
+
+          LOGI("new TId:%d",targetStageInfo->get_trigger_id());
           inspQueue.push_blocking(targetStageInfo);
 
           LOGI("push_blocking ok");
@@ -4106,7 +4108,7 @@ class InspectionTarget_DataTransfer :public InspectionTarget
           
           //calculate elapsed time in ms
           double elapsed_ms = 1000.0 * (cv::getTickCount() - t_start) / cv::getTickFrequency();
-          LOGI("Image compression and send took %.2f ms (compression rate: %d) source_id:%s", elapsed_ms, compressionRate,
+          LOGI("Image compression and send took %.2f ms (compression rate: %d) inspTar_id:%s", elapsed_ms, compressionRate,
           curInput->get_source_id().c_str());
 
           
