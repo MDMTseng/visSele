@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "packaging": "run-script-os",
-    "packaging:macos": "electron-packager ./ --overwrite --platform=darwin --arch=x64 --prune=true --out=release-builds",
+    "packaging:macos": "electron-packager ./ --overwrite --platform=darwin --arch=arm64 --prune=true --out=release-builds",
     "packaging:windows": "electron-packager ./ --overwrite --arch=x64 --prune=true --out=release-builds"
   },
   "repository": "https://github.com/electron/electron-quick-start",
