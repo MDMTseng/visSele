@@ -22,8 +22,32 @@ private:
         int m_index;
         std::string m_key;
         bool m_read_only;
+        
+        // Delete item with key from an object
+        bool deleteItem(const std::string& key);
+        
+        // Delete item at index from an array
+        bool deleteItem(int index);
 
     public:
+        // Inner delete proxy class for ElementRef
+        class DeleteProxy {
+        private:
+            ElementRef& m_ref;
+            
+        public:
+            DeleteProxy(ElementRef& ref);
+            
+            // Delete item with key from an object
+            bool operator[](const std::string& key);
+            
+            // Delete item at index from an array
+            bool operator[](int index);
+        };
+        
+        // Delete proxy instance
+        DeleteProxy del{*this};
+        
         // Constructor for object element
         ElementRef(cJSON* parent, const std::string& key, bool readOnly = true);
 
@@ -117,9 +141,25 @@ private:
         ElementRef writableCopy(const std::string& key);
         ElementRef writableCopy(int index);
     };
+    
+    // Deletion proxy for cJSONPP
+    class DeleteProxy {
+    private:
+        cJSONPP& m_parent;
+    
+    public:
+        DeleteProxy(cJSONPP& parent);
+        
+        // Delete item with key from an object
+        bool operator[](const std::string& key);
+        
+        // Delete item at index from an array
+        bool operator[](int index);
+    };
 
 public:
     WritableProxy w{*this};
+    DeleteProxy del{*this};
 
     // Default constructor
     cJSONPP();
@@ -161,6 +201,10 @@ public:
     
     // Get array length or -1 if not an array
     int length() const;
+    
+    // Delete item methods
+    bool deleteItem(const std::string& key);
+    bool deleteItem(int index);
 };
 
 #endif // CJSONPP_H

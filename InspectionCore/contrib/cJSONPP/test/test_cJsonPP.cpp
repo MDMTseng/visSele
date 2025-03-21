@@ -104,6 +104,26 @@ int test_string_conversion() {
     return 0;
 }
 
+int test_reassignment() {
+    cJSONPP obj = cJSONPP::newObject();
+    obj.w["number"] = cJSONPP::newObject();
+    std::cout << "obj.number={} " << obj.toString() << std::endl;
+    obj.w["number"] = 100;
+    std::cout << "obj.number=100 " << obj.toString() << std::endl;
+    ASSERT_TEST(obj["number"].isNumber(), "number should be a number");
+
+    obj.del["number"];//delete the number
+    std::cout << "delete number from obj: " << obj.toString() << std::endl;
+
+    obj.w["a"]["b"]["c"]=10;
+    std::cout << "obj.a.b.c=10: obj=" << obj.toString() << std::endl;
+    auto b=obj["a"]["b"];
+    b.w().del["c"];
+    std::cout << "delete obj.a.b.c: obj=" << obj.toString() << std::endl;
+
+
+    return 0;
+}
 int main() {
     int result = 0;
     
@@ -118,6 +138,12 @@ int main() {
     std::cout << "Running string conversion test..." << std::endl;
     result = test_string_conversion();
     if (result != 0) return result;
+
+    std::cout << "Running reassignment & deletion test..." << std::endl;
+    result = test_reassignment();
+    if (result != 0) return result;
+
+
     
     std::cout << "All tests passed!" << std::endl;
     return 0;

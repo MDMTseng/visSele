@@ -292,6 +292,41 @@ void cJSONPP::ElementRef::replace(cJSON* newItem)
     }
 }
 
+// ElementRef::DeleteProxy implementations
+cJSONPP::ElementRef::DeleteProxy::DeleteProxy(ElementRef& ref) : m_ref(ref) {}
+
+bool cJSONPP::ElementRef::DeleteProxy::operator[](const std::string& key)
+{
+    return m_ref.deleteItem(key);
+}
+
+bool cJSONPP::ElementRef::DeleteProxy::operator[](int index)
+{
+    return m_ref.deleteItem(index);
+}
+
+// ElementRef deleteItem implementations
+bool cJSONPP::ElementRef::deleteItem(const std::string& key)
+{
+    if (m_read_only || !m_element || !cJSON_IsObject(m_element)) {
+        return false;
+    }
+    
+    cJSON_DeleteItemFromObject(m_element, key.c_str());
+    return true;
+}
+
+bool cJSONPP::ElementRef::deleteItem(int index)
+{
+    if (m_read_only || !m_element || !cJSON_IsArray(m_element) || 
+        index < 0 || index >= cJSON_GetArraySize(m_element)) {
+        return false;
+    }
+    
+    cJSON_DeleteItemFromArray(m_element, index);
+    return true;
+}
+
 // WritableProxy implementations
 cJSONPP::WritableProxy::WritableProxy(cJSONPP& parent) : m_parent(parent) {}
 
@@ -337,6 +372,19 @@ cJSONPP::ElementRef cJSONPP::WritableProxy::writableCopy(int index)
         m_parent.m_owned = true;
     }
     return ElementRef(m_parent.m_json, index, false);
+}
+
+// DeleteProxy implementations
+cJSONPP::DeleteProxy::DeleteProxy(cJSONPP& parent) : m_parent(parent) {}
+
+bool cJSONPP::DeleteProxy::operator[](const std::string& key)
+{
+    return m_parent.deleteItem(key);
+}
+
+bool cJSONPP::DeleteProxy::operator[](int index)
+{
+    return m_parent.deleteItem(index);
 }
 
 // cJSONPP implementations
@@ -442,4 +490,24 @@ int cJSONPP::length() const
         return cJSON_GetArraySize(m_json);
     }
     return -1;
+}
+
+bool cJSONPP::deleteItem(const std::string& key)
+{
+    if (!m_json || !cJSON_IsObject(m_json)) {
+        return false;
+    }
+    
+    cJSON_DeleteItemFromObject(m_json, key.c_str());
+    return true;
+}
+
+bool cJSONPP::deleteItem(int index)
+{
+    if (!m_json || !cJSON_IsArray(m_json) || index < 0 || index >= cJSON_GetArraySize(m_json)) {
+        return false;
+    }
+    
+    cJSON_DeleteItemFromArray(m_json, index);
+    return true;
 } 
