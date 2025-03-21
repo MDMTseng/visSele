@@ -73,7 +73,7 @@ class StageInfo{
   int set_source_id(const std::string &id){//set to jInfo
     if(jInfo==NULL)return -1;
     cJSONPP jinfo(jInfo);
-    jinfo.w["source_id"]=id;
+    jinfo.w()["source_id"]=id;
     return 0;
   }
   std::string get_source_id(){
@@ -102,7 +102,7 @@ class StageInfo{
     if(jInfo==NULL)return -1;
     //remove the trigger_id
     cJSONPP jinfo(jInfo);
-    jinfo.w["trigger_id"]=id;
+    jinfo.w()["trigger_id"]=id;
     return 0;
   }
   int get_trigger_id(){
@@ -132,7 +132,7 @@ class StageInfo{
     auto tags_j=jinfo["trigger_tags"];
     if(tags_j.isArray()==false)
     {
-      jinfo.w["trigger_tags"]=cJSONPP::newArray();
+      jinfo.w()["trigger_tags"]=cJSONPP::newArray();
       tags_j=jinfo["trigger_tags"];
     }
 
@@ -187,7 +187,7 @@ class StageInfo{
   // float process_time_us;
   int set_process_time_us(double time_us){
     cJSONPP jinfo(jInfo);
-    jinfo.w["process_time_us"]=time_us;
+    jinfo.w()["process_time_us"]=time_us;
     return 0;
   }
   float get_process_time_us(){
@@ -795,7 +795,7 @@ class StageInfo_Orientation:public StageInfo
 
   StageInfo_Orientation():StageInfo(){
     cJSONPP jinfo(jInfo);
-    jinfo.w["report"]=cJSONPP::newArray();
+    jinfo.w()["report"]=cJSONPP::newArray();
 
   }
 
@@ -820,7 +820,7 @@ class StageInfo_Orientation:public StageInfo
   int set_mmpp(float mmpp){
 
     cJSONPP jinfo(jInfo);
-    jinfo.w["mmpp"]=mmpp;
+    jinfo.w()["mmpp"]=mmpp;
     return 0;
   }
 
@@ -843,11 +843,11 @@ class StageInfo_Orientation:public StageInfo
   }
   static int set_orient_to_json(cJSON* jObj,const orient &orie){
     cJSONPP jinfo(jObj);
-    jinfo.w["center"]["x"]=orie.center.x;
-    jinfo.w["center"]["y"]=orie.center.y;
-    jinfo.w["angle"]=orie.angle;
-    jinfo.w["confidence"]=orie.confidence;
-    jinfo.w["flip"]=orie.flip;
+    jinfo.w()["center"]["x"]=orie.center.x;
+    jinfo.w()["center"]["y"]=orie.center.y;
+    jinfo.w()["angle"]=orie.angle;
+    jinfo.w()["confidence"]=orie.confidence;
+    jinfo.w()["flip"]=orie.flip;
     return 0;
   }
 

@@ -268,6 +268,8 @@ vector<InspectionTarget_DimMeasure::itemInfo> buildFeatureQuickList(cJSON *featu
         }
       }
     }
+    
+    
     infoQList.push_back(info);
   }
 
@@ -294,31 +296,32 @@ vector<InspectionTarget_DimMeasure::itemInfo> buildFeatureQuickList(cJSON *featu
 
 vector<InspectionTarget_DimMeasure::cat_itemInfo> buildCategoryQuickList(vector<InspectionTarget_DimMeasure::itemInfo> &featureQList,cJSON *categoryList)
 {
-  int len=cJSON_GetArraySize(categoryList);
+  cJSONPP jCL(categoryList,false);
+  int len=jCL.length();
   vector<InspectionTarget_DimMeasure::cat_itemInfo> infoQList;
   for(int i=0;i<len;i++)
   {
-    cJSON *categoryEle=cJSON_GetArrayItem(categoryList,i);
-    int id=JFetch_NUMBER_ex(categoryEle,"id",-1);
+    auto categoryEle=jCL[i];
+    int id=categoryEle["id"].asInt(-1);
     
 
     LOGE("categoryEle id:%d",id);
     if(id==-1)continue;
-    InspectionTarget_DimMeasure::cat_itemInfo info={.cached_def=categoryEle};
+    InspectionTarget_DimMeasure::cat_itemInfo info={.cached_def=categoryEle.get()};
+    auto setupList = categoryEle["limits_setup"];
     info.id=id;
     info.idx=i;
 
     info.limits_setup.clear();
-    cJSON *setupList = JFetch_ARRAY(info.cached_def, "limits_setup");
 
     
-    if(setupList!=NULL)
+    if(setupList.isArray())
     {
-      int ref_size=cJSON_GetArraySize(setupList);
+      int ref_size=setupList.length();
       for(int j=0;j<ref_size;j++)
       {
-        cJSON *refItem=cJSON_GetArrayItem(setupList,j);
-        int refId=JFetch_NUMBER_ex(refItem,"id",-1);
+        auto refItem=setupList[j];
+        int refId=refItem["id"].asInt(-1);
         int featureIdx=-1;
         if(refId!=-1)
         {
@@ -331,9 +334,9 @@ vector<InspectionTarget_DimMeasure::cat_itemInfo> buildCategoryQuickList(vector<
             }
           }
         }
-        float low_limit=JFetch_NUMBER_ex(refItem,"low_limit");
-        float high_limit=JFetch_NUMBER_ex(refItem,"high_limit");
-        string NG_as=JFetch_STRING_ex(refItem,"NG_as","");
+        float low_limit=refItem["low_limit"].asDouble();
+        float high_limit=refItem["high_limit"].asDouble();
+        string NG_as=refItem["NG_as"].asString();
 
         info.limits_setup.push_back({.ref_id_idx={.id=refId,.idx=featureIdx},.low_limit=low_limit,.high_limit=high_limit,.NG_as=NG_as});
       }
@@ -349,29 +352,45 @@ vector<InspectionTarget_DimMeasure::cat_itemInfo> buildCategoryQuickList(vector<
 
 void InspectionTarget_DimMeasure::setInspDef(cJSON *def)
 {
+  //WARNING: the def pointer will be changed after setInspDef
   InspectionTarget::setInspDef(def);
+  //in InspectionTarget::setInspDef it will clone the def
+  //so you need to use the this->def pointer after setInspDef
 
-
+  // def=this->def;
   featureQuickList.clear();
   categoryQuickList.clear();
   LOGE("=========def:%p",this->def);
-  cJSON *featureInfo = JFetch_OBJECT(this->def, "featureInfo");
-  if (featureInfo == NULL)
-    return;
-  cJSON *featureList = JFetch_ARRAY(featureInfo, "element_list");
 
-  if (featureList == NULL)
+
+  cJSONPP jdef(this->def,false);
+  auto featureInfo = jdef["featureInfo"];
+  if (featureInfo.isObject()==false)
     return;
 
-  cJSON *categoryList = JFetch_ARRAY(featureInfo, "category_list");
+  auto featureList = featureInfo["element_list"];
+  if (featureList.isArray()==false)
+  {
+    featureInfo.w()["element_list"]=cJSONPP::newArray();
+    featureList = featureInfo["element_list"];
+  }
+
+  auto categoryList = featureInfo["category_list"];
+  if(categoryList.isArray()==false)
+  {
+    featureInfo.w()["category_list"]=cJSONPP::newArray();
+    categoryList = featureInfo["category_list"];
+  }
+  // if (categoryList.isArray()==false)
+  //   return;
 
 
   try
   {
 
-    featureQuickList = buildFeatureQuickList(featureList);
+    featureQuickList = buildFeatureQuickList(featureList.get());
 
-    categoryQuickList = buildCategoryQuickList(featureQuickList,categoryList);
+    categoryQuickList = buildCategoryQuickList(featureQuickList,categoryList.get());
     for (int i = 0; i < featureQuickList.size(); i++)
     {
       LOGI("=========id:%d", featureQuickList[i].id);
@@ -3010,7 +3029,7 @@ LOGE("wwwwwwfeatureIdx:%d,fqList.size:%d",featureIdx,fqList.size());
   }
   if(fqList[featureIdx].processed)
     return true;
-
+  LOGE(">>>");
   auto &info=fqList[featureIdx];
   
   {//make all ref ready
@@ -3034,6 +3053,7 @@ LOGE("wwwwwwfeatureIdx:%d,fqList.size:%d",featureIdx,fqList.size());
   info.result.error_msg="Not implemented";
 
 
+  LOGE(">>>type:%s",type.c_str());
   //timer start
   auto t0=cv::getTickCount();
 
