@@ -12,37 +12,32 @@ import { ResultType } from 'antd/lib/result';
 
 let StoreX = ReduxStoreSetUp({});
 const rootEl = document.getElementById("root");
-ReactDOM.render(
-  <React.StrictMode>
-    <Provider store={StoreX}>
-      <App />
-    </Provider>
-  </React.StrictMode>,
-  rootEl
-);
 
-
-if (module.hot) {
-    // Log when the module is hot reloaded
-    module.hot.accept('./App.tsx', function() {
-        console.log('Hot reload occurred for App.tsx module.');
-    });
-
-
-    module.hot.accept('./UtilUIView.tsx', function() {
-        console.log('Hot reload occurred for UtilUIView.tsx module.');
-    });
-
-
-    module.hot.accept('./InspTarView.tsx', function() {
-        console.log('Hot reload occurred for InspTarView.tsx module.');
-    });
-    // Log HMR status changes
-    module.hot.addStatusHandler(status => {
-        console.log(`HMR status: ${status}`);
-    });
+if (rootEl) {
+  ReactDOM.render(
+    <React.StrictMode>
+      <Provider store={StoreX}>
+        <App />
+      </Provider>
+    </React.StrictMode>,
+    rootEl
+  );
 }
 
+// HMR configuration for Vite
+if (import.meta.hot) {
+  import.meta.hot.accept('./App.tsx', () => {
+    console.log('Hot reload occurred for App.tsx module.');
+  });
+
+  import.meta.hot.accept('./UtilUIView.tsx', () => {
+    console.log('Hot reload occurred for UtilUIView.tsx module.');
+  });
+
+  import.meta.hot.accept('./InspTarView.tsx', () => {
+    console.log('Hot reload occurred for InspTarView.tsx module.');
+  });
+}
 
 function isElectron() {
     console.log(window,window.process);

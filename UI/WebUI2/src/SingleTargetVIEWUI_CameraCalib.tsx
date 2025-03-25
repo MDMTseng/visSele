@@ -28,7 +28,8 @@ import { CORE_ID, CNC_PERIPHERAL_ID, BPG_WS, CNC_Perif, InspCamera_API } from '.
 
 import { Row, Col, Input, Tag, Modal, message, Space,Statistic,Avatar } from 'antd';
 
-import {ITGlobalVariableContext,CompParam_GlobalVariable } from './App';
+import {ITGlobalVariableContext } from './contexts/GlobalContext';
+import { CompParam_GlobalVariable } from './types/contextTypes';
 
 import { type_CameraInfo, type_IMCM } from './AppTypes';
 import './basic.css';

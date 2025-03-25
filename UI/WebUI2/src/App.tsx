@@ -1,5 +1,4 @@
-import React from 'react';
-import { useState, useEffect,useRef,useMemo,useContext, useCallback,createContext } from 'react';
+import React, { createContext, useRef, useEffect, useState, Suspense } from 'react';
 import { useDispatch, useSelector } from "react-redux";
 import { Layout,Button,Tabs,Slider,Menu, Divider,Dropdown,Popconfirm,Radio, InputNumber, Switch,Select,TreeSelect } from 'antd';
 import type { TreeSelectProps } from 'antd';
@@ -63,19 +62,11 @@ import { type } from '@testing-library/user-event/dist/type';
 const { Option } = Select;
 const { SubMenu } = Menu;
   
+// Import types from the new file
+import { CompParam_GlobalVariable } from './types/contextTypes';
+// Import context and provider from the new file
+import { ITGlobalVariableContext, GlobalVariableProvider } from './contexts/GlobalContext';
 
-export type CompParam_GlobalVariable = {
-  global_variable: any,
-
-  // global_variable_selector: () =>Promise<string|undefined>,
-  set_global_variable: ((path: string[],new_value:any) => void) | undefined,
-}
-
-export const ITGlobalVariableContext = createContext<CompParam_GlobalVariable>({
-  global_variable: {},
-  // global_variable_selector: () => { return new Promise<string>((resolve, reject) => { reject("") }) },
-  set_global_variable: (ngv)=>{},
-});
 
 
 
@@ -2454,7 +2445,9 @@ function VIEWUI(){
             setUIEditFlag(false);
           }
 
-        }}>EDIT_LEVEL {editPermitFlag}</Menu.Item>
+        }}>
+          <span>EDIT_LEVEL</span> <span>{editPermitFlag}</span>
+        </Menu.Item>
 
 
         <Menu.Item key="UIEditCtrl" onClick={()=>{
@@ -2631,9 +2624,7 @@ function VIEWUI(){
       </Space>
 
 
-      <ITGlobalVariableContext.Provider value={
-        {
-
+      <GlobalVariableProvider value={{
           global_variable:GV_LayersFlating(defConfig.main?.global_variable,GlobalVariableID),
           set_global_variable:(path, new_value)=>{
 
@@ -2650,8 +2641,7 @@ function VIEWUI(){
             BPG_API.InspTargetSetGlobalVariable(GV_LayersFlating(_this.CACHED_GLOBAL_VARIABLE,GlobalVariableID));
             setDefConfig(new_defConfig,-1);
           }
-        }}>
-
+      }}>
       <TargetViewUIShow globalVariable={_this.listCMD_Vairable} WidgetSetID={_this.listCMD_Vairable.widgetSetID} defConfig={defConfig} UIEditFlag={UIEditFlag} EditPermitFlag={editPermitFlag}  
         
         onDefChange={(newdef:any, updateIdx)=>{
@@ -2675,7 +2665,7 @@ function VIEWUI(){
           reload_InspTarget(id);
         }}
         />
-      </ITGlobalVariableContext.Provider>
+      </GlobalVariableProvider>
       </>}
     </Content>
   
@@ -2688,19 +2678,16 @@ function VIEWUI(){
 
 
 function App() {
-  
-  const _ = useRef<any>({
-  });
-  let _this=_.current;
+  const _ = useRef<any>({});
+  let _this = _.current;
   const dispatch = useDispatch();
-  const CORE_API_INFO = useSelector((state:StoreTypes) => state.EXT_API[CORE_ID]);
+  const CORE_API_INFO = useSelector((state: StoreTypes) => state.EXT_API[CORE_ID]);
 
-
-  const ACT_EXT_API_REGISTER= (...p:Parameters<typeof EXT_API_REGISTER>) => dispatch(EXT_API_REGISTER(...p));
-  const ACT_EXT_API_ACCESS= (...p:Parameters<typeof EXT_API_ACCESS>) => dispatch(EXT_API_ACCESS(...p));
-  const ACT_EXT_API_UPDATE= (...p:Parameters<typeof EXT_API_UPDATE>) => dispatch(EXT_API_UPDATE(...p));
-  const ACT_EXT_API_CONNECTED= (...p:Parameters<typeof EXT_API_CONNECTED>) => dispatch(EXT_API_CONNECTED(...p));
-  const ACT_EXT_API_DISCONNECTED= (...p:Parameters<typeof EXT_API_DISCONNECTED>) => dispatch(EXT_API_DISCONNECTED(...p));
+  const ACT_EXT_API_REGISTER = (...p: Parameters<typeof EXT_API_REGISTER>) => dispatch(EXT_API_REGISTER(...p));
+  const ACT_EXT_API_ACCESS = (...p: Parameters<typeof EXT_API_ACCESS>) => dispatch(EXT_API_ACCESS(...p));
+  const ACT_EXT_API_UPDATE = (...p: Parameters<typeof EXT_API_UPDATE>) => dispatch(EXT_API_UPDATE(...p));
+  const ACT_EXT_API_CONNECTED = (...p: Parameters<typeof EXT_API_CONNECTED>) => dispatch(EXT_API_CONNECTED(...p));
+  const ACT_EXT_API_DISCONNECTED = (...p: Parameters<typeof EXT_API_DISCONNECTED>) => dispatch(EXT_API_DISCONNECTED(...p));
 
   useEffect(() => {
     const handleBeforeUnload = (event:any) => {
@@ -2717,66 +2704,16 @@ function App() {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, []);
-  // const [camList,setCamList]=useState<{[key:string]:{[key:string]:any,list:any[]}}>({});
-  useEffect(() => {
-    
-    let core_api=new BPG_WS(CORE_ID);
-    core_api.onDisconnected=()=>ACT_EXT_API_DISCONNECTED(CORE_ID);
 
-
-    ACT_EXT_API_REGISTER(core_api.id,core_api);
-    
-    const { REACT_APP_MY_ENV } = process.env;
-    console.log(REACT_APP_MY_ENV)
-    core_api.connect({
-      url:"ws://127.0.0.1:4090"//4039"
-    });
-
-
-
-
-    let CNC_api=new CNC_Perif(CNC_PERIPHERAL_ID,20666);
-
-    {
-      CNC_api.onConnected=()=>{ACT_EXT_API_CONNECTED(CNC_PERIPHERAL_ID)};
-  
-      CNC_api.onInfoUpdate=(info:[key: string])=>ACT_EXT_API_UPDATE(CNC_api.id,info);
-  
-      CNC_api.onDisconnected=()=>{ACT_EXT_API_DISCONNECTED(CNC_PERIPHERAL_ID)};
-      
-      CNC_api.BPG_Send=core_api.send.bind(core_api);
-  
-      ACT_EXT_API_REGISTER(CNC_api.id,CNC_api);
-    }
-    
-
-
-
-
-
-
-    core_api.onConnected=()=>{
-      ACT_EXT_API_CONNECTED(CORE_ID);
-
-      // CNC_api.connect({
-      //   // uart_name:"/dev/cu.SLAB_USBtoUART",
-      //   uart_name:"/dev/cu.usbserial-0001",
-      //   baudrate:460800//230400//115200
-      // });
-    }
-
-    // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
-    // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
-    return (() => {
-      });
-      
-  }, []); 
-  if(GetObjElement(CORE_API_INFO,["state"])!=1)
-  {
+  if (GetObjElement(CORE_API_INFO, ["state"]) != 1) {
     return <div>Wait....</div>;
   }
-  return  <VIEWUI/>;
 
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <VIEWUI />
+    </Suspense>
+  );
 }
 
 export default App;
