@@ -16,7 +16,7 @@ struct ITPIF_ImageInfo {
     int type;           // OpenCV type (CV_8UC1, CV_8UC3, etc.) stored as an integer
     int elemSize;       // Size of each element in bytes
     int totalSize;      // Total size of the buffer in bytes
-    int refCount;       // Reference counter for memory management
+    // int refCount;       // Reference counter for memory management
     int ref_id;         // Reference ID for custom use
 };
 
@@ -38,6 +38,7 @@ struct ITPIF_StageInfo_c{
     char source_id[128];
 
     cJSON* jInfo;
+    int ref_id;
     ITPIF_ImageInfo img_show, img;
 };
 
@@ -48,11 +49,15 @@ struct ITPIF_StageInfo_c;
 typedef int (*ITPIF_DispatchFunc)(void* main_ctx,struct ITPIF_StageInfo_c* data);
 typedef cJSON* (*ITPIF_GetGlobalValueFunc)(void* main_ctx);
 typedef void (*ITPIF_UnlockGlobalValueFunc)(void* main_ctx);
+typedef ITPIF_ImageInfo (*ITPIF_RequestImgFunc)(void* main_ctx,int width, int height, int channels, int type);
+typedef ITPIF_StageInfo_c (*ITPIF_RequestStageInfoFunc)(void* main_ctx);
 
 typedef struct ITPIF_ManagerInterface {
     ITPIF_DispatchFunc dispatch;
     ITPIF_GetGlobalValueFunc getNLockGlobalValue;
     ITPIF_UnlockGlobalValueFunc unLockGlobalValue;
+    ITPIF_RequestImgFunc requestImg;
+    ITPIF_RequestStageInfoFunc requestStageInfo;
 } ITPIF_ManagerInterface;
 
 // Function types for communicating with the plugin host
@@ -67,11 +72,11 @@ typedef struct ITPIF_CMDActInterface {
 } ITPIF_CMDActInterface;
 
 // Function types for plugin operations
-typedef void* (*ITPIF_CreatePluginInstance)(const char *id, cJSON* def, const char *local_env_path, struct ManagerInterface* manager, void* main_ctx);
+typedef void* (*ITPIF_CreatePluginInstance)(const char *id, cJSON* def, const char *local_env_path, struct ITPIF_ManagerInterface* manager, void* main_ctx);
 typedef void (*ITPIF_DestroyPluginInstance)(void* instance);
 typedef void (*ITPIF_setEnvPath)(void* instance, const char *path);
 typedef int (*ITPIF_PluginSetDef)(void* instance, cJSON* def);
-typedef int (*ITPIF_PluginExchangeCMD)(void* instance, cJSON *info, int id, struct CMDActInterface act);
+typedef int (*ITPIF_PluginExchangeCMD)(void* instance, cJSON *info, int id, struct ITPIF_CMDActInterface act);
 typedef int (*ITPIF_PluginProcess)(void* instance, struct ITPIF_StageInfo_c* data);
 
 // Plugin interface structure

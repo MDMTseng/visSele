@@ -109,6 +109,19 @@ class StageInfo{
     cJSONPP jinfo(jInfo);
     return jinfo["trigger_id"].asInt(-1);
   }
+  int set_type(const std::string &type){
+    if(jInfo==NULL)return -1;
+    cJSONPP jinfo(jInfo);
+    jinfo.w()["type"]=type;
+    return 0;
+  }
+  std::string get_type(){
+    if(jInfo==NULL)return "";
+    cJSONPP jinfo(jInfo);
+    return jinfo["type"].asString();
+  }
+  
+
   //IMAGE--------------------------------
   cv::Mat img;//the output image, to pass to next stage, and next stage can use it
   cv::Mat img_show;//the output image, to show in UI, 
