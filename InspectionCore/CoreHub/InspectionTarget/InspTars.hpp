@@ -32,6 +32,7 @@
 // #include <InspTar_Empty.hpp>
 #include <InspTar_CameraCalib.hpp>
 #include <InspTar_DimMeasure.hpp>
+#include <InspTar_PlugIn.hpp>
 using namespace cv;
 // class InspectionTarget_s :public InspectionTarget
 // {

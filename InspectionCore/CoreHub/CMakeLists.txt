@@ -246,6 +246,7 @@ include_directories (
   $ENV{MODULE_BPG_Protocol}/include 
   $ENV{MODULE_simple_uart}/include
   $ENV{MODULE_libuvc}/include
+  $ENV{MODULE_InspTar_PlugIn_Interface}
   $ENV{MODULE_smem_channel}
   $ENV{MODULE_wfqueue}
   $ENV{MODULE_lodepng}

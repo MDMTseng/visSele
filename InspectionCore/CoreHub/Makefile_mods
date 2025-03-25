@@ -26,6 +26,7 @@ export MODULE_aravis=$(abspath $(moduleRoot)/contrib/aravis/$(platform))
 export MODULE_MindVision_GIGE=$(abspath $(moduleRoot)/contrib/MindVision_GIGE/$(platform))
 export MODULE_Compat_dirent=$(abspath $(moduleRoot)/contrib/Compat_dirent/$(platform))
 export MODULE_cJSON=$(abspath $(moduleRoot)/contrib/cJSON)
+export MODULE_cJSONPP=$(abspath $(moduleRoot)/contrib/cJSONPP)
 export MODULE_mjpegLib=$(abspath $(moduleRoot)/contrib/mjpegLib)
 export MODULE_logctrl=$(abspath $(moduleRoot)/logctrl)
 export MODULE_common_lib=$(abspath $(moduleRoot)/common_lib)
@@ -38,7 +39,7 @@ export MODULE_simple_uart=$(abspath $(moduleRoot)/contrib/simple_uart)
 # export MODULE_exprtk=$(abspath $(moduleRoot)/contrib/exprtk)
 export MODULE_quickjs=$(abspath $(moduleRoot)/contrib/quickjs/$(platform))
 
-
+export MODULE_InspTar_PlugIn_Interface=$(abspath $(moduleRoot)/contrib/InspTarPluginInterface)
 
 
 export MODULE_MJPEG_Streamer=$(abspath $(moduleRoot)/MJPEG_Streamer)
@@ -75,6 +76,7 @@ IDIR=	include/ \
 			$(MODULE_circleFitting) \
 			$(MODULE_common_lib)/include \
 			$(MODULE_cJSON) \
+			$(MODULE_cJSONPP) \
 			$(MODULE_logctrl)/include \
 			$(MODULE_MatchingEngine)/include \
 			$(MODULE_MatchingEngine)/include_priv \
@@ -104,6 +106,7 @@ MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
 EXT_OBJS= $(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_cJSON)/cJSON.a \
+					$(MODULE_cJSONPP)/cJSONPP.a \
 					$(MODULE_logctrl)/logctrl.a \
 					$(MODULE_common_lib)/common_lib.a \
 					$(MODULE_acvImage)/acvImage.a \
@@ -168,6 +171,7 @@ else
 									$(MODULE_common_lib) \
 									$(MODULE_circleFitting) \
 									$(MODULE_cJSON) \
+									$(MODULE_cJSONPP) \
 									$(MODULE_logctrl) \
 									$(MODULE_lodepng) \
 									$(MODULE_CameraLayer) \
