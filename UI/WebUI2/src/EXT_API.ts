@@ -59,9 +59,9 @@ export class BPG_WS
       // ACT_EXT_API_CONNECTED(this.id);//wait until HR arrive
     }
     this.websocket.onclose=(ev:any)=>{
-      setTimeout(() => {
-        this.connect({url:this.url});
-      }, 5*1000);//wait for 5sec and reconnect
+      // setTimeout(() => {
+      //   this.connect({url:this.url});
+      // }, 5*1000);//wait for 5sec and reconnect
       this.onDisconnected();
     }
     

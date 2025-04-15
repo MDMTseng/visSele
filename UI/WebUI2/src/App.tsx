@@ -1501,9 +1501,6 @@ function VIEWUI(){
   const [newITType, setNewITType] = useState<string|undefined>(undefined);
   const [newITName, setNewITName] = useState<string|undefined>(undefined);
 
-  
-
-
 
   function menuCol(
     label: React.ReactNode,
@@ -2689,6 +2686,7 @@ function App() {
   const ACT_EXT_API_CONNECTED = (...p: Parameters<typeof EXT_API_CONNECTED>) => dispatch(EXT_API_CONNECTED(...p));
   const ACT_EXT_API_DISCONNECTED = (...p: Parameters<typeof EXT_API_DISCONNECTED>) => dispatch(EXT_API_DISCONNECTED(...p));
 
+
   useEffect(() => {
     const handleBeforeUnload = (event:any) => {
       event.preventDefault();
@@ -2710,21 +2708,36 @@ function App() {
     useEffect(() => {
     
       let core_api=new BPG_WS(CORE_ID);
-      core_api.onDisconnected=()=>ACT_EXT_API_DISCONNECTED(CORE_ID);
-  
   
       ACT_EXT_API_REGISTER(core_api.id,core_api);
       
       const { REACT_APP_MY_ENV } = process.env;
       console.log(REACT_APP_MY_ENV)
-      core_api.connect({
+
+      let conn_info={
         url:"ws://127.0.0.1:4090"//4039"
-      });
+      }
+
+      let inited=false;
+      setTimeout(()=>{
+        if(inited)return;
+        inited=true;
+        core_api.connect(conn_info);
+      },2000)//init delay
   
   
   
 
-  
+      core_api.onDisconnected=()=>{
+        console.log("core_api.onDisconnected ")
+        if(inited)
+        {
+          _this.reconnectCallback=()=>{
+            core_api.connect(conn_info);
+          }
+        }
+        ACT_EXT_API_DISCONNECTED(CORE_ID);
+      }
   
       core_api.onConnected=()=>{
         ACT_EXT_API_CONNECTED(CORE_ID);
@@ -2739,12 +2752,17 @@ function App() {
       // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
       // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
       return (() => {
+        console.log("core_api.close")
+        core_api.close();
         });
         
     }, []); 
 
   if (GetObjElement(CORE_API_INFO, ["state"]) != 1) {
-    return <div>Wait....</div>;
+    return <div>Wait....<Button type="primary" disabled={_this.reconnectCallback===undefined} onClick={()=>{
+      _this.reconnectCallback?.();
+      _this.reconnectCallback=undefined;
+    }}>Reconnect</Button></div>;
   }
 
   return (
