@@ -350,10 +350,10 @@ vector<InspectionTarget_DimMeasure::cat_itemInfo> buildCategoryQuickList(vector<
 }
 
 
-void InspectionTarget_DimMeasure::setInspDef(cJSON *def)
+void InspectionTarget_DimMeasure::setInspDef(cJSON *tmp_def)
 {
   //WARNING: the def pointer will be changed after setInspDef
-  InspectionTarget::setInspDef(def);
+  InspectionTarget::setInspDef(tmp_def);
   //in InspectionTarget::setInspDef it will clone the def
   //so you need to use the this->def pointer after setInspDef
 
