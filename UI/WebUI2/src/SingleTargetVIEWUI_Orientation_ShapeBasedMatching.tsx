@@ -488,7 +488,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                 {EditUI}
 
 
-                <br />
+                {/* <br /> */}
 
 
                 <Button disabled={defReport===undefined} onClick={() => {
@@ -1185,7 +1185,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                 })}
 
                 
-                <Switch checkedChildren="開啟顏色預處理" unCheckedChildren="關閉顏色預處理" checked={cacheDef?.mask?.enable == true} onChange={(check) => {
+                {/* <Switch checkedChildren="開啟顏色預處理" unCheckedChildren="關閉顏色預處理" checked={cacheDef?.mask?.enable == true} onChange={(check) => {
                     setCacheDef(ObjShellingAssign(cacheDef, ["mask","enable"], check));
                 }} />
 
@@ -1211,7 +1211,7 @@ export function SingleTargetVIEWUI_Orientation_ShapeBasedMatching(props: CompPar
                     _this.trigTO = ID_debounce(_this.trigTO, () => {
                         setCacheDef(ObjShellingAssign(cacheDef, ["mask","blur2_size"], v));
                     }, () => _this.trigTO = undefined, 500);
-                }} />
+                }} /> */}
 
 
 
