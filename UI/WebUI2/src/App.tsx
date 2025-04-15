@@ -2706,7 +2706,7 @@ function App() {
 
     // const [camList,setCamList]=useState<{[key:string]:{[key:string]:any,list:any[]}}>({});
     useEffect(() => {
-    
+      console.log("useEffect NEW BPG_WS")
       let core_api=new BPG_WS(CORE_ID);
   
       ACT_EXT_API_REGISTER(core_api.id,core_api);
@@ -2725,21 +2725,23 @@ function App() {
         core_api.connect(conn_info);
       },2000)//init delay
   
-  
+      _this.isConnected=false;
   
 
       core_api.onDisconnected=()=>{
-        console.log("core_api.onDisconnected ")
-        if(inited)
-        {
-          _this.reconnectCallback=()=>{
+        console.log("core_api.onDisconnected")
+        _this.isConnected=false;
+        setTimeout(()=>{
+          if(_this.isConnected==false)
+          {
             core_api.connect(conn_info);
           }
-        }
+        },3000)
         ACT_EXT_API_DISCONNECTED(CORE_ID);
       }
   
       core_api.onConnected=()=>{
+        _this.isConnected=true;
         ACT_EXT_API_CONNECTED(CORE_ID);
   
         // CNC_api.connect({
@@ -2759,10 +2761,7 @@ function App() {
     }, []); 
 
   if (GetObjElement(CORE_API_INFO, ["state"]) != 1) {
-    return <div>Wait....<Button type="primary" disabled={_this.reconnectCallback===undefined} onClick={()=>{
-      _this.reconnectCallback?.();
-      _this.reconnectCallback=undefined;
-    }}>Reconnect</Button></div>;
+    return <div>Wait....</div>;
   }
 
   return (
