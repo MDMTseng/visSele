@@ -2705,6 +2705,44 @@ function App() {
     };
   }, []);
 
+
+    // const [camList,setCamList]=useState<{[key:string]:{[key:string]:any,list:any[]}}>({});
+    useEffect(() => {
+    
+      let core_api=new BPG_WS(CORE_ID);
+      core_api.onDisconnected=()=>ACT_EXT_API_DISCONNECTED(CORE_ID);
+  
+  
+      ACT_EXT_API_REGISTER(core_api.id,core_api);
+      
+      const { REACT_APP_MY_ENV } = process.env;
+      console.log(REACT_APP_MY_ENV)
+      core_api.connect({
+        url:"ws://127.0.0.1:4090"//4039"
+      });
+  
+  
+  
+
+  
+  
+      core_api.onConnected=()=>{
+        ACT_EXT_API_CONNECTED(CORE_ID);
+  
+        // CNC_api.connect({
+        //   // uart_name:"/dev/cu.SLAB_USBtoUART",
+        //   uart_name:"/dev/cu.usbserial-0001",
+        //   baudrate:460800//230400//115200
+        // });
+      }
+  
+      // this.props.ACT_WS_REGISTER(CORE_ID,new BPG_WS());
+      // this.props.ACT_WS_CONNECT(CORE_ID, this.coreUrl)
+      return (() => {
+        });
+        
+    }, []); 
+
   if (GetObjElement(CORE_API_INFO, ["state"]) != 1) {
     return <div>Wait....</div>;
   }
