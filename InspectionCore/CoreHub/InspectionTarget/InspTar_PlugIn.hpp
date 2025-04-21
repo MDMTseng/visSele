@@ -8,7 +8,6 @@
 #include "cJSON.h"
 #include "logctrl.h"
 
-#include "MatchingCore.h"
 #include "acvImage_BasicTool.hpp"
 #include "mjpegLib.h"
 

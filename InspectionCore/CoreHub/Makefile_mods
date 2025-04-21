@@ -53,7 +53,7 @@ export MODULE_BPG_Protocol=$(abspath $(moduleRoot)/BPG_Protocol)
 
 
 # export MODULE_MLNN=$(abspath $(moduleRoot)/MLNN)
-export MODULE_MatchingEngine=$(abspath $(moduleRoot)/MatchingEngine)
+# export MODULE_MatchingEngine=$(abspath $(moduleRoot)/MatchingEngine)
 export MODULE_libuvc=$(abspath $(moduleRoot)/contrib/libuvc/$(platform))
 
 export SO_EXPORT_PATH=$(abspath .)

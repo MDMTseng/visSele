@@ -9,9 +9,6 @@
 #include "acvImage_SpDomainTool.hpp"
 #include "cJSON.h"
 #include "logctrl.h"
-#include "FeatureManager.h"
-#include "FeatureManager_sig360_circle_line.h"
-#include "MatchingEngine.h"
 #include "common_lib.h"
 #include <stdexcept>
 #include "CameraLayer_BMP.hpp"
@@ -25,7 +22,6 @@
 
 // #include "DatCH_BPG.hpp"
 // #include "DatCH_CallBack_WSBPG.hpp"
-#include "MatchingCore.h"
 #include <TSQueue.hpp>
 
 #include "MJPEG_Streamer.hpp"

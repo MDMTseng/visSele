@@ -98,8 +98,8 @@ add_custom_target(really-clean
   COMMAND make -f "${CMAKE_CURRENT_SOURCE_DIR}/Makefile_mods" clean
 )
 
-add_subdirectory($ENV{MODULE_MatchingEngine} $ENV{MODULE_MatchingEngine})
-add_subdirectory($ENV{MODULE_shape_based_matching} $ENV{MODULE_shape_based_matching})
+# add_subdirectory(../contrib/MatchingEngine ${CMAKE_CURRENT_BINARY_DIR}/MatchingEngine)
+add_subdirectory(../contrib/shape_based_matching ${CMAKE_CURRENT_BINARY_DIR}/shape_based_matching)
 
 add_custom_target(
     mod_target
@@ -184,12 +184,11 @@ ${PLAT_FILES}
 
 
 )
-add_dependencies(visSele mod_target MatchingEngine shape_based_matching)
+add_dependencies(visSele mod_target shape_based_matching)
 
 
 target_link_libraries(visSele
   PUBLIC OpenMP::OpenMP_CXX
-  $ENV{MODULE_MatchingEngine}/libMatchingEngine.a
   $ENV{MODULE_circleFitting}/CircleFitting.a 
   $ENV{MODULE_cJSON}/cJSON.a 
   $ENV{MODULE_cJSONPP}/cJSONPP.a
@@ -238,9 +237,6 @@ include_directories (
   $ENV{MODULE_polyfit}/include 
   $ENV{MODULE_shape_based_matching}/include 
   $ENV{MODULE_shape_based_matching}/MIPP 
-  $ENV{MODULE_MatchingEngine}/include
-  $ENV{MODULE_MatchingEngine}/include_priv
-  $ENV{MODULE_MatchingEngine}/MorphEngine/include
   $ENV{MODULE_mjpegLib}/include
   $ENV{MODULE_MJPEG_Streamer}/include
   $ENV{MODULE_BPG_Protocol}/include 
@@ -274,7 +270,7 @@ set_target_properties(visSele PROPERTIES
 add_executable(playground playground.cpp)
 target_link_libraries(playground
   PUBLIC OpenMP::OpenMP_CXX
-  $ENV{MODULE_MatchingEngine}/libMatchingEngine.a
+  # $ENV{MODULE_MatchingEngine}/libMatchingEngine.a # Removed MatchingEngine dependency
   $ENV{MODULE_common_lib}/common_lib.a 
   $ENV{MODULE_acvImage}/acvImage.a 
   ${OpenCV_LIBS}
@@ -287,6 +283,9 @@ target_include_directories(playground PRIVATE
   "./include"
   $ENV{MODULE_acvImage}/include/
   $ENV{MODULE_common_lib}/include
+  # $ENV{MODULE_MatchingEngine}/include # Removed MatchingEngine dependency
+  # $ENV{MODULE_MatchingEngine}/include_priv # Removed MatchingEngine dependency
+  # $ENV{MODULE_MatchingEngine}/MorphEngine/include # Removed MatchingEngine dependency
   ${OpenCV_INCLUDE_DIRS}
 )
 
