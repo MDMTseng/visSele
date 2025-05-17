@@ -638,6 +638,17 @@ function BasicPrimitiveSettingOption({it_id, featureInfo, targetFeatureElement, 
       <Select.Option value="BOTH">{"兩邊"}</Select.Option>
     </Select>
 
+
+    邊緣計算:
+    <Select value={targetFeatureElement.center_type} onChange={(value: string) => {
+      targetFeatureElement.center_type = value;
+      onFeatureElementUpdate(targetFeatureElement);
+    }}>
+    <Select.Option value="LOCAL_AVG">{"局部平均"}</Select.Option>
+    <Select.Option value="GLOBAL_AVG">{"全域平均"}</Select.Option>
+  </Select>
+
+
     alpha1:
     <InputNumber value={targetFeatureElement.alpha1??0} step={0.01} min={0} max={1} onChange={(value: number) => {
       targetFeatureElement.alpha1 = value;
@@ -1447,9 +1458,14 @@ function _Draw_FeatureElement_Edit_SearchPoint(
 
   let error_code:number=reportEle?.error_code??0;
   let error_msg:string=reportEle?.error_msg??"";
+  let result_type=reportEle?.result_type??9999;
   if(reportEle!==undefined && error_code==0)
   {
-    // console.log(">>>",reportEle);
+    if(result_type==9999)
+    {//HACK hard code for UNSET result_type
+      return;
+    }
+    console.log(">>>",reportEle);
     let rotate_rad = reportObj.angle;
     //draw cross at reportEle.pt1
     g.ctx.strokeStyle = colorSetting.primitive_shape_line.toString();
@@ -1709,12 +1725,19 @@ function _UI_FeatureElement_Edit_SearchPoint(props: type_UI_FeatureElement_Edit_
         let camMag = canvas_obj.camera.GetCameraScale();
 
 
-        // console.log(">>>",_this.tmpDbgInfo?.featureReport,featureReport);
+        console.log(">>>",_this.tmpDbgInfo?.featureReport,featureReport);
         if(featureReport===undefined)
         {
 
           return;
         }
+
+
+        if(featureReport.pt1===undefined)
+        {
+          return;
+        }
+
         if(featureReport.error_code!==undefined)
         {
           console.log(">>>",featureReport);
@@ -2223,7 +2246,7 @@ function _Draw_FeatureElement_Edit_Measure_Distance(
   let textRotateTheta=0;
   if(isRefReady==true)
   {
-
+    console.log(">>>",featureInfo,featureEle,reportObj,reportEle);
     let projectRotateTheta=featureEle.rotate??Math.PI/2;
     let projectVec_rotated=PtRotate2d(projectVec_normalized,projectRotateTheta);
     let projectVec_rotated_normal={x:-projectVec_rotated.y,y:projectVec_rotated.x};
@@ -4904,6 +4927,7 @@ export function SingleTargetVIEWUI_DimMeasure(props: CompParam_InspTarUI) {
     API_PARAM:any,
     EXT_API_REFRESH_LISTENER:{[key:string]:any},
     tmp_select_object:number,
+    fetchedPixInfo:any,
   }>({
 
     imgCanvas: document.createElement('canvas'),
@@ -5232,7 +5256,7 @@ export function SingleTargetVIEWUI_DimMeasure(props: CompParam_InspTarUI) {
 
         <Button onClick={async() => {
 
-          let pkts=await BPG_API.InspTargetExchange(cacheDef.id, { type: "save_cached_orientation_info" });
+          let pkts=await BPG_API.InspTargetExchange(cacheDef.id, { type: "save_cached_orientation_info",file_name:"template.png" });
           console.log(pkts);
         }}>儲存最近定位圖像</Button>
 
@@ -5331,12 +5355,17 @@ export function SingleTargetVIEWUI_DimMeasure(props: CompParam_InspTarUI) {
       let onMousePress = g.mouseStatus.status == 1 && g.mouseStatus.pstatus == 0;
       if (ctrl_or_draw == true)//ctrl
       {
+
+  
+        const imageData = g.ctx.getImageData(g.mouseStatus.x-2, g.mouseStatus.y-2, 1, 1);
+        _this.fetchedPixInfo = imageData;
+
         if (currentState.state == EditState.Normal_Show)
         {
           _this.tmp_select_object=-1;
           let minDist=Number.MAX_VALUE;
           let minIndex=-1;
-          if (defReport !== undefined)
+          if (defReport?.report !== undefined)
           {
             let report = defReport.report
             for (let [index, reportEle] of report.entries()) {
@@ -5411,7 +5440,7 @@ export function SingleTargetVIEWUI_DimMeasure(props: CompParam_InspTarUI) {
 
           let template_angle=0;//cacheDef?.featureInfo?.template_angle;
 
-          if (defReport !== undefined) {
+          if (defReport?.report !== undefined) {
             // console.log(">>>",cacheDef.featureInfo,defReport);
             let report = defReport.report
             let mmpp=defReport?.mmpp??1;
@@ -5421,7 +5450,7 @@ export function SingleTargetVIEWUI_DimMeasure(props: CompParam_InspTarUI) {
               g.ctx.save();
               let scale = Local_IMCM.image_info.scale*mmpp;
               g.ctx.scale(scale, scale);
-              // g.ctx.translate(-0.5, -0.5);
+              g.ctx.translate(-0.5, -0.5);
               g.ctx.drawImage(_this.imgCanvas, 0, 0);
               g.ctx.restore();
             }
@@ -5564,6 +5593,15 @@ export function SingleTargetVIEWUI_DimMeasure(props: CompParam_InspTarUI) {
           g.ctx.translate(mouseOnCanvas.x, mouseOnCanvas.y);
           g.ctx.scale(1/camMag,1/camMag);
           g.ctx.fillText(mouseOnCanvas.x.toFixed(2)+","+mouseOnCanvas.y.toFixed(2), 0, 0);
+
+
+          
+          // console.log(">>>",g.mouseStatus);
+          const imageData = _this.fetchedPixInfo
+          let data=imageData.data;
+
+          g.ctx.fillText(data[0]+","+data[1]+","+data[2]+","+data[3], 0, 20);
+          
           g.ctx.restore();
         }
 
