@@ -14,6 +14,9 @@ using std::string;
 #include "GateSensor.hpp"
 #include "StateMachine.hpp"
 #include "MessageBus.hpp"
+#include "Diagnostics.hpp"
+#include "ITransport.hpp"
+#include "SerialTransport.hpp"
 #include <ArduinoJson.h>
 
 

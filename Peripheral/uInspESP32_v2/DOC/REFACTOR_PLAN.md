@@ -135,11 +135,12 @@ Proceed with Stage 1: create `Pipeline.hpp`, `Scheduler.hpp` scaffolding and mig
 ---
 (End of Plan – iterative updates will append a Changelog section below.)
 
-### Progress Snapshot (2025-09-10)
+### Progress Snapshot (2025-09-11)
 - Completed: Extraction of core headers (`BoardConfig.hpp`, `SystemTypes.hpp`).
-- Added modules: `Pipeline` (object queue), `Scheduler` (action queues), `GateSensor` (object detection), `StateMachine` (state management), `MessageBus` (message routing), `Diagnostics` (error management) with full integration; firmware builds cleanly.
-- Completed Stages 0-4: Core headers, Pipeline & Scheduler, Gate Sensing, State Machine extraction, Message Bus & Diagnostics.
-- Next: S5.1 implement `CommandHandler` registry for maintainable command parsing and response handling.
+- Added modules: `Pipeline` (object queue), `Scheduler` (action queues), `GateSensor` (object detection), `StateMachine` (state management), `MessageBus` (message routing), `Diagnostics` (error management), `ITransport` (communication abstraction) with full integration; firmware builds cleanly.
+- Completed Stages 0-4, 6: Core headers, Pipeline & Scheduler, Gate Sensing, State Machine extraction, Message Bus & Diagnostics, Protocol Layer Cleanup.
+- Skipped Stage 5: CommandHandler registry per user preference - existing if-else ladder works well.
+- Next: S7.0 define HAL interface headers for platform abstraction layer.
 
 ## Added: Portability & Future STM32 Migration Strategy
 
@@ -211,4 +212,5 @@ Changelog:
 - 2025-09-09: Added portability & STM32 strategy section.
 - 2025-09-10: Completed Stages 2-3 (Gate Sensing & State Machine extraction). Added GateSensor module with callback-based object detection and StateMachine module with clean state management API. All modules integrated and building successfully.
 - 2025-09-10: Completed Stage 4 (Message Bus & Diagnostics). Added MessageBus module with unified message routing API and Diagnostics module with error history management. Replaced legacy TaskQ2CommInfoQ/AUX2CommInfoQ and ERROR_HIST usage while maintaining backward compatibility. Firmware builds successfully with improved modularity.
+- 2025-09-11: Completed Stage 6 (Protocol Layer Cleanup). Relocated Data_Layer files to src/protocol/ directory for better organization. Added ITransport abstraction interface and SerialTransport implementation for platform-agnostic communication. Fixed circular dependency issues in Diagnostics.hpp. Command handling if-else ladder preserved as-is per user preference. All changes maintain backward compatibility and firmware builds successfully.
 

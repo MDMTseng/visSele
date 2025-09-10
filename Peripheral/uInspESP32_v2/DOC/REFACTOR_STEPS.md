@@ -24,11 +24,11 @@ Each step lists: Goal, Actions, Deliverables, Exit Criteria, Dependencies, Rollb
 | S3.3 | Add unit-test harness (host build) for transitions (optional) | TODO | - | S3.2 |
 | S4.1 | Implement `MessageBus` abstraction | DONE | - | S3.2 |
 | S4.2 | Implement `Diagnostics` (error history encapsulation) | DONE | - | S4.1 |
-| S5.1 | Introduce `CommandHandler` registry + command context | TODO | - | S4.2 |
-| S5.2 | Migrate existing if-else command ladder | TODO | - | S5.1 |
-| S5.3 | Add host test for key commands (`report`, `get_setup`, `enter_insp_mode`) | TODO | - | S5.2 |
-| S6.1 | Relocate Data_Layer files to `src/protocol/` | TODO | - | S5.3 |
-| S6.2 | Add `ITransport` abstraction & adapt current serial | TODO | - | S6.1 |
+| S5.1 | Introduce `CommandHandler` registry + command context | CANCELLED | - | S4.2 |
+| S5.2 | Migrate existing if-else command ladder | CANCELLED | - | S5.1 |
+| S5.3 | Add host test for key commands (`report`, `get_setup`, `enter_insp_mode`) | CANCELLED | - | S5.2 |
+| S6.1 | Relocate Data_Layer files to `src/protocol/` | DONE | - | S4.2 |
+| S6.2 | Add `ITransport` abstraction & adapt current serial | DONE | - | S6.1 |
 | S7.0 | (Prep) Define HAL interface headers (`IGpio`, `ITimerTickSource`, etc.) | TODO | - | S6.2 |
 | S7.1 | ESP32 implementations under `hal/esp32/` | TODO | - | S7.0 |
 | S7.2 | Replace direct hardware calls with interfaces | TODO | - | S7.1 |
@@ -127,3 +127,8 @@ Actions: Add `TARGET_ESP32` guards, placeholder `hal/stm32/README.md`.
 | 2025-09-10 | S3.2 | DONE | State machine integration completed: replaced SYS_STATE_Transfer() calls with stateMachine.applyAction(), removed old functions, maintained compatibility |
 | 2025-09-10 | S4.1 | DONE | MessageBus abstraction implemented: created MessageBus.hpp/.cpp with unified message routing, replaced TaskQ2CommInfoQ/AUX2CommInfoQ usage, maintained backward compatibility |
 | 2025-09-10 | S4.2 | DONE | Diagnostics module implemented: created Diagnostics.hpp/.cpp with error history management, replaced ERROR_HIST usage, added JSON export functionality |
+| 2025-09-11 | S5.1 | CANCELLED | CommandHandler registry skipped per user preference - existing if-else ladder is working well |
+| 2025-09-11 | S5.2 | CANCELLED | Command ladder migration skipped per user preference |
+| 2025-09-11 | S5.3 | CANCELLED | Command testing skipped per user preference |
+| 2025-09-11 | S6.1 | DONE | Data_Layer files relocated to src/protocol/ directory, updated include paths in SyncTask.cpp and platformio.ini, build verified |
+| 2025-09-11 | S6.2 | DONE | ITransport abstraction added: created ITransport.hpp interface and SerialTransport.cpp implementation, fixed circular dependency issues, build verified |

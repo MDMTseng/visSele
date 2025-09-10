@@ -5,7 +5,7 @@
 #include "Scheduler.hpp" // action queues
 #include "xtensa/core-macros.h"
 #include "soc/rtc_wdt.h"
-#include <Data_Layer_Protocol.hpp>
+#include "src/protocol/Data_Layer_Protocol.hpp"
 #include "driver/timer.h"
 #include <string>
 

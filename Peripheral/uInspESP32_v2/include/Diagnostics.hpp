@@ -1,9 +1,11 @@
 // Diagnostics.hpp - Error logging and system diagnostics (Stage S4.2)
 #pragma once
 #include <stdint.h>
-#include "main.hpp"
 #include "RingBuf.hpp"
 #include <ArduinoJson.h>
+
+// Forward declaration - GEN_ERROR_CODE will be defined in main.hpp
+enum class GEN_ERROR_CODE;
 
 // Error history management
 class Diagnostics {
