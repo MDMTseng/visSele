@@ -9,7 +9,13 @@ using std::string;
 #include "UTIL.h"
 #include "RingBuf.hpp"
 #include "SimpPacketParse.hpp"
+#include "SystemConstants.hpp"
+#include "PlatformConfig.hpp"
+#include "BoardConfig.hpp"
 #include "Pipeline.hpp"
+
+// Make SystemConstants accessible without namespace qualification
+using namespace SystemConstants;
 #include "Scheduler.hpp"
 #include "GateSensor.hpp"
 #include "StateMachine.hpp"
@@ -121,7 +127,7 @@ SMM_GEN_ENUM(SYS_STATE_ACT,SMM_STATE_ACT_DECLARE)
 
 
 
-#define PULSE_TIME_SYNC_USSHIFT 25
+// PULSE_TIME_SYNC_USSHIFT moved to SystemConstants.hpp
 struct PulseTimeSyncInfo
 {
   PulseTimeSyncInfo_State state;
@@ -191,34 +197,22 @@ typedef struct run_mode_info
 
 
 
-#define STEPPER_PLS_PIN 22
-#define STEPPER_DIR_PIN 23
+// Stepper pin definitions moved to SystemConstants.hpp
 
-#define STEPPER_EN_ACTIVATION 0
-#define STEPPER_EN_PIN 13
-
-#define PIN_O_L1A 16
-#define PIN_O_CAM1 17
-#define PIN_O_L2A 18
-#define PIN_O_CAM2 19
+// Output pin definitions moved to SystemConstants.hpp
 
 
 
 
 
-#define PIN_O_SEL1 25
-#define PIN_O_SEL2 26
-#define PIN_O_SEL3 32
+// Selector pin definitions moved to SystemConstants.hpp
 
 
-#define FEEDER_PIN 21
-#define PIN_I_GATE 27
+// Input pin definitions moved to SystemConstants.hpp
 
 
 
-#define insp_status_SKIP -2100 //mark the inspection result is yet arrive
-#define insp_status_UNSET -2000 //mark the inspection result is yet arrive
-#define insp_status_DEL -1000    // mark the object can be deleted
+// Inspection status constants moved to SystemConstants.hpp
 
 void setup_comm();
 void loop_comm();

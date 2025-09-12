@@ -1,6 +1,6 @@
 #include "GateSensor.hpp"
 #include "main.hpp"
-#include <Arduino.h>
+#include "hal/HAL.hpp"
 
 void GateSensor::init(uint8_t gate_pin, bool sense_inverted, 
                       uint32_t min_width, uint32_t max_width, 
@@ -11,8 +11,9 @@ void GateSensor::init(uint8_t gate_pin, bool sense_inverted,
     max_width_ = max_width;
     debounce_threshold_ = debounce_threshold;
     
-    // Initialize pin
-    pinMode(gate_pin_, INPUT_PULLUP);
+    // Initialize pin using HAL
+    IHAL& hal = getHAL();
+    hal.gpio().setPinMode(gate_pin_, IGpio::PinMode::PIN_INPUT_PULLUP);
     
     // Reset state
     reset();
@@ -40,7 +41,9 @@ void GateSensor::setObjectDetectedCallback(ObjectDetectedCallback callback) {
 }
 
 uint8_t GateSensor::readSensor() const {
-    uint8_t raw_sense = digitalRead(gate_pin_);
+    IHAL& hal = getHAL();
+    IGpio::PinState pin_state = hal.gpio().readPin(gate_pin_);
+    uint8_t raw_sense = (pin_state == IGpio::PinState::PIN_HIGH) ? 1 : 0;
     return sense_inverted_ ? !raw_sense : raw_sense;
 }
 

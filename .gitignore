@@ -72,3 +72,4 @@ UI/Electron_XPLAT/build_
 InspectionCore/contrib/cJSONPP/test/build
 InspectionCore/CoreHub/PluginRemote/
 InspectionCore/MatchingEngine/build/
+Peripheral/*/.cache

@@ -2,6 +2,67 @@
 
 This repository contains the firmware for an ESP32-based controller designed for a high-speed, circular inspection system. It precisely controls a rotating platform, detects objects, triggers cameras for inspection, and actuates selectors (e.g., air jets) to sort objects based on inspection results communicated from a host system.
 
+## Architecture Overview
+
+The uInspESP32 has been refactored into a modular, platform-agnostic architecture with clean separation of concerns:
+
+- **Core Logic Modules**: State machine, scheduler, pipeline, and gate sensor
+- **Communication Layer**: Message bus, protocol handling, and diagnostics
+- **Hardware Abstraction Layer (HAL)**: Platform-independent hardware interfaces
+- **Platform Implementations**: ESP32-specific HAL implementations with STM32 portability
+
+This modular design enables:
+- **Platform Independence**: Easy porting between ESP32, STM32, and other platforms
+- **Testability**: Host-side testing without hardware dependencies
+- **Maintainability**: Clear module boundaries and responsibilities
+- **Extensibility**: Easy addition of new features and components
+
+For detailed architecture information, see [DOC/ARCHITECTURE.md](DOC/ARCHITECTURE.md).
+
+## Project Structure
+
+```
+uInspESP32_v2/
+├── include/                    # Public headers (API interfaces)
+│   ├── BoardConfig.hpp        # Pin mappings and hardware constants
+│   ├── SystemTypes.hpp        # Common types and enumerations
+│   ├── Pipeline.hpp           # Object lifecycle management
+│   ├── Scheduler.hpp          # Action scheduling interface
+│   ├── GateSensor.hpp         # Object detection interface
+│   ├── StateMachine.hpp       # State management interface
+│   ├── MessageBus.hpp         # Message routing interface
+│   ├── Diagnostics.hpp        # Error logging interface
+│   └── hal/                   # Hardware abstraction interfaces
+│       ├── HAL.hpp           # Main HAL interface
+│       ├── IGpio.hpp         # GPIO abstraction
+│       ├── ITimerTickSource.hpp # Timer abstraction
+│       ├── IStepperDriver.hpp   # Stepper control abstraction
+│       ├── IClock.hpp        # Time functions abstraction
+│       ├── ILogger.hpp       # Logging abstraction
+│       ├── ILock.hpp         # Synchronization abstraction
+│       └── ITransport.hpp    # Communication abstraction
+├── src/                       # Implementation files
+│   ├── main.cpp              # Main application entry point
+│   ├── main_hal.cpp          # HAL integration and main loop
+│   ├── pipeline/             # Pipeline implementation
+│   ├── scheduler/            # Scheduler implementation
+│   ├── state/                # State machine implementation
+│   ├── comm/                 # Communication implementation
+│   ├── diagnostics/          # Diagnostics implementation
+│   ├── protocol/             # Protocol layer implementation
+│   └── hal/esp32/            # ESP32 HAL implementations
+├── test/                     # Testing framework
+│   ├── mock/                 # Mock HAL implementations
+│   ├── SchedulerTest.cpp     # Scheduler logic tests
+│   ├── CommandTest.cpp       # Command parsing tests
+│   └── run_tests.sh          # Test runner script
+├── DOC/                      # Documentation
+│   ├── ARCHITECTURE.md       # Detailed architecture documentation
+│   ├── REFACTOR_PLAN.md      # Refactoring plan and progress
+│   └── REFACTOR_STEPS.md     # Step-by-step refactoring guide
+└── SyncTask.cpp              # Legacy monolithic file (being refactored)
+```
+
 ## Features
 
 *   **Stepper Motor Control**: Manages a stepper motor for the rotating platform with a dynamically adjustable frequency.
@@ -75,4 +136,71 @@ The controller operates using a state machine:
 *   **`INSPECTION_MODE_READY`**: The main operational state. The system is running at the configured speed, detecting objects, triggering cameras, and actuating selectors.
 *   **`INSPECTION_MODE_TEST`**: A test mode for inspection.
 *   **`INSPECTION_MODE_ERROR`**: An error has occurred (e.g., object missed inspection, selector countdown reached). The system halts until `clear_error` is received.
+
+## Building and Development
+
+### Firmware Build
+The firmware is built using PlatformIO:
+
+```bash
+# Build for ESP32
+pio run
+
+# Upload to device
+pio run --target upload
+
+# Monitor serial output
+pio device monitor
+```
+
+### Host-Side Testing
+The modular architecture enables comprehensive testing without hardware:
+
+```bash
+# Run all tests
+cd test/
+./run_tests.sh
+
+# Run specific tests
+make test-scheduler
+make test-command
+
+# Build tests manually
+make all
+```
+
+### Development Workflow
+1. **Logic Development**: Develop and test core logic using the host-side test framework
+2. **Hardware Integration**: Integrate with ESP32 HAL implementations
+3. **System Testing**: Test complete system on hardware
+4. **Validation**: Verify timing and performance characteristics
+
+## Refactoring Status
+
+The project has undergone a comprehensive refactoring to improve maintainability and portability:
+
+- ✅ **Stages 0-4**: Core headers, Pipeline & Scheduler, Gate Sensing, State Machine, Message Bus & Diagnostics
+- ✅ **Stages 6-8**: Protocol Layer Cleanup, HAL Abstraction, Main Loop Simplification
+- ✅ **Stage 7A**: ISR verification and platform neutrality
+- ✅ **Stage 9**: Host-side testing framework
+- ✅ **Stage 10**: Documentation and architecture
+
+**Current Status**: 100% complete (11/11 stages done)
+
+For detailed refactoring information, see [DOC/REFACTOR_PLAN.md](DOC/REFACTOR_PLAN.md) and [DOC/REFACTOR_STEPS.md](DOC/REFACTOR_STEPS.md).
+
+## Contributing
+
+### Code Organization
+- **Headers**: Public interfaces in `include/`
+- **Implementation**: Private implementation in `src/`
+- **Platform Code**: Platform-specific code in `src/hal/`
+- **Tests**: Test code in `test/`
+
+### Development Guidelines
+- Follow the established modular architecture
+- Use HAL interfaces for hardware access
+- Write tests for new functionality
+- Maintain platform independence in core logic
+- Update documentation for architectural changes
 

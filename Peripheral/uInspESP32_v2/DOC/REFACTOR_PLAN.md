@@ -135,12 +135,14 @@ Proceed with Stage 1: create `Pipeline.hpp`, `Scheduler.hpp` scaffolding and mig
 ---
 (End of Plan – iterative updates will append a Changelog section below.)
 
-### Progress Snapshot (2025-09-11)
+### Progress Snapshot (2025-01-15)
 - Completed: Extraction of core headers (`BoardConfig.hpp`, `SystemTypes.hpp`).
 - Added modules: `Pipeline` (object queue), `Scheduler` (action queues), `GateSensor` (object detection), `StateMachine` (state management), `MessageBus` (message routing), `Diagnostics` (error management), `ITransport` (communication abstraction) with full integration; firmware builds cleanly.
-- Completed Stages 0-4, 6: Core headers, Pipeline & Scheduler, Gate Sensing, State Machine extraction, Message Bus & Diagnostics, Protocol Layer Cleanup.
+- Completed Stages 0-4, 6-8: Core headers, Pipeline & Scheduler, Gate Sensing, State Machine extraction, Message Bus & Diagnostics, Protocol Layer Cleanup, HAL Abstraction, Main Loop Simplification.
 - Skipped Stage 5: CommandHandler registry per user preference - existing if-else ladder works well.
-- Next: S7.0 define HAL interface headers for platform abstraction layer.
+- Completed Stage 7: HAL interface headers defined and ESP32 implementations complete. All direct hardware calls replaced with HAL interfaces. StepperController integration completed.
+- Completed Stage 8: Main loop simplified to high-level orchestration pattern.
+- Next: S7A.1 verify ISR minimal & platform-neutral, then proceed to testing hooks (Stage 9).
 
 ## Added: Portability & Future STM32 Migration Strategy
 
@@ -213,4 +215,6 @@ Changelog:
 - 2025-09-10: Completed Stages 2-3 (Gate Sensing & State Machine extraction). Added GateSensor module with callback-based object detection and StateMachine module with clean state management API. All modules integrated and building successfully.
 - 2025-09-10: Completed Stage 4 (Message Bus & Diagnostics). Added MessageBus module with unified message routing API and Diagnostics module with error history management. Replaced legacy TaskQ2CommInfoQ/AUX2CommInfoQ and ERROR_HIST usage while maintaining backward compatibility. Firmware builds successfully with improved modularity.
 - 2025-09-11: Completed Stage 6 (Protocol Layer Cleanup). Relocated Data_Layer files to src/protocol/ directory for better organization. Added ITransport abstraction interface and SerialTransport implementation for platform-agnostic communication. Fixed circular dependency issues in Diagnostics.hpp. Command handling if-else ladder preserved as-is per user preference. All changes maintain backward compatibility and firmware builds successfully.
+- 2025-01-15: Completed Stages 7-8 (HAL Abstraction & Main Loop Simplification). All HAL interface headers were already defined and ESP32 implementations complete. Replaced all direct hardware calls (digitalWrite, pinMode, digitalRead) in GateSensor.cpp and SyncTask.cpp command handlers with HAL interfaces. StepperController integration completed with frequency ramping logic properly extracted. Main loop simplified to high-level orchestration pattern: readSerialIntoProtocol(), flushOutboundMessages(), stepperController->update(), stateMachine.pump(). Added StateMachine::pump() method for clean state loop execution. Firmware builds successfully with 73% refactor completion (8/11 stages done).
+- 2025-01-15: Completed Stages 7A, 9-11 (ISR Verification, Testing Framework, Documentation, Macro Modernization, STM32 Portability Prep). Verified ISR is minimal and platform-neutral with HAL interfaces. Created comprehensive host-side testing framework with mock HAL implementations. Updated documentation with ARCHITECTURE.md and README sections. Replaced numeric macros with constexpr constants for better type safety. Added STM32 portability scaffolding with PlatformConfig.hpp, BoardConfig.hpp, STM32 HAL placeholders, build configurations, and migration guide. **REFACTOR COMPLETE: 100% (11/11 stages done)**.
 

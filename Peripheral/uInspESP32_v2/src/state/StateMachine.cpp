@@ -72,6 +72,11 @@ SYS_INFO* StateMachine::getSystemInfo() {
     return &global_sysinfo;
 }
 
+void StateMachine::pump() {
+    // Execute the current state's loop logic
+    executeLifecycle(current_state_, current_state_);
+}
+
 void StateMachine::setStateLifecycleCallback(StateLifecycleCallback callback) {
     lifecycle_callback_ = callback;
 }

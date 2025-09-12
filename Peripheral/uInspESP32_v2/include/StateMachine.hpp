@@ -87,6 +87,14 @@ public:
      */
     SYS_INFO* getSystemInfo();
 
+    /**
+     * @brief Pump the state machine (execute current state loop)
+     * 
+     * This method should be called regularly from the main loop to
+     * execute the current state's loop logic.
+     */
+    void pump();
+
 private:
     // State
     SYS_STATE current_state_;

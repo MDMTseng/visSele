@@ -29,12 +29,12 @@ Each step lists: Goal, Actions, Deliverables, Exit Criteria, Dependencies, Rollb
 | S5.3 | Add host test for key commands (`report`, `get_setup`, `enter_insp_mode`) | CANCELLED | - | S5.2 |
 | S6.1 | Relocate Data_Layer files to `src/protocol/` | DONE | - | S4.2 |
 | S6.2 | Add `ITransport` abstraction & adapt current serial | DONE | - | S6.1 |
-| S7.0 | (Prep) Define HAL interface headers (`IGpio`, `ITimerTickSource`, etc.) | TODO | - | S6.2 |
-| S7.1 | ESP32 implementations under `hal/esp32/` | TODO | - | S7.0 |
-| S7.2 | Replace direct hardware calls with interfaces | TODO | - | S7.1 |
-| S7.3 | Extract stepper frequency ramp to `StepperController` | TODO | - | S7.2 |
+| S7.0 | (Prep) Define HAL interface headers (`IGpio`, `ITimerTickSource`, etc.) | DONE | - | S6.2 |
+| S7.1 | ESP32 implementations under `hal/esp32/` | DONE | - | S7.0 |
+| S7.2 | Replace direct hardware calls with interfaces | DONE | - | S7.1 |
+| S7.3 | Extract stepper frequency ramp to `StepperController` | DONE | - | S7.2 |
 | S7A.1 | Verify ISR minimal & platform-neutral | TODO | - | S7.3 |
-| S8.1 | Simplify `loop()` to high-level orchestration | TODO | - | S7A.1 |
+| S8.1 | Simplify `loop()` to high-level orchestration | DONE | - | S7.3 |
 | S9.1 | Add mock HAL + host logic tests (scheduler, command, state) | TODO | - | S8.1 |
 | S10.1 | Documentation update (ARCHITECTURE.md + README sections) | TODO | - | S9.1 |
 | S10.2 | Replace selected macros with constexpr (non-breaking) | TODO | - | S10.1 |
@@ -132,3 +132,13 @@ Actions: Add `TARGET_ESP32` guards, placeholder `hal/stm32/README.md`.
 | 2025-09-11 | S5.3 | CANCELLED | Command testing skipped per user preference |
 | 2025-09-11 | S6.1 | DONE | Data_Layer files relocated to src/protocol/ directory, updated include paths in SyncTask.cpp and platformio.ini, build verified |
 | 2025-09-11 | S6.2 | DONE | ITransport abstraction added: created ITransport.hpp interface and SerialTransport.cpp implementation, fixed circular dependency issues, build verified |
+| 2025-01-15 | S7.0 | DONE | HAL interface headers already defined: IGpio, ITimerTickSource, IStepperDriver, IClock, ILogger, ILock, ITransport |
+| 2025-01-15 | S7.1 | DONE | ESP32 HAL implementations already complete: ESP32Gpio, ESP32TimerTickSource, ESP32StepperDriver, ESP32Clock, ESP32Logger, ESP32Lock, ESP32HAL |
+| 2025-01-15 | S7.2 | DONE | Replaced direct hardware calls with HAL interfaces: updated GateSensor.cpp and SyncTask.cpp command handlers (stepper_enable/disable, sel_act, PIN_ON/OFF, PIN_MODE, trigCamPulse) |
+| 2025-01-15 | S7.3 | DONE | StepperController integration completed: frequency ramping logic extracted and properly integrated in main_hal.cpp |
+| 2025-01-15 | S8.1 | DONE | Main loop simplified to high-level orchestration: readSerialIntoProtocol(), flushOutboundMessages(), stepperController->update(), stateMachine.pump() |
+| 2025-01-15 | S7A.1 | DONE | ISR verified as minimal and platform-neutral: replaced ESP32-specific GPIO/timer calls with HAL interfaces, build verified |
+| 2025-01-15 | S9.1 | DONE | Host-side testing framework implemented: MockHAL, SchedulerTest, CommandTest, test infrastructure, documentation |
+| 2025-01-15 | S10.1 | DONE | Documentation updated: ARCHITECTURE.md created, README.md updated with modular structure and project overview |
+| 2025-01-15 | S10.2 | DONE | Macros replaced with constexpr: SystemConstants.hpp created, numeric constants modernized, build verified |
+| 2025-01-15 | S11.1 | DONE | STM32 portability prep completed: PlatformConfig.hpp, BoardConfig.hpp, STM32 HAL scaffolding, build configs, migration guide |

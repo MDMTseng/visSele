@@ -3,6 +3,7 @@
 #include "LOG.h"
 #include "Pipeline.hpp" // pipeline objects
 #include "Scheduler.hpp" // action queues
+#include "hal/HAL.hpp" // HAL interfaces
 #include "xtensa/core-macros.h"
 #include "soc/rtc_wdt.h"
 #include "src/protocol/Data_Layer_Protocol.hpp"
@@ -15,8 +16,9 @@
 #define __UPRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
 
 
-#define GPIOLS32_SET(PIN) GPIO.out_w1ts=1<<(PIN);
-#define GPIOLS32_CLR(PIN) GPIO.out_w1tc=1<<(PIN);
+// Platform-neutral GPIO macros using HAL interface
+#define GPIOLS32_SET(PIN) getHAL().gpio().writePin(PIN, IGpio::PinState::PIN_HIGH);
+#define GPIOLS32_CLR(PIN) getHAL().gpio().writePin(PIN, IGpio::PinState::PIN_LOW);
   
 
 #define SARRL(SARR) (sizeof((SARR)) / sizeof(*(SARR)))
@@ -39,14 +41,17 @@ bool SYS_STEPPER_DISABLED=false;
 uint32_t SYS_MIN_PULSE_TIME_SEP_us=(1000000/15);
 int SEL1_ACT_COUNTDOWN=-1;
 
-#define _PLAT_DIAMITER_mm 350
-#define _PLAT_CIRC_um (_PLAT_DIAMITER_mm*3.14159*1000)
-#define _PLAT_SUB_STEP 800
-#define _PLAT_PULSE_PER_TURN (_PLAT_SUB_STEP*18 *2)
-#define _PLAT_DIST_um_PER_STEP ((int)(_PLAT_CIRC_um/_PLAT_PULSE_PER_TURN))
+// Platform constants moved to SystemConstants.hpp
+// Using constexpr constants for better type safety and compile-time evaluation
 
-#define _PLAT_DIST_um(stepCount) ((int)(stepCount*_PLAT_CIRC_um/_PLAT_PULSE_PER_TURN))
-#define _PLAT_DIST_step(dist_um) ((int)(dist_um*_PLAT_PULSE_PER_TURN/_PLAT_CIRC_um))
+// Platform distance calculation functions using constexpr constants
+inline int platform_distance_um(int step_count) {
+    return static_cast<int>(step_count * SystemConstants::PLATFORM_CIRCUMFERENCE_UM / SystemConstants::PLATFORM_PULSE_PER_TURN);
+}
+
+inline int platform_distance_steps(int dist_um) {
+    return static_cast<int>(dist_um * SystemConstants::PLATFORM_PULSE_PER_TURN / SystemConstants::PLATFORM_CIRCUMFERENCE_UM);
+}
 
 //disk D=350 circumference 350*Pi
 //1600*9 steps per round
@@ -200,8 +205,8 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   static uint32_t acc_tid=1;
   uint32_t _prePulse_BK=_prePulse;
   _prePulse=middle_pulse;
-  if(middle_pulse-_prePulse_BK<(_PLAT_DIST_step(3500)))return -9;
-  uint64_t curTime = esp_timer_get_time();
+  if(middle_pulse-_prePulse_BK<(platform_distance_steps(3500)))return -9;
+  uint64_t curTime = getHAL().clock().micros();
   if(curTime-_preTime<SYS_MIN_PULSE_TIME_SEP_us)return -8;
   _preTime=curTime;
 
@@ -217,7 +222,7 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   // head->e_pulse = end_pulse;
   // head->pulse_width = pulse_width;
   head->gate_pulse = middle_pulse;
-  head->insp_status = insp_status_UNSET;
+  head->insp_status = INSP_STATUS_UNSET;
   head->tid=acc_tid;
   if (ActRegister_pipeLineInfo(head) != 0)
   { //register failed....
@@ -304,7 +309,7 @@ int Run_ACTS(uint32_t cur_pulse)
                     GPIOLS32_SET(PIN_O_CAM1);
                     if(time_us_fetched==false)
                     {
-                      time_us=esp_timer_get_time();
+                      time_us=getHAL().clock().micros();
                       time_us_fetched=true;
                     }
                     Message msg = Message::createBriefTriggerInfo(1, time_us, task->src->tid);
@@ -342,7 +347,7 @@ int Run_ACTS(uint32_t cur_pulse)
                     GPIOLS32_SET(PIN_O_CAM2);
                     if(time_us_fetched==false)
                     {
-                      time_us=esp_timer_get_time();
+                      time_us=getHAL().clock().micros();
                       time_us_fetched=true;
                     }
                     Message msg = Message::createBriefTriggerInfo(2, time_us, task->src->tid);
@@ -392,13 +397,13 @@ int Run_ACTS(uint32_t cur_pulse)
           // inspResCount.NA++;
           break;
 
-        case insp_status_SKIP: 
+        case INSP_STATUS_SKIP: 
           SKIP_Count++;
           break;
-        case insp_status_DEL: //ERROR
+        case INSP_STATUS_DEL: //ERROR
           break;
 
-        case insp_status_UNSET:
+        case INSP_STATUS_UNSET:
         default:
           ecode=GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT;
           
@@ -407,8 +412,8 @@ int Run_ACTS(uint32_t cur_pulse)
       //
       
       {
-        // task->src->insp_status = insp_status_DEL;
-        task->src->insp_status = insp_status_DEL;
+        // task->src->insp_status = INSP_STATUS_DEL;
+        task->src->insp_status = INSP_STATUS_DEL;
         task->src = NULL;
         // RBuf.consumeTail();
       }
@@ -528,8 +533,7 @@ hw_timer_t *timer = NULL;
 int pin_SH_165=17;
 int pin_TRIG_595=5;
 
-#define SUBDIV (3200)
-#define mm_PER_REV 95
+// Stepper constants moved to SystemConstants.hpp
 
 enum MSTP_SegCtx_TYPE{
   NA=0,
@@ -586,7 +590,7 @@ ResourcePool <MSTP_SegCtx>sctx_pool(resbuff,SegCtxSize);
 
 
 
-#define _TICK2SEC_BASE_ (10*1000*1000)
+// Timing constant moved to SystemConstants.hpp
 
 
 
@@ -596,19 +600,10 @@ ResourcePool <MSTP_SegCtx>sctx_pool(resbuff,SegCtxSize);
 
 extern void __digitalWrite(uint8_t pin, uint8_t val)
 {
-    if(val) {
-        if(pin < 32) {
-            GPIO.out_w1ts = ((uint32_t)1 << pin);
-        } else if(pin < 34) {
-            GPIO.out1_w1ts.val = ((uint32_t)1 << (pin - 32));
-        }
-    } else {
-        if(pin < 32) {
-            GPIO.out_w1tc = ((uint32_t)1 << pin);
-        } else if(pin < 34) {
-            GPIO.out1_w1tc.val = ((uint32_t)1 << (pin - 32));
-        }
-    }
+    // Platform-neutral implementation using HAL interface
+    IHAL& hal = getHAL();
+    IGpio::PinState state = (val != 0) ? IGpio::PinState::PIN_HIGH : IGpio::PinState::PIN_LOW;
+    hal.gpio().writePin(pin, state);
 }
 
 
@@ -807,18 +802,19 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       trigger_id=doc["trigger_id"];
     }
     {
-      uint32_t time_us=esp_timer_get_time();
+      uint32_t time_us=getHAL().clock().micros();
       Message msg = Message::createBriefTriggerInfo(1, time_us, trigger_id);
       MessageBus::sendMessage(msg);
     }
 
 
-    digitalWrite(cam_PIN,HIGH);
-    delayMicroseconds(Light_Delay);
-    digitalWrite(light_PIN,HIGH);
-    delayMicroseconds(Light_Duration);
-    digitalWrite(light_PIN,LOW);
-    digitalWrite(cam_PIN,LOW);
+    IHAL& hal = getHAL();
+    hal.gpio().writePin(cam_PIN, IGpio::PinState::PIN_HIGH);
+    hal.clock().delayUs(Light_Delay);
+    hal.gpio().writePin(light_PIN, IGpio::PinState::PIN_HIGH);
+    hal.clock().delayUs(Light_Duration);
+    hal.gpio().writePin(light_PIN, IGpio::PinState::PIN_LOW);
+    hal.gpio().writePin(cam_PIN, IGpio::PinState::PIN_LOW);
 
 
 
@@ -829,31 +825,32 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   else if(strcmp(type,"PIN_MODE")==0)
   {
     doRsp=true;
-    int PIN_Mode=INPUT;
+    IGpio::PinMode pinMode = IGpio::PinMode::PIN_INPUT;
     if(doc["mode"].is<String>()==true)
     {
       String mode=doc["mode"];
       if(mode=="INPUT")
-        PIN_Mode=INPUT;
+        pinMode = IGpio::PinMode::PIN_INPUT;
       else if(mode=="OUTPUT")
-        PIN_Mode=OUTPUT;
+        pinMode = IGpio::PinMode::PIN_OUTPUT;
       else if(mode=="PULLUP")
-        PIN_Mode=PULLUP;
+        pinMode = IGpio::PinMode::PIN_INPUT_PULLUP;
       else if(mode=="PULLDOWN")
-        PIN_Mode=PULLDOWN;
+        pinMode = IGpio::PinMode::PIN_INPUT_PULLDOWN;
       else if(mode=="INPUT_PULLUP")
-        PIN_Mode=INPUT_PULLUP;
+        pinMode = IGpio::PinMode::PIN_INPUT_PULLUP;
       else if(mode=="INPUT_PULLDOWN")
-        PIN_Mode=INPUT_PULLDOWN;
+        pinMode = IGpio::PinMode::PIN_INPUT_PULLDOWN;
       else if(mode=="OPEN_DRAIN")
-        PIN_Mode=OPEN_DRAIN;
+        pinMode = IGpio::PinMode::PIN_INPUT; // Map OPEN_DRAIN to INPUT for now
     }
 
 
     if(doc["pin"].is<int>()==true)
     {
       int pin=doc["pin"];
-      pinMode(pin,PIN_Mode);
+      IHAL& hal = getHAL();
+      hal.gpio().setPinMode(pin, pinMode);
       rspAck=true;
     }
     else
@@ -944,9 +941,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         tarP=pipe;
         break;
       }
-      if(pipe->insp_status==insp_status_UNSET)
+      if(pipe->insp_status==INSP_STATUS_UNSET)
       {
-        pipe->insp_status=insp_status_SKIP;
+        pipe->insp_status=INSP_STATUS_SKIP;
       }
 
       // if(i>30)
@@ -1003,7 +1000,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     if(doc["pin"].is<int>()==true)
     {
       int pin=doc["pin"];
-      digitalWrite(pin,HIGH);
+      IHAL& hal = getHAL();
+      hal.gpio().writePin(pin, IGpio::PinState::PIN_HIGH);
     }
     doRsp=rspAck=true;
   }
@@ -1013,8 +1011,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     if(doc["pin"].is<int>()==true)
     {
       int pin=doc["pin"];
-
-      digitalWrite(pin,LOW);
+      IHAL& hal = getHAL();
+      hal.gpio().writePin(pin, IGpio::PinState::PIN_LOW);
     }
     doRsp=rspAck=true;
   }
@@ -1034,7 +1032,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
   else if(strcmp(type,"trig_phamton_pulse")==0)
   {
-    uint32_t tatPulse= SYS_STEP_COUNT-STAGE_PULSE_OFFSET.L1A_on+_PLAT_DIST_step(3000);
+    uint32_t tatPulse= SYS_STEP_COUNT-STAGE_PULSE_OFFSET.L1A_on+platform_distance_steps(3000);
 
     newPulseEvent(tatPulse-10, tatPulse+10, tatPulse,20);
     
@@ -1063,13 +1061,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
   else if(strcmp(type,"stepper_enable")==0)
   {
-    digitalWrite(STEPPER_EN_PIN,STEPPER_EN_ACTIVATION);
+    IHAL& hal = getHAL();
+    hal.gpio().writePin(STEPPER_EN_PIN, STEPPER_EN_ACTIVATION ? IGpio::PinState::PIN_HIGH : IGpio::PinState::PIN_LOW);
     SYS_STEPPER_DISABLED=false;
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"stepper_disable")==0)
   {
-    digitalWrite(STEPPER_EN_PIN,!STEPPER_EN_ACTIVATION);
+    IHAL& hal = getHAL();
+    hal.gpio().writePin(STEPPER_EN_PIN, STEPPER_EN_ACTIVATION ? IGpio::PinState::PIN_LOW : IGpio::PinState::PIN_HIGH);
     SYS_STEPPER_DISABLED=true;
     doRsp=rspAck=true;
   }
@@ -1086,24 +1086,25 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       delay_ms=doc["delay"];
     }
 
+    IHAL& hal = getHAL();
     switch(idx)
     {
       case 1:
-      digitalWrite(PIN_O_SEL1, 1);
-      delay(delay_ms);
-      digitalWrite(PIN_O_SEL1, 0);
+      hal.gpio().writePin(PIN_O_SEL1, IGpio::PinState::PIN_HIGH);
+      hal.clock().delayMs(delay_ms);
+      hal.gpio().writePin(PIN_O_SEL1, IGpio::PinState::PIN_LOW);
       rspAck=true;
       break;
       case 2:
-      digitalWrite(PIN_O_SEL2, 1);
-      delay(delay_ms);
-      digitalWrite(PIN_O_SEL2, 0);
+      hal.gpio().writePin(PIN_O_SEL2, IGpio::PinState::PIN_HIGH);
+      hal.clock().delayMs(delay_ms);
+      hal.gpio().writePin(PIN_O_SEL2, IGpio::PinState::PIN_LOW);
       rspAck=true;
       break;
       case 3:
-      digitalWrite(PIN_O_SEL3, 1);
-      delay(delay_ms);
-      digitalWrite(PIN_O_SEL3, 0);
+      hal.gpio().writePin(PIN_O_SEL3, IGpio::PinState::PIN_HIGH);
+      hal.clock().delayMs(delay_ms);
+      hal.gpio().writePin(PIN_O_SEL3, IGpio::PinState::PIN_LOW);
       rspAck=true;
       break;
     }
@@ -1202,7 +1203,7 @@ void MData_JR::loop()
 {
 }
 
-#define AUX_COUNT 5
+// AUX_TASK_COUNT moved to SystemConstants.hpp
 
 enum AUX_TASK_INFO_TYPE{
   AUX_DELAY=1,
@@ -1257,12 +1258,12 @@ struct AUX_TASK_INFO {
   // string TTAG;
 };
 
-static QueueHandle_t AUXTaskQueue[AUX_COUNT];
+static QueueHandle_t AUXTaskQueue[AUX_TASK_COUNT];
 
 bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc, bool &doRsp,bool &isACK)
 {
   int AUX_THREAD_ID=(doc["aid"].is<int>())?doc["aid"]:0;
-  if(AUX_THREAD_ID>=AUX_COUNT)
+  if(AUX_THREAD_ID>=AUX_TASK_COUNT)
   {
     return false;
   }
@@ -1353,7 +1354,7 @@ void setup()
   Serial.setRxBufferSize(500);
   // Serial.setHwFlowCtrlMode(0);
   // // setup_comm();
-  timer = timerBegin(0, 80*1000*1000/_TICK2SEC_BASE_, true);
+  timer = timerBegin(0, 80*1000*1000/TICK_TO_SEC_BASE, true);
   
   timerAttachInterrupt(timer, &onTimer, true);
   timerAlarmWrite(timer, 7000, true);
@@ -1365,7 +1366,7 @@ void setup()
   Diagnostics::init();
 
   AUX2Comm_Lock = xSemaphoreCreateMutex();
-  for(int i=0;i<AUX_COUNT;i++)
+  for(int i=0;i<AUX_TASK_COUNT;i++)
   {
     AUXTaskQueue[i] = xQueueCreate(20 /* Number of queue slots */, sizeof(AUX_TASK_INFO));
     xTaskCreatePinnedToCore(&AUX_task, "AUX_task", 2048, (void*)&AUXTaskQueue[i], 1, NULL, 0);
@@ -1650,7 +1651,7 @@ void loop()
     }
     else
     {
-      timerAlarmWrite(timer, (uint64_t)((_TICK2SEC_BASE_>>1)/SYS_CUR_FREQ), true);
+      timerAlarmWrite(timer, (uint64_t)((TICK_TO_SEC_BASE>>1)/SYS_CUR_FREQ), true);
     }
 
     if(TimerNeedsStart)
@@ -1679,8 +1680,8 @@ void loop()
     pipeLineInfo * tail;
     while (tail=RBuf.getTail())
     {
-      // task->src->insp_status = insp_status_DEL;
-      if(tail->insp_status == insp_status_DEL)
+      // task->src->insp_status = INSP_STATUS_DEL;
+      if(tail->insp_status == INSP_STATUS_DEL)
       {
         RBuf.consumeTail();
       }
