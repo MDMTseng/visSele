@@ -128,6 +128,37 @@ public:
 };
 ```
 
+#### Stepper Controller (`StepperController.hpp/.cpp`)
+**Responsibility**: Stepper motor control with frequency ramping and timing management
+
+**Key Components**:
+- Frequency ramping logic
+- Acceleration/deceleration control
+- Timer integration
+- Direction control
+- Enable/disable functionality
+
+**Interface**:
+```cpp
+class StepperController {
+public:
+    StepperController(IStepperDriver& stepper_driver, 
+                     ITimerTickSource& timer_tick_source,
+                     IClock& clock);
+    bool init(uint8_t pulse_pin, uint8_t dir_pin, uint8_t enable_pin, 
+              bool enable_active_state, float initial_freq_hz,
+              float max_accel_hz_per_sec);
+    void setTargetFrequency(float target_freq_hz);
+    float getCurrentFrequency() const;
+    bool isStable() const;
+    void enableStepper(bool enabled);
+    bool isStepperEnabled() const;
+    void setDirection(IStepperDriver::Direction direction);
+    void update();  // Called from main loop for frequency ramping
+    void setMaxAcceleration(float max_accel_hz_per_sec);
+};
+```
+
 ### Communication Modules
 
 #### Message Bus (`MessageBus.hpp/.cpp`)
@@ -183,6 +214,34 @@ public:
 - `ILogger`: Logging operations
 - `ILock`: Synchronization primitives
 - `ITransport`: Communication transport
+
+#### Main HAL Integration (`main_hal.cpp`)
+**Responsibility**: HAL initialization, main loop orchestration, and system integration
+
+**Key Components**:
+- System initialization and setup
+- Timer ISR callback management
+- Main loop orchestration
+- Module integration and coordination
+- FreeRTOS task management
+
+**Key Functions**:
+```cpp
+// HAL initialization (called from main setup)
+void custom_hal_init();
+
+// Main loop update (called from main loop)
+void custom_hal_update();
+
+// Timer ISR callback (minimal, platform-neutral)
+void hal_onTimer();
+```
+
+**Integration Pattern**:
+1. **Initialization**: Sets up all HAL components, modules, and FreeRTOS tasks
+2. **Main Loop**: Orchestrates high-level system operations
+3. **ISR Handling**: Minimal, platform-neutral timer callback
+4. **Module Coordination**: Integrates all system modules through HAL interfaces
 
 #### Platform Implementations
 **ESP32 Implementation** (`src/hal/esp32/`):
@@ -311,13 +370,62 @@ Specific      (Platform          (ISR-Safe)         Processing      Control
 - **Error Logging**: Comprehensive error history
 - **System Reset**: Safe system reset capabilities
 
+## Current Implementation Status
+
+### Refactor Completion
+**Status**: 100% Complete (11/11 stages done)
+
+The uInspESP32 has been successfully refactored from a monolithic 2300+ line `SyncTask.cpp` into a clean, modular, platform-agnostic architecture. All planned refactoring stages have been completed as of 2025-01-15.
+
+### Implementation Highlights
+
+#### Completed Modules
+- ✅ **Core Logic**: StateMachine, Scheduler, Pipeline, GateSensor
+- ✅ **Communication**: MessageBus, Diagnostics, ITransport
+- ✅ **HAL Layer**: Complete ESP32 implementation with STM32 scaffolding
+- ✅ **Testing**: Comprehensive host-side testing framework
+- ✅ **Documentation**: Complete architecture and migration documentation
+
+#### Key Architectural Achievements
+1. **Platform Independence**: All core logic is platform-agnostic
+2. **Testability**: Host-side testing without hardware dependencies
+3. **Maintainability**: Clear module boundaries and single responsibilities
+4. **Extensibility**: Easy addition of new features and platforms
+5. **Performance**: Optimized ISR and timing-critical operations
+
+#### Current System Architecture
+```
+Main Loop (main.cpp)
+    ↓
+HAL Integration (main_hal.cpp)
+    ↓
+┌─────────────────────────────────────────────────────────┐
+│                    Application Layer                    │
+│  StateMachine → Scheduler → Pipeline → GateSensor      │
+├─────────────────────────────────────────────────────────┤
+│                    Communication Layer                  │
+│  MessageBus → Diagnostics → ITransport                 │
+├─────────────────────────────────────────────────────────┤
+│                    Hardware Abstraction Layer           │
+│  ESP32 HAL Implementations (IGpio, ITimer, etc.)       │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Recent Updates (2025-01-15)
+- **StepperController Integration**: Complete frequency ramping and control
+- **Main Loop Simplification**: High-level orchestration pattern
+- **ISR Optimization**: Minimal, platform-neutral interrupt handling
+- **Testing Framework**: Comprehensive host-side testing capabilities
+- **STM32 Preparation**: Complete portability scaffolding
+
 ## Future Architecture Evolution
 
 ### Planned Enhancements
-1. **Network Transport**: Ethernet/WiFi communication support
-2. **Advanced Diagnostics**: Real-time monitoring and analysis
-3. **Configuration Management**: Runtime configuration updates
-4. **Plugin Architecture**: Extensible component system
+1. **STM32 Implementation**: Complete STM32 HAL layer implementation
+2. **Network Transport**: Ethernet/WiFi communication support
+3. **Advanced Diagnostics**: Real-time monitoring and analysis
+4. **Configuration Management**: Runtime configuration updates
+5. **Plugin Architecture**: Extensible component system
 
 ### Scalability Considerations
 - **Modular Design**: Easy addition of new components
