@@ -21,7 +21,7 @@ Each step lists: Goal, Actions, Deliverables, Exit Criteria, Dependencies, Rollb
 | S2.2 | Replace direct call sites & test debounce correctness | DONE | - | S2.1 |
 | S3.1 | Extract state machine (`StateMachine.hpp/.cpp`) | DONE | - | S2.2 |
 | S3.2 | Replace global `SYS_STATE_Transfer` usage with interface | DONE | - | S3.1 |
-| S3.3 | Add unit-test harness (host build) for transitions (optional) | TODO | - | S3.2 |
+| S3.3 | Add unit-test harness (host build) for transitions (optional) | DONE | - | S3.2 |
 | S4.1 | Implement `MessageBus` abstraction | DONE | - | S3.2 |
 | S4.2 | Implement `Diagnostics` (error history encapsulation) | DONE | - | S4.1 |
 | S5.1 | Introduce `CommandHandler` registry + command context | CANCELLED | - | S4.2 |
@@ -33,11 +33,11 @@ Each step lists: Goal, Actions, Deliverables, Exit Criteria, Dependencies, Rollb
 | S7.1 | ESP32 implementations under `hal/esp32/` | DONE | - | S7.0 |
 | S7.2 | Replace direct hardware calls with interfaces | DONE | - | S7.1 |
 | S7.3 | Extract stepper frequency ramp to `StepperController` | DONE | - | S7.2 |
-| S7A.1 | Verify ISR minimal & platform-neutral | TODO | - | S7.3 |
+| S7A.1 | Verify ISR minimal & platform-neutral | DONE | - | S7.3 |
 | S8.1 | Simplify `loop()` to high-level orchestration | DONE | - | S7.3 |
-| S9.1 | Add mock HAL + host logic tests (scheduler, command, state) | TODO | - | S8.1 |
-| S10.1 | Documentation update (ARCHITECTURE.md + README sections) | TODO | - | S9.1 |
-| S10.2 | Replace selected macros with constexpr (non-breaking) | TODO | - | S10.1 |
+| S9.1 | Add mock HAL + host logic tests (scheduler, command, state) | DONE | - | S8.1 |
+| S10.1 | Documentation update (ARCHITECTURE.md + README sections) | DONE | - | S9.1 |
+| S10.2 | Replace selected macros with constexpr (non-breaking) | DONE | - | S10.1 |
 | S11.1 | Portability prep: add STM32 `#ifdef` scaffolding only (no impl) | DONE | - | S10.2 |
 | S11.2 | (Future) Implement STM32 HAL layer (separate task) | TODO | - | S11.1 |
 
