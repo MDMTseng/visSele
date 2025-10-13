@@ -191,6 +191,11 @@ typedef struct run_mode_info
 #define PIN_O_CAM1 17
 #define PIN_O_L2A 18
 #define PIN_O_CAM2 19
+
+
+
+
+
 #define PIN_O_SEL1 25
 #define PIN_O_SEL2 26
 #define PIN_O_SEL3 32

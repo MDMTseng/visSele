@@ -38,7 +38,7 @@ SYS_INFO sysinfo = {
 
 float SETUP_TAR_FREQ=0;
 bool SYS_FREQ_STABLE=false;
-float SYS_TAR_FREQ=0;
+float SYS_TAR_FREQ=1000;
 float SYS_CUR_FREQ=0;
 float SYS_FREQ_ADV_STEP=5;
 bool SYS_STEPPER_DISABLED=false;
@@ -1267,15 +1267,115 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
     
     const char* _version = doc["version"];
-    strcpy(peerVERSION,_version);
+    if(_version)
+    {
+      strcpy(peerVERSION,_version);
+    }
     return this->rsp_JsonRaw_version();
   }
-  else if(strcmp(type,"rsp_JsonRaw_version")==0)
+  // else if(strcmp(type,"rsp_JsonRaw_version")==0)
+  // {
+  //   const char* _version = doc["version"];
+  //   strcpy(peerVERSION,_version);
+  //   return 0;
+  // }
+
+
+  else if(strcmp(type,"trigCamPulse")==0)
   {
-    const char* _version = doc["version"];
-    strcpy(peerVERSION,_version);
-    return 0;
+    int cam_PIN=PIN_O_CAM1;
+    if(doc["cpin"].is<int>()==true)
+    {
+      cam_PIN=doc["cpin"];
+    }
+    int light_PIN=PIN_O_L1A;
+    if(doc["lpin"].is<int>()==true)
+    {
+      light_PIN=doc["lpin"];
+    }
+    int Light_Delay=100;
+    if(doc["light_delay"].is<int>()==true)
+    {
+      Light_Delay=doc["light_delay"];
+    }
+
+
+    int Light_Duration=100;
+    if(doc["light_duration"].is<int>()==true)
+    {
+      Light_Duration=doc["light_duration"];
+    }
+
+
+    int trigger_id=924949;
+    if(doc["trigger_id"].is<int>()==true)
+    {
+      trigger_id=doc["trigger_id"];
+    }
+    {
+      TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
+      if(commInfo){
+        commInfo->type=TaskQ2CommInfo_Type::btrigInfo;
+        
+        uint32_t time_us=esp_timer_get_time();
+        commInfo->trig_time_us=time_us;
+        commInfo->btrig_idx=1;
+        commInfo->trig_id=trigger_id;
+        TaskQ2CommInfoQ.pushHead();
+      }
+    }
+
+
+    digitalWrite(cam_PIN,HIGH);
+    delayMicroseconds(Light_Delay);
+    digitalWrite(light_PIN,HIGH);
+    delayMicroseconds(Light_Duration);
+    digitalWrite(light_PIN,LOW);
+    digitalWrite(cam_PIN,LOW);
+
+
+
+
+
+    doRsp=rspAck=true;
   }
+  else if(strcmp(type,"PIN_MODE")==0)
+  {
+    doRsp=true;
+    int PIN_Mode=INPUT;
+    if(doc["mode"].is<String>()==true)
+    {
+      String mode=doc["mode"];
+      if(mode=="INPUT")
+        PIN_Mode=INPUT;
+      else if(mode=="OUTPUT")
+        PIN_Mode=OUTPUT;
+      else if(mode=="PULLUP")
+        PIN_Mode=PULLUP;
+      else if(mode=="PULLDOWN")
+        PIN_Mode=PULLDOWN;
+      else if(mode=="INPUT_PULLUP")
+        PIN_Mode=INPUT_PULLUP;
+      else if(mode=="INPUT_PULLDOWN")
+        PIN_Mode=INPUT_PULLDOWN;
+      else if(mode=="OPEN_DRAIN")
+        PIN_Mode=OPEN_DRAIN;
+    }
+
+
+    if(doc["pin"].is<int>()==true)
+    {
+      int pin=doc["pin"];
+      pinMode(pin,PIN_Mode);
+      rspAck=true;
+    }
+    else
+    {
+      rspAck=false;
+    }
+  }
+
+
   else if(strcmp(type,"PING")==0)
   {
     retdoc["type"]="PONG"; 
@@ -1971,7 +2071,7 @@ void loop()
         
         case TaskQ2CommInfo_Type::btrigInfo :
         {
-          retdoc["type"]="bTrigInfo"; 
+          retdoc["type"]="bT"; 
           retdoc["tidx"]=info.btrig_idx;
           retdoc["usH"]=info.trig_time_us>>32;
           retdoc["usL"]=info.trig_time_us&((uint32_t)0-1);
