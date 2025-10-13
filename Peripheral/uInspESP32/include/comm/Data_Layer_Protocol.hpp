@@ -22,6 +22,7 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   protected:
   uint8_t dataBuff[500];
   int buffIdx=0;
+  bool protocolErrorActive=false;
 
   
   char peerVERSION[20];
@@ -46,6 +47,7 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   int send_data(int head_room,uint8_t *data,int len,int leg_room);
 
   virtual int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode);
+  bool hasProtocolError() const { return protocolErrorActive; }
   enum RTYPE
   {
     INIT,
@@ -68,6 +70,10 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   ERROR_TYPE errorCode=ERROR_TYPE::NONE;
   int jsonRawStrL=0;
   int recv_data(uint8_t *data,int len, bool is_a_packet=false);
+  void enterProtocolError(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0);
+  void clearProtocolError();
+  bool tryRecoverResetFromErrorBuffer();
+  void handleResetRecovery();
   
   virtual int recv_RESET()=0;
   virtual int recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0)=0;

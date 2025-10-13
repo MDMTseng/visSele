@@ -1,6 +1,7 @@
 #include "comm/json_seg_parser.hpp"
 #include "stdio.h"
 
+#include <cstddef>
 
 json_seg_parser::json_seg_parser(){
     reset();
@@ -8,6 +9,7 @@ json_seg_parser::json_seg_parser(){
 void json_seg_parser::reset()
 {
     stackSize=0;
+    strEscapePending=false;
 }
 
 
@@ -15,12 +17,14 @@ void json_seg_parser::reset()
 json_seg_parser::JSonState json_seg_parser::getStackHead(int idx)
 {
   if(stackSize==0)return JSonState::NUL;
-  if(idx>=stackSize)return  JSonState::ERR;
-  return levelStack[stackSize-1-idx];
+  if(idx<0)return JSonState::ERR;
+  std::size_t offset=static_cast<std::size_t>(idx);
+  if(offset>=stackSize)return  JSonState::ERR;
+  return levelStack[stackSize-1-offset];
 }
 bool json_seg_parser::pushStackHead(JSonState st)
 {
-  if(stackSize==(sizeof(levelStack)/sizeof(levelStack[0])))return false;//full
+  if(stackSize>=kMaxStackDepth)return false;//full
   levelStack[stackSize++]=st;
   return true;
 }
@@ -31,32 +35,39 @@ bool json_seg_parser::popStackHead()
   return true;
 }
 
-inline bool isSpace(char ch)
+bool json_seg_parser::isWhitespace(char ch)
 {
-  return (ch==' ' || ch=='\n' ||ch=='\t' );
+  switch (ch)
+  {
+    case ' ':
+    case '\n':
+    case '\t':
+    case '\r':
+    case '\f':
+    case '\v':
+      return true;
+    default:
+      return false;
+  }
 }
 
 json_seg_parser::RESULT json_seg_parser::newChar(char ch){
 
   
-  // printf("stack[%d]:",stackSize);
-  // for(int i=0;i<stackSize;i++)
-  // {
-  //   printf("%d,",levelStack[i]);
-  // }
-  // printf("\n");
-
   switch(getStackHead())
   {
     case OBJ_KEY:
     {
       if(ch=='"')
       {
-        popStackHead();
-        pushStackHead(JSonState::STR);
+        if(!popStackHead() || !pushStackHead(JSonState::STR))
+        {
+          return RESULT::ERROR;
+        }
+        strEscapePending=false;
         return RESULT::KEY_START;
       }
-      else if(isSpace(ch))
+      else if(isWhitespace(ch))
       {
         return RESULT::WAIT_NEXT;
       }
@@ -70,10 +81,13 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
     {
       if(ch==':')
       {
-        popStackHead();
+        if(!popStackHead())
+        {
+          return RESULT::ERROR;
+        }
         return RESULT::WAIT_NEXT;//KEY_END;
       }
-      else if(isSpace(ch))
+      else if(isWhitespace(ch))
       {
         return RESULT::WAIT_NEXT;
       }
@@ -86,19 +100,25 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
     case NUL:
       if(ch=='{')
       {
-        pushStackHead(JSonState::OBJ_END);
-        pushStackHead(JSonState::DAT);
-        pushStackHead(JSonState::OBJ_SEP);
-        pushStackHead(JSonState::OBJ_KEY);
+        if(!pushStackHead(JSonState::OBJ_END) ||
+           !pushStackHead(JSonState::DAT) ||
+           !pushStackHead(JSonState::OBJ_SEP) ||
+           !pushStackHead(JSonState::OBJ_KEY))
+        {
+          return RESULT::ERROR;
+        }
         return RESULT::OBJECT_START;
       }
       else if(ch=='[')
       {
-        pushStackHead(JSonState::ARR_END);
-        pushStackHead(JSonState::DAT);
+        if(!pushStackHead(JSonState::ARR_END) ||
+           !pushStackHead(JSonState::DAT))
+        {
+          return RESULT::ERROR;
+        }
         return RESULT::ARRAY_START;
       }
-      else if(isSpace(ch) )
+      else if(isWhitespace(ch) )
       {
         return RESULT::WAIT_NEXT;
       }
@@ -108,36 +128,47 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
       }
     break;
     case DAT:
-      if(isSpace(ch))
+      if(isWhitespace(ch))
       {
         return RESULT::WAIT_NEXT;
       }
       else if(ch=='{')
       {
-        popStackHead();
-        pushStackHead(JSonState::OBJ_END);
-        pushStackHead(JSonState::DAT);
-        pushStackHead(JSonState::OBJ_SEP);
-        pushStackHead(JSonState::OBJ_KEY);
+        if(!popStackHead() ||
+           !pushStackHead(JSonState::OBJ_END) ||
+           !pushStackHead(JSonState::DAT) ||
+           !pushStackHead(JSonState::OBJ_SEP) ||
+           !pushStackHead(JSonState::OBJ_KEY))
+        {
+          return RESULT::ERROR;
+        }
         return RESULT::OBJECT_START;
       }
       else if(ch=='[')
       {
-        popStackHead();
-        pushStackHead(JSonState::ARR_END);
-        pushStackHead(JSonState::DAT);
+        if(!popStackHead() ||
+           !pushStackHead(JSonState::ARR_END) ||
+           !pushStackHead(JSonState::DAT))
+        {
+          return RESULT::ERROR;
+        }
         return RESULT::ARRAY_START;
       }
       else if(ch=='"')
       {
-        popStackHead();
-        pushStackHead(JSonState::STR);
+        if(!popStackHead() || !pushStackHead(JSonState::STR))
+        {
+          return RESULT::ERROR;
+        }
+        strEscapePending=false;
         return RESULT::STR_START;
       }
       else 
       {
-        popStackHead();
-        pushStackHead(JSonState::VAL);
+        if(!popStackHead() || !pushStackHead(JSonState::VAL))
+        {
+          return RESULT::ERROR;
+        }
         return RESULT::VAL_START;
       }
 
@@ -150,18 +181,24 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
     case OBJ_END:
       if(ch=='}')
       {
-        popStackHead();
+        if(!popStackHead())
+        {
+          return RESULT::ERROR;
+        }
         return RESULT::OBJECT_COMPLETE;
       }
       else if(ch==',')
       {
         
-        pushStackHead(JSonState::DAT);
-        pushStackHead(JSonState::OBJ_SEP);
-        pushStackHead(JSonState::OBJ_KEY);
+        if(!pushStackHead(JSonState::DAT) ||
+           !pushStackHead(JSonState::OBJ_SEP) ||
+           !pushStackHead(JSonState::OBJ_KEY))
+        {
+          return RESULT::ERROR;
+        }
         return RESULT::WAIT_NEXT;
       }
-      else if(isSpace(ch))
+      else if(isWhitespace(ch))
       {
         return RESULT::WAIT_NEXT;
       }
@@ -174,16 +211,22 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
     case ARR_END:
       if(ch==']')
       {
-        popStackHead();
+        if(!popStackHead())
+        {
+          return RESULT::ERROR;
+        }
         return RESULT::ARRAY_COMPLETE;
       }
       else if(ch==',')
       {
         
-        pushStackHead(JSonState::DAT);
+        if(!pushStackHead(JSonState::DAT))
+        {
+          return RESULT::ERROR;
+        }
         return RESULT::WAIT_NEXT;
       }
-      else if(isSpace(ch))
+      else if(isWhitespace(ch))
       {
         return RESULT::WAIT_NEXT;
       }
@@ -193,9 +236,22 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
       }
     break;
     case STR:
+      if(strEscapePending)
+      {
+        strEscapePending=false;
+        return RESULT::WAIT_NEXT;
+      }
+      if(ch=='\\')
+      {
+        strEscapePending=true;
+        return RESULT::WAIT_NEXT;
+      }
       if(ch=='"')//end STR
       {
-        popStackHead();
+        if(!popStackHead())
+        {
+          return RESULT::ERROR;
+        }
         if(getStackHead()==JSonState::OBJ_SEP)
         {
           return RESULT::KEY_END;
@@ -210,7 +266,10 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
       {
         if(getStackHead(1)==JSonState::OBJ_END)
         {
-          popStackHead();
+          if(!popStackHead())
+          {
+            return RESULT::ERROR;
+          }
           return newChar(ch);//instant run again
         }
         else
@@ -222,7 +281,10 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
       {
         if(getStackHead(1)==JSonState::ARR_END)
         {
-          popStackHead();
+          if(!popStackHead())
+          {
+            return RESULT::ERROR;
+          }
           return newChar(ch);//instant run again
         }
         else
@@ -236,14 +298,23 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
 
         if(getStackHead(1)==JSonState::ARR_END)//only if it's arr
         {
-          popStackHead();
+          if(!popStackHead())
+          {
+            return RESULT::ERROR;
+          }
           
-          pushStackHead(JSonState::DAT);//keep find next data
+          if(!pushStackHead(JSonState::DAT))//keep find next data
+          {
+            return RESULT::ERROR;
+          }
           return newChar(ch);//instant run again
         }
         if(getStackHead(1)==JSonState::OBJ_END)//only if it's arr
         {
-          popStackHead();
+          if(!popStackHead())
+          {
+            return RESULT::ERROR;
+          }
           
           return  newChar(ch);
         }
@@ -251,6 +322,10 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
         {
           return RESULT::ERROR;
         }
+      }
+      else if(isWhitespace(ch))
+      {
+        return RESULT::WAIT_NEXT;
       }
       else
       {
@@ -264,6 +339,3 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
 
   return RESULT::ERROR;
 }
-
-
-

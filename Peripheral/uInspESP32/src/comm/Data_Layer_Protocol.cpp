@@ -28,6 +28,86 @@ static uint32_t crc_update(uint32_t crc, uint8_t data)
     return crc;
 }
 
+void Data_JsonRaw_Layer::enterProtocolError(ERROR_TYPE err,uint8_t *recv_data,size_t dataL)
+{
+  recvType=RTYPE::ERROR;
+  errorCode=err;
+  if(protocolErrorActive==false)
+  {
+    protocolErrorActive=true;
+    recv_ERROR(err,recv_data,dataL);
+  }
+}
+
+void Data_JsonRaw_Layer::clearProtocolError()
+{
+  protocolErrorActive=false;
+  errorCode=ERROR_TYPE::NONE;
+  recvType=RTYPE::INIT;
+  buffIdx=0;
+  jsegp.reset();
+  jlevel=0;
+}
+
+bool Data_JsonRaw_Layer::tryRecoverResetFromErrorBuffer()
+{
+  const char *resetKey="\"type\":\"RESET\"";
+  const int keyLen=strlen(resetKey);
+
+  int firstBrace=-1;
+  for(int i=0;i<buffIdx;i++)
+  {
+    if(dataBuff[i]=='{')
+    {
+      firstBrace=i;
+    }
+    if(i+keyLen<=buffIdx && memcmp(dataBuff+i,resetKey,keyLen)==0)
+    {
+      int endIdx=i+keyLen;
+      while(endIdx<buffIdx && dataBuff[endIdx]!='}')
+      {
+        endIdx++;
+      }
+      if(endIdx<buffIdx)
+      {
+        handleResetRecovery();
+        int shift=endIdx+1;
+        if(shift<buffIdx)
+        {
+          memmove(dataBuff,dataBuff+shift,buffIdx-shift);
+        }
+        buffIdx-=shift;
+        return true;
+      }
+      if(firstBrace>0)
+      {
+        int shift=firstBrace;
+        memmove(dataBuff,dataBuff+shift,buffIdx-shift);
+        buffIdx-=shift;
+      }
+      return false;
+    }
+  }
+
+  if(firstBrace>0)
+  {
+    int shift=firstBrace;
+    memmove(dataBuff,dataBuff+shift,buffIdx-shift);
+    buffIdx-=shift;
+  }
+  else if(buffIdx>=sizeof(dataBuff))
+  {
+    buffIdx=0;
+  }
+  return false;
+}
+
+void Data_JsonRaw_Layer::handleResetRecovery()
+{
+  recv_RESET();
+  clearProtocolError();
+}
+
 int Data_JsonRaw_Layer::ask_JsonRaw_version(){
   char sendMsg[200];
   sprintf(sendMsg,"{\"type\":\"ask_JsonRaw_version\",\"id\":100445,\"version\":\"%s\"}",VERSION);
@@ -175,10 +255,7 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
       // }
       else
       {
-      //  printf("E:%d  %c\n",c,c);
-        recvType=RTYPE::ERROR;
-        errorCode=ERROR_TYPE::INIT_CHAR_ERROR;
-        recv_ERROR(errorCode,(uint8_t*)data,len);
+        enterProtocolError(ERROR_TYPE::INIT_CHAR_ERROR,(uint8_t*)data,len);
       }
       buffIdx=0;
     }
@@ -196,96 +273,13 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
 
       if(buffIdx==sizeof(dataBuff))
       {
-        recvType=RTYPE::ERROR;//full and enter error clean state
-        errorCode=ERROR_TYPE::RECV_BUFFER_FULL;
-        recv_ERROR(errorCode);
+        enterProtocolError(ERROR_TYPE::RECV_BUFFER_FULL);
       }
       // if(recvType==RTYPE::JSON && buffIdx>100)recvType=RTYPE::ERROR;//long json is error~
       switch(recvType)
       {
         case RTYPE::ERROR:{
-          //init
-          const int RESET_PACKET_SIZE=(sizeof(RESET_PACKET)-1);
-          if(buffIdx>=RESET_PACKET_SIZE)//buff filled with enough data
-          {
-            
-            // printf("buffIdx  %d >=RESET_PACKET_SIZE  %d \n",buffIdx,RESET_PACKET_SIZE);
-            // for(int j=0;j<buffIdx;j++)
-            // {
-            //   printf("%c",dataBuff[j]);
-            // }
-            // printf("\n");
-            
-
-
-
-            int matching_state=0;//0 for no matching, 1 for matching ok, 2 for matching ok but not complete(wait for upcoming data)
-            int dataShiftBackIdx=0;
-            for(int j=0;j<buffIdx;j++)
-            {
-
-              bool matchPass=true;
-              int k=0;
-              for(k=0;k<RESET_PACKET_SIZE && (j+k)<buffIdx  ;k++)
-              {
-                if(RESET_PACKET[k] != dataBuff[j+k])
-                {
-                  matchPass=false;
-                  break;
-                }
-                
-              }
-
-              if(matchPass)
-              {
-                //packet starts with j
-                //may need data shift
-                if(k<RESET_PACKET_SIZE)//incomplete matching
-                {
-                  matching_state=2;
-                  dataShiftBackIdx=j;
-                }
-                else
-                {
-                  //hit RESET
-                  matching_state=1;
-                  dataShiftBackIdx=j+RESET_PACKET_SIZE-1;//shift and skip reset packet
-                  recv_RESET();
-                  recvType=RTYPE::INIT;
-                }
-                break;
-              }
-              else
-              {
-                continue;
-              }
-
-
-
-            }
-
-            if(matching_state==0)
-            {
-              buffIdx=0;
-            }
-            else if(dataShiftBackIdx)
-            {
-              if(dataShiftBackIdx==buffIdx)//meaning reset idx
-              {
-                buffIdx=0;
-              }
-              else
-              {
-                for(int j=0;j+dataShiftBackIdx<buffIdx;j++)
-                {
-                  dataBuff[j]=dataBuff[j+dataShiftBackIdx];
-                }
-                buffIdx-=dataShiftBackIdx;
-              }
-            }
-
-          }
-
+          tryRecoverResetFromErrorBuffer();
           break;
         }
         
@@ -391,11 +385,7 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
             }
             if((headerLen+dataLen)>sizeof(dataBuff))
             {
-              //TODO: ERROR, oversize
-              recvType=RTYPE::ERROR;
-              
-              errorCode=ERROR_TYPE::RAW_DATA_OVERSIZE;
-              recv_ERROR(errorCode);
+              enterProtocolError(ERROR_TYPE::RAW_DATA_OVERSIZE);
               break;
             }
           }
@@ -433,9 +423,7 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
             else
             {
               // printf("CRC miss match:tar_crc:%X  calc_crc:%X \n",targ_crc,calc_crc);
-              recvType=RTYPE::ERROR;
-              errorCode=ERROR_TYPE::RAW_CRC_ERROR;
-              recv_ERROR(errorCode);
+              enterProtocolError(ERROR_TYPE::RAW_CRC_ERROR);
               break;
             }
           }

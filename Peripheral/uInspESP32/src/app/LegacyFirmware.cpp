@@ -772,6 +772,8 @@ void setMachineSetup(JsonDocument &jdoc);
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
 {
+  bool commsErrorLatched=false;
+  void handleResetCommand();
   
   public:
   MData_JR():Data_JsonRaw_Layer()// throw(std::runtime_error)
@@ -780,7 +782,8 @@ class MData_JR:public Data_JsonRaw_Layer
   }
   int recv_RESET()
   {
-    doDataLog=false;
+    handleResetCommand();
+    return msg_printf("RESET_OK","");
   } 
   int recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data=NULL,size_t dataL=0);
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode);
@@ -1233,6 +1236,23 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
     dbg_printf("recv_ERROR:%d %s dat:%s",errorcode,dataBuff,string((char*)recv_data,0,9).c_str());
   else 
     dbg_printf("recv_ERROR:%d %s",errorcode,dataBuff);
+  if(commsErrorLatched==false)
+  {
+    commsErrorLatched=true;
+
+    TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
+    if(commInfo){
+      commInfo->type=TaskQ2CommInfo_Type::systemInfo;
+      commInfo->log="Serial protocol error detected";
+      TaskQ2CommInfoQ.pushHead();
+    }
+
+    if(sysinfo.state!=SYS_STATE::INSPECTION_MODE_ERROR)
+    {
+      SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::SERIAL_PROTOCOL_ERROR);
+    }
+  }
+  return 0;
 }
 
 int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
@@ -1249,15 +1269,45 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   bool rspAck=false;
   bool doRsp=false;
 
+  if(error)
+  {
+    dbg_printf("JSON parse error:%s", error.c_str());
+    enterProtocolError(ERROR_TYPE::JSON_FORMAT_ERROR,raw,rawL);
+    return -1;
+  }
+
   const char* type = doc["type"];
+  if(type==NULL)
+  {
+    dbg_printf("JSON missing type field");
+    enterProtocolError(ERROR_TYPE::JSON_FORMAT_ERROR,raw,rawL);
+    return -1;
+  }
+
   HACK_cur_cmd_id=-1;
   if(doc["id"].is<int>()==true)
   {
     HACK_cur_cmd_id=doc["id"];
   }
+  if(commsErrorLatched && strcmp(type,"RESET")!=0)
+  {
+    retdoc.clear();
+    retdoc["type"]="resp";
+    if(!doc["id"].isNull())
+    {
+      retdoc["id"]=doc["id"];
+    }
+    retdoc["ack"]=false;
+    retdoc["err"]="serial_error_locked";
+    uint8_t buff[256];
+    int slen=serializeJson(retdoc,(char*)buff,sizeof(buff));
+    send_json_string(0,buff,slen,0);
+    return 0;
+  }
   // const char* id = doc["id"];
   if(strcmp(type,"RESET")==0)
   {
+    handleResetCommand();
     return msg_printf("RESET_OK","");
   }
   else if(strcmp(type,"ask_JsonRaw_version")==0)
@@ -1716,6 +1766,19 @@ void MData_JR::loop()
 {
 }
 
+void MData_JR::handleResetCommand()
+{
+  bool wasLatched=commsErrorLatched || hasProtocolError();
+  commsErrorLatched=false;
+  clearProtocolError();
+  doDataLog=false;
+
+  if(wasLatched && sysinfo.state==SYS_STATE::INSPECTION_MODE_ERROR)
+  {
+    SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR_REDEEM);
+  }
+}
+
 #define AUX_COUNT 5
 
 enum AUX_TASK_INFO_TYPE{
@@ -1984,6 +2047,16 @@ void firmwareLoop()
 
   SYS_STATE_Transfer(SYS_STATE_ACT::NOP);
   djrl.loop();
+  
+  // Periodic system time debug print (1 second interval)
+  {
+    static unsigned long lastPrintTime = 0;
+    unsigned long currentTime = millis();
+    if (currentTime - lastPrintTime >= 1000) {
+      djrl.dbg_printf("SYSTIME: %lu ms", currentTime);
+      lastPrintTime = currentTime;
+    }
+  }
   {
     bool recvF=false;
     while(Serial.available() > 0) {
@@ -1991,20 +2064,22 @@ void firmwareLoop()
       // read the incoming byte:
       // char c=Serial.read();
       // djrl.recv_data((uint8_t*)&c,1);
-      int recvLen = Serial.read(recvBuf,sizeof(recvBuf-1));
+      size_t recvLen = Serial.read(recvBuf,sizeof(recvBuf));
       //
-      if(recvLen<=0)continue;
+      if(recvLen==0)continue;
       // djrl.dbg_printf("recvLen:%d",recvLen);
-      djrl.recv_data((uint8_t*)recvBuf,recvLen);
+      djrl.recv_data((uint8_t*)recvBuf,(int)recvLen);
       if(doDataLog)
       {
-        for(int i=0;i<recvLen;i++) 
+        size_t printableLen = (recvLen < sizeof(recvBuf)-1)?recvLen:(sizeof(recvBuf)-1);
+        recvBuf[printableLen]='\0';
+        for(size_t i=0;i<printableLen;i++) 
         {
           if(recvBuf[i]=='"')
             recvBuf[i]='\'';
         }     
-        recvBuf[recvLen]='\0';
-        djrl.dbg_printf(">%s",recvBuf);
+        
+        djrl.dbg_printf(">%s",(char*)recvBuf);
       }
 
     }
@@ -2041,6 +2116,10 @@ void firmwareLoop()
 
       if(hasNewInfo==false)break;
 
+
+
+
+      djrl.dbg_printf("sdksjldlskjd");
       retdoc.clear();
       // retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
       // retdoc["trigger_id"]=info.step;
@@ -2068,7 +2147,7 @@ void firmwareLoop()
         
         case TaskQ2CommInfo_Type::btrigInfo :
         {
-          retdoc["type"]="bT"; 
+          retdoc["type"]="bTrigInfo"; 
           retdoc["tidx"]=info.btrig_idx;
           retdoc["usH"]=info.trig_time_us>>32;
           retdoc["usL"]=info.trig_time_us&((uint32_t)0-1);
