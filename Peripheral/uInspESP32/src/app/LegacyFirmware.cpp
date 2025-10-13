@@ -1,9 +1,9 @@
-
+#include "app/LegacyFirmware.hpp"
 #include "main.hpp"
 #include "LOG.h"
 #include "xtensa/core-macros.h"
 #include "soc/rtc_wdt.h"
-#include <Data_Layer_Protocol.hpp>
+#include "comm/Data_Layer_Protocol.hpp"
 #include "driver/timer.h"
 #include <string>
 
@@ -11,7 +11,6 @@ extern "C" {
 #include "direct_spi.h"
 }
 
-#pragma once
 #define __UPRT_D_(fmt,...) //Serial.printf("D:"__VA_ARGS__)
 // #define __PRT_I_(...) Serial.printf("I:" __VA_ARGS__)
 #define __UPRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
@@ -124,8 +123,6 @@ stagePulseOffset STAGE_PULSE_OFFSET={
 
 };
 
-
-#define PIPE_INFO_LEN 100
 RingBuf_Static<pipeLineInfo, PIPE_INFO_LEN, uint8_t> RBuf;
 
 
@@ -1886,7 +1883,7 @@ void AUX_task(void *pvParameter)
 
 
 int rzERROR=0;
-void setup()
+void firmwareSetup()
 {
   
   // noInterrupts();
@@ -1982,7 +1979,7 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
 
 
 static uint8_t recvBuf[20];
-void loop()
+void firmwareLoop()
 {
 
   SYS_STATE_Transfer(SYS_STATE_ACT::NOP);
@@ -2375,8 +2372,4 @@ void setMachineSetup(JsonDocument &jdoc)
 
 
 }
-
-
-
-
 

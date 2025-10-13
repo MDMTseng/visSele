@@ -1,4 +1,4 @@
-#include "json_seg_parser.hpp"
+#include "comm/json_seg_parser.hpp"
 #include "stdio.h"
 
 
@@ -264,7 +264,6 @@ json_seg_parser::RESULT json_seg_parser::newChar(char ch){
 
   return RESULT::ERROR;
 }
-
 
 
 
