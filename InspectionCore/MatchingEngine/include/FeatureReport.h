@@ -46,6 +46,14 @@ typedef struct featureDef_circle{
   acv_XY pt1,pt2,pt3;//three points arc, the root of all info
   float initMatchingMargin;
   float outter_inner;
+  // caliper/section locating (docs/caliper_primitive_locating_design.md)
+  int locating;            // 0=contour(default), 1=caliper
+  int cal_count;           // # radial calipers along the arc
+  float cal_width;         // projection width (px)
+  int edge_method;
+  int edge_polarity;
+  int edge_nth;
+  float edge_min_strength;
   vector <ContourFetch::ptInfo> tmp_pt;
   Roughness_INFO ri;
 }featureDef_circle;

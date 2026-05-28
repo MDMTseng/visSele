@@ -229,6 +229,25 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
 
   cir.initMatchingMargin = *JFetEx_NUMBER(circle_obj, "margin");
 
+  // caliper/section locating (default contour)
+  cir.locating = 0; cir.cal_count = 36; cir.cal_width = 9;
+  cir.edge_method = EdgeSelectParams::STRONGEST; cir.edge_polarity = EdgeSelectParams::ANY;
+  cir.edge_nth = 0; cir.edge_min_strength = 0;
+  {
+    char *loc = (char *)JFetch(circle_obj, "locating", cJSON_String);
+    if (loc && strcmp(loc, "caliper") == 0) cir.locating = 1;
+    cJSON *calo = JFetch_OBJECT(circle_obj, "caliper");
+    if (calo) { cir.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 36);
+                cir.cal_width = JFetch_NUMBER_ex(calo, "width", 9); }
+    cJSON *edgeo = JFetch_OBJECT(circle_obj, "edge");
+    if (edgeo) {
+      cir.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
+      cir.edge_polarity = edge_polarity_from_string((char *)JFetch(edgeo, "polarity", cJSON_String));
+      cir.edge_nth = (int)JFetch_NUMBER_ex(edgeo, "nth", 0);
+      cir.edge_min_strength = JFetch_NUMBER_ex(edgeo, "min_strength", 0);
+    }
+  }
+
   acv_XY pt1, pt2, pt3;
 
   pt1.X = *JFetEx_NUMBER(circle_obj, "pt1.x");
@@ -3635,7 +3654,26 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   //   LOGI("XY:%f %f  >> %f %f   edgeRsp:%f",s_points[m].sobel.X,s_points[m].sobel.Y,s_points[m].pt.X,s_points[m].pt.Y,s_points[m].edgeRsp);
   // }
 
-  circleRefine(s_points, s_points.size(), &cf);
+  if (cdef.locating == 1) // caliper/section circle fit (radial calipers)
+  {
+    CaliperParams cal;
+    cal.length = initMatchingMargin; // px radial search half-length
+    cal.width  = cdef.cal_width;
+    cal.step   = 1.0f;
+    cal.edge.method       = cdef.edge_method;
+    cal.edge.polarity     = cdef.edge_polarity;
+    cal.edge.nth          = cdef.edge_nth;
+    cal.edge.min_strength = cdef.edge_min_strength;
+    acv_XY off = eT.getImgOffset();
+    acv_XY cc = acvVecSub(center, off);
+    CaliperCircleResult rr = caliper_locate_circle(eT.getImage(), cc, radius, sAngle, eAngle,
+                                                   cdef.cal_count, cal, eT.getBacpac());
+    if (rr.ok) { cf.circle.circumcenter = acvVecAdd(rr.center, off); cf.circle.radius = rr.radius;
+                 cf.s = rr.rms; cf.matching_pts = rr.nInlier; }
+    else { cf.circle.radius = NAN; }
+  }
+  else
+    circleRefine(s_points, s_points.size(), &cf);
 
   float minTor = matching_tor / 2;
   if (minTor < 1)
