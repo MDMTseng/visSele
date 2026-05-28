@@ -1,0 +1,37 @@
+#ifndef EDGE_SELECT_H
+#define EDGE_SELECT_H
+
+// Extensible sub-pixel edge selector for primitive locating. Replaces the old
+// single "centroid of the gradient profile" (which lands between peaks on
+// non-standard edges) with explicit peak detection + selection rule + polarity.
+//
+// Given a gradient profile along a scan ray, it finds the candidate gradient
+// PEAKS (local maxima of |grad|) of the requested polarity and picks ONE by a
+// configurable rule. Sub-pixel position comes from a parabola at the chosen
+// peak. Designed to grow: add a Method enum value + a case in edge_select.
+//
+// Backward-compat: on a clean symmetric step edge there is a single peak whose
+// location equals the gradient centroid, so STRONGEST matches the old result;
+// only non-standard (multi/asymmetric) edges change (where the old was wrong).
+
+struct EdgeSelectParams
+{
+  enum Method { STRONGEST = 0, FIRST, LAST, MIDDLE, NTH };
+  enum Polarity { ANY = 0, RISING, FALLING }; // RISING = dark->light (grad>0)
+  int method = STRONGEST;
+  int polarity = ANY;
+  int nth = 0;            // index for NTH (0-based, clamped)
+  float min_strength = 0; // ignore peaks weaker than this (|grad|)
+};
+
+// signedGrad[n] = signed intensity gradient along the ray. Returns true and the
+// sub-pixel peak position (in [0,n-1]) + its |grad| strength, or false if no
+// matching peak. quality is the peak strength (higher = sharper/cleaner).
+bool edge_select(const float *signedGrad, int n, const EdgeSelectParams &p,
+                 float *outPos, float *outStrength);
+
+// Map config strings (for def parsing).
+int edge_method_from_string(const char *s);   // "strongest"/"first"/"last"/"middle"/"nth"
+int edge_polarity_from_string(const char *s); // "any"/"rising"/"falling"
+
+#endif
