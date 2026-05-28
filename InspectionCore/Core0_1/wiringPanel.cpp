@@ -1301,7 +1301,7 @@ void setup_machine_setting(cJSON *json_mac_setting)
 
 
 
-BPG_protocol_data m_BPG_Protocol_Interface::GenStrBPGData(char *TL, char *jsonStr)
+BPG_protocol_data m_BPG_Protocol_Interface::GenStrBPGData(char *TL, const char *jsonStr)
 {
   BPG_protocol_data BPG_dat = {0};
   BPG_dat.tl[0] = TL[0];

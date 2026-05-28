@@ -1,0 +1,51 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 19, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "vcpkg",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      }
+    },
+    {
+      "name": "mac-arm64",
+      "inherits": "base",
+      "displayName": "macOS arm64 (dev)",
+      "cacheVariables": {
+        "FEATURE_ARAVIS": "ON",
+        "FEATURE_MINDVISION": "OFF",
+        "FEATURE_HIKROBOT": "OFF"
+      }
+    },
+    {
+      "name": "mac-arm64-opencv",
+      "inherits": ["mac-arm64", "vcpkg"],
+      "displayName": "macOS arm64 + OpenCV via vcpkg"
+    },
+    {
+      "name": "win-mingw",
+      "inherits": ["base", "vcpkg"],
+      "displayName": "Windows MSYS2/MinGW (deploy)",
+      "generator": "MinGW Makefiles",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
+        "FEATURE_ARAVIS": "OFF",
+        "FEATURE_MINDVISION": "ON",
+        "FEATURE_HIKROBOT": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "mac-arm64", "configurePreset": "mac-arm64" },
+    { "name": "mac-arm64-opencv", "configurePreset": "mac-arm64-opencv" },
+    { "name": "win-mingw", "configurePreset": "win-mingw" }
+  ]
+}

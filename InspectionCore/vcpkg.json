@@ -1,0 +1,8 @@
+{
+  "name": "vissele-inspectioncore",
+  "version-string": "0.1.0",
+  "description": "visSele inspection core dependencies",
+  "dependencies": [
+    "opencv4"
+  ]
+}
