@@ -199,9 +199,9 @@ target_link_libraries(MatchingEngine PUBLIC acvImage cJSON common_lib CircleFitt
 if(OpenCV_FOUND)
   # Link ONLY the modules we use. Homebrew's opencv_dnn has a broken protobuf
   # dependency, and linking the full OpenCV_LIBS pulls it in -> dyld abort.
-  target_sources(MatchingEngine PRIVATE MatchingEngine/ChessboardExtract.cpp)
+  target_sources(MatchingEngine PRIVATE MatchingEngine/ChessboardExtract.cpp MatchingEngine/LensCalib.cpp)
   target_compile_definitions(MatchingEngine PUBLIC FEATURE_OPENCV)
-  target_link_libraries(MatchingEngine PUBLIC opencv_core opencv_imgproc opencv_imgcodecs)
+  target_link_libraries(MatchingEngine PUBLIC opencv_core opencv_imgproc opencv_imgcodecs opencv_calib3d)
   target_include_directories(MatchingEngine PUBLIC ${OpenCV_INCLUDE_DIRS})
 endif()
 
