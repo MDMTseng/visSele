@@ -1375,14 +1375,17 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     // (locating==0) keeps the legacy contour search below unchanged.
     if (def.locating == 1)
     {
-      // Mirror the contour search span: ONE-SIDED from pt, `margin` along
-      // searchVec_nor (the search direction, already flipped for search_far),
-      // width along the edge. caliper_measure samples a symmetric +/-length grid
-      // about its center, so center the grid at pt + (margin/2)*dir and use
-      // half-length = margin/2 -> the profile spans [pt, pt+margin] in searchDir.
+      // A search point SCANS for the FIRST edge hit along the ray, so it must NOT
+      // average across a width band -- projection smoothing shifts the first-hit
+      // point (esp. on curved/cornered edges). Use a THIN scan (width 1, no
+      // smoothing) and the edge-selector toolbox (default FIRST = first hit).
+      // Span mirrors the contour search: ONE-SIDED from pt, `margin` along
+      // searchVec_nor (already flipped for search_far). caliper_measure samples a
+      // symmetric +/-length grid about its center, so center at pt+(margin/2)*dir
+      // with half-length margin/2 -> profile spans [pt, pt+margin] in searchDir.
       CaliperParams cal;
       cal.length = margin * 0.5f;   // half-span; total = margin (one-sided from pt)
-      cal.width  = width;           // projection width along the edge (px)
+      cal.width  = 1;               // thin scan: NO projection averaging (no smoothing)
       cal.step   = 1.0f;
       cal.edge.method       = def.edge_method;
       cal.edge.polarity     = def.edge_polarity;
@@ -1575,8 +1578,10 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
       *JFetEx_NUMBER(jobj, "width");
 
   // caliper/section locating (default contour). docs/caliper_primitive_locating_design.md
+  // A search point scans for the FIRST edge hit, so default method = FIRST
+  // (not STRONGEST) to match the legacy nearest-edge semantics.
   searchPoint.locating = 0;
-  searchPoint.edge_method = EdgeSelectParams::STRONGEST;
+  searchPoint.edge_method = EdgeSelectParams::FIRST;
   searchPoint.edge_polarity = EdgeSelectParams::ANY;
   searchPoint.edge_nth = 0; searchPoint.edge_min_strength = 0;
   {
