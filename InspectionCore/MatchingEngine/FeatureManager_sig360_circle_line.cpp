@@ -3951,6 +3951,13 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
   CaliperLineResult r = caliper_locate_line(eT.getImage(), p0, p1, lineDef.cal_count, cal, eT.getBacpac());
   if (r.ok)
   {
+    // Orient the fitted direction to the def's p0->p1 convention (the TLS fit's
+    // sign is arbitrary). Without this the line vector can come out flipped vs the
+    // legacy/contour path, which flips dependent search points' search angle and
+    // shifts their measures. Mirrors SingleMatching_line's target_vec dot-flip.
+    acv_XY tdir = acvVecSub(lineDef.p1, lineDef.p0);
+    if (r.dir.X * tdir.X + r.dir.Y * tdir.Y < 0) { r.dir.X = -r.dir.X; r.dir.Y = -r.dir.Y; }
+
     acv_XY anchor = acvVecAdd(r.anchor, off); // back to image coords
     Report.line.line.line_anchor = anchor;
     Report.line.line.line_vec = r.dir;
