@@ -60,9 +60,24 @@ binarize ─► label (CCL) ─► per object region:
   which is NOT yet caliper-ified (still contour/centroid edge). So 定位點 accuracy
   is currently gated by the old edge method. Caliper-ifying search-point would
   directly improve anchor accuracy -> better registration everywhere.
-- **CAVEAT — no anchor outlier rejection:** one mis-located anchor locally drags the
-  inverse-distance warp (sensitive near that anchor). Consider robust similarity/
-  affine fit or anchor outlier rejection.
+- **Anchor robustness rework (in progress).** An anchor is a VITAL datum and exists
+  for two reasons (user): (1) some primitives are very sensitive to initial position
+  but coarse-pose precision is low; (2) parts deform and need correction. So a LARGE
+  anchor displacement is LEGITIMATE/expected — abnormality must be judged by
+  APPEARANCE, not position. Policy: every `locating_anchor` must be found AND pass
+  its gate; ANY failure (or not-found) FAILS THE WHOLE OBJECT (don't measure against
+  a bad/partial datum; the old code silently skipped non-SUCCESS anchors at :4693).
+  Validation = ZNCC template-patch match (`anchor_patch_zncc`, commit bb212667):
+  small taught patch (from the golden image, pose-normalized template domain,
+  auto-sized + downsampled at teach time) vs the runtime neighborhood sampled in the
+  same template domain; require score >= threshold. ZNCC is brightness-invariant.
+  Find stays caliper (sub-pixel, handles the along-edge aperture problem). Edge
+  quality (`EdgeSelectInfo`: strength/runnerUp/signed, commit 5cd3ce3d) is the cheap
+  fallback gate when no patch is taught yet. Patch is BAKED INTO THE DEF (the live
+  `definfo` arrives as a JSON blob over BPG with no image — wiringPanel.cpp:2072 —
+  so the runtime core can't rely on the sibling .png). See memory
+  [[project-locating-anchor]]. LEFT: def patch schema+parse, template-domain runtime
+  sampling, object hard-fail wiring, teach-side patch capture (WebUI).
 
 ## 5. Primitive locating — contour (legacy) vs caliper (new)
 
