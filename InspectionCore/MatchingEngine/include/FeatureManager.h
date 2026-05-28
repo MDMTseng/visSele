@@ -7,12 +7,18 @@ using namespace std;
 #include "acvImage_ComponentLabelingTool.hpp"
 
 #include "cJSON.h"
+#include "LensCalib.h"
 
 
 typedef struct FeatureManager_BacPac
 {
   ImageSampler *sampler;
   CameraLayer *cam;
+  // Lens calibration (telecentric/perspective). When applyLensCalib is true the
+  // measurement path undistorts extracted feature points via lensCalib. Default
+  // OFF -> no behaviour change until enabled + validated on the rig.
+  bool applyLensCalib = false;
+  LensCalibResult *lensCalib = 0;
 }FeatureManager_BacPac;
 
 class FeatureManager {

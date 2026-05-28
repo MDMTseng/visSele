@@ -1,4 +1,6 @@
 #include "LensCalib.h"
+#include "ChessboardExtract.h"
+#include "cJSON.h"
 #include <opencv2/opencv.hpp>
 #include <opencv2/calib3d.hpp>
 #include <cstdio>
@@ -60,7 +62,8 @@ LensCalibResult lens_calibrate(LensModel model, const std::vector<TelecentricVie
 
   LensCalibResult res;
   res.model = LensModel::TELECENTRIC;
-  TelecentricCalibResult t = telecentric_calibrate(views, imgW, imgH);
+  // 300 iters / tighter tol: 100 under-converges the principal point on real data.
+  TelecentricCalibResult t = telecentric_calibrate(views, imgW, imgH, 300, 1e-13);
   res.ok = t.ok;
   res.overall_rms_px = t.overall_rms_px;
   res.tele = t.intr;
@@ -130,4 +133,57 @@ char *lens_calib_to_json(const LensCalibResult &r)
   char *out = (char*)malloc(strlen(buf)+1);
   strcpy(out, buf);
   return out;
+}
+
+static double jget(cJSON *o, const char *k, double def)
+{
+  cJSON *i = cJSON_GetObjectItem(o, k);
+  return (i && cJSON_IsNumber(i)) ? i->valuedouble : def;
+}
+
+LensCalibResult lens_calib_from_json(const char *json)
+{
+  LensCalibResult r;
+  cJSON *o = cJSON_Parse(json);
+  if (!o) return r;
+  cJSON *lm = cJSON_GetObjectItem(o, "lens_model");
+  std::string model = (lm && cJSON_IsString(lm)) ? lm->valuestring : "telecentric";
+  r.model = lens_model_from_string(model);
+  r.overall_rms_px = jget(o, "rms_px", 0);
+  cJSON *ok = cJSON_GetObjectItem(o, "ok");
+  r.ok = ok ? cJSON_IsTrue(ok) : true;
+  if (r.model == LensModel::TELECENTRIC)
+  {
+    r.tele.m = jget(o,"m",0); r.tele.u0 = jget(o,"u0",0); r.tele.v0 = jget(o,"v0",0);
+    r.tele.k1 = jget(o,"k1",0); r.tele.k2 = jget(o,"k2",0); r.tele.k3 = jget(o,"k3",0);
+    r.tele.p1 = jget(o,"p1",0); r.tele.p2 = jget(o,"p2",0);
+    r.tele.s1 = jget(o,"s1",0); r.tele.s2 = jget(o,"s2",0);
+    r.tele.s3 = jget(o,"s3",0); r.tele.s4 = jget(o,"s4",0);
+  }
+  else
+  {
+    r.fx = jget(o,"fx",0); r.fy = jget(o,"fy",0);
+    r.cx = jget(o,"cx",0); r.cy = jget(o,"cy",0);
+    r.dist[0]=jget(o,"k1",0); r.dist[1]=jget(o,"k2",0);
+    r.dist[2]=jget(o,"p1",0); r.dist[3]=jget(o,"p2",0); r.dist[4]=jget(o,"k3",0);
+  }
+  cJSON_Delete(o);
+  return r;
+}
+
+LensCalibResult lens_calib_run_from_images(const std::vector<std::string> &imagePaths,
+                                           double square_mm, LensModel model,
+                                           const char *saveJsonPath)
+{
+  std::vector<TelecentricViewData> views; int W = 0, H = 0;
+  chessboard_extract_views(imagePaths, square_mm, views, W, H);
+  LensCalibResult r = lens_calibrate(model, views, W, H);
+  if (r.ok && saveJsonPath)
+  {
+    char *j = lens_calib_to_json(r);
+    FILE *f = fopen(saveJsonPath, "w");
+    if (f) { fputs(j, f); fclose(f); }
+    free(j);
+  }
+  return r;
 }

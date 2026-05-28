@@ -47,4 +47,13 @@ void lens_undistort_points(const LensCalibResult &r, const double *uv, int n, do
 // free with free()). Schema includes "lens_model", params, rms.
 char *lens_calib_to_json(const LensCalibResult &r);
 
+// Parse a calibration result from JSON (as produced by lens_calib_to_json).
+LensCalibResult lens_calib_from_json(const char *json);
+
+// End-to-end runner: detect+grid the images, calibrate with `model`, and
+// optionally write the result JSON to saveJsonPath. Returns the result.
+LensCalibResult lens_calib_run_from_images(const std::vector<std::string> &imagePaths,
+                                           double square_mm, LensModel model,
+                                           const char *saveJsonPath = 0);
+
 #endif
