@@ -1988,6 +1988,9 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     double *emins = JFetch_NUMBER(root, "edge_sig_min_strength");
     if (emins != NULL)
       this->edge_sig_min_strength = (float)*emins;
+    double *estep = JFetch_NUMBER(root, "edge_sig_ray_step");
+    if (estep != NULL && *estep > 0)
+      this->edge_sig_ray_step = (float)*estep;
 
     void *target;
     int type = getDataFromJson(root, "matching_with_signature", &target);
@@ -4651,11 +4654,12 @@ static float graySampleBilinear(acvImage *im, float x, float y)
 bool convertGrayEdges2Signature(acv_XY center_lb, acv_XY ideal_center, acvImage *grayOrig,
                                 float dsampLevel, float searchRadius_lb,
                                 std::vector<acv_XY> &o_signature, FeatureManager_BacPac *bacpac,
-                                float minStrength)
+                                float minStrength, float step = 1.5f)
 {
   int N = (int)o_signature.size();
   if (N == 0 || grayOrig == NULL) return false;
-  const float rInner = 2.0f, step = 0.5f;
+  const float rInner = 2.0f;
+  if (step <= 0) step = 1.5f;
   std::vector<char> found(N, 0);
   for (int b = 0; b < N; b++) { o_signature[b].X = 0; o_signature[b].Y = 0; }
 
@@ -4953,7 +4957,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       float ey = fmax(fabs(curLableDat.RBBound.Y-curLableDat.Center.Y), fabs(curLableDat.Center.Y-curLableDat.LTBound.Y));
       float searchRadius_lb = hypot(ex, ey) * 1.25f + 10;
       convertGrayEdges2Signature(curLableDat.Center, ideal_center, originalImage, dsampLevel,
-                                 searchRadius_lb, tmp_signature.signature_data, bacpac, edge_sig_min_strength);
+                                 searchRadius_lb, tmp_signature.signature_data, bacpac, edge_sig_min_strength,
+                                 edge_sig_ray_step);
     }
     else // contour_sig: binary silhouette contour (default, backward compatible)
     {

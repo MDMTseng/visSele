@@ -161,6 +161,11 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // lighting/exposure/tint robust). Set via def "matching_method".
   int matching_method = 0;
   float edge_sig_min_strength = 8.0f;
+  // Ray-cast sampling step (px) for the edge_sig build. Bigger = faster build
+  // (the edge is still sub-pixel via the gradient-peak parabola). 1-2deg drift
+  // budget tolerates ~1.5-2.0; default 1.5 (~4x faster than 0.5). Speed knob,
+  // no signature-format change.
+  float edge_sig_ray_step = 1.5f;
 
 
   float sig_st1_matching_sim_thres;
