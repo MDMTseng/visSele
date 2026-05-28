@@ -3,6 +3,7 @@
 #include "MatchingCore.h"            // acvVec* helpers
 #include <math.h>
 #include <vector>
+#include <algorithm>
 
 bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
                      const CaliperParams &p, FeatureManager_BacPac *bacpac,
@@ -47,4 +48,70 @@ bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
   if (outPt) *outPt = acvVecAdd(center, acvVecMult(s, t_edge));
   if (outStrength) *outStrength = str;
   return true;
+}
+
+// weighted total-least-squares line fit over points with weights w; returns
+// anchor (weighted centroid), unit dir, and fills perpendicular residuals.
+static void wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,
+                    const std::vector<char> &use, acv_XY &anchor, acv_XY &dir)
+{
+  double sw = 0, mx = 0, my = 0;
+  for (size_t i = 0; i < pts.size(); i++) if (use[i]) { sw += w[i]; mx += w[i]*pts[i].X; my += w[i]*pts[i].Y; }
+  if (sw <= 0) { anchor = {0,0}; dir = {1,0}; return; }
+  mx /= sw; my /= sw;
+  double a = 0, b = 0, c = 0;
+  for (size_t i = 0; i < pts.size(); i++) if (use[i])
+  { double dx = pts[i].X-mx, dy = pts[i].Y-my; a += w[i]*dx*dx; b += w[i]*dx*dy; c += w[i]*dy*dy; }
+  double theta = 0.5 * atan2(2*b, a - c); // major axis of weighted covariance
+  anchor = { (float)mx, (float)my };
+  dir = { (float)cos(theta), (float)sin(theta) };
+}
+
+CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
+                                      int count, const CaliperParams &cal,
+                                      FeatureManager_BacPac *bacpac)
+{
+  CaliperLineResult r = {}; r.ok = false; r.dir = {1,0};
+  if (count < 2) count = 2;
+  acv_XY lineDir = acvVecNormalize(acvVecSub(p1, p0));
+  acv_XY perp = { -lineDir.Y, lineDir.X }; // caliper search direction (across edge)
+
+  std::vector<acv_XY> pts; std::vector<float> w;
+  for (int i = 0; i < count; i++)
+  {
+    float u = (float)i / (count - 1);
+    acv_XY c = acvVecAdd(p0, acvVecMult(acvVecSub(p1, p0), u));
+    acv_XY pt; float str;
+    if (caliper_measure(gray, c, perp, cal, bacpac, &pt, &str)) { pts.push_back(pt); w.push_back(str); }
+  }
+  r.nValid = (int)pts.size();
+  if (r.nValid < 2) return r;
+
+  std::vector<char> use(pts.size(), 1);
+  acv_XY anchor = {0,0}, dir = {1,0};
+  for (int iter = 0; iter < 3; iter++)
+  {
+    wlsLine(pts, w, use, anchor, dir);
+    acv_XY n = { -dir.Y, dir.X };
+    std::vector<float> res(pts.size());
+    std::vector<float> absr;
+    for (size_t i = 0; i < pts.size(); i++)
+    { res[i] = (pts[i].X-anchor.X)*n.X + (pts[i].Y-anchor.Y)*n.Y; if (use[i]) absr.push_back(fabsf(res[i])); }
+    if (absr.empty()) break;
+    std::sort(absr.begin(), absr.end());
+    float med = absr[absr.size()/2];
+    float thr = 3.0f * 1.4826f * med + 0.5f; // MAD-based, +0.5px floor
+    int changed = 0;
+    for (size_t i = 0; i < pts.size(); i++) { char nu = fabsf(res[i]) <= thr ? 1 : 0; if (nu != use[i]) changed++; use[i] = nu; }
+    if (!changed) break;
+  }
+  // final stats
+  acv_XY n = { -dir.Y, dir.X };
+  double sq = 0; int ni = 0;
+  for (size_t i = 0; i < pts.size(); i++) if (use[i])
+  { float d = (pts[i].X-anchor.X)*n.X + (pts[i].Y-anchor.Y)*n.Y; sq += d*d; ni++; }
+  r.anchor = anchor; r.dir = dir; r.nInlier = ni;
+  r.rms = (ni > 0) ? sqrtf(sq / ni) : 0;
+  r.ok = (ni >= 2);
+  return r;
 }

@@ -30,4 +30,23 @@ bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
                      const CaliperParams &p, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outStrength);
 
+// ---- Phase 2: line locating via a row of calipers ----------------------------
+struct CaliperLineResult
+{
+  acv_XY anchor;   // a point on the fitted line (weighted centroid of inliers)
+  acv_XY dir;      // unit direction of the line
+  float rms;       // inlier RMS perpendicular residual (px)
+  int nValid;      // calipers that found an edge
+  int nInlier;     // calipers kept after robust rejection
+  bool ok;
+};
+
+// Place `count` calipers evenly along p0->p1 (caliper search direction =
+// perpendicular to the line), measure each edge, and robust-fit the line
+// (weighted TLS + MAD outlier rejection). A few wrong caliper points are
+// rejected, so defects/non-standard spots don't drag the fit.
+CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
+                                      int count, const CaliperParams &cal,
+                                      FeatureManager_BacPac *bacpac);
+
 #endif
