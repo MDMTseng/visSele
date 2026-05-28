@@ -192,7 +192,8 @@ add_library(MatchingEngine STATIC
   MatchingEngine/MorphEngine/MorphEngine.cpp MatchingEngine/FeatureReport_UTIL.cpp
   MatchingEngine/FeatureManager_stage_light_report.cpp
   MatchingEngine/BackLightFieldCalib.cpp
-  MatchingEngine/TelecentricCalib.cpp)
+  MatchingEngine/TelecentricCalib.cpp
+  MatchingEngine/EdgeSignature.cpp)
 target_include_directories(MatchingEngine PUBLIC
   MatchingEngine/include MatchingEngine/include_priv MatchingEngine/MorphEngine/include)
 target_link_libraries(MatchingEngine PUBLIC acvImage cJSON common_lib CircleFitting logctrl polyfit CameraLayer)
