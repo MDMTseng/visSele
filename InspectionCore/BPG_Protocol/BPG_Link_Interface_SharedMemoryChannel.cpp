@@ -32,8 +32,9 @@ BPG_Link_Interface_SharedMemoryChannel::~BPG_Link_Interface_SharedMemoryChannel(
   delete recvCh;
 }
 
-int BPG_Link_Interface_SharedMemoryChannel::fromUpperLayer(uint8_t *dat, size_t len, bool FIN)
+int BPG_Link_Interface_SharedMemoryChannel::fromUpperLayer(uint8_t *dat, size_t len, bool FIN, void *peer, int extraHeaderRoom, int extraFooterRoom)
 {
+  (void)peer; (void)extraHeaderRoom; (void)extraFooterRoom;
   memcpy(sendCh->getPtr(),dat,len);
   sendCh->s_post();
   sendCh->s_wait_remote();

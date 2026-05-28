@@ -1385,7 +1385,7 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
     dch.headerSetup(&image_send_buffer[0], image_send_buffer.size(), data);
 
     memcpy(&image_send_buffer[dch.getHeaderSize()], header, sizeof(header));
-    dch.toLinkLayer(&image_send_buffer[0], dch.getHeaderSize()+sizeof(header), false);
+    dch.toLinkLayer(&image_send_buffer[0], dch.getHeaderSize()+sizeof(header), false, dch.activePeer());
 
   }
 
@@ -1428,7 +1428,7 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
 
     //gives linklayer enough(according to linklayer's requirment 
     //can be much bigger(find possible maximum size header of all linklayer types))
-    dch.toLinkLayer(imgBufferDataPtr, sendL, isKeepGoing==false,headerOffset,0);
+    dch.toLinkLayer(imgBufferDataPtr, sendL, isKeepGoing==false, dch.activePeer(), headerOffset, 0);
   }
   return 0;
 
@@ -1483,7 +1483,7 @@ int getImage(CameraLayer *camera,acvImage *dst_img,int trig_type=0,int timeout_m
 
 
 
-int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat) 
+int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 {
   //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
 
@@ -1751,7 +1751,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           bpg_dat = GenStrBPGData("FS", fileStructStr); //[F]older [S]truct
           // LOGI("size:%d,raw=>\n%s",bpg_dat.size,bpg_dat.dat_raw);
           bpg_dat.pgID = dat->pgID;
-          fromUpperLayer(bpg_dat);
+          fromUpperLayer(bpg_dat, peer);
           if (fileStructStr)
             free(fileStructStr);
           cJSON_Delete(cjFileStruct);
@@ -1852,7 +1852,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         bpg_dat = GenStrBPGData("GS", jstr);
         bpg_dat.pgID = dat->pgID;
         
-        fromUpperLayer(bpg_dat);
+        fromUpperLayer(bpg_dat, peer);
         free(jstr);
       }
     }
@@ -1889,7 +1889,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             bpg_dat = GenStrBPGData("FL", fileStr);
             bpg_dat.pgID = dat->pgID;
             
-            fromUpperLayer(bpg_dat);
+            fromUpperLayer(bpg_dat, peer);
             free(fileStr);
           }
           catch (std::invalid_argument iaex)
@@ -1912,7 +1912,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
               LOGI("Read deffile:%s", deffile);
               bpg_dat = GenStrBPGData("DF", jsonStr);
               bpg_dat.pgID = dat->pgID;
-              fromUpperLayer(bpg_dat);
+              fromUpperLayer(bpg_dat, peer);
               free(jsonStr);
             }
             else
@@ -1966,7 +1966,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
 
             bpg_dat.pgID = dat->pgID;
-            fromUpperLayer(bpg_dat);
+            fromUpperLayer(bpg_dat, peer);
           }
           else
           {
@@ -2120,7 +2120,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             bpg_dat = GenStrBPGData("RP", jstr);
             bpg_dat.pgID = dat->pgID;
             
-            fromUpperLayer(bpg_dat);
+            fromUpperLayer(bpg_dat, peer);
 
             delete jstr;
             session_ACK = true;
@@ -2161,7 +2161,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
             bpg_dat.pgID = dat->pgID;
             
-            fromUpperLayer(bpg_dat);
+            fromUpperLayer(bpg_dat, peer);
           }
         }
         session_ACK = true;
@@ -2265,7 +2265,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             bpg_dat = GenStrBPGData("DF", jsonStr);
             bpg_dat.pgID = dat->pgID;
             
-            fromUpperLayer(bpg_dat);
+            fromUpperLayer(bpg_dat, peer);
           }
           free(jsonStr);
           //TODO: HACK: this sleep is to wait for the gap in between def config file arriving and inspection result arriving.
@@ -2419,7 +2419,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
               bpg_dat = GenStrBPGData("SG", jstr); //SG report : signature360
               bpg_dat.pgID = dat->pgID;
               
-              fromUpperLayer(bpg_dat);
+              fromUpperLayer(bpg_dat, peer);
 
               delete jstr;
             }
@@ -2429,7 +2429,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
               bpg_dat = GenStrBPGData("SG", tmp);
               bpg_dat.pgID = dat->pgID;
               
-              fromUpperLayer(bpg_dat);
+              fromUpperLayer(bpg_dat, peer);
             }
             
             // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
@@ -2474,7 +2474,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
             bpg_dat.pgID = dat->pgID;
             
-            fromUpperLayer(bpg_dat);
+            fromUpperLayer(bpg_dat, peer);
           }
           calib_bacpac.sampler->ignoreCalib(false);
           session_ACK = true;
@@ -2688,7 +2688,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       bpg_dat = GenStrBPGData("SR", jstr); //Special Return from cmd
       bpg_dat.pgID = dat->pgID;
       
-      fromUpperLayer(bpg_dat);
+      fromUpperLayer(bpg_dat, peer);
       delete jstr;
       session_ACK = true;
     }
@@ -2727,7 +2727,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
         bpg_dat = GenStrBPGData("DT", jstr); //Special Return from cmd
         bpg_dat.pgID = dat->pgID;
-        fromUpperLayer(bpg_dat);
+        fromUpperLayer(bpg_dat, peer);
         delete jstr;
       }
       cJSON *ImTranseSetup = JFetch_OBJECT(json, "ImageTransferSetup");
@@ -3035,7 +3035,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             bpg_dat = GenStrBPGData("PD", tmp);
             bpg_dat.pgID = dat->pgID;
             
-            fromUpperLayer(bpg_dat);
+            fromUpperLayer(bpg_dat, peer);
 
           }
           else
@@ -3107,7 +3107,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     bpg_dat = GenStrBPGData("SS", tmp);
     bpg_dat.pgID = dat->pgID;
 
-    fromUpperLayer(bpg_dat);
+    fromUpperLayer(bpg_dat, peer);
     cJSON_Delete(json);
   }
   while(0);
@@ -4395,44 +4395,47 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
   switch(data.type)
   {
     case websock_data::OPENING:
-      if (default_peer != NULL && default_peer != data.peer)
-      {
-        disconnect(data.peer->getSocket());
-        return 1;
-      }
-    break;  
+      // Multi-client: accept every peer (no single-client rejection).
+      break;
+
     case websock_data::CLOSING:
-    case websock_data::ERROR_EV: 
+    case websock_data::ERROR_EV:
     {
-      if (data.peer == default_peer)
-      {
-        default_peer = NULL;
       LOGI("CLOSING peer %s:%d\n",
-            inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
-      bpg_pi.cameraFramesLeft = 0;
-      bpg_pi.camera->TriggerMode(1);
-      bpg_pi.delete_PeripheralChannel();
-    }
+           inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
 
+      bpg_pi.dropPeerState(data.peer); // free this peer's inbound reassembly buffer
+      peers.erase(data.peer);
 
+      // If the default broadcast target left, promote another peer (or none).
+      if (data.peer == default_peer)
+        default_peer = peers.empty() ? NULL : *peers.begin();
+
+      // Only tear down shared core state when the LAST client disconnects.
+      if (peers.empty())
+      {
+        bpg_pi.cameraFramesLeft = 0;
+        if (bpg_pi.camera)
+          bpg_pi.camera->TriggerMode(1);
+        bpg_pi.delete_PeripheralChannel();
+      }
     }
     return 0;
 
     case websock_data::HAND_SHAKING_FINISHED:
     {
-      
       LOGI("OPENING peer %s:%d  sock:%d\n",
            inet_ntoa(data.peer->getAddr().sin_addr),
            ntohs(data.peer->getAddr().sin_port), data.peer->getSocket());
 
+      peers.insert(data.peer);
       if (default_peer == NULL)
-      {
         default_peer = data.peer;
-        
-        BPG_protocol_data bpg_dat = bpg_pi.GenStrBPGData("HR", "{\"version\":\"" _VERSION_ "\"}"); //[F]older [S]truct
-        bpg_dat.pgID = 0xFF;
-        bpg_pi.fromUpperLayer(bpg_dat);
-      }
+
+      // Greet every new client with HR so each can initialize independently.
+      BPG_protocol_data bpg_dat = bpg_pi.GenStrBPGData("HR", "{\"version\":\"" _VERSION_ "\"}");
+      bpg_dat.pgID = 0xFF;
+      bpg_pi.fromUpperLayer(bpg_dat, data.peer);
     }
     return 0;
 
@@ -4442,7 +4445,7 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       // LOGI(">>>>data raw:%s", data.data.data_frame.raw);
       if (bpg_prot)
       {
-        toUpperLayer(data.data.data_frame.raw, data.data.data_frame.rawL, data.data.data_frame.isFinal);
+        toUpperLayer(data.data.data_frame.raw, data.data.data_frame.rawL, data.data.data_frame.isFinal, data.peer);
       }
       else
       {
@@ -4628,8 +4631,10 @@ int mainLoop(bool realCamera = false)
     int maxfd = ifwebsocket->findMaxFd();
     if (select(maxfd + 1, &fd_s, NULL, NULL, NULL) == -1)
     {
+      if (errno == EINTR)
+        continue; // interrupted by a signal; just retry
       perror("select");
-      exit(4);
+      continue; // transient error: keep serving instead of killing the process
     }
 
     ifwebsocket->runLoop(&fd_s, NULL);

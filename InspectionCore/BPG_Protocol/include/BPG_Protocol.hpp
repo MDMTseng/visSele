@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <map>
 #include <BPG_Link_Interface.hpp>
 #include <regex>
 #include <mutex>
@@ -25,14 +26,19 @@ struct BPG_protocol_data//Binary pack group
 class BPG_Protocol_Interface
 {
 protected:
-  vector<uint8_t> cached_data_recv;
+  // Per-peer inbound BPG reassembly buffers, keyed by the opaque peer handle.
+  // (Interleaved fragments from concurrent clients must not share a buffer.)
+  std::map<void *, vector<uint8_t>> recv_bufs;
   vector<uint8_t> cached_data_send;
   BPG_Link_Interface *linkCH;
-  
+
   std::mutex bufferLock;
   std::mutex linkLayerLock;
-  int _fromLinkLayer(uint8_t *dat, size_t len, bool FIN);
-  
+  // Peer targeted by the in-progress send; valid while linkLayerLock is held,
+  // so bulk-transfer callbacks (which can't take a peer arg) can route correctly.
+  void *_active_peer = NULL;
+  int _fromLinkLayer(uint8_t *dat, size_t len, bool FIN, void *peer);
+
 public:
   static int getHeaderSize();
   static int headerSetup(uint8_t *buff, size_t len, BPG_protocol_data bpg_dat);
@@ -40,12 +46,18 @@ public:
   void setLink(BPG_Link_Interface *link) { linkCH = link; }
   uint8_t *requestSendingBuffer(size_t len);
   bool releaseSendingBuffer(uint8_t * buffer);
-  virtual int toUpperLayer(BPG_protocol_data bpgdat) = 0;
-  int fromUpperLayer(BPG_protocol_data bpgdat);
-  int fromLinkLayer(uint8_t *dat, size_t len, bool FIN = true);
+  // peer == NULL means "default/broadcast target" handled by the link layer.
+  virtual int toUpperLayer(BPG_protocol_data bpgdat, void *peer) = 0;
+  int fromUpperLayer(BPG_protocol_data bpgdat, void *peer);
+  int fromUpperLayer(BPG_protocol_data bpgdat) { return fromUpperLayer(bpgdat, NULL); }
+  int fromLinkLayer(uint8_t *dat, size_t len, bool FIN, void *peer);
+  // Free a disconnected peer's reassembly buffer.
+  void dropPeerState(void *peer) { recv_bufs.erase(peer); }
+  // Peer targeted by the send currently in progress (for bulk-transfer callbacks).
+  void *activePeer() { return _active_peer; }
   //enough header&footer room would allow lower layer use the buffer and fill the header in dat
   //[extraHeaderRoom][dat:len][extraFooterRoom]
-  int toLinkLayer(uint8_t *dat, size_t len, bool FIN = true,int extraHeaderRoom=0, int extraFooterRoom=0);
+  int toLinkLayer(uint8_t *dat, size_t len, bool FIN, void *peer, int extraHeaderRoom=0, int extraFooterRoom=0);
 };
 
 #endif

@@ -1,6 +1,7 @@
 #ifndef MAIN_HPP
 #define MAIN_HPP
 #include <chrono>
+#include <set>
 #include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicDrawTool.hpp"
 #include "acvImage_BasicTool.hpp"
@@ -149,7 +150,7 @@ public:
 
   CameraLayer *camera = NULL;
   resourcePool<image_pipe_info> resPool;
-  int toUpperLayer(BPG_protocol_data bpgdat) override;
+  int toUpperLayer(BPG_protocol_data bpgdat, void *peer) override;
   bool checkTL(const char *TL, const BPG_protocol_data *dat);
   uint16_t TLCode(const char *TL);
   void delete_PeripheralChannel();
@@ -164,6 +165,10 @@ public:
 class m_BPG_Link_Interface_WebSocket : public BPG_Link_Interface_WebSocket
 {
   public:
+
+  // All currently-connected peers. Shared core state (camera trigger, peripheral
+  // channel) is only torn down when this becomes empty (last client left).
+  std::set<ws_conn_data *> peers;
 
   m_BPG_Link_Interface_WebSocket(int port):BPG_Link_Interface_WebSocket(port){};
   m_BPG_Link_Interface_WebSocket():BPG_Link_Interface_WebSocket(){};

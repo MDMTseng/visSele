@@ -3,6 +3,7 @@
 
 #include "logctrl.h"
 #include "websocket.h"
+#include <errno.h>
 //////////////////////////////ws_server/////////////////////////////////////
 
 ws_server::ws_server(int port, ws_protocol_callback *cb) : ws_protocol_callback(this)
@@ -42,7 +43,7 @@ ws_server::ws_server(int port, ws_protocol_callback *cb) : ws_protocol_callback(
     return;
   }
 
-  if (listen(listenSocket, 1) < 0)
+  if (listen(listenSocket, 8) < 0)
   {
     printf("listen failed\n");
     close(listenSocket);
@@ -157,8 +158,10 @@ int ws_server::runLoop(struct timeval *tv)
 
   if (select(fdmax + 1, &read_fds, NULL, NULL, tv) == -1)
   {
+    if (errno == EINTR)
+      return 0; // interrupted by a signal; just retry on the next iteration
     perror("select");
-    exit(4);
+    return -1; // transient error: report it, but never kill the process
   }
   return runLoop(&read_fds, tv);
 }
@@ -166,73 +169,58 @@ int ws_server::runLoop(fd_set *read_fds, struct timeval *tv)
 {
 
   LOGV(">>>>>");
+
+  // 1) Accept every pending incoming connection (drain the backlog).
   if (FD_ISSET(listenSocket, read_fds))
   {
     FD_CLR(listenSocket, read_fds);
     LOGV("listenSocket");
     struct sockaddr_in remote;
     socklen_t sockaddrLen = sizeof(remote);
-    LOGV("accept::");
     int NewSock = accept(listenSocket, (struct sockaddr *)&remote, &sockaddrLen);
     if (NewSock == -1)
     {
-
       LOGV("accept failed");
-      printf("accept failed");
-      //sleep(1000);
-      return -2;
     }
-
-    LOGV("Find slot");
-    ws_conn *conn = ws_conn_pool.find_avaliable_conn_info_slot();
-    LOGV("slot is here:%p", conn);
-    conn->setSocket(NewSock);
-    conn->setAddr(remote);
-
-    LOGV("connected %s:%d sock:%d",
-         inet_ntoa(conn->getAddr().sin_addr), ntohs(conn->getAddr().sin_port), conn->getSocket());
-
-    conn->setCallBack(this);
-    conn->triggerEV_OPENING();
-
-    FD_SET(NewSock, &evtSet);
-    if (NewSock > fdmax)
+    else
     {
-      fdmax = NewSock;
-    }
+      ws_conn *conn = ws_conn_pool.find_avaliable_conn_info_slot();
+      conn->setSocket(NewSock);
+      conn->setAddr(remote);
+      LOGV("connected %s:%d sock:%d",
+           inet_ntoa(conn->getAddr().sin_addr), ntohs(conn->getAddr().sin_port), conn->getSocket());
+      conn->setCallBack(this);
+      conn->triggerEV_OPENING();
 
-    printf("List size %d\n", ws_conn_pool.size());
+      FD_SET(NewSock, &evtSet);
+      if (NewSock > fdmax)
+        fdmax = NewSock;
+
+      printf("List size %d\n", ws_conn_pool.size());
+    }
   }
-  else
+
+  // 2) Service ALL ready client connections this round (fair servicing).
+  std::vector<ws_conn *> *servers = ws_conn_pool.getServers();
+  bool any_closed = false;
+  for (size_t i = 0; i < (*servers).size(); i++)
   {
-    LOGV("listenSocket else");
-    std::vector<ws_conn *> *servers = ws_conn_pool.getServers();
-    bool evt_trigger = false;
-    for (int i = 0; i < (*servers).size(); i++)
+    int fd = (*servers)[i]->getSocket();
+    if ((*servers)[i]->isOccupied() && FD_ISSET(fd, read_fds))
     {
-      int fd = (*servers)[i]->getSocket();
-      if ((*servers)[i]->isOccupied() && FD_ISSET(fd, read_fds))
+      FD_CLR(fd, read_fds);
+      (*servers)[i]->runLoop();
+      if (!(*servers)[i]->isOccupied())
       {
-        evt_trigger = true;
-        FD_CLR(fd, read_fds);
-        (*servers)[i]->runLoop();
-        if (!(*servers)[i]->isOccupied())
-        {
-          printf("List size %d\n", ws_conn_pool.size());
-          FD_CLR(fd, &evtSet);
-          fdmax = findMaxFd();
-        }
-        break;
+        printf("List size %d\n", ws_conn_pool.size());
+        FD_CLR(fd, &evtSet);
+        any_closed = true;
       }
     }
-    LOGV("listenSocket else end for");
-
-    if (!evt_trigger)
-    {
-      LOGV("No matching event");
-      return -2;
-    }
   }
+  if (any_closed)
+    fdmax = findMaxFd();
+
   return 0;
 }
 

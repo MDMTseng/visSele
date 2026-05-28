@@ -19,8 +19,9 @@ public:
   void interfaceEvent();
   int headerMaxSize(){return 0;}
   int footerMaxSize(){return 0;}
-  virtual int fromUpperLayer(uint8_t *dat, size_t len, bool FIN, int extraHeaderRoom, int extraFooterRoom) = 0;
-  virtual int toUpperLayer(uint8_t *dat, size_t len, bool FIN);
+  // peer: opaque per-connection handle; NULL means the link's default/broadcast target.
+  virtual int fromUpperLayer(uint8_t *dat, size_t len, bool FIN, void *peer, int extraHeaderRoom, int extraFooterRoom) = 0;
+  virtual int toUpperLayer(uint8_t *dat, size_t len, bool FIN, void *peer);
 };
 
 class BPG_Link_Interface_WebSocket : public BPG_Link_Interface, public ws_protocol_callback
@@ -39,7 +40,7 @@ public:
 
   void setUpperLayer(BPG_Protocol_Interface *ulayer) { bpg_prot = ulayer; }
 
-  int fromUpperLayer(uint8_t *dat, size_t len, bool FIN, int extraHeaderRoom, int extraFooterRoom);
+  int fromUpperLayer(uint8_t *dat, size_t len, bool FIN, void *peer, int extraHeaderRoom, int extraFooterRoom);
 
   ~BPG_Link_Interface_WebSocket();
   int findMaxFd();
@@ -69,9 +70,9 @@ class BPG_Link_Interface_SharedMemoryChannel : public BPG_Link_Interface
 public:
   BPG_Link_Interface_SharedMemoryChannel(string name,size_t max_size);
   BPG_Link_Interface_SharedMemoryChannel();
-  
 
-  int fromUpperLayer(uint8_t *dat, size_t len, bool FIN);
+
+  int fromUpperLayer(uint8_t *dat, size_t len, bool FIN, void *peer, int extraHeaderRoom, int extraFooterRoom);
 
   ~BPG_Link_Interface_SharedMemoryChannel();
 

@@ -56,17 +56,16 @@ int BPG_Link_Interface_WebSocket::runLoop(fd_set *read_fds, struct timeval *tv)
   return server->runLoop(read_fds, tv);
 }
 
-int BPG_Link_Interface_WebSocket::fromUpperLayer(uint8_t *dat, size_t len, bool FIN,int extraHeaderRoom, int extraFooterRoom)
+int BPG_Link_Interface_WebSocket::fromUpperLayer(uint8_t *dat, size_t len, bool FIN, void *peer, int extraHeaderRoom, int extraFooterRoom)
 {
-  // if(isInContPktState)
-  // {
-  // }
-
-  if (default_peer == NULL)
+  // Route to the requested peer; NULL falls back to the default (first) peer
+  // so legacy broadcast-style pushes keep working.
+  ws_conn_data *target = (peer != NULL) ? (ws_conn_data *)peer : default_peer;
+  if (target == NULL)
     return -1;
 
   websock_data packet;
-  packet.peer = default_peer;
+  packet.peer = target;
   packet.data.data_frame.rawL = len;
   packet.data.data_frame.raw = dat;
   packet.data.data_frame.isFinal = FIN;
@@ -93,8 +92,10 @@ int BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
   switch(data.type)
   {
     case websock_data::CLOSING:
-    case websock_data::ERROR_EV: 
+    case websock_data::ERROR_EV:
     {
+      if (bpg_prot)
+        bpg_prot->dropPeerState(data.peer);
       if (data.peer == default_peer)
         default_peer = NULL;
     }
@@ -102,12 +103,8 @@ int BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
 
     case websock_data::HAND_SHAKING_FINISHED:
     {
-      if (default_peer != NULL && default_peer != data.peer)
-      {
-        disconnect(data.peer->getSocket());
-        return 1;
-      }
-      
+      // Multi-client: remember the first peer as the default broadcast target,
+      // but do not reject additional peers.
       if (default_peer == NULL)
         default_peer = data.peer;
     }
@@ -120,12 +117,9 @@ int BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
     {
       data.data.data_frame.raw[data.data.data_frame.rawL] = '\0';
       // LOGI(">>>>data raw:%s", data.data.data_frame.raw);
-      websock_data packet = data;
-      packet.type = websock_data::DATA_FRAME;
-
       if (bpg_prot)
       {
-        toUpperLayer(data.data.data_frame.raw, data.data.data_frame.rawL, data.data.data_frame.isFinal);
+        toUpperLayer(data.data.data_frame.raw, data.data.data_frame.rawL, data.data.data_frame.isFinal, data.peer);
       }
       else
       {
