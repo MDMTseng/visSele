@@ -190,7 +190,8 @@ add_library(MatchingEngine STATIC
   MatchingEngine/FeatureManager_platingCheck.cpp
   MatchingEngine/FeatureManager_sig360_circle_line.cpp
   MatchingEngine/MorphEngine/MorphEngine.cpp MatchingEngine/FeatureReport_UTIL.cpp
-  MatchingEngine/FeatureManager_stage_light_report.cpp)
+  MatchingEngine/FeatureManager_stage_light_report.cpp
+  MatchingEngine/BackLightFieldCalib.cpp)
 target_include_directories(MatchingEngine PUBLIC
   MatchingEngine/include MatchingEngine/include_priv MatchingEngine/MorphEngine/include)
 target_link_libraries(MatchingEngine PUBLIC acvImage cJSON common_lib CircleFitting logctrl polyfit CameraLayer)
