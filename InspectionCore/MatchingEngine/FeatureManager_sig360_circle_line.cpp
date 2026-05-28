@@ -1369,6 +1369,39 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       //             20, 255, 128);
     }
 
+    // Caliper/section locating (docs/caliper_primitive_locating_design.md):
+    // a single caliper straddling the expected edge along the search vector.
+    // pt/margin/width are image-px here; eT image is offset-cropped. Default
+    // (locating==0) keeps the legacy contour search below unchanged.
+    if (def.locating == 1)
+    {
+      CaliperParams cal;
+      cal.length = margin;          // search half-length across the edge (px)
+      cal.width  = width;           // projection width along the edge (px)
+      cal.step   = 1.0f;
+      cal.edge.method       = def.edge_method;
+      cal.edge.polarity     = def.edge_polarity;
+      cal.edge.nth          = def.edge_nth;
+      cal.edge.min_strength = def.edge_min_strength;
+
+      acv_XY off = eT.getImgOffset();
+      acv_XY out; float str;
+      bool ok = caliper_measure(eT.getImage(), acvVecSub(pt, off), searchVec_nor,
+                                cal, eT.getBacpac(), &out, &str);
+      if (ok)
+      {
+        rep.pt = acvVecAdd(out, off);
+        rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+      }
+      else
+      {
+        rep.pt.X = NAN; rep.pt.Y = NAN;
+        rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+      }
+      LOGV("caliper spoint rep.pt:%f %f, status:%d", rep.pt.X, rep.pt.Y, rep.status);
+      break;
+    }
+
     m_sections.resize(0);
 
     acv_Line line = {line_vec : searchVec_nor, line_anchor : pt};
@@ -1534,6 +1567,23 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
 
   searchPoint.width =
       *JFetEx_NUMBER(jobj, "width");
+
+  // caliper/section locating (default contour). docs/caliper_primitive_locating_design.md
+  searchPoint.locating = 0;
+  searchPoint.edge_method = EdgeSelectParams::STRONGEST;
+  searchPoint.edge_polarity = EdgeSelectParams::ANY;
+  searchPoint.edge_nth = 0; searchPoint.edge_min_strength = 0;
+  {
+    char *loc = (char *)JFetch(jobj, "locating", cJSON_String);
+    if (loc && strcmp(loc, "caliper") == 0) searchPoint.locating = 1;
+    cJSON *edgeo = JFetch_OBJECT(jobj, "edge");
+    if (edgeo) {
+      searchPoint.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
+      searchPoint.edge_polarity = edge_polarity_from_string((char *)JFetch(edgeo, "polarity", cJSON_String));
+      searchPoint.edge_nth = (int)JFetch_NUMBER_ex(edgeo, "nth", 0);
+      searchPoint.edge_min_strength = JFetch_NUMBER_ex(edgeo, "min_strength", 0);
+    }
+  }
 
   switch (searchPoint.subtype)
   {

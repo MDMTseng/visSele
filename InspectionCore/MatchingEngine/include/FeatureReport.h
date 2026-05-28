@@ -132,6 +132,15 @@ typedef struct featureDef_searchPoint{
   }subtype;
   float width;
   float margin;
+  // Caliper/section locating (docs/caliper_primitive_locating_design.md).
+  // locating: 0=contour(default,legacy), 1=caliper (single caliper_measure along
+  // the search vector). edge_* feed EdgeSelectParams. caliper geometry reuses
+  // margin(=search half-length across edge) and width(=projection width).
+  int locating;            // default 0
+  int edge_method;
+  int edge_polarity;
+  int edge_nth;
+  float edge_min_strength;
   union data{
     struct anglefollow{
       acv_XY position;
