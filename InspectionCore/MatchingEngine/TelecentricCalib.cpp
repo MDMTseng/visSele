@@ -1,6 +1,7 @@
 #include "TelecentricCalib.h"
 #include <math.h>
 #include <string.h>
+#include <algorithm>
 
 // ---------------------------------------------------------------------------
 // Small dense linear algebra
@@ -235,92 +236,121 @@ TelecentricCalibResult telecentric_calibrate(const std::vector<TelecentricViewDa
   }
 
   std::vector<double> r(Rn), rTrial(Rn);
-  residuals(x.data(), data, r);
-  double c = cost(r);
-
+  std::vector<double> wRow(Rn, 1.0); // per-residual-row weight (0=outlier)
   std::vector<double> J((size_t)Rn * P);
   std::vector<double> JtJ((size_t)P * P), Jtr(P), dp(P);
-  double lambda = 1e-3;
 
-  for (int iter = 0; iter < max_iter; iter++)
-  {
-    // numeric Jacobian (forward differences, per-param relative step)
-    for (int j = 0; j < P; j++)
+  auto wcost = [&](const std::vector<double> &rr) {
+    double s = 0; for (int i = 0; i < Rn; i++) s += wRow[i] * rr[i] * rr[i]; return s;
+  };
+
+  // One LM optimisation to convergence using the current row weights.
+  auto runLM = [&]() {
+    residuals(x.data(), data, r);
+    double c = wcost(r);
+    double lambda = 1e-3;
+    for (int iter = 0; iter < max_iter; iter++)
     {
-      double xj = x[j];
-      double h = 1e-6 * (fabs(xj) + 1e-6);
-      x[j] = xj + h;
-      residuals(x.data(), data, rTrial);
-      x[j] = xj;
-      double inv = 1.0 / h;
-      for (int i = 0; i < Rn; i++) J[(size_t)i*P + j] = (rTrial[i] - r[i]) * inv;
-    }
-    // JtJ and Jtr
-    for (int a = 0; a < P; a++)
-    {
-      Jtr[a] = 0;
-      for (int b = 0; b < P; b++) JtJ[(size_t)a*P+b] = 0;
-    }
-    for (int i = 0; i < Rn; i++)
-    {
-      const double *Ji = &J[(size_t)i*P];
-      double ri = r[i];
-      for (int a = 0; a < P; a++)
+      for (int j = 0; j < P; j++)
       {
-        double Jia = Ji[a];
-        Jtr[a] += Jia * ri;
-        double *row = &JtJ[(size_t)a*P];
-        for (int b = a; b < P; b++) row[b] += Jia * Ji[b];
+        double xj = x[j];
+        double h = 1e-6 * (fabs(xj) + 1e-6);
+        x[j] = xj + h;
+        residuals(x.data(), data, rTrial);
+        x[j] = xj;
+        double inv = 1.0 / h;
+        for (int i = 0; i < Rn; i++) J[(size_t)i*P + j] = (rTrial[i] - r[i]) * inv;
       }
-    }
-    for (int a = 0; a < P; a++)
-      for (int b = 0; b < a; b++) JtJ[(size_t)a*P+b] = JtJ[(size_t)b*P+a];
-
-    // LM inner loop: try damping until cost decreases
-    bool improved = false;
-    for (int tryC = 0; tryC < 12; tryC++)
-    {
-      std::vector<double> A = JtJ;
-      for (int a = 0; a < P; a++) A[(size_t)a*P+a] += lambda * JtJ[(size_t)a*P+a];
-      for (int a = 0; a < P; a++) dp[a] = -Jtr[a];
-      if (!solveLinear(A.data(), dp.data(), P)) { lambda *= 10; continue; }
-
-      std::vector<double> xTrial(x);
-      for (int a = 0; a < P; a++) xTrial[a] += dp[a];
-      residuals(xTrial.data(), data, rTrial);
-      double cTrial = cost(rTrial);
-      if (cTrial < c)
+      for (int a = 0; a < P; a++) { Jtr[a] = 0; for (int b = 0; b < P; b++) JtJ[(size_t)a*P+b] = 0; }
+      for (int i = 0; i < Rn; i++)
       {
-        x = xTrial; r = rTrial;
-        double rel = (c - cTrial) / (c + 1e-30);
-        c = cTrial;
-        lambda = fmax(lambda * 0.3, 1e-12);
-        improved = true;
-        if (rel < tol) { iter = max_iter; }
-        break;
+        double w = wRow[i]; if (w == 0) continue;
+        const double *Ji = &J[(size_t)i*P]; double ri = r[i];
+        for (int a = 0; a < P; a++)
+        {
+          double Jia = Ji[a];
+          Jtr[a] += w * Jia * ri;
+          double *row = &JtJ[(size_t)a*P];
+          for (int b = a; b < P; b++) row[b] += w * Jia * Ji[b];
+        }
       }
-      else lambda *= 10;
+      for (int a = 0; a < P; a++) for (int b = 0; b < a; b++) JtJ[(size_t)a*P+b] = JtJ[(size_t)b*P+a];
+
+      bool improved = false;
+      for (int tryC = 0; tryC < 12; tryC++)
+      {
+        std::vector<double> A = JtJ;
+        for (int a = 0; a < P; a++) A[(size_t)a*P+a] += lambda * JtJ[(size_t)a*P+a];
+        for (int a = 0; a < P; a++) dp[a] = -Jtr[a];
+        if (!solveLinear(A.data(), dp.data(), P)) { lambda *= 10; continue; }
+        std::vector<double> xTrial(x);
+        for (int a = 0; a < P; a++) xTrial[a] += dp[a];
+        residuals(xTrial.data(), data, rTrial);
+        double cTrial = wcost(rTrial);
+        if (cTrial < c)
+        {
+          x = xTrial; r = rTrial;
+          double rel = (c - cTrial) / (c + 1e-30);
+          c = cTrial;
+          lambda = fmax(lambda * 0.3, 1e-12);
+          improved = true;
+          if (rel < tol) break;
+          continue;
+        }
+        else lambda *= 10;
+      }
+      if (!improved) break;
     }
-    if (!improved) break;
-  }
+  };
+
+  // Robustly re-weight: drop points whose residual norm exceeds 5*MAD-sigma.
+  // (Mirrors the python Huber->inlier->reclassify passes; dust/mis-grid removal.)
+  auto reweight = [&]() -> int {
+    residuals(x.data(), data, r);
+    int nPts = Rn / 2;
+    std::vector<double> d(nPts);
+    for (int p = 0; p < nPts; p++) d[p] = sqrt(r[2*p]*r[2*p] + r[2*p+1]*r[2*p+1]);
+    std::vector<double> s(d); std::sort(s.begin(), s.end());
+    double med = s[nPts/2];
+    std::vector<double> ad(nPts); for (int p = 0; p < nPts; p++) ad[p] = fabs(d[p]-med);
+    std::sort(ad.begin(), ad.end());
+    double mad = ad[nPts/2];
+    double sig = (mad > 0) ? 1.4826*mad : 1e-9;
+    double thr = fmax(5.0*sig, 0.5);
+    int dropped = 0;
+    for (int p = 0; p < nPts; p++)
+    {
+      double w = (d[p] < thr) ? 1.0 : 0.0;
+      if (w == 0) dropped++;
+      wRow[2*p] = wRow[2*p+1] = w;
+    }
+    return dropped;
+  };
+
+  runLM();                       // pass 1: all points
+  int dropped = reweight();      // classify outliers
+  runLM();                       // pass 2: inliers only
+  int dropped2 = reweight();     // reclassify with better model
+  if (dropped2 != dropped) runLM(); // pass 3 if classification changed
 
   unpack(x.data(), res.intr, res.views, nv);
-  // per-view rms
+  // per-view RMS over inliers only (wRow==0 are rejected points)
   res.per_view_rms_px.resize(nv);
-  double sq = 0; int nt = 0;
+  double sq = 0; int nt = 0; int pg = 0;
   for (int v = 0; v < nv; v++)
   {
     int n = data[v].n;
     std::vector<double> uv(2*n);
     telecentric_project(res.intr, res.views[v], data[v].obj.data(), n, uv.data());
-    double s = 0;
-    for (int i = 0; i < n; i++)
+    double s = 0; int cnt = 0;
+    for (int i = 0; i < n; i++, pg++)
     {
+      if (wRow[2*pg] == 0) continue; // skip outliers
       double du = uv[i*2]-data[v].img[i*2], dv = uv[i*2+1]-data[v].img[i*2+1];
-      s += du*du+dv*dv;
+      s += du*du+dv*dv; cnt++;
     }
-    res.per_view_rms_px[v] = sqrt(s / n);
-    sq += s; nt += n;
+    res.per_view_rms_px[v] = (cnt>0) ? sqrt(s / cnt) : 0;
+    sq += s; nt += cnt;
   }
   res.overall_rms_px = sqrt(sq / (nt>0?nt:1));
   res.ok = true;
