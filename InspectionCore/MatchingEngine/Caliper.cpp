@@ -51,6 +51,55 @@ bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
   return true;
 }
 
+bool search_point_scan(acvImage *gray, acv_XY start, acv_XY searchDir,
+                       float length, float width, float step,
+                       const EdgeSelectParams &edge, FeatureManager_BacPac *bacpac,
+                       acv_XY *outPt, float *outStrength)
+{
+  if (!gray) return false;
+  acv_XY s = acvVecNormalize(searchDir);
+  if (s.X != s.X || s.Y != s.Y) return false;
+  acv_XY perp = { -s.Y, s.X };               // across the ray (width direction)
+  if (step <= 0) step = 1.0f;
+  int nAlong = (int)(length / step) + 1;
+  if (nAlong < 3) return false;
+  int nCols = (int)width; if (nCols < 1) nCols = 1;
+  int halfC = nCols / 2;
+
+  std::vector<float> prof(nAlong), grad(nAlong);
+  std::vector<float> dist, wgt;                // per-column first-hit distance + strength
+  for (int c = -halfC; c <= halfC; c++)
+  {
+    for (int i = 0; i < nAlong; i++)
+    {
+      acv_XY pt = acvVecAdd(start, acvVecAdd(acvVecMult(s, i * step), acvVecMult(perp, (float)c)));
+      float v = acvUnsignedMap1Sampling(gray, pt, 0);
+      if (bacpac && bacpac->sampler)
+        v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(pt);
+      prof[i] = v;
+    }
+    for (int i = 1; i < nAlong - 1; i++) grad[i] = prof[i + 1] - prof[i - 1];
+    grad[0] = grad[1]; grad[nAlong - 1] = grad[nAlong - 2];
+    float pos, str;
+    if (edge_select(grad.data(), nAlong, edge, &pos, &str)) // method defaults FIRST = first hit
+    { dist.push_back(pos * step); wgt.push_back(str); }
+  }
+  if (dist.empty()) return false;
+
+  // robust combine: median first-hit distance, then strength-weighted mean of
+  // inliers within tol of the median (rejects columns that hit a different edge).
+  std::vector<float> sd = dist; std::sort(sd.begin(), sd.end());
+  float med = sd[sd.size() / 2];
+  float tol = 2.0f; if (tol < step) tol = step;
+  double sumd = 0, sumw = 0; int nin = 0;
+  for (size_t i = 0; i < dist.size(); i++)
+    if (fabsf(dist[i] - med) <= tol) { sumd += (double)dist[i] * wgt[i]; sumw += wgt[i]; nin++; }
+  float d = (sumw > 0) ? (float)(sumd / sumw) : med;
+  if (outPt) *outPt = acvVecAdd(start, acvVecMult(s, d));
+  if (outStrength) *outStrength = (nin > 0) ? (float)(sumw / nin) : wgt[0];
+  return true;
+}
+
 // weighted total-least-squares line fit over points with weights w; returns
 // anchor (weighted centroid), unit dir, and fills perpendicular residuals.
 static void wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,

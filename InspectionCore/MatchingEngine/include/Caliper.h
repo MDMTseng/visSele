@@ -30,6 +30,19 @@ bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
                      const CaliperParams &p, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo = nullptr);
 
+// ---- Search-point first-hit scan (CoreHub remap+sobel+topmost, ported) -------
+// A search point SCANS for the FIRST edge hit along a ray; it must NOT average
+// across the width (that smooths/shifts the first-hit point). Instead this lays
+// `width` parallel scan columns across the ray, finds the first-hit edge per
+// column independently (gradient along searchDir + edge_select, polarity), and
+// robustly combines the per-column first-hit distances (median + strength-
+// weighted mean of inliers). One-sided: scans [start, start+length] along
+// searchDir. Returns the sub-pixel edge point on the ray (image px) + strength.
+bool search_point_scan(acvImage *gray, acv_XY start, acv_XY searchDir,
+                       float length, float width, float step,
+                       const EdgeSelectParams &edge, FeatureManager_BacPac *bacpac,
+                       acv_XY *outPt, float *outStrength);
+
 // ---- Phase 2: line locating via a row of calipers ----------------------------
 struct CaliperLineResult
 {

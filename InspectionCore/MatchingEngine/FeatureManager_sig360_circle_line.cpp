@@ -1375,28 +1375,22 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     // (locating==0) keeps the legacy contour search below unchanged.
     if (def.locating == 1)
     {
-      // A search point SCANS for the FIRST edge hit along the ray, so it must NOT
-      // average across a width band -- projection smoothing shifts the first-hit
-      // point (esp. on curved/cornered edges). Use a THIN scan (width 1, no
-      // smoothing) and the edge-selector toolbox (default FIRST = first hit).
-      // Span mirrors the contour search: ONE-SIDED from pt, `margin` along
-      // searchVec_nor (already flipped for search_far). caliper_measure samples a
-      // symmetric +/-length grid about its center, so center at pt+(margin/2)*dir
-      // with half-length margin/2 -> profile spans [pt, pt+margin] in searchDir.
-      CaliperParams cal;
-      cal.length = margin * 0.5f;   // half-span; total = margin (one-sided from pt)
-      cal.width  = 1;               // thin scan: NO projection averaging (no smoothing)
-      cal.step   = 1.0f;
-      cal.edge.method       = def.edge_method;
-      cal.edge.polarity     = def.edge_polarity;
-      cal.edge.nth          = def.edge_nth;
-      cal.edge.min_strength = def.edge_min_strength;
+      // A search point SCANS for the FIRST edge hit along the ray (CoreHub model:
+      // remap region, gradient along scan, per-column first-hit, topmost). It must
+      // NOT average across the width (that smooths/shifts the first hit). Lay
+      // `width` parallel scan columns one-sided from pt over `margin` along
+      // searchVec_nor (already flipped for search_far); find first-hit edge per
+      // column; robustly combine (median + inlier mean). default method = FIRST.
+      EdgeSelectParams ep;
+      ep.method       = def.edge_method;
+      ep.polarity     = def.edge_polarity;
+      ep.nth          = def.edge_nth;
+      ep.min_strength = def.edge_min_strength;
 
       acv_XY off = eT.getImgOffset();
-      acv_XY ctr = acvVecAdd(pt, acvVecMult(searchVec_nor, margin * 0.5f));
       acv_XY out; float str;
-      bool ok = caliper_measure(eT.getImage(), acvVecSub(ctr, off), searchVec_nor,
-                                cal, eT.getBacpac(), &out, &str);
+      bool ok = search_point_scan(eT.getImage(), acvVecSub(pt, off), searchVec_nor,
+                                  margin, width, 1.0f, ep, eT.getBacpac(), &out, &str);
       if (ok)
       {
         rep.pt = acvVecAdd(out, off);
