@@ -103,8 +103,13 @@
     #endif
     
 
-    // CameraLayer_BMP_carousel::listAddDevices(camBasicInfo);
-    // bmpcarousel_driver_idx=count++;
+    // Fall back to the software (BMP carousel) camera only when no real
+    // camera was discovered, so hardware always takes priority in production.
+    if (camBasicInfo.size() == 0)
+    {
+      CameraLayer_BMP_carousel::listAddDevices(camBasicInfo);
+      bmpcarousel_driver_idx=count++;
+    }
 
   }
 
