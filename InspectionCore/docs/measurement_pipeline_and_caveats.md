@@ -38,12 +38,11 @@ binarize ─► label (CCL) ─► per object region:
   feature. Guard: `if status != UNSET return cached`. Else resolve deps
   recursively (aux->lines; searchpoint->target_id; judge->OBJ1/OBJ2_id), compute,
   cache. `FindFeatureReportIndex` maps id->report.
-- **CAVEAT — no cycle/re-entrancy guard:** a node stays UNSET during its own
-  computation, so a dependency CYCLE or self-reference (bad def) -> infinite
-  recursion -> stack overflow / crash. FIX (planned): set an in-progress sentinel
-  (e.g. STATUS_NA) right after the UNSET guard, before recursing deps, so a cyclic
-  re-entry returns NA instead of recursing. ~5 one-line inserts (line/circle/aux/
-  searchpoint/judge branches). No behavior change for valid acyclic defs.
+- **Cycle guard (DONE, commit 16079f6a):** each branch sets an in-progress sentinel
+  (STATUS_NA) right after the UNSET guard, before recursing deps, so a cyclic /
+  self-referential def returns NA instead of recursing forever. Sentinel is
+  overwritten by the real result on every valid acyclic path -> no behavior change
+  for valid defs. Applied to line/circle/aux/searchpoint/judge branches.
 - **CAVEAT — O(N^2):** each TreeExecution(id) re-scans all feature lists; fine for
   typical N, could be a map later.
 
@@ -95,9 +94,10 @@ line/circle def:  "locating":"caliper"   (absent/"contour" => legacy)
 - LINE: WIRED (`LineMatching_ReportGen` branches to caliper; commit d5604a4f).
 - CIRCLE: WIRED (`CircleMatching_ReportGen` branches at the fit; commit d81a7216).
   Roughness/maxD/minD still use the contour s_points (partial decoupling).
-- SEARCH-POINT: NOT wired (deferred). Clean insertion: a single `caliper_measure`
-  at `pt` along `searchVec_nor` (~line 1349, before the contour search), set
-  rep.pt+SUCCESS. **VERIFY rep.pt units vs caller mm-conversion first.**
+- SEARCH-POINT: WIRED (commit 026eeb00). `locating:"caliper"` runs a single
+  `caliper_measure` straddling the edge along `searchVec_nor` (length=margin,
+  width=width), offset-corrected, rep.pt in image-px (caller ×mmpp). Default
+  contour unchanged. Also lifts 定位點 anchor accuracy. NEEDS RIG VALIDATION.
 - AUX-POINT: geometric (intersection/center) — no edge locating, unchanged.
 
 ## 6. Reports / backward-compat contract (must preserve)
@@ -114,10 +114,8 @@ line/circle def:  "locating":"caliper"   (absent/"contour" => legacy)
 1. **Caliper line+circle integration NEEDS RIG VALIDATION** — coordinate/output
    conventions (image offset, endpoint projections, units) verified by code review
    only; confirm on hardware with a `locating:"caliper"` def before relying on it.
-2. **Search-point not caliper-ified** — and it feeds 定位點 anchors; finishing it
-   improves registration. Verify units at insertion.
-3. **TreeExecution has no cycle guard** — bad/cyclic def can crash (infinite
-   recursion). Add the in-progress sentinel.
+2. ~~Search-point caliper~~ — DONE (commit 026eeb00); improves 定位點 anchors. RIG-VALIDATE.
+3. ~~TreeExecution cycle guard~~ — DONE (commit 16079f6a, in-progress sentinel).
 4. **No anchor (定位點) outlier rejection** — a bad anchor warps local measurements.
 5. **Circle roughness still uses the binary contour** even in caliper mode (partial
    decoupling); full caliper decoupling would drop the contour dependency.
