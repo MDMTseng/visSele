@@ -49,4 +49,22 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
                                       int count, const CaliperParams &cal,
                                       FeatureManager_BacPac *bacpac);
 
+// ---- Phase 3: circle/arc locating via radial calipers ------------------------
+struct CaliperCircleResult
+{
+  acv_XY center;
+  float radius;
+  float rms;     // inlier RMS radial residual (px)
+  int nValid;
+  int nInlier;
+  bool ok;
+};
+
+// Place `count` calipers along the arc [angStart,angEnd] (rad) of the nominal
+// circle (center,radius); each caliper searches RADIALLY across the edge.
+// Robust algebraic (Kasa) circle fit + MAD outlier rejection.
+CaliperCircleResult caliper_locate_circle(acvImage *gray, acv_XY center, float radius,
+                                          float angStart, float angEnd, int count,
+                                          const CaliperParams &cal, FeatureManager_BacPac *bacpac);
+
 #endif
