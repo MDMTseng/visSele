@@ -31,6 +31,10 @@ protected:
   float edgeRatio = 0.5f;
   int bgMapW = 0, bgMapH = 0;
   std::vector<float> bgThreshMap;
+  // When true, bgThreshMap is built lazily from the per-camera background model
+  // (sampler->stageLightInfo) at match time, instead of from the def arrays.
+  bool useCalibBackground = false;
+  float darkLevel = 0.0f; // dark-field level D (sensor offset); 0 until D-field exists
 };
 
 

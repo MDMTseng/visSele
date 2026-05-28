@@ -6,6 +6,7 @@
 #include "FeatureManager_sig360_circle_line.h"
 #include "FM_camera_calibration.h"
 #include "FeatureManager_group.h"
+#include "BackLightFieldCalib.h"
 /*
   FeatureManager_group_proto Section
 */
@@ -48,11 +49,23 @@ int FeatureManager_group_proto::parse_jobj()
   // Schema: "adaptiveThres":{ "enable":true, "ratio":0.5, "gridW":W,"gridH":H,
   //                           "bright":[...W*H...], "dark":[...W*H...](optional) }
   useAdaptiveThres = false;
+  useCalibBackground = false;
   bgThreshMap.clear();
   {
     cJSON *adaptive = cJSON_GetObjectItem(root, "adaptiveThres");
     int enable = (adaptive) ? (cJSON_IsTrue(cJSON_GetObjectItem(adaptive, "enable")) ? 1 : 0) : 0;
-    if (adaptive && enable)
+    const char *source = (adaptive) ? (const char *)JFetch(adaptive, "source", cJSON_String) : NULL;
+    if (adaptive && enable && source && strcmp(source, "calib") == 0)
+    {
+      // Per-camera background: build the threshold map from the loaded
+      // stage-light model (sampler) at match time. T = D + ratio*(B - D).
+      edgeRatio = JFetch_NUMBER_ex(adaptive, "ratio", 0.5);
+      darkLevel = JFetch_NUMBER_ex(adaptive, "dark", 0);
+      useCalibBackground = true;
+      useAdaptiveThres = true;
+      LOGI("adaptiveThres source=calib ratio=%.2f dark=%.1f", edgeRatio, darkLevel);
+    }
+    else if (adaptive && enable)
     {
       edgeRatio = JFetch_NUMBER_ex(adaptive, "ratio", 0.5);
       bgMapW = (int)JFetch_NUMBER_ex(adaptive, "gridW", 0);
@@ -246,6 +259,31 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
     binary_img.ReSize(img->GetWidth(),img->GetHeight());
+
+    // Per-camera adaptive threshold: lazily build the threshold map from the
+    // loaded background model (sampler->stageLightInfo), robustly cleaned of
+    // scratches/dust, as T = D + ratio*(B - D).
+    if (useCalibBackground && bgThreshMap.empty() && bacpac && bacpac->sampler)
+    {
+      stageLightParam *sl = bacpac->sampler->getStageLightInfo();
+      if (sl && sl->BG_nodes.size() > 0 && sl->idxW > 0 && sl->idxH > 0)
+      {
+        int W = sl->idxW, H = sl->idxH;
+        std::vector<float> B(W * H, NAN);
+        for (BGLightNodeInfo &n : sl->BG_nodes)
+          if (n.index.X >= 0 && n.index.X < W && n.index.Y >= 0 && n.index.Y < H)
+            B[n.index.Y * W + n.index.X] = n.mean;
+
+        int rejected = backLightField_robustClean(B.data(), W, H, 2.5f, 3);
+        bgThreshMap.resize(W * H);
+        for (int k = 0; k < W * H; k++)
+          bgThreshMap[k] = darkLevel + edgeRatio * (B[k] - darkLevel);
+        bgMapW = W; bgMapH = H;
+        LOGI("adaptiveThres calib map %dx%d ratio=%.2f dark=%.1f rejectedZones=%d",
+             W, H, edgeRatio, darkLevel, rejected);
+      }
+    }
+
     if (useAdaptiveThres && !bgThreshMap.empty())
       acvThresholdMap(&binary_img, img, bgThreshMap.data(), bgMapW, bgMapH, 0);
     else
