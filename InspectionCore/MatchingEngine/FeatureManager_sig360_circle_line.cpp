@@ -4002,6 +4002,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
       if(doPrintDBG)LOGI("=>LI:%d:%d",id,rep.status);
       return rep.status;
     }
+    rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA; // in-progress: cyclic re-entry returns NA
 
     rep= LineMatching_ReportGen(
       rep.def,eT,
@@ -4021,6 +4022,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
       if(doPrintDBG)LOGI("=>CI:%d:%d",id,rep.status);
       return rep.status;
     }
+    rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA; // in-progress: cyclic re-entry returns NA
 
     rep=CircleMatching_ReportGen(
         rep.def,
@@ -4041,6 +4043,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
       if(doPrintDBG)LOGI("=>AP:%d:%d",id,rep.status);
       return rep.status;
     }
+    rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA; // in-progress: cyclic re-entry returns NA
 
     switch(rep.def->subtype)
     {
@@ -4087,6 +4090,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
       if(doPrintDBG)LOGI("=>SP:%d:%d",id,rep.status);
       return rep.status;
     }
+    rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA; // in-progress: cyclic re-entry returns NA
 
 
     switch(rep.def->subtype)
@@ -4126,6 +4130,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
       if(doPrintDBG)LOGI("=>JU:%d:%d",id,rep.status);
       return rep.status;
     }
+    rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA; // in-progress: cyclic re-entry returns NA
 
     if(rep.def->OBJ1_id>=0){
       TreeExecution(rep.def->OBJ1_id,
