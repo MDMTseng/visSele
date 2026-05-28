@@ -195,7 +195,8 @@ add_library(MatchingEngine STATIC
   MatchingEngine/TelecentricCalib.cpp
   MatchingEngine/EdgeSignature.cpp
   MatchingEngine/EdgeSelect.cpp
-  MatchingEngine/Caliper.cpp)
+  MatchingEngine/Caliper.cpp
+  MatchingEngine/AnchorPatch.cpp)
 target_include_directories(MatchingEngine PUBLIC
   MatchingEngine/include MatchingEngine/include_priv MatchingEngine/MorphEngine/include)
 target_link_libraries(MatchingEngine PUBLIC acvImage cJSON common_lib CircleFitting logctrl polyfit CameraLayer)
