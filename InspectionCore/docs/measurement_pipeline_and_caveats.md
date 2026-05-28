@@ -60,7 +60,10 @@ binarize ─► label (CCL) ─► per object region:
   which is NOT yet caliper-ified (still contour/centroid edge). So 定位點 accuracy
   is currently gated by the old edge method. Caliper-ifying search-point would
   directly improve anchor accuracy -> better registration everywhere.
-- **Anchor robustness rework (in progress).** An anchor is a VITAL datum and exists
+- **Anchor robustness rework (PARKED — TODO, resume later; user deferred the
+  quality-check).** Primitives are committed (EdgeSelectInfo, anchor_patch_zncc,
+  search-point caliper); the golden-image delivery + validation loop + hard-fail
+  are NOT wired yet. Resume from tasks #19/#20/#17. Design below stands.** An anchor is a VITAL datum and exists
   for two reasons (user): (1) some primitives are very sensitive to initial position
   but coarse-pose precision is low; (2) parts deform and need correction. So a LARGE
   anchor displacement is LEGITIMATE/expected — abnormality must be judged by
