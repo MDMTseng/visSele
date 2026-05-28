@@ -64,6 +64,16 @@ typedef struct featureDef_line{
   acv_XY searchEstAnchor;//The vector to searching the contour edge
   float MatchingMarginX;//the length of the line itself
   bool vertex_touch_searching;
+
+  // Caliper/section locating (docs/caliper_primitive_locating_design.md).
+  // locating: 0=contour(default,legacy), 1=caliper. edge_* feed EdgeSelectParams.
+  int locating;            // default 0
+  int cal_count;           // # calipers along the line
+  float cal_width;         // projection width (px)
+  int edge_method;         // EdgeSelectParams::Method
+  int edge_polarity;       // EdgeSelectParams::Polarity
+  int edge_nth;
+  float edge_min_strength;
   /*
 
   We will rotate the picture to let image line contour pixel lie on horizontal position

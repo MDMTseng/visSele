@@ -1,4 +1,5 @@
 #include "FeatureManager_sig360_circle_line.h"
+#include "Caliper.h"
 #include "logctrl.h"
 #include <stdexcept>
 #include <common_lib.h>
@@ -1661,6 +1662,25 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   // LOGV("feature is a line:%s %d", line.name, line.id);
 
   line.initMatchingMargin = (float)*JFetEx_NUMBER(line_obj, "margin");
+
+  // caliper/section locating (default contour). docs/caliper_primitive_locating_design.md
+  line.locating = 0; line.cal_count = 30; line.cal_width = 9;
+  line.edge_method = EdgeSelectParams::STRONGEST; line.edge_polarity = EdgeSelectParams::ANY;
+  line.edge_nth = 0; line.edge_min_strength = 0;
+  {
+    char *loc = (char *)JFetch(line_obj, "locating", cJSON_String);
+    if (loc && strcmp(loc, "caliper") == 0) line.locating = 1;
+    cJSON *calo = JFetch_OBJECT(line_obj, "caliper");
+    if (calo) { line.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 30);
+                line.cal_width = JFetch_NUMBER_ex(calo, "width", 9); }
+    cJSON *edgeo = JFetch_OBJECT(line_obj, "edge");
+    if (edgeo) {
+      line.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
+      line.edge_polarity = edge_polarity_from_string((char *)JFetch(edgeo, "polarity", cJSON_String));
+      line.edge_nth = (int)JFetch_NUMBER_ex(edgeo, "nth", 0);
+      line.edge_min_strength = JFetch_NUMBER_ex(edgeo, "min_strength", 0);
+    }
+  }
 
   acv_XY p0, p1;
   p0.X = *JFetEx_NUMBER(line_obj, "pt1.x");
@@ -3797,6 +3817,44 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   return cr;
 }
 
+// Caliper/section line locating (docs/caliper_primitive_locating_design.md).
+// lineDef.p0/p1 are in image px; initMatchingMargin already in px. Returns a
+// px-unit report (caller converts to mm), matching the contour path's contract.
+static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, edgeTracking &eT)
+{
+  FeatureReport_lineReport Report;
+  memset(&Report, 0, sizeof(Report));
+  Report.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+
+  CaliperParams cal;
+  cal.length = lineDef.initMatchingMargin; // px search half-length across the edge
+  cal.width  = lineDef.cal_width;
+  cal.step   = 1.0f;
+  cal.edge.method       = lineDef.edge_method;
+  cal.edge.polarity     = lineDef.edge_polarity;
+  cal.edge.nth          = lineDef.edge_nth;
+  cal.edge.min_strength = lineDef.edge_min_strength;
+
+  acv_XY off = eT.getImgOffset();
+  acv_XY p0 = acvVecSub(lineDef.p0, off);
+  acv_XY p1 = acvVecSub(lineDef.p1, off);
+  CaliperLineResult r = caliper_locate_line(eT.getImage(), p0, p1, lineDef.cal_count, cal, eT.getBacpac());
+  if (r.ok)
+  {
+    acv_XY anchor = acvVecAdd(r.anchor, off); // back to image coords
+    Report.line.line.line_anchor = anchor;
+    Report.line.line.line_vec = r.dir;
+    Report.line.s = r.rms;
+    Report.line.matching_pts = r.nInlier;
+    float t0 = (lineDef.p0.X-anchor.X)*r.dir.X + (lineDef.p0.Y-anchor.Y)*r.dir.Y;
+    float t1 = (lineDef.p1.X-anchor.X)*r.dir.X + (lineDef.p1.Y-anchor.Y)*r.dir.Y;
+    Report.line.end_pt1 = (acv_XY){ anchor.X + t0*r.dir.X, anchor.Y + t0*r.dir.Y };
+    Report.line.end_pt2 = (acv_XY){ anchor.X + t1*r.dir.X, anchor.Y + t1*r.dir.Y };
+    if (r.nInlier >= 5) Report.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+  }
+  return Report;
+}
+
 FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportGen(
   featureDef_line *plineDef,edgeTracking &eT,
   acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f)
@@ -3825,8 +3883,12 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
   lineDef.initMatchingMargin /= mmpp;
 
   // LOGI("initMatchingMargin:%f MatchingMarginX:%f",initMatchingMargin,MatchingMarginX);
-  FeatureReport_lineReport Report = SingleMatching_line(
-                      &lineDef, eT, 1/mmpp, 
+  FeatureReport_lineReport Report;
+  if (lineDef.locating == 1) // caliper/section locating (px-unit report)
+    Report = LineMatching_caliper(lineDef, eT);
+  else
+    Report = SingleMatching_line(
+                      &lineDef, eT, 1/mmpp,
                       line_cand, edge_grid, flip_f, tmp_points, m_sections);
   
 

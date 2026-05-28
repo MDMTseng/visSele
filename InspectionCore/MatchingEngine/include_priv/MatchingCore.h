@@ -91,6 +91,11 @@ class edgeTracking
   public:
   edgeTracking (acvImage *graylevelImg,acv_XY imgOffset,FeatureManager_BacPac *bacpac=NULL);
 
+  // accessors for caliper-based locating (reuse the same image/offset/bacpac)
+  acvImage *getImage(){return graylevelImg;}
+  acv_XY getImgOffset(){return imgOffset;}
+  FeatureManager_BacPac *getBacpac(){return bacpac;}
+
   int fbIndex;
   int gradIndex;
   bool pixSumReset=false;
