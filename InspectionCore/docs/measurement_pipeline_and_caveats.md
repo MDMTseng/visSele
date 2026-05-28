@@ -126,7 +126,13 @@ line/circle def:  "locating":"caliper"   (absent/"contour" => legacy)
 - Report: acv_LineFit{line(anchor,vec),matching_pts,end_pt1,end_pt2,s},
   acv_CircleFit{circle(circumcenter,radius),matching_pts,s},
   searchPoint.pt, single{rotate,isFlipped,similarity,cx,cy}. Existing UIs/projects
-  depend on these field names + semantics. New features are ADDITIVE + default-off.
+  depend on these field names + semantics.
+- **The real backward-compat contract (user, 2026-05-29):** Core0_1 is factory-
+  deployed 1st-gen. "Don't change too much" = exactly TWO things: (1) OLD def files
+  must still load + work; (2) the report schema must stay a SUPERSET (keep every
+  existing field, add freely). BEYOND that you are free to rework as much as needed
+  for robustness/efficiency/fewer bugs — do NOT be opt-in-only for its own sake.
+  (Earlier `locating:"caliper"` opt-in gating was more cautious than required.)
 
 ## 7. Consolidated CAVEATS / TODO (live list)
 1. **Caliper line+circle integration NEEDS RIG VALIDATION** — coordinate/output
