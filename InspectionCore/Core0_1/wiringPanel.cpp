@@ -4924,6 +4924,10 @@ int cp_main(int argc, char **argv)
     if (LoadIMGFile(&img, imgPath) != 0) { LOGE("--insp: cannot load image %s", imgPath); return 3; }
     // mirror the live single-inspection handler: it uses neutral_bacpac with
     // calibPpB/calibmmpB taken from the def (wiringPanel CI handler ~1999/2100).
+    // First fully init the sampler's calib map (RESET + load) like live startup
+    // does (~4814) -- otherwise img2ideal divides by an uninit RNormalFactor and
+    // returns NaN, poisoning every edge refine (lines/circles/search points).
+    LoadCameraCalibrationFile((char *)"data/default_camera_param.json", neutral_bacpac.sampler);
     {
       char *ds = ReadText(defPath);
       if (ds) { cJSON *dj = cJSON_Parse(ds);
