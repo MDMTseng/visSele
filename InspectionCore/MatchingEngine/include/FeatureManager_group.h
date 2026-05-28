@@ -35,6 +35,14 @@ protected:
   // (sampler->stageLightInfo) at match time, instead of from the def arrays.
   bool useCalibBackground = false;
   float darkLevel = 0.0f; // dark-field level D (sensor offset); 0 until D-field exists
+
+  // Calibration-free vignette/illumination-tolerant binarization (FEATURE_OPENCV):
+  // estimate the smooth background by morphological close and flat-field divide.
+  // def: "binarize":"bg_flatten", "bg_close_kernel", "bg_ratio", "bg_downscale".
+  int binarize_method = 0;   // 0=threshold(global/adaptive), 1=bg_flatten
+  int bg_close_kernel = 81;  // must exceed the largest object
+  float bg_ratio = 0.5f;
+  int bg_downscale = 4;
 };
 
 

@@ -9,6 +9,7 @@
 #include "BackLightFieldCalib.h"
 #ifdef FEATURE_OPENCV
 #include "LabelingCV.h"
+#include "BinarizeCV.h"
 #endif
 /*
   FeatureManager_group_proto Section
@@ -47,6 +48,16 @@ int FeatureManager_group_proto::parse_jobj()
 
 
   briThres=JFetch_NUMBER_ex(root,"briThres",80);
+
+  // Calibration-free vignette-tolerant binarization (bg-flatten).
+  binarize_method = 0;
+  {
+    char *bm = (char *)JFetch(root, "binarize", cJSON_String);
+    if (bm != NULL && strcmp(bm, "bg_flatten") == 0) binarize_method = 1;
+    bg_close_kernel = (int)JFetch_NUMBER_ex(root, "bg_close_kernel", 81);
+    bg_ratio = JFetch_NUMBER_ex(root, "bg_ratio", 0.5);
+    bg_downscale = (int)JFetch_NUMBER_ex(root, "bg_downscale", 4);
+  }
 
   // Optional per-region adaptive threshold (background-evenness soft calib).
   // Schema: "adaptiveThres":{ "enable":true, "ratio":0.5, "gridW":W,"gridH":H,
@@ -287,6 +298,11 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
       }
     }
 
+#ifdef FEATURE_OPENCV
+    if (binarize_method == 1) // calibration-free vignette-tolerant bg-flatten
+      binarize_bg_flatten_cv(img, &binary_img, bg_close_kernel, bg_ratio, bg_downscale);
+    else
+#endif
     if (useAdaptiveThres && !bgThreshMap.empty())
       acvThresholdMap(&binary_img, img, bgThreshMap.data(), bgMapW, bgMapH, 0);
     else
