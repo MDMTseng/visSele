@@ -37,4 +37,14 @@ LensCalibResult perspective_calibrate(const std::vector<TelecentricViewData> &vi
 LensCalibResult lens_calibrate(LensModel model, const std::vector<TelecentricViewData> &views,
                                int imgW, int imgH);
 
+// Point-space distortion correction: map observed (distorted) pixel coords to
+// their ideal distortion-free pixel position. Applied to the sparse extracted
+// feature points at measurement time (NOT a full-image remap), per the design.
+// uv/outUV are row-major 2*n.
+void lens_undistort_points(const LensCalibResult &r, const double *uv, int n, double *outUV);
+
+// JSON serialisation of a calibration result (caller owns the returned string;
+// free with free()). Schema includes "lens_model", params, rms.
+char *lens_calib_to_json(const LensCalibResult &r);
+
 #endif
