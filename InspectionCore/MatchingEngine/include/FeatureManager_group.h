@@ -23,6 +23,14 @@ protected:
   virtual int clearFeatureGroup()=0;
   int parse_jobj() override;
   float briThres;
+
+  // Per-region adaptive threshold for background-evenness correction (backlit).
+  // bgThreshMap is a low-res (bgMapW x bgMapH) grid of T = D + ratio*(B-D),
+  // bilinearly interpolated over the image at binarization time.
+  bool useAdaptiveThres = false;
+  float edgeRatio = 0.5f;
+  int bgMapW = 0, bgMapH = 0;
+  std::vector<float> bgThreshMap;
 };
 
 

@@ -96,6 +96,8 @@ typedef struct acv_LineFit
 void acvThreshold(acvImage *Pic,BYTE Var);
 void acvThreshold(acvImage *Pic,BYTE Var,int channel);
 void acvThreshold(acvImage *dst,acvImage *src, BYTE Var, int channel);
+// Adaptive per-region threshold from a low-res grid (mapW x mapH) spanning the src ROI.
+void acvThresholdMap(acvImage *dst, acvImage *src, const float *threshMap, int mapW, int mapH, int channel);
 void acvThreshold_single(acvImage *Pic,BYTE Var,int channel);
 void acvHSVThreshold(acvImage *Pic,int HFrom,int HTo,int SMax,int SMin,int VMax,int VMin); //0V ~255  1S ~255  2H ~252
 void acvContrast(acvImage *dst, acvImage *src, int offset, int shift,int channel);

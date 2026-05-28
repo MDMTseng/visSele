@@ -44,6 +44,43 @@ int FeatureManager_group_proto::parse_jobj()
 
   briThres=JFetch_NUMBER_ex(root,"briThres",80);
 
+  // Optional per-region adaptive threshold (background-evenness soft calib).
+  // Schema: "adaptiveThres":{ "enable":true, "ratio":0.5, "gridW":W,"gridH":H,
+  //                           "bright":[...W*H...], "dark":[...W*H...](optional) }
+  useAdaptiveThres = false;
+  bgThreshMap.clear();
+  {
+    cJSON *adaptive = cJSON_GetObjectItem(root, "adaptiveThres");
+    int enable = (adaptive) ? (cJSON_IsTrue(cJSON_GetObjectItem(adaptive, "enable")) ? 1 : 0) : 0;
+    if (adaptive && enable)
+    {
+      edgeRatio = JFetch_NUMBER_ex(adaptive, "ratio", 0.5);
+      bgMapW = (int)JFetch_NUMBER_ex(adaptive, "gridW", 0);
+      bgMapH = (int)JFetch_NUMBER_ex(adaptive, "gridH", 0);
+      cJSON *bright = cJSON_GetObjectItem(adaptive, "bright");
+      cJSON *dark = cJSON_GetObjectItem(adaptive, "dark");
+      int n = bgMapW * bgMapH;
+      if (cJSON_IsArray(bright) && cJSON_GetArraySize(bright) == n && n > 0)
+      {
+        bgThreshMap.resize(n);
+        for (int k = 0; k < n; k++)
+        {
+          float B = (float)cJSON_GetArrayItem(bright, k)->valuedouble;
+          float D = 0.0f;
+          if (cJSON_IsArray(dark) && cJSON_GetArraySize(dark) == n)
+            D = (float)cJSON_GetArrayItem(dark, k)->valuedouble;
+          bgThreshMap[k] = D + edgeRatio * (B - D);
+        }
+        useAdaptiveThres = true;
+        LOGI("adaptiveThres ON %dx%d ratio=%.2f", bgMapW, bgMapH, edgeRatio);
+      }
+      else
+      {
+        LOGE("adaptiveThres enabled but bright grid size != gridW*gridH (%d)", n);
+      }
+    }
+  }
+
   cJSON *featureSetList = cJSON_GetObjectItem(root,"featureSet");
 
   if(featureSetList==NULL)
@@ -209,7 +246,10 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
     binary_img.ReSize(img->GetWidth(),img->GetHeight());
-    acvThreshold(&binary_img,img, briThres, 0);
+    if (useAdaptiveThres && !bgThreshMap.empty())
+      acvThresholdMap(&binary_img, img, bgThreshMap.data(), bgMapW, bgMapH, 0);
+    else
+      acvThreshold(&binary_img,img, briThres, 0);
 
     int downScaleF=1;//
     acvImage *lableImg=&ds_binary_img;
