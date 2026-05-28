@@ -13,7 +13,15 @@
 // works naturally.
 
 #include "acvImage.hpp"
+#include "acvImage_ComponentLabelingTool.hpp"
+#include <vector>
 
 void acvComponentLabeling_cv(acvImage *Pic, int connectivity = 8);
+
+// Optimized: one connectedComponentsWithStats pass produces BOTH the packed
+// label image AND the acv_LabeledData list (area/bbox/centroid taken straight
+// from CC stats), so the separate full-image acvLabeledRegionInfo re-scan is
+// skipped. Same conventions: ld[1]=cage(frame), ld[2+]=objects, ld[0] empty.
+void acvComponentLabeling_cv(acvImage *Pic, std::vector<acv_LabeledData> &ld, int connectivity = 8);
 
 #endif

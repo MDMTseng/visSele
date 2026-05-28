@@ -342,11 +342,12 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     //You need to draw a black/white cage to work(not crash).
     //The advantage of black cage is you can know which area touches the boundary then we can exclude it
 #ifdef FEATURE_OPENCV
-    acvComponentLabeling_cv(lableImg);   // faster + correct (misses no thin/small parts)
+    // CCL once -> packed label image + acv_LabeledData (from stats), no rescan.
+    acvComponentLabeling_cv(lableImg, ldData);
 #else
     acvComponentLabeling(lableImg,50);
-#endif
     acvLabeledRegionInfo(lableImg, &ldData);
+#endif
 
     //FENCE_AREA=110/100;
     int CLimit = (lableImg->GetWidth()*lableImg->GetHeight())*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
