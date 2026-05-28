@@ -25,10 +25,17 @@ enum SPEdgeType { SP_DARK_TO_LIGHT = 0, SP_LIGHT_TO_DARK = 1, SP_BOTH = 2 };
 // margin = search half-depth (px, region spans +/-margin along searchDir).
 // width  = band across the edge (px). polarity per SPEdgeType (search-dir gradient
 // sign). On success fills the sub-pixel edge point (image px) + total weight.
+// labelImg/objLabel (optional): the labeled image + this object's label. When
+// provided, a DILATED object mask (label==objLabel, grown by maskDilate px) zeroes
+// the sobel response in background BEFORE the local-max search, so the scan can't
+// lock onto background specks/dust (matches the legacy contour search's object
+// constraint while staying grayscale -> still tunable for soft edges). labelImg
+// must share `gray`'s coordinate frame (same crop/offset). Pass null to skip.
 bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
                      float margin, float width, SPEdgeType polarity,
                      int blurSize, float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
+                     acvImage *labelImg, int objLabel, int maskDilate,
                      acv_XY *outPt, float *outW);
 
 #endif // FEATURE_OPENCV

@@ -1395,10 +1395,15 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       SPEdgeType sp_et = SP_BOTH;
       if (def.edge_polarity == EdgeSelectParams::RISING)  sp_et = SP_DARK_TO_LIGHT;
       else if (def.edge_polarity == EdgeSelectParams::FALLING) sp_et = SP_LIGHT_TO_DARK;
+      // labeled image shares eT image's frame only when cropOffset==0 (current
+      // non-crop pipeline). Mask out background (dilated object label) so the scan
+      // can't lock onto background specks; dilate ~8px to keep the boundary edge.
+      acvImage *labelImg = (off.X == 0 && off.Y == 0) ? m_labeledImg : nullptr;
       ok = search_point_cv(eT.getImage(), acvVecSub(pt, off), searchVec_nor,
                            margin, width, sp_et, /*blur*/3, /*suppress*/10.0f,
                            /*considerRange*/3.0f, /*alphaKeep*/0.5f,
-                           eT.getBacpac(), &out, &str);
+                           eT.getBacpac(), labelImg, m_objLabel, /*maskDilate*/8,
+                           &out, &str);
 #else
       EdgeSelectParams ep;
       ep.method       = def.edge_method;
@@ -5093,6 +5098,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     }
     cropOffset.X=cx;
     cropOffset.Y=cy;
+    m_labeledImg = labeledBuff;   // full labeled image; this object's pixels == label i
+    m_objLabel = i;
     acv_LabeledData curLableDat=(acv_LabeledData){
       .LTBound=acvVecSub(ldData[i].LTBound,cropOffset),
       .RBBound=acvVecSub(ldData[i].RBBound,cropOffset),
