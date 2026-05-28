@@ -4912,6 +4912,43 @@ int cp_main(int argc, char **argv)
   calib_bacpac.sampler = new ImageSampler();
   neutral_bacpac.sampler = new ImageSampler();
 
+  // Headless golden-sample inspection loopback (for caliper-vs-contour testing
+  // without the WebUI):  visSele --insp <image.png> <def.hydef> <out.json>
+  // Runs the def on the image and writes the report JSON, then exits.
+  for (int ai = 1; ai + 3 < argc + 1 && ai < argc; ai++)
+  {
+    if (strcmp(argv[ai], "--insp") != 0) continue;
+    if (ai + 3 >= argc) { LOGE("--insp needs <image> <def> <out.json>"); return 2; }
+    char *imgPath = argv[ai + 1], *defPath = argv[ai + 2], *outPath = argv[ai + 3];
+    acvImage img;
+    if (LoadIMGFile(&img, imgPath) != 0) { LOGE("--insp: cannot load image %s", imgPath); return 3; }
+    // mirror the live single-inspection handler: it uses neutral_bacpac with
+    // calibPpB/calibmmpB taken from the def (wiringPanel CI handler ~1999/2100).
+    {
+      char *ds = ReadText(defPath);
+      if (ds) { cJSON *dj = cJSON_Parse(ds);
+        if (dj) {
+          neutral_bacpac.sampler->getCalibMap()->calibPpB  = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.ppb2b");
+          neutral_bacpac.sampler->getCalibMap()->calibmmpB = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.mmpb2b");
+          cJSON_Delete(dj);
+        }
+        free(ds);
+      }
+    }
+    ImgInspection_DefRead(matchingEng, &img, 1, defPath, &neutral_bacpac);
+    const FeatureReport *report = matchingEng.GetReport();
+    if (report == NULL) { LOGE("--insp: null report"); return 4; }
+    cJSON *jobj = matchingEng.FeatureReport2Json(report);
+    AttachStaticInfo(jobj, &bpg_pi);
+    char *jstr = cJSON_Print(jobj);
+    FILE *fp = fopen(outPath, "wb");
+    if (fp) { fwrite(jstr, 1, strlen(jstr), fp); fclose(fp); LOGE("--insp: wrote %s", outPath); }
+    else LOGE("--insp: cannot write %s", outPath);
+    cJSON_Delete(jobj);
+    free(jstr);
+    return 0;
+  }
+
   // int sret = LoadCameraCalibrationFile("data/default_camera_param.json",calib_bacpac.sampler);
   // acv_XY xy={20,30};
   // float ddd = calib_bacpac.sampler->getStageLightInfo()->factorSampling(xy);
