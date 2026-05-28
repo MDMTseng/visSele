@@ -1980,6 +1980,15 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       this->matching_face = (int)*face;
     }
 
+    // Orientation-signature method (backward compatible: absent => contour_sig).
+    this->matching_method = 0;
+    char *mm = (char *)JFetch(root, "matching_method", cJSON_String);
+    if (mm != NULL && strcmp(mm, "edge_sig") == 0)
+      this->matching_method = 1;
+    double *emins = JFetch_NUMBER(root, "edge_sig_min_strength");
+    if (emins != NULL)
+      this->edge_sig_min_strength = (float)*emins;
+
     void *target;
     int type = getDataFromJson(root, "matching_with_signature", &target);
     if (type == cJSON_False)
@@ -4623,6 +4632,73 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   return 0;
 }
 
+// Grayscale gradient-edge signature (matching_method="edge_sig"). Mirrors
+// convertContourGrid2Signature's units/binning, but sources the per-angle edge
+// from the GRAYSCALE image (ray-cast from the centroid, outermost strong |grad|
+// edge) instead of the binary silhouette -> exposure/tint robust.
+//   center_lb : centroid in labeled-buffer coords
+//   ideal_center : same point in ideal coords (as the binary path uses)
+//   grayOrig : full-res grayscale image (sampled at coord*dsampLevel)
+static float graySampleBilinear(acvImage *im, float x, float y)
+{
+  int W = im->GetWidth(), H = im->GetHeight();
+  if (x < 0 || y < 0 || x >= W - 1 || y >= H - 1) return -1;
+  int x0 = (int)x, y0 = (int)y; float fx = x - x0, fy = y - y0;
+  unsigned char *r0 = im->CVector[y0], *r1 = im->CVector[y0 + 1];
+  float a = r0[x0*3], b = r0[(x0+1)*3], c = r1[x0*3], d = r1[(x0+1)*3];
+  return (a*(1-fx)+b*fx)*(1-fy) + (c*(1-fx)+d*fx)*fy;
+}
+bool convertGrayEdges2Signature(acv_XY center_lb, acv_XY ideal_center, acvImage *grayOrig,
+                                float dsampLevel, float searchRadius_lb,
+                                std::vector<acv_XY> &o_signature, FeatureManager_BacPac *bacpac,
+                                float minStrength)
+{
+  int N = (int)o_signature.size();
+  if (N == 0 || grayOrig == NULL) return false;
+  const float rInner = 2.0f, step = 0.5f;
+  std::vector<char> found(N, 0);
+  for (int b = 0; b < N; b++) { o_signature[b].X = 0; o_signature[b].Y = 0; }
+
+  for (int b = 0; b < N; b++)
+  {
+    float th = 2.0f * M_PI * b / N;
+    float dx = cosf(th), dy = sinf(th);
+    float bestR = 0, bestStr = 0; float gP2 = 0, gP = 0, rP = 0; bool h1 = false, h2 = false;
+    for (float r = rInner; r <= searchRadius_lb; r += step)
+    {
+      float iIn  = graySampleBilinear(grayOrig, (center_lb.X + dx*(r-step))*dsampLevel, (center_lb.Y + dy*(r-step))*dsampLevel);
+      float iOut = graySampleBilinear(grayOrig, (center_lb.X + dx*(r+step))*dsampLevel, (center_lb.Y + dy*(r+step))*dsampLevel);
+      if (iIn < 0 || iOut < 0) { h1 = h2 = false; continue; }
+      float g = fabsf(iOut - iIn);
+      if (h2 && gP >= gP2 && gP >= g && gP >= minStrength) { bestR = rP; bestStr = gP; } // outermost peak
+      gP2 = gP; gP = g; rP = r; h2 = h1; h1 = true;
+    }
+    if (bestStr > 0)
+    {
+      acv_XY E = { center_lb.X + dx*bestR, center_lb.Y + dy*bestR };
+      bacpac->sampler->img2ideal(&E); // same transform as the contour path
+      float diffX = E.X - ideal_center.X, diffY = E.Y - ideal_center.Y;
+      float theta = acvFAtan2(diffY, diffX);
+      int idx = round(N * theta / (2 * M_PI)); if (idx < 0) idx += N; if (idx >= N) idx -= N;
+      float R = hypot(diffX, diffY);
+      if (o_signature[idx].X < R) { o_signature[idx].X = R; o_signature[idx].Y = theta; found[idx] = 1; }
+    }
+  }
+  // gap-fill empty bins (no zeros -> the existing correlation matcher stays valid)
+  for (int b = 0; b < N; b++)
+  {
+    if (found[b]) continue;
+    int lft = -1, rgt = -1;
+    for (int d = 1; d <= N; d++) { int j = ((b-d)%N+N)%N; if (found[j]) { lft = j; break; } }
+    for (int d = 1; d <= N; d++) { int j = (b+d)%N;       if (found[j]) { rgt = j; break; } }
+    if (lft >= 0 && rgt >= 0) o_signature[b].X = 0.5f * (o_signature[lft].X + o_signature[rgt].X);
+    else if (lft >= 0)        o_signature[b].X = o_signature[lft].X;
+    else if (rgt >= 0)        o_signature[b].X = o_signature[rgt].X;
+    o_signature[b].Y = 2.0f * M_PI * b / N;
+  }
+  return true;
+}
+
 bool convertContourGrid2Signature(acv_XY center, ContourFetch contour, std::vector<acv_XY> &o_signature, FeatureManager_BacPac *bacpac)
 {
   if (contour.contourSections.size() == 0)
@@ -4871,7 +4947,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
     ideal_center = acvVecMult(ideal_center,1.0/dsampLevel);
     LOGI(">>>>>%f  %f",ideal_center.X,ideal_center.Y);
-    convertContourGrid2Signature(ideal_center, edge_grid, tmp_signature.signature_data, bacpac);
+    if (matching_method == 1) // edge_sig: grayscale gradient edge per ray (lighting robust)
+    {
+      float ex = fmax(fabs(curLableDat.RBBound.X-curLableDat.Center.X), fabs(curLableDat.Center.X-curLableDat.LTBound.X));
+      float ey = fmax(fabs(curLableDat.RBBound.Y-curLableDat.Center.Y), fabs(curLableDat.Center.Y-curLableDat.LTBound.Y));
+      float searchRadius_lb = hypot(ex, ey) * 1.25f + 10;
+      convertGrayEdges2Signature(curLableDat.Center, ideal_center, originalImage, dsampLevel,
+                                 searchRadius_lb, tmp_signature.signature_data, bacpac, edge_sig_min_strength);
+    }
+    else // contour_sig: binary silhouette contour (default, backward compatible)
+    {
+      convertContourGrid2Signature(ideal_center, edge_grid, tmp_signature.signature_data, bacpac);
+    }
 
     //the tmp_signature is in Pixel unit, convert it to mm
     for (int j = 0; j < tmp_signature.signature_data.size(); j++)

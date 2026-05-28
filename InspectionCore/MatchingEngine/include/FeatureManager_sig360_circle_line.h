@@ -156,6 +156,12 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   bool matching_without_signature;
   float single_result_area_ratio;
 
+  // Orientation-signature source: 0 = contour_sig (binary silhouette, default,
+  // backward compatible) ; 1 = edge_sig (grayscale gradient edge per ray,
+  // lighting/exposure/tint robust). Set via def "matching_method".
+  int matching_method = 0;
+  float edge_sig_min_strength = 8.0f;
+
 
   float sig_st1_matching_sim_thres;
 
