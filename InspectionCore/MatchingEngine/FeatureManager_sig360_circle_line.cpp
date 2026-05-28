@@ -1375,8 +1375,13 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     // (locating==0) keeps the legacy contour search below unchanged.
     if (def.locating == 1)
     {
+      // Mirror the contour search span: ONE-SIDED from pt, `margin` along
+      // searchVec_nor (the search direction, already flipped for search_far),
+      // width along the edge. caliper_measure samples a symmetric +/-length grid
+      // about its center, so center the grid at pt + (margin/2)*dir and use
+      // half-length = margin/2 -> the profile spans [pt, pt+margin] in searchDir.
       CaliperParams cal;
-      cal.length = margin;          // search half-length across the edge (px)
+      cal.length = margin * 0.5f;   // half-span; total = margin (one-sided from pt)
       cal.width  = width;           // projection width along the edge (px)
       cal.step   = 1.0f;
       cal.edge.method       = def.edge_method;
@@ -1385,8 +1390,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       cal.edge.min_strength = def.edge_min_strength;
 
       acv_XY off = eT.getImgOffset();
+      acv_XY ctr = acvVecAdd(pt, acvVecMult(searchVec_nor, margin * 0.5f));
       acv_XY out; float str;
-      bool ok = caliper_measure(eT.getImage(), acvVecSub(pt, off), searchVec_nor,
+      bool ok = caliper_measure(eT.getImage(), acvVecSub(ctr, off), searchVec_nor,
                                 cal, eT.getBacpac(), &out, &str);
       if (ok)
       {
