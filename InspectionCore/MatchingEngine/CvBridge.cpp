@@ -1,0 +1,51 @@
+#include "CvBridge.h"
+#ifdef FEATURE_OPENCV
+
+cv::Mat acvImageToGrayMat(acvImage *im)
+{
+  if (!im) return cv::Mat();
+  int W = im->GetWidth(), H = im->GetHeight();
+  if (W <= 0 || H <= 0) return cv::Mat();
+  int ox = im->GetROIOffsetX(), oy = im->GetROIOffsetY();
+  cv::Mat g(H, W, CV_8U);
+  for (int y = 0; y < H; y++)
+  {
+    unsigned char *s = im->CVector[oy + y] + ox * 3;
+    unsigned char *d = g.ptr<unsigned char>(y);
+    for (int x = 0; x < W; x++) d[x] = s[x * 3];
+  }
+  return g;
+}
+
+cv::Mat acvImageToBgrMat(acvImage *im)
+{
+  if (!im) return cv::Mat();
+  int W = im->GetWidth(), H = im->GetHeight();
+  if (W <= 0 || H <= 0) return cv::Mat();
+  int ox = im->GetROIOffsetX(), oy = im->GetROIOffsetY();
+  cv::Mat m(H, W, CV_8UC3);
+  for (int y = 0; y < H; y++)
+  {
+    unsigned char *s = im->CVector[oy + y] + ox * 3;
+    unsigned char *d = m.ptr<unsigned char>(y);
+    for (int x = 0; x < W * 3; x++) d[x] = s[x];
+  }
+  return m;
+}
+
+void grayMatToAcvImage(const cv::Mat &g, acvImage *im)
+{
+  if (!im || g.empty() || g.type() != CV_8U) return;
+  int W = im->GetWidth(), H = im->GetHeight();
+  int ox = im->GetROIOffsetX(), oy = im->GetROIOffsetY();
+  int hh = (g.rows < H) ? g.rows : H;
+  int ww = (g.cols < W) ? g.cols : W;
+  for (int y = 0; y < hh; y++)
+  {
+    const unsigned char *s = g.ptr<unsigned char>(y);
+    unsigned char *d = im->CVector[oy + y] + ox * 3;
+    for (int x = 0; x < ww; x++) { d[x * 3] = d[x * 3 + 1] = d[x * 3 + 2] = s[x]; }
+  }
+}
+
+#endif // FEATURE_OPENCV
