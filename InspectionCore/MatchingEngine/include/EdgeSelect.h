@@ -24,11 +24,23 @@ struct EdgeSelectParams
   float min_strength = 0; // ignore peaks weaker than this (|grad|)
 };
 
+// Extra characteristics of the chosen edge, for quality/abnormality checks
+// (e.g. anchor/datum validation). Filled when an EdgeSelectInfo* is passed.
+struct EdgeSelectInfo
+{
+  float strength = 0;       // chosen peak |grad| (== outStrength)
+  float runnerUp = 0;       // 2nd-strongest peak |grad| among all candidates (0 if none)
+  float signedStrength = 0; // signed grad at the chosen peak (>0 rising, <0 falling)
+  int   peakCount = 0;      // # candidate peaks of the requested polarity
+  // ambiguity ratio = runnerUp/strength in [0,1]; closer to 1 = more ambiguous.
+};
+
 // signedGrad[n] = signed intensity gradient along the ray. Returns true and the
 // sub-pixel peak position (in [0,n-1]) + its |grad| strength, or false if no
 // matching peak. quality is the peak strength (higher = sharper/cleaner).
+// outInfo (optional) receives runner-up/polarity/peak-count for abnormality checks.
 bool edge_select(const float *signedGrad, int n, const EdgeSelectParams &p,
-                 float *outPos, float *outStrength);
+                 float *outPos, float *outStrength, EdgeSelectInfo *outInfo = nullptr);
 
 // Map config strings (for def parsing).
 int edge_method_from_string(const char *s);   // "strongest"/"first"/"last"/"middle"/"nth"

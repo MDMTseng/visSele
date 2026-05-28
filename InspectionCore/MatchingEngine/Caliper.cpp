@@ -7,8 +7,9 @@
 
 bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
                      const CaliperParams &p, FeatureManager_BacPac *bacpac,
-                     acv_XY *outPt, float *outStrength)
+                     acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo)
 {
+  if (outInfo) *outInfo = EdgeSelectInfo();
   if (!gray) return false;
   acv_XY s = acvVecNormalize(searchDir);
   if (s.X != s.X || s.Y != s.Y) return false;
@@ -42,7 +43,7 @@ bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
   grad[0] = grad[1]; grad[nAcross - 1] = grad[nAcross - 2];
 
   float pos, str;
-  if (!edge_select(grad.data(), nAcross, p.edge, &pos, &str)) return false;
+  if (!edge_select(grad.data(), nAcross, p.edge, &pos, &str, outInfo)) return false;
 
   float t_edge = -L + pos * step;
   if (outPt) *outPt = acvVecAdd(center, acvVecMult(s, t_edge));

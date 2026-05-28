@@ -28,7 +28,7 @@ struct CaliperParams
 // (image px) and its strength, returns true.
 bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
                      const CaliperParams &p, FeatureManager_BacPac *bacpac,
-                     acv_XY *outPt, float *outStrength);
+                     acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo = nullptr);
 
 // ---- Phase 2: line locating via a row of calipers ----------------------------
 struct CaliperLineResult

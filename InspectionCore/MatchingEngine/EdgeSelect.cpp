@@ -22,8 +22,9 @@ int edge_polarity_from_string(const char *s)
 }
 
 bool edge_select(const float *g, int n, const EdgeSelectParams &p,
-                 float *outPos, float *outStrength)
+                 float *outPos, float *outStrength, EdgeSelectInfo *outInfo)
 {
+  if (outInfo) *outInfo = EdgeSelectInfo();
   if (!g || n < 3) return false;
 
   // adaptive noise floor: a real peak must exceed a fraction of the profile's
@@ -36,7 +37,7 @@ bool edge_select(const float *g, int n, const EdgeSelectParams &p,
   if (adaptive > floor_) floor_ = adaptive;
   if (gmax <= 0) return false;
 
-  struct Peak { float pos; float strength; };
+  struct Peak { float pos; float strength; float signedV; };
   std::vector<Peak> peaks;
   for (int i = 1; i < n - 1; i++)
   {
@@ -51,7 +52,7 @@ bool edge_select(const float *g, int n, const EdgeSelectParams &p,
     float denom = (a - 2 * b + c);
     float delta = (denom != 0) ? 0.5f * (a - c) / denom : 0.0f;
     if (delta < -1) delta = -1; if (delta > 1) delta = 1;
-    peaks.push_back({ (float)i + delta, b });
+    peaks.push_back({ (float)i + delta, b, gi });
   }
   if (peaks.empty()) return false;
 
@@ -72,5 +73,15 @@ bool edge_select(const float *g, int n, const EdgeSelectParams &p,
   }
   if (outPos) *outPos = peaks[sel].pos;
   if (outStrength) *outStrength = peaks[sel].strength;
+  if (outInfo)
+  {
+    float runnerUp = 0;
+    for (int k = 0; k < (int)peaks.size(); k++)
+      if (k != sel && peaks[k].strength > runnerUp) runnerUp = peaks[k].strength;
+    outInfo->strength = peaks[sel].strength;
+    outInfo->runnerUp = runnerUp;
+    outInfo->signedStrength = peaks[sel].signedV;
+    outInfo->peakCount = (int)peaks.size();
+  }
   return true;
 }
