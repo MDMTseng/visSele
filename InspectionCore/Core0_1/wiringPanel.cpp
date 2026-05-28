@@ -1529,6 +1529,19 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       LOGI("Hello ready.......");
       session_ACK = true;
     }
+    else if (checkTL("SB", dat)) //[S]u[B]scribe to the live inspection stream
+    {
+      // {"stream": true|false}; default true if omitted.
+      void *target;
+      int type = getDataFromJson(json, "stream", &target);
+      if (type == cJSON_False)
+        unsubscribeStream(peer);
+      else
+        subscribeStream(peer);
+      LOGI("SB stream subscribe=%d peer=%p subscribers=%zu",
+           (type != cJSON_False), peer, stream_subscribers.size());
+      session_ACK = true;
+    }
     else if (checkTL("SV", dat)) //Data from UI to save file
     {
       LOGI("DataType_BPG>>STR>>%s", dat->dat_raw);
@@ -3620,8 +3633,8 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     sprintf(tmp, "{\"start\":true}");
     bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", tmp);
     bpg_dat.pgID = bpg_pi.CI_pgID;
-    
-    bpg_pi.fromUpperLayer(bpg_dat);
+
+    bpg_pi.pushToSubscribers(bpg_dat);
 
     try
     {
@@ -3639,8 +3652,8 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       // LOGI("__\n %s  \n___",jstr);
       bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("RP", jstr);
       bpg_dat.pgID = bpg_pi.CI_pgID;
-      
-      bpg_pi.fromUpperLayer(bpg_dat);
+
+      bpg_pi.pushToSubscribers(bpg_dat);
 
       delete jstr;
     }
@@ -3755,8 +3768,8 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       bpg_dat.callbackInfo = (uint8_t *)&iminfo;
       bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
       bpg_dat.pgID = bpg_pi.CI_pgID;
-      
-      bpg_pi.fromUpperLayer(bpg_dat);
+
+      bpg_pi.pushToSubscribers(bpg_dat);
       LOGI("img transfer(DL:%d) %fms \n", _downSampLevel, ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000);
       
       lastImgSendTime=cur_ms;
@@ -3774,8 +3787,8 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"frameID\":%d,\"ACK\":true}", (bpg_pi.cameraFramesLeft) ? "true" : "false", frameActionID);
     bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", tmp);
     bpg_dat.pgID = bpg_pi.CI_pgID;
-    
-    bpg_pi.fromUpperLayer(bpg_dat);
+
+    bpg_pi.pushToSubscribers(bpg_dat);
 
     //SaveIMGFile("data/MVCamX.bmp",&test1_buff);
     //exit(0);
@@ -4405,6 +4418,7 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
            inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
 
       bpg_pi.dropPeerState(data.peer); // free this peer's inbound reassembly buffer
+      bpg_pi.unsubscribeStream(data.peer);
       peers.erase(data.peer);
 
       // If the default broadcast target left, promote another peer (or none).
@@ -4430,7 +4444,10 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
 
       peers.insert(data.peer);
       if (default_peer == NULL)
+      {
         default_peer = data.peer;
+        bpg_pi.subscribeStream(data.peer); // primary client streams by default
+      }
 
       // Greet every new client with HR so each can initialize independently.
       BPG_protocol_data bpg_dat = bpg_pi.GenStrBPGData("HR", "{\"version\":\"" _VERSION_ "\"}");

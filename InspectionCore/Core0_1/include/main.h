@@ -150,6 +150,20 @@ public:
 
   CameraLayer *camera = NULL;
   resourcePool<image_pipe_info> resPool;
+
+  // Peers opted in to the live inspection stream (SS/RP/IM push). The default
+  // (first) client is auto-subscribed for backward compat; others opt in via SB.
+  std::set<void *> stream_subscribers;
+  void subscribeStream(void *peer) { if (peer) stream_subscribers.insert(peer); }
+  void unsubscribeStream(void *peer) { stream_subscribers.erase(peer); }
+  // Push one packet to every subscribed peer (routes per-peer so framing stays
+  // per-client; bulk image callbacks pick up the active peer under linkLayerLock).
+  void pushToSubscribers(BPG_protocol_data bpg_dat)
+  {
+    for (void *p : stream_subscribers)
+      fromUpperLayer(bpg_dat, p);
+  }
+
   int toUpperLayer(BPG_protocol_data bpgdat, void *peer) override;
   bool checkTL(const char *TL, const BPG_protocol_data *dat);
   uint16_t TLCode(const char *TL);
