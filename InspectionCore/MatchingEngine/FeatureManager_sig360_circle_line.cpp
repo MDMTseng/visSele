@@ -1,5 +1,8 @@
 #include "FeatureManager_sig360_circle_line.h"
 #include "Caliper.h"
+#ifdef FEATURE_OPENCV
+#include "SearchPointCV.h"
+#endif
 #include "logctrl.h"
 #include <stdexcept>
 #include <common_lib.h>
@@ -1381,16 +1384,30 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // `width` parallel scan columns one-sided from pt over `margin` along
       // searchVec_nor (already flipped for search_far); find first-hit edge per
       // column; robustly combine (median + inlier mean). default method = FIRST.
+      acv_XY off = eT.getImgOffset();
+      acv_XY out; float str;
+      bool ok;
+#ifdef FEATURE_OPENCV
+      // M2: robust CoreHub-ported first-hit scan (rectify + X-sobel + topmost).
+      // Region is centered at pt spanning +/-margin along the search dir, so
+      // pass margin as the half-depth. Polarity maps from the def edge_polarity
+      // (RISING=dark->light). edge_surpress/blur/consider defaults match CoreHub.
+      SPEdgeType sp_et = SP_BOTH;
+      if (def.edge_polarity == EdgeSelectParams::RISING)  sp_et = SP_DARK_TO_LIGHT;
+      else if (def.edge_polarity == EdgeSelectParams::FALLING) sp_et = SP_LIGHT_TO_DARK;
+      ok = search_point_cv(eT.getImage(), acvVecSub(pt, off), searchVec_nor,
+                           margin, width, sp_et, /*blur*/3, /*suppress*/10.0f,
+                           /*considerRange*/3.0f, /*alphaKeep*/0.5f,
+                           eT.getBacpac(), &out, &str);
+#else
       EdgeSelectParams ep;
       ep.method       = def.edge_method;
       ep.polarity     = def.edge_polarity;
       ep.nth          = def.edge_nth;
       ep.min_strength = def.edge_min_strength;
-
-      acv_XY off = eT.getImgOffset();
-      acv_XY out; float str;
-      bool ok = search_point_scan(eT.getImage(), acvVecSub(pt, off), searchVec_nor,
-                                  margin, width, 1.0f, ep, eT.getBacpac(), &out, &str);
+      ok = search_point_scan(eT.getImage(), acvVecSub(pt, off), searchVec_nor,
+                             margin, width, 1.0f, ep, eT.getBacpac(), &out, &str);
+#endif
       if (ok)
       {
         rep.pt = acvVecAdd(out, off);
