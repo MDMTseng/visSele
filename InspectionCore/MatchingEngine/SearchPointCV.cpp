@@ -65,13 +65,19 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
 
   // sample the rectified region ONE-SIDED from pt: col x -> pt + x*s (x in [0,margin]);
   // row y -> +(y-cy)*perp. xPosMin is then the FIRST hit going from pt along searchDir.
+  // Track per-row validity: a row that samples OFF-IMAGE must be discarded -- off-image
+  // returns 0, which would otherwise create a spurious strong edge at the image border
+  // (the legacy contour search never hits background since no contour exists there).
+  int gW = gray->GetWidth(), gH = gray->GetHeight();
   cv::Mat g(H, W, CV_8U);
+  std::vector<char> rowValid(H, 1);
   for (int y = 0; y < H; y++)
   {
     unsigned char *d = g.ptr<unsigned char>(y);
     for (int x = 0; x < W; x++)
     {
       acv_XY q = acvVecAdd(pt, acvVecAdd(acvVecMult(s, (float)x), acvVecMult(perp, y - cy)));
+      if (q.X < 1 || q.Y < 1 || q.X >= gW - 1 || q.Y >= gH - 1) { rowValid[y] = 0; d[x] = 0; continue; }
       float v = acvUnsignedMap1Sampling(gray, q, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
       d[x] = (v < 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
@@ -84,6 +90,7 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
   std::vector<cv::Point3f> eps;
   for (int y = 0; y < H; y++)
   {
+    if (!rowValid[y]) continue;                            // skip off-image rows
     float w, sg;
     float loc = rowEdgeCenter(sob.ptr<int16_t>(y), W, (int16_t)edgeSuppress, polarity, w, sg);
     if (w > 0 && loc >= 2 && loc < W - 2) eps.push_back(cv::Point3f(loc, (float)y, w / (sg + 1)));
