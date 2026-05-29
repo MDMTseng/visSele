@@ -244,3 +244,21 @@ Don't fragment: render() switch, NEUTRAL_UI, ctrlLogic_DEFCONF, GenTarEditUI (co
 
 **Verification-net coverage gaps (add flows):**
 - [S,high] shape DELETE (Shape_Set{id,null}); [L,highest] ref-binding (search_point/aux/measure via applyEditTarSubstate); [M] measure subtype change (ref arity); [S] back_value_setup toggle; [M] SV true round-trip (SV→re-LD→equal); [L] INSP result + CHECK overlay (assert store/DOM not pixels); multi-shape edits; down_samp level 2/3; error/disconnect (assert __rdyErr). Skip undo (no undo action exists).
+
+---
+
+## Round-4 hunt (renderUTIL / MAINUI+peripheral / state-machine / UX, 2026-05-30)
+
+**renderUTIL (per-shape draw / north-star):** line/arc/search_point/aux draw cleanly extractable → shapes/<type>.draw; measure branch (~510 lines, renderUTIL.js:698-1210) is the prize — label block copy-pasted 4x → extract `drawMeasureLabel()` first, then split subtypes; `drawInspectionShapeList`(1220-1313) duplicates `drawShapeList`'s switch. Dead: drawLineArrow stub(275), empty aux_line in drawInherentShapeList(237), drawSignature orphan(468), `if(true||...)`(549), commented blocks. BUGS: `.toFixed` binds to `.mult` not product (452) + concat into digit arg (1183).
+
+**MAINUI + peripheral:** uInsp_API extends GenPerif_API → ~140 byte-identical dup lines removed (override triggerPing + 4 setup hooks; SLID_API proves base). Relocate 6 API classes out of APPMasterX ctor → comm/ (id,comp,StoreX); DB_WS/Platform_API only need DISPATCH (cleanest). Dead: commented RootSelect block(1183-1207), empty DeConf/Inspection cases(1272-1277) + unused PrecisionValidation statesTable key, commented ELECTRON_IPC(script.jsx:102-124); GenPerif.triggerPing computes res_count then discards. MAINUI back-button menu item rebuilt 4x → backMenuItem()/makeSider() helper.
+
+**State-machine:** orphan dead — AUX_LINE_CREATE (state+event+3 consumer branches), INSTINSP_MODE (whole mode, no dispatcher), orphan events WS_channel/Camera_Info_Update/Insp_Mode_Update. [HIGH] substate→allowed-shape-types duplicated in AvailableShapeFilter (canvas) + applyEditTarSubstate (model) → one pure substateShapeSpec(substate) table in the model.
+
+**UX / i18n / error-handling:**
+- [P2, S, HIGH-integrity] sha1 mismatch on load only console.error'd then loads anyway (InspectionEditorLogic:325) → surface blocking warning modal (return-fix already makes this safe).
+- [P1, M] DefConf Save is fire-and-forget, no success/fail feedback (DefConfUI:1561-1588); pattern exists in InstInspUI:2281 (check SS.data.ACK → 存檔成功/失敗 toast) → port it.
+- [P3, S] missing i18n keys render as raw identifiers (dictLookUp MISC_Util:96); dict only 159 lines; many keys unlisted (USL_b/LSL_b/quadrant...).
+- [P4, M] hardcoded Chinese strings bypass DICT (script.jsx:1841/1873, MAINUI:1314/1569, DefConfUI:2479).
+- [P5, S] file overwrite signaled only by red OK button (no "will overwrite X" text); isASCII silently drops CJK filename keystrokes (baseComponent:435/457).
+- Fine: shape-delete has confirm; disconnect splash+watchdog ok; file-browser has 5s timeout. Keyboard support absent app-wide (intentional touchscreen).
