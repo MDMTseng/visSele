@@ -198,6 +198,17 @@ int judge_CALC(FeatureReport_sig360_circle_line_single &reports, FeatureReport_j
           }
           funcParamCount = 1;
 
+          // Guard against malformed postfix: an operator/function needing more
+          // operands than are on the stack would otherwise index
+          // calcStack[size - paramSymbolCount] with a wrapped (size_t) negative
+          // index -> out-of-bounds read / crash.
+          if (paramSymbolCount <= 0 || paramSymbolCount > (int)calcStack.size())
+          {
+            if (ret_result)
+              *ret_result = NAN;
+            return -50;
+          }
+
           //LOGI("isParamsCache:%s>>>%d",post_exp.c_str(),paramSymbolCount);
           float res;
           int err_code =

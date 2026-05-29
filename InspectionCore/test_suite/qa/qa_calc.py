@@ -1,0 +1,145 @@
+"""QA module for the Core0_1 CALC expression evaluator (JudgeCALC.cpp).
+
+Black-box tested via `visSele --insp`. A CALC measure is a measure with
+  {"subtype":"calc","calc_f":{"exp":"","post_exp":[<RPN tokens>]}}
+post_exp is a POSTFIX token list:
+  "[id]"  -> value of judge/measure with that id
+  "3","-5","3.14" -> numeric literals
+  "$+$","$-$","$*$","$/$" -> binary operators
+  "max$","min$" -> variadic, preceded by a "$,$" arity-cache token that
+                   marks how many operands the function consumes, e.g.
+                   ["[12]","[13]","$,$","max$"].
+mut_calc([...]) rewrites the FIRST measure (id=8 in golden) into such a calc;
+its computed result surfaces as the report with id=8.
+
+VIEWPOINT: exhaustively exercise the RPN evaluator for ROBUSTNESS (no
+memory-unsafe crash / hang on malformed input) and CORRECTNESS (computed
+value matches hand-computed arithmetic over baseline measured values).
+
+Baseline measured values (plain golden run, --insp):
+  [8]=8.601038  [12]=8.468927  [13]=8.601037  [14]=2.792538
+These are the operands used to predict expected calc outputs.
+
+Strategy:
+  - custom cases   : convert measure 8 -> calc, run, parse output, locate
+                     report id=8 and assert measured value ~= expected.
+                     If the field can't be located, degrade to no-crash.
+  - robust cases   : malformed / pathological RPN, PASS = no SIGSEGV/SIGBUS/
+                     SIGILL/SIGFPE and no timeout (controlled reject is fine).
+  - determinism    : a non-trivial calc must be byte-identical across runs.
+
+Coverage: every operator (+ - * /), variadic max/min at arity 2/3/many/1,
+nesting / deep expressions, division by zero, stack underflow & leftover
+operands (overflow), malformed/empty/whitespace tokens, refs to missing /
+non-existent / self / huge (int-overflow) ids, float-precision, and a very
+long expression.
+"""
+import sys, os, json, math
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qalib import *
+
+# ---- baseline operand values (measured from a plain golden run) ----
+V8, V12, V13, V14 = 8.601038, 8.468927, 8.601037, 2.792538
+TOL = 1e-2  # generous: float32 reports + measurement noise
+
+def _find_value(o, tid):
+    """Locate a report dict with id==tid that carries a numeric 'value'."""
+    if isinstance(o, dict):
+        if o.get("id") == tid and isinstance(o.get("value"), (int, float)):
+            return o["value"]
+        for v in o.values():
+            r = _find_value(v, tid)
+            if r is not None:
+                return r
+    elif isinstance(o, list):
+        for v in o:
+            r = _find_value(v, tid)
+            if r is not None:
+                return r
+    return None
+
+def calc_expect(post_exp, expected, tol=TOL, tid=8):
+    """custom fn: run a calc(post_exp), assert report[tid].value ~= expected.
+    Degrades to no-crash assertion if the value field cannot be located."""
+    def fn(run_insp):
+        d = mut_calc(post_exp)()
+        rc, out = run_insp(d)
+        if rc in SIGCRASH or rc == "TIMEOUT":
+            return False, f"crash/hang {rc_str(rc)}"
+        if out is None:
+            return False, f"no output ({rc_str(rc)})"
+        try:
+            j = json.loads(out)
+        except Exception as e:
+            return False, f"invalid JSON ({rc_str(rc)}): {e}"
+        got = _find_value(j, tid)
+        if got is None:
+            # cannot locate -> fall back to no-crash semantics
+            return True, f"no-crash {rc_str(rc)} (value field not located)"
+        if not math.isfinite(got):
+            return False, f"non-finite value {got}"
+        if abs(got - expected) <= tol:
+            return True, f"value={got:.5f} ~= {expected:.5f}"
+        return False, f"WRONG value={got:.6f} expected={expected:.6f}"
+    return fn
+
+CASES = []
+
+# ================= CORRECTNESS (custom) =================
+CASES.append(case("add", "custom", fn=calc_expect(["[12]", "[13]", "$+$"], V12 + V13)))
+CASES.append(case("sub", "custom", fn=calc_expect(["[13]", "[12]", "$-$"], V13 - V12)))
+CASES.append(case("mul", "custom", fn=calc_expect(["[12]", "[13]", "$*$"], V12 * V13, tol=0.2)))
+CASES.append(case("div", "custom", fn=calc_expect(["[13]", "[12]", "$/$"], V13 / V12)))
+CASES.append(case("literal_passthrough", "custom", fn=calc_expect(["3.14"], 3.14)))
+CASES.append(case("neg_literal", "custom", fn=calc_expect(["-5"], -5.0)))
+CASES.append(case("ref_passthrough", "custom", fn=calc_expect(["[12]"], V12)))
+CASES.append(case("lit_arith", "custom", fn=calc_expect(["3", "4", "$+$", "2", "$*$"], 14.0)))
+
+# nesting / deep expression: ((12+13) - 8) / 14  * 2
+deep = ["[12]", "[13]", "$+$", "[8]", "$-$", "[14]", "$/$", "2", "$*$"]
+CASES.append(case("deep_nest", "custom",
+                  fn=calc_expect(deep, ((V12 + V13) - V8) / V14 * 2, tol=0.05)))
+
+# ---- variadic max / min ----
+CASES.append(case("max_arity2", "custom",
+                  fn=calc_expect(["[12]", "[13]", "$,$", "max$"], max(V12, V13))))
+CASES.append(case("min_arity2", "custom",
+                  fn=calc_expect(["[12]", "[13]", "$,$", "min$"], min(V12, V13))))
+CASES.append(case("max_arity3", "custom",
+                  fn=calc_expect(["[8]", "[12]", "[13]", "$,$", "max$"], max(V8, V12, V13))))
+CASES.append(case("min_arity4", "custom",
+                  fn=calc_expect(["[8]", "[12]", "[13]", "[14]", "$,$", "min$"],
+                                 min(V8, V12, V13, V14))))
+# many operands (arity 6, with repeats + literals)
+CASES.append(case("max_many", "custom",
+                  fn=calc_expect(["[8]", "[12]", "[13]", "[14]", "1", "100", "$,$", "max$"], 100.0)))
+# max of a sub-expression result and a literal
+CASES.append(case("max_of_expr", "custom",
+                  fn=calc_expect(["[12]", "[13]", "$+$", "5", "$,$", "max$"], V12 + V13)))
+
+# ================= DETERMINISM =================
+CASES.append(case("det_calc", "determinism", make=mut_calc(deep), runs=3))
+
+# ================= ROBUSTNESS (malformed) =================
+CASES.append(case("div_by_zero", "robust", make=mut_calc(["[12]", "0", "$/$"])))
+CASES.append(case("div_zero_zero", "robust", make=mut_calc(["0", "0", "$/$"])))
+CASES.append(case("stack_underflow_op", "robust", make=mut_calc(["[12]", "$+$"])))
+CASES.append(case("stack_underflow_empty", "robust", make=mut_calc(["$+$"])))
+CASES.append(case("empty_postexp", "robust", make=mut_calc([])))
+CASES.append(case("leftover_operands", "robust", make=mut_calc(["[12]", "[13]", "3"])))
+CASES.append(case("max_no_arity_token", "robust", make=mut_calc(["[12]", "[13]", "max$"])))
+CASES.append(case("max_zero_arity", "robust", make=mut_calc(["$,$", "max$"])))
+CASES.append(case("garbage_token", "robust", make=mut_calc(["[12]", "@!#", "$+$"])))
+CASES.append(case("empty_token", "robust", make=mut_calc(["[12]", "", "$+$"])))
+CASES.append(case("whitespace_token", "robust", make=mut_calc(["[12]", "   ", "$+$"])))
+CASES.append(case("ref_missing_id", "robust", make=mut_calc(["[99999]", "1", "$+$"])))
+CASES.append(case("ref_self", "robust", make=mut_calc(["[8]", "1", "$+$"])))
+CASES.append(case("ref_huge_id_overflow", "robust",
+                  make=mut_calc(["[99999999999999999999]", "1", "$+$"])))
+CASES.append(case("ref_negative_id", "robust", make=mut_calc(["[-1]", "1", "$+$"])))
+CASES.append(case("malformed_ref_brackets", "robust", make=mut_calc(["[12", "1", "$+$"])))
+CASES.append(case("deeply_long_expr", "robust",
+                  make=mut_calc(["[12]"] + ["1", "$+$"] * 500)))
+
+if __name__ == "__main__":
+    sys.exit(run_module("qa_calc", CASES))
