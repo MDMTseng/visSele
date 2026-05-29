@@ -85,7 +85,7 @@
   },
   "scripts": {
     "start-electron": "electron .",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node tools/webctl/regress.mjs",
     "build": "NODE_OPTIONS='--openssl-legacy-provider' cross-env NODE_ENV=production webpack",
     "build_dev": "cross-env NODE_ENV=dev webpack",
     "build-profile": "cross-env NODE_ENV=production webpack --profile --json > wstats.json",
