@@ -14,7 +14,6 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
-import APP_ANALYSIS_MODE_rdx from './AnalysisUI';
 import BackLightCalibUI_rdx from './BackLightCalibUI';
 import InstInspUI_rdx from './InstInspUI';
 import CABLE_WIRE_CONF_MODE_rdx from './CableWireConfUI';
@@ -1919,9 +1918,6 @@ class APPMain extends React.Component {
       UI = <APP_INSP_MODE_rdx />;
 
     }
-    else if (stateObj.state === UIAct.UI_SM_STATES.ANALYSIS_MODE) {
-      UI = <APP_ANALYSIS_MODE_rdx />;
-    }
 
     return (
       <>
@@ -1937,7 +1933,6 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
   return {
     EV_UI_Edit_Mode: (arg) => { dispatch(UIAct.EV_UI_Edit_Mode()) },
     EV_UI_Insp_Mode: () => { dispatch(UIAct.EV_UI_Insp_Mode()) },
-    EV_UI_Analysis_Mode: () => { dispatch(UIAct.EV_UI_Analysis_Mode()) },
     
     ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_Insp_Mode_Update: (mode) => dispatch(UIAct.EV_UI_Insp_Mode_Update(mode)),

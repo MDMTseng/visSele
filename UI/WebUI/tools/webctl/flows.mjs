@@ -99,14 +99,6 @@ async function addLine() {
   await sleep(500);
 }
 
-// leave edit mode and enter Analysis mode (reads _obj.shapeList; not covered by other flows)
-async function gotoAnalysis() {
-  await ev(
-    `(function(){window.__GP_STORE__.dispatch({type:'EXIT'});window.__GP_STORE__.dispatch({type:'Analysis_Mode'});return 'ana';})()`
-  );
-  await sleep(800);
-}
-
 const SNAP = `(function(){
   var s=window.__GP_STORE__.getState().UIData, o=s.edit_info._obj, et=s.edit_info.edit_tar_info;
   return {
@@ -125,7 +117,6 @@ const FLOWS = {
   async select() { await reset(); await selectFirstMeasure(); return ev(SNAP); },
   async edit() { await reset(); await selectFirstMeasure(); await editSelectedUSL(9.123); return ev(SNAP); },
   async add() { await reset(); await addLine(); return ev(SNAP); },
-  async analysis() { await reset(); await gotoAnalysis(); return ev(SNAP); },
 };
 
 const names = only ? [only] : Object.keys(FLOWS);

@@ -68,14 +68,6 @@ const InspectionStates = {
   }
 };
 
-const AnalysisStates = {
-  initial: UISTS.ANALYSIS_MODE_NEUTRAL,
-  states: {
-    [UISTS.ANALYSIS_MODE_NEUTRAL]
-            :  {on: {}}
-  }
-};
-
 
 
 const InstInspStates = {
@@ -92,7 +84,6 @@ let ST = {
       [UISTS.SPLASH]:    { on: { [UISEV.REMOTE_SYSTEM_READY]:   UISTS.MAIN } },
       [UISTS.MAIN]:      { on: { [UISEV.Edit_Mode]:   UISTS.DEFCONF_MODE,
                                  [UISEV.Insp_Mode]:   UISTS.INSP_MODE,
-                                 [UISEV.Analysis_Mode]:UISTS.ANALYSIS_MODE,
                                  [UISEV.InstInsp_Mode]:UISTS.INSTINSP_MODE,
                                  [UISEV.REMOTE_SYSTEM_NOT_READY]: UISTS.SPLASH, 
                                  [UISEV.EXIT]:        UISTS.SPLASH } },
@@ -106,11 +97,6 @@ let ST = {
                          [UISEV.EXIT]:        UISTS.MAIN }},
                  InspectionStates),
     
-      [UISTS.ANALYSIS_MODE]: Object.assign(
-                 { on: { [UISEV.REMOTE_SYSTEM_NOT_READY]: UISTS.SPLASH , 
-                    [UISEV.ERROR]:       UISTS.MAIN , 
-                    [UISEV.EXIT]:        UISTS.MAIN }},
-                  AnalysisStates),
 
 
 
