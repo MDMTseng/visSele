@@ -318,3 +318,35 @@ Don't fragment: render() switch, NEUTRAL_UI, ctrlLogic_DEFCONF, GenTarEditUI (co
 - [directional, "keep Redux" caveat] Promise-based BPG/WS client: BPG_WS in EXT_API.ts:16 keys reqWindow:Map<pgID,{...promiseCBs}>, send_P() resolves on SS terminator (:143,:197), send_cbs_attach for streaming (:223). Cleaner than WebUI's callback/redux-dispatch split — borrow the Promise client BESIDE Redux, don't replace.
 - [incremental] Shared prop contract CompParam_InspTarUI (SingleTargetVIEWUI_UTIL.tsx:19-46) every shape view implements; AppTypes.ts types stream payloads. WebUI's domain.d.ts is 165 lines, def mostly `any` → type incrementally under allowJs.
 - Honest caveats: WebUI2 def/report still `any`; noisy console.log; XCMD.ts eval (:530); DimMeasure 5600L / InspTarView 5400L (files large — the BOUNDARIES are the clean parts). State still Redux (no lighter-store migration signal).
+
+---
+
+## Round 7 hunt (i18n · crash-resilience · canvas-perf · redux-store-shape, 2026-05-30)
+
+**Crash resilience (NEW — headline):**
+- [S, HIGH] **ZERO React error boundaries** anywhere (grep componentDidCatch/getDerivedStateFromError = empty). Single ReactDOM.render at script.jsx:2000, no wrapper → any uncaught render/lifecycle throw white-screens the whole floor UI for the shift. Add a top-level boundary at :2000 + an inner one wrapping <APPMain_rdx> (:1788). Additive, very low risk. Verify: throw in a child render → fallback panel not blank page.
+- [S, MED-HIGH] No global `window.onerror` / `unhandledrejection` handlers (grep empty) → async throws (timers, WS callbacks) vanish. Pair with boundary: boundary=render, these=async.
+- [M, MED] BPG/WS HR-triggered loads (BPG_WS.js:116-256: camera_param/machine_setting/machine_info/camera_setting) pass resolve-only, NO reject → on close/failure config silently never loads, no operator signal. systemStatusPull (:51) has empty reject(){}. Surface a toast.
+- [S, MED] Unguarded JSON.parse at script.jsx:1418, EverCheckCanvasComponent.js:514/873/1371 (state restore), MISC_Util.js:261/292 (localStorage) → corrupt value throws through render. (raw2obj BPG_Protocol.js:53 is correctly guarded.) No live eval/Function.
+- [S, LOW-MED] 1006 disconnect is graceful (onclose:67 dispatches + 10s retry; splash at script.jsx:1797) but shows the SAME boot splash as startup — indistinguishable; add "connection lost, reconnecting…" wording.
+
+**Canvas perf (image pipeline already tight — zero-copy decode/offscreen cache/no getImageData readback; wins are overlay coupling):**
+- [M, HIGH] `dclone(this.edit_DB_info._obj.shapeList)` per tracked object per frame inside draw_INSP (EverCheckCanvasComponent.js:1153) → N× full-tree deep clones at frame rate, biggest GC/CPU item. Clone once or use a color side-table instead of mutating clones. Verify: DevTools GC+scripting self-time with N≥3 objects.
+- [M/L, HIGH] Overlay redraw coupled to image redraw (updateCanvas:976 / componentWillUpdate:1007): every prop change (IM frame OR report OR mouse) does clearRect+full drawImage+full overlay rebuild → half the work wasted each path. Split image-layer vs overlay-layer (WebUI2 drawHook two-layer contract is the proven target).
+- [S, MED] No rAF coalescing — every event calls draw() synchronously (onmousemove:807, scaleCanvas:369, updateCanvas:987). Dirty-flag + single requestAnimationFrame → ≤1 draw/frame.
+- [S, LOW-MED] `ctx.font` string rebuilt+set per shape (renderUTIL.js:423,939,978,1002,1051,1065,1144) → cache string, set once per draw when size unchanged.
+- [S, LOW] worldTransform()/ScreenCoordTo_mm_pix allocate new DOMMatrix+invertSelf per call (EverCheckCanvasComponent.js:460,752,1330) → reuse scratch matrix.
+
+**Redux store shape (KEEP Redux — state-ownership):**
+- [L, HIGH] `_obj` mutable class instance in state, selectors drill into `_obj.shapeList` (DefConfUI.js:1331,2765, InspectionUI.js:2715); reducer mutates in place (SetShapeList/SetShape/Setsig360info/SetCameraParamInfo) then relies on top-level `{...ret_state}` (newStateUpdate:918) for identity → contents change under a stable ref; correct only by luck of the top spread. Biggest correctness footgun. Verify: flows snapshot — shapeList identity should change on every Shape_Set. (Note: ties to Q1 — SetShape was already made immutable; the other Set* mutators remain.)
+- [L, HIGH] edit_info god-slice coarse 3-group split (reader counts: _obj 41, edit_tar_info 39, ele_cand 20/trace 19, __decorator 19, reportStatisticState 13): (a) shape model (_obj,edit_tar_*,__decorator,inherentShapeList); (b) deffile/matching meta (DefFile*,MachTag,matching_*,intrusionSizeLimitRatio,inspOptionalTag,defModelPath); (c) runtime report (reportStatisticState,inspReport,img,sig360info,statSetting,*_report). Aligns w/ report-tracking extraction. = Q2.
+- [M, MED] More mirrored state beyond edit_info.list: edit_info.sig360info mirrors _obj.sig360info (:161,:662); inherentShapeList mirrors _obj.UpdateInherentShapeList() (:711) → derived selectors.
+- [S, MED] Dead/broken action types: `Insp_Mode_Update` (UIAct.js:149, MAINUI:1777) dispatches an UNDEFINED type key — live bug; EC_Save/Load_Def_Config (UIAct.js:112-113, dispatched DefConfUI:2720-21) handled by nothing — dead; Camera_Info_Update/WS_channel/_SUCCESS/_FAIL zero refs.
+- [S/M, MED] ConnectionInfoReducer Core_Camera_Status_Update (:121-133) references undefined `status` (latent ReferenceError) + nothing dispatches it; 7 near-identical *_CONN_INFO branches (:32-115) → one pure connInfoMerge(state,key,action).
+
+**i18n (largely vestigial — single zh_TW dict, no locale-switch; ~150 hardcoded CJK strings outnumber 68 dict refs 2:1):**
+- [S] Add dev-mode missing-key warning to dictLookUp (MISC_Util.js:96) — surfaces silent misses; guard on NODE_ENV.
+- [M] Route 40 direct `DICT._.x` accesses through dictLookUp → single fallback choke point (direct access renders undefined→blank silently).
+- [S] Remove dead key `ReconnectAirDevice` (zh_TW.js:18, 0 refs).
+- [M, read-only] Hardcoded-string inventory pass (don't mass-extract — coupled JSX) to scope real i18n debt before any 2nd locale.
+- Don't build a full i18n framework for a single-locale factory UI. (Dup-looking keys value/importance/setup are different namespaces — fine.)
