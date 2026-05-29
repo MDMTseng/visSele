@@ -64,6 +64,19 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   if(ret_obj==null)return null;
 
   let headerL=15;
+
+  // Defensive bounds check: the 15-byte IM extra-header must fit inside the
+  // backing buffer before we build a view over it (a corrupt/truncated frame
+  // would otherwise RangeError). NOTE: do NOT validate against ret_obj.length
+  // (the BPG header length field) -- for IM packets that field is unreliable
+  // (which is why the size-equality check below stays disabled), so trusting
+  // it here would drop valid frames.
+  if (offset + BPG_header_L + headerL > ws_evt.data.byteLength) {
+    log.warn("raw2Obj_IM: extra-header out of bounds; dropping frame",
+      { offset, byteLength: ws_evt.data.byteLength });
+    return null;
+  }
+
   let headerArray = new Uint8ClampedArray(ws_evt.data,
     offset+BPG_header_L,headerL);
   ret_obj.camera_id=headerArray[0];
@@ -82,13 +95,23 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   let RGBA_pix_Num = 4*ret_obj.width*ret_obj.height;
   
   //console.log(headerArray,RGBA_pix_Num,ret_obj.length-headerL);
-  if(true||RGBA_pix_Num == (ret_obj.length-headerL))
+  let imgStart = offset + BPG_header_L + headerL;
+  // Keep the original size-equality check permissive (||true) -- it may have
+  // been disabled because it rejected valid frames (e.g. trailing padding or
+  // a length convention mismatch). But guard the actual buffer access so a
+  // bogus width/height can't build a view past the backing buffer.
+  if ((true || RGBA_pix_Num == (ret_obj.length - headerL)) &&
+      RGBA_pix_Num >= 0 &&
+      imgStart + RGBA_pix_Num <= ws_evt.data.byteLength)
   {
     ret_obj.image=new Uint8ClampedArray(ws_evt.data,
-      offset+BPG_header_L+headerL,4*ret_obj.width*ret_obj.height);
+      imgStart,RGBA_pix_Num);
   }
   else
   {
+    log.warn("raw2Obj_IM: image pixel region out of bounds; image=null",
+      { width: ret_obj.width, height: ret_obj.height, RGBA_pix_Num,
+        imgStart, byteLength: ws_evt.data.byteLength });
     ret_obj.image=null;
   }
 

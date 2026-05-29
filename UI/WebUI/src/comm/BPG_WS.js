@@ -10,7 +10,7 @@ function urlConcat(base, add) {
   let xbase = base;
   while (xbase.charAt(xbase.length - 1) == "/") xbase = xbase.slice(0, xbase.length - 1);
   let xadd = add;
-  while (xadd.charAt(0) == "/") xadd = xadd.slice(1, xbase.length);
+  while (xadd.charAt(0) == "/") xadd = xadd.slice(1, xadd.length);
   return xbase + "/" + xadd;
 }
 
@@ -87,6 +87,8 @@ function urlConcat(base, add) {
         //log.info("onMessage:::");
         //log.info(evt);
         if (!(evt.data instanceof ArrayBuffer)) return;
+
+        try {
 
         let header = BPG_Protocol.raw2header(evt);
         // log.info("onMessage:["+header.type+"]");
@@ -258,7 +260,8 @@ function urlConcat(base, add) {
 
               }
 
-              
+
+              break;
             }
 
           case "SS":
@@ -353,6 +356,11 @@ function urlConcat(base, add) {
             }
           }
 
+        }
+
+        } catch (e) {
+          // A malformed/corrupt frame must not kill the socket message pump.
+          console.error("BPG_WS.onmessage: decode/dispatch error; dropping frame", e);
         }
       }
 

@@ -18,7 +18,6 @@ import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
 
 import CSSTransitionGroup from 'react-transition-group/CSSTransitionGroup';
 let $CTG=CSSTransitionGroup;
-//import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
@@ -1758,24 +1757,6 @@ class APPMasterX extends React.Component {
 
   render() {
     log.debug("APPMasterX render", this.props);
-
-    let xstateG=null;
-    if (false && this.props.stateMachine != null) {
-      xstateG =
-        <BASE_COM.CardFrameWarp addClass={"width7 height10 overlay SMGraph " + ((this.props.showSM_graph) ? "" : "hide")} fixedFrame={true}>
-          <div className="layout width11 height12">
-            <XSGraph addClass="width12 height12"
-              state_machine={this.props.stateMachine.config} />;
-        </div>
-          <div className="layout button width1 height12" onClick=
-            {() => this.props.ACT_Ctrl_SM_Panel(!this.props.showSM_graph)}></div>
-        </BASE_COM.CardFrameWarp>
-
-    }
-    else
-    {
-      xstateG =null
-    }
 
 
     // console.log(this.props.C_STATE,this.props.CORE_ID_CONN_INFO);

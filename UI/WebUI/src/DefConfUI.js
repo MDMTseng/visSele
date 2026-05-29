@@ -1408,11 +1408,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       key="APOINT"
       text="apoint" onClick={() =>  ACT_Aux_Point_Add_Mode()} />,
 
-    // <BASE_COM.IconButton
-    //   dict={DICT}
-    //   addClass="layout palatte-blue-8 vbox"
-    //   key="ALINE"
-    //   text="aline" onClick={()=>this.props.ACT_Aux_Line_Add_Mode()}/>,
     <BASE_COM.IconButton
       dict={DICT}
       addClass="layout palatte-blue-8 vbox  btn-swipe"
@@ -1609,7 +1604,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     <BASE_COM.IconButton
       dict={DICT}
       iconType={<SettingOutlined/>}
-      addClass="layout palatte-gray-8 vbox"
+      addClass="layout palatte-grey-8 vbox"
       key="setting"
       text="setting" onClick={() => setModal_view({
           title: DICT.defConf.setup,
@@ -1971,7 +1966,7 @@ class APP_DEFCONF_MODE extends React.Component {
   }
 
 
-  GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, ACT_Shape_Decoration_Extra_Info_Update, ACT_EDIT_TAR_ELE_TRACE_UPDATE }) {
+  GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, ACT_EDIT_TAR_ELE_TRACE_UPDATE }) {
     
     const DICT = useSelector(state => state.UIData.DICT);
   
@@ -2005,18 +2000,10 @@ class APP_DEFCONF_MODE extends React.Component {
         //console.log("retR:",retR,"  treeDepth:",treeDepth)
         return retR;
       }
-      // UIArr.push(<BASE_COM.Button
-      //   key="setAdditional"
-      //   addClass="layout black vbox HX0_5"
-      //   text="..." onClick={() => {
-      //     setUIType("deco");
-      //   }} />);
-
       edit_tar=Shape_Attr_Fill(edit_tar);
       switch (edit_tar.type) {
         case UIAct.SHAPE_TYPE.line:
         case UIAct.SHAPE_TYPE.aux_point:
-        case UIAct.SHAPE_TYPE.aux_line:
         case UIAct.SHAPE_TYPE.search_point:
         case UIAct.SHAPE_TYPE.measure:
           {
@@ -2198,8 +2185,10 @@ class APP_DEFCONF_MODE extends React.Component {
               renderLib={renderMethods}
               jsonChange={(original_obj, target, type, evt) => {
                 let lastKey = target.keyTrace[target.keyTrace.length - 1];
-                if (type == "input-number")
-                  target.obj[lastKey] = parseFloat(evt.target.value);
+                if (type == "input-number") {
+                  let parseNum = parseFloat(evt.target.value);
+                  target.obj[lastKey] = Number.isFinite(parseNum) ? parseNum : target.obj[lastKey];
+                }
                 else if (type == "input")
                   target.obj[lastKey] = evt.target.value;
                 else if (type == "switch")
@@ -2294,8 +2283,10 @@ class APP_DEFCONF_MODE extends React.Component {
               else {
                 let lastKey = target.keyTrace[target.keyTrace.length - 1];
 
-                if (type == "input-number")
-                  target.obj[lastKey] = parseFloat(evt.target.value);
+                if (type == "input-number") {
+                  let parseNum = parseFloat(evt.target.value);
+                  target.obj[lastKey] = Number.isFinite(parseNum) ? parseNum : target.obj[lastKey];
+                }
                 else if (type == "input")
                   target.obj[lastKey] = evt.target.value;
                 this.ec_canvas.SetShape(original_obj, original_obj.id);
@@ -2730,8 +2721,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
     ACT_WS_SEND_BPG: (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args)),
     ACT_ClearImage: () => { dispatch(UIAct.EV_WS_Image_Update(null)) },
     ACT_Shape_Decoration_ID_Order_Update: (shape_id_order) => { dispatch(DefConfAct.Shape_Decoration_ID_Order_Update(shape_id_order)) },
-    ACT_Shape_Decoration_Extra_Info_Update: (extra_info) => { dispatch(DefConfAct.Shape_Decoration_Extra_Info_Update(extra_info)) },
-    
+
     ACT_Shape_Decoration_Control_Margin_Info_Update: (extra_info) => { dispatch(DefConfAct.Shape_Decoration_Control_Margin_Info_Update(extra_info)) },
     ACT_Matching_Angle_Margin_Deg_Update: (deg) => { dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) },
     ACT_Matching_Face_Update: (faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) },//-1(back)/0(both)/1(front)
