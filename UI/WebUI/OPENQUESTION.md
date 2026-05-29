@@ -179,3 +179,43 @@ completeCtrlMarginInfo (479), Num2Str_padding, raw2obj_rawdata, if(false) blocks
 - Extract pure `OK_NG_BOX_COLOR_TEXT`+result-status presentation (InspectionUI) → module.
 - `applyEditTarSubstate` 4 near-dup binding blocks → private `_bindCand()`.
 - Dead exports: `raw2obj_rawdata`, `Num2Str_padding`; dead `if(false)` UICtrlReducer:564-578.
+
+---
+
+## DefConfUI deep-dive (4-agent, 2026-05-29)
+
+**Mental model:** `APP_DEFCONF_MODE` renders per-SM-substate a canvas + right menu/property-sheet.
+THREE manually-synced state stores: (1) xstate SM = mode only; (2) redux edit_info =
+_obj.shapeList + transient edit_tar_info/_ele_trace/_ele_cand; (3) canvas imperative
+EditShape/EditPoint/CandEditPointInfo/mouseStatus. Create = drag local → mouse-up commit
+(Shape_Set+SUCCESS) → SM→SHAPE_EDIT → property sheet from edit_tar_info. Property sheet =
+generic JsonEditBlock fed a UNION whiteListKey (renders only fields present on shape).
+Ref-binding = 2-dispatch handshake (_ele_trace UI + _ele_cand canvas → applyEditTarSubstate).
+
+**Hotspots (file:line):** render() substate switch (~2499-3013, ~500 lines); GenTarEditUI
+(~2116, class method w/ hooks, holds per-shape whiteListKey 2174-2264 + value↔limit jsonChange
+2265-2351); DEFCONF_MODE_NEUTRAL_UI (~1421-2080, 650 lines); InspMarginEditor (490-818);
+Measure_Calc_Editor (820-996).
+
+**Root causes:** split-brain (EditShape≈edit_tar_info, one Shape_Set serves add/modify/delete →
+canvas re-derives intent via mouse-edge flags ifOnMouseLeftClickEdge/mouseTriggeredUpdate);
+whiteListKey rebuilt inline each render → renderer remount/state-loss; schema+defaults+visibility
+in 3 places; ctrlLogic_DEFCONF is a 2nd state machine re-switching on substate; two modal systems.
+
+**Prioritized plan:**
+1. DEAD CODE (safe, big): `uiType=="deco"` branch (2395-2489) + SubDimEditUI (1026-1167) +
+   uiType state — UNREACHABLE (only trigger commented at 2151-2156). aux_line path (ACT_Aux_Line_Add_Mode
+   1436, button commented 1553-1557, case 2699-2733). Commented blocks 1366-1381/1909-1916/2868-2875/2535-2538.
+   ⚠️ confirm deco/extra_info abandoned vs planned before deleting.
+2. PER-SHAPE SCHEMA + render-stability (keystone/north-star step 1): schema registry per type →
+   generates whiteListKey via useMemo (fixes remount) + derives Shape_Attr_Fill defaults + one
+   applyLimitCoupling() (dup'd 3x: 2286-2313, SubDimEditUI 1117, MEASURE_CREATE 2559); GenTarEditUI
+   → real top-level function component. Generic JsonEditBlock engine stays untouched.
+3. EXPLICIT INTENT: split Shape_Set → Shape_Add/Modify/Delete (kills mouse-edge heuristics); make
+   canvas EditShape a projection of edit_tar_info (drop tmp_EditShape_id); lift AvailableShapeFilter
+   to InspectionEditorLogic. Collapse 2 modal systems.
+4. PURE EXTRACTIONS → DefConf/ folder: propertyRenderers (Acc widgets + renderMethods), MeasureCalcEditor,
+   MarginEditor; dedup II/INST_CHECK→ShapeAdjustsWithInspectionResult flow (toolbar 1866-1938 vs
+   edit-CHECK 2827-2885). ref whiteListKey 3-vs-10-slot drift (2248 vs 2543).
+
+Don't fragment: render() switch, NEUTRAL_UI, ctrlLogic_DEFCONF, GenTarEditUI (coupled stateful).
