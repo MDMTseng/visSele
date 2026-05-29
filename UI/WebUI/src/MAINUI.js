@@ -16,9 +16,6 @@ import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
 import BackLightCalibUI_rdx from './BackLightCalibUI';
 import InstInspUI_rdx from './InstInspUI';
-import CABLE_WIRE_CONF_MODE_rdx from './CableWireConfUI';
-import GenMatching_rdx from './GenMatchingUI';
-import Blank_rdx from './BlankUI';
 
 
 import RepDisplayUI_rdx from './RepDisplayUI';
@@ -1108,14 +1105,6 @@ const MainUI=()=>{
         type:"InstInsp",
         name:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION
       },
-      // GenMatchingConf:{
-      //   type:"GenMatchingConf",
-      //   name:"GenMatchingConf"
-      // },
-      // BlankConf:{
-      //   type:"BlankConf",
-      //   name:"BlankConf"
-      // },
       BackLightCalib:{
         type:"BackLightCalib",
         name:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
@@ -1241,22 +1230,6 @@ const MainUI=()=>{
         ],
       }
 
-      if(s_statesTable.GenMatchingConf!==undefined)
-      {
-        siderUI_info.menu.push({
-          icon:<EditOutlined />,
-          text:s_statesTable.GenMatchingConf.name,
-          onClick:_=>setUI_state(s_statesTable.GenMatchingConf)
-        });
-      }
-      if(s_statesTable.BlankConf!==undefined)
-      {
-        siderUI_info.menu.push({
-          icon:<EditOutlined />,
-          text:s_statesTable.GenMatchingConf.name,
-          onClick:_=>setUI_state(s_statesTable.BlankConf)
-        });
-      }
 
       if(hideMachineSetting==false)
       {
@@ -1302,140 +1275,6 @@ const MainUI=()=>{
     case  s_statesTable.Inspection:
       
       break;
-    case  s_statesTable.GenMatchingConf:
-      UI.push(<GenMatching_rdx
-      
-        onExtraCtrlUpdate={extraCtrls=>{
-          console.log(extraCtrls);
-          let extraCtrlUI=[];
-          
-          if(extraCtrls.disableDefault!==true)
-          {
-            extraCtrlUI.push({
-              icon:<ArrowLeftOutlined />,
-              text:DICT._["<"],
-              onClick:_=>
-              {
-                setUI_state(s_statesTable.RootSelect)
-                
-              }
-            })
-          }
-
-          if(extraCtrls.open!==undefined)
-          {
-            extraCtrlUI.push({
-              icon:<FolderOpenOutlined />,
-              text:"OPEN",
-              onClick:_=>extraCtrls.open()
-              // subMenu:[]
-            })
-          }
-          
-          if(extraCtrls.save!==undefined)
-          {
-            extraCtrlUI.push({
-              icon:<SaveOutlined />,
-              text:"SAVE",
-              onClick:_=>extraCtrls.save()
-              // subMenu:[]
-            })
-          }
-          if(extraCtrls.take_new!==undefined)
-          {
-            extraCtrlUI.push({
-              icon:<CameraOutlined />,
-              text:"NewImg",
-              onClick:_=>extraCtrls.take_new()
-              // subMenu:[]
-            })
-          }
-          if(extraCtrls.insp_state!==undefined && extraCtrls.set_insp_state!==undefined)
-          {
-            extraCtrlUI.push({
-              icon:extraCtrls.insp_state==true?<PauseOutlined />:<SendOutlined />,
-              text:"insp:+"+extraCtrls.insp_state,
-              onClick:_=>extraCtrls.set_insp_state(extraCtrls.insp_state!=true)
-              // subMenu:[]
-            })
-          }
-
-          
-          setExtraSideUI(extraCtrlUI);
-        }}/>);
-
-      
-      siderUI_info={
-        title:UI_state.name,
-        
-        menu:[
-          {
-            icon:<ArrowLeftOutlined />,
-            text:DICT._["<"],
-            onClick:_=>
-            {
-              setUI_state(s_statesTable.RootSelect)
-              
-              ACT_WS_SEND_BPG("RC", 0, {
-                target: "camera_setting_refresh"
-              });
-            }
-            // subMenu:[]
-          },
-          ...extraSideUI
-        ],
-      }
-      break;
-    
-    case  s_statesTable.BlankConf:
-      UI.push(<Blank_rdx
-      
-        onExtraCtrlUpdate={extraCtrls=>{
-          console.log(extraCtrls);
-          let extraCtrlUI=[];
-          
-          if(extraCtrls.disableDefault!==true)
-          {
-            extraCtrlUI.push({
-              icon:<ArrowLeftOutlined />,
-              text:DICT._["<"],
-              onClick:_=>
-              {
-                setUI_state(s_statesTable.RootSelect)
-                
-              }
-            })
-          }
-
-          
-          setExtraSideUI(extraCtrlUI);
-        }}/>);
-
-      
-      siderUI_info={
-        title:UI_state.name,
-        
-        menu:[
-          {
-            icon:<ArrowLeftOutlined />,
-            text:DICT._["<"],
-            onClick:_=>
-            {
-              setUI_state(s_statesTable.RootSelect)
-              
-              ACT_WS_SEND_BPG("RC", 0, {
-                target: "camera_setting_refresh"
-              });
-            }
-            // subMenu:[]
-          },
-          ...extraSideUI
-        ],
-      }
-      break;
-  
-    
-    
     case  s_statesTable.BackLightCalib:
       UI.push(<BackLightCalibUI_rdx
         BPG_Channel={(...args) => ACT_WS_SEND_BPG(...args)}
