@@ -42,12 +42,12 @@ import Divider from 'antd/lib/divider';
 import Card from 'antd/lib/card';
 import Carousel from 'antd/lib/carousel';
 import Popover from 'antd/lib/popover';
-import Affix from 'antd/lib/Affix';
+import Affix from 'antd/lib/affix';
 import  Table  from 'antd/lib/table';
 import Switch from 'antd/lib/switch';
-import Row from 'antd/lib/Row';
-import Col from 'antd/lib/Col';
-import Steps from 'antd/lib/Steps';
+import Row from 'antd/lib/row';
+import Col from 'antd/lib/col';
+import Steps from 'antd/lib/steps';
 
 import { useSelector,useDispatch } from 'react-redux';
 const { Meta } = Card;
@@ -281,6 +281,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const caruselRef = useRef(undefined);
 
   const DICT = useSelector(state => state.UIData.DICT);
+  const System_Setting = useSelector(state => state.UIData.System_Setting);
   const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
 
   const Info_decorator = useSelector(state => state.UIData.edit_info.__decorator);
@@ -349,7 +350,17 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
               {info}
             </Title>
           )}
-          
+
+          <Button size="small" type="primary" onClick={()=>{
+            // ACT_WS_SEND_BPG( "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath ,down_samp_level},undefined,{
+            //   resolve:(pkts,WSDataDispatch)=>{
+            //     console.log(pkts);
+            //     WSDataDispatch(pkts);
+            //   }
+            // })
+            console.log(System_Setting);
+            dispatch({type:"System_Setting_Update",data:{...System_Setting,ALLOW_SOFT_CAM:true}})
+          }}>跳過相機連線</Button>
         </div>,
         onCancel:()=>{},
         onOK:()=>{}
@@ -447,7 +458,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     InspectionMonitor_URL_overvall+="v=" + 0;
 
 
-    InspectionMonitor_URL_w_info= InspectionMonitor_URL_overvall + "&name=" + DefFileName + "&hash=" + DefFileHash;
+    InspectionMonitor_URL_w_info= InspectionMonitor_URL_overvall + "&search_name=" + DefFileName;
     
     InspectionMonitor_URL_overvall = encodeURI(InspectionMonitor_URL_overvall);
     InspectionMonitor_URL_w_info = encodeURI(InspectionMonitor_URL_w_info);

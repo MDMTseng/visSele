@@ -1,7 +1,6 @@
 import { applyMiddleware, combineReducers, createStore } from "redux";
 import UICtrlReducer from "REDUX_STORE_SRC/reducer/UICtrlReducer";
 import ConnectionInfoReducer from "REDUX_STORE_SRC/reducer/ConnectionInfoReducer";
-import InspDataReducer from "REDUX_STORE_SRC/reducer/InspDataReducer";
 import {ActionThrottle} from "REDUX_STORE_SRC/middleware/ActionThrottle";
 import {ECStateMachine} from "REDUX_STORE_SRC/middleware/ECStateMachine";
 import {MW_API} from "REDUX_STORE_SRC/middleware/MW_API";
@@ -141,14 +140,16 @@ export function ReduxStoreSetUp(presistStore){
 
   const reducer_C = combineReducers({
     UIData:UICtrlReducer,
-    InspData:InspDataReducer,
     ConnInfo:ConnectionInfoReducer
   })
 
+  // These middlewares are curried factory functions (cfg => store => next => action).
+  // (Previously called with `new`, which only worked because Babel transpiled the
+  //  arrows to constructable functions; esbuild keeps arrows, so call them directly.)
   const middleware = applyMiddleware(thunk,
-    new MW_API({}),
-    new ECStateMachine({ev_state_update:"ev_state_update",state_config:ST}),
-    new ActionThrottle({time:100,posEdge:true}),
+    MW_API({}),
+    ECStateMachine({ev_state_update:"ev_state_update",state_config:ST}),
+    ActionThrottle({time:100,posEdge:true}),
     reduxCatch(errorHandler)
     );
 

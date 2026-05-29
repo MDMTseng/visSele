@@ -1,0 +1,13 @@
+{
+  "name": "webctl",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless control harness for the visSele WebUI (screenshots, console logs, DOM interaction).",
+  "bin": {
+    "webctl": "./webctl.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

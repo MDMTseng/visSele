@@ -1,5 +1,5 @@
 
-import {BPG_WS_EVENT,UI_SM_EVENT} from '../actions/UIAct';
+import {UI_SM_EVENT} from '../actions/UIAct';
 
 import * as logX from 'loglevel';
 let log = logX.getLogger("ActionThrottle");

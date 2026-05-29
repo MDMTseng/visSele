@@ -9,13 +9,13 @@ import {
 
 import { isString } from 'UTIL/MISC_Util';
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
-import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
+import { SHAPE_TYPE, UI_SM_STATES } from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import dclone from 'clone';
 import * as logX from 'loglevel';
 
 import JSum from 'jsum';
-import dateFormat from 'dateFormat';
+import dateFormat from 'dateformat';
 let log = logX.getLogger("InspectionEditorLogic");
 
 export const MEASURERSULTRESION =
@@ -93,10 +93,17 @@ export function Shape_Attr_Fill(shapeObject)
       {
         shapeObject.vertex_touch_searching=false;
       }
+      // caliper locating mode (line): "contour" (legacy) | "caliper". Normalize so the
+      // dropdown always has a string; core treats anything != "caliper" as contour.
+      if(shapeObject.locating!=="caliper") shapeObject.locating="contour";
     }
     break;
-    // case UIAct.SHAPE_TYPE.arc:
-    // break;
+    case SHAPE_TYPE.arc:
+    {
+      shapeObject={...shapeObject}
+      if(shapeObject.locating!=="caliper") shapeObject.locating="contour";
+    }
+    break;
     case SHAPE_TYPE.search_point:
     {
       shapeObject={...shapeObject}
@@ -422,7 +429,231 @@ export class InspectionEditorLogic {
 
     return edit_info;
   }
-  
+
+  // Element-binding step of the shape create/edit flow. Given the current edit
+  // target (edit_info.edit_tar_info), a key trace into it (edit_tar_ele_trace),
+  // and a picked candidate (edit_tar_ele_cand), validate + write the binding,
+  // seed defaults for newly-created targets, then clear the trace/candidate.
+  // Mutates and returns edit_info. (Extracted verbatim from UICtrlReducer.)
+  applyEditTarSubstate(edit_info, substate) {
+    switch (substate) {
+      case UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE:
+        {
+          if (edit_info.edit_tar_info == null) {
+            edit_info.edit_tar_ele_trace = null;
+            edit_info.edit_tar_ele_cand = null;
+            break;
+          }
+
+          if (edit_info.edit_tar_ele_trace != null && edit_info.edit_tar_ele_cand != null) {
+            let keyTrace = edit_info.edit_tar_ele_trace;
+            let obj = GetObjElement(edit_info.edit_tar_info, keyTrace, keyTrace.length - 2);
+            let cand = edit_info.edit_tar_ele_cand;
+
+            log.info("GetObjElement", obj, keyTrace[keyTrace.length - 1]);
+            obj[keyTrace[keyTrace.length - 1]] = {
+              id: cand.shape.id,
+              type: cand.shape.type
+            };
+
+            log.info(obj, edit_info.edit_tar_info);
+            edit_info.edit_tar_info = Object.assign({}, edit_info.edit_tar_info);
+            edit_info.edit_tar_ele_trace = null;
+            edit_info.edit_tar_ele_cand = null;
+          }
+          break;
+        }
+      case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
+      case UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE:
+        {
+          if (edit_info.edit_tar_info == null) {
+            edit_info.edit_tar_info = {
+              type: (substate == UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE) ?
+                SHAPE_TYPE.aux_point : SHAPE_TYPE.aux_line,
+              ref: [{}, {}]
+            };
+
+            edit_info.edit_tar_ele_trace = null;
+            edit_info.edit_tar_ele_cand = null;
+            break;
+          }
+          log.info(edit_info.edit_tar_ele_trace, edit_info.edit_tar_ele_cand);
+
+          if (edit_info.edit_tar_ele_trace != null && edit_info.edit_tar_ele_cand != null) {
+            let keyTrace = edit_info.edit_tar_ele_trace;
+            let obj = GetObjElement(edit_info.edit_tar_info, keyTrace, keyTrace.length - 2);
+            let cand = edit_info.edit_tar_ele_cand;
+
+            log.info("GetObjElement", obj, keyTrace[keyTrace.length - 1]);
+            obj[keyTrace[keyTrace.length - 1]] = {
+              id: cand.shape.id,
+              type: cand.shape.type
+            };
+
+            log.info(obj, edit_info.edit_tar_info);
+            edit_info.edit_tar_info = Object.assign({}, edit_info.edit_tar_info);
+            edit_info.edit_tar_ele_trace = null;
+            edit_info.edit_tar_ele_cand = null;
+          }
+        }
+        break;
+      case UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
+        {
+          if (edit_info.edit_tar_info == null) {
+            edit_info.edit_tar_info = {
+              type: SHAPE_TYPE.measure,
+              subtype: SHAPE_TYPE.measure_subtype.NA,
+              //importance:0,
+              back_value_setup: false
+              //ref:[{},{}]
+            };
+            edit_info.edit_tar_ele_trace = ["subtype"];
+            edit_info.edit_tar_ele_cand = null;
+            //break;
+          }
+          log.info(edit_info.edit_tar_ele_trace, edit_info.edit_tar_ele_cand);
+
+          if (edit_info.edit_tar_ele_trace != null && edit_info.edit_tar_ele_cand != null) {
+            let keyTrace = edit_info.edit_tar_ele_trace;
+            let obj = GetObjElement(edit_info.edit_tar_info, keyTrace, keyTrace.length - 2);
+            let cand = edit_info.edit_tar_ele_cand;
+
+
+            if (keyTrace[0] == "ref" && cand.shape !== undefined) {
+              let acceptData = true;
+              let subtype = edit_info.edit_tar_info.subtype;
+              switch (subtype) {
+                case SHAPE_TYPE.measure_subtype.sigma: break;
+                case SHAPE_TYPE.measure_subtype.distance://No specific requirement
+                  if (cand.shape.type == SHAPE_TYPE.search_point ||
+                    cand.shape.type == SHAPE_TYPE.aux_point ||
+                    cand.shape.type == SHAPE_TYPE.arc) {
+                    //We allow these three
+                  }
+                  else if (cand.shape.type == SHAPE_TYPE.line) {//Might need to check the angle if both are lines
+
+                  }
+                  else {
+                    log.info("Error: " + subtype +
+                      " doesn't accept " + cand.shape.type);
+                    acceptData = false;
+                  }
+                  break;
+                case SHAPE_TYPE.measure_subtype.radius://Has to be an arc
+                case SHAPE_TYPE.measure_subtype.circle_info://Has to be an arc
+                  if (cand.shape.type != SHAPE_TYPE.arc) {
+                    log.info("Error: " + subtype +
+                      " Only accepts arc");
+                    acceptData = false;
+                  }
+                  break;
+                case SHAPE_TYPE.measure_subtype.angle://Has to be an line to measure
+                  if (cand.shape.type != SHAPE_TYPE.line&&cand.shape.type != SHAPE_TYPE.search_point) {
+                    log.info("Error: " + subtype +
+                      " Only accepts line & spoint");
+                    acceptData = false;
+                  }
+                  break;
+
+                case SHAPE_TYPE.measure_subtype.calc://Has to be an line to measure
+                  if (cand.shape.type != SHAPE_TYPE.measure) {
+                    log.info("Error: " + subtype +
+                      " Only accepts measure");
+                    acceptData = false;
+                  }
+                  break;
+                default:
+                  log.info("Error: " + subtype + " is not in the measure_subtype list");
+                  acceptData = false;
+              }
+              if (acceptData) {
+                log.info("GetObjElement", obj, keyTrace[keyTrace.length - 1]);
+                obj[keyTrace[keyTrace.length - 1]] = {
+                  id: cand.shape.id,
+                  type: cand.shape.type
+                };
+              }
+            }
+            else if (keyTrace[0] == "subtype") {
+              let acceptData = true;
+              switch (cand) {
+                case SHAPE_TYPE.measure_subtype.sigma:
+                case SHAPE_TYPE.measure_subtype.radius:
+                  edit_info.edit_tar_info.ref = [{}];
+                  break;
+
+                case SHAPE_TYPE.measure_subtype.circle_info:
+                  edit_info.edit_tar_info.ref = [{}];
+                  edit_info.edit_tar_info.info_type="NA";
+                  break;
+
+                case SHAPE_TYPE.measure_subtype.calc:
+                  edit_info.edit_tar_info.ref = [];
+                  edit_info.edit_tar_info.calc_f = {
+                    exp: "0",
+                    post_exp: ["0"]
+                  };
+                  break;
+
+                case SHAPE_TYPE.measure_subtype.distance:
+                  edit_info.edit_tar_info.ref = [{}, {}];
+                  edit_info.edit_tar_info.ref_baseLine = {};
+                  break;
+                case SHAPE_TYPE.measure_subtype.angle:
+                  edit_info.edit_tar_info.ref = [{}, {}];
+                  break;
+                default:
+                  log.info("Error: " + cand + " is not in the measure_subtype list");
+                  acceptData = false;
+              }
+              edit_info.edit_tar_info =
+                Object.assign(edit_info.edit_tar_info,
+                  {
+                    pt1: { x: 0, y: 0 },
+                    value: 0,
+                    USL: 0,
+                    LSL: 0,
+                    UCL: 0,
+                    LCL: 0,
+                  });
+              if (acceptData)
+                obj[keyTrace[keyTrace.length - 1]] = cand;
+            }
+            else if (keyTrace[0] == "ref_baseLine") {
+              obj[keyTrace[keyTrace.length - 1]] = {
+                id: cand.shape.id,
+                type: cand.shape.type
+              };
+            }
+
+            log.info(obj, edit_info.edit_tar_info);
+            edit_info.edit_tar_info = Object.assign({}, edit_info.edit_tar_info);
+            edit_info.edit_tar_ele_trace = null;
+            edit_info.edit_tar_ele_cand = null;
+          }
+        }
+        break;
+      case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
+        if (edit_info.edit_tar_ele_trace != null && edit_info.edit_tar_ele_cand != null) {
+          let keyTrace = edit_info.edit_tar_ele_trace;
+          let obj = GetObjElement(edit_info.edit_tar_info, keyTrace, keyTrace.length - 2);
+          let cand = edit_info.edit_tar_ele_cand;
+
+          log.info("GetObjElement", obj, keyTrace[keyTrace.length - 1]);
+          obj[keyTrace[keyTrace.length - 1]] = {
+            id: cand.shape.id,
+            type: cand.shape.type
+          };
+
+          edit_info.edit_tar_info = Object.assign({}, edit_info.edit_tar_info);
+          edit_info.edit_tar_ele_trace = null;
+          edit_info.edit_tar_ele_cand = null;
+        }
+        break;
+    }
+    return edit_info;
+  }
+
   getMeasure_detailStatus(measureReport,control_Margin_table=this.shapeList)
   {
     let measureDef = control_Margin_table.find((feature) => feature.id == measureReport.id);

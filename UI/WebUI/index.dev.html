@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" name="viewport" content="width=device-width, user-scalable=no" />
+    <title>visSele (vite dev)</title>
+    <script>
+      // electron/fs/path are require()'d at module top-level but unused in the browser.
+      // Provide a no-op shim so Vite's native-ESM page doesn't throw on load.
+      window.require = function () { return {}; };
+    </script>
+  </head>
+  <body class="blockS sp_Style MaT">
+    <div class="HXF widthF800 HCenter" id="container"></div>
+    <script type="module" src="/src/script.jsx"></script>
+  </body>
+</html>

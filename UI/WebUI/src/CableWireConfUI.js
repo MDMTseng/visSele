@@ -30,9 +30,9 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {
   round as roundX, websocket_autoReconnect,
-  websocket_reqTrack, dictLookUp, undefFallback,
+  websocket_reqTrack, dictLookUp,
   GetObjElement, Exp2PostfixExp, PostfixExpCalc,
-  ExpCalcBasic, ExpValidationBasic,defFileGeneration,xstate_GetCurrentMainState,
+  defFileGeneration,xstate_GetCurrentMainState,
   LocalStorageTools
 } from 'UTIL/MISC_Util';
 
@@ -52,9 +52,9 @@ import Input from 'antd/lib/input';
 const { CheckableTag } = Tag;
 const { TextArea } = Input;
 import Divider from 'antd/lib/divider';
-import Dropdown from 'antd/lib/Dropdown'
-import Slider from 'antd/lib/Slider';
-import Popover from 'antd/lib/Popover';
+import Dropdown from 'antd/lib/dropdown'
+import Slider from 'antd/lib/slider';
+import Popover from 'antd/lib/popover';
 
 const SubMenu = Menu.SubMenu;
 

@@ -1,8 +1,9 @@
 'use strict'
 
+import 'regenerator-runtime/runtime' // some legacy deps (react-numpad) expect a global regeneratorRuntime
 
-import styles from 'STYLE/basis.css'
-import sp_style from 'STYLE/sp_style.css'
+import 'STYLE/basis.css'
+import 'STYLE/sp_style.css'
 import { Provider, connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
@@ -51,7 +52,6 @@ import {
 import { useSelector,useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Drawer from 'antd/lib/drawer';
-import { clearInterval } from 'timers';
 
 var require=require||(()=>undefined);
 
@@ -69,6 +69,11 @@ log.getLogger("UICtrlReducer").setLevel("INFO");
 
 
 let StoreX = ReduxStoreSetUp({});
+// Dev-only handle for the webctl harness / regression tooling. Not present in production builds.
+if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
+  window.__GP_STORE__ = StoreX;
+  window.__GP_DEF__ = () => StoreX.getState().UIData.edit_info?._obj?.GenerateFeature_sig360_circle_line?.();
+}
 console.log(navigator)
 
 function getRandom(min = 0, max = 1000000) {
@@ -1022,6 +1027,7 @@ class APPMasterX extends React.Component {
       
       _queryCam(resolve,reject)
       {
+        console.log("queryCam System_Setting",comp.props.System_Setting);
         comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "GS", 0, { items: ["camera_info"] },
         undefined, 
         {

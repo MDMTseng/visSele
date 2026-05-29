@@ -37,7 +37,7 @@ const default_FLAG={
 export function debug_SysSetting(origsetup={})
 {
   origsetup.DEV_MODE=true;
-  origsetup.ALLOW_SOFT_CAM=true;
+  // origsetup.ALLOW_SOFT_CAM=true;
   origsetup.FI_MODE_UPLOAD_SKIP=100;
   origsetup.CI_MODE_UPLOAD_SKIP=100;
 

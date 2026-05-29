@@ -28,9 +28,9 @@ import {TagDisplay_rdx} from './component/rdxComponent.jsx';
 import { round } from 'UTIL/MISC_Util';
 let log = logX.getLogger("InspectionUI");
 
-import Row from 'antd/lib/Row';
-import Col from 'antd/lib/Col';
-import Slider from 'antd/lib/Slider';
+import Row from 'antd/lib/row';
+import Col from 'antd/lib/col';
+import Slider from 'antd/lib/slider';
 import Checkbox from 'antd/lib/checkbox'
 import Popover from 'antd/lib/popover';
 import Table from 'antd/lib/table';
@@ -77,8 +77,8 @@ import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
 import Modal from "antd/lib/modal";
 // import Upload from 'antd/lib/upload';
-// import Input from 'antd/lib/Input';
-import Dropdown from 'antd/lib/Dropdown'
+// import Input from 'antd/lib/input';
+import Dropdown from 'antd/lib/dropdown'
 
 import Typography from 'antd/lib/typography';
 const { Paragraph, Title } = Typography;

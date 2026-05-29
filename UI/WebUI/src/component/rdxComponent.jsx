@@ -25,7 +25,7 @@ const { Paragraph, Title } = Typography;
 import { WarningOutlined,CheckOutlined,BulbOutlined,SaveOutlined,ReloadOutlined } from '@ant-design/icons';
 const { CheckableTag } = Tag;
 import Divider from 'antd/lib/divider';
-import Slider from 'antd/lib/Slider';
+import Slider from 'antd/lib/slider';
 import InputNumber from 'antd/lib/input-number';
 
 import Switch from 'antd/lib/switch';
@@ -1301,7 +1301,7 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
         <Table dataSource={dataSource} columns={columns} />
         <pre>
         ＊模糊連續NG數- 為防止單獨OK檢測破壞"連續NG數"的累積 <br/>
-                      因此"模糊連續NG數"會在連續OK>5次後 才會進行重置<br/>
+                      因此"模糊連續NG數"會在連續OK{'>'}5次後 才會進行重置<br/>
         例如 <br/>
         O O O O O X O (連續NG數:0 模糊連續NG數:1)<br/>
         X X O O O O X (連續NG數:1 模糊連續NG數:3)<br/>

@@ -11,7 +11,7 @@ const ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin'
 const isDevelopment = process.env.NODE_ENV !== 'production'
 var PluginSets = [];
 var opt_minimizer = [];
-let en_ReactFastRefresh=false && isDevelopment;
+let en_ReactFastRefresh=false; // dev uses Vite now (npm run dev); webpack is for prod builds only
 if(process.env.NODE_ENV === "production")
 {
   PluginSets.push(new webpack.optimize.OccurrenceOrderPlugin());

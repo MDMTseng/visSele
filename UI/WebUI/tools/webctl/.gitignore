@@ -1,0 +1,7 @@
+node_modules/
+.userdata/
+legacy-golden-build/
+*.log
+*.png
+baseline/*.png
+shot-*.png

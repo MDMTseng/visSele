@@ -36,7 +36,7 @@ const AntButtonGroup = AntButton.Group;
 
 
 // import { button as AntButton } from 'antd/lib/button';
-// import {Button as AntButton} from 'antd/lib/Button';
+// import {Button as AntButton} from 'antd/lib/button';
 
 let log = logX.getLogger("baseComponent");
 

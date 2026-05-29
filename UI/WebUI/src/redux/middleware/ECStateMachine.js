@@ -1,5 +1,5 @@
 
-import {BPG_WS_EVENT,UI_SM_EVENT} from '../actions/UIAct';
+import {UI_SM_EVENT} from '../actions/UIAct';
 
 import { Machine } from 'xstate';
 
