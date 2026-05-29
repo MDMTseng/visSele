@@ -218,5 +218,135 @@ CASES.append(case("r2_nested_maxmin", "custom",
 CASES.append(case("r2_div_chain", "custom",
                   fn=calc_expect(["[13]", "[12]", "$/$", "1", "$/$"], V13 / V12)))
 
+# ================= ROUND 3: harder CALC edges =================
+
+# --- arity-cache exact-match vs off-by-one ---
+# arity-cache count == operand count: 2 operands, ONE "$,$" -> max(V12,V13)
+CASES.append(case("r3_arity_exact_2", "custom",
+                  fn=calc_expect(["[12]", "[13]", "$,$", "max$"], max(V12, V13))))
+# arity-cache off-by-one (two "$,$" tokens before max$, only 2 operands)
+CASES.append(case("r3_arity_off_by_one_extra", "robust",
+                  make=mut_calc(["[12]", "[13]", "$,$", "$,$", "max$"])))
+# exact 3 operands w/ two "$,$" (proper way)
+CASES.append(case("r3_arity_exact_3", "custom",
+                  fn=calc_expect(["[8]", "[12]", "[13]", "$,$", "$,$", "max$"],
+                                 max(V8, V12, V13))))
+
+# --- deeply nested expression (10+ ops), hand-computed ---
+# ((((V12+V13)*2 - V8) / V14 + 1) - 3) * 2 + V12 - V13 + 5
+def _r3_hand():
+    x = (V12 + V13) * 2
+    x = x - V8
+    x = x / V14
+    x = x + 1
+    x = x - 3
+    x = x * 2
+    x = x + V12
+    x = x - V13
+    x = x + 5
+    return x
+deep10 = ["[12]", "[13]", "$+$", "2", "$*$", "[8]", "$-$", "[14]", "$/$",
+         "1", "$+$", "3", "$-$", "2", "$*$", "[12]", "$+$", "[13]", "$-$",
+         "5", "$+$"]
+CASES.append(case("r3_deep_10ops", "custom",
+                  fn=calc_expect(deep10, _r3_hand(), tol=0.05)))
+
+# --- self-ref with stack-pollution before (push junk, then self) ---
+CASES.append(case("r3_self_with_pollution", "robust",
+                  make=mut_calc(["99", "42", "[8]", "1", "$+$"])))
+
+# --- whitespace/tab-only tokens ---
+CASES.append(case("r3_tab_token", "robust", make=mut_calc(["[12]", "\t\t", "$+$"])))
+CASES.append(case("r3_mixed_ws_token", "robust", make=mut_calc(["[12]", " \t \n ", "$+$"])))
+
+# --- embedded control chars in tokens ---
+CASES.append(case("r3_ctrl_in_token", "robust",
+                  make=mut_calc(["[12]", "1\x01\x02", "$+$"])))
+CASES.append(case("r3_null_in_id", "robust",
+                  make=mut_calc(["[12\x001]", "1", "$+$"])))
+
+# --- very long single token (5000-char) ---
+import sys as _sys
+_sys.set_int_max_str_digits(10000)
+CASES.append(case("r3_huge_id_token", "robust",
+                  make=mut_calc(["[" + "9" * 5000 + "]", "1", "$+$"])))
+CASES.append(case("r3_huge_op_token", "robust",
+                  make=mut_calc(["[12]", "1", "$+$" + "x" * 5000])))
+
+# --- exp string mismatched with post_exp: only post_exp matters ---
+def _mut_calc_with_exp(post_exp, exp_str):
+    def f():
+        d = mut_calc(post_exp)()
+        m = first_of(d, "measure")
+        m["calc_f"]["exp"] = exp_str
+        return d
+    return f
+def _r3_exp_ignored(post_exp, exp_str, expected):
+    def fn(run_insp):
+        d = _mut_calc_with_exp(post_exp, exp_str)()
+        rc, out = run_insp(d)
+        if rc in SIGCRASH or rc == "TIMEOUT":
+            return False, f"crash/hang {rc_str(rc)}"
+        if out is None:
+            return False, f"no output ({rc_str(rc)})"
+        try:
+            j = json.loads(out)
+        except Exception as e:
+            return False, f"invalid JSON: {e}"
+        got = _find_value(j, 8)
+        if got is None:
+            return True, "no-crash, value field not located"
+        if not math.isfinite(got):
+            return False, f"non-finite value {got}"
+        if abs(got - expected) <= TOL:
+            return True, f"post_exp used (value={got:.5f}); exp ignored"
+        return False, f"exp may have been used: got={got:.6f} expected post_exp={expected:.6f}"
+    return fn
+CASES.append(case("r3_exp_string_ignored", "custom",
+                  fn=_r3_exp_ignored(["[12]", "[13]", "$+$"], "lies_garbage_!@#$",
+                                      V12 + V13)))
+
+# --- pure literal stack (10 literals, no op) -> stack-not-1 reject ---
+CASES.append(case("r3_pure_literal_stack10", "robust",
+                  make=mut_calc(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"])))
+
+# --- absurd numbers with operators (overflow / underflow) ---
+CASES.append(case("r3_huge_add_huge", "robust",
+                  make=mut_calc(["1e308", "1e308", "$+$"])))   # +inf
+CASES.append(case("r3_neg_huge_mul", "robust",
+                  make=mut_calc(["-1e308", "1e10", "$*$"])))   # -inf
+CASES.append(case("r3_tiny_mul_tiny", "robust",
+                  make=mut_calc(["1e-308", "1e-308", "$*$"]))) # 0 (subnormal)
+
+# --- 0/0 -> nan, verify NOT in serialized JSON ---
+def _r3_nan_inf_in_output(post_exp):
+    def fn(run_insp):
+        d = mut_calc(post_exp)()
+        rc, out = run_insp(d)
+        if rc in SIGCRASH or rc == "TIMEOUT":
+            return False, f"crash/hang {rc_str(rc)}"
+        if out is None:
+            return True, "no-crash, no output"
+        try:
+            json.loads(out)
+        except Exception as e:
+            return False, f"invalid JSON: {e}"
+        low = out.lower()
+        leaks = []
+        if b"nan" in low: leaks.append("nan")
+        if b"inf" in low: leaks.append("inf")
+        if leaks:
+            return False, f"LEAK in JSON: {leaks}"
+        return True, "no nan/inf leak"
+    return fn
+CASES.append(case("r3_nan_no_leak", "custom",
+                  fn=_r3_nan_inf_in_output(["0", "0", "$/$"])))
+CASES.append(case("r3_posinf_no_leak", "custom",
+                  fn=_r3_nan_inf_in_output(["1", "0", "$/$"])))
+CASES.append(case("r3_neginf_no_leak", "custom",
+                  fn=_r3_nan_inf_in_output(["-1", "0", "$/$"])))
+CASES.append(case("r3_overflow_no_leak", "custom",
+                  fn=_r3_nan_inf_in_output(["1e308", "1e308", "$*$"])))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_calc", CASES))

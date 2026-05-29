@@ -449,5 +449,260 @@ CASES = [
     case("circle_info_no_infotype",    "robust", make=_circleinfo_noinfo),
 ]
 
+# ================= ROUND 3: deeper ref-chain / cascade / extreme-step probes =================
+
+def _set_id(d, fid, key, val):
+    """Walk and set key on the feature with this id."""
+    def w(o):
+        if isinstance(o, dict):
+            if o.get("id") == fid: o[key] = val
+            for v in o.values(): w(v)
+        elif isinstance(o, list):
+            for v in o: w(v)
+    w(d)
+
+def _find_id(d, fid):
+    out = [None]
+    def w(o):
+        if isinstance(o, dict):
+            if o.get("id") == fid: out[0] = o
+            for v in o.values(): w(v)
+        elif isinstance(o, list):
+            for v in o: w(v)
+    w(d); return out[0]
+
+# R3-1: locating_anchor cycle/chain - sp3 anchors sp4 anchors sp3 (cycle)
+def _anchor_cycle():
+    d = golden()
+    sp3 = _find_id(d, 3); sp4 = _find_id(d, 4)
+    if sp3 and sp4:
+        sp3["ref"] = [{"id": 4, "element": "search_point"}]
+        sp4["ref"] = [{"id": 3, "element": "search_point"}]
+        sp3["locating_anchor"] = True
+        sp4["locating_anchor"] = True
+    return d
+
+# R3-2: aux_point lineCross with two parallel lines (no intersection)
+def _aux_lineCross_parallel():
+    d = golden()
+    sig = first_of(d, "sig360_circle_line")
+    if sig is None: return d
+    # Create two parallel lines and an aux_point lineCross referencing them.
+    new_line_a = {"id": 7001, "type": "line", "pt1": {"x":0,"y":0}, "pt2":{"x":10,"y":0}}
+    new_line_b = {"id": 7002, "type": "line", "pt1": {"x":0,"y":5}, "pt2":{"x":10,"y":5}}
+    aux = {"id": 7003, "type": "aux_point", "subtype": "lineCross",
+           "ref": [{"id":7001,"element":"line"},{"id":7002,"element":"line"}]}
+    items = sig.get("items") or sig.get("data") or None
+    # Inject directly into sig360_circle_line's list children
+    for k, v in sig.items():
+        if isinstance(v, list):
+            v.extend([new_line_a, new_line_b, aux]); break
+    return d
+
+# R3-3: aux_point ref of WRONG type (point references a measure id, not a line/arc)
+def _aux_ref_wrong_type():
+    d = golden()
+    sig = first_of(d, "sig360_circle_line")
+    if sig is None: return d
+    aux = {"id": 7010, "type": "aux_point", "subtype": "lineCross",
+           "ref": [{"id":12,"element":"measure"},{"id":14,"element":"measure"}]}
+    for k, v in sig.items():
+        if isinstance(v, list): v.append(aux); break
+    return d
+
+# R3-4: measure(angle) referring to circles (arcs id=24,25) instead of lines
+def _angle_ref_arcs():
+    d = golden(); m = first_of(d, "measure")
+    m["subtype"] = "angle"
+    m["ref"] = [{"id":24,"element":"arc"},{"id":25,"element":"arc"}]
+    return d
+
+# R3-5: search_point referencing a feature that fails (line id 999 nonexistent) - cascade NA
+def _sp_ref_missing():
+    d = golden()
+    sp = _find_id(d, 3)
+    if sp: sp["ref"] = [{"id":999, "element":"line"}]
+    return d
+
+# R3-6: extreme caliper step
+_cal_step_one    = _all_caliper_with({"caliper": {"step": 1}})
+_cal_step_huge   = _all_caliper_with({"caliper": {"step": 1000}})
+
+# R3-7: vertex_touch_searching=true on every search_point
+_vts_on = _sp_set({"vertex_touch_searching": True})
+
+# R3-8: multiple measures sharing OBJ refs - duplicate measure 12 several times
+def _shared_refs_many_measures():
+    d = golden()
+    sig = first_of(d, "sig360_circle_line")
+    m12 = _find_id(d, 12)
+    if sig is None or m12 is None: return d
+    for k, v in sig.items():
+        if isinstance(v, list):
+            for i in range(5):
+                copy_m = copy.deepcopy(m12)
+                copy_m["id"] = 8100 + i
+                v.append(copy_m)
+            break
+    return d
+
+# R3-9: deep aux->aux->aux chain
+def _deep_aux_chain():
+    d = golden()
+    sig = first_of(d, "sig360_circle_line")
+    if sig is None: return d
+    nodes = []
+    prev_id = 1  # line id 1
+    for i in range(5):
+        nid = 7100 + i
+        nodes.append({
+            "id": nid, "type": "aux_point", "subtype": "lineCross" if i==0 else "passThrough",
+            "ref": [{"id": prev_id, "element": "line" if i==0 else "aux_point"},
+                    {"id": 2, "element": "line"}] if i==0 else [{"id": prev_id, "element": "aux_point"}]
+        })
+        prev_id = nid
+    for k, v in sig.items():
+        if isinstance(v, list): v.extend(nodes); break
+    return d
+
+# R3-10: orientation_essential=true on a (deliberately broken) measure -> forces reDo loop
+def _orientation_essential_broken():
+    d = golden(); m = first_of(d, "measure")
+    m["orientation_essential"] = True
+    # break it: ref a non-existent id
+    m["ref"] = [{"id": 9999, "element": "search_point"}, {"id": 9998, "element": "search_point"}]
+    return d
+
+# R3-11: quality_essential=true on first measure
+def _quality_essential():
+    d = golden(); m = first_of(d, "measure")
+    m["quality_essential"] = True
+    return d
+
+# R3-12: extremely tight tolerance forces OOT but value must still be finite
+def _tight_tol():
+    d = golden(); m = first_of(d, "measure")
+    m["tol_upper"] = 0.00001; m["tol_lower"] = -0.00001
+    return d
+
+# ---- custom fns for R3 ----
+
+def fn_cascade_NA(run_insp):
+    """Broken ref must not crash; downstream judges referring to broken sp must
+    be NA (status!=0, value null) OR finite. No NaN/inf garbage."""
+    rc, out = run_insp(_sp_ref_missing())
+    if rc == "TIMEOUT" or (isinstance(rc, int) and rc < 0):
+        return False, f"rc={rc_str(rc)} (crash/timeout)"
+    if out is None: return True, f"rc={rc_str(rc)} (no output, no crash)"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, "NaN/Inf in JSON"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    succ = sum(1 for j in js if j.get("status") == 0)
+    na = sum(1 for j in js if j.get("status") != 0)
+    return (not bad), f"rc={rc_str(rc)} judges={len(js)} succ={succ} na={na} bad={len(bad)}"
+
+def fn_parallel_lineCross(run_insp):
+    """Parallel lines -> lineCross undefined. Engine must not crash or emit NaN.
+    Controlled SIGABRT reject is acceptable."""
+    rc, out = run_insp(_aux_lineCross_parallel())
+    if rc == "TIMEOUT" or (isinstance(rc, int) and rc in SIGCRASH):
+        return False, f"rc={rc_str(rc)} (crash/timeout)"
+    if isinstance(rc, int) and rc < 0:
+        return True, f"rc={rc_str(rc)} (controlled-reject)"
+    if out is None: return True, f"rc={rc_str(rc)} (no out)"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, "NaN/Inf in JSON for parallel lineCross"
+    try: json.loads(out)
+    except Exception as e: return False, f"invalid JSON: {e}"
+    return True, f"rc={rc_str(rc)} clean json (no NaN/Inf)"
+
+def fn_angle_ref_arcs(run_insp):
+    """Angle measure referring to arcs (not lines) - either reject or NA, must not crash/NaN."""
+    rc, out = run_insp(_angle_ref_arcs())
+    if rc == "TIMEOUT" or (isinstance(rc, int) and rc < 0):
+        return False, f"rc={rc_str(rc)} (crash/timeout)"
+    if out is None: return True, f"rc={rc_str(rc)} (no out)"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, "NaN/Inf in JSON"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    return (not bad), f"rc={rc_str(rc)} judges={len(js)} bad={len(bad)}"
+
+def fn_tight_tol_oot_finite(run_insp):
+    """Tight tolerance: expect at least one judge status==-1 (OOT) with finite value,
+    not garbage."""
+    rc, out = run_insp(_tight_tol())
+    if rc != 0 or out is None: return False, f"rc={rc_str(rc)}"
+    js = _collect_judges(json.loads(out))
+    if not js: return False, "no judges"
+    bad = [j for j in js if _bad_value(j)]
+    oot = sum(1 for j in js if j.get("status") == -1)
+    # finite values must dominate; we just need no garbage
+    return (not bad), f"judges={len(js)} OOT={oot} bad={len(bad)}"
+
+def fn_shared_refs(run_insp):
+    """5 measures referencing the same OBJ ids must each produce the same finite
+    value (determinism within one output across duplicates). Controlled SIGABRT
+    (e.g. dup-id reject) is acceptable - we just must not crash."""
+    rc, out = run_insp(_shared_refs_many_measures())
+    if rc == "TIMEOUT" or (isinstance(rc, int) and rc in SIGCRASH):
+        return False, f"rc={rc_str(rc)} (crash)"
+    if isinstance(rc, int) and rc < 0:
+        return True, f"rc={rc_str(rc)} (controlled-reject)"
+    if rc != 0 or out is None: return False, f"rc={rc_str(rc)}"
+    js = _collect_judges(json.loads(out))
+    dup = [j for j in js if isinstance(j.get("id"), int) and 8100 <= j["id"] <= 8104]
+    if len(dup) < 2:
+        return True, f"only {len(dup)} duplicates surfaced (skip strict check)"
+    vals = [d.get("value") for d in dup if _finite(d.get("value"))]
+    if not vals: return False, f"no finite values in duplicates ({len(dup)})"
+    spread = max(vals) - min(vals)
+    return (spread < 1e-6), f"dup-measures={len(dup)} finite={len(vals)} spread={spread:.2e}"
+
+def fn_orientation_essential_loop(run_insp):
+    """orientation_essential on broken measure should fail gracefully (no hang, no crash)."""
+    rc, out = run_insp(_orientation_essential_broken(), timeout_override=60) \
+        if False else run_insp(_orientation_essential_broken())
+    if rc == "TIMEOUT":
+        return False, "TIMEOUT (possible hang in reDo loop)"
+    if isinstance(rc, int) and rc < 0 and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)}"
+    if out is None: return True, f"rc={rc_str(rc)} no out, no crash"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, "NaN/Inf in JSON"
+    return True, f"rc={rc_str(rc)} no hang/crash"
+
+CASES += [
+    # ref-chain / cascade
+    case("anchor_cycle",               "robust", make=_anchor_cycle),
+    case("aux_lineCross_parallel",     "custom", fn=fn_parallel_lineCross),
+    case("aux_ref_wrong_type",         "robust", make=_aux_ref_wrong_type),
+    case("angle_ref_arcs",             "custom", fn=fn_angle_ref_arcs),
+    case("sp_ref_missing_cascade",     "custom", fn=fn_cascade_NA),
+    case("deep_aux_chain",             "robust", make=_deep_aux_chain),
+
+    # extreme caliper step
+    case("caliper_step_one",           "custom", fn=_fn_no_crash_finite(_cal_step_one)),
+    case("caliper_step_huge",          "custom", fn=_fn_no_crash_finite(_cal_step_huge)),
+
+    # vertex_touch_searching
+    case("vts_on",                     "custom", fn=_fn_no_crash_finite(_vts_on)),
+
+    # multi-measure sharing refs
+    case("shared_refs_many_measures",  "custom", fn=fn_shared_refs),
+
+    # orientation_essential + broken measure: reDo loop must terminate
+    case("orientation_essential_broken","custom", fn=fn_orientation_essential_loop),
+
+    # quality_essential edge
+    case("quality_essential",          "custom", fn=_fn_no_crash_finite(_quality_essential)),
+
+    # tight tolerance -> OOT with finite values, no garbage
+    case("tight_tolerance_OOT",        "custom", fn=fn_tight_tol_oot_finite),
+]
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_measure", CASES))

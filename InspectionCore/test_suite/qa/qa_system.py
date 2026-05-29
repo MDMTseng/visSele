@@ -338,5 +338,152 @@ def fn_unicode_img(run):
     return ok, f"rc={rc_str(rc)} (unicode image name)"
 CASES.append(case("unicode_img_rc0", "custom", fn=fn_unicode_img))
 
+# ==========================================================================
+# ROUND 3 — boundary sizes, formats, CLI argv, same-path race, deep def
+# ==========================================================================
+
+if _PIL:
+    from PIL import Image as _PILImage
+    # min-size boundary: 31 should be rejected (exit3), 32 should succeed-or-
+    # cleanly-fail; both must be memory-safe.
+    _BND_31 = _save_png("bnd_31x31.png", _PILImage.new("L", (31, 31), 128))
+    _BND_32 = _save_png("bnd_32x32.png", _PILImage.new("L", (32, 32), 128))
+    _BND_33 = _save_png("bnd_33x33.png", _PILImage.new("L", (33, 33), 128))
+    _NSQ_TALL  = _save_png("nsq_32x1000.png", _PILImage.new("L", (32, 1000), 128))
+    _NSQ_WIDE  = _save_png("nsq_1000x32.png", _PILImage.new("L", (1000, 32), 128))
+    _NSQ_MIXED = _save_png("nsq_32x31.png",   _PILImage.new("L", (32, 31), 128))  # one dim below min
+    # PNG with Adam7 interlacing
+    _INTERLACE_PATH = f"{TMP}/sys_interlaced.png"
+    _PILImage.new("L", (256, 256), 100).save(_INTERLACE_PATH, "PNG", interlace=True)
+    # JPEG (different format)
+    _JPEG_PATH = f"{TMP}/sys_real.jpg"
+    _PILImage.new("L", (256, 256), 100).save(_JPEG_PATH, "JPEG")
+    # BMP saved with .png extension (extension-vs-magic mismatch)
+    _BMP_AS_PNG = f"{TMP}/sys_bmp_as.png"
+    _PILImage.new("L", (256, 256), 100).save(_BMP_AS_PNG, "BMP")
+    # PNG with a weird gamma/ICC profile chunk (use a tagged sRGB ICC)
+    _WEIRD_DPI = f"{TMP}/sys_weird_dpi.png"
+    _PILImage.new("L", (256, 256), 100).save(_WEIRD_DPI, "PNG", dpi=(999999, 1))
+    # very large image — 8192x8192 grayscale ~ 64MB, safer than 16384²
+    _BIG_IMG = _save_png("big_8192.png", _PILImage.new("L", (8192, 8192), 80))
+
+    # boundary: 31x31 must be rejected (engine min is 32)
+    CASES.append(case("img_boundary_31x31_rc3", "expect_rc", rc=3, img=_BND_31))
+    # boundary: 32x32 -- must not crash (may exit0 or controlled reject)
+    CASES.append(case("img_boundary_32x32_robust", "robust", img=_BND_32))
+    # boundary: 33x33 -- just above min, must not crash
+    CASES.append(case("img_boundary_33x33_robust", "robust", img=_BND_33))
+    # non-square: tall / wide -- must not crash
+    CASES.append(case("img_nonsquare_tall_robust", "robust", img=_NSQ_TALL))
+    CASES.append(case("img_nonsquare_wide_robust", "robust", img=_NSQ_WIDE))
+    # one dim under min -> exit3 (boundary check is per-dim)
+    CASES.append(case("img_one_dim_under_min_rc3", "expect_rc", rc=3, img=_NSQ_MIXED))
+    # interlaced PNG must load / process without crash
+    CASES.append(case("img_interlaced_png_robust", "robust", img=_INTERLACE_PATH))
+    # JPEG: loader may or may not support; must not crash either way
+    CASES.append(case("img_jpeg_robust", "robust", img=_JPEG_PATH))
+    # BMP-with-.png-extension: format detection by content vs extension; no crash
+    CASES.append(case("img_bmp_as_png_robust", "robust", img=_BMP_AS_PNG))
+    # weird DPI metadata: must not affect run; no crash
+    CASES.append(case("img_weird_dpi_robust", "robust", img=_WEIRD_DPI))
+    # large image: time / memory stress, must finish & not crash
+    def fn_big_img(run):
+        import time as _t
+        t0 = _t.time()
+        rc, _ = run(GDEF, out_path=f"{TMP}/sys_big.json", img=_BIG_IMG)
+        dt = _t.time() - t0
+        ok = (rc != "TIMEOUT") and (rc not in SIGCRASH)
+        return ok, f"rc={rc_str(rc)} {dt:.1f}s (8192x8192, no crash)"
+    CASES.append(case("img_big_8192_no_crash", "custom", fn=fn_big_img))
+
+# ---- same-out-path race (4 workers, identical out path) -----------------
+def fn_concurrent_same_out(run):
+    N = 4
+    out = f"{TMP}/sys_race_same.json"
+    results = {}
+    def worker(i):
+        results[i] = run(GDEF, out_path=out)
+    ts = [threading.Thread(target=worker, args=(i,)) for i in range(N)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    # Each worker last-reads the (possibly mid-write) file; we accept any rc==0,
+    # require no crash / no timeout / final file is valid JSON.
+    safe = all(r[0] == 0 and r[0] not in SIGCRASH for r in results.values())
+    final_ok = False
+    if os.path.exists(out):
+        try: json.loads(open(out, "rb").read()); final_ok = True
+        except Exception: final_ok = False
+    return (safe and final_ok), f"{N}x same-path all-rc0={safe} final-validJSON={final_ok}"
+CASES.append(case("concurrent_same_out_race", "custom", fn=fn_concurrent_same_out))
+
+# ---- CLI argv: extra unknown args before --insp ------------------------
+def _run_argv(extra_args_before=None, extra_args_after=None, timeout=120):
+    """Run visSele with custom argv around the --insp triplet, return rc."""
+    out = f"{TMP}/sys_argv_out.json"
+    if os.path.exists(out): os.remove(out)
+    argv = [VIS]
+    if extra_args_before: argv += extra_args_before
+    argv += ["--insp", IMG, GDEF, out]
+    if extra_args_after: argv += extra_args_after
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    try:
+        r = subprocess.run(argv, cwd=CORE, env=env, capture_output=True, timeout=timeout)
+        return r.returncode, (open(out, "rb").read() if os.path.exists(out) else None)
+    except subprocess.TimeoutExpired:
+        return ("TIMEOUT", None)
+
+def fn_extra_args_before(_run):
+    # unknown junk args before --insp -- the --insp scanner just skips them
+    rc, out = _run_argv(extra_args_before=["unknown_garbage", "anotherjunk"])
+    ok = (rc == 0) and out is not None
+    return ok, f"rc={rc_str(rc)} report_present={out is not None}"
+CASES.append(case("argv_extra_before_insp", "custom", fn=fn_extra_args_before))
+
+def fn_extra_args_after(_run):
+    # trailing junk after the --insp triplet (must still run successfully)
+    rc, out = _run_argv(extra_args_after=["trailing=garbage", "moreafter"])
+    ok = (rc == 0) and out is not None
+    return ok, f"rc={rc_str(rc)} report_present={out is not None}"
+CASES.append(case("argv_extra_after_insp", "custom", fn=fn_extra_args_after))
+
+def fn_very_long_argv(_run):
+    # ~200 extra tokens of varying length; must not crash, must still run
+    junk = [f"j{i}=x" * 3 for i in range(200)]
+    rc, out = _run_argv(extra_args_before=junk)
+    ok = (rc not in SIGCRASH) and (rc != "TIMEOUT") and (rc == 0) and out is not None
+    return ok, f"rc={rc_str(rc)} argv_len={200+5} report_present={out is not None}"
+CASES.append(case("argv_very_long", "custom", fn=fn_very_long_argv))
+
+# ---- deeply nested def (binary_processing_group wrap N levels deep) -----
+def mut_deeply_nested(depth=20):
+    """Wrap golden featureSet in N nested binary_processing_groups."""
+    def f():
+        d = golden()
+        inner = d.get("featureSet")
+        if inner is None: return d
+        cur = inner
+        for _ in range(depth):
+            cur = [{"type": "binary_processing_group", "featureSet": cur}]
+        d["featureSet"] = cur
+        return d
+    return f
+CASES.append(case("def_deeply_nested_20_robust", "robust", make=mut_deeply_nested(20)))
+CASES.append(case("def_deeply_nested_50_robust", "robust", make=mut_deeply_nested(50)))
+
+# ---- def with featureSet referencing a nonexistent included path -------
+def mut_nonexistent_include():
+    def f():
+        d = golden()
+        # mimic an "include" / nested file ref. Many schemas accept a string at
+        # the featureSet slot but we just inject a path-like value alongside.
+        d["featureSet"].append({
+            "type": "binary_processing_group",
+            "include": "/nonexistent/path/to/feature.hydef",
+            "featureSet": [],
+        })
+        return d
+    return f
+CASES.append(case("def_nonexistent_include_robust", "robust", make=mut_nonexistent_include()))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_system", CASES))

@@ -246,6 +246,104 @@ RAW_NAN_LITERALS = ('{"type":"binary_processing_group","featureSet":'
                     '[{"type":"line","id":1,"pt1":{"x":NaN,"y":Infinity},'
                     '"pt2":{"x":-Infinity,"y":0}}]}]}')
 
+# ===== ROUND 3: parser-edge cases not previously hit =====
+
+def mk_searchpoint_anchor_no_pair():
+    # search_point flagged as locating_anchor but anchorPair refs are absent
+    return mut_many("search_point", {
+        "locating_anchor": True,
+        # explicitly omit anchorPair / pair_id
+    })()
+
+def mk_searchpoint_anchor_dangling_pair():
+    # locating_anchor + anchorPair pointing to non-existent feature id
+    return mut_many("search_point", {
+        "locating_anchor": True,
+        "anchorPair": [{"id": 88888, "element": "search_point"}],
+        "pair_id": 88888,
+    })()
+
+def mk_searchpoint_anchor_circular():
+    # two search_points each declared anchor and referencing each other as pair
+    d = golden()
+    sps = all_of(d, "search_point")
+    if len(sps) >= 2:
+        a, b = sps[0], sps[1]
+        a["locating_anchor"] = True
+        b["locating_anchor"] = True
+        a["anchorPair"] = [{"id": b.get("id"), "element": "search_point"}]
+        b["anchorPair"] = [{"id": a.get("id"), "element": "search_point"}]
+        a["pair_id"] = b.get("id"); b["pair_id"] = a.get("id")
+    return d
+
+def mk_sign360_sigdata_is_string():
+    # signature.signature_data wrong shape: string instead of numeric array
+    d = golden(); s = first_of(d, "sign360")
+    if s is not None:
+        s["signature"] = {"signature_data": "this should be a number array"}
+    return d
+
+def mk_sign360_sigdata_mixed_types():
+    # signature_data array elements mixed: numbers, strings, nulls, nested objects
+    d = golden(); s = first_of(d, "sign360")
+    if s is not None:
+        s["signature"] = {"signature_data": [1.0, "x", None, {"k": 2}, [3, 4], True, float('nan') if False else 0]}
+    return d
+
+def mk_sig360_missing_features_key():
+    # top-level sig360_circle_line missing the required "features" key entirely
+    d = golden(); s = first_of(d, "sig360_circle_line")
+    if s is not None: s.pop("features", None)
+    return d
+
+def mk_sig360_features_wrong_type():
+    # sig360_circle_line.features is a number (not array, not object)
+    d = golden(); s = first_of(d, "sig360_circle_line")
+    if s is not None: s["features"] = 3.14159
+    return d
+
+def mk_deep_ref_chain():
+    # build a 6-deep ref chain a->b->c->d->e->f->a (cyclic, long)
+    d = golden()
+    feats = first_of(d, "sig360_circle_line")["features"]
+    auxes = [f for f in feats if isinstance(f, dict) and f.get("type") in ("aux_point", "aux_line", "measure")]
+    if len(auxes) >= 2:
+        ids = [a.get("id", i+100) for i, a in enumerate(auxes)]
+        # cyclic chain over whatever aux/measure features exist
+        for i, a in enumerate(auxes):
+            nxt = ids[(i + 1) % len(ids)]
+            a["ref"] = [{"id": nxt, "element": a.get("type", "aux_point")}]
+    return d
+
+def mk_control_chars_in_name():
+    # control bytes + embedded NUL in the feature "name" field
+    return mut_set("line", "name", "evil\x00\x01\x02\x07\x1bname\nwith\tcontrols")()
+
+def mk_huge_string_name():
+    # 2 MB string literal as a name field
+    return mut_set("line", "name", "A" * (2 * 1024 * 1024))()
+
+def mk_mixed_type_array():
+    # features array mixing dict feature + bare int + string + list
+    d = golden()
+    feats = first_of(d, "sig360_circle_line")["features"]
+    feats.insert(1, 42)
+    feats.insert(2, "just-a-string")
+    feats.insert(3, [1, 2, 3])
+    feats.insert(4, None)
+    return d
+
+# top-level a JSON array: parser uses reports[0]. style access; what happens
+# if the def itself is an array at root?
+RAW_ARRAY_OF_DEFS = json.dumps([golden(), golden()])
+
+# duplicate "id" keys inside same feature (JSON allows; last-wins per RFC)
+RAW_DUP_FEATURE_KEYS = ('{"type":"binary_processing_group","featureSet":'
+                       '[{"type":"sig360_circle_line","features":'
+                       '[{"type":"line","id":1,"id":2,"id":3,'
+                        '"pt1":{"x":0,"y":0,"x":99,"x":7},'
+                        '"pt2":{"x":1,"y":1}}]}]}')
+
 CASES = [
     # A. malformed JSON bytes
     case("raw_truncated_json",      "robust", raw=RAW_TRUNCATED),
@@ -309,6 +407,36 @@ CASES = [
     # L. determinism on an accepted-but-corrupt def (degenerate sign360 -> exit0);
     #    must stay stable across runs despite the degenerate geometry.
     case("det_degenerate_sign360",  "determinism", make=mk_sign360_pt_negative_area),
+
+    # ===== ROUND 3: parser-edge cases not previously hit =====
+    # M. locating_anchor (search_point anchor) misuse
+    case("anchor_no_pair",          "robust", make=mk_searchpoint_anchor_no_pair),
+    case("anchor_dangling_pair",    "robust", make=mk_searchpoint_anchor_dangling_pair),
+    case("anchor_circular_pair",    "robust", make=mk_searchpoint_anchor_circular),
+
+    # N. sign360 signature.signature_data wrong shape / mixed
+    case("sign360_sigdata_string",  "robust", make=mk_sign360_sigdata_is_string),
+    case("sign360_sigdata_mixed",   "robust", make=mk_sign360_sigdata_mixed_types),
+
+    # O. sig360_circle_line top-level required keys missing / wrong-typed
+    case("sig360_missing_features", "robust", make=mk_sig360_missing_features_key),
+    case("sig360_features_scalar",  "robust", make=mk_sig360_features_wrong_type),
+
+    # P. long cyclic ref chains
+    case("deep_ref_chain_cyclic",   "robust", make=mk_deep_ref_chain),
+
+    # Q. control chars / NUL / huge string literal in name
+    case("name_control_chars_nul",  "robust", make=mk_control_chars_in_name),
+    case("name_huge_string_2MB",    "robust", make=mk_huge_string_name),
+
+    # R. heterogeneous element types in features[] (dict + int + str + list + null)
+    case("features_mixed_types",    "robust", make=mk_mixed_type_array),
+
+    # S. raw: top-level JSON array (def parser uses reports[0]. style accessors)
+    case("raw_top_level_array_of_defs", "robust", raw=RAW_ARRAY_OF_DEFS),
+
+    # T. raw: duplicate keys inside same feature object (JSON last-wins)
+    case("raw_dup_feature_keys",    "robust", raw=RAW_DUP_FEATURE_KEYS),
 ]
 
 if __name__ == "__main__":
