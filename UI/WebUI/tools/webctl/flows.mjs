@@ -46,18 +46,28 @@ async function reset() {
     await sleep(150);
     if ((await ev('typeof window.__GP_STORE__')) === 'object') break;
   }
-  // load def + paired image via the real core LD flow
-  await ev(
-    `window.__GP_LOAD_BY_PATH__(${JSON.stringify(MODEL_PATH)}).then(()=>{window.__rdy=1}).catch(e=>{window.__rdyErr=String(e)}); 'sent'`
-  );
-  for (let i = 0; i < 80; i++) {
-    await sleep(100);
-    const st = await ev(
-      `(function(){var o=window.__GP_STORE__.getState().UIData.edit_info._obj;return {rdy:!!window.__rdy,err:window.__rdyErr||null,n:(o&&o.shapeList.length)||0};})()`
+  // load def + paired image via the real core LD flow. The core WS can transiently
+  // drop (auto-reconnects), so retry the load a few times rather than fail spuriously.
+  let loaded = false;
+  for (let attempt = 0; attempt < 4 && !loaded; attempt++) {
+    await ev(
+      `window.__rdy=false;window.__rdyErr=null;window.__GP_LOAD_BY_PATH__(${JSON.stringify(MODEL_PATH)}).then(()=>{window.__rdy=1}).catch(e=>{window.__rdyErr=String(e)}); 'sent'`
     );
-    if (st.err) throw new Error('core LD failed: ' + st.err);
-    if (st.rdy && st.n > 0) break;
+    let err = null;
+    for (let i = 0; i < 80; i++) {
+      await sleep(100);
+      const st = await ev(
+        `(function(){var o=window.__GP_STORE__.getState().UIData.edit_info._obj;return {rdy:!!window.__rdy,err:window.__rdyErr||null,n:(o&&o.shapeList.length)||0};})()`
+      );
+      if (st.err) { err = st.err; break; }
+      if (st.rdy && st.n > 0) { loaded = true; break; }
+    }
+    if (!loaded) {
+      console.warn(`  (load attempt ${attempt + 1} failed${err ? ': ' + err : ' (timeout)'}; core reconnecting, retrying)`);
+      await sleep(3000); // give the UI's reconnect loop time
+    }
   }
+  if (!loaded) throw new Error('def did not load after retries (core on :4090 reachable?)');
   await ev(`window.__GP_STORE__.dispatch({type:'Edit_Mode'}); 'edit'`);
   await sleep(500);
 }
@@ -80,6 +90,23 @@ async function editSelectedUSL(value) {
   await sleep(500);
 }
 
+// add a brand-new line via the real Shape_Set path (id undefined -> push). Exercises
+// the immutable array-add + shape-list re-render.
+async function addLine() {
+  await ev(
+    `(function(){window.__GP_STORE__.dispatch({type:'DefConf_Lock_Level_Update',data:0});window.__GP_STORE__.dispatch({type:'Shape_Set',data:{shape:{type:'line',pt1:{x:100,y:100},pt2:{x:300,y:300}},id:undefined}});return 'added';})()`
+  );
+  await sleep(500);
+}
+
+// leave edit mode and enter Analysis mode (reads _obj.shapeList; not covered by other flows)
+async function gotoAnalysis() {
+  await ev(
+    `(function(){window.__GP_STORE__.dispatch({type:'EXIT'});window.__GP_STORE__.dispatch({type:'Analysis_Mode'});return 'ana';})()`
+  );
+  await sleep(800);
+}
+
 const SNAP = `(function(){
   var s=window.__GP_STORE__.getState().UIData, o=s.edit_info._obj, et=s.edit_info.edit_tar_info;
   return {
@@ -97,6 +124,8 @@ const FLOWS = {
   async load() { await reset(); return ev(SNAP); },
   async select() { await reset(); await selectFirstMeasure(); return ev(SNAP); },
   async edit() { await reset(); await selectFirstMeasure(); await editSelectedUSL(9.123); return ev(SNAP); },
+  async add() { await reset(); await addLine(); return ev(SNAP); },
+  async analysis() { await reset(); await gotoAnalysis(); return ev(SNAP); },
 };
 
 const names = only ? [only] : Object.keys(FLOWS);
