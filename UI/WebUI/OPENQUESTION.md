@@ -158,3 +158,24 @@ completeCtrlMarginInfo (479), Num2Str_padding, raw2obj_rawdata, if(false) blocks
 
 **Note:** the hardware `CameraCtrl` (BPG_Protocol.js:261) vs view `CameraCtrl`
 (canvas/CameraCtrl.ts) name collision is a footgun — consider renaming the hardware one.
+
+---
+
+## Round-2 hunt (4 agents, 2026-05-29) — net-new
+
+**BUGS (fix first — small, safe, golden/flows-verifiable):**
+1. [HIGH] `InspectionEditorLogic.js:339-342` rootDefInfoLoading doExit path does bare `return;` → caller (RepDisplayUI.js:146) gets undefined → TypeError blanks report on corrupt-def load. Fix: `return edit_info;`.
+2. [HIGH] `InspectionEditorLogic.js:409` `log.error(action)` — `action` undefined → ReferenceError aborts feature-load after a camera_calibration entry. Fix: delete/restore.
+3. [MED] `script.jsx` DB_WS.send `_insertFailed(x,...)` — `x` undefined → ReferenceError, promise hangs. Fix: pass `data`.
+4. [MED] Core BPG `reqWindow` (BPG_WS.js) has no timeout reaper AND is not purged on socket close → hung promises + leak when core drops mid-request (relevant during backend dev). Fix: reaper + reject-all on close (mirror websocket.js trackWindow).
+5. [LOW] `ShapeAdjustsWithInspectionResult` (:1073) inverted null-guard (latent).
+
+**Refactor candidates:**
+- Canvas subclasses: lift shared `drawImageLayer`/`mouseToWorld`/inspection `colorSet` to base (blit preamble already drifted: INSP `offsetX-0.5*scale` vs others `offsetX/scale-0.5`); dead `draw_INSP if(true) else`, `SetStreamImageSrc` no-op, `rotateVector`; per-mode file split after.
+- Dispatch boilerplate → `redux/dispatchHelpers.js`: `ACT_WS_SEND_BPG` ×9 (+useBpgSend), `ACT_WS_GET_OBJ` ×7 (+usePeripheralApi), CanvasComponent mapDispatch ×4 (editTarDispatchProps), EV_UI_ACT wrappers ×4.
+- InspectionUI ~300 dead lines: `class DB`(238), `SLID_InspMonitor`(210), `RestrictiveCircleREdit`(1621), `AngledCalibrationHelper`(1337,~225), `SLID_SP_UI`/`hideSLID`, dead `if(false)`(2306,~70); bug: `EV_UI_inspMode()` called(1951,2199) but not in mapDispatch → no-op.
+- `down_samp_level_update` handler copy-pasted ×4 (InspectionUI:933/RepDisplay:35/BackLightCalib:28/InstInsp:71), drifted (clamp 10 vs 15, stray *2, calib source) → `computeDownSampParams()`.
+- InstInspUI: teardown `_PGINFO_:{keep:true}` likely should be false (stream leak; same in BackLightCalib:252); broken `this.props.ACT_ERROR()` in a function component.
+- Extract pure `OK_NG_BOX_COLOR_TEXT`+result-status presentation (InspectionUI) → module.
+- `applyEditTarSubstate` 4 near-dup binding blocks → private `_bindCand()`.
+- Dead exports: `raw2obj_rawdata`, `Num2Str_padding`; dead `if(false)` UICtrlReducer:564-578.
