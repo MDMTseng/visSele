@@ -397,3 +397,17 @@ Don't fragment: render() switch, NEUTRAL_UI, ctrlLogic_DEFCONF, GenTarEditUI (co
 ### Priority signal (user)
 - Crash resilience = **HIGH** (round 7: zero error boundaries → any render throw white-screens the floor UI). Likely next execution target.
 - Canvas perf (round 7: per-frame dclone in draw_INSP:1153 + overlay/image redraw coupling).
+
+---
+
+## EXECUTED this session (2026-05-30, branch webui/editor-refactor)
+
+- ✅ **Wave 1** (433ec7ff): BPG HR fall-through break + onmessage try/catch; urlConcat typo; raw2Obj_IM bounds guards (note: do NOT trust BPG length field for IM — caught a self-inflicted regression that dropped valid frames); DefConfUI parseFloat NaN guards + palatte-grey typo; dead-code + whole-file orphan removal (xstate_visual, STATE_MACHINE_CORE, MaT.css, 2 imgs).
+- ✅ **Crash resilience** (ac430bad): RootErrorBoundary + global window error/unhandledrejection handlers.
+- ✅ **sha1 hard-block** (f993d60b): mismatch → refuse def + blocking modal (DefIntegrityGuard). Positive-tested via tampered-sha1 injection.
+- ✅ **Diagnostics ring buffer + Download button** (09f062d6): UTIL/diagLog.js console-wrap (2000-entry ring) + drawer button.
+- ✅ **IndexedDB failed-insert buffer** (09f062d6): UTIL/inspDBQueue.js, cap 1000 drop-oldest, wired into DB_WS._insertFailed.
+
+All verified: golden + 5 flows + typecheck green each commit.
+
+**Follow-ups noted:** IndexedDB queue has NO drain/retry-on-reconnect yet (records buffer but aren't replayed) — deliberate next step. Hot-path console.logs (UICtrlReducer:159, MAINUI render) now also hit the ring buffer every frame — should be gated/removed (round 8 item, now slightly more pressing for perf).
