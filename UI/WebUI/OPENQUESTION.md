@@ -350,3 +350,37 @@ Don't fragment: render() switch, NEUTRAL_UI, ctrlLogic_DEFCONF, GenTarEditUI (co
 - [S] Remove dead key `ReconnectAirDevice` (zh_TW.js:18, 0 refs).
 - [M, read-only] Hardcoded-string inventory pass (don't mass-extract — coupled JSX) to scope real i18n debt before any 2nd locale.
 - Don't build a full i18n framework for a single-locale factory UI. (Dup-looking keys value/importance/setup are different namespaces — fine.)
+
+---
+
+## Round 8 hunt (security · bundle · observability · whole-file orphans, 2026-05-30)
+
+**Security / injection surface (essentially CLEAN — proportionate to LAN/factory):**
+- No dangerouslySetInnerHTML / .innerHTML / document.write / eval / new Function / setTimeout(string) anywhere in src/. The one eval (MISC_Util.js:165) is commented dead. def-expr engine (expr.js / BPG_Protocol.js:226) is a whitelisted-funcSet postfix tokenizer, unknown tokens → parseFloat→NaN → NO code-exec path from def/core data. def-load (DefConfUI.js:1191) only ships a path to the C++ core. JSX of def fields is React-escaped. localStorage reads try/catch-guarded.
+- [S, LOW robustness] rootUrl regex crash: script.jsx:279-281 `(/[\/]+(.+)(\:|\?.+)/gm).exec(localUrl)` then reads matchRes[1] unconditionally → null on a port-less/query-less URL → TypeError → blank app. Null-check, fall back to location.hostname. Verify: load via bare http://host/.
+- [S, negligible] coreport localStorage → unsanitized ws:// URL (script.jsx:287-288); operator-set debug knob, no DOM/code sink. `/^\d+$/` guard if bothered.
+- [S, LOW — needs malicious core] inspection_monitor_url from core `_mus` → encodeURI → window.open + QR (MAINUI.js:446-460,851-854,221); encodeURI doesn't strip `javascript:`/`data:` schemes → window.open could execute. Reject non-http(s)/ws schemes before open. (urlConcat DB URL is same core-trust pattern but only a WS target — lower.)
+
+**Bundle / build output (prod vendor bundle = 20MB raw, main = 2.6MB; antd already tree-shaken via antd/lib/*; cytoscape/@antv/ajv already absent):**
+- [S/M, BIGGEST WIN, multi-MB] @ant-design/icons FULL set bundled: ~1322 Outlined+92 Filled+79 TwoTone refs vs ~30 icons actually used (script.jsx:49, MAINUI.js:84/131, DefConfUI.js:66). Tree-shake fails because preset-env defaults modules:'commonjs'. Fix: per-icon import from @ant-design/icons/lib/icons/XxxOutlined OR (better, global) set modules:false.
+- [S, global tree-shake] preset-env `modules:false` missing (webpack.config.js:90) — CJS transpile defeats webpack tree-shaking everywhere, not just icons. Smoke-test boot after.
+- [M] Dup transition-group libs CONFIRMED: react-transition-group/CSSTransitionGroup (script.jsx:19) + react-addons-css-transition-group (DefConfUI.js:6, InspectionUI.js:8, legacy 15.x shim) → consolidate (~150KB, API differs slightly).
+- [S, free hygiene] Remove confirmed-dead deps from package.json: @antv/data-set, @antv/g2 (38MB), cytoscape+cose-bilkent, ajv, text-encoding, localStorage — zero src imports, already shaken from bundle (no bundle impact, removes install/audit surface) + the orphan xstate_visual.js.
+- [S] Inert/risky babel `import` plugin block (package.json:6-15) only fires on `from 'antd'` barrel (none exist); style:true would inline all LESS → delete.
+- [S] No gzip output despite CompressionPlugin (webpack.config.js:27) — no .gz in dist/; if server doesn't serve precompressed, a 20MB→~4MB win is lost. Verify how the factory server/Electron serves assets.
+- [M, LOW prio] splitChunks coarse (single vendors~main) + output.filename no contenthash (webpack.config.js:51) — cache-busting; low value on locally-loaded touchscreen.
+
+**Observability (loglevel IS a dep but used inconsistently — 559 raw console.log vs ~12 files w/ getLogger; NO persistence/ring-buffer/export; levels hard-set INFO script.jsx:61-63):**
+- [M, VERY HIGH for remote-diagnosability] In-memory ring buffer + "Download Diagnostics" button: patch loglevel methodFactory at boot (script.jsx:61) to also push timestamped entries to a capped array; add a dump-to-file button. THE win for no-devtools touchscreen field debugging. Pairs w/ candidate below + round-7 boundaries.
+- [S] Global window.onerror + onunhandledrejection → ring buffer (none today; = round-7 #2). Captures vanishing crashes/rejections.
+- [S, HIGH data-loss blindness] DB-insert swallow InspectionUI.js:174 `.catch(err=>{})` empty → promote to log.error + visible indicator (= round-6 HIGH).
+- [S-M, HIGH connectivity is top remote failure] WS/BPG lifecycle logs are raw+noisy not diagnostic (BPG_WS.js:69/79 "CLOSE::/ERROR::" raw objs; websocket.js:541/546/730/674) — convert to structured log.warn/error w/ URL + reconnect-counter (websocket.js:178) + close-code (esp 1006).
+- [S, perf+noise] Hot-path log UICtrlReducer.js:159 `console.log(action.data)` fires per sig360_extractor report (live stream, large obj/frame); MAINUI.js:171/174 render logs → remove or gate behind DEBUG.
+- [S] Remotely-toggleable log level (URL param / localStorage at script.jsx:61) to flip a field unit to DEBUG without rebuild.
+- Note: inspection NG currently only surfaces as canvas color (EverCheckCanvasComponent.js:1199) + INSPECTION_STATUS.FAILURE — no readable textual trace; ring buffer + DB-error surfacing address this.
+
+**Whole-file orphans (distinct from in-file dead code; aliases accounted for, entry = script.jsx):**
+- [DEFINITE delete] src/UTIL/STATE_MACHINE_CORE.js (~144 LOC, 0 refs; only hits are commented xstate_visual lines); src/xstate_visual.js (~165 LOC, both importers commented script.jsx:21/MAINUI.js:12, the cytoscape consumer); style/MaT.css (1 byte empty); resource/image/DefConf.png (0 refs); resource/image/Ｃ_WLOGO.svg (0 refs; only Ｃ_LOGO.svg used script.jsx:1800). ~310 source LOC reclaimable.
+- [PROBABLE cruft, untracked] WebUI/ stray subdir (~4.6MB dup payload); 未命名檔案夾/ (~4.6MB dup); dist/ (~23MB committed build artifact, regenerable); src/.DS_Store. ~32MB disk.
+- [VERIFY-FIRST] resource/image/antd-compass.svg + antd-eye-invisible.svg (1 ref each, likely live icon overrides — keep); jsconfig.json redundant w/ authoritative tsconfig.json (both identical alias paths) — verify editor tooling before removing.
+- No transitive-orphan chains (both dead JS are leaves; structures.js/expr.js alive via MISC_Util re-export).
