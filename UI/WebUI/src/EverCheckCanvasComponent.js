@@ -22,6 +22,7 @@ import dclone from 'clone';
 
 import Color from 'color';
 import { ConsoleSqlOutlined } from '@ant-design/icons';
+import { CameraCtrl } from './canvas/CameraCtrl';
 
 export const MEASURE_RESULT_VISUAL_INFO = {
   [MEASURERSULTRESION.UNSET]: { COLOR: "rgba(128,128,128,0.7)", TEXT: MEASURERSULTRESION.UNSET },
@@ -46,99 +47,6 @@ export const SHAPE_TYPE_COLOR={
   default:"rgba(100,50,100)"
 }
 
-class CameraCtrl {
-  constructor(canvasDOM) {
-    this.matrix = new DOMMatrix();
-    this.tmpMatrix = new DOMMatrix();
-    this.identityMat = new DOMMatrix();
-    this.Scale(1);
-  }
-
-  Scale(scale, center = { x: 0, y: 0 }) {
-    let mat = new DOMMatrix();
-    mat.translateSelf(center.x, center.y);
-    mat.scaleSelf(scale, scale);
-    mat.translateSelf(-center.x, -center.y);
-
-    this.matrix.preMultiplySelf(mat);
-  }
-
-  Rotate_matrix(theta, center = { x: 0, y: 0 }) {
-    let mat = new DOMMatrix();
-    mat.translateSelf(center.x, center.y);
-    let sinT=Math.sin(theta);
-    let cosT=Math.cos(theta);
-
-    
-    mat.b = sinT;
-    mat.c = -sinT;
-    mat.a = 
-    mat.d = cosT;
-    // mat.is2D=true;
-    mat.translateSelf(-center.x, -center.y);
-    // console.log(mat);
-
-    let scale = this.GetCameraScale();
-    
-    this.matrix.b = 0;
-    this.matrix.c = 0;
-    this.matrix.a = 
-    this.matrix.d = scale;
-
-    return mat;
-  }
-  
-  Rotate(theta, center = { x: 0, y: 0 }) {
-
-    this.matrix.preMultiplySelf(this.Rotate_matrix(theta, center ));
-  }
-
-  ResetRotate(theta, center = { x: 0, y: 0 }) {
-
-    // this.matrix.preMultiplySelf(this.Rotate_matrix(theta, center ));
-  }
-  SetRotate(theta, center = { x: 0, y: 0 }) {
-
-    this.matrix=this.Rotate_matrix(theta, center );
-  }
-  StartDrag(vector = { x: 0, y: 0 }) {
-    this.tmpMatrix.setMatrixValue(this.identityMat);
-    this.tmpMatrix.translateSelf(vector.x, vector.y);
-  }
-  EndDrag() {
-    this.matrix.preMultiplySelf(this.tmpMatrix);
-    this.tmpMatrix.setMatrixValue(this.identityMat);
-  }
-
-  SetOffset(location = { x: 0, y: 0 }) {
-
-    this.matrix.m41 = 0;
-    this.matrix.m42 = 0;
-    this.matrix.translateSelf(location.x, location.y);
-  }
-
-  GetCameraRotation(matrix = this.matrix) {
-    let rot = Math.atan2( matrix.m21-matrix.m12,matrix.m11 + matrix.m22);
-    // console.log(rot);
-    return rot;
-  }
-
-  GetCameraScale(matrix = this.matrix) {//It's an over simplified way to get scale for an matrix, change it if nesessary
-    return Math.sqrt(matrix.m11 * matrix.m22 - matrix.m12 * matrix.m21);
-  }
-
-
-  GetCameraOffset(matrix = this.matrix) {
-    return { x: matrix.m41, y: matrix.m42 };
-  }
-
-  CameraTransform(matrix_input) {
-    matrix_input.multiplySelf(this.tmpMatrix);
-    matrix_input.multiplySelf(this.matrix);
-  }
-
-
-}
 
 
 class renderUTIL {
