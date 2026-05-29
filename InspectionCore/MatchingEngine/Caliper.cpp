@@ -273,16 +273,21 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
 
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
     bool ok = profile_to_edge(profile.data(), nAcross, step, L, cal.edge, c, perp, &pt, &str, &info, &pos);
-    // per-caliper CONFIDENCE used as the fit weight: strong gradient AND unambiguous
-    // (no near-equal second edge). ratio = runnerUp/strength in [0,1]; an edge with a
-    // competing peak is unreliable for THIS edge, so downweight it (keeps >=0.3*strength
-    // so it still contributes; MAD still hard-rejects gross outliers).
+    // per-caliper CONFIDENCE used as the fit weight, combining three factors:
+    //  - strength : strong gradient = real edge.
+    //  - unambiguity (1 - 0.7*runnerUp/strength) : a near-equal competing peak means the
+    //    caliper may have grabbed the wrong edge -> downweight.
+    //  - sharpness : a crisp (tight) gradient bump localizes the sub-pixel edge better
+    //    than a smeared one. sharp ~[0..2]; factor 0.5..1 (blurry never fully zeroed).
+    // (keeps weight > 0 so it still contributes; MAD still hard-rejects gross outliers.)
     float conf = 0;
     if (ok)
     {
       float ratio = (info.strength > 0) ? (info.runnerUp / info.strength) : 0;
       if (ratio > 1) ratio = 1;
-      conf = info.strength * (1.0f - 0.7f * ratio);
+      float sharpN = info.sharpness; if (sharpN > 1) sharpN = 1; if (sharpN < 0) sharpN = 0;
+      float sharpF = 0.5f + 0.5f * sharpN;
+      conf = info.strength * (1.0f - 0.7f * ratio) * sharpF;
       pts.push_back(pt); w.push_back(conf); if (dbg) ptCaliper.push_back(i);
     }
     if (dbg) { dProfs.push_back(profile); dPos.push_back(ok ? pos : -1.f); dConf.push_back(ok ? conf : -1.f); }

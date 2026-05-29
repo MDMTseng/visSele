@@ -32,6 +32,7 @@ struct EdgeSelectInfo
   float runnerUp = 0;       // 2nd-strongest peak |grad| among all candidates (0 if none)
   float signedStrength = 0; // signed grad at the chosen peak (>0 rising, <0 falling)
   int   peakCount = 0;      // # candidate peaks of the requested polarity
+  float sharpness = 0;      // normalized peak curvature |a-2b+c|/b (~0 blurry .. ~2 crisp)
   // ambiguity ratio = runnerUp/strength in [0,1]; closer to 1 = more ambiguous.
 };
 

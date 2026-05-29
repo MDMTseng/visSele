@@ -37,7 +37,7 @@ bool edge_select(const float *g, int n, const EdgeSelectParams &p,
   if (adaptive > floor_) floor_ = adaptive;
   if (gmax <= 0) return false;
 
-  struct Peak { float pos; float strength; float signedV; };
+  struct Peak { float pos; float strength; float signedV; float sharp; };
   std::vector<Peak> peaks;
   for (int i = 1; i < n - 1; i++)
   {
@@ -52,7 +52,10 @@ bool edge_select(const float *g, int n, const EdgeSelectParams &p,
     float denom = (a - 2 * b + c);
     float delta = (denom != 0) ? 0.5f * (a - c) / denom : 0.0f;
     if (delta < -1) delta = -1; if (delta > 1) delta = 1;
-    peaks.push_back({ (float)i + delta, b, gi });
+    // normalized peak sharpness: curvature |a-2b+c| relative to peak height. A crisp
+    // edge has a tight gradient bump (neighbors << peak -> ~2); a blurry one ~0.
+    float sharp = (b > 0) ? (-denom / b) : 0.0f; if (sharp < 0) sharp = 0;
+    peaks.push_back({ (float)i + delta, b, gi, sharp });
   }
   if (peaks.empty()) return false;
 
@@ -82,6 +85,7 @@ bool edge_select(const float *g, int n, const EdgeSelectParams &p,
     outInfo->runnerUp = runnerUp;
     outInfo->signedStrength = peaks[sel].signedV;
     outInfo->peakCount = (int)peaks.size();
+    outInfo->sharpness = peaks[sel].sharp;
   }
   return true;
 }
