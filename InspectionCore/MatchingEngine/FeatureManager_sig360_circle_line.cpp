@@ -1,5 +1,6 @@
 #include "FeatureManager_sig360_circle_line.h"
 #include "Caliper.h"
+#include "JudgeCALC.h"
 
 #ifdef FEATURE_OPENCV
 #include "SearchPointCV.h"
@@ -166,6 +167,14 @@ char *json_find_name(cJSON *root)
   return json_find_str(root, "name");
 }
 
+// Bounded copy into a fixed-size featureDef/report name[FeatureManager_NAME_LENGTH]
+// buffer. Source is def-JSON controlled and otherwise unbounded; snprintf truncates
+// and always null-terminates, preventing buffer overflow on overlong names.
+static void copyFeatureName(char *dst, const char *src)
+{
+  snprintf(dst, FeatureManager_NAME_LENGTH, "%s", src);
+}
+
 typedef struct arc_data
 {
   acv_XY pt1, pt2, pt3; //three points arc, the root of all info
@@ -222,16 +231,18 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
     cir.name[0] = '\0';
     if (tmpstr = json_find_name(circle_obj))
     {
-      strcpy(cir.name, tmpstr);
+      copyFeatureName(cir.name, tmpstr);
     }
   }
 
   double *pnum;
 
-  cir.id = (int)*JFetEx_NUMBER(circle_obj, "id");
+  if ((pnum = JSON_GET_NUM(circle_obj, "id")) == NULL) return -1;
+  cir.id = (int)*pnum;
   LOGV("feature is an arc:%s %d", cir.name, cir.id);
 
-  cir.initMatchingMargin = *JFetEx_NUMBER(circle_obj, "margin");
+  if ((pnum = JSON_GET_NUM(circle_obj, "margin")) == NULL) return -1;
+  cir.initMatchingMargin = *pnum;
 
   // caliper/section locating (default contour)
   cir.locating = 0; cir.cal_count = 36; cir.cal_width = 9; cir.cal_length = -1; cir.cal_step = -1;
@@ -257,15 +268,16 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
 
   acv_XY pt1, pt2, pt3;
 
-  pt1.X = *JFetEx_NUMBER(circle_obj, "pt1.x");
-  pt1.Y = *JFetEx_NUMBER(circle_obj, "pt1.y");
+  if ((pnum = JSON_GET_NUM(circle_obj, "pt1.x")) == NULL) return -1; pt1.X = *pnum;
+  if ((pnum = JSON_GET_NUM(circle_obj, "pt1.y")) == NULL) return -1; pt1.Y = *pnum;
 
-  pt2.X = *JFetEx_NUMBER(circle_obj, "pt2.x");
-  pt2.Y = *JFetEx_NUMBER(circle_obj, "pt2.y");
+  if ((pnum = JSON_GET_NUM(circle_obj, "pt2.x")) == NULL) return -1; pt2.X = *pnum;
+  if ((pnum = JSON_GET_NUM(circle_obj, "pt2.y")) == NULL) return -1; pt2.Y = *pnum;
 
-  pt3.X = *JFetEx_NUMBER(circle_obj, "pt3.x");
-  pt3.Y = *JFetEx_NUMBER(circle_obj, "pt3.y");
-  double direction = *JFetEx_NUMBER(circle_obj, "direction");
+  if ((pnum = JSON_GET_NUM(circle_obj, "pt3.x")) == NULL) return -1; pt3.X = *pnum;
+  if ((pnum = JSON_GET_NUM(circle_obj, "pt3.y")) == NULL) return -1; pt3.Y = *pnum;
+  if ((pnum = JSON_GET_NUM(circle_obj, "direction")) == NULL) return -1;
+  double direction = *pnum;
 
   cir.pt1 = pt1;
   cir.pt2 = pt2;
@@ -598,60 +610,6 @@ int FeatureManager_sig360_circle_line::ParseLocatePosition(FeatureReport_sig360_
   return -1;
 }
 
-int string_find_count(const char *str, char ch)
-{
-  int count = 0;
-  for (int i = 0; str[i]; i++)
-  {
-    if (str[i] == ch)
-    {
-      count++;
-    }
-  }
-  return count;
-}
-
-int parse_CALC_Id(const char *post_exp)
-{
-  if (post_exp[0] != '[')
-    return -1;
-  int idx = 0;
-  for (int i = 1; post_exp[i]; i++)
-  {
-    char cc = post_exp[i];
-    if ((cc < '0') || (cc > '9'))
-      break;
-    idx = idx * 10 + cc - '0';
-  }
-  return idx;
-}
-
-bool isParamsCache(const char *exp)
-{
-  if (*exp != '$')
-    return false;
-  for (int i = 1; exp[i]; i += 2)
-  {
-    if (exp[i] != ',')
-      return false;
-    if (exp[i + 1] != '$')
-      return false;
-  }
-
-  return true;
-}
-
-bool strMatchExact(const char *src, const char *pat)
-{
-  for (int i = 0;; i++)
-  {
-    if (src[i] != pat[i])
-      return false;
-    if (src[i] == '\0')
-      break;
-  }
-  return true;
-}
 double JfetchStrNUM(cJSON *obj, char *path)
 {
   double *num = JFetch_NUMBER(obj, path);
@@ -673,207 +631,6 @@ double JfetchStrNUM(cJSON *obj, char *path)
   LOGI("EXP.....");
   return NAN;
 }
-int functionExec_(const char *exp, float *params, int paramL, float *ret_result)
-{
-  for (int i = 0; i < paramL; i++)
-  {
-    printf("[%d]:%f   ", i, params[i]);
-  }
-  printf("\n");
-  if (ret_result)
-    *ret_result = 0;
-  if (strMatchExact(exp, "$+$"))
-  {
-    if (paramL != 2)
-      return -1;
-    *ret_result = params[0] + params[1];
-    return 0;
-  }
-  else if (strMatchExact(exp, "$-$"))
-  {
-
-    if (paramL != 2)
-      return -1;
-    *ret_result = params[0] - params[1];
-    return 0;
-  }
-  else if (strMatchExact(exp, "$*$"))
-  {
-
-    if (paramL != 2)
-      return -1;
-    *ret_result = params[0] * params[1];
-    return 0;
-  }
-  else if (strMatchExact(exp, "$/$"))
-  {
-
-    if (paramL != 2)
-      return -1;
-    *ret_result = params[0] / params[1];
-    return 0;
-  }
-  else if (strMatchExact(exp, "max$"))
-  {
-    float max = params[0];
-    for (int i = 1; i < paramL; i++)
-    {
-      if (max < params[i])
-        max = params[i];
-    }
-    *ret_result = max;
-    return 0;
-  }
-  else if (strMatchExact(exp, "min$"))
-  {
-    float min = params[0];
-    for (int i = 1; i < paramL; i++)
-    {
-      if (min > params[i])
-        min = params[i];
-    }
-    *ret_result = min;
-    return 0;
-  }
-
-  return -2;
-}
-
-int judge_CALC(FeatureReport_sig360_circle_line_single &reports, FeatureReport_judgeDef &judge, float *ret_result)
-{
-  vector<float> calcStack;
-
-  //funcParamHeadIdx indicates the function params starts from
-  //exp: [5,64,11]
-  int funcParamCount = 0;
-
-  //"exp": "max(sin([3]*3),0)",
-  //"post_exp": ["[3]","3","$*$","sin$","0","$,$","max$"]
-  for (int i = 0; i < judge.data.CALC.post_exp.size(); i++)
-  {
-    const string post_exp = judge.data.CALC.post_exp[i];
-    //LOGI("post_exp[%d]:%s",i,post_exp.c_str());
-
-    int id_exp = parse_CALC_Id(post_exp.c_str());
-    if (id_exp >= 0)
-    { //it's an id refence(  [4] means the result of judge report with id=4)
-      int found_idx = -1;
-      for (int j = 0; j < reports.judgeReports->size(); j++)
-      {
-        int id = (*reports.judgeReports)[j].def->id;
-        if (id == id_exp)
-        {
-          found_idx = j;
-        }
-        else
-          continue;
-      }
-
-      float val;
-      if (found_idx >= 0)
-      {
-        int found_status = (*reports.judgeReports)[found_idx].status;
-        if (found_status == FeatureReport_sig360_circle_line_single::STATUS_NA ||
-            found_status == FeatureReport_sig360_circle_line_single::STATUS_UNSET)
-        {
-          if (ret_result)
-            *ret_result = NAN;
-          return -2;
-        }
-        else
-          val = (*reports.judgeReports)[found_idx].measured_val;
-      }
-      else
-      { //If there is no measure is found
-        //val=NAN;
-        if (ret_result)
-          *ret_result = NAN;
-        return -2;
-      }
-      calcStack.push_back(val);
-      //(*reports.judgeReports)[]
-    }
-    else
-    { //if it's not an id refence
-      int paramSymbolCount = string_find_count(post_exp.c_str(), '$');
-      if (paramSymbolCount > 0)
-      { //if it's a function (sin$, cos$, max$)
-
-        if (isParamsCache(post_exp.c_str()))
-        { //If it's  $,$,.... just save the funcParamCount
-
-          //LOGI("isParamsCache:%s>>>%d",post_exp.c_str(),paramSymbolCount);
-          funcParamCount = paramSymbolCount;
-        }
-        else
-        {
-          if (funcParamCount > 1)
-          {
-            paramSymbolCount = funcParamCount;
-          }
-          funcParamCount = 1;
-
-          //LOGI("isParamsCache:%s>>>%d",post_exp.c_str(),paramSymbolCount);
-          float res;
-          int err_code =
-              functionExec_(
-                  post_exp.c_str(),
-                  &(calcStack[calcStack.size() - paramSymbolCount]),
-                  paramSymbolCount,
-                  &res);
-
-          //LOGI("%f, %d",res,err_code);
-          if (err_code != 0)
-          {
-            if (ret_result)
-              *ret_result = NAN;
-            return -50;
-          }
-          for (int k = 0; k < paramSymbolCount; k++)
-          {
-            calcStack.pop_back();
-          }
-          calcStack.push_back(res);
-        }
-      }
-      else
-      { //then it might be a number, try
-
-        float val;
-        try
-        {
-          val = std::stof(post_exp);
-        }
-        catch (...)
-        {
-          //val = NAN;
-          if (ret_result)
-            *ret_result = NAN;
-          return -3;
-        }
-        calcStack.push_back(val);
-      }
-    }
-
-    // for(int k=0;k<calcStack.size();k++)
-    // {
-
-    //   printf("%0.5f,",calcStack[k]);
-    // }
-    // printf("\n");
-  }
-
-  if (calcStack.size() != 1)
-  {
-    if (ret_result)
-      *ret_result = NAN;
-    return -50;
-  }
-  if (ret_result)
-    *ret_result = calcStack[0];
-  return 0;
-}
-
 FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(FeatureReport_sig360_circle_line_single &report,
                                                                              float sine, float cosine, float flip_f,
                                                                              FeatureReport_judgeDef &judge)
@@ -1607,7 +1364,7 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
     searchPoint.name[0] = '\0';
     if (tmpstr = json_find_name(jobj))
     {
-      strcpy(searchPoint.name, tmpstr);
+      copyFeatureName(searchPoint.name, tmpstr);
     }
   }
 
@@ -1704,10 +1461,13 @@ int FeatureManager_sig360_circle_line::parse_auxPointData(cJSON *jobj)
 {
   featureDef_auxPoint auxPoint;
 
-  strcpy(auxPoint.name, JFetEx_STRING(jobj, "name"));
+  auxPoint.name[0] = '\0';
+  if (char *tmpstr = JFetEx_STRING(jobj, "name"))
+    copyFeatureName(auxPoint.name, tmpstr);
   double *pnum;
 
-  auxPoint.id = (int)*JFetEx_NUMBER(jobj, "id");
+  if ((pnum = JSON_GET_NUM(jobj, "id")) == NULL) return -1;
+  auxPoint.id = (int)*pnum;
   LOGV("feature is an auxPoint:%s %d", auxPoint.name, auxPoint.id);
 
   if (JFetch_OBJECT(jobj, "ref[1]") != NULL)
@@ -1786,15 +1546,17 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
     line.name[0] = '\0';
     if (tmpstr = json_find_name(line_obj))
     {
-      strcpy(line.name, tmpstr);
+      copyFeatureName(line.name, tmpstr);
     }
   }
 
-  line.id = (int)*JFetEx_NUMBER(line_obj, "id");
+  if ((pnum = JSON_GET_NUM(line_obj, "id")) == NULL) return -1;
+  line.id = (int)*pnum;
 
   // LOGV("feature is a line:%s %d", line.name, line.id);
 
-  line.initMatchingMargin = (float)*JFetEx_NUMBER(line_obj, "margin");
+  if ((pnum = JSON_GET_NUM(line_obj, "margin")) == NULL) return -1;
+  line.initMatchingMargin = (float)*pnum;
 
   // caliper/section locating (default contour). docs/caliper_primitive_locating_design.md
   line.locating = 0; line.cal_count = 30; line.cal_width = 9; line.cal_length = -1; line.cal_step = -1;
@@ -1820,10 +1582,10 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   }
 
   acv_XY p0, p1;
-  p0.X = *JFetEx_NUMBER(line_obj, "pt1.x");
-  p0.Y = *JFetEx_NUMBER(line_obj, "pt1.y");
-  p1.X = *JFetEx_NUMBER(line_obj, "pt2.x");
-  p1.Y = *JFetEx_NUMBER(line_obj, "pt2.y");
+  if ((pnum = JSON_GET_NUM(line_obj, "pt1.x")) == NULL) return -1; p0.X = *pnum;
+  if ((pnum = JSON_GET_NUM(line_obj, "pt1.y")) == NULL) return -1; p0.Y = *pnum;
+  if ((pnum = JSON_GET_NUM(line_obj, "pt2.x")) == NULL) return -1; p1.X = *pnum;
+  if ((pnum = JSON_GET_NUM(line_obj, "pt2.y")) == NULL) return -1; p1.Y = *pnum;
   line.p0 = p0;
   line.p1 = p1;
 
@@ -1863,7 +1625,9 @@ void sign360_process(vector<acv_XY> &target, vector<acv_XY> &buffer)
 int FeatureManager_sig360_circle_line::parse_sign360(cJSON *signature_obj)
 {
 
-  this->signature_feature_id = (int)*JFetEx_NUMBER(signature_obj, "id");
+  double *pnum;
+  if ((pnum = JSON_GET_NUM(signature_obj, "id")) == NULL) return -1;
+  this->signature_feature_id = (int)*pnum;
   cJSON *signature;
   if (!(getDataFromJsonObj(signature_obj, "signature", (void **)&signature) & cJSON_Object))
   {
@@ -1886,9 +1650,11 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   double *pnum;
 
   char *tmpstr = JFetEx_STRING(judge_obj, "name");
-  strcpy(judge.name, tmpstr);
+  if (tmpstr)
+    copyFeatureName(judge.name, tmpstr);
 
-  judge.id = (int)*JFetEx_NUMBER(judge_obj, "id");
+  if ((pnum = JSON_GET_NUM(judge_obj, "id")) == NULL) return -1;
+  judge.id = (int)*pnum;
 
   judge.orientation_essential = false; //false by default
   {
@@ -1932,6 +1698,11 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   }
 
   char *subtype = JFetEx_STRING(judge_obj, "subtype");
+  if (subtype == NULL)
+  {
+    LOGE("%s: judge id:%d missing required \"subtype\"", __func__, judge.id);
+    return -1;
+  }
 
   judge.measure_type = FeatureReport_judgeDef::NA;
 
@@ -2511,43 +2282,6 @@ float OTSU_Threshold(acvImage &graylevelImg, acv_LabeledData *ldata, int skip = 
   return sigmaBaseIdx;
 }
 
-int EdgeGradientAdd(acvImage *graylevelImg, acv_XY gradVec, acv_XY point, vector<ContourFetch::ptInfo> ptList, int width)
-{
-  const int GradTableL = 7;
-  float gradTable[GradTableL] = {0};
-
-  //curpoint = point -(GradTableL-1)*gVec/2
-  gradVec = acvVecNormalize(gradVec);
-  //gradVec= acvVecMult(gradVec,1);
-
-  acv_XY curpoint = acvVecMult(gradVec, -(float)(GradTableL - 1) / 2);
-  curpoint = acvVecAdd(curpoint, point);
-  ContourFetch::ptInfo tmp_pt;
-  for (int i = 0; i < GradTableL; i++)
-  {
-    float ptn = acvUnsignedMap1Sampling(graylevelImg, curpoint, 0);
-    //LOGV("%f<<%f,%f",ptn,curpoint.X,curpoint.Y);
-    gradTable[i] = ptn;
-    tmp_pt.pt = curpoint;
-    curpoint = acvVecAdd(curpoint, gradVec);
-  }
-
-  curpoint = acvVecMult(gradVec, -(float)(GradTableL - 1) / 2);
-  curpoint = acvVecAdd(curpoint, point);
-  for (int i = 0; i < GradTableL - 1; i++)
-  {
-    float diff = gradTable[i] - gradTable[i + 1];
-    if (diff < 0)
-      diff = -diff;
-
-    tmp_pt.pt = curpoint;
-    tmp_pt.edgeRsp = diff * diff * diff * diff * diff;
-    ptList.push_back(tmp_pt);
-    curpoint = acvVecAdd(curpoint, gradVec);
-  }
-
-  return 0;
-}
 bool ptInfo_tmp_comp(const ContourFetch::ptInfo &a, const ContourFetch::ptInfo &b)
 {
   return a.tmp < b.tmp;
@@ -2775,7 +2509,7 @@ FeatureReport_lineReport SingleMatching_line(featureDef_line *line, edgeTracking
     {
 
 
-      acv_LineFit lf;
+      acv_LineFit lf = {0};
       lf.line = retLine;
       lf.matching_pts = 2;
       lf.s = 1;
@@ -3155,7 +2889,7 @@ FeatureReport_lineReport SingleMatching_line(featureDef_line *line, edgeTracking
        line_cand.line_vec.Y,
        sigma,
        rMIN, rMAX, rRMSE);
-  acv_LineFit lf;
+  acv_LineFit lf = {0};
   lf.line = line_cand;
   lf.matching_pts = s_points.size();
   lf.s = sigma;
@@ -3687,7 +3421,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   LOGI("matching_tor:%d initMatchingMargin:%f m_sections.size:%d",
   matching_tor,cdef.initMatchingMargin,m_sections.size());
 
-  acv_CircleFit cf;
+  acv_CircleFit cf = {0};
   FeatureReport_circleReport cr;
 
   cdef.tmp_pt.clear();

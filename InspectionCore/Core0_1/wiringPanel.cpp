@@ -430,6 +430,7 @@ int imgStackingMaxCount=0;
 ImageStackAddUp imstack;
 
 m_BPG_Link_Interface_WebSocket *ifwebsocket=NULL;
+int ws_port = 4090;
 
 MJPEG_Streamer *mjpegS;
 MatchingEngine matchingEng;
@@ -4555,7 +4556,7 @@ int mainLoop(bool realCamera = false)
   {
     try
     {
-      int port = 4090;
+      int port = ws_port;
       LOGI("Try to open websocket... port:%d\n", port);
       ifwebsocket=new m_BPG_Link_Interface_WebSocket(port);
 
@@ -5007,6 +5008,14 @@ int cp_main(int argc, char **argv)
         doMatch=true;
         CamInitStyle = 2;
       }
+    }
+
+    str = PatternRest(argv[i], "port=");
+    if(str!=NULL)
+    {
+      ws_port = atoi(str);
+      LOGI("parse....   port=%d", ws_port);
+      doMatch=true;
     }
 
     str = PatternRest(argv[i], "chdir=");
