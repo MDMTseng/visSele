@@ -84,6 +84,12 @@ Remaining candidates (all larger, fresh-session sized):
 - **whiteListKey typed schema**: unify `JsonEditBlock` spec + `Shape_Attr_Fill` defaults
   into one per-shape schema. Contained, golden+flows-verifiable, improves shape editor.
 - **edit_info god-object split** (Q2).
+- **baseComponent.jsx split** (1078 lines = JsonEditBlock editor + BPG_FileBrowser family):
+  ATTEMPTED & REVERTED. Moving BPG_FileBrowser out created a `baseComponent`↔`BPG_FileBrowser`
+  import cycle via `CardFrameWarp` — the `export-from` re-export made BPG_FileBrowser evaluate
+  before baseComponent's body, leaving BASE_COM.* namespace exports transiently `undefined`
+  (React "type is invalid" → editor render broke; flows caught it, golden didn't). Redo needs a
+  cycle-free design (e.g. also move `CardFrameWarp` into the new file, or a shared base module).
 
 Recommendation order: broaden `flows.mjs` coverage → type the `edit_info` consumers →
 Q2 god-object split (group-by-group, tsc-verified) → whiteListKey schema → comm layer.
