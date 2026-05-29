@@ -156,7 +156,6 @@ function StateReducer(newState, action) {
                 newState.edit_info = Object.assign({}, newState.edit_info);
                 
                 Edit_info_reset(newState);
-                console.log(action.data);
                 newState.edit_info._obj.Setsig360info(action.data);
                 newState.edit_info.sig360info = newState.edit_info._obj.sig360info;
               break;
@@ -656,7 +655,6 @@ function StateReducer(newState, action) {
           case UISEV.SIG360_Extraction:
               
               // Edit_info_reset(newState);
-              console.log(action.data);
               newState.edit_info._obj.Setsig360info(action.data);
               
               newState.edit_info.sig360info = newState.edit_info._obj.sig360info;

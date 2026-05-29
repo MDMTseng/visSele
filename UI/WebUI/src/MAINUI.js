@@ -166,11 +166,6 @@ class CanvasComponent extends React.Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
-
-    console.log("CanvasComponent render", this.props.c_state);
-    //let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.DEFCONF_MODE];
-
-    console.log(this.props.edit_info.inherentShapeList);
     this.updateCanvas(this.props.c_state, this.props);
   }
 

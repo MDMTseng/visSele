@@ -33,7 +33,7 @@ import APPMain_rdx from './MAINUI';
 import * as log from 'loglevel';
 import BPG_WS from './comm/BPG_WS';
 import { initDiag, downloadDiag, diagCount, diagText } from 'UTIL/diagLog';
-import { enqueueFailedInsert, pendingInsertCount } from 'UTIL/inspDBQueue';
+import { persistPending, deletePending, getPendingBySource, pendingInsertCount } from 'UTIL/inspDBQueue';
 initDiag(); // start capturing console output into the diagnostics ring buffer ASAP
 
 import { default as AntButton } from 'antd/lib/button';
@@ -95,7 +95,7 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   });
   // Test hooks for the diagnostics ring buffer + local failed-insert queue.
   window.__GP_DIAG__ = { downloadDiag, diagCount, diagText };
-  window.__GP_DB_QUEUE__ = { enqueueFailedInsert, pendingInsertCount };
+  window.__GP_DB_QUEUE__ = { persistPending, deletePending, getPendingBySource, pendingInsertCount };
 }
 
 // Global safety net for async errors that React error boundaries cannot catch
@@ -321,19 +321,23 @@ class APPMasterX extends React.Component {
 
 
 
-      _insertOK(data,msg)
+      _insertOK(dataInfo,msg)
       {
-        // console.log("OK",data,msg);
+        // console.log("OK",dataInfo,msg);
+        // Insert confirmed by the remote DB — drop its durable copy. dataInfo
+        // carries the IndexedDB key promise stamped in send().
+        if (dataInfo && dataInfo.__idbSeqP) {
+          dataInfo.__idbSeqP
+            .then((seq) => deletePending(seq))
+            .catch((e) => log.error("deletePending failed", e));
+        }
       }
       _insertFailed(data,msg)
       {
         // console.log("FAILED",data,msg);
-        // Don't silently drop a record that failed to reach the traceability DB:
-        // buffer it to local IndexedDB (capped, oldest-dropped). Some failure
-        // paths have no record (connection/empty) — only buffer real data.
-        if (data !== undefined && data !== null) {
-          enqueueFailedInsert(data, msg).catch((e) => log.error("enqueueFailedInsert failed", e));
-        }
+        // The record stays in IndexedDB (persisted in send(), unconfirmed) and in
+        // the in-memory queue for retry — nothing to do here. A reload-orphaned
+        // record is replayed at construction via getPendingBySource().
       }
 
       constructor(id)
@@ -446,7 +450,7 @@ class APPMasterX extends React.Component {
                 _this.dataSentCount++;
                 cQ.deQ();//pop one data out
                 resolve();
-                _this._insertOK(data, ret);
+                _this._insertOK(dataInfo, ret);
                 dataInfo.resolve(ret)
               }).catch((e) => {//Failed retry....
                 clearTimeout(timeoutFlag);
@@ -481,6 +485,16 @@ class APPMasterX extends React.Component {
             }
           }
         );
+
+        // Replay records left over from a previous session/reload that were never
+        // confirmed: re-queue them (without re-persisting) so they send once the
+        // socket connects. Live disconnect retries are handled by cQ.kick() above.
+        getPendingBySource(this.id)
+          .then((items) => {
+            if (items.length) log.info("DB_WS[" + this.id + "] replaying " + items.length + " buffered inserts");
+            items.forEach((it) => { try { this.send({ data: it.record, __replaySeq: it.seq }); } catch (e) { log.error("replay send failed", e); } });
+          })
+          .catch((e) => log.error("getPendingBySource failed", e));
 
 
         // setInterval(()=>{
@@ -525,12 +539,20 @@ class APPMasterX extends React.Component {
       {
         console.log(info);
         let data = info.data;
-        
+
+        // Durable mirror: persist the record before queuing so it survives a
+        // disconnect or page reload; the key promise is stamped on the queue
+        // entry and deleted on insert-OK. On replay (info.__replaySeq set) the
+        // record is already persisted, so reuse its key instead of re-persisting.
+        let __idbSeqP = (info.__replaySeq != null)
+          ? Promise.resolve(info.__replaySeq)
+          : persistPending(data, this.id).catch((e) => { log.error("persistPending failed", e); return null; });
+
         // if(isInQueue==true)
         {
           let prom=new Promise((resolve, reject) => {
-            
-            if (!this.cQ.enQ({data,resolve,reject}))//If enQ NOT success
+
+            if (!this.cQ.enQ({data,resolve,reject,__idbSeqP}))//If enQ NOT success
             {
               //Just print
               log.error("enQ failed size()=" + this.cQ.size());
