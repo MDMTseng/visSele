@@ -36,28 +36,33 @@ async function api(p, body) {
 const evalExpr = (expr) => api('/eval', { expr }).then((r) => r.result);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function loadDef(defText) {
-  // dispatch the same action the app uses for an incoming DF packet
+async function loadByPath(modelPath) {
+  // Load def + paired image through the real core LD flow (deffile + imgsrc),
+  // exactly as DefConfUI.loadDefFile does — a faithful end-to-end oracle.
   await evalExpr(
-    `(function(){window.__GP_STORE__.dispatch({type:"Define_File_Update",data:${defText},keepCurTag:false});return "ok";})()`
+    `(function(){window.__GP_LOAD_BY_PATH__(${JSON.stringify(modelPath)}).then(()=>{window.__GP_LD_DONE=true}).catch(e=>{window.__GP_LD_ERR=String(e)});return "sent";})()`
   );
-  // ActionThrottle defers the dispatch; poll until the loader has applied it
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 80; i++) {
     await sleep(100);
-    const ok = await evalExpr(
-      `(function(){var o=window.__GP_STORE__.getState().UIData.edit_info._obj;return o&&o.shapeList.length>0;})()`
+    const st = await evalExpr(
+      `(function(){var o=window.__GP_STORE__.getState().UIData.edit_info._obj;return {done:!!window.__GP_LD_DONE,err:window.__GP_LD_ERR||null,shapes:(o&&o.shapeList.length)||0};})()`
     );
-    if (ok) return;
+    if (st.err) throw new Error('core LD failed: ' + st.err);
+    if (st.done && st.shapes > 0) return;
   }
-  throw new Error('def did not load (shapeList still empty) — check sha1 integrity / DEV mode');
+  throw new Error('def did not load via core LD (is the core running on :4090, and the path readable?)');
 }
 
 function serializeDef() {
   return evalExpr('JSON.stringify(window.__GP_DEF__())');
 }
 
-const defText = fs.readFileSync(hydef, 'utf8');
-await loadDef(defText);
+// hydef arg may be the .hydef file or the model path; the core LD wants the path w/o extension
+const modelPath = hydef.replace(/\.hydef$/, '');
+await loadByPath(modelPath);
+// enter edit mode so the screenshot shows the def rendered over the real image
+await evalExpr(`(function(){window.__GP_STORE__.dispatch({type:"Edit_Mode"});return "edit"})()`);
+await sleep(1500);
 const serialized = await serializeDef();
 const pretty = JSON.stringify(JSON.parse(serialized), null, 2);
 

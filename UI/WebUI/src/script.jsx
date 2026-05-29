@@ -73,6 +73,25 @@ let StoreX = ReduxStoreSetUp({});
 if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   window.__GP_STORE__ = StoreX;
   window.__GP_DEF__ = () => StoreX.getState().UIData.edit_info?._obj?.GenerateFeature_sig360_circle_line?.();
+  // Load a def + its paired image by path through the real core LD flow (mirrors
+  // DefConfUI.loadDefFile) — used by tools/webctl/golden.mjs for a faithful oracle.
+  window.__GP_LOAD_BY_PATH__ = (defModelPath) => new Promise((resolve, reject) => {
+    const CORE_ID = StoreX.getState().ConnInfo.CORE_ID;
+    StoreX.dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, "LD", 0,
+      { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath, down_samp_level: 1 },
+      undefined,
+      {
+        resolve: (pkts) => {
+          StoreX.dispatch({
+            type: "ATBundle", ActionThrottle_type: "express",
+            data: pkts.map(pkt => { let act = BPG_Protocol.map_BPG_Packet2Act(pkt); if (act) act.IGNORE_DEFCONF_LOCK = true; return act; }).filter(Boolean)
+          });
+          resolve(true);
+        },
+        reject
+      }));
+    setTimeout(() => reject("Timeout"), 8000);
+  });
 }
 console.log(navigator)
 

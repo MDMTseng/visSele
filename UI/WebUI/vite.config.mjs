@@ -23,11 +23,17 @@ const jsxInJs = {
   },
 };
 
+// Serve index.dev.html for "/" and "/index.html" (and any query/hash variant) so the
+// prod index.html — which points at the webpack dist/ bundle — is never served by Vite.
 const devHtmlAtRoot = {
   name: 'dev-html-at-root',
   configureServer(server) {
     server.middlewares.use((req, _res, next) => {
-      if (req.url === '/' || req.url === '/index.html') req.url = '/index.dev.html';
+      const pathname = (req.url || '/').split('?')[0].split('#')[0];
+      if (pathname === '/' || pathname === '/index.html') {
+        const suffix = (req.url || '').slice(pathname.length); // preserve any query/hash
+        req.url = '/index.dev.html' + suffix;
+      }
       next();
     });
   },
