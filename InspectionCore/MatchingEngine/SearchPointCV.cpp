@@ -47,8 +47,19 @@ static float rowEdgeCenter(int16_t *line, int n, int16_t noise,
   return (blob_w_max > 0) ? (blob_xw_max / blob_w_max) : NAN;
 }
 
-// Decode the 24-bit component label at image px (nearest). Labels are stored
-// across the BGR channels: Num = c0 | c1<<8 | c2<<16 (see _24BitUnion).
+// Is this labeled-image pixel part of an OBJECT (vs white background)?
+// The labeling marks: background = white (R=G=B=255); object interior = small
+// label value (R channel 0); object contour = (B,G,R)=(1,128,1). A THIN wire is
+// almost all contour (no interior), so matching a specific label index fails and
+// masks the wire itself. Instead treat "not white background" as object: the R
+// channel (ch2) is 255 only on background, 0/1 on object interior/contour.
+static inline bool isObjectPx(acvImage *L, int x, int y)
+{
+  if (x < 0 || y < 0 || x >= L->GetWidth() || y >= L->GetHeight()) return false;
+  int ox = L->GetROIOffsetX(), oy = L->GetROIOffsetY();
+  unsigned char *p = L->CVector[oy + y] + (ox + x) * 3;
+  return !(p[0] == 255 && p[1] == 255 && p[2] == 255); // non-white => object
+}
 static inline int labelAt(acvImage *L, int x, int y)
 {
   if (x < 0 || y < 0 || x >= L->GetWidth() || y >= L->GetHeight()) return -1;
@@ -100,7 +111,7 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
       float v = acvUnsignedMap1Sampling(gray, q, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
       d[x] = (v < 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
-      if (useMask) m[x] = (labelAt(labelImg, (int)(q.X + 0.5f), (int)(q.Y + 0.5f)) == objLabel) ? 255 : 0;
+      if (useMask) m[x] = isObjectPx(labelImg, (int)(q.X + 0.5f), (int)(q.Y + 0.5f)) ? 255 : 0;
     }
   }
 
@@ -161,7 +172,10 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
         for(int x=0;x<W;x++) if(!m[x]) v[x*3+2]=255; } // background tinted red
     for (auto &e: eps){ int yy=(int)e.y, xx=(int)e.x; if(yy>=0&&yy<H&&xx>=0&&xx<W){ unsigned char*v=vis.ptr<unsigned char>(yy); v[xx*3]=0;v[xx*3+1]=255;v[xx*3+2]=0; } } // per-row edges green
     { int yy=(int)ey,xx=(int)ex; if(yy>=0&&yy<H&&xx>=0&&xx<W){ cv::circle(vis,cv::Point(xx,yy),3,cv::Scalar(255,0,0),-1); } } // final blue
-    char fn[256]; snprintf(fn,sizeof(fn),"/tmp/spcv_%dx%d.png",W,H); cv::imwrite(fn,vis);
+    char fn[256]; snprintf(fn,sizeof(fn),"/tmp/spcv_pt%d_%d_%dx%d.png",(int)pt.X,(int)pt.Y,W,H); cv::imwrite(fn,vis);
+    // also save the raw rectified gray + the (dilated) mask for clean inspection
+    char fn2[256]; snprintf(fn2,sizeof(fn2),"/tmp/spcvraw_pt%d_%d.png",(int)pt.X,(int)pt.Y); cv::imwrite(fn2,g);
+    char fn3[256]; snprintf(fn3,sizeof(fn3),"/tmp/spcvmask_pt%d_%d.png",(int)pt.X,(int)pt.Y); cv::imwrite(fn3,mask);
   }
   if (outPt) *outPt = acvVecAdd(pt, acvVecAdd(acvVecMult(s, ex), acvVecMult(perp, ey - cy)));
   if (outW) *outW = (float)Ws;
