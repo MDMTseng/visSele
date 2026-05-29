@@ -384,3 +384,16 @@ Don't fragment: render() switch, NEUTRAL_UI, ctrlLogic_DEFCONF, GenTarEditUI (co
 - [PROBABLE cruft, untracked] WebUI/ stray subdir (~4.6MB dup payload); 未命名檔案夾/ (~4.6MB dup); dist/ (~23MB committed build artifact, regenerable); src/.DS_Store. ~32MB disk.
 - [VERIFY-FIRST] resource/image/antd-compass.svg + antd-eye-invisible.svg (1 ref each, likely live icon overrides — keep); jsconfig.json redundant w/ authoritative tsconfig.json (both identical alias paths) — verify editor tooling before removing.
 - No transitive-orphan chains (both dead JS are leaves; structures.js/expr.js alive via MISC_Util re-export).
+
+---
+
+## DECISIONS (user, 2026-05-30)
+
+- **Dead code → kill.** Confirmed. Wave 1 (commit 433ec7ff) removed the abandoned deco/aux_line/extra_info residue + orphan files (xstate_visual.js, STATE_MACHINE_CORE.js, MaT.css, 2 images).
+- **DB write failure → local IndexedDB buffer.** Instead of silently dropping failed inspection-record inserts: persist them to a local IndexedDB store, cap at top 1000 records, drop oldest (ring). Replaces the empty `.catch` at InspectionUI.js:174 + the commented-out DB_WS retry. This is the chosen design for the round-6 HIGH data-loss item. [Wave 2 work]
+- **sha1 mismatch → HARD BLOCK.** A def whose featureSet_sha1 doesn't match must be REFUSED (blocking modal), not loaded-with-warning. Supersedes round-4 P2 "surface warning". The return-fix already made the load path safe to abort. [small, do soon]
+- **WebUI2 borrow scope:** WebUI2 is the user's 2nd-gen inspection app — a NODE-GRAPH based architecture. WebUI (1st gen) is a deep-nested class structure; a direct port will NOT work. ONLY the per-shape SHAPE-UI structure (the per-type setup+canvas+drawHook vertical slice + registry) is worth borrowing for WebUI's editor. Do not attempt to port the node-graph engine or comm model wholesale.
+
+### Priority signal (user)
+- Crash resilience = **HIGH** (round 7: zero error boundaries → any render throw white-screens the floor UI). Likely next execution target.
+- Canvas perf (round 7: per-frame dclone in draw_INSP:1153 + overlay/image redraw coupling).
