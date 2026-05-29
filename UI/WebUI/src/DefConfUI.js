@@ -1023,148 +1023,6 @@ let renderMethods = {
 
     return dropDownX;
   },
-  SubDimEditUI: ({ className, onChange, target, renderContext }) => {
-    let dimensions = GetObjElement(target.obj, target.keyTrace);
-    const [dimIdx, setDimIdx] = useState(0);
-
-    let dropDownX = null;
-    let SetupUI = null;
-    let DelBtn = null;
-    if (dimensions !== undefined && dimensions.length > 0) {
-      console.log(dimensions);
-      const menu_ = (
-        <Menu onClick={(ev) => {
-          setDimIdx(parseInt(ev.key));
-        }
-        }>
-          {dimensions.map((m, idx) =>
-            <Menu.Item key={idx} idx={idx}>
-              <a target="_blank" rel="noopener noreferrer">
-                {m.name}
-              </a>
-            </Menu.Item>)}
-        </Menu>
-      );
-      dropDownX =
-        <Dropdown overlay={menu_}>
-          <a className="HX0_5 layout palatte-blue-8 vbox width12" style={{ color: "white" }} href="#">
-            {dimensions[dimIdx].name + "  "}
-            <Icon type="caret-down" />
-          </a>
-        </Dropdown>;
-
-
-      SetupUI = <div>
-        <BASE_COM.JsonEditBlock key="dimConfig" object={dimensions[dimIdx]}
-          renderLib={renderMethods}
-          dict={this.props.DICT}
-          whiteListKey={{
-            name: {
-              __OBJ__: (param) => {
-
-                let tar = GetObjElement(param.target.obj, param.target.keyTrace);
-                console.log(param, tar);
-                //essentialTags
-
-
-                const menu_ = (
-                  <Menu onClick={(ev) => {
-                    console.log(ev, ev.key);
-
-                    param.onChange(param.target, "input", { target: { value: ev.key } });
-                  }
-                  }>
-                    {essentialTags.map((m, idx) =>
-                      <Menu.Item key={m} idx={idx}>
-                        <a target="_blank" rel="noopener noreferrer">
-                          {m}
-                        </a>
-                      </Menu.Item>)}
-                  </Menu>
-                );
-                let dropDownX =
-                  <Dropdown overlay={menu_}>
-                    <a className="s HX1 width4 vbox black" style={{ color: "white" }} href="#">
-                      {param.target.keyTrace[0] + "  "}
-                      <Icon type="caret-down" />
-                    </a>
-                  </Dropdown>;
-
-                return [
-                  dropDownX,
-                  <NumberAccInput key="dimName" className="s HX1 width8 vbox blackText" value={tar}
-                    onChange={(evt) => param.onChange(param.target, "input", evt)} />
-                ]
-
-              }
-            },
-            value: "input-number",
-            USL: "ULRangeSetup",
-            LSL: "ULRangeSetup",
-          }}
-          jsonChange={(original_obj, target_, type, evt) => {
-            let val = evt.target.value;
-            if (type === "input-number") {
-              val = parseFloat(val);
-              if (isNaN(val)) return;
-            }
-
-            let dims = dclone(dimensions);
-            let dim = dims[dimIdx];
-
-            let pre_val = dim[target_.keyTrace[0]];
-            dim[target_.keyTrace[0]] = val;
-            if (target_.keyTrace[0] == "value") {
-              dim.USL = roundX(dim.USL - pre_val + dim[target_.keyTrace[0]], 0.0001);
-              dim.LSL = roundX(dim.LSL - pre_val + dim[target_.keyTrace[0]], 0.0001);
-            }
-            onChange(target, undefined, { target: { value: dims } });
-
-          }} />
-      </div>
-
-      DelBtn = <BASE_COM.IconButton
-        addClass="HX0_5 width6 "
-        iconType={<CloseOutlined/>}
-        onClick={() => {
-          let dim = dclone(dimensions);
-          console.log(dimensions, dimIdx);
-          dim.splice(dimIdx, 1);
-          if (dimIdx >= dim.length) setDimIdx(dim.length - 1);
-          console.log(dim, dimIdx);
-          onChange(target, undefined, { target: { value: dim } });
-        }}
-        text="" />
-    }
-    console.log(className, onChange, dimensions, renderContext);
-
-
-    let AddNewBtn = <BASE_COM.IconButton
-      addClass="HX0_5 width6"
-      iconType={<PlusOutlined/>}
-      onClick={() => {
-        let dim = dclone(dimensions);
-        let refDimVal = (dimensions.length > 0) ? dimensions[dimIdx] : {};
-        let newDimInfo = {
-          value: 0, USL: 0, LSL: 0,//default value
-          ...refDimVal,
-          name: "NewDim_" + dim.length,//override name
-        };
-        dim.push(newDimInfo);
-        setDimIdx(dim.length - 1);
-        onChange(target, undefined, { target: { value: dim } });
-      }}
-      text="" />
-    //console.log(className,onChange,dimensions,renderContext);
-    //evt.target.value
-    //this.props.target,this.props.type,evt
-    return <div className="HXA width12">
-      {dropDownX}
-      {SetupUI}
-      {AddNewBtn}
-      {DelBtn}
-    </div>;
-  },
   ULRangeSetup: ({ className, onChange, target, renderContext, props }) => {
     let value = GetObjElement(target.obj, target.keyTrace);
     let lastKey = target.keyTrace[target.keyTrace.length - 1];
@@ -1433,7 +1291,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_Arc_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create)) };
   const ACT_Search_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Search_Point_Create)) };
   const ACT_Aux_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create)) };
-  const ACT_Aux_Line_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Line_Create)) };
   const ACT_Shape_Edit_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit)) };
   const ACT_Measure_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create)) };
 
@@ -2117,7 +1974,6 @@ class APP_DEFCONF_MODE extends React.Component {
     
     const DICT = useSelector(state => state.UIData.DICT);
   
-    let [uiType, setUIType] = useState("main");
     let edit_tar = edit_tar_info;
     let decorator = Info_decorator;
 
@@ -2131,7 +1987,7 @@ class APP_DEFCONF_MODE extends React.Component {
       }, []
     );
 
-    if (uiType == "main") {
+    {
       function refChainHasLoop(tar1, tar2, infoList, treeDepth = 0, treeDepthMax = infoList.length + 1)//when treeDepth over max, consider it has loop
       {
         //console.log("refChainHasLoop:",tar1,tar2,"treeDepth:",treeDepth)
@@ -2392,102 +2248,6 @@ class APP_DEFCONF_MODE extends React.Component {
       }
 
     }
-    else if (uiType == "deco") {
-      let ModalUI = [];
-      // ModalUI.push(<BASE_COM.Button
-      //   key="setAdditional"
-      //   addClass="layout black vbox HX0_5"
-      //   text="<" onClick={()=>
-      //     {
-      //       setUIType("main");
-      //     }}/>);
-      if (decorator !== undefined) {
-        let infoIdx = -1;
-        let extraTarInfo;
-        let extra_info = [];
-        if (decorator.extra_info !== undefined) {
-          extra_info = decorator.extra_info;
-          infoIdx = extra_info.findIndex(info => info.id == edit_tar.id);
-          if (infoIdx !== -1) {
-            extraTarInfo = extra_info[infoIdx];
-          }
-        }
-
-
-        if (extraTarInfo === undefined)
-          extraTarInfo = {
-            // importance:20
-          };
-
-        extraTarInfo = {
-          id: edit_tar.id,
-          //name:"",
-          importance: 0,
-          dimensions: [],
-          ...extraTarInfo
-        };
-
-        console.log(edit_tar.type, UIAct.SHAPE_TYPE.measure);
-        if (edit_tar.type !== UIAct.SHAPE_TYPE.measure) {
-          delete extraTarInfo["dimensions"]
-        }
-
-        ModalUI.push(<BASE_COM.JsonEditBlock key="2ndConfigTable" object={extraTarInfo}
-          dict={DICT}
-          renderLib={renderMethods}
-          dictTheme={edit_tar.type}
-          whiteListKey={{
-            //name:"input",
-            importance: "input-number",
-            dimensions: "SubDimEditUI"
-
-          }}
-          jsonChange={(original_obj, target, type, evt) => {
-
-            let val = evt.target.value;
-            if (type === "input-number") {
-              val = parseFloat(val);
-              if (isNaN(val)) return;
-            }
-            let dc_extra_Info = dclone(extra_info);
-            //let extraTarInfo=extra_Info.find(info=>info.id==edit_tar.id);
-
-            let infoIdx = dc_extra_Info.findIndex(info => info.id == edit_tar.id);
-            if (infoIdx === -1)//New info
-            {
-              original_obj[target.keyTrace[0]] = val;
-              dc_extra_Info.push(original_obj);
-            }
-            else {//Modify the old info
-              dc_extra_Info[infoIdx][target.keyTrace[0]] = val;
-            }
-
-
-            ACT_Shape_Decoration_Extra_Info_Update(dc_extra_Info);
-          }
-          } />);
-
-
-
-        UIArr.push(<Modal
-          key="dim_edit_modal"
-          visible={true}
-          onCancel={(param) => {
-            setUIType("main")
-          }}
-          footer={[
-            <Button key="back" onClick={_ => setUIType("main")}>
-
-            </Button>,
-          ]}>
-
-
-          {ModalUI}
-
-
-        </Modal>);
-      }
-    }
 
 
 
@@ -2695,42 +2455,6 @@ class APP_DEFCONF_MODE extends React.Component {
         break;
 
 
-
-      case UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE:
-        {
-          MenuSet = [
-            <BASE_COM.IconButton
-              addClass="layout black vbox"
-              key="<" 
-            iconType={<ArrowLeftOutlined/>} onClick={() => this.props.ACT_Fail()} />,
-            <div key="AUX_POINT" className="s lred vbox">ALINE</div>,
-          ];
-
-
-          console.log("BASE_COM.JsonEditBlock:", this.props.edit_tar_info);
-          if (this.props.edit_tar_info != null) {
-            console.log("BASE_COM.JsonEditBlock:", this.props.edit_tar_info);
-
-            MenuSet.push(<this.GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
-
-            let tar_info = this.props.edit_tar_info;
-            console.log(tar_info.ref);
-            if (tar_info.ref[0].id !== undefined &&
-              tar_info.ref[1].id !== undefined &&
-              tar_info.ref[0].id != tar_info.ref[1].id
-            ) {
-              MenuSet.push(<BASE_COM.Button
-                key="ADD_BTN"
-                addClass="layout red vbox"
-                text="ADD" onClick={() => {
-                  this.ec_canvas.SetShape(this.props.edit_tar_info);
-                  this.props.ACT_SUCCESS();
-                }} />);
-            }
-
-          }
-        }
-        break;
 
       case UIAct.UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
         MenuSet = [
