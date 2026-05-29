@@ -894,9 +894,8 @@ function StateReducer(newState, action) {
           case DefConfAct.EVENT.Shape_List_Update:
             newState.edit_info._obj.SetShapeList(action.data);
             newState.edit_info.edit_tar_info = null;
-            newState.edit_info.list = newState.edit_info._obj.shapeList;
             newState.edit_info.__decorator.list_id_order =
-              UpdateListIDOrder(newState.edit_info.__decorator.list_id_order, newState.edit_info.list);
+              UpdateListIDOrder(newState.edit_info.__decorator.list_id_order, newState.edit_info._obj.shapeList);
             newState.edit_info.inherentShapeList = newState.edit_info._obj.UpdateInherentShapeList();
             break;
 
@@ -1006,7 +1005,7 @@ function StateReducer(newState, action) {
               log.info("action.data:", action.data);
 
               newState.edit_info.__decorator.list_id_order =
-                UpdateListIDOrder(action.data, newState.edit_info.list);
+                UpdateListIDOrder(action.data, newState.edit_info._obj.shapeList);
               break;
             }
 
@@ -1054,10 +1053,9 @@ function StateReducer(newState, action) {
               //log.info("newID:",newID);
 
               let shape = newState.edit_info._obj.SetShape(action.data.shape, newID);
-              newState.edit_info.list = newState.edit_info._obj.shapeList;
 
               newState.edit_info.__decorator.list_id_order =
-                UpdateListIDOrder(newState.edit_info.__decorator.list_id_order, newState.edit_info.list);
+                UpdateListIDOrder(newState.edit_info.__decorator.list_id_order, newState.edit_info._obj.shapeList);
 
               newState.edit_info.inherentShapeList =
                 newState.edit_info._obj.UpdateInherentShapeList();
@@ -1074,7 +1072,7 @@ function StateReducer(newState, action) {
                 }
                 else {//Otherwise, we deepcopy the shape
                   newState.edit_info.edit_tar_info =
-                    dclone(newState.edit_info.list[tmpTarIdx]);
+                    dclone(newState.edit_info._obj.shapeList[tmpTarIdx]);
                 }
                 
               }

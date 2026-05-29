@@ -2712,7 +2712,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     
     edit_info :state.UIData.edit_info,
     c_state: state.UIData.c_state,
-    shape_list: state.UIData.edit_info.list,
+    shape_list: state.UIData.edit_info._obj.shapeList,
     info_decorator: state.UIData.edit_info.__decorator,
     defModelName: state.UIData.edit_info.DefFileName,
     FILE_default_camera_setting:state.UIData.FILE_default_camera_setting,

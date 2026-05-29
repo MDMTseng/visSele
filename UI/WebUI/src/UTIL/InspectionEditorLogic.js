@@ -249,7 +249,7 @@ export class InspectionEditorLogic {
   
     //reportStatisticState.statisticValue
     let measureList =
-      dclone(edit_info.list.filter((feature) =>
+      dclone(this.shapeList.filter((feature) =>
         feature.type == SHAPE_TYPE.measure))
         .map((feature) => {
           //console.log(feature);
@@ -392,13 +392,11 @@ export class InspectionEditorLogic {
   
   
               edit_info.edit_tar_info = null;
-  
-              edit_info.list = inspEditorLogic.shapeList;
-              log.info(edit_info.list);
+
               edit_info.__decorator = { ...edit_info.__decorator, ...report.__decorator };
-  
+
               edit_info.__decorator.list_id_order =
-                UpdateListIDOrder(edit_info.__decorator.list_id_order, edit_info.list);
+                UpdateListIDOrder(edit_info.__decorator.list_id_order, inspEditorLogic.shapeList);
   
               edit_info.inherentShapeList = inspEditorLogic.UpdateInherentShapeList();
   
@@ -424,7 +422,6 @@ export class InspectionEditorLogic {
     }
 
     
-    edit_info.list = this.shapeList;
     edit_info.inherentShapeList = this.UpdateInherentShapeList();
 
     return edit_info;
@@ -1000,11 +997,12 @@ export class InspectionEditorLogic {
       if (shape.name === undefined) {
         shape.name = "["+id+"]";
       }
-      this.shapeList.push(shape);
+      // immutable replace (new array ref) so consumers selecting shapeList re-render
+      this.shapeList = [...this.shapeList, shape];
     }
     else {
       if (pre_shape_idx != undefined) {
-        this.shapeList[pre_shape_idx] = shape;
+        this.shapeList = this.shapeList.map((s, i) => (i === pre_shape_idx ? shape : s));
       }
     }
 
@@ -1470,7 +1468,6 @@ export function Edit_info_Empty() {
     DefFileTag: [],
     inspOptionalTag:[],
     DefFileHash: "",
-    list: [],
     __decorator: {
       list_id_order: [],
       extra_info: [],

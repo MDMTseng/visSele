@@ -2134,7 +2134,7 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
 
     let skipDrawIdxs = [];
 
-    this.rUtil.drawShapeList(ctx, this.edit_DB_info.list, null, skipDrawIdxs, this.edit_DB_info.list, unitConvert,false,false);
+    this.rUtil.drawShapeList(ctx, this.edit_DB_info._obj.shapeList, null, skipDrawIdxs, this.edit_DB_info._obj.shapeList, unitConvert,false,false);
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
 
   }
@@ -2627,7 +2627,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
       // let finalStatus=this.colorSet.color_SUCCESS
       {
-        let listClone = dclone(this.edit_DB_info.list);
+        let listClone = dclone(this.edit_DB_info._obj.shapeList);
 
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone, report);
 
@@ -3092,7 +3092,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     ctx.closePath();
     ctx.save();
 
-    let displayShape = this.AvailableShapeFilter(this.edit_DB_info.list);
+    let displayShape = this.AvailableShapeFilter(this.edit_DB_info._obj.shapeList);
 
     let drawFocusItem = false;
     let skipDrawIdxs = [];
@@ -3102,7 +3102,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       skipDrawIdxs.push(this.EditShape.id);
 
       ctx.strokeStyle = this.colorSet.editShape;
-      this.rUtil.drawShapeList(ctx, [this.EditShape], this.colorSet.editShape, [], this.edit_DB_info.list, unitConvert, true,true);
+      this.rUtil.drawShapeList(ctx, [this.EditShape], this.colorSet.editShape, [], this.edit_DB_info._obj.shapeList, unitConvert, true,true);
     }
 
     if (this.CandEditPointInfo != null) {
@@ -3116,16 +3116,16 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
         skipDrawIdxs.push(candPtInfo.shape.id);
         let dcolor = "rgba(255,0,255,0.5)"
         ctx.strokeStyle = dcolor;
-        this.rUtil.drawShapeList(ctx, [candPtInfo.shape], dcolor, [], this.edit_DB_info.list, unitConvert, true,true);
+        this.rUtil.drawShapeList(ctx, [candPtInfo.shape], dcolor, [], this.edit_DB_info._obj.shapeList, unitConvert, true,true);
       }
     }
 
-    if (displayShape != this.edit_DB_info.list)//draw all
+    if (displayShape != this.edit_DB_info._obj.shapeList)//draw all
     {
-      this.rUtil.drawShapeList(ctx, displayShape, null, skipDrawIdxs, this.edit_DB_info.list, unitConvert,false,false);
+      this.rUtil.drawShapeList(ctx, displayShape, null, skipDrawIdxs, this.edit_DB_info._obj.shapeList, unitConvert,false,false);
     }
     else if (!drawFocusItem) {
-      this.rUtil.drawShapeList(ctx, this.edit_DB_info.list, null, skipDrawIdxs, this.edit_DB_info.list, unitConvert,false,false);
+      this.rUtil.drawShapeList(ctx, this.edit_DB_info._obj.shapeList, null, skipDrawIdxs, this.edit_DB_info._obj.shapeList, unitConvert,false,false);
     }
 
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
@@ -3249,7 +3249,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           let mmpp_round=this.round_number_to_significant(mmpp);
           {
             
-            let displayShape = this.AvailableShapeFilter(this.edit_DB_info.list);
+            let displayShape = this.AvailableShapeFilter(this.edit_DB_info._obj.shapeList);
             let pt_info = this.db_obj.FindClosestCtrlPointInfo(mouseOnCanvas2, displayShape);
             let displayiShape = this.AvailableShapeFilter(this.edit_DB_info.inherentShapeList);
             let pt_info2 = this.db_obj.FindClosestInherentPointInfo(mouseOnCanvas2, displayiShape);
@@ -3307,7 +3307,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                 this.SetShape(this.EditShape, this.EditShape.id);
             }
 
-            let displayShape = this.AvailableShapeFilter(this.edit_DB_info.list);
+            let displayShape = this.AvailableShapeFilter(this.edit_DB_info._obj.shapeList);
 
             let pt_info = this.db_obj.FindClosestCtrlPointInfo(mouseOnCanvas2, displayShape);
 
@@ -3979,7 +3979,7 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
 
       inspectionReportList.forEach((report, idx) => 
         {
-          let listClone = dclone(this.edit_DB_info.list);
+          let listClone = dclone(this.edit_DB_info._obj.shapeList);
   
           this.db_obj.ShapeListAdjustsWithInspectionResult(listClone, report);
           

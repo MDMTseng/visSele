@@ -6,7 +6,16 @@ oracle) and `flows.mjs` (behavioral: load/select/edit, verifies re-renders).
 
 ---
 
-## Q1. Collapse `edit_info.list` → single source `_obj.shapeList`? (orig refactor item #2)
+## Q1. Collapse `edit_info.list` → single source `_obj.shapeList`? — ✅ DONE
+
+Resolved: `SetShape` now replaces the array immutably (drag still commits only on
+mouse-up, so no per-frame re-render impact — the per-frame work is the canvas's
+imperative `draw()`). The `list` field, its 4 sync points, and all consumers
+(3 component selectors + 11 canvas draw reads + reducer/logic internals) now read
+`_obj.shapeList`. Verified: golden + flows PASS, canvas + shape-list render, Insp/
+Analysis modes mount clean.
+
+(original analysis below for history)
 
 **What:** `edit_info.list` is a mirror of `edit_info._obj.shapeList`, re-synced by hand
 at 4 points. The duplication is a footgun (forget to re-sync → divergence).

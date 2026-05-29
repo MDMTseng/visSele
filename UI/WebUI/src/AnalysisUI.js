@@ -436,7 +436,7 @@ const mapStateToProps_APP_ANALYSIS_MODE = (state) => {
   return { 
     c_state: state.UIData.c_state,
     edit_tar_info:state.UIData.edit_info.edit_tar_info,
-    shape_list:state.UIData.edit_info.list,
+    shape_list:state.UIData.edit_info._obj.shapeList,
     CORE_ID:state.ConnInfo.CORE_ID,
     edit_info:state.UIData.edit_info,
     reportStatisticState:state.UIData.edit_info.reportStatisticState,

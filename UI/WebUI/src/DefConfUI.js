@@ -1531,7 +1531,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   const DefFile_DB_W_ID = useSelector(state => state.ConnInfo.DefFile_DB_W_ID);
   const DefFile_DB_SEND= (data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(DefFile_DB_W_ID,data,return_cb));
-  const shape_list = useSelector(state => state.UIData.edit_info.list);
+  const shape_list = useSelector(state => state.UIData.edit_info._obj.shapeList);
   const defModelPath = edit_info.defModelPath;
   const machine_custom_setting = useSelector(state => state.UIData.machine_custom_setting);
 
@@ -3131,7 +3131,7 @@ const mapStateToProps_APP_DEFCONF_MODE = (state) => {
   return {
     c_state: state.UIData.c_state,
     edit_tar_info: state.UIData.edit_info.edit_tar_info,
-    shape_list: state.UIData.edit_info.list,
+    shape_list: state.UIData.edit_info._obj.shapeList,
     Info_decorator: state.UIData.edit_info.__decorator,
     CORE_ID: state.ConnInfo.CORE_ID,
     edit_info: state.UIData.edit_info,
