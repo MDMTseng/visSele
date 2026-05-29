@@ -33,9 +33,7 @@ import APPMain_rdx from './MAINUI';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 import * as log from 'loglevel';
 import BPG_WS from './comm/BPG_WS';
-import jsonp from 'jsonp';
 
-import semver from 'semver'
 import { default as AntButton } from 'antd/lib/button';
 import Collapse from 'antd/lib/collapse';
 import Menu from 'antd/lib/menu';
@@ -95,69 +93,6 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   });
 }
 console.log(navigator)
-
-function getRandom(min = 0, max = 1000000) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-};
-
-
-function checkUpdateInfo(updateInfo)
-{
-  console.log(updateInfo);
-  let plat = navigator.platform.toLowerCase();
-  let tar_asset=undefined;
-  if(plat=="macintel")
-  {
-    tar_asset=updateInfo.assets.find(asset=>asset.name.endsWith("mac.zip"))
-  }
-  else if(plat=="win32" || plat=="win64")
-  {
-    tar_asset=updateInfo.assets.find(asset=>asset.name.endsWith("win.zip"))
-  }
-  return tar_asset;
-}
-
-
-function isNewVersionExist(latestVersion,currentVersion)
-{
-  if(latestVersion===undefined || currentVersion===undefined)
-    return false;
-  let lv=semver.clean(currentVersion);
-  if(lv===undefined)
-  {
-    lv="0.0.0"
-  }
-  let rv=semver.clean(latestVersion);
-
-  console.log(" local_version:",lv)
-  console.log("remote_version:",rv)
-  console.log("gt lt:",semver.gt(rv, lv),semver.lt(rv, lv))
-  
-  return semver.gt(rv, lv)
-
-}
-
-
-function SystemServicePanel_UI()
-{
-  
-  const dispatch = useDispatch();
-  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
-  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
-  // const ACT_WS_SEND_PLAIN= (...args) => dispatch(UIAct.EV_WS_SEND_PLAIN(...args));
-
-
-
-  return <div>
-    <Button onClick={()=>{
-
-
-      ACT_WS_SEND_BPG(CORE_ID, "RC", 0, {
-          target: "camera_ez_reconnect"
-        });
-      }}>EX_RECONN</Button>
-  </div>
-}
 
 function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,onItemClick=_=>_})
 {

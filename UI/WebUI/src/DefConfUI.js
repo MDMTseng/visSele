@@ -203,57 +203,6 @@ const CanvasComponent_rdx = connect(
 
 
 
-class DList extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-
-    };
-
-    /*
-    itemRenderer
-    item
-    onChange
-    */
-  }
-  dragStart(e) {
-    this.dragged = e.currentTarget;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', this.dragged);
-  }
-  dragEnd(e) {
-    return;
-    this.dragged.style.display = 'block';
-    this.dragged.parentNode.removeChild(placeholder);
-
-    // update state
-    var data = this.props.item;
-    var from = Number(this.dragged.dataset.id);
-    var to = Number(this.over.dataset.id);
-    if (from < to) to--;
-    data.splice(to, 0, data.splice(from, 1)[0]);
-    this.setState({ colors: data });
-  }
-  dragOver(e) {
-    e.preventDefault();
-    this.dragged.style.display = "none";
-    if (e.target.className === 'placeholder') return;
-    this.over = e.target;
-    e.target.parentNode.insertBefore(placeholder, e.target);
-  }
-  render() {
-    var listItems = this.props.items.map((item, i) => {
-      let DOM = this.props.itemRenderer(item, i, 'true', this.dragEnd.bind(this), this.dragStart.bind(this));
-      console.log(DOM);
-      return DOM
-    });
-    return (
-      <ul onDragOver={this.dragOver.bind(this)}>
-        {listItems}
-      </ul>
-    )
-  }
-}
 
 function ULRangeAcc({ value, lastKey, onChange, RangeCValue, target, props }) {
   const [offsetEditVisible, setOffsetEditVisible] = useState(false);
@@ -476,16 +425,6 @@ function completeSingleCtrlMarginInfo(singleMarginInfo,measureInfo)
   })
 }
 
-function completeCtrlMarginInfo(_control_margin_info,measureInfo)
-{
-  let control_margin_info=dclone(_control_margin_info);
-  console.log(control_margin_info,measureInfo);
-  Object.keys(control_margin_info).forEach((key)=>{
-    //let margininfo = control_margin_info[key];
-    control_margin_info[key] = completeSingleCtrlMarginInfo(control_margin_info[key],measureInfo);
-
-  })
-}
 
 function DisplayMarginSet({MarginInfo,DICT})
 {
