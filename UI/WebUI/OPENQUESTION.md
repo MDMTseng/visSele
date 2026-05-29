@@ -277,10 +277,44 @@ Don't fragment: render() switch, NEUTRAL_UI, ctrlLogic_DEFCONF, GenTarEditUI (co
 **Model (InspectionEditorLogic):** [M] parse* family (auxPointParse/searchPointParse/shapeMiddlePointParse/shapeVectorParse) dup ref-lookups → one resolveRef(); [M] extract pure pointForwardTrans/pointInvTrans from ShapeAdjustsWithInspectionResult; [S/M] group parse* into pure ShapeGeometry module + TS types. Dead: searchPointParse ignores param (near-noop), setsig360infoCenter no caller, commented blocks, UpdateInherentShapeList double-called in rootDefInfoLoading.
 
 **Build/deps:**
-- [S, HIGH—possible prod crash] `__DEV_MODE__` define mismatch: vite defines it, webpack does NOT; if info.js uses it unguarded → prod ReferenceError. (verifying)
+- [RESOLVED — false alarm] `__DEV_MODE__`: both refs guarded (info.js:4 try/catch, script.jsx:72 `typeof` check); webpack-not-defining-it is harmless. No prod crash. See Round 6.
 - [S] Remove UNUSED deps: @antv/g2, @antv/data-set, ajv, text-encoding, localStorage(pkg), cytoscape(+cose-bilkent, only used by dead xstate_visual.js).
 - [S] git hygiene: add root .gitignore; delete orphan root .ttf, stray WebUI/ + 未命名檔案夾/ dirs, stale jsconfig.json (conflicts with tsconfig); dead service-worker/PWA_manifest.
 - [S] extract shared less modifyVars (dup in vite+webpack configs); wire `typecheck` into regress.
 - [M] two transition-group libs (react-transition-group@1 + react-addons-css-transition-group) → consolidate.
 
 **React-18/19 readiness (deferred upgrade, ~18 edits/6 files):** blockers = string refs `this.refs.canvas` (11), componentWillUpdate (5, all drive canvas updateCanvas), componentWillMount (1), ReactDOM.render→createRoot (1). Sequence: refs → componentWill* → bump+createRoot last. Smells (fix-now-ok): .bind(this) in render, key={idx}, MAINUI SCU reads string ref.
+
+---
+
+## Round 6 (DB/persistence · CSS/layout · report-tracking extraction design · WebUI2 patterns)
+
+**RESOLVED — `__DEV_MODE__` is NOT a prod crash (round-5 false alarm):** both refs are guarded — `info.js:4` is inside try/catch, `script.jsx:72` uses `typeof __DEV_MODE__ !== "undefined"`. webpack prod DefinePlugin (webpack.config.js:18) defines only NODE_ENV, but that's fine because neither ref is bare. No action needed.
+
+**DB / persistence (scattered + silently lossy):**
+- [M, HIGH — data integrity] Inspection-report DB writes fail silently: empty `.catch` at InspectionUI.js:173-175; DB_WS retry deliberately commented out (script.jsx:428-441) and on send-failure it resolve()s + deQs anyway → failed inserts DROPPED, not requeued, zero operator signal. For a factory traceability DB this is the biggest gap. Verify: kill DB ws mid-inspection → records should requeue + visible failed-count.
+- [S, MED] trackWindow no age-based purge: send_obj stamps `time:Date.now()` (websocket.js:395,879) but nothing reads it; DB_WS 5s timeout rejects but does NOT delete trackWindow[tKey] → late/never ACK leaks forever until reconnect. Sweep by `time` on the existing interval.
+- [M, MED] Dup between the two DB_WS writers (Insp_DB_W_ID/DefFile_DB_W_ID, script.jsx:542-543, identical) and two near-identical send_obj impls (websocket.js:378 reqTrack vs :869 aliveTracking). Folds into the tracked DB_WS→comm/ relocation.
+- [S/M, MED] Query path orphaned/inconsistent: DB_Query.js uses jsonp/HTTP while writes use WS; defFileQuery/inspectionQuery (lines 4,26) have NO timeout (hang on dead endpoint). With AnalysisUI deleted, check for live callers — may be dead code.
+
+**CSS / layout (coherent hand-rolled utility framework; mostly low-risk cleanup):**
+- [S] Delete dead: empty style/MaT.css (unimported); unused classes veleXY90/vboxImg/cardblock/widthF800.../HX3/HX5-7/height115/deepblue.../radarScanPanel/pokemonSpriteCon. The widthF/N media queries are the ONLY live breakpoints and they're unused → no responsive behavior is actually live.
+- [S] Bug: `palatte-gray-8` (DefConfUI.js:1612) — only `palatte-grey-*` exists (sp_style.css:277) → element silently gets no background. Fix class or add gray alias.
+- [M, HIGH leverage "easier UI edits"] Hardcoded fixed-px touch heights: `.s` height:50px (basis.css:100) + HX1=50px…HX4=200px ladder (basis.css:202-217) used ~30×. Extract `--touch-row` token → retune all touch targets at once. (The % widthN/heightN grid is fine — leave it.)
+- [M] `cm`-unit font sizing (.s 0.4cm basis.css:103; sFontSize/mFontSize/lFontSize 0.3-0.7cm sp_style.css:526-534) renders inconsistently across touchscreen DPI vs dev + doesn't scale w/ zoom → convert to rem/px tokens.
+- [S/M] Modal sizing (.modal-sizing/size90/size95, sp_style.css:121-175) overrides antd with !important — fragile for antd upgrade; document the flex contract (header flex:0 2, body 1 2, footer 2 2).
+- Non-issues (honest): z-index (one rule, no war); inline styles (110, mostly one-off geometry); .blockS/.sp_Style scoping convention is good.
+
+**Report-tracking engine extraction (concrete plan — highest-leverage reducer carve):**
+- TARGET: `EVENT_Inspection_Report` in UICtrlReducer.js:113-604 (~490 lines); tracking core 163-580. Precedent: statReducer→spcStats.js, applyMeasureLimitCoupling→measure.js (mutate-and-return seam).
+- PURE (extract): matching+blending+grading+windowing — timeout/flush (:192-227), MarginInfoExtraction (:244-251), resultGrading (:252-285), mask-cull/closeRep-match/valueAveIn blends/insert-prune (:306-548). All deps injectable.
+- STAYS (coupled): action switch, immutable Object.assign churn (:156,165,563), sig360/camera_calibration/stage_light branches that call `_obj.Set*` (:160,583,587), context pulled off newState.edit_info.
+- SEAM (one coarse fn, not shattered): new src/redux/reducer/reportTracking.js → `trackInspectionReport(reportStatisticState, inspReport, ctx) -> reportStatisticState`; ctx bundles statSetting/mmpcampix/currentTime_ms/margins/getDetailStatus/statReducer etc. Reducer case shrinks to: assemble ctx, call, `edit_info.reportStatisticState={...result}`.
+- HARNESS: add `inspectReport` flow to flows.mjs — dispatch N canned Inspection_Report actions (fixed date/seeded values), extend SNAP (flows.mjs:114) to capture trackingWindow (id/repeatTime/cx/cy/area/status/judge), historyReport.length, reportCount, emptyReportCount, statisticValue.measureList (id/count/mean/sigma/CPK), float-rounded for byte-stable JSON. Baseline before → byte-identical after.
+
+**WebUI2 (TS sibling) — proven patterns (the north-star, already shipped there):**
+- [VERY HIGH, directional] Per-shape vertical slice EXISTS: SingleTargetVIEWUI_<Type>.tsx (DimMeasure/ArcFitting/Orientation_SBM/CameraCalib), each co-locating setup UI + canvas ctrl + drawHook (DimMeasure.tsx:310,:612). String-keyed registry COMPONENT_MAP (InspTarView.tsx:5356) with union type DERIVED from the map (keyof typeof, :5372) + type guard + useMemo MUX. This is the literal opposite of DefConfUI.js's generic whiteListKey switch — and it's the target architecture, validated in prod. whiteListKey schema work = step 1 toward it.
+- [back-portable] `type_DrawHook=(ctrl_or_draw,g,canvas_obj)=>void` (CanvasComponent.tsx:121); HookCanvasComponent takes a `dhook` prop (:503); shape supplies own draw via useCallback. WebUI already has the same canvas base → adding one drawHook prop is the lever for per-shape rendering ownership.
+- [directional, "keep Redux" caveat] Promise-based BPG/WS client: BPG_WS in EXT_API.ts:16 keys reqWindow:Map<pgID,{...promiseCBs}>, send_P() resolves on SS terminator (:143,:197), send_cbs_attach for streaming (:223). Cleaner than WebUI's callback/redux-dispatch split — borrow the Promise client BESIDE Redux, don't replace.
+- [incremental] Shared prop contract CompParam_InspTarUI (SingleTargetVIEWUI_UTIL.tsx:19-46) every shape view implements; AppTypes.ts types stream payloads. WebUI's domain.d.ts is 165 lines, def mostly `any` → type incrementally under allowJs.
+- Honest caveats: WebUI2 def/report still `any`; noisy console.log; XCMD.ts eval (:530); DimMeasure 5600L / InspTarView 5400L (files large — the BOUNDARIES are the clean parts). State still Redux (no lighter-store migration signal).
