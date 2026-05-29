@@ -280,7 +280,12 @@ class APPMasterX extends React.Component {
       console.log(matchRes);
       rootUrl=matchRes[1];
     }
-    this.coreUrl="ws://"+rootUrl+":4090";
+    // core ws port: 4090 = latest dev backend (default); override via
+    // localStorage.setItem("coreport","4190") (stable old-backup backend) for
+    // verification when the dev backend is down. (Avoid a URL query — it breaks the
+    // rootUrl parse above.)
+    let corePort = (typeof localStorage !== "undefined" && localStorage.getItem("coreport")) || "4090";
+    this.coreUrl="ws://"+rootUrl+":"+corePort;
     this.sideBootUrl="ws://"+rootUrl+":5678";
     //this.state.do_splash=true;
     
