@@ -256,7 +256,14 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
     if (calo) { cir.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 36);
                 cir.cal_width = JFetch_NUMBER_ex(calo, "width", 9);
                 cir.cal_length = JFetch_NUMBER_ex(calo, "length", -1);
-                cir.cal_step = JFetch_NUMBER_ex(calo, "step", -1); }
+                cir.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
+                // Clamp against pathological caliper sizes that would DoS the
+                // measurement loop (each caliper allocates ~width*length per
+                // count). Real-world calipers are <<100; these caps are well
+                // above any realistic def.
+                if (cir.cal_count > 4096) cir.cal_count = 4096;
+                if (cir.cal_width  > 2048) cir.cal_width  = 2048;
+                if (cir.cal_length > 4096) cir.cal_length = 4096; }
     cJSON *edgeo = JFetch_OBJECT(circle_obj, "edge");
     if (edgeo) {
       cir.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
@@ -1531,7 +1538,11 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
     if (calo) { line.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 30);
                 line.cal_width = JFetch_NUMBER_ex(calo, "width", 9);
                 line.cal_length = JFetch_NUMBER_ex(calo, "length", -1);
-                line.cal_step = JFetch_NUMBER_ex(calo, "step", -1); }
+                line.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
+                // Clamp pathological caliper sizes (see parse_arcData).
+                if (line.cal_count > 4096) line.cal_count = 4096;
+                if (line.cal_width  > 2048) line.cal_width  = 2048;
+                if (line.cal_length > 4096) line.cal_length = 4096; }
     cJSON *edgeo = JFetch_OBJECT(line_obj, "edge");
     if (edgeo) {
       line.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
@@ -1679,6 +1690,11 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
     judge.measure_type = FeatureReport_judgeDef::CIRCLE_INFO;
 
     char *infotype = JFetch_STRING(judge_obj, "info_type");
+    if (infotype == NULL)
+    {
+      LOGE("%s: judge id:%d circle_info missing required \"info_type\"", __func__, judge.id);
+      return -1;
+    }
     if (strcmp(infotype, "max_diameter") == 0)
     {
       judge.data.CIRCLE_INFO.info_type = judge.data.CIRCLE_INFO.MAX_DIAMETER;

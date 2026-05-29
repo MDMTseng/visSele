@@ -134,6 +134,118 @@ RAW_BOM_UNICODE = "﻿" + json.dumps(
                      "\U0001F4A9emoji": "nul", "features": []}]},
     ensure_ascii=False)
 
+# ---------- ROUND 2: deeper / combined adversarial builders ----------
+
+def mk_aux_line_ref_self():
+    # aux_line whose ref points to its own id (self-referential ref graph)
+    d = golden(); a = first_of(d, "aux_line")
+    if a is not None:
+        a["ref"] = [{"id": a.get("id", 0), "element": "aux_line"}]
+    return d
+
+def mk_aux_line_ref_cycle():
+    # two aux features referencing each other (ref-graph cycle)
+    d = golden()
+    al = first_of(d, "aux_line"); ap = first_of(d, "aux_point")
+    if al is not None and ap is not None:
+        al["ref"] = [{"id": ap.get("id"), "element": "aux_point"}]
+        ap["ref"] = [{"id": al.get("id"), "element": "aux_line"}]
+    return d
+
+def mk_aux_line_ref_empty_dicts():
+    # ref is a list of empty dicts (missing id/element keys)
+    d = golden(); a = first_of(d, "aux_line")
+    if a is not None: a["ref"] = [{}, {}, {}]
+    return d
+
+def mk_sign360_signature_huge_array():
+    # extreme array size in sign360.signature (allocation / OOB on iteration)
+    d = golden(); s = first_of(d, "sign360")
+    if s is not None: s["signature"] = [0.0] * 200000
+    return d
+
+def mk_sign360_signature_typeconfusion():
+    # signature elements are strings/objects, not numbers
+    d = golden(); s = first_of(d, "sign360")
+    if s is not None:
+        s["signature"] = ["x", {"a": 1}, None, [1, 2], True]
+        s["area"] = {"not": "an-area"}
+    return d
+
+def mk_sign360_pt_negative_area():
+    d = golden(); s = first_of(d, "sign360")
+    if s is not None:
+        s["pt1"] = {"x": -0.0, "y": -0.0}
+        s["pt2"] = {"x": -0.0, "y": -0.0}   # degenerate zero-extent circle
+        s["area"] = -1
+    return d
+
+def mk_nan_string_coords():
+    # NaN / Infinity smuggled in as strings on a line point
+    return mut_many("line", {
+        "pt1": {"x": "NaN", "y": "Infinity"},
+        "pt2": {"x": "-Infinity", "y": "nan"},
+    })()
+
+def mk_searchpoint_margin_array():
+    # type confusion on multiple nested numeric fields at once
+    return mut_many("search_point", {
+        "margin": [1, 2, 3],
+        "width": {"deep": {"deeper": 5}},
+        "angleDeg": "1e999",
+        "line_thickness_value": [[]],
+    })()
+
+def mk_measure_calc_selfref_huge():
+    # calc post_exp referencing itself + an enormous RPN program
+    d = golden(); m = first_of(d, "measure")
+    mid = m.get("id", 12)
+    m["subtype"] = "calc"
+    m["ref"] = [{"id": mid}]
+    m["calc_f"] = {"exp": "", "post_exp": ([f"[{mid}]", "+"] * 5000)}
+    return d
+
+def mk_measure_calc_garbage_tokens():
+    # calc RPN with junk operators / type-confused tokens
+    return mut_calc(["[12]", None, {"x": 1}, "@@@", "+", "/", 1e308, "[99999]"])()
+
+def mk_mixed_valid_invalid_features():
+    # interleave several broken features among the valid ones
+    d = golden()
+    feats = first_of(d, "sig360_circle_line")["features"]
+    feats.insert(0, {"type": "line", "id": "not-an-int", "pt1": None, "pt2": [1]})
+    feats.insert(2, {"type": "search_point"})            # almost-empty feature
+    feats.insert(4, {"type": 999, "id": 1})              # type confusion mid-list
+    feats.append({"type": "measure", "subtype": "calc",
+                  "ref": [{"id": 7}], "calc_f": {"post_exp": ["[7]", "*", "*"]}})
+    return d
+
+def mk_all_features_same_id():
+    # collapse every feature id to a single value (mass id collision)
+    d = golden()
+    for f in first_of(d, "sig360_circle_line")["features"]:
+        if isinstance(f, dict) and "id" in f: f["id"] = 1
+    return d
+
+def mk_negative_and_giant_ids():
+    d = golden()
+    feats = [f for f in first_of(d, "sig360_circle_line")["features"]
+             if isinstance(f, dict) and "id" in f]
+    for i, f in enumerate(feats):
+        f["id"] = [-2147483648, 2147483647, 9999999999999999][i % 3]
+    return d
+
+# raw: duplicate keys in the same JSON object (parser last-wins / collision)
+RAW_DUP_KEYS = ('{"type":"binary_processing_group","featureSet":[],'
+                '"featureSet":[{"type":"sig360_circle_line","features":[],'
+                '"features":[{"type":"line","id":1,"id":2,"pt1":{"x":0,"x":9,"y":0}}]}]}')
+
+# raw: literal NaN / Infinity tokens (non-standard JSON; many parsers accept)
+RAW_NAN_LITERALS = ('{"type":"binary_processing_group","featureSet":'
+                    '[{"type":"sig360_circle_line","features":'
+                    '[{"type":"line","id":1,"pt1":{"x":NaN,"y":Infinity},'
+                    '"pt2":{"x":-Infinity,"y":0}}]}]}')
+
 CASES = [
     # A. malformed JSON bytes
     case("raw_truncated_json",      "robust", raw=RAW_TRUNCATED),
@@ -165,6 +277,38 @@ CASES = [
 
     # E. determinism on a malformed-but-accepted def
     case("det_dangling_ref",        "determinism", make=mk_dangling_ref),
+
+    # ===== ROUND 2: deeper / combined adversarial cases =====
+    # F. ref-graph corruption (self / cycle / empty)
+    case("aux_line_ref_self",       "robust", make=mk_aux_line_ref_self),
+    case("aux_line_ref_cycle",      "robust", make=mk_aux_line_ref_cycle),
+    case("aux_line_ref_empty_dicts","robust", make=mk_aux_line_ref_empty_dicts),
+
+    # G. sign360 signature fuzzing
+    case("sign360_sig_huge_array",  "robust", make=mk_sign360_signature_huge_array),
+    case("sign360_sig_typeconfuse", "robust", make=mk_sign360_signature_typeconfusion),
+    case("sign360_degenerate_area", "robust", make=mk_sign360_pt_negative_area),
+
+    # H. NaN/Inf-as-string + deep nested type confusion
+    case("nan_inf_string_coords",   "robust", make=mk_nan_string_coords),
+    case("searchpoint_nested_confuse","robust", make=mk_searchpoint_margin_array),
+
+    # I. calc / RPN adversarial
+    case("calc_selfref_huge_rpn",   "robust", make=mk_measure_calc_selfref_huge),
+    case("calc_garbage_tokens",     "robust", make=mk_measure_calc_garbage_tokens),
+
+    # J. mixed valid+invalid features / id chaos
+    case("mixed_valid_invalid",     "robust", make=mk_mixed_valid_invalid_features),
+    case("all_features_same_id",    "robust", make=mk_all_features_same_id),
+    case("negative_giant_ids",      "robust", make=mk_negative_and_giant_ids),
+
+    # K. raw byte: duplicate keys + literal NaN/Inf JSON extensions
+    case("raw_duplicate_keys",      "robust", raw=RAW_DUP_KEYS),
+    case("raw_nan_inf_literals",    "robust", raw=RAW_NAN_LITERALS),
+
+    # L. determinism on an accepted-but-corrupt def (degenerate sign360 -> exit0);
+    #    must stay stable across runs despite the degenerate geometry.
+    case("det_degenerate_sign360",  "determinism", make=mk_sign360_pt_negative_area),
 ]
 
 if __name__ == "__main__":

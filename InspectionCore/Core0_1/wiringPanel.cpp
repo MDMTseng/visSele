@@ -4923,6 +4923,18 @@ int cp_main(int argc, char **argv)
     char *imgPath = argv[ai + 1], *defPath = argv[ai + 2], *outPath = argv[ai + 3];
     acvImage img;
     if (LoadIMGFile(&img, imgPath) != 0) { LOGE("--insp: cannot load image %s", imgPath); return 3; }
+    // Reject degenerate-size images that the sig360 / labeling pipeline assumes
+    // are at least sample/down-sampling-friendly. A 1x1 image SIGSEGVs deep in
+    // the matching pipeline; bounce it as a controlled load failure.
+    {
+      const int MIN_INSP_IMG_DIM = 32;
+      if (img.GetWidth() < MIN_INSP_IMG_DIM || img.GetHeight() < MIN_INSP_IMG_DIM)
+      {
+        LOGE("--insp: image too small (%dx%d, min %dx%d)",
+             img.GetWidth(), img.GetHeight(), MIN_INSP_IMG_DIM, MIN_INSP_IMG_DIM);
+        return 3;
+      }
+    }
     // mirror the live single-inspection handler: it uses neutral_bacpac with
     // calibPpB/calibmmpB taken from the def (wiringPanel CI handler ~1999/2100).
     // First fully init the sampler's calib map (RESET + load) like live startup

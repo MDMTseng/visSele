@@ -141,5 +141,82 @@ CASES.append(case("malformed_ref_brackets", "robust", make=mut_calc(["[12", "1",
 CASES.append(case("deeply_long_expr", "robust",
                   make=mut_calc(["[12]"] + ["1", "$+$"] * 500)))
 
+# ================= ROUND 2: harder robustness + correctness =================
+# Baseline operands again: V8 V12 V13 V14 (+V17 distance, but value unknown ->
+# only used in robust/no-crash contexts unless hand-checkable).
+
+# --- more stack-underflow shapes ---
+# operator immediately after a single literal operand (needs 2, has 1)
+CASES.append(case("r2_underflow_op_after_lit", "robust", make=mut_calc(["5", "$*$"])))
+# nested under-arity: inner op consumes the only operand, outer op starves
+CASES.append(case("r2_nested_under_arity", "robust",
+                  make=mut_calc(["[12]", "[13]", "$+$", "$*$"])))
+# chain of operators each starving the next
+CASES.append(case("r2_op_chain_starve", "robust", make=mut_calc(["[12]", "$+$", "$-$", "$*$", "$/$"])))
+# max$ with arity-cache LARGER than stack depth (claims 5, only 2 present)
+CASES.append(case("r2_max_arity_gt_stack", "robust",
+                  make=mut_calc(["[12]", "[13]", "$,$", "$,$", "$,$", "$,$", "$,$", "max$"])))
+# min$ arity cache > stack, single operand
+CASES.append(case("r2_min_arity_gt_stack", "robust",
+                  make=mut_calc(["[12]", "$,$", "$,$", "$,$", "min$"])))
+
+# --- over-long / repeated arity tokens ---
+CASES.append(case("r2_many_arity_tokens", "robust",
+                  make=mut_calc(["[12]", "[13]"] + ["$,$"] * 50 + ["max$"])))
+CASES.append(case("r2_arity_tokens_only", "robust", make=mut_calc(["$,$"] * 20 + ["max$"])))
+CASES.append(case("r2_trailing_arity_no_func", "robust",
+                  make=mut_calc(["[12]", "[13]", "$,$", "$,$"])))
+
+# --- malformed [id] tokens ---
+CASES.append(case("r2_empty_brackets", "robust", make=mut_calc(["[]", "1", "$+$"])))
+CASES.append(case("r2_alpha_id", "robust", make=mut_calc(["[abc]", "1", "$+$"])))
+CASES.append(case("r2_comma_in_id", "robust", make=mut_calc(["[12,13]", "1", "$+$"])))
+CASES.append(case("r2_nested_brackets", "robust", make=mut_calc(["[[12]]", "1", "$+$"])))
+CASES.append(case("r2_neg_inside_bracket", "robust", make=mut_calc(["[12, [-1]", "1", "$+$"])))
+CASES.append(case("r2_float_id", "robust", make=mut_calc(["[12.5]", "1", "$+$"])))
+
+# --- refs to NON-measure ids (line/arc/aux/search_point) ---
+CASES.append(case("r2_ref_line_id", "robust", make=mut_calc(["[1]", "[2]", "$+$"])))
+CASES.append(case("r2_ref_arc_id", "robust", make=mut_calc(["[24]", "[25]", "$+$"])))
+CASES.append(case("r2_ref_aux_point_id", "robust", make=mut_calc(["[100001]", "1", "$+$"])))
+CASES.append(case("r2_ref_search_point_id", "robust", make=mut_calc(["[3]", "1", "$+$"])))
+CASES.append(case("r2_ref_sign360_id", "robust", make=mut_calc(["[100000]", "1", "$+$"])))
+
+# --- NaN / inf propagation ---
+# [12]/0 -> (inf or NaN) then * literal ; must not surface nan/inf or crash
+CASES.append(case("r2_divzero_then_mul", "robust", make=mut_calc(["[12]", "0", "$/$", "10", "$*$"])))
+CASES.append(case("r2_divzero_then_sub", "robust", make=mut_calc(["[12]", "0", "$/$", "[13]", "$-$"])))
+CASES.append(case("r2_divzero_chain", "robust",
+                  make=mut_calc(["[12]", "0", "$/$", "0", "$/$", "0", "$/$"])))
+# 0/0 then max with literal
+CASES.append(case("r2_nan_in_max", "robust",
+                  make=mut_calc(["0", "0", "$/$", "5", "$,$", "max$"])))
+
+# --- huge / negative / float literals ---
+CASES.append(case("r2_huge_literal", "robust", make=mut_calc(["1e308", "1e308", "$*$"])))
+CASES.append(case("r2_huge_neg_literal", "robust", make=mut_calc(["-1e308", "1e308", "$-$"])))
+CASES.append(case("r2_tiny_float", "robust", make=mut_calc(["1e-308", "1e-308", "$/$"])))
+CASES.append(case("r2_int_overflow_literal", "robust",
+                  make=mut_calc(["99999999999999999999999", "1", "$+$"])))
+
+# --- correctness: deeper trees, precedence-via-RPN, mixing refs+lits+ops ---
+# precedence: 2 + 3 * 4 == 14 (RPN encodes precedence); also = lit_arith but reordered
+CASES.append(case("r2_precedence", "custom",
+                  fn=calc_expect(["2", "3", "4", "$*$", "$+$"], 14.0)))
+# (([12] - [13]) is ~ -1.2e-6) * 1000000 -> ~ -1.06 ; mix ref+lit deeply
+CASES.append(case("r2_mix_deep", "custom",
+                  fn=calc_expect(["[12]", "[13]", "$-$", "[8]", "$+$", "2", "$/$"],
+                                 ((V12 - V13) + V8) / 2, tol=0.02)))
+# correctness with negative literal in tree: [12] + (-3) * 2 = [12] - 6
+CASES.append(case("r2_neg_in_tree", "custom",
+                  fn=calc_expect(["[12]", "-3", "2", "$*$", "$+$"], V12 + (-3 * 2), tol=0.02)))
+# nested max/min correctness: max(min([12],[13]), [8]) == V8
+CASES.append(case("r2_nested_maxmin", "custom",
+                  fn=calc_expect(["[12]", "[13]", "$,$", "min$", "[8]", "$,$", "max$"],
+                                 max(min(V12, V13), V8))))
+# division chain correctness: [13] / [12] / 1 == V13/V12
+CASES.append(case("r2_div_chain", "custom",
+                  fn=calc_expect(["[13]", "[12]", "$/$", "1", "$/$"], V13 / V12)))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_calc", CASES))
