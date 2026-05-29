@@ -485,5 +485,137 @@ def mut_nonexistent_include():
     return f
 CASES.append(case("def_nonexistent_include_robust", "robust", make=mut_nonexistent_include()))
 
+# ==========================================================================
+# ROUND 4 — color spaces, big IDAT, dim boundaries, process isolation,
+#           argv flood, env-flag combos, mega def, runtime SLO, extreme pixels
+# ==========================================================================
+
+if _PIL:
+    from PIL import Image as _PI4
+    # 16-bit grayscale PNG (I;16)
+    _R4_16BIT = f"{TMP}/sys_r4_16bit.png"
+    _PI4.new("I;16", (256, 256), 30000).save(_R4_16BIT, "PNG")
+    CASES.append(case("r4_img_16bit_gray_robust", "robust", img=_R4_16BIT))
+
+    # Palettized (P-mode) PNG
+    _R4_PAL = f"{TMP}/sys_r4_palette.png"
+    _pal = _PI4.new("P", (256, 256), 5)
+    _pal.putpalette([i % 256 for i in range(768)])
+    _pal.save(_R4_PAL, "PNG")
+    CASES.append(case("r4_img_palette_robust", "robust", img=_R4_PAL))
+
+    # Grayscale-with-alpha (LA mode)
+    _R4_LA = f"{TMP}/sys_r4_LA.png"
+    _PI4.new("LA", (256, 256), (120, 255)).save(_R4_LA, "PNG")
+    CASES.append(case("r4_img_gray_alpha_robust", "robust", img=_R4_LA))
+
+    # Very large IDAT (~10MB): high-entropy random pixels resist compression
+    _R4_BIGIDAT = f"{TMP}/sys_r4_bigidat.png"
+    import random as _rnd
+    _rnd.seed(42)
+    _big = _PI4.frombytes("L", (3000, 3000), bytes(_rnd.getrandbits(8) for _ in range(3000*3000)))
+    _big.save(_R4_BIGIDAT, "PNG", compress_level=1)
+    CASES.append(case("r4_img_big_idat_robust", "robust", img=_R4_BIGIDAT))
+
+    # Dim boundary 32x33 / 33x32
+    _R4_32x33 = f"{TMP}/sys_r4_32x33.png"; _PI4.new("L", (32, 33), 128).save(_R4_32x33, "PNG")
+    _R4_33x32 = f"{TMP}/sys_r4_33x32.png"; _PI4.new("L", (33, 32), 128).save(_R4_33x32, "PNG")
+    CASES.append(case("r4_img_32x33_robust", "robust", img=_R4_32x33))
+    CASES.append(case("r4_img_33x32_robust", "robust", img=_R4_33x32))
+
+    # All-zero (pure black) and all-white pixel images at golden size
+    _gw, _gh = 256, 256
+    _R4_ALLBLACK = f"{TMP}/sys_r4_allblack.png"; _PI4.new("L", (_gw, _gh), 0).save(_R4_ALLBLACK, "PNG")
+    _R4_ALLWHITE = f"{TMP}/sys_r4_allwhite.png"; _PI4.new("L", (_gw, _gh), 255).save(_R4_ALLWHITE, "PNG")
+    CASES.append(case("r4_img_all_black_robust", "robust", img=_R4_ALLBLACK))
+    CASES.append(case("r4_img_all_white_robust", "robust", img=_R4_ALLWHITE))
+
+    # One bright pixel, rest black
+    _R4_ONEPIX = f"{TMP}/sys_r4_onepix.png"
+    _imop = _PI4.new("L", (_gw, _gh), 0); _imop.putpixel((_gw//2, _gh//2), 255)
+    _imop.save(_R4_ONEPIX, "PNG")
+    CASES.append(case("r4_img_one_bright_pixel_robust", "robust", img=_R4_ONEPIX))
+
+# ---- concurrent isolation: malformed run + golden run, process isolation -
+def fn_r4_concurrent_isolation(run):
+    """Two threads = two subprocesses. One uses malformed def, one uses golden.
+    Verify: golden subprocess returns rc==0 with valid JSON regardless of the
+    malformed sibling. Each --insp invocation is its own process so they MUST
+    be independent."""
+    garb = _write("r4_iso_garbage.hydef", "}}}not-json{{{")
+    results = {}
+    def w_bad():
+        results["bad"] = run(garb, out_path=f"{TMP}/sys_r4_iso_bad.json")
+    def w_good():
+        results["good"] = run(GDEF, out_path=f"{TMP}/sys_r4_iso_good.json")
+    ts = [threading.Thread(target=w_bad), threading.Thread(target=w_good)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    g_rc, g_out = results["good"]
+    b_rc, _b_out = results["bad"]
+    valid = False
+    if g_out is not None:
+        try: json.loads(g_out); valid = True
+        except Exception: valid = False
+    ok = (g_rc == 0) and valid and (b_rc != "TIMEOUT") and (b_rc not in SIGCRASH)
+    return ok, f"good_rc={rc_str(g_rc)} valid={valid} bad_rc={rc_str(b_rc)} (process-isolated)"
+CASES.append(case("r4_concurrent_process_isolation", "custom", fn=fn_r4_concurrent_isolation))
+
+# ---- argv at the absolute limit: 1000 ignored junk tokens ---------------
+def fn_r4_argv_1000(_run):
+    junk = [f"ignored_{i}=abc" for i in range(1000)]
+    rc, out = _run_argv(extra_args_after=junk, timeout=180)
+    ok = (rc == 0) and out is not None and (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    return ok, f"rc={rc_str(rc)} argv_len~={1005} report_present={out is not None}"
+CASES.append(case("r4_argv_1000_ignored", "custom", fn=fn_r4_argv_1000))
+
+# ---- env var combo: CALIP_DUMP + SPCV_DUMP + SP_PT_DUMP all set ---------
+def fn_r4_env_dumps(_run):
+    """All three *_DUMP env vars on simultaneously — engine should run cleanly,
+    produce its normal report, and not crash. Extra dump files are fine."""
+    out = f"{TMP}/sys_r4_envdump.json"
+    if os.path.exists(out): os.remove(out)
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD,
+               CALIP_DUMP="1", SPCV_DUMP="1", SP_PT_DUMP="1")
+    try:
+        r = subprocess.run([VIS, "--insp", IMG, GDEF, out], cwd=CORE, env=env,
+                           capture_output=True, timeout=180)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    report = open(out, "rb").read() if os.path.exists(out) else None
+    valid = False
+    if report is not None:
+        try: json.loads(report); valid = True
+        except Exception: valid = False
+    ok = (rc == 0) and valid and (rc not in SIGCRASH)
+    return ok, f"rc={rc_str(rc)} report_valid={valid} (all DUMP flags on)"
+CASES.append(case("r4_env_all_dump_flags", "custom", fn=fn_r4_env_dumps))
+
+# ---- 100-feature def (replicate golden featureSet) ---------------------
+def mut_r4_replicate_features(target=100):
+    def f():
+        d = golden()
+        fs = d.get("featureSet")
+        if isinstance(fs, list) and fs:
+            # repeat in place until we reach >= target features
+            base = list(fs)
+            while len(fs) < target:
+                fs.extend(copy.deepcopy(base))
+            d["featureSet"] = fs[:target]
+        return d
+    return f
+CASES.append(case("r4_def_100_features_robust", "robust", make=mut_r4_replicate_features(100)))
+
+# ---- golden runtime SLO: < 5s -----------------------------------------
+def fn_r4_golden_runtime(run):
+    import time as _t
+    t0 = _t.time()
+    rc, out = run(GDEF, out_path=f"{TMP}/sys_r4_perf.json")
+    dt = _t.time() - t0
+    ok = (rc == 0) and (out is not None) and (dt < 5.0)
+    return ok, f"rc={rc_str(rc)} {dt:.2f}s (SLO < 5.0s)"
+CASES.append(case("r4_golden_runtime_under_5s", "custom", fn=fn_r4_golden_runtime))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_system", CASES))

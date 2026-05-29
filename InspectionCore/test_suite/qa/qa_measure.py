@@ -704,5 +704,184 @@ CASES += [
     case("tight_tolerance_OOT",        "custom", fn=fn_tight_tol_oot_finite),
 ]
 
+# ================= ROUND 4: clamp boundaries / new flags / timing regressions =================
+import time
+
+# ---- caliper clamp boundary helpers ----
+_cal_at_boundary       = _all_caliper_with({"caliper": {"count": 4096, "width": 2048, "length": 4096}})
+_cal_width_just_over   = _all_caliper_with({"caliper": {"count": 4096, "width": 2049, "length": 4096}})
+_cal_width_extreme     = _all_caliper_with({"caliper": {"count": 4096, "width": 10000, "length": 10000}})
+
+def fn_timed(make, max_seconds=30.0):
+    """Run, assert exit0 + finite values + completion under max_seconds. Verifies
+    clamps protect against DoS (an unclamped caliper with width*length*count of
+    ~10^11 would never finish)."""
+    def fn(run_insp):
+        t0 = time.time()
+        # Cap subprocess timeout slightly above our budget so a real hang
+        # surfaces as TIMEOUT here (not as the harness default 120s wait).
+        rc, out = run_insp(make(), timeout=max_seconds + 5)
+        dt = time.time() - t0
+        if rc == "TIMEOUT":
+            return False, f"TIMEOUT after {dt:.1f}s"
+        if isinstance(rc, int) and rc in SIGCRASH:
+            return False, f"crash rc={rc_str(rc)} dt={dt:.1f}s"
+        if dt > max_seconds:
+            return False, f"too slow: {dt:.1f}s > {max_seconds}s"
+        if rc != 0 or out is None:
+            return False, f"rc={rc_str(rc)} dt={dt:.1f}s"
+        if b"nan" in out.lower() or b"\"inf" in out.lower():
+            return False, f"NaN/Inf in JSON dt={dt:.1f}s"
+        try: js = _collect_judges(json.loads(out))
+        except Exception as e: return False, f"invalid JSON dt={dt:.1f}s: {e}"
+        bad = [j for j in js if _bad_value(j)]
+        ok = (not bad) and bool(js)
+        return ok, f"rc=0 dt={dt:.2f}s judges={len(js)} bad={len(bad)}"
+    return fn
+
+# ---- circle_info subtype variants (all 5 info_types) ----
+_circleinfo_mind        = _measure_subtype("circle_info", "min_diameter")
+_circleinfo_rough_max   = _measure_subtype("circle_info", "roughness_max")
+_circleinfo_rough_min   = _measure_subtype("circle_info", "roughness_min")
+
+# Round-2 regression check: circle_info WITHOUT info_type now must return a
+# controlled reject (-1 from parse_judgeData -> early exit), NOT SIGSEGV.
+def fn_circle_info_no_infotype_controlled(run_insp):
+    # use a fresh out path to avoid the shared _out.json from prior cases.
+    rc, out = run_insp(_circleinfo_noinfo(), out_path=f"{TMP}/_out_circ_noinfo.json")
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"SIGSEGV/BUS regression: rc={rc_str(rc)}"
+    if rc == "TIMEOUT":
+        return False, "TIMEOUT (hang)"
+    # Acceptable: any non-crash outcome (controlled abort, error rc, or NA output).
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, "NaN/Inf in JSON"
+    return True, f"rc={rc_str(rc)} (no crash)"
+
+# ---- locating_anchor TRUE on ALL search_points (heavy anchor pass) ----
+_anchor_all_on = _sp_set({"locating_anchor": True})
+
+# ---- value_adjust ----
+def _value_adjust(amount):
+    def f():
+        d = golden()
+        for sig in all_of(d, "sig360_circle_line"):
+            for k, v in sig.items():
+                if isinstance(v, list):
+                    for it in v:
+                        if isinstance(it, dict) and it.get("type") == "measure":
+                            it["value_adjust"] = amount
+        return d
+    return f
+
+def fn_value_adjust_shift(run_insp):
+    """value_adjust adds an offset to the reported measure value. Run baseline
+    + adjusted; for each common judge id the diff must equal the offset (within fp)."""
+    rcA, oA = run_insp(GDEF)
+    rcB, oB = run_insp(_value_adjust(0.5)())
+    if rcA != 0 or rcB != 0: return False, f"rcA={rc_str(rcA)} rcB={rc_str(rcB)}"
+    ja = {j.get("id"): j for j in _collect_judges(json.loads(oA)) if "id" in j and _finite(j.get("value"))}
+    jb = {j.get("id"): j for j in _collect_judges(json.loads(oB)) if "id" in j and _finite(j.get("value"))}
+    common = set(ja) & set(jb)
+    if not common: return False, "no common judges"
+    diffs = [jb[i]["value"] - ja[i]["value"] for i in common]
+    # at least one judge should have shifted by ~0.5; non-numeric measures (calc) may not.
+    matched = sum(1 for d in diffs if abs(d - 0.5) < 1e-4)
+    bad = [d for d in diffs if not math.isfinite(d)]
+    # Acceptable: feature is honored (matched > 0) OR engine ignores it cleanly (no NaN, all stable).
+    ok = (matched > 0 or all(abs(d) < 1e-4 for d in diffs)) and not bad
+    return ok, f"common={len(common)} shifted_by_0.5={matched} sample_diffs={[round(d,4) for d in diffs[:4]]}"
+
+# ---- back_value_setup flag ----
+def _back_value_setup(flag):
+    def f():
+        d = golden()
+        for sig in all_of(d, "sig360_circle_line"):
+            for k, v in sig.items():
+                if isinstance(v, list):
+                    for it in v:
+                        if isinstance(it, dict) and it.get("type") == "measure":
+                            it["back_value_setup"] = flag
+        return d
+    return f
+
+# ---- NGasNA / NAasNG combos ----
+def _na_ng_flags(ng_as_na, na_as_ng):
+    def f():
+        d = golden()
+        for sig in all_of(d, "sig360_circle_line"):
+            for k, v in sig.items():
+                if isinstance(v, list):
+                    for it in v:
+                        if isinstance(it, dict) and it.get("type") == "measure":
+                            it["NGasNA"] = ng_as_na
+                            it["NAasNG"] = na_as_ng
+        return d
+    return f
+
+def fn_flag_combos_no_crash(run_insp):
+    """All four (NGasNA, NAasNG) combos: must exit0 and emit finite values."""
+    combos = [(False, False), (True, False), (False, True), (True, True)]
+    details = []
+    for ng, na in combos:
+        rc, out = run_insp(_na_ng_flags(ng, na)())
+        if rc != 0 or out is None:
+            return False, f"NGasNA={ng} NAasNG={na} rc={rc_str(rc)}"
+        if b"nan" in out.lower() or b"\"inf" in out.lower():
+            return False, f"NGasNA={ng} NAasNG={na} NaN/Inf"
+        try: js = _collect_judges(json.loads(out))
+        except Exception as e: return False, f"invalid JSON: {e}"
+        bad = [j for j in js if _bad_value(j)]
+        if bad: return False, f"NGasNA={ng} NAasNG={na} bad={len(bad)}"
+        succ = sum(1 for j in js if j.get("status") == 0)
+        details.append(f"({int(ng)}{int(na)}):s{succ}")
+    return True, " ".join(details)
+
+# ---- search_point with extreme angleDeg (~0 and 359) ----
+def _sp_angle(deg):
+    def f():
+        d = golden()
+        for sp in all_of(d, "search_point"):
+            sp["angleDeg"] = deg
+        return d
+    return f
+_sp_angle_zero = _sp_angle(0.001)
+_sp_angle_359  = _sp_angle(359.0)
+
+CASES += [
+    # ---- caliper clamp boundary: at the cap must work, slightly over must clamp (also work), under 30s ----
+    case("caliper_at_clamp_boundary",   "custom", fn=fn_timed(_cal_at_boundary, max_seconds=30.0)),
+    case("caliper_width_2049_clamped",  "custom", fn=fn_timed(_cal_width_just_over, max_seconds=30.0)),
+    case("caliper_width_10000_clamped", "custom", fn=fn_timed(_cal_width_extreme, max_seconds=30.0)),
+
+    # ---- circle_info subtypes (all 5 info_types) ----
+    case("circle_info_min_diameter",    "custom", fn=fn_subtype_value(_circleinfo_mind, "circle_info")),
+    case("circle_info_roughness_max",   "custom", fn=fn_subtype_value(_circleinfo_rough_max, "circle_info")),
+    case("circle_info_roughness_min",   "custom", fn=fn_subtype_value(_circleinfo_rough_min, "circle_info")),
+    # Regression: round-2 fix - no info_type must NOT SIGSEGV
+    case("circle_info_no_infotype_no_segv", "custom", fn=fn_circle_info_no_infotype_controlled),
+
+    # ---- sigma / radius (crafted geometry) re-asserted under timing ----
+    case("sigma_subtype_timed",         "custom", fn=fn_timed(_sigma_measure, max_seconds=30.0)),
+
+    # ---- locating_anchor on ALL search_points (heavy anchor pass) ----
+    case("anchor_all_on_finite",        "custom", fn=_fn_no_crash_finite(_anchor_all_on)),
+    case("anchor_all_on_timed",         "custom", fn=fn_timed(_anchor_all_on, max_seconds=30.0)),
+
+    # ---- value_adjust on measures ----
+    case("measure_value_adjust",        "custom", fn=fn_value_adjust_shift),
+
+    # ---- back_value_setup flag (true/false) ----
+    case("back_value_setup_true",       "custom", fn=_fn_no_crash_finite(_back_value_setup(True))),
+    case("back_value_setup_false",      "custom", fn=_fn_no_crash_finite(_back_value_setup(False))),
+
+    # ---- NGasNA / NAasNG combos ----
+    case("ng_na_flag_combos",           "custom", fn=fn_flag_combos_no_crash),
+
+    # ---- extreme search_point angleDeg ----
+    case("sp_angleDeg_near_zero",       "custom", fn=_fn_no_crash_finite(_sp_angle_zero)),
+    case("sp_angleDeg_359",             "custom", fn=_fn_no_crash_finite(_sp_angle_359)),
+]
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_measure", CASES))

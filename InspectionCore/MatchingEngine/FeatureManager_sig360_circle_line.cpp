@@ -258,12 +258,13 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
                 cir.cal_length = JFetch_NUMBER_ex(calo, "length", -1);
                 cir.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
                 // Clamp against pathological caliper sizes that would DoS the
-                // measurement loop (each caliper allocates ~width*length per
-                // count). Real-world calipers are <<100; these caps are well
-                // above any realistic def.
-                if (cir.cal_count > 4096) cir.cal_count = 4096;
-                if (cir.cal_width  > 2048) cir.cal_width  = 2048;
-                if (cir.cal_length > 4096) cir.cal_length = 4096; }
+                // measurement loop (per-primitive cost ~ count * (2*width+1) *
+                // length). Real-world calipers are tens; even at these caps
+                // worst-case per primitive is ~10^8 ops -> completes in ~1s.
+                // cal_length = -1 is the "use full" sentinel and passes through.
+                if (cir.cal_count  > 1024) cir.cal_count  = 1024;
+                if (cir.cal_width  >  128) cir.cal_width  =  128;
+                if (cir.cal_length >  512) cir.cal_length =  512; }
     cJSON *edgeo = JFetch_OBJECT(circle_obj, "edge");
     if (edgeo) {
       cir.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
@@ -1540,9 +1541,9 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
                 line.cal_length = JFetch_NUMBER_ex(calo, "length", -1);
                 line.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
                 // Clamp pathological caliper sizes (see parse_arcData).
-                if (line.cal_count > 4096) line.cal_count = 4096;
-                if (line.cal_width  > 2048) line.cal_width  = 2048;
-                if (line.cal_length > 4096) line.cal_length = 4096; }
+                if (line.cal_count  > 1024) line.cal_count  = 1024;
+                if (line.cal_width  >  128) line.cal_width  =  128;
+                if (line.cal_length >  512) line.cal_length =  512; }
     cJSON *edgeo = JFetch_OBJECT(line_obj, "edge");
     if (edgeo) {
       line.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));

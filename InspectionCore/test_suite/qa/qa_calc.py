@@ -34,7 +34,7 @@ operands (overflow), malformed/empty/whitespace tokens, refs to missing /
 non-existent / self / huge (int-overflow) ids, float-precision, and a very
 long expression.
 """
-import sys, os, json, math
+import sys, os, json, math, re as _re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from qalib import *
 
@@ -347,6 +347,117 @@ CASES.append(case("r3_neginf_no_leak", "custom",
                   fn=_r3_nan_inf_in_output(["-1", "0", "$/$"])))
 CASES.append(case("r3_overflow_no_leak", "custom",
                   fn=_r3_nan_inf_in_output(["1e308", "1e308", "$*$"])))
+
+# ================= ROUND 4: regression + chained edge cases =================
+
+# --- regression: round-1 underflow guard across many shapes ---
+CASES.append(case("r4_underflow_only_div", "robust", make=mut_calc(["$/$"])))
+CASES.append(case("r4_underflow_only_mul", "robust", make=mut_calc(["$*$"])))
+CASES.append(case("r4_underflow_only_sub", "robust", make=mut_calc(["$-$"])))
+CASES.append(case("r4_underflow_lit_only_div", "robust", make=mut_calc(["7", "$/$"])))
+CASES.append(case("r4_underflow_ref_only_max", "robust", make=mut_calc(["[12]", "$,$", "max$"])))
+CASES.append(case("r4_underflow_double_op", "robust", make=mut_calc(["$+$", "$+$"])))
+
+# --- div-by-zero feeding further ops (longer chain) ---
+# ([12]/0) -> inf, then + [13], then * 2, then - 5
+CASES.append(case("r4_divzero_long_chain", "robust",
+                  make=mut_calc(["[12]", "0", "$/$", "[13]", "$+$", "2", "$*$", "5", "$-$"])))
+# divzero result fed into max with finite operands
+CASES.append(case("r4_divzero_in_minmax", "robust",
+                  make=mut_calc(["[12]", "0", "$/$", "[13]", "[14]", "$,$", "$,$", "min$"])))
+
+# --- max$/min$ with single operand (degenerate variadic, arity-cache==0) ---
+# zero "$,$" tokens then max$ -> variadic with arity 1 (just identity?)
+CASES.append(case("r4_max_one_operand_no_arity", "robust",
+                  make=mut_calc(["[12]", "max$"])))
+CASES.append(case("r4_min_one_operand_no_arity", "robust",
+                  make=mut_calc(["[12]", "min$"])))
+
+# --- arity-cache: paramSymbolCount 1 vs 2 vs many ---
+# 1 "$,$" -> arity=2 (the documented base case)
+CASES.append(case("r4_arity_cache_1", "custom",
+                  fn=calc_expect(["[12]", "[13]", "$,$", "max$"], max(V12, V13))))
+# 2 "$,$" -> arity=3
+CASES.append(case("r4_arity_cache_2", "custom",
+                  fn=calc_expect(["[8]", "[12]", "[13]", "$,$", "$,$", "max$"],
+                                 max(V8, V12, V13))))
+# many "$,$" with matching operands -> arity=6
+CASES.append(case("r4_arity_cache_many", "custom",
+                  fn=calc_expect(["[8]", "[12]", "[13]", "[14]", "1", "100",
+                                  "$,$", "$,$", "$,$", "$,$", "$,$", "max$"],
+                                 100.0)))
+
+# --- CALC referencing another CALC (chained calc judges) ---
+# Use mut_calc on first measure (id=8), but seed via post_exp that includes [13]
+# and also references self id=8 in different positions. Round 3 already tests
+# trivial self-ref; here force order interactions.
+def _mut_two_calc(post_exp_first, target_idx, post_exp_second):
+    """Convert measure #0 AND measure #target_idx (1-based among measures) to calc."""
+    def f():
+        d = golden()
+        measures = all_of(d, "measure")
+        if not measures: return d
+        m0 = measures[0]
+        m0["subtype"] = "calc"
+        ids0 = []
+        for tok in post_exp_first:
+            mt = _re.match(r"^\[(\d+)\]$", str(tok))
+            if mt: ids0.append(int(mt.group(1)))
+        if not ids0: ids0 = [12]
+        m0["ref"] = [{"id": i} for i in ids0]
+        m0["calc_f"] = {"exp": "", "post_exp": list(post_exp_first)}
+        if target_idx < len(measures):
+            m1 = measures[target_idx]
+            m1["subtype"] = "calc"
+            ids1 = []
+            for tok in post_exp_second:
+                mt = _re.match(r"^\[(\d+)\]$", str(tok))
+                if mt: ids1.append(int(mt.group(1)))
+            if not ids1: ids1 = [13]
+            m1["ref"] = [{"id": i} for i in ids1]
+            m1["calc_f"] = {"exp": "", "post_exp": list(post_exp_second)}
+        return d
+    return f
+
+# First measure (id=8) reads [12] which we also convert to calc
+CASES.append(case("r4_calc_refs_calc_fwd", "robust",
+                  make=_mut_two_calc(["[12]", "1", "$+$"], 1, ["[13]", "2", "$*$"])))
+# Reverse order: second measure is calc that references first calc's id
+CASES.append(case("r4_calc_refs_calc_rev", "robust",
+                  make=_mut_two_calc(["[13]", "2", "$+$"], 1, ["[8]", "1", "$+$"])))
+
+# --- very large positive value chain (overflow handling) ---
+CASES.append(case("r4_very_large_chain", "robust",
+                  make=mut_calc(["1e10", "1e10", "$*$", "1e10", "$*$"])))
+
+# --- CALC inside def where referenced measure has STATUS_NA (deliberately
+# broken via missing ref). Mut first measure to calc reading id 99999 (non-
+# existent measure) - propagation check ---
+CASES.append(case("r4_calc_status_na_propagation", "robust",
+                  make=mut_calc(["[99999]", "[12]", "$+$"])))
+
+# --- mixed tokens with CR/LF inside ---
+CASES.append(case("r4_cr_in_token", "robust",
+                  make=mut_calc(["[12]", "1\r2", "$+$"])))
+CASES.append(case("r4_lf_in_token", "robust",
+                  make=mut_calc(["[12]", "1\n2", "$+$"])))
+CASES.append(case("r4_crlf_in_op", "robust",
+                  make=mut_calc(["[12]", "1", "$+\r\n$"])))
+
+# --- exp field literally same as post_exp serialized -> should be ignored ---
+import json as _json
+_serialized_post = _json.dumps(["[12]", "[13]", "$+$"])
+CASES.append(case("r4_exp_serialized_post_ignored", "custom",
+                  fn=_r3_exp_ignored(["[12]", "[13]", "$+$"], _serialized_post,
+                                      V12 + V13)))
+
+# --- CALC where referenced [id] is the calc measure's own RESULT (self via id) ---
+# id=8 is the measure being rewritten to calc; self-ref guard already exists.
+# Re-confirm with more aggressive shapes:
+CASES.append(case("r4_self_only", "robust", make=mut_calc(["[8]"])))
+CASES.append(case("r4_self_self_op", "robust", make=mut_calc(["[8]", "[8]", "$+$"])))
+CASES.append(case("r4_self_in_max", "robust",
+                  make=mut_calc(["[8]", "[12]", "[13]", "$,$", "$,$", "max$"])))
 
 if __name__ == "__main__":
     sys.exit(run_module("qa_calc", CASES))

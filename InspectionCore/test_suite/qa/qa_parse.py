@@ -344,6 +344,105 @@ RAW_DUP_FEATURE_KEYS = ('{"type":"binary_processing_group","featureSet":'
                         '"pt1":{"x":0,"y":0,"x":99,"x":7},'
                         '"pt2":{"x":1,"y":1}}]}]}')
 
+# ===== ROUND 4: less-explored parser corners =====
+
+def mk_huge_int_string_id():
+    # JSON number with 200 digits as feature id (cJSON parses to double, may overflow)
+    d = golden(); t = first_of(d, "line")
+    if t is not None: t["id"] = int("9" * 200)
+    return d
+
+def mk_hex_octal_string_coords():
+    # hex/octal-style strings as numeric field values (non-JSON-number forms)
+    return mut_many("line", {
+        "pt1": {"x": "0x10", "y": "0o17"},
+        "pt2": {"x": "0X1F", "y": "017"},
+        "margin": "0xDEADBEEF",
+    })()
+
+def mk_inf_nan_quoted_everywhere():
+    # +Inf/-Inf/NaN as JSON *strings* spread across many numeric fields
+    return mut_many("search_point", {
+        "margin":   "+Inf",
+        "width":    "-Inf",
+        "angleDeg": "NaN",
+        "line_thickness_value": "+inf",
+    })()
+
+def mk_featureSet_single_object():
+    # featureSet is a single object (not wrapped in an array)
+    d = golden()
+    fs = d.get("featureSet")
+    if isinstance(fs, list) and fs:
+        d["featureSet"] = fs[0]
+    return d
+
+def mk_multiple_bpg_siblings():
+    # raw: multiple binary_processing_group siblings inside a wrapping array root
+    d = golden()
+    # wrap two copies inside featureSet of an outer bpg
+    d2 = copy.deepcopy(d)
+    d["featureSet"] = (d.get("featureSet") or []) + (d2.get("featureSet") or [])
+    return d
+
+RAW_BOM_TRAILING_WS = "﻿   \n\t" + _golden_text() + "   \n\t\r\n  "
+
+# Unicode surrogate-pair (valid: U+1F4A9 PILE OF POO) in a name field, escaped
+RAW_VALID_SURROGATE = ('{"type":"binary_processing_group","featureSet":'
+                       '[{"type":"sig360_circle_line","features":'
+                       '[{"type":"line","id":1,"name":"\\uD83D\\uDCA9poo",'
+                        '"pt1":{"x":0,"y":0},"pt2":{"x":1,"y":1}}]}]}')
+
+# Invalid lone-high-surrogate sequence (no trailing low surrogate)
+RAW_INVALID_SURROGATE = ('{"type":"binary_processing_group","featureSet":'
+                        '[{"type":"sig360_circle_line","features":'
+                        '[{"type":"line","id":1,"name":"bad\\uD83Dxx",'
+                         '"pt1":{"x":0,"y":0},"pt2":{"x":1,"y":1}}]}]}')
+
+def mk_type_is_object():
+    # feature "type" field is itself a JSON object (not string/number)
+    return mut_set("line", "type", {"name": "line", "kind": "?"})()
+
+def mk_calc_postexp_heterogeneous():
+    # deeply nested calc_f.post_exp with non-string items: ints, arrays, null, dicts
+    return mut_calc([
+        "[12]", 3.14, None, [["nested"], 1, 2],
+        {"obj": True}, "+", 2147483648, -1e308, "[7]", "*",
+    ])()
+
+def mk_ref_id_missing():
+    # ref entries that lack 'id' key entirely
+    d = golden(); sp = first_of(d, "search_point")
+    if sp is not None: sp["ref"] = [{"element": "line"}, {"element": "arc"}]
+    return d
+
+def mk_ref_id_string_and_array():
+    # ref id is a string in one entry and an array in another
+    d = golden(); sp = first_of(d, "search_point")
+    if sp is not None:
+        sp["ref"] = [{"id": "twelve", "element": "line"},
+                     {"id": [1, 2, 3], "element": "arc"},
+                     {"id": {"nested": 5}}]
+    return d
+
+def mk_regression_round2_combo():
+    # regression: stack 3 round-2 mutations on same def to ensure no re-introduced bug
+    d = golden()
+    # mass id collision
+    for f in first_of(d, "sig360_circle_line")["features"]:
+        if isinstance(f, dict) and "id" in f: f["id"] = 1
+    # NaN/Inf string coords on a line
+    t = first_of(d, "line")
+    if t:
+        t["pt1"] = {"x": "NaN", "y": "Infinity"}
+        t["pt2"] = {"x": "-Infinity", "y": "nan"}
+    # garbage calc tokens
+    m = first_of(d, "measure")
+    if m:
+        m["subtype"] = "calc"; m["ref"] = [{"id": 12}]
+        m["calc_f"] = {"exp": "", "post_exp": ["[12]", None, "@@@", "+", "/"]}
+    return d
+
 CASES = [
     # A. malformed JSON bytes
     case("raw_truncated_json",      "robust", raw=RAW_TRUNCATED),
@@ -437,6 +536,32 @@ CASES = [
 
     # T. raw: duplicate keys inside same feature object (JSON last-wins)
     case("raw_dup_feature_keys",    "robust", raw=RAW_DUP_FEATURE_KEYS),
+
+    # ===== ROUND 4 =====
+    # U. extreme JSON number edges
+    case("huge_int_string_id",      "robust", make=mk_huge_int_string_id),
+    case("hex_octal_string_coords", "robust", make=mk_hex_octal_string_coords),
+    case("inf_nan_quoted_fields",   "robust", make=mk_inf_nan_quoted_everywhere),
+
+    # V. featureSet shape variants
+    case("featureSet_single_object","robust", make=mk_featureSet_single_object),
+    case("multiple_bpg_siblings",   "robust", make=mk_multiple_bpg_siblings),
+
+    # W. whitespace / BOM / surrogate-pair escapes (raw)
+    case("raw_bom_trailing_ws",     "robust", raw=RAW_BOM_TRAILING_WS),
+    case("raw_valid_surrogate_pair","robust", raw=RAW_VALID_SURROGATE),
+    case("raw_invalid_surrogate",   "robust", raw=RAW_INVALID_SURROGATE),
+
+    # X. type-field & post_exp deep type confusion
+    case("type_field_is_object",    "robust", make=mk_type_is_object),
+    case("calc_postexp_heterogeneous","robust", make=mk_calc_postexp_heterogeneous),
+
+    # Y. ref id missing / wrong shapes
+    case("ref_id_missing",          "robust", make=mk_ref_id_missing),
+    case("ref_id_string_and_array", "robust", make=mk_ref_id_string_and_array),
+
+    # Z. regression: stacked round-2 mutations
+    case("regression_round2_combo", "robust", make=mk_regression_round2_combo),
 ]
 
 if __name__ == "__main__":
