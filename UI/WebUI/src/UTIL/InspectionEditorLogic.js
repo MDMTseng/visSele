@@ -319,23 +319,33 @@ export class InspectionEditorLogic {
   
   
       let sha1_info_in_json = JSum.digest(clone_featureSet, 'sha1', 'hex');
-      if (root_defFile.featureSet_sha1 !== undefined)//If there is a saved sha1, check integrity 
+      // Clear any prior integrity error; set it below only on an actual mismatch.
+      edit_info.defIntegrityError = null;
+      if (root_defFile.featureSet_sha1 !== undefined)//If there is a saved sha1, check integrity
       {
         let sha1_info_in_file = root_defFile.featureSet_sha1;
         if (sha1_info_in_file !== sha1_info_in_json) {
           console.error("HASH doesn't match!!!",sha1_info_in_file,sha1_info_in_json);
           doExit = true;
+          // Hard block: refuse the def and surface a blocking modal (a watcher
+          // in script.jsx pops Modal.error on this flag). A failed integrity
+          // check means the def must NOT be trusted for inspection.
+          edit_info.defIntegrityError = {
+            expected: sha1_info_in_file,
+            actual: sha1_info_in_json,
+            defName: root_defFile.name,
+          };
         }
       }
-  
+
       /*if(edit_info.DefFileHash==sha1_info_in_json)
       {
         //No need to wipe out the data;
         break;
       }*/
       //Edit_info_reset(newState);
-  
-  
+
+
       if (doExit) {
         edit_info.DefFileHash = undefined;
         return edit_info; // bugfix: callers (RepDisplayUI) assign the return; bare `return` blanked the view

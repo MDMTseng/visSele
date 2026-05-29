@@ -2027,11 +2027,39 @@ class RootErrorBoundary extends React.Component {
   }
 }
 
+// Hard block for def-file integrity failures: when rootDefInfoLoading detects a
+// featureSet_sha1 mismatch it sets edit_info.defIntegrityError; the def is already
+// refused (not loaded). This watcher pops a blocking modal so the operator cannot
+// silently proceed with a corrupt/tampered inspection definition.
+function DefIntegrityGuard() {
+  const err = useSelector(s => s.UIData.edit_info && s.UIData.edit_info.defIntegrityError);
+  const shownRef = useRef(null);
+  useEffect(() => {
+    if (err) {
+      if (shownRef.current !== err.actual) {
+        shownRef.current = err.actual;
+        Modal.error({
+          title: "定義檔完整性驗證失敗 / Definition integrity check failed",
+          content:
+            "此定義檔的 SHA1 與內容不符，已拒絕載入，避免使用受損或被竄改的檢測定義。\n" +
+            "The definition file's SHA1 does not match its content; loading was refused.\n\n" +
+            "expected: " + err.expected + "\nactual: " + err.actual,
+          okText: "確定 / OK",
+        });
+      }
+    } else {
+      shownRef.current = null;
+    }
+  }, [err]);
+  return null;
+}
+
 ReactDOM.render(
 
   <RootErrorBoundary>
     <Provider store={StoreX}>
         <APPMasterX_rdx />
+        <DefIntegrityGuard />
 
     </Provider>
   </RootErrorBoundary>, document.getElementById('container'));
