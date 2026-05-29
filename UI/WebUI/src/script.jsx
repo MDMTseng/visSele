@@ -35,6 +35,7 @@ import BPG_WS from './comm/BPG_WS';
 import { initDiag, downloadDiag, diagCount, diagText } from 'UTIL/diagLog';
 import { persistPending, deletePending, getPendingBySource, pendingInsertCount } from 'UTIL/inspDBQueue';
 import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure';
+import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
 initDiag(); // start capturing console output into the diagnostics ring buffer ASAP
 
 import { default as AntButton } from 'antd/lib/button';
@@ -98,7 +99,7 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   window.__GP_DIAG__ = { downloadDiag, diagCount, diagText };
   window.__GP_DB_QUEUE__ = { persistPending, deletePending, getPendingBySource, pendingInsertCount };
   window.__GP_BPG__ = BPG_Protocol; // raw framing/decode (raw2header, raw2Obj_IM, ...) for QA
-  window.__GP_MEASURE__ = { applyMeasureLimitCoupling }; // pure value<->limit coupling for QA
+  window.__GP_MEASURE__ = { applyMeasureLimitCoupling, Shape_Attr_Fill }; // pure value<->limit coupling + per-shape defaults for QA
   window.__GP_UTIL__ = { PostfixExpCalc, Exp2PostfixExp, round, GetObjElement, dictLookUp, CircularCounter, ConsumeQueue }; // pure utils for QA
 }
 
