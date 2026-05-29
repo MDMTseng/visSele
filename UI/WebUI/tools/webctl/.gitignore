@@ -5,3 +5,4 @@ legacy-golden-build/
 *.png
 baseline/*.png
 shot-*.png
+*.current.json

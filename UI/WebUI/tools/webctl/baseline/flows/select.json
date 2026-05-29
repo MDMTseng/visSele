@@ -1,0 +1,161 @@
+{
+  "c_state": {
+    "DEFCONF_MODE": "SHAPE_EDIT"
+  },
+  "lock": 1,
+  "shapes": [
+    {
+      "id": 1,
+      "type": "line",
+      "name": "@line_1"
+    },
+    {
+      "id": 2,
+      "type": "line",
+      "name": "@line_2"
+    },
+    {
+      "id": 3,
+      "type": "search_point",
+      "name": "@search_point_3"
+    },
+    {
+      "id": 4,
+      "type": "search_point",
+      "name": "@search_point_4"
+    },
+    {
+      "id": 5,
+      "type": "search_point",
+      "name": "@search_point_5"
+    },
+    {
+      "id": 6,
+      "type": "search_point",
+      "name": "@search_point_6"
+    },
+    {
+      "id": 8,
+      "type": "measure",
+      "name": "(2)8.5+0.2/0.2"
+    },
+    {
+      "id": 9,
+      "type": "search_point",
+      "name": "@search_point_9"
+    },
+    {
+      "id": 10,
+      "type": "search_point",
+      "name": "@search_point_10"
+    },
+    {
+      "id": 12,
+      "type": "measure",
+      "name": "(7)8.5+0.2/-0.2"
+    },
+    {
+      "id": 13,
+      "type": "measure",
+      "name": "(3)8.5+0.3/-0.3"
+    },
+    {
+      "id": 14,
+      "type": "measure",
+      "name": "[Par]0+2/-2"
+    },
+    {
+      "id": 15,
+      "type": "search_point",
+      "name": "@search_point_15"
+    },
+    {
+      "id": 16,
+      "type": "search_point",
+      "name": "@search_point_16"
+    },
+    {
+      "id": 17,
+      "type": "measure",
+      "name": "(1-1)9.8+0.2/-0.2"
+    },
+    {
+      "id": 19,
+      "type": "measure",
+      "name": "(1-2)9.8+0.2/-0.2"
+    },
+    {
+      "id": 20,
+      "type": "search_point",
+      "name": "@search_point_20"
+    },
+    {
+      "id": 21,
+      "type": "search_point",
+      "name": "@search_point_16_copy"
+    },
+    {
+      "id": 22,
+      "type": "measure",
+      "name": "H"
+    },
+    {
+      "id": 24,
+      "type": "arc",
+      "name": "@arc_24"
+    },
+    {
+      "id": 25,
+      "type": "arc",
+      "name": "@arc_24[1]"
+    },
+    {
+      "id": 26,
+      "type": "arc",
+      "name": "@arc_24[1][1]"
+    },
+    {
+      "id": 27,
+      "type": "arc",
+      "name": "@arc_24[1][1][1]"
+    },
+    {
+      "id": 30,
+      "type": "line",
+      "name": "@line_30"
+    },
+    {
+      "id": 42,
+      "type": "search_point",
+      "name": "@search_point_3[1][1]"
+    },
+    {
+      "id": 44,
+      "type": "search_point",
+      "name": "@search_point_3[1][1][1]"
+    }
+  ],
+  "inherent": 7,
+  "edit_tar": {
+    "id": 8,
+    "type": "measure",
+    "subtype": "distance",
+    "USL": 8.7,
+    "LSL": 8.3,
+    "UCL": 8.67,
+    "LCL": 8.33
+  },
+  "inputs": [
+    "(2)8.5+0.2/0.2",
+    "8.5",
+    "8.7",
+    "8.3",
+    "8.67",
+    "8.33",
+    "0",
+    "1",
+    "0",
+    "1"
+  ],
+  "def_measure_usl": 8.7
+}
