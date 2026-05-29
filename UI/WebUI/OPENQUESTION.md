@@ -36,20 +36,34 @@ Recommendation: **leave as-is** unless we're already in this code for another re
 
 ---
 
-## Q2. Split the `edit_info` god-object?
+## Q2. Split the `edit_info` god-object — APPROVED (coarse), planned
 
-**What:** `edit_info` mixes the model (`_obj`), editor selection (`edit_tar_*`), def
-metadata (DefFileName/Hash/...), inspection results (inspReport/reportStatisticState),
-and matching params. It's read by 7 components. Splitting into named sub-objects is the
-highest-clarity change for "easier to mod".
+**Direction (user):** yes, split it — but **coarse, not finely fragmented**. A handful
+of cohesive groups, not many micro-slices.
 
-**Why deferred:** large blast radius (7 readers) and the same reference-sensitive
-re-render concerns as Q1. Now partially verifiable via `flows.mjs`, but flows cover
-DefConfUI select/edit — not all 7 readers / all modes.
+**Proposed coarse grouping (3 buckets):**
+1. **editor (cold)** — `_obj`, `inherentShapeList`, `edit_tar_info`, `edit_tar_ele_trace`,
+   `edit_tar_ele_cand`, `__decorator`.
+2. **defMeta (cold)** — `DefFileName/Tag/Hash*`, `loadedDefFile`, `defModelPath`,
+   `inspOptionalTag`, `matching_*`, `intrusionSizeLimitRatio`.
+3. **runtime/results (HOT)** — `img`, `inspReport`, `reportStatisticState`, `statSetting`,
+   `sig360info`, `stage_light_report`, `mouseLocation`. Separating these is the perf win
+   (cold consumers stop re-rendering on every image frame / report — the "避免重繪" concern).
 
-**Decision needed:** prioritize this (big, high-value clarity) vs. the comm-layer
-extraction vs. the whiteListKey typed-schema editor? Would want broader flow coverage
-(create/delete shape, save, inspection, analysis mode) before attempting.
+**Churn reality:** large. `edit_tar_info` alone has ~40 access sites in DefConfUI, plus
+the canvas (`edit_DB_info.*`), AnalysisUI, and the reducer/model. Every field move = many
+read-site renames. `flows.mjs` only covers DefConfUI select/edit, not all modes.
+
+**Safe approach (decided):** do NOT hand-rename ~40 sites blind.
+1. **Type the consumers first** (progressive TS now in place): convert / `// @ts-check`
+   the files touching a group, typed against `EditInfo` in `src/domain.d.ts`.
+2. Move one group, update `domain.d.ts`, run `npm run typecheck` → tsc lists every missed
+   site (compiler-verified rename).
+3. Verify with golden + flows + manual mode checks. One group per commit.
+4. Broaden `flows.mjs` (create/delete shape, save, inspection, analysis) before/with the
+   HOT group, since those paths aren't covered yet.
+
+Execute as the next focused pass.
 
 ---
 
@@ -62,5 +76,5 @@ Remaining candidates (all larger, fresh-session sized):
   into one per-shape schema. Contained, golden+flows-verifiable, improves shape editor.
 - **edit_info god-object split** (Q2).
 
-Recommendation order: broaden `flows.mjs` coverage first → whiteListKey schema → comm
-layer → god-object split.
+Recommendation order: broaden `flows.mjs` coverage → type the `edit_info` consumers →
+Q2 god-object split (group-by-group, tsc-verified) → whiteListKey schema → comm layer.
