@@ -219,3 +219,28 @@ in 3 places; ctrlLogic_DEFCONF is a 2nd state machine re-switching on substate; 
    edit-CHECK 2827-2885). ref whiteListKey 3-vs-10-slot drift (2248 vs 2543).
 
 Don't fragment: render() switch, NEUTRAL_UI, ctrlLogic_DEFCONF, GenTarEditUI (coupled stateful).
+
+---
+
+## Round-3 hunt (perf / coverage / def-format / coupling, 2026-05-30)
+
+**Coupling (do first — small/low-risk, prevent cycle landmines):**
+- [HIGH,S] BPG_Protocol ↔ UIAct CIRCULAR import (UIAct imports INSPECTION_STATUS from BPG_Protocol; BPG_Protocol imports * as UIAct). Move INSPECTION_STATUS enum to a leaf; both import the leaf. Verify typecheck+golden.
+- [HIGH,S] Two same-named CameraCtrl classes (BPG_Protocol.js:261 camera-settings vs canvas/CameraCtrl.ts viewport) — rename BPG one → CameraTransferCtrl (2 import sites: DefConfUI:15, InspectionUI:21).
+- [MED] EverCheckCanvasComponent `export default {7 classes}` object hides coupling + defeats tree-shaking; the :28 renderConst re-export is the baseComponent-break pattern → named exports, consumers import what they use + import renderConst directly.
+- [MED, highest-leverage seam] MISC_Util re-exports websocket/expr/structures (:92,156,157) → highest fan-in hub mixing pure+stateful. Stop re-export; ~4 websocket consumers import UTIL/websocket directly; MISC_Util becomes pure-helpers leaf.
+- [MED] baseComponent/BPG_FileBrowser CYCLE-FREE PLAN: extract file-browser cluster (388-486+) to component/BPG_FileBrowser.jsx as a PURE LEAF (imports only React+antd+GetObjElement, NEVER baseComponent/rdxComponent), baseComponent does NOT re-export it, update 4 consumers (DefConfUI/MAINUI/rdxComponent/RepDisplayUI) to import direct. No barrel = no cycle. (supersedes the earlier failed attempts)
+
+**Perf (P1+P2 = most of the win, no edit_info split needed):**
+- [S,riskM] UICtrlReducer.newStateUpdate returns fresh {...ret_state} every action → all selectors re-run. Return `state` for ignored branches (verify canvas still redraws via its img-diff).
+- [S] MAINUI CanvasComponent: add shouldComponentUpdate (c_state/img/inherentShapeList) + remove 2 console.logs/frame (171,174). InspectionUI CanvasComponent: add SCU (draw already gated).
+- [S] remove hot-path console.log UICtrlReducer:838.
+
+**Def-format / expandability:**
+- [M] No def `ver` migration path (ver written, never read) — add ver-keyed normalize-on-load. Biggest expandability gap.
+- [L] Shape_Attr_Fill missing circle/aux_line/aux_point branch; adding a primitive touches ~6 places → per-shape schema keystone payoff.
+- [M] sha1 lineage reorder/decorator-fragile (strip rule in 2 files) → one canonicalForHash(featureSet).
+- [S/M] Type BPG codec: BpgHeader + discriminated BpgPacket union (map_BPG_Packet2Act default silently drops unknown packets); raw2Obj_IM 15-byte layout; defFileGeneration→HyDef; Shape_Attr_Fill(Shape):Shape.
+
+**Verification-net coverage gaps (add flows):**
+- [S,high] shape DELETE (Shape_Set{id,null}); [L,highest] ref-binding (search_point/aux/measure via applyEditTarSubstate); [M] measure subtype change (ref arity); [S] back_value_setup toggle; [M] SV true round-trip (SV→re-LD→equal); [L] INSP result + CHECK overlay (assert store/DOM not pixels); multi-shape edits; down_samp level 2/3; error/disconnect (assert __rdyErr). Skip undo (no undo action exists).
