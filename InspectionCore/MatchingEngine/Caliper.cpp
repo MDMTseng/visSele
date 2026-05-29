@@ -16,6 +16,7 @@
 static void caliper_dump_line_strip(const char *name, const EdgeSelectParams &edge,
                                     const std::vector<std::vector<float>> &profs,
                                     const std::vector<float> &pos,
+                                    const std::vector<float> &conf,      // per-caliper confidence (-1 none)
                                     const std::vector<char> *use,        // over VALID pts only
                                     const std::vector<int> &ptCaliper,   // pts idx -> caliper idx
                                     int count)
@@ -42,12 +43,19 @@ static void caliper_dump_line_strip(const char *name, const EdgeSelectParams &ed
     }
   }
   cv::Mat vis; std::vector<cv::Mat> ch = {strip, strip, strip}; cv::merge(ch, vis);
+  float maxConf = 0; for (float c : conf) if (c > maxConf) maxConf = c; // normalize for display
   for (int i = 0; i < count && i < (int)pos.size(); i++)
   {
     if (pos[i] < 0) continue;
     int y = (int)lroundf(pos[i]); if (y < 0 || y >= nAcross) continue;
-    cv::Scalar col = (inlier[i] == 1) ? cv::Scalar(0,255,0) : (inlier[i] == 0) ? cv::Scalar(0,0,255) : cv::Scalar(160,160,160);
-    vis.at<cv::Vec3b>(y, i) = cv::Vec3b((uchar)col[0],(uchar)col[1],(uchar)col[2]);
+    cv::Vec3b col;
+    if (inlier[i] == 0) col = cv::Vec3b(0,0,255);            // outlier: red
+    else if (inlier[i] < 0) col = cv::Vec3b(160,160,160);    // no edge: gray
+    else {                                                    // inlier: green, brightness ~ confidence
+      float cn = (maxConf > 0 && i < (int)conf.size() && conf[i] >= 0) ? conf[i] / maxConf : 1.f;
+      col = cv::Vec3b(0, (uchar)(60 + 195 * cn), 0);
+    }
+    vis.at<cv::Vec3b>(y, i) = col;
   }
   // upscale for visibility (wide in x = caliper index, tall in y = across-edge)
   int sx = std::max(1, 600 / std::max(1,count)), sy = std::max(1, 400 / nAcross);
@@ -209,6 +217,7 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
   const bool dbg = (dbgName != nullptr) && (getenv("CALIP_DUMP") != nullptr);
   std::vector<std::vector<float>> dProfs;   // per-caliper across-edge profile (dbg)
   std::vector<float> dPos;                   // per-caliper edge index (dbg), -1 if none
+  std::vector<float> dConf;                  // per-caliper confidence (dbg), -1 if none
   std::vector<int> ptCaliper;                // pts index -> caliper index (dbg)
 
   // RECTIFY-ONCE + PREFIX-SUM. All calipers on a straight line share one rotated band,
@@ -221,7 +230,7 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
   int halfW = (int)(cal.width / 2);
   float alongLen = (float)hypot(p1.X - p0.X, p1.Y - p0.Y);
   std::vector<acv_XY> pts; std::vector<float> w;
-  if (nAcross < 3) { r.nValid = 0; if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, nullptr, ptCaliper, count); return r; }
+  if (nAcross < 3) { r.nValid = 0; if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
   int nAlong = (int)lroundf(alongLen) + 2 * halfW + 1; // a in [0,nAlong) -> along dist (a - halfW)
   acv_XY perpStep = acvVecMult(perp, step);
@@ -262,13 +271,24 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
     const double *Slo = &S[(size_t)aLo * nAcross];
     for (int x = 0; x < nAcross; x++) profile[x] = (float)((Shi[x] - Slo[x]) / cnt);
 
-    acv_XY pt; float str, pos = -1;
-    bool ok = profile_to_edge(profile.data(), nAcross, step, L, cal.edge, c, perp, &pt, &str, nullptr, &pos);
-    if (ok) { pts.push_back(pt); w.push_back(str); if (dbg) ptCaliper.push_back(i); }
-    if (dbg) { dProfs.push_back(profile); dPos.push_back(ok ? pos : -1.f); }
+    acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
+    bool ok = profile_to_edge(profile.data(), nAcross, step, L, cal.edge, c, perp, &pt, &str, &info, &pos);
+    // per-caliper CONFIDENCE used as the fit weight: strong gradient AND unambiguous
+    // (no near-equal second edge). ratio = runnerUp/strength in [0,1]; an edge with a
+    // competing peak is unreliable for THIS edge, so downweight it (keeps >=0.3*strength
+    // so it still contributes; MAD still hard-rejects gross outliers).
+    float conf = 0;
+    if (ok)
+    {
+      float ratio = (info.strength > 0) ? (info.runnerUp / info.strength) : 0;
+      if (ratio > 1) ratio = 1;
+      conf = info.strength * (1.0f - 0.7f * ratio);
+      pts.push_back(pt); w.push_back(conf); if (dbg) ptCaliper.push_back(i);
+    }
+    if (dbg) { dProfs.push_back(profile); dPos.push_back(ok ? pos : -1.f); dConf.push_back(ok ? conf : -1.f); }
   }
   r.nValid = (int)pts.size();
-  if (r.nValid < 2) { if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, nullptr, ptCaliper, count); return r; }
+  if (r.nValid < 2) { if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
   std::vector<char> use(pts.size(), 1);
   acv_XY anchor = {0,0}, dir = {1,0};
@@ -296,7 +316,7 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
   r.anchor = anchor; r.dir = dir; r.nInlier = ni;
   r.rms = (ni > 0) ? sqrtf(sq / ni) : 0;
   r.ok = (ni >= 2);
-  if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, &use, ptCaliper, count);
+  if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);
   return r;
 }
 
