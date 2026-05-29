@@ -32,6 +32,9 @@ import APPMain_rdx from './MAINUI';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 import * as log from 'loglevel';
 import BPG_WS from './comm/BPG_WS';
+import { initDiag, downloadDiag, diagCount, diagText } from 'UTIL/diagLog';
+import { enqueueFailedInsert, pendingInsertCount } from 'UTIL/inspDBQueue';
+initDiag(); // start capturing console output into the diagnostics ring buffer ASAP
 
 import { default as AntButton } from 'antd/lib/button';
 import Collapse from 'antd/lib/collapse';
@@ -90,6 +93,9 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
       }));
     setTimeout(() => reject("Timeout"), 8000);
   });
+  // Test hooks for the diagnostics ring buffer + local failed-insert queue.
+  window.__GP_DIAG__ = { downloadDiag, diagCount, diagText };
+  window.__GP_DB_QUEUE__ = { enqueueFailedInsert, pendingInsertCount };
 }
 
 // Global safety net for async errors that React error boundaries cannot catch
@@ -322,7 +328,12 @@ class APPMasterX extends React.Component {
       _insertFailed(data,msg)
       {
         // console.log("FAILED",data,msg);
-        
+        // Don't silently drop a record that failed to reach the traceability DB:
+        // buffer it to local IndexedDB (capped, oldest-dropped). Some failure
+        // paths have no record (connection/empty) — only buffer real data.
+        if (data !== undefined && data !== null) {
+          enqueueFailedInsert(data, msg).catch((e) => log.error("enqueueFailedInsert failed", e));
+        }
       }
 
       constructor(id)
@@ -1812,8 +1823,14 @@ class APPMasterX extends React.Component {
           }}
           visible={this.state.show_system_panel}
         >
-          
-          <System_Status_Display showText iconSize={30} gridSize={90} 
+
+          <div style={{ padding: "8px 0", textAlign: "center" }}>
+            <AntButton icon={<CloudUploadOutlined />} onClick={() => downloadDiag()}>
+              下載診斷紀錄 / Download Diagnostics
+            </AntButton>
+          </div>
+
+          <System_Status_Display showText iconSize={30} gridSize={90}
             onItemClick={(connInfo)=>{
               console.log(connInfo);
               switch(connInfo.id)
