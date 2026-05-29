@@ -34,6 +34,7 @@ import * as log from 'loglevel';
 import BPG_WS from './comm/BPG_WS';
 import { initDiag, downloadDiag, diagCount, diagText } from 'UTIL/diagLog';
 import { persistPending, deletePending, getPendingBySource, pendingInsertCount } from 'UTIL/inspDBQueue';
+import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure';
 initDiag(); // start capturing console output into the diagnostics ring buffer ASAP
 
 import { default as AntButton } from 'antd/lib/button';
@@ -96,6 +97,8 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   // Test hooks for the diagnostics ring buffer + local failed-insert queue.
   window.__GP_DIAG__ = { downloadDiag, diagCount, diagText };
   window.__GP_DB_QUEUE__ = { persistPending, deletePending, getPendingBySource, pendingInsertCount };
+  window.__GP_BPG__ = BPG_Protocol; // raw framing/decode (raw2header, raw2Obj_IM, ...) for QA
+  window.__GP_MEASURE__ = { applyMeasureLimitCoupling }; // pure value<->limit coupling for QA
 }
 
 // Global safety net for async errors that React error boundaries cannot catch
