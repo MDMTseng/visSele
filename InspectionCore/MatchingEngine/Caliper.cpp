@@ -4,10 +4,99 @@
 #include <math.h>
 #include <vector>
 #include <algorithm>
+#ifdef FEATURE_OPENCV
+#include <opencv2/opencv.hpp>
+#include <string>
+#endif
+
+// Combine each caliper's across-edge profile into ONE image for a single primitive:
+// x = caliper index along the line, y = across-edge search position. The picked edge
+// per caliper is marked (green = fit inlier, red = outlier, gray = no edge found).
+// The primitive name is drawn on the image and used in the filename.
+static void caliper_dump_line_strip(const char *name, const EdgeSelectParams &edge,
+                                    const std::vector<std::vector<float>> &profs,
+                                    const std::vector<float> &pos,
+                                    const std::vector<char> *use,        // over VALID pts only
+                                    const std::vector<int> &ptCaliper,   // pts idx -> caliper idx
+                                    int count)
+{
+#ifdef FEATURE_OPENCV
+  // nAcross = profile length (same for all valid calipers)
+  int nAcross = 0; for (auto &p : profs) if ((int)p.size() > nAcross) nAcross = (int)p.size();
+  if (nAcross < 3 || count < 1) return;
+  // map caliper index -> inlier/outlier (from `use` over valid pts)
+  std::vector<int> inlier(count, -1); // -1 no edge, 0 outlier, 1 inlier
+  if (use) for (size_t k = 0; k < ptCaliper.size() && k < use->size(); k++)
+    inlier[ptCaliper[k]] = (*use)[k] ? 1 : 0;
+  else for (int c : ptCaliper) inlier[c] = 1; // pre-fit: all valid as inlier
+
+  // grayscale strip, one column per caliper
+  cv::Mat strip(nAcross, count, CV_8U, cv::Scalar(0));
+  for (int i = 0; i < count && i < (int)profs.size(); i++)
+  {
+    const auto &pr = profs[i];
+    for (int y = 0; y < (int)pr.size() && y < nAcross; y++)
+    {
+      float v = pr[y]; unsigned char b = (v < 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
+      strip.at<unsigned char>(y, i) = b;
+    }
+  }
+  cv::Mat vis; std::vector<cv::Mat> ch = {strip, strip, strip}; cv::merge(ch, vis);
+  for (int i = 0; i < count && i < (int)pos.size(); i++)
+  {
+    if (pos[i] < 0) continue;
+    int y = (int)lroundf(pos[i]); if (y < 0 || y >= nAcross) continue;
+    cv::Scalar col = (inlier[i] == 1) ? cv::Scalar(0,255,0) : (inlier[i] == 0) ? cv::Scalar(0,0,255) : cv::Scalar(160,160,160);
+    vis.at<cv::Vec3b>(y, i) = cv::Vec3b((uchar)col[0],(uchar)col[1],(uchar)col[2]);
+  }
+  // upscale for visibility (wide in x = caliper index, tall in y = across-edge)
+  int sx = std::max(1, 600 / std::max(1,count)), sy = std::max(1, 400 / nAcross);
+  cv::Mat big; cv::resize(vis, big, cv::Size(), sx, sy, cv::INTER_NEAREST);
+  const char *mName[] = {"STRONGEST","FIRST","LAST","MIDDLE","NTH"};
+  const char *pName[] = {"ANY","RISING","FALLING"};
+  char label[160];
+  snprintf(label, sizeof(label), "%s  method=%s pol=%s nth=%d min_str=%.0f",
+           name ? name : "line",
+           (edge.method>=0&&edge.method<5)?mName[edge.method]:"?",
+           (edge.polarity>=0&&edge.polarity<3)?pName[edge.polarity]:"?",
+           edge.nth, edge.min_strength);
+  cv::putText(big, label, cv::Point(4, 16), cv::FONT_HERSHEY_SIMPLEX, 0.5,
+              cv::Scalar(0,255,255), 1, cv::LINE_AA);
+  // sanitize name for filename
+  std::string fn = "/tmp/calip_line_"; for (const char *p = name ? name : "line"; *p; ++p)
+    fn += (*p=='/'||*p==' '||*p=='\\') ? '_' : *p;
+  fn += ".png";
+  cv::imwrite(fn, big);
+  fprintf(stderr, "[CALIP] %s: %d calipers, strip %dx%d -> %s\n", name?name:"line", count, count, nAcross, fn.c_str());
+#endif
+}
+
+
+// Shared: 1-D across-edge profile -> sub-pixel edge point. central-diff gradient,
+// edge_select (method/polarity/strength), map the chosen index back to an image
+// point (center + s * t_edge). Used by both the per-caliper and rectify-once paths
+// so they pick edges identically.
+static bool profile_to_edge(const float *profile, int nAcross, float step, float L,
+                            const EdgeSelectParams &edge, acv_XY center, acv_XY s,
+                            acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo,
+                            float *outPos)
+{
+  std::vector<float> grad(nAcross, 0);
+  for (int i = 1; i < nAcross - 1; i++) grad[i] = profile[i + 1] - profile[i - 1];
+  grad[0] = grad[1]; grad[nAcross - 1] = grad[nAcross - 2];
+  float pos, str;
+  if (!edge_select(grad.data(), nAcross, edge, &pos, &str, outInfo)) return false;
+  if (outPos) *outPos = pos;
+  float t_edge = -L + pos * step;
+  if (outPt) *outPt = acvVecAdd(center, acvVecMult(s, t_edge));
+  if (outStrength) *outStrength = str;
+  return true;
+}
 
 bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
                      const CaliperParams &p, FeatureManager_BacPac *bacpac,
-                     acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo)
+                     acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo,
+                     std::vector<float> *outProfile, float *outPos)
 {
   if (outInfo) *outInfo = EdgeSelectInfo();
   if (!gray) return false;
@@ -36,19 +125,9 @@ bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
     }
     profile[i] = (cnt > 0) ? (float)(sum / cnt) : 0;
   }
-
-  // signed gradient along the across-edge axis
-  std::vector<float> grad(nAcross, 0);
-  for (int i = 1; i < nAcross - 1; i++) grad[i] = profile[i + 1] - profile[i - 1];
-  grad[0] = grad[1]; grad[nAcross - 1] = grad[nAcross - 2];
-
-  float pos, str;
-  if (!edge_select(grad.data(), nAcross, p.edge, &pos, &str, outInfo)) return false;
-
-  float t_edge = -L + pos * step;
-  if (outPt) *outPt = acvVecAdd(center, acvVecMult(s, t_edge));
-  if (outStrength) *outStrength = str;
-  return true;
+  if (outProfile) *outProfile = profile;
+  return profile_to_edge(profile.data(), nAcross, step, L, p.edge, center, s,
+                         outPt, outStrength, outInfo, outPos);
 }
 
 bool search_point_scan(acvImage *gray, acv_XY start, acv_XY searchDir,
@@ -119,23 +198,77 @@ static void wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,
 
 CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
                                       int count, const CaliperParams &cal,
-                                      FeatureManager_BacPac *bacpac)
+                                      FeatureManager_BacPac *bacpac,
+                                      const char *dbgName)
 {
   CaliperLineResult r = {}; r.ok = false; r.dir = {1,0};
   if (count < 2) count = 2;
   acv_XY lineDir = acvVecNormalize(acvVecSub(p1, p0));
   acv_XY perp = { -lineDir.Y, lineDir.X }; // caliper search direction (across edge)
 
+  const bool dbg = (dbgName != nullptr) && (getenv("CALIP_DUMP") != nullptr);
+  std::vector<std::vector<float>> dProfs;   // per-caliper across-edge profile (dbg)
+  std::vector<float> dPos;                   // per-caliper edge index (dbg), -1 if none
+  std::vector<int> ptCaliper;                // pts index -> caliper index (dbg)
+
+  // RECTIFY-ONCE + PREFIX-SUM. All calipers on a straight line share one rotated band,
+  // so sample it a single time into a contiguous buffer B[nAlong][nAcross] (rows = along
+  // the line, cols = across the edge), instead of re-gathering a diagonal grid per
+  // caliper. The per-caliper along-edge box average then becomes an O(nAcross) prefix-sum
+  // subtraction. Edge picking is identical (profile_to_edge) to caliper_measure.
+  float L = cal.length, step = (cal.step > 0 ? cal.step : 1.0f);
+  int nAcross = (int)(2 * L / step) + 1;
+  int halfW = (int)(cal.width / 2);
+  float alongLen = (float)hypot(p1.X - p0.X, p1.Y - p0.Y);
   std::vector<acv_XY> pts; std::vector<float> w;
+  if (nAcross < 3) { r.nValid = 0; if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, nullptr, ptCaliper, count); return r; }
+
+  int nAlong = (int)lroundf(alongLen) + 2 * halfW + 1; // a in [0,nAlong) -> along dist (a - halfW)
+  acv_XY perpStep = acvVecMult(perp, step);
+  std::vector<float> B((size_t)nAlong * nAcross);
+  for (int a = 0; a < nAlong; a++)
+  {
+    acv_XY rowBase = acvVecAdd(p0, acvVecMult(lineDir, (float)(a - halfW)));
+    acv_XY q = acvVecAdd(rowBase, acvVecMult(perp, -L));
+    float *Brow = &B[(size_t)a * nAcross];
+    for (int x = 0; x < nAcross; x++)
+    {
+      float v = acvUnsignedMap1Sampling(gray, q, 0);
+      if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
+      Brow[x] = v;
+      q = acvVecAdd(q, perpStep);
+    }
+  }
+  // column prefix sums over the along axis: S[a+1][x] = S[a][x] + B[a][x]; S[0]=0.
+  std::vector<double> S((size_t)(nAlong + 1) * nAcross, 0.0);
+  for (int a = 0; a < nAlong; a++)
+  {
+    const float *Brow = &B[(size_t)a * nAcross];
+    const double *Sp = &S[(size_t)a * nAcross];
+    double *Sc = &S[(size_t)(a + 1) * nAcross];
+    for (int x = 0; x < nAcross; x++) Sc[x] = Sp[x] + Brow[x];
+  }
+
+  std::vector<float> profile(nAcross);
   for (int i = 0; i < count; i++)
   {
     float u = (float)i / (count - 1);
-    acv_XY c = acvVecAdd(p0, acvVecMult(acvVecSub(p1, p0), u));
-    acv_XY pt; float str;
-    if (caliper_measure(gray, c, perp, cal, bacpac, &pt, &str)) { pts.push_back(pt); w.push_back(str); }
+    acv_XY c = acvVecAdd(p0, acvVecMult(acvVecSub(p1, p0), u)); // caliper center on the line
+    int aCtr = (int)lroundf(u * alongLen) + halfW;             // buffer row of the center
+    int aLo = aCtr - halfW, aHi = aCtr + halfW;                // window rows [aLo, aHi]
+    if (aLo < 0) aLo = 0; if (aHi > nAlong - 1) aHi = nAlong - 1;
+    int cnt = aHi - aLo + 1;
+    const double *Shi = &S[(size_t)(aHi + 1) * nAcross];
+    const double *Slo = &S[(size_t)aLo * nAcross];
+    for (int x = 0; x < nAcross; x++) profile[x] = (float)((Shi[x] - Slo[x]) / cnt);
+
+    acv_XY pt; float str, pos = -1;
+    bool ok = profile_to_edge(profile.data(), nAcross, step, L, cal.edge, c, perp, &pt, &str, nullptr, &pos);
+    if (ok) { pts.push_back(pt); w.push_back(str); if (dbg) ptCaliper.push_back(i); }
+    if (dbg) { dProfs.push_back(profile); dPos.push_back(ok ? pos : -1.f); }
   }
   r.nValid = (int)pts.size();
-  if (r.nValid < 2) return r;
+  if (r.nValid < 2) { if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, nullptr, ptCaliper, count); return r; }
 
   std::vector<char> use(pts.size(), 1);
   acv_XY anchor = {0,0}, dir = {1,0};
@@ -163,6 +296,7 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
   r.anchor = anchor; r.dir = dir; r.nInlier = ni;
   r.rms = (ni > 0) ? sqrtf(sq / ni) : 0;
   r.ok = (ni >= 2);
+  if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, &use, ptCaliper, count);
   return r;
 }
 

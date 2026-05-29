@@ -3994,7 +3994,7 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
   acv_XY off = eT.getImgOffset();
   acv_XY p0 = acvVecSub(lineDef.p0, off);
   acv_XY p1 = acvVecSub(lineDef.p1, off);
-  CaliperLineResult r = caliper_locate_line(eT.getImage(), p0, p1, lineDef.cal_count, cal, eT.getBacpac());
+  CaliperLineResult r = caliper_locate_line(eT.getImage(), p0, p1, lineDef.cal_count, cal, eT.getBacpac(), lineDef.name);
   if (r.ok)
   {
     // Orient the fitted direction to the def's p0->p1 convention (the TLS fit's
