@@ -374,10 +374,18 @@ CaliperCircleResult caliper_locate_circle(acvImage *gray, acv_XY center0, float 
   const bool dbg = (dbgName != nullptr) && (getenv("CALIP_DUMP") != nullptr);
   std::vector<std::vector<float>> dProfs; std::vector<float> dPos, dConf; std::vector<int> ptCaliper;
 
+  // Sweep CCW from angStart to angEnd (the convert3Pts2ArcData convention: the arc
+  // through the middle point is the CCW span, which may exceed pi). Using the raw
+  // (angEnd-angStart) would go the wrong way around for reflex/wrapped arcs, placing
+  // caliper centers on the opposite side of the circle (off the real edge).
+  float span = angEnd - angStart;
+  while (span < 0) span += 2 * (float)M_PI;
+  while (span >= 2 * (float)M_PI) span -= 2 * (float)M_PI;
+
   std::vector<acv_XY> pts; std::vector<float> w;
   for (int i = 0; i < count; i++)
   {
-    float a = angStart + (angEnd - angStart) * (float)i / (count - 1);
+    float a = angStart + span * (float)i / (count - 1);
     acv_XY dir = { cosf(a), sinf(a) };               // radial = across-edge
     acv_XY c = acvVecAdd(center0, acvVecMult(dir, radius0));
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
@@ -423,8 +431,8 @@ CaliperCircleResult caliper_locate_circle(acvImage *gray, acv_XY center0, float 
   if (dbg)
   {
     caliper_dump_line_strip("arc", dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);
-    fprintf(stderr, "[CALIP] arc %s: center=(%.2f,%.2f) r=%.2f nInlier=%d/%d rms=%.3f\n",
-            dbgName, cen.X, cen.Y, rad, ni, (int)pts.size(), r.rms);
+    fprintf(stderr, "[CALIP] arc %s: nominal=(%.2f,%.2f) r=%.2f  ->  fit=(%.2f,%.2f) r=%.2f  nInlier=%d/%d rms=%.3f  (search +/-%.0fpx)\n",
+            dbgName, center0.X, center0.Y, radius0, cen.X, cen.Y, rad, ni, (int)pts.size(), r.rms, cal.length);
   }
   return r;
 }
