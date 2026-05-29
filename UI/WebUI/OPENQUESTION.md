@@ -114,3 +114,47 @@ intermediate; later, each shape's draw would move from `renderUTIL` into its sha
 (renderUTIL becoming a thin dispatcher). The **whiteListKey typed schema** above is the
 natural FIRST step (a per-shape schema would live in the shape's module). Steer toward
 this only when extending shapes / already touching these seams — don't fragment early.
+
+---
+
+## Structural rework backlog (from 4-agent hunt, 2026-05-29)
+
+Prioritized candidates found by auditing the whole tree. (Dead modes
+CableWire/GenMatching/Blank already deleted.)
+
+**Duplication (high value):**
+- **`CanvasComponent` wrapper cloned across ~5 files** (MAINUI, InspectionUI,
+  DefConfUI, RepDisplayUI, BackLightCalibUI) — same lifecycle/resize/down-samp;
+  differs only by canvas-ctrl subclass + clamp ceiling (10 vs 15) + mmpp source.
+  Extract one configurable base. Biggest cross-file copy-paste. Verify: flows + visual.
+- **`uInsp_API` ≈ `GenPerif_API`** (~350 dup lines, script.jsx) → `uInsp_API extends
+  GenPerif_API` (as SLID_API already does). Risk: M (pulse_hz/rate behavior).
+- **value↔control-limit coupling** dup (`DefConfUI:2342` & `SubDimEditUI:1166`) →
+  one pure `recomputeLimits()`. Verify: golden.
+
+**Structural extractions:**
+- **6 API classes nested in APPMasterX constructor** (DB_WS/Cam_Stat_Query/uInsp_API/
+  GenPerif_API/SLID_API/Platform_API, ~1450 lines) → relocate to comm/ with injected
+  deps (the proven BPG_WS pattern). Verify: typecheck + flows.
+- **Report-tracking/matching engine** (~420 lines inline in
+  `UICtrlReducer.EVENT_Inspection_Report`, ~L113-595) → extract to `reportTracking.js`
+  (sibling of spcStats.js). Highest-leverage reducer extraction. Verify: flows (+ may
+  need inspection-report fixtures).
+- **collapse 4 near-dup binding blocks** in `InspectionEditorLogic.applyEditTarSubstate`.
+- **Type the BPG codecs** (`BPG_Protocol.js` raw2header/raw2obj/objbarr2raw) — cleanest TS target.
+
+**Render-stability (HIGH — unblocks per-shape schema + fixes latent bug):**
+- `JsonEditBlock` renders renderLib entries as JSX element *types* (`<Render_comp/>`),
+  and `whiteListKey` (with `__OBJ__` closures) is rebuilt inline every render →
+  React remounts subtrees → editor sub-state loss (SubDimEditUI/Measure_Calc_Editor).
+  Also `GenTarEditUI` is a class *method* using hooks rendered as `<this.GenTarEditUI/>`
+  (fragile Rules-of-Hooks). Fixing render-lib/whiteListKey identity stability is the
+  real prerequisite for the per-shape schema redesign (and likely why the baseComponent
+  split kept breaking). Verify: flows + manual sub-editor state-persistence check.
+
+**More dead code (low effort):** script.jsx auto-update (checkUpdateInfo/isNewVersionExist
+~104-138) + SystemServicePanel_UI (~141) appear uncalled; DList (DefConfUI 206-256),
+completeCtrlMarginInfo (479), Num2Str_padding, raw2obj_rawdata, if(false) blocks. Grep-confirm then delete.
+
+**Note:** the hardware `CameraCtrl` (BPG_Protocol.js:261) vs view `CameraCtrl`
+(canvas/CameraCtrl.ts) name collision is a footgun — consider renaming the hardware one.
