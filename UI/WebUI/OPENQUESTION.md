@@ -41,6 +41,13 @@ Recommendation: **leave as-is** unless we're already in this code for another re
 **Direction (user):** yes, split it — but **coarse, not finely fragmented**. A handful
 of cohesive groups, not many micro-slices.
 
+**Splitting philosophy (applies project-wide):** keep complexly-interrelated / stateful /
+side-effectful logic together in one file (size is fine); only extract pieces that are
+pure / functional / side-effect-free or intuitively self-contained. So: this is a *state
+grouping* (coarse buckets) — NOT a directive to fragment the coupled stateful model
+(`InspectionEditorLogic`) or the reducer. Good *code* extraction targets are pure helpers
+(geometry, serialization, pure transforms).
+
 **Proposed coarse grouping (3 buckets):**
 1. **editor (cold)** — `_obj`, `inherentShapeList`, `edit_tar_info`, `edit_tar_ele_trace`,
    `edit_tar_ele_cand`, `__decorator`.
