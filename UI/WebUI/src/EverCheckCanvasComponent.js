@@ -20,7 +20,6 @@ import { INSPECTION_STATUS,BPG_ExpCalc } from 'UTIL/BPG_Protocol';
 import * as log from 'loglevel';
 import dclone from 'clone';
 
-import { EV_UI_Canvas_Mouse_Location } from 'REDUX_STORE_SRC/actions/UIAct';
 import Color from 'color';
 import { ConsoleSqlOutlined } from '@ant-design/icons';
 
@@ -2814,8 +2813,6 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     let pmouseOnCanvas2 = this.VecX2DMat(pmPos, worldTransform_inv);
 
     let ifOnMouseLeftClickEdge = (this.mouseStatus.status != this.mouseStatus.pstatus);
-
-    this.EmitEvent(EV_UI_Canvas_Mouse_Location(mouseOnCanvas2));
 
   }
 }

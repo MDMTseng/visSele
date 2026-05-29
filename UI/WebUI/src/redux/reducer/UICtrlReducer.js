@@ -833,11 +833,6 @@ function StateReducer(newState, action) {
             newState.edit_info = { ...newState.edit_info, img: action.data };
             break;
 
-          case UI_SM_EVENT.Canvas_Mouse_Location:
-            {
-              newState.edit_info.mouseLocation = action.data;
-            }
-            break;
 
             
           case UISEV.SIG360_Report_Update:

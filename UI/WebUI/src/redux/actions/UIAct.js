@@ -114,7 +114,6 @@ export const UI_SM_EVENT = {
 
   
   Control_SM_Panel:"Control_SM_Panel",
-  Canvas_Mouse_Location:"Canvas_Mouse_Location"
 };
 
 
@@ -219,13 +218,6 @@ export function Def_Model_Path_Update(newPath)
 
 
 
-export function EV_UI_Canvas_Mouse_Location(mouseLoc)
-{
-  return {
-    type: UI_SM_EVENT.Canvas_Mouse_Location,
-    data:mouseLoc,
-  }
-}
 
 
 export function EV_WS_Inspection_Report(report)
