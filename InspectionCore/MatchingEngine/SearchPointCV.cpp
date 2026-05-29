@@ -57,23 +57,26 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
   float cs = (nS - 1) * 0.5f;            // row -> searchCoord (cs - i)
   float cp = (nP - 1) * 0.5f;            // col -> perpCoord   (j - cp)
 
+  const bool dbg = (getenv("SPCV_DUMP") != nullptr);
+  const bool useMask = (labelImg != nullptr && objLabel >= 0);
   int gW = gray->GetWidth(), gH = gray->GetHeight();
   cv::Mat g(nS, nP, CV_8U);                     // rows = search dir, cols = perp
   cv::Mat valid(nS, nP, CV_8U, cv::Scalar(1));  // 1 = sampled in-image
-  cv::Mat mask(nS, nP, CV_8U, cv::Scalar(255)); // 255 = allowed (object); used only if labelImg
-  bool useMask = (labelImg != nullptr && objLabel >= 0);
+  cv::Mat mask;                                 // object-allow mask; only built when labelImg given
+  if (useMask) mask = cv::Mat(nS, nP, CV_8U, cv::Scalar(255));
   for (int i = 0; i < nS; i++)
   {
     float searchCoord = cs - i;
-    unsigned char *d = g.ptr<unsigned char>(i), *vv = valid.ptr<unsigned char>(i), *m = mask.ptr<unsigned char>(i);
+    unsigned char *d = g.ptr<unsigned char>(i), *vv = valid.ptr<unsigned char>(i);
+    unsigned char *m = useMask ? mask.ptr<unsigned char>(i) : nullptr;
     for (int j = 0; j < nP; j++)
     {
       acv_XY q = acvVecAdd(pt, acvVecAdd(acvVecMult(s, searchCoord), acvVecMult(perp, j - cp)));
-      if (q.X < 1 || q.Y < 1 || q.X >= gW - 1 || q.Y >= gH - 1) { d[j] = 0; vv[j] = 0; m[j] = 0; continue; }
+      if (q.X < 1 || q.Y < 1 || q.X >= gW - 1 || q.Y >= gH - 1) { d[j] = 0; vv[j] = 0; if (m) m[j] = 0; continue; }
       float v = acvUnsignedMap1Sampling(gray, q, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
       d[j] = (v < 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
-      if (useMask) m[j] = isObjectPx(labelImg, (int)(q.X + 0.5f), (int)(q.Y + 0.5f)) ? 255 : 0;
+      if (m) m[j] = isObjectPx(labelImg, (int)(q.X + 0.5f), (int)(q.Y + 0.5f)) ? 255 : 0;
     }
   }
 
@@ -102,14 +105,15 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
     e -= edgeSuppress; return e < 0 ? 0.f : e;
   };
   std::vector<SPEdgePt> cand;
-  cv::Mat sobViz; if (getenv("SPCV_DUMP")) sobViz = cv::Mat::zeros(nS, nP, CV_16S);
+  cv::Mat sobViz; if (dbg) sobViz = cv::Mat::zeros(nS, nP, CV_16S);
   std::vector<float> eline(nP);
   float maxPeak = 0;
   for (int i = 1; i < nS - 1; i++)
   {
     const unsigned char *r0 = g.ptr<unsigned char>(i-1), *r1 = g.ptr<unsigned char>(i), *r2 = g.ptr<unsigned char>(i+1);
-    const unsigned char *vr = valid.ptr<unsigned char>(i), *m = mask.ptr<unsigned char>(i);
-    int16_t *sv = sobViz.empty() ? nullptr : sobViz.ptr<int16_t>(i);
+    const unsigned char *vr = valid.ptr<unsigned char>(i);
+    const unsigned char *m = useMask ? mask.ptr<unsigned char>(i) : nullptr;
+    int16_t *sv = dbg ? sobViz.ptr<int16_t>(i) : nullptr;
     eline[0] = eline[nP-1] = 0.f;
     for (int j = 1; j < nP - 1; j++)
     {
@@ -146,11 +150,11 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
   // extreme. Average the edges within `considerRange` of the top (legacy reng), peak-weighted.
   float pMin = 1e9f;
   for (auto &e : eps) if (e.perpCoord < pMin) pMin = e.perpCoord;   // top along perpendicular
-  if (getenv("SPCV_DUMP")) {
+  if (dbg) {
     float pa=1e9,pb=-1e9,sa=1e9,sb=-1e9; for(auto&e:eps){pa=std::min(pa,e.perpCoord);pb=std::max(pb,e.perpCoord);sa=std::min(sa,e.searchCoord);sb=std::max(sb,e.searchCoord);}
     fprintf(stderr,"[SPCV] pt=(%.0f,%.0f) eps=%zu perp[%.0f,%.0f] search[%.0f,%.0f] perpTop=%.0f\n",pt.X,pt.Y,eps.size(),pa,pb,sa,sb,pMin);
+    if (const char *en = getenv("SPCV_N")) considerRange = atof(en); // debug sweep of n
   }
-  if (const char *en = getenv("SPCV_N")) considerRange = atof(en); // debug sweep of n
   if (considerRange <= 0) considerRange = 1;
   if (alphaKeep > considerRange) alphaKeep = considerRange;
 
@@ -169,9 +173,9 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
   }
   if (Ws <= 0) return false;
   float eS = (float)(Ss / Ws), eP = (float)(Ps / Ws);  // centered region coords
-  if (getenv("SPCV_DUMP")) fprintf(stderr, "[SPCV] n=%.1f nUsed=%d final(search,perp)=(%.2f,%.2f)\n", considerRange, nUsed, eS, eP);
+  if (dbg) fprintf(stderr, "[SPCV] n=%.1f nUsed=%d final(search,perp)=(%.2f,%.2f)\n", considerRange, nUsed, eS, eP);
 
-  if (getenv("SPCV_DUMP")) // debug: save rectified gray | mask | edge marker
+  if (dbg) // debug: save rectified gray | mask | edge marker
   {
     // buffer pos of a centered coord: col = perpCoord + cp, row = cs - searchCoord
     auto bx = [&](float perpCoord){ return (int)lroundf(perpCoord + cp); };
@@ -185,7 +189,7 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
     cv::Mat visBig; cv::resize(vis, visBig, cv::Size(), sc, sc, cv::INTER_NEAREST);
     char fn[256]; snprintf(fn,sizeof(fn),"/tmp/spcv_sp%d_pt%d_%d_%dx%d.png",spId,(int)pt.X,(int)pt.Y,nP,nS); cv::imwrite(fn,visBig);
     char fn2[256]; snprintf(fn2,sizeof(fn2),"/tmp/spcvraw_sp%d_pt%d_%d.png",spId,(int)pt.X,(int)pt.Y); cv::imwrite(fn2,g);
-    char fn3[256]; snprintf(fn3,sizeof(fn3),"/tmp/spcvmask_sp%d_pt%d_%d.png",spId,(int)pt.X,(int)pt.Y); cv::imwrite(fn3,mask);
+    if (useMask) { char fn3[256]; snprintf(fn3,sizeof(fn3),"/tmp/spcvmask_sp%d_pt%d_%d.png",spId,(int)pt.X,(int)pt.Y); cv::imwrite(fn3,mask); }
     // signed gradient mapped to 8U: 128 = zero gradient, brighter = +grad, darker = -grad.
     cv::Mat sob8; sobViz.convertTo(sob8, CV_8U, 0.5, 128.0);
     char fn4[256]; snprintf(fn4,sizeof(fn4),"/tmp/spcvsobel_sp%d_pt%d_%d.png",spId,(int)pt.X,(int)pt.Y); cv::imwrite(fn4,sob8);
