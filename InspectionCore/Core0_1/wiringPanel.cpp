@@ -207,7 +207,7 @@ class PerifChannel:public Data_JsonRaw_Layer
     {
 
       char tmp[1024];
-      sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", raw, ID);
+      snprintf(tmp, sizeof(tmp), "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", raw, ID);
       // LOGI("MSG:%s", tmp);
       BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
       bpg_dat.pgID=conn_pgID;
@@ -798,7 +798,7 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
     if (calibMapPath == NULL)
       calibMapPath = default_CalibMapPath;
     char path[200];
-    sprintf(path, "%s/%s", dirName, calibMapPath);
+    snprintf(path, sizeof(path), "%s/%s", dirName, calibMapPath);
     calibMapPath = path;
     LOGE("calibMapPath:%s", calibMapPath);
     int datL = 0;
@@ -848,7 +848,7 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
     if (SLCalibPath == NULL)
       SLCalibPath = default_SLCalibPath;
     char path[200];
-    sprintf(path, "%s/%s", dirName, SLCalibPath);
+    snprintf(path, sizeof(path), "%s/%s", dirName, SLCalibPath);
     SLCalibPath = path;
     LOGE("SLCalibPath:%s", SLCalibPath);
 
@@ -1248,8 +1248,8 @@ int LoadCameraCalibrationFile(char *filename, ImageSampler *ret_cam_param)
   try
   {
     char folder_name[200];
-    int strLen = strlen(filename);
-    strcpy(folder_name, filename);
+    snprintf(folder_name, sizeof(folder_name), "%s", filename);
+    int strLen = strlen(folder_name);
     for (int i = strLen; i; i--) //Find folder name
     {
       if (folder_name[i] == '/')
@@ -1567,7 +1567,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         {
 
           char dirPath[200];
-          strcpy(dirPath, fileName);
+          snprintf(dirPath, sizeof(dirPath), "%s", fileName);
           char *dir = dirname(dirPath);
           bool dirExist = isDirExist(dir);
 
