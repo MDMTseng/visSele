@@ -77,8 +77,10 @@ Execute as the next focused pass.
 ## Q3. Next rework section
 
 Remaining candidates (all larger, fresh-session sized):
-- **Comm layer**: extract a thin typed `bpgClient` (sendCommand→Promise) out of
-  `script.jsx`/`MW_API`. High leverage, medium risk (touches connection logic).
+- **Comm layer**: Path A DONE — `BPG_WS` transport relocated to `comm/BPG_WS.js`
+  (deps injected; behavior unchanged; script.jsx 2485→2066). **Path B (follow-up):**
+  decouple it from `comp.props.ACT_*` into a thin promise/event client so it no longer
+  knows about React/redux — the bigger, riskier dependency inversion (37 coupling points).
 - **whiteListKey typed schema**: unify `JsonEditBlock` spec + `Shape_Attr_Fill` defaults
   into one per-shape schema. Contained, golden+flows-verifiable, improves shape editor.
 - **edit_info god-object split** (Q2).
