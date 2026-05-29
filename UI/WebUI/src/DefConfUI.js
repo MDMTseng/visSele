@@ -7,6 +7,7 @@ import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
+import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure';
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
@@ -2134,41 +2135,8 @@ class APP_DEFCONF_MODE extends React.Component {
                         if (isNaN(parseNum)) return;
                         let pre_val = target.obj[lastKey];
                         target.obj[lastKey] = parseNum;
-                        if (target.obj.value !== undefined) {
-                          //Special case, if USL LSL gets changes then UCL and LCL will be changed as well
-
-                          switch (lastKey) {
-
-                            case "value":
-                              target.obj.LCL = roundX(target.obj.LCL - pre_val + target.obj.value, 0.001);
-                              target.obj.UCL = roundX(target.obj.UCL - pre_val + target.obj.value, 0.001);
-                              target.obj.LSL = roundX(target.obj.LSL - pre_val + target.obj.value, 0.001);
-                              target.obj.USL = roundX(target.obj.USL - pre_val + target.obj.value, 0.001);
-                              break;
-
-
-                            case "value_b":
-                              target.obj.LCL_b = roundX(target.obj.LCL_b - pre_val + target.obj.value, 0.001);
-                              target.obj.UCL_b = roundX(target.obj.UCL_b - pre_val + target.obj.value, 0.001);
-                              target.obj.LSL_b = roundX(target.obj.LSL_b - pre_val + target.obj.value, 0.001);
-                              target.obj.USL_b = roundX(target.obj.USL_b - pre_val + target.obj.value, 0.001);
-                              break;
-
-
-                            case "LSL":
-                              target.obj.LCL = roundX((target.obj.value + (target.obj.LSL - target.obj.value) * 2 / 3), 0.001);
-                              break;
-                            case "USL":
-                              target.obj.UCL = roundX((target.obj.value + (target.obj.USL - target.obj.value) * 2 / 3), 0.001);
-                              break;
-                            case "LSL_b":
-                              target.obj.LCL_b = roundX((target.obj.value_b + (target.obj.LSL_b - target.obj.value_b) * 2 / 3), 0.001);
-                              break;
-                            case "USL_b":
-                              target.obj.UCL_b = roundX((target.obj.value_b + (target.obj.USL_b - target.obj.value_b) * 2 / 3), 0.001);
-                              break;
-                          }
-                        }
+                        // value/USL/LSL changes derive the dependent control limits (per-shape measure logic)
+                        applyMeasureLimitCoupling(target.obj, lastKey, pre_val);
                       }
                       break;
                     case "input":
