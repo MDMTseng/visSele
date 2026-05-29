@@ -234,7 +234,7 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
   cir.initMatchingMargin = *JFetEx_NUMBER(circle_obj, "margin");
 
   // caliper/section locating (default contour)
-  cir.locating = 0; cir.cal_count = 36; cir.cal_width = 9;
+  cir.locating = 0; cir.cal_count = 36; cir.cal_width = 9; cir.cal_length = -1; cir.cal_step = -1;
   cir.edge_method = EdgeSelectParams::STRONGEST; cir.edge_polarity = EdgeSelectParams::ANY;
   cir.edge_nth = 0; cir.edge_min_strength = 0;
   {
@@ -242,7 +242,9 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
     if (loc && strcmp(loc, "caliper") == 0) cir.locating = 1;
     cJSON *calo = JFetch_OBJECT(circle_obj, "caliper");
     if (calo) { cir.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 36);
-                cir.cal_width = JFetch_NUMBER_ex(calo, "width", 9); }
+                cir.cal_width = JFetch_NUMBER_ex(calo, "width", 9);
+                cir.cal_length = JFetch_NUMBER_ex(calo, "length", -1);
+                cir.cal_step = JFetch_NUMBER_ex(calo, "step", -1); }
     cJSON *edgeo = JFetch_OBJECT(circle_obj, "edge");
     if (edgeo) {
       cir.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
@@ -1794,7 +1796,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   line.initMatchingMargin = (float)*JFetEx_NUMBER(line_obj, "margin");
 
   // caliper/section locating (default contour). docs/caliper_primitive_locating_design.md
-  line.locating = 0; line.cal_count = 30; line.cal_width = 9;
+  line.locating = 0; line.cal_count = 30; line.cal_width = 9; line.cal_length = -1; line.cal_step = -1;
   line.edge_method = EdgeSelectParams::STRONGEST; line.edge_polarity = EdgeSelectParams::ANY;
   line.edge_nth = 0; line.edge_min_strength = 0;
   {
@@ -1802,7 +1804,9 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
     if (loc && strcmp(loc, "caliper") == 0) line.locating = 1;
     cJSON *calo = JFetch_OBJECT(line_obj, "caliper");
     if (calo) { line.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 30);
-                line.cal_width = JFetch_NUMBER_ex(calo, "width", 9); }
+                line.cal_width = JFetch_NUMBER_ex(calo, "width", 9);
+                line.cal_length = JFetch_NUMBER_ex(calo, "length", -1);
+                line.cal_step = JFetch_NUMBER_ex(calo, "step", -1); }
     cJSON *edgeo = JFetch_OBJECT(line_obj, "edge");
     if (edgeo) {
       line.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
@@ -3775,9 +3779,9 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   if (cdef.locating == 1) // caliper/section circle fit (radial calipers)
   {
     CaliperParams cal;
-    cal.length = initMatchingMargin; // px radial search half-length
+    cal.length = (cdef.cal_length > 0) ? cdef.cal_length : initMatchingMargin; // px radial search half-length
     cal.width  = cdef.cal_width;
-    cal.step   = 1.0f;
+    cal.step   = (cdef.cal_step > 0) ? cdef.cal_step : 1.0f;
     cal.edge.method       = cdef.edge_method;
     cal.edge.polarity     = cdef.edge_polarity;
     cal.edge.nth          = cdef.edge_nth;
@@ -3787,7 +3791,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     CaliperCircleResult rr = caliper_locate_circle(eT.getImage(), cc, radius, sAngle, eAngle,
                                                    cdef.cal_count, cal, eT.getBacpac(), cdef.name);
     if (rr.ok) { cf.circle.circumcenter = acvVecAdd(rr.center, off); cf.circle.radius = rr.radius;
-                 cf.s = rr.rms; cf.matching_pts = rr.nInlier; }
+                 cf.s = rr.rms; cf.matching_pts = rr.nInlier; cf.confidence = rr.confidence; }
     else { cf.circle.radius = NAN; }
   }
   else
@@ -3983,9 +3987,9 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
   Report.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
 
   CaliperParams cal;
-  cal.length = lineDef.initMatchingMargin; // px search half-length across the edge
+  cal.length = (lineDef.cal_length > 0) ? lineDef.cal_length : lineDef.initMatchingMargin; // px search half-length across edge
   cal.width  = lineDef.cal_width;
-  cal.step   = 1.0f;
+  cal.step   = (lineDef.cal_step > 0) ? lineDef.cal_step : 1.0f;
   cal.edge.method       = lineDef.edge_method;
   cal.edge.polarity     = lineDef.edge_polarity;
   cal.edge.nth          = lineDef.edge_nth;
@@ -4009,6 +4013,7 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
     Report.line.line.line_vec = r.dir;
     Report.line.s = r.rms;
     Report.line.matching_pts = r.nInlier;
+    Report.line.confidence = r.confidence;
     float t0 = (lineDef.p0.X-anchor.X)*r.dir.X + (lineDef.p0.Y-anchor.Y)*r.dir.Y;
     float t1 = (lineDef.p1.X-anchor.X)*r.dir.X + (lineDef.p1.Y-anchor.Y)*r.dir.Y;
     Report.line.end_pt1 = (acv_XY){ anchor.X + t0*r.dir.X, anchor.Y + t0*r.dir.Y };

@@ -50,6 +50,8 @@ typedef struct featureDef_circle{
   int locating;            // 0=contour(default), 1=caliper
   int cal_count;           // # radial calipers along the arc
   float cal_width;         // projection width (px)
+  float cal_length;        // radial search half-length (px); <=0 => use initMatchingMargin
+  float cal_step;          // across-edge sampling step (px); <=0 => 1
   int edge_method;
   int edge_polarity;
   int edge_nth;
@@ -78,6 +80,8 @@ typedef struct featureDef_line{
   int locating;            // default 0
   int cal_count;           // # calipers along the line
   float cal_width;         // projection width (px)
+  float cal_length;        // search half-length across the edge (px); <=0 => use initMatchingMargin
+  float cal_step;          // across-edge sampling step (px); <=0 => 1
   int edge_method;         // EdgeSelectParams::Method
   int edge_polarity;       // EdgeSelectParams::Polarity
   int edge_nth;

@@ -23,6 +23,7 @@ cJSON* acv_LineFit2JSON(cJSON* Line_jobj, const acv_LineFit line, acv_XY center_
 {
   cJSON_AddNumberToObject(Line_jobj, "matching_pts", line.matching_pts);
   cJSON_AddNumberToObject(Line_jobj, "s", line.s);
+  if (line.confidence > 0) cJSON_AddNumberToObject(Line_jobj, "confidence", line.confidence);
 
   /*acv_XY point = acvClosestPointOnLine(line.end_pos, line.line);
   cJSON_AddNumberToObject(Line_jobj, "x0", point.X-center_offset.X);
@@ -45,6 +46,7 @@ cJSON* acv_CircleFit2JSON(cJSON* Circle_jobj,const acv_CircleFit cir , acv_XY ce
 {
   cJSON_AddNumberToObject(Circle_jobj, "matching_pts", cir.matching_pts);
   cJSON_AddNumberToObject(Circle_jobj, "s", cir.s);
+  if (cir.confidence > 0) cJSON_AddNumberToObject(Circle_jobj, "confidence", cir.confidence);
   cJSON_AddNumberToObject(Circle_jobj, "x", cir.circle.circumcenter.X-center_offset.X);
   cJSON_AddNumberToObject(Circle_jobj, "y", cir.circle.circumcenter.Y-center_offset.Y);
   cJSON_AddNumberToObject(Circle_jobj, "r", cir.circle.radius);

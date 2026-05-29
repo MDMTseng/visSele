@@ -316,11 +316,12 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
   }
   // final stats
   acv_XY n = { -dir.Y, dir.X };
-  double sq = 0; int ni = 0;
+  double sq = 0, sumw = 0; int ni = 0;
   for (size_t i = 0; i < pts.size(); i++) if (use[i])
-  { float d = (pts[i].X-anchor.X)*n.X + (pts[i].Y-anchor.Y)*n.Y; sq += d*d; ni++; }
+  { float d = (pts[i].X-anchor.X)*n.X + (pts[i].Y-anchor.Y)*n.Y; sq += d*d; sumw += w[i]; ni++; }
   r.anchor = anchor; r.dir = dir; r.nInlier = ni;
   r.rms = (ni > 0) ? sqrtf(sq / ni) : 0;
+  r.confidence = (ni > 0) ? (float)(sumw / ni) : 0;
   r.ok = (ni >= 2);
   if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);
   return r;
@@ -422,11 +423,12 @@ CaliperCircleResult caliper_locate_circle(acvImage *gray, acv_XY center0, float 
     { float d = fabsf(hypotf(pts[i].X-cen.X, pts[i].Y-cen.Y) - rad); char nu = d<=thr?1:0; if (nu!=use[i])changed++; use[i]=nu; }
     if (!changed) break;
   }
-  double sq = 0; int ni = 0;
+  double sq = 0, sumw = 0; int ni = 0;
   for (size_t i = 0; i < pts.size(); i++) if (use[i])
-  { float d = hypotf(pts[i].X-cen.X, pts[i].Y-cen.Y) - rad; sq += d*d; ni++; }
+  { float d = hypotf(pts[i].X-cen.X, pts[i].Y-cen.Y) - rad; sq += d*d; sumw += w[i]; ni++; }
   r.center = cen; r.radius = rad; r.nInlier = ni;
   r.rms = (ni>0)?sqrtf(sq/ni):0;
+  r.confidence = (ni>0)?(float)(sumw/ni):0;
   r.ok = (ni >= 3);
   if (dbg)
   {

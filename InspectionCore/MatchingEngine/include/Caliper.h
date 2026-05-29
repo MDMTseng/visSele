@@ -55,6 +55,7 @@ struct CaliperLineResult
   float rms;       // inlier RMS perpendicular residual (px)
   int nValid;      // calipers that found an edge
   int nInlier;     // calipers kept after robust rejection
+  float confidence;// mean inlier edge confidence (strength*unambiguity*sharpness)
   bool ok;
 };
 
@@ -79,6 +80,7 @@ struct CaliperCircleResult
   float rms;     // inlier RMS radial residual (px)
   int nValid;
   int nInlier;
+  float confidence;// mean inlier edge confidence
   bool ok;
 };
 

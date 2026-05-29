@@ -78,6 +78,7 @@ typedef struct acv_CircleFit
   acv_Circle circle;
   int matching_pts;
   float s;//sigma
+  float confidence;// mean inlier edge confidence (caliper path; 0 = N/A)
 }acv_CircleFit;
 
 typedef struct acv_LineFit
@@ -88,6 +89,7 @@ typedef struct acv_LineFit
   acv_XY end_pt1;
   acv_XY end_pt2;
   float s;//sigma
+  float confidence;// mean inlier edge confidence (caliper path; 0 = N/A)
 }acv_LineFit;
 
 
