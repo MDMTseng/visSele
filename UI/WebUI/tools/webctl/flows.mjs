@@ -90,6 +90,18 @@ async function editSelectedUSL(value) {
   await sleep(500);
 }
 
+// edit the selected measure's USL by driving the real property-sheet <input> (idx 2 for
+// the caliper_verify measure). This goes through the JsonEditBlock -> jsonChange path,
+// exercising the value<->control-limit COUPLING (UCL recompute) that Shape_Set bypasses.
+async function editUSLviaInput(value) {
+  await ev(`window.__GP_STORE__.dispatch({type:'DefConf_Lock_Level_Update',data:0}); 'unlock'`);
+  await sleep(200);
+  await ev(
+    `(function(){var ins=[...document.querySelectorAll('input')];var el=ins[2];var set=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;set.call(el,'${value}');el.dispatchEvent(new Event('input',{bubbles:true}));return ins.length;})()`
+  );
+  await sleep(500);
+}
+
 // add a brand-new line via the real Shape_Set path (id undefined -> push). Exercises
 // the immutable array-add + shape-list re-render.
 async function addLine() {
@@ -116,6 +128,7 @@ const FLOWS = {
   async load() { await reset(); return ev(SNAP); },
   async select() { await reset(); await selectFirstMeasure(); return ev(SNAP); },
   async edit() { await reset(); await selectFirstMeasure(); await editSelectedUSL(9.123); return ev(SNAP); },
+  async editInput() { await reset(); await selectFirstMeasure(); await editUSLviaInput(9.0); return ev(SNAP); },
   async add() { await reset(); await addLine(); return ev(SNAP); },
 };
 
