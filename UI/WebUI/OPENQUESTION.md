@@ -85,3 +85,20 @@ Remaining candidates (all larger, fresh-session sized):
 
 Recommendation order: broaden `flows.mjs` coverage → type the `edit_info` consumers →
 Q2 god-object split (group-by-group, tsc-verified) → whiteListKey schema → comm layer.
+
+---
+
+## North-star (long-term direction, not now): per-shape vertical slices
+
+Co-locate everything for a given shape/primitive type (line, arc, circle, search_point,
+measure, aux_*) into ONE module per shape — its **setup component** (property sheet),
+its **canvas control** (interaction/edit/hit-test), and its **draw** logic, plus its
+defaults/schema. Goal: adding/extending a primitive = a single-module change instead of
+editing DefConfUI + the canvas + renderUTIL + Shape_Attr_Fill separately. "Group by
+feature (shape), not by layer" — fits the cohesion philosophy.
+
+How it relates: the layer-based `renderUTIL`/`CameraCtrl` extraction is a fine
+intermediate; later, each shape's draw would move from `renderUTIL` into its shape module
+(renderUTIL becoming a thin dispatcher). The **whiteListKey typed schema** above is the
+natural FIRST step (a per-shape schema would live in the shape's module). Steer toward
+this only when extending shapes / already touching these seams — don't fragment early.
