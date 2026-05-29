@@ -1,0 +1,27 @@
+{
+  "//": "Progressive TS: types are opt-in. JS is allowed but NOT type-checked by default (checkJs:false). To type-check a .js file, add `// @ts-check` at its top, or just author new files in .ts/.tsx. Vite transpiles; run `npx tsc --noEmit` for a type pass. Domain contracts live in src/domain.d.ts.",
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "checkJs": false,
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "UTIL/*": ["./src/UTIL/*"],
+      "JSSRCROOT/*": ["./src/*"],
+      "LANG/*": ["./src/languages/*"],
+      "RES/*": ["./resource/*"],
+      "REDUX_STORE_SRC/*": ["./src/redux/*"],
+      "STYLE/*": ["./style/*"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "tools"]
+}
