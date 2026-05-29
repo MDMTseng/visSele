@@ -75,7 +75,6 @@
     "uglifyjs-webpack-plugin": "^2.2.0",
     "url-loader": "^4.1.1",
     "vite": "^5.4.21",
-    "vite-plugin-imp": "^2.4.0",
     "vite-plugin-node-polyfills": "^0.28.0",
     "webpack": "^4.46.0",
     "webpack-bundle-analyzer": "^3.9.0",
