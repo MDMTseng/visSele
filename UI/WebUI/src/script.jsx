@@ -91,6 +91,19 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
     setTimeout(() => reject("Timeout"), 8000);
   });
 }
+
+// Global safety net for async errors that React error boundaries cannot catch
+// (timer/event-handler throws, WS callbacks, unhandled promise rejections).
+// Routed through loglevel so a future diagnostics ring-buffer can capture them;
+// this is the floor-unit's only signal when no devtools are attached.
+if (typeof window !== "undefined") {
+  window.addEventListener("error", (e) => {
+    log.error("window.onerror:", (e && (e.error || e.message)), (e && e.filename), (e && e.lineno));
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    log.error("unhandledrejection:", (e && e.reason));
+  });
+}
 console.log(navigator)
 
 function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,onItemClick=_=>_})
@@ -1978,10 +1991,48 @@ class APPMasterX extends React.Component {
 
 let APPMasterX_rdx = APPMasterX.connect();
 
+// Top-level error boundary: a render/lifecycle throw anywhere in the tree would
+// otherwise white-screen the whole operator UI for the rest of the shift. Catch
+// it, log it, and show a recoverable reload panel instead. Fallback uses only
+// plain DOM (no antd/redux) so it can't itself re-crash if the cause is there.
+class RootErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    log.error("RootErrorBoundary caught a render crash:", error, info && info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      const msg = String((this.state.error && this.state.error.message) || this.state.error);
+      return (
+        <div className="HXF WXF overlay veleXY white"
+          style={{ flexDirection: "column", padding: "5%", textAlign: "center", boxSizing: "border-box" }}>
+          <h1 className="Title">系統發生錯誤 / Something went wrong</h1>
+          <div style={{ margin: "1em 0", maxWidth: "90%", wordBreak: "break-word", opacity: 0.7, fontSize: "0.5cm" }}>
+            {msg}
+          </div>
+          <button onClick={() => window.location.reload()}
+            style={{ padding: "0.4cm 1cm", fontSize: "0.5cm", borderRadius: "4px", cursor: "pointer" }}>
+            重新載入 / Reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 ReactDOM.render(
 
-  <Provider store={StoreX}>
-      <APPMasterX_rdx />
+  <RootErrorBoundary>
+    <Provider store={StoreX}>
+        <APPMasterX_rdx />
 
-  </Provider>, document.getElementById('container'));
+    </Provider>
+  </RootErrorBoundary>, document.getElementById('container'));
 
