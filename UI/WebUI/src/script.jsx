@@ -21,7 +21,7 @@ let $CTG=CSSTransitionGroup;
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
-import { websocket_reqTrack, websocket_autoReconnect,xstate_GetCurrentMainState,GetObjElement,websocket_aliveTracking,ConsumeQueue} from 'UTIL/MISC_Util';
+import { websocket_reqTrack, websocket_autoReconnect,xstate_GetCurrentMainState,GetObjElement,websocket_aliveTracking,ConsumeQueue,PostfixExpCalc,Exp2PostfixExp,round,dictLookUp,CircularCounter} from 'UTIL/MISC_Util';
 import { MW_API } from "REDUX_STORE_SRC/middleware/MW_API";
 
 // import LocaleProvider from 'antd/lib/locale-provider';
@@ -99,6 +99,7 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   window.__GP_DB_QUEUE__ = { persistPending, deletePending, getPendingBySource, pendingInsertCount };
   window.__GP_BPG__ = BPG_Protocol; // raw framing/decode (raw2header, raw2Obj_IM, ...) for QA
   window.__GP_MEASURE__ = { applyMeasureLimitCoupling }; // pure value<->limit coupling for QA
+  window.__GP_UTIL__ = { PostfixExpCalc, Exp2PostfixExp, round, GetObjElement, dictLookUp, CircularCounter, ConsumeQueue }; // pure utils for QA
 }
 
 // Global safety net for async errors that React error boundaries cannot catch
