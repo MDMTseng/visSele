@@ -1,5 +1,8 @@
 #include "FeatureManager_sig360_circle_line.h"
 #include "Caliper.h"
+
+#define FEATURE_OPENCV 1//TODO DBG:remove after debug
+#define SPCV_DUMP 1//TODO DB:remove after debug
 #ifdef FEATURE_OPENCV
 #include "SearchPointCV.h"
 #endif
@@ -1304,6 +1307,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     {
 
       ret_val = ParseMainVector(flip_f, report, def.data.anglefollow.target_id, &vec);
+      if (getenv("SP_LEGACY_DUMP"))
+        fprintf(stderr, "[SPLEG] ENTER id=%d locating=%d target_id=%d ParseMainVector=%d vec=(%.4f,%.4f)\n",
+                def.id, def.locating, def.data.anglefollow.target_id, ret_val, vec.X, vec.Y);
       if (ret_val < 0)
       {
         break;
@@ -1388,22 +1394,27 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       acv_XY out; float str;
       bool ok;
 #ifdef FEATURE_OPENCV
+
       // M2: robust CoreHub-ported first-hit scan (rectify + X-sobel + topmost).
       // Region is centered at pt spanning +/-margin along the search dir, so
       // pass margin as the half-depth. Polarity maps from the def edge_polarity
       // (RISING=dark->light). edge_surpress/blur/consider defaults match CoreHub.
-      SPEdgeType sp_et = SP_BOTH;
+      // Default to the OUTER silhouette edge: parts are dark objects on a bright
+      // backlit background, so entering the object from outside is bright->dark
+      // (LIGHT_TO_DARK). Explicit def polarity still overrides.
+      SPEdgeType sp_et = SP_LIGHT_TO_DARK;
       if (def.edge_polarity == EdgeSelectParams::RISING)  sp_et = SP_DARK_TO_LIGHT;
       else if (def.edge_polarity == EdgeSelectParams::FALLING) sp_et = SP_LIGHT_TO_DARK;
       // labeled image shares eT image's frame only when cropOffset==0 (current
       // non-crop pipeline). Mask out background (dilated object label) so the scan
       // can't lock onto background specks; dilate ~8px to keep the boundary edge.
-      acvImage *labelImg = (off.X == 0 && off.Y == 0) ? m_labeledImg : nullptr;
+      // NOTE: labeled mask temporarily DISABLED for edge-finding debugging.
+      acvImage *labelImg = nullptr; // (off.X == 0 && off.Y == 0) ? m_labeledImg : nullptr;
       ok = search_point_cv(eT.getImage(), acvVecSub(pt, off), searchVec_nor,
                            margin, width, sp_et, /*blur*/3, /*suppress*/10.0f,
-                           /*considerRange*/3.0f, /*alphaKeep*/0.5f,
+                           /*considerRange = n rows below the top to collect+avg*/2.0f, /*alphaKeep*/0.0f,
                            eT.getBacpac(), labelImg, m_objLabel, /*maskDilate*/8,
-                           &out, &str);
+                           &out, &str, def.id);
 #else
       EdgeSelectParams ep;
       ep.method       = def.edge_method;
@@ -1480,6 +1491,28 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       }
     }
 
+    if (getenv("SP_LEGACY_DUMP"))
+    {
+      int totPts = 0; for (auto &si : m_sections) totPts += si.section.size();
+      fprintf(stderr, "[SPLEG] id=%d pt=(%.2f,%.2f) sVnor=(%.4f,%.4f) sVperp=(%.4f,%.4f) margin=%.2f width=%.2f search_far=%d sections=%zu totPts=%d nearestIdx=%d nearestDist=%.3f\n",
+              def.id, pt.X, pt.Y, searchVec_nor.X, searchVec_nor.Y, searchVec.X, searchVec.Y,
+              margin, width, (int)def.data.anglefollow.search_far, m_sections.size(), totPts, nearestPt_idx, nearestDist);
+      if (best_section_info)
+      {
+        // perp(=searchVec) and along(=searchVec_nor) projection range of the selected section, relative to pt
+        float pMin=1e9,pMax=-1e9,aMin=1e9,aMax=-1e9; acv_XY extPerpPt={0,0}; float extPerp=1e9;
+        for (auto &pi : best_section_info->section){
+          acv_XY d={pi.pt.X-pt.X, pi.pt.Y-pt.Y};
+          float pr=d.X*searchVec.X+d.Y*searchVec.Y;
+          float ar=d.X*searchVec_nor.X+d.Y*searchVec_nor.Y;
+          if(pr<pMin)pMin=pr; if(pr>pMax)pMax=pr; if(ar<aMin)aMin=ar; if(ar>aMax)aMax=ar;
+          if(pr<extPerp){extPerp=pr;extPerpPt=pi.pt;}
+        }
+        fprintf(stderr, "[SPLEG]   bestSec n=%zu perp[%.2f,%.2f] along[%.2f,%.2f] minPerpPt=(%.2f,%.2f)\n",
+                best_section_info->section.size(), pMin,pMax,aMin,aMax, extPerpPt.X,extPerpPt.Y);
+      }
+    }
+
     if (nearestDist < 9999999 && best_section_info != NULL)
     {
 
@@ -1545,6 +1578,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         //rep.pt = acvVecRadialDistortionRemove(nearestPt,param);
         rep.pt = nearestPt;
         rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+        if (getenv("SP_LEGACY_DUMP"))
+          fprintf(stderr, "[SPLEG]   id=%d FINAL=(%.3f,%.3f) accC=%.2f  (delta from pt: %.2f,%.2f)\n",
+                  def.id, nearestPt.X, nearestPt.Y, accC, nearestPt.X-pt.X, nearestPt.Y-pt.Y);
       }
     }
     else
@@ -1644,7 +1680,7 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
     }
     else if (type == cJSON_True)
     {
-      searchPoint.data.anglefollow.locating_anchor = true;
+      //searchPoint.data.anglefollow.locating_anchor = true;  //TODO DBG:remove comment after debug
     }
 
     LOGV("searchPoint.X:%f Y:%f angleDeg:%f tar_id:%d",
@@ -3566,7 +3602,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatchin
   featureDef_searchPoint spoint = *def;
   spoint.margin /= mmpp;
   spoint.width /= mmpp;
+  acv_XY pos_raw = spoint.data.anglefollow.position;
   spoint.data.anglefollow.position=cm.convert(spoint.data.anglefollow.position);
+  acv_XY pos_cm = spoint.data.anglefollow.position;
 
   if (spoint.subtype == featureDef_searchPoint::anglefollow)
   {
@@ -3575,6 +3613,11 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatchin
         TemplateDomain_TO_PixDomain(spoint.data.anglefollow.position,
                                     cached_sin, cached_cos, flip_f, calibCen, mmpp);
   }
+  if (getenv("SP_PT_DUMP"))
+    fprintf(stderr, "[SPPT] id=%d posRaw=(%.3f,%.3f) afterCM=(%.3f,%.3f) afterPose(px)=(%.2f,%.2f) calibCen=(%.1f,%.1f) sin=%.4f cos=%.4f flip=%.0f mmpp=%.6f\n",
+            def->id, pos_raw.X, pos_raw.Y, pos_cm.X, pos_cm.Y,
+            spoint.data.anglefollow.position.X, spoint.data.anglefollow.position.Y,
+            calibCen.X, calibCen.Y, cached_sin, cached_cos, flip_f, mmpp);
 
   FeatureReport_searchPointReport report = searchPoint_process(singleReport, calibCen, cached_sin, cached_cos, flip_f, 0, spoint, eT);
 

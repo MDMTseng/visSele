@@ -36,7 +36,7 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
                      int blurSize, float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
                      acvImage *labelImg, int objLabel, int maskDilate,
-                     acv_XY *outPt, float *outW);
+                     acv_XY *outPt, float *outW, int spId = -1);
 
 #endif // FEATURE_OPENCV
 #endif // SEARCH_POINT_CV_H
