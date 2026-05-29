@@ -85,11 +85,15 @@ Remaining candidates (all larger, fresh-session sized):
   into one per-shape schema. Contained, golden+flows-verifiable, improves shape editor.
 - **edit_info god-object split** (Q2).
 - **baseComponent.jsx split** (1078 lines = JsonEditBlock editor + BPG_FileBrowser family):
-  ATTEMPTED & REVERTED. Moving BPG_FileBrowser out created a `baseComponent`↔`BPG_FileBrowser`
-  import cycle via `CardFrameWarp` — the `export-from` re-export made BPG_FileBrowser evaluate
-  before baseComponent's body, leaving BASE_COM.* namespace exports transiently `undefined`
-  (React "type is invalid" → editor render broke; flows caught it, golden didn't). Redo needs a
-  cycle-free design (e.g. also move `CardFrameWarp` into the new file, or a shared base module).
+  ATTEMPTED TWICE & REVERTED — **deferred / not worth it without deeper investigation.**
+  Attempt 1 (re-export from a new BPG_FileBrowser.jsx) created a `baseComponent`↔`BPG_FileBrowser`
+  cycle via `CardFrameWarp` → "type is invalid" / blank editor. Attempt 2 broke the cycle
+  (CardFrameWarp moved to a leaf module) — typecheck clean, no errors, but DEFCONF mode STILL
+  rendered blank (0 inputs); main screen fine. So the `export {...} from './...'` re-export of
+  the file-browser family interacts badly with DefConfUI's `import * as BASE_COM` namespace use
+  in a way that's not a simple cycle. Both caught by `flows.mjs` (golden passed). Needs root-cause
+  study (maybe avoid namespace re-export: have callers import file-browser from its own module
+  and drop the re-export) before retrying. Low priority.
 
 Recommendation order: broaden `flows.mjs` coverage → type the `edit_info` consumers →
 Q2 god-object split (group-by-group, tsc-verified) → whiteListKey schema → comm layer.
