@@ -1005,46 +1005,6 @@ FeatureReport_auxPointReport FeatureManager_sig360_circle_line::APointMatching_R
   }
   return rep;
 }
-float checkPtNoise(ContourFetch::ptInfo pt)
-{
-  //(abs(pti.curvature) < 0.05)
-  //if(abs(pt.curvature)<M_PI/10)return 0;
-
-  return pt.contourDir.Y * pt.sobel.Y + pt.contourDir.X * pt.sobel.X;
-}
-
-/*
-    <--epsilonX|epsilonX-->
-
-                 Y
-                 ^
-     ____________|_____________
-     |           |            |          ^epsilonY
-  ---|-----------|------------|--->X     | 
-     |___________|____________|          vepsilonY
-  
-*/
-float distance_from_cage(acv_Line line, float epsilonX, float epsilonY, acv_XY point)
-{
-  acv_XY lvec = acvVecNormalize(line.line_vec);
-
-  acv_XY rPt = acvRotation(-lvec.Y, lvec.X, 1, point);
-  if (rPt.X < 0)
-    rPt.X = -rPt.X;
-  if (rPt.Y < 0)
-    rPt.Y = -rPt.Y;
-  rPt.X -= epsilonX;
-  rPt.Y -= epsilonY;
-  // if(rPt.X < 0 && rPt.Y < 0)//inside the cage
-  // {
-  //   return rPt.X >rPt.Y?rPt.X :rPt.Y;
-  // }
-  // else
-  // {
-  // }
-
-  return rPt.X > rPt.Y ? rPt.X : rPt.Y;
-}
 
 FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_process(FeatureReport_sig360_circle_line_single &report,
                                                                                        acv_XY center,
@@ -3019,34 +2979,6 @@ void ConvexVertex(const acv_XY *polygon, const int L, const int p_step, std::vec
   // upperIdx.insert(upperIdx.end(), lowerIdx.begin(), lowerIdx.end());
   return;
 }
-float distRatioOnLine(acv_Line line, acv_XY sp1, acv_XY sp2, acv_XY px)
-{ //  sp1...px......sp2 => return 3/9 => 0.3333
-
-  sp1 = acvClosestPointOnLine(sp1, line);
-  sp2 = acvClosestPointOnLine(sp2, line);
-  px = acvClosestPointOnLine(px, line);
-
-  acv_XY vecF = acvVecSub(sp2, sp1);
-  acv_XY vecM = acvVecSub(px, sp1);
-
-  float ratio = hypot(vecM.X, vecM.Y) / hypot(vecF.X, vecF.Y);
-  if (acv2DDotProduct(vecF, vecM) < 0)
-  {
-    ratio = -ratio;
-  }
-  return ratio;
-}
-acv_XY ptOnLineRatio(acv_Line line, acv_XY sp1, acv_XY sp2, float ratio)
-{ //  sp1...ret......sp2 <= 0.3333
-  acv_XY ret;
-
-  sp1 = acvClosestPointOnLine(sp1, line);
-  sp2 = acvClosestPointOnLine(sp2, line);
-
-  acv_XY vecF = acvVecSub(sp2, sp1);
-  return acvVecAdd(acvVecMult(vecF, ratio), sp1);
-}
-
 acv_XY Image_mm_Domain_TO_TemplateDomain(acv_XY im_mm_pt, float sin, float cosin, float flip_f, acv_XY objCenter_pix, float mmpp)
 { //  sp1...ret......sp2 <= 0.3333
   acv_XY pt = acvVecSub(im_mm_pt,acvVecMult( objCenter_pix, mmpp));
@@ -3058,16 +2990,6 @@ acv_XY Image_mm_Domain_TO_TemplateDomain(acv_XY im_mm_pt, float sin, float cosin
 
   return pt;
 }
-acv_XY PixDomain_TO_TemplateDomain(acv_XY pix_pt, float sin, float cosin, float flip_f, acv_XY objCenter_pix, float mmpp)
-{ //  sp1...ret......sp2 <= 0.3333
-  acv_XY pt = acvVecMult(acvVecSub(pix_pt, objCenter_pix), mmpp);
-  pt = acvRotation(-sin, cosin, pt);
-  if (flip_f < 0)
-    pt.Y = -pt.Y;
-
-  return pt;
-}
-
 acv_XY TemplateDomain_TO_PixDomain(acv_XY temp_pt, float sin, float cosin, float flip_f, acv_XY objCenter_pix, float mmpp)
 { //  sp1...ret......sp2 <= 0.3333
 
@@ -3144,47 +3066,6 @@ acv_XY ConstrainMap::convert_polar(acv_XY from)
 acv_XY ConstrainMap::convert(acv_XY from)
 {
   return convert_polar(from);
-}
-acv_XY ConstrainMap::convert_vec(acv_XY from)
-{
-  acv_XY wvecSum = {0, 0};
-  acv_XY vecSum = {0, 0};
-
-  for (int i = 0; i < anchorPairs.size(); i++)
-  {
-    anchorPair pair = anchorPairs[i];
-    if (pair.to.X != pair.to.X) //NAN
-    {
-      continue;
-    }
-    float distance = acvDistance(from, pair.from);
-    if (distance < 0.01)
-      distance = 0.01;
-    float w = 1 / distance;
-
-    // w*=w;
-    acv_XY wvec = acvVecMult(pair.constrainVector, w);
-
-    acv_XY pos_wvec = wvec;
-    if (pos_wvec.X < 0)
-      pos_wvec.X = -pos_wvec.X;
-    if (pos_wvec.Y < 0)
-      pos_wvec.Y = -pos_wvec.Y;
-
-    wvecSum = acvVecAdd(wvecSum, pos_wvec);
-
-    acv_XY vec = acvVecSub(pair.to, pair.from);
-    float dotP = acv2DDotProduct(vec, pair.constrainVector);
-    // LOGI("pos_wvec: %f %f  vec:%f %f",pos_wvec.X,pos_wvec.Y,vec.X,vec.Y);
-    LOGI("[%d] w:%f dotP:%f from: %f %f   vec: %f %f  wvec:%f %f  wvecSum:%f %f", i, w, dotP, pair.from.X, pair.from.Y, vec.X, vec.Y, wvec.X, wvec.Y, wvecSum.X, wvecSum.Y);
-    vecSum = acvVecAdd(vecSum, acvVecMult(wvec, dotP));
-  }
-  // LOGI("vecSum:%f %f wvecSum: %f %f",vecSum.X,vecSum.Y,wvecSum.X,wvecSum.Y);
-  vecSum.X /= wvecSum.X;
-  vecSum.Y /= wvecSum.Y;
-
-  LOGI("vecSum:%f %f  wvecSum:%f %f", vecSum.X, vecSum.Y, wvecSum.X, wvecSum.Y);
-  return acvVecAdd(vecSum, from);
 }
 
 inline int valueWarping(int v, int ringSize)
@@ -3283,13 +3164,6 @@ inline float angle_0_to_2pi(float ang)
 {
   float _ang = fmod(ang, 2 * M_PI);
   return (_ang < 0) ? _ang + 2 * M_PI : _ang;
-}
-inline float angle_npi_to_pi(float ang)
-{
-  float _ang = angle_0_to_2pi(ang);
-  if (_ang > M_PI)
-    _ang -= 2 * M_PI;
-  return _ang;
 }
 
 bool isAngleInRegion(float angle, float from, float to)

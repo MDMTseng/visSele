@@ -36,25 +36,6 @@ public :
 };
 
 
-class IMGMoment//TODO
-{
-  typedef struct PQ{
-    int P,Q,M;
-  }PQ;
-  vector<PQ> mSet;
-
-  IMGMoment()
-  {
-
-  }
-
-  void update(acvImage *img, acv_XY TL, acv_XY WH)
-  {
-
-  }
-
-
-};
 class ConstrainMap
 {
   public:
@@ -121,7 +102,6 @@ class ConstrainMap
 
   acv_XY convert_polar(acv_XY from);
 
-  acv_XY convert_vec(acv_XY from);
   acv_XY convert(acv_XY from);
 };
 
