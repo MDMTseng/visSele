@@ -235,7 +235,8 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
 
   // caliper/section locating (default contour)
   cir.locating = 0; cir.cal_count = 36; cir.cal_width = 9; cir.cal_length = -1; cir.cal_step = -1;
-  cir.edge_method = EdgeSelectParams::STRONGEST; cir.edge_polarity = EdgeSelectParams::ANY;
+  // default caliper edge: dominant FALLING edge (white->dark) silhouette; explicit overrides.
+  cir.edge_method = EdgeSelectParams::STRONGEST; cir.edge_polarity = EdgeSelectParams::FALLING;
   cir.edge_nth = 0; cir.edge_min_strength = 0;
   {
     char *loc = (char *)JFetch(circle_obj, "locating", cJSON_String);
@@ -1797,7 +1798,9 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
 
   // caliper/section locating (default contour). docs/caliper_primitive_locating_design.md
   line.locating = 0; line.cal_count = 30; line.cal_width = 9; line.cal_length = -1; line.cal_step = -1;
-  line.edge_method = EdgeSelectParams::STRONGEST; line.edge_polarity = EdgeSelectParams::ANY;
+  // default caliper edge: dominant FALLING edge (white->dark), matching the backlit
+  // dark-object-on-bright silhouette. Explicit def "edge.polarity" overrides.
+  line.edge_method = EdgeSelectParams::STRONGEST; line.edge_polarity = EdgeSelectParams::FALLING;
   line.edge_nth = 0; line.edge_min_strength = 0;
   {
     char *loc = (char *)JFetch(line_obj, "locating", cJSON_String);
