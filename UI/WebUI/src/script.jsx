@@ -506,7 +506,7 @@ class APPMasterX extends React.Component {
             {
               //Just print
               log.error("enQ failed size()=" + this.cQ.size());
-              this._insertFailed(x, "Cannot enQ the data");
+              this._insertFailed(data, "Cannot enQ the data"); // bugfix: was undefined `x` → ReferenceError, reject() never ran (promise hung)
               reject("send insert failed");
             }
             else

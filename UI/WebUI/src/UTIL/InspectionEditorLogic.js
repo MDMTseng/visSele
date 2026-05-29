@@ -338,7 +338,7 @@ export class InspectionEditorLogic {
   
       if (doExit) {
         edit_info.DefFileHash = undefined;
-        return;
+        return edit_info; // bugfix: callers (RepDisplayUI) assign the return; bare `return` blanked the view
       }
       //console.log(dclone(edit_info))
       edit_info.DefFileHash = sha1_info_in_json;
@@ -405,8 +405,8 @@ export class InspectionEditorLogic {
             }
             break;
           case "camera_calibration":
-  
-            log.error(action);
+            // bugfix: was `log.error(action)` with `action` undefined → ReferenceError that
+            // aborted loading any feature after a camera_calibration entry. Feature is ignored on load.
             /*if(report.error!==undefined &&report.error == 0)
             {
               edit_info.camera_calibration_report = root_report;
