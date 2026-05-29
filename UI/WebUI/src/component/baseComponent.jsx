@@ -3,7 +3,7 @@ import React, { useState,useEffect,useRef }from 'react';
 import React_createClass from 'create-react-class';
 import {GetObjElement} from 'UTIL/MISC_Util';
 
-var dateFormat = require("dateformat");
+import dateFormat from "dateformat";
 import dclone from 'clone';
 import * as logX from 'loglevel';
 

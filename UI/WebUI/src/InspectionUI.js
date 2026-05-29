@@ -8,7 +8,7 @@ import { useSelector,useDispatch } from 'react-redux';
 import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
-var dateFormat = require("dateformat");
+import dateFormat from "dateformat";
 import INFO from './info.js';
 import { TagOptions_rdx,UINSP_UI ,SLID_UI} from './component/rdxComponent.jsx';
 import dclone from 'clone';
