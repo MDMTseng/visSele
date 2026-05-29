@@ -39,7 +39,7 @@ d = json.load(open(src)); n = 0
 def walk(o):
     global n
     if isinstance(o, dict):
-        if o.get('type') in ('line', 'circle'):
+        if o.get('type') in ('line', 'circle', 'arc'):
             o['locating'] = 'caliper'
             if edge: o['edge'] = dict(edge)
             n += 1

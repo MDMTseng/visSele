@@ -85,8 +85,12 @@ struct CaliperCircleResult
 // Place `count` calipers along the arc [angStart,angEnd] (rad) of the nominal
 // circle (center,radius); each caliper searches RADIALLY across the edge.
 // Robust algebraic (Kasa) circle fit + MAD outlier rejection.
+// dbgName (optional): with env CALIP_DUMP, writes /tmp/calip_arc_<dbgName>.png --
+// each radial caliper's profile as one column (x = caliper index around the arc,
+// y = radial across-edge), picked edge marked, like the line strip.
 CaliperCircleResult caliper_locate_circle(acvImage *gray, acv_XY center, float radius,
                                           float angStart, float angEnd, int count,
-                                          const CaliperParams &cal, FeatureManager_BacPac *bacpac);
+                                          const CaliperParams &cal, FeatureManager_BacPac *bacpac,
+                                          const char *dbgName = nullptr);
 
 #endif

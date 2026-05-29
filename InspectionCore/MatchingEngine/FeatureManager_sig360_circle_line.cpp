@@ -3785,7 +3785,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     acv_XY off = eT.getImgOffset();
     acv_XY cc = acvVecSub(center, off);
     CaliperCircleResult rr = caliper_locate_circle(eT.getImage(), cc, radius, sAngle, eAngle,
-                                                   cdef.cal_count, cal, eT.getBacpac());
+                                                   cdef.cal_count, cal, eT.getBacpac(), cdef.name);
     if (rr.ok) { cf.circle.circumcenter = acvVecAdd(rr.center, off); cf.circle.radius = rr.radius;
                  cf.s = rr.rms; cf.matching_pts = rr.nInlier; }
     else { cf.circle.radius = NAN; }

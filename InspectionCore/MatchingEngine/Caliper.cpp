@@ -13,7 +13,7 @@
 // x = caliper index along the line, y = across-edge search position. The picked edge
 // per caliper is marked (green = fit inlier, red = outlier, gray = no edge found).
 // The primitive name is drawn on the image and used in the filename.
-static void caliper_dump_line_strip(const char *name, const EdgeSelectParams &edge,
+static void caliper_dump_line_strip(const char *prefix, const char *name, const EdgeSelectParams &edge,
                                     const std::vector<std::vector<float>> &profs,
                                     const std::vector<float> &pos,
                                     const std::vector<float> &conf,      // per-caliper confidence (-1 none)
@@ -71,11 +71,12 @@ static void caliper_dump_line_strip(const char *name, const EdgeSelectParams &ed
   cv::putText(big, label, cv::Point(4, 16), cv::FONT_HERSHEY_SIMPLEX, 0.5,
               cv::Scalar(0,255,255), 1, cv::LINE_AA);
   // sanitize name for filename
-  std::string fn = "/tmp/calip_line_"; for (const char *p = name ? name : "line"; *p; ++p)
+  std::string fn = std::string("/tmp/calip_") + (prefix?prefix:"line") + "_";
+  for (const char *p = name ? name : "x"; *p; ++p)
     fn += (*p=='/'||*p==' '||*p=='\\') ? '_' : *p;
   fn += ".png";
   cv::imwrite(fn, big);
-  fprintf(stderr, "[CALIP] %s: %d calipers, strip %dx%d -> %s\n", name?name:"line", count, count, nAcross, fn.c_str());
+  fprintf(stderr, "[CALIP] %s %s: %d calipers, strip %dx%d -> %s\n", prefix?prefix:"line", name?name:"x", count, count, nAcross, fn.c_str());
 #endif
 }
 
@@ -230,7 +231,7 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
   int halfW = (int)(cal.width / 2);
   float alongLen = (float)hypot(p1.X - p0.X, p1.Y - p0.Y);
   std::vector<acv_XY> pts; std::vector<float> w;
-  if (nAcross < 3) { r.nValid = 0; if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
+  if (nAcross < 3) { r.nValid = 0; if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
   int nAlong = (int)lroundf(alongLen) + 2 * halfW + 1; // a in [0,nAlong) -> along dist (a - halfW)
   acv_XY perpStep = acvVecMult(perp, step);
@@ -293,7 +294,7 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
     if (dbg) { dProfs.push_back(profile); dPos.push_back(ok ? pos : -1.f); dConf.push_back(ok ? conf : -1.f); }
   }
   r.nValid = (int)pts.size();
-  if (r.nValid < 2) { if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
+  if (r.nValid < 2) { if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
   std::vector<char> use(pts.size(), 1);
   acv_XY anchor = {0,0}, dir = {1,0};
@@ -321,7 +322,7 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
   r.anchor = anchor; r.dir = dir; r.nInlier = ni;
   r.rms = (ni > 0) ? sqrtf(sq / ni) : 0;
   r.ok = (ni >= 2);
-  if (dbg) caliper_dump_line_strip(dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);
+  if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);
   return r;
 }
 
@@ -365,21 +366,36 @@ static bool kasaCircle(const std::vector<acv_XY> &pts, const std::vector<float> 
 
 CaliperCircleResult caliper_locate_circle(acvImage *gray, acv_XY center0, float radius0,
                                           float angStart, float angEnd, int count,
-                                          const CaliperParams &cal, FeatureManager_BacPac *bacpac)
+                                          const CaliperParams &cal, FeatureManager_BacPac *bacpac,
+                                          const char *dbgName)
 {
   CaliperCircleResult r = {}; r.ok = false; r.center = center0; r.radius = radius0;
   if (count < 3) count = 3;
+  const bool dbg = (dbgName != nullptr) && (getenv("CALIP_DUMP") != nullptr);
+  std::vector<std::vector<float>> dProfs; std::vector<float> dPos, dConf; std::vector<int> ptCaliper;
+
   std::vector<acv_XY> pts; std::vector<float> w;
   for (int i = 0; i < count; i++)
   {
     float a = angStart + (angEnd - angStart) * (float)i / (count - 1);
     acv_XY dir = { cosf(a), sinf(a) };               // radial = across-edge
     acv_XY c = acvVecAdd(center0, acvVecMult(dir, radius0));
-    acv_XY pt; float str;
-    if (caliper_measure(gray, c, dir, cal, bacpac, &pt, &str)) { pts.push_back(pt); w.push_back(str); }
+    acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
+    std::vector<float> prof;
+    bool ok = caliper_measure(gray, c, dir, cal, bacpac, &pt, &str, &info,
+                              dbg ? &prof : nullptr, &pos);
+    float conf = 0;
+    if (ok)
+    {
+      float ratio = (info.strength > 0) ? (info.runnerUp / info.strength) : 0; if (ratio > 1) ratio = 1;
+      float sharpN = info.sharpness; if (sharpN > 1) sharpN = 1; if (sharpN < 0) sharpN = 0;
+      conf = info.strength * (1.0f - 0.7f * ratio) * (0.5f + 0.5f * sharpN);
+      pts.push_back(pt); w.push_back(conf); if (dbg) ptCaliper.push_back(i);
+    }
+    if (dbg) { dProfs.push_back(prof); dPos.push_back(ok ? pos : -1.f); dConf.push_back(ok ? conf : -1.f); }
   }
   r.nValid = (int)pts.size();
-  if (r.nValid < 3) return r;
+  if (r.nValid < 3) { if (dbg) caliper_dump_line_strip("arc", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
   std::vector<char> use(pts.size(), 1);
   acv_XY cen = center0; float rad = radius0;
@@ -404,5 +420,11 @@ CaliperCircleResult caliper_locate_circle(acvImage *gray, acv_XY center0, float 
   r.center = cen; r.radius = rad; r.nInlier = ni;
   r.rms = (ni>0)?sqrtf(sq/ni):0;
   r.ok = (ni >= 3);
+  if (dbg)
+  {
+    caliper_dump_line_strip("arc", dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);
+    fprintf(stderr, "[CALIP] arc %s: center=(%.2f,%.2f) r=%.2f nInlier=%d/%d rms=%.3f\n",
+            dbgName, cen.X, cen.Y, rad, ni, (int)pts.size(), r.rms);
+  }
   return r;
 }
