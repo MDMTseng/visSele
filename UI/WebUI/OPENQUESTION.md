@@ -262,3 +262,25 @@ Don't fragment: render() switch, NEUTRAL_UI, ctrlLogic_DEFCONF, GenTarEditUI (co
 - [P4, M] hardcoded Chinese strings bypass DICT (script.jsx:1841/1873, MAINUI:1314/1569, DefConfUI:2479).
 - [P5, S] file overwrite signaled only by red OK button (no "will overwrite X" text); isASCII silently drops CJK filename keystrokes (baseComponent:435/457).
 - Fine: shape-delete has confirm; disconnect splash+watchdog ok; file-browser has 5s timeout. Keyboard support absent app-wide (intentional touchscreen).
+
+---
+
+## Round-5 hunt (robustness / model / build-deps / react-readiness, 2026-05-30)
+
+**Robustness BUGS (Wave 1):**
+- [S] BPG_WS.onmessage: `case "HR"` falls through into `case "SS"` (no break) → TypeError on malformed handshake stalls dispatch.
+- [S/M] BPG decode no length/bounds checks; raw2Obj_IM `if(true||...)` DISABLES the image-size guard → corrupt IM frame → RangeError / multi-GB OOM. Re-enable guard + validate offset+9+length<=byteLength + try/catch onmessage.
+- [S] parseFloat no NaN/Infinity guard at DefConfUI:2202,2298 → NaN/Inf → null in serialized def (corrupts limits). Add Number.isFinite guard.
+- [S] urlConcat slice typo (BPG_WS.js:13 `xbase.length` should be `xadd.length`).
+- sha1 now correctly enforced (my return-fix); only gap: def with NO featureSet_sha1 skips check (treat as untrusted).
+
+**Model (InspectionEditorLogic):** [M] parse* family (auxPointParse/searchPointParse/shapeMiddlePointParse/shapeVectorParse) dup ref-lookups → one resolveRef(); [M] extract pure pointForwardTrans/pointInvTrans from ShapeAdjustsWithInspectionResult; [S/M] group parse* into pure ShapeGeometry module + TS types. Dead: searchPointParse ignores param (near-noop), setsig360infoCenter no caller, commented blocks, UpdateInherentShapeList double-called in rootDefInfoLoading.
+
+**Build/deps:**
+- [S, HIGH—possible prod crash] `__DEV_MODE__` define mismatch: vite defines it, webpack does NOT; if info.js uses it unguarded → prod ReferenceError. (verifying)
+- [S] Remove UNUSED deps: @antv/g2, @antv/data-set, ajv, text-encoding, localStorage(pkg), cytoscape(+cose-bilkent, only used by dead xstate_visual.js).
+- [S] git hygiene: add root .gitignore; delete orphan root .ttf, stray WebUI/ + 未命名檔案夾/ dirs, stale jsconfig.json (conflicts with tsconfig); dead service-worker/PWA_manifest.
+- [S] extract shared less modifyVars (dup in vite+webpack configs); wire `typecheck` into regress.
+- [M] two transition-group libs (react-transition-group@1 + react-addons-css-transition-group) → consolidate.
+
+**React-18/19 readiness (deferred upgrade, ~18 edits/6 files):** blockers = string refs `this.refs.canvas` (11), componentWillUpdate (5, all drive canvas updateCanvas), componentWillMount (1), ReactDOM.render→createRoot (1). Sequence: refs → componentWill* → bump+createRoot last. Smells (fix-now-ok): .bind(this) in render, key={idx}, MAINUI SCU reads string ref.
