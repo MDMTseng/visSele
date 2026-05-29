@@ -103,14 +103,16 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
 
 // Global safety net for async errors that React error boundaries cannot catch
 // (timer/event-handler throws, WS callbacks, unhandled promise rejections).
-// Routed through loglevel so a future diagnostics ring-buffer can capture them;
-// this is the floor-unit's only signal when no devtools are attached.
+// Use console.error directly (NOT loglevel): diagLog wraps the console methods, but
+// loglevel binds its own console reference and can bypass that wrap — so going
+// straight to console.error guarantees these land in the diagnostics ring buffer,
+// the floor-unit's only signal when no devtools are attached.
 if (typeof window !== "undefined") {
   window.addEventListener("error", (e) => {
-    log.error("window.onerror:", (e && (e.error || e.message)), (e && e.filename), (e && e.lineno));
+    console.error("window.onerror:", (e && (e.error || e.message)), (e && e.filename), (e && e.lineno));
   });
   window.addEventListener("unhandledrejection", (e) => {
-    log.error("unhandledrejection:", (e && e.reason));
+    console.error("unhandledrejection:", (e && e.reason));
   });
 }
 console.log(navigator)
