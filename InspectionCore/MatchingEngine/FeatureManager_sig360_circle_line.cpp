@@ -1,8 +1,6 @@
 #include "FeatureManager_sig360_circle_line.h"
 #include "Caliper.h"
 
-#define FEATURE_OPENCV 1//TODO DBG:remove after debug
-#define SPCV_DUMP 1//TODO DB:remove after debug
 #ifdef FEATURE_OPENCV
 #include "SearchPointCV.h"
 #endif

@@ -42,6 +42,10 @@ option(FEATURE_HIKROBOT   "Build with HikRobot camera SDK"         ${_DEF_HIKROB
 option(FEATURE_UVC        "Build with libuvc camera support"       OFF)
 option(FEATURE_OPENCV     "Build MatchingEngine against OpenCV"    OFF)
 
+# Always emit compile_commands.json so editors (clangd / VSCode C/C++) see the real
+# per-file flags & defines (e.g. FEATURE_OPENCV) -- no need to #define them in source.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # --- shared compile options (mirrors old FLAGS: -w -O3 + suppressions) ----
 add_compile_options(-w -Wno-sign-compare -Wno-write-strings -Wno-unused-variable)
 add_compile_options($<$<CONFIG:Release>:-O3>)
