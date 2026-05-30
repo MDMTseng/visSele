@@ -166,7 +166,7 @@ ContourGrid::ptInfo refineEdgeInfo(acvImage *grayLevel,ContourGrid::ptInfo ptinf
   return ptinfo;
 }
 
-void ContourFilter(acvImage *grayLevel,vector<ContourFetch::ptInfo> &contour,float epsilon=0.05,int Dist=10)
+void ContourFilter(vector<ContourFetch::ptInfo> &contour, float epsilon=0.05, int Dist=10)
 {
     const int L = contour.size();
     if(L==0)return;
@@ -988,25 +988,24 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,float jump,a
 
 
 
-acv_XY pointSobel(acvImage *graylevelImg,acv_XY point,int range)
+acv_XY pointSobel(const cv::Mat &graylevelImg, acv_XY point, int range)
 {
   int X=point.X;
   int Y=point.Y;
   int offset=range;
-  if(X<offset || X+offset>= graylevelImg->GetWidth() ||
-  Y<offset || Y+offset>= graylevelImg->GetHeight())
+  if(X<offset || X+offset>= graylevelImg.cols ||
+  Y<offset || Y+offset>= graylevelImg.rows)
   {
     return (acv_XY){0,0};
   }
-  int I11 = graylevelImg->CVector[Y-offset][(X-offset)*3];
-  int I12 = graylevelImg->CVector[Y-offset][(X)*3];
-  int I13 = graylevelImg->CVector[Y-offset][(X+offset)*3];
-  int I21 = graylevelImg->CVector[Y][(X-offset)*3];
-  //int I22 = graylevelImg->CVector[Y][(X)*3];
-  int I23 = graylevelImg->CVector[Y][(X+offset)*3];
-  int I31 = graylevelImg->CVector[Y+offset][(X-offset)*3];
-  int I32 = graylevelImg->CVector[Y+offset][(X)*3];
-  int I33 = graylevelImg->CVector[Y+offset][(X+offset)*3];
+  int I11 = graylevelImg.ptr<uint8_t>(Y-offset)[(X-offset)*3];
+  int I12 = graylevelImg.ptr<uint8_t>(Y-offset)[(X)*3];
+  int I13 = graylevelImg.ptr<uint8_t>(Y-offset)[(X+offset)*3];
+  int I21 = graylevelImg.ptr<uint8_t>(Y)[(X-offset)*3];
+  int I23 = graylevelImg.ptr<uint8_t>(Y)[(X+offset)*3];
+  int I31 = graylevelImg.ptr<uint8_t>(Y+offset)[(X-offset)*3];
+  int I32 = graylevelImg.ptr<uint8_t>(Y+offset)[(X)*3];
+  int I33 = graylevelImg.ptr<uint8_t>(Y+offset)[(X+offset)*3];
 
   acv_XY sobel;
   //11 12 13
@@ -1696,7 +1695,7 @@ void edgeTracking::goAdv (ContourFetch::contourMatchSec &section,bool goForward,
   // LOGI("graylevelImg:%p",graylevelImg);
 }
 
-void contourGridGrayLevelRefine(acvImage *grayLevelImg,ContourFetch &edge_grid,FeatureManager_BacPac *bacpac)
+void contourGridGrayLevelRefine(const cv::Mat &grayLevelImg, ContourFetch &edge_grid, FeatureManager_BacPac *bacpac)
 {
   for(int i=0;i<edge_grid.contourSections.size();i++)
   {
@@ -1710,7 +1709,7 @@ void contourGridGrayLevelRefine(acvImage *grayLevelImg,ContourFetch &edge_grid,F
       if(bacpac)bacpac->sampler->img2ideal(&pts[j].pt);//pt in ideal coord
       pts[j].edgeRsp = 1;
     }
-    ContourFilter(grayLevelImg,pts);
+    ContourFilter(pts);
     
     for(int j=0;j<pts.size();j++)
     {

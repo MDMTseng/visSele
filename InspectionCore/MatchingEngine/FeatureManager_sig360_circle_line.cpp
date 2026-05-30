@@ -4104,7 +4104,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     return -30;
   }
 
-  contourGridGrayLevelRefine(p_cropImg, edge_grid, bacpac);
+  contourGridGrayLevelRefine(acvImageBgrView(p_cropImg), edge_grid, bacpac);
 
   // for(int i=0;i<edge_grid.contourSections.size();i++)
   // {

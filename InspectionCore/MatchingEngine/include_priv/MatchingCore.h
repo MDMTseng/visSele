@@ -29,7 +29,7 @@ int calc_pdf_mean_sigma(float *f,int fL,float *ret_mean,float *ret_sigma);
 //   int grid_size,ContourFetch &edge_curve_grid,int scanline_skip,FeatureManager_BacPac *bacpac);
 
   
-void contourGridGrayLevelRefine(acvImage *grayLevelImg,ContourFetch &edge_grid,FeatureManager_BacPac *bacpac);
+void contourGridGrayLevelRefine(const cv::Mat &grayLevelImg, ContourFetch &edge_grid, FeatureManager_BacPac *bacpac);
 int extractLabeledContourDataToContourGrid(cv::Mat &labeledImg, int label, acv_LabeledData ldat, ContourFetch &edge_grid, int scanline_skip);
 
 ContourFetch::ptInfo* findEndPoint(acv_Line line, int signedness, std::vector<ContourFetch::ptInfo> &points);
