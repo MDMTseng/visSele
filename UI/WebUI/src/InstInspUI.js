@@ -4,6 +4,7 @@ let log = logX.getLogger("InspectionUI");
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
+import ComponentBoundary from './component/ComponentBoundary';
 
 import ReactResizeDetector from 'react-resize-detector';
 
@@ -509,10 +510,12 @@ export default function InstInspUI_rdx({ BPG_Channel,onExtraCtrlUpdate  }) {
   // }, [ec_canvasRef])
 
   return (<div  className="s width12 height12">
-    <CanvasComponent  addClass="s width12 height12"
-     image={imageInfo} BPG_Channel={BPG_Channel} 
-     onExtraCtrlUpdate={setCanvExCtrl}
-      onCanvasInit={_ => _} BPG_Channel={BPG_Channel}/>
+    <ComponentBoundary name="InstInspCanvas" fallbackHeight="60vh">
+      <CanvasComponent  addClass="s width12 height12"
+       image={imageInfo} BPG_Channel={BPG_Channel}
+       onExtraCtrlUpdate={setCanvExCtrl}
+        onCanvasInit={_ => _} BPG_Channel={BPG_Channel}/>
+    </ComponentBoundary>
     
   </div>);
 }

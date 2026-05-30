@@ -6,6 +6,7 @@ import React, { useState, useEffect,useRef } from 'react';
 import { useSelector,useDispatch } from 'react-redux';
 
 import * as BASE_COM from './component/baseComponent.jsx';
+import ComponentBoundary from './component/ComponentBoundary';
 import ReactResizeDetector from 'react-resize-detector';
 import dateFormat from "dateformat";
 import INFO from './info.js';
@@ -2639,16 +2640,18 @@ class APP_INSP_MODE extends React.Component {
           {/* </$CSSTG> */}
 
           {(CanvasWindowRatio <= 0) ? null :
-            <CanvasComponent_rdx addClass={"layout WXF " + " height" + CanvasWindowRatio}
+            <ComponentBoundary name="InspectionCanvas" fallbackHeight="60vh">
+              <CanvasComponent_rdx addClass={"layout WXF " + " height" + CanvasWindowRatio}
 
-              edit_info={this.props.edit_info}
-              onROISettingCallBack={this.state.onROISettingCallBack}
-              measureDisplayRank={this.state.measureDisplayRank}
-              ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
-              downSampleFactor={this.props.FILE_default_camera_setting.down_samp_factor||1}
-              onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
-              renderObjAlignRotate={this.state.renderObjAlignRotate}
-              camera_calibration_report={this.props.camera_calibration_report} />}
+                edit_info={this.props.edit_info}
+                onROISettingCallBack={this.state.onROISettingCallBack}
+                measureDisplayRank={this.state.measureDisplayRank}
+                ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
+                downSampleFactor={this.props.FILE_default_camera_setting.down_samp_factor||1}
+                onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
+                renderObjAlignRotate={this.state.renderObjAlignRotate}
+                camera_calibration_report={this.props.camera_calibration_report} />
+            </ComponentBoundary>}
 
           {(CanvasWindowRatio >= 12) ? null :
             <DataStatsTable className={"s scroll WXF" + " height" + (12 - CanvasWindowRatio)}

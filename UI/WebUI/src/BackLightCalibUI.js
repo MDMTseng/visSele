@@ -4,6 +4,7 @@ let log = logX.getLogger("InspectionUI");
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
+import ComponentBoundary from './component/ComponentBoundary';
 
 import ReactResizeDetector from 'react-resize-detector';
 import {useMappedState,useDispatch} from 'redux-react-hook';
@@ -261,8 +262,10 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
   let progress=(1-diff/150)*100;
   if(progress<0)progress=0;
   return (<div  className="s width12 height12 overlayCon">
-    <CanvasComponent_rdx  addClass="s width12 height12"
-      onCanvasInit={_ => _} BPG_Channel={BPG_Channel}/>
+    <ComponentBoundary name="BackLightCalibCanvas" fallbackHeight="60vh">
+      <CanvasComponent_rdx  addClass="s width12 height12"
+        onCanvasInit={_ => _} BPG_Channel={BPG_Channel}/>
+    </ComponentBoundary>
     
     <div className={"s overlay"} style={{width:"auto", height:"auto"}}>
       {/* {curBriDiff} */}

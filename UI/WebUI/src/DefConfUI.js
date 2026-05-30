@@ -4,6 +4,7 @@
 import { connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
+import ComponentBoundary from './component/ComponentBoundary';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
 import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure';
@@ -2680,7 +2681,9 @@ class APP_DEFCONF_MODE extends React.Component {
           }}>
           {this.state.modal_view === undefined ? null : this.state.modal_view.view_update()}
         </Modal>}
-        <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas) => { this.ec_canvas = canvas }} />
+        <ComponentBoundary name="DefConfCanvas" fallbackHeight="60vh">
+          <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas) => { this.ec_canvas = canvas }} />
+        </ComponentBoundary>
 
         <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}>
           {MenuSet}

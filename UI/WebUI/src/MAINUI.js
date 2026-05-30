@@ -9,6 +9,7 @@ import QRCode from 'qrcode'
 import JSum from 'jsum'
 import dclone from 'clone';
 import { CusDisp_DB } from 'UTIL/DB_Query';
+import ComponentBoundary from './component/ComponentBoundary';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
@@ -738,7 +739,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           <TagDisplay_rdx closable/>
           <TagOptions_rdx className="s width12 HXA" size="middle" tagGroups={new_tagGroupsPreset}/>
         </div>
-        <CanvasComponent_rdx className={twoPanelClass2} showInspectionNote={showInspectionNote} />
+        <ComponentBoundary name="MainCanvas" fallbackHeight="60vh">
+          <CanvasComponent_rdx className={twoPanelClass2} showInspectionNote={showInspectionNote} />
+        </ComponentBoundary>
         
         <ReactResizeDetector handleWidth handleHeight onResize={(width, height)=>{
           if(width>height)//landscape

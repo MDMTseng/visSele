@@ -5,6 +5,7 @@ import html2canvas from 'html2canvas';
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
+import ComponentBoundary from './component/ComponentBoundary';
 
 import ReactResizeDetector from 'react-resize-detector';
 import { useSelector,connect,useDispatch } from 'react-redux' 
@@ -245,12 +246,14 @@ export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_
 
 
   return (<div  className="s width12 height12">
-    <CanvasComponent 
-      addClass="height12" 
-      edit_info={editInfo} 
-      ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={ALLOW_CONTROL_DOWN_SAMPLING_LEVEL} 
-      BPG_Channel={BPG_Channel}
-      downSampleFactor={downSampleFactor}/>
+    <ComponentBoundary name="RepDisplayCanvas" fallbackHeight="60vh">
+      <CanvasComponent
+        addClass="height12"
+        edit_info={editInfo}
+        ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={ALLOW_CONTROL_DOWN_SAMPLING_LEVEL}
+        BPG_Channel={BPG_Channel}
+        downSampleFactor={downSampleFactor}/>
+    </ComponentBoundary>
   </div>);
 }
  
