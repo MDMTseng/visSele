@@ -505,8 +505,10 @@ int CameraSettingFromFile(CameraLayer *camera, char *path);
 
 CameraLayer *getCamera(int initCameraType); //0 for real First, then fake one, 1 for real camera only, 2 for fake only
 int ImgInspection_JSONStr(MatchingEngine &me, acvImage *test1, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac);
+int ImgInspection_JSONStr(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac);
 
 int ImgInspection_DefRead(MatchingEngine &me, acvImage *test1, int repeatTime, char *defFilename, FeatureManager_BacPac *bacpac);
+int ImgInspection_DefRead(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *defFilename, FeatureManager_BacPac *bacpac);
 
 typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst, size_t dstLen, uint8_t *src, size_t srcLen);
 
@@ -3243,6 +3245,14 @@ int ImgInspection_DefRead(MatchingEngine &me, acvImage *test1, int repeatTime, c
   return ret;
 }
 
+int ImgInspection_DefRead(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *defFilename, FeatureManager_BacPac *bacpac)
+{
+  char *string = ReadText(defFilename);
+  int ret = ImgInspection_JSONStr(me, test1_cv, repeatTime, string, bacpac);
+  free(string);
+  return ret;
+}
+
 int ImgInspection(MatchingEngine &me, acvImage *test1, FeatureManager_BacPac *bacpac, CameraLayer *cam, int repeatTime = 1)
 {
 
@@ -3267,12 +3277,37 @@ int ImgInspection(MatchingEngine &me, acvImage *test1, FeatureManager_BacPac *ba
   //SaveIMGFile("data/target_buff.bmp",&test1_buff);
 }
 
+// cv::Mat-canonical overload (acv->cv migration).
+int ImgInspection(MatchingEngine &me, cv::Mat &test1_cv, FeatureManager_BacPac *bacpac, CameraLayer *cam, int repeatTime = 1)
+{
+  LOGI("============w:%d h:%d====================cam:%p", test1_cv.cols, test1_cv.rows, cam);
+  if (test1_cv.empty()) return -1;
+  clock_t t = clock();
+  bacpac->cam = cam;
+  for (int i = 0; i < repeatTime; i++)
+  {
+    me.setBacPac(bacpac);
+    me.FeatureMatching(test1_cv);
+  }
+  clock_t new_t = clock();
+  LOGI("%fms \n", (double)(new_t - t) / CLOCKS_PER_SEC * 1000);
+  return 0;
+}
+
 int ImgInspection_JSONStr(MatchingEngine &me, acvImage *test1, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac)
 {
 
   me.ResetFeature();
   me.AddMatchingFeature(jsonStr);
   ImgInspection(me, test1, bacpac, bacpac->cam, repeatTime);
+  return 0;
+}
+
+int ImgInspection_JSONStr(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac)
+{
+  me.ResetFeature();
+  me.AddMatchingFeature(jsonStr);
+  ImgInspection(me, test1_cv, bacpac, bacpac->cam, repeatTime);
   return 0;
 }
 
@@ -5038,7 +5073,10 @@ int cp_main(int argc, char **argv)
         free(ds);
       }
     }
-    ImgInspection_DefRead(matchingEng, &img, 1, defPath, &neutral_bacpac);
+    // acv -> cv: full cv::Mat path through the engine entry (the acvImage `img`
+    // shim above is now only kept for the `bacpac` calibration side-effects
+    // upstream; the engine receives cvSrc directly).
+    ImgInspection_DefRead(matchingEng, cvSrc, 1, defPath, &neutral_bacpac);
     const FeatureReport *report = matchingEng.GetReport();
     if (report == NULL) { LOGE("--insp: null report"); return 4; }
     cJSON *jobj = matchingEng.FeatureReport2Json(report);

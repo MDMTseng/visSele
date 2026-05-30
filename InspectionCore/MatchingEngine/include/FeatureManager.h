@@ -8,6 +8,7 @@ using namespace std;
 
 #include "cJSON.h"
 #include "LensCalib.h"
+#include <opencv2/core.hpp>
 
 
 typedef struct FeatureManager_BacPac
@@ -36,6 +37,20 @@ public :
   void setBacPac(FeatureManager_BacPac *bacpac){this->bacpac=bacpac;};
   virtual int reload(const char *json_str)=0;
   virtual int FeatureMatching(acvImage *img)=0;
+
+  // Canonical engine entry (acv->cv migration). Default impl bridges an
+  // acvImage shim over the cv::Mat's pixels (zero copy when the Mat is
+  // continuous) and forwards to the legacy override. Derived classes that
+  // want to consume cv::Mat directly can override this.
+  virtual int FeatureMatching(cv::Mat &img_cv) {
+    if (img_cv.empty()) return -1;
+    if (!img_cv.isContinuous()) img_cv = img_cv.clone();
+    acvImage _shim;
+    _shim.useExtBuffer(img_cv.data,
+                       (int)(img_cv.total() * img_cv.elemSize()),
+                       img_cv.cols, img_cv.rows);
+    return FeatureMatching(&_shim);
+  }
   
   virtual cJSON * SetParam(cJSON *json_str){return cJSON_CreateNull();}
   virtual const FeatureReport* GetReport(){return &report;};
