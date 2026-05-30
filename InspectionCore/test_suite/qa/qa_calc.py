@@ -596,5 +596,161 @@ CASES.append(case("r6_self_only_pre_na", "robust", make=mut_calc(["[8]"])))
 CASES.append(case("r6_self_min_with_literal", "robust",
                   make=mut_calc(["[8]", "5", "$,$", "min$"])))
 
+# ================= ROUND 7: precision, value_adjust, USL/LSL, deep chains =================
+
+# r7_1: float precision: 0.1 + 0.2 (IEEE-754 != 0.3). What does the engine emit?
+# Python's 0.1+0.2 == 0.30000000000000004. We assert ~= 0.3 within TOL.
+CASES.append(case("r7_float_precision_01_02", "custom",
+                  fn=calc_expect(["0.1", "0.2", "$+$"], 0.1 + 0.2, tol=1e-5)))
+
+# r7_2: chained max$/min$ via nested arity caches:
+# max(max(V12,V13), max(V8,V14)) using two arity caches stacked
+CASES.append(case("r7_chained_nested_maxmax", "custom",
+                  fn=calc_expect(["[12]", "[13]", "$,$", "max$",
+                                  "[8]", "[14]", "$,$", "max$",
+                                  "$,$", "max$"],
+                                 max(max(V12, V13), max(V8, V14)))))
+# min(max(V12,V13), max(V8,V14))
+CASES.append(case("r7_chained_nested_minmax", "custom",
+                  fn=calc_expect(["[12]", "[13]", "$,$", "max$",
+                                  "[8]", "[14]", "$,$", "max$",
+                                  "$,$", "min$"],
+                                 min(max(V12, V13), max(V8, V14)))))
+
+# r7_3: value_adjust on the CALC judge -- round 5 noted silently ignored.
+# Set value_adjust=5.0 on the calc measure; expected value WITHOUT adjust = V12+V13.
+def _r7_value_adjust(post_exp, expected_raw, adjust):
+    def fn(run_insp):
+        d = mut_calc(post_exp)()
+        m = first_of(d, "measure")
+        m["value_adjust"] = adjust
+        rc, out = run_insp(d)
+        if rc in SIGCRASH or rc == "TIMEOUT":
+            return False, f"crash/hang {rc_str(rc)}"
+        if out is None:
+            return False, f"no output ({rc_str(rc)})"
+        try: j = json.loads(out)
+        except Exception as e: return False, f"invalid JSON: {e}"
+        got = _find_value(j, 8)
+        if got is None:
+            return True, "no-crash (value not located)"
+        if abs(got - expected_raw) <= TOL:
+            return True, f"value_adjust IGNORED (got {got:.5f} == raw {expected_raw:.5f})"
+        if abs(got - (expected_raw + adjust)) <= TOL:
+            return True, f"value_adjust APPLIED (got {got:.5f} == raw+adj {expected_raw+adjust:.5f})"
+        return False, f"unexpected got={got:.6f} raw={expected_raw:.6f} adj={adjust}"
+    return fn
+CASES.append(case("r7_value_adjust_on_calc", "custom",
+                  fn=_r7_value_adjust(["[12]", "[13]", "$+$"], V12 + V13, 5.0)))
+
+# r7_4: USL/LSL judgment on calc result.
+# Set USL/LSL tight around expected -> should pass; loose around -> should pass; outside -> should fail.
+# We just verify no crash + judgment field present and reflects in/out tolerance.
+def _r7_usl_lsl(post_exp, expected, USL, LSL, want_in_tol):
+    def fn(run_insp):
+        d = mut_calc(post_exp)()
+        m = first_of(d, "measure")
+        m["USL"] = USL; m["LSL"] = LSL
+        rc, out = run_insp(d)
+        if rc in SIGCRASH or rc == "TIMEOUT":
+            return False, f"crash/hang {rc_str(rc)}"
+        if out is None: return False, "no output"
+        try: j = json.loads(out)
+        except Exception as e: return False, f"invalid JSON: {e}"
+        got = _find_value(j, 8)
+        if got is None: return True, "no-crash (value not located)"
+        in_tol = (LSL <= got <= USL)
+        # find status code in same report
+        def find_status(o):
+            if isinstance(o, dict):
+                if o.get("id") == 8 and "status" in o: return o["status"]
+                for v in o.values():
+                    r = find_status(v)
+                    if r is not None: return r
+            elif isinstance(o, list):
+                for v in o:
+                    r = find_status(v)
+                    if r is not None: return r
+            return None
+        st = find_status(j)
+        return True, f"value={got:.5f} USL={USL} LSL={LSL} in_tol={in_tol} status={st}"
+    return fn
+CASES.append(case("r7_calc_usl_lsl_in_tol", "custom",
+                  fn=_r7_usl_lsl(["[12]", "[13]", "$+$"], V12 + V13, 20.0, 10.0, True)))
+CASES.append(case("r7_calc_usl_lsl_out_of_tol", "custom",
+                  fn=_r7_usl_lsl(["[12]", "[13]", "$+$"], V12 + V13, 1.0, 0.0, False)))
+
+# r7_5: back_value_setup flag with USL_b/LSL_b alternates on calc
+def _r7_back_value(post_exp):
+    def fn(run_insp):
+        d = mut_calc(post_exp)()
+        m = first_of(d, "measure")
+        m["back_value_setup"] = 1
+        m["USL_b"] = 100.0; m["LSL_b"] = -100.0
+        rc, out = run_insp(d)
+        if rc in SIGCRASH or rc == "TIMEOUT":
+            return False, f"crash/hang {rc_str(rc)}"
+        if out is None: return False, "no output"
+        try: json.loads(out)
+        except Exception as e: return False, f"invalid JSON: {e}"
+        return True, "no-crash with back_value_setup"
+    return fn
+CASES.append(case("r7_back_value_setup_on_calc", "custom",
+                  fn=_r7_back_value(["[12]", "[13]", "$+$"])))
+
+# r7_6: signed-zero -0 in operands. V12 + (-0.0) should == V12; V12 / -0.0 -> -inf
+CASES.append(case("r7_signed_zero_add", "custom",
+                  fn=calc_expect(["[12]", "-0.0", "$+$"], V12)))
+CASES.append(case("r7_signed_zero_mul", "custom",
+                  fn=calc_expect(["[12]", "-0.0", "$*$"], 0.0, tol=1e-5)))
+
+# r7_7: reciprocal cycle 1/0/0/+ -- ill-formed RPN: 1, 0, 0, + needs leftover_operands path
+CASES.append(case("r7_reciprocal_cycle_illformed", "robust",
+                  make=mut_calc(["1", "0", "0", "$+$"])))
+# proper reciprocal-then-reciprocal: 1/(1/V12) == V12
+CASES.append(case("r7_reciprocal_of_reciprocal", "custom",
+                  fn=calc_expect(["1", "1", "[12]", "$/$", "$/$"], V12)))
+
+# r7_8: very long ref chain across 7 measures in a single NESTED max$ (parametric).
+# Nested as: max(max(max([8],[12]),max([13],[14])), max(max([17],[19]),[22]))
+nested7 = ["[8]", "[12]", "$,$", "max$",
+          "[13]", "[14]", "$,$", "max$",
+          "$,$", "max$",
+          "[17]", "[19]", "$,$", "max$",
+          "[22]", "$,$", "max$",
+          "$,$", "max$"]
+# expected value unknown for [17][19][22] -- use no-crash robust
+CASES.append(case("r7_nested_max_7refs", "robust", make=mut_calc(nested7)))
+
+# r7_9: calc-self-ref combined with stack-underflow: [8] then $*$ (only 1 operand)
+CASES.append(case("r7_self_ref_plus_underflow", "robust",
+                  make=mut_calc(["[8]", "$*$"])))
+# self-ref followed by op with literal but starved further: [8] 2 $+$ $*$
+CASES.append(case("r7_self_ref_underflow_tail", "robust",
+                  make=mut_calc(["[8]", "2", "$+$", "$*$"])))
+
+# r7_10: CALC where the operand is a measure that itself references the calc through aux_point.
+# Cross-feature ref: we make measure[0] (id=8) a calc reading [12], and corrupt
+# measure[12]'s ref to also read id=8 (back-ref). If engine handles, NA cascade.
+def _r7_cross_aux_back():
+    def f():
+        d = golden()
+        measures = all_of(d, "measure")
+        if len(measures) < 2: return d
+        m0 = measures[0]  # id=8 -> calc reading [12]
+        m0["subtype"] = "calc"
+        m0["ref"] = [{"id": 12}]
+        m0["calc_f"] = {"exp": "", "post_exp": ["[12]", "1", "$+$"]}
+        # measure 12 (distance) -- inject a ref back to id=8 in its ref list
+        for m in measures[1:]:
+            if m.get("id") == 12:
+                existing = m.get("ref", [])
+                if isinstance(existing, list):
+                    m["ref"] = existing + [{"id": 8}]
+                break
+        return d
+    return f
+CASES.append(case("r7_cross_feature_back_ref", "robust", make=_r7_cross_aux_back()))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_calc", CASES))

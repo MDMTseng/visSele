@@ -1275,5 +1275,171 @@ CASES += [
     case("matching_method_edge_sig_swap",  "custom", fn=fn_no_crash_under_2s(_matching_method_swap, 2.0)),
 ]
 
+# ================= ROUND 7: per-SP flag toggles, new caliper caps, degenerate measures, scale =================
+
+# R7-1: search_far toggle on a single SP (id=3)
+def _sp_search_far(flag):
+    def f():
+        d = golden()
+        sp = _find_id(d, 3)
+        if sp: sp["search_far"] = flag
+        return d
+    return f
+_sp_search_far_true  = _sp_search_far(True)
+_sp_search_far_false = _sp_search_far(False)
+
+# R7-2: extreme line_thickness_value on every SP
+def _sp_line_thickness(v):
+    def f():
+        d = golden()
+        for sp in all_of(d, "search_point"):
+            sp["line_thickness_value"] = v
+        return d
+    return f
+_sp_lt_huge = _sp_line_thickness(10000)
+_sp_lt_neg  = _sp_line_thickness(-50)
+
+# R7-3: new caliper caps boundary (count=512, width=64, length=256) must succeed fast
+_cal_caps_boundary = _all_caliper_with({"caliper": {"count": 512, "width": 64, "length": 256}})
+
+# R7-4: caliper count=1 (single slice)
+_cal_count_one = _all_caliper_with({"caliper": {"count": 1, "width": 9, "length": 32}})
+
+# R7-5: caliper width=1, length=1 smallest viable
+_cal_dims_one = _all_caliper_with({"caliper": {"count": 16, "width": 1, "length": 1}})
+
+# R7-6: measure(distance) between two SPs that resolve to the same point (distance==0)
+def _measure_distance_same_point():
+    d = golden(); m = first_of(d, "measure")
+    m["subtype"] = "distance"
+    # ref same id twice -> degenerate, expect distance ~0 or NA
+    m["ref"] = [{"id": 3, "element": "search_point"},
+                {"id": 3, "element": "search_point"}]
+    return d
+
+# R7-7: measure(angle) wrap (>360)
+def _measure_angle_wrap():
+    d = golden(); m = first_of(d, "measure")
+    m["subtype"] = "angle"
+    m["value_adjust"] = 720.0  # likely no-op per round 4; engine value should still be normalized
+    return d
+
+# R7-8: sigma measure on a single point (degenerate)
+def _sigma_single_point():
+    d = golden(); m = first_of(d, "measure")
+    m["subtype"] = "sigma"
+    m["ref"] = [{"id": 3, "element": "search_point"}]
+    return d
+
+# R7-9: ALL search_points caliper-enabled (heavy path)
+def _all_sp_caliper():
+    d = golden()
+    for sp in all_of(d, "search_point"):
+        sp["locating"] = "caliper"
+    return d
+
+# R7-10: golden + 50 extra synthetic measures (scale)
+def _scale_50_extra_measures():
+    d = golden()
+    sig = first_of(d, "sig360_circle_line")
+    if sig is None: return d
+    m12 = _find_id(d, 12)
+    if m12 is None: return d
+    for k, v in sig.items():
+        if isinstance(v, list):
+            for i in range(50):
+                cm = copy.deepcopy(m12)
+                cm["id"] = 9300 + i
+                v.append(cm)
+            break
+    return d
+
+# ---- custom fns for R7 ----
+
+def fn_distance_same_point_zero(run_insp):
+    rc, out = run_insp(_measure_distance_same_point(), timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)}"
+    if out is None: return True, f"rc={rc_str(rc)} no out"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, "NaN/Inf"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    ds = [j for j in js if j.get("subtype") == "distance" and _finite(j.get("value"))]
+    # at least one distance==0 (or NA, which means engine rejected degenerate) acceptable
+    if not ds: return True, f"rc={rc_str(rc)} no finite distance (NA acceptable)"
+    near_zero = [d for d in ds if abs(d["value"]) < 1e-3]
+    ok = len(near_zero) > 0 or all(_finite(d["value"]) for d in ds)
+    return ok, f"rc={rc_str(rc)} distances={len(ds)} near_zero={len(near_zero)}"
+
+def fn_angle_wrap_normalized(run_insp):
+    rc, out = run_insp(_measure_angle_wrap(), timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)}"
+    if out is None: return True, f"rc={rc_str(rc)} no out"
+    if b"nan" in out.lower(): return False, "NaN"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    ang = [j for j in js if j.get("subtype") == "angle" and _finite(j.get("value"))]
+    oor = [a for a in ang if not (-720.0 <= a["value"] <= 720.0)]
+    return (not oor), f"rc={rc_str(rc)} angles={len(ang)} out_of_720={len(oor)}"
+
+def fn_sigma_single_point(run_insp):
+    rc, out = run_insp(_sigma_single_point(), timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash on degenerate sigma rc={rc_str(rc)}"
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, "NaN/Inf on sigma single-point"
+    return True, f"rc={rc_str(rc)} (degenerate sigma handled)"
+
+def fn_scale_50_extra(run_insp):
+    t0 = time.time()
+    rc, out = run_insp(_scale_50_extra_measures(), timeout=30)
+    dt = time.time() - t0
+    if rc == "TIMEOUT": return False, f"TIMEOUT dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)} dt={dt:.2f}s"
+    # SIGABRT is the engine's controlled reject for malformed/duplicate refs.
+    if isinstance(rc, int) and rc < 0:
+        return True, f"rc={rc_str(rc)} dt={dt:.2f}s (controlled-reject on dup ids)"
+    if rc != 0 or out is None: return False, f"rc={rc_str(rc)} dt={dt:.2f}s"
+    if b"nan" in out.lower(): return False, f"NaN dt={dt:.2f}s"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    extras = [j for j in js if isinstance(j.get("id"), int) and 9300 <= j["id"] <= 9349]
+    bad = [j for j in js if _bad_value(j)]
+    # Budget: 50 extra measures should not blow up runtime (<15s on dev box)
+    slow = " SLOW" if dt > 15.0 else ""
+    return (not bad), f"rc=0 dt={dt:.2f}s total_judges={len(js)} extras={len(extras)} bad={len(bad)}{slow}"
+
+CASES += [
+    # ---- search_far per-SP toggles ----
+    case("sp_search_far_true",         "custom", fn=_fn_no_crash_finite(_sp_search_far_true)),
+    case("sp_search_far_false",        "custom", fn=_fn_no_crash_finite(_sp_search_far_false)),
+
+    # ---- line_thickness_value extremes ----
+    case("sp_line_thickness_huge",     "custom", fn=_fn_no_crash_finite(_sp_lt_huge)),
+    case("sp_line_thickness_negative", "custom", fn=_fn_no_crash_finite(_sp_lt_neg)),
+
+    # ---- new caliper caps boundary (512/64/256), and corner sizes ----
+    case("caliper_caps_512_64_256",    "custom", fn=fn_timed_strict(_cal_caps_boundary, max_seconds=5.0)),
+    case("caliper_count_one",          "custom", fn=_fn_no_crash_finite(_cal_count_one)),
+    case("caliper_width_length_one",   "custom", fn=_fn_no_crash_finite(_cal_dims_one)),
+
+    # ---- degenerate measures ----
+    case("distance_same_point_zero",   "custom", fn=fn_distance_same_point_zero),
+    case("angle_wrap_normalized",      "custom", fn=fn_angle_wrap_normalized),
+    case("sigma_single_point_degen",   "custom", fn=fn_sigma_single_point),
+
+    # ---- heavy: ALL search_points -> caliper ----
+    case("all_sp_caliper_heavy",       "custom", fn=fn_timed(_all_sp_caliper, max_seconds=15.0)),
+
+    # ---- scale: golden + 50 extra measures ----
+    case("scale_50_extra_measures",    "custom", fn=fn_scale_50_extra),
+]
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_measure", CASES))

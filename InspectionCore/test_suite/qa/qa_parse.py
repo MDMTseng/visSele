@@ -805,7 +805,129 @@ CASES = [
     case("nested_measure_in_measure",  "robust", make=mk_nested_measure_in_measure),
     case("nested_featureSet_recursive","robust", make=mk_nested_featureSet_recursive),
     case("calc_megastring_exp",        "robust", make=mk_calc_megastring_exp),
+
+    # ===== ROUND 7: parse_judgeData subtype coverage + sig360 top-level fuzzing =====
+    case("judge_angle_missing_pt1",        "robust", make=lambda: _judge_angle_missing_pt1()),
+    case("judge_angle_missing_quadrant",   "robust", make=lambda: _judge_angle_missing_quadrant()),
+    case("judge_angle_pt1_wrong_shape",    "robust", make=lambda: _judge_angle_pt1_string()),
+    case("judge_circle_info_unknown_info", "robust", make=lambda: _judge_circle_info_unknown()),
+    case("judge_circle_info_info_object",  "robust", make=lambda: _judge_circle_info_info_obj()),
+    case("judge_sigma_subtype",            "robust", make=lambda: _judge_subtype_minimal("sigma")),
+    case("judge_radius_subtype",           "robust", make=lambda: _judge_subtype_minimal("radius")),
+    case("judge_distance_no_ref",          "robust", make=lambda: _judge_distance_no_ref()),
+    case("judge_area_no_ref",              "robust", make=lambda: _judge_subtype_minimal("area")),
+    case("judge_unknown_subtype",          "robust", make=lambda: _judge_subtype_minimal("totally_bogus")),
+    case("cam_param_ppb2b_string",         "robust", make=lambda: _cam_param_set({"ppb2b": "abc", "mmpb2b": "xyz"})),
+    case("cam_param_ppb2b_object",         "robust", make=lambda: _cam_param_set({"ppb2b": {"nested": 1}, "mmpb2b": [1, 2, 3]})),
+    case("cam_param_missing",              "robust", make=lambda: _cam_param_remove()),
+    case("intrusion_ratio_huge",           "robust", make=lambda: _toplevel_set({"intrusionSizeLimitRatio": 1e308})),
+    case("intrusion_ratio_negative",       "robust", make=lambda: _toplevel_set({"intrusionSizeLimitRatio": -1.0})),
+    case("intrusion_ratio_string",         "robust", make=lambda: _toplevel_set({"intrusionSizeLimitRatio": "huge"})),
+    case("sig_st1_sim_thres_extreme",      "robust", make=lambda: _toplevel_set({"sig_st1_matching_sim_thres": 1e308,
+                                                                                    "sig_match_sim_thres": -1e308,
+                                                                                    "sig_relative_match_sim_thres": float('-0.0')})),
+    case("back_value_setup_true_no_b",     "robust", make=lambda: _judge_back_value_setup_no_b()),
+    case("tag_field_wrong_type",           "robust", make=lambda: _toplevel_set({"tag": "not-an-array"})),
+    case("underscore_pt1_corrupt",         "robust", make=lambda: _line_underscore_pt1_corrupt()),
 ]
+
+
+# ---------- ROUND 7 helpers ----------
+
+def _first_judge(d):
+    """Find a measure/judge feature in the def."""
+    return first_of(d, "measure")
+
+def _judge_angle_missing_pt1():
+    d = golden(); j = _first_judge(d)
+    if j is not None:
+        j["subtype"] = "angle"
+        j.pop("pt1", None)
+        j["quadrant"] = 1
+    return d
+
+def _judge_angle_missing_quadrant():
+    d = golden(); j = _first_judge(d)
+    if j is not None:
+        j["subtype"] = "angle"
+        j["pt1"] = {"x": 1.0, "y": 2.0}
+        j.pop("quadrant", None)
+    return d
+
+def _judge_angle_pt1_string():
+    d = golden(); j = _first_judge(d)
+    if j is not None:
+        j["subtype"] = "angle"
+        j["pt1"] = "not-a-point"
+        j["quadrant"] = 2
+    return d
+
+def _judge_circle_info_unknown():
+    d = golden(); j = _first_judge(d)
+    if j is not None:
+        j["subtype"] = "circle_info"
+        j["info_type"] = "completely_unknown_info_type"
+    return d
+
+def _judge_circle_info_info_obj():
+    d = golden(); j = _first_judge(d)
+    if j is not None:
+        j["subtype"] = "circle_info"
+        j["info_type"] = {"nested": "type"}
+    return d
+
+def _judge_subtype_minimal(sub):
+    d = golden(); j = _first_judge(d)
+    if j is not None:
+        j["subtype"] = sub
+        for k in ("info_type", "quadrant", "calc_f"):
+            j.pop(k, None)
+    return d
+
+def _judge_distance_no_ref():
+    d = golden(); j = _first_judge(d)
+    if j is not None:
+        j["subtype"] = "distance"
+        j["ref"] = []
+    return d
+
+def _judge_back_value_setup_no_b():
+    d = golden(); j = _first_judge(d)
+    if j is not None:
+        j["back_value_setup"] = True
+        for k in ("value_b", "USL_b", "LSL_b"):
+            j.pop(k, None)
+    return d
+
+def _cam_param_set(kv):
+    d = golden()
+    fs = d.get("featureSet")
+    if isinstance(fs, list) and fs:
+        cp = fs[0].setdefault("cam_param", {})
+        for k, v in kv.items(): cp[k] = v
+    return d
+
+def _cam_param_remove():
+    d = golden()
+    fs = d.get("featureSet")
+    if isinstance(fs, list) and fs:
+        fs[0].pop("cam_param", None)
+    return d
+
+def _toplevel_set(kv):
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is not None:
+        for k, v in kv.items(): s[k] = v
+    return d
+
+def _line_underscore_pt1_corrupt():
+    # the cached "_pt1" field on lines: corrupt it to confirm parser ignores it
+    d = golden(); t = first_of(d, "line")
+    if t is not None:
+        t["_pt1"] = {"x": "garbage", "y": [1, 2], "vx": None, "dist": {"k": 1}}
+        t["_pt2"] = "not-an-object"
+    return d
 
 if __name__ == "__main__":
     sys.exit(run_module("qa_parse", CASES))

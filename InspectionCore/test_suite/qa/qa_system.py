@@ -1123,5 +1123,151 @@ if _PIL:
     CASES.append(case("r6_def_calibmap_16bit_png_robust", "robust",
                       make=mut_r6_calibmap_16bit()))
 
+# ==========================================================================
+# ROUND 7 — raw-zero/PNG-zero, wrong color-type, missing data/ via cwd,
+#           corner-square, >100MB synth img, shell-metachar def path,
+#           50x missing-image rc stability, same-img+def concurrent race,
+#           duplicate --insp argv
+# ==========================================================================
+
+# ---- r7.1 image file: size 32 bytes of raw zero (not a valid PNG) -------
+_R7_RAW32 = f"{TMP}/sys_r7_raw32zero.png"
+open(_R7_RAW32, "wb").write(b"\x00" * 32)
+CASES.append(case("r7_img_raw32_zeros_rc3", "expect_rc", rc=3, img=_R7_RAW32))
+
+# ---- r7.2 valid PNG (32x32) whose decoded pixels are all zero -----------
+if _PIL:
+    from PIL import Image as _PI7
+    _R7_BLACK32 = f"{TMP}/sys_r7_black32.png"
+    _PI7.new("L", (32, 32), 0).save(_R7_BLACK32, "PNG")
+    # decodes fine, but content is degenerate. Must not crash.
+    CASES.append(case("r7_img_png_all_zero_pixels_robust", "robust", img=_R7_BLACK32))
+
+    # ---- r7.3 unexpected color type: CMYK PNG-saved-as-PNG-ish ---------
+    # PIL cannot save CMYK to PNG directly, so use a YCbCr->PNG path via RGB
+    # mode='I' (32-bit int) — engine likely expects 8-bit gray/RGB.
+    _R7_INT32 = f"{TMP}/sys_r7_int32.png"
+    _PI7.new("I", (128, 128), 1000000).save(_R7_INT32, "PNG")
+    CASES.append(case("r7_img_int32_mode_robust", "robust", img=_R7_INT32))
+
+    # ---- r7.6 single all-white square in the corner -------------------
+    _R7_CORNER = f"{TMP}/sys_r7_corner.png"
+    _imc = _PI7.new("L", (256, 256), 0)
+    for _y in range(32):
+        for _x in range(32):
+            _imc.putpixel((_x, _y), 255)
+    _imc.save(_R7_CORNER, "PNG")
+    CASES.append(case("r7_img_white_corner_square_robust", "robust", img=_R7_CORNER))
+
+    # ---- r7.7 synthesized >100MB image (memory probe) -----------------
+    # 10000x10000 grayscale = 100MB raw; PNG compressed of solid color is tiny,
+    # but engine must decode->100MB buffer. Use high-entropy to keep PNG big too.
+    _R7_HUGE = f"{TMP}/sys_r7_huge_100mb.png"
+    def _build_huge():
+        import random as _r7
+        _r7.seed(7)
+        # 11000x11000 = 121MB raw
+        return _PI7.frombytes("L", (11000, 11000),
+                              bytes(_r7.getrandbits(8) for _ in range(11000*11000)))
+    if not os.path.exists(_R7_HUGE):
+        _build_huge().save(_R7_HUGE, "PNG", compress_level=1)
+    def fn_r7_huge_img(run):
+        import time as _t
+        t0 = _t.time()
+        rc, _ = run(GDEF, out_path=f"{TMP}/sys_r7_huge_out.json",
+                    img=_R7_HUGE, timeout=300) if False else (None, None)
+        # qalib.run_insp accepts timeout kwarg
+        rc, out = run_insp(GDEF, out_path=f"{TMP}/sys_r7_huge_out.json",
+                           img=_R7_HUGE, timeout=300)
+        dt = _t.time() - t0
+        ok = (rc != "TIMEOUT") and (rc not in SIGCRASH)
+        return ok, f"rc={rc_str(rc)} {dt:.1f}s sz={os.path.getsize(_R7_HUGE)/1e6:.0f}MB"
+    CASES.append(case("r7_img_over_100mb_no_crash", "custom", fn=fn_r7_huge_img))
+
+# ---- r7.4 missing data/ dir simulated by cwd=/tmp (abs paths) -----------
+# Note: --insp does consume its 3 args first; CLI args BEYOND --insp are
+# scanned/ignored. Engine still expects cwd-relative `data/` for camera params.
+# Running from /tmp where data/ doesn't exist must not crash; rc may be nonzero.
+def fn_r7_cwd_no_data_dir(_run):
+    out = f"{TMP}/sys_r7_nodata_out.json"
+    if os.path.exists(out): os.remove(out)
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    try:
+        r = subprocess.run([VIS, "--insp", IMG, GDEF, out],
+                           cwd="/tmp", env=env, capture_output=True, timeout=120)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    report = os.path.exists(out)
+    return safe, f"rc={rc_str(rc)} report_present={report} (cwd=/tmp, no data/)"
+CASES.append(case("r7_cwd_missing_data_dir", "custom", fn=fn_r7_cwd_no_data_dir))
+
+# ---- r7.8 def path containing shell metachars ($/`/;) -------------------
+def fn_r7_metachar_def_path(run):
+    # We exec via argv (no shell), so shell metachars in the filename should be
+    # passed through verbatim. Must load and run cleanly.
+    name = "weird$name`backtick;semi.hydef"
+    p = f"{TMP}/{name}"
+    open(p, "w").write(open(GDEF).read())
+    rc, out = run(p, out_path=f"{TMP}/sys_r7_meta_out.json")
+    ok = (rc == 0) and (out is not None)
+    return ok, f"rc={rc_str(rc)} report_present={out is not None}"
+CASES.append(case("r7_def_shell_metachars_in_path", "custom", fn=fn_r7_metachar_def_path))
+
+# ---- r7.9 50x missing-image: rc stability (always exit3) ----------------
+def fn_r7_50x_missing_img_stable(run):
+    miss = f"{TMP}/__r7_no_such_img__.png"
+    if os.path.exists(miss): os.remove(miss)
+    rcs = []
+    for _ in range(50):
+        rc, _o = run(GDEF, out_path=f"{TMP}/sys_r7_miss_out.json", img=miss)
+        rcs.append(rc)
+    all3 = all(r == 3 for r in rcs)
+    safe = all(r not in SIGCRASH and r != "TIMEOUT" for r in rcs)
+    return (all3 and safe), f"50x all-exit3={all3} safe={safe} distinct={set(rcs)}"
+CASES.append(case("r7_50x_missing_img_exit3_stable", "custom", fn=fn_r7_50x_missing_img_stable))
+
+# ---- r7.10 concurrent same-img+same-def -> same out path (race) ---------
+def fn_r7_concurrent_same_input_same_out(run):
+    """4 workers, identical image+def+out path. Last-writer-wins is OK; we
+    require no crash, no timeout, and the final file is valid JSON."""
+    N = 4
+    out = f"{TMP}/sys_r7_race_sameinput.json"
+    if os.path.exists(out): os.remove(out)
+    results = {}
+    def worker(i):
+        results[i] = run(GDEF, out_path=out)
+    ts = [threading.Thread(target=worker, args=(i,)) for i in range(N)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    safe = all((r[0] not in SIGCRASH) and (r[0] != "TIMEOUT") for r in results.values())
+    all0 = all(r[0] == 0 for r in results.values())
+    final_ok = False
+    if os.path.exists(out):
+        try: json.loads(open(out, "rb").read()); final_ok = True
+        except Exception: final_ok = False
+    return (safe and all0 and final_ok), f"{N}x same-input safe={safe} all0={all0} final-valid={final_ok}"
+CASES.append(case("r7_concurrent_same_input_same_out", "custom", fn=fn_r7_concurrent_same_input_same_out))
+
+# ---- r7.11 duplicate --insp flag in argv --------------------------------
+def fn_r7_dup_insp(_run):
+    """Pass --insp twice. Engine consumes the FIRST --insp triplet and either
+    ignores the rest or re-runs. Must not crash; either rc0 or controlled rc OK."""
+    out = f"{TMP}/sys_r7_dupinsp_out.json"
+    if os.path.exists(out): os.remove(out)
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    argv = [VIS, "--insp", IMG, GDEF, out,
+                  "--insp", IMG, GDEF, out + ".second.json"]
+    try:
+        r = subprocess.run(argv, cwd=CORE, env=env, capture_output=True, timeout=180)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    first_ok = os.path.exists(out)
+    return safe, f"rc={rc_str(rc)} first_out={first_ok} second_out={os.path.exists(out + '.second.json')}"
+CASES.append(case("r7_duplicate_insp_flag", "custom", fn=fn_r7_dup_insp))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_system", CASES))
