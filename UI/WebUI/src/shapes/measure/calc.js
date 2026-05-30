@@ -5,8 +5,7 @@
 // Receives subObjs (already resolved) so we don't duplicate the lookup.
 // Returns measureValue (number) or undefined; the caller pushes to measureValueCache.
 import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
-import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine, closestPointOnPoints, distance_point_point } from 'UTIL/MathTools';
-import dclone from 'clone';
+import { BPG_ExpCalc } from 'UTIL/BPG_Protocol';
 import * as log from 'loglevel';
 
 // Editor schema slice for the calc subtype: replaces the default ref-buttons
@@ -35,7 +34,7 @@ export function availableRefShapes(shapeList) {
 }
 
 export function draw(ctx, shape, subObjs, renderer, sctx) {
-  const { db_obj, shapeList, unitConvert, measValueAdjStr } = sctx;
+  const { db_obj, shapeList, unitConvert, measValueAdjStr, subShapeValues = [], measureValueCache = [] } = sctx;
   let measureValue;
                   renderer.drawpoint(ctx, shape.pt1);
 

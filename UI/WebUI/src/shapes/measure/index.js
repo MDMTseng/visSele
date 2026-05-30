@@ -225,7 +225,7 @@ export function draw(ctx, shape, renderer, {
             }
 
             // console.log(shape);
-            const sctx = { db_obj, shapeList, unitConvert, measValueAdjStr };
+            const sctx = { db_obj, shapeList, unitConvert, measValueAdjStr, subShapeValues, measureValueCache };
             switch (shape.subtype) {
               case SHAPE_TYPE.measure_subtype.distance:
                 measureValue = distMod.draw(ctx, shape, subObjs, renderer, sctx);
