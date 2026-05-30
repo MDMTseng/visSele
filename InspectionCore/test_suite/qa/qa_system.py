@@ -617,5 +617,268 @@ def fn_r4_golden_runtime(run):
     return ok, f"rc={rc_str(rc)} {dt:.2f}s (SLO < 5.0s)"
 CASES.append(case("r4_golden_runtime_under_5s", "custom", fn=fn_r4_golden_runtime))
 
+# ==========================================================================
+# ROUND 5 — abs vs rel paths, dangerous string slots, symlink/FIFO def,
+#           50MB def, 16-bit PNG, concurrency w/ shared dir, env locale,
+#           sequential 50x memory-growth probe
+# ==========================================================================
+import shutil, stat, tempfile, time as _time5
+
+# ---- abs vs rel --insp path: engine resolves data/default_camera_param.json
+#      relative to cwd (CORE). Verify that passing ABSOLUTE paths still works
+#      and that running from a DIFFERENT cwd does not break the run because
+#      the engine internally cd's / loads data relative to CORE.
+def fn_r5_abs_paths_from_other_cwd(_run):
+    out = f"{TMP}/sys_r5_abs_out.json"
+    if os.path.exists(out): os.remove(out)
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    # cwd = TMP, but pass absolute paths everywhere
+    try:
+        r = subprocess.run([VIS, "--insp", IMG, GDEF, out],
+                           cwd=TMP, env=env, capture_output=True, timeout=120)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    report = open(out, "rb").read() if os.path.exists(out) else None
+    # data/default_camera_param.json is relative to CORE; running from TMP may
+    # fail to find it. We require: no memory-unsafe crash. rc0+report = great.
+    safe = (rc not in SIGCRASH)
+    return safe, f"rc={rc_str(rc)} report_present={report is not None} (cwd=TMP, abs paths)"
+CASES.append(case("r5_abs_paths_other_cwd", "custom", fn=fn_r5_abs_paths_from_other_cwd))
+
+def fn_r5_relative_paths_from_core(_run):
+    # cwd = CORE; pass RELATIVE paths. Engine should resolve normally.
+    rel_out = "tmp_qa_r5_rel_out.json"
+    rel_out_abs = f"{CORE}/{rel_out}"
+    if os.path.exists(rel_out_abs): os.remove(rel_out_abs)
+    # Need relative img/def paths too — copy to CORE
+    rel_img = "tmp_qa_r5_rel_img.png"
+    rel_def = "tmp_qa_r5_rel_def.hydef"
+    shutil.copy(IMG, f"{CORE}/{rel_img}")
+    shutil.copy(GDEF, f"{CORE}/{rel_def}")
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    try:
+        r = subprocess.run([VIS, "--insp", rel_img, rel_def, rel_out],
+                           cwd=CORE, env=env, capture_output=True, timeout=120)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    report = open(rel_out_abs, "rb").read() if os.path.exists(rel_out_abs) else None
+    # cleanup
+    for p in (rel_out_abs, f"{CORE}/{rel_img}", f"{CORE}/{rel_def}"):
+        if os.path.exists(p): os.remove(p)
+    ok = (rc == 0) and (report is not None)
+    return ok, f"rc={rc_str(rc)} report_present={report is not None} (rel paths from CORE)"
+CASES.append(case("r5_relative_paths_from_core", "custom", fn=fn_r5_relative_paths_from_core))
+
+# ---- def referencing CalibMapPath / StageLightReportPath at bad locations
+#      (buffer-overflow site previously fixed). Engine must not crash on
+#      nonexistent files or paths outside data/.
+def mut_r5_bad_calib_paths():
+    def f():
+        d = golden()
+        d["CalibMapPath"] = "/nonexistent/calib/map/that/does/not/exist.json"
+        d["StageLightReportPath"] = "/tmp/__no_such_stage_light_report__.json"
+        return d
+    return f
+CASES.append(case("r5_def_bad_calib_paths_robust", "robust", make=mut_r5_bad_calib_paths()))
+
+def mut_r5_long_calib_paths():
+    # very long string in CalibMapPath — previous buffer-overflow site
+    def f():
+        d = golden()
+        d["CalibMapPath"] = "/" + ("A" * 4000) + ".json"
+        d["StageLightReportPath"] = "/" + ("B" * 4000) + ".json"
+        return d
+    return f
+CASES.append(case("r5_def_overlong_calib_paths_robust", "robust", make=mut_r5_long_calib_paths()))
+
+# ---- image-load via symlink chain ---------------------------------------
+def fn_r5_symlink_chain(run):
+    # build a 5-deep symlink chain pointing at the golden image
+    chain_dir = f"{TMP}/r5_symchain"
+    os.makedirs(chain_dir, exist_ok=True)
+    prev = IMG
+    for i in range(5):
+        link = f"{chain_dir}/link{i}.png"
+        if os.path.islink(link) or os.path.exists(link): os.remove(link)
+        os.symlink(prev, link)
+        prev = link
+    rc, out = run(GDEF, out_path=f"{TMP}/sys_r5_sym_out.json", img=prev)
+    ok = (rc == 0) and out is not None
+    return ok, f"rc={rc_str(rc)} report_present={out is not None} (5-deep symlink chain)"
+CASES.append(case("r5_image_symlink_chain_rc0", "custom", fn=fn_r5_symlink_chain))
+
+# ---- def file is a FIFO --------------------------------------------------
+def fn_r5_def_is_fifo(run):
+    fifo = f"{TMP}/sys_r5_def.fifo"
+    if os.path.exists(fifo): os.remove(fifo)
+    os.mkfifo(fifo)
+    out = f"{TMP}/sys_r5_fifo_out.json"
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    # writer thread: opens for write (blocks until reader opens), writes garbage,
+    # then closes -> EOF for reader. Otherwise engine could legitimately block
+    # forever waiting on a FIFO with no writer, which is correct POSIX behavior.
+    import threading as _th5
+    def _writer():
+        try:
+            with open(fifo, "wb") as fh:
+                fh.write(b"}}}not-json{{{")
+        except Exception:
+            pass
+    t = _th5.Thread(target=_writer, daemon=True)
+    t.start()
+    proc = subprocess.Popen([VIS, "--insp", IMG, fifo, out],
+                            cwd=CORE, env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        proc.communicate(timeout=20)
+        rc = proc.returncode
+    except subprocess.TimeoutExpired:
+        proc.kill(); proc.communicate()
+        try: os.remove(fifo)
+        except Exception: pass
+        return False, "TIMEOUT (FIFO read hang)"
+    try: os.remove(fifo)
+    except Exception: pass
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    return safe, f"rc={rc_str(rc)} (FIFO def, no hang)"
+CASES.append(case("r5_def_fifo_no_hang", "custom", fn=fn_r5_def_is_fifo))
+
+# ---- def file > 50MB (synthesize by duplicating features) ---------------
+def fn_r5_def_50mb(run):
+    p = f"{TMP}/sys_r5_def_50mb.hydef"
+    d = golden()
+    # bloat featureSet until file size > 50MB
+    fs = d.get("featureSet")
+    if not isinstance(fs, list) or not fs:
+        return False, "golden has no featureSet"
+    base = list(fs)
+    # write iteratively until > 50MB
+    while True:
+        d["featureSet"] = list(fs)
+        json.dump(d, open(p, "w"))
+        sz = os.path.getsize(p)
+        if sz > 50 * 1024 * 1024: break
+        # double up
+        fs = fs + copy.deepcopy(base) * max(1, len(fs) // max(1, len(base)))
+        if len(fs) > 200000: break  # safety
+    sz = os.path.getsize(p)
+    rc, out = run(p, out_path=f"{TMP}/sys_r5_50mb_out.json")
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    return safe, f"rc={rc_str(rc)} def_size={sz/1024/1024:.1f}MB (no crash/hang)"
+CASES.append(case("r5_def_50mb_robust", "custom", fn=fn_r5_def_50mb))
+
+# ---- 16-bit PNG (already partially covered in r4; explicitly assert) ----
+if _PIL:
+    from PIL import Image as _PI5
+    _R5_16BIT = f"{TMP}/sys_r5_16bit_max.png"
+    # max-value 16-bit
+    _PI5.new("I;16", (512, 512), 65535).save(_R5_16BIT, "PNG")
+    CASES.append(case("r5_img_16bit_max_robust", "robust", img=_R5_16BIT))
+
+# ---- concurrency with shared output dir (distinct filenames) -----------
+def fn_r5_concurrent_shared_dir(run):
+    shared = f"{TMP}/r5_shared_outdir"
+    os.makedirs(shared, exist_ok=True)
+    # clear any prior files
+    for f in os.listdir(shared):
+        try: os.remove(f"{shared}/{f}")
+        except Exception: pass
+    N = 6
+    results = {}
+    def worker(i):
+        results[i] = run(GDEF, out_path=f"{shared}/r5_conc_{i}.json")
+    ts = [threading.Thread(target=worker, args=(i,)) for i in range(N)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    all0 = all(results[i][0] == 0 for i in range(N))
+    allout = all(results[i][1] is not None for i in range(N))
+    ref = results[0][1]
+    ident = allout and all(results[i][1] == ref for i in range(N))
+    return (all0 and allout and ident), f"{N}x shared-dir all-exit0={all0} all-identical={ident}"
+CASES.append(case("r5_concurrent_shared_outdir", "custom", fn=fn_r5_concurrent_shared_dir))
+
+# ---- env vars LANG/LC_ALL=C / unset -------------------------------------
+def fn_r5_env_locale(_run, lang=None, lc_all=None, label=""):
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    for k in ("LANG", "LC_ALL"):
+        env.pop(k, None)
+    if lang is not None: env["LANG"] = lang
+    if lc_all is not None: env["LC_ALL"] = lc_all
+    out = f"{TMP}/sys_r5_locale_{label}.json"
+    if os.path.exists(out): os.remove(out)
+    try:
+        r = subprocess.run([VIS, "--insp", IMG, GDEF, out],
+                           cwd=CORE, env=env, capture_output=True, timeout=120)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    report = open(out, "rb").read() if os.path.exists(out) else None
+    valid = False
+    if report is not None:
+        try: json.loads(report); valid = True
+        except Exception: valid = False
+    ok = (rc == 0) and valid
+    return ok, f"rc={rc_str(rc)} valid={valid} (LANG={lang} LC_ALL={lc_all})"
+CASES.append(case("r5_env_locale_C", "custom",
+                  fn=lambda r: fn_r5_env_locale(r, "C", "C", "C")))
+CASES.append(case("r5_env_locale_unset", "custom",
+                  fn=lambda r: fn_r5_env_locale(r, None, None, "unset")))
+
+# ---- 50 sequential runs: detect memory growth via /usr/bin/time -v -----
+def fn_r5_sequential_50(run):
+    """Sequentially run 50x. Check runtime stability (no monotonic blowup).
+    Best-effort RSS via /usr/bin/time -l on macOS (peak maximum resident set)."""
+    N = 50
+    times = []
+    rsses = []
+    has_time = os.path.exists("/usr/bin/time")
+    for i in range(N):
+        out = f"{TMP}/sys_r5_seq_{i}.json"
+        if os.path.exists(out): os.remove(out)
+        env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+        t0 = _time5.time()
+        if has_time:
+            try:
+                r = subprocess.run(["/usr/bin/time", "-l", VIS, "--insp", IMG, GDEF, out],
+                                   cwd=CORE, env=env, capture_output=True, timeout=60)
+                rc = r.returncode
+                # parse "maximum resident set size" from stderr
+                err = r.stderr.decode(errors="replace")
+                rss = None
+                for line in err.splitlines():
+                    if "maximum resident set size" in line:
+                        try: rss = int(line.strip().split()[0])
+                        except Exception: pass
+                if rss is not None: rsses.append(rss)
+            except subprocess.TimeoutExpired:
+                return False, f"TIMEOUT at iter {i}"
+        else:
+            try:
+                r = subprocess.run([VIS, "--insp", IMG, GDEF, out],
+                                   cwd=CORE, env=env, capture_output=True, timeout=60)
+                rc = r.returncode
+            except subprocess.TimeoutExpired:
+                return False, f"TIMEOUT at iter {i}"
+        dt = _time5.time() - t0
+        times.append(dt)
+        if rc != 0:
+            return False, f"iter {i} rc={rc_str(rc)}"
+    # stability: avg of last 10 not more than 2x avg of first 10
+    first10 = sum(times[:10]) / 10
+    last10 = sum(times[-10:]) / 10
+    time_stable = last10 < 2.0 * first10
+    detail = f"N={N} t_first10_avg={first10:.2f}s t_last10_avg={last10:.2f}s time_stable={time_stable}"
+    if rsses:
+        rss_first = sum(rsses[:10]) / 10
+        rss_last = sum(rsses[-10:]) / 10
+        # each run is a fresh process -> RSS should be roughly constant
+        rss_stable = rss_last < 2.0 * rss_first
+        detail += f" rss_first10={rss_first/1e6:.1f}MB rss_last10={rss_last/1e6:.1f}MB rss_stable={rss_stable}"
+        return (time_stable and rss_stable), detail
+    return time_stable, detail
+CASES.append(case("r5_sequential_50_stability", "custom", fn=fn_r5_sequential_50))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_system", CASES))

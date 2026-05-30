@@ -425,6 +425,113 @@ def mk_ref_id_string_and_array():
                      {"id": {"nested": 5}}]
     return d
 
+    # ===== ROUND 5: anchor cycles via ConstrainMap, calc ref chains, orientation_essential =====
+
+def mk_anchor_self_cycle():
+    # search_point with locating_anchor:true whose own ref points to itself
+    d = golden(); sp = first_of(d, "search_point")
+    if sp is not None:
+        sp["locating_anchor"] = True
+        sp["ref"] = [{"id": sp.get("id", 0), "element": "search_point"}]
+        sp["anchorPair"] = [{"id": sp.get("id", 0), "element": "search_point"}]
+    return d
+
+def mk_anchor_cycle_via_constrainmap():
+    # two locating_anchor search_points whose ref lists each other (ConstrainMap cycle)
+    d = golden()
+    sps = all_of(d, "search_point")
+    if len(sps) >= 2:
+        a, b = sps[0], sps[1]
+        a["locating_anchor"] = True; b["locating_anchor"] = True
+        a["ref"] = [{"id": b.get("id"), "element": "search_point"}]
+        b["ref"] = [{"id": a.get("id"), "element": "search_point"}]
+    return d
+
+def mk_searchpoint_ref_to_calc():
+    # search_point.ref points at a measure that is now a calc subtype
+    d = golden()
+    sp = first_of(d, "search_point"); m = first_of(d, "measure")
+    if sp is not None and m is not None:
+        mid = m.get("id", 12)
+        m["subtype"] = "calc"; m["ref"] = [{"id": sp.get("id", 1)}]
+        m["calc_f"] = {"exp": "", "post_exp": [f"[{sp.get('id',1)}]", "1", "+"]}
+        sp["ref"] = [{"id": mid, "element": "measure"}]
+    return d
+
+def mk_orientation_essential_on_failing_sp():
+    # mark a measure orientation_essential:true and corrupt its search_point dep
+    d = golden()
+    m = first_of(d, "measure"); sp = first_of(d, "search_point")
+    if m is not None:
+        m["orientation_essential"] = True
+    if sp is not None:
+        # break the search point so its judge fails -> reDo_orien path
+        sp["margin"] = -1; sp["width"] = 0; sp["angleDeg"] = float('nan') if False else 1e308
+        sp["ref"] = [{"id": 99999, "element": "line"}]
+    return d
+
+def mk_features_100k_mixed():
+    # 100k feature array, mix of valid lines and broken entries
+    d = golden()
+    feats = first_of(d, "sig360_circle_line")["features"]
+    base = {"type": "line", "id": 50000, "pt1": {"x": 0, "y": 0}, "pt2": {"x": 1, "y": 1}}
+    add = []
+    for i in range(100000):
+        if i % 5 == 0:
+            add.append({"type": "line", "id": 200000 + i,
+                        "pt1": {"x": i, "y": i}, "pt2": {"x": i + 1, "y": i + 1}})
+        elif i % 5 == 1:
+            add.append(i)                           # bare scalar
+        elif i % 5 == 2:
+            add.append({"type": "no_such", "id": i})
+        elif i % 5 == 3:
+            add.append({"type": "line", "id": "bad"})
+        else:
+            add.append(None)
+    feats.extend(add)
+    return d
+
+def mk_sign360_deep_nested_sigdata():
+    # signature_data wrapped in 100 levels of nested arrays
+    d = golden(); s = first_of(d, "sign360")
+    if s is not None:
+        deep = [1.0, 2.0, 3.0]
+        for _ in range(100):
+            deep = [deep]
+        s["signature"] = {"signature_data": deep}
+    return d
+
+# raw: duplicate "type" key within one feature object (cJSON last-wins behavior)
+RAW_DUP_TYPE_KEY = ('{"type":"binary_processing_group","featureSet":'
+                    '[{"type":"sig360_circle_line","features":'
+                    '[{"type":"line","type":"arc","type":"search_point","id":1,'
+                    '"pt1":{"x":0,"y":0},"pt2":{"x":1,"y":1}}]}]}')
+
+def mk_id_int_min():
+    # id set to INT32_MIN (-2^31) -- engine often uses int32 for IDs
+    d = golden(); t = first_of(d, "line")
+    if t is not None: t["id"] = -2147483648
+    return d
+
+def mk_angle_edge_values():
+    # angledOffset / angleDeg NaN, infinity, and wrap-around values across features
+    d = golden()
+    for ft in ("search_point", "arc", "sign360"):
+        f = first_of(d, ft)
+        if f is None: continue
+        # NaN / Inf can't be JSON-encoded by python json by default;
+        # use huge finite + wraparound combos that still trigger angle wrapping
+        f["angledOffset"] = 1e308
+        f["angleDeg"] = -1e308
+        f["angle"] = 3.6e6                          # 10000 full turns
+    return d
+
+def mk_top_level_reports_conflict():
+    # top-level "reports" key (collides with engine's output report list name)
+    d = golden()
+    d["reports"] = [{"id": 1, "judge": "fake", "fake": True}] * 50
+    return d
+
 def mk_regression_round2_combo():
     # regression: stack 3 round-2 mutations on same def to ensure no re-introduced bug
     d = golden()
@@ -562,6 +669,18 @@ CASES = [
 
     # Z. regression: stacked round-2 mutations
     case("regression_round2_combo", "robust", make=mk_regression_round2_combo),
+
+    # ===== ROUND 5 =====
+    case("anchor_self_cycle",          "robust", make=mk_anchor_self_cycle),
+    case("anchor_cycle_constrainmap",  "robust", make=mk_anchor_cycle_via_constrainmap),
+    case("searchpoint_ref_to_calc",    "robust", make=mk_searchpoint_ref_to_calc),
+    case("orien_essential_failing_sp", "robust", make=mk_orientation_essential_on_failing_sp),
+    case("features_100k_mixed",        "robust", make=mk_features_100k_mixed),
+    case("sign360_sigdata_deep_nest",  "robust", make=mk_sign360_deep_nested_sigdata),
+    case("raw_dup_type_key",           "robust", raw=RAW_DUP_TYPE_KEY),
+    case("id_int32_min",               "robust", make=mk_id_int_min),
+    case("angle_edge_values",          "robust", make=mk_angle_edge_values),
+    case("top_level_reports_conflict", "robust", make=mk_top_level_reports_conflict),
 ]
 
 if __name__ == "__main__":

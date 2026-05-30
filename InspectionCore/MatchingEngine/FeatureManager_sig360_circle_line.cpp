@@ -262,9 +262,9 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
                 // length). Real-world calipers are tens; even at these caps
                 // worst-case per primitive is ~10^8 ops -> completes in ~1s.
                 // cal_length = -1 is the "use full" sentinel and passes through.
-                if (cir.cal_count  > 1024) cir.cal_count  = 1024;
-                if (cir.cal_width  >  128) cir.cal_width  =  128;
-                if (cir.cal_length >  512) cir.cal_length =  512; }
+                if (cir.cal_count  >  512) cir.cal_count  =  512;
+                if (cir.cal_width  >   64) cir.cal_width  =   64;
+                if (cir.cal_length >  256) cir.cal_length =  256; }
     cJSON *edgeo = JFetch_OBJECT(circle_obj, "edge");
     if (edgeo) {
       cir.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
@@ -1378,13 +1378,25 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
   {
   case featureDef_searchPoint::anglefollow:
   {
-    searchPoint.data.anglefollow.angleDeg =
-        *JFetEx_NUMBER(jobj, "angleDeg");
-    searchPoint.data.anglefollow.target_id = (int)*JFetEx_NUMBER(jobj, "ref[0].id");
-    searchPoint.data.anglefollow.position.X =
-        *JFetEx_NUMBER(jobj, "pt1.x");
-    searchPoint.data.anglefollow.position.Y =
-        *JFetEx_NUMBER(jobj, "pt1.y");
+    if ((pnum = JSON_GET_NUM(jobj, "angleDeg")) == NULL) return -1;
+    searchPoint.data.anglefollow.angleDeg = *pnum;
+    if ((pnum = JSON_GET_NUM(jobj, "ref[0].id")) == NULL) return -1;
+    int _tid = (int)*pnum;
+    // Self-referential search_point (ref pointing back at its own id) causes a
+    // SIGSEGV deep in the search-point processing path because the matching
+    // pipeline follows the ref to read an in-progress / uninitialised report.
+    // Reject at parse time -- real-world defs never self-reference.
+    if (_tid == searchPoint.id)
+    {
+      LOGE("%s: search_point id:%d ref points to itself (self-reference rejected)",
+           __func__, searchPoint.id);
+      return -1;
+    }
+    searchPoint.data.anglefollow.target_id = _tid;
+    if ((pnum = JSON_GET_NUM(jobj, "pt1.x")) == NULL) return -1;
+    searchPoint.data.anglefollow.position.X = *pnum;
+    if ((pnum = JSON_GET_NUM(jobj, "pt1.y")) == NULL) return -1;
+    searchPoint.data.anglefollow.position.Y = *pnum;
 
     void *target;
     searchPoint.data.anglefollow.search_far = false;
@@ -1541,9 +1553,9 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
                 line.cal_length = JFetch_NUMBER_ex(calo, "length", -1);
                 line.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
                 // Clamp pathological caliper sizes (see parse_arcData).
-                if (line.cal_count  > 1024) line.cal_count  = 1024;
-                if (line.cal_width  >  128) line.cal_width  =  128;
-                if (line.cal_length >  512) line.cal_length =  512; }
+                if (line.cal_count  >  512) line.cal_count  =  512;
+                if (line.cal_width  >   64) line.cal_width  =   64;
+                if (line.cal_length >  256) line.cal_length =  256; }
     cJSON *edgeo = JFetch_OBJECT(line_obj, "edge");
     if (edgeo) {
       line.edge_method   = edge_method_from_string((char *)JFetch(edgeo, "method", cJSON_String));
@@ -2071,6 +2083,37 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   {
     LOGE("No signature data");
     return -1;
+  }
+
+  // Detect cycles in the search_point anglefollow target_id graph. A search_point
+  // whose ref chain loops back on itself drives the matching pipeline into an
+  // unbounded follow that SIGSEGVs. Direct self-refs are already rejected at
+  // parse time (parse_searchPointData); this catches multi-node cycles
+  // (A->B->A, longer rings).
+  for (size_t i = 0; i < searchPointList.size(); i++)
+  {
+    if (searchPointList[i].subtype != featureDef_searchPoint::anglefollow) continue;
+    int cur = searchPointList[i].data.anglefollow.target_id;
+    for (int hops = 0; hops < (int)searchPointList.size() + 1 && cur >= 0; hops++)
+    {
+      if (cur == searchPointList[i].id)
+      {
+        LOGE("parse_jobj: search_point id:%d ref chain forms a cycle (rejected)",
+             searchPointList[i].id);
+        return -1;
+      }
+      int nxt = -1;
+      for (size_t j = 0; j < searchPointList.size(); j++)
+      {
+        if (searchPointList[j].id == cur &&
+            searchPointList[j].subtype == featureDef_searchPoint::anglefollow)
+        {
+          nxt = searchPointList[j].data.anglefollow.target_id;
+          break;
+        }
+      }
+      cur = nxt;
+    }
   }
 
   return 0;

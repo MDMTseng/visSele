@@ -4921,6 +4921,16 @@ int cp_main(int argc, char **argv)
     if (strcmp(argv[ai], "--insp") != 0) continue;
     if (ai + 3 >= argc) { LOGE("--insp needs <image> <def> <out.json>"); return 2; }
     char *imgPath = argv[ai + 1], *defPath = argv[ai + 2], *outPath = argv[ai + 3];
+    // Reject non-regular def files (FIFO/socket/dir/char-device). ReadText() on
+    // a FIFO blocks indefinitely waiting for a writer/EOF -> hang.
+    {
+      struct stat st;
+      if (stat(defPath, &st) == 0 && !S_ISREG(st.st_mode))
+      {
+        LOGE("--insp: def file %s is not a regular file", defPath);
+        return 4;
+      }
+    }
     acvImage img;
     if (LoadIMGFile(&img, imgPath) != 0) { LOGE("--insp: cannot load image %s", imgPath); return 3; }
     // Reject degenerate-size images that the sig360 / labeling pipeline assumes

@@ -459,5 +459,70 @@ CASES.append(case("r4_self_self_op", "robust", make=mut_calc(["[8]", "[8]", "$+$
 CASES.append(case("r4_self_in_max", "robust",
                   make=mut_calc(["[8]", "[12]", "[13]", "$,$", "$,$", "max$"])))
 
+# ================= ROUND 5: exotic shapes =================
+
+# max$/min$ with zero operands AND no arity token (just the function token)
+CASES.append(case("r5_max_no_operands_no_arity", "robust", make=mut_calc(["max$"])))
+CASES.append(case("r5_min_no_operands_no_arity", "robust", make=mut_calc(["min$"])))
+
+# arity token at the very start of stream, before any operand
+CASES.append(case("r5_arity_at_start", "robust",
+                  make=mut_calc(["$,$", "$,$", "[12]", "[13]", "max$"])))
+
+# many sequential arity tokens overriding each other (then proper operands/func)
+CASES.append(case("r5_arity_override_chain", "robust",
+                  make=mut_calc(["[12]", "[13]", "$,$", "$,$", "$,$", "$,$",
+                                 "$,$", "$,$", "$,$", "max$"])))
+
+# literal that begins with `$` -- parsed as a function token, not literal
+CASES.append(case("r5_dollar_prefixed_literal", "robust",
+                  make=mut_calc(["[12]", "$3", "$+$"])))
+
+# literal that begins with `[` but isn't a valid id form
+CASES.append(case("r5_bracket_prefix_not_id", "robust",
+                  make=mut_calc(["[12]", "[abc", "$+$"])))
+
+# refs with leading whitespace (" [12]") -- token-equality fails, so ref-lookup fails
+CASES.append(case("r5_leading_ws_ref", "robust",
+                  make=mut_calc([" [12]", "1", "$+$"])))
+
+# chained underflow: operator after the result of an underflow/NA propagation
+CASES.append(case("r5_chained_underflow", "robust",
+                  make=mut_calc(["$+$", "[12]", "$*$", "1", "$-$"])))
+
+# calc result fed into ANOTHER calc that has no [id] tokens in its post_exp:
+# engine gates calc eval on non-empty ref. mut_calc falls back to dummy ref [12]
+# when none is found, mirroring real-world behavior. Here second calc is pure
+# literal; will it still be evaluated since dummy ref [12] is set?
+def _r5_calc_chains_no_ref():
+    """First measure -> calc reading [12]; second measure -> calc with pure literal
+    post_exp (no [id] tokens) but dummy ref [12] so eval runs."""
+    def f():
+        d = golden()
+        measures = all_of(d, "measure")
+        if len(measures) < 2: return d
+        measures[0]["subtype"] = "calc"
+        measures[0]["ref"] = [{"id": 12}]
+        measures[0]["calc_f"] = {"exp": "", "post_exp": ["[12]", "1", "$+$"]}
+        measures[1]["subtype"] = "calc"
+        measures[1]["ref"] = [{"id": 12}]  # dummy ref, post_exp has no [id]
+        measures[1]["calc_f"] = {"exp": "", "post_exp": ["3", "4", "$+$"]}
+        return d
+    return f
+CASES.append(case("r5_calc_no_ref_in_postexp", "robust", make=_r5_calc_chains_no_ref()))
+
+# pure-stack with 5 literals + 5 ops, hand-computed
+# RPN: 1 2 + 3 * 4 + 5 * = ((1+2)*3 + 4) * 5 = (9+4)*5 = 65
+CASES.append(case("r5_pure_stack_5lit_5op", "custom",
+                  fn=calc_expect(["1", "2", "$+$", "3", "$*$", "4", "$+$", "5", "$*$"], 65.0)))
+
+# division by exactly -0.0 (negative zero)
+CASES.append(case("r5_div_by_neg_zero", "robust",
+                  make=mut_calc(["[12]", "-0.0", "$/$"])))
+
+# max$ of all NA refs (all reference non-existent measures)
+CASES.append(case("r5_max_all_na_refs", "robust",
+                  make=mut_calc(["[99991]", "[99992]", "[99993]", "$,$", "$,$", "max$"])))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_calc", CASES))

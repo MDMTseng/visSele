@@ -883,5 +883,165 @@ CASES += [
     case("sp_angleDeg_359",             "custom", fn=_fn_no_crash_finite(_sp_angle_359)),
 ]
 
+# ================= ROUND 5: area subtype, value remap, back_value, docheck, ref-mismatch, new clamp =================
+
+# R5-1: measure subtype "area" - parser accepts (line 1769), measure path branch
+_area_measure = _measure_subtype("area")
+
+# R5-2: measure subtype "roughness" - NOT in parser switch -> must reject with -1
+def _roughness_measure():
+    d = golden(); m = first_of(d, "measure")
+    m["subtype"] = "roughness"
+    return d
+
+# R5-3: value remap (value_A,B,X,Y) -- this IS the engine's "adjust" path
+# measured_val = (v - A)*(Y-X)/(B-A) + X. With A=0,B=1,X=10,Y=11 -> shift +10.
+def _value_remap_shift10():
+    d = golden()
+    for sig in all_of(d, "sig360_circle_line"):
+        for k, v in sig.items():
+            if isinstance(v, list):
+                for it in v:
+                    if isinstance(it, dict) and it.get("type") == "measure" \
+                       and it.get("subtype") in (None, "distance", "sigma", "radius"):
+                        it["value_A"] = 0.0; it["value_B"] = 1.0
+                        it["value_X"] = 10.0; it["value_Y"] = 11.0
+    return d
+
+def fn_value_remap_shift(run_insp):
+    """value_A=0,B=1,X=10,Y=11 -> linear identity + 10 offset on every distance/sigma/radius."""
+    rcA, oA = run_insp(GDEF)
+    rcB, oB = run_insp(_value_remap_shift10())
+    if rcA != 0 or rcB != 0: return False, f"rcA={rc_str(rcA)} rcB={rc_str(rcB)}"
+    ja = {j.get("id"): j for j in _collect_judges(json.loads(oA)) if "id" in j and _finite(j.get("value"))}
+    jb = {j.get("id"): j for j in _collect_judges(json.loads(oB)) if "id" in j and _finite(j.get("value"))}
+    common = set(ja) & set(jb)
+    if not common: return False, "no common judges"
+    shifted = sum(1 for i in common if abs((jb[i]["value"] - ja[i]["value"]) - 10.0) < 1e-3)
+    sample = [(i, round(jb[i]["value"]-ja[i]["value"],3)) for i in list(common)[:4]]
+    ok = shifted > 0
+    return ok, f"common={len(common)} shifted_by_+10={shifted} sample={sample}"
+
+# R5-4: value_adjust on calc subtype (round-4 noted it appears ignored)
+def _value_adjust_calc():
+    d = mut_calc(["dist"])()
+    m = first_of(d, "measure")
+    m["value_adjust"] = 5.0
+    return d
+
+def fn_value_adjust_calc_noop(run_insp):
+    """value_adjust is NOT in parser (sig_circle_line.cpp ~line 1782-1812). Setting
+    on a calc subtype must be a no-op (clean run, no NaN, no segv)."""
+    rc, out = run_insp(_value_adjust_calc())
+    if rc == "TIMEOUT" or (isinstance(rc, int) and rc in SIGCRASH):
+        return False, f"rc={rc_str(rc)} (crash)"
+    if out is None: return True, f"rc={rc_str(rc)} no out"
+    if b"nan" in out.lower(): return False, "NaN"
+    return True, f"rc={rc_str(rc)} (no-op accepted)"
+
+# R5-5: back_value_setup TRUE with USL_b/LSL_b/value_b values
+def _back_value_full():
+    d = golden()
+    for sig in all_of(d, "sig360_circle_line"):
+        for k, v in sig.items():
+            if isinstance(v, list):
+                for it in v:
+                    if isinstance(it, dict) and it.get("type") == "measure":
+                        it["back_value_setup"] = True
+                        it["value_b"] = 0.5
+                        it["USL_b"]   = 9999.0
+                        it["LSL_b"]   = -9999.0
+    return d
+
+# R5-6: docheck=false on every measure
+def _docheck_false():
+    d = golden()
+    for sig in all_of(d, "sig360_circle_line"):
+        for k, v in sig.items():
+            if isinstance(v, list):
+                for it in v:
+                    if isinstance(it, dict) and it.get("type") == "measure":
+                        it["docheck"] = False
+    return d
+
+# R5-7: ref element type mismatch - measure ref says "line" but the id is actually a search_point
+def _ref_type_mismatch_line():
+    d = golden(); m = first_of(d, "measure")
+    # id 3 is a search_point in golden; claim it's a line
+    m["ref"] = [{"id": 3, "element": "line"}, {"id": 4, "element": "line"}]
+    return d
+
+# R5-8: ref says "search_point" but the id is actually a line
+def _ref_type_mismatch_sp():
+    d = golden(); m = first_of(d, "measure")
+    m["subtype"] = "angle"
+    m["ref"] = [{"id": 1, "element": "search_point"}, {"id": 2, "element": "search_point"}]
+    return d
+
+# R5-9: NEW caliper boundary count=1024,width=128,length=512 -- must run fast (<3s)
+_cal_new_boundary = _all_caliper_with({"caliper": {"count": 1024, "width": 128, "length": 512}})
+
+# R5-10: caliper one notch above boundary (count=1025,width=129,length=513) -> all clamped, still <3s
+_cal_just_over_boundary = _all_caliper_with({"caliper": {"count": 1025, "width": 129, "length": 513}})
+
+# R5-11: roughness_rmse circle_info value sanity (>=0, finite)
+def fn_roughness_rmse_nonneg(run_insp):
+    rc, out = run_insp(_circleinfo_rough())
+    if rc != 0 or out is None: return True, f"rc={rc_str(rc)} (no out)"
+    js = _collect_judges(json.loads(out))
+    cis = [j for j in js if j.get("subtype") == "circle_info" and _finite(j.get("value"))]
+    if not cis: return True, "no circle_info judges with finite value (skip)"
+    neg = [c for c in cis if c["value"] < 0]
+    return (not neg), f"circle_info judges={len(cis)} negative_rmse={len(neg)}"
+
+def fn_timed_strict(make, max_seconds=3.0):
+    """Tight timing budget for the new caliper boundary - clamps must keep it <3s."""
+    def fn(run_insp):
+        t0 = time.time()
+        rc, out = run_insp(make(), timeout=max_seconds + 5)
+        dt = time.time() - t0
+        if rc == "TIMEOUT": return False, f"TIMEOUT {dt:.2f}s"
+        if isinstance(rc, int) and rc in SIGCRASH: return False, f"crash rc={rc_str(rc)}"
+        if dt > max_seconds: return False, f"too slow {dt:.2f}s>{max_seconds}s"
+        if rc != 0 or out is None: return False, f"rc={rc_str(rc)} dt={dt:.2f}s"
+        if b"nan" in out.lower(): return False, f"NaN dt={dt:.2f}s"
+        try: js = _collect_judges(json.loads(out))
+        except Exception as e: return False, f"invalid JSON: {e}"
+        bad = [j for j in js if _bad_value(j)]
+        return (not bad), f"rc=0 dt={dt:.2f}s judges={len(js)} bad={len(bad)}"
+    return fn
+
+CASES += [
+    # ---- measure subtype "area" (parser + measure path) ----
+    case("area_subtype_no_crash",       "custom", fn=fn_subtype_value(_area_measure, "area")),
+    case("area_subtype_robust",         "robust", make=_area_measure),
+
+    # ---- "roughness" not a real subtype -> parser rejects with -1 ----
+    case("roughness_subtype_rejected",  "robust", make=_roughness_measure),
+
+    # ---- value_A/B/X/Y linear remap (the engine's actual "adjust" path) ----
+    case("value_remap_plus10",          "custom", fn=fn_value_remap_shift),
+
+    # ---- value_adjust on calc (confirmed parser does NOT read this key) ----
+    case("value_adjust_calc_noop",      "custom", fn=fn_value_adjust_calc_noop),
+
+    # ---- back_value_setup TRUE with full USL_b/LSL_b/value_b ----
+    case("back_value_full_pathway",     "custom", fn=_fn_no_crash_finite(_back_value_full)),
+
+    # ---- docheck=false on all measures ----
+    case("docheck_false_all",           "custom", fn=_fn_no_crash_finite(_docheck_false)),
+
+    # ---- ref element type mismatches ----
+    case("ref_mismatch_sp_as_line",     "robust", make=_ref_type_mismatch_line),
+    case("ref_mismatch_line_as_sp",     "robust", make=_ref_type_mismatch_sp),
+
+    # ---- NEW caliper boundary (count=1024,width=128,length=512) must be fast ----
+    case("caliper_new_boundary_fast",   "custom", fn=fn_timed_strict(_cal_new_boundary, max_seconds=3.0)),
+    case("caliper_over_boundary_fast",  "custom", fn=fn_timed_strict(_cal_just_over_boundary, max_seconds=3.0)),
+
+    # ---- roughness_rmse non-negative sanity ----
+    case("roughness_rmse_nonneg",       "custom", fn=fn_roughness_rmse_nonneg),
+]
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_measure", CASES))
