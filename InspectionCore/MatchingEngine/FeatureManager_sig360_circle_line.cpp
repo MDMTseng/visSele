@@ -3955,7 +3955,8 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
   vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
   vector<FeatureReport_judgeReport> &judgeReports = *singleReport.judgeReports;
 
-  edgeTracking eT(p_cropImg,cropOffset, bacpac);
+  cv::Mat _eT_cv = acvImageBgrView(p_cropImg);
+  edgeTracking eT(_eT_cv, cropOffset, bacpac);
   // acvDrawCrossX(originalImage,
   //   calibCen.X, calibCen.Y,
   //   3, 3);

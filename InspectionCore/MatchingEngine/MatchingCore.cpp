@@ -1309,11 +1309,17 @@ float findGradMaxIdx_spline(float *f,int fL,float *ret_max)
 }
 
 
-edgeTracking::edgeTracking (acvImage *graylevelImg,acv_XY imgOffset,FeatureManager_BacPac *bacpac)
+edgeTracking::edgeTracking (cv::Mat &graylevelImg_cv, acv_XY imgOffset, FeatureManager_BacPac *bacpac)
 {
-  this->graylevelImg=graylevelImg;
-  this->bacpac=bacpac;
-  this->imgOffset=imgOffset;
+  // Bind an acvImage shim over the cv::Mat so getImage() can hand the
+  // still-acv internals (contourPixExtraction, pixFetch, EdgePointOpt*,
+  // search_point_cv, caliper_locate_*) the type they expect.
+  this->_gray_shim.useExtBuffer(graylevelImg_cv.data,
+                                (int)(graylevelImg_cv.total() * graylevelImg_cv.elemSize()),
+                                graylevelImg_cv.cols, graylevelImg_cv.rows);
+  this->graylevelImg = &this->_gray_shim;
+  this->bacpac = bacpac;
+  this->imgOffset = imgOffset;
 }
 
 

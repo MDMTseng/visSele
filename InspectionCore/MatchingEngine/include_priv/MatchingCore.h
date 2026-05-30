@@ -84,11 +84,12 @@ class edgeTracking
   
   float pixSum[pixWidth]={0};
   float grad[pixWidth]={0};
-  acvImage *graylevelImg;
+  acvImage _gray_shim;        // useExtBuffer'd over the ctor's cv::Mat
+  acvImage *graylevelImg;     // points at _gray_shim
   acv_XY imgOffset;
   FeatureManager_BacPac *bacpac;
   public:
-  edgeTracking (acvImage *graylevelImg,acv_XY imgOffset,FeatureManager_BacPac *bacpac=NULL);
+  edgeTracking (cv::Mat &graylevelImg_cv, acv_XY imgOffset, FeatureManager_BacPac *bacpac=NULL);
 
   // accessors for caliper-based locating (reuse the same image/offset/bacpac)
   acvImage *getImage(){return graylevelImg;}
