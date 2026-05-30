@@ -436,6 +436,22 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
   return 0;
 }
 
+// cv::Mat-canonical override.  Sheds the base FeatureManager bridge: uses
+// img_cv directly to size binary_img_storage (no need to query an acvImage
+// shim for the dimensions), then bridges img_cv to an acvImage shim only for
+// the still-acv parts of the legacy body, which it dispatches to via the
+// acvImage overload above.
+int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
+{
+  if (img_cv.empty()) return -1;
+  if (!img_cv.isContinuous()) img_cv = img_cv.clone();
+  acvImage _img_shim;
+  _img_shim.useExtBuffer(img_cv.data,
+                         (int)(img_cv.total() * img_cv.elemSize()),
+                         img_cv.cols, img_cv.rows);
+  return FeatureMatching(&_img_shim);
+}
+
 
 const FeatureReport* FeatureManager_binary_processing_group::GetReport()
 {
