@@ -129,12 +129,9 @@ export function applyMeasureLimitCoupling(obj, changedKey, preVal) {
 }
 
 // ───── DRAW (keystone step 3d) ─────────────────────────────────────────────
-// Extracted verbatim from renderUTIL.case SHAPE_TYPE.measure. The case body is
-// large (~510 lines) but mostly orchestration — the subtype-specific drawing
-// still delegates to renderer.drawMeasure{Distance,Angle,Radius,...} helpers in
-// renderUTIL. A deeper per-subtype split (shapes/measure/draw_<subtype>.js) is
-// a follow-up; this commit's win is dropping the giant inline block out of
-// renderUTIL so the dispatcher case becomes uniform with all other shapes.
+// Per-subtype draw is now in shapes/measure/{distance,angle,radius,circle_info,calc}.js
+// (SUBTYPE_REGISTRY below); distance still delegates to renderer.drawMeasureDistance
+// (stateful, coupled to renderer/db_obj — intentionally left in renderUTIL).
 //
 // opts carries the legacy drawShapeList args + a few measure-specific ones:
 //   ShapeColor          — top-level color override (capital S; passed-through)

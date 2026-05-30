@@ -411,3 +411,10 @@ Don't fragment: render() switch, NEUTRAL_UI, ctrlLogic_DEFCONF, GenTarEditUI (co
 All verified: golden + 5 flows + typecheck green each commit.
 
 **Follow-ups noted:** IndexedDB queue has NO drain/retry-on-reconnect yet (records buffer but aren't replayed) — deliberate next step. Hot-path console.logs (UICtrlReducer:159, MAINUI render) now also hit the ring buffer every frame — should be gated/removed (round 8 item, now slightly more pressing for perf).
+
+---
+
+## Known QA flake (2026-05-30, post-Keystone)
+
+- **r10_smoke S1 / S9 / S10** intermittently fail with `ws=false` at very first load and `c_state=SPLASH` after triggering inspection. Core (:4090) stays UP throughout (verified via lsof + log tail), so the symptom is a WS reconnect race / 1006 disconnect on the WebUI side — matches the known "1006 disconnect" issue. r7_inspbug + r7_downsamp + the other 8 suites pass on the same run. Not blocking the Keystone work; flag for the comm-refactor Phase 4 (peer-routing) pass. Re-run usually trims failures from 4 → 3 → 0.
+- **r7_downsamp T8 fixed:** widened handler slice 1200→2500ch (commit 6cd2ac5a) after R7 NaN-guard pushed LAST_FRAME_RESEND past the old window.
