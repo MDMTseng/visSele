@@ -1,6 +1,8 @@
 // Stateful WebSocket helpers (auto-reconnect, request tracking, alive tracking).
 // Cohesive networking unit relocated from MISC_Util.
 
+import * as log from 'loglevel';
+
 export class websocket_autoReconnect{
   
   constructor(url,timeout=5000) {
@@ -522,7 +524,7 @@ export class websocket_aliveTracking
 
     if(url===undefined)
     {
-      console.log(">>");
+      log.warn("[ws] connect called without url; aborting", { reconnects: this.reconnectionCounter });
       this.reconnectTimeout_ms=-1;
       this.state=this.states.INIT;
       this.ERROR_INFO=this.errorInfo.NO_URL;
@@ -538,12 +540,14 @@ export class websocket_aliveTracking
     this.websocket.binaryType=this.config.binaryType;
 
     this.websocket.onclose=(ev)=>{
-      console.log("ONCLOSE....");
+      const meta = { url, code: ev && ev.code, reason: ev && ev.reason, reconnects: this.reconnectionCounter };
+      if (ev && ev.code === 1006) log.warn("[ws-auto] close 1006 (abnormal)", meta);
+      else log.info("[ws-auto] close", meta);
       this.state=this.stateTransfer(this.state,this.acts.DISCONNECT_DONE);
       this.onclose(ev)
     };
     this.websocket.onerror=(ev)=>{
-      console.log("ERROR....");
+      log.warn("[ws-auto] error event", { url, reconnects: this.reconnectionCounter });
       this.ERROR_INFO=this.errorInfo.GENERIC;
       this.state=this.stateTransfer(this.state,this.acts.ERROR);
       this.onerror(ev)
@@ -671,7 +675,7 @@ export class websocket_aliveTracking
       // console.log("PING");
       if(this.pingStat==true)
       {
-        console.log("PING timeout close");
+        log.warn("[ws-auto] ping timeout; closing", { url: this.url });
         this._close();
         break;
       }
@@ -679,11 +683,10 @@ export class websocket_aliveTracking
       this.pingStat=true;
       this.send_obj(this.config.pingPacket)
       .then(ev=>{
-        // console.log(ev);
         this.pingStat=false;
       })
       .catch(e=>{
-        console.log(e)
+        log.warn("[ws-auto] ping send failed", { url: this.url, err: String(e) });
       });
 
     }while(false);
@@ -727,7 +730,7 @@ export class websocket_aliveTracking
           if(this.connectionTimeout_ms>=0)
           {
             this.connectionTimeout=setTimeout(()=>{
-              console.log("connection timeout......");
+              log.warn("[ws-auto] connection timeout; closing", { url: this.url, timeout_ms: this.connectionTimeout_ms });
               this._close();
             },this.connectionTimeout_ms);
           }
