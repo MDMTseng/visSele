@@ -3,7 +3,6 @@
 
 import { connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
-import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
@@ -12,7 +11,7 @@ let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
 import ReactResizeDetector from 'react-resize-detector';
-import { DEF_EXTENSION ,BPG_ExpCalc,CameraCtrl} from 'UTIL/BPG_Protocol';
+import { DEF_EXTENSION, BPG_ExpCalc, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';

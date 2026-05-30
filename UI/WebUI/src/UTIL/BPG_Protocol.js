@@ -172,12 +172,12 @@ let objbarr2raw=(type,prop,pgID,obj,barr=null)=>{
 
 
 
-export const INSPECTION_STATUS = {
-  NA:-128,
-  UNSET:-100,
-  SUCCESS:0,
-  FAILURE:-1,
-};
+// R-quick-wins: moved to UTIL/InspectionStatus.js to break the BPG_Protocol <-> UIAct
+// circular import. Imported locally so the default export below still bundles it,
+// and re-exported as a named export for backward compatibility with consumers
+// that still import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol'.
+import { INSPECTION_STATUS } from './InspectionStatus';
+export { INSPECTION_STATUS };
 
 
 
@@ -298,7 +298,11 @@ export const DEF_EXTENSION = "hydef";
 
 
 
-export class CameraCtrl {
+// R-quick-wins: renamed from CameraCtrl to avoid a footgun name collision with
+// canvas/CameraCtrl.ts (the viewport controller). This one is the hardware-camera
+// transfer/setup wrapper sent over BPG. Imports should reference CameraTransferCtrl
+// directly; the legacy `CameraCtrl` alias below preserves backward-compat.
+export class CameraTransferCtrl {
   constructor(setting) {
     this.data = {
       DoImageTransfer: true,
@@ -394,7 +398,10 @@ export class CameraCtrl {
 
 }
 
-
+// R-quick-wins: alias to the old name to preserve backward-compat for any
+// consumer still importing `CameraCtrl` from this module. New code should use
+// CameraTransferCtrl to avoid the canvas/CameraCtrl.ts name collision.
+export const CameraCtrl = CameraTransferCtrl;
 
 
 

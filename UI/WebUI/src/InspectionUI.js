@@ -5,7 +5,6 @@ import { connect } from 'react-redux';
 import React, { useState, useEffect,useRef } from 'react';
 import { useSelector,useDispatch } from 'react-redux';
 
-import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
 import dateFormat from "dateformat";
@@ -18,7 +17,7 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,LocalStorageTools ,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
-import { INSPECTION_STATUS, DEF_EXTENSION,CameraCtrl } from 'UTIL/BPG_Protocol';
+import { INSPECTION_STATUS, DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';

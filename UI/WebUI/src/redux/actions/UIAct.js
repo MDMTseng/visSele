@@ -1,4 +1,6 @@
-import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
+// R-quick-wins: import from the leaf to break the BPG_Protocol <-> UIAct cycle
+// (BPG_Protocol imports `* as UIAct`). The leaf has no other imports.
+import {INSPECTION_STATUS} from 'UTIL/InspectionStatus';
 export const UI_SM_STATES = {
   SPLASH:"SPLASH",
   MAIN:"MAIN",

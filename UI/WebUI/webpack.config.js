@@ -24,7 +24,11 @@ if(process.env.NODE_ENV === "production")
     cache: true,
     parallel: true,
   }));
-  opt_minimizer.push(new CompressionPlugin({
+  // R-quick-wins: CompressionPlugin must be a regular plugin, not pushed into
+  // optimization.minimizer (the minimizer slot is for terser/uglify-style passes,
+  // not asset emitters). Previously this lived in opt_minimizer and never wrote
+  // .gz files to dist/. Move to PluginSets so a 20MB->~4MB gzip win is realized.
+  PluginSets.push(new CompressionPlugin({
     test: /\.js(\?.*)?$/i,
   }));
 
@@ -87,7 +91,11 @@ module.exports = {
         use: {
           loader:require.resolve('babel-loader'),
           options: {
-            presets: ["@babel/preset-env", "@babel/preset-react"],
+            // R-quick-wins: modules:false leaves ESM imports/exports as-is so
+            // webpack can do tree-shaking. With the default (commonjs), the full
+            // @ant-design/icons set (~1300 icons) was bundled despite only ~30
+            // being used — a multi-MB hit on the 20MB vendor chunk.
+            presets: [["@babel/preset-env", { modules: false }], "@babel/preset-react"],
             plugins: [en_ReactFastRefresh && require.resolve('react-refresh/babel')].filter(Boolean),
           }
         }
