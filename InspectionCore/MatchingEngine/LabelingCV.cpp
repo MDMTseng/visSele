@@ -1,4 +1,5 @@
 #include "LabelingCV.h"
+#include "CvBridge.h"   // acvImageBgrView
 #include <opencv2/opencv.hpp>
 #include <vector>
 
@@ -105,59 +106,21 @@ void acvComponentLabeling_cv(cv::Mat &Pic, std::vector<acv_LabeledData> &ld, int
 
 void acvComponentLabeling_cv(acvImage *Pic, std::vector<acv_LabeledData> &ld, int connectivity)
 {
-  int W = Pic->GetWidth(), H = Pic->GetHeight();
+  // Thin wrapper: cv::Mat is now the canonical path. Get a zero-copy BGR view
+  // of the acvImage and dispatch. Coordinates returned by the cv overload are
+  // in-view (origin at the ROI's top-left, not the storage origin); add the
+  // acvImage's ROI offsets to keep absolute-coord semantics for legacy callers.
+  if (!Pic) return;
+  cv::Mat v = acvImageBgrView(Pic);
+  acvComponentLabeling_cv(v, ld, connectivity);
   int ox = Pic->GetROIOffsetX(), oy = Pic->GetROIOffsetY();
-  ld.clear();
-  if (W <= 0 || H <= 0) return;
-
-  cv::Mat m(H, W, CV_8U);
-  for (int y = 0; y < H; y++)
+  if (ox || oy)
   {
-    unsigned char *src = Pic->CVector[oy + y] + ox * 3;
-    unsigned char *d = m.ptr<unsigned char>(y);
-    for (int x = 0; x < W; x++) d[x] = (src[x * 3 + 2] != 255) ? 255 : 0;
-  }
-
-  cv::Mat lbl, stats, cent;
-  int n = cv::connectedComponentsWithStats(m, lbl, stats, cent, connectivity, CV_32S);
-
-  // cage = foreground component with largest bbox -> label 1; objects -> 2,3,...
-  int cage = -1; long bestbb = -1;
-  for (int L = 1; L < n; L++)
-  {
-    long bb = (long)stats.at<int>(L, cv::CC_STAT_WIDTH) * stats.at<int>(L, cv::CC_STAT_HEIGHT);
-    if (bb > bestbb) { bestbb = bb; cage = L; }
-  }
-  std::vector<int> remap(n, 0);
-  int nxt = 2;
-  for (int L = 1; L < n; L++) remap[L] = (L == cage) ? 1 : nxt++;
-
-  // build acv_LabeledData straight from CC stats (no full-image re-scan).
-  ld.resize(nxt); // indices 0..nxt-1
-  for (int i = 0; i < nxt; i++) { ld[i].area = 0; ld[i].misc = 0; }
-  for (int L = 1; L < n; L++)
-  {
-    int idx = remap[L];
-    acv_LabeledData &d = ld[idx];
-    int left = stats.at<int>(L, cv::CC_STAT_LEFT), top = stats.at<int>(L, cv::CC_STAT_TOP);
-    int w = stats.at<int>(L, cv::CC_STAT_WIDTH), h = stats.at<int>(L, cv::CC_STAT_HEIGHT);
-    d.area = stats.at<int>(L, cv::CC_STAT_AREA);
-    d.LTBound = (acv_XY){ (float)(ox + left), (float)(oy + top) };
-    d.RBBound = (acv_XY){ (float)(ox + left + w - 1), (float)(oy + top + h - 1) };
-    d.Center  = (acv_XY){ (float)(ox + cent.at<double>(L, 0)), (float)(oy + cent.at<double>(L, 1)) };
-  }
-
-  // write packed label image (so downstream contour extraction still works).
-  for (int y = 0; y < H; y++)
-  {
-    const int *ll = lbl.ptr<int>(y);
-    unsigned char *dst = Pic->CVector[oy + y] + ox * 3;
-    for (int x = 0; x < W; x++)
+    for (size_t i = 1; i < ld.size(); i++)
     {
-      int L = ll[x];
-      unsigned char *p = dst + x * 3;
-      if (L == 0) { p[0] = p[1] = p[2] = 255; }
-      else { int idx = remap[L]; p[0] = idx & 0xFF; p[1] = (idx >> 8) & 0xFF; p[2] = (idx >> 16) & 0xFF; }
+      ld[i].LTBound.X += ox; ld[i].LTBound.Y += oy;
+      ld[i].RBBound.X += ox; ld[i].RBBound.Y += oy;
+      ld[i].Center.X  += ox; ld[i].Center.Y  += oy;
     }
   }
 }
