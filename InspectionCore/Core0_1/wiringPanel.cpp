@@ -1393,7 +1393,7 @@ uint16_t m_BPG_Protocol_Interface::TLCode(const char *TL)
 }
 m_BPG_Protocol_Interface::m_BPG_Protocol_Interface() : resPool(resourcePoolSize)
 {
-  cacheImage.ReSize(1, 1);
+  cacheImage.create(1, 1, CV_8UC3);   // phase 3a: cv::Mat init
 }
 
 void m_BPG_Protocol_Interface::delete_PeripheralChannel()
@@ -1742,10 +1742,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           char *type = (char *)JFetch(json, "type", cJSON_String);
           if (strcmp(type, "__CACHE_IMG__") == 0)
           {
-            LOGE("__CACHE_IMG__ %d x %d", cacheImage.GetWidth(), cacheImage.GetHeight());
-            if (cacheImage.GetWidth() * cacheImage.GetHeight() > 10) //HACK: just a hacky way to make sure the cache image is there
+            LOGE("__CACHE_IMG__ %d x %d", cacheImage.cols, cacheImage.rows);
+            if (cacheImage.cols * cacheImage.rows > 10) //HACK: just a hacky way to make sure the cache image is there
             {
-              SaveIMGFile(fileName, &cacheImage);
+              // SaveIMGFile dispatched on file extension; cv::imwrite does the
+              // same thing (png/jpg/bmp) on a cv::Mat directly.
+              cv::imwrite(fileName, cacheImage);
               session_ACK=true;
             }
             else
@@ -2115,8 +2117,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           {
             acvImage *srcImg = NULL;
             srcImg = &tmp_buff;
-            cacheImage.ReSize(srcImg);
-            acvCloneImage(srcImg, &cacheImage, -1);
+            // cv::Mat clone from the acvImage source: BGR view + copyTo
+            // allocates+copies in one step (matches ReSize+acvCloneImage).
+            acvImageBgrView(srcImg).copyTo(cacheImage);
 
             int default_scale = 2;
 
@@ -2180,8 +2183,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         {
           if (strcmp(imgSrcPath, "__CACHE_IMG__") == 0)
           {
-            tmp_buff.ReSize(&cacheImage);
-            acvCloneImage(&cacheImage, &tmp_buff, -1);
+            // cacheImage is now cv::Mat; bridge tmp_buff (still acvImage) to a
+            // BGR view of the same size and copy through cv::Mat::copyTo.
+            tmp_buff.ReSize(cacheImage.cols, cacheImage.rows);
+            cacheImage.copyTo(acvImageBgrView(&tmp_buff));
             srcImg = &tmp_buff;
           }
           else if(strcmp(imgSrcPath, "__SNAP_TMP_IMG__") == 0)
@@ -2205,8 +2210,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           if (ret_val == 0)
           {
             srcImg = &tmp_buff;
-            cacheImage.ReSize(srcImg);
-            acvCloneImage(srcImg, &cacheImage, -1);
+            acvImageBgrView(srcImg).copyTo(cacheImage);
           }
         }
 
@@ -2562,10 +2566,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           {
             srcImg = &tmp_buff;
             
-            cacheImage.ReSize(srcImg);
-            //acvCloneImage(srcImg, &cacheImage, -1);
+            // ImageDownSampling (cv::Mat overload) allocates dst itself; no
+            // separate ReSize needed.
             calib_bacpac.sampler->ignoreCalib(false); //First, make the cacheImage to be a calibrated full res image
-            ImageDownSampling(cacheImage, *srcImg, 1, calib_bacpac.sampler, false);
+            ImageDownSampling(cacheImage, acvImageBgrView(srcImg), 1, calib_bacpac.sampler, false);
 
           }
         }
@@ -2644,10 +2648,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             bpg_dat = GenStrBPGData("IM", NULL);
 
             calib_bacpac.sampler->ignoreCalib(true);
-            ImageDownSampling(dataSend_buff, acvImageBgrView(&cacheImage), tar_down_samp_level, calib_bacpac.sampler, true);
+            ImageDownSampling(dataSend_buff, cacheImage, tar_down_samp_level, calib_bacpac.sampler, true);
             BPG_protocol_data_acvImage_Send_info iminfo = { &dataSend_buff, (uint16_t)tar_down_samp_level };
-            iminfo.fullHeight = cacheImage.GetHeight();
-            iminfo.fullWidth = cacheImage.GetWidth();
+            iminfo.fullHeight = cacheImage.rows;
+            iminfo.fullWidth  = cacheImage.cols;
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;
             bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
             bpg_dat.pgID = dat->pgID;

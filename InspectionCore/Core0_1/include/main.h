@@ -146,8 +146,8 @@ public:
   int cameraFramesLeft = 0;
 
   acvImage tmp_buff;
-  acvImage cacheImage;
-  cv::Mat  dataSend_buff;     // phase 3a: acvImage -> cv::Mat (tmp_buff / cacheImage next)
+  cv::Mat  cacheImage;        // phase 3a
+  cv::Mat  dataSend_buff;     // phase 3a
 
   
   PerifChannel *perifCH= NULL;
