@@ -37,6 +37,13 @@ bool SKIP_NA_DATA_VIEW=false;
 int imageQueueSkipSize = 0;
 int datViewQueueSkipSize = 0;
 int DATA_VIEW_MAX_FPS=20;
+// SEND_acvImage compression mode. 0 = legacy raw RGBA (4 B / px) for back-compat
+// with current WebUI; 1-100 = JPEG with that quality value. Set via the BPG
+// settings command with key "IMG_STREAMING_JPEG_QUALITY". The format chosen is
+// signalled to the receiver in the first byte of SEND_acvImage's 15-byte
+// metadata sub-frame (0 = raw RGBA, 1 = JPEG); the JPEG quality used is in the
+// second byte for diagnostics.
+int DataView_JPEG_quality = 0;
 bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=false;
 
 float OK_MAX_FPS=6;
@@ -1401,6 +1408,40 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
     (uint8_t)(img_info->fullHeight >>8),
     (uint8_t)(img_info->fullHeight),
   };
+
+  // JPEG path: encode once via cv::imencode, mark format=1 in metadata header
+  // byte 0, and stream the encoded bytes. Default-off (flag = 0) keeps the
+  // legacy raw-RGBA wire format for back-compat with the current WebUI.
+  if (DataView_JPEG_quality > 0)
+  {
+    cv::Mat _bgr = acvImageBgrView(img);
+    std::vector<uint8_t> _jpeg;
+    std::vector<int> _params = { cv::IMWRITE_JPEG_QUALITY, DataView_JPEG_quality };
+    cv::imencode(".jpg", _bgr, _jpeg, _params);
+
+    header[0] = 1;                                       // 1 = JPEG
+    header[1] = (uint8_t)DataView_JPEG_quality;          // quality used
+
+    image_send_buffer.resize(dch.getHeaderSize() + sizeof(header));
+    dch.headerSetup(&image_send_buffer[0], image_send_buffer.size(), data);
+    memcpy(&image_send_buffer[dch.getHeaderSize()], header, sizeof(header));
+    dch.toLinkLayer(&image_send_buffer[0],
+                    dch.getHeaderSize() + sizeof(header),
+                    false, dch.activePeer());
+
+    const int  jpegHeaderOffset = 10;
+    const size_t JPEG_CHUNK = 32 * 1024;
+    for (size_t pos = 0; pos < _jpeg.size(); pos += JPEG_CHUNK)
+    {
+      size_t n = std::min(JPEG_CHUNK, _jpeg.size() - pos);
+      bool   isLast = (pos + n >= _jpeg.size());
+      image_send_buffer.resize(jpegHeaderOffset + n);
+      memcpy(&image_send_buffer[jpegHeaderOffset], &_jpeg[pos], n);
+      dch.toLinkLayer(&image_send_buffer[jpegHeaderOffset], n, isLast,
+                      dch.activePeer(), jpegHeaderOffset, 0);
+    }
+    return 0;
+  }
 
   {
     image_send_buffer.resize(dch.getHeaderSize()+sizeof(header));
@@ -2945,6 +2986,20 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       if(maxImgStFPS)
       {
         DATA_VIEW_MAX_FPS=(int)*maxImgStFPS;
+      }
+
+      // JPEG compression for per-event image transfers.  0 keeps the legacy
+      // raw-RGBA wire format; 1-100 switches to JPEG with that quality.  The
+      // format chosen is signalled in the first byte of the metadata sub-frame
+      // (0 = raw, 1 = JPEG); the WebUI must check this byte and decode either.
+      double *jpegQ = JFetch_NUMBER(json, "IMG_STREAMING_JPEG_QUALITY");
+      if (jpegQ)
+      {
+        int q = (int)*jpegQ;
+        if (q < 0) q = 0;
+        if (q > 100) q = 100;
+        DataView_JPEG_quality = q;
+        LOGI("IMG_STREAMING_JPEG_QUALITY=%d (0=raw RGBA)", DataView_JPEG_quality);
       }
 
 
