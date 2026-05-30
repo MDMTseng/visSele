@@ -284,24 +284,6 @@ class PerifChannel:public Data_JsonRaw_Layer
 
 
 
-void transpose(acvImage* dst,acvImage* src)
-{
-  dst->ReSize(src->GetHeight(),src->GetWidth());
-  for(int i=0;i<src->GetHeight();i++)
-  {
-    for(int j=0;j<src->GetWidth();j++)
-    {
-      memcpy(dst->CVector[j]+i*3,src->CVector[i]+j*3,3);
-    }
-  }
-}
-
-// cv::Mat overload (phase 3a).  cv::transpose preserves BGR channel order
-// and handles the H<->W swap natively.
-static inline void transpose(cv::Mat &dst, const cv::Mat &src)
-{
-  cv::transpose(src, dst);
-}
 
 
 
