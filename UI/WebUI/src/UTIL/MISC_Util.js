@@ -94,9 +94,21 @@ export { websocket_autoReconnect, websocket_reqTrack, websocket_aliveTracking } 
 
   
 export function dictLookUp(key,dict,theme) {
-  return  Array.isArray(key)?
-  GetObjElement(dict,key)||key[key.length-1]:
-  GetObjElement(dict,[theme||"_", key])||key;
+  const path = Array.isArray(key) ? key : [theme||"_", key];
+  const hit = GetObjElement(dict, path);
+  if (hit) return hit;
+  // Dev-only missing-key warning (surfaces silent misses; key gets echoed
+  // as the fallback so the UI still shows readable text).
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
+    if (!dictLookUp._warned) dictLookUp._warned = new Set();
+    const pathKey = path.join('.');
+    if (!dictLookUp._warned.has(pathKey)) {
+      dictLookUp._warned.add(pathKey);
+      // eslint-disable-next-line no-console
+      console.warn('[i18n] missing key:', pathKey);
+    }
+  }
+  return Array.isArray(key) ? key[key.length-1] : key;
 }
 
 

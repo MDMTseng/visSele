@@ -841,7 +841,6 @@ function StateReducer(newState, action) {
               //log.info("action.data:",action.data);
 
               newState.edit_info.__decorator = { ...newState.edit_info.__decorator, control_margin_info: action.data };
-              console.log(newState.edit_info.__decorator );
               break;
             }
           case DefConfAct.EVENT.Shape_Set:
@@ -882,8 +881,6 @@ function StateReducer(newState, action) {
                 
                 let tmpTarIdx =
                   newState.edit_info._obj.FindShapeIdx(newID);
-                console.log(tmpTarIdx,"_");
-                //log.info(tmpTarIdx);
                 if (tmpTarIdx === undefined)//In this case we delete the shape in the list 
                 {
                   newState.edit_info.edit_tar_info = null;
