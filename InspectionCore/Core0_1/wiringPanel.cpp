@@ -389,18 +389,6 @@ public:
     }
   }
 
-  // Bridge: write the averaged frame into an acvImage.  Used by the still-
-  // acvImage tmp_buff in the BPG SV handler; will go away once tmp_buff also
-  // becomes cv::Mat.
-  void Export(acvImage *imgOut)
-  {
-    if (!imgOut) return;
-    cv::Mat tmp; Export(tmp);
-    imgOut->ReSize(tmp.cols, tmp.rows);
-    cv::Mat view = acvImageBgrView(imgOut);
-    tmp.copyTo(view);
-  }
-
   void Export()
   {
     std::lock_guard<std::mutex> guard(lock);
@@ -1204,8 +1192,9 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   return 0;
 }
 
-int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *deffile, acvImage *image, const char *fileName,const char* filename_extension=SNAP_FILE_EXTENSION,const char* img_extension=SNAP_IMG_EXTENSION)
+int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *deffile, const cv::Mat &image, const char *fileName, const char *filename_extension=SNAP_FILE_EXTENSION, const char *img_extension=SNAP_IMG_EXTENSION)
 {
+  if (image.empty()) return -1;
 
   cJSON *reportsList = JFetch_ARRAY(inspectionReport, "reports[0].reports");
   if (reportsList == NULL)
@@ -1219,10 +1208,8 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
 
   cJSON *infoJObj = cJSON_CreateObject();
 
-  //somehow if I don't copy the data, the devil in
-  //this function will remove the reportsList from inspectionReport in some weird way
-  //TODO: find the bug, this causes extra data copy cost
-
+  // copy to dodge a still-unsolved aliasing bug that would otherwise strip
+  // reportsList from inspectionReport mid-print.
   reportsList = cJSON_Duplicate(reportsList, true);
   camera_param_data = cJSON_Duplicate(camera_param_data, true);
   cJSON_AddItemToObject(infoJObj, "reports", reportsList);
@@ -1231,36 +1218,18 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
   cJSON_AddNumberToObject(infoJObj, "time_ms", current_time_ms());
 
   char *jstr = cJSON_Print(infoJObj);
-  // cJSON_DetachItemViaPointer(infoJObj, reportsList); //since the data is copied let Delete to deal with it.
   cJSON_DetachItemViaPointer(infoJObj, deffile);
 
   cJSON_Delete(infoJObj);
   int ret_write_Len = WriteBytesToFile((uint8_t *)jstr, strlen(jstr), (filePath+"." + (std::string)filename_extension).c_str());
   delete (jstr);
   if (ret_write_Len < 0)
-  {
     return -1;
-  }
 
-  int saveErr = SaveIMGFile((filePath+"." + (std::string)img_extension).c_str(), image);
-  if (saveErr != 0)
-  {
+  if (!cv::imwrite((filePath+"." + (std::string)img_extension).c_str(), image))
     return -2;
-  }
 
   return 0;
-}
-
-// cv::Mat overload of saveInspectionSample.  Bridges to the acvImage version
-// via a useExtBuffer shim (zero copy) so the existing body and its
-// SaveIMGFile + JSON metadata writes still work unchanged.
-int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *deffile, const cv::Mat &image, const char *fileName, const char *filename_extension=SNAP_FILE_EXTENSION, const char *img_extension=SNAP_IMG_EXTENSION)
-{
-  if (image.empty()) return -1;
-  cv::Mat img = image.isContinuous() ? image : image.clone();
-  acvImage _shim;
-  _shim.useExtBuffer(img.data, (int)(img.total() * img.elemSize()), img.cols, img.rows);
-  return saveInspectionSample(inspectionReport, camera_param, deffile, &_shim, fileName, filename_extension, img_extension);
 }
 
 int LoadCameraSetting(CameraLayer &camera, char *filename)
