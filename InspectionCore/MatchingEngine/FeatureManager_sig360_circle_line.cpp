@@ -10,7 +10,6 @@
 #include <limits>
 #include <MatchingCore.h>
 #include <stdio.h>
-#include <acvImage_SpDomainTool.hpp>
 #include "CvBridge.h"
 #include "polyfit.h"
 
