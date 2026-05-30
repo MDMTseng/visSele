@@ -20,6 +20,10 @@ from qalib import *      # run_insp, IMG, GDEF, case, run_module, SIGCRASH, ...
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 
 OUT_DIR = "/tmp/qa_imgstress"
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -113,6 +117,82 @@ def img_rgb_tint(name, channel_scales=(1.0, 0.85, 0.75)):
     rgb = np.stack([a * channel_scales[0], a * channel_scales[1], a * channel_scales[2]], axis=-1)
     return _save_rgb(rgb, name)
 
+# ---------- cv::imread / cv::Mat-specific perturbation builders ----------
+def img_png_with_alpha(name):
+    """RGBA PNG -- forces cv::imread to drop alpha; useExtBuffer-from-cv path."""
+    a = _load_gray()
+    h, w = a.shape
+    rgb = np.stack([a, a, a], axis=-1).astype(np.uint8)
+    alpha = np.full((h, w, 1), 255, dtype=np.uint8)
+    rgba = np.concatenate([rgb, alpha], axis=-1)
+    p = f"{OUT_DIR}/{name}.png"
+    Image.fromarray(rgba, mode="RGBA").save(p, "PNG")
+    return p
+
+def img_png_16bit(name):
+    """16-bit grayscale PNG -- non-standard depth; cv::imread default flag should down-convert to 8-bit."""
+    a = _load_gray()
+    a16 = np.clip(a * 257.0, 0, 65535).astype(np.uint16)  # 8->16 scale
+    p = f"{OUT_DIR}/{name}.png"
+    Image.fromarray(a16, mode="I;16").save(p, "PNG")
+    return p
+
+def img_jpeg_low_quality(name, q=40):
+    """JPEG compression artifacts -- cv::imread handles JPEG differently than lodepng would."""
+    a = _load_gray().astype(np.uint8)
+    p = f"{OUT_DIR}/{name}.jpg"
+    Image.fromarray(a, mode="L").save(p, "JPEG", quality=q)
+    return p
+
+def img_tiff(name):
+    """TIFF variant -- new format support per QA round 10."""
+    a = _load_gray().astype(np.uint8)
+    p = f"{OUT_DIR}/{name}.tiff"
+    Image.fromarray(a, mode="L").save(p, "TIFF")
+    return p
+
+def img_webp(name, q=80):
+    """WebP variant -- new format support."""
+    a = _load_gray().astype(np.uint8)
+    p = f"{OUT_DIR}/{name}.webp"
+    Image.fromarray(a, mode="L").save(p, "WEBP", quality=q)
+    return p
+
+def img_via_cv_roundtrip(name):
+    """Write via cv2.imwrite (different PNG encoder than PIL) -- tests cv::imread parity on its own output."""
+    a = _load_gray().astype(np.uint8)
+    p = f"{OUT_DIR}/{name}.png"
+    if cv2 is not None:
+        cv2.imwrite(p, a, [cv2.IMWRITE_PNG_COMPRESSION, 9])
+    else:
+        Image.fromarray(a, mode="L").save(p, "PNG")
+    return p
+
+def img_vignette_plus_jpeg(name):
+    """Vignette + JPEG artifacts combo -- stresses cv::imread + non-uniform illumination."""
+    a = _load_gray()
+    h, w = a.shape
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    cy, cx = h / 2, w / 2
+    r = np.hypot(xx - cx, yy - cy) / math.hypot(cx, cy)
+    falloff = 1.0 - 0.35 * r * r
+    a = np.clip(a * falloff, 0, 255).astype(np.uint8)
+    p = f"{OUT_DIR}/{name}.jpg"
+    Image.fromarray(a, mode="L").save(p, "JPEG", quality=70)
+    return p
+
+def img_noisy_5mp_png(name, sigma=12):
+    """Heavily-noised full-res 5MP PNG -- pushes useExtBuffer on a large continuous Mat."""
+    a = _load_gray()
+    rng = np.random.default_rng(seed=2026)
+    a = a + rng.normal(0, sigma, a.shape).astype(np.float32)
+    return _save_gray(a, name)
+
+def img_blurred_5mp_png(name, sigma=2.5):
+    """Heavily-blurred full-res 5MP PNG."""
+    img = Image.open(IMG).convert("L").filter(ImageFilter.GaussianBlur(radius=sigma))
+    return _save_gray(np.asarray(img, dtype=np.float32), name)
+
 # Precompute the degraded images (so each case just calls run_insp on the path)
 PATHS = {
     "noise_sigma_3":   img_noise(3,  "noise_sigma_3"),
@@ -125,6 +205,16 @@ PATHS = {
     "blur_mild":       img_blur(1.0, "blur_mild"),
     "blur_strong":     img_blur(3.0, "blur_strong"),
     "rgb_warm_tint":   img_rgb_tint("rgb_warm_tint", (1.0, 0.85, 0.75)),
+    # cv::imread / cv::Mat migration probes
+    "cv_png_rgba":         img_png_with_alpha("cv_png_rgba"),
+    "cv_png_16bit":        img_png_16bit("cv_png_16bit"),
+    "cv_jpeg_lowq":        img_jpeg_low_quality("cv_jpeg_lowq", 40),
+    "cv_tiff":             img_tiff("cv_tiff"),
+    "cv_webp":             img_webp("cv_webp", 80),
+    "cv_png_cv_encoded":   img_via_cv_roundtrip("cv_png_cv_encoded"),
+    "cv_vignette_jpeg":    img_vignette_plus_jpeg("cv_vignette_jpeg"),
+    "cv_noisy_5mp_png":    img_noisy_5mp_png("cv_noisy_5mp_png", 12),
+    "cv_blurred_5mp_png":  img_blurred_5mp_png("cv_blurred_5mp_png", 2.5),
 }
 
 # ---------- assertion helper ----------
@@ -190,6 +280,26 @@ add("scratches_many_drift",  "custom", fn=_custom(PATHS["scratches_many"],  1.00
 add("blur_mild_drift",       "custom", fn=_custom(PATHS["blur_mild"],       0.20))
 add("blur_strong_drift",     "custom", fn=_custom(PATHS["blur_strong"],     1.00))
 add("rgb_warm_tint_drift",   "custom", fn=_custom(PATHS["rgb_warm_tint"],   0.20))
+
+# --- cv::imread / useExtBuffer / cv::Mat migration probes ---
+# RGBA PNG: cv::imread must drop alpha; pixel values unchanged -> drift should be tiny.
+add("cv_png_rgba_drift",        "custom", fn=_custom(PATHS["cv_png_rgba"],        0.10))
+# 16-bit PNG: cv::imread default flag down-converts; near-lossless scale-back -> small drift.
+add("cv_png_16bit_drift",       "custom", fn=_custom(PATHS["cv_png_16bit"],       0.20))
+# Low-quality JPEG: cv::imread-specific decode path + compression artifacts.
+add("cv_jpeg_lowq_drift",       "custom", fn=_custom(PATHS["cv_jpeg_lowq"],       0.40))
+# TIFF: new format support; should round-trip losslessly.
+add("cv_tiff_drift",            "custom", fn=_custom(PATHS["cv_tiff"],            0.10))
+# WebP: new format support; small lossy drift acceptable.
+add("cv_webp_drift",            "custom", fn=_custom(PATHS["cv_webp"],            0.30))
+# PNG written by cv::imwrite -> read by cv::imread (encoder/decoder parity).
+add("cv_png_cv_encoded_drift",  "custom", fn=_custom(PATHS["cv_png_cv_encoded"],  0.10))
+# Vignette + JPEG combo (cv-specific decode + non-uniform illum).
+add("cv_vignette_jpeg_drift",   "custom", fn=_custom(PATHS["cv_vignette_jpeg"],   0.40))
+# Heavy noise on full 5MP PNG (large continuous cv::Mat via useExtBuffer).
+add("cv_noisy_5mp_drift",       "custom", fn=_custom(PATHS["cv_noisy_5mp_png"],   0.50))
+# Heavy blur on full 5MP PNG.
+add("cv_blurred_5mp_drift",     "custom", fn=_custom(PATHS["cv_blurred_5mp_png"], 0.80))
 
 # Determinism on a perturbation (independent of golden) -- the engine should
 # produce byte-identical output for the same degraded input on repeated runs.

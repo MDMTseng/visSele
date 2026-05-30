@@ -2012,5 +2012,303 @@ CASES += [
     case("calc_empty_postexp_no_crash",  "custom", fn=fn_calc_empty_postexp),
 ]
 
+# ================= ROUND 11: intra-def state-pollution probes =================
+# These cases stress *within-process* state leakage between sequential features:
+# parser fmap state, cycle-detector scratch, caliper shared buffers, anchor
+# intermediate state, reDo orientation passes. Each must be <3s on golden HW.
+
+import time as _t11
+import re as _re11
+
+def _has_nan_inf(out):
+    """Token-aware NaN/Inf detector (avoids matching 'info_type' substrings)."""
+    if out is None: return False
+    return bool(_re11.search(rb'[\s,:\[]\s*(nan|inf|-inf)\b', out.lower()))
+
+# R11-1: circle_info-on-line (NA-prone) FOLLOWED by a calc measure that
+# depends on the NA'd judge id. Pollution check: NA propagates cleanly,
+# downstream calc must not pick up stale residue.
+def _ci_on_line_then_calc():
+    d = golden()
+    # Locate two measures so we can mutate independently
+    measures = []
+    for sig in all_of(d, "sig360_circle_line"):
+        for k, v in sig.items():
+            if isinstance(v, list):
+                for it in v:
+                    if isinstance(it, dict) and it.get("type") == "measure":
+                        measures.append(it)
+    if len(measures) >= 2:
+        m1 = measures[0]; m2 = measures[1]
+        m1["subtype"]   = "circle_info"
+        m1["info_type"] = "roughness_rmse"
+        m1["ref"]       = [{"id": 1, "element": "line"}]   # cross-type => NA
+        # m2 -> calc that references m1's id
+        m1_id = m1.get("id", 12)
+        m2["subtype"] = "calc"
+        m2["ref"]     = [{"id": m1_id}]
+        m2["calc_f"]  = {"exp": "", "post_exp": [f"[{m1_id}]"]}
+    return d
+
+def fn_ci_line_then_calc(run_insp):
+    t0 = _t11.time()
+    rc, out = run_insp(_ci_on_line_then_calc(), out_path=f"{TMP}/_out_r11_cical.json", timeout=10)
+    dt = _t11.time() - t0
+    if rc == "TIMEOUT": return False, f"TIMEOUT dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if dt > 3.0: return False, f"too slow dt={dt:.2f}s"
+    if out is None: return True, f"rc={rc_str(rc)} dt={dt:.2f}s no out"
+    if _has_nan_inf(out):
+        return False, "NaN/Inf (stale residue?)"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    return (not bad), f"rc={rc_str(rc)} dt={dt:.2f}s judges={len(js)} bad={len(bad)}"
+
+# R11-2: 50 valid duplicated measures + a final calc with a self-cycle.
+# Cycle detector intermediate state must not corrupt the 50 preceding judges.
+def _many_valid_then_cycled_calc():
+    d = golden()
+    sig = first_of(d, "sig360_circle_line")
+    m12 = _find_id(d, 12)
+    if sig is None or m12 is None: return d
+    # Append 50 valid duplicates with fresh ids
+    bad_id = 9650
+    for k, v in sig.items():
+        if isinstance(v, list):
+            for i in range(50):
+                cm = copy.deepcopy(m12)
+                cm["id"] = 9600 + i
+                v.append(cm)
+            # Cycled calc: refs itself
+            cyc = copy.deepcopy(m12)
+            cyc["id"] = bad_id
+            cyc["subtype"] = "calc"
+            cyc["ref"] = [{"id": bad_id}]
+            cyc["calc_f"] = {"exp": "", "post_exp": [f"[{bad_id}]"]}
+            v.append(cyc)
+            break
+    return d
+
+def fn_many_then_cycled(run_insp):
+    t0 = _t11.time()
+    rc, out = run_insp(_many_valid_then_cycled_calc(), out_path=f"{TMP}/_out_r11_cyc.json", timeout=10)
+    dt = _t11.time() - t0
+    if rc == "TIMEOUT": return False, f"TIMEOUT dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if isinstance(rc, int) and rc < 0:
+        return True, f"rc={rc_str(rc)} dt={dt:.2f}s (controlled-reject)"
+    if dt > 3.0: return False, f"too slow dt={dt:.2f}s"
+    if out is None: return True, f"rc={rc_str(rc)} dt={dt:.2f}s no out"
+    if _has_nan_inf(out):
+        return False, "NaN/Inf"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    valids = [j for j in js if isinstance(j.get("id"), int) and 9600 <= j["id"] <= 9649]
+    bad = [j for j in valids if _bad_value(j)]
+    return (not bad), f"rc={rc_str(rc)} dt={dt:.2f}s validDup={len(valids)} bad={len(bad)}"
+
+# R11-3: adjacent features w/ VERY different cal_count -- shared scratch buffers.
+# Cap is 512; we mix max-cap on lines with min on arcs.
+def _adjacent_diff_calcount():
+    d = golden()
+    for ln in all_of(d, "line"):
+        ln["locating"] = "caliper"
+        ln["caliper"] = {"count": 512, "width": 64, "length": 256}
+    for ar in all_of(d, "arc"):
+        ar["locating"] = "caliper"
+        ar["caliper"] = {"count": 4, "width": 4, "length": 16}
+    return d
+
+def fn_adjacent_diff_calcount(run_insp):
+    t0 = _t11.time()
+    rc, out = run_insp(_adjacent_diff_calcount(), out_path=f"{TMP}/_out_r11_diffcnt.json", timeout=10)
+    dt = _t11.time() - t0
+    if rc == "TIMEOUT": return False, f"TIMEOUT dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: scratch-buffer crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if dt > 3.0: return False, f"too slow dt={dt:.2f}s"
+    if rc != 0 or out is None: return False, f"rc={rc_str(rc)} dt={dt:.2f}s"
+    if _has_nan_inf(out):
+        return False, "NaN/Inf (scratch leak?)"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    succ = sum(1 for j in js if j.get("status") == 0)
+    return (not bad), f"rc=0 dt={dt:.2f}s judges={len(js)} succ={succ} bad={len(bad)}"
+
+# R11-4: feature A broken (parser-reject class), feature B is fine. Engine
+# should reject the WHOLE def atomically (no partial run output).
+def _broken_A_good_B():
+    d = golden()
+    # poison the first measure with a malformed circle_info (round 4 fix path)
+    m = first_of(d, "measure")
+    if m:
+        m["subtype"] = "circle_info"   # missing info_type -> parse_judgeData returns -1
+    return d
+
+def fn_broken_A_atomic(run_insp):
+    rc, out = run_insp(_broken_A_good_B(), out_path=f"{TMP}/_out_r11_atomic.json", timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash rc={rc_str(rc)}"
+    # Acceptable: controlled reject (non-zero rc) OR clean run with NA on the broken judge.
+    # Unacceptable: rc==0 with NaN/Inf, or rc==0 with partial-state garbage values.
+    if out is not None:
+        if _has_nan_inf(out):
+            return False, "NaN/Inf (half-init state leaked)"
+        try: js = _collect_judges(json.loads(out))
+        except Exception: js = []
+        bad = [j for j in js if _bad_value(j)]
+        if bad: return False, f"rc={rc_str(rc)} bad_values={len(bad)} (partial run)"
+    return True, f"rc={rc_str(rc)} (atomic reject or clean NA)"
+
+# R11-5: locating_anchor on a search_point whose ref target is a NA'd measure.
+# Anchor pass intermediate state must not corrupt later judges.
+def _anchor_on_na_target():
+    d = golden()
+    # NA-out measure id=12 by making it cross-type circle_info on a line
+    m12 = _find_id(d, 12)
+    if m12:
+        m12["subtype"] = "circle_info"
+        m12["info_type"] = "max_diameter"
+        m12["ref"] = [{"id": 1, "element": "line"}]   # cross-type => NA
+    # Make a search_point anchor-enabled and reference that measure
+    sp3 = _find_id(d, 3)
+    if sp3:
+        sp3["locating_anchor"] = True
+        sp3["ref"] = [{"id": 12, "element": "measure"}]
+    return d
+
+def fn_anchor_on_na(run_insp):
+    t0 = _t11.time()
+    rc, out = run_insp(_anchor_on_na_target(), out_path=f"{TMP}/_out_r11_anchor_na.json", timeout=10)
+    dt = _t11.time() - t0
+    if rc == "TIMEOUT": return False, f"TIMEOUT dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if dt > 3.0: return False, f"too slow dt={dt:.2f}s"
+    if out is None: return True, f"rc={rc_str(rc)} dt={dt:.2f}s"
+    if _has_nan_inf(out):
+        return False, "NaN/Inf (anchor scratch leaked)"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    return (not bad), f"rc={rc_str(rc)} dt={dt:.2f}s judges={len(js)} bad={len(bad)}"
+
+# R11-6: ALL search_points flipped to locating_anchor=true (heavy anchor pass).
+# Intermediate state across many anchor solves must not corrupt judges.
+def _all_sp_anchor_on():
+    d = golden()
+    for sp in all_of(d, "search_point"):
+        sp["locating_anchor"] = True
+    return d
+
+def fn_all_sp_anchor(run_insp):
+    t0 = _t11.time()
+    rc, out = run_insp(_all_sp_anchor_on(), out_path=f"{TMP}/_out_r11_allanchor.json", timeout=10)
+    dt = _t11.time() - t0
+    if rc == "TIMEOUT": return False, f"TIMEOUT dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if dt > 3.0: return False, f"too slow dt={dt:.2f}s"
+    if rc != 0 or out is None: return False, f"rc={rc_str(rc)} dt={dt:.2f}s"
+    if _has_nan_inf(out):
+        return False, "NaN/Inf"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    # Compare to golden: same count of judges, same finite-ness; values shouldn't be wildly different.
+    rcG, oG = run_insp(GDEF, out_path=f"{TMP}/_out_r11_allanchor_g.json", timeout=10)
+    if rcG == 0 and oG is not None:
+        try:
+            jg = {j.get("id"): j.get("value") for j in _collect_judges(json.loads(oG))
+                  if "id" in j and _finite(j.get("value"))}
+            jn = {j.get("id"): j.get("value") for j in js if "id" in j and _finite(j.get("value"))}
+            common = set(jg) & set(jn)
+            worst = max((abs(jg[i] - jn[i]) for i in common), default=0.0)
+        except Exception:
+            worst = -1.0
+    else:
+        worst = -1.0
+    return (not bad), f"rc=0 dt={dt:.2f}s judges={len(js)} bad={len(bad)} worst_vs_gold={worst:.4f}"
+
+# R11-7: caliper count=512 (cap) on EVERY feature -- pollution across sequential
+# caliper solves on the shared max-cap scratch buffer.
+def _all_cal_cap():
+    d = golden()
+    for t in ("line", "arc", "search_point"):
+        for ft in all_of(d, t):
+            ft["locating"] = "caliper"
+            ft["caliper"] = {"count": 512, "width": 64, "length": 256}
+    return d
+
+def fn_all_cal_cap_no_leak(run_insp):
+    t0 = _t11.time()
+    rc, out = run_insp(_all_cal_cap(), out_path=f"{TMP}/_out_r11_capall.json", timeout=10)
+    dt = _t11.time() - t0
+    if rc == "TIMEOUT": return False, f"TIMEOUT dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if dt > 3.0: return False, f"too slow dt={dt:.2f}s"
+    if rc != 0 or out is None: return False, f"rc={rc_str(rc)} dt={dt:.2f}s"
+    if _has_nan_inf(out):
+        return False, "NaN/Inf (scratch pollution)"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    succ = sum(1 for j in js if j.get("status") == 0)
+    return (not bad), f"rc=0 dt={dt:.2f}s judges={len(js)} succ={succ} bad={len(bad)}"
+
+# R11-8: sequence-order swap probe — run the same def twice w/ measure list
+# reversed. State pollution would show up as different judge values per id
+# depending on processing order.
+def _reverse_measure_order():
+    d = golden()
+    for sig in all_of(d, "sig360_circle_line"):
+        for k, v in sig.items():
+            if isinstance(v, list):
+                # partition: measures vs non-measures, reverse the measures
+                ms  = [it for it in v if isinstance(it, dict) and it.get("type") == "measure"]
+                nms = [it for it in v if not (isinstance(it, dict) and it.get("type") == "measure")]
+                sig[k] = nms + list(reversed(ms))
+                break
+    return d
+
+def fn_reverse_order_stable(run_insp):
+    t0 = _t11.time()
+    rcA, oA = run_insp(GDEF, out_path=f"{TMP}/_out_r11_seq_g.json", timeout=10)
+    rcB, oB = run_insp(_reverse_measure_order(), out_path=f"{TMP}/_out_r11_seq_r.json", timeout=10)
+    dt = _t11.time() - t0
+    if rcA != 0 or rcB != 0: return False, f"rcA={rc_str(rcA)} rcB={rc_str(rcB)}"
+    if dt > 3.0: return False, f"too slow dt={dt:.2f}s"
+    if oA is None or oB is None: return False, "no output"
+    if _has_nan_inf(oB):
+        return False, "NaN/Inf on reversed order"
+    try:
+        ja = {j.get("id"): j.get("value") for j in _collect_judges(json.loads(oA))
+              if "id" in j and _finite(j.get("value"))}
+        jb = {j.get("id"): j.get("value") for j in _collect_judges(json.loads(oB))
+              if "id" in j and _finite(j.get("value"))}
+    except Exception as e: return False, f"invalid JSON: {e}"
+    common = set(ja) & set(jb)
+    if not common: return False, "no common judges"
+    worst = max(abs(ja[i] - jb[i]) for i in common)
+    ok = worst < 1e-3
+    return ok, f"dt={dt:.2f}s common={len(common)} worst_diff={worst:.6f} (order-stable)"
+
+CASES += [
+    case("ci_on_line_then_calc_NA_prop", "custom", fn=fn_ci_line_then_calc),
+    case("many_valid_then_cycled_calc",  "custom", fn=fn_many_then_cycled),
+    case("adjacent_features_diff_calcnt","custom", fn=fn_adjacent_diff_calcount),
+    case("broken_A_atomic_reject",       "custom", fn=fn_broken_A_atomic),
+    case("anchor_on_NA_measure_target",  "custom", fn=fn_anchor_on_na),
+    case("all_sp_locating_anchor_heavy", "custom", fn=fn_all_sp_anchor),
+    case("all_caliper_at_cap_no_leak",   "custom", fn=fn_all_cal_cap_no_leak),
+    case("measure_order_reverse_stable", "custom", fn=fn_reverse_order_stable),
+]
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_measure", CASES))

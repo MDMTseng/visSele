@@ -1374,5 +1374,229 @@ CASES += [
 ]
 
 
+# ===== BONUS: combinatorial multi-bug-class interaction fuzz =====
+
+def mk_combo_caliper_circleinfo_spcycle():
+    # caliper huge count + circle_info on a line ref + search_point cycle, all in one def
+    d = golden()
+    # caliper huge count on a line
+    t = first_of(d, "line")
+    if t is not None:
+        t["caliper"] = {"count": 99999, "step": 1, "length": 10, "width": 5}
+    # circle_info judge whose ref points to a line (cross-type)
+    j = first_of(d, "measure")
+    line_id = t.get("id", 1) if t else 1
+    if j is not None:
+        j["subtype"] = "circle_info"
+        j["info_type"] = "radius"
+        j["ref"] = [{"id": line_id, "element": "line"}]
+    # search_point cycle
+    sps = all_of(d, "search_point")
+    if len(sps) >= 2:
+        for i, s in enumerate(sps):
+            nxt = sps[(i+1) % len(sps)]
+            s["ref"] = [{"id": nxt.get("id"), "element": "search_point"}]
+    return d
+
+def mk_combo_calc_chain_to_circleinfo_on_line():
+    # CALC chain terminating at a circle_info measure whose ref is a line (NA result)
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is None: return d
+    t = first_of(d, "line")
+    line_id = t.get("id", 1) if t else 1
+    base = 41000
+    # circle_info on a line -> NA
+    ci = {"type": "measure", "id": base, "name": "ci_na",
+          "subtype": "circle_info", "info_type": "radius",
+          "ref": [{"id": line_id, "element": "line"}]}
+    # chain of calcs pointing at ci, propagating NA forward
+    chain = [ci]
+    for i in range(1, 20):
+        mid = base + i
+        prev = base + i - 1
+        chain.append({
+            "type": "measure", "id": mid, "name": f"prop_{i}",
+            "subtype": "calc", "ref": [{"id": prev}],
+            "calc_f": {"exp": "", "post_exp": [f"[{prev}]", "1.0", "+"]},
+        })
+    s["features"] = s["features"] + chain
+    return d
+
+def mk_combo_multi_controlled_rejects():
+    # Multiple controlled-reject conditions stacked; parser fails fast on first.
+    # No SIGSEGV regardless of which one wins.
+    d = golden()
+    # caliper huge count
+    t = first_of(d, "line")
+    if t is not None:
+        t["caliper"] = {"count": 99999}
+    # FIFO def collision (duplicate ids)
+    feats = first_of(d, "sig360_circle_line")["features"]
+    for f in feats:
+        if isinstance(f, dict) and "id" in f: f["id"] = 7
+    # 1x1 effectively-empty post_exp on calc
+    m = first_of(d, "measure")
+    if m is not None:
+        m["subtype"] = "calc"
+        m["ref"] = [{"id": 7}]
+        m["calc_f"] = {"exp": "", "post_exp": []}    # malformed: empty RPN
+    return d
+
+def mk_combo_deep_valid_dag_fanin_via_auxchain():
+    # Accepted def: 50 calc leaves fan-in into one distance measure whose ref
+    # walks aux_point -> aux_line -> caliper-bearing line. Deep valid DAG.
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is None: return d
+    # Anchor: a caliper-bearing line
+    base = 55000
+    line = {"type": "line", "id": base, "name": "anchor_line",
+            "pt1": {"x": 0.0, "y": 0.0}, "pt2": {"x": 100.0, "y": 0.0},
+            "caliper": {"count": 5, "step": 10, "length": 20, "width": 3}}
+    # aux_line referencing the line
+    aux_line = {"type": "aux_line", "id": base + 1, "name": "al_chain",
+                "subtype": "twoPoint",
+                "pt1": {"x": 0.0, "y": 5.0}, "pt2": {"x": 100.0, "y": 5.0},
+                "ref": [{"id": base, "element": "line"}]}
+    # aux_point referencing the aux_line
+    aux_pt = {"type": "aux_point", "id": base + 2, "name": "ap_chain",
+              "subtype": "lineCross",
+              "ref": [{"id": base + 1, "element": "aux_line"},
+                      {"id": base, "element": "line"}]}
+    # distance measure referencing aux_pt
+    dist = {"type": "measure", "id": base + 3, "name": "dist_target",
+            "subtype": "distance",
+            "ref": [{"id": base + 2, "element": "aux_point"},
+                    {"id": base, "element": "line"}]}
+    # 50 calc leaves all referencing dist
+    leaves = []
+    for i in range(50):
+        mid = base + 100 + i
+        leaves.append({
+            "type": "measure", "id": mid, "name": f"fanleaf_{i}",
+            "subtype": "calc",
+            "ref": [{"id": base + 3}],
+            "calc_f": {"exp": "", "post_exp": [f"[{base + 3}]", f"{i}.0", "+"]},
+        })
+    s["features"] = s["features"] + [line, aux_line, aux_pt, dist] + leaves
+    return d
+
+def mk_combo_all_crash_classes_simultaneous():
+    # Everything bad at once: cyclic sp + missing circle_info info_type + line w/o id
+    # + malformed RPN + caliper count=99999. Engine should controlled-reject.
+    d = golden()
+    # cyclic search_point
+    sps = all_of(d, "search_point")
+    if len(sps) >= 2:
+        for i, sp in enumerate(sps):
+            nxt = sps[(i+1) % len(sps)]
+            sp["ref"] = [{"id": nxt.get("id"), "element": "search_point"}]
+    # circle_info missing info_type
+    j = first_of(d, "measure")
+    if j is not None:
+        j["subtype"] = "circle_info"
+        j.pop("info_type", None)
+        # malformed RPN postfix on same measure
+        j["calc_f"] = {"exp": "", "post_exp": ["@@@", None, "/", "[]"]}
+    # line missing id
+    t = first_of(d, "line")
+    if t is not None:
+        t.pop("id", None)
+        t["caliper"] = {"count": 99999, "step": 1}
+    return d
+
+def mk_combo_calc_self_ref_caliper_circleinfo():
+    # calc self-ref + caliper huge + circle_info wrong-type combined
+    d = golden()
+    m = first_of(d, "measure")
+    if m is not None:
+        mid = m.get("id", 12)
+        m["subtype"] = "calc"
+        m["ref"] = [{"id": mid}]
+        m["calc_f"] = {"exp": "", "post_exp": [f"[{mid}]", f"[{mid}]", "*"]}
+    # second measure as circle_info on line
+    s = first_of(d, "sig360_circle_line")
+    t = first_of(d, "line")
+    if s and t:
+        s["features"].append({
+            "type": "measure", "id": 31337, "name": "ci_x",
+            "subtype": "circle_info", "info_type": "diameter",
+            "ref": [{"id": t.get("id", 1), "element": "line"}],
+        })
+    # caliper huge on the line
+    if t is not None:
+        t["caliper"] = {"count": 99999, "step": 1, "length": 5, "width": 2}
+    return d
+
+def mk_combo_sp_cycle_calc_cycle_caliper():
+    # search_point cycle + calc cycle + caliper huge + duplicate ids
+    d = golden()
+    # sp cycle
+    sps = all_of(d, "search_point")
+    if len(sps) >= 2:
+        for i, sp in enumerate(sps):
+            nxt = sps[(i+1) % len(sps)]
+            sp["ref"] = [{"id": nxt.get("id"), "element": "search_point"}]
+    # calc cycle: two measures referencing each other
+    s = first_of(d, "sig360_circle_line")
+    if s is not None:
+        a_id, b_id = 61001, 61002
+        s["features"].append({
+            "type": "measure", "id": a_id, "subtype": "calc",
+            "ref": [{"id": b_id}],
+            "calc_f": {"exp": "", "post_exp": [f"[{b_id}]", "1.0", "+"]},
+        })
+        s["features"].append({
+            "type": "measure", "id": b_id, "subtype": "calc",
+            "ref": [{"id": a_id}],
+            "calc_f": {"exp": "", "post_exp": [f"[{a_id}]", "1.0", "+"]},
+        })
+    # caliper huge
+    t = first_of(d, "line")
+    if t is not None:
+        t["caliper"] = {"count": 99999}
+    return d
+
+def mk_combo_circleinfo_chain_aux_to_line():
+    # circle_info judge with ref-chain that walks measure->aux_point->aux_line->line
+    # (cross-type ref at multiple hops; engine should NA gracefully)
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is None: return d
+    t = first_of(d, "line")
+    if t is None: return d
+    line_id = t.get("id", 1)
+    al_id, ap_id, ci_id = 70001, 70002, 70003
+    s["features"].append({
+        "type": "aux_line", "id": al_id, "subtype": "twoPoint",
+        "pt1": {"x": 0, "y": 0}, "pt2": {"x": 1, "y": 1},
+        "ref": [{"id": line_id, "element": "line"}],
+    })
+    s["features"].append({
+        "type": "aux_point", "id": ap_id, "subtype": "lineCross",
+        "ref": [{"id": al_id, "element": "aux_line"},
+                {"id": line_id, "element": "line"}],
+    })
+    s["features"].append({
+        "type": "measure", "id": ci_id, "name": "ci_chain",
+        "subtype": "circle_info", "info_type": "center_x",
+        "ref": [{"id": ap_id, "element": "aux_point"}],
+    })
+    return d
+
+
+CASES += [
+    case("combo_caliper_circleinfo_spcycle",     "robust", make=mk_combo_caliper_circleinfo_spcycle),
+    case("combo_calc_chain_to_circleinfo_line",  "robust", make=mk_combo_calc_chain_to_circleinfo_on_line),
+    case("combo_multi_controlled_rejects",       "robust", make=mk_combo_multi_controlled_rejects),
+    case("combo_deep_valid_dag_fanin50",         "robust", make=mk_combo_deep_valid_dag_fanin_via_auxchain),
+    case("combo_all_crash_classes_simul",        "robust", make=mk_combo_all_crash_classes_simultaneous),
+    case("combo_calcself_caliper_circleinfo",    "robust", make=mk_combo_calc_self_ref_caliper_circleinfo),
+    case("combo_spcycle_calccycle_caliper",      "robust", make=mk_combo_sp_cycle_calc_cycle_caliper),
+    case("combo_circleinfo_chain_aux_to_line",   "robust", make=mk_combo_circleinfo_chain_aux_to_line),
+]
+
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_parse", CASES))
