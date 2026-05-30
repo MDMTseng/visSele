@@ -159,12 +159,10 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   vector<FeatureReport_sig360_circle_line_single> reportDataPool;
   vector<FeatureReport_sig360_circle_line_single> reports;
 
-  acvImage *p_cropImg;
-  acvImage _cropImg;
+  cv::Mat p_cropImg_cv;       // currently labeled-image or original-image view
   acv_XY cropOffset;
   // labeled image + this object's label idx, kept so search_point_cv can mask out
   // background (dilated object label) and not lock onto background specks/dust.
-  acvImage *m_labeledImg = nullptr;
   int m_objLabel = -1;
 
 

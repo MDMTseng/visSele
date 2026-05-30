@@ -3955,7 +3955,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
   vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
   vector<FeatureReport_judgeReport> &judgeReports = *singleReport.judgeReports;
 
-  cv::Mat _eT_cv = acvImageBgrView(p_cropImg);
+  cv::Mat _eT_cv = p_cropImg_cv;
   edgeTracking eT(_eT_cv, cropOffset, bacpac);
   // acvDrawCrossX(originalImage,
   //   calibCen.X, calibCen.Y,
@@ -4104,7 +4104,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     return -30;
   }
 
-  contourGridGrayLevelRefine(acvImageBgrView(p_cropImg), edge_grid, bacpac);
+  contourGridGrayLevelRefine(p_cropImg_cv, edge_grid, bacpac);
 
   // for(int i=0;i<edge_grid.contourSections.size();i++)
   // {
@@ -4543,12 +4543,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
   // after acvComponentLabeling_cv). originalImage was independently set via
   // setOriginalImage(cv::Mat&) to the SOURCE image and is used by the body's
   // grayscale samplers (caliper / search_point_cv / edgeTracking).
-  acvImage _img_shim;
-  _img_shim.useExtBuffer(img_cv.data,
-                         (int)(img_cv.total() * img_cv.elemSize()),
-                         img_cv.cols, img_cv.rows);
-  acvImage *img = &_img_shim;
-
   report.bacpac = bacpac;
   float ppmm = 1 / bacpac->sampler->mmpP_ideal();
   ; //pixel per mm
@@ -4556,7 +4550,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
   vector<acv_LabeledData> &ldData = *this->_ldData;
   int grid_size = 50;
   bool drawDBG_IMG = false;
-  acvImage *labeledBuff = img;
+  cv::Mat &labeledBuff_cv = img_cv;
   //acvImage *smoothedImg = &buff2;
   //acvCloneImage( img,buff_, -1);
   //acvCloneImage(img, labeledBuff, -1);
@@ -4666,10 +4660,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     }
 
     LOGI("ldData[%d].area=%d",i,ldData[i].area);
-    p_cropImg=labeledBuff;
+    p_cropImg_cv = labeledBuff_cv;
     cropOffset.X=0;
     cropOffset.Y=0;
-    m_labeledImg = labeledBuff;   // full labeled image; this object's pixels == label i
     m_objLabel = i;
     acv_LabeledData curLableDat=(acv_LabeledData){
       .LTBound=acvVecSub(ldData[i].LTBound,cropOffset),
@@ -4678,7 +4671,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
       .area= ldData[i].area,
     };
     edge_grid.RESET();
-    cv::Mat _crop_cv = acvImageBgrView(p_cropImg);
+    cv::Mat _crop_cv = p_cropImg_cv;
     int contGridRet=extractLabeledContourDataToContourGrid(_crop_cv, i, curLableDat, edge_grid, scanline_skip);
     // edge_grid.ptMult(dsampLevel/2);
     if(contGridRet!=0)
@@ -4687,7 +4680,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
       continue;
     }
 
-    p_cropImg=originalImage;
+    p_cropImg_cv = acvImageBgrView(originalImage);
 
 
     
