@@ -108,13 +108,36 @@ Phase 3a — `binary_processing_group` entry-point cv-clean. Done:
 - wiringPanel members: image_pipe_info::img and the static test1_buff are cv::Mat;
   BPG class members tmp_buff/cacheImage/dataSend_buff are cv::Mat.
 
-Phase 3a (post-2026-05-31 update): sig360_circle_line entry flipped to
-cv::Mat&; graySampleBilinear and convertGrayEdges2Signature migrated;
-dead helpers (searchP, OTSU_Threshold) + dead `doCropStyle` branch +
-dead SingleMatching acv params deleted. Remaining sig360 body still
-calls MatchingCore.cpp helpers (extractLabeledContourDataToContourGrid,
-edgeTracking ctor, contourGridGrayLevelRefine) which take acvImage*;
-those are the gate-exercised acvImage consumers blocking the unlink.
+Phase 3a deep sweep update: gate-exercised path is now cv-native end-to-end.
+- MatchingCore: contour-extraction chain (acvContourExtraction + cvContourWalk),
+  extractLabeledContourDataToContourGrid, pointSobel, contourGridGrayLevelRefine,
+  ContourFilter all take cv::Mat. EdgePointOpt/_/2, refineEdgeInfo, dead extract*
+  fns and the dead `if(0)` originalImage acvDrawLine deleted.
+- edgeTracking ctor takes cv::Mat&; contourPixExtraction/pixFetch use _gray_cv
+  directly; getImageCv() hands cv::Mat to callers.
+- Caliper.cpp (caliper_measure, search_point_scan, caliper_locate_line/circle):
+  cv::Mat& gray + cvUnsignedMap1Sampling. SearchPointCV.cpp (search_point_cv,
+  isObjectPx, labelAt): cv::Mat&.
+- binary_processing.originalImage is now cv::Mat originalImage_cv (no acvImage
+  shim member); setOriginalImage takes cv::Mat&.
+- sig360: _img_shim / labeledBuff acvImage* drop out; p_cropImg is cv::Mat;
+  search_point_cv / caliper_locate_* receive cv::Mat (no acvImage round-trips).
+- wiringPanel SNAP_Callback + getImage cv::Mat-native; ImageDownSampling
+  cv::Mat-native (ImageSampler grew cv::Mat sample overloads in common_lib).
+  Dead acv ImageDownSampling, transpose helpers, #if 0 MJPEG block, and the
+  acvImage_BasicTool include all removed.
+
+Remaining blockers to unlinking acvImage from CMakeLists:
+- FeatureManager base still owns `acvImage _buff` (used by FM_platingCheck) and
+  `FeatureMatching(acvImage*)` virtual default (with cv::Mat -> acvImage
+  shim) -- keeps the class transitively reachable.
+- FM_platingCheck + FM_stage_light_report bodies use acvBoxFilter, RGBToGray,
+  acvCloneImage, sobelSpread, imageDownScale, backLight* helpers. Both
+  unexercised by gate (Q7 risk).
+- ImageSampler acvImage* overloads still defined (gated by Q2 — defer to 3b).
+- LabelingCV acvImage* overloads (legitimate bridge for the FM_platingCheck/
+  stage_light_report path).
+- CvBridge acvImage<->cv::Mat shim API itself.
 
 Phase 3a status:
 - BPG class image members (`tmp_buff`/`cacheImage`/`dataSend_buff`) → `cv::Mat`.
