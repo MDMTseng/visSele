@@ -303,7 +303,16 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     else if (useAdaptiveThres && !bgThreshMap.empty())
       acvThresholdMap(&binary_img, img, bgThreshMap.data(), bgMapW, bgMapH, 0);
     else
-      acvThreshold(&binary_img,img, briThres, 0);
+    {
+      // Migrated acvThreshold -> cv::threshold via zero-copy views.
+      // acvThreshold uses strict `>` and writes 0/255 -- matches THRESH_BINARY.
+      // For grayscale-replicated BGR images (the case here), the per-channel
+      // cv::threshold on a 3-channel view produces identical pixels to the
+      // single-channel-driven acv loop.
+      cv::Mat _srcV = acvImageBgrView(img);
+      cv::Mat _dstV = acvImageBgrView(&binary_img);
+      cv::threshold(_srcV, _dstV, (double)briThres, 255.0, cv::THRESH_BINARY);
+    }
 
     int downScaleF=1;//
     acvImage *lableImg=&ds_binary_img;
