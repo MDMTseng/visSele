@@ -90,7 +90,7 @@ class FeatureManager_group:public FeatureManager_group_proto {
 
 public :
   FeatureManager_group(const char *json_str);
-  int FeatureMatching(acvImage *img) override;
+  int FeatureMatching(cv::Mat &img) override;
   static const char* GetFeatureTypeName(){return "group";};
 protected:
   int addSubFeature(cJSON * subFeature) override;

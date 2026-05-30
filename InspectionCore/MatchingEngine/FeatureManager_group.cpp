@@ -570,11 +570,10 @@ int FeatureManager_group::addSubFeature(cJSON * subFeature)
 }
 
 
-int FeatureManager_group::FeatureMatching(acvImage *img)
+int FeatureManager_group::FeatureMatching(cv::Mat &img)
 {
   for(int i=0;i<featureBundle.size();i++)
   {
-    //featureBundle[i]->param;
     featureBundle[i]->setBacPac(bacpac);
     featureBundle[i]->FeatureMatching(img);
   }
