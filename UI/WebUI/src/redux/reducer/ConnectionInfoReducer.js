@@ -2,7 +2,6 @@ import * as logX from 'loglevel';
 import { UI_SM_EVENT } from 'REDUX_STORE_SRC/actions/UIAct';
 let UISEV = UI_SM_EVENT;
 
-import JSum from 'jsum'
 import {GetObjElement} from 'UTIL/MISC_Util';
 
 let DefFile_DB_W_ID="DefFile_DB_W_ID";
@@ -118,19 +117,6 @@ let StateReducer = (state, action) => {
     }
 
 
-    case UISEV.Core_Camera_Status_Update:
-
-      let oldCamJsum=undefined;
-      if(status.CAMERA_CONN_INFO!==undefined)
-      {
-        oldCamJsum=JSum.digest(status.CAMERA_CONN_INFO, 'SHA256', 'hex');
-      }
-      let newCamJsum=JSum.digest(action.data, 'SHA256', 'hex');
-      if(oldCamJsum==newCamJsum)
-      {
-        return state;//no change required
-      }
-      return {...state,CAMERA_CONN_INFO:action.data};
   }
   // logX.info(action)
   return state;

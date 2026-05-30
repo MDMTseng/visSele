@@ -438,8 +438,12 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       } });
   }
 
-  let InspectionMonitor_URL_overvall=_mus.inspection_monitor_url;
-  let InspectionMonitor_URL_w_info=_mus.inspection_monitor_url;
+  // inspection_monitor_url comes from the core (machine_custom_setting). encodeURI
+  // does NOT strip `javascript:` / `data:` schemes — so a malicious core could
+  // make window.open() execute. Allow only http(s)/ws(s); anything else → ignore.
+  const _safeMonitorScheme = (u) => typeof u === 'string' && /^(https?|wss?):/i.test(u);
+  let InspectionMonitor_URL_overvall = _safeMonitorScheme(_mus.inspection_monitor_url) ? _mus.inspection_monitor_url : undefined;
+  let InspectionMonitor_URL_w_info   = InspectionMonitor_URL_overvall;
   if (InspectionMonitor_URL_overvall!==undefined && isString(DefFileHash) && DefFileHash.length > 5) {
 
     if(InspectionMonitor_URL_overvall.includes("?")==false)
@@ -450,7 +454,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
 
     InspectionMonitor_URL_w_info= InspectionMonitor_URL_overvall + "&search_name=" + DefFileName;
-    
+
     InspectionMonitor_URL_overvall = encodeURI(InspectionMonitor_URL_overvall);
     InspectionMonitor_URL_w_info = encodeURI(InspectionMonitor_URL_w_info);
   }

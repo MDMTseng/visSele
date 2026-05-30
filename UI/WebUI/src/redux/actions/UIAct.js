@@ -85,7 +85,6 @@ export const UI_SM_EVENT = {
   EXIT:"EXIT",
   ERROR:"ERROR",
 
-  Core_Camera_Status_Update:"Core_Camera_Status_Update",
   machine_custom_setting_Update:"machine_custom_setting_Update",
   Def_Model_Path_Update:"Def_Model_Path_Update",
 
