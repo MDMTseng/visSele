@@ -55,4 +55,29 @@ void cvCloneImage(const cv::Mat &src, cv::Mat &dst, int mode);
 void cvThresholdMap(cv::Mat &dst, const cv::Mat &src,
                     const float *threshMap, int mapW, int mapH, int channel);
 
+// cv::Mat-native bilinear sampler. Equivalent to acvUnsignedMap1Sampling on a
+// BGR (CV_8UC3) image: returns the float-valued bilinear interpolation of the
+// requested channel at (XY.X, XY.Y); NaN if out of bounds (X<0 or Y<0 or
+// X+1 > cols-1 or Y+1 > rows-1).
+inline float cvUnsignedMap1Sampling(const cv::Mat &m, float x, float y, int channel)
+{
+    int rX = (int)(x);
+    int rY = (int)(y);
+    float resX = x - rX;
+    float resY = y - rY;
+    if (rX < 0 || rY < 0 || rX + 1 > m.cols - 1 || rY + 1 > m.rows - 1)
+        return std::nan("");
+    const int ch = m.channels();
+    const uint8_t *r0 = m.ptr<uint8_t>(rY);
+    const uint8_t *r1 = m.ptr<uint8_t>(rY + 1);
+    float c00 = r0[rX * ch + channel];
+    float c01 = r0[(rX + 1) * ch + channel];
+    float c10 = r1[rX * ch + channel];
+    float c11 = r1[(rX + 1) * ch + channel];
+    c00 += resX * (c01 - c00);
+    c10 += resX * (c11 - c10);
+    c00 += resY * (c10 - c00);
+    return c00;
+}
+
 #endif // CV_BRIDGE_H
