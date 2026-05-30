@@ -86,6 +86,56 @@ is recorded here so it's ready when that arrives.
 5. **No `nan`/`inf` tokens** in any output JSON (regex check in
    `qa_imgstress._check_against_golden`).
 
+## Current status (2026-05-30)
+
+Phase 3a in progress. Done:
+- BPG class image members (`tmp_buff`/`cacheImage`/`dataSend_buff`) → `cv::Mat`.
+- `image_pipe_info::img` (per-pipe captured frame) → `cv::Mat`; camera
+  `ExtractFrame` writes into `Mat.data` after `create(H,W,CV_8UC3)`.
+- Static downsample buffer `test1_buff` in `InspResultAction_s` → `cv::Mat`;
+  `ImageDownSampling(cv::Mat&, const cv::Mat&)` overload added.
+- `SEND_acvImage` consumes `cv::Mat*` via `BPG_protocol_data_acvImage_Send_info::img`.
+- `MatchingEngine::FeatureMatching(cv::Mat&)` overload and base-class default
+  bridge already in place.
+- `loadImageCv`, `acvImageBgrView` primitives in `CvBridge` are the shim layer.
+
+Not done — what blocks unlinking `acvImage`:
+1. **`MatchingEngine` interface flip** (FeatureManager.h pure-virtual is still
+   `FeatureMatching(acvImage*)`). 24 overrides. Strategy: per-class, keep
+   `acvImage*` as a 3-line shim wrapper and implement the body in the
+   `cv::Mat&` override; flip the pure-virtual once all 24 are converted.
+2. **`MatchingEngine` heavy users** with `CVector`/`ReSize` pixel loops:
+   `FM_camera_calibration.cpp` (12 refs/18 calls), `FeatureManager_platingCheck.cpp`
+   (14/14), `FeatureManager_gen.cpp` (26/8 — but pixel access is delegated to
+   `acvUnsignedMap1Sampling`, so cv::getRectSubPix may be a drop-in),
+   `FeatureManager_group.cpp` (15/13), `FeatureManager_sig360_circle_line.cpp` (13/9).
+3. **`common_lib/ImageSampler`** — 4 `acvImage*` overloads in
+   `include/ImageSampler.h`. Wraps `acv_XY` + pixel fetch. Phase 3b
+   (`acv_XY` removal) and 3a converge here.
+4. **`Core0_1/wiringPanel.cpp` remaining refs** (~45): `SNAP_Callback` (camera
+   side still acvImage*), `ImgInspection_JSONStr`/`ImgInspection_DefRead` entry
+   points, `saveInspectionSample(acvImage*)` bridge, `transpose(acvImage*,..)`,
+   `getImage(CameraLayer*, acvImage*)`. Most are shim-thin; SNAP_Callback needs
+   CameraLayer to grow a cv::Mat hookup.
+5. **CMakeLists.txt** — `common_lib`, `CameraLayer`, `MatchingEngine` all
+   `PUBLIC` link `acvImage`. Drop only after (1)-(4).
+
+Recommended next 3 commits:
+1. Flip FeatureManager interface — keep both signatures non-pure with mutual
+   bridges (cv::Mat ↔ acvImage via `acvImageBgrView`/`useExtBuffer`). Use a
+   thread-local re-entry guard to abort on "neither overridden". Existing 24
+   overrides keep working unchanged.
+2. Migrate the 5 heavy MatchingEngine FMs: implement `FeatureMatching(cv::Mat&)`
+   bodies natively; reduce the `acvImage*` override to a `cv::Mat view =
+   acvImageBgrView(img); return FeatureMatching(view);` shim.
+3. `common_lib/ImageSampler` cv::Mat overloads + `CameraLayer` cv::Mat extract +
+   wiringPanel `SNAP_Callback`/`getImage` migration.
+
+After that: delete the `acvImage*` overrides from every FM, mark the base
+acvImage entry pure-virtual gone, drop acvImage from `target_link_libraries` in
+CMakeLists. (Compile must stay green at each step with `migration_gate` +
+`daemon_smoke` + `suite` validation.)
+
 ## What NOT to migrate (yet)
 
 - The acv types live in the **report struct definitions** (`include/FeatureReport.h`).
