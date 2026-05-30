@@ -3438,72 +3438,6 @@ int ImgInspection_JSONStr(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime,
   return 0;
 }
 
-float acvImageDiff(acvImage *img1, acvImage *img2, float *ret_max_diff, int skipSampling)
-{
-  if (skipSampling < 1)
-    skipSampling = 1;
-  uint64_t diffSum = 0;
-  int diffMax = 0;
-  int count = 0;
-  for (int i = 0; i < img1->GetHeight(); i += skipSampling)
-  {
-    for (int j = 0; j < img1->GetWidth(); j += skipSampling)
-    {
-      count++;
-      int diff = img1->CVector[i][3 * j] - img2->CVector[i][3 * j];
-      diff *= diff;
-      diffSum += diff;
-      if (diffMax < diff)
-      {
-        diffMax = diff;
-      }
-    }
-  }
-  if (ret_max_diff)
-    *ret_max_diff = sqrt(diffMax);
-  return sqrt((float)diffSum / (count));
-}
-
-void acvImageAve(acvImage *imgStackRes, acvImage *imgStack, int stackingN)
-{
-  for (int i = 0; i < imgStackRes->GetHeight(); i++)
-  {
-    for (int j = 0; j < imgStackRes->GetWidth(); j++)
-    {
-      int pixSum = 0;
-      for (int k = 0; k < stackingN; k++)
-      {
-        pixSum += imgStack[k].CVector[i][3 * j];
-      }
-      imgStackRes->CVector[i][3 * j] =
-          imgStackRes->CVector[i][3 * j + 1] =
-              imgStackRes->CVector[i][3 * j + 2] = pixSum / stackingN;
-    }
-  }
-}
-
-void acvImageBlendIn(acvImage *imgOut, int *imgSArr, acvImage *imgB, int Num)
-{
-  for (int i = 0; i < imgOut->GetHeight(); i++)
-  {
-    for (int j = 0; j < imgOut->GetWidth(); j++)
-    {
-      int *pixSum = &(imgSArr[i * imgOut->GetWidth() + j]);
-      if (Num == 0)
-      {
-        *pixSum = imgB->CVector[i][3 * j];
-      }
-      else
-      {
-        *pixSum += imgB->CVector[i][3 * j];
-      }
-      imgOut->CVector[i][3 * j] =
-          imgOut->CVector[i][3 * j + 1] =
-              imgOut->CVector[i][3 * j + 2] = (*pixSum / (Num + 1));
-    }
-  }
-}
-
 int InspStatusReducer(int total_status, int new_status)
 {
   if (total_status == FeatureReport_sig360_circle_line_single::STATUS_UNSET)
@@ -4926,14 +4860,15 @@ int simpleTest(char *imgName, char *defName)
 {
   //return testGIGE();;
 
-  acvImage newImg;
-  int ret = LoadIMGFile(&newImg, imgName);
+  cv::Mat newImg = cv::imread(imgName, cv::IMREAD_COLOR);
+  int ret = newImg.empty() ? -1 : 0;
   if (ret)
   {
     LOGE("LoadBMP failed: ret:%d", ret);
     return -1;
   }
-  ImgInspection_DefRead(matchingEng, &newImg, 1, defName, &calib_bacpac);
+  if (!newImg.isContinuous()) newImg = newImg.clone();
+  ImgInspection_DefRead(matchingEng, newImg, 1, defName, &calib_bacpac);
 
   const FeatureReport *report = matchingEng.GetReport();
 
@@ -5066,10 +5001,10 @@ int testCode()
     matchingEng.ResetFeature();
     matchingEng.AddMatchingFeature(string);
 
-    acvImage bw_img;
-    ret = LoadIMGFile(&bw_img, "data/gen_TEST/B.BMP");
-
-    ret = ImgInspection(matchingEng, &bw_img, &calib_bacpac, calib_bacpac.cam, 1);
+    cv::Mat bw_img = cv::imread("data/gen_TEST/B.BMP", cv::IMREAD_COLOR);
+    if (!bw_img.isContinuous()) bw_img = bw_img.clone();
+    ret = bw_img.empty() ? -1 : 0;
+    ret = ImgInspection(matchingEng, bw_img, &calib_bacpac, calib_bacpac.cam, 1);
     const FeatureReport *report = matchingEng.GetReport();
     delete (string);
 
@@ -5313,12 +5248,10 @@ int cp_main(int argc, char **argv)
   if (0)
   {
 
-    acvImage calibImage;
-    acvImage test_buff;
-    int ret_val = LoadIMGFile(&calibImage, "data/calibImg.BMP");
-    if (ret_val != 0)
-      return -1;
-    ImgInspection_DefRead(matchingEng, &calibImage, 1, "data/cameraCalibration.json", &calib_bacpac);
+    cv::Mat calibImage = cv::imread("data/calibImg.BMP", cv::IMREAD_COLOR);
+    if (calibImage.empty()) return -1;
+    if (!calibImage.isContinuous()) calibImage = calibImage.clone();
+    ImgInspection_DefRead(matchingEng, calibImage, 1, "data/cameraCalibration.json", &calib_bacpac);
 
     const FeatureReport *report = matchingEng.GetReport();
 
