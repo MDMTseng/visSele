@@ -2054,6 +2054,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         char *imgSrcPath = (char *)JFetch(json, "imgsrc", cJSON_String);
         LOGI("Load Image from %s", imgSrcPath);
         acvImage *srcImg = NULL;
+        // acv -> cv migration: this cv::Mat owns the pixels when the imgsrc is
+        // a file path (the shared loadImageCv primitive binds tmp_buff to it
+        // via useExtBuffer).  Lives until the end of this do/while so that
+        // tmp_buff -> srcImg stays valid for downstream processing.
+        cv::Mat _ii_loaded;
 
         if (imgSrcPath != NULL)
         {
@@ -2073,8 +2078,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           }
           else
           {
-            int ret_val = LoadIMGFile(&tmp_buff, imgSrcPath);
-            if (ret_val == 0)
+            // Validated loader primitive (gated by --insp tests + daemon_smoke).
+            if (loadImageCv(imgSrcPath, _ii_loaded, tmp_buff) == 0)
               srcImg = &tmp_buff;
           }
         }
