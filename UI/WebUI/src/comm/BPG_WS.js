@@ -57,26 +57,39 @@ function urlConcat(base, add) {
       connect(info)
       {
         let url = info.url;
-        console.log(">>>>",info);
+        const peerId = this.comp.props.CORE_ID;
+        log.info("[ws] connect", { peer: peerId, url });
+        if (this._reconnectCount === undefined) this._reconnectCount = 0;
         this.websocket=new WebSocket(url);
 
-        this.websocket.binaryType ="arraybuffer"; 
+        this.websocket.binaryType ="arraybuffer";
 
         this.websocket.onopen=(ev)=>{
+          log.info("[ws] open", { peer: peerId, url, reconnects: this._reconnectCount });
         }
         this.websocket.onclose=(ev)=>{
           this.isConnected=false;
-          console.log("CLOSE::",ev);
+          // 1006 = abnormal closure (no close frame from peer — typically network
+          // drop or process kill); call out separately since it's the dominant
+          // factory failure mode and the only one with no `reason` payload.
+          const code = ev && ev.code;
+          const meta = { peer: peerId, url, code, reason: ev && ev.reason, reconnects: this._reconnectCount };
+          if (code === 1006) log.warn("[ws] close 1006 (abnormal)", meta);
+          else log.info("[ws] close", meta);
           this.store.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
-          
+
           this.store.dispatch({type:"WS_DISCONNECTED",id:this.comp.props.CORE_ID,data:undefined});
           setTimeout(() => {
+            this._reconnectCount = (this._reconnectCount || 0) + 1;
+            log.info("[ws] reconnect attempt", { peer: peerId, url, attempt: this._reconnectCount });
             this.comp.props.ACT_WS_CONNECT(this.comp.props.CORE_ID, url);
           }, 10*1000);
         }
-        
+
         this.websocket.onerror=(er)=>{
-          console.log("ERROR::",er);
+          // er is a generic Event for security (browsers don't expose details);
+          // just note that it fired — onclose will follow with the code.
+          log.warn("[ws] error event", { peer: peerId, url });
         }
         this.websocket.onmessage=(ev)=>{
           this.onmessage(ev);
