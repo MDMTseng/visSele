@@ -4,24 +4,24 @@
 import Color from 'color';
 import { LineCentralNormal } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
+import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
 
 export const type = 'line';
 
-// applyDefaults: PURE — may return the input untouched or a shallow clone with
-// missing fields filled. Mirrors the legacy Shape_Attr_Fill behavior verbatim.
-// Editor property-sheet schema slice for line — merged with the base schema
-// (type/subtype/name/margin) by the dispatcher. ctx provides renderMethods.
+// Single source for both editor schema and applyDefaults.
+// caliper locating mode: "contour" (legacy) | "caliper". Core treats anything
+// != "caliper" as contour, so normalize keeps the dropdown value sane.
+export const fields = {
+  vertex_touch_searching: { editor: 'switch', default: false, normalize: (v) => v === true },
+  locating: {
+    editor: (ctx) => ({ __OBJ__: ctx.renderMethods.Dropdown_List, list: ['contour', 'caliper'] }),
+    default: 'contour',
+    normalize: (v) => (v === 'caliper' ? 'caliper' : 'contour'),
+  },
+};
+
 export function buildWhiteListKey(ctx) {
-  return {
-    vertex_touch_searching: 'switch',
-    // caliper locating mode: "contour" (legacy) | "caliper". Core treats
-    // anything != "caliper" as contour. Caliper uses sane defaults unless
-    // a def overrides.
-    locating: {
-      __OBJ__: ctx.renderMethods.Dropdown_List,
-      list: ['contour', 'caliper'],
-    },
-  };
+  return buildWhiteListKeyFromFields(fields, ctx);
 }
 
 // canvasCtrl: what shapes are valid refs when creating/editing a line. Lines
@@ -39,12 +39,7 @@ export function fitCameraCenter(shape /*, db_obj */) {
 }
 
 export function applyDefaults(shape) {
-  let out = { ...shape };
-  if (out.vertex_touch_searching !== true) out.vertex_touch_searching = false;
-  // caliper locating mode: "contour" (legacy) | "caliper". Normalize so the
-  // dropdown always has a string; core treats anything != "caliper" as contour.
-  if (out.locating !== 'caliper') out.locating = 'contour';
-  return out;
+  return applyDefaultsFromFields(shape, fields);
 }
 
 // Draw a line in the editor canvas. Extracted verbatim from renderUTIL.js

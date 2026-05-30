@@ -2,16 +2,26 @@
 // See shapes/line.js for the pattern + rationale.
 import Color from 'color';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
+import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
 
 export const type = 'search_point';
 
-// Editor property-sheet schema slice for search_point.
+// search_far has a migration shim: legacy defs used `search_style` (0/1) before
+// the boolean; preserve that mapping when the field is missing. The schema's
+// `default` only fires when `derive` doesn't produce a value.
+export const fields = {
+  angleDeg:         { editor: 'AngleRangeSetup' },
+  search_far:       {
+    editor: 'switch',
+    default: false,
+    derive: (shape) => (shape.search_style !== undefined ? shape.search_style == 1 : undefined),
+  },
+  locating_anchor:  { editor: 'switch', default: false, normalize: (v) => v === true },
+  line_thickness_value: { skipEditor: true, default: 0, normalize: (v) => (typeof v === 'number' ? v : 0) },
+};
+
 export function buildWhiteListKey(ctx) {
-  return {
-    angleDeg: 'AngleRangeSetup',
-    search_far: 'switch',
-    locating_anchor: 'switch',
-  };
+  return buildWhiteListKeyFromFields(fields, ctx);
 }
 
 // canvasCtrl: search_point refs only a line (ref[0]).
@@ -25,17 +35,7 @@ export function fitCameraCenter(shape /*, db_obj */) {
 }
 
 export function applyDefaults(shape) {
-  let out = { ...shape };
-  if (out.search_far === undefined) {
-    if (out.search_style === undefined) {
-      out.search_far = false;
-    } else {
-      out.search_far = (out.search_style == 1) ? true : false;
-    }
-  }
-  if (out.locating_anchor != true) out.locating_anchor = false;
-  if (typeof out.line_thickness_value != 'number') out.line_thickness_value = 0;
-  return out;
+  return applyDefaultsFromFields(shape, fields);
 }
 
 // Draw a search_point — extracted verbatim from renderUTIL.case SHAPE_TYPE.search_point.

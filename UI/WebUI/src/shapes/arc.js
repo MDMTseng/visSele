@@ -3,18 +3,21 @@
 import Color from 'color';
 import { threePointToArc } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
+import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
 
 export const type = 'arc';
 
-// Editor property-sheet schema slice for arc — merged with the base by the dispatcher.
+export const fields = {
+  direction: { editor: 'switch' },
+  locating: {
+    editor: (ctx) => ({ __OBJ__: ctx.renderMethods.Dropdown_List, list: ['contour', 'caliper'] }),
+    default: 'contour',
+    normalize: (v) => (v === 'caliper' ? 'caliper' : 'contour'),
+  },
+};
+
 export function buildWhiteListKey(ctx) {
-  return {
-    direction: 'switch',
-    locating: {
-      __OBJ__: ctx.renderMethods.Dropdown_List,
-      list: ['contour', 'caliper'],
-    },
-  };
+  return buildWhiteListKeyFromFields(fields, ctx);
 }
 
 // canvasCtrl: no refs — arc is constructed from raw pt1/pt2/pt3.
@@ -33,9 +36,7 @@ export function fitCameraCenter(shape /*, db_obj */) {
 }
 
 export function applyDefaults(shape) {
-  let out = { ...shape };
-  if (out.locating !== 'caliper') out.locating = 'contour';
-  return out;
+  return applyDefaultsFromFields(shape, fields);
 }
 
 // Draw an arc — extracted verbatim from renderUTIL.drawShapeList.case SHAPE_TYPE.arc.
