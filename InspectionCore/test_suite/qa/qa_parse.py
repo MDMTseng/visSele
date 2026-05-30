@@ -1228,5 +1228,151 @@ CASES += [
 ]
 
 
+# ===== ROUND 10: final torture — combined cycles, embedded BOM, NaN-string sig data =====
+
+def mk_empty_pt1_object():
+    # pt1 present but {} (empty object) rather than missing or wrong-typed
+    d = golden(); t = first_of(d, "line")
+    if t is not None:
+        t["pt1"] = {}
+        t["pt2"] = {}
+    return d
+
+def mk_embedded_bom_midstring():
+    # UTF-8 BOM bytes embedded mid-string across multiple text fields
+    d = golden()
+    BOM = "﻿"
+    t = first_of(d, "line")
+    if t is not None:
+        t["name"] = f"abc{BOM}def{BOM}{BOM}ghi"
+        t["tag"]  = f"{BOM}{BOM}{BOM}"
+    s = first_of(d, "sign360")
+    if s is not None:
+        s["name"] = f"sig{BOM}name{BOM}with{BOM}boms"
+    sp = first_of(d, "search_point")
+    if sp is not None:
+        sp["name"] = f"{BOM}sp{BOM}"
+    return d
+
+def mk_triple_cycle_all_at_once():
+    # Combine: search_point cycle + measure-calc cycle + aux cycle on one def
+    d = golden()
+    # 1) search_point cycle
+    sps = all_of(d, "search_point")
+    if len(sps) >= 2:
+        for i, s in enumerate(sps):
+            nxt = sps[(i+1) % len(sps)]
+            s["ref"] = [{"id": nxt.get("id"), "element": "search_point"}]
+    # 2) measure calc self-cycle
+    m = first_of(d, "measure")
+    if m is not None:
+        mid = m.get("id", 12)
+        m["subtype"] = "calc"
+        m["ref"] = [{"id": mid}]
+        m["calc_f"] = {"exp": "", "post_exp": [f"[{mid}]", f"[{mid}]", "+"]}
+    # 3) aux cycle
+    ap = first_of(d, "aux_point"); al = first_of(d, "aux_line")
+    if ap and al:
+        ap["ref"] = [{"id": al.get("id"), "element": "aux_line"}]
+        al["ref"] = [{"id": ap.get("id"), "element": "aux_point"}]
+    return d
+
+def mk_sign360_sigdata_nan_string_entries():
+    # signature_data array containing NaN-as-string and Inf-as-string entries
+    d = golden(); s = first_of(d, "sign360")
+    if s is not None:
+        s["signature"] = {"signature_data": [
+            1.0, "NaN", 2.0, "Infinity", 3.0, "-Infinity", "nan", "+inf", 4.0
+        ] * 50}
+    return d
+
+def mk_huge_valid_def_with_malformed_subdefs():
+    # Large but mostly valid def replicated, intermixed with malformed sub-feats
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is None: return d
+    feats = s["features"]
+    base = 90000
+    add = []
+    for i in range(2000):
+        if i % 7 == 0:
+            # valid line
+            add.append({"type": "line", "id": base + i,
+                        "pt1": {"x": float(i), "y": 0.0},
+                        "pt2": {"x": float(i+1), "y": 1.0}})
+        elif i % 7 == 1:
+            # valid measure calc
+            add.append({"type": "measure", "id": base + i,
+                        "subtype": "calc", "ref": [{"id": base + i}],
+                        "calc_f": {"exp": "", "post_exp": ["1.0", "2.0", "+"]}})
+        elif i % 7 == 2:
+            # malformed: pt1 is empty object
+            add.append({"type": "line", "id": base + i,
+                        "pt1": {}, "pt2": {"x": 1, "y": 1}})
+        elif i % 7 == 3:
+            # malformed: unknown type
+            add.append({"type": f"junk_{i}", "id": base + i})
+        elif i % 7 == 4:
+            # malformed: dangling ref
+            add.append({"type": "search_point", "id": base + i,
+                        "ref": [{"id": 9999999, "element": "line"}],
+                        "pt1": {"x": 0, "y": 0}, "pt2": {"x": 1, "y": 1},
+                        "margin": 5, "width": 3})
+        elif i % 7 == 5:
+            # malformed: scalar feature
+            add.append(i)
+        else:
+            # valid arc-ish
+            add.append({"type": "arc", "id": base + i,
+                        "pt1": {"x": 0, "y": 0}, "pt2": {"x": 5, "y": 5},
+                        "pt3": {"x": 10, "y": 0}})
+    s["features"] = feats + add
+    return d
+
+def mk_pt_object_only_extra_keys():
+    # pt1 object lacking x and y, but populated with bogus sibling keys
+    d = golden(); t = first_of(d, "line")
+    if t is not None:
+        t["pt1"] = {"foo": 1, "bar": "baz", "X": 9.0, "Y": 8.0}  # capitalization wrong
+        t["pt2"] = {"xx": 0, "yy": 0}
+    return d
+
+def mk_bom_truncated_combo():
+    # mk_embedded_bom_midstring + truncation of features list mid-feature
+    d = mk_embedded_bom_midstring()
+    s = first_of(d, "sig360_circle_line")
+    if s is not None and isinstance(s.get("features"), list) and len(s["features"]) > 3:
+        # leave only the BOM-corrupted ones + half-malformed entries
+        s["features"] = s["features"][:3] + [{"type": "line", "id": 5,
+                                              "pt1": {}, "name": "﻿x﻿"}]
+    return d
+
+# raw: a huge mix — BOM + NaN literals + dup keys + huge string + cycle ref
+RAW_TORTURE_COMBO = (
+    "﻿" +
+    '{"type":"binary_processing_group","featureSet":'
+    '[{"type":"sig360_circle_line","features":'
+    '[{"type":"line","id":1,"id":1,"name":"' + ("﻿" + "x") * 1000 + '",'
+    '"pt1":{"x":NaN,"y":Infinity},"pt2":{"x":-Infinity,"y":0}},'
+    '{"type":"search_point","id":2,"ref":[{"id":2,"element":"search_point"}],'
+    '"pt1":{},"pt2":{"x":1,"y":1}},'
+    '{"type":"measure","id":3,"subtype":"calc","ref":[{"id":3}],'
+    '"calc_f":{"exp":"","post_exp":["[3]","[3]","+"]}}'
+    ']}]}'
+)
+
+
+CASES += [
+    case("empty_pt1_object",            "robust", make=mk_empty_pt1_object),
+    case("embedded_bom_midstring",      "robust", make=mk_embedded_bom_midstring),
+    case("triple_cycle_all_at_once",    "robust", make=mk_triple_cycle_all_at_once),
+    case("sign360_sigdata_nan_strings", "robust", make=mk_sign360_sigdata_nan_string_entries),
+    case("huge_def_malformed_subdefs",  "robust", make=mk_huge_valid_def_with_malformed_subdefs),
+    case("pt_object_only_extra_keys",   "robust", make=mk_pt_object_only_extra_keys),
+    case("bom_truncated_combo",         "robust", make=mk_bom_truncated_combo),
+    case("raw_torture_combo",           "robust", raw=RAW_TORTURE_COMBO),
+]
+
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_parse", CASES))

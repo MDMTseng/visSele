@@ -1682,5 +1682,181 @@ def fn_r9_runbook_4190(_run):
     return ok, f"listening={listening} pid={proc.pid} clean_shutdown={not leftover} 4090_untouched={safe_4090}"
 CASES.append(case("r9_runbook_4190_lifecycle", "custom", fn=fn_r9_runbook_4190))
 
+# ==========================================================================
+# ROUND 10 — FINAL: regressions on fixed bugs (1x1, FIFO def, 31/32),
+#            cv::imread new-format coverage (TIFF, WebP), 32-way concurrent
+#            golden, ~4000-char def path, PNG iTXt/zTXt metadata, write+rename
+#            race (image edited mid-load)
+# ==========================================================================
+
+# ---- r10.1 REGRESSION: 1x1 image still rejected exit3 -------------------
+if _PIL:
+    from PIL import Image as _PI10
+    _R10_1x1 = f"{TMP}/sys_r10_1x1.png"
+    _PI10.new("L", (1, 1), 200).save(_R10_1x1, "PNG")
+    CASES.append(case("r10_reg_img_1x1_rc3", "expect_rc", rc=3, img=_R10_1x1))
+
+# ---- r10.2 REGRESSION: FIFO def still exit4 -----------------------------
+def fn_r10_reg_fifo_def(_run):
+    fifo = f"{TMP}/sys_r10_def.fifo"
+    if os.path.exists(fifo): os.remove(fifo)
+    os.mkfifo(fifo)
+    out = f"{TMP}/sys_r10_fifo_out.json"
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    def _w():
+        try:
+            with open(fifo, "wb") as fh: fh.write(b"junk not json")
+        except Exception: pass
+    threading.Thread(target=_w, daemon=True).start()
+    proc = subprocess.Popen([VIS, "--insp", IMG, fifo, out],
+                            cwd=CORE, env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        proc.communicate(timeout=20); rc = proc.returncode
+    except subprocess.TimeoutExpired:
+        proc.kill(); proc.communicate()
+        try: os.remove(fifo)
+        except Exception: pass
+        return False, "TIMEOUT (FIFO def regression!)"
+    try: os.remove(fifo)
+    except Exception: pass
+    ok = (rc == 4)
+    return ok, f"rc={rc_str(rc)} (want exit4, FIFO-def regression)"
+CASES.append(case("r10_reg_def_fifo_exit4", "custom", fn=fn_r10_reg_fifo_def))
+
+# ---- r10.3 REGRESSION: 32x32 ok (no crash), 31x31 rejected exit3 --------
+if _PIL:
+    _R10_32 = f"{TMP}/sys_r10_32x32.png"
+    _PI10.new("L", (32, 32), 128).save(_R10_32, "PNG")
+    _R10_31 = f"{TMP}/sys_r10_31x31.png"
+    _PI10.new("L", (31, 31), 128).save(_R10_31, "PNG")
+    CASES.append(case("r10_reg_img_32x32_robust", "robust", img=_R10_32))
+    CASES.append(case("r10_reg_img_31x31_rc3", "expect_rc", rc=3, img=_R10_31))
+
+# ---- r10.4 cv::imread new-format coverage: TIFF & WebP ------------------
+if _PIL:
+    _R10_TIFF = f"{TMP}/sys_r10_real.tiff"
+    try:
+        _PI10.new("L", (256, 256), 100).save(_R10_TIFF, "TIFF")
+        CASES.append(case("r10_img_tiff_robust", "robust", img=_R10_TIFF))
+    except Exception:
+        pass
+    _R10_WEBP = f"{TMP}/sys_r10_real.webp"
+    try:
+        _PI10.new("L", (256, 256), 100).save(_R10_WEBP, "WEBP")
+        CASES.append(case("r10_img_webp_robust", "robust", img=_R10_WEBP))
+    except Exception:
+        pass
+    # TIFF with .png extension (cv::imread should pick by magic bytes)
+    _R10_TIFF_AS_PNG = f"{TMP}/sys_r10_tiff_as.png"
+    try:
+        _PI10.new("L", (256, 256), 100).save(_R10_TIFF_AS_PNG, "TIFF")
+        CASES.append(case("r10_img_tiff_as_png_robust", "robust", img=_R10_TIFF_AS_PNG))
+    except Exception:
+        pass
+
+# ---- r10.5 32-way concurrent golden -> all rc0 byte-identical ----------
+def fn_r10_concurrent_32(run):
+    N = 32
+    results = {}
+    def worker(i):
+        results[i] = run(GDEF, out_path=f"{TMP}/sys_r10_c32_{i}.json", timeout=240)
+    ts = [threading.Thread(target=worker, args=(i,)) for i in range(N)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    all0 = all(results[i][0] == 0 for i in range(N))
+    allout = all(results[i][1] is not None for i in range(N))
+    ref = results[0][1]
+    ident = allout and all(results[i][1] == ref for i in range(N))
+    safe = all(results[i][0] not in SIGCRASH for i in range(N))
+    return (all0 and allout and ident and safe), \
+        f"{N}x all0={all0} ident={ident} safe={safe}"
+CASES.append(case("r10_concurrent_32_identical", "custom", fn=fn_r10_concurrent_32))
+
+# ---- r10.6 very long (~4000-char) def file path ------------------------
+def fn_r10_4000_char_path(run):
+    """Build a directory chain that yields a ~4000-char absolute def path
+    (each component < NAME_MAX=255). Must load & run, or reject cleanly."""
+    base = f"{TMP}/r10_longpath"
+    # ~16 levels of 240-char names = ~3900 chars
+    cur = base
+    try:
+        for i in range(16):
+            cur = f"{cur}/{'p' * 240}"
+            os.makedirs(cur, exist_ok=True)
+    except OSError as e:
+        return True, f"SKIP (mkdir failed at {len(cur)} chars: {e})"
+    p = f"{cur}/d.hydef"
+    try:
+        with open(p, "w") as fh: fh.write(open(GDEF).read())
+    except OSError as e:
+        return True, f"SKIP (cannot create file at {len(p)} chars: {e})"
+    out = f"{TMP}/sys_r10_lp_out.json"
+    rc, o = run(p, out_path=out)
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    return safe, f"rc={rc_str(rc)} path_len={len(p)} (no crash on ~4000-char def path)"
+CASES.append(case("r10_def_4000char_path", "custom", fn=fn_r10_4000_char_path))
+
+# ---- r10.7 PNG with iTXt / zTXt / tEXt metadata chunks -----------------
+if _PIL:
+    from PIL import PngImagePlugin as _PNGP
+    _R10_TXT = f"{TMP}/sys_r10_pngmeta.png"
+    _meta = _PNGP.PngInfo()
+    # tEXt (Latin-1)
+    _meta.add_text("Description", "QA round 10 metadata test")
+    _meta.add_text("Software", "visSele QA harness")
+    # zTXt (compressed)
+    _meta.add_text("Comment", "Z" * 10000, zip=True)
+    # iTXt (UTF-8) — use add_itxt if available; fallback to add_text(utf8=...)
+    try:
+        _meta.add_itxt("UnicodeKey", "中文 メタデータ", lang="en", tkey="UnicodeKey")
+    except Exception:
+        try: _meta.add_text("UnicodeKey", "中文 メタデータ".encode("utf-8").decode("latin-1", errors="replace"))
+        except Exception: pass
+    _PI10.new("L", (256, 256), 100).save(_R10_TXT, "PNG", pnginfo=_meta)
+    CASES.append(case("r10_img_png_itxt_ztxt_robust", "robust", img=_R10_TXT))
+
+# ---- r10.8 image rewritten mid-load (write+rename race) ----------------
+def fn_r10_write_rename_race(_run):
+    """While engine is reading the image, atomically rename a different image
+    onto the same path. Engine must not crash; rc may vary. We just want
+    no SIGSEGV/SIGBUS regardless of who wins the open() vs rename() race."""
+    if not _PIL:
+        return True, "SKIP (PIL unavailable)"
+    import shutil as _sh
+    target = f"{TMP}/sys_r10_race_img.png"
+    _sh.copy(IMG, target)
+    alt = f"{TMP}/sys_r10_race_alt.png"
+    _PI10.new("L", (256, 256), 50).save(alt, "PNG")
+    out = f"{TMP}/sys_r10_race_out.json"
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    rcs = []
+    # Run multiple iterations to maximize race chance
+    for trial in range(5):
+        if os.path.exists(out): os.remove(out)
+        _sh.copy(IMG, target)
+        proc = subprocess.Popen([VIS, "--insp", target, GDEF, out],
+                                cwd=CORE, env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # Tiny stagger then atomic rename to swap content under engine
+        try:
+            import time as _t
+            _t.sleep(0.001 * (trial + 1))
+            tmp_swap = f"{TMP}/sys_r10_race_swap_{trial}.png"
+            _sh.copy(alt, tmp_swap)
+            try: os.rename(tmp_swap, target)
+            except OSError: pass
+        except Exception:
+            pass
+        try:
+            proc.communicate(timeout=120)
+            rcs.append(proc.returncode)
+        except subprocess.TimeoutExpired:
+            proc.kill(); proc.communicate()
+            rcs.append("TIMEOUT")
+    safe = all((r not in SIGCRASH) and (r != "TIMEOUT") for r in rcs)
+    return safe, f"trials={len(rcs)} rcs={[rc_str(r) for r in rcs]} no-crash={safe}"
+CASES.append(case("r10_img_write_rename_race", "custom", fn=fn_r10_write_rename_race))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_system", CASES))

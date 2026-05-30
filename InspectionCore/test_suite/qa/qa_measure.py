@@ -1812,5 +1812,205 @@ CASES += [
     case("bulk_200_sp_caliper_timing",     "custom", fn=fn_bulk_200_sp),
 ]
 
+# ================= ROUND 10: final QA — clamp boundary, regressions, full-pipeline chain, degenerate sigma, anchor N-cycle =================
+
+# R10-1: CURRENT clamp boundary (count<=512, width<=64, length<=256) must complete <2s with finite values
+_cal_current_clamp = _all_caliper_with({"caliper": {"count": 512, "width": 64, "length": 256}})
+
+def fn_current_clamp_under_2s(run_insp):
+    t0 = time.time()
+    rc, out = run_insp(_cal_current_clamp(), timeout=10)
+    dt = time.time() - t0
+    if rc == "TIMEOUT": return False, f"TIMEOUT dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if dt > 2.0:
+        return False, f"REAL BUG: clamp-boundary too slow dt={dt:.2f}s > 2.0s"
+    if rc != 0 or out is None: return False, f"rc={rc_str(rc)} dt={dt:.2f}s"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, f"NaN/Inf dt={dt:.2f}s"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    return (not bad), f"rc=0 dt={dt:.2f}s judges={len(js)} bad={len(bad)}"
+
+# R10-2: regression — circle_info cross-type ref (search_point) must not crash/NaN (round 9)
+def _circle_info_cross_type_regression():
+    d = golden(); m = first_of(d, "measure")
+    m["subtype"] = "circle_info"
+    m["info_type"] = "max_diameter"
+    m["ref"] = [{"id": 3, "element": "search_point"}]
+    return d
+
+def fn_circle_info_cross_type_regr(run_insp):
+    rc, out = run_insp(_circle_info_cross_type_regression(),
+                       out_path=f"{TMP}/_out_r10_xtype.json", timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REGRESSION: SIGSEGV on circle_info(search_point) rc={rc_str(rc)}"
+    if out is not None:
+        import re as _re
+        if _re.search(rb'[\s,:\[]\s*(nan|inf|-inf)\b', out.lower()):
+            return False, "REGRESSION: NaN/Inf in JSON"
+    return True, f"rc={rc_str(rc)} (regression OK)"
+
+# R10-3: regression — circle_info MISSING info_type must not SIGSEGV (round 4 fix)
+def fn_circle_info_missing_info_regr(run_insp):
+    rc, out = run_insp(_circleinfo_noinfo(),
+                       out_path=f"{TMP}/_out_r10_noinfo.json", timeout=10)
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REGRESSION: SIGSEGV on circle_info no info_type rc={rc_str(rc)}"
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    return True, f"rc={rc_str(rc)} (no crash regression OK)"
+
+# R10-4: regression — caliper width=10000 must be clamped, not blow up runtime
+def fn_caliper_width_10000_regr(run_insp):
+    t0 = time.time()
+    rc, out = run_insp(_cal_width_extreme(),
+                       out_path=f"{TMP}/_out_r10_w10k.json", timeout=15)
+    dt = time.time() - t0
+    if rc == "TIMEOUT": return False, f"REGRESSION: TIMEOUT dt={dt:.2f}s (clamp leaked)"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if dt > 5.0:
+        return False, f"REGRESSION: width=10000 not clamped dt={dt:.2f}s"
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, f"NaN/Inf dt={dt:.2f}s"
+    return True, f"rc={rc_str(rc)} dt={dt:.2f}s (clamp held)"
+
+# R10-5: FULL PIPELINE — every line+arc+sp on caliper AND a calc judge depends on the chain.
+def _full_pipeline_caliper_calc():
+    d = golden()
+    for t in ("line", "arc", "search_point"):
+        for ft in all_of(d, t):
+            ft["locating"] = "caliper"
+    # Rewrite first measure to be a calc that depends on a chain of measure ids.
+    m = first_of(d, "measure")
+    # Find a few sibling measure ids to depend on
+    ids = []
+    for sig in all_of(d, "sig360_circle_line"):
+        for k, v in sig.items():
+            if isinstance(v, list):
+                for it in v:
+                    if isinstance(it, dict) and it.get("type") == "measure" \
+                       and isinstance(it.get("id"), int) and it is not m:
+                        ids.append(it["id"])
+    if not ids: ids = [12]
+    ids = ids[:3]
+    m["subtype"] = "calc"
+    m["ref"] = [{"id": i} for i in ids]
+    m["calc_f"] = {"exp": "", "post_exp": [f"[{ids[0]}]"]}
+    return d
+
+def fn_full_pipeline_caliper_calc(run_insp):
+    rc, out = run_insp(_full_pipeline_caliper_calc(),
+                       out_path=f"{TMP}/_out_r10_fullpipe.json", timeout=30)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)}"
+    if rc != 0 or out is None: return False, f"rc={rc_str(rc)}"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, "NaN/Inf"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    succ = sum(1 for j in js if j.get("status") == 0)
+    calc_js = [j for j in js if j.get("subtype") == "calc"]
+    ok = (not bad) and succ > 0
+    return ok, f"judges={len(js)} calc={len(calc_js)} succ={succ} bad={len(bad)}"
+
+# R10-6: sigma subtype on a degenerate-geometry LINE (pt1 == pt2)
+def _sigma_degenerate_line():
+    d = golden()
+    ln = first_of(d, "line")
+    if ln is not None:
+        ln["pt1"] = {"x": 50.0, "y": 50.0}
+        ln["pt2"] = {"x": 50.0, "y": 50.0}
+    m = first_of(d, "measure")
+    if m and ln is not None:
+        m["subtype"] = "sigma"
+        m["ref"] = [{"id": ln.get("id", 1), "element": "line"}]
+    return d
+
+def fn_sigma_degenerate_line(run_insp):
+    rc, out = run_insp(_sigma_degenerate_line(),
+                       out_path=f"{TMP}/_out_r10_sigdegen.json", timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: SIGFPE/SIGSEGV on sigma(zero-length line) rc={rc_str(rc)}"
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, "NaN/Inf on degenerate sigma"
+    return True, f"rc={rc_str(rc)} (degenerate sigma handled)"
+
+# R10-7: locating_anchor cycle of EXACTLY N hops (5) — exhaust the cycle detector
+def _anchor_n_cycle(n=5):
+    """Chain sp(3)->sp(4)->...->sp(3+n-1)->sp(3) — n-hop ring."""
+    def f():
+        d = golden()
+        sps = []
+        for i in range(n):
+            sp = _find_id(d, 3 + i)
+            if sp is None: return d  # bail if golden doesn't have that many sps
+            sps.append(sp)
+        for i, sp in enumerate(sps):
+            nxt = sps[(i + 1) % n]
+            sp["locating_anchor"] = True
+            sp["ref"] = [{"id": nxt.get("id"), "element": "search_point"}]
+        return d
+    return f
+
+def fn_anchor_n_cycle(run_insp):
+    t0 = time.time()
+    rc, out = run_insp(_anchor_n_cycle(5)(),
+                       out_path=f"{TMP}/_out_r10_ncycle.json", timeout=15)
+    dt = time.time() - t0
+    if rc == "TIMEOUT":
+        return False, f"REAL BUG: TIMEOUT (cycle detector missed N=5 ring) dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, "NaN/Inf in JSON"
+    return True, f"rc={rc_str(rc)} dt={dt:.2f}s (N=5 cycle terminated)"
+
+# R10-8: regression — calc judge with empty post_exp should not crash
+def _calc_empty_postexp():
+    d = golden(); m = first_of(d, "measure")
+    m["subtype"] = "calc"
+    m["ref"] = [{"id": 12}]
+    m["calc_f"] = {"exp": "", "post_exp": []}
+    return d
+
+def fn_calc_empty_postexp(run_insp):
+    rc, out = run_insp(_calc_empty_postexp(),
+                       out_path=f"{TMP}/_out_r10_calc_empty.json", timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash on empty calc post_exp rc={rc_str(rc)}"
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, "NaN/Inf on empty calc"
+    return True, f"rc={rc_str(rc)} (empty calc post_exp handled)"
+
+CASES += [
+    # ---- current clamp boundary timing ----
+    case("clamp_boundary_under_2s",      "custom", fn=fn_current_clamp_under_2s),
+
+    # ---- regressions on previously-fixed bugs ----
+    case("regr_circle_info_cross_type",  "custom", fn=fn_circle_info_cross_type_regr),
+    case("regr_circle_info_no_infotype", "custom", fn=fn_circle_info_missing_info_regr),
+    case("regr_caliper_width_10000",     "custom", fn=fn_caliper_width_10000_regr),
+
+    # ---- full pipeline: caliper everywhere + calc-chain judge ----
+    case("full_pipeline_caliper_calc",   "custom", fn=fn_full_pipeline_caliper_calc),
+
+    # ---- degenerate-geometry sigma ----
+    case("sigma_on_degenerate_line",     "custom", fn=fn_sigma_degenerate_line),
+
+    # ---- locating_anchor N-hop cycle detector ----
+    case("anchor_cycle_N5_detector",     "custom", fn=fn_anchor_n_cycle),
+
+    # ---- calc with empty post_exp ----
+    case("calc_empty_postexp_no_crash",  "custom", fn=fn_calc_empty_postexp),
+]
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_measure", CASES))

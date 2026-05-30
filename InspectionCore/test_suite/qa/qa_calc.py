@@ -1105,5 +1105,152 @@ def _r9_long_chain_fn():
     return fn
 CASES.append(case("r9_chain_100_calc", "custom", fn=_r9_long_chain_fn()))
 
+# ================= ROUND 10: final QA hunt =================
+
+# r10_1: regression on round-1 stack-underflow guard via MANY fresh shapes
+# Twenty distinct mal-shaped underflow forms in one go (no-crash gate).
+_r10_underflow_shapes = [
+    ["$+$"], ["$-$"], ["$*$"], ["$/$"],
+    ["1", "$+$"], ["1", "$-$"], ["1", "$*$"], ["1", "$/$"],
+    ["[12]", "$+$"], ["[12]", "$-$"], ["[12]", "$*$"], ["[12]", "$/$"],
+    ["$+$", "1"], ["$-$", "1"],
+    ["$,$", "max$"], ["$,$", "min$"],
+    ["$+$", "$-$"], ["$*$", "$/$"],
+    ["1", "$,$", "max$"], ["1", "$,$", "$,$", "min$"],
+]
+for _i, _pe in enumerate(_r10_underflow_shapes):
+    CASES.append(case(f"r10_uflow_{_i:02d}", "robust", make=mut_calc(_pe)))
+
+# r10_2: round-8 circle_info cross-type fix verification via CALC.
+# A CALC referencing a circle (id likely outside measure list) plus an arithmetic op
+# should NA-propagate without crash.
+CASES.append(case("r10_calc_ref_circle_info", "robust",
+                  make=mut_calc(["[40]", "[41]", "$+$"])))
+CASES.append(case("r10_calc_ref_circle_in_max", "robust",
+                  make=mut_calc(["[40]", "[41]", "[42]", "$,$", "$,$", "max$"])))
+
+# r10_3: property-based 20 random RPN trees with seeded random, hand-computed expected.
+# Distinct shape from r9 -- uses 3 ops mixed with refs+lits and max$/min$.
+import random as _rnd2
+def _r10_propbased():
+    def fn(run_insp):
+        rng = _rnd2.Random(0xDEADBEEF)
+        mismatches = []
+        ran = 0
+        trials = 20
+        ref_map = {"[12]": V12, "[13]": V13, "[8]": V8, "[14]": V14}
+        ref_choices = list(ref_map.keys())
+        for trial in range(trials):
+            # build: (op1 OP1 op2) OP2 op3, mixing refs+small literals
+            def pick():
+                if rng.random() < 0.5:
+                    return rng.choice(ref_choices)
+                # nonzero small literal
+                v = 0
+                while v == 0:
+                    v = rng.randint(-7, 7)
+                return str(v)
+            a, b, c = pick(), pick(), pick()
+            ops = ["$+$", "$-$", "$*$"]
+            op1 = rng.choice(ops)
+            op2 = rng.choice(ops)
+            def val(t):
+                return ref_map[t] if t in ref_map else float(t)
+            def apply(x, o, y):
+                if o == "$+$": return x + y
+                if o == "$-$": return x - y
+                if o == "$*$": return x * y
+                return x / y
+            expected = apply(apply(val(a), op1, val(b)), op2, val(c))
+            post_exp = [a, b, op1, c, op2]
+            d_def = mut_calc(post_exp)()
+            rc, out = run_insp(d_def)
+            if rc in SIGCRASH or rc == "TIMEOUT":
+                mismatches.append(f"#{trial} crash {rc_str(rc)} pe={post_exp}")
+                continue
+            if out is None: continue
+            try: j = json.loads(out)
+            except Exception: continue
+            got = _find_value(j, 8)
+            if got is None: continue
+            ran += 1
+            if not math.isfinite(got):
+                mismatches.append(f"#{trial} non-finite got={got} expected={expected} pe={post_exp}")
+                continue
+            tol = max(5e-3, abs(expected) * 5e-4)
+            if abs(got - expected) > tol:
+                mismatches.append(f"#{trial} got={got} expected={expected} pe={post_exp}")
+        if mismatches:
+            return False, f"PROP MISMATCH ({len(mismatches)}/{ran}): {mismatches[:3]}"
+        return True, f"property-based r10: {ran}/{trials} located, all agree"
+    return fn
+CASES.append(case("r10_property_3op_mixed", "custom", fn=_r10_propbased()))
+
+# r10_4: ALL bug-class combinations in one CALC -- malformed token + huge id + nested arity
+CASES.append(case("r10_combo_malformed_hugeid_arity", "robust",
+                  make=mut_calc(["[99999999999999999999]", "@!#", "[12]", "[13]",
+                                 "$,$", "$,$", "$,$", "$,$", "max$"])))
+# Same combo but with control chars and nested empty array
+def _r10_combo_postexp():
+    def f():
+        d = mut_calc(["[12]", "1", "$+$"])()
+        m = first_of(d, "measure")
+        m["calc_f"]["post_exp"] = [
+            "[" + "9" * 100 + "]", "\x01\x02", [], "[12]", "$,$", "$,$", "max$"
+        ]
+        return d
+    return f
+CASES.append(case("r10_combo_ctrl_emptyarr_huge", "robust", make=_r10_combo_postexp()))
+
+# r10_5: longest CALC chain depth that completes in <5s (probe).
+# Build N=50 chained calc measures (capped by available measures), assert <5s.
+def _r10_chain_probe():
+    import time as _time
+    def fn(run_insp):
+        d = golden()
+        measures = all_of(d, "measure")
+        N = min(50, len(measures))
+        if N < 2:
+            return True, "insufficient measures to probe"
+        prev = measures[0]
+        prev["subtype"] = "calc"
+        prev["ref"] = [{"id": 12}]
+        prev["calc_f"] = {"exp": "", "post_exp": ["[12]", "0", "$+$"]}
+        for i in range(1, N):
+            m = measures[i]
+            pid = prev.get("id")
+            m["subtype"] = "calc"
+            m["ref"] = [{"id": pid}]
+            m["calc_f"] = {"exp": "", "post_exp": [f"[{pid}]", "1", "$+$"]}
+            prev = m
+        t0 = _time.time()
+        rc, out = run_insp(d)
+        dur = _time.time() - t0
+        if rc in SIGCRASH or rc == "TIMEOUT":
+            return False, f"crash/hang {rc_str(rc)} after {dur:.2f}s N={N}"
+        if out is None: return False, f"no output N={N}"
+        try: j = json.loads(out)
+        except Exception as e: return False, f"invalid JSON: {e}"
+        last_id = measures[N - 1].get("id")
+        v_last = _find_value(j, last_id)
+        exp_last = V12 + (N - 1)
+        if v_last is not None and math.isfinite(v_last) and abs(v_last - exp_last) > 0.05:
+            return False, f"chain wrong N={N} last={v_last} exp={exp_last} dur={dur:.2f}s"
+        if dur >= 5.0:
+            return False, f"PERF CLIFF: N={N} dur={dur:.2f}s >= 5s"
+        return True, f"chain N={N} dur={dur:.2f}s last={v_last}"
+    return fn
+CASES.append(case("r10_chain_depth_5s_probe", "custom", fn=_r10_chain_probe()))
+
+# r10_6: cross-type judge NA -- calc references a non-measure id mixed with numeric ops
+# verifies NA propagation does not corrupt the stack for downstream ops
+CASES.append(case("r10_na_then_arith_chain", "robust",
+                  make=mut_calc(["[99999]", "5", "$+$", "2", "$*$", "[12]", "$-$"])))
+
+# r10_7: arity-cache as integer literal token -- some engines treat "$,$" specially;
+# probe with the literal "2" before max$ (should NOT be interpreted as arity).
+CASES.append(case("r10_int_before_func_not_arity", "robust",
+                  make=mut_calc(["[12]", "[13]", "2", "max$"])))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_calc", CASES))
