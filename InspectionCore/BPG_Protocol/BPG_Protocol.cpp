@@ -144,13 +144,34 @@ static BPG_protocol_data convert(uint8_t *dat, size_t len)
 int BPG_Protocol_Interface::_fromLinkLayer(uint8_t *dat, size_t len, bool FIN, void *peer)
 {
   vector<uint8_t> &recv_buf = recv_bufs[peer];
-  if (recv_buf.size()>=(size_t)getHeaderSize())//might be a complete packet
+  if (recv_buf.size() < (size_t)getHeaderSize())
+  {
+    // Not enough bytes for even the header. If the link-layer FIN flag is
+    // set we have an end-of-message frame that didn't deliver a full header
+    // -> corrupt; drop the partial buffer so the next clean packet syncs.
+    // Otherwise wait for more bytes.
+    if (FIN) { recv_buf.clear(); return -1; }
+    return 1;
+  }
   {
     BPG_protocol_data bpgdat = convert(&(recv_buf[0]), recv_buf.size());
+
+    // Hard cap on the claimed payload size. Even malicious peers can't make
+    // the daemon allocate / wait for more than this.
+    const uint32_t MAX_BPG_PAYLOAD = 16u * 1024u * 1024u;
+    if (bpgdat.size > MAX_BPG_PAYLOAD)
+    {
+      recv_buf.clear();
+      return -1;
+    }
 
     size_t packetOffset=getHeaderSize()+bpgdat.size;
     if(recv_buf.size()<packetOffset)//the packet content is not complete
     {
+      // Same FIN trick: if the peer told us this is the last frame and the
+      // claimed payload still hasn't arrived, the size field is lying ->
+      // drop and resync. Otherwise wait for more bytes.
+      if (FIN) { recv_buf.clear(); return -1; }
       return 1;
     }
     // LOGI("<<<size:%d  len:%d<<<<<", bpgdat.size, recv_buf.size());
