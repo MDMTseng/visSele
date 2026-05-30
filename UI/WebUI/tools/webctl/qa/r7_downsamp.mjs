@@ -253,7 +253,9 @@ function siteBackLight({ value, mmpp }) {
   function handlerHas(text, needle) {
     const idx = text.indexOf('"down_samp_level_update"');
     if (idx < 0) return false;
-    const slice = text.slice(idx, idx + 1200);
+    // 2500ch window — InspectionUI's handler grew after the R7 NaN-guard
+    // (Number.isFinite check + comment); LAST_FRAME_RESEND now sits at ~1700ch.
+    const slice = text.slice(idx, idx + 2500);
     return slice.includes(needle);
   }
   const a = handlerHas(insp, 'LAST_FRAME_RESEND');
