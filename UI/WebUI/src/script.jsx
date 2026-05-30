@@ -325,8 +325,10 @@ class APPMasterX extends React.Component {
     if(!localUrl.startsWith("file"))
     {
       let matchRes = (/[\/]+(.+)(\:|\?.+)/gm).exec(localUrl);
-      console.log(matchRes);
-      rootUrl=matchRes[1];
+      // matchRes is null on port-less + query-less URLs (e.g. http://host/)
+      // — used to throw and blank-screen the app. Fall back to the hostname.
+      if (matchRes && matchRes[1]) rootUrl = matchRes[1];
+      else if (window.location && window.location.hostname) rootUrl = window.location.hostname;
     }
     // core ws port: 4090 = latest dev backend (default); override via
     // localStorage.setItem("coreport","4190") (stable old-backup backend) for

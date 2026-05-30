@@ -88,13 +88,11 @@ export const UI_SM_EVENT = {
   Core_Camera_Status_Update:"Core_Camera_Status_Update",
   machine_custom_setting_Update:"machine_custom_setting_Update",
   Def_Model_Path_Update:"Def_Model_Path_Update",
-  WS_channel:"WS_channel",
 
   Edit_Mode:"Edit_Mode",
   Insp_Mode:"Insp_Mode",
   InstInsp_Mode:"InstInsp_Mode",
   Inspection_Report:"Inspection_Report",
-  Camera_Info_Update:"Camera_Info_Update",
   Image_Update:"Image_Update",
   StatSettingParam_Update:"StatSettingParam_Update",
   StatInfo_Clear:"StatInfo_Clear",
@@ -111,10 +109,6 @@ export const UI_SM_EVENT = {
   Measure_Create:"Measure_Create",
 
 
-  EC_Save_Def_Config:"EC_Save_Def_Config",
-  EC_Load_Def_Config:"EC_Load_Def_Config",
-
-  
   Control_SM_Panel:"Control_SM_Panel",
 };
 
@@ -127,34 +121,6 @@ export function EV_machine_custom_setting_Update(info)
   }
 }
 
-
-export function EV_UI_EC_Save_Def_Config(info)
-{
-  return {
-    type: UI_SM_EVENT.EC_Save_Def_Config,
-    data:info
-  }
-}
-
-
-
-
-
-export function EV_UI_EC_Load_Def_Config(info)
-{
-  return {
-    type: UI_SM_EVENT.EC_Load_Def_Config,
-    data:info
-  }
-}
-
-export function EV_UI_Insp_Mode_Update(mode)
-{
-  return {
-    type: UI_SM_EVENT.Insp_Mode_Update,
-    data: mode
-  }
-}
 
 
 // export function EV_WS_Connected(ws_obj)
@@ -251,12 +217,6 @@ export function EV_StatInfo_Clear()
 
 
 
-export function EV_Camera_Info_Update(info)
-{
-  return {
-    type: UI_SM_EVENT.Camera_Info_Update ,data:info
-  }
-}
 
 export function EV_WS_Define_File_Update(DFData,keepCurTag=false)
 {

@@ -2640,9 +2640,6 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
     ACT_Shape_List_Reset: () => { dispatch(DefConfAct.Shape_List_Update([])) },
     ACT_Shape_List_Update:(newlist)=>dispatch(DefConfAct.Shape_List_Update(newlist)),
 
-    ACT_Save_Def_Config: (info) => { dispatch(UIAct.EV_UI_EC_Save_Def_Config(info)) },
-    ACT_Load_Def_Config: (info) => { dispatch(UIAct.EV_UI_EC_Load_Def_Config(info)) },
-
     ACT_SUCCESS: (arg) => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)) },
     ACT_Fail: (arg) => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.FAIL)) },
     ACT_EXIT: (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT)) },

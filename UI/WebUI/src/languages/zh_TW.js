@@ -15,7 +15,6 @@ export default {
         ERROR:"錯誤",
         ERROR_INFO:"系統訊息",
         WARNING:"警告",
-        ReconnectAirDevice:"重新連接噴氣裝置",
         line:"線段/Line",
         arc:"弧/Arc",
         spoint:"搜尋點/SPOINT",

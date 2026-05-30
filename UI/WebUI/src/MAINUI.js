@@ -1771,7 +1771,6 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
     EV_UI_Insp_Mode: () => { dispatch(UIAct.EV_UI_Insp_Mode()) },
     
     ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
-    ACT_Insp_Mode_Update: (mode) => dispatch(UIAct.EV_UI_Insp_Mode_Update(mode)),
     ACT_Def_Model_Path_Update: (path) => dispatch(UIAct.Def_Model_Path_Update(path)),
   }
 }
