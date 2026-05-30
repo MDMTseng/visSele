@@ -524,5 +524,77 @@ CASES.append(case("r5_div_by_neg_zero", "robust",
 CASES.append(case("r5_max_all_na_refs", "robust",
                   make=mut_calc(["[99991]", "[99992]", "[99993]", "$,$", "$,$", "max$"])))
 
+# ================= ROUND 6: ref/dep/cycle/cascade/boundary edges =================
+
+# r6_1: CALC whose only [id] does not exist in measure list -> mut_calc derives
+# ref=[{id:99999}]; engine must not crash, NA propagation expected.
+CASES.append(case("r6_calc_only_missing_id", "robust",
+                  make=mut_calc(["[99999]"])))
+
+# r6_2: two-measure CYCLIC calc (A refs B, B refs A) -- cycle detection (caveat E9)
+def _r6_two_cyclic():
+    def f():
+        d = golden()
+        measures = all_of(d, "measure")
+        if len(measures) < 2: return d
+        a, b = measures[0], measures[1]
+        a_id = a.get("id"); b_id = b.get("id")
+        a["subtype"] = "calc"
+        a["ref"] = [{"id": b_id}]
+        a["calc_f"] = {"exp": "", "post_exp": [f"[{b_id}]", "1", "$+$"]}
+        b["subtype"] = "calc"
+        b["ref"] = [{"id": a_id}]
+        b["calc_f"] = {"exp": "", "post_exp": [f"[{a_id}]", "2", "$*$"]}
+        return d
+    return f
+CASES.append(case("r6_cyclic_two_calc", "robust", make=_r6_two_cyclic()))
+
+# r6_3: CALC mixed with non-CALC measure (distance subtype) reference
+# id=17 is a distance measure per problem statement -- ref it from a calc
+CASES.append(case("r6_ref_distance_measure", "robust",
+                  make=mut_calc(["[17]", "2", "$*$"])))
+
+# r6_4: NaN cascade -- 0/0 -> NaN, then min$ with a literal; downstream usage
+CASES.append(case("r6_nan_cascade_min", "robust",
+                  make=mut_calc(["0", "0", "$/$", "5", "$,$", "min$", "[12]", "$+$"])))
+
+# r6_5: CALC with 1000+ tokens (max parse loop boundary)
+# 1 literal + 500 pairs of (1, +) = 1001 tokens, just over the 1000 limit
+CASES.append(case("r6_1001_tokens_boundary", "robust",
+                  make=mut_calc(["[12]"] + ["1", "$+$"] * 500 + ["1", "$+$"])))
+# also exactly 999 tokens (under boundary) for compare
+CASES.append(case("r6_999_tokens_under_boundary", "robust",
+                  make=mut_calc(["[12]"] + ["1", "$+$"] * 499)))
+
+# r6_6: arity-cache cap'd at 2 with 4 values on stack:
+# [12][13][17][18] $,$ $,$ min$ -- arity asks for 3, stack has 4
+CASES.append(case("r6_stack_gt_arity", "robust",
+                  make=mut_calc(["[12]", "[13]", "[17]", "[18]", "$,$", "$,$", "min$"])))
+
+# r6_7: CALC referencing ALL existing measure ids in one max$
+# ids: 8,12,13,14,17,19,22  (7 operands -> need 6 "$,$" tokens)
+CASES.append(case("r6_max_all_existing_ids", "robust",
+                  make=mut_calc(["[8]", "[12]", "[13]", "[14]", "[17]", "[19]", "[22]",
+                                 "$,$", "$,$", "$,$", "$,$", "$,$", "$,$", "max$"])))
+
+# r6_8: post_exp split across multiple JSON arrays -- cJSON path parsing
+# Engine should still resolve post_exp[10] which lives in the inner array
+def _r6_split_postexp():
+    def f():
+        d = mut_calc(["[12]", "[13]", "$+$"])()
+        m = first_of(d, "measure")
+        # Put a nested array inside post_exp to force cJSON to walk arrays-of-arrays
+        m["calc_f"]["post_exp"] = ["[12]", "[13]", "$+$", ["ignored", "nested"]]
+        return d
+    return f
+CASES.append(case("r6_postexp_nested_array", "robust", make=_r6_split_postexp()))
+
+# r6_9: CALC reading its own id ([self_id]) before computed -- pre-NA propagation
+# id=8 is the rewritten calc; reference [8] only (pure self-ref, no other operand)
+CASES.append(case("r6_self_only_pre_na", "robust", make=mut_calc(["[8]"])))
+# also self via min$ with literal -- self should be NA, then min(NA, 5)
+CASES.append(case("r6_self_min_with_literal", "robust",
+                  make=mut_calc(["[8]", "5", "$,$", "min$"])))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_calc", CASES))

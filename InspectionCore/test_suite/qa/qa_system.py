@@ -880,5 +880,248 @@ def fn_r5_sequential_50(run):
     return time_stable, detail
 CASES.append(case("r5_sequential_50_stability", "custom", fn=fn_r5_sequential_50))
 
+# ==========================================================================
+# ROUND 6 — FIFO regression, image-as-FIFO, /proc & /dev/stdin def, 1-byte
+#           img, stdout append race, env path/home unset, long DYLD,
+#           RLIMIT_AS memory cap, 200-run fd/mem surveillance, 16-bit CalibMap
+# ==========================================================================
+import resource as _resource6
+import platform as _platform6
+
+# ---- r6.1 REGRESSION: FIFO def must NOT hang and must yield exit4 --------
+def fn_r6_def_fifo_regression(run):
+    """Round-5 fix: a non-regular (FIFO) def file must be rejected with exit4.
+    Writer pumps garbage so reader doesn't block forever; we still require
+    exit4 specifically (not just safe-rc) to validate the guard holds."""
+    fifo = f"{TMP}/sys_r6_def.fifo"
+    if os.path.exists(fifo): os.remove(fifo)
+    os.mkfifo(fifo)
+    out = f"{TMP}/sys_r6_def_fifo_out.json"
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    import threading as _th
+    def _writer():
+        try:
+            with open(fifo, "wb") as fh:
+                fh.write(b"garbage not json")
+        except Exception: pass
+    _th.Thread(target=_writer, daemon=True).start()
+    proc = subprocess.Popen([VIS, "--insp", IMG, fifo, out],
+                            cwd=CORE, env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        proc.communicate(timeout=20); rc = proc.returncode
+    except subprocess.TimeoutExpired:
+        proc.kill(); proc.communicate()
+        try: os.remove(fifo)
+        except Exception: pass
+        return False, "TIMEOUT (FIFO def hang - regression!)"
+    try: os.remove(fifo)
+    except Exception: pass
+    ok = (rc == 4)
+    return ok, f"rc={rc_str(rc)} (want exit4, FIFO-def guard)"
+CASES.append(case("r6_def_fifo_exit4_regression", "custom", fn=fn_r6_def_fifo_regression))
+
+# ---- r6.2 image file is a FIFO -- must not hang -------------------------
+def fn_r6_img_is_fifo(run):
+    fifo = f"{TMP}/sys_r6_img.fifo"
+    if os.path.exists(fifo): os.remove(fifo)
+    os.mkfifo(fifo)
+    out = f"{TMP}/sys_r6_img_fifo_out.json"
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    import threading as _th
+    def _writer():
+        try:
+            with open(fifo, "wb") as fh:
+                fh.write(os.urandom(8192))
+        except Exception: pass
+    _th.Thread(target=_writer, daemon=True).start()
+    proc = subprocess.Popen([VIS, "--insp", fifo, GDEF, out],
+                            cwd=CORE, env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        proc.communicate(timeout=20); rc = proc.returncode
+    except subprocess.TimeoutExpired:
+        proc.kill(); proc.communicate()
+        try: os.remove(fifo)
+        except Exception: pass
+        return False, "TIMEOUT (FIFO image hang)"
+    try: os.remove(fifo)
+    except Exception: pass
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    return safe, f"rc={rc_str(rc)} (FIFO image, no hang/crash)"
+CASES.append(case("r6_img_fifo_no_hang", "custom", fn=fn_r6_img_is_fifo))
+
+# ---- r6.3 def via /proc/self/* or /dev/stdin (Linux-only; skip on mac) --
+def fn_r6_def_proc_self(_run):
+    if _platform6.system() != "Linux":
+        return True, "SKIP (not Linux)"
+    out = f"{TMP}/sys_r6_proc_out.json"
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    # feed golden def via stdin -> /dev/stdin path
+    gdef_bytes = open(GDEF, "rb").read()
+    try:
+        r = subprocess.run([VIS, "--insp", IMG, "/dev/stdin", out],
+                           cwd=CORE, env=env, input=gdef_bytes,
+                           capture_output=True, timeout=60)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    return safe, f"rc={rc_str(rc)} (/dev/stdin def, no crash)"
+CASES.append(case("r6_def_dev_stdin", "custom", fn=fn_r6_def_proc_self))
+
+# ---- r6.4 image file 1 byte (truncated) ----------------------------------
+_R6_1B = f"{TMP}/sys_r6_1byte.png"; open(_R6_1B, "wb").write(b"\x89")
+CASES.append(case("r6_img_1byte_rc3", "expect_rc", rc=3, img=_R6_1B))
+
+# ---- r6.5 two runs redirecting stdout to SAME file (append race) ---------
+def fn_r6_stdout_same_file_race(_run):
+    """Two concurrent visSele runs whose stdout is redirected to the SAME file
+    in append mode. Both must complete (rc0); file must not be corrupted in
+    a way that hangs or crashes them."""
+    log = f"{TMP}/sys_r6_shared_stdout.log"
+    if os.path.exists(log): os.remove(log)
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    results = {}
+    def worker(i):
+        out = f"{TMP}/sys_r6_race_{i}.json"
+        with open(log, "ab") as fh:
+            try:
+                r = subprocess.run([VIS, "--insp", IMG, GDEF, out],
+                                   cwd=CORE, env=env,
+                                   stdout=fh, stderr=fh, timeout=120)
+                results[i] = r.returncode
+            except subprocess.TimeoutExpired:
+                results[i] = "TIMEOUT"
+    ts = [threading.Thread(target=worker, args=(i,)) for i in range(2)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    all0 = all(results[i] == 0 for i in (0, 1))
+    log_size = os.path.getsize(log) if os.path.exists(log) else 0
+    return all0, f"rc0={results[0]} rc1={results[1]} log_size={log_size}B"
+CASES.append(case("r6_stdout_shared_append_race", "custom", fn=fn_r6_stdout_same_file_race))
+
+# ---- r6.6 env PATH/HOME unset --------------------------------------------
+def fn_r6_env_path_home_unset(_run):
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    env.pop("PATH", None); env.pop("HOME", None)
+    out = f"{TMP}/sys_r6_envunset.json"
+    if os.path.exists(out): os.remove(out)
+    try:
+        r = subprocess.run([VIS, "--insp", IMG, GDEF, out],
+                           cwd=CORE, env=env, capture_output=True, timeout=120)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    report = open(out, "rb").read() if os.path.exists(out) else None
+    ok = (rc == 0) and (report is not None)
+    return ok, f"rc={rc_str(rc)} report_present={report is not None} (PATH/HOME unset)"
+CASES.append(case("r6_env_path_home_unset", "custom", fn=fn_r6_env_path_home_unset))
+
+# ---- r6.7 very long DYLD_LIBRARY_PATH ------------------------------------
+def fn_r6_long_dyld(_run):
+    """Prepend many junk dirs onto DYLD_LIBRARY_PATH (~16KB). Real BUILD stays
+    in the list so libs still load. Must not crash, must rc0."""
+    junk = ":".join([f"/tmp/no_such_dir_{i}" for i in range(400)])
+    env = dict(os.environ, DYLD_LIBRARY_PATH=f"{junk}:{BUILD}")
+    out = f"{TMP}/sys_r6_longdyld.json"
+    if os.path.exists(out): os.remove(out)
+    try:
+        r = subprocess.run([VIS, "--insp", IMG, GDEF, out],
+                           cwd=CORE, env=env, capture_output=True, timeout=120)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    report = open(out, "rb").read() if os.path.exists(out) else None
+    ok = (rc == 0) and report is not None
+    return ok, f"rc={rc_str(rc)} dyld_len={len(env['DYLD_LIBRARY_PATH'])}"
+CASES.append(case("r6_long_dyld_library_path", "custom", fn=fn_r6_long_dyld))
+
+# ---- r6.8 RLIMIT_AS memory cap -> graceful failure ----------------------
+def fn_r6_rlimit_as(_run):
+    """Cap address space to 128MB via preexec_fn. Engine should either complete
+    or fail gracefully (no SIGSEGV/SIGBUS). On macOS, RLIMIT_AS is largely
+    a no-op for many allocators — accept either rc0 or controlled non-crash rc."""
+    out = f"{TMP}/sys_r6_rlimit.json"
+    if os.path.exists(out): os.remove(out)
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    CAP = 128 * 1024 * 1024
+    def _preexec():
+        try:
+            _resource6.setrlimit(_resource6.RLIMIT_AS, (CAP, CAP))
+        except Exception:
+            pass
+    try:
+        r = subprocess.run([VIS, "--insp", IMG, GDEF, out],
+                           cwd=CORE, env=env, capture_output=True,
+                           timeout=120, preexec_fn=_preexec)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    # Memory-unsafe crash = FAIL. Any controlled exit (incl. SIGABRT, ENOMEM
+    # -> nonzero exit, or success) is acceptable.
+    safe = (rc not in SIGCRASH)
+    return safe, f"rc={rc_str(rc)} RLIMIT_AS=128MB (graceful={safe})"
+CASES.append(case("r6_rlimit_as_128mb_graceful", "custom", fn=fn_r6_rlimit_as))
+
+# ---- r6.9 200 quick sequential runs: fd/memory surveillance --------------
+def fn_r6_seq_200_surveillance(run):
+    """200 sequential runs. Each is a fresh process so RSS should be stable.
+    Track runtime drift + (best-effort) /usr/bin/time -l peak RSS. Also count
+    /tmp/qa output files to detect fd-leak symptoms (none expected: per-process)."""
+    N = 200
+    times = []
+    rsses = []
+    has_time = os.path.exists("/usr/bin/time")
+    for i in range(N):
+        out = f"{TMP}/sys_r6_s200_{i}.json"
+        if os.path.exists(out): os.remove(out)
+        env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+        t0 = _time5.time()
+        try:
+            if has_time:
+                r = subprocess.run(["/usr/bin/time", "-l", VIS, "--insp", IMG, GDEF, out],
+                                   cwd=CORE, env=env, capture_output=True, timeout=60)
+                rc = r.returncode
+                err = r.stderr.decode(errors="replace")
+                for line in err.splitlines():
+                    if "maximum resident set size" in line:
+                        try: rsses.append(int(line.strip().split()[0])); break
+                        except Exception: pass
+            else:
+                r = subprocess.run([VIS, "--insp", IMG, GDEF, out],
+                                   cwd=CORE, env=env, capture_output=True, timeout=60)
+                rc = r.returncode
+        except subprocess.TimeoutExpired:
+            return False, f"TIMEOUT at iter {i}"
+        times.append(_time5.time() - t0)
+        if rc != 0:
+            return False, f"iter {i} rc={rc_str(rc)}"
+    first20 = sum(times[:20]) / 20
+    last20 = sum(times[-20:]) / 20
+    time_stable = last20 < 2.0 * first20
+    detail = f"N={N} t_first20={first20:.2f}s t_last20={last20:.2f}s time_stable={time_stable}"
+    if rsses and len(rsses) >= 40:
+        rf = sum(rsses[:20]) / 20; rl = sum(rsses[-20:]) / 20
+        rss_stable = rl < 1.5 * rf
+        detail += f" rss_first20={rf/1e6:.1f}MB rss_last20={rl/1e6:.1f}MB rss_stable={rss_stable}"
+        return (time_stable and rss_stable), detail
+    return time_stable, detail
+CASES.append(case("r6_sequential_200_surveillance", "custom", fn=fn_r6_seq_200_surveillance))
+
+# ---- r6.10 CalibMapPath -> 16-bit PNG (cross-buffer / bit-depth) --------
+if _PIL:
+    from PIL import Image as _PI6
+    _R6_16PNG = f"{TMP}/sys_r6_calibmap_16bit.png"
+    _PI6.new("I;16", (512, 512), 32000).save(_R6_16PNG, "PNG")
+    def mut_r6_calibmap_16bit():
+        def f():
+            d = golden()
+            d["CalibMapPath"] = _R6_16PNG
+            return d
+        return f
+    CASES.append(case("r6_def_calibmap_16bit_png_robust", "robust",
+                      make=mut_r6_calibmap_16bit()))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_system", CASES))

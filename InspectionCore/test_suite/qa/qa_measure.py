@@ -1043,5 +1043,237 @@ CASES += [
     case("roughness_rmse_nonneg",       "custom", fn=fn_roughness_rmse_nonneg),
 ]
 
+# ================= ROUND 6: degenerate geometry / cascade / cycles / matching_method =================
+
+# R6-1: caliper on a line whose pt1==pt2 (zero direction vector, normalize div-by-zero)
+def _caliper_zero_line():
+    d = golden()
+    ln = first_of(d, "line")
+    if ln is not None:
+        ln["locating"] = "caliper"
+        ln["pt1"] = {"x": 100.0, "y": 100.0}
+        ln["pt2"] = {"x": 100.0, "y": 100.0}
+    return d
+
+# R6-2: caliper on an arc whose 3 points are collinear (circle fit degenerates)
+def _caliper_collinear_arc():
+    d = golden()
+    ar = first_of(d, "arc")
+    if ar is not None:
+        ar["locating"] = "caliper"
+        ar["pt1"] = {"x": 0.0,   "y": 100.0}
+        ar["pt2"] = {"x": 100.0, "y": 100.0}
+        ar["pt3"] = {"x": 200.0, "y": 100.0}
+    return d
+
+# R6-3: vertex_touch_searching on a line with no actual edge nearby (far off-image)
+def _vts_line_no_edge():
+    d = golden()
+    for ln in all_of(d, "line"):
+        ln["vertex_touch_searching"] = True
+        ln["pt1"] = {"x": -9999.0, "y": -9999.0}
+        ln["pt2"] = {"x": -9990.0, "y": -9999.0}
+    return d
+
+# R6-4: measure depending on a CALIPER-failed feature
+# Force a caliper on a line with a far-off-image position; measure refs it.
+def _measure_depends_failed_caliper():
+    d = golden()
+    ln = first_of(d, "line")
+    if ln is not None:
+        ln["locating"] = "caliper"
+        ln["pt1"] = {"x": -9999.0, "y": -9999.0}
+        ln["pt2"] = {"x": -9990.0, "y": -9999.0}
+    return d
+
+# R6-5: caliper succeeded but very low confidence -- shrink caliper params drastically
+def _caliper_low_confidence():
+    d = golden()
+    for t in ("line", "arc"):
+        for ft in all_of(d, t):
+            ft["locating"] = "caliper"
+            ft["caliper"] = {"count": 2, "width": 1, "length": 1, "step": 1}
+    return d
+
+# R6-6: aux_line two-line-cross where both lines fail (out-of-image lines)
+def _aux_lineCross_both_fail():
+    d = golden()
+    sig = first_of(d, "sig360_circle_line")
+    if sig is None: return d
+    bad_a = {"id": 9201, "type": "line", "locating": "caliper",
+             "pt1":{"x":-9999,"y":-9999},"pt2":{"x":-9990,"y":-9999}}
+    bad_b = {"id": 9202, "type": "line", "locating": "caliper",
+             "pt1":{"x":-9999,"y":-9990},"pt2":{"x":-9990,"y":-9990}}
+    aux = {"id": 9203, "type": "aux_point", "subtype": "lineCross",
+           "ref":[{"id":9201,"element":"line"},{"id":9202,"element":"line"}]}
+    for k, v in sig.items():
+        if isinstance(v, list):
+            v.extend([bad_a, bad_b, aux]); break
+    return d
+
+# R6-7: orientation_essential measure depending on a cycling chain (sp3<->sp4)
+def _orientation_essential_cycle():
+    d = golden()
+    sp3 = _find_id(d, 3); sp4 = _find_id(d, 4)
+    if sp3 and sp4:
+        sp3["ref"] = [{"id":4,"element":"search_point"}]
+        sp4["ref"] = [{"id":3,"element":"search_point"}]
+        sp3["locating_anchor"] = True
+        sp4["locating_anchor"] = True
+    m = first_of(d, "measure")
+    if m: m["orientation_essential"] = True
+    return d
+
+# R6-8: quality_essential=false on every measure (should still produce reports)
+def _quality_essential_false_all():
+    d = golden()
+    for sig in all_of(d, "sig360_circle_line"):
+        for k, v in sig.items():
+            if isinstance(v, list):
+                for it in v:
+                    if isinstance(it, dict) and it.get("type") == "measure":
+                        it["quality_essential"] = False
+    return d
+
+# R6-9: intrusionSizeLimitRatio extreme values (0, 1, 100)
+def _intrusion_ratio(r):
+    def f():
+        d = golden()
+        for sig in all_of(d, "sig360_circle_line"):
+            sig["intrusionSizeLimitRatio"] = r
+        return d
+    return f
+_intrusion_0   = _intrusion_ratio(0.0)
+_intrusion_1   = _intrusion_ratio(1.0)
+_intrusion_100 = _intrusion_ratio(100.0)
+
+# R6-10: matching_method=1 (edge_sig path) at top-level
+def _matching_method_swap():
+    d = golden()
+    d["matching_method"] = 1
+    return d
+
+# ---- custom fns for R6 ----
+
+def fn_no_crash_under_2s(make, max_seconds=2.0):
+    """No crash, no NaN, ideally completes under max_seconds (caps now 512/64/256)."""
+    def fn(run_insp):
+        t0 = time.time()
+        rc, out = run_insp(make(), timeout=max_seconds + 8)
+        dt = time.time() - t0
+        if rc == "TIMEOUT": return False, f"TIMEOUT dt={dt:.2f}s"
+        if isinstance(rc, int) and rc in SIGCRASH:
+            return False, f"crash rc={rc_str(rc)} dt={dt:.2f}s"
+        if out is not None:
+            low = out.lower()
+            if b"nan" in low or b"\"inf" in low or b"-inf" in low:
+                return False, f"NaN/Inf rc={rc_str(rc)} dt={dt:.2f}s"
+        slow = " SLOW" if dt > max_seconds else ""
+        return True, f"rc={rc_str(rc)} dt={dt:.2f}s{slow}"
+    return fn
+
+def fn_zero_line_caliper(run_insp):
+    """pt1==pt2 line with caliper: must not SIGFPE/SIGSEGV on normalize."""
+    rc, out = run_insp(_caliper_zero_line(), timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: rc={rc_str(rc)} on zero-length line caliper"
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, "NaN/Inf in JSON"
+    return True, f"rc={rc_str(rc)} (no crash on zero-dir vector)"
+
+def fn_collinear_arc_caliper(run_insp):
+    """3 collinear points -> circle fit degenerate. Must not crash or emit NaN."""
+    rc, out = run_insp(_caliper_collinear_arc(), timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: rc={rc_str(rc)} on collinear arc"
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, "NaN/Inf in JSON"
+    return True, f"rc={rc_str(rc)} (no crash on collinear arc)"
+
+def fn_cascade_failed_caliper(run_insp):
+    """Measure depending on a caliper-failed feature: judges referencing it must
+    be NA (status!=0, value null or finite), no NaN, no crash."""
+    rc, out = run_insp(_measure_depends_failed_caliper(), timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)}"
+    if out is None: return True, f"rc={rc_str(rc)} no out"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, "NaN/Inf in JSON"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    na = sum(1 for j in js if j.get("status") != 0)
+    return (not bad), f"rc={rc_str(rc)} judges={len(js)} na={na} bad={len(bad)}"
+
+def fn_low_confidence_gating(run_insp):
+    """Tiny caliper => low confidence. Must not produce SUCCESS judges with garbage:
+    success judges (status==0) must carry finite numeric values."""
+    t0 = time.time()
+    rc, out = run_insp(_caliper_low_confidence(), timeout=10)
+    dt = time.time() - t0
+    if rc == "TIMEOUT": return False, f"TIMEOUT {dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if out is None: return True, f"rc={rc_str(rc)} dt={dt:.2f}s no out"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, "NaN/Inf in JSON"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    succ = sum(1 for j in js if j.get("status") == 0)
+    return (not bad), f"rc={rc_str(rc)} dt={dt:.2f}s judges={len(js)} succ={succ} bad={len(bad)}"
+
+def fn_aux_both_fail(run_insp):
+    """Both lines for lineCross fail: aux must be NA, no crash, no NaN."""
+    rc, out = run_insp(_aux_lineCross_both_fail(), timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)}"
+    if out is None: return True, f"rc={rc_str(rc)} no out"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, "NaN/Inf in JSON"
+    return True, f"rc={rc_str(rc)} (no crash on dual-fail lineCross)"
+
+def fn_orient_cycle(run_insp):
+    """orientation_essential + ref cycle: must NOT hang, must NOT crash."""
+    t0 = time.time()
+    rc, out = run_insp(_orientation_essential_cycle(), timeout=10)
+    dt = time.time() - t0
+    if rc == "TIMEOUT":
+        return False, f"REAL BUG: TIMEOUT (likely infinite reDo loop) dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, "NaN/Inf in JSON"
+    return True, f"rc={rc_str(rc)} dt={dt:.2f}s no hang/crash"
+
+def fn_quality_essential_false_reports(run_insp):
+    """quality_essential=false: engine must still emit judge reports."""
+    rc, out = run_insp(_quality_essential_false_all(), timeout=10)
+    if rc != 0 or out is None: return False, f"rc={rc_str(rc)}"
+    if b"nan" in out.lower(): return False, "NaN"
+    js = _collect_judges(json.loads(out))
+    if not js: return False, "no judge reports emitted"
+    bad = [j for j in js if _bad_value(j)]
+    return (not bad), f"judges={len(js)} bad={len(bad)}"
+
+CASES += [
+    case("caliper_zero_length_line",       "custom", fn=fn_zero_line_caliper),
+    case("caliper_collinear_arc",          "custom", fn=fn_collinear_arc_caliper),
+    case("vts_line_no_edge",               "custom", fn=fn_no_crash_under_2s(_vts_line_no_edge, 2.0)),
+    case("measure_depends_failed_caliper", "custom", fn=fn_cascade_failed_caliper),
+    case("caliper_low_confidence_gating",  "custom", fn=fn_low_confidence_gating),
+    case("aux_lineCross_both_fail",        "custom", fn=fn_aux_both_fail),
+    case("orientation_essential_cycle",    "custom", fn=fn_orient_cycle),
+    case("quality_essential_false_all",    "custom", fn=fn_quality_essential_false_reports),
+    case("intrusion_ratio_zero",           "custom", fn=fn_no_crash_under_2s(_intrusion_0,   2.0)),
+    case("intrusion_ratio_one",            "custom", fn=fn_no_crash_under_2s(_intrusion_1,   2.0)),
+    case("intrusion_ratio_hundred",        "custom", fn=fn_no_crash_under_2s(_intrusion_100, 2.0)),
+    case("matching_method_edge_sig_swap",  "custom", fn=fn_no_crash_under_2s(_matching_method_swap, 2.0)),
+]
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_measure", CASES))

@@ -550,6 +550,116 @@ def mk_regression_round2_combo():
         m["calc_f"] = {"exp": "", "post_exp": ["[12]", None, "@@@", "+", "/"]}
     return d
 
+# ===== ROUND 6: wider cycles, invalid-id detector boundary, json_seg_parser, nested defs, mem pressure =====
+
+def mk_aux_3node_cycle():
+    # 3-node cycle: aux_point -> aux_line -> measure -> aux_point
+    d = golden()
+    ap = first_of(d, "aux_point"); al = first_of(d, "aux_line"); m = first_of(d, "measure")
+    if ap and al and m:
+        ap["ref"] = [{"id": al.get("id"), "element": "aux_line"}]
+        al["ref"] = [{"id": m.get("id"), "element": "measure"}]
+        m["ref"]  = [{"id": ap.get("id"), "element": "aux_point"}]
+    return d
+
+def mk_aux_4node_cycle():
+    # 4-node cycle weaving aux_point/aux_line pairs
+    d = golden()
+    aps = all_of(d, "aux_point"); als = all_of(d, "aux_line")
+    if len(aps) >= 2 and len(als) >= 2:
+        chain = [aps[0], als[0], aps[1], als[1]]
+        for i, n in enumerate(chain):
+            nxt = chain[(i+1) % len(chain)]
+            n["ref"] = [{"id": nxt.get("id"), "element": nxt.get("type")}]
+    return d
+
+def mk_searchpoint_long_ref_chain():
+    # Chain length ~= number of search_points: sp0->sp1->...->spN-1->sp0
+    d = golden()
+    sps = all_of(d, "search_point")
+    if len(sps) >= 2:
+        for i, s in enumerate(sps):
+            nxt = sps[(i+1) % len(sps)]
+            s["ref"] = [{"id": nxt.get("id"), "element": "search_point"}]
+    return d
+
+def mk_cycle_with_invalid_id():
+    # Cycle detector facing an invalid id node mid-chain (should not loop forever)
+    d = golden()
+    ap = first_of(d, "aux_point"); al = first_of(d, "aux_line")
+    if ap and al:
+        ap["ref"] = [{"id": al.get("id"), "element": "aux_line"}]
+        al["ref"] = [{"id": 99999, "element": "aux_point"}]   # dangling -> back-edge attempt
+    return d
+
+def mk_all_refs_invalid_ids():
+    # Every aux/measure/search_point ref points to a non-existent id
+    d = golden()
+    for ft in ("aux_point", "aux_line", "measure", "search_point"):
+        for f in all_of(d, ft):
+            f["ref"] = [{"id": 99999 + (f.get("id") or 0), "element": ft}]
+    return d
+
+def mk_deep_lineCross_chain():
+    # aux_point lineCross deep chain where intermediate aux_lines are degenerate
+    d = golden()
+    als = all_of(d, "aux_line"); aps = all_of(d, "aux_point")
+    # break intermediate lines so the chain has failing nodes
+    for al in als:
+        al["subtype"] = "twoPoint"
+        al["pt1"] = {"x": 0.0, "y": 0.0}
+        al["pt2"] = {"x": 0.0, "y": 0.0}     # zero-length line -> lineCross fails
+    # link aux_points sequentially as lineCross of pairs of (broken) aux_lines
+    for i, ap in enumerate(aps):
+        ap["subtype"] = "lineCross"
+        if len(als) >= 2:
+            ap["ref"] = [{"id": als[i % len(als)].get("id"), "element": "aux_line"},
+                         {"id": als[(i+1) % len(als)].get("id"), "element": "aux_line"}]
+    return d
+
+# raw bytes targeting json_seg_parser stack limits / quoting attacks
+RAW_JSP_HUGE_KEY = ('{"type":"binary_processing_group","'
+                    + 'A' * 200000 + '":1,"featureSet":[]}')
+
+RAW_JSP_UNTERMINATED_STRING = '{"type":"binary_processing_group","featureSet":"unterm'
+
+RAW_JSP_ESCAPED_QUOTES = ('{"type":"binary_processing_group","featureSet":'
+                          '[{"type":"sig360_circle_line","features":'
+                          '[{"type":"line","id":1,"name":"' + ('\\"' * 5000) +
+                          '","pt1":{"x":0,"y":0},"pt2":{"x":1,"y":1}}]}]}')
+
+def mk_nested_measure_in_measure():
+    # measure feature containing another full measure under unexpected key
+    d = golden(); m = first_of(d, "measure")
+    if m:
+        inner = copy.deepcopy(m)
+        inner["id"] = 77777
+        m["nested_feature"] = inner
+        m["features"] = [inner, inner]           # wrong-shape nesting
+    return d
+
+def mk_nested_featureSet_recursive():
+    # A feature carrying a full featureSet inside it (recursive def-in-def)
+    d = golden()
+    feats = first_of(d, "sig360_circle_line")["features"]
+    inner = copy.deepcopy(d)
+    feats.append({"type": "line", "id": 4242,
+                  "pt1": {"x": 0, "y": 0}, "pt2": {"x": 1, "y": 1},
+                  "featureSet": inner.get("featureSet")})
+    return d
+
+def mk_calc_megastring_exp():
+    # 1M-character single string in calc_f.exp -> cJSON_Print memory pressure
+    d = golden(); m = first_of(d, "measure")
+    if m:
+        mid = m.get("id", 12)
+        m["subtype"] = "calc"; m["ref"] = [{"id": mid}]
+        m["calc_f"] = {"exp": "A" * (1024 * 1024),
+                       "post_exp": [f"[{mid}]", "1", "+"]}
+        m["name"] = "B" * (1024 * 1024)          # extra: huge name -> report serialize
+    return d
+
+
 CASES = [
     # A. malformed JSON bytes
     case("raw_truncated_json",      "robust", raw=RAW_TRUNCATED),
@@ -681,6 +791,20 @@ CASES = [
     case("id_int32_min",               "robust", make=mk_id_int_min),
     case("angle_edge_values",          "robust", make=mk_angle_edge_values),
     case("top_level_reports_conflict", "robust", make=mk_top_level_reports_conflict),
+
+    # ===== ROUND 6 =====
+    case("aux_3node_cycle",            "robust", make=mk_aux_3node_cycle),
+    case("aux_4node_cycle",            "robust", make=mk_aux_4node_cycle),
+    case("searchpoint_long_ref_chain", "robust", make=mk_searchpoint_long_ref_chain),
+    case("cycle_with_invalid_id",      "robust", make=mk_cycle_with_invalid_id),
+    case("all_refs_invalid_ids",       "robust", make=mk_all_refs_invalid_ids),
+    case("deep_lineCross_chain",       "robust", make=mk_deep_lineCross_chain),
+    case("raw_jsp_huge_key",           "robust", raw=RAW_JSP_HUGE_KEY),
+    case("raw_jsp_unterm_string",      "robust", raw=RAW_JSP_UNTERMINATED_STRING),
+    case("raw_jsp_escaped_quotes",     "robust", raw=RAW_JSP_ESCAPED_QUOTES),
+    case("nested_measure_in_measure",  "robust", make=mk_nested_measure_in_measure),
+    case("nested_featureSet_recursive","robust", make=mk_nested_featureSet_recursive),
+    case("calc_megastring_exp",        "robust", make=mk_calc_megastring_exp),
 ]
 
 if __name__ == "__main__":
