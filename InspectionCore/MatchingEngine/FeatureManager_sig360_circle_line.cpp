@@ -4676,7 +4676,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
       .area= ldData[i].area,
     };
     edge_grid.RESET();
-    int contGridRet=extractLabeledContourDataToContourGrid(p_cropImg, i, curLableDat, edge_grid, scanline_skip);
+    cv::Mat _crop_cv = acvImageBgrView(p_cropImg);
+    int contGridRet=extractLabeledContourDataToContourGrid(_crop_cv, i, curLableDat, edge_grid, scanline_skip);
     // edge_grid.ptMult(dsampLevel/2);
     if(contGridRet!=0)
     {

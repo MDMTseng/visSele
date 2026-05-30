@@ -78,89 +78,76 @@ inline int valueSaturation(int v,int ringSize)
 //return 1 => single complex root => r0: real part r1: positive imaginary part
 int quadratic_roots(float a,float b,float c,float *r0,float*r1);
 //
-int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, char searchType, vector<ContourFetch::ptInfo> &contour, int ptMax=-1,int walkInOldPathMax=50)//HACK: to add ptMax is to prevent walk infinit loop(due to some internal logic error), fix it some days
+// 8-direction contour walk on a CV_8UC3 BGR image. Looks for the next pixel
+// (in counterclockwise/clockwise sequence per `dirinc`) whose R-channel is
+// != 255. Returns a pointer to that pixel's first byte (BGR) and updates
+// X_io/Y_io/dir_io. Direct cv::Mat translation of the acvContourWalk loop;
+// row-major contiguous CV_8UC3 has the same byte layout as acvImage's CVector.
+static uint8_t *cvContourWalk(cv::Mat &Pic, int *X_io, int *Y_io, int *dir_io, int dirinc)
+{
+    static const int Vt[8][2] = {{-1, -1}, {-1, 0}, {-1, 1}, {0, 1}, {1, 1}, {1, 0}, {1, -1}, {0, -1}};
+    int dir = (*dir_io) & 0x7;
+    for (int i = 0; i < 8; i++)
+    {
+        int y = *Y_io + Vt[dir][0];
+        int x = *X_io + Vt[dir][1];
+        uint8_t *p = Pic.ptr<uint8_t>(y) + x * 3;
+        if (p[2] != 255)
+        {
+            *Y_io = y; *X_io = x; *dir_io = dir;
+            return p;
+        }
+        dir = (dir + dirinc) & 0x7;
+    }
+    return NULL;
+}
+
+int acvContourExtraction(cv::Mat &Pic, int FromX, int FromY, uint8_t B, uint8_t G, uint8_t R, char searchType, vector<ContourFetch::ptInfo> &contour, int ptMax=-1, int walkInOldPathMax=50)
 {
     int NowPos[2] = {FromX, FromY};
 
-    int NowWalkDir; //=5;//CounterClockWise
-    BYTE **CVector = Pic->CVector;
+    uint8_t *startRow = Pic.ptr<uint8_t>(FromY);
+    startRow[FromX * 3]     = B;
+    startRow[FromX * 3 + 1] = G;
+    startRow[FromX * 3 + 2] = 254;
 
-    CVector[FromY][FromX * 3] = B; //StartSymbol
-    CVector[FromY][FromX * 3 + 1] = G;
-    CVector[FromY][FromX * 3 + 2] = 254;
+    int walkInOldPathCounter = 0;
+    int NowWalkDir = (searchType == searchType_C_B2W) ? 3 : 7;
 
-    int walkInOldPathCounter=0;
-    NowWalkDir = 7;
-    //012
-    //7 3
-    //654
-    if(searchType == searchType_C_B2W)
-    {
-      NowWalkDir = 3;
-    }
-    else
-    {
-      NowWalkDir = 7;
-    }
-
-    BYTE *next = acvContourWalk(Pic, &NowPos[0], &NowPos[1], &NowWalkDir, 1);
+    uint8_t *next = cvContourWalk(Pic, &NowPos[0], &NowPos[1], &NowWalkDir, 1);
 
     if (next == NULL)
     {
-        CVector[FromY][FromX * 3 + 2] = R;
+        startRow[FromX * 3 + 2] = R;
         return 0;
     }
-    acv_XY p_hist;
 
     while (1)
     {
-        ContourFetch::ptInfo pt={
-          pt:{.X=(float)NowPos[0],.Y=(float)NowPos[1]},
-          sobel:{.X=NAN,.Y=NAN},
-          contourDir:{.X=NAN,.Y=NAN},
-          pt_img:{.X=NAN,.Y=NAN},
-          curvature:NAN,
-          edgeRsp:0,
-          tmp:NAN,
-          // sobel:{.X=0,.Y=0}
-
-          };
-
-        pt.pt_img=pt.pt;
-        pt.curvature=0;
+        ContourFetch::ptInfo pt = {
+          pt:        {.X=(float)NowPos[0], .Y=(float)NowPos[1]},
+          sobel:     {.X=NAN, .Y=NAN},
+          contourDir:{.X=NAN, .Y=NAN},
+          pt_img:    {.X=NAN, .Y=NAN},
+          curvature: NAN,
+          edgeRsp:   0,
+          tmp:       NAN,
+        };
+        pt.pt_img = pt.pt;
+        pt.curvature = 0;
         contour.push_back(pt);
-        if(ptMax>-1 && contour.size()>ptMax)
-        {
-          return -1;
-        }
-        if (next[2] == 254)
-        {
-            break;
-        }
-        next[0] = B;
-        next[1] = G;
-        next[2] = R;
+        if (ptMax > -1 && (int)contour.size() > ptMax) return -1;
+        if (next[2] == 254) break;
+        next[0] = B; next[1] = G; next[2] = R;
 
-        NowWalkDir = (NowWalkDir - 2) & 0x7; //%8
+        NowWalkDir = (NowWalkDir - 2) & 0x7;
+        next = cvContourWalk(Pic, &NowPos[0], &NowPos[1], &NowWalkDir, 1);
 
-        next = acvContourWalk(Pic, &NowPos[0], &NowPos[1], &NowWalkDir, 1);
-
-        if(next[0]==B && next[1]==G && next[2]==R)
-        {//error might walk 
-          walkInOldPathCounter++;
-          // return -1;
-        }
-        else
-        {
-          walkInOldPathCounter=0;
-        }
-        if(walkInOldPathCounter>walkInOldPathMax)//HACK: 50 magic number 
-        {
-          return -2;
-        }
+        if (next[0] == B && next[1] == G && next[2] == R) walkInOldPathCounter++;
+        else walkInOldPathCounter = 0;
+        if (walkInOldPathCounter > walkInOldPathMax) return -2;
     }
     next[2] = R;
-
     return 0;
 }
 float acvPoint3Angle(acv_XY p1,acv_XY pc,acv_XY p2)
@@ -681,58 +668,6 @@ ContourFetch::ptInfo* findEndPoint(acv_Line line, int signedness, vector<Contour
 //   return maxMatchingScore;
 // }
 
-int extractContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int grid_size,ContourFetch &edge_grid, int scanline_skip)
-{
-
-  edge_grid.RESET();
-
-  if(scanline_skip<0)return -1;
-
-  BYTE *OutLine, *OriLine;
-  int contourIdx=0;
-  //ldData[i].
-  int contourMaxCount=(labeledImg->GetHeight()+labeledImg->GetWidth())*2;
-  for (int i = 3; i < labeledImg->GetHeight()-3; i+=scanline_skip)
-  {
-      OriLine = labeledImg->CVector[i]+3*3;
-
-      uint8_t pre_pix = 255;
-      uint8_t cur_pix;
-      for (int j = 3; j < labeledImg->GetWidth()-3; j++,OriLine+=3)
-      {
-        cur_pix = OriLine[2];
-        if(pre_pix==255 && cur_pix == 0)//White to black
-        {
-          edge_grid.tmpXYSeq.resize(0);
-          int ret = acvContourExtraction(labeledImg, j, i, 1, 128, 1, searchType_C_W2B,edge_grid.tmpXYSeq,contourMaxCount);
-          if(ret)
-            return -1;
-          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
-        }
-        else if(pre_pix==0 && cur_pix == 255)//black to white
-        {
-          edge_grid.tmpXYSeq.resize(0);
-          int ret= acvContourExtraction(labeledImg, j-1, i, 1, 128, 1, searchType_C_B2W,edge_grid.tmpXYSeq,contourMaxCount);
-          if(ret)
-            return -1;
-          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
-        }
-        if(edge_grid.tmpXYSeq.size()>0)
-        {
-          for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
-          {
-            edge_grid.push(contourIdx,edge_grid.tmpXYSeq[k]);
-          }
-          contourIdx++;
-          edge_grid.tmpXYSeq.resize(0);
-        }
-
-        pre_pix= cur_pix;
-      }
-  }
-
-  return 0;
-}
 
 int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int jump,acv_XY *ret_point_opt,float *ret_edge_response);
 int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,float thres,acv_XY *ret_point_opt,float *ret_edge_response);
@@ -1781,86 +1716,61 @@ void contourGridGrayLevelRefine(acvImage *grayLevelImg,ContourFetch &edge_grid,F
 }
 
 
-int extractLabeledContourDataToContourGrid(acvImage *labeledImg,int label,acv_LabeledData ldat,ContourFetch &edge_grid,int scanline_skip)
+int extractLabeledContourDataToContourGrid(cv::Mat &labeledImg, int label, acv_LabeledData ldat, ContourFetch &edge_grid, int scanline_skip)
 {
-
   edge_grid.RESET();
-
-  if(scanline_skip<0)return -1;
+  if (scanline_skip < 0) return -1;
 
   int sX = (int)ldat.LTBound.X;
   int sY = (int)ldat.LTBound.Y;
   int eX = (int)ldat.RBBound.X;
   int eY = (int)ldat.RBBound.Y;
-  LOGI("%d %d %d %d",sX,sY,eX,eY);
-  BYTE *OutLine, *OriLine;
+  LOGI("%d %d %d %d", sX, sY, eX, eY);
 
-  _24BitUnion *lableConv;
-  int contourIdx=0;
-  int contourMaxCount=(eY+eX)*2*3;
-  //ldData[i].
-  int extractRet=0;
-  for (int i = sY; i < eY; i+=scanline_skip)
+  int contourIdx = 0;
+  int contourMaxCount = (eY + eX) * 2 * 3;
+  int extractRet = 0;
+  for (int i = sY; i < eY; i += scanline_skip)
   {
-      OriLine = &(labeledImg->CVector[i][sX*3]);
+    uint8_t *OriLine = labeledImg.ptr<uint8_t>(i) + sX * 3;
 
-      uint8_t pre_pix = 255;
-      uint8_t cur_pix;
-      for (int j = sX; j < eX; j++,OriLine+=3)
+    uint8_t pre_pix = 255;
+    uint8_t cur_pix;
+    for (int j = sX; j < eX; j++, OriLine += 3)
+    {
+      cur_pix = OriLine[2];
+
+      _24BitUnion *lableConv = (_24BitUnion *)OriLine;
+      if (edge_grid.tmpXYSeq.size() != 0) edge_grid.tmpXYSeq.resize(0);
+
+      if (pre_pix == 255 && cur_pix == 0) // White to black
       {
-        cur_pix = OriLine[2];
-        
-        lableConv=(_24BitUnion*)OriLine;
-        if(edge_grid.tmpXYSeq.size()!=0)
-        {
-          edge_grid.tmpXYSeq.resize(0);
-        }
-
-        if(pre_pix==255 && cur_pix == 0)//White to black
-        {
-          if(lableConv->_3Byte.Num==label)
-          {
-            extractRet= acvContourExtraction(labeledImg, j, i, 1, 128, 1, searchType_C_W2B,edge_grid.tmpXYSeq,contourMaxCount);
-          }
-        }
-        else if(pre_pix==0 && cur_pix == 255)//black to white
-        {
-          
-          if(lableConv->_3Byte.Num==label)
-          {
-            extractRet= acvContourExtraction(labeledImg, j-1, i, 1, 128, 1, searchType_C_B2W,edge_grid.tmpXYSeq,contourMaxCount);
-          }
-        }
-
-
-
-
-        if(edge_grid.tmpXYSeq.size()>0)
-        {
-          if(extractRet!=0)
-          {
-            LOGE(">>>>>:Extract error:%d",extractRet);
-            edge_grid.RESET();
-            return -1;
-          }
-          for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
-          {
-            edge_grid.push(contourIdx,edge_grid.tmpXYSeq[k]);
-          }
-          contourIdx++;
-          
-          //LOGI(">>>>>:contourIdx:%d seq:%d",contourIdx,edge_grid.tmpXYSeq.size());
-          edge_grid.tmpXYSeq.resize(0);
-        }
-
-
-
-        pre_pix= cur_pix;
+        if (lableConv->_3Byte.Num == label)
+          extractRet = acvContourExtraction(labeledImg, j, i, 1, 128, 1, searchType_C_W2B, edge_grid.tmpXYSeq, contourMaxCount);
       }
-      
+      else if (pre_pix == 0 && cur_pix == 255) // black to white
+      {
+        if (lableConv->_3Byte.Num == label)
+          extractRet = acvContourExtraction(labeledImg, j - 1, i, 1, 128, 1, searchType_C_B2W, edge_grid.tmpXYSeq, contourMaxCount);
+      }
+
+      if (edge_grid.tmpXYSeq.size() > 0)
+      {
+        if (extractRet != 0)
+        {
+          LOGE(">>>>>:Extract error:%d", extractRet);
+          edge_grid.RESET();
+          return -1;
+        }
+        for (int k = 0; k < (int)edge_grid.tmpXYSeq.size(); k++)
+          edge_grid.push(contourIdx, edge_grid.tmpXYSeq[k]);
+        contourIdx++;
+        edge_grid.tmpXYSeq.resize(0);
+      }
+      pre_pix = cur_pix;
+    }
   }
   return 0;
-
 }
 
 // void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<acv_LabeledData> &ldData,
