@@ -52,15 +52,7 @@ class FeatureManager_binary_processing_group:public FeatureManager_group_proto {
 
   vector<acv_LabeledData> ldData;
   char subFeatureDefSha1[128];
-  // acv -> cv migration: the binary images are now stored in cv::Mat. The
-  // acvImage objects are thin shims that share the cv::Mat memory via
-  // useExtBuffer, so the not-yet-migrated acv* consumers (acvComponentLabeling_cv,
-  // acvThresholdMap, binaryDownScale) keep working with no copy. Pair members
-  // need to be re-bound whenever the storage Mat is reallocated.
   cv::Mat binary_img_storage;
-  cv::Mat ds_binary_img_storage;
-  acvImage binary_img;
-  acvImage ds_binary_img;
   
   FeatureReport_ERROR error;
 public :

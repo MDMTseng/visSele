@@ -286,9 +286,6 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     // Own the binary image bytes in a cv::Mat; the acvImage `binary_img` shim
     // shares the storage via useExtBuffer for the legacy acv consumers below.
     binary_img_storage.create(img_cv.rows, img_cv.cols, CV_8UC3);
-    binary_img.useExtBuffer(binary_img_storage.data,
-                            (int)(binary_img_storage.total() * binary_img_storage.elemSize()),
-                            img_cv.cols, img_cv.rows);
 
     // Per-camera adaptive threshold: lazily build the threshold map from the
     // loaded background model (sampler->stageLightInfo), robustly cleaned of
@@ -317,15 +314,10 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     if (binarize_method == 1) // calibration-free vignette-tolerant bg-flatten
     {
       binarize_bg_flatten_cv(img_cv, binary_img_storage, bg_close_kernel, bg_ratio, bg_downscale);
-      // re-bind the acvImage shim if binary_img_storage moved (create may
-      // reallocate when the size/type changes).
-      binary_img.useExtBuffer(binary_img_storage.data,
-                              (int)(binary_img_storage.total() * binary_img_storage.elemSize()),
-                              binary_img_storage.cols, binary_img_storage.rows);
     }
     else if (useAdaptiveThres && !bgThreshMap.empty())
     {
-      cvThresholdMap(binary_img_storage, img_cv, bgThreshMap.data(), bgMapW, bgMapH, 0);
+      cvThresholdMap(binary_img_storage, img_cv, bgThreshMap.data(), bgMapW, bgMapH, 0);  // dst already sized by create() above
     }
     else
     {
