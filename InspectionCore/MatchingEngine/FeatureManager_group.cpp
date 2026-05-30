@@ -344,12 +344,13 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
                       cv::Scalar(0, 0, 0), 1);
       }
       FENCE_AREA+=(img->GetWidth()-xDist+img->GetHeight()-xDist)*2-4;
-      uint8_t *line2Fill = lableImg->CVector[xDist+3];
-      for(int i=1;i<xDist;i++)
+      // Migrated manual row-write loop -> cv::line via the same BGR view.
+      // Writes 1 px black at y=xDist+3, x=1..xDist-1 (inclusive of x=xDist-1
+      // since cv::Point endpoints are inclusive).
       {
-        line2Fill[i*3]=
-        line2Fill[i*3+1]=
-        line2Fill[i*3+2]=0;
+        cv::Mat _lv = acvImageBgrView(lableImg);
+        cv::line(_lv, cv::Point(1, xDist + 3), cv::Point(xDist - 1, xDist + 3),
+                 cv::Scalar(0, 0, 0), 1);
       }
       FENCE_AREA+=xDist;
 
