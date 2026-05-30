@@ -1,6 +1,32 @@
 import { round } from 'UTIL/MISC_Util';
 
-// Per-shape (measure) logic — first piece of the per-shape schema (shapes/).
+// Per-shape module: MEASURE.
+// Part of the per-shape vertical-slice keystone (see OPENQUESTION). This file
+// owns:
+//   - applyDefaults:               defaults the editor expects (was a case in
+//                                  InspectionEditorLogic.Shape_Attr_Fill).
+//   - applyMeasureLimitCoupling:   the value/USL/LSL <-> UCL/LCL pure math used
+//                                  by DefConfUI's jsonChange handler.
+
+export const type = 'measure';
+
+export function applyDefaults(shape) {
+  let out = shape;
+  if (typeof out.value_A != 'number') { out = { ...out }; out.value_A = 0; }
+  if (typeof out.value_B != 'number') { out = { ...out }; out.value_B = 1; }
+  if (typeof out.value_X != 'number') { out = { ...out }; out.value_X = 0; }
+  if (typeof out.value_Y != 'number') { out = { ...out }; out.value_Y = 1; }
+  if (typeof out.quality_essential != 'boolean')     { out = { ...out }; out.quality_essential = true; }
+  if (typeof out.orientation_essential != 'boolean') { out = { ...out }; out.orientation_essential = false; }
+  // Note: legacy Shape_Attr_Fill assigned these without cloning first (mutating
+  // the input if the booleans were missing). Preserve that for byte-identical
+  // behavior with the legacy path; out has already been cloned above if any of
+  // value_A/B/X/Y/quality/orientation were missing.
+  if (out.NGasNA != true) out.NGasNA = false;
+  if (out.NAasNG != true) out.NAasNG = false;
+  return out;
+}
+
 // When a measure's value/USL/LSL (and their _b back-value variants) change in the
 // property sheet, derive the dependent control limits. Pure: mutates `obj`.
 // Extracted verbatim from DefConfUI's jsonChange (formulas preserved exactly,

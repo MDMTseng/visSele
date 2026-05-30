@@ -80,104 +80,19 @@ export function MEASURERSULTRESION_reducer(res, measure_result_region) {
   return measure_result_region;
 }
 
-export function Shape_Attr_Fill(shapeObject)
-{
+// Shape_Attr_Fill — fills in per-shape-type defaults expected by the editor.
+// Keystone step 1: delegates to the per-shape registry (src/shapes/) instead
+// of a giant switch. Adding a new shape type is now a one-file change in
+// src/shapes/<type>.js + a one-line entry in src/shapes/index.js.
+//
+// Unregistered types pass through unchanged (matches the pre-refactor default
+// case). Existing per-type behavior is preserved verbatim by the modules.
+import { getShapeModule } from 'JSSRCROOT/shapes';
 
-
-  switch(shapeObject.type)
-  {
-    case SHAPE_TYPE.line:
-    {
-      shapeObject={...shapeObject}
-      if(shapeObject.vertex_touch_searching!==true)
-      {
-        shapeObject.vertex_touch_searching=false;
-      }
-      // caliper locating mode (line): "contour" (legacy) | "caliper". Normalize so the
-      // dropdown always has a string; core treats anything != "caliper" as contour.
-      if(shapeObject.locating!=="caliper") shapeObject.locating="contour";
-    }
-    break;
-    case SHAPE_TYPE.arc:
-    {
-      shapeObject={...shapeObject}
-      if(shapeObject.locating!=="caliper") shapeObject.locating="contour";
-    }
-    break;
-    case SHAPE_TYPE.search_point:
-    {
-      shapeObject={...shapeObject}
-      if(shapeObject.search_far===undefined)
-      {
-        if(shapeObject.search_style===undefined)
-        {
-          shapeObject.search_far=false;
-        }
-        else
-        {
-          shapeObject.search_far=(shapeObject.search_style==1)?true:false;
-        }
-      }
-      
-      if(shapeObject.locating_anchor!=true)
-      {
-        shapeObject.locating_anchor=false;
-      }
-      if(typeof shapeObject.line_thickness_value!= 'number')
-      {
-        shapeObject.line_thickness_value=0;
-      }
-    }
-    break;
-    case SHAPE_TYPE.measure:
-
-      if(typeof shapeObject.value_A != "number")
-      {
-        shapeObject={...shapeObject}
-        shapeObject.value_A=0;
-      }
-
-      if(typeof shapeObject.value_B != "number")
-      {
-        shapeObject={...shapeObject}
-        shapeObject.value_B=1;
-      }
-
-      if(typeof shapeObject.value_X != "number")
-      {
-        shapeObject={...shapeObject}
-        shapeObject.value_X=0;
-      }
-
-      if(typeof shapeObject.value_Y != "number")
-      {
-        shapeObject={...shapeObject}
-        shapeObject.value_Y=1;
-      }
-
-      
-      if(typeof shapeObject.quality_essential != "boolean")
-      {
-        shapeObject={...shapeObject}
-        shapeObject.quality_essential=true;
-      }
-      
-      if(typeof shapeObject.orientation_essential != "boolean")
-      {
-        shapeObject={...shapeObject}
-        shapeObject.orientation_essential=false;
-      }
-      
-      if(shapeObject.NGasNA != true)
-      {
-        shapeObject.NGasNA=false;
-      }
-      if(shapeObject.NAasNG != true)
-      {
-        shapeObject.NAasNG=false;
-      }
-    break;
-
+export function Shape_Attr_Fill(shapeObject) {
+  const mod = getShapeModule(shapeObject && shapeObject.type);
+  if (mod && typeof mod.applyDefaults === 'function') {
+    return mod.applyDefaults(shapeObject);
   }
   return shapeObject;
 }
