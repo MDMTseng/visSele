@@ -291,12 +291,16 @@ void transpose(acvImage* dst,acvImage* src)
   {
     for(int j=0;j<src->GetWidth();j++)
     {
-      // dst->CVector[j][i*3+0]=src->CVector[i][j*3+0];
-      // dst->CVector[j][i*3+1]=src->CVector[i][j*3+1];
-      // dst->CVector[j][i*3+2]=src->CVector[i][j*3+2];
       memcpy(dst->CVector[j]+i*3,src->CVector[i]+j*3,3);
     }
   }
+}
+
+// cv::Mat overload (phase 3a).  cv::transpose preserves BGR channel order
+// and handles the H<->W swap natively.
+static inline void transpose(cv::Mat &dst, const cv::Mat &src)
+{
+  cv::transpose(src, dst);
 }
 
 
@@ -1249,6 +1253,18 @@ int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *de
   return 0;
 }
 
+// cv::Mat overload of saveInspectionSample.  Bridges to the acvImage version
+// via a useExtBuffer shim (zero copy) so the existing body and its
+// SaveIMGFile + JSON metadata writes still work unchanged.
+int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *deffile, const cv::Mat &image, const char *fileName, const char *filename_extension=SNAP_FILE_EXTENSION, const char *img_extension=SNAP_IMG_EXTENSION)
+{
+  if (image.empty()) return -1;
+  cv::Mat img = image.isContinuous() ? image : image.clone();
+  acvImage _shim;
+  _shim.useExtBuffer(img.data, (int)(img.total() * img.elemSize()), img.cols, img.rows);
+  return saveInspectionSample(inspectionReport, camera_param, deffile, &_shim, fileName, filename_extension, img_extension);
+}
+
 int LoadCameraSetting(CameraLayer &camera, char *filename)
 {
   char *fileStr = ReadText(filename);
@@ -1774,7 +1790,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             else
             {
               
-              SaveIMGFile(fileName, &lastDatViewCache->img);
+              cv::imwrite(fileName, lastDatViewCache->img);
               session_ACK=true;
             }
             
@@ -1831,7 +1847,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
             lastDatViewCache_lock.lock();
 
-            int err = saveInspectionSample(lastDatViewCache->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &lastDatViewCache->img, fileName,
+            int err = saveInspectionSample(lastDatViewCache->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, lastDatViewCache->img, fileName,
               report_extension!=NULL?report_extension:SNAP_FILE_EXTENSION,
               img_extension!=NULL?img_extension:SNAP_IMG_EXTENSION);
             
@@ -3546,9 +3562,9 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   headImgPipe->context = context;
   headImgPipe->fi = finfo;
   headImgPipe->occupyFlag=0;
-  acvImage *tmp_img=&(headImgPipe->img);
-  tmp_img->ReSize(finfo.width,finfo.height);
-  auto ret=cl_obj.ExtractFrame(tmp_img->CVector[0],3,finfo.width*finfo.height);
+  cv::Mat *tmp_img=&(headImgPipe->img);
+  tmp_img->create(finfo.height, finfo.width, CV_8UC3);
+  auto ret=cl_obj.ExtractFrame(tmp_img->data, 3, finfo.width*finfo.height);
 
   // acvImage *tmp_img=img_transpose?new acvImage():&(headImgPipe->img);
 
@@ -3760,7 +3776,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     }
   }
 
-  acvImage &capImg = imgPipe->img;
+  cv::Mat &capImg = imgPipe->img;
   FeatureManager_BacPac *bacpac = imgPipe->bacpac;
   CameraLayer::frameInfo &fi = imgPipe->fi;
 
@@ -3816,30 +3832,28 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     BPG_protocol_data_acvImage_Send_info iminfo;
     bool sendJpg = false;
 
+#if 0  // experimental MJPEG live-stream path; sendJpg never true. Kept for
+       // reference but skipped during the acv->cv migration since `capImg`
+       // is now cv::Mat and `test1_buff`/ImageDownSampling are still acv-typed.
     if (sendJpg && mjpegS)
     {
-      acvImage *sendImg = &capImg;
+      acvImage *sendImg = NULL;  // would have been &capImg in the legacy path
 
       if (sendImg == NULL)
       {
         sendImg = &test1_buff;
-        // iminfo here is set up for the (currently disabled) mjpeg send path;
-        // SEND_acvImage isn't invoked in this branch, so img is left NULL.
         iminfo = (BPG_protocol_data_acvImage_Send_info){ NULL, 2 };
 
         iminfo.offsetX = (0 / iminfo.scale) * iminfo.scale;
         iminfo.offsetY = (0 / iminfo.scale) * iminfo.scale;
 
-        iminfo.fullHeight = capImg.GetHeight();
-        iminfo.fullWidth = capImg.GetWidth();
+        iminfo.fullHeight = capImg.rows;
+        iminfo.fullWidth = capImg.cols;
         int cropH = iminfo.fullHeight;
         int cropW = iminfo.fullWidth;
 
-        // LOGI(">>>>");
         ImageSampler *sampler = (false) ? bacpac->sampler : NULL;
-        //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-        ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler, 1,
-                          iminfo.offsetX, iminfo.offsetY, cropW, cropH);
+        // ImageDownSampling here would need a cv::Mat overload before re-enabling.
       }
       frameActionID++;
       if (frameActionID >= 256)
@@ -3847,18 +3861,10 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       int tmp = frameActionID;
       for (int i = 0; i < 8; i++)
       {
-        if (tmp & 1)
-        {
-          sendImg->CVector[0][i * 3] =
-              sendImg->CVector[0][i * 3 + 1] =
-                  sendImg->CVector[0][i * 3 + 2] = 255;
-        }
-        else
-        {
-          sendImg->CVector[0][i * 3] =
-              sendImg->CVector[0][i * 3 + 1] =
-                  sendImg->CVector[0][i * 3 + 2] = 0;
-        }
+        uint8_t v = (tmp & 1) ? 255 : 0;
+        sendImg->CVector[0][i * 3] = v;
+        sendImg->CVector[0][i * 3 + 1] = v;
+        sendImg->CVector[0][i * 3 + 2] = v;
         tmp >>= 1;
       }
 
@@ -3874,6 +3880,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
         encBuffL = 0;
       }
     }
+#endif
     //if(stackingC==0)
     if ((!sendJpg))
     {
@@ -3894,13 +3901,18 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
         iminfo.offsetX = (ImageCropX / _downSampLevel) * _downSampLevel;
         iminfo.offsetY = (ImageCropY / _downSampLevel) * _downSampLevel;
 
-        iminfo.fullHeight = capImg.GetHeight();
-        iminfo.fullWidth = capImg.GetWidth();
+        iminfo.fullHeight = capImg.rows;
+        iminfo.fullWidth = capImg.cols;
         int cropW = ImageCropW;
         int cropH = ImageCropH;
 
         ImageSampler *sampler = (true) ? bacpac->sampler : NULL;
-        ImageDownSampling(test1_buff, capImg, _downSampLevel, sampler, 1,
+        // ImageDownSampling still acvImage-typed; bridge capImg through a shim
+        acvImage _capImg_shim;
+        _capImg_shim.useExtBuffer(capImg.data,
+                                  (int)(capImg.total() * capImg.elemSize()),
+                                  capImg.cols, capImg.rows);
+        ImageDownSampling(test1_buff, _capImg_shim, _downSampLevel, sampler, 1,
                           iminfo.offsetX, iminfo.offsetY, cropW, cropH);
       }
       // zero-copy cv::Mat view over the (still acvImage) test1_buff so the
@@ -4230,7 +4242,7 @@ void InspSnapSaveThread(bool *terminationflag)
           }
         }
         if (_disk_ok)
-          saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &headImgPipe->img, filePath.c_str());
+          saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, headImgPipe->img, filePath.c_str());
       }
 
       image_pipe_info_occupyFlag_clr(*headImgPipe,image_pipe_info_OccupyFIdx::snapSave);//clear the snap flag
@@ -4350,21 +4362,25 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   }
   clock_t t = clock();
 
+  // acvCloneImage(.., 2) extracted the R channel and replicated to BGR ->
+  // cv::extractChannel + cvtColor GRAY2BGR.
   if(img_transpose==true)
   {
-    acvImage tmp_img;
-    transpose(&tmp_img,&imgPipe->img);
-  // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-    imgPipe->img.ReSize(tmp_img.GetWidth(),tmp_img.GetHeight());
-    acvCloneImage(&tmp_img,&imgPipe->img,  2);
+    cv::Mat tmp_img;
+    cv::transpose(imgPipe->img, tmp_img);
+    cv::Mat r;
+    cv::extractChannel(tmp_img, r, 2);
+    cv::cvtColor(r, imgPipe->img, cv::COLOR_GRAY2BGR);
   }
   else
   {
-    acvCloneImage(&imgPipe->img,&imgPipe->img,  2);
+    cv::Mat r;
+    cv::extractChannel(imgPipe->img, r, 2);
+    cv::cvtColor(r, imgPipe->img, cv::COLOR_GRAY2BGR);
   }
 
 
-  acvImage &capImg = imgPipe->img;
+  cv::Mat &capImg = imgPipe->img;
   FeatureManager_BacPac *bacpac = imgPipe->bacpac;
   CameraLayer::frameInfo &fi = imgPipe->fi;
 
@@ -4413,7 +4429,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   {
 
     // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
-    ret = ImgInspection(matchingEng, &capImg, bacpac, imgPipe->camLayer, 1);
+    ret = ImgInspection(matchingEng, capImg, bacpac, imgPipe->camLayer, 1);
     const FeatureReport *report = matchingEng.GetReport();
 
     int stat = FeatureReport_sig360_circle_line_single::STATUS_NA;

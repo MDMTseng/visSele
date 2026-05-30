@@ -103,7 +103,7 @@ typedef struct image_pipe_info
   CameraLayer *camLayer;
   int type;
   void *context;
-  acvImage img;
+  cv::Mat img;     // phase 3a: was acvImage
   uint8_t *img_jpg_enc;
   size_t img_jpg_enc_L;
 
