@@ -5,7 +5,6 @@
 #include "logctrl.h"
 #include "circleFitting.h"
 #include "CvBridge.h"
-#include <acvImage_SpDomainTool.hpp>
 
 #include "polyfit.h"
 
