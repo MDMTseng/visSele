@@ -271,9 +271,15 @@ async function main() {
     } else {
       // Filter known-legacy + r6 CanvasComponent bug.
       const KNOWN_FILTERS = [
-        /CanvasComponent/i,                   // round-6 known issue
+        /CanvasComponent/i,                   // round-6 known issue (now fixed in r7, but kept defensive)
         /ActionThrottle/i,                    // redux-throttle noise
         /No (uInsp|SLID|CNC|platform)_/i,     // expected "No xxx_peripheral_conn_info" path is console.log not error, but be safe
+        // Legacy React/antd deprecation warnings (pre-existing, unrelated to HR pipeline):
+        /Warning: validateDOMNesting/i,
+        /Warning: Each child in a list/i,
+        /Warning: Failed prop type/i,
+        /antd:/i,
+        /will be removed in next major/i,
       ];
       const lines = txt.split(/\r?\n/);
       const errLines = lines.filter((ln) => /\[error\]/i.test(ln) && !KNOWN_FILTERS.some((rx) => rx.test(ln)));

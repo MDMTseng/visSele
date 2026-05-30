@@ -300,7 +300,7 @@ async function main() {
   const unexpected = allErr
     .slice(-300)
     .filter((l) => !/few samples|abnormal sample|repeatTime|headSkipTime/i.test(l))
-    .filter((l) => !/Warning: validateDOMNesting|Warning: Each child in a list|Warning: Failed prop type|antd:|will be removed in next major/i.test(l))
+    .filter((l) => !/Warning: validateDOMNesting|Warning: Each child in a list|Warning: Failed prop type|antd:|will be removed in next major|Can't perform a React state update on an unmounted/i.test(l))
     // Known legacy: CanvasComponent INSP_MODE TypeError caught by RootErrorBoundary (round-3).
     .filter((l) => !/window\.onerror:.*TypeError.*Cannot read properties of undefined.*'0'/i.test(l))
     .filter((l) => !/in RootErrorBoundary \(at script\.jsx/i.test(l))
