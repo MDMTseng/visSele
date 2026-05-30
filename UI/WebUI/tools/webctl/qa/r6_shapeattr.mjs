@@ -104,12 +104,15 @@ const snapIds = () => ev(SNAP_IDS);
 
 // Add a minimal shape; return the shape object (the last entry of shapeList)
 // if the list grew, else null. Catches dispatch throws to surface as null.
+// Async-aware: dispatches go through ActionThrottle middleware, so the state
+// update may not be visible synchronously — await a short tick before reading.
 async function addMinimal(type) {
   return ev(
-    `(function(){try{` +
+    `(async function(){try{` +
       `var s=window.__GP_STORE__;` +
       `var before=s.getState().UIData.edit_info._obj.shapeList.length;` +
       `s.dispatch({type:'Shape_Set',IGNORE_DEFCONF_LOCK:true,data:{shape:{type:${JSON.stringify(type)}},id:undefined}});` +
+      `await new Promise(r=>setTimeout(r,200));` +
       `var sl=s.getState().UIData.edit_info._obj.shapeList;` +
       `if(sl.length<=before) return {grew:false};` +
       `var nu=sl[sl.length-1];` +
