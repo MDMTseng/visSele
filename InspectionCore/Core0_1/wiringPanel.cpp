@@ -614,6 +614,37 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
   }
 }
 
+// cv::Mat overload of ImageDownSampling.  The body still goes through the
+// existing acvImage implementation -- this is a per-call zero-copy bridge so
+// the BPG send / cache image / etc. can hold cv::Mat as their canonical type
+// while the per-pixel calib-aware downsample logic is migrated in a later
+// commit.  Both src and dst must be CV_8UC3 (BGR), continuous.
+void ImageDownSampling(cv::Mat &dst, const cv::Mat &src, int downScale,
+                       ImageSampler *sampler, int doNearest = 1,
+                       int X = -1, int Y = -1, int W = -1, int H = -1)
+{
+  if (src.empty() || src.type() != CV_8UC3) return;
+  cv::Mat src_c = src.isContinuous() ? src : src.clone();
+  // Compute dst extent the same way the acvImage body does and pre-allocate
+  // the cv::Mat dst buffer; the acvImage shim will then attach to it
+  // (useExtBuffer is no-realloc when the buffer already fits).
+  int X2 = src_c.cols - 1, Y2 = src_c.rows - 1;
+  int xx = (X < 0) ? 0 : (X >= X2 ? X2 - 1 : X);
+  int yy = (Y < 0) ? 0 : (Y >= Y2 ? Y2 - 1 : Y);
+  if (W > 0) { X2 = xx + W; if (X2 >= src_c.cols)  X2 = src_c.cols - 1;  }
+  if (H > 0) { Y2 = yy + H; if (Y2 >= src_c.rows)  Y2 = src_c.rows - 1;  }
+  int dstW = (X2 / downScale) - (xx / downScale) + 1;
+  int dstH = (Y2 / downScale) - (yy / downScale) + 1;
+  dst.create(dstH, dstW, CV_8UC3);
+
+  acvImage src_shim, dst_shim;
+  src_shim.useExtBuffer(src_c.data, (int)(src_c.total() * src_c.elemSize()),
+                        src_c.cols, src_c.rows);
+  dst_shim.useExtBuffer(dst.data,   (int)(dst.total()   * dst.elemSize()),
+                        dst.cols,   dst.rows);
+  ImageDownSampling(dst_shim, src_shim, downScale, sampler, doNearest, X, Y, W, H);
+}
+
 cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth = 0)
 {
   if (path == NULL)
