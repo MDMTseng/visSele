@@ -8,7 +8,6 @@
 #include "logctrl.h"
 
 #include "MatchingCore.h"
-#include "acvImage_BasicTool.hpp"
 #include "mjpegLib.h"
 
 #include <sys/stat.h>
@@ -3638,55 +3637,6 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     BPG_protocol_data_acvImage_Send_info iminfo;
     bool sendJpg = false;
 
-#if 0  // experimental MJPEG live-stream path; sendJpg never true. Kept for
-       // reference but skipped during the acv->cv migration since `capImg`
-       // is now cv::Mat and `test1_buff`/ImageDownSampling are still acv-typed.
-    if (sendJpg && mjpegS)
-    {
-      acvImage *sendImg = NULL;  // would have been &capImg in the legacy path
-
-      if (sendImg == NULL)
-      {
-        sendImg = &test1_buff;
-        iminfo = (BPG_protocol_data_acvImage_Send_info){ NULL, 2 };
-
-        iminfo.offsetX = (0 / iminfo.scale) * iminfo.scale;
-        iminfo.offsetY = (0 / iminfo.scale) * iminfo.scale;
-
-        iminfo.fullHeight = capImg.rows;
-        iminfo.fullWidth = capImg.cols;
-        int cropH = iminfo.fullHeight;
-        int cropW = iminfo.fullWidth;
-
-        ImageSampler *sampler = (false) ? bacpac->sampler : NULL;
-        // ImageDownSampling here would need a cv::Mat overload before re-enabling.
-      }
-      frameActionID++;
-      if (frameActionID >= 256)
-        frameActionID = 0;
-      int tmp = frameActionID;
-      for (int i = 0; i < 8; i++)
-      {
-        uint8_t v = (tmp & 1) ? 255 : 0;
-        sendImg->CVector[0][i * 3] = v;
-        sendImg->CVector[0][i * 3 + 1] = v;
-        sendImg->CVector[0][i * 3 + 2] = v;
-        tmp >>= 1;
-      }
-
-      uint8_t *encBuff = NULL;
-      unsigned long encBuffL = 0;
-      if (mjpecLib_enc((uint8_t *)sendImg->CVector[0], sendImg->GetWidth(), sendImg->GetHeight(), 85, &encBuff, &encBuffL) == 0)
-      {
-        int sendCount = mjpegS->SendFrame(std::string("/CAM1.mjpg"), encBuff, encBuffL);
-        delete (encBuff);
-
-        LOGI("ENC size:%d sendCount:%d", encBuffL, sendCount);
-        encBuff = NULL;
-        encBuffL = 0;
-      }
-    }
-#endif
     //if(stackingC==0)
     if ((!sendJpg))
     {
