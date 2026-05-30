@@ -34,7 +34,7 @@ import * as log from 'loglevel';
 import BPG_WS from './comm/BPG_WS';
 import { initDiag, downloadDiag, diagCount, diagText } from 'UTIL/diagLog';
 import { persistPending, deletePending, getPendingBySource, pendingInsertCount } from 'UTIL/inspDBQueue';
-import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure';
+import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure/index.js';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
 initDiag(); // start capturing console output into the diagnostics ring buffer ASAP
 

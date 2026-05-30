@@ -7,7 +7,7 @@ import * as BASE_COM from './component/baseComponent.jsx';
 import ComponentBoundary from './component/ComponentBoundary';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
-import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure';
+import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure/index.js';
 import { buildSharedSchema, buildDefaultSchema } from 'JSSRCROOT/shapes/propertySheet';
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;

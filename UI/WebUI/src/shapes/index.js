@@ -17,7 +17,7 @@
 import * as line from './line';
 import * as arc from './arc';
 import * as search_point from './search_point';
-import * as measure from './measure';
+import * as measure from './measure/index.js';
 import * as aux_point from './aux_point';
 import * as aux_line from './aux_line';
 
