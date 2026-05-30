@@ -23,9 +23,15 @@ let raw2header=(ws_evt, offset = 0)=>{
     ret_obj.pgID = (headerArray[3]<<8)+headerArray[4];
     //console.log(ret_obj.pgID);
 
+    // Parse length as UNSIGNED 32-bit big-endian. Using bitwise `<<24` would
+    // treat the high bit as a sign, so any header with length >= 0x80000000
+    // would decode to a negative number and crash downstream views. Use
+    // multiplication for the high byte to avoid the sign issue.
     ret_obj.length =
-      headerArray[5]<<24 | headerArray[6]<<16 |
-      headerArray[7]<<8  | headerArray[8];
+      headerArray[5] * 0x01000000 +
+      (headerArray[6] << 16) +
+      (headerArray[7] << 8) +
+      headerArray[8];
     return ret_obj;
   }
   return null;
@@ -44,8 +50,19 @@ let raw2obj=(ws_evt, offset = 0)=>{
   let ret_obj = raw2header(ws_evt, offset);
   if(ret_obj==null)return null;
 
+  // Defensive bounds check: a corrupt header (e.g. an oversize claimed length)
+  // would otherwise crash `new Uint8ClampedArray(buf, offset, length)` with a
+  // RangeError. Clip to what's actually in the buffer and treat the result as
+  // a (possibly truncated) raw string.
+  let avail = ws_evt.data.byteLength - (offset + BPG_header_L);
+  let safeLen = (ret_obj.length >= 0 && ret_obj.length <= avail) ? ret_obj.length
+              : Math.max(0, avail);
+  if (safeLen !== ret_obj.length) {
+    log.warn("raw2obj: header length out of bounds; clipping",
+      { claimed: ret_obj.length, byteLength: ws_evt.data.byteLength, offset, used: safeLen });
+  }
   ret_obj.rawdata = new Uint8ClampedArray(ws_evt.data,
-    offset+BPG_header_L,ret_obj.length
+    offset+BPG_header_L, safeLen
   );
   let  enc = new TextDecoder("utf-8");
   let str = enc.decode(ret_obj.rawdata);
