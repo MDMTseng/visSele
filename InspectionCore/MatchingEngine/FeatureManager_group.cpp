@@ -9,6 +9,8 @@
 #include "BackLightFieldCalib.h"
 #include "LabelingCV.h"
 #include "BinarizeCV.h"
+#include "CvBridge.h"
+#include <opencv2/imgproc.hpp>
 /*
   FeatureManager_group_proto Section
 */
@@ -315,13 +317,23 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     }
  
     //Draw a labeling black cage for labling algo, which is needed for acvComponentLabeling
-
-    acvDrawBlock(lableImg, 1, 1, lableImg->GetWidth() - 2, lableImg->GetHeight() - 2);
+    // Migrated from acvDrawBlock to cv::rectangle via zero-copy view -- both draw
+    // a 1-px-wide black rectangle OUTLINE; cv::Point endpoints are inclusive.
+    {
+      cv::Mat _lv = acvImageBgrView(lableImg);
+      cv::rectangle(_lv, cv::Point(1, 1), cv::Point(_lv.cols - 2, _lv.rows - 2),
+                    cv::Scalar(0, 0, 0), 1);
+    }
 
     int FENCE_AREA = (lableImg->GetWidth()+lableImg->GetHeight())*2-4;//External frame
     {
       int xDist=15/downScaleF;
-      acvDrawBlock(lableImg, xDist, xDist, lableImg->GetWidth() - xDist, lableImg->GetHeight() - xDist);
+      {
+        cv::Mat _lv = acvImageBgrView(lableImg);
+        cv::rectangle(_lv, cv::Point(xDist, xDist),
+                      cv::Point(_lv.cols - xDist, _lv.rows - xDist),
+                      cv::Scalar(0, 0, 0), 1);
+      }
       FENCE_AREA+=(img->GetWidth()-xDist+img->GetHeight()-xDist)*2-4;
       uint8_t *line2Fill = lableImg->CVector[xDist+3];
       for(int i=1;i<xDist;i++)
