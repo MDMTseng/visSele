@@ -316,8 +316,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
 
     if (binarize_method == 1) // calibration-free vignette-tolerant bg-flatten
     {
-      cv::Mat _srcV = acvImageBgrView(img);
-      binarize_bg_flatten_cv(_srcV, binary_img_storage, bg_close_kernel, bg_ratio, bg_downscale);
+      binarize_bg_flatten_cv(img_cv, binary_img_storage, bg_close_kernel, bg_ratio, bg_downscale);
       // re-bind the acvImage shim if binary_img_storage moved (create may
       // reallocate when the size/type changes).
       binary_img.useExtBuffer(binary_img_storage.data,
@@ -326,20 +325,14 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     }
     else if (useAdaptiveThres && !bgThreshMap.empty())
     {
-      cv::Mat _dstV = acvImageBgrView(&binary_img);
-      cv::Mat _srcV = acvImageBgrView(img);
-      cvThresholdMap(_dstV, _srcV, bgThreshMap.data(), bgMapW, bgMapH, 0);
+      cvThresholdMap(binary_img_storage, img_cv, bgThreshMap.data(), bgMapW, bgMapH, 0);
     }
     else
     {
-      // Migrated acvThreshold -> cv::threshold via zero-copy views.
-      // acvThreshold uses strict `>` and writes 0/255 -- matches THRESH_BINARY.
-      // For grayscale-replicated BGR images (the case here), the per-channel
-      // cv::threshold on a 3-channel view produces identical pixels to the
-      // single-channel-driven acv loop.
-      cv::Mat _srcV = acvImageBgrView(img);
-      cv::Mat _dstV = acvImageBgrView(&binary_img);
-      cv::threshold(_srcV, _dstV, (double)briThres, 255.0, cv::THRESH_BINARY);
+      // acvThreshold strict `>` matches cv::THRESH_BINARY.  For BGR images
+      // (grayscale-replicated), per-channel cv::threshold == the single-channel
+      // acv loop bytewise.
+      cv::threshold(img_cv, binary_img_storage, (double)briThres, 255.0, cv::THRESH_BINARY);
     }
 
     int downScaleF=1;//
@@ -371,7 +364,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
                       cv::Point(_lv.cols - xDist, _lv.rows - xDist),
                       cv::Scalar(0, 0, 0), 1);
       }
-      FENCE_AREA+=(img->GetWidth()-xDist+img->GetHeight()-xDist)*2-4;
+      FENCE_AREA+=(img_cv.cols-xDist+img_cv.rows-xDist)*2-4;
       // Migrated manual row-write loop -> cv::line via the same BGR view.
       // Writes 1 px black at y=xDist+3, x=1..xDist-1 (inclusive of x=xDist-1
       // since cv::Point endpoints are inclusive).
