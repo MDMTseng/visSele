@@ -21,6 +21,17 @@ cv::Mat acvImageToBgrMat(acvImage *im);
 // Sizes must match the ROI; out-of-size is clipped. COPIES.
 void grayMatToAcvImage(const cv::Mat &g, acvImage *im);
 
+// Load an image from disk via cv::imread (3-channel BGR) and attach an
+// acvImage shim over the same memory via useExtBuffer. After this call:
+//   - `out_mat` owns the bytes (BGR, contiguous, CV_8UC3).
+//   - `out_acv` is a thin wrapper that the legacy engine entry points
+//     (FeatureMatching etc.) can consume without copying.
+// Both must live in the same scope (out_acv's CVector points into out_mat's
+// data). Returns 0 on success, -1 if the image cannot be loaded. This is the
+// validated migration primitive for any LoadIMGFile->cv swap; it is exercised
+// by the `--insp` path and gated by test_suite/migration_gate.py.
+int loadImageCv(const char *path, cv::Mat &out_mat, acvImage &out_acv);
+
 // Zero-copy BGR view: returns a cv::Mat header pointing into the acvImage's
 // underlying storage. Writes via the returned Mat mutate the acvImage. The view
 // is valid only while the acvImage's buffer is alive (and ROI not changed).

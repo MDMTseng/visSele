@@ -19,6 +19,27 @@ oracle.
   `#ifdef FEATURE_OPENCV` guards are now always-true but left in place; they
   cost nothing and removing them is a mechanical follow-up.
 
+## Validation for the daemon LoadIMGFile sites
+
+The `--insp` path's image-load swap (`LoadIMGFile` → `cv::imread` + `useExtBuffer`
+acvImage shim) has been extracted into a shared primitive
+`loadImageCv(path, out_mat, out_acv)` in `CvBridge`. This is the validated
+migration unit: it's exercised by every `--insp` test we run (the migration
+gate, suite, QA modules, qa_imgstress), so any regression in the loader pattern
+is caught immediately.
+
+The BPG daemon `LoadIMGFile` call sites in `Core0_1/wiringPanel.cpp`
+(approximately lines 1952, 2033, 2372, 4690, 4830, 5066, 5105) can adopt
+`loadImageCv` mechanically when a daemon-level test harness exists. The
+mechanical swap is low risk because:
+  - The loader primitive itself is gated.
+  - `cv::imread` and `LoadIMGFile` produce byte-identical output on this
+    codebase's images (verified by a one-off probe, removed).
+
+A real BPG-protocol Python test client is the proper next step before
+migrating those sites, but is a separate (half-day) project; the swap pattern
+is recorded here so it's ready when that arrives.
+
 - **Step 2 IN PROGRESS** — migrate engine-internal image storage from
   `acvImage *` to `cv::Mat`. Keep `acv_XY` / `acv_Line` / `acv_Circle` /
   `acv_LineFit` / `acv_CircleFit` POD geometry types **unchanged** during this

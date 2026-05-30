@@ -21,6 +21,7 @@
 #include <smem_channel.hpp>
 #include <ctime>
 #include <opencv2/imgcodecs.hpp>
+#include "CvBridge.h"
 
 #define _VERSION_ "1.2"
 char* SNAP_FILE_EXTENSION="xreps";
@@ -4932,13 +4933,11 @@ int cp_main(int argc, char **argv)
         return 4;
       }
     }
-    // acv -> cv migration: load the image via cv::imread (BGR, 3-channel),
-    // then bridge it into an acvImage via useExtBuffer so the existing
-    // engine entry (which still expects acvImage*) sees the same bytes
-    // without a copy. Probed: cv::imread and LoadIMGFile produce
-    // byte-identical pixel arrays on this codebase's test images.
-    cv::Mat cvSrc = cv::imread(imgPath, cv::IMREAD_COLOR);
-    if (cvSrc.empty()) { LOGE("--insp: cannot load image %s", imgPath); return 3; }
+    // acv -> cv migration: shared loader primitive (CvBridge::loadImageCv).
+    // Loads via cv::imread, attaches an acvImage shim over the same memory.
+    cv::Mat cvSrc; acvImage img;
+    if (loadImageCv(imgPath, cvSrc, img) != 0)
+    { LOGE("--insp: cannot load image %s", imgPath); return 3; }
     // Reject degenerate-size images that the sig360 / labeling pipeline assumes
     // are at least sample/down-sampling-friendly. A 1x1 image SIGSEGVs deep in
     // the matching pipeline; bounce it as a controlled load failure.
@@ -4951,11 +4950,6 @@ int cp_main(int argc, char **argv)
         return 3;
       }
     }
-    if (!cvSrc.isContinuous()) cvSrc = cvSrc.clone();  // acvImage assumes contiguous storage
-    acvImage img;
-    img.useExtBuffer(cvSrc.data,
-                     (int)(cvSrc.total() * cvSrc.elemSize()),
-                     cvSrc.cols, cvSrc.rows);
     // mirror the live single-inspection handler: it uses neutral_bacpac with
     // calibPpB/calibmmpB taken from the def (wiringPanel CI handler ~1999/2100).
     // First fully init the sampler's calib map (RESET + load) like live startup

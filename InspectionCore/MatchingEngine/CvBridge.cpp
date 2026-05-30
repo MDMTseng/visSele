@@ -1,4 +1,18 @@
 #include "CvBridge.h"
+#include <opencv2/imgcodecs.hpp>
+
+int loadImageCv(const char *path, cv::Mat &out_mat, acvImage &out_acv)
+{
+  if (!path) return -1;
+  cv::Mat m = cv::imread(path, cv::IMREAD_COLOR);
+  if (m.empty()) return -1;
+  if (!m.isContinuous()) m = m.clone();   // acvImage assumes contiguous storage.
+  out_mat = m;
+  out_acv.useExtBuffer(out_mat.data,
+                       (int)(out_mat.total() * out_mat.elemSize()),
+                       out_mat.cols, out_mat.rows);
+  return 0;
+}
 
 cv::Mat acvImageToGrayMat(acvImage *im)
 {
