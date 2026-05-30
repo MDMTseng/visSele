@@ -530,6 +530,7 @@ class renderUTIL {
         case SHAPE_TYPE.aux_point:
         case SHAPE_TYPE.aux_line:
         case SHAPE_TYPE.arc:
+        case SHAPE_TYPE.search_point:
           {
             // Keystone step 3 — per-shape draw owns its rendering.
             const mod = getShapeModule(eObject.type);
@@ -542,59 +543,6 @@ class renderUTIL {
           }
           break;
         
-        case SHAPE_TYPE.search_point:
-          {
-            let db_obj = this.db_obj;
-            let subObjs = eObject.ref
-              .map((ref) => db_obj.FindShape("id", ref.id, shapeList))
-              .map((idx) => { return idx >= 0 ? shapeList[idx] : null });
-
-            if (subObjs[0] == null) break;
-
-            let line = subObjs[0];
-
-            let vector = db_obj.shapeVectorParse(eObject, shapeList);
-            let cnormal = { x: -vector.y, y: vector.x };
-            let mag = eObject.width / 2;
-            vector.x *= mag;
-            vector.y *= mag;
-
-            let margin=this.getSearchDirectionLineSize()
-            if(inFullDisplay){
-              margin=eObject.margin
-            }
-
-            ctx.lineWidth = margin * 2;
-            this.drawReportLine(ctx, {
-              x0: eObject.pt1.x - vector.x, y0: eObject.pt1.y - vector.y,
-              x1: eObject.pt1.x + vector.x, y1: eObject.pt1.y + vector.y,
-            });
-
-
-            ctx.lineWidth = this.getSearchDirectionLineSize();
-            ctx.strokeStyle = shapeColor;
-            let marginOffset = margin + ctx.lineWidth / 2;
-            this.drawReportLine(ctx, {
-              x0: eObject.pt1.x - vector.x + cnormal.x * marginOffset, y0: eObject.pt1.y - vector.y + cnormal.y * marginOffset,
-              x1: eObject.pt1.x + vector.x + cnormal.x * marginOffset, y1: eObject.pt1.y + vector.y + cnormal.y * marginOffset,
-            });
-
-
-
-
-            if (drawSubObjs)
-              this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
-
-            ctx.strokeStyle = "gray";
-            this.drawpoint(ctx, eObject.pt1);
-            if(eObject.locating_anchor)
-            {
-              ctx.strokeStyle = "red";
-              this.draw_aimcross(ctx, eObject.pt1, this.getPointSize()*3,0.3);
-            }
-
-          }
-          break;
         case SHAPE_TYPE.measure:
           {
             let db_obj = this.db_obj;
