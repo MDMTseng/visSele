@@ -2,9 +2,7 @@
 #include "Caliper.h"
 #include "JudgeCALC.h"
 
-#ifdef FEATURE_OPENCV
 #include "SearchPointCV.h"
-#endif
 #include "logctrl.h"
 #include <stdexcept>
 #include <common_lib.h>
@@ -1126,8 +1124,6 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       acv_XY off = eT.getImgOffset();
       acv_XY out; float str;
       bool ok;
-#ifdef FEATURE_OPENCV
-
       // M2: robust CoreHub-ported first-hit scan (rectify + X-sobel + topmost).
       // Region is centered at pt spanning +/-margin along the search dir, so
       // pass margin as the half-depth. Polarity maps from the def edge_polarity
@@ -1148,15 +1144,6 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                            /*considerRange = n rows below the top to collect+avg*/2.0f, /*alphaKeep*/0.0f,
                            eT.getBacpac(), labelImg, m_objLabel, /*maskDilate*/8,
                            &out, &str, def.id);
-#else
-      EdgeSelectParams ep;
-      ep.method       = def.edge_method;
-      ep.polarity     = def.edge_polarity;
-      ep.nth          = def.edge_nth;
-      ep.min_strength = def.edge_min_strength;
-      ok = search_point_scan(eT.getImage(), acvVecSub(pt, off), searchVec_nor,
-                             margin, width, 1.0f, ep, eT.getBacpac(), &out, &str);
-#endif
       if (ok)
       {
         rep.pt = acvVecAdd(out, off);

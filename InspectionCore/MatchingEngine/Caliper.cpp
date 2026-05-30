@@ -4,10 +4,8 @@
 #include <math.h>
 #include <vector>
 #include <algorithm>
-#ifdef FEATURE_OPENCV
 #include <opencv2/opencv.hpp>
 #include <string>
-#endif
 
 // Combine each caliper's across-edge profile into ONE image for a single primitive:
 // x = caliper index along the line, y = across-edge search position. The picked edge
@@ -21,7 +19,6 @@ static void caliper_dump_line_strip(const char *prefix, const char *name, const 
                                     const std::vector<int> &ptCaliper,   // pts idx -> caliper idx
                                     int count)
 {
-#ifdef FEATURE_OPENCV
   // nAcross = profile length (same for all valid calipers)
   int nAcross = 0; for (auto &p : profs) if ((int)p.size() > nAcross) nAcross = (int)p.size();
   if (nAcross < 3 || count < 1) return;
@@ -77,7 +74,6 @@ static void caliper_dump_line_strip(const char *prefix, const char *name, const 
   fn += ".png";
   cv::imwrite(fn, big);
   fprintf(stderr, "[CALIP] %s %s: %d calipers, strip %dx%d -> %s\n", prefix?prefix:"line", name?name:"x", count, count, nAcross, fn.c_str());
-#endif
 }
 
 

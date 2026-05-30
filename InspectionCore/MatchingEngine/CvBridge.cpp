@@ -1,5 +1,4 @@
 #include "CvBridge.h"
-#ifdef FEATURE_OPENCV
 
 cv::Mat acvImageToGrayMat(acvImage *im)
 {
@@ -48,4 +47,3 @@ void grayMatToAcvImage(const cv::Mat &g, acvImage *im)
   }
 }
 
-#endif // FEATURE_OPENCV

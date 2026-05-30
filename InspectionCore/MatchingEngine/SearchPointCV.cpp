@@ -1,5 +1,4 @@
 #include "SearchPointCV.h"
-#ifdef FEATURE_OPENCV
 #include <opencv2/opencv.hpp>
 #include "acvImage_SpDomainTool.hpp" // acvUnsignedMap1Sampling
 #include "MatchingCore.h"            // acvVec* helpers
@@ -211,4 +210,3 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
   return true;
 }
 
-#endif // FEATURE_OPENCV

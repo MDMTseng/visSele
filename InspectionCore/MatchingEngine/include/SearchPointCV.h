@@ -13,9 +13,7 @@
 //   5. xPosMin across rows = the FIRST hit (closest edge along search).
 //   6. Alpha-weighted average of edge points within `considerRange` of xPosMin
 //      -> robust sub-pixel first-hit point. Map back to image px.
-// FEATURE_OPENCV only.
 
-#ifdef FEATURE_OPENCV
 #include "acvImage.hpp"
 #include "FeatureManager.h"   // acv_XY, FeatureManager_BacPac
 
@@ -38,5 +36,4 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
                      acvImage *labelImg, int objLabel, int maskDilate,
                      acv_XY *outPt, float *outW, int spId = -1);
 
-#endif // FEATURE_OPENCV
 #endif // SEARCH_POINT_CV_H

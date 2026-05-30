@@ -9,7 +9,7 @@
 // corners into phantom object is removed automatically.
 //
 // Output matches the pipeline's binary convention: background = 255 (white),
-// object = 0 (black). OpenCV-backed (FEATURE_OPENCV).
+// object = 0 (black).
 //
 //   closeKernel : structuring-element size (px) at the estimation scale; must be
 //                 LARGER than the biggest object to fill it as background.

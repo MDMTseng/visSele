@@ -36,7 +36,7 @@ protected:
   bool useCalibBackground = false;
   float darkLevel = 0.0f; // dark-field level D (sensor offset); 0 until D-field exists
 
-  // Calibration-free vignette/illumination-tolerant binarization (FEATURE_OPENCV):
+  // Calibration-free vignette/illumination-tolerant binarization:
   // estimate the smooth background by morphological close and flat-field divide.
   // def: "binarize":"bg_flatten", "bg_close_kernel", "bg_ratio", "bg_downscale".
   int binarize_method = 0;   // 0=threshold(global/adaptive), 1=bg_flatten

@@ -4,7 +4,7 @@
 // User-selectable lens calibration: NORMAL (perspective/pinhole, OpenCV
 // calibrateCamera) vs TELECENTRIC (orthographic, our dependency-free solver).
 // Both consume the same chessboard correspondences (TelecentricViewData) from
-// ChessboardExtract. OpenCV-backed (FEATURE_OPENCV); header is OpenCV-free.
+// ChessboardExtract; header is OpenCV-free.
 
 #include "TelecentricCalib.h"
 #include <string>

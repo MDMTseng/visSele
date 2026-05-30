@@ -2,7 +2,7 @@
 #define CHESSBOARD_EXTRACT_H
 
 // Chessboard corner detection + auto-grid -> obj/img correspondences for
-// lens calibration. OpenCV-backed (compiled only when FEATURE_OPENCV); this
+// lens calibration; this
 // header is OpenCV-free so any caller can include it.
 //
 // Pipeline (ports telecentric_calib.py / the validated /tmp/telecal_run.cpp):

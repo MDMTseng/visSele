@@ -7,10 +7,8 @@
 #include "FM_camera_calibration.h"
 #include "FeatureManager_group.h"
 #include "BackLightFieldCalib.h"
-#ifdef FEATURE_OPENCV
 #include "LabelingCV.h"
 #include "BinarizeCV.h"
-#endif
 /*
   FeatureManager_group_proto Section
 */
@@ -298,12 +296,9 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
       }
     }
 
-#ifdef FEATURE_OPENCV
     if (binarize_method == 1) // calibration-free vignette-tolerant bg-flatten
       binarize_bg_flatten_cv(img, &binary_img, bg_close_kernel, bg_ratio, bg_downscale);
-    else
-#endif
-    if (useAdaptiveThres && !bgThreshMap.empty())
+    else if (useAdaptiveThres && !bgThreshMap.empty())
       acvThresholdMap(&binary_img, img, bgThreshMap.data(), bgMapW, bgMapH, 0);
     else
       acvThreshold(&binary_img,img, briThres, 0);
@@ -341,13 +336,8 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     //The labeling starts from (1 1) => (W-2,H-2), ie. it will not touch the outmost pixel to simplify the boundary condition
     //You need to draw a black/white cage to work(not crash).
     //The advantage of black cage is you can know which area touches the boundary then we can exclude it
-#ifdef FEATURE_OPENCV
     // CCL once -> packed label image + acv_LabeledData (from stats), no rescan.
     acvComponentLabeling_cv(lableImg, ldData);
-#else
-    acvComponentLabeling(lableImg,50);
-    acvLabeledRegionInfo(lableImg, &ldData);
-#endif
 
     //FENCE_AREA=110/100;
     int CLimit = (lableImg->GetWidth()*lableImg->GetHeight())*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
