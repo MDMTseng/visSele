@@ -4071,9 +4071,7 @@ void SET_UNSET_REPORT_NA(FeatureReport_sig360_circle_line_single &srep)
     }
 }
 
-int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistoriginalImage,
-                                                      acvImage *labeledBuff, acvImage *binarizedBuff,
-                                                      int lableIdx, acv_LabeledData *ldData,
+int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledData *ldData,
                                                       int grid_size, ContourFetch &edge_grid, int scanline_skip, FeatureManager_BacPac *bacpac,
                                                       FeatureReport_sig360_circle_line_single &singleReport,
                                                       vector<ContourFetch::ptInfo> &tmp_points, vector<ContourFetch::contourMatchSec> &m_sections)
@@ -4954,8 +4952,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     edge_grid.ptSubdivision(dsampLevel);
     //LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
 
-    int ret = SingleMatching(originalImage, labeledBuff, img,
-                             i, &(ldData[0]),
+    int ret = SingleMatching(i, &(ldData[0]),
                              grid_size, edge_grid, scanline_skip, bacpac,
                              singleReport,
                              tmp_points, m_sections);

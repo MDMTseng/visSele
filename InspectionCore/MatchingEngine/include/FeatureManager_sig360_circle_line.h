@@ -251,8 +251,7 @@ protected:
 
   acv_XY ParseMainVector(featureDef_searchPoint *def_sp);
 
-  int SingleMatching(acvImage *originalImage,acvImage *labeledBuff,acvImage *binarizedBuff,
-  int lableIdx,acv_LabeledData *ldData,
+  int SingleMatching(int lableIdx,acv_LabeledData *ldData,
   int grid_size, ContourFetch &edge_grid,int scanline_skip, FeatureManager_BacPac *bacpac,
   FeatureReport_sig360_circle_line_single &singleReport,
   vector<ContourFetch::ptInfo > &tmp_points,vector<ContourFetch::contourMatchSec >&m_sections);
