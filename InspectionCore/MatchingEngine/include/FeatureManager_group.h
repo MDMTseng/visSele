@@ -65,11 +65,6 @@ class FeatureManager_binary_processing_group:public FeatureManager_group_proto {
   FeatureReport_ERROR error;
 public :
   FeatureManager_binary_processing_group(const char *json_str);
-  int FeatureMatching(acvImage *img) override;
-  // cv::Mat-canonical override. Uses img_cv directly for size queries and to
-  // size the cv::Mat-owned binary_img_storage, then bridges img_cv to an
-  // acvImage shim for the (still acv-based) rest of the body.  This sheds one
-  // acvImage->cv::Mat round-trip for the actively-tested entry point.
   int FeatureMatching(cv::Mat &img_cv) override;
   virtual const FeatureReport* GetReport() override;
   virtual void ClearReport() override;

@@ -267,17 +267,28 @@ void labeledUpScale(acvImage *us_dst,acvImage *ds_src,int ds_Factor)
   }
 }
 
-int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
+int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
 {
+  if (img_cv.empty()) return -1;
+  if (!img_cv.isContinuous()) img_cv = img_cv.clone();
+
+  // Bridge the cv::Mat input to an acvImage shim for the sub-feature path
+  // (sub-features still take acvImage*; setOriginalImage / FeatureMatching).
+  acvImage _img_shim;
+  _img_shim.useExtBuffer(img_cv.data,
+                         (int)(img_cv.total() * img_cv.elemSize()),
+                         img_cv.cols, img_cv.rows);
+  acvImage *img = &_img_shim;
+
   report.bacpac=bacpac;
     error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
-    // acv -> cv: own the bytes in a cv::Mat, expose them to the legacy acv
-    // consumers via useExtBuffer (the existing zero-copy bridge pattern).
-    binary_img_storage.create(img->GetHeight(), img->GetWidth(), CV_8UC3);
+    // Own the binary image bytes in a cv::Mat; the acvImage `binary_img` shim
+    // shares the storage via useExtBuffer for the legacy acv consumers below.
+    binary_img_storage.create(img_cv.rows, img_cv.cols, CV_8UC3);
     binary_img.useExtBuffer(binary_img_storage.data,
                             (int)(binary_img_storage.total() * binary_img_storage.elemSize()),
-                            img->GetWidth(), img->GetHeight());
+                            img_cv.cols, img_cv.rows);
 
     // Per-camera adaptive threshold: lazily build the threshold map from the
     // loaded background model (sampler->stageLightInfo), robustly cleaned of
@@ -447,23 +458,6 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     }
   return 0;
 }
-
-// cv::Mat-canonical override.  Sheds the base FeatureManager bridge: uses
-// img_cv directly to size binary_img_storage (no need to query an acvImage
-// shim for the dimensions), then bridges img_cv to an acvImage shim only for
-// the still-acv parts of the legacy body, which it dispatches to via the
-// acvImage overload above.
-int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
-{
-  if (img_cv.empty()) return -1;
-  if (!img_cv.isContinuous()) img_cv = img_cv.clone();
-  acvImage _img_shim;
-  _img_shim.useExtBuffer(img_cv.data,
-                         (int)(img_cv.total() * img_cv.elemSize()),
-                         img_cv.cols, img_cv.rows);
-  return FeatureMatching(&_img_shim);
-}
-
 
 const FeatureReport* FeatureManager_binary_processing_group::GetReport()
 {
