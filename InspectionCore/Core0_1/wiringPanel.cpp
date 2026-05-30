@@ -1235,12 +1235,18 @@ int LoadCameraCalibrationFile(char *filename, ImageSampler *ret_cam_param)
   }
   LOGE("Read defFile from:%s", filename);
 
-  if (cache_camera_param)
+  // Parse-then-swap: if the new JSON is malformed, keep the previous cache so
+  // downstream NULL-deref consumers (e.g. saveInspectionSample, JFetch_*) stay
+  // safe. The old behaviour left the global at NULL on parse failure.
+  if (cJSON *_new_cam = cJSON_Parse(fileStr))
   {
-    cJSON_Delete(cache_camera_param);
-    cache_camera_param = NULL;
+    if (cache_camera_param) cJSON_Delete(cache_camera_param);
+    cache_camera_param = _new_cam;
   }
-  cache_camera_param = cJSON_Parse(fileStr);
+  else
+  {
+    LOGE("cache_camera_param: malformed JSON, keeping previous cached value");
+  }
 
   cJSON *json = cJSON_Parse(fileStr);
 
@@ -1716,9 +1722,17 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             LOGE("%s", err_str);
             break;
           }
-          fwrite(dat->dat_raw + strinL, dat->size - strinL, 1, write_ptr); // write 10 bytes from our buffer
-
+          // Check fwrite return so disk-full / I/O failures don't silently
+          // produce a half-written file with session_ACK=true.
+          size_t _nw = fwrite(dat->dat_raw + strinL, dat->size - strinL, 1, write_ptr);
           fclose(write_ptr);
+          if (_nw < 1)
+          {
+            snprintf(err_str, sizeof(err_str),
+                     "file:%s fwrite failed (disk full / I/O error)", fileName);
+            LOGE("%s", err_str);
+            break;
+          }
           session_ACK = true;
         }
 
@@ -2273,12 +2287,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             LOGI("Read deffile:%s", deffile);
           }
 
-          if (cache_deffile_JSON)
+          // Parse-then-swap (see cache_camera_param above).
+          if (cJSON *_new_def = cJSON_Parse(jsonStr))
           {
-            cJSON_Delete(cache_deffile_JSON);
-            cache_deffile_JSON = NULL;
+            if (cache_deffile_JSON) cJSON_Delete(cache_deffile_JSON);
+            cache_deffile_JSON = _new_def;
           }
-          cache_deffile_JSON = cJSON_Parse(jsonStr);
+          else
+          {
+            LOGE("cache_deffile_JSON: malformed JSON, keeping previous cached value");
+          }
 
           // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
           matchingEng.ResetFeature();
@@ -4984,7 +5002,13 @@ int cp_main(int argc, char **argv)
     AttachStaticInfo(jobj, &bpg_pi);
     char *jstr = cJSON_Print(jobj);
     FILE *fp = fopen(outPath, "wb");
-    if (fp) { fwrite(jstr, 1, strlen(jstr), fp); fclose(fp); LOGE("--insp: wrote %s", outPath); }
+    if (fp) {
+      size_t _len = strlen(jstr);
+      size_t _nw = fwrite(jstr, 1, _len, fp);
+      fclose(fp);
+      if (_nw < _len) { LOGE("--insp: short write %zu/%zu to %s (disk full?)", _nw, _len, outPath); }
+      else            { LOGE("--insp: wrote %s", outPath); }
+    }
     else LOGE("--insp: cannot write %s", outPath);
     cJSON_Delete(jobj);
     free(jstr);
