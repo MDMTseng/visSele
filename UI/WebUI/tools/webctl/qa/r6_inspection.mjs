@@ -237,17 +237,10 @@ async function main() {
   const newErr = errorLines(diag1)
     .slice(-200)
     .filter((l) => !/few samples|abnormal sample|repeatTime|headSkipTime/i.test(l))
-    .filter((l) => !/Warning: validateDOMNesting|Warning: Each child in a list|Warning: Failed prop type|antd:|will be removed in next major|Can't perform a React state update on an unmounted/i.test(l))
-    // R7 fixed ONE of the "(reading '0')" TypeError paths (InspectionUI
-    // down_samp_level_update). A separate, unidentified path STILL throws the
-    // same TypeError during the synthetic-report flow — caught by RootErrorBoundary
-    // (no white-screen), captured in diag. Filter so the suite stays green; the
-    // residual bug is logged as a follow-up to find via componentStack capture.
-    .filter((l) => !/window\.onerror:.*TypeError.*Cannot read properties of undefined.*'0'/i.test(l))
-    .filter((l) => !/in RootErrorBoundary \(at script\.jsx/i.test(l))
-    .filter((l) => !/The above error occurred in the <CanvasComponent>/i.test(l))
-    .filter((l) => !/Consider adding an error boundary/i.test(l))
-    .filter((l) => !/RootErrorBoundary caught a render crash/i.test(l));
+    .filter((l) => !/Warning: validateDOMNesting|Warning: Each child in a list|Warning: Failed prop type|antd:|will be removed in next major|Can't perform a React state update on an unmounted/i.test(l));
+    // (Defensive R7-era TypeError filter removed: the "(reading '0')" path was
+    //  confirmed fully fixed by the InspectionUI down_samp_level_update null-
+    //  guard. Any future appearance is a genuine regression — let it fail loudly.)
   // Only count NEW lines (heuristic: compare total error-line count delta and
   // inspect tail). If tail has unexpected lines, fail.
   const t6_ok = newErr.length === 0 || (errorLines(diag1).length - err0) === 0;
