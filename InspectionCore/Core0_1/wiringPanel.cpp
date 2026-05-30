@@ -1495,6 +1495,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
     //      dat->pgID);
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);
+    // RAII cleanup: this BPG message handler is a ~1600-line do/while with
+    // 20+ inner `break` paths, none of which previously called
+    // cJSON_Delete(json) before bailing out -> one cJSON tree leak per
+    // malformed / early-exit packet, unbounded in a 24/7 daemon. Wrap json
+    // in a stack-RAII guard that frees on every exit path. The trailing
+    // `cJSON_Delete(json)` at the bottom of this block was removed.
+    struct _CJsonGuard {
+      cJSON *p;
+      ~_CJsonGuard() { if (p) cJSON_Delete(p); }
+    } _json_guard{json};
     char err_str[1000] = "\0";
     bool session_ACK = false;
     char tmp[200];    //For string construct json reply
@@ -3124,7 +3134,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
     bpg_dat.pgID = dat->pgID;
 
     fromUpperLayer(bpg_dat, peer);
-    cJSON_Delete(json);
+    // (json cleanup handled by _json_guard RAII added at the top of this block)
   }
   while(0);
 
