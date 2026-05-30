@@ -1934,40 +1934,12 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 }
 
 
-class APP_DEFCONF_MODE extends React.Component {
-
-  componentDidMount() {
-    
-    let defModelPath = this.props.edit_info.defModelPath;
-    loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND_BPG,this.props.CORE_ID,this.props.DISPATCH);
-
-    
-    this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
-    { CameraSetting: { ROI:[0,0,99999,99999] } });
-  }
-
-  componentWillUnmount() {
-    this.props.ACT_ClearImage();
-    
-    this.props.ACT_DefConf_Lock_Level_Update(0);
-  }
-  constructor(props) {
-    super(props);
-    this.ec_canvas = null;
-    this.state = {
-      fileSelectedCallBack: undefined,
-      fileSavingCallBack: undefined,
-      modal_view: undefined
-    }
-
-  }
-
-  shouldComponentUpdate(nextProps, nextState) {
-    return true;
-  }
-
-
-  GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, ACT_EDIT_TAR_ELE_TRACE_UPDATE }) {
+// keystone step 4: GenTarEditUI extracted from the class to a top-level function
+// component. Was a class METHOD using React Hooks rendered as <this.GenTarEditUI/>,
+// which technically works (React calls it as a component) but is fragile against
+// Rules-of-Hooks tooling and confuses readers. As a top-level function component
+// it's idiomatic, lint-friendly, and easier to extract further (next: shape-slice).
+function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, ACT_EDIT_TAR_ELE_TRACE_UPDATE }) {
     
     const DICT = useSelector(state => state.UIData.DICT);
   
@@ -2126,7 +2098,42 @@ class APP_DEFCONF_MODE extends React.Component {
 
 
     return UIArr;
+}
+
+
+class APP_DEFCONF_MODE extends React.Component {
+
+  componentDidMount() {
+    
+    let defModelPath = this.props.edit_info.defModelPath;
+    loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND_BPG,this.props.CORE_ID,this.props.DISPATCH);
+
+    
+    this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+    { CameraSetting: { ROI:[0,0,99999,99999] } });
   }
+
+  componentWillUnmount() {
+    this.props.ACT_ClearImage();
+    
+    this.props.ACT_DefConf_Lock_Level_Update(0);
+  }
+  constructor(props) {
+    super(props);
+    this.ec_canvas = null;
+    this.state = {
+      fileSelectedCallBack: undefined,
+      fileSavingCallBack: undefined,
+      modal_view: undefined
+    }
+
+  }
+
+  shouldComponentUpdate(nextProps, nextState) {
+    return true;
+  }
+
+
 
 
   render() {
@@ -2275,7 +2282,7 @@ class APP_DEFCONF_MODE extends React.Component {
         ];
         if (this.props.edit_tar_info != null) {
           console.log("BASE_COM.JsonEditBlock:", this.props.edit_tar_info);
-          MenuSet.push(<this.GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
+          MenuSet.push(<GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
 
 
           let tar_info = this.props.edit_tar_info;
@@ -2308,7 +2315,7 @@ class APP_DEFCONF_MODE extends React.Component {
             console.log("BASE_COM.JsonEditBlock:", this.props.edit_tar_info);
 
 
-            MenuSet.push(<this.GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
+            MenuSet.push(<GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
 
             let tar_info = this.props.edit_tar_info;
             console.log(tar_info.ref);
@@ -2345,7 +2352,7 @@ class APP_DEFCONF_MODE extends React.Component {
         ]
 
         if (this.props.edit_tar_info != null) {
-          MenuSet.push(<this.GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
+          MenuSet.push(<GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
 
           let on_DEL_Tar = (id) => {
             this.ec_canvas.SetShape(null, id);
