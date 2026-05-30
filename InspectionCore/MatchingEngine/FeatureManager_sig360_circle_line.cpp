@@ -11,6 +11,7 @@
 #include <MatchingCore.h>
 #include <stdio.h>
 #include <acvImage_SpDomainTool.hpp>
+#include "CvBridge.h"
 #include "polyfit.h"
 
 static int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist);
@@ -4542,22 +4543,23 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 //   center_lb : centroid in labeled-buffer coords
 //   ideal_center : same point in ideal coords (as the binary path uses)
 //   grayOrig : full-res grayscale image (sampled at coord*dsampLevel)
-static float graySampleBilinear(acvImage *im, float x, float y)
+static float graySampleBilinear(const cv::Mat &im, float x, float y)
 {
-  int W = im->GetWidth(), H = im->GetHeight();
+  const int W = im.cols, H = im.rows;
   if (x < 0 || y < 0 || x >= W - 1 || y >= H - 1) return -1;
   int x0 = (int)x, y0 = (int)y; float fx = x - x0, fy = y - y0;
-  unsigned char *r0 = im->CVector[y0], *r1 = im->CVector[y0 + 1];
+  const unsigned char *r0 = im.ptr<unsigned char>(y0);
+  const unsigned char *r1 = im.ptr<unsigned char>(y0 + 1);
   float a = r0[x0*3], b = r0[(x0+1)*3], c = r1[x0*3], d = r1[(x0+1)*3];
   return (a*(1-fx)+b*fx)*(1-fy) + (c*(1-fx)+d*fx)*fy;
 }
-bool convertGrayEdges2Signature(acv_XY center_lb, acv_XY ideal_center, acvImage *grayOrig,
+bool convertGrayEdges2Signature(acv_XY center_lb, acv_XY ideal_center, const cv::Mat &grayOrig,
                                 float dsampLevel, float searchRadius_lb,
                                 std::vector<acv_XY> &o_signature, FeatureManager_BacPac *bacpac,
                                 float minStrength, float step = 1.5f)
 {
   int N = (int)o_signature.size();
-  if (N == 0 || grayOrig == NULL) return false;
+  if (N == 0 || grayOrig.empty()) return false;
   const float rInner = 2.0f;
   if (step <= 0) step = 1.5f;
   std::vector<char> found(N, 0);
@@ -4865,7 +4867,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
       float ex = fmax(fabs(curLableDat.RBBound.X-curLableDat.Center.X), fabs(curLableDat.Center.X-curLableDat.LTBound.X));
       float ey = fmax(fabs(curLableDat.RBBound.Y-curLableDat.Center.Y), fabs(curLableDat.Center.Y-curLableDat.LTBound.Y));
       float searchRadius_lb = hypot(ex, ey) * 1.25f + 10;
-      convertGrayEdges2Signature(curLableDat.Center, ideal_center, originalImage, dsampLevel,
+      convertGrayEdges2Signature(curLableDat.Center, ideal_center, acvImageBgrView(originalImage), dsampLevel,
                                  searchRadius_lb, tmp_signature.signature_data, bacpac, edge_sig_min_strength,
                                  edge_sig_ray_step);
     }
