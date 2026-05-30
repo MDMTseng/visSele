@@ -55,8 +55,6 @@ int FeatureManager_sig360_extractor::reload(const char *json_str)
 int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
 {
   report.bacpac=bacpac;
-  acvImage *buff = &_buff;
-  buff->ReSize(img);
   vector<acv_LabeledData> &ldData = *this->_ldData;
   signature.resize(360);
   detectedCircles.resize(0);
@@ -97,7 +95,6 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
   acv_XY ideal_center = center;
   bacpac->sampler->img2ideal(&ideal_center);
   acvContourCircleSignature(ideal_center,tmp_contour, signature);
-  acvCloneImage(img, buff, -1);
   //MatchingCore_CircleLineExtraction(img,buff,ldData,detectedCircles,detectedLines);
 
   LOGI(">>>detectedCircles:%d", detectedCircles.size());
