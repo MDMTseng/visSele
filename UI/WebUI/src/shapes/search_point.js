@@ -5,6 +5,15 @@ import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 
 export const type = 'search_point';
 
+// Editor property-sheet schema slice for search_point.
+export function buildWhiteListKey(ctx) {
+  return {
+    angleDeg: 'AngleRangeSetup',
+    search_far: 'switch',
+    locating_anchor: 'switch',
+  };
+}
+
 export function applyDefaults(shape) {
   let out = { ...shape };
   if (out.search_far === undefined) {

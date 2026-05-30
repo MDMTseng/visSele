@@ -9,6 +9,25 @@ import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine,
 import dclone from 'clone';
 import * as log from 'loglevel';
 
+// Editor schema slice for the calc subtype: replaces the default ref-buttons
+// row with the Measure_Calc_Editor referencing other measures (loop-protected).
+export function buildWhiteListKey(ctx) {
+  const { edit_tar, shape_list, renderMethods, refChainHasLoop, ACT_EDIT_TAR_ELE_TRACE_UPDATE } = ctx;
+  return {
+    calc_f: {
+      __OBJ__: renderMethods.Measure_Calc_Editor,
+      measure_list: shape_list.filter(s =>
+        (s.type == SHAPE_TYPE.measure)
+        && !refChainHasLoop(edit_tar, s, shape_list)
+      ),
+      ref_keyTrace_callback: (keyTrace) => {
+        ACT_EDIT_TAR_ELE_TRACE_UPDATE(keyTrace);
+      },
+      ref: edit_tar.ref,
+    },
+  };
+}
+
 export function draw(ctx, shape, subObjs, renderer, sctx) {
   const { db_obj, shapeList, unitConvert, measValueAdjStr } = sctx;
   let measureValue;

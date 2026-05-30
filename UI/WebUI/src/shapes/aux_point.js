@@ -6,6 +6,13 @@ import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 
 export const type = 'aux_point';
 
+// Editor property-sheet schema slice for aux_point.
+export function buildWhiteListKey(ctx) {
+  return {
+    angleDeg: 'AngleRangeSetup',
+  };
+}
+
 // (no applyDefaults — legacy Shape_Attr_Fill has no case for aux_point; pass-through.)
 
 // Draw an aux_point — extracted verbatim from renderUTIL.drawShapeList.case SHAPE_TYPE.aux_point.

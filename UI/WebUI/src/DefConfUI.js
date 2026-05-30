@@ -8,7 +8,7 @@ import ComponentBoundary from './component/ComponentBoundary';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
 import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure/index.js';
-import { buildSharedSchema, buildDefaultSchema } from 'JSSRCROOT/shapes/propertySheet';
+import { buildSchema } from 'JSSRCROOT/shapes/propertySheet';
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
@@ -1980,13 +1980,13 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, AC
         case UIAct.SHAPE_TYPE.search_point:
         case UIAct.SHAPE_TYPE.measure:
           {
-            // Keystone step 2: schema extracted to shapes/propertySheet.js + memoized
-            // so JsonEditBlock can compare-by-reference and stop remounting its
-            // subtrees on every render (the Round-3 editor-sub-state-loss bug).
-            // Re-memoizes only when inputs that actually shape the schema change.
+            // Keystone phase B: each shape module owns its whiteListKey slice;
+            // buildSchema merges base + per-shape (+ per-subtype for measure).
+            // Memoized so JsonEditBlock can compare-by-reference and stop
+            // remounting subtrees on every render (Round-3 sub-state-loss bug).
             const sharedWhiteListKey = useMemo(
-              () => buildSharedSchema({
-                edit_tar, shape_list, renderMethods, refChainHasLoop,
+              () => buildSchema(edit_tar, {
+                shape_list, renderMethods, refChainHasLoop,
                 ACT_EDIT_TAR_ELE_TRACE_UPDATE,
               }),
               [edit_tar.id, edit_tar.type, edit_tar.subtype, edit_tar.ref, shape_list,
@@ -2062,10 +2062,17 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, AC
           break;
         default:
           {
-            // Keystone step 2: schema moved to shapes/propertySheet.js + memoized
-            // so JsonEditBlock receives a stable reference across renders.
-            const whiteListKey = useMemo(() => buildDefaultSchema(edit_tar),
-              [edit_tar.type, edit_tar.id]);
+            // Keystone phase B: unified schema dispatch. For unknown types
+            // buildSchema falls back to the base (type/subtype/name/margin).
+            // arc gets its slice from shapes/arc.js (direction + locating).
+            const whiteListKey = useMemo(
+              () => buildSchema(edit_tar, {
+                shape_list, renderMethods, refChainHasLoop,
+                ACT_EDIT_TAR_ELE_TRACE_UPDATE,
+              }),
+              [edit_tar.id, edit_tar.type, edit_tar.subtype, edit_tar.ref, shape_list,
+               ACT_EDIT_TAR_ELE_TRACE_UPDATE]
+            );
 
             UIArr.push(<BASE_COM.JsonEditBlock key="mainConfigTable" object={edit_tar}
               dict={DICT}

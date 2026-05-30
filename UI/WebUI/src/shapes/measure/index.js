@@ -1,4 +1,5 @@
 import { round } from 'UTIL/MISC_Util';
+import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 
 // Per-shape module: MEASURE.
 // Part of the per-shape vertical-slice keystone (see OPENQUESTION). This file
@@ -9,6 +10,57 @@ import { round } from 'UTIL/MISC_Util';
 //                                  by DefConfUI's jsonChange handler.
 
 export const type = 'measure';
+
+// Editor property-sheet schema slice for measure — merged with the base schema
+// (type/subtype/name/margin) + the per-subtype slice (info_type, calc_f, ...).
+export function buildWhiteListKey(ctx) {
+  const { edit_tar } = ctx;
+  const common = {
+    angleDeg: 'AngleRangeSetup',
+    value: 'input-number',
+    USL: 'ULRangeSetup', LSL: 'ULRangeSetup',
+    UCL: 'ULRangeSetup', LCL: 'ULRangeSetup',
+    value_b: 'input-number',
+    USL_b: 'ULRangeSetup', LSL_b: 'ULRangeSetup',
+    UCL_b: 'ULRangeSetup', LCL_b: 'ULRangeSetup',
+    back_value_setup: 'switch',
+    importance: 'input-number',
+    width: 'SimpleSetup',
+    quality_essential: 'switch',
+    orientation_essential: 'switch',
+    NGasNA: 'switch',
+    NAasNG: 'switch',
+    value_A: 'input-number',
+    value_B: 'input-number',
+    value_X: 'input-number',
+    value_Y: 'input-number',
+    ref_baseLine: { __OBJ__: 'btn', id: 'div', element: 'div' },
+  };
+  // The default `ref` is a row of 3 ref-pick buttons; calc subtype replaces it
+  // with its calc_f editor (handled in calc.js below).
+  const baseRef = (edit_tar.subtype === SHAPE_TYPE.measure_subtype.calc) ? undefined : {
+    __OBJ__: 'div',
+    ...[0, 1, 2].reduce((acc, key) => {
+      acc[key + ''] = { __OBJ__: 'btn', id: 'div', element: 'div' };
+      return acc;
+    }, {}),
+  };
+  // Subtype-specific contributions (info_type for circle_info, calc_f for calc, etc.)
+  const subMod = SUBTYPE_REGISTRY[edit_tar.subtype];
+  const subSlice = (subMod && subMod.buildWhiteListKey) ? subMod.buildWhiteListKey(ctx) : {};
+  return { ...common, ref: baseRef, ...subSlice };
+}
+
+// Per-subtype registry — keyed by SHAPE_TYPE.measure_subtype.<name>. Each
+// subtype module exports draw (wired in the switch below) and may export
+// buildWhiteListKey (buildWhiteListKey above dispatches via this map).
+const SUBTYPE_REGISTRY = {
+  [SHAPE_TYPE.measure_subtype.distance]:    distMod,
+  [SHAPE_TYPE.measure_subtype.angle]:       angleMod,
+  [SHAPE_TYPE.measure_subtype.radius]:      radiusMod,
+  [SHAPE_TYPE.measure_subtype.circle_info]: circleInfoMod,
+  [SHAPE_TYPE.measure_subtype.calc]:        calcMod,
+};
 
 export function applyDefaults(shape) {
   let out = shape;
@@ -80,7 +132,6 @@ export function applyMeasureLimitCoupling(obj, changedKey, preVal) {
 //   measureValueCache   — caller-owned array; this draw pushes {id,obj,value}
 //                         into it for downstream stats display.
 import ColorMod from 'color';
-import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine, closestPointOnPoints, distance_point_point } from 'UTIL/MathTools';

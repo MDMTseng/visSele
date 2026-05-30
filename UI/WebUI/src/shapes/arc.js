@@ -6,6 +6,17 @@ import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 
 export const type = 'arc';
 
+// Editor property-sheet schema slice for arc — merged with the base by the dispatcher.
+export function buildWhiteListKey(ctx) {
+  return {
+    direction: 'switch',
+    locating: {
+      __OBJ__: ctx.renderMethods.Dropdown_List,
+      list: ['contour', 'caliper'],
+    },
+  };
+}
+
 export function applyDefaults(shape) {
   let out = { ...shape };
   if (out.locating !== 'caliper') out.locating = 'contour';

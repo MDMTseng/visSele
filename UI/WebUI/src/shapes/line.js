@@ -9,6 +9,21 @@ export const type = 'line';
 
 // applyDefaults: PURE — may return the input untouched or a shallow clone with
 // missing fields filled. Mirrors the legacy Shape_Attr_Fill behavior verbatim.
+// Editor property-sheet schema slice for line — merged with the base schema
+// (type/subtype/name/margin) by the dispatcher. ctx provides renderMethods.
+export function buildWhiteListKey(ctx) {
+  return {
+    vertex_touch_searching: 'switch',
+    // caliper locating mode: "contour" (legacy) | "caliper". Core treats
+    // anything != "caliper" as contour. Caliper uses sane defaults unless
+    // a def overrides.
+    locating: {
+      __OBJ__: ctx.renderMethods.Dropdown_List,
+      list: ['contour', 'caliper'],
+    },
+  };
+}
+
 export function applyDefaults(shape) {
   let out = { ...shape };
   if (out.vertex_touch_searching !== true) out.vertex_touch_searching = false;

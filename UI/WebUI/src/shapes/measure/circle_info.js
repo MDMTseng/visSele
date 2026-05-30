@@ -9,6 +9,16 @@ import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine,
 import dclone from 'clone';
 import * as log from 'loglevel';
 
+// Editor schema slice for the circle_info subtype: adds the info_type dropdown.
+export function buildWhiteListKey(ctx) {
+  return {
+    info_type: {
+      __OBJ__: ctx.renderMethods.Dropdown_List,
+      list: Object.keys(SHAPE_TYPE._circle_info_type),
+    },
+  };
+}
+
 export function draw(ctx, shape, subObjs, renderer, sctx) {
   const { db_obj, shapeList, unitConvert, measValueAdjStr } = sctx;
   let measureValue;
