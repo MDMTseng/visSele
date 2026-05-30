@@ -22,7 +22,7 @@ FM_Blank::FM_Blank(const char *json_str): FeatureManager(json_str)
 
   report.data.cjson_report.cjson=NULL;
   reload(json_str);
-  backGroundTemplate.ReSize(1,1);
+  backGroundTemplate.create(1, 1, CV_8UC3);
 }
 
 FM_Blank::~FM_Blank()
@@ -301,40 +301,18 @@ cJSON * FM_Blank::SetParam(cJSON *jsonParam)
 }
 
 
-int FM_Blank::FeatureMatching(acvImage *img)
+int FM_Blank::FeatureMatching(cv::Mat &img)
 {
-
   ClearReport();
   cJSON *jsonRep=cJSON_CreateObject();
-  
+
   cJSON_AddStringToObject(jsonRep, "type", GetFeatureTypeName());
   report.data.cjson_report.cjson=jsonRep;
-  // LOGI("GOGOGOGOGOGGO....inspectionStage:%d",inspectionStage);
 
   if(thres>=0)
   {
-    acvThreshold(img,thres);
+    cv::threshold(img, img, thres, 255, cv::THRESH_BINARY);
   }
 
   return -1;
-}
-
-int FM_Blank::FeatureMatching1(acvImage *img)
-{
-
-  cJSON *jsonRep=report.data.cjson_report.cjson;
-
-  return -1;
-}
-
-int FM_Blank::FeatureMatching0(acvImage *img)
-{
-  
-  float cableRatio=0.074;
-  float maxDiffMargin=24;
-
-
-  // inspectionStage=1;
-
-  return 0;
 }

@@ -11,16 +11,13 @@
 class FM_Blank:public FeatureManager {
 
   
-  acvImage backGroundTemplate;
+  cv::Mat backGroundTemplate;
 
 public :
   FM_Blank(const char *json_str);
   ~FM_Blank();
   int reload(const char *json_str) override;
-  int FeatureMatching(acvImage *img) override;
-  
-  int FeatureMatching0(acvImage *img);
-  int FeatureMatching1(acvImage *img);
+  int FeatureMatching(cv::Mat &img) override;
 
   void ClearReport() override;
   cJSON * SetParam(cJSON *json_str) override;
