@@ -4,6 +4,7 @@
 
 #include "logctrl.h"
 #include "circleFitting.h"
+#include "CvBridge.h"
 #include <acvImage_SpDomainTool.hpp>
 
 #include "polyfit.h"
@@ -1066,7 +1067,7 @@ void edgeTracking::initTracking (ContourFetch::contourMatchSec &section,int new_
     // LOGI("i:%d",i);
     int secidx = valueSaturation(i,section.section.size());
     int widx = valueWarping(i,regionWidth);
-    contourPixExtraction(graylevelImg, section.section[secidx].pt_img,
+    contourPixExtraction(section.section[secidx].pt_img,
       section.section[secidx].sobel,gradIndex,stepDist,pixWidth,pixRegion[widx],bacpac);
 
   }
@@ -1182,27 +1183,22 @@ void edgeTracking::PixSumReCalc(int start,int end)
 }
 
 
-int edgeTracking::contourPixExtraction(acvImage *graylevelImg, acv_XY center_point,acv_XY sobel,int stepJump,float stepDist,int steps,float *pixels,FeatureManager_BacPac *bacpac)
+int edgeTracking::contourPixExtraction(acv_XY center_point, acv_XY sobel, int stepJump, float stepDist, int steps, float *pixels, FeatureManager_BacPac *bacpac)
 {
   sobel = acvVecNormalize(sobel);
-  
-  acv_XY  stepDir= acvVecMult(sobel,stepDist);
 
-  float stepsBack=-((float)(steps-1)/2);
-  // printf("stepDist:%f steps:%d stepsBack:%f stepJump:%d  \n",stepDist,steps,stepsBack,stepJump);
-  acv_XY  curpoint= acvVecMult(stepDir,stepsBack+stepJump);
-  curpoint = acvVecAdd(center_point,curpoint);
-  // printf("center_point:%f %f\n",center_point.X,center_point.Y);
-  
-  // LOGI("=====center_point:%f %f\n",center_point.X,center_point.Y);
-  for(int i=0;i<steps;i++)
+  acv_XY stepDir = acvVecMult(sobel, stepDist);
+
+  float stepsBack = -((float)(steps - 1) / 2);
+  acv_XY curpoint = acvVecMult(stepDir, stepsBack + stepJump);
+  curpoint = acvVecAdd(center_point, curpoint);
+
+  for (int i = 0; i < steps; i++)
   {
-    float lightComp=1;
-    if(bacpac && bacpac->sampler)
-    {
-      lightComp=bacpac->sampler->sampleBackLightFactor_ImgCoord(curpoint);
-    }
-    float ptn= acvUnsignedMap1Sampling(graylevelImg, curpoint, 0)*lightComp;
+    float lightComp = 1;
+    if (bacpac && bacpac->sampler)
+      lightComp = bacpac->sampler->sampleBackLightFactor_ImgCoord(curpoint);
+    float ptn = cvUnsignedMap1Sampling(this->_gray_cv, curpoint.X, curpoint.Y, 0) * lightComp;
     
     // bacpac->sampler->
     
@@ -1220,21 +1216,14 @@ int edgeTracking::contourPixExtraction(acvImage *graylevelImg, acv_XY center_poi
 
 
 
-float edgeTracking::pixFetch(acvImage *graylevelImg, acv_XY pt,FeatureManager_BacPac *bacpac)
+float edgeTracking::pixFetch(acv_XY pt, FeatureManager_BacPac *bacpac)
 {
-  acv_XY  curpoint= pt;
-  
-  float lightComp=1;
-  if(bacpac && bacpac->sampler)
-  {
-    lightComp=bacpac->sampler->sampleBackLightFactor_ImgCoord(curpoint);
-  }
-  
-  float ptn= acvUnsignedMap1Sampling(graylevelImg, pt, 0);
-  // bacpac->sampler->
-  return lightComp*ptn;
-
-} 
+  float lightComp = 1;
+  if (bacpac && bacpac->sampler)
+    lightComp = bacpac->sampler->sampleBackLightFactor_ImgCoord(pt);
+  float ptn = cvUnsignedMap1Sampling(this->_gray_cv, pt.X, pt.Y, 0);
+  return lightComp * ptn;
+}
 
 
 
@@ -1345,7 +1334,7 @@ void edgeTracking::goSideShift (ContourFetch::contourMatchSec &section,bool goGr
 
     acv_XY pt = acvVecMult(section.section[secidx].sobel,gradFetchOffset);
     pt=acvVecAdd(pt,section.section[secidx].pt_img);
-    float tmp = pixFetch(graylevelImg, pt,bacpac);
+    float tmp = pixFetch(pt, bacpac);
     pixRegion[widx][newRowIdx]=tmp;
     regSum+=tmp;
   }
@@ -1377,7 +1366,7 @@ void edgeTracking::goAdv (ContourFetch::contourMatchSec &section,bool goForward,
   // sec_tail_idx,
   // section.section[sec_tail_idx].sobel.X,section.section[sec_tail_idx].sobel.Y,
   // section.section[sec_tail_idx].pt_img.X,section.section[sec_tail_idx].pt_img.Y);
-  contourPixExtraction(graylevelImg, section.section[sec_tail_idx].pt_img,
+  contourPixExtraction(section.section[sec_tail_idx].pt_img,
     section.section[sec_tail_idx].sobel,gradIndex,stepDist,pixWidth,pixRegion[head_idx],bacpac);
 
   // for(int i=0;i<regionWidth;i++)

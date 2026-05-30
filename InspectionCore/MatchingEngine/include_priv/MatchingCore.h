@@ -108,11 +108,8 @@ class edgeTracking
   void PixSumReCalc(int start,int end);
 
 
-  int contourPixExtraction(acvImage *graylevelImg, acv_XY center_point,acv_XY sobel,int stepJump,float stepDist,int steps,float *pixels,FeatureManager_BacPac *bacpac);
-
-
-
-  float pixFetch(acvImage *graylevelImg, acv_XY pt,FeatureManager_BacPac *bacpac);
+  int contourPixExtraction(acv_XY center_point, acv_XY sobel, int stepJump, float stepDist, int steps, float *pixels, FeatureManager_BacPac *bacpac);
+  float pixFetch(acv_XY pt, FeatureManager_BacPac *bacpac);
 
 
   void calc_info(float *mean_offset, float *sigma);
