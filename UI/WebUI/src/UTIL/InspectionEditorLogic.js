@@ -18,23 +18,11 @@ import JSum from 'jsum';
 import dateFormat from 'dateformat';
 let log = logX.getLogger("InspectionEditorLogic");
 
-export const MEASURERSULTRESION =
-{
-  UNSET: "UNSET",
-  NA: "NA",
-  UOK: "UOK",
-  LOK: "LOK",
-  OK: "OK",
-
-  UCNG: "UCNG",
-  LCNG: "LCNG",
-  CNG: "CNG",
-
-  USNG: "USNG",
-  LSNG: "LSNG",
-  SNG: "SNG",
-  NG: "NG",
-};
+// Moved to UTIL/MeasureResultResolution.js to break a circular import
+// (shapes → canvas/renderConst → InspectionEditorLogic → shapes). Re-exported
+// here for backward compatibility with consumers that import the legacy path.
+export { MEASURERSULTRESION } from './MeasureResultResolution';
+import { MEASURERSULTRESION } from './MeasureResultResolution';
 
 
 export const MEASURERSULTRESION_priority =

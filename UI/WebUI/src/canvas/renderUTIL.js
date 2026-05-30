@@ -9,6 +9,7 @@ import * as log from 'loglevel';
 import dclone from 'clone';
 import Color from 'color';
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from './renderConst';
+import { getShapeModule } from 'JSSRCROOT/shapes';
 
 class renderUTIL {
   constructor(editor_db_obj, cameraCtrl) {
@@ -515,31 +516,14 @@ class renderUTIL {
       switch (eObject.type) {
         case SHAPE_TYPE.line:
           {
-            let cnormal = LineCentralNormal(eObject);
-
-            let drawMargin=this.getSearchDirectionLineSize();
-            if(inFullDisplay)
-            {
-              drawMargin=eObject.margin;
+            // Keystone step 3 — per-shape draw owns its rendering. shapes/line.js
+            // gets the renderer (this) for helpers it needs (drawReportLine, drawpoint,
+            // getSearchDirectionLineSize). Falls back to legacy inline if the module
+            // somehow disappears — defensive, should never trigger.
+            const mod = getShapeModule(SHAPE_TYPE.line);
+            if (mod && mod.draw) {
+              mod.draw(ctx, eObject, this, { inFullDisplay });
             }
-            ctx.lineWidth =drawMargin* 2;
-            this.drawReportLine(ctx, {
-              x0: eObject.pt1.x, y0: eObject.pt1.y,
-              x1: eObject.pt2.x, y1: eObject.pt2.y,
-            });
-
-
-            ctx.lineWidth = this.getSearchDirectionLineSize();
-            ctx.strokeStyle = shapeColor;
-            let marginOffset = drawMargin+ ctx.lineWidth / 2;
-            this.drawReportLine(ctx, {
-              x0: eObject.pt1.x + cnormal.vx * marginOffset, y0: eObject.pt1.y + cnormal.vy * marginOffset,
-              x1: eObject.pt2.x + cnormal.vx * marginOffset, y1: eObject.pt2.y + cnormal.vy * marginOffset,
-            });
-
-            ctx.strokeStyle = "gray";
-            this.drawpoint(ctx, eObject.pt1);
-            this.drawpoint(ctx, eObject.pt2);
           }
           break;
 

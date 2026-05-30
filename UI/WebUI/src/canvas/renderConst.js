@@ -1,7 +1,9 @@
 // Shared canvas render constants. Extracted from EverCheckCanvasComponent.js so
 // both renderUTIL and the canvas classes can use them without a circular import.
 import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
-import { MEASURERSULTRESION } from 'UTIL/InspectionEditorLogic';
+// R-cycle-break: import from the leaf to keep renderConst free of any path that
+// transitively imports the shape registry (which now imports renderConst for color).
+import { MEASURERSULTRESION } from 'UTIL/MeasureResultResolution';
 
 export const MEASURE_RESULT_VISUAL_INFO = {
   [MEASURERSULTRESION.UNSET]: { COLOR: "rgba(128,128,128,0.7)", TEXT: MEASURERSULTRESION.UNSET },
