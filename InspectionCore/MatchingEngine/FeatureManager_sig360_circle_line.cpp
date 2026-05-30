@@ -4664,28 +4664,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     }
 
     LOGI("ldData[%d].area=%d",i,ldData[i].area);
-    bool doCropStyle=false;
-    int cx=0;
-    int cy=0;
-    int cw=labeledBuff->GetWidth();
-    int ch=labeledBuff->GetHeight();
-    if(doCropStyle)
-    {
-      p_cropImg=&_cropImg;
-      int margin=20;
-      cx=ldData[i].LTBound.X-margin;
-      cy=ldData[i].LTBound.Y-margin;
-      cw=ldData[i].RBBound.X+margin-cx;
-      ch=ldData[i].RBBound.Y+margin-cy;
-      LOGI("CROP:%d  %d  %d  %d",cx,cy,cw,ch);
-      acvCropImage(labeledBuff,p_cropImg,cx,cy,cw,ch);
-    }
-    else
-    {
-      p_cropImg=labeledBuff;
-    }
-    cropOffset.X=cx;
-    cropOffset.Y=cy;
+    p_cropImg=labeledBuff;
+    cropOffset.X=0;
+    cropOffset.Y=0;
     m_labeledImg = labeledBuff;   // full labeled image; this object's pixels == label i
     m_objLabel = i;
     acv_LabeledData curLableDat=(acv_LabeledData){
@@ -4703,16 +4684,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
       continue;
     }
 
-     if(doCropStyle)
-    {
-
-      acvCropImage(originalImage,p_cropImg,cx,cy,cw,ch);
-    }
-    else
-    {
-      p_cropImg=originalImage;
-    }
-    // acvSaveBitmapFile("CROPIMG.BMP", &p_cropImg);
+    p_cropImg=originalImage;
 
 
     
