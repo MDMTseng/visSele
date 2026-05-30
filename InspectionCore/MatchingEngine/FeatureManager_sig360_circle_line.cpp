@@ -4539,9 +4539,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
 {
   if (img_cv.empty()) return -1;
   if (!img_cv.isContinuous()) img_cv = img_cv.clone();
-  // Single shim into the still-acv-internal body. As helpers migrate to
-  // cv::Mat, this shim shrinks; eventually the function body owns the cv::Mat
-  // directly and the acvImage class is unlinked.
+  // img_cv is the LABELED image (binary_processing_group's binary_img_storage
+  // after acvComponentLabeling_cv). originalImage was independently set via
+  // setOriginalImage(cv::Mat&) to the SOURCE image and is used by the body's
+  // grayscale samplers (caliper / search_point_cv / edgeTracking).
   acvImage _img_shim;
   _img_shim.useExtBuffer(img_cv.data,
                          (int)(img_cv.total() * img_cv.elemSize()),

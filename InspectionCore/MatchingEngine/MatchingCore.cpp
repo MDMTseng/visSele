@@ -159,13 +159,6 @@ float acvPoint3Angle(acv_XY p1,acv_XY pc,acv_XY p2)
 }
 
 
-ContourGrid::ptInfo refineEdgeInfo(acvImage *grayLevel,ContourGrid::ptInfo ptinfo,int searching_limit)
-{
-
-
-  //TODO:
-  return ptinfo;
-}
 
 void ContourFilter(vector<ContourFetch::ptInfo> &contour, float epsilon=0.05, int Dist=10)
 {
