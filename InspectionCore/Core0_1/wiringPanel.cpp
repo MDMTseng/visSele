@@ -1560,58 +1560,35 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
 
 
 CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
-{  
+{
   if (type != CameraLayer::EV_IMG)
     return CameraLayer::NAK;
-  acvImage *img=(acvImage*)obj;
+  cv::Mat *dst = (cv::Mat *)obj;
 
-  CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
-  LOGI("finfo:WH:%d,%d  img_transpose:%d",finfo.width,finfo.height,img_transpose);
+  CameraLayer::frameInfo finfo = cl_obj.GetFrameInfo();
+  LOGI("finfo:WH:%d,%d  img_transpose:%d", finfo.width, finfo.height, img_transpose);
 
-  acvImage *tmp_img=img_transpose?new acvImage():img;
+  // Allocate a contiguous BGR buffer at the camera's native orientation; the
+  // camera writes into it via ExtractFrame.
+  cv::Mat raw(finfo.height, finfo.width, CV_8UC3);
+  auto ret = cl_obj.ExtractFrame(raw.data, 3, finfo.width * finfo.height);
 
-  tmp_img->ReSize(finfo.width,finfo.height);
-  auto ret=cl_obj.ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
+  cv::Mat oriented;
+  if (img_transpose) cv::transpose(raw, oriented);
+  else oriented = raw;
 
-  if(img_transpose==true)
-  {
-    transpose(img,tmp_img);
-
-    delete tmp_img;
-    tmp_img=NULL;
-  }
-
-
-  {//change BGR image to RRR
-    for (int i = 0; i < img->GetHeight(); i++)
-    {
-      for (int j = 0; j < img->GetWidth(); j++)
-      {
-
-        int tmp = img->CVector[i][3 * j+2];
-        img->CVector[i][3 * j] = img->CVector[i][3 * j + 1]=tmp;
-      }
-    }
-  }
+  // BGR -> RRR (replicate R channel across all 3 BGR slots), matching the
+  // legacy callback's per-pixel rewrite.
+  cv::Mat r;
+  cv::extractChannel(oriented, r, 2);
+  cv::cvtColor(r, *dst, cv::COLOR_GRAY2BGR);
 
   return ret;
 }
 
-int getImage(CameraLayer *camera,acvImage *dst_img,int trig_type=0,int timeout_ms=-1)
-{
-  return (camera->SnapFrame(SNAP_Callback,(void*)dst_img,trig_type,timeout_ms) == CameraLayer::ACK)?0:-1;
-}
-
-// cv::Mat overload. The camera's SnapFrame still writes via SNAP_Callback into
-// an acvImage (CameraLayer hasn't been migrated yet), so we snap into a local
-// acvImage then copy the BGR view into the target cv::Mat.  Will collapse once
-// the camera lib is migrated.
 int getImage(CameraLayer *camera, cv::Mat &dst, int trig_type=0, int timeout_ms=-1)
 {
-  acvImage tmp_acv;
-  int rc = getImage(camera, &tmp_acv, trig_type, timeout_ms);
-  if (rc == 0) acvImageBgrView(&tmp_acv).copyTo(dst);
-  return rc;
+  return (camera->SnapFrame(SNAP_Callback, (void *)&dst, trig_type, timeout_ms) == CameraLayer::ACK) ? 0 : -1;
 }
 
 
