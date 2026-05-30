@@ -86,9 +86,29 @@ is recorded here so it's ready when that arrives.
 5. **No `nan`/`inf` tokens** in any output JSON (regex check in
    `qa_imgstress._check_against_golden`).
 
-## Current status (2026-05-30)
+## Current status (2026-05-31)
 
-Phase 3a in progress. Done:
+Phase 3a — `binary_processing_group` entry-point cv-clean. Done:
+- FeatureManager interface flipped to mutual bridges (both signatures non-pure
+  with a re-entry guard; subclasses override either).
+- 5 FMs migrated cv::Mat-native: FM_Blank, FM_GenMatching, FM_nop,
+  FeatureManager_group (dispatcher), FeatureManager_binary_processing_group.
+- Helpers ported / added: `cvCloneImage`, `cvThresholdMap`, `binarize_bg_flatten_cv`
+  signature flipped (was acvImage-typed but cv-internal).
+- binary_processing_group body now owns `binary_img_storage` as cv::Mat,
+  drops the legacy `binary_img` / `ds_binary_img` acvImage shim members,
+  passes cv::Mat to sub-features via the base bridge.
+- `setOriginalImage(cv::Mat&)` overload added — auto-binds a per-instance
+  acvImage shim so unmigrated sig360 internals keep reading `originalImage`
+  as acvImage* without the caller maintaining one.
+- Dropped dead: ImageStackAddUp::Export(acvImage*), all ImgInspection_*
+  acvImage* overloads, MatchingEngine::FeatureMatching(acvImage*), saveInspectionSample
+  acvImage* overload, sig360 buff1/buff2/buff_/buffer_img param, group's
+  binaryDownScale / labeledUpScale.
+- wiringPanel members: image_pipe_info::img and the static test1_buff are cv::Mat;
+  BPG class members tmp_buff/cacheImage/dataSend_buff are cv::Mat.
+
+Phase 3a status:
 - BPG class image members (`tmp_buff`/`cacheImage`/`dataSend_buff`) → `cv::Mat`.
 - `image_pipe_info::img` (per-pipe captured frame) → `cv::Mat`; camera
   `ExtractFrame` writes into `Mat.data` after `create(H,W,CV_8UC3)`.
@@ -99,7 +119,7 @@ Phase 3a in progress. Done:
   bridge already in place.
 - `loadImageCv`, `acvImageBgrView` primitives in `CvBridge` are the shim layer.
 
-Not done — what blocks unlinking `acvImage`:
+Remaining blockers to unlinking `acvImage`:
 1. **`MatchingEngine` interface flip** (FeatureManager.h pure-virtual is still
    `FeatureMatching(acvImage*)`). 24 overrides. Strategy: per-class, keep
    `acvImage*` as a 3-line shim wrapper and implement the body in the
