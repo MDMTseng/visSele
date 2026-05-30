@@ -4071,7 +4071,7 @@ void SET_UNSET_REPORT_NA(FeatureReport_sig360_circle_line_single &srep)
 }
 
 int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistoriginalImage,
-                                                      acvImage *labeledBuff, acvImage *binarizedBuff, acvImage *buffer_img,
+                                                      acvImage *labeledBuff, acvImage *binarizedBuff,
                                                       int lableIdx, acv_LabeledData *ldData,
                                                       int grid_size, ContourFetch &edge_grid, int scanline_skip, FeatureManager_BacPac *bacpac,
                                                       FeatureReport_sig360_circle_line_single &singleReport,
@@ -4670,13 +4670,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   float ppmm = 1 / bacpac->sampler->mmpP_ideal();
   ; //pixel per mm
 
-  acvImage *buff_ = &_buff;
   vector<acv_LabeledData> &ldData = *this->_ldData;
   int grid_size = 50;
   bool drawDBG_IMG = false;
-  buff_->ReSize(img->GetWidth(), img->GetHeight());
-  buff1.ReSize(img->GetWidth(), img->GetHeight());
-  buff2.ReSize(img->GetWidth(), img->GetHeight());
   acvImage *labeledBuff = img;
   //acvImage *smoothedImg = &buff2;
   //acvCloneImage( img,buff_, -1);
@@ -4945,7 +4941,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     edge_grid.ptSubdivision(dsampLevel);
     //LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
 
-    int ret = SingleMatching(originalImage, labeledBuff, img, buff_,
+    int ret = SingleMatching(originalImage, labeledBuff, img,
                              i, &(ldData[0]),
                              grid_size, edge_grid, scanline_skip, bacpac,
                              singleReport,

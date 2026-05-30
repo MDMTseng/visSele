@@ -159,9 +159,6 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   vector<FeatureReport_sig360_circle_line_single> reportDataPool;
   vector<FeatureReport_sig360_circle_line_single> reports;
 
-  acvImage buff1;
-  acvImage buff2;
-  
   acvImage *p_cropImg;
   acvImage _cropImg;
   acv_XY cropOffset;
@@ -254,7 +251,7 @@ protected:
 
   acv_XY ParseMainVector(featureDef_searchPoint *def_sp);
 
-  int SingleMatching(acvImage *originalImage,acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
+  int SingleMatching(acvImage *originalImage,acvImage *labeledBuff,acvImage *binarizedBuff,
   int lableIdx,acv_LabeledData *ldData,
   int grid_size, ContourFetch &edge_grid,int scanline_skip, FeatureManager_BacPac *bacpac,
   FeatureReport_sig360_circle_line_single &singleReport,
