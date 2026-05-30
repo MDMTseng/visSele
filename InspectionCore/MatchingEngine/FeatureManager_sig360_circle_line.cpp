@@ -806,7 +806,14 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   case FeatureReport_judgeDef::CIRCLE_INFO:
   {
     if (type1 != FEATURETYPE::ARC)
+    {
+      // Cross-type ref (e.g. circle_info pointing at a line) must NA out,
+      // not leave measured_val uninitialised -> garbage propagating through
+      // the linear-normalize block and leaking nan/inf into the JSON output.
+      judgeReport.measured_val = NAN;
+      notNA = false;
       break;
+    }
 
     FeatureReport_circleReport cir = (*report.detectedCircles)[idx1];
 

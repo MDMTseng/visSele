@@ -1441,5 +1441,170 @@ CASES += [
     case("scale_50_extra_measures",    "custom", fn=fn_scale_50_extra),
 ]
 
+# ================= ROUND 8: full-caliper+scale, search_far x width, OOB coords, anchor chain, orient-flip, intrusion=0.999, circle_info on non-circle, USL<LSL =================
+
+# R8-1: full caliper (all line+arc+search_point) WITH 50 extra duplicated id-bumped
+# measures.  Combined perf + correctness probe.
+def _full_caliper_plus_50_measures():
+    d = golden()
+    for t in ("line", "arc", "search_point"):
+        for ft in all_of(d, t):
+            ft["locating"] = "caliper"
+    sig = first_of(d, "sig360_circle_line")
+    m12 = _find_id(d, 12)
+    if sig is not None and m12 is not None:
+        for k, v in sig.items():
+            if isinstance(v, list):
+                for i in range(50):
+                    cm = copy.deepcopy(m12)
+                    cm["id"] = 9400 + i
+                    v.append(cm)
+                break
+    return d
+
+def fn_full_caliper_50_measures(run_insp):
+    t0 = time.time()
+    rc, out = run_insp(_full_caliper_plus_50_measures(), timeout=60)
+    dt = time.time() - t0
+    if rc == "TIMEOUT": return False, f"TIMEOUT dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if isinstance(rc, int) and rc < 0:
+        return True, f"rc={rc_str(rc)} dt={dt:.2f}s (controlled-reject on dup ids)"
+    if rc != 0 or out is None: return False, f"rc={rc_str(rc)} dt={dt:.2f}s"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, f"NaN/Inf dt={dt:.2f}s"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    extras = [j for j in js if isinstance(j.get("id"), int) and 9400 <= j["id"] <= 9449]
+    slow = " SLOW" if dt > 30.0 else ""
+    return (not bad), f"rc=0 dt={dt:.2f}s judges={len(js)} extras={len(extras)} bad={len(bad)}{slow}"
+
+# R8-2: search_far flag interacting with very long width
+def _sp_search_far_long_width():
+    d = golden()
+    for sp in all_of(d, "search_point"):
+        sp["search_far"] = True
+        sp["width"] = 8000
+    return d
+
+# R8-3: line with coordinates outside image bounds (golden units = image-mm)
+def _line_oob_coords():
+    d = golden()
+    ln = first_of(d, "line")
+    if ln is not None:
+        ln["pt1"] = {"x": 50000.0, "y": 50000.0}
+        ln["pt2"] = {"x": 50100.0, "y": 50100.0}
+    return d
+
+# R8-4: chained 3-deep locating_anchor: sp(3) -> sp(4) -> sp(5)
+def _anchor_chain_3deep():
+    d = golden()
+    sp3 = _find_id(d, 3); sp4 = _find_id(d, 4); sp5 = _find_id(d, 5)
+    if sp3 and sp4 and sp5:
+        sp3["locating_anchor"] = True
+        sp4["locating_anchor"] = True; sp4["ref"] = [{"id":3,"element":"search_point"}]
+        sp5["locating_anchor"] = True; sp5["ref"] = [{"id":4,"element":"search_point"}]
+    return d
+
+# R8-5: orientation_essential where the orientation FLIPS during reDo
+# Synthesize by setting orientation_essential on multiple measures with conflicting refs.
+def _orientation_flip_redo():
+    d = golden()
+    count = 0
+    for sig in all_of(d, "sig360_circle_line"):
+        for k, v in sig.items():
+            if isinstance(v, list):
+                for it in v:
+                    if isinstance(it, dict) and it.get("type") == "measure":
+                        it["orientation_essential"] = True
+                        # alternate ref orderings to flip orientation across reDo passes
+                        if "ref" in it and isinstance(it["ref"], list) and len(it["ref"]) >= 2 and count % 2 == 1:
+                            it["ref"] = list(reversed(it["ref"]))
+                        count += 1
+    return d
+
+def fn_orientation_flip_redo(run_insp):
+    t0 = time.time()
+    rc, out = run_insp(_orientation_flip_redo(), timeout=15)
+    dt = time.time() - t0
+    if rc == "TIMEOUT":
+        return False, f"REAL BUG: TIMEOUT (likely infinite reDo flip loop) dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, "NaN/Inf in JSON"
+    return True, f"rc={rc_str(rc)} dt={dt:.2f}s (orient-flip reDo terminated)"
+
+# R8-6: intrusionSizeLimitRatio = 0.999 (very strict)
+_intrusion_999 = _intrusion_ratio(0.999)
+
+# R8-7: measure(circle_info subtype=roughness_rmse) on a NON-circular shape
+# Reroute the circle_info measure's ref to a line (id=1) instead of an arc.
+def _circle_info_on_line():
+    d = golden(); m = first_of(d, "measure")
+    m["subtype"] = "circle_info"
+    m["info_type"] = "roughness_rmse"
+    m["ref"] = [{"id": 1, "element": "line"}]
+    return d
+
+def fn_circle_info_on_line(run_insp):
+    rc, out = run_insp(_circle_info_on_line(), timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash rc={rc_str(rc)} on circle_info(line)"
+    if out is None: return True, f"rc={rc_str(rc)} no out"
+    # Match nan/inf as TOKEN values (not substrings of legitimate keys like
+    # "info_type" / "circle_info"). cJSON emits non-finite floats unquoted.
+    import re as _re
+    if _re.search(rb'[\s,:\[]\s*(nan|inf|-inf)\b', out.lower()):
+        return False, "NaN/Inf on circle_info(line)"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    return (not bad), f"rc={rc_str(rc)} judges={len(js)} bad={len(bad)} (circle_info on line should NA-out)"
+
+# R8-8: USL < LSL on every measure (re-confirm; covered elsewhere in suite)
+def _usl_lt_lsl():
+    d = golden()
+    for sig in all_of(d, "sig360_circle_line"):
+        for k, v in sig.items():
+            if isinstance(v, list):
+                for it in v:
+                    if isinstance(it, dict) and it.get("type") == "measure":
+                        it["USL"] = -100.0
+                        it["LSL"] =  100.0
+                        it["tol_upper"] = -100.0
+                        it["tol_lower"] =  100.0
+    return d
+
+def fn_usl_lt_lsl_reconfirm(run_insp):
+    rc, out = run_insp(_usl_lt_lsl(), timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash rc={rc_str(rc)} on USL<LSL"
+    if out is None: return True, f"rc={rc_str(rc)} no out"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, "NaN/Inf on USL<LSL"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    # With USL<LSL the engine should mark every judge OOT (status != 0) but emit finite values
+    succ = sum(1 for j in js if j.get("status") == 0)
+    oot  = sum(1 for j in js if j.get("status") == -1)
+    return (not bad), f"rc={rc_str(rc)} judges={len(js)} succ={succ} OOT={oot} bad={len(bad)}"
+
+CASES += [
+    case("full_caliper_plus_50_measures",   "custom", fn=fn_full_caliper_50_measures),
+    case("sp_search_far_long_width",        "custom", fn=_fn_no_crash_finite(_sp_search_far_long_width)),
+    case("line_coords_out_of_bounds",       "robust", make=_line_oob_coords),
+    case("anchor_chain_3deep",              "custom", fn=_fn_no_crash_finite(_anchor_chain_3deep)),
+    case("orientation_essential_flip_redo", "custom", fn=fn_orientation_flip_redo),
+    case("intrusion_ratio_0_999",           "custom", fn=fn_no_crash_under_2s(_intrusion_999, 3.0)),
+    case("circle_info_rmse_on_line",        "custom", fn=fn_circle_info_on_line),
+    case("usl_lt_lsl_reconfirm",            "custom", fn=fn_usl_lt_lsl_reconfirm),
+]
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_measure", CASES))

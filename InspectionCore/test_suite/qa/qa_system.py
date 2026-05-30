@@ -1269,5 +1269,209 @@ def fn_r7_dup_insp(_run):
     return safe, f"rc={rc_str(rc)} first_out={first_ok} second_out={os.path.exists(out + '.second.json')}"
 CASES.append(case("r7_duplicate_insp_flag", "custom", fn=fn_r7_dup_insp))
 
+# ==========================================================================
+# ROUND 8 — symlink loops, perm-denied, sparse, env -i, wrapper quoting,
+#           exec API equivalence, tmpfs vs disk, BOM def, empty imgPath,
+#           5x identical-input concurrent (no shared out)
+# ==========================================================================
+import stat as _stat8
+
+# ---- r8.1 image is a SYMLINK pointing to ITSELF (loop) -> ELOOP --------
+def fn_r8_self_symlink(run):
+    link = f"{TMP}/sys_r8_selfloop.png"
+    if os.path.lexists(link): os.remove(link)
+    os.symlink(link, link)  # link -> link
+    rc, out = run(GDEF, out_path=f"{TMP}/sys_r8_selfloop_out.json", img=link)
+    try: os.remove(link)
+    except Exception: pass
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    return safe, f"rc={rc_str(rc)} (self-symlink, ELOOP, no crash)"
+CASES.append(case("r8_img_self_symlink_loop", "custom", fn=fn_r8_self_symlink))
+
+# ---- r8.2 image + def with mode 000 (read denied) ----------------------
+def fn_r8_perm_denied(run):
+    import shutil as _sh
+    img = f"{TMP}/sys_r8_noperm.png"; _sh.copy(IMG, img); os.chmod(img, 0)
+    df  = f"{TMP}/sys_r8_noperm.hydef"; _sh.copy(GDEF, df); os.chmod(df, 0)
+    rc, out = run(df, out_path=f"{TMP}/sys_r8_perm_out.json", img=img)
+    os.chmod(img, 0o644); os.chmod(df, 0o644)
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    # expect a controlled non-zero rc (likely 3 or 4)
+    return safe and rc != 0, f"rc={rc_str(rc)} (chmod 000, denied)"
+CASES.append(case("r8_img_def_perm_denied", "custom", fn=fn_r8_perm_denied))
+
+# ---- r8.3 image file with sparse holes ---------------------------------
+def fn_r8_sparse(run):
+    """Create a sparse file by truncating to large size, then writing a real PNG
+    header at offset 0. The bytes between header and EOF are zero-holes."""
+    p = f"{TMP}/sys_r8_sparse.png"
+    with open(p, "wb") as fh:
+        fh.write(open(IMG, "rb").read())  # valid PNG content first
+        fh.seek(50 * 1024 * 1024 - 1)     # 50MB sparse hole at end
+        fh.write(b"\x00")
+    rc, out = run(GDEF, out_path=f"{TMP}/sys_r8_sparse_out.json", img=p)
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    return safe, f"rc={rc_str(rc)} sz={os.path.getsize(p)} (sparse, no crash)"
+CASES.append(case("r8_img_sparse_holes", "custom", fn=fn_r8_sparse))
+
+# ---- r8.4 env -i (no env at all, just DYLD for dylib loading) ----------
+def fn_r8_env_i(_run):
+    """Run with a stripped environment. We must keep DYLD_LIBRARY_PATH so dylibs
+    resolve, but drop everything else (PATH/HOME/LANG/TERM/...)."""
+    out = f"{TMP}/sys_r8_envi_out.json"
+    if os.path.exists(out): os.remove(out)
+    env = {"DYLD_LIBRARY_PATH": BUILD}
+    try:
+        r = subprocess.run([VIS, "--insp", IMG, GDEF, out],
+                           cwd=CORE, env=env, capture_output=True, timeout=180)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    report = open(out, "rb").read() if os.path.exists(out) else None
+    ok = (rc == 0) and (report is not None)
+    return ok, f"rc={rc_str(rc)} report_present={report is not None} (env -i + DYLD)"
+CASES.append(case("r8_env_i_minimal", "custom", fn=fn_r8_env_i))
+
+# ---- r8.5 sh -c wrapper with double-quoted argv ------------------------
+def fn_r8_shell_doublequote(_run):
+    """Invoke via /bin/sh -c with every arg double-quoted. Same final argv, just
+    shell-tokenized. Behavior must match a direct argv call (rc0, report ok)."""
+    out = f"{TMP}/sys_r8_shquote_out.json"
+    if os.path.exists(out): os.remove(out)
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    cmd = f'"{VIS}" --insp "{IMG}" "{GDEF}" "{out}"'
+    try:
+        r = subprocess.run(["/bin/sh", "-c", cmd], cwd=CORE, env=env,
+                           capture_output=True, timeout=180)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    report = open(out, "rb").read() if os.path.exists(out) else None
+    ok = (rc == 0) and report is not None
+    return ok, f"rc={rc_str(rc)} (sh -c double-quoted argv)"
+CASES.append(case("r8_shell_doublequoted_argv", "custom", fn=fn_r8_shell_doublequote))
+
+# ---- r8.6 os.system vs subprocess vs os.posix_spawn equivalence --------
+def fn_r8_spawn_equivalence(_run):
+    """Three spawn APIs must produce byte-identical output for same input."""
+    out_sp = f"{TMP}/sys_r8_eq_sp.json"
+    out_sy = f"{TMP}/sys_r8_eq_sy.json"
+    out_ps = f"{TMP}/sys_r8_eq_ps.json"
+    for p in (out_sp, out_sy, out_ps):
+        if os.path.exists(p): os.remove(p)
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    # 1. subprocess.run
+    r = subprocess.run([VIS, "--insp", IMG, GDEF, out_sp], cwd=CORE, env=env,
+                       capture_output=True, timeout=120)
+    rc_sp = r.returncode
+    # 2. os.system (inherits parent env -> set DYLD via env then restore)
+    old_dyld = os.environ.get("DYLD_LIBRARY_PATH")
+    os.environ["DYLD_LIBRARY_PATH"] = BUILD
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(CORE)
+        rc_sy_raw = os.system(f'"{VIS}" --insp "{IMG}" "{GDEF}" "{out_sy}" >/dev/null 2>&1')
+        rc_sy = os.waitstatus_to_exitcode(rc_sy_raw)
+    finally:
+        os.chdir(old_cwd)
+        if old_dyld is None: os.environ.pop("DYLD_LIBRARY_PATH", None)
+        else: os.environ["DYLD_LIBRARY_PATH"] = old_dyld
+    # 3. os.posix_spawn (closest portable equivalent to os.execv w/o replacing us)
+    try:
+        pid = os.posix_spawn(VIS, [VIS, "--insp", IMG, GDEF, out_ps],
+                             env, file_actions=None)
+        # ensure cwd visibility: posix_spawn uses caller cwd; do it from CORE
+    except Exception as e:
+        return False, f"posix_spawn err: {e}"
+    # need to actually chdir to CORE for posix_spawn run
+    # redo it properly:
+    for p in (out_ps,):
+        if os.path.exists(p): os.remove(p)
+    old_cwd = os.getcwd(); os.chdir(CORE)
+    try:
+        pid = os.posix_spawn(VIS, [VIS, "--insp", IMG, GDEF, out_ps], env)
+        _, status = os.waitpid(pid, 0)
+        rc_ps = os.waitstatus_to_exitcode(status)
+    finally:
+        os.chdir(old_cwd)
+    bs = [open(p, "rb").read() if os.path.exists(p) else None
+          for p in (out_sp, out_sy, out_ps)]
+    ident = all(b is not None for b in bs) and bs[0] == bs[1] == bs[2]
+    all0 = (rc_sp == 0 and rc_sy == 0 and rc_ps == 0)
+    return (all0 and ident), f"sp={rc_sp} sys={rc_sy} ps={rc_ps} identical={ident}"
+CASES.append(case("r8_spawn_apis_equivalent", "custom", fn=fn_r8_spawn_equivalence))
+
+# ---- r8.7 tmpfs vs disk: on macOS use /tmp (often UFS/APFS) vs CORE dir
+#         macOS has no tmpfs; emulate by comparing /private/tmp (RAM-ish for
+#         small files via system cache) vs a CORE-relative dir. Both must rc0
+#         and produce identical reports.
+def fn_r8_tmpfs_vs_disk(run):
+    # disk-side: under CORE (regular disk)
+    disk_img = f"{CORE}/sys_r8_disk_img.png"
+    disk_def = f"{CORE}/sys_r8_disk_def.hydef"
+    disk_out = f"{CORE}/sys_r8_disk_out.json"
+    import shutil as _sh
+    _sh.copy(IMG, disk_img); _sh.copy(GDEF, disk_def)
+    # tmpfs-side: under /tmp (TMP)
+    tmp_img = f"{TMP}/sys_r8_tmpfs_img.png"
+    tmp_def = f"{TMP}/sys_r8_tmpfs_def.hydef"
+    tmp_out = f"{TMP}/sys_r8_tmpfs_out.json"
+    _sh.copy(IMG, tmp_img); _sh.copy(GDEF, tmp_def)
+    rc_d, out_d = run(disk_def, out_path=disk_out, img=disk_img)
+    rc_t, out_t = run(tmp_def, out_path=tmp_out, img=tmp_img)
+    for p in (disk_img, disk_def, disk_out):
+        if os.path.exists(p): os.remove(p)
+    ok = (rc_d == 0 and rc_t == 0 and out_d is not None and out_d == out_t)
+    return ok, f"disk_rc={rc_str(rc_d)} tmp_rc={rc_str(rc_t)} identical={out_d == out_t}"
+CASES.append(case("r8_tmpfs_vs_disk_identical", "custom", fn=fn_r8_tmpfs_vs_disk))
+
+# ---- r8.8 def with UTF-8 BOM prefix ------------------------------------
+def fn_r8_def_bom(run):
+    """Many JSON parsers reject a leading BOM (RFC 8259 forbids it). Engine
+    must either strip-and-accept or reject cleanly (exit4), never crash."""
+    p = f"{TMP}/sys_r8_bom.hydef"
+    open(p, "wb").write(b"\xef\xbb\xbf" + open(GDEF, "rb").read())
+    rc, out = run(p, out_path=f"{TMP}/sys_r8_bom_out.json")
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    return safe, f"rc={rc_str(rc)} (BOM-prefixed def)"
+CASES.append(case("r8_def_utf8_bom", "custom", fn=fn_r8_def_bom))
+
+# ---- r8.9 --insp with empty-string imgPath -----------------------------
+def fn_r8_empty_img(_run):
+    """Pass "" as the image arg. Engine should reject (exit3) and never crash.
+    qalib.run_insp doesn't support arbitrary img easily for empty strings; call
+    subprocess directly."""
+    out = f"{TMP}/sys_r8_emptyimg_out.json"
+    if os.path.exists(out): os.remove(out)
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    try:
+        r = subprocess.run([VIS, "--insp", "", GDEF, out],
+                           cwd=CORE, env=env, capture_output=True, timeout=60)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    return safe and rc != 0, f"rc={rc_str(rc)} (empty imgPath, want rejection)"
+CASES.append(case("r8_empty_img_path", "custom", fn=fn_r8_empty_img))
+
+# ---- r8.10 5 concurrent instances, identical input, NO shared out ------
+def fn_r8_5x_identical_input(run):
+    """5 parallel processes, all same image+def, each to its own out path.
+    All must rc0 and produce byte-identical reports (process-isolation +
+    determinism under contention)."""
+    N = 5
+    results = {}
+    def worker(i):
+        results[i] = run(GDEF, out_path=f"{TMP}/sys_r8_5x_{i}.json")
+    ts = [threading.Thread(target=worker, args=(i,)) for i in range(N)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    all0 = all(results[i][0] == 0 for i in range(N))
+    allout = all(results[i][1] is not None for i in range(N))
+    ident = allout and all(results[i][1] == results[0][1] for i in range(N))
+    safe = all(results[i][0] not in SIGCRASH for i in range(N))
+    return (all0 and allout and ident and safe), f"{N}x all0={all0} identical={ident}"
+CASES.append(case("r8_5x_concurrent_identical_input", "custom", fn=fn_r8_5x_identical_input))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_system", CASES))

@@ -929,5 +929,128 @@ def _line_underscore_pt1_corrupt():
         t["_pt2"] = "not-an-object"
     return d
 
+# ===== ROUND 8: stacked multi-bug combos + boundary chains =====
+
+def mk_megacombo_multi_bug():
+    # Combine 4 previously-buggy mutations on a single def at once
+    d = golden()
+    # 1) cyclic search_point chain
+    sps = all_of(d, "search_point")
+    if len(sps) >= 2:
+        for i, s in enumerate(sps):
+            nxt = sps[(i+1) % len(sps)]
+            s["ref"] = [{"id": nxt.get("id"), "element": "search_point"}]
+    # 2) circle_info judge missing info_type
+    j = first_of(d, "measure")
+    if j is not None:
+        j["subtype"] = "circle_info"
+        j.pop("info_type", None)
+    # 3) overlong calc_f.exp on a second measure (reuse same one + huge exp)
+    if j is not None:
+        j["calc_f"] = {"exp": "Z" * (512 * 1024), "post_exp": ["[12]", "1", "+"]}
+    # 4) line missing pt1
+    t = first_of(d, "line")
+    if t is not None:
+        t.pop("pt1", None)
+    return d
+
+def mk_50_anchor_chain():
+    # featureSet with 50 search_points all locating_anchor:true forming
+    # target_id chain 0->1->2->...->49
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is None: return d
+    chain = []
+    for i in range(50):
+        chain.append({
+            "type": "search_point",
+            "id": 10000 + i,
+            "name": f"a{i}",
+            "locating_anchor": True,
+            "target_id": 10000 + ((i + 1) % 50),
+            "anchorPair": [{"id": 10000 + ((i + 1) % 50), "element": "search_point"}],
+            "pair_id": 10000 + ((i + 1) % 50),
+            "ref": [{"id": 10000 + ((i + 1) % 50), "element": "search_point"}],
+            "pt1": {"x": float(i), "y": float(i)},
+            "pt2": {"x": float(i+1), "y": float(i+1)},
+            "margin": 5, "width": 3, "angleDeg": 0,
+        })
+    s["features"] = (s.get("features") or []) + chain
+    return d
+
+def mk_arc_direction_extreme():
+    # arc.direction with extreme float values
+    d = golden()
+    arcs = all_of(d, "arc")
+    for i, a in enumerate(arcs):
+        a["direction"] = [1e308, -1e308, 1e-300, -1e-300][i % 4]
+    if not arcs:
+        a = first_of(d, "arc")
+        if a is not None: a["direction"] = 1e308
+    return d
+
+def mk_sign360_sigdata_all_null():
+    # signature.signature_data is an array of nulls
+    d = golden(); s = first_of(d, "sign360")
+    if s is not None:
+        s["signature"] = {"signature_data": [None] * 200}
+    return d
+
+# Raw bytes: tag and name collisions (duplicate keys) across same id
+RAW_TAG_NAME_COLLISIONS = ('{"type":"binary_processing_group","featureSet":'
+                           '[{"type":"sig360_circle_line","features":'
+                           '[{"type":"line","id":1,"tag":"A","tag":"B","tag":"C",'
+                            '"name":"n1","name":"n2","name":"n3",'
+                            '"pt1":{"x":0,"y":0},"pt2":{"x":1,"y":1}},'
+                            '{"type":"arc","id":1,"tag":"X","name":"n1",'
+                            '"pt1":{"x":0,"y":0},"pt2":{"x":1,"y":1},"pt3":{"x":2,"y":0}}]}]}')
+
+def mk_id_is_float():
+    # feature id is a float (3.5) not an int
+    d = golden()
+    feats = first_of(d, "sig360_circle_line")["features"]
+    for f in feats:
+        if isinstance(f, dict) and "id" in f:
+            f["id"] = 3.5
+            break
+    # also set a line's id float
+    t = first_of(d, "line")
+    if t is not None: t["id"] = 3.5
+    return d
+
+def mk_anchor_null_coords():
+    # locating_anchor:true on a search_point with NULL anchor coords
+    d = golden(); sp = first_of(d, "search_point")
+    if sp is not None:
+        sp["locating_anchor"] = True
+        sp["pt1"] = None
+        sp["pt2"] = None
+        sp["anchor_pt"] = None
+        sp["anchorPair"] = [{"id": None, "element": None}]
+    return d
+
+def mk_featureset0_missing_5_present():
+    # featureSet[0] not present but featureSet[5] is: a featureSet array
+    # where indices 0..4 are null/scalars and index 5 is the real sig360 block
+    d = golden()
+    real = first_of(d, "sig360_circle_line")
+    if real is None: return d
+    real_copy = copy.deepcopy(real)
+    d["featureSet"] = [None, 0, "skip", [], {}, real_copy]
+    return d
+
+
+CASES += [
+    case("megacombo_multi_bug",        "robust", make=mk_megacombo_multi_bug),
+    case("anchor_chain_50",            "robust", make=mk_50_anchor_chain),
+    case("arc_direction_extreme",      "robust", make=mk_arc_direction_extreme),
+    case("sign360_sigdata_all_null",   "robust", make=mk_sign360_sigdata_all_null),
+    case("raw_tag_name_collisions",    "robust", raw=RAW_TAG_NAME_COLLISIONS),
+    case("id_is_float",                "robust", make=mk_id_is_float),
+    case("anchor_null_coords",         "robust", make=mk_anchor_null_coords),
+    case("featureSet0_missing_5_pres", "robust", make=mk_featureset0_missing_5_present),
+]
+
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_parse", CASES))

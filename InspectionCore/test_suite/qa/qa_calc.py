@@ -752,5 +752,116 @@ def _r7_cross_aux_back():
     return f
 CASES.append(case("r7_cross_feature_back_ref", "robust", make=_r7_cross_aux_back()))
 
+# ================= ROUND 8: invariant-property + parser edges =================
+
+# r8_1: associativity of +  (a+b)+c  vs  a+(b+c)
+def _r8_assoc_pair(post_a, post_b, label):
+    def fn(run_insp):
+        results = []
+        for tag, pe in (("A", post_a), ("B", post_b)):
+            d = mut_calc(pe)()
+            rc, out = run_insp(d)
+            if rc in SIGCRASH or rc == "TIMEOUT":
+                return False, f"{tag} crash/hang {rc_str(rc)}"
+            if out is None:
+                return False, f"{tag} no output"
+            try: j = json.loads(out)
+            except Exception as e: return False, f"{tag} invalid JSON: {e}"
+            v = _find_value(j, 8)
+            if v is None: return True, f"{tag} value not located"
+            results.append(v)
+        a, b = results
+        if abs(a - b) <= 1e-4:
+            return True, f"{label}: A={a:.6f} B={b:.6f} agree"
+        return False, f"{label}: A={a:.6f} != B={b:.6f}"
+    return fn
+
+CASES.append(case("r8_assoc_add", "custom",
+    fn=_r8_assoc_pair(
+        ["[12]", "[13]", "$+$", "[14]", "$+$"],
+        ["[12]", "[13]", "[14]", "$+$", "$+$"],
+        "(a+b)+c == a+(b+c)")))
+
+# r8_2: distributivity:  (a*b)+(a*c) vs a*(b+c)
+CASES.append(case("r8_distrib_mul_add", "custom",
+    fn=_r8_assoc_pair(
+        ["[12]", "[13]", "$*$", "[12]", "[14]", "$*$", "$+$"],
+        ["[12]", "[13]", "[14]", "$+$", "$*$"],
+        "(a*b)+(a*c) == a*(b+c)")))
+
+# r8_3: commutativity of max$ -- max(a,b) vs max(b,a)
+CASES.append(case("r8_max_commut", "custom",
+    fn=_r8_assoc_pair(
+        ["[12]", "[13]", "$,$", "max$"],
+        ["[13]", "[12]", "$,$", "max$"],
+        "max(a,b)==max(b,a)")))
+
+# r8_4: commutativity of min$ -- min(a,b,c) vs min(c,a,b)
+CASES.append(case("r8_min_commut3", "custom",
+    fn=_r8_assoc_pair(
+        ["[8]", "[12]", "[13]", "$,$", "$,$", "min$"],
+        ["[13]", "[8]", "[12]", "$,$", "$,$", "min$"],
+        "min permutation invariant")))
+
+# r8_5: arity cache COUNT-OF-DOLLARS > operands available
+# 3 "$,$" tokens claim arity 4 but only 2 operands present
+CASES.append(case("r8_arity_count_gt_operands", "robust",
+                  make=mut_calc(["[12]", "[13]", "$,$", "$,$", "$,$", "max$"])))
+
+# r8_6: arity cache is the LAST token (no following function)
+CASES.append(case("r8_arity_is_last_token", "robust",
+                  make=mut_calc(["[12]", "[13]", "$,$"])))
+
+# r8_7: literal beginning with double-bracket  [[12]]
+CASES.append(case("r8_double_bracket_literal", "robust",
+                  make=mut_calc(["[[12]]", "1", "$+$"])))
+
+# r8_8: whitespace BEFORE the closing bracket  [12 ]
+CASES.append(case("r8_ws_before_close_bracket", "robust",
+                  make=mut_calc(["[12 ]", "1", "$+$"])))
+
+# r8_9: encoded representation of negative  "+-5"
+CASES.append(case("r8_plus_minus_literal", "robust",
+                  make=mut_calc(["[12]", "+-5", "$+$"])))
+
+# r8_10: embedded exponent  "3e10" -- parseable by stof?
+# If parsed as 3e10, then 3e10 + 0 == 3e10. Use property test: same-as-literal vs
+# split chain ([12] + 3e10) - 3e10 == [12].
+CASES.append(case("r8_exponent_roundtrip", "custom",
+    fn=_r8_assoc_pair(
+        ["[12]"],
+        ["[12]", "3e10", "$+$", "3e10", "$-$"],
+        "[12] == ([12]+3e10)-3e10")))
+
+# r8_11: post_exp contains the empty-array sentinel (nested empty list)
+def _r8_postexp_empty_array():
+    def f():
+        d = mut_calc(["[12]", "[13]", "$+$"])()
+        m = first_of(d, "measure")
+        m["calc_f"]["post_exp"] = ["[12]", [], "[13]", "$+$"]
+        return d
+    return f
+CASES.append(case("r8_empty_array_in_postexp", "robust", make=_r8_postexp_empty_array()))
+
+# r8_12: token that's just `.` (dot -- invalid number)
+CASES.append(case("r8_dot_token", "robust",
+                  make=mut_calc(["[12]", ".", "$+$"])))
+
+# r8_13: single-operand operator branch (paramSymbolCount=1)
+# If engine has a 1-operand operator branch, $-$ with one operand might negate.
+# Property: ([12] $-$ [13]) $-$ should leave a definite-or-NA value, no crash.
+CASES.append(case("r8_single_op_chain", "robust",
+                  make=mut_calc(["[12]", "$-$"])))
+CASES.append(case("r8_single_op_chain_plus", "robust",
+                  make=mut_calc(["[12]", "$+$"])))
+
+# r8_14: associativity of subtraction is NOT mathematically true, but engine
+# behavior should be deterministic. Property test (a-b)-c vs a-(b+c) should agree.
+CASES.append(case("r8_sub_rewrite", "custom",
+    fn=_r8_assoc_pair(
+        ["[12]", "[13]", "$-$", "[14]", "$-$"],
+        ["[12]", "[13]", "[14]", "$+$", "$-$"],
+        "(a-b)-c == a-(b+c)")))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_calc", CASES))
