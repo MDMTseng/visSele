@@ -31,6 +31,8 @@ void grayMatToAcvImage(const cv::Mat &g, acvImage *im);
 // validated migration primitive for any LoadIMGFile->cv swap; it is exercised
 // by the `--insp` path and gated by test_suite/migration_gate.py.
 int loadImageCv(const char *path, cv::Mat &out_mat, acvImage &out_acv);
+// cv::Mat-only overload (no acvImage shim).
+int loadImageCv(const char *path, cv::Mat &out_mat);
 
 // Zero-copy BGR view: returns a cv::Mat header pointing into the acvImage's
 // underlying storage. Writes via the returned Mat mutate the acvImage. The view

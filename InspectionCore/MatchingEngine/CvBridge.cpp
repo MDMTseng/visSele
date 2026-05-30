@@ -2,13 +2,20 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-int loadImageCv(const char *path, cv::Mat &out_mat, acvImage &out_acv)
+int loadImageCv(const char *path, cv::Mat &out_mat)
 {
   if (!path) return -1;
   cv::Mat m = cv::imread(path, cv::IMREAD_COLOR);
   if (m.empty()) return -1;
-  if (!m.isContinuous()) m = m.clone();   // acvImage assumes contiguous storage.
+  if (!m.isContinuous()) m = m.clone();
   out_mat = m;
+  return 0;
+}
+
+int loadImageCv(const char *path, cv::Mat &out_mat, acvImage &out_acv)
+{
+  int rc = loadImageCv(path, out_mat);
+  if (rc != 0) return rc;
   out_acv.useExtBuffer(out_mat.data,
                        (int)(out_mat.total() * out_mat.elemSize()),
                        out_mat.cols, out_mat.rows);

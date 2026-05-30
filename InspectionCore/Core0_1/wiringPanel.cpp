@@ -5038,10 +5038,8 @@ int cp_main(int argc, char **argv)
         return 4;
       }
     }
-    // acv -> cv migration: shared loader primitive (CvBridge::loadImageCv).
-    // Loads via cv::imread, attaches an acvImage shim over the same memory.
-    cv::Mat cvSrc; acvImage img;
-    if (loadImageCv(imgPath, cvSrc, img) != 0)
+    cv::Mat cvSrc;
+    if (loadImageCv(imgPath, cvSrc) != 0)
     { LOGE("--insp: cannot load image %s", imgPath); return 3; }
     // Reject degenerate-size images that the sig360 / labeling pipeline assumes
     // are at least sample/down-sampling-friendly. A 1x1 image SIGSEGVs deep in
