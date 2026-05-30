@@ -165,14 +165,16 @@ async function main() {
 
   const errBefore = await getErrLines();
 
-  // ---------- T1 baseline_defaults ----------
+  // ---------- T1 baseline_present_and_sane ----------
+  // Fields exist after load (the loaded def may override the empty-state defaults
+  // 180/0/0.1, so we don't pin exact values — just types + sane ranges).
   const base = await probe();
   const okBase =
-    base.angDeg === 180 &&
-    base.face === 0 &&
-    Math.abs(base.intr - 0.1) < 1e-9;
-  report('T1 baseline_defaults', okBase,
-    `angDeg=${base.angDeg} (want 180) face=${base.face} (want 0) intr=${base.intr} (want 0.1)`);
+    typeof base.angDeg === 'number' && Number.isFinite(base.angDeg) &&
+    (base.face === -1 || base.face === 0 || base.face === 1) &&
+    typeof base.intr === 'number' && base.intr >= 0 && base.intr <= 1;
+  report('T1 baseline_present_and_sane', okBase,
+    `angDeg=${base.angDeg} face=${base.face} intr=${base.intr} (types + ranges sane)`);
 
   // ---------- T2 angle_margin_basic ----------
   const values = [45, 90, 270, 360, 0];
@@ -193,16 +195,19 @@ async function main() {
     `dispatched -30, got ${pNeg.angDeg} (reducer has no clamp; verbatim expected)`);
 
   // ---------- T4 angle_margin_garbage ----------
-  // Reducer assigns unconditionally — these WILL land but app must not crash.
+  // R8 follow-up: the reducer now REQUIRES a finite number — strings/objects/NaN
+  // are dropped (state unchanged). We anchor a known value first, dispatch garbage,
+  // and assert the anchor survives.
+  const pAnchor = await dispatchIgnore(`{type:'Matching_Angle_Margin_Deg_Update',data:42}`);
   const pStr = await dispatchIgnore(`{type:'Matching_Angle_Margin_Deg_Update',data:${jsStr("not-a-number")}}`);
   const pObj = await dispatchIgnore(`{type:'Matching_Angle_Margin_Deg_Update',data:{bad:1}}`);
-  // Restore a sane value so later UI code doesn't choke during serialization read.
+  const pNan = await dispatchIgnore(`{type:'Matching_Angle_Margin_Deg_Update',data:NaN}`);
   const pRestore = await dispatchIgnore(`{type:'Matching_Angle_Margin_Deg_Update',data:135}`);
-  const okGarbage = pRestore.angDeg === 135 && pStr.angDeg === 'not-a-number';
+  const okGarbage = pAnchor.angDeg === 42 && pStr.angDeg === 42 && pObj.angDeg === 42
+                 && pNan.angDeg === 42 && pRestore.angDeg === 135;
   report('T4 angle_margin_garbage', okGarbage,
-    `string->${JSON.stringify(pStr.angDeg)} (type ${pStr.angDegT}); ` +
-    `object->${JSON.stringify(pObj.angDeg)} (type ${pObj.angDegT}); ` +
-    `restore->${pRestore.angDeg} (reducer is unconditional assign — no validation)`);
+    `anchor=${pAnchor.angDeg}; str->${JSON.stringify(pStr.angDeg)}; obj->${JSON.stringify(pObj.angDeg)}; ` +
+    `NaN->${JSON.stringify(pNan.angDeg)}; restore->${pRestore.angDeg} (reducer now guards finite-number)`);
 
   // ---------- T5 matching_face ----------
   const faces = [-1, 0, 1];

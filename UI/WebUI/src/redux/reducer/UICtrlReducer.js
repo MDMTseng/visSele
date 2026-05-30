@@ -758,13 +758,21 @@ function StateReducer(newState, action) {
 
           case DefConfAct.EVENT.Matching_Angle_Margin_Deg_Update:
             {
-              newState.edit_info = { ...newState.edit_info, matching_angle_margin_deg: action.data };
+              // R8: was an unconditional assign — garbage (strings, objects, NaN) landed
+              // verbatim. Require a finite number; ignore anything else.
+              if (typeof action.data === 'number' && Number.isFinite(action.data)) {
+                newState.edit_info = { ...newState.edit_info, matching_angle_margin_deg: action.data };
+              }
               break;
             }
 
           case DefConfAct.EVENT.Matching_Face_Update:
             {
-              newState.edit_info = { ...newState.edit_info, matching_face: action.data };
+              // R8: was unconditional. The HR-resolve comment in BPG_WS.js notes valid
+              // values are -1 (back) / 0 (both) / 1 (front); accept only those.
+              if (action.data === -1 || action.data === 0 || action.data === 1) {
+                newState.edit_info = { ...newState.edit_info, matching_face: action.data };
+              }
               break;
             }
 

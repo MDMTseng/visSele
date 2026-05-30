@@ -80,7 +80,8 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
           
           let downSampleFactor=FILE_default_camera_setting.downSampleFactor||1;
           let down_samp_level = Math.floor(event.data.down_samp_level*downSampleFactor/mmpp)+1;
-          if(down_samp_level<=0)down_samp_level=1;
+          if (!Number.isFinite(down_samp_level)) down_samp_level = 1; // R7: NaN escapes both clamps
+          else if(down_samp_level<=0)down_samp_level=1;
           else if(down_samp_level>15)down_samp_level=15;
           
           
