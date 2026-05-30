@@ -22,6 +22,7 @@
 #include <smem_channel.hpp>
 #include <ctime>
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #include "CvBridge.h"
 
 #define _VERSION_ "1.2"
@@ -5281,51 +5282,55 @@ int cp_main(int argc, char **argv)
   //   return simpleTest(imgName, defName);
   // }
 
-  if (0) //GenBG map
-  {
+  if (0) //GenBG map -- experimental background-feature extraction probe.
+  {       // dilate (window-max) -> 4 passes of 20x20 box filter to smooth out
+          // the illumination field, then |Ori - filtered - 5| * 3 saturated to
+          // highlight darker-than-bg features for inspection of a static
+          // backlight target.  Kept as a one-shot debug tool.
+    cv::Mat BGImage = cv::imread("data/BG.BMP", cv::IMREAD_COLOR);
+    if (BGImage.empty()) return -1;
+    if (!BGImage.isContinuous()) BGImage = BGImage.clone();
 
-    acvImage BuffImage;
-    acvImage BGImage;
-    acvImage BGImage_Ori;
-    int ret_val = LoadIMGFile(&BGImage, "data/BG.BMP");
-    if (ret_val)
-      return ret_val;
-    BuffImage.ReSize(&BGImage);
-    BGImage_Ori.ReSize(&BGImage);
-    acvCloneImage(&BGImage, &BGImage_Ori, 0);
+    cv::Mat BGImage_Ori = BGImage.clone();
+    cv::Mat BuffImage;
 
-    acvWindowMax(&BGImage, 5);
+    // acvWindowMax with size=5 -> 5x5 max filter == cv::dilate with rect kernel.
+    cv::dilate(BGImage, BGImage,
+               cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5)));
 
-    acvBoxFilter(&BuffImage, &BGImage, 20);
-    acvBoxFilter(&BuffImage, &BGImage, 20);
-    acvBoxFilter(&BuffImage, &BGImage, 20);
-    acvBoxFilter(&BuffImage, &BGImage, 20);
-
-    acvCloneImage(&BGImage, &BGImage, 0);
-
-    if (BGImage_Ori.GetHeight() == BGImage.GetHeight() && BGImage_Ori.GetWidth() == BGImage.GetWidth())
+    // 4 passes of 20x20 box filter -- big smoothing to approximate the
+    // illumination field.  Ping-pong BGImage <-> BuffImage so the final
+    // smoothed result ends up in BGImage.
+    for (int p = 0; p < 4; p++)
     {
-      for (int i = 0; i < BGImage_Ori.GetHeight(); i++)
-      {
-        for (int j = 0; j < BGImage_Ori.GetWidth(); j++)
-        {
-          int BG_Ori = BGImage_Ori.CVector[i][3 * j];
-          int BG = BGImage.CVector[i][3 * j];
-          int diff = BG_Ori - BG - 5;
-          if (diff < 0)
-            diff = -diff;
-          diff *= 3;
-          if (diff > 255)
-            diff = 255;
+      cv::boxFilter(BGImage, BuffImage, -1, cv::Size(20, 20));
+      std::swap(BGImage, BuffImage);
+    }
 
-          BGImage_Ori.CVector[i][3 * j] = diff;
-          BGImage_Ori.CVector[i][3 * j + 1] = diff;
-          BGImage_Ori.CVector[i][3 * j + 2] = diff;
+    if (BGImage_Ori.size() == BGImage.size())
+    {
+      // |BG_Ori - BG - 5| * 3 saturated to uchar.  Done per-pixel because the
+      // original logic mixes a signed subtraction with the -5 bias then takes
+      // absolute value -- not exactly cv::absdiff semantics.
+      cv::Mat result(BGImage.rows, BGImage.cols, CV_8UC3);
+      for (int i = 0; i < BGImage.rows; i++)
+      {
+        const uchar *oriRow = BGImage_Ori.ptr<uchar>(i);
+        const uchar *bgRow  = BGImage.ptr<uchar>(i);
+        uchar *resRow = result.ptr<uchar>(i);
+        for (int j = 0; j < BGImage.cols; j++)
+        {
+          int diff = (int)oriRow[3*j] - (int)bgRow[3*j] - 5;
+          if (diff < 0) diff = -diff;
+          diff *= 3;
+          if (diff > 255) diff = 255;
+          resRow[3*j] = resRow[3*j + 1] = resRow[3*j + 2] = (uchar)diff;
         }
       }
+      BGImage_Ori = result;
     }
-    SaveIMGFile("data/BGImage_OriX.bmp", &BGImage_Ori);
-    SaveIMGFile("data/proBG.bmp", &BGImage);
+    cv::imwrite("data/BGImage_OriX.bmp", BGImage_Ori);
+    cv::imwrite("data/proBG.bmp", BGImage);
 
     return 0;
   }
