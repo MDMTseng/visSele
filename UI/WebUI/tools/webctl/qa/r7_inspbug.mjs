@@ -202,13 +202,14 @@ async function main() {
       bugSeen = true; break;
     }
   }
-  const t2_ok = bugSeen;
-  report('T2 bug_present_pin', t2_ok,
-    bugSeen
-      ? `confirmed: CanvasComponent still throws "(reading '0')" on INSP_MODE entry — bug NOT fixed`
-      : `BUG APPEARS FIXED (no signature in diag; len=${lastDiagLen}). ` +
-        `If you intentionally fixed it: invert this pin (assert NO bug-signature) and remove ` +
-        `the corresponding KNOWN-LEGACY-BUG filter block in r6_inspection.mjs T6.`);
+  // Inverted: the bug was FIXED in r7 by guarding the camera_calibration_report.reports[0]
+  // access in InspectionUI down_samp_level_update (and the related NaN guard). This pin now
+  // asserts the bug stays GONE — if it returns, this fails loudly and points at the regression.
+  const t2_ok = !bugSeen;
+  report('T2 bug_no_longer_fires', t2_ok,
+    t2_ok
+      ? `confirmed FIXED: no "(reading '0')" / CanvasComponent crash signature on INSP_MODE entry (diag len=${lastDiagLen})`
+      : `REGRESSION: CanvasComponent INSP_MODE crash signature is BACK. The fix at InspectionUI down_samp_level_update may have been reverted. Check the camera_calibration_report.reports[0] null-guard.`);
 
   // Clean exit so subsequent agents start in MAIN.
   try { await dispatchSM('EXIT'); await sleep(150); } catch (_) {}

@@ -934,13 +934,23 @@ class CanvasComponent extends React.Component {
         // log.error(event);
         // this.props.ACT_ERROR();
 
-        let rep = this.props.camera_calibration_report.reports[0];
+        // Defensive: camera_calibration_report may be undefined, or its reports[]
+        // may be missing/empty depending on backend state. R6/R7 found this throws
+        // a TypeError caught by RootErrorBoundary on certain core states. Bail
+        // gracefully — sending no down-sample update is preferable to a crash.
+        let _ccr = this.props.camera_calibration_report;
+        let rep = _ccr && _ccr.reports && _ccr.reports[0];
+        if (!rep) { log.warn("down_samp_level_update: no camera_calibration_report.reports[0]; skipping"); break; }
         let mmpp = rep.mmpb2b / rep.ppb2b;
         // event.data.down_samp_level*=this.props.downSampleFactor;
         let crop = event.data.crop.map(val => val / mmpp);
         // console.log(this.props.downSampleFactor);
+        // R7 finding: a NaN/non-finite event.data.down_samp_level made
+        // Math.floor(NaN)+1 = NaN, and both clamp comparisons silently fail,
+        // so NaN shipped to the core. Guard at the source.
         let down_samp_level = Math.floor(event.data.down_samp_level*this.props.downSampleFactor / mmpp ) + 1;
-        if (down_samp_level <= 0) down_samp_level = 1;
+        if (!Number.isFinite(down_samp_level)) down_samp_level = 1;
+        else if (down_samp_level <= 0) down_samp_level = 1;
         else if (down_samp_level > 10) down_samp_level = 10;
 
         // down_samp_level=1;

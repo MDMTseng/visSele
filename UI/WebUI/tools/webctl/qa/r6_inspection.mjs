@@ -237,16 +237,9 @@ async function main() {
   const newErr = errorLines(diag1)
     .slice(-200)
     .filter((l) => !/few samples|abnormal sample|repeatTime|headSkipTime/i.test(l))
-    .filter((l) => !/Warning: validateDOMNesting|Warning: Each child in a list|Warning: Failed prop type|antd:|will be removed in next major/i.test(l))
-    // KNOWN LEGACY BUG (caught by RootErrorBoundary — no white-screen): some component
-    // throws "Cannot read properties of undefined (reading '0')" during INSP_MODE render
-    // on this def. The error boundary protects users; the diag captures it (round 3 fix).
-    // Tracked as a follow-up to investigate the InspectionUI render path.
-    .filter((l) => !/window\.onerror:.*TypeError.*Cannot read properties of undefined.*'0'/i.test(l))
-    .filter((l) => !/in RootErrorBoundary \(at script\.jsx/i.test(l))
-    .filter((l) => !/The above error occurred in the <CanvasComponent>/i.test(l))
-    .filter((l) => !/Consider adding an error boundary/i.test(l))
-    .filter((l) => !/RootErrorBoundary caught a render crash/i.test(l));
+    .filter((l) => !/Warning: validateDOMNesting|Warning: Each child in a list|Warning: Failed prop type|antd:|will be removed in next major/i.test(l));
+    // (The round-6 known-bug filter was removed after r7 fixed the InspectionUI
+    //  down_samp_level_update camera_calibration_report.reports[0] crash.)
   // Only count NEW lines (heuristic: compare total error-line count delta and
   // inspect tail). If tail has unexpected lines, fail.
   const t6_ok = newErr.length === 0 || (errorLines(diag1).length - err0) === 0;
