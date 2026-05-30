@@ -1381,46 +1381,99 @@ void m_BPG_Protocol_Interface::delete_PeripheralChannel()
 
 
 std::vector<uint8_t> image_send_buffer(40000);
+// Heuristic: is this 3-channel BGR image actually grayscale content (B=G=R
+// across every pixel)?  Used to auto-pick mode 2 (1-component grayscale JPEG)
+// even when the caller passed a BGR Mat. Fast-rejecting via a 1-row sample
+// (~2-3 us for 5 MP) keeps the auto-detect cheap when the answer is "no".
+static bool _looks_grayscale(const cv::Mat &m)
+{
+  if (m.channels() == 1) return true;
+  if (m.channels() != 3) return false;
+  int H = m.rows, W = m.cols;
+  if (H == 0 || W == 0) return false;
+  // 1-row sample first; bail out as soon as we see a colored pixel.
+  int probe_y = H / 2;
+  const uchar *p = m.ptr<uchar>(probe_y);
+  for (int x = 0; x < W; x++) {
+    if (p[3*x] != p[3*x+1] || p[3*x+1] != p[3*x+2]) return false;
+  }
+  // Probe row was uniform.  Now sample a sparse grid across the image to
+  // catch the case where only a small region carries colour.
+  int step = std::max(1, H / 32);
+  for (int y = 0; y < H; y += step) {
+    const uchar *q = m.ptr<uchar>(y);
+    int xstep = std::max(1, W / 64);
+    for (int x = 0; x < W; x += xstep) {
+      if (q[3*x] != q[3*x+1] || q[3*x+1] != q[3*x+2]) return false;
+    }
+  }
+  return true;
+}
+
 int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
 {
   if(callbackInfo==NULL)return -1;
   BPG_protocol_data send_dat;
   BPG_protocol_data_acvImage_Send_info *img_info = (BPG_protocol_data_acvImage_Send_info*)callbackInfo;
 
-  acvImage *img=img_info->img;
+  cv::Mat *img = img_info->img;
+  if (img == NULL || img->empty()) return -1;
+  int W = img->cols, H = img->rows;
 
   uint8_t header[]={
     0,0,
-    
+
     (uint8_t)(img_info->offsetX >>8),
     (uint8_t)(img_info->offsetX),
     (uint8_t)(img_info->offsetY >>8),
     (uint8_t)(img_info->offsetY),
 
-    (uint8_t)(img->GetWidth()>>8),
-    (uint8_t)(img->GetWidth()),
-    (uint8_t)(img->GetHeight()>>8),
-    (uint8_t)(img->GetHeight()),
+    (uint8_t)(W>>8),
+    (uint8_t)(W),
+    (uint8_t)(H>>8),
+    (uint8_t)(H),
     (uint8_t)(img_info->scale),
-    
+
     (uint8_t)(img_info->fullWidth >>8),
     (uint8_t)(img_info->fullWidth),
     (uint8_t)(img_info->fullHeight >>8),
     (uint8_t)(img_info->fullHeight),
   };
 
-  // JPEG path: encode once via cv::imencode, mark format=1 in metadata header
-  // byte 0, and stream the encoded bytes. Default-off (flag = 0) keeps the
-  // legacy raw-RGBA wire format for back-compat with the current WebUI.
+  // JPEG path: encode once via cv::imencode, mark format in metadata header
+  // byte 0, and stream the encoded bytes. Default-off (DataView_JPEG_quality
+  // = 0) keeps the legacy raw-RGBA wire format for back-compat with the
+  // current WebUI.
+  //
+  //   header[0] = 1  -> 3-component (BGR) JPEG     (CV_8UC3 colour content)
+  //   header[0] = 2  -> 1-component grayscale JPEG (CV_8UC1, or BGR detected
+  //                     as B==G==R for every probe pixel -- the daemon stores
+  //                     gray sources as replicated BGR, so this is the common
+  //                     case and the auto-detect picks it up for free).
   if (DataView_JPEG_quality > 0)
   {
-    cv::Mat _bgr = acvImageBgrView(img);
+    cv::Mat encode_src;
+    uint8_t fmt;
+    if (_looks_grayscale(*img))
+    {
+      // Pull a single channel out for encoding -- cv::imencode on CV_8UC1
+      // writes a 1-component grayscale JPEG (SOF0 components=1), ~16% smaller
+      // and ~17% faster than the 3-component path on the same content.
+      if (img->channels() == 1) encode_src = *img;
+      else                       cv::extractChannel(*img, encode_src, 0);
+      fmt = 2;
+    }
+    else
+    {
+      encode_src = *img;
+      fmt = 1;
+    }
     std::vector<uint8_t> _jpeg;
     std::vector<int> _params = { cv::IMWRITE_JPEG_QUALITY, DataView_JPEG_quality };
-    cv::imencode(".jpg", _bgr, _jpeg, _params);
+    cv::imencode(".jpg", encode_src, _jpeg, _params);
 
-    header[0] = 1;                                       // 1 = JPEG
-    header[1] = (uint8_t)DataView_JPEG_quality;          // quality used
+    header[0] = fmt;
+    header[1] = (uint8_t)DataView_JPEG_quality;
 
     image_send_buffer.resize(dch.getHeaderSize() + sizeof(header));
     dch.headerSetup(&image_send_buffer[0], image_send_buffer.size(), data);
@@ -1443,59 +1496,52 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
     return 0;
   }
 
+  // Legacy raw-RGBA wire format. Header[0] stays 0 (format = raw RGBA).
   {
     image_send_buffer.resize(dch.getHeaderSize()+sizeof(header));
     dch.headerSetup(&image_send_buffer[0], image_send_buffer.size(), data);
 
     memcpy(&image_send_buffer[dch.getHeaderSize()], header, sizeof(header));
     dch.toLinkLayer(&image_send_buffer[0], dch.getHeaderSize()+sizeof(header), false, dch.activePeer());
-
   }
 
   const int headerOffset=10;
   image_send_buffer.resize(headerOffset+10000);
-  
 
-  int rest_len =
-    img->GetWidth()*
-    img->GetHeight();
-
-  uint8_t *img_pix_ptr=img->CVector[0];
-
-  for(bool isKeepGoing=true;isKeepGoing && rest_len;)
+  // Walk the cv::Mat row-by-row.  For 3-ch BGR we emit (R,G,B,255); for 1-ch
+  // gray we replicate (g,g,g,255) so the receiver's RGBA decode is unchanged.
+  int rest_len = W * H;
+  const int channels = img->channels();
+  size_t cur_x = 0, cur_y = 0;
+  while (rest_len > 0)
   {
     int imgBufferDataSize=image_send_buffer.size()-headerOffset;
     uint8_t* imgBufferDataPtr=&image_send_buffer[headerOffset];
-    // LOGI(">img_pix_ptr,%d %d,%d",img_pix_ptr[0],img_pix_ptr[1],img_pix_ptr[2]);
     int sendL = 0;
-    for(int i=0;i<imgBufferDataSize-4;i+=4,img_pix_ptr+=3)
+    int max_px = (imgBufferDataSize - 4) / 4;
+    while (max_px > 0 && rest_len > 0)
     {
-      imgBufferDataPtr[i]=img_pix_ptr[2];
-      imgBufferDataPtr[i+1]=img_pix_ptr[1];
-      imgBufferDataPtr[i+2]=img_pix_ptr[0];
-      imgBufferDataPtr[i+3]=255;
-      sendL+=4;
-      rest_len--;
-      if(rest_len==0)
-      {
-        isKeepGoing=false;
-        break;
+      const uchar *row = img->ptr<uchar>((int)cur_y);
+      const uchar *px  = row + cur_x * channels;
+      if (channels == 3) {
+        imgBufferDataPtr[sendL    ] = px[2];   // R
+        imgBufferDataPtr[sendL + 1] = px[1];   // G
+        imgBufferDataPtr[sendL + 2] = px[0];   // B
+      } else {  // 1-channel gray: replicate
+        imgBufferDataPtr[sendL    ] = px[0];
+        imgBufferDataPtr[sendL + 1] = px[0];
+        imgBufferDataPtr[sendL + 2] = px[0];
       }
+      imgBufferDataPtr[sendL + 3] = 255;
+      sendL += 4;
+      rest_len--;
+      max_px--;
+      if (++cur_x >= (size_t)W) { cur_x = 0; cur_y++; }
     }
-    // LOGI("b[..]:%d %d %d %d... sendL:%d isKeepGoing:%d"
-    // ,image_send_buffer[0]
-    // ,image_send_buffer[1]
-    // ,image_send_buffer[2]
-    // ,image_send_buffer[3]
-    // ,sendL,isKeepGoing);
-
-    //gives linklayer enough(according to linklayer's requirment 
-    //can be much bigger(find possible maximum size header of all linklayer types))
-    dch.toLinkLayer(imgBufferDataPtr, sendL, isKeepGoing==false, dch.activePeer(), headerOffset, 0);
+    dch.toLinkLayer(imgBufferDataPtr, sendL, rest_len == 0, dch.activePeer(), headerOffset, 0);
   }
   return 0;
-
-} 
+}
 
 
 
@@ -2052,13 +2098,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             }
             //TODO:HACK: 4 times scale down for transmission speed, bpg_dat.scale is not used for now
             bpg_dat = GenStrBPGData("IM", NULL);
-            BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)default_scale};
+            ImageDownSampling(dataSend_buff, *srcImg, default_scale, NULL);
+            // zero-copy cv::Mat view over the acvImage buffer; SEND_acvImage's
+            // input is now cv::Mat-typed.
+            cv::Mat _sendView = acvImageBgrView(&dataSend_buff);
+            BPG_protocol_data_acvImage_Send_info iminfo = { &_sendView, (uint16_t)default_scale };
 
             iminfo.fullHeight = srcImg->GetHeight();
             iminfo.fullWidth = srcImg->GetWidth();
-            //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-            //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-            ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, NULL);
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;
 
             bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
@@ -2251,14 +2298,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             _scale = (int)*pscale;
 
             bpg_dat = GenStrBPGData("IM", NULL);
-            BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)_scale};
-
-            //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
 
             ImageSampler *sampler = isCalibNA ? NULL : select_bacpac->sampler;
+            ImageDownSampling(dataSend_buff, *srcImg, _scale, sampler, 0);
+            cv::Mat _sendView = acvImageBgrView(&dataSend_buff);
+            BPG_protocol_data_acvImage_Send_info iminfo = { &_sendView, (uint16_t)_scale };
             iminfo.fullHeight = srcImg->GetHeight();
             iminfo.fullWidth = srcImg->GetWidth();
-            ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, sampler, 0);
 
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;
             bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
@@ -2569,12 +2615,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           {
             //Down scale the calibrated cache image to make image transfer easier
             bpg_dat = GenStrBPGData("IM", NULL);
-            BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)tar_down_samp_level};
-            //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
 
             calib_bacpac.sampler->ignoreCalib(true);
-            ImageDownSampling(dataSend_buff, cacheImage, iminfo.scale, calib_bacpac.sampler, true);
-
+            ImageDownSampling(dataSend_buff, cacheImage, tar_down_samp_level, calib_bacpac.sampler, true);
+            cv::Mat _sendView = acvImageBgrView(&dataSend_buff);
+            BPG_protocol_data_acvImage_Send_info iminfo = { &_sendView, (uint16_t)tar_down_samp_level };
             iminfo.fullHeight = cacheImage.GetHeight();
             iminfo.fullWidth = cacheImage.GetWidth();
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;
@@ -3821,7 +3866,9 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       if (sendImg == NULL)
       {
         sendImg = &test1_buff;
-        iminfo = (BPG_protocol_data_acvImage_Send_info){img : &test1_buff, scale : 2};
+        // iminfo here is set up for the (currently disabled) mjpeg send path;
+        // SEND_acvImage isn't invoked in this branch, so img is left NULL.
+        iminfo = (BPG_protocol_data_acvImage_Send_info){ NULL, 2 };
 
         iminfo.offsetX = (0 / iminfo.scale) * iminfo.scale;
         iminfo.offsetY = (0 / iminfo.scale) * iminfo.scale;
@@ -3885,7 +3932,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
         //   downSampLevel=5;
         // else
         //   downSampLevel=7;
-        iminfo = (BPG_protocol_data_acvImage_Send_info){img : &test1_buff, scale : (uint16_t)_downSampLevel};
+        iminfo = (BPG_protocol_data_acvImage_Send_info){ NULL, (uint16_t)_downSampLevel };
 
         iminfo.offsetX = (ImageCropX / _downSampLevel) * _downSampLevel;
         iminfo.offsetY = (ImageCropY / _downSampLevel) * _downSampLevel;
@@ -3895,12 +3942,15 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
         int cropW = ImageCropW;
         int cropH = ImageCropH;
 
-        // LOGI(">>>>");
         ImageSampler *sampler = (true) ? bacpac->sampler : NULL;
-        //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
         ImageDownSampling(test1_buff, capImg, _downSampLevel, sampler, 1,
                           iminfo.offsetX, iminfo.offsetY, cropW, cropH);
       }
+      // zero-copy cv::Mat view over the (still acvImage) test1_buff so the
+      // SEND_acvImage callback receives a cv::Mat*; test1_buff itself stays
+      // an acvImage member for now (followup commit).
+      cv::Mat _sendView_pipe = acvImageBgrView(&test1_buff);
+      iminfo.img = &_sendView_pipe;
 
       bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("IM", NULL);
       //BPG_protocol_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};

@@ -8,6 +8,7 @@
 
 #include "acvImage_MophologyTool.hpp"
 #include "acvImage_SpDomainTool.hpp"
+#include <opencv2/core.hpp>
 #include "cJSON.h"
 #include "logctrl.h"
 #include "FeatureManager.h"
@@ -123,9 +124,13 @@ int BPG_prot_cb_acvImage_Send(BPG_Protocol_Interface &dch, struct BPG_protocol_d
 
 
 
+// Image-send callback info. The image is supplied as a cv::Mat (3-channel BGR
+// or 1-channel gray); SEND_acvImage will auto-detect grayscale (B==G==R for
+// all px when 3ch, or 1-channel input) and emit a single-component JPEG when
+// IMG_STREAMING_JPEG_QUALITY > 0, otherwise the legacy raw RGBA wire format.
 typedef struct BPG_protocol_data_acvImage_Send_info
 {
-    acvImage* img;
+    cv::Mat* img;
     uint16_t scale;
     uint16_t offsetX,offsetY;
     uint16_t fullWidth,fullHeight;
