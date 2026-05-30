@@ -18,9 +18,9 @@
 //   downscale   : estimate the background at 1/downscale res for speed (the
 //                 illumination field is low-frequency, so this is near-free).
 
-#include "acvImage.hpp"
+#include <opencv2/core.hpp>
 
-void binarize_bg_flatten_cv(acvImage *src, acvImage *dst,
+void binarize_bg_flatten_cv(const cv::Mat &src, cv::Mat &dst,
                             int closeKernel = 81, float ratio = 0.5f, int downscale = 4);
 
 #endif

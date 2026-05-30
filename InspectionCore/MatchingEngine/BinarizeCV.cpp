@@ -1,23 +1,19 @@
 #include "BinarizeCV.h"
-#include <opencv2/opencv.hpp>
+#include <opencv2/imgproc.hpp>
 
-void binarize_bg_flatten_cv(acvImage *src, acvImage *dst, int closeKernel, float ratio, int downscale)
+void binarize_bg_flatten_cv(const cv::Mat &src, cv::Mat &dst, int closeKernel, float ratio, int downscale)
 {
-  int W = src->GetWidth(), H = src->GetHeight();
-  int ox = src->GetROIOffsetX(), oy = src->GetROIOffsetY();
-  if (W <= 0 || H <= 0) return;
+  if (src.empty()) return;
+  const int W = src.cols, H = src.rows;
   if (downscale < 1) downscale = 1;
   if (closeKernel < 3) closeKernel = 3;
   if ((closeKernel & 1) == 0) closeKernel++; // odd
 
-  // pull channel 0 into a gray cv::Mat
-  cv::Mat g(H, W, CV_8U);
-  for (int y = 0; y < H; y++)
-  {
-    unsigned char *s = src->CVector[oy + y] + ox * 3;
-    unsigned char *d = g.ptr<unsigned char>(y);
-    for (int x = 0; x < W; x++) d[x] = s[x * 3];
-  }
+  // pull channel 0 into a gray cv::Mat (BGR images replicate gray; we just want
+  // one channel either way).
+  cv::Mat g;
+  if (src.channels() == 1) g = src;
+  else cv::extractChannel(src, g, 0);
 
   // estimate background illumination at low res: morphological CLOSE fills dark
   // objects with the surrounding bright field (the vignette / gradient).
@@ -33,15 +29,16 @@ void binarize_bg_flatten_cv(acvImage *src, acvImage *dst, int closeKernel, float
 
   // flat-field divide + threshold at `ratio` of local background.
   // object where g < ratio*bg  -> black(0); background -> white(255).
+  dst.create(H, W, CV_8UC3);
   for (int y = 0; y < H; y++)
   {
-    unsigned char *gp = g.ptr<unsigned char>(y);
-    unsigned char *bp = bg.ptr<unsigned char>(y);
-    unsigned char *o = dst->CVector[oy + y] + ox * 3;
+    const unsigned char *gp = g.ptr<unsigned char>(y);
+    const unsigned char *bp = bg.ptr<unsigned char>(y);
+    unsigned char *o = dst.ptr<unsigned char>(y);
     for (int x = 0; x < W; x++)
     {
       float thr = ratio * (float)bp[x];
-      unsigned char v = (gp[x] < thr) ? 0 : 255; // object dark -> 0, bg -> 255
+      unsigned char v = (gp[x] < thr) ? 0 : 255;
       o[x * 3] = o[x * 3 + 1] = o[x * 3 + 2] = v;
     }
   }

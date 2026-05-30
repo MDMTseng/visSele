@@ -304,7 +304,15 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     }
 
     if (binarize_method == 1) // calibration-free vignette-tolerant bg-flatten
-      binarize_bg_flatten_cv(img, &binary_img, bg_close_kernel, bg_ratio, bg_downscale);
+    {
+      cv::Mat _srcV = acvImageBgrView(img);
+      binarize_bg_flatten_cv(_srcV, binary_img_storage, bg_close_kernel, bg_ratio, bg_downscale);
+      // re-bind the acvImage shim if binary_img_storage moved (create may
+      // reallocate when the size/type changes).
+      binary_img.useExtBuffer(binary_img_storage.data,
+                              (int)(binary_img_storage.total() * binary_img_storage.elemSize()),
+                              binary_img_storage.cols, binary_img_storage.rows);
+    }
     else if (useAdaptiveThres && !bgThreshMap.empty())
     {
       cv::Mat _dstV = acvImageBgrView(&binary_img);
