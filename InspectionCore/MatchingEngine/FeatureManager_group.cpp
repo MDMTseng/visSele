@@ -335,59 +335,36 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
       cv::threshold(img_cv, binary_img_storage, (double)briThres, 255.0, cv::THRESH_BINARY);
     }
 
-    int downScaleF=1;//
-    acvImage *lableImg=&ds_binary_img;
-    if(downScaleF==1)
-    {
-      lableImg=&binary_img;
-    }
-    else
-    {
-      binaryDownScale(lableImg,&binary_img,downScaleF);
-    }
- 
-    //Draw a labeling black cage for labling algo, which is needed for acvComponentLabeling
-    // Migrated from acvDrawBlock to cv::rectangle via zero-copy view -- both draw
-    // a 1-px-wide black rectangle OUTLINE; cv::Point endpoints are inclusive.
-    {
-      cv::Mat _lv = acvImageBgrView(lableImg);
-      cv::rectangle(_lv, cv::Point(1, 1), cv::Point(_lv.cols - 2, _lv.rows - 2),
-                    cv::Scalar(0, 0, 0), 1);
-    }
+    int downScaleF=1;
+    // downscale code path was binaryDownScale-based and is hard-coded off
+    // (downScaleF==1).  The labeled image is the binary image itself.
+    cv::Mat &lableImg_cv = binary_img_storage;
 
-    int FENCE_AREA = (lableImg->GetWidth()+lableImg->GetHeight())*2-4;//External frame
+    //Draw a labeling black cage for labling algo, which is needed for acvComponentLabeling
+    // 1-px-wide black rectangle OUTLINE; cv::Point endpoints are inclusive.
+    cv::rectangle(lableImg_cv, cv::Point(1, 1),
+                  cv::Point(lableImg_cv.cols - 2, lableImg_cv.rows - 2),
+                  cv::Scalar(0, 0, 0), 1);
+
+    int FENCE_AREA = (lableImg_cv.cols+lableImg_cv.rows)*2-4;//External frame
     {
       int xDist=15/downScaleF;
-      {
-        cv::Mat _lv = acvImageBgrView(lableImg);
-        cv::rectangle(_lv, cv::Point(xDist, xDist),
-                      cv::Point(_lv.cols - xDist, _lv.rows - xDist),
-                      cv::Scalar(0, 0, 0), 1);
-      }
+      cv::rectangle(lableImg_cv, cv::Point(xDist, xDist),
+                    cv::Point(lableImg_cv.cols - xDist, lableImg_cv.rows - xDist),
+                    cv::Scalar(0, 0, 0), 1);
       FENCE_AREA+=(img_cv.cols-xDist+img_cv.rows-xDist)*2-4;
-      // Migrated manual row-write loop -> cv::line via the same BGR view.
-      // Writes 1 px black at y=xDist+3, x=1..xDist-1 (inclusive of x=xDist-1
-      // since cv::Point endpoints are inclusive).
-      {
-        cv::Mat _lv = acvImageBgrView(lableImg);
-        cv::line(_lv, cv::Point(1, xDist + 3), cv::Point(xDist - 1, xDist + 3),
-                 cv::Scalar(0, 0, 0), 1);
-      }
+      // 1 px black at y=xDist+3, x=1..xDist-1 (inclusive).
+      cv::line(lableImg_cv, cv::Point(1, xDist + 3), cv::Point(xDist - 1, xDist + 3),
+               cv::Scalar(0, 0, 0), 1);
       FENCE_AREA+=xDist;
-
     }
     //The labeling starts from (1 1) => (W-2,H-2), ie. it will not touch the outmost pixel to simplify the boundary condition
     //You need to draw a black/white cage to work(not crash).
     //The advantage of black cage is you can know which area touches the boundary then we can exclude it
     // CCL once -> packed label image + acv_LabeledData (from stats), no rescan.
-    // Migrated to the cv::Mat overload: same bytes via a zero-copy BGR view.
-    {
-      cv::Mat _lv = acvImageBgrView(lableImg);
-      acvComponentLabeling_cv(_lv, ldData);
-    }
+    acvComponentLabeling_cv(lableImg_cv, ldData);
 
-    //FENCE_AREA=110/100;
-    int CLimit = (lableImg->GetWidth()*lableImg->GetHeight())*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
+    int CLimit = (lableImg_cv.cols*lableImg_cv.rows)*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
 
     int intrusionObjectArea = ldData[1].area - FENCE_AREA;
     LOGI("%d>OBJ:%d  CLimit:%d",ldData[1].area,intrusionObjectArea,CLimit);
@@ -447,7 +424,9 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
       binaryFeatureBundle[i]->setLabeledData(&ldData);
       binaryFeatureBundle[i]->setBacPac(bacpac);
       binaryFeatureBundle[i]->setLabelDownSampLevel(downScaleF);
-      binaryFeatureBundle[i]->FeatureMatching(lableImg);
+      // Sub-feature still consumes acvImage*; the base FeatureManager mutual
+      // bridge converts cv::Mat -> acvImage shim transparently.
+      binaryFeatureBundle[i]->FeatureMatching(lableImg_cv);
     }
   return 0;
 }
