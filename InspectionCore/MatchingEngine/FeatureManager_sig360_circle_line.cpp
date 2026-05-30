@@ -14,7 +14,6 @@
 #include "CvBridge.h"
 #include "polyfit.h"
 
-static int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist);
 
 void acvXY_pts_smooth(vector<ContourFetch::ptInfo> &from, vector<ContourFetch::ptInfo> &to, int sideW = 2)
 {
@@ -2147,63 +2146,6 @@ int FeatureManager_sig360_circle_line::reload(const char *json_str)
   return 0;
 }
 
-int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist)
-{
-  if (img == NULL || pos == NULL)
-    return -1;
-  int X = (int)round(pos->X);
-  int Y = (int)round(pos->Y);
-  if (X < 0 || Y < 0 || X >= img->GetWidth() || Y >= img->GetHeight())
-  {
-    return -1;
-  }
-
-  searchVec = acvVecNormalize(searchVec);
-
-  int tarX = 0;
-  if (img->CVector[Y][3 * X] == 255)
-  {
-    tarX = 0; //Looking for non-255
-  }
-  else
-  {
-    /*tarX=255;//Looking for 255
-    searchVec.X*=-1;//reverse search vector
-    searchVec.Y*=-1;*/
-    return -1;
-  }
-
-  for (int i = 0; i < maxSearchDist; i++)
-  {
-    X = (int)round(pos->X + searchVec.X * i);
-    Y = (int)round(pos->Y + searchVec.Y * i);
-    if (X < 0 || Y < 0 || X >= img->GetWidth() || Y >= img->GetHeight())
-    {
-      return -1;
-    }
-
-    if (img->CVector[Y][3 * X] == 255)
-    {
-      if (tarX == 255)
-      {
-        pos->X = pos->X + searchVec.X * (i - 1); //Get previous non-255
-        pos->Y = pos->Y + searchVec.Y * (i - 1);
-        return 0;
-      }
-    }
-    else
-    {
-      if (tarX != 255)
-      {
-        pos->X = pos->X + searchVec.X * (i);
-        pos->Y = pos->Y + searchVec.Y * (i);
-        return 0;
-      }
-    }
-  }
-
-  return -1;
-}
 
 const FeatureReport *FeatureManager_sig360_circle_line::GetReport()
 {
@@ -2224,78 +2166,6 @@ void FeatureManager_sig360_circle_line::ClearReport()
   LOGI("bacpac:<%p>  report.type:%p", bacpac, report.type);
 }
 
-float OTSU_Threshold(acvImage &graylevelImg, acv_LabeledData *ldata, int skip = 5)
-/* binarization by Otsu's method 
-	based on maximization of inter-class variance */
-
-{
-  const int GRAYLEVEL = 256;
-  int hist[GRAYLEVEL];
-  float prob[GRAYLEVEL], omega[GRAYLEVEL]; /* prob of graylevels */
-  float myu[GRAYLEVEL];                    /* mean value for separation */
-  float max_sigma, sigma[GRAYLEVEL];       /* inter-class variance */
-  int i, x, y;                             /* Loop variable */
-  int threshold;                           /* threshold for binarization */
-
-  /* Histogram generation */
-  for (i = 0; i < GRAYLEVEL; i++)
-    hist[i] = 0;
-  int count = 0;
-  for (y = ldata->LTBound.Y; y < ldata->RBBound.Y; y += skip)
-    for (x = ldata->LTBound.X; x < ldata->RBBound.X; x += skip)
-    {
-      hist[graylevelImg.CVector[y][3 * x]]++;
-      count++;
-    }
-  /* calculation of probability density */
-  int totalPix = count;
-  for (i = 0; i < GRAYLEVEL; i++)
-  {
-    prob[i] = (double)hist[i] / totalPix;
-  }
-
-  /* omega & myu generation */
-  omega[0] = prob[0];
-  myu[0] = 0.0; /* 0.0 times prob[0] equals zero */
-  for (i = 1; i < GRAYLEVEL; i++)
-  {
-    omega[i] = omega[i - 1] + prob[i];
-    myu[i] = myu[i - 1] + i * prob[i];
-  }
-
-  /* sigma maximization
-     sigma stands for inter-class variance 
-     and determines optimal threshold value */
-  threshold = 0;
-  max_sigma = 0.0;
-  for (i = 0; i < GRAYLEVEL - 1; i++)
-  {
-    if (omega[i] != 0.0 && omega[i] != 1.0)
-      sigma[i] = pow(myu[GRAYLEVEL - 1] * omega[i] - myu[i], 2) /
-                 (omega[i] * (1.0 - omega[i]));
-    else
-      sigma[i] = 0.0;
-    if (sigma[i] > max_sigma)
-    {
-      max_sigma = sigma[i];
-      threshold = i;
-    }
-
-    {
-      //printf("ELSE Update %d %f\n",i,sigma[i]);
-    }
-  }
-
-  int searchRange = 7;
-  float sigmaBaseIdx = threshold - (searchRange - 1) / 2;
-  // float retMaxF = 0;
-  // float retMaxF_X = 0;
-  // spline9_max(&(sigma[(int)sigmaBaseIdx]), searchRange, 10, &retMaxF, &retMaxF_X);
-  // sigmaBaseIdx += retMaxF_X;
-  //printf("\nthreshold value =s:%f i:%d  %f %f %f\n",max_sigma, threshold,retMaxF,sigmaBaseIdx,retMaxF_X);
-
-  return sigmaBaseIdx;
-}
 
 bool ptInfo_tmp_comp(const ContourFetch::ptInfo &a, const ContourFetch::ptInfo &b)
 {
