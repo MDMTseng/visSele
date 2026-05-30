@@ -14,7 +14,7 @@
 //   6. Alpha-weighted average of edge points within `considerRange` of xPosMin
 //      -> robust sub-pixel first-hit point. Map back to image px.
 
-#include "acvImage.hpp"
+#include <opencv2/core.hpp>
 #include "FeatureManager.h"   // acv_XY, FeatureManager_BacPac
 
 enum SPEdgeType { SP_DARK_TO_LIGHT = 0, SP_LIGHT_TO_DARK = 1, SP_BOTH = 2 };
@@ -29,11 +29,11 @@ enum SPEdgeType { SP_DARK_TO_LIGHT = 0, SP_LIGHT_TO_DARK = 1, SP_BOTH = 2 };
 // lock onto background specks/dust (matches the legacy contour search's object
 // constraint while staying grayscale -> still tunable for soft edges). labelImg
 // must share `gray`'s coordinate frame (same crop/offset). Pass null to skip.
-bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
+bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float margin, float width, SPEdgeType polarity,
                      int blurSize, float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
-                     acvImage *labelImg, int objLabel, int maskDilate,
+                     const cv::Mat &labelImg, int objLabel, int maskDilate,
                      acv_XY *outPt, float *outW, int spId = -1);
 
 #endif // SEARCH_POINT_CV_H

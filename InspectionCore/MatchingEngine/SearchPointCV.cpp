@@ -1,6 +1,6 @@
 #include "SearchPointCV.h"
 #include <opencv2/opencv.hpp>
-#include "acvImage_SpDomainTool.hpp" // acvUnsignedMap1Sampling
+#include "CvBridge.h"                // cvUnsignedMap1Sampling
 #include "MatchingCore.h"            // acvVec* helpers
 #include <vector>
 #include <cmath>
@@ -15,29 +15,27 @@ struct SPEdgePt { float searchCoord, perpCoord, peak; };
 // almost all contour (no interior), so matching a specific label index fails and
 // masks the wire itself. Instead treat "not white background" as object: the R
 // channel (ch2) is 255 only on background, 0/1 on object interior/contour.
-static inline bool isObjectPx(acvImage *L, int x, int y)
+static inline bool isObjectPx(const cv::Mat &L, int x, int y)
 {
-  if (x < 0 || y < 0 || x >= L->GetWidth() || y >= L->GetHeight()) return false;
-  int ox = L->GetROIOffsetX(), oy = L->GetROIOffsetY();
-  unsigned char *p = L->CVector[oy + y] + (ox + x) * 3;
+  if (L.empty() || x < 0 || y < 0 || x >= L.cols || y >= L.rows) return false;
+  const uint8_t *p = L.ptr<uint8_t>(y) + x * 3;
   return !(p[0] == 255 && p[1] == 255 && p[2] == 255); // non-white => object
 }
-static inline int labelAt(acvImage *L, int x, int y)
+static inline int labelAt(const cv::Mat &L, int x, int y)
 {
-  if (x < 0 || y < 0 || x >= L->GetWidth() || y >= L->GetHeight()) return -1;
-  int ox = L->GetROIOffsetX(), oy = L->GetROIOffsetY();
-  unsigned char *p = L->CVector[oy + y] + (ox + x) * 3;
+  if (L.empty() || x < 0 || y < 0 || x >= L.cols || y >= L.rows) return -1;
+  const uint8_t *p = L.ptr<uint8_t>(y) + x * 3;
   return (int)p[0] | ((int)p[1] << 8) | ((int)p[2] << 16);
 }
 
-bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
+bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float margin, float width, SPEdgeType polarity,
                      int blurSize, float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
-                     acvImage *labelImg, int objLabel, int maskDilate,
+                     const cv::Mat &labelImg, int objLabel, int maskDilate,
                      acv_XY *outPt, float *outW, int spId)
 {
-  if (!gray) return false;
+  if (gray.empty()) return false;
   acv_XY s = acvVecNormalize(searchDir);
   if (s.X != s.X || s.Y != s.Y) return false;
   acv_XY perp = { -s.Y, s.X };
@@ -57,8 +55,8 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
   float cp = (nP - 1) * 0.5f;            // col -> perpCoord   (j - cp)
 
   const bool dbg = (getenv("SPCV_DUMP") != nullptr);
-  const bool useMask = (labelImg != nullptr && objLabel >= 0);
-  int gW = gray->GetWidth(), gH = gray->GetHeight();
+  const bool useMask = (!labelImg.empty() && objLabel >= 0);
+  int gW = gray.cols, gH = gray.rows;
   cv::Mat g(nS, nP, CV_8U);                     // rows = search dir, cols = perp
   cv::Mat valid(nS, nP, CV_8U, cv::Scalar(1));  // 1 = sampled in-image
   cv::Mat mask;                                 // object-allow mask; only built when labelImg given
@@ -72,7 +70,7 @@ bool search_point_cv(acvImage *gray, acv_XY pt, acv_XY searchDir,
     {
       acv_XY q = acvVecAdd(pt, acvVecAdd(acvVecMult(s, searchCoord), acvVecMult(perp, j - cp)));
       if (q.X < 1 || q.Y < 1 || q.X >= gW - 1 || q.Y >= gH - 1) { d[j] = 0; vv[j] = 0; if (m) m[j] = 0; continue; }
-      float v = acvUnsignedMap1Sampling(gray, q, 0);
+      float v = cvUnsignedMap1Sampling(gray, q.X, q.Y, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
       d[j] = (v < 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
       if (m) m[j] = isObjectPx(labelImg, (int)(q.X + 0.5f), (int)(q.Y + 0.5f)) ? 255 : 0;

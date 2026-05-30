@@ -1138,8 +1138,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // non-crop pipeline). Mask out background (dilated object label) so the scan
       // can't lock onto background specks; dilate ~8px to keep the boundary edge.
       // NOTE: labeled mask temporarily DISABLED for edge-finding debugging.
-      acvImage *labelImg = nullptr; // (off.X == 0 && off.Y == 0) ? m_labeledImg : nullptr;
-      ok = search_point_cv(eT.getImage(), acvVecSub(pt, off), searchVec_nor,
+      cv::Mat labelImg; // (off.X == 0 && off.Y == 0) ? m_labeledImg_cv : empty();
+      ok = search_point_cv(eT.getImageCv(), acvVecSub(pt, off), searchVec_nor,
                            margin, width, sp_et, /*blur*/3, /*suppress*/10.0f,
                            /*considerRange = n rows below the top to collect+avg*/2.0f, /*alphaKeep*/0.0f,
                            eT.getBacpac(), labelImg, m_objLabel, /*maskDilate*/8,
