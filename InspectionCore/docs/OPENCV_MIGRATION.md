@@ -19,11 +19,29 @@ oracle.
   `#ifdef FEATURE_OPENCV` guards are now always-true but left in place; they
   cost nothing and removing them is a mechanical follow-up.
 
-- **Step 2 PENDING** — migrate engine-internal image storage from `acvImage *`
-  to `cv::Mat`, one TU at a time. Keep `acv_XY` / `acv_Line` / `acv_Circle` /
+- **Step 2 IN PROGRESS** — migrate engine-internal image storage from
+  `acvImage *` to `cv::Mat`. Keep `acv_XY` / `acv_Line` / `acv_Circle` /
   `acv_LineFit` / `acv_CircleFit` POD geometry types **unchanged** during this
   step (they sit in the report schema; touching them risks the golden diff).
-  Use `CvBridge.cpp` at TU boundaries as the transition layer.
+
+  **Step 2a — DONE — add zero-copy BGR view primitive (`acvImageBgrView`)** in
+  `CvBridge`. `acvImage`'s row layout is contiguous
+  (`CVector[i] = CVector[i-1] + RealWidth*Channel`), so a `cv::Mat` header can
+  wrap its ROI without copying. Writes via the view mutate the underlying
+  `acvImage`. This is the workhorse primitive for the rest of step 2.
+
+  **Step 2b — NEXT (DEFERRED PENDING SCOPE DECISION) — per-TU signature flip**.
+  Reconnaissance at the `binarize_bg_flatten_cv` call site
+  (`FeatureManager_group.cpp` around line 300) shows that the binary image flows
+  immediately into several `acv*` downstream consumers
+  (`acvThresholdMap`, `acvThreshold`, `binaryDownScale`, `acvDrawBlock`).
+  Flipping ONLY `binarize_bg_flatten_cv`'s signature to `cv::Mat` would force
+  acv→cv→acv conversions at the call site — strictly worse than the current
+  state. The right move is a coordinated flip of the *whole binarization +
+  labeling slot* — `binarize_bg_flatten_cv` plus its downstream `acv*` cousins
+  that touch the binary image — and to plumb a single `cv::Mat binary_img`
+  through that slot. This is bigger than one TU but is the natural
+  cv::Mat-island, then step 2c moves the next slot, etc.
 
 - **Step 3 PENDING** — once Step 2 is complete and stable, swap acv geometry
   types for `cv::Point2f` / `cv::Vec*` / etc. in internal computation, keeping

@@ -32,6 +32,22 @@ cv::Mat acvImageToBgrMat(acvImage *im)
   return m;
 }
 
+cv::Mat acvImageBgrView(acvImage *im)
+{
+  if (!im || !im->CVector) return cv::Mat();
+  int W = im->GetWidth(), H = im->GetHeight();
+  if (W <= 0 || H <= 0) return cv::Mat();
+  int ox = im->GetROIOffsetX(), oy = im->GetROIOffsetY();
+  // CVector[oy] points to the first row of the ROI; the ROI's first byte is
+  // at CVector[oy] + ox*Channel. The stride between consecutive ROI rows is
+  // the full RealWidth*Channel because the ROI is a sub-rectangle of the
+  // RealWidth-wide storage (see acvImage::RESIZE: CVector[i+1] = CVector[i]
+  // + RealWidth*Channel).
+  unsigned char *roi0 = im->CVector[oy] + ox * im->Channel;
+  size_t stride = (size_t)im->GetRealWidth() * (size_t)im->Channel;
+  return cv::Mat(H, W, CV_8UC3, roi0, stride);
+}
+
 void grayMatToAcvImage(const cv::Mat &g, acvImage *im)
 {
   if (!im || g.empty() || g.type() != CV_8U) return;
