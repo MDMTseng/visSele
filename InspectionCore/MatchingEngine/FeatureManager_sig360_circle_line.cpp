@@ -1090,23 +1090,6 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     LOGV("pt:%f %f", pt.X, pt.Y);
     LOGV("searchVec_nor:%f %f", searchVec_nor.X, searchVec_nor.Y);
     LOGV("searchVec:%f %f", searchVec.X, searchVec.Y);
-    if (0)
-    {
-
-      acvDrawLine(originalImage,
-                  pt.X,
-                  pt.Y,
-                  pt.X + searchVec.X * margin * 2,
-                  pt.Y + searchVec.Y * margin * 2,
-                  20, 255, 128);
-
-      // acvDrawLine(originalImage,
-      //             pt.X + searchVec_nor.X * width / 2,
-      //             pt.Y + searchVec_nor.Y * width / 2,
-      //             pt.X - searchVec_nor.X * width / 2,
-      //             pt.Y - searchVec_nor.Y * width / 2,
-      //             20, 255, 128);
-    }
 
     // Caliper/section locating (docs/caliper_primitive_locating_design.md):
     // a single caliper straddling the expected edge along the search vector.
@@ -4679,7 +4662,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
       continue;
     }
 
-    p_cropImg_cv = acvImageBgrView(originalImage);
+    p_cropImg_cv = originalImage_cv;
 
 
     
@@ -4702,7 +4685,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
       float ex = fmax(fabs(curLableDat.RBBound.X-curLableDat.Center.X), fabs(curLableDat.Center.X-curLableDat.LTBound.X));
       float ey = fmax(fabs(curLableDat.RBBound.Y-curLableDat.Center.Y), fabs(curLableDat.Center.Y-curLableDat.LTBound.Y));
       float searchRadius_lb = hypot(ex, ey) * 1.25f + 10;
-      convertGrayEdges2Signature(curLableDat.Center, ideal_center, acvImageBgrView(originalImage), dsampLevel,
+      convertGrayEdges2Signature(curLableDat.Center, ideal_center, originalImage_cv, dsampLevel,
                                  searchRadius_lb, tmp_signature.signature_data, bacpac, edge_sig_min_strength,
                                  edge_sig_ray_step);
     }
