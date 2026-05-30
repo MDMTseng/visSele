@@ -3827,7 +3827,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
   {
     // LOGI(">>>>");
     clock_t img_t = clock();
-    static acvImage test1_buff;
+    static cv::Mat test1_buff;  // phase 3a: was acvImage
 
     BPG_protocol_data_acvImage_Send_info iminfo;
     bool sendJpg = false;
@@ -3907,19 +3907,10 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
         int cropH = ImageCropH;
 
         ImageSampler *sampler = (true) ? bacpac->sampler : NULL;
-        // ImageDownSampling still acvImage-typed; bridge capImg through a shim
-        acvImage _capImg_shim;
-        _capImg_shim.useExtBuffer(capImg.data,
-                                  (int)(capImg.total() * capImg.elemSize()),
-                                  capImg.cols, capImg.rows);
-        ImageDownSampling(test1_buff, _capImg_shim, _downSampLevel, sampler, 1,
+        ImageDownSampling(test1_buff, capImg, _downSampLevel, sampler, 1,
                           iminfo.offsetX, iminfo.offsetY, cropW, cropH);
       }
-      // zero-copy cv::Mat view over the (still acvImage) test1_buff so the
-      // SEND_acvImage callback receives a cv::Mat*; test1_buff itself stays
-      // an acvImage member for now (followup commit).
-      cv::Mat _sendView_pipe = acvImageBgrView(&test1_buff);
-      iminfo.img = &_sendView_pipe;
+      iminfo.img = &test1_buff;
 
       bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("IM", NULL);
       //BPG_protocol_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
