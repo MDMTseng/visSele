@@ -35,6 +35,7 @@ import BPG_WS from './comm/BPG_WS';
 import { initDiag, downloadDiag, diagCount, diagText } from 'UTIL/diagLog';
 import { persistPending, deletePending, getPendingBySource, pendingInsertCount } from 'UTIL/inspDBQueue';
 import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure/index.js';
+import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
 initDiag(); // start capturing console output into the diagnostics ring buffer ASAP
 
@@ -102,20 +103,21 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   // DefConfUI.loadDefFile) — used by tools/webctl/golden.mjs for a faithful oracle.
   window.__GP_LOAD_BY_PATH__ = (defModelPath) => new Promise((resolve, reject) => {
     const CORE_ID = StoreX.getState().ConnInfo.CORE_ID;
-    StoreX.dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, "LD", 0,
-      { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath, down_samp_level: 1 },
-      undefined,
-      {
-        resolve: (pkts) => {
-          StoreX.dispatch({
-            type: "ATBundle", ActionThrottle_type: "express",
-            data: pkts.map(pkt => { let act = BPG_Protocol.map_BPG_Packet2Act(pkt); if (act) act.IGNORE_DEFCONF_LOCK = true; return act; }).filter(Boolean)
-          });
-          resolve(true);
-        },
-        reject
-      }));
-    setTimeout(() => reject("Timeout"), 8000);
+    loadDefWithImageFallback({
+      defModelPath,
+      defExtension: DEF_EXTENSION,
+      downSampLevel: 1,
+      timeoutMs: 8000,
+      send: (payload, promiseCBs) => {
+        StoreX.dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, "LD", 0, payload, undefined, promiseCBs));
+      },
+    }).then(({ pkts }) => {
+      StoreX.dispatch({
+        type: "ATBundle", ActionThrottle_type: "express",
+        data: pkts.map(pkt => { let act = BPG_Protocol.map_BPG_Packet2Act(pkt); if (act) act.IGNORE_DEFCONF_LOCK = true; return act; }).filter(Boolean)
+      });
+      resolve(true);
+    }).catch(reject);
   });
   // Test hooks for the diagnostics ring buffer + local failed-insert queue.
   window.__GP_DIAG__ = { downloadDiag, diagCount, diagText };
@@ -205,8 +207,8 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
   // console.log(ConnInfo);
 
   return [
-    [DICT._.core,   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>,true],
-    [DICT._.camera, ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
+    [dictLookUp("core", DICT),   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>,true],
+    [dictLookUp("camera", DICT), ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
     ["設定資料庫",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
     ["檢測資料庫",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
     [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined||ConnInfo.CNC_API_ID_CONN_INFO!==undefined],//seg line
@@ -1870,7 +1872,7 @@ class APPMasterX extends React.Component {
         }
         </CSSTransitionGroup>
         <Drawer
-          title=""//{this.props.DICT._.system_status+" "+localVersion}
+          title=""//{this.props.dictLookUp("system_status", DICT)+" "+localVersion}
           placement="right"
           closable={true}
           onClose={()=>{
@@ -2135,4 +2137,3 @@ ReactDOM.render(
 
     </Provider>
   </RootErrorBoundary>, document.getElementById('container'));
-

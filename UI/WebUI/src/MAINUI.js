@@ -20,7 +20,7 @@ import InstInspUI_rdx from './InstInspUI';
 
 import RepDisplayUI_rdx from './RepDisplayUI';
 import InputNumber from 'antd/lib/input-number';
-import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset ,LocalStorageTools,websocket_autoReconnect,websocket_reqTrack} from 'UTIL/MISC_Util';
+import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset ,LocalStorageTools,websocket_autoReconnect,websocket_reqTrack, dictLookUp} from 'UTIL/MISC_Util';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import ReactResizeDetector from 'react-resize-detector';
@@ -320,8 +320,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       is_SLID_Ready=true;//if the uInsp is not set(maybe not the full inspection machine) ig nore it
     }
 
-    let CamInfo=is_Cam_Ready?undefined:DICT._.camera_reconnection_caption;
-    let uInspInfo=is_uInsp_Ready?undefined:DICT._.uInsp_reconnection_caption;
+    let CamInfo=is_Cam_Ready?undefined:dictLookUp("camera_reconnection_caption", DICT);
+    let uInspInfo=is_uInsp_Ready?undefined:dictLookUp("uInsp_reconnection_caption", DICT);
     let SLIDInfo=is_SLID_Ready?undefined:"坡檢設備重連中";
 
 
@@ -792,7 +792,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                     {
                       
                       let errPopUpUIInfo = {
-                        title: DICT._.ERROR,
+                        title: dictLookUp("ERROR", DICT),
                         onOK: undefined,
                         onCancel: undefined,
                         content:<div style={{width:"100%",height:"200px"}}><Title className="veleXY">
@@ -1285,7 +1285,7 @@ const MainUI=()=>{
           {
             extraCtrlUI.push({
               icon:<SaveOutlined />,
-              text:DICT._.save_calibration,
+              text:dictLookUp("save_calibration", DICT),
               onClick:_=>{
 
                 let report = extraCtrls.currentReportExtract();
@@ -1466,7 +1466,7 @@ const MainUI=()=>{
           {
             extraCtrlUI.push({
               icon:<SaveOutlined />,
-              text:DICT._.save_calibration,
+              text:dictLookUp("save_calibration", DICT),
               onClick:_=>extraCtrls.saveCameraParam()
             });
           }

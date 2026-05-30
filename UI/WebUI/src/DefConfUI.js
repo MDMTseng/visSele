@@ -8,6 +8,7 @@ import ComponentBoundary from './component/ComponentBoundary';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
 import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure/index.js';
+import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
 import { buildSchema } from 'JSSRCROOT/shapes/propertySheet';
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
@@ -433,7 +434,7 @@ function DisplayMarginSet({MarginInfo,DICT})
   const columns = [
     {
       key:"type",
-      title:DICT._.type
+      title:dictLookUp("type", DICT)
     },{
       key:"value",
       edible:"input",
@@ -552,11 +553,11 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
   const columns = [
     {
       key:"name",
-      title:DICT._.name
+      title:dictLookUp("name", DICT)
     },{
       key:"subtype",
       width: '80px',
-      title:DICT._.subtype
+      title:dictLookUp("subtype", DICT)
     },
     {
       key:"rank",
@@ -1209,18 +1210,16 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,
   }
 
   ACT_DefConf_Lock_Level_Update(1);
-  new Promise((resolve, reject) => {
-    console.log(defModelPath,DEF_EXTENSION,CORE_ID)
-    ACT_WS_SEND_BPG(CORE_ID, "LD", 0,
-      {
-        deffile: defModelPath + '.' + DEF_EXTENSION,
-        imgsrc: defModelPath,
-        down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL
-      },
-      undefined, { resolve, reject });
-    setTimeout(() => reject("Timeout"), 5000)
+  loadDefWithImageFallback({
+    defModelPath,
+    defExtension: DEF_EXTENSION,
+    downSampLevel: IMG_LOAD_DOWNSAMP_LEVEL,
+    send: (payload, promiseCBs) => {
+      console.log(defModelPath, DEF_EXTENSION, CORE_ID, payload.imgsrc)
+      ACT_WS_SEND_BPG(CORE_ID, "LD", 0, payload, undefined, promiseCBs);
+    },
   })
-    .then((pkts) => {
+    .then(({ pkts }) => {
       dispatch(actionGen_W_IGNORE_LOCK(pkts))
 
       // new Promise((resolve, reject) => {
@@ -1365,7 +1364,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               setModal_view(undefined);
             },
             onCancel: () => { console.log("onCancel");setModal_view(undefined); },
-            title: DICT._.WARNING,
+            title: dictLookUp("WARNING", DICT),
             view: DICT.defConf.exit_warning_change_is_made
           })
         }
@@ -1707,7 +1706,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               
             },
             onCancel: () => { console.log("onCancel");setModal_view(undefined);},
-            title: DICT._.WARNING,
+            title: dictLookUp("WARNING", DICT),
             view: DICT.defConf.do_you_want_to_reset_def
           })
       }} />,

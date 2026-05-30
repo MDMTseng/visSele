@@ -19,7 +19,7 @@ import dclone from 'clone';
 import Layout from 'antd/lib/layout';
 const { Header, Content, Footer, Sider } = Layout;
 
-import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement} from 'UTIL/MISC_Util';
+import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement, dictLookUp} from 'UTIL/MISC_Util';
 import Typography from 'antd/lib/typography';
 const { Paragraph, Title } = Typography;
 import { WarningOutlined,CheckOutlined,BulbOutlined,SaveOutlined,ReloadOutlined } from '@ant-design/icons';
@@ -843,7 +843,7 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
 
 
             
-          }}>{DICT._.save_machine_setting}</Button>
+          }}>{dictLookUp("save_machine_setting", DICT)}</Button>
 
 
       </Button.Group>
@@ -859,21 +859,21 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
               api.send({type: "res_count_clear"},
               (ret)=>{console.log(ret)},(e)=>console.log(e));
             })
-          }>{DICT._.RESET_INSPECTION_COUNTER}
+          }>{dictLookUp("RESET_INSPECTION_COUNTER", DICT)}
       </Button>
 
       </Button.Group>
 
 
 
-      <Divider orientation="left" key="ERROR">{DICT._.ERROR_INFO}</Divider>
+      <Divider orientation="left" key="ERROR">{dictLookUp("ERROR_INFO", DICT)}</Divider>
 
       <Button.Group key="ERRORG">
         <Button
           key="error_get"
           onClick={() =>{
           }}>
-          {DICT._.ERROR_CODES}:{error_codes}
+          {dictLookUp("ERROR_CODES", DICT)}:{error_codes}
         </Button>
 
         <Button
@@ -884,7 +884,7 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
             ACT_WS_GET_OBJ((api)=>{
               api.send({type: "error_clear"})
             })
-          }>{DICT._.ERROR_CLEAR}
+          }>{dictLookUp("ERROR_CLEAR", DICT)}
         </Button>
 
 
@@ -895,12 +895,12 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
               api.machineSetupUpdate({pulse_hz: default_pulse_hz});
             })
           }
-          }>{DICT._.SET_DEFAULT_RPM}:{defaultRPM}
+          }>{dictLookUp("SET_DEFAULT_RPM", DICT)}:{defaultRPM}
       </Button>
       </Button.Group>
 
 
-      <Divider orientation="left">{DICT._.uInsp_ACTION_TRIGGER_TIMING}</Divider>
+      <Divider orientation="left">{dictLookUp("uInsp_ACTION_TRIGGER_TIMING", DICT)}</Divider>
 
       
 
@@ -987,14 +987,14 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
     
 
 
-    <Divider orientation="left">{DICT._.TEST_MODE}</Divider>
+    <Divider orientation="left">{dictLookUp("TEST_MODE", DICT)}</Divider>
       <Button.Group key="MODE_G">
         <Button
           key="TEST_INC"
           onClick={() =>
             ACT_WS_GET_OBJ((api)=>{ api.send({type: "mode_set", mode: "TEST_INC"})})
 
-          }>{DICT._.TEST_MODE_INC}
+          }>{dictLookUp("TEST_MODE_INC", DICT)}
         </Button> 
 
         <Button
@@ -1002,7 +1002,7 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
           onClick={() =>
             ACT_WS_GET_OBJ((api)=>{ api.send({type: "mode_set", mode: "TEST_NO_BLOW"})})
 
-          }>{DICT._.TEST_MODE_NO_BLOW}
+          }>{dictLookUp("TEST_MODE_NO_BLOW", DICT)}
         </Button> 
 
         <Button
@@ -1010,13 +1010,13 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
           onClick={() =>
             ACT_WS_GET_OBJ((api)=>{ api.send({type: "mode_set", mode: "TEST_ALTER_BLOW"})})
 
-          }>{DICT._.TEST_MODE_ALTER_BLOW}
+          }>{dictLookUp("TEST_MODE_ALTER_BLOW", DICT)}
         </Button>
         <Button
           key="MODE:NORMAL"
           onClick={() =>
             ACT_WS_GET_OBJ((api)=>{ api.send({type: "mode_set", mode: "NORMAL"})})
-          }>{DICT._.TEST_MODE_NORMAL}
+          }>{dictLookUp("TEST_MODE_NORMAL", DICT)}
         </Button>
 
         {/* <Button type="danger" key="Disconnect uInsp"
@@ -1034,7 +1034,7 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
               .catch((err) => {
                 console.log(err);
               })
-            }}>{DICT._.TEST_MODE_DISCONNECT}</Button> */}
+            }}>{dictLookUp("TEST_MODE_DISCONNECT", DICT)}</Button> */}
 
 
       </Button.Group> 
