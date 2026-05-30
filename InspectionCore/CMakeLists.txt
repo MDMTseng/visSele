@@ -40,7 +40,10 @@ option(FEATURE_ARAVIS     "Build with Aravis GigE camera SDK"      ${_DEF_ARAVIS
 option(FEATURE_MINDVISION "Build with MindVision GigE camera SDK"  ${_DEF_MINDVISION})
 option(FEATURE_HIKROBOT   "Build with HikRobot camera SDK"         ${_DEF_HIKROBOT})
 option(FEATURE_UVC        "Build with libuvc camera support"       OFF)
-option(FEATURE_OPENCV     "Build MatchingEngine against OpenCV"    OFF)
+# OpenCV is now mandatory: we are migrating the engine off acvImage onto cv::Mat
+# (see docs/OPENCV_MIGRATION.md). The option remains only for build-system
+# introspection -- forcing it OFF will fail at find_package.
+option(FEATURE_OPENCV     "Build MatchingEngine against OpenCV"    ON)
 
 # Always emit compile_commands.json so editors (clangd / VSCode C/C++) see the real
 # per-file flags & defines (e.g. FEATURE_OPENCV) -- no need to #define them in source.
@@ -51,9 +54,8 @@ add_compile_options(-w -Wno-sign-compare -Wno-write-strings -Wno-unused-variable
 add_compile_options($<$<CONFIG:Release>:-O3>)
 
 find_package(OpenMP)
-if(FEATURE_OPENCV)
-  find_package(OpenCV REQUIRED)   # provide via vcpkg (-DFEATURE_OPENCV=ON)
-endif()
+# OpenCV is now an unconditional dependency of MatchingEngine. Provide via vcpkg.
+find_package(OpenCV REQUIRED)
 
 # Compile a list of .c sources as C++ (the old build used $(CXX) for everything,
 # so C-linkage assumptions match only if we keep compiling them as C++).
@@ -201,18 +203,19 @@ add_library(MatchingEngine STATIC
   MatchingEngine/EdgeSignature.cpp
   MatchingEngine/EdgeSelect.cpp
   MatchingEngine/Caliper.cpp
-  MatchingEngine/AnchorPatch.cpp)
+  MatchingEngine/AnchorPatch.cpp
+  # OpenCV-based sources are now unconditional (acv -> cv migration step 1).
+  # Link ONLY the modules we use; the full OpenCV_LIBS pulls opencv_dnn which
+  # has a broken protobuf dep on Homebrew -> dyld abort.
+  MatchingEngine/ChessboardExtract.cpp MatchingEngine/LensCalib.cpp
+  MatchingEngine/LabelingCV.cpp MatchingEngine/BinarizeCV.cpp
+  MatchingEngine/CvBridge.cpp MatchingEngine/SearchPointCV.cpp)
 target_include_directories(MatchingEngine PUBLIC
-  MatchingEngine/include MatchingEngine/include_priv MatchingEngine/MorphEngine/include)
-target_link_libraries(MatchingEngine PUBLIC acvImage cJSON common_lib CircleFitting logctrl polyfit CameraLayer)
-if(OpenCV_FOUND)
-  # Link ONLY the modules we use. Homebrew's opencv_dnn has a broken protobuf
-  # dependency, and linking the full OpenCV_LIBS pulls it in -> dyld abort.
-  target_sources(MatchingEngine PRIVATE MatchingEngine/ChessboardExtract.cpp MatchingEngine/LensCalib.cpp MatchingEngine/LabelingCV.cpp MatchingEngine/BinarizeCV.cpp MatchingEngine/CvBridge.cpp MatchingEngine/SearchPointCV.cpp)
-  target_compile_definitions(MatchingEngine PUBLIC FEATURE_OPENCV)
-  target_link_libraries(MatchingEngine PUBLIC opencv_core opencv_imgproc opencv_imgcodecs opencv_calib3d)
-  target_include_directories(MatchingEngine PUBLIC ${OpenCV_INCLUDE_DIRS})
-endif()
+  MatchingEngine/include MatchingEngine/include_priv MatchingEngine/MorphEngine/include
+  ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(MatchingEngine PUBLIC acvImage cJSON common_lib CircleFitting logctrl polyfit CameraLayer
+  opencv_core opencv_imgproc opencv_imgcodecs opencv_calib3d)
+target_compile_definitions(MatchingEngine PUBLIC FEATURE_OPENCV)
 
 # ===========================================================================
 # Camera SDK glue (headers + prebuilt libs) applied to CameraLayer + app
