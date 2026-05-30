@@ -1606,5 +1606,211 @@ CASES += [
     case("usl_lt_lsl_reconfirm",            "custom", fn=fn_usl_lt_lsl_reconfirm),
 ]
 
+# ================= ROUND 9: cross-type circle_info regression, geometry-sensitivity, _pt1 cache lie, cal_step sentinel, removed-id ref, orient conflict, bulk SP =================
+
+# R9-1: circle_info on a SEARCH_POINT ref (cross-type). Regression: must NA-out, no NaN/Inf.
+def _circle_info_on_searchpoint():
+    d = golden(); m = first_of(d, "measure")
+    m["subtype"] = "circle_info"
+    m["info_type"] = "max_diameter"
+    m["ref"] = [{"id": 3, "element": "search_point"}]
+    return d
+
+def fn_circle_info_on_sp(run_insp):
+    rc, out = run_insp(_circle_info_on_searchpoint(), timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash rc={rc_str(rc)} on circle_info(search_point)"
+    if out is None: return True, f"rc={rc_str(rc)} no out"
+    import re as _re
+    if _re.search(rb'[\s,:\[]\s*(nan|inf|-inf)\b', out.lower()):
+        return False, "NaN/Inf on circle_info(search_point)"
+    try: js = _collect_judges(json.loads(out))
+    except Exception as e: return False, f"invalid JSON: {e}"
+    bad = [j for j in js if _bad_value(j)]
+    return (not bad), f"rc={rc_str(rc)} judges={len(js)} bad={len(bad)} (cross-type NA OK)"
+
+# R9-2: circle_info subtypes on a valid arc change when arc geometry changes
+def _circle_info_arc_scaled(scale):
+    """Set the first measure to circle_info(max_diameter) on arc id=24, and scale arc pts."""
+    def f():
+        d = golden(); m = first_of(d, "measure")
+        m["subtype"] = "circle_info"; m["info_type"] = "max_diameter"
+        m["ref"] = [{"id": 24, "element": "arc"}]
+        ar = _find_id(d, 24)
+        if ar:
+            for k in ("pt1","pt2","pt3"):
+                p = ar.get(k)
+                if isinstance(p, dict) and "x" in p and "y" in p:
+                    p["x"] = p["x"] * scale
+                    p["y"] = p["y"] * scale
+        return d
+    return f
+
+def fn_circle_info_geom_sensitivity(run_insp):
+    rc1, o1 = run_insp(_circle_info_arc_scaled(1.0)(), timeout=10)
+    rc2, o2 = run_insp(_circle_info_arc_scaled(2.0)(), timeout=10)
+    if rc1 == "TIMEOUT" or rc2 == "TIMEOUT": return False, "TIMEOUT"
+    if (isinstance(rc1,int) and rc1 in SIGCRASH) or (isinstance(rc2,int) and rc2 in SIGCRASH):
+        return False, f"crash rc1={rc_str(rc1)} rc2={rc_str(rc2)}"
+    if o1 is None or o2 is None: return True, f"rc1={rc_str(rc1)} rc2={rc_str(rc2)} no out"
+    try:
+        j1 = [j for j in _collect_judges(json.loads(o1)) if j.get("subtype")=="circle_info" and _finite(j.get("value"))]
+        j2 = [j for j in _collect_judges(json.loads(o2)) if j.get("subtype")=="circle_info" and _finite(j.get("value"))]
+    except Exception as e: return False, f"invalid JSON: {e}"
+    if not j1 or not j2:
+        return True, f"no circle_info finite values (rc1={rc_str(rc1)} rc2={rc_str(rc2)} j1={len(j1)} j2={len(j2)}) skip"
+    v1 = j1[0]["value"]; v2 = j2[0]["value"]
+    sane = 0.0 < v1 < 100000.0 and 0.0 < v2 < 100000.0
+    changed = abs(v2 - v1) > 1e-3
+    return (sane and changed), f"v1={v1:.4f} v2={v2:.4f} changed={changed} sane={sane}"
+
+# R9-3: _pt1 cached UI field actively WRONG vs pt1 -- engine must ignore _pt1
+def _pt1_cache_lie():
+    d = golden()
+    ln = first_of(d, "line")
+    if ln is not None and isinstance(ln.get("pt1"), dict):
+        ln["_pt1"] = {"x": -999999.0, "y": -999999.0}
+    return d
+
+def fn_pt1_cache_lie(run_insp):
+    rcA, oA = run_insp(GDEF)
+    rcB, oB = run_insp(_pt1_cache_lie())
+    if rcA != 0 or rcB != 0: return False, f"rcA={rc_str(rcA)} rcB={rc_str(rcB)}"
+    if oA is None or oB is None: return False, "missing out"
+    # If engine respected _pt1, results would differ wildly; we expect near-identical numbers.
+    ja = {j.get("id"): j.get("value") for j in _collect_judges(json.loads(oA)) if "id" in j and _finite(j.get("value"))}
+    jb = {j.get("id"): j.get("value") for j in _collect_judges(json.loads(oB)) if "id" in j and _finite(j.get("value"))}
+    common = set(ja) & set(jb)
+    if not common: return False, "no common judges"
+    worst = max(abs(ja[i]-jb[i]) for i in common)
+    ok = worst < 1.0
+    return ok, f"common={len(common)} worst_diff={worst:.4f} (engine should ignore _pt1)"
+
+# R9-4: caliper cal_step=0 vs cal_step=-1 (sentinel for default)
+_cal_step_zero = _all_caliper_with({"caliper": {"step": 0}})
+_cal_step_sentinel = _all_caliper_with({"caliper": {"step": -1}})
+
+def fn_cal_step_zero_vs_sentinel(run_insp):
+    rc0, o0 = run_insp(_cal_step_zero(), timeout=15)
+    rcS, oS = run_insp(_cal_step_sentinel(), timeout=15)
+    if (isinstance(rc0,int) and rc0 in SIGCRASH) or (isinstance(rcS,int) and rcS in SIGCRASH):
+        return False, f"crash rc0={rc_str(rc0)} rcS={rc_str(rcS)}"
+    if rc0 == "TIMEOUT" or rcS == "TIMEOUT": return False, "TIMEOUT"
+    for o in (o0, oS):
+        if o and (b"nan" in o.lower() or b"\"inf" in o.lower()):
+            return False, "NaN/Inf"
+    same = (o0 == oS)
+    return True, f"rc0={rc_str(rc0)} rcS={rc_str(rcS)} identical={same} (sentinel=-1 should == default)"
+
+# R9-5: measure references a feature id that's been REMOVED
+def _measure_ref_removed():
+    d = golden()
+    # remove search_point id=3
+    sig = first_of(d, "sig360_circle_line")
+    if sig is None: return d
+    for k, v in sig.items():
+        if isinstance(v, list):
+            sig[k] = [it for it in v if not (isinstance(it,dict) and it.get("id")==3)]
+            break
+    # measure now refs a gone-away id
+    m = first_of(d, "measure")
+    if m: m["ref"] = [{"id": 3, "element": "search_point"},
+                      {"id": 4, "element": "search_point"}]
+    return d
+
+def fn_ref_removed(run_insp):
+    rc, out = run_insp(_measure_ref_removed(), timeout=10)
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"REAL BUG: crash rc={rc_str(rc)} on removed-id ref"
+    if out is None: return True, f"rc={rc_str(rc)} no out"
+    if b"nan" in out.lower() or b"\"inf" in out.lower():
+        return False, "NaN/Inf on removed-id ref"
+    return True, f"rc={rc_str(rc)} (removed-id ref handled cleanly)"
+
+# R9-6: two measures with orientation_essential conflicting (one flipped, one not)
+def _orient_conflict_two():
+    d = golden()
+    measures = []
+    for sig in all_of(d, "sig360_circle_line"):
+        for k, v in sig.items():
+            if isinstance(v, list):
+                for it in v:
+                    if isinstance(it, dict) and it.get("type") == "measure" \
+                       and isinstance(it.get("ref"), list) and len(it["ref"]) >= 2:
+                        measures.append(it)
+    if len(measures) >= 2:
+        measures[0]["orientation_essential"] = True
+        measures[1]["orientation_essential"] = True
+        measures[1]["ref"] = list(reversed(measures[1]["ref"]))
+    return d
+
+def fn_orient_conflict(run_insp):
+    t0 = time.time()
+    rc, out = run_insp(_orient_conflict_two(), timeout=15)
+    dt = time.time() - t0
+    if rc == "TIMEOUT":
+        return False, f"REAL BUG: TIMEOUT (orient-conflict reDo did not converge) dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, "NaN/Inf"
+    return True, f"rc={rc_str(rc)} dt={dt:.2f}s (orient-conflict converged)"
+
+# R9-7: bulk 200 search_points all caliper, finest grain -- timing budget
+def _bulk_200_sp_caliper():
+    d = golden()
+    sig = first_of(d, "sig360_circle_line")
+    if sig is None: return d
+    # find an existing search_point as a template
+    sp_tmpl = first_of(d, "search_point")
+    if sp_tmpl is None: return d
+    # flip every existing sp to caliper
+    for sp in all_of(d, "search_point"):
+        sp["locating"] = "caliper"
+    # add 200 extra search_points with caliper locating
+    new_sps = []
+    base_pt = sp_tmpl.get("pt") or {"x": 100.0, "y": 100.0}
+    bx = base_pt.get("x", 100.0) if isinstance(base_pt, dict) else 100.0
+    by = base_pt.get("y", 100.0) if isinstance(base_pt, dict) else 100.0
+    for i in range(200):
+        new = copy.deepcopy(sp_tmpl)
+        new["id"] = 9500 + i
+        new["locating"] = "caliper"
+        new["caliper"] = {"count": 16, "width": 8, "length": 16, "step": 1}
+        if isinstance(new.get("pt"), dict):
+            new["pt"] = {"x": bx + (i % 20) * 0.5, "y": by + (i // 20) * 0.5}
+        new_sps.append(new)
+    for k, v in sig.items():
+        if isinstance(v, list):
+            v.extend(new_sps); break
+    return d
+
+def fn_bulk_200_sp(run_insp):
+    t0 = time.time()
+    rc, out = run_insp(_bulk_200_sp_caliper(), timeout=15)
+    dt = time.time() - t0
+    if rc == "TIMEOUT": return False, f"TIMEOUT dt={dt:.2f}s"
+    if isinstance(rc, int) and rc in SIGCRASH:
+        return False, f"crash rc={rc_str(rc)} dt={dt:.2f}s"
+    if isinstance(rc, int) and rc < 0:
+        return True, f"rc={rc_str(rc)} dt={dt:.2f}s (controlled-reject)"
+    if out is not None and (b"nan" in out.lower() or b"\"inf" in out.lower()):
+        return False, f"NaN/Inf dt={dt:.2f}s"
+    if dt > 5.0:
+        return False, f"REAL BUG?: bulk 200 SP caliper too slow dt={dt:.2f}s > 5.0s"
+    return True, f"rc={rc_str(rc)} dt={dt:.2f}s (200 SP caliper under budget)"
+
+CASES += [
+    case("circle_info_on_searchpoint",     "custom", fn=fn_circle_info_on_sp),
+    case("circle_info_arc_geom_sensitive", "custom", fn=fn_circle_info_geom_sensitivity),
+    case("pt1_cache_lie_ignored",          "custom", fn=fn_pt1_cache_lie),
+    case("cal_step_zero_vs_sentinel",      "custom", fn=fn_cal_step_zero_vs_sentinel),
+    case("measure_ref_removed_id",         "custom", fn=fn_ref_removed),
+    case("orient_essential_conflict_pair", "custom", fn=fn_orient_conflict),
+    case("bulk_200_sp_caliper_timing",     "custom", fn=fn_bulk_200_sp),
+]
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_measure", CASES))

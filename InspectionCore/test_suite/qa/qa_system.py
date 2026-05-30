@@ -1473,5 +1473,214 @@ def fn_r8_5x_identical_input(run):
     return (all0 and allout and ident and safe), f"{N}x all0={all0} identical={ident}"
 CASES.append(case("r8_5x_concurrent_identical_input", "custom", fn=fn_r8_5x_identical_input))
 
+# ==========================================================================
+# ROUND 9 — psutil RSS-trend over 100 runs, 100 simultaneous def files,
+#           16x harness concurrency, /dev/stdin img, CalibMapPath -> another
+#           def (cross-bleed), runbook 4190 lifecycle verification
+# ==========================================================================
+import time as _time9
+
+# ---- r9.1 100 sequential runs, psutil RSS-trend per child ---------------
+def fn_r9_psutil_rss_trend(_run):
+    """Spawn 100 successive --insp processes. For EACH child, sample RSS at
+    exit (peak via psutil.Process.memory_info while alive, or rusage proxy).
+    Confirm no growth trend > 5MB across the run — i.e. last-10 avg RSS not
+    more than 5MB above first-10 avg RSS. Each run is a fresh process so the
+    expectation is a flat trend."""
+    try:
+        import psutil
+    except Exception as e:
+        return False, f"psutil unavailable: {e}"
+    N = 100
+    rsses = []
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    for i in range(N):
+        out = f"{TMP}/sys_r9_rss_{i}.json"
+        if os.path.exists(out): os.remove(out)
+        proc = subprocess.Popen([VIS, "--insp", IMG, GDEF, out],
+                                cwd=CORE, env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        peak = 0
+        try:
+            p = psutil.Process(proc.pid)
+            while proc.poll() is None:
+                try:
+                    rss = p.memory_info().rss
+                    if rss > peak: peak = rss
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    break
+                _time9.sleep(0.01)
+            proc.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            proc.kill(); proc.communicate()
+            return False, f"TIMEOUT at iter {i}"
+        if proc.returncode != 0:
+            return False, f"iter {i} rc={rc_str(proc.returncode)}"
+        rsses.append(peak)
+    first10 = sum(rsses[:10]) / 10
+    last10 = sum(rsses[-10:]) / 10
+    growth_mb = (last10 - first10) / 1e6
+    no_trend = abs(growth_mb) < 5.0
+    return no_trend, f"N={N} first10={first10/1e6:.1f}MB last10={last10/1e6:.1f}MB growth={growth_mb:+.2f}MB (<5MB)"
+CASES.append(case("r9_psutil_rss_trend_100runs", "custom", fn=fn_r9_psutil_rss_trend))
+
+# ---- r9.2 100 def files on disk simultaneously, engine picks each -------
+def fn_r9_100_def_files(run):
+    """Create 100 copies of golden def on disk at once (OS fd table only used
+    momentarily during open), then sequentially have the engine pick each.
+    Verifies the OS / engine handles a large pool of def files. We hold ALL
+    100 def files OPEN simultaneously via fds first to verify no fd-table
+    exhaustion, then close and run engine on each."""
+    paths = []
+    fds = []
+    try:
+        for i in range(100):
+            p = f"{TMP}/sys_r9_pool_{i}.hydef"
+            with open(GDEF) as src, open(p, "w") as dst:
+                dst.write(src.read())
+            paths.append(p)
+        # open all 100 simultaneously
+        for p in paths:
+            fds.append(open(p, "rb"))
+        held = len(fds)
+        # now close them so engine can mmap/open without contention
+        for fh in fds: fh.close()
+        fds = []
+        # engine picks each sequentially
+        rcs = []
+        for i, p in enumerate(paths):
+            rc, out = run(p, out_path=f"{TMP}/sys_r9_pool_out_{i}.json")
+            rcs.append(rc)
+            if rc != 0:
+                return False, f"iter {i} rc={rc_str(rc)} (after {held} simul fds)"
+        all0 = all(r == 0 for r in rcs)
+        return all0, f"held_simul={held} ran_seq={len(rcs)} all0={all0}"
+    finally:
+        for fh in fds:
+            try: fh.close()
+            except Exception: pass
+CASES.append(case("r9_100_def_files_simul", "custom", fn=fn_r9_100_def_files))
+
+# ---- r9.3 harness concurrency: 16 parallel --insp ----------------------
+def fn_r9_16x_concurrency(run):
+    """Stress harness with 16 concurrent --insp processes; measure each runtime
+    + success. All must rc0 & byte-identical."""
+    N = 16
+    results = {}
+    times = {}
+    def worker(i):
+        t0 = _time9.time()
+        results[i] = run(GDEF, out_path=f"{TMP}/sys_r9_16x_{i}.json", timeout=240)
+        times[i] = _time9.time() - t0
+    ts = [threading.Thread(target=worker, args=(i,)) for i in range(N)]
+    for t in ts: t.start()
+    for t in ts: t.join()
+    all0 = all(results[i][0] == 0 for i in range(N))
+    allout = all(results[i][1] is not None for i in range(N))
+    ref = results[0][1]
+    ident = allout and all(results[i][1] == ref for i in range(N))
+    tmin = min(times.values()); tmax = max(times.values()); tavg = sum(times.values())/N
+    return (all0 and allout and ident), \
+        f"{N}x all0={all0} ident={ident} t_min={tmin:.1f}s t_avg={tavg:.1f}s t_max={tmax:.1f}s"
+CASES.append(case("r9_16x_concurrent", "custom", fn=fn_r9_16x_concurrency))
+
+# ---- r9.4 image piped through /dev/stdin -------------------------------
+def fn_r9_img_dev_stdin(_run):
+    """Almost certainly unsupported (engine likely fopens img by path & seeks).
+    Verify clean failure (non-zero rc, ideally exit3) and NO crash."""
+    out = f"{TMP}/sys_r9_stdinimg_out.json"
+    if os.path.exists(out): os.remove(out)
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    img_bytes = open(IMG, "rb").read()
+    try:
+        r = subprocess.run([VIS, "--insp", "/dev/stdin", GDEF, out],
+                           cwd=CORE, env=env, input=img_bytes,
+                           capture_output=True, timeout=60)
+        rc = r.returncode
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT"
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    # Want clean failure (non-zero) but accept rc0 if engine surprisingly works
+    return safe, f"rc={rc_str(rc)} (img via /dev/stdin; want clean reject, no crash)"
+CASES.append(case("r9_img_dev_stdin_clean_fail", "custom", fn=fn_r9_img_dev_stdin))
+
+# ---- r9.5 CalibMapPath -> ANOTHER def file (cross-bleed) ---------------
+def fn_r9_calibmap_is_def(run):
+    """Set CalibMapPath to point at ANOTHER def (.hydef JSON) instead of a
+    calibration map image. Engine should reject or silently treat as missing;
+    must NOT crash and must NOT cross-bleed parsed def contents."""
+    other_def = f"{TMP}/sys_r9_other_def.hydef"
+    with open(GDEF) as src, open(other_def, "w") as dst:
+        dst.write(src.read())
+    d = golden()
+    d["CalibMapPath"] = other_def
+    rc, out = run(d, out_path=f"{TMP}/sys_r9_calibbleed_out.json")
+    safe = (rc not in SIGCRASH) and (rc != "TIMEOUT")
+    # If it ran (rc0), the report must still be valid JSON (no corruption)
+    valid = True
+    if out is not None:
+        try: json.loads(out)
+        except Exception: valid = False
+    return (safe and valid), f"rc={rc_str(rc)} report_valid={valid} (CalibMapPath -> .hydef)"
+CASES.append(case("r9_calibmap_points_to_def", "custom", fn=fn_r9_calibmap_is_def))
+
+# ---- r9.6 runbook 4190 lifecycle (NEVER touch 4090) --------------------
+def fn_r9_runbook_4190(_run):
+    """Verify the RUNNING_CORE0_1.md runbook for port=4190 works end-to-end:
+      1. Find any pre-existing PID on 4190 and kill it (lsof -t).
+      2. Launch fresh visSele on 4190.
+      3. Ping via lsof to confirm it's listening.
+      4. Shut it down (SIGTERM, then SIGKILL if needed).
+    NEVER touches port 4090."""
+    import shutil as _sh
+    if _sh.which("lsof") is None:
+        return False, "lsof not available"
+    env = dict(os.environ, DYLD_LIBRARY_PATH=BUILD)
+    def _lsof_pid(port):
+        r = subprocess.run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                           capture_output=True, timeout=10)
+        pids = [int(x) for x in r.stdout.decode().split() if x.strip().isdigit()]
+        return pids
+    # SAFETY: must not touch 4090
+    pre_4090 = _lsof_pid(4090)
+    # 1. kill any stale 4190
+    for pid in _lsof_pid(4190):
+        try: os.kill(pid, 15)
+        except Exception: pass
+    _time9.sleep(1.0)
+    for pid in _lsof_pid(4190):
+        try: os.kill(pid, 9)
+        except Exception: pass
+    _time9.sleep(0.5)
+    if _lsof_pid(4190):
+        return False, "could not clear pre-existing 4190"
+    # 2. launch fresh on 4190
+    logf = open(f"{TMP}/sys_r9_4190.log", "wb")
+    proc = subprocess.Popen([VIS, "port=4190"], cwd=CORE, env=env,
+                            stdout=logf, stderr=subprocess.STDOUT)
+    # 3. ping (poll up to 10s)
+    pinged = []
+    for _ in range(20):
+        _time9.sleep(0.5)
+        pinged = _lsof_pid(4190)
+        if pinged: break
+    listening = bool(pinged) and (proc.pid in pinged)
+    # 4. shut down
+    try:
+        proc.terminate()
+        try: proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill(); proc.wait(timeout=5)
+    finally:
+        logf.close()
+    _time9.sleep(0.5)
+    leftover = _lsof_pid(4190)
+    # SAFETY check: 4090 must be unaffected (same set as before)
+    post_4090 = _lsof_pid(4090)
+    safe_4090 = (set(pre_4090) == set(post_4090))
+    ok = listening and (not leftover) and safe_4090
+    return ok, f"listening={listening} pid={proc.pid} clean_shutdown={not leftover} 4090_untouched={safe_4090}"
+CASES.append(case("r9_runbook_4190_lifecycle", "custom", fn=fn_r9_runbook_4190))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_system", CASES))

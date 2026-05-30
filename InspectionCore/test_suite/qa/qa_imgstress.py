@@ -1,0 +1,203 @@
+"""
+qa_imgstress -- image-degradation stress tests against the golden 10221 sample.
+
+Starts from the existing golden case (5.04 MP, 2592x1944, grayscale) and applies
+controlled perturbations: Gaussian noise, uneven tint, vignette, simulated
+scratches, blur, RGB color tint. Ground-truth = the judge values from a fresh
+golden --insp run; each perturbation is compared per-judge against that truth.
+
+Assertions per case:
+  - no crash (no SIGSEGV/BUS/FPE/ILL)
+  - exit0
+  - no nan/inf tokens in output JSON
+  - per-judge value drift within tolerance (or NA -- both acceptable; a
+    perturbation may correctly fail to measure, but must not silently return a
+    wildly wrong finite value)
+"""
+import sys, os, json, math, re
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from qalib import *      # run_insp, IMG, GDEF, case, run_module, SIGCRASH, ...
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter
+
+OUT_DIR = "/tmp/qa_imgstress"
+os.makedirs(OUT_DIR, exist_ok=True)
+
+# ---------- ground truth: judge values from the un-perturbed golden run ----------
+def _judge_map(out_bytes):
+    """{id: measured_value or None} from a --insp output JSON."""
+    try:
+        j = json.loads(out_bytes)
+    except Exception:
+        return {}
+    found = {}
+    def walk(o):
+        if isinstance(o, dict):
+            # judge nodes carry 'status' and 'value', and the def schema gives
+            # us 'subtype' on the def side but the output keeps 'value' field
+            if "id" in o and "status" in o and "value" in o and "subtype" in o:
+                found[o["id"]] = o.get("value")
+            for v in o.values(): walk(v)
+        elif isinstance(o, list):
+            for v in o: walk(v)
+    walk(j)
+    return found
+
+_rc_golden, _out_golden = run_insp(GDEF)
+assert _rc_golden == 0 and _out_golden is not None, "golden baseline failed to run"
+GOLDEN_JUDGES = _judge_map(_out_golden)
+assert GOLDEN_JUDGES, "no judges parsed from golden -- aborting"
+
+# ---------- perturbation builders ----------
+def _load_gray():
+    return np.asarray(Image.open(IMG).convert("L"), dtype=np.float32)
+
+def _save_gray(arr, name):
+    arr = np.clip(arr, 0, 255).astype(np.uint8)
+    p = f"{OUT_DIR}/{name}.png"
+    Image.fromarray(arr, mode="L").save(p, "PNG")
+    return p
+
+def _save_rgb(arr_rgb, name):
+    arr_rgb = np.clip(arr_rgb, 0, 255).astype(np.uint8)
+    p = f"{OUT_DIR}/{name}.png"
+    Image.fromarray(arr_rgb, mode="RGB").save(p, "PNG")
+    return p
+
+def img_noise(sigma, name):
+    a = _load_gray()
+    rng = np.random.default_rng(seed=42)            # deterministic seed
+    a += rng.normal(0, sigma, a.shape).astype(np.float32)
+    return _save_gray(a, name)
+
+def img_tint_horizontal(name):
+    a = _load_gray()
+    w = a.shape[1]
+    g = np.linspace(0.7, 1.3, w, dtype=np.float32)
+    a = a * g[None, :]
+    return _save_gray(a, name)
+
+def img_vignette(name):
+    a = _load_gray()
+    h, w = a.shape
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    cy, cx = h / 2, w / 2
+    r = np.hypot(xx - cx, yy - cy) / math.hypot(cx, cy)  # 0..1
+    falloff = 1.0 - 0.4 * r * r                          # corners ~0.6 of centre
+    return _save_gray(a * falloff, name)
+
+def img_scratches(n_dark, n_bright, name):
+    a = _load_gray()
+    img = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), mode="L")
+    draw = ImageDraw.Draw(img)
+    rng = np.random.default_rng(seed=123)
+    h, w = a.shape
+    for _ in range(n_dark):
+        x1, y1 = rng.integers(0, w), rng.integers(0, h)
+        x2, y2 = x1 + rng.integers(-150, 150), y1 + rng.integers(-150, 150)
+        draw.line([(x1, y1), (x2, y2)], fill=20, width=int(rng.integers(1, 3)))
+    for _ in range(n_bright):
+        x1, y1 = rng.integers(0, w), rng.integers(0, h)
+        x2, y2 = x1 + rng.integers(-150, 150), y1 + rng.integers(-150, 150)
+        draw.line([(x1, y1), (x2, y2)], fill=240, width=int(rng.integers(1, 3)))
+    return _save_gray(np.asarray(img, dtype=np.float32), name)
+
+def img_blur(sigma, name):
+    img = Image.open(IMG).convert("L").filter(ImageFilter.GaussianBlur(radius=sigma))
+    return _save_gray(np.asarray(img, dtype=np.float32), name)
+
+def img_rgb_tint(name, channel_scales=(1.0, 0.85, 0.75)):
+    """Promote to RGB and apply a per-channel scale (greenish-warm tint)."""
+    a = _load_gray()
+    rgb = np.stack([a * channel_scales[0], a * channel_scales[1], a * channel_scales[2]], axis=-1)
+    return _save_rgb(rgb, name)
+
+# Precompute the degraded images (so each case just calls run_insp on the path)
+PATHS = {
+    "noise_sigma_3":   img_noise(3,  "noise_sigma_3"),
+    "noise_sigma_8":   img_noise(8,  "noise_sigma_8"),
+    "noise_sigma_20":  img_noise(20, "noise_sigma_20"),
+    "tint_horizontal": img_tint_horizontal("tint_horizontal"),
+    "vignette":        img_vignette("vignette"),
+    "scratches_few":   img_scratches(2, 3, "scratches_few"),
+    "scratches_many":  img_scratches(15, 15, "scratches_many"),
+    "blur_mild":       img_blur(1.0, "blur_mild"),
+    "blur_strong":     img_blur(3.0, "blur_strong"),
+    "rgb_warm_tint":   img_rgb_tint("rgb_warm_tint", (1.0, 0.85, 0.75)),
+}
+
+# ---------- assertion helper ----------
+NAN_INF_RE = re.compile(rb"[\s,:\[]\s*(nan|inf|-inf)\b")
+
+def _check_against_golden(rc, out, tol_finite, name):
+    """
+    PASS if:
+      - rc == 0 (no crash, no exit3/4)
+      - no nan/inf tokens in output
+      - every judge that has a finite value is within tol_finite of the golden value,
+        OR is NA in this run (NA is acceptable -- "couldn't measure"); a finite-but-
+        very-wrong value (>tol_finite drift) is a failure.
+    """
+    if rc in SIGCRASH: return False, f"REAL CRASH rc={rc_str(rc)}"
+    if rc == "TIMEOUT": return False, "TIMEOUT"
+    if rc != 0: return False, f"rc={rc_str(rc)} (expected 0)"
+    if out is None: return False, "no output"
+    if NAN_INF_RE.search(out.lower()): return False, "nan/inf leaked into JSON"
+    cur = _judge_map(out)
+    if not cur: return False, "no judges in output (matching failed entirely)"
+
+    drifts = []
+    bad = []
+    for jid, gv in GOLDEN_JUDGES.items():
+        if gv is None: continue
+        cv = cur.get(jid)
+        if cv is None: continue   # NA in perturbed run -- acceptable
+        if not (isinstance(cv, (int, float)) and math.isfinite(cv)):
+            bad.append((jid, cv))
+            continue
+        drift = abs(cv - gv)
+        drifts.append((jid, drift))
+        if drift > tol_finite:
+            bad.append((jid, f"drift {drift:.3f} > {tol_finite}"))
+
+    if bad: return False, f"out-of-tol judges {bad[:3]}"
+    measured = len(drifts)
+    if drifts:
+        max_d = max(d for _, d in drifts)
+        return True, f"{measured} judges checked, max_drift={max_d:.3f} (tol={tol_finite})"
+    return True, f"all judges NA'd in perturbed run (no finite-comparison done)"
+
+def _custom(img_path, tol):
+    def fn(run_insp):
+        rc, out = run_insp(GDEF, img=img_path)
+        return _check_against_golden(rc, out, tol, img_path)
+    return fn
+
+# ---------- cases ----------
+CASES = []
+def add(name, kind, **kw): CASES.append(case(name, kind, **kw))
+
+# Tolerance schedule: low-noise should match closely; high-noise allowed slack.
+# Units are def units (mm). Distances on this sample are ~8-10 mm.
+add("noise_sigma_3_drift",   "custom", fn=_custom(PATHS["noise_sigma_3"],   0.10))
+add("noise_sigma_8_drift",   "custom", fn=_custom(PATHS["noise_sigma_8"],   0.30))
+add("noise_sigma_20_drift",  "custom", fn=_custom(PATHS["noise_sigma_20"],  1.00))
+add("tint_horizontal_drift", "custom", fn=_custom(PATHS["tint_horizontal"], 0.20))
+add("vignette_drift",        "custom", fn=_custom(PATHS["vignette"],        0.20))
+add("scratches_few_drift",   "custom", fn=_custom(PATHS["scratches_few"],   0.30))
+add("scratches_many_drift",  "custom", fn=_custom(PATHS["scratches_many"],  1.00))
+add("blur_mild_drift",       "custom", fn=_custom(PATHS["blur_mild"],       0.20))
+add("blur_strong_drift",     "custom", fn=_custom(PATHS["blur_strong"],     1.00))
+add("rgb_warm_tint_drift",   "custom", fn=_custom(PATHS["rgb_warm_tint"],   0.20))
+
+# Determinism on a perturbation (independent of golden) -- the engine should
+# produce byte-identical output for the same degraded input on repeated runs.
+add("determinism_noise_sigma_8", "determinism", make=(lambda p=PATHS["noise_sigma_8"]: GDEF), img=PATHS["noise_sigma_8"])
+
+# Pure no-crash regression: even heavy noise must not SIGSEGV.
+add("noise_sigma_60_no_crash", "robust", img=img_noise(60, "noise_sigma_60"))
+add("scratches_torture_no_crash", "robust", img=img_scratches(80, 80, "scratches_torture"))
+
+if __name__ == "__main__":
+    sys.exit(run_module("qa_imgstress", CASES))

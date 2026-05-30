@@ -863,5 +863,247 @@ CASES.append(case("r8_sub_rewrite", "custom",
         ["[12]", "[13]", "[14]", "$+$", "$-$"],
         "(a-b)-c == a-(b+c)")))
 
+# ================= ROUND 9: property-based + DAG + remap + literal-only =================
+import random as _random
+
+# r9_1: property-based fuzzer. Build 20 small post_exp shapes (a + b - c * d / e)
+# where each operand is a small literal. Compare engine result vs hand-computed.
+def _r9_propbased():
+    def fn(run_insp):
+        rng = _random.Random(0xC0FFEE)
+        mismatches = []
+        ran = 0
+        for trial in range(20):
+            # pick 5 small operands in [-9..9] excluding 0 for d/e (avoid divzero noise)
+            ops = []
+            for _ in range(3):
+                ops.append(rng.randint(-9, 9))
+            # d and e nonzero
+            for _ in range(2):
+                v = 0
+                while v == 0:
+                    v = rng.randint(-9, 9)
+                ops.append(v)
+            a, b, c, d, e = ops
+            # RPN for (a + b) - ((c * d) / e)
+            post_exp = [str(a), str(b), "$+$", str(c), str(d), "$*$", str(e), "$/$", "$-$"]
+            expected = (a + b) - ((c * d) / e)
+            d_def = mut_calc(post_exp)()
+            rc, out = run_insp(d_def)
+            if rc in SIGCRASH or rc == "TIMEOUT":
+                mismatches.append(f"#{trial} crash {rc_str(rc)} pe={post_exp}")
+                continue
+            if out is None:
+                continue
+            try: j = json.loads(out)
+            except Exception: continue
+            got = _find_value(j, 8)
+            if got is None: continue
+            ran += 1
+            if not math.isfinite(got):
+                mismatches.append(f"#{trial} non-finite got={got} expected={expected}")
+                continue
+            if abs(got - expected) > max(1e-3, abs(expected) * 1e-4):
+                mismatches.append(f"#{trial} got={got} expected={expected} pe={post_exp}")
+        if mismatches:
+            return False, f"PROP MISMATCH ({len(mismatches)}/{ran}): {mismatches[:3]}"
+        return True, f"property-based: {ran}/20 located, all agree"
+    return fn
+CASES.append(case("r9_property_5op_shape", "custom", fn=_r9_propbased()))
+
+# r9_2: DAG of 4 CALC measures: A=B+C, B=D+1, C=D*2, D=[12]
+# Note: mut_calc only rewrites first measure. Build manually across 4 measures.
+def _r9_dag_four():
+    """A,B,C,D = measures[0..3]. D wraps [12] (D=[12]+0). C=D*2, B=D+1, A=B+C.
+    Expected: D=V12, B=V12+1, C=V12*2, A=(V12+1)+(V12*2)=3*V12+1."""
+    def f():
+        d = golden()
+        measures = all_of(d, "measure")
+        if len(measures) < 4: return d
+        A, B, C, D = measures[0], measures[1], measures[2], measures[3]
+        # D = [12] + 0  -> reads V12
+        D_id = D.get("id")
+        C_id = C.get("id")
+        B_id = B.get("id")
+        D["subtype"] = "calc"
+        D["ref"] = [{"id": 12}]
+        D["calc_f"] = {"exp": "", "post_exp": ["[12]", "0", "$+$"]}
+        C["subtype"] = "calc"
+        C["ref"] = [{"id": D_id}]
+        C["calc_f"] = {"exp": "", "post_exp": [f"[{D_id}]", "2", "$*$"]}
+        B["subtype"] = "calc"
+        B["ref"] = [{"id": D_id}]
+        B["calc_f"] = {"exp": "", "post_exp": [f"[{D_id}]", "1", "$+$"]}
+        A["subtype"] = "calc"
+        A["ref"] = [{"id": B_id}, {"id": C_id}]
+        A["calc_f"] = {"exp": "", "post_exp": [f"[{B_id}]", f"[{C_id}]", "$+$"]}
+        f._ids = (A.get("id"), B_id, C_id, D_id)
+        return d
+    return f
+
+def _r9_dag_fn():
+    builder = _r9_dag_four()
+    def fn(run_insp):
+        d = builder()
+        ids = getattr(builder, "_ids", None)
+        if ids is None:
+            return True, "could not build DAG"
+        A_id, B_id, C_id, D_id = ids
+        rc, out = run_insp(d)
+        if rc in SIGCRASH or rc == "TIMEOUT":
+            return False, f"crash/hang {rc_str(rc)}"
+        if out is None: return False, "no output"
+        try: j = json.loads(out)
+        except Exception as e: return False, f"invalid JSON: {e}"
+        expA = 3 * V12 + 1
+        expB = V12 + 1
+        expC = V12 * 2
+        expD = V12
+        results = {}
+        for nm, tid, exp in (("A", A_id, expA), ("B", B_id, expB),
+                              ("C", C_id, expC), ("D", D_id, expD)):
+            v = _find_value(j, tid)
+            results[nm] = (v, exp)
+        bad = []
+        for nm, (v, exp) in results.items():
+            if v is None: continue
+            if not math.isfinite(v): bad.append(f"{nm}=nonfinite"); continue
+            if abs(v - exp) > 0.02:
+                bad.append(f"{nm}=got{v:.5f}!=exp{exp:.5f}")
+        if bad:
+            return False, f"DAG WRONG: {bad}"
+        return True, f"DAG OK: A={results['A'][0]} B={results['B'][0]} C={results['C'][0]} D={results['D'][0]}"
+    return fn
+CASES.append(case("r9_dag_4_calc", "custom", fn=_r9_dag_fn()))
+
+# r9_3: CALC with linear remap value_A=0, value_B=1, value_X=10, value_Y=20
+# The remap maps raw -> X + (raw - A)*(Y - X)/(B - A). At raw=V12+V13, expected
+# remapped = 10 + (raw - 0)*(20-10)/(1-0) = 10 + 10*raw.
+def _r9_remap(post_exp, raw_expected):
+    def fn(run_insp):
+        d = mut_calc(post_exp)()
+        m = first_of(d, "measure")
+        m["value_A"] = 0
+        m["value_B"] = 1
+        m["value_X"] = 10
+        m["value_Y"] = 20
+        rc, out = run_insp(d)
+        if rc in SIGCRASH or rc == "TIMEOUT":
+            return False, f"crash/hang {rc_str(rc)}"
+        if out is None: return False, "no output"
+        try: j = json.loads(out)
+        except Exception as e: return False, f"invalid JSON: {e}"
+        got = _find_value(j, 8)
+        if got is None: return True, "no-crash (value not located)"
+        if not math.isfinite(got): return False, f"non-finite {got}"
+        mapped = 10 + (raw_expected - 0) * (20 - 10) / (1 - 0)
+        if abs(got - mapped) <= 0.1:
+            return True, f"REMAP APPLIED: got={got:.5f} mapped={mapped:.5f} raw={raw_expected:.5f}"
+        if abs(got - raw_expected) <= TOL:
+            return False, f"REMAP IGNORED: got={got:.5f} raw={raw_expected:.5f} mapped_expected={mapped:.5f}"
+        return False, f"unexpected got={got:.5f} raw={raw_expected:.5f} mapped={mapped:.5f}"
+    return fn
+CASES.append(case("r9_remap_on_calc", "custom",
+                  fn=_r9_remap(["[12]", "[13]", "$+$"], V12 + V13)))
+
+# r9_4: back_value_setup combined with calc + USL_b/LSL_b
+def _r9_back_value_with_calc(post_exp, expected_raw):
+    def fn(run_insp):
+        d = mut_calc(post_exp)()
+        m = first_of(d, "measure")
+        m["back_value_setup"] = True
+        m["USL_b"] = 50.0
+        m["LSL_b"] = -50.0
+        m["USL"] = 50.0
+        m["LSL"] = -50.0
+        rc, out = run_insp(d)
+        if rc in SIGCRASH or rc == "TIMEOUT":
+            return False, f"crash/hang {rc_str(rc)}"
+        if out is None: return False, "no output"
+        try: j = json.loads(out)
+        except Exception as e: return False, f"invalid JSON: {e}"
+        got = _find_value(j, 8)
+        if got is None: return True, "no-crash (value not located)"
+        if not math.isfinite(got): return False, f"non-finite {got}"
+        if abs(got - expected_raw) > 0.5:
+            return False, f"calc+back_value_setup wrong got={got} exp={expected_raw}"
+        return True, f"back_value_setup+calc ok value={got:.5f}"
+    return fn
+CASES.append(case("r9_back_value_setup_calc", "custom",
+                  fn=_r9_back_value_with_calc(["[12]", "[13]", "$+$"], V12 + V13)))
+
+# r9_5: literal-only calc (mut_calc adds dummy ref [12], but post_exp has no [12])
+# Expected result == literal value, NOT affected by V12.
+CASES.append(case("r9_literal_only_42", "custom",
+                  fn=calc_expect(["40", "2", "$+$"], 42.0)))
+CASES.append(case("r9_literal_only_pi", "custom",
+                  fn=calc_expect(["3", "0.14159", "$+$"], 3.14159, tol=1e-3)))
+
+# r9_6: exp string says "max" but post_exp does add. post_exp must win.
+CASES.append(case("r9_exp_says_max_post_does_add", "custom",
+                  fn=_r3_exp_ignored(["[12]", "[13]", "$+$"],
+                                      "max([12],[13])", V12 + V13)))
+
+# r9_7: extreme 100-calc chain. M[0] = [12]+0; M[i] = M[i-1] + 1 for i in 1..N
+# Final should be V12 + N. Only verify M[0] and M[N-1] to avoid huge output traversal.
+def _r9_long_chain(N=100):
+    def f():
+        d = golden()
+        measures = all_of(d, "measure")
+        if len(measures) < 2:
+            f._ok = False
+            return d
+        actual = min(N, len(measures))
+        # measures[0] is base
+        prev = measures[0]
+        prev["subtype"] = "calc"
+        prev["ref"] = [{"id": 12}]
+        prev["calc_f"] = {"exp": "", "post_exp": ["[12]", "0", "$+$"]}
+        for i in range(1, actual):
+            m = measures[i]
+            pid = prev.get("id")
+            m["subtype"] = "calc"
+            m["ref"] = [{"id": pid}]
+            m["calc_f"] = {"exp": "", "post_exp": [f"[{pid}]", "1", "$+$"]}
+            prev = m
+        f._first_id = measures[0].get("id")
+        f._last_id = measures[actual - 1].get("id")
+        f._n = actual
+        f._ok = True
+        return d
+    f._ok = False
+    return f
+
+def _r9_long_chain_fn():
+    import time as _time
+    builder = _r9_long_chain(100)
+    def fn(run_insp):
+        d = builder()
+        if not getattr(builder, "_ok", False):
+            return True, "could not build chain (insufficient measures)"
+        t0 = _time.time()
+        rc, out = run_insp(d)
+        dur = _time.time() - t0
+        if rc in SIGCRASH or rc == "TIMEOUT":
+            return False, f"crash/hang {rc_str(rc)} after {dur:.2f}s"
+        if out is None: return False, "no output"
+        try: j = json.loads(out)
+        except Exception as e: return False, f"invalid JSON: {e}"
+        n = builder._n
+        v_first = _find_value(j, builder._first_id)
+        v_last = _find_value(j, builder._last_id)
+        exp_first = V12
+        exp_last = V12 + (n - 1)
+        msg = f"n={n} first={v_first} last={v_last} dur={dur:.2f}s"
+        if v_first is not None and abs(v_first - exp_first) > 0.05:
+            return False, f"FIRST WRONG {msg} exp_first={exp_first}"
+        if v_last is not None and abs(v_last - exp_last) > 0.05:
+            return False, f"LAST WRONG {msg} exp_last={exp_last}"
+        if dur > 30:
+            return False, f"PERF CLIFF {msg}"
+        return True, msg
+    return fn
+CASES.append(case("r9_chain_100_calc", "custom", fn=_r9_long_chain_fn()))
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_calc", CASES))

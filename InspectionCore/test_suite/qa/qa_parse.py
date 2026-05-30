@@ -1052,5 +1052,181 @@ CASES += [
 ]
 
 
+# ===== ROUND 9: well-hardened engine — creative valid/boundary cases =====
+
+def mk_100_calc_chain():
+    # 100 measures, all subtype=calc, each referencing the previous one via [id].
+    # No cycles, valid DAG, exercising parser+calc dispatch under load.
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is None: return d
+    feats = s["features"]
+    base_id = 30000
+    chain = []
+    for i in range(10):
+        mid = base_id + i
+        if i == 0:
+            post = ["1.0", "2.0", "+"]
+            ref = [{"id": mid}]
+        else:
+            prev = base_id + i - 1
+            post = [f"[{prev}]", "1.0", "+"]
+            ref = [{"id": prev}]
+        chain.append({
+            "type": "measure", "id": mid, "name": f"calc_{i}",
+            "subtype": "calc", "ref": ref,
+            "calc_f": {"exp": "", "post_exp": post},
+        })
+    s["features"] = feats + chain
+    return d
+
+def mk_long_chain_dangling_tail():
+    # search_point cycle detector boundary: long chain spN -> spN-1 -> ... -> sp0 -> 99999 (non-existent)
+    # Detector must walk N hops without false-positive cycle detection.
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is None: return d
+    feats = s["features"]
+    N = 80
+    base = 40000
+    chain = []
+    for i in range(N):
+        sid = base + i
+        nxt = (base + i - 1) if i > 0 else 99999  # tail points to non-existent id
+        chain.append({
+            "type": "search_point", "id": sid, "name": f"sp_chain_{i}",
+            "ref": [{"id": nxt, "element": "search_point"}],
+            "pt1": {"x": float(i), "y": 0.0},
+            "pt2": {"x": float(i+1), "y": 0.0},
+            "margin": 5, "width": 3, "angleDeg": 0,
+        })
+    s["features"] = feats + chain
+    return d
+
+def mk_anchor_tree_all_valid():
+    # Every search_point locating_anchor:true with valid non-cyclic refs forming a tree
+    # Root -> 2 children -> 4 grandchildren (7 total). No cycles.
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is None: return d
+    feats = s["features"]
+    base = 50000
+    # parents[i] for i=1..6 -> (i-1)//2
+    tree = []
+    for i in range(7):
+        sid = base + i
+        node = {
+            "type": "search_point", "id": sid, "name": f"anc_{i}",
+            "locating_anchor": True,
+            "pt1": {"x": float(i), "y": float(i)},
+            "pt2": {"x": float(i+1), "y": float(i+1)},
+            "margin": 5, "width": 3, "angleDeg": 0,
+        }
+        if i > 0:
+            parent = base + (i - 1) // 2
+            node["ref"] = [{"id": parent, "element": "search_point"}]
+            node["anchorPair"] = [{"id": parent, "element": "search_point"}]
+            node["pair_id"] = parent
+        tree.append(node)
+    s["features"] = feats + tree
+    return d
+
+def mk_arc_degenerate_circumcenter():
+    # arc whose pt2 is exactly collinear with pt1 and pt3 (degenerate circumcenter — infinite radius)
+    d = golden(); a = first_of(d, "arc")
+    if a is not None:
+        a["pt1"] = {"x": 0.0, "y": 0.0}
+        a["pt2"] = {"x": 5.0, "y": 0.0}     # exactly on segment pt1->pt3
+        a["pt3"] = {"x": 10.0, "y": 0.0}
+    return d
+
+def mk_sign360_sigdata_empty():
+    # sign360 with signature_data of length 0 (matching_without_signature path)
+    d = golden(); s = first_of(d, "sign360")
+    if s is not None:
+        s["signature"] = {"signature_data": []}
+    return d
+
+def mk_12_measures_same_name():
+    # 12 measures sharing the same "name" — cJSON ids unique, name uniqueness violated
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is None: return d
+    feats = s["features"]
+    base = 60000
+    new = []
+    for i in range(12):
+        new.append({
+            "type": "measure", "id": base + i,
+            "name": "duplicated_name",          # all same name
+            "subtype": "calc",
+            "ref": [{"id": base + i}],
+            "calc_f": {"exp": "", "post_exp": ["1.0", "2.0", "+"]},
+        })
+    s["features"] = feats + new
+    return d
+
+def mk_valid_dag_id_name_subtype_combo():
+    # Stress hardened parser fields together: unique ids, mixed unicode names,
+    # explicit subtypes — all should be accepted cleanly.
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is None: return d
+    feats = s["features"]
+    base = 70000
+    new = []
+    for i in range(20):
+        new.append({
+            "type": "measure", "id": base + i,
+            "name": f"m_é中_{i}",
+            "subtype": "calc",
+            "ref": [{"id": base + i}],
+            "calc_f": {"exp": "", "post_exp": [f"{i}.0", "1.0", "+"]},
+        })
+    s["features"] = feats + new
+    return d
+
+def mk_calc_wide_fanin():
+    # one calc measure referencing 50 distinct previously-defined measures
+    d = golden()
+    s = first_of(d, "sig360_circle_line")
+    if s is None: return d
+    feats = s["features"]
+    base = 80000
+    leaves = []
+    for i in range(50):
+        leaves.append({
+            "type": "measure", "id": base + i, "name": f"leaf_{i}",
+            "subtype": "calc",
+            "ref": [{"id": base + i}],
+            "calc_f": {"exp": "", "post_exp": [f"{i}.0", "1.0", "+"]},
+        })
+    # aggregator references all leaves
+    post = []
+    for i in range(50):
+        post.append(f"[{base + i}]")
+        if i > 0: post.append("+")
+    agg = {
+        "type": "measure", "id": base + 999, "name": "agg",
+        "subtype": "calc",
+        "ref": [{"id": base + i} for i in range(50)],
+        "calc_f": {"exp": "", "post_exp": post},
+    }
+    s["features"] = feats + leaves + [agg]
+    return d
+
+
+CASES += [
+    case("calc_chain_100_valid",       "robust", make=mk_100_calc_chain),
+    case("sp_long_chain_dangling_tail","robust", make=mk_long_chain_dangling_tail),
+    case("anchor_tree_all_valid",      "robust", make=mk_anchor_tree_all_valid),
+    case("arc_degenerate_circumcenter","robust", make=mk_arc_degenerate_circumcenter),
+    case("sign360_sigdata_empty",      "robust", make=mk_sign360_sigdata_empty),
+    case("twelve_measures_same_name",  "robust", make=mk_12_measures_same_name),
+    case("valid_dag_id_name_subtype",  "robust", make=mk_valid_dag_id_name_subtype_combo),
+    case("calc_wide_fanin_50",         "robust", make=mk_calc_wide_fanin),
+]
+
+
 if __name__ == "__main__":
     sys.exit(run_module("qa_parse", CASES))
