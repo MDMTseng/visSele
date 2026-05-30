@@ -114,6 +114,51 @@ hardware-mounting hack. Goes away if Q3 is resolved as B.
 
 ---
 
+## Q7. Validation gap for untested FMs
+
+The committed migration_gate baseline `expected/10221.json` only exercises
+FMs that appear in the golden def: `binary_processing_group`, `sig360_circle_line`,
+plus subfeature types (arc, aux_line, aux_point, line, measure, search_point,
+sign360). The remaining heavy FMs — `FM_gen` (debug-only `cp_main` path),
+`FeatureManager_platingCheck`, `FeatureManager_stage_light_report` — are
+**not exercised** by migration_gate. Porting their bodies cannot be safely
+validated by the existing oracle.
+
+**Needs decision:** for the unexercised FMs, do we:
+  (a) Add per-FM golden samples + def files to the regression harness
+      before migrating them. Bigger up-front cost, safe.
+  (b) Migrate behind a feature flag / dead-code-detect first: delete them
+      if no production def references them; migrate if they're live.
+  (c) Migrate blind and trust manual smoke. Discouraged.
+
+**Recommendation:** (b) first to drop unused FMs, then (a) for whatever's
+left. The cp_main "data/gen_TEST/B.BMP" path for FM_gen smells like a
+developer-only debug entry that may be deletable wholesale.
+
+## Q8. Migrating the exercised heavy FMs
+
+`binary_processing_group` and `sig360_circle_line` are the production path
+and what migration_gate actually validates. Migrating their bodies means
+translating ~15-20 acv helper calls each into cv::Mat ops. Drift risk is
+real (e.g., acvBoxFilter vs cv::boxFilter normalization, acvThreshold's
+strict `>` vs THRESH_BINARY's `>`, acvComponentLabeling's labeling order,
+acvHSVThreshold's HSV ranges 0..256 vs OpenCV's 0..180/0..255). Each
+helper needs a per-pair equivalence check before its FM body is flipped.
+
+**Needs decision:** Approach gradient:
+  (i) One mega-commit per FM, body-rewrite all at once.
+  (ii) Helper-by-helper migration (Option C from Q1): add cv overload,
+       swap one call site, gate-validate, repeat. Slow but each step is
+       a single 1-line diff.
+  (iii) Build a "double-write" test harness: run both acv and cv versions
+       side-by-side on the golden, diff their outputs at each helper
+       boundary, then flip when delta == 0.
+
+**Recommendation:** (ii). Already laid the groundwork with `cvCloneImage`
+in CvBridge (commit e3ecbf78). Each helper migration is bounded, the
+existing migration_gate catches numeric drift end-to-end, and small
+commits are easy to revert.
+
 ## Decisions I'm making without asking
 
 - Continue draining easy / mechanical wins: dead-code deletion, signature
