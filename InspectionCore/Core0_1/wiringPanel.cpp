@@ -1618,6 +1618,18 @@ int getImage(CameraLayer *camera,acvImage *dst_img,int trig_type=0,int timeout_m
   return (camera->SnapFrame(SNAP_Callback,(void*)dst_img,trig_type,timeout_ms) == CameraLayer::ACK)?0:-1;
 }
 
+// cv::Mat overload. The camera's SnapFrame still writes via SNAP_Callback into
+// an acvImage (CameraLayer hasn't been migrated yet), so we snap into a local
+// acvImage then copy the BGR view into the target cv::Mat.  Will collapse once
+// the camera lib is migrated.
+int getImage(CameraLayer *camera, cv::Mat &dst, int trig_type=0, int timeout_ms=-1)
+{
+  acvImage tmp_acv;
+  int rc = getImage(camera, &tmp_acv, trig_type, timeout_ms);
+  if (rc == 0) acvImageBgrView(&tmp_acv).copyTo(dst);
+  return rc;
+}
+
 
 
 int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
@@ -1798,18 +1810,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             }
             else
             {
-              tmp_buff.ReSize(imstack.imgStacked.cols, imstack.imgStacked.rows);
-              // acvCloneImage(&imstack.imgStacked,&tmp_buff,0);
-              // 
-              imstack.Export(&tmp_buff);
-              
-              // calib_bacpac.sampler->ignoreCalib(false); //First, make the cacheImage to be a calibrated full res image
-              // ImageDownSampling(tmp_buff, imstack.imgExtract, 1, calib_bacpac.sampler, false);
+              // cv::Mat Export overload allocates tmp_buff itself.
+              imstack.Export(tmp_buff);
 
-              if (tmp_buff.GetWidth() * tmp_buff.GetHeight() > 10)//just a random check
+              if (tmp_buff.cols * tmp_buff.rows > 10)//just a random check
               {
                 LOGI("SAVE IMG:%s",fileName);
-                SaveIMGFile(fileName, &tmp_buff);
+                cv::imwrite(fileName, tmp_buff);
                 session_ACK = true;
               }
             }
@@ -2109,14 +2116,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         if (imgSrcPath != NULL)
         {
 
-          int ret_val = LoadIMGFile(&tmp_buff, imgSrcPath);
+          // tmp_buff is now cv::Mat; cv::imread directly (same loader the
+          // validated loadImageCv primitive uses).
+          tmp_buff = cv::imread(imgSrcPath, cv::IMREAD_COLOR);
+          if (!tmp_buff.isContinuous()) tmp_buff = tmp_buff.clone();
+          int ret_val = tmp_buff.empty() ? -1 : 0;
           if (ret_val == 0)
           {
-            acvImage *srcImg = NULL;
+            cv::Mat *srcImg = NULL;
             srcImg = &tmp_buff;
-            // cv::Mat clone from the acvImage source: BGR view + copyTo
-            // allocates+copies in one step (matches ReSize+acvCloneImage).
-            acvImageBgrView(srcImg).copyTo(cacheImage);
+            srcImg->copyTo(cacheImage);
 
             int default_scale = 2;
 
@@ -2129,11 +2138,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             }
             //TODO:HACK: 4 times scale down for transmission speed, bpg_dat.scale is not used for now
             bpg_dat = GenStrBPGData("IM", NULL);
-            ImageDownSampling(dataSend_buff, acvImageBgrView(srcImg), default_scale, NULL);
+            ImageDownSampling(dataSend_buff, *srcImg, default_scale, NULL);
             BPG_protocol_data_acvImage_Send_info iminfo = { &dataSend_buff, (uint16_t)default_scale };
 
-            iminfo.fullHeight = srcImg->GetHeight();
-            iminfo.fullWidth = srcImg->GetWidth();
+            iminfo.fullHeight = srcImg->rows;
+            iminfo.fullWidth = srcImg->cols;
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;
 
             bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
@@ -2169,45 +2178,35 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       {
         char *imgSrcPath = (char *)JFetch(json, "imgsrc", cJSON_String);
         LOGI("Load Image from %s", imgSrcPath);
-        acvImage *srcImg = NULL;
-        // acv -> cv migration: this cv::Mat owns the pixels when the imgsrc is
-        // a file path (the shared loadImageCv primitive binds tmp_buff to it
-        // via useExtBuffer).  Lives until the end of this do/while so that
-        // tmp_buff -> srcImg stays valid for downstream processing.
-        cv::Mat _ii_loaded;
+        cv::Mat *srcImg = NULL;
 
         if (imgSrcPath != NULL)
         {
           if (strcmp(imgSrcPath, "__CACHE_IMG__") == 0)
           {
-            // cacheImage is now cv::Mat; bridge tmp_buff (still acvImage) to a
-            // BGR view of the same size and copy through cv::Mat::copyTo.
-            tmp_buff.ReSize(cacheImage.cols, cacheImage.rows);
-            cacheImage.copyTo(acvImageBgrView(&tmp_buff));
+            cacheImage.copyTo(tmp_buff);
             srcImg = &tmp_buff;
           }
           else if(strcmp(imgSrcPath, "__SNAP_TMP_IMG__") == 0)
           {
-            int ret_val = getImage(camera,&tmp_buff);
-            if (ret_val == 0)
-            {
-              srcImg = &tmp_buff;
-            }
+            if (getImage(camera, tmp_buff) == 0) srcImg = &tmp_buff;
           }
           else
           {
-            // Validated loader primitive (gated by --insp tests + daemon_smoke).
-            if (loadImageCv(imgSrcPath, _ii_loaded, tmp_buff) == 0)
+            tmp_buff = cv::imread(imgSrcPath, cv::IMREAD_COLOR);
+            if (!tmp_buff.empty())
+            {
+              if (!tmp_buff.isContinuous()) tmp_buff = tmp_buff.clone();
               srcImg = &tmp_buff;
+            }
           }
         }
         else if (srcImg == NULL)
         {
-          int ret_val = getImage(camera,&tmp_buff);
-          if (ret_val == 0)
+          if (getImage(camera, tmp_buff) == 0)
           {
             srcImg = &tmp_buff;
-            acvImageBgrView(srcImg).copyTo(cacheImage);
+            srcImg->copyTo(cacheImage);
           }
         }
 
@@ -2283,7 +2282,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           //SaveIMGFile("data/buff.bmp",&test1_buff);
 
           // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
-          int ret = ImgInspection_JSONStr(matchingEng, srcImg, 1, jsonStr, select_bacpac);
+          int ret = ImgInspection_JSONStr(matchingEng, *srcImg, 1, jsonStr, select_bacpac);
           free(jsonStr);
           const FeatureReport *report = matchingEng.GetReport();
 
@@ -2329,10 +2328,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             bpg_dat = GenStrBPGData("IM", NULL);
 
             ImageSampler *sampler = isCalibNA ? NULL : select_bacpac->sampler;
-            ImageDownSampling(dataSend_buff, acvImageBgrView(srcImg), _scale, sampler, 0);
+            ImageDownSampling(dataSend_buff, *srcImg, _scale, sampler, 0);
             BPG_protocol_data_acvImage_Send_info iminfo = { &dataSend_buff, (uint16_t)_scale };
-            iminfo.fullHeight = srcImg->GetHeight();
-            iminfo.fullWidth = srcImg->GetWidth();
+            iminfo.fullHeight = srcImg->rows;
+            iminfo.fullWidth = srcImg->cols;
 
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;
             bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
@@ -2533,12 +2532,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             LOGE("%s", err_str);
           }
         }
-        acvImage *srcImg = NULL;
+        cv::Mat *srcImg = NULL;
         if (imgSrcPath != NULL)
         {
-          int ret_val = LoadIMGFile(&tmp_buff, imgSrcPath);
-          if (ret_val == 0)
+          tmp_buff = cv::imread(imgSrcPath, cv::IMREAD_COLOR);
+          if (!tmp_buff.empty())
           {
+            if (!tmp_buff.isContinuous()) tmp_buff = tmp_buff.clone();
             srcImg = &tmp_buff;
           }
         }
@@ -2558,16 +2558,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             if(val)imageFetchTimeout=(int)*val;
           }
 
-          int ret_val = getImage(camera,&tmp_buff,trigger_type,imageFetchTimeout);
-          if (ret_val == 0)
+          if (getImage(camera, tmp_buff, trigger_type, imageFetchTimeout) == 0)
           {
             srcImg = &tmp_buff;
-            
-            // ImageDownSampling (cv::Mat overload) allocates dst itself; no
-            // separate ReSize needed.
             calib_bacpac.sampler->ignoreCalib(false); //First, make the cacheImage to be a calibrated full res image
-            ImageDownSampling(cacheImage, acvImageBgrView(srcImg), 1, calib_bacpac.sampler, false);
-
+            ImageDownSampling(cacheImage, *srcImg, 1, calib_bacpac.sampler, false);
           }
         }
 
@@ -2585,7 +2580,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           {
 
             // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
-            ImgInspection_DefRead(matchingEng, srcImg, 1, "data/featureDetect.json", &calib_bacpac);
+            ImgInspection_DefRead(matchingEng, *srcImg, 1, "data/featureDetect.json", &calib_bacpac);
             const FeatureReport *report = matchingEng.GetReport();
 
             if (report != NULL)

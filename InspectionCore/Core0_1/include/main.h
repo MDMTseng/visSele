@@ -145,7 +145,7 @@ public:
   uint16_t CI_pgID;
   int cameraFramesLeft = 0;
 
-  acvImage tmp_buff;
+  cv::Mat  tmp_buff;          // phase 3a (3 BPG image members all cv::Mat now)
   cv::Mat  cacheImage;        // phase 3a
   cv::Mat  dataSend_buff;     // phase 3a
 
