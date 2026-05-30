@@ -513,10 +513,8 @@ FeatureManager_BacPac neutral_bacpac = {0};
 int CameraSettingFromFile(CameraLayer *camera, char *path);
 
 CameraLayer *getCamera(int initCameraType); //0 for real First, then fake one, 1 for real camera only, 2 for fake only
-int ImgInspection_JSONStr(MatchingEngine &me, acvImage *test1, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac);
 int ImgInspection_JSONStr(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac);
 
-int ImgInspection_DefRead(MatchingEngine &me, acvImage *test1, int repeatTime, char *defFilename, FeatureManager_BacPac *bacpac);
 int ImgInspection_DefRead(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *defFilename, FeatureManager_BacPac *bacpac);
 
 typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst, size_t dstLen, uint8_t *src, size_t srcLen);
@@ -3380,15 +3378,6 @@ int CameraSettingFromFile(CameraLayer *camera, char *path)
   return 0;
 }
 
-int ImgInspection_DefRead(MatchingEngine &me, acvImage *test1, int repeatTime, char *defFilename, FeatureManager_BacPac *bacpac)
-{
-  char *string = ReadText(defFilename);
-  //printf("%s\n%s\n",string,defFilename);
-  int ret = ImgInspection_JSONStr(me, test1, repeatTime, string, bacpac);
-  free(string);
-  return ret;
-}
-
 int ImgInspection_DefRead(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *defFilename, FeatureManager_BacPac *bacpac)
 {
   char *string = ReadText(defFilename);
@@ -3397,31 +3386,6 @@ int ImgInspection_DefRead(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime,
   return ret;
 }
 
-int ImgInspection(MatchingEngine &me, acvImage *test1, FeatureManager_BacPac *bacpac, CameraLayer *cam, int repeatTime = 1)
-{
-
-  LOGI("============w:%d h:%d====================cam:%p", test1->GetWidth(), test1->GetHeight(), cam);
-  if (test1->GetWidth() * test1->GetHeight() == 0)
-  {
-    return -1;
-  }
-  clock_t t = clock();
-  bacpac->cam = cam;
-  for (int i = 0; i < repeatTime; i++)
-  {
-    me.setBacPac(bacpac);
-    me.FeatureMatching(test1);
-  }
-  clock_t new_t = clock();
-  LOGI("%fms \n", (double)(new_t - t) / CLOCKS_PER_SEC * 1000);
-  t = new_t;
-
-  return 0;
-  //ContourFeatureDetect(test1,&test1_buff,tar_signature);
-  //SaveIMGFile("data/target_buff.bmp",&test1_buff);
-}
-
-// cv::Mat-canonical overload (acv->cv migration).
 int ImgInspection(MatchingEngine &me, cv::Mat &test1_cv, FeatureManager_BacPac *bacpac, CameraLayer *cam, int repeatTime = 1)
 {
   LOGI("============w:%d h:%d====================cam:%p", test1_cv.cols, test1_cv.rows, cam);
@@ -3435,15 +3399,6 @@ int ImgInspection(MatchingEngine &me, cv::Mat &test1_cv, FeatureManager_BacPac *
   }
   clock_t new_t = clock();
   LOGI("%fms \n", (double)(new_t - t) / CLOCKS_PER_SEC * 1000);
-  return 0;
-}
-
-int ImgInspection_JSONStr(MatchingEngine &me, acvImage *test1, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac)
-{
-
-  me.ResetFeature();
-  me.AddMatchingFeature(jsonStr);
-  ImgInspection(me, test1, bacpac, bacpac->cam, repeatTime);
   return 0;
 }
 
