@@ -21,7 +21,6 @@ public:
   int AddMatchingFeature(const char *json_str);
   cJSON * SetParam(cJSON *json_str);
   int AddMatchingFeature(FeatureManager *featureSet);
-  int FeatureMatching(acvImage *img);
   int FeatureMatching(cv::Mat &img_cv);     // canonical cv::Mat entry
   const FeatureReport *GetReport();
   cJSON*FeatureReport2Json(const FeatureReport *report);

@@ -127,19 +127,6 @@ cJSON * MatchingEngine::SetParam(cJSON *json)
   return retJson;
 }
 
-int MatchingEngine::FeatureMatching(acvImage *img)
-{
-  for(int i=0;i<featureBundle.size();i++)
-  {
-    featureBundle[i]->setBacPac(bacpac);
-    featureBundle[i]->FeatureMatching(img);
-  }
-
-  return 0;
-}
-
-// Canonical cv::Mat entry. Dispatches to each child FeatureManager's cv::Mat
-// overload (base default bridges to acvImage internally for unmigrated kids).
 int MatchingEngine::FeatureMatching(cv::Mat &img_cv)
 {
   for(int i=0;i<featureBundle.size();i++)
