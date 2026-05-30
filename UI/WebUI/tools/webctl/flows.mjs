@@ -124,12 +124,43 @@ const SNAP = `(function(){
   };
 })()`;
 
+// delete the just-added shape. The reducer uses Shape_Set with shape=null +
+// existing id to mean "remove" (see UICtrlReducer:847+ comment "ID is defined
+// and shape is null - delete"). Exercises the immutable array-delete path.
+async function deleteLastShape() {
+  await ev(
+    `(function(){window.__GP_STORE__.dispatch({type:'DefConf_Lock_Level_Update',data:0});var o=window.__GP_STORE__.getState().UIData.edit_info._obj;var last=o.shapeList[o.shapeList.length-1];window.__GP_STORE__.dispatch({type:'Shape_Set',data:{shape:null,id:last.id}});return last.id;})()`
+  );
+  await sleep(500);
+}
+
+// add an arc shape (3-point primitive) — verifies the arc add path independent
+// of line. Different applyDefaults branch + different draw module.
+async function addArc() {
+  await ev(
+    `(function(){window.__GP_STORE__.dispatch({type:'DefConf_Lock_Level_Update',data:0});window.__GP_STORE__.dispatch({type:'Shape_Set',data:{shape:{type:'arc',pt1:{x:100,y:100},pt2:{x:200,y:50},pt3:{x:300,y:100}},id:undefined}});return 'added';})()`
+  );
+  await sleep(500);
+}
+
+// add a measure shape (subtype dispatcher) — verifies measure init goes through
+// the per-subtype registry path. Distance is the default subtype.
+async function addMeasure() {
+  await ev(
+    `(function(){window.__GP_STORE__.dispatch({type:'DefConf_Lock_Level_Update',data:0});window.__GP_STORE__.dispatch({type:'Shape_Set',data:{shape:{type:'measure',subtype:'distance',pt1:{x:200,y:200},value:5,USL:5.5,LSL:4.5,UCL:5.3,LCL:4.7,ref:[]},id:undefined}});return 'added';})()`
+  );
+  await sleep(500);
+}
+
 const FLOWS = {
   async load() { await reset(); return ev(SNAP); },
   async select() { await reset(); await selectFirstMeasure(); return ev(SNAP); },
   async edit() { await reset(); await selectFirstMeasure(); await editSelectedUSL(9.123); return ev(SNAP); },
   async editInput() { await reset(); await selectFirstMeasure(); await editUSLviaInput(9.0); return ev(SNAP); },
   async add() { await reset(); await addLine(); return ev(SNAP); },
+  async addArc() { await reset(); await addArc(); return ev(SNAP); },
+  async addMeasure() { await reset(); await addMeasure(); return ev(SNAP); },
+  async addThenDelete() { await reset(); await addLine(); await deleteLastShape(); return ev(SNAP); },
 };
 
 const names = only ? [only] : Object.keys(FLOWS);
