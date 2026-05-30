@@ -3324,7 +3324,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     cal.edge.min_strength = cdef.edge_min_strength;
     acv_XY off = eT.getImgOffset();
     acv_XY cc = acvVecSub(center, off);
-    CaliperCircleResult rr = caliper_locate_circle(eT.getImage(), cc, radius, sAngle, eAngle,
+    CaliperCircleResult rr = caliper_locate_circle(eT.getImageCv(), cc, radius, sAngle, eAngle,
                                                    cdef.cal_count, cal, eT.getBacpac(), cdef.name);
     if (rr.ok) { cf.circle.circumcenter = acvVecAdd(rr.center, off); cf.circle.radius = rr.radius;
                  cf.s = rr.rms; cf.matching_pts = rr.nInlier; cf.confidence = rr.confidence; }
@@ -3534,7 +3534,7 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
   acv_XY off = eT.getImgOffset();
   acv_XY p0 = acvVecSub(lineDef.p0, off);
   acv_XY p1 = acvVecSub(lineDef.p1, off);
-  CaliperLineResult r = caliper_locate_line(eT.getImage(), p0, p1, lineDef.cal_count, cal, eT.getBacpac(), lineDef.name);
+  CaliperLineResult r = caliper_locate_line(eT.getImageCv(), p0, p1, lineDef.cal_count, cal, eT.getBacpac(), lineDef.name);
   if (r.ok)
   {
     // Orient the fitted direction to the def's p0->p1 convention (the TLS fit's

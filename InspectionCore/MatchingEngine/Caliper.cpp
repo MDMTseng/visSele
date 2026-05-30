@@ -1,5 +1,5 @@
 #include "Caliper.h"
-#include "acvImage_SpDomainTool.hpp" // acvUnsignedMap1Sampling
+#include "CvBridge.h"                // cvUnsignedMap1Sampling
 #include "MatchingCore.h"            // acvVec* helpers
 #include <math.h>
 #include <vector>
@@ -98,13 +98,13 @@ static bool profile_to_edge(const float *profile, int nAcross, float step, float
   return true;
 }
 
-bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
+bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
                      const CaliperParams &p, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo,
                      std::vector<float> *outProfile, float *outPos)
 {
   if (outInfo) *outInfo = EdgeSelectInfo();
-  if (!gray) return false;
+  if (gray.empty()) return false;
   acv_XY s = acvVecNormalize(searchDir);
   if (s.X != s.X || s.Y != s.Y) return false;
   acv_XY edgeDir = { -s.Y, s.X }; // along the edge (projection direction)
@@ -123,7 +123,7 @@ bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
     for (int w = -halfW; w <= halfW; w++)
     {
       acv_XY pt = acvVecAdd(c, acvVecMult(edgeDir, (float)w));
-      float v = acvUnsignedMap1Sampling(gray, pt, 0);
+      float v = cvUnsignedMap1Sampling(gray, pt.X, pt.Y, 0);
       if (bacpac && bacpac->sampler)
         v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(pt);
       sum += v; cnt++;
@@ -135,12 +135,12 @@ bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
                          outPt, outStrength, outInfo, outPos);
 }
 
-bool search_point_scan(acvImage *gray, acv_XY start, acv_XY searchDir,
+bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
                        float length, float width, float step,
                        const EdgeSelectParams &edge, FeatureManager_BacPac *bacpac,
                        acv_XY *outPt, float *outStrength)
 {
-  if (!gray) return false;
+  if (gray.empty()) return false;
   acv_XY s = acvVecNormalize(searchDir);
   if (s.X != s.X || s.Y != s.Y) return false;
   acv_XY perp = { -s.Y, s.X };               // across the ray (width direction)
@@ -157,7 +157,7 @@ bool search_point_scan(acvImage *gray, acv_XY start, acv_XY searchDir,
     for (int i = 0; i < nAlong; i++)
     {
       acv_XY pt = acvVecAdd(start, acvVecAdd(acvVecMult(s, i * step), acvVecMult(perp, (float)c)));
-      float v = acvUnsignedMap1Sampling(gray, pt, 0);
+      float v = cvUnsignedMap1Sampling(gray, pt.X, pt.Y, 0);
       if (bacpac && bacpac->sampler)
         v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(pt);
       prof[i] = v;
@@ -201,7 +201,7 @@ static void wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,
   dir = { (float)cos(theta), (float)sin(theta) };
 }
 
-CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
+CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
                                       int count, const CaliperParams &cal,
                                       FeatureManager_BacPac *bacpac,
                                       const char *dbgName)
@@ -239,7 +239,7 @@ CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
     float *Brow = &B[(size_t)a * nAcross];
     for (int x = 0; x < nAcross; x++)
     {
-      float v = acvUnsignedMap1Sampling(gray, q, 0);
+      float v = cvUnsignedMap1Sampling(gray, q.X, q.Y, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
       Brow[x] = v;
       q = acvVecAdd(q, perpStep);
@@ -361,7 +361,7 @@ static bool kasaCircle(const std::vector<acv_XY> &pts, const std::vector<float> 
   return true;
 }
 
-CaliperCircleResult caliper_locate_circle(acvImage *gray, acv_XY center0, float radius0,
+CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, float radius0,
                                           float angStart, float angEnd, int count,
                                           const CaliperParams &cal, FeatureManager_BacPac *bacpac,
                                           const char *dbgName)

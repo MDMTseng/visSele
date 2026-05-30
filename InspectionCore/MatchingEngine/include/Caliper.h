@@ -10,7 +10,7 @@
 // Replaces per-contour-pixel scanning: fewer, cleaner, more accurate points;
 // works directly on grayscale (no binary contour needed).
 
-#include "acvImage.hpp"
+#include <opencv2/core.hpp>
 #include "FeatureManager.h"   // acv_XY, FeatureManager_BacPac (sampler: light comp)
 #include "EdgeSelect.h"
 #include <vector>
@@ -29,7 +29,7 @@ struct CaliperParams
 // (image px) and its strength, returns true.
 // outProfile/outPos (optional, for debug): the across-edge averaged grayscale
 // profile and the sub-pixel edge index into it (0..nAcross-1).
-bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
+bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
                      const CaliperParams &p, FeatureManager_BacPac *bacpac,
                      acv_XY *outPt, float *outStrength, EdgeSelectInfo *outInfo = nullptr,
                      std::vector<float> *outProfile = nullptr, float *outPos = nullptr);
@@ -42,7 +42,7 @@ bool caliper_measure(acvImage *gray, acv_XY center, acv_XY searchDir,
 // robustly combines the per-column first-hit distances (median + strength-
 // weighted mean of inliers). One-sided: scans [start, start+length] along
 // searchDir. Returns the sub-pixel edge point on the ray (image px) + strength.
-bool search_point_scan(acvImage *gray, acv_XY start, acv_XY searchDir,
+bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
                        float length, float width, float step,
                        const EdgeSelectParams &edge, FeatureManager_BacPac *bacpac,
                        acv_XY *outPt, float *outStrength);
@@ -67,7 +67,7 @@ struct CaliperLineResult
 // /tmp/calip_line_<dbgName>.png -- each caliper's across-edge profile stacked as one
 // column (caliper index = x, across-edge = y), with the picked edge marked
 // (green = inlier, red = outlier, gray = no edge) and the primitive name drawn on it.
-CaliperLineResult caliper_locate_line(acvImage *gray, acv_XY p0, acv_XY p1,
+CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
                                       int count, const CaliperParams &cal,
                                       FeatureManager_BacPac *bacpac,
                                       const char *dbgName = nullptr);
@@ -90,7 +90,7 @@ struct CaliperCircleResult
 // dbgName (optional): with env CALIP_DUMP, writes /tmp/calip_arc_<dbgName>.png --
 // each radial caliper's profile as one column (x = caliper index around the arc,
 // y = radial across-edge), picked edge marked, like the line strip.
-CaliperCircleResult caliper_locate_circle(acvImage *gray, acv_XY center, float radius,
+CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center, float radius,
                                           float angStart, float angEnd, int count,
                                           const CaliperParams &cal, FeatureManager_BacPac *bacpac,
                                           const char *dbgName = nullptr);

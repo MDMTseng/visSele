@@ -84,7 +84,8 @@ class edgeTracking
   
   float pixSum[pixWidth]={0};
   float grad[pixWidth]={0};
-  acvImage _gray_shim;        // useExtBuffer'd over the ctor's cv::Mat
+  cv::Mat _gray_cv;           // refcount-shared header from the ctor input
+  acvImage _gray_shim;        // useExtBuffer'd over _gray_cv (legacy consumers)
   acvImage *graylevelImg;     // points at _gray_shim
   acv_XY imgOffset;
   FeatureManager_BacPac *bacpac;
@@ -93,6 +94,7 @@ class edgeTracking
 
   // accessors for caliper-based locating (reuse the same image/offset/bacpac)
   acvImage *getImage(){return graylevelImg;}
+  cv::Mat &getImageCv(){return _gray_cv;}
   acv_XY getImgOffset(){return imgOffset;}
   FeatureManager_BacPac *getBacpac(){return bacpac;}
 
