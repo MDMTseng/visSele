@@ -14,6 +14,7 @@
 
 #include "acvImage.hpp"
 #include "acvImage_ComponentLabelingTool.hpp"
+#include <opencv2/core.hpp>
 #include <vector>
 
 void acvComponentLabeling_cv(acvImage *Pic, int connectivity = 8);
@@ -23,5 +24,11 @@ void acvComponentLabeling_cv(acvImage *Pic, int connectivity = 8);
 // from CC stats), so the separate full-image acvLabeledRegionInfo re-scan is
 // skipped. Same conventions: ld[1]=cage(frame), ld[2+]=objects, ld[0] empty.
 void acvComponentLabeling_cv(acvImage *Pic, std::vector<acv_LabeledData> &ld, int connectivity = 8);
+
+// cv::Mat overload (migration step). `Pic` is BGR; foreground = (R != 255).
+// Output is written back as the same packed-label BGR convention. The result
+// is identical to the acvImage overload because both operate on the same bytes
+// (the caller typically passes an acvImageBgrView of a shared buffer).
+void acvComponentLabeling_cv(cv::Mat &Pic, std::vector<acv_LabeledData> &ld, int connectivity = 8);
 
 #endif
