@@ -108,6 +108,14 @@ Phase 3a — `binary_processing_group` entry-point cv-clean. Done:
 - wiringPanel members: image_pipe_info::img and the static test1_buff are cv::Mat;
   BPG class members tmp_buff/cacheImage/dataSend_buff are cv::Mat.
 
+Phase 3a (post-2026-05-31 update): sig360_circle_line entry flipped to
+cv::Mat&; graySampleBilinear and convertGrayEdges2Signature migrated;
+dead helpers (searchP, OTSU_Threshold) + dead `doCropStyle` branch +
+dead SingleMatching acv params deleted. Remaining sig360 body still
+calls MatchingCore.cpp helpers (extractLabeledContourDataToContourGrid,
+edgeTracking ctor, contourGridGrayLevelRefine) which take acvImage*;
+those are the gate-exercised acvImage consumers blocking the unlink.
+
 Phase 3a status:
 - BPG class image members (`tmp_buff`/`cacheImage`/`dataSend_buff`) → `cv::Mat`.
 - `image_pipe_info::img` (per-pipe captured frame) → `cv::Mat`; camera
