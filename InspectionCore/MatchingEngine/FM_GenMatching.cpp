@@ -594,18 +594,17 @@ float PoseRefine(cv::Mat &srcImg,std::vector<FM_GenMatching::region> &regions,st
 }
 
 
-int FM_GenMatching::FeatureMatching(acvImage *img)
+int FM_GenMatching::FeatureMatching(cv::Mat &cv_img)
 {
 
   ClearReport();
   cJSON *jsonRep=cJSON_CreateObject();
-  
+
   cJSON_AddStringToObject(jsonRep, "type", GetFeatureTypeName());
   ClearReport();
   report.data.cjson_report.cjson=jsonRep;
-  // LOGI("GOGOGOGOGOGGO....inspectionStage:%d",inspectionStage);
 
-  Mat cv_img(img->GetHeight(),img->GetWidth(),CV_8UC3,img->CVector[0]);
+  if (cv_img.empty()) return -1;
 
 
   cJSON_AddStringToObject(jsonRep, "insp_type", inspType);
@@ -693,7 +692,7 @@ int FM_GenMatching::FeatureMatching(acvImage *img)
 
     cJSON *pixels=cJSON_CreateArray();
 
-    if(Y<0 || X<0 || X+W>img->GetWidth() || Y+H>img->GetHeight())
+    if(Y<0 || X<0 || X+W>cv_img.cols || Y+H>cv_img.rows)
     {
       //out of bound
 
@@ -705,7 +704,7 @@ int FM_GenMatching::FeatureMatching(acvImage *img)
 
       for(int i=Y;i<Y+H;i++)for(int j=X;j<X+W;j++)
       {
-        cJSON *n = cJSON_CreateNumber(img->CVector[i][j*3]);
+        cJSON *n = cJSON_CreateNumber(cv_img.ptr<uint8_t>(i)[j*3]);
         cJSON_AddItemToArray(pixels, n);
       }
       cJSON_AddItemToObject(jsonRep, "pixels", pixels);
@@ -879,22 +878,3 @@ int FM_GenMatching::FeatureMatching(acvImage *img)
   return -1;
 }
 
-int FM_GenMatching::FeatureMatching1(acvImage *img)
-{
-
-  cJSON *jsonRep=report.data.cjson_report.cjson;
-
-  return -1;
-}
-
-int FM_GenMatching::FeatureMatching0(acvImage *img)
-{
-  
-  float cableRatio=0.074;
-  float maxDiffMargin=24;
-
-
-  // inspectionStage=1;
-
-  return 0;
-}

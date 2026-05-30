@@ -16,7 +16,7 @@ class FeatureManager_nop:public FeatureManager {
 public :
   FeatureManager_nop(const char *json_str): FeatureManager(json_str){};
   int reload(const char *json_str){return 0;};
-  int FeatureMatching(acvImage *img){
+  int FeatureMatching(cv::Mat &img) override{
     report.type=FeatureReport::nop;
     return 0;};
     
