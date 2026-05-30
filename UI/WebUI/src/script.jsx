@@ -66,6 +66,28 @@ log.setLevel("info");
 log.getLogger("InspectionEditorLogic").setLevel("INFO");
 log.getLogger("UICtrlReducer").setLevel("INFO");
 
+// Diagnostics ring-buffer capture fix (R-quick-wins #7): loglevel binds each
+// logger's methods to the CURRENT console reference at setLevel time. Named
+// loggers created during the import chain (e.g. BPG_Protocol, comm/*) were
+// constructed BEFORE initDiag() wrapped console.*, so their log.error/info/warn
+// bypassed the ring buffer entirely. Force every existing logger to re-setLevel
+// here (after initDiag has wrapped console + after the explicit setLevel calls
+// above) so they rebind to the wrapped console and ALL loglevel output reaches
+// the diag ring buffer + "Download Diagnostics" feature.
+try {
+  const _loggers = (typeof log.getLoggers === 'function') ? log.getLoggers() : {};
+  Object.keys(_loggers).forEach((name) => {
+    const lg = _loggers[name];
+    if (lg && typeof lg.setLevel === 'function' && typeof lg.getLevel === 'function') {
+      lg.setLevel(lg.getLevel(), false); // false = don't re-persist; just rebind methods.
+    }
+  });
+  log.setLevel(log.getLevel(), false);
+} catch (e) {
+  // loglevel API surface drift — fall through. The diag ring still captures raw
+  // console.* + the global window error/unhandledrejection handlers (R3 fix).
+}
+
 // import moment from 'moment';
 // import 'moment/locale/fr';
 // moment.locale('fr');
@@ -101,6 +123,7 @@ if (typeof __DEV_MODE__ !== "undefined" && __DEV_MODE__) {
   window.__GP_BPG__ = BPG_Protocol; // raw framing/decode (raw2header, raw2Obj_IM, ...) for QA
   window.__GP_MEASURE__ = { applyMeasureLimitCoupling, Shape_Attr_Fill }; // pure value<->limit coupling + per-shape defaults for QA
   window.__GP_UTIL__ = { PostfixExpCalc, Exp2PostfixExp, round, GetObjElement, dictLookUp, CircularCounter, ConsumeQueue }; // pure utils for QA
+  window.__GP_LOG__ = log; // loglevel module — for QA to verify the diag ring captures loglevel output
 }
 
 // Global safety net for async errors that React error boundaries cannot catch
