@@ -81,3 +81,13 @@ export function drawInspection(ctx, shape, renderer, { shapeList = [] } = {}) {
     renderer.drawcross(ctx, point, renderer.getPointSize() * 2);
   }
 }
+
+// Inherent-shape-list draw — a black rect at the resolved aux_point.
+// Extracted from renderUTIL.drawInherentShapeList.case SHAPE_TYPE.aux_point.
+export function drawInherent(ctx, shape, renderer) {
+  let point = renderer.db_obj.auxPointParse(shape);
+  if (point != null) {
+    ctx.strokeStyle = 'black';
+    renderer.drawpoint(ctx, point, 'rect');
+  }
+}

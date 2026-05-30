@@ -223,22 +223,12 @@ class renderUTIL {
 
     inherentShapeList.forEach((ishape) => {
       if (ishape == null) return;
-
-      switch (ishape.type) {
-        case SHAPE_TYPE.aux_point:
-          {
-            let point = this.db_obj.auxPointParse(ishape);
-            if (point != null) {
-              ctx.strokeStyle = "black";
-              this.drawpoint(ctx, point, "rect")
-            }
-          }
-          break;
-
-        case 'aux_line':
-          {
-          }
-          break;
+      // Keystone step 3 — inherent-list draw also per-shape. Unregistered or
+      // module-without-drawInherent types are no-ops (legacy aux_line case was
+      // already an empty block).
+      const mod = getShapeModule(ishape.type);
+      if (mod && mod.drawInherent) {
+        mod.drawInherent(ctx, ishape, this);
       }
     });
   }
