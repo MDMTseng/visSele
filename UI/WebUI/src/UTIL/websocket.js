@@ -294,13 +294,21 @@ export class websocket_autoReconnect{
 }
 
 export class websocket_reqTrack{
-  constructor(websocket,trackKey="req_id") {
+  // maxAge_ms: outstanding requests older than this get rejected and evicted
+  // by a 5s-cadence sweep. Plugs the round-6 leak where a caller's own timeout
+  // would .reject() the promise but leave the trackWindow entry behind, so a
+  // late/never ACK accumulated forever until reconnect. 30s is a safe default
+  // (longer than every in-tree caller's own timeout); set 0 to disable.
+  constructor(websocket,trackKey="req_id",maxAge_ms=30000) {
     let onopen = websocket.onopen;
     let onmessage = websocket.onmessage;
     let onerror = websocket.onerror;
     let onclose = websocket.onclose;
     this.trackKey=trackKey;
     this.trackWindow={};
+    if (maxAge_ms > 0) {
+      this._sweepHandle = setInterval(() => this._sweepStale(maxAge_ms), 5000);
+    }
 
     websocket.onopen=(ev)=>{
       this.trackWindow={};
@@ -362,6 +370,29 @@ export class websocket_reqTrack{
   }
   
   onTrackError(ev){}
+
+  _sweepStale(maxAge_ms) {
+    const now = Date.now();
+    let evicted = 0;
+    Object.keys(this.trackWindow).forEach((key) => {
+      const t = this.trackWindow[key];
+      if (t && typeof t.time === "number" && now - t.time > maxAge_ms) {
+        if (typeof t.reject === "function") {
+          try { t.reject(new Error("trackWindow timeout (sweep)")); } catch (_) {}
+        }
+        delete this.trackWindow[key];
+        evicted++;
+      }
+    });
+    if (evicted > 0) log.warn("[ws-reqTrack] swept stale requests", { evicted, maxAge_ms });
+  }
+
+  destroy() {
+    if (this._sweepHandle !== undefined) {
+      clearInterval(this._sweepHandle);
+      this._sweepHandle = undefined;
+    }
+  }
 
   onopen(ev){}
   onmessage(ev){}
