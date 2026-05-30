@@ -61,6 +61,16 @@ void cvThresholdMap(cv::Mat &dst, const cv::Mat &src,
 // BGR (CV_8UC3) image: returns the float-valued bilinear interpolation of the
 // requested channel at (XY.X, XY.Y); NaN if out of bounds (X<0 or Y<0 or
 // X+1 > cols-1 or Y+1 > rows-1).
+// Nearest-neighbor variant (rounds to int, no interp). Out-of-bounds -> 0
+// to match acvUnsignedMap1Sampling_Nearest.
+inline uint8_t cvUnsignedMap1Sampling_Nearest(const cv::Mat &m, float x, float y, int channel)
+{
+    int rX = (int)std::round(x);
+    int rY = (int)std::round(y);
+    if (rX < 0 || rY < 0 || rX > m.cols - 1 || rY > m.rows - 1) return 0;
+    return m.ptr<uint8_t>(rY)[rX * m.channels() + channel];
+}
+
 inline float cvUnsignedMap1Sampling(const cv::Mat &m, float x, float y, int channel)
 {
     int rX = (int)(x);

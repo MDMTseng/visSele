@@ -144,7 +144,7 @@ add_library(common_lib STATIC
 force_cxx(common_lib/Util.c common_lib/Util2.c)
 target_include_directories(common_lib PUBLIC
   common_lib/include contrib/Compat_dirent/${PLAT}/include)
-target_link_libraries(common_lib PUBLIC cJSON acvImage logctrl lodepng mjpegLib simple_uart)
+target_link_libraries(common_lib PUBLIC cJSON acvImage logctrl lodepng mjpegLib simple_uart opencv_core)
 if(WIN32 OR MINGW OR MSYS)
   target_compile_options(common_lib PRIVATE -Wa,-mbig-obj)
 endif()

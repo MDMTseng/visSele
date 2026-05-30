@@ -5,6 +5,7 @@
 #include <acvImage.hpp>
 #include <acvImage_BasicTool.hpp>
 #include <acvImage_SpDomainTool.hpp>
+#include <opencv2/core.hpp>
 
 
 typedef struct angledOffsetG{
@@ -311,6 +312,47 @@ class ImageSampler
   {
     acv_XY pos={imgPos[0],imgPos[1]};
     return sampleImage_ImgCoord(img,pos,doNearest);
+  }
+
+  // cv::Mat overloads of the sampler. Mirror the acvImage code path
+  // (ideal2img coord transform + bilinear/nearest sample + backlight factor).
+  float sampleImage_ImgCoord_cv(const cv::Mat &m, acv_XY pos, int doNearest=1, int ch=0)
+  {
+    float bri = 0;
+    int rX = (int)pos.X, rY = (int)pos.Y;
+    if (doNearest == 1)
+    {
+      rX = (int)std::round(pos.X); rY = (int)std::round(pos.Y);
+      if (rX < 0 || rY < 0 || rX > m.cols - 1 || rY > m.rows - 1) bri = 0;
+      else bri = m.ptr<uint8_t>(rY)[rX * m.channels() + ch];
+    }
+    else
+    {
+      float resX = pos.X - rX, resY = pos.Y - rY;
+      if (rX < 0 || rY < 0 || rX + 1 > m.cols - 1 || rY + 1 > m.rows - 1) bri = std::nan("");
+      else
+      {
+        const int chN = m.channels();
+        const uint8_t *r0 = m.ptr<uint8_t>(rY), *r1 = m.ptr<uint8_t>(rY + 1);
+        float c00 = r0[rX * chN + ch], c01 = r0[(rX + 1) * chN + ch];
+        float c10 = r1[rX * chN + ch], c11 = r1[(rX + 1) * chN + ch];
+        c00 += resX * (c01 - c00);
+        c10 += resX * (c11 - c10);
+        c00 += resY * (c10 - c00);
+        bri = c00;
+      }
+    }
+    pos = acvVecAdd(pos, origin_offset);
+    return bri * sampleBackLightFactor_ImgCoord(pos);
+  }
+  int sampleImage3_IdealCoord(const cv::Mat &m, float imgPos[2], float ret_RGB[3], int doNearest=1)
+  {
+    ideal2img(imgPos);
+    acv_XY pos = { imgPos[0], imgPos[1] };
+    ret_RGB[0] = sampleImage_ImgCoord_cv(m, pos, doNearest, 0);
+    ret_RGB[1] = sampleImage_ImgCoord_cv(m, pos, doNearest, 1);
+    ret_RGB[2] = sampleImage_ImgCoord_cv(m, pos, doNearest, 2);
+    return 0;
   }
 
   float sampleAngleOffset(float angle)
