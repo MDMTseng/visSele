@@ -9,6 +9,11 @@ import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine,
 import dclone from 'clone';
 import * as log from 'loglevel';
 
+// canvasCtrl: angle refs two lines or search_points (intersection).
+export function availableRefShapes(shapeList) {
+  return shapeList.filter((s) => s.type === 'line' || s.type === 'search_point');
+}
+
 export function draw(ctx, shape, subObjs, renderer, sctx) {
   const { db_obj, shapeList, unitConvert, measValueAdjStr } = sctx;
   let measureValue;

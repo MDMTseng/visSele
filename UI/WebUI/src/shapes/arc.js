@@ -17,6 +17,21 @@ export function buildWhiteListKey(ctx) {
   };
 }
 
+// canvasCtrl: no refs — arc is constructed from raw pt1/pt2/pt3.
+export function availableRefShapes(shapeList /*, subtype */) {
+  return [];
+}
+
+// canvasCtrl: arc center (or midpoint if the radius is huge — pan would otherwise
+// land off-screen).
+export function fitCameraCenter(shape /*, db_obj */) {
+  const arc = threePointToArc(shape.pt1, shape.pt2, shape.pt3);
+  if (arc.r > 500) {
+    return { x: (shape.pt1.x + shape.pt3.x) / 2, y: (shape.pt1.y + shape.pt3.y) / 2 };
+  }
+  return { x: arc.x, y: arc.y };
+}
+
 export function applyDefaults(shape) {
   let out = { ...shape };
   if (out.locating !== 'caliper') out.locating = 'contour';

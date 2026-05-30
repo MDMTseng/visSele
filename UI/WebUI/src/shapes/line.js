@@ -24,6 +24,20 @@ export function buildWhiteListKey(ctx) {
   };
 }
 
+// canvasCtrl: what shapes are valid refs when creating/editing a line. Lines
+// have no refs — they're constructed from raw pt1/pt2.
+export function availableRefShapes(shapeList /*, subtype */) {
+  return [];
+}
+
+// canvasCtrl: center point for "fit camera to this shape" — midpoint of pt1/pt2.
+export function fitCameraCenter(shape /*, db_obj */) {
+  return {
+    x: (shape.pt1.x + shape.pt2.x) / 2,
+    y: (shape.pt1.y + shape.pt2.y) / 2,
+  };
+}
+
 export function applyDefaults(shape) {
   let out = { ...shape };
   if (out.vertex_touch_searching !== true) out.vertex_touch_searching = false;

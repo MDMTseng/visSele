@@ -9,6 +9,11 @@ import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine,
 import dclone from 'clone';
 import * as log from 'loglevel';
 
+// canvasCtrl: distance can ref anything except other measures.
+export function availableRefShapes(shapeList) {
+  return shapeList.filter((s) => s.type !== 'measure');
+}
+
 export function draw(ctx, shape, subObjs, renderer, sctx) {
   const { db_obj, shapeList, unitConvert, measValueAdjStr } = sctx;
   let measureValue;

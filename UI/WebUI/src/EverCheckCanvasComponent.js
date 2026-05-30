@@ -1,6 +1,7 @@
 //UIControl
 
 import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
+import { getShapeModule } from 'JSSRCROOT/shapes';
 
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
@@ -1447,80 +1448,25 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
         }
         break;
     }
-    switch (type) {
-      case SHAPE_TYPE.line:
-      case SHAPE_TYPE.arc:
-        return [];
-        break;
-      case SHAPE_TYPE.aux_point:
-        return shapeList.filter((shape) =>
-          shape.type === SHAPE_TYPE.line ||
-          shape.type === SHAPE_TYPE.search_point
-        );
-        break;
-      case SHAPE_TYPE.aux_line:
-        return shapeList.filter((shape) =>
-          shape.type === SHAPE_TYPE.arc ||
-          shape.type === SHAPE_TYPE.search_point
-        );
-        break;
-      case SHAPE_TYPE.search_point:
-        return shapeList.filter((shape) => shape.type === SHAPE_TYPE.line);
-        break;
-      case SHAPE_TYPE.measure:
-        switch (subtype) {
-          case SHAPE_TYPE.measure_subtype.distance:
-            return shapeList.filter((shape) => shape.type !== SHAPE_TYPE.measure);
-            break;
-          case SHAPE_TYPE.measure_subtype.angle:
-            return shapeList.filter((shape) => shape.type === SHAPE_TYPE.line || shape.type === SHAPE_TYPE.search_point);
-            break;
-          case SHAPE_TYPE.measure_subtype.radius:
-          case SHAPE_TYPE.measure_subtype.circle_info:
-            return shapeList.filter((shape) => shape.type === SHAPE_TYPE.arc);
-            break;
-          case SHAPE_TYPE.measure_subtype.calc:
-            return shapeList.filter((shape) => shape.type === SHAPE_TYPE.measure);
-            break;
-        }
-        break;
-    }
+    // Keystone phase C: per-shape canvasCtrl. Each shape module owns the rule
+    // for what other shapes can be referenced when creating/editing it (measure
+    // further dispatches by subtype). Unregistered types fall through to the
+    // unfiltered list (matches legacy default).
+    const mod = getShapeModule(type);
+    if (mod && mod.availableRefShapes) return mod.availableRefShapes(shapeList, subtype);
     return shapeList;
   }
 
   fitCameraToShape(shape) {
     if (shape == null || shape === undefined) return;
-    let center = { x: 0, y: 0 };
-    switch (shape.type) {
-      case SHAPE_TYPE.line:
-        center.x = (shape.pt1.x + shape.pt2.x) / 2;
-        center.y = (shape.pt1.y + shape.pt2.y) / 2;
-        break;
-      case SHAPE_TYPE.arc:
-        let arc = threePointToArc(shape.pt1, shape.pt2, shape.pt3);
-        if (arc.r > 500) {
-          center.x = (shape.pt1.x + shape.pt3.x) / 2;
-          center.y = (shape.pt1.y + shape.pt3.y) / 2;
-        }
-        else {
-          center.x = arc.x;
-          center.y = arc.y;
-        }
-
-        break;
-      case SHAPE_TYPE.aux_point:
-        let pt = this.db_obj.auxPointParse(shape);
-        if (pt == null) return;
-        center = pt;
-        break;
-      case SHAPE_TYPE.search_point:
-        {
-          center = shape.pt1;
-        }
-        break;
-      default:
-        return;
-    }
+    // Keystone phase C: per-shape canvasCtrl. Each shape module returns its
+    // "fit camera" center point (or null/undefined to skip). Unregistered types
+    // and shapes without fitCameraCenter (e.g. aux_line, measure) skip — same
+    // as the legacy default branch's early return.
+    const mod = getShapeModule(shape.type);
+    if (!mod || !mod.fitCameraCenter) return;
+    const center = mod.fitCameraCenter(shape, this.db_obj);
+    if (!center) return;
 
     this.camera.SetOffset({
       x: -center.x,

@@ -19,6 +19,11 @@ export function buildWhiteListKey(ctx) {
   };
 }
 
+// canvasCtrl: circle_info refs an arc (same as radius).
+export function availableRefShapes(shapeList) {
+  return shapeList.filter((s) => s.type === 'arc');
+}
+
 export function draw(ctx, shape, subObjs, renderer, sctx) {
   const { db_obj, shapeList, unitConvert, measValueAdjStr } = sctx;
   let measureValue;

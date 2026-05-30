@@ -13,6 +13,18 @@ export function buildWhiteListKey(ctx) {
   };
 }
 
+// canvasCtrl: aux_point refs a line + a search_point (their intersection).
+export function availableRefShapes(shapeList /*, subtype */) {
+  return shapeList.filter((s) => s.type === 'line' || s.type === 'search_point');
+}
+
+// canvasCtrl: aux_point's center is its RESOLVED intersection point (computed
+// by the model via auxPointParse). Returns null if can't resolve.
+export function fitCameraCenter(shape, db_obj) {
+  const pt = db_obj && db_obj.auxPointParse ? db_obj.auxPointParse(shape) : null;
+  return pt || null;
+}
+
 // (no applyDefaults — legacy Shape_Attr_Fill has no case for aux_point; pass-through.)
 
 // Draw an aux_point — extracted verbatim from renderUTIL.drawShapeList.case SHAPE_TYPE.aux_point.

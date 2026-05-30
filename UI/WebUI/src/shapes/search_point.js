@@ -14,6 +14,16 @@ export function buildWhiteListKey(ctx) {
   };
 }
 
+// canvasCtrl: search_point refs only a line (ref[0]).
+export function availableRefShapes(shapeList /*, subtype */) {
+  return shapeList.filter((s) => s.type === 'line');
+}
+
+// canvasCtrl: search_point's pt1 is the search target — center on it.
+export function fitCameraCenter(shape /*, db_obj */) {
+  return shape.pt1;
+}
+
 export function applyDefaults(shape) {
   let out = { ...shape };
   if (out.search_far === undefined) {

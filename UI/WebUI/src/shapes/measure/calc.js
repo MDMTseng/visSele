@@ -28,6 +28,12 @@ export function buildWhiteListKey(ctx) {
   };
 }
 
+// canvasCtrl: calc refs other measures (with loop protection — handled
+// upstream by buildWhiteListKey filtering).
+export function availableRefShapes(shapeList) {
+  return shapeList.filter((s) => s.type === 'measure');
+}
+
 export function draw(ctx, shape, subObjs, renderer, sctx) {
   const { db_obj, shapeList, unitConvert, measValueAdjStr } = sctx;
   let measureValue;

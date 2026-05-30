@@ -11,6 +11,15 @@ import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 
 export const type = 'measure';
 
+// canvasCtrl: measure refs depend on the subtype — dispatch to the subtype module.
+export function availableRefShapes(shapeList, subtype) {
+  const subMod = SUBTYPE_REGISTRY[subtype];
+  if (subMod && subMod.availableRefShapes) return subMod.availableRefShapes(shapeList);
+  return shapeList; // unknown subtype → unrestricted (matches legacy fallthrough)
+}
+
+// (no fitCameraCenter — measure doesn't pan-to-shape in the legacy code.)
+
 // Editor property-sheet schema slice for measure — merged with the base schema
 // (type/subtype/name/margin) + the per-subtype slice (info_type, calc_f, ...).
 export function buildWhiteListKey(ctx) {

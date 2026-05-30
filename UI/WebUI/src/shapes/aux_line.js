@@ -2,6 +2,13 @@
 // See shapes/line.js for the pattern + rationale.
 export const type = 'aux_line';
 
+// canvasCtrl: aux_line refs an arc + a search_point.
+export function availableRefShapes(shapeList /*, subtype */) {
+  return shapeList.filter((s) => s.type === 'arc' || s.type === 'search_point');
+}
+
+// (no fitCameraCenter — aux_line doesn't pan-to-shape in the legacy code.)
+
 // (no applyDefaults — legacy Shape_Attr_Fill has no case for aux_line; pass-through.)
 
 // Draw an aux_line — extracted verbatim from renderUTIL.drawShapeList.case SHAPE_TYPE.aux_line.
