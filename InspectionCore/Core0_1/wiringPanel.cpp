@@ -305,46 +305,51 @@ class ImageStackAddUp
   std::mutex lock;
 public:
   int stackingC = 0;
-  acvImage imgStacked;
-  acvImage imgExtract;
+  // phase 3a: cv::Mat-backed (was acvImage).  imgStacked stores 24-bit
+  // accumulator values via _24BitUnion stored as 3 bytes / pixel.
+  cv::Mat imgStacked;
+  cv::Mat imgExtract;
 
-  void acvImageAddUp_1CH(acvImage *imgOut, acvImage *imgIn)
+  void addUp_1CH(cv::Mat &accum, const cv::Mat &src)
   {
     std::lock_guard<std::mutex> guard(lock);
-    for (int i = 0; i < imgOut->GetHeight(); i++)
+    for (int i = 0; i < accum.rows; i++)
     {
-      for (int j = 0; j < imgOut->GetWidth(); j++)
+      uchar *aRow = accum.ptr<uchar>(i);
+      const uchar *sRow = src.ptr<uchar>(i);
+      for (int j = 0; j < accum.cols; j++)
       {
-        // 3 channels will be used for number over flow
-        _24BitUnion *pixU = (_24BitUnion *)(imgOut->CVector[i] + j * 3);
-        pixU->_3Byte.Num += imgIn->CVector[i][j * 3];
+        _24BitUnion *pixU = (_24BitUnion *)(aRow + j * 3);
+        pixU->_3Byte.Num += sRow[j * 3];
       }
     }
   }
 
-  void acvImageSet_1CH(acvImage *imgOut, acvImage *imgIn)
+  void set_1CH(cv::Mat &accum, const cv::Mat &src)
   {
     std::lock_guard<std::mutex> guard(lock);
-    for (int i = 0; i < imgOut->GetHeight(); i++)
+    for (int i = 0; i < accum.rows; i++)
     {
-      for (int j = 0; j < imgOut->GetWidth(); j++)
+      uchar *aRow = accum.ptr<uchar>(i);
+      const uchar *sRow = src.ptr<uchar>(i);
+      for (int j = 0; j < accum.cols; j++)
       {
-        // 3 channels will be used for number over flow
-        _24BitUnion *pixU = (_24BitUnion *)(imgOut->CVector[i] + j * 3);
-        pixU->_3Byte.Num = imgIn->CVector[i][j * 3];
+        _24BitUnion *pixU = (_24BitUnion *)(aRow + j * 3);
+        pixU->_3Byte.Num = sRow[j * 3];
       }
     }
   }
-  void acvImageClear(acvImage *imgOut)
+
+  void clear()
   {
     std::lock_guard<std::mutex> guard(lock);
-    memset((void *)imgOut->CVector[0], 0, imgOut->GetHeight() * imgOut->GetWidth() * 3);
+    if (!imgStacked.empty()) imgStacked.setTo(cv::Scalar(0,0,0));
   }
 
-  void ReSize(acvImage *ref)
+  void ReSize(const cv::Mat &ref)
   {
     std::lock_guard<std::mutex> guard(lock);
-    imgStacked.ReSize(ref);
+    imgStacked.create(ref.rows, ref.cols, CV_8UC3);
     Reset();
   }
 
@@ -352,79 +357,71 @@ public:
   {
     std::lock_guard<std::mutex> guard(lock);
     stackingC = 0;
-    //acvImageClear(&imgStacked);
   }
 
-  void Add(acvImage *imgIn)
+  void Add(const cv::Mat &in)
   {
     std::lock_guard<std::mutex> guard(lock);
-    if (stackingC == 0)
-    {
-      acvImageSet_1CH(&imgStacked, imgIn);
-      stackingC++;
-      return;
-    }
-    if (stackingC < 100)
-    {
-      acvImageAddUp_1CH(&imgStacked, imgIn);
-      stackingC++;
-    }
+    if (stackingC == 0)        { set_1CH(imgStacked, in);   stackingC++; return; }
+    if (stackingC < 100)       { addUp_1CH(imgStacked, in); stackingC++; }
   }
 
-  void Export(acvImage *imgOut)
+  void Export(cv::Mat &out)
   {
     std::lock_guard<std::mutex> guard(lock);
-    imgOut->ReSize(&imgStacked);
-    for (int i = 0; i < imgOut->GetHeight(); i++)
+    out.create(imgStacked.rows, imgStacked.cols, CV_8UC3);
+    for (int i = 0; i < out.rows; i++)
     {
-      for (int j = 0; j < imgOut->GetWidth(); j++)
+      uchar *oRow = out.ptr<uchar>(i);
+      const uchar *sRow = imgStacked.ptr<uchar>(i);
+      for (int j = 0; j < out.cols; j++)
       {
-        // 3 channels will be used for number over flow
-
-        _24BitUnion *pixU = (_24BitUnion *)(imgStacked.CVector[i] + j * 3);
-        int pix = pixU->_3Byte.Num / stackingC;
-        if (pix > 255)
-          pix = 255;
-        imgOut->CVector[i][j * 3] = pix;
-        imgOut->CVector[i][j * 3 + 1] = pix;
-        imgOut->CVector[i][j * 3 + 2] = pix;
+        _24BitUnion *pixU = (_24BitUnion *)(sRow + j * 3);
+        int pix = pixU->_3Byte.Num / (stackingC == 0 ? 1 : stackingC);
+        if (pix > 255) pix = 255;
+        oRow[j * 3] = oRow[j * 3 + 1] = oRow[j * 3 + 2] = pix;
       }
     }
+  }
+
+  // Bridge: write the averaged frame into an acvImage.  Used by the still-
+  // acvImage tmp_buff in the BPG SV handler; will go away once tmp_buff also
+  // becomes cv::Mat.
+  void Export(acvImage *imgOut)
+  {
+    if (!imgOut) return;
+    cv::Mat tmp; Export(tmp);
+    imgOut->ReSize(tmp.cols, tmp.rows);
+    cv::Mat view = acvImageBgrView(imgOut);
+    tmp.copyTo(view);
   }
 
   void Export()
   {
     std::lock_guard<std::mutex> guard(lock);
-    Export(&imgExtract);
+    Export(imgExtract);
   }
 
-  bool DiffBigger(acvImage *img2, float globalDiffThres, int localDiffThres, int skipSampling = 10)
+  bool DiffBigger(const cv::Mat &img2, float globalDiffThres, int localDiffThres, int skipSampling = 10)
   {
     std::lock_guard<std::mutex> guard(lock);
-    if (skipSampling < 1)
-      skipSampling = 1;
+    if (skipSampling < 1) skipSampling = 1;
 
-    globalDiffThres *= globalDiffThres * (imgStacked.GetHeight() * imgStacked.GetWidth() / skipSampling / skipSampling);
-
+    globalDiffThres *= globalDiffThres * (imgStacked.rows * imgStacked.cols / skipSampling / skipSampling);
     localDiffThres *= localDiffThres;
 
-    // LOGI("%d %d   %d %d",imgStacked.GetHeight(),imgStacked.GetWidth(),img2->GetHeight(),img2->GetWidth());
-    uint64_t diffSum = 0;
-    int diffMax = 0;
-    int count = 0;
-    for (int i = 0; i < imgStacked.GetHeight(); i += skipSampling)
+    uint64_t diffSum = 0; int diffMax = 0; int count = 0;
+    for (int i = 0; i < imgStacked.rows; i += skipSampling)
     {
-      for (int j = 0; j < imgStacked.GetWidth(); j += skipSampling)
+      const uchar *sRow = imgStacked.ptr<uchar>(i);
+      const uchar *src2Row = img2.ptr<uchar>(i);
+      for (int j = 0; j < imgStacked.cols; j += skipSampling)
       {
 
-        _24BitUnion *pixU = (_24BitUnion *)(imgStacked.CVector[i] + j * 3);
-        // LOGI("im(%d,%d)",j,i);
+        _24BitUnion *pixU = (_24BitUnion *)(sRow + j * 3);
         int pix = stackingC == 0 ? 0 : (pixU->_3Byte.Num / stackingC);
-
         count++;
-
-        // LOGI("im(%d,%d)=%d",j,i,pix);
-        int diff = pix - img2->CVector[i][j * 3];
+        int diff = pix - src2Row[j * 3];
         diff *= diff;
         diffSum += diff;
         if (diffSum > globalDiffThres)
@@ -1801,7 +1798,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             }
             else
             {
-              tmp_buff.ReSize(&(imstack.imgStacked));
+              tmp_buff.ReSize(imstack.imgStacked.cols, imstack.imgStacked.rows);
               // acvCloneImage(&imstack.imgStacked,&tmp_buff,0);
               // 
               imstack.Export(&tmp_buff);
