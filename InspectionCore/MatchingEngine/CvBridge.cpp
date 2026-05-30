@@ -1,5 +1,6 @@
 #include "CvBridge.h"
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 
 int loadImageCv(const char *path, cv::Mat &out_mat, acvImage &out_acv)
 {
@@ -75,5 +76,24 @@ void grayMatToAcvImage(const cv::Mat &g, acvImage *im)
     unsigned char *d = im->CVector[oy + y] + ox * 3;
     for (int x = 0; x < ww; x++) { d[x * 3] = d[x * 3 + 1] = d[x * 3 + 2] = s[x]; }
   }
+}
+
+
+void cvCloneImage(const cv::Mat &src, cv::Mat &dst, int mode)
+{
+  if (src.empty()) return;
+  if (mode == -1) {
+    src.copyTo(dst);
+    return;
+  }
+  if (mode < 0 || mode > 2) {
+    dst.create(src.rows, src.cols, CV_8UC3);
+    dst.setTo(cv::Scalar(0, 0, 0));
+    return;
+  }
+  cv::Mat ch;
+  if (src.channels() == 1) ch = src;
+  else cv::extractChannel(src, ch, mode);
+  cv::cvtColor(ch, dst, cv::COLOR_GRAY2BGR);
 }
 

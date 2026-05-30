@@ -41,4 +41,10 @@ int loadImageCv(const char *path, cv::Mat &out_mat, acvImage &out_acv);
 // express that as a single-channel header without copying.
 cv::Mat acvImageBgrView(acvImage *im);
 
+// cv::Mat-native equivalent of acvCloneImage(src, dst, mode).
+// mode == -1: dst = src (full BGR copy).
+// mode == 0/1/2: extract channel B/G/R, replicate to a CV_8UC3 BGR dst.
+// Reallocates dst if its size/type doesn't match.
+void cvCloneImage(const cv::Mat &src, cv::Mat &dst, int mode);
+
 #endif // CV_BRIDGE_H
