@@ -36,20 +36,33 @@ public :
   };
   void setBacPac(FeatureManager_BacPac *bacpac){this->bacpac=bacpac;};
   virtual int reload(const char *json_str)=0;
-  virtual int FeatureMatching(acvImage *img)=0;
 
-  // Canonical engine entry (acv->cv migration). Default impl bridges an
-  // acvImage shim over the cv::Mat's pixels (zero copy when the Mat is
-  // continuous) and forwards to the legacy override. Derived classes that
-  // want to consume cv::Mat directly can override this.
+  // Both FeatureMatching overloads are now non-pure with mutual bridges.
+  // Subclasses override either one (or both, when they care about avoiding
+  // the shim cost). A per-instance re-entry guard aborts cleanly if neither
+  // is overridden (would otherwise loop forever).
+private:
+  bool _fm_inflight = false;
+public:
+  virtual int FeatureMatching(acvImage *img) {
+    if (_fm_inflight || img == NULL) return -1;
+    _fm_inflight = true;
+    cv::Mat view(img->GetHeight(), img->GetWidth(), CV_8UC3, img->CVector[0]);
+    int rc = FeatureMatching(view);
+    _fm_inflight = false;
+    return rc;
+  }
   virtual int FeatureMatching(cv::Mat &img_cv) {
-    if (img_cv.empty()) return -1;
+    if (_fm_inflight || img_cv.empty()) return -1;
     if (!img_cv.isContinuous()) img_cv = img_cv.clone();
+    _fm_inflight = true;
     acvImage _shim;
     _shim.useExtBuffer(img_cv.data,
                        (int)(img_cv.total() * img_cv.elemSize()),
                        img_cv.cols, img_cv.rows);
-    return FeatureMatching(&_shim);
+    int rc = FeatureMatching(&_shim);
+    _fm_inflight = false;
+    return rc;
   }
   
   virtual cJSON * SetParam(cJSON *json_str){return cJSON_CreateNull();}
