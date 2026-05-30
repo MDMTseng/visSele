@@ -12,6 +12,7 @@
 #include "mjpegLib.h"
 
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <libgen.h>
 #include <main.h>
 #include <playground.h>
@@ -52,6 +53,16 @@ bool saveInspFailSnap = true;
 bool saveInspNASnap = true;
 int saveInspQFullSkipCount=0;
 int save_snap_folder_full_delete_count=0;
+// Number of snapshot saves that were SKIPPED because free disk space dropped
+// below the hard floor (see saveInspectionSample call site).  Exposed via the
+// `save_snap_folder_full_delete_count`-style query in the BPG status response
+// (the field name is documented; this counter complements it).
+int save_snap_disk_low_skip_count=0;
+// Minimum free megabytes required on the snapshot filesystem before the
+// daemon writes another snapshot.  Below this floor, the save is skipped (and
+// loudly logged) rather than racing the kernel to ENOSPC and leaving a
+// half-written file (cf. the round-fix on unchecked fwrite).
+const int SNAP_MIN_FREE_MB = 500;
 
 const std::string InspSampleSavePath_DEFAULT("data/SAMPLE");
 std::string InspSampleSavePath = InspSampleSavePath_DEFAULT;
@@ -1862,6 +1873,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           else if (strcmp(itemType, "save_snap_folder_full_delete_count") == 0)
           {
             cJSON_AddNumberToObject(retArr,itemType,save_snap_folder_full_delete_count);
+          }
+          else if (strcmp(itemType, "save_snap_disk_low_skip_count") == 0)
+          {
+            cJSON_AddNumberToObject(retArr,itemType,save_snap_disk_low_skip_count);
           }
           else if (strcmp(itemType, "camera_info") == 0)
           {
@@ -3846,8 +3861,13 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     {
       image_pipe_info_occupyFlag_clr(*imgPipe,image_pipe_info_OccupyFIdx::snapSave);
       *inspSnap=false;
-      LOGE("inspSnapQueue is full.... skip the save");
       saveInspQFullSkipCount++;
+      // Sustained-drop visibility: silently dropping frames is fine for
+      // realtime, but if the queue is saturated for hundreds of frames the
+      // operator needs to know.  Loud-log once per 100 cumulative skips so
+      // log volume stays bounded.
+      if (saveInspQFullSkipCount % 100 == 1)
+        LOGE("inspSnapQueue full -> dropping save (cumulative drops: %d)", saveInspQFullSkipCount);
       if (ret_pipe_pass_down)//since the image doesn't pass down ( for now recycle it at this pipeline)
         *ret_pipe_pass_down = false;
     }
@@ -4085,7 +4105,30 @@ void InspSnapSaveThread(bool *terminationflag)
         std::string filePath = rootPath + extPath + std::to_string(current_time_ms());
         LOGI("SAVE::%s",filePath.c_str());
 
-        saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &headImgPipe->img, filePath.c_str());
+        // Hard disk-space floor: avoid the silent-truncation cascade where
+        // the snapshot fopen succeeds, the kernel hits ENOSPC mid-write, and
+        // the daemon has no telemetry that anything went wrong.  Check the
+        // filesystem of the target folder; skip + loudly log if low.
+        bool _disk_ok = true;
+        {
+          struct statvfs _sv;
+          if (statvfs(folderPath.c_str(), &_sv) == 0)
+          {
+            unsigned long long _free_mb =
+              ((unsigned long long)_sv.f_bavail * (unsigned long long)_sv.f_frsize) / (1024ULL * 1024ULL);
+            if ((long long)_free_mb < SNAP_MIN_FREE_MB)
+            {
+              _disk_ok = false;
+              save_snap_disk_low_skip_count++;
+              LOGE("SAVE skipped: free %llu MB < floor %d MB on %s "
+                   "(skipped %d so far; raise floor or free space)",
+                   _free_mb, SNAP_MIN_FREE_MB, folderPath.c_str(),
+                   save_snap_disk_low_skip_count);
+            }
+          }
+        }
+        if (_disk_ok)
+          saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &headImgPipe->img, filePath.c_str());
       }
 
       image_pipe_info_occupyFlag_clr(*headImgPipe,image_pipe_info_OccupyFIdx::snapSave);//clear the snap flag
