@@ -175,7 +175,7 @@ public :
   FeatureManager_sig360_circle_line(const char *json_str);
   ~FeatureManager_sig360_circle_line();
   int reload(const char *json_str) override;
-  int FeatureMatching(acvImage *img) override;
+  int FeatureMatching(cv::Mat &img_cv) override;
   virtual const FeatureReport* GetReport() override;
   virtual void ClearReport() override;
   static const char* GetFeatureTypeName(){return "sig360_circle_line";};

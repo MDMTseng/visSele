@@ -4664,8 +4664,19 @@ FeatureManager_sig360_circle_line::~FeatureManager_sig360_circle_line()
   reports.resize(0);
 }
 
-int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
+int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
 {
+  if (img_cv.empty()) return -1;
+  if (!img_cv.isContinuous()) img_cv = img_cv.clone();
+  // Single shim into the still-acv-internal body. As helpers migrate to
+  // cv::Mat, this shim shrinks; eventually the function body owns the cv::Mat
+  // directly and the acvImage class is unlinked.
+  acvImage _img_shim;
+  _img_shim.useExtBuffer(img_cv.data,
+                         (int)(img_cv.total() * img_cv.elemSize()),
+                         img_cv.cols, img_cv.rows);
+  acvImage *img = &_img_shim;
+
   report.bacpac = bacpac;
   float ppmm = 1 / bacpac->sampler->mmpP_ideal();
   ; //pixel per mm
