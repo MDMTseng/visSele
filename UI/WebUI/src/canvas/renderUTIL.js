@@ -528,101 +528,17 @@ class renderUTIL {
           break;
 
         case SHAPE_TYPE.aux_point:
-          {
-
-            if(true||inFullDisplay)
-            {
-              ctx.lineWidth = this.getSearchDirectionLineSize();
-              ctx.strokeStyle = shapeColor.alpha(1);
-              let db_obj = this.db_obj;
-              let subObjs = eObject.ref
-                .map((ref) => db_obj.FindShape("id", ref.id, shapeList))
-                .map((idx) => { return idx >= 0 ? shapeList[idx] : null });
-              if (drawSubObjs)
-                this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
-              if (eObject.id === undefined) break;
-
-              let point = this.db_obj.auxPointParse(eObject, shapeList);
-              if (point !== undefined && subObjs.length == 2) {//Draw crosssect line
-                ctx.setLineDash([2*this.getPrimitiveSize(), this.getPrimitiveSize()]);
-
-                ctx.beginPath();
-                ctx.moveTo(point.x, point.y);
-
-                let closestPt=closestPointOnPoints(point,[subObjs[0].pt1,subObjs[0].pt2]);
-                ctx.lineTo(closestPt.x,closestPt.y);
-                ctx.stroke();
-
-                ctx.beginPath();
-                ctx.moveTo(point.x, point.y);
-                
-                closestPt=closestPt=closestPointOnPoints(point,[subObjs[1].pt1,subObjs[1].pt2]);
-                ctx.lineTo(closestPt.x,closestPt.y);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.strokeStyle = "gray";
-                this.drawpoint(ctx, point);
-              }
-            }
-          }
-          break;
-
-
         case SHAPE_TYPE.aux_line:
-          {
-
-            let db_obj = this.db_obj;
-            let subObjs = eObject.ref
-              .map((ref) => db_obj.FindShape("id", ref.id, shapeList))
-              .map((idx) => { return idx >= 0 ? shapeList[idx] : null });
-            if (drawSubObjs)
-              this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
-            if (eObject.id === undefined) break;
-
-            if (subObjs.length == 2) {//Draw crosssect line
-              ctx.setLineDash([this.getPrimitiveSize(), this.getPrimitiveSize()]);
-
-              ctx.strokeStyle = "gray";
-              ctx.beginPath();
-              ctx.moveTo(subObjs[0].pt1.x, subObjs[0].pt1.y);
-              ctx.lineTo(subObjs[1].pt1.x, subObjs[1].pt1.y);
-              ctx.stroke();
-              ctx.setLineDash([]);
-              //this.drawpoint(ctx, point);
-            }
-          }
-          break;
-
-
         case SHAPE_TYPE.arc:
           {
-            let arc = threePointToArc(eObject.pt1, eObject.pt2, eObject.pt3);
-            let margin=this.getSearchDirectionLineSize()
-            if(inFullDisplay){
-              margin=eObject.margin
+            // Keystone step 3 — per-shape draw owns its rendering.
+            const mod = getShapeModule(eObject.type);
+            if (mod && mod.draw) {
+              mod.draw(ctx, eObject, this, {
+                inFullDisplay, shapeList, next_ShapeColor, skip_id_list,
+                unitConvert, drawSubObjs,
+              });
             }
-            //ctx.strokeStyle=eObject.color; 
-            ctx.lineWidth = margin * 2;
-            this.drawReportArc(ctx, arc);
-
-            ctx.lineWidth = this.getSearchDirectionLineSize();
-            ctx.strokeStyle = shapeColor;
-
-            let marginOffset = margin + ctx.lineWidth / 2;
-            if (eObject.direction < 0) {
-              marginOffset = -marginOffset;
-            }
-            arc.r += marginOffset;
-            //console.log(arc);
-            if(arc.r<0.0001)arc.r=0.0001;
-
-            this.drawReportArc(ctx, arc);
-
-
-            ctx.strokeStyle = "gray";
-            this.drawpoint(ctx, eObject.pt1);
-            this.drawpoint(ctx, eObject.pt2);
-            this.drawpoint(ctx, eObject.pt3);
           }
           break;
         
