@@ -38,3 +38,11 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
   renderer.drawpoint(ctx, shape.pt2);
   renderer.drawpoint(ctx, shape.pt3);
 }
+
+// Inspection-mode draw — just the arc (no margin overlay). Extracted from
+// renderUTIL.drawInspectionShapeList.case SHAPE_TYPE.arc.
+export function drawInspection(ctx, shape, renderer) {
+  let arc = threePointToArc(shape.pt1, shape.pt2, shape.pt3);
+  ctx.lineWidth = renderer.getIndicationLineSize();
+  renderer.drawReportArc(ctx, arc);
+}

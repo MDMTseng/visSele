@@ -548,73 +548,16 @@ class renderUTIL {
         else
           ctx.strokeStyle = eObject.color;
       }
-      switch (eObject.type) {
-        case SHAPE_TYPE.line:
-          {
-            ctx.lineWidth = this.getIndicationLineSize();;
-            this.drawReportLine(ctx, {
-              x0: eObject.pt1.x, y0: eObject.pt1.y,
-              x1: eObject.pt2.x, y1: eObject.pt2.y,
-            });
-          }
-          break;
-
-
-        case SHAPE_TYPE.arc:
-          {
-            //ctx.strokeStyle=eObject.color; 
-            let arc = threePointToArc(eObject.pt1, eObject.pt2, eObject.pt3);
-            ctx.lineWidth = this.getIndicationLineSize();
-            this.drawReportArc(ctx, arc);
-
-
-          }
-          break;
-
-        case SHAPE_TYPE.search_point:
-          {
-            ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-            this.drawcross(ctx, eObject.pt1, this.getPointSize()*3);
-
-            ctx.lineWidth = this.getIndicationLineSize();
-          }
-          break;
-        case SHAPE_TYPE.aux_point:
-          {
-
-            let db_obj = this.db_obj;
-            let subObjs = eObject.ref
-              .map((ref) => db_obj.FindShape("id", ref.id, shapeList))
-              .map((idx) => { return idx >= 0 ? shapeList[idx] : null });
-
-            if (eObject.id === undefined) break;
-
-            ctx.lineWidth = this.getIndicationLineSize();
-            let point = this.db_obj.auxPointParse(eObject, shapeList);
-            if (point !== undefined && subObjs.length == 2) {//Draw crosssect line
-              ctx.setLineDash([this.getPrimitiveSize(), this.getPrimitiveSize()]);
-              
-              ctx.beginPath();
-              ctx.moveTo(point.x, point.y);
-              let closestPt=closestPointOnPoints(point,[subObjs[0].pt1,subObjs[0].pt2]);
-              ctx.lineTo(closestPt.x,closestPt.y);
-              ctx.stroke();
-
-              ctx.beginPath();
-              ctx.moveTo(point.x, point.y);
-              closestPt=closestPointOnPoints(point,[subObjs[1].pt1,subObjs[1].pt2]);
-              ctx.lineTo(closestPt.x,closestPt.y);
-              ctx.stroke();
-              ctx.setLineDash([]);
-              ctx.strokeStyle = "gray";
-              this.drawcross(ctx, point, this.getPointSize()*2);
-            }
-          }
-          break;
-
-        case SHAPE_TYPE.measure:
-          normalRenderGroup.push(eObject);
-          break;
+      // Keystone step 3 — inspection-mode draw also dispatched per-shape.
+      // measure has no drawInspection (it's deferred to the editor-style draw
+      // via normalRenderGroup below). Unregistered types pass through.
+      if (eObject.type === SHAPE_TYPE.measure) {
+        normalRenderGroup.push(eObject);
+      } else {
+        const mod = getShapeModule(eObject.type);
+        if (mod && mod.drawInspection) {
+          mod.drawInspection(ctx, eObject, this, { shapeList });
+        }
       }
     });
 

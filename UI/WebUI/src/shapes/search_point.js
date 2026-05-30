@@ -69,3 +69,11 @@ export function draw(ctx, shape, renderer, {
     renderer.draw_aimcross(ctx, shape.pt1, renderer.getPointSize() * 3, 0.3);
   }
 }
+
+// Inspection-mode draw — just a red cross at pt1. Extracted from
+// renderUTIL.drawInspectionShapeList.case SHAPE_TYPE.search_point.
+export function drawInspection(ctx, shape, renderer) {
+  ctx.strokeStyle = 'rgba(179, 0, 0,0.5)';
+  renderer.drawcross(ctx, shape.pt1, renderer.getPointSize() * 3);
+  ctx.lineWidth = renderer.getIndicationLineSize();
+}

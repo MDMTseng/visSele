@@ -50,3 +50,34 @@ export function draw(ctx, shape, renderer, {
     }
   }
 }
+
+// Inspection-mode draw — dashed crosshairs to refs, gray cross at intersection.
+// Extracted from renderUTIL.drawInspectionShapeList.case SHAPE_TYPE.aux_point.
+export function drawInspection(ctx, shape, renderer, { shapeList = [] } = {}) {
+  let db_obj = renderer.db_obj;
+  let subObjs = shape.ref
+    .map((ref) => db_obj.FindShape('id', ref.id, shapeList))
+    .map((idx) => { return idx >= 0 ? shapeList[idx] : null; });
+
+  if (shape.id === undefined) return;
+
+  ctx.lineWidth = renderer.getIndicationLineSize();
+  let point = renderer.db_obj.auxPointParse(shape, shapeList);
+  if (point !== undefined && subObjs.length == 2) {
+    ctx.setLineDash([renderer.getPrimitiveSize(), renderer.getPrimitiveSize()]);
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+    let closestPt = closestPointOnPoints(point, [subObjs[0].pt1, subObjs[0].pt2]);
+    ctx.lineTo(closestPt.x, closestPt.y);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+    closestPt = closestPointOnPoints(point, [subObjs[1].pt1, subObjs[1].pt2]);
+    ctx.lineTo(closestPt.x, closestPt.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'gray';
+    renderer.drawcross(ctx, point, renderer.getPointSize() * 2);
+  }
+}

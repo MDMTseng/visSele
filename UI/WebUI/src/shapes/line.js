@@ -48,3 +48,13 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
   renderer.drawpoint(ctx, shape.pt1);
   renderer.drawpoint(ctx, shape.pt2);
 }
+
+// Inspection-mode draw — minimal (no margin overlays). Extracted from
+// renderUTIL.drawInspectionShapeList.case SHAPE_TYPE.line.
+export function drawInspection(ctx, shape, renderer) {
+  ctx.lineWidth = renderer.getIndicationLineSize();
+  renderer.drawReportLine(ctx, {
+    x0: shape.pt1.x, y0: shape.pt1.y,
+    x1: shape.pt2.x, y1: shape.pt2.y,
+  });
+}
