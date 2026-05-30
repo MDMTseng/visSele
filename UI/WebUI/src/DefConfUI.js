@@ -2,12 +2,13 @@
 
 
 import { connect } from 'react-redux'
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ComponentBoundary from './component/ComponentBoundary';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
 import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure';
+import { buildSharedSchema, buildDefaultSchema } from 'JSSRCROOT/shapes/propertySheet';
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
@@ -2007,6 +2008,18 @@ class APP_DEFCONF_MODE extends React.Component {
         case UIAct.SHAPE_TYPE.search_point:
         case UIAct.SHAPE_TYPE.measure:
           {
+            // Keystone step 2: schema extracted to shapes/propertySheet.js + memoized
+            // so JsonEditBlock can compare-by-reference and stop remounting its
+            // subtrees on every render (the Round-3 editor-sub-state-loss bug).
+            // Re-memoizes only when inputs that actually shape the schema change.
+            const sharedWhiteListKey = useMemo(
+              () => buildSharedSchema({
+                edit_tar, shape_list, renderMethods, refChainHasLoop,
+                ACT_EDIT_TAR_ELE_TRACE_UPDATE,
+              }),
+              [edit_tar.id, edit_tar.type, edit_tar.subtype, edit_tar.ref, shape_list,
+               ACT_EDIT_TAR_ELE_TRACE_UPDATE]
+            );
             UIArr.push(<BASE_COM.JsonEditBlock key="mainConfigTable" object={edit_tar}
               dict={DICT}
               additionalData={{
@@ -2015,97 +2028,7 @@ class APP_DEFCONF_MODE extends React.Component {
               dictTheme={edit_tar.type}
               key="BASE_COM.JsonEditBlock"
               renderLib={renderMethods}
-              whiteListKey={{
-                // id: "div",
-                type: "div",
-                subtype: "div",
-                name: "input",
-                //pt1:null,
-                angleDeg: "AngleRangeSetup",
-                margin: "SimpleSetup",
-
-                search_far: "switch",
-                locating_anchor: "switch",
-
-                vertex_touch_searching:"switch",
-                // caliper locating mode for line/arc: "contour" (legacy) | "caliper".
-                // Only line/arc shapes carry `locating` (set in Shape_Attr_Fill), so this
-                // control only appears for them. Caliper uses sane defaults
-                // (strongest/falling edge, count/width/length/step) unless a def overrides.
-                locating: {
-                  __OBJ__: renderMethods.Dropdown_List,
-                  list: ["contour", "caliper"],
-                },
-                // line_thickness_value:"input-number",
-                
-
-
-                
-                info_type: {
-                  __OBJ__: renderMethods.Dropdown_List,
-                  list:Object.keys(UIAct.SHAPE_TYPE._circle_info_type),
-                },
-
-
-
-
-
-                calc_f: {
-                  __OBJ__: renderMethods.Measure_Calc_Editor,
-                  measure_list: shape_list.filter(s =>
-                    (s.type == UIAct.SHAPE_TYPE.measure)
-                    && !refChainHasLoop(edit_tar, s, shape_list)
-                  ),
-                  ref_keyTrace_callback: (keyTrace) => {
-                    ACT_EDIT_TAR_ELE_TRACE_UPDATE(keyTrace);
-                  },
-                  ref: edit_tar.ref
-                },
-                value: "input-number",
-                USL: "ULRangeSetup",
-                LSL: "ULRangeSetup",
-                UCL: "ULRangeSetup",
-                LCL: "ULRangeSetup",
-
-                value_b: "input-number",
-                USL_b: "ULRangeSetup",
-                LSL_b: "ULRangeSetup",
-                UCL_b: "ULRangeSetup",
-                LCL_b: "ULRangeSetup",
-
-                back_value_setup: "switch",
-                importance: "input-number",
-                width: "SimpleSetup",
-
-                quality_essential:"switch",
-                orientation_essential:"switch",
-                NGasNA:"switch",
-                NAasNG:"switch",
-                value_A: "input-number",
-                value_B: "input-number",
-                value_X: "input-number",
-                value_Y: "input-number",
-                ref: (edit_tar.subtype === UIAct.SHAPE_TYPE.measure_subtype.calc) ?
-                  undefined :
-                  {
-                    __OBJ__: "div",
-                    ...[0, 1, 2].reduce((acc, key) => {
-                      acc[key + ""] =
-                      {
-                        __OBJ__: "btn",
-                        id: "div",
-                        element: "div"
-                      };
-                      return acc;
-                    }, {})
-
-                  },
-                ref_baseLine: {
-                  __OBJ__: "btn",
-                  id: "div",
-                  element: "div"
-                }
-              }}
+              whiteListKey={sharedWhiteListKey}
               jsonChange={(original_obj, target, type, evt) => {
                 if (type == "btn") {
                   if (target.keyTrace[0] == "ref" || target.keyTrace[0] == "ref_baseLine") {
@@ -2167,17 +2090,10 @@ class APP_DEFCONF_MODE extends React.Component {
           break;
         default:
           {
-            let whiteListKey={
-              //id:"div",
-              type: "div",
-              subtype: "div",
-              name: "input",
-              margin: "SimpleSetup"
-            }
-            if(edit_tar.type==UIAct.SHAPE_TYPE.arc)
-            {//ignore the line direction
-              whiteListKey.direction= "switch";
-            }
+            // Keystone step 2: schema moved to shapes/propertySheet.js + memoized
+            // so JsonEditBlock receives a stable reference across renders.
+            const whiteListKey = useMemo(() => buildDefaultSchema(edit_tar),
+              [edit_tar.type, edit_tar.id]);
 
             UIArr.push(<BASE_COM.JsonEditBlock key="mainConfigTable" object={edit_tar}
               dict={DICT}
