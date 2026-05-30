@@ -2129,11 +2129,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             }
             //TODO:HACK: 4 times scale down for transmission speed, bpg_dat.scale is not used for now
             bpg_dat = GenStrBPGData("IM", NULL);
-            ImageDownSampling(dataSend_buff, *srcImg, default_scale, NULL);
-            // zero-copy cv::Mat view over the acvImage buffer; SEND_acvImage's
-            // input is now cv::Mat-typed.
-            cv::Mat _sendView = acvImageBgrView(&dataSend_buff);
-            BPG_protocol_data_acvImage_Send_info iminfo = { &_sendView, (uint16_t)default_scale };
+            ImageDownSampling(dataSend_buff, acvImageBgrView(srcImg), default_scale, NULL);
+            BPG_protocol_data_acvImage_Send_info iminfo = { &dataSend_buff, (uint16_t)default_scale };
 
             iminfo.fullHeight = srcImg->GetHeight();
             iminfo.fullWidth = srcImg->GetWidth();
@@ -2331,9 +2328,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             bpg_dat = GenStrBPGData("IM", NULL);
 
             ImageSampler *sampler = isCalibNA ? NULL : select_bacpac->sampler;
-            ImageDownSampling(dataSend_buff, *srcImg, _scale, sampler, 0);
-            cv::Mat _sendView = acvImageBgrView(&dataSend_buff);
-            BPG_protocol_data_acvImage_Send_info iminfo = { &_sendView, (uint16_t)_scale };
+            ImageDownSampling(dataSend_buff, acvImageBgrView(srcImg), _scale, sampler, 0);
+            BPG_protocol_data_acvImage_Send_info iminfo = { &dataSend_buff, (uint16_t)_scale };
             iminfo.fullHeight = srcImg->GetHeight();
             iminfo.fullWidth = srcImg->GetWidth();
 
@@ -2648,9 +2644,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             bpg_dat = GenStrBPGData("IM", NULL);
 
             calib_bacpac.sampler->ignoreCalib(true);
-            ImageDownSampling(dataSend_buff, cacheImage, tar_down_samp_level, calib_bacpac.sampler, true);
-            cv::Mat _sendView = acvImageBgrView(&dataSend_buff);
-            BPG_protocol_data_acvImage_Send_info iminfo = { &_sendView, (uint16_t)tar_down_samp_level };
+            ImageDownSampling(dataSend_buff, acvImageBgrView(&cacheImage), tar_down_samp_level, calib_bacpac.sampler, true);
+            BPG_protocol_data_acvImage_Send_info iminfo = { &dataSend_buff, (uint16_t)tar_down_samp_level };
             iminfo.fullHeight = cacheImage.GetHeight();
             iminfo.fullWidth = cacheImage.GetWidth();
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;

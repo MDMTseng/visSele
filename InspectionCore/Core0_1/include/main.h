@@ -147,7 +147,7 @@ public:
 
   acvImage tmp_buff;
   acvImage cacheImage;
-  acvImage dataSend_buff;
+  cv::Mat  dataSend_buff;     // phase 3a: acvImage -> cv::Mat (tmp_buff / cacheImage next)
 
   
   PerifChannel *perifCH= NULL;
