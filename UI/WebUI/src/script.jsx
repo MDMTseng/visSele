@@ -1492,7 +1492,8 @@ class APPMasterX extends React.Component {
           return defaultRule;
         }
 
-        return {...defaultRule,...JSON.parse(readRule)};
+        try { return {...defaultRule,...JSON.parse(readRule)}; }
+        catch (e) { return defaultRule; }
       }
       saveLocalstorage_SLID_EM_STOP_RULE(rule=this.EM_STOP_Rule)
       {
