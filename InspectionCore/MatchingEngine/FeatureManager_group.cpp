@@ -306,7 +306,11 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     if (binarize_method == 1) // calibration-free vignette-tolerant bg-flatten
       binarize_bg_flatten_cv(img, &binary_img, bg_close_kernel, bg_ratio, bg_downscale);
     else if (useAdaptiveThres && !bgThreshMap.empty())
-      acvThresholdMap(&binary_img, img, bgThreshMap.data(), bgMapW, bgMapH, 0);
+    {
+      cv::Mat _dstV = acvImageBgrView(&binary_img);
+      cv::Mat _srcV = acvImageBgrView(img);
+      cvThresholdMap(_dstV, _srcV, bgThreshMap.data(), bgMapW, bgMapH, 0);
+    }
     else
     {
       // Migrated acvThreshold -> cv::threshold via zero-copy views.

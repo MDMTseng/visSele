@@ -47,4 +47,12 @@ cv::Mat acvImageBgrView(acvImage *im);
 // Reallocates dst if its size/type doesn't match.
 void cvCloneImage(const cv::Mat &src, cv::Mat &dst, int mode);
 
+// cv::Mat-native equivalent of acvThresholdMap(dst, src, map, mapW, mapH, ch).
+// For each pixel, T is bilinearly interpolated from the (mapW x mapH) low-res
+// threshold grid spanning the full src extent; dst is BGR with all three
+// channels set to 255 if src[channel] > T, else 0. Matches the acv body
+// strictly (strict `>`, same fy/fx clamping). Reallocates dst if needed.
+void cvThresholdMap(cv::Mat &dst, const cv::Mat &src,
+                    const float *threshMap, int mapW, int mapH, int channel);
+
 #endif // CV_BRIDGE_H
