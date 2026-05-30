@@ -272,7 +272,12 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
   report.bacpac=bacpac;
     error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
-    binary_img.ReSize(img->GetWidth(),img->GetHeight());
+    // acv -> cv: own the bytes in a cv::Mat, expose them to the legacy acv
+    // consumers via useExtBuffer (the existing zero-copy bridge pattern).
+    binary_img_storage.create(img->GetHeight(), img->GetWidth(), CV_8UC3);
+    binary_img.useExtBuffer(binary_img_storage.data,
+                            (int)(binary_img_storage.total() * binary_img_storage.elemSize()),
+                            img->GetWidth(), img->GetHeight());
 
     // Per-camera adaptive threshold: lazily build the threshold map from the
     // loaded background model (sampler->stageLightInfo), robustly cleaned of
