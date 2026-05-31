@@ -8,8 +8,8 @@
 cJSON* acv_acv_XY2JSON(acv_XY pt )
 {
   cJSON* xy = cJSON_CreateObject();
-  cJSON_AddNumberToObject(xy, "x", pt.X);
-  cJSON_AddNumberToObject(xy, "y", pt.Y);
+  cJSON_AddNumberToObject(xy, "x", pt.x);
+  cJSON_AddNumberToObject(xy, "y", pt.y);
   return xy;
 }
 
@@ -25,15 +25,15 @@ cJSON* acv_LineFit2JSON(cJSON* Line_jobj, const acv_LineFit line, acv_XY center_
   if (line.confidence > 0) cJSON_AddNumberToObject(Line_jobj, "confidence", line.confidence);
 
   /*acv_XY point = acvClosestPointOnLine(line.end_pos, line.line);
-  cJSON_AddNumberToObject(Line_jobj, "x0", point.X-center_offset.X);
-  cJSON_AddNumberToObject(Line_jobj, "y0", point.Y-center_offset.Y);
+  cJSON_AddNumberToObject(Line_jobj, "x0", point.x-center_offset.x);
+  cJSON_AddNumberToObject(Line_jobj, "y0", point.y-center_offset.y);
   point = acvClosestPointOnLine(line.end_neg, line.line);
-  cJSON_AddNumberToObject(Line_jobj, "x1", point.X-center_offset.X);
-  cJSON_AddNumberToObject(Line_jobj, "y1", point.Y-center_offset.Y);*/
-  cJSON_AddNumberToObject(Line_jobj, "cx", line.line.line_anchor.X-center_offset.X);
-  cJSON_AddNumberToObject(Line_jobj, "cy", line.line.line_anchor.Y-center_offset.Y);
-  cJSON_AddNumberToObject(Line_jobj, "vx", line.line.line_vec.X);
-  cJSON_AddNumberToObject(Line_jobj, "vy", line.line.line_vec.Y);
+  cJSON_AddNumberToObject(Line_jobj, "x1", point.x-center_offset.x);
+  cJSON_AddNumberToObject(Line_jobj, "y1", point.y-center_offset.y);*/
+  cJSON_AddNumberToObject(Line_jobj, "cx", line.line.line_anchor.x-center_offset.x);
+  cJSON_AddNumberToObject(Line_jobj, "cy", line.line.line_anchor.y-center_offset.y);
+  cJSON_AddNumberToObject(Line_jobj, "vx", line.line.line_vec.x);
+  cJSON_AddNumberToObject(Line_jobj, "vy", line.line.line_vec.y);
 
   cJSON_AddItemToObject(Line_jobj,"pt1",acv_acv_XY2JSON(line.end_pt1));
   cJSON_AddItemToObject(Line_jobj,"pt2",acv_acv_XY2JSON(line.end_pt2));
@@ -46,8 +46,8 @@ cJSON* acv_CircleFit2JSON(cJSON* Circle_jobj,const acv_CircleFit cir , acv_XY ce
   cJSON_AddNumberToObject(Circle_jobj, "matching_pts", cir.matching_pts);
   cJSON_AddNumberToObject(Circle_jobj, "s", cir.s);
   if (cir.confidence > 0) cJSON_AddNumberToObject(Circle_jobj, "confidence", cir.confidence);
-  cJSON_AddNumberToObject(Circle_jobj, "x", cir.circle.circumcenter.X-center_offset.X);
-  cJSON_AddNumberToObject(Circle_jobj, "y", cir.circle.circumcenter.Y-center_offset.Y);
+  cJSON_AddNumberToObject(Circle_jobj, "x", cir.circle.circumcenter.x-center_offset.x);
+  cJSON_AddNumberToObject(Circle_jobj, "y", cir.circle.circumcenter.y-center_offset.y);
   cJSON_AddNumberToObject(Circle_jobj, "r", cir.circle.radius);
   return Circle_jobj;
 }
@@ -181,8 +181,8 @@ cJSON* acv_AuxPointReport2JSON(const vector< FeatureReport_auxPointReport> &vec,
     
     if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
     {
-      cJSON_AddNumberToObject(apj, "x", vec[j].pt.X);
-      cJSON_AddNumberToObject(apj, "y", vec[j].pt.Y);
+      cJSON_AddNumberToObject(apj, "x", vec[j].pt.x);
+      cJSON_AddNumberToObject(apj, "y", vec[j].pt.y);
     }
     cJSON_AddItemToArray(detectedAuxPoint_jarr, apj );
 
@@ -203,8 +203,8 @@ cJSON* acv_SearchPointReport2JSON(const vector< FeatureReport_searchPointReport>
     
     if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
     {
-      cJSON_AddNumberToObject(spj, "x", vec[j].pt.X);
-      cJSON_AddNumberToObject(spj, "y", vec[j].pt.Y);
+      cJSON_AddNumberToObject(spj, "x", vec[j].pt.x);
+      cJSON_AddNumberToObject(spj, "y", vec[j].pt.y);
     }
     cJSON_AddItemToArray(detectedSearchPoint_jarr, spj );
 
@@ -255,8 +255,8 @@ cJSON* acv_Signature2JSON(const vector< acv_XY> &signature)
   cJSON_AddItemToObject(signature_jobj,"angle",angle_jarr);
   for(int j=0;j<signature.size();j++)
   {
-    cJSON_AddItemToArray(magnitude_jarr, cJSON_CreateNumber(signature[j].X));
-    cJSON_AddItemToArray(angle_jarr, cJSON_CreateNumber(signature[j].Y));
+    cJSON_AddItemToArray(magnitude_jarr, cJSON_CreateNumber(signature[j].x));
+    cJSON_AddItemToArray(angle_jarr, cJSON_CreateNumber(signature[j].y));
   }
   return signature_jobj;
 }
@@ -268,8 +268,8 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
   cJSON_AddNumberToObject(report_jobj, "area", report.area);
   cJSON_AddNumberToObject(report_jobj, "scale", report.scale);
   cJSON_AddStringToObject(report_jobj, "targetName", report.targetName);
-  cJSON_AddNumberToObject(report_jobj, "cx", report.Center.X);
-  cJSON_AddNumberToObject(report_jobj, "cy", report.Center.Y);
+  cJSON_AddNumberToObject(report_jobj, "cx", report.Center.x);
+  cJSON_AddNumberToObject(report_jobj, "cy", report.Center.y);
   cJSON_AddNumberToObject(report_jobj, "rotate", report.rotate);
   cJSON_AddBoolToObject(report_jobj, "isFlipped", report.isFlipped);
   cJSON_AddNumberToObject(report_jobj, "similarity", report.similarity);
@@ -329,8 +329,8 @@ cJSON* genXYObject(acv_XY xy)
 {
   
   cJSON* jxy = cJSON_CreateObject();
-  cJSON_AddNumberToObject(jxy, "x", xy.X);
-  cJSON_AddNumberToObject(jxy, "y", xy.Y);
+  cJSON_AddNumberToObject(jxy, "x", xy.x);
+  cJSON_AddNumberToObject(jxy, "y", xy.y);
   return jxy;
 }
 
@@ -413,8 +413,8 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       cJSON_AddNumberToObject(report_jobj, "error", report->data.sig360_extractor.error);
       cJSON_AddNumberToObject(report_jobj, "area", report->data.sig360_extractor.area);
       cJSON_AddNumberToObject(report_jobj, "mmpp", report->data.sig360_extractor.mmpp);
-      cJSON_AddNumberToObject(report_jobj, "cx", report->data.sig360_extractor.Center.X);
-      cJSON_AddNumberToObject(report_jobj, "cy", report->data.sig360_extractor.Center.Y);
+      cJSON_AddNumberToObject(report_jobj, "cx", report->data.sig360_extractor.Center.x);
+      cJSON_AddNumberToObject(report_jobj, "cy", report->data.sig360_extractor.Center.y);
 
       {
         cJSON* cam_param = cJSON_CreateObject();
@@ -495,7 +495,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       const FeatureReport_stage_light_report &rep=report->data.stage_light_report;
 
       {
-        acv_XY xy={X: (float)rep.targetImageDim[0],Y:(float)rep.targetImageDim[1]};
+        acv_XY xy={(float)rep.targetImageDim[0], (float)rep.targetImageDim[1]};
         cJSON_AddItemToObject(report_jobj,"target_image_dim",genXYObject(xy));
       }
 

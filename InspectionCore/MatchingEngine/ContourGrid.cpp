@@ -203,19 +203,19 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
     for(int j=0;j<contourSections[idx].size();j++)
     {
       ptInfo pti = contourSections[idx][j];
-      float dX = pti.pt.X-X;
-      float dY = pti.pt.Y-Y;
+      float dX = pti.pt.x-X;
+      float dY = pti.pt.y-Y;
       float dist = hypot(dX,dY);
       pti.edgeRsp=1;
       bool ptInSection=false;
       if(dist>innerDist && dist<outerDist)//The point is in the epsilon region
       {
-        float dotP = dX*pti.sobel.X+dY*pti.sobel.Y;
+        float dotP = dX*pti.sobel.x+dY*pti.sobel.y;
 
         if(dotP*outter_inner>=0)
         {
           float angle = atan2(dY,dX);
-          // LOGV(">>%f,%f-> %f %f",pti.pt.X,pti.pt.Y,X,Y);
+          // LOGV(">>%f,%f-> %f %f",pti.pt.x,pti.pt.y,X,Y);
           // LOGV(">>%f,%f:  %f %f %f",dX,dY,angle, sAngle, eAngle);
           if(isAngleBetween( angle, sAngle, eAngle))
           {
@@ -334,7 +334,7 @@ void ContourFetch::getContourPointsWithInLineContour(
   const int gapCountMax=10;
   int gapCount=0;
   int init_gapCount=0;
-  // LOGI("======%0.3f=======%0.3f===",line.line_vec.X,line.line_vec.Y);
+  // LOGI("======%0.3f=======%0.3f===",line.line_vec.x,line.line_vec.y);
   for(int i=0;i<contourSections.size();i++)
   {
     int idx = i;
@@ -353,21 +353,21 @@ void ContourFetch::getContourPointsWithInLineContour(
       acv_XY pt_bk=pti.pt;
       acv_XY pt=pti.pt;
       
-      // printf("%.1f,%.1f,cur:%f>>>",pt.X,pt.Y,pti.curvature*180/3.14159);
-      pt.X-=line.line_anchor.X;
-      pt.Y-=line.line_anchor.Y;
+      // printf("%.1f,%.1f,cur:%f>>>",pt.x,pt.y,pti.curvature*180/3.14159);
+      pt.x-=line.line_anchor.x;
+      pt.y-=line.line_anchor.y;
       pti.edgeRsp=1;
-      //LOGV(">> line.line_anchor.X:%f  Y:%f",line.line_anchor.X,line.line_anchor.Y);
+      //LOGV(">> line.line_anchor.x:%f  Y:%f",line.line_anchor.x,line.line_anchor.y);
 
       //reverse rotate the target point to check if the point is in the margin(rotated box)
-      pt = acvRotation(-line.line_vec.Y,line.line_vec.X,1,pt);
-      if(pt.X<0)pt.X=-pt.X;
+      pt = acvRotation(-line.line_vec.y,line.line_vec.x,1,pt);
+      if(pt.x<0)pt.x=-pt.x;
 
-      float dist = pt.Y;
-      if(pt.Y<0)pt.Y=-pt.Y;
+      float dist = pt.y;
+      if(pt.y<0)pt.y=-pt.y;
       bool ptInSection=false;
 
-      if(pt.X < epsilonX && pt.Y < epsilonY)
+      if(pt.x < epsilonX && pt.y < epsilonY)
       {
         if( abs(pti.curvature)>lineCurvatureMax)continue;
 
@@ -377,13 +377,13 @@ void ContourFetch::getContourPointsWithInLineContour(
         {
           acv_XY sobel = acvVecNormalize(pti.sobel);
           acv_XY line_vec = acvVecNormalize(line.line_vec);
-          float dotP = sobel.X * line_vec.Y - sobel.Y * line_vec.X;
+          float dotP = sobel.x * line_vec.y - sobel.y * line_vec.x;
           if(dotP*flip_f>cosSim)
           {
             ptInSection=true;
           // LOGI("pt XY:%f,%f >> %f,%f  dotP:%f",
-          //   pt.X,pt.Y,
-          //   pti.sobel.X,pti.sobel.Y,
+          //   pt.x,pt.y,
+          //   pti.sobel.x,pti.sobel.y,
           //   dotP);
           }
         }
@@ -534,7 +534,7 @@ int ContourGrid::getSecIdx(int X,int Y)
 
 std::vector<ContourGrid::ptInfo> &ContourGrid::fetchBelongingSection(acv_XY pt)
 {
-  int gridIdx=getSecIdx(pt.X,pt.Y);
+  int gridIdx=getSecIdx(pt.x,pt.y);
   return contourSections[gridIdx];
 }
 
@@ -759,18 +759,18 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
     for(int j=0;j<contourSections[idx].size();j++)
     {
       ptInfo pti = contourSections[idx][j];
-      float dX = pti.pt.X-X;
-      float dY = pti.pt.Y-Y;
+      float dX = pti.pt.x-X;
+      float dY = pti.pt.y-Y;
       float dist_sq = dX*dX + dY*dY;
       pti.edgeRsp=1;
       if(dist_sq>innerDist_sq && dist_sq<outerDist_sq)//The point is in the epsilon region
       {
-        float dotP = dX*pti.sobel.X+dY*pti.sobel.Y;
+        float dotP = dX*pti.sobel.x+dY*pti.sobel.y;
 
         if(dotP*outter_inner>=0)
         {
           float angle = atan2(dY,dX);
-          // LOGV(">>%f,%f-> %f %f",pti.pt.X,pti.pt.Y,X,Y);
+          // LOGV(">>%f,%f-> %f %f",pti.pt.x,pti.pt.y,X,Y);
           // LOGV(">>%f,%f:  %f %f %f",dX,dY,angle, sAngle, eAngle);
           if(isAngleBetween( angle, sAngle, eAngle))
           {
@@ -798,8 +798,8 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
   intersectTestNodes.resize(gridNodeW*gridNodeH);
 
   //resize the world down gridSize times
-  line.line_anchor.X/=gridSize;
-  line.line_anchor.Y/=gridSize;
+  line.line_anchor.x/=gridSize;
+  line.line_anchor.y/=gridSize;
   epsilonX/=gridSize;
   epsilonY/=gridSize;
 
@@ -811,20 +811,20 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
     {
       int idx = i*gridNodeW+j;
 
-      acv_XY pt={.X=j-line.line_anchor.X,.Y=i-line.line_anchor.Y};
+      acv_XY pt = {j-line.line_anchor.x, i-line.line_anchor.y};
 
-      pt = acvRotation(-line.line_vec.Y,line.line_vec.X,1,pt);
+      pt = acvRotation(-line.line_vec.y,line.line_vec.x,1,pt);
 
       //By default, the current dot is in middle(0)
       intersectTestNodes[idx]=0;
       float abspt;
 
-      abspt=pt.Y;
+      abspt=pt.y;
       if(abspt<0)abspt=-abspt;
       if(abspt > epsilonY)
       {//If Y distance is bigger than epsilonY
         //Set region type, in(1) or out(2)
-        intersectTestNodes[idx]|=(pt.Y>0)?(0x01):(0x02);
+        intersectTestNodes[idx]|=(pt.y>0)?(0x01):(0x02);
 
         //negative (XX02)
         //--------
@@ -834,12 +834,12 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
       }
 
 
-      abspt=pt.X;
+      abspt=pt.x;
       if(abspt<0)abspt=-abspt;
       if(abspt > epsilonX)
       {//If X distance is bigger than epsilonX
         //Set region type, x_in(0x10) or x_out(0x20)
-        intersectTestNodes[idx]|=(pt.X>0)?(0x10):(0x20);
+        intersectTestNodes[idx]|=(pt.x>0)?(0x10):(0x20);
 
         //negative (02XX) |middle| positive (01XX)
       }
@@ -892,25 +892,25 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
   
       ptInfo pti = contourSections[idx][j];
       acv_XY pt=pti.pt;
-      pt.X-=line.line_anchor.X;
-      pt.Y-=line.line_anchor.Y;
+      pt.x-=line.line_anchor.x;
+      pt.y-=line.line_anchor.y;
       pti.edgeRsp=1;
-      //LOGV(">> line.line_anchor.X:%f  Y:%f",line.line_anchor.X,line.line_anchor.Y);
+      //LOGV(">> line.line_anchor.x:%f  Y:%f",line.line_anchor.x,line.line_anchor.y);
 
       //reverse rotate the target point to check if the point is in the margin(rotated box)
-      pt = acvRotation(-line.line_vec.Y,line.line_vec.X,1,pt);
-      if(pt.X<0)pt.X=-pt.X;
-      if(pt.Y<0)pt.Y=-pt.Y;
-      if(pt.X < epsilonX && pt.Y < epsilonY)
+      pt = acvRotation(-line.line_vec.y,line.line_vec.x,1,pt);
+      if(pt.x<0)pt.x=-pt.x;
+      if(pt.y<0)pt.y=-pt.y;
+      if(pt.x < epsilonX && pt.y < epsilonY)
       {
         if( abs(pti.curvature)>lineCurvatureMax)continue;
 
-        //LOGV(">> X:%f<%f  Y:%f<%f",pt.X,epsilonX,pt.Y,epsilonY);
+        //LOGV(">> X:%f<%f  Y:%f<%f",pt.x,epsilonX,pt.y,epsilonY);
         if(flip_f==0)
           points.push_back(pti);
         else
         {
-          float dotP = pti.contourDir.X * line.line_vec.X + pti.contourDir.Y * line.line_vec.Y;
+          float dotP = pti.contourDir.x * line.line_vec.x + pti.contourDir.y * line.line_vec.y;
           if(dotP*flip_f>0.9)
           {
             points.push_back(pti);

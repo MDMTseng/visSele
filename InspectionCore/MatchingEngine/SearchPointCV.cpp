@@ -37,8 +37,8 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
 {
   if (gray.empty()) return false;
   acv_XY s = acvVecNormalize(searchDir);
-  if (s.X != s.X || s.Y != s.Y) return false;
-  acv_XY perp = { -s.Y, s.X };
+  if (s.x != s.x || s.y != s.y) return false;
+  acv_XY perp = { -s.y, s.x };
 
   // Legacy band axes (verified): |proj onto SEARCH dir| < width/2, |proj onto PERP| < margin.
   // The rectified buffer is rotated 90deg CCW vs the old layout (search was cols, perp was
@@ -69,11 +69,11 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     for (int j = 0; j < nP; j++)
     {
       acv_XY q = acvVecAdd(pt, acvVecAdd(acvVecMult(s, searchCoord), acvVecMult(perp, j - cp)));
-      if (q.X < 1 || q.Y < 1 || q.X >= gW - 1 || q.Y >= gH - 1) { d[j] = 0; vv[j] = 0; if (m) m[j] = 0; continue; }
-      float v = cvUnsignedMap1Sampling(gray, q.X, q.Y, 0);
+      if (q.x < 1 || q.y < 1 || q.x >= gW - 1 || q.y >= gH - 1) { d[j] = 0; vv[j] = 0; if (m) m[j] = 0; continue; }
+      float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
       d[j] = (v < 0) ? 0 : (v > 255 ? 255 : (unsigned char)(v + 0.5f));
-      if (m) m[j] = isObjectPx(labelImg, (int)(q.X + 0.5f), (int)(q.Y + 0.5f)) ? 255 : 0;
+      if (m) m[j] = isObjectPx(labelImg, (int)(q.x + 0.5f), (int)(q.y + 0.5f)) ? 255 : 0;
     }
   }
 
@@ -149,7 +149,7 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   for (auto &e : eps) if (e.perpCoord < pMin) pMin = e.perpCoord;   // top along perpendicular
   if (dbg) {
     float pa=1e9,pb=-1e9,sa=1e9,sb=-1e9; for(auto&e:eps){pa=std::min(pa,e.perpCoord);pb=std::max(pb,e.perpCoord);sa=std::min(sa,e.searchCoord);sb=std::max(sb,e.searchCoord);}
-    fprintf(stderr,"[SPCV] pt=(%.0f,%.0f) eps=%zu perp[%.0f,%.0f] search[%.0f,%.0f] perpTop=%.0f\n",pt.X,pt.Y,eps.size(),pa,pb,sa,sb,pMin);
+    fprintf(stderr,"[SPCV] pt=(%.0f,%.0f) eps=%zu perp[%.0f,%.0f] search[%.0f,%.0f] perpTop=%.0f\n",pt.x,pt.y,eps.size(),pa,pb,sa,sb,pMin);
     if (const char *en = getenv("SPCV_N")) considerRange = atof(en); // debug sweep of n
   }
   if (considerRange <= 0) considerRange = 1;
@@ -184,21 +184,21 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
     { int xx=bx(eP), yy=by(eS); if(yy>=0&&yy<nS&&xx>=0&&xx<nP){ cv::circle(vis,cv::Point(xx,yy),5,cv::Scalar(255,0,0),2); cv::drawMarker(vis,cv::Point(xx,yy),cv::Scalar(255,0,0),cv::MARKER_CROSS,11,1);} } // final blue
     int sc = (std::max(nS, nP) < 400) ? 3 : 1;  // uniform upscale for small remaps (keep aspect ratio)
     cv::Mat visBig; cv::resize(vis, visBig, cv::Size(), sc, sc, cv::INTER_NEAREST);
-    char fn[256]; snprintf(fn,sizeof(fn),"/tmp/spcv_sp%d_pt%d_%d_%dx%d.png",spId,(int)pt.X,(int)pt.Y,nP,nS); cv::imwrite(fn,visBig);
-    char fn2[256]; snprintf(fn2,sizeof(fn2),"/tmp/spcvraw_sp%d_pt%d_%d.png",spId,(int)pt.X,(int)pt.Y); cv::imwrite(fn2,g);
-    if (useMask) { char fn3[256]; snprintf(fn3,sizeof(fn3),"/tmp/spcvmask_sp%d_pt%d_%d.png",spId,(int)pt.X,(int)pt.Y); cv::imwrite(fn3,mask); }
+    char fn[256]; snprintf(fn,sizeof(fn),"/tmp/spcv_sp%d_pt%d_%d_%dx%d.png",spId,(int)pt.x,(int)pt.y,nP,nS); cv::imwrite(fn,visBig);
+    char fn2[256]; snprintf(fn2,sizeof(fn2),"/tmp/spcvraw_sp%d_pt%d_%d.png",spId,(int)pt.x,(int)pt.y); cv::imwrite(fn2,g);
+    if (useMask) { char fn3[256]; snprintf(fn3,sizeof(fn3),"/tmp/spcvmask_sp%d_pt%d_%d.png",spId,(int)pt.x,(int)pt.y); cv::imwrite(fn3,mask); }
     // signed gradient mapped to 8U: 128 = zero gradient, brighter = +grad, darker = -grad.
     cv::Mat sob8; sobViz.convertTo(sob8, CV_8U, 0.5, 128.0);
-    char fn4[256]; snprintf(fn4,sizeof(fn4),"/tmp/spcvsobel_sp%d_pt%d_%d.png",spId,(int)pt.X,(int)pt.Y); cv::imwrite(fn4,sob8);
+    char fn4[256]; snprintf(fn4,sizeof(fn4),"/tmp/spcvsobel_sp%d_pt%d_%d.png",spId,(int)pt.x,(int)pt.y); cv::imwrite(fn4,sob8);
     // image-space dump for full-image overlay: region corners, edges, final pt
     FILE *cf = fopen("/tmp/spcv_imgpts.csv", "a");
     if (cf) {
       acv_XY fp  = acvVecAdd(pt, acvVecAdd(acvVecMult(s, eS), acvVecMult(perp, eP)));
       acv_XY c00 = acvVecAdd(pt, acvVecAdd(acvVecMult(s, cs), acvVecMult(perp, -cp)));
       acv_XY c11 = acvVecAdd(pt, acvVecAdd(acvVecMult(s, -cs), acvVecMult(perp, cp)));
-      fprintf(cf, "FINAL,%.0f,%.0f,%.2f,%.2f\n", pt.X, pt.Y, fp.X, fp.Y);
-      fprintf(cf, "BOX,%.0f,%.0f,%.2f,%.2f,%.2f,%.2f\n", pt.X, pt.Y, c00.X, c00.Y, c11.X, c11.Y);
-      for (auto &e: eps){ acv_XY ep = acvVecAdd(pt, acvVecAdd(acvVecMult(s, e.searchCoord), acvVecMult(perp, e.perpCoord))); fprintf(cf, "EDGE,%.0f,%.0f,%.2f,%.2f\n", pt.X, pt.Y, ep.X, ep.Y); }
+      fprintf(cf, "FINAL,%.0f,%.0f,%.2f,%.2f\n", pt.x, pt.y, fp.x, fp.y);
+      fprintf(cf, "BOX,%.0f,%.0f,%.2f,%.2f,%.2f,%.2f\n", pt.x, pt.y, c00.x, c00.y, c11.x, c11.y);
+      for (auto &e: eps){ acv_XY ep = acvVecAdd(pt, acvVecAdd(acvVecMult(s, e.searchCoord), acvVecMult(perp, e.perpCoord))); fprintf(cf, "EDGE,%.0f,%.0f,%.2f,%.2f\n", pt.x, pt.y, ep.x, ep.y); }
       fclose(cf);
     }
   }

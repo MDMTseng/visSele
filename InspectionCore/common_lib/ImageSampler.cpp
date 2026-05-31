@@ -43,8 +43,8 @@ void acvCalibMap::SET(double *MX_data, double *MY_data,
   this->downSizedMapH = downSizedMapH;
   this->fullFrameW = fullFrameW;
   this->fullFrameH = fullFrameH;
-  origin_offset.X = 0;
-  origin_offset.Y = 0;
+  origin_offset.x = 0;
+  origin_offset.y = 0;
   invMap = NULL;
   int pixCount = downSizedMapW * downSizedMapH;
   fwdMap = new float[downSizedMapW * downSizedMapH * 2];
@@ -152,10 +152,10 @@ void acvCalibMap::reMap(int type)
       float mapLoc_00[2]={NAN};
       acv_XY start={fullFrameW*(1-shrinkScale)/2,fullFrameH*(1-shrinkScale)/2};
       acv_XY end={fullFrameW*(1-(1-shrinkScale)/2),fullFrameH*(1-(1-shrinkScale)/2)};
-      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, start.X,start.Y, mapLoc_00,0.0001,1, 200);
+      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, start.x,start.y, mapLoc_00,0.0001,1, 200);
 
       float mapLoc_WH[2]={NAN};
-      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, end.X,end.Y, mapLoc_WH,0.0001,1, 200);
+      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, end.x,end.y, mapLoc_WH,0.0001,1, 200);
       //Just to get 00 and W0
       //Diagnal scale
       //(0,0)o
@@ -301,8 +301,8 @@ int acvCalibMap::i2c(float coord[2], bool useInvMap) //real image coord to calib
   // }
   int ret;
 
-  coord[0] += origin_offset.X;
-  coord[1] += origin_offset.Y;
+  coord[0] += origin_offset.x;
+  coord[1] += origin_offset.y;
   if (invMap && useInvMap)
   {
     ret = acvCalibMapUtil::sample_vec(invMap, iw, ih, coord[0], coord[1], coord);
@@ -336,10 +336,10 @@ int acvCalibMap::i2c(float coord[2], bool useInvMap) //real image coord to calib
 
 int acvCalibMap::i2c(acv_XY &coord, bool useInvMap)
 {
-  float _coord[2] = {coord.X, coord.Y};
+  float _coord[2] = {coord.x, coord.y};
   int ret = i2c(_coord, useInvMap);
-  coord.X = _coord[0];
-  coord.Y = _coord[1];
+  coord.x = _coord[0];
+  coord.y = _coord[1];
   return ret;
 }
 // int XX=0;
@@ -365,16 +365,16 @@ int acvCalibMap::c2i(float coord[2]) //calibrated coord to real image coord
   coord[0] /= downScale*map_loca_scale;
   coord[1] /= downScale*map_loca_scale;
   int ret = acvCalibMapUtil::sample_vec(fwdMap, downSizedMapW, downSizedMapH, coord[0], coord[1], coord);
-  coord[0] -= origin_offset.X;
-  coord[1] -= origin_offset.Y;
+  coord[0] -= origin_offset.x;
+  coord[1] -= origin_offset.y;
   return ret;
 }
 int acvCalibMap::c2i(acv_XY &coord)
 {
-  float _coord[2] = {coord.X, coord.Y};
+  float _coord[2] = {coord.x, coord.y};
   int ret = c2i(_coord);
-  coord.X = _coord[0];
-  coord.Y = _coord[1];
+  coord.x = _coord[0];
+  coord.y = _coord[1];
   return ret;
 }
 
@@ -677,8 +677,8 @@ int angledOffsetTable::find(float angle)
 void angledOffsetTable::push_back(angledOffsetG aog)
 {
   sorted = false;
-  aog.angle_vec.X = (float)cos(aog.angle_rad);
-  aog.angle_vec.Y = (float)sin(aog.angle_rad);
+  aog.angle_vec.x = (float)cos(aog.angle_rad);
+  aog.angle_vec.y = (float)sin(aog.angle_rad);
   return table.push_back(aog);
 }
 
@@ -779,10 +779,10 @@ float stageLightParam::calcInterpolation(int X,int Y,BGLightNodeInfo *newNodeInf
       }
       if(info[m]->error>=0)
       {
-        pts[m].X=x;
-        pts[m].Y=y;
+        pts[m].x=x;
+        pts[m].y=y;
         
-        pts[m].X = hypot(X-x,Y-y);//X as distance
+        pts[m].x = hypot(X-x,Y-y);//X as distance
         break;
       }
       fpoint*=0.8;//score decay
@@ -801,15 +801,15 @@ float stageLightParam::calcInterpolation(int X,int Y,BGLightNodeInfo *newNodeInf
 
   BGLightNodeInfo nInfo;
   nInfo.error=1;
-  nInfo.index.X=X;
-  nInfo.index.Y=Y;
+  nInfo.index.x=X;
+  nInfo.index.y=Y;
   nInfo.mean=0;
   float distSum=0;
   for(int m=0;m<4;m++)
   {
     if(info[m]==NULL)continue;
-    nInfo.mean+=info[m]->mean/pts[m].X;
-    distSum+=pts[m].X;
+    nInfo.mean+=info[m]->mean/pts[m].x;
+    distSum+=pts[m].x;
   }
   
   nInfo.mean/=distSum;
@@ -825,10 +825,10 @@ void stageLightParam::nodesUpdate()
   idxH = -1;
   for (BGLightNodeInfo &node : BG_nodes)
   {
-    if (idxW < node.index.X)
-      idxW = node.index.X;
-    if (idxH < node.index.Y)
-      idxH = node.index.Y;
+    if (idxW < node.index.x)
+      idxW = node.index.x;
+    if (idxH < node.index.y)
+      idxH = node.index.y;
   }
 
   idxW++;
@@ -848,7 +848,7 @@ void stageLightParam::nodesUpdate()
   {
     if (node.mean != node.mean)
       continue;
-    int exIdx = (node.index.X + 1) + (node.index.Y + 1) * (idxW + 2);
+    int exIdx = (node.index.x + 1) + (node.index.y + 1) * (idxW + 2);
     BG_exnodes[exIdx] = node;//override
 
   }
@@ -993,8 +993,8 @@ int stageLightParam::RESET()
   tarImgH = 0;
   idxW = 0, idxH = 0;
   back_light_target=200;
-  origin_offset.X=0;
-  origin_offset.Y=0;
+  origin_offset.x=0;
+  origin_offset.y=0;
   return 0;
 }
 
@@ -1010,10 +1010,10 @@ BGLightNodeInfo *stageLightParam::fetchIdx(int X, int Y)
 float stageLightParam::factorSampling(acv_XY pos)
 {
   
-  pos.X+=origin_offset.X;
-  pos.Y+=origin_offset.Y;
-  float alphaX = (pos.X * idxW / tarImgW) - 0.5;
-  float alphaY = (pos.Y * idxH / tarImgH) - 0.5;
+  pos.x+=origin_offset.x;
+  pos.y+=origin_offset.y;
+  float alphaX = (pos.x * idxW / tarImgW) - 0.5;
+  float alphaY = (pos.y * idxH / tarImgH) - 0.5;
   int leadX = floor(alphaX);
   int leadY = floor(alphaY);
 

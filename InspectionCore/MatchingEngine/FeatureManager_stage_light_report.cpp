@@ -243,8 +243,8 @@ int backLightBlockCalc(const cv::Mat &img, int X, int Y, int W, int H, stage_lig
 
 
   const int histoSteps = 256;
-  ret_info->nodeLocation.X = X + W / 2.0;
-  ret_info->nodeLocation.Y = Y + H / 2.0;
+  ret_info->nodeLocation.x = X + W / 2.0;
+  ret_info->nodeLocation.y = Y + H / 2.0;
   // ret_info->imageMax=0;
   // ret_info->imageMin=99999;
 
@@ -456,12 +456,12 @@ int FeatureManager_stage_light_report::FeatureMatching(cv::Mat &p_img)
     for (int j = 0; j < grid_size[0]; j++)
     {
       stage_light_grid_node_info info;
-      info.nodeIndex.X = j;
-      info.nodeIndex.Y = i;
+      info.nodeIndex.x = j;
+      info.nodeIndex.y = i;
       int ret = backLightBlockCalc(img_wo_edge, sBlockW * j, sBlockH * i, sBlockW, sBlockH, &info);
       info.error = ret;
-      info.nodeLocation.X *= this->down_scale_factor;
-      info.nodeLocation.Y *= this->down_scale_factor;
+      info.nodeLocation.x *= this->down_scale_factor;
+      info.nodeLocation.y *= this->down_scale_factor;
       report.data.stage_light_report.gridInfo->push_back(info);
     }
   }

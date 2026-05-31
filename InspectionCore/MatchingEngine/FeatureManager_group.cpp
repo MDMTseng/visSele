@@ -223,8 +223,8 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
         int W = sl->idxW, H = sl->idxH;
         std::vector<float> B(W * H, NAN);
         for (BGLightNodeInfo &n : sl->BG_nodes)
-          if (n.index.X >= 0 && n.index.X < W && n.index.Y >= 0 && n.index.Y < H)
-            B[n.index.Y * W + n.index.X] = n.mean;
+          if (n.index.x >= 0 && n.index.x < W && n.index.y >= 0 && n.index.y < H)
+            B[n.index.y * W + n.index.x] = n.mean;
 
         int rejected = backLightField_robustClean(B.data(), W, H, 2.5f, 3);
         bgThreshMap.resize(W * H);

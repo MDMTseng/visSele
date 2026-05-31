@@ -95,7 +95,7 @@ typedef struct featureDef_line{
                  ^
      ____________|_____________
      |           |            |          ^
-  ---|-----------|------------|--->X     | initMatchingMargin
+  ---|-----------|------------|--->x     | initMatchingMargin
      |___________|____________|          v
   
   */
@@ -153,6 +153,7 @@ typedef struct featureDef_searchPoint{
       bool search_far;
       bool locating_anchor;
     }anglefollow;
+    data() : anglefollow{} {}
   }data;
   vector <ContourFetch::ptInfo> tmp_pt;
   Roughness_INFO ri;
@@ -380,7 +381,7 @@ typedef struct FeatureReport
   } type;
   string name;
   FeatureManager_BacPac *bacpac;
-  union{
+  union Data {
     void* raw;
     FeatureReport_nop                     nop;
     FeatureReport_binary_processing_group binary_processing_group;
@@ -390,6 +391,11 @@ typedef struct FeatureReport
     FeatureReport_stage_light_report      stage_light_report;
     FeatureReport_cjson_report                  cjson_report;
     FeatureReport_custom_report                  custom_report;
+    // After Phase 3b made acv_XY a cv::Point2f (non-trivial default ctor),
+    // some union members carry non-trivial ctors so the union's implicit
+    // default ctor is deleted. Provide an explicit zero-init that just
+    // clears the raw bits.
+    Data() : raw(nullptr) {}
   }data;
   string info;
 }FeatureReport;

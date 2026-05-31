@@ -55,42 +55,15 @@ typedef struct __attribute__((__packed__)) acv_tagBITMAPINFOHEADER
 #endif
 
 
-typedef struct acv_XY
-{
-    float X,Y;
-} acv_XY;
-
-
-typedef struct acv_Circle
-{
-    acv_XY circumcenter;
-	float radius;
-} acv_Circle;
-
-typedef struct acv_Line {
-  acv_XY line_vec;
-  acv_XY line_anchor;
-} acv_Line;
-
-
-typedef struct acv_CircleFit
-{
-  acv_Circle circle;
-  int matching_pts;
-  float s;//sigma
-  float confidence;// mean inlier edge confidence (caliper path; 0 = N/A)
-}acv_CircleFit;
-
-typedef struct acv_LineFit
-{
-  acv_Line line;
-  int matching_pts;
-
-  acv_XY end_pt1;
-  acv_XY end_pt2;
-  float s;//sigma
-  float confidence;// mean inlier edge confidence (caliper path; 0 = N/A)
-}acv_LineFit;
+// Phase 3b: geometry POD types relocated to common_lib/include/vis_geom.h.
+// acv_XY is now `cv::Point2f` (`.x`, `.y`); the structs below alias the new
+// `vis_*` types for transitional backward-compat across the rest of the code.
+#include "vis_geom.h"
+using acv_XY        = cv::Point2f;
+using acv_Line      = vis_Line;
+using acv_Circle    = vis_Circle;
+using acv_CircleFit = vis_CircleFit;
+using acv_LineFit   = vis_LineFit;
 
 
 
@@ -107,8 +80,6 @@ void acvDeleteFrame(acvImage *Pic,int width=1,int val=255);
 void acvClear(acvImage *Pic,BYTE Var);
 void acvClear(acvImage *Pic,int channel,BYTE Var);
 void acvTurn(acvImage *Pic);
-double acvFAtan2( double y, double x );
-double acvFAtan(double x);
 void acvFullB2W(acvImage *OriPic,acvImage *OutPic);
 void acvClone_B2Gray(acvImage *OriPic,acvImage *OutPic);
 void acvCloneImage(acvImage *OriPic,acvImage *OutPic,int Mode);
@@ -126,38 +97,5 @@ int acvSaveBitmapFile(const char *filename,acvImage *img);
 void acvImageAdd(acvImage *src,int num);
 #define DoubleRoundInt(Num) ((int)round(Num))
 void acvInnerFramePixCopy(acvImage *Pic,int FrameX);
-acv_XY acvIntersectPoint(acv_XY p1,acv_XY p2,acv_XY p3,acv_XY p4);
-acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3);
-float acv2DCrossProduct(acv_XY v1,acv_XY v2);
-float acv2DDotProduct(acv_XY v1,acv_XY v2);
-float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3);
-float acvDistance(acv_XY p1,acv_XY p2);
-acv_XY acvVecNormal(acv_XY vec);
-acv_XY acvVecNormalize(acv_XY vec);
-acv_XY acvVecInterp(acv_XY vec1,acv_XY vec2,float alpha);
-acv_XY acvVecAdd(acv_XY vec1,acv_XY vec2);
-acv_XY acvVecSub(acv_XY vec1,acv_XY vec2);
-acv_XY acvVecMult(acv_XY vec1,float mult);
-
-
-acv_XY acvComplexAdd(acv_XY a,acv_XY b);//a+b
-acv_XY acvComplexSub(acv_XY a,acv_XY b);
-acv_XY acvComplexMult(acv_XY a,acv_XY b);//a*b
-acv_XY acvComplexDiv(acv_XY a,acv_XY b);//a/b
-acv_XY acvRotation(float sine,float cosine,float flip_f,acv_XY input);
-acv_XY acvRotation(float sine,float cosine,acv_XY input);
-acv_XY acvRotation(float angle,acv_XY input);
-
-acv_XY acvLineIntersect(acv_Line line1, acv_Line line2);
-acv_XY acvClosestPointOnLine(acv_XY point, acv_Line line);
-acv_XY acvClosestPointOnCircle(acv_XY point, acv_Circle circle);
-float acvDistance_Signed(acv_Line line, acv_XY point);
-float acvDistance(acv_Line line, acv_XY point);
-float acvDistance_Signed(acv_Circle cir, acv_XY point);
-float acvDistance(acv_Circle cir, acv_XY point);
-float acvLineAngle(acv_Line line1,acv_Line line2);
-float acvVectorAngle(acv_XY v1,acv_XY v2);
-bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma);
-bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, float *ret_sigma);
-bool acvFitLine(const void *pts_struct,int pts_step, const void *ptsw_struct,int ptsw_step, int ptsL,acv_Line *line, float *ret_sigma);
+// Geometry function declarations moved to vis_geom.h.
 #endif

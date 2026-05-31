@@ -125,10 +125,10 @@ int acvContourExtraction(cv::Mat &Pic, int FromX, int FromY, uint8_t B, uint8_t 
     while (1)
     {
         ContourFetch::ptInfo pt = {
-          pt:        {.X=(float)NowPos[0], .Y=(float)NowPos[1]},
-          sobel:     {.X=NAN, .Y=NAN},
-          contourDir:{.X=NAN, .Y=NAN},
-          pt_img:    {.X=NAN, .Y=NAN},
+          pt: {(float)NowPos[0], (float)NowPos[1]},
+          sobel: {NAN, NAN},
+          contourDir: {NAN, NAN},
+          pt_img: {NAN, NAN},
           curvature: NAN,
           edgeRsp:   0,
           tmp:       NAN,
@@ -159,8 +159,8 @@ bool acvOuterContourExtraction(cv::Mat &LabeledPic, acv_LabeledData ldata, int l
   contour.resize(0);
   int X, Y, startX = 0, startY = 0;
   int ret = -1;
-  Y = (int)ldata.LTBound.Y;
-  for (int j = (int)ldata.LTBound.X; j < (int)ldata.RBBound.X; j++)
+  Y = (int)ldata.LTBound.y;
+  for (int j = (int)ldata.LTBound.x; j < (int)ldata.RBBound.x; j++)
   {
     _24BitUnion *pix = (_24BitUnion *)(LabeledPic.ptr<uint8_t>(Y) + j * 3);
     if (pix->_3Byte.Num == labelIdx)
@@ -182,8 +182,8 @@ bool acvOuterContourExtraction(cv::Mat &LabeledPic, acv_LabeledData ldata, int l
 
 float acvPoint3Angle(acv_XY p1,acv_XY pc,acv_XY p2)
 {
-  acv_XY v1={.X=p1.X-pc.X,.Y=p1.Y-pc.Y};
-  acv_XY v2={.X=pc.X-p2.X,.Y=pc.Y-p2.Y};
+  acv_XY v1 = {p1.x-pc.x, p1.y-pc.y};
+  acv_XY v2 = {pc.x-p2.x, pc.y-p2.y};
   return acvVectorAngle(v1,v2);
 }
 
@@ -248,8 +248,8 @@ void ContourFilter(vector<ContourFetch::ptInfo> &contour, float epsilon=0.05, in
 
       {
         acv_XY dir={
-          X:headPT.X - tailPT.X,
-          Y:headPT.Y - tailPT.Y
+          headPT.x - tailPT.x,
+          headPT.y - tailPT.y
         };
         
         dir = acvVecNormalize(dir);
@@ -285,8 +285,8 @@ void circleRefine(vector<ContourFetch::ptInfo> &pointsInRange,int Len,acv_Circle
   }
   for(int i=0;i<CircleFitData.size();i++)
   {
-    CircleFitData.X[i]=pointsInRange[i*skip].pt.X;
-    CircleFitData.Y[i]=pointsInRange[i*skip].pt.Y;
+    CircleFitData.X[i]=pointsInRange[i*skip].pt.x;
+    CircleFitData.Y[i]=pointsInRange[i*skip].pt.y;
     //printf(">>>>>>>%d>>>>>>> %f\n",i,pointsInRange[i*skip].edgeRsp);
     if(sum_edgeRsp==0)
     {
@@ -300,8 +300,8 @@ void circleRefine(vector<ContourFetch::ptInfo> &pointsInRange,int Len,acv_Circle
 
   Circle circle;
   circle = CircleFitByHyper (CircleFitData);
-  circleF->circle.circumcenter.X = circle.a;
-  circleF->circle.circumcenter.Y = circle.b;
+  circleF->circle.circumcenter.x = circle.a;
+  circleF->circle.circumcenter.y = circle.b;
   circleF->circle.radius = circle.r;
   circleF->matching_pts = pointsInRange.size();
   circleF->s = circle.s;
@@ -315,8 +315,8 @@ float CircleSimilarity(acv_Circle c1,acv_Circle c2)
   float MaxR_sq = (c1.radius+c2.radius)/2;
   MaxR_sq*=MaxR_sq;
 
-  float dx = c1.circumcenter.X - c2.circumcenter.X;
-  float dy = c1.circumcenter.Y - c2.circumcenter.Y;
+  float dx = c1.circumcenter.x - c2.circumcenter.x;
+  float dy = c1.circumcenter.y - c2.circumcenter.y;
   float dist_sq = dx*dx + dy*dy;
 
   float cc_sim = (MaxR_sq - dist_sq)/MaxR_sq;
@@ -327,7 +327,7 @@ float CircleSimilarity(acv_Circle c1,acv_Circle c2)
 float LineSimilarity(acv_Line line1,acv_Line line2,float epsilon)
 {
 
-  float sim = line1.line_vec.X*line2.line_vec.X+line1.line_vec.Y*line2.line_vec.Y;
+  float sim = line1.line_vec.x*line2.line_vec.x+line1.line_vec.y*line2.line_vec.y;
   if(sim<0)sim-=sim;
   float dist = acvDistance(line1, line2.line_anchor);
   if(!isnormal(dist) && dist!=0)
@@ -482,7 +482,7 @@ int refineMatchedLine(vector<acv_LineFit> &LineList,float simThres,float sigmaTh
 
 //     static vector<int> s_intersectIdxs;
 //     static vector<ContourGrid::ptInfo> s_points;
-//     contourGrid.getContourPointsWithInCircleContour(c.circumcenter.X,c.circumcenter.Y,c.radius,
+//     contourGrid.getContourPointsWithInCircleContour(c.circumcenter.x,c.circumcenter.y,c.radius,
 //       0,2*M_PI,0,
 //       epsilon1,
 //       s_intersectIdxs,s_points);
@@ -495,8 +495,8 @@ int refineMatchedLine(vector<acv_LineFit> &LineList,float simThres,float sigmaTh
 
 //       circleRefine(s_points,s_points.size(),&cf);
 //       contourGrid.getContourPointsWithInCircleContour(
-//         cf.circle.circumcenter.X,
-//         cf.circle.circumcenter.Y,
+//         cf.circle.circumcenter.x,
+//         cf.circle.circumcenter.y,
 //         cf.circle.radius,0,
 //         0,
 //         2*M_PI,
@@ -517,10 +517,10 @@ int refineMatchedLine(vector<acv_LineFit> &LineList,float simThres,float sigmaTh
 // {
 //     acv_XY cc = acvCircumcenter(dataArr6[0],dataArr6[1],dataArr6[2]);
 //     acv_XY cc2 = acvCircumcenter(dataArr6[3],dataArr6[4],dataArr6[5]);
-//     acv_XY cc_diff={.X=cc2.X-cc.X,.Y=cc2.Y-cc.Y};
-//     if(!isnormal(cc_diff.X) || !isnormal(cc_diff.Y) )return -1;
+//     acv_XY cc_diff = {cc2.x-cc.x, cc2.y-cc.y};
+//     if(!isnormal(cc_diff.x) || !isnormal(cc_diff.y) )return -1;
 
-//     if(cc_diff.X*cc_diff.X+cc_diff.Y*cc_diff.Y>0.5)
+//     if(cc_diff.x*cc_diff.x+cc_diff.y*cc_diff.y>0.5)
 //     {
 //       return -1;
 //     }
@@ -530,8 +530,8 @@ int refineMatchedLine(vector<acv_LineFit> &LineList,float simThres,float sigmaTh
 //     radius/=2;
 
 
-//     cc.X=(cc.X+cc2.X)/2;
-//     cc.Y=(cc.Y+cc2.Y)/2;
+//     cc.x=(cc.x+cc2.x)/2;
+//     cc.y=(cc.y+cc2.y)/2;
 
 //     acv_Circle c = {.circumcenter=cc, .radius=radius};
 
@@ -593,9 +593,9 @@ ContourFetch::ptInfo* findEndPoint(acv_Line line, int signedness, vector<Contour
 
   //Find normal vector
   {
-    float tmp=line.line_vec.X;
-    line.line_vec.X=line.line_vec.Y;
-    line.line_vec.Y=-tmp;
+    float tmp=line.line_vec.x;
+    line.line_vec.x=line.line_vec.y;
+    line.line_vec.y=-tmp;
   }
 
   for(int i=0;i<points.size();i++)
@@ -875,13 +875,13 @@ void smooth_edge(float *f,int fL,float *edgeX,float *ret_edge_response)
 
 acv_XY pointSobel(const cv::Mat &graylevelImg, acv_XY point, int range)
 {
-  int X=point.X;
-  int Y=point.Y;
+  int X=point.x;
+  int Y=point.y;
   int offset=range;
   if(X<offset || X+offset>= graylevelImg.cols ||
   Y<offset || Y+offset>= graylevelImg.rows)
   {
-    return (acv_XY){0,0};
+    return acv_XY(0, 0);
   }
   int I11 = graylevelImg.ptr<uint8_t>(Y-offset)[(X-offset)*3];
   int I12 = graylevelImg.ptr<uint8_t>(Y-offset)[(X)*3];
@@ -896,8 +896,8 @@ acv_XY pointSobel(const cv::Mat &graylevelImg, acv_XY point, int range)
   //11 12 13
   //21  X 23
   //31 32 33
-  sobel.X=(I13+I23*2+I33) - (I11+I21*2+I31);
-  sobel.Y=(I31+I32*2+I33) - (I11+I12*2+I13);//sobel
+  sobel.x=(I13+I23*2+I33) - (I11+I21*2+I31);
+  sobel.y=(I31+I32*2+I33) - (I11+I12*2+I13);//sobel
   return sobel;
 }
 
@@ -1064,7 +1064,7 @@ void edgeTracking::initTracking (ContourFetch::contourMatchSec &section,int new_
   //   acv_XY sobel = acvVecNormalize(section.section[i].sobel);
   //   sobel=acvVecMult(sobel,0);
   //   section.section[i].pt_img=acvVecAdd(sobel,section.section[i].pt_img);
-  //   // section.section[i].pt_img.X-=2;
+  //   // section.section[i].pt_img.x-=2;
   // }
 
 
@@ -1108,7 +1108,7 @@ void edgeTracking::runTracking (ContourFetch::contourMatchSec &section,int new_r
   //   acv_XY sobel = acvVecNormalize(section.section[i].sobel);
   //   sobel=acvVecMult(sobel,0);
   //   section.section[i].pt_img=acvVecAdd(sobel,section.section[i].pt_img);
-  //   // section.section[i].pt_img.X-=2;
+  //   // section.section[i].pt_img.x-=2;
   // }
   // acvImage FFKFKJDK;
   // FFKFKJDK.ReSize(graylevelImg);
@@ -1134,15 +1134,15 @@ void edgeTracking::runTracking (ContourFetch::contourMatchSec &section,int new_r
     float aoffset = bacpac->sampler->sampleAngleOffset(0);//should calc angle.... but ...
     acv_XY sobelV = acvVecNormalize(section.section[fbIndex].sobel);
     // LOGI("RUN:idx:%d sobel:%f,%f  pt:%f,%f",fbIndex,
-      // section.section[fbIndex].sobel.X,section.section[fbIndex].sobel.Y,
-      // section.section[fbIndex].pt_img.X,section.section[fbIndex].pt_img.Y);
-    // LOGI("RUN:fbIndex:%d/%d  mean_offset:%f  aoffset:%f sobel:%f,%f sigma:%f",fbIndex,section.section.size(),mean_offset,aoffset,sobelV.X,sobelV.Y,sigma);
+      // section.section[fbIndex].sobel.x,section.section[fbIndex].sobel.y,
+      // section.section[fbIndex].pt_img.x,section.section[fbIndex].pt_img.y);
+    // LOGI("RUN:fbIndex:%d/%d  mean_offset:%f  aoffset:%f sobel:%f,%f sigma:%f",fbIndex,section.section.size(),mean_offset,aoffset,sobelV.x,sobelV.y,sigma);
     acv_XY dirX=acvVecMult(sobelV,mean_offset+aoffset);
     
     acv_XY prePt = section.section[fbIndex].pt_img;
     // DRAW(&FFKFKJDK,prePt,0,255,0);
     // acv_XY tmp= prePt;
-    // tmp.Y=(tmp.Y-691)*5+1000;
+    // tmp.y=(tmp.y-691)*5+1000;
     // DRAW(&FFKFKJDK,tmp,0,255,255);
     section.section[fbIndex].pt=acvVecAdd(dirX,section.section[fbIndex].pt_img);
     
@@ -1151,9 +1151,9 @@ void edgeTracking::runTracking (ContourFetch::contourMatchSec &section,int new_r
     
     // DRAW(&FFKFKJDK,section.section[fbIndex].pt_img,255,0,0);
     // tmp= curPt;
-    // tmp.Y=(tmp.Y-691)*5+1000;
+    // tmp.y=(tmp.y-691)*5+1000;
     // DRAW(&FFKFKJDK,tmp,255,0,255);
-    // LOGI("XY:%f,%f >> %f,%f ",prePt.X,prePt.Y,curPt.X,curPt.Y);
+    // LOGI("XY:%f,%f >> %f,%f ",prePt.x,prePt.y,curPt.x,curPt.y);
     bacpac->sampler->img2ideal(&section.section[fbIndex].pt);//pt in ideal coord
     
   }while(fbIndex<section.section.size()-1);
@@ -1214,7 +1214,7 @@ int edgeTracking::contourPixExtraction(acv_XY center_point, acv_XY sobel, int st
     float lightComp = 1;
     if (bacpac && bacpac->sampler)
       lightComp = bacpac->sampler->sampleBackLightFactor_ImgCoord(curpoint);
-    float ptn = cvUnsignedMap1Sampling(this->_gray_cv, curpoint.X, curpoint.Y, 0) * lightComp;
+    float ptn = cvUnsignedMap1Sampling(this->_gray_cv, curpoint.x, curpoint.y, 0) * lightComp;
     
     // bacpac->sampler->
     
@@ -1222,7 +1222,7 @@ int edgeTracking::contourPixExtraction(acv_XY center_point, acv_XY sobel, int st
 
     // if(i==(steps-1)/2)
     //   printf("||");
-    // printf("%.1f %.1f:%.1f>",curpoint.X,curpoint.Y,ptn);
+    // printf("%.1f %.1f:%.1f>",curpoint.x,curpoint.y,ptn);
 
     curpoint = acvVecAdd(curpoint,stepDir);
   }
@@ -1237,7 +1237,7 @@ float edgeTracking::pixFetch(acv_XY pt, FeatureManager_BacPac *bacpac)
   float lightComp = 1;
   if (bacpac && bacpac->sampler)
     lightComp = bacpac->sampler->sampleBackLightFactor_ImgCoord(pt);
-  float ptn = cvUnsignedMap1Sampling(this->_gray_cv, pt.X, pt.Y, 0);
+  float ptn = cvUnsignedMap1Sampling(this->_gray_cv, pt.x, pt.y, 0);
   return lightComp * ptn;
 }
 
@@ -1380,8 +1380,8 @@ void edgeTracking::goAdv (ContourFetch::contourMatchSec &section,bool goForward,
   }
   // LOGI("sobel[%d]:%f,%f  << %f,%f",
   // sec_tail_idx,
-  // section.section[sec_tail_idx].sobel.X,section.section[sec_tail_idx].sobel.Y,
-  // section.section[sec_tail_idx].pt_img.X,section.section[sec_tail_idx].pt_img.Y);
+  // section.section[sec_tail_idx].sobel.x,section.section[sec_tail_idx].sobel.y,
+  // section.section[sec_tail_idx].pt_img.x,section.section[sec_tail_idx].pt_img.y);
   contourPixExtraction(section.section[sec_tail_idx].pt_img,
     section.section[sec_tail_idx].sobel,gradIndex,stepDist,pixWidth,pixRegion[head_idx],bacpac);
 
@@ -1426,7 +1426,7 @@ void contourGridGrayLevelRefine(const cv::Mat &grayLevelImg, ContourFetch &edge_
     {
       pts[j].sobel = pointSobel(grayLevelImg,pts[j].pt_img,2);
 
-     // LOGI("[%d]>>s:%f,%f i:%f,%f ",j,pts[j].sobel.X,pts[j].sobel.Y,pts[j].contourDir.X,pts[j].contourDir.Y);
+     // LOGI("[%d]>>s:%f,%f i:%f,%f ",j,pts[j].sobel.x,pts[j].sobel.y,pts[j].contourDir.x,pts[j].contourDir.y);
       // pts[j].pt_img=pts[j].pt;//pt in image coord
       if(bacpac)bacpac->sampler->img2ideal(&pts[j].pt);//pt in ideal coord
       pts[j].edgeRsp = 1;
@@ -1435,9 +1435,9 @@ void contourGridGrayLevelRefine(const cv::Mat &grayLevelImg, ContourFetch &edge_
     
     for(int j=0;j<pts.size();j++)
     {
-      if(pts[j].sobel.X==0 || pts[j].sobel.Y==0)//if somehow sobel is zero use contourDir as sobel
-        pts[j].sobel = (acv_XY){pts[j].contourDir.Y,-pts[j].contourDir.X};
-      // LOGI("[%d]>>s:%f,%f i:%f,%f ",j,pts[j].sobel.X,pts[j].sobel.Y,pts[j].contourDir.X,pts[j].contourDir.Y);
+      if(pts[j].sobel.x==0 || pts[j].sobel.y==0)//if somehow sobel is zero use contourDir as sobel
+        pts[j].sobel = acv_XY(pts[j].contourDir.y, -pts[j].contourDir.x);
+      // LOGI("[%d]>>s:%f,%f i:%f,%f ",j,pts[j].sobel.x,pts[j].sobel.y,pts[j].contourDir.x,pts[j].contourDir.y);
     }
   }
 }
@@ -1448,10 +1448,10 @@ int extractLabeledContourDataToContourGrid(cv::Mat &labeledImg, int label, acv_L
   edge_grid.RESET();
   if (scanline_skip < 0) return -1;
 
-  int sX = (int)ldat.LTBound.X;
-  int sY = (int)ldat.LTBound.Y;
-  int eX = (int)ldat.RBBound.X;
-  int eY = (int)ldat.RBBound.Y;
+  int sX = (int)ldat.LTBound.x;
+  int sY = (int)ldat.LTBound.y;
+  int eX = (int)ldat.RBBound.x;
+  int eY = (int)ldat.RBBound.y;
   LOGI("%d %d %d %d", sX, sY, eX, eY);
 
   int contourIdx = 0;
@@ -1549,8 +1549,8 @@ int extractLabeledContourDataToContourGrid(cv::Mat &labeledImg, int label, acv_L
 //     {
 
 //       const acv_XY p = edge_grid.get(i)->pt;
-//       int X = round(p.X);
-//       int Y = round(p.Y);
+//       int X = round(p.x);
+//       int Y = round(p.y);
 //       {
 //             buff->CVector[Y][X*3]=255;
 //             buff->CVector[Y][X*3+1]=255;
@@ -1569,8 +1569,8 @@ int extractLabeledContourDataToContourGrid(cv::Mat &labeledImg, int label, acv_L
 
 float CrossProduct_SS(acv_XY p1,acv_XY p2,acv_XY p3)
 {
-  acv_XY v1=acvVecNormalize({.X=p2.X-p1.X,.Y=p2.Y-p1.Y});
-  acv_XY v2=acvVecNormalize({.X=p3.X-p2.X,.Y=p3.Y-p2.Y});
+  acv_XY v1=acvVecNormalize(acv_XY(p2.x-p1.x, p2.y-p1.y));
+  acv_XY v2=acvVecNormalize(acv_XY(p3.x-p2.x, p3.y-p2.y));
 
   return acv2DCrossProduct(v1,v2);
 }
@@ -1622,8 +1622,8 @@ void ComputeConvexHull2(const acv_XY *polygon,const int L)
 
 float Point3Angle(acv_XY p1,acv_XY pc,acv_XY p2)
 {
-  acv_XY v1={.X=p1.X-pc.X,.Y=p1.Y-pc.Y};
-  acv_XY v2={.X=pc.X-p2.X,.Y=pc.Y-p2.Y};
+  acv_XY v1 = {p1.x-pc.x, p1.y-pc.y};
+  acv_XY v2 = {pc.x-p2.x, pc.y-p2.y};
   return acvVectorAngle(v1,v2);
 }
 
@@ -1661,9 +1661,9 @@ void ComputeConvexHull_x(const acv_XY *polygon,const int L,std::vector<int> &ret
       // if(i>430)
       // {
       //    LOGI("idx:%d  %f,%f  %f,%f  %f,%f   X=>%f  A:%f",i,
-      //     polygon[ret_chIdxs[ret_chIdxs.size() - 2]].X,polygon[ret_chIdxs[ret_chIdxs.size() - 2]].Y,
-      //     polygon[ret_chIdxs[ret_chIdxs.size() - 1]].X,polygon[ret_chIdxs[ret_chIdxs.size() - 1]].Y,
-      //     polygon[i ].X,polygon[i].Y,angle
+      //     polygon[ret_chIdxs[ret_chIdxs.size() - 2]].x,polygon[ret_chIdxs[ret_chIdxs.size() - 2]].y,
+      //     polygon[ret_chIdxs[ret_chIdxs.size() - 1]].x,polygon[ret_chIdxs[ret_chIdxs.size() - 1]].y,
+      //     polygon[i ].x,polygon[i].y,angle
       //     );
       // }
       if(angle>0&&(angleSum+angle)<2*M_PI+angleSum_sigma)
@@ -1727,7 +1727,7 @@ void ComputeConvexHull_x(const acv_XY *polygon,const int L,std::vector<int> &ret
   // {
   //   int idx=chIdxs[i];
     
-  //   LOGI("idx:%d, %f %f",idx,polygon[idx].X,polygon[idx].Y);
+  //   LOGI("idx:%d, %f %f",idx,polygon[idx].x,polygon[idx].y);
   // }
   if(fEl_idx!=0)
   {
@@ -1741,9 +1741,9 @@ void ComputeConvexHull_x(const acv_XY *polygon,const int L,std::vector<int> &ret
   // for (size_t i = 2; i < chIdxs.size(); i++)
 	// {
   //   LOGI("idx:%d>%d>%d  %f,%f  %f,%f  %f,%f   X=>%f",chIdxs[i-2],chIdxs[i-1],chIdxs[i-0],
-  //     polygon[chIdxs[i-2]].X,polygon[chIdxs[i-2]].Y,
-  //     polygon[chIdxs[i-1]].X,polygon[chIdxs[i-1]].Y,
-  //     polygon[chIdxs[i]  ].X,polygon[chIdxs[i]  ].Y,
+  //     polygon[chIdxs[i-2]].x,polygon[chIdxs[i-2]].y,
+  //     polygon[chIdxs[i-1]].x,polygon[chIdxs[i-1]].y,
+  //     polygon[chIdxs[i]  ].x,polygon[chIdxs[i]  ].y,
   //     CrossProduct(polygon[chIdxs[i-2]  ], polygon[chIdxs[i-1]], polygon[chIdxs[i]])
   //     );
   //   // LOGI("idx:%d  %f,%f  %f,%f  %f,%f",i,);
@@ -1768,9 +1768,9 @@ void ComputeConvexHull(const acv_XY *polygon,const int L,int initOffset,std::vec
     int minX=999999;
     for(int i=0;i<L;i++)
     {
-      if(minX>polygon[i].X)
+      if(minX>polygon[i].x)
       {
-        minX=polygon[i].X;
+        minX=polygon[i].x;
         minXIdx=i;
       }
     }
@@ -1820,17 +1820,17 @@ void ComputeConvexHull(const acv_XY *polygon,const int L,int initOffset,std::vec
       // if(i>430)
       // {
       //    LOGI("idx:%d  %f,%f  %f,%f  %f,%f   X=>%f  A:%f",i,
-      //     polygon[ret_chIdxs[ret_chIdxs.size() - 2]].X,polygon[ret_chIdxs[ret_chIdxs.size() - 2]].Y,
-      //     polygon[ret_chIdxs[ret_chIdxs.size() - 1]].X,polygon[ret_chIdxs[ret_chIdxs.size() - 1]].Y,
-      //     polygon[i ].X,polygon[i].Y,angle
+      //     polygon[ret_chIdxs[ret_chIdxs.size() - 2]].x,polygon[ret_chIdxs[ret_chIdxs.size() - 2]].y,
+      //     polygon[ret_chIdxs[ret_chIdxs.size() - 1]].x,polygon[ret_chIdxs[ret_chIdxs.size() - 1]].y,
+      //     polygon[i ].x,polygon[i].y,angle
       //     );
       // }
 
       //pn0 pn1 ...... pnd2 pnd1   [pt : new point]
       // LOGI("idx:%d>>%d  %0.2f,%0.2f - %0.2f,%0.2f - %0.2f,%0.2f",ii,i,
-      //   pnd2.X,pnd2.Y,
-      //   pnd1.X,pnd1.Y,
-      //   pt.X,pt.Y
+      //   pnd2.x,pnd2.y,
+      //   pnd1.x,pnd1.y,
+      //   pt.x,pt.y
       //   );
       if(cross1>0)
       {//ok

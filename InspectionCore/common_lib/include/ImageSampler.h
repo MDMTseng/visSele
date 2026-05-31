@@ -47,8 +47,8 @@ class angledOffsetTable
 
 typedef struct BGLightNodeInfo{
   struct index{
-    int X;
-    int Y;
+    int x;
+    int y;
   }index;
   acv_XY location;
   float sigma;
@@ -204,11 +204,11 @@ class ImageSampler
   int img2ideal(acv_XY *distortedVec)
   {
     if(_ignoreCorrdCalib)return 0;
-    distortedVec->X += origin_offset.X;
-    distortedVec->Y += origin_offset.Y;
+    distortedVec->x += origin_offset.x;
+    distortedVec->y += origin_offset.y;
     int ret = map->c2i(*distortedVec);
-    distortedVec->X -= origin_offset.X;
-    distortedVec->Y -= origin_offset.Y;
+    distortedVec->x -= origin_offset.x;
+    distortedVec->y -= origin_offset.y;
     return ret;
   }
 
@@ -217,11 +217,11 @@ class ImageSampler
   int img2ideal(float distortedVec[2])
   {
     if(_ignoreCorrdCalib)return 0;
-    distortedVec[0] += origin_offset.X;
-    distortedVec[1] += origin_offset.Y;
+    distortedVec[0] += origin_offset.x;
+    distortedVec[1] += origin_offset.y;
     int ret = map->c2i(distortedVec);
-    distortedVec[0] -= origin_offset.X;
-    distortedVec[1] -= origin_offset.Y;
+    distortedVec[0] -= origin_offset.x;
+    distortedVec[1] -= origin_offset.y;
     return ret;
   }
 
@@ -229,11 +229,11 @@ class ImageSampler
   {
     
     if(_ignoreCorrdCalib)return 0;
-    idealVec->X += origin_offset.X;
-    idealVec->Y += origin_offset.Y;
+    idealVec->x += origin_offset.x;
+    idealVec->y += origin_offset.y;
     int ret =  map->c2i(*idealVec);
-    idealVec->X -= origin_offset.X;
-    idealVec->Y -= origin_offset.Y;
+    idealVec->x -= origin_offset.x;
+    idealVec->y -= origin_offset.y;
     return ret;
   }
 
@@ -241,12 +241,12 @@ class ImageSampler
   {
     if(_ignoreCorrdCalib)return 0;
     
-    idealVec[0] += origin_offset.X;
-    idealVec[1] += origin_offset.Y;
+    idealVec[0] += origin_offset.x;
+    idealVec[1] += origin_offset.y;
 
     int ret = map->i2c(idealVec);
-    idealVec[0] -= origin_offset.X;
-    idealVec[1] -= origin_offset.Y;
+    idealVec[0] -= origin_offset.x;
+    idealVec[1] -= origin_offset.y;
     return ret;
   }
   float sampleBackLightFactor_ImgCoord(acv_XY pos)
@@ -263,16 +263,16 @@ class ImageSampler
   float sampleImage_ImgCoord_cv(const cv::Mat &m, acv_XY pos, int doNearest=1, int ch=0)
   {
     float bri = 0;
-    int rX = (int)pos.X, rY = (int)pos.Y;
+    int rX = (int)pos.x, rY = (int)pos.y;
     if (doNearest == 1)
     {
-      rX = (int)std::round(pos.X); rY = (int)std::round(pos.Y);
+      rX = (int)std::round(pos.x); rY = (int)std::round(pos.y);
       if (rX < 0 || rY < 0 || rX > m.cols - 1 || rY > m.rows - 1) bri = 0;
       else bri = m.ptr<uint8_t>(rY)[rX * m.channels() + ch];
     }
     else
     {
-      float resX = pos.X - rX, resY = pos.Y - rY;
+      float resX = pos.x - rX, resY = pos.y - rY;
       if (rX < 0 || rY < 0 || rX + 1 > m.cols - 1 || rY + 1 > m.rows - 1) bri = std::nan("");
       else
       {

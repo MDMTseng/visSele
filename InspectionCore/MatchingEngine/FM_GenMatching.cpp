@@ -100,14 +100,14 @@ static acv_XY readXY(cJSON *jsonParam)
   
   acv_XY xy={NAN,NAN};
   double* num=JFetch_NUMBER(jsonParam,"x");
-  if(num!=NULL)xy.X=*num;
+  if(num!=NULL)xy.x=*num;
   else return xy;
 
 
   num=JFetch_NUMBER(jsonParam,"y");
-  if(num!=NULL)xy.Y=*num;
+  if(num!=NULL)xy.y=*num;
   else{
-    xy.X=xy.Y=NAN;
+    xy.x=xy.y=NAN;
     return xy;
   }  
   return xy;

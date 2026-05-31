@@ -80,9 +80,9 @@ int FeatureManager_sig360_extractor::FeatureMatching(cv::Mat &img)
   }
   acv_XY center = ldData[idx].Center;
   LOGI("Find the component => idx:%d", idx);
-  LOGI(">>> Center X:%f Y:%f...", ldData[idx].Center.X, ldData[idx].Center.Y);
-  LOGI(">>>LTBound X:%f Y:%f...", ldData[idx].LTBound.X, ldData[idx].LTBound.Y);
-  LOGI(">>>RBBound X:%f Y:%f...", ldData[idx].RBBound.X, ldData[idx].RBBound.Y);
+  LOGI(">>> Center X:%f Y:%f...", ldData[idx].Center.x, ldData[idx].Center.y);
+  LOGI(">>>LTBound X:%f Y:%f...", ldData[idx].LTBound.x, ldData[idx].LTBound.y);
+  LOGI(">>>RBBound X:%f Y:%f...", ldData[idx].RBBound.x, ldData[idx].RBBound.y);
 
 
   bool isOK = acvOuterContourExtraction(img, ldData[idx], idx, tmp_contour);
@@ -104,7 +104,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(cv::Mat &img)
     float mmpp = bacpac->sampler->mmpP_ideal();
     for (int i = 0; i < signature.size(); i++)
     {
-      signature[i].X *= mmpp;
+      signature[i].x *= mmpp;
     }
     ldData[idx].Center = acvVecMult(ideal_center, mmpp);
     bacpac->sampler->img2ideal(&ldData[idx].LTBound);
@@ -134,13 +134,13 @@ int FeatureManager_sig360_extractor::FeatureMatching(cv::Mat &img)
         logv(">>SKIP...\n");
         continue;
       }
-      LOGV(">>cc.X:%f cc.Y:%f r:%f;   s:%f pts:%d",
-        detectedCircles[i].circle.circumcenter.X-center.X,detectedCircles[i].circle.circumcenter.Y-center.Y,
+      LOGV(">>cc.x:%f cc.y:%f r:%f;   s:%f pts:%d",
+        detectedCircles[i].circle.circumcenter.x-center.x,detectedCircles[i].circle.circumcenter.y-center.y,
         detectedCircles[i].circle.radius,
         detectedCircles[i].s,detectedCircles[i].matching_pts
       );
       acvDrawCircle(buff,
-        detectedCircles[i].circle.circumcenter.X, detectedCircles[i].circle.circumcenter.Y,
+        detectedCircles[i].circle.circumcenter.x, detectedCircles[i].circle.circumcenter.y,
         detectedCircles[i].circle.radius,
         20,255, 0, 0);
 
@@ -149,39 +149,39 @@ int FeatureManager_sig360_extractor::FeatureMatching(cv::Mat &img)
   for(int i=0;i<detectedLines.size();i++)
   {
     acv_Line line = detectedLines[i].line;
-    line.line_anchor.X-=center.X;
-    line.line_anchor.Y-=center.Y;
-    LOGV(">>anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f;  s:%f pts:%d",
-      line.line_anchor.X,line.line_anchor.Y,
-      line.line_vec.X,line.line_vec.Y,
+    line.line_anchor.x-=center.x;
+    line.line_anchor.y-=center.y;
+    LOGV(">>anchor.x:%f anchor.y:%f vec.x:%f vec.y:%f;  s:%f pts:%d",
+      line.line_anchor.x,line.line_anchor.y,
+      line.line_vec.x,line.line_vec.y,
       detectedLines[i].s,detectedLines[i].matching_pts
     );
     float mult=100;
     acvDrawLine(buff,
-      detectedLines[i].end_pos.X,detectedLines[i].end_pos.Y,
-      detectedLines[i].end_neg.X,detectedLines[i].end_neg.Y,
+      detectedLines[i].end_pos.x,detectedLines[i].end_pos.y,
+      detectedLines[i].end_neg.x,detectedLines[i].end_neg.y,
       20,255,128);
-    detectedLines[i].end_pos.X-=center.X;
-    detectedLines[i].end_pos.Y-=center.Y;
-    detectedLines[i].end_neg.X-=center.X;
-    detectedLines[i].end_neg.Y-=center.Y;
-    LOGV(">>end_pos.X:%f end_pos.Y:%f end_neg.X:%f end_neg.Y:%f\n",
-      detectedLines[i].end_pos.X,detectedLines[i].end_pos.Y,
-      detectedLines[i].end_neg.X,detectedLines[i].end_neg.Y
+    detectedLines[i].end_pos.x-=center.x;
+    detectedLines[i].end_pos.y-=center.y;
+    detectedLines[i].end_neg.x-=center.x;
+    detectedLines[i].end_neg.y-=center.y;
+    LOGV(">>end_pos.x:%f end_pos.y:%f end_neg.x:%f end_neg.y:%f\n",
+      detectedLines[i].end_pos.x,detectedLines[i].end_pos.y,
+      detectedLines[i].end_neg.x,detectedLines[i].end_neg.y
     );
   }
 
   logv("\"magnitude\":[");
   for(int i=0;i<signature.size();i++)
   {
-    logv("%f,",signature[i].X);
+    logv("%f,",signature[i].x);
   }logv("],\n");
 
 
   logv("\"angle\":[");
   for(int i=0;i<signature.size();i++)
   {
-    logv("%f,",signature[i].Y);
+    logv("%f,",signature[i].y);
   }logv("]\n");
 
 #endif

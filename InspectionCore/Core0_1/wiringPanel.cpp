@@ -654,10 +654,10 @@ BGLightNodeInfo extractInfoFromJson(cJSON *nodeRoot) //have exception
   }
 
   BGLightNodeInfo info;
-  info.location.X = *JFetEx_NUMBER(nodeRoot, "location.x");
-  info.location.Y = *JFetEx_NUMBER(nodeRoot, "location.y");
-  info.index.X = (int)*JFetEx_NUMBER(nodeRoot, "index.x");
-  info.index.Y = (int)*JFetEx_NUMBER(nodeRoot, "index.y");
+  info.location.x = *JFetEx_NUMBER(nodeRoot, "location.x");
+  info.location.y = *JFetEx_NUMBER(nodeRoot, "location.y");
+  info.index.x = (int)*JFetEx_NUMBER(nodeRoot, "index.x");
+  info.index.y = (int)*JFetEx_NUMBER(nodeRoot, "index.y");
 
   info.sigma = *JFetEx_NUMBER(nodeRoot, "sigma");
   info.samp_rate = *JFetEx_NUMBER(nodeRoot, "samp_rate");
@@ -867,7 +867,7 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
       stageLightInfo->BG_nodes.push_back(info);
 
       // LOGI("node[%d]:mean:%f idx:%d:%d  xy:%f,%f  size:%d",
-      //   idx,info.mean,idx,info.index.X,idx,info.index.Y,info.location.X,idx,info.location.Y,stageLightInfo->BG_nodes.size());
+      //   idx,info.mean,idx,info.index.x,idx,info.index.y,info.location.x,idx,info.location.y,stageLightInfo->BG_nodes.size());
     }
 
     LOGE("exposure_time:");
@@ -4138,10 +4138,10 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   if(0){
     
     acv_XY offset = {
-      X : fi.offset_x,
-      Y : fi.offset_y
+      fi.offset_x,
+      fi.offset_y
     };
-    LOGI("offset:%f,%f", offset.X,offset.Y);
+    LOGI("offset:%f,%f", offset.x,offset.y);
     bacpac->sampler->setOriginOffset(offset);
   }
 
@@ -4755,12 +4755,12 @@ int testCode()
 
     LOGI("mmpB:%f  calibPpB:%f", calib_bacpac.sampler->getCalibMap()->calibmmpB, calib_bacpac.sampler->getCalibMap()->calibPpB);
     LOGI("mmpp:%.9f", calib_bacpac.sampler->mmpP_ideal());
-    acv_XY loca = {X : 1000, Y : 10};
-    LOGI("0__ %f  %f ___", loca.X, loca.Y);
+    acv_XY loca = {1000, 10};
+    LOGI("0__ %f  %f ___", loca.x, loca.y);
     calib_bacpac.sampler->img2ideal(&loca);
-    LOGI("1__ %f  %f ___", loca.X, loca.Y);
+    LOGI("1__ %f  %f ___", loca.x, loca.y);
     calib_bacpac.sampler->ideal2img(&loca);
-    LOGI("2__ %f  %f ___", loca.X, loca.Y);
+    LOGI("2__ %f  %f ___", loca.x, loca.y);
     char *string = ReadText("data/FM_gen.json");
     matchingEng.ResetFeature();
     matchingEng.AddMatchingFeature(string);

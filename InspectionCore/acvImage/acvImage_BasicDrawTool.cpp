@@ -200,8 +200,8 @@ void acvDrawLine_P(acvImage *Pic, int X1, int Y1, int X2, int Y2, BYTE LineR, BY
 
 void acvDrawDot(acvImage *img,acv_XY pt,int R,int G,int B)
 {
-  int X=round(pt.X);
-  int Y=round(pt.Y);
+  int X=round(pt.x);
+  int Y=round(pt.y);
   if(X<0 ||Y<0 || X>=img->GetWidth() || Y>=img->GetHeight())return;
   img->CVector[Y][3*X]=B;
   img->CVector[Y][3*X+1]=G;

@@ -74,7 +74,8 @@ add_library(acvImage STATIC
   acvImage/acvImage.cpp acvImage/acvImage_BasicTool.cpp acvImage/acvImage_BasicDrawTool.cpp
   acvImage/acvImage_MophologyTool.cpp acvImage/acvImage_ToolBox.cpp
   acvImage/acvImage_ComponentLabelingTool.cpp acvImage/acvImage_SpDomainTool.cpp)
-target_include_directories(acvImage PUBLIC acvImage/include)
+target_include_directories(acvImage PUBLIC acvImage/include common_lib/include)
+target_link_libraries(acvImage PUBLIC opencv_core)
 
 # --- cJSON -----------------------------------------------------------------
 add_library(cJSON STATIC contrib/cJSON/cJSON.c contrib/cJSON/cJSON_Utils.c)
@@ -140,7 +141,7 @@ endif()
 add_library(common_lib STATIC
   common_lib/Util.c common_lib/Util2.c common_lib/ImageSampler.cpp
   common_lib/Data_Layer_PHY.cpp common_lib/Data_Layer_Protocol.cpp
-  common_lib/json_seg_parser.cpp)
+  common_lib/json_seg_parser.cpp common_lib/vis_geom.cpp)
 force_cxx(common_lib/Util.c common_lib/Util2.c)
 target_include_directories(common_lib PUBLIC
   common_lib/include contrib/Compat_dirent/${PLAT}/include)

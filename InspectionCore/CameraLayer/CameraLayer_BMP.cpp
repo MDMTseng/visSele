@@ -62,7 +62,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
 
       
       // img.ReSize(newW,newH);
-      acv_XY rcenter={.X=(float)(newW/2),.Y=(float)(newH/2)};
+      acv_XY rcenter((float)(newW/2), (float)(newH/2));
 
 
       if(1)
@@ -97,16 +97,16 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
           float offsetR=50;
           float offsetY=-offsetR*sin(rotate);
           float offsetX=0;//offsetR*cos(rotate);
-          acv_XY pixOffset=(acv_XY){offsetX,offsetY};
+          acv_XY pixOffset=acv_XY(offsetX, offsetY);
 
           for(int i=0;i<newH;i++)//Add noise
           for(int j=0;j<newW;j++)
           {
-            acv_XY pixCoord=acvVecAdd((acv_XY){(float)j,(float)i},(acv_XY){(float)newX,(float)newY});
-            // pixCoord.Y-=offsetR;
+            acv_XY pixCoord=acvVecAdd(acv_XY((float)j, (float)i),acv_XY((float)newX, (float)newY));
+            // pixCoord.y-=offsetR;
             pixCoord=acvVecAdd(pixCoord,pixOffset);
             
-            float pix= cvUnsignedMap1Sampling_Nearest(img_load, pixCoord.X, pixCoord.Y, 0);
+            float pix= cvUnsignedMap1Sampling_Nearest(img_load, pixCoord.x, pixCoord.y, 0);
             
             int N=0;
             if(noiseRange>0)
@@ -197,16 +197,16 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
           for(int i=0;i<newH;i++)//Add noise
           for(int j=0;j<newW;j++)
           {
-            acv_XY pixCoord=acvVecSub((acv_XY){(float)j,(float)i},rcenter);
+            acv_XY pixCoord=acvVecSub(acv_XY((float)j, (float)i),rcenter);
             
             pixCoord = acvRotation(rotate,pixCoord);
             pixCoord=acvVecAdd(pixCoord,rcenter);
-            pixCoord=acvVecAdd(pixCoord,(acv_XY){(float)newX,(float)newY});
+            pixCoord=acvVecAdd(pixCoord,acv_XY((float)newX, (float)newY));
 
             
             pixCoord=acvVecSub((acv_XY){
-              MIRROR_X?(float)img_load.cols:pixCoord.X*2,
-              MIRROR_Y?(float)img_load.rows:pixCoord.Y*2},pixCoord);
+              MIRROR_X?(float)img_load.cols:pixCoord.x*2,
+              MIRROR_Y?(float)img_load.rows:pixCoord.y*2},pixCoord);
 
 
             // for(int k=0;k<channelCount;k++)
@@ -227,7 +227,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
             // }
 
             // float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, 0);
-            float pix= cvUnsignedMap1Sampling_Nearest(img_load, pixCoord.X, pixCoord.Y, 0);
+            float pix= cvUnsignedMap1Sampling_Nearest(img_load, pixCoord.x, pixCoord.y, 0);
             
             int N=0;
             if(noiseRange>0)

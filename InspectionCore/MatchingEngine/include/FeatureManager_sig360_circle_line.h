@@ -76,7 +76,7 @@ class ConstrainMap
     for(int i=0;i<anchorPairs.size();i++)
     {
       anchorPair pair = anchorPairs[i];
-      if(pair.to.X!=pair.to.X)//NAN
+      if(pair.to.x!=pair.to.x)//NAN
       {
         continue;
       }
@@ -85,16 +85,16 @@ class ConstrainMap
       float w=1/distance;
 
 
-      wvecSum=acvVecAdd(wvecSum,(acv_XY){w,w});
+      wvecSum=acvVecAdd(wvecSum,acv_XY(w, w));
 
       acv_XY vec=acvVecSub(pair.to,pair.from);
       vecSum=acvVecAdd(vecSum,acvVecMult(vec,w));
     }
-    // LOGI("vecSum:%f %f wvecSum: %f %f",vecSum.X,vecSum.Y,wvecSum.X,wvecSum.Y);
-    vecSum.X/=wvecSum.X;
-    vecSum.Y/=wvecSum.Y;
+    // LOGI("vecSum:%f %f wvecSum: %f %f",vecSum.x,vecSum.y,wvecSum.x,wvecSum.y);
+    vecSum.x/=wvecSum.x;
+    vecSum.y/=wvecSum.y;
     
-    LOGI("vecAve:%f %f",vecSum.X,vecSum.Y); 
+    LOGI("vecAve:%f %f",vecSum.x,vecSum.y); 
     return acvVecAdd(from,vecSum);
   }
 

@@ -74,32 +74,32 @@ static void rotatingCalipers( const acv_XY* points, int n, int mode, float* out 
     float left_x, right_x, top_y, bottom_y;
     acv_XY pt0 = points[0];
 
-    left_x = right_x = pt0.X;
-    top_y = bottom_y = pt0.Y;
+    left_x = right_x = pt0.x;
+    top_y = bottom_y = pt0.y;
 
     for( i = 0; i < n; i++ )
     {
         double dx, dy;
 
-        if( pt0.X < left_x )
-            left_x = pt0.X, left = i;
+        if( pt0.x < left_x )
+            left_x = pt0.x, left = i;
 
-        if( pt0.X > right_x )
-            right_x = pt0.X, right = i;
+        if( pt0.x > right_x )
+            right_x = pt0.x, right = i;
 
-        if( pt0.Y > top_y )
-            top_y = pt0.Y, top = i;
+        if( pt0.y > top_y )
+            top_y = pt0.y, top = i;
 
-        if( pt0.Y < bottom_y )
-            bottom_y = pt0.Y, bottom = i;
+        if( pt0.y < bottom_y )
+            bottom_y = pt0.y, bottom = i;
 
         acv_XY pt = points[(i+1) & (i+1 < n ? -1 : 0)];
 
-        dx = pt.X - pt0.X;
-        dy = pt.Y - pt0.Y;
+        dx = pt.x - pt0.x;
+        dy = pt.y - pt0.y;
 
-        vect[i].X = (float)dx;
-        vect[i].Y = (float)dy;
+        vect[i].x = (float)dx;
+        vect[i].y = (float)dy;
         inv_vect_length[i] = (float)(1./std::sqrt(dx*dx + dy*dy));
 
         pt0 = pt;
@@ -107,13 +107,13 @@ static void rotatingCalipers( const acv_XY* points, int n, int mode, float* out 
 
     // find convex hull orientation
     {
-        double ax = vect[n-1].X;
-        double ay = vect[n-1].Y;
+        double ax = vect[n-1].x;
+        double ay = vect[n-1].y;
 
         for( i = 0; i < n; i++ )
         {
-            double bx = vect[i].X;
-            double by = vect[i].Y;
+            double bx = vect[i].x;
+            double by = vect[i].y;
 
             double convexity = ax * by - ay * bx;
 
@@ -147,10 +147,10 @@ static void rotatingCalipers( const acv_XY* points, int n, int mode, float* out 
         /* compute cosine of angle between calipers side and polygon edge */
         /* dp - dot product */
         float dp[4] = {
-            +base_a * vect[seq[0]].X + base_b * vect[seq[0]].Y,
-            -base_b * vect[seq[1]].X + base_a * vect[seq[1]].Y,
-            -base_a * vect[seq[2]].X - base_b * vect[seq[2]].Y,
-            +base_b * vect[seq[3]].X - base_a * vect[seq[3]].Y,
+            +base_a * vect[seq[0]].x + base_b * vect[seq[0]].y,
+            -base_b * vect[seq[1]].x + base_a * vect[seq[1]].y,
+            -base_a * vect[seq[2]].x - base_b * vect[seq[2]].y,
+            +base_b * vect[seq[3]].x - base_a * vect[seq[3]].y,
         };
 
         float maxcos = dp[0] * inv_vect_length[seq[0]];
@@ -173,8 +173,8 @@ static void rotatingCalipers( const acv_XY* points, int n, int mode, float* out 
         {
             //get next base
             int pindex = seq[main_element];
-            float lead_x = vect[pindex].X*inv_vect_length[pindex];
-            float lead_y = vect[pindex].Y*inv_vect_length[pindex];
+            float lead_x = vect[pindex].x*inv_vect_length[pindex];
+            float lead_y = vect[pindex].y*inv_vect_length[pindex];
             switch( main_element )
             {
             case 0:
@@ -214,8 +214,8 @@ static void rotatingCalipers( const acv_XY* points, int n, int mode, float* out 
             /* 0->2, 1->3, 2->0, 3->1                */
             int opposite_el = main_element ^ 2;
 
-            float dx = points[seq[opposite_el]].X - points[seq[main_element]].X;
-            float dy = points[seq[opposite_el]].Y - points[seq[main_element]].Y;
+            float dx = points[seq[opposite_el]].x - points[seq[main_element]].x;
+            float dy = points[seq[opposite_el]].y - points[seq[main_element]].y;
             float dist;
 
             if( main_element & 1 )
@@ -234,15 +234,15 @@ static void rotatingCalipers( const acv_XY* points, int n, int mode, float* out 
             float area;
 
             /* find vector left-right */
-            float dx = points[seq[1]].X - points[seq[3]].X;
-            float dy = points[seq[1]].Y - points[seq[3]].Y;
+            float dx = points[seq[1]].x - points[seq[3]].x;
+            float dy = points[seq[1]].y - points[seq[3]].y;
 
             /* dotproduct */
             float width = dx * base_a + dy * base_b;
 
             /* find vector left-right */
-            dx = points[seq[2]].X - points[seq[0]].X;
-            dy = points[seq[2]].Y - points[seq[0]].Y;
+            dx = points[seq[2]].x - points[seq[0]].x;
+            dy = points[seq[2]].y - points[seq[0]].y;
 
             /* dotproduct */
             height = -dx * base_b + dy * base_a;
@@ -280,8 +280,8 @@ static void rotatingCalipers( const acv_XY* points, int n, int mode, float* out 
         float A2 = -buf[3];
         float B2 = buf[1];
 
-        float C1 = A1 * points[((int *) buf)[0]].X + points[((int *) buf)[0]].Y * B1;
-        float C2 = A2 * points[((int *) buf)[5]].X + points[((int *) buf)[5]].Y * B2;
+        float C1 = A1 * points[((int *) buf)[0]].x + points[((int *) buf)[0]].y * B1;
+        float C2 = A2 * points[((int *) buf)[5]].x + points[((int *) buf)[5]].y * B2;
 
         float idet = 1.f / (A1 * B2 - A2 * B1);
 
@@ -331,18 +331,18 @@ static void rotatingCalipers( const acv_XY* points, int n, int mode, float* out 
 //     if( n > 2 )
 //     {
 //         rotatingCalipers( hpoints, n, CALIPERS_MINAREARECT, (float*)out );
-//         box.center.X = out[0].X + (out[1].X + out[2].X)*0.5f;
-//         box.center.Y = out[0].Y + (out[1].Y + out[2].Y)*0.5f;
-//         box.size.width = (float)std::sqrt((double)out[1].X*out[1].X + (double)out[1].Y*out[1].Y);
-//         box.size.height = (float)std::sqrt((double)out[2].X*out[2].X + (double)out[2].Y*out[2].Y);
-//         box.angle = (float)atan2( (double)out[1].Y, (double)out[1].X );
+//         box.center.x = out[0].x + (out[1].x + out[2].x)*0.5f;
+//         box.center.y = out[0].y + (out[1].y + out[2].y)*0.5f;
+//         box.size.width = (float)std::sqrt((double)out[1].x*out[1].x + (double)out[1].y*out[1].y);
+//         box.size.height = (float)std::sqrt((double)out[2].x*out[2].x + (double)out[2].y*out[2].y);
+//         box.angle = (float)atan2( (double)out[1].y, (double)out[1].x );
 //     }
 //     else if( n == 2 )
 //     {
-//         box.center.X = (hpoints[0].X + hpoints[1].X)*0.5f;
-//         box.center.Y = (hpoints[0].Y + hpoints[1].Y)*0.5f;
-//         double dx = hpoints[1].X - hpoints[0].X;
-//         double dy = hpoints[1].Y - hpoints[0].Y;
+//         box.center.x = (hpoints[0].x + hpoints[1].x)*0.5f;
+//         box.center.y = (hpoints[0].y + hpoints[1].y)*0.5f;
+//         double dx = hpoints[1].x - hpoints[0].x;
+//         double dy = hpoints[1].y - hpoints[0].y;
 //         box.size.width = (float)std::sqrt(dx*dx + dy*dy);
 //         box.size.height = 0;
 //         box.angle = (float)atan2( dy, dx );

@@ -102,14 +102,14 @@ static acv_XY readXY(cJSON *jsonParam)
   
   acv_XY xy={NAN,NAN};
   double* num=JFetch_NUMBER(jsonParam,"x");
-  if(num!=NULL)xy.X=*num;
+  if(num!=NULL)xy.x=*num;
   else return xy;
 
 
   num=JFetch_NUMBER(jsonParam,"y");
-  if(num!=NULL)xy.Y=*num;
+  if(num!=NULL)xy.y=*num;
   else{
-    xy.X=xy.Y=NAN;
+    xy.x=xy.y=NAN;
     return xy;
   }  
   return xy;
@@ -168,11 +168,11 @@ cJSON * FM_Blank::SetParam0(cJSON *jsonParam)
 
 
   // regionInfo.resize(0);
-  // if(!isnan(vec_btm.X) && !isnan(vec_side.X) && !isnan(pt_cornor.X))
+  // if(!isnan(vec_btm.x) && !isnan(vec_side.x) && !isnan(pt_cornor.x))
   // {
   //   LOGI("GO................");
     
-  //   float L_btm=hypot(vec_btm.Y,vec_btm.X);
+  //   float L_btm=hypot(vec_btm.y,vec_btm.x);
   //   for(int i=0;;i++)
   //   {
   //     char tmpPath[50];
@@ -187,12 +187,12 @@ cJSON * FM_Blank::SetParam0(cJSON *jsonParam)
   //     int id=p_id==NULL?-1:(int)*p_id;
   //     regionInfo_single rIs;
   //     rIs.normalized_pt1=rIs.pt1=pt1;
-  //     rIs.normalized_pt1.X/=L_btm;
-  //     rIs.normalized_pt1.Y/=L_btm;
+  //     rIs.normalized_pt1.x/=L_btm;
+  //     rIs.normalized_pt1.y/=L_btm;
 
   //     rIs.normalized_pt2=rIs.pt2=pt2;
-  //     rIs.normalized_pt2.X/=L_btm;
-  //     rIs.normalized_pt2.Y/=L_btm;
+  //     rIs.normalized_pt2.x/=L_btm;
+  //     rIs.normalized_pt2.y/=L_btm;
   //     rIs.margin=margin;
   //     rIs.id=id;
 
@@ -205,8 +205,8 @@ cJSON * FM_Blank::SetParam0(cJSON *jsonParam)
 
 
   //     // regionInfo.push_back(rIs);
-  //     // LOGI("[%d]   ID:%d, margin:%f   %f,%f> %f,%f",i,id,margin,pt1.X,pt1.Y,pt2.X,pt2.Y);
-  //     LOGI("[%d]   ID:%d, margin:%f   %f,%f> %f,%f",i,id,margin,rIs.normalized_pt1.X,rIs.normalized_pt1.Y,rIs.normalized_pt2.X,rIs.normalized_pt2.Y);
+  //     // LOGI("[%d]   ID:%d, margin:%f   %f,%f> %f,%f",i,id,margin,pt1.x,pt1.y,pt2.x,pt2.y);
+  //     LOGI("[%d]   ID:%d, margin:%f   %f,%f> %f,%f",i,id,margin,rIs.normalized_pt1.x,rIs.normalized_pt1.y,rIs.normalized_pt2.x,rIs.normalized_pt2.y);
   //   }
 
 
@@ -250,8 +250,8 @@ cJSON * FM_Blank::SetParam1(cJSON *jsonParam)
 {
   
   // SETSPARAM_INT_NUMBER(jsonParam,insp02.inspectionType,"inspectionType");
-  // SETSPARAM_NUMBER(jsonParam,insp02.pos.X=(int),"pos.X");
-  // SETSPARAM_NUMBER(jsonParam,insp02.pos.Y=(int),"pos.Y");
+  // SETSPARAM_NUMBER(jsonParam,insp02.pos.x=(int),"pos.x");
+  // SETSPARAM_NUMBER(jsonParam,insp02.pos.y=(int),"pos.y");
 
 
   cJSON* ret_jobj = NULL;

@@ -106,8 +106,8 @@ bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
   if (outInfo) *outInfo = EdgeSelectInfo();
   if (gray.empty()) return false;
   acv_XY s = acvVecNormalize(searchDir);
-  if (s.X != s.X || s.Y != s.Y) return false;
-  acv_XY edgeDir = { -s.Y, s.X }; // along the edge (projection direction)
+  if (s.x != s.x || s.y != s.y) return false;
+  acv_XY edgeDir = { -s.y, s.x }; // along the edge (projection direction)
 
   float L = p.length, W = p.width, step = (p.step > 0 ? p.step : 1.0f);
   int nAcross = (int)(2 * L / step) + 1;
@@ -123,7 +123,7 @@ bool caliper_measure(const cv::Mat &gray, acv_XY center, acv_XY searchDir,
     for (int w = -halfW; w <= halfW; w++)
     {
       acv_XY pt = acvVecAdd(c, acvVecMult(edgeDir, (float)w));
-      float v = cvUnsignedMap1Sampling(gray, pt.X, pt.Y, 0);
+      float v = cvUnsignedMap1Sampling(gray, pt.x, pt.y, 0);
       if (bacpac && bacpac->sampler)
         v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(pt);
       sum += v; cnt++;
@@ -142,8 +142,8 @@ bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
 {
   if (gray.empty()) return false;
   acv_XY s = acvVecNormalize(searchDir);
-  if (s.X != s.X || s.Y != s.Y) return false;
-  acv_XY perp = { -s.Y, s.X };               // across the ray (width direction)
+  if (s.x != s.x || s.y != s.y) return false;
+  acv_XY perp = { -s.y, s.x };               // across the ray (width direction)
   if (step <= 0) step = 1.0f;
   int nAlong = (int)(length / step) + 1;
   if (nAlong < 3) return false;
@@ -157,7 +157,7 @@ bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
     for (int i = 0; i < nAlong; i++)
     {
       acv_XY pt = acvVecAdd(start, acvVecAdd(acvVecMult(s, i * step), acvVecMult(perp, (float)c)));
-      float v = cvUnsignedMap1Sampling(gray, pt.X, pt.Y, 0);
+      float v = cvUnsignedMap1Sampling(gray, pt.x, pt.y, 0);
       if (bacpac && bacpac->sampler)
         v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(pt);
       prof[i] = v;
@@ -190,12 +190,12 @@ static void wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,
                     const std::vector<char> &use, acv_XY &anchor, acv_XY &dir)
 {
   double sw = 0, mx = 0, my = 0;
-  for (size_t i = 0; i < pts.size(); i++) if (use[i]) { sw += w[i]; mx += w[i]*pts[i].X; my += w[i]*pts[i].Y; }
+  for (size_t i = 0; i < pts.size(); i++) if (use[i]) { sw += w[i]; mx += w[i]*pts[i].x; my += w[i]*pts[i].y; }
   if (sw <= 0) { anchor = {0,0}; dir = {1,0}; return; }
   mx /= sw; my /= sw;
   double a = 0, b = 0, c = 0;
   for (size_t i = 0; i < pts.size(); i++) if (use[i])
-  { double dx = pts[i].X-mx, dy = pts[i].Y-my; a += w[i]*dx*dx; b += w[i]*dx*dy; c += w[i]*dy*dy; }
+  { double dx = pts[i].x-mx, dy = pts[i].y-my; a += w[i]*dx*dx; b += w[i]*dx*dy; c += w[i]*dy*dy; }
   double theta = 0.5 * atan2(2*b, a - c); // major axis of weighted covariance
   anchor = { (float)mx, (float)my };
   dir = { (float)cos(theta), (float)sin(theta) };
@@ -209,7 +209,7 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   CaliperLineResult r = {}; r.ok = false; r.dir = {1,0};
   if (count < 2) count = 2;
   acv_XY lineDir = acvVecNormalize(acvVecSub(p1, p0));
-  acv_XY perp = { -lineDir.Y, lineDir.X }; // caliper search direction (across edge)
+  acv_XY perp = { -lineDir.y, lineDir.x }; // caliper search direction (across edge)
 
   const bool dbg = (dbgName != nullptr) && (getenv("CALIP_DUMP") != nullptr);
   std::vector<std::vector<float>> dProfs;   // per-caliper across-edge profile (dbg)
@@ -225,7 +225,7 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   float L = cal.length, step = (cal.step > 0 ? cal.step : 1.0f);
   int nAcross = (int)(2 * L / step) + 1;
   int halfW = (int)(cal.width / 2);
-  float alongLen = (float)hypot(p1.X - p0.X, p1.Y - p0.Y);
+  float alongLen = (float)hypot(p1.x - p0.x, p1.y - p0.y);
   std::vector<acv_XY> pts; std::vector<float> w;
   if (nAcross < 3) { r.nValid = 0; if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
@@ -239,7 +239,7 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     float *Brow = &B[(size_t)a * nAcross];
     for (int x = 0; x < nAcross; x++)
     {
-      float v = cvUnsignedMap1Sampling(gray, q.X, q.Y, 0);
+      float v = cvUnsignedMap1Sampling(gray, q.x, q.y, 0);
       if (bacpac && bacpac->sampler) v *= bacpac->sampler->sampleBackLightFactor_ImgCoord(q);
       Brow[x] = v;
       q = acvVecAdd(q, perpStep);
@@ -297,11 +297,11 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   for (int iter = 0; iter < 3; iter++)
   {
     wlsLine(pts, w, use, anchor, dir);
-    acv_XY n = { -dir.Y, dir.X };
+    acv_XY n = { -dir.y, dir.x };
     std::vector<float> res(pts.size());
     std::vector<float> absr;
     for (size_t i = 0; i < pts.size(); i++)
-    { res[i] = (pts[i].X-anchor.X)*n.X + (pts[i].Y-anchor.Y)*n.Y; if (use[i]) absr.push_back(fabsf(res[i])); }
+    { res[i] = (pts[i].x-anchor.x)*n.x + (pts[i].y-anchor.y)*n.y; if (use[i]) absr.push_back(fabsf(res[i])); }
     if (absr.empty()) break;
     std::sort(absr.begin(), absr.end());
     float med = absr[absr.size()/2];
@@ -311,10 +311,10 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     if (!changed) break;
   }
   // final stats
-  acv_XY n = { -dir.Y, dir.X };
+  acv_XY n = { -dir.y, dir.x };
   double sq = 0, sumw = 0; int ni = 0;
   for (size_t i = 0; i < pts.size(); i++) if (use[i])
-  { float d = (pts[i].X-anchor.X)*n.X + (pts[i].Y-anchor.Y)*n.Y; sq += d*d; sumw += w[i]; ni++; }
+  { float d = (pts[i].x-anchor.x)*n.x + (pts[i].y-anchor.y)*n.y; sq += d*d; sumw += w[i]; ni++; }
   r.anchor = anchor; r.dir = dir; r.nInlier = ni;
   r.rms = (ni > 0) ? sqrtf(sq / ni) : 0;
   r.confidence = (ni > 0) ? (float)(sumw / ni) : 0;
@@ -346,7 +346,7 @@ static bool kasaCircle(const std::vector<acv_XY> &pts, const std::vector<float> 
   double M[9] = {0}; double rhs[3] = {0};
   for (size_t i = 0; i < pts.size(); i++) if (use[i])
   {
-    double x = pts[i].X, y = pts[i].Y, ww = w[i];
+    double x = pts[i].x, y = pts[i].y, ww = w[i];
     double z = -(x*x + y*y);
     double phi[3] = { x, y, 1.0 };
     for (int a=0;a<3;a++){ rhs[a]+=ww*phi[a]*z; for(int c=0;c<3;c++) M[a*3+c]+=ww*phi[a]*phi[c]; }
@@ -409,19 +409,19 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
     if (!kasaCircle(pts, w, use, cen, rad)) break;
     std::vector<float> absr;
     for (size_t i = 0; i < pts.size(); i++) if (use[i])
-      absr.push_back(fabsf(hypotf(pts[i].X-cen.X, pts[i].Y-cen.Y) - rad));
+      absr.push_back(fabsf(hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad));
     if (absr.empty()) break;
     std::sort(absr.begin(), absr.end());
     float med = absr[absr.size()/2];
     float thr = 3.0f * 1.4826f * med + 0.5f;
     int changed = 0;
     for (size_t i = 0; i < pts.size(); i++)
-    { float d = fabsf(hypotf(pts[i].X-cen.X, pts[i].Y-cen.Y) - rad); char nu = d<=thr?1:0; if (nu!=use[i])changed++; use[i]=nu; }
+    { float d = fabsf(hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad); char nu = d<=thr?1:0; if (nu!=use[i])changed++; use[i]=nu; }
     if (!changed) break;
   }
   double sq = 0, sumw = 0; int ni = 0;
   for (size_t i = 0; i < pts.size(); i++) if (use[i])
-  { float d = hypotf(pts[i].X-cen.X, pts[i].Y-cen.Y) - rad; sq += d*d; sumw += w[i]; ni++; }
+  { float d = hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad; sq += d*d; sumw += w[i]; ni++; }
   r.center = cen; r.radius = rad; r.nInlier = ni;
   r.rms = (ni>0)?sqrtf(sq/ni):0;
   r.confidence = (ni>0)?(float)(sumw/ni):0;
@@ -430,7 +430,7 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   {
     caliper_dump_line_strip("arc", dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);
     fprintf(stderr, "[CALIP] arc %s: nominal=(%.2f,%.2f) r=%.2f  ->  fit=(%.2f,%.2f) r=%.2f  nInlier=%d/%d rms=%.3f  (search +/-%.0fpx)\n",
-            dbgName, center0.X, center0.Y, radius0, cen.X, cen.Y, rad, ni, (int)pts.size(), r.rms, cal.length);
+            dbgName, center0.x, center0.y, radius0, cen.x, cen.y, rad, ni, (int)pts.size(), r.rms, cal.length);
   }
   return r;
 }

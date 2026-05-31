@@ -375,30 +375,30 @@ int acvLabeledRegionInfo(acvImage *LabeledPic, std::vector<acv_LabeledData> *ret
             acv_LabeledData *ld = &((*list)[label]);
             if (ld->area == 0)
             {
-                ld->LTBound.X = j;
-                ld->LTBound.Y = i; //This is fixed
-                ld->RBBound.X = j;
-                ld->RBBound.Y = i;
+                ld->LTBound.x = j;
+                ld->LTBound.y = i; //This is fixed
+                ld->RBBound.x = j;
+                ld->RBBound.y = i;
             }
             else
             {
-                if (ld->LTBound.X > j)
-                    ld->LTBound.X = j;
-                else if (ld->RBBound.X < j)
-                    ld->RBBound.X = j;
-                if (ld->RBBound.Y < i)
-                    ld->RBBound.Y = i;
+                if (ld->LTBound.x > j)
+                    ld->LTBound.x = j;
+                else if (ld->RBBound.x < j)
+                    ld->RBBound.x = j;
+                if (ld->RBBound.y < i)
+                    ld->RBBound.y = i;
             }
             ld->area++;
-            ld->Center.X += j;
-            ld->Center.Y += i;
+            ld->Center.x += j;
+            ld->Center.y += i;
         }
 
     for (int i = 0; i < list->size(); i++)
     {
         acv_LabeledData *ld = &((*list)[i]);
-        ld->Center.X /= ld->area;
-        ld->Center.Y /= ld->area;
+        ld->Center.x /= ld->area;
+        ld->Center.y /= ld->area;
     }
 	return 0;
 }

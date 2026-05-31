@@ -183,8 +183,8 @@ float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
         BYTE var=acvUnsignedMap1Sampling_Nearest(targetMap,tarpt,1);
         if(var==0)
         {
-          ErrorGradientList[i].X=0;
-          ErrorGradientList[i].Y=0;
+          ErrorGradientList[i].x=0;
+          ErrorGradientList[i].y=0;
           continue;
         }
         float weight=var/255.0f;
@@ -197,10 +197,10 @@ float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
         acv_XY gradient=acvSignedMap2Sampling_Nearest(targetGradient,tarpt);
         //error=(error<0)?-128:128;
 
-        //printf(">%f %d\n",gradient.X,(char)targetGradient->CVector[(int)tarpt.Y][(int)tarpt.X*3]);
+        //printf(">%f %d\n",gradient.x,(char)targetGradient->CVector[(int)tarpt.y][(int)tarpt.x*3]);
         //Sobel [0] ^  [1] <
-        ErrorGradientList[i].X=error*gradient.X;
-        ErrorGradientList[i].Y=error*gradient.Y;
+        ErrorGradientList[i].x=error*gradient.x;
+        ErrorGradientList[i].y=error*gradient.y;
 
 
         error*=error;
@@ -236,17 +236,17 @@ int interpolateSignData(std::vector<acv_XY> &signature,int start,int end)
 
     int head=start+1;
     int i;
-    float sf=signature[start].X;
-    float se_diff=(signature[end].X-sf)/distance;
+    float sf=signature[start].x;
+    float se_diff=(signature[end].x-sf)/distance;
 
     for(i=1; i<distance; i++,head++)
     {
         if(head>=signature.size())head-=signature.size();
         float X=sf+i*(se_diff);
-        if(signature[head].X<X)
+        if(signature[head].x<X)
         {
-            signature[head].X=X;
-            signature[head].Y=signature[start].Y;
+            signature[head].x=X;
+            signature[head].y=signature[start].y;
         }
 
     }
@@ -262,9 +262,9 @@ bool acvContourExtract
 
     int X,Y;
     int startX,startY;
-    X=(int)ldata.LTBound.X;
-    Y=(int)ldata.LTBound.Y;
-    for(int j=X; j<(int)ldata.RBBound.X; j++)
+    X=(int)ldata.LTBound.x;
+    Y=(int)ldata.LTBound.y;
+    for(int j=X; j<(int)ldata.RBBound.x; j++)
     {
         _24BitUnion *pix=(_24BitUnion*)&(LabeledPic->CVector[Y][j*3]);
         if(pix->_3Byte.Num==labelIdx)
@@ -286,7 +286,7 @@ bool acvContourExtract
     //6|5|4
     int dir =3;//>
     do {
-        acv_XY pt={(float)X-ldata.Center.X,(float)Y-ldata.Center.Y};
+        acv_XY pt={(float)X-ldata.Center.x,(float)Y-ldata.Center.y};
         contour.push_back(pt);
         BYTE* pix=acvContourWalk(LabeledPic,&X,&Y,&dir,1);
         dir-=2;
@@ -305,7 +305,7 @@ bool acvContourCircleSignature(std::vector<acv_XY> &contour,std::vector<acv_XY> 
     for(acv_XY pt :contour)
     {
         
-        float theta=acvFAtan2(pt.Y,pt.X);//-pi ~pi
+        float theta=acvFAtan2(pt.y,pt.x);//-pi ~pi
         //if(theta<0)theta+=2*M_PI;
         int idx=round(signature.size()*theta/(2*M_PI));
         if(idx<0)idx+=signature.size();
@@ -315,11 +315,11 @@ bool acvContourCircleSignature(std::vector<acv_XY> &contour,std::vector<acv_XY> 
             _1stIdx=idx;
             preIdx=idx;
         }
-        float R=hypot(pt.Y,pt.X);
-        if(signature[idx].X<R)
+        float R=hypot(pt.y,pt.x);
+        if(signature[idx].x<R)
         {
-            signature[idx].X=R;
-            signature[idx].Y=theta;
+            signature[idx].x=R;
+            signature[idx].y=theta;
             interpolateSignData(signature,preIdx,idx);
         }
         preIdx=idx;
@@ -338,9 +338,9 @@ bool acvOuterContourExtraction(acvImage  *LabeledPic,acv_LabeledData ldata,int l
 
   int X,Y;
   int startX,startY;
-  X=(int)ldata.LTBound.X;
-  Y=(int)ldata.LTBound.Y;
-  for(int j=X; j<(int)ldata.RBBound.X; j++)
+  X=(int)ldata.LTBound.x;
+  Y=(int)ldata.LTBound.y;
+  for(int j=X; j<(int)ldata.RBBound.x; j++)
   {
     _24BitUnion *pix=(_24BitUnion*)&(LabeledPic->CVector[Y][j*3]);
     if(pix->_3Byte.Num==labelIdx)
@@ -384,8 +384,8 @@ bool acvContourCircleSignature
   int _1stIdx=-1;
   for( acv_XY copos: contour)
   {
-    float diffY=copos.Y-center.Y;
-    float diffX=copos.X-center.X;
+    float diffY=copos.y-center.y;
+    float diffX=copos.x-center.x;
     if(diffX!=diffX||diffY!=diffY)
     {
         continue;
@@ -401,10 +401,10 @@ bool acvContourCircleSignature
         preIdx=idx;
     }
     float R=hypot(diffX,diffY);
-    if(o_signature[idx].X<R)
+    if(o_signature[idx].x<R)
     {
-        o_signature[idx].X=R;
-        o_signature[idx].Y=theta;
+        o_signature[idx].x=R;
+        o_signature[idx].y=theta;
         interpolateSignData(o_signature,preIdx,idx);
     }
     preIdx=idx;
@@ -422,9 +422,9 @@ bool acvContourCircleSignature
 
     int X,Y;
     int startX,startY;
-    X=(int)ldata.LTBound.X;
-    Y=(int)ldata.LTBound.Y;
-    for(int j=X; j<(int)ldata.RBBound.X; j++)
+    X=(int)ldata.LTBound.x;
+    Y=(int)ldata.LTBound.y;
+    for(int j=X; j<(int)ldata.RBBound.x; j++)
     {
         _24BitUnion *pix=(_24BitUnion*)&(LabeledPic->CVector[Y][j*3]);
         if(pix->_3Byte.Num==labelIdx)
@@ -447,8 +447,8 @@ bool acvContourCircleSignature
     int dir =3;//>
     do {
 
-        float diffY=Y-ldata.Center.Y;
-        float diffX=X-ldata.Center.X;
+        float diffY=Y-ldata.Center.y;
+        float diffX=X-ldata.Center.x;
         float theta=acvFAtan2(diffY,diffX);//-pi ~pi
         //if(theta<0)theta+=2*M_PI;
         int idx=round(signature.size()*theta/(2*M_PI));
@@ -460,10 +460,10 @@ bool acvContourCircleSignature
             preIdx=idx;
         }
         float R=hypot(diffX,diffY);
-        if(signature[idx].X<R)
+        if(signature[idx].x<R)
         {
-            signature[idx].X=R;
-            signature[idx].Y=theta;
+            signature[idx].x=R;
+            signature[idx].y=theta;
             interpolateSignData(signature,preIdx,idx);
         }
         preIdx=idx;
@@ -491,14 +491,14 @@ float SignatureMatchingErrorX(const acv_XY *signature, int offset,
 
     for (; i < size; i += stride, signIdx += stride)
     {
-        float error = signature[(signIdx)].X - tar_signature[i].X;
+        float error = signature[(signIdx)].x - tar_signature[i].x;
         errorSum += error * error;
     }
     signIdx -= arrsize;
     size = arrsize;
     for (; i < size; i += stride, signIdx += stride)
     {
-        float error = signature[(signIdx)].X - tar_signature[i].X;
+        float error = signature[(signIdx)].x - tar_signature[i].x;
         errorSum += error * error;
     }
     return errorSum;
@@ -525,8 +525,8 @@ inline float signatureSampling(const acv_XY *signature,int signSize,float fidx)
   float sub_idx=fidx-idx1;
   idx1=valueWarping(idx1,signSize);
   int idx2=valueWarping(idx1+1,signSize);
-  float X1 = signature[idx1].X ;
-  float X2 = signature[idx2].X ;
+  float X1 = signature[idx1].x ;
+  float X2 = signature[idx2].x ;
   return X1+(X2-X1)*sub_idx;
 }
 
@@ -537,7 +537,7 @@ inline float signatureSampling2(const acv_XY *signature,int signSize,float fidx)
   
   int idx1 = (int)fidx;
   int idx2;
-  float Y1 = signature[idx1].Y;
+  float Y1 = signature[idx1].y;
   if(Y1<0)Y1+=2*M_PI;//0~2PI
 
   if(rad<Y1)
@@ -553,8 +553,8 @@ inline float signatureSampling2(const acv_XY *signature,int signSize,float fidx)
 
   idx1=valueWarping(idx1,signSize);
   idx2=valueWarping(idx2,signSize);
-  Y1 = signature[idx1].Y;
-  float Y2=signature[idx2].Y;
+  Y1 = signature[idx1].y;
+  float Y2=signature[idx2].y;
   if(Y2<Y1)
   {
     if(rad<M_PI)
@@ -568,8 +568,8 @@ inline float signatureSampling2(const acv_XY *signature,int signSize,float fidx)
   }
   float sub_idx=(rad-Y1)/(Y2-Y1);
 
-  float X1 = signature[idx1].X ;
-  float X2 = signature[idx2].X ;
+  float X1 = signature[idx1].x ;
+  float X2 = signature[idx2].x ;
   return X1+(X2-X1)*sub_idx;
 }
 
@@ -597,8 +597,8 @@ float SignatureMatchingError(const acv_XY *signature, float offset,
         // int oid0 = valueWarping(offset+i-1,arrsize);
         // int oid1 = valueWarping(offset+i+0,arrsize);
         // int oid2 = valueWarping(offset+i+1,arrsize);
-        // float error0 = signatureSampling(signature,arrsize,offset+i-1) - tar_signature[i].X;
-        // float error2 = signatureSampling(signature,arrsize,offset+i+1) - tar_signature[i].X;
+        // float error0 = signatureSampling(signature,arrsize,offset+i-1) - tar_signature[i].x;
+        // float error2 = signatureSampling(signature,arrsize,offset+i+1) - tar_signature[i].x;
         // error0*=error0;
         // error2*=error2;
         // error0+=epsilon;
@@ -800,7 +800,7 @@ void SignatureSharpen(std::vector<acv_XY> &signature,int windowR,float alpha)
   
   for(int i=0;i<signature.size();i++)
   {
-    signature[i].X-=alpha*soften_buffer[i].X;
+    signature[i].x-=alpha*soften_buffer[i].x;
   }
 }
 
@@ -814,11 +814,11 @@ void SignatureSoften(std::vector<acv_XY> &signature,std::vector<acv_XY> &output,
     float value=0;
     for(int j=-windowR;j<windowR+1;j++)
     {
-      value+=signature[valueWarping(i+j,signature.size())].X;
+      value+=signature[valueWarping(i+j,signature.size())].x;
     }
     value/=(2*windowR)+1;
-    output[i].X=value/((2*windowR)+1);
-    output[i].Y=signature[i].Y;
+    output[i].x=value/((2*windowR)+1);
+    output[i].y=signature[i].y;
   }
 
 }
