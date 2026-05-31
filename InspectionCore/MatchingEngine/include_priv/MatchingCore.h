@@ -18,7 +18,6 @@ void ContourFeatureDetect(std::vector<acv_XY> &signature,const std::vector<acv_X
 void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<acv_LabeledData> &ldData,
   std::vector<acv_CircleFit> &detectedCircles,std::vector<acv_LineFit> &detectedLines);
 
-int contourPixExtraction(acvImage *graylevelImg, acv_XY center_point,acv_XY sobel,float stepDist,int steps,float *pixels,FeatureManager_BacPac *bacpac=NULL);
 
 float findMaxIdx_spline(float *grad,int gradL,float *ret_max);
 
@@ -86,15 +85,12 @@ class edgeTracking
   float pixSum[pixWidth]={0};
   float grad[pixWidth]={0};
   cv::Mat _gray_cv;           // refcount-shared header from the ctor input
-  acvImage _gray_shim;        // useExtBuffer'd over _gray_cv (legacy consumers)
-  acvImage *graylevelImg;     // points at _gray_shim
   acv_XY imgOffset;
   FeatureManager_BacPac *bacpac;
   public:
   edgeTracking (cv::Mat &graylevelImg_cv, acv_XY imgOffset, FeatureManager_BacPac *bacpac=NULL);
 
   // accessors for caliper-based locating (reuse the same image/offset/bacpac)
-  acvImage *getImage(){return graylevelImg;}
   cv::Mat &getImageCv(){return _gray_cv;}
   acv_XY getImgOffset(){return imgOffset;}
   FeatureManager_BacPac *getBacpac(){return bacpac;}
