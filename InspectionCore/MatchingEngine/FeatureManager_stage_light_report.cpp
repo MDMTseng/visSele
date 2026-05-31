@@ -5,7 +5,7 @@
 #include <math.h>
 #include <common_lib.h>
 #include <FeatureManager_stage_light_report.h>
-#include <acvImage_SpDomainTool.hpp>
+#include <opencv2/imgproc.hpp>
 
 FeatureManager_stage_light_report::FeatureManager_stage_light_report(const char *json_str) : FeatureManager(json_str)
 {
@@ -226,16 +226,14 @@ int OTSU_Histo_Threshold(const int *hist, int histLen = 256)
   return threshold;
 }
 
-int backLightBlockCalc(acvImage *img, int X, int Y, int W, int H, stage_light_grid_node_info *ret_info)
+int backLightBlockCalc(const cv::Mat &img, int X, int Y, int W, int H, stage_light_grid_node_info *ret_info)
 {
-  if (ret_info == NULL)
-    return -1;
-  if (img == NULL)
-    return -2;
+  if (ret_info == NULL) return -1;
+  if (img.empty()) return -2;
 
-  if (X < 0 || Y < 0 || W < 0 || H < 0 || (X + W) > img->GetWidth() || (Y + H) > img->GetHeight())
+  if (X < 0 || Y < 0 || W < 0 || H < 0 || (X + W) > img.cols || (Y + H) > img.rows)
   {
-    LOGE("Out of bound, X:%d Y:%d X2:%d Y2:%d im_W:%d im_H:%d", X, Y, X + W, Y + H, img->GetWidth(), img->GetHeight());
+    LOGE("Out of bound, X:%d Y:%d X2:%d Y2:%d im_W:%d im_H:%d", X, Y, X + W, Y + H, img.cols, img.rows);
     return -3;
   }
   
@@ -275,7 +273,7 @@ int backLightBlockCalc(acvImage *img, int X, int Y, int W, int H, stage_light_gr
     {
       int sx = X + (rand() % W);
       int sy = Y + (rand() % H);
-      int bri = img->CVector[sy][sx * 3];
+      int bri = img.ptr<uint8_t>(sy)[sx * 3];
       if (bri < min_bri_thres)
       {
         if (reSampCount < samplingCount / 2)
@@ -371,131 +369,86 @@ int backLightBlockCalc(acvImage *img, int X, int Y, int W, int H, stage_light_gr
   return 0;
 }
 
-int backLightNonBackGroundExclusion(acvImage *img,acvImage *backGround,acvImage *buffer,
-  int nonBG_thres,int nonBG_spread_thres)
+int backLightNonBackGroundExclusion(const cv::Mat &img, cv::Mat &backGround, cv::Mat &buffer,
+  int nonBG_thres, int nonBG_spread_thres)
 {
-  backGround->ReSize(img);
-  buffer->ReSize(img);
+  if (img.empty() || img.type() != CV_8UC3) return -1;
+  const int W = img.cols, H = img.rows;
+  backGround.create(H, W, CV_8UC3);
+  buffer.create(H, W, CV_8UC3);
 
-  acvCloneImage(img,buffer, -1);
-  
+  // Grayscale source (channel 0; the input is BGR-replicated gray).
+  cv::Mat gray;
+  cv::extractChannel(img, gray, 0);
+  cv::Mat graySm;
+  cv::boxFilter(gray, graySm, CV_8U, cv::Size(3, 3));   // 1-radius box ~ 3x3 average
+
+  cv::Mat sX, sY;
+  cv::Sobel(graySm, sX, CV_16S, 1, 0, 3);
+  cv::Sobel(graySm, sY, CV_16S, 0, 1, 3);
+
+  // First pass: per-pixel edge response -> mask channel.
+  cv::Mat mask(H, W, CV_8U);
+  for (int i = 0; i < H; i++)
   {
-    acvBoxFilter(backGround, buffer, 1);
-    acvSobelFilter(backGround, buffer, 1);
-
-    //CH1 Y dir, 
-    //CH2 X dir 
-    //CH3 grayLevel
-
-    acvImage *sobelImg = backGround;
-    for (int i = 0; i < sobelImg->GetHeight(); i++)
+    const int16_t *rX = sX.ptr<int16_t>(i);
+    const int16_t *rY = sY.ptr<int16_t>(i);
+    uint8_t *m = mask.ptr<uint8_t>(i);
+    for (int j = 0; j < W; j++)
     {
-      for (int j = 0; j < sobelImg->GetWidth(); j++)
-      {
-        int sobelY = (int8_t)sobelImg->CVector[i][j * 3];
-        int sobelX = (int8_t)sobelImg->CVector[i][j * 3 + 1];
-        int bri = sobelImg->CVector[i][j * 3 + 2];
-
-        int edgeResp = sobelX * sobelX + sobelY * sobelY;
-
-        if (edgeResp > nonBG_thres) //edgeRegion
-        {
-          sobelImg->CVector[i][j * 3] =0;
-        }
-        else
-        {
-          sobelImg->CVector[i][j * 3] =255;
-        }
-      }
+      int edgeResp = rX[j] * rX[j] + rY[j] * rY[j];
+      m[j] = (edgeResp > nonBG_thres) ? 0 : 255;
     }
-
   }
+
+  // Spread the black area (~2-radius box twice).
+  cv::Mat spread;
+  cv::boxFilter(mask, spread, CV_8U, cv::Size(5, 5));
+  cv::boxFilter(spread, spread, CV_8U, cv::Size(5, 5));
+
+  // Final: where spread < nonBG_spread_thres, zero; else original brightness.
+  for (int i = 0; i < H; i++)
   {
-    //backGround
-    //CH1 BG/non BG, 
-    //CH2 X dir 
-    //CH3 grayLevel
-    acvBoxFilter(buffer, backGround, 2); //spread the black area
-    acvBoxFilter(buffer, backGround, 2); //spread the black area
-
-    for (int i = 0; i < backGround->GetHeight(); i++)
-      for (int j = 0; j < backGround->GetWidth(); j++)
-      {
-        int bri;
-        if (backGround->CVector[i][j * 3] < nonBG_spread_thres) //edgeRegion
-        {
-          bri=0;
-        }
-        else
-        {
-          bri = backGround->CVector[i][j * 3 + 2];
-        }
-
-        backGround->CVector[i][j * 3]=
-        backGround->CVector[i][j * 3+1]=
-        backGround->CVector[i][j * 3+2]=bri;
-      }
+    const uint8_t *gp = graySm.ptr<uint8_t>(i);
+    const uint8_t *sp = spread.ptr<uint8_t>(i);
+    uint8_t *bp = backGround.ptr<uint8_t>(i);
+    for (int j = 0; j < W; j++)
+    {
+      uint8_t bri = (sp[j] < nonBG_spread_thres) ? 0 : gp[j];
+      bp[j * 3] = bp[j * 3 + 1] = bp[j * 3 + 2] = bri;
+    }
   }
-
   return 0;
 }
 
-void imageDownScale(acvImage *imgDst,acvImage *imgSrc,int downSaleFactor,int sampType=0)
+int FeatureManager_stage_light_report::FeatureMatching(cv::Mat &p_img)
 {
-  imgDst->ReSize(imgSrc->GetWidth()/downSaleFactor,imgSrc->GetHeight()/downSaleFactor);
+  if (p_img.empty()) return -1;
+  report.bacpac = bacpac;
 
-  for(int i=0;i<imgDst->GetHeight();i++)for(int j=0;j<imgDst->GetWidth();j++)
-  {
-    int xi=i*downSaleFactor;
-    int xj=j*downSaleFactor;
-
-    int pixelC=0;
-    int RSum=0,GSum=0,BSum=0;
-
-    for(int ii=0;ii<downSaleFactor;ii++)
-    {
-      if(ii+xi>=imgSrc->GetHeight())break;
-      for(int jj=0;jj<downSaleFactor;jj++)
-      {
-        if(jj+xj>=imgSrc->GetWidth())break;
-        RSum+=imgSrc->CVector[xi+ii][(xj+jj)*3+0];
-        GSum+=imgSrc->CVector[xi+ii][(xj+jj)*3+1];
-        BSum+=imgSrc->CVector[xi+ii][(xj+jj)*3+2];
-        pixelC++;
-      }
-    }
-    imgDst->CVector[i][j*3+0]=RSum/pixelC;
-    imgDst->CVector[i][j*3+1]=GSum/pixelC;
-    imgDst->CVector[i][j*3+2]=BSum/pixelC;
-  }
-}
-
-int FeatureManager_stage_light_report::FeatureMatching(acvImage *p_img)
-{
-  report.bacpac=bacpac;
-  acvImage &img_downScale=cacheImage3;
-
-  imageDownScale(&img_downScale,p_img,this->down_scale_factor);
+  // Block-average downscale -> cv::resize with INTER_AREA (matches the
+  // per-block mean the legacy imageDownScale computed, within minor
+  // pixel-LSB differences).
+  cv::Mat &img_downScale = cacheImage3;
+  cv::resize(p_img, img_downScale,
+             cv::Size(p_img.cols / this->down_scale_factor,
+                      p_img.rows / this->down_scale_factor),
+             0, 0, cv::INTER_AREA);
 
   LOGI("T,nonBG_thres:%f  this:%p", this->nonBG_thres, this);
   report.type = FeatureReport::stage_light_report;
   report.data.stage_light_report.gridInfo->clear();
   report.data.stage_light_report.gridInfo->reserve(grid_size[0] * grid_size[1]);
 
-  report.data.stage_light_report.targetImageDim[0] =p_img->GetWidth();
-  report.data.stage_light_report.targetImageDim[1] =p_img->GetHeight();
-  LOGI("T0");
+  report.data.stage_light_report.targetImageDim[0] = p_img.cols;
+  report.data.stage_light_report.targetImageDim[1] = p_img.rows;
 
-  acvImage &img_wo_edge = cacheImage2;
-  backLightNonBackGroundExclusion(
-    &img_downScale,
-    &img_wo_edge,
-    &cacheImage,
-    nonBG_thres, nonBG_spread_thres);
-  
+  cv::Mat &img_wo_edge = cacheImage2;
+  backLightNonBackGroundExclusion(img_downScale, img_wo_edge, cacheImage,
+                                  nonBG_thres, nonBG_spread_thres);
 
-  int Width = img_wo_edge.GetRealWidth();
-  int Height = img_wo_edge.GetRealHeight();
+  int Width = img_wo_edge.cols;
+  int Height = img_wo_edge.rows;
   int sBlockW = Width / grid_size[0];
   int sBlockH = Height / grid_size[1];
   for (int i = 0; i < grid_size[1]; i++)
@@ -505,20 +458,11 @@ int FeatureManager_stage_light_report::FeatureMatching(acvImage *p_img)
       stage_light_grid_node_info info;
       info.nodeIndex.X = j;
       info.nodeIndex.Y = i;
-      // if(j==0)
-      //   LOGI("==============");
-      int ret = backLightBlockCalc(&img_wo_edge, sBlockW * j, sBlockH * i, sBlockW, sBlockH, &info);
+      int ret = backLightBlockCalc(img_wo_edge, sBlockW * j, sBlockH * i, sBlockW, sBlockH, &info);
       info.error = ret;
-      if (ret != 0)
-      {
-      }
-
-      //LOGI("Max:%f Min:%f",info.backLightMax,info.backLightMin);
-      //LOGI("bl_sigma:%f bl_mean:%f",info.backLightSigma,info.backLightMean);
-      info.nodeLocation.X*=this->down_scale_factor;
-      info.nodeLocation.Y*=this->down_scale_factor;
+      info.nodeLocation.X *= this->down_scale_factor;
+      info.nodeLocation.Y *= this->down_scale_factor;
       report.data.stage_light_report.gridInfo->push_back(info);
-      //LOGI("                       X:%f Y:%f",info.nodeLocation.X,info.nodeLocation.Y);
     }
   }
   return 0;
