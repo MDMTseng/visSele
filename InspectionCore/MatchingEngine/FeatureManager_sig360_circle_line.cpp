@@ -1885,6 +1885,16 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     if (estep != NULL && *estep > 0)
       this->edge_sig_ray_step = (float)*estep;
 
+    // Orientation matcher version: backward compatible (absent => v1).
+    this->matching_version = 1;
+    char *mv = (char *)JFetch(root, "matching_version", cJSON_String);
+    if (mv != NULL && strcmp(mv, "v2") == 0)
+      this->matching_version = 2;
+    double *vmi = JFetch_NUMBER(root, "matching_v2_max_iter");
+    if (vmi != NULL && *vmi >= 1) this->matching_v2_max_iter = (int)*vmi;
+    double *vtl = JFetch_NUMBER(root, "matching_v2_tol_mm");
+    if (vtl != NULL && *vtl > 0) this->matching_v2_tol_mm = (float)*vtl;
+
     void *target;
     int type = getDataFromJson(root, "matching_with_signature", &target);
     if (type == cJSON_False)
@@ -3067,6 +3077,110 @@ void xrefine(ContourSignature &tar, ContourSignature &src, float roughScanCount,
   // }
 }
 
+// v2 centroid-iter wrapper around xrefine. After each xrefine call, picks the
+// global-min angle, computes residual e(theta) = r_q - r_t(theta + best_angle),
+// solves closed-form (dx, dy) = mean(e*cos), mean(e*sin) (scaled), updates the
+// sample center, re-samples tmp_sig from the new center, repeats. Final
+// minMatchErr is the result of the last xrefine call.
+//   center_io   : initial centroid in (mm, ideal coord). Updated to final value.
+//   max_iter    : centroid-iter passes (typical 3-4 enough).
+//   tol_mm      : break when |(dx, dy)| < tol_mm.
+//   ret_score   : (optional) FFT-correlation-style score of best match on final iter.
+void xrefine_v2_centroidIter(ContourSignature &tar, ContourSignature &src,
+                             float roughScanCount, vector<acv_XY> &minMatchErr,
+                             bool flip, int roughStride, int fineStride, float tarPrecision,
+                             acv_XY &center_io, int max_iter, float tol_mm,
+                             float *ret_score)
+{
+  if (src.cartesian_ideal.empty())
+  {
+    // v2 requested but cartesian wasn't populated -- fall back to v1 behavior.
+    xrefine(tar, src, roughScanCount, minMatchErr, flip, roughStride, fineStride, tarPrecision);
+    if (ret_score) *ret_score = NAN;
+    return;
+  }
+
+  const int N = (int)src.signature_data.size();
+  const float dtheta = 2.0f * M_PI / N;
+  acv_XY center = center_io;
+
+  for (int it = 0; it < max_iter; it++)
+  {
+    // iter 0 reuses the signature already built by convertContourGrid2Signature
+    // so the first xrefine is byte-identical to v1. Subsequent iters resample
+    // from the LSQ-corrected center.
+    if (it > 0)
+    {
+      src.resampleFromCenter(center);
+      // Match the legacy pipeline: convertContourGrid2Signature -> *=mm conv
+      // -> sign360_process (which applies SignatureSoften with the known
+      // window^2 attenuation). The template (feature_signature) is already
+      // softened once at load, so we must apply the same processing here for
+      // the 1D correlation to be apples-to-apples.
+      std::vector<acv_XY> _dummy_buf;
+      sign360_process(src.signature_data, _dummy_buf);
+      src.CalcInfo();
+    }
+
+    xrefine(tar, src, roughScanCount, minMatchErr, flip, roughStride, fineStride, tarPrecision);
+
+    // Pick the global-min refinement among local minima.
+    int best_idx = -1; float best_err = FLT_MAX;
+    for (size_t i = 0; i < minMatchErr.size(); i++)
+      if (minMatchErr[i].y < best_err) { best_err = minMatchErr[i].y; best_idx = (int)i; }
+    if (best_idx < 0) break;
+    float best_angle = minMatchErr[best_idx].x * (float)(M_PI / 180.0);
+
+    // Closed-form (dx, dy): residual e(theta) at the matched angle, project
+    // onto cos/sin. With uniform sampling the normal equations diagonalize.
+    int kshift = (int)round(best_angle / dtheta);
+    float sum_ec = 0, sum_es = 0;
+    for (int i = 0; i < N; i++)
+    {
+      int j = (i + kshift) % N; if (j < 0) j += N;
+      float r_q = src.signature_data[i].x;
+      float r_t = flip
+                  ? tar.signature_data[(N - j) % N].x
+                  : tar.signature_data[j].x;
+      float e = r_q - r_t;
+      float th = (float)(2.0 * M_PI * i / N);
+      sum_ec += e * cosf(th);
+      sum_es += e * sinf(th);
+    }
+    // (dx, dy) = (2/N) * sum(e * cos), (2/N) * sum(e * sin)
+    // Sign: model residual ~ -dx cos - dy sin so center update: c_new = c - (dx, dy).
+    // But by derivation in lab notes: e ~ -Delta_x cos - Delta_y sin (linearized),
+    // where Delta = (sample_center - true_center). LSQ recovers Delta. So:
+    //   true_center = sample_center - Delta
+    float Delta_x = -(2.0f / N) * sum_ec;
+    float Delta_y = -(2.0f / N) * sum_es;
+    acv_XY new_center;
+    new_center.x = center.x - Delta_x;
+    new_center.y = center.y - Delta_y;
+    float step = hypotf(Delta_x, Delta_y);
+    center = new_center;
+    if (step < tol_mm) break;
+  }
+
+  // Final pass with the converged center if we actually shifted it.
+  if (hypotf(center.x - center_io.x, center.y - center_io.y) > 1e-7f)
+  {
+    src.resampleFromCenter(center);
+    std::vector<acv_XY> _dummy_buf;
+    sign360_process(src.signature_data, _dummy_buf);
+    src.CalcInfo();
+    xrefine(tar, src, roughScanCount, minMatchErr, flip, roughStride, fineStride, tarPrecision);
+  }
+  center_io = center;
+
+  if (ret_score)
+  {
+    float best_err = FLT_MAX;
+    for (auto &mm : minMatchErr) if (mm.y < best_err) best_err = mm.y;
+    *ret_score = best_err;
+  }
+}
+
 inline float angle_0_to_2pi(float ang)
 {
   float _ang = fmod(ang, 2 * M_PI);
@@ -3961,11 +4075,30 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     int scanWidth = 10;
     int sparseScanLen = 360 / scanWidth;
 
-    if (matching_face >= 0) //front
-      xrefine(feature_signature, tmp_signature, 36 / 3, minMatchErr, false, 10, 5, 0.5);
-
-    if (matching_face <= 0) //back
-      xrefine(feature_signature, tmp_signature, 36 / 3, minMatchErr_bk, true, 10, 5, 0.5);
+    if (this->matching_version == 2 && !tmp_signature.cartesian_ideal.empty())
+    {
+      // v2: wrap xrefine in centroid iteration. center is in mm/ideal coord,
+      // same unit as tmp_signature.cartesian_ideal.
+      acv_XY center_v2 = tmp_signature.sample_center;
+      if (matching_face >= 0)
+        xrefine_v2_centroidIter(feature_signature, tmp_signature, 36 / 3, minMatchErr,
+                                false, 10, 5, 0.5,
+                                center_v2, this->matching_v2_max_iter, this->matching_v2_tol_mm, NULL);
+      if (matching_face <= 0)
+      {
+        acv_XY center_v2_bk = tmp_signature.sample_center;
+        xrefine_v2_centroidIter(feature_signature, tmp_signature, 36 / 3, minMatchErr_bk,
+                                true, 10, 5, 0.5,
+                                center_v2_bk, this->matching_v2_max_iter, this->matching_v2_tol_mm, NULL);
+      }
+    }
+    else
+    {
+      if (matching_face >= 0)
+        xrefine(feature_signature, tmp_signature, 36 / 3, minMatchErr, false, 10, 5, 0.5);
+      if (matching_face <= 0)
+        xrefine(feature_signature, tmp_signature, 36 / 3, minMatchErr_bk, true, 10, 5, 0.5);
+    }
 
     float matching_angle_margin = this->matching_angle_margin;
     // if(matching_angle_margin>M_PI-0.0001)
@@ -4456,6 +4589,23 @@ bool convertGrayEdges2Signature(acv_XY center_lb, acv_XY ideal_center, const cv:
   return true;
 }
 
+// v2 helper: extract the ordered cartesian boundary points (ideal coord) the
+// signature builder would have consumed. Used so ContourSignature can be
+// re-sampled from a shifted centroid without re-walking the grid.
+bool extractContourGridCartesian(ContourFetch contour, std::vector<acv_XY> &o_cartesian_ideal, FeatureManager_BacPac *bacpac)
+{
+  o_cartesian_ideal.clear();
+  if (contour.contourSections.size() == 0) return false;
+  for (ContourFetch::ptInfo ptinfo : contour.contourSections[0])
+  {
+    acv_XY copos = ptinfo.pt;
+    bacpac->sampler->img2ideal(&copos);
+    if (copos.x != copos.x || copos.y != copos.y) continue;
+    o_cartesian_ideal.push_back(copos);
+  }
+  return !o_cartesian_ideal.empty();
+}
+
 bool convertContourGrid2Signature(acv_XY center, ContourFetch contour, std::vector<acv_XY> &o_signature, FeatureManager_BacPac *bacpac)
 {
   if (contour.contourSections.size() == 0)
@@ -4698,10 +4848,34 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     for (int j = 0; j < tmp_signature.signature_data.size(); j++)
     {
       tmp_signature.signature_data[j].x *=dsampLevel/ ppmm;
-      
+
       // LOGI("%d=>%f",j,tmp_signature.signature_data[j].x);
     }
-    
+
+    // v2 path: also store the cartesian boundary (mm, ideal-coord) and the
+    // sample center, so xrefine_v2_centroidIter can re-sample after each
+    // centroid LSQ step. Skipped for v1 to keep its hot path untouched.
+    tmp_signature.cartesian_ideal.clear();
+    tmp_signature.sample_center = acv_XY(0, 0);
+    if (this->matching_version == 2 && matching_method == 0)
+    {
+      // contour_sig only (edge_sig builds its signature differently and would
+      // need its own re-sampler; v2 currently covers the contour path).
+      std::vector<acv_XY> cart_pix;
+      if (extractContourGridCartesian(edge_grid, cart_pix, bacpac))
+      {
+        // Convert to mm (same unit as signature_data).
+        const float k = dsampLevel / ppmm;
+        tmp_signature.cartesian_ideal.reserve(cart_pix.size());
+        for (acv_XY &p : cart_pix)
+          tmp_signature.cartesian_ideal.push_back(acv_XY(p.x * k, p.y * k));
+        tmp_signature.sample_center = acv_XY(ideal_center.x * k, ideal_center.y * k);
+        // Legacy guard was |diffY| < 0.1 dsamp-px. Scale into mm to keep the
+        // same behavior on the resampled signature.
+        tmp_signature.dy_skip_thres = 0.1f * k;
+      }
+    }
+
     // acvSaveBitmapFile("FFKFKJDK3.BMP", labeledBuff);
     // exit(-1);
     tmp_signature.CalcInfo();
@@ -4796,6 +4970,44 @@ int ContourSignature::RESET(int Len)
   sigma = NAN;
   signature_data.resize(Len);
   return 0;
+}
+
+bool ContourSignature::resampleFromCenter(acv_XY center)
+{
+  // v2 helper: rebuild signature_data from cartesian_ideal as seen from
+  // `center`. Mirrors convertContourGrid2Signature exactly (same binning,
+  // same per-segment interpolateSignData between consecutive walk-order
+  // points, same max-R update). Critical for v2 -- different gap-fill
+  // semantics produce a 180-deg-shifted signature that breaks rotation match.
+  const int N = (int)signature_data.size();
+  if (N == 0 || cartesian_ideal.empty()) return false;
+  for (int i = 0; i < N; i++) { signature_data[i].x = 0; signature_data[i].y = 0; }
+  int preIdx = -1;
+  for (const acv_XY &p : cartesian_ideal)
+  {
+    float dx = p.x - center.x;
+    float dy = p.y - center.y;
+    if (dx != dx || dy != dy) continue;
+    // Numerical-noise guard mirroring convertContourGrid2Signature's
+    // `|diffY| < 0.1` px skip, scaled to the cartesian's unit (mm here) by
+    // the caller via dy_skip_thres.
+    if (dy_skip_thres > 0 && dy < dy_skip_thres && dy > -dy_skip_thres) continue;
+    float theta = acvFAtan2(dy, dx);
+    int idx = (int)round(N * theta / (2 * M_PI));
+    if (idx < 0) idx += N;
+    if (idx >= N) idx -= N;
+    if (preIdx == -1) preIdx = idx;
+    float R = hypot(dx, dy);
+    if (signature_data[idx].x < R)
+    {
+      signature_data[idx].x = R;
+      signature_data[idx].y = theta;
+      interpolateSignData(signature_data, preIdx, idx);
+    }
+    preIdx = idx;
+  }
+  sample_center = center;
+  return true;
 }
 
 int ContourSignature::CalcInfo()

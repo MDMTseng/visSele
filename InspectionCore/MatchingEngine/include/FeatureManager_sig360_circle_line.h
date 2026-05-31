@@ -15,6 +15,16 @@ class ContourSignature
 {
 public :
   vector<acv_XY>signature_data;
+  // Ordered cartesian boundary points (ideal coord) the signature was sampled
+  // from. v1 doesn't use this; v2 needs it to re-sample after centroid shift.
+  // Populated lazily by convertContourGrid2Signature when v2 is requested.
+  vector<acv_XY>cartesian_ideal;
+  // Centroid the signature_data was sampled from (ideal coord).
+  acv_XY sample_center = {0, 0};
+  // |dy| < this threshold skip guard (mm units, same as cartesian_ideal).
+  // Mirrors convertContourGrid2Signature's `|diffY| < 0.1` px guard expressed
+  // in the cartesian's unit. Populated by v2 init path.
+  float dy_skip_thres = 0.0f;
   float mean;
   float sigma;
   float angleOffset;
@@ -32,6 +42,10 @@ public :
 
   void match_span(ContourSignature &s,
     float offset1,float offset2,int count,vector<acv_XY> &error,float stride,bool flip);
+
+  // Re-sample signature_data from cartesian_ideal as seen from `center`.
+  // Used by v2 centroid-iteration. Returns false if cartesian_ideal is empty.
+  bool resampleFromCenter(acv_XY center);
 
 };
 
@@ -147,6 +161,14 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // no signature-format change.
   float edge_sig_ray_step = 1.5f;
 
+  // Orientation-matching algorithm: 1 = v1 (default, brute-force angle scan at
+  // fixed centroid, untouched legacy path); 2 = v2 (xrefine wrapped in
+  // centroid-iteration: re-samples signature from cos/sin-LSQ-corrected center
+  // each iter, typically lifts the match score 0.05-0.25 when seed centroid
+  // is biased by scratch/particle). Set via def "matching_version".
+  int matching_version = 1;
+  int matching_v2_max_iter = 4;
+  float matching_v2_tol_mm = 0.002f;
 
   float sig_st1_matching_sim_thres;
 
