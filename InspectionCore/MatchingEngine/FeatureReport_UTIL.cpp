@@ -3,7 +3,6 @@
 #include "FeatureManager_sig360_circle_line.h"
 #include "FeatureManager_stage_light_report.h"
 
-#include "FM_camera_calibration.h"
 #include <logctrl.h>
 
 cJSON* acv_acv_XY2JSON(acv_XY pt )

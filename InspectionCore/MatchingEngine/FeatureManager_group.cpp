@@ -4,7 +4,6 @@
 #include <common_lib.h>
 #include <MatchingCore.h>
 #include "FeatureManager_sig360_circle_line.h"
-#include "FM_camera_calibration.h"
 #include "FeatureManager_group.h"
 #include "BackLightFieldCalib.h"
 #include "LabelingCV.h"

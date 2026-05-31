@@ -3,7 +3,6 @@
 #include "FeatureManager_sig360_circle_line.h"
 #include "FeatureManager_stage_light_report.h"
 #include "FeatureManager_nop.h"
-#include "FeatureManager_gen.h"
 // #include "FM_GenMatching.h"
 #include "FM_Blank.h"
 
