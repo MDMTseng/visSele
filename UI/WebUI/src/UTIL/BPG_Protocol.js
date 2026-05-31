@@ -96,8 +96,11 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
 
   let headerArray = new Uint8ClampedArray(ws_evt.data,
     offset+BPG_header_L,headerL);
-  ret_obj.camera_id=headerArray[0];
-  ret_obj.session_id=headerArray[1];
+  // Core a7cd253d / docs/IMG_TRANSFER_JPEG.md: byte[0] is the format ID
+  // (0 = raw RGBA legacy, 1 = JPEG) and byte[1] is JPEG quality (diagnostic;
+  // 0 for raw). Old core always wrote 0/0 here so the legacy path is byte-identical.
+  ret_obj.format=headerArray[0];
+  ret_obj.jpeg_quality=headerArray[1];
   ret_obj.offsetX=(headerArray[2]<<8)|headerArray[3];
   ret_obj.offsetY=(headerArray[4]<<8)|headerArray[5];
   ret_obj.width=(headerArray[6]<<8)|headerArray[7];
@@ -108,28 +111,35 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   ret_obj.full_width=(headerArray[11]<<8)|headerArray[12];
   ret_obj.full_height=(headerArray[13]<<8)|headerArray[14];
 
-  // console.log(ret_obj,headerArray);
-  let RGBA_pix_Num = 4*ret_obj.width*ret_obj.height;
-  
-  //console.log(headerArray,RGBA_pix_Num,ret_obj.length-headerL);
   let imgStart = offset + BPG_header_L + headerL;
-  // Keep the original size-equality check permissive (||true) -- it may have
-  // been disabled because it rejected valid frames (e.g. trailing padding or
-  // a length convention mismatch). But guard the actual buffer access so a
-  // bogus width/height can't build a view past the backing buffer.
-  if ((true || RGBA_pix_Num == (ret_obj.length - headerL)) &&
-      RGBA_pix_Num >= 0 &&
-      imgStart + RGBA_pix_Num <= ws_evt.data.byteLength)
-  {
-    ret_obj.image=new Uint8ClampedArray(ws_evt.data,
-      imgStart,RGBA_pix_Num);
-  }
-  else
-  {
-    log.warn("raw2Obj_IM: image pixel region out of bounds; image=null",
-      { width: ret_obj.width, height: ret_obj.height, RGBA_pix_Num,
-        imgStart, byteLength: ws_evt.data.byteLength });
-    ret_obj.image=null;
+  let payloadAvail = ws_evt.data.byteLength - imgStart;
+
+  if (ret_obj.format === 1) {
+    // JPEG: entire remainder is the JPEG bitstream. Copy out so the typed-array
+    // view stays valid after WS recycles the ArrayBuffer (Blob ctor below holds
+    // a reference to whatever we hand it).
+    if (payloadAvail > 0) {
+      ret_obj.image=new Uint8Array(ws_evt.data, imgStart, payloadAvail);
+    } else {
+      log.warn("raw2Obj_IM: JPEG payload empty; image=null",
+        { width: ret_obj.width, height: ret_obj.height, byteLength: ws_evt.data.byteLength });
+      ret_obj.image=null;
+    }
+  } else {
+    // Legacy raw RGBA: 4 bytes per pixel.
+    let RGBA_pix_Num = 4*ret_obj.width*ret_obj.height;
+    if (RGBA_pix_Num >= 0 && imgStart + RGBA_pix_Num <= ws_evt.data.byteLength)
+    {
+      ret_obj.image=new Uint8ClampedArray(ws_evt.data,
+        imgStart,RGBA_pix_Num);
+    }
+    else
+    {
+      log.warn("raw2Obj_IM: image pixel region out of bounds; image=null",
+        { width: ret_obj.width, height: ret_obj.height, RGBA_pix_Num,
+          imgStart, byteLength: ws_evt.data.byteLength });
+      ret_obj.image=null;
+    }
   }
 
 
@@ -207,14 +217,23 @@ function map_BPG_Packet2Act(parsed_packet)
     case "IM":
     {
       let pkg = parsed_packet;
-      let img = new ImageData(pkg.image, pkg.width);
-      
-
-      let objx={...pkg,img}
-      delete objx["image"];
-      acts.push(UIAct.EV_WS_Image_Update(
-        objx
-      ));
+      // Skip if raw2Obj_IM bailed (bounds/empty payload — image:null).
+      if (!pkg.image) break;
+      let objx = { ...pkg };
+      delete objx.image;
+      if (pkg.format === 1) {
+        // JPEG: hand off raw bytes as a Blob; the canvas decodes via
+        // createImageBitmap (zero main-thread cost on a Worker-capable browser).
+        // Copy the bytes — the underlying ArrayBuffer is the WS message buffer
+        // which gets recycled on the next onmessage.
+        const bytes = new Uint8Array(pkg.image.byteLength);
+        bytes.set(pkg.image);
+        objx.jpegBlob = new Blob([bytes], { type: "image/jpeg" });
+      } else {
+        // Raw RGBA (legacy / format === 0).
+        objx.img = new ImageData(pkg.image, pkg.width);
+      }
+      acts.push(UIAct.EV_WS_Image_Update(objx));
       break;
     }
     case "IR":

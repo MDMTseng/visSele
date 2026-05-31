@@ -237,9 +237,29 @@ class EverCheckCanvasComponent_proto {
 
   SetImg(img_info) {
     if (img_info == null || img_info == this.img_info) return;
-    //this.zoomToCurSignature();
-    // console.log(img_info);
     this.img_info = img_info;
+
+    // JPEG path (core a7cd253d, opt-in via GS IMG_STREAMING_JPEG_QUALITY=N):
+    // payload is a Blob; decode via createImageBitmap then drawImage. Async,
+    // so a later draw() picks up the secCanvas once the bitmap lands. Token
+    // guards against an older in-flight decode clobbering a newer frame.
+    if (img_info.jpegBlob) {
+      const w = img_info.width, h = img_info.height;
+      this.secCanvas.width = w;
+      this.secCanvas.height = h;
+      const ctx2nd = this.secCanvas.getContext('2d');
+      const token = (this._jpegToken = (this._jpegToken || 0) + 1);
+      createImageBitmap(img_info.jpegBlob).then((bmp) => {
+        if (this._jpegToken !== token) { if (bmp.close) bmp.close(); return; }
+        ctx2nd.drawImage(bmp, 0, 0);
+        this.secCanvas_rawImg = bmp;
+      }).catch((err) => {
+        log.warn("SetImg: JPEG decode failed", err);
+      });
+      return;
+    }
+
+    // Legacy raw RGBA: img is an ImageData.
     let img = img_info.img;
     this.secCanvas.width = img.width;
     this.secCanvas.height = img.height;
