@@ -127,7 +127,27 @@ Phase 3a deep sweep update: gate-exercised path is now cv-native end-to-end.
   Dead acv ImageDownSampling, transpose helpers, #if 0 MJPEG block, and the
   acvImage_BasicTool include all removed.
 
-Remaining blockers to unlinking acvImage from CMakeLists:
+Phase 3a final sweep — acvImage *class* is gone from the engine surface:
+- FM_platingCheck removed entirely (347 lines).
+- FM_gen + FM_camera_calibration deleted (dead, not registered).
+- FM_stage_light_report rewritten cv::Mat-native (cv::Sobel + cv::boxFilter
+  + cv::resize(INTER_AREA); cacheImage[1/2/3] are cv::Mat).
+- FM_sig360_extractor cv::Mat-native; acvOuterContourExtraction has a
+  cv::Mat overload using the cvContourWalk chain.
+- FM_GenMatching: DefTemplate is cv::Mat; loadImageCv replaces LoadIMGFile.
+- base FeatureManager: FeatureMatching(cv::Mat&) is pure virtual; the
+  legacy FeatureMatching(acvImage*) + acvImage _buff + mutual-bridge
+  defaults all deleted.
+- ImageSampler: 6 acvImage* overloads deleted. Only the cv::Mat samplers
+  (sampleImage3_IdealCoord, sampleImage_ImgCoord_cv) remain.
+- LabelingCV: both acvImage* overloads of acvComponentLabeling_cv removed.
+- CvBridge: dropped acvImageToGrayMat / acvImageToBgrMat / acvImageBgrView /
+  grayMatToAcvImage / 3-arg loadImageCv. Kept the cv::Mat helpers only.
+- EdgeSignature.cpp/.h deleted (never called).
+- edgeTracking: _gray_shim acvImage and acvImage* getImage() accessor gone;
+  only the cv::Mat _gray_cv + getImageCv() remain.
+
+Remaining work (Phase 3b — POD geometry types):
 - FeatureManager base still owns `acvImage _buff` (used by FM_platingCheck) and
   `FeatureMatching(acvImage*)` virtual default (with cv::Mat -> acvImage
   shim) -- keeps the class transitively reachable.
