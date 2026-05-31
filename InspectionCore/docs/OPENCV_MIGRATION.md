@@ -88,6 +88,31 @@ is recorded here so it's ready when that arrives.
 
 ## Current status (2026-05-31)
 
+## Phase 3a FINAL (2026-05-31)
+
+The acvImage *class* is gone from the build's live consumer set. Every
+remaining acvImage entry in the source tree is either a comment, a
+forward-declared dead helper, or wiringPanel's `SEND_acvImage` /
+`BPG_protocol_data_acvImage_Send_info` type *names* (the struct's `img`
+field is `cv::Mat*`). Final cleanup wave:
+
+- CameraLayer_BMP: img_load is `cv::Mat`; `cv::imread` replaces
+  `acvLoadBitmapFile`; nearest-neighbor sampler inlined locally.
+- common_lib/Util2.c: LoadIMGFile / SaveIMGFile / LoadPNGFile /
+  LoadJPEGFile / SavePNGFile / SaveJPEGFile (and their decls) deleted
+  (185+ lines). All callers had already moved to loadImageCv /
+  cv::imwrite.
+- BinaryImageTemplateFitting.hpp deleted (never #included).
+- Dead acvImage* forward decls dropped: MatchingCore_CircleLineExtraction,
+  ContourGrid::ptInfoOpt.
+- ImageSampler.cpp: dropped the unused acvImage local from acvCalibMap ctor.
+
+acvImage *library* is still linked because the acv_* POD geometry
+helpers (acvVecAdd / acvDistance / acvFitLine / acvRotation / ...) live
+in `acvImage/acvImage_BasicTool.cpp`. The acvImage CLASS itself is
+unreferenced -- linking is purely for the geometry symbols. Phase 3b
+extracts the geometry into common_lib and deletes acvImage/.
+
 Phase 3a — `binary_processing_group` entry-point cv-clean. Done:
 - FeatureManager interface flipped to mutual bridges (both signatures non-pure
   with a re-entry guard; subclasses override either).
