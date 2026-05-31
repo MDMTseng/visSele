@@ -193,7 +193,6 @@ add_library(MatchingEngine STATIC
   MatchingEngine/MatchingEngine.cpp MatchingEngine/MatchingCore.cpp
   MatchingEngine/FeatureManager.cpp MatchingEngine/FeatureExtractor.cpp
   MatchingEngine/ContourGrid.cpp MatchingEngine/FeatureManager_group.cpp
-  MatchingEngine/FeatureManager_platingCheck.cpp
   MatchingEngine/FeatureManager_sig360_circle_line.cpp
   MatchingEngine/JudgeCALC.cpp
   MatchingEngine/MorphEngine/MorphEngine.cpp MatchingEngine/FeatureReport_UTIL.cpp
