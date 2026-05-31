@@ -1,6 +1,16 @@
 
 #include "CameraLayer_BMP.hpp"
-#include "acvImage_SpDomainTool.hpp"
+#include <opencv2/imgcodecs.hpp>
+#include <cmath>
+
+// Nearest-neighbor pixel fetch (single channel). OOB returns 0.
+static inline uint8_t cvUnsignedMap1Sampling_Nearest(const cv::Mat &m, float x, float y, int channel)
+{
+    int rX = (int)std::round(x);
+    int rY = (int)std::round(y);
+    if (rX < 0 || rY < 0 || rX > m.cols - 1 || rY > m.rows - 1) return 0;
+    return m.ptr<uint8_t>(rY)[rX * m.channels() + channel];
+}
 
 #include <logctrl.h> 
 #include <dirent.h> 
@@ -96,7 +106,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
             // pixCoord.Y-=offsetR;
             pixCoord=acvVecAdd(pixCoord,pixOffset);
             
-            float pix= acvUnsignedMap1Sampling_Nearest(&img_load, pixCoord, 0);
+            float pix= cvUnsignedMap1Sampling_Nearest(img_load, pixCoord.X, pixCoord.Y, 0);
             
             int N=0;
             if(noiseRange>0)
@@ -119,7 +129,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
           if(1)
           {
 
-            memcpy(imgBuffer,img_load.CVector[0],newH*newW*channelCount);
+            memcpy(imgBuffer,img_load.ptr<uint8_t>(0),newH*newW*channelCount);
 
           }
           else
@@ -127,18 +137,18 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
             for(int i=0;i<newH;i++)//exposure add
             {
               int li=i+newY;
-              if(li<0 || li>=img_load.GetHeight())continue;
+              if(li<0 || li>=img_load.rows)continue;
               for(int j=0;j<newW;j++)
               {
                 int lj=j+newX;
-                if(lj<0 || lj>=img_load.GetWidth())continue;
+                if(lj<0 || lj>=img_load.cols)continue;
                 int N=0;
                 if(noiseRange>0)
                   N= (rand()%(2*noiseRange+1))-noiseRange;
 
                 for(int ix=0;ix<3;ix++)
                 {
-                  int d =N+ ((img_load.CVector[li][lj*3+ix]*tExp)>>13);
+                  int d =N+ ((img_load.ptr<uint8_t>(li)[lj*3+ix]*tExp)>>13);
                   
                   if(d<0)d=0;
                   else if(d>255)d=255;
@@ -195,8 +205,8 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
 
             
             pixCoord=acvVecSub((acv_XY){
-              MIRROR_X?(float)img_load.GetWidth():pixCoord.X*2,
-              MIRROR_Y?(float)img_load.GetHeight():pixCoord.Y*2},pixCoord);
+              MIRROR_X?(float)img_load.cols:pixCoord.X*2,
+              MIRROR_Y?(float)img_load.rows:pixCoord.Y*2},pixCoord);
 
 
             // for(int k=0;k<channelCount;k++)
@@ -217,7 +227,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
             // }
 
             // float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, 0);
-            float pix= acvUnsignedMap1Sampling_Nearest(&img_load, pixCoord, 0);
+            float pix= cvUnsignedMap1Sampling_Nearest(img_load, pixCoord.X, pixCoord.Y, 0);
             
             int N=0;
             if(noiseRange>0)
@@ -240,7 +250,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
           // LOGI(">>>:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
           // if(1)
           // {
-          //   memcpy(imgBuffer,img_load.CVector[0],);
+          //   memcpy(imgBuffer,img_load.ptr<uint8_t>(0),);
           //   acvCloneImage(&img_load,&img,-1);    
 
           // }  
@@ -248,15 +258,15 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
           for(int i=0;i<newH;i++)//exposure add
           {
             int li=i+newY;
-            if(li<0 || li>=img_load.GetHeight())continue;
+            if(li<0 || li>=img_load.rows)continue;
             for(int j=0;j<newW;j++)
             {
               int lj=j+newX;
-              if(lj<0 || lj>=img_load.GetWidth())continue;
+              if(lj<0 || lj>=img_load.cols)continue;
               int N=0;
               if(noiseRange>0)
                 N= (rand()%(2*noiseRange+1))-noiseRange;
-              int d =N+ ((img_load.CVector[li][lj*3]*tExp)>>13);
+              int d =N+ ((img_load.ptr<uint8_t>(li)[lj*3]*tExp)>>13);
               
               if(d<0)d=0;
               else if(d>255)d=255;
@@ -314,20 +324,20 @@ CameraLayer_BMP::status CameraLayer_BMP::CalcROI(int* X,int* Y,int* W,int* H)
   }
   if(tmpX<1)
   {
-    tmpX=(int)(tmpX*img_load.GetWidth());
+    tmpX=(int)(tmpX*img_load.cols);
   }
   if(tmpY<1)
   {
-    tmpY=(int)(tmpY*img_load.GetHeight());
+    tmpY=(int)(tmpY*img_load.rows);
   }
 
-  if(tmpX>=img_load.GetWidth()-5)
+  if(tmpX>=img_load.cols-5)
   {
-    tmpX=img_load.GetWidth()-5-1;
+    tmpX=img_load.cols-5-1;
   }
-  if(tmpY>=img_load.GetHeight()-5)
+  if(tmpY>=img_load.rows-5)
   {
-    tmpY=img_load.GetHeight()-5-1;
+    tmpY=img_load.rows-5-1;
   }
 
   if(tmpW<0){
@@ -338,20 +348,20 @@ CameraLayer_BMP::status CameraLayer_BMP::CalcROI(int* X,int* Y,int* W,int* H)
   }
   if(tmpW<1)
   {
-    tmpW=(int)(tmpW*img_load.GetWidth());
+    tmpW=(int)(tmpW*img_load.cols);
   }
   if(tmpH<1)
   {
-    tmpH=(int)(tmpH*img_load.GetHeight());
+    tmpH=(int)(tmpH*img_load.rows);
   }
 
-  if(tmpW+tmpX>img_load.GetWidth())
+  if(tmpW+tmpX>img_load.cols)
   {
-    tmpW=img_load.GetWidth()-tmpX;
+    tmpW=img_load.cols-tmpX;
   }
-  if(tmpH+tmpY>img_load.GetHeight())
+  if(tmpH+tmpY>img_load.rows)
   {
-    tmpH=img_load.GetHeight()-tmpY;
+    tmpH=img_load.rows-tmpY;
   }
   if(X)*X=tmpX;
   if(Y)*Y=tmpY;
@@ -374,7 +384,9 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       cacheUseCounter=0;
       this->fileName = fileName;
         LOGI("Loading:%s",fileName.c_str());
-        ret = acvLoadBitmapFile(&img_load, fileName.c_str());
+        img_load = cv::imread(fileName.c_str(), cv::IMREAD_COLOR);
+        ret = img_load.empty() ? -1 : 0;
+        if (ret == 0 && !img_load.isContinuous()) img_load = img_load.clone();
         LOGI("ret:%d",ret);
     }
     if(ret!=0)

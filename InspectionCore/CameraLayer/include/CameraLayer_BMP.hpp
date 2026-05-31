@@ -2,7 +2,8 @@
 #define CAMERALAYER_BMP_HPP
 #include <CameraLayer.hpp>
 #include <string>
-#include <acvImage_BasicTool.hpp>
+#include <acvImage_BasicTool.hpp>   // acv_XY geometry (still needed)
+#include <opencv2/core.hpp>
 #include <mutex>
 #include <vector>
 #include <thread>
@@ -13,7 +14,7 @@ class CameraLayer_BMP : public CameraLayer{
 
     protected:
     int cacheUseCounter=0;
-    acvImage img_load;
+    cv::Mat img_load;
     const float exp_time_100ExpUs=5000;
     float exp_time_us=1000;
     float a_gain=1;
