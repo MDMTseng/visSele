@@ -1,6 +1,7 @@
 #include "FeatureManager_sig360_circle_line.h"
 #include "Caliper.h"
 #include "JudgeCALC.h"
+#include "LabelingCV.h"
 
 #include "SearchPointCV.h"
 #include "logctrl.h"
@@ -4697,6 +4698,28 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
 
   reports.resize(0);
 
+  // Phase 2: when matching_version=2 AND group exposed the CV_8UC1 binary,
+  // build all per-label signatures + cartesian boundaries in a single pass
+  // up-front (morph boundary + dual-sig diffusion), then later look them up
+  // by label index instead of calling the legacy walker per label.
+  std::vector<std::vector<acv_XY>> phase2_perLabelSig;
+  std::vector<std::vector<acv_XY>> phase2_perLabelCart;
+  bool phase2_active = (this->matching_version == 2)
+                       && (matching_method == 0)   // contour_sig only for now
+                       && bacpac && bacpac->binary_uc1_for_phase2
+                       && !bacpac->binary_uc1_for_phase2->empty();
+  if (phase2_active)
+  {
+    std::vector<acv_LabeledData> phase2_ld_unused;  // group's ldData is the truth
+    buildLabeledSignatures_phase2(*bacpac->binary_uc1_for_phase2,
+                                  phase2_ld_unused,
+                                  phase2_perLabelSig,
+                                  phase2_perLabelCart,
+                                  (int)feature_signature.signature_data.size(),
+                                  /*K_min=*/2,
+                                  /*connectivity=*/8);
+  }
+
   int onlyIdx = -1;
   if (single_result_area_ratio > 0 && ldData.size() >= 3)
   {
@@ -4839,6 +4862,15 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
                                  searchRadius_lb, tmp_signature.signature_data, bacpac, edge_sig_min_strength,
                                  edge_sig_ray_step);
     }
+    else if (phase2_active && i >= 0 && i < (int)phase2_perLabelSig.size()
+             && !phase2_perLabelSig[i].empty())
+    {
+      // Phase 2: copy the pre-built dual-sig signature for this label. Units
+      // are still input-px (group's binary_img_storage pixel space); the
+      // *=dsampLevel/ppmm scaling below converts to mm exactly as the legacy
+      // convertContourGrid2Signature output would have.
+      tmp_signature.signature_data = phase2_perLabelSig[i];
+    }
     else // contour_sig: binary silhouette contour (default, backward compatible)
     {
       convertContourGrid2Signature(ideal_center, edge_grid, tmp_signature.signature_data, bacpac);
@@ -4859,13 +4891,25 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     tmp_signature.sample_center = acv_XY(0, 0);
     if (this->matching_version == 2 && matching_method == 0)
     {
-      // contour_sig only (edge_sig builds its signature differently and would
-      // need its own re-sampler; v2 currently covers the contour path).
+      const float k = dsampLevel / ppmm;
+      // Phase 2 path: cartesian comes directly from buildLabeledSignatures_phase2
+      // (input-px units, no img2ideal applied since group's binary_img_storage
+      // already lives in the ideal-coord-equivalent grid).
+      // Legacy path: walk edge_grid -> px -> mm via extractContourGridCartesian.
       std::vector<acv_XY> cart_pix;
-      if (extractContourGridCartesian(edge_grid, cart_pix, bacpac))
+      bool have_cart = false;
+      if (phase2_active && i >= 0 && i < (int)phase2_perLabelCart.size()
+          && !phase2_perLabelCart[i].empty())
       {
-        // Convert to mm (same unit as signature_data).
-        const float k = dsampLevel / ppmm;
+        cart_pix = phase2_perLabelCart[i];
+        have_cart = true;
+      }
+      else if (extractContourGridCartesian(edge_grid, cart_pix, bacpac))
+      {
+        have_cart = true;
+      }
+      if (have_cart)
+      {
         tmp_signature.cartesian_ideal.reserve(cart_pix.size());
         for (acv_XY &p : cart_pix)
           tmp_signature.cartesian_ideal.push_back(acv_XY(p.x * k, p.y * k));

@@ -208,19 +208,29 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
   report.bacpac=bacpac;
     error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
-    // Binary image starts as CV_8UC1 (single-channel) -- the threshold paths
-    // write 1 byte per pixel instead of 3, and CCL can skip extractChannel.
-    // acvComponentLabeling_cv reallocates this in-place to CV_8UC3 after CCL
-    // to produce the BGR-packed labels the legacy contour walker reads. Phase
-    // 2 will replace the walker and drop the BGR repack entirely.
-    binary_img_storage.create(img_cv.rows, img_cv.cols, CV_8UC1);
+
+    // Pre-binarization downsample. When > 1, threshold + CCL + signature build
+    // run at the reduced resolution; sub-features get setLabelDownSampLevel(N)
+    // so they scale coords back to original-image space for measurement.
+    const int dsampLevel = (inspection_downsample > 0) ? inspection_downsample : 1;
 
     // Source image typically arrives as CV_8UC3 BGR-replicated grayscale (from
-    // cv::imread(..., IMREAD_COLOR)). Pull a single channel up-front so all
-    // three threshold variants below can do single-channel work.
+    // cv::imread(..., IMREAD_COLOR)). Pull a single channel + optional resize
+    // up-front so all three threshold variants below do single-channel work.
     cv::Mat gray_in;
-    if (img_cv.channels() == 1) gray_in = img_cv;
-    else cv::extractChannel(img_cv, gray_in, 0);
+    {
+      cv::Mat gray_full;
+      if (img_cv.channels() == 1) gray_full = img_cv;
+      else cv::extractChannel(img_cv, gray_full, 0);
+      if (dsampLevel > 1)
+        cv::resize(gray_full, gray_in,
+                   cv::Size(gray_full.cols / dsampLevel, gray_full.rows / dsampLevel),
+                   0, 0, cv::INTER_AREA);
+      else
+        gray_in = gray_full;
+    }
+    // Binary image is single-channel at the downsampled resolution.
+    binary_img_storage.create(gray_in.rows, gray_in.cols, CV_8UC1);
 
     // Per-camera adaptive threshold: lazily build the threshold map from the
     // loaded background model (sampler->stageLightInfo), robustly cleaned of
@@ -259,9 +269,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
       cv::threshold(gray_in, binary_img_storage, (double)briThres, 255.0, cv::THRESH_BINARY);
     }
 
-    int downScaleF=1;
-    // downscale code path was binaryDownScale-based and is hard-coded off
-    // (downScaleF==1).
+    int downScaleF = dsampLevel;
 
     // Draw the cage on the BINARY image (CV_8UC1, bg=255/fg=0). Cage pixels
     // are foreground (0) so CCL picks them up as one big component.
@@ -342,6 +350,12 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     // return 0;
     // LOGI("_________  %f %f ",param.ppb2b,param.mmpb2b);
     
+    // Phase 2 path: expose the CV_8UC1 binary so matching_version=2 sub-features
+    // can build signatures directly via morph boundary, bypassing the legacy
+    // BGR-walker. Reset after the loop so the pointer doesn't outlive this call.
+    cv::Mat *prev_bin = bacpac ? bacpac->binary_uc1_for_phase2 : nullptr;
+    if (bacpac) bacpac->binary_uc1_for_phase2 = &binary_img_storage;
+
     LOGI(">>>> ");
     for(int i=0;i<binaryFeatureBundle.size();i++)
     {
@@ -353,6 +367,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
       // bridge converts cv::Mat -> acvImage shim transparently.
       binaryFeatureBundle[i]->FeatureMatching(lableImg_cv);
     }
+    if (bacpac) bacpac->binary_uc1_for_phase2 = prev_bin;
   return 0;
 }
 
@@ -400,8 +415,16 @@ int FeatureManager_binary_processing_group::parse_jobj()
   double *val= JFetch_NUMBER(root,"intrusionSizeLimitRatio");
 
   intrusionSizeLimitRatio=(val!=NULL)?*val:0;
-  
+
   LOGV("intrusionSizeLimitRatio:%f  ptr:%p",intrusionSizeLimitRatio,val);
+
+  // Pre-binarization downsample. 1 = off (default). 2 or 4 cuts threshold/CCL/
+  // signature build to 1/N^2 of the work. Coordinate scale-back lives in the
+  // existing dsampLevel plumbing on sub-features.
+  this->inspection_downsample = 1;
+  double *dsamp = JFetch_NUMBER(root, "inspection_downsample");
+  if (dsamp != NULL && *dsamp >= 1 && *dsamp <= 8)
+    this->inspection_downsample = (int)*dsamp;
 
   FeatureManager_group_proto::parse_jobj();
 

@@ -26,4 +26,35 @@
 void acvComponentLabeling_cv(cv::Mat &Pic, std::vector<acv_LabeledData> &ld, int connectivity = 8);
 void acvComponentLabeling_cv(cv::Mat &Pic, cv::Mat &labelOut, std::vector<acv_LabeledData> &ld, int connectivity = 8);
 
+
+// =========================================================================
+// Phase 2: combined CCL + morphological boundary + polar signature build.
+// Replaces the BGR-packed-label + contour-walker + convertContourGrid2Signature
+// pipeline with: CV_8UC1 binary -> CCL (32S labels + stats) -> erode+xor
+// boundary mask -> per-pixel splat into dual signatures (A=anchors at direct
+// hits, B=coverage via angular diffusion span ~ 1/R) -> per-label single-pass
+// anchor-respecting linear interp (skips real angular gaps where B==0).
+//
+//   binary_uc1        : in, CV_8UC1, bg=255 / fg=0, cage already drawn.
+//   ld                : out, indexed [0..numLabels-1] (label 0 = bg sentinel;
+//                       label 1 = cage / largest-bbox fg; 2..N = real objects).
+//   perLabelSignature : out, perLabelSignature[L][bin].x = R (in input-px),
+//                       .y = theta (radians).  Empty for L=0.  Length N_bins.
+//   perLabelCartesian : out, ordered ONLY by row-scan (not by walk order);
+//                       v2 centroid iter uses them set-wise so order doesn't
+//                       matter.  Coordinates are in input-px.
+//   N_bins, K_min     : signature resolution and minimum diffusion span (bins).
+//   connectivity      : CCL connectivity, 8 (default) or 4.
+//
+// All output coords / R values are in the input image's pixel space; callers
+// that need mm or ideal coord must apply their own scaling (same as today
+// for the legacy convertContourGrid2Signature output).
+void buildLabeledSignatures_phase2(const cv::Mat &binary_uc1,
+                                   std::vector<acv_LabeledData> &ld,
+                                   std::vector<std::vector<acv_XY>> &perLabelSignature,
+                                   std::vector<std::vector<acv_XY>> &perLabelCartesian,
+                                   int N_bins = 360,
+                                   int K_min = 2,
+                                   int connectivity = 8);
+
 #endif

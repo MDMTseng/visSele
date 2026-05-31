@@ -19,6 +19,11 @@ typedef struct FeatureManager_BacPac
   // OFF -> no behaviour change until enabled + validated on the rig.
   bool applyLensCalib = false;
   LensCalibResult *lensCalib = 0;
+  // Phase 2: sub-features that need the raw binary (CV_8UC1, bg=255/fg=0)
+  // -- e.g. matching_version=2 sig360 doing morph-boundary signature build --
+  // read this pointer. Group sets it before dispatching to sub-features.
+  // nullptr when not available; consumers fall back to legacy paths.
+  cv::Mat *binary_uc1_for_phase2 = nullptr;
 }FeatureManager_BacPac;
 
 class FeatureManager {
