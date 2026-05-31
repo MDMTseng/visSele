@@ -29,7 +29,8 @@ void binarize_bg_flatten_cv(const cv::Mat &src, cv::Mat &dst, int closeKernel, f
 
   // flat-field divide + threshold at `ratio` of local background.
   // object where g < ratio*bg  -> black(0); background -> white(255).
-  dst.create(H, W, CV_8UC3);
+  // Single-channel output; Phase 1 of grayscale-everywhere.
+  dst.create(H, W, CV_8UC1);
   for (int y = 0; y < H; y++)
   {
     const unsigned char *gp = g.ptr<unsigned char>(y);
@@ -38,8 +39,7 @@ void binarize_bg_flatten_cv(const cv::Mat &src, cv::Mat &dst, int closeKernel, f
     for (int x = 0; x < W; x++)
     {
       float thr = ratio * (float)bp[x];
-      unsigned char v = (gp[x] < thr) ? 0 : 255;
-      o[x * 3] = o[x * 3 + 1] = o[x * 3 + 2] = v;
+      o[x] = (gp[x] < thr) ? 0 : 255;
     }
   }
 }

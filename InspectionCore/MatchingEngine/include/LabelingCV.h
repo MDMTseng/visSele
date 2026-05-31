@@ -16,8 +16,14 @@
 #include "acvImage_ComponentLabelingTool.hpp"  // acv_LabeledData
 
 // One connectedComponentsWithStats pass produces BOTH the packed label image
-// (written back to Pic) AND the acv_LabeledData list (area/bbox/centroid).
-// Foreground = (R != 255) on the BGR input.
+// AND the acv_LabeledData list (area/bbox/centroid).
+//   Pic       : in/out, CV_8UC1 binary (bg=255/fg=0) OR CV_8UC3 BGR-replicated.
+//               When `labelOut` is not provided, Pic is reallocated in-place
+//               to CV_8UC3 and receives the BGR-packed labels (legacy).
+//   labelOut  : optional separate output buffer (CV_8UC3 BGR-packed labels).
+//               Use this to avoid the in-place type-change reallocation when
+//               Pic is CV_8UC1 (Phase 1 fast path).
 void acvComponentLabeling_cv(cv::Mat &Pic, std::vector<acv_LabeledData> &ld, int connectivity = 8);
+void acvComponentLabeling_cv(cv::Mat &Pic, cv::Mat &labelOut, std::vector<acv_LabeledData> &ld, int connectivity = 8);
 
 #endif

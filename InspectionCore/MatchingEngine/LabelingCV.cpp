@@ -2,18 +2,23 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-void acvComponentLabeling_cv(cv::Mat &Pic, std::vector<acv_LabeledData> &ld, int connectivity)
+static void labeling_impl(cv::Mat &Pic, cv::Mat &labelOut, std::vector<acv_LabeledData> &ld, int connectivity)
 {
   int W = Pic.cols, H = Pic.rows;
   ld.clear();
-  if (W <= 0 || H <= 0 || Pic.type() != CV_8UC3) return;
+  if (W <= 0 || H <= 0) return;
+  if (Pic.type() != CV_8UC1 && Pic.type() != CV_8UC3) return;
 
-  // Mask for cv::connectedComponentsWithStats: nonzero = foreground. Input is
-  // a BGR-replicated binarised image where background=255 / foreground=0;
-  // inverting the R channel gives the right mask in one pass (bitwise_not is
-  // ~2x faster than the compare-equal-to-255 we used before).
-  cv::Mat r_ch; cv::extractChannel(Pic, r_ch, 2);
-  cv::Mat m; cv::bitwise_not(r_ch, m);
+  // Mask for cv::connectedComponentsWithStats: nonzero = foreground.
+  //   CV_8UC1 input: bg=255 / fg=0, invert in place. (Phase 1 fast path.)
+  //   CV_8UC3 input: BGR-replicated grayscale, extract R then invert.
+  cv::Mat m;
+  if (Pic.type() == CV_8UC1) {
+    cv::bitwise_not(Pic, m);
+  } else {
+    cv::Mat r_ch; cv::extractChannel(Pic, r_ch, 2);
+    cv::bitwise_not(r_ch, m);
+  }
 
   cv::Mat lbl, stats, cent;
   int n = cv::connectedComponentsWithStats(m, lbl, stats, cent, connectivity, CV_32S);
@@ -43,15 +48,23 @@ void acvComponentLabeling_cv(cv::Mat &Pic, std::vector<acv_LabeledData> &ld, int
     d.Center  = acv_XY((float)cent.at<double>(L, 0), (float)cent.at<double>(L, 1));
   }
 
-  // Pack labels back into BGR. Parallel rows + tight inner loop cuts this
-  // ~3x vs a single-threaded scalar pass. Same encoding as before:
+  // Pack labels back into BGR.
   //   L == 0   -> (255, 255, 255)  (background)
   //   L  > 0   -> (idx&0xFF, (idx>>8)&0xFF, (idx>>16)&0xFF)
+  // If caller didn't pass a separate buffer (legacy single-arg overload), pack
+  // in place into Pic; cv::Mat::create reallocates Pic to CV_8UC3 if needed.
+  cv::Mat &out = labelOut.empty() && Pic.type() == CV_8UC3 ? Pic : labelOut;
+  if (&out == &labelOut) {
+    out.create(H, W, CV_8UC3);
+  } else {
+    // in-place CV_8UC1 -> CV_8UC3 reallocates; that's the legacy path.
+    Pic.create(H, W, CV_8UC3);
+  }
   cv::parallel_for_(cv::Range(0, H), [&](const cv::Range &rng){
     for (int y = rng.start; y < rng.end; y++)
     {
       const int *ll = lbl.ptr<int>(y);
-      unsigned char *dst = Pic.ptr<unsigned char>(y);
+      unsigned char *dst = out.ptr<unsigned char>(y);
       for (int x = 0; x < W; x++)
       {
         int L = ll[x];
@@ -66,5 +79,16 @@ void acvComponentLabeling_cv(cv::Mat &Pic, std::vector<acv_LabeledData> &ld, int
       }
     }
   });
+}
+
+void acvComponentLabeling_cv(cv::Mat &Pic, std::vector<acv_LabeledData> &ld, int connectivity)
+{
+  cv::Mat noOut;
+  labeling_impl(Pic, noOut, ld, connectivity);
+}
+
+void acvComponentLabeling_cv(cv::Mat &Pic, cv::Mat &labelOut, std::vector<acv_LabeledData> &ld, int connectivity)
+{
+  labeling_impl(Pic, labelOut, ld, connectivity);
 }
 

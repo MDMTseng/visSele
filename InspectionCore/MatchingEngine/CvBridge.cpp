@@ -38,7 +38,10 @@ void cvThresholdMap(cv::Mat &dst, const cv::Mat &src,
   if (src.empty() || threshMap == NULL || mapW < 1 || mapH < 1) return;
   if (channel < 0 || channel >= src.channels()) return;
   const int H = src.rows, W = src.cols;
-  dst.create(H, W, CV_8UC3);
+  // Output is single-channel binary (0/255). Phase 1 of the grayscale-everywhere
+  // path -- legacy callers that need CV_8UC3 BGR-replicated output should
+  // convert at their callsite.
+  dst.create(H, W, CV_8UC1);
   const int ch_n = src.channels();
   for (int i = 0; i < H; i++)
   {
@@ -64,10 +67,7 @@ void cvThresholdMap(cv::Mat &dst, const cv::Mat &src,
       float T = (t00 * (1 - fx) + t01 * fx) * (1 - fy) +
                 (t10 * (1 - fx) + t11 * fx) * fy;
 
-      uint8_t v = (sLine[j * ch_n + channel] > T) ? 255 : 0;
-      dLine[j * 3] = v;
-      dLine[j * 3 + 1] = v;
-      dLine[j * 3 + 2] = v;
+      dLine[j] = (sLine[j * ch_n + channel] > T) ? 255 : 0;
     }
   }
 }

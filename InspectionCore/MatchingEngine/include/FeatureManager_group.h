@@ -52,8 +52,9 @@ class FeatureManager_binary_processing_group:public FeatureManager_group_proto {
 
   vector<acv_LabeledData> ldData;
   char subFeatureDefSha1[128];
-  cv::Mat binary_img_storage;
-  
+  cv::Mat binary_img_storage;    // CV_8UC1 binary mask (Phase 1+)
+  cv::Mat labeled_img_storage;   // CV_8UC3 BGR-packed labels for legacy walker
+
   FeatureReport_ERROR error;
 public :
   FeatureManager_binary_processing_group(const char *json_str);

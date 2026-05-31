@@ -208,9 +208,19 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
   report.bacpac=bacpac;
     error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
-    // Own the binary image bytes in a cv::Mat; the acvImage `binary_img` shim
-    // shares the storage via useExtBuffer for the legacy acv consumers below.
-    binary_img_storage.create(img_cv.rows, img_cv.cols, CV_8UC3);
+    // Binary image starts as CV_8UC1 (single-channel) -- the threshold paths
+    // write 1 byte per pixel instead of 3, and CCL can skip extractChannel.
+    // acvComponentLabeling_cv reallocates this in-place to CV_8UC3 after CCL
+    // to produce the BGR-packed labels the legacy contour walker reads. Phase
+    // 2 will replace the walker and drop the BGR repack entirely.
+    binary_img_storage.create(img_cv.rows, img_cv.cols, CV_8UC1);
+
+    // Source image typically arrives as CV_8UC3 BGR-replicated grayscale (from
+    // cv::imread(..., IMREAD_COLOR)). Pull a single channel up-front so all
+    // three threshold variants below can do single-channel work.
+    cv::Mat gray_in;
+    if (img_cv.channels() == 1) gray_in = img_cv;
+    else cv::extractChannel(img_cv, gray_in, 0);
 
     // Per-camera adaptive threshold: lazily build the threshold map from the
     // loaded background model (sampler->stageLightInfo), robustly cleaned of
@@ -238,48 +248,46 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
 
     if (binarize_method == 1) // calibration-free vignette-tolerant bg-flatten
     {
-      binarize_bg_flatten_cv(img_cv, binary_img_storage, bg_close_kernel, bg_ratio, bg_downscale);
+      binarize_bg_flatten_cv(gray_in, binary_img_storage, bg_close_kernel, bg_ratio, bg_downscale);
     }
     else if (useAdaptiveThres && !bgThreshMap.empty())
     {
-      cvThresholdMap(binary_img_storage, img_cv, bgThreshMap.data(), bgMapW, bgMapH, 0);  // dst already sized by create() above
+      cvThresholdMap(binary_img_storage, gray_in, bgThreshMap.data(), bgMapW, bgMapH, 0);
     }
     else
     {
-      // acvThreshold strict `>` matches cv::THRESH_BINARY.  For BGR images
-      // (grayscale-replicated), per-channel cv::threshold == the single-channel
-      // acv loop bytewise.
-      cv::threshold(img_cv, binary_img_storage, (double)briThres, 255.0, cv::THRESH_BINARY);
+      cv::threshold(gray_in, binary_img_storage, (double)briThres, 255.0, cv::THRESH_BINARY);
     }
 
     int downScaleF=1;
     // downscale code path was binaryDownScale-based and is hard-coded off
-    // (downScaleF==1).  The labeled image is the binary image itself.
-    cv::Mat &lableImg_cv = binary_img_storage;
+    // (downScaleF==1).
 
-    //Draw a labeling black cage for labling algo, which is needed for acvComponentLabeling
-    // 1-px-wide black rectangle OUTLINE; cv::Point endpoints are inclusive.
-    cv::rectangle(lableImg_cv, cv::Point(1, 1),
-                  cv::Point(lableImg_cv.cols - 2, lableImg_cv.rows - 2),
-                  cv::Scalar(0, 0, 0), 1);
+    // Draw the cage on the BINARY image (CV_8UC1, bg=255/fg=0). Cage pixels
+    // are foreground (0) so CCL picks them up as one big component.
+    cv::rectangle(binary_img_storage, cv::Point(1, 1),
+                  cv::Point(binary_img_storage.cols - 2, binary_img_storage.rows - 2),
+                  cv::Scalar(0), 1);
 
-    int FENCE_AREA = (lableImg_cv.cols+lableImg_cv.rows)*2-4;//External frame
+    int FENCE_AREA = (binary_img_storage.cols+binary_img_storage.rows)*2-4;//External frame
     {
       int xDist=15/downScaleF;
-      cv::rectangle(lableImg_cv, cv::Point(xDist, xDist),
-                    cv::Point(lableImg_cv.cols - xDist, lableImg_cv.rows - xDist),
-                    cv::Scalar(0, 0, 0), 1);
+      cv::rectangle(binary_img_storage, cv::Point(xDist, xDist),
+                    cv::Point(binary_img_storage.cols - xDist, binary_img_storage.rows - xDist),
+                    cv::Scalar(0), 1);
       FENCE_AREA+=(img_cv.cols-xDist+img_cv.rows-xDist)*2-4;
       // 1 px black at y=xDist+3, x=1..xDist-1 (inclusive).
-      cv::line(lableImg_cv, cv::Point(1, xDist + 3), cv::Point(xDist - 1, xDist + 3),
-               cv::Scalar(0, 0, 0), 1);
+      cv::line(binary_img_storage, cv::Point(1, xDist + 3), cv::Point(xDist - 1, xDist + 3),
+               cv::Scalar(0), 1);
       FENCE_AREA+=xDist;
     }
     //The labeling starts from (1 1) => (W-2,H-2), ie. it will not touch the outmost pixel to simplify the boundary condition
     //You need to draw a black/white cage to work(not crash).
     //The advantage of black cage is you can know which area touches the boundary then we can exclude it
     // CCL once -> packed label image + acv_LabeledData (from stats), no rescan.
-    acvComponentLabeling_cv(lableImg_cv, ldData);
+    // Input: CV_8UC1 binary; output: CV_8UC3 BGR-packed labels.
+    cv::Mat &lableImg_cv = labeled_img_storage;
+    acvComponentLabeling_cv(binary_img_storage, lableImg_cv, ldData);
 
     int CLimit = (lableImg_cv.cols*lableImg_cv.rows)*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
 
