@@ -15,8 +15,6 @@
 int quadratic_roots(float a,float b,float c,float *r0,float*r1);
 bool acvOuterContourExtraction(cv::Mat &LabeledPic, acv_LabeledData ldata, int labelIdx, std::vector<acv_XY> &contour);
 void ContourFeatureDetect(std::vector<acv_XY> &signature,const std::vector<acv_XY> &tar_signature);
-void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<acv_LabeledData> &ldData,
-  std::vector<acv_CircleFit> &detectedCircles,std::vector<acv_LineFit> &detectedLines);
 
 
 float findMaxIdx_spline(float *grad,int gradL,float *ret_max);

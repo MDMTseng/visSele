@@ -95,8 +95,6 @@ class ContourGrid:ContourFetch{
     int getColumSize();
 
     
-    void ptInfoOpt(acvImage *img);
-
     int getRowSize();
 
     int getSecIdx(int X,int Y);

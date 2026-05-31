@@ -145,6 +145,10 @@ force_cxx(common_lib/Util.c common_lib/Util2.c)
 target_include_directories(common_lib PUBLIC
   common_lib/include contrib/Compat_dirent/${PLAT}/include)
 target_link_libraries(common_lib PUBLIC cJSON acvImage logctrl lodepng mjpegLib simple_uart opencv_core)
+# acvImage is kept here for the acv_* POD geometry symbols
+# (acvVecAdd / acvDistance / acvFitLine ...). The acvImage CLASS itself is
+# unreferenced. Phase 3b will extract the geometry into common_lib and
+# drop acvImage from the link entirely.
 if(WIN32 OR MINGW OR MSYS)
   target_compile_options(common_lib PRIVATE -Wa,-mbig-obj)
 endif()

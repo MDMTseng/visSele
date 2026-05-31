@@ -49,7 +49,6 @@ void acvCalibMap::SET(double *MX_data, double *MY_data,
   int pixCount = downSizedMapW * downSizedMapH;
   fwdMap = new float[downSizedMapW * downSizedMapH * 2];
 
-  acvImage img(downSizedMapW, downSizedMapH, 3);
   for (int i = 0; i < pixCount; i++)
   {
     fwdMap[i * 2] = (float)MX_data[i];
