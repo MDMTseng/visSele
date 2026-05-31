@@ -12,6 +12,17 @@
 #include <opencv2/core.hpp>
 #include <vector>
 
+// Transitional alias so the in-tree consumers can keep using `acv_XY`
+// while migrating to `cv::Point2f`. Same struct under the hood.
+using acv_XY        = cv::Point2f;
+struct vis_Line; struct vis_Circle; struct vis_CircleFit;
+struct vis_LineFit; struct vis_LabeledData;
+using acv_Line      = vis_Line;
+using acv_Circle    = vis_Circle;
+using acv_CircleFit = vis_CircleFit;
+using acv_LineFit   = vis_LineFit;
+using acv_LabeledData = vis_LabeledData;
+
 struct vis_Line {
   cv::Point2f line_vec;
   cv::Point2f line_anchor;

@@ -8,14 +8,8 @@
 //Num0 0000_0000  Num1 0000_0000  Num2 0000_0000
 
 
-typedef struct acv_LabeledData
-{
-    acv_XY LTBound;
-    acv_XY RBBound;
-    acv_XY Center;
-    int area;
-    int misc;
-} acv_LabeledData;
+// acv_LabeledData is defined as a typedef to vis_LabeledData in vis_geom.h
+// (included via acvImage_BasicTool.hpp above).
 
 
 typedef struct _3BYTE

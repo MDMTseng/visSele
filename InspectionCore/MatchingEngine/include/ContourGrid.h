@@ -2,7 +2,6 @@
 #define CONTOURGRID_HPP
 
 #include "acvImage_ToolBox.hpp"
-
 #include "acvImage_BasicDrawTool.hpp"
 #include <cstdlib>
 #include <unistd.h>

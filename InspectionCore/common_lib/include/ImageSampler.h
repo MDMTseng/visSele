@@ -4,6 +4,7 @@
 
 #include <acvImage.hpp>
 #include <acvImage_BasicTool.hpp>
+#include "vis_geom.h"
 #include <opencv2/core.hpp>
 #include <cmath>
 

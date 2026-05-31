@@ -36,9 +36,9 @@ void acvComponentLabeling_cv(cv::Mat &Pic, std::vector<acv_LabeledData> &ld, int
     int left = stats.at<int>(L, cv::CC_STAT_LEFT), top = stats.at<int>(L, cv::CC_STAT_TOP);
     int w = stats.at<int>(L, cv::CC_STAT_WIDTH), h = stats.at<int>(L, cv::CC_STAT_HEIGHT);
     d.area = stats.at<int>(L, cv::CC_STAT_AREA);
-    d.LTBound = (acv_XY){ (float)left, (float)top };
-    d.RBBound = (acv_XY){ (float)(left + w - 1), (float)(top + h - 1) };
-    d.Center  = (acv_XY){ (float)cent.at<double>(L, 0), (float)cent.at<double>(L, 1) };
+    d.LTBound = acv_XY((float)left, (float)top);
+    d.RBBound = acv_XY((float)(left + w - 1), (float)(top + h - 1));
+    d.Center  = acv_XY((float)cent.at<double>(L, 0), (float)cent.at<double>(L, 1));
   }
 
   // Write packed-label BGR back via cv::Mat::ptr (downstream contour extraction
