@@ -81,14 +81,6 @@ machine_hash get_machine_hash();
 
 
 char *ReadFile(char *filename);
-int SaveIMGFile(const char *filename, acvImage *img);
-
-int SavePNGFile(const char *filename, acvImage *img);
-
-int LoadIMGFile(acvImage *ret_img, const char *filename);
-
-int LoadPNGFile(acvImage *img, const char *filename);
-
 int Save2PNG(uint8_t *data, int width, int height, int channelCount, const char *filePath);
 bool isDirExist(const char* dir_path);
 bool isFileExist(const char* dir_path);
