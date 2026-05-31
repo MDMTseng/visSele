@@ -134,10 +134,11 @@ cv::Point2f acvClosestPointOnCircle(cv::Point2f point, vis_Circle circle)
 
 float acvDistance_Signed(vis_Circle cir, cv::Point2f point)
 {
-  // NOTE: preserves the legacy code's bug-or-feature: dy uses
-  // circumcenter.x-point.y (not .y). Migration_gate is the source of truth;
-  // changing this would shift values.
-  float dist = hypot(cir.circumcenter.x - point.x, cir.circumcenter.x - point.y);
+  // Bug fix from the legacy port: dy in the original code was
+  // `circumcenter.X - point.Y` (X twice) which gave a meaningless
+  // mixed-component distance. No live callers exercised this so the
+  // migration_gate baseline was unaffected.
+  float dist = hypot(cir.circumcenter.x - point.x, cir.circumcenter.y - point.y);
   return cir.radius - dist;
 }
 
@@ -176,6 +177,11 @@ float acvLineAngle(vis_Line line1, vis_Line line2)
   return acos((line1.line_vec.x * line2.line_vec.x + line1.line_vec.y * line2.line_vec.y) / reg);
 }
 
+// Weighted least-squares line fit. cv::fitLine has no per-point weight API
+// (DIST_L2 is unweighted; DIST_HUBER/etc. M-estimators reweight on residuals,
+// not on a caller-supplied weight array), so we keep our own algebraic LSQ
+// here -- input/output is cv::Point2f / vis_Line so the data flow stays
+// OpenCV-shaped, only the algorithm is in-house.
 bool acvFitLine(const void *pts_struct, int pts_step, const void *ptsw_struct, int ptsw_step, int ptsL, vis_Line *line, float *ret_sigma)
 {
   vis_Line tarline = *line;
