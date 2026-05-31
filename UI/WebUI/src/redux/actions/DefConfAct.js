@@ -16,6 +16,8 @@ export const EVENT = {
   Matching_Face_Update:"Matching_Face_Update",
   Matching_Angle_Margin_Deg_Update:"Matching_Angle_Margin_Deg_Update",
   IntrusionSizeLimitRatio_Update:"IntrusionSizeLimitRatio_Update",
+  Matching_Version_Update:"Matching_Version_Update",
+  Inspection_Downsample_Update:"Inspection_Downsample_Update",
   InspOptionalTag_Update:"InspOptionalTag_Update",
   SUCCESS:"DEFCONF_MODE_SUCCESS",
   FAIL:"DEFCONF_MODE_FAIL",
@@ -98,6 +100,20 @@ export function IntrusionSizeLimitRatio_Update(ratio)
 {
   return {
     type: EVENT.IntrusionSizeLimitRatio_Update,data: ratio
+  }
+}
+
+export function Matching_Version_Update(v)
+{
+  return {
+    type: EVENT.Matching_Version_Update, data: v
+  }
+}
+
+export function Inspection_Downsample_Update(n)
+{
+  return {
+    type: EVENT.Inspection_Downsample_Update, data: n
   }
 }
 

@@ -229,6 +229,11 @@ export function defFileGeneration(edit_info)
   report.featureSet[0].matching_angle_margin_deg = edit_info.matching_angle_margin_deg;
   report.featureSet[0].matching_angle_offset_deg = edit_info.matching_angle_offset_deg;
   report.featureSet[0].matching_face = edit_info.matching_face;
+  // Only emit perf opt-ins if non-default — keeps existing defs hash-stable.
+  if (typeof edit_info.matching_version === 'number' && edit_info.matching_version !== 1)
+    report.featureSet[0].matching_version = edit_info.matching_version;
+  if (typeof edit_info.inspection_downsample === 'number' && edit_info.inspection_downsample !== 1)
+    report.featureSet[0].inspection_downsample = edit_info.inspection_downsample;
 
   let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
   report.featureSet[0]["__decorator"] = edit_info.__decorator;

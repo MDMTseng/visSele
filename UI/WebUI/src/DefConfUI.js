@@ -1096,7 +1096,9 @@ function SettingUI({})
   const ACT_IntrusionSizeLimitRatio_Update= (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) };//0~1
     
   const ACT_Matching_Face_Update=(faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) };//-1(back)/0(both)/1(front)
-    
+  const ACT_Matching_Version_Update=(v) => { dispatch(DefConfAct.Matching_Version_Update(v)) };// 1=legacy, 2=phase2 dual-sig
+  const ACT_Inspection_Downsample_Update=(n) => { dispatch(DefConfAct.Inspection_Downsample_Update(n)) };// 1..8 (core caps at 4 today)
+
   const DICT = useSelector(state => state.UIData.DICT);
   console.log(defConf_lock_level);
   return [
@@ -1170,6 +1172,19 @@ function SettingUI({})
       max={1}
       value={edit_info.intrusionSizeLimitRatio}
       onChange={ACT_IntrusionSizeLimitRatio_Update}
+    />,
+
+    <Divider orientation="left">sig360 perf</Divider>,
+    <Checkbox
+      checked={edit_info.matching_version === 2}
+      onChange={() => ACT_Matching_Version_Update(edit_info.matching_version === 2 ? 1 : 2)}
+    >v2 matcher (morph-boundary dual-sig)</Checkbox>,
+    <span>&nbsp;downsample&nbsp;</span>,
+    <NumberAccInput
+      min={1}
+      max={8}
+      value={edit_info.inspection_downsample || 1}
+      onChange={ACT_Inspection_Downsample_Update}
     />,
 
     <Divider orientation="left"/>,

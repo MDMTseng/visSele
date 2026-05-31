@@ -784,6 +784,27 @@ function StateReducer(newState, action) {
               break;
             }
 
+          case DefConfAct.EVENT.Matching_Version_Update:
+            {
+              // sig360 matching algo: 1 = legacy v1 (byte-identical pre-milestone),
+              // 2 = morph-boundary dual-sig + centroid iter (core ee1cd247).
+              if (action.data === 1 || action.data === 2) {
+                newState.edit_info = { ...newState.edit_info, matching_version: action.data };
+              }
+              break;
+            }
+
+          case DefConfAct.EVENT.Inspection_Downsample_Update:
+            {
+              // Pre-CCL downsample factor; 1 = no downsample (default). Core caps
+              // at 4× per the perf commit (ee1cd247).
+              if (typeof action.data === 'number' && Number.isFinite(action.data) &&
+                  action.data >= 1 && action.data <= 8) {
+                newState.edit_info = { ...newState.edit_info, inspection_downsample: Math.floor(action.data) };
+              }
+              break;
+            }
+
           case DefConfAct.EVENT.DefFileHash_Update:
             {
               let DefFileHash_root = newState.edit_info.DefFileHash_root;//root is still root

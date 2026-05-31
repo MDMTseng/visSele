@@ -297,6 +297,12 @@ export class InspectionEditorLogic {
                 edit_info.matching_angle_offset_deg = report.matching_angle_offset_deg;
               if (report.matching_face !== undefined)
                 edit_info.matching_face = report.matching_face;
+              // Phase-2 sig360 perf opt-ins (core commits 72352281 + ee1cd247).
+              // Default to legacy (v1, downsample 1) — byte-identical to pre-milestone.
+              if (typeof report.matching_version === 'number')
+                edit_info.matching_version = report.matching_version;
+              if (typeof report.inspection_downsample === 'number')
+                edit_info.inspection_downsample = report.inspection_downsample;
   
   
               edit_info = Object.assign({}, edit_info);
@@ -1375,6 +1381,9 @@ export function Edit_info_Empty() {
     matching_angle_margin_deg: 180,
     matching_angle_offset_deg: 0,
     matching_face: 0,
+    // sig360 perf opt-ins; 1/1 = byte-identical to pre-milestone.
+    matching_version: 1,
+    inspection_downsample: 1,
     intrusionSizeLimitRatio: 0.1,
     img: null,
     DefFileName: "",
