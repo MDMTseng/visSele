@@ -199,7 +199,6 @@ add_library(MatchingEngine STATIC
   MatchingEngine/FeatureManager_stage_light_report.cpp
   MatchingEngine/BackLightFieldCalib.cpp
   MatchingEngine/TelecentricCalib.cpp
-  MatchingEngine/EdgeSignature.cpp
   MatchingEngine/EdgeSelect.cpp
   MatchingEngine/Caliper.cpp
   MatchingEngine/AnchorPatch.cpp
