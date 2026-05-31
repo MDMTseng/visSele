@@ -4,6 +4,7 @@
 #include <common_lib.h>
 #include <MatchingCore.h>
 #include <acvImage_SpDomainTool.hpp>
+#include "CvBridge.h"
 #include <opencv2/calib3d.hpp>
 // #include <acvImage_.hpp>
 #include <rotCaliper.h>
@@ -258,7 +259,7 @@ cJSON * FM_GenMatching::SetParam(cJSON *jsonParam)
     if(image_src_path!=NULL)
     {
       LOGE("image_src_path:%s", image_src_path);
-      int ret = LoadIMGFile(&DefTemplate, image_src_path);
+      int ret = loadImageCv(image_src_path, DefTemplate);
       if (ret)
       {
         // LOGE("LoadBMP failed: ret:%d", ret);
@@ -721,9 +722,9 @@ int FM_GenMatching::FeatureMatching(cv::Mat &cv_img)
     if(locatingBlockImg.size()!=locatingBlocks.size())
     {
       locatingBlockImg.resize(0);
-      if(DefTemplate.GetWidth()*DefTemplate.GetHeight()>10)
+      if(DefTemplate.cols*DefTemplate.rows>10)
       {
-        Mat def_temp_img(DefTemplate.GetHeight(),DefTemplate.GetWidth(),CV_8UC3,DefTemplate.CVector[0]);
+        Mat &def_temp_img = DefTemplate;
 
         for (auto & block : locatingBlocks) {
           Mat cimg;//=def_temp_img(cv::Rect(block.x,block.y,block.w,block.h));//the ROI method might slow down the process

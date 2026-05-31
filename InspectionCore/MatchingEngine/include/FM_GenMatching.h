@@ -13,7 +13,7 @@
 class FM_GenMatching:public FeatureManager {
 
   
-  acvImage DefTemplate;
+  cv::Mat DefTemplate;
 
 public :
   FM_GenMatching(const char *json_str);
