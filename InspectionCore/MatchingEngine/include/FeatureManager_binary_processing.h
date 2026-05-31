@@ -34,7 +34,7 @@ class FeatureManager_sig360_extractor:public FeatureManager_binary_processing {
 public :
   FeatureManager_sig360_extractor(const char *json_str);
   int reload(const char *json_str) override;
-  int FeatureMatching(acvImage *img) override;
+  int FeatureMatching(cv::Mat &img) override;
   cJSON *jobj;
   virtual const FeatureReport* GetReport() override;
   virtual void ClearReport() override;

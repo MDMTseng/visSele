@@ -150,6 +150,36 @@ int acvContourExtraction(cv::Mat &Pic, int FromX, int FromY, uint8_t B, uint8_t 
     next[2] = R;
     return 0;
 }
+// cv::Mat-native port of acvOuterContourExtraction (acvImage_ToolBox).
+// Scans the LabelData LTBound row for the first pixel matching labelIdx,
+// then walks the contour via cvContourWalk, dir starting at 3 (>) and
+// decrementing by 2 after each step.
+bool acvOuterContourExtraction(cv::Mat &LabeledPic, acv_LabeledData ldata, int labelIdx, std::vector<acv_XY> &contour)
+{
+  contour.resize(0);
+  int X, Y, startX = 0, startY = 0;
+  int ret = -1;
+  Y = (int)ldata.LTBound.Y;
+  for (int j = (int)ldata.LTBound.X; j < (int)ldata.RBBound.X; j++)
+  {
+    _24BitUnion *pix = (_24BitUnion *)(LabeledPic.ptr<uint8_t>(Y) + j * 3);
+    if (pix->_3Byte.Num == labelIdx)
+    {
+      X = j; startX = j; startY = Y; ret = 0; break;
+    }
+  }
+  if (ret != 0) return false;
+
+  int dir = 3;
+  do {
+    acv_XY xy = { (float)X, (float)Y };
+    contour.push_back(xy);
+    cvContourWalk(LabeledPic, &X, &Y, &dir, 1);
+    dir -= 2;
+  } while (X != startX || Y != startY);
+  return true;
+}
+
 float acvPoint3Angle(acv_XY p1,acv_XY pc,acv_XY p2)
 {
   acv_XY v1={.X=p1.X-pc.X,.Y=p1.Y-pc.Y};

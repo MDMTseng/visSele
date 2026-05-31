@@ -52,7 +52,7 @@ int FeatureManager_sig360_extractor::reload(const char *json_str)
   return 0;
 }
 
-int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
+int FeatureManager_sig360_extractor::FeatureMatching(cv::Mat &img)
 {
   report.bacpac=bacpac;
   vector<acv_LabeledData> &ldData = *this->_ldData;
@@ -85,7 +85,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
   LOGI(">>>RBBound X:%f Y:%f...", ldData[idx].RBBound.X, ldData[idx].RBBound.Y);
 
 
-  bool isOK =  acvOuterContourExtraction(img,ldData[idx], idx,tmp_contour);
+  bool isOK = acvOuterContourExtraction(img, ldData[idx], idx, tmp_contour);
 
   for (int i = 0; i < tmp_contour.size(); i++)
   {
