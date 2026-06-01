@@ -70,6 +70,8 @@ struct LogWsServerImpl : public ws_protocol_callback {
     ws_server *server = nullptr;
     /* peer -> state.  Keyed by the ws_conn_data* the lib gives us. */
     std::unordered_map<ws_conn_data *, PeerState> peers;
+    LogWsServer::BacklogProvider backlog_provider;
+    LogWsServer::DumpHandler     dump_handler;
 
     LogWsServerImpl(const LogWsServer::HelloInfo &h)
         : ws_protocol_callback(this), hello(h) {}
@@ -238,8 +240,18 @@ struct LogWsServerImpl : public ws_protocol_callback {
             cJSON_AddStringToObject(o, "id", id);
             enqueue_text(data.peer, ps, o);
         } else if (std::strcmp(type, "dumpNow") == 0) {
-            /* Wired in step 6 after dump_now hook exists. */
-            send_ack(data.peer, ps, id, false, "dumpNow not implemented yet");
+            if (!dump_handler) {
+                send_ack(data.peer, ps, id, false, "no dump handler installed");
+            } else {
+                std::string path = dump_handler();
+                cJSON *o = cJSON_CreateObject();
+                cJSON_AddStringToObject(o, "type", "ack");
+                cJSON_AddStringToObject(o, "id", id);
+                cJSON_AddBoolToObject(o, "ok", !path.empty());
+                if (path.empty()) cJSON_AddStringToObject(o, "error", "dump failed");
+                else cJSON_AddStringToObject(o, "dumpPath", path.c_str());
+                enqueue_text(data.peer, ps, o);
+            }
         } else if (std::strcmp(type, "setLevel") == 0 ||
                    std::strcmp(type, "getModules") == 0) {
             /* Requires control IPC (#29) + registry export (#30). */
@@ -267,7 +279,32 @@ struct LogWsServerImpl : public ws_protocol_callback {
         }
         ps.subscribed = true;
         send_ack(peer, ps, id, true, nullptr);
-        /* Backlog support deferred to step 4. */
+
+        /* Backlog: walk the ring (or whatever the drainer hands us) and
+         * emit one backlogChunk per ~256-record batch. */
+        cJSON *jbacklog = cJSON_GetObjectItem(msg, "backlog");
+        if (!cJSON_IsObject(jbacklog) || !backlog_provider) return;
+        cJSON *jtail = cJSON_GetObjectItem(jbacklog, "tailN");
+        int tail_n = cJSON_IsNumber(jtail) ? jtail->valueint : 0;
+        if (tail_n <= 0) return;
+
+        std::vector<LogRecord> recs;
+        std::vector<std::string> owned;
+        backlog_provider(tail_n, recs, owned);
+
+        constexpr size_t CHUNK = 256;
+        for (size_t i = 0; i < recs.size(); i += CHUNK) {
+            size_t end = std::min(i + CHUNK, recs.size());
+            cJSON *o = cJSON_CreateObject();
+            cJSON_AddStringToObject(o, "type", "backlogChunk");
+            cJSON *arr = cJSON_AddArrayToObject(o, "items");
+            for (size_t k = i; k < end; ++k) {
+                if (!peer_accepts(ps, recs[k])) continue;
+                cJSON_AddItemToArray(arr, build_log_obj(recs[k]));
+            }
+            cJSON_AddBoolToObject(o, "more", end < recs.size());
+            enqueue_text(peer, ps, o);
+        }
     }
 
     void send_ack(ws_conn_data *peer, PeerState &ps,
@@ -358,4 +395,12 @@ void LogWsServer::push_crash(const char *signal_name,
 
 int LogWsServer::peer_count() const {
     return static_cast<int>(impl_->peers.size());
+}
+
+void LogWsServer::set_backlog_provider(BacklogProvider p) {
+    impl_->backlog_provider = std::move(p);
+}
+
+void LogWsServer::set_dump_handler(DumpHandler h) {
+    impl_->dump_handler = std::move(h);
 }

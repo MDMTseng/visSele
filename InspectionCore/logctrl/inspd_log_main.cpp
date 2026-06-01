@@ -325,10 +325,10 @@ void symbolicate_one(uint64_t addr, char *out, size_t outsz) {
 /* Write the crash dump file: header + stack trace + entire ring + the
  * drainer's ephemeral DEBUG/TRACE buffer.  Format is plaintext so it can
  * be opened in any editor / streamed to WebUI as-is. */
-void write_crash_dump(const Config &cfg,
-                      LogRingHeader *h,
-                      const EphemeralBuf &eph,
-                      uint32_t marker) {
+std::string write_crash_dump(const Config &cfg,
+                             LogRingHeader *h,
+                             const EphemeralBuf &eph,
+                             uint32_t marker) {
     /* Filename: crash_<utc>.dump in the log dir.  Use system clock so the
      * stamp matches what a human sees in syslog. */
     time_t now = std::time(nullptr);
@@ -342,7 +342,7 @@ void write_crash_dump(const Config &cfg,
     if (!fp) {
         std::fprintf(stderr,
             "[inspd_log] cannot open crash dump '%s'\n", fname);
-        return;
+        return std::string();
     }
 
     std::fprintf(fp, "=== InspectionCore crash dump ===\n");
@@ -397,6 +397,7 @@ void write_crash_dump(const Config &cfg,
     std::fprintf(fp, "=== end of dump ===\n");
     std::fclose(fp);
     std::fprintf(stderr, "[inspd_log] crash dump written to %s\n", fname);
+    return std::string(fname);
 }
 
 /* ---------- main drain loop ---------- */
@@ -458,6 +459,46 @@ int run(const Config &cfg) {
         if (gethostname(hn, sizeof(hn)-1) == 0) hello.host_name = hn;
 #endif
         ws = new LogWsServer(cfg.ws_port, hello);
+
+        /* Backlog provider: walk the ring from (head - tail_n) up to head,
+         * parsing each slot.  Owned-text vector keeps the parsed strings
+         * alive until the chunk is serialized. */
+        /* dumpNow: synthesize a "no-crash" dump on demand for support
+         * snapshots.  Reuses write_crash_dump with LOG_CRASH_OTHER. */
+        ws->set_dump_handler([&cfg, h, &ephemeral]() -> std::string {
+            return write_crash_dump(cfg, h, ephemeral, LOG_CRASH_OTHER);
+        });
+
+        ws->set_backlog_provider(
+            [h, started_unix_nano](int tail_n,
+                                   std::vector<LogRecord> &out,
+                                   std::vector<std::string> &owned) {
+                uint64_t head = h->head.load(std::memory_order_acquire);
+                if (head == 0) return;
+                uint64_t max_back = std::min<uint64_t>(tail_n, h->slot_count);
+                uint64_t start = (head > max_back) ? head - max_back : 0;
+                /* Allocate up-front so string addresses don't invalidate. */
+                owned.reserve(static_cast<size_t>(head - start));
+                out.reserve(static_cast<size_t>(head - start));
+                for (uint64_t i = start; i < head; ++i) {
+                    LogSlot *slot = log_ring_slot(h, i);
+                    uint64_t before = slot->seq.load(std::memory_order_acquire);
+                    if (before & 1) continue;
+                    char text[LOG_SLOT_TEXT];
+                    std::memcpy(text, slot->text, LOG_SLOT_TEXT);
+                    int lv = slot->level;
+                    int ln = slot->line;
+                    uint64_t after = slot->seq.load(std::memory_order_acquire);
+                    if (after != before) continue;
+                    owned.emplace_back(text);
+                    LogRecord rec{};
+                    parse_log_line(&owned.back()[0], ln, &rec);
+                    rec.time_unix_nano  = started_unix_nano;
+                    rec.severity_number = severity_number_for(lv);
+                    rec.severity_text   = severity_text_for(lv);
+                    out.push_back(rec);
+                }
+            });
     }
 
     /* Tail starts at the oldest still-in-ring slot.  This lets us catch up
@@ -498,7 +539,7 @@ int run(const Config &cfg) {
                 else ephemeral.push(std::string(text, tlen));
             }
             disk.flush();
-            write_crash_dump(cfg, h, ephemeral, cm);
+            std::string dump_path = write_crash_dump(cfg, h, ephemeral, cm);
             if (ws) {
                 struct timespec tspec;
                 clock_gettime(CLOCK_REALTIME, &tspec);
@@ -506,7 +547,7 @@ int run(const Config &cfg) {
                     (uint64_t)tspec.tv_sec * 1000000000ULL +
                     (uint64_t)tspec.tv_nsec;
                 ws->push_crash(crash_marker_name(cm), (int)h->crash_signal,
-                               now_ns, /*dump_path*/ "");
+                               now_ns, dump_path.c_str());
                 /* One last tick to flush the crash frames out the socket. */
                 struct timeval tv = { 0, 50000 };
                 ws->tick(&tv);

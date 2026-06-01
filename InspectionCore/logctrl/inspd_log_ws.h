@@ -13,8 +13,10 @@
 #define INSPD_LOG_WS_H
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <sys/time.h>
+#include <vector>
 
 struct LogWsServerImpl;
 
@@ -53,6 +55,19 @@ public:
     /* Drive accept + recv.  tv is a timeout for the internal select.
      * Returns immediately if there's no activity. */
     void tick(struct timeval *tv);
+
+    /* Backlog callback: the drainer owns the ring; we just hand it a
+     * lambda that produces up-to-N most-recent records.  Called when a
+     * peer's `subscribe` carries a `backlog` request. */
+    using BacklogProvider =
+        std::function<void(int tail_n, std::vector<LogRecord> &out,
+                           std::vector<std::string> &owned_text)>;
+    void set_backlog_provider(BacklogProvider p);
+
+    /* dumpNow handler: returns the absolute path of the dump just written,
+     * or empty string on failure. */
+    using DumpHandler = std::function<std::string()>;
+    void set_dump_handler(DumpHandler h);
 
     /* Fan out a log line to every matching peer.  Cheap when no peers. */
     void broadcast_log(const LogRecord &rec);
