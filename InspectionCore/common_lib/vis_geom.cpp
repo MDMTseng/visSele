@@ -48,6 +48,7 @@ cv::Point2f acvIntersectPoint(cv::Point2f p1, cv::Point2f p2, cv::Point2f p3, cv
   float V3 = (p1.y - p2.y);
   float V4 = (p3.y - p4.y);
   float denominator = V1 * V4 - V3 * V2;
+  if (fabsf(denominator) < 1e-12f) return cv::Point2f(NAN, NAN);
   float V12 = (p1.x * p2.y - p1.y * p2.x);
   float V34 = (p3.x * p4.y - p3.y * p4.x);
   intersec.x = (V12 * V2 - V1 * V34) / denominator;
@@ -57,52 +58,63 @@ cv::Point2f acvIntersectPoint(cv::Point2f p1, cv::Point2f p2, cv::Point2f p3, cv
 
 cv::Point2f acvCircumcenter(cv::Point2f p1, cv::Point2f p2, cv::Point2f p3)
 {
-  cv::Point2f c12; c12.x = (p1.x + p2.x) / 2; c12.y = (p1.y + p2.y) / 2;
-  cv::Point2f c23; c23.x = (p2.x + p3.x) / 2; c23.y = (p2.y + p3.y) / 2;
-  cv::Point2f N12; N12.y = (p1.x - p2.x); N12.x = -(p1.y - p2.y);
-  cv::Point2f N23; N23.y = (p2.x - p3.x); N23.x = -(p2.y - p3.y);
-  cv::Point2f c12_; c12_.x = c12.x + N12.x; c12_.y = c12.y + N12.y;
-  cv::Point2f C23_; C23_.x = c23.x + N23.x; C23_.y = c23.y + N23.y;
-  return acvIntersectPoint(c12, c12_, c23, C23_);
+  // Perpendicular bisectors of p1-p2 and p2-p3 intersect at the circumcenter.
+  // cv::Point's operator+ / operator* gives the midpoints; the perpendicular
+  // is just acvVecNormal of the edge vector.
+  cv::Point2f c12 = (p1 + p2) * 0.5f;
+  cv::Point2f c23 = (p2 + p3) * 0.5f;
+  return acvIntersectPoint(c12, c12 + acvVecNormal(p1 - p2),
+                           c23, c23 + acvVecNormal(p2 - p3));
 }
 
 cv::Point2f acvVecNormal(cv::Point2f vec) { return cv::Point2f(-vec.y, vec.x); }
 
 cv::Point2f acvVecNormalize(cv::Point2f vec)
 {
-  float dist = hypot(vec.x, vec.y);
+  // std::hypot is more accurate than sqrt(dot(v,v)) for small-magnitude
+  // edge-response vectors; switching cost real FP drift in the gate.
+  float dist = std::hypot(vec.x, vec.y);
+  if (dist < 1e-20f) return cv::Point2f(0.0f, 0.0f);
   return cv::Point2f(vec.x / dist, vec.y / dist);
 }
 
 cv::Point2f acvVecInterp(cv::Point2f vec1, cv::Point2f vec2, float alpha)
 {
-  vec1.x += alpha * (vec2.x - vec1.x);
-  vec1.y += alpha * (vec2.y - vec1.y);
-  return vec1;
+  return vec1 + (vec2 - vec1) * alpha;
 }
 
-cv::Point2f acvVecAdd(cv::Point2f vec1, cv::Point2f vec2) { return cv::Point2f(vec1.x + vec2.x, vec1.y + vec2.y); }
-cv::Point2f acvVecSub(cv::Point2f vec1, cv::Point2f vec2) { return cv::Point2f(vec1.x - vec2.x, vec1.y - vec2.y); }
-cv::Point2f acvVecMult(cv::Point2f vec1, float mult)      { return cv::Point2f(vec1.x * mult, vec1.y * mult); }
+// cv::Point_<T> overloads operator+ / operator- / operator*(T) and provides
+// .dot() / .cross(); the legacy acv* helpers are now thin wrappers.
+cv::Point2f acvVecAdd(cv::Point2f a, cv::Point2f b) { return a + b; }
+cv::Point2f acvVecSub(cv::Point2f a, cv::Point2f b) { return a - b; }
+cv::Point2f acvVecMult(cv::Point2f a, float m)      { return a * m; }
 
-cv::Point2f acvComplexAdd(cv::Point2f a, cv::Point2f b) { return acvVecAdd(a, b); }
-cv::Point2f acvComplexSub(cv::Point2f a, cv::Point2f b) { return acvVecSub(a, b); }
-cv::Point2f acvComplexMult(cv::Point2f a, cv::Point2f b) { return cv::Point2f(a.x*b.x - a.y*b.y, a.y*b.x + a.x*b.y); }
+cv::Point2f acvComplexAdd(cv::Point2f a, cv::Point2f b) { return a + b; }
+cv::Point2f acvComplexSub(cv::Point2f a, cv::Point2f b) { return a - b; }
+// Complex multiply/divide have no cv equivalent — keep the 2D formulas.
+cv::Point2f acvComplexMult(cv::Point2f a, cv::Point2f b)
+{
+  return cv::Point2f(a.x*b.x - a.y*b.y, a.y*b.x + a.x*b.y);
+}
 cv::Point2f acvComplexDiv(cv::Point2f a, cv::Point2f b)
 {
-  float deno = b.x * b.x + b.y * b.y;
+  float deno = b.dot(b);
   return cv::Point2f((a.x*b.x + a.y*b.y) / deno, (a.y*b.x - a.x*b.y) / deno);
 }
 
-float acvDistance(cv::Point2f p1, cv::Point2f p2) { return hypot(p2.x - p1.x, p2.y - p1.y); }
-float acv2DCrossProduct(cv::Point2f v1, cv::Point2f v2) { return v1.x * v2.y - v2.x * v1.y; }
-float acv2DDotProduct(cv::Point2f v1, cv::Point2f v2)   { return v1.x * v2.x + v2.y * v1.y; }
+float acvDistance(cv::Point2f p1, cv::Point2f p2)
+{
+  cv::Point2f d = p2 - p1;
+  return std::hypot(d.x, d.y);
+}
+// cv::Point::cross / .dot promote intermediates to double; using explicit
+// float math here so the FP rounding matches the legacy gate baseline.
+float acv2DDotProduct(cv::Point2f v1, cv::Point2f v2)   { return v1.x * v2.x + v1.y * v2.y; }
+float acv2DCrossProduct(cv::Point2f v1, cv::Point2f v2) { return v1.x * v2.y - v1.y * v2.x; }
 
 float acvVectorOrder(cv::Point2f p1, cv::Point2f p2, cv::Point2f p3)
 {
-  cv::Point2f v1(p2.x - p1.x, p2.y - p1.y);
-  cv::Point2f v2(p3.x - p2.x, p3.y - p2.y);
-  return acv2DCrossProduct(v1, v2);
+  return acv2DCrossProduct(p2 - p1, p3 - p2);
 }
 
 cv::Point2f acvLineIntersect(vis_Line line1, vis_Line line2)
@@ -111,7 +123,9 @@ cv::Point2f acvLineIntersect(vis_Line line1, vis_Line line2)
   float d1 = acvDistance_Signed(line2, p1);
   cv::Point2f p2 = acvVecAdd(line1.line_anchor, line1.line_vec);
   float d2 = acvDistance_Signed(line2, p2);
-  return acvVecInterp(p1, p2, d1 / (d1 - d2));
+  float denom = d1 - d2;
+  if (fabsf(denom) < 1e-12f) return cv::Point2f(NAN, NAN);
+  return acvVecInterp(p1, p2, d1 / denom);
 }
 
 cv::Point2f acvClosestPointOnLine(cv::Point2f point, vis_Line line)
@@ -127,19 +141,19 @@ cv::Point2f acvClosestPointOnLine(cv::Point2f point, vis_Line line)
 
 cv::Point2f acvClosestPointOnCircle(cv::Point2f point, vis_Circle circle)
 {
-  cv::Point2f vec2pt = acvVecSub(point, circle.circumcenter);
-  float L = hypot(vec2pt.x, vec2pt.y);
-  return acvVecAdd(circle.circumcenter, acvVecMult(vec2pt, circle.radius / L));
+  cv::Point2f vec2pt = point - circle.circumcenter;
+  float L = std::hypot(vec2pt.x, vec2pt.y);
+  return circle.circumcenter + vec2pt * (circle.radius / L);
 }
 
 float acvDistance_Signed(vis_Circle cir, cv::Point2f point)
 {
   // Bug fix from the legacy port: dy in the original code was
-  // `circumcenter.X - point.Y` (X twice) which gave a meaningless
-  // mixed-component distance. No live callers exercised this so the
-  // migration_gate baseline was unaffected.
-  float dist = hypot(cir.circumcenter.x - point.x, cir.circumcenter.y - point.y);
-  return cir.radius - dist;
+  // `circumcenter.X - point.Y` (X twice) -- meaningless mixed-component
+  // distance. No live callers exercised this so the migration_gate
+  // baseline was unaffected.
+  cv::Point2f d = cir.circumcenter - point;
+  return cir.radius - std::hypot(d.x, d.y);
 }
 
 float acvDistance(vis_Circle cir, cv::Point2f point)
@@ -150,11 +164,13 @@ float acvDistance(vis_Circle cir, cv::Point2f point)
 
 float acvDistance_Signed(vis_Line line, cv::Point2f point)
 {
-  float a = -line.line_vec.y;
-  float b = line.line_vec.x;
+  // 2D signed perpendicular distance = cross(line_vec, rel) / |line_vec|.
+  // Note: cv::Point::cross promotes to double internally; using the explicit
+  // float form here preserves the gate baseline bit-for-bit.
   float X0 = point.x - line.line_anchor.x;
   float Y0 = point.y - line.line_anchor.y;
-  return (a * X0 + b * Y0) / hypot(a, b);
+  float cross = line.line_vec.x * Y0 - line.line_vec.y * X0;
+  return cross / std::hypot(line.line_vec.x, line.line_vec.y);
 }
 
 float acvDistance(vis_Line line, cv::Point2f point)
