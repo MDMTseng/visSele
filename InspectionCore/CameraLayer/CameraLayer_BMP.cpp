@@ -14,6 +14,7 @@ static inline uint8_t cvUnsignedMap1Sampling_Nearest(const cv::Mat &m, float x, 
 
 #include <logctrl.h> 
 #include <dirent.h> 
+LOG_MODULE("cam.bmp");
 #include <thread>
 
 #include<sys/time.h>

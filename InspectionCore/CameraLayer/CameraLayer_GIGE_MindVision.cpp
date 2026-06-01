@@ -2,6 +2,8 @@
 #include "CameraLayer_GIGE_MindVision.hpp"
 #include "logctrl.h"
 
+LOG_MODULE("cam.mindvision");
+
 tSdkCameraDevInfo sCameraList[20];
 int sCameraListCount=0;
 CameraLayer_GIGE_MindVision::CameraLayer_GIGE_MindVision(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context): CameraLayer(camInfo,misc,cb, context)
