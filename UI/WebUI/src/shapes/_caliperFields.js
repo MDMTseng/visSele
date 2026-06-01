@@ -105,11 +105,21 @@ export function arcCaliperAnchors(cx, cy, r, a0, a1, count) {
   return out;
 }
 
-// Caliper overlay style — blue outline boxes (matches the legacy in-house
-// visualization). One box per caliper; box dimensions: along-line tangent =
-// `cal_width` (the projection width — same axis the core averages over for
-// SNR), across-edge normal = `2 * cal_length` (the full search span).
-const CAL_STROKE = 'rgba( 70, 110, 255, 0.95)';
+// Caliper overlay style. One box per caliper; box dimensions: along-line
+// tangent = cal_width, across-edge normal = 2 * cal_length. Default blue;
+// when a per-caliper status is available (cal_hits), boxes whose caliper
+// MISSED switch to gray so the user can see which calipers found nothing
+// without an extra X mark on top.
+const CAL_STROKE         = 'rgba( 70, 110, 255, 0.95)';  // default / inlier-zone
+const CAL_STROKE_MISSED  = 'rgba(160, 160, 160, 0.70)';  // grayed (no edge found)
+
+// Resolve the per-anchor stroke color from cal_hits status. Index-aligned
+// with anchors (core's caliper_locate_* produces hits in the same i-order).
+// When cal_hits is missing, every caliper renders default-colored.
+function strokeForAnchor(calHits, i) {
+  if (!calHits || !calHits[i]) return CAL_STROKE;
+  return (calHits[i].st === 0) ? CAL_STROKE_MISSED : CAL_STROKE;
+}
 
 function drawOrientedBox(ctx, cx, cy, tx, ty, nx, ny, halfAlong, halfAcross) {
   // Corner = center ± tangent*halfAlong ± normal*halfAcross.
@@ -128,7 +138,10 @@ function drawOrientedBox(ctx, cx, cy, tx, ty, nx, ny, halfAlong, halfAcross) {
 // (matches core's behavior — caliper engine uses initMatchingMargin as the
 // search half-length). shape.caliper may be undefined right after the user
 // flips locating to 'caliper'; helper falls back to count=10 / width=0.1.
-export function drawLineCalipers(ctx, p0, p1, caliper, renderer, margin = 0) {
+// `calHits` (optional, index-aligned with the caliper anchors): per-caliper
+// status array from the latest inspection report. Used to gray the boxes
+// of calipers that found nothing.
+export function drawLineCalipers(ctx, p0, p1, caliper, renderer, margin = 0, calHits) {
   caliper = caliper || {};
   const count  = (caliper.count > 0) ? Math.min(caliper.count, 512) : 10;
   const width  = (caliper.width > 0) ? Math.min(caliper.width, 64)  : 0.1;
@@ -141,22 +154,20 @@ export function drawLineCalipers(ctx, p0, p1, caliper, renderer, margin = 0) {
 
   ctx.save();
   ctx.lineWidth = renderer.getIndicationLineSize();
-  ctx.strokeStyle = CAL_STROKE;
-  for (const a of anchors) {
+  anchors.forEach((a, i) => {
+    ctx.strokeStyle = strokeForAnchor(calHits, i);
     drawOrientedBox(ctx, a.x, a.y, tangent.x, tangent.y, normal.x, normal.y, halfAlong, halfAcross);
-  }
-  // Scan-direction arrows at the FIRST and LAST calipers — positioned at
-  // each end's OUTERMOST tangential edge (the side facing away from the
-  // strip). Offset direction derived from each end's neighbor so it works
-  // regardless of pt1/pt2 order. Line scan direction is the same `normal`
-  // at both ends.
+  });
+  // Scan-direction arrows at the FIRST and LAST calipers — outermost
+  // tangential side. Offset derived from neighbor chord (point-order safe).
   drawEndScanArrows(ctx, anchors, halfAlong, halfAcross, () => normal, renderer);
   ctx.restore();
 }
 
 // Draw N radial caliper boxes along an arc (cx,cy,r, [a0,a1]). Across-edge
 // length = shape.margin (matches core: caliper uses initMatchingMargin).
-export function drawArcCalipers(ctx, cx, cy, r, a0, a1, caliper, renderer, margin = 0) {
+// `calHits` (optional): index-aligned per-caliper status; missed → gray box.
+export function drawArcCalipers(ctx, cx, cy, r, a0, a1, caliper, renderer, margin = 0, calHits) {
   caliper = caliper || {};
   const count = (caliper.count > 0) ? Math.min(caliper.count, 512) : 10;
   const width = (caliper.width > 0) ? Math.min(caliper.width, 64)  : 0.1;
@@ -169,11 +180,11 @@ export function drawArcCalipers(ctx, cx, cy, r, a0, a1, caliper, renderer, margi
 
   ctx.save();
   ctx.lineWidth = renderer.getIndicationLineSize();
-  ctx.strokeStyle = CAL_STROKE;
-  for (const a of anchors) {
+  anchors.forEach((a, i) => {
+    ctx.strokeStyle = strokeForAnchor(calHits, i);
     // tangent at this anchor = perp to radial
     drawOrientedBox(ctx, a.x, a.y, -a.ny, a.nx, a.nx, a.ny, halfAlong, halfAcross);
-  }
+  });
   // Radial scan-direction arrows at the FIRST and LAST calipers; each uses
   // its own outward radial. Outer-tangent direction derived from neighbors
   // (handles both CCW and CW arc sweeps consistently).
@@ -233,22 +244,24 @@ function drawScanArrow(ctx, cx, cy, nx, ny, halfAcross, renderer) {
   ctx.restore();
 }
 
-// Per-caliper hit overlay. Each hit: { x, y, st, s }. status (st):
-//   0=missed (no peak found — x,y are 0/0, skip), 1=outlier (MAD-rejected),
-//   2=inlier. Renders an "X" mark at each non-missed hit (matches the
-// reference sketch — X is more visible against the line than a dot).
+// Per-caliper hit overlay. Each hit: { x, y, st, s }.
+//   0 = missed   — caliper found nothing. NOT drawn as an X (the caliper
+//                  BOX is grayed out instead — see drawLineCalipers /
+//                  drawArcCalipers).
+//   1 = outlier  — peak found but rejected by MAD / max_error.
+//   2 = inlier   — peak found, kept in the fit.
 const HIT_COLOR = {
-  1: 'rgba(220, 60, 60,0.95)',  // outlier
-  2: 'rgba( 60,220, 80,0.95)',  // inlier
+  1: 'rgba(220, 60, 60,0.95)',  // outlier (red)
+  2: 'rgba( 60,220, 80,0.95)',  // inlier (green)
 };
 
 export function drawCaliperHits(ctx, hits, renderer) {
   if (!hits || hits.length === 0) return;
   ctx.save();
   ctx.lineWidth = renderer.getIndicationLineSize();
-  const a = renderer.getPointSize() * 1.0; // half-arm length of the X
+  const a = renderer.getPointSize() * 1.0;
   for (const h of hits) {
-    if (h.st === 0) continue; // missed — no useful coords emitted
+    if (h.st === 0) continue;  // missed — box-grayed instead
     ctx.strokeStyle = HIT_COLOR[h.st] || HIT_COLOR[1];
     ctx.beginPath();
     ctx.moveTo(h.x - a, h.y - a);

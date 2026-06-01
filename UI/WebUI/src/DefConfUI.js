@@ -7,7 +7,7 @@ import * as BASE_COM from './component/baseComponent.jsx';
 import ComponentBoundary from './component/ComponentBoundary';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
-import { fieldFor } from 'JSSRCROOT/shapes';
+import { fieldFor, getShapeModule } from 'JSSRCROOT/shapes';
 import { applyFieldChange } from 'JSSRCROOT/shapes/_schemaHelpers';
 import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
 import { buildSchema } from 'JSSRCROOT/shapes/propertySheet';
@@ -1317,11 +1317,24 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,
 
 function modShapeCleanUp(mod_shape)
 {
-  if(mod_shape.inspection_status===BPG_Protocol.INSPECTION_STATUS.NA||
-    mod_shape.type===UIAct.SHAPE_TYPE.measure
-    )
-  {//if it's NA then ignore this
+  // measure shapes don't go through point-fitting — the CHECK flow is
+  // a no-op for them (downstream code reads judgeReports instead).
+  if(mod_shape.type===UIAct.SHAPE_TYPE.measure)
+  {
     return undefined;
+  }
+  // NA: the latest inspection FAILED. We still need to return the shape so
+  // the caller can SetShape it through to redux — otherwise stale per-
+  // inspection artifacts (cal_hits, _pt1/_pt2, adj_pt1) from a prior
+  // SUCCESS run linger on the stored shape and the def-conf overlay shows
+  // the OLD green hits. ShapeAdjustsWithInspectionResult already deleted
+  // those fields on its NA early-return; persisting the cleared shape
+  // makes the WebUI show "no result" correctly.
+  if(mod_shape.inspection_status===BPG_Protocol.INSPECTION_STATUS.NA)
+  {
+    delete mod_shape["inspection_value"];
+    delete mod_shape["inspection_status"];
+    return mod_shape;
   }
 
   delete mod_shape["inspection_value"]
@@ -1334,11 +1347,6 @@ function modShapeCleanUp(mod_shape)
     delete mod_shape["o_pt1"]
   }
   return mod_shape;
-
-
-
-
-  
 }
 
 
@@ -2026,16 +2034,11 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, AC
         return retR;
       }
       edit_tar = Shape_Attr_Fill(edit_tar);
-      // Unified property-sheet dispatch (keystone phase B + onChange hooks):
-      //   • schema is built per-shape via `buildSchema` (delegates to the
-      //     shape module's `buildWhiteListKey`); memoized so JsonEditBlock
-      //     can compare-by-reference and stop remounting subtrees on every
-      //     render (Round-3 sub-state-loss bug).
-      //   • field-level side effects (measure limit coupling, back_value_setup
-      //     adding/removing the _b keys, arc.direction's boolean→±1 mapping)
-      //     live on the per-shape `fields` decl as `coerce`/`onChange` hooks.
-      //     `applyFieldChange` is the single dispatcher; adding a new field
-      //     with custom behavior is a one-file change in the shape module.
+
+      // Always compute the legacy whiteListKey (hooks must be unconditional).
+      // Used only by the JsonEditBlock fallback below — wasted on shapes
+      // that have a dedicated PropertySheet, but cheap and Rules-of-Hooks
+      // compliant.
       const whiteListKey = useMemo(
         () => buildSchema(edit_tar, {
           shape_list, renderMethods, refChainHasLoop,
@@ -2044,28 +2047,47 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, AC
         [edit_tar.id, edit_tar.type, edit_tar.subtype, edit_tar.ref, shape_list,
          ACT_EDIT_TAR_ELE_TRACE_UPDATE]
       );
-      UIArr.push(<BASE_COM.JsonEditBlock
-        key="BASE_COM.JsonEditBlock"
-        object={edit_tar}
-        dict={DICT}
-        additionalData={{ shape_list }}
-        dictTheme={edit_tar.type}
-        renderLib={renderMethods}
-        whiteListKey={whiteListKey}
-        jsonChange={(original_obj, target, type, evt) => {
-          if (type == "btn") {
-            if (target.keyTrace[0] == "ref" || target.keyTrace[0] == "ref_baseLine") {
-              ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
-            }
-            return;
-          }
-          const lastKey = target.keyTrace[target.keyTrace.length - 1];
-          const field = fieldFor(edit_tar, lastKey);
-          if (!applyFieldChange(field, target, type, evt)) return;
-          ec_canvas.SetShape(original_obj, original_obj.id);
-        }}
-      />);
 
+      // Per-shape PropertySheet: dedicated React component per shape type.
+      // The PropertySheet receives the shape + onUpdate (dispatches
+      // Shape_Set) + onTracePick (ref-pick mode) + shapeList. Shapes
+      // without a PropertySheet export fall back to the legacy
+      // JsonEditBlock path until they're migrated.
+      const PSheetMod = getShapeModule(edit_tar.type);
+      const PSheet = PSheetMod && PSheetMod.PropertySheet;
+      if (PSheet) {
+        UIArr.push(<PSheet
+          key="propertySheet"
+          shape={edit_tar}
+          shapeList={shape_list}
+          dict={DICT}
+          dictTheme={edit_tar.type}
+          onUpdate={(next) => ec_canvas.SetShape(next, next.id)}
+          onTracePick={(keyTrace) => ACT_EDIT_TAR_ELE_TRACE_UPDATE(keyTrace)}
+        />);
+      } else {
+        UIArr.push(<BASE_COM.JsonEditBlock
+          key="BASE_COM.JsonEditBlock"
+          object={edit_tar}
+          dict={DICT}
+          additionalData={{ shape_list }}
+          dictTheme={edit_tar.type}
+          renderLib={renderMethods}
+          whiteListKey={whiteListKey}
+          jsonChange={(original_obj, target, type, evt) => {
+            if (type == "btn") {
+              if (target.keyTrace[0] == "ref" || target.keyTrace[0] == "ref_baseLine") {
+                ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
+              }
+              return;
+            }
+            const lastKey = target.keyTrace[target.keyTrace.length - 1];
+            const field = fieldFor(edit_tar, lastKey);
+            if (!applyFieldChange(field, target, type, evt)) return;
+            ec_canvas.SetShape(original_obj, original_obj.id);
+          }}
+        />);
+      }
     }
 
 

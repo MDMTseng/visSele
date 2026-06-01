@@ -129,21 +129,25 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
     // marginOffset for the visualization band; we want the def geometry.
     const arcBase = threePointToArc(shape.pt1, shape.pt2, shape.pt3);
     const aP1 = Math.atan2(shape.pt1.y - arcBase.y, shape.pt1.x - arcBase.x);
-    const aP3 = Math.atan2(shape.pt3.y - arcBase.y, shape.pt3.x - arcBase.x);
     const aP2 = Math.atan2(shape.pt2.y - arcBase.y, shape.pt2.x - arcBase.x);
-    // Pick the sweep direction that PASSES THROUGH pt2. Without this the
-    // boxes fan out on the wrong half of the circle when pt1→pt3 CCW span
-    // is the short arc but pt2 sits on the long arc.
+    const aP3 = Math.atan2(shape.pt3.y - arcBase.y, shape.pt3.x - arcBase.x);
+    // Port of core's convert3Pts2ArcData (FeatureManager_sig360_circle_line.cpp:185):
+    // ALWAYS sweep CCW from sAngle to eAngle in an order that passes through
+    // pt2 — caliper-index 0 sits at sAngle, count-1 at eAngle. This must
+    // match the core's caliper_locate_circle indexing so the per-caliper
+    // status from cal_hits aligns with the boxes drawn here.
     const TAU = 2 * Math.PI;
-    const ccwOf = (a) => ((a - aP1) % TAU + TAU) % TAU;   // CCW offset from aP1 in [0, 2π)
-    const ccwP3 = ccwOf(aP3);
-    const ccwP2 = ccwOf(aP2);
-    const a0 = aP1;
-    const a1 = (ccwP2 < ccwP3) ? (aP1 + ccwP3) : (aP1 - (TAU - ccwP3));
-    drawArcCalipers(ctx, arcBase.x, arcBase.y, arcBase.r, a0, a1, shape.caliper, renderer, shape.margin);
-    // Per-caliper hit X marks — see line.js for the source priority story.
+    let angle21 = aP2 - aP1; if (angle21 < 0) angle21 += TAU;
+    let angle31 = aP3 - aP1; if (angle31 < 0) angle31 += TAU;
+    let a0, a1;
+    if (angle31 > angle21) { a0 = aP1; a1 = aP3; }
+    else                   { a0 = aP3; a1 = aP1; }
+    if (a1 < a0) a1 += TAU;  // ensure positive CCW span
+    // Per-caliper hits color the boxes (missed → gray) and the X markers
+    // (inlier=green, outlier=red). See line.js for source priority.
     const hits = shape.cal_hits
       || (renderer.cal_hits_by_id && renderer.cal_hits_by_id[shape.id]);
+    drawArcCalipers(ctx, arcBase.x, arcBase.y, arcBase.r, a0, a1, shape.caliper, renderer, shape.margin, hits);
     if (hits) drawCaliperHits(ctx, hits, renderer);
   }
 }

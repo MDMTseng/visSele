@@ -487,6 +487,74 @@ keyboard. ALL debug paths must work via the on-screen Drawer:
 Anything that requires F12 / console access to inspect IS A BUG in this
 codebase, not a feature.
 
+### 9.13 Caliper-mode per-caliper overlay: stale-state traps
+The line/arc caliper feature attaches a per-caliper hit array to each
+detected shape (`cal_hits`). Hits are rendered both in inspection mode
+(via `ShapeAdjustsWithInspectionResult` merging onto `eObject.cal_hits`)
+and in def-conf mode (via `renderer.cal_hits_by_id` built from
+`edit_info.inspReport`). Three traps lurked in this surface:
+
+1. **NA early-return left stale hits on the redux-stored shape.**
+   `ShapeAdjustsWithInspectionResult` early-returns when
+   `inspection_status === NA`. Before fixing, it didn't touch
+   `eObject.cal_hits` — so the prior successful inspection's hits
+   stayed attached after a failing run. Fix: rebuild cal_hits with all
+   entries marked outlier (`st:1` → red X marks) so the visual signal
+   for a failed fit is "all crosses turn red," and clear the stale fit-
+   endpoint fields:
+   ```js
+   if (eObject.inspection_status === INSPECTION_STATUS.NA) {
+     delete eObject._pt1; delete eObject._pt2; delete eObject.adj_pt1;
+     if (inspAdjObj.cal_hits)
+       eObject.cal_hits = inspAdjObj.cal_hits.map(h => ({ ...h, st: 1 }));
+     else delete eObject.cal_hits;
+     return;
+   }
+   ```
+   The matching def-conf side override lives in
+   `EverCheckCanvasComponent.draw_DEFCONF` (when building
+   `cal_hits_by_id` from `inspReport`).
+
+2. **`modShapeCleanUp` returned `undefined` on NA**, which made the
+   CHECK callback skip `SetShape` entirely. The shape in redux never got
+   the cleared state — old `cal_hits` lived on forever. Return the
+   cleared shape on NA so `SetShape` fires and the redux store stays
+   consistent with the latest fit outcome.
+
+3. **`shape.cal_hits` outranks `renderer.cal_hits_by_id`** in the
+   per-shape draw fallback chain. If a prior run set `shape.cal_hits`
+   and a later run produced a different (or empty) `cal_hits_by_id`, the
+   stale shape data wins. Either clear `shape.cal_hits` explicitly (1)
+   or reverse the priority — we chose (1) because per-shape storage is
+   the authoritative source after `SetShape`.
+
+Together these three were the "why are old green X marks still showing
+when the fit failed?" bug. If you add another caliper-overlay field,
+walk through all three sources and decide who clears it on failure.
+
+### 9.14 Frame conventions for inspection report coords
+The core ships per-shape report coords in different frames depending on
+the field — match what each consumer expects:
+
+| Field | Frame | When |
+|-------|-------|------|
+| `detectedLines[i].cx/cy/vx/vy`, `pt1`, `pt2` | image-mm | `ShapeAdjustsWithInspectionResult` forward-transforms via `pointForwardTrans`, then overwrites shape pt1/pt2 |
+| `detectedCircles[i].x/y/r`, `pt1/2/3` | image-mm | same |
+| `cal_hits[i].x/y` | **object-frame mm** (def coord system) | pass through unchanged — already in the def's pt1/pt2 frame |
+
+If you see hit coordinates in image-px range (~1500+), the core's
+mm-conversion didn't run for that path. See
+`InspectionCore/docs/CORE0_1_CAVEATS.md#h5`.
+
+### 9.15 Compact PropertySheet — number-input commit semantics changed
+The rewritten `JsonEditBlock` (+ per-shape `PropertySheet` components)
+uses **commit-on-blur/Enter** for number inputs instead of the legacy
+NumPad popup's "commit each typed value". Tests / scripts that fire only
+the `input` DOM event (and not `blur`) will not see the redux state
+update. Either fire blur in your test, or call the underlying redux
+action directly. The `editInput` flow in `tools/webctl/flows.mjs` is the
+canonical example of the broken pattern; update baselines accordingly.
+
 ---
 
 ## 10. CoreLog integration (inspd_log on :4091)

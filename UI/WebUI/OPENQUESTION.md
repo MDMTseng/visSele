@@ -100,6 +100,72 @@ Q2 god-object split (group-by-group, tsc-verified) → whiteListKey schema → c
 
 ---
 
+## Q4. Split `ShapeAdjustsWithInspectionResult` — "magnet" vs "overlay decoration" — backlog
+
+User pain (2026-06-02): the CHECK (instant-inspection) flow that "snaps" the
+def's pt1/pt2/pt3 to the inspection result feels unclean.
+
+### Current implementation
+`InspectionEditorLogic.ShapeAdjustsWithInspectionResult(shape, shapeList, InspResult, oriBase)`
+does **two unrelated jobs** under one `oriBase` switch:
+
+1. **Magnet** (CHECK callback, `oriBase=true`) — overwrite `pt1`/`pt2`/`pt3`
+   on the def with the inspection result, then persist via `SetShape`.
+2. **Inspection-mode overlay** (live insp `drawInspection*` path,
+   `oriBase=false`) — same point overwrite PLUS decoration:
+   `inspection_status`, `inspection_value`, `_pt1`/`_pt2` (computed
+   derivations), `adj_pt1` (search_point's adjusted anchor).
+
+Both jobs mutate the same `eObject`. `DefConfUI.modShapeCleanUp` exists
+purely to UNDO job (2)'s decorations so what flows into `SetShape` from
+the CHECK callback is a clean def (`delete inspection_status`,
+`adj_pt1 → pt1` copy for search_point, etc.).
+
+### Why it bites
+- Bug fixes for one job regress the other — saw this with the recent
+  NA-clear (`delete eObject.cal_hits` in ShapeAdjusts) +
+  `modShapeCleanUp returning undefined on NA` (skipped SetShape entirely).
+- The CHECK callback has to know about overlay internals just to wash
+  them off.
+- Per-shape snap logic lives inside one ~200-line switch in
+  `InspectionEditorLogic.js`, NOT in `shapes/<type>.js`. Drifts from the
+  per-shape vertical-slice north-star.
+
+### Recommended shape (deferred)
+Two distinct surfaces:
+
+```js
+// Per shape, pure, returns NEW shape (or null if not snappable).
+// Lives in shapes/<type>.js next to its draw/applyDefaults siblings.
+line.snapToInspection(shape, lineReport)       → { ...shape, pt1, pt2 }
+arc.snapToInspection(shape, circleReport)      → { ...shape, pt1, pt2, pt3 }
+search_point.snapToInspection(shape, spReport) → { ...shape, pt1 }
+measure / aux_*: undefined (nothing to snap)
+```
+
+CHECK callback shrinks to:
+```js
+const snapped = getShapeModule(edit_tar.type)?.snapToInspection?.(edit_tar, repItem);
+if (snapped) ec_canvas.SetShape(snapped, snapped.id);
+```
+
+`ShapeAdjustsWithInspectionResult` keeps only job (2) — overlay
+decoration for the live insp draw — and `modShapeCleanUp` goes away
+(its job no longer needs doing).
+
+### Trade-off / why deferred
+Medium refactor: 6 shape modules + 2 CHECK call sites + `InspectionEditorLogic`.
+Touches the live-inspection draw path which has thin regression coverage
+— easy to silently break `_pt1`/`_pt2`/`adj_pt1` derivations under fast
+frame rates if not careful.
+
+Pair this with the per-shape PropertySheet migration (#45) — each shape
+module already gains its own PropertySheet there; tacking on
+`snapToInspection` keeps churn local per shape rather than rolling a
+separate refactor wave.
+
+---
+
 ## North-star (long-term direction, not now): per-shape vertical slices
 
 Co-locate everything for a given shape/primitive type (line, arc, circle, search_point,

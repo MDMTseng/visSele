@@ -6,6 +6,7 @@ import { LineCentralNormal } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
 import { caliperField, edgeField, drawLineCalipers, drawCaliperHits } from './_caliperFields';
+export { LinePropertySheet as PropertySheet } from './_propertySheet/LinePropertySheet';
 
 export const type = 'line';
 
@@ -122,15 +123,14 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
   // shape.caliper may be undefined just after the user toggles locating to
   // 'caliper' — the helper falls back to the core defaults.
   if (inFullDisplay && isCaliper) {
-    drawLineCalipers(ctx, shape.pt1, shape.pt2, shape.caliper, renderer, shape.margin);
-    // Per-caliper hit X marks. Two sources:
-    //   • shape.cal_hits — merged during inspection-mode by
-    //     ShapeAdjustsWithInspectionResult (preferred when present).
-    //   • renderer.cal_hits_by_id[id] — fallback for def-conf, built from
-    //     edit_info.inspReport in DEFCONF_CanvasComponent.draw_DEFCONF.
-    // Both absent => no inspection has run yet for this def; render nothing.
+    // Per-caliper hits drive two visuals: the box's stroke color
+    // (gray when status=missed) and the X marker (inlier=green, outlier=red).
+    // Sources: shape.cal_hits (inspection-mode merge by
+    // ShapeAdjustsWithInspectionResult) preferred, fall back to
+    // renderer.cal_hits_by_id[id] (def-conf overlay from edit_info.inspReport).
     const hits = shape.cal_hits
       || (renderer.cal_hits_by_id && renderer.cal_hits_by_id[shape.id]);
+    drawLineCalipers(ctx, shape.pt1, shape.pt2, shape.caliper, renderer, shape.margin, hits);
     if (hits) drawCaliperHits(ctx, hits, renderer);
   }
 }

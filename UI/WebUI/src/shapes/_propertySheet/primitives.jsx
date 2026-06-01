@@ -84,7 +84,7 @@ export function Row({ label, title, children, actions }) {
     {actions
       ? <Popover
           content={<div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', maxWidth: 240 }}>{actions}</div>}
-          trigger="click" placement="leftTop"
+          trigger="click" placement="topLeft"
         >
           <div style={{ ...LABEL_STYLE, cursor: 'pointer', textDecoration: 'underline dotted #999', textDecorationThickness: 1 }}
                title={title || label}>
@@ -241,7 +241,7 @@ export function StepButton({ onClick, title, children }) {
 //   add  — array of additive deltas    (renders +M and −M buttons)
 // Default pattern (`tweak: true` shorthand) covers the common "double/halve
 // + nudge by 0.1 / 0.01" use case for size-like fields.
-const DEFAULT_TWEAK = { mul: [2], add: [0.1, 0.01] };
+const DEFAULT_TWEAK = { mul: [], add: [] };
 export function NumberTweakActions({ value, onCommit, mul, add }) {
   const v = Number(value);
   const cleanV = Number.isFinite(v) ? v : 0;

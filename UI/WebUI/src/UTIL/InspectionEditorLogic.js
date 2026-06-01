@@ -996,6 +996,21 @@ export class InspectionEditorLogic {
 
     if(eObject.inspection_status==INSPECTION_STATUS.NA )
     {
+      // Fit failed. Two things matter for the overlay:
+      //   1. Replace any stale per-frame derived fields so they don't carry
+      //      over from a prior SUCCESS run (_pt1/_pt2/adj_pt1 = legacy fit
+      //      endpoints; would draw a misleading "success" line otherwise).
+      //   2. Preserve cal_hits but force every entry to st:1 (outlier) so
+      //      the WebUI renders all-red X marks — the agreed visual signal
+      //      that the latest fit failed (user feedback: don't hide the X
+      //      marks, color them all red).
+      delete eObject._pt1; delete eObject._pt2;
+      delete eObject.adj_pt1;
+      if (inspAdjObj && inspAdjObj.cal_hits) {
+        eObject.cal_hits = inspAdjObj.cal_hits.map((h) => ({ ...h, st: 1 }));
+      } else {
+        delete eObject.cal_hits;
+      }
       return;
     }
     function pointForwardTrans(_pt)
@@ -1038,9 +1053,16 @@ export class InspectionEditorLogic {
           // Caliper-mode per-caliper hits — core emits them in OBJECT-FRAME
           // mm (def coord system). Passed through unchanged so they always
           // sit between the def's own pt1/pt2 regardless of which frame the
-          // canvas is rendering in. Consumers (per-shape drawInspection)
-          // apply the inspection transform at draw time if needed.
-          if (inspAdjObj.cal_hits) eObject.cal_hits = inspAdjObj.cal_hits;
+          // canvas is rendering in. When the whole fit FAILED (status != SUCCESS),
+          // force every hit to status=0 so the WebUI grays all boxes.
+          if (inspAdjObj.cal_hits) {
+            // Fit failure → force every hit to outlier (st:1) so the WebUI
+            // renders all red X marks. See EverCheckCanvasComponent for the
+            // matching override in the def-conf overlay path.
+            eObject.cal_hits = (inspAdjObj.status !== INSPECTION_STATUS.SUCCESS)
+              ? inspAdjObj.cal_hits.map((h) => ({ ...h, st: 1 }))
+              : inspAdjObj.cal_hits;
+          }
           // console.log(dclone(eObject));
           // if (InspResult.isFlipped) {
           //   let tmp = eObject.pt1;
@@ -1066,9 +1088,15 @@ export class InspectionEditorLogic {
               eObject[key].y = eObject[key].y * inspAdjObj.r / mag + inspAdjObj.y;
             }
           });
-          // Caliper-mode per-caliper hits — see line case for the rationale
-          // (object-frame mm, passed through unchanged).
-          if (inspAdjObj.cal_hits) eObject.cal_hits = inspAdjObj.cal_hits;
+          // Caliper-mode per-caliper hits — see line case for the rationale.
+          if (inspAdjObj.cal_hits) {
+            // Fit failure → force every hit to outlier (st:1) so the WebUI
+            // renders all red X marks. See EverCheckCanvasComponent for the
+            // matching override in the def-conf overlay path.
+            eObject.cal_hits = (inspAdjObj.status !== INSPECTION_STATUS.SUCCESS)
+              ? inspAdjObj.cal_hits.map((h) => ({ ...h, st: 1 }))
+              : inspAdjObj.cal_hits;
+          }
         }
         break;
 

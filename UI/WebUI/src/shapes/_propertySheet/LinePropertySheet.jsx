@@ -57,13 +57,14 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line' })
 
   const t = (key) => translate(dict, dictTheme, key);
 
+  const defaultTweak = { mul: [1.5], add: [0.1] };
   return <div>
     <Row label={t('type')}><span style={{ fontSize: 12 }}>{t('line')}</span></Row>
     <TextField label={t('name')} value={shape.name}
       onCommit={(name) => update({ name })} />
     <NumberField label={t('margin')} value={shape.margin}
       onCommit={(margin) => update({ margin })}
-      tweak />  {/* default: ×2 ÷2 ±0.1 ±0.01 */}
+      tweak={defaultTweak} />  {/* default: ×2 ÷2 ±0.1 ±0.01 */}
     <SwitchField label={t('vertex_touch_searching')}
       checked={shape.vertex_touch_searching}
       onChange={(v) => update({ vertex_touch_searching: v })} />
@@ -74,16 +75,16 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line' })
       <Section label="caliper">
         <NumberField label="count" value={shape.caliper?.count} step={1}
           onCommit={(count) => updateSub('caliper', { count })}
-          tweak={{ mul: [2], add: [10, 1] }} />
+          tweak={{ add: [1] }} />
         <NumberField label={t('width')} value={shape.caliper?.width}
           onCommit={(width) => updateSub('caliper', { width })}
-          tweak />
+          tweak ={defaultTweak}/>
         <NumberField label="min_inliers" value={shape.caliper?.min_inliers} step={1}
           onCommit={(min_inliers) => updateSub('caliper', { min_inliers })}
-          tweak={{ mul: [2], add: [1] }} />
+          tweak={{  add: [1] }} />
         <NumberField label="max_error" value={shape.caliper?.max_error}
           onCommit={(max_error) => updateSub('caliper', { max_error })}
-          tweak />
+          tweak ={defaultTweak}/>
       </Section>
       <Section label="edge">
         <DropdownField label="method" value={shape.edge?.method}
@@ -94,10 +95,10 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line' })
           onChange={(polarity) => updateSub('edge', { polarity })} />
         <NumberField label="nth" value={shape.edge?.nth} step={1}
           onCommit={(nth) => updateSub('edge', { nth })}
-          tweak={{ mul: [], add: [1] }} />
+          tweak={{ add: [1] }} />
         <NumberField label="min_strength" value={shape.edge?.min_strength}
           onCommit={(min_strength) => updateSub('edge', { min_strength })}
-          tweak />
+          tweak ={defaultTweak}/>
       </Section>
     </>}
   </div>;
