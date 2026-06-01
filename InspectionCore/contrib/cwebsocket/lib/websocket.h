@@ -104,6 +104,7 @@ struct handshake {
     char *origin;
     char *key;
     char *resource;
+    char *subprotocol;       /* echoed in 101 response if non-NULL */
     enum wsFrameType frameType;
 };
 

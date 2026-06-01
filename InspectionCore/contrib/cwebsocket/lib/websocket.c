@@ -31,6 +31,7 @@ void nullHandshake(struct handshake *hs)
     hs->origin = NULL;
     hs->resource = NULL;
     hs->key = NULL;
+    hs->subprotocol = NULL;
     hs->frameType = WS_EMPTY_FRAME;
 }
 
@@ -47,6 +48,9 @@ void freeHandshake(struct handshake *hs)
     }
     if (hs->key) {
         free(hs->key);
+    }
+    if (hs->subprotocol) {
+        free(hs->subprotocol);
     }
     nullHandshake(hs);
 }
@@ -102,7 +106,12 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
     #define strtolower(x) do { int i; for (i = 0; x[i]; i++) x[i] = tolower(x[i]); } while(0)
     uint8_t connectionFlag = FALSE;
     uint8_t upgradeFlag = FALSE;
-    uint8_t subprotocolFlag = FALSE;
+    /* legacy: subprotocolFlag was used to *reject* any client that asked
+     * for a subprotocol.  RFC 6455 requires the server to either echo a
+     * chosen subprotocol in the 101 response or omit the header; both are
+     * valid.  We now capture the requested value into hs->subprotocol so
+     * the caller can echo it back (see wsGetHandshakeAnswer). */
+    (void)0;
     uint8_t versionMismatch = FALSE;
     while (inputPtr < endPtr && inputPtr[0] != '\r' && inputPtr[1] != '\n') {
         if (memcmp_P(inputPtr, hostField, strlen_P(hostField)) == 0) {
@@ -117,7 +126,8 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
         } else
         if (memcmp_P(inputPtr, protocolField, strlen_P(protocolField)) == 0) {
             inputPtr += strlen_P(protocolField);
-            subprotocolFlag = TRUE;
+            prepare(hs->subprotocol);
+            hs->subprotocol = getUptoLinefeed(inputPtr);
         } else
         if (memcmp_P(inputPtr, keyField, strlen_P(keyField)) == 0) {
             inputPtr += strlen_P(keyField);
@@ -157,7 +167,7 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
     }
 
     // we have read all data, so check them
-    if (!hs->host || !hs->key || !connectionFlag || !upgradeFlag || subprotocolFlag
+    if (!hs->host || !hs->key || !connectionFlag || !upgradeFlag
         || versionMismatch)
     {
         hs->frameType = WS_ERROR_FRAME;
@@ -191,16 +201,32 @@ void wsGetHandshakeAnswer(const struct handshake *hs, uint8_t *outFrame,
     //Somehow in windows the last byte is always 'A' which should be '=' in WebSocket
     //So I hack the issue to make it work...
     responseKey[base64Length-1] = '=';
-    int written = sprintf_P((char *)outFrame,
+    int written;
+    if (hs->subprotocol && hs->subprotocol[0]) {
+        /* Echo the client's requested subprotocol back so browsers that
+         * pass a `protocols` arg to `new WebSocket(url, proto)` don't
+         * abort the handshake.  We accept whatever was asked -- caller is
+         * responsible for any policy. */
+        written = sprintf_P((char *)outFrame,
+                            PSTR("HTTP/1.1 101 Switching Protocols\r\n"
+                                 "%s%s\r\n"
+                                 "%s%s\r\n"
+                                 "Sec-WebSocket-Protocol: %s\r\n"
+                                 "Sec-WebSocket-Accept: %s\r\n\r\n"),
+                            upgradeField, websocket,
+                            connectionField, upgrade2,
+                            hs->subprotocol,
+                            responseKey);
+    } else {
+        written = sprintf_P((char *)outFrame,
                             PSTR("HTTP/1.1 101 Switching Protocols\r\n"
                                  "%s%s\r\n"
                                  "%s%s\r\n"
                                  "Sec-WebSocket-Accept: %s\r\n\r\n"),
-                            upgradeField,
-                            websocket,
-                            connectionField,
-                            upgrade2,
+                            upgradeField, websocket,
+                            connectionField, upgrade2,
                             responseKey);
+    }
 	
     free(responseKey);
     // if assert fail, that means, that we corrupt memory
