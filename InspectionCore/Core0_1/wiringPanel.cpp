@@ -4907,7 +4907,16 @@ int cp_main(int argc, char **argv)
     // acv -> cv: full cv::Mat path through the engine entry (the acvImage `img`
     // shim above is now only kept for the `bacpac` calibration side-effects
     // upstream; the engine receives cvSrc directly).
-    ImgInspection_DefRead(matchingEng, cvSrc, 1, defPath, &neutral_bacpac);
+    // Profiling tap: INSP_LOOP_N>1 reruns the inspection in-process so a
+    // sampler can attach.  Default 1 = legacy single-shot behavior.
+    int loopN = 1;
+    if (const char *e = std::getenv("INSP_LOOP_N")) {
+      int n = std::atoi(e);
+      if (n > 0) loopN = n;
+    }
+    for (int li = 0; li < loopN; ++li) {
+      ImgInspection_DefRead(matchingEng, cvSrc, 1, defPath, &neutral_bacpac);
+    }
     const FeatureReport *report = matchingEng.GetReport();
     if (report == NULL) { LOGE("--insp: null report"); return 4; }
     cJSON *jobj = matchingEng.FeatureReport2Json(report);
