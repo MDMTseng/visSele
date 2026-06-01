@@ -10,6 +10,9 @@
 #include "Data_Layer_PHY.hpp"
 
 
+#include <logctrl.h>
+LOG_MODULE("core.boot");
+
 float randomGen(float from=0,float to=1)
 {
   float r01=(rand()%1000000)/1000000.0;

@@ -14,6 +14,8 @@
 
 
 
+LOG_MODULE("bpg.ws");
+
 BPG_Link_Interface_WebSocket::BPG_Link_Interface_WebSocket() : ws_protocol_callback(this)
 {
   init(5714);

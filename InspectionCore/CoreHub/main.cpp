@@ -10,6 +10,9 @@
 #include "Data_Layer_PHY.hpp"
 #include "CameraLayerManager.hpp"
 
+#include <logctrl.h>
+LOG_MODULE("core.boot");
+
 extern "C" {
     #include "quickjs.h"
 }

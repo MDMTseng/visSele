@@ -24,6 +24,8 @@
 #include <opencv2/imgproc.hpp>
 #include "CvBridge.h"
 
+LOG_MODULE("core");
+
 #define _VERSION_ "1.2"
 char* SNAP_FILE_EXTENSION="xreps";
 char* SNAP_IMG_EXTENSION="jpg";

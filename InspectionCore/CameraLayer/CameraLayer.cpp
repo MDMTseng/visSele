@@ -4,6 +4,8 @@
 #include "logctrl.h"
 #include <future>
 
+LOG_MODULE("cam");
+
 CameraLayer::status CameraLayer::SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
 {  
 

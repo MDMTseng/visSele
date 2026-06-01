@@ -11,6 +11,8 @@
 #include "FeatureReport_UTIL.h"
 #include "cJSON.h"
 
+LOG_MODULE("match.engine");
+
 int MatchingEngine::ResetFeature()
 {
   for(int i=0;i<featureBundle.size() ;i++)

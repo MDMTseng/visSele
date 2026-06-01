@@ -5,6 +5,8 @@
 #include <common_lib.h>
 #include <FeatureManager_binary_processing.h>
 
+LOG_MODULE("match.extractor");
+
 FeatureManager_sig360_extractor::FeatureManager_sig360_extractor(const char *json_str) : FeatureManager_binary_processing(json_str)
 {
   root = NULL;

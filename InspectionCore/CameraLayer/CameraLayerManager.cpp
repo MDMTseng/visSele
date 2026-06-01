@@ -3,6 +3,8 @@
 #include "CameraLayerManager.hpp"
 #include "logctrl.h"
 
+LOG_MODULE("cam");
+
   std::string CameraLayerManager::CamInfo2Json(CameraLayer::BasicCameraInfo &info)
   {
     return "{"

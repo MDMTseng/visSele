@@ -8,6 +8,8 @@
 
 #include "polyfit.h"
 
+LOG_MODULE("match.core");
+
 using namespace std;
 enum searchType_C
 {

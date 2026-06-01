@@ -40,6 +40,8 @@
 
 
 
+LOG_MODULE("core");
+
 extern "C" {
     #include "quickjs.h"
 }

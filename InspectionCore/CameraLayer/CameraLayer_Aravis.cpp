@@ -3,6 +3,8 @@
 #include "logctrl.h"
 #include <arv.h>
 #include <stdexcept>
+LOG_MODULE("cam.aravis");
+
 using namespace std;
 
 static CameraLayer_Aravis::cam_info getDeviceIndex(const char *device_id)

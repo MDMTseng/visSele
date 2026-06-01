@@ -10,6 +10,8 @@
 #include <exception>
 #include <stdexcept>
 
+LOG_MODULE("bpg.sm");
+
 BPG_Link_Interface_SharedMemoryChannel::BPG_Link_Interface_SharedMemoryChannel()
 {
   init("__BPG_LINK_IF_SharedMemory__",4096);

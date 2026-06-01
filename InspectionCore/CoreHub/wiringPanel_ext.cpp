@@ -5,6 +5,9 @@
 #include <main.h>
 
 
+#include <logctrl.h>
+LOG_MODULE("core");
+
 std::vector<uint8_t> image_send_buffer(40000);
 // int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
 // {

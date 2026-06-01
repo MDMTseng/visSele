@@ -14,6 +14,8 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+LOG_MODULE("core.demo");
+
 using namespace std;
 
 void _CameraLayer_Callback_(CameraLayer &cl_obj, int type, void *context)

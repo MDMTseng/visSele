@@ -18,6 +18,8 @@
 
 // Mat bg = Mat(800, 800, CV_8UC3, {0, 0, 0});
 
+LOG_MODULE("match.linemod");
+
 FM_GenMatching::FM_GenMatching(const char *json_str): FeatureManager(json_str)
 {
 

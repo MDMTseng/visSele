@@ -4,6 +4,8 @@
 #include <ctime>
 #include <logctrl.h>
 
+LOG_MODULE("mjpeg");
+
 #define INVALID_SOCKET -1
 #define SOCKET_ERROR -1
 #define SOCKADDR struct sockaddr

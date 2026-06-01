@@ -10,6 +10,8 @@
 #include "BinarizeCV.h"
 #include "CvBridge.h"
 #include <opencv2/imgproc.hpp>
+
+LOG_MODULE("match.group");
 /*
   FeatureManager_group_proto Section
 */

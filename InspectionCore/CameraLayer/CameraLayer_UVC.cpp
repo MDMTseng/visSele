@@ -3,6 +3,9 @@
 
 #include <string>
 
+#include <logctrl.h>
+LOG_MODULE("cam.uvc");
+
 CameraLayer::status CameraLayer_UVC::SetROI(int x, int y, int w, int h, int zw, int zh)
 {
   return CameraLayer::NOT_SUPPORTED;

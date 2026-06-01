@@ -6,6 +6,8 @@
 #include <errno.h>
 //////////////////////////////ws_server/////////////////////////////////////
 
+LOG_MODULE("bpg.ws");
+
 ws_server::ws_server(int port, ws_protocol_callback *cb) : ws_protocol_callback(this)
 {
   this->cb = cb;

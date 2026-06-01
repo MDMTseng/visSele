@@ -2,6 +2,8 @@
 #include "ContourGrid.h"
 #include "logctrl.h"
 #include <math.h>
+LOG_MODULE("match.contour");
+
 bool isAngleBetween(float angle,float sAngle,float eAngle);
 
 bool isAngleBetween(float angle,float sAngle,float eAngle)

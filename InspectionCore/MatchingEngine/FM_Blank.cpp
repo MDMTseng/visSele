@@ -15,6 +15,8 @@
 
 // Mat bg = Mat(800, 800, CV_8UC3, {0, 0, 0});
 
+LOG_MODULE("match.blank");
+
 static SBM_if sbmif;
 
 FM_Blank::FM_Blank(const char *json_str): FeatureManager(json_str)

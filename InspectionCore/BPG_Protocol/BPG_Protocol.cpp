@@ -6,6 +6,8 @@
 #include <logctrl.h>
 #include <thread>
 
+LOG_MODULE("bpg");
+
 BPG_Link_Interface::BPG_Link_Interface()
 {
 }

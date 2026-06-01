@@ -3,6 +3,9 @@
 
 #include <string>
 
+#include <logctrl.h>
+LOG_MODULE("cam.hikrobot");
+
 MV_CC_DEVICE_INFO_LIST s_dev_list;
 CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int h, int zw, int zh)
 {

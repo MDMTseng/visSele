@@ -9,6 +9,8 @@
 
 
 
+LOG_MODULE("cam.bmp");
+
 CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer::BasicCameraInfo camInfo,std::string misc,CameraLayer_Callback cb,void* context):CameraLayer_BMP(camInfo,misc,cb,context)
 {
     if(camInfo.driver_name!=CameraLayer_BMP_carousel::getDriverName())
