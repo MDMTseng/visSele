@@ -295,6 +295,13 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
       pts.push_back(pt); w.push_back(conf); ptCaliper.push_back(i);
       r.hits[i] = CaliperHit{pt, 2 /*inlier-until-MAD-says-otherwise*/, conf};
     }
+    else
+    {
+      // Missed caliper — no edge passed the polarity/min_strength filter.
+      // Stash the nominal anchor `c` so consumers (WebUI overlay) can show
+      // *which* caliper missed; status=0 keeps it distinct from inlier/outlier.
+      r.hits[i] = CaliperHit{c, 0, 0.0f};
+    }
     if (dbg) { dProfs.push_back(profile); dPos.push_back(ok ? pos : -1.f); dConf.push_back(ok ? conf : -1.f); }
   }
   r.nValid = (int)pts.size();
@@ -413,6 +420,11 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
       conf = info.strength * (1.0f - 0.7f * ratio) * (0.5f + 0.5f * sharpN);
       pts.push_back(pt); w.push_back(conf); ptCaliper.push_back(i);
       r.hits[i] = CaliperHit{pt, 2, conf};
+    }
+    else
+    {
+      // Missed caliper — see caliper_locate_line for rationale.
+      r.hits[i] = CaliperHit{c, 0, 0.0f};
     }
     if (dbg) { dProfs.push_back(prof); dPos.push_back(ok ? pos : -1.f); dConf.push_back(ok ? conf : -1.f); }
   }

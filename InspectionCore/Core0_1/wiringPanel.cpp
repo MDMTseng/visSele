@@ -1610,6 +1610,42 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         }
 
         LOGE("fileName: %s", fileName);
+
+        // Defensive write for the __CACHE_IMG__ family. Three reasons:
+        //   1. cv::imwrite throws cv::Exception when it can't pick an
+        //      encoder from the file extension; uncaught it terminates the
+        //      whole process (libc++abi). We catch + log instead.
+        //   2. WebUI sometimes sends extensionless cache paths (e.g.
+        //      ".../arc_test"); auto-append `.png` so the write still
+        //      succeeds rather than failing soft.
+        //   3. Empty/garbage images shouldn't get out — caller already
+        //      checks cols*rows; we re-check defensively.
+        auto safe_imwrite_cache = [](const char *path, const cv::Mat &img) -> bool {
+          if (path == nullptr || path[0] == '\0') {
+            LOGE("safe_imwrite_cache: empty path; skipping write");
+            return false;
+          }
+          if (img.empty() || img.cols <= 0 || img.rows <= 0) {
+            LOGE("safe_imwrite_cache: empty image (%dx%d); skipping write %s",
+                 img.cols, img.rows, path);
+            return false;
+          }
+          std::string p = path;
+          // Has a recognized extension? OpenCV dispatches on .png/.jpg/.jpeg/.bmp/.tif/.tiff.
+          auto dot = p.find_last_of('.');
+          auto slash = p.find_last_of("/\\");
+          bool hasExt = (dot != std::string::npos) &&
+                        (slash == std::string::npos || dot > slash) &&
+                        (dot + 1 < p.size());
+          if (!hasExt) { p += ".png"; LOGW("imwrite: no ext on %s → using %s", path, p.c_str()); }
+          try {
+            return cv::imwrite(p, img);
+          } catch (const cv::Exception &ex) {
+            LOGE("imwrite failed for %s: %s", p.c_str(), ex.what());
+            return false;
+          }
+        };
+
         int strinL = strlen((char *)dat->dat_raw) + 1;
 
         if (dat->size - strinL == 0)
@@ -1622,9 +1658,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             if (cacheImage.cols * cacheImage.rows > 10) //HACK: just a hacky way to make sure the cache image is there
             {
               // SaveIMGFile dispatched on file extension; cv::imwrite does the
-              // same thing (png/jpg/bmp) on a cv::Mat directly.
-              cv::imwrite(fileName, cacheImage);
-              session_ACK=true;
+              // same thing (png/jpg/bmp) on a cv::Mat directly. safe_imwrite_cache
+              // adds .png if missing and catches cv::Exception so an extensionless
+              // filename doesn't terminate the process.
+              session_ACK = safe_imwrite_cache(fileName, cacheImage);
             }
             else
             {
@@ -1640,8 +1677,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             else
             {
               
-              cv::imwrite(fileName, lastDatViewCache->img);
-              session_ACK=true;
+              session_ACK = safe_imwrite_cache(fileName, lastDatViewCache->img);
             }
             
           }
@@ -1683,8 +1719,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               if (tmp_buff.cols * tmp_buff.rows > 10)//just a random check
               {
                 LOGI("SAVE IMG:%s",fileName);
-                cv::imwrite(fileName, tmp_buff);
-                session_ACK = true;
+                session_ACK = safe_imwrite_cache(fileName, tmp_buff);
               }
             }
             

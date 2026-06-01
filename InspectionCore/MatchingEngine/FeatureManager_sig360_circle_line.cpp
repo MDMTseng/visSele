@@ -3473,12 +3473,18 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     if (rr.ok) { cf.circle.circumcenter = acvVecAdd(rr.center, off); cf.circle.radius = rr.radius;
                  cf.s = rr.rms; cf.matching_pts = rr.nInlier; cf.confidence = rr.confidence; }
     else { cf.circle.radius = NAN; }
-    // Per-caliper hits → cr.cal_hits (rebased to image coords). Done even on
-    // !rr.ok so the overlay can show where the calipers tried/missed.
+    // Per-caliper hits → cr.cal_hits directly in OBJECT-FRAME mm. Convert
+    // here at push time (not in the later mm-conversion block) because the
+    // function has early-return paths between here and that block (e.g. when
+    // the fit produces a NaN radius) — those would leave cal_hits in raw
+    // image-px and break the WebUI's object-frame overlay assumption.
+    // All hits (including missed) carry valid coords — Caliper.cpp stashes
+    // the caliper's nominal anchor on miss.
     cr.cal_hits.reserve(rr.hits.size());
     for (const auto &h : rr.hits) {
       CaliperHit ih = h;
-      if (h.status != 0) ih.pt = acvVecAdd(h.pt, off);
+      acv_XY pix_pt = acvVecAdd(h.pt, off);   // image-relative → image-absolute px
+      ih.pt = PixDomain_TO_TemplateDomain(pix_pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
       cr.cal_hits.push_back(ih);
     }
   }
@@ -3657,12 +3663,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     cr.pt1 = acvVecMult(cr.pt1, mmpp);
     cr.pt2 = acvVecMult(cr.pt2, mmpp);
     cr.pt3 = acvVecMult(cr.pt3, mmpp);
-    // Caliper hits go all the way back to OBJECT-FRAME mm (def coord
-    // system) — see LineMatching_ReportGen for the rationale. Contour-mode
-    // reports have empty cal_hits so the loop is a no-op.
-    for (auto &h : cr.cal_hits)
-      if (h.status != 0)
-        h.pt = PixDomain_TO_TemplateDomain(h.pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
+    // (cal_hits already in OBJECT-FRAME mm — converted at push-time above.)
   }
 
 
@@ -3715,14 +3716,19 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
     float t1 = (lineDef.p1.x-anchor.x)*r.dir.x + (lineDef.p1.y-anchor.y)*r.dir.y;
     Report.line.end_pt1 = acv_XY(anchor.x + t0*r.dir.x, anchor.y + t0*r.dir.y);
     Report.line.end_pt2 = acv_XY(anchor.x + t1*r.dir.x, anchor.y + t1*r.dir.y);
-    if (r.nInlier >= 5) Report.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+    // Report.status follows r.ok which is gated by the configurable
+    // cal.min_inliers (default 2). Previously hardcoded `>= 5` which made
+    // even a perfectly-fittable 3- or 4-inlier line fail unnecessarily.
+    if (r.ok) Report.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
   }
-  // Per-caliper hits → Report.cal_hits (rebased to image coords). Always
-  // copied — even on failure — so the WebUI overlay can surface why.
+  // Per-caliper hits → Report.cal_hits (rebased to image coords). All hits
+  // are copied (including missed ones, which carry the caliper's nominal
+  // anchor in pt — Caliper.cpp stashes it so the WebUI can show where
+  // each miss happened).
   Report.cal_hits.reserve(r.hits.size());
   for (const auto &h : r.hits) {
     CaliperHit ih = h;
-    if (h.status != 0) ih.pt = acvVecAdd(h.pt, off);
+    ih.pt = acvVecAdd(h.pt, off);
     Report.cal_hits.push_back(ih);
   }
   return Report;
@@ -3782,11 +3788,11 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
   // Caliper hits go all the way back to OBJECT-FRAME mm (def coord system),
   // unlike end_pt1/pt2 which stay in image-mm. This lets consumers compare
   // hit positions directly to def shape.pt1/pt2 without applying the
-  // inspection cx/cy/rotate inverse themselves. Missed entries (status=0)
-  // keep their {0,0} sentinel.
+  // inspection cx/cy/rotate inverse themselves. Apply to ALL hits — missed
+  // entries carry the caliper's nominal anchor (stored by Caliper.cpp) so
+  // the WebUI overlay can mark where each miss happened.
   for (auto &h : Report.cal_hits)
-    if (h.status != 0)
-      h.pt = PixDomain_TO_TemplateDomain(h.pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
+    h.pt = PixDomain_TO_TemplateDomain(h.pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
   Report.def=plineDef;
   return Report;
 }
