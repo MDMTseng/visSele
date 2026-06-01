@@ -23,6 +23,7 @@ import InputNumber from 'antd/lib/input-number';
 import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset ,LocalStorageTools,websocket_autoReconnect,websocket_reqTrack, dictLookUp} from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
 const log = mkLog('ui.main');
+import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import ReactResizeDetector from 'react-resize-detector';
@@ -372,17 +373,12 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       let down_samp_level=IMG_LOAD_DOWNSAMP_LEVEL*2;
       if(down_samp_level>3)down_samp_level=3;
 
-
-      ACT_WS_SEND_BPG( "LD", 0, 
-      { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath ,down_samp_level},
-      undefined,{ 
-        resolve:(pkts,WSDataDispatch)=>{
-          WSDataDispatch(pkts);
-  
-        }, reject:(pkts,__)=>{
-          
-        } 
-      });
+      loadDefWithImageFallback({
+        defModelPath, defExtension: DEF_EXTENSION, downSampLevel: down_samp_level,
+        send: (payload, promiseCBs) => ACT_WS_SEND_BPG("LD", 0, payload, undefined, promiseCBs),
+      })
+        .then(({ pkts, actionChannel }) => { actionChannel(pkts); })
+        .catch((err) => log.warn("[auto-load]", { defModelPath, err: String(err) }));
     },50);
 
   },[])
@@ -483,48 +479,29 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         filePath = filePath.replace("." + DEF_EXTENSION, "").replaceAll("\\" , "/");
         setInfoPopUp(undefined);
 
-        ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
-        down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL },undefined,{
-          resolve:(stacked_pkts,action_channal)=>{
-            let SS=stacked_pkts.find(pkt=>pkt.type=="SS");
-            if(SS===undefined)return;
-            let DF=stacked_pkts.find(pkt=>pkt.type=="DF");
-            let IM=stacked_pkts.find(pkt=>pkt.type=="IM");
-            if(SS.data.ACK==true && DF!==undefined && IM!==undefined)
-            {
-              let setTags = [];
-              try {
-                setTags = tarDef.tags.split(",");
-
-              }
-              catch (e) {
-                setTags = [];
-              }
-              
-              ACT_Def_Model_Path_Update(filePath);
-              action_channal(stacked_pkts);
-              
-              // console.log(setTags);
-              ACT_InspOptionalTag_Update(setTags)
-            }
-            else
-            {
-              
-              let errPopUpUIInfo = {
-                title: "錯誤",
-                onOK: undefined,
-                onCancel: undefined,
+        loadDefWithImageFallback({
+          defModelPath: filePath, defExtension: DEF_EXTENSION, downSampLevel: IMG_LOAD_DOWNSAMP_LEVEL,
+          send: (payload, promiseCBs) => ACT_WS_SEND_BPG("LD", 0, payload, undefined, promiseCBs),
+        })
+          .then(({ pkts, actionChannel }) => {
+            let setTags = [];
+            try { setTags = tarDef.tags.split(","); } catch (e) { setTags = []; }
+            ACT_Def_Model_Path_Update(filePath);
+            actionChannel(pkts);
+            ACT_InspOptionalTag_Update(setTags);
+          })
+          .catch((err) => {
+            log.warn("[load-custom-disp]", { filePath, err: String(err) });
+            let errPopUpUIInfo = {
+              title: "錯誤",
+              onOK: undefined,
+              onCancel: undefined,
               content:<div style={{width:"100%",height:"200px"}}><Title className="veleXY">
                 <CloseCircleTwoTone twoToneColor="#FF0000"/>找不到檔案:{filePath}
                 </Title></div>
-              }
-              setTimeout(()=>setInfoPopUp(errPopUpUIInfo),100);
-            }
-          }, 
-          reject:()=>{
-
-          }
-        });
+            };
+            setTimeout(()=>setInfoPopUp(errPopUpUIInfo),100);
+          });
 
       }} />
     }
@@ -709,8 +686,12 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                   setInfoPopUp(undefined);
                   ACT_Def_Model_Path_Update(filePath);
 
-                  ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath ,
-                  down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL});
+                  loadDefWithImageFallback({
+                    defModelPath: filePath, defExtension: DEF_EXTENSION, downSampLevel: IMG_LOAD_DOWNSAMP_LEVEL,
+                    send: (payload, promiseCBs) => ACT_WS_SEND_BPG("LD", 0, payload, undefined, promiseCBs),
+                  })
+                    .then(({ pkts, actionChannel }) => actionChannel(pkts))
+                    .catch((err) => log.warn("[load-recent]", { filePath, err: String(err) }));
 
                   setFileSelectorInfo(undefined);
 
@@ -777,31 +758,27 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                 filePath = filePath.replace("." + DEF_EXTENSION, "");
                 setFileSelectorInfo(undefined);
 
-                ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
-                down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL },
-                  undefined, { resolve:(pkts,action_channal)=>{
-                    let SS=pkts.find(pkt=>pkt.type=="SS");
-                    if(SS==undefined || SS.data.ACK==false)
-                    {
-                      
-                      let errPopUpUIInfo = {
-                        title: dictLookUp("ERROR", DICT),
-                        onOK: undefined,
-                        onCancel: undefined,
-                        content:<div style={{width:"100%",height:"200px"}}><Title className="veleXY">
-                          <CloseCircleTwoTone twoToneColor="#FF0000"/>{DICT.mainui.FILE_NOT_FOUND}:{filePath}
-                          </Title></div>
-                      }
-                      setInfoPopUp(errPopUpUIInfo)
-                      return;
-                    }
-                      
+                loadDefWithImageFallback({
+                  defModelPath: filePath, defExtension: DEF_EXTENSION, downSampLevel: IMG_LOAD_DOWNSAMP_LEVEL,
+                  send: (payload, promiseCBs) => ACT_WS_SEND_BPG("LD", 0, payload, undefined, promiseCBs),
+                })
+                  .then(({ pkts, actionChannel }) => {
                     appendLocalStorage_RecentFiles(fileInfo);
                     ACT_Def_Model_Path_Update(filePath);
-                    action_channal(pkts);
-                  }, reject:(e)=>{
-
-                  } });
+                    actionChannel(pkts);
+                  })
+                  .catch((err) => {
+                    log.warn("[load-file-selector]", { filePath, err: String(err) });
+                    let errPopUpUIInfo = {
+                      title: dictLookUp("ERROR", DICT),
+                      onOK: undefined,
+                      onCancel: undefined,
+                      content:<div style={{width:"100%",height:"200px"}}><Title className="veleXY">
+                        <CloseCircleTwoTone twoToneColor="#FF0000"/>{DICT.mainui.FILE_NOT_FOUND}:{filePath}
+                        </Title></div>
+                    };
+                    setInfoPopUp(errPopUpUIInfo);
+                  });
                 }
 
 
