@@ -535,6 +535,41 @@ void log_emit(int lv, const char *file, int line, const char *func,
     /* Lazy env parse on first emit, while we hold the mutex. */
     ensure_env_parsed_locked();
 
+    /* #29: drainer -> producer control IPC.  Cheap path: most emits see
+     * no version change and skip everything. */
+    if (g_shm_ring.attached && g_shm_ring.hdr) {
+        static uint32_t s_last_cmd_seq = 0;
+        uint32_t cur = g_shm_ring.hdr->ctrl_cmd_seq.load(
+                           std::memory_order_acquire);
+        if (cur != s_last_cmd_seq) {
+            s_last_cmd_seq = cur;
+            int32_t cmd_lv = g_shm_ring.hdr->ctrl_cmd_level;
+            char    cmd_mod[28];
+            std::memcpy(cmd_mod, g_shm_ring.hdr->ctrl_cmd_module, 28);
+            cmd_mod[27] = '\0';
+            if (cmd_lv != INT32_MIN) {
+                if (cmd_mod[0] == '\0') {
+                    /* global */
+                    g_global_level_requested = cmd_lv;
+                    recompute_cache_locked();
+                } else if (cmd_mod[0] == '*' && cmd_mod[1] == '\0') {
+                    g_tag_levels.clear();
+                    recompute_cache_locked();
+                } else {
+                    /* per-module override -- replace or append. */
+                    bool found = false;
+                    for (auto &t : g_tag_levels) {
+                        if (t.tag == cmd_mod) {
+                            t.lv = cmd_lv; found = true; break;
+                        }
+                    }
+                    if (!found) g_tag_levels.push_back(TagLevel{cmd_mod, cmd_lv});
+                    recompute_cache_locked();
+                }
+            }
+        }
+    }
+
     /* Look up module for this TU.  Lookup is cheap (hash by file ptr). */
     const char *module = nullptr;
     if (file) {

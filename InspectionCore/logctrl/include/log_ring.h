@@ -96,9 +96,27 @@ struct alignas(64) LogRingHeader {
     uint32_t              crash_reserved0;
     uint64_t              crash_frames[LOG_CRASH_FRAME_MAX];
 
-    /* Pad up to LOG_HEADER_BYTES for alignment + future fields.
-     * Layout so far:  56 (fixed) + 16 (crash meta) + 256 (frames) = 328. */
-    uint8_t pad[LOG_HEADER_BYTES - 328];
+    /* Phase F.2/#29: drainer -> producer control IPC.
+     *
+     * Drainer writes one command at a time:
+     *   - bump ctrl_cmd_seq (release) after filling slot
+     *   - ctrl_cmd_module = "" means "set global level"
+     *   - ctrl_cmd_module = "*" means "clear all module overrides"
+     *   - ctrl_cmd_level  = INT32_MIN means "no change" (used at startup)
+     *
+     * Producer reads on each LOG_emit:
+     *   - if ctrl_cmd_seq != last_seen, apply, update last_seen.
+     *
+     * Single-slot is enough because the drainer serializes WS commands.
+     * Multiple rapid commands are coalesced by the drainer (it only sends
+     * the latest before bumping seq).
+     */
+    std::atomic<uint32_t> ctrl_cmd_seq;
+    int32_t  ctrl_cmd_level;
+    char     ctrl_cmd_module[28];   /* NUL-terminated; empty = global */
+
+    /* Pad up to LOG_HEADER_BYTES.  Layout: 328 + 4 + 4 + 28 = 364. */
+    uint8_t pad[LOG_HEADER_BYTES - 364];
 };
 
 /* One log entry.  Fixed-size; producer truncates rather than splitting

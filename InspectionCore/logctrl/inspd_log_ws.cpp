@@ -72,6 +72,7 @@ struct LogWsServerImpl : public ws_protocol_callback {
     std::unordered_map<ws_conn_data *, PeerState> peers;
     LogWsServer::BacklogProvider backlog_provider;
     LogWsServer::DumpHandler     dump_handler;
+    LogWsServer::SetLevelHandler set_level_handler;
 
     LogWsServerImpl(const LogWsServer::HelloInfo &h)
         : ws_protocol_callback(this), hello(h) {}
@@ -252,10 +253,29 @@ struct LogWsServerImpl : public ws_protocol_callback {
                 else cJSON_AddStringToObject(o, "dumpPath", path.c_str());
                 enqueue_text(data.peer, ps, o);
             }
-        } else if (std::strcmp(type, "setLevel") == 0 ||
-                   std::strcmp(type, "getModules") == 0) {
-            /* Requires control IPC (#29) + registry export (#30). */
-            send_ack(data.peer, ps, id, false, "control IPC not implemented yet");
+        } else if (std::strcmp(type, "setLevel") == 0) {
+            if (!set_level_handler) {
+                send_ack(data.peer, ps, id, false, "no setLevel handler");
+            } else {
+                cJSON *jscope = cJSON_GetObjectItem(msg, "scope");
+                cJSON *jmod   = cJSON_GetObjectItem(msg, "module");
+                cJSON *jsn    = cJSON_GetObjectItem(msg, "severityNumber");
+                const char *scope =
+                    cJSON_IsString(jscope) ? jscope->valuestring : "global";
+                const char *mod =
+                    cJSON_IsString(jmod) ? jmod->valuestring : "";
+                int sn = cJSON_IsNumber(jsn) ? jsn->valueint : -1;
+                if (sn < 0) {
+                    send_ack(data.peer, ps, id, false, "missing severityNumber");
+                } else {
+                    bool ok = set_level_handler(scope, mod, sn);
+                    send_ack(data.peer, ps, id, ok,
+                             ok ? nullptr : "command rejected");
+                }
+            }
+        } else if (std::strcmp(type, "getModules") == 0) {
+            /* Pending #30 -- registry export. */
+            send_ack(data.peer, ps, id, false, "getModules not implemented yet");
         } else {
             send_ack(data.peer, ps, id, false, "unknown message type");
         }
@@ -403,4 +423,8 @@ void LogWsServer::set_backlog_provider(BacklogProvider p) {
 
 void LogWsServer::set_dump_handler(DumpHandler h) {
     impl_->dump_handler = std::move(h);
+}
+
+void LogWsServer::set_level_handler(SetLevelHandler h) {
+    impl_->set_level_handler = std::move(h);
 }

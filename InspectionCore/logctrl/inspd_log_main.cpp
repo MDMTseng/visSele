@@ -469,6 +469,32 @@ int run(const Config &cfg) {
             return write_crash_dump(cfg, h, ephemeral, LOG_CRASH_OTHER);
         });
 
+        /* setLevel: convert OTel severityNumber to producer's LOG_LV_*,
+         * write the command into the ring header, bump cmd_seq so the
+         * producer notices on next emit. */
+        ws->set_level_handler([h](const char *scope, const char *module,
+                                  int sn) -> bool {
+            int lv;
+            if      (sn <= 1)  lv = LOG_LV_TRACE;
+            else if (sn <= 5)  lv = LOG_LV_DEBUG;
+            else if (sn <= 9)  lv = LOG_LV_INFO;
+            else if (sn <= 13) lv = LOG_LV_WARN;
+            else if (sn <= 17) lv = LOG_LV_ERROR;
+            else               lv = LOG_LV_FATAL;
+            h->ctrl_cmd_level = lv;
+            std::memset(h->ctrl_cmd_module, 0, sizeof(h->ctrl_cmd_module));
+            if (std::strcmp(scope, "global") == 0) {
+                /* leave module empty -> global */
+            } else if (module && *module) {
+                std::strncpy(h->ctrl_cmd_module, module,
+                             sizeof(h->ctrl_cmd_module) - 1);
+            } else {
+                return false;
+            }
+            h->ctrl_cmd_seq.fetch_add(1, std::memory_order_release);
+            return true;
+        });
+
         ws->set_backlog_provider(
             [h, started_unix_nano](int tail_n,
                                    std::vector<LogRecord> &out,

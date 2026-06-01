@@ -69,6 +69,15 @@ public:
     using DumpHandler = std::function<std::string()>;
     void set_dump_handler(DumpHandler h);
 
+    /* #29 setLevel handler.  scope: "global" or "module".  module empty for
+     * global, "*" to clear all per-module overrides.  Returns true if the
+     * command was queued for the producer.  Actual application happens on
+     * the producer's next emit. */
+    using SetLevelHandler = std::function<bool(const char *scope,
+                                                const char *module,
+                                                int severity_number)>;
+    void set_level_handler(SetLevelHandler h);
+
     /* Fan out a log line to every matching peer.  Cheap when no peers. */
     void broadcast_log(const LogRecord &rec);
 
