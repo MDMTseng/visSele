@@ -83,8 +83,10 @@ force_cxx(contrib/cJSON/cJSON.c contrib/cJSON/cJSON_Utils.c)
 target_include_directories(cJSON PUBLIC contrib/cJSON)
 
 # --- logctrl ---------------------------------------------------------------
-add_library(logctrl STATIC logctrl/logctrl.c)
-force_cxx(logctrl/logctrl.c)
+# Phase A: C++ rewrite with levels / per-tag filter / mutex / pluggable sinks.
+# Header is extern-"C"-wrapped so C callers still work.  Phase A2 will add
+# the shm-ring sink (sits on contrib/smem_channel); F adds the drainer daemon.
+add_library(logctrl STATIC logctrl/logctrl.cpp)
 target_include_directories(logctrl PUBLIC logctrl/include)
 
 # --- circleFitting ---------------------------------------------------------
