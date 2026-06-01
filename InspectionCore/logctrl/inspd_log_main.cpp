@@ -623,7 +623,31 @@ int run(const Config &cfg) {
             return 0;
         }
 
-        /* Heartbeat watch: if no producer-side activity, main is dead. */
+        /* Parent-death detection.
+         *
+         * The old approach watched heartbeat_ms (producer-side, bumped on
+         * every log_emit), but that conflated "process dead" with "process
+         * alive but quiet" -- and visSele can go genuinely idle for tens
+         * of seconds at a time waiting for clients.  We now use real OS
+         * signals.
+         *
+         * POSIX: when the parent dies, the kernel reparents us to launchd
+         * (pid 1).  getppid() == 1 is an unambiguous death signal that
+         * works even for SIGKILL / OOM-kill where no handler could run.
+         *
+         * Windows: TODO -- needs Job Object + JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO
+         * or OpenProcess + GetExitCodeProcess polling.  For now we keep
+         * the (now-very-generous) heartbeat fallback so a stalled producer
+         * isn't immortal.
+         */
+#ifndef _WIN32
+        if (getppid() == 1) {
+            std::fprintf(stderr,
+                "[inspd_log] parent process gone (reparented to init); exiting\n");
+            parent_dead = true;
+        }
+        (void)last_heartbeat; (void)last_heartbeat_seen;
+#else
         uint64_t hb = h->heartbeat_ms.load(std::memory_order_relaxed);
         auto now = std::chrono::steady_clock::now();
         if (hb != last_heartbeat) {
@@ -632,13 +656,15 @@ int run(const Config &cfg) {
         } else {
             auto idle_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                                now - last_heartbeat_seen).count();
-            if (idle_ms > HEARTBEAT_TIMEOUT_MS && tail == head) {
+            /* 60s -- producer can stay quiet for a long time when idling. */
+            if (idle_ms > 60000 && tail == head) {
                 std::fprintf(stderr,
                     "[inspd_log] parent heartbeat stalled %lld ms; exiting\n",
                     (long long)idle_ms);
                 parent_dead = true;
             }
         }
+#endif
 
         /* Drive the WS server.  If enabled, its tick() does the select()
          * so we don't double-sleep; otherwise fall back to a plain sleep. */
