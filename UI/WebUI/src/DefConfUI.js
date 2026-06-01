@@ -7,7 +7,8 @@ import * as BASE_COM from './component/baseComponent.jsx';
 import ComponentBoundary from './component/ComponentBoundary';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
-import { applyMeasureLimitCoupling } from 'JSSRCROOT/shapes/measure/index.js';
+import { fieldFor } from 'JSSRCROOT/shapes';
+import { applyFieldChange } from 'JSSRCROOT/shapes/_schemaHelpers';
 import { loadDefWithImageFallback } from 'UTIL/DefLoadWithImageFallback';
 import { buildSchema } from 'JSSRCROOT/shapes/propertySheet';
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
@@ -1957,130 +1958,46 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, AC
         //console.log("retR:",retR,"  treeDepth:",treeDepth)
         return retR;
       }
-      edit_tar=Shape_Attr_Fill(edit_tar);
-      switch (edit_tar.type) {
-        case UIAct.SHAPE_TYPE.line:
-        case UIAct.SHAPE_TYPE.aux_point:
-        case UIAct.SHAPE_TYPE.search_point:
-        case UIAct.SHAPE_TYPE.measure:
-          {
-            // Keystone phase B: each shape module owns its whiteListKey slice;
-            // buildSchema merges base + per-shape (+ per-subtype for measure).
-            // Memoized so JsonEditBlock can compare-by-reference and stop
-            // remounting subtrees on every render (Round-3 sub-state-loss bug).
-            const sharedWhiteListKey = useMemo(
-              () => buildSchema(edit_tar, {
-                shape_list, renderMethods, refChainHasLoop,
-                ACT_EDIT_TAR_ELE_TRACE_UPDATE,
-              }),
-              [edit_tar.id, edit_tar.type, edit_tar.subtype, edit_tar.ref, shape_list,
-               ACT_EDIT_TAR_ELE_TRACE_UPDATE]
-            );
-            UIArr.push(<BASE_COM.JsonEditBlock key="mainConfigTable" object={edit_tar}
-              dict={DICT}
-              additionalData={{
-                shape_list
-              }}
-              dictTheme={edit_tar.type}
-              key="BASE_COM.JsonEditBlock"
-              renderLib={renderMethods}
-              whiteListKey={sharedWhiteListKey}
-              jsonChange={(original_obj, target, type, evt) => {
-                if (type == "btn") {
-                  if (target.keyTrace[0] == "ref" || target.keyTrace[0] == "ref_baseLine") {
-                    ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
-                  }
-                }
-                else {
-                  let lastKey = target.keyTrace[target.keyTrace.length - 1];
-
-                  switch (type) {
-                    case "input-number":
-                      {
-                        let parseNum = parseFloat(evt.target.value);
-                        if (isNaN(parseNum)) return;
-                        let pre_val = target.obj[lastKey];
-                        target.obj[lastKey] = parseNum;
-                        // value/USL/LSL changes derive the dependent control limits (per-shape measure logic)
-                        applyMeasureLimitCoupling(target.obj, lastKey, pre_val);
-                      }
-                      break;
-                    case "input":
-                    case "Dropdown_List":
-                      {
-                        target.obj[lastKey] = evt.target.value;
-                      }
-                      break;
-                    case "switch":
-                      {
-                        target.obj[lastKey] = evt.target.checked;
-
-                        if (lastKey == "back_value_setup") {
-                          if (evt.target.checked == false) {
-                            delete target.obj["value_b"];
-                            delete target.obj["USL_b"];
-                            delete target.obj["LSL_b"];
-                            delete target.obj["UCL_b"];
-                            delete target.obj["LCL_b"];
-                          }
-                          else {
-                            
-                            // target.obj["value_adjust_b"] = target.obj["value_adjust"];
-                            // target.obj["value_mult_b"] = target.obj["value_mult"];
-                            target.obj["value_b"] = target.obj["value"];
-                            target.obj["USL_b"] = target.obj["USL"];
-                            target.obj["LSL_b"] = target.obj["LSL"];
-                            target.obj["UCL_b"] = target.obj["UCL"];
-                            target.obj["LCL_b"] = target.obj["LCL"];
-                          }
-                        }
-                      }
-                      break;
-                    }
-                  ec_canvas.SetShape(original_obj, original_obj.id);
-                }
-              }} />);
-
-
+      edit_tar = Shape_Attr_Fill(edit_tar);
+      // Unified property-sheet dispatch (keystone phase B + onChange hooks):
+      //   • schema is built per-shape via `buildSchema` (delegates to the
+      //     shape module's `buildWhiteListKey`); memoized so JsonEditBlock
+      //     can compare-by-reference and stop remounting subtrees on every
+      //     render (Round-3 sub-state-loss bug).
+      //   • field-level side effects (measure limit coupling, back_value_setup
+      //     adding/removing the _b keys, arc.direction's boolean→±1 mapping)
+      //     live on the per-shape `fields` decl as `coerce`/`onChange` hooks.
+      //     `applyFieldChange` is the single dispatcher; adding a new field
+      //     with custom behavior is a one-file change in the shape module.
+      const whiteListKey = useMemo(
+        () => buildSchema(edit_tar, {
+          shape_list, renderMethods, refChainHasLoop,
+          ACT_EDIT_TAR_ELE_TRACE_UPDATE,
+        }),
+        [edit_tar.id, edit_tar.type, edit_tar.subtype, edit_tar.ref, shape_list,
+         ACT_EDIT_TAR_ELE_TRACE_UPDATE]
+      );
+      UIArr.push(<BASE_COM.JsonEditBlock
+        key="BASE_COM.JsonEditBlock"
+        object={edit_tar}
+        dict={DICT}
+        additionalData={{ shape_list }}
+        dictTheme={edit_tar.type}
+        renderLib={renderMethods}
+        whiteListKey={whiteListKey}
+        jsonChange={(original_obj, target, type, evt) => {
+          if (type == "btn") {
+            if (target.keyTrace[0] == "ref" || target.keyTrace[0] == "ref_baseLine") {
+              ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
+            }
+            return;
           }
-          break;
-        default:
-          {
-            // Keystone phase B: unified schema dispatch. For unknown types
-            // buildSchema falls back to the base (type/subtype/name/margin).
-            // arc gets its slice from shapes/arc.js (direction + locating).
-            const whiteListKey = useMemo(
-              () => buildSchema(edit_tar, {
-                shape_list, renderMethods, refChainHasLoop,
-                ACT_EDIT_TAR_ELE_TRACE_UPDATE,
-              }),
-              [edit_tar.id, edit_tar.type, edit_tar.subtype, edit_tar.ref, shape_list,
-               ACT_EDIT_TAR_ELE_TRACE_UPDATE]
-            );
-
-            UIArr.push(<BASE_COM.JsonEditBlock key="mainConfigTable" object={edit_tar}
-              dict={DICT}
-              dictTheme={edit_tar.type}
-              renderLib={renderMethods}
-              jsonChange={(original_obj, target, type, evt) => {
-                let lastKey = target.keyTrace[target.keyTrace.length - 1];
-                if (type == "input-number") {
-                  let parseNum = parseFloat(evt.target.value);
-                  target.obj[lastKey] = Number.isFinite(parseNum) ? parseNum : target.obj[lastKey];
-                }
-                else if (type == "input")
-                  target.obj[lastKey] = evt.target.value;
-                else if (type == "switch")
-                  target.obj[lastKey] = evt.target.checked?-1:1;
-
-                let updated_obj = original_obj;
-                ec_canvas.SetShape(updated_obj, updated_obj.id);
-              }}
-              whiteListKey={whiteListKey} />);
-          }
-          break;
-
-      }
+          const lastKey = target.keyTrace[target.keyTrace.length - 1];
+          const field = fieldFor(edit_tar, lastKey);
+          if (!applyFieldChange(field, target, type, evt)) return;
+          ec_canvas.SetShape(original_obj, original_obj.id);
+        }}
+      />);
 
     }
 

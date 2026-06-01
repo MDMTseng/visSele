@@ -3,14 +3,16 @@
 import Color from 'color';
 import { closestPointOnPoints } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
+import { buildWhiteListKeyFromFields } from './_schemaHelpers';
 
 export const type = 'aux_point';
 
-// Editor property-sheet schema slice for aux_point.
+export const fields = {
+  angleDeg: { editor: 'AngleRangeSetup' },
+};
+
 export function buildWhiteListKey(ctx) {
-  return {
-    angleDeg: 'AngleRangeSetup',
-  };
+  return buildWhiteListKeyFromFields(fields, ctx);
 }
 
 // canvasCtrl: aux_point refs a line + a search_point (their intersection).

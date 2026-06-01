@@ -13,7 +13,7 @@ import {
   LineCentralNormal,
   closestPointOnLine,
   closestPointOnPoints,
-  distance_point_point
+  distance_point_point,
 } from 'UTIL/MathTools';
 
 
@@ -1527,6 +1527,40 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     let matrix = this.worldTransform();
     this.setMatrix(ctx, matrix);
+
+    // Build {shape_id → cal_hits} from the latest inspection report. Core
+    // emits cal_hits in OBJECT-FRAME mm (the def's own coord system) so
+    // they overlay the def shape directly — no inverse transform needed.
+    //
+    // Staleness gate: the reducer snapshots per-shape matching-relevant
+    // fields (pt1/pt2/pt3/margin/locating/caliper/edge) into
+    // inspReport.shape_fingerprints at inspect-time. If the user edits the
+    // def afterward, the current fingerprint won't match — skip those hits
+    // rather than showing data that doesn't reflect the current params.
+    this.rUtil.cal_hits_by_id = {};
+    const rpt = this.edit_DB_info && this.edit_DB_info.inspReport;
+    const single = rpt && rpt.reports && rpt.reports[0];
+    if (single) {
+      const fps = rpt.shape_fingerprints || {};
+      const fpOf = (s) => JSON.stringify({
+        pt1: s.pt1, pt2: s.pt2, pt3: s.pt3,
+        margin: s.margin, locating: s.locating,
+        caliper: s.caliper, edge: s.edge,
+      });
+      const shapeList = this.edit_DB_info._obj && this.edit_DB_info._obj.shapeList || [];
+      const byId = new Map(shapeList.map((s) => [s.id, s]));
+      const collect = (arr) => {
+        if (!arr) return;
+        for (const r of arr) {
+          if (!(r && r.cal_hits && r.id !== undefined)) continue;
+          const cur = byId.get(r.id);
+          if (cur && fps[r.id] !== undefined && fpOf(cur) !== fps[r.id]) continue; // stale
+          this.rUtil.cal_hits_by_id[r.id] = r.cal_hits;
+        }
+      };
+      collect(single.detectedLines);
+      collect(single.detectedCircles);
+    }
 
     {
       let center = this.db_obj.getsig360infoCenter();

@@ -5,19 +5,48 @@ import Color from 'color';
 import { LineCentralNormal } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
+import { caliperField, edgeField, drawLineCalipers, drawCaliperHits } from './_caliperFields';
 
 export const type = 'line';
 
 // Single source for both editor schema and applyDefaults.
 // caliper locating mode: "contour" (legacy) | "caliper". Core treats anything
 // != "caliper" as contour, so normalize keeps the dropdown value sane.
+// caliper/edge sub-groups are hidden + zero-cost when locating == "contour";
+// switching to "caliper" lazy-inits them with the core's defaults (count=30).
 export const fields = {
   vertex_touch_searching: { editor: 'switch', default: false, normalize: (v) => v === true },
   locating: {
     editor: (ctx) => ({ __OBJ__: ctx.renderMethods.Dropdown_List, list: ['contour', 'caliper'] }),
     default: 'contour',
     normalize: (v) => (v === 'caliper' ? 'caliper' : 'contour'),
+    // Persist caliper/edge defaults onto the STORED shape when the user
+    // first flips locating to 'caliper'. Without this, the property sheet
+    // shows the derive-defaults (on the clone) while the canvas reads the
+    // stored shape (no caliper sub-object) and uses its own fallback —
+    // they disagree until the user edits a sub-field.
+    onChange: (obj) => {
+      if (obj.locating !== 'caliper') return;
+      const count = 10;
+      if (obj.caliper === undefined) {
+        const len = (obj.pt1 && obj.pt2)
+          ? Math.hypot(obj.pt2.x - obj.pt1.x, obj.pt2.y - obj.pt1.y) : 0;
+        obj.caliper = {
+          count,
+          width: (len > 0 ? len / count : 0.1),
+          min_inliers: 0,
+          max_error: 0,
+        };
+      }
+      if (obj.edge === undefined) {
+        obj.edge = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 0 };
+      }
+    },
   },
+  caliper: caliperField(10, (s) =>
+    (s.pt1 && s.pt2) ? Math.hypot(s.pt2.x - s.pt1.x, s.pt2.y - s.pt1.y) : 0
+  ),
+  edge:    edgeField({ method: 'strongest', polarity: 'falling' }),
 };
 
 export function buildWhiteListKey(ctx) {
@@ -52,33 +81,71 @@ export function draw(ctx, shape, renderer, { inFullDisplay = true } = {}) {
   shapeColor = Color(shapeColor).alpha(0.8);
 
   let cnormal = LineCentralNormal(shape);
-  let drawMargin = renderer.getSearchDirectionLineSize();
-  if (inFullDisplay) drawMargin = shape.margin;
-  ctx.lineWidth = drawMargin * 2;
-  renderer.drawReportLine(ctx, {
-    x0: shape.pt1.x, y0: shape.pt1.y,
-    x1: shape.pt2.x, y1: shape.pt2.y,
-  });
+  const isCaliper = (shape.locating === 'caliper');
 
-  ctx.lineWidth = renderer.getSearchDirectionLineSize();
-  ctx.strokeStyle = shapeColor;
-  let marginOffset = drawMargin + ctx.lineWidth / 2;
-  renderer.drawReportLine(ctx, {
-    x0: shape.pt1.x + cnormal.vx * marginOffset, y0: shape.pt1.y + cnormal.vy * marginOffset,
-    x1: shape.pt2.x + cnormal.vx * marginOffset, y1: shape.pt2.y + cnormal.vy * marginOffset,
-  });
+  // Contour-mode margin band + search-vector offset line: the wide red strip
+  // visualizing the contour-path search range. Meaningless in caliper mode
+  // (calipers define their own search via cal_length/cal_width), so the
+  // caliper boxes replace it entirely.
+  if (!isCaliper) {
+    let drawMargin = renderer.getSearchDirectionLineSize();
+    if (inFullDisplay) drawMargin = shape.margin;
+    ctx.lineWidth = drawMargin * 2;
+    renderer.drawReportLine(ctx, {
+      x0: shape.pt1.x, y0: shape.pt1.y,
+      x1: shape.pt2.x, y1: shape.pt2.y,
+    });
+
+    ctx.lineWidth = renderer.getSearchDirectionLineSize();
+    ctx.strokeStyle = shapeColor;
+    let marginOffset = drawMargin + ctx.lineWidth / 2;
+    renderer.drawReportLine(ctx, {
+      x0: shape.pt1.x + cnormal.vx * marginOffset, y0: shape.pt1.y + cnormal.vy * marginOffset,
+      x1: shape.pt2.x + cnormal.vx * marginOffset, y1: shape.pt2.y + cnormal.vy * marginOffset,
+    });
+  } else {
+    // Caliper mode: just stroke the nominal line itself thinly so the user
+    // still sees pt1→pt2; the boxes carry the search-range visualization.
+    ctx.lineWidth = renderer.getIndicationLineSize();
+    ctx.strokeStyle = shapeColor;
+    renderer.drawReportLine(ctx, {
+      x0: shape.pt1.x, y0: shape.pt1.y,
+      x1: shape.pt2.x, y1: shape.pt2.y,
+    });
+  }
 
   ctx.strokeStyle = 'gray';
   renderer.drawpoint(ctx, shape.pt1);
   renderer.drawpoint(ctx, shape.pt2);
+
+  // Caliper-mode overlay: N caliper boxes along the line. Editor-mode only.
+  // shape.caliper may be undefined just after the user toggles locating to
+  // 'caliper' — the helper falls back to the core defaults.
+  if (inFullDisplay && isCaliper) {
+    drawLineCalipers(ctx, shape.pt1, shape.pt2, shape.caliper, renderer, shape.margin);
+    // Per-caliper hit X marks. Two sources:
+    //   • shape.cal_hits — merged during inspection-mode by
+    //     ShapeAdjustsWithInspectionResult (preferred when present).
+    //   • renderer.cal_hits_by_id[id] — fallback for def-conf, built from
+    //     edit_info.inspReport in DEFCONF_CanvasComponent.draw_DEFCONF.
+    // Both absent => no inspection has run yet for this def; render nothing.
+    const hits = shape.cal_hits
+      || (renderer.cal_hits_by_id && renderer.cal_hits_by_id[shape.id]);
+    if (hits) drawCaliperHits(ctx, hits, renderer);
+  }
 }
 
 // Inspection-mode draw — minimal (no margin overlays). Extracted from
-// renderUTIL.drawInspectionShapeList.case SHAPE_TYPE.line.
+// renderUTIL.drawInspectionShapeList.case SHAPE_TYPE.line. Caliper-mode reports
+// carry per-caliper hits (shape.cal_hits, merged in ShapeAdjustsWithInspectionResult).
+// Overlay them when renderer.show_caliper_hits is on (System_Setting flag).
 export function drawInspection(ctx, shape, renderer) {
   ctx.lineWidth = renderer.getIndicationLineSize();
   renderer.drawReportLine(ctx, {
     x0: shape.pt1.x, y0: shape.pt1.y,
     x1: shape.pt2.x, y1: shape.pt2.y,
   });
+  if (renderer.show_caliper_hits !== false && shape.cal_hits) {
+    drawCaliperHits(ctx, shape.cal_hits, renderer);
+  }
 }

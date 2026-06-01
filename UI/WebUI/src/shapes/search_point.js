@@ -3,12 +3,20 @@
 import Color from 'color';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
+import { edgeField } from './_caliperFields';
 
 export const type = 'search_point';
 
 // search_far has a migration shim: legacy defs used `search_style` (0/1) before
 // the boolean; preserve that mapping when the field is missing. The schema's
 // `default` only fires when `derive` doesn't produce a value.
+//
+// `locating` (contour|caliper) is distinct from `locating_anchor` (a bool for
+// "use this as the deformation-correction anchor"). They're both used by the
+// core but unrelated semantically. When `locating == 'caliper'` the core runs
+// a single caliper_measure along the search vector (no cal_count geometry,
+// unlike line/arc), so search_point gets the `edge` sub-group only.
+// Defaults match core (search_point: method='first', polarity='any').
 export const fields = {
   angleDeg:         { editor: 'AngleRangeSetup' },
   search_far:       {
@@ -16,6 +24,12 @@ export const fields = {
     default: false,
     derive: (shape) => (shape.search_style !== undefined ? shape.search_style == 1 : undefined),
   },
+  locating: {
+    editor: (ctx) => ({ __OBJ__: ctx.renderMethods.Dropdown_List, list: ['contour', 'caliper'] }),
+    default: 'contour',
+    normalize: (v) => (v === 'caliper' ? 'caliper' : 'contour'),
+  },
+  edge:             edgeField({ method: 'first', polarity: 'any' }),
   locating_anchor:  { editor: 'switch', default: false, normalize: (v) => v === true },
   line_thickness_value: { skipEditor: true, default: 0, normalize: (v) => (typeof v === 'number' ? v : 0) },
 };
@@ -87,6 +101,7 @@ export function draw(ctx, shape, renderer, {
     ctx.strokeStyle = 'red';
     renderer.draw_aimcross(ctx, shape.pt1, renderer.getPointSize() * 3, 0.3);
   }
+
 }
 
 // Inspection-mode draw — just a red cross at pt1. Extracted from

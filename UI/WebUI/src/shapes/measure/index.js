@@ -1,68 +1,30 @@
 import { round } from 'UTIL/MISC_Util';
 import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
+import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from '../_schemaHelpers';
+import * as distMod from './distance';
+import * as angleMod from './angle';
+import * as radiusMod from './radius';
+import * as circleInfoMod from './circle_info';
+import * as calcMod from './calc';
 
 // Per-shape module: MEASURE.
 // Part of the per-shape vertical-slice keystone (see OPENQUESTION). This file
 // owns:
-//   - applyDefaults:               defaults the editor expects (was a case in
-//                                  InspectionEditorLogic.Shape_Attr_Fill).
-//   - applyMeasureLimitCoupling:   the value/USL/LSL <-> UCL/LCL pure math used
-//                                  by DefConfUI's jsonChange handler.
+//   - fields:                       editor schema + defaults + per-field side
+//                                   effects (limit coupling, back_value toggle)
+//   - applyDefaults:                derived from fields (was a case in
+//                                   InspectionEditorLogic.Shape_Attr_Fill)
+//   - applyMeasureLimitCoupling:    pure math kept exported for devtools
+//                                   (__GP_MEASURE__) and any other consumer
+//
+// Per-subtype contributions (info_type, calc_f, ref-button row) come from the
+// subtype modules in measure/{distance,angle,radius,circle_info,calc}.js.
 
 export const type = 'measure';
 
-// canvasCtrl: measure refs depend on the subtype — dispatch to the subtype module.
-export function availableRefShapes(shapeList, subtype) {
-  const subMod = SUBTYPE_REGISTRY[subtype];
-  if (subMod && subMod.availableRefShapes) return subMod.availableRefShapes(shapeList);
-  return shapeList; // unknown subtype → unrestricted (matches legacy fallthrough)
-}
-
-// (no fitCameraCenter — measure doesn't pan-to-shape in the legacy code.)
-
-// Editor property-sheet schema slice for measure — merged with the base schema
-// (type/subtype/name/margin) + the per-subtype slice (info_type, calc_f, ...).
-export function buildWhiteListKey(ctx) {
-  const { edit_tar } = ctx;
-  const common = {
-    angleDeg: 'AngleRangeSetup',
-    value: 'input-number',
-    USL: 'ULRangeSetup', LSL: 'ULRangeSetup',
-    UCL: 'ULRangeSetup', LCL: 'ULRangeSetup',
-    value_b: 'input-number',
-    USL_b: 'ULRangeSetup', LSL_b: 'ULRangeSetup',
-    UCL_b: 'ULRangeSetup', LCL_b: 'ULRangeSetup',
-    back_value_setup: 'switch',
-    importance: 'input-number',
-    width: 'SimpleSetup',
-    quality_essential: 'switch',
-    orientation_essential: 'switch',
-    NGasNA: 'switch',
-    NAasNG: 'switch',
-    value_A: 'input-number',
-    value_B: 'input-number',
-    value_X: 'input-number',
-    value_Y: 'input-number',
-    ref_baseLine: { __OBJ__: 'btn', id: 'div', element: 'div' },
-  };
-  // The default `ref` is a row of 3 ref-pick buttons; calc subtype replaces it
-  // with its calc_f editor (handled in calc.js below).
-  const baseRef = (edit_tar.subtype === SHAPE_TYPE.measure_subtype.calc) ? undefined : {
-    __OBJ__: 'div',
-    ...[0, 1, 2].reduce((acc, key) => {
-      acc[key + ''] = { __OBJ__: 'btn', id: 'div', element: 'div' };
-      return acc;
-    }, {}),
-  };
-  // Subtype-specific contributions (info_type for circle_info, calc_f for calc, etc.)
-  const subMod = SUBTYPE_REGISTRY[edit_tar.subtype];
-  const subSlice = (subMod && subMod.buildWhiteListKey) ? subMod.buildWhiteListKey(ctx) : {};
-  return { ...common, ref: baseRef, ...subSlice };
-}
-
 // Per-subtype registry — keyed by SHAPE_TYPE.measure_subtype.<name>. Each
-// subtype module exports draw (wired in the switch below) and may export
-// buildWhiteListKey (buildWhiteListKey above dispatches via this map).
+// subtype module exports draw + availableRefShapes; some also export their
+// own buildWhiteListKey (circle_info.info_type, calc.calc_f).
 const SUBTYPE_REGISTRY = {
   [SHAPE_TYPE.measure_subtype.distance]:    distMod,
   [SHAPE_TYPE.measure_subtype.angle]:       angleMod,
@@ -71,60 +33,138 @@ const SUBTYPE_REGISTRY = {
   [SHAPE_TYPE.measure_subtype.calc]:        calcMod,
 };
 
-export function applyDefaults(shape) {
-  let out = shape;
-  if (typeof out.value_A != 'number') { out = { ...out }; out.value_A = 0; }
-  if (typeof out.value_B != 'number') { out = { ...out }; out.value_B = 1; }
-  if (typeof out.value_X != 'number') { out = { ...out }; out.value_X = 0; }
-  if (typeof out.value_Y != 'number') { out = { ...out }; out.value_Y = 1; }
-  if (typeof out.quality_essential != 'boolean')     { out = { ...out }; out.quality_essential = true; }
-  if (typeof out.orientation_essential != 'boolean') { out = { ...out }; out.orientation_essential = false; }
-  // Note: legacy Shape_Attr_Fill assigned these without cloning first (mutating
-  // the input if the booleans were missing). Preserve that for byte-identical
-  // behavior with the legacy path; out has already been cloned above if any of
-  // value_A/B/X/Y/quality/orientation were missing.
-  if (out.NGasNA != true) out.NGasNA = false;
-  if (out.NAasNG != true) out.NAasNG = false;
-  return out;
+// canvasCtrl: measure refs depend on the subtype — dispatch to the subtype module.
+export function availableRefShapes(shapeList, subtype) {
+  const subMod = SUBTYPE_REGISTRY[subtype];
+  if (subMod && subMod.availableRefShapes) return subMod.availableRefShapes(shapeList);
+  return shapeList;
 }
 
-// When a measure's value/USL/LSL (and their _b back-value variants) change in the
-// property sheet, derive the dependent control limits. Pure: mutates `obj`.
-// Extracted verbatim from DefConfUI's jsonChange (formulas preserved exactly,
-// including the value_b branch using obj.value).
-import * as distMod from './distance';
-import * as angleMod from './angle';
-import * as radiusMod from './radius';
-import * as circleInfoMod from './circle_info';
-import * as calcMod from './calc';
+// (no fitCameraCenter — measure doesn't pan-to-shape in the legacy code.)
 
+// onChange helpers for the limit-coupling fields. Each writes its dependent
+// control limits after the field's new value has been written to `obj`. Pure
+// math; preserve formulas exactly so byte-identical def serialization holds.
+const couple_value    = (obj, prev) => { if (obj.value === undefined) return;
+  obj.LCL = round(obj.LCL - prev + obj.value, 0.001);
+  obj.UCL = round(obj.UCL - prev + obj.value, 0.001);
+  obj.LSL = round(obj.LSL - prev + obj.value, 0.001);
+  obj.USL = round(obj.USL - prev + obj.value, 0.001); };
+const couple_value_b  = (obj, prev) => { if (obj.value === undefined) return;
+  obj.LCL_b = round(obj.LCL_b - prev + obj.value, 0.001);
+  obj.UCL_b = round(obj.UCL_b - prev + obj.value, 0.001);
+  obj.LSL_b = round(obj.LSL_b - prev + obj.value, 0.001);
+  obj.USL_b = round(obj.USL_b - prev + obj.value, 0.001); };
+const couple_LSL = (obj) => { if (obj.value === undefined) return;
+  obj.LCL = round(obj.value + (obj.LSL - obj.value) * 2 / 3, 0.001); };
+const couple_USL = (obj) => { if (obj.value === undefined) return;
+  obj.UCL = round(obj.value + (obj.USL - obj.value) * 2 / 3, 0.001); };
+const couple_LSL_b = (obj) => { if (obj.value === undefined) return;
+  obj.LCL_b = round(obj.value_b + (obj.LSL_b - obj.value_b) * 2 / 3, 0.001); };
+const couple_USL_b = (obj) => { if (obj.value === undefined) return;
+  obj.UCL_b = round(obj.value_b + (obj.USL_b - obj.value_b) * 2 / 3, 0.001); };
+
+// back_value_setup toggle: when turned ON, seed the _b values from the
+// non-_b counterparts (UI starts as a copy). When turned OFF, remove the
+// _b keys entirely so they vanish from the def + property sheet.
+const toggle_back_value = (obj /*, prev */) => {
+  if (obj.back_value_setup) {
+    obj.value_b = obj.value;
+    obj.USL_b   = obj.USL;
+    obj.LSL_b   = obj.LSL;
+    obj.UCL_b   = obj.UCL;
+    obj.LCL_b   = obj.LCL;
+  } else {
+    delete obj.value_b;
+    delete obj.USL_b;
+    delete obj.LSL_b;
+    delete obj.UCL_b;
+    delete obj.LCL_b;
+  }
+};
+
+// Common fields shared by every measure subtype. Declaration order =
+// property-sheet display order. `default` + `normalize` reproduce the legacy
+// applyDefaults type-coercion (number-or-zero / boolean-or-X). Keys without
+// defaults (USL/LSL/value etc.) are populated at measure creation upstream;
+// declaring them here only wires the editor schema + onChange.
+const commonFields = {
+  angleDeg:             { editor: 'AngleRangeSetup' },
+  value:                { editor: 'input-number', onChange: couple_value },
+  USL:                  { editor: 'ULRangeSetup', onChange: couple_USL },
+  LSL:                  { editor: 'ULRangeSetup', onChange: couple_LSL },
+  UCL:                  { editor: 'ULRangeSetup' },
+  LCL:                  { editor: 'ULRangeSetup' },
+  value_b:              { editor: 'input-number', onChange: couple_value_b },
+  USL_b:                { editor: 'ULRangeSetup', onChange: couple_USL_b },
+  LSL_b:                { editor: 'ULRangeSetup', onChange: couple_LSL_b },
+  UCL_b:                { editor: 'ULRangeSetup' },
+  LCL_b:                { editor: 'ULRangeSetup' },
+  back_value_setup:     { editor: 'switch', onChange: toggle_back_value },
+  importance:           { editor: 'input-number' },
+  width:                { editor: 'SimpleSetup' },
+  quality_essential:    { editor: 'switch', default: true,  normalize: (v) => typeof v === 'boolean' ? v : true },
+  orientation_essential:{ editor: 'switch', default: false, normalize: (v) => typeof v === 'boolean' ? v : false },
+  NGasNA:               { editor: 'switch', default: false, normalize: (v) => v === true },
+  NAasNG:               { editor: 'switch', default: false, normalize: (v) => v === true },
+  value_A:              { editor: 'input-number', default: 0, normalize: (v) => typeof v === 'number' ? v : 0 },
+  value_B:              { editor: 'input-number', default: 1, normalize: (v) => typeof v === 'number' ? v : 1 },
+  value_X:              { editor: 'input-number', default: 0, normalize: (v) => typeof v === 'number' ? v : 0 },
+  value_Y:              { editor: 'input-number', default: 1, normalize: (v) => typeof v === 'number' ? v : 1 },
+  ref_baseLine:         { editor: { __OBJ__: 'btn', id: 'div', element: 'div' } },
+};
+
+// Expose for jsonChange dispatch (applyFieldChange merges with subtype fields).
+export const fields = commonFields;
+
+// The default `ref` editor is a row of 3 ref-pick buttons; the calc subtype
+// replaces it with its calc_f editor (handled in calc.js). Kept as a literal
+// here because the spec depends on edit_tar.subtype, not on a per-key default.
+function refEditorFor(subtype) {
+  if (subtype === SHAPE_TYPE.measure_subtype.calc) return undefined;
+  return {
+    __OBJ__: 'div',
+    ...[0, 1, 2].reduce((acc, key) => {
+      acc[key + ''] = { __OBJ__: 'btn', id: 'div', element: 'div' };
+      return acc;
+    }, {}),
+  };
+}
+
+export function buildWhiteListKey(ctx) {
+  const { edit_tar } = ctx;
+  const common = buildWhiteListKeyFromFields(commonFields, ctx);
+  const subMod = SUBTYPE_REGISTRY[edit_tar.subtype];
+  const subSlice = (subMod && subMod.buildWhiteListKey) ? subMod.buildWhiteListKey(ctx) : {};
+  return { ...common, ref: refEditorFor(edit_tar.subtype), ...subSlice };
+}
+
+// Resolve the per-field onChange for a key on this measure shape. Used by
+// DefConfUI's unified jsonChange. Looks at common fields first; subtype-
+// specific fields can override (none today, but the lookup is symmetric).
+export function fieldFor(edit_tar, key) {
+  const subMod = SUBTYPE_REGISTRY[edit_tar.subtype];
+  const subFields = (subMod && subMod.fields) || null;
+  if (subFields && subFields[key]) return subFields[key];
+  return commonFields[key];
+}
+
+export function applyDefaults(shape) {
+  return applyDefaultsFromFields(shape, commonFields);
+}
+
+// Kept exported for devtools (__GP_MEASURE__) + any external consumer. The
+// dispatch by changedKey duplicates what the per-field onChange does; both
+// paths share the same couple_* primitives so they stay in sync.
 export function applyMeasureLimitCoupling(obj, changedKey, preVal) {
   if (obj.value === undefined) return;
   switch (changedKey) {
-    case "value":
-      obj.LCL = round(obj.LCL - preVal + obj.value, 0.001);
-      obj.UCL = round(obj.UCL - preVal + obj.value, 0.001);
-      obj.LSL = round(obj.LSL - preVal + obj.value, 0.001);
-      obj.USL = round(obj.USL - preVal + obj.value, 0.001);
-      break;
-    case "value_b":
-      obj.LCL_b = round(obj.LCL_b - preVal + obj.value, 0.001);
-      obj.UCL_b = round(obj.UCL_b - preVal + obj.value, 0.001);
-      obj.LSL_b = round(obj.LSL_b - preVal + obj.value, 0.001);
-      obj.USL_b = round(obj.USL_b - preVal + obj.value, 0.001);
-      break;
-    case "LSL":
-      obj.LCL = round((obj.value + (obj.LSL - obj.value) * 2 / 3), 0.001);
-      break;
-    case "USL":
-      obj.UCL = round((obj.value + (obj.USL - obj.value) * 2 / 3), 0.001);
-      break;
-    case "LSL_b":
-      obj.LCL_b = round((obj.value_b + (obj.LSL_b - obj.value_b) * 2 / 3), 0.001);
-      break;
-    case "USL_b":
-      obj.UCL_b = round((obj.value_b + (obj.USL_b - obj.value_b) * 2 / 3), 0.001);
-      break;
+    case "value":   couple_value(obj, preVal); break;
+    case "value_b": couple_value_b(obj, preVal); break;
+    case "LSL":     couple_LSL(obj); break;
+    case "USL":     couple_USL(obj); break;
+    case "LSL_b":   couple_LSL_b(obj); break;
+    case "USL_b":   couple_USL_b(obj); break;
   }
 }
 

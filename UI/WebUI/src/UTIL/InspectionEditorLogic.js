@@ -1035,6 +1035,12 @@ export class InspectionEditorLogic {
           ["pt1", "pt2"].forEach((key) => {
             eObject[key] = inspAdjObj[key];
           });
+          // Caliper-mode per-caliper hits — core emits them in OBJECT-FRAME
+          // mm (def coord system). Passed through unchanged so they always
+          // sit between the def's own pt1/pt2 regardless of which frame the
+          // canvas is rendering in. Consumers (per-shape drawInspection)
+          // apply the inspection transform at draw time if needed.
+          if (inspAdjObj.cal_hits) eObject.cal_hits = inspAdjObj.cal_hits;
           // console.log(dclone(eObject));
           // if (InspResult.isFlipped) {
           //   let tmp = eObject.pt1;
@@ -1052,7 +1058,7 @@ export class InspectionEditorLogic {
             if(inspAdjObj[key]!==undefined)//if report has the data use it
               eObject[key]= inspAdjObj[key];
             else
-            {//or calculate it from define data 
+            {//or calculate it from define data
               eObject[key].x -= inspAdjObj.x;
               eObject[key].y -= inspAdjObj.y;
               let mag = Math.hypot(eObject[key].x, eObject[key].y);
@@ -1060,6 +1066,9 @@ export class InspectionEditorLogic {
               eObject[key].y = eObject[key].y * inspAdjObj.r / mag + inspAdjObj.y;
             }
           });
+          // Caliper-mode per-caliper hits — see line case for the rationale
+          // (object-frame mm, passed through unchanged).
+          if (inspAdjObj.cal_hits) eObject.cal_hits = inspAdjObj.cal_hits;
         }
         break;
 

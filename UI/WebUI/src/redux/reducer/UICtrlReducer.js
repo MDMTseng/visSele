@@ -167,6 +167,18 @@ function StateReducer(newState, action) {
 
                   newState.edit_info.inspReport = inspReport;
                   inspReport.time_ms = currentTime_ms;
+                  // Snapshot per-shape def-relevant fields so the def-conf
+                  // cal_hits overlay can detect when the user has edited the
+                  // def since this inspection ran (stale → don't show hits).
+                  // Only fields that affect the matching outcome are hashed.
+                  const _fp = (s) => JSON.stringify({
+                    pt1: s.pt1, pt2: s.pt2, pt3: s.pt3,
+                    margin: s.margin, locating: s.locating,
+                    caliper: s.caliper, edge: s.edge,
+                  });
+                  const _shapeList = newState.edit_info._obj.shapeList || [];
+                  inspReport.shape_fingerprints = {};
+                  for (const s of _shapeList) inspReport.shape_fingerprints[s.id] = _fp(s);
 
                   if (mmpcampix === undefined) {
                     break;

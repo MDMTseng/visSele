@@ -33,6 +33,11 @@ class renderUTIL {
       C:6,
       _:3
     }
+    // Inspection overlay: per-caliper hits on line/arc reports. Toggled at
+    // runtime via System_Setting.SHOW_CALIPER_HITS_INSP; mirrored here by
+    // EverCheckCanvasComponent before each draw so per-shape drawInspection
+    // can gate the overlay without reading redux.
+    this.show_caliper_hits = true;
     this.renderParam = {
       base_Size: 2.5,
       size_Multiplier: 1,

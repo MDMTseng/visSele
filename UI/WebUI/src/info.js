@@ -12,6 +12,12 @@ const default_FLAG={
   version:current_version,
   ALLOW_SOFT_CAM:false,
 
+  // Inspection-mode overlay: per-caliper hits (green=inlier, red=outlier).
+  // Only meaningful for line/arc shapes whose def has locating=='caliper'.
+  // Toggleable at runtime from the inspection UI; mirrored on the renderer
+  // via EverCheckCanvasComponent before each draw.
+  SHOW_CALIPER_HITS_INSP:true,
+
   FI_MODE_UPLOAD_SKIP:10,
   CI_MODE_UPLOAD_SKIP:1,
   CI_MODE_StatSettingParam:{

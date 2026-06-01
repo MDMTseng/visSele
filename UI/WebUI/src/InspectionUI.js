@@ -990,10 +990,13 @@ class CanvasComponent extends React.Component {
         this.ec_canvas.EditDBInfoSync(props._edit_info);
         this.ec_canvas.SetState(ec_state);
         this.ec_canvas.SetMeasureDisplayRank(props.measureDisplayRank);
+        // Mirror System_Setting.SHOW_CALIPER_HITS_INSP to the renderer; per-
+        // shape drawInspection reads renderer.show_caliper_hits.
+        this.ec_canvas.rUtil.show_caliper_hits = props.showCaliperHits !== false;
         //this.ec_canvas.ctrlLogic();
         this.ec_canvas.draw();
         this.ec_canvas.doRotateView=this.props.renderObjAlignRotate;
-        
+
       }
       this.pre_img=props.img;
     }
@@ -1032,6 +1035,9 @@ const mapStateToProps_CanvasComponent = (state) => {
     c_state: state.UIData.c_state,
     img:state.UIData.edit_info.img,
     _edit_info:state.UIData.edit_info,
+    // Mirror the System_Setting overlay flag so updateCanvas can push it
+    // onto rUtil before each draw (per-shape drawInspection reads it).
+    showCaliperHits: state.UIData.System_Setting?.SHOW_CALIPER_HITS_INSP !== false,
     //just to trigger update if changed
   }
 }
@@ -1966,6 +1972,22 @@ class APP_INSP_MODE extends React.Component {
           onClick={() => {
             this.props.ACT_StatInfo_Clear();
           }} >清空統計數據</Button>
+
+        {/* Per-caliper hit overlay toggle. Default on; ignored for shapes
+            whose def has locating != 'caliper' (cal_hits is absent then). */}
+        <div key="caliper-hits-toggle" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <Switch
+            size="small"
+            checked={this.props.System_Setting?.SHOW_CALIPER_HITS_INSP !== false}
+            onChange={(val) => {
+              this.props.ACT_System_Setting_Update({
+                ...this.props.System_Setting,
+                SHOW_CALIPER_HITS_INSP: val,
+              });
+            }}
+          />
+          <span>顯示卡尺命中點 / Show caliper hits</span>
+        </div>
 
 
         <Divider orientation="left" key="img_tran_weight">圖像檢視側重</Divider>

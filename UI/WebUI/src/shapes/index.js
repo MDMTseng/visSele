@@ -28,3 +28,16 @@ export const SHAPE_REGISTRY = { line, arc, search_point, measure, aux_point, aux
 export function getShapeModule(type) {
   return SHAPE_REGISTRY[type];
 }
+
+// Resolve a per-field schema entry for a shape. Most shapes have a flat
+// `fields` decl keyed by property name; measure dispatches by subtype via
+// its own `fieldFor` (subtype slices like circle_info.info_type can declare
+// their own fields/onChange in the future). Returns undefined when no decl
+// exists — callers pass that through to `applyFieldChange` which then falls
+// back to the generic per-event-type value extraction.
+export function fieldFor(edit_tar, key) {
+  const mod = getShapeModule(edit_tar && edit_tar.type);
+  if (!mod) return undefined;
+  if (typeof mod.fieldFor === 'function') return mod.fieldFor(edit_tar, key);
+  return mod.fields ? mod.fields[key] : undefined;
+}
