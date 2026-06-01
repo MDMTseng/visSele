@@ -5,6 +5,7 @@
 
 #include "SearchPointCV.h"
 #include "logctrl.h"
+LOG_MODULE("match.sig360");
 #include <stdexcept>
 #include <common_lib.h>
 #include <algorithm>

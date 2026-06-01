@@ -59,11 +59,22 @@ enum {
 void log_set_global_level(int lv);
 int  log_get_global_level(void);
 
-/* Per-tag override.  Tag is matched as a substring against __FILENAME__.
- * Multiple tags may match a single emit; later overrides win.
- * Pass NULL/empty tag to no-op. */
+/* Per-tag override.  Tag matches:
+ *   - exact match against the TU's registered module name (LOG_MODULE), OR
+ *   - substring against __FILENAME__
+ * whichever produces a hit first.  Multiple tags may match; later overrides
+ * win.  Pass NULL/empty tag to no-op. */
 void log_set_tag_level(const char *tag, int lv);
 void log_clear_tag_levels(void);
+
+/* Register a translation-unit -> module name mapping.  Typically called
+ * from a static initialiser via the LOG_MODULE() macro, not by hand.
+ * file is __FILE__ at the call site (a stable string literal). */
+void log_register_tu_module(const char *file, const char *module_name);
+
+/* Look up the registered module for a file (returns NULL if not annotated).
+ * Used by the emit path. */
+const char *log_module_for_file(const char *file);
 
 /* Parse INSP_LOG-style spec: "global_level,tag:lv,tag:lv,...".
  * Global token is the bare level word (e.g. "warn") or omitted.
@@ -149,11 +160,63 @@ extern volatile int _log_global_level_cache;
 #define VA_ARGS(...) , ##__VA_ARGS__
 #endif
 
+/* --------------------------------------------------------------------------
+ *  LOG_MODULE -- per-TU module tag
+ *
+ *  Place ONE LOG_MODULE("name") at the top of a .cpp/.c file to give it a
+ *  semantic module name.  The module appears in log output:
+ *
+ *    [12.487][I][match.sig360][FeatureManager_sig360...:4711 func] msg
+ *
+ *  ...and per-tag level filters (INSP_LOG=warn,match.sig360:debug) can
+ *  match against the module name OR a filename substring.
+ *
+ *  Files without LOG_MODULE just omit the module column and fall back to
+ *  filename-substring matching for the tag filter.
+ *
+ *  Recommended taxonomy (Phase B annotation pass):
+ *    core / core.boot / core.insp
+ *    match.sig360 / match.binarize / match.caliper / match.judge / match.linemod
+ *    cam / cam.aravis / cam.bmp / cam.uvc / cam.mindvision
+ *    peri.stepper / peri.uinsp / peri.ttt
+ *    bpg / bpg.ws / bpg.sm
+ *    mjpeg / acv / calib / webui.api / webui.ws
+ *
+ *  C++ files use a static-init helper.  C files use the GCC/clang
+ *  `constructor` attribute (MSVC C compiler doesn't support this; the only
+ *  pure-C files in the tree are common_lib/Util*.c which can stay without
+ *  LOG_MODULE and just use filename-substring matching). */
+#ifdef __cplusplus
+}  /* close extern "C" so we can declare a C++ helper */
+struct _LogModuleRegisterer {
+    _LogModuleRegisterer(const char *file, const char *mod) {
+        log_register_tu_module(file, mod);
+    }
+};
+extern "C" {
+#define LOG_MODULE(name) \
+    static const _LogModuleRegisterer _log_module_register_obj(__FILE__, (name))
+#elif defined(__GNUC__) || defined(__clang__)
+#define LOG_MODULE(name) \
+    static void __attribute__((constructor)) \
+    _log_module_register_fn(void) { \
+        log_register_tu_module(__FILE__, (name)); \
+    }
+#else
+/* Pure-C without a static-constructor mechanism.  No-op; the file will use
+ * filename-substring matching for tag filters and won't show a module
+ * column in output.  MSVC C compiler hits this branch. */
+#define LOG_MODULE(name) /* no-op */
+#endif
+
 /* Hot path when muted: 1 read of _log_global_level_cache + 1 compare + branch.
- * NO format work, NO function call. */
+ * NO format work, NO function call.
+ *
+ * We pass __FILE__ (full path) rather than __FILENAME__ because the module
+ * registry keys by __FILE__.  log_emit derives the basename for display. */
 #define LOG_IF_(lv, fmt, ...) do { \
     if ((int)(lv) >= _log_global_level_cache) { \
-        log_emit((int)(lv), __FILENAME__, __LINE__, __func__, \
+        log_emit((int)(lv), __FILE__, __LINE__, __func__, \
                  fmt, ##__VA_ARGS__); \
     } \
 } while (0)

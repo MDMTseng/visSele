@@ -21,6 +21,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #ifdef _WIN32
@@ -45,6 +46,25 @@ const std::chrono::steady_clock::time_point g_log_t0 =
 
 struct TagLevel { std::string tag; int lv; };
 std::vector<TagLevel> g_tag_levels;
+int g_global_level_requested = LOG_LV_INFO;  /* what the user/env asked for */
+
+/* Re-derive _log_global_level_cache as min(requested, any tag override).
+ * Called under g_log_mutex whenever the global request or tag set changes. */
+void recompute_cache_locked() {
+    int min_lv = g_global_level_requested;
+    for (auto &t : g_tag_levels) if (t.lv < min_lv) min_lv = t.lv;
+    _log_global_level_cache = min_lv;
+}
+
+/* TU -> module name registry.  Populated by LOG_MODULE() static initialisers
+ * during program load (before main).  Static-init order across TUs is not
+ * guaranteed, so we wrap the map in a function-local static (Meyer's
+ * singleton) -- guaranteed constructed on first use.  Reads are done under
+ * g_log_mutex. */
+inline std::unordered_map<std::string, std::string> &file_to_module() {
+    static std::unordered_map<std::string, std::string> m;
+    return m;
+}
 
 struct SinkEntry {
     int id;
@@ -108,12 +128,25 @@ bool stderr_is_tty() {
 }
 
 /* Walk the tag table; later-set tags override earlier ones for files where
- * multiple substrings match. Returns the effective minimum level. */
-int effective_level_for(const char *file) {
-    int lv = _log_global_level_cache;
-    if (!file) return lv;
+ * multiple substrings match.  A tag matches if either:
+ *   - the file's registered module name equals the tag exactly, OR
+ *   - the tag is a substring of the filename
+ * Returns the effective minimum level for this file/module.
+ *
+ * Uses g_global_level_requested (the value the user/env asked for) as the
+ * baseline, NOT _log_global_level_cache -- the cache is the MIN across all
+ * tags so it lets the macro hot-path skip muted calls. */
+int effective_level_for(const char *file, const char *module) {
+    int lv = g_global_level_requested;
+    if (!file && !module) return lv;
     for (auto &t : g_tag_levels) {
-        if (strstr(file, t.tag.c_str()) != nullptr) lv = t.lv;
+        bool hit = false;
+        if (module && !t.tag.empty() && std::strcmp(module, t.tag.c_str()) == 0) {
+            hit = true;
+        } else if (file && std::strstr(file, t.tag.c_str()) != nullptr) {
+            hit = true;
+        }
+        if (hit) lv = t.lv;
     }
     return lv;
 }
@@ -154,7 +187,7 @@ void ensure_env_parsed_locked() {
         size_t colon = tok.find(':');
         if (colon == std::string::npos) {
             int lv = parse_level_word(tok);
-            if (lv >= 0) _log_global_level_cache = lv;
+            if (lv >= 0) g_global_level_requested = lv;
         } else {
             std::string tag = tok.substr(0, colon);
             int lv = parse_level_word(tok.substr(colon + 1));
@@ -165,6 +198,7 @@ void ensure_env_parsed_locked() {
         if (comma == std::string::npos) break;
         pos = comma + 1;
     }
+    recompute_cache_locked();
 }
 
 } /* anonymous namespace */
@@ -175,7 +209,8 @@ void log_set_global_level(int lv) {
     if (lv < LOG_LV_TRACE) lv = LOG_LV_TRACE;
     if (lv > LOG_LV_OFF)   lv = LOG_LV_OFF;
     std::lock_guard<std::mutex> lk(g_log_mutex);
-    _log_global_level_cache = lv;
+    g_global_level_requested = lv;
+    recompute_cache_locked();
 }
 
 int log_get_global_level(void) {
@@ -188,11 +223,28 @@ void log_set_tag_level(const char *tag, int lv) {
     if (lv > LOG_LV_OFF)   lv = LOG_LV_OFF;
     std::lock_guard<std::mutex> lk(g_log_mutex);
     g_tag_levels.push_back(TagLevel{std::string(tag), lv});
+    recompute_cache_locked();
 }
 
 void log_clear_tag_levels(void) {
     std::lock_guard<std::mutex> lk(g_log_mutex);
     g_tag_levels.clear();
+    recompute_cache_locked();
+}
+
+void log_register_tu_module(const char *file, const char *module_name) {
+    if (!file || !module_name) return;
+    std::lock_guard<std::mutex> lk(g_log_mutex);
+    /* Last registration wins (idempotent for re-init). */
+    file_to_module()[std::string(file)] = std::string(module_name);
+}
+
+const char *log_module_for_file(const char *file) {
+    if (!file) return nullptr;
+    std::lock_guard<std::mutex> lk(g_log_mutex);
+    auto it = file_to_module().find(std::string(file));
+    if (it == file_to_module().end()) return nullptr;
+    return it->second.c_str();
 }
 
 void log_parse_spec(const char *spec) {
@@ -415,29 +467,45 @@ void log_emit(int lv, const char *file, int line, const char *func,
     if (user_len < 0) user_len = 0;
     if (user_len >= (int)sizeof(user_buf)) user_len = (int)sizeof(user_buf) - 1;
 
-    /* Build the prefixed line. Keep newline at end. */
-    char line_buf[1280];
-    const char *fname = short_filename(file);
-    int n = snprintf(line_buf, sizeof(line_buf),
-                     "[%10.3f][%c][%-20.20s:%-4d %s] %s\n",
-                     now_ms(), level_letter(lv),
-                     fname, line, func ? func : "?", user_buf);
-    if (n < 0) n = 0;
-    if (n >= (int)sizeof(line_buf)) {
-        n = (int)sizeof(line_buf) - 1;
-        line_buf[n - 1] = '\n';
-    }
-
     std::lock_guard<std::mutex> lk(g_log_mutex);
 
     /* Lazy env parse on first emit, while we hold the mutex. */
     ensure_env_parsed_locked();
 
+    /* Look up module for this TU.  Lookup is cheap (hash by file ptr). */
+    const char *module = nullptr;
+    if (file) {
+        auto it = file_to_module().find(std::string(file));
+        if (it != file_to_module().end()) module = it->second.c_str();
+    }
+
     /* Per-tag check (may override the macro's global-cache check; either way
      * the user wanted level X for this tag and we honor it here). */
     if (!g_tag_levels.empty()) {
-        int eff = effective_level_for(file);
+        int eff = effective_level_for(file, module);
         if (lv < eff) return;
+    }
+
+    /* Build the prefixed line.  Includes module column iff the TU has one
+     * registered via LOG_MODULE; otherwise omit to save width. */
+    char line_buf[1280];
+    const char *fname = short_filename(file);
+    int n;
+    if (module) {
+        n = snprintf(line_buf, sizeof(line_buf),
+                     "[%10.3f][%c][%-14.14s][%-20.20s:%-4d %s] %s\n",
+                     now_ms(), level_letter(lv), module,
+                     fname, line, func ? func : "?", user_buf);
+    } else {
+        n = snprintf(line_buf, sizeof(line_buf),
+                     "[%10.3f][%c][%-20.20s:%-4d %s] %s\n",
+                     now_ms(), level_letter(lv),
+                     fname, line, func ? func : "?", user_buf);
+    }
+    if (n < 0) n = 0;
+    if (n >= (int)sizeof(line_buf)) {
+        n = (int)sizeof(line_buf) - 1;
+        line_buf[n - 1] = '\n';
     }
 
     /* Default stderr sink. ANSI only when TTY; auto-stripped on pipes/files. */
