@@ -52,6 +52,7 @@ export const NAMESPACES = Object.freeze({
   'comm.bpg':      'info',   // BPG framing/dispatch
   'comm.db':       'info',   // DB_WS inspection-record persistence
   'comm.api':      'info',   // generic API middleware (MW_API)
+  'comm.corelog':  'info',   // CoreLogClient (WebUI ↔ inspd_log.v1 @ :4091/log)
   'editor.model':  'info',   // InspectionEditorLogic (def model, refs, lookups)
   'editor.reducer':'info',   // UICtrlReducer state transitions
   'editor.action': 'info',   // ActionThrottle middleware

@@ -55,6 +55,7 @@ import {
 import { useSelector,useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Drawer from 'antd/lib/drawer';
+import CoreLogPanel from './component/CoreLogPanel';
 
 var require=require||(()=>undefined);
 
@@ -1848,7 +1849,21 @@ class APPMasterX extends React.Component {
             <AntButton icon={<CloudUploadOutlined />} onClick={() => downloadDiag()}>
               下載診斷紀錄 / Download Diagnostics
             </AntButton>
+            <AntButton style={{ marginLeft: 8 }} onClick={() => this.setState({show_core_log_panel:true})}>
+              Core Logs
+            </AntButton>
           </div>
+          <Drawer
+            title="Core Logs (inspd_log)"
+            placement="right"
+            width="90vw"
+            closable={true}
+            destroyOnClose={true}
+            onClose={() => this.setState({show_core_log_panel:false})}
+            visible={!!this.state.show_core_log_panel}
+          >
+            {this.state.show_core_log_panel && <CoreLogPanel height="calc(100vh - 100px)" />}
+          </Drawer>
 
           <System_Status_Display showText iconSize={30} gridSize={90}
             onItemClick={(connInfo)=>{

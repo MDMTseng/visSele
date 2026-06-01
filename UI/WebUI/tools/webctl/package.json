@@ -9,5 +9,8 @@
   },
   "dependencies": {
     "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "ws": "^8.21.0"
   }
 }
