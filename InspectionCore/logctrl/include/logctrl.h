@@ -92,6 +92,33 @@ void log_unregister_sink(int sink_id);
 void log_set_stderr_enabled(int enabled);
 
 /* --------------------------------------------------------------------------
+ *  SHM ring buffer sink (Phase A2)
+ *
+ *  Open / create a shared-memory ring (see log_ring.h for the layout) and
+ *  register a sink that writes each log line into the next slot.  The
+ *  Phase F drainer daemon (inspd_log) opens the same shm by name and
+ *  reads from there.
+ *
+ *  shm_name        : shm object name.  Pass NULL/"" to use the env override
+ *                    INSP_LOG_RING_NAME, or "insp_log_ring" by default.
+ *                    On POSIX this becomes /dev/shm/insp_log_ring; on Win
+ *                    it becomes a named CreateFileMapping section.
+ *  size_mb         : ring size in MB.  0 = use INSP_LOG_RING_MB env or 16.
+ *  Returns the sink id (> 0) on success, 0 on failure (no shm available --
+ *  e.g., the env doesn't permit, or out of memory).  Safe to call even if
+ *  no Phase F drainer is running; logs just fill the ring and wrap.
+ * -------------------------------------------------------------------------- */
+int  log_open_shm_ring(const char *shm_name, int size_mb);
+void log_close_shm_ring(void);
+
+/* Returns the producer's mapping pointer (the LogRingHeader is at offset 0)
+ * if a shm ring is currently open; NULL otherwise.  Provided primarily so
+ * tests and the in-process recovery code (Phase G) can inspect the ring
+ * without opening a second mapping.  Don't rely on this in normal code --
+ * the Phase F drainer uses connSharedMemory in a separate process. */
+void *log_get_shm_ring_mapping(void);
+
+/* --------------------------------------------------------------------------
  *  Internal: emit (called by the macros after the cheap level check)
  * -------------------------------------------------------------------------- */
 

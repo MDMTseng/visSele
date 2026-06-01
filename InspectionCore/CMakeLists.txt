@@ -84,10 +84,18 @@ target_include_directories(cJSON PUBLIC contrib/cJSON)
 
 # --- logctrl ---------------------------------------------------------------
 # Phase A: C++ rewrite with levels / per-tag filter / mutex / pluggable sinks.
-# Header is extern-"C"-wrapped so C callers still work.  Phase A2 will add
-# the shm-ring sink (sits on contrib/smem_channel); F adds the drainer daemon.
+# Phase A2: shm-ring sink on contrib/smem_channel.
+# Header is extern-"C"-wrapped so C callers still work.  Phase F will add the
+# drainer daemon that reads from this same ring.
 add_library(logctrl STATIC logctrl/logctrl.cpp)
 target_include_directories(logctrl PUBLIC logctrl/include)
+# smem_channel target is defined further down; we just record the dep here
+# and CMake resolves the order.
+target_link_libraries(logctrl PUBLIC smem_channel)
+
+# Phase A2 smoke test for the shm ring sink.
+add_executable(logctrl_test_ring logctrl/test_ring.cpp)
+target_link_libraries(logctrl_test_ring PRIVATE logctrl)
 
 # --- circleFitting ---------------------------------------------------------
 add_library(CircleFitting STATIC

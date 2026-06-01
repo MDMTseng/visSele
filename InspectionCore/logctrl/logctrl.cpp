@@ -10,7 +10,10 @@
  */
 
 #include <logctrl.h>
+#include <log_ring.h>
+#include <sp.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
@@ -54,6 +57,18 @@ int g_next_sink_id = 1;
 bool g_stderr_enabled = true;
 int  g_stderr_is_tty  = -1;   /* -1 = not yet detected; 0/1 = cached */
 bool g_env_parsed     = false;
+
+/* SHM ring state (Phase A2).  Held under g_log_mutex while emit walks
+ * sinks; producer-only on the writer side. */
+struct ShmRingState {
+    ShareMemoryInfo info;        /* from contrib/smem_channel */
+    LogRingHeader  *hdr;         /* mapped header */
+    int             sink_id;     /* id returned by log_register_sink */
+    bool            owns_unlink; /* if we created it, we shm_unlink on close */
+    std::string     name;
+    bool            attached;
+};
+ShmRingState g_shm_ring = {};
 
 double now_ms() {
     auto t = std::chrono::steady_clock::now();
@@ -222,6 +237,171 @@ void log_unregister_sink(int sink_id) {
 void log_set_stderr_enabled(int enabled) {
     std::lock_guard<std::mutex> lk(g_log_mutex);
     g_stderr_enabled = (enabled != 0);
+}
+
+/* ---------- SHM ring buffer sink (Phase A2) ---------- */
+
+/* Sink callback.  Already runs under g_log_mutex (registered via the normal
+ * sink interface), so no additional locking is needed against other sinks.
+ *
+ * Cross-process consistency:  we use the per-slot seq protocol (odd =
+ * writing, even = stable) so the Phase F drainer can detect torn reads even
+ * though the drainer lives in a separate address space. */
+static void shm_ring_sink(int lv, const char *file, int line,
+                          const char *line_text, void *ctx) {
+    auto *st = static_cast<ShmRingState *>(ctx);
+    if (!st || !st->attached || !st->hdr) return;
+
+    LogRingHeader *h = st->hdr;
+    /* fetch_add returns the previous value; that's the slot we write. */
+    uint64_t idx = h->head.fetch_add(1, std::memory_order_acq_rel);
+    LogSlot *slot = log_ring_slot(h, idx);
+
+    /* Mark slot as in-write (odd seq). Use a fresh-and-increasing seq based
+     * on idx*2; that way wraparound reuse gives the drainer a strictly
+     * monotonic seq to compare against. */
+    uint64_t target_seq = (idx + 1) * 2;
+    slot->seq.store(target_seq | 1, std::memory_order_release);
+
+    slot->level = lv;
+    slot->line  = line;
+
+    /* Copy the formatted line text, truncating to LOG_SLOT_TEXT-1 to leave
+     * room for NUL.  We don't need to copy file -- it's in line_text. */
+    (void)file;
+    size_t n = std::strlen(line_text);
+    if (n > LOG_SLOT_TEXT - 1) n = LOG_SLOT_TEXT - 1;
+    std::memcpy(slot->text, line_text, n);
+    slot->text[n] = '\0';
+
+    /* Commit (even seq).  Drainer reads acquire here. */
+    slot->seq.store(target_seq, std::memory_order_release);
+
+    /* Heartbeat (steady-clock ms; drainer compares to its own clock with a
+     * generous tolerance, so absolute alignment isn't required). */
+    auto now = std::chrono::steady_clock::now().time_since_epoch();
+    auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+    h->heartbeat_ms.store(static_cast<uint64_t>(ms),
+                          std::memory_order_relaxed);
+}
+
+int log_open_shm_ring(const char *shm_name, int size_mb) {
+    std::lock_guard<std::mutex> lk(g_log_mutex);
+    if (g_shm_ring.attached) return g_shm_ring.sink_id;
+
+    /* Name resolution: arg > env > default. */
+    std::string name;
+    if (shm_name && *shm_name) {
+        name = shm_name;
+    } else if (const char *e = std::getenv("INSP_LOG_RING_NAME")) {
+        name = e;
+    } else {
+        name = "insp_log_ring";
+    }
+
+    /* Size: arg > env > default 16 MB. */
+    int mb = size_mb;
+    if (mb <= 0) {
+        if (const char *e = std::getenv("INSP_LOG_RING_MB")) {
+            mb = std::atoi(e);
+        }
+    }
+    if (mb <= 0) mb = 16;
+    if (mb > 1024) mb = 1024;  /* sanity cap */
+
+    /* Slot count derived from mb. */
+    size_t total = static_cast<size_t>(mb) * 1024 * 1024;
+    uint32_t slot_count = static_cast<uint32_t>(
+        (total - LOG_HEADER_BYTES) / LOG_SLOT_BYTES);
+    if (slot_count < 16) return 0;  /* refuse silly small */
+
+    size_t need = log_ring_total_bytes(slot_count);
+
+    /* Try connect first (drainer may have created it).  If not, create. */
+    ShareMemoryInfo info = {};
+    bool owns_unlink = false;
+    int rc = connSharedMemory(name, need, &info);
+    if (rc != 0) {
+        rc = createSharedMemory(name, need, &info);
+        if (rc != 0) {
+            std::fprintf(stderr,
+                "[logctrl] shm open '%s' failed (create rc=%d)\n",
+                name.c_str(), rc);
+            return 0;
+        }
+        owns_unlink = true;
+    }
+    if (!info.ptr) {
+        std::fprintf(stderr,
+            "[logctrl] shm '%s' mapped null\n", name.c_str());
+        return 0;
+    }
+
+    LogRingHeader *h = static_cast<LogRingHeader *>(info.ptr);
+
+    /* If the region is fresh (or stale from a previous run with a different
+     * size), initialize the header.  If the magic + size match, reuse the
+     * existing head index so we don't lose drainer-side context. */
+    if (h->magic != LOG_RING_MAGIC ||
+        h->version != LOG_RING_VERSION ||
+        h->slot_size != LOG_SLOT_BYTES ||
+        h->slot_count != slot_count) {
+        std::memset(h, 0, LOG_HEADER_BYTES);
+        h->magic      = LOG_RING_MAGIC;
+        h->version    = LOG_RING_VERSION;
+        h->slot_size  = LOG_SLOT_BYTES;
+        h->slot_count = slot_count;
+        new (&h->head)          std::atomic<uint64_t>(0);
+        new (&h->heartbeat_ms)  std::atomic<uint64_t>(0);
+        new (&h->crash_marker)  std::atomic<uint32_t>(LOG_CRASH_NONE);
+
+        /* Zero all slot seqs so the drainer doesn't trust stale data. */
+        auto *slots = reinterpret_cast<uint8_t *>(info.ptr) + LOG_HEADER_BYTES;
+        std::memset(slots,
+                    0,
+                    static_cast<size_t>(slot_count) * LOG_SLOT_BYTES);
+    }
+
+    g_shm_ring.info         = info;
+    g_shm_ring.hdr          = h;
+    g_shm_ring.owns_unlink  = owns_unlink;
+    g_shm_ring.name         = name;
+    g_shm_ring.attached     = true;
+
+    /* Register the sink while we still hold the mutex -- log_register_sink
+     * takes the same mutex.  Inline the registration instead. */
+    int id = g_next_sink_id++;
+    g_sinks.push_back(SinkEntry{id, shm_ring_sink, &g_shm_ring});
+    g_shm_ring.sink_id = id;
+
+    std::fprintf(stderr,
+        "[logctrl] shm ring '%s' attached: %u slots x %u bytes = %.1f MB%s\n",
+        name.c_str(), slot_count, LOG_SLOT_BYTES,
+        (double)need / (1024.0 * 1024.0),
+        owns_unlink ? " (created)" : " (connected)");
+
+    return id;
+}
+
+void *log_get_shm_ring_mapping(void) {
+    std::lock_guard<std::mutex> lk(g_log_mutex);
+    return g_shm_ring.attached ? static_cast<void *>(g_shm_ring.hdr) : nullptr;
+}
+
+void log_close_shm_ring(void) {
+    std::lock_guard<std::mutex> lk(g_log_mutex);
+    if (!g_shm_ring.attached) return;
+
+    /* Unregister the sink first so future emits don't try to write into the
+     * region we're about to unmap. */
+    for (auto it = g_sinks.begin(); it != g_sinks.end(); ++it) {
+        if (it->id == g_shm_ring.sink_id) { g_sinks.erase(it); break; }
+    }
+
+    if (g_shm_ring.owns_unlink) {
+        deleteSharedMemory(g_shm_ring.info);
+    }
+    g_shm_ring = ShmRingState{};
 }
 
 void log_emit(int lv, const char *file, int line, const char *func,
