@@ -10,6 +10,7 @@
  */
 
 #include <logctrl.h>
+#include <log_modules_region.h>
 #include <log_ring.h>
 #include <sp.hpp>
 
@@ -93,6 +94,17 @@ struct ShmRingState {
     bool            attached;
 };
 ShmRingState g_shm_ring = {};
+
+/* Modules-region state (#30).  Opened alongside the log ring; published
+ * snapshot of all registered modules + their effective levels. */
+struct ModulesRegionState {
+    ShareMemoryInfo   info  = {};
+    LogModulesRegion *rgn   = nullptr;
+    std::string       name;
+    bool              owns_unlink = false;
+    bool              attached = false;
+};
+ModulesRegionState g_modules_region = {};
 
 double now_ms() {
     auto t = std::chrono::steady_clock::now();
@@ -207,6 +219,42 @@ void ensure_env_parsed_locked() {
 
 } /* anonymous namespace */
 
+/* #30: publish the registered-module snapshot into the modules shm
+ * region.  Cheap: O(N modules) over a tiny set.  Must hold g_log_mutex. */
+static void publish_modules_locked() {
+    if (!g_modules_region.attached || !g_modules_region.rgn) return;
+    auto *r = g_modules_region.rgn;
+
+    /* Collect unique module names from the file->module map. */
+    std::vector<std::string> names;
+    names.reserve(file_to_module().size());
+    for (auto &kv : file_to_module()) {
+        const std::string &mod = kv.second;
+        bool seen = false;
+        for (auto &n : names) if (n == mod) { seen = true; break; }
+        if (!seen) names.push_back(mod);
+    }
+    if (names.size() > LOG_MODULES_MAX) names.resize(LOG_MODULES_MAX);
+
+    /* Seq tear protocol: mark mid-write, edit, mark stable. */
+    uint64_t s = r->seq.load(std::memory_order_relaxed);
+    r->seq.store(s | 1, std::memory_order_release);
+
+    r->count = static_cast<uint32_t>(names.size());
+    for (size_t i = 0; i < names.size(); ++i) {
+        std::memset(r->modules[i].name, 0, LOG_MODULES_NAME_BYTES);
+        std::strncpy(r->modules[i].name, names[i].c_str(),
+                     LOG_MODULES_NAME_BYTES - 1);
+        int eff = g_global_level_requested;
+        for (auto &t : g_tag_levels) {
+            if (t.tag == names[i] && t.lv < eff) eff = t.lv;
+        }
+        r->modules[i].level = eff;
+    }
+
+    r->seq.store((s & ~uint64_t(1)) + 2, std::memory_order_release);
+}
+
 extern "C" {
 
 void log_set_global_level(int lv) {
@@ -215,6 +263,7 @@ void log_set_global_level(int lv) {
     std::lock_guard<std::mutex> lk(g_log_mutex);
     g_global_level_requested = lv;
     recompute_cache_locked();
+    publish_modules_locked();
 }
 
 int log_get_global_level(void) {
@@ -228,12 +277,14 @@ void log_set_tag_level(const char *tag, int lv) {
     std::lock_guard<std::mutex> lk(g_log_mutex);
     g_tag_levels.push_back(TagLevel{std::string(tag), lv});
     recompute_cache_locked();
+    publish_modules_locked();
 }
 
 void log_clear_tag_levels(void) {
     std::lock_guard<std::mutex> lk(g_log_mutex);
     g_tag_levels.clear();
     recompute_cache_locked();
+    publish_modules_locked();
 }
 
 void log_register_tu_module(const char *file, const char *module_name) {
@@ -241,6 +292,7 @@ void log_register_tu_module(const char *file, const char *module_name) {
     std::lock_guard<std::mutex> lk(g_log_mutex);
     /* Last registration wins (idempotent for re-init). */
     file_to_module()[std::string(file)] = std::string(module_name);
+    publish_modules_locked();
 }
 
 const char *log_module_for_file(const char *file) {
@@ -444,7 +496,49 @@ int log_open_shm_ring(const char *shm_name, int size_mb) {
         (double)need / (1024.0 * 1024.0),
         owns_unlink ? " (created)" : " (connected)");
 
+    /* #30: open the companion modules region.  Derived name "<ring>_modules". */
+    {
+        std::string mname = name + "_modules";
+        ShareMemoryInfo minfo = {};
+        bool mowns = false;
+        int rc2 = connSharedMemory(mname, LOG_MODULES_REGION_BYTES, &minfo);
+        if (rc2 != 0) {
+            rc2 = createSharedMemory(mname,
+                                     LOG_MODULES_REGION_BYTES, &minfo);
+            mowns = (rc2 == 0);
+        }
+        if (rc2 == 0 && minfo.ptr) {
+            auto *r = static_cast<LogModulesRegion *>(minfo.ptr);
+            if (r->magic != LOG_MODULES_MAGIC ||
+                r->version != LOG_MODULES_VERSION) {
+                std::memset(r, 0, LOG_MODULES_REGION_BYTES);
+                r->magic = LOG_MODULES_MAGIC;
+                r->version = LOG_MODULES_VERSION;
+                new (&r->seq) std::atomic<uint64_t>(0);
+            }
+            g_modules_region.info        = minfo;
+            g_modules_region.rgn         = r;
+            g_modules_region.name        = mname;
+            g_modules_region.owns_unlink = mowns;
+            g_modules_region.attached    = true;
+            publish_modules_locked();
+            std::fprintf(stderr,
+                "[logctrl] modules region '%s' attached (cap=%u)\n",
+                mname.c_str(), LOG_MODULES_MAX);
+        } else {
+            std::fprintf(stderr,
+                "[logctrl] modules region '%s' open failed (rc=%d)\n",
+                mname.c_str(), rc2);
+        }
+    }
+
     return id;
+}
+
+void *log_get_modules_region_mapping(void) {
+    std::lock_guard<std::mutex> lk(g_log_mutex);
+    return g_modules_region.attached
+             ? static_cast<void *>(g_modules_region.rgn) : nullptr;
 }
 
 void *log_get_shm_ring_mapping(void) {
@@ -566,6 +660,7 @@ void log_emit(int lv, const char *file, int line, const char *func,
                     if (!found) g_tag_levels.push_back(TagLevel{cmd_mod, cmd_lv});
                     recompute_cache_locked();
                 }
+                publish_modules_locked();
             }
         }
     }

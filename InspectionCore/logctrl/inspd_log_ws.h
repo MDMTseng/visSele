@@ -78,6 +78,13 @@ public:
                                                 int severity_number)>;
     void set_level_handler(SetLevelHandler h);
 
+    /* #30 getModules handler.  Fills `out_names` and `out_levels` (LOG_LV_*)
+     * with the producer's currently-published snapshot. */
+    using GetModulesHandler =
+        std::function<void(std::vector<std::string> &out_names,
+                           std::vector<int>         &out_levels)>;
+    void set_get_modules_handler(GetModulesHandler h);
+
     /* Fan out a log line to every matching peer.  Cheap when no peers. */
     void broadcast_log(const LogRecord &rec);
 

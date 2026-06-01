@@ -22,6 +22,7 @@
 #include <log_ring.h>
 #include "inspd_log_ws.h"
 
+#include <log_modules_region.h>
 #include <logctrl.h>
 #include <sp.hpp>
 
@@ -459,6 +460,46 @@ int run(const Config &cfg) {
         if (gethostname(hn, sizeof(hn)-1) == 0) hello.host_name = hn;
 #endif
         ws = new LogWsServer(cfg.ws_port, hello);
+
+        /* Attach modules region (#30).  Best-effort -- if the producer
+         * hasn't created it yet we just retry on first getModules. */
+        static LogModulesRegion *modules_rgn = nullptr;
+        static std::string modules_name = cfg.ring_name + "_modules";
+        auto attach_modules = [&]() -> LogModulesRegion * {
+            if (modules_rgn) return modules_rgn;
+            ShareMemoryInfo mi = {};
+            if (connSharedMemory(modules_name, LOG_MODULES_REGION_BYTES, &mi) == 0
+                && mi.ptr) {
+                auto *r = static_cast<LogModulesRegion *>(mi.ptr);
+                if (r->magic == LOG_MODULES_MAGIC) modules_rgn = r;
+            }
+            return modules_rgn;
+        };
+        attach_modules();
+
+        ws->set_get_modules_handler(
+            [&attach_modules](std::vector<std::string> &names,
+                              std::vector<int> &levels) {
+                auto *r = attach_modules();
+                if (!r) return;
+                /* Seq tear protocol: retry if mid-write or seq changed. */
+                for (int attempt = 0; attempt < 4; ++attempt) {
+                    uint64_t before = r->seq.load(std::memory_order_acquire);
+                    if (before & 1) { thread_sleep_ms(1); continue; }
+                    uint32_t n = r->count;
+                    if (n > LOG_MODULES_MAX) n = LOG_MODULES_MAX;
+                    names.clear(); levels.clear();
+                    names.reserve(n); levels.reserve(n);
+                    for (uint32_t i = 0; i < n; ++i) {
+                        names.emplace_back(r->modules[i].name);
+                        levels.push_back(r->modules[i].level);
+                    }
+                    uint64_t after = r->seq.load(std::memory_order_acquire);
+                    if (after == before) return;
+                    /* torn -- retry */
+                }
+                names.clear(); levels.clear();
+            });
 
         /* Backlog provider: walk the ring from (head - tail_n) up to head,
          * parsing each slot.  Owned-text vector keeps the parsed strings

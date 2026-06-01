@@ -73,6 +73,7 @@ struct LogWsServerImpl : public ws_protocol_callback {
     LogWsServer::BacklogProvider backlog_provider;
     LogWsServer::DumpHandler     dump_handler;
     LogWsServer::SetLevelHandler set_level_handler;
+    LogWsServer::GetModulesHandler get_modules_handler;
 
     LogWsServerImpl(const LogWsServer::HelloInfo &h)
         : ws_protocol_callback(this), hello(h) {}
@@ -274,8 +275,32 @@ struct LogWsServerImpl : public ws_protocol_callback {
                 }
             }
         } else if (std::strcmp(type, "getModules") == 0) {
-            /* Pending #30 -- registry export. */
-            send_ack(data.peer, ps, id, false, "getModules not implemented yet");
+            if (!get_modules_handler) {
+                send_ack(data.peer, ps, id, false, "no getModules handler");
+            } else {
+                std::vector<std::string> names;
+                std::vector<int> levels;
+                get_modules_handler(names, levels);
+                cJSON *o = cJSON_CreateObject();
+                cJSON_AddStringToObject(o, "type", "modules");
+                cJSON_AddStringToObject(o, "id", id);
+                cJSON *arr = cJSON_AddArrayToObject(o, "modules");
+                for (size_t i = 0; i < names.size() && i < levels.size(); ++i) {
+                    cJSON *e = cJSON_CreateObject();
+                    cJSON_AddStringToObject(e, "name", names[i].c_str());
+                    /* Convert LOG_LV_* -> OTel severityNumber. */
+                    int lv = levels[i];
+                    int sn = (lv == LOG_LV_TRACE) ? 1
+                          : (lv == LOG_LV_DEBUG) ? 5
+                          : (lv == LOG_LV_INFO)  ? 9
+                          : (lv == LOG_LV_WARN)  ? 13
+                          : (lv == LOG_LV_ERROR) ? 17
+                          : (lv == LOG_LV_FATAL) ? 21 : 0;
+                    cJSON_AddNumberToObject(e, "effectiveSeverityNumber", sn);
+                    cJSON_AddItemToArray(arr, e);
+                }
+                enqueue_text(data.peer, ps, o);
+            }
         } else {
             send_ack(data.peer, ps, id, false, "unknown message type");
         }
@@ -427,4 +452,8 @@ void LogWsServer::set_dump_handler(DumpHandler h) {
 
 void LogWsServer::set_level_handler(SetLevelHandler h) {
     impl_->set_level_handler = std::move(h);
+}
+
+void LogWsServer::set_get_modules_handler(GetModulesHandler h) {
+    impl_->get_modules_handler = std::move(h);
 }
