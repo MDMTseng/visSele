@@ -102,6 +102,13 @@ bool parse_log_line(char *buf, int slot_line, LogRecord *out) {
     char *p = buf;
     if (*p != '[') return false;
     char *p1 = std::strchr(p, ']');  if (!p1) return false;          /* end of time */
+    /* Parse the float "ssss.mmm" between p and p1 into ms-since-start. */
+    {
+        char saved = *p1; *p1 = '\0';
+        double secs = std::atof(p + 1);
+        *p1 = saved;
+        if (secs >= 0.0) out->ts_ms_since_start = (uint64_t)(secs * 1000.0);
+    }
     char *p2 = std::strchr(p1+1, ']'); if (!p2) return false;        /* end of [L] */
     char *mod_start = p2 + 1;
     if (*mod_start != '[') return false;
@@ -443,10 +450,17 @@ int run(const Config &cfg) {
         hello.ring_version = h->version;
         hello.ring_slots   = h->slot_count;
         hello.ring_mb      = cfg.ring_mb;
-        struct timespec tspec;
-        clock_gettime(CLOCK_REALTIME, &tspec);
-        started_unix_nano =
-            (uint64_t)tspec.tv_sec * 1000000000ULL + (uint64_t)tspec.tv_nsec;
+        /* Prefer the producer's own wall-clock anchor so timestamps line up
+         * with what the producer would print to its stderr sink.  Fall
+         * back to drainer-attach time only for legacy rings (field=0). */
+        if (h->producer_started_unix_nano != 0) {
+            started_unix_nano = h->producer_started_unix_nano;
+        } else {
+            struct timespec tspec;
+            clock_gettime(CLOCK_REALTIME, &tspec);
+            started_unix_nano =
+                (uint64_t)tspec.tv_sec * 1000000000ULL + (uint64_t)tspec.tv_nsec;
+        }
         hello.started_unix_nano = started_unix_nano;
         hello.log_dir      = cfg.log_dir;
         hello.service_name = "visSele";
@@ -560,7 +574,8 @@ int run(const Config &cfg) {
                     owned.emplace_back(text);
                     LogRecord rec{};
                     parse_log_line(&owned.back()[0], ln, &rec);
-                    rec.time_unix_nano  = started_unix_nano;
+                    rec.time_unix_nano  = started_unix_nano
+                                          + rec.ts_ms_since_start * 1000000ULL;
                     rec.severity_number = severity_number_for(lv);
                     rec.severity_text   = severity_text_for(lv);
                     out.push_back(rec);
@@ -720,10 +735,10 @@ int run(const Config &cfg) {
                 std::memcpy(scratch, text, tlen + 1);
                 LogRecord rec{};
                 parse_log_line(scratch, slot->line, &rec);
-                rec.ts_ms_since_start = 0; /* parsed timestamp lives in body prefix; not separated yet */
-                rec.time_unix_nano    = started_unix_nano; /* coarse: lib time of WS attach */
-                rec.severity_number   = severity_number_for(lv);
-                rec.severity_text     = severity_text_for(lv);
+                rec.time_unix_nano  = started_unix_nano
+                                      + rec.ts_ms_since_start * 1000000ULL;
+                rec.severity_number = severity_number_for(lv);
+                rec.severity_text   = severity_text_for(lv);
                 ws->broadcast_log(rec);
             }
         }

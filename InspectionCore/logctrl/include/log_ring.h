@@ -115,8 +115,15 @@ struct alignas(64) LogRingHeader {
     int32_t  ctrl_cmd_level;
     char     ctrl_cmd_module[28];   /* NUL-terminated; empty = global */
 
-    /* Pad up to LOG_HEADER_BYTES.  Layout: 328 + 4 + 4 + 28 = 364. */
-    uint8_t pad[LOG_HEADER_BYTES - 364];
+    /* Producer's wall-clock start time (CLOCK_REALTIME ns since epoch).
+     * Written once at log_open_shm_ring(); drainer uses it as the anchor
+     * for converting per-line `[%10.3f]` seconds-since-start prefixes
+     * into absolute timeUnixNano on the WS stream.  Zero means "unknown"
+     * (legacy producer); drainer falls back to its own attach time. */
+    uint64_t producer_started_unix_nano;
+
+    /* Pad up to LOG_HEADER_BYTES.  Layout: 328 + 4 + 4 + 28 + 8 = 372. */
+    uint8_t pad[LOG_HEADER_BYTES - 372];
 };
 
 /* One log entry.  Fixed-size; producer truncates rather than splitting

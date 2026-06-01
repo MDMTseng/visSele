@@ -464,6 +464,14 @@ int log_open_shm_ring(const char *shm_name, int size_mb) {
         new (&h->crash_marker)  std::atomic<uint32_t>(LOG_CRASH_NONE);
         new (&h->crash_frame_count) std::atomic<uint32_t>(0);
 
+        /* Producer wall-clock anchor for drainer-side timeUnixNano. */
+        {
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            h->producer_started_unix_nano =
+                (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+        }
+
         /* Zero all slot seqs so the drainer doesn't trust stale data. */
         auto *slots = reinterpret_cast<uint8_t *>(info.ptr) + LOG_HEADER_BYTES;
         std::memset(slots,
@@ -476,6 +484,15 @@ int log_open_shm_ring(const char *shm_name, int size_mb) {
         h->crash_marker.store(LOG_CRASH_NONE, std::memory_order_release);
         h->crash_frame_count.store(0, std::memory_order_release);
         h->crash_signal = 0;
+
+        /* Re-anchor wall-clock to this process's actual start so the
+         * drainer doesn't report timestamps from the previous run. */
+        {
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            h->producer_started_unix_nano =
+                (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+        }
     }
 
     g_shm_ring.info         = info;
