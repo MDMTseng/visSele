@@ -166,14 +166,19 @@ export class CoreLogClient {
       case 'log':
         this._emit('log', msg);
         break;
-      case 'log_batch':
+      case 'logBatch':
         if (Array.isArray(msg.items)) for (const e of msg.items) this._emit('log', e);
         break;
-      case 'backlog_chunk':
+      case 'backlogChunk':
         this._emit('backlog', { items: msg.items || [], more: !!msg.more });
         break;
+      case 'dropped':
+        // Backpressure: drainer had to discard N buffered lines for our
+        // connection. Forward to the UI so it can render a gap marker.
+        this._emit('dropped', { count: msg.count || 0, sinceUnixNano: msg.sinceUnixNano || null });
+        break;
       case 'crash':
-        log.warn('[crash]', { signal: msg.signal, utc: msg.utc, dump_path: msg.dump_path });
+        log.warn('[crash]', { signal: msg.signal, timeUnixNano: msg.timeUnixNano, dumpPath: msg.dumpPath });
         this._setState('crashed', { crash: msg });
         this._emit('crash', msg);
         break;
@@ -228,13 +233,19 @@ export class CoreLogClient {
     return promise;
   }
 
+  // ─── Commands (OTel-aligned schema) ────────────────────────────────────
+  //
+  // Severity is on the OTel scale:
+  //   TRACE=1, DEBUG=5, INFO=9, WARN=13, ERROR=17, FATAL=21
+  // Gaps reserved for OTel variants (INFO2=10, ERROR3=19, ...).
+
   subscribe(opts) {
     // Remember so we can re-apply after reconnect.
     this._subscription = {
-      min_level: opts.min_level ?? 2,
+      minSeverityNumber: opts.minSeverityNumber ?? 9, // INFO
       modules: opts.modules ?? null,
-      include_ephemeral: !!opts.include_ephemeral,
-      backlog: opts.backlog ?? { tail_n: 500 },
+      includeEphemeral: !!opts.includeEphemeral,
+      backlog: opts.backlog ?? { tailN: 500 },
     };
     if (this.state === 'connected') return this._sendSubscribe(this._subscription);
     // Will be sent on next 'hello'.
@@ -244,26 +255,26 @@ export class CoreLogClient {
     const id = this._nextId();
     return this._send({
       type: 'subscribe', id,
-      min_level: sub.min_level,
+      minSeverityNumber: sub.minSeverityNumber,
       modules: sub.modules || undefined,
-      include_ephemeral: sub.include_ephemeral,
+      includeEphemeral: sub.includeEphemeral,
       backlog: sub.backlog,
     }, id);
   }
 
-  setLevel({ scope, module, level }) {
+  setLevel({ scope, module, severityNumber }) {
     const id = this._nextId();
-    return this._send({ type: 'set_level', id, scope, module, level }, id);
+    return this._send({ type: 'setLevel', id, scope, module, severityNumber }, id);
   }
 
   getModules() {
     const id = this._nextId();
-    return this._send({ type: 'get_modules', id }, id);
+    return this._send({ type: 'getModules', id }, id);
   }
 
   dumpNow() {
     const id = this._nextId();
-    return this._send({ type: 'dump_now', id }, id);
+    return this._send({ type: 'dumpNow', id }, id);
   }
 
   ping() {
