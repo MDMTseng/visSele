@@ -87,7 +87,9 @@ target_include_directories(cJSON PUBLIC contrib/cJSON)
 # Phase A2: shm-ring sink on contrib/smem_channel.
 # Header is extern-"C"-wrapped so C callers still work.  Phase F will add the
 # drainer daemon that reads from this same ring.
-add_library(logctrl STATIC logctrl/logctrl.cpp)
+add_library(logctrl STATIC logctrl/logctrl.cpp
+                          logctrl/log_crash_posix.cpp
+                          logctrl/log_crash_win.cpp)
 target_include_directories(logctrl PUBLIC logctrl/include)
 # smem_channel target is defined further down; we just record the dep here
 # and CMake resolves the order.

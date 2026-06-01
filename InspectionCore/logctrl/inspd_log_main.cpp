@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <deque>
 #include <string>
 
@@ -37,12 +38,15 @@
   #include <windows.h>
   #include <io.h>
   #include <direct.h>
+  #include <dbghelp.h>
   static void thread_sleep_ms(int ms) { Sleep(ms); }
   static int  mkdir_p_one(const char *p) { return _mkdir(p); }
 #else
   #include <unistd.h>
   #include <sys/stat.h>
   #include <sys/types.h>
+  #include <sys/wait.h>
+  #include <execinfo.h>
   static void thread_sleep_ms(int ms) {
     struct timespec ts;
     ts.tv_sec  = ms / 1000;
@@ -161,6 +165,149 @@ struct EphemeralBuf {
     }
 };
 
+/* ---------- crash dump writer ---------- */
+
+const char *crash_marker_name(uint32_t m) {
+    switch (m) {
+        case LOG_CRASH_SIGSEGV: return "SIGSEGV";
+        case LOG_CRASH_SIGABRT: return "SIGABRT";
+        case LOG_CRASH_SIGFPE:  return "SIGFPE";
+        case LOG_CRASH_SIGBUS:  return "SIGBUS";
+        case LOG_CRASH_OTHER:   return "OTHER";
+        default:                return "?";
+    }
+}
+
+/* Cross-platform symbol-resolution for one address.  Returns into out[]
+ * a printable "0x<addr>  <symbol> (<file:line if known>)" string.  Falls
+ * back to raw hex if symbolication fails. */
+void symbolicate_one(uint64_t addr, char *out, size_t outsz) {
+#ifdef _WIN32
+    static bool initialized = false;
+    if (!initialized) {
+        SymInitialize(GetCurrentProcess(), nullptr, TRUE);
+        SymSetOptions(SymGetOptions() | SYMOPT_LOAD_LINES);
+        initialized = true;
+    }
+    SYMBOL_INFO *sym = (SYMBOL_INFO *)calloc(
+        sizeof(SYMBOL_INFO) + 256, 1);
+    if (sym) {
+        sym->SizeOfStruct = sizeof(SYMBOL_INFO);
+        sym->MaxNameLen   = 255;
+        DWORD64 disp64 = 0;
+        bool ok = SymFromAddr(GetCurrentProcess(),
+                              (DWORD64)addr, &disp64, sym);
+        if (ok) {
+            IMAGEHLP_LINE64 line = {};
+            line.SizeOfStruct = sizeof(line);
+            DWORD disp32 = 0;
+            if (SymGetLineFromAddr64(GetCurrentProcess(),
+                                     (DWORD64)addr, &disp32, &line)) {
+                std::snprintf(out, outsz, "0x%016llx  %s  (%s:%lu)",
+                              (unsigned long long)addr, sym->Name,
+                              line.FileName, line.LineNumber);
+            } else {
+                std::snprintf(out, outsz, "0x%016llx  %s",
+                              (unsigned long long)addr, sym->Name);
+            }
+            free(sym);
+            return;
+        }
+        free(sym);
+    }
+    std::snprintf(out, outsz, "0x%016llx", (unsigned long long)addr);
+#else
+    /* backtrace_symbols formats "binary(symbol+offset) [addr]" or similar.
+     * We only need to feed it one address; allocate, copy, free. */
+    void *p = reinterpret_cast<void *>(addr);
+    char **syms = backtrace_symbols(&p, 1);
+    if (syms && syms[0]) {
+        std::snprintf(out, outsz, "0x%016llx  %s",
+                      (unsigned long long)addr, syms[0]);
+        free(syms);
+    } else {
+        std::snprintf(out, outsz, "0x%016llx", (unsigned long long)addr);
+    }
+#endif
+}
+
+/* Write the crash dump file: header + stack trace + entire ring + the
+ * drainer's ephemeral DEBUG/TRACE buffer.  Format is plaintext so it can
+ * be opened in any editor / streamed to WebUI as-is. */
+void write_crash_dump(const Config &cfg,
+                      LogRingHeader *h,
+                      const EphemeralBuf &eph,
+                      uint32_t marker) {
+    /* Filename: crash_<utc>.dump in the log dir.  Use system clock so the
+     * stamp matches what a human sees in syslog. */
+    time_t now = std::time(nullptr);
+    char ts[64];
+    std::strftime(ts, sizeof(ts), "%Y%m%dT%H%M%SZ", std::gmtime(&now));
+    char fname[256];
+    std::snprintf(fname, sizeof(fname),
+                  "%s/crash_%s.dump", cfg.log_dir.c_str(), ts);
+
+    FILE *fp = std::fopen(fname, "w");
+    if (!fp) {
+        std::fprintf(stderr,
+            "[inspd_log] cannot open crash dump '%s'\n", fname);
+        return;
+    }
+
+    std::fprintf(fp, "=== InspectionCore crash dump ===\n");
+    std::fprintf(fp, "timestamp: %s\n", ts);
+    std::fprintf(fp, "signal:    %s (raw=%u)\n",
+                 crash_marker_name(marker), h->crash_signal);
+    std::fprintf(fp, "pid:       %ld\n",
+#ifdef _WIN32
+                 (long)GetCurrentProcessId()
+#else
+                 (long)getppid()  /* parent pid -- this is the drainer's pid view */
+#endif
+                 );
+    std::fprintf(fp, "\n");
+
+    /* Stack trace. */
+    uint32_t nf = h->crash_frame_count.load(std::memory_order_acquire);
+    if (nf > LOG_CRASH_FRAME_MAX) nf = LOG_CRASH_FRAME_MAX;
+    std::fprintf(fp, "--- Stack trace (%u frames) ---\n", nf);
+    for (uint32_t i = 0; i < nf; ++i) {
+        char line[512];
+        symbolicate_one(h->crash_frames[i], line, sizeof(line));
+        std::fprintf(fp, "#%-2u %s\n", i, line);
+    }
+    std::fprintf(fp, "\n");
+
+    /* Ring tail-to-head dump (everything the producer wrote). */
+    std::fprintf(fp, "--- Ring (entire retained history, incl. verbose) ---\n");
+    uint64_t head = h->head.load(std::memory_order_acquire);
+    uint64_t tail = (head > h->slot_count) ? head - h->slot_count : 0;
+    uint32_t emitted = 0;
+    for (uint64_t i = tail; i < head; ++i) {
+        LogSlot *slot = log_ring_slot(h, i);
+        uint64_t before = slot->seq.load(std::memory_order_acquire);
+        if (before & 1) continue;
+        char text[LOG_SLOT_TEXT];
+        std::memcpy(text, slot->text, LOG_SLOT_TEXT);
+        uint64_t after = slot->seq.load(std::memory_order_acquire);
+        if (after != before) continue;
+        std::fputs(text, fp);
+        emitted++;
+    }
+    std::fprintf(fp, "(%u lines)\n\n", emitted);
+
+    /* Ephemeral buffer (the DEBUG/TRACE that never went to disk -- this
+     * is the post-mortem prize). */
+    std::fprintf(fp, "--- Ephemeral DEBUG/TRACE buffer (%zu lines) ---\n",
+                 eph.q.size());
+    for (auto &s : eph.q) std::fputs(s.c_str(), fp);
+    std::fprintf(fp, "\n");
+
+    std::fprintf(fp, "=== end of dump ===\n");
+    std::fclose(fp);
+    std::fprintf(stderr, "[inspd_log] crash dump written to %s\n", fname);
+}
+
 /* ---------- main drain loop ---------- */
 
 int run(const Config &cfg) {
@@ -211,12 +358,30 @@ int run(const Config &cfg) {
     while (!parent_dead) {
         uint64_t head = h->head.load(std::memory_order_acquire);
 
-        /* Crash marker -- jump out, dump happens in Phase G. */
-        uint32_t cm = h->crash_marker.load(std::memory_order_relaxed);
+        /* Crash marker -- drain whatever we can, then dump and exit. */
+        uint32_t cm = h->crash_marker.load(std::memory_order_acquire);
         if (cm != LOG_CRASH_NONE) {
             std::fprintf(stderr,
-                "[inspd_log] crash marker %u observed; (Phase G dump TBD)\n", cm);
-            break;
+                "[inspd_log] crash marker %u observed; writing dump\n", cm);
+            /* Drain final logs first so the ring contains everything the
+             * producer wrote before / during the crash. */
+            uint64_t head_now = h->head.load(std::memory_order_acquire);
+            for (; tail < head_now; ++tail) {
+                LogSlot *slot = log_ring_slot(h, tail);
+                uint64_t before = slot->seq.load(std::memory_order_acquire);
+                if (before & 1) continue;
+                char text[LOG_SLOT_TEXT];
+                std::memcpy(text, slot->text, LOG_SLOT_TEXT);
+                int lv = slot->level;
+                uint64_t after = slot->seq.load(std::memory_order_acquire);
+                if (after != before) continue;
+                size_t tlen = std::strlen(text);
+                if (lv >= cfg.persist_min_lv) disk.write(text, tlen);
+                else ephemeral.push(std::string(text, tlen));
+            }
+            disk.flush();
+            write_crash_dump(cfg, h, ephemeral, cm);
+            return 0;
         }
 
         /* Heartbeat watch: if no producer-side activity, main is dead. */

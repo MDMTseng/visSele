@@ -13,6 +13,7 @@
 
 
 #include <logctrl.h>
+#include <log_crash.h>
 LOG_MODULE("core.boot");
 
 float randomGen(float from=0,float to=1)
@@ -95,6 +96,7 @@ int main(int argc, char **argv)
       if (slash != std::string::npos) exe = a0.substr(0, slash + 1) + "inspd_log";
     }
     log_open_shm_ring(nullptr, 0);  /* defaults: 16 MB, name "insp_log_ring" */
+    log_install_crash_handlers();
     log_spawn_drainer(exe.c_str());
   }
 

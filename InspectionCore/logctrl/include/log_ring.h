@@ -39,11 +39,15 @@
 /* ---------- protocol constants ---------- */
 
 static constexpr uint32_t LOG_RING_MAGIC   = 0x474E524C;  /* 'LRNG' little-endian */
-static constexpr uint32_t LOG_RING_VERSION = 1;
+static constexpr uint32_t LOG_RING_VERSION = 2;            /* bump: added crash trace */
 
 static constexpr uint32_t LOG_SLOT_BYTES   = 256;
-static constexpr uint32_t LOG_HEADER_BYTES = 128;
+static constexpr uint32_t LOG_HEADER_BYTES = 512;          /* expanded to fit crash trace */
 static constexpr uint32_t LOG_SLOT_TEXT    = 240;  /* per-slot text bytes incl. NUL */
+
+/* Phase G: max stack frames captured by the signal handler.  256 bytes = 32
+ * 8-byte addresses; deep stacks get truncated. */
+static constexpr uint32_t LOG_CRASH_FRAME_MAX = 32;
 
 /* Crash marker codes written into LogRingHeader.crash_marker by the Phase G
  * signal handlers.  Drainer treats any non-zero marker as "main process
@@ -76,12 +80,25 @@ struct alignas(64) LogRingHeader {
      * watches it as a parent-death heartbeat. */
     std::atomic<uint64_t> heartbeat_ms;
 
-    /* Set by Phase G crash handlers to one of LOG_CRASH_* above. */
+    /* Phase G crash region.  Signal handlers in main write here using only
+     * async-signal-safe primitives (atomic stores + memcpy to mapped memory).
+     *
+     * crash_marker     - one of LOG_CRASH_* above; 0 means no crash.
+     * crash_signal     - the signal number (or platform exception code).
+     * crash_frame_count- number of valid entries in crash_frames[].
+     * crash_frames[]   - raw return addresses captured by backtrace() /
+     *                    RtlCaptureStackBackTrace.  Drainer resolves symbols
+     *                    at dump time (atos / addr2line / DbgHelp).
+     */
     std::atomic<uint32_t> crash_marker;
+    uint32_t              crash_signal;
+    std::atomic<uint32_t> crash_frame_count;
+    uint32_t              crash_reserved0;
+    uint64_t              crash_frames[LOG_CRASH_FRAME_MAX];
 
-    uint32_t reserved0;
-    /* Pad up to 128 bytes for alignment + future fields. */
-    uint8_t pad[LOG_HEADER_BYTES - 64];
+    /* Pad up to LOG_HEADER_BYTES for alignment + future fields.
+     * Layout so far:  56 (fixed) + 16 (crash meta) + 256 (frames) = 328. */
+    uint8_t pad[LOG_HEADER_BYTES - 328];
 };
 
 /* One log entry.  Fixed-size; producer truncates rather than splitting
