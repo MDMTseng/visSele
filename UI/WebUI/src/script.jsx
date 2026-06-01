@@ -63,31 +63,14 @@ const electron = require('electron')
 const fs = require('fs');
 const path = require('path')
 
-log.setLevel("info");
-log.getLogger("InspectionEditorLogic").setLevel("INFO");
-log.getLogger("UICtrlReducer").setLevel("INFO");
-
-// Diagnostics ring-buffer capture fix (R-quick-wins #7): loglevel binds each
-// logger's methods to the CURRENT console reference at setLevel time. Named
-// loggers created during the import chain (e.g. BPG_Protocol, comm/*) were
-// constructed BEFORE initDiag() wrapped console.*, so their log.error/info/warn
-// bypassed the ring buffer entirely. Force every existing logger to re-setLevel
-// here (after initDiag has wrapped console + after the explicit setLevel calls
-// above) so they rebind to the wrapped console and ALL loglevel output reaches
-// the diag ring buffer + "Download Diagnostics" feature.
-try {
-  const _loggers = (typeof log.getLoggers === 'function') ? log.getLoggers() : {};
-  Object.keys(_loggers).forEach((name) => {
-    const lg = _loggers[name];
-    if (lg && typeof lg.setLevel === 'function' && typeof lg.getLevel === 'function') {
-      lg.setLevel(lg.getLevel(), false); // false = don't re-persist; just rebind methods.
-    }
-  });
-  log.setLevel(log.getLevel(), false);
-} catch (e) {
-  // loglevel API surface drift — fall through. The diag ring still captures raw
-  // console.* + the global window error/unhandledrejection handlers (R3 fix).
-}
+// Logging facade — all per-file `mkLog(ns)` go through here. initLogger reads
+// localStorage `logLevel` / `logLevel:<ns>` (or `?logLevel=...` URL param) and
+// applies the per-namespace defaults from UTIL/logger.js's NAMESPACES registry.
+// Runs AFTER initDiag() above so loglevel rebinds its method refs to the
+// diag-wrapped console (the R-quick-wins #7 fix is now built into initLogger
+// since every logger is created lazily via mkLog post-initDiag).
+import { initLogger } from 'UTIL/logger';
+initLogger();
 
 // import moment from 'moment';
 // import 'moment/locale/fr';
