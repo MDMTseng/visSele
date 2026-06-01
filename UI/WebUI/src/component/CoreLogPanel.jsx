@@ -50,13 +50,38 @@ function defaultUrl() {
   return `ws://${host}:4091/log`;
 }
 
-function fmtTs(ms) {
-  // Producer-relative MM:SS.mmm.  tsMsSinceStart is provided as a convenience.
-  if (typeof ms !== 'number') return '';
+function fmtMs(ms) {
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) return '';
   const total = Math.floor(ms);
   const s = Math.floor(total / 1000);
   const m = Math.floor(s / 60);
   return `${String(m).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}.${String(total % 1000).padStart(3,'0')}`;
+}
+
+// Producer-relative time, with a graceful fallback. The drainer is supposed
+// to fill timeUnixNano (primary) and tsMsSinceStart (convenience). If both
+// are degenerate (everything stuck at start, observed on real drainer until
+// the producer-side per-entry clock stamp lands), fall back to the client
+// receive time -- accurate ordering, only the absolute origin is approximate.
+// Returns { text, approx } so the row can flag approximate values with a "~".
+function relTime(entry, startedMs) {
+  // (1) Authoritative timeUnixNano relative to hello.startedUnixNano.
+  if (typeof entry.timeUnixNano === 'string' && typeof startedMs === 'number') {
+    try {
+      const tMs = Number(BigInt(entry.timeUnixNano) / 1_000_000n);
+      const rel = tMs - startedMs;
+      if (rel > 0) return { text: fmtMs(rel), approx: false };
+    } catch (_) {}
+  }
+  // (2) Convenience tsMsSinceStart.
+  if (typeof entry.tsMsSinceStart === 'number' && entry.tsMsSinceStart > 0) {
+    return { text: fmtMs(entry.tsMsSinceStart), approx: false };
+  }
+  // (3) Client-receive fallback. Stamped at panel ingestion time.
+  if (typeof entry._recvMs === 'number' && typeof startedMs === 'number') {
+    return { text: fmtMs(entry._recvMs - startedMs), approx: true };
+  }
+  return { text: '00:00.000', approx: true };
 }
 
 function StatusPill({ status }) {
@@ -84,7 +109,7 @@ function CrashBanner({ crash, onDismiss }) {
   const tailLine = (e) => {
     const mod = (e.attributes && e.attributes.module) || '?';
     const sev = e.severityText || sevLabel(e.severityNumber);
-    return `[${fmtTs(e.tsMsSinceStart)}][${sev[0]}][${mod}] ${e.body || ''}`;
+    return `[${fmtMs(e.tsMsSinceStart)}][${sev[0]}][${mod}] ${e.body || ''}`;
   };
   return (
     <div style={{
@@ -112,11 +137,12 @@ function CrashBanner({ crash, onDismiss }) {
   );
 }
 
-function LogRow({ entry, needle }) {
+function LogRow({ entry, needle, startedMs }) {
   const sev = entry.severityText || sevLabel(entry.severityNumber);
   const col = SEV_COLOR[sev] || '#444';
   const mod = (entry.attributes && entry.attributes.module) || '';
   const body = entry.body || '';
+  const t = relTime(entry, startedMs);
   let textNode = body;
   if (needle && body) {
     const i = body.toLowerCase().indexOf(needle.toLowerCase());
@@ -135,7 +161,10 @@ function LogRow({ entry, needle }) {
       display: 'flex', gap: 8, fontFamily: 'monospace', fontSize: 12,
       borderBottom: '1px solid rgba(0,0,0,0.05)', padding: '2px 4px',
     }}>
-      <span style={{ color: '#888', minWidth: 90 }}>{fmtTs(entry.tsMsSinceStart)}</span>
+      <span style={{ color: t.approx ? '#b88' : '#888', minWidth: 96 }}
+            title={t.approx ? 'client receive time (drainer entry timestamp not authoritative)' : 'producer-relative'}>
+        {t.approx ? '~' : ' '}{t.text}
+      </span>
       <span style={{ color: col, fontWeight: 700, minWidth: 14 }} title={sev}>{sev[0]}</span>
       <span style={{ color: '#357', minWidth: 110 }}>{mod}</span>
       <span style={{ flex: 1, wordBreak: 'break-all' }}>{textNode}</span>
@@ -180,11 +209,20 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
 
   const pushBuf = useCallback((kind, payload) => {
     const id = ++seqRef.current;
-    bufRef.current.push({ kind, id, ...payload });
+    // Stamp client receive time so the timestamp fallback path works even
+    // when the drainer doesn't fill timeUnixNano per entry.
+    bufRef.current.push({ kind, id, _recvMs: Date.now(), ...payload });
     if (bufRef.current.length > BUFFER_CAP) {
       bufRef.current.splice(0, bufRef.current.length - BUFFER_CAP);
     }
   }, []);
+
+  // hello.startedUnixNano (string) → ms since epoch for client-side arithmetic.
+  const startedMs = useMemo(() => {
+    if (!hello || !hello.startedUnixNano) return null;
+    try { return Number(BigInt(hello.startedUnixNano) / 1_000_000n); }
+    catch (_) { return null; }
+  }, [hello]);
 
   useEffect(() => { pausedRef.current = paused; }, [paused]);
 
@@ -345,7 +383,7 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
         )}
         {visible.map((e) => e.kind === 'gap'
           ? <GapMarker key={'g' + e.id} entry={e} />
-          : <LogRow    key={'l' + e.id} entry={e} needle={needle} />
+          : <LogRow    key={'l' + e.id} entry={e} needle={needle} startedMs={startedMs} />
         )}
       </div>
 
