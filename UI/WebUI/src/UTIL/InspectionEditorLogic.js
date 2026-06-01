@@ -12,11 +12,11 @@ import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import { SHAPE_TYPE, UI_SM_STATES } from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import dclone from 'clone';
-import * as logX from 'loglevel';
+import { mkLog } from 'UTIL/logger';
 
 import JSum from 'jsum';
 import dateFormat from 'dateformat';
-let log = logX.getLogger("InspectionEditorLogic");
+const log = mkLog('editor.model');
 
 // Moved to UTIL/MeasureResultResolution.js to break a circular import
 // (shapes → canvas/renderConst → InspectionEditorLogic → shapes). Re-exported
@@ -196,7 +196,7 @@ export class InspectionEditorLogic {
           return feature;
         });
     
-    console.log(edit_info.reportStatisticState);
+    log.debug("[stats-reset] prior", edit_info.reportStatisticState);
     edit_info.reportStatisticState={
       ...edit_info.reportStatisticState,
       historyReport: [],
@@ -210,7 +210,7 @@ export class InspectionEditorLogic {
 
   rootDefInfoLoading(root_defFile,edit_info,inspEditorLogic=this)
   {
-    console.log(root_defFile,edit_info);
+    log.debug("[def-load]", { root_defFile, edit_info });
     if (root_defFile.type === "binary_processing_group") {
       let doExit = false;
       let clone_featureSet = dclone(root_defFile.featureSet);
@@ -228,7 +228,7 @@ export class InspectionEditorLogic {
       {
         let sha1_info_in_file = root_defFile.featureSet_sha1;
         if (sha1_info_in_file !== sha1_info_in_json) {
-          console.error("HASH doesn't match!!!",sha1_info_in_file,sha1_info_in_json);
+          log.error("[sha1-mismatch]", { inFile: sha1_info_in_file, recomputed: sha1_info_in_json });
           doExit = true;
           // Hard block: refuse the def and surface a blocking modal (a watcher
           // in script.jsx pops Modal.error on this flag). A failed integrity
@@ -861,9 +861,9 @@ export class InspectionEditorLogic {
         log.debug("SETShape>", pre_shape_idx);
         if (pre_shape_idx != undefined) {
           let refTree = this.FindShapeRefTree(id);
-          console.log("refTree", refTree);
+          log.debug("[refTree]", refTree);
           let flatRefTree = this.FlatRefTree(refTree);
-          console.log("flatRefTree", flatRefTree);
+          log.debug("[flatRefTree]", flatRefTree);
           this.shapeList = this.shapeList
             .filter((shape) => flatRefTree.find(fRef => shape.id == fRef.id) === undefined)
             .filter((shape) => id != shape.id);

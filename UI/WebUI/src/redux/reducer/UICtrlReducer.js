@@ -7,7 +7,7 @@ import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,MEASURERSULTRES
 
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import APP_INFO from 'JSSRCROOT/info.js';
-import * as logX from 'loglevel';
+import { mkLog } from 'UTIL/logger';
 import dclone from 'clone';
 import JSum from 'jsum'
 
@@ -18,7 +18,7 @@ import EC_zh_TW from 'LANG/zh_TW';
 import { TrademarkCircleOutlined } from '@ant-design/icons';
 
 import { statReducer } from './spcStats';
-let log = logX.getLogger("UICtrlReducer");
+const log = mkLog('editor.reducer');
 
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
@@ -82,7 +82,7 @@ function StateReducer(newState, action) {
 
 
     case "System_Setting_Update":
-      console.log("System_Setting_Update",action.data);
+      log.debug("[System_Setting_Update]", action.data);
       newState=
       {
         ...newState,
@@ -632,14 +632,14 @@ function StateReducer(newState, action) {
               ...newState.edit_info.statSetting,
               ...action.data
             };
-            console.log("StatSettingParam_Update", newState.edit_info.statSetting);
+            log.debug("[StatSettingParam_Update]", newState.edit_info.statSetting);
             break;
 
             
           case UISEV.StatInfo_Clear:
 
           
-            console.log("StatInfo_Clear.........");
+            log.debug("[StatInfo_Clear]");
             newState.edit_info = 
             newState.edit_info._obj.resetStatisticState(newState.edit_info);
 

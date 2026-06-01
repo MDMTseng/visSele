@@ -5,7 +5,8 @@ import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionE
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine, closestPointOnPoints, distance_point_point } from 'UTIL/MathTools';
 import { INSPECTION_STATUS, BPG_ExpCalc } from 'UTIL/BPG_Protocol';
-import * as log from 'loglevel';
+import { mkLog } from "UTIL/logger";
+const log = mkLog("canvas.draw");
 import dclone from 'clone';
 import Color from 'color';
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from './renderConst';

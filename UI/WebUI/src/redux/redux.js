@@ -1,4 +1,6 @@
 import { applyMiddleware, combineReducers, createStore } from "redux";
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('editor.reducer');
 import UICtrlReducer from "REDUX_STORE_SRC/reducer/UICtrlReducer";
 import ConnectionInfoReducer from "REDUX_STORE_SRC/reducer/ConnectionInfoReducer";
 import {ActionThrottle} from "REDUX_STORE_SRC/middleware/ActionThrottle";
@@ -114,10 +116,9 @@ let ST = {
  
   
 function errorHandler(error, getState, lastAction, dispatch) {
-  console.error(error);
-  console.debug('current state', getState());
-  console.debug('last action was', lastAction);
-  // optionally dispatch an action due to the error using the dispatch parameter
+  log.error("[middleware-error]", error);
+  log.debug("[middleware-error] state", getState());
+  log.debug("[middleware-error] last-action", lastAction);
 }
 
 

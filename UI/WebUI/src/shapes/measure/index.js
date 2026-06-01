@@ -144,7 +144,8 @@ import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine,
 import { INSPECTION_STATUS } from 'UTIL/InspectionStatus';
 import { BPG_ExpCalc } from 'UTIL/BPG_Protocol';
 import dclone from 'clone';
-import * as log from 'loglevel';
+import { mkLog } from "UTIL/logger";
+const log = mkLog("editor.shapes");
 import { MEASURE_RESULT_VISUAL_INFO, SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 
 export function draw(ctx, shape, renderer, {

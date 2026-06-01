@@ -6,7 +6,8 @@
 // Returns measureValue (number) or undefined; the caller pushes to measureValueCache.
 import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { BPG_ExpCalc } from 'UTIL/BPG_Protocol';
-import * as log from 'loglevel';
+import { mkLog } from "UTIL/logger";
+const log = mkLog("editor.shapes");
 
 // Editor schema slice for the calc subtype: replaces the default ref-buttons
 // row with the Measure_Calc_Editor referencing other measures (loop-protected).

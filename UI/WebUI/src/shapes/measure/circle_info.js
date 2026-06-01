@@ -7,7 +7,8 @@
 import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { threePointToArc, intersectPoint, LineCentralNormal, closestPointOnLine, closestPointOnPoints, distance_point_point } from 'UTIL/MathTools';
 import dclone from 'clone';
-import * as log from 'loglevel';
+import { mkLog } from "UTIL/logger";
+const log = mkLog("editor.shapes");
 
 // Editor schema slice for the circle_info subtype: adds the info_type dropdown.
 export function buildWhiteListKey(ctx) {

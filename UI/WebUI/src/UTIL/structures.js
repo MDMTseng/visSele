@@ -1,4 +1,6 @@
 // Pure data structures (CircularCounter, ConsumeQueue). Extracted from MISC_Util.
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('comm.api');
 export class CircularCounter{
   constructor(total_size)
   {
@@ -77,7 +79,7 @@ export class CircularCounter{
 export class ConsumeQueue{
   constructor(consumePromiseFunc,QSize=200,onTerminationState=(cq=>{})) {
     
-    console.log(consumePromiseFunc,QSize,onTerminationState);
+    log.debug("[ConsumeQueue] ctor", { QSize, hasOnTerm: typeof onTerminationState === 'function' });
     this.cC=new CircularCounter(QSize);
     this.queue=new Array(QSize);
     this.term=false;
@@ -191,7 +193,7 @@ export class ConsumeQueue{
         return;
       }
 
-      console.log("Consume failed... e=",e);
+      log.warn("[ConsumeQueue] consume failed", { err: e && (e.message || String(e)) });
       this.inPromise=false;
     });
   }

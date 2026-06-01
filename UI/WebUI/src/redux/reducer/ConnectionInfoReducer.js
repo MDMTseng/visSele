@@ -1,6 +1,7 @@
-import * as logX from 'loglevel';
+import { mkLog } from 'UTIL/logger';
 import { UI_SM_EVENT } from 'REDUX_STORE_SRC/actions/UIAct';
 let UISEV = UI_SM_EVENT;
+const log = mkLog('editor.reducer');
 
 import {GetObjElement} from 'UTIL/MISC_Util';
 
@@ -36,7 +37,7 @@ let StateReducer = (state, action) => {
             return {...state,CORE_ID_CONN_INFO:{...state.CORE_ID_CONN_INFO,...action}}
           }
           if(GetObjElement(state,["CORE_ID_CONN_INFO","type"]) == action.type)break;
-          console.log(action)
+          log.debug("[core-conn-info]", action);
           return {...state,CORE_ID_CONN_INFO:action}
           break;
         case DefFile_DB_W_ID:

@@ -1,7 +1,7 @@
 // Pure SPC statistics reducers extracted from UICtrlReducer (no redux/state coupling).
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
-import * as logX from 'loglevel';
-let log = logX.getLogger('spcStats');
+import { mkLog } from "UTIL/logger";
+const log = mkLog("editor.reducer");
 
   function histDataReducer(histoInfo, dataValue) {
     if (dataValue < histoInfo.xmin) {

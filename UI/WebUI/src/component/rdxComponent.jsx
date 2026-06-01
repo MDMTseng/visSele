@@ -20,6 +20,8 @@ import Layout from 'antd/lib/layout';
 const { Header, Content, Footer, Sider } = Layout;
 
 import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement, dictLookUp} from 'UTIL/MISC_Util';
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('ui.rdx');
 import Typography from 'antd/lib/typography';
 const { Paragraph, Title } = Typography;
 import { WarningOutlined,CheckOutlined,BulbOutlined,SaveOutlined,ReloadOutlined } from '@ant-design/icons';
@@ -84,7 +86,6 @@ function SingleDisplayEditUI({ displayInfo, onUpdate, onCancel, BPG_Channel,onDe
             {
               path: "data/",
               selected: (path, info) => {
-                console.log(path, info);
 
                 let PromArr = [
                   new Promise((resolve, reject) => {
@@ -104,7 +105,6 @@ function SingleDisplayEditUI({ displayInfo, onUpdate, onCancel, BPG_Channel,onDe
                 ];
                 Promise.all(PromArr).
                   then((pkts) => {
-                    console.log(pkts);
                     if (pkts[0][0].type != "FL") return;
                     if (pkts[1][0].type != "FS") return;
                     let dataFolderPath = pkts[1][0].data.path;
@@ -125,7 +125,6 @@ function SingleDisplayEditUI({ displayInfo, onUpdate, onCancel, BPG_Channel,onDe
 
                   })
                   .catch((err) => {
-                    console.log(err);
                   })
 
               },
@@ -241,13 +240,12 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath, onChange=_=>_ }) {
       setDisplayInfo(data.prod);
       onChange(data);
     }).catch(e => {
-      console.log(e);
     });
   }
 
   useEffect(() => {
     return () => {
-      console.log("1,didUpdate ret::");
+      log.debug("[didUpdate]");
     };
   }, []);
 
@@ -257,7 +255,6 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath, onChange=_=>_ }) {
 
   let UI = [];
   if (displayInfo !== undefined && safeCheckUI==undefined) {
-    console.log(displayInfo);
     UI = [];
 
 
@@ -268,12 +265,10 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath, onChange=_=>_ }) {
           onClick={() => {
             CusDisp_DB.create(_mus.cusdisp_db_fetch_url,{ name: "新設定", targetDeffiles: [{}] }, undefined).then(() => {
               CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
-                console.log(displayInfo);
                 setDisplayInfo(data.prod);
 
                 setDisplayEle(data.prod[data.prod.length - 1]);
               }).catch(e => {
-                console.log(e);
               });
             });
           }}
@@ -305,16 +300,13 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath, onChange=_=>_ }) {
         <div>
           <SingleDisplayEditUI displayInfo={displayEle} BPG_Channel={BPG_Channel} key="SingleDisplayEditUI"
             onUpdate={(updatedEle) => {
-              console.log(updatedEle);
               CusDisp_DB.update(_mus.cusdisp_db_fetch_url,updatedEle, displayEle._id).then(() => {
                 CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
-                  console.log(displayInfo);
                   setDisplayInfo(data.prod);
                   setDisplayEle();
                   
                   refreshData();
                 }).catch(e => {
-                  console.log(e);
                 });
               });
             }
@@ -340,10 +332,8 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath, onChange=_=>_ }) {
                   CusDisp_DB.delete(_mus.cusdisp_db_fetch_url,info._id).then(() => {
     
                     CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
-                      console.log(displayInfo);
                       setDisplayInfo(data.prod);
                     }).catch(e => {
-                      console.log(e);
                     });
                   });
     
@@ -455,7 +445,6 @@ export function CustomDisplaySelectUI({onSelect}) {
       icat["-NA-"]={set:undefSet};
     setCatSet(icat);
   }).catch(e=>{
-    console.log(e);
   });
 
   }
@@ -466,7 +455,7 @@ export function CustomDisplaySelectUI({onSelect}) {
     setCatSet(undefined);
     catSetUpdate();
     return () => {
-      console.log("1,didUpdate ret::");
+      log.debug("[didUpdate]");
     };
   },[]);
 
@@ -485,14 +474,12 @@ export function CustomDisplaySelectUI({onSelect}) {
   
   if(catSet!==undefined)
   {
-    console.log(catSet);
     UI=
     <Tabs defaultActiveKey="0">
       {Object.keys(catSet).map((cat,cat_idx)=>{
 
 
         let catset = catSet[cat].set;
-        console.log(catSet,cat,catset);
         if( (catset instanceof Array) == false)
         {
           catset=[];
@@ -628,7 +615,6 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
             checked={is_cur_checked}
             color= {is_cur_checked?"#5191a5":"#AAA"}
             onClick={()=>{
-              console.log(tag);
               let checked =!is_cur_checked;
               if(checked)
               {
@@ -645,10 +631,7 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
               else
               {
                 let newTags=[...inspOptionalTag];
-                console.log(newTags);
-                console.log(idxOf,tag,checked);
                 newTags.splice(idxOf, 1)
-                console.log(newTags); 
                 ACT_InspOptionalTag_Update(newTags)
               }
 
@@ -1029,10 +1012,8 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
               //setTimeout(()=>reject("Timeout"),1000)
             })
               .then((data) => {
-                console.log(data);
               })
               .catch((err) => {
-                console.log(err);
               })
             }}>{dictLookUp("TEST_MODE_DISCONNECT", DICT)}</Button> */}
 
@@ -1113,7 +1094,7 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
         {
           _key=_this.api_cb_key=getRandomInt(1000000);
         }
-        console.log(">>>SLID_API List Add:",_key);
+        log.debug("[slid-api-list-add]", _key);
 
         api.checkInfoListenerAdd(_key,(api,report_stat)=>{
           // console.log(api,report_stat);
@@ -1130,7 +1111,7 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
       })
       return ()=>{
         
-        console.log(">>>SLID_API List Remove:",_key);
+        log.debug("[slid-api-list-remove]", _key);
         ACT_WS_GET_OBJ(api=>{
           api.checkInfoListenerRemove(_key)
           _this.api_cb_key=undefined;
@@ -1337,10 +1318,9 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
           ACT_WS_GET_OBJ((api)=>{
             // api.send({"type":"PIN_CONF","pin":2,"output":1},
             
-            console.log({"type":"BL_ON"});
+            log.debug("[bl-on]");
             api.send({"type":"BL_ON"},
             (ret)=>{
-              console.log(ret);
             },(e)=>console.log(e));
           })
         }>
@@ -1624,7 +1604,6 @@ export function CNC_UI({UI_INSP_Count=false})
     ACT_WS_GET_OBJ((api)=>{
       api.send({"type":"GCODE","code":gcode},
       (ret)=>{
-        console.log(ret);
         _this.isSendWaiting=false;
         pushInSendGCodeQ(_this.gcodeSeq);
 
@@ -1958,7 +1937,6 @@ export function CNC_UI({UI_INSP_Count=false})
           _machineInfo[PinKey]=!_machineInfo[PinKey];
           setMachineInfo(_machineInfo);
           let code = "M42 P"+PIN_OUT[pinIdx]+" S"+(_machineInfo[PinKey]?0:1);
-          console.log(code);
           _this.gcodeSeq.push(code);
           pushInSendGCodeQ();
         }}>

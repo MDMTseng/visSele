@@ -4,8 +4,8 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import {PostfixExpCalc} from 'UTIL/MISC_Util';
 
 
-import * as logX from 'loglevel';
-let log = logX.getLogger("BPG_Protocol");
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('comm.bpg');
 
 
 const BPG_header_L = 9;

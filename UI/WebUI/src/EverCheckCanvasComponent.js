@@ -18,7 +18,8 @@ import {
 
 
 import { INSPECTION_STATUS,BPG_ExpCalc } from 'UTIL/BPG_Protocol';
-import * as log from 'loglevel';
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('canvas.ctrl');
 import dclone from 'clone';
 
 import Color from 'color';
@@ -927,8 +928,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   inspectionResult(objReport) {
     let judgeReports = objReport.judgeReports;
     let ret_status = judgeReports.reduce((res, obj) => {
-      // if(obj.quality_essential)
-      console.log(obj)
+      log.debug("[inspectionResult] judge", obj);
       if (res == INSPECTION_STATUS.NA || res == INSPECTION_STATUS.UNSET) return res;
       if (res == INSPECTION_STATUS.FAILURE) {
         if (obj.status == INSPECTION_STATUS.NA) return INSPECTION_STATUS.NA;
@@ -1128,9 +1128,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
           ctx.scale(mmpp, mmpp);
           ctx.drawImage(this.stream_img, 0, 0);
         } catch (error) {
-          console.error(this.stream_img,error);
-          // expected output: ReferenceError: nonExistentFunction is not defined
-          // Note - error messages will vary depending on browser
+          log.error("[stream-drawImage]", { stream_img: this.stream_img, error });
         }
         
         

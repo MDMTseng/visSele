@@ -1,5 +1,6 @@
 import React from 'react';
-import * as log from 'loglevel';
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('ui.boundary');
 
 // Granular error boundary for ISOLATING a single panel's render crash.
 // Unlike RootErrorBoundary (which takes down the whole app on any throw),

@@ -1,7 +1,8 @@
 // Stateful WebSocket helpers (auto-reconnect, request tracking, alive tracking).
 // Cohesive networking unit relocated from MISC_Util.
 
-import * as log from 'loglevel';
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('comm.ws');
 
 export class websocket_autoReconnect{
   

@@ -5,7 +5,7 @@ import {GetObjElement} from 'UTIL/MISC_Util';
 
 import dateFormat from "dateformat";
 import dclone from 'clone';
-import * as logX from 'loglevel';
+import { mkLog } from 'UTIL/logger';
 
 import  {default as AntButton}  from 'antd/lib/button';
 import  Switch  from 'antd/lib/switch';
@@ -38,7 +38,7 @@ const AntButtonGroup = AntButton.Group;
 // import { button as AntButton } from 'antd/lib/button';
 // import {Button as AntButton} from 'antd/lib/button';
 
-let log = logX.getLogger("baseComponent");
+const log = mkLog('ui.base');
 
 export function InputNumber({key,className,step=0.1,defaultValue,value,onChange})
 {
@@ -440,7 +440,6 @@ export class BPG_FileSavingBrowser extends React.Component{
     let isTarFileExist = this.state.folderInfo!=undefined && this.state.folderInfo.files!==undefined&&
      ((this.state.folderInfo.files.find((file)=>file.name==this.state.fileName))!==undefined);
     
-    console.log(isTarFileExist);
     return <BPG_FileBrowser_proto {...this.props}
         onFileSelected={(file)=>{
           let fileName= file.substr(file.lastIndexOf('/') + 1);
@@ -528,7 +527,7 @@ export class BPG_FileBrowser_proto extends React.Component{
     {
       if(path == this.state.history[this.state.history.length-1])
       {
-        console.log(">>>>>");
+        log.debug("[browser]");
         return;
       }
       this.state.history.push(path);
@@ -536,7 +535,7 @@ export class BPG_FileBrowser_proto extends React.Component{
 
     this.fetchDirFiles(path)
     .then((data) => {
-      console.log("fetchDirFiles OK:",data)
+      log.debug("[fetchDirFiles] ok", data)
       let folderStruct={}
       if(data[1].data.ACK)
       {
@@ -549,7 +548,7 @@ export class BPG_FileBrowser_proto extends React.Component{
       }
     })
     .catch((err) => {
-      console.log("fetchDirFiles exception",err)
+      log.warn("[fetchDirFiles] exception", err)
       this.setState({...this.state,folderStruct:[]});
       if(this.props.onFolderLoaded!==undefined)
       {
@@ -687,7 +686,7 @@ export class BPG_FileBrowser_proto extends React.Component{
           file.name.includes(this.state.searchText)&&
           (this.props.fileFilter===undefined?true:this.props.fileFilter(file)));
       }
-      console.log(this.state.selectedFileGroupInfo,fileList);
+      log.debug("[file-list]", { sel: this.state.selectedFileGroupInfo, fileList });
 
       tableWidthClass="width12"
     }
@@ -840,7 +839,6 @@ export class BPG_FileBrowser_proto extends React.Component{
         <Table key="fileList"
           onRow={(file) => ({
             onClick: (evt) => { 
-              console.log(evt);
               if(file.type!="DIR")
                 this.props.onFileSelected(file.path,file,this.state.folderStruct);
               else

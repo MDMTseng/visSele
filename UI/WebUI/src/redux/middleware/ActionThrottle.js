@@ -1,8 +1,8 @@
 
 import {UI_SM_EVENT} from '../actions/UIAct';
 
-import * as logX from 'loglevel';
-let log = logX.getLogger("ActionThrottle");
+import { mkLog } from "UTIL/logger";
+const log = mkLog("editor.action");
 
 
 export const ActionThrottle = ATData => store => next => action => {
