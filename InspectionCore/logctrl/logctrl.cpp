@@ -410,12 +410,20 @@ int log_open_shm_ring(const char *shm_name, int size_mb) {
         new (&h->head)          std::atomic<uint64_t>(0);
         new (&h->heartbeat_ms)  std::atomic<uint64_t>(0);
         new (&h->crash_marker)  std::atomic<uint32_t>(LOG_CRASH_NONE);
+        new (&h->crash_frame_count) std::atomic<uint32_t>(0);
 
         /* Zero all slot seqs so the drainer doesn't trust stale data. */
         auto *slots = reinterpret_cast<uint8_t *>(info.ptr) + LOG_HEADER_BYTES;
         std::memset(slots,
                     0,
                     static_cast<size_t>(slot_count) * LOG_SLOT_BYTES);
+    } else {
+        /* Reattaching to a same-shape ring (typical: re-launched producer
+         * after a crash).  Clear stale crash state so a fresh drainer
+         * doesn't trip on the previous run's marker. */
+        h->crash_marker.store(LOG_CRASH_NONE, std::memory_order_release);
+        h->crash_frame_count.store(0, std::memory_order_release);
+        h->crash_signal = 0;
     }
 
     g_shm_ring.info         = info;

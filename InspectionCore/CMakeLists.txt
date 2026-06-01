@@ -103,8 +103,8 @@ target_link_libraries(logctrl_test_ring PRIVATE logctrl)
 # log_spawn_drainer().  Reads the shm ring, writes INFO+ to a rolling disk
 # file, holds DEBUG/TRACE in an in-RAM ephemeral buffer for crash dump
 # (Phase G).
-add_executable(inspd_log logctrl/inspd_log_main.cpp)
-target_link_libraries(inspd_log PRIVATE logctrl)
+add_executable(inspd_log logctrl/inspd_log_main.cpp logctrl/inspd_log_ws.cpp)
+target_link_libraries(inspd_log PRIVATE logctrl ws_server cJSON)
 
 # --- circleFitting ---------------------------------------------------------
 add_library(CircleFitting STATIC

@@ -20,6 +20,8 @@
  */
 
 #include <log_ring.h>
+#include "inspd_log_ws.h"
+
 #include <logctrl.h>
 #include <sp.hpp>
 
@@ -72,7 +74,95 @@ struct Config {
     int         rotate_bytes   = 10 * 1024 * 1024;
     int         rotate_keep    = 5;
     int         persist_min_lv = LOG_LV_INFO;
+    int         ws_port        = 0;     /* 0 = disabled */
 };
+
+/* Parse a producer-formatted log line into structured fields.
+ *
+ * Format (from logctrl.cpp's emit path):
+ *   [<time>][<L>][<module       >][<file>:<line> <func>] <body>\n
+ * Example:
+ *   [     4.585][E][core          ][wiringPanel.cpp     :5008 cp_main] msg
+ *
+ * Mutates `buf` in place (writes NULs at section boundaries) and points
+ * the LogRecord string fields into it.  The buffer must outlive the
+ * LogRecord use.  Returns true on a successful parse.
+ *
+ * On failure (truncated / malformed), falls back to setting body=buf and
+ * leaving the rest empty -- the line still goes out, just unstructured.
+ */
+bool parse_log_line(char *buf, int slot_line, LogRecord *out) {
+    out->module = "";
+    out->file = "";
+    out->function = "";
+    out->line = slot_line;
+    out->body = buf;
+
+    char *p = buf;
+    if (*p != '[') return false;
+    char *p1 = std::strchr(p, ']');  if (!p1) return false;          /* end of time */
+    char *p2 = std::strchr(p1+1, ']'); if (!p2) return false;        /* end of [L] */
+    char *mod_start = p2 + 1;
+    if (*mod_start != '[') return false;
+    ++mod_start;
+    char *p3 = std::strchr(mod_start, ']'); if (!p3) return false;   /* end of module */
+    *p3 = '\0';
+    out->module = mod_start;
+    /* trim trailing spaces from module */
+    for (char *t = p3 - 1; t >= mod_start && *t == ' '; --t) *t = '\0';
+
+    char *file_start = p3 + 1;
+    if (*file_start != '[') return false;
+    ++file_start;
+    char *colon = std::strchr(file_start, ':'); if (!colon) return false;
+    *colon = '\0';
+    out->file = file_start;
+    for (char *t = colon - 1; t >= file_start && *t == ' '; --t) *t = '\0';
+
+    char *line_start = colon + 1;
+    char *space = std::strchr(line_start, ' '); if (!space) return false;
+    *space = '\0';
+    /* keep slot_line (authoritative); but also parseable: out->line = atoi(line_start) */
+
+    char *func_start = space + 1;
+    while (*func_start == ' ') ++func_start;
+    char *p4 = std::strchr(func_start, ']'); if (!p4) return false;  /* end of fileinfo */
+    *p4 = '\0';
+    out->function = func_start;
+
+    char *body = p4 + 1;
+    while (*body == ' ') ++body;
+    /* strip trailing newline */
+    size_t bl = std::strlen(body);
+    while (bl > 0 && (body[bl-1] == '\n' || body[bl-1] == '\r')) body[--bl] = '\0';
+    out->body = body;
+    return true;
+}
+
+const char *severity_text_for(int lv) {
+    switch (lv) {
+        case LOG_LV_TRACE: return "TRACE";
+        case LOG_LV_DEBUG: return "DEBUG";
+        case LOG_LV_INFO:  return "INFO";
+        case LOG_LV_WARN:  return "WARN";
+        case LOG_LV_ERROR: return "ERROR";
+        case LOG_LV_FATAL: return "FATAL";
+        default:           return "?";
+    }
+}
+
+/* OTel severityNumber per docs/LOGGING_WEBUI.md. */
+int severity_number_for(int lv) {
+    switch (lv) {
+        case LOG_LV_TRACE: return 1;
+        case LOG_LV_DEBUG: return 5;
+        case LOG_LV_INFO:  return 9;
+        case LOG_LV_WARN:  return 13;
+        case LOG_LV_ERROR: return 17;
+        case LOG_LV_FATAL: return 21;
+        default:           return 0;
+    }
+}
 
 void env_load(Config &c) {
     if (const char *e = std::getenv("INSP_LOG_RING_NAME")) c.ring_name = e;
@@ -83,6 +173,7 @@ void env_load(Config &c) {
         c.rotate_bytes = std::atoi(e) * 1024 * 1024;
     if (const char *e = std::getenv("INSP_LOG_ROTATE_KEEP"))
         c.rotate_keep = std::atoi(e);
+    if (const char *e = std::getenv("INSP_LOG_WS_PORT")) c.ws_port = std::atoi(e);
     if (const char *e = std::getenv("INSP_LOG_PERSIST_LEVEL")) {
         std::string s(e);
         if      (s == "trace" || s == "v") c.persist_min_lv = LOG_LV_TRACE;
@@ -342,6 +433,33 @@ int run(const Config &cfg) {
                         cfg.rotate_bytes, cfg.rotate_keep);
     EphemeralBuf ephemeral(EPHEMERAL_CAP);
 
+    /* Optional WebSocket bridge for WebUI live tail.  Default: off. */
+    LogWsServer *ws = nullptr;
+    uint64_t started_unix_nano = 0;
+    if (cfg.ws_port > 0) {
+        LogWsServer::HelloInfo hello;
+        hello.ring_version = h->version;
+        hello.ring_slots   = h->slot_count;
+        hello.ring_mb      = cfg.ring_mb;
+        struct timespec tspec;
+        clock_gettime(CLOCK_REALTIME, &tspec);
+        started_unix_nano =
+            (uint64_t)tspec.tv_sec * 1000000000ULL + (uint64_t)tspec.tv_nsec;
+        hello.started_unix_nano = started_unix_nano;
+        hello.log_dir      = cfg.log_dir;
+        hello.service_name = "visSele";
+#ifdef _WIN32
+        hello.producer_pid = (long)GetCurrentProcessId();
+        char hn[256]; DWORD hns = sizeof(hn);
+        if (GetComputerNameA(hn, &hns)) hello.host_name = hn;
+#else
+        hello.producer_pid = (long)getppid();
+        char hn[256] = {0};
+        if (gethostname(hn, sizeof(hn)-1) == 0) hello.host_name = hn;
+#endif
+        ws = new LogWsServer(cfg.ws_port, hello);
+    }
+
     /* Tail starts at the oldest still-in-ring slot.  This lets us catch up
      * on lines written between log_open_shm_ring() and our attach.  For a
      * 16 MB / 65535-slot ring on a freshly-launched process, head starts at
@@ -381,6 +499,19 @@ int run(const Config &cfg) {
             }
             disk.flush();
             write_crash_dump(cfg, h, ephemeral, cm);
+            if (ws) {
+                struct timespec tspec;
+                clock_gettime(CLOCK_REALTIME, &tspec);
+                uint64_t now_ns =
+                    (uint64_t)tspec.tv_sec * 1000000000ULL +
+                    (uint64_t)tspec.tv_nsec;
+                ws->push_crash(crash_marker_name(cm), (int)h->crash_signal,
+                               now_ns, /*dump_path*/ "");
+                /* One last tick to flush the crash frames out the socket. */
+                struct timeval tv = { 0, 50000 };
+                ws->tick(&tv);
+                delete ws;
+            }
             return 0;
         }
 
@@ -401,10 +532,17 @@ int run(const Config &cfg) {
             }
         }
 
-        if (tail == head) {
+        /* Drive the WS server.  If enabled, its tick() does the select()
+         * so we don't double-sleep; otherwise fall back to a plain sleep. */
+        if (ws) {
+            struct timeval tv;
+            tv.tv_sec  = 0;
+            tv.tv_usec = (tail == head) ? POLL_INTERVAL_MS * 1000 : 0;
+            ws->tick(&tv);
+        } else if (tail == head) {
             thread_sleep_ms(POLL_INTERVAL_MS);
-            continue;
         }
+        if (tail == head) continue;
 
         /* Drain [tail, head).  Skip slots that overran us (producer ran
          * ahead by more than slot_count). */
@@ -442,6 +580,18 @@ int run(const Config &cfg) {
             } else {
                 ephemeral.push(std::string(text, tlen));
             }
+            /* Fan out to WS subscribers.  Parser mutates a scratch copy. */
+            if (ws && ws->peer_count() > 0) {
+                char scratch[LOG_SLOT_TEXT];
+                std::memcpy(scratch, text, tlen + 1);
+                LogRecord rec{};
+                parse_log_line(scratch, slot->line, &rec);
+                rec.ts_ms_since_start = 0; /* parsed timestamp lives in body prefix; not separated yet */
+                rec.time_unix_nano    = started_unix_nano; /* coarse: lib time of WS attach */
+                rec.severity_number   = severity_number_for(lv);
+                rec.severity_text     = severity_text_for(lv);
+                ws->broadcast_log(rec);
+            }
         }
         disk.flush();
     }
@@ -465,6 +615,7 @@ int run(const Config &cfg) {
         disk.flush();
     }
 
+    if (ws) delete ws;
     return 0;
 }
 
