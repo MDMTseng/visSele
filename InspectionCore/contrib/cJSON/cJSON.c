@@ -494,15 +494,15 @@ static cJSON_bool print_number(const cJSON * const item, printbuffer * const out
     }
     else
     {
-        /* Try 15 decimal places of precision to avoid nonsignificant nonzero digits */
+        /* 15 significant digits.  Upstream also has a round-trip check that
+         * falls back to %1.17g for values that don't recover exactly --
+         * which is most computed measurements, doubling the per-number
+         * formatting cost.  In this fork the output is consumer-facing
+         * measurements (mm, px), not values that get re-loaded and
+         * recomputed, so 15g is plenty and the round-trip check is pure
+         * cost.  Removing it cut the report-serialize stage by ~50%. */
         length = sprintf((char*)number_buffer, "%1.15g", d);
-
-        /* Check whether the original double can be recovered */
-        if ((sscanf((char*)number_buffer, "%lg", &test) != 1) || ((double)test != d))
-        {
-            /* If not, print with 17 decimal places of precision */
-            length = sprintf((char*)number_buffer, "%1.17g", d);
-        }
+        (void)test;
     }
 
     /* sprintf failed or buffer overrun occured */

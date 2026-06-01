@@ -3306,12 +3306,23 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   //               center.x, center.y,
   //               4, 255,255,255);
   //LOGV("X:%f Y:%f r(%f)*ppmm(%f)=r(%f)",center.x,center.y,cdef.circleTar.radius,ppmm,radius);
-  edge_grid.getContourPointsWithInCircleContour(
-      center.x,
-      center.y,
-      radius,
-      sAngle, eAngle, cdef.outter_inner,
-      matching_tor, m_sections);
+  // Caliper path skips the contour-grid pre-scan: caliper_locate_circle does
+  // its own image-space radial sweep and never reads m_sections.  The
+  // maxD/minD/roughness block below already produced NAN when m_sections was
+  // empty, so the report contract is unchanged for caliper consumers.
+  if (cdef.locating != 1)
+  {
+    edge_grid.getContourPointsWithInCircleContour(
+        center.x,
+        center.y,
+        radius,
+        sAngle, eAngle, cdef.outter_inner,
+        matching_tor, m_sections);
+  }
+  else
+  {
+    m_sections.clear();
+  }
 
   LOGI("edge_grid:%p flip_f:%f radius:%f sAngle:%f  eAngle:%f   XY:%f,%f ppmm:%f mmpp:%f ",&edge_grid, flip_f, radius, sAngle, eAngle,center.x,
   center.y,ppmm,mmpp);
@@ -3325,7 +3336,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   cr.pt1 = cr.pt2 = cr.pt3 = acv_XY(NAN, NAN);
 
 
-  if (m_sections.size() == 0)
+  if (m_sections.size() == 0 && cdef.locating != 1)
   {
 
     LOGE("Circle matching failed: resultR:%f defR:%f",
