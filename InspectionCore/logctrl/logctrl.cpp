@@ -26,10 +26,14 @@
 
 #ifdef _WIN32
   #include <io.h>
+  #include <windows.h>
   #define LOG_ISATTY_FN(fd)  _isatty(fd)
   #define LOG_FILENO_FN(fp)  _fileno(fp)
 #else
   #include <unistd.h>
+  #include <spawn.h>
+  #include <sys/wait.h>
+  extern char **environ;
   #define LOG_ISATTY_FN(fd)  isatty(fd)
   #define LOG_FILENO_FN(fp)  fileno(fp)
 #endif
@@ -438,6 +442,57 @@ int log_open_shm_ring(const char *shm_name, int size_mb) {
 void *log_get_shm_ring_mapping(void) {
     std::lock_guard<std::mutex> lk(g_log_mutex);
     return g_shm_ring.attached ? static_cast<void *>(g_shm_ring.hdr) : nullptr;
+}
+
+/* ---------- drainer spawn (Phase F.1) ---------- */
+
+static std::atomic<long> g_drainer_pid{0};   /* nonzero once spawned */
+
+int log_spawn_drainer(const char *exe_path) {
+    if (g_drainer_pid.load() != 0) {
+        return (int)g_drainer_pid.load();  /* already spawned */
+    }
+    const char *path = exe_path;
+    if (!path || !*path) path = std::getenv("INSP_LOG_DRAINER");
+    if (!path || !*path) path = "inspd_log";
+
+#ifdef _WIN32
+    STARTUPINFOA si = {};
+    PROCESS_INFORMATION pi = {};
+    si.cb = sizeof(si);
+    /* CreateProcessA mutates the command-line buffer, so dup it. */
+    char cmd[1024];
+    std::snprintf(cmd, sizeof(cmd), "%s", path);
+    BOOL ok = CreateProcessA(
+        nullptr, cmd, nullptr, nullptr, FALSE, 0,
+        nullptr, nullptr, &si, &pi);
+    if (!ok) {
+        std::fprintf(stderr,
+            "[logctrl] CreateProcess('%s') failed (err=%lu)\n",
+            path, (unsigned long)GetLastError());
+        return -1;
+    }
+    long pid = (long)pi.dwProcessId;
+    CloseHandle(pi.hThread);
+    /* Keep the process handle alive (leak intentionally so the OS keeps
+     * the child reapable; main process exit handles cleanup). */
+    g_drainer_pid.store(pid);
+    return (int)pid;
+#else
+    pid_t pid = 0;
+    char *const argv[] = { (char *)path, nullptr };
+    int rc = posix_spawnp(&pid, path, nullptr, nullptr, argv, environ);
+    if (rc != 0) {
+        std::fprintf(stderr,
+            "[logctrl] posix_spawnp('%s') failed: %s\n",
+            path, std::strerror(rc));
+        return -1;
+    }
+    g_drainer_pid.store((long)pid);
+    std::fprintf(stderr,
+        "[logctrl] drainer spawned pid=%d (exe='%s')\n", (int)pid, path);
+    return (int)pid;
+#endif
 }
 
 void log_close_shm_ring(void) {

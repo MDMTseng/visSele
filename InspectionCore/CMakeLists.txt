@@ -97,6 +97,13 @@ target_link_libraries(logctrl PUBLIC smem_channel)
 add_executable(logctrl_test_ring logctrl/test_ring.cpp)
 target_link_libraries(logctrl_test_ring PRIVATE logctrl)
 
+# Phase F.1: drainer daemon.  Forked from main visSele at boot via
+# log_spawn_drainer().  Reads the shm ring, writes INFO+ to a rolling disk
+# file, holds DEBUG/TRACE in an in-RAM ephemeral buffer for crash dump
+# (Phase G).
+add_executable(inspd_log logctrl/inspd_log_main.cpp)
+target_link_libraries(inspd_log PRIVATE logctrl)
+
 # --- circleFitting ---------------------------------------------------------
 add_library(CircleFitting STATIC
   contrib/circleFitting/circle.cpp contrib/circleFitting/data.cpp

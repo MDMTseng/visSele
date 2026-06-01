@@ -122,6 +122,17 @@ void log_set_stderr_enabled(int enabled);
 int  log_open_shm_ring(const char *shm_name, int size_mb);
 void log_close_shm_ring(void);
 
+/* Spawn the inspd_log drainer as a child of the calling process.  The
+ * drainer attaches to the same shm ring, routes INFO+ to disk, and dumps
+ * the verbose tail on crash.  Safe to call multiple times -- subsequent
+ * calls are a no-op if a drainer is already running.
+ *
+ * exe_path : absolute or relative path to the inspd_log executable.  If
+ *            NULL, uses INSP_LOG_DRAINER env or "inspd_log" (PATH lookup).
+ * Returns the child PID (POSIX) / reinterpret_cast<int>(HANDLE) (Windows),
+ * or -1 on failure.  Cross-platform: posix_spawnp / CreateProcessA. */
+int log_spawn_drainer(const char *exe_path);
+
 /* Returns the producer's mapping pointer (the LogRingHeader is at offset 0)
  * if a shm ring is currently open; NULL otherwise.  Provided primarily so
  * tests and the in-process recovery code (Phase G) can inspect the ring

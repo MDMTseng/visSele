@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <cstdlib>
+#include <string>
 #include <main.h>
 #include "tmpCodes.hpp"
 #include "polyfit.h"
@@ -79,6 +81,22 @@ int_fast32_t testPolyFit()
 
 int main(int argc, char **argv)
 {
+  /* Phase F.1: opt-in shm-ring + drainer at boot.
+   * Enable with INSP_LOG_DAEMON=1.  The drainer writes the rolling
+   * /var/log/insp/insp.log (or INSP_LOG_DIR/INSP_LOG_FILE) and is the
+   * Phase G crash-dump source.  Default off so dev/test runs stay
+   * stderr-only. */
+  if (const char *e = std::getenv("INSP_LOG_DAEMON"); e && *e == '1') {
+    /* Pick exe path relative to argv[0]'s dir so installed layouts work. */
+    std::string exe = "inspd_log";
+    if (argc > 0) {
+      std::string a0 = argv[0];
+      auto slash = a0.find_last_of('/');
+      if (slash != std::string::npos) exe = a0.substr(0, slash + 1) + "inspd_log";
+    }
+    log_open_shm_ring(nullptr, 0);  /* defaults: 16 MB, name "insp_log_ring" */
+    log_spawn_drainer(exe.c_str());
+  }
 
   // while(1)
   // {
