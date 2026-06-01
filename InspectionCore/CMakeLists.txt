@@ -174,19 +174,29 @@ add_library(MJPEG_Streamer STATIC MJPEG_Streamer/MJPEG_Streamer.cpp)
 target_include_directories(MJPEG_Streamer PUBLIC MJPEG_Streamer/include)
 target_link_libraries(MJPEG_Streamer PUBLIC logctrl common_lib)
 
-# --- BPG_Protocol (+ bundled cwebsocket) -----------------------------------
-add_library(BPG_Protocol STATIC
-  BPG_Protocol/BPG_Protocol.cpp BPG_Protocol/IPC_Channel.cpp
-  BPG_Protocol/BPG_Link_Interface_WebSocket.cpp BPG_Protocol/ws_server_util.cpp
-  BPG_Protocol/BPG_Link_Interface_SharedMemoryChannel.cpp
+# --- ws_server (reusable WebSocket server -- shared by BPG and inspd_log) --
+# Sources still live under BPG_Protocol/ for path stability; the *target* is
+# split so consumers (like inspd_log) can link the WS bits without dragging
+# in BPG.
+add_library(ws_server STATIC
+  BPG_Protocol/ws_server_util.cpp
   contrib/cwebsocket/lib/websocket.c)
 force_cxx(contrib/cwebsocket/lib/websocket.c)
-target_include_directories(BPG_Protocol PUBLIC
+target_include_directories(ws_server PUBLIC
   BPG_Protocol/include BPG_Protocol/include_priv contrib/cwebsocket/lib)
-target_link_libraries(BPG_Protocol PUBLIC logctrl common_lib smem_channel)
+target_link_libraries(ws_server PUBLIC logctrl)
 if(WIN32 OR MINGW OR MSYS)
-  target_link_libraries(BPG_Protocol PUBLIC ws2_32)
+  target_link_libraries(ws_server PUBLIC ws2_32)
 endif()
+
+# --- BPG_Protocol ----------------------------------------------------------
+add_library(BPG_Protocol STATIC
+  BPG_Protocol/BPG_Protocol.cpp BPG_Protocol/IPC_Channel.cpp
+  BPG_Protocol/BPG_Link_Interface_WebSocket.cpp
+  BPG_Protocol/BPG_Link_Interface_SharedMemoryChannel.cpp)
+target_include_directories(BPG_Protocol PUBLIC
+  BPG_Protocol/include BPG_Protocol/include_priv)
+target_link_libraries(BPG_Protocol PUBLIC ws_server logctrl common_lib smem_channel)
 
 # --- CameraLayer (camera-SDK conditional) ----------------------------------
 set(_CAM_SRC
