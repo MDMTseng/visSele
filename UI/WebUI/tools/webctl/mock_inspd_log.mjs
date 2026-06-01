@@ -19,6 +19,7 @@ import { WebSocketServer } from 'ws';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import zlib from 'zlib';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -125,8 +126,12 @@ let replayLines = null;
 let replayIdx   = 0;
 if (REPLAY) {
   try {
-    replayLines = fs.readFileSync(REPLAY, 'utf8').split(/\r?\n/).filter(Boolean);
-    console.log(`[mock] replay file: ${REPLAY} (${replayLines.length} lines)`);
+    // Transparent gunzip if the path ends in .gz (matches the baseline/
+    // inspd_log fixture convention).
+    const buf = fs.readFileSync(REPLAY);
+    const text = REPLAY.endsWith('.gz') ? zlib.gunzipSync(buf).toString('utf8') : buf.toString('utf8');
+    replayLines = text.split(/\r?\n/).filter(Boolean);
+    console.log(`[mock] replay file: ${REPLAY} (${replayLines.length} lines${REPLAY.endsWith('.gz') ? ', gunzipped' : ''})`);
   } catch (e) {
     console.error(`[mock] cannot read --file: ${e.message}`); process.exit(1);
   }
