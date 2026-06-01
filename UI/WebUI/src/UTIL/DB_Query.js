@@ -1,5 +1,7 @@
 import jsonp from 'jsonp';
+import { mkLog } from 'UTIL/logger';
 
+const log = mkLog('comm.db');
 
 function defFileQuery(db_url,name,featureSet_sha1)
 {
@@ -19,7 +21,8 @@ function defFileQuery(db_url,name,featureSet_sha1)
                 res(data);
             else
                 rej(err)
-            console.log(err,data);
+            if (err) log.warn('[jsonp-query]', { err: String(err) });
+            else log.debug('[jsonp-query] result', data);
         });
     });
 }
@@ -60,7 +63,8 @@ function inspectionQuery(db_url,subFeatureDefSha1,date_start,date_end,limit=100)
                 res(data);
             else
                 rej(err)
-            console.log(err,data);
+            if (err) log.warn('[jsonp-query]', { err: String(err) });
+            else log.debug('[jsonp-query] result', data);
             /*console.log(err,data);
             text=JSON.stringify(
                 data.

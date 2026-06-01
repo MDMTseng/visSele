@@ -3,7 +3,10 @@
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
-import * as log from 'loglevel';
+import { mkLog } from 'UTIL/logger';
+
+const log = mkLog('comm.bpg');      // demux + LD-chain + system-setting bootstrap
+const wsLog = mkLog('comm.ws');     // raw WebSocket lifecycle (open/close/error/reconnect)
 
 function urlConcat(base, add) {
   if (base === undefined) return undefined;
@@ -24,7 +27,6 @@ function urlConcat(base, add) {
         this.pgIDCounter= 0;
         this.websocket=undefined;
         this.isConnected=false;
-        console.log(">>>>");
         this.systemStatusPull();
       }
 
@@ -58,14 +60,14 @@ function urlConcat(base, add) {
       {
         let url = info.url;
         const peerId = this.comp.props.CORE_ID;
-        log.info("[ws] connect", { peer: peerId, url });
+        wsLog.info("[connect] dial", { peer: peerId, url });
         if (this._reconnectCount === undefined) this._reconnectCount = 0;
         this.websocket=new WebSocket(url);
 
         this.websocket.binaryType ="arraybuffer";
 
         this.websocket.onopen=(ev)=>{
-          log.info("[ws] open", { peer: peerId, url, reconnects: this._reconnectCount });
+          wsLog.info("[open]", { peer: peerId, url, reconnects: this._reconnectCount });
         }
         this.websocket.onclose=(ev)=>{
           this.isConnected=false;
@@ -74,14 +76,14 @@ function urlConcat(base, add) {
           // factory failure mode and the only one with no `reason` payload.
           const code = ev && ev.code;
           const meta = { peer: peerId, url, code, reason: ev && ev.reason, reconnects: this._reconnectCount };
-          if (code === 1006) log.warn("[ws] close 1006 (abnormal)", meta);
-          else log.info("[ws] close", meta);
+          if (code === 1006) wsLog.warn("[close-1006-abnormal]", meta);
+          else wsLog.info("[close]", meta);
           this.store.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
 
           this.store.dispatch({type:"WS_DISCONNECTED",id:this.comp.props.CORE_ID,data:undefined});
           setTimeout(() => {
             this._reconnectCount = (this._reconnectCount || 0) + 1;
-            log.info("[ws] reconnect attempt", { peer: peerId, url, attempt: this._reconnectCount });
+            wsLog.info("[reconnect]", { peer: peerId, url, attempt: this._reconnectCount });
             this.comp.props.ACT_WS_CONNECT(this.comp.props.CORE_ID, url);
           }, 10*1000);
         }
@@ -89,7 +91,7 @@ function urlConcat(base, add) {
         this.websocket.onerror=(er)=>{
           // er is a generic Event for security (browsers don't expose details);
           // just note that it fired — onclose will follow with the code.
-          log.warn("[ws] error event", { peer: peerId, url });
+          wsLog.warn("[error]", { peer: peerId, url });
         }
         this.websocket.onmessage=(ev)=>{
           this.onmessage(ev);
@@ -115,7 +117,7 @@ function urlConcat(base, add) {
             {
               {
                 let HR = BPG_Protocol.raw2obj(evt);
-                console.log("HR:",HR);
+                log.debug("[hr] heartbeat received", HR && HR.data);
                 this.store.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_READY(HR));
                 
                 let version = GetObjElement(HR,["data","version"])||"_";
@@ -129,18 +131,18 @@ function urlConcat(base, add) {
               {
 
                 this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "LD", 0, { filename: "data/default_camera_param.json" },
-                undefined, 
+                undefined,
                 {resolve: (data,action_channal) => {
-                  console.log(data);
+                  log.debug("[ld] default_camera_param.json", data);
                   action_channal(data);
-                  
+
                 }});
 
                 let machineSettingPath="data/machine_setting.json";
                 this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "LD", 0,{ filename: machineSettingPath },
-                undefined, 
+                undefined,
                 {resolve: (data) => {
-                  console.log(data);
+                  log.debug("[ld] machine_setting", data);
                   if (data[0].type == "FL") {
                     let info = data[0].data;//complete the necessary info
                     if(info.InspectionMode!="FI_C" &&info.InspectionMode!="FI" && info.InspectionMode!="CI" )
@@ -174,7 +176,7 @@ function urlConcat(base, add) {
                     }
                     else
                     {
-                      console.log("No uInsp_peripheral_conn_info:{url:xxxx}");
+                      log.info("[peripheral] uInsp not configured (no uInsp_peripheral_conn_info.url)");
                     }
 
 
@@ -187,7 +189,7 @@ function urlConcat(base, add) {
                     }
                     else
                     {
-                      console.log("No SLID_peripheral_conn_info:{url:xxxx}");
+                      log.info("[peripheral] SLID not configured");
                     }
 
 
@@ -200,7 +202,7 @@ function urlConcat(base, add) {
                     }
                     else
                     {
-                      console.log("No CNC_peripheral_conn_info:{url:xxxx}");
+                      log.info("[peripheral] CNC not configured");
                     }
 
 
@@ -209,28 +211,26 @@ function urlConcat(base, add) {
                     {
 
                       this.comp.props.ACT_WS_GET_OBJ(this.comp.props.Platform_API_ID, (obj)=>{
-                        //console.log(obj);
                         obj.connect( info.platform_api_conn_info);
                       })
                     }
                     else
                     {
-                      console.log("No platform_api_conn_info:{url:xxxx}");
+                      log.info("[peripheral] platform_api not configured");
                     }
 
 
 
-                    console.log(info.SystemSetting);
                     if(info.SystemSetting!==undefined)
                     {
                       let newSetting={...this.comp.props.System_Setting,...info.SystemSetting}
-                      console.log(newSetting);
+                      log.debug("[system-setting] merged", { incoming: info.SystemSetting, merged: newSetting });
                       this.comp.props.ACT_System_Setting_Update(newSetting);
 
                     }
                     else
                     {
-                      console.log("No SystemSetting:{...}");
+                      log.debug("[system-setting] none in machine_setting");
                     }
 
 
@@ -247,9 +247,9 @@ function urlConcat(base, add) {
                 }});
             
                 this.comp.props.ACT_WS_SEND_BPG(this.comp.props.CORE_ID, "LD", 0, { filename: "data/machine_info" },
-                  undefined, 
+                  undefined,
                   {resolve: (data) => {
-                    console.log(data);
+                    log.debug("[ld] machine_info", data);
                     if (data[0].type == "FL") {
                       let info = data[0].data;
                       if (info.length < 16) {
@@ -266,7 +266,7 @@ function urlConcat(base, add) {
                     if (pkts[0].type != "FL") return;
 
                     let cam_setting = pkts[0].data;
-                    console.log(cam_setting);
+                    log.debug("[ld] default_camera_setting", cam_setting);
                     this.comp.props.DISPATCH({type:"FILE_default_camera_setting",data:pkts[0].data})
                 }});
 
@@ -365,7 +365,7 @@ function urlConcat(base, add) {
               // let act = BPG_Protocol.map_BPG_Packet2Act(parsed_pkt);
               // if (act !== undefined)
               // this.comp.props.DISPATCH(act);
-              console.log("LOSS TRACK pkts", parsed_pkt,this.reqWindow);
+              log.warn("[demux] untracked packet (no reqWindow entry)", { pkt: parsed_pkt && { type: parsed_pkt.type, pgID: parsed_pkt.pgID } });
             }
           }
 
@@ -373,7 +373,7 @@ function urlConcat(base, add) {
 
         } catch (e) {
           // A malformed/corrupt frame must not kill the socket message pump.
-          console.error("BPG_WS.onmessage: decode/dispatch error; dropping frame", e);
+          log.error("[demux] decode/dispatch error; dropping frame", e);
         }
       }
 
@@ -417,8 +417,6 @@ function urlConcat(base, add) {
 
 
         if (info.data instanceof Uint8Array) {
-          // ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl, data.prop, PGID, null, data.data));
-          console.log("");
           throw new Error('Here is not allowed anymore');
         }
         else {

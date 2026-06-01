@@ -155,3 +155,73 @@ export function listLevels() {
   }
   return out;
 }
+
+// ─── verbose / quiet ergonomic helpers ────────────────────────────────────
+// Designed for the floor unit's devtools console — no docs needed:
+//   __log.verbose('comm.ws')   // flip just one namespace to debug
+//   __log.verbose()            // global debug for everything
+//   __log.quiet('comm.ws')     // back to that ns's registered default
+//   __log.quiet()              // restore every ns to its registered default
+//   __log.list()               // see current per-ns levels
+//   __log.namespaces()         // see what's registerable
+// Persisted to localStorage so the level survives reload.
+
+function _persist(ns, level) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const key = ns ? 'logLevel:' + ns : 'logLevel';
+    if (level === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, level);
+  } catch (_) {}
+}
+
+export function verbose(ns) {
+  if (ns) {
+    if (!(ns in NAMESPACES)) {
+      // eslint-disable-next-line no-console
+      console.warn('[logger.verbose] unknown namespace:', ns, '— try __log.namespaces()');
+      return false;
+    }
+    loglevel.getLogger(ns).setLevel('debug', false);
+    _persist(ns, 'debug');
+    // eslint-disable-next-line no-console
+    console.info('[logger] verbose ON:', ns);
+    return true;
+  }
+  for (const n of Object.keys(NAMESPACES)) {
+    loglevel.getLogger(n).setLevel('debug', false);
+  }
+  _persist(null, 'debug');
+  // eslint-disable-next-line no-console
+  console.info('[logger] verbose ON: ALL');
+  return true;
+}
+
+export function quiet(ns) {
+  if (ns) {
+    if (!(ns in NAMESPACES)) return false;
+    loglevel.getLogger(ns).setLevel(NAMESPACES[ns], false);
+    _persist(ns, null);
+    // eslint-disable-next-line no-console
+    console.info('[logger] restored default:', ns, '→', NAMESPACES[ns]);
+    return true;
+  }
+  for (const n of Object.keys(NAMESPACES)) {
+    loglevel.getLogger(n).setLevel(NAMESPACES[n], false);
+    _persist(n, null);
+  }
+  _persist(null, null);
+  // eslint-disable-next-line no-console
+  console.info('[logger] restored defaults: ALL');
+  return true;
+}
+
+// Expose on window in dev mode so operators / QA can poke it from devtools.
+if (typeof window !== 'undefined') {
+  window.__log = {
+    verbose, quiet,
+    set: setLevel,
+    list: listLevels,
+    namespaces: () => Object.keys(NAMESPACES),
+  };
+}

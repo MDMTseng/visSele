@@ -93,20 +93,20 @@ export { websocket_autoReconnect, websocket_reqTrack, websocket_aliveTracking } 
 
 
   
+import { mkLog } from 'UTIL/logger';
+const _i18nLog = mkLog('i18n');
+
 export function dictLookUp(key,dict,theme) {
   const path = Array.isArray(key) ? key : [theme||"_", key];
   const hit = GetObjElement(dict, path);
   if (hit) return hit;
-  // Dev-only missing-key warning (surfaces silent misses; key gets echoed
-  // as the fallback so the UI still shows readable text).
-  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
-    if (!dictLookUp._warned) dictLookUp._warned = new Set();
-    const pathKey = path.join('.');
-    if (!dictLookUp._warned.has(pathKey)) {
-      dictLookUp._warned.add(pathKey);
-      // eslint-disable-next-line no-console
-      console.warn('[i18n] missing key:', pathKey);
-    }
+  // Surface missing keys ONCE per key (no spam). Flip noise via
+  //   __log.verbose('i18n') / __log.quiet('i18n')
+  if (!dictLookUp._warned) dictLookUp._warned = new Set();
+  const pathKey = path.join('.');
+  if (!dictLookUp._warned.has(pathKey)) {
+    dictLookUp._warned.add(pathKey);
+    _i18nLog.warn('[missing-key]', pathKey);
   }
   return Array.isArray(key) ? key[key.length-1] : key;
 }
