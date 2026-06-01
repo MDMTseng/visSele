@@ -21,6 +21,8 @@ import InstInspUI_rdx from './InstInspUI';
 import RepDisplayUI_rdx from './RepDisplayUI';
 import InputNumber from 'antd/lib/input-number';
 import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset ,LocalStorageTools,websocket_autoReconnect,websocket_reqTrack, dictLookUp} from 'UTIL/MISC_Util';
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('ui.main');
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import ReactResizeDetector from 'react-resize-detector';
@@ -215,7 +217,6 @@ class QR_Canvas extends React.Component {
     if (this.refs.canvas !== undefined)
       QRCode.toCanvas(this.refs.canvas, this.props.QR_Content, { errorCorrectionLevel: 'L' }, function (error) {
         if (error) console.error(error)
-        console.log('success!');
       })
     return (
       <div className={this.props.className} style={this.props.style}>
@@ -253,7 +254,6 @@ function getLocalStorage_RecentFiles()
 {
   let LocalS_RecentDefFiles =LocalStorageTools.getlist("RecentDefFiles");
   LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter(BPG_FileBrowser_varify_info);
-  console.log(LocalS_RecentDefFiles);
   return LocalS_RecentDefFiles;
 }
 
@@ -349,7 +349,6 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             //     WSDataDispatch(pkts);
             //   }
             // })
-            console.log(System_Setting);
             dispatch({type:"System_Setting_Update",data:{...System_Setting,ALLOW_SOFT_CAM:true}})
           }}>跳過相機連線</Button>
         </div>,
@@ -373,12 +372,11 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       let down_samp_level=IMG_LOAD_DOWNSAMP_LEVEL*2;
       if(down_samp_level>3)down_samp_level=3;
 
-      console.log(">>>>>");
+
       ACT_WS_SEND_BPG( "LD", 0, 
       { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath ,down_samp_level},
       undefined,{ 
         resolve:(pkts,WSDataDispatch)=>{
-          console.log(pkts);
           WSDataDispatch(pkts);
   
         }, reject:(pkts,__)=>{
@@ -397,7 +395,6 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       onMatchingResult({files:[]});
       return;
     }
-    console.log(fileInfoList);
     ACT_WS_SEND_BPG( "ST", 0,
     { CameraSetting: { ROI:[0,0,99999,99999] } })
     ACT_WS_SEND_BPG( "EX", 0, {
@@ -485,16 +482,14 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         if (filePath === undefined) return;
         filePath = filePath.replace("." + DEF_EXTENSION, "").replaceAll("\\" , "/");
         setInfoPopUp(undefined);
-        console.log(">>>>>");
+
         ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
         down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL },undefined,{
           resolve:(stacked_pkts,action_channal)=>{
             let SS=stacked_pkts.find(pkt=>pkt.type=="SS");
-            console.log(stacked_pkts,SS);
             if(SS===undefined)return;
             let DF=stacked_pkts.find(pkt=>pkt.type=="DF");
             let IM=stacked_pkts.find(pkt=>pkt.type=="IM");
-            console.log(SS,DF,IM);
             if(SS.data.ACK==true && DF!==undefined && IM!==undefined)
             {
               let setTags = [];
@@ -627,7 +622,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           if(pkts===undefined)
           {
 
-            console.log("onCapture Error")
+            log.warn("[capture] error")
             
             setInfoPopUp({content:<>
               <div className="antd-icon-sizing" style={{height:"50px"}}>
@@ -642,7 +637,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
           if(SS===undefined || SS.data.ACK!==true)
           {   
-            console.log("onCapture NAK")
+            log.warn("[capture] nak")
             setInfoPopUp({content:<>
               <div className="antd-icon-sizing" style={{height:"50px"}}>
                 <WarningOutlined/>
@@ -664,7 +659,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
               <Title level={2} style={{textAlign:"center"}} >
                 圖像無目標
               </Title></>})
-            console.log("onCapture empty signature")
+            log.warn("[capture] empty signature")
             return false;
           }
 
@@ -673,7 +668,6 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         },
         (matchingList)=>{
 
-        console.log(matchingList);
 
 
         let columns = ['name','score','path'].map((info)=>({
@@ -714,7 +708,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                   let filePath = file.path.replace("." + DEF_EXTENSION, "");
                   setInfoPopUp(undefined);
                   ACT_Def_Model_Path_Update(filePath);
-                  console.log(">>>>>");
+
                   ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath ,
                   down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL});
 
@@ -782,12 +776,11 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
                 filePath = filePath.replace("." + DEF_EXTENSION, "");
                 setFileSelectorInfo(undefined);
-                console.log(">>>>>");
+
                 ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
                 down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL },
                   undefined, { resolve:(pkts,action_channal)=>{
                     let SS=pkts.find(pkt=>pkt.type=="SS");
-                    console.log(pkts);
                     if(SS==undefined || SS.data.ACK==false)
                     {
                       
@@ -828,7 +821,6 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                   key:"matching",
                   action: (state,props)=>{
                   let files=state.folderStruct.files.filter(fileInfo=>fileInfo.type=="REG"&&props.fileFilter(fileInfo))
-                  console.log(files);
                   if(files!==undefined && files.length>0)
                   {
                     // console.log(state.folderStruct);
@@ -948,7 +940,6 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
   const Platform_API_ID = useSelector(state => state.ConnInfo.Platform_API_ID);
   const Platform_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.Platform_API_ID_CONN_INFO);
   const ACT_PLAT_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(Platform_API_ID,callback));
-  console.log(Platform_API_ID_CONN_INFO);
   
   
 
@@ -1035,14 +1026,12 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
         onClick={() =>{
 
           ACT_PLAT_OBJ((obj)=>{
-            console.log(obj);
             obj.showOpenDialog({
               title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory']
             }).then((result) => {
   
               set_st_machine_custom_setting({...st_machine_custom_setting,InspSampleSavePath:result.filePaths[0]});
             }).catch(err => {
-            console.log(err)
             }); 
           })
 
@@ -1355,8 +1344,7 @@ const MainUI=()=>{
       UI.push(<RepDisplayUI_rdx key="RepDisplayUI_rdx"
         BPG_Channel={(...args) => ACT_WS_SEND_BPG(...args)}
         onCalibFinished={(finalReport) => {
-          console.log(">>>>>>>>>",finalReport)
-        }} 
+    log.debug("[final-report]", finalReport)        }} 
         onExtraCtrlUpdate={extraCtrls=>{
 
           let extraCtrlUI=[];
@@ -1505,7 +1493,6 @@ const MainUI=()=>{
               ACT_WS_SEND_BPG("LD", 0, { filename: "data/default_camera_param.json" },
               undefined, 
               {resolve: (data,action_channal) => {
-                console.log(data);
                 action_channal(data);
               }});
               setUI_state(s_statesTable.RootSelect)
@@ -1545,7 +1532,7 @@ const MainUI=()=>{
               enc.encode(JSON.stringify(_setting, null, 2)),
               {
                 resolve:(stacked_pkts,action_channal)=>{
-                  console.log("OK....");
+                  log.debug("[ok]");
                   ACT_machine_custom_setting_Update(setting);
                 }
               })
@@ -1716,7 +1703,6 @@ class APPMain extends React.Component {
     {
       let recent = getLocalStorage_RecentFiles();
       
-      console.log(recent);
       if(recent.length==0)
       {
         this.props.ACT_Def_Model_Path_Update("data/DEFAULT");
@@ -1736,7 +1722,6 @@ class APPMain extends React.Component {
   }
 
   calibInfoUpdate(newAddInfo) {
-    console.log(newAddInfo);
     this.setState({ calibCalcInfo: { ...this.state.calibCalcInfo, ...newAddInfo } });
   }
   render() {

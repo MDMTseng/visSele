@@ -27,7 +27,8 @@ import {
   defFileGeneration
 } from 'UTIL/MISC_Util';
 
-import * as log from 'loglevel';
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('ui.defconf');
 import dclone from 'clone';
 import Modal from "antd/lib/modal";
 import Menu from "antd/lib/menu";
@@ -115,11 +116,9 @@ class CanvasComponent extends React.Component {
         this.props.ACT_EDIT_TAR_ELE_CAND_UPDATE(event.data);
         break;
       case DefConfAct.EVENT.Shape_List_Update:
-        console.log(event);
         this.props.ACT_EDIT_SHAPELIST_UPDATE(event.data);
         break;
       case DefConfAct.EVENT.Shape_Set:
-        console.log(event);
         this.props.ACT_EDIT_SHAPE_SET(event.data);
         break;
       case DefConfAct.EVENT.Edit_Tar_Ele_Trace_Update:
@@ -158,7 +157,7 @@ class CanvasComponent extends React.Component {
   }
   componentWillUpdate(nextProps, nextState) {
 
-    console.log("CanvasComponent render", nextProps.c_state);
+    log.debug("[render] CanvasComponent", nextProps.c_state);
     //let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.DEFCONF_MODE];
 
     //console.log(nextProps.edit_info.inherentShapeList);
@@ -210,7 +209,7 @@ const CanvasComponent_rdx = connect(
 function ULRangeAcc({ value, lastKey, onChange, RangeCValue, target, props }) {
   const [offsetEditVisible, setOffsetEditVisible] = useState(false);
   function numberSet(num) {
-    console.log(num,RangeCValue,RangeCValue + num);
+    log.debug("[range]", { num, RangeCValue, sum: RangeCValue + num });
     onChange(target, "input-number", { target: { value: (RangeCValue + num).toFixed(4) } })
   }
   function numberPlus(num) {
@@ -229,7 +228,6 @@ function ULRangeAcc({ value, lastKey, onChange, RangeCValue, target, props }) {
           <NumberAccInput key={"_" + lastKey + "_stxt"} className="s  height12 width5 vbox blackText"
             value={(value - RangeCValue).toFixed(4)}
             onChange={(evt) => {
-              console.log(target, evt);
               
               numberSet(parseFloat(evt.target.value))
 
@@ -262,7 +260,6 @@ function ULRangeAcc({ value, lastKey, onChange, RangeCValue, target, props }) {
       visible={offsetEditVisible}
 
       onVisibleChange={vis => {
-        console.log(vis);
         setOffsetEditVisible(vis)
       }}>
 
@@ -318,7 +315,6 @@ function AngleDegAcc({ value, onChange,target,lastKey, props }) {
     <Popover content={content} title={null} trigger="click"
       visible={offsetEditVisible}
       onVisibleChange={vis => {
-        console.log(vis);
         setOffsetEditVisible(vis)
       }}>
 
@@ -371,7 +367,6 @@ function SimpleAcc({ value, onChange,target,lastKey, props }) {
     <Popover content={content} title={null} trigger="click"
       visible={offsetEditVisible}
       onVisibleChange={vis => {
-        console.log(vis);
         setOffsetEditVisible(vis)
       }}>
 
@@ -506,7 +501,6 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
   {
     let dump = {..._.current.DUMP};
 
-    console.log(dump);
     {
       //the control_margin_info in dump has complex info update and name property, so clean it up
       let ctrlMarg = {...dump.control_margin_info};
@@ -607,7 +601,6 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
 
             if(value===undefined)
             {
-              console.log(col,value,objInfo,rootMInfo);
               return undefined;
             }
 
@@ -717,7 +710,6 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
             UCL:newObj.UCL,
             LCL:newObj.LCL,
           };
-          console.log(newMeasureInfo);
           set_MeasureInfo(newMeasureInfo);
         }
   
@@ -760,8 +752,6 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
           onClose={() => {
             let cmI={..._control_margin_info};
             delete cmI[text];
-            console.log(_control_margin_info);
-            console.log(cmI);
             set_control_margin_info(cmI);
 
           }}
@@ -809,7 +799,6 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
             let AA = Object.keys(displayInfoSet)
               .map(text=>_control_margin_info[text])
               .map(info=>info.find(m=>m.id==record.id));
-            console.log(AA,_control_margin_info,displayInfoSet);
             return <DisplayMarginSet MarginInfo={AA} DICT={DICT}/>;
           }
         }}
@@ -874,7 +863,6 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
     }
     catch(e)
     {
-      console.log(e)
       setFxOK(false);
     }
     setFxExp(newExp);
@@ -987,7 +975,6 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
     />
     <Button key="xx" className="s vbox black"
       onClick={_ => {
-        console.log(inputEl)
         let true_idx = untranslatedIdx(translatedExp, _this.selectionStart);
         staticObj.current.insertIdx = true_idx;
         staticObj.current.ref_new_idx = ref.length;
@@ -1100,7 +1087,6 @@ function SettingUI({})
   const ACT_Inspection_Downsample_Update=(n) => { dispatch(DefConfAct.Inspection_Downsample_Update(n)) };// 1..8 (core caps at 4 today)
 
   const DICT = useSelector(state => state.UIData.DICT);
-  console.log(defConf_lock_level);
   return [
     <Checkbox
       checked={edit_info.matching_angle_margin_deg == 90}
@@ -1138,7 +1124,6 @@ function SettingUI({})
         else
           ACT_Matching_Face_Update(1);
 
-        console.log(ev.target.checked)
       }
       }
     >
@@ -1230,7 +1215,7 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,
     defExtension: DEF_EXTENSION,
     downSampLevel: IMG_LOAD_DOWNSAMP_LEVEL,
     send: (payload, promiseCBs) => {
-      console.log(defModelPath, DEF_EXTENSION, CORE_ID, payload.imgsrc)
+      log.info("[loadDef]", { defModelPath, DEF_EXTENSION, CORE_ID, imgsrc: payload.imgsrc })
       ACT_WS_SEND_BPG(CORE_ID, "LD", 0, payload, undefined, promiseCBs);
     },
   })
@@ -1273,10 +1258,8 @@ function modShapeCleanUp(mod_shape)
 
   delete mod_shape["inspection_value"]
   delete mod_shape["inspection_status"]
-  console.log(mod_shape);
   if(mod_shape.type==UIAct.SHAPE_TYPE.search_point)
   {
-    console.log(mod_shape.pt1,mod_shape.adj_pt1);
     mod_shape.pt1.x=mod_shape.adj_pt1.x;
     mod_shape.pt1.y=mod_shape.adj_pt1.y;
     delete mod_shape["adj_pt1"]
@@ -1365,7 +1348,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       addClass="layout black vbox"
       onClick={() =>{
         let defFile_New=defFileGeneration(edit_info);
-        console.log(defFile_New);
         if(defFile_New.featureSet_sha1===edit_info.DefFileHash)
         {
           ACT_EXIT();
@@ -1446,7 +1428,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
     let _CameraCtrl = new CameraCtrl({
       ws_ch: (STData, promiseCBs) => {
-        console.log(STData);
         ACT_WS_SEND_BPG(CORE_ID, "ST", 0, STData, undefined,promiseCBs);
       },
       ev_frameRateChange: (fps) => {
@@ -1466,7 +1447,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
 
     let deffile = defFileGeneration(edit_info);
-    console.log(deffile);
     deffile.intrusionSizeLimitRatio=1;
     setCacheDef(deffile);
 
@@ -1520,7 +1500,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       }, undefined,
       {
         resolve:(darr,mainFlow)=>{
-          console.log(darr);
         },
         reject:(e)=>{
         }
@@ -1571,10 +1550,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       text="save" onClick={() => {
         if (defConf_lock_level > 2) return;
         setFileSavingCallBack((prevs,props)=> (folderInfo, fileName, existed) => {
-            console.log(folderInfo, fileName, existed);
+            log.debug("[file-exists]", { folderInfo, fileName, existed });
             
             let fileNamePath = folderInfo.path + "/" + fileName.replace('.' + DEF_EXTENSION, "");
-            console.log(fileNamePath);
 
             var enc = new TextEncoder();
             let report = defFileGeneration(edit_info);
@@ -1584,9 +1562,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               ACT_DefFileName_Update(fileName)
             }
             ACT_DefFileHash_Update(report.featureSet_sha1);
-            console.log("ACT_Report_Save");
+            log.info("[action] report-save");
             ACT_Report_Save(CORE_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
-            console.log("ACT_Cache_Img_Save");
+            log.info("[action] cache-img-save");
             ACT_Cache_Img_Save(CORE_ID, fileNamePath);
 
 
@@ -1607,7 +1585,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       text="load" onClick={() => {
         setFileSelectedCallBack(()=>(filePath) => {
           let fileNamePath = filePath.replace("." + DEF_EXTENSION, "");
-          console.log(fileNamePath);
 
           loadDefFile(fileNamePath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,CORE_ID,dispatch);
           ACT_Def_Model_Path_Update(fileNamePath);
@@ -1664,7 +1641,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               if(SS.data.ACK==true)
               {              
                 let acts=pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined);
-                console.log(acts)
                 dispatch({
                   type: "ATBundle",
                   ActionThrottle_type: "express",
@@ -1733,7 +1709,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       key="INST_CHECK"
       text="INST_CHECK" onClick={() => {
         let deffile = defFileGeneration(edit_info);
-        console.log(deffile);
         deffile.intrusionSizeLimitRatio=1;
         ACT_WS_SEND_BPG(CORE_ID,"II", 0, 
         {
@@ -1749,13 +1724,11 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         },undefined,
         {
           resolve:(darr,mainFlow)=>{
-            console.log(darr);
             let RP=darr.find(pkt=>pkt.type=="RP");
 
             if(RP!==undefined)
             {
               let insp_reports = GetObjElement(RP,["data","reports",0,"reports"]);
-              console.log(insp_reports);
               if(insp_reports!==undefined&&  insp_reports.length>0)
               {
                 let insp_rep = insp_reports[0];
@@ -1772,7 +1745,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
                     return dclone(shape)
                 });
 
-                console.log(modList);
                 ACT_Shape_List_Update(modList);
                 // dispatch(DefConfAct.Shape_List_Update([]))
                 // modList.forEach((adj_shape,index)=>{
@@ -1791,7 +1763,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               if(IM!==undefined)
               {
                 let act = BPG_Protocol.map_BPG_Packet2Act(IM);
-                console.log(IM,act)
                 if (act !== undefined)
                   dispatch(act);
               }
@@ -1861,7 +1832,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           fileSelectedCallBack(filePath, fileInfo);
         }}
         onOk={(folderPath) => {
-          console.log(folderPath);
         }}
         onCancel={() => {
           setFileSelectedCallBack(undefined)
@@ -1872,7 +1842,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   }
   if (fileSavingCallBack !== undefined) {
     let defaultName = defModelPath.substr(defModelPath.lastIndexOf('/') + 1);
-    console.log("BPG_FileSavingBrowser browser..");
+    log.debug("[browser] BPG_FileSavingBrowser open");
     MenuSet.push(
       <BPG_FileSavingBrowser key="BPG_FileSavingBrowser"
         className="width8 modal-sizing"
@@ -2103,7 +2073,6 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, AC
                 else if (type == "switch")
                   target.obj[lastKey] = evt.target.checked?-1:1;
 
-                console.log(target.obj);
                 let updated_obj = original_obj;
                 ec_canvas.SetShape(updated_obj, updated_obj.id);
               }}
@@ -2161,7 +2130,7 @@ class APP_DEFCONF_MODE extends React.Component {
 
     let MenuSet = [];
     let menu_height = "HXA";//auto
-    console.log("CanvasComponent render");
+    log.debug("[render] CanvasComponent");
     let substate = this.props.c_state.value[UIAct.UI_SM_STATES.DEFCONF_MODE];
 
     let defModelPath = this.props.edit_info.defModelPath;
@@ -2184,7 +2153,7 @@ class APP_DEFCONF_MODE extends React.Component {
 
         if (this.props.edit_tar_info != null) {
           let subType = this.props.edit_tar_info.subtype;
-          console.log("BASE_COM.JsonEditBlock:", this.props.edit_tar_info, subType);
+          log.debug("[JsonEditBlock]", { edit_tar_info: this.props.edit_tar_info, subType });
           MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} dict={this.props.DICT}
             key="BASE_COM.JsonEditBlock"
             renderLib={renderMethods}
@@ -2218,7 +2187,6 @@ class APP_DEFCONF_MODE extends React.Component {
               }
             }}
             jsonChange={(original_obj, target, type, evt) => {
-              console.log(target);
               if (type == "btn") {
                 if (target.keyTrace[0] == "ref" || target.keyTrace[0] == "ref_baseLine") {
                   this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
@@ -2248,7 +2216,6 @@ class APP_DEFCONF_MODE extends React.Component {
 
 
                 text={key} onClick={(data, btn) => {
-                  console.log(btn.props.text);
                   this.props.ACT_EDIT_TAR_ELE_CAND_UPDATE(btn.props.text);
                 }} />);
             }
@@ -2302,7 +2269,7 @@ class APP_DEFCONF_MODE extends React.Component {
           <div key="SEARCH_POINT" className="s lred vbox">SPOINT</div>,
         ];
         if (this.props.edit_tar_info != null) {
-          console.log("BASE_COM.JsonEditBlock:", this.props.edit_tar_info);
+          log.debug("[JsonEditBlock]", this.props.edit_tar_info);
           MenuSet.push(<GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
 
 
@@ -2333,13 +2300,12 @@ class APP_DEFCONF_MODE extends React.Component {
 
 
           if (this.props.edit_tar_info != null) {
-            console.log("BASE_COM.JsonEditBlock:", this.props.edit_tar_info);
+            log.debug("[JsonEditBlock]", this.props.edit_tar_info);
 
 
             MenuSet.push(<GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
 
             let tar_info = this.props.edit_tar_info;
-            console.log(tar_info.ref);
             if (tar_info.ref[0].id !== undefined &&
               tar_info.ref[1].id !== undefined &&
               tar_info.ref[0].id != tar_info.ref[1].id
@@ -2430,14 +2396,13 @@ class APP_DEFCONF_MODE extends React.Component {
                 }
 
 
-                console.log(refTree, flatTree);
                 this.setState({
                   ...this.state, modal_view: {
 
                     title: "WARNING",
                     onOk: () => {
                       on_DEL_Tar(tarInfo.id);
-                      console.log("onOK")
+                      log.debug("[onOK]")
                     },
                     onCancel: () => { console.log("onCancel") },
                     view_update: () => warningUI
@@ -2454,7 +2419,6 @@ class APP_DEFCONF_MODE extends React.Component {
               text="CHECK" onClick={() =>{
 
                 let deffile = defFileGeneration(this.props.edit_info);
-                console.log(deffile);
                 deffile.intrusionSizeLimitRatio=1;
   
 
@@ -2472,12 +2436,10 @@ class APP_DEFCONF_MODE extends React.Component {
                 },undefined,
                 {
                   resolve:(darr,mainFlow)=>{
-                    console.log(darr);
                     let RP=darr.find(pkt=>pkt.type=="RP");
                     if(RP!==undefined)
                     {
                       let insp_reports = GetObjElement(RP,["data","reports",0,"reports"]);
-                      console.log(insp_reports);
                       if(insp_reports.length>0)
                       {
                         let insp_rep = insp_reports[0];
@@ -2534,7 +2496,7 @@ class APP_DEFCONF_MODE extends React.Component {
 
                   title: "GOGOGO",
                   onOk: () => {
-                    console.log("onOK")
+                    log.debug("[onOK]")
                   },
                   onCancel: () => { console.log("onCancel") },
                   view_update: () => {
@@ -2579,7 +2541,7 @@ class APP_DEFCONF_MODE extends React.Component {
               onSort={(newContentOrder) => {
                 let idOrder = newContentOrder.map(ele => ele.shape_id);
                 this.props.ACT_Shape_Decoration_ID_Order_Update(idOrder);
-                console.log("onSort", newContentOrder, idOrder)
+                log.debug("[onSort]", { newContentOrder, idOrder })
               }}
               dropBackTransitionDuration={0.3}
               type="vertical" />
@@ -2599,7 +2561,7 @@ class APP_DEFCONF_MODE extends React.Component {
 
 
 
-    console.log("APP_DEFCONF_MODE render");
+    log.debug("[render] APP_DEFCONF_MODE");
     return (
       <div className="overlayCon HXF">
         {this.state.modal_view === undefined?null:
@@ -2675,7 +2637,6 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
         { filename: fileName },
         content
       )
-      console.log(act);
       dispatch(act);
     },
     ACT_Cache_Img_Save: (id, fileName) => {

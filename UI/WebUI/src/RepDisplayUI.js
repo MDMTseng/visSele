@@ -1,6 +1,6 @@
 import React , { useState,useEffect,useContext,useRef } from 'react';
-import * as logX from 'loglevel';
-let log = logX.getLogger("InspectionUI");
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('ui.report');
 import html2canvas from 'html2canvas';
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
@@ -211,7 +211,6 @@ export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_
       newEditInfo = updateImage(newEditInfo,image);
     }
 
-    console.log(newEditInfo);
     if(camera_param!==undefined && _this.camera_param!=camera_param)
       newEditInfo = updateCamParam(newEditInfo,camera_param);
     if(reports!==undefined && _this.reports!=reports)
@@ -358,7 +357,6 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       filter:fileSelectFilter,
       groups:fileGroups,
       callBack:(filePath, fileInfo) => {
-        console.log(filePath, fileInfo,">>>");
 
         // _this.Latest_file_path=
         LoadNewFile(filePath,fileInfo);
@@ -418,7 +416,6 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       loadNext:()=>{
         let newIdx=(curIdx+1)%cachedXREPList.length;
         setCurIdx(newIdx);
-        console.log(cachedXREPList,newIdx);
         LoadNewFile(cachedXREPList[newIdx].path,cachedXREPList[newIdx]);
       },
       loadPrev:()=>{ 
@@ -429,7 +426,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
         LoadNewFile(cachedXREPList[newIdx].path,cachedXREPList[newIdx]);
       },
       imageSave:()=>{
-        console.log("SAVE...");
+        log.info("[save]");
 
 
         // var ctx = canvas.getContext('2d');
@@ -462,7 +459,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
 
       },
       canvasSave:()=>{
-        console.log("SAVE...");
+        log.info("[save]");
 
         let canvas = document.getElementById("RepDisplay_canvas");
 
@@ -568,7 +565,6 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
                 {
                   new_reportIdxHide=[...infoDispParam.reportIdxHide,idx]
                 }
-                console.log(new_reportIdxHide);
               
                 setInfoDispParam({...infoDispParam,reportIdxHide:new_reportIdxHide})
               }}>
@@ -601,7 +597,6 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       BPG_Channel={BPG_Channel}
 
       onFileSelected={(filePath, fileInfo,folderStruct) => {
-        console.log(fileInfo);
         let xrepLists=folderStruct.files
           .filter(f=>(f.type=="REG"&&f.name.endsWith(xreps)))
           .sort((f1,f2) => f1.ctime_ms>f2.ctime_ms);

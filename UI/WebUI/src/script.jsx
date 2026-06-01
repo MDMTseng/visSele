@@ -30,7 +30,6 @@ import Modal from "antd/lib/modal";
 import Divider from 'antd/lib/divider';
 import APPMain_rdx from './MAINUI';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
-import * as log from 'loglevel';
 import BPG_WS from './comm/BPG_WS';
 import { initDiag, downloadDiag, diagCount, diagText } from 'UTIL/diagLog';
 import { persistPending, deletePending, getPendingBySource, pendingInsertCount } from 'UTIL/inspDBQueue';
@@ -69,8 +68,10 @@ const path = require('path')
 // Runs AFTER initDiag() above so loglevel rebinds its method refs to the
 // diag-wrapped console (the R-quick-wins #7 fix is now built into initLogger
 // since every logger is created lazily via mkLog post-initDiag).
-import { initLogger } from 'UTIL/logger';
+import { initLogger, mkLog } from 'UTIL/logger';
 initLogger();
+const log = mkLog('ui.main');
+const dbLog = mkLog('comm.db'); // DB_WS / SLID API queue chatter
 
 // import moment from 'moment';
 // import 'moment/locale/fr';
@@ -125,7 +126,6 @@ if (typeof window !== "undefined") {
     console.error("unhandledrejection:", (e && e.reason));
   });
 }
-console.log(navigator)
 
 function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,onItemClick=_=>_})
 {
@@ -300,9 +300,7 @@ class APPMasterX extends React.Component {
       modal_view:undefined
     };
 
-    console.log("electron:",electron);
-    console.log("fs:",fs);
-    console.log("path:",path);
+    log.debug("[boot] electron/fs/path host probe", { electron: !!electron, fs: !!fs, path: !!path });
 
 
     let localUrl =window.location.href;
@@ -364,7 +362,6 @@ class APPMasterX extends React.Component {
         this.pgIDCounter= 0;
         this.websocket=undefined;
         this.dataSentCount=0;
-        console.log(">>>>");
         this.curr_ws_state=undefined;
         
         this.websocket=new websocket_aliveTracking({
@@ -389,7 +386,7 @@ class APPMasterX extends React.Component {
             {
               comp.props.DISPATCH({type:"WS_DISCONNECTED",id,data:info})
             }
-            console.log(ns,"<=",os,"(",act,")")
+            dbLog.debug("[state]", { id, from: os, to: ns, via: act });
           },
           binaryType:"arraybuffer"
         });
@@ -413,8 +410,7 @@ class APPMasterX extends React.Component {
         //   comp.props.DISPATCH({type:"WS_DISCONNECTED",id:comp.props.Insp_DB_W_ID})
         // }
         this.websocket.onmessage=(ev)=>{
-          // this.onmessage(ev);
-          console.log(ev);
+          dbLog.debug("[onmessage]", ev && ev.data);
         }
 
         let _this=this;
@@ -452,14 +448,14 @@ class APPMasterX extends React.Component {
             };
             let timeoutFlag = setTimeout(() => {//insert timeout will not continue push
               timeoutFlag = undefined;
-              console.log("consumeQueue>>timeout");
+              dbLog.warn("[insert-timeout]", { id });
               reject("Timeout");
-              
+
               _this._insertFailed(data, "Timeout");
             }, 5000);
-            
+
             //The second param is replacer for stringify, and we replace any value that has toFixed(basically 'Number') to replace it to toFixed(5)
-            console.log("SEND::::",msg_obj);
+            dbLog.debug("[insert-send]", msg_obj);
             _this.websocket.send_obj(msg_obj, (key, val) => typeof val === 'number' ? Number(val.toFixed(5)) : val).
               then((ret) => {
                 clearTimeout(timeoutFlag);
@@ -490,14 +486,12 @@ class APPMasterX extends React.Component {
           ,1000,
           (cQ)=>{//onTerminationState
             //dump the data out
-            console.log("Termination dump",cQ);
+            dbLog.warn("[queue-terminated] dumping", { size: cQ.size() });
             while(true)
             {
               let data = cQ.deQ();
-              // console.log("dump deQ",data);
               if(data===undefined)
               {break;}
-              console.log(data)
               data.reject("The Q is teminated....");
             }
           }
@@ -536,7 +530,7 @@ class APPMasterX extends React.Component {
       {
 
         let url = info.url;
-        console.log(">>>>",info);
+        dbLog.info("[connect]", { id: this.id, url });
         this.websocket.RESET(url);//the url may be undefined
       }
       onmessage(evt){
@@ -554,7 +548,7 @@ class APPMasterX extends React.Component {
 
       send(info)
       {
-        console.log(info);
+        dbLog.debug("[send-info]", info);
         let data = info.data;
 
         // Durable mirror: persist the record before queuing so it survives a
@@ -578,14 +572,14 @@ class APPMasterX extends React.Component {
             }
             else
             {
-              console.log("QQQ.len:",this.cQ.size());
+              dbLog.debug("[queue-size]", this.cQ.size());
             }
             if (this.cQ.size() > 0)
               this.cQ.kick();//kick transmission
 
 
           });
-          console.log("ENQ send",info);
+          dbLog.debug("[enq]", info);
           return prom;
         }
         // else
@@ -629,7 +623,7 @@ class APPMasterX extends React.Component {
       
       _queryCam(resolve,reject)
       {
-        console.log("queryCam System_Setting",comp.props.System_Setting);
+        log.debug("[queryCam] System_Setting", comp.props.System_Setting);
         comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "GS", 0, { items: ["camera_info"] },
         undefined, 
         {
@@ -688,7 +682,6 @@ class APPMasterX extends React.Component {
             
           },
           reject:(e)=>{
-            console.log(e);
             StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.CAM1_ID,data:e});
 
             this.isConnected=false;
@@ -720,7 +713,6 @@ class APPMasterX extends React.Component {
         },
         undefined, { 
           resolve:(ret)=>{
-            console.log(ret);
             this.isInReconn=false;
 
             
@@ -813,12 +805,10 @@ class APPMasterX extends React.Component {
           new TextEncoder().encode(JSON.stringify(this.machineSetup, null, 4)),
           {
             resolve:(res)=>{
-              console.log(res);
               let default_pulse_hz = this.machineSetup.pulse_hz;
               StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,default_pulse_hz:default_pulse_hz});
             }, 
             reject:(res)=>{
-              console.log(res);
             }, 
           }
         )
@@ -947,7 +937,6 @@ class APPMasterX extends React.Component {
             this.CONN_ID=undefined;
             this.inReconnection=false;
             this.cleanUpConnection();
-            console.log(e);
             StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:undefined});
             
           }
@@ -1172,10 +1161,8 @@ class APPMasterX extends React.Component {
           new TextEncoder().encode(JSON.stringify(this.machineSetup, null, 4)),
           {
             resolve:(res)=>{
-              console.log(res);
             }, 
             reject:(res)=>{
-              console.log(res);
             }, 
           }
         )
@@ -1216,20 +1203,18 @@ class APPMasterX extends React.Component {
         StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineSetup:this.machineSetup});
         this.send({type:"set_setup",...newMachineInfo},
         (ret)=>{
-          console.log("<<<<<<*************>>>>>>",ret);
+          log.debug("[machine-setup] set_setup ack", ret);
           //HACK: just assume it will work
-          // this.machineSetup={...this.machineSetup,...newMachineInfo};
-          // console.log(ret);
-        },(e)=>console.log(e));
+        },(e)=>log.warn("[machine-setup] set_setup failed", e));
       }
-      
+
       machineSetupReSync() {
-        console.log("*************");
+        log.debug("[machine-setup] resync request");
         this.send({type:"get_setup"},
         (ret)=>{
           if(ret["ack"]!=true)
           {
-            console.log("get setup failed:",ret);
+            log.warn("[machine-setup] get_setup nak", ret);
             return;
           }
           delete ret["type"];
@@ -1307,7 +1292,6 @@ class APPMasterX extends React.Component {
             this.CONN_ID=undefined;
             this.inReconnection=false;
             this.cleanUpConnection();
-            console.log(e);
             StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:undefined});
             
           }
@@ -1585,7 +1569,6 @@ class APPMasterX extends React.Component {
             this.latest_ava_report_timestamp=undefined
             this.ava_report_count=ava_report_count;
           }
-          console.log(reportStatisticState)
 
           ////
 
@@ -1731,11 +1714,9 @@ class APPMasterX extends React.Component {
 
         this.websocket=new websocket_reqTrack(new WebSocket(url));
 
-        console.log(this.showOpenDialog);
         this.connected=false;
         comp.props.DISPATCH({type:"WS_DISCONNECTED",id,data:undefined})
         this.websocket.onopen = (e)=> {
-          console.log(this.showOpenDialog);
           comp.props.DISPATCH({type:"WS_CONNECTED",id,data:undefined})
           this.connected=true;
         };
@@ -1764,7 +1745,6 @@ class APPMasterX extends React.Component {
       close()
       {
         
-        console.log(this.showOpenDialog);
         if(this.websocket!==undefined)
           this.websocket.close();
         
@@ -1872,7 +1852,6 @@ class APPMasterX extends React.Component {
 
           <System_Status_Display showText iconSize={30} gridSize={90}
             onItemClick={(connInfo)=>{
-              console.log(connInfo);
               switch(connInfo.id)
               {
                 

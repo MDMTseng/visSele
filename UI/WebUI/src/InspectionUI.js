@@ -19,14 +19,14 @@ import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQu
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import { INSPECTION_STATUS, DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
-import * as logX from 'loglevel';
+import { mkLog } from 'UTIL/logger';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';
 // import { PageHeader } from 'antd/lib/page-header';
 //import {Doughnut} from 'react-chartjs-2';
 
 import { round } from 'UTIL/MISC_Util';
-let log = logX.getLogger("InspectionUI");
+const log = mkLog('ui.insp');
 
 import Row from 'antd/lib/row';
 import Col from 'antd/lib/col';
@@ -168,7 +168,6 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
     .then(retInfo=>{
       _this.sendedCounter++;
       onDBInsertSuccess(retInfo);
-      console.log(retInfo);
     })
     .catch(err=>{
 
@@ -572,7 +571,6 @@ function UInspMiscCtrlPopUp({force_popUp=false,allow_auto_popUp=true,onCancel=_=
         onClick={() => {
           setBtnDisable(true);
           API((api)=>{
-            console.log(api);
             api.send({type: "set_OK_limit_cd",value:limitCD},
             (ret)=>{console.log(ret)},
             (e)=>console.log(e));
@@ -589,7 +587,6 @@ function UInspMiscCtrlPopUp({force_popUp=false,allow_auto_popUp=true,onCancel=_=
         onClick={() => {
           setBtnDisable(true);
           API((api)=>{
-            console.log(api);
             api.send({type: "set_OK_limit_cd",value:-1},
             (ret)=>{console.log(ret)},
             (e)=>console.log(e));
@@ -817,7 +814,7 @@ class ObjInfoList extends React.Component {
         <SLID_UI on_EM_STOP_state_change={(api,report_stat)=>{
           // console.log(api.is_in_EM_STOP,api.EM_STOP_src_list);
           if(api.is_in_EM_STOP==this.state.is_in_EM_STOP && api.EM_STOP_Rule.enable_EM_STOP==this.state.enable_EM_STOP)return;
-          console.log(">>>in_EM_STOP:",api.is_in_EM_STOP," enable_EM_STOP:",api.EM_STOP_Rule.enable_EM_STOP);
+          log.debug("[EM_STOP]", { in_EM_STOP: api.is_in_EM_STOP, enable_EM_STOP: api.EM_STOP_Rule.enable_EM_STOP });
 
           let SLID_EM_STOP_src_list=api.is_in_EM_STOP==true?api.EM_STOP_src_list:undefined;
           
@@ -1314,7 +1311,7 @@ class DataStatsTable extends React.Component {
             newDrawList[record.id]=val;
             this.setState({drawList:newDrawList});
             
-            console.log("TRIGGER");
+            log.debug("[trigger]");
           }
           } />
         }
@@ -1477,7 +1474,6 @@ class AngledCalibrationHelper extends React.Component {
           let key = "" + 360 * idx / offsetMap.length;
           tableX[key] = -round(ele, 0.00001)
         });
-        console.log(JSON.stringify(tableX, null, 4));
         // angledOffsetTable
         let updateCount = (newState.updateCount === undefined) ? 0 : newState.updateCount + 1;
         newState = {
@@ -1517,7 +1513,6 @@ class AngledCalibrationHelper extends React.Component {
           middleObject = slist.find(shape => shape.id == ref_id);
           let target_spoint = undefined;
           let target_line = middleObject;
-          console.log(middleObject, ref_id);
 
           if (middleObject.type == "search_point") {
             target_spoint = middleObject;
@@ -1577,7 +1572,6 @@ function MeasureRankEdit ({shape_list,info_decorator,initRank=0,onRankChange}){
     .filter(shape=>shape.type===UIAct.SHAPE_TYPE.measure);
   let rankMax=measureList.reduce((max,m)=>max<m.rank?m.rank:max,0);
   let rankMin=measureList.reduce((min,m)=>min>m.rank?m.rank:min,0);
-  console.log(shape_list,"----",info_decorator);
   // console.log(rankMin,"----",rankMax);
   if(rankMin==1000)
   {
@@ -1660,13 +1654,11 @@ class APP_INSP_MODE extends React.Component {
   
   componentDidMount() {
     let DefFileHash=this.props.edit_info.DefFileHash;
-    console.log(DefFileHash);
     this.CameraCtrl.setCameraImageTransfer(true);
     
     this.CameraCtrl.setImageCropParam(undefined,4);
 
     {
-      console.log(this.props.shape_list,this.props.info_decorator,this.props.inspOptionalTag);
 
 
       let ctrlMarginInfos=GetObjElement(this.props.info_decorator,["control_margin_info"]);
@@ -1675,7 +1667,6 @@ class APP_INSP_MODE extends React.Component {
       {
         let curMarginInfo_name=this.props.inspOptionalTag.find(tag=>ctrlMarginInfos[tag]!==undefined)//find the tag name that is in ctrlMarginInfo
         let curMarginInfo=ctrlMarginInfos[curMarginInfo_name];
-        console.log(curMarginInfo_name,curMarginInfo);
 
         if(curMarginInfo!==undefined)
         {
@@ -1696,7 +1687,6 @@ class APP_INSP_MODE extends React.Component {
           this.props.ACT_Shape_List_Update_EXPRESS(newShapeList);
           
           // console.log("ACT_Shape_List_Update<<<<<<");
-          console.log(newShapeList)
         }
 
       }
@@ -1730,7 +1720,6 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-      console.log(deffile);
       if (this.props.machine_custom_setting.InspectionMode== "FI" || this.props.machine_custom_setting.InspectionMode== "FI_C") {
 
         
@@ -1750,7 +1739,6 @@ class APP_INSP_MODE extends React.Component {
         , undefined,{ 
           resolve:insp_resolve, 
           reject:(e)=>{
-            console.log(e)
           } 
         });
         this.props.ACT_StatSettingParam_Update(this.props.System_Setting.FI_MODE_StatSettingParam)
@@ -1768,7 +1756,6 @@ class APP_INSP_MODE extends React.Component {
         }, undefined, { 
           resolve:insp_resolve, 
           reject:(e)=>{
-            console.log(e)
           } 
         });
 
@@ -1791,7 +1778,6 @@ class APP_INSP_MODE extends React.Component {
         {CameraSetting: { ROI:LS_ROI}});
 
       
-        console.log(LS_ROI)
       }
 
       this.exitGate=false;
@@ -1843,7 +1829,7 @@ class APP_INSP_MODE extends React.Component {
 
     }).then((pkts) => {
       let DT=pkts.find(pkt=>pkt.type=="DT");
-      console.log("-------DT",DT,"   pkts:",pkts);
+      log.debug("[DT]", { DT, pkts });
       if(DT!==undefined && DT.data!==undefined&& DT.data[0]!==undefined)
       {
         this.setState({SettingParamInfo:DT.data[0]});
@@ -1860,7 +1846,6 @@ class APP_INSP_MODE extends React.Component {
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0, STData, undefined, promiseCBs)
       },
       ev_frameRateChange: (fps) => {
-        console.log(fps);
       }
     });
     // this.IR = undefined;
@@ -2304,12 +2289,10 @@ class APP_INSP_MODE extends React.Component {
                     }
                 
           
-                    console.log(pkts);
                   },
                   reject:(e)=>{
       
                     this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
-                    console.log(e);
                   }
                 })
 
@@ -2321,7 +2304,6 @@ class APP_INSP_MODE extends React.Component {
 
                     
                     let SS=pkts.find(pkt=>pkt.type=="SS");
-                    console.log(SS)
                     if(SS.data.ACK==true)
                     {
                       let deffile = defFileGeneration(this.props.edit_info);
@@ -2376,12 +2358,10 @@ class APP_INSP_MODE extends React.Component {
                     }
 
 
-                    console.log(pkts);
                   },
                   reject:(e)=>{
       
                     this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
-                    console.log(e);
                   }
                 })
 
@@ -2608,7 +2588,6 @@ class APP_INSP_MODE extends React.Component {
           LocalStorageTools.setobj(LS_INSP_ROI_KEY,ROI);
 
         
-          console.log(ROI_setting,ROI);
           this.setState({onROISettingCallBack:undefined});
         }})
       }} ><ExpandOutlined />

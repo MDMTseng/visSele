@@ -1,6 +1,6 @@
 import React , { useState,useEffect,useContext,useRef } from 'react';
-import * as logX from 'loglevel';
-let log = logX.getLogger("InspectionUI");
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('ui.calib');
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
@@ -134,7 +134,6 @@ const CanvasComponent_rdx = connect(
 
 function stage_light_report_maxMean(stage_light_report)
 {
-  console.log(stage_light_report);
   let maxMean=stage_light_report.grid_info.reduce((max,slr)=>{
 
     return (slr.mean>max)?slr.mean:max;
@@ -166,7 +165,7 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
     
     clearTimeout(c.triggerTimeout);
     c.triggerTimeout=null;
-    console.log(">>>>");
+    log.debug("[boot]");
     BPG_Channel( "CI", 0, 
       {
         _PGID_:BACKLIGHT_CALIB_PGID_,
@@ -183,7 +182,6 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
         resolve:(darr,mainFlow)=>{
           if(c.triggerTimeout===undefined)return;
           mainFlow(darr);
-          console.log(darr);
           let reportInfo = darr.find(data=>data.type==="RP");
           //setInspReport(reportInfo);
           if(reportInfo==undefined)return;
@@ -212,7 +210,6 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
             exposure=1000*1000;
           }
           if(exposure<1)exposure=1;
-          console.log(exposure);
           BPG_Channel("ST",0,{CameraSetting:{exposure}});
 
 

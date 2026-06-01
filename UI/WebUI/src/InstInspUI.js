@@ -1,6 +1,6 @@
 import React , { useState,useEffect,useContext,useRef } from 'react';
-import * as logX from 'loglevel';
-let log = logX.getLogger("InspectionUI");
+import { mkLog } from 'UTIL/logger';
+const log = mkLog('ui.instinsp');
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
@@ -57,7 +57,6 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
       case "point_pair_update":
         // _.current.cachedPoints=event.data.pts;
         let pts = event.data.pts;
-        console.log(event);
 
         _this.currentValue=pts.map((pt,idx)=>{
           let pt0=pt[0];
@@ -103,7 +102,7 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
   }
 
   useEffect(() => {
-    console.log("UPDATE");
+    log.debug("[update]");
 
     let ExtraControl=
     {
@@ -201,7 +200,7 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
                 }, 
                 reject:(e)=>{
                   
-                  console.log("ERROR",e);
+                  log.error("[error]", e);
                   ModalPopup(`錯誤:${e}`);
                   return;
                 } 
@@ -275,7 +274,7 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
   function onResize(width, height) {
     _.current.windowSize={width,height};
 
-    console.log("onResize::::::::");
+    log.debug("[onResize]");
     if(_.current.ec_canvas!==undefined)
     {
       _.current.ec_canvas.resize(_.current.windowSize.width, _.current.windowSize.height);
@@ -318,7 +317,6 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
       sum:0
     });
     let mmppFactor = (adjInfo.sum/adjInfo.W);
-    console.log(mmpb2b,ppb2b/mmppFactor,dataX);
 
 
     
@@ -334,13 +332,11 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
 
   let modalContent=null;
   let modalTitle=null;
-  console.log(rdx_edit_info);
   if(modal_view!==undefined)
   switch(modal_view.view_sele)
   {
     case "modifyTable":
     {
-      console.log(modal_view);
       modalTitle=<div>
         factor:{_this.adjCalibInfo.mmppFactor}=<br/> 
         mmpb2b:{_this.adjCalibInfo.adj_mmpb2b}<br/>
@@ -478,7 +474,7 @@ export default function InstInspUI_rdx({ BPG_Channel,onExtraCtrlUpdate  }) {
   useEffect(() => {
     onExtraCtrlUpdate({
       takeNewImage:()=>{
-        console.log("takeNewImage")
+        log.debug("[takeNewImage]")
       },
       ...canvExCtrl
     })
@@ -494,7 +490,7 @@ export default function InstInspUI_rdx({ BPG_Channel,onExtraCtrlUpdate  }) {
 
   //   onExtraCtrlUpdate({
   //     takeNewImage:()=>{
-  //       console.log("takeNewImage")
+  //       log.debug("[takeNewImage]")
   //     },
 
   //     clearMeasureSet:()=>{
