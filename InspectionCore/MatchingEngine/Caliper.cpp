@@ -256,6 +256,13 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   }
 
   std::vector<float> profile(nAcross);
+  // Per-caliper hits, always tracked (one entry per caliper i in [0,count)).
+  // status starts at 0=missed; flipped to 2=inlier after the fit (then some may
+  // be demoted to 1=outlier when MAD rejection runs).
+  r.hits.assign(count, CaliperHit{{0,0}, 0, 0.0f});
+  // ptCaliper maps pts[]-index -> caliper-index so we can attribute MAD outlier
+  // decisions back to per-caliper status; always populated now (was dbg-only).
+  ptCaliper.clear(); ptCaliper.reserve(count);
   for (int i = 0; i < count; i++)
   {
     float u = (float)i / (count - 1);
@@ -285,7 +292,8 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
       float sharpN = info.sharpness; if (sharpN > 1) sharpN = 1; if (sharpN < 0) sharpN = 0;
       float sharpF = 0.5f + 0.5f * sharpN;
       conf = info.strength * (1.0f - 0.7f * ratio) * sharpF;
-      pts.push_back(pt); w.push_back(conf); if (dbg) ptCaliper.push_back(i);
+      pts.push_back(pt); w.push_back(conf); ptCaliper.push_back(i);
+      r.hits[i] = CaliperHit{pt, 2 /*inlier-until-MAD-says-otherwise*/, conf};
     }
     if (dbg) { dProfs.push_back(profile); dPos.push_back(ok ? pos : -1.f); dConf.push_back(ok ? conf : -1.f); }
   }
@@ -306,6 +314,7 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
     std::sort(absr.begin(), absr.end());
     float med = absr[absr.size()/2];
     float thr = 3.0f * 1.4826f * med + 0.5f; // MAD-based, +0.5px floor
+    if (cal.max_error > 0 && thr > cal.max_error) thr = cal.max_error;
     int changed = 0;
     for (size_t i = 0; i < pts.size(); i++) { char nu = fabsf(res[i]) <= thr ? 1 : 0; if (nu != use[i]) changed++; use[i] = nu; }
     if (!changed) break;
@@ -315,10 +324,14 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   double sq = 0, sumw = 0; int ni = 0;
   for (size_t i = 0; i < pts.size(); i++) if (use[i])
   { float d = (pts[i].x-anchor.x)*n.x + (pts[i].y-anchor.y)*n.y; sq += d*d; sumw += w[i]; ni++; }
+  // Demote MAD-rejected hits from inlier (2) to outlier (1). Missed (0) stays 0.
+  for (size_t k = 0; k < pts.size(); k++)
+    if (!use[k]) r.hits[ ptCaliper[k] ].status = 1;
   r.anchor = anchor; r.dir = dir; r.nInlier = ni;
   r.rms = (ni > 0) ? sqrtf(sq / ni) : 0;
   r.confidence = (ni > 0) ? (float)(sumw / ni) : 0;
-  r.ok = (ni >= 2);
+  const int minInliers = (cal.min_inliers > 0) ? cal.min_inliers : 2;
+  r.ok = (ni >= minInliers);
   if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);
   return r;
 }
@@ -380,6 +393,9 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   while (span >= 2 * (float)M_PI) span -= 2 * (float)M_PI;
 
   std::vector<acv_XY> pts; std::vector<float> w;
+  // Per-caliper hits, always tracked. See caliper_locate_line for the encoding.
+  r.hits.assign(count, CaliperHit{{0,0}, 0, 0.0f});
+  ptCaliper.clear(); ptCaliper.reserve(count);
   for (int i = 0; i < count; i++)
   {
     float a = angStart + span * (float)i / (count - 1);
@@ -395,7 +411,8 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
       float ratio = (info.strength > 0) ? (info.runnerUp / info.strength) : 0; if (ratio > 1) ratio = 1;
       float sharpN = info.sharpness; if (sharpN > 1) sharpN = 1; if (sharpN < 0) sharpN = 0;
       conf = info.strength * (1.0f - 0.7f * ratio) * (0.5f + 0.5f * sharpN);
-      pts.push_back(pt); w.push_back(conf); if (dbg) ptCaliper.push_back(i);
+      pts.push_back(pt); w.push_back(conf); ptCaliper.push_back(i);
+      r.hits[i] = CaliperHit{pt, 2, conf};
     }
     if (dbg) { dProfs.push_back(prof); dPos.push_back(ok ? pos : -1.f); dConf.push_back(ok ? conf : -1.f); }
   }
@@ -414,6 +431,7 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
     std::sort(absr.begin(), absr.end());
     float med = absr[absr.size()/2];
     float thr = 3.0f * 1.4826f * med + 0.5f;
+    if (cal.max_error > 0 && thr > cal.max_error) thr = cal.max_error;
     int changed = 0;
     for (size_t i = 0; i < pts.size(); i++)
     { float d = fabsf(hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad); char nu = d<=thr?1:0; if (nu!=use[i])changed++; use[i]=nu; }
@@ -422,10 +440,13 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
   double sq = 0, sumw = 0; int ni = 0;
   for (size_t i = 0; i < pts.size(); i++) if (use[i])
   { float d = hypotf(pts[i].x-cen.x, pts[i].y-cen.y) - rad; sq += d*d; sumw += w[i]; ni++; }
+  for (size_t k = 0; k < pts.size(); k++)
+    if (!use[k]) r.hits[ ptCaliper[k] ].status = 1;
   r.center = cen; r.radius = rad; r.nInlier = ni;
   r.rms = (ni>0)?sqrtf(sq/ni):0;
   r.confidence = (ni>0)?(float)(sumw/ni):0;
-  r.ok = (ni >= 3);
+  const int minInliers = (cal.min_inliers > 0) ? cal.min_inliers : 3;
+  r.ok = (ni >= minInliers);
   if (dbg)
   {
     caliper_dump_line_strip("arc", dbgName, cal.edge, dProfs, dPos, dConf, &use, ptCaliper, count);

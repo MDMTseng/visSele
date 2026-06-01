@@ -11,6 +11,21 @@
 #include "FeatureManager.h"
 #include "ContourGrid.h"
 
+// Per-caliper hit, populated by the caliper_locate_* helpers and rebased to
+// image coords by the per-primitive caller (LineMatching_caliper /
+// CircleMatching_caliper). Defined HERE rather than Caliper.h to avoid a
+// circular include (Caliper.h pulls FeatureManager.h, which pulls this).
+//   status: 0=missed (no peak found), 1=outlier (MAD-rejected), 2=inlier.
+//   pt    : sub-pixel edge position in image coords; undefined when status==0.
+//   strength: per-caliper confidence (strength * unambiguity * sharpness),
+//             also used as the WLS/Kasa fit weight; 0 when status==0.
+struct CaliperHit
+{
+  acv_XY pt;
+  int status;
+  float strength;
+};
+
 
 #define FeatureManager_NAME_LENGTH 32
 
@@ -46,12 +61,17 @@ typedef struct featureDef_circle{
   acv_XY pt1,pt2,pt3;//three points arc, the root of all info
   float initMatchingMargin;
   float outter_inner;
-  // caliper/section locating (docs/caliper_primitive_locating_design.md)
+  // caliper/section locating (docs/caliper_primitive_locating_design.md).
+  // Width/length/step are stored here in the SAME unit as on the wire
+  // (def-file mm); the per-primitive *_ReportGen function converts them to
+  // px (* ppmm or / mmpp) before constructing CaliperParams.
   int locating;            // 0=contour(default), 1=caliper
   int cal_count;           // # radial calipers along the arc
-  float cal_width;         // projection width (px)
-  float cal_length;        // radial search half-length (px); <=0 => use initMatchingMargin
-  float cal_step;          // across-edge sampling step (px); <=0 => 1
+  float cal_width;         // projection width (mm at def-level; px at use)
+  float cal_length;        // radial search half-length (mm); <=0 => use initMatchingMargin
+  float cal_step;          // across-edge sampling step (mm); <=0 => 1px
+  int   cal_min_inliers;   // <=0 ⇒ engine default (3 for circle)
+  float cal_max_error;     // mm at def-level; <=0 ⇒ no cap on MAD threshold
   int edge_method;
   int edge_polarity;
   int edge_nth;
@@ -77,11 +97,15 @@ typedef struct featureDef_line{
 
   // Caliper/section locating (docs/caliper_primitive_locating_design.md).
   // locating: 0=contour(default,legacy), 1=caliper. edge_* feed EdgeSelectParams.
+  // Width/length/step are def-file mm; LineMatching_ReportGen converts them
+  // to px (/= mmpp) before the matching engine consumes them.
   int locating;            // default 0
   int cal_count;           // # calipers along the line
-  float cal_width;         // projection width (px)
-  float cal_length;        // search half-length across the edge (px); <=0 => use initMatchingMargin
-  float cal_step;          // across-edge sampling step (px); <=0 => 1
+  float cal_width;         // projection width (mm at def-level; px at use)
+  float cal_length;        // search half-length across the edge (mm); <=0 => use initMatchingMargin
+  float cal_step;          // across-edge sampling step (mm); <=0 => 1px
+  int   cal_min_inliers;   // <=0 ⇒ engine default (2 for line)
+  float cal_max_error;     // mm at def-level; <=0 ⇒ no cap on MAD threshold
   int edge_method;         // EdgeSelectParams::Method
   int edge_polarity;       // EdgeSelectParams::Polarity
   int edge_nth;
@@ -231,6 +255,9 @@ typedef struct FeatureReport_lineReport{
   featureDef_line *def;
   acv_LineFit line;
   int status;
+  // Per-caliper hits when locating==1 (caliper). Empty in the contour path.
+  // Length == def->cal_count when populated. See Caliper.h CaliperHit.
+  std::vector<CaliperHit> cal_hits;
 }FeatureReport_lineReport;
 
 
@@ -242,8 +269,10 @@ typedef struct FeatureReport_circleReport{
   float roughness_MAX;
   float roughness_MIN;
   float roughness_RMSE;
-  
+
   acv_XY pt1,pt2,pt3;//mapped 3 pts on circle
+  // Per-caliper hits when locating==1 (caliper); empty in the contour path.
+  std::vector<CaliperHit> cal_hits;
 }FeatureReport_circleReport;
 
 

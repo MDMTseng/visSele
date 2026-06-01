@@ -243,8 +243,12 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
   if ((pnum = JSON_GET_NUM(circle_obj, "margin")) == NULL) return -1;
   cir.initMatchingMargin = *pnum;
 
-  // caliper/section locating (default contour)
-  cir.locating = 0; cir.cal_count = 36; cir.cal_width = 9; cir.cal_length = -1; cir.cal_step = -1;
+  // caliper/section locating (default contour). cal_width/length/step are in
+  // DEF UNITS (mm); the per-primitive *_ReportGen function converts to px
+  // (* ppmm) before constructing CaliperParams. Sentinels (-1) pass through
+  // and trigger downstream fallbacks ("use initMatchingMargin" / "1px step").
+  cir.locating = 0; cir.cal_count = 10; cir.cal_width = 0.5f; cir.cal_length = -1; cir.cal_step = -1;
+  cir.cal_min_inliers = 0; cir.cal_max_error = 0;
   // default caliper edge: dominant FALLING edge (white->dark) silhouette; explicit overrides.
   cir.edge_method = EdgeSelectParams::STRONGEST; cir.edge_polarity = EdgeSelectParams::FALLING;
   cir.edge_nth = 0; cir.edge_min_strength = 0;
@@ -252,10 +256,12 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
     char *loc = (char *)JFetch(circle_obj, "locating", cJSON_String);
     if (loc && strcmp(loc, "caliper") == 0) cir.locating = 1;
     cJSON *calo = JFetch_OBJECT(circle_obj, "caliper");
-    if (calo) { cir.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 36);
-                cir.cal_width = JFetch_NUMBER_ex(calo, "width", 9);
+    if (calo) { cir.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 10);
+                cir.cal_width = JFetch_NUMBER_ex(calo, "width", 0.5);
                 cir.cal_length = JFetch_NUMBER_ex(calo, "length", -1);
                 cir.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
+                cir.cal_min_inliers = (int)JFetch_NUMBER_ex(calo, "min_inliers", 0);
+                cir.cal_max_error = JFetch_NUMBER_ex(calo, "max_error", 0);
                 // Clamp against pathological caliper sizes that would DoS the
                 // measurement loop (per-primitive cost ~ count * (2*width+1) *
                 // length). Real-world calipers are tens; even at these caps
@@ -1517,7 +1523,10 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   line.initMatchingMargin = (float)*pnum;
 
   // caliper/section locating (default contour). docs/caliper_primitive_locating_design.md
-  line.locating = 0; line.cal_count = 30; line.cal_width = 9; line.cal_length = -1; line.cal_step = -1;
+  // cal_width/length/step in DEF UNITS (mm); LineMatching_ReportGen converts
+  // to px (/= mmpp) before the caliper engine consumes them.
+  line.locating = 0; line.cal_count = 10; line.cal_width = 0.5f; line.cal_length = -1; line.cal_step = -1;
+  line.cal_min_inliers = 0; line.cal_max_error = 0;
   // default caliper edge: dominant FALLING edge (white->dark), matching the backlit
   // dark-object-on-bright silhouette. Explicit def "edge.polarity" overrides.
   line.edge_method = EdgeSelectParams::STRONGEST; line.edge_polarity = EdgeSelectParams::FALLING;
@@ -1526,10 +1535,12 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
     char *loc = (char *)JFetch(line_obj, "locating", cJSON_String);
     if (loc && strcmp(loc, "caliper") == 0) line.locating = 1;
     cJSON *calo = JFetch_OBJECT(line_obj, "caliper");
-    if (calo) { line.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 30);
-                line.cal_width = JFetch_NUMBER_ex(calo, "width", 9);
+    if (calo) { line.cal_count = (int)JFetch_NUMBER_ex(calo, "count", 10);
+                line.cal_width = JFetch_NUMBER_ex(calo, "width", 0.5);
                 line.cal_length = JFetch_NUMBER_ex(calo, "length", -1);
                 line.cal_step = JFetch_NUMBER_ex(calo, "step", -1);
+                line.cal_min_inliers = (int)JFetch_NUMBER_ex(calo, "min_inliers", 0);
+                line.cal_max_error = JFetch_NUMBER_ex(calo, "max_error", 0);
                 // Clamp pathological caliper sizes (see parse_arcData).
                 if (line.cal_count  >  512) line.cal_count  =  512;
                 if (line.cal_width  >   64) line.cal_width  =   64;
@@ -2917,6 +2928,24 @@ acv_XY TemplateDomain_TO_PixDomain(acv_XY temp_pt, float sin, float cosin, float
   return acvVecAdd(acvVecMult(pt, 1 / mmpp), objCenter_pix); //convert to pixel unit
 }
 
+// Inverse of TemplateDomain_TO_PixDomain: image-px → object-frame mm.
+// Used to lift caliper-mode per-hit coordinates back into the def's own
+// coordinate frame (centered around the object's nominal origin, no
+// rotation), so consumers can compare them directly to def shape pt1/pt2.
+acv_XY PixDomain_TO_TemplateDomain(acv_XY pix_pt, float sine, float cosine, float flip_f, acv_XY objCenter_pix, float mmpp)
+{
+  // 1) shift to object center, scale px → mm
+  acv_XY pt = acvVecMult(acvVecSub(pix_pt, objCenter_pix), mmpp);
+  // 2) inverse rotation: transpose of the forward rotation, then un-flip y.
+  //    Forward (acvRotation): output = R(sine,cosine) · F(flip_f) · input
+  //    Inverse:               input  = F(flip_f) · R^T · output
+  acv_XY out;
+  out.x =  pt.x * cosine + pt.y * sine;
+  out.y = -pt.x * sine   + pt.y * cosine;
+  out.y *= flip_f;
+  return out;
+}
+
 acv_XY ConstrainMap::convert_polar(acv_XY from)
 {
   // LOGI(">>>d  anchorPairs.size():%d", anchorPairs.size());
@@ -3424,9 +3453,15 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   if (cdef.locating == 1) // caliper/section circle fit (radial calipers)
   {
     CaliperParams cal;
-    cal.length = (cdef.cal_length > 0) ? cdef.cal_length : initMatchingMargin; // px radial search half-length
-    cal.width  = cdef.cal_width;
-    cal.step   = (cdef.cal_step > 0) ? cdef.cal_step : 1.0f;
+    // Caliper sub-params come in as mm (def-file unit, matches the rest of
+    // the schema) and are consumed here in px. initMatchingMargin above
+    // already crossed that boundary via `* ppmm`; do the same for the
+    // caliper params. Sentinels (cal_length=-1, cal_step=-1) pass through.
+    cal.length = (cdef.cal_length > 0) ? (cdef.cal_length * ppmm) : initMatchingMargin; // px radial search half-length
+    cal.width  = cdef.cal_width * ppmm;
+    cal.step   = (cdef.cal_step > 0) ? (cdef.cal_step * ppmm) : 1.0f;
+    cal.min_inliers = cdef.cal_min_inliers;
+    cal.max_error   = (cdef.cal_max_error > 0) ? (cdef.cal_max_error * ppmm) : 0;
     cal.edge.method       = cdef.edge_method;
     cal.edge.polarity     = cdef.edge_polarity;
     cal.edge.nth          = cdef.edge_nth;
@@ -3438,6 +3473,14 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     if (rr.ok) { cf.circle.circumcenter = acvVecAdd(rr.center, off); cf.circle.radius = rr.radius;
                  cf.s = rr.rms; cf.matching_pts = rr.nInlier; cf.confidence = rr.confidence; }
     else { cf.circle.radius = NAN; }
+    // Per-caliper hits → cr.cal_hits (rebased to image coords). Done even on
+    // !rr.ok so the overlay can show where the calipers tried/missed.
+    cr.cal_hits.reserve(rr.hits.size());
+    for (const auto &h : rr.hits) {
+      CaliperHit ih = h;
+      if (h.status != 0) ih.pt = acvVecAdd(h.pt, off);
+      cr.cal_hits.push_back(ih);
+    }
   }
   else
     circleRefine(s_points, s_points.size(), &cf);
@@ -3614,6 +3657,12 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     cr.pt1 = acvVecMult(cr.pt1, mmpp);
     cr.pt2 = acvVecMult(cr.pt2, mmpp);
     cr.pt3 = acvVecMult(cr.pt3, mmpp);
+    // Caliper hits go all the way back to OBJECT-FRAME mm (def coord
+    // system) — see LineMatching_ReportGen for the rationale. Contour-mode
+    // reports have empty cal_hits so the loop is a no-op.
+    for (auto &h : cr.cal_hits)
+      if (h.status != 0)
+        h.pt = PixDomain_TO_TemplateDomain(h.pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
   }
 
 
@@ -3627,14 +3676,17 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
 // px-unit report (caller converts to mm), matching the contour path's contract.
 static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, edgeTracking &eT)
 {
-  FeatureReport_lineReport Report;
-  memset(&Report, 0, sizeof(Report));
+  // Value-init (was memset — now UB because FeatureReport_lineReport carries
+  // a std::vector<CaliperHit> cal_hits member).
+  FeatureReport_lineReport Report = {};
   Report.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
 
   CaliperParams cal;
   cal.length = (lineDef.cal_length > 0) ? lineDef.cal_length : lineDef.initMatchingMargin; // px search half-length across edge
   cal.width  = lineDef.cal_width;
   cal.step   = (lineDef.cal_step > 0) ? lineDef.cal_step : 1.0f;
+  cal.min_inliers = lineDef.cal_min_inliers;
+  cal.max_error   = lineDef.cal_max_error;  // already mm→px via LineMatching_ReportGen
   cal.edge.method       = lineDef.edge_method;
   cal.edge.polarity     = lineDef.edge_polarity;
   cal.edge.nth          = lineDef.edge_nth;
@@ -3665,6 +3717,14 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
     Report.line.end_pt2 = acv_XY(anchor.x + t1*r.dir.x, anchor.y + t1*r.dir.y);
     if (r.nInlier >= 5) Report.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
   }
+  // Per-caliper hits → Report.cal_hits (rebased to image coords). Always
+  // copied — even on failure — so the WebUI overlay can surface why.
+  Report.cal_hits.reserve(r.hits.size());
+  for (const auto &h : r.hits) {
+    CaliperHit ih = h;
+    if (h.status != 0) ih.pt = acvVecAdd(h.pt, off);
+    Report.cal_hits.push_back(ih);
+  }
   return Report;
 }
 
@@ -3694,6 +3754,16 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
   line_cand.line_vec = lineDef.lineTar.line_vec;
   line_cand.line_anchor = lineDef.lineTar.line_anchor;
   lineDef.initMatchingMargin /= mmpp;
+  // Caliper sub-params (def-file unit: mm) -> px for the matching engine,
+  // matching the rest of the def schema (pt1/pt2/margin are also mm-in-def
+  // and px-after-conversion). Sentinels (cal_length=-1 "use margin",
+  // cal_step=-1 "use 1px") are left alone.
+  if (lineDef.locating == 1) {
+    lineDef.cal_width /= mmpp;
+    if (lineDef.cal_length > 0) lineDef.cal_length /= mmpp;
+    if (lineDef.cal_step   > 0) lineDef.cal_step   /= mmpp;
+    if (lineDef.cal_max_error > 0) lineDef.cal_max_error /= mmpp;
+  }
 
   // LOGI("initMatchingMargin:%f MatchingMarginX:%f",initMatchingMargin,MatchingMarginX);
   FeatureReport_lineReport Report;
@@ -3709,6 +3779,14 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
   Report.line.end_pt2 = acvVecMult(Report.line.end_pt2, mmpp);
   Report.line.line.line_anchor = acvVecMult(Report.line.line.line_anchor, mmpp);
   Report.line.s = Report.line.s * mmpp;
+  // Caliper hits go all the way back to OBJECT-FRAME mm (def coord system),
+  // unlike end_pt1/pt2 which stay in image-mm. This lets consumers compare
+  // hit positions directly to def shape.pt1/pt2 without applying the
+  // inspection cx/cy/rotate inverse themselves. Missed entries (status=0)
+  // keep their {0,0} sentinel.
+  for (auto &h : Report.cal_hits)
+    if (h.status != 0)
+      h.pt = PixDomain_TO_TemplateDomain(h.pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
   Report.def=plineDef;
   return Report;
 }

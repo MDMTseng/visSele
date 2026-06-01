@@ -129,6 +129,27 @@ cJSON* JudgeReportVector2JSON(const vector< FeatureReport_judgeReport> &judges ,
 
 
 
+// Emit a `cal_hits: [{x,y,st,s}]` array onto `parent` if `hits` is non-empty.
+// Schema: x/y are image px minus center_offset (matches the line/circle anchor
+// emit convention). st: 0=missed (no peak), 1=outlier, 2=inlier. s: per-caliper
+// confidence (strength*unambiguity*sharpness). Missed entries still emit
+// (status=0) so the WebUI can render a placeholder where a caliper tried and
+// failed. Opt-in: contour-mode reports have hits.empty() so the field is absent.
+static void AddCalHits2JSON(cJSON *parent, const std::vector<CaliperHit> &hits, acv_XY center_offset)
+{
+  if (hits.empty()) return;
+  cJSON *arr = cJSON_CreateArray();
+  for (const CaliperHit &h : hits) {
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddNumberToObject(o, "x", h.pt.x - center_offset.x);
+    cJSON_AddNumberToObject(o, "y", h.pt.y - center_offset.y);
+    cJSON_AddNumberToObject(o, "st", h.status);
+    cJSON_AddNumberToObject(o, "s",  h.strength);
+    cJSON_AddItemToArray(arr, o);
+  }
+  cJSON_AddItemToObject(parent, "cal_hits", arr);
+}
+
 cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, acv_XY center_offset)
 {
 
@@ -140,15 +161,18 @@ cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, 
     cJSON_AddNumberToObject(cfj, "status", vec[j].status);
     cJSON_AddNumberToObject(cfj, "id", vec[j].def->id);
     cJSON_AddStringToObject(cfj, "name", vec[j].def->name);
-    
+
     if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
     {
       acv_CircleFit2JSON(cfj,vec[j].circle,center_offset);
-      
+
       cJSON_AddItemToObject(cfj,"pt1",acv_acv_XY2JSON(vec[j].pt1));
       cJSON_AddItemToObject(cfj,"pt2",acv_acv_XY2JSON(vec[j].pt2));
       cJSON_AddItemToObject(cfj,"pt3",acv_acv_XY2JSON(vec[j].pt3));
     }
+    // Emit caliper-mode per-caliper hits even on STATUS_NA — the user wants to
+    // see where the calipers tried and failed when the fit didn't converge.
+    AddCalHits2JSON(cfj, vec[j].cal_hits, center_offset);
 
     cJSON_AddItemToArray(detectedCircles_jarr, cfj );
 
@@ -224,6 +248,7 @@ cJSON* acv_LineFitVector2JSON(const vector< FeatureReport_lineReport> &vec, acv_
     cJSON_AddStringToObject(lfj, "name", vec[j].def->name);
     if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
       acv_LineFit2JSON(lfj,vec[j].line,center_offset);
+    AddCalHits2JSON(lfj, vec[j].cal_hits, center_offset);
     cJSON_AddItemToArray(detectedLines_jarr, lfj );
   }
   return detectedLines_jarr;

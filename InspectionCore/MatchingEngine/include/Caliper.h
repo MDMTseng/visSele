@@ -21,6 +21,14 @@ struct CaliperParams
   float width = 9.0f;   // projection width ALONG the edge (averaged), px
   float step = 1.0f;    // sampling step across the edge (px)
   EdgeSelectParams edge;
+  // Robustness gates (0 / <=0 ⇒ "use engine default").
+  //   min_inliers — caliper_locate_* returns ok=false if final nInlier < this.
+  //                 Default fallback: line=2, circle=3.
+  //   max_error   — px hard cap on the MAD-derived outlier threshold; any
+  //                 point with |residual| > max_error is rejected as outlier
+  //                 even if MAD would have kept it. <=0 ⇒ no cap.
+  int   min_inliers = 0;
+  float max_error   = 0;
 };
 
 // Measure one caliper. center = caliper center (image px). searchDir = direction
@@ -47,6 +55,10 @@ bool search_point_scan(const cv::Mat &gray, acv_XY start, acv_XY searchDir,
                        const EdgeSelectParams &edge, FeatureManager_BacPac *bacpac,
                        acv_XY *outPt, float *outStrength);
 
+// CaliperHit is defined in FeatureReport.h (transitively reachable via
+// FeatureManager.h above). Keeping its definition there avoids a circular
+// include — FeatureReport.h is the public-facing consumer-side aggregator.
+
 // ---- Phase 2: line locating via a row of calipers ----------------------------
 struct CaliperLineResult
 {
@@ -57,6 +69,7 @@ struct CaliperLineResult
   int nInlier;     // calipers kept after robust rejection
   float confidence;// mean inlier edge confidence (strength*unambiguity*sharpness)
   bool ok;
+  std::vector<CaliperHit> hits; // length == count; entry i is the i'th caliper
 };
 
 // Place `count` calipers evenly along p0->p1 (caliper search direction =
@@ -82,6 +95,7 @@ struct CaliperCircleResult
   int nInlier;
   float confidence;// mean inlier edge confidence
   bool ok;
+  std::vector<CaliperHit> hits; // length == count; entry i is the i'th caliper
 };
 
 // Place `count` calipers along the arc [angStart,angEnd] (rad) of the nominal
