@@ -83,14 +83,82 @@ function toFixedNum(num,digit)
   return (parseFloat(num.toFixed(digit)));
 }
 
-function NumberAccInput({value,className,onChange,style})
-{
-  return (<NumPad.Number onChange={(value)=>onChange({target:{value}})} value={toFixedNum(value,4)}>
-    <input className={className}
-    style={style}
-    type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
-    onChange={onChange}/>
-  </NumPad.Number>);
+// Shared compact-layout primitives used by the *Setup renderLib widgets
+// (ULRangeSetup, AngleRangeSetup, SimpleSetup). One row = 24px tall, 96px
+// label column on the left, number input + small step buttons on the right.
+const _COMPACT_ROW = {
+  display: 'flex', alignItems: 'center', minHeight: 24, gap: 4,
+  fontSize: 12, padding: '1px 0', width: '100%',
+};
+const _COMPACT_LABEL = {
+  flex: '0 0 88px', color: '#333', overflow: 'hidden',
+  textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+};
+const _STEP_BTN = {
+  flex: '0 0 auto', height: 20, padding: '0 4px', fontSize: 11,
+  border: '1px solid #ccc', borderRadius: 3, background: '#f5f5f5',
+  color: '#333', cursor: 'pointer', lineHeight: '18px', minWidth: 22,
+};
+function CompactRow({ label, children }) {
+  return <div style={_COMPACT_ROW}>
+    <div style={_COMPACT_LABEL} title={label}>{label}</div>
+    <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 3 }}>
+      {children}
+    </div>
+  </div>;
+}
+function StepButton({ onClick, title, children }) {
+  return <button type="button" style={_STEP_BTN} onClick={onClick} title={title}>{children}</button>;
+}
+function labelForKey(props, key) {
+  const a = GetObjElement(props.dict, [props.dictTheme, key]);
+  if (a !== undefined) return a;
+  const b = GetObjElement(props.dict, ['_', key]);
+  return (b !== undefined) ? b : key;
+}
+
+// Compact numeric input used by ULRange/Angle/Simple Setup widgets. Pre-
+// rewrite this wrapped a NumPad popup for touch entry; now it's a plain
+// HTML number input — 4-decimal round on display, commit on blur/Enter
+// (Escape reverts). Mid-typing keystrokes are held in local state so
+// external re-renders from the same edit don't clobber the user's input.
+function NumberAccInput({ value, className, onChange, style }) {
+  const [local, setLocal] = useState(() => '' + toFixedNum(value, 4));
+  const editing = useRef(false);
+  useEffect(() => { if (!editing.current) setLocal('' + toFixedNum(value, 4)); }, [value]);
+  const commit = () => {
+    editing.current = false;
+    const parsed = parseFloat(local);
+    if (Number.isFinite(parsed)) {
+      const rounded = toFixedNum(parsed, 4);
+      onChange({ target: { value: '' + rounded } });
+      setLocal('' + rounded);
+    } else {
+      setLocal('' + toFixedNum(value, 4));
+    }
+  };
+  return (
+    <input
+      className={className}
+      style={{
+        height: 22, fontSize: 12, padding: '0 4px', boxSizing: 'border-box',
+        color: '#222', background: 'white', border: '1px solid #ccc',
+        borderRadius: 3, width: '100%', ...style,
+      }}
+      type="number" step="0.0001" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
+      value={local}
+      onChange={(e) => { editing.current = true; setLocal(e.target.value); }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        else if (e.key === 'Escape') {
+          editing.current = false;
+          setLocal('' + toFixedNum(value, 4));
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
 }
 
 
@@ -989,87 +1057,86 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
 
 let renderMethods = {
   Measure_Calc_Editor,
-  Dropdown_List:({ target, onChange, className, renderContext: { list } })=>{
-    let edit_target = GetObjElement(target.obj, target.keyTrace);
-    const menu_ = (
+  // Compact selection dropdown. Value read via target.obj[lastKey] so it
+  // resolves correctly both at root level AND inside nested sub-objects
+  // (target.obj is the immediate parent, keyTrace is the full from-root path).
+  Dropdown_List: ({ target, onChange, renderContext: { list }, props }) => {
+    const lastKey = target.keyTrace[target.keyTrace.length - 1];
+    const current = target.obj[lastKey];
+    const label = labelForKey(props, lastKey);
+    const menu = (
       <Menu onClick={(ev) => {
-        onChange(target, "Dropdown_List",{ target: { value: list[ev.key] } } )
-        }}>
-        {list.map((m, idx) =>
-          <Menu.Item key={idx} idx={idx}>
-            <a target="_blank" rel="noopener noreferrer">
-              {m}
-            </a>
-          </Menu.Item>)}
+        onChange(target, "Dropdown_List", { target: { value: list[ev.key] } });
+      }}>
+        {list.map((m, idx) => <Menu.Item key={idx}>{m}</Menu.Item>)}
       </Menu>
     );
-    let dropDownX =
-      <Dropdown overlay={menu_}>
-        <a className="HX0_5 layout palatte-blue-8 vbox width12" style={{ color: "white" }} href="#">
-          {edit_target}
+    return <CompactRow label={label}>
+      <Dropdown overlay={menu} trigger={['click']}>
+        <a href="#" style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between',
+          height: 22, padding: '0 8px', fontSize: 12,
+          background: '#1565c0', color: 'white', borderRadius: 3,
+          minWidth: 96, gap: 6,
+        }} onClick={(e) => e.preventDefault()}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {current ?? '—'}
+          </span>
           <CaretDownOutlined />
         </a>
-      </Dropdown>;
-
-
-    return dropDownX;
+      </Dropdown>
+    </CompactRow>;
   },
-  ULRangeSetup: ({ className, onChange, target, renderContext, props }) => {
-    let value = GetObjElement(target.obj, target.keyTrace);
-    let lastKey = target.keyTrace[target.keyTrace.length - 1];
-    //console.log(params_);
-    //let {className,onChange,target,renderContext,props} = params_;
-    let retUI = [];
-
-    let ObjLevelM1 = GetObjElement(target.obj, target.keyTrace, target.keyTrace.length - 2);
-    var tarExt = "";
-    {
-      let idfo = lastKey.lastIndexOf("_");
-      if (idfo >= 0)
-        tarExt = "_" + lastKey.substr(idfo + 1);
-    }
-
-    let RangeCValue = parseFloat(ObjLevelM1["value" + tarExt]);
-
-
-
-    retUI.push(<ULRangeAcc key={"_" + lastKey + "_ULRangeAcc"} {...{ target, value, lastKey, RangeCValue, onChange, props }} />);
-    retUI.push(<NumberAccInput key={"_" + lastKey + "_stxt"} className="s HX1 width8 vbox blackText"
-      type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
-      value={value.toFixed(4)}
-      onChange={(evt) => onChange(target, "input-number", evt)} />);
-    return retUI;
-  }
-  ,
-  AngleRangeSetup: ({ className, onChange, target, renderContext, props }) => {
-    let value = GetObjElement(target.obj, target.keyTrace);
-    let lastKey = target.keyTrace[target.keyTrace.length - 1];
-    //console.log(params_);
-    //let {className,onChange,target,renderContext,props} = params_;
-    let retUI = [];
-
-    retUI.push(<AngleDegAcc key={"_" + lastKey + "_AngleDegAcc"} {...{ target,lastKey, value, onChange, props }} />);
-    retUI.push(<NumberAccInput key={"_" + lastKey + "_stxt"} className="s HX1 width8 vbox blackText"
-      type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
-      value={value.toFixed(4)}
-      onChange={(evt) => onChange(target, "input-number", evt)} />);
-    return retUI;
-  }
-  ,
-  SimpleSetup: ({ className, onChange, target, renderContext, props }) => {
-    let value = GetObjElement(target.obj, target.keyTrace);
-    let lastKey = target.keyTrace[target.keyTrace.length - 1];
-    //console.log(params_);
-    //let {className,onChange,target,renderContext,props} = params_;
-    let retUI = [];
-
-    retUI.push(<SimpleAcc key={"_" + lastKey + "_AngleDegAcc"} {...{ target,lastKey, value, onChange, props }} />);
-    retUI.push(<NumberAccInput key={"_" + lastKey + "_stxt"} className="s HX1 width8 vbox blackText"
-      type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
-      value={value.toFixed(4)}
-      onChange={(evt) => onChange(target, "input-number", evt)} />);
-    return retUI;
-  }
+  // Compact USL/LSL/UCL/LCL setup. Pre-refactor this rendered a popover
+  // anchor (ULRangeAcc) with ±0.1 / ±0.01 buttons inside + a NumberAccInput;
+  // ergonomics were touch-targeted. New layout: one row = compact label +
+  // number input + tiny ±0.1 / ±0.01 inline buttons (Reset goes back to
+  // the parent `value` field — same semantics as the old Popover "R" btn).
+  ULRangeSetup: ({ onChange, target, props }) => {
+    const value = GetObjElement(target.obj, target.keyTrace);
+    const lastKey = target.keyTrace[target.keyTrace.length - 1];
+    const objM1 = GetObjElement(target.obj, target.keyTrace, target.keyTrace.length - 2);
+    let tarExt = "";
+    { const idfo = lastKey.lastIndexOf("_"); if (idfo >= 0) tarExt = "_" + lastKey.substr(idfo + 1); }
+    const RangeCValue = parseFloat(objM1["value" + tarExt]);
+    const label = labelForKey(props, lastKey);
+    const set = (v) => onChange(target, "input-number", { target: { value: '' + toFixedNum(v, 4) } });
+    return <CompactRow label={label}>
+      <NumberAccInput value={value} onChange={(evt) => onChange(target, "input-number", evt)} />
+      <StepButton onClick={() => set(value + 0.1)}  title="+0.1">+.1</StepButton>
+      <StepButton onClick={() => set(value - 0.1)}  title="−0.1">−.1</StepButton>
+      <StepButton onClick={() => set(value + 0.01)} title="+0.01">+.01</StepButton>
+      <StepButton onClick={() => set(value - 0.01)} title="−0.01">−.01</StepButton>
+      <StepButton onClick={() => set(RangeCValue)}  title="reset to value">R</StepButton>
+    </CompactRow>;
+  },
+  AngleRangeSetup: ({ onChange, target, props }) => {
+    const value = GetObjElement(target.obj, target.keyTrace);
+    const lastKey = target.keyTrace[target.keyTrace.length - 1];
+    const label = labelForKey(props, lastKey);
+    const set = (v) => onChange(target, "input-number", { target: { value: '' + toFixedNum(((v % 360) + 360) % 360, 4) } });
+    return <CompactRow label={label}>
+      <NumberAccInput value={value} onChange={(evt) => onChange(target, "input-number", evt)} />
+      <StepButton onClick={() => set(value + 30)} title="+30">+30</StepButton>
+      <StepButton onClick={() => set(value - 30)} title="−30">−30</StepButton>
+      <StepButton onClick={() => set(value + 5)}  title="+5">+5</StepButton>
+      <StepButton onClick={() => set(value - 5)}  title="−5">−5</StepButton>
+      <StepButton onClick={() => set(0)}          title="0">0</StepButton>
+    </CompactRow>;
+  },
+  SimpleSetup: ({ onChange, target, props }) => {
+    const value = GetObjElement(target.obj, target.keyTrace);
+    const lastKey = target.keyTrace[target.keyTrace.length - 1];
+    const label = labelForKey(props, lastKey);
+    const set = (v) => onChange(target, "input-number", { target: { value: '' + toFixedNum(v, 4) } });
+    return <CompactRow label={label}>
+      <NumberAccInput value={value} onChange={(evt) => onChange(target, "input-number", evt)} />
+      <StepButton onClick={() => set(value * 2)} title="×2">×2</StepButton>
+      <StepButton onClick={() => set(value / 2)} title="÷2">÷2</StepButton>
+      <StepButton onClick={() => set(value + 1)} title="+1">+1</StepButton>
+      <StepButton onClick={() => set(value - 1)} title="−1">−1</StepButton>
+    </CompactRow>;
+  },
 }
 
 function SettingUI({})

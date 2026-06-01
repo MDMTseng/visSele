@@ -92,248 +92,293 @@ export function InputNumber({key,className,step=0.1,defaultValue,value,onChange}
 }
 
 
-export class JsonElement extends React.Component{
+// Compact property-sheet — rewrite of the touch-era JsonElement leaf
+// renderer. Same call surface (`type`, `target`, `onChange`, `children`,
+// `dict`/`dictTheme`, `renderLib`) so JsonEditBlock can dispatch unchanged.
+// Mouse/keyboard styling: 22px control height, plain HTML inputs instead
+// of the NumPad popup, antd Switch size="small".
+//
+// Numbers: display rounded to 4 decimals via `_toFixed4`; commit-on-blur
+// or Enter parses + rounds before propagation. Mid-typing keystrokes are
+// held in local state so external re-renders from the same edit don't
+// stomp the user's input.
 
-  render()
-  {
- 
-    if(this.props.type.type !== undefined)
-    {
-      return this.renderComplex();
+function _toFixed4(v) {
+  if (v === undefined || v === null || v === '') return '';
+  const n = (typeof v === 'string') ? parseFloat(v) : v;
+  if (!Number.isFinite(n)) return '';
+  return '' + parseFloat(n.toFixed(4));
+}
+
+const _PS_INPUT = {
+  width: '100%', height: 22, fontSize: 12, padding: '0 4px',
+  border: '1px solid #ccc', borderRadius: 3, background: 'white',
+  color: '#222', // override inherited white from ancestor container
+  boxSizing: 'border-box',
+};
+
+function _PSNumberInput({ value, onCommit }) {
+  const [local, setLocal] = useState(() => _toFixed4(value));
+  const editingRef = useRef(false);
+  useEffect(() => { if (!editingRef.current) setLocal(_toFixed4(value)); }, [value]);
+
+  const commit = () => {
+    editingRef.current = false;
+    const n = parseFloat(local);
+    if (Number.isFinite(n)) {
+      const rounded = parseFloat(n.toFixed(4));
+      onCommit(rounded);
+      setLocal('' + rounded);
+    } else {
+      setLocal(_toFixed4(value));
     }
-    else
-    {
-      //if(this.props.type instanceof String)
-      
-      return this.renderSimple();
-      
-    }
-  }
+  };
 
-
-  renderComplex()
-  {
-    switch(this.props.type.type)
-    {
-      case "droplist":
-      return <div key={this.props.id} className={this.props.className} >
-        {this.props.children}
-      </div>
-    }
-  }
-  renderSimple()
-  {
-    let text=this.props.children;
-    let translateValue = undefined;
-    if(this.props.type=="div"){
-      translateValue = GetObjElement(this.props.dict,[this.props.dictTheme, text]);
-
-      if(translateValue===undefined)
-      {
-        translateValue = GetObjElement(this.props.dict,["_", text]);
-      }
-    }
-
-
-    if(translateValue===undefined)
-    {
-      translateValue = text;
-    }
-    
-    switch(this.props.type)
-    {
-      case "input-number":
-        translateValue = translateValue+"";
-
-        return  <NumPad.Number
-          key={this.props.id}
-          onChange={(value)=>this.props.onChange(this.props.target,this.props.type,{target:{value}})}
-          value={translateValue}>
-            < InputNumber 
-              className={this.props.className} 
-              value={translateValue}/>
-          </NumPad.Number>;
-        // return  <NumPad.Number
-        //   key={this.props.id}
-        //   onChange={(value)=>this.props.onChange(this.props.target,this.props.type,{target:{value}})}
-        //   value={translateValue}/>;
-        // return < InputNumber 
-        //   key={this.props.id} 
-        //   className={this.props.className} 
-        //   //defaultValue={translateValue}
-        //   value={translateValue}
-        //   onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
-        
-      case "input":
-        return <input key={this.props.id} className={this.props.className} value={translateValue}
-                      onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
-          
-      case "checkbox":
-        return <input key={this.props.id} className={this.props.className} type="checkbox" checked={translateValue}
-                      onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
-      case "btn":
-        return <button
-          key={this.props.id}
-          className={this.props.className}
-          onClick={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}>
-          {translateValue}</button>
-
-      
-      case "switch":
-      {
-        let checked=(typeof translateValue === "boolean")?translateValue:(translateValue<0)
-        return <div className={this.props.className+" white"}>
-          <Switch checked={checked}
-            onChange={(checked)=>this.props.onChange(this.props.target,this.props.type,{target:{checked}})} />
-        </div>
-      }
-      
-      case "div":
-      default:
-        if(this.props.renderLib!==undefined && this.props.renderLib[this.props.type]!==undefined)
-        {
-          let renderFunc = this.props.renderLib[this.props.type];
-          return renderFunc(this.props);
+  return (
+    <input
+      type="number" step="0.0001"
+      style={_PS_INPUT} value={local}
+      onChange={(e) => { editingRef.current = true; setLocal(e.target.value); }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        else if (e.key === 'Escape') {
+          editingRef.current = false;
+          setLocal(_toFixed4(value));
+          e.currentTarget.blur();
         }
-        return <div key={this.props.id} className={this.props.className} style={{backgroundColor:"#DDD"}}>{translateValue} </div>
-      
+      }}
+    />
+  );
+}
+
+function _PSTextInput({ value, onCommit }) {
+  const [local, setLocal] = useState(() => value ?? '');
+  const editingRef = useRef(false);
+  useEffect(() => { if (!editingRef.current) setLocal(value ?? ''); }, [value]);
+  return (
+    <input
+      type="text" style={_PS_INPUT} value={local}
+      onChange={(e) => { editingRef.current = true; setLocal(e.target.value); }}
+      onBlur={() => { editingRef.current = false; onCommit(local); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        else if (e.key === 'Escape') {
+          editingRef.current = false; setLocal(value ?? ''); e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
+export function JsonElement(props) {
+  const { type, target, onChange, children, dict, dictTheme, renderLib } = props;
+
+  // i18n the raw value (only meaningful for `div` text labels).
+  let translated = children;
+  if (type === 'div') {
+    const a = GetObjElement(dict, [dictTheme, children]);
+    const b = (a === undefined) ? GetObjElement(dict, ['_', children]) : a;
+    if (b !== undefined) translated = b;
+  }
+
+  switch (type) {
+    case 'input-number':
+      return <_PSNumberInput
+        value={children}
+        onCommit={(v) => onChange(target, 'input-number', { target: { value: v } })}
+      />;
+
+    case 'input':
+      return <_PSTextInput
+        value={children ?? ''}
+        onCommit={(v) => onChange(target, 'input', { target: { value: v } })}
+      />;
+
+    case 'checkbox':
+      return <input type="checkbox" checked={!!children}
+        onChange={(evt) => onChange(target, 'checkbox', evt)} />;
+
+    case 'btn':
+      return <AntButton size="small" style={{ fontSize: 12, height: 22, padding: '0 8px' }}
+        onClick={(evt) => onChange(target, 'btn', evt)}>
+        {translated}
+      </AntButton>;
+
+    case 'switch': {
+      const checked = (typeof children === 'boolean') ? children : (children < 0);
+      return <Switch size="small" checked={checked}
+        onChange={(c) => onChange(target, 'switch', { target: { checked: c } })} />;
     }
+
+    case 'div':
+    default:
+      if (renderLib && typeof renderLib[type] === 'function') return renderLib[type](props);
+      return <span style={{ fontSize: 12, color: '#444' }}>{translated}</span>;
   }
 }
 
-export class JsonEditBlock extends React.Component{
-  
+// Compact property sheet. Same prop API as the legacy class:
+//   object, dict, dictTheme, whiteListKey, renderLib, additionalData,
+//   jsonChange(rootObj, target, type, evt).
+// Internals rewritten as a function component:
+//   - Mouse/keyboard layout (24px row, 12px font, label column ~96px).
+//   - Number leaves round to 4 decimals on commit (NumPad dropped).
+//   - Editor maintains a deep clone of `object` keyed by input identity so
+//     jsonChange handlers can mutate sub-paths and dispatch the mutated
+//     root via the rootObj arg (parent's SetShape stores the clone).
+//     useRef-based memo: unrelated re-renders don't re-clone.
+//   - renderLib widgets keep the legacy contract (render bare without an
+//     outer label row — they show their own labels inside the popover/
+//     dropdown trigger). Scalar fields get a label + control row. Nested
+//     objects get an indented sub-block with a header.
 
-  constructor(props) {
-      super(props);
-      this.tmp={
-        object:{}
-      };
-  }
+const _PS_ROW = {
+  display: 'flex', alignItems: 'center', minHeight: 24, padding: '1px 4px',
+  gap: 6, borderBottom: '1px solid rgba(0,0,0,0.05)', fontSize: 12,
+};
+const _PS_LABEL = {
+  flex: '0 0 96px', color: '#333', overflow: 'hidden',
+  textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+};
+const _PS_VALUE = { flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4 };
+const _PS_NESTED_HEADER = {
+  fontSize: 11, color: '#666', letterSpacing: '0.5px', fontWeight: 500,
+  padding: '4px 4px 2px', borderBottom: '1px solid rgba(0,0,0,0.08)',
+};
+const _PS_NESTED_BODY = {
+  paddingLeft: 8, borderLeft: '2px solid rgba(0,0,0,0.05)',
+  margin: '0 0 4px 4px',
+};
+const _PS_CUSTOM_ROW = {
+  padding: '2px 4px', borderBottom: '1px solid rgba(0,0,0,0.05)',
+};
 
-  onChangeX(target,type,evt) {
-    this.props.jsonChange(this.tmp.object,target,type,evt);
-    return true;
-  }
-  shouldComponentUpdate(nextProps, nextState) {
-    return true;
-  }
+function _psTranslate(dict, dictTheme, key) {
+  const a = GetObjElement(dict, [dictTheme, key]);
+  if (a !== undefined) return a;
+  const b = GetObjElement(dict, ['_', key]);
+  return (b !== undefined) ? b : key;
+}
 
-  composeObject(obj,whiteListKey=null,idHeader="",keyTrace=[])
-  {
-    var rows = [];
-    let keyList = (whiteListKey==null )?obj:whiteListKey;
-    for (var key in keyList) {
-        let ele = obj[key];
-        let renderContext=(whiteListKey==null )?null:whiteListKey[key];
+function _resolveRenderComp(renderContext, renderLib) {
+  if (renderContext && typeof renderContext.__OBJ__ === 'function') return renderContext.__OBJ__;
+  if (!renderLib) return undefined;
+  if (typeof renderLib[renderContext] === 'function') return renderLib[renderContext];
+  if (renderContext && typeof renderLib[renderContext.__OBJ__] === 'function') return renderLib[renderContext.__OBJ__];
+  return undefined;
+}
 
-        //console.log(key,keyList[key],obj,obj[key]);
-        if((ele === undefined) || renderContext=== undefined)continue;
-        //console.log(key,ele,typeof ele);
-        
-        //this.props.dict
-        
-        let newkeyTrace = keyTrace.slice();
-        newkeyTrace.push(key);
+function _composeRows({ obj, whiteListKey, idHeader, keyTrace, onChange, props }) {
+  const rows = [];
+  const keyList = (whiteListKey == null) ? obj : whiteListKey;
+  for (const key in keyList) {
+    const ele = obj[key];
+    const renderContext = (whiteListKey == null) ? null : whiteListKey[key];
+    if (ele === undefined || renderContext === undefined) continue;
 
-        let translateKey = undefined;
+    const newKeyTrace = keyTrace.concat(key);
+    const label = _psTranslate(props.dict, props.dictTheme, key);
+    const RenderComp = _resolveRenderComp(renderContext, props.renderLib);
 
-
-        translateKey = GetObjElement(this.props.dict,[this.props.dictTheme, key]);
-
-        if(translateKey===undefined)
-        {
-          translateKey = GetObjElement(this.props.dict,["_", key]);
-        }
-
-        if(translateKey===undefined)
-        {
-          translateKey = key;
-        }
-
-        let Render_comp=undefined;
-        if(typeof renderContext.__OBJ__==="function")
-        {
-          Render_comp = renderContext.__OBJ__;
-        }
-        else if(this.props.renderLib!==undefined)
-        {
-          if(typeof this.props.renderLib[renderContext]==="function")
-          {
-            Render_comp = this.props.renderLib[renderContext];
-          }
-          else if(typeof this.props.renderLib[renderContext.__OBJ__]==="function")
-          {
-            Render_comp = this.props.renderLib[renderContext.__OBJ__];
-          }
-        }
-        if(Render_comp!==undefined)
-        {
-          // rows.push(
-          //   Render_comp({
-          //     className:"s WXF vbox black",
-          //     onChange:this.onChangeX.bind(this),
-          //     target:{obj:obj,keyTrace:newkeyTrace},
-          //     renderContext,
-          //     props:this.props
-          //   }));
-
-            
-          //{className,onChange,target,renderContext,props}
-
-          rows.push(
-            <Render_comp 
-              key={idHeader+"_"+key+"_Render_comp"}
-              className="s WXF vbox black"
-              onChange={this.onChangeX.bind(this)}
-              target={{obj:obj,keyTrace:newkeyTrace}}
-              obj={obj}
-              keyTrace={newkeyTrace}
-              renderContext={renderContext}
-              props={this.props}
-            />);
-          continue;
-        }
-        else if(typeof ele === "object")
-        {
-          rows.push(<div key={idHeader+"_"+key+"_HL"} className="s HX0_1 WXF  vbox"></div>);
-          let obj_disp_type = (renderContext==null)?"div":renderContext.__OBJ__;
-          if(obj_disp_type == undefined)obj_disp_type="div";
-          rows.push(<JsonElement key={idHeader+"_"+key+"_ele"}
-                                 dict={this.props.dict}
-            className="s HX1 WXF vbox black" type={obj_disp_type} 
-            onChange={this.onChangeX.bind(this)}
-            target={{obj:obj,keyTrace:newkeyTrace}}>{translateKey}</JsonElement>);
-
-          rows.push(<div key={idHeader+"_"+key+"__"} className="s HX1 width1"></div>);
-          rows.push(<div key={idHeader+"_"+key+"_C"} className="s HXA width11">{
-            this.composeObject(ele,renderContext,idHeader+"_"+key,newkeyTrace)
-          }</div>);
-          rows.push(<div key={idHeader+"_"+key+"_HL2"} className="s HX0_1 WXF  vbox"></div>);
-        }
-        else
-        {
-          if(renderContext==null)renderContext="div";
-          rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width4 vbox black">{translateKey}</div>);
-          rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width8 vbox blackText" type={renderContext}
-            target={{obj:obj,keyTrace:newkeyTrace}}
-            dict={this.props.dict}
-            onChange={this.onChangeX.bind(this)}>{(ele)}</JsonElement>);
-        }
+    if (RenderComp) {
+      // Custom widget — owns its own label/trigger layout.
+      rows.push(
+        <div key={idHeader + '_' + key + '_rc'} style={_PS_CUSTOM_ROW}>
+          <RenderComp
+            onChange={onChange}
+            target={{ obj, keyTrace: newKeyTrace }}
+            obj={obj}
+            keyTrace={newKeyTrace}
+            renderContext={renderContext}
+            props={props}
+          />
+        </div>
+      );
+      continue;
     }
-    return rows
-  }
 
-  render() {
-    this.tmp.object = dclone(this.props.object);
-   //console.log("this.props.object:",this.props.object,this.tmp.object);
-    var rows = this.composeObject(this.tmp.object,this.props.whiteListKey);
-    return(
-    <div className="WXF HXA">
-      {rows}
-    </div>
+    if (typeof ele === 'object' && ele !== null) {
+      // Header dispatch: renderContext.__OBJ__ controls how the nested
+      // header looks. 'div' (or missing) → plain label. 'btn' → clickable
+      // AntButton (used by ref/ref_baseLine slots — DefConfUI's jsonChange
+      // routes btn-click on a keyTrace starting with 'ref' to the ref-pick
+      // action ACT_EDIT_TAR_ELE_TRACE_UPDATE).
+      const headerType = (renderContext && typeof renderContext.__OBJ__ === 'string')
+        ? renderContext.__OBJ__ : 'div';
+      const headerStyle = (headerType === 'div') ? _PS_NESTED_HEADER : { padding: '2px 4px' };
+      rows.push(
+        <div key={idHeader + '_' + key + '_nested'}>
+          <div style={headerStyle}>
+            <JsonElement
+              type={headerType}
+              target={{ obj, keyTrace: newKeyTrace }}
+              dict={props.dict}
+              dictTheme={props.dictTheme}
+              renderLib={props.renderLib}
+              onChange={onChange}
+            >{label}</JsonElement>
+          </div>
+          <div style={_PS_NESTED_BODY}>
+            {_composeRows({
+              obj: ele, whiteListKey: renderContext,
+              idHeader: idHeader + '_' + key, keyTrace: newKeyTrace,
+              onChange, props,
+            })}
+          </div>
+        </div>
+      );
+      continue;
+    }
+
+    const leafType = (renderContext == null) ? 'div' : renderContext;
+    rows.push(
+      <div key={idHeader + '_' + key + '_row'} style={_PS_ROW}>
+        <div style={_PS_LABEL} title={label}>{label}</div>
+        <div style={_PS_VALUE}>
+          <JsonElement
+            type={leafType}
+            target={{ obj, keyTrace: newKeyTrace }}
+            dict={props.dict}
+            dictTheme={props.dictTheme}
+            renderLib={props.renderLib}
+            onChange={onChange}
+          >
+            {ele}
+          </JsonElement>
+        </div>
+      </div>
     );
   }
+  return rows;
+}
+
+export function JsonEditBlock(props) {
+  // Maintain a fresh deep clone of `object` keyed by input identity. The
+  // legacy contract: jsonChange handlers mutate sub-paths of this clone
+  // and the parent receives the mutated root for SetShape persistence.
+  const cloneRef = useRef(null);
+  const lastInput = useRef(null);
+  if (props.object !== lastInput.current) {
+    cloneRef.current = dclone(props.object);
+    lastInput.current = props.object;
+  }
+  const root = cloneRef.current;
+
+  const handleChange = (target, type, evt) => {
+    props.jsonChange(root, target, type, evt);
+  };
+
+  const rows = _composeRows({
+    obj: root,
+    whiteListKey: props.whiteListKey,
+    idHeader: '',
+    keyTrace: [],
+    onChange: handleChange,
+    props,
+  });
+
+  return <div style={{ background: 'rgba(255,255,255,0.92)' }}>{rows}</div>;
 }
 
 

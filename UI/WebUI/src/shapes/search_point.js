@@ -32,6 +32,12 @@ export const fields = {
   edge:             edgeField({ method: 'first', polarity: 'any' }),
   locating_anchor:  { editor: 'switch', default: false, normalize: (v) => v === true },
   line_thickness_value: { skipEditor: true, default: 0, normalize: (v) => (typeof v === 'number' ? v : 0) },
+  // Reference slot — search_point references one line (ref[0]). The schema
+  // matches the legacy ref-button convention: outer __OBJ__:'div' renders
+  // a header label ("參考物件"); inner '0' __OBJ__:'btn' renders the ref
+  // entry's header as a clickable button (DefConfUI jsonChange routes the
+  // click to ACT_EDIT_TAR_ELE_TRACE_UPDATE for ref-pick mode).
+  ref: { editor: { __OBJ__: 'div', '0': { __OBJ__: 'btn', id: 'div', element: 'div' } } },
 };
 
 export function buildWhiteListKey(ctx) {
