@@ -882,15 +882,11 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
 
 void downSampSetup(CameraLayer &camera, cJSON &settingJson)
 {
-  // Opt-out: with IGNORE_DYNAMIC_VIEW=1 the core ignores canvas-driven
-  // down_samp_level updates entirely so the stream stays at full res
-  // (paired with IGNORE_DYNAMIC_VIEW handling in ImageTransferSetup).
-  static const bool ignoreDyn = (getenv("IGNORE_DYNAMIC_VIEW") != NULL);
-  double *val = JFetch_NUMBER(&settingJson, "down_samp_level");
-  if (val && !ignoreDyn)
-  {
-    downSampLevel = (int)*val;
-  }
+  // Hard-ignore canvas-driven down_samp_level updates: streaming stays at
+  // full resolution always. The JPEG path keeps the bandwidth reasonable
+  // (~10x smaller than raw RGBA) so dynamic scaling is no longer needed.
+  // (was: gated by IGNORE_DYNAMIC_VIEW=1 env; promoted to always-on.)
+  (void)JFetch_NUMBER(&settingJson, "down_samp_level");
 
   int type = getDataFromJson(&settingJson, "down_samp_w_calib", NULL);
   if (type == cJSON_False)
@@ -1547,6 +1543,23 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
     MT_LOCK("");
   do
   {
+
+    // Probe: log core state on every BPG msg. CORE_STATE_PROBE=1 to enable.
+    // Skips chatty per-frame types (GS=settings poll, IM=image push back to
+    // peer) to keep the output readable when the bug repros.
+    {
+      static const bool dbgProbe = (getenv("CORE_STATE_PROBE") != NULL);
+      if (dbgProbe && !checkTL("GS", dat)) {
+        fprintf(stderr,
+          "[STATEPROBE] msg=[%c%c] DoImageTransfer=%d JPEGq=%d cameraFramesLeft=%d "
+          "cacheImage=%dx%d ImageCrop=(%d,%d,%d,%d)\n",
+          dat->tl[0], dat->tl[1],
+          (int)DoImageTransfer, DataView_JPEG_quality,
+          (int)cameraFramesLeft,
+          cacheImage.cols, cacheImage.rows,
+          ImageCropX, ImageCropY, ImageCropW, ImageCropH);
+      }
+    }
 
     // if (checkTL("GS", dat) == false)
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
@@ -2810,10 +2823,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         delete jstr;
       }
       cJSON *ImTranseSetup = JFetch_OBJECT(json, "ImageTransferSetup");
-      // IGNORE_DYNAMIC_VIEW=1 skips ONLY the crop-application sub-step
-      // below; `enable`, OK/NG/NA_MAX_FPS etc. on the same setup must
-      // still apply or the streamer goes silent.
-      static const bool ignoreDynView = (getenv("IGNORE_DYNAMIC_VIEW") != NULL);
+      // Hard-ignore the crop sub-step below (canvas-driven pan/zoom). The
+      // `enable`, OK/NG/NA_MAX_FPS, etc. on the same setup still apply or
+      // the streamer goes silent.
       if (ImTranseSetup)
       {
 
@@ -2827,12 +2839,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           DoImageTransfer = true;
         }
 
-        double *nX = JFetch_NUMBER(ImTranseSetup, "crop[0]");
-        double *nY = JFetch_NUMBER(ImTranseSetup, "crop[1]");
-        double *nW = JFetch_NUMBER(ImTranseSetup, "crop[2]");
-        double *nH = JFetch_NUMBER(ImTranseSetup, "crop[3]");
-
-        if (nX && nY && nW && nH && !ignoreDynView)
+        // Crop coords intentionally ignored — streamed image is always full
+        // ROI. ImageCropX/Y/W/H stay at their defaults (set at startup +
+        // re-asserted at the top of the ST handler above).
+        double *nX = nullptr, *nY = nullptr, *nW = nullptr, *nH = nullptr;
+        if (nX && nY && nW && nH)
         {
           ImageCropX = *nX;
           ImageCropY = *nY;
