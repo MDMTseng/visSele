@@ -2810,10 +2810,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         delete jstr;
       }
       cJSON *ImTranseSetup = JFetch_OBJECT(json, "ImageTransferSetup");
-      // Opt-out: IGNORE_DYNAMIC_VIEW=1 makes the core treat canvas-driven
-      // crop updates as no-ops so the streamed image stays uncropped.
-      static const bool ignoreDyn = (getenv("IGNORE_DYNAMIC_VIEW") != NULL);
-      if (ImTranseSetup && ignoreDyn) ImTranseSetup = NULL;
+      // IGNORE_DYNAMIC_VIEW=1 skips ONLY the crop-application sub-step
+      // below; `enable`, OK/NG/NA_MAX_FPS etc. on the same setup must
+      // still apply or the streamer goes silent.
+      static const bool ignoreDynView = (getenv("IGNORE_DYNAMIC_VIEW") != NULL);
       if (ImTranseSetup)
       {
 
@@ -2832,7 +2832,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         double *nW = JFetch_NUMBER(ImTranseSetup, "crop[2]");
         double *nH = JFetch_NUMBER(ImTranseSetup, "crop[3]");
 
-        if (nX && nY && nW && nH)
+        if (nX && nY && nW && nH && !ignoreDynView)
         {
           ImageCropX = *nX;
           ImageCropY = *nY;
