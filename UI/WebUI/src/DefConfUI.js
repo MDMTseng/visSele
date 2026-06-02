@@ -2106,24 +2106,25 @@ class APP_DEFCONF_MODE extends React.Component {
 
     
     // DO NOT flip trigger_mode here — DefConf must NOT free-run the
-    // camera, or it floods frames the user isn't actively viewing. The
-    // camera stays in trigger mode (default); DefConf uses explicit
-    // snap commands when the user wants a fresh template image.
+    // camera, or it floods frames the user isn't actively viewing.
     // Trigger only flips to continuous in InspMode (see APP_INSP_MODE
     // mount in InspectionUI.js).
+    //
+    // JPEG streaming intentionally OFF: enabling IMG_STREAMING_JPEG_QUALITY
+    // here is sticky in the core (DataView_JPEG_quality global) and the
+    // Insp/Main canvas decoders don't all handle the jpegBlob branch
+    // cleanly — turning it on here breaks subsequent template loads in
+    // those modes until visSele restarts. Re-enable globally only once
+    // the receivers are verified for both raw + JPEG paths.
     this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
     {
       CameraSetting: { ROI:[0,0,99999,99999] },
-      // JPEG-encode the streamed dataview frames (full-res, uncropped — the
-      // downsamp_level is already 1 on the IM request). Quality 85 is
-      // visually lossless and ~10x smaller than raw RGBA. 0 disables (raw).
-      IMG_STREAMING_JPEG_QUALITY: 85,
     });
   }
 
   componentWillUnmount() {
     this.props.ACT_ClearImage();
-    
+
     this.props.ACT_DefConf_Lock_Level_Update(0);
   }
   constructor(props) {
