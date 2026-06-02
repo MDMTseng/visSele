@@ -882,9 +882,12 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
 
 void downSampSetup(CameraLayer &camera, cJSON &settingJson)
 {
-  
+  // Opt-out: with IGNORE_DYNAMIC_VIEW=1 the core ignores canvas-driven
+  // down_samp_level updates entirely so the stream stays at full res
+  // (paired with IGNORE_DYNAMIC_VIEW handling in ImageTransferSetup).
+  static const bool ignoreDyn = (getenv("IGNORE_DYNAMIC_VIEW") != NULL);
   double *val = JFetch_NUMBER(&settingJson, "down_samp_level");
-  if (val)
+  if (val && !ignoreDyn)
   {
     downSampLevel = (int)*val;
   }
@@ -2807,6 +2810,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         delete jstr;
       }
       cJSON *ImTranseSetup = JFetch_OBJECT(json, "ImageTransferSetup");
+      // Opt-out: IGNORE_DYNAMIC_VIEW=1 makes the core treat canvas-driven
+      // crop updates as no-ops so the streamed image stays uncropped.
+      static const bool ignoreDyn = (getenv("IGNORE_DYNAMIC_VIEW") != NULL);
+      if (ImTranseSetup && ignoreDyn) ImTranseSetup = NULL;
       if (ImTranseSetup)
       {
 
