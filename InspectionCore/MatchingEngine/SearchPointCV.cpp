@@ -33,7 +33,8 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      int blurSize, float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
                      const cv::Mat &labelImg, int objLabel, int maskDilate,
-                     acv_XY *outPt, float *outW, int spId)
+                     acv_XY *outPt, float *outW, int spId,
+                     std::vector<CaliperHit> *outHits)
 {
   if (gray.empty()) return false;
   acv_XY s = acvVecNormalize(searchDir);
@@ -205,6 +206,19 @@ bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
   if (outPt) *outPt = acvVecAdd(pt, acvVecAdd(acvVecMult(s, eS), acvVecMult(perp, eP)));
   if (outW) *outW = (float)Ws;
 
+  // Per-edge hits for caliper-mode visualization. Each strength-gated row
+  // edge becomes one CaliperHit; status=2 if within considerRange of pMin
+  // (contributed to the final average), 1 otherwise.
+  if (outHits) {
+    outHits->clear();
+    outHits->reserve(eps.size());
+    for (auto &e : eps) {
+      acv_XY ep = acvVecAdd(pt, acvVecAdd(acvVecMult(s, e.searchCoord),
+                                          acvVecMult(perp, e.perpCoord)));
+      int st = (e.perpCoord - pMin <= considerRange) ? 2 : 1;
+      outHits->push_back(CaliperHit{ep, st, e.peak});
+    }
+  }
   return true;
 }
 

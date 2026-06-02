@@ -1133,7 +1133,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                            margin, width, sp_et, /*blur*/3, /*suppress*/10.0f,
                            /*considerRange = n rows below the top to collect+avg*/2.0f, /*alphaKeep*/0.0f,
                            eT.getBacpac(), labelImg, m_objLabel, /*maskDilate*/8,
-                           &out, &str, def.id);
+                           &out, &str, def.id, &rep.cal_hits);
+      // Lift cropped-image-px → full-image-px to match rep.pt's frame.
+      for (auto &h : rep.cal_hits) h.pt = acvVecAdd(h.pt, off);
       if (ok)
       {
         rep.pt = acvVecAdd(out, off);
@@ -3288,6 +3290,12 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatchin
 
   report.pt =
       acvVecMult(report.pt, mmpp);
+  // Convert caliper-mode per-edge hits from image-px to OBJECT-FRAME mm so
+  // the WebUI can overlay them at the def's own pt1 in editor mode (matches
+  // line/arc convention; see CORE0_1_CAVEATS.md §H2 / §H4).
+  for (auto &h : report.cal_hits) {
+    h.pt = PixDomain_TO_TemplateDomain(h.pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
+  }
   report.def = def;
   return report;
 

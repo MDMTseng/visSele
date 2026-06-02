@@ -230,6 +230,7 @@ cJSON* acv_SearchPointReport2JSON(const vector< FeatureReport_searchPointReport>
       cJSON_AddNumberToObject(spj, "x", vec[j].pt.x);
       cJSON_AddNumberToObject(spj, "y", vec[j].pt.y);
     }
+    AddCalHits2JSON(spj, vec[j].cal_hits, center_offset);
     cJSON_AddItemToArray(detectedSearchPoint_jarr, spj );
 
   }

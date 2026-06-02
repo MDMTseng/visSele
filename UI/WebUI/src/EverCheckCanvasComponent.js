@@ -1565,6 +1565,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       };
       collect(single.detectedLines);
       collect(single.detectedCircles);
+      collect(single.searchPoints);
     }
 
     {

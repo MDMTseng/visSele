@@ -288,6 +288,11 @@ typedef struct FeatureReport_searchPointReport{
   featureDef_searchPoint *def;
   acv_XY pt;
   int status;
+  // Per-edge points produced by the caliper-mode scan (one per strength-gated
+  // row edge). status: 2 = within considerRange of the top (used in the final
+  // average), 1 = strength-gated edge outside the consider band. Empty in
+  // contour mode. Coords converted to OBJECT-FRAME mm by SPointMatching_ReportGen.
+  std::vector<CaliperHit> cal_hits;
 }FeatureReport_searchPointReport;
 
 

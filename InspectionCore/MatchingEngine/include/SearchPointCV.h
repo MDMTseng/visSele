@@ -15,7 +15,9 @@
 //      -> robust sub-pixel first-hit point. Map back to image px.
 
 #include <opencv2/core.hpp>
+#include <vector>
 #include "FeatureManager.h"   // acv_XY, FeatureManager_BacPac
+#include "FeatureReport.h"    // CaliperHit (for optional per-edge plumb-out)
 
 enum SPEdgeType { SP_DARK_TO_LIGHT = 0, SP_LIGHT_TO_DARK = 1, SP_BOTH = 2 };
 
@@ -29,11 +31,16 @@ enum SPEdgeType { SP_DARK_TO_LIGHT = 0, SP_LIGHT_TO_DARK = 1, SP_BOTH = 2 };
 // lock onto background specks/dust (matches the legacy contour search's object
 // constraint while staying grayscale -> still tunable for soft edges). labelImg
 // must share `gray`'s coordinate frame (same crop/offset). Pass null to skip.
+// outHits (optional): when non-null, populated with one CaliperHit per
+// strength-gated row edge (the `eps` set). status=2 if within considerRange
+// of the perp-top (contributed to the final point), else 1; strength=peak
+// gradient. Coords in the SAME frame as outPt (gray's image coords).
 bool search_point_cv(const cv::Mat &gray, acv_XY pt, acv_XY searchDir,
                      float margin, float width, SPEdgeType polarity,
                      int blurSize, float edgeSuppress, float considerRange,
                      float alphaKeep, FeatureManager_BacPac *bacpac,
                      const cv::Mat &labelImg, int objLabel, int maskDilate,
-                     acv_XY *outPt, float *outW, int spId = -1);
+                     acv_XY *outPt, float *outW, int spId = -1,
+                     std::vector<CaliperHit> *outHits = nullptr);
 
 #endif // SEARCH_POINT_CV_H
