@@ -4269,6 +4269,8 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     // }
     // minMatchErr[0].y=0.01;
 
+    const bool dbgSig = (getenv("SIGCAND_DUMP") != NULL);
+    if (dbgSig) fprintf(stderr, "[SIGCAND] === front candidates (matching_face=%d) ===\n", this->matching_face);
     float globeMinErr=ignoreErr;
     for (int i = 0; i < minMatchErr.size(); i++)
     {
@@ -4291,10 +4293,16 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
         }
       }
       LOGI("F %f: %f>%f", minMatchErr[i].x, preErr, minMatchErr[i].y);
-
+      if (dbgSig) {
+        float sim = 1 - SigMatchErrorNormalize(preErr, feature_signature);
+        fprintf(stderr, "[SIGCAND] F[%2d] ang=%7.2f deg  err=%.6f  sim=%.6f  %s\n",
+                i, minMatchErr[i].x, preErr, sim,
+                (minMatchErr[i].y >= ignoreErr) ? "(rejected by angle_margin)" : "");
+      }
       // minMatchErr[i].y+=0.005723;
     }
 
+    if (dbgSig) fprintf(stderr, "[SIGCAND] === back candidates (skipped when matching_face=1) ===\n");
     float globeMinErr_bk=ignoreErr;
     for (int i = 0; i < minMatchErr_bk.size(); i++)
     {
@@ -4319,7 +4327,15 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
         }
       }
       LOGI("B %f: %f>%f", minMatchErr_bk[i].x, preErr, minMatchErr_bk[i].y);
+      if (dbgSig) {
+        float sim = 1 - SigMatchErrorNormalize(preErr, feature_signature);
+        fprintf(stderr, "[SIGCAND] B[%2d] ang=%7.2f deg  err=%.6f  sim=%.6f  %s\n",
+                i, minMatchErr_bk[i].x, preErr, sim,
+                (minMatchErr_bk[i].y >= ignoreErr) ? "(rejected by angle_margin)" : "");
+      }
     }
+    if (dbgSig) fprintf(stderr, "[SIGCAND] minErr=%.6f globeMinErr_front=%.6f globeMinErr_back=%.6f → globeMinErr_ALL_pick=%.6f\n",
+                        minErr, globeMinErr, globeMinErr_bk, std::min(globeMinErr, globeMinErr_bk));
     
     globeMinErr_ALL=globeMinErr;
     if(globeMinErr_ALL>globeMinErr_bk)
@@ -4502,6 +4518,11 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
 
       angle = minErr.x * M_PI / 180;
       error = minErr.y;
+      if (getenv("SIGCAND_DUMP")) {
+        float sim = 1 - SigMatchErrorNormalize(error, feature_signature);
+        fprintf(stderr, "[SIGCAND] pick attempt %d: %s ang=%.2f deg  err=%.6f  sim=%.6f\n",
+                defaultRetryCountDown - retryCountDown, isInv?"BACK":"FRONT", minErr.x, error, sim);
+      }
     }
     retryCountDown--;
 
@@ -4624,6 +4645,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
 
     if(reDo_orien)
     {
+      if (getenv("SIGCAND_DUMP")) fprintf(stderr, "[SIGCAND] REJECTED: orientation_essential judge failed → retry next candidate\n");
       LOGI(">>>>>REDO  REDO>>>>");
       LOGI(">>>>>REDO  REDO>>>>");
       LOGI(">>>>>REDO  REDO>>>>");
