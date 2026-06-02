@@ -1,9 +1,23 @@
 // Per-shape module: AUX_POINT.
 // See shapes/line.js for the pattern + rationale.
 import Color from 'color';
-import { closestPointOnPoints } from 'UTIL/MathTools';
+import { closestPointOnLine } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { buildWhiteListKeyFromFields } from './_schemaHelpers';
+
+// Pick a "virtual line" foot for the dashed crosshair from the aux_point's
+// resolved intersection back to each ref shape. Uses the InspectionEditorLogic
+// helpers so line and search_point refs are handled identically (search_point
+// = pt1 + search-direction vector, same convention the core's lineCrossPosition
+// uses for ParseMainVector/ParseLocatePosition). Returns null if the helpers
+// can't resolve (e.g. broken ref).
+function refFoot(db_obj, refShape, shapeList, fromPoint) {
+  if (!refShape || !db_obj || typeof db_obj.shapeMiddlePointParse !== 'function') return null;
+  const anchor = db_obj.shapeMiddlePointParse(refShape, shapeList);
+  const vec    = db_obj.shapeVectorParse(refShape, shapeList);
+  if (!anchor || !vec) return null;
+  return closestPointOnLine({ cx: anchor.x, cy: anchor.y, vx: vec.x, vy: vec.y }, fromPoint);
+}
 
 export const type = 'aux_point';
 
@@ -62,17 +76,14 @@ export function draw(ctx, shape, renderer, {
     if (point !== undefined && subObjs.length == 2) { // Draw crosssect line
       ctx.setLineDash([2 * renderer.getPrimitiveSize(), renderer.getPrimitiveSize()]);
 
-      ctx.beginPath();
-      ctx.moveTo(point.x, point.y);
-      let closestPt = closestPointOnPoints(point, [subObjs[0].pt1, subObjs[0].pt2]);
-      ctx.lineTo(closestPt.x, closestPt.y);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(point.x, point.y);
-      closestPt = closestPointOnPoints(point, [subObjs[1].pt1, subObjs[1].pt2]);
-      ctx.lineTo(closestPt.x, closestPt.y);
-      ctx.stroke();
+      for (const sub of subObjs) {
+        const foot = refFoot(renderer.db_obj, sub, shapeList, point);
+        if (!foot) continue;
+        ctx.beginPath();
+        ctx.moveTo(point.x, point.y);
+        ctx.lineTo(foot.x, foot.y);
+        ctx.stroke();
+      }
       ctx.setLineDash([]);
       ctx.strokeStyle = 'gray';
       renderer.drawpoint(ctx, point);
@@ -94,17 +105,14 @@ export function drawInspection(ctx, shape, renderer, { shapeList = [] } = {}) {
   let point = renderer.db_obj.auxPointParse(shape, shapeList);
   if (point !== undefined && subObjs.length == 2) {
     ctx.setLineDash([renderer.getPrimitiveSize(), renderer.getPrimitiveSize()]);
-    ctx.beginPath();
-    ctx.moveTo(point.x, point.y);
-    let closestPt = closestPointOnPoints(point, [subObjs[0].pt1, subObjs[0].pt2]);
-    ctx.lineTo(closestPt.x, closestPt.y);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(point.x, point.y);
-    closestPt = closestPointOnPoints(point, [subObjs[1].pt1, subObjs[1].pt2]);
-    ctx.lineTo(closestPt.x, closestPt.y);
-    ctx.stroke();
+    for (const sub of subObjs) {
+      const foot = refFoot(renderer.db_obj, sub, shapeList, point);
+      if (!foot) continue;
+      ctx.beginPath();
+      ctx.moveTo(point.x, point.y);
+      ctx.lineTo(foot.x, foot.y);
+      ctx.stroke();
+    }
     ctx.setLineDash([]);
     ctx.strokeStyle = 'gray';
     renderer.drawcross(ctx, point, renderer.getPointSize() * 2);
