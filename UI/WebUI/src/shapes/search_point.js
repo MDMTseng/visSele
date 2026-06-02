@@ -4,6 +4,7 @@ import Color from 'color';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
 import { edgeField } from './_caliperFields';
+export { SearchPointPropertySheet as PropertySheet } from './_propertySheet/SearchPointPropertySheet';
 
 export const type = 'search_point';
 

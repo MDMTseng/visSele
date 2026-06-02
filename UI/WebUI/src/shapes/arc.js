@@ -5,6 +5,7 @@ import { threePointToArc } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
 import { caliperField, edgeField, drawArcCalipers, drawCaliperHits } from './_caliperFields';
+export { ArcPropertySheet as PropertySheet } from './_propertySheet/ArcPropertySheet';
 
 export const type = 'arc';
 
