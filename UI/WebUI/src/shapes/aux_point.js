@@ -1,21 +1,27 @@
 // Per-shape module: AUX_POINT.
 // See shapes/line.js for the pattern + rationale.
 import Color from 'color';
-import { closestPointOnLine } from 'UTIL/MathTools';
+import { closestPointOnPoints } from 'UTIL/MathTools';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { buildWhiteListKeyFromFields } from './_schemaHelpers';
 
-// Pick a "virtual line" foot for the dashed crosshair from the aux_point's
-// resolved intersection back to each ref shape. Uses pt1 as the anchor
-// (present on both line and search_point) and shapeVectorParse for the
-// direction (also handles both). Matches the core's lineCrossPosition
-// convention (ParseLocatePosition+ParseMainVector). Returns null only if
-// shapeVectorParse can't resolve (e.g. broken spoint→line ref).
-function refFoot(db_obj, refShape, shapeList, fromPoint) {
-  if (!refShape || !refShape.pt1 || !db_obj) return null;
-  const vec = db_obj.shapeVectorParse(refShape, shapeList);
-  if (!vec) return null;
-  return closestPointOnLine({ cx: refShape.pt1.x, cy: refShape.pt1.y, vx: vec.x, vy: vec.y }, fromPoint);
+// Endpoint for the dashed crosshair drawn from the aux_point's intersection
+// back toward each ref shape. Two-endpoint shapes (line) pick the closer of
+// their endpoints — same as the legacy code. search_point has no endpoint
+// pair, so we anchor the dash at its pt1 (the search target / virtual-line
+// anchor; matches the core's ParseLocatePosition convention for SEARCH_POINT
+// — see CORE0_1_CAVEATS.md §I for the line vs search_point convention).
+// Returns null when the shape can't supply a meaningful foot — caller skips
+// drawing that dash (intersection dot still renders).
+function refFoot(refShape, fromPoint) {
+  if (!refShape) return null;
+  if (refShape.type === 'line' && refShape.pt1 && refShape.pt2) {
+    return closestPointOnPoints(fromPoint, [refShape.pt1, refShape.pt2]);
+  }
+  if (refShape.type === 'search_point' && refShape.pt1) {
+    return refShape.pt1;
+  }
+  return null;
 }
 
 export const type = 'aux_point';
@@ -76,7 +82,7 @@ export function draw(ctx, shape, renderer, {
       ctx.setLineDash([2 * renderer.getPrimitiveSize(), renderer.getPrimitiveSize()]);
 
       for (const sub of subObjs) {
-        const foot = refFoot(renderer.db_obj, sub, shapeList, point);
+        const foot = refFoot(sub, point);
         if (!foot) continue;
         ctx.beginPath();
         ctx.moveTo(point.x, point.y);
@@ -105,7 +111,7 @@ export function drawInspection(ctx, shape, renderer, { shapeList = [] } = {}) {
   if (point !== undefined && subObjs.length == 2) {
     ctx.setLineDash([renderer.getPrimitiveSize(), renderer.getPrimitiveSize()]);
     for (const sub of subObjs) {
-      const foot = refFoot(renderer.db_obj, sub, shapeList, point);
+      const foot = refFoot(sub, point);
       if (!foot) continue;
       ctx.beginPath();
       ctx.moveTo(point.x, point.y);
