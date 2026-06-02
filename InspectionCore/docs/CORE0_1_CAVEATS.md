@@ -325,36 +325,35 @@ else                   { sAngle = a3; eAngle = a1; }
 - Debug env: `CALIP_DUMP` (caliper strips), `SPCV_DUMP` (search-point remaps), `SP_PT_DUMP`
   (pt transform chain), `SP_LEGACY_DUMP` (legacy contour search).
 
-## I. search_point axes: variable names lie
+## I. search_point: `searchVec` / `barVec` convention
 
 In `FeatureManager_sig360_circle_line.cpp::searchPoint_process`:
 
-- `searchVec_nor` (the misnamed one) = `ParseMainVector(line)` rotated by
-  `angleDeg`. Despite "search" in the name, this is the **BAR direction** —
-  parallel to the rendered width-bar in the WebUI and parallel to the line
-  used by the WebUI's `closestPointOnLine` projection.
-- `searchVec` = `acvVecNormal(searchVec_nor)` (90° rotation) = the actual
-  **SEARCH/DEPTH direction** — the axis the scan walks across the edge.
+- `searchVec` — the scanline direction (axis the scan walks along to
+  find the edge).
+- `barVec`    — perpendicular to `searchVec`; parallel to the rendered
+  width-bar and to the projection line the WebUI's
+  `closestPointOnLine` uses.
 
-WebUI side (`UI/WebUI/src/UTIL/InspectionEditorLogic.js` search_point case,
-non-anchor): builds a projection line through `inspAdjObj.x/y` in direction
-`vec = shapeVectorParse(sp)` (= core's `searchVec_nor` = bar direction).
-`closestPointOnLine(line, def.pt1)` projects pt1 onto it. By construction,
-shifts of the anchor **along the line direction are cancelled by the
-projection**; shifts perpendicular to the line (along the depth axis) are
-preserved.
+(Historical naming was `searchVec` / `searchVec_nor` where `_nor`
+meant "normal **of** searchVec" — i.e. perpendicular — not
+"normalized". Renamed to `barVec` 2026-06-02 because the `_nor`
+suffix tripped people up.)
 
-Direct consequence — `manual_offset` applied along `searchVec_nor` is
-invisible (projection eats it); apply along `searchVec` to make it
-visible. Fix: `acvVecMult(searchVec, def.manual_offset)`.
+WebUI side (`UI/WebUI/src/UTIL/InspectionEditorLogic.js` search_point
+non-anchor case): builds a projection line through `inspAdjObj.x/y`
+along `vec = shapeVectorParse(sp)` = bar direction (= core's
+`barVec`). `closestPointOnLine(line, def.pt1)` projects pt1 onto that
+line. **Anchor shifts along the line direction are cancelled by the
+projection**; shifts perpendicular (along `searchVec`) survive.
 
-`SearchPointCV.cpp` doubles down on the confusion: its local `s =
-searchDir` is treated as the row axis with `nS = width`, so the row axis
-maps to the bar dimension too. Naming is internally consistent there,
-just geometrically inverted relative to what "search direction" should
-mean.
+Consequence — any directional bias like `manual_offset` must be
+applied along `searchVec` to be visible. Apply along `barVec` and the
+WebUI projection silently eats it.
 
-Rule of thumb: never trust the variable names in this subsystem. Verify
-geometry by checking what each vector is **used as** (drawing the bar?
-walking the depth?), and confirm the WebUI/core pair agree before
-adding any directional bias.
+Side caveat for `SearchPointCV.cpp`: the caller passes `barVec` as the
+`searchDir` parameter (legacy). Inside, `s = searchDir` is used as
+the row axis with `nS = width` and `nP = 2*margin`. Internally
+consistent — but it means SearchPointCV's `s` is the bar axis and its
+`perp` is the actual scanline. Don't confuse this when reading
+SearchPointCV.

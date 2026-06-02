@@ -1092,11 +1092,18 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     //       (int)(pt_info.pt.x),(int)(pt_info.pt.y),
     //       2,255,100,255,2);
 
-    acv_XY searchVec_nor = vec;
+    // barVec    = parallel to the rendered width-bar (= `vec` from
+    //             ParseMainVector after the angleDeg rotation).
+    // searchVec = the scanline direction (axis the scan walks along to
+    //             find the edge), perpendicular to barVec.
+    // Historically these were `searchVec_nor` / `searchVec` — `_nor`
+    // means "normal OF" (i.e. perpendicular), but it reads like
+    // "normalized" and trips people up. Renamed for clarity.
+    acv_XY barVec = vec;
     acv_XY searchVec = acvVecNormal(vec);
 
     LOGV("pt:%f %f", pt.x, pt.y);
-    LOGV("searchVec_nor:%f %f", searchVec_nor.x, searchVec_nor.y);
+    LOGV("barVec:%f %f", barVec.x, barVec.y);
     LOGV("searchVec:%f %f", searchVec.x, searchVec.y);
 
     // Caliper/section locating (docs/caliper_primitive_locating_design.md):
@@ -1109,8 +1116,10 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // remap region, gradient along scan, per-column first-hit, topmost). It must
       // NOT average across the width (that smooths/shifts the first hit). Lay
       // `width` parallel scan columns one-sided from pt over `margin` along
-      // searchVec_nor (already flipped for search_far); find first-hit edge per
-      // column; robustly combine (median + inlier mean). default method = FIRST.
+      // barVec (already flipped for search_far; SearchPointCV's "searchDir"
+      // parameter is in fact the bar-direction axis along which the columns
+      // are laid out); find first-hit edge per column; robustly combine
+      // (median + inlier mean). default method = FIRST.
       acv_XY off = eT.getImgOffset();
       acv_XY out; float str;
       bool ok;
@@ -1130,7 +1139,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // NOTE: labeled mask temporarily DISABLED for edge-finding debugging.
       cv::Mat labelImg; // (off.x == 0 && off.y == 0) ? m_labeledImg_cv : empty();
       float includeRangePx = (def.include_range > 0) ? def.include_range : 2.0f;
-      ok = search_point_cv(eT.getImageCv(), acvVecSub(pt, off), searchVec_nor,
+      ok = search_point_cv(eT.getImageCv(), acvVecSub(pt, off), barVec,
                            margin, width, sp_et, /*blur*/3, /*suppress*/10.0f,
                            includeRangePx, /*alphaKeep*/0.0f,
                            eT.getBacpac(), labelImg, m_objLabel, /*maskDilate*/8,
@@ -1140,20 +1149,10 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       if (ok)
       {
         rep.pt = acvVecAdd(out, off);
-        // Manual offset: shift the final pt along the actual scan/depth
-        // direction. CAVEAT — variable names here are misleading:
-        //   searchVec_nor = ParseMainVector(line)+angleDeg rotation. Despite
-        //                   the name this is the BAR direction (parallel to
-        //                   the rendered width-bar / closestPointOnLine's
-        //                   line direction in the WebUI).
-        //   searchVec     = acvVecNormal(searchVec_nor) — perpendicular to
-        //                   the bar = the actual SEARCH/DEPTH direction
-        //                   (what the user sees as "the scan axis", and
-        //                   what the WebUI's projection PRESERVES). Use
-        //                   THIS to make the offset visible.
-        // (SearchPointCV.cpp's local `s` is just the passed-in searchDir;
-        // its row axis maps to def.width, so `s` there is also the bar
-        // direction. The whole subsystem labels axes inconsistently.)
+        // Manual offset: shift along the scanline direction (searchVec).
+        // Shifting along barVec would be cancelled by the WebUI's
+        // closestPointOnLine projection (line runs along barVec
+        // through inspAdjObj.x/y).
         if (def.manual_offset != 0)
           rep.pt = acvVecAdd(rep.pt, acvVecMult(searchVec, def.manual_offset));
         rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
@@ -1169,7 +1168,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
 
     m_sections.resize(0);
 
-    acv_Line line = {line_vec : searchVec_nor, line_anchor : pt};
+    acv_Line line = {line_vec : barVec, line_anchor : pt};
     acv_Line start_line = line;
 
     start_line.line_anchor = acvVecMult(searchVec, -999);                         //back margin vector
@@ -1223,17 +1222,17 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     if (getenv("SP_LEGACY_DUMP"))
     {
       int totPts = 0; for (auto &si : m_sections) totPts += si.section.size();
-      fprintf(stderr, "[SPLEG] id=%d pt=(%.2f,%.2f) sVnor=(%.4f,%.4f) sVperp=(%.4f,%.4f) margin=%.2f width=%.2f search_far=%d sections=%zu totPts=%d nearestIdx=%d nearestDist=%.3f\n",
-              def.id, pt.x, pt.y, searchVec_nor.x, searchVec_nor.y, searchVec.x, searchVec.y,
+      fprintf(stderr, "[SPLEG] id=%d pt=(%.2f,%.2f) barVec=(%.4f,%.4f) searchVec=(%.4f,%.4f) margin=%.2f width=%.2f search_far=%d sections=%zu totPts=%d nearestIdx=%d nearestDist=%.3f\n",
+              def.id, pt.x, pt.y, barVec.x, barVec.y, searchVec.x, searchVec.y,
               margin, width, (int)def.data.anglefollow.search_far, m_sections.size(), totPts, nearestPt_idx, nearestDist);
       if (best_section_info)
       {
-        // perp(=searchVec) and along(=searchVec_nor) projection range of the selected section, relative to pt
+        // scanline(=searchVec) and bar(=barVec) projection range of the selected section, relative to pt
         float pMin=1e9,pMax=-1e9,aMin=1e9,aMax=-1e9; acv_XY extPerpPt={0,0}; float extPerp=1e9;
         for (auto &pi : best_section_info->section){
           acv_XY d={pi.pt.x-pt.x, pi.pt.y-pt.y};
           float pr=d.x*searchVec.x+d.y*searchVec.y;
-          float ar=d.x*searchVec_nor.x+d.y*searchVec_nor.y;
+          float ar=d.x*barVec.x+d.y*barVec.y;
           if(pr<pMin)pMin=pr; if(pr>pMax)pMax=pr; if(ar<aMin)aMin=ar; if(ar>aMax)aMax=ar;
           if(pr<extPerp){extPerp=pr;extPerpPt=pi.pt;}
         }
