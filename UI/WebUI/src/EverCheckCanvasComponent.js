@@ -1555,18 +1555,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           if (!(r && r.cal_hits && r.id !== undefined)) continue;
           const cur = byId.get(r.id);
           if (cur && fps[r.id] !== undefined && fpOf(cur) !== fps[r.id]) continue; // stale
-          // If the whole fit FAILED (status != SUCCESS), surface that by
-          // forcing every per-caliper status to 1 (outlier) so all hits
-          // render as red X marks. Boxes stay default-colored; the red
-          // cluster is the unambiguous "fit failed" signal. (Earlier
-          // attempt used st=0 → boxes gray + no crosses, but the user
-          // wanted the crosses to remain visible in red.)
-          if (r.status !== INSPECTION_STATUS.SUCCESS) {
-            this.rUtil.cal_hits_by_id[r.id] =
-              r.cal_hits.map((h) => ({ ...h, st: 1 }));
-          } else {
-            this.rUtil.cal_hits_by_id[r.id] = r.cal_hits;
-          }
+          // Pass per-hit status through unchanged so each caliper renders
+          // its own outcome: 0=missed → gray box + no X, 1=outlier → red X,
+          // 2=inlier → green X. Whole-fit success/fail does NOT override
+          // per-hit state — a failed fit with no found edges should look
+          // distinctly different from a failed fit with many outliers.
+          this.rUtil.cal_hits_by_id[r.id] = r.cal_hits;
         }
       };
       collect(single.detectedLines);
