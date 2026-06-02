@@ -6,17 +6,16 @@ import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { buildWhiteListKeyFromFields } from './_schemaHelpers';
 
 // Pick a "virtual line" foot for the dashed crosshair from the aux_point's
-// resolved intersection back to each ref shape. Uses the InspectionEditorLogic
-// helpers so line and search_point refs are handled identically (search_point
-// = pt1 + search-direction vector, same convention the core's lineCrossPosition
-// uses for ParseMainVector/ParseLocatePosition). Returns null if the helpers
-// can't resolve (e.g. broken ref).
+// resolved intersection back to each ref shape. Uses pt1 as the anchor
+// (present on both line and search_point) and shapeVectorParse for the
+// direction (also handles both). Matches the core's lineCrossPosition
+// convention (ParseLocatePosition+ParseMainVector). Returns null only if
+// shapeVectorParse can't resolve (e.g. broken spoint→line ref).
 function refFoot(db_obj, refShape, shapeList, fromPoint) {
-  if (!refShape || !db_obj || typeof db_obj.shapeMiddlePointParse !== 'function') return null;
-  const anchor = db_obj.shapeMiddlePointParse(refShape, shapeList);
-  const vec    = db_obj.shapeVectorParse(refShape, shapeList);
-  if (!anchor || !vec) return null;
-  return closestPointOnLine({ cx: anchor.x, cy: anchor.y, vx: vec.x, vy: vec.y }, fromPoint);
+  if (!refShape || !refShape.pt1 || !db_obj) return null;
+  const vec = db_obj.shapeVectorParse(refShape, shapeList);
+  if (!vec) return null;
+  return closestPointOnLine({ cx: refShape.pt1.x, cy: refShape.pt1.y, vx: vec.x, vy: vec.y }, fromPoint);
 }
 
 export const type = 'aux_point';
