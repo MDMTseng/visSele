@@ -241,17 +241,21 @@ class EverCheckCanvasComponent_proto {
     this.img_info = img_info;
 
     // JPEG path (core a7cd253d, opt-in via GS IMG_STREAMING_JPEG_QUALITY=N):
-    // payload is a Blob; decode via createImageBitmap then drawImage. Async,
-    // so a later draw() picks up the secCanvas once the bitmap lands. Token
-    // guards against an older in-flight decode clobbering a newer frame.
+    // payload is a Blob; decode via createImageBitmap. Order matters here —
+    // resizing secCanvas before the bitmap is ready CLEARS it, leaving any
+    // draw() that fires during the decode-async-gap with a blank frame
+    // (visible as flicker on live streams). Decode FIRST, then atomically
+    // swap (resize + drawImage + cache). The previous bitmap stays visible
+    // on secCanvas until that swap. Token guards against an older in-flight
+    // decode clobbering a newer frame.
     if (img_info.jpegBlob) {
       const w = img_info.width, h = img_info.height;
-      this.secCanvas.width = w;
-      this.secCanvas.height = h;
-      const ctx2nd = this.secCanvas.getContext('2d');
       const token = (this._jpegToken = (this._jpegToken || 0) + 1);
       createImageBitmap(img_info.jpegBlob).then((bmp) => {
         if (this._jpegToken !== token) { if (bmp.close) bmp.close(); return; }
+        this.secCanvas.width = w;
+        this.secCanvas.height = h;
+        const ctx2nd = this.secCanvas.getContext('2d');
         ctx2nd.drawImage(bmp, 0, 0);
         this.secCanvas_rawImg = bmp;
       }).catch((err) => {
