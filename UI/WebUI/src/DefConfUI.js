@@ -2105,13 +2105,15 @@ class APP_DEFCONF_MODE extends React.Component {
     loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND_BPG,this.props.CORE_ID,this.props.DISPATCH);
 
     
+    // DO NOT flip trigger_mode here — DefConf must NOT free-run the
+    // camera, or it floods frames the user isn't actively viewing. The
+    // camera stays in trigger mode (default); DefConf uses explicit
+    // snap commands when the user wants a fresh template image.
+    // Trigger only flips to continuous in InspMode (see APP_INSP_MODE
+    // mount in InspectionUI.js).
     this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
     {
-      // trigger_mode: 0 = continuous (free-run). Forces the camera back into
-      // streaming after InspMode (which puts it in mode 2) or after a peer-
-      // disconnect race (line 4416 in wiringPanel.cpp arms TriggerMode(1) on
-      // the last client leaving, and nothing un-arms it on reconnect).
-      CameraSetting: { ROI:[0,0,99999,99999], trigger_mode: 0 },
+      CameraSetting: { ROI:[0,0,99999,99999] },
       // JPEG-encode the streamed dataview frames (full-res, uncropped — the
       // downsamp_level is already 1 on the IM request). Quality 85 is
       // visually lossless and ~10x smaller than raw RGBA. 0 disables (raw).

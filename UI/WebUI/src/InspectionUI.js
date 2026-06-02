@@ -1660,8 +1660,13 @@ class APP_INSP_MODE extends React.Component {
   
   componentDidMount() {
     let DefFileHash=this.props.edit_info.DefFileHash;
+    // Trigger-mode policy: ONLY InspMode runs the camera free-running.
+    // Flip to continuous on mount and back to trigger=On on unmount so the
+    // camera doesn't flood frames when no one is inspecting.
+    this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
+      { CameraSetting: { trigger_mode: 0 } });
     this.CameraCtrl.setCameraImageTransfer(true);
-    
+
     this.CameraCtrl.setImageCropParam(undefined,4);
 
     {
@@ -1804,7 +1809,9 @@ class APP_INSP_MODE extends React.Component {
       (ret)=>{},(e)=>console.log(e));
     })
     this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: false } });
-
+    // Stop the camera flooding when leaving InspMode.
+    this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
+      { CameraSetting: { trigger_mode: 1 } });
   }
 
   constructor(props) {
