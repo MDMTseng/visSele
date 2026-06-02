@@ -249,6 +249,7 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
   // and trigger downstream fallbacks ("use initMatchingMargin" / "1px step").
   cir.locating = 0; cir.cal_count = 10; cir.cal_width = 0.5f; cir.cal_length = -1; cir.cal_step = -1;
   cir.cal_min_inliers = 0; cir.cal_max_error = 0;
+  cir.fit_mode = 0;  // 0=ls, 1=outer, 2=inner (LS-center envelope variants)
   // default caliper edge: dominant FALLING edge (white->dark) silhouette; explicit overrides.
   cir.edge_method = EdgeSelectParams::STRONGEST; cir.edge_polarity = EdgeSelectParams::FALLING;
   cir.edge_nth = 0; cir.edge_min_strength = 0;
@@ -276,6 +277,13 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON *circle_obj)
       cir.edge_polarity = edge_polarity_from_string((char *)JFetch(edgeo, "polarity", cJSON_String));
       cir.edge_nth = (int)JFetch_NUMBER_ex(edgeo, "nth", 0);
       cir.edge_min_strength = JFetch_NUMBER_ex(edgeo, "min_strength", 0);
+    }
+    // Envelope fit mode — top-level on the arc def. "ls" (default) | "outer" | "inner".
+    char *fm = (char *)JFetch(circle_obj, "fit_mode", cJSON_String);
+    if (fm) {
+      if      (strcmp(fm, "outer") == 0) cir.fit_mode = 1;
+      else if (strcmp(fm, "inner") == 0) cir.fit_mode = 2;
+      else                               cir.fit_mode = 0;
     }
   }
 
@@ -3482,6 +3490,9 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   //   LOGI("XY:%f %f  >> %f %f   edgeRsp:%f",s_points[m].sobel.x,s_points[m].sobel.y,s_points[m].pt.x,s_points[m].pt.y,s_points[m].edgeRsp);
   // }
 
+  // Points that drove the fit, in image-px (same frame as cf.circle.circumcenter).
+  // Populated by either branch below; used afterward for envelope fit modes.
+  std::vector<acv_XY> envelope_pts;
   if (cdef.locating == 1) // caliper/section circle fit (radial calipers)
   {
     CaliperParams cal;
@@ -3518,14 +3529,36 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
       acv_XY pix_pt = acvVecAdd(h.pt, off);   // image-relative → image-absolute px
       ih.pt = PixDomain_TO_TemplateDomain(pix_pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
       cr.cal_hits.push_back(ih);
+      // Inlier-only point set (status==2) for envelope-fit, kept in image-px.
+      if (h.status == 2) envelope_pts.push_back(pix_pt);
     }
   }
-  else
+  else {
     circleRefine(s_points, s_points.size(), &cf);
+    envelope_pts.reserve(s_points.size());
+    for (const auto &p : s_points) envelope_pts.push_back(p.pt);
+  }
 
   float minTor = matching_tor / 2;
   if (minTor < 1)
     minTor = 1;
+
+  // Envelope fit (LS-center variant): keep cf.circle.circumcenter from the
+  // LS fit, replace cf.circle.radius with max (outer) or min (inner) of
+  // |center - pt| over the points that drove the fit. Same in both caliper
+  // and contour modes; `envelope_pts` carries them in image-px.
+  // No-op when fit_mode == 0, no points, or LS produced NaN.
+  if (cdef.fit_mode != 0 && cf.circle.radius == cf.circle.radius && !envelope_pts.empty()) {
+    const acv_XY cc = cf.circle.circumcenter;
+    float rExt = (cdef.fit_mode == 2) ? FLT_MAX : 0.f;
+    for (const auto &p : envelope_pts) {
+      float dx = p.x - cc.x, dy = p.y - cc.y;
+      float d  = sqrtf(dx*dx + dy*dy);
+      if (cdef.fit_mode == 1) { if (d > rExt) rExt = d; }   // outer = max
+      else                    { if (d < rExt) rExt = d; }   // inner = min
+    }
+    cf.circle.radius = rExt;
+  }
 
   // LOGI("s_points.size():%d  r:%f", s_points.size(),cf.circle.radius);
   cr.circle = cf;

@@ -70,6 +70,9 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc' }) {
       onChange={(v) => update({ direction: v ? -1 : 1 })} />
     <DropdownField label={t('locating')} value={shape.locating || 'contour'}
       options={['contour', 'caliper']} onChange={flipLocating} />
+    <DropdownField label={t('fit_mode') || 'fit_mode'} value={shape.fit_mode || 'ls'}
+      options={['ls', 'outer', 'inner']}
+      onChange={(fit_mode) => update({ fit_mode })} />
 
     {shape.locating === 'caliper' && <>
       <Section label="caliper">

@@ -72,6 +72,13 @@ typedef struct featureDef_circle{
   float cal_step;          // across-edge sampling step (mm); <=0 => 1px
   int   cal_min_inliers;   // <=0 ⇒ engine default (3 for circle)
   float cal_max_error;     // mm at def-level; <=0 ⇒ no cap on MAD threshold
+  // Envelope-fit mode: keep the LS-fit center, recompute the radius as
+  //   0=ls    (default, no change)
+  //   1=outer (max |center - hit|; min-circumscribed-radius assuming LS center)
+  //   2=inner (min |center - hit|; max-inscribed-radius assuming LS center)
+  // Applies to both caliper and contour modes; uses inlier hits / s_points.
+  // NOTE: this is the LS-center variant, NOT true Welzl min-enclosing.
+  int   fit_mode;
   int edge_method;
   int edge_polarity;
   int edge_nth;

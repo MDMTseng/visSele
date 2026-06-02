@@ -51,6 +51,13 @@ export const fields = {
       }
     },
   },
+  // Envelope fit mode — keeps LS center, uses max/min |center-hit| for the
+  // radius. Default 'ls' (no change vs legacy). Core: featureDef_circle.fit_mode.
+  fit_mode: {
+    editor: (ctx) => ({ __OBJ__: ctx.renderMethods.Dropdown_List, list: ['ls', 'outer', 'inner'] }),
+    default: 'ls',
+    normalize: (v) => (v === 'outer' || v === 'inner') ? v : 'ls',
+  },
   caliper: caliperField(10, (s) => {
     if (!(s.pt1 && s.pt2 && s.pt3)) return 0;
     const a = threePointToArc(s.pt1, s.pt2, s.pt3);
