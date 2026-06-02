@@ -9,6 +9,14 @@ export const type = 'aux_point';
 
 export const fields = {
   angleDeg: { editor: 'AngleRangeSetup' },
+  // Two ref slots: ref[0] = line, ref[1] = search_point. Same convention as
+  // search_point.js — outer __OBJ__:'div' renders a header label; inner
+  // numbered keys render __OBJ__:'btn' which become ref-pick buttons.
+  ref: { editor: {
+    __OBJ__: 'div',
+    '0': { __OBJ__: 'btn', id: 'div', element: 'div' },
+    '1': { __OBJ__: 'btn', id: 'div', element: 'div' },
+  } },
 };
 
 export function buildWhiteListKey(ctx) {

@@ -1,6 +1,22 @@
 // Per-shape module: AUX_LINE.
 // See shapes/line.js for the pattern + rationale.
+import { buildWhiteListKeyFromFields } from './_schemaHelpers';
+
 export const type = 'aux_line';
+
+// Two ref slots: ref[0] = arc, ref[1] = search_point. See aux_point.js for
+// the same pattern. JsonEditBlock fallback renders these as ref-pick buttons.
+export const fields = {
+  ref: { editor: {
+    __OBJ__: 'div',
+    '0': { __OBJ__: 'btn', id: 'div', element: 'div' },
+    '1': { __OBJ__: 'btn', id: 'div', element: 'div' },
+  } },
+};
+
+export function buildWhiteListKey(ctx) {
+  return buildWhiteListKeyFromFields(fields, ctx);
+}
 
 // canvasCtrl: aux_line refs an arc + a search_point.
 export function availableRefShapes(shapeList /*, subtype */) {
