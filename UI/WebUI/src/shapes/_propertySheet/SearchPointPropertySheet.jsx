@@ -35,7 +35,10 @@ export function SearchPointPropertySheet({
   const flipLocating = (next) => {
     const patch = { locating: next };
     if (next === 'caliper' && !shape.edge) {
-      patch.edge = { method: 'first', polarity: 'any', nth: 0, min_strength: 0 };
+      patch.edge = {
+        method: 'first', polarity: 'any', nth: 0, min_strength: 0,
+        include_range: 0, manual_offset: 0,
+      };
     }
     update(patch);
   };
@@ -89,6 +92,12 @@ export function SearchPointPropertySheet({
         tweak={{ add: [1] }} />
       <NumberField label="min_strength" value={shape.edge?.min_strength}
         onCommit={(min_strength) => updateSub('edge', { min_strength })}
+        tweak={defaultTweak} />
+      <NumberField label="include_range" value={shape.edge?.include_range}
+        onCommit={(include_range) => updateSub('edge', { include_range })}
+        tweak={defaultTweak} />
+      <NumberField label="manual_offset" value={shape.edge?.manual_offset}
+        onCommit={(manual_offset) => updateSub('edge', { manual_offset })}
         tweak={defaultTweak} />
     </Section>}
 

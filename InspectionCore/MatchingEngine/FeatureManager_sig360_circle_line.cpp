@@ -1129,9 +1129,10 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // can't lock onto background specks; dilate ~8px to keep the boundary edge.
       // NOTE: labeled mask temporarily DISABLED for edge-finding debugging.
       cv::Mat labelImg; // (off.x == 0 && off.y == 0) ? m_labeledImg_cv : empty();
+      float includeRangePx = (def.include_range > 0) ? def.include_range : 2.0f;
       ok = search_point_cv(eT.getImageCv(), acvVecSub(pt, off), searchVec_nor,
                            margin, width, sp_et, /*blur*/3, /*suppress*/10.0f,
-                           /*considerRange = n rows below the top to collect+avg*/2.0f, /*alphaKeep*/0.0f,
+                           includeRangePx, /*alphaKeep*/0.0f,
                            eT.getBacpac(), labelImg, m_objLabel, /*maskDilate*/8,
                            &out, &str, def.id, &rep.cal_hits);
       // Lift cropped-image-px → full-image-px to match rep.pt's frame.
@@ -1139,6 +1140,11 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       if (ok)
       {
         rep.pt = acvVecAdd(out, off);
+        // Manual offset: shift the final pt along the (possibly flipped)
+        // search direction. Does NOT shift cal_hits — those still reflect
+        // what the scan actually saw.
+        if (def.manual_offset != 0)
+          rep.pt = acvVecAdd(rep.pt, acvVecMult(searchVec_nor, def.manual_offset));
         rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
       }
       else
@@ -1348,6 +1354,8 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
   searchPoint.edge_method = EdgeSelectParams::FIRST;
   searchPoint.edge_polarity = EdgeSelectParams::ANY;
   searchPoint.edge_nth = 0; searchPoint.edge_min_strength = 0;
+  searchPoint.include_range = 0;
+  searchPoint.manual_offset = 0;
   {
     char *loc = (char *)JFetch(jobj, "locating", cJSON_String);
     if (loc && strcmp(loc, "caliper") == 0) searchPoint.locating = 1;
@@ -1357,6 +1365,8 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
       searchPoint.edge_polarity = edge_polarity_from_string((char *)JFetch(edgeo, "polarity", cJSON_String));
       searchPoint.edge_nth = (int)JFetch_NUMBER_ex(edgeo, "nth", 0);
       searchPoint.edge_min_strength = JFetch_NUMBER_ex(edgeo, "min_strength", 0);
+      searchPoint.include_range = JFetch_NUMBER_ex(edgeo, "include_range", 0);
+      searchPoint.manual_offset = JFetch_NUMBER_ex(edgeo, "manual_offset", 0);
     }
   }
 
@@ -3269,6 +3279,10 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatchin
   featureDef_searchPoint spoint = *def;
   spoint.margin /= mmpp;
   spoint.width /= mmpp;
+  // include_range/manual_offset stored in def-mm; convert to px so
+  // searchPoint_process can use them directly.
+  spoint.include_range /= mmpp;
+  spoint.manual_offset /= mmpp;
   acv_XY pos_raw = spoint.data.anglefollow.position;
   spoint.data.anglefollow.position=cm.convert(spoint.data.anglefollow.position);
   acv_XY pos_cm = spoint.data.anglefollow.position;

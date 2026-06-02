@@ -169,6 +169,14 @@ typedef struct featureDef_searchPoint{
   int edge_polarity;
   int edge_nth;
   float edge_min_strength;
+  // Caliper-mode (locating==1) only:
+  //   include_range: perpendicular band (mm) below the top-most strength-gated
+  //     edge used in the WLS apex average. 0 → core default (~2 px).
+  //   manual_offset: bias (mm) applied to the final pt along the search
+  //     direction AFTER the algorithm finds the edge. Positive → further
+  //     along the scan (toward search_far if set, else toward the part).
+  float include_range;     // default 0
+  float manual_offset;     // default 0
   union data{
     struct anglefollow{
       acv_XY position;
