@@ -20,7 +20,7 @@ export function buildWhiteListKey(ctx) {
 
 // canvasCtrl: aux_line refs an arc + a search_point.
 export function availableRefShapes(shapeList /*, subtype */) {
-  return shapeList.filter((s) => s.type === 'line');
+  return shapeList.filter((s) => s.type === 'line' || s.type === 'search_point');
 }
 
 // (no fitCameraCenter — aux_line doesn't pan-to-shape in the legacy code.)

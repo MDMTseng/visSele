@@ -80,7 +80,7 @@ export function draw(ctx, shape, renderer, {
   // Flip the perpendicular for search_far to match the core's scan
   // direction (`vec.x *= -1; vec.y *= -1` in searchPoint_process), so the
   // arrow on the caliper box points where the scan actually walks.
-  const scanSign = shape.search_far ? -1 : 1;
+  const scanSign = -1;
   let cnormal = { x: -vector.y * scanSign, y: vector.x * scanSign };
   let mag = shape.width / 2;
   let tangent = { x: vector.x, y: vector.y };  // unit, along width-bar
