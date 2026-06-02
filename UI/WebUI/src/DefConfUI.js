@@ -2110,15 +2110,15 @@ class APP_DEFCONF_MODE extends React.Component {
     // Trigger only flips to continuous in InspMode (see APP_INSP_MODE
     // mount in InspectionUI.js).
     //
-    // JPEG streaming intentionally OFF: enabling IMG_STREAMING_JPEG_QUALITY
-    // here is sticky in the core (DataView_JPEG_quality global) and the
-    // Insp/Main canvas decoders don't all handle the jpegBlob branch
-    // cleanly — turning it on here breaks subsequent template loads in
-    // those modes until visSele restarts. Re-enable globally only once
-    // the receivers are verified for both raw + JPEG paths.
+    // JPEG streaming (quality 85) for the full-res template stream —
+    // ~10x smaller than raw RGBA, visually lossless. Sticky in the
+    // core but now safe for cross-mode use: the receiver
+    // (UTIL/BPG_Protocol.raw2Obj_IM + map_BPG_Packet2Act) accepts
+    // both format=1 (BGR JPEG) and format=2 (grayscale JPEG).
     this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
     {
       CameraSetting: { ROI:[0,0,99999,99999] },
+      IMG_STREAMING_JPEG_QUALITY: 85,
     });
   }
 

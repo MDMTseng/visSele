@@ -97,8 +97,12 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   let headerArray = new Uint8ClampedArray(ws_evt.data,
     offset+BPG_header_L,headerL);
   // Core a7cd253d / docs/IMG_TRANSFER_JPEG.md: byte[0] is the format ID
-  // (0 = raw RGBA legacy, 1 = JPEG) and byte[1] is JPEG quality (diagnostic;
-  // 0 for raw). Old core always wrote 0/0 here so the legacy path is byte-identical.
+  //   0 = raw RGBA (legacy)
+  //   1 = 3-channel BGR JPEG
+  //   2 = 1-channel grayscale JPEG (auto-selected when the source Mat is
+  //       gray or BGR with B==G==R for every probed pixel)
+  // byte[1] is JPEG quality (diagnostic; 0 for raw). Both JPEG variants are
+  // decoded the same way (createImageBitmap handles 1- and 3-channel JPEG).
   ret_obj.format=headerArray[0];
   ret_obj.jpeg_quality=headerArray[1];
   ret_obj.offsetX=(headerArray[2]<<8)|headerArray[3];
@@ -114,10 +118,10 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   let imgStart = offset + BPG_header_L + headerL;
   let payloadAvail = ws_evt.data.byteLength - imgStart;
 
-  if (ret_obj.format === 1) {
-    // JPEG: entire remainder is the JPEG bitstream. Copy out so the typed-array
-    // view stays valid after WS recycles the ArrayBuffer (Blob ctor below holds
-    // a reference to whatever we hand it).
+  if (ret_obj.format === 1 || ret_obj.format === 2) {
+    // JPEG (1=BGR, 2=grayscale): entire remainder is the JPEG bitstream.
+    // Copy out so the typed-array view stays valid after WS recycles the
+    // ArrayBuffer (Blob ctor below holds a reference to whatever we hand it).
     if (payloadAvail > 0) {
       ret_obj.image=new Uint8Array(ws_evt.data, imgStart, payloadAvail);
     } else {
@@ -221,11 +225,12 @@ function map_BPG_Packet2Act(parsed_packet)
       if (!pkg.image) break;
       let objx = { ...pkg };
       delete objx.image;
-      if (pkg.format === 1) {
-        // JPEG: hand off raw bytes as a Blob; the canvas decodes via
-        // createImageBitmap (zero main-thread cost on a Worker-capable browser).
-        // Copy the bytes — the underlying ArrayBuffer is the WS message buffer
-        // which gets recycled on the next onmessage.
+      if (pkg.format === 1 || pkg.format === 2) {
+        // JPEG (1=BGR, 2=grayscale): hand off raw bytes as a Blob; the
+        // canvas decodes via createImageBitmap (zero main-thread cost on a
+        // Worker-capable browser). Copy the bytes — the underlying
+        // ArrayBuffer is the WS message buffer which gets recycled on the
+        // next onmessage.
         const bytes = new Uint8Array(pkg.image.byteLength);
         bytes.set(pkg.image);
         objx.jpegBlob = new Blob([bytes], { type: "image/jpeg" });
