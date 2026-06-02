@@ -23,9 +23,9 @@ export function buildWhiteListKey(ctx) {
   return buildWhiteListKeyFromFields(fields, ctx);
 }
 
-// canvasCtrl: aux_point refs a line + a search_point (their intersection).
+// canvasCtrl: aux_point refs lines (their intersection).
 export function availableRefShapes(shapeList /*, subtype */) {
-  return shapeList.filter((s) => s.type === 'line' || s.type === 'search_point');
+  return shapeList.filter((s) => s.type === 'line');
 }
 
 // canvasCtrl: aux_point's center is its RESOLVED intersection point (computed
