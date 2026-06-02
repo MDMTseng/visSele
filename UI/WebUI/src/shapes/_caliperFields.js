@@ -295,6 +295,12 @@ export function drawSingleCaliperBox(ctx, centerPt, tangent, normal, halfAlong, 
   ctx.lineWidth = renderer.getIndicationLineSize();
   ctx.strokeStyle = CAL_STROKE;
   drawOrientedBox(ctx, centerPt.x, centerPt.y, tangent.x, tangent.y, normal.x, normal.y, halfAlong, halfAcross);
+  // Scan-direction arrow on the +tangent short edge: shaft spans the full
+  // search depth (inner → outer along `normal`). Same convention as
+  // drawLineCalipers/drawArcCalipers' end-caliper arrows.
+  const ax = centerPt.x + tangent.x * halfAlong;
+  const ay = centerPt.y + tangent.y * halfAlong;
+  drawScanArrow(ctx, ax, ay, normal.x, normal.y, halfAcross, renderer);
   ctx.restore();
 }
 
