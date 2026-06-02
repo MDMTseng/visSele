@@ -2079,6 +2079,31 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
       } while (false);
     }
+    else if (checkTL("LB", dat)) //[L]oad [B]inary -- raw file bytes (e.g. PNG thumb)
+    {
+      session_ACK = false;
+      do
+      {
+        if (json == NULL) { snprintf(err_str, sizeof(err_str), "LB: JSON parse failed"); break; }
+        char *filename = (char *)JFetch(json, "filename", cJSON_String);
+        if (filename == NULL) { snprintf(err_str, sizeof(err_str), "LB: no 'filename'"); break; }
+        int blen = 0;
+        uint8_t *bytes = ReadByte(filename, &blen);
+        if (bytes == NULL || blen <= 0) {
+          snprintf(err_str, sizeof(err_str), "LB: ReadByte failed for %s", filename);
+          if (bytes) free(bytes);
+          break;
+        }
+        BPG_protocol_data bd = {0};
+        bd.tl[0] = 'B'; bd.tl[1] = 'L';
+        bd.dat_raw = bytes;
+        bd.size = blen;
+        bd.pgID = dat->pgID;
+        fromUpperLayer(bd, peer);
+        free(bytes);
+        session_ACK = true;
+      } while (false);
+    }
     else if (checkTL("II", dat)) //[I]mage [I]nspection
     {
       calib_bacpac.sampler->ignoreCalib(false);

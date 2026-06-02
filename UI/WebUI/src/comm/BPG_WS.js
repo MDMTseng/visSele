@@ -295,6 +295,13 @@ function urlConcat(base, add) {
               parsed_pkt = pkg;
               break;
             }
+          case "BL":
+            {
+              // [B]inary [L]oad response -- raw file bytes (e.g. PNG). Keep as
+              // rawdata; consumer turns it into a Blob/object URL.
+              parsed_pkt = BPG_Protocol.raw2obj_rawdata(evt);
+              break;
+            }
           case "IR":
           case "RP":
           case "DF":

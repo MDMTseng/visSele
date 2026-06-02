@@ -1,7 +1,7 @@
 // New Calibration UI — chessboard (lens) + bright/dark field capture.
 // Stage 1: scaffold only. Real capture / BPG wiring lands in follow-up tasks
 // (see #63-#67). Keep BackLightCalibUI alongside until this fully replaces it.
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { connect } from 'react-redux';
 import Tabs from 'antd/lib/tabs';
 import Button from 'antd/lib/button';
@@ -27,6 +27,7 @@ class PreviewCanvas extends React.Component {
   componentDidMount() {
     this.ec_canvas = new EC_CANVAS_Ctrl.Preview_CanvasComponent(this.refs.canvas);
     this._didInitialFit = false;
+    if (this.props.onCanvasInit) this.props.onCanvasInit(this.ec_canvas);
     this.updateCanvas(this.props.c_state);
   }
   componentWillUnmount() {
@@ -79,11 +80,70 @@ function CalibrationUI(props) {
   const [tab, setTab] = useState('chessboard');
   const [squareMm, setSquareMm] = useState(1.0);
   const [lensModel, setLensModel] = useState('telecentric');
-  const [chessShots, setChessShots] = useState([]);  // [{path, ts}]
+  // Each shot: {ts, thumb (dataURL)}. Thumb is grabbed from the secCanvas at
+  // capture time -- that's the offscreen canvas the proto SetImg renders the
+  // streamed frame into, so it has the unscaled pixel data.
+  const [chessShots, setChessShots] = useState([]);
+  const [brightShots, setBrightShots] = useState([]);
+  const [darkShots, setDarkShots] = useState([]);
   const [brightAvgN, setBrightAvgN] = useState(16);
   const [darkAvgN, setDarkAvgN] = useState(16);
   const [bright, setBright] = useState(null);        // {W, H, data}
   const [dark, setDark] = useState(null);
+
+  const CALIB_DIR = "data/calibImages";
+  const canvasRef = useRef(null);
+
+  // On mount, list any already-saved chessboard images so the user sees them
+  // (with placeholder thumbs -- binary PNG read over BPG is not wired yet).
+  useEffect(() => {
+    const lazyLoadThumbs = (shots, setter) => {
+      shots.forEach((shot) => {
+        props.ACT_WS_SEND_BPG(props.CORE_ID, "LB", 0, { filename: shot.path }, undefined, {
+          resolve: (rpkts) => {
+            const bl = rpkts.find(p => p.type === "BL");
+            if (!bl || !bl.rawdata || !bl.rawdata.byteLength) return;
+            const blob = new Blob([new Uint8Array(bl.rawdata.buffer, bl.rawdata.byteOffset, bl.rawdata.byteLength)], { type: 'image/png' });
+            const url = URL.createObjectURL(blob);
+            setter(prev => prev.map(s => s.ts === shot.ts ? { ...s, thumb: url } : s));
+          },
+          reject: () => {},
+        });
+      });
+    };
+    props.ACT_WS_SEND_BPG(props.CORE_ID, "FB", 0, { path: CALIB_DIR, depth: 1 }, undefined, {
+      resolve: (pkts) => {
+        const fs = pkts.find(p => p.type === "FS");
+        if (!fs || !fs.data || !fs.data.files) return;
+        const toShot = (f) => ({ ts: f.name, path: `${CALIB_DIR}/${f.name}`, thumb: null, persisted: true });
+        const pngs = fs.data.files.filter(f => /\.png$/i.test(f.name));
+        const chess  = pngs.filter(f => /^chess[_\-.]/i.test(f.name)  || (!/^bright/i.test(f.name) && !/^dark/i.test(f.name))).map(toShot);
+        const bright = pngs.filter(f => /^bright[_\-.]/i.test(f.name)).map(toShot);
+        const dark   = pngs.filter(f => /^dark[_\-.]/i.test(f.name)).map(toShot);
+        if (chess.length)  setChessShots(chess);
+        if (bright.length) setBrightShots(bright);
+        if (dark.length)   setDarkShots(dark);
+        lazyLoadThumbs(chess,  setChessShots);
+        lazyLoadThumbs(bright, setBrightShots);
+        lazyLoadThumbs(dark,   setDarkShots);
+      },
+      reject: () => {},
+    });
+  }, []);
+
+  const grabThumb = () => {
+    const c = canvasRef.current && canvasRef.current.secCanvas;
+    if (!c || !c.width || !c.height) return null;
+    // Downscale to a max ~240px wide thumbnail to keep state lean.
+    const maxW = 240;
+    const scale = Math.min(1, maxW / c.width);
+    const tw = Math.max(1, Math.round(c.width * scale));
+    const th = Math.max(1, Math.round(c.height * scale));
+    const tc = document.createElement('canvas');
+    tc.width = tw; tc.height = th;
+    tc.getContext('2d').drawImage(c, 0, 0, tw, th);
+    return tc.toDataURL('image/jpeg', 0.6);
+  };
 
   // Camera tuning controls. Initial values are read from
   // data/default_camera_setting.json (the same file CameraSettingFromFile()
@@ -157,23 +217,105 @@ function CalibrationUI(props) {
   }, []);
 
   const captureChess = () => {
-    // TODO #64 hook: SV __LAST_DATA_VIEW_CACHE_IMG__ -> ./data/calib/<sess>/chess_NN.png
-    setChessShots([...chessShots, { ts: Date.now() }]);
+    const thumb = grabThumb();
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').replace('Z', '');
+    const name = `chess_${ts}.png`;
+    const filename = `${CALIB_DIR}/${name}`;
+    // Optimistic UI: show thumb immediately, drop on save failure.
+    const entry = { ts: name, path: filename, thumb, persisted: false };
+    setChessShots(s => [...s, entry]);
+    props.ACT_WS_SEND_BPG(props.CORE_ID, "SV", 0,
+      { filename, make_dir: true, type: "__LAST_DATA_VIEW_CACHE_IMG__" }, undefined, {
+        resolve: (pkts) => {
+          const ss = pkts.find(p => p.type === "SS");
+          const ok = ss && ss.data && ss.data.ACK === true;
+          setChessShots(s => ok
+            ? s.map(x => x.ts === name ? { ...x, persisted: true } : x)
+            : s.filter(x => x.ts !== name));
+        },
+        reject: () => setChessShots(s => s.filter(x => x.ts !== name)),
+      });
   };
   const captureField = (which) => {
-    // TODO #64 hook: __AVERAGE_N_FRAMES_TO_GRID__ BPG -> returns {W,H,grid[]}
-    const stub = { W: 32, H: 24, data: [] };
-    (which === 'bright' ? setBright : setDark)(stub);
+    // Single-shot for now; averaging-to-grid (task #64) will replace this.
+    const thumb = grabThumb();
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').replace('Z', '');
+    const prefix = which === 'bright' ? 'bright_' : 'dark_';
+    const name = `${prefix}${ts}.png`;
+    const filename = `${CALIB_DIR}/${name}`;
+    const entry = { ts: name, path: filename, thumb, persisted: false };
+    const setter = which === 'bright' ? setBrightShots : setDarkShots;
+    setter(s => [...s, entry]);
+    props.ACT_WS_SEND_BPG(props.CORE_ID, "SV", 0,
+      { filename, make_dir: true, type: "__LAST_DATA_VIEW_CACHE_IMG__" }, undefined, {
+        resolve: (pkts) => {
+          const ss = pkts.find(p => p.type === "SS");
+          const ok = ss && ss.data && ss.data.ACK === true;
+          setter(s => ok
+            ? s.map(x => x.ts === name ? { ...x, persisted: true } : x)
+            : s.filter(x => x.ts !== name));
+        },
+        reject: () => setter(s => s.filter(x => x.ts !== name)),
+      });
   };
+  const removeShot = (which, ts) => {
+    const bucket = which === 'chess' ? chessShots : which === 'bright' ? brightShots : darkShots;
+    const setter = which === 'chess' ? setChessShots : which === 'bright' ? setBrightShots : setDarkShots;
+    const shot = bucket.find(s => s.ts === ts);
+    setter(bucket.filter(s => s.ts !== ts));
+    // Best-effort file delete (no core handler yet for __DELETE__ -- UI-only
+    // for now; will leave the file on disk).
+    if (shot && shot.path) {
+      props.ACT_WS_SEND_BPG(props.CORE_ID, "SV", 0,
+        { filename: shot.path, type: "__DELETE__" });
+    }
+  };
+
+  const ThumbStrip = ({ shots, which }) => (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+      {shots.map(s => (
+        <div key={s.ts} style={{ position: 'relative', border: '1px solid #444', borderRadius: 4 }}>
+          {s.thumb
+            ? <img src={s.thumb} style={{ display: 'block', maxHeight: 90, maxWidth: 160 }}/>
+            : <div style={{ width: 140, height: 80, background:'#222', color:'#aaa',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:10, padding:4, textAlign:'center', wordBreak:'break-all' }}>
+                {typeof s.ts === 'string' ? s.ts : 'saved'}
+              </div>}
+          <span onClick={() => removeShot(which, s.ts)}
+            title="delete"
+            style={{ position:'absolute', top:-8, right:-8, width:18, height:18,
+              background:'#e53', color:'#fff', borderRadius:9, fontSize:12, lineHeight:'18px',
+              textAlign:'center', cursor:'pointer', userSelect:'none',
+              boxShadow:'0 1px 3px rgba(0,0,0,0.4)' }}>×</span>
+        </div>
+      ))}
+    </div>
+  );
   const runCalib = () => {
-    // TODO #65 hook: cmd "lens_calibrate" -> report JSON
-    console.log('runCalib', { squareMm, lensModel, chessShots, bright, dark });
+    // Triggers core to run lens_calib_run_from_images on the saved folder.
+    // Requires the matching BPG handler in wiringPanel (task #65 -- not yet
+    // landed). Until then, this logs the intent and surfaces any error.
+    props.ACT_WS_SEND_BPG(props.CORE_ID, "RC", 0, {
+      target: "lens_calibrate",
+      dir: CALIB_DIR,
+      square_mm: squareMm,
+      lens_model: lensModel,
+      out: `${CALIB_DIR}/lens_calib.json`,
+    }, undefined, {
+      resolve: (pkts) => {
+        const rp = pkts.find(p => p.type === "RP" || p.type === "FL");
+        console.log("[calib] result", rp ? rp.data : pkts);
+      },
+      reject: (e) => console.warn("[calib] failed", e),
+    });
   };
 
   return (
     <div className="s width12 height12 overlayCon" style={{ padding: 12 }}>
       <div style={{ height: '60vh', position: 'relative' }}>
-        <PreviewCanvas_rdx addClass="s width12 height12"/>
+        <PreviewCanvas_rdx addClass="s width12 height12"
+          onCanvasInit={(c) => { canvasRef.current = c; }}/>
       </div>
       <Card size="small" style={{ marginTop: 12 }}
         title={<span>Camera {loaded ? '' : <span style={{color:'#aaa'}}>(loading…)</span>}</span>}
@@ -219,10 +361,11 @@ function CalibrationUI(props) {
               <Button type="primary" onClick={captureChess}>📷 Capture</Button>
               <span>shots: {chessShots.length}</span>
             </div>
+            <ThumbStrip shots={chessShots} which="chess"/>
           </Card>
         </Tabs.TabPane>
 
-        <Tabs.TabPane tab={`Bright field ${bright ? '✓' : ''}`} key="bright">
+        <Tabs.TabPane tab={`Bright field (${brightShots.length})`} key="bright">
           <Card size="small">
             <label>frames to average:
               <InputNumber value={brightAvgN} min={1} max={256}
@@ -231,11 +374,11 @@ function CalibrationUI(props) {
             <Button type="primary" style={{ marginLeft: 12 }} onClick={() => captureField('bright')}>
               📷 Capture
             </Button>
-            {bright && <span style={{ marginLeft: 12 }}>captured {bright.W}×{bright.H}</span>}
+            <ThumbStrip shots={brightShots} which="bright"/>
           </Card>
         </Tabs.TabPane>
 
-        <Tabs.TabPane tab={`Dark field ${dark ? '✓' : ''}`} key="dark">
+        <Tabs.TabPane tab={`Dark field (${darkShots.length})`} key="dark">
           <Card size="small">
             <label>frames to average:
               <InputNumber value={darkAvgN} min={1} max={256}
@@ -244,7 +387,7 @@ function CalibrationUI(props) {
             <Button type="primary" style={{ marginLeft: 12 }} onClick={() => captureField('dark')}>
               📷 Capture
             </Button>
-            {dark && <span style={{ marginLeft: 12 }}>captured {dark.W}×{dark.H}</span>}
+            <ThumbStrip shots={darkShots} which="dark"/>
           </Card>
         </Tabs.TabPane>
       </Tabs>
