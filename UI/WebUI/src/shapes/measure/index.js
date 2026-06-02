@@ -22,6 +22,8 @@ import * as calcMod from './calc';
 
 export const type = 'measure';
 
+export { MeasurePropertySheet as PropertySheet } from '../_propertySheet/MeasurePropertySheet';
+
 // Per-subtype registry — keyed by SHAPE_TYPE.measure_subtype.<name>. Each
 // subtype module exports draw + availableRefShapes; some also export their
 // own buildWhiteListKey (circle_info.info_type, calc.calc_f).

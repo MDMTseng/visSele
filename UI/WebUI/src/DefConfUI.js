@@ -878,7 +878,7 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
     </>;
 }
 
-function Measure_Calc_Editor({ target, onChange, className, renderContext: { measure_list, ref_keyTrace_callback, ref } }) {
+export function Measure_Calc_Editor({ target, onChange, className, renderContext: { measure_list, ref_keyTrace_callback, ref } }) {
   let staticObj = useRef({
     insertIdx: undefined,
     ref_new_idx:9999
