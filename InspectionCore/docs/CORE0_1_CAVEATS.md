@@ -324,3 +324,37 @@ else                   { sAngle = a3; eAngle = a1; }
 - Harness/headless mode: `Core0_1/wiringPanel.cpp` (`--insp`).
 - Debug env: `CALIP_DUMP` (caliper strips), `SPCV_DUMP` (search-point remaps), `SP_PT_DUMP`
   (pt transform chain), `SP_LEGACY_DUMP` (legacy contour search).
+
+## I. search_point axes: variable names lie
+
+In `FeatureManager_sig360_circle_line.cpp::searchPoint_process`:
+
+- `searchVec_nor` (the misnamed one) = `ParseMainVector(line)` rotated by
+  `angleDeg`. Despite "search" in the name, this is the **BAR direction** —
+  parallel to the rendered width-bar in the WebUI and parallel to the line
+  used by the WebUI's `closestPointOnLine` projection.
+- `searchVec` = `acvVecNormal(searchVec_nor)` (90° rotation) = the actual
+  **SEARCH/DEPTH direction** — the axis the scan walks across the edge.
+
+WebUI side (`UI/WebUI/src/UTIL/InspectionEditorLogic.js` search_point case,
+non-anchor): builds a projection line through `inspAdjObj.x/y` in direction
+`vec = shapeVectorParse(sp)` (= core's `searchVec_nor` = bar direction).
+`closestPointOnLine(line, def.pt1)` projects pt1 onto it. By construction,
+shifts of the anchor **along the line direction are cancelled by the
+projection**; shifts perpendicular to the line (along the depth axis) are
+preserved.
+
+Direct consequence — `manual_offset` applied along `searchVec_nor` is
+invisible (projection eats it); apply along `searchVec` to make it
+visible. Fix: `acvVecMult(searchVec, def.manual_offset)`.
+
+`SearchPointCV.cpp` doubles down on the confusion: its local `s =
+searchDir` is treated as the row axis with `nS = width`, so the row axis
+maps to the bar dimension too. Naming is internally consistent there,
+just geometrically inverted relative to what "search direction" should
+mean.
+
+Rule of thumb: never trust the variable names in this subsystem. Verify
+geometry by checking what each vector is **used as** (drawing the bar?
+walking the depth?), and confirm the WebUI/core pair agree before
+adding any directional bias.

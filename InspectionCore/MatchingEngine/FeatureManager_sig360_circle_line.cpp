@@ -1140,11 +1140,22 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       if (ok)
       {
         rep.pt = acvVecAdd(out, off);
-        // Manual offset: shift the final pt along the (possibly flipped)
-        // search direction. Does NOT shift cal_hits — those still reflect
-        // what the scan actually saw.
+        // Manual offset: shift the final pt along the actual scan/depth
+        // direction. CAVEAT — variable names here are misleading:
+        //   searchVec_nor = ParseMainVector(line)+angleDeg rotation. Despite
+        //                   the name this is the BAR direction (parallel to
+        //                   the rendered width-bar / closestPointOnLine's
+        //                   line direction in the WebUI).
+        //   searchVec     = acvVecNormal(searchVec_nor) — perpendicular to
+        //                   the bar = the actual SEARCH/DEPTH direction
+        //                   (what the user sees as "the scan axis", and
+        //                   what the WebUI's projection PRESERVES). Use
+        //                   THIS to make the offset visible.
+        // (SearchPointCV.cpp's local `s` is just the passed-in searchDir;
+        // its row axis maps to def.width, so `s` there is also the bar
+        // direction. The whole subsystem labels axes inconsistently.)
         if (def.manual_offset != 0)
-          rep.pt = acvVecAdd(rep.pt, acvVecMult(searchVec_nor, def.manual_offset));
+          rep.pt = acvVecAdd(rep.pt, acvVecMult(searchVec, def.manual_offset));
         rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
       }
       else
