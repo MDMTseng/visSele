@@ -255,21 +255,46 @@ const HIT_COLOR = {
   2: 'rgba( 60,220, 80,0.95)',  // inlier (green)
 };
 
-export function drawCaliperHits(ctx, hits, renderer) {
+// `style`: 'cross' (default — X marker, used by line/arc) or 'dot' (filled
+// circle, used by search_point where many hits sit on a short search vector
+// and crosses overlap visually).
+export function drawCaliperHits(ctx, hits, renderer, { style = 'cross' } = {}) {
   if (!hits || hits.length === 0) return;
   ctx.save();
   ctx.lineWidth = renderer.getIndicationLineSize();
   const a = renderer.getPointSize() * 1.0;
   for (const h of hits) {
     if (h.st === 0) continue;  // missed — box-grayed instead
-    ctx.strokeStyle = HIT_COLOR[h.st] || HIT_COLOR[1];
-    ctx.beginPath();
-    ctx.moveTo(h.x - a, h.y - a);
-    ctx.lineTo(h.x + a, h.y + a);
-    ctx.moveTo(h.x - a, h.y + a);
-    ctx.lineTo(h.x + a, h.y - a);
-    ctx.stroke();
+    const color = HIT_COLOR[h.st] || HIT_COLOR[1];
+    if (style === 'dot') {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, a * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(h.x - a, h.y - a);
+      ctx.lineTo(h.x + a, h.y + a);
+      ctx.moveTo(h.x - a, h.y + a);
+      ctx.lineTo(h.x + a, h.y - a);
+      ctx.stroke();
+    }
   }
+  ctx.restore();
+}
+
+// Single caliper-box outline — for search_point caliper mode where the core
+// runs ONE caliper covering the whole search vector (no count distribution).
+// Geometry: `centerPt` is the box center; `tangent` runs along the box's
+// long edge (length = halfAlong*2); `normal` runs across the search edge
+// (length = halfAcross*2). Default stroke = the same blue used by
+// line/arc caliper boxes for visual consistency.
+export function drawSingleCaliperBox(ctx, centerPt, tangent, normal, halfAlong, halfAcross, renderer) {
+  ctx.save();
+  ctx.lineWidth = renderer.getIndicationLineSize();
+  ctx.strokeStyle = CAL_STROKE;
+  drawOrientedBox(ctx, centerPt.x, centerPt.y, tangent.x, tangent.y, normal.x, normal.y, halfAlong, halfAcross);
   ctx.restore();
 }
 

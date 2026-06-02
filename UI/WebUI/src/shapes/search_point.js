@@ -3,7 +3,7 @@
 import Color from 'color';
 import { SHAPE_TYPE_COLOR } from 'JSSRCROOT/canvas/renderConst';
 import { applyDefaultsFromFields, buildWhiteListKeyFromFields } from './_schemaHelpers';
-import { edgeField } from './_caliperFields';
+import { edgeField, drawSingleCaliperBox, drawCaliperHits } from './_caliperFields';
 export { SearchPointPropertySheet as PropertySheet } from './_propertySheet/SearchPointPropertySheet';
 
 export const type = 'search_point';
@@ -79,25 +79,35 @@ export function draw(ctx, shape, renderer, {
   let vector = db_obj.shapeVectorParse(shape, shapeList);
   let cnormal = { x: -vector.y, y: vector.x };
   let mag = shape.width / 2;
+  let tangent = { x: vector.x, y: vector.y };  // unit, along width-bar
   vector.x *= mag;
   vector.y *= mag;
 
   let margin = renderer.getSearchDirectionLineSize();
   if (inFullDisplay) margin = shape.margin;
 
-  ctx.lineWidth = margin * 2;
-  renderer.drawReportLine(ctx, {
-    x0: shape.pt1.x - vector.x, y0: shape.pt1.y - vector.y,
-    x1: shape.pt1.x + vector.x, y1: shape.pt1.y + vector.y,
-  });
+  const isCaliper = (shape.locating === 'caliper');
 
-  ctx.lineWidth = renderer.getSearchDirectionLineSize();
-  ctx.strokeStyle = shapeColor;
-  let marginOffset = margin + ctx.lineWidth / 2;
-  renderer.drawReportLine(ctx, {
-    x0: shape.pt1.x - vector.x + cnormal.x * marginOffset, y0: shape.pt1.y - vector.y + cnormal.y * marginOffset,
-    x1: shape.pt1.x + vector.x + cnormal.x * marginOffset, y1: shape.pt1.y + vector.y + cnormal.y * marginOffset,
-  });
+  if (!isCaliper) {
+    // Contour mode: legacy thick margin band + offset visualization line.
+    ctx.lineWidth = margin * 2;
+    renderer.drawReportLine(ctx, {
+      x0: shape.pt1.x - vector.x, y0: shape.pt1.y - vector.y,
+      x1: shape.pt1.x + vector.x, y1: shape.pt1.y + vector.y,
+    });
+
+    ctx.lineWidth = renderer.getSearchDirectionLineSize();
+    ctx.strokeStyle = shapeColor;
+    let marginOffset = margin + ctx.lineWidth / 2;
+    renderer.drawReportLine(ctx, {
+      x0: shape.pt1.x - vector.x + cnormal.x * marginOffset, y0: shape.pt1.y - vector.y + cnormal.y * marginOffset,
+      x1: shape.pt1.x + vector.x + cnormal.x * marginOffset, y1: shape.pt1.y + vector.y + cnormal.y * marginOffset,
+    });
+  } else if (inFullDisplay) {
+    // Caliper mode: single big caliper box covering the entire search area
+    // (along width-bar tangent = shape.width, across edge = 2*margin).
+    drawSingleCaliperBox(ctx, shape.pt1, tangent, cnormal, mag, margin, renderer);
+  }
 
   if (drawSubObjs)
     renderer.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs, inFullDisplay);
@@ -109,6 +119,13 @@ export function draw(ctx, shape, renderer, {
     renderer.draw_aimcross(ctx, shape.pt1, renderer.getPointSize() * 3, 0.3);
   }
 
+  // Caliper-mode per-hit overlay (dots, not crosses — search_point clusters
+  // many hits along a short search vector; crosses overlap visually).
+  if (inFullDisplay && isCaliper) {
+    const hits = shape.cal_hits
+      || (renderer.cal_hits_by_id && renderer.cal_hits_by_id[shape.id]);
+    if (hits) drawCaliperHits(ctx, hits, renderer, { style: 'dot' });
+  }
 }
 
 // Inspection-mode draw — just a red cross at pt1. Extracted from
@@ -117,4 +134,7 @@ export function drawInspection(ctx, shape, renderer) {
   ctx.strokeStyle = 'rgba(179, 0, 0,0.5)';
   renderer.drawcross(ctx, shape.pt1, renderer.getPointSize() * 3);
   ctx.lineWidth = renderer.getIndicationLineSize();
+  if (renderer.show_caliper_hits !== false && shape.cal_hits) {
+    drawCaliperHits(ctx, shape.cal_hits, renderer, { style: 'dot' });
+  }
 }

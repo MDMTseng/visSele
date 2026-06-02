@@ -1121,6 +1121,11 @@ export class InspectionEditorLogic {
             eObject.adj_pt1= pointInvTrans(eObject.adj_pt1);
           }
           eObject.pt1=o_pt1;
+          // Per-hit caliper points (caliper-mode search_point only). Passed
+          // through unchanged — drawn as dots in search_point's draw.
+          if (inspAdjObj.cal_hits) {
+            eObject.cal_hits = inspAdjObj.cal_hits;
+          }
           // {
           //   let vec = this.shapeVectorParse(eObject, shapeList);
           //   let line ={
