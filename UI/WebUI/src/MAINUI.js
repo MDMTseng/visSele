@@ -15,6 +15,7 @@ import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
 import BackLightCalibUI_rdx from './BackLightCalibUI';
+import CalibrationUI_rdx from './CalibrationUI';
 import InstInspUI_rdx from './InstInspUI';
 
 
@@ -1076,6 +1077,10 @@ const MainUI=()=>{
         type:"BackLightCalib",
         name:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
       },
+      Calibration:{
+        type:"Calibration",
+        name:DICT.mainui.MODE_SELECT_CALIBRATION,
+      },
       RepDisplay:{
         type:"RepDisplay",
         name:DICT.mainui.MODE_SELECT_REP_DISPLAY,
@@ -1214,6 +1219,11 @@ const MainUI=()=>{
             onClick:_=>setUI_state(s_statesTable.BackLightCalib)
           },
           {
+            icon:<TableOutlined />,
+            text:DICT.mainui.MODE_SELECT_CALIBRATION,
+            onClick:_=>setUI_state(s_statesTable.Calibration)
+          },
+          {
             icon:<PlusSquareOutlined />,
             // text:DICT.mainui.MODE_SELECT_INST_INSP,
             text:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION,
@@ -1241,6 +1251,20 @@ const MainUI=()=>{
       break;
     case  s_statesTable.Inspection:
       
+      break;
+    case  s_statesTable.Calibration:
+      UI.push(<CalibrationUI_rdx key="CalibrationUI" />);
+      siderUI_info={
+        title:UI_state.name,
+        menu:[
+          {
+            icon:<ArrowLeftOutlined />,
+            text:DICT._["<"],
+            onClick:_=>setUI_state(s_statesTable.RootSelect)
+          },
+          ...extraSideUI
+        ],
+      }
       break;
     case  s_statesTable.BackLightCalib:
       UI.push(<BackLightCalibUI_rdx

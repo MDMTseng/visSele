@@ -301,6 +301,12 @@ if(WIN32 OR MINGW OR MSYS)
   target_link_options(visSele PRIVATE -static-libgcc -static-libstdc++ -static)
 endif()
 
+# ===========================================================================
+# calib_chessboard CLI -- offline lens calibration from chessboard images.
+# ===========================================================================
+add_executable(calib_chessboard tools/calib_chessboard.cpp)
+target_link_libraries(calib_chessboard PRIVATE MatchingEngine)
+
 # copy aravis dylib next to the binary for rpath loading (mac)
 if(FEATURE_ARAVIS)
   add_custom_command(TARGET visSele POST_BUILD

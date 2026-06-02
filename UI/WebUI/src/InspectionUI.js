@@ -2554,6 +2554,21 @@ class APP_INSP_MODE extends React.Component {
         {this.state.renderObjAlignRotate==true?"旋轉標的":"不轉原圖"}
       </Button>
 
+      <Button size={"large"} onClick={() => {
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').replace('T','_').replace('Z','');
+        const filename = `./data/snap_${ts}.png`;
+        this.props.ACT_WS_SEND_CORE_BPG("SV", 0,
+          { filename, make_dir: true, type: "__LAST_DATA_VIEW_CACHE_IMG__" }, undefined,
+          {
+            resolve: (pkts) => {
+              const SS = pkts.find(p => p.type === "SS");
+              if (SS && SS.data.ACK === true) this.notifyPopUp(null, `儲存影像 ${filename}`);
+              else this.warnPopUp(`儲存影像失敗 ${filename}`);
+            },
+            reject: () => this.warnPopUp(`儲存影像失敗 ${filename}`),
+          });
+      }}>存影像</Button>
+
 
 
 

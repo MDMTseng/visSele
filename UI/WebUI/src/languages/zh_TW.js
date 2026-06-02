@@ -149,6 +149,7 @@ export default {
       MODE_SELECT_PRECISION_VALIDATION:"精度校正",
       MODE_SELECT_INST_INSP:"簡驗",
       MODE_SELECT_BACKLIGHT_CALIB:"背光校正",
+      MODE_SELECT_CALIBRATION:"相機校正",
       MODE_SELECT_SETTING:"設定",
       FILE_NOT_FOUNT:"找不到檔案",
 
