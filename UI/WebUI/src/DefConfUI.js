@@ -2106,7 +2106,13 @@ class APP_DEFCONF_MODE extends React.Component {
 
     
     this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
-    { CameraSetting: { ROI:[0,0,99999,99999] } });
+    {
+      CameraSetting: { ROI:[0,0,99999,99999] },
+      // JPEG-encode the streamed dataview frames (full-res, uncropped — the
+      // downsamp_level is already 1 on the IM request). Quality 85 is
+      // visually lossless and ~10x smaller than raw RGBA. 0 disables (raw).
+      IMG_STREAMING_JPEG_QUALITY: 85,
+    });
   }
 
   componentWillUnmount() {
