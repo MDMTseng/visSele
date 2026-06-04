@@ -52,16 +52,16 @@ class CanvasComponent extends React.Component {
 
 
         //log.info(crop,down_samp_level);
-        this.props.BPG_Channel("ST", 0,
-          {
-            CameraSetting: {
-              down_samp_level
-            },
-            ImageTransferSetup: {
-              crop
-            },
-            LAST_FRAME_RESEND:true
-          });
+        // this.props.BPG_Channel("ST", 0,
+        //   {
+        //     CameraSetting: {
+        //       down_samp_level
+        //     },
+        //     ImageTransferSetup: {
+        //       crop
+        //     },
+        //     LAST_FRAME_RESEND:true
+        //   });
         break;
 
     }

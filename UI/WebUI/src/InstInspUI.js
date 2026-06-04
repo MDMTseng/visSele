@@ -86,16 +86,16 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
           
           
           //log.info(crop,down_samp_level);
-          BPG_Channel("ST",0,
-          {
-            CameraSetting:{
-              down_samp_level
-            },
-            ImageTransferSetup:{
-              crop
-            },
-            LAST_FRAME_RESEND:true
-          });
+          // BPG_Channel("ST",0,
+          // {
+          //   CameraSetting:{
+          //     down_samp_level
+          //   },
+          //   ImageTransferSetup:{
+          //     crop
+          //   },
+          //   LAST_FRAME_RESEND:true
+          // });
       break;
 
     }

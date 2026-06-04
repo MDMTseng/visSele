@@ -1511,7 +1511,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     });
     if(inspMode=="CI")
     {
-      _CameraCtrl.setCameraFrameRate(15);
+      _CameraCtrl.setCameraFrameRate(8);
     }
     else if(inspMode=="FI")
     {
@@ -1959,7 +1959,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             IGNORE_IMAGE_FIT_TO_SCREEN={true}
             ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={true}
             BPG_Channel={(...args)=>ACT_WS_SEND_BPG(CORE_ID, ...args) }
-            downSampleFactor={FILE_default_camera_setting.down_samp_factor||1}
+            downSampleFactor={1}
             />;
         // modal_view_sec="dd"
         break;

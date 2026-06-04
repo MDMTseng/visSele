@@ -945,25 +945,24 @@ class CanvasComponent extends React.Component {
         // R7 finding: a NaN/non-finite event.data.down_samp_level made
         // Math.floor(NaN)+1 = NaN, and both clamp comparisons silently fail,
         // so NaN shipped to the core. Guard at the source.
-        let down_samp_level = Math.floor(event.data.down_samp_level*this.props.downSampleFactor / mmpp ) + 1;
-        if (!Number.isFinite(down_samp_level)) down_samp_level = 1;
-        else if (down_samp_level <= 0) down_samp_level = 1;
-        else if (down_samp_level > 10) down_samp_level = 10;
+        // Always full-res in InspUI — canvas zoom no longer drives stream
+        // downsampling (matches core default downSampLevel=1).
+        let down_samp_level = 1;
 
         // down_samp_level=1;
         //log.info(crop,down_samp_level);
-        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-          {
+        // this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+        //   {
             
-            down_samp_level,
-            // CameraSetting: {
-              // down_samp_level
-            // },
-            ImageTransferSetup: {
-              crop
-            },
-            LAST_FRAME_RESEND:true
-          });
+        //     down_samp_level,
+        //     // CameraSetting: {
+        //       // down_samp_level
+        //     // },
+        //     ImageTransferSetup: {
+        //       crop
+        //     },
+        //     LAST_FRAME_RESEND:true
+        //   });
         break;
 
     }
@@ -1667,7 +1666,7 @@ class APP_INSP_MODE extends React.Component {
       { CameraSetting: { trigger_mode: 0 } });
     this.CameraCtrl.setCameraImageTransfer(true);
 
-    this.CameraCtrl.setImageCropParam(undefined,4);
+    this.CameraCtrl.setImageCropParam(undefined,1);
 
     {
 
@@ -2670,7 +2669,7 @@ class APP_INSP_MODE extends React.Component {
                 onROISettingCallBack={this.state.onROISettingCallBack}
                 measureDisplayRank={this.state.measureDisplayRank}
                 ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
-                downSampleFactor={this.props.FILE_default_camera_setting.down_samp_factor||1}
+                downSampleFactor={1}
                 onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
                 renderObjAlignRotate={this.state.renderObjAlignRotate}
                 camera_calibration_report={this.props.camera_calibration_report} />

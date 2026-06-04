@@ -184,6 +184,14 @@ typedef struct featureDef_searchPoint{
   //     along the scan (toward search_far if set, else toward the part).
   float include_range;     // default 0
   float manual_offset;     // default 0
+  // search_point_cv tuning knobs (JSON-overridable, all caliper-mode only):
+  //   blur:        gaussian kernel along the edge before X-sobel.
+  //   alpha_keep:  outlier-prune fraction in the WLS apex average (0 = none).
+  //   mask_dilate: object-label mask dilation (px) — keep border edges.
+  // 0 / sentinels mean "use the algorithm's tuned default".
+  int   blur;              // default 0 → 3
+  float alpha_keep;        // default 0
+  int   mask_dilate;       // default 0 → 8
   union data{
     struct anglefollow{
       acv_XY position;

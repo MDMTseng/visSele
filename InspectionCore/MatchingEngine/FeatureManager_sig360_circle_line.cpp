@@ -1149,10 +1149,17 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // NOTE: labeled mask temporarily DISABLED for edge-finding debugging.
       cv::Mat labelImg; // (off.x == 0 && off.y == 0) ? m_labeledImg_cv : empty();
       float includeRangePx = (def.include_range > 0) ? def.include_range : 2.0f;
+      // edgeSuppress = def's edge.min_strength (gradient floor). Fall back to
+      // a small non-zero default when the user hasn't set one so noise specks
+      // don't dominate the first-hit pick.
+      float edgeSuppress = (def.edge_min_strength > 0) ? def.edge_min_strength : 10.0f;
+      int   blur        = (def.blur > 0)        ? def.blur        : 3;
+      float alphaKeep   = def.alpha_keep;            // 0 = none (algorithm default)
+      int   maskDilate  = (def.mask_dilate > 0) ? def.mask_dilate : 8;
       ok = search_point_cv(eT.getImageCv(), acvVecSub(pt, off), barVec,
-                           margin, width, sp_et, /*blur*/3, /*suppress*/10.0f,
-                           includeRangePx, /*alphaKeep*/0.0f,
-                           eT.getBacpac(), labelImg, m_objLabel, /*maskDilate*/8,
+                           margin, width, sp_et, blur, edgeSuppress,
+                           includeRangePx, alphaKeep,
+                           eT.getBacpac(), labelImg, m_objLabel, maskDilate,
                            &out, &str, def.id, &rep.cal_hits);
       // Lift cropped-image-px → full-image-px to match rep.pt's frame.
       for (auto &h : rep.cal_hits) h.pt = acvVecAdd(h.pt, off);
@@ -1376,6 +1383,9 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
   searchPoint.edge_nth = 0; searchPoint.edge_min_strength = 0;
   searchPoint.include_range = 0;
   searchPoint.manual_offset = 0;
+  searchPoint.blur = 0;
+  searchPoint.alpha_keep = 0;
+  searchPoint.mask_dilate = 0;
   {
     char *loc = (char *)JFetch(jobj, "locating", cJSON_String);
     if (loc && strcmp(loc, "caliper") == 0) searchPoint.locating = 1;
@@ -1387,6 +1397,9 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
       searchPoint.edge_min_strength = JFetch_NUMBER_ex(edgeo, "min_strength", 0);
       searchPoint.include_range = JFetch_NUMBER_ex(edgeo, "include_range", 0);
       searchPoint.manual_offset = JFetch_NUMBER_ex(edgeo, "manual_offset", 0);
+      searchPoint.blur        = (int)JFetch_NUMBER_ex(edgeo, "blur", 0);
+      searchPoint.alpha_keep  = JFetch_NUMBER_ex(edgeo, "alpha_keep", 0);
+      searchPoint.mask_dilate = (int)JFetch_NUMBER_ex(edgeo, "mask_dilate", 0);
     }
   }
 

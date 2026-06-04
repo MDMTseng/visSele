@@ -831,6 +831,7 @@ void downSampSetup(CameraLayer &camera, cJSON &settingJson)
   {
     downSampLevel = (int)*val;
   }
+  downSampLevel=1;
 
   int type = getDataFromJson(&settingJson, "down_samp_w_calib", NULL);
   if (type == cJSON_False)
