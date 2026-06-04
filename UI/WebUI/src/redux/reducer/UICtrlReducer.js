@@ -359,14 +359,14 @@ function StateReducer(newState, action) {
                         //Check retation consistency
                         let angleDiff = singleReport.rotate - srep_inWindow.rotate;
                         if (angleDiff > 180) angleDiff = angleDiff - 360;
-                        if (angleDiff > 2 || angleDiff < -2) {
+                        if (angleDiff > 4 || angleDiff < -4) {
                           return closeRep;
                         }
 
                         //Check position consistency
                         let distance = Math.hypot(singleReport.cx - srep_inWindow.cx, singleReport.cy - srep_inWindow.cy);
 
-                        if (distance > mmpcampix*1.5) {
+                        if (distance > mmpcampix*4) {
                           return closeRep;
                         }
                         //If we get here, which means the information is very similar.
@@ -398,8 +398,6 @@ function StateReducer(newState, action) {
                       }
                       else if (closeRep !== undefined) {
                         //blend the report with the existed report in tracking window  
-
-                        //log.info(">>>>>",closeRep,singleReport);
 
 
 
