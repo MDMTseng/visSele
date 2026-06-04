@@ -98,8 +98,8 @@ let SYS_CONFIG = {
   Pick_Head_Count: 4,
 
 
-  // A_Axis_Units_to_mm:20.885826771653544,//21.22(  200steps*5(reduction)/(60mm{roller D}*PI) ),
-  A_Axis_Units_to_mm:20.5,
+  // A_Axis_mm_to_Unit:20.885826771653544,//21.22(  200steps*5(reduction)/(60mm{roller D}*PI) ),
+  A_Axis_mm_to_Unit:20.69,
   A_Axis_RunHitEnc_BackUnitSpace:20,
 
 
@@ -109,7 +109,15 @@ let SYS_CONFIG = {
 
   Holes_per_Slot: 1,
   Reel_Hole_Distance: 4,
-  HeadReleaseLoc:[171,279,60],
+
+  HeadReleaseYOffsets:{
+    NA:32,
+    NG1:0,
+    NG2:-32,
+
+
+  },
+  HeadReleaseLoc:[171,281,46],
 
   PickReadyLoc:[300,140],//[300,100],
   Feeder_prePick_lift:2,
@@ -118,7 +126,8 @@ let SYS_CONFIG = {
 
 
   SideCam_mmpp:0.07,
-  SideCam_InspLoc:[298,156,30],
+  // SideCam_InspLoc:[298,153,29],
+  SideCam_InspLoc:[312,150,45],
   SideCam_RAngOffset:[20+25,15+25,0+25,-10+25],
   // SideCam_RAngOffset_Side:[17,6,-10,-10],
 
@@ -132,7 +141,7 @@ let SYS_CONFIG = {
   Reel_postPlace_lift:0,
 
   Reel_prePick_lift:1,
-  Reel_Pick_lift:-0.2,
+  Reel_Pick_lift:-0.1,
   Reel_postPick_lift:5,
 
   Reel_postPlace_Z:50,
@@ -159,10 +168,49 @@ let E_headState = {
   empty: 0,
   mayHaveObj: 1,
   OK: 2,
-  NG: -1
+  NA:-99,
+  NG1: -1,
+  NG2: -2
 }
 
+
+
+
 let END_STOP_PINS = SYS_CONFIG.ES_SENSOR_ALL;
+
+if(v.ReelPackingInfo===undefined)
+{
+  v.ReelPackingInfo={
+    packingSeq:[],
+    packedSeq:[0]
+  }
+
+}
+
+
+
+v._CamShotInfoHist= (v._CamShotInfoHist===undefined)?[]:v._CamShotInfoHist;
+v._CamShotInfoHist_NAME_CAT=v._CamShotInfoHist.reduce((p,c)=>{p[c.name]=c;return p},{});
+
+function InspTarSubRegionNameIDList(insptarID) {
+  let tar_it=v.DefConfig.InspTars_main.find(it=>{
+    return it.id==insptarID
+  })
+  if(tar_it===undefined)return undefined;
+  
+  if(tar_it.sub_regions===undefined)return undefined;
+
+  let sub_regions=tar_it.sub_regions;
+
+  return sub_regions.reduce((acc,it,idx)=>{
+    // console.log(it)
+    acc[it.name]=idx
+    return acc;
+  },{})
+}
+
+
+
 
 async function Enter_Z2SafeZone_n_Check(F = `F${SYS_CONFIG.MAXF} ACC${SYS_CONFIG.MAXACC}`, doS1Check = true) {
   let ENDSTOPFULL = SYS_CONFIG.ES_SENSOR_ALL;
@@ -208,6 +256,32 @@ async function Exit_Z2SafeZone_n_Check() {
   END_STOP_PINS &= ~ENDSTOPZ;
   await G(`G04 P4`);
   await G(`M120.1  PINS${END_STOP_PINS} PNS${ENDSTOPFULL - ENDSTOPZ}`);
+}
+
+
+let dataStorage={
+  getItem:async (key)=>{
+    try{
+      let data =await READJSON(v.$DEFPATH+"/dataStorage.json")
+      console.log("data",data,"key",key,"data[key]",data[key]);
+      return data[key]
+    }
+    catch(e){
+    }
+    return undefined;
+  
+  },
+  setItem:async (key,value)=>{
+    let tarObj=undefined;
+    try{
+      tarObj =await READJSON(v.$DEFPATH+"/dataStorage.json")
+    }
+    catch(e){
+      tarObj={}
+    }
+    tarObj[key]=value;
+    await SAVEJSON(v.$DEFPATH+"/dataStorage.json",tarObj)
+  }
 }
 
 
@@ -487,6 +561,7 @@ async function HeadCalibVerificationAct(ActPts = [], calibInfo = undefined,retur
       await G(`G01 X${cX + loc[0]}  Y${cY + loc[1]} Z${i + 1}_${cZ + loc[2]} R${i + 1}_${loc[3]} F100 ACC100`);
 
       await G(`M400`);
+      await delay(200);
 
       await Lib.CameraSNameSWTrigger("HeadCalibCam", "CAM_Calib", trigID, true);
 
@@ -1154,13 +1229,34 @@ function FixedStringify(obj, fixedDig = 3) {
 
 
 
+// let camShotInfoHist=[];
 
-async function ReelCheck(trigID = -990, AUX_THREAD_ID = 0) {
+async function CameraSNameSWTrigger_n_Log(shotName,cam_side_name,ttags,trigger_id,doTriggerInfoMocking=true){
+
+  console.log("CameraSNameSWTrigger_n_Log",shotName,cam_side_name,ttags,trigger_id,doTriggerInfoMocking);
+  if(v._CamShotInfoHist===undefined)v._CamShotInfoHist=[];
+  let newRec={
+    name:shotName,
+    cam_side_name,
+    ttags:(ttags instanceof Array)?ttags:[ttags] ,
+    trigger_id,
+    timeStamp:Date.now(),
+  }
+  v._CamShotInfoHist.push(newRec);
+  if(v._CamShotInfoHist.length>=250)v._CamShotInfoHist.splice(0,50);
+  v._CamShotInfoHist_NAME_CAT[shotName]=newRec;
+  return Lib.CameraSNameSWTrigger(cam_side_name,ttags, trigger_id, doTriggerInfoMocking);
+}
+
+
+
+
+async function ReelCheck(trigID = -990, AUX_THREAD_ID = 0,tags=["CAM_Reel"]) {
 
   await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 1, aid: AUX_THREAD_ID })
 
   await Lib.CNCSend({ "type": "AUX_WAIT_FOR_FINISH", aid: AUX_THREAD_ID })
-  await Lib.CameraSNameSWTrigger("ReelCheckCam", "CAM_Reel", trigID, true);
+  await CameraSNameSWTrigger_n_Log("Check_Obj_On_Reel","ReelCheckCam", [...tags,"IMG_CACHE"], trigID, true);
 
   await Lib.CNCSend({ "type": "AUX_DELAY", "P": 50, aid: 0, aid: AUX_THREAD_ID })
   await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 0, aid: AUX_THREAD_ID })
@@ -1169,6 +1265,21 @@ async function ReelCheck(trigID = -990, AUX_THREAD_ID = 0) {
 }
 
 
+
+
+async function ReelCheckAll(trigID = -990, AUX_THREAD_ID = 0,tags=[]) {
+
+  await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 1, aid: AUX_THREAD_ID })
+
+  await Lib.CNCSend({ "type": "AUX_WAIT_FOR_FINISH", aid: AUX_THREAD_ID })
+  await CameraSNameSWTrigger_n_Log("Obj_On_Reel","ReelCheckCam", ["CAM_Reel",...tags,"IMG_CACHE"], trigID, true);
+  await CameraSNameSWTrigger_n_Log("Obj_45_Reel","ReelCheckCam_45d", ["CAM_Reel45",...tags,"IMG_CACHE"], trigID, true);
+
+  await Lib.CNCSend({ "type": "AUX_DELAY", "P": 50, aid: 0, aid: AUX_THREAD_ID })
+  await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 0, aid: AUX_THREAD_ID })
+
+
+}
 
 
 let dff = 10;
@@ -1246,7 +1357,7 @@ async function FeederCheckPickXY() {
 }
 
 const INIT_headPickIndexs=Array(SYS_CONFIG.Pick_Head_Count).fill(0).map((v,i)=>i);
-const INIT_headPickXAdj=Array(SYS_CONFIG.Pick_Head_Count).fill(0);
+const INIT_headPickXAdj=Array(SYS_CONFIG.Pick_Head_Count).fill([0,0]);
 
 async function FeederPickAct(availItems, Feeder_loc_Convert, F = 500, ACC = 1000,
   headPickIndexs = INIT_headPickIndexs,
@@ -1294,8 +1405,8 @@ async function FeederPickAct(availItems, Feeder_loc_Convert, F = 500, ACC = 1000
     let Zpostlift = SYS_CONFIG.Feeder_postPick_lift;
 
     let tarZ = Feeder_loc_Convert.pickZ + XYZ_Offset.z;
-    let Xtar = vpt0_head_comp.x + XYZ_Offset.x + headPickXAdj[i];
-    let Ytar = vpt0_head_comp.y + XYZ_Offset.y;//+0.2;
+    let Xtar = vpt0_head_comp.x + XYZ_Offset.x + headPickXAdj[i][0];
+    let Ytar = vpt0_head_comp.y + XYZ_Offset.y + headPickXAdj[i][1];//+0.2;
 
     let xyPreOffset = 0.2;
 
@@ -1342,54 +1453,55 @@ const abortController = new AbortController();
 
 
 
+let SW_start_ReelENC = 0;
 let ReelENC = 0;
-async function ReelGoAdv2(adv_mm = 1, RunSTR = ` F20 ACC${50}`) {
+let ReelENC_ReelPitchInconsistancyAdj = 0;
+// async function ReelGoAdv2(adv_mm = 1, RunSTR = ` F20 ACC${50}`) {
+
+
+//   // console.log("AUX_SET_ENC>>>>>",await Lib.CNCSend({ "type": "AUX_SET_ENC",value:0, aid: 0 }));
+//   // ReelENC=0
+
+
+//   let encStep = adv_mm;
+//   ReelENC += encStep;
+//   let A_Tar = Math.round(SYS_CONFIG.A_Axis_mm_to_Unit * encStep);
+
+//   await G("G92 A0");
+
+//   let DRunSpace = SYS_CONFIG.A_Axis_RunHitEnc_BackUnitSpace;
+//   if (A_Tar >= DRunSpace) {
+//     await G(`G01 A${A_Tar - DRunSpace} ${RunSTR}`);
+//   }
+//   else {
+//     await G(`G01 ${RunSTR}`);
+//   }
+
+//   // await G("G04 P0");
+//   await G(`G01.ENC A${A_Tar} ENC${ReelENC} SMULT500 F50 ACC100`);
+
+// }
+
+async function ReelGoAdv(adv_mm = 1, RunSTR = ` F20 ACC${50}`, STPCD=0) {
 
 
   // console.log("AUX_SET_ENC>>>>>",await Lib.CNCSend({ "type": "AUX_SET_ENC",value:0, aid: 0 }));
   // ReelENC=0
 
-
   let encStep = adv_mm;
   ReelENC += encStep;
-  let A_Tar = Math.round(SYS_CONFIG.A_Axis_Units_to_mm * encStep);
-
-  await G("G92 A0");
-
-  let DRunSpace = SYS_CONFIG.A_Axis_RunHitEnc_BackUnitSpace;
-  if (A_Tar >= DRunSpace) {
-    await G(`G01 A${A_Tar - DRunSpace} ${RunSTR}`);
-  }
-  else {
-    await G(`G01 ${RunSTR}`);
-  }
-
-  // await G("G04 P0");
-  await G(`G01.ENC A${A_Tar} ENC${ReelENC} SMULT500 F50 ACC100`);
-
-}
-
-async function ReelGoAdv(adv_mm = 1, RunSTR = ` F20 ACC${50}`) {
-
-
-  // console.log("AUX_SET_ENC>>>>>",await Lib.CNCSend({ "type": "AUX_SET_ENC",value:0, aid: 0 }));
-  // ReelENC=0
-
-
-  let encStep = adv_mm;
-  ReelENC += encStep;
-  let A_Tar = Math.round((SYS_CONFIG.A_Axis_Units_to_mm*1.0) * encStep);
+  let A_Tar = Math.round((SYS_CONFIG.A_Axis_mm_to_Unit*1.05) * encStep);
 
   await G("G92 A0");
 
   let DRunSpace = 0;
   if (adv_mm>0) {
     //ENC_ES will cutoff the motion when the encoder is hit
-    await G(`G01.ENC_ES A${A_Tar + DRunSpace} AX_A ENC${ReelENC} ${RunSTR}`);
+    await G(`G01.ENC_ES A${A_Tar + DRunSpace} AX_A ENC${ReelENC}  STPCD${STPCD} ${RunSTR}`);
     
     
     //G01.ENC will run extended steps until the encoder is hit
-    await G(`G01.ENC A${A_Tar + DRunSpace+SYS_CONFIG.A_Axis_Units_to_mm}  ENC${ReelENC} SMULT100 F500`);
+    await G(`G01.ENC A${A_Tar + DRunSpace+SYS_CONFIG.A_Axis_mm_to_Unit}  ENC${ReelENC} SMULT500 F500`);
   }
   else {
     await G(`G01 ${RunSTR}`);
@@ -1439,18 +1551,27 @@ async function ReelPositioning_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSi
 
 
 }
+async function SigWait_Trig_retry(key,info={},retryCount=5,retryWait=100)
+{
+  for(let i=0;i<retryCount;i++)
+  {
+    try{
+
+      SigWait_Trig(key,info);
+      return;
+    }
+    catch(e)
+    {
+      console.log(e);
+    }
+    await delay(retryWait);
+  }
+  throw new Error(`SigWait_Trig_retry retryCount:${retryCount} retryWait:${retryWait} failed`);
+}
+
 
 async function ReelLocating()
 {
-
-  let ACC = "4000";
-  let F = "1500";
-  let FA = `F${F} ACC${ACC}`
-
-  await Enter_Z2SafeZone_n_Check();
-  await G(`G1 X${300} Y${150} ${FA}`)
-  await G(`M400`)
-
 
   let ReelLocInfo = {
     center: undefined,
@@ -1467,9 +1588,9 @@ async function ReelLocating()
 
       reportWait_reg(reelLocRepKey, "SBM_ReelLoc", reelLocRepTID);
 
-      await Lib.CNCSend({ "type": "AUX_DELAY", "P": 500, aid: 0 })
+      await Lib.CNCSend({ "type": "AUX_DELAY", "P": 50, aid: 0 })
 
-      await Lib.CameraSNameSWTrigger("ReelCheckCam", "CAM_ReelLoc", reelLocRepTID, true);
+      await CameraSNameSWTrigger_n_Log("Reel_LOC","ReelCheckCam",["CAM_ReelLoc","IMG_CACHE"], reelLocRepTID, true);
 
       await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 0, aid: 0 })
 
@@ -1483,9 +1604,10 @@ async function ReelLocating()
 
       ReelLocInfo.center = reelLocRep[0].center;
 
-      let isOK = reelLocRep.reduce((res, rep) => res && (rep.confidence != 0), true);
+      let isOK = reelLocRep.reduce((res, rep) => res && (rep.confidence>0), true);
       if (isOK == false) {
-        GoRun = false;
+        // GoRun = false;
+        return undefined;
       }
 
       let holeDist_pix = Math.hypot(reelLocRep[0].center.x - reelLocRep[1].center.x, reelLocRep[0].center.y - reelLocRep[1].center.y);
@@ -1498,6 +1620,132 @@ async function ReelLocating()
   console.log("ReelLocInfo:", ReelLocInfo);
   return ReelLocInfo;
 }
+
+
+async function ReelAdvToLoc(Reel_loc_UIInfo,needToMoveHead=true)
+{
+
+
+  if(needToMoveHead)
+  {
+
+
+    let baseLoc = Reel_loc_UIInfo["pt1"].headXY;
+    
+    await Enter_Z2SafeZone_n_Check();
+    await G(`G1 X${baseLoc[0]} Y${baseLoc[1]} ACC1000 F3000 `);
+    await G(`M400`);
+
+    await delay(100);
+  }
+
+
+
+
+  let A_Axis_mm_to_Unit=SYS_CONFIG.A_Axis_mm_to_Unit;
+
+
+  let prevXError=1;
+
+  let errorLim=0.3;
+  let latestOffsetInfo=undefined
+  while(prevXError>errorLim)
+  {
+    let RLInfo=await ReelLocating(); 
+    if(RLInfo===undefined)
+    {
+      throw new Error("ReelSegAdv ReelLocating failed ");
+    }
+  
+  
+    let reelLocPt=RLInfo.center
+  
+    let Tar_ReelLocInfo = v.CalibInfo.ReelLoc;//await ReelLocating()
+  
+    let offset_pix = {
+      x: reelLocPt.x - Tar_ReelLocInfo.center.x,
+      y: -(reelLocPt.y - Tar_ReelLocInfo.center.y),
+    }
+    let offset_mm = {
+      x: offset_pix.x * Tar_ReelLocInfo.mmpp,
+      y: offset_pix.y * Tar_ReelLocInfo.mmpp,
+    }
+    prevXError=offset_mm.x;
+    latestOffsetInfo=offset_mm;
+    if(prevXError<errorLim)
+    {
+      return latestOffsetInfo;
+      break;
+    }
+    let drvDist=A_Axis_mm_to_Unit*(offset_mm.x*0.8);
+  
+    await ReelGoAdv_s(drvDist," ACC200 F3000 ");
+    await G(`M400`);
+    await   delay(100);
+
+
+  }
+
+  let RLInfo=await ReelLocating(); 
+  return undefined;
+
+}
+
+
+
+async function ReelSegAdv(advDist,segDist=SYS_CONFIG.Reel_Hole_Distance*8,needToMoveHead=true)
+{
+
+
+  if(needToMoveHead)
+  {
+    await Enter_Z2SafeZone_n_Check();
+
+
+    await G(`G1 X${SYS_CONFIG.PickReadyLoc[0]} Y${SYS_CONFIG.PickReadyLoc[1]} ACC1000 F3000 `);
+    await G(`M400`);
+
+    await delay(100);
+  }
+
+
+  let A_Axis_mm_to_Unit=SYS_CONFIG.A_Axis_mm_to_Unit;
+
+
+  for(let i=0;advDist>0;i++)
+  {
+    let goSegAdv=advDist<segDist?advDist:segDist;
+    // SYS_CONFIG.A_Axis_mm_to_Unit*
+    let RLInfo=await ReelLocating(); 
+    if(RLInfo===undefined)
+    {
+      throw new Error("ReelSegAdv ReelLocating failed ");
+    }
+    let reelLocPt=RLInfo.center
+
+    let Tar_ReelLocInfo = v.CalibInfo.ReelLoc;//await ReelLocating()
+
+    let offset_pix = {
+      x: reelLocPt.x - Tar_ReelLocInfo.center.x,
+      y: -(reelLocPt.y - Tar_ReelLocInfo.center.y),
+    }
+    let offset_mm = {
+      x: offset_pix.x * Tar_ReelLocInfo.mmpp,
+      y: offset_pix.y * Tar_ReelLocInfo.mmpp,
+    }
+
+    let drvDist=A_Axis_mm_to_Unit*(goSegAdv+offset_mm.x);
+
+    console.log(A_Axis_mm_to_Unit,advDist,offset_mm,drvDist);
+    await ReelGoAdv_s(drvDist," ACC200 F3000 ");
+    await G("M400");
+    await   delay(10);
+    
+    advDist-=goSegAdv;
+  }
+}
+
+
 
 async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = undefined, EMCheckStopPointCB = async (info) => { return true }) {
 
@@ -1514,21 +1762,30 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
   let FeederClear2Check_key = "FeederClear2Check" + Mark;
 
 
+  // console.log("AUX_GET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 }));
 
+  // let placeTarCountSeq=[...v.ReelPackingInfo.packingSeq]//[20];//[1,-49,500,-20,2,-49,500,-20,1 ];
+  if(v.ReelPackingInfo.packingSeq.length==0)return;
 
-  console.log("AUX_GET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 }));
-
-  let placeTarCountSeq=[...v.ReelPackingInfo.packingSeq]//[20];//[1,-49,500,-20,2,-49,500,-20,1 ];
-  if(placeTarCountSeq.length==0)return;
-
-  if(placeTarCountSeq[0]<0)
+  if(v.ReelPackingInfo.packingSeq[0]<0)
   {
-    await ReelGoAdv((-placeTarCountSeq[0]) * SYS_CONFIG.Reel_Hole_Distance*SYS_CONFIG.Holes_per_Slot);
-    placeTarCountSeq.shift();
+    await ReelSegAdv((-v.ReelPackingInfo.packingSeq[0]) * SYS_CONFIG.Reel_Hole_Distance*SYS_CONFIG.Holes_per_Slot);
 
-    v.ReelPackingInfo.packingSeq=[...placeTarCountSeq];
+    {
+
+      let CurENCReading=(await Lib.CNCSend({ "type": "AUX_ENC_V", aid: 0 })).enc_v
+      // latest_ENCRead=CurENCReading;
+      ReelENC=CurENCReading;
+    }
+
+
+
+
+    v.ReelPackingInfo.packedSeq.unshift(v.ReelPackingInfo.packingSeq[0]);
+    v.ReelPackingInfo.packedSeq.unshift(0);
+    v.ReelPackingInfo.packingSeq.shift();
   }
-  if(placeTarCountSeq.length==0)return;
+  if(v.ReelPackingInfo.packingSeq.length==0)return;
 
 
 
@@ -1540,15 +1797,13 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
 
 
-
+  let IN_PACKING_STATE=true;
 
   //FeederCheck....
   let FStr = "F    "
   console.log(v.sigListener);
   (async () => {//run thread, KIND OF
     let vibExtendCD = 0;
-
-
     let avaCands = [];
     while (true) {
       let step = 0;
@@ -1568,7 +1823,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
         SigWait_Reg(FeederClear2Check_key);
         // await delay(200*timeMult);
         console.log(step++, FStr + ":Feeder cam check ...");
-        await delay(300);
+        await delay(500);
 
         let feederCheck = await FeederCheck();
         let objCounts = feederCheck.locating_rep.report.length;
@@ -1578,8 +1833,8 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
         })
 
         if (
-          (objCounts < 70 && avaCands.length < SYS_CONFIG.Pick_Head_Count)||
-          (objCounts < 60 && avaCands.length < SYS_CONFIG.Pick_Head_Count*2)) {//Time to add more in feeder
+          (objCounts < 100 && avaCands.length < SYS_CONFIG.Pick_Head_Count)||
+          (objCounts < 80 && avaCands.length < SYS_CONFIG.Pick_Head_Count*2)) {//Time to add more in feeder
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_F_Run1, "state": 1, aid: 4 })
 
@@ -1607,11 +1862,17 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
   })().catch((e) => {
     console.log("Feeder Thread exit....", e)
+    function stacktrace() {
+      var err = new Error();
+      return err.stack;
+    }
+    if(IN_PACKING_STATE)
+      EMCheckStopPointCB({ type: "ERROR", e,trace:e.stack})
+    // throw e;
   })
 
 
-
-
+  // await Lib.CameraSNameSWTrigger("SideCheckCam", ["CAM_A","s_SIDE_FLAT"], trigID, true);
 
 
   SigWait_Reg(ReelReady_key);
@@ -1622,6 +1883,9 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
   console.log(v.sigListener);
   (async () => {//run thread, KIND OF
 
+
+
+  let SurfaceCheck_ReelSlot_SubRegion_NameIDList = InspTarSubRegionNameIDList("SurfaceCheck_ReelSlot");
     while (true) {
       let step = 0;
       console.log(step++, RStr + ":Wait Clear2Act ...");
@@ -1630,40 +1894,59 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
       console.log(step++, RStr + ":Reel cam check top side ...");
 
       let slotNeedClean = [];
+      let slotObjNeedReCheck = [];
       let slotCanPlace = [];
       let slotPlaced = [];
+      let slotSurroundDirty = [];
 
 
-      let trigID = 44;
+      let trigID = Math.round(Math.random() * 100000);
       let repWaitKey = ">>><"
       reportWait_reg(repWaitKey + "_RO", "SurfaceCheck_ReelObj", trigID);
+      reportWait_reg(repWaitKey + "_RO45", "SurfaceCheck_ReelObj45", trigID);
       reportWait_reg(repWaitKey + "_RS", "SurfaceCheck_ReelSlot", trigID);
 
-      await ReelCheck(trigID, 1);
+      await ReelCheckAll(trigID, 1);
+      
 
 
       let report_RO = await reportWait(repWaitKey + "_RO")
       let report_RS = await reportWait(repWaitKey + "_RS")
+      let report_RO45 = await reportWait(repWaitKey + "_RO45")
 
       let Obj_srep = report_RO.report.sub_reports;
+      let Obj45_srep = report_RO45.report.sub_reports;
       let Slot_srep = report_RS.report.sub_reports;
-      console.log({ Obj_srep, Slot_srep })
+
+
+      console.log({ Obj_srep, Slot_srep ,Obj45_srep})
 
       let advCount = 0;
       for (let i = 0; i < Obj_srep.length; i++) {
         if (Obj_srep[i].category != 1) break;
+        if (Obj45_srep[i].category != 1) break;
+
+        let slotSurroundClean = (Slot_srep[i].sub_regions[SurfaceCheck_ReelSlot_SubRegion_NameIDList["Surround"]].category == 1);
+        if (slotSurroundClean==false) break;
+
         advCount++;
       }
 
-
+      // if(advCount>6)advCount=6;
 
       for (let i = 0; i < Slot_srep.length; i++) {
-        let isAObj = (i < Obj_srep.length) && (Obj_srep[i].category == 1);
+        let slotVacant = Slot_srep[i].category == 1;
+        let slotSurroundClean = (Slot_srep[i].sub_regions[SurfaceCheck_ReelSlot_SubRegion_NameIDList["Surround"]].category == 1);
+        let isAObj = (i < Obj_srep.length) && (Obj_srep[i].category == 1) && (Obj45_srep[i].category == 1);
         let objInPlace = (Slot_srep[i].category != 1) && isAObj;
-        let eptSlot = Slot_srep[i].category == 1;
-        slotPlaced.push(objInPlace ? i : -1)
-        slotCanPlace.push(eptSlot ? i : -1);
-        slotNeedClean.push((!objInPlace && !eptSlot) ? i : -1);
+
+        // console.log(i,{slotVacant,slotSurroundClean,isAObj,objInPlace});
+
+        slotPlaced.push((slotSurroundClean && objInPlace )? i : -1)
+        slotCanPlace.push((slotSurroundClean&&slotVacant) ? i : -1);
+        slotNeedClean.push( ((!slotSurroundClean)||(!objInPlace && !slotVacant)) ? i : -1);
+        slotObjNeedReCheck.push((i < Obj45_srep.length&&Obj45_srep[i].category ==-1) ? i : -1);
+        slotSurroundDirty.push((slotSurroundClean==false) ? i : -1);
       }
 
       // console.log("advCount:",advCount);
@@ -1674,14 +1957,24 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
 
 
+      let retDat= {objInspResult:Obj_srep ,advCount, slotPlaced, slotCanPlace, slotNeedClean,slotObjNeedReCheck,slotSurroundDirty };
 
-
-
-      SigWait_Trig(ReelReady_key, {objInspResult:Obj_srep ,advCount, slotPlaced, slotCanPlace, slotNeedClean });
+      // console.log("ReelCheck retDat:",retDat);
+      SigWait_Trig(ReelReady_key,retDat);
     }
 
   })().catch((e) => {
     console.log("Reel Thread exit....", e)
+
+    function stacktrace() {
+      var err = new Error();
+      return err.stack;
+    }
+
+    if(IN_PACKING_STATE)
+      EMCheckStopPointCB({ type: "ERROR", e,trace:stacktrace()})
+    console.log(">>>", e);
+    // throw e;
   })
 
 
@@ -1691,6 +1984,12 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
   let F = 1700;
   let FA = `F${F} ACC${ACC}`
   let FA_SZ = `F${2000} ACC${5500}`
+
+  // let ACC = 3000;
+  // let F = 1700;
+  // let FA = `F${F} ACC${ACC}`
+  // let FA_SZ = `F${2000} ACC${3500}`
+  FA_SZ=FA;
   await Enter_Z2SafeZone_n_Check();
   // await G(`G1 X${300} Y${250} ${FA}`)
 
@@ -1709,9 +2008,6 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
   await G(`M400`)
 
 
-  let ReelLocInfo = v.CalibInfo.ReelLoc;//await ReelLocating()
-  console.log("ReelLocInfo:", ReelLocInfo);
-
 
   SigWait_Trig(ReelClear2Check_key);
 
@@ -1719,10 +2015,29 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
 
 
-  async function nozzleRelease(releaseIdexs = [0, 1, 2, 3]) {
+  async function nozzleRelease_Z_UNSAFE(releaseIdexs = [0, 1, 2, 3],posOffset={x:0,y:0},dipZInPosition=true) {
 
-    await Enter_Z2SafeZone_n_Check();
-    await G(`G1 X${SYS_CONFIG.HeadReleaseLoc[0]} Y${SYS_CONFIG.HeadReleaseLoc[1]} ${FA}`)
+    // await Enter_Z2SafeZone_n_Check();
+    await Exit_Z2SafeZone_n_Check();
+
+    
+    let ZpreSafe = SYS_CONFIG.SAFE_Z;
+    let zsafeCode = `Z1_${ZpreSafe} Z2_${ZpreSafe} Z3_${ZpreSafe} Z4_${ZpreSafe}`
+
+    let zdropCode =``;
+    for (let idx of releaseIdexs) {
+      zdropCode+=`Z${idx+1}_${ZpreSafe-20} `
+    }
+    if(dipZInPosition)
+    {
+      await G(`G1 X${SYS_CONFIG.HeadReleaseLoc[0]+posOffset.x} Y${SYS_CONFIG.HeadReleaseLoc[1]+posOffset.y} ${FA}`)
+      await G(`G1 ${zdropCode} ${zsafeCode} ${FA}`)
+    }
+    else
+    {
+      await G(`G1 X${SYS_CONFIG.HeadReleaseLoc[ 0]+posOffset.x} Y${SYS_CONFIG.HeadReleaseLoc[1]+posOffset.y} ${zdropCode} ${zsafeCode} ${FA}`)
+
+    }
     // await G(`G1 R1_20  R2_20  R3_20  R4_20  ${FA}`)
     // await G(`G1 R1_0  R2_0  R3_0  R4_0  ${FA}`)
     for (let idx of releaseIdexs) {
@@ -1732,9 +2047,13 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
     // await G(`G1 R1_-20  R2_-20  R3_-20  R4_-20  ${FA}`)
     // await G(`G1 R1_0  R2_0  R3_0  R4_0  ${FA}`)
     await G(`M400`)
+    // await Enter_Z2SafeZone_n_Check();
 
   }
-  await nozzleRelease();
+
+  await Enter_Z2SafeZone_n_Check();
+  await nozzleRelease_Z_UNSAFE([0,1,2,3],{x:0,y:SYS_CONFIG.HeadReleaseYOffsets.NA},true);
+  await Enter_Z2SafeZone_n_Check();
 
   let Reel_A_Run1_pin = (2 ** SYS_OUT_PIN_DEF.Reel_A_Run1);
 
@@ -1744,14 +2063,34 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
   let startTime = Date.now();
   let startReelENC = ReelENC;
 
-  let feederFetchAdj = Array(SYS_CONFIG.Pick_Head_Count).fill(-0);
+  let feederFetchAdj = Array(SYS_CONFIG.Pick_Head_Count).fill([0,0]);
 
 
   let headState = Array(SYS_CONFIG.Pick_Head_Count).fill( E_headState.empty);
 
+
+
+
+  let SurfaceCheck_CAM_A_SubRegion_NameIDList = InspTarSubRegionNameIDList("SurfaceCheck_CAM_A");
+  let SurfaceCheck_CAM_SIDE_SubRegion_NameIDList = InspTarSubRegionNameIDList("SurfaceCheck_CAM_SIDE");
+
+
+  let latest_ENCRead=undefined;
+  {
+
+    let CurENCReading=(await Lib.CNCSend({ "type": "AUX_ENC_V", aid: 0 })).enc_v
+    latest_ENCRead=CurENCReading;
+    startReelENC=latest_ENCRead;
+    
+    startReelENC=ReelENC=latest_ENCRead;
+  }
   let placedCount = 0;  
   //0:empty 1:may have obj 2:obj OK,-1:obj NG
   try {
+
+    let ReelLocInfo = v.CalibInfo.ReelLoc;//await ReelLocating()
+    console.log("ReelLocInfo:", ReelLocInfo);
+
     let XYRelocCD=0;
 
 
@@ -1759,33 +2098,75 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
     let LPSpeed=0;
 
     let preTime = Date.now();
-    for (let i = 0; GoRun; i++) {
+    let noReelADVCount=0;
+
+
+    if(v.dropCount===undefined)
+    {
+      v.dropCount={
+        NA:0,
+        NG1:0,
+        NG2:0,
+      };
+    }
+
+    let MOVE_REEL_TO_LEFT_LIM=-0.8;
+    let latestReelLocOffset={x:0,y:0};
+    let latestReelAdvPadding=0;
+
+
+    let noEnc_ReelAdvAdj_mm=0;
+
+
+    let CYCLE_PackedCount=0;
+    
+    for (let RunCycleCount = 0; GoRun; RunCycleCount++) {
       //1. pick from feeder, and check the Reel
       let STEPC = 0;
 
 
-      await G(`G1 X${SYS_CONFIG.PickReadyLoc[0]} Y${SYS_CONFIG.PickReadyLoc[1]} ${FA}`)
+      let ret=await G(`G1 X${SYS_CONFIG.PickReadyLoc[0]} Y${SYS_CONFIG.PickReadyLoc[1]} ${FA}`)
 
+      if(ret.ack==false)
+      {
+        throw new Error(`Motion is locked.... please check`);
+      }
 
       let curTime = Date.now();
 
-      let ReelAdv = (ReelENC - startReelENC);
-      let PassCount = ReelAdv / SYS_CONFIG.Reel_Hole_Distance/SYS_CONFIG.Holes_per_Slot;
+      let PassCount =CYCLE_PackedCount;// ReelAdv / SYS_CONFIG.Reel_Hole_Distance/SYS_CONFIG.Holes_per_Slot;
       let elapsedTime = curTime - startTime;
       let speed = PassCount / (elapsedTime+0.1) * 60 * 1000
 
       let curSpeed=(PassCount-prePassCount)/(curTime-preTime+0.1)*60*1000;
       LPSpeed+=(curSpeed-LPSpeed)*0.1;
 
-      console.log("Cycle:", i, " PassCount:", PassCount, "pcs", " CurCycleTime:", (curTime - preTime) / 1000, "s",
+      console.log("Cycle:", RunCycleCount, " PassCount:", PassCount, "pcs", " CurCycleTime:", (curTime - preTime) / 1000, "s",
         "Speed:", (speed).toFixed(1),"("+LPSpeed.toFixed(1)+")", "pcs/min", " TimeElapse:", ((elapsedTime) / 1000 / 60).toFixed(3), "min");
       preTime = curTime;
       prePassCount=PassCount;
-      if (await EMCheckStopPointCB({ type:"STATISTIC", count: PassCount,overall_speed: speed, current_speed:LPSpeed }) == false) break;
+      if (await EMCheckStopPointCB({ type:"STATISTIC", 
+            Reel_Count: PassCount,
+            overall_speed: speed, 
+            current_speed:LPSpeed,
+            dropCount:v.dropCount,
+            HW_ENC:latest_ENCRead,
+            latestReelAdvPadding,
+            noEnc_ReelAdvAdj_mm,
+            latestReelLocOffset }) == false) break;
       
 
       if (await EMCheckStopPointCB({ type:"CYCLE_STATE", state: "begin" }) == false) break;
-      
+
+      let noReelADVCountLimit=20;
+      if(noReelADVCount>noReelADVCountLimit)
+      {
+        
+        await Enter_Z2SafeZone_n_Check();
+        // break;
+        throw new Error(`Reel doesn't advance for ${noReelADVCountLimit} times, something is wrong`);
+      }
+      noReelADVCount++;
       // console.log("____FeederReadyInfo:",FeederReadyInfo);
 
 
@@ -1800,12 +2181,29 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
       //   await G(`G1 X${300} Y${100} ${FA}`)
       //   await G(`G1 X${250} Y${100} ${FA}`)
       // }
+
+      {//release NA nozzle
+        
+
+        for (let idx in headState) {
+          if(headState[idx]==E_headState.NA)
+          {
+            await G(`M42 P${idx} S0`)
+            headState[idx]=E_headState.empty;
+          }
+
+        } 
+
+      }
+
+
+
       let pickHeadIndexs = headState.map((st, i) => st == E_headState.empty ? i : -1).filter(i => i != -1);
       console.log("$$pickHeadIndexs:", pickHeadIndexs);
       let headPickedIndexs = await FeederPickAct(FeederReadyInfo, Feeder_loc_Convert, F, ACC, pickHeadIndexs, feederFetchAdj,false, EMCheckStopPointCB);
       
       headPickedIndexs.forEach(i => headState[i] = E_headState.mayHaveObj);
-      console.log("$$headState:", headState);
+      console.log("$$headState__preInsp:", headState);
 
       await G(`M400`)
       SigWait_Trig(ReelClear2Check_key);
@@ -1839,17 +2237,17 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
         {
           
-          let trigID = 4564;
+          let trigID = Math.round(Math.random()*100000000)//Math.round((new Date().getTime()-startTime)/100);
 
-          reportWait_reg(repSideCheckWaitKey + "_loc", "SBM_CAM_A", trigID);
+          // reportWait_reg(repSideCheckWaitKey + "_loc", "SBM_CAM_A", trigID);
 
 
           {//set flag to SurfaceCheck_CAM_A to use extParam of SurfaceCheck_CAM_A
-            await InspTargetExchange("SurfaceCheck_CAM_A", { type: "useExtParam" })
+            // await InspTargetExchange("SurfaceCheck_CAM_A", { type: "useExtParam" })
             reportWait_reg(repSideCheckWaitKey + "_check", "SurfaceCheck_CAM_A", trigID);
           }
 
-          await Lib.CameraSNameSWTrigger("SideCheckCam", ["CAM_A","s_SIDE_FLAT"], trigID, true);
+          await CameraSNameSWTrigger_n_Log("FLAT_SHOT","SideCheckCam", ["CAM_A","s_SIDE_FLAT","IMG_CACHE"], trigID, true);
 
           // await Lib.CameraSNameSWTrigger("", ["CAM_A","s_SIDE_FLAT"], trigID, true);
 
@@ -1857,20 +2255,19 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
           let sideAng=50;
           await G(`G01 R1_${sideAng+SYS_CONFIG.SideCam_RAngOffset_Side[0] } R2_${sideAng+SYS_CONFIG.SideCam_RAngOffset_Side[1]} R3_${sideAng+SYS_CONFIG.SideCam_RAngOffset_Side[2]} R4_${sideAng+SYS_CONFIG.SideCam_RAngOffset_Side[3]} ${LocFA}`)
-
-
           await G(`M400`)
-
           reportWait_reg(repSideCheckWaitKey + "_side", "SurfaceCheck_CAM_SIDE", trigID+2);
-          await Lib.CameraSNameSWTrigger("SideCheckCam", ["CAM_A","s_SIDE_SIDE"], trigID+2, true);
+          await CameraSNameSWTrigger_n_Log("50Deg_SHOT","SideCheckCam", ["CAM_A","s_SIDE_SIDE","IMG_CACHE"], trigID+2, true);
+
+
+          sideAng=90
+          await G(`G01 R1_${sideAng+SYS_CONFIG.SideCam_RAngOffset_Side[0] } R2_${sideAng+SYS_CONFIG.SideCam_RAngOffset_Side[1]} R3_${sideAng+SYS_CONFIG.SideCam_RAngOffset_Side[2]} R4_${sideAng+SYS_CONFIG.SideCam_RAngOffset_Side[3]} ${LocFA}`)
+          await G(`M400`)
+          reportWait_reg(repSideCheckWaitKey + "_side2", "SurfaceCheck_CAM_SIDE", trigID+3);
+          await CameraSNameSWTrigger_n_Log("90Deg_SHOT","SideCheckCam", ["CAM_A","s_SIDE_SIDE2","IMG_CACHE"], trigID+3, true);
 
 
           if (await EMCheckStopPointCB({ type: "SideCheck",state:"side_side" }) == false) break;
-
-
-
-          await Enter_Z2SafeZone_n_Check();
-          Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_L_Light2, "state": 0, aid: 0 })
 
 
 
@@ -1879,118 +2276,107 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
           SideCheckResultPromise=new Promise(async (resolve,reject)=>{
 
-            let hRs = [];
-            let objXErr = [];
+            let emptyArr=Array(SYS_CONFIG.Pick_Head_Count).fill(undefined)
+            let hRs = [...emptyArr];
+
+
+
+            let objXErr =[...emptyArr];
+            let objYErr =[...emptyArr];
+            let dir=[...emptyArr];
+            let failInfo=[...emptyArr];
+            let sideInspAngle=[...emptyArr];
+
+
             {
 
-              let report_loc = await reportWait(repSideCheckWaitKey + "_loc")
+              // let report_loc = await reportWait(repSideCheckWaitKey + "_loc")
 
 
 
-              let report_check = undefined;
-              {//modify the locating report and feed to extParam of SurfaceCheck_CAM_A
-                let new_report_loc = report_loc;
+              // let report_check = undefined;
+              // {//modify the locating report and feed to extParam of SurfaceCheck_CAM_A
+              //   let new_report_loc = report_loc;
 
-                new_report_loc.report[0].angle = (-4-1) * Math.PI / 180;
-                new_report_loc.report[1].angle = (-2+-1) * Math.PI / 180;
-                new_report_loc.report[2].angle = ( 2-1) * Math.PI / 180;
-                new_report_loc.report[3].angle = ( 3.5) * Math.PI / 180;
-                await InspTargetExchange("SurfaceCheck_CAM_A", { type: "extParam", orientation: new_report_loc.report })
-                report_check = await reportWait(repSideCheckWaitKey + "_check")
-                //and disable the extParam of SurfaceCheck_CAM_A at last
-                await InspTargetExchange("SurfaceCheck_CAM_A", { type: "useExtParam", enable: false });
+              //   new_report_loc.report[0].angle = (-4-1) * Math.PI / 180;
+              //   new_report_loc.report[1].angle = (-2+-1) * Math.PI / 180;
+              //   new_report_loc.report[2].angle = ( 2-1) * Math.PI / 180;
+              //   new_report_loc.report[3].angle = ( 3.5) * Math.PI / 180;
+              //   await InspTargetExchange("SurfaceCheck_CAM_A", { type: "extParam", orientation: new_report_loc.report })
+              //   report_check = await reportWait(repSideCheckWaitKey + "_check")
+              //   //and disable the extParam of SurfaceCheck_CAM_A at last
+              //   await InspTargetExchange("SurfaceCheck_CAM_A", { type: "useExtParam", enable: false });
 
-              }
-              // console.log(report_check);
+              // }
 
-
-              let distDiff = report_check.report.sub_reports.map(rep => {
-                if (rep.sub_regions.length == 0) return NaN;
-                return rep.sub_regions[9].score - rep.sub_regions[10].score
-              })
-
-              objXErr = distDiff.map(diff => diff * SYS_CONFIG.SideCam_mmpp);
+              let report_check = await reportWait(repSideCheckWaitKey + "_check")
 
               let report_check_side = await reportWait(repSideCheckWaitKey + "_side")
-              console.log(report_check_side);
+              let report_check_side2 = await reportWait(repSideCheckWaitKey + "_side2")
+              // console.log(report_check_side);
 
-              let failInfo=[];
-              let sideWidthList=[];
-              let dir = report_check.report.sub_reports.map((rep, idx) => {
 
+              // console.log(report_check);
+              let NIList=SurfaceCheck_CAM_A_SubRegion_NameIDList;
+              let SIDE_NIList=SurfaceCheck_CAM_SIDE_SubRegion_NameIDList;
+              report_check.report.sub_reports.forEach((rep, idx) => {
+                
                 let failVec= [];
-
-
-                if (rep.sub_regions.length == 0)
-                {
-                  failVec.push({r:"ShapeCheck data.lenth:"+rep.sub_regions.length});
-                  failInfo.push(failVec)
-                  return undefined;
-                }
-
-
-                let sideCheck=report_check_side.report.sub_reports[idx]
-
-                if (sideCheck.sub_regions.length == 0)
-                {
-                  failVec.push({r:"SideCheck data.lenth:"+sideCheck.sub_regions.length});
-                  failInfo.push(failVec)
-                  return undefined;
-                }
+                do{
 
 
 
-
-
-                {
-                  let prhibitZone=sideCheck.sub_regions[4].category;
-                  if (prhibitZone!= 1) 
+                  if (rep.sub_regions.length == 0)
                   {
-                    failVec.push({r:"prhibitZone"})
-                  };
+                    failVec.push({r:"ShapeCheck data.lenth:"+rep.sub_regions.length});
+                    break;
+                  }
 
-                  let sideLB=sideCheck.sub_regions[0].score;
-                  let sideRB=sideCheck.sub_regions[1].score;
-                  let sideWidth=sideRB-sideLB;
-                  let sideNozzleX=sideCheck.sub_regions[2];
-
-                  let LBV=15;
-                  let UBV=50;
-                  sideWidthList.push(sideWidth);
-                  if(sideWidth<LBV)
-                    failVec.push({r:"sideWidth <"+LBV,sideWidth,sideLB,sideRB,sideNozzleX});
-
-                  if(sideWidth>UBV)
-                    failVec.push({r:"sideWidth >"+UBV,sideWidth,sideLB,sideRB,sideNozzleX});
-
-                }
+                  if (rep.sub_regions[NIList.ShapeValid].category != 1)failVec.push({r:"ShapeValid faileD:"+rep.sub_regions[NIList.ShapeValid].score,rep:rep.sub_regions[NIList.ShapeValid]});
+                  dir[idx]=rep.sub_regions[NIList.FaceSide].score;
+                  objXErr[idx]=rep.sub_regions[NIList.H2O_offset].score;
 
 
 
 
-                if (rep.sub_regions[2].category != 1)failVec.push({r:"BtmCheck failed",rep:rep.sub_regions[2]});
-                if (rep.sub_regions[11].category != 1)failVec.push({r:"LBCheck failed",rep:rep.sub_regions[11]});
-                if (rep.sub_regions[12].category != 1)failVec.push({r:"RBCheck failed",rep:rep.sub_regions[12]});
-                if (rep.sub_regions[14].category != 1)failVec.push({r:"SurroundCheck failed",rep:rep.sub_regions[14]});
+
+                  let sideCheck=report_check_side.report.sub_reports[idx]
+
+                  let side2Check=report_check_side2.report.sub_reports[idx]
+
+                  if (sideCheck.sub_regions.length == 0 || side2Check.sub_regions.length == 0)
+                  {
+                    failVec.push({r:"SideCheck data.lenth:"+sideCheck.sub_regions.length+" side2"+side2Check.sub_regions.length});
+
+                    break;
+                  }
+
+                  
+                  if (sideCheck.sub_regions[SIDE_NIList.SV].category != 1)
+                    failVec.push({r:"SV failed:"+sideCheck.sub_regions[SIDE_NIList.SV].score,rep:sideCheck.sub_regions[SIDE_NIList.SV]});
+                  
+                  if (side2Check.sub_regions[SIDE_NIList.SV_CSide].category != 1)
+                    failVec.push({r:"SV_CSide  failed:"+side2Check.sub_regions[SIDE_NIList.SV_CSide].score,rep:side2Check.sub_regions[SIDE_NIList.SV_CSide]});
+                  
+
+                  objYErr[idx]=side2Check.sub_regions[SIDE_NIList.H2O_offset].score;
+                  sideInspAngle[idx]=sideCheck.sub_regions[SIDE_NIList.RotAng].score;
 
 
-                // if(Math.abs(distDiff[idx])>7)return undefined;
-                if (rep.sub_regions[1].category != rep.sub_regions[4].category)
-                  failVec.push({r:"OrientationCheck failed",rep:[rep.sub_regions[1],rep.sub_regions[4]]});
 
-                failInfo.push(failVec)
-                if(failVec.length>0)return undefined;
-                return rep.sub_regions[1].category;
+
+                }while(0);
+              
+                failInfo[idx]=(failVec)
+            
               })
-
-              console.log("dir:", dir,"failInfo:",failInfo);
-
               {
                 let adjAddAlpha = 0.1;
                 feederFetchAdj = feederFetchAdj.map((adj, idx) => {
                   if (dir[idx] === undefined) return adj;
                   // adj*=0.9;
-                  return adj - objXErr[idx] * adjAddAlpha;
+                  return [adj[0] - objXErr[idx] * adjAddAlpha,
+                   adj[1]-objYErr[idx]*adjAddAlpha]
                 })
                 console.log("feederFetchAdj:",feederFetchAdj);
               }
@@ -1998,28 +2384,30 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
               // await delay(3000)
               // if(dir.findIndex(d=>d===undefined)!=-1)
               // {
-              //   await nozzleRelease();
+              //   await nozzleRelease_Z_UNSAFE();
 
               //   continue;
               // }
 
-              dir.forEach((d, i) => {
-                if (d === undefined) {
-                  if (headState[i] != E_headState.empty) {
-                    headState[i] = E_headState.NG;
-                  }
-                }
-                else {
-                  headState[i] = E_headState.OK;
-                }
-              })
+              // dir.forEach((d, i) => {
+              //   if (d === undefined) {
+              //     if (headState[i] != E_headState.empty) {
+              //       headState[i] = E_headState.NA;
+              //     }
+              //   }
+              //   else {
+              //     headState[i] = E_headState.OK;
+              //   }
+              // })
 
 
               hRs = [0, 0, 0, 0];
               for (let i = 0; i < dir.length; i++) {
-                if (dir[i] === undefined) continue;
-                let sideWidthDiff2AngCoeff=1;
-                let angOffset = (sideWidthList[i]-43)*sideWidthDiff2AngCoeff;
+
+                headState[i] = E_headState.NA;
+                if (failInfo[i].length !=0) continue;
+                headState[i] = E_headState.OK;
+                let angOffset = sideInspAngle[i];
 
                 if (dir[i] == 1) {
 
@@ -2027,6 +2415,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
                 }
                 else if (dir[i] == -1) {
                   objXErr[i] *= -1;
+                  objYErr[i] *= -1;
                   hRs[i] = -90+angOffset;
                 }
               }
@@ -2042,13 +2431,26 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
             
             }
+            console.log("____hRs:",hRs,"dir",dir,"sideInspAngle",sideInspAngle)
+            console.log("objXErr:",objXErr,"objYErr:",objYErr,"failInfo:",failInfo);
+            // throw "askldklas";
             resolve({
               hRs,
               objXErr,
+              objYErr,
+              trigID
             });
 
           });
+
+
+
     
+
+
+          await Enter_Z2SafeZone_n_Check();
+          Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_L_Light2, "state": 0, aid: 0 })
+
 
 
 
@@ -2080,7 +2482,6 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
       //   await G(`G1 X${150} Y${300} ${FA}`)
       // }
 
-      console.log("placeTarCountSeq:",placeTarCountSeq);
 
       let RestPlaceNumber=0;
 
@@ -2090,24 +2491,38 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
       {
         let ReelSlotAdvCount = ReelReadyInfo.advCount;
         let slotNeedClean = ReelReadyInfo.slotNeedClean;
+        let slotObjNeedReCheck = ReelReadyInfo.slotObjNeedReCheck;
         let slotCanPlace = ReelReadyInfo.slotCanPlace;
         let slotPlaced = ReelReadyInfo.slotPlaced;
         let objInspResult=ReelReadyInfo.objInspResult;
+        let slotSurroundDirty=ReelReadyInfo.slotSurroundDirty;
 
         placedCount+=ReelSlotAdvCount;
-        RestPlaceNumber=placeTarCountSeq[0]-placedCount;
+        if(ReelSlotAdvCount>v.ReelPackingInfo.packingSeq[0])
+        {
+          throw new Error(`available reel advancing  ${ReelSlotAdvCount} is larger than target reel count ${v.ReelPackingInfo.packingSeq[0]}`);
+        }
+
+
+
+        RestPlaceNumber=v.ReelPackingInfo.packingSeq[0]-ReelSlotAdvCount;
         let avaSlotList = slotCanPlace
           .filter(slotIdx => slotIdx !== -1)
           .map(idx => idx - ReelSlotAdvCount)
+          .filter(slotIdx=>slotIdx<RestPlaceNumber)
 
-          console.log("$$avaSlotList:",avaSlotList," RestPlaceNumber:",RestPlaceNumber);
+          // console.log("$$avaSlotList:",avaSlotList," RestPlaceNumber:",RestPlaceNumber);
 
-        avaSlotList=avaSlotList.filter(slotIdx=>slotIdx<RestPlaceNumber);  
         // console.log(avaSlotList);
 
         let cleanSlotList = slotNeedClean
           .filter(slotIdx => slotIdx !== -1)
           .map(idx => idx - ReelSlotAdvCount)
+
+        
+        let ojectReCheckList = slotObjNeedReCheck
+        .filter(slotIdx => slotIdx !== -1)
+        .map(idx => idx - ReelSlotAdvCount)
         // .filter(slotIdx=>slotIdx>0);
 
 
@@ -2116,16 +2531,19 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
           .map(idx => idx - ReelSlotAdvCount)
         // .filter(slotIdx=>slotIdx>0);
 
-        console.log("$$avaSlotList:",avaSlotList);
-        console.log("$$cleanSlotList:",cleanSlotList);
-        console.log("$$placedSlotList:",placedSlotList);
+        // console.log("$$avaSlotList:",avaSlotList);
+        // console.log("$$cleanSlotList:",cleanSlotList);
+        // console.log("$$placedSlotList:",placedSlotList);
 
-        if(ReelSlotAdvCount==0&&avaSlotList.length==0&&cleanSlotList.length!=0&&RestPlaceNumber!=0)
+        if(ReelSlotAdvCount==0&&avaSlotList.length==0&&cleanSlotList.length!=0&&RestPlaceNumber!=0)//need some nozzel to pick NG object, so release all nozzle
         {
 
           let releaseIdxes=cleanSlotList.filter((v,i)=>i<SYS_CONFIG.Pick_Head_Count).map((v,i)=>i)
           console.log("$$RELEASE IDXES:",releaseIdxes);
-          await nozzleRelease(releaseIdxes);
+          v.dropCount.NA+=releaseIdxes.length;
+          await Enter_Z2SafeZone_n_Check();
+          await nozzleRelease_Z_UNSAFE(releaseIdxes,{x:0,y:SYS_CONFIG.HeadReleaseYOffsets.NA},true);
+          await Enter_Z2SafeZone_n_Check();
           releaseIdxes.forEach(idx=>headState[idx]=E_headState.empty);
         }
 
@@ -2141,16 +2559,36 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
         if (await EMCheckStopPointCB({ type: "ReelAdvancing", unit: ReelSlotAdvCount }) == false) break;
 
+
         let reelLocRepKey = "ReelLocRepKey";
         {
 
           let reelLocRepTID = 556;
 
           reportWait_reg(reelLocRepKey, "SBM_ReelLoc", reelLocRepTID);
-          let xyGCode = `X${baseLoc[0]} Y${baseLoc[1]} ${ReelSlotAdvCount > 6 ? `F${F} ACC${(ACC*3/4).toFixed(1)}` : ""} ${FA}`;
+          let xyGCode = `X${baseLoc[0]} Y${baseLoc[1]} ${ReelSlotAdvCount > 6 ? `F${F} ACC${(ACC*2/4).toFixed(1)}` : `ACC${(ACC*3/4).toFixed(1)}`} ${FA}`;
           if (ReelSlotAdvCount > 0) {
 
-            await ReelGoAdv(ReelSlotAdvCount * SYS_CONFIG.Reel_Hole_Distance*SYS_CONFIG.Holes_per_Slot, xyGCode);
+            // await ReelGoAdv(
+            //   ReelSlotAdvCount * SYS_CONFIG.Reel_Hole_Distance*SYS_CONFIG.Holes_per_Slot, 
+            //   xyGCode,
+            //   latestReelAdvPadding<0?0:Math.round(SYS_CONFIG.A_Axis_mm_to_Unit*(latestReelAdvPadding))
+            //   );
+
+            let adv_mm=ReelSlotAdvCount * SYS_CONFIG.Reel_Hole_Distance*SYS_CONFIG.Holes_per_Slot;
+            await ReelGoAdv_s(
+              (SYS_CONFIG.A_Axis_mm_to_Unit+0.1)*(adv_mm+noEnc_ReelAdvAdj_mm), 
+                xyGCode);
+            CYCLE_PackedCount+=ReelSlotAdvCount;
+            v.ReelPackingInfo.packedSeq[0]+=ReelSlotAdvCount;
+            v.ReelPackingInfo.packingSeq[0]-=ReelSlotAdvCount;
+            ReelENC+=adv_mm;
+
+            // if(latestReelAdvPadding>0)
+            // {
+            //   await ReelGoAdv_s(SYS_CONFIG.A_Axis_mm_to_Unit*(latestReelAdvPadding));
+            // }
+            noReelADVCount=0;
 
             // await G(`M400`)
           }
@@ -2162,9 +2600,12 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
           if (await EMCheckStopPointCB({ type: "ReelLocating" }) == false) break;
 
           await G(`M400`)
+          await delay(100);
+
 
           if(1){
             let CurENCReading=(await Lib.CNCSend({ "type": "AUX_ENC_V", aid: 0 })).enc_v
+            latest_ENCRead=CurENCReading;
             console.log("ENC_CHECK:",CurENCReading,ReelENC);
 
             if(Math.abs(CurENCReading-ReelENC)>2)
@@ -2185,7 +2626,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 1, aid: 0 })
 
-          await Lib.CameraSNameSWTrigger("ReelCheckCam", "CAM_ReelLoc", reelLocRepTID, true);
+          await CameraSNameSWTrigger_n_Log("Reel_LOC_Point","ReelCheckCam", ["CAM_ReelLoc","IMG_CACHE"], reelLocRepTID, true);
           await Lib.CNCSend({ "type": "AUX_DELAY", "P": 5, aid: 0, aid: 0 })
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 0, aid: 0 })
@@ -2196,10 +2637,11 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
         let { 
           hRs,
-          objXErr
+          objXErr,
+          objYErr
         }=await SideCheckResultPromise;
 
-
+        console.log("objERR:",objXErr,objYErr);
         let tarZ = baseLoc[2];
 
         // console.log("tarZ>>>",tarZ);
@@ -2210,7 +2652,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
         let idxzt = v.CalibInfo.Z.offset.map(offset => tarZ + offset);
 
 
-        SigWait_Trig(FeederClear2Check_key);
+        await SigWait_Trig_retry(FeederClear2Check_key);
 
 
         // let FA = `F${F} ACC${ACC}`
@@ -2234,7 +2676,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
 
 
-            if ((reelLocRep?.[0]?.confidence > 0)) {
+            if ((reelLocRep?.[0]?.confidence > 0 && reelLocRep?.[1]?.confidence > 0 )) {
               let reelLocPt = reelLocRep?.[0]?.center;
               let offset_pix = {
                 x: reelLocPt.x - ReelLocInfo.center.x,
@@ -2244,6 +2686,46 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
                 x: offset_pix.x * ReelLocInfo.mmpp - 0.0,
                 y: offset_pix.y * ReelLocInfo.mmpp,
               }
+
+              latestReelLocOffset=reelOffset_;
+
+              let errorLim=0.6;
+              if(reelOffset_.x>errorLim || reelOffset_.x<-errorLim)
+              { 
+                let errMsg=`reelOffset too large. reelOffset:${Lib.FixedStringify(reelOffset_,3)}  abs(x)>${errorLim} `
+                console.log(errMsg);
+                throw new Error(errMsg);
+              }
+
+              noEnc_ReelAdvAdj_mm=reelOffset_.x*0.7;
+
+              // latestReelAdvPadding=(reelOffset_.x+1)/2;
+              // if(latestReelAdvPadding<0)latestReelAdvPadding=0;
+
+
+              // if(latestReelAdvPadding>3)
+              // {
+              //   console.log("latestReelAdvPadding too large Fail!");
+              //   throw new Error("latestReelAdvPadding too large Fail!");
+              // }
+
+              // if(ReelSlotAdvCount>0)
+              // {//only do adjustment when reel is advancing
+
+              //   if( reelOffset_.x>1.2)
+              //   {
+              //     ReelENC_ReelPitchInconsistancyAdj =1;
+              //     latestReelAdvPadding=0;
+              //   }
+              //   else if(reelOffset_.x<-0.8)
+              //   {
+              //     ReelENC_ReelPitchInconsistancyAdj =-1;
+              //   }
+              //   else
+              //   {
+              //     ReelENC_ReelPitchInconsistancyAdj=0;
+              //   }
+              // }
               // reelLocRep?.report?[0]?.center;
               // console.log("reelLocPt:",reelLocPt,ReelLocInfo,offset_pix,reelOffset);
               return reelOffset_;
@@ -2257,11 +2739,9 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
             return undefined;
           }
 
-
-
           let reelOffset =undefined;
 
-          console.log("$$headState:", headState);
+          console.log("$$headState_postInsp:", headState);
           if (await EMCheckStopPointCB({ type: "ReelPlacing", state: "begin" }) == false) break;
 
           for (let j = 0; j < SYS_CONFIG.Pick_Head_Count; j++) {
@@ -2273,7 +2753,6 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
             if (j >= avaSlotList.length) break;
             let slotIdx = avaSlotList[slotCount];
-            if(slotIdx>=RestPlaceNumber)break;
 
             slotCount++;
             let cZ = tarZ + zoffset;
@@ -2298,7 +2777,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
             if(reelOffset===undefined)break;
             let Xpos = reelOffset.x + baseLoc[0] + xoffset
                       + slotIdx * (SYS_CONFIG.Holes_per_Slot*SYS_CONFIG.Reel_Hole_Distance) 
-                      - j * SYS_CONFIG.Head_Base_Dist;
+                      - j * SYS_CONFIG.Head_Base_Dist- objYErr[headIdx];
             let Ypos = reelOffset.y + baseLoc[1] + yoffset + objXErr[headIdx];
             // await G(`M400`)
             if(headIdx==4-1 &&preHeadIdx ==1)
@@ -2353,6 +2832,10 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
           preHeadIdx = 0;
           let slotFillCount = 0;
           if (await EMCheckStopPointCB({ type: "ReelPicking", state: "begin" }) == false) break;
+
+
+          // console.log("slotSurroundDirty",slotSurroundDirty);
+          // if( reelOffset.x<reelLocErrorLim)
           for (let j = 0; j < SYS_CONFIG.Pick_Head_Count; j++) {
 
 
@@ -2364,7 +2847,13 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
             if (slotIdx < 0) break;
             if (slotIdx >= objInspResult.length - ReelSlotAdvCount) break;//do not pick slots that are not quality inspected yet
             pickNGCount++;
-            headState[headIdx] = E_headState.NG;
+
+            let foundRecheck=ojectReCheckList.findIndex(v=>v==slotIdx)!==-1;
+            let NGCat=(foundRecheck==true)?E_headState.NA:E_headState.NG1;
+
+
+
+            headState[headIdx] = NGCat;
 
             let xoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[headIdx].x);
             let yoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[headIdx].y);
@@ -2381,6 +2870,25 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
             let cZ = tarZ + zoffset;
             cZ = Math.round(cZ * 1000) / 1000;
+
+
+            // console.log("slotSurroundDirty,slotIdx",slotIdx);
+            if(slotSurroundDirty[slotIdx]==slotIdx)
+            {
+              if(RunCycleCount%2==0)
+              {
+
+                cZ+=0;
+                Ypos-=1;
+              }
+              else
+              {
+
+                cZ+=1;
+                Ypos+=2;
+              }
+            }
+
             // await G(`M400`)
             let GCode = `X${Xpos} Y${Ypos} Z${preHeadIdx}_${SYS_CONFIG.Reel_postPick_Z} Z${headIdx + 1}_${cZ + SYS_CONFIG.Reel_prePick_lift} ${FA}`
             preHeadIdx = headIdx + 1;
@@ -2397,12 +2905,21 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
             // await G(`G01 Z${j+1}_${tarZ+zoffset+testLiftZ} ${FA}`);
 
             await G(`M42 P${headIdx} S1`)
-            await G(`G04 P30`);
+            await G(`G04 P10`);
             await G(`G01 Z${headIdx + 1}_${cZ + SYS_CONFIG.Reel_postPick_lift} ${FA}`);
             if (await EMCheckStopPointCB({ type: "ReelPicking", state: "lift", headIdx: headIdx }) == false) break;
             pickCount++;
           }
-          await reelOffsetGet();
+          reelOffset = await reelOffsetGet();
+
+          // if(reelOffset.x>0.5)
+
+          //   await ReelAdvToLoc(Reel_loc_UIInfo);
+          //   noEnc_ReelAdvAdj_mm=0;
+          // }
+
+
+
           console.log("$$headState:", headState);
           console.log("$$END:", headState);
           if (await EMCheckStopPointCB({ type: "ReelPicking", state: "end", headState }) == false) break;
@@ -2410,43 +2927,57 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
           await Enter_Z2SafeZone_n_Check(`F${SYS_CONFIG.MAXF} ACC${SYS_CONFIG.MAXACC}`, false);
 
 
-          if(v.ReelPackingInfo.packingSeq.length>0)
+          if(v.ReelPackingInfo.packingSeq[0]<=0)
           {
-            v.ReelPackingInfo.packingSeq[0]=RestPlaceNumber;
 
-          }
-
-          if(RestPlaceNumber<=0)
-          {
+            console.log("v.ReelPackingInfo>>",JSON.stringify(v.ReelPackingInfo));
             placedCount=0;
-            placeTarCountSeq.shift();
-            v.ReelPackingInfo.packingSeq=[...placeTarCountSeq];
-            if(placeTarCountSeq.length==0)
+            v.ReelPackingInfo.packingSeq.shift();
+            if(v.ReelPackingInfo.packingSeq.length==0)
             {
               console.log("DONE!!!!!");
+              IN_PACKING_STATE=false;
               break; 
             }
-            while(placeTarCountSeq[0]<0)
+            while(v.ReelPackingInfo.packingSeq[0]<0)
             {
-              await ReelGoAdv((-placeTarCountSeq[0]) * SYS_CONFIG.Reel_Hole_Distance*SYS_CONFIG.Holes_per_Slot);
-              placeTarCountSeq.shift();
-              v.ReelPackingInfo.packingSeq=[...placeTarCountSeq];
-              if(placeTarCountSeq.length==0)
+
+
+
+
+              
+              // await ReelGoAdv((-placeTarCountSeq[0]) * SYS_CONFIG.Reel_Hole_Distance*SYS_CONFIG.Holes_per_Slot);
+              await ReelSegAdv((-v.ReelPackingInfo.packingSeq[0]) * SYS_CONFIG.Reel_Hole_Distance*SYS_CONFIG.Holes_per_Slot);
+
+              {
+
+                let CurENCReading=(await Lib.CNCSend({ "type": "AUX_ENC_V", aid: 0 })).enc_v
+                latest_ENCRead=CurENCReading;
+                ReelENC=CurENCReading;
+              }
+
+
+
+              v.ReelPackingInfo.packedSeq.unshift(v.ReelPackingInfo.packingSeq[0]);
+              v.ReelPackingInfo.packedSeq.unshift(0);
+              v.ReelPackingInfo.packingSeq.shift();
+              if(v.ReelPackingInfo.length==0)
               {
                 break; 
               }
             }
-
-            if(placeTarCountSeq.length==0)
+            if(v.ReelPackingInfo.packingSeq.length==0)
             {
               console.log("DONE!!!!!");
               break; 
             }
           }
 
-
-
-
+          // if(reelOffset.x>MOVE_REEL_TO_LEFT_LIM)
+          // {
+          //   await ReelGoAdv_s(SYS_CONFIG.A_Axis_mm_to_Unit*(reelOffset.x-MOVE_REEL_TO_LEFT_LIM));
+          // }
+          
           // await G(`G04 P2000`);
 
           // await delay(1000);
@@ -2459,13 +2990,38 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
         }
 
 
-        console.log(headState);
+        // console.log("$$headState___final:",headState);
         {
-          let releaseIndexes = headState.map((st, i) => (st == E_headState.NG) ? i : -1).filter(i => i >= 0);
-          if (releaseIndexes.length > 0) {
-            await nozzleRelease(releaseIndexes);
-            releaseIndexes.forEach(i => headState[i] = E_headState.empty);
+
+          await Enter_Z2SafeZone_n_Check();
+          let releaseIndexes_NA=headState.map((st, i) => (st == E_headState.NA) ? i : -1).filter(i => i >= 0);
+          let releaseIndexes_NG1=headState.map((st, i) => (st == E_headState.NG1) ? i : -1).filter(i => i >= 0);
+          let releaseIndexes_NG2=headState.map((st, i) => (st == E_headState.NG2) ? i : -1).filter(i => i >= 0);
+
+
+          // let releaseIndexes = headState.map((st, i) => (st == E_headState.NG1 || st == E_headState.NG2|| st == E_headState.NA) ? i : -1).filter(i => i >= 0);
+          
+          if (releaseIndexes_NA.length > 0) {
+            // await nozzleRelease_Z_UNSAFE(releaseIndexes_NA,{x:0,y:SYS_CONFIG.HeadReleaseYOffsets.NA},false);
+            v.dropCount.NA+=releaseIndexes_NA.length;
+            // releaseIndexes_NA.forEach(i => headState[i] = E_headState.empty);
           }
+
+          if (releaseIndexes_NG1.length > 0) {
+            v.dropCount.NG1+=releaseIndexes_NG1.length;
+            await nozzleRelease_Z_UNSAFE(releaseIndexes_NG1,{x:0,y:SYS_CONFIG.HeadReleaseYOffsets.NG1},false);
+            releaseIndexes_NG1.forEach(i => headState[i] = E_headState.empty);
+          }
+
+          if (releaseIndexes_NG2.length > 0) {
+            v.dropCount.NG2+=releaseIndexes_NG2.length;
+            await nozzleRelease_Z_UNSAFE(releaseIndexes_NG2,{x:0,y:SYS_CONFIG.HeadReleaseYOffsets.NG2},false);
+            releaseIndexes_NG2.forEach(i => headState[i] = E_headState.empty);
+          }
+
+          await Enter_Z2SafeZone_n_Check();
+
+
         }
       }
 
@@ -2521,7 +3077,7 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
         await G(`M400`);
         await G(`G92 X${X+locDiff_mm.x} Y${Y+locDiff_mm.y}`)//HACK fix, somehow the XY robot would drift after a while, so adjust it back here
 
-        feederFetchAdj=feederFetchAdj.map(x=>x-locDiff_mm.x);
+        feederFetchAdj=feederFetchAdj.map(xy=>[xy[0]-locDiff_mm.x,xy[1]-locDiff_mm.y]);
         console.log(">running Calib>>>locDiff_mm",locDiff_mm)
         XYRelocCD=70;
       }
@@ -2538,6 +3094,8 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 
 
       if (await EMCheckStopPointCB({ type: "CYCLE_STATE", state: "end" }) == false) break;
+      // if (await EMCheckStopPointCB({ type: "CAM_SHOT_INFO_HIST", info:v._CamShotInfoHist }) == false) break;
+      console.log(v._CamShotInfoHist);
 
     }
   }
@@ -2563,7 +3121,9 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
   SigWait_Trig_Reject(ReelClear2Check_key, "EXIT");
   SigWait_Trig_Reject(ReelReady_key, "EXIT");
 
-  await nozzleRelease();
+  await Enter_Z2SafeZone_n_Check();
+  await nozzleRelease_Z_UNSAFE([0,1,2,3],{x:0,y:SYS_CONFIG.HeadReleaseYOffsets.NA},true);
+  await Enter_Z2SafeZone_n_Check();
 
   if (await EMCheckStopPointCB({ type: "CYCLE_STATE", state: "finish" }) == false);
 
@@ -2571,6 +3131,8 @@ async function CYCLERun_test(Feeder_loc_Convert, Reel_loc_UIInfo, abortSig = und
 function vof(v_f) {
   return (typeof v_f === 'function')?v_f():v_f;
 }
+
+
 async function PackingCtrlPanelUI() {
 
   // let initM114 = (await G("M114")).M114;
@@ -2791,58 +3353,47 @@ async function PackingCtrlPanelUI() {
 
   {
     Feeder_loc_UIInfo =
-    {
-      "pt1": {
-        "headXY": [
-          341.3468628,
-          87.51874542,
-          12.89999962
-        ],
-        "fcamXY": [
-          1552.9196136774435,
-          1717.7562972561368
-        ]
-      },
-      "pt2": {
-        "headXY": [
-          382.6124878,
-          62.90781021,
-          12.89999962
-        ],
-        "fcamXY": [
-          3707.8940678424087,
-          2981.38714389835
-        ]
-      }
-    }
+    {"pt1":{"headXY":[340.1593628,97.6125031,6.199999809],"fcamXY":[1189.1024115834769,1347.4680516262283]},"pt2":{"headXY":[396.87734980000005,62.90781407,2.6750001909999988],"fcamXY":[3947.0988919036713,2992.722393491906]}}
 
     Reel_loc_UIInfo =
-    {
-      "pt1": {
-        "headXY": [
-          305.132,
-          371.194,
-          7.5
-        ]
-      },
-    }
+    {"pt1":{"headXY":[121.7335892,370.9453125,7.0451770303072765]}}
 
     {
 
-      const storedData = localStorage.getItem('Feeder_loc_UIInfo');
-      if (storedData !== null) {
-        const parsedData = JSON.parse(storedData);
-        Feeder_loc_UIInfo = parsedData;
+      const storedData = await dataStorage.getItem('Feeder_loc_UIInfo');
+      if (storedData !== undefined) {
+        Feeder_loc_UIInfo = storedData;
       }
 
-      const storedData2 = localStorage.getItem('Reel_loc_UIInfo');
-      if (storedData2 !== null) {
-        const parsedData2 = JSON.parse(storedData2);
-        Reel_loc_UIInfo = parsedData2;
+      const storedData2 = await dataStorage.getItem('Reel_loc_UIInfo');
+      if (storedData2 !== undefined) {
+        Reel_loc_UIInfo = storedData2;
       }
     }
   }
 
+  async function HeadGoReel_pt1(headIdx = 0, slotIdx = 0) {
+    console.log(v.CalibInfo);
+    let xoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[headIdx].x) + slotIdx * 4 - (headIdx * 40);
+    let yoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[headIdx].y);
+    let zoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.Z.offset[headIdx]);
+
+
+    let FA = `F${F} ACC${ACC}`
+    await Enter_Z2SafeZone_n_Check();
+    await Exit_Z2SafeZone_n_Check();
+    let TarXY = Reel_loc_UIInfo["pt1"].headXY;
+
+    await G(`G1 X${TarXY[0] + xoffset} Y${TarXY[1] + yoffset} ${FA}`)
+
+    // await G(`G1 Z1_${TarXY[2]+zoffset[0]} Z2_${TarXY[2]+zoffset[1]} Z3_${TarXY[2]+zoffset[2]} Z4_${TarXY[2]+zoffset[3]}  ${FA}`)
+    await G(`G1 Z${headIdx + 1}_${TarXY[2] + zoffset} ${FA}`)
+
+    await G(`M400`)
+
+    console.log(Reel_loc_UIInfo);
+  }
+  
 
   function Feeder_loc_Convert_Calc(pt0_cam, pt1_cam, pt0_head, pt1_head, adj_offset = [0, 0, 0]) {
     let Feeder_loc_Convert;
@@ -2896,7 +3447,7 @@ async function PackingCtrlPanelUI() {
   if (v.Reel_loc_UIInfo !== undefined) {
     Reel_loc_UIInfo = v.Reel_loc_UIInfo;
   }
-
+  console.log(Feeder_loc_UIInfo);
   let Feeder_loc_Convert = Feeder_loc_Convert_Calc(
     Feeder_loc_UIInfo["pt1"].fcamXY,
     Feeder_loc_UIInfo["pt2"].fcamXY,
@@ -3017,8 +3568,8 @@ async function PackingCtrlPanelUI() {
   }
 
 
-  console.log("AUX_SET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_SET_ENC", value: 0, aid: 0 }));
-  ReelENC = 0;
+  // console.log("AUX_SET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_SET_ENC", value: 0, aid: 0 }));
+  // ReelENC = 0;
 
   let localAbortObj = {};
 
@@ -3092,99 +3643,100 @@ async function PackingCtrlPanelUI() {
         type: "button",
         text: "側照照相",
         onClick: async (updateCB) => {
+          let trigID = 4564;
+          await Lib.CameraSNameSWTrigger("SideCheckCam", "CAM_A", trigID, true);
+          // let hRs = [];
+          // let objXErr = [];
+          // let objCheckPix2mm = 1 / 10;
 
-          let hRs = [];
-          let objXErr = [];
-          let objCheckPix2mm = 1 / 10;
+          // {
+          //   let trigID = 4564;
+          //   let repWaitKey = "repWK";
 
-          {
-            let trigID = 4564;
-            let repWaitKey = "repWK";
-
-            reportWait_reg(repWaitKey + "_loc", "SBM_CAM_A", trigID);
-
-
-            {//set flag to SurfaceCheck_CAM_A to use extParam of SurfaceCheck_CAM_A
-              await InspTargetExchange("SurfaceCheck_CAM_A", { type: "useExtParam" })
-              reportWait_reg(repWaitKey + "_check", "SurfaceCheck_CAM_A", trigID);
-            }
-
-            await Lib.CameraSNameSWTrigger("SideCheckCam", "CAM_A", trigID, true);
+          //   reportWait_reg(repWaitKey + "_loc", "SBM_CAM_A", trigID);
 
 
-            let report_loc = await reportWait(repWaitKey + "_loc")
+          //   {//set flag to SurfaceCheck_CAM_A to use extParam of SurfaceCheck_CAM_A
+          //     await InspTargetExchange("SurfaceCheck_CAM_A", { type: "useExtParam" })
+          //     reportWait_reg(repWaitKey + "_check", "SurfaceCheck_CAM_A", trigID);
+          //   }
 
-            let report_check = undefined;
-            {//modify the locating report and feed to extParam of SurfaceCheck_CAM_A
-              console.log(report_loc);
-              let new_report_loc = report_loc;
-
-              new_report_loc.report[0].angle = -4 * Math.PI / 180;
-              new_report_loc.report[1].angle = -2 * Math.PI / 180;
-              new_report_loc.report[2].angle = 2 * Math.PI / 180;
-              new_report_loc.report[3].angle = 4 * Math.PI / 180;
-              await InspTargetExchange("SurfaceCheck_CAM_A", { type: "extParam", orientation: new_report_loc.report })
-              report_check = await reportWait(repWaitKey + "_check")
-              //and disable the extParam of SurfaceCheck_CAM_A at last
-              await InspTargetExchange("RegionInsp_Reel", { type: "useExtParam", enable: false });
-
-            }
-            console.log(report_check);
+          //   await Lib.CameraSNameSWTrigger("SideCheckCam", "CAM_A", trigID, true);
 
 
-            let distDiff = report_check.report.sub_reports.map(rep => {
-              if (rep.sub_regions.length == 0) return NaN;
-              return rep.sub_regions[9].score - rep.sub_regions[10].score
-            })
+          //   let report_loc = await reportWait(repWaitKey + "_loc")
 
-            objXErr = distDiff.map(diff => diff * objCheckPix2mm);
-            let dir = report_check.report.sub_reports.map((rep, idx) => {
-              if (rep.sub_regions.length == 0) return undefined;
-              if (rep.sub_regions[2].category != 1) return undefined;
-              // if(Math.abs(distDiff[idx])>7)return undefined;
-              if (rep.sub_regions[1].category != rep.sub_regions[4].category) return undefined;
+          //   let report_check = undefined;
+          //   {//modify the locating report and feed to extParam of SurfaceCheck_CAM_A
+          //     console.log(report_loc);
+          //     let new_report_loc = report_loc;
 
+          //     new_report_loc.report[0].angle = -4 * Math.PI / 180;
+          //     new_report_loc.report[1].angle = -2 * Math.PI / 180;
+          //     new_report_loc.report[2].angle = 2 * Math.PI / 180;
+          //     new_report_loc.report[3].angle = 4 * Math.PI / 180;
+          //     await InspTargetExchange("SurfaceCheck_CAM_A", { type: "extParam", orientation: new_report_loc.report })
+          //     report_check = await reportWait(repWaitKey + "_check")
+          //     //and disable the extParam of SurfaceCheck_CAM_A at last
+          //     await InspTargetExchange("RegionInsp_Reel", { type: "useExtParam", enable: false });
 
-              return rep.sub_regions[1].category;
-            })
-
-            console.log("distDiff:", distDiff);
-
-            // await delay(3000)
-            // if(dir.findIndex(d=>d===undefined)!=-1)
-            // {
-            //   await nozzleRelease();
-
-            //   continue;
-            // }
+          //   }
+          //   console.log(report_check);
 
 
+          //   let distDiff = report_check.report.sub_reports.map(rep => {
+          //     if (rep.sub_regions.length == 0) return NaN;
+          //     return rep.sub_regions[9].score - rep.sub_regions[10].score
+          //   })
 
-            let R_str = "";
-            hRs = [0, 0, 0, 0];
-            for (let i = 0; i < dir.length; i++) {
-              if (dir[i] === undefined) continue;
-              if (dir[i] == 1) {
-
-                hRs[i] = 90;
-                R_str += `R${i + 1}_90 `
-              }
-              else if (dir[i] == -1) {
-                objXErr[i] *= -1;
-                hRs[i] = -90;
-                R_str += `R${i + 1}_-90 `
-              }
-            }
-
-            // await Lib.CameraSNameSWTrigger("Hikrobot-2BDF50664114-00F50664114","CAM_A",trigID+1,true);
-            // console.log(report_loc,report_check,dir);
-            // await delay(500);
-            // await Enter_Z2SafeZone_n_Check();
+          //   objXErr = distDiff.map(diff => diff * objCheckPix2mm);
+          //   let dir = report_check.report.sub_reports.map((rep, idx) => {
+          //     if (rep.sub_regions.length == 0) return undefined;
+          //     if (rep.sub_regions[2].category != 1) return undefined;
+          //     // if(Math.abs(distDiff[idx])>7)return undefined;
+          //     if (rep.sub_regions[1].category != rep.sub_regions[4].category) return undefined;
 
 
-            // PackAutoTermFlag=true;
+          //     return rep.sub_regions[1].category;
+          //   })
 
-          }
+          //   console.log("distDiff:", distDiff);
+
+          //   // await delay(3000)
+          //   // if(dir.findIndex(d=>d===undefined)!=-1)
+          //   // {
+          //   //   await nozzleRelease_Z_UNSAFE();
+
+          //   //   continue;
+          //   // }
+
+
+
+          //   let R_str = "";
+          //   hRs = [0, 0, 0, 0];
+          //   for (let i = 0; i < dir.length; i++) {
+          //     if (dir[i] === undefined) continue;
+          //     if (dir[i] == 1) {
+
+          //       hRs[i] = 90;
+          //       R_str += `R${i + 1}_90 `
+          //     }
+          //     else if (dir[i] == -1) {
+          //       objXErr[i] *= -1;
+          //       hRs[i] = -90;
+          //       R_str += `R${i + 1}_-90 `
+          //     }
+          //   }
+
+          //   // await Lib.CameraSNameSWTrigger("Hikrobot-2BDF50664114-00F50664114","CAM_A",trigID+1,true);
+          //   // console.log(report_loc,report_check,dir);
+          //   // await delay(500);
+          //   // await Enter_Z2SafeZone_n_Check();
+
+
+          //   // PackAutoTermFlag=true;
+
+          // }
 
         }
       },
@@ -3210,7 +3762,13 @@ async function PackingCtrlPanelUI() {
               console.log("click");
               await G("M400")
               let M114 = (await G("M114")).M114;
-              Feeder_loc_UIInfo[ptn].headXY = [M114.X, M114.Y, M114.Z1_]
+
+
+              let xoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[headIdx].x);
+              let yoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[headIdx].y);
+              let zoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.Z.offset[headIdx]);
+
+              Feeder_loc_UIInfo[ptn].headXY = [M114.X-xoffset, M114.Y-yoffset, M114.Z1_-zoffset]
 
               updateCB(UIStack_Current().UI)
               // updateCB(cbInfo)
@@ -3226,8 +3784,13 @@ async function PackingCtrlPanelUI() {
               await Exit_Z2SafeZone_n_Check();
               let TarXY = Feeder_loc_UIInfo[ptn].headXY;
 
-              await G(`G1 X${TarXY[0]} Y${TarXY[1]} ${FA}`)
-              await G(`G1 Z1_${TarXY[2]} ${FA}`)
+
+              let xoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[0].x);
+              let yoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[0].y);
+              let zoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.Z.offset[0]);
+
+              await G(`G1 X${TarXY[0]+xoffset} Y${TarXY[1]+yoffset} ${FA}`)
+              await G(`G1 Z1_${TarXY[2]+zoffset} ${FA}`)
 
               await G(`M400`)
 
@@ -3347,7 +3910,7 @@ async function PackingCtrlPanelUI() {
           Feeder_loc_conv_offset = undefined;
           v.Feeder_loc_UIInfo = Feeder_loc_UIInfo;
 
-          localStorage.setItem('Feeder_loc_UIInfo', JSON.stringify(Feeder_loc_UIInfo));
+          await dataStorage.setItem('Feeder_loc_UIInfo', (Feeder_loc_UIInfo));
 
           updateCB(UIStack_Current().UI)
         }
@@ -3411,8 +3974,8 @@ async function PackingCtrlPanelUI() {
   }
 
 
-
-  let Reel_loc_UI = {
+  let ReadReelENC = 0;
+  let Reel_loc_UI =()=> ({
     text: () => ">>",
     opts: [
 
@@ -3463,10 +4026,10 @@ async function PackingCtrlPanelUI() {
           {
             let isAObj=(i<Obj_srep.length) && (Obj_srep[i].category==1);
             let objInPlace=(Slot_srep[i].category!=1) && isAObj;
-            let eptSlot=Slot_srep[i].category==1;
+            let slotVacant=Slot_srep[i].category==1;
             slotPlaced.push(objInPlace?i:"_")
-            slotCanPlace.push(eptSlot?i:"_");
-            slotNeedClean.push((!objInPlace && !eptSlot)?i:"_");
+            slotCanPlace.push(slotVacant?i:"_");
+            slotNeedClean.push((!objInPlace && !slotVacant)?i:"_");
           }
           
           
@@ -3486,6 +4049,17 @@ async function PackingCtrlPanelUI() {
         type: "button",
         text: "Reg_Reel_Loc",
         onClick: async (updateCB) => {
+
+
+          let ACC = "4000";
+          let F = "1500";
+          let FA = `F${F} ACC${ACC}`
+        
+          await Enter_Z2SafeZone_n_Check();
+          await G(`G1 X${300} Y${150} ${FA}`)
+          await G(`M400`)
+          await delay(1000);
+
           let RLInfo=await ReelLocating(); 
           console.log(RLInfo);
 
@@ -3497,28 +4071,6 @@ async function PackingCtrlPanelUI() {
 
 
       ...['pt1'].map(ptn => {
-
-        async function HeadGoReel(headIdx = 0, slotIdx = 0) {
-          console.log(v.CalibInfo);
-          let xoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[headIdx].x) + slotIdx * 4 - (headIdx * 40);
-          let yoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.XY.offset[headIdx].y);
-          let zoffset = (v.CalibInfo === undefined ? 0 : v.CalibInfo.Z.offset[headIdx]);
-
-
-          let FA = `F${F} ACC${ACC}`
-          await Enter_Z2SafeZone_n_Check();
-          await Exit_Z2SafeZone_n_Check();
-          let TarXY = Reel_loc_UIInfo[ptn].headXY;
-
-          await G(`G1 X${TarXY[0] + xoffset} Y${TarXY[1] + yoffset} ${FA}`)
-
-          // await G(`G1 Z1_${TarXY[2]+zoffset[0]} Z2_${TarXY[2]+zoffset[1]} Z3_${TarXY[2]+zoffset[2]} Z4_${TarXY[2]+zoffset[3]}  ${FA}`)
-          await G(`G1 Z${headIdx + 1}_${TarXY[2] + zoffset} ${FA}`)
-
-          await G(`M400`)
-
-          console.log(Reel_loc_UIInfo);
-        }
 
 
         return [
@@ -3547,10 +4099,21 @@ async function PackingCtrlPanelUI() {
             }
           }, "$t:       ",
           {
+
+            type: "button",
+            text: "抬起",
+            onClick: async (updateCB) => {
+
+              await Enter_Z2SafeZone_n_Check();
+              await Exit_Z2SafeZone_n_Check();
+
+            }
+          },
+          {
             type: "button", key: "xxHeadXY_Set" + ptn + "_go",
             text: "GoXY",
             onClick: async (updateCB) => {
-              await HeadGoReel(0, 0);
+              await HeadGoReel_pt1(0, 0);
 
             }
           },
@@ -3558,14 +4121,14 @@ async function PackingCtrlPanelUI() {
             type: "button", key: "xxHeadXY_Set" + ptn + "_go",
             text: "2",
             onClick: async (updateCB) => {
-              await HeadGoReel(1, 0);
+              await HeadGoReel_pt1(1, 0);
             }
           },
           {
             type: "button", key: "xxHeadXY_Set" + ptn + "_go",
             text: "3",
             onClick: async (updateCB) => {
-              await HeadGoReel(2, 0);
+              await HeadGoReel_pt1(2, 0);
 
             }
           },
@@ -3573,7 +4136,7 @@ async function PackingCtrlPanelUI() {
             type: "button", key: "xxHeadXY_Set" + ptn + "_go",
             text: "4",
             onClick: async (updateCB) => {
-              await HeadGoReel(3, 0);
+              await HeadGoReel_pt1(3, 0);
 
             }
           },
@@ -3589,7 +4152,7 @@ async function PackingCtrlPanelUI() {
 
           v.Reel_loc_UIInfo = Reel_loc_UIInfo;
 
-          localStorage.setItem('Reel_loc_UIInfo', JSON.stringify(Reel_loc_UIInfo));
+          await dataStorage.setItem('Reel_loc_UIInfo', (Reel_loc_UIInfo));
 
           updateCB(UIStack_Current().UI)
         }
@@ -3601,12 +4164,11 @@ async function PackingCtrlPanelUI() {
 
       {
         type: "button",
-        text: "Reel0",
+        text: "Reel_SYNC",
         onClick: async (updateCB) => {
 
-          console.log("AUX_SET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_SET_ENC", value: 0, aid: 0 }));
-          ReelENC = 0;
-          // await ReelGoAdv(1);
+          let encinfo_p=(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value 
+          ReelENC = encinfo_p;
 
         }
       },
@@ -3657,10 +4219,52 @@ async function PackingCtrlPanelUI() {
           await ReelGoAdv(4 * 16);
         }
       },
+
+
+      {
+        type: "button",
+        text: "讀取編帶計數:SW:"+(ReadReelENC-SW_start_ReelENC)+"HW:"+ReadReelENC,
+        onClick: async (updateCB) => {
+
+          ReelENC=ReadReelENC =(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value
+          // await ReelGoAdv(1);
+
+          updateCB(UIStack_Current().UI)
+        }
+      },
+
+      "$\n","$\n","$\n","$\n","$\n","$\n",
+      {
+        type: "button",
+        text: "軟體編帶計數歸零",
+        onClick: async (updateCB) => {
+
+          // let encinfo_p=(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value 
+          // // console.log("AUX_SET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_SET_ENC", value: 0, aid: 0 }));
+
+          
+          // ReelENC = encinfo_p;
+          SW_start_ReelENC=ReelENC;
+        }
+      },
+      {
+        type: "button",
+        text: "HW_Reel0",
+        onClick: async (updateCB) => {
+
+          console.log("AUX_SET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_SET_ENC", value: 0, aid: 0 }));
+
+          
+          ReelENC = 0;
+          // await ReelGoAdv(1);
+
+        }
+      },
     ]
-  }
+  })
 
 
+  let UIData={};
   let Simple_IO_Ctrl_UI = {
     text: () => "Simple_IO_Ctrl_UI",
     opts: [
@@ -3821,10 +4425,11 @@ async function PackingCtrlPanelUI() {
 
       "$\n",
       "$\n",
-
+      "$t:校正站:",
+      
       {
         type: "button",
-        text: "校正站打光",
+        text: "打光",
         onClick: async (updateCB) => {
 
           await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Insp_L_Light1, "state": 1, aid: 0 })
@@ -3841,19 +4446,127 @@ async function PackingCtrlPanelUI() {
         }
       },
 
-    ]
-  }
 
 
-  let CycleRunStat={
-    pausePromise:undefined,
-    doPause:false,
-  }
+      "$\n",
+      "$t:編帶定位:",
+
+      {
+
+        type: "button",
+        text: "抬起",
+        onClick: async (updateCB) => {
+
+          await Enter_Z2SafeZone_n_Check();
+          await Exit_Z2SafeZone_n_Check();
+
+        }
+      },
+      {
+        type: "button", key: "xxHeadXY_Set",
+        text: "GoXY",
+        onClick: async (updateCB) => {
+          await HeadGoReel_pt1(0, 0);
+
+        }
+      },
+      {
+        type: "button",
+        text: "軟體編帶計數同步",
+        onClick: async (updateCB) => {
+
+          let encinfo_p=(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value 
+          // console.log("AUX_SET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_SET_ENC", value: 0, aid: 0 }));
+
+          
+          ReelENC = encinfo_p;
+        }
+      },
+
+      {
+        type: "button",
+        text: "移至定點",
+        onClick: async (updateCB) => {
+
+          try
+          {
+            await ReelAdvToLoc(Reel_loc_UIInfo);
+          }
+          catch(e)
+          {
+            console.log(e);
+          }
+          
+          // await ReelSegAdv(0.1,Reel_loc_UIInfo);
+        }
+      },
+
+      {
+        type: "button",
+        text: "+1u",
+        onClick: async (updateCB) => {
+          await ReelGoAdv_s(1);
+          // await ReelSegAdv(0.1,Reel_loc_UIInfo);
+        }
+      },
+      {
+        type: "button",
+        text: "+10u",
+        onClick: async (updateCB) => {
+          await ReelGoAdv_s(10);
+          // await ReelSegAdv(0.1,Reel_loc_UIInfo);
+        }
+      },
+      {
+        type: "button",
+        text: "+1",
+        onClick: async (updateCB) => {
+          // await ReelGoAdv(1);
+          try{
+            await ReelSegAdv(1*SYS_CONFIG.Reel_Hole_Distance);
+          }
+          catch(e)
+          {
+            console.log(e);
+          }
+        }
+      },
+      {
+        type: "button",
+        text: "+16",
+        onClick: async (updateCB) => {
+          // await ReelGoAdv(1);
+          try{
+            await ReelSegAdv(16*SYS_CONFIG.Reel_Hole_Distance);
+          }
+          catch(e)
+          {
+            console.log(e);
+          }
+        }
+      },
+      {
+        type: "button",
+        text: "+4*20",
+        onClick: async (updateCB) => {
+          // await ReelGoAdv(1);
+          await ReelSegAdv(4*20*SYS_CONFIG.Reel_Hole_Distance,SYS_CONFIG.Reel_Hole_Distance*2);
+        }
+      },
+      {
+        type: "button",
+        text:()=> "讀取編帶計數:SW:"+(ReelENC-SW_start_ReelENC)+"HW:"+ReelENC,
+        onClick: async (updateCB) => {
+
+          ReelENC =(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value
+          // await ReelGoAdv(1);
+
+          updateCB(UIStack_Current().UI)
+        }
+      },
 
 
-  let GCtrl_UI2 = ()=>({
-    text: () => "GCtrl_UI2",
-    opts: [
+
       {
         type: "button",
         text: "Release",
@@ -3876,32 +4589,277 @@ async function PackingCtrlPanelUI() {
         }
       },
 
+
+
+    ]
+  }
+
+  let CycleRunStat={
+    pausePromise:undefined,
+    doPause:false,
+    errorInfos:[],
+  }
+
+  let packSeqConstructUI2=()=>{
+
+    return [
+        {
+          type: "button", key: "pakSeqAdd1",
+          text:"+",
+          disabled:CycleRunStat.pausePromise!==undefined,
+          onClick: async (updateCB) => {
+            try{
+              v.ReelPackingInfo.packingSeq[0]++;
+              updateCB(UIStack_Current().UI)
+  
+            }
+            catch(e)
+            {
+              
+            }
+          }
+        },
+        {
+          type: "button", key: "pakSeqAdd100",
+          text:"100",
+          disabled:CycleRunStat.pausePromise!==undefined,
+          onClick: async (updateCB) => {
+            try{
+              v.ReelPackingInfo.packingSeq[0]+=100;
+              updateCB(UIStack_Current().UI)
+  
+            }
+            catch(e)
+            {
+              
+            }
+          }
+        },
+        {
+          type: "button", key: "pakSeqAdd1000",
+          text:"k",
+          disabled:CycleRunStat.pausePromise!==undefined,
+          onClick: async (updateCB) => {
+            try{
+              v.ReelPackingInfo.packingSeq[0]+=1000;
+              updateCB(UIStack_Current().UI)
+  
+            }
+            catch(e)
+            {
+              
+            }
+          }
+        },
+        {
+          type: "button", key: "pakSeqSub1",
+          text:"-",
+          disabled:CycleRunStat.pausePromise!==undefined,
+          onClick: async (updateCB) => {
+            try{
+              v.ReelPackingInfo.packingSeq[0]--;
+              updateCB(UIStack_Current().UI)
+  
+            }
+            catch(e)
+            {
+              
+            }
+          }
+        },
+        {
+          type: "button", key: "Zeroing",
+          text:"歸零",
+          disabled:CycleRunStat.pausePromise!==undefined,
+          onClick: async (updateCB) => {
+            try{
+              v.ReelPackingInfo.packingSeq[0]=0;
+              updateCB(UIStack_Current().UI)
+  
+            }
+            catch(e)
+            {
+              
+            }
+          }
+        },
+  
+        {
+          type: "button", key: "LoadPakingSeq",
+          text:"LOAD",
+          disabled:CycleRunStat.pausePromise!==undefined,
+          onClick: async (updateCB) => {
+            v.ReelPackingInfo={
+              // packingSeq:[75,-5,75,-5]//-160]
+              // packingSeq:[1,-40,5500,-97,1],//-160]
+              packingSeq:[1781,-97,1],//-160]
+              // packingSeq:[1000,-5],
+              // packingSeq:[10,-5,10,-5,10,-10],
+              // packingSeq:[3000,-97]//-160]
+              // packingSeq:[1,-5,4,-5,500,-5],
+              // packingSeq:[-1,1,-2,2,-3,3,-4,4,-5,5,-6,6,-7,7,-8,8,-9,9,-10,10]
+  
+              packedSeq:[0]
+            }
+            
+            updateCB(UIStack_Current().UI)
+          }
+        },
+      ]
+  }
+
+  UIData.packSeqEditTmpNum=0;
+  let packSeqConstructUI=()=>{
+
+    return [
+        "$t:"+UIData.packSeqEditTmpNum.toString(),
+        "$\n",
+        ...[7,8,9,"\n",4,5,6,"\n",1,2,3,"\n","C",0,"OK"].map((info,idx)=>info==="\n"?"$\n":
+        ({
+          type: "button", key: "pakSeqKeyPad"+info.toString()+idx,
+          size:"small",
+          text:info.toString(),
+          disabled:(info==="OK" && UIData.packSeqEditTmpNum==0), 
+          style:{width:"50px"},
+          onClick: async (updateCB) => {
+            try{
+              if(info==="X-")
+              {
+                // v.ReelPackingInfo.packingSeq[UIData.packSeqEditTmpNum]=UIData.packSeqEditTmpNum;
+                v.ReelPackingInfo.packingSeq.shift();
+              }
+              else if(info==="OK")
+              {
+                v.ReelPackingInfo.packingSeq.unshift(UIData.packSeqEditTmpNum);
+                UIData.packSeqEditTmpNum=0;
+                updateCB(UIStack_Current().UI)
+              }
+              else if(info==="-"||info==="+")
+              {
+                UIData.packSeqEditTmpNum*=-1;
+              }
+              else if(info==="C")
+              {
+                UIData.packSeqEditTmpNum=0;
+              }
+              else
+              {
+                UIData.packSeqEditTmpNum*=10;
+                UIData.packSeqEditTmpNum+=parseInt(info)*(UIData.packSeqEditTmpNum>0?1:-1);
+                if(v.ReelPackingInfo.packingSeq[0]>0)
+                {
+                  if(UIData.packSeqEditTmpNum>0)
+                    UIData.packSeqEditTmpNum*=-1;
+                }
+                else
+                {
+                  if(UIData.packSeqEditTmpNum<0)
+                    UIData.packSeqEditTmpNum*=-1;
+                }
+              }
+              updateCB(UIStack_Current().UI)
+  
+            }
+            catch(e)
+            {
+              
+            }
+          }
+        })),"$\n",
+        {
+          type: "button", key: "LoadPakingSeqPop",
+          text:"移除左數",
+          disabled:CycleRunStat.pausePromise!==undefined,
+          onClick: async (updateCB) => {
+
+            // v.ReelPackingInfo.packingSeq[UIData.packSeqEditTmpNum]=UIData.packSeqEditTmpNum;
+            v.ReelPackingInfo.packingSeq.shift();
+            updateCB(UIStack_Current().UI)
+          }
+        },
+
+        
+        {
+          type: "button", key: "LoadPakingSeq",
+          text:"LOAD",
+          disabled:CycleRunStat.pausePromise!==undefined,
+          onClick: async (updateCB) => {
+            v.ReelPackingInfo={
+              // packingSeq:[75,-5,75,-5]//-160]
+              packingSeq:[1,-40,5500,-97,1],//-160]
+              // packingSeq:[1781,-97,1],//-160]
+              // packingSeq:[1000,-5],
+              // packingSeq:[10,-5,10,-5,10,-10],
+              // packingSeq:[3000,-97]//-160]
+              // packingSeq:[1,-5,4,-5,500,-5],
+              // packingSeq:[-1,1,-2,2,-3,3,-4,4,-5,5,-6,6,-7,7,-8,8,-9,9,-10,10]
+  
+              packedSeq:[0]
+            }
+            
+            updateCB(UIStack_Current().UI)
+          }
+        },
+
+        {
+          type: "button", 
+          text:"重置NG數",
+          disabled:CycleRunStat.pausePromise!==undefined,
+          onClick: async (updateCB) => {
+            v.dropCount={
+              NA:0,
+              NG1:0,
+              NG2:0,
+            };
+            CycleRunStat.statistic.dropCount={...v.dropCount};
+            updateCB(UIStack_Current().UI)
+          }
+        },
+
+
+        // {
+        //   type: "button", key: "SAVECur",
+        //   text:"SAVECur",
+        //   disabled:v.ReelPackingInfo?.packingSeq===undefined,
+        //   onClick: async (updateCB) => {
+
+        //     let curPakSeq=v.ReelPackingInfo?.packingSeq;
+        //     LS_Save("CurPakSeq",curPakSeq);
+        //     updateCB(UIStack_Current().UI)
+        //   }
+        // },
+      ]
+  }
+
+
+  let GCtrl_UI2 = ()=>({
+    text: () => "GCtrl_UI2",
+    opts: [
+
       "$\n",
 
 
       
-
-
       {
-        type: "button", key: "doPause",
-        text:"LOAD:"+JSON.stringify(v.ReelPackingInfo),
-        disabled:CycleRunStat.pausePromise===undefined,
+        type: "button", key: "pakSeqInfo",
+        text:JSON.stringify(v.ReelPackingInfo)||"__UNSET__",
+        disabled:false,
         onClick: async (updateCB) => {
-          v.ReelPackingInfo={
-            // packingSeq:[75,-5,75,-5]//-160]
-            // packingSeq:[1,-40,5500,-97,1]//-160]
-            packingSeq:[5000,-97,1]//-160]
-            // packingSeq:[-1,1,-2,2,-3,3,-4,4,-5,5,-6,6,-7,7,-8,8,-9,9,-10,10]
-          }
-          
+          UIData.unfold_packSeqConstructUI=UIData.unfold_packSeqConstructUI!=true;
           updateCB(UIStack_Current().UI)
         }
       },
+
+
+
+      "$\n",
+      ...(UIData.unfold_packSeqConstructUI==true?packSeqConstructUI():[]),
+
       "$\n",
 
       {
 
-        type: "button", key: "sssff",
+        type: "button", key: "AutoPick2",
         text: () => "AutoPick2",
         onClick: async (updateCB) => {
           if (localAbortObj.localAbort !== undefined) return;
@@ -3952,7 +4910,7 @@ async function PackingCtrlPanelUI() {
                 CycleRunStat.statistic=info;
               }
               if (info.type == "ReelAdvancing") {
-                console.log(">>>>", info);
+                // console.log(">>>>", info);
               }
               if (info.type == "FeederPicking") {
 
@@ -3976,12 +4934,22 @@ async function PackingCtrlPanelUI() {
                 console.log("CYCLE STATE....", info,v.ReelPackingInfo);
               }
 
+              // if(info.type == "CAM_SHOT_INFO_HIST")
+              // {
+              //   console.log("CAM_SHOT_INFO_HIST",info,v);
+              //   // let CamShotHist=info.info;
+              //   // CycleRunStat.CamShotHist=CamShotHist;
+              // }
+
 
               if(info.type == "ERROR")
               {
 
 
-                CycleRunStat.errorInfo=info;
+                CycleRunStat.errorInfos=[...CycleRunStat.errorInfos,{
+                  timeStamp:new Date(),
+                  info
+                }];
                 // console.log("kjhsdilfdsajhfl",info)
                 updateCB(UIStack_Current().UI)
               }
@@ -4028,7 +4996,7 @@ async function PackingCtrlPanelUI() {
       {
         type: "button", key: "doPause",
         text:CycleRunStat.doPause===false?"執行單動":"執行連續",
-        disabled:CycleRunStat.pausePromise===undefined,
+        // disabled:CycleRunStat.pausePromise===undefined,
         onClick: async (updateCB) => {
           
           CycleRunStat.doPause=!CycleRunStat.doPause;
@@ -4038,7 +5006,7 @@ async function PackingCtrlPanelUI() {
       {
         type: "button", key: "RunPause",
         text:CycleRunStat.pausePromise===undefined?"_______":"___>___",
-        disabled:CycleRunStat.pausePromise===undefined,
+        // disabled:CycleRunStat.pausePromise===undefined,
         onClick: async (updateCB) => {
           
           if(CycleRunStat.pausePromise===undefined)
@@ -4050,7 +5018,8 @@ async function PackingCtrlPanelUI() {
       },
 
       {
-        type: "button", key: "sssff",
+        type: "button", key: "STOPoNOPBtn",
+        danger:true,
         text: localAbortObj.localAbort===undefined ? "NOP" : "STOP",
         onClick: async (updateCB) => {
 
@@ -4074,20 +5043,38 @@ async function PackingCtrlPanelUI() {
       "$t:----檢驗數據----","$\n",
       "$t:"+FixedStringify(CycleRunStat.statistic),
       "$\n",
-      "$t:----運行階段----","$\n",
-      "$t:"+FixedStringify(CycleRunStat.currentStateInfo),
+      // "$t:----運行階段----","$\n",
+      // "$pre:"+FixedStringify(CycleRunStat.currentStateInfo),
       "$\n",
       {
-        type: "button", key: "----錯誤----",
-        text:"----錯誤----",
+        type: "button", key: "----錯誤清除----",
+        text:"----錯誤清除----:"+CycleRunStat.errorInfos.length,
         onClick: async (updateCB) => {
-          CycleRunStat.errorInfo=undefined;
+          CycleRunStat.errorInfos=[];
           updateCB(UIStack_Current().UI)
 
         }
       },"$\n",
-      "$pre:"+((CycleRunStat.errorInfo===undefined)?"":CycleRunStat.errorInfo.e),
-      "$pre:"+((CycleRunStat.errorInfo===undefined)?"":CycleRunStat.errorInfo.trace),
+
+      
+      ...CycleRunStat.errorInfos.map((einfo)=>[
+
+        `$pre:----${einfo.timeStamp}---\n`+einfo.info.e+"\n"+einfo.info.trace,
+
+      ]).flat(),
+
+
+      "$\n",
+      "$\n",
+      // {
+      //   type: "divider", key: "----deviderHistInfo----",
+      //   text:"----deviderHistInfo----",
+      //   onClick: async (updateCB) => {
+      //     UIData.showHistInfo=!(UIData.showHistInfo==true);
+      //     updateCB(UIStack_Current().UI)
+      //   }
+      // },
+
 
     ]
   })
@@ -4096,6 +5083,23 @@ async function PackingCtrlPanelUI() {
 
 
   let lv = {}
+  let enum_MechCalibLevel={
+    "OFFLined":0,
+    "Connected":100,
+    "GANTRY_HW_Homed":200,
+    "GANTRY_Calibrated":300,
+    "Reel_Location_Registered":400,
+    "Ready":400,
+  }
+  if(v.MechCalibLevel===undefined)
+    v.MechCalibLevel=enum_MechCalibLevel.OFFLined;
+  let calibPanelShow={
+
+  }
+  let cur_ReelENC=NaN;
+  let SW_ReelENC=[NaN,NaN,NaN,NaN,NaN,NaN];
+
+
   let hideTestFunction=true
   let latestCalibStat = undefined;
   let latestCalibLog = "請進行精細校正";
@@ -4128,81 +5132,425 @@ async function PackingCtrlPanelUI() {
                       UIStackBack(updateCB, { ok: "OK" });
                     }
                   },
-                  "$t: ",
+                  "$\n",
+                  "$\n",
+                  "$\n",
                   {
                     type: "button", key: "HOMING",
-                    text: () => "機械歸零",
+                    text: () => "---機械歸零---",
+                    btnType:"primary",
                     onClick: async (updateCB) => {
 
+                      v.MechCalibLevel=enum_MechCalibLevel.OFFLined;
+                      calibPanelShow={};//reset
+                      v.CalibInfo = undefined
+                      latestCalibStat=undefined;
+
+                      updateCB(UIStack_Current().UI)
                       await SimpHoming();
+
+                      await Exit_Z2SafeZone_n_Check();
+
+                      let ZGo = SYS_CONFIG.SAFE_Z-20;
+                      let Zprep = SYS_CONFIG.SAFE_Z;
+                      
+                      let fastF = "F3000 ACC3500"
+                      for(let i=0;i<4;i++)
+                      {
+                        await G(`G01 Z${i+1}_${ZGo} ${fastF}`);
+                        await G(`G01 Z${i+1}_${Zprep} ${fastF}`);
+                      }
+                      await G(`M400`);
+                      await Enter_Z2SafeZone_n_Check();
+
+
+                      v.MechCalibLevel=enum_MechCalibLevel.GANTRY_HW_Homed;
+                      calibPanelShow.GANTRY_Calibration=true;
+                      updateCB(UIStack_Current().UI)
                     }
                   },
-                  "$t:           ",
-                  {
-                    type: "button", key: "DO_CALIB",
-                    text: () => "精細校正",
-                    onClick: async (updateCB) => {
+                  // {
+                  //   type: "button", key: "HOMING_Test",
+                  //   text: () => "Test",
+                  //   onClick: async (updateCB) => {
+                  //     let ACC = 4800;
+                  //     let F = 1700;
+                  //     let FA = `F${F} ACC${ACC}`
+                  //     await Exit_Z2SafeZone_n_Check();
 
-                      let maxCalibCount = 3;
-                      let i=0;
-                      for(i=0;i<maxCalibCount;i++)
-                      {
-                        await HeadCalib();
+                  //     for(let k=0;k<20;k++)
+                  //     {
+                  //       let LZ=40;
+                  //       for(let i=0;i<4;i++)
+                  //         await G(`G1 Z${i+1}_${LZ} ${FA}`);
+  
+                  //       let LR=40;
+                  //       for(let i=0;i<4;i++)
+                  //         await G(`G1 R${i+1}_${LR} ${FA}`);
+                  //       let HR=0;
+                  //       for(let i=3;i>=0;i--)
+                  //         await G(`G1 R${i+1}_${HR} ${FA}`);
+  
+                  //       let HZ=60;
+                  //       for(let i=0;i<4;i++)
+                  //         await G(`G1 Z${i+1}_${HZ}  R${i+1}_${HR} ${FA}`);
+                  //     }
+
+
+                  //     await Enter_Z2SafeZone_n_Check();
+                  //   }
+                  // },
+
+                  {
+                    type: "divider", key: "----deviderLLL----", orientation:"left",
+                    text:(calibPanelShow.GANTRY_Calibration==true?"[-]":"[V]")+"  龍門精細校正:"+
+                    (v.MechCalibLevel>=enum_MechCalibLevel.GANTRY_Calibrated?"OK":"待校正"),
+                    style:{color:v.MechCalibLevel<enum_MechCalibLevel.GANTRY_HW_Homed?"gray":undefined},
+                    onClick: async (updateCB) => {
+                      // UIData.showHistInfo=!(UIData.showHistInfo==true);
+                      calibPanelShow.GANTRY_Calibration=!(calibPanelShow.GANTRY_Calibration==true);
+                      console.log(UIStack_Current().UI);
+                      updateCB(UIStack_Current().UI)
+                    }
+                  },
+                  ...(calibPanelShow.GANTRY_Calibration!=true?
+                    []:[
+                      "$t:進行精細校正, 可能嘗試多次, 直到誤差小於0.05mm",
+                      "$\n",
+                    {
+                      type: "button", key: "DO_CALIB",
+                      text: () => "精細校正",
+                      btnType:"primary",
+                      onClick: async (updateCB) => {
+  
+                        let maxAllowedError=0.05;
+                        let maxCalibCount = 3;
+                        let i=0;
+                        for(i=0;i<maxCalibCount;i++)
+                        {
+                          await HeadCalib();
+    
+                          let diffXYZ_mm_stat = await HeadVerificationSimpleStat();
+                          console.log(diffXYZ_mm_stat);
+                          // await HeadCalib();
+                          latestCalibStat=diffXYZ_mm_stat;
+                          
+                          if(latestCalibStat.max<maxAllowedError)
+                          {
+  
+                            v.MechCalibLevel=enum_MechCalibLevel.GANTRY_Calibrated;
+                            calibPanelShow={Reel_Locating:true};
+                            break;//good enough
+                          }
+                          latestCalibLog=`校正${i+1}/${maxCalibCount}次: 誤差${latestCalibStat.max.toFixed(4)}mm 超過${maxAllowedError}mm 再次進行精細校正`;
+                          updateCB(UIStack_Current().UI)
+                        }
+  
+                        latestCalibLog=`校正完畢 ${i+1}次: 誤差${latestCalibStat.max.toFixed(3)}mm < ${maxAllowedError}mm`;
+                        updateCB(UIStack_Current().UI)
+                      }
+                    },
+                    {
+                      type: "button", key: "DO_CHECK",
+                      text: () => "驗證校正",
+                      onClick: async (updateCB) => {
+  
   
                         let diffXYZ_mm_stat = await HeadVerificationSimpleStat();
                         console.log(diffXYZ_mm_stat);
-                        // await HeadCalib();
                         latestCalibStat=diffXYZ_mm_stat;
                         
-                        let maxAllowedError=0.05;
-                        if(latestCalibStat.max<maxAllowedError)break;//good enough
-                        latestCalibLog=`校正${i+1}/${maxCalibCount}次: 誤差${latestCalibStat.max}mm 超過${maxAllowedError}mm 再次進行精細校正`;
                         updateCB(UIStack_Current().UI)
                       }
+                    }
+                    ,"$\n"
+                    ,"$t:"+latestCalibLog
+                    ,"$\n"
+                    ,`$pre:`+(latestCalibStat===undefined?"--無資料--":FixedStringify(latestCalibStat,3))
+                    ,{
+                      type: "button", key: "PRT_CALIB",
+                      text: () => "print_CALIB",
+                      onClick: async (updateCB) => {
+                        console.log(v.CalibInfo);
+                      }
+                    }
+                    ]),
 
-                      latestCalibLog=`校正完畢 ${i+1}次: 誤差${latestCalibStat.max.toFixed(3)}mm `;
+
+                  
+                  {
+                    type: "divider", key: "---料帶位置校正 TAB----", orientation:"left",
+                    text:(calibPanelShow.Reel_Locating==true?"[-]":"[V]")+"  料帶位置校正:"+
+                    (v.MechCalibLevel>=enum_MechCalibLevel.Reel_Location_Registered?"OK":"待校正"),
+                    style:{color:v.MechCalibLevel<enum_MechCalibLevel.GANTRY_Calibrated?"gray":undefined},
+                    onClick: async (updateCB) => {
+                      // UIData.showHistInfo=!(UIData.showHistInfo==true);
+                      calibPanelShow.Reel_Locating=!(calibPanelShow.Reel_Locating==true);
+
+
+                      //if the tab is opened, and the level is higher than this level, 
+                      //just in case( you touch the option in this tab), you need to do the calibration again
+                      if(calibPanelShow.Reel_Locating==true && v.MechCalibLevel>=enum_MechCalibLevel.GANTRY_Calibrated)
+                      {
+                        v.MechCalibLevel=enum_MechCalibLevel.GANTRY_Calibrated;
+                      }
                       updateCB(UIStack_Current().UI)
                     }
                   },
-                  {
-                    type: "button", key: "DO_CHECK",
-                    text: () => "驗證校正",
-                    onClick: async (updateCB) => {
+                  ...(calibPanelShow.Reel_Locating!=true?[]:
+                    [
 
 
-                      let diffXYZ_mm_stat = await HeadVerificationSimpleStat();
-                      console.log(diffXYZ_mm_stat);
-                      latestCalibStat=diffXYZ_mm_stat;
+
+                      "$t:料帶位置校正, 可直接使用 \"料帶微動至歸零點\" 進行校正 ***最後請確認吸頭對齊孔位置中***",
+                      "$\n",
+
+
+
+                      {
+                        type: "button",
+                        text: "料帶微動至歸零點",
+                        btnType:"primary",
+                        onClick: async (updateCB) => {
+                          
+
+                          // let ACC = "4000";
+                          // let F = "1500";
+                          // let FA = `F${F} ACC${ACC}`
+                        
+                          // await Enter_Z2SafeZone_n_Check();
+                          // await G(`G1 X${300} Y${150} ${FA}`)
+                          // await G(`M400`)
+                          // await delay(1000);
+                
+                          if(v.CalibInfo.ReelLoc===undefined)
+                          {
+                            //{"center":{"x":2717.264892578125,"y":160.79525756835938},"mmpp":0.013774734595267173}
+                            const storedData = await dataStorage.getItem('Reel_loc_CalibInfo');
+                            if (storedData !== undefined) {
+                              v.CalibInfo.ReelLoc = storedData;
+                            }
+                          }
+
+                          console.log(v.CalibInfo.ReelLoc);
+
+                          if(v.CalibInfo.ReelLoc===undefined)return;
+                          let retryCount=10;
+                          while(retryCount>0)
+                          {
+                            try
+                            {
+                              let latest_offset;
+                              
+                              for(let k=0;k<10;k++)
+                              {
+                                latest_offset=await ReelAdvToLoc(Reel_loc_UIInfo);
+                                if(latest_offset.x<-0.2)
+                                  await ReelGoAdv_s(20);
+                                else if(latest_offset.x<0.2)
+                                {
+                                  //OK -0.2~0.2
+                                  break;
+                                }
+                              }
+                              if(latest_offset===undefined)continue;
+
+
+                              await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 1, aid: 0 })
+                              await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light2, "state": 1, aid: 0 })
+
+                              await HeadGoReel_pt1(0, 0);
+
+
+                              console.log("reel locating latest_offset:",latest_offset);
+                              v.MechCalibLevel=enum_MechCalibLevel.Reel_Location_Registered;
+                              calibPanelShow={WorkingUI:true};
+                              updateCB(UIStack_Current().UI);
+                              break;
+                            }
+                            catch(e)
+                            {
+                              console.log(e);
+                              retryCount--;
+                              await ReelGoAdv_s(5);
+
+                            }
+                          }
+
+
+                          
+                          // await ReelSegAdv(0.1,Reel_loc_UIInfo);
+                        }
+                      },
+                      "$t:***最後請確認吸頭對齊孔位置中***",
+                      "$\n",
+
                       
-                      updateCB(UIStack_Current().UI)
-                    }
-                  },
-                  "$t:           ",
-                  {
-                    type: "button", key: "RST_CALIB",
-                    text: () => "刪除校正資料",
-                    onClick: async (updateCB) => {
+                      {
 
-                      v.CalibInfo = undefined
-                    }
-                  }
+                        type: "button",
+                        text: "抬起",
+                        onClick: async (updateCB) => {
+                
+                          await Enter_Z2SafeZone_n_Check();
+                          await Exit_Z2SafeZone_n_Check();
+                
+                        }
+                      },
+
+
+                      {
+                        type: "button",
+                        text: () => "移動吸頭至定位",
+                        onClick: async (updateCB) => {
+                          await HeadGoReel_pt1(0, 0);
+    
+                        }
+                      },
+                      "$\n",
+                
+                      {
+                        type: "button",
+                        text: "微動1",
+                        onClick: async (updateCB) => {
+                          await ReelGoAdv_s(1);
+                          // await ReelSegAdv(0.1,Reel_loc_UIInfo);
+                        }
+                      },
+                      {
+                        type: "button",
+                        text: "微動10",
+                        onClick: async (updateCB) => {
+                          await ReelGoAdv_s(10);
+                          // await ReelSegAdv(0.1,Reel_loc_UIInfo);
+                        }
+                      },"$t:  ",
+                      {
+                        type: "button",
+                        text: "進一孔",
+                        disabled:v.MechCalibLevel<enum_MechCalibLevel.Reel_Location_Registered,
+                        onClick: async (updateCB) => {
+                          // await ReelGoAdv(1);
+                          try{
+                            await ReelSegAdv(1*SYS_CONFIG.Reel_Hole_Distance);
+                          }
+                          catch(e)
+                          {
+                            console.log(e);
+                          }
+                        }
+                      },
+
+                      "$\n",
+
+                      {
+                        type: "button", 
+                        text: () => "相機紀錄孔位",
+                        onClick: async (updateCB) => {
+    
+                          let ACC = "4000";
+                          let F = "1500";
+                          let FA = `F${F} ACC${ACC}`
+                        
+                          await Enter_Z2SafeZone_n_Check();
+                          await G(`G1 X${300} Y${150} ${FA}`)
+                          await G(`M400`)
+                          await delay(1000);
+                
+                          let RLInfo=await ReelLocating(); 
+
+                          if(RLInfo!==undefined)
+                          {
+                            console.log(RLInfo);
+
+                            v.CalibInfo.ReelLoc=RLInfo;
+
+                            await dataStorage.setItem('Reel_loc_CalibInfo', (RLInfo));
+
+                            v.MechCalibLevel=enum_MechCalibLevel.Reel_Location_Registered;
+                            calibPanelShow={WorkingUI:true};
+                            updateCB(UIStack_Current().UI);
+                          }
+                        }
+                      },
+
+                      
+                      "$\n",
+                      "$\n",
+                      
+
+                      {
+                        type: "button", 
+                        text: () => "開",
+                        onClick: async (updateCB) => {
+
+
+                          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 1, aid: 0 })
+                          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light2, "state": 1, aid: 0 })
+
+                        }
+                      },
+                      {
+                        type: "button", 
+                        text: () => "關燈",
+                        onClick: async (updateCB) => {
+
+                          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light1, "state": 0, aid: 0 })
+                          await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Reel_L_Light2, "state": 0, aid: 0 })
+
+                        }
+                      },
+                      // {
+                      //   type: "button",
+                      //   text: "讀取編帶計數",
+                      //   onClick: async (updateCB) => {
+                
+                      //     cur_ReelENC=(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value 
+                      //     // console.log("AUX_SET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_SET_ENC", value: 0, aid: 0 }));
+                
+                      //     updateCB(UIStack_Current().UI);
+
+                          
+                      //   }
+                      // },
+                      // ...[0,1,2,3,4].map((i)=>(
+
+                      // {
+                      //   type: "button", key:"SYNC_SW_ENC"+i,
+                      //   text: "["+i+"]"+(cur_ReelENC-SW_ReelENC[i]),
+                      //   onClick: async (updateCB) => {
+                
+                      //     cur_ReelENC=SW_ReelENC[i]=(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value 
+                      //     updateCB(UIStack_Current().UI);
+
+                      //   }
+                      // })),
+
+                      // "$\n",
+
+                    ])
+                  // "$t:           ",
+                  // {
+                  //   type: "button", key: "RST_CALIB",
+                  //   text: () => "刪除校正資料",
+                  //   onClick: async (updateCB) => {
+
+                  //     v.CalibInfo = undefined
+                  //     latestCalibStat=undefined;
+                  //   }
+                  // }
                   ,
-                  "$\n",
+                  // "$\n",
 
-                  {
-                    type: "button", key: "RST_CALIB",
-                    text: () => "print_CALIB",
-                    onClick: async (updateCB) => {
-                      console.log(v.CalibInfo);
-                    }
-                  }
+                  // {
+                  //   type: "button", key: "PRT_CALIB",
+                  //   text: () => "print_CALIB",
+                  //   onClick: async (updateCB) => {
+                  //     console.log(v.CalibInfo);
+                  //   }
+                  // }
 
                   ,"$\n"
-                  ,"$\n"
-                  ,"$\n"
-                  ,"$t:"+latestCalibLog
-                  ,"$\n"
-                  ,`$pre:`+FixedStringify(latestCalibStat,3)
 
                 ]
               },
@@ -4213,7 +5561,204 @@ async function PackingCtrlPanelUI() {
               console.log(result)
             })
           }
-        },"$\n",{
+        },"$\n"
+        // ,{
+        //   type: "button", key: "ExeLocMapping",
+        //   text: () => "4:走位定位確認",
+
+        // },"$\n"
+        
+        ,{
+          type: "button", key: "PackUI",
+          text: () => "5:包裝介面",
+          onClick: async (updateCB) => {
+            console.log("PackUI");
+            let SIMP_CTRL_IO_HIDE = false;
+            let CamHistData_HIDE=true;
+            let CamHistDataPageIdx=0;
+            let CamHistDataPageSize=100;
+            console.log(">>>>>>>>>",
+            Array(Math.min(CamHistDataPageSize,v._CamShotInfoHist.length-CamHistDataPageSize*CamHistDataPageIdx)).fill(0).map((v,idx)=>idx));
+
+            let cInfo =()=> [
+
+              {
+                text: () => "",
+                opts: [
+                  {
+                    type: "button", key: "back",
+                    text: () => "<=",
+                    onClick: async (updateCB) => {
+                      UIStackBack(updateCB, { ok: "OK" });
+                    }
+                  },],
+                callback: async (idx, key, updateCB) => {
+
+                  // cbInfo[idx].text =  " <<<距離:"+advUnit+" 速度:"+F,
+
+                  updateCB(cInfo)
+                }, default: 0
+              },
+              GCtrl_UI2(),
+              {
+                text: () =>CamHistData_HIDE?"+ 相機歷史資料": "- 相機歷史資料",
+                onClick: (updateCB) => {
+                  CamHistData_HIDE = !CamHistData_HIDE;
+
+                  updateCB(cInfo)
+                },
+                opts:CamHistData_HIDE?[]:[
+
+                  {
+                    type: "button", key: "----清除HistInfo----",
+                    text:"-清除HistInfo-",
+                    onClick: async (updateCB) => {
+                      v._CamShotInfoHist=[];
+                      v._CamShotInfoHist_NAME_CAT={};
+                      updateCB(UIStack_Current().UI)
+                    }
+                  },
+            
+            
+                  {
+                    type: "button", key: "---SHOT-",
+                    text:"測試SHOT",
+                    onClick: async (updateCB) => {
+            
+            
+                      await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_L_Light2, "state": 1, aid: 0 })
+            
+                      {
+                        
+                        let trigID =Math.floor(Math.random()*10000);
+            
+                        await CameraSNameSWTrigger_n_Log("FS","SideCheckCam", ["CAM_A","s_SIDE_FLAT","IMG_CACHE"], trigID, true);
+            
+                        await delay(100);
+            
+                      }
+                      await Lib.CNCSend({ "type": "AUX_IO_CTRL", "pin": SYS_OUT_PIN_DEF.Feeder_L_Light2, "state": 0, aid: 0 })
+                      updateCB(UIStack_Current().UI)
+            
+                    }
+                  },
+            
+                  {
+                    type: "button", key: "---SHOT2-",
+                    text:"測試SHOT2",
+                    onClick: async (updateCB) => {
+            
+            
+            
+                      {
+                        
+                        let trigID =Math.floor(Math.random()*10000);
+            
+                        await CameraSNameSWTrigger_n_Log("FS2","SideCheckCam", ["CAM_A","s_SIDE_FLAT","IMG_CACHE"], trigID, true);
+            
+                        await delay(100);
+            
+                      }
+                      updateCB(UIStack_Current().UI)
+            
+                    }
+                  },
+            
+            
+                  // "$\n",
+                  // ...Object.keys(v._CamShotInfoHist_NAME_CAT).map((name,idx)=>({
+            
+                  //   type: "button", key: "CamShotHistNameCAT:"+idx,
+                  //   text:name,
+                  //   onClick: async (updateCB) => {
+            
+                  //   }
+            
+            
+                  // })).flat(),
+                  "$\n","$t:頁:",
+
+                  ...Array(Math.ceil(v._CamShotInfoHist.length/CamHistDataPageSize)).fill(0).map((v,idx)=>({
+            
+                    type: "button", key: "page:"+idx,
+                    text:""+(idx+1),
+                    onClick: async (updateCB) => {
+                      CamHistDataPageIdx=idx;
+                      updateCB(UIStack_Current().UI)
+                    }
+            
+            
+                  })).flat(),
+
+
+                  "$\n",
+                  
+          
+          
+          
+                  ...(v._CamShotInfoHist.length<=CamHistDataPageSize*CamHistDataPageIdx)?["$t:空"]:
+                    Array(Math.min(CamHistDataPageSize,v._CamShotInfoHist.length-CamHistDataPageSize*CamHistDataPageIdx)).fill(0).
+                    map((_,idx)=>{
+                      let rexIdx=idx+CamHistDataPageSize*CamHistDataPageIdx;
+                      let einfo=v._CamShotInfoHist[rexIdx];
+                      return {
+                        
+                        type: "button", key: "CamShotHist:"+rexIdx,
+                        text:einfo.name,
+                        onClick: async (updateCB) => {
+              
+                          console.log(einfo);
+                          console.log(einfo.trigger_id,einfo.ttags.filter((t)=>t.startsWith("s_")));
+                          let ttags=(einfo.ttags instanceof Array)?einfo.ttags:[einfo.ttags];
+                          let pkts = await InspTargetExchange("ImDataSave", {
+                            type: "INJECT_CACHE",
+                            // path:"/Users/mdm/workspace",
+                            // name:"testXXX",
+                            trigger_id:einfo.trigger_id,
+                            tags:ttags.filter((t)=>t.startsWith("s_")),
+                          });
+                        }
+          
+          
+                    }}).flat()
+          
+            
+          
+                ]
+              },
+              ,
+              {
+                ...Simple_IO_Ctrl_UI,
+                text: () =>SIMP_CTRL_IO_HIDE?"+ IO_CTRL": "- "+vof(Simple_IO_Ctrl_UI.text),
+                onClick: (updateCB) => {
+                  SIMP_CTRL_IO_HIDE = !SIMP_CTRL_IO_HIDE;
+
+                  updateCB(cInfo)
+                },
+                opts:SIMP_CTRL_IO_HIDE?[]:Simple_IO_Ctrl_UI.opts
+              },
+
+              // Reel_loc_UI,
+            ]
+            UIStackGo(updateCB, cInfo, (result) => {
+              console.log(result)
+            })
+          }
+        }
+
+
+      ],
+    },
+    {
+      text: () => "測試 ",
+      onClick:(updateCB)=>{
+        hideTestFunction=!hideTestFunction;
+
+        updateCB(UIStack_Current().UI)
+      },
+      opts:hideTestFunction?[]: 
+      [
+        "$\n",{
           type: "button", key: "FeederLocMapping",
           text: () => "2:料盤定位",
 
@@ -4304,68 +5849,7 @@ async function PackingCtrlPanelUI() {
               console.log(result)
             })
           }
-        },"$\n",{
-          type: "button", key: "ExeLocMapping",
-          text: () => "4:走位定位確認",
-
-        },"$\n",{
-          type: "button", key: "PackUI",
-          text: () => "5:包裝介面",
-          onClick: async (updateCB) => {
-
-            let SIMP_CTRL_IO_HIDE = false;
-            let cInfo =()=> [
-
-              {
-                text: () => "Feeder Loc Mapping",
-                opts: [
-                  {
-                    type: "button", key: "back",
-                    text: () => "<=",
-                    onClick: async (updateCB) => {
-                      UIStackBack(updateCB, { ok: "OK" });
-                    }
-                  },],
-                callback: async (idx, key, updateCB) => {
-
-                  // cbInfo[idx].text =  " <<<距離:"+advUnit+" 速度:"+F,
-
-                  updateCB(cInfo)
-                }, default: 0
-              },
-              GCtrl_UI2(),
-              ,
-              {
-                ...Simple_IO_Ctrl_UI,
-                text: () =>SIMP_CTRL_IO_HIDE?"+ IO_CTRL": "- "+vof(Simple_IO_Ctrl_UI.text),
-                onClick: (updateCB) => {
-                  SIMP_CTRL_IO_HIDE = !SIMP_CTRL_IO_HIDE;
-
-                  updateCB(cInfo)
-                },
-                opts:SIMP_CTRL_IO_HIDE?[]:Simple_IO_Ctrl_UI.opts
-              },
-
-              // Reel_loc_UI,
-            ]
-            UIStackGo(updateCB, cInfo, (result) => {
-              console.log(result)
-            })
-          }
-        }
-
-
-      ],
-    },
-    {
-      text: () => "測試 ",
-      onClick:(updateCB)=>{
-        hideTestFunction=!hideTestFunction;
-
-        updateCB(UIStack_Current().UI)
-      },
-      opts:hideTestFunction?[]: 
-      [
+        },
         ,
         {
           type: "button", key: "ReelTest",
@@ -4427,19 +5911,19 @@ async function PackingCtrlPanelUI() {
                     text: "Adv TestTest",
                     onClick: async (updateCB) => {
                       let start_time= new Date().getTime();
-                      let distance_pulse=Math.round(distance_mm*SYS_CONFIG.A_Axis_Units_to_mm);
+                      let distance_pulse=Math.round(distance_mm*SYS_CONFIG.A_Axis_mm_to_Unit);
 
                       let encinfo_p=(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value 
-                      await ReelGoAdv_s(distance_pulse,` F${6.6666*speed_mmps/SYS_CONFIG.A_Axis_Units_to_mm} ACC${500}`);
+                      await ReelGoAdv_s(distance_pulse,` F${6.6666*speed_mmps/SYS_CONFIG.A_Axis_mm_to_Unit} ACC${500}`);
                       
                       await G(`M400`);
                       let encinfo_c=(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value
                       let elapsed_time= new Date().getTime()-start_time;
                       console.log(`>>>elapsed_time:${elapsed_time} ms  speed:${distance_mm/elapsed_time*1000} mm/s`)
 
-                      let better_A_Axis_Units_to_mm=distance_pulse/(encinfo_c-encinfo_p);
+                      let better_A_Axis_mm_to_Unit=distance_pulse/(encinfo_c-encinfo_p);
                       console.log(`past:${encinfo_c-encinfo_p}  expect:${distance_mm}  diff:${encinfo_c-encinfo_p-distance_mm}`)
-                      console.log(`better_A_Axis_Units_to_mm:${better_A_Axis_Units_to_mm}`)
+                      console.log(`better_A_Axis_mm_to_Unit:${better_A_Axis_mm_to_Unit}`)
 
                     }
                   },
@@ -4450,7 +5934,7 @@ async function PackingCtrlPanelUI() {
                     onClick: async (updateCB) => {
                       let start_time= new Date().getTime();
                       let distance=distance_mm;
-                      await ReelGoAdv(distance,` F${6.6666*speed_mmps/SYS_CONFIG.A_Axis_Units_to_mm} ACC${100}`);
+                      await ReelGoAdv(distance,` F${6.6666*speed_mmps/SYS_CONFIG.A_Axis_mm_to_Unit} ACC${100}`);
                       
                       await G(`M400`)
                       let elapsed_time= new Date().getTime()-start_time;
@@ -4461,6 +5945,67 @@ async function PackingCtrlPanelUI() {
 
 
                   "$\n",
+
+
+
+                  {
+                    type: "button",
+                    text: "+4*4 & LOGOSOGO",
+                    onClick: async (updateCB) => {
+
+                      let advDist=4*8;
+                      let A_Axis_mm_to_Unit=SYS_CONFIG.A_Axis_mm_to_Unit;
+                      let distPassed=0;
+                      let drvPassed=0;
+                      for(let i=0;i<20;i++)
+                      {
+                        // SYS_CONFIG.A_Axis_mm_to_Unit*
+                        await G("M400");
+                        await   delay(50);
+                        let RLInfo=await ReelLocating(); 
+                        let reelLocPt=RLInfo.center
+
+                        let Tar_ReelLocInfo = v.CalibInfo.ReelLoc;//await ReelLocating()
+
+                        let offset_pix = {
+                          x: reelLocPt.x - Tar_ReelLocInfo.center.x,
+                          y: -(reelLocPt.y - Tar_ReelLocInfo.center.y),
+                        }
+                        let offset_mm = {
+                          x: offset_pix.x * Tar_ReelLocInfo.mmpp,
+                          y: offset_pix.y * Tar_ReelLocInfo.mmpp,
+                        }
+
+
+                        // ReelCheck(3454);
+              
+              
+                        ReadReelENC =(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value
+              
+              
+                        // console.log("AUX_SET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_SET_ENC", value: 0, aid: 0 }));
+              
+                        
+                        // ReelENC = 0;
+                        
+
+                        updateCB(UIStack_Current().UI)
+
+                        let drvDist=A_Axis_mm_to_Unit*(advDist+offset_mm.x);
+
+                        console.log(A_Axis_mm_to_Unit,advDist,offset_mm,drvDist);
+                        await ReelGoAdv_s(drvDist," ACC200 F3000 ");
+                        if(i!=0)
+                        {
+                          distPassed+=advDist;
+                          drvPassed+=drvDist;
+                          A_Axis_mm_to_Unit=drvPassed/distPassed;
+                        }
+
+                      }
+                    }
+                  },
+
                   "$\n",
                   "$\n",
 
@@ -4491,13 +6036,16 @@ async function PackingCtrlPanelUI() {
 
                   {
                     type: "button",
-                    text: "Reel0",
+                    text: "SW_Reel0",
                     onClick: async (updateCB) => {
 
-                      console.log("AUX_SET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_SET_ENC", value: 0, aid: 0 }));
-                      ReelENC = 0;
-                      // await ReelGoAdv(1);
 
+
+                      let encinfo_p=(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value 
+                      // console.log("AUX_SET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_SET_ENC", value: 0, aid: 0 }));
+
+                      
+                      ReelENC = encinfo_p;
                     }
                   },
 
@@ -4515,7 +6063,37 @@ async function PackingCtrlPanelUI() {
                     }
                   },
 
+                  "$\n",
+                  "$\n",
+                  "$\n",
+                  "$\n",
+                  "$\n",
+                  {
+                    type: "button",
+                    text: "HW_Reel0",
+                    onClick: async (updateCB) => {
+
+                      console.log("AUX_SET_ENC>>>>>", await Lib.CNCSend({ "type": "AUX_SET_ENC", value: 0, aid: 0 }));
+                      ReelENC = 0;
+                      // await ReelGoAdv(1);
+
+                    }
+                  },
   
+                  "$\n",
+
+                  {
+                    type: "button",
+                    text: "TTT:",
+                    onClick: async (updateCB) => {
+
+                      ReelENC =(await Lib.CNCSend({ "type": "AUX_GET_ENC", aid: 0 })).value
+                      // await ReelGoAdv(1);
+
+                      updateCB(UIStack_Current().UI)
+                    }
+                  },
+
 
 
                 ]
@@ -4529,32 +6107,267 @@ async function PackingCtrlPanelUI() {
           }
         },
         {
+          type: "button", key: "CoveredReelCheck",
+          text: () => "CoveredReelCheck",
+          onClick: async (updateCB) => {
+
+
+            let check_adv=SYS_CONFIG.Reel_Hole_Distance*8;
+
+            let baseLoc = Reel_loc_UIInfo["pt1"].headXY;
+            let SIMP_CTRL_IO_HIDE=true;
+
+
+            let GObj={
+              letRun:false,
+              checkPromise:undefined
+            };
+            let AdvCheck=async (updateCB) =>{
+              if(GObj.checkPromise!==undefined)return;
+              let checkFunc=async (updateCB) =>{                      
+                GObj.letRun=true;
+                await Enter_Z2SafeZone_n_Check();
+
+                await G(`G1 X${baseLoc[0]+100} Y${baseLoc[1]} ACC1000 F3000 `);
+                
+
+                await G(`G04 P100`)
+                await G(`M400`)
+
+
+
+
+                for(let i=0;GObj.letRun;i++)
+                {
+                  let trigID=44;
+                  let repWaitKey=">>><"
+                  reportWait_reg(repWaitKey+"_RO", "SurfaceCheck_ReelObj_Covered", trigID);
+
+                  reportWait_reg(repWaitKey+"_RL", "SBM_ReelLoc", trigID);
+
+                  
+                  // await G(`G1 X${340} Y${150} ${FA}`)
+
+                  await ReelCheck(trigID,0,["CAM_Reel_Covered","CAM_ReelLoc"]);
+
+
+                  let report_RO = await reportWait(repWaitKey+"_RO")
+                  let report_RL = await reportWait(repWaitKey+"_RL")
+
+                  console.log(report_RO,report_RL)
+                  let sumCat=report_RO.report.sub_reports.reduce((sum, srep) =>srep.category<sum?srep.category:sum, 1);
+
+                  
+                  if(sumCat!=1)break;
+
+
+
+                  {
+
+                    let RLInfo=report_RL.report[0];
+                    let reelLocPt=RLInfo.center
+
+                    let Tar_ReelLocInfo = v.CalibInfo.ReelLoc;//await ReelLocating()
+                
+                    let offset_pix = {
+                      x: reelLocPt.x - Tar_ReelLocInfo.center.x,
+                      y: -(reelLocPt.y - Tar_ReelLocInfo.center.y),
+                    }
+                    let offset_mm = {
+                      x: offset_pix.x * Tar_ReelLocInfo.mmpp,
+                      y: offset_pix.y * Tar_ReelLocInfo.mmpp,
+                    }
+                
+                    let A_Axis_mm_to_Unit=SYS_CONFIG.A_Axis_mm_to_Unit;
+                    let drvDist=A_Axis_mm_to_Unit*(check_adv+offset_mm.x);
+
+                    await ReelGoAdv_s(drvDist," ACC200 F3000 ");
+                    await G(`M400`);
+
+                  }
+                  // await ReelSegAdv(check_adv,check_adv,false);
+
+                  
+
+                }
+
+                GObj.checkPromise=undefined;
+
+
+              }
+
+              GObj.checkPromise=checkFunc(updateCB);
+              
+            }
+            let cInfo =  () => [
+
+              {
+                text: () => "",
+                opts: [
+
+                  {
+                    type: "button", key: "back",
+                    text: () => "<=",
+                    onClick: async (updateCB) => {
+                      UIStackBack(updateCB, { ok: "OK" });
+                    }
+                  },
+                  "$\n","$\n",
+                  
+                  {
+                    type: "button",
+                    text: "Adv TestTest",
+                    onClick: AdvCheck
+                  },
+
+                  {
+                    type: "button",
+                    text: "進帶(SKIP)",
+                    onClick: async (updateCB) => {
+                      if(GObj.checkPromise!==undefined)return;
+
+                      await Enter_Z2SafeZone_n_Check();
+
+                      await G(`G1 X${baseLoc[0]+100} Y${baseLoc[1]} ACC1000 F3000 `);
+                      await ReelSegAdv(check_adv,check_adv,false);
+  
+                      AdvCheck();
+
+                    }
+                  },
+
+                  {
+                    type: "button",
+                    text: "進帶至可檢",
+                    onClick: async (updateCB) => {
+
+                      if(GObj.checkPromise!==undefined)return;
+                      let checkFunc=async (updateCB) =>{                      
+                        GObj.letRun=true;
+                        await Enter_Z2SafeZone_n_Check();
+  
+                        await G(`G1 X${baseLoc[0]+100} Y${baseLoc[1]} ACC1000 F3000 `);
+                        
+  
+                        await G(`G04 P100`)
+                        await G(`M400`)
+  
+  
+  
+  
+                        for(let i=0;GObj.letRun;i++)
+                        {
+                          let trigID=Math.round(Math.random()*100000);
+                          let repWaitKey=">>><"
+                          reportWait_reg(repWaitKey+"_RO", "SurfaceCheck_ReelObj_Covered", trigID);
+    
+                          
+                          // await G(`G1 X${340} Y${150} ${FA}`)
+    
+                          await ReelCheck(trigID,0,["CAM_Reel_Covered"]);
+    
+    
+                          let report_RO = await reportWait(repWaitKey+"_RO")
+    
+                          console.log(report_RO)
+                          let avaIdx=report_RO.report.sub_reports.findIndex((srep) =>srep.category>=-999);
+  
+                          if(avaIdx>=0)
+                          {
+                            if(avaIdx>0)
+                              await ReelSegAdv(SYS_CONFIG.Reel_Hole_Distance*avaIdx,check_adv,false);
+                            break;
+                          }
+
+                          await ReelSegAdv(check_adv,check_adv,false);
+    
+                          
+  
+                        }
+
+                        GObj.checkPromise=undefined;
+
+                        AdvCheck();
+
+                      }
+
+                      GObj.checkPromise=checkFunc(updateCB);
+                      
+                    }
+                  },
+
+
+                  {
+                    type: "button",
+                    text: "STOP",
+                    onClick: async (updateCB) => {
+                      
+                      GObj.letRun=false;
+                      await GObj.checkPromise;
+  
+                      
+
+                    }
+                  },
+
+                ]
+              },
+
+              {
+                ...Simple_IO_Ctrl_UI,
+                text: () =>SIMP_CTRL_IO_HIDE?"+ IO_CTRL": "- "+vof(Simple_IO_Ctrl_UI.text),
+                onClick: (updateCB) => {
+                  SIMP_CTRL_IO_HIDE = !SIMP_CTRL_IO_HIDE;
+
+                  updateCB(cInfo)
+                },
+                opts:SIMP_CTRL_IO_HIDE?[]:Simple_IO_Ctrl_UI.opts
+              },
+              // JOG_UI,
+              // Calib_UI
+            ]//
+            UIStackGo(updateCB, cInfo, (result) => {
+              console.log(result)
+            })
+          }
+        },
+        {
+          type: "button", key: "TESTReelCam45",
+          text: () => "TESTReelCam45",
+          onClick: async (updateCB) => {
+            await ReelCheckAll(996, 1);
+          }
+        },
+        {
           type: "button", key: "DDD",
           text: () => "TEST",
           onClick: async (updateCB) => {
 
 
-            await G(`M120`)//dis
-            let FA = `F${4000} ACC${1500}`
-            // await Enter_Z2SafeZone_n_Check();
-            await G(`G1 X${200} Y${260} ${FA}`)
+            console.log(InspTarSubRegionNameIDList("SurfaceCheck_CAM_A"))
+            console.log(InspTarSubRegionNameIDList("SurfaceCheck_CAM_SIDE"))
             
-            let ACC = "1000";
-            let F = "2500";
-            FA = `F${F} ACC${ACC}`
-            for(let i=0;i<10;i++){
+            // await G(`M120`)//dis
+            // let FA = `F${4000} ACC${1500}`
+            // // await Enter_Z2SafeZone_n_Check();
+            // await G(`G1 X${200} Y${260} ${FA}`)
+            
+            // let ACC = "1000";
+            // let F = "2500";
+            // FA = `F${F} ACC${ACC}`
+            // for(let i=0;i<10;i++){
               
 
-              for(let j=0;j<4;j++)
-              {
-                await G(`G1 X${200-j*40} Y${260} ${FA}`)
-                await G("G04 P10")
-              }
+            //   for(let j=0;j<4;j++)
+            //   {
+            //     await G(`G1 X${200-j*40} Y${260} ${FA}`)
+            //     await G("G04 P10")
+            //   }
               
-            }
+            // }
 
-            await G(`G1 X${40} Y${260} ${FA}`)
-            console.log(`>>end`)
+            // await G(`G1 X${40} Y${260} ${FA}`)
+            // console.log(`>>end`)
           }
         }
         // {
@@ -4975,6 +6788,8 @@ async function testV2()
 
   // await preP
 }
+
+
 
 ; ({
   INIT,

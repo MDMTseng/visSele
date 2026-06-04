@@ -444,6 +444,19 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     fi = _fi;
     callback(*this, CameraLayer::EV_ERROR, context);
   }
+  // If the camera reports SIZE_MISMATCH the buffer was sized for the previous
+  // payload (e.g. ROI grew). Recreate at the current payload before re-pushing
+  // so we don't loop forever on the same bad buffer.
+  if (bufferStatus == ARV_BUFFER_STATUS_SIZE_MISMATCH) {
+    int cur_payload = arv_camera_get_payload(camera, NULL);
+    if (cur_payload > 0) {
+      payloadSize = cur_payload;
+      g_object_unref(buffer);
+      arv_stream_push_buffer(stream, arv_buffer_new(payloadSize, NULL));
+      _frame_cache_buffer = NULL;
+      return;
+    }
+  }
   arv_stream_push_buffer(stream, buffer);
   _frame_cache_buffer = NULL;
   // LOGI("buffer status:%d has chunks:%d",arv_buffer_get_status (buffer),arv_buffer_has_chunks (buffer));
@@ -608,14 +621,27 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
     }
   }
   // SetROI(20, 20, 500, 500, 0, 0); //reset the ROI
-  
+
   SetROI(0,0,999999,999999,0,0);//MAX ROI
   payloadSize = arv_camera_get_payload(camera, NULL);
 
+  // GigE jumbo-frame negotiation: try to use the largest packet size the link
+  // supports, falling back to a smaller size on failure. Big throughput win
+  // when the network supports jumbo frames; harmless otherwise.
+  if (arv_camera_is_gv_device(camera))
+  {
+    arv_camera_gv_set_packet_size_adjustment(camera, ARV_GV_PACKET_SIZE_ADJUSTMENT_ON_FAILURE);
+    GError *psz_err = NULL;
+    guint psz = arv_camera_gv_auto_packet_size(camera, &psz_err);
+    if (psz_err) { LOGE("gv_auto_packet_size: %s", psz_err->message); g_clear_error(&psz_err); }
+    else LOGI("gv packet size negotiated: %u bytes", psz);
+  }
+
   LOGI("payloadSize:%d", payloadSize);
   if (stream != NULL)
-  { //push 1 buffer for now
-    for (int i = 0; i < 2; i++)
+  { // GigE/USB3 best practice is 4-10 buffers to absorb consumer jitter; 2 was
+    // too few and produced packet/frame drops under load.
+    for (int i = 0; i < 8; i++)
     {
       arv_stream_push_buffer(stream, arv_buffer_new(payloadSize, NULL));
     }
@@ -1384,6 +1410,59 @@ CameraLayer::status CameraLayer_Aravis::SetExposureTime(float time_us)
   }
   g_clear_error(&err);
   return CameraLayer::NAK;
+}
+
+// Real Aravis StopAquisition / StartAquisition. The base class default returns
+// NAK, so CameraSetup's StopAquisition() call was a silent no-op before --
+// meaning the first ~1-2 parameter writes after construction would race the
+// streaming pipeline and get dropped by the camera firmware (a well-known
+// GenICam GigE quirk). Now CameraSetup:
+//   stop  -> sleep 50ms (settle)  ->  apply params  ->  start  -> sleep 50ms
+// produces reliable param writes on Aravis cameras.
+CameraLayer::status CameraLayer_Aravis::StopAquisition()
+{
+  if (!camera) return CameraLayer::NAK;
+  if (!acquisition_started) return CameraLayer::ACK;
+  GError *err = NULL;
+  arv_camera_stop_acquisition(camera, &err);
+  acquisition_started = false;
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  if (err) {
+    LOGE("StopAquisition: %s", err->message);
+    g_clear_error(&err);
+    return CameraLayer::NAK;
+  }
+  return CameraLayer::ACK;
+}
+CameraLayer::status CameraLayer_Aravis::StartAquisition()
+{
+  if (!camera) return CameraLayer::NAK;
+  if (acquisition_started) return CameraLayer::ACK;
+  // ROI / pixel format may have changed while stopped, which changes payload.
+  // Drain whatever's queued in the stream and refill with current-size buffers
+  // so the first frames don't fail SIZE_MISMATCH.
+  if (stream) {
+    int cur_payload = arv_camera_get_payload(camera, NULL);
+    if (cur_payload > 0 && cur_payload != payloadSize) {
+      LOGI("StartAquisition: payload %d -> %d, recycling buffers",
+           payloadSize, cur_payload);
+      payloadSize = cur_payload;
+      ArvBuffer *b;
+      while ((b = arv_stream_try_pop_buffer(stream)) != NULL) g_object_unref(b);
+      for (int i = 0; i < 8; i++)
+        arv_stream_push_buffer(stream, arv_buffer_new(payloadSize, NULL));
+    }
+  }
+  GError *err = NULL;
+  arv_camera_start_acquisition(camera, &err);
+  if (err) {
+    LOGE("StartAquisition: %s", err->message);
+    g_clear_error(&err);
+    return CameraLayer::NAK;
+  }
+  acquisition_started = true;
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  return CameraLayer::ACK;
 }
 
 CameraLayer::status CameraLayer_Aravis::GetExposureTime(float *ret_time_ms)

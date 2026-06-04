@@ -236,6 +236,7 @@ add_library(MatchingEngine STATIC
   # Link ONLY the modules we use; the full OpenCV_LIBS pulls opencv_dnn which
   # has a broken protobuf dep on Homebrew -> dyld abort.
   MatchingEngine/ChessboardExtract.cpp MatchingEngine/LensCalib.cpp
+  MatchingEngine/FieldCalib.cpp
   MatchingEngine/LabelingCV.cpp MatchingEngine/BinarizeCV.cpp
   MatchingEngine/CvBridge.cpp MatchingEngine/SearchPointCV.cpp)
 target_include_directories(MatchingEngine PUBLIC

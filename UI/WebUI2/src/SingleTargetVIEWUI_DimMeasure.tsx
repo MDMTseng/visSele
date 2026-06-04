@@ -1465,7 +1465,7 @@ function _Draw_FeatureElement_Edit_SearchPoint(
     {//HACK hard code for UNSET result_type
       return;
     }
-    console.log(">>>",reportEle);
+    // console.log(">>>",reportEle);
     let rotate_rad = reportObj.angle;
     //draw cross at reportEle.pt1
     g.ctx.strokeStyle = colorSetting.primitive_shape_line.toString();
@@ -2246,7 +2246,7 @@ function _Draw_FeatureElement_Edit_Measure_Distance(
   let textRotateTheta=0;
   if(isRefReady==true)
   {
-    console.log(">>>",featureInfo,featureEle,reportObj,reportEle);
+    // console.log(">>>",featureInfo,featureEle,reportObj,reportEle);
     let projectRotateTheta=featureEle.rotate??Math.PI/2;
     let projectVec_rotated=PtRotate2d(projectVec_normalized,projectRotateTheta);
     let projectVec_rotated_normal={x:-projectVec_rotated.y,y:projectVec_rotated.x};

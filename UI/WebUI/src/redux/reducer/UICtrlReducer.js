@@ -154,16 +154,28 @@ function StateReducer(newState, action) {
             switch (report.type) {
               case "sig360_extractor":
                 newState.edit_info = Object.assign({}, newState.edit_info);
-                
+
                 Edit_info_reset(newState);
                 newState.edit_info._obj.Setsig360info(action.data);
                 newState.edit_info.sig360info = newState.edit_info._obj.sig360info;
+                // Legacy "camera_calibration" WS report is no longer emitted
+                // (loadCameraCalibParam was removed). Pull cam_param from the
+                // extraction report so rendering mmpp stays correct.
+                if (report.cam_param) {
+                  newState.edit_info._obj.SetCameraParamInfo(report.cam_param);
+                }
               break;
               case "sig360_circle_line":
                 {
                   newState.edit_info = { ...newState.edit_info };
                   //newState.report=action.data;
                   let inspReport = report;
+
+                  if (report.cam_param) {
+                    newState.edit_info._obj.SetCameraParamInfo(report.cam_param);
+                    camParam = report.cam_param;
+                    mmpcampix = camParam.mmpb2b / camParam.ppb2b;
+                  }
 
                   newState.edit_info.inspReport = inspReport;
                   inspReport.time_ms = currentTime_ms;

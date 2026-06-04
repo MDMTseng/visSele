@@ -1239,7 +1239,7 @@ inline float mm2Pulse_conv(int axisIdx,float dist)
     case AXIS_IDX_R2:
     case AXIS_IDX_R3:
     case AXIS_IDX_R4://assume it's 800 pulses pre rev
-      return dist*(200*4)/360;//-1 for reverse the direction
+      return dist*(200*8)/360;//-1 for reverse the direction
 
 
 

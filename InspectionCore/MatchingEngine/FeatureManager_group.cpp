@@ -234,27 +234,25 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     // Binary image is single-channel at the downsampled resolution.
     binary_img_storage.create(gray_in.rows, gray_in.cols, CV_8UC1);
 
-    // Per-camera adaptive threshold: lazily build the threshold map from the
-    // loaded background model (sampler->stageLightInfo), robustly cleaned of
-    // scratches/dust, as T = D + ratio*(B - D).
-    if (useCalibBackground && bgThreshMap.empty() && bacpac && bacpac->sampler)
+    // Per-camera adaptive threshold from bacpac->fieldCal (bright grid is
+    // already vignette-masked + robust-cleaned at save time, so we don't
+    // re-clean here). T = D + ratio*(B - D) per valid cell; invalid
+    // (vignette) cells get NAN so cvThresholdMap can fall back to briThres.
+    if (useCalibBackground && bgThreshMap.empty() &&
+        bacpac && bacpac->fieldCal && bacpac->fieldCal->ok)
     {
-      stageLightParam *sl = bacpac->sampler->getStageLightInfo();
-      if (sl && sl->BG_nodes.size() > 0 && sl->idxW > 0 && sl->idxH > 0)
+      const FieldGrid &Bg = bacpac->fieldCal->bright;
+      if (Bg.rows > 0 && Bg.cols > 0 && (int)Bg.mean.size() == Bg.rows * Bg.cols)
       {
-        int W = sl->idxW, H = sl->idxH;
-        std::vector<float> B(W * H, NAN);
-        for (BGLightNodeInfo &n : sl->BG_nodes)
-          if (n.index.x >= 0 && n.index.x < W && n.index.y >= 0 && n.index.y < H)
-            B[n.index.y * W + n.index.x] = n.mean;
-
-        int rejected = backLightField_robustClean(B.data(), W, H, 2.5f, 3);
+        int W = Bg.cols, H = Bg.rows;
         bgThreshMap.resize(W * H);
-        for (int k = 0; k < W * H; k++)
-          bgThreshMap[k] = darkLevel + edgeRatio * (B[k] - darkLevel);
+        for (int k = 0; k < W * H; k++) {
+          bool valid = (k < (int)Bg.valid.size()) ? (Bg.valid[k] != 0) : true;
+          bgThreshMap[k] = valid ? (float)(darkLevel + edgeRatio * (Bg.mean[k] - darkLevel)) : NAN;
+        }
         bgMapW = W; bgMapH = H;
-        LOGI("adaptiveThres calib map %dx%d ratio=%.2f dark=%.1f rejectedZones=%d",
-             W, H, edgeRatio, darkLevel, rejected);
+        LOGI("adaptiveThres fieldCal map %dx%d ratio=%.2f dark=%.1f vignette=%d",
+             W, H, edgeRatio, darkLevel, bacpac->fieldCal->bright_vignette_cells);
       }
     }
 

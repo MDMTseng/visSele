@@ -329,6 +329,20 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
     let isSystemReadyForInsp=is_Cam_Ready && is_uInsp_Ready && is_SLID_Ready;
     
+    // Whenever the core (camera channel) reaches a connected state, tell it
+    // to (re)load camera setting + lens calib + field calib so the sampler's
+    // mmpp is primed. Without this, any mode that bypasses CalibrationUI
+    // (e.g. DefConfUI -> triggerSnapExam -> EX -> mmpP_ideal()) would get
+    // the default calibPpB=1, calibmmpB=1 -> mmpp = 1.0 mm/px (wildly wrong).
+    if (is_Cam_Ready) {
+      ACT_WS_SEND_BPG("RC", 0, {
+        target: "calib_files_load",
+        camera_setting_dir: "data/",
+        lens_calib_path: "data/lens_calib.json",
+        field_calib_path: "data/field_calib.json",
+      });
+    }
+
     if(!isSystemReadyForInsp)
     {
       setErrorInfo({

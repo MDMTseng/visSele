@@ -1540,6 +1540,139 @@ async function CameraSNameSWTrigger(side_name,ttags,trigger_id,doTriggerInfoMock
 
 
 
+
+function CalculateCircleCenter(A,B,C)
+{
+    var yDelta_a = B.y - A.y;
+    var xDelta_a = B.x - A.x;
+    var yDelta_b = C.y - B.y;
+    var xDelta_b = C.x - B.x;
+
+    let center = [];
+
+    var aSlope = yDelta_a / xDelta_a;
+    var bSlope = yDelta_b / xDelta_b;
+
+    center.x = (aSlope*bSlope*(A.y - C.y) + bSlope*(A.x + B.x) - aSlope*(B.x+C.x) )/(2* (bSlope-aSlope) );
+    center.y = -1*(center.x - (A.x+B.x)/2)/aSlope +  (A.y+B.y)/2;
+    return center;
+
+
+}
+
+
+
+function findCircleCenterAndRadius(points)
+{
+  // points=points.map(pt=>({x:pt[0],y:pt[1]}));
+  let calcCount=0;
+  let centreSum=[0,0];
+  for(let i=0;i<points.length-2;i++)
+  {
+    // let center =CalculateCircleCenter(points[i],points[i+1],points[i+2]);
+    let center =CalculateCircleCenter(points[0],points[i+1],points[points.length-1]);
+    centreSum[0]+=center.x
+    centreSum[1]+=center.y
+    calcCount++;
+  }
+  centreSum[0]/=calcCount;
+  centreSum[1]/=calcCount;
+
+  let mean = 0;
+  let M2 = 0;
+
+  for(let i=0;i<points.length;i++)
+  {
+    let r= Math.hypot(points[i].x-centreSum[0],points[i].y-centreSum[1]);
+    const delta = r - mean;
+    mean += delta / (i + 1);
+    M2 += delta *(r - mean);
+  }
+  
+  const variance = M2 / points.length;
+
+  return {
+    x:centreSum[0],
+    y:centreSum[1],
+    r:mean,
+    sigma:Math.sqrt(variance)
+  };
+}
+
+
+function UIStack()
+{
+  
+  let _UIStack=[];
+  function UIStack_Current() {
+    return _UIStack[_UIStack.length - 1];
+  }
+
+  function UIStackBack(updateCB, resultInfo) {
+    if (_UIStack.length == 1) return;
+
+    let UIInfo = _UIStack.pop();
+    if (UIInfo.result !== undefined) {
+      UIInfo.result(resultInfo)
+    }
+
+    updateCB(UIStack_Current().UI)
+  }
+
+  function UIStackGo(updateCB, UI, resultCB) {
+    _UIStack.push({
+      UI,
+      result: resultCB
+    })
+    if (updateCB !== undefined)
+      updateCB(UIStack_Current().UI)
+  }
+
+  function UIUpdate(updateCB) {
+    if (updateCB !== undefined)
+      updateCB(UIStack_Current().UI)
+  }
+
+
+  return {
+    current:UIStack_Current,
+    back:UIStackBack,
+    go:UIStackGo,
+    update:UIUpdate
+  }
+}
+
+
+
+async function DataStorage(file_path)
+{
+  return {
+    getItem:async (key)=>{
+      try{
+        let data =await READJSON(file_path)
+        console.log("data",data,"key",key,"data[key]",data[key]);
+        return data[key]
+      }
+      catch(e){
+      }
+      return undefined;
+    
+    },
+    setItem:async (key,value)=>{
+      let tarObj=undefined;
+      try{
+        tarObj =await READJSON(file_path)
+      }
+      catch(e){
+        tarObj={}
+      }
+      tarObj[key]=value;
+      await SAVEJSON(file_path,tarObj)
+    }
+  }
+}
+
+
 ; ({
   INIT,
   rangeGen,
@@ -1558,7 +1691,10 @@ async function CameraSNameSWTrigger(side_name,ttags,trigger_id,doTriggerInfoMock
   MatxVec3x3,
   dec2binStr,
   
-  CameraSNameSWTrigger
+  CameraSNameSWTrigger,
+  findCircleCenterAndRadius,
+  UIStack,
+  DataStorage,
   })
   
   

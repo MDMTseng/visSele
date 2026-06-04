@@ -13,6 +13,8 @@ LOG_MODULE("match.sig360");
 #include <MatchingCore.h>
 #include <stdio.h>
 #include "CvBridge.h"
+#include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include "polyfit.h"
 
 
@@ -3511,8 +3513,28 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     cal.edge.min_strength = cdef.edge_min_strength;
     acv_XY off = eT.getImgOffset();
     acv_XY cc = acvVecSub(center, off);
-    CaliperCircleResult rr = caliper_locate_circle(eT.getImageCv(), cc, radius, sAngle, eAngle,
-                                                   cdef.cal_count, cal, eT.getBacpac(), cdef.name);
+    CaliperCircleResult rr;
+    if (getenv("INSP_CALIPER_PASSTHROUGH"))
+    {
+      int n = std::max(1, cdef.cal_count);
+      rr.ok = true;
+      rr.hits.reserve(n);
+      for (int i = 0; i < n; i++) {
+        float t = (n == 1) ? 0.5f : (float)i / (float)(n - 1);
+        float a = sAngle + (eAngle - sAngle) * t;
+        CaliperHit h{};
+        h.pt = { cc.x + radius * std::cos(a), cc.y + radius * std::sin(a) };
+        h.status = 2; h.strength = 0;
+        rr.hits.push_back(h);
+      }
+      rr.center = cc; rr.radius = radius;
+      rr.rms = 0; rr.nInlier = n; rr.confidence = 1.0f;
+    }
+    else
+    {
+      rr = caliper_locate_circle(eT.getImageCv(), cc, radius, sAngle, eAngle,
+                                 cdef.cal_count, cal, eT.getBacpac(), cdef.name);
+    }
     if (rr.ok) { cf.circle.circumcenter = acvVecAdd(rr.center, off); cf.circle.radius = rr.radius;
                  cf.s = rr.rms; cf.matching_pts = rr.nInlier; cf.confidence = rr.confidence; }
     else { cf.circle.radius = NAN; }
@@ -3524,13 +3546,86 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     // All hits (including missed) carry valid coords — Caliper.cpp stashes
     // the caliper's nominal anchor on miss.
     cr.cal_hits.reserve(rr.hits.size());
+    std::vector<acv_XY> dbg_pix_hits;  // image-absolute px, for debug overlay
+    std::vector<int>    dbg_pix_st;
     for (const auto &h : rr.hits) {
       CaliperHit ih = h;
       acv_XY pix_pt = acvVecAdd(h.pt, off);   // image-relative → image-absolute px
       ih.pt = PixDomain_TO_TemplateDomain(pix_pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
       cr.cal_hits.push_back(ih);
-      // Inlier-only point set (status==2) for envelope-fit, kept in image-px.
       if (h.status == 2) envelope_pts.push_back(pix_pt);
+      dbg_pix_hits.push_back(pix_pt);
+      dbg_pix_st.push_back(h.status);
+    }
+    // Debug dump: cropped 4x view of the caliper search arc + hits + fitted
+    // circle, identical pattern to LineMatching_caliper's overlay.
+    if (getenv("INSP_DUMP_CALIPER_DEBUG"))
+    {
+      const cv::Mat &src = eT.getImageCv();
+      if (!src.empty() && !dbg_pix_hits.empty()) {
+        acv_XY ccPix = acvVecAdd(cc, off);
+        double minX = ccPix.x - radius, maxX = ccPix.x + radius;
+        double minY = ccPix.y - radius, maxY = ccPix.y + radius;
+        for (const auto &p : dbg_pix_hits) {
+          if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+        }
+        const int margin = 30;
+        int x0 = std::max(0, (int)std::floor(minX) - margin);
+        int y0 = std::max(0, (int)std::floor(minY) - margin);
+        int x1 = std::min(src.cols, (int)std::ceil(maxX) + margin);
+        int y1 = std::min(src.rows, (int)std::ceil(maxY) + margin);
+        if (x1 > x0 && y1 > y0) {
+          cv::Mat roi = src(cv::Rect(x0, y0, x1 - x0, y1 - y0)).clone();
+          cv::Mat dbg;
+          if (roi.channels() == 1) cv::cvtColor(roi, dbg, cv::COLOR_GRAY2BGR);
+          else                     dbg = roi;
+          const int scale = 4;
+          cv::Mat up;
+          cv::resize(dbg, up, cv::Size(dbg.cols * scale, dbg.rows * scale), 0, 0, cv::INTER_NEAREST);
+          auto mapPt = [&](const acv_XY &p) {
+            return cv::Point2f((float)((p.x - x0) * scale), (float)((p.y - y0) * scale));
+          };
+          auto drawCross = [&](cv::Point2f c, cv::Scalar col) {
+            cv::line(up, cv::Point(c.x - 10, c.y), cv::Point(c.x + 10, c.y), col, 2, cv::LINE_AA);
+            cv::line(up, cv::Point(c.x, c.y - 10), cv::Point(c.x, c.y + 10), col, 2, cv::LINE_AA);
+          };
+          // Red nominal search arc (from sAngle to eAngle at given radius around ccPix).
+          int N = 64;
+          for (int i = 0; i < N; i++) {
+            float a0 = sAngle + (eAngle - sAngle) * i / N;
+            float a1 = sAngle + (eAngle - sAngle) * (i + 1) / N;
+            acv_XY p0 = { ccPix.x + radius * std::cos(a0), ccPix.y + radius * std::sin(a0) };
+            acv_XY p1 = { ccPix.x + radius * std::cos(a1), ccPix.y + radius * std::sin(a1) };
+            cv::line(up, mapPt(p0), mapPt(p1), cv::Scalar(0,0,255), 1, cv::LINE_AA);
+          }
+          // Hit crosses.
+          for (size_t i = 0; i < dbg_pix_hits.size(); i++) {
+            cv::Scalar col = (dbg_pix_st[i] == 2) ? cv::Scalar(0,255,0) : cv::Scalar(140,140,140);
+            drawCross(mapPt(dbg_pix_hits[i]), col);
+          }
+          // Cyan fitted circle.
+          if (rr.ok && cf.circle.radius == cf.circle.radius) {
+            for (int i = 0; i < 128; i++) {
+              float a0 = (float)(2*M_PI * i / 128);
+              float a1 = (float)(2*M_PI * (i + 1) / 128);
+              acv_XY p0 = { cf.circle.circumcenter.x + cf.circle.radius * std::cos(a0),
+                            cf.circle.circumcenter.y + cf.circle.radius * std::sin(a0) };
+              acv_XY p1 = { cf.circle.circumcenter.x + cf.circle.radius * std::cos(a1),
+                            cf.circle.circumcenter.y + cf.circle.radius * std::sin(a1) };
+              cv::line(up, mapPt(p0), mapPt(p1), cv::Scalar(255,200,0), 1, cv::LINE_AA);
+            }
+          }
+          char path[256];
+          snprintf(path, sizeof(path), "/tmp/caliper_dbg_circle_%s.png",
+                   (cdef.name[0] == '\0') ? "unnamed" : cdef.name);
+          for (char *p = path + strlen("/tmp/caliper_dbg_circle_"); *p; p++)
+            if (*p == '/' || *p == ' ') *p = '_';
+          try { cv::imwrite(path, up); LOGI("caliper dbg dumped: %s (crop %dx%d ->4x)",
+                                            path, x1 - x0, y1 - y0); }
+          catch (const cv::Exception &ex) { LOGE("caliper dbg imwrite: %s", ex.what()); }
+        }
+      }
     }
   }
   else {
@@ -3761,7 +3856,37 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
   acv_XY off = eT.getImgOffset();
   acv_XY p0 = acvVecSub(lineDef.p0, off);
   acv_XY p1 = acvVecSub(lineDef.p1, off);
-  CaliperLineResult r = caliper_locate_line(eT.getImageCv(), p0, p1, lineDef.cal_count, cal, eT.getBacpac(), lineDef.name);
+  CaliperLineResult r;
+  if (getenv("INSP_CALIPER_PASSTHROUGH"))
+  {
+    // Debug bypass: don't run edge search; emit the nominal caliper centers
+    // (evenly along p0→p1) as the hits. Useful for visualising "where the
+    // caliper boxes sit" vs the actual edge, isolated from any matching
+    // strength / polarity behaviour.
+    int n = std::max(1, lineDef.cal_count);
+    r.ok = true;
+    r.hits.reserve(n);
+    for (int i = 0; i < n; i++) {
+      float t = (n == 1) ? 0.5f : (float)i / (float)(n - 1);
+      CaliperHit h{};
+      h.pt = { p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t };
+      h.status = 2;
+      h.strength = 0;
+      r.hits.push_back(h);
+    }
+    // Synthesize a fit along p0->p1 so the downstream report doesn't NaN out.
+    r.anchor = { (p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f };
+    acv_XY d = { p1.x - p0.x, p1.y - p0.y };
+    float L = std::sqrt(d.x*d.x + d.y*d.y);
+    r.dir = (L > 0) ? acv_XY{ d.x / L, d.y / L } : acv_XY{ 1.f, 0.f };
+    r.rms = 0;
+    r.nInlier = n;
+    r.confidence = 1.0f;
+  }
+  else
+  {
+    r = caliper_locate_line(eT.getImageCv(), p0, p1, lineDef.cal_count, cal, eT.getBacpac(), lineDef.name);
+  }
   if (r.ok)
   {
     // Orient the fitted direction to the def's p0->p1 convention (the TLS fit's
@@ -3795,6 +3920,66 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
     CaliperHit ih = h;
     ih.pt = acvVecAdd(h.pt, off);
     Report.cal_hits.push_back(ih);
+  }
+  // Debug: dump the caliper input image with the search line + hit dots
+  // overlaid so the user can eyeball whether the green Xs they see in the
+  // WebUI match what the caliper actually returned in image-pixel space.
+  // Triggered only when env var INSP_DUMP_CALIPER_DEBUG is set (any value).
+  if (getenv("INSP_DUMP_CALIPER_DEBUG"))
+  {
+    const cv::Mat &src = eT.getImageCv();
+    if (!src.empty()) {
+      // Bbox over search line + hits + fitted endpoints, then 20px margin.
+      double minX = std::min(lineDef.p0.x, lineDef.p1.x);
+      double maxX = std::max(lineDef.p0.x, lineDef.p1.x);
+      double minY = std::min(lineDef.p0.y, lineDef.p1.y);
+      double maxY = std::max(lineDef.p0.y, lineDef.p1.y);
+      for (const auto &h : Report.cal_hits) {
+        if (h.pt.x < minX) minX = h.pt.x; if (h.pt.x > maxX) maxX = h.pt.x;
+        if (h.pt.y < minY) minY = h.pt.y; if (h.pt.y > maxY) maxY = h.pt.y;
+      }
+      const int margin = 30;
+      int x0 = std::max(0, (int)std::floor(minX) - margin);
+      int y0 = std::max(0, (int)std::floor(minY) - margin);
+      int x1 = std::min(src.cols, (int)std::ceil(maxX) + margin);
+      int y1 = std::min(src.rows, (int)std::ceil(maxY) + margin);
+      if (x1 <= x0 || y1 <= y0) goto dbg_skip;
+      cv::Mat roi = src(cv::Rect(x0, y0, x1 - x0, y1 - y0)).clone();
+      cv::Mat dbg;
+      if (roi.channels() == 1) cv::cvtColor(roi, dbg, cv::COLOR_GRAY2BGR);
+      else                     dbg = roi;
+      // 4x nearest-neighbor so individual pixels stay sharp under the marks.
+      const int scale = 4;
+      cv::Mat up;
+      cv::resize(dbg, up, cv::Size(dbg.cols * scale, dbg.rows * scale), 0, 0, cv::INTER_NEAREST);
+      auto mapPt = [&](const acv_XY &p) {
+        return cv::Point2f((float)((p.x - x0) * scale), (float)((p.y - y0) * scale));
+      };
+      auto drawCross = [&](cv::Mat &im, cv::Point2f c, int sz, cv::Scalar col, int thick) {
+        cv::line(im, cv::Point(c.x - sz, c.y), cv::Point(c.x + sz, c.y), col, thick, cv::LINE_AA);
+        cv::line(im, cv::Point(c.x, c.y - sz), cv::Point(c.x, c.y + sz), col, thick, cv::LINE_AA);
+      };
+      // Red search line.
+      cv::line(up, mapPt(lineDef.p0), mapPt(lineDef.p1), cv::Scalar(0,0,255), 1, cv::LINE_AA);
+      // Hits: green cross (success) / gray cross (missed).
+      for (const auto &h : Report.cal_hits) {
+        cv::Scalar col = (h.status == 2) ? cv::Scalar(0,255,0) : cv::Scalar(140,140,140);
+        drawCross(up, mapPt(h.pt), 10, col, 2);
+      }
+      // Fitted line in cyan.
+      if (Report.status == FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
+        cv::line(up, mapPt(Report.line.end_pt1), mapPt(Report.line.end_pt2),
+                 cv::Scalar(255,200,0), 1, cv::LINE_AA);
+      char path[256];
+      snprintf(path, sizeof(path), "/tmp/caliper_dbg_line_%s.png",
+               (lineDef.name[0] == '\0') ? "unnamed" : lineDef.name);
+      for (char *p = path + strlen("/tmp/caliper_dbg_line_"); *p; p++)
+        if (*p == '/' || *p == ' ') *p = '_';
+      try { cv::imwrite(path, up); LOGI("caliper dbg dumped: %s (crop %dx%d ->4x)",
+                                        path, x1 - x0, y1 - y0); }
+      catch (const cv::Exception &ex) { LOGE("caliper dbg imwrite: %s", ex.what()); }
+    }
+    dbg_skip:;
   }
   return Report;
 }
@@ -4460,7 +4645,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     }
     else
     {
-      angle_offset += 0.1*M_PI/180;
+      angle_offset += 0.5*M_PI/180;
     }
   }
 
@@ -4545,8 +4730,8 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
 
 
     angle+=angle_offset;
-
-
+    // angle=0;
+    
     singleReport.rotate = angle;
     singleReport.isFlipped = isInv;
 
@@ -4568,7 +4753,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     float cached_cos = cos(angle);
     float cached_sin = sin(angle);
 
-    LOGI("calibCen: %f %f", calibCen.x, calibCen.y);
+    LOGI("calibCen: %f %f,angle_offset:%f", calibCen.x, calibCen.y,angle_offset);
 
 
     
@@ -5110,6 +5295,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     { //early intercept just to check mean and sigma
 
       LOGI("mCur:%f  mFea:%f",tmp_signature.mean, feature_signature.mean);
+      
       float meanRatio = tmp_signature.mean / feature_signature.mean;
       if (meanRatio > 1)
         meanRatio = 1 / meanRatio;

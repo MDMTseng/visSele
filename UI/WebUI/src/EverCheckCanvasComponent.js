@@ -908,7 +908,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       this.rUtil.setEditor_db_obj(this.db_obj);
     }
     this.SetImg(edit_DB_info.img);
-    let mmpp = this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b;
+    // cameraParam can be undefined when the def has no embedded cam_param
+    // (e.g. fresh def, or report not yet attached). Default to identity so
+    // the canvas still renders rather than crashing the boundary.
+    let mmpp = (this.db_obj.cameraParam && this.db_obj.cameraParam.mmpb2b != null && this.db_obj.cameraParam.ppb2b != null)
+      ? this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b
+      : 1;
     this.rUtil.renderParam.mmpp = mmpp;
 
     if(this.doImageFitting!=false)
@@ -1139,7 +1144,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       }
       ctx.restore();
 
-      if(this.db_obj.cameraParam.mask_radius!==undefined)
+      if(this.db_obj.cameraParam && this.db_obj.cameraParam.mask_radius!==undefined)
       {
         ctx.save();
         
@@ -1587,7 +1592,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       
       ctx.scale(mmpp_mult, mmpp_mult);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
+        //ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
       }
       // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       //ctx.translate(-1 * scale * mmpp, -1 * mmpp_mult);
@@ -1953,7 +1958,12 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.db_obj = edit_DB_info._obj;
     this.stage_light_report = edit_DB_info.stage_light_report;
     this.SetImg(edit_DB_info.img);
-    let mmpp = this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b;
+    // cameraParam can be undefined when the def has no embedded cam_param
+    // (e.g. fresh def, or report not yet attached). Default to identity so
+    // the canvas still renders rather than crashing the boundary.
+    let mmpp = (this.db_obj.cameraParam && this.db_obj.cameraParam.mmpb2b != null && this.db_obj.cameraParam.ppb2b != null)
+      ? this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b
+      : 1;
     this.rUtil.renderParam.mmpp = mmpp;
   }
 
@@ -2173,7 +2183,12 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.SetImg(edit_DB_info.img);
     if(this.db_obj.cameraParam!==undefined)
     {
-      let mmpp = this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b;
+      // cameraParam can be undefined when the def has no embedded cam_param
+    // (e.g. fresh def, or report not yet attached). Default to identity so
+    // the canvas still renders rather than crashing the boundary.
+    let mmpp = (this.db_obj.cameraParam && this.db_obj.cameraParam.mmpb2b != null && this.db_obj.cameraParam.ppb2b != null)
+      ? this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b
+      : 1;
       this.rUtil.renderParam.mmpp = mmpp;
     }
   }
@@ -2427,7 +2442,12 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.SetImg(edit_DB_info.img);
     if(this.db_obj.cameraParam!==undefined)
     {
-      let mmpp = this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b;
+      // cameraParam can be undefined when the def has no embedded cam_param
+    // (e.g. fresh def, or report not yet attached). Default to identity so
+    // the canvas still renders rather than crashing the boundary.
+    let mmpp = (this.db_obj.cameraParam && this.db_obj.cameraParam.mmpb2b != null && this.db_obj.cameraParam.ppb2b != null)
+      ? this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b
+      : 1;
       this.rUtil.renderParam.mmpp = mmpp;
     }
   }

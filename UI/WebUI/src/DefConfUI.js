@@ -1786,6 +1786,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       text="INST_CHECK" onClick={() => {
         let deffile = defFileGeneration(edit_info);
         deffile.intrusionSizeLimitRatio=1;
+        console.log("INST_CHECK");
         ACT_WS_SEND_BPG(CORE_ID,"II", 0, 
         {
           definfo:deffile,
@@ -1807,6 +1808,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               let insp_reports = GetObjElement(RP,["data","reports",0,"reports"]);
               if(insp_reports!==undefined&&  insp_reports.length>0)
               {
+                console.log(insp_reports);
                 let insp_rep = insp_reports[0];
                 edit_info._obj.setsig360infoCenter({x:insp_rep.cx,y:insp_rep.cy});
                 let modList = shape_list.map((shape,idx)=>{
@@ -2462,6 +2464,7 @@ class APP_DEFCONF_MODE extends React.Component {
                       if(insp_reports.length>0)
                       {
                         let insp_rep = insp_reports[0];
+                        console.log(insp_rep);
                         let mod_shape=dclone(this.props.edit_tar_info);
                         
                         this.props.edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape,this.props.shape_list, insp_rep,true);

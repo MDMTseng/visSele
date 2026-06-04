@@ -84,6 +84,10 @@ public:
   CameraLayer::status GetAnalogGain(int *ret_min, int *ret_max);
   CameraLayer::status SetExposureTime(float time_us);
   CameraLayer::status GetExposureTime(float *ret_time_us);
+  // Aravis-specific overrides so CameraSetup's StopAquisition()/StartAquisition()
+  // actually take effect (the base class defaults are no-op NAKs).
+  CameraLayer::status StartAquisition();
+  CameraLayer::status StopAquisition();
   void ContTriggerThread();
   void ContTriggerThreadTermination();
   CameraLayer::status L_TriggerMode(int type);

@@ -336,7 +336,8 @@ int cameraCalib2JSON(cJSON* jobj,FeatureManager_BacPac *bacpac)
   {
     cJSON_AddNumberToObject(jobj, "ppb2b", 1);
     cJSON_AddNumberToObject(jobj, "mmpb2b", bacpac->sampler->mmpP_ideal());
-    cJSON_AddNumberToObject(jobj, "back_light_target", bacpac->sampler->getStageLightInfo()->back_light_target);
+    // back_light_target was a stageLightInfo field; consumers can now read
+    // fieldCal.stats.bright_mean from data/field_calib.json instead.
     if(bacpac->cam!=NULL)
     {
       float expTime;

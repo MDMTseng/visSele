@@ -73,3 +73,5 @@ InspectionCore/contrib/cJSONPP/test/build
 InspectionCore/CoreHub/PluginRemote/
 InspectionCore/MatchingEngine/build/
 Peripheral/*/.cache
+InspectionCore/build/
+CoreHub/

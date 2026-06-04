@@ -104,10 +104,10 @@ export function MeasurePropertySheet({
 
     {/* Behavior */}
     <Section label="behavior">
-      <NumberField label={t('importance')} value={shape.importance}
+      <NumberField label={t('importance')} value={shape.importance} step={1}
         onCommit={set('importance')} tweak={{ add: [1] }} />
-      <NumberField label={t('width')} value={shape.width}
-        onCommit={set('width')} tweak={sizeTweak} />
+      {/* <NumberField label={t('width')} value={shape.width}
+        onCommit={set('width')} tweak={sizeTweak} /> */}
       <SwitchField label={t('quality_essential')}
         checked={shape.quality_essential !== false}
         onChange={(v) => commitField(shape, 'quality_essential', v, onUpdate)} />

@@ -7,6 +7,7 @@ using namespace std;
 
 #include "cJSON.h"
 #include "LensCalib.h"
+#include "FieldCalib.h"
 #include <opencv2/core.hpp>
 
 
@@ -19,6 +20,11 @@ typedef struct FeatureManager_BacPac
   // OFF -> no behaviour change until enabled + validated on the rig.
   bool applyLensCalib = false;
   LensCalibResult *lensCalib = 0;
+  // Bright/Dark field calibration. Persisted as data/field_calib.json and
+  // loaded at startup. applyFieldCal default OFF -- consumer (e.g.
+  // FeatureManager_sig360_circle_line) decides when to gate on it.
+  bool applyFieldCal = false;
+  FieldCalibResult *fieldCal = 0;
   // Phase 2: sub-features that need the raw binary (CV_8UC1, bg=255/fg=0)
   // -- e.g. matching_version=2 sig360 doing morph-boundary signature build --
   // read this pointer. Group sets it before dispatching to sub-features.

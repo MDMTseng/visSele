@@ -671,6 +671,13 @@ export class InspectionEditorLogic {
 
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);
+    // Defs carry an embedded cam_param (mmpb2b/ppb2b, optional mask_radius).
+    // Use it as the rendering cameraParam so overlays scale correctly even
+    // before any inspection report arrives. WS camera_calibration reports
+    // (when emitted) will still overwrite via SetCameraParamInfo.
+    if (defInfo.cam_param && this.cameraParam === undefined) {
+      this.cameraParam = defInfo.cam_param;
+    }
     let sig360info = defInfo.inherentfeatures[0];
 
     this.Setsig360info(
@@ -1020,6 +1027,14 @@ export class InspectionEditorLogic {
       return pt;
     }
 
+    // cal_hits arrive in OBJECT-FRAME mm. InspUI renders in image-frame so
+    // they must be forward-transformed to follow the shape pts. DefConfUI
+    // (oriBase=true) keeps its canvas origin at the object center, so hits
+    // already line up — leave them in object-frame.
+    function cal_hits_forward(hits) {
+      if (!hits || oriBase) return hits;
+      return hits.map((h) => Object.assign({}, h, pointForwardTrans({x: h.x, y: h.y})));
+    }
     function pointInvTrans(_pt)
     {
       let pt={x:_pt.x,y:_pt.y};
@@ -1055,7 +1070,7 @@ export class InspectionEditorLogic {
           // force every hit to status=0 so the WebUI grays all boxes.
           // Pass through unchanged — per-hit st (0/1/2) drives the visual.
           if (inspAdjObj.cal_hits) {
-            eObject.cal_hits = inspAdjObj.cal_hits;
+            eObject.cal_hits = cal_hits_forward(inspAdjObj.cal_hits);
           }
           // console.log(dclone(eObject));
           // if (InspResult.isFlipped) {
@@ -1085,7 +1100,7 @@ export class InspectionEditorLogic {
           // Caliper-mode per-caliper hits — see line case for the rationale.
           // Pass through unchanged — per-hit st (0/1/2) drives the visual.
           if (inspAdjObj.cal_hits) {
-            eObject.cal_hits = inspAdjObj.cal_hits;
+            eObject.cal_hits = cal_hits_forward(inspAdjObj.cal_hits);
           }
         }
         break;
@@ -1124,7 +1139,7 @@ export class InspectionEditorLogic {
           // Per-hit caliper points (caliper-mode search_point only). Passed
           // through unchanged — drawn as dots in search_point's draw.
           if (inspAdjObj.cal_hits) {
-            eObject.cal_hits = inspAdjObj.cal_hits;
+            eObject.cal_hits = cal_hits_forward(inspAdjObj.cal_hits);
           }
           // {
           //   let vec = this.shapeVectorParse(eObject, shapeList);

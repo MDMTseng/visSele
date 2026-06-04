@@ -9,6 +9,10 @@
 #include <InspTarUtil.hpp>
 #include "polyfit.h"
 #include "cJsonPP.h"
+#include <vector>
+#include <numeric>
+#include <algorithm>
+#include <opencv2/opencv.hpp> // Make sure OpenCV headers are included
 using namespace cv;
 
 using namespace std;
@@ -436,11 +440,12 @@ void InspectionTarget_DimMeasure::run()
   }
 }
 
-shared_ptr<StageInfo_Orientation> loadOrientation(string path)
+shared_ptr<StageInfo_Orientation> loadOrientation(string path,bool is_color_image=false)
 {
   shared_ptr<StageInfo_Orientation> reporn_temp(new StageInfo_Orientation());
 
-  Mat img = imread(path + ".png");
+  Mat img = imread(path + ".png",is_color_image?IMREAD_COLOR:IMREAD_GRAYSCALE);
+
   reporn_temp->img_show =
       reporn_temp->img = img;
 
@@ -558,6 +563,7 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
     std::__1::shared_ptr<StageInfo_Orientation> template_input_info;
 
     bool use_cached_input=jinfo["use_cached_input"].asBool();
+    bool is_color_image=jinfo["is_color_image"].asBool(false);
 
     if(use_cached_input)
     {
@@ -580,7 +586,11 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
         return false;
 
       string path = folder_path + "/" + file_name;
-      template_input_info = loadOrientation(path);
+      template_input_info = loadOrientation(path,is_color_image);
+
+      vector<string> trigger_tags;//add current target id as trigger tag
+      trigger_tags.push_back(this->id);
+      template_input_info->set_trigger_tags(trigger_tags);
 
     }
 
@@ -653,6 +663,7 @@ bool InspectionTarget_DimMeasure::exchangeCMD(cJSON *info, int id, exchangeCMD_A
       {
         LOGI("=========load from file:%s", (folder_path + "/" + file_name).c_str());
         input = loadOrientation(folder_path + "/" + file_name);
+        
       }
     }
     else
@@ -1029,7 +1040,7 @@ enum CenterType{
   BEST_MATCH=5,
 };
 
-inline float getCenter_LOCAL_MEAN(int16_t *sobeled_line,int line_width,int16_t noise_surpress_threshold,EdgeType edgeType,CenterType centerType, float &w,float &sigma){
+inline float getCenter_LOCAL_AVGs(int16_t *sobeled_line,int line_width,int16_t noise_surpress_threshold,EdgeType edgeType,CenterType centerType, float &w,float &sigma){
   
 
   float blob_w = 0;
@@ -1158,7 +1169,7 @@ void sobelProcess(Mat grayXSobel,float edge_surpress,EdgeType edgeType)
 // }
 
 
-inline float getCenter_LOCAL_MEANd(const int16_t *sobeled_line,int line_width,CenterType centerType, float &w,float &sigma){
+inline float getCenter_LOCAL_AVGd(const int16_t *sobeled_line,int line_width,CenterType centerType, float &w,float &sigma){
   
 
   float blob_w = 0;
@@ -1218,7 +1229,7 @@ inline float getCenter_LOCAL_MEANd(const int16_t *sobeled_line,int line_width,Ce
 }
 
 
-inline float getCenter_LOCAL_MEAN(const int16_t *sobeled_line, int line_width, CenterType centerType, float &w, float &sigma) {
+inline float getCenter_LOCAL_AVG(const int16_t *sobeled_line, int line_width, CenterType centerType, float &w, float &sigma) {
     float blob_w = 0;
     float blob_xw = 0;
     float blob_xw_sq = 0;
@@ -1281,6 +1292,36 @@ inline float getCenter_LOCAL_MEAN(const int16_t *sobeled_line, int line_width, C
     w = blob_w_max;
     sigma = std::sqrt(std::max(0.0f, variance));  // Protect against small negative values from floating point errors
     
+    return center;
+}
+
+
+
+inline float getCenter_GLOBAL_AVG(const int16_t *sobeled_line, int line_width, CenterType centerType, float &w, float &sigma) {
+    float blob_w = 0;
+    float blob_xw = 0;
+    float blob_xw_sq = 0;
+    
+    // Pre-calculate array bounds
+    const int16_t* const line_end = sobeled_line + line_width;
+    const int16_t* ptr = sobeled_line;
+
+    // Process continuous memory blocks
+    while (ptr < line_end) {
+
+      const int x = ptr - sobeled_line;
+      auto val=*ptr;
+      blob_w+=val;
+      blob_xw+=x*val;
+      blob_xw_sq += x * x * val;
+      ptr++;
+    }
+
+    float center = blob_xw / blob_w;
+    float variance = (blob_xw_sq / blob_w) - (center * center);
+    
+    w = blob_w;
+    sigma = std::sqrt(std::max(0.0f, variance));  // Protect against small negative values from floating point errors
     return center;
 }
 
@@ -1390,7 +1431,11 @@ static vector<Point3f> getLocalMeanEdgePoints(const Mat& grayXSobel, CenterType 
         const int16_t* row = grayXSobel.ptr<int16_t>(y);
         
 
-        float edge_loc = getCenter_LOCAL_MEAN(row, grayXSobel.cols, centerType, edge_w, edge_sigma);
+        float edge_loc = NAN;
+        if(centerType==LOCAL_AVG)
+          edge_loc= getCenter_LOCAL_AVG(row, grayXSobel.cols, centerType, edge_w, edge_sigma);
+        else if(centerType==GLOBAL_AVG)
+          edge_loc= getCenter_GLOBAL_AVG(row, grayXSobel.cols, centerType, edge_w, edge_sigma);
         
         if (edge_w > 0 && edge_loc >= 2 && edge_loc<grayXSobel.cols-2) {
             edge_points[y] = {edge_loc, (float)y,edge_w/(edge_sigma+1)};
@@ -1418,7 +1463,7 @@ static vector<Point3f> getLocalMeanEdgePoints(const Mat& grayXSobel, CenterType 
 
 
 
-vector<Point3f> EdgeLocExtraction(string name,Mat &featureCoordImg,cJSON *def,vector<cv::Mat> &dbg_Images)
+vector<Point3f> EdgeLocExtraction(string name,Mat &featureCoordImg,cJSON *def,float edgeClipAlpha,vector<cv::Mat> &dbg_Images)
 {
 
 
@@ -1461,9 +1506,24 @@ vector<Point3f> EdgeLocExtraction(string name,Mat &featureCoordImg,cJSON *def,ve
   }
 
 
+  CenterType centerType=LOCAL_AVG;
+  {
+    string str_centerType=JFetch_STRING_ex(def,"center_type","LOCAL_AVG");
+    LOGI("str_centerType:%s",str_centerType.c_str());
+    if(str_centerType=="LOCAL_MAX")
+      centerType=LOCAL_MAX;
+    else if(str_centerType=="LOCAL_AVG")
+      centerType=LOCAL_AVG;
+    else if(str_centerType=="GLOBAL_MAX")
+      centerType=GLOBAL_MAX;
+    else if(str_centerType=="GLOBAL_AVG")
+      centerType=GLOBAL_AVG;
+  }
+
+
   float alpha1=JFetch_NUMBER_ex(def,"alpha1",0);
   float alpha2=JFetch_NUMBER_ex(def,"alpha2",0);
-  float edge_surpress=JFetch_NUMBER_ex(def,"edge_surpress",10);
+  float edge_surpress=JFetch_NUMBER_ex(def,"edge_surpress",10)*edgeClipAlpha;
 
   Mat edgeValueTraceMat;
   if(alpha1>0||alpha2>0)
@@ -1482,7 +1542,7 @@ vector<Point3f> EdgeLocExtraction(string name,Mat &featureCoordImg,cJSON *def,ve
   dbg_Images.push_back(XSobel);
 
   // cv::imwrite("data/"+name+"_polarSegment_gray.png", polarSegment_gray);
-  vector<Point3f> edgeLoc=getLocalMeanEdgePoints(XSobel,LOCAL_AVG);
+  vector<Point3f> edgeLoc=getLocalMeanEdgePoints(XSobel,centerType);
 
 
 
@@ -1581,7 +1641,7 @@ inline float sobelRowValueFilter(int16_t *sobeled_line,int line_width,int16_t no
 }
 
 
-// inline float getCenter_LOCAL_MEAN(int16_t *sobeled_line,int line_width,int16_t noise_surpress_threshold,EdgeType edgeType,CenterType centerType, vector<ptInfo> &pushInedgeVec){
+// inline float getCenter_LOCAL_AVG(int16_t *sobeled_line,int line_width,int16_t noise_surpress_threshold,EdgeType edgeType,CenterType centerType, vector<ptInfo> &pushInedgeVec){
   
 
 //   float blob_w = 0;
@@ -1647,7 +1707,100 @@ inline float sobelRowValueFilter(int16_t *sobeled_line,int line_width,int16_t no
 //   return x;
 // }
 
+//high_rank:0.1,low_rank:0.2  it's the Top 10% and Top 20% of the image
+Point3f findAvgColor(const cv::Mat &img, float high_rank, float low_rank,int sub_sample_size=5)
+{
 
+  // return Point3f(128,128,128);
+  LOGE("is empty:%d,high_rank:%f,low_rank:%f",img.empty(),high_rank,low_rank);
+    if (img.empty() || high_rank >= low_rank || high_rank < 0 || high_rank > 1 || low_rank < 0 || low_rank > 1)
+    {
+        // Return zero or some indicator of error/invalid input
+        return Point3f(0, 0, 0);
+    }
+
+    int n_channels = img.channels();
+    Point3f avgColor(0, 0, 0);
+    LOGE("n_channels:%d img.shape:(%d,%d)",n_channels,img.rows,img.cols);
+    if (n_channels == 1) // Grayscale image
+    {
+        Mat flat = img.reshape(1, 1); // Flatten the image to a single row
+        vector<uchar> vec;
+        vec.reserve((flat.rows/sub_sample_size)*(flat.cols/sub_sample_size));
+        // flat.copyTo(vec); // Copy pixel data to a vector
+
+        for(int i=0;i<flat.rows;i+=sub_sample_size)
+        {
+          for(int j=0;j<flat.cols;j+=sub_sample_size)
+          {
+            vec.push_back(flat.at<uchar>(i,j));
+          }
+        }
+        if (vec.empty()) return Point3f(0, 0, 0);
+
+        std::sort(vec.begin(), vec.end(), std::greater<uchar>()); // Sort in descending order
+
+        int total_pixels = vec.size();
+        int start_index = static_cast<int>(total_pixels * high_rank);
+        int end_index = static_cast<int>(total_pixels * low_rank);
+
+        // Clamp indices to be within bounds
+        start_index = std::max(0, start_index);
+        end_index = std::min(total_pixels, end_index);
+
+
+        if (start_index >= end_index) return Point3f(0, 0, 0); // No pixels in range
+
+
+        double sum = 0;
+        // Use iterators for summation
+        sum = std::accumulate(vec.begin() + start_index, vec.begin() + end_index, 0.0);
+
+
+        float average = static_cast<float>(sum / (end_index - start_index));
+        avgColor = Point3f(average, average, average); // Return average intensity for all components
+    }
+    else if (n_channels == 3) // Color image (assuming BGR)
+    {
+        vector<Mat> channels;
+        cv::split(img, channels);
+
+        float averages[3] = {0, 0, 0};
+
+        for (int c = 0; c < 3; ++c)
+        {
+            Mat flat = channels[c].reshape(1, 1);
+            vector<uchar> vec;
+            flat.copyTo(vec);
+
+            if (vec.empty()) continue; // Skip if channel is empty for some reason
+
+            std::sort(vec.begin(), vec.end(), std::greater<uchar>());
+
+            int total_pixels = vec.size();
+            int start_index = static_cast<int>(total_pixels * low_rank);
+            int end_index = static_cast<int>(total_pixels * high_rank);
+
+            start_index = std::max(0, start_index);
+            end_index = std::min(total_pixels, end_index);
+
+            if (start_index >= end_index) continue; // Skip channel if no pixels in range
+
+            double sum = 0;
+            sum = std::accumulate(vec.begin() + start_index, vec.begin() + end_index, 0.0);
+
+            averages[c] = static_cast<float>(sum / (end_index - start_index));
+        }
+        avgColor = Point3f(averages[0], averages[1], averages[2]); // B, G, R order
+    }
+    else
+    {
+        // Handle other channel counts if necessary, or return error
+        return Point3f(0, 0, 0);
+    }
+
+    return avgColor;
+}
 
 
 bool InspectSearchPointFeature(const cv::Mat &mat_img2template,float mmpp,vector<InspectionTarget_DimMeasure::itemInfo> &fqList,int featureIdx,vector<cv::Mat> &dbg_Images)
@@ -1765,10 +1918,11 @@ bool InspectSearchPointFeature(const cv::Mat &mat_img2template,float mmpp,vector
 
   Mat transformSpointImg;
   cv::warpAffine(srcImg, transformSpointImg, img2spoint_view,cropSize, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-  
+  Point3f avgColor=findAvgColor(transformSpointImg,0.1,0.2,4);
+  LOGE("avgColor:%f,%f,%f",avgColor.x,avgColor.y,avgColor.z);
   
   vector<cv::Mat> _dbg_Images;
-  vector<Point3f> edge_points=EdgeLocExtraction(name,transformSpointImg,def,_dbg_Images);
+  vector<Point3f> edge_points=EdgeLocExtraction(name,transformSpointImg,def,avgColor.x/255.0,_dbg_Images);
   float xPosMin=999999;
   for(int y=0;y<edge_points.size();y+=1)
   {
@@ -1811,6 +1965,15 @@ bool InspectSearchPointFeature(const cv::Mat &mat_img2template,float mmpp,vector
     XWsum+=ept.x*w;
     consider_edge_points.push_back(ept);  
   }
+
+  if(Wsum==0)//no edge points
+  {
+    LOGE("no edge points");
+    info.result.error_code=-1;
+    info.result.error_msg="no edge points";
+    return false;
+  }
+
 
 
   float loc_offset=JFetch_NUMBER_ex(def,"loc_offset",0);
@@ -2007,8 +2170,13 @@ bool InspectLineFitFeature(const cv::Mat &mat_img2template,float mmpp,vector<Ins
   //scan from left to right, and find the edge point
   cv::warpAffine(srcImg, transformLineImg, img2line_view,cropSize, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
 
+  Point3f avgColor=findAvgColor(transformLineImg,0.1,0.2,4);
+  LOGE("avgColor:%f,%f,%f",avgColor.x,avgColor.y,avgColor.z);
+
+
+
   vector<cv::Mat> _dbg_Images;
-  vector<Point3f> edge_points=EdgeLocExtraction(name,transformLineImg,def,_dbg_Images);
+  vector<Point3f> edge_points=EdgeLocExtraction(name,transformLineImg,def,avgColor.x/255.0,_dbg_Images);
 
   {//TODO:edge_points filter, remove deviant points
 
@@ -2268,7 +2436,7 @@ bool InspectLineFitFeature(const cv::Mat &mat_img2template,float mmpp,vector<Ins
 
 //     float edge_w,edge_sigma;  
 
-//     float edge_loc=getCenter_LOCAL_MEAN(
+//     float edge_loc=getCenter_LOCAL_AVG(
 //       row,
 //       grayXSobel.cols,
 //       centerType,
@@ -2499,9 +2667,11 @@ bool InspectArcFitFeature(const cv::Mat &mat_img2template,float mmpp,vector<Insp
   cv::Mat polarSegment;
   cv::remap(srcImg  , polarSegment, mapX, mapY, cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
 
+  Point3f avgColor=findAvgColor(polarSegment,0.1,0.2,4);
+  LOGE("avgColor:%f,%f,%f",avgColor.x,avgColor.y,avgColor.z);
 
   vector<cv::Mat> _dbg_Images;
-  vector<Point3f> edgeLoc=EdgeLocExtraction(name,polarSegment,def,_dbg_Images);
+  vector<Point3f> edgeLoc=EdgeLocExtraction(name,polarSegment,def,avgColor.x/255.0,_dbg_Images);
 
 
   // cv::imwrite("data/"+name+"_edgeValueTraceMat.png", edgeValueTraceMat);
@@ -3221,7 +3391,7 @@ shared_ptr<StageInfo_DimMeasure> InspectionTarget_DimMeasure::singleProcess(shar
     return shared_ptr<StageInfo_DimMeasure>();
   }
 
-
+  LOGE("IT id:%s,name:%s,sinfo_img->img.shape:(%d,%d)",this->id.c_str(),this->name.c_str(),sinfo_img->img.rows,sinfo_img->img.cols);
   // {//test dycast speed
   //   int runtimes=1000000;
   //   int64 t0;
@@ -3250,7 +3420,19 @@ shared_ptr<StageInfo_DimMeasure> InspectionTarget_DimMeasure::singleProcess(shar
   {
     cache_latest_input = sinfo_img;
   }
-  cv::Mat srcImg = sinfo_img->img;
+  cv::Mat srcImg_BK = sinfo_img->img;
+
+
+  if(0)//test adjust image brightness
+  {
+
+    sinfo_img->img=srcImg_BK.clone();
+    float brightness_factor = 1-(float)rand() / RAND_MAX * 0.2; // Random value between 0.8 and 1.0
+    sinfo_img->img = sinfo_img->img * brightness_factor;
+
+  }
+
+
 
   auto t0 = cv::getTickCount();
 
@@ -3376,7 +3558,7 @@ LOGE("wwwwww");
 
 LOGE("wwwwww");
   // cache_latest_result = reportInfo;
-
+  // sinfo_img->img=srcImg_BK;
   return reportInfo;
 }
 

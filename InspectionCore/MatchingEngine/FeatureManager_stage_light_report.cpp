@@ -7,6 +7,8 @@
 #include <FeatureManager_stage_light_report.h>
 #include <opencv2/imgproc.hpp>
 
+LOG_MODULE("match.stagelight");
+
 FeatureManager_stage_light_report::FeatureManager_stage_light_report(const char *json_str) : FeatureManager(json_str)
 {
   root = NULL;

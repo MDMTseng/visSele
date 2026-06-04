@@ -23,6 +23,11 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include "CvBridge.h"
+#include "LensCalib.h"
+#include "FieldCalib.h"
+#include "BackLightFieldCalib.h"
+#include <dirent.h>
+#include <algorithm>
 
 LOG_MODULE("core");
 
@@ -84,6 +89,9 @@ const int resourcePoolSize = 30;
 
 std::mutex lastDatViewCache_lock;
 image_pipe_info *lastDatViewCache=NULL;
+// Monotonic counter incremented each time lastDatViewCache flips to a new
+// frame. Used by field-calib capture to count *distinct* streamed frames.
+std::atomic<uint64_t> g_view_frame_seq{0};
 TSQueue<image_pipe_info *> inspQueue(10);
 TSQueue<image_pipe_info *> datViewQueue(10);
 TSQueue<image_pipe_info *> inspSnapQueue(5);
@@ -124,6 +132,7 @@ bool image_pipe_info_resendCache_swap_and_gc(image_pipe_info &info,resourcePool<
   }
   image_pipe_info *bk_Cache=lastDatViewCache;
   lastDatViewCache=&info;
+  g_view_frame_seq.fetch_add(1, std::memory_order_release);
   image_pipe_info_occupyFlag_clr(*bk_Cache,image_pipe_info_OccupyFIdx::resendCache);
   return image_pipe_info_gc(*bk_Cache,pool);
 }
@@ -430,7 +439,7 @@ MatchingEngine matchingEng;
 CameraLayer *gen_camera;
 int CamInitStyle = 0;
 
-int downSampLevel = 4;
+int downSampLevel = 1;
 
 int ImageCropX = 0;
 int ImageCropY = 0;
@@ -461,6 +470,146 @@ char **_argv;
 
 FeatureManager_BacPac calib_bacpac = {0};
 FeatureManager_BacPac neutral_bacpac = {0};
+
+// Persistent calib data loaded from disk at startup and re-loaded after a
+// successful in-app calibrate. Owned here, pointed-at by calib_bacpac. Default
+// applyXxx flags stay false -- consumer code gates on its own toggle.
+static LensCalibResult  g_lens_calib;
+static FieldCalibResult g_field_calib;
+// Calib files are not hard-coded anymore -- WebUI tells core which path to
+// load / save / reload via explicit RPC payload fields. Core does NOT
+// auto-load anything at startup; bacpac.lensCalib / .fieldCal stay null
+// until the UI requests a load.
+
+// Per-side capture buffer staged between field_calib_capture calls. Finalize
+// folds these into a FieldCalibResult and writes the JSON.
+static FieldGrid g_pending_bright;
+static FieldGrid g_pending_dark;
+static int g_pending_img_w = 0, g_pending_img_h = 0;
+
+// Capture n_frames distinct streamed frames from the live camera CI stream
+// (caller must have CI registered + trigger_mode:0). Builds an M×N grid of
+// (mean, std) over the cells. Returns true on success.
+static bool field_calib_capture_grid(int rows, int cols, int n_frames,
+                                     int timeout_ms, FieldGrid &out_grid)
+{
+  if (rows <= 0 || cols <= 0 || n_frames <= 0) return false;
+  const int ncells = rows * cols;
+  std::vector<double> sum(ncells, 0.0), sumsq(ncells, 0.0);
+  int captured = 0;
+  uint64_t last_seq = g_view_frame_seq.load(std::memory_order_acquire);
+  auto t0 = std::chrono::steady_clock::now();
+  int last_W = 0, last_H = 0;
+  while (captured < n_frames) {
+    uint64_t cur = g_view_frame_seq.load(std::memory_order_acquire);
+    if (cur == last_seq) {
+      if (std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count() > timeout_ms) {
+        LOGE("field_calib_capture: timeout after %d frame(s)", captured);
+        return false;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      continue;
+    }
+    last_seq = cur;
+    // Snapshot frame under lock.
+    cv::Mat frame;
+    {
+      std::lock_guard<std::mutex> guard(lastDatViewCache_lock);
+      if (!lastDatViewCache || lastDatViewCache->img.empty()) continue;
+      lastDatViewCache->img.copyTo(frame);
+    }
+    cv::Mat gray;
+    if (frame.channels() == 1) gray = frame;
+    else cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    last_W = gray.cols; last_H = gray.rows;
+    // Per-cell mean over this frame, then accumulate into running sums.
+    for (int r = 0; r < rows; r++) {
+      int y0 = (int)((long long)r * gray.rows / rows);
+      int y1 = (int)((long long)(r + 1) * gray.rows / rows);
+      for (int c = 0; c < cols; c++) {
+        int x0 = (int)((long long)c * gray.cols / cols);
+        int x1 = (int)((long long)(c + 1) * gray.cols / cols);
+        cv::Rect roi(x0, y0, x1 - x0, y1 - y0);
+        double m = cv::mean(gray(roi))[0];
+        sum[r * cols + c]   += m;
+        sumsq[r * cols + c] += m * m;
+      }
+    }
+    captured++;
+    t0 = std::chrono::steady_clock::now();
+  }
+  out_grid.rows = rows; out_grid.cols = cols; out_grid.n_frames = captured;
+  out_grid.mean.assign(ncells, 0.0);
+  out_grid.std.assign(ncells, 0.0);
+  for (int i = 0; i < ncells; i++) {
+    double m = sum[i] / captured;
+    double v = sumsq[i] / captured - m * m;
+    if (v < 0) v = 0;
+    out_grid.mean[i] = m;
+    out_grid.std[i]  = std::sqrt(v);
+  }
+  g_pending_img_w = last_W; g_pending_img_h = last_H;
+  LOGI("field_calib_capture: %dx%d grid over %d frame(s), img=%dx%d",
+       rows, cols, captured, last_W, last_H);
+  return true;
+}
+
+// Push lens-calib's px/mm into the sampler's calibMap so mmpP_ideal() reflects
+// the latest lens calibration (otherwise downstream measure code keeps using
+// whatever calibPpB/calibmmpB the camera setup loaded -- ignoring the lens
+// recalibration). Telecentric: m = px/mm; mmpP = 1/m.
+static void push_mmpp_to_sampler()
+{
+  if (!g_lens_calib.ok) return;
+  double m_px_per_mm = g_lens_calib.tele.m;
+  if (m_px_per_mm <= 0) return;
+  if (calib_bacpac.sampler) {
+    auto *cm = calib_bacpac.sampler->getCalibMap();
+    if (cm) { cm->calibPpB = m_px_per_mm; cm->calibmmpB = 1.0; }
+  }
+  if (neutral_bacpac.sampler) {
+    auto *cm = neutral_bacpac.sampler->getCalibMap();
+    if (cm) { cm->calibPpB = m_px_per_mm; cm->calibmmpB = 1.0; }
+  }
+  LOGI("push_mmpp_to_sampler: m=%.6f px/mm -> mmpp=%.9f mm/px",
+       m_px_per_mm, 1.0 / m_px_per_mm);
+}
+
+static bool load_lens_calib(const char *path)
+{
+  if (!path || !*path) return false;
+  FILE *f = fopen(path, "rb");
+  if (!f) { LOGE("load_lens_calib: cannot open %s", path); return false; }
+  fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
+  std::vector<char> buf(n + 1, 0); fread(buf.data(), 1, n, f); fclose(f);
+  g_lens_calib = lens_calib_from_json(buf.data());
+  calib_bacpac.lensCalib   = &g_lens_calib;
+  neutral_bacpac.lensCalib = &g_lens_calib;
+  push_mmpp_to_sampler();
+  LOGI("load_lens_calib: %s ok=%d rms=%.4f m=%.4f", path,
+       g_lens_calib.ok, g_lens_calib.overall_rms_px, g_lens_calib.tele.m);
+  return true;
+}
+
+static bool load_field_calib(const char *path)
+{
+  if (!path || !*path) return false;
+  FieldCalibResult tmp = field_calib_load_file(path);
+  if (tmp.bright.rows == 0 && tmp.dark.rows == 0) {
+    LOGE("load_field_calib: %s missing or empty", path);
+    return false;
+  }
+  g_field_calib = tmp;
+  calib_bacpac.fieldCal   = &g_field_calib;
+  neutral_bacpac.fieldCal = &g_field_calib;
+  LOGI("load_field_calib: %s bright %dx%d(n=%d) dark %dx%d(n=%d) uniformity=%.1f%%",
+       path,
+       g_field_calib.bright.rows, g_field_calib.bright.cols, g_field_calib.bright.n_frames,
+       g_field_calib.dark.rows, g_field_calib.dark.cols, g_field_calib.dark.n_frames,
+       g_field_calib.uniformity_pct);
+  return true;
+}
 // acvRadialDistortionParam calib_bacpac={
 //     calibrationCenter:{1295,971},
 //     RNormalFactor:1296,
@@ -669,224 +818,19 @@ BGLightNodeInfo extractInfoFromJson(cJSON *nodeRoot) //have exception
   return info;
 }
 
-int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
-{
-
-  if (ret_param == NULL)
-    return -1;
-  if (root == NULL)
-    return -1;
-
-  cJSON *angledOffsetObj = JFetEx_OBJECT(root, "reports[0].angledOffset");
-  ret_param->getAngOffsetTable()->RESET();
-  if (angledOffsetObj != NULL)
-  {
-
-    float mult = 1;
-    double *p_mult = JFetch_NUMBER(angledOffsetObj, "mult");
-    if (p_mult)
-    {
-      mult = *p_mult;
-    }
-
-    ret_param->getAngOffsetTable()->RESET();
-    cJSON *current_element = angledOffsetObj->child;
-
-    for (cJSON *current_element = angledOffsetObj->child;
-         current_element != NULL;
-         current_element = current_element->next)
-    {
-      float tagNum;
-      char *name = current_element->string;
-      if (sscanf(name, "%f", &tagNum) != 1)
-        continue;
-      if (tagNum < 0 && tagNum >= 360)
-        continue;
-      double *val = JFetch_NUMBER(angledOffsetObj, name);
-      if (val == NULL)
-        continue;
-
-      angledOffsetG newPair = {//angle in rad
-                               angle_rad : (float)(tagNum * M_PI / 180),
-                               offset : mult * (float)*val
-      };
-      ret_param->getAngOffsetTable()->push_back(newPair);
-    }
-
-    void *target;
-    int type = getDataFromJson(angledOffsetObj, "symmetric", &target);
-    if (type == cJSON_True)
-    {
-      ret_param->getAngOffsetTable()->makeSymmetic();
-    }
-
-    double *preOffset = JFetch_NUMBER(angledOffsetObj, "preOffset");
-    if (preOffset)
-    {
-      ret_param->getAngOffsetTable()->applyPreOffset(*preOffset);
-    }
-
-    angledOffsetTable *angOffsetTable = ret_param->getAngOffsetTable();
-    int testN = 100;
-
-    LOGI("angOffsetTable.size:%d", angOffsetTable->size());
-    // for (int i = 0; i < testN; i++)
-    // {
-    //   float angle = 2 * M_PI * i / testN;
-    //   float offset = angOffsetTable->sampleAngleOffset(angle);
-    //   LOGI("a:%f o:%f", angle * 180 / M_PI, offset);
-    // }
-    //exit(-1);
-  }
-
-  {
-    char default_CalibMapPath[] = "CalibMap.bin";
-    char *calibMapPath = JFetch_STRING(root, "reports[0].CalibMapPath");
-    if (calibMapPath == NULL)
-      calibMapPath = default_CalibMapPath;
-    char path[200];
-    snprintf(path, sizeof(path), "%s/%s", dirName, calibMapPath);
-    calibMapPath = path;
-    LOGE("calibMapPath:%s", calibMapPath);
-    int datL = 0;
-    uint8_t *bDat = ReadByte(calibMapPath, &datL);
-    ret_param->getCalibMap()->RESET();
-    if (bDat)
-    {
-      int count = PerifProt::countValidArr(bDat, datL);
-      LOGI("PerifProt::countValidArr  count:%d", count);
-      if (count < 0)
-      {
-        throw new std::runtime_error("ReadByte return NULL");
-      }
-      PerifProt::Pak p1 = PerifProt::parse(bDat);
-      int pret = parseCM_info(p1, ret_param->getCalibMap());
-      LOGI("parseCM_info::ret:%d", pret);
-
-      delete bDat;
-    }
-    else
-    {
-      
-      if (JFetEx_NUMBER(root, "reports[0].ppb2b") != NULL)
-      {
-        ret_param->getCalibMap()->calibPpB = *JFetEx_NUMBER(root, "reports[0].ppb2b");
-        LOGI("Override calibPpB:%f", ret_param->getCalibMap()->calibPpB);
-      }
-      //throw new std::runtime_error("ReadByte return NULL");
-      //return -1;
-    }
-  }
-
-  //ret_param->mmpp = *JFetEx_NUMBER(root, "reports[0].mmpb2b") / (*JFetEx_NUMBER(root, "reports[0].ppb2b"));
-  if (JFetEx_NUMBER(root, "reports[0].mmpb2b") != NULL)
-  {
-    ret_param->getCalibMap()->calibmmpB = *JFetEx_NUMBER(root, "reports[0].mmpb2b");
-    LOGI("Override calibmmpB:%f", ret_param->getCalibMap()->calibmmpB);
-  }
-  
-
-  do
-  {
-
-    stageLightParam *stageLightInfo = ret_param->getStageLightInfo();
-    char default_SLCalibPath[] = "stageLightReport.json";
-    char *SLCalibPath = JFetch_STRING(root, "reports[0].StageLightReportPath");
-    if (SLCalibPath == NULL)
-      SLCalibPath = default_SLCalibPath;
-    char path[200];
-    snprintf(path, sizeof(path), "%s/%s", dirName, SLCalibPath);
-    SLCalibPath = path;
-    LOGE("SLCalibPath:%s", SLCalibPath);
-
-    char *fileStr = ReadText(SLCalibPath);
-
-    if (fileStr == NULL)
-    {
-      LOGE("Cannot read defFile from:%s", SLCalibPath);
-      
-      stageLightInfo->RESET();
-      break;
-    }
-
-    //LOGE("fileStr:%s",fileStr);
-
-    cJSON *sl_json = cJSON_Parse(fileStr);
-
-    free(fileStr);
-    if (sl_json == NULL)
-    {
-      LOGE("File:%s is not a JSON...", SLCalibPath);
-      break;
-    }
-
-    stageLightInfo->RESET();
-    double *expTime_us = JFetch_NUMBER(sl_json, "cam_param.exposure_time");
-
-    if (expTime_us)
-    {
-      stageLightInfo->exposure_us = *expTime_us;
-    }
-
-    double *imDimW = JFetch_NUMBER(sl_json, "target_image_dim.x");
-    double *imDimH = JFetch_NUMBER(sl_json, "target_image_dim.y");
-
-    if (imDimW && imDimH)
-    {
-      stageLightInfo->tarImgW = *imDimW;
-      stageLightInfo->tarImgH = *imDimH;
-    }
-
-    stageLightInfo->back_light_target = 200; //Default
-    double *p_back_light_target = JFetch_NUMBER(sl_json, "cam_param.back_light_target");
-    if (p_back_light_target)
-    {
-      stageLightInfo->back_light_target = *p_back_light_target;
-    }
-
-    stageLightInfo->BG_nodes.clear();
-    int idx = 0;
-    while (true)
-    {
-      char jsonKey[100];
-      sprintf(jsonKey, "grid_info[%d]", idx);
-      idx++;
-      cJSON *nodeObj = JFetch_OBJECT(sl_json, jsonKey);
-      if (nodeObj == NULL)
-        break;
-      BGLightNodeInfo info;
-      try
-      {
-
-        info = extractInfoFromJson(nodeObj);
-      }
-      catch (...)
-      {
-        stageLightInfo->BG_nodes.clear();
-        break;
-      }
-
-      stageLightInfo->BG_nodes.push_back(info);
-
-      // LOGI("node[%d]:mean:%f idx:%d:%d  xy:%f,%f  size:%d",
-      //   idx,info.mean,idx,info.index.x,idx,info.index.y,info.location.x,idx,info.location.y,stageLightInfo->BG_nodes.size());
-    }
-
-    LOGE("exposure_time:");
-    stageLightInfo->nodesUpdate();
-
-  } while (false);
-  return 0;
-}
 
 
 void downSampSetup(CameraLayer &camera, cJSON &settingJson)
 {
-  // Hard-ignore canvas-driven down_samp_level updates: streaming stays at
-  // full resolution always. The JPEG path keeps the bandwidth reasonable
-  // (~10x smaller than raw RGBA) so dynamic scaling is no longer needed.
-  // (was: gated by IGNORE_DYNAMIC_VIEW=1 env; promoted to always-on.)
-  (void)JFetch_NUMBER(&settingJson, "down_samp_level");
+  // Opt-out: with IGNORE_DYNAMIC_VIEW=1 the core ignores canvas-driven
+  // down_samp_level updates entirely so the stream stays at full res
+  // (paired with IGNORE_DYNAMIC_VIEW handling in ImageTransferSetup).
+  static const bool ignoreDyn = (getenv("IGNORE_DYNAMIC_VIEW") != NULL);
+  double *val = JFetch_NUMBER(&settingJson, "down_samp_level");
+  if (val && !ignoreDyn)
+  {
+    downSampLevel = (int)*val;
+  }
 
   int type = getDataFromJson(&settingJson, "down_samp_w_calib", NULL);
   if (type == cJSON_False)
@@ -1161,66 +1105,6 @@ int LoadCameraSetting(CameraLayer &camera, char *filename)
   return ret;
 }
 
-int LoadCameraCalibrationFile(char *filename, ImageSampler *ret_cam_param)
-{
-  char *fileStr = ReadText(filename);
-
-  if (fileStr == NULL)
-  {
-    LOGE("Cannot read defFile from:%s", filename);
-    return -1;
-  }
-  LOGE("Read defFile from:%s", filename);
-
-  // Parse-then-swap: if the new JSON is malformed, keep the previous cache so
-  // downstream NULL-deref consumers (e.g. saveInspectionSample, JFetch_*) stay
-  // safe. The old behaviour left the global at NULL on parse failure.
-  if (cJSON *_new_cam = cJSON_Parse(fileStr))
-  {
-    if (cache_camera_param) cJSON_Delete(cache_camera_param);
-    cache_camera_param = _new_cam;
-  }
-  else
-  {
-    LOGE("cache_camera_param: malformed JSON, keeping previous cached value");
-  }
-
-  cJSON *json = cJSON_Parse(fileStr);
-
-  free(fileStr);
-  bool executionError = false;
-
-  try
-  {
-    char folder_name[200];
-    snprintf(folder_name, sizeof(folder_name), "%s", filename);
-    int strLen = strlen(folder_name);
-    for (int i = strLen; i; i--) //Find folder name
-    {
-      if (folder_name[i] == '/')
-      {
-        folder_name[i + 1] = '\0';
-        break;
-      }
-    }
-
-    //json
-
-    int ret = loadCameraCalibParam(folder_name, json, ret_cam_param);
-    if (ret)
-      executionError = true;
-  }
-  catch (const std::exception &ex)
-  {
-    LOGE("Exception:%s", ex.what());
-    executionError = true;
-  }
-  cJSON_Delete(json);
-
-  if (executionError)
-    return -1;
-  return 0;
-}
 
 void setup_machine_setting(cJSON *json_mac_setting)
 {
@@ -1280,6 +1164,8 @@ uint16_t m_BPG_Protocol_Interface::TLCode(const char *TL)
 m_BPG_Protocol_Interface::m_BPG_Protocol_Interface() : resPool(resourcePoolSize)
 {
   cacheImage.create(1, 1, CV_8UC3);   // phase 3a: cv::Mat init
+  // NOTE: no auto-load of any calib files here. WebUI explicitly calls
+  // RC{target:"calib_files_load", ...} with the paths it wants.
 }
 
 void m_BPG_Protocol_Interface::delete_PeripheralChannel()
@@ -1696,6 +1582,20 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               session_ACK = safe_imwrite_cache(fileName, lastDatViewCache->img);
             }
             
+          }
+          else if (strcmp(type, "__DELETE_FILE__") == 0)
+          {
+            // Only allow deletes under ./data to avoid stray paths.
+            session_ACK = false;
+            if (strstr(fileName, "..") != NULL) {
+              LOGE("__DELETE_FILE__: rejecting path with '..': %s", fileName);
+            } else if (strncmp(fileName, "data/", 5) != 0 && strncmp(fileName, "./data/", 7) != 0) {
+              LOGE("__DELETE_FILE__: refuse outside data/: %s", fileName);
+            } else {
+              int r = remove(fileName);
+              if (r == 0) { session_ACK = true; LOGI("deleted %s", fileName); }
+              else LOGE("delete failed %s: %s", fileName, strerror(errno));
+            }
           }
           else if (strcmp(type, "__START_STACKING_IMG__") == 0)
           {
@@ -2461,7 +2361,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
     else if (checkTL("EX", dat)) //feature EXtraction
     {
       LOGI("Trigger.......");
-      calib_bacpac.sampler->ignoreCalib(false);
+      calib_bacpac.sampler->ignoreCalib(true);
 
       {
 
@@ -2636,15 +2536,227 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         this->camera = camera;
         calib_bacpac.cam = camera;
       }
-      else if (strcmp(target, "camera_setting_refresh") == 0)
+      else if (strcmp(target, "lens_calibrate") == 0)
       {
-        LOGV("DatCH_BPG1_0:%p", camera);
-
-        CameraSettingFromFile(camera, "data/");
-
-        LOGV("DatCH_BPG1_0");
-        this->camera = camera;
-        calib_bacpac.cam = camera;
+        // Collect chess_*.png from `dir`, run lens calibration, write JSON.
+        char *dir = JFetch_STRING(json, "dir");
+        char *out = JFetch_STRING(json, "out");
+        char *modelStr = JFetch_STRING(json, "lens_model");
+        double *sq = JFetch_NUMBER(json, "square_mm");
+        if (!dir || !out || !modelStr || !sq) {
+          LOGE("lens_calibrate: missing dir/out/lens_model/square_mm");
+        } else {
+          std::vector<std::string> imgs;
+          DIR *d = opendir(dir);
+          if (d) {
+            struct dirent *de;
+            while ((de = readdir(d))) {
+              std::string n = de->d_name;
+              if (n.rfind("chess_", 0) == 0 &&
+                  (n.size() >= 4 && (n.rfind(".png") == n.size()-4 ||
+                                     n.rfind(".PNG") == n.size()-4))) {
+                imgs.push_back(std::string(dir) + "/" + n);
+              }
+            }
+            closedir(d);
+            std::sort(imgs.begin(), imgs.end());
+          }
+          LOGI("lens_calibrate: %zu image(s) in %s, square_mm=%.4f, model=%s",
+               imgs.size(), dir, *sq, modelStr);
+          if (imgs.empty()) {
+            LOGE("lens_calibrate: no chess_*.png in %s", dir);
+          } else {
+            LensModel model = lens_model_from_string(modelStr);
+            LensCalibResult r = lens_calib_run_from_images(imgs, *sq, model, out);
+            LOGI("lens_calibrate: ok=%d RMS=%.4f px, m=%.4f px/mm, u0=%.2f v0=%.2f -> %s",
+                 r.ok ? 1 : 0, r.overall_rms_px, r.tele.m, r.tele.u0, r.tele.v0, out);
+            session_ACK = r.ok;
+            if (r.ok) load_lens_calib(out);
+            // Emit result JSON as RP so UI can display stats without re-fetching.
+            char *jstr = lens_calib_to_json(r);
+            if (jstr) {
+              // Augment with image count.
+              char wrap[2048];
+              snprintf(wrap, sizeof(wrap),
+                "{\"report_type\":\"lens_calib\",\"image_count\":%zu,"
+                "\"out_path\":\"%s\",\"calib\":%s}",
+                imgs.size(), out, jstr);
+              BPG_protocol_data rp = GenStrBPGData("RP", wrap);
+              rp.pgID = dat->pgID;
+              fromUpperLayer(rp, peer);
+              free(jstr);
+            }
+          }
+        }
+      }
+      else if (strcmp(target, "field_calib_capture") == 0)
+      {
+        // Capture N>0 distinct streamed frames into an M×N bright OR dark grid.
+        // Caller must have CI registered and trigger_mode:0 so frames flow.
+        // Payload: { which:"bright"|"dark", rows, cols, n_frames, timeout_ms? }
+        char *which = JFetch_STRING(json, "which");
+        double *rs = JFetch_NUMBER(json, "rows");
+        double *cs = JFetch_NUMBER(json, "cols");
+        double *nf = JFetch_NUMBER(json, "n_frames");
+        double *to = JFetch_NUMBER(json, "timeout_ms");
+        if (!which || !rs || !cs || !nf || *rs <= 0 || *cs <= 0 || *nf <= 0) {
+          LOGE("field_calib_capture: missing/invalid params");
+        } else {
+          FieldGrid g;
+          int tmo = to ? (int)*to : 8000;
+          bool ok = field_calib_capture_grid((int)*rs, (int)*cs, (int)*nf, tmo, g);
+          if (ok) {
+            bool is_bright = strcmp(which, "bright") == 0;
+            (is_bright ? g_pending_bright : g_pending_dark) = g;
+            session_ACK = true;
+            // Per-cell stats wrapper for the UI to display this side immediately.
+            double lo = g.mean.empty() ? 0 : g.mean[0], hi = lo, s = 0;
+            for (double x : g.mean) { s += x; if (x < lo) lo = x; if (x > hi) hi = x; }
+            double m = g.mean.empty() ? 0 : s / g.mean.size();
+            double medStd = 0;
+            if (!g.std.empty()) {
+              std::vector<double> v = g.std;
+              std::nth_element(v.begin(), v.begin() + v.size()/2, v.end());
+              medStd = v[v.size()/2];
+            }
+            char buf[8192];
+            char *gj = field_calib_to_json({ true, g_pending_img_w, g_pending_img_h,
+                                             g_pending_bright, g_pending_dark });
+            snprintf(buf, sizeof(buf),
+              "{\"report_type\":\"field_calib_capture\",\"which\":\"%s\","
+              "\"rows\":%d,\"cols\":%d,\"n_frames\":%d,"
+              "\"image_size\":[%d,%d],"
+              "\"cell_mean\":%.4f,\"cell_min\":%.4f,\"cell_max\":%.4f,"
+              "\"cell_std_median\":%.4f,\"current\":%s}",
+              which, g.rows, g.cols, g.n_frames,
+              g_pending_img_w, g_pending_img_h, m, lo, hi, medStd,
+              gj ? gj : "null");
+            if (gj) free(gj);
+            BPG_protocol_data rp = GenStrBPGData("RP", buf);
+            rp.pgID = dat->pgID;
+            fromUpperLayer(rp, peer);
+          }
+        }
+      }
+      else if (strcmp(target, "field_calib_clear_pending") == 0)
+      {
+        // UI calls this after removing the last per-side capture from history
+        // so that finalize falls back to the disk-loaded grid for that side
+        // instead of silently reusing a stale pending capture.
+        char *which = JFetch_STRING(json, "which");
+        if (!which) {
+          g_pending_bright = FieldGrid(); g_pending_dark = FieldGrid();
+        } else if (strcmp(which, "bright") == 0) {
+          g_pending_bright = FieldGrid();
+        } else if (strcmp(which, "dark") == 0) {
+          g_pending_dark = FieldGrid();
+        }
+        session_ACK = true;
+        LOGI("field_calib_clear_pending: which=%s", which ? which : "(all)");
+      }
+      else if (strcmp(target, "field_calib_finalize") == 0)
+      {
+        // Combine pending bright+dark into a FieldCalibResult, save JSON, reload
+        // bacpac. UI must specify `out`.
+        char *out = JFetch_STRING(json, "out");
+        if (!out || !*out) {
+          LOGE("field_calib_finalize: missing 'out' path");
+          break;
+        }
+        const char *path = out;
+        // Fall back to whatever the disk-loaded calib has for any side not
+        // captured this session (g_field_calib was populated by
+        // reload_calib_into_bacpac at startup / after the last save).
+        FieldGrid eff_bright = g_pending_bright.rows > 0 ? g_pending_bright : g_field_calib.bright;
+        FieldGrid eff_dark   = g_pending_dark.rows   > 0 ? g_pending_dark   : g_field_calib.dark;
+        if (eff_bright.rows == 0 && eff_dark.rows == 0) {
+          LOGE("field_calib_finalize: no pending or saved grids -- capture first");
+        } else {
+          FieldCalibResult fr;
+          fr.ok = true;
+          fr.img_w = (g_pending_img_w > 0) ? g_pending_img_w : g_field_calib.img_w;
+          fr.img_h = (g_pending_img_h > 0) ? g_pending_img_h : g_field_calib.img_h;
+          fr.bright = eff_bright;
+          fr.dark   = eff_dark;
+          // (1) Vignette mask: cells far darker than the median are lens-limited
+          //     (the lens physically can't deliver light there). Mark them
+          //     invalid so the consumer skips equalization rather than wildly
+          //     amplifying them. Threshold = vignette_frac * median(bright).
+          // (2) Robust-clean (fit quadratic + reject scratches/dust) runs only
+          //     on non-vignette cells -- they're zeroed first so robustClean's
+          //     "non-positive == inactive" rule excludes them from the fit.
+          // bright.valid[] is persisted in the JSON for the consumer to read.
+          double *vfp = JFetch_NUMBER(json, "vignette_frac");
+          double vignette_frac = vfp ? *vfp : 0.5;
+          if (fr.bright.rows > 0 && fr.bright.cols > 0) {
+            const int N = (int)fr.bright.mean.size();
+            std::vector<double> sorted = fr.bright.mean;
+            std::sort(sorted.begin(), sorted.end());
+            double med = sorted[N / 2];
+            double thr = vignette_frac * med;
+            fr.bright.valid.assign(N, 1);
+            int vig = 0;
+            std::vector<float> g(N);
+            for (int i = 0; i < N; i++) {
+              if (fr.bright.mean[i] < thr) { fr.bright.valid[i] = 0; vig++; g[i] = 0; }
+              else g[i] = (float)fr.bright.mean[i];
+            }
+            int rej = backLightField_robustClean(g.data(), fr.bright.cols, fr.bright.rows);
+            for (int i = 0; i < N; i++) {
+              // Keep vignette cells flagged invalid; restore their mean to 0.
+              fr.bright.mean[i] = fr.bright.valid[i] ? g[i] : 0.0;
+            }
+            fr.bright_rejected_cells = rej;
+            fr.bright_vignette_cells = vig;
+            LOGI("field_calib_finalize: bright median=%.1f vignette_thr=%.1f "
+                 "(frac=%.2f) -> %d vignette + %d scratch-cleaned",
+                 med, thr, vignette_frac, vig, rej);
+          }
+          // Dark grid keeps a trivial all-valid mask (no vignette concept).
+          if (fr.dark.mean.size() > 0)
+            fr.dark.valid.assign(fr.dark.mean.size(), 1);
+          if (field_calib_save_file(fr, path)) {
+            load_field_calib(path);
+            session_ACK = true;
+            char *rep = field_calib_to_json(fr);
+            if (rep) {
+              // Wrap so UI can branch on report_type like lens calib does.
+              char wrap[16384];
+              snprintf(wrap, sizeof(wrap),
+                "{\"report_type\":\"field_calib\",\"out_path\":\"%s\",\"calib\":%s}",
+                path, rep);
+              BPG_protocol_data rp = GenStrBPGData("RP", wrap);
+              rp.pgID = dat->pgID;
+              fromUpperLayer(rp, peer);
+              free(rep);
+            }
+            LOGI("field_calib_finalize: -> %s (uniformity=%.1f%%, hot=%d, dyn=%.1f)",
+                 path, g_field_calib.uniformity_pct, g_field_calib.hot_cells,
+                 g_field_calib.dynamic_range);
+          } else {
+            LOGE("field_calib_finalize: write failed %s", path);
+          }
+        }
+      }
+      else if (strcmp(target, "camera_setting_refresh") == 0 ||
+               strcmp(target, "calib_files_load") == 0)
+      {
+        // UI-driven: every path comes in the payload. Missing keys skip that
+        // file (so the UI can refresh just one piece without disturbing the
+        // others). Payload:
+        //   { camera_setting_dir, lens_calib_path, field_calib_path }
+        char *cam_dir = JFetch_STRING(json, "camera_setting_dir");
+        char *lens_p  = JFetch_STRING(json, "lens_calib_path");
+        char *field_p = JFetch_STRING(json, "field_calib_path");
+        if (cam_dir && *cam_dir && camera) {
+          CameraSettingFromFile(camera, cam_dir);
+          this->camera = camera;
+          calib_bacpac.cam = camera;
+        }
+        bool ok = true;
+        if (lens_p  && *lens_p)  ok = load_lens_calib(lens_p)   && ok;
+        if (field_p && *field_p) ok = load_field_calib(field_p) && ok;
+        session_ACK = ok;
       }
     }
     else if (checkTL("SC", dat)) //[S]pecial [C]MD
@@ -2848,9 +2960,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         delete jstr;
       }
       cJSON *ImTranseSetup = JFetch_OBJECT(json, "ImageTransferSetup");
-      // Hard-ignore the crop sub-step below (canvas-driven pan/zoom). The
-      // `enable`, OK/NG/NA_MAX_FPS, etc. on the same setup still apply or
-      // the streamer goes silent.
+      // IGNORE_DYNAMIC_VIEW=1 skips ONLY the crop-application sub-step
+      // below; `enable`, OK/NG/NA_MAX_FPS etc. on the same setup must
+      // still apply or the streamer goes silent.
+      static const bool ignoreDynView = (getenv("IGNORE_DYNAMIC_VIEW") != NULL);
       if (ImTranseSetup)
       {
 
@@ -2864,11 +2977,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           DoImageTransfer = true;
         }
 
-        // Crop coords intentionally ignored — streamed image is always full
-        // ROI. ImageCropX/Y/W/H stay at their defaults (set at startup +
-        // re-asserted at the top of the ST handler above).
-        double *nX = nullptr, *nY = nullptr, *nW = nullptr, *nH = nullptr;
-        if (nX && nY && nW && nH)
+        double *nX = JFetch_NUMBER(ImTranseSetup, "crop[0]");
+        double *nY = JFetch_NUMBER(ImTranseSetup, "crop[1]");
+        double *nW = JFetch_NUMBER(ImTranseSetup, "crop[2]");
+        double *nH = JFetch_NUMBER(ImTranseSetup, "crop[3]");
+
+        if (nX && nY && nW && nH && !ignoreDynView)
         {
           ImageCropX = *nX;
           ImageCropY = *nY;
@@ -3279,32 +3393,11 @@ int CameraSettingFromFile(CameraLayer *camera, char *path)
   if (ret)
     return ret;
 
-  sprintf(tmpStr, "%s/default_camera_param.json", path);
-
-  ret = LoadCameraCalibrationFile(tmpStr, calib_bacpac.sampler);
-
-  if (ret)
-  {
-    LOGE("LoadCameraCalibrationFile ERROR");
-    return ret;
-    //throw new std::runtime_error("LoadCameraCalibrationFile ERROR");
-  }
-  neutral_bacpac.sampler->getCalibMap()->calibmmpB = calib_bacpac.sampler->getCalibMap()->calibmmpB;
-  neutral_bacpac.sampler->getCalibMap()->calibPpB = calib_bacpac.sampler->getCalibMap()->calibPpB; //set mmpp
-
-  if (calib_bacpac.sampler)
-  {
-    stageLightParam *stageLightInfo = calib_bacpac.sampler->getStageLightInfo();
-    LOGI("SetExposureTime from bacpac:%f us", stageLightInfo->exposure_us);
-    if(stageLightInfo->exposure_us==stageLightInfo->exposure_us)
-      camera->SetExposureTime(stageLightInfo->exposure_us);
-    //stageLightInfo->back_light_target=back_light_target;
-
-    LOGI("mmpB:%f  calibPpB:%f", calib_bacpac.sampler->getCalibMap()->calibmmpB, calib_bacpac.sampler->getCalibMap()->calibPpB);
-    LOGI("scaled ppb2b:%f", calib_bacpac.sampler->getCalibMap()->calibmmpB / calib_bacpac.sampler->mmpP_ideal());
-    LOGI("mmpp:%.9f", calib_bacpac.sampler->mmpP_ideal());
-  }
-
+  // Calib params (mmpp, distortion coeffs, bright/dark grids) come from
+  // data/lens_calib.json + data/field_calib.json via load_lens_calib /
+  // load_field_calib, triggered by the WebUI's calib_files_load RPC --
+  // not from the legacy default_camera_param.json + stageLightReport.json
+  // pair that used to live here.
   return 0;
 }
 
@@ -4831,8 +4924,8 @@ int testCode()
   {
 
     CameraLayer *cam = getCamera(0);
-    int ret = LoadCameraCalibrationFile("data/default_camera_param.json", calib_bacpac.sampler);
-
+    // Calib comes from data/lens_calib.json (loaded via WebUI's
+    // calib_files_load RPC), not from the legacy default_camera_param.json.
     LOGI("mmpB:%f  calibPpB:%f", calib_bacpac.sampler->getCalibMap()->calibmmpB, calib_bacpac.sampler->getCalibMap()->calibPpB);
     LOGI("mmpp:%.9f", calib_bacpac.sampler->mmpP_ideal());
     acv_XY loca = {1000, 10};
@@ -4847,7 +4940,7 @@ int testCode()
 
     cv::Mat bw_img = cv::imread("data/gen_TEST/B.BMP", cv::IMREAD_COLOR);
     if (!bw_img.isContinuous()) bw_img = bw_img.clone();
-    ret = bw_img.empty() ? -1 : 0;
+    int ret = bw_img.empty() ? -1 : 0;
     ret = ImgInspection(matchingEng, bw_img, &calib_bacpac, calib_bacpac.cam, 1);
     const FeatureReport *report = matchingEng.GetReport();
     delete (string);
@@ -4931,6 +5024,14 @@ int cp_main(int argc, char **argv)
   // return -1;
   calib_bacpac.sampler = new ImageSampler();
   neutral_bacpac.sampler = new ImageSampler();
+  // Old LoadCameraCalibrationFile() used to RESET() the calib map as its first
+  // step. With that load gone, the sampler's calibMap/angOffsetTable/
+  // stageLightInfo would stay in their default-constructed state -- which left
+  // RNormalFactor / fullFrameW / fullFrameH at zero and made ImageDownSampling
+  // produce all-black frames in Insp mode (CalibUI's preview path uses
+  // IMG_ignore_calib so it dodged the issue). RESET initialises to identity.
+  calib_bacpac.sampler->RESET();
+  neutral_bacpac.sampler->RESET();
 
   // Headless golden-sample inspection loopback (for caliper-vs-contour testing
   // without the WebUI):  visSele --insp <image.png> <def.hydef> <out.json>
@@ -4970,7 +5071,10 @@ int cp_main(int argc, char **argv)
     // First fully init the sampler's calib map (RESET + load) like live startup
     // does (~4814) -- otherwise img2ideal divides by an uninit RNormalFactor and
     // returns NaN, poisoning every edge refine (lines/circles/search points).
-    LoadCameraCalibrationFile((char *)"data/default_camera_param.json", neutral_bacpac.sampler);
+    // Legacy LoadCameraCalibrationFile removed -- sampler->calibMap is now
+    // primed by load_lens_calib (triggered by the WebUI's calib_files_load
+    // RPC). The def's cam_param.ppb2b / mmpb2b override below still applies
+    // when present for backward compat with old hydef files.
     {
       char *ds = ReadText(defPath);
       if (ds) { cJSON *dj = cJSON_Parse(ds);

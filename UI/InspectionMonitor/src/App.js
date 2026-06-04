@@ -403,22 +403,43 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
     console.log("1,didUpdate");
     pop_dataRetrive();
 
-    try{
-      recentQuery(searchDateRange)
-      .then(_=>{
-        console.log(_)
-        pop_disable();
-      })
-      .catch(e=>{
-        console.log(e)
-        pop_dataRetriveFailed();
-      });
-    }
-    catch(e)
-    {
-      pop_dataRetriveFailed();
-      console.log(e)
-    }
+    if(defaultValue=="" || defaultValue===undefined)
+      {
+        pop_dataRetrive();
+        recentQuery(searchDateRange)
+        .then(_=>{
+          pop_disable();
+        })
+        .catch(_=>{
+          pop_dataRetriveFailed();
+        });
+      }
+      else if(defaultValue<2)
+      {
+        
+        setModal_view({
+          view_fn:()=>"請輸入大於兩個字",
+          title:"!",
+        })
+      }
+      else
+      {
+        
+        pop_dataRetrive();
+        setFetchedRecord();
+        fetchDeffileInfo(defaultValue,[searchDateRange[0]._d.getTime(),searchDateRange[1]._d.getTime()]).
+          then((res)=>{
+            pop_disable();
+            setFetchedRecord(res);
+            onQueryRes(res);
+          }).catch((e)=>{
+            
+            pop_dataRetriveFailed();
+            setFetchedRecord([]);
+            if(onQueryRej!==undefined)
+              onQueryRej(e)
+          });
+      }
 
     return () => {
       console.log("1,didUpdate ret::");
@@ -842,6 +863,11 @@ class App extends React.Component{
       this.onQRScanResult(JSON.stringify(urlParam));
       this.setState({UI:this.UI_type.analysis});
     }
+    else if(urlParam.search_name!==undefined)
+    {
+
+      this.setState({allowQRScan:true,UI:this.UI_type.search,search_name:urlParam.search_name});
+    }
     else
     {
       this.setState({allowQRScan:true,UI:this.UI_type.search});
@@ -889,8 +915,8 @@ class App extends React.Component{
         alert(e); // error in the above string (in this case, yes)!
     }
   }
-
   render() {
+    console.log(this.state);
     let UI;
     switch(this.state.UI)
     {
@@ -907,7 +933,7 @@ class App extends React.Component{
           defFile={this.state.defFile}/>;
         break;
       case this.UI_type.search:
-        UI=<XQueryInput onQueryRes={(res)=>{console.log(res)}} defaultValue="" placeholder="輸入名稱"/>;
+        UI=<XQueryInput onQueryRes={(res)=>{console.log(res)}} defaultValue={this.state.search_name} placeholder="輸入名稱"/>;
         break;
     }
 
