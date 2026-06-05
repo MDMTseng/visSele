@@ -1842,6 +1842,33 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             CameraLayer::status g_ret = calib_bacpac.cam->isInOperation();
             cJSON_AddNumberToObject(cam_1, "cam_status", g_ret);
 
+            // BMP_carousel: expose live state so WebUI can show fake-cam ctrls.
+            if (CameraLayer_BMP_carousel *car =
+                dynamic_cast<CameraLayer_BMP_carousel*>(camera))
+            {
+              cJSON *cinfo = cJSON_CreateObject();
+              cJSON_AddStringToObject(cinfo, "folder", car->GetFolderName().c_str());
+              cJSON_AddNumberToObject(cinfo, "fps",    car->GetFPS());
+              cJSON_AddNumberToObject(cinfo, "index",  car->GetCurrentIndex());
+              cJSON_AddStringToObject(cinfo, "file",   car->GetCurrentFileName().c_str());
+              cJSON *farr = cJSON_CreateArray();
+              for (auto &fn : car->GetFileList())
+                cJSON_AddItemToArray(farr, cJSON_CreateString(fn.c_str()));
+              cJSON_AddItemToObject(cinfo, "files", farr);
+              CameraLayer_BMP::Augment a = car->GetAugment();
+              cJSON *aj = cJSON_CreateObject();
+              cJSON_AddBoolToObject  (aj, "brightness_jitter_en",  a.brightness_jitter_en);
+              cJSON_AddNumberToObject(aj, "brightness_jitter_pct", a.brightness_jitter_pct);
+              cJSON_AddBoolToObject  (aj, "rotate_en",             a.rotate_en);
+              cJSON_AddNumberToObject(aj, "rotate_step_deg",       a.rotate_step_deg);
+              cJSON_AddBoolToObject  (aj, "noise_en",              a.noise_en);
+              cJSON_AddNumberToObject(aj, "noise_range",           a.noise_range);
+              cJSON_AddBoolToObject  (aj, "y_offset_en",           a.y_offset_en);
+              cJSON_AddNumberToObject(aj, "y_offset_r",            a.y_offset_r);
+              cJSON_AddItemToObject(cinfo, "aug", aj);
+              cJSON_AddItemToObject(cam_1, "carousel", cinfo);
+            }
+
             cJSON_AddItemToArray(cam_info_jarr, cam_1);
             cJSON_AddItemToObject(retArr, itemType, cam_info_jarr);
           }
@@ -2737,6 +2764,54 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           } else {
             LOGE("field_calib_finalize: write failed %s", path);
           }
+        }
+      }
+      else if (strcmp(target, "bmp_carousel") == 0)
+      {
+        // Fake-camera control: { action: "next"|"prev"|"replay"|"jump"|
+        //                        "list"|"pause"|"resume",  index?:N }
+        // Reply via SC retObj appended below (session_ACK + carousel_info).
+        CameraLayer_BMP_carousel *car = dynamic_cast<CameraLayer_BMP_carousel*>(camera);
+        if (!car) {
+          LOGE("bmp_carousel: current camera is not a BMP_carousel");
+        } else {
+          char *act = JFetch_STRING(json, "action");
+          if (!act) act = (char*)"";
+          if      (strcmp(act, "next")   == 0) car->LoadNext();
+          else if (strcmp(act, "prev")   == 0) car->LoadPrev();
+          else if (strcmp(act, "replay") == 0) car->ReloadCurrent();
+          else if (strcmp(act, "jump")   == 0) {
+            double *idx = JFetch_NUMBER(json, "index");
+            if (idx) car->LoadAt((int)*idx);
+          }
+          else if (strcmp(act, "pause")  == 0) car->TriggerMode(1); // stop loop
+          else if (strcmp(act, "resume") == 0) car->TriggerMode(0); // continuous
+          else if (strcmp(act, "setfps") == 0) {
+            double *fps = JFetch_NUMBER(json, "fps");
+            if (fps && *fps > 0) car->SetFrameRate((float)*fps);
+          }
+          else if (strcmp(act, "setfolder") == 0) {
+            char *f = JFetch_STRING(json, "folder");
+            if (f && *f) { car->updateFolder(f); car->LoadAt(0); }
+          }
+          else if (strcmp(act, "setaug") == 0) {
+            // Partial-update: any missing key keeps its current value.
+            CameraLayer_BMP::Augment a = car->GetAugment();
+            cJSON *o = cJSON_GetObjectItemCaseSensitive(json, "aug");
+            if (!o) o = json;
+            cJSON *v;
+            if ((v = cJSON_GetObjectItem(o, "brightness_jitter_en")))  a.brightness_jitter_en  = cJSON_IsTrue(v);
+            if ((v = cJSON_GetObjectItem(o, "brightness_jitter_pct"))) a.brightness_jitter_pct = (float)v->valuedouble;
+            if ((v = cJSON_GetObjectItem(o, "rotate_en")))             a.rotate_en             = cJSON_IsTrue(v);
+            if ((v = cJSON_GetObjectItem(o, "rotate_step_deg")))       a.rotate_step_deg       = (float)v->valuedouble;
+            if ((v = cJSON_GetObjectItem(o, "noise_en")))              a.noise_en              = cJSON_IsTrue(v);
+            if ((v = cJSON_GetObjectItem(o, "noise_range")))           a.noise_range           = (int)v->valuedouble;
+            if ((v = cJSON_GetObjectItem(o, "y_offset_en")))           a.y_offset_en           = cJSON_IsTrue(v);
+            if ((v = cJSON_GetObjectItem(o, "y_offset_r")))            a.y_offset_r            = (float)v->valuedouble;
+            car->SetAugment(a);
+          }
+          // "list" needs no state change; reply built below.
+          session_ACK = true;
         }
       }
       else if (strcmp(target, "camera_setting_refresh") == 0 ||
@@ -4357,20 +4432,26 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
     int stat_sec = FeatureReport_sig360_circle_line_single::STATUS_UNSET;
 
-    if (report->type == FeatureReport::binary_processing_group)
+    if (report && report->type == FeatureReport::binary_processing_group &&
+        report->data.binary_processing_group.reports &&
+        report->data.binary_processing_group.labeledData)
     {
       vector<const FeatureReport *> &reports =
           *(report->data.binary_processing_group.reports);
 
       vector<acv_LabeledData> *ldat = report->data.binary_processing_group.labeledData;
 
-      if (reports.size() == 1 && reports[0]->type == FeatureReport::sig360_circle_line)
+      if (reports.size() == 1 && reports[0] &&
+          reports[0]->type == FeatureReport::sig360_circle_line &&
+          reports[0]->data.sig360_circle_line.reports)
       {
         vector<FeatureReport_sig360_circle_line_single> &srep =
             *(reports[0]->data.sig360_circle_line.reports);
         stat = FeatureReport_sig360_circle_line_single::STATUS_NA;
 
-        if (srep.size() == 1) //only one detected objects in scence is allowed
+        if (srep.size() == 1 &&
+            srep[0].labeling_idx >= 0 &&
+            srep[0].labeling_idx < (int)ldat->size()) //only one detected objects in scence is allowed
         {
           int insp_tar_area = (*ldat)[srep[0].labeling_idx].area;
 

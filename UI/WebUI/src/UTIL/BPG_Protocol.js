@@ -117,6 +117,19 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
 
   let imgStart = offset + BPG_header_L + headerL;
   let payloadAvail = ws_evt.data.byteLength - imgStart;
+  // TEMP probe: log frame meta so we can correlate corruption with format /
+  // size drift. Remove once diagnosed.
+  if (!window.__IM_PROBE_N) window.__IM_PROBE_N = 0;
+  if (window.__IM_PROBE_N < 20) {
+    window.__IM_PROBE_N++;
+    console.log("IM#"+window.__IM_PROBE_N,
+      "format="+ret_obj.format,
+      "q="+ret_obj.jpeg_quality,
+      "w="+ret_obj.width, "h="+ret_obj.height,
+      "full="+ret_obj.full_width+"x"+ret_obj.full_height,
+      "scale="+ret_obj.scale, "off=("+ret_obj.offsetX+","+ret_obj.offsetY+")",
+      "payload="+payloadAvail);
+  }
 
   if (ret_obj.format === 1 || ret_obj.format === 2) {
     // JPEG (1=BGR, 2=grayscale): entire remainder is the JPEG bitstream.
@@ -345,7 +358,7 @@ export class CameraTransferCtrl {
       this.ev_emptyResultCountChange = () => { };
 
     this.setSpeedSwitchingCount(100);
-    this.setCameraSpeed_HIGH();
+    this.setCameraFrameRate(8);
   }
 
 

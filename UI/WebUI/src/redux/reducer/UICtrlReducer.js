@@ -571,9 +571,9 @@ function StateReducer(newState, action) {
                       
                     if(action.data.__surpress_display==true)
                     {
-                      reportStatisticState.trackingWindow.forEach(rep=>{
-                        rep.isCurObj = false;
-                      });
+                      // reportStatisticState.trackingWindow.forEach(rep=>{
+                      //   rep.isCurObj = false;
+                      // });
                       reportStatisticState.__surpress_display=true;
                     }
                     else

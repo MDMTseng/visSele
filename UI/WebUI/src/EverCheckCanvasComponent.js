@@ -253,8 +253,15 @@ class EverCheckCanvasComponent_proto {
       const token = (this._jpegToken = (this._jpegToken || 0) + 1);
       createImageBitmap(img_info.jpegBlob).then((bmp) => {
         if (this._jpegToken !== token) { if (bmp.close) bmp.close(); return; }
-        this.secCanvas.width = w;
-        this.secCanvas.height = h;
+        // TEMP probe — confirm decoded bitmap intrinsic size matches header.
+        if (bmp.width !== w || bmp.height !== h) {
+          console.warn("JPEG size mismatch: header="+w+"x"+h+
+            " bitmap="+bmp.width+"x"+bmp.height+
+            " full="+img_info.full_width+"x"+img_info.full_height+
+            " scale="+img_info.scale+" fmt="+img_info.format);
+        }
+        this.secCanvas.width = bmp.width;
+        this.secCanvas.height = bmp.height;
         const ctx2nd = this.secCanvas.getContext('2d');
         ctx2nd.drawImage(bmp, 0, 0);
         this.secCanvas_rawImg = bmp;
@@ -1031,7 +1038,6 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     }
     let mmpp = this.rUtil.get_mmpp();
     // console.log(">>edit_DB_info>>",this.edit_DB_info );
-      console.log(">>ERROR_LOCK",this.ERROR_LOCK,this.edit_DB_info);
     if (this.ERROR_LOCK || this.edit_DB_info == null ) {
       return;
     }
@@ -1067,6 +1073,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     ctx.setTransform(matrix.a, matrix.b, matrix.c,
       matrix.d, matrix.e, matrix.f);
 
+    // console.log(">>>>>>>",this.doRotateView,inspectionReportList.length,this.img_info);
     if(this.doRotateView==true && inspectionReportList.length>=1 && this.img_info!==undefined)
     {
       // let line_N=inspectionReportList[0].detectedLines[1];
@@ -1170,8 +1177,6 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 
     }
-    
-
     inspectionReportList.forEach((report, idx) => {
       //let ret_res = this.inspectionResult(report);
       //if(ret_res == INSPECTION_STATUS.SUCCESS)

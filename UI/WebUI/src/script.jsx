@@ -55,6 +55,9 @@ import {
 import { useSelector,useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Drawer from 'antd/lib/drawer';
+import Input from 'antd/lib/input';
+import Switch from 'antd/lib/switch';
+import InputNumber from 'antd/lib/input-number';
 import CoreLogPanel from './component/CoreLogPanel';
 
 var require=require||(()=>undefined);
@@ -226,6 +229,154 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
                     
 
 
+// Fake-camera (BMP_carousel) live control panel. Reads camera info from
+// Redux directly so the file list & current index stay in sync between
+// renders (CAM1_ID_CONN_INFO[0].carousel is refreshed by _queryCam).
+const BMP_CAROUSEL_FOLDER_LSKEY = "bmp_carousel_folder_path";
+const BMP_CAROUSEL_FPS_LSKEY    = "bmp_carousel_fps";
+const BMP_CAROUSEL_AUG_LSKEY    = "bmp_carousel_aug";
+
+function BMPCarouselFPS({ curFps, send }) {
+  const saved = parseFloat(localStorage.getItem(BMP_CAROUSEL_FPS_LSKEY));
+  const [fps, setFps] = React.useState(
+    () => Number.isFinite(saved) && saved > 0 ? saved : (curFps || 1));
+  React.useEffect(() => {
+    if (Number.isFinite(saved) && saved > 0) send("setfps", { fps: saved });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const apply = (v) => {
+    if (!v || v <= 0) return;
+    setFps(v);
+    localStorage.setItem(BMP_CAROUSEL_FPS_LSKEY, String(v));
+    send("setfps", { fps: v });
+  };
+  return (
+    <div style={{display:'flex', alignItems:'center', gap:6}}>
+      <span style={{minWidth:60}}>FPS</span>
+      <InputNumber size="small" value={fps} min={0.1} max={120} step={0.5}
+        onChange={apply}/>
+      <span style={{opacity:0.6, fontSize:12}}>core: {(curFps ?? 0).toFixed?.(2)}</span>
+    </div>
+  );
+}
+
+// Fake-camera augmentation knob block. Reads server-current aug from
+// camInfo (so first paint reflects core defaults), then user-edits are
+// merged into localStorage AND pushed to core via setaug.
+function BMPCarouselAugPanel({ aug, send }) {
+  const [override, setOverride] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem(BMP_CAROUSEL_AUG_LSKEY) || "{}"); }
+    catch { return {}; }
+  });
+  // On first mount, re-push saved overrides so core matches the UI.
+  React.useEffect(() => {
+    if (override && Object.keys(override).length > 0) send("setaug", { aug: override });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const eff = { ...aug, ...override };
+  const set = (patch) => {
+    const next = { ...override, ...patch };
+    setOverride(next);
+    localStorage.setItem(BMP_CAROUSEL_AUG_LSKEY, JSON.stringify(next));
+    send("setaug", { aug: patch });
+  };
+  const Row = ({ enKey, en, valKey, val, label, min, max, step }) => (
+    <div style={{display:'flex', alignItems:'center', gap:6}}>
+      <Switch size="small" checked={!!en} onChange={(v)=>set({[enKey]:v})}/>
+      <span style={{minWidth:140}}>{label}</span>
+      <InputNumber size="small" disabled={!en}
+        value={val} min={min} max={max} step={step}
+        onChange={(v)=>set({[valKey]:v})}/>
+    </div>
+  );
+  return (
+    <div style={{display:'flex', flexDirection:'column', gap:4,
+                 padding:6, border:'1px dashed #555'}}>
+      <div style={{opacity:0.7, fontSize:12, marginBottom:2}}>Augmentations</div>
+      <Row enKey="brightness_jitter_en"  en={eff.brightness_jitter_en}
+           valKey="brightness_jitter_pct" val={eff.brightness_jitter_pct}
+           label="brightness ±%" min={0} max={100} step={1}/>
+      <Row enKey="rotate_en" en={eff.rotate_en}
+           valKey="rotate_step_deg" val={eff.rotate_step_deg}
+           label="rotate deg/frame" min={0} max={10} step={0.05}/>
+      <Row enKey="noise_en" en={eff.noise_en}
+           valKey="noise_range" val={eff.noise_range}
+           label="pixel noise ±" min={0} max={64} step={1}/>
+      <Row enKey="y_offset_en" en={eff.y_offset_en}
+           valKey="y_offset_r" val={eff.y_offset_r}
+           label="y-wobble radius px" min={0} max={500} step={1}/>
+    </div>
+  );
+}
+
+function BMPCarouselPanel({ camInfo, coreId, cam1Id, ws_send_bpg }) {
+  const car = camInfo?.data?.[0]?.carousel;
+  const send = (action, extra={}) => ws_send_bpg(coreId, "RC", 0,
+    { target: "bmp_carousel", action, ...extra }, undefined, {
+      resolve: () => {}, reject: () => {},
+    });
+  const [folderInput, setFolderInput] = React.useState(
+    () => localStorage.getItem(BMP_CAROUSEL_FOLDER_LSKEY) || (car?.folder ?? ""));
+  const applyFolder = () => {
+    const f = (folderInput || "").trim();
+    if (!f) return;
+    localStorage.setItem(BMP_CAROUSEL_FOLDER_LSKEY, f);
+    send("setfolder", { folder: f });
+  };
+  if (!car) return (
+    <div style={{display:'flex', flexDirection:'column', gap:8}}>
+      <div>(no carousel info yet — waiting for camera_info)</div>
+      <Input.Search
+        placeholder="image folder path"
+        enterButton="Set"
+        value={folderInput}
+        onChange={(e)=>setFolderInput(e.target.value)}
+        onSearch={applyFolder} />
+    </div>
+  );
+  const files = car.files || [];
+  const shortName = (p) => (p||"").split("/").pop();
+  return (
+    <div style={{display:'flex', flexDirection:'column', gap:8}}>
+      <Input.Search
+        placeholder="image folder path"
+        enterButton="Set"
+        value={folderInput}
+        onChange={(e)=>setFolderInput(e.target.value)}
+        onSearch={applyFolder} />
+      <div style={{opacity:0.7, fontSize:12}}>folder: {car.folder}</div>
+      <div>
+        <span style={{marginRight:8}}>frame</span>
+        <b>{car.index + 1}</b> / {files.length}
+        <div style={{fontSize:12, opacity:0.7}}>{shortName(car.file)}</div>
+      </div>
+      <BMPCarouselFPS curFps={car.fps} send={send} />
+      <div style={{display:'flex', gap:6, flexWrap:'wrap'}}>
+        <Button onClick={()=>send("prev")}>◀ Prev</Button>
+        <Button onClick={()=>send("replay")}>↻ Replay</Button>
+        <Button onClick={()=>send("next")}>Next ▶</Button>
+        <Button onClick={()=>send("pause")}>⏸ Pause</Button>
+        <Button onClick={()=>send("resume")}>▶ Resume</Button>
+      </div>
+      <BMPCarouselAugPanel aug={car.aug} send={send} />
+      <div style={{maxHeight:'40vh', overflowY:'auto', border:'1px solid #333', padding:6}}>
+        {files.map((f, i) => (
+          <div key={f}
+            onClick={()=>send("jump", { index: i })}
+            style={{
+              cursor:'pointer',
+              padding:'2px 6px',
+              background: i===car.index ? '#2a5' : 'transparent',
+              color: i===car.index ? 'white' : 'inherit',
+            }}>
+            {i + 1}. {shortName(f)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 class APPMasterX extends React.Component {
 
   static mapDispatchToProps(dispatch, ownProps) {
@@ -298,7 +449,8 @@ class APPMasterX extends React.Component {
     super(props);
     this.state={
       show_system_panel:true,
-      modal_view:undefined
+      modal_view:undefined,
+      carousel_drawer_open:false,
     };
 
     log.debug("[boot] electron/fs/path host probe", { electron: !!electron, fs: !!fs, path: !!path });
@@ -1904,7 +2056,12 @@ class APPMasterX extends React.Component {
                 
                 case this.props.CAM1_ID:
                 {
-                  
+                  // BMP_carousel fake-camera: open right-side drawer with live ctrls
+                  let camType = GetObjElement(this.props.CAM1_ID_CONN_INFO, ["data", 0, "type"]);
+                  if (camType === "CameraLayer_BMP_carousel") {
+                    this.setState({ carousel_drawer_open: true });
+                    break;
+                  }
                   this.setState({
                     modal_view:{
                       view_fn:()=><pre>
@@ -2035,6 +2192,20 @@ class APPMasterX extends React.Component {
           visible={this.state.modal_view !== undefined}>
           {this.state.modal_view === undefined ? null : this.state.modal_view.view_fn()}
         </Modal>
+
+        <Drawer
+          title="Fake Camera (BMP carousel)"
+          placement="right"
+          width={360}
+          visible={this.state.carousel_drawer_open}
+          onClose={()=>this.setState({carousel_drawer_open:false})}>
+          <BMPCarouselPanel
+            camInfo={this.props.CAM1_ID_CONN_INFO}
+            coreId={this.props.CORE_ID}
+            cam1Id={this.props.CAM1_ID}
+            ws_send_bpg={this.props.ACT_WS_SEND_BPG}
+          />
+        </Drawer>
       </div>
     );
   }

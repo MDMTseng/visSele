@@ -1,6 +1,7 @@
 #ifndef MAIN_HPP
 #define MAIN_HPP
 #include <chrono>
+#include <mutex>
 #include <set>
 #include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicDrawTool.hpp"
@@ -159,12 +160,25 @@ public:
   // Peers opted in to the live inspection stream (SS/RP/IM push). The default
   // (first) client is auto-subscribed for backward compat; others opt in via SB.
   std::set<void *> stream_subscribers;
-  void subscribeStream(void *peer) { if (peer) stream_subscribers.insert(peer); }
-  void unsubscribeStream(void *peer) { stream_subscribers.erase(peer); }
+  // Guards stream_subscribers AND the per-peer fromUpperLayer dispatch inside
+  // pushToSubscribers. WS CLOSING/ERROR must acquire this BEFORE freeing the
+  // peer so an in-flight push can never deref a dangling void* (MT_LOCK is a
+  // no-op so we can't rely on it here).
+  std::mutex subscribersLock;
+  void subscribeStream(void *peer) {
+    if (!peer) return;
+    std::lock_guard<std::mutex> g(subscribersLock);
+    stream_subscribers.insert(peer);
+  }
+  void unsubscribeStream(void *peer) {
+    std::lock_guard<std::mutex> g(subscribersLock);
+    stream_subscribers.erase(peer);
+  }
   // Push one packet to every subscribed peer (routes per-peer so framing stays
   // per-client; bulk image callbacks pick up the active peer under linkLayerLock).
   void pushToSubscribers(BPG_protocol_data bpg_dat)
   {
+    std::lock_guard<std::mutex> g(subscribersLock);
     for (void *p : stream_subscribers)
       fromUpperLayer(bpg_dat, p);
   }

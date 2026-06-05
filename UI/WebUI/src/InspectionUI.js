@@ -1654,24 +1654,6 @@ function RestrictiveCircleREdit ({initR,onRChanged}){
 }
 
 
-// Live-bound switch: the parent stores its containing Modal JSX in state, so
-// any prop snapshot would freeze at open-time. Read/write Redux directly.
-function CaliperHitsToggleSwitch() {
-  const checked = useSelector((s) => s.UIData.System_Setting?.SHOW_CALIPER_HITS_INSP !== false);
-  const sysSetting = useSelector((s) => s.UIData.System_Setting);
-  const dispatch = useDispatch();
-  return (
-    <Switch
-      size="small"
-      checked={checked}
-      onChange={(val) => dispatch({
-        type: "System_Setting_Update",
-        data: { ...sysSetting, SHOW_CALIPER_HITS_INSP: val },
-      })}
-    />
-  );
-}
-
 class APP_INSP_MODE extends React.Component {
 
   
@@ -1780,7 +1762,7 @@ class APP_INSP_MODE extends React.Component {
 
         this.CameraCtrl.setCameraSpeed_LOW();
 
-      console.log("this.props.System_Setting.CI_MODE_StatSettingParam",this.props.System_Setting.CI_MODE_StatSettingParam);
+        console.log("this.props.System_Setting.CI_MODE_StatSettingParam",this.props.System_Setting.CI_MODE_StatSettingParam);
 
 
         // deffile.featureSet[0].single_result_area_ratio=0.9;
@@ -2004,7 +1986,16 @@ class APP_INSP_MODE extends React.Component {
         {/* Per-caliper hit overlay toggle. Default on; ignored for shapes
             whose def has locating != 'caliper' (cal_hits is absent then). */}
         <div key="caliper-hits-toggle" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <CaliperHitsToggleSwitch />
+          <Switch
+            size="small"
+            checked={this.props.System_Setting?.SHOW_CALIPER_HITS_INSP !== false}
+            onChange={(val) => {
+              this.props.ACT_System_Setting_Update({
+                ...this.props.System_Setting,
+                SHOW_CALIPER_HITS_INSP: val,
+              });
+            }}
+          />
           <span>顯示卡尺命中點 / Show caliper hits</span>
         </div>
 
@@ -2750,8 +2741,7 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps,ff) => {
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
     ACT_Shape_List_Update_EXPRESS:(newlist,cb)=>dispatch({...DefConfAct.Shape_List_Update(newlist,cb),ActionThrottle_type: "express"}),
-    ACT_WS_GET_OBJ: (api_id,callback)=>dispatch(UIAct.EV_WS_GET_OBJ(api_id,callback)),
-    ACT_System_Setting_Update: (sysSetting) => dispatch({type:"System_Setting_Update",data:sysSetting}),
+    ACT_WS_GET_OBJ: (api_id,callback)=>dispatch(UIAct.EV_WS_GET_OBJ(api_id,callback))
   }
 }
 
