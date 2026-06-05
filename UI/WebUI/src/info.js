@@ -25,7 +25,7 @@ const default_FLAG={
     keepInTrackingTime_ms: 1000,
     minReportRepeat: 2,
     headReportSkip: 1,
-    maxReportRepeat:2
+    maxReportRepeat:5
   },
   FI_MODE_StatSettingParam:{
     historyReportlimit: 1000,
@@ -47,14 +47,14 @@ export function debug_SysSetting(origsetup={})
   origsetup.FI_MODE_UPLOAD_SKIP=100;
   origsetup.CI_MODE_UPLOAD_SKIP=100;
 
-  origsetup.CI_MODE_StatSettingParam={
-    ...origsetup.CI_MODE_StatSettingParam,
-    maxReportRepeat:2,
-    historyReportlimit: 1000,
-    keepInTrackingTime_ms: 0,
-    minReportRepeat: 0,
-    headReportSkip: 0,
-  };
+  // origsetup.CI_MODE_StatSettingParam={
+  //   ...origsetup.CI_MODE_StatSettingParam,
+  //   maxReportRepeat:2,
+  //   historyReportlimit: 1000,
+  //   keepInTrackingTime_ms: 0,
+  //   minReportRepeat: 0,
+  //   headReportSkip: 0,
+  // };
   // origsetup.FI_MODE_StatSettingParam={
   //   ...origsetup.FI_MODE_StatSettingParam,
   //   historyReportlimit: 1000,

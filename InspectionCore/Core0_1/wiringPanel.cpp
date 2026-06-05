@@ -4530,6 +4530,9 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       LOGI("CLOSING peer %s:%d\n",
            inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
 
+      // Serialize peer teardown with InspResultAction_s / pushToSubscribers
+      // (both take MT_LOCK) so the iteration can't observe a freed peer.
+      MT_LOCK("ws CLOSING");
       bpg_pi.dropPeerState(data.peer); // free this peer's inbound reassembly buffer
       bpg_pi.unsubscribeStream(data.peer);
       peers.erase(data.peer);
@@ -4546,6 +4549,7 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
           bpg_pi.camera->TriggerMode(1);
         bpg_pi.delete_PeripheralChannel();
       }
+      MT_UNLOCK("ws CLOSING");
     }
     return 0;
 

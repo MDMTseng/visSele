@@ -532,6 +532,7 @@ function StateReducer(newState, action) {
                             closeRep.repeatTime = 0;
                           }
                         }
+
                         closeRep.isCurObj = true;
                       }
                       else {

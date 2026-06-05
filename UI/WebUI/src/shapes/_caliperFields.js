@@ -259,7 +259,7 @@ const HIT_COLOR = {
 // circle, used by search_point where many hits sit on a short search vector
 // and crosses overlap visually).
 export function drawCaliperHits(ctx, hits, renderer, { style = 'cross' } = {}) {
-  console.log(">>drawCaliperHits",hits);
+  //console.log(">>drawCaliperHits",hits);
   if (!hits || hits.length === 0) return;
   ctx.save();
   ctx.lineWidth = renderer.getIndicationLineSize();

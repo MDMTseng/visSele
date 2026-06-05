@@ -1031,6 +1031,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     }
     let mmpp = this.rUtil.get_mmpp();
     // console.log(">>edit_DB_info>>",this.edit_DB_info );
+      console.log(">>ERROR_LOCK",this.ERROR_LOCK,this.edit_DB_info);
     if (this.ERROR_LOCK || this.edit_DB_info == null ) {
       return;
     }
@@ -1144,7 +1145,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       }
       ctx.restore();
 
-      if(this.db_obj.cameraParam && this.db_obj.cameraParam.mask_radius!==undefined)
+      if(false && this.db_obj.cameraParam && this.db_obj.cameraParam.mask_radius!==undefined)
       {
         ctx.save();
         
