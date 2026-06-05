@@ -130,46 +130,36 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
         }
         else
         {
-          // acvCloneImage(&img_load,&img,-1);
-          if(1)
-          {
-
-            memcpy(imgBuffer,img_load.ptr<uint8_t>(0),newH*newW*channelCount);
-
-          }
-          else
-          {
-            for(int i=0;i<newH;i++)//exposure add
-            {
-              int li=i+newY;
-              if(li<0 || li>=img_load.rows)continue;
-              for(int j=0;j<newW;j++)
-              {
-                int lj=j+newX;
-                if(lj<0 || lj>=img_load.cols)continue;
-                int N=0;
-                if(noiseRange>0)
-                  N= (rand()%(2*noiseRange+1))-noiseRange;
-
-                for(int ix=0;ix<3;ix++)
-                {
-                  int d =N+ ((img_load.ptr<uint8_t>(li)[lj*3+ix]*tExp)>>13);
-                  
-                  if(d<0)d=0;
-                  else if(d>255)d=255;
-                  
-                  imgBuffer[(i*newW+j)*channelCount+ix]=d;
-
-                }
-                // img.CVector[i][j*3] = 
-                // img.CVector[i][j*3+1] =
-                // img.CVector[i][j*3+2] = d;
-
+          // Row-by-row copy that honors ROI offset (newX, newY) and the
+          // loaded image's actual stride (img_load.cols * src_channels).
+          // The previous memcpy fast-path assumed the loaded image and the
+          // ROI shared origin AND width, which is false for any PNG/BMP
+          // whose dims don't match the requested ROI -- the row stride
+          // mismatch produced the striped-corruption pattern.
+          // imread(IMREAD_COLOR) always returns 3-channel BGR (grayscale
+          // PNG is replicated to BGR), so src_ch is 3.
+          const int src_ch = img_load.channels();
+          for (int i = 0; i < newH; i++) {
+            int li = i + newY;
+            if (li < 0 || li >= img_load.rows) {
+              memset(imgBuffer + (i*newW)*channelCount, 0, newW*channelCount);
+              continue;
+            }
+            const uint8_t *src = img_load.ptr<uint8_t>(li);
+            uint8_t *dst = imgBuffer + (i*newW)*channelCount;
+            for (int j = 0; j < newW; j++) {
+              int lj = j + newX;
+              if (lj < 0 || lj >= img_load.cols) {
+                for (int c = 0; c < channelCount; c++) dst[j*channelCount + c] = 0;
+                continue;
+              }
+              const uint8_t *sp = src + lj*src_ch;
+              for (int c = 0; c < channelCount; c++) {
+                dst[j*channelCount + c] = sp[c < src_ch ? c : 0];
               }
             }
           }
         }
-        
       }
       else
       {      
