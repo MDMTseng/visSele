@@ -54,14 +54,16 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       }      
 
       if(exp_time_us==0)exp_time_us=exp_time_100ExpUs;
-      float brightnessMult=((float)(rand()%2000)/1000)-1;//-1~1
+      float brightnessMult=1.0f;
+      if (aug.brightness_jitter_en && aug.brightness_jitter_pct > 0) {
+        float r = ((float)(rand()%2000)/1000)-1; //-1~1
+        brightnessMult = r * (aug.brightness_jitter_pct/100.0f) + 1.0f;
+      }
 
-      brightnessMult=brightnessMult*0.2+1;
-      
       int tExp=(1<<13)*brightnessMult*exp_time_us*a_gain/exp_time_100ExpUs;
       LOGI("tExp:%d",tExp);
 
-      
+
       // img.ReSize(newW,newH);
       acv_XY rcenter((float)(newW/2), (float)(newH/2));
 
@@ -69,13 +71,13 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       if(1)
       {
         static float rotate=0;
-      
-        int noiseRange=15;
+
+        int noiseRange = aug.noise_en ? aug.noise_range : 0;
         if(newX==0&&newY==0)
         {
           rotate=0;
         }
-        else
+        else if (aug.rotate_en && aug.rotate_step_deg > 0)
         {
           float baseAngle=0*M_PI/180;
           float endAngle= 360*M_PI/180;
@@ -84,18 +86,20 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
           else if(rotate>endAngle)rotate=baseAngle;
           else
           {
-            rotate+=0.5*M_PI/180;
+            rotate += aug.rotate_step_deg * M_PI/180;
           }
-          // rotate+=1*M_PI/180;
           LOGI("ROTATE:%f",rotate*180/M_PI);
-          // 
+        }
+        else
+        {
+          rotate = 0;
         }
 
 
 
         if(rotate!=0)
         {
-          float offsetR=50;
+          float offsetR = aug.y_offset_en ? aug.y_offset_r : 0.0f;
           float offsetY=-offsetR*sin(rotate);
           float offsetX=0;//offsetR*cos(rotate);
           acv_XY pixOffset=acv_XY(offsetX, offsetY);

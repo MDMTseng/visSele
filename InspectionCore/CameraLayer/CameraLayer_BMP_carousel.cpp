@@ -142,6 +142,56 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
     return status;
 }
 
+CameraLayer::status CameraLayer_BMP_carousel::LoadPrev(bool call_cb)
+{
+    updateFolder(this->folderName);
+    if(files_in_folder.size()==0)return NAK;
+    if(fileIdx<=0) fileIdx = (int)files_in_folder.size();
+    fileIdx--;
+    return LoadAt(fileIdx, call_cb);
+}
+
+CameraLayer::status CameraLayer_BMP_carousel::ReloadCurrent(bool call_cb)
+{
+    updateFolder(this->folderName);
+    if(files_in_folder.size()==0)return NAK;
+    if(fileIdx<0 || fileIdx>=(int)files_in_folder.size()) fileIdx=0;
+    return LoadAt(fileIdx, call_cb);
+}
+
+CameraLayer::status CameraLayer_BMP_carousel::LoadAt(int idx, bool call_cb)
+{
+    updateFolder(this->folderName);
+    if(files_in_folder.size()==0)return NAK;
+    if(idx<0) idx=0;
+    if(idx>=(int)files_in_folder.size()) idx=(int)files_in_folder.size()-1;
+    fileIdx = idx;
+
+    CameraLayer_BMP::status status=LoadBMP(files_in_folder[fileIdx]);
+    if(status==ACK)
+    {
+      struct timeval tp;
+      gettimeofday(&tp, NULL);
+      uint64_t _100us = ((uint64_t)tp.tv_sec) * 1000000 + tp.tv_usec;
+      int newX,newY,newW,newH;
+      CalcROI(&newX,&newY,&newW,&newH);
+      CameraLayer::frameInfo fi_={
+        timeStamp_us:(uint64_t)_100us,
+        width:(uint32_t)newW,
+        height:(uint32_t)newH,
+      };
+      fi = fi_;
+      if(call_cb) callback(*this,CameraLayer::EV_IMG,context);
+    }
+    else
+    {
+      CameraLayer::frameInfo fi_={ timeStamp_us:0, width:0, height:0 };
+      fi = fi_;
+      if(call_cb) callback(*this,CameraLayer::EV_ERROR,context);
+    }
+    return status;
+}
+
 CameraLayer::status CameraLayer_BMP_carousel::Trigger()
 {
     imageTakingCount+=1;

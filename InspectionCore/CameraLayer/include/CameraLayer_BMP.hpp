@@ -21,6 +21,22 @@ class CameraLayer_BMP : public CameraLayer{
     float ROI_X=0,ROI_Y=0,ROI_W=9999999,ROI_H=9999999;
     int MIRROR_X=0,MIRROR_Y=0;
     public:
+    // --- fake-camera augmentation knobs (defaults preserve the original
+    //     hardcoded ExtractFrame behavior).
+    struct Augment {
+      bool  brightness_jitter_en = true;
+      float brightness_jitter_pct = 20.0f; // ±%
+      bool  rotate_en = true;
+      float rotate_step_deg = 0.5f;        // per ExtractFrame call
+      bool  noise_en = true;
+      int   noise_range = 15;              // ±pixel value
+      bool  y_offset_en = true;
+      float y_offset_r = 50.0f;            // px, wobble amplitude (tied to rotate)
+    };
+    Augment aug;
+    void SetAugment(const Augment &a) { aug = a; }
+    Augment GetAugment() const { return aug; }
+
     
     static std::string getDriverName(){
       return "BMP";
@@ -48,7 +64,7 @@ class CameraLayer_BMP : public CameraLayer{
 class CameraLayer_BMP_carousel : public CameraLayer_BMP{
 
     int modeTriggerSim_sleep=0;
-    int frameInterval_ms=100;
+    int frameInterval_ms=1000; // 1 fps default for fake-camera testing
     int ThreadTerminationFlag=0;
     int imageTakingCount=0;
     int triggerMode=1;
@@ -72,6 +88,13 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param);
     status Trigger();
     status LoadNext(bool call_cb=true);
+    status LoadPrev(bool call_cb=true);
+    status LoadAt(int idx, bool call_cb=true);
+    status ReloadCurrent(bool call_cb=true);
+    int    GetCurrentIndex() const { return fileIdx; }
+    float  GetFPS() const { return frameInterval_ms>0 ? 1000.0f/frameInterval_ms : 0.0f; }
+    const std::vector<std::string>& GetFileList(){ updateFolder(folderName); return files_in_folder; }
+    std::string GetFolderName() const { return folderName; }
     status TriggerMode(int mode);
     ~CameraLayer_BMP_carousel();
     static int listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &devlist);
