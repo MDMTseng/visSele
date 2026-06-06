@@ -5,6 +5,7 @@ Three supported build paths:
 | Target | Where you build | Preset / shortcut |
 |---|---|---|
 | **macOS (arm64) native** | macOS arm64 | `mac-arm64` |
+| **Linux x64 native** | Linux x86_64 | `linux` (alias for `linux-x64`) |
 | **Windows x64 (MSYS2 / MinGW64) native** | Windows | `win-mingw` |
 | **Windows x64 cross-compiled from macOS** | macOS arm64 | `win-cross` |
 
@@ -66,7 +67,47 @@ cd InspectionCore/Core0_1
 
 ---
 
-## 2 · Windows x64 (MSYS2 / MinGW64 native)
+## 2 · Linux x64 (Ubuntu / Debian native)
+
+### Prerequisites (clean Ubuntu 22.04+ or Debian 12+)
+
+```bash
+sudo apt update
+sudo apt install -y \
+  build-essential cmake pkg-config git \
+  libopencv-dev libaravis-dev \
+  libglib2.0-dev libgtk-3-dev libusb-1.0-0-dev
+```
+
+`libaravis-dev` provides the GigE Vision camera SDK (default-on for Linux). If you don't need GigE camera support, pass `-DFEATURE_ARAVIS=OFF` to CMake and you can skip `libaravis-dev` / `libgtk-3-dev`.
+
+### Build
+
+```bash
+git clone <repo-url> visSele
+cd visSele
+./InspectionCore/build.sh -p linux
+
+# Or with a bundle directory (copies built binaries into dist/)
+./InspectionCore/build.sh -p linux -c Release -e dist
+```
+
+Artifacts: `InspectionCore/build/linux-x64/visSele`, `inspd_log`, `calib_chessboard`.
+
+### Run
+
+```bash
+cd InspectionCore/Core0_1
+../build/linux-x64/visSele
+```
+
+### Notes
+- HikRobot / MindVision SDKs aren't enabled by default on Linux. HikRobot does ship a Linux SDK (separate download); to use it, drop the `.so` next to the headers and toggle `FEATURE_HIKROBOT=ON`.
+- `smem_channel` links `-lrt` on Linux for POSIX shared-memory primitives (handled automatically by CMakeLists).
+
+---
+
+## 3 · Windows x64 (MSYS2 / MinGW64 native)
 
 ### Prerequisites (clean Windows machine)
 
@@ -108,7 +149,7 @@ cd dist
 
 ---
 
-## 3 · Cross-compile Windows binary from macOS
+## 4 · Cross-compile Windows binary from macOS
 
 Use this when you want to produce a Windows `.exe` without leaving your Mac dev environment.
 
@@ -161,7 +202,7 @@ Camera-SDK selection is controlled by `FEATURE_ARAVIS` / `FEATURE_MINDVISION` / 
 ## build.sh option reference
 
 ```text
--p, --platform <id>     mac-arm64 | mac-arm64-opencv | win-cross | win-mingw
+-p, --platform <id>     mac-arm64 | mac-arm64-opencv | linux | win-cross | win-mingw
                         (default: mac-arm64)
 -c, --config <type>     Debug | Release | RelWithDebInfo   (default: Release)
 -e, --export <dir>      bundle built binaries + runtime DLLs into <dir>

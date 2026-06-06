@@ -26,6 +26,16 @@
       }
     },
     {
+      "name": "linux-x64",
+      "inherits": "base",
+      "displayName": "Linux x86_64 (native)",
+      "cacheVariables": {
+        "FEATURE_ARAVIS": "ON",
+        "FEATURE_MINDVISION": "OFF",
+        "FEATURE_HIKROBOT": "OFF"
+      }
+    },
+    {
       "name": "mac-arm64-opencv",
       "inherits": ["mac-arm64", "vcpkg"],
       "displayName": "macOS arm64 + OpenCV via vcpkg"
@@ -62,6 +72,7 @@
   "buildPresets": [
     { "name": "mac-arm64", "configurePreset": "mac-arm64" },
     { "name": "mac-arm64-opencv", "configurePreset": "mac-arm64-opencv" },
+    { "name": "linux-x64", "configurePreset": "linux-x64" },
     { "name": "win-mingw", "configurePreset": "win-mingw" },
     { "name": "win-mingw-cross", "configurePreset": "win-mingw-cross" }
   ]

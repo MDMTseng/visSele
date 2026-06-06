@@ -32,7 +32,7 @@ usage() {
   cat <<EOF
 Usage: $0 [options]
 
-  -p, --platform <id>     mac-arm64 | mac-arm64-opencv | win-cross | win-mingw
+  -p, --platform <id>     mac-arm64 | mac-arm64-opencv | linux | win-cross | win-mingw
                           (default: mac-arm64)
   -c, --config <type>     Debug | Release | RelWithDebInfo  (default: Release)
   -e, --export <dir>      bundle the built binaries (and runtime DLLs for
@@ -63,8 +63,9 @@ done
 
 # ---- map platform shortcut -> CMake preset ------------------------------
 case "$PLATFORM" in
-  mac-arm64|mac-arm64-opencv|win-mingw)  PRESET="$PLATFORM" ;;
-  win-cross)                             PRESET="win-mingw-cross" ;;
+  mac-arm64|mac-arm64-opencv|linux-x64|win-mingw)  PRESET="$PLATFORM" ;;
+  linux)                                           PRESET="linux-x64" ;;
+  win-cross)                                       PRESET="win-mingw-cross" ;;
   *) echo "unknown platform: $PLATFORM" >&2; exit 2 ;;
 esac
 
