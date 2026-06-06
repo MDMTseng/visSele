@@ -1161,15 +1161,29 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                            includeRangePx, alphaKeep,
                            eT.getBacpac(), labelImg, m_objLabel, maskDilate,
                            &out, &str, def.id, &rep.cal_hits);
+      // Lens correction (full-image px). A search point is a single robust
+      // centroid (no line/circle fit), so undistorting the final point is the
+      // exact lens correction for it. The per-column display hits are
+      // undistorted too so the overlay stays in the same frame. No-op unless a
+      // valid lensCalib is present. The raw image (eT image) carries no other
+      // distortion correction, so this is where it belongs.
+      FeatureManager_BacPac *sp_bp = eT.getBacpac();
+      bool sp_lens = sp_bp && sp_bp->lensCalib && sp_bp->lensCalib->ok;
       // Lift cropped-image-px → full-image-px to match rep.pt's frame.
-      for (auto &h : rep.cal_hits) h.pt = acvVecAdd(h.pt, off);
+      for (auto &h : rep.cal_hits)
+      {
+        h.pt = acvVecAdd(h.pt, off);
+        if (sp_lens) lens_undistort_point(*sp_bp->lensCalib, h.pt.x, h.pt.y);
+      }
       if (ok)
       {
         rep.pt = acvVecAdd(out, off);
+        if (sp_lens) lens_undistort_point(*sp_bp->lensCalib, rep.pt.x, rep.pt.y);
         // Manual offset: shift along the scanline direction (searchVec).
         // Shifting along barVec would be cancelled by the WebUI's
         // closestPointOnLine projection (line runs along barVec
-        // through inspAdjObj.x/y).
+        // through inspAdjObj.x/y). Applied AFTER lens correction so the
+        // operator nudge lands in the corrected measurement frame.
         if (def.manual_offset != 0)
           rep.pt = acvVecAdd(rep.pt, acvVecMult(searchVec, def.manual_offset));
         rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
@@ -3734,7 +3748,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     else
     {
       rr = caliper_locate_circle(eT.getImageCv(), cc, radius, sAngle, eAngle,
-                                 cdef.cal_count, cal, eT.getBacpac(), cdef.name);
+                                 cdef.cal_count, cal, eT.getBacpac(), cdef.name, off);
     }
     if (rr.ok) { cf.circle.circumcenter = acvVecAdd(rr.center, off); cf.circle.radius = rr.radius;
                  cf.s = rr.rms; cf.matching_pts = rr.nInlier; cf.confidence = rr.confidence; }
@@ -4086,7 +4100,7 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
   }
   else
   {
-    r = caliper_locate_line(eT.getImageCv(), p0, p1, lineDef.cal_count, cal, eT.getBacpac(), lineDef.name);
+    r = caliper_locate_line(eT.getImageCv(), p0, p1, lineDef.cal_count, cal, eT.getBacpac(), lineDef.name, off);
   }
   if (r.ok)
   {
@@ -4225,7 +4239,25 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
   // LOGI("initMatchingMargin:%f MatchingMarginX:%f",initMatchingMargin,MatchingMarginX);
   FeatureReport_lineReport Report;
   if (lineDef.locating == 1) // caliper/section locating (px-unit report)
+  {
+    // Approach-direction fix for flipped objects: TemplateDomain_TO_PixDomain
+    // mirrors p0/p1 across the object frame, so perp = rot90(p1-p0) ends up
+    // pointing to the wrong side of the line vs the def's intent. Swapping
+    // p0 <-> p1 reverses lineDir, which reverses perp AND the entire scan
+    // order (-L..+L) -- that single change naturally inverts the gradient
+    // sign (so RISING/FALLING stay correct) and the scan start/end (so
+    // FIRST/LAST keep their "approach-side" meaning). No per-field hacks.
+    if (flip_f < 0) std::swap(lineDef.p0, lineDef.p1);
     Report = LineMatching_caliper(lineDef, eT);
+    // The caliper oriented line_vec / end_pt1 / end_pt2 to the (swapped)
+    // p0->p1 convention. Flip them back so the report still matches the
+    // original def's p0->p1 ordering that downstream consumers expect.
+    if (flip_f < 0) {
+      Report.line.line.line_vec.x = -Report.line.line.line_vec.x;
+      Report.line.line.line_vec.y = -Report.line.line.line_vec.y;
+      std::swap(Report.line.end_pt1, Report.line.end_pt2);
+    }
+  }
   else
     Report = SingleMatching_line(
                       &lineDef, eT, 1/mmpp,
