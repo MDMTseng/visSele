@@ -1,7 +1,6 @@
 #define _GNU_SOURCE
 #include <ctype.h>
 #include <errno.h>
-#include <regex.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +9,7 @@
 #include <time.h>
 
 #ifndef WIN32
+#include <regex.h>      // POSIX regex -- mingw has no equivalent header
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>

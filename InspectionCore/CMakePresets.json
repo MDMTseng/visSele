@@ -41,11 +41,28 @@
         "FEATURE_MINDVISION": "ON",
         "FEATURE_HIKROBOT": "ON"
       }
+    },
+    {
+      "name": "win-mingw-cross",
+      "inherits": ["base", "vcpkg"],
+      "displayName": "Windows x86_64 cross-compile from macOS (mingw-w64)",
+      "generator": "Unix Makefiles",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-dynamic",
+        "VCPKG_HOST_TRIPLET": "arm64-osx",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchain-mingw64.cmake",
+        "X_VCPKG_APPLOCAL_DEPS_INSTALL": "OFF",
+        "VCPKG_APPLOCAL_DEPS": "OFF",
+        "FEATURE_ARAVIS": "OFF",
+        "FEATURE_MINDVISION": "OFF",
+        "FEATURE_HIKROBOT": "ON"
+      }
     }
   ],
   "buildPresets": [
     { "name": "mac-arm64", "configurePreset": "mac-arm64" },
     { "name": "mac-arm64-opencv", "configurePreset": "mac-arm64-opencv" },
-    { "name": "win-mingw", "configurePreset": "win-mingw" }
+    { "name": "win-mingw", "configurePreset": "win-mingw" },
+    { "name": "win-mingw-cross", "configurePreset": "win-mingw-cross" }
   ]
 }

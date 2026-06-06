@@ -11,8 +11,13 @@
 #include "mjpegLib.h"
 
 #include <sys/stat.h>
+#include <atomic>         // std::atomic explicit for mingw
+#ifndef _WIN32
 #include <sys/statvfs.h>
 #include <libgen.h>
+#else
+#include <windows.h>      // GetDiskFreeSpaceExA for the disk-low check
+#endif
 #include <main.h>
 #include <playground.h>
 #include <stdexcept>
@@ -721,12 +726,15 @@ cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth = 0)
       std::string fileName(dir->d_name);
       std::string filePath = folderPath + "/" + fileName;
 
-      switch (dir->d_type)
+      // dirent::d_type isn't filled by mingw-w64's <dirent.h>; portable path
+      // is stat() the full file path and dispatch on st_mode.
+      struct stat _st;
+      int _stat_ok = (stat(filePath.c_str(), &_st) == 0);
+      if (_stat_ok && S_ISREG(_st.st_mode))
       {
-      case DT_REG:
         type = "REG";
-        break;
-      case DT_DIR:
+      }
+      else if (_stat_ok && S_ISDIR(_st.st_mode))
       {
         if (depth > 0 && dir->d_name != NULL && dir->d_name[0] != '\0' && dir->d_name[0] != '.')
         {
@@ -737,17 +745,10 @@ cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth = 0)
           }
         }
         type = "DIR";
-        break;
       }
-      // case DT_FIFO:
-      // case DT_SOCK:
-      // case DT_CHR:
-      // case DT_BLK:
-      // case DT_LNK:
-      case DT_UNKNOWN:
-      default:
+      else
+      {
         type = "UNKNOWN";
-        break;
       }
       cJSON_AddStringToObject(fileInfo, "type", type);
 
@@ -4221,20 +4222,29 @@ void InspSnapSaveThread(bool *terminationflag)
         // filesystem of the target folder; skip + loudly log if low.
         bool _disk_ok = true;
         {
+          unsigned long long _free_mb = 0;
+          bool _have_stat = false;
+#ifdef _WIN32
+          ULARGE_INTEGER avail{};
+          if (GetDiskFreeSpaceExA(folderPath.c_str(), &avail, NULL, NULL)) {
+            _free_mb = avail.QuadPart / (1024ULL * 1024ULL);
+            _have_stat = true;
+          }
+#else
           struct statvfs _sv;
-          if (statvfs(folderPath.c_str(), &_sv) == 0)
-          {
-            unsigned long long _free_mb =
-              ((unsigned long long)_sv.f_bavail * (unsigned long long)_sv.f_frsize) / (1024ULL * 1024ULL);
-            if ((long long)_free_mb < SNAP_MIN_FREE_MB)
-            {
-              _disk_ok = false;
-              save_snap_disk_low_skip_count++;
-              LOGE("SAVE skipped: free %llu MB < floor %d MB on %s "
-                   "(skipped %d so far; raise floor or free space)",
-                   _free_mb, SNAP_MIN_FREE_MB, folderPath.c_str(),
-                   save_snap_disk_low_skip_count);
-            }
+          if (statvfs(folderPath.c_str(), &_sv) == 0) {
+            _free_mb = ((unsigned long long)_sv.f_bavail *
+                        (unsigned long long)_sv.f_frsize) / (1024ULL * 1024ULL);
+            _have_stat = true;
+          }
+#endif
+          if (_have_stat && (long long)_free_mb < SNAP_MIN_FREE_MB) {
+            _disk_ok = false;
+            save_snap_disk_low_skip_count++;
+            LOGE("SAVE skipped: free %llu MB < floor %d MB on %s "
+                 "(skipped %d so far; raise floor or free space)",
+                 _free_mb, SNAP_MIN_FREE_MB, folderPath.c_str(),
+                 save_snap_disk_low_skip_count);
           }
         }
         if (_disk_ok)

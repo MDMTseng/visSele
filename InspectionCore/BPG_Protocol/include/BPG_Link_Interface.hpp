@@ -1,5 +1,6 @@
 #ifndef _BPG_IPC_INTERFACE_HPP
 #define _BPG_IPC_INTERFACE_HPP
+#include <cstdint>   // uint8_t (mingw doesn't get it transitively)
 #include <BPG_Protocol.hpp>
 #include <vector>
 #include <string>

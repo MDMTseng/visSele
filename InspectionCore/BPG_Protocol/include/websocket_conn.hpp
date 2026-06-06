@@ -1,6 +1,7 @@
 #ifndef WEBSOCKET_CONNECTION_HPP
 #define WEBSOCKET_CONNECTION_HPP
 
+#include <cstdint>   // uint8_t (mingw doesn't get it transitively)
 #ifdef __WIN32__
 #include <winsock2.h>
 #define socklen_t int

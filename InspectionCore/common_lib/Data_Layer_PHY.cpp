@@ -1,7 +1,8 @@
 
 #include "Data_Layer_PHY.hpp"
+#include <stdexcept>   // std::runtime_error (mingw <string> doesn't pull it in)
 
-#include <stdio.h> 
+#include <stdio.h>
 #include <stdlib.h> 
 #include <errno.h> 
 #include <string.h> 

@@ -105,6 +105,10 @@ target_link_libraries(logctrl_test_ring PRIVATE logctrl)
 # (Phase G).
 add_executable(inspd_log logctrl/inspd_log_main.cpp logctrl/inspd_log_ws.cpp)
 target_link_libraries(inspd_log PRIVATE logctrl ws_server cJSON)
+if(WIN32 OR MINGW OR MSYS)
+  # SymInitialize / SymFromAddr / SymGetLineFromAddr64 live in dbghelp.
+  target_link_libraries(inspd_log PRIVATE dbghelp)
+endif()
 
 # --- circleFitting ---------------------------------------------------------
 add_library(CircleFitting STATIC

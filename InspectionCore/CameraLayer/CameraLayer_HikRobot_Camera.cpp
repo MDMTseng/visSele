@@ -319,7 +319,7 @@ void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_O
   _fi.width =  pFrameInfo->nWidth;
   _fi.height = pFrameInfo->nHeight;
   _fi.channelCount=3;
-  _fi.bits_per_pixel=8*_fi.channelCount;
+  _fi.pixelBits=8*_fi.channelCount; // CameraLayer::frameInfo uses pixelBits
   fi=_fi;
   callback(*this, CameraLayer::EV_IMG, context);
 

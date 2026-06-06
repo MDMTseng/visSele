@@ -87,12 +87,26 @@ extern "C" void log_install_crash_handlers(void) {
 
 extern "C" void log_trigger_test_crash(void) {
     /* DebugBreak raises EXCEPTION_BREAKPOINT.  Not strictly fatal under a
-     * debugger, but for our crash test it's the cleanest stand-in. */
+     * debugger, but for our crash test it's the cleanest stand-in.
+     * MSVC supports __try/__except (SEH); mingw-w64 with GCC only supports
+     * it under specific build configs (and not at all in some homebrew
+     * builds). Fall through to ExitProcess if the breakpoint isn't
+     * intercepted by a debugger -- our SetUnhandledExceptionFilter handler
+     * will still fire if the breakpoint actually crashes the process. */
+    /* GCC (mingw-w64) doesn't accept __try/__except even with -fseh -- only
+     * MSVC and Clang do. Detect MSVC/Clang and use SEH there; otherwise just
+     * fire the breakpoint and exit (the SetUnhandledExceptionFilter handler
+     * still catches the real crash path). */
+#if defined(_MSC_VER) || (defined(__clang__) && defined(_MSC_EXTENSIONS))
     __try {
         DebugBreak();
     } __except(EXCEPTION_EXECUTE_HANDLER) {
         ExitProcess(1);
     }
+#else
+    DebugBreak();
+    ExitProcess(1);
+#endif
 }
 
 #endif /* _WIN32 */

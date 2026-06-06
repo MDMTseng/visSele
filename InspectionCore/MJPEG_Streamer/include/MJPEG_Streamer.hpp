@@ -1,6 +1,7 @@
 #ifndef MJPEG_STREAMER_HPP
 #define MJPEG_STREAMER_HPP
 
+#include <cstdint>   // uint8_t (mingw doesn't get it transitively)
 #include <vector>
 #include <string>
 #include <regex>

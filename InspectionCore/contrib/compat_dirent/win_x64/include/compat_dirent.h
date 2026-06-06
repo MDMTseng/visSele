@@ -9,6 +9,14 @@
 #ifndef DIRENT_H
 #define DIRENT_H
 
+/* mingw-w64 ships a native <dirent.h>; pulling in the tronkko/dirent
+ * MSVC shim on top of it triggers `struct dirent` / `DIR` redefinition
+ * conflicts. On mingw just delegate to the system header.            */
+#if defined(__MINGW32__) || defined(__MINGW64__)
+#  include <dirent.h>
+#  include <libgen.h>
+#else
+
 /* Hide warnings about unreferenced local functions */
 #if defined(__clang__)
 #   pragma clang diagnostic ignored "-Wunused-function"
@@ -1158,4 +1166,5 @@ dirent_set_errno(
 #ifdef __cplusplus
 }
 #endif
+#endif /* !mingw */
 #endif /*DIRENT_H*/

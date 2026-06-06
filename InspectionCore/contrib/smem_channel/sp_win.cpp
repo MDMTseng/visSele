@@ -1,4 +1,5 @@
 
+#include <cstdint>   // mingw needs explicit int64_t for the CreateFileMapping cast
 #include <sp.hpp>
 int createSharedMemory(std::string name, size_t maxSize, ShareMemoryInfo *ret_info)
 {

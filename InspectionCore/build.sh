@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# visSele inspection-core build driver.
+#
+# Wraps CMake presets + (for Windows targets) DLL bundling into one entry
+# point so you can rebuild + package a deployable directory in one shot.
+#
+# Examples:
+#   ./build.sh                                        # mac-arm64 Release, no bundle
+#   ./build.sh -p win-cross -c Release -e dist/win    # cross-compile Win64 + bundle
+#   ./build.sh -p mac-arm64 -c Debug --clean          # wipe + Debug rebuild
+#   ./build.sh -p win-cross -e ../release_win64       # bundle to absolute path
+#
+# Env vars consulted:
+#   VCPKG_ROOT     -- override vcpkg location (default: ~/vcpkg)
+#   MINGW_PREFIX   -- override mingw-w64 prefix (default: /opt/homebrew/opt/mingw-w64)
+#   JOBS           -- parallel build jobs (default: nproc/sysctl)
+
+set -euo pipefail
+
+# ---- defaults -----------------------------------------------------------
+PLATFORM="mac-arm64"
+CONFIG="Release"
+EXPORT_DIR=""
+CLEAN=0
+JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
+VCPKG_ROOT="${VCPKG_ROOT:-$HOME/vcpkg}"
+MINGW_PREFIX="${MINGW_PREFIX:-/opt/homebrew/opt/mingw-w64}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+  cat <<EOF
+Usage: $0 [options]
+
+  -p, --platform <id>     mac-arm64 | mac-arm64-opencv | win-cross | win-mingw
+                          (default: mac-arm64)
+  -c, --config <type>     Debug | Release | RelWithDebInfo  (default: Release)
+  -e, --export <dir>      bundle the built binaries (and runtime DLLs for
+                          Windows targets) into <dir>. Created if missing.
+  --clean                 wipe the build directory before configuring
+  -j, --jobs N            parallel build jobs (default: $JOBS)
+  -h, --help              show this help
+
+Platform notes:
+  win-cross  cross-compile from macOS using mingw-w64 + vcpkg
+             (preset: win-mingw-cross). Needs \$VCPKG_ROOT bootstrapped.
+  win-mingw  native MSYS2/MinGW64 build on Windows (run this script there).
+EOF
+}
+
+# ---- arg parse ----------------------------------------------------------
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--platform) PLATFORM="$2"; shift 2;;
+    -c|--config)   CONFIG="$2"; shift 2;;
+    -e|--export)   EXPORT_DIR="$2"; shift 2;;
+    --clean)       CLEAN=1; shift;;
+    -j|--jobs)     JOBS="$2"; shift 2;;
+    -h|--help)     usage; exit 0;;
+    *) echo "unknown arg: $1" >&2; usage >&2; exit 2;;
+  esac
+done
+
+# ---- map platform shortcut -> CMake preset ------------------------------
+case "$PLATFORM" in
+  mac-arm64|mac-arm64-opencv|win-mingw)  PRESET="$PLATFORM" ;;
+  win-cross)                             PRESET="win-mingw-cross" ;;
+  *) echo "unknown platform: $PLATFORM" >&2; exit 2 ;;
+esac
+
+BUILD_DIR="$SCRIPT_DIR/build/$PRESET"
+
+echo "==> Platform : $PLATFORM   (preset: $PRESET)"
+echo "==> Config   : $CONFIG"
+echo "==> Jobs     : $JOBS"
+echo "==> BuildDir : $BUILD_DIR"
+[[ -n "$EXPORT_DIR" ]] && echo "==> Export   : $EXPORT_DIR"
+
+# ---- vcpkg sanity for vcpkg-using presets -------------------------------
+needs_vcpkg=0
+case "$PRESET" in mac-arm64-opencv|win-mingw|win-mingw-cross) needs_vcpkg=1 ;; esac
+if (( needs_vcpkg )); then
+  if [[ ! -x "$VCPKG_ROOT/vcpkg" ]]; then
+    echo "ERROR: vcpkg not found at \$VCPKG_ROOT=$VCPKG_ROOT" >&2
+    echo "       git clone https://github.com/microsoft/vcpkg \$VCPKG_ROOT && \$VCPKG_ROOT/bootstrap-vcpkg.sh -disableMetrics" >&2
+    exit 1
+  fi
+  export VCPKG_ROOT
+fi
+
+# ---- clean --------------------------------------------------------------
+if (( CLEAN )) && [[ -d "$BUILD_DIR" ]]; then
+  echo "==> Cleaning $BUILD_DIR"
+  rm -rf "$BUILD_DIR"
+fi
+
+# ---- configure ----------------------------------------------------------
+# CMake presets fix CMAKE_BUILD_TYPE=Release; override on the command line.
+echo "==> cmake --preset $PRESET -DCMAKE_BUILD_TYPE=$CONFIG"
+cmake -S "$SCRIPT_DIR" --preset "$PRESET" -DCMAKE_BUILD_TYPE="$CONFIG"
+
+# ---- build --------------------------------------------------------------
+echo "==> cmake --build $BUILD_DIR -j $JOBS"
+cmake --build "$BUILD_DIR" -j "$JOBS"
+
+# ---- bundle (Windows targets only) --------------------------------------
+if [[ -n "$EXPORT_DIR" ]]; then
+  mkdir -p "$EXPORT_DIR"
+  case "$PRESET" in
+    win-mingw|win-mingw-cross)
+      echo "==> Bundling Windows binaries + DLLs -> $EXPORT_DIR"
+      # 1) all .exe from the build dir
+      find "$BUILD_DIR" -maxdepth 2 -name "*.exe" -exec cp -v {} "$EXPORT_DIR/" \;
+      # 2) vcpkg runtime DLLs (opencv, ffmpeg, png/jpeg/tiff/webp, zlib, ...).
+      vcpkg_bin="$BUILD_DIR/vcpkg_installed/x64-mingw-dynamic/bin"
+      if [[ -d "$vcpkg_bin" ]]; then
+        find "$vcpkg_bin" -maxdepth 1 -name "*.dll" -exec cp -v {} "$EXPORT_DIR/" \;
+      fi
+      # 3) mingw runtime DLLs (libgcc / libstdc++ / libwinpthread).
+      mingw_bin="$MINGW_PREFIX/toolchain-x86_64/x86_64-w64-mingw32/bin"
+      if [[ -d "$mingw_bin" ]]; then
+        for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+          [[ -f "$mingw_bin/$dll" ]] && cp -v "$mingw_bin/$dll" "$EXPORT_DIR/"
+        done
+      fi
+      # 4) HikRobot SDK DLL (lives in the repo).
+      hik_dll="$SCRIPT_DIR/CoreHub/Core/MvCameraControl.dll"
+      [[ -f "$hik_dll" ]] && cp -v "$hik_dll" "$EXPORT_DIR/"
+      ;;
+    *)
+      echo "==> Bundling native binaries -> $EXPORT_DIR"
+      find "$BUILD_DIR" -maxdepth 1 -type f -perm -u+x -not -name "*.cmake" -exec cp -v {} "$EXPORT_DIR/" \;
+      ;;
+  esac
+fi
+
+echo "==> Done."

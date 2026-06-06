@@ -9,6 +9,12 @@
  * Only platform-specific code: isatty() vs _isatty().
  */
 
+// mingw-w64's <pthread.h> (transitively pulled in by <mutex> etc.) includes
+// <sched.h>, which uses pid_t without including <sys/types.h>. Pull it in
+// first so the toolchain header parses.
+#ifdef _WIN32
+#include <sys/types.h>
+#endif
 #include <logctrl.h>
 #include <log_modules_region.h>
 #include <log_ring.h>
@@ -16,6 +22,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <ctime>     // struct timespec / clock_gettime -- mingw needs it explicit
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
