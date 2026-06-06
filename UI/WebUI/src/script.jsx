@@ -236,6 +236,42 @@ const BMP_CAROUSEL_FOLDER_LSKEY = "bmp_carousel_folder_path";
 const BMP_CAROUSEL_FPS_LSKEY    = "bmp_carousel_fps";
 const BMP_CAROUSEL_AUG_LSKEY    = "bmp_carousel_aug";
 
+// Headless companion: pushes the saved BMP_carousel folder + fps + aug to core
+// once the camera is detected as a BMP_carousel -- independent of whether the
+// fake-camera Drawer has been opened. Renders nothing. autoAppliedRef + the
+// per-folder/fps/aug guards prevent re-pushing on every camera_info refresh.
+function BMPCarouselAutoBoot({ camInfo, coreId, ws_send_bpg }) {
+  const car  = camInfo?.data?.[0]?.carousel;
+  const type = camInfo?.data?.[0]?.type;
+  const sentRef = React.useRef({ folder: false, fps: false, aug: false });
+  React.useEffect(() => {
+    if (type !== "CameraLayer_BMP_carousel") return;
+    if (!car || !coreId || !ws_send_bpg) return;
+    const send = (action, extra) => ws_send_bpg(coreId, "RC", 0,
+      { target: "bmp_carousel", action, ...extra }, undefined,
+      { resolve: () => {}, reject: () => {} });
+
+    if (!sentRef.current.folder) {
+      const saved = (localStorage.getItem(BMP_CAROUSEL_FOLDER_LSKEY) || "").trim();
+      if (saved && saved !== car.folder) send("setfolder", { folder: saved });
+      sentRef.current.folder = true;
+    }
+    if (!sentRef.current.fps) {
+      const fps = parseFloat(localStorage.getItem(BMP_CAROUSEL_FPS_LSKEY));
+      if (Number.isFinite(fps) && fps > 0 && fps !== car.fps) send("setfps", { fps });
+      sentRef.current.fps = true;
+    }
+    if (!sentRef.current.aug) {
+      try {
+        const aug = JSON.parse(localStorage.getItem(BMP_CAROUSEL_AUG_LSKEY) || "{}");
+        if (aug && Object.keys(aug).length > 0) send("setaug", { aug });
+      } catch {}
+      sentRef.current.aug = true;
+    }
+  }, [type, car?.folder, car?.fps, coreId]);
+  return null;
+}
+
 function BMPCarouselFPS({ curFps, send }) {
   const saved = parseFloat(localStorage.getItem(BMP_CAROUSEL_FPS_LSKEY));
   const [fps, setFps] = React.useState(
@@ -317,6 +353,19 @@ function BMPCarouselPanel({ camInfo, coreId, cam1Id, ws_send_bpg }) {
     });
   const [folderInput, setFolderInput] = React.useState(
     () => localStorage.getItem(BMP_CAROUSEL_FOLDER_LSKEY) || (car?.folder ?? ""));
+  // Auto-apply the saved folder once when the drawer mounts, but only if it
+  // actually differs from the core's currently-loaded folder. Guarded by a
+  // ref so we don't re-push on every camera_info refresh.
+  const autoAppliedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoAppliedRef.current) return;
+    const saved = (localStorage.getItem(BMP_CAROUSEL_FOLDER_LSKEY) || "").trim();
+    if (!saved) return;
+    if (car && car.folder === saved) { autoAppliedRef.current = true; return; }
+    autoAppliedRef.current = true;
+    send("setfolder", { folder: saved });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [car?.folder]);
   const applyFolder = () => {
     const f = (folderInput || "").trim();
     if (!f) return;
@@ -2192,6 +2241,12 @@ class APPMasterX extends React.Component {
           visible={this.state.modal_view !== undefined}>
           {this.state.modal_view === undefined ? null : this.state.modal_view.view_fn()}
         </Modal>
+
+        <BMPCarouselAutoBoot
+          camInfo={this.props.CAM1_ID_CONN_INFO}
+          coreId={this.props.CORE_ID}
+          ws_send_bpg={this.props.ACT_WS_SEND_BPG}
+        />
 
         <Drawer
           title="Fake Camera (BMP carousel)"

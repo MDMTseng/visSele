@@ -105,6 +105,15 @@ void lens_undistort_points(const LensCalibResult &r, const double *uv, int n, do
   for (int i = 0; i < n; i++) { outUV[i*2]=dst[i].x; outUV[i*2+1]=dst[i].y; }
 }
 
+void lens_undistort_point(const LensCalibResult &r, float &x, float &y)
+{
+  if (!r.ok) return; // present-but-invalid calib: leave the point untouched
+  double uv[2] = { (double)x, (double)y }, out[2];
+  lens_undistort_points(r, uv, 1, out);
+  x = (float)out[0];
+  y = (float)out[1];
+}
+
 char *lens_calib_to_json(const LensCalibResult &r)
 {
   char buf[1024];

@@ -7,6 +7,23 @@
 #include <opencv2/opencv.hpp>
 #include <string>
 
+// Lens-undistort a gray-local point in place. Lifts (p + imgOffset) into full-
+// sensor px, undistorts via the calibrated lens model, then drops back to gray-
+// local coords. No-op when bacpac/lensCalib is absent or invalid (handled here
+// and also inside lens_undistort_point for defense in depth). Returns true iff
+// the result is finite -- the Newton solve in lens_undistort_points can diverge
+// for points outside the calibration's validity region; callers must skip a
+// non-finite result to avoid poisoning the downstream WLS / Kasa fit.
+static inline bool caliper_undist_in_place(acv_XY &p, FeatureManager_BacPac *bacpac, acv_XY imgOffset)
+{
+  if (!(bacpac && bacpac->lensCalib && bacpac->lensCalib->ok)) return true;
+  float x = p.x + imgOffset.x, y = p.y + imgOffset.y;
+  lens_undistort_point(*bacpac->lensCalib, x, y);
+  if (!std::isfinite(x) || !std::isfinite(y)) return false;
+  p.x = x - imgOffset.x; p.y = y - imgOffset.y;
+  return true;
+}
+
 // Combine each caliper's across-edge profile into ONE image for a single primitive:
 // x = caliper index along the line, y = across-edge search position. The picked edge
 // per caliper is marked (green = fit inlier, red = outlier, gray = no edge found).
@@ -204,7 +221,7 @@ static void wlsLine(const std::vector<acv_XY> &pts, const std::vector<float> &w,
 CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
                                       int count, const CaliperParams &cal,
                                       FeatureManager_BacPac *bacpac,
-                                      const char *dbgName)
+                                      const char *dbgName, acv_XY imgOffset)
 {
   CaliperLineResult r = {}; r.ok = false; r.dir = {1,0};
   if (count < 2) count = 2;
@@ -277,6 +294,14 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
 
     acv_XY pt; float str, pos = -1; EdgeSelectInfo info;
     bool ok = profile_to_edge(profile.data(), nAcross, step, L, cal.edge, c, perp, &pt, &str, &info, &pos);
+    // Lens-undistort BEFORE the fit so a distortion-curved edge fits the true
+    // straight line, not a biased one. We also undistort the nominal anchor
+    // `c` so the missed-caliper visualization (stored as a CaliperHit with
+    // status=0 below) lives in the same coord frame as inlier hits. A non-
+    // finite result (Newton diverged) demotes the caliper to a miss so the
+    // bad point can't poison the WLS aggregate.
+    if (ok && !caliper_undist_in_place(pt, bacpac, imgOffset)) ok = false;
+    caliper_undist_in_place(c, bacpac, imgOffset); // missed-anchor (used at status=0)
     // per-caliper CONFIDENCE used as the fit weight, combining three factors:
     //  - strength : strong gradient = real edge.
     //  - unambiguity (1 - 0.7*runnerUp/strength) : a near-equal competing peak means the
@@ -384,7 +409,7 @@ static bool kasaCircle(const std::vector<acv_XY> &pts, const std::vector<float> 
 CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, float radius0,
                                           float angStart, float angEnd, int count,
                                           const CaliperParams &cal, FeatureManager_BacPac *bacpac,
-                                          const char *dbgName)
+                                          const char *dbgName, acv_XY imgOffset)
 {
   CaliperCircleResult r = {}; r.ok = false; r.center = center0; r.radius = radius0;
   if (count < 3) count = 3;
@@ -412,6 +437,11 @@ CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center0, f
     std::vector<float> prof;
     bool ok = caliper_measure(gray, c, dir, cal, bacpac, &pt, &str, &info,
                               dbg ? &prof : nullptr, &pos);
+    // Undistort the inlier hit (used for the Kasa fit) and the nominal radial
+    // anchor (used as the missed-caliper marker at status=0) -- see
+    // caliper_locate_line for the rationale and the NaN demote-on-divergence.
+    if (ok && !caliper_undist_in_place(pt, bacpac, imgOffset)) ok = false;
+    caliper_undist_in_place(c, bacpac, imgOffset);
     float conf = 0;
     if (ok)
     {

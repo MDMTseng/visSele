@@ -43,6 +43,11 @@ LensCalibResult lens_calibrate(LensModel model, const std::vector<TelecentricVie
 // uv/outUV are row-major 2*n.
 void lens_undistort_points(const LensCalibResult &r, const double *uv, int n, double *outUV);
 
+// Convenience single-point variant: undistort (x,y) given in FULL-IMAGE pixel
+// coords, in place. No-op unless r.ok (a present-but-invalid calib must not
+// corrupt the measurement). Same model/result as lens_undistort_points(n=1).
+void lens_undistort_point(const LensCalibResult &r, float &x, float &y);
+
 // JSON serialisation of a calibration result (caller owns the returned string;
 // free with free()). Schema includes "lens_model", params, rms.
 char *lens_calib_to_json(const LensCalibResult &r);

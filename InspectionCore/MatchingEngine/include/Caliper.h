@@ -80,10 +80,16 @@ struct CaliperLineResult
 // /tmp/calip_line_<dbgName>.png -- each caliper's across-edge profile stacked as one
 // column (caliper index = x, across-edge = y), with the picked edge marked
 // (green = inlier, red = outlier, gray = no edge) and the primitive name drawn on it.
+// imgOffset: the crop offset of `gray` within the full sensor image (i.e. a
+// point at `gray` coord q lives at full-image px q+imgOffset). When bacpac
+// carries a valid lensCalib, each edge hit is lens-undistorted in full-image px
+// BEFORE the fit (distortion bends a straight edge into a curve, so undistorting
+// only the fitted result would leave the fit biased). Default {0,0} = no crop.
 CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
                                       int count, const CaliperParams &cal,
                                       FeatureManager_BacPac *bacpac,
-                                      const char *dbgName = nullptr);
+                                      const char *dbgName = nullptr,
+                                      acv_XY imgOffset = {0.0f, 0.0f});
 
 // ---- Phase 3: circle/arc locating via radial calipers ------------------------
 struct CaliperCircleResult
@@ -104,9 +110,12 @@ struct CaliperCircleResult
 // dbgName (optional): with env CALIP_DUMP, writes /tmp/calip_arc_<dbgName>.png --
 // each radial caliper's profile as one column (x = caliper index around the arc,
 // y = radial across-edge), picked edge marked, like the line strip.
+// imgOffset: see caliper_locate_line — full-image-px lens undistortion of each
+// radial edge hit before the Kasa fit. Default {0,0} = no crop.
 CaliperCircleResult caliper_locate_circle(const cv::Mat &gray, acv_XY center, float radius,
                                           float angStart, float angEnd, int count,
                                           const CaliperParams &cal, FeatureManager_BacPac *bacpac,
-                                          const char *dbgName = nullptr);
+                                          const char *dbgName = nullptr,
+                                          acv_XY imgOffset = {0.0f, 0.0f});
 
 #endif

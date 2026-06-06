@@ -1970,7 +1970,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     // Locating-anchor morph (deformation correction). Backward compatible:
     // absent => mode 0 (legacy convert_polar). Opt in per def with
     // "wls_similarity"; "legacy"/"polar" are explicit no-ops for clarity.
-    this->morph_mode = 0;
+    this->morph_mode = 1;
     char *morphm = (char *)JFetch(root, "morph_mode", cJSON_String);
     if (morphm != NULL)
     {
@@ -4050,12 +4050,21 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
 // Caliper/section line locating (docs/caliper_primitive_locating_design.md).
 // lineDef.p0/p1 are in image px; initMatchingMargin already in px. Returns a
 // px-unit report (caller converts to mm), matching the contour path's contract.
-static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, edgeTracking &eT)
+static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, edgeTracking &eT, float flip_f)
 {
   // Value-init (was memset — now UB because FeatureReport_lineReport carries
   // a std::vector<CaliperHit> cal_hits member).
   FeatureReport_lineReport Report = {};
   Report.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+
+  // Flipped object: the def's p0->p1 ordering puts perp = rot90(p1-p0) on the
+  // wrong side of the line in image space, breaking polarity (gradient sign)
+  // and FIRST/LAST (scan order). Reversing p0/p1 reverses perp and the scan
+  // range together, restoring both. The output report's line_vec and
+  // end_pt1/end_pt2 are flipped back at the bottom so callers always see the
+  // original p0->p1 convention.
+  acv_XY p0_orig = lineDef.p0, p1_orig = lineDef.p1;
+  if (flip_f < 0) std::swap(lineDef.p0, lineDef.p1);
 
   CaliperParams cal;
   cal.length = (lineDef.cal_length > 0) ? lineDef.cal_length : lineDef.initMatchingMargin; // px search half-length across edge
@@ -4196,6 +4205,15 @@ static FeatureReport_lineReport LineMatching_caliper(featureDef_line &lineDef, e
     }
     dbg_skip:;
   }
+  // Restore lineDef p0/p1 to the original convention (we swapped them above
+  // when flip_f<0) and flip the outputs derived from the swapped ordering so
+  // callers see line_vec / end_pt1 / end_pt2 in the original p0->p1 frame.
+  if (flip_f < 0) {
+    lineDef.p0 = p0_orig; lineDef.p1 = p1_orig;
+    Report.line.line.line_vec.x = -Report.line.line.line_vec.x;
+    Report.line.line.line_vec.y = -Report.line.line.line_vec.y;
+    std::swap(Report.line.end_pt1, Report.line.end_pt2);
+  }
   return Report;
 }
 
@@ -4239,25 +4257,7 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
   // LOGI("initMatchingMargin:%f MatchingMarginX:%f",initMatchingMargin,MatchingMarginX);
   FeatureReport_lineReport Report;
   if (lineDef.locating == 1) // caliper/section locating (px-unit report)
-  {
-    // Approach-direction fix for flipped objects: TemplateDomain_TO_PixDomain
-    // mirrors p0/p1 across the object frame, so perp = rot90(p1-p0) ends up
-    // pointing to the wrong side of the line vs the def's intent. Swapping
-    // p0 <-> p1 reverses lineDir, which reverses perp AND the entire scan
-    // order (-L..+L) -- that single change naturally inverts the gradient
-    // sign (so RISING/FALLING stay correct) and the scan start/end (so
-    // FIRST/LAST keep their "approach-side" meaning). No per-field hacks.
-    if (flip_f < 0) std::swap(lineDef.p0, lineDef.p1);
-    Report = LineMatching_caliper(lineDef, eT);
-    // The caliper oriented line_vec / end_pt1 / end_pt2 to the (swapped)
-    // p0->p1 convention. Flip them back so the report still matches the
-    // original def's p0->p1 ordering that downstream consumers expect.
-    if (flip_f < 0) {
-      Report.line.line.line_vec.x = -Report.line.line.line_vec.x;
-      Report.line.line.line_vec.y = -Report.line.line.line_vec.y;
-      std::swap(Report.line.end_pt1, Report.line.end_pt2);
-    }
-  }
+    Report = LineMatching_caliper(lineDef, eT, flip_f);
   else
     Report = SingleMatching_line(
                       &lineDef, eT, 1/mmpp,
