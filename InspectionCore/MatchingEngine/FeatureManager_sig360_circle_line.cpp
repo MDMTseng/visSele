@@ -1447,7 +1447,7 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
     }
     else if (type == cJSON_True)
     {
-      //searchPoint.data.anglefollow.locating_anchor = true;  //TODO DBG:remove comment after debug
+      searchPoint.data.anglefollow.locating_anchor = true;  
     }
 
     LOGV("searchPoint.x:%f Y:%f angleDeg:%f tar_id:%d",
@@ -1952,6 +1952,29 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     if (vmi != NULL && *vmi >= 1) this->matching_v2_max_iter = (int)*vmi;
     double *vtl = JFetch_NUMBER(root, "matching_v2_tol_mm");
     if (vtl != NULL && *vtl > 0) this->matching_v2_tol_mm = (float)*vtl;
+
+    // Locating-anchor morph (deformation correction). Backward compatible:
+    // absent => mode 0 (legacy convert_polar). Opt in per def with
+    // "wls_similarity"; "legacy"/"polar" are explicit no-ops for clarity.
+    this->morph_mode = 0;
+    char *morphm = (char *)JFetch(root, "morph_mode", cJSON_String);
+    if (morphm != NULL)
+    {
+      if (strcmp(morphm, "wls_similarity") == 0)
+        this->morph_mode = 1;
+      else if (strcmp(morphm, "legacy") == 0 || strcmp(morphm, "polar") == 0)
+        this->morph_mode = 0;
+    }
+    double *mmi = JFetch_NUMBER(root, "morph_max_iter");
+    if (mmi != NULL && *mmi >= 1) this->morph_max_iter = (int)*mmi;
+    double *mtl = JFetch_NUMBER(root, "morph_tol_mm");
+    if (mtl != NULL && *mtl > 0) this->morph_tol_mm = (float)*mtl;
+    double *mok = JFetch_NUMBER(root, "morph_outlier_k");
+    if (mok != NULL && *mok >= 0) this->morph_outlier_k = (float)*mok;
+    double *mrg = JFetch_NUMBER(root, "morph_reg");
+    if (mrg != NULL && *mrg >= 0) this->morph_reg = (float)*mrg;
+    double *mma = JFetch_NUMBER(root, "morph_min_anchors");
+    if (mma != NULL && *mma >= 0) this->morph_min_anchors = (int)*mma;
 
     void *target;
     int type = getDataFromJson(root, "matching_with_signature", &target);
@@ -2993,72 +3016,237 @@ acv_XY PixDomain_TO_TemplateDomain(acv_XY pix_pt, float sine, float cosine, floa
 
 acv_XY ConstrainMap::convert_polar(acv_XY from)
 {
-  // LOGI(">>>d  anchorPairs.size():%d", anchorPairs.size());
-  float magSum = 0;
-  float magWSum = 0;
-
-  acv_XY angSum = {0, 0};
-  float angWSum = 0;
+  // Local, distance-weighted SIMILARITY morph (Moving-Least-Squares form).
+  //
+  // LEGACY ASSUMPTION: locating anchors are CORNER points, so each anchor's
+  // full 2D correspondence from_i -> to_i is trustworthy on BOTH axes (the
+  // operator is told to constrain anchors to corners). We therefore fit, around
+  // the query point and weighted by inverse distance, the local rotation+scale+
+  // translation that best maps from_i -> to_i, and apply it to `from`.
+  //
+  // This keeps the local rotation/scale behaviour the old polar formulation was
+  // reaching for, but in displacement space — without its coupling of the
+  // correction to a point's absolute radius about the origin.
+  //
+  // Closed form (complex): subtract weighted centroids (handles translation),
+  // then the similarity factor is  z = sum w (b * conj a) / sum w |a|^2  with
+  // a_i = from_i - from_c, b_i = to_i - to_c, and  T(p) = to_c + z (x) (p-from_c).
+  double wSum = 0;
+  acv_XY fromC = {0, 0}, toC = {0, 0};
   bool doAdj = false;
   for (int i = 0; i < anchorPairs.size(); i++)
   {
-    anchorPair pair = anchorPairs[i];
-    if (pair.to.x != pair.to.x) //NAN
-    {
+    const anchorPair &pair = anchorPairs[i];
+    if (pair.to.x != pair.to.x) // NAN
       continue;
-    }
     doAdj = true;
     float distance = acvDistance(from, pair.from);
     if (distance < 0.01)
       distance = 0.01;
-    float w = 1 / distance;
-    // w*=w;
-    acv_XY vec_a = acvVecSub(pair.to, center);
-
-    acv_XY pFrom = pair.from;
-
-    if (0) //try to use pre_projected point for directional adjustment, but it doesn't work very well
-    {
-      acv_XY v_to2from = acvVecSub(pair.from, pair.to);
-      v_to2from = acvVecMult(pair.constrainVector, acv2DDotProduct(v_to2from, pair.constrainVector));
-      acv_XY pFrom = acvVecAdd(v_to2from, pair.to);
-    }
-
-    //LOGI("pFrom:%f %f pair.to:%f %f pair.from:%f %f  cv:%f %f",pFrom.x,pFrom.y,vec_a.x,vec_a.y,pair.from.x,pair.from.y,pair.constrainVector.x,pair.constrainVector.y);
-    // pair.constrainVector
-
-    acv_XY vec_b = acvVecSub(pFrom, center);
-
-    acv_XY shift = acvComplexDiv(vec_a, vec_b);
-
-    float shiftMag = hypot(shift.x, shift.y);
-    // LOGI("from:%f %f c:%f %f  to:%f %f",pair.from.x,pair.from.y,center.x,center.y,pair.constrainVector.x,pair.constrainVector.y);
-
-    float magDotP = acv2DDotProduct(acvVecNormalize(vec_b), pair.constrainVector); //the magnitude
-    if (magDotP < 0)
-      magDotP = -magDotP;
-    magWSum += magDotP * w;
-    magSum += shiftMag * magDotP * w;
-
-    acv_XY shiftAng = acvVecNormalize(shift);
-    float angDotP = sqrt(1 - magDotP * magDotP);
-    angWSum += angDotP * w;
-    angSum = acvVecAdd(angSum, acvVecMult(shiftAng, angDotP * w));
+    double w = (pair.weight > 0 ? pair.weight : 1.0) / distance;
+    wSum  += w;
+    fromC  = acvVecAdd(fromC, acvVecMult(pair.from, (float)w));
+    toC    = acvVecAdd(toC,   acvVecMult(pair.to,   (float)w));
   }
-  if (!doAdj)
+  if (!doAdj || wSum <= 0)
     return from;
-  // magSum/=magWSum;
-  acv_XY wshift = acvVecMult(angSum, magSum / angWSum / magWSum);
+  fromC = acvVecMult(fromC, (float)(1.0 / wSum));
+  toC   = acvVecMult(toC,   (float)(1.0 / wSum));
 
-  // LOGI("angSum:%f %f magSum: %f  angWSum:%f  magWSum:%f",angSum.x,angSum.y,magSum,angWSum,magWSum);
+  // Weighted least-squares similarity factor z (complex scale*rotation).
+  double numR = 0, numI = 0; // sum w * (b * conj(a))
+  double den  = 0;           // sum w * |a|^2
+  for (int i = 0; i < anchorPairs.size(); i++)
+  {
+    const anchorPair &pair = anchorPairs[i];
+    if (pair.to.x != pair.to.x)
+      continue;
+    float distance = acvDistance(from, pair.from);
+    if (distance < 0.01)
+      distance = 0.01;
+    double w = (pair.weight > 0 ? pair.weight : 1.0) / distance;
+    double ax = pair.from.x - fromC.x, ay = pair.from.y - fromC.y;
+    double bx = pair.to.x   - toC.x,   by = pair.to.y   - toC.y;
+    numR += w * (bx * ax + by * ay); // Re(b * conj a)
+    numI += w * (by * ax - bx * ay); // Im(b * conj a)
+    den  += w * (ax * ax + ay * ay);
+  }
 
-  // LOGI("vecAve:%f %f",vecSum.x,vecSum.y);
-  return acvComplexMult(from, wshift);
+  acv_XY p = acvVecSub(from, fromC);
+  acv_XY mapped;
+  if (den < 1e-12)
+  {
+    // Anchors (nearly) coincident -> rotation/scale under-determined; fall back
+    // to a pure translation by the centroid offset (exact for a single anchor).
+    mapped = p;
+  }
+  else
+  {
+    double zr = numR / den, zi = numI / den;
+    mapped = acv_XY((float)(zr * p.x - zi * p.y),  // z (x) p  (complex multiply)
+                    (float)(zi * p.x + zr * p.y));
+  }
+  return acvVecAdd(toC, mapped);
+}
+
+// Solve a small dense linear system M*x = b (n<=4) by Gauss elimination with
+// partial pivoting. Returns false if M is singular. M is destroyed.
+static bool solveDenseNxN(double M[4][4], double b[4], double x[4], int n)
+{
+  for (int col = 0; col < n; col++)
+  {
+    int piv = col;
+    double best = fabs(M[col][col]);
+    for (int r = col + 1; r < n; r++)
+      if (fabs(M[r][col]) > best) { best = fabs(M[r][col]); piv = r; }
+    if (best < 1e-18)
+      return false;
+    if (piv != col)
+    {
+      for (int c = 0; c < n; c++) { double t = M[col][c]; M[col][c] = M[piv][c]; M[piv][c] = t; }
+      double t = b[col]; b[col] = b[piv]; b[piv] = t;
+    }
+    for (int r = col + 1; r < n; r++)
+    {
+      double f = M[r][col] / M[col][col];
+      for (int c = col; c < n; c++) M[r][c] -= f * M[col][c];
+      b[r] -= f * b[col];
+    }
+  }
+  for (int r = n - 1; r >= 0; r--)
+  {
+    double s = b[r];
+    for (int c = r + 1; c < n; c++) s -= M[r][c] * x[c];
+    x[r] = s / M[r][r];
+  }
+  return true;
+}
+
+// Directional weighted least-squares similarity fit (morph mode 1).
+//
+// Each valid anchor contributes ONE scalar constraint: the displacement of its
+// template point, measured only ALONG its constrainVector (searchVec) — the
+// perpendicular (bar-direction) component is unreliable and intentionally left
+// unconstrained. We fit a single similarity T(p)=[sa -sb; sb sa]p + [stx;sty]
+// minimizing  sum_i w_i ( cv_i . (T(from_i) - to_i) )^2  + ridge toward identity.
+// The ridge keeps the 4x4 well-conditioned and degrades gracefully to identity
+// when the anchors do not constrain a parameter (few/collinear/degenerate).
+int ConstrainMap::solve()
+{
+  // Count valid anchors regardless of mode (used by callers as a quality signal).
+  int valid = 0;
+  for (size_t i = 0; i < anchorPairs.size(); i++)
+    if (anchorPairs[i].to.x == anchorPairs[i].to.x) valid++; // not-NAN
+  valid_count = valid;
+
+  // Mode 0 computes its warp per-call in convert_polar; nothing to cache.
+  if (mode == 0)
+    return valid;
+  // Mode 1: identity unless we have enough anchors to trust a fit.
+  resetTransform();
+  valid_count = valid;
+  int need = min_anchors > 0 ? min_anchors : 2;
+  if (valid < need)
+  {
+    if (valid < (int)anchorPairs.size())
+      LOGI("ConstrainMap::solve mode1: only %d/%d valid anchors (<%d) -> identity morph",
+           valid, (int)anchorPairs.size(), need);
+    return valid;
+  }
+
+  // Active mask for optional MAD outlier rejection.
+  std::vector<char> active(anchorPairs.size(), 1);
+  int passes = (outlier_k > 0) ? 2 : 1;
+  for (int pass = 0; pass < passes; pass++)
+  {
+    double M[4][4] = {{0}};
+    double r[4] = {0};
+    int used = 0;
+    for (size_t i = 0; i < anchorPairs.size(); i++)
+    {
+      const anchorPair &p = anchorPairs[i];
+      if (p.to.x != p.to.x) continue; // NAN
+      if (!active[i]) continue;
+      double cx = p.constrainVector.x, cy = p.constrainVector.y;
+      double x = p.from.x, y = p.from.y;
+      double u = p.to.x, v = p.to.y;
+      double w = p.weight > 0 ? p.weight : 1.0;
+      // A . theta = D, where theta = (sa, sb, stx, sty)
+      double A[4] = { cx * x + cy * y, cy * x - cx * y, cx, cy };
+      double D = cx * u + cy * v;
+      for (int a = 0; a < 4; a++)
+      {
+        for (int b = 0; b < 4; b++) M[a][b] += w * A[a] * A[b];
+        r[a] += w * A[a] * D;
+      }
+      used++;
+    }
+    if (used < need) { resetTransform(); valid_count = used; return used; }
+
+    // Ridge toward identity target (sa,sb,stx,sty) = (1,0,0,0), scaled relative
+    // to the data so it is negligible when the anchors fully constrain a param.
+    double trace = M[0][0] + M[1][1] + M[2][2] + M[3][3];
+    double lam = (double)reg * (trace / 4.0 + 1e-9);
+    M[0][0] += lam; r[0] += lam * 1.0;
+    M[1][1] += lam; /* target 0 */
+    M[2][2] += lam; /* target 0 */
+    M[3][3] += lam; /* target 0 */
+
+    double theta[4];
+    if (!solveDenseNxN(M, r, theta, 4))
+    {
+      resetTransform();
+      valid_count = used;
+      return used;
+    }
+    sa = theta[0]; sb = theta[1]; stx = theta[2]; sty = theta[3];
+
+    if (outlier_k <= 0 || pass == passes - 1) break;
+
+    // Residuals along each anchor's constrainVector, then MAD-gate.
+    std::vector<double> res;
+    std::vector<size_t> idx;
+    for (size_t i = 0; i < anchorPairs.size(); i++)
+    {
+      const anchorPair &p = anchorPairs[i];
+      if (p.to.x != p.to.x || !active[i]) continue;
+      acv_XY t = convert(p.from); // uses cached sa,sb,stx,sty (mode 1)
+      double e = p.constrainVector.x * (t.x - p.to.x) + p.constrainVector.y * (t.y - p.to.y);
+      res.push_back(fabs(e));
+      idx.push_back(i);
+    }
+    if (res.size() <= (size_t)need) break;
+    std::vector<double> sorted = res;
+    std::sort(sorted.begin(), sorted.end());
+    double med = sorted[sorted.size() / 2];
+    std::vector<double> dev(res.size());
+    for (size_t i = 0; i < res.size(); i++) dev[i] = fabs(res[i] - med);
+    std::sort(dev.begin(), dev.end());
+    double mad = 1.4826 * dev[dev.size() / 2];
+    if (mad < 1e-9) break; // residuals already tight
+    int dropped = 0;
+    for (size_t i = 0; i < res.size(); i++)
+      if (res[i] > med + outlier_k * mad)
+      {
+        // Keep at least `need` anchors active.
+        if ((int)idx.size() - dropped - 1 < need) break;
+        active[idx[i]] = 0;
+        dropped++;
+      }
+    if (dropped == 0) break; // converged, no need for second pass
+  }
+  return valid_count;
 }
 
 acv_XY ConstrainMap::convert(acv_XY from)
 {
-  return convert_polar(from);
+  if (mode == 0)
+    return convert_polar(from);
+  // Mode 1: apply the cached directional-similarity transform.
+  acv_XY out;
+  out.x = (float)(sa * from.x - sb * from.y + stx);
+  out.y = (float)(sb * from.x + sa * from.y + sty);
+  return out;
 }
 
 inline int valueWarping(int v, int ringSize)
@@ -4644,6 +4832,11 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
   }
 
   cm.center = acv_XY(0, 0);
+  // Propagate the def-configured morph model to the ConstrainMap (mode 0 == legacy).
+  cm.mode        = this->morph_mode;
+  cm.reg         = this->morph_reg;
+  cm.outlier_k   = this->morph_outlier_k;
+  cm.min_anchors = this->morph_min_anchors;
 
   float error = NAN;
 
@@ -4774,11 +4967,16 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     {
       cm.anchorPairs[j].to = acv_XY(NAN, NAN);
     }
-    for(int k=0;k<1;k++)//perform locating_anchor locating and adjust
+    // Start each frame on an un-morphed pose so iteration 1 reproduces the legacy
+    // single-pass result; morph_max_iter>1 then re-locates anchors through the
+    // morph built from the previous iteration until they converge.
+    cm.resetTransform();
+    std::vector<acv_XY> prev_to(cm.anchorPairs.size(), acv_XY(NAN, NAN));
+    for(int k=0;k<morph_max_iter;k++)//perform locating_anchor locating and adjust
     {
 
       RESET_REPORT(singleReport);//Set to Unset state
-      for (int j = 0; j < searchPointList.size(); j++) 
+      for (int j = 0; j < searchPointList.size(); j++)
       {
         // cm.anchorPairs[j].to = acv_XY(NAN, NAN);
         if (searchPointList[j].data.anglefollow.locating_anchor == false)
@@ -4786,7 +4984,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
           continue;
         }
         LOGI("ID:%d", searchPointList[j].id);
-        
+
         TreeExecution(searchPointList[j].id,singleReport,eT,
           calibCen, mmpp, cached_cos, cached_sin, flip_f);//find all necessary anchor first
       }
@@ -4795,7 +4993,14 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
       for (int j = 0; j < detectedSearchPoints.size(); j++) //Fill the ConstrainMap
       {
         cm.anchorPairs[j].to = acv_XY(NAN, NAN);
-        if (detectedSearchPoints[j].def->data.anglefollow.locating_anchor == false)
+
+        bool isAnchor = false;
+        if(detectedSearchPoints[j].def->data.anglefollow.locating_anchor == true)
+        {
+          isAnchor = true;
+        }
+        LOGI("ID:%d=>%d  isAnchor:%d",detectedSearchPoints[j].def->id, detectedSearchPoints[j].status, isAnchor);
+        if (isAnchor == false)
         {
           continue;
         }
@@ -4807,17 +5012,42 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
         }
 
         acv_XY locatedPtOnTemplate = Image_mm_Domain_TO_TemplateDomain(
-          detectedSearchPoints[j].pt, 
-          cached_sin, 
-          cached_cos, 
-          flip_f, 
-          calibCen, 
+          detectedSearchPoints[j].pt,
+          cached_sin,
+          cached_cos,
+          flip_f,
+          calibCen,
           mmpp);
         cm.anchorPairs[j].to = locatedPtOnTemplate;
 
         // acv_XY pos = ;
         // LOGI("XY:%f %f -> %f %f", cm.anchorPairs[j].from.x, cm.anchorPairs[j].from.y, locatedPtOnTemplate.x, locatedPtOnTemplate.y);
 
+      }
+
+      // Rebuild the cached morph from this iteration's anchors (no-op for mode 0).
+      cm.solve();
+
+      // Converged once every valid anchor moved less than the tolerance since the
+      // previous iteration. (Single-iteration default never reaches this.)
+      if (k + 1 < morph_max_iter)
+      {
+        float maxd = 0;
+        bool any_prev = false;
+        for (size_t j = 0; j < cm.anchorPairs.size(); j++)
+        {
+          acv_XY cur = cm.anchorPairs[j].to;
+          if (cur.x != cur.x) continue; // NAN
+          if (prev_to[j].x == prev_to[j].x) // had a previous value
+          {
+            float d = acvDistance(cur, prev_to[j]);
+            if (d > maxd) maxd = d;
+            any_prev = true;
+          }
+          prev_to[j] = cur;
+        }
+        if (any_prev && maxd < morph_tol_mm)
+          break;
       }
 
     }

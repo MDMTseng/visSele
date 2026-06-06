@@ -57,18 +57,32 @@ class ConstrainMap
     acv_XY from;
     acv_XY to;
     acv_XY constrainVector;
+    float weight;
   }anchorPair;
-  
+
   acv_XY center;
   vector<anchorPair> anchorPairs;
+
+  // --- morph model selection (backward compatible: mode 0 == legacy convert_polar) ---
+  // 0 = legacy polar/complex distance-weighted similarity-about-center (default).
+  // 1 = directional weighted least-squares similarity (solve() caches it).
+  int   mode        = 0;
+  float reg         = 1e-3f; // ridge toward identity for the WLS fit (mode 1)
+  float outlier_k   = 0;     // >0 enables MAD outlier rejection on anchor residuals
+  int   min_anchors = 0;     // fewer valid anchors than this => identity morph (mode 1)
+
+  // Cached similarity transform for mode 1: [x';y'] = [sa -sb; sb sa][x;y] + [stx;sty]
+  double sa = 1, sb = 0, stx = 0, sty = 0;
+  int   valid_count = 0;     // # of non-NAN anchors used by the last solve()
+
   ConstrainMap()
   {
 
   }
 
-  void add(acv_XY from,acv_XY to,acv_XY constrainVector)
+  void add(acv_XY from,acv_XY to,acv_XY constrainVector,float weight=1.0f)
   {
-    anchorPairs.push_back((anchorPair){from:from,to:to,constrainVector:acvVecNormalize(constrainVector)});
+    anchorPairs.push_back((anchorPair){from:from,to:to,constrainVector:acvVecNormalize(constrainVector),weight:weight});
   }
 
   int size()
@@ -79,6 +93,17 @@ class ConstrainMap
   {
     anchorPairs.clear();
   }
+
+  // Reset the cached mode-1 transform to identity. Call once per frame before the
+  // locating iteration so iteration 1 relocates anchors on an un-morphed pose.
+  void resetTransform()
+  {
+    sa = 1; sb = 0; stx = 0; sty = 0; valid_count = 0;
+  }
+
+  // Recompute the cached transform from the currently-filled anchors (mode 1).
+  // Returns the number of valid (non-NAN) anchors. No-op for mode 0.
+  int solve();
 
 
 
@@ -169,6 +194,22 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   int matching_version = 1;
   int matching_v2_max_iter = 4;
   float matching_v2_tol_mm = 0.002f;
+
+  // --- locating-anchor morph (deformation correction) configuration ---
+  // Backward compatible: defaults reproduce the legacy single-pass polar morph.
+  // morph_mode    : 0 = legacy convert_polar (default); 1 = directional WLS
+  //                 similarity (opt in per def with "wls_similarity").
+  // morph_max_iter: locating-pass iterations (1 = single pass; >1 re-locates
+  //                 anchors through the current morph until they converge).
+  // morph_tol_mm  : per-anchor template-domain convergence tolerance for the loop.
+  // morph_outlier_k: >0 enables MAD outlier rejection on anchor residuals (mode 1).
+  // morph_min_anchors: below this many valid anchors => identity morph (mode 1).
+  int   morph_mode        = 0;
+  int   morph_max_iter    = 1;
+  float morph_tol_mm      = 0.002f;
+  float morph_outlier_k   = 0;
+  float morph_reg         = 1e-3f;
+  int   morph_min_anchors = 0;
 
   float sig_st1_matching_sim_thres;
 
