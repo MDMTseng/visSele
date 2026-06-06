@@ -1,6 +1,7 @@
 
 #include "CameraLayer_BMP.hpp"
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>   // cv::warpAffine
 #include <cmath>
 
 // Nearest-neighbor pixel fetch (single channel). OOB returns 0.
@@ -73,21 +74,22 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
         static float rotate=0;
 
         int noiseRange = aug.noise_en ? aug.noise_range : 0;
-        if(newX==0&&newY==0)
+
+        // "Cropped" == the requested ROI is a sub-window of the loaded image
+        // (there is surrounding source pixel data to rotate/wobble into).
+        // A full-frame request (ROI == whole image) is NOT cropped, so we
+        // skip rotation/offset and only apply brightness + noise -- rotating a
+        // full frame would just reveal black borders.
+        bool cropped = (newW < img_load.cols) || (newH < img_load.rows);
+
+        if(!cropped)
         {
           rotate=0;
         }
         else if (aug.rotate_en && aug.rotate_step_deg > 0)
         {
-          float baseAngle=0*M_PI/180;
-          float endAngle= 360*M_PI/180;
-
-          if(rotate<baseAngle)rotate=baseAngle;
-          else if(rotate>endAngle)rotate=baseAngle;
-          else
-          {
-            rotate += aug.rotate_step_deg * M_PI/180;
-          }
+          rotate += aug.rotate_step_deg * M_PI/180;
+          if(rotate >= 2*M_PI) rotate -= 2*M_PI;   // keep angle bounded
           LOGI("ROTATE:%f",rotate*180/M_PI);
         }
         else
@@ -97,35 +99,48 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
 
 
 
-        if(rotate!=0)
+        if(cropped && rotate!=0)
         {
-          float offsetR = aug.y_offset_en ? aug.y_offset_r : 0.0f;
-          float offsetY=-offsetR*sin(rotate);
-          float offsetX=0;//offsetR*cos(rotate);
-          acv_XY pixOffset=acv_XY(offsetX, offsetY);
+          // Real rotation about the crop-window center, plus a vertical
+          // wobble of amplitude y_offset_r (tied to the rotation phase).
+          // warpAffine samples img_load directly -- the 2x3 matrix M maps a
+          // destination (crop-local) pixel back to source coords
+          // (WARP_INVERSE_MAP):  src = R(rotate)*(dst - cropCenter)
+          //                            + srcCenter + (0, offsetY)
+          const double c = std::cos(rotate);
+          const double s = std::sin(rotate);
+          const double cropCx = newW/2.0, cropCy = newH/2.0;
+          const double srcCx  = newX + cropCx, srcCy = newY + cropCy;
+          const double offsetY = aug.y_offset_en ? aug.y_offset_r*std::sin(rotate) : 0.0;
 
-          for(int i=0;i<newH;i++)//Add noise
-          for(int j=0;j<newW;j++)
-          {
-            acv_XY pixCoord=acvVecAdd(acv_XY((float)j, (float)i),acv_XY((float)newX, (float)newY));
-            // pixCoord.y-=offsetR;
-            pixCoord=acvVecAdd(pixCoord,pixOffset);
-            
-            float pix= cvUnsignedMap1Sampling_Nearest(img_load, pixCoord.x, pixCoord.y, 0);
-            
-            int N=0;
-            if(noiseRange>0)
-              N= (rand()%(2*noiseRange+1))-noiseRange;
+          cv::Mat M = (cv::Mat_<double>(2,3) <<
+            c, -s, srcCx           - (c*cropCx - s*cropCy),
+            s,  c, srcCy + offsetY - (s*cropCx + c*cropCy));
 
-            int d = N+ (((uint64_t)(pix*tExp))>>12);
+          cv::Mat rotated;
+          cv::warpAffine(img_load, rotated, M, cv::Size(newW, newH),
+                         cv::INTER_LINEAR | cv::WARP_INVERSE_MAP,
+                         cv::BORDER_CONSTANT, cv::Scalar(0,0,0));
 
-            if(d<0)d=0;
-            else if(d>255)d=255;
-            
-            imgBuffer[(i*newW+j)*channelCount+0]=
-            imgBuffer[(i*newW+j)*channelCount+1]=
-            imgBuffer[(i*newW+j)*channelCount+2]=d;
-
+          // Apply exposure + per-pixel noise on the rotated crop. Sampling and
+          // bounds are already handled by warpAffine (OOB -> black border).
+          const int src_ch = rotated.channels();
+          for (int i = 0; i < newH; i++) {
+            const uint8_t *src = rotated.ptr<uint8_t>(i);
+            uint8_t *dst = imgBuffer + (i*newW)*channelCount;
+            for (int j = 0; j < newW; j++) {
+              const uint8_t *sp = src + j*src_ch;
+              int N = 0;
+              if (noiseRange > 0)
+                N = (rand() % (2*noiseRange + 1)) - noiseRange;
+              for (int ch = 0; ch < channelCount; ch++) {
+                int pix = sp[ch < src_ch ? ch : 0];
+                int d = N + ((int)((((uint64_t)pix) * (uint64_t)tExp) >> 12));
+                if (d < 0) d = 0;
+                else if (d > 255) d = 255;
+                dst[j*channelCount + ch] = (uint8_t)d;
+              }
+            }
           }
         }
         else
