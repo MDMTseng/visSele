@@ -1087,10 +1087,10 @@ const MainUI=()=>{
         type:"InstInsp",
         name:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION
       },
-      BackLightCalib:{
-        type:"BackLightCalib",
-        name:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
-      },
+      // BackLightCalib:{
+      //   type:"BackLightCalib",
+      //   name:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
+      // },
       Calibration:{
         type:"Calibration",
         name:DICT.mainui.MODE_SELECT_CALIBRATION,
@@ -1099,10 +1099,10 @@ const MainUI=()=>{
         type:"RepDisplay",
         name:DICT.mainui.MODE_SELECT_REP_DISPLAY,
       },
-      PrecisionValidation:{
-        type:"PrecisionValidation",
-        name:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION,
-      },
+      // PrecisionValidation:{
+      //   type:"PrecisionValidation",
+      //   name:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION,
+      // },
       Setting:{
         type:"Setting",
         name:DICT.mainui.MODE_SELECT_SETTING,
@@ -1134,7 +1134,7 @@ const MainUI=()=>{
   }
   
   const [popUpInfo,setPopUpInfo] = useState(undefined);
-  const [hideMachineSetting,setHideMachineSetting] = useState(true);
+  const [hideMachineSetting,setHideMachineSetting] = useState(false);
   
   const [UI_state, _setUI_state] = useState(s_statesTable.RootSelect);
   const [extraSideUI, setExtraSideUI] = useState([]);
@@ -1227,22 +1227,22 @@ const MainUI=()=>{
             text:DICT.mainui.MODE_SELECT_SETTING,
             onClick:_=>setUI_state(s_statesTable.Setting)
           },
-          {
-            icon:<TableOutlined />,
-            text:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
-            onClick:_=>setUI_state(s_statesTable.BackLightCalib)
-          },
+          // {
+          //   icon:<TableOutlined />,
+          //   text:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
+          //   onClick:_=>setUI_state(s_statesTable.BackLightCalib)
+          // },
           {
             icon:<TableOutlined />,
             text:DICT.mainui.MODE_SELECT_CALIBRATION,
             onClick:_=>setUI_state(s_statesTable.Calibration)
           },
-          {
-            icon:<PlusSquareOutlined />,
-            // text:DICT.mainui.MODE_SELECT_INST_INSP,
-            text:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION,
-            onClick:_=>setUI_state(s_statesTable.InstInsp)
-          }
+          // {
+          //   icon:<PlusSquareOutlined />,
+          //   // text:DICT.mainui.MODE_SELECT_INST_INSP,
+          //   text:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION,
+          //   onClick:_=>setUI_state(s_statesTable.InstInsp)
+          // }
 
 
         ]);
