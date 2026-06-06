@@ -117,7 +117,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
             if(noiseRange>0)
               N= (rand()%(2*noiseRange+1))-noiseRange;
 
-            int d = N+ (((uint64_t)(pix*tExp))>>13);
+            int d = N+ (((uint64_t)(pix*tExp))>>12);
 
             if(d<0)d=0;
             else if(d>255)d=255;
@@ -154,8 +154,15 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
                 continue;
               }
               const uint8_t *sp = src + lj*src_ch;
+              int N = 0;
+              if (noiseRange > 0)
+                N = (rand() % (2*noiseRange + 1)) - noiseRange;
               for (int c = 0; c < channelCount; c++) {
-                dst[j*channelCount + c] = sp[c < src_ch ? c : 0];
+                int pix = sp[c < src_ch ? c : 0];
+                int d = N + ((int)((((uint64_t)pix) * (uint64_t)tExp) >> 12));
+                if (d < 0) d = 0;
+                else if (d > 255) d = 255;
+                dst[j*channelCount + c] = (uint8_t)d;
               }
             }
           }
