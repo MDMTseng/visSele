@@ -1,22 +1,25 @@
 # visSele inspection core — build instructions
 
-Three supported build paths:
+Build and run paths supported:
 
-| Target | Where you build | Preset / shortcut |
-|---|---|---|
-| **macOS (arm64) native** | macOS arm64 | `mac-arm64` |
-| **Linux x64 native** | Linux x86_64 | `linux` (alias for `linux-x64`) |
-| **Windows x64 (MSYS2 / MinGW64) native** | Windows | `win-mingw` |
-| **Windows x64 cross-compiled from macOS** | macOS arm64 | `win-cross` |
+| Path | Section |
+|---|---|
+| macOS arm64 native | §1 |
+| Linux x64 native | §2 |
+| Windows x64 (MSYS2 / MinGW64) native | §3 |
+| Windows x64 cross-compiled from macOS | §4 |
+| Running the Win64 binary on macOS via **Wine** (no VM) | §5 |
+| `build.sh` option reference | §6 |
+| Troubleshooting | §7 |
 
-All three drive through the same script:
+All builds drive through one script:
 
 ```bash
 ./InspectionCore/build.sh -p <preset> -c <Debug|Release> -e <export-dir>
 ./InspectionCore/build.sh -h    # show all options
 ```
 
-The script wraps `cmake --preset` + `cmake --build` + (for Windows targets) DLL bundling into one command.
+The script wraps `cmake --preset` + `cmake --build` + (for Windows targets) DLL bundling into one command. Every section below also covers how to **run** the result + how to bring up the WebUI side-by-side.
 
 ---
 
@@ -59,11 +62,25 @@ Build artifacts land in `InspectionCore/build/mac-arm64/`:
 
 ### Run
 
+The core daemon and the WebUI run as separate processes. Open two terminals:
+
 ```bash
+# Terminal 1 — inspection daemon (must be run from Core0_1/ so relative
+# data/ paths resolve)
 cd InspectionCore/Core0_1
 ../build/mac-arm64/visSele
-# Then point the WebUI at ws://localhost:4090 (see UI/WebUI README)
+# binds 0.0.0.0:4090 (BPG WebSocket)
+# expect: "Try to open websocket... port:4090" / "opened 0.0.0.0:4090"
+
+# Terminal 2 — WebUI dev server
+cd UI/WebUI
+npm install      # one-time
+npm run dev      # serves http://localhost:5173 (Vite default)
 ```
+
+Then open `http://localhost:5173` in a browser. It auto-connects to `ws://localhost:4090`. With no real camera attached, use the **fake camera (BMP_carousel)** drawer to load PNG/BMP frames from `InspectionCore/Core0_1/data/`.
+
+To stop: `Ctrl-C` in each terminal.
 
 ---
 
@@ -97,8 +114,13 @@ Artifacts: `InspectionCore/build/linux-x64/visSele`, `inspd_log`, `calib_chessbo
 ### Run
 
 ```bash
+# Terminal 1 — core daemon
 cd InspectionCore/Core0_1
-../build/linux-x64/visSele
+../build/linux-x64/visSele       # binds 0.0.0.0:4090
+
+# Terminal 2 — WebUI
+cd UI/WebUI && npm install && npm run dev
+# open http://localhost:5173
 ```
 
 ### Notes
@@ -143,9 +165,22 @@ The `-e dist` step copies `visSele.exe` and friends into `dist/`. With the `x64-
 ### Run
 
 ```bash
-cd dist
-./visSele.exe
+# Terminal 1 (MSYS2 MINGW64) — core daemon
+cd /path/to/visSele/dist
+./visSele.exe                    # binds 0.0.0.0:4090
+
+# Terminal 2 — WebUI (any shell with Node.js)
+cd /path/to/visSele/UI/WebUI
+npm install && npm run dev       # open http://localhost:5173
 ```
+
+The dist/ folder needs the runtime `data/` directory next to `visSele.exe`. Copy it once:
+
+```bash
+cp -r InspectionCore/Core0_1/data dist/
+```
+
+To use a real HikRobot camera, install MVS from HikRobot's site so the GenICam DLLs (`GenApi_*.dll`, `GCBase_*.dll`, `MvRender.dll`) are on `PATH`, then toggle the camera type in your camera setting JSON.
 
 ---
 
@@ -199,7 +234,92 @@ Camera-SDK selection is controlled by `FEATURE_ARAVIS` / `FEATURE_MINDVISION` / 
 
 ---
 
-## build.sh option reference
+## 5 · Running the Windows binary on macOS via Wine
+
+Skip the VM. Wine runs the Win64 `visSele.exe` directly on macOS (Rosetta 2 underneath on Apple Silicon). The inspection daemon — WebSocket, OpenCV, BMP_carousel fake camera, lens / field calibration, full BPG protocol — works end-to-end. The only thing that *won't* work is real-hardware HikRobot (Windows kernel driver requirement).
+
+### Prerequisites
+
+```bash
+brew install --cask wine-stable
+```
+
+First-ever `wine` invocation creates `~/.wine` and asks about Mono/Gecko — say **no** (visSele doesn't use .NET).
+
+### One-time: build a HikRobot-off variant
+
+The HikRobot DLL imports `GenApi_*.dll`, `GCBase_*.dll`, and `MvRender.dll` — those ship only with the HikRobot **MVS** installer, not the SDK headers/lib in this repo. Without them, Wine's loader bails before `main()` runs. So for Wine, build with `FEATURE_HIKROBOT=OFF`:
+
+```bash
+VCPKG_ROOT=$HOME/vcpkg cmake -S InspectionCore --preset win-mingw-cross \
+  -DFEATURE_HIKROBOT=OFF \
+  -B InspectionCore/build/win-mingw-cross-noHik
+cmake --build InspectionCore/build/win-mingw-cross-noHik -j
+```
+
+(For native HikRobot testing, use a real Windows machine. Wine cannot host the camera kernel driver.)
+
+### Bundle
+
+Reuse `build.sh -e` for everything *except* the .exe — then drop the HikRobot-off .exe over it:
+
+```bash
+./InspectionCore/build.sh -p win-cross -c Release -e /tmp/vissele_win_dist
+cp InspectionCore/build/win-mingw-cross-noHik/visSele.exe /tmp/vissele_win_dist/
+rm /tmp/vissele_win_dist/MvCameraControl.dll    # no longer linked
+cp -r InspectionCore/Core0_1/data /tmp/vissele_win_dist/   # runtime config
+```
+
+### Run
+
+```bash
+cd /tmp/vissele_win_dist
+WINEDEBUG=fixme-all wine ./visSele.exe
+```
+
+`WINEDEBUG=fixme-all` silences the "fixme" stub warnings. Useful tunings:
+- `WINEDEBUG=-all` for the quietest run (also hides Vulkan probe).
+- `WINEDEBUG=err+all` to surface every `err:` line during diagnosis.
+
+You should see, within a few seconds:
+
+```
+[I] WIN32 WSAStartup ret:0
+[I] Try to open websocket... port:4090
+opened 0.0.0.0:4090  listenSocket:64
+[I] connectCamera driver_name:BMP_carousel id:BMP_carousel_0
+[I] load_lens_calib: data/lens_calib.json ok=1 ...
+[I] load_field_calib: ... uniformity=85.4%
+[I] CameraSetup framerate:2.000000
+[E] PHYLayer is not able to establish    ← /dev/cu.usbserial peripheral missing, expected
+[I] SetEventCallBack is set...
+```
+
+Once that shows, point a browser tab at the WebUI dev server and it'll connect to `ws://localhost:4090` exactly like a native build. Use the **BMP carousel** drawer to feed PNG/BMP images from `data/` for inspection.
+
+### What works under Wine
+
+| Subsystem | Status |
+|---|---|
+| WinSock (BPG WebSocket on 4090) | ✅ |
+| pthread / std::thread / mutex | ✅ |
+| File I/O, JSON, cJSON | ✅ |
+| OpenCV (imread, imwrite, calib3d, undistort) | ✅ |
+| BMP_carousel fake camera + brightness/rotate/noise augmentation | ✅ |
+| Lens + field calibration load/apply | ✅ |
+| WebUI ↔ core BPG round-trip | ✅ |
+| HikRobot real camera | ❌ kernel driver |
+| Serial peripheral `/dev/cu.usbserial-*` | ❌ no Mac equivalent (gracefully logged) |
+
+### Known Wine quirks
+
+- **Vulkan probe spam** on startup is harmless; visSele doesn't use Vulkan. Pipe through `grep -vE 'VK_|mvk-info|hid:handle|GPU '` if it bothers you.
+- **`err:hid:handle_DeviceMatchingCallback`** lines come from Wine enumerating Mac USB HID devices — ignore.
+- **Filesystem path translation**: Wine maps your whole Mac under `Z:\`, so `Z:\tmp\vissele_win_dist\data\BMP_carousel_test\*.png` is the path the fake camera sees when you set the folder from the WebUI drawer.
+
+---
+
+## 6 · build.sh option reference
 
 ```text
 -p, --platform <id>     mac-arm64 | mac-arm64-opencv | linux | win-cross | win-mingw
@@ -218,7 +338,7 @@ Environment overrides:
 
 ---
 
-## Troubleshooting
+## 7 · Troubleshooting
 
 ### vcpkg fails to find Python on macOS
 Install via Homebrew: `brew install python` and re-run.
