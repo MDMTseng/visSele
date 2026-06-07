@@ -193,6 +193,7 @@ class ImageSampler
   {
     origin_offset=_origin_offset;
   }
+  acv_XY getOriginOffset() const { return origin_offset; }
   
   void RESET()
   { 

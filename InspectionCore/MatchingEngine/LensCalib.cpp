@@ -110,6 +110,12 @@ void lens_undistort_point(const LensCalibResult &r, float &x, float &y)
   if (!r.ok) return; // present-but-invalid calib: leave the point untouched
   double uv[2] = { (double)x, (double)y }, out[2];
   lens_undistort_points(r, uv, 1, out);
+  //if (getenv("INSP_DUMP_CROP")) 
+  // {
+  //   fprintf(stderr,
+  //     "[CROP][lens_undistort] in=(%.6f,%.6f) out=(%.6f,%.6f) delta=(%.6f,%.6f)\n",
+  //     uv[0], uv[1], out[0], out[1], out[0]-uv[0], out[1]-uv[1]);
+  // }
   x = (float)out[0];
   y = (float)out[1];
 }

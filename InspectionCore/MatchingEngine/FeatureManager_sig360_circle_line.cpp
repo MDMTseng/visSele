@@ -1169,16 +1169,26 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       // distortion correction, so this is where it belongs.
       FeatureManager_BacPac *sp_bp = eT.getBacpac();
       bool sp_lens = sp_bp && sp_bp->lensCalib && sp_bp->lensCalib->ok;
-      // Lift cropped-image-px → full-image-px to match rep.pt's frame.
+      // cal_hits stay in raw (per-column) image-frame px -- the overlay just
+      // visualizes where the search picked up, no measurement uses them, so
+      // skip the lens-undistort cost. ONLY the final centroid (rep.pt) gets
+      // the per-point lens correction below.
+      acv_XY sOff = (sp_bp && sp_bp->sampler) ? sp_bp->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
       for (auto &h : rep.cal_hits)
       {
         h.pt = acvVecAdd(h.pt, off);
-        if (sp_lens) lens_undistort_point(*sp_bp->lensCalib, h.pt.x, h.pt.y);
       }
       if (ok)
       {
         rep.pt = acvVecAdd(out, off);
-        if (sp_lens) lens_undistort_point(*sp_bp->lensCalib, rep.pt.x, rep.pt.y);
+        if (sp_lens)
+        {
+          // Lift image-frame px → full-sensor px (sampler holds the user's
+          // ROI offset), undistort with the full-sensor lens model, drop back.
+          float x = rep.pt.x + sOff.x, y = rep.pt.y + sOff.y;
+          lens_undistort_point(*sp_bp->lensCalib, x, y);
+          rep.pt.x = x - sOff.x; rep.pt.y = y - sOff.y;
+        }
         // Manual offset: shift along the scanline direction (searchVec).
         // Shifting along barVec would be cancelled by the WebUI's
         // closestPointOnLine projection (line runs along barVec

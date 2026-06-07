@@ -17,10 +17,20 @@
 static inline bool caliper_undist_in_place(acv_XY &p, FeatureManager_BacPac *bacpac, acv_XY imgOffset)
 {
   if (!(bacpac && bacpac->lensCalib && bacpac->lensCalib->ok)) return true;
-  float x = p.x + imgOffset.x, y = p.y + imgOffset.y;
+  // The lens model is in FULL-SENSOR pixel coords. To lift a point sitting in
+  // the inspection image's local frame, we need BOTH offsets:
+  //   imgOffset                 = internal labeling crop within the inspection image
+  //   sampler->originOffset()   = user-applied camera ROI (the "crop" they configured)
+  // Adding only `imgOffset` (the labeling crop, usually 0) was leaving the user's
+  // ROI uncompensated -- distortion correction landed at the wrong (x,y) on the
+  // lens model whenever a non-zero ROI was active.
+  acv_XY sOff = (bacpac->sampler) ? bacpac->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
+  float x = p.x + imgOffset.x + sOff.x;
+  float y = p.y + imgOffset.y + sOff.y;
   lens_undistort_point(*bacpac->lensCalib, x, y);
   if (!std::isfinite(x) || !std::isfinite(y)) return false;
-  p.x = x - imgOffset.x; p.y = y - imgOffset.y;
+  p.x = x - imgOffset.x - sOff.x;
+  p.y = y - imgOffset.y - sOff.y;
   return true;
 }
 

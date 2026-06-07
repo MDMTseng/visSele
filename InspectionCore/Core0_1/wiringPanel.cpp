@@ -1025,14 +1025,16 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
         h = *roi_h;
       }
       camera.SetROI(x,y,w,h, 0, 0);
-      // LOGI("ROI v:%f %f %f %f", *roi_x, *roi_y, *roi_w, *roi_h);
-      int ox, oy;
+      int ox = 0, oy = 0;
       camera.GetROI(&ox, &oy, NULL, NULL, NULL, NULL);
-      
-      // LOGI("ROI v:%d %d", ox, oy);
-      // acv_XY offset_o = {(float)ox, (float)oy};
-      // calib_bacpac.sampler->setOriginOffset(offset_o);
-      //sampler
+      // The ROI/crop the user just configured shifts the captured image's
+      // (0,0) away from the full-sensor (0,0). Push that offset into the
+      // sampler so lens-calib lookups, mmpp lookups, and backlight-grid
+      // sampling all happen at the correct full-sensor (x,y). Without
+      // this, every per-pixel calibration lookup is biased by -ROI.
+      acv_XY offset_o = {(float)ox, (float)oy};
+      if (calib_bacpac.sampler) calib_bacpac.sampler->setOriginOffset(offset_o);
+      LOGI("ROI: (%d,%d) %dx%d -> sampler origin (%d,%d)", ox, oy, w, h, ox, oy);
     }
     else
     {
@@ -4394,13 +4396,19 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
   // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   //stackingC=0;
-  if(0){
-    
-    acv_XY offset = {
-      fi.offset_x,
-      fi.offset_y
-    };
-    LOGI("offset:%f,%f", offset.x,offset.y);
+  // Per-frame sampler origin sync: cover cameras that re-emit ROI
+  // dynamically (or that didn't go through the SetROI path at all, e.g.
+  // BMP_carousel which loads pre-cropped PNGs). Prefer fi.offset_x/y
+  // when the driver fills it (HikRobot); else fall back to the camera's
+  // current GetROI() so the sampler still tracks the user's crop.
+  if (bacpac && bacpac->sampler && bacpac->cam) {
+    acv_XY offset = { fi.offset_x, fi.offset_y };
+    if (offset.x == 0 && offset.y == 0) {
+      int ox = 0, oy = 0;
+      if (bacpac->cam->GetROI(&ox, &oy, NULL, NULL, NULL, NULL) == CameraLayer::ACK) {
+        offset = { (float)ox, (float)oy };
+      }
+    }
     bacpac->sampler->setOriginOffset(offset);
   }
 
