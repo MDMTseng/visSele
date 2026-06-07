@@ -117,13 +117,38 @@ if [[ -n "$EXPORT_DIR" ]]; then
       if [[ -d "$vcpkg_bin" ]]; then
         find "$vcpkg_bin" -maxdepth 1 -name "*.dll" -exec cp -v {} "$EXPORT_DIR/" \;
       fi
-      # 3) mingw runtime DLLs (libgcc / libstdc++ / libwinpthread).
-      mingw_bin="$MINGW_PREFIX/toolchain-x86_64/x86_64-w64-mingw32/bin"
-      if [[ -d "$mingw_bin" ]]; then
-        for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
-          [[ -f "$mingw_bin/$dll" ]] && cp -v "$mingw_bin/$dll" "$EXPORT_DIR/"
-        done
+      # 3) mingw runtime DLLs (libgcc / libstdc++ / libwinpthread). Across
+      #    distros these land in either .../x86_64-w64-mingw32/bin or
+      #    .../x86_64-w64-mingw32/lib (the homebrew formula at the time of
+      #    writing splits libwinpthread into bin/ and libgcc/libstdc++ into
+      #    lib/). Search both, plus the toolchain-Cellar lib path for the
+      #    Cellar-keyed version. First hit per DLL wins.
+      mingw_search=(
+        "$MINGW_PREFIX/toolchain-x86_64/x86_64-w64-mingw32/bin"
+        "$MINGW_PREFIX/toolchain-x86_64/x86_64-w64-mingw32/lib"
+      )
+      # Add brew Cellar paths (resolves the canonical install if MINGW_PREFIX
+      # points at the opt symlink).
+      if command -v brew >/dev/null 2>&1; then
+        cellar_root="$(brew --cellar mingw-w64 2>/dev/null)"
+        if [[ -n "$cellar_root" && -d "$cellar_root" ]]; then
+          for v in "$cellar_root"/*; do
+            mingw_search+=("$v/toolchain-x86_64/x86_64-w64-mingw32/bin")
+            mingw_search+=("$v/toolchain-x86_64/x86_64-w64-mingw32/lib")
+          done
+        fi
       fi
+      for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+        found=""
+        for d in "${mingw_search[@]}"; do
+          if [[ -f "$d/$dll" ]]; then found="$d/$dll"; break; fi
+        done
+        if [[ -n "$found" ]]; then
+          cp -v "$found" "$EXPORT_DIR/"
+        else
+          echo "WARN: $dll not found in any of: ${mingw_search[*]}" >&2
+        fi
+      done
       # 4) HikRobot SDK DLL (lives in the repo).
       hik_dll="$SCRIPT_DIR/CoreHub/Core/MvCameraControl.dll"
       [[ -f "$hik_dll" ]] && cp -v "$hik_dll" "$EXPORT_DIR/"
