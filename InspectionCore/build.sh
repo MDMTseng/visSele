@@ -95,10 +95,24 @@ if (( CLEAN )) && [[ -d "$BUILD_DIR" ]]; then
   rm -rf "$BUILD_DIR"
 fi
 
+# ---- ccache auto-wire ---------------------------------------------------
+# If ccache is on PATH, route the compiler launcher through it so even a
+# --clean build doesn't pay full recompile cost (object cache is keyed on
+# source content, so it survives wipes of the build dir). Disable with
+# NO_CCACHE=1 in the environment. Saves ~10-20x on full rebuilds once warm.
+CCACHE_OPTS=()
+if [[ -z "${NO_CCACHE:-}" ]] && command -v ccache >/dev/null 2>&1; then
+  echo "==> ccache: $(ccache --version | head -1)  dir=$(ccache -k cache_dir 2>/dev/null || echo '~/.cache/ccache')"
+  CCACHE_OPTS=(
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+  )
+fi
+
 # ---- configure ----------------------------------------------------------
 # CMake presets fix CMAKE_BUILD_TYPE=Release; override on the command line.
-echo "==> cmake --preset $PRESET -DCMAKE_BUILD_TYPE=$CONFIG"
-cmake -S "$SCRIPT_DIR" --preset "$PRESET" -DCMAKE_BUILD_TYPE="$CONFIG"
+echo "==> cmake --preset $PRESET -DCMAKE_BUILD_TYPE=$CONFIG ${CCACHE_OPTS[*]}"
+cmake -S "$SCRIPT_DIR" --preset "$PRESET" -DCMAKE_BUILD_TYPE="$CONFIG" "${CCACHE_OPTS[@]}"
 
 # ---- build --------------------------------------------------------------
 echo "==> cmake --build $BUILD_DIR -j $JOBS"

@@ -335,6 +335,13 @@ Environment overrides:
 - `VCPKG_ROOT` — vcpkg location (default `~/vcpkg`).
 - `MINGW_PREFIX` — mingw-w64 install prefix (default `/opt/homebrew/opt/mingw-w64`).
 - `JOBS` — parallel jobs (same as `--jobs`).
+- `NO_CCACHE=1` — disable the auto ccache wiring (default: on if `ccache` is on PATH).
+
+### Speeding up rebuilds
+
+- **Drop `--clean` for normal iteration.** It wipes `vcpkg_installed/` (the OpenCV+ffmpeg+png+jpeg+tiff+... build), `CMakeCache.txt`, and every .o — turning a 10 s edit-rebuild into a 14+ min full reinstall. Reserve it for "reset to known state."
+- **`brew install ccache`** (one-time). `build.sh` auto-detects ccache on `PATH` and routes the compiler through it, so even a `--clean` reuses cached .o files (keyed on source content, survives `rm -rf build/`). Disable with `NO_CCACHE=1`.
+- **vcpkg binary cache** (`~/.cache/vcpkg/archives/` on macOS / `$XDG_CACHE_HOME` on Linux / `%LOCALAPPDATA%\vcpkg\archives\` on Windows) is on by default. Once a triplet is built once, subsequent clean builds reinstall from the cache in seconds instead of recompiling.
 
 ---
 
