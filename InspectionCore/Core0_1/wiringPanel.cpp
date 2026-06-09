@@ -1279,6 +1279,8 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
     std::vector<int> _params = { cv::IMWRITE_JPEG_QUALITY, DataView_JPEG_quality };
     cv::imencode(".jpg", encode_src, _jpeg, _params);
 
+    LOGI("JPEG size: %zu", _jpeg.size());
+
     header[0] = fmt;
     header[1] = (uint8_t)DataView_JPEG_quality;
 
@@ -1363,18 +1365,22 @@ CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
   CameraLayer::frameInfo finfo = cl_obj.GetFrameInfo();
   LOGI("finfo:WH:%d,%d  img_transpose:%d", finfo.width, finfo.height, img_transpose);
 
-  // Allocate a contiguous BGR buffer at the camera's native orientation; the
-  // camera writes into it via ExtractFrame.
-  cv::Mat raw(finfo.height, finfo.width, CV_8UC3);
+  // Reusable per-thread scratch buffers. cv::Mat::create() only reallocates on a
+  // size/type change, so for a fixed camera frame size these are allocated once
+  // and their buffers recycled every frame -- avoids ~20MB/frame of heap churn +
+  // first-touch page faults that fresh `cv::Mat raw(...)`/`r` would incur.
+  thread_local cv::Mat raw, oriented, r;
+
+  // Contiguous BGR buffer at the camera's native orientation; the camera writes
+  // into it via ExtractFrame.
+  raw.create(finfo.height, finfo.width, CV_8UC3);
   auto ret = cl_obj.ExtractFrame(raw.data, 3, finfo.width * finfo.height);
 
-  cv::Mat oriented;
   if (img_transpose) cv::transpose(raw, oriented);
   else oriented = raw;
 
   // BGR -> RRR (replicate R channel across all 3 BGR slots), matching the
   // legacy callback's per-pixel rewrite.
-  cv::Mat r;
   cv::extractChannel(oriented, r, 2);
   cv::cvtColor(r, *dst, cv::COLOR_GRAY2BGR);
 
@@ -3620,8 +3626,14 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   headImgPipe->fi = finfo;
   headImgPipe->occupyFlag=0;
   cv::Mat *tmp_img=&(headImgPipe->img);
-  tmp_img->create(finfo.height, finfo.width, CV_8UC3);
-  auto ret=cl_obj.ExtractFrame(tmp_img->data, 3, finfo.width*finfo.height);
+  // Keep a mono camera as a true 1-channel frame (no replicate-to-BGR). The
+  // camera reports channelCount via frameInfo; default to 3 for anything that
+  // doesn't report a clean 1 (color/Bayer cameras, or cameras that leave it 0).
+  // create() reuses the pooled buffer when size/type is unchanged (skippable
+  // after the first frame), so the camera writes directly into the pool slot.
+  int _ch = (finfo.channelCount == 1) ? 1 : 3;
+  tmp_img->create(finfo.height, finfo.width, _ch == 1 ? CV_8UC1 : CV_8UC3);
+  auto ret=cl_obj.ExtractFrame(tmp_img->data, _ch, finfo.width*finfo.height);
 
   // acvImage *tmp_img=img_transpose?new acvImage():&(headImgPipe->img);
 
@@ -4370,21 +4382,24 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   }
   clock_t t = clock();
 
-  // acvCloneImage(.., 2) extracted the R channel and replicated to BGR ->
-  // cv::extractChannel + cvtColor GRAY2BGR.
-  if(img_transpose==true)
+  // Build the CV_8UC3 "red-channel grayscale" working image the matching engine
+  // requires (its contour walk assumes CV_8UC3 BGR). Two inputs are possible now:
+  //   * 1-channel gray frame (mono camera) -> just replicate to BGR, and
+  //   * 3-channel color/replicated frame    -> take the R channel (legacy
+  //     acvCloneImage(..,2) behavior; unchanged for color cameras).
+  // thread_local scratch is reused across frames (no per-frame allocation).
   {
-    cv::Mat tmp_img;
-    cv::transpose(imgPipe->img, tmp_img);
-    cv::Mat r;
-    cv::extractChannel(tmp_img, r, 2);
-    cv::cvtColor(r, imgPipe->img, cv::COLOR_GRAY2BGR);
-  }
-  else
-  {
-    cv::Mat r;
-    cv::extractChannel(imgPipe->img, r, 2);
-    cv::cvtColor(r, imgPipe->img, cv::COLOR_GRAY2BGR);
+    cv::Mat &im = imgPipe->img;
+    thread_local cv::Mat tposed, graySrc;
+    cv::Mat *src = &im;
+    if (img_transpose) { cv::transpose(im, tposed); src = &tposed; }
+    if (src->channels() == 1) {
+      if (src == &im) im.copyTo(graySrc);   // mono, no transpose: detach before overwriting im
+      else            graySrc = *src;        // transposed buffer is already separate
+    } else {
+      cv::extractChannel(*src, graySrc, 2);  // red channel
+    }
+    cv::cvtColor(graySrc, im, cv::COLOR_GRAY2BGR);  // working image = B=G=R, CV_8UC3
   }
 
 

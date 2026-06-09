@@ -141,6 +141,13 @@ if [[ -n "$EXPORT_DIR" ]]; then
         "$MINGW_PREFIX/toolchain-x86_64/x86_64-w64-mingw32/bin"
         "$MINGW_PREFIX/toolchain-x86_64/x86_64-w64-mingw32/lib"
       )
+      # Native Windows/MSYS2 build (win-mingw): the runtime DLLs sit next to gcc
+      # in the toolchain bin dir. Derive it from gcc's location, and add the
+      # common MSYS2 path as a fallback.
+      if command -v gcc >/dev/null 2>&1; then
+        mingw_search+=("$(dirname "$(command -v gcc)")")
+      fi
+      mingw_search+=("/c/msys64/mingw64/bin" "/mingw64/bin")
       # Add brew Cellar paths (resolves the canonical install if MINGW_PREFIX
       # points at the opt symlink).
       if command -v brew >/dev/null 2>&1; then
@@ -166,6 +173,21 @@ if [[ -n "$EXPORT_DIR" ]]; then
       # 4) HikRobot SDK DLL (lives in the repo).
       hik_dll="$SCRIPT_DIR/CoreHub/Core/MvCameraControl.dll"
       [[ -f "$hik_dll" ]] && cp -v "$hik_dll" "$EXPORT_DIR/"
+      # 4b) Full HikRobot MVS runtime (DLLs + .cti producers + ThirdParty/) so the
+      #     bundle runs on machines without MVS installed. Not in the repo -- pulled
+      #     from the local MVS install. Override the path with $HIK_MVS_RUNTIME, or
+      #     set it empty to skip (rely on MVS being installed on the target).
+      hik_rt="${HIK_MVS_RUNTIME-/c/Program Files (x86)/Common Files/MVS/Runtime/Win64_x64}"
+      if [[ -n "$hik_rt" && -d "$hik_rt" ]]; then
+        echo "==> Bundling HikRobot MVS runtime from: $hik_rt"
+        cp -r "$hik_rt"/. "$EXPORT_DIR/"
+      elif [[ -n "$hik_rt" ]]; then
+        echo "WARN: HikRobot MVS runtime not found at '$hik_rt' (set HIK_MVS_RUNTIME). The bundle will need MVS installed on the target machine." >&2
+      fi
+      # 5) MindVision SDK runtime DLL (FEATURE_MINDVISION). visSele.exe imports
+      #    it by the name MVCAMSDK_X64.DLL; the repo ships it as MVCAMSDK.dll.
+      mv_dll="$SCRIPT_DIR/contrib/MindVision_GIGE/win_x64/lib/MVCAMSDK.dll"
+      [[ -f "$mv_dll" ]] && cp -v "$mv_dll" "$EXPORT_DIR/MVCAMSDK_X64.DLL"
       ;;
     *)
       echo "==> Bundling native binaries -> $EXPORT_DIR"

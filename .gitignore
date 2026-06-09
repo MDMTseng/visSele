@@ -75,3 +75,6 @@ InspectionCore/MatchingEngine/build/
 Peripheral/*/.cache
 InspectionCore/build/
 CoreHub/
+
+# build bundle (artifacts)
+InspectionCore/dist/

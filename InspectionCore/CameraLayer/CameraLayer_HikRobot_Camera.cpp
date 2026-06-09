@@ -201,9 +201,15 @@ CameraLayer::status CameraLayer_HikRobot_Camera::ExtractFrame(uint8_t *imgBuffer
   LOGI("pType:%X PixelType_Gvsp_BayerGB8:%X", pType,PixelType_Gvsp_BayerGB8);
   if(pType == PixelType_Gvsp_Mono8)
   {
-    
+
     int w=_cached_frame_info->nWidth;
     int h=_cached_frame_info->nHeight;
+    if(channelCount==1)
+    {
+      // Native gray: copy straight through, no replicate-to-BGR.
+      memcpy(imgBuffer, _cached_pData, (size_t)w*h);
+      return ACK;
+    }
     for(int i=0;i<h;i++)
     {
       uint8_t* src_Pix_Gray=_cached_pData+i*w;
@@ -318,7 +324,9 @@ void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_O
   _fi.offset_y =  pFrameInfo->nOffsetY;
   _fi.width =  pFrameInfo->nWidth;
   _fi.height = pFrameInfo->nHeight;
-  _fi.channelCount=3;
+  // Report the true channel count so the pipeline can keep a mono sensor as a
+  // 1-channel frame (no replicate-to-BGR). Color/Bayer is delivered as BGR8.
+  _fi.channelCount = (pType == PixelType_Gvsp_Mono8) ? 1 : 3;
   _fi.pixelBits=8*_fi.channelCount; // CameraLayer::frameInfo uses pixelBits
   fi=_fi;
   callback(*this, CameraLayer::EV_IMG, context);

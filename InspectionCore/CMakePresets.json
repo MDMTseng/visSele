@@ -53,6 +53,12 @@
       }
     },
     {
+      "name": "win-mingw-ninja",
+      "inherits": "win-mingw",
+      "displayName": "Windows MSYS2/MinGW + Ninja (compile-time profiling)",
+      "generator": "Ninja"
+    },
+    {
       "name": "win-mingw-cross",
       "inherits": ["base", "vcpkg"],
       "displayName": "Windows x86_64 cross-compile from macOS (mingw-w64)",
@@ -74,6 +80,7 @@
     { "name": "mac-arm64-opencv", "configurePreset": "mac-arm64-opencv" },
     { "name": "linux-x64", "configurePreset": "linux-x64" },
     { "name": "win-mingw", "configurePreset": "win-mingw" },
+    { "name": "win-mingw-ninja", "configurePreset": "win-mingw-ninja" },
     { "name": "win-mingw-cross", "configurePreset": "win-mingw-cross" }
   ]
 }

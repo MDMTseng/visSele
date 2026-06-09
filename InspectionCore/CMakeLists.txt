@@ -325,6 +325,10 @@ endif()
 add_executable(calib_chessboard tools/calib_chessboard.cpp)
 target_link_libraries(calib_chessboard PRIVATE MatchingEngine)
 
+# jpeg_bench -- imencode timing micro-benchmark (BGR vs grayscale, ~5MP).
+add_executable(jpeg_bench tools/jpeg_bench.cpp)
+target_link_libraries(jpeg_bench PRIVATE MatchingEngine)
+
 # copy aravis dylib next to the binary for rpath loading (mac)
 if(FEATURE_ARAVIS)
   add_custom_command(TARGET visSele POST_BUILD

@@ -182,6 +182,31 @@ cp -r InspectionCore/Core0_1/data dist/
 
 To use a real HikRobot camera, install MVS from HikRobot's site so the GenICam DLLs (`GenApi_*.dll`, `GCBase_*.dll`, `MvRender.dll`) are on `PATH`, then toggle the camera type in your camera setting JSON.
 
+### Windows — from PowerShell (no MSYS2 shell needed)
+
+Once MSYS2 + vcpkg are installed (steps above), two helper scripts in
+`InspectionCore/Core0_1/` let you build/iterate straight from PowerShell. They
+set the toolchain env for you (MinGW on `PATH`, `VCPKG_ROOT`,
+`VCPKG_DEFAULT_HOST_TRIPLET=x64-mingw-static`).
+
+| Script | Purpose |
+|---|---|
+| `build.ps1` | full build **+ DLL bundle** (deploy). Thin wrapper over `build.sh`. Switches: `-Debug`, `-Release`, `-Clean`, `-NoBundle`. Bare call = `-Release` → `dist\win`. |
+| `dev.ps1` | **fast inner loop**: incremental compile + run in place (skips configure/bundle). Switches: `-NoRun`, `-Probe`, `-Port N`, `-Config Debug\|Release`. |
+
+```powershell
+cd InspectionCore\Core0_1
+.\build.ps1 -Release      # Release build, bundled+runnable -> dist\win
+.\build.ps1 -Debug        # Debug build,   bundled         -> dist\win_debug
+.\dev.ps1                 # edit-compile-run loop (fast); .\dev.ps1 -Probe for JPEGq logging
+```
+
+The bundle (`build.ps1` / `build.sh -e`) is self-contained: it copies the MinGW
+runtime DLLs, the MindVision `MVCAMSDK_X64.DLL`, and the full HikRobot MVS
+runtime, so `dist\win` runs on a machine without the camera SDKs installed.
+Run `visSele.exe` from `dist\win`, **not** from `build\win-mingw\` (that has no
+camera DLLs).
+
 ---
 
 ## 4 · Cross-compile Windows binary from macOS

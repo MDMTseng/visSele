@@ -4,12 +4,12 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Dev-only Vite config. Production builds still use webpack (npm run build).
-// Runs on :8081 alongside the webpack dev server (:8080) so we can A/B.
+// Dev Vite config (dev server on :8081). Production builds use vite.config.prod.mjs
+// via `npm run build`. (The legacy webpack/babel build path has been removed.)
 const root = path.dirname(fileURLToPath(import.meta.url));
 const r = (p) => path.resolve(root, p);
 
-// Serve index.dev.html at "/" so the prod index.html (used by webpack/export) stays untouched.
+// Serve index.dev.html at "/" so the dev entry is used regardless of URL.
 // Many source files are .js but contain JSX. @vitejs/plugin-react disables Vite's
 // built-in esbuild JSX transform and itself skips JSX in .js, so transform it here
 // (before plugin-react) — plugin-react then only adds React-Refresh to plain JS.
@@ -24,7 +24,7 @@ const jsxInJs = {
 };
 
 // Serve index.dev.html for "/" and "/index.html" (and any query/hash variant) so the
-// prod index.html — which points at the webpack dist/ bundle — is never served by Vite.
+// dev entry is always used, regardless of the requested path.
 const devHtmlAtRoot = {
   name: 'dev-html-at-root',
   configureServer(server) {
