@@ -6,3 +6,5 @@ legacy-golden-build/
 baseline/*.png
 shot-*.png
 *.current.json
+
+tools/webctl/insp_sample.jpg

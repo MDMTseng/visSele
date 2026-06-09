@@ -4750,6 +4750,21 @@ CameraLayer *getCamera(int initCameraType = 0)
   //   }
   // }
   camLayerMan.discover();
+  // FORCE_BMP_CAROUSEL=<folder> -> ignore real cameras and run the BMP carousel
+  // on that folder, so the live WS pipeline can be driven headlessly with
+  // deterministic frames (e.g. the Node insp_driver for CI/regression testing).
+  if (const char *bmpDir = std::getenv("FORCE_BMP_CAROUSEL")) {
+    bool present = false;
+    for (auto &b : camLayerMan.camBasicInfo) if (b.vender == "CameraLayer_BMP_carousel") { present = true; break; }
+    if (!present) CameraLayer_BMP_carousel::listAddDevices(camLayerMan.camBasicInfo);
+    for (auto &b : camLayerMan.camBasicInfo) if (b.vender == "CameraLayer_BMP_carousel") {
+      const char *dir = (bmpDir[0]) ? bmpDir : "data/BMP_carousel_test";
+      LOGE("FORCE_BMP_CAROUSEL: using BMP carousel folder '%s'", dir);
+      camera = camLayerMan.connectCamera(b.driver_name, b.id, dir, CameraLayer_Callback_GIGEMV, NULL);
+      if (camera) camera->SetFrameRate(30);
+      return camera;
+    }
+  }
   if(camLayerMan.camBasicInfo.size()>0)
   {
     CameraLayer::BasicCameraInfo BCamInfo = camLayerMan.camBasicInfo[0];
