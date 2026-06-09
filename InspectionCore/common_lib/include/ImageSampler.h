@@ -300,6 +300,14 @@ class ImageSampler
     ret_RGB[2] = sampleImage_ImgCoord_cv(m, pos, doNearest, 2);
     return 0;
   }
+  // Single-channel variant: one ideal2img + one bilinear+backlight sample.
+  // For a gray working image this is ~3x less work than sampleImage3.
+  float sampleImage1_IdealCoord(const cv::Mat &m, float imgPos[2], int doNearest=1)
+  {
+    ideal2img(imgPos);
+    acv_XY pos = { imgPos[0], imgPos[1] };
+    return sampleImage_ImgCoord_cv(m, pos, doNearest, 0);
+  }
 
   float sampleAngleOffset(float angle)
   {

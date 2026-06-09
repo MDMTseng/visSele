@@ -46,8 +46,8 @@ std::mutex matchingEnglock;
 
 bool SKIP_NA_DATA_VIEW=false;
 
-int imageQueueSkipSize = 0;
-int datViewQueueSkipSize = 0;
+int imageQueueSkipSize = 5;
+int datViewQueueSkipSize = 5;
 int DATA_VIEW_MAX_FPS=20;
 // SEND_acvImage compression mode. 0 = legacy raw RGBA (4 B / px) for back-compat
 // with current WebUI; 1-100 = JPEG with that quality value. Set via the BPG
@@ -647,19 +647,12 @@ typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst, size_t dstLen, uint8_t *src, s
 // cv::Mat-native ImageDownSampling. Walks the dst grid, samples src at
 // downScale*step with the calib-aware ImageSampler when provided (else direct
 // pixel fetch). Mirrors the acvImage body bytewise on the no-sampler branch.
-void ImageDownSampling(cv::Mat &dst, const cv::Mat &src_in, int downScale,
+void ImageDownSampling(cv::Mat &dst, const cv::Mat &src, int downScale,
                        ImageSampler *sampler, int doNearest = 1,
                        int X = -1, int Y = -1, int W = -1, int H = -1)
 {
-  if (src_in.empty()) return;
-  // Accept a 1-channel gray frame (mono camera) by promoting to B=G=R up front,
-  // so the sampler + body below stay 3-channel. dst remains CV_8UC3 (the wire
-  // format detects B==G==R and sends a 1-component JPEG anyway).
-  thread_local cv::Mat _src3;
-  const cv::Mat &src = (src_in.channels() == 1)
-                         ? (cv::cvtColor(src_in, _src3, cv::COLOR_GRAY2BGR), _src3)
-                         : src_in;
-  if (src.type() != CV_8UC3) return;
+  if (src.empty() || (src.type() != CV_8UC3 && src.type() != CV_8UC1)) return;
+  const int srcCn = src.channels();   // 1 (mono gray) or 3 (B=G=R) -- sampled accordingly
   cv::Mat src_c = src.isContinuous() ? src : src.clone();
   int X2 = src_c.cols - 1, Y2 = src_c.rows - 1;
   int xx = (X < 0) ? 0 : (X >= X2 ? X2 - 1 : X);
@@ -683,17 +676,27 @@ void ImageDownSampling(cv::Mat &dst, const cv::Mat &src_in, int downScale,
       if (sampler)
       {
         float coord[2] = { (float)src_j, (float)src_i };
-        float bgr[3];
-        sampler->sampleImage3_IdealCoord(src_c, coord, bgr, doNearest);
-        if (bgr[0] > 255) bgr[0] = 255;
-        if (bgr[1] > 255) bgr[1] = 255;
-        if (bgr[2] > 255) bgr[2] = 255;
-        BSum = (int)bgr[0]; GSum = (int)bgr[1]; RSum = (int)bgr[2];
+        if (srcCn == 1)
+        {
+          float g = sampler->sampleImage1_IdealCoord(src_c, coord, doNearest);  // gray: 1 sample, not 3
+          if (g > 255) g = 255;
+          BSum = GSum = RSum = (int)g;
+        }
+        else
+        {
+          float bgr[3];
+          sampler->sampleImage3_IdealCoord(src_c, coord, bgr, doNearest);
+          if (bgr[0] > 255) bgr[0] = 255;
+          if (bgr[1] > 255) bgr[1] = 255;
+          if (bgr[2] > 255) bgr[2] = 255;
+          BSum = (int)bgr[0]; GSum = (int)bgr[1]; RSum = (int)bgr[2];
+        }
       }
       else
       {
-        const uint8_t *sPix = src_c.ptr<uint8_t>(src_i) + src_j * 3;
-        BSum = sPix[0]; GSum = sPix[1]; RSum = sPix[2];
+        const uint8_t *sPix = src_c.ptr<uint8_t>(src_i) + src_j * srcCn;
+        if (srcCn == 1) { BSum = GSum = RSum = sPix[0]; }
+        else            { BSum = sPix[0]; GSum = sPix[1]; RSum = sPix[2]; }
       }
       uint8_t *dPix = dRow + (j - sxStart) * 3;
       dPix[0] = BSum; dPix[1] = GSum; dPix[2] = RSum;
@@ -3913,32 +3916,30 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
     if ((!sendJpg))
     {
       int _downSampLevel=downSampLevel;
+      if (_downSampLevel <= 0) _downSampLevel = 1;
 
+      iminfo = (BPG_protocol_data_acvImage_Send_info){ NULL, (uint16_t)_downSampLevel };
+      iminfo.fullHeight = capImg.rows;
+      iminfo.fullWidth = capImg.cols;
+
+      if (_downSampLevel == 1)
       {
-
-        if (_downSampLevel <= 0)
-        {
-          _downSampLevel = 1;
-        }
-        // if(downSampLevel==7)
-        //   downSampLevel=5;
-        // else
-        //   downSampLevel=7;
-        iminfo = (BPG_protocol_data_acvImage_Send_info){ NULL, (uint16_t)_downSampLevel };
-
+        // DL:1 -> downScale is a no-op, so skip the per-pixel calib sampling AND
+        // the downscale buffer copy entirely; hand the working image straight to
+        // the encoder. (No calibration is applied to the live full-res view.)
+        iminfo.offsetX = 0;
+        iminfo.offsetY = 0;
+        iminfo.img = &capImg;
+      }
+      else
+      {
         iminfo.offsetX = (ImageCropX / _downSampLevel) * _downSampLevel;
         iminfo.offsetY = (ImageCropY / _downSampLevel) * _downSampLevel;
-
-        iminfo.fullHeight = capImg.rows;
-        iminfo.fullWidth = capImg.cols;
-        int cropW = ImageCropW;
-        int cropH = ImageCropH;
-
-        ImageSampler *sampler = (true) ? bacpac->sampler : NULL;
+        ImageSampler *sampler = bacpac->sampler;
         ImageDownSampling(test1_buff, capImg, _downSampLevel, sampler, 1,
-                          iminfo.offsetX, iminfo.offsetY, cropW, cropH);
+                          iminfo.offsetX, iminfo.offsetY, ImageCropW, ImageCropH);
+        iminfo.img = &test1_buff;
       }
-      iminfo.img = &test1_buff;
 
       bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("IM", NULL);
       //BPG_protocol_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
@@ -5104,6 +5105,47 @@ char* PatternRest(char *str, const char *pattern)
 
 
 #include <vector>
+
+// ---- headless continuous inspection (--insp-cont) -----------------------
+// Drives a camera / BMP_carousel through a pre-loaded def for N frames and
+// logs per-frame timing -- the live capture+inspection path, no WebUI. Used
+// to debug perf / the gray pipeline / matching off the real frame source.
+struct HeadlessInspCont {
+  int idx, target;
+  MatchingEngine *me;
+  FeatureManager_BacPac *bp;
+  double sumMs, minMs, maxMs;
+};
+static HeadlessInspCont g_inspCont;
+
+static CameraLayer::status HeadlessInspContCB(CameraLayer &cl, int type, void *ctx_)
+{
+  if (type != CameraLayer::EV_IMG) return CameraLayer::NAK;
+  HeadlessInspCont *S = (HeadlessInspCont *)ctx_;
+  if (S->idx >= S->target) return CameraLayer::ACK;
+
+  CameraLayer::frameInfo fi = cl.GetFrameInfo();
+  int ch = (fi.channelCount == 1) ? 1 : 3;
+  static cv::Mat frame, inspImg;
+  frame.create(fi.height, fi.width, ch == 1 ? CV_8UC1 : CV_8UC3);
+  if (cl.ExtractFrame(frame.data, ch, (size_t)fi.width * fi.height) != CameraLayer::ACK)
+    return CameraLayer::NAK;
+  // mirror the live inspection-center reduction: mono stays 1-ch gray; a
+  // color/3-ch frame is reduced to its red channel (the gray working image).
+  if (frame.channels() == 1) inspImg = frame;
+  else cv::extractChannel(frame, inspImg, 2);
+
+  clock_t t0 = clock();
+  ImgInspection(*S->me, inspImg, S->bp, &cl, 1);     // uses features already loaded in me
+  double ms = (double)(clock() - t0) * 1000.0 / CLOCKS_PER_SEC;
+  const FeatureReport *rep = S->me->GetReport();
+  LOGE("[INSP-CONT] frame %3d  %dx%d ch=%d  insp=%.1fms  report=%s",
+       S->idx, fi.width, fi.height, ch, ms, rep ? "ok" : "null");
+  S->sumMs += ms; if (ms < S->minMs) S->minMs = ms; if (ms > S->maxMs) S->maxMs = ms;
+  S->idx++;
+  return CameraLayer::ACK;
+}
+
 int cp_main(int argc, char **argv)
 {
   // {
@@ -5242,6 +5284,78 @@ int cp_main(int argc, char **argv)
     cJSON_Delete(jobj);
     free(jstr);
     return 0;
+  }
+
+  // Headless CONTINUOUS inspection (debug the live capture+inspect path, no UI):
+  //   visSele --insp-cont <def.hydef> [N=30] [driverFilter] [bmp_folder]
+  // Drives the connected camera (or BMP_carousel fallback) for N frames through
+  // the def, logging per-frame timing + a min/avg/max summary, then exits.
+  for (int ai = 1; ai < argc; ai++)
+  {
+    if (strcmp(argv[ai], "--insp-cont") != 0) continue;
+    if (ai + 1 >= argc) { LOGE("--insp-cont needs <def> [N] [driverFilter] [folder]"); return 2; }
+    const char *defPath = argv[ai + 1];
+    int N = (ai + 2 < argc) ? atoi(argv[ai + 2]) : 30;
+    if (N <= 0) N = 30;
+    std::string driverFilter = (ai + 3 < argc) ? argv[ai + 3] : "";
+    std::string bmpFolder    = (ai + 4 < argc) ? argv[ai + 4] : "data/BMP_carousel_test";
+
+    // Load the def ONCE into the engine + prime sampler calib (like --insp).
+    char *ds = ReadText(defPath);
+    if (!ds) { LOGE("--insp-cont: cannot read def %s", defPath); return 3; }
+    if (cJSON *dj = cJSON_Parse(ds)) {
+      neutral_bacpac.sampler->getCalibMap()->calibPpB  = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.ppb2b");
+      neutral_bacpac.sampler->getCalibMap()->calibmmpB = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.mmpb2b");
+      cJSON_Delete(dj);
+    }
+    matchingEng.ResetFeature();
+    matchingEng.AddMatchingFeature(ds);   // features stay loaded for the per-frame ImgInspection()
+    free(ds);
+
+    // Pick a camera: first discovered, or the one matching driverFilter.
+    camLayerMan.discover();
+    bool wantBMP = (driverFilter == "bmp" || driverFilter == "BMP_carousel" ||
+                    driverFilter == "CameraLayer_BMP_carousel");
+    if (wantBMP) {
+      // BMP_carousel is only auto-discovered as a no-hardware fallback; force-add
+      // it so it can be used even while a real camera is connected.
+      bool present = false;
+      for (auto &b : camLayerMan.camBasicInfo) if (b.vender == "CameraLayer_BMP_carousel") { present = true; break; }
+      if (!present) CameraLayer_BMP_carousel::listAddDevices(camLayerMan.camBasicInfo);
+    }
+    int camIdx = -1;
+    for (size_t i = 0; i < camLayerMan.camBasicInfo.size(); i++) {
+      auto &b = camLayerMan.camBasicInfo[i];
+      bool match = wantBMP ? (b.vender == "CameraLayer_BMP_carousel")
+                           : (driverFilter.empty() || b.driver_name == driverFilter || b.vender == driverFilter);
+      if (match) { camIdx = (int)i; break; }
+    }
+    if (camIdx < 0) { LOGE("--insp-cont: no camera (filter='%s')", driverFilter.c_str()); return 5; }
+    auto &BC = camLayerMan.camBasicInfo[camIdx];
+    bool isBMP = (BC.vender == "CameraLayer_BMP_carousel");
+    LOGE("[INSP-CONT] camera: driver=%s id=%s vender=%s%s",
+         BC.driver_name.c_str(), BC.id.c_str(), BC.vender.c_str(), isBMP ? " (BMP carousel)" : "");
+
+    g_inspCont = { 0, N, &matchingEng, &neutral_bacpac, 0.0, 1e18, 0.0 };
+    CameraLayer *cam = camLayerMan.connectCamera(BC.driver_name, BC.id, isBMP ? bmpFolder : "",
+                                                 HeadlessInspContCB, &g_inspCont);
+    if (!cam) { LOGE("--insp-cont: connectCamera failed"); return 5; }
+    if (isBMP) cam->SetFrameRate(120);   // cycle the carousel quickly
+    cam->TriggerMode(0);                  // continuous / free-run
+    cam->StartAquisition();
+
+    LOGE("[INSP-CONT] running %d frames ...", N);
+    for (int waited = 0; g_inspCont.idx < N && waited < 120000; waited += 10)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    cam->StopAquisition();
+
+    int done = g_inspCont.idx;
+    if (done > 0)
+      LOGE("[INSP-CONT] DONE %d/%d frames  insp avg=%.1f min=%.1f max=%.1f ms",
+           done, N, g_inspCont.sumMs / done, g_inspCont.minMs, g_inspCont.maxMs);
+    else
+      LOGE("[INSP-CONT] no frames delivered (camera/folder?)");
+    return done > 0 ? 0 : 6;
   }
 
   // int sret = LoadCameraCalibrationFile("data/default_camera_param.json",calib_bacpac.sampler);
