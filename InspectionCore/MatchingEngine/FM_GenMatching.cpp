@@ -705,9 +705,10 @@ int FM_GenMatching::FeatureMatching(cv::Mat &cv_img)
     else
     {
 
+      const int _cn = cv_img.channels();   // ch0; 1 (gray) or 3 (B=G=R)
       for(int i=Y;i<Y+H;i++)for(int j=X;j<X+W;j++)
       {
-        cJSON *n = cJSON_CreateNumber(cv_img.ptr<uint8_t>(i)[j*3]);
+        cJSON *n = cJSON_CreateNumber(cv_img.ptr<uint8_t>(i)[j*_cn]);
         cJSON_AddItemToArray(pixels, n);
       }
       cJSON_AddItemToObject(jsonRep, "pixels", pixels);

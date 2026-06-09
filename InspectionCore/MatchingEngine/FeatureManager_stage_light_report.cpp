@@ -275,7 +275,7 @@ int backLightBlockCalc(const cv::Mat &img, int X, int Y, int W, int H, stage_lig
     {
       int sx = X + (rand() % W);
       int sy = Y + (rand() % H);
-      int bri = img.ptr<uint8_t>(sy)[sx * 3];
+      int bri = img.ptr<uint8_t>(sy)[sx * img.channels()];   // ch0; 1 (gray) or 3 (B=G=R)
       if (bri < min_bri_thres)
       {
         if (reSampCount < samplingCount / 2)
@@ -374,7 +374,7 @@ int backLightBlockCalc(const cv::Mat &img, int X, int Y, int W, int H, stage_lig
 int backLightNonBackGroundExclusion(const cv::Mat &img, cv::Mat &backGround, cv::Mat &buffer,
   int nonBG_thres, int nonBG_spread_thres)
 {
-  if (img.empty() || img.type() != CV_8UC3) return -1;
+  if (img.empty() || (img.type() != CV_8UC3 && img.type() != CV_8UC1)) return -1;
   const int W = img.cols, H = img.rows;
   backGround.create(H, W, CV_8UC3);
   buffer.create(H, W, CV_8UC3);

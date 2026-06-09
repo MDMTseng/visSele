@@ -647,11 +647,19 @@ typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst, size_t dstLen, uint8_t *src, s
 // cv::Mat-native ImageDownSampling. Walks the dst grid, samples src at
 // downScale*step with the calib-aware ImageSampler when provided (else direct
 // pixel fetch). Mirrors the acvImage body bytewise on the no-sampler branch.
-void ImageDownSampling(cv::Mat &dst, const cv::Mat &src, int downScale,
+void ImageDownSampling(cv::Mat &dst, const cv::Mat &src_in, int downScale,
                        ImageSampler *sampler, int doNearest = 1,
                        int X = -1, int Y = -1, int W = -1, int H = -1)
 {
-  if (src.empty() || src.type() != CV_8UC3) return;
+  if (src_in.empty()) return;
+  // Accept a 1-channel gray frame (mono camera) by promoting to B=G=R up front,
+  // so the sampler + body below stay 3-channel. dst remains CV_8UC3 (the wire
+  // format detects B==G==R and sends a 1-component JPEG anyway).
+  thread_local cv::Mat _src3;
+  const cv::Mat &src = (src_in.channels() == 1)
+                         ? (cv::cvtColor(src_in, _src3, cv::COLOR_GRAY2BGR), _src3)
+                         : src_in;
+  if (src.type() != CV_8UC3) return;
   cv::Mat src_c = src.isContinuous() ? src : src.clone();
   int X2 = src_c.cols - 1, Y2 = src_c.rows - 1;
   int xx = (X < 0) ? 0 : (X >= X2 ? X2 - 1 : X);
@@ -4382,24 +4390,23 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   }
   clock_t t = clock();
 
-  // Build the CV_8UC3 "red-channel grayscale" working image the matching engine
-  // requires (its contour walk assumes CV_8UC3 BGR). Two inputs are possible now:
-  //   * 1-channel gray frame (mono camera) -> just replicate to BGR, and
-  //   * 3-channel color/replicated frame    -> take the R channel (legacy
-  //     acvCloneImage(..,2) behavior; unchanged for color cameras).
-  // thread_local scratch is reused across frames (no per-frame allocation).
+  // Reduce the captured frame to the gray working image used by inspection +
+  // transport. A mono camera (1-channel) keeps its native gray with no copy and
+  // flows 1-channel the whole way; a color/replicated frame (3-channel) takes the
+  // red channel as before, kept as B=G=R CV_8UC3 so color-camera behavior is
+  // byte-identical (and avoids a per-frame 3<->1 channel realloc of the pool slot).
   {
     cv::Mat &im = imgPipe->img;
-    thread_local cv::Mat tposed, graySrc;
-    cv::Mat *src = &im;
-    if (img_transpose) { cv::transpose(im, tposed); src = &tposed; }
-    if (src->channels() == 1) {
-      if (src == &im) im.copyTo(graySrc);   // mono, no transpose: detach before overwriting im
-      else            graySrc = *src;        // transposed buffer is already separate
+    if (im.channels() == 1) {
+      if (img_transpose) { thread_local cv::Mat t; cv::transpose(im, t); t.copyTo(im); }
+      // else: im already IS the 1-channel gray working image -- nothing to do.
     } else {
-      cv::extractChannel(*src, graySrc, 2);  // red channel
+      thread_local cv::Mat tposed, graySrc;
+      cv::Mat *src = &im;
+      if (img_transpose) { cv::transpose(im, tposed); src = &tposed; }
+      cv::extractChannel(*src, graySrc, 2);           // red channel
+      cv::cvtColor(graySrc, im, cv::COLOR_GRAY2BGR);  // B=G=R, CV_8UC3
     }
-    cv::cvtColor(graySrc, im, cv::COLOR_GRAY2BGR);  // working image = B=G=R, CV_8UC3
   }
 
 

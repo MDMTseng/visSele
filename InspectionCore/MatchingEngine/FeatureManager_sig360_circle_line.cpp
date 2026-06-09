@@ -5186,9 +5186,10 @@ static float graySampleBilinear(const cv::Mat &im, float x, float y)
   const int W = im.cols, H = im.rows;
   if (x < 0 || y < 0 || x >= W - 1 || y >= H - 1) return -1;
   int x0 = (int)x, y0 = (int)y; float fx = x - x0, fy = y - y0;
+  const int cn = im.channels();   // 1 (native gray) or 3 (B=G=R, sample ch0)
   const unsigned char *r0 = im.ptr<unsigned char>(y0);
   const unsigned char *r1 = im.ptr<unsigned char>(y0 + 1);
-  float a = r0[x0*3], b = r0[(x0+1)*3], c = r1[x0*3], d = r1[(x0+1)*3];
+  float a = r0[x0*cn], b = r0[(x0+1)*cn], c = r1[x0*cn], d = r1[(x0+1)*cn];
   return (a*(1-fx)+b*fx)*(1-fy) + (c*(1-fx)+d*fx)*fy;
 }
 bool convertGrayEdges2Signature(acv_XY center_lb, acv_XY ideal_center, const cv::Mat &grayOrig,
