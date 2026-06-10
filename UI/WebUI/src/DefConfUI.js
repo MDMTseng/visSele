@@ -1425,7 +1425,55 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const [cacheDef,setCacheDef]=useState(undefined);
   const [nowInspdata,setNowInspdata]=useState(undefined);
 
+  // Auto-orientation on entering DefConfUI: run ONE inspection just to learn the
+  // part's orientation so the canvas can rectify the reference image into the
+  // def's object frame. This is orientation-ONLY: it feeds the inspection report
+  // (RP) into redux (sets edit_info.inspReport, which the canvas reads for the
+  // image transform + cal_hits) but does NOT modify the deffile -- no shape
+  // adjust, no center/signature changes. Fires once per loaded def (keyed on
+  // defModelPath), once the def + reference image are ready.
+  const orientSentRef = useRef(null);
+  useEffect(() => {
+    if (!CORE_ID) return;
+    if (!edit_info || !edit_info._obj || !edit_info._obj.sig360info) return; // def not loaded
+    if (!edit_info.img) return;                                              // ref image not loaded
+    const key = edit_info.defModelPath || 'def';
+    if (orientSentRef.current === key) return;                              // already done for this def
 
+    // DEBOUNCE: the def-load dispatches an action bundle (its sig360_extractor
+    // packet runs Edit_info_reset, which clears inspReport). Wait for that to
+    // settle before inspecting, otherwise the inspReport we set gets wiped. The
+    // cleanup cancels the pending timer on every dep change, so this fires only
+    // once the def + image have stopped updating.
+    const t = setTimeout(() => {
+      if (orientSentRef.current === key) return;
+      orientSentRef.current = key;
+      let deffile = defFileGeneration(edit_info);
+      deffile.intrusionSizeLimitRatio = 1;
+      ACT_WS_SEND_BPG(CORE_ID, "II", 0,
+        {
+          definfo: deffile,
+          imgsrc: "__CACHE_IMG__",
+          img_property: { calibInfo: { type: "disable", mmpp: deffile.featureSet[0].mmpp } }
+        },
+        undefined,
+        {
+          resolve: (darr) => {
+            // Feed the inspection report into redux (canvas rectifies the image);
+            // pull the inspected image too. NO shape adjustment -> def untouched.
+            // The def is LOCKED right after load (defConf_lock_level=1), which
+            // filters out non-whitelisted actions -- mark these IGNORE_DEFCONF_LOCK
+            // so they pass (display-only; they don't edit the def).
+            let RP = darr.find(p => p.type == "RP");
+            if (RP !== undefined) { let a = BPG_Protocol.map_BPG_Packet2Act(RP); if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); } }
+            let IM = darr.find(p => p.type == "IM");
+            if (IM !== undefined) { let a = BPG_Protocol.map_BPG_Packet2Act(IM); if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); } }
+          },
+          reject: (e) => { }
+        });
+    },400);
+    return () => clearTimeout(t);
+  }, [CORE_ID, edit_info.defModelPath, edit_info.img, edit_info.sig360info]);
 
   let MenuSet= [
     <BASE_COM.IconButton

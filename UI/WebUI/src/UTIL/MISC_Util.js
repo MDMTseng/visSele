@@ -246,6 +246,24 @@ export function defFileGeneration(edit_info)
   if (typeof edit_info.sig_match_sim_thres === 'number')
     report.featureSet[0].sig_match_sim_thres = edit_info.sig_match_sim_thres;
 
+  // Strip transient per-frame inspection RESULTS from the shapes before they get
+  // hashed/saved. cal_hits (per-caliper edge hits) and the derived fit fields are
+  // inspection OUTPUT, not def configuration -- persisting them bloats the def
+  // file and churns the def hash on every inspection. Clone (shallow is enough;
+  // these are all top-level shape keys) so the live editor shapes keep them for
+  // on-canvas display.
+  {
+    const STRIP = ['cal_hits', '_pt1', '_pt2', 'adj_pt1', 'inspection_status', 'inspection_value'];
+    const feats = report.featureSet[0].features;
+    if (Array.isArray(feats)) {
+      report.featureSet[0].features = feats.map((s) => {
+        const c = { ...s };
+        for (const k of STRIP) delete c[k];
+        return c;
+      });
+    }
+  }
+
   let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
   report.featureSet[0]["__decorator"] = edit_info.__decorator;
 

@@ -1500,6 +1500,11 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     if (!mod || !mod.fitCameraCenter) return;
     const center = mod.fitCameraCenter(shape, this.db_obj);
     if (!center) return;
+    // A new/incomplete arc (undefined or collinear pt1/pt2/pt3) makes
+    // threePointToArc return NaN, so fitCameraCenter yields {x:NaN,y:NaN} -- a
+    // truthy object the !center guard misses. Feeding NaN to SetOffset corrupts
+    // the camera DOMMatrix and crashes the next worldTransform. Skip non-finite.
+    if (!Number.isFinite(center.x) || !Number.isFinite(center.y)) return;
 
     this.camera.SetOffset({
       x: -center.x,
