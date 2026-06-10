@@ -3,6 +3,7 @@
 
 import { connect } from 'react-redux'
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ComponentBoundary from './component/ComponentBoundary';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
@@ -1424,56 +1425,10 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
   const [cacheDef,setCacheDef]=useState(undefined);
   const [nowInspdata,setNowInspdata]=useState(undefined);
-
-  // Auto-orientation on entering DefConfUI: run ONE inspection just to learn the
-  // part's orientation so the canvas can rectify the reference image into the
-  // def's object frame. This is orientation-ONLY: it feeds the inspection report
-  // (RP) into redux (sets edit_info.inspReport, which the canvas reads for the
-  // image transform + cal_hits) but does NOT modify the deffile -- no shape
-  // adjust, no center/signature changes. Fires once per loaded def (keyed on
-  // defModelPath), once the def + reference image are ready.
-  const orientSentRef = useRef(null);
-  useEffect(() => {
-    if (!CORE_ID) return;
-    if (!edit_info || !edit_info._obj || !edit_info._obj.sig360info) return; // def not loaded
-    if (!edit_info.img) return;                                              // ref image not loaded
-    const key = edit_info.defModelPath || 'def';
-    if (orientSentRef.current === key) return;                              // already done for this def
-
-    // DEBOUNCE: the def-load dispatches an action bundle (its sig360_extractor
-    // packet runs Edit_info_reset, which clears inspReport). Wait for that to
-    // settle before inspecting, otherwise the inspReport we set gets wiped. The
-    // cleanup cancels the pending timer on every dep change, so this fires only
-    // once the def + image have stopped updating.
-    const t = setTimeout(() => {
-      if (orientSentRef.current === key) return;
-      orientSentRef.current = key;
-      let deffile = defFileGeneration(edit_info);
-      deffile.intrusionSizeLimitRatio = 1;
-      ACT_WS_SEND_BPG(CORE_ID, "II", 0,
-        {
-          definfo: deffile,
-          imgsrc: "__CACHE_IMG__",
-          img_property: { calibInfo: { type: "disable", mmpp: deffile.featureSet[0].mmpp } }
-        },
-        undefined,
-        {
-          resolve: (darr) => {
-            // Feed the inspection report into redux (canvas rectifies the image);
-            // pull the inspected image too. NO shape adjustment -> def untouched.
-            // The def is LOCKED right after load (defConf_lock_level=1), which
-            // filters out non-whitelisted actions -- mark these IGNORE_DEFCONF_LOCK
-            // so they pass (display-only; they don't edit the def).
-            let RP = darr.find(p => p.type == "RP");
-            if (RP !== undefined) { let a = BPG_Protocol.map_BPG_Packet2Act(RP); if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); } }
-            let IM = darr.find(p => p.type == "IM");
-            if (IM !== undefined) { let a = BPG_Protocol.map_BPG_Packet2Act(IM); if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); } }
-          },
-          reject: (e) => { }
-        });
-    },400);
-    return () => clearTimeout(t);
-  }, [CORE_ID, edit_info.defModelPath, edit_info.img, edit_info.sig360info]);
+  // NOTE: orientation auto-inspect + multi-image switching moved to the
+  // persistent <DefConfImageSwitcher/> (rendered by APP_DEFCONF_MODE) so the
+  // floating switcher + orientation survive across edit submodes (this neutral
+  // menu component unmounts when you enter a shape-edit menu).
 
   let MenuSet= [
     <BASE_COM.IconButton
@@ -2165,6 +2120,121 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, AC
 }
 
 
+// Persistent orientation + multi-image switcher. Rendered by APP_DEFCONF_MODE
+// (NOT the per-submode menu), so the floating image dropdown and the
+// auto-orientation survive across every edit menu (the neutral menu unmounts
+// when you enter a shape-edit submode). On entry it runs ONE orientation-only
+// inspection so the canvas rectifies the reference image to the def's object
+// frame; it discovers the def's sibling images (<base>*.{png,...}) and lets the
+// editor swap the background ON THE FLY (image-only load + re-orient) without
+// ever touching the deffile / shapes / edit mode.
+function DefConfImageSwitcher() {
+  const dispatch = useDispatch();
+  const edit_info = useSelector(state => state.UIData.edit_info);
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
+  const ACT_WS_SEND_BPG = (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
+
+  const [imageList, setImageList] = useState([]);            // [{name, path}]
+  const [currentImagePath, setCurrentImagePath] = useState(undefined);
+
+  // Orientation-only inspection on the core's current cached image -> feed RP/IM
+  // to redux so the canvas rectifies. Never modifies the deffile. IGNORE_DEFCONF_LOCK
+  // so the display actions pass the post-load lock filter.
+  const sendOrientationInspect = () => {
+    if (!CORE_ID || !edit_info || !edit_info._obj || !edit_info._obj.sig360info) return;
+    let deffile = defFileGeneration(edit_info);
+    deffile.intrusionSizeLimitRatio = 1;
+    ACT_WS_SEND_BPG(CORE_ID, "II", 0,
+      { definfo: deffile, imgsrc: "__CACHE_IMG__",
+        img_property: { calibInfo: { type: "disable", mmpp: deffile.featureSet[0].mmpp } } },
+      undefined,
+      { resolve: (darr) => {
+          let RP = darr.find(p => p.type == "RP");
+          if (RP !== undefined) { let a = BPG_Protocol.map_BPG_Packet2Act(RP); if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); } }
+          let IM = darr.find(p => p.type == "IM");
+          if (IM !== undefined) { let a = BPG_Protocol.map_BPG_Packet2Act(IM); if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); } }
+        }, reject: (e) => { } });
+  };
+
+  // Auto-orientation on entry, debounced past the def-load action bundle (whose
+  // sig360_extractor Edit_info_reset clears inspReport).
+  const orientSentRef = useRef(null);
+  useEffect(() => {
+    if (!CORE_ID) return;
+    if (!edit_info || !edit_info._obj || !edit_info._obj.sig360info) return;
+    if (!edit_info.img) return;
+    const key = edit_info.defModelPath || 'def';
+    if (orientSentRef.current === key) return;
+    const t = setTimeout(() => {
+      if (orientSentRef.current === key) return;
+      orientSentRef.current = key;
+      sendOrientationInspect();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [CORE_ID, edit_info.defModelPath, edit_info.img, edit_info.sig360info]);
+
+  // Image-only swap (LD with imgsrc, no deffile -> no def reload / Edit_info_reset),
+  // then re-orient. Def, shapes, edit mode, selection: untouched.
+  const switchImage = (imgPath) => {
+    if (!CORE_ID || !imgPath) return;
+    setCurrentImagePath(imgPath);
+    ACT_WS_SEND_BPG(CORE_ID, "LD", 0,
+      { imgsrc: imgPath, down_samp_level: IMG_LOAD_DOWNSAMP_LEVEL },
+      undefined,
+      { resolve: (darr) => {
+          let IM = darr.find(p => p.type == "IM");
+          if (IM !== undefined) { let a = BPG_Protocol.map_BPG_Packet2Act(IM); if (a !== undefined) { a.IGNORE_DEFCONF_LOCK = true; dispatch(a); } }
+          sendOrientationInspect();   // initial insp to get orientation for the new image (no deffile mod)
+        }, reject: (e) => { } });
+  };
+
+  // Discover sibling images via FB (folder list), once per loaded def.
+  const imgListRef = useRef(null);
+  useEffect(() => {
+    if (!CORE_ID || !edit_info || !edit_info.defModelPath) return;
+    const dmp = edit_info.defModelPath;
+    if (imgListRef.current === dmp) return;
+    imgListRef.current = dmp;
+    const slash = Math.max(dmp.lastIndexOf('/'), dmp.lastIndexOf('\\'));
+    const dir = slash >= 0 ? dmp.substring(0, slash) : '.';
+    const base = slash >= 0 ? dmp.substring(slash + 1) : dmp;
+    ACT_WS_SEND_BPG(CORE_ID, "FB", 0, { path: dir, depth: 1 }, undefined,
+      { resolve: (darr) => {
+          if (!(darr && darr[1] && darr[1].data && darr[1].data.ACK)) return;
+          const fs = darr[0] && darr[0].data;
+          const files = (fs && fs.files) || [];
+          const fdir = (fs && fs.path) || dir;
+          const imgs = files
+            .filter(f => f && f.type !== 'DIR' && typeof f.name === 'string'
+                         && f.name.indexOf(base) === 0 && /\.(png|jpe?g|bmp)$/i.test(f.name))
+            .map(f => ({ name: f.name, path: fdir + '/' + f.name }));
+          setImageList(imgs);
+          const cur = imgs.find(im => im.name.replace(/\.(png|jpe?g|bmp)$/i, '') === base) || imgs[0];
+          if (cur) setCurrentImagePath(cur.path);
+        }, reject: (e) => { } });
+  }, [CORE_ID, edit_info.defModelPath]);
+
+  if (imageList.length <= 1) return null;
+  return createPortal(
+    <div style={{
+      position: 'fixed', right: 12, bottom: 12, zIndex: 100000,
+      background: 'rgba(30,30,30,0.85)', color: '#eee',
+      padding: '6px 8px', borderRadius: 6,
+      boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+      display: 'flex', alignItems: 'center', gap: 6, fontSize: 12
+    }}>
+      <span style={{ color: '#bbb' }}>image</span>
+      <select value={currentImagePath || ''}
+        onChange={(e) => switchImage(e.target.value)}
+        style={{ height: 24, fontSize: 12, maxWidth: 240 }}>
+        {imageList.map(im => <option key={im.path} value={im.path}>{im.name}</option>)}
+      </select>
+    </div>,
+    document.body
+  );
+}
+
+
 class APP_DEFCONF_MODE extends React.Component {
 
   componentDidMount() {
@@ -2684,6 +2754,8 @@ class APP_DEFCONF_MODE extends React.Component {
         <ComponentBoundary name="DefConfCanvas" fallbackHeight="60vh">
           <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas) => { this.ec_canvas = canvas }} />
         </ComponentBoundary>
+
+        <DefConfImageSwitcher />
 
         <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}>
           {MenuSet}
