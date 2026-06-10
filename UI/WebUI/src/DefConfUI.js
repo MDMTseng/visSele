@@ -1152,7 +1152,10 @@ function SettingUI({})
     
   const ACT_Matching_Face_Update=(faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) };//-1(back)/0(both)/1(front)
   const ACT_Matching_Version_Update=(v) => { dispatch(DefConfAct.Matching_Version_Update(v)) };// 1=legacy, 2=phase2 dual-sig
-  const ACT_Inspection_Downsample_Update=(n) => { dispatch(DefConfAct.Inspection_Downsample_Update(n)) };// 1..8 (core caps at 4 today)
+  // NumberAccInput.onChange passes an event-like { target: { value: "<str>" } },
+  // not a raw number. Unwrap + parse so the (number-typed) reducers accept it.
+  const ACT_Inspection_Downsample_Update=(e) => { const n = parseFloat(e?.target?.value ?? e); if (Number.isFinite(n)) dispatch(DefConfAct.Inspection_Downsample_Update(n)) };// 1..8 (core caps at 4 today)
+  const ACT_Sig_Match_Sim_Thres_Update=(e) => { const v = parseFloat(e?.target?.value ?? e); if (Number.isFinite(v)) dispatch(DefConfAct.Sig_Match_Sim_Thres_Update(v)) };// 0..1, core default 0.9
 
   const DICT = useSelector(state => state.UIData.DICT);
   return [
@@ -1238,6 +1241,14 @@ function SettingUI({})
       max={8}
       value={edit_info.inspection_downsample || 1}
       onChange={ACT_Inspection_Downsample_Update}
+    />,
+    <br />,
+    <span>&nbsp;match sim thres&nbsp;</span>,
+    <NumberAccInput
+      min={0}
+      max={1}
+      value={edit_info.sig_match_sim_thres === undefined ? 0.9 : edit_info.sig_match_sim_thres}
+      onChange={ACT_Sig_Match_Sim_Thres_Update}
     />,
 
     <Divider orientation="left"/>,
@@ -1785,6 +1796,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       key="INST_CHECK"
       text="INST_CHECK" onClick={() => {
         let deffile = defFileGeneration(edit_info);
+        console.log("deffile",deffile);
         deffile.intrusionSizeLimitRatio=1;
         console.log("INST_CHECK");
         ACT_WS_SEND_BPG(CORE_ID,"II", 0, 
@@ -1805,12 +1817,18 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
             if(RP!==undefined)
             {
+              // Feed the inspection report into redux (sets edit_info.inspReport)
+              // so the def-conf canvas can rectify the image to the object frame
+              // and show cal_hits. INST_CHECK previously dispatched only the IM
+              // packet, so inspReport (hence the canvas `single`) was never set.
+              let rpAct = BPG_Protocol.map_BPG_Packet2Act(RP);
+              if (rpAct !== undefined) dispatch(rpAct);
+
               let insp_reports = GetObjElement(RP,["data","reports",0,"reports"]);
               if(insp_reports!==undefined&&  insp_reports.length>0)
               {
                 console.log(insp_reports);
                 let insp_rep = insp_reports[0];
-                edit_info._obj.setsig360infoCenter({x:insp_rep.cx,y:insp_rep.cy});
                 let modList = shape_list.map((shape,idx)=>{
                   let mod_shape=dclone(shape);
                   
@@ -2460,6 +2478,12 @@ class APP_DEFCONF_MODE extends React.Component {
                     let RP=darr.find(pkt=>pkt.type=="RP");
                     if(RP!==undefined)
                     {
+                      // Feed the inspection report into redux (sets edit_info.inspReport)
+                      // so the def-conf canvas can rectify the image + show cal_hits.
+                      // Same gap as INST_CHECK: only the manual shape adjust ran here.
+                      let rpAct = BPG_Protocol.map_BPG_Packet2Act(RP);
+                      if (rpAct !== undefined) this.props.DISPATCH(rpAct);
+
                       let insp_reports = GetObjElement(RP,["data","reports",0,"reports"]);
                       if(insp_reports.length>0)
                       {

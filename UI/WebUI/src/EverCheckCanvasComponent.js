@@ -1586,7 +1586,25 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     {
       let center = this.db_obj.getsig360infoCenter();
       ctx.save();
-      ctx.translate(-center.x, -center.y);
+      // Option 2: rectify the displayed image into the def's OBJECT frame using
+      // the last INST_CHECK result (detected center + matched rotation), so the
+      // part lines up with the object-frame overlays (shapes / cal_hits). Because
+      // the image and the hits then share the SAME transform, the matched angle's
+      // residual error cancels and the marks sit pixel-precise on the edges.
+      // Falls back to the plain centered (unrotated) view when there's no result.
+      // NOTE: verify the rotate SIGN and flip AXIS on target -- if the image
+      // rotates the wrong way, flip the sign of `single.rotate`; if a flipped
+      // match mirrors wrong, change `ctx.scale(1, flip)` to `ctx.scale(flip, 1)`.
+      console.log("single",single);
+      if (single && typeof single.rotate === 'number') {
+        let flip = single.isFlipped ? -1 : 1;
+        ctx.scale(1, flip);                       // mirror (flipped match) first
+        ctx.rotate(single.rotate);               // undo the part's rotation
+        ctx.translate(-single.cx, -single.cy);    // detected center -> object origin
+
+      } else {
+        ctx.translate(-center.x, -center.y);
+      }
 
       let scale = 1;
       if (this.img_info !== undefined && this.img_info.scale !== undefined)

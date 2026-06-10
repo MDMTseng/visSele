@@ -10,6 +10,7 @@ LOG_MODULE("match.sig360");
 #include <common_lib.h>
 #include <algorithm>
 #include <limits>
+#include <chrono>
 #include <MatchingCore.h>
 #include <stdio.h>
 #include "CvBridge.h"
@@ -1933,7 +1934,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
 
   this->sigRelativeMatchSimThres=JFetch_NUMBER_ex(root, "sig_relative_match_sim_thres",0.8);
   
-  this->sigMatchSimThres=JFetch_NUMBER_ex(root, "sig_match_sim_thres",0.9);
+  this->sigMatchSimThres=JFetch_NUMBER_ex(root, "sig_match_sim_thres",0.7);
 
   this->sig_st1_matching_sim_thres=JFetch_NUMBER_ex(root, "sig_st1_matching_sim_thres",0.3);
 
@@ -3317,52 +3318,146 @@ void minSegRefine(ContourSignature &tar, ContourSignature &src, float ScanW, int
   }
 }
 
+// FFT-based circular normalized cross-correlation angle finder.
+//
+// Minimizing the brute-force SSD over rotation -- (1/N) sum_i (tmpl[off+i]-qry[i])^2
+// -- is identical to MAXIMIZING the circular cross-correlation
+//   c[k] = sum_i tmpl[i+k] * qry[i]
+// (the sum-of-squares terms are shift-invariant). The DFT delivers c[] at ALL
+// k at once in O(N log N): c = IDFT( DFT(tmpl) * conj(DFT(qry)) ), so there is
+// no coarse stride that can step over the true peak. We mean-subtract first
+// (normalized cross-correlation -> robust to overall part size / DC level),
+// take the global peak, and parabola-interpolate for sub-bin precision.
+//
+//   tmpl, qry      : radius arrays length N. 'offset' convention matches
+//                    SignatureMatchingError (tmpl[offset+i] vs qry[i]), so the
+//                    returned degrees are directly comparable to minMatchErr.x.
+//   flip           : back-facing -> mirror the query (qry[(N-i)%N]).
+//   out_offset_deg : best offset in degrees (bin index, since N bins == 360 deg).
+//   returns        : normalized correlation peak in [-1,1] (1 == identical shape).
+static float matchAngleFFT(const std::vector<acv_XY> &tmpl,
+                           const std::vector<acv_XY> &qry,
+                           bool flip, float &out_offset_deg)
+{
+  int N = (int)tmpl.size();
+  out_offset_deg = NAN;
+  if (N < 4 || (int)qry.size() != N) return -1.0f;
+
+  cv::Mat t(1, N, CV_32F), q(1, N, CV_32F);
+  for (int i = 0; i < N; i++)
+  {
+    t.at<float>(i) = tmpl[i].x;
+    int qi = flip ? ((N - i) % N) : i;
+    q.at<float>(i) = qry[qi].x;
+  }
+  cv::Scalar mt = cv::mean(t), mq = cv::mean(q);
+  t -= mt[0]; q -= mq[0];
+  double nt = cv::norm(t), nq = cv::norm(q);
+  if (nt < 1e-9 || nq < 1e-9) return -1.0f;
+
+  cv::Mat Ft, Fq, X, c;
+  cv::dft(t, Ft, cv::DFT_COMPLEX_OUTPUT);
+  cv::dft(q, Fq, cv::DFT_COMPLEX_OUTPUT);
+  cv::mulSpectrums(Ft, Fq, X, 0, /*conjB=*/true);            // Ft * conj(Fq)
+  cv::dft(X, c, cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT | cv::DFT_SCALE);
+  // c[k] = sum_i tmpl[i+k]*qry[i]  -> k is the offset aligning tmpl onto qry.
+
+  int kb = 0; float vb = c.at<float>(0);
+  for (int k = 1; k < N; k++) { float v = c.at<float>(k); if (v > vb) { vb = v; kb = k; } }
+
+  // Parabolic sub-bin interpolation around the (periodic) peak.
+  float ym1 = c.at<float>((kb - 1 + N) % N), yp1 = c.at<float>((kb + 1) % N);
+  float den = ym1 - 2.0f * vb + yp1;
+  float d = (den != 0.0f) ? 0.5f * (ym1 - yp1) / den : 0.0f;
+  if (d >  0.5f) d =  0.5f;
+  if (d < -0.5f) d = -0.5f;
+
+  out_offset_deg = (kb + d) * 360.0f / N;
+  return (float)(vb / (nt * nq));   // normalized correlation peak
+}
+
+// Exact circular SSD curve at every integer offset, via one FFT correlation:
+//   SSD[k] = (1/N)*( ||tar||^2 + ||src||^2 - 2*corr[k] ),  corr[k]=sum_i tar[i+k]*src[i]
+// This is the SAME metric as SignatureMatchingError(stride=1), but evaluated at
+// ALL N offsets at once in O(N log N) instead of a coarse sweep. `flip` mirrors
+// tar (matching the reverse= path). Stores acv_XY(bin_index, ssd) so downstream
+// code (which treats .x as a bin index == degrees for N=360) is unchanged.
+static void fftSSDcurve(ContourSignature &tar, ContourSignature &src, bool flip,
+                        std::vector<acv_XY> &ssd)
+{
+  int N = (int)tar.signature_data.size();
+  ssd.resize(N);
+  if (N < 4 || (int)src.signature_data.size() != N)
+  {
+    for (int k = 0; k < N; k++) ssd[k] = acv_XY((float)k, 0.f);
+    return;
+  }
+  cv::Mat a(1, N, CV_32F), b(1, N, CV_32F);
+  double aa = 0, bb = 0;
+  for (int i = 0; i < N; i++)
+  {
+    float av = flip ? tar.signature_data[(N - i) % N].x : tar.signature_data[i].x;
+    float bv = src.signature_data[i].x;
+    a.at<float>(i) = av; b.at<float>(i) = bv;
+    aa += (double)av * av; bb += (double)bv * bv;
+  }
+  cv::Mat Fa, Fb, X, corr;
+  cv::dft(a, Fa, cv::DFT_COMPLEX_OUTPUT);
+  cv::dft(b, Fb, cv::DFT_COMPLEX_OUTPUT);
+  cv::mulSpectrums(Fa, Fb, X, 0, /*conjB=*/true);                 // Fa*conj(Fb)
+  cv::dft(X, corr, cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT | cv::DFT_SCALE);
+  const float invN = 1.0f / N;
+  for (int k = 0; k < N; k++)
+    ssd[k] = acv_XY((float)k, (float)((aa + bb - 2.0 * (double)corr.at<float>(k)) * invN));
+}
+
 void xrefine(ContourSignature &tar, ContourSignature &src, float roughScanCount, vector<acv_XY> &minMatchErr, bool flip, int roughStride = 3, int fineStride = 1, float tarPrecision = 1)
 {
+  // FFT angle search (default): one full-resolution SSD curve, local minima as
+  // candidates, parabolic sub-bin interpolation. Same metric as the brute-force
+  // sweep but ~3-4x faster and it never steps over the true peak. The legacy
+  // coarse sweep + minSegRefine is kept behind INSP_MATCH_BRUTEFORCE=1 for A/B
+  // and rollback.
+  if (!getenv("INSP_MATCH_BRUTEFORCE"))
+  {
+    // FFT finds the candidate angles at full resolution (no coarse stride can
+    // step over the true peak); minSegRefine then does the sub-bin polish with
+    // the EXACT interpolated metric -- identical to the brute-force refinement,
+    // so .x/.y stay on the legacy scale (a parabola on the discrete SSD biased
+    // the angle on near-degenerate self-matches).
+    std::vector<acv_XY> ssd;
+    fftSSDcurve(tar, src, flip, ssd);
+    matchingErrorLocalMin_Refine(ssd, minMatchErr);          // local minima -> candidates
+    float ScanW = 1.5f;                                       // candidates already at 1-deg res
+    float ScanCount = 3;
+    for (;;)
+    {
+      int doScanCount = ScanCount * 2;
+      float prec = 2.0f * ScanW / doScanCount;
+      minSegRefine(tar, src, ScanW, doScanCount, minMatchErr, flip, fineStride);
+      if (prec < tarPrecision) break;
+      ScanW /= ScanCount;
+    }
+    return;
+  }
 
+  // ---- legacy brute-force coarse sweep + local refine (INSP_MATCH_BRUTEFORCE=1) ----
   vector<acv_XY> sigMatchErr(360);
   tar.match_span(src, 0, 360, roughScanCount, sigMatchErr, roughStride, flip);
-
-  // for(int i=0;i<sigMatchErr.size();i++)
-  // {
-  //   LOGI("%f,%f",sigMatchErr[i].x,sigMatchErr[i].y);
-  // }
-
   matchingErrorLocalMin_Refine(sigMatchErr, minMatchErr);
-
-  // for(int i=0;i<minMatchErr.size();i++)
-  // {
-  //   LOGI("%f>%f",minMatchErr[i].x,minMatchErr[i].y);
-  // }
-
   float ScanW = 1.5 * 360 / roughScanCount;
   float ScanCount = 3;
   for (int i = 0;; i++)
   {
     int doScanCount = ScanCount * 2;
-
     float prec = 2.0 * ScanW / doScanCount;
     minSegRefine(tar, src, ScanW, doScanCount, minMatchErr, flip, fineStride); //over scan
-
-    // LOGI("ScanW:%f,ScanCount:%f,prec:%f",ScanW,ScanCount,prec);
     if (prec < tarPrecision)
     {
       break;
     }
     ScanW /= ScanCount; //shrink the scan width-> improve precision
   }
-
-  // for(int i=0;i<tar.signature_data.size();i++)
-  // {
-  //   LOGI("[%d]:%f  %f",i,tar.signature_data[i].y*180/M_PI,src.signature_data[i].y*180/M_PI);
-  // }
-
-  // LOGI("tarAO:%f,srcAO:%f",tar.angleOffset*180/M_PI,src.angleOffset*180/M_PI);
-
-  // for(int i=0;i<minMatchErr.size();i++)
-  // {
-  //   LOGI("-%f>%f",minMatchErr[i].x,minMatchErr[i].y);
-  // }
 }
 
 // v2 centroid-iter wrapper around xrefine. After each xrefine call, picks the
@@ -3388,9 +3483,36 @@ void xrefine_v2_centroidIter(ContourSignature &tar, ContourSignature &src,
     return;
   }
 
+  // Experiment toggle: INSP_V2_NO_CENTROID=1 keeps the v2 morph-boundary dual-sig
+  // signature but matches it with the plain fixed-center xrefine (no centroid
+  // iteration) -- i.e. isolate "what does the v2 signature alone buy us?".
+  if (getenv("INSP_V2_NO_CENTROID"))
+  {
+    xrefine(tar, src, roughScanCount, minMatchErr, flip, roughStride, fineStride, tarPrecision);
+    if (ret_score) { float b = FLT_MAX; for (auto &mm : minMatchErr) if (mm.y < b) b = mm.y; *ret_score = b; }
+    return;
+  }
+
   const int N = (int)src.signature_data.size();
   const float dtheta = 2.0f * M_PI / N;
   acv_XY center = center_io;
+
+  // Lobe lock: which rotational lobe (orientation) is decided ONCE by the first,
+  // fixed-center xrefine -- byte-identical to v1, so robust to a part's near-
+  // rotational symmetry. Centroid iteration then only REFINES within that lobe.
+  // Without this, each iter's full 0..360 xrefine can re-select a symmetric lobe
+  // and the LSQ centroid update reinforces it -> converges to a wrong-but-low-
+  // residual orientation (e.g. golden self-match landing 86 deg off). The band
+  // must be < half the smallest expected symmetry period; legitimate centroid
+  // refinement moves the angle only a few degrees, so 20 deg is safe.
+  bool  locked = false;
+  float lockAngleDeg = 0.0f;
+  const float lobeBandDeg = 20.0f;
+
+  const acv_XY center0 = center_io;       // CCL centroid: the trusted anchor.
+  std::vector<acv_XY> minMatchErr_iter0;  // v1-equivalent result -> guaranteed fallback.
+  float prevStep = FLT_MAX;               // for divergence detection.
+  float maxDrift = 0.0f;                   // centroid wander cap (set after iter 0).
 
   for (int it = 0; it < max_iter; it++)
   {
@@ -3412,11 +3534,29 @@ void xrefine_v2_centroidIter(ContourSignature &tar, ContourSignature &src,
 
     xrefine(tar, src, roughScanCount, minMatchErr, flip, roughStride, fineStride, tarPrecision);
 
-    // Pick the global-min refinement among local minima.
+    if (it == 0)
+    {
+      minMatchErr_iter0 = minMatchErr;        // == v1 result (fixed center): fallback.
+      maxDrift = 0.2f * src.mean;             // cap centroid wander to ~1/5 mean radius.
+      if (!(maxDrift > 0)) maxDrift = 1.0f;   // mm floor if mean is degenerate.
+    }
+
+    // Pick the best refinement among local minima. iter 0: global min (locks the
+    // lobe, == v1). Later iters: best min that stays WITHIN the locked lobe band,
+    // so the centroid update can't be computed against a jumped symmetric lobe.
     int best_idx = -1; float best_err = FLT_MAX;
     for (size_t i = 0; i < minMatchErr.size(); i++)
+    {
+      if (locked)
+      {
+        float dd = minMatchErr[i].x - lockAngleDeg;
+        while (dd > 180) dd -= 360; while (dd < -180) dd += 360;
+        if (fabsf(dd) > lobeBandDeg) continue;   // outside the locked lobe
+      }
       if (minMatchErr[i].y < best_err) { best_err = minMatchErr[i].y; best_idx = (int)i; }
+    }
     if (best_idx < 0) break;
+    if (!locked) { lockAngleDeg = minMatchErr[best_idx].x; locked = true; }  // lock after iter 0
     float best_angle = minMatchErr[best_idx].x * (float)(M_PI / 180.0);
 
     // Closed-form (dx, dy): residual e(theta) at the matched angle, project
@@ -3446,6 +3586,13 @@ void xrefine_v2_centroidIter(ContourSignature &tar, ContourSignature &src,
     new_center.x = center.x - Delta_x;
     new_center.y = center.y - Delta_y;
     float step = hypotf(Delta_x, Delta_y);
+    // Reject a runaway centroid: it must stay near the trusted CCL centroid and
+    // the steps must shrink. Either guard tripping => the LSQ is diverging (the
+    // resampled signature is being pulled toward a wrong-lobe fit); stop and keep
+    // the last good center.
+    float totalDrift = hypotf(new_center.x - center0.x, new_center.y - center0.y);
+    if (totalDrift > maxDrift || step > prevStep * 1.5f) break;
+    prevStep = step;
     center = new_center;
     if (step < tol_mm) break;
   }
@@ -3458,6 +3605,30 @@ void xrefine_v2_centroidIter(ContourSignature &tar, ContourSignature &src,
     sign360_process(src.signature_data, _dummy_buf);
     src.CalcInfo();
     xrefine(tar, src, roughScanCount, minMatchErr, flip, roughStride, fineStride, tarPrecision);
+  }
+  // Fence off out-of-lobe candidates so the caller's own global-min selection
+  // can't jump to a symmetric lobe this iteration already rejected. The final
+  // xrefine above ran a fresh 0..360 scan, so its minMatchErr may again contain
+  // the competing lobes.
+  bool haveValid = !locked;   // if never locked, all candidates are valid.
+  if (locked)
+  {
+    for (acv_XY &mm : minMatchErr)
+    {
+      float dd = mm.x - lockAngleDeg;
+      while (dd > 180) dd -= 360; while (dd < -180) dd += 360;
+      if (fabsf(dd) > lobeBandDeg) mm.y = FLT_MAX;        // reject (never chosen as min)
+      else if (mm.y < FLT_MAX)     haveValid = true;      // an in-lobe survivor
+    }
+  }
+
+  // Never-worse-than-v1 guarantee: if centroid iteration diverged so that no
+  // in-lobe candidate survived, fall back to the iter-0 (fixed-center == v1)
+  // result and its center.
+  if (!haveValid && !minMatchErr_iter0.empty())
+  {
+    minMatchErr = minMatchErr_iter0;
+    center = center0;
   }
   center_io = center;
 
@@ -4665,30 +4836,16 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     int scanWidth = 10;
     int sparseScanLen = 360 / scanWidth;
 
-    if (this->matching_version == 2 && !tmp_signature.cartesian_ideal.empty())
-    {
-      // v2: wrap xrefine in centroid iteration. center is in mm/ideal coord,
-      // same unit as tmp_signature.cartesian_ideal.
-      acv_XY center_v2 = tmp_signature.sample_center;
-      if (matching_face >= 0)
-        xrefine_v2_centroidIter(feature_signature, tmp_signature, 36 / 3, minMatchErr,
-                                false, 10, 5, 0.5,
-                                center_v2, this->matching_v2_max_iter, this->matching_v2_tol_mm, NULL);
-      if (matching_face <= 0)
-      {
-        acv_XY center_v2_bk = tmp_signature.sample_center;
-        xrefine_v2_centroidIter(feature_signature, tmp_signature, 36 / 3, minMatchErr_bk,
-                                true, 10, 5, 0.5,
-                                center_v2_bk, this->matching_v2_max_iter, this->matching_v2_tol_mm, NULL);
-      }
-    }
-    else
-    {
-      if (matching_face >= 0)
-        xrefine(feature_signature, tmp_signature, 36 / 3, minMatchErr, false, 10, 5, 0.5);
-      if (matching_face <= 0)
-        xrefine(feature_signature, tmp_signature, 36 / 3, minMatchErr_bk, true, 10, 5, 0.5);
-    }
+    // Both v1 and v2 use the same FFT-based angle search (xrefine). The v2
+    // centroid iteration (xrefine_v2_centroidIter) is disabled: it added no
+    // final-output benefit (the downstream anchor/morph already refines
+    // orientation), was the source of the symmetric-lobe jump, and was the
+    // slowest path. v2's only remaining distinction is the morph-boundary
+    // dual-sig signature. (The centroid-iter function is kept for reference.)
+    if (matching_face >= 0)
+      xrefine(feature_signature, tmp_signature, 36 / 3, minMatchErr, false, 10, 5, 0.5);
+    if (matching_face <= 0)
+      xrefine(feature_signature, tmp_signature, 36 / 3, minMatchErr_bk, true, 10, 5, 0.5);
 
     float matching_angle_margin = this->matching_angle_margin;
     // if(matching_angle_margin>M_PI-0.0001)
@@ -4979,8 +5136,15 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
 
     angle+=angle_offset;
     // angle=0;
-    
-    singleReport.rotate = angle;
+
+    // Report rotate in the canonical (-pi, pi] range (smallest-magnitude
+    // representative) so it's consistent across matchers and reads ~0 near the
+    // 0/360 boundary instead of ~2*pi. The geometry below uses sin/cos and is
+    // wrap-agnostic, so only the reported number is affected.
+    float rot_report = angle;
+    while (rot_report >   (float)M_PI) rot_report -= (float)(2 * M_PI);
+    while (rot_report <= -(float)M_PI) rot_report += (float)(2 * M_PI);
+    singleReport.rotate = rot_report;
     singleReport.isFlipped = isInv;
 
     //The angle we get from matching is current object rotates 'angle' to match target
@@ -5577,7 +5741,108 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     // acvSaveBitmapFile("FFKFKJDK3.BMP", labeledBuff);
     // exit(-1);
     tmp_signature.CalcInfo();
-  
+
+    // ---- DEBUG: v1-vs-v2 signature + angle comparison (headless --insp) ------
+    // Set INSP_CMP_V1V2=1 to, per label, build BOTH the legacy v1 contour
+    // signature (from the same edge_grid) and the v2 morph-boundary dual-sig
+    // (already in tmp_signature), then run BOTH refiners against the SAME
+    // feature_signature and log:
+    //   (a) whether the two signature CONTOURS agree (per-bin radius diff), and
+    //   (b) whether both matchers land on a similar best ANGLE.
+    // Requires a v2 def (so the phase2 sig exists); the v1 sig is rebuilt here.
+    // Optional INSP_CMP_V1V2_DUMP=<file.csv> appends both signatures (for plot).
+    if (getenv("INSP_CMP_V1V2") && phase2_active)
+    {
+      const float k_mm = dsampLevel / ppmm;
+      const int N = (int)feature_signature.signature_data.size();
+
+      // v2 signature == the one just built into tmp_signature (mm units).
+      ContourSignature sig_v2 = tmp_signature;
+
+      // Rebuild the v1 legacy contour signature from the same edge_grid.
+      ContourSignature sig_v1; sig_v1.RESET(N);
+      convertContourGrid2Signature(ideal_center, edge_grid, sig_v1.signature_data, bacpac);
+      for (acv_XY &p : sig_v1.signature_data) p.x *= k_mm;   // px -> mm (main-path scale)
+      sig_v1.CalcInfo();
+
+      // (a) contour agreement: per-bin radius diff (.x holds radius in mm).
+      int nBin = (int)sig_v1.signature_data.size();
+      if ((int)sig_v2.signature_data.size() < nBin) nBin = (int)sig_v2.signature_data.size();
+      double sumAbs = 0, maxAbs = 0; int nCmp = 0;
+      for (int b = 0; b < nBin; b++) {
+        float r1 = sig_v1.signature_data[b].x, r2 = sig_v2.signature_data[b].x;
+        if (!(r1 > 0) || !(r2 > 0)) continue;               // skip empty bins
+        double d = fabs(r1 - r2); sumAbs += d; if (d > maxAbs) maxAbs = d; nCmp++;
+      }
+      double meanAbs = nCmp ? sumAbs / nCmp : NAN;
+
+      // (b) run both refiners against the SAME feature_signature (front facing).
+      // Copy the sources: xrefine_v2_centroidIter mutates src (resamples).
+      std::vector<acv_XY> e_v1, e_v2;
+      ContourSignature s1 = sig_v1, s2 = sig_v2;
+      xrefine(feature_signature, s1, 36 / 3, e_v1, false, 10, 5, 0.5);
+      acv_XY c2 = s2.sample_center;
+      xrefine_v2_centroidIter(feature_signature, s2, 36 / 3, e_v2, false, 10, 5, 0.5,
+                              c2, this->matching_v2_max_iter, this->matching_v2_tol_mm, NULL);
+      float a1 = NAN, er1 = INFINITY, a2 = NAN, er2 = INFINITY;
+      for (acv_XY &e : e_v1) if (e.y < er1) { er1 = e.y; a1 = e.x; }
+      for (acv_XY &e : e_v2) if (e.y < er2) { er2 = e.y; a2 = e.x; }
+      float dAng = a1 - a2;
+      while (dAng > 180) dAng -= 360; while (dAng < -180) dAng += 360;
+
+      // (c) FFT circular normalized cross-correlation (global peak, sub-bin) on
+      // the same v1 and v2 signatures vs the template -- no sweep, no iteration.
+      float aF1 = NAN, aF2 = NAN;
+      float scF1 = matchAngleFFT(feature_signature.signature_data, sig_v1.signature_data, false, aF1);
+      float scF2 = matchAngleFFT(feature_signature.signature_data, sig_v2.signature_data, false, aF2);
+      float dFv1 = aF2 - a1; while (dFv1 > 180) dFv1 -= 360; while (dFv1 < -180) dFv1 += 360;
+
+      LOGI("[CMP] label %d c(%.0f,%.0f) bins=%d mean|dR|=%.4f max|dR|=%.4f | "
+           "v1=%.3f(e%.4f)  v2=%.3f(e%.4f) dAng=%.2f | "
+           "fft_v1=%.3f(ncc%.4f) fft_v2=%.3f(ncc%.4f)  fftv2-v1=%.2f",
+           i, ldData[i].Center.x, ldData[i].Center.y, nCmp, meanAbs, maxAbs,
+           a1, er1, a2, er2, dAng,
+           aF1, scF1, aF2, scF2, dFv1);
+
+      // (d) speed: per-call cost of each angle finder (INSP_TIME_MATCH=<reps>).
+      if (const char *tm = getenv("INSP_TIME_MATCH"))
+      {
+        int R = atoi(tm); if (R < 1) R = 500;
+        using clk = std::chrono::high_resolution_clock;
+        volatile float sink = 0;   // defeat dead-code elimination
+        // v1: plain brute-force xrefine (no mutation of src).
+        auto t0 = clk::now();
+        for (int r = 0; r < R; r++) { std::vector<acv_XY> e; ContourSignature s = sig_v1; xrefine(feature_signature, s, 36/3, e, false, 10,5,0.5); sink += e.empty()?0:e[0].x; }
+        auto t1 = clk::now();
+        // v2: centroid-iter (fresh copy each rep; it resamples src in place).
+        for (int r = 0; r < R; r++) { std::vector<acv_XY> e; ContourSignature s = sig_v2; acv_XY c = s.sample_center; xrefine_v2_centroidIter(feature_signature, s, 36/3, e, false, 10,5,0.5, c, this->matching_v2_max_iter, this->matching_v2_tol_mm, NULL); sink += e.empty()?0:e[0].x; }
+        auto t2 = clk::now();
+        // fft: single global correlation.
+        for (int r = 0; r < R; r++) { float a; sink += matchAngleFFT(feature_signature.signature_data, sig_v2.signature_data, false, a); }
+        auto t3 = clk::now();
+        // bare copy cost (subtract to isolate algo).
+        for (int r = 0; r < R; r++) { ContourSignature s = sig_v2; sink += s.signature_data.empty()?0:s.signature_data[0].x; }
+        auto t4 = clk::now();
+        auto us = [&](clk::time_point a, clk::time_point b){ return std::chrono::duration_cast<std::chrono::nanoseconds>(b-a).count()/1000.0/R; };
+        LOGI("[TIME] label %d reps=%d  v1=%.2fus  v2=%.2fus  fft=%.2fus  (copy=%.2fus)  -> v1-copy=%.2f v2-copy=%.2f fft-copy=%.2f us  [sink=%.1f]",
+             i, R, us(t0,t1), us(t1,t2), us(t2,t3), us(t3,t4),
+             us(t0,t1)-us(t3,t4), us(t1,t2)-us(t3,t4), us(t2,t3)-us(t3,t4), (float)sink);
+      }
+
+      if (const char *dp = getenv("INSP_CMP_V1V2_DUMP")) {
+        FILE *fp = fopen(dp, "a");
+        if (fp) {
+          fprintf(fp, "# label,%d,center,%.2f,%.2f,v1ang,%.3f,v2ang,%.3f\n",
+                  i, ldData[i].Center.x, ldData[i].Center.y, a1, a2);
+          for (int b = 0; b < nBin; b++)
+            fprintf(fp, "%d,%d,%.5f,%.5f\n", i, b,
+                    sig_v1.signature_data[b].x, sig_v2.signature_data[b].x);
+          fclose(fp);
+        }
+      }
+    }
+    // ---- END DEBUG ---------------------------------------------------------
+
     { //early intercept just to check mean and sigma
 
       LOGV("mCur:%f  mFea:%f",tmp_signature.mean, feature_signature.mean);

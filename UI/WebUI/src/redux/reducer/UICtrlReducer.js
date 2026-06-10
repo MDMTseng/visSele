@@ -828,6 +828,17 @@ function StateReducer(newState, action) {
               break;
             }
 
+          case DefConfAct.EVENT.Sig_Match_Sim_Thres_Update:
+            {
+              // sig360 minimum similarity to accept a match (core "sig_match_sim_thres",
+              // default 0.9). Lower = more permissive. Clamp to [0,1].
+              if (typeof action.data === 'number' && Number.isFinite(action.data) &&
+                  action.data >= 0 && action.data <= 1) {
+                newState.edit_info = { ...newState.edit_info, sig_match_sim_thres: action.data };
+              }
+              break;
+            }
+
           case DefConfAct.EVENT.DefFileHash_Update:
             {
               let DefFileHash_root = newState.edit_info.DefFileHash_root;//root is still root

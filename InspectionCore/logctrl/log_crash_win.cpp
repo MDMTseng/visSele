@@ -18,7 +18,11 @@
 
 #include <atomic>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
+#include <exception>
 #include <windows.h>
+#include <dbghelp.h>
 
 extern "C" void *log_get_shm_ring_mapping(void);
 
@@ -26,6 +30,69 @@ namespace {
 
 std::atomic<bool> g_installed{false};
 LPTOP_LEVEL_EXCEPTION_FILTER g_prev_filter = nullptr;
+std::terminate_handler g_prev_terminate = nullptr;
+
+/* Write a Windows minidump (.dmp -- the "core dump" equivalent) directly to a
+ * file from inside the crash handler. This is SYNCHRONOUS and file-based, so it
+ * survives even when the async log drainer has already exited (which is why the
+ * ring-based backtrace below can go missing). MiniDumpWriteDump is resolved
+ * dynamically from dbghelp.dll so there's no link-time dependency.
+ *
+ * Default dump captures the stack + thread/handle/module info + referenced
+ * memory (compact, usually enough for a backtrace + locals). Set
+ * INSP_CRASH_FULLDUMP=1 for a full-memory dump (large). Dir from INSP_LOG_DIR,
+ * else the cwd. Symbolize a MinGW build with addr2line on the exe (build with
+ * RelWithDebInfo/-g for file:line); WinDbg/VS can open the .dmp directly. */
+void write_minidump(EXCEPTION_POINTERS *ep) {
+    typedef BOOL (WINAPI *PMiniDumpWriteDump)(
+        HANDLE, DWORD, HANDLE, MINIDUMP_TYPE,
+        PMINIDUMP_EXCEPTION_INFORMATION,
+        PMINIDUMP_USER_STREAM_INFORMATION,
+        PMINIDUMP_CALLBACK_INFORMATION);
+
+    HMODULE dbghelp = LoadLibraryA("dbghelp.dll");
+    if (!dbghelp) return;
+    PMiniDumpWriteDump pDump =
+        (PMiniDumpWriteDump)(void *)GetProcAddress(dbghelp, "MiniDumpWriteDump");
+    if (!pDump) return;
+
+    SYSTEMTIME st; GetLocalTime(&st);
+    DWORD pid = GetCurrentProcessId();
+    const char *dir = getenv("INSP_LOG_DIR");
+    char path[MAX_PATH];
+    if (dir && *dir)
+        snprintf(path, sizeof(path),
+                 "%s\\insp_crash_%lu_%04d%02d%02d_%02d%02d%02d.dmp", dir, pid,
+                 st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    else
+        snprintf(path, sizeof(path),
+                 "insp_crash_%lu_%04d%02d%02d_%02d%02d%02d.dmp", pid,
+                 st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+
+    HANDLE hFile = CreateFileA(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                               FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hFile == INVALID_HANDLE_VALUE) return;
+
+    MINIDUMP_EXCEPTION_INFORMATION mei;
+    mei.ThreadId = GetCurrentThreadId();
+    mei.ExceptionPointers = ep;
+    mei.ClientPointers = FALSE;
+
+    MINIDUMP_TYPE type = (MINIDUMP_TYPE)(
+        MiniDumpWithDataSegs | MiniDumpWithThreadInfo |
+        MiniDumpWithIndirectlyReferencedMemory | MiniDumpWithHandleData);
+    if (const char *f = getenv("INSP_CRASH_FULLDUMP"); f && *f == '1')
+        type = (MINIDUMP_TYPE)(MiniDumpWithFullMemory | MiniDumpWithHandleData |
+                               MiniDumpWithThreadInfo);
+
+    pDump(GetCurrentProcess(), pid, hFile, type, ep ? &mei : nullptr,
+          nullptr, nullptr);
+    CloseHandle(hFile);
+
+    /* stderr survives even if the drainer is gone -- tell the user where it is. */
+    fprintf(stderr, "\n[CRASH] minidump written: %s\n", path);
+    fflush(stderr);
+}
 
 uint32_t code_to_marker(DWORD code) {
     switch (code) {
@@ -46,6 +113,9 @@ uint32_t code_to_marker(DWORD code) {
 }
 
 LONG WINAPI handler(EXCEPTION_POINTERS *ep) {
+    /* Synchronous, file-based core dump first -- survives drainer death. */
+    write_minidump(ep);
+
     LogRingHeader *h =
         static_cast<LogRingHeader *>(log_get_shm_ring_mapping());
     if (h) {
@@ -77,12 +147,42 @@ LONG WINAPI handler(EXCEPTION_POINTERS *ep) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
+/* Uncaught C++ exceptions (cv::Exception, std::runtime_error from JFetEx, ...)
+ * call std::terminate, which the SEH unhandled-exception filter above does NOT
+ * reliably intercept on mingw-w64. Hook it so those crashes also produce a dump
+ * + a backtrace. Runs on the throwing thread before unwinding, so the stack
+ * still includes the throw site. */
+void terminate_handler() {
+    fprintf(stderr, "\n[CRASH] std::terminate() -- uncaught C++ exception\n");
+    fflush(stderr);
+    write_minidump(nullptr);   /* no EXCEPTION_POINTERS, still dumps this stack */
+
+    LogRingHeader *h =
+        static_cast<LogRingHeader *>(log_get_shm_ring_mapping());
+    if (h) {
+        void *frames[LOG_CRASH_FRAME_MAX];
+        USHORT n = RtlCaptureStackBackTrace(
+            0, LOG_CRASH_FRAME_MAX, frames, nullptr);
+        for (USHORT i = 0; i < n; ++i)
+            h->crash_frames[i] = reinterpret_cast<uint64_t>(frames[i]);
+        h->crash_frame_count.store(static_cast<uint32_t>(n),
+                                   std::memory_order_release);
+        h->head.fetch_add(1, std::memory_order_acq_rel);
+        h->crash_marker.store(LOG_CRASH_SIGABRT, std::memory_order_release);
+        Sleep(50);
+    }
+
+    if (g_prev_terminate) g_prev_terminate();
+    abort();
+}
+
 } /* anonymous namespace */
 
 extern "C" void log_install_crash_handlers(void) {
     bool expected = false;
     if (!g_installed.compare_exchange_strong(expected, true)) return;
     g_prev_filter = SetUnhandledExceptionFilter(handler);
+    g_prev_terminate = std::set_terminate(terminate_handler);
 }
 
 extern "C" void log_trigger_test_crash(void) {

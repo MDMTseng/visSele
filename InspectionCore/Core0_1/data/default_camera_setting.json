@@ -1,7 +1,7 @@
 {
   "exposure": 200,
-  "gain": 10,
-  "gamma": 0.75,
+  "gain": 5,
+  "gamma": 1,
   "blacklevel": 254,
   "framerate": 2,
   "ww": 1

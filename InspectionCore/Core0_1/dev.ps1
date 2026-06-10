@@ -30,8 +30,14 @@ param(
   [switch]$NoRun,
   [switch]$Probe,
   [int]$Port = 4090,
-  [int]$Jobs = [int]$env:NUMBER_OF_PROCESSORS
+  [int]$Jobs = [int]$env:NUMBER_OF_PROCESSORS,
+  [switch]$Vcpkg                        # opt back into the vcpkg/static build (reproducible/release); default = pacman OpenCV (fast, no dep builds)
 )
+
+# Default toolchain: MSYS2/pacman prebuilt OpenCV (win-mingw-msys preset) -- no
+# vcpkg, no 30-min dep builds, configures in seconds. -Vcpkg restores the old
+# vcpkg static path (win-mingw) for reproducible/release builds.
+$Preset = if ($Vcpkg) { 'win-mingw' } else { 'win-mingw-msys' }
 
 $ErrorActionPreference = 'Stop'
 
@@ -57,7 +63,7 @@ $MingwBin  = if ($env:MINGW_BIN)  { $env:MINGW_BIN }  else { 'C:\msys64\mingw64\
 $VcpkgRoot = if ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } else { 'C:\vcpkg' }
 
 $InspectionCore = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$BuildDir = Join-Path $InspectionCore 'build\win-mingw'
+$BuildDir = Join-Path $InspectionCore "build\$Preset"
 $DistWin  = Join-Path $InspectionCore 'dist\win'
 $Exe      = Join-Path $BuildDir 'visSele.exe'
 
@@ -93,9 +99,19 @@ function Assert-ToolchainPinned($core, $vcpkgRoot) {
 }
 
 # ---- toolchain env ------------------------------------------------------
-$env:Path = "$MingwBin;$DistWin;$env:Path"     # DistWin supplies MVCAMSDK_X64.DLL + HikRobot + mingw runtime
-$env:VCPKG_ROOT = $VcpkgRoot
-$env:VCPKG_DEFAULT_HOST_TRIPLET = 'x64-mingw-static'
+# MingwBin first: supplies gcc/mingw runtime AND (for the msys path) the
+# prebuilt OpenCV DLLs (libopencv_*-413.dll). DistWin supplies MVCAMSDK_X64.DLL
+# + HikRobot runtime.
+$env:Path = "$MingwBin;$DistWin;$env:Path"
+if ($Vcpkg) {
+  $env:VCPKG_ROOT = $VcpkgRoot
+  $env:VCPKG_DEFAULT_HOST_TRIPLET = 'x64-mingw-static'
+  # In-repo overlay triplet (triplets/x64-mingw-static.cmake) sets
+  # VCPKG_BUILD_TYPE release -> build ONLY the release variant of each dep,
+  # skipping the debug halves (~2x faster). Env var is the most reliable way
+  # vcpkg honors an overlay dir.
+  $env:VCPKG_OVERLAY_TRIPLETS = Join-Path $InspectionCore 'triplets'
+}
 
 # ---- configure only when needed -----------------------------------------
 $needConfigure = -not (Test-Path (Join-Path $BuildDir 'CMakeCache.txt'))
@@ -104,12 +120,12 @@ if ($Config -and -not $needConfigure) {
   if ($cur -ne $Config) { $needConfigure = $true }   # switching config requires reconfigure
 }
 if ($needConfigure) {
-  Assert-ToolchainPinned $InspectionCore $VcpkgRoot
+  if ($Vcpkg) { Assert-ToolchainPinned $InspectionCore $VcpkgRoot }   # vcpkg-only: guards the 30-min dep rebuild
   $cfg = if ($Config) { $Config } else { 'Release' }
-  Info "configure (one-time / config change) -> $cfg"
+  Info "configure ($Preset, one-time / config change) -> $cfg"
   # quoted -D arg: a bare `-DKEY=$var` does NOT expand $var in Windows PowerShell 5.1
   $btArg = "-DCMAKE_BUILD_TYPE=$cfg"
-  & cmake -S $InspectionCore --preset win-mingw $btArg
+  & cmake -S $InspectionCore --preset $Preset $btArg
   if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
 }
 

@@ -47,6 +47,7 @@
       "generator": "MinGW Makefiles",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
         "FEATURE_ARAVIS": "OFF",
         "FEATURE_MINDVISION": "ON",
         "FEATURE_HIKROBOT": "ON"
@@ -57,6 +58,18 @@
       "inherits": "win-mingw",
       "displayName": "Windows MSYS2/MinGW + Ninja (compile-time profiling)",
       "generator": "Ninja"
+    },
+    {
+      "name": "win-mingw-msys",
+      "inherits": ["base"],
+      "displayName": "Windows MSYS2/MinGW + pacman OpenCV (fast, no vcpkg)",
+      "generator": "MinGW Makefiles",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "C:/msys64/mingw64",
+        "FEATURE_ARAVIS": "OFF",
+        "FEATURE_MINDVISION": "ON",
+        "FEATURE_HIKROBOT": "ON"
+      }
     },
     {
       "name": "win-mingw-cross",

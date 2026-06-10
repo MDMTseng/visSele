@@ -11,6 +11,7 @@ Build and run paths supported:
 | Running the Win64 binary on macOS via **Wine** (no VM) | §5 |
 | `build.sh` option reference | §6 |
 | Troubleshooting | §7 |
+| Windows crash dumps (minidump) | §8 |
 
 All builds drive through one script:
 
@@ -155,12 +156,21 @@ cd UI/WebUI && npm install && npm run dev
 git clone <repo-url> visSele
 cd visSele
 
-# First time: this triggers vcpkg to build opencv4 + deps for
-# the x64-mingw-static triplet. Expect ~30-60 min one-time.
+# Recommended default: prebuilt pacman OpenCV, no vcpkg, configures in ~4.5s.
+# Needs: pacman -S --needed mingw-w64-x86_64-opencv  (one-time).
+./InspectionCore/build.sh -p win-mingw-msys -c Release -e dist
+
+# Opt-in static/reproducible path: first run triggers vcpkg to build opencv4 +
+# deps for the x64-mingw-static triplet. Expect ~30-60 min one-time.
 ./InspectionCore/build.sh -p win-mingw -c Release -e dist
 ```
 
-The `-e dist` step copies `visSele.exe` and friends into `dist/`. With the `x64-mingw-static` triplet (used by `win-mingw`), runtime DLLs are statically linked, so the folder is largely self-contained (you still need `MvCameraControl.dll` next to the exe for HikRobot).
+The `-e dist` step copies `visSele.exe` and friends into `dist/`. With the
+default `win-mingw-msys` (pacman) path, OpenCV is **dynamic**, so the bundle adds
+an `opencv_dll/` subdir plus a `run_visSele.bat` launcher (see §3 for the PATH
+detail). With the `-Vcpkg` / `win-mingw` static triplet, OpenCV is linked into
+the exe, so the folder is largely self-contained (you still need
+`MvCameraControl.dll` next to the exe for HikRobot).
 
 ### Run
 
@@ -184,28 +194,76 @@ To use a real HikRobot camera, install MVS from HikRobot's site so the GenICam D
 
 ### Windows — from PowerShell (no MSYS2 shell needed)
 
-Once MSYS2 + vcpkg are installed (steps above), two helper scripts in
-`InspectionCore/Core0_1/` let you build/iterate straight from PowerShell. They
-set the toolchain env for you (MinGW on `PATH`, `VCPKG_ROOT`,
-`VCPKG_DEFAULT_HOST_TRIPLET=x64-mingw-static`).
+Two helper scripts in `InspectionCore/Core0_1/` let you build/iterate straight
+from PowerShell, setting the toolchain env for you (MinGW on `PATH`, plus —
+only when you opt into vcpkg — `VCPKG_ROOT`,
+`VCPKG_DEFAULT_HOST_TRIPLET=x64-mingw-static`, and the in-repo overlay triplet).
+
+**The default OpenCV is now the prebuilt MSYS2/pacman package**
+(`mingw-w64-x86_64-opencv`, dynamic DLLs), driven by the **`win-mingw-msys`**
+CMake preset. No vcpkg, no 30-min dependency builds — it configures in ~4.5 s.
+Install it once in the MSYS2 MINGW64 shell:
+
+```bash
+pacman -S --needed mingw-w64-x86_64-opencv
+```
+
+The **old vcpkg static path** (`win-mingw` preset, OpenCV linked statically) is
+now **opt-in** via a `-Vcpkg` switch on the scripts — use it for reproducible /
+release bundles. It still needs vcpkg bootstrapped (steps above) and pays the
+one-time ~30-min dependency build.
 
 | Script | Purpose |
 |---|---|
-| `build.ps1` | full build **+ DLL bundle** (deploy). Thin wrapper over `build.sh`. Switches: `-Debug`, `-Release`, `-Clean`, `-NoBundle`. Bare call = `-Release` → `dist\win`. |
-| `dev.ps1` | **fast inner loop**: incremental compile + run in place (skips configure/bundle). Switches: `-NoRun`, `-Probe`, `-Port N`, `-Config Debug\|Release`. |
+| `build.ps1` | the single **deploy** script: full build **+ DLL bundle**. Wraps `build.sh`. Switches: `-Debug`, `-Release`, `-Clean`, `-NoBundle`, `-Out <dir>`, `-Fast` (incremental / skip configure), `-ForceRuntime`, `-Vcpkg`. A bare call (or one with no config selected) prints help. |
+| `dev.ps1` | **fast inner loop**: incremental compile + run in place (skips configure/bundle). Switches: `-NoRun`, `-Probe`, `-Port N`, `-Config Debug\|Release`, `-Vcpkg`. |
+
+(`export.ps1` has been **removed**; its `-Out`, `-Fast`, and `-ForceRuntime`
+features were merged into `build.ps1`.)
 
 ```powershell
 cd InspectionCore\Core0_1
-.\build.ps1 -Release      # Release build, bundled+runnable -> dist\win
+.\build.ps1 -Release      # Release build, bundled+runnable -> dist\win  (pacman OpenCV)
 .\build.ps1 -Debug        # Debug build,   bundled         -> dist\win_debug
-.\dev.ps1                 # edit-compile-run loop (fast); .\dev.ps1 -Probe for JPEGq logging
+.\build.ps1 -Release -Out dist\test    # bundle to a custom folder
+.\build.ps1 -Release -Fast             # incremental: skip configure (fast re-bundle)
+.\build.ps1 -Release -Vcpkg            # static vcpkg build (reproducible release)
+.\dev.ps1 -Run            # edit-compile-run loop (fast); add -Probe for JPEGq logging
 ```
 
 The bundle (`build.ps1` / `build.sh -e`) is self-contained: it copies the MinGW
 runtime DLLs, the MindVision `MVCAMSDK_X64.DLL`, and the full HikRobot MVS
 runtime, so `dist\win` runs on a machine without the camera SDKs installed.
-Run `visSele.exe` from `dist\win`, **not** from `build\win-mingw\` (that has no
-camera DLLs).
+Run `visSele.exe` from `dist\win`, **not** from `build\win-mingw-msys\` (that
+has no camera DLLs).
+
+#### Dynamic-OpenCV deploy detail (default `win-mingw-msys` path)
+
+Because the pacman OpenCV is **dynamic**, the bundle can't be a flat folder of
+the exe alone. `build.sh` walks the exes' import tables (`objdump -p`) and copies
+the full transitive OpenCV DLL closure (OpenCV + jpeg/png/webp/zlib/lzma/tbb)
+into an **`opencv_dll/`** subdir, then writes a **`run_visSele.bat`** launcher.
+
+Windows resolves an exe's import-table DLLs at **process start** (before
+`main()`), so `opencv_dll/` must be on `PATH` *before* launch — a plain
+double-click of `visSele.exe` won't find them. The generated `.bat` handles this:
+
+```bat
+set "PATH=%~dp0opencv_dll;%PATH%"
+"%~dp0visSele.exe" %*
+```
+
+An Electron / custom launcher must do the same (prepend `<bundle>\opencv_dll`
+to the spawn env's `PATH`). The 3 C++ runtime DLLs
+(`libgcc_s_seh-1.dll`, `libstdc++-6.dll`, `libwinpthread-1.dll`) are copied
+**flat next to the exe** as well, since the loader needs them before any
+PATH tweak takes effect.
+
+The `-Vcpkg` (static) path doesn't need `opencv_dll/` — OpenCV is baked into the
+exe — and uses the in-repo overlay triplet at
+`InspectionCore/triplets/x64-mingw-static.cmake`, which sets
+`VCPKG_BUILD_TYPE release` so vcpkg builds only the release variant of each
+dependency (skipping the unused debug halves, ~2× faster).
 
 ---
 
@@ -347,13 +405,19 @@ Once that shows, point a browser tab at the WebUI dev server and it'll connect t
 ## 6 · build.sh option reference
 
 ```text
--p, --platform <id>     mac-arm64 | mac-arm64-opencv | linux | win-cross | win-mingw
-                        (default: mac-arm64)
+-p, --platform <id>     mac-arm64 | mac-arm64-opencv | linux | win-cross |
+                        win-mingw-msys | win-mingw   (default: mac-arm64)
 -c, --config <type>     Debug | Release | RelWithDebInfo   (default: Release)
 -e, --export <dir>      bundle built binaries + runtime DLLs into <dir>
 --clean                 wipe the build directory before configuring
+--no-configure          skip cmake configure/vcpkg; just build + bundle (fast)
+--bundle-only           skip configure AND build; only (re)bundle into -e <dir>
 -j, --jobs N            parallel build jobs (default: all cores)
 ```
+
+On Windows, **`win-mingw-msys` is the default platform** for the PowerShell
+scripts (prebuilt pacman OpenCV, dynamic — see §3). `win-mingw` is the opt-in
+static vcpkg path (the scripts' `-Vcpkg` switch).
 
 Environment overrides:
 
@@ -405,3 +469,34 @@ or manually: `rm -rf InspectionCore/build/<preset>` then re-run.
 
 ### CMake says "is not a directory"
 The script uses absolute paths internally; if you call cmake manually, always pass the absolute path to `--build`.
+
+---
+
+## 8 · Windows crash dumps (minidump)
+
+On Windows, `visSele.exe` installs a crash handler that writes a **minidump**
+(`.dmp` — the Windows equivalent of a core file) when it crashes. It covers both:
+
+- **SEH** faults (access violation, illegal instruction, …) via an unhandled-
+  exception filter, and
+- **uncaught C++ exceptions**, via `std::set_terminate`.
+
+The dump is named `insp_crash_<pid>_<timestamp>.dmp` and its full path is printed
+to **stderr** (`[CRASH] minidump written: …`), so you see it even if the log
+drainer is already gone. By default it's a compact minidump; set
+**`INSP_CRASH_FULLDUMP=1`** for a full-memory dump (much larger).
+
+### Symbolizing a dump
+
+For useful `file:line` in a MinGW build, build with debug info — i.e.
+`-c RelWithDebInfo` (or `-Debug`):
+
+```bash
+# on the MinGW build, resolve an address to file:line
+addr2line -e visSele.exe -f -C <address>
+# or load the exe + dump in gdb
+gdb visSele.exe
+```
+
+Or open the `.dmp` directly in **WinDbg** / Visual Studio (it carries the crash
+context and loaded-module list).

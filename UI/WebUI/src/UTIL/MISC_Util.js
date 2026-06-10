@@ -230,10 +230,21 @@ export function defFileGeneration(edit_info)
   report.featureSet[0].matching_angle_offset_deg = edit_info.matching_angle_offset_deg;
   report.featureSet[0].matching_face = edit_info.matching_face;
   // Only emit perf opt-ins if non-default — keeps existing defs hash-stable.
-  if (typeof edit_info.matching_version === 'number' && edit_info.matching_version !== 1)
-    report.featureSet[0].matching_version = edit_info.matching_version;
+  // v2 matcher: the core reads matching_version as the STRING "v2" on the sig360
+  // sub-feature (FeatureManager_sig360_circle_line.cpp: JFetch(...,cJSON_String)).
+  // A numeric 2 is silently ignored by the type-strict JFetch, so emit "v2".
+  if (typeof edit_info.matching_version === 'number' && edit_info.matching_version === 2)
+    report.featureSet[0].matching_version = "v2";
+  // downsample: the core reads inspection_downsample as a NUMBER on the GROUP
+  // (top-level) root (FeatureManager_group.cpp), alongside intrusionSizeLimitRatio
+  // — NOT inside featureSet[0]. Emit it at the top level so the group picks it up.
   if (typeof edit_info.inspection_downsample === 'number' && edit_info.inspection_downsample !== 1)
-    report.featureSet[0].inspection_downsample = edit_info.inspection_downsample;
+    report.inspection_downsample = edit_info.inspection_downsample;
+  // sig360 match-acceptance threshold: core reads "sig_match_sim_thres" (NUMBER,
+  // default 0.9) on the sig360 sub-feature. Only emit when non-default to keep
+  // existing defs hash-stable.
+  if (typeof edit_info.sig_match_sim_thres === 'number')
+    report.featureSet[0].sig_match_sim_thres = edit_info.sig_match_sim_thres;
 
   let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
   report.featureSet[0]["__decorator"] = edit_info.__decorator;

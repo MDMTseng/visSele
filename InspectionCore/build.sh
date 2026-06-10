@@ -78,7 +78,7 @@ done
 
 # ---- map platform shortcut -> CMake preset ------------------------------
 case "$PLATFORM" in
-  mac-arm64|mac-arm64-opencv|linux-x64|win-mingw|win-mingw-ninja)  PRESET="$PLATFORM" ;;
+  mac-arm64|mac-arm64-opencv|linux-x64|win-mingw|win-mingw-ninja|win-mingw-msys)  PRESET="$PLATFORM" ;;
   linux)                                           PRESET="linux-x64" ;;
   win-cross)                                       PRESET="win-mingw-cross" ;;
   *) echo "unknown platform: $PLATFORM" >&2; exit 2 ;;
@@ -158,10 +158,44 @@ fi
 if [[ -n "$EXPORT_DIR" ]]; then
   mkdir -p "$EXPORT_DIR"
   case "$PRESET" in
-    win-mingw|win-mingw-ninja|win-mingw-cross)
+    win-mingw|win-mingw-ninja|win-mingw-cross|win-mingw-msys)
       echo "==> Bundling Windows binaries + DLLs -> $EXPORT_DIR"
       # 1) all .exe from the build dir
       find "$BUILD_DIR" -maxdepth 2 -name "*.exe" -exec cp -v {} "$EXPORT_DIR/" \;
+      if [[ "$PRESET" == "win-mingw-msys" ]]; then
+        # Dynamic (pacman) OpenCV: copy the full transitive mingw DLL closure of
+        # the exes (OpenCV + jpeg/png/webp/zlib/lzma/tbb + libgcc/stdc++/winpthread)
+        # into an opencv_dll/ subdir, plus the runtime DLLs the loader needs flat
+        # next to the exe. objdump walks the import table recursively; anything
+        # found under the mingw bin dir is part of the closure (camera SDK DLLs
+        # live elsewhere -> handled by steps 4/4b/5 below).
+        _objdump="$(command -v objdump || true)"; _mb="$(dirname "$(command -v gcc)")"
+        if [[ -n "$_objdump" ]]; then
+          mkdir -p "$EXPORT_DIR/opencv_dll"
+          declare -A _seen; _q=("$EXPORT_DIR"/*.exe); _n=0
+          while ((${#_q[@]})); do
+            _f="${_q[0]}"; _q=("${_q[@]:1}")
+            while read -r _d; do
+              _l="${_d,,}"; [[ -n "${_seen[$_l]:-}" ]] && continue
+              if [[ -f "$_mb/$_d" ]]; then
+                _seen[$_l]=1; cp -f "$_mb/$_d" "$EXPORT_DIR/opencv_dll/"; _q+=("$_mb/$_d"); _n=$((_n+1))
+              fi
+            done < <("$_objdump" -p "$_f" 2>/dev/null | grep -i 'DLL Name:' | sed 's/.*DLL Name:[[:space:]]*//')
+          done
+          # libgcc/libstdc++/libwinpthread must sit NEXT TO the exe (loaded before
+          # any DLL-search-path tweak); copy those out of the closure dir too.
+          for _rt in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            [[ -f "$EXPORT_DIR/opencv_dll/$_rt" ]] && cp -f "$EXPORT_DIR/opencv_dll/$_rt" "$EXPORT_DIR/"
+          done
+          echo "==> bundled $_n mingw DLLs into opencv_dll/ (OpenCV + transitive closure)"
+        else echo "WARN: objdump not found; cannot resolve OpenCV DLL closure" >&2; fi
+        # Launcher: OpenCV DLLs live in opencv_dll/, but Windows resolves an exe's
+        # import-table DLLs at process start (before main), so that dir must be on
+        # PATH BEFORE launch. This .bat does it; point your Electron/launcher at it
+        # (or replicate "PATH=<bundle>\opencv_dll;%PATH%" in the spawn env).
+        printf '@echo off\r\nset "PATH=%%~dp0opencv_dll;%%PATH%%"\r\n"%%~dp0visSele.exe" %%*\r\n' > "$EXPORT_DIR/run_visSele.bat"
+        echo "==> wrote run_visSele.bat (prepends opencv_dll to PATH)"
+      else
       # 2) vcpkg runtime DLLs (opencv, ffmpeg, png/jpeg/tiff/webp, zlib, ...).
       vcpkg_bin="$BUILD_DIR/vcpkg_installed/x64-mingw-dynamic/bin"
       if [[ -d "$vcpkg_bin" ]]; then
@@ -206,6 +240,7 @@ if [[ -n "$EXPORT_DIR" ]]; then
           echo "WARN: $dll not found in any of: ${mingw_search[*]}" >&2
         fi
       done
+      fi  # end DLL provisioning (msys dynamic closure vs vcpkg static + runtime)
       # 4) HikRobot SDK DLL (lives in the repo).
       hik_dll="$SCRIPT_DIR/CoreHub/Core/MvCameraControl.dll"
       [[ -f "$hik_dll" ]] && cp -v "$hik_dll" "$EXPORT_DIR/"

@@ -18,6 +18,7 @@ export const EVENT = {
   IntrusionSizeLimitRatio_Update:"IntrusionSizeLimitRatio_Update",
   Matching_Version_Update:"Matching_Version_Update",
   Inspection_Downsample_Update:"Inspection_Downsample_Update",
+  Sig_Match_Sim_Thres_Update:"Sig_Match_Sim_Thres_Update",
   InspOptionalTag_Update:"InspOptionalTag_Update",
   SUCCESS:"DEFCONF_MODE_SUCCESS",
   FAIL:"DEFCONF_MODE_FAIL",
@@ -114,6 +115,13 @@ export function Inspection_Downsample_Update(n)
 {
   return {
     type: EVENT.Inspection_Downsample_Update, data: n
+  }
+}
+
+export function Sig_Match_Sim_Thres_Update(v)
+{
+  return {
+    type: EVENT.Sig_Match_Sim_Thres_Update, data: v
   }
 }
 

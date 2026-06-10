@@ -299,10 +299,17 @@ export class InspectionEditorLogic {
                 edit_info.matching_face = report.matching_face;
               // Phase-2 sig360 perf opt-ins (core commits 72352281 + ee1cd247).
               // Default to legacy (v1, downsample 1) — byte-identical to pre-milestone.
-              if (typeof report.matching_version === 'number')
-                edit_info.matching_version = report.matching_version;
-              if (typeof report.inspection_downsample === 'number')
-                edit_info.inspection_downsample = report.inspection_downsample;
+              // v2 matcher is stored as the string "v2" on the sub-feature (the core
+              // contract); also accept a legacy numeric 2 for forward-compat with
+              // defs saved by the earlier (broken, never-applied) numeric form.
+              if (report.matching_version === "v2" || report.matching_version === 2)
+                edit_info.matching_version = 2;
+              // downsample lives on the top-level group root, not the sub-feature.
+              if (typeof root_defFile.inspection_downsample === 'number')
+                edit_info.inspection_downsample = root_defFile.inspection_downsample;
+              // sig360 match-acceptance threshold lives on the sub-feature.
+              if (typeof report.sig_match_sim_thres === 'number')
+                edit_info.sig_match_sim_thres = report.sig_match_sim_thres;
   
   
               edit_info = Object.assign({}, edit_info);
@@ -636,7 +643,7 @@ export class InspectionEditorLogic {
   }
 
   setsig360infoCenter(center){
-    
+
     this.sig360info.reports[0].cx=center.x;
     this.sig360info.reports[0].cy=center.y;
   }
@@ -1431,6 +1438,7 @@ export function Edit_info_Empty() {
     // sig360 perf opt-ins; 1/1 = byte-identical to pre-milestone.
     matching_version: 1,
     inspection_downsample: 1,
+    sig_match_sim_thres: 0.9,   // core default; min similarity to accept a sig360 match
     intrusionSizeLimitRatio: 0.1,
     img: null,
     DefFileName: "",
