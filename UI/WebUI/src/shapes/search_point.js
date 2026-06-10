@@ -103,9 +103,14 @@ export function draw(ctx, shape, renderer, {
     ctx.lineWidth = renderer.getSearchDirectionLineSize();
     ctx.strokeStyle = shapeColor;
     let marginOffset = margin + ctx.lineWidth / 2;
+    // The scanSign flip on `cnormal` is CALIPER-specific (it points the caliper
+    // box's arrow along the core's scan direction). Reusing it for the contour
+    // offset band put it 180deg off when search_far is false. Use the plain
+    // perpendicular of the (unit) width-bar tangent instead.
+    const cnC = { x: -tangent.y, y: tangent.x };
     renderer.drawReportLine(ctx, {
-      x0: shape.pt1.x - vector.x + cnormal.x * marginOffset, y0: shape.pt1.y - vector.y + cnormal.y * marginOffset,
-      x1: shape.pt1.x + vector.x + cnormal.x * marginOffset, y1: shape.pt1.y + vector.y + cnormal.y * marginOffset,
+      x0: shape.pt1.x - vector.x + cnC.x * marginOffset, y0: shape.pt1.y - vector.y + cnC.y * marginOffset,
+      x1: shape.pt1.x + vector.x + cnC.x * marginOffset, y1: shape.pt1.y + vector.y + cnC.y * marginOffset,
     });
   } else if (inFullDisplay) {
     // Caliper mode: single big caliper box covering the entire search area
