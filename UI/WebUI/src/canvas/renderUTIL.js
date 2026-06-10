@@ -69,6 +69,17 @@ class renderUTIL {
       this.iconSet["eye_invisible"]=image;
     }
   }
+  // Draw an iconSet image ONLY when it has actually decoded. drawImage() throws
+  // a DOMException ("HTMLImageElement is in the 'broken' state") if the icon
+  // failed to load -- which crashed the whole DefConf canvas on deployments
+  // where resource/image/*.svg wasn't bundled. A missing decorative icon must
+  // degrade to "not drawn", never crash the render.
+  drawIcon(ctx, name, x, y, w, h) {
+    const img = this.iconSet[name];
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.drawImage(img, x, y, w, h);
+    }
+  }
   get_mmpp() {
     return this.renderParam.mmpp;
   }

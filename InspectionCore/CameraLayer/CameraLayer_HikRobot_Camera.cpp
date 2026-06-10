@@ -150,29 +150,40 @@ uint32_t pDataCheckSum( unsigned char *pData,size_t length)
 void CameraLayer_HikRobot_Camera::sImageCallBack(unsigned char *pData, MV_FRAME_OUT_INFO_EX *pFrameInfo, void *context)
 {
   CameraLayer_HikRobot_Camera *cl = (CameraLayer_HikRobot_Camera *)context;
-  // cl->ImageCallBack(pData, pFrameInfo);
 
+  MvGvspPixelType pType = pFrameInfo->enPixelType;
+  int chNum = (pType == PixelType_Gvsp_Mono8) ? 1 : 3;
+  size_t datLength = (size_t)pFrameInfo->nWidth * pFrameInfo->nHeight * chNum;
 
-  
-  MvGvspPixelType pType =pFrameInfo->enPixelType;
-
-  int chNum=1;
-  if(pType == PixelType_Gvsp_Mono8)
+  // Drop detection. MVS nFrameNum increments for every frame the sensor
+  // exposes regardless of whether it reaches us; a gap means frames were
+  // lost between the sensor and this callback (on-camera buffer, USB, or
+  // SDK node pool). Diagnostic only -- nothing downstream depends on it.
+  if (cl->_lastFrameNumValid && pFrameInfo->nFrameNum > cl->_lastFrameNum + 1)
   {
-    chNum=1;
+    LOGE("camera dropped %u frame(s) (nFrameNum %u->%u)",
+         pFrameInfo->nFrameNum - cl->_lastFrameNum - 1,
+         cl->_lastFrameNum, pFrameInfo->nFrameNum);
   }
+  cl->_lastFrameNum = pFrameInfo->nFrameNum;
+  cl->_lastFrameNumValid = true;
 
-  size_t datLength=pFrameInfo->nWidth*pFrameInfo->nHeight*chNum;
-  hikFrameInfo info={
-    .pData=pData,
-    .pDataL=datLength,
-    .sampleCheckSum= pDataCheckSum( pData,datLength),
-    .frameInfo=*pFrameInfo,
-    .context=context
+  // Copy the volatile SDK buffer into a reusable pool slot NOW, while
+  // pData is still valid. The queue then carries a pointer into stable
+  // memory the SDK cannot overwrite -- this is what eliminates the
+  // buffer-reuse race that the old double-checksum was (lossily) papering
+  // over by dropping every mismatched frame.
+  std::vector<uint8_t> &slot = cl->_frameBufPool[cl->_frameBufIdx];
+  cl->_frameBufIdx = (cl->_frameBufIdx + 1) % FRAME_POOL_SIZE;
+  if (slot.size() < datLength) slot.resize(datLength);
+  memcpy(slot.data(), pData, datLength);
+
+  hikFrameInfo info = {
+    .pData = slot.data(),
+    .pDataL = datLength,
+    .frameInfo = *pFrameInfo,
+    .context = context
   };
-  
-  LOGI("sampleCheckSum:%x",info.sampleCheckSum);
-
 
   try{
     cl->imgQueue.push_blocking(info);
@@ -449,6 +460,7 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(
   void *context):CameraLayer(camInfo,misc,cb, context),imgQueue(10)
 {
   bDevConnected = false;
+  _frameBufPool.resize(FRAME_POOL_SIZE);
 
   const MV_CC_DEVICE_INFO *devInfo=NULL;
   for(int i=0;i<s_dev_list.nDeviceNum;i++)
@@ -623,19 +635,13 @@ void CameraLayer_HikRobot_Camera::imgQThreadFunc()
     hikFrameInfo info;
     try{
       imgQueue.pop_blocking(info);
-      uint32_t cur_chSum=pDataCheckSum( info.pData,info.pDataL);
-      if(info.sampleCheckSum!=cur_chSum)
-      {//check sum error
-        
-        LOGE("ERROR:skip  0x%X!=0x%X",info.sampleCheckSum,cur_chSum);
-        continue;
-      }
-
     }
     catch(TS_Termination_Exception e)
     {
       break;
     }
+    // info.pData points into a _frameBufPool slot -- a private copy made
+    // in sImageCallBack, so it is always valid here (no SDK reuse race).
     ImageCallBack(info.pData, &info.frameInfo);
   }
   LOGI("Thread ended....");

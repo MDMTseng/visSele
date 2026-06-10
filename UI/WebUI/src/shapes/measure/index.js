@@ -219,14 +219,14 @@ export function draw(ctx, shape, renderer, {
             {
               let theta=180*Math.PI/180;
               let compassOffset={x:offsetR*Math.cos(theta),y:offsetR*Math.sin(theta)};
-              ctx.drawImage(renderer.iconSet["compass"], shape.pt1.x-imgWH/2+compassOffset.x,shape.pt1.y-imgWH/2+compassOffset.y,imgWH,imgWH);
+              renderer.drawIcon(ctx, "compass", shape.pt1.x-imgWH/2+compassOffset.x,shape.pt1.y-imgWH/2+compassOffset.y,imgWH,imgWH);
             }
             
             if(shape.quality_essential==false)
             {
               let theta=(180+45)*Math.PI/180;
               let compassOffset={x:offsetR*Math.cos(theta),y:offsetR*Math.sin(theta)};
-              ctx.drawImage(renderer.iconSet["eye_invisible"], shape.pt1.x-imgWH/2+compassOffset.x,shape.pt1.y-imgWH/2+compassOffset.y,imgWH,imgWH);
+              renderer.drawIcon(ctx, "eye_invisible", shape.pt1.x-imgWH/2+compassOffset.x,shape.pt1.y-imgWH/2+compassOffset.y,imgWH,imgWH);
               // renderer.draw_aimcross(ctx, shape.pt1, renderer.getPointSize()*3,0.3);
             }
 

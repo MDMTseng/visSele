@@ -63,6 +63,35 @@ $Exe      = Join-Path $BuildDir 'visSele.exe'
 
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 
+# Refuse to (re)configure when the toolchain vcpkg hashes drifted from the pin
+# -- that's what forces a surprise ~30-min dependency rebuild. $env:ALLOW_REBUILD=1 overrides.
+function Assert-ToolchainPinned($core, $vcpkgRoot) {
+  if ($env:ALLOW_REBUILD) { return }
+  $reasons = @()
+  $vj = Join-Path $core 'vcpkg.json'
+  if ((Test-Path $vj) -and (Test-Path (Join-Path $vcpkgRoot '.git'))) {
+    $bl = ([regex]'"builtin-baseline"\s*:\s*"([0-9a-f]{40})"').Match((Get-Content -Raw $vj)).Groups[1].Value
+    if ($bl) {
+      $hd = (& git -C $vcpkgRoot rev-parse HEAD 2>$null)
+      if ($hd -and ($hd -ne $bl)) { $reasons += "vcpkg HEAD $($hd.Substring(0,12)) != baseline $($bl.Substring(0,12))" }
+    }
+  }
+  $lock = Join-Path $core 'tools\toolchain.lock'
+  if (Test-Path $lock) {
+    $m = (Select-String -Path $lock -Pattern '^GCC_VERSION=(.+)$').Matches
+    if ($m) {
+      $wantGcc = $m.Groups[1].Value.Trim()
+      $haveGcc = (& gcc -dumpfullversion 2>$null)
+      if ($wantGcc -and $haveGcc -and ($wantGcc -ne $haveGcc)) { $reasons += "gcc $haveGcc != locked $wantGcc" }
+    }
+  }
+  if ($reasons) {
+    throw ("TOOLCHAIN DRIFT -> a reconfigure would rebuild all vcpkg deps (~30 min): " +
+           ($reasons -join '; ') + ". Re-point `$VCPKG_ROOT at the baseline commit and keep MSYS2 gcc pinned, " +
+           "or set `$env:ALLOW_REBUILD=1 to proceed deliberately.")
+  }
+}
+
 # ---- toolchain env ------------------------------------------------------
 $env:Path = "$MingwBin;$DistWin;$env:Path"     # DistWin supplies MVCAMSDK_X64.DLL + HikRobot + mingw runtime
 $env:VCPKG_ROOT = $VcpkgRoot
@@ -75,6 +104,7 @@ if ($Config -and -not $needConfigure) {
   if ($cur -ne $Config) { $needConfigure = $true }   # switching config requires reconfigure
 }
 if ($needConfigure) {
+  Assert-ToolchainPinned $InspectionCore $VcpkgRoot
   $cfg = if ($Config) { $Config } else { 'Release' }
   Info "configure (one-time / config change) -> $cfg"
   # quoted -D arg: a bare `-DKEY=$var` does NOT expand $var in Windows PowerShell 5.1
@@ -84,8 +114,10 @@ if ($needConfigure) {
 }
 
 # ---- incremental build --------------------------------------------------
+# Build visSele AND inspd_log: the log daemon is on by default, so visSele
+# spawns ./inspd_log -- it must be rebuilt alongside or you run a stale drainer.
 $buildCmd = @('--build', $BuildDir, '-j', "$Jobs")
-if (-not $All) { $buildCmd += @('--target', $Target) }   # default: just visSele (skip calib_chessboard 52MB link + test exes)
+if (-not $All) { $buildCmd += @('--target', $Target, 'inspd_log') }   # default: just visSele + inspd_log (skip calib_chessboard 52MB link + test exes)
 Info ("cmake {0}" -f ($buildCmd -join ' '))
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 & cmake @buildCmd

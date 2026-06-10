@@ -58,6 +58,11 @@ static constexpr uint32_t LOG_CRASH_SIGABRT = 2;
 static constexpr uint32_t LOG_CRASH_SIGFPE  = 3;
 static constexpr uint32_t LOG_CRASH_SIGBUS  = 4;
 static constexpr uint32_t LOG_CRASH_OTHER   = 99;
+/* NOT a crash: the producer sets this marker to ask the drainer for an
+ * on-demand dump of the current ring (a "flight recorder" snapshot). The
+ * drainer writes the dump but, unlike a real crash, RESETS the marker and
+ * keeps running. Distinct value so it never collides with a real crash code. */
+static constexpr uint32_t LOG_CRASH_DUMP_REQUEST = 100;
 
 /* ---------- layout ---------- */
 

@@ -78,3 +78,8 @@ CoreHub/
 
 # build bundle (artifacts)
 InspectionCore/dist/
+
+# logctrl daemon runtime outputs
+insp.log
+insp.log.*
+crash_*.dump

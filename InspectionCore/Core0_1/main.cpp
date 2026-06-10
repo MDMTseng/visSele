@@ -80,25 +80,85 @@ int_fast32_t testPolyFit()
 
 
 
+#ifdef _WIN32
+/* Opt out of Windows power throttling. Windows 11/10 throttles "background"
+ * processes (lowers clock, parks them on E-cores). When visSele is spawned by
+ * Electron it's not the foreground window, so it gets throttled and runs much
+ * slower than in a console. Declare ourselves performance-critical so Windows
+ * runs us at full speed regardless of foreground/background. Disable this
+ * opt-out (let Windows throttle) with INSP_ALLOW_THROTTLE=1. */
+static void win_optout_power_throttling()
+{
+  if (const char *e = std::getenv("INSP_ALLOW_THROTTLE"); e && *e == '1') return;
+
+  /* Resolve SetProcessInformation dynamically (Windows 8+/10 API; the static
+   * declaration is _WIN32_WINNT-gated and windows.h is already included with a
+   * lower target). Struct + constants are defined locally so there's no header
+   * version dependency. No-op on older Windows. */
+  typedef struct _PPT_STATE { ULONG Version; ULONG ControlMask; ULONG StateMask; } PPT_STATE;
+  const ULONG PPT_VERSION_1        = 1;
+  const ULONG PPT_EXECUTION_SPEED  = 0x1;
+  const int   PROC_POWER_THROTTLING = 4;   /* ProcessPowerThrottling class */
+
+  typedef BOOL (WINAPI *PSetProcessInformation)(HANDLE, int, LPVOID, DWORD);
+  HMODULE k32 = GetModuleHandleA("kernel32.dll");
+  if (!k32) return;
+  PSetProcessInformation pSPI =
+      (PSetProcessInformation)(void *)GetProcAddress(k32, "SetProcessInformation");
+  if (!pSPI) return;
+
+  PPT_STATE st;
+  ZeroMemory(&st, sizeof(st));
+  st.Version     = PPT_VERSION_1;
+  st.ControlMask = PPT_EXECUTION_SPEED;
+  st.StateMask   = 0;   /* 0 => execution-speed throttling DISABLED (full speed) */
+  pSPI(GetCurrentProcess(), PROC_POWER_THROTTLING, &st, sizeof(st));
+}
+#endif
+
 int main(int argc, char **argv)
 {
+#ifdef _WIN32
+  win_optout_power_throttling();
+#endif
   /* Phase F.1: opt-in shm-ring + drainer at boot.
    * Enable with INSP_LOG_DAEMON=1.  The drainer writes the rolling
    * /var/log/insp/insp.log (or INSP_LOG_DIR/INSP_LOG_FILE) and is the
    * Phase G crash-dump source.  Default off so dev/test runs stay
    * stderr-only. */
-  if (const char *e = std::getenv("INSP_LOG_DAEMON"); e && *e == '1') {
-    /* Pick exe path relative to argv[0]'s dir so installed layouts work. */
-    std::string exe = "inspd_log";
-    if (argc > 0) {
-      std::string a0 = argv[0];
-      auto slash = a0.find_last_of('/');
-      if (slash != std::string::npos) exe = a0.substr(0, slash + 1) + "inspd_log";
+  /* Log daemon (shm ring + drainer process) is ON by default: the drainer owns
+   * the rolling ./insp.log (override dir/name via INSP_LOG_DIR / INSP_LOG_FILE)
+   * and is the crash-dump source, while the producer hot path becomes just
+   * format + memcpy into the ring (no synchronous stderr write -- slow on
+   * Windows). Opt OUT with INSP_LOG_DAEMON=0. */
+  {
+    const char *e = std::getenv("INSP_LOG_DAEMON");
+    bool daemon_on = !(e && *e == '0');   /* default on; only "0" disables */
+    if (daemon_on) {
+      /* Pick the drainer exe path relative to argv[0]'s dir so installed
+       * layouts work (handle both '/' and '\\' separators on Windows). */
+      std::string exe = "inspd_log";
+      if (argc > 0) {
+        std::string a0 = argv[0];
+        auto slash = a0.find_last_of("/\\");
+        if (slash != std::string::npos) exe = a0.substr(0, slash + 1) + "inspd_log";
+      }
+      log_open_shm_ring(nullptr, 0);  /* defaults: 16 MB, name "insp_log_ring" */
+      log_install_crash_handlers();
+      int drainer_pid = log_spawn_drainer(exe.c_str());
+      /* Only silence the (slow, synchronous) stderr sink once the drainer is
+       * actually up -- otherwise there'd be NO log output at all. Keep stderr
+       * too with INSP_LOG_KEEP_STDERR=1 (e.g. for a live `tail`). */
+      if (drainer_pid > 0) {
+        if (const char *k = std::getenv("INSP_LOG_KEEP_STDERR"); !(k && *k == '1'))
+          log_set_stderr_enabled(0);
+      }
     }
-    log_open_shm_ring(nullptr, 0);  /* defaults: 16 MB, name "insp_log_ring" */
-    log_install_crash_handlers();
-    log_spawn_drainer(exe.c_str());
   }
+  /* Standalone kill-switch for the synchronous stderr sink, independent of the
+   * daemon (e.g. ring-only or quiet high-throughput runs). */
+  if (const char *e = std::getenv("INSP_LOG_NO_STDERR"); e && *e == '1')
+    log_set_stderr_enabled(0);
 
   // while(1)
   // {

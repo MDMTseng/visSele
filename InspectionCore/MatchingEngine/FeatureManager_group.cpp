@@ -1,5 +1,6 @@
 #include "FeatureManager.h"
 #include "logctrl.h"
+#include <chrono>
 #include <stdexcept>
 #include <common_lib.h>
 #include <MatchingCore.h>
@@ -207,6 +208,8 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
   if (img_cv.empty()) return -1;
   if (!img_cv.isContinuous()) img_cv = img_cv.clone();
 
+  auto _pt0 = std::chrono::steady_clock::now();   // [PROF] start
+
   report.bacpac=bacpac;
     error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
@@ -231,6 +234,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
       else
         gray_in = gray_full;
     }
+    auto _pt1 = std::chrono::steady_clock::now();   // [PROF] gray extract + downsample done
     // Binary image is single-channel at the downsampled resolution.
     binary_img_storage.create(gray_in.rows, gray_in.cols, CV_8UC1);
 
@@ -294,8 +298,10 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     //The advantage of black cage is you can know which area touches the boundary then we can exclude it
     // CCL once -> packed label image + acv_LabeledData (from stats), no rescan.
     // Input: CV_8UC1 binary; output: CV_8UC3 BGR-packed labels.
+    auto _pt2 = std::chrono::steady_clock::now();   // [PROF] threshold/binarize + cage done
     cv::Mat &lableImg_cv = labeled_img_storage;
     acvComponentLabeling_cv(binary_img_storage, lableImg_cv, ldData);
+    auto _pt3 = std::chrono::steady_clock::now();   // [PROF] CCL (component labeling) done
 
     int CLimit = (lableImg_cv.cols*lableImg_cv.rows)*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
 
@@ -368,6 +374,15 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
       binaryFeatureBundle[i]->FeatureMatching(lableImg_cv);
     }
     if (bacpac) bacpac->binary_uc1_for_phase2 = prev_bin;
+
+    auto _pt4 = std::chrono::steady_clock::now();   // [PROF] sub-features (sig360) done
+    auto _ms = [](std::chrono::steady_clock::time_point a,
+                  std::chrono::steady_clock::time_point b){
+      return std::chrono::duration<double, std::milli>(b - a).count();
+    };
+    LOGI("[PROF] gray:%.2f bin:%.2f ccl:%.2f sig360:%.2f  total:%.2f ms  (labels:%d %dx%d)",
+         _ms(_pt0,_pt1), _ms(_pt1,_pt2), _ms(_pt2,_pt3), _ms(_pt3,_pt4), _ms(_pt0,_pt4),
+         (int)ldData.size(), binary_img_storage.cols, binary_img_storage.rows);
   return 0;
 }
 

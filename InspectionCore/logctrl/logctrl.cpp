@@ -354,6 +354,18 @@ void log_set_stderr_enabled(int enabled) {
     g_stderr_enabled = (enabled != 0);
 }
 
+void log_request_dump(void) {
+    std::lock_guard<std::mutex> lk(g_log_mutex);
+    if (!g_shm_ring.attached || !g_shm_ring.hdr) return;
+    /* On-demand dump has no real backtrace; zero the crash trace so the dump
+     * doesn't print stale frames, then set the dedicated marker. The drainer
+     * writes the ring snapshot, resets the marker, and keeps running. */
+    g_shm_ring.hdr->crash_signal = 0;
+    g_shm_ring.hdr->crash_frame_count.store(0, std::memory_order_release);
+    g_shm_ring.hdr->crash_marker.store(LOG_CRASH_DUMP_REQUEST,
+                                       std::memory_order_release);
+}
+
 /* ---------- SHM ring buffer sink (Phase A2) ---------- */
 
 /* Sink callback.  Already runs under g_log_mutex (registered via the normal
@@ -583,6 +595,16 @@ int log_spawn_drainer(const char *exe_path) {
     if (!path || !*path) path = "inspd_log";
 
 #ifdef _WIN32
+    /* Pass our PID so the drainer can OpenProcess + poll the real parent handle
+     * for death (the heartbeat alone false-positives when the producer is alive
+     * but idle -> the drainer would wrongly exit and take the log WS down).
+     * CreateProcessA inherits the current environment (lpEnvironment=nullptr). */
+    {
+        char pidbuf[16];
+        std::snprintf(pidbuf, sizeof(pidbuf), "%lu",
+                      (unsigned long)GetCurrentProcessId());
+        SetEnvironmentVariableA("INSP_LOG_PARENT_PID", pidbuf);
+    }
     STARTUPINFOA si = {};
     PROCESS_INFORMATION pi = {};
     si.cb = sizeof(si);
@@ -648,6 +670,40 @@ void log_emit(int lv, const char *file, int line, const char *func,
     if (user_len < 0) user_len = 0;
     if (user_len >= (int)sizeof(user_buf)) user_len = (int)sizeof(user_buf) - 1;
 
+    /* Module lookup + line formatting are done BEFORE taking the mutex. The
+     * file_to_module registry is populated by static initialisers (before main)
+     * and is read-only at runtime; formatting touches only locals + monotonic
+     * now_ms(). Keeping them out of the critical section means the camera /
+     * inspection / data-view threads don't serialise on per-line formatting. */
+    const char *module = nullptr;
+    if (file) {
+        auto &m = file_to_module();
+        auto it = m.find(std::string(file));
+        if (it != m.end()) module = it->second.c_str();
+    }
+
+    /* Build the prefixed line.  Includes module column iff the TU has one
+     * registered via LOG_MODULE; otherwise omit to save width. */
+    char line_buf[1280];
+    const char *fname = short_filename(file);
+    int n;
+    if (module) {
+        n = snprintf(line_buf, sizeof(line_buf),
+                     "[%10.3f][%c][%-14.14s][%-20.20s:%-4d %s] %s\n",
+                     now_ms(), level_letter(lv), module,
+                     fname, line, func ? func : "?", user_buf);
+    } else {
+        n = snprintf(line_buf, sizeof(line_buf),
+                     "[%10.3f][%c][%-20.20s:%-4d %s] %s\n",
+                     now_ms(), level_letter(lv),
+                     fname, line, func ? func : "?", user_buf);
+    }
+    if (n < 0) n = 0;
+    if (n >= (int)sizeof(line_buf)) {
+        n = (int)sizeof(line_buf) - 1;
+        line_buf[n - 1] = '\n';
+    }
+
     std::lock_guard<std::mutex> lk(g_log_mutex);
 
     /* Lazy env parse on first emit, while we hold the mutex. */
@@ -689,40 +745,12 @@ void log_emit(int lv, const char *file, int line, const char *func,
         }
     }
 
-    /* Look up module for this TU.  Lookup is cheap (hash by file ptr). */
-    const char *module = nullptr;
-    if (file) {
-        auto it = file_to_module().find(std::string(file));
-        if (it != file_to_module().end()) module = it->second.c_str();
-    }
-
-    /* Per-tag check (may override the macro's global-cache check; either way
-     * the user wanted level X for this tag and we honor it here). */
+    /* Per-tag level refinement (after the IPC check may have just updated the
+     * levels). The line above is already formatted; a drop here wastes that
+     * format, but per-tag overrides are rare (set only via the drainer IPC). */
     if (!g_tag_levels.empty()) {
         int eff = effective_level_for(file, module);
         if (lv < eff) return;
-    }
-
-    /* Build the prefixed line.  Includes module column iff the TU has one
-     * registered via LOG_MODULE; otherwise omit to save width. */
-    char line_buf[1280];
-    const char *fname = short_filename(file);
-    int n;
-    if (module) {
-        n = snprintf(line_buf, sizeof(line_buf),
-                     "[%10.3f][%c][%-14.14s][%-20.20s:%-4d %s] %s\n",
-                     now_ms(), level_letter(lv), module,
-                     fname, line, func ? func : "?", user_buf);
-    } else {
-        n = snprintf(line_buf, sizeof(line_buf),
-                     "[%10.3f][%c][%-20.20s:%-4d %s] %s\n",
-                     now_ms(), level_letter(lv),
-                     fname, line, func ? func : "?", user_buf);
-    }
-    if (n < 0) n = 0;
-    if (n >= (int)sizeof(line_buf)) {
-        n = (int)sizeof(line_buf) - 1;
-        line_buf[n - 1] = '\n';
     }
 
     /* Default stderr sink. ANSI only when TTY; auto-stripped on pipes/files. */

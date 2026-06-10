@@ -93,6 +93,7 @@ import Modal from 'antd/lib/modal';
 import Input from 'antd/lib/input';
 import Tag from 'antd/lib/tag';
 import Dropdown from 'antd/lib/dropdown';
+import message from 'antd/lib/message';
 const { Header, Content, Footer, Sider } = Layout;
 const SubMenu = Menu.SubMenu;
 const { Paragraph, Title } = Typography;
@@ -307,6 +308,14 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   
   const [stepIdx,setStepIdx]=useState(0);
   const [isVertical,setIsVertical]=useState(false);
+  // Tracks whether we've already pushed the camera-setting + calib reload for
+  // the CURRENT camera connection. The effect below re-runs on every
+  // CAM1_ID_CONN_INFO reference change (the conn channel emits a fresh object
+  // on each ~2.6s status heartbeat), but the reload is only meaningful on the
+  // disconnected->connected transition -- without this guard the heavy
+  // CameraSettingFromFile + lens/field calib reload (~2s of camera I/O) re-ran
+  // every heartbeat, throttling live inspection.
+  const camReloadSentRef = useRef(false);
   let DefFileFolder=undefined;
   // console.log(uInsp_API_ID_CONN_INFO);
   useEffect(()=>{
@@ -335,12 +344,21 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     // (e.g. DefConfUI -> triggerSnapExam -> EX -> mmpP_ideal()) would get
     // the default calibPpB=1, calibmmpB=1 -> mmpp = 1.0 mm/px (wildly wrong).
     if (is_Cam_Ready) {
-      ACT_WS_SEND_BPG("RC", 0, {
-        target: "calib_files_load",
-        camera_setting_dir: "data/",
-        lens_calib_path: "data/lens_calib.json",
-        field_calib_path: "data/field_calib.json",
-      });
+      // Fire ONCE per connection (on the disconnected->connected edge). The
+      // conn-info object churns every heartbeat; re-sending each time would
+      // re-run the camera's full setting + calib reload and starve streaming.
+      if (!camReloadSentRef.current) {
+        camReloadSentRef.current = true;
+        ACT_WS_SEND_BPG("RC", 0, {
+          target: "calib_files_load",
+          camera_setting_dir: "data/",
+          lens_calib_path: "data/lens_calib.json",
+          field_calib_path: "data/field_calib.json",
+        });
+      }
+    } else {
+      // Camera dropped -- arm the reload for the next reconnection.
+      camReloadSentRef.current = false;
     }
 
     if(!isSystemReadyForInsp)
@@ -1253,6 +1271,17 @@ const MainUI=()=>{
         text:hideMachineSetting?"打開機器設定":"隱藏機器設定",
         onClick:_=>{
           setHideMachineSetting(!hideMachineSetting)
+        }
+      });
+
+      siderUI_info.menu.push({
+        icon:<CloudDownloadOutlined />,
+        text:"匯出 Log 快照",
+        onClick:_=>{
+          ACT_WS_SEND_BPG( "SC", 0, {
+            type:"log_dump"
+          });
+          message.success("已要求匯出 Log 快照");
         }
       });
 

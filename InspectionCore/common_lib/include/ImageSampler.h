@@ -259,6 +259,18 @@ class ImageSampler
     return stageLightInfo->back_light_target/stageLightInfo->factorSampling(pos);
   }
 
+  // True when a sample reduces to a plain pixel fetch -- no distortion remap and
+  // no backlight scaling -- so a downsample can use cv::resize instead of the
+  // per-pixel sampler. Mirrors the early-outs in ideal2img + sampleBackLightFactor.
+  // Non-const because acvCalibMap::isPresent() is non-const.
+  bool samplingIsIdentity()
+  {
+    bool coordRemap = !_ignoreCorrdCalib && map && map->isPresent();
+    bool backlight  = !_ignoreStageLightCalib && stageLightInfo &&
+                      (stageLightInfo->exposure_us == stageLightInfo->exposure_us); // not NaN
+    return !coordRemap && !backlight;
+  }
+
 
   // cv::Mat-native samplers. ideal2img coord transform + bilinear/nearest
   // sample + backlight factor.

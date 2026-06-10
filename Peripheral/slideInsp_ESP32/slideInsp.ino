@@ -8,6 +8,15 @@
 // #define __PRT_I_(...) Serial.printf("I:" __VA_ARGS__)
 #define __PRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
 
+// --- RX debug -------------------------------------------------------------
+// Print every byte received on UART0 as hex, plus a boot banner. NOTE: this
+// shares the protocol UART, so it corrupts the binary stream visSele expects --
+// use it with a plain serial monitor (pio device monitor -b 230400), NOT with
+// visSele connected. A repeating "[BOOT]" line means the ESP32 is crash-looping
+// (the panic backtrace prints to this same UART right before the reboot).
+// Keep this 0 for production -- the hex dump corrupts the binary protocol.
+#define SLIDE_DBG_RX 0
+
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6)
 int O_CameraPin = 33;
 int O_BackLight = 32;
@@ -425,7 +434,17 @@ void setup()
   
   pinMode(I_gate1Pin, INPUT_PULLUP);
   // Serial.begin(921600);
+  // Enlarge the UART RX ring (default 256 B) BEFORE begin() so a burst from the
+  // host isn't dropped while loop() is momentarily busy. 80-byte inspRep msgs ->
+  // 2 KB is ~25 messages of headroom. Also give TX a buffer so Serial.write()
+  // doesn't block the loop waiting on the UART FIFO when sending responses.
+  Serial.setRxBufferSize(2048);
+  Serial.setTxBufferSize(2048);
   Serial.begin(230400);
+#if SLIDE_DBG_RX
+  delay(50);
+  Serial.printf("\r\n[BOOT] slideInsp up  rx=2048 tx=2048 baud=230400\r\n");
+#endif
 
 
   while(0)
@@ -469,11 +488,14 @@ class MData_uInsp:public Data_JsonRaw_Layer
   }
   int recv_RESET()
   {
-
-  } 
+    // MUST return: this is a non-void function. Falling off the end is UB and
+    // GCC emits an illegal instruction here -> any error/RESET path (i.e. any
+    // garbage input) jumped into it and crashed the ESP32. Return explicitly.
+    return 0;
+  }
   int recv_ERROR(ERROR_TYPE errorcode)
   {
-
+    return 0;
   }
 
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
@@ -486,8 +508,20 @@ class MData_uInsp:public Data_JsonRaw_Layer
       bool rspAck=false;
       bool doRsp=false;
 
+      // Garbage / partial frames can reach here and NOT be valid JSON, or be
+      // valid JSON without a string "type". Either way doc["type"] is NULL and
+      // the strcmp() below would null-deref and crash the firmware (observed:
+      // any garbage burst reboots the ESP32). Bail out safely instead.
+      if(error)
+      {
+        return 0;
+      }
       const char* type = doc["type"];
       // const char* id = doc["id"];
+      if(type==NULL)
+      {
+        return 0;
+      }
       if(strcmp(type,"RESET")==0)
       {
         return msg_printf("RESET_OK","");
@@ -678,7 +712,7 @@ class MData_uInsp:public Data_JsonRaw_Layer
     
   }
 
-  int close(){}
+  int close(){ return 0; }
 
   
   char dbgBuff[500];
@@ -753,16 +787,19 @@ MData_uInsp djrl;
 void loop()
 {
   {
-    uint8_t recvBuf[50];
-    if (Serial.available() > 0) {
-      // read the incoming byte:
-      // char c=Serial.read();
-      // djrl.recv_data((uint8_t*)&c,1);
+    // Drain the whole RX backlog each loop, not just one 50-byte chunk, so a
+    // burst from the host clears in a single pass (flow control is off on the
+    // host side now, so it can deliver bursts back-to-back).
+    uint8_t recvBuf[256];
+    while (Serial.available() > 0) {
       int recvLen = Serial.read(recvBuf,sizeof(recvBuf));
+      if (recvLen <= 0) break;
+#if SLIDE_DBG_RX
+      Serial.printf("[RX %d]", recvLen);
+      for (int i = 0; i < recvLen; i++) Serial.printf(" %02X", recvBuf[i]);
+      Serial.print("\r\n");
+#endif
       djrl.recv_data((uint8_t*)recvBuf,recvLen);
-
-      // djrl.dbg_printf(">>new data, len:%d",recvLen);
-      
     }
   }
   oGS.mainLoop();

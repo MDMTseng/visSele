@@ -39,9 +39,8 @@ public:
 
   struct hikFrameInfo
   {
-    unsigned char *pData;
+    unsigned char *pData;   // points into a _frameBufPool slot (stable until the ring wraps)
     size_t pDataL;
-    uint32_t sampleCheckSum;
 
     MV_FRAME_OUT_INFO_EX frameInfo;
     void *context;
@@ -60,6 +59,19 @@ protected:
   std::thread imgQueueThread;
 
   TSQueue<hikFrameInfo> imgQueue;
+
+  // Frame-copy ring. The MVS push callback hands us a pointer into an
+  // SDK-owned buffer that is recycled the moment the callback returns; a
+  // delayed consumer would otherwise read the NEXT frame's pixels. So we
+  // memcpy each frame into one of these reusable slots inside the callback
+  // and queue a pointer into the slot. The ring is larger than imgQueue's
+  // capacity, so a slot is always fully consumed before it is reused.
+  static constexpr int FRAME_POOL_SIZE = 16;
+  std::vector<std::vector<uint8_t>> _frameBufPool;
+  int _frameBufIdx=0;
+  unsigned int _lastFrameNum=0;
+  bool _lastFrameNumValid=false;
+
   bool acquisition_started=false;
   int mirrorFlag[2]={0,0};
   int ROI_mirrorFlag[2]={0,0};

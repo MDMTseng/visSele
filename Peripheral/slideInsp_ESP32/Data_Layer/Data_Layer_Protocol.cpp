@@ -186,15 +186,20 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
 
     if(recvType!=RTYPE::INIT)
     {
-      
+      // Hard bound: buffIdx must stay a valid index. The ERROR-recovery shift
+      // below can in edge cases drive it negative or past the end; clamp before
+      // we ever write, so no garbage stream can cause an out-of-bounds write.
+      if(buffIdx<0 || buffIdx>=(int)sizeof(dataBuff))
+      {
+        buffIdx=0;
+        recvType=RTYPE::ERROR;
+        errorCode=ERROR_TYPE::RECV_BUFFER_FULL;
+        recv_ERROR(errorCode);
+      }
+
       dataBuff[buffIdx++]=c;
 
-      // if(buffIdx%20==1)
-      // {
-      //   printf("buffIdx  %d\n",buffIdx);
-      // }
-
-      if(buffIdx==sizeof(dataBuff))
+      if(buffIdx>=(int)sizeof(dataBuff))
       {
         recvType=RTYPE::ERROR;//full and enter error clean state
         errorCode=ERROR_TYPE::RECV_BUFFER_FULL;

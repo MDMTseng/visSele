@@ -1,0 +1,16 @@
+# Toolchain fingerprint lock.
+#
+# A vcpkg (re)configure rebuilds ALL dependencies from source (~30 min) whenever
+# the toolchain that vcpkg hashes into its package ABIs drifts -- most commonly
+# because C:\vcpkg got re-cloned/updated (new bundled cmake/powershell) or MSYS2
+# bumped gcc. toolchain_guard.sh refuses to reconfigure when the live toolchain
+# differs from the values below, so it can never happen by surprise.
+#
+# When you DELIBERATELY want to move the toolchain:
+#   1) update these values (+ the builtin-baseline in ../vcpkg.json for vcpkg),
+#   2) run the build once with ALLOW_REBUILD=1 (or --allow-rebuild),
+#   3) let it repopulate the binary cache.
+#
+# vcpkg commit is pinned via "builtin-baseline" in ../vcpkg.json (kept in sync
+# with the checked-out C:\vcpkg HEAD). gcc is pinned here:
+GCC_VERSION=16.1.0

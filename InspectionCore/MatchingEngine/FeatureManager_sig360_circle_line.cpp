@@ -536,8 +536,8 @@ acv_XY FeatureManager_sig360_circle_line::ParseMainVector(featureDef_searchPoint
 
   float angle = def_sp->data.anglefollow.angleDeg * M_PI / 180;
 
-  LOGI("line_p1:%f %f  p0:%f %f", defLine->p1.x, defLine->p1.y, defLine->p0.x, defLine->p0.y);
-  LOGI("line_vec:%f %f  angle:%f", line_vec.x, line_vec.y, angle);
+  LOGV("line_p1:%f %f  p0:%f %f", defLine->p1.x, defLine->p1.y, defLine->p0.x, defLine->p0.y);
+  LOGV("line_vec:%f %f  angle:%f", line_vec.x, line_vec.y, angle);
   return acvRotation(sin(angle), cos(angle), 1, line_vec);
 }
 
@@ -953,7 +953,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     }
   }
 
-  LOGI(">>>NAG:%d NGA:%d pre-sta:%d sta:%d",
+  LOGV(">>>NAG:%d NGA:%d pre-sta:%d sta:%d",
     judgeReport.def->NAasNG,judgeReport.def->NGasNA,
     preSta,judgeReport.status);
   
@@ -2105,9 +2105,9 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   {
     acv_XY pos = searchPointList[j].data.anglefollow.position;
     acv_XY vec = ParseMainVector(&searchPointList[j]);
-    LOGI("XY:%f %f", vec.x, vec.y);
+    LOGV("XY:%f %f", vec.x, vec.y);
     vec = acvVecNormal(vec);
-    LOGI("XY:%f %f", vec.x, vec.y);
+    LOGV("XY:%f %f", vec.x, vec.y);
     cm.add(pos, pos, vec);
   }
 
@@ -3620,9 +3620,9 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     m_sections.clear();
   }
 
-  LOGI("edge_grid:%p flip_f:%f radius:%f sAngle:%f  eAngle:%f   XY:%f,%f ppmm:%f mmpp:%f ",&edge_grid, flip_f, radius, sAngle, eAngle,center.x,
+  LOGV("edge_grid:%p flip_f:%f radius:%f sAngle:%f  eAngle:%f   XY:%f,%f ppmm:%f mmpp:%f ",&edge_grid, flip_f, radius, sAngle, eAngle,center.x,
   center.y,ppmm,mmpp);
-  LOGI("matching_tor:%d initMatchingMargin:%f m_sections.size:%d",
+  LOGV("matching_tor:%d initMatchingMargin:%f m_sections.size:%d",
   matching_tor,cdef.initMatchingMargin,m_sections.size());
 
   acv_CircleFit cf = {};
@@ -4002,7 +4002,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
 
     cr.maxD = (maxD == -1) ? NAN : maxD;
     cr.minD = (minD == __FLT_MAX__) ? NAN : minD;
-    LOGI("C===maxD:%f minD:%f", cr.maxD, cr.minD);
+    LOGV("C===maxD:%f minD:%f", cr.maxD, cr.minD);
 
     for (auto pt : s_points)
     {
@@ -4013,7 +4013,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     cr.roughness_MIN = rMIN;
     cr.roughness_MAX = rMAX;
     cr.roughness_RMSE = rRMSE;
-    LOGI("C===R:%f,pt:%f,%f , tarR:%f, rMIN:%f ,rMAX:%f ,rRMSE:%f",
+    LOGV("C===R:%f,pt:%f,%f , tarR:%f, rMIN:%f ,rMAX:%f ,rRMSE:%f",
           cf.circle.radius, cf.circle.circumcenter.x, cf.circle.circumcenter.y, radius, rMIN, rMAX, rRMSE);
   }
 
@@ -4240,7 +4240,7 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
   
   lineDef.p0 = TemplateDomain_TO_PixDomain(lineDef.p0, cached_sin, cached_cos, flip_f, calibCen, mmpp);
   lineDef.p1 = TemplateDomain_TO_PixDomain(lineDef.p1, cached_sin, cached_cos, flip_f, calibCen, mmpp);
-  LOGI("p0:%f %f, p1:%f,%f",
+  LOGV("p0:%f %f, p1:%f,%f",
     lineDef.p0.x,lineDef.p0.y,
     lineDef.p1.x,lineDef.p1.y);
       // acv_XY mid=acvVecMult(acvVecAdd(line.p0,line.p1), 0.5);//Just for testing
@@ -4720,7 +4720,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
           minErr=preErr;
         }
       }
-      LOGI("F %f: %f>%f", minMatchErr[i].x, preErr, minMatchErr[i].y);
+      LOGV("F %f: %f>%f", minMatchErr[i].x, preErr, minMatchErr[i].y);
       if (dbgSig) {
         float sim = 1 - SigMatchErrorNormalize(preErr, feature_signature);
         fprintf(stderr, "[SIGCAND] F[%2d] ang=%7.2f deg  err=%.6f  sim=%.6f  %s\n",
@@ -4754,7 +4754,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
           minErr=preErr;
         }
       }
-      LOGI("B %f: %f>%f", minMatchErr_bk[i].x, preErr, minMatchErr_bk[i].y);
+      LOGV("B %f: %f>%f", minMatchErr_bk[i].x, preErr, minMatchErr_bk[i].y);
       if (dbgSig) {
         float sim = 1 - SigMatchErrorNormalize(preErr, feature_signature);
         fprintf(stderr, "[SIGCAND] B[%2d] ang=%7.2f deg  err=%.6f  sim=%.6f  %s\n",
@@ -4812,12 +4812,12 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
 
 
 
-  LOGI("minErr:%f globeMinErr_ALL:%f mean:%f sigma:%f",
+  LOGV("minErr:%f globeMinErr_ALL:%f mean:%f sigma:%f",
     minErr,globeMinErr_ALL,feature_signature.mean,feature_signature.sigma
   );
   
   float minAvaSimilar=(1-SigMatchErrorNormalize(minErr,feature_signature));
-  LOGI("globeMaxSimF_ALL:%f sigRelativeMatchSimThres:%f minAvaSimilar:%f  sigMatchSimThres:%f ",
+  LOGV("globeMaxSimF_ALL:%f sigRelativeMatchSimThres:%f minAvaSimilar:%f  sigMatchSimThres:%f ",
     globeMaxSimF_ALL,sigRelativeMatchSimThres,minAvaSimilar,sigMatchSimThres
   );
   if(minAvaSimilar<(sigMatchSimThres))//if the minimum err still not pass, then, early stop the following procesure
@@ -4963,7 +4963,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     //if(i<10)
 
     {
-      LOGI("======%d===XY:%0.4f,%0.4f AREA:%d er:%f,inv:%d,angDeg:%f ",
+      LOGV("======%d===XY:%0.4f,%0.4f AREA:%d er:%f,inv:%d,angDeg:%f ",
            lableIdx, ldData[lableIdx].Center.x, ldData[lableIdx].Center.y, ldData[lableIdx].area, error, isInv, angle * 180 / 3.14159);
     }
 
@@ -5001,7 +5001,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     float cached_cos = cos(angle);
     float cached_sin = sin(angle);
 
-    LOGI("calibCen: %f %f,angle_offset:%f", calibCen.x, calibCen.y,angle_offset);
+    LOGV("calibCen: %f %f,angle_offset:%f", calibCen.x, calibCen.y,angle_offset);
 
 
     
@@ -5025,7 +5025,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
         {
           continue;
         }
-        LOGI("ID:%d", searchPointList[j].id);
+        LOGV("ID:%d", searchPointList[j].id);
 
         TreeExecution(searchPointList[j].id,singleReport,eT,
           calibCen, mmpp, cached_cos, cached_sin, flip_f);//find all necessary anchor first
@@ -5041,7 +5041,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
         {
           isAnchor = true;
         }
-        LOGI("ID:%d=>%d  isAnchor:%d",detectedSearchPoints[j].def->id, detectedSearchPoints[j].status, isAnchor);
+        LOGV("ID:%d=>%d  isAnchor:%d",detectedSearchPoints[j].def->id, detectedSearchPoints[j].status, isAnchor);
         if (isAnchor == false)
         {
           continue;
@@ -5116,11 +5116,11 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     if(reDo_orien)
     {
       if (getenv("SIGCAND_DUMP")) fprintf(stderr, "[SIGCAND] REJECTED: orientation_essential judge failed → retry next candidate\n");
-      LOGI(">>>>>REDO  REDO>>>>");
-      LOGI(">>>>>REDO  REDO>>>>");
-      LOGI(">>>>>REDO  REDO>>>>");
-      LOGI(">>>>>REDO  REDO>>>>");
-      LOGI(">>>>>REDO  REDO>>>>");
+      LOGV(">>>>>REDO  REDO>>>>");
+      LOGV(">>>>>REDO  REDO>>>>");
+      LOGV(">>>>>REDO  REDO>>>>");
+      LOGV(">>>>>REDO  REDO>>>>");
+      LOGV(">>>>>REDO  REDO>>>>");
       continue;
     }
     //if the orientation is correct, do the rest of judge 
@@ -5380,12 +5380,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     onlyIdx = 0;
     int totalArea = ldData[1].area;
 
-    LOGI("AREA 0:%d    1:%d", ldData[0].area, ldData[1].area);
+    LOGV("AREA 0:%d    1:%d", ldData[0].area, ldData[1].area);
     int maxArea = 0;
     for (int i = 2; i < ldData.size(); i++)
     {
 
-      LOGI("AREA[%d]:%d", i, ldData[i].area);
+      LOGV("AREA[%d]:%d", i, ldData[i].area);
       totalArea += ldData[i].area;
       if (maxArea < ldData[i].area)
       {
@@ -5458,7 +5458,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     }
   }
 
-  LOGI("ldData.size()=%d onlyIdx:%d", ldData.size(),onlyIdx);
+  LOGV("ldData.size()=%d onlyIdx:%d", ldData.size(),onlyIdx);
   for (int i = 2; i < ldData.size(); i++)
   {                           // idx 0 is not a label, idx 1 is for outer frame and connected objects(with the outter frame)
     if (ldData[i].misc == -1) //the ignore mark
@@ -5468,7 +5468,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
       continue;
     }
 
-    LOGI("ldData[%d].area=%d",i,ldData[i].area);
+    LOGV("ldData[%d].area=%d",i,ldData[i].area);
     p_cropImg_cv = labeledBuff_cv;
     cropOffset.x=0;
     cropOffset.y=0;
@@ -5506,7 +5506,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     bacpac->sampler->img2ideal(&ideal_center);
 
     ideal_center = acvVecMult(ideal_center,1.0/dsampLevel);
-    LOGI(">>>>>%f  %f",ideal_center.x,ideal_center.y);
+    LOGV(">>>>>%f  %f",ideal_center.x,ideal_center.y);
     if (matching_method == 1) // edge_sig: grayscale gradient edge per ray (lighting robust)
     {
       float ex = fmax(fabs(curLableDat.RBBound.x-curLableDat.Center.x), fabs(curLableDat.Center.x-curLableDat.LTBound.x));
@@ -5580,7 +5580,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
   
     { //early intercept just to check mean and sigma
 
-      LOGI("mCur:%f  mFea:%f",tmp_signature.mean, feature_signature.mean);
+      LOGV("mCur:%f  mFea:%f",tmp_signature.mean, feature_signature.mean);
       
       float meanRatio = tmp_signature.mean / feature_signature.mean;
       if (meanRatio > 1)
@@ -5590,7 +5590,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
         sigmaRatio = 1 / sigmaRatio;
 
       float stage1Sim = meanRatio * sigmaRatio;
-      LOGI("mR:%f  sR:%f stage1Sim:%f", meanRatio, sigmaRatio, stage1Sim);
+      LOGV("mR:%f  sR:%f stage1Sim:%f", meanRatio, sigmaRatio, stage1Sim);
       if (meanRatio < 0.5 || stage1Sim < sig_st1_matching_sim_thres)
         continue;
     }

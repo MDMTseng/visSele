@@ -74,8 +74,15 @@ struct Config {
     std::string log_basename   = "insp.log";
     int         rotate_bytes   = 10 * 1024 * 1024;
     int         rotate_keep    = 5;
-    int         persist_min_lv = LOG_LV_INFO;
-    int         ws_port        = 0;     /* 0 = disabled */
+    /* Disk-protection default: only WARN+ trickles to insp.log so a 24/7
+     * machine barely writes the disk. INFO/DEBUG stay in the RAM ring and can
+     * be captured in full on demand (log_request_dump -> crash_<utc>.dump) or
+     * on a real crash. Override with INSP_LOG_PERSIST_LEVEL=info while debugging. */
+    int         persist_min_lv = LOG_LV_WARN;
+    /* WS log-stream server for the WebUI "Core Logs" panel
+     * (CoreLogClient -> ws://127.0.0.1:4091/log). On by default now that the
+     * daemon is; set INSP_LOG_WS_PORT=0 to disable. */
+    int         ws_port        = 4091;
 };
 
 /* Parse a producer-formatted log line into structured fields.
@@ -596,14 +603,28 @@ int run(const Config &cfg) {
     auto last_heartbeat_seen = std::chrono::steady_clock::now();
     bool parent_dead = false;
 
+#ifdef _WIN32
+    /* Reliable parent-death detection: poll the producer's process handle. The
+     * handle becomes signaled the instant the producer exits -- unlike the
+     * heartbeat, it never false-positives when the producer is alive but idle. */
+    HANDLE parent_h = nullptr;
+    if (const char *pp = std::getenv("INSP_LOG_PARENT_PID")) {
+        DWORD ppid = (DWORD)std::strtoul(pp, nullptr, 10);
+        if (ppid) parent_h = OpenProcess(SYNCHRONIZE, FALSE, ppid);
+    }
+#endif
+
     while (!parent_dead) {
         uint64_t head = h->head.load(std::memory_order_acquire);
 
-        /* Crash marker -- drain whatever we can, then dump and exit. */
+        /* Crash marker -- drain whatever we can, then dump. A real crash dumps
+         * and EXITS; an on-demand snapshot (LOG_CRASH_DUMP_REQUEST) dumps,
+         * resets the marker, and KEEPS RUNNING. */
         uint32_t cm = h->crash_marker.load(std::memory_order_acquire);
         if (cm != LOG_CRASH_NONE) {
-            std::fprintf(stderr,
-                "[inspd_log] crash marker %u observed; writing dump\n", cm);
+            bool on_demand = (cm == LOG_CRASH_DUMP_REQUEST);
+            std::fprintf(stderr, "[inspd_log] %s marker %u; writing dump\n",
+                         on_demand ? "on-demand dump" : "crash", cm);
             /* Drain final logs first so the ring contains everything the
              * producer wrote before / during the crash. */
             uint64_t head_now = h->head.load(std::memory_order_acquire);
@@ -621,7 +642,15 @@ int run(const Config &cfg) {
                 else ephemeral.push(std::string(text, tlen));
             }
             disk.flush();
-            std::string dump_path = write_crash_dump(cfg, h, ephemeral, cm);
+            std::string dump_path = write_crash_dump(cfg, h, ephemeral,
+                                       on_demand ? LOG_CRASH_OTHER : cm);
+            if (on_demand) {
+                /* Acknowledge so we don't re-dump every poll, then keep running. */
+                h->crash_marker.store(LOG_CRASH_NONE, std::memory_order_release);
+                std::fprintf(stderr, "[inspd_log] on-demand dump -> %s\n",
+                             dump_path.c_str());
+                continue;
+            }
             if (ws) {
                 struct timespec tspec;
                 clock_gettime(CLOCK_REALTIME, &tspec);
@@ -663,20 +692,32 @@ int run(const Config &cfg) {
         }
         (void)last_heartbeat; (void)last_heartbeat_seen;
 #else
-        uint64_t hb = h->heartbeat_ms.load(std::memory_order_relaxed);
         auto now = std::chrono::steady_clock::now();
-        if (hb != last_heartbeat) {
-            last_heartbeat = hb;
-            last_heartbeat_seen = now;
-        } else {
-            auto idle_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               now - last_heartbeat_seen).count();
-            /* 60s -- producer can stay quiet for a long time when idling. */
-            if (idle_ms > 60000 && tail == head) {
-                std::fprintf(stderr,
-                    "[inspd_log] parent heartbeat stalled %lld ms; exiting\n",
-                    (long long)idle_ms);
+        if (parent_h) {
+            /* Authoritative: signaled the moment the producer exits. No false
+             * positive for an alive-but-idle producer. */
+            if (WaitForSingleObject(parent_h, 0) == WAIT_OBJECT_0) {
+                std::fprintf(stderr, "[inspd_log] parent process exited; exiting\n");
                 parent_dead = true;
+            }
+            (void)last_heartbeat; (void)last_heartbeat_seen;
+        } else {
+            /* Fallback only when we couldn't get the parent PID: generous
+             * heartbeat watch (a quiet-but-alive producer can still trip this --
+             * which is exactly why we prefer the handle above). */
+            uint64_t hb = h->heartbeat_ms.load(std::memory_order_relaxed);
+            if (hb != last_heartbeat) {
+                last_heartbeat = hb;
+                last_heartbeat_seen = now;
+            } else {
+                auto idle_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   now - last_heartbeat_seen).count();
+                if (idle_ms > 60000 && tail == head) {
+                    std::fprintf(stderr,
+                        "[inspd_log] parent heartbeat stalled %lld ms; exiting\n",
+                        (long long)idle_ms);
+                    parent_dead = true;
+                }
             }
         }
 #endif
@@ -771,6 +812,13 @@ int run(const Config &cfg) {
 } /* anonymous namespace */
 
 int main(int argc, char **argv) {
+#ifdef _WIN32
+    /* The WS log server needs Winsock initialised. The producer calls
+     * WSAStartup, but the drainer is a SEPARATE process -- without this its
+     * socket() fails and "listening on 4091" is a lie (nothing binds, so the
+     * WebUI Core Logs panel can never connect). */
+    { WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa); }
+#endif
     Config cfg;
     env_load(cfg);
 

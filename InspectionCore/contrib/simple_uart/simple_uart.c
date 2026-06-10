@@ -161,14 +161,67 @@ static int simple_uart_set_config(struct simple_uart *sc, int speed, const char 
 #ifdef WIN32
     DCB dcbConfig;
     if (GetCommState (sc->port, &dcbConfig)) {
-        // TODO: Do mode_string properly
+        // Parse mode_string: "<DataBits><Parity><StopBits>[ <flow>]"
+        //   e.g. "8N1"          -> 8 data, No parity, 1 stop, NO flow control
+        //        "7E1 rtscts"   -> 7 data, Even parity, 1 stop, HW (RTS/CTS)
+        //        "8N1 xonxoff"  -> software flow control
+        // Flow defaults to "none" -- a USB-UART (e.g. CH340) with a floating,
+        // undriven CTS would otherwise make WriteFile block for seconds
+        // waiting on a CTS that never asserts.
+        int  dataBits = 8;
+        char parity   = 'N';
+        int  stopBits = 1;
+        char flow[16] = "none";
+        if (mode_string && strlen(mode_string) >= 3) {
+            if (mode_string[0] >= '5' && mode_string[0] <= '8') dataBits = mode_string[0] - '0';
+            char p = mode_string[1];
+            if (p >= 'a' && p <= 'z') p -= 32;                       /* toupper */
+            if (p == 'N' || p == 'E' || p == 'O') parity = p;
+            if (mode_string[2] == '1' || mode_string[2] == '2') stopBits = mode_string[2] - '0';
+            const char *sp = strpbrk(mode_string, " ,");             /* optional flow token */
+            if (sp) {
+                while (*sp == ' ' || *sp == ',') sp++;
+                int i = 0;
+                while (sp[i] && sp[i] != ' ' && i < (int)sizeof(flow) - 1) {
+                    char c = sp[i]; if (c >= 'A' && c <= 'Z') c += 32; /* tolower */
+                    flow[i++] = c;
+                }
+                flow[i] = '\0';
+            }
+        }
+        int useRtsCts = (strcmp(flow, "rtscts") == 0 || strcmp(flow, "hw") == 0);
+        int useXon    = (strcmp(flow, "xonxoff") == 0 || strcmp(flow, "sw") == 0);
+
         dcbConfig.BaudRate = speed;
-        dcbConfig.ByteSize = 8;
-        dcbConfig.Parity = NOPARITY;
-        dcbConfig.StopBits = ONESTOPBIT;
-        dcbConfig.fBinary = TRUE;
-        dcbConfig.fParity = TRUE;
+        dcbConfig.ByteSize = (BYTE)dataBits;
+        dcbConfig.Parity   = (parity == 'E') ? EVENPARITY : (parity == 'O') ? ODDPARITY : NOPARITY;
+        dcbConfig.StopBits = (stopBits == 2) ? TWOSTOPBITS : ONESTOPBIT;
+        dcbConfig.fBinary  = TRUE;
+        dcbConfig.fParity  = (parity == 'N') ? FALSE : TRUE;
+        // Flow control (default OFF).
+        dcbConfig.fOutxCtsFlow      = useRtsCts ? TRUE : FALSE;
+        dcbConfig.fRtsControl       = useRtsCts ? RTS_CONTROL_HANDSHAKE : RTS_CONTROL_ENABLE;
+        dcbConfig.fOutxDsrFlow      = FALSE;
+        dcbConfig.fDsrSensitivity   = FALSE;
+        dcbConfig.fDtrControl       = DTR_CONTROL_ENABLE;
+        dcbConfig.fOutX             = useXon ? TRUE : FALSE;
+        dcbConfig.fInX              = useXon ? TRUE : FALSE;
+        dcbConfig.fTXContinueOnXoff = TRUE;
+        dcbConfig.fAbortOnError     = FALSE;
         SetCommState (sc->port, &dcbConfig);
+        printf("[simple_uart] %s: %d %d%c%d flow=%s\n",
+               sc ? "cfg" : "cfg", speed, dataBits, parity, stopBits, flow);
+    }
+    // Bound the write so a wedged line can never block a write indefinitely
+    // (the read path only ever sets the READ timeouts, so writes were
+    // unbounded). GetCommTimeouts first to preserve the read-timeout fields.
+    {
+        COMMTIMEOUTS wt;
+        if (GetCommTimeouts (sc->port, &wt)) {
+            wt.WriteTotalTimeoutMultiplier = 0;
+            wt.WriteTotalTimeoutConstant   = 1000;   // 1s hard cap
+            SetCommTimeouts (sc->port, &wt);
+        }
     }
     return 0;
 #else

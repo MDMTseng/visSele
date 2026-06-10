@@ -133,6 +133,13 @@ void log_close_shm_ring(void);
  * or -1 on failure.  Cross-platform: posix_spawnp / CreateProcessA. */
 int log_spawn_drainer(const char *exe_path);
 
+/* On-demand "flight recorder" dump.  Asks the drainer (if running) to write a
+ * crash_<utc>.dump containing the ENTIRE current ring history (incl. verbose
+ * lines that never hit disk) -- without crashing or exiting.  Use it to grab a
+ * full snapshot on demand (e.g. from a WebUI button) when disk-persist level is
+ * raised to spare the disk.  No-op if no drainer/ring is attached. */
+void log_request_dump(void);
+
 /* Returns the producer's mapping pointer (the LogRingHeader is at offset 0)
  * if a shm ring is currently open; NULL otherwise.  Provided primarily so
  * tests and the in-process recovery code (Phase G) can inspect the ring

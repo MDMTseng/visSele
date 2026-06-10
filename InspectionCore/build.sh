@@ -22,6 +22,8 @@ PLATFORM="mac-arm64"
 CONFIG="Release"
 EXPORT_DIR=""
 CLEAN=0
+NO_CONFIGURE=0
+BUNDLE_ONLY=0
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 VCPKG_ROOT="${VCPKG_ROOT:-$HOME/vcpkg}"
 MINGW_PREFIX="${MINGW_PREFIX:-/opt/homebrew/opt/mingw-w64}"
@@ -38,8 +40,18 @@ Usage: $0 [options]
   -e, --export <dir>      bundle the built binaries (and runtime DLLs for
                           Windows targets) into <dir>. Created if missing.
   --clean                 wipe the build directory before configuring
+  --no-configure          skip the cmake configure / vcpkg step; just build the
+                          already-configured dir + bundle (fast iteration)
+  --bundle-only           skip configure AND build; only (re)bundle the existing
+                          build output into -e <dir>. Requires -e.
+  --allow-rebuild         proceed even if the toolchain drifted (vcpkg/gcc moved);
+                          otherwise the configure aborts to avoid a surprise
+                          ~30-min dependency rebuild
   -j, --jobs N            parallel build jobs (default: $JOBS)
   -h, --help              show this help
+
+Env: FORCE_RUNTIME=1 re-copies the heavy HikRobot MVS runtime even if the
+     export dir already has it (default: skip when already bundled).
 
 Platform notes:
   win-cross  cross-compile from macOS using mingw-w64 + vcpkg
@@ -55,6 +67,9 @@ while [[ $# -gt 0 ]]; do
     -c|--config)   CONFIG="$2"; shift 2;;
     -e|--export)   EXPORT_DIR="$2"; shift 2;;
     --clean)       CLEAN=1; shift;;
+    --no-configure) NO_CONFIGURE=1; shift;;
+    --bundle-only) BUNDLE_ONLY=1; NO_CONFIGURE=1; shift;;
+    --allow-rebuild) export ALLOW_REBUILD=1; shift;;
     -j|--jobs)     JOBS="$2"; shift 2;;
     -h|--help)     usage; exit 0;;
     *) echo "unknown arg: $1" >&2; usage >&2; exit 2;;
@@ -63,7 +78,7 @@ done
 
 # ---- map platform shortcut -> CMake preset ------------------------------
 case "$PLATFORM" in
-  mac-arm64|mac-arm64-opencv|linux-x64|win-mingw)  PRESET="$PLATFORM" ;;
+  mac-arm64|mac-arm64-opencv|linux-x64|win-mingw|win-mingw-ninja)  PRESET="$PLATFORM" ;;
   linux)                                           PRESET="linux-x64" ;;
   win-cross)                                       PRESET="win-mingw-cross" ;;
   *) echo "unknown platform: $PLATFORM" >&2; exit 2 ;;
@@ -109,20 +124,41 @@ if [[ -z "${NO_CCACHE:-}" ]] && command -v ccache >/dev/null 2>&1; then
   )
 fi
 
+# ---- bundle-only sanity -------------------------------------------------
+if (( BUNDLE_ONLY )); then
+  [[ -n "$EXPORT_DIR" ]] || { echo "ERROR: --bundle-only requires -e <dir>" >&2; exit 2; }
+  [[ -d "$BUILD_DIR" ]]  || { echo "ERROR: --bundle-only but no build dir at $BUILD_DIR (build it first)" >&2; exit 2; }
+fi
+
 # ---- configure ----------------------------------------------------------
 # CMake presets fix CMAKE_BUILD_TYPE=Release; override on the command line.
-echo "==> cmake --preset $PRESET -DCMAKE_BUILD_TYPE=$CONFIG ${CCACHE_OPTS[*]}"
-cmake -S "$SCRIPT_DIR" --preset "$PRESET" -DCMAKE_BUILD_TYPE="$CONFIG" "${CCACHE_OPTS[@]}"
+if (( NO_CONFIGURE )); then
+  echo "==> skip configure (--no-configure)"
+  [[ -f "$BUILD_DIR/CMakeCache.txt" ]] || { echo "ERROR: $BUILD_DIR is not configured yet; run once without --no-configure" >&2; exit 2; }
+else
+  # Guard against a surprise ~30-min dependency rebuild: if the toolchain that
+  # vcpkg hashes (its checkout commit / gcc) drifted from the pinned values,
+  # abort here instead of letting cmake silently rebuild everything.
+  if (( needs_vcpkg )) && [[ -f "$SCRIPT_DIR/tools/toolchain_guard.sh" ]]; then
+    bash "$SCRIPT_DIR/tools/toolchain_guard.sh" || exit $?
+  fi
+  echo "==> cmake --preset $PRESET -DCMAKE_BUILD_TYPE=$CONFIG ${CCACHE_OPTS[*]}"
+  cmake -S "$SCRIPT_DIR" --preset "$PRESET" -DCMAKE_BUILD_TYPE="$CONFIG" "${CCACHE_OPTS[@]}"
+fi
 
 # ---- build --------------------------------------------------------------
-echo "==> cmake --build $BUILD_DIR -j $JOBS"
-cmake --build "$BUILD_DIR" -j "$JOBS"
+if (( BUNDLE_ONLY )); then
+  echo "==> skip build (--bundle-only)"
+else
+  echo "==> cmake --build $BUILD_DIR -j $JOBS"
+  cmake --build "$BUILD_DIR" -j "$JOBS"
+fi
 
 # ---- bundle (Windows targets only) --------------------------------------
 if [[ -n "$EXPORT_DIR" ]]; then
   mkdir -p "$EXPORT_DIR"
   case "$PRESET" in
-    win-mingw|win-mingw-cross)
+    win-mingw|win-mingw-ninja|win-mingw-cross)
       echo "==> Bundling Windows binaries + DLLs -> $EXPORT_DIR"
       # 1) all .exe from the build dir
       find "$BUILD_DIR" -maxdepth 2 -name "*.exe" -exec cp -v {} "$EXPORT_DIR/" \;
@@ -178,9 +214,13 @@ if [[ -n "$EXPORT_DIR" ]]; then
       #     from the local MVS install. Override the path with $HIK_MVS_RUNTIME, or
       #     set it empty to skip (rely on MVS being installed on the target).
       hik_rt="${HIK_MVS_RUNTIME-/c/Program Files (x86)/Common Files/MVS/Runtime/Win64_x64}"
-      if [[ -n "$hik_rt" && -d "$hik_rt" ]]; then
+      hik_sentinel="$EXPORT_DIR/.mvs_runtime_bundled"
+      if [[ -f "$hik_sentinel" && -z "${FORCE_RUNTIME:-}" ]]; then
+        echo "==> HikRobot MVS runtime already bundled (skip; FORCE_RUNTIME=1 to re-copy)"
+      elif [[ -n "$hik_rt" && -d "$hik_rt" ]]; then
         echo "==> Bundling HikRobot MVS runtime from: $hik_rt"
         cp -r "$hik_rt"/. "$EXPORT_DIR/"
+        touch "$hik_sentinel"
       elif [[ -n "$hik_rt" ]]; then
         echo "WARN: HikRobot MVS runtime not found at '$hik_rt' (set HIK_MVS_RUNTIME). The bundle will need MVS installed on the target machine." >&2
       fi

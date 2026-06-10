@@ -100,6 +100,23 @@ std::atomic<uint64_t> g_view_frame_seq{0};
 TSQueue<image_pipe_info *> inspQueue(10);
 TSQueue<image_pipe_info *> datViewQueue(10);
 TSQueue<image_pipe_info *> inspSnapQueue(5);
+
+// Result-to-peripheral (COM/serial "inspection machine") send, decoupled
+// from the inspection thread. simple_uart_write -> WriteFile blocks under
+// flow control / a full device buffer (no write timeout is set), and doing
+// it inline in ImgPipeProcessCenter_imp stalled the WHOLE pipeline for >1s
+// at a time. PerifSendThread drains this queue and absorbs that blocking off
+// the critical path. The queue is generously sized to ride out transient
+// stalls; persistent overflow drops the oldest message (and counts it)
+// rather than back-pressuring inspection.
+struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; };
+TSQueue<PerifResultMsg> perifSendQueue(256);
+std::atomic<int> perifSendDropCount{0};
+// Serial write-latency stats (only ever touched by the single PerifSendThread,
+// so plain scalars are fine). max_ms is the interesting one -- it exposes any
+// remaining flow-control / driver-buffer stall in the COM peripheral write.
+double g_perifWriteMaxMs = 0, g_perifWriteSumMs = 0, g_perifWriteLastMs = 0;
+uint64_t g_perifWriteCnt = 0;
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
 
@@ -644,15 +661,19 @@ int ImgInspection_DefRead(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime,
 
 typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst, size_t dstLen, uint8_t *src, size_t srcLen);
 
-// cv::Mat-native ImageDownSampling. Walks the dst grid, samples src at
-// downScale*step with the calib-aware ImageSampler when provided (else direct
-// pixel fetch). Mirrors the acvImage body bytewise on the no-sampler branch.
+// Downsample src by `downScale` (optionally within an X/Y/W/H crop) into dst.
+//   * No calibration needed (no sampler, or sampler does plain pixel fetch):
+//     uses cv::resize -- SIMD, and channel-preserving so a mono frame stays
+//     CV_8UC1 (1/3 the bytes; the JPEG encoder then gets a true 1-channel image).
+//   * Calibration active (lens-distortion remap and/or backlight scaling): keeps
+//     the per-pixel calib-aware sampler (cv::resize can't do per-pixel remap).
 void ImageDownSampling(cv::Mat &dst, const cv::Mat &src, int downScale,
                        ImageSampler *sampler, int doNearest = 1,
                        int X = -1, int Y = -1, int W = -1, int H = -1)
 {
   if (src.empty() || (src.type() != CV_8UC3 && src.type() != CV_8UC1)) return;
-  const int srcCn = src.channels();   // 1 (mono gray) or 3 (B=G=R) -- sampled accordingly
+  if (downScale < 1) downScale = 1;
+  const int srcCn = src.channels();   // 1 (mono gray) or 3 (B=G=R)
   cv::Mat src_c = src.isContinuous() ? src : src.clone();
   int X2 = src_c.cols - 1, Y2 = src_c.rows - 1;
   int xx = (X < 0) ? 0 : (X >= X2 ? X2 - 1 : X);
@@ -663,8 +684,27 @@ void ImageDownSampling(cv::Mat &dst, const cv::Mat &src, int downScale,
   int sxEnd   = X2 / downScale, syEnd   = Y2 / downScale;
   int dstW = sxEnd - sxStart + 1;
   int dstH = syEnd - syStart + 1;
-  dst.create(dstH, dstW, CV_8UC3);
+  if (dstW < 1 || dstH < 1) return;
 
+  // --- Fast path: plain downsample via OpenCV (no distortion / no backlight) ---
+  if (!sampler || sampler->samplingIsIdentity())
+  {
+    int x0 = sxStart * downScale, y0 = syStart * downScale;
+    int roiW = (sxEnd * downScale + downScale) - x0; if (x0 + roiW > src_c.cols) roiW = src_c.cols - x0;
+    int roiH = (syEnd * downScale + downScale) - y0; if (y0 + roiH > src_c.rows) roiH = src_c.rows - y0;
+    if (roiW < 1) roiW = 1;
+    if (roiH < 1) roiH = 1;
+    cv::Mat roi = src_c(cv::Rect(x0, y0, roiW, roiH));
+    // INTER_AREA gives a clean anti-aliased downscale; INTER_NEAREST matches the
+    // old point-sampling when the caller asked for nearest.
+    cv::resize(roi, dst, cv::Size(dstW, dstH), 0, 0,
+               doNearest ? cv::INTER_NEAREST : cv::INTER_AREA);
+    return;
+  }
+
+  // --- Calibration-aware path: per-pixel sampler (distortion remap + backlight) ---
+  // Output channels follow the source so a mono frame stays CV_8UC1.
+  dst.create(dstH, dstW, srcCn == 1 ? CV_8UC1 : CV_8UC3);
   for (int i = syStart; i <= syEnd; i++)
   {
     int src_i = i * downScale;
@@ -672,34 +712,21 @@ void ImageDownSampling(cv::Mat &dst, const cv::Mat &src, int downScale,
     for (int j = sxStart; j <= sxEnd; j++)
     {
       int src_j = j * downScale;
-      int BSum = 0, GSum = 0, RSum = 0;
-      if (sampler)
+      float coord[2] = { (float)src_j, (float)src_i };
+      if (srcCn == 1)
       {
-        float coord[2] = { (float)src_j, (float)src_i };
-        if (srcCn == 1)
-        {
-          float g = sampler->sampleImage1_IdealCoord(src_c, coord, doNearest);  // gray: 1 sample, not 3
-          if (g > 255) g = 255;
-          BSum = GSum = RSum = (int)g;
-        }
-        else
-        {
-          float bgr[3];
-          sampler->sampleImage3_IdealCoord(src_c, coord, bgr, doNearest);
-          if (bgr[0] > 255) bgr[0] = 255;
-          if (bgr[1] > 255) bgr[1] = 255;
-          if (bgr[2] > 255) bgr[2] = 255;
-          BSum = (int)bgr[0]; GSum = (int)bgr[1]; RSum = (int)bgr[2];
-        }
+        float g = sampler->sampleImage1_IdealCoord(src_c, coord, doNearest);  // gray: 1 sample, not 3
+        if (g > 255) g = 255;
+        dRow[j - sxStart] = (uint8_t)g;
       }
       else
       {
-        const uint8_t *sPix = src_c.ptr<uint8_t>(src_i) + src_j * srcCn;
-        if (srcCn == 1) { BSum = GSum = RSum = sPix[0]; }
-        else            { BSum = sPix[0]; GSum = sPix[1]; RSum = sPix[2]; }
+        float bgr[3];
+        sampler->sampleImage3_IdealCoord(src_c, coord, bgr, doNearest);
+        for (int k = 0; k < 3; k++) if (bgr[k] > 255) bgr[k] = 255;
+        uint8_t *dPix = dRow + (j - sxStart) * 3;
+        dPix[0] = (uint8_t)bgr[0]; dPix[1] = (uint8_t)bgr[1]; dPix[2] = (uint8_t)bgr[2];
       }
-      uint8_t *dPix = dRow + (j - sxStart) * 3;
-      dPix[0] = BSum; dPix[1] = GSum; dPix[2] = RSum;
     }
   }
 }
@@ -1380,20 +1407,24 @@ CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
   // size/type change, so for a fixed camera frame size these are allocated once
   // and their buffers recycled every frame -- avoids ~20MB/frame of heap churn +
   // first-touch page faults that fresh `cv::Mat raw(...)`/`r` would incur.
-  thread_local cv::Mat raw, oriented, r;
+  thread_local cv::Mat raw, oriented;
 
-  // Contiguous BGR buffer at the camera's native orientation; the camera writes
-  // into it via ExtractFrame.
-  raw.create(finfo.height, finfo.width, CV_8UC3);
-  auto ret = cl_obj.ExtractFrame(raw.data, 3, finfo.width * finfo.height);
+  // Keep a mono camera 1-channel the whole way (no replicate-to-BGR), matching
+  // the live inspection path (CameraLayer_Callback_GIGEMV). The snapshot dst is
+  // a single-channel gray image; a color/Bayer frame is taken as its red
+  // channel. create() reuses the pooled buffer when size/type is unchanged.
+  int _ch = (finfo.channelCount == 1) ? 1 : 3;
+  raw.create(finfo.height, finfo.width, _ch == 1 ? CV_8UC1 : CV_8UC3);
+  auto ret = cl_obj.ExtractFrame(raw.data, _ch, finfo.width * finfo.height);
 
   if (img_transpose) cv::transpose(raw, oriented);
   else oriented = raw;
 
-  // BGR -> RRR (replicate R channel across all 3 BGR slots), matching the
-  // legacy callback's per-pixel rewrite.
-  cv::extractChannel(oriented, r, 2);
-  cv::cvtColor(r, *dst, cv::COLOR_GRAY2BGR);
+  // Output a 1-channel gray snapshot (was cvtColor GRAY2BGR -> CV_8UC3). copyTo /
+  // extractChannel both write a fresh buffer into *dst, so dst never aliases the
+  // thread_local scratch that the next snap reuses.
+  if (oriented.channels() == 1) oriented.copyTo(*dst);
+  else cv::extractChannel(oriented, *dst, 2);   // red channel -> gray CV_8UC1
 
   return ret;
 }
@@ -2860,7 +2891,18 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       cJSON *retObj = cJSON_CreateObject();
 
       char *cmd_type = JFetch_STRING(json, "type");
-      if (strcmp(cmd_type, "exec") == 0)
+      if (cmd_type && strcmp(cmd_type, "log_dump") == 0)
+      {
+        // WebUI "flight recorder" snapshot: ask the drainer to dump the entire
+        // current ring (incl. verbose lines that never hit disk under the
+        // disk-protecting WARN persist default) to crash_<utc>.dump. No crash,
+        // no exit -- the drainer keeps running.
+        log_request_dump();
+        cJSON_AddStringToObject(retObj, "type", "log_dump");
+        cJSON_AddNumberToObject(retObj, "ok", 1);
+        session_ACK = true;
+      }
+      else if (strcmp(cmd_type, "exec") == 0)
       {
         char *cmd_ = JFetch_STRING(json, "cmd");
         if (cmd_)
@@ -3317,6 +3359,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             {
               mode=default_mode;
             }
+            // Flow control is a separate option; default "none". Combined into
+            // the mode string ("<mode> <flow>") that Data_UART_Layer forwards to
+            // simple_uart. Accepted: none | rtscts | xonxoff (also hw | sw).
+            char *flow = JFetch_STRING(json, "flow_control");
+            if(flow==NULL) flow="none";
+            char modebuf[40];
+            snprintf(modebuf,sizeof(modebuf),"%s %s",mode,flow);
 
             if(baudrate==NULL)
             {
@@ -3327,8 +3376,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
 
             try{
-              
-              PHYLayer=new Data_UART_Layer(uart_name,(int)*baudrate, mode);
+
+              PHYLayer=new Data_UART_Layer(uart_name,(int)*baudrate, modebuf);
 
 
             }
@@ -3689,12 +3738,12 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
         LOGI("perifCH is here too!!");
         uint8_t buffx[200];
         
-        int ret= printfTo_perifCH(bpg_pi.perifCH,buffx, sizeof(buffx),true,
-                "{"
-                "\"type\":\"inspRep\",\"status\":%d,"
-                "\"idx\":%d"
-                "}",
-                -10001, 1);
+        // int ret= printfTo_perifCH(bpg_pi.perifCH,buffx, sizeof(buffx),true,
+        //         "{"
+        //         "\"type\":\"inspRep\",\"status\":%d,"
+        //         "\"idx\":%d"
+        //         "}",
+        //         -10001, 1);
       }
     }
   }
@@ -3751,7 +3800,6 @@ int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool direc
 
 int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...)
 {
-
   if (bpg_pi.perifCH==NULL)
   {
     return -1;
@@ -4154,6 +4202,53 @@ int removeOldestRep(const char* path,const char* ext)
 }
 
 
+// Drains perifSendQueue and performs the (potentially blocking) serial write
+// to the peripheral inspection machine, keeping that latency off the
+// inspection thread. pkt_count / count semantics are preserved exactly (the
+// count sent is the channel's pkt_count at send time, incremented on success).
+void PerifSendThread(bool *terminationflag)
+{
+  while (terminationflag && *terminationflag == false)
+  {
+    PerifResultMsg msg;
+    try
+    {
+      while (perifSendQueue.pop_blocking(msg))
+      {
+        PerifChannel *pc = bpg_pi.perifCH;   // snapshot (may be (re)created by ST cmd)
+        if (pc != NULL)
+        {
+          auto _wt0 = std::chrono::steady_clock::now();
+          int ret = sendResultTo_perifCH(pc, msg.uInspStatus, msg.timeStamp_100us, pc->pkt_count);
+          double ms = std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - _wt0).count();
+          if (ret >= 0)
+            pc->pkt_count++;
+
+          // write-latency stats: track last / max / running avg.
+          g_perifWriteLastMs = ms;
+          g_perifWriteSumMs += ms;
+          g_perifWriteCnt++;
+          bool newMax = ms > g_perifWriteMaxMs;
+          if (newMax) g_perifWriteMaxMs = ms;
+          // Log on every new max (the thing you want to catch) and a periodic
+          // heartbeat every 100 writes so you can read the steady state.
+          if (newMax || (g_perifWriteCnt % 100) == 0)
+            LOGE("perif write: last:%.2fms max:%.2fms avg:%.2fms n:%llu qdepth:%zu drops:%d%s",
+                 ms, g_perifWriteMaxMs, g_perifWriteSumMs / (double)g_perifWriteCnt,
+                 (unsigned long long)g_perifWriteCnt, perifSendQueue.size(),
+                 perifSendDropCount.load(), newMax ? "  <== NEW MAX" : "");
+        }
+      }
+    }
+    catch (TS_Termination_Exception &e)
+    {
+      break;
+    }
+  }
+  LOGI("PerifSendThread ended....");
+}
+
 void InspSnapSaveThread(bool *terminationflag)
 {
   using Ms = std::chrono::milliseconds;
@@ -4391,6 +4486,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   }
   clock_t t = clock();
 
+  LOGI("====================================");
   // Reduce the captured frame to the gray working image used by inspection +
   // transport. A mono camera (1-channel) keeps its native gray with no copy and
   // flows 1-channel the whole way; a color/replicated frame (3-channel) takes the
@@ -4416,7 +4512,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   CameraLayer::frameInfo &fi = imgPipe->fi;
 
   int ret = 0;
-
+  LOGI("====================================");
   // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   //stackingC=0;
   // Per-frame sampler origin sync: cover cameras that re-emit ROI
@@ -4465,6 +4561,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   {
 
+    
+    LOGI("====================================");
     // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
     ret = ImgInspection(matchingEng, capImg, bacpac, imgPipe->camLayer, 1);
     const FeatureReport *report = matchingEng.GetReport();
@@ -4541,25 +4639,33 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
   }
 
-  LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+  // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
 
   bool doPassDown = doInspActionThread;
 
-
-  if (bpg_pi.perifCH!=NULL)
+  if (bpg_pi.perifCH!=NULL && false)
   {
-    
-    int ret = sendResultTo_perifCH(bpg_pi.perifCH,imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100,bpg_pi.perifCH->pkt_count);
-    if(ret>=0)
+    // Hand off to PerifSendThread instead of blocking here on the serial
+    // write (which can stall >1s under flow control and freeze inspection).
+    PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100 };
+    if (!perifSendQueue.push(msg))
     {
-      bpg_pi.perifCH->pkt_count++;
+      // Full: the peripheral can't keep up. Drop the OLDEST so we keep the
+      // freshest result flowing, and count the loss -- never block here.
+      PerifResultMsg discard;
+      perifSendQueue.pop(discard);
+      perifSendQueue.push(msg);
+      int n = ++perifSendDropCount;
+      if ((n % 50) == 1)
+        LOGE("perifSendQueue full -> dropping oldest (cumulative drops: %d)", n);
     }
-
-
   }
   cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
   //taking the short cut, perifCH(inspection machine) needs 100% of data
   // LOGI("timeStamp_us:%lu",imgPipe->fi.timeStamp_us);
+
+  
+  LOGI("====================================");
   if (doPassDown)
   {
     if(datViewQueue.size()==datViewQueue.capacity())
@@ -4622,12 +4728,15 @@ void ImgPipeProcessThread(bool *terminationflag)
     while (inspQueue.pop_blocking(headImgPipe))
     {
 
-      // LOGI("============POP");
+      LOGI("============New frame go ImgPipeProcessCenter_imp");
       //delayStartCounter=10000;
       bool doPassDown = false;
       ImgPipeProcessCenter_imp(headImgPipe, &doPassDown);
+      LOGI("============ImgPipeProcessCenter_imp done");
       if (!doPassDown)
         bpg_pi.resPool.retResrc(headImgPipe);
+
+      LOGI("============ImgPipeProcessThread finish one frame");
     }
   }
 }
@@ -4835,6 +4944,9 @@ int mainLoop(bool realCamera = false)
 
   std::thread _inspSnapSaveThread(InspSnapSaveThread, &terminationFlag);
   setThreadPriority(_inspSnapSaveThread, SCHED_RR, 19);
+
+  std::thread _perifSendThread(PerifSendThread, &terminationFlag);
+  setThreadPriority(_perifSendThread, SCHED_RR, 10);
 
   {
 

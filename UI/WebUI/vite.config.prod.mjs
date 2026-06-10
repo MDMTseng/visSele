@@ -1,6 +1,7 @@
 import { defineConfig, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,6 +24,26 @@ const jsxInJs = {
   },
 };
 
+// Copy the runtime-referenced static `resource/` tree into dist/. The app loads
+// e.g. `resource/image/antd-compass.svg` by relative URL at runtime (not via an
+// import), so Vite doesn't bundle it -- without this it 404s on a deployed copy
+// (broken <img> -> drawImage DOMException -> DefConf canvas crash). Vite's
+// publicDir copies its CONTENTS to the dist root, which would flatten the path,
+// so copy the folder explicitly after the bundle is written.
+const copyResource = {
+  name: 'copy-resource',
+  closeBundle() {
+    const src = r('resource');
+    const dst = r('dist/resource');
+    if (fs.existsSync(src)) {
+      fs.cpSync(src, dst, { recursive: true });
+      console.log('[copy-resource] resource/ -> dist/resource/');
+    } else {
+      console.warn('[copy-resource] no resource/ dir at', src);
+    }
+  },
+};
+
 export default defineConfig({
   root,
   base: './', // relative asset paths -> portable when copied/deployed
@@ -31,6 +52,7 @@ export default defineConfig({
     nodePolyfills({ globals: { Buffer: true, process: true } }),
     jsxInJs,
     react({ jsxRuntime: 'classic', include: /src\/.*\.(js|jsx)$/, exclude: /node_modules/ }),
+    copyResource,
   ],
   resolve: {
     alias: {

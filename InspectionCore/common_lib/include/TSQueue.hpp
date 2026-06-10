@@ -4,6 +4,8 @@
 
 #include <thread>
 #include <mutex>
+#include <condition_variable>
+#include <atomic>
 #include <queue>
 
 
@@ -16,21 +18,32 @@ struct TS_Termination_Exception : public exception {
    }
 };
 
+// Bounded, thread-safe, blocking queue.
+//
+// Rewritten to use std::condition_variable. The previous implementation
+// used a std::mutex as a semaphore -- locked in the consumer thread and
+// unlocked in the producer thread (undefined behaviour: a mutex must be
+// released by the thread that holds it) and with no count, so wakeups were
+// lost when several push()es landed while a blocked consumer was between
+// its pop() check and its lock(). That produced a stall-then-burst drain
+// pattern on the inspection/data-view/camera queues. The cv version below
+// keeps the exact same public API + TS_Termination_Exception semantics.
 template<typename T>
 class TSQueue {
 
 protected:
   std::queue<T> queue_;
   mutable std::mutex mutex_;
- 
-  mutable std::mutex push_mutex_;
-  mutable std::mutex pop_mutex_;
-  bool termination=false;
+  std::condition_variable not_empty_cv_;   // signalled on push
+  std::condition_variable not_full_cv_;    // signalled on pop
+  std::atomic<bool> termination{false};
   int maxDataCount;
   // Moved out of public interface to prevent races between this
   // and pop().
   bool empty();
-  void termination_avalanche_and_throw_excption();
+  // Must be called with mutex_ held. Wakes every waiter so the
+  // termination cascades, then throws.
+  [[noreturn]] void throw_terminated_locked();
 public:
   TSQueue(int maxCount=-1);
   void resize(int size);
@@ -51,23 +64,27 @@ public:
 
 template<typename T>
 void TSQueue<T>::termination_trigger(){
-  termination=true;
-  mutex_.unlock();
-  push_mutex_.unlock();
-  pop_mutex_.unlock();
-
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    termination.store(true);
+  }
+  not_empty_cv_.notify_all();
+  not_full_cv_.notify_all();
 }
 
 
 template<typename T>
 bool TSQueue<T>::is_terminated(){
-  return termination;
+  return termination.load();
 }
 
 
 template<typename T>
-void TSQueue<T>::termination_avalanche_and_throw_excption(){
-  termination_trigger();
+void TSQueue<T>::throw_terminated_locked(){
+  // mutex_ is held by the caller; notify outside the lock is fine but
+  // notifying while holding it is also valid and keeps this simple.
+  not_empty_cv_.notify_all();
+  not_full_cv_.notify_all();
   throw TS_Termination_Exception();
 }
 
@@ -85,14 +102,18 @@ TSQueue<T>::TSQueue(int maxCount){
 
 template<typename T>
 void TSQueue<T>::resize(int size) {
-  maxDataCount=size;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    maxDataCount=size;
+  }
+  // Capacity may have grown -- wake any blocked pushers to re-check.
+  not_full_cv_.notify_all();
 }
 
 template<typename T>
 size_t TSQueue<T>::size() {
-  if(termination)termination_avalanche_and_throw_excption();
   std::lock_guard<std::mutex> lock(mutex_);
-  if(termination)termination_avalanche_and_throw_excption();
+  if(termination.load())throw_terminated_locked();
   return queue_.size();
 }
 
@@ -104,108 +125,90 @@ size_t TSQueue<T>::capacity() {
 template<typename T>
 bool TSQueue<T>::resume_from_termination()
 {
-  if(size()>0)return false;
-  termination=false;
+  std::lock_guard<std::mutex> lock(mutex_);
+  if(!queue_.empty())return false;
+  termination.store(false);
   return true;
 }
 
 template<typename T>
 bool TSQueue<T>::pop(T& retDat) {
-  if(termination)termination_avalanche_and_throw_excption();
   std::lock_guard<std::mutex> lock(mutex_);
-  if(termination)termination_avalanche_and_throw_excption();
+  if(termination.load())throw_terminated_locked();
   if (queue_.empty()) {
     return false;
   }
   retDat = queue_.front();
   queue_.pop();
-  
-  push_mutex_.unlock();
+  not_full_cv_.notify_one();
   return true;
 }
 
 template<typename T>
 bool TSQueue<T>::peek(T& retDat) {
-  if(termination)termination_avalanche_and_throw_excption();
   std::lock_guard<std::mutex> lock(mutex_);
-  if(termination)termination_avalanche_and_throw_excption();
+  if(termination.load())throw_terminated_locked();
   if (queue_.empty()) {
     return false;
   }
   retDat = queue_.front();
-  push_mutex_.unlock();
   return true;
 }
 
 template<typename T>
 bool TSQueue<T>::pop_blocking(T& retDat) {
-
-  if(termination)termination_avalanche_and_throw_excption();
-  while(pop(retDat)==false)
-  {
-    if(termination)termination_avalanche_and_throw_excption();
-    // printf("pop_blocking :: locked\n");
-    pop_mutex_.lock();
-    // printf("pop_blocking :: unlocked\n");
-  }
-
+  std::unique_lock<std::mutex> lock(mutex_);
+  not_empty_cv_.wait(lock, [this]{ return termination.load() || !queue_.empty(); });
+  if(termination.load())throw_terminated_locked();
+  retDat = queue_.front();
+  queue_.pop();
+  not_full_cv_.notify_one();
   return true;
 }
 
 template<typename T>
 bool TSQueue<T>::peek_blocking(T& retDat) {
-
-  if(termination)termination_avalanche_and_throw_excption();
-  while(peek(retDat)==false)
-  {
-    if(termination)termination_avalanche_and_throw_excption();
-    // printf("pop_blocking :: locked\n");
-    pop_mutex_.lock();
-    // printf("pop_blocking :: unlocked\n");
-  }
-
+  std::unique_lock<std::mutex> lock(mutex_);
+  not_empty_cv_.wait(lock, [this]{ return termination.load() || !queue_.empty(); });
+  if(termination.load())throw_terminated_locked();
+  retDat = queue_.front();
   return true;
 }
 template<typename T>
 bool TSQueue<T>::push(const T &item) {
-  if(termination)termination_avalanche_and_throw_excption();
   std::lock_guard<std::mutex> lock(mutex_);
-
-  if(termination)termination_avalanche_and_throw_excption();
-  if(maxDataCount!=-1 && queue_.size()>=maxDataCount)
+  if(termination.load())throw_terminated_locked();
+  if(maxDataCount!=-1 && queue_.size()>=(size_t)maxDataCount)
   {
     return false;
   }
   queue_.push(item);
-  pop_mutex_.unlock();
+  not_empty_cv_.notify_one();
   return true;
 }
 
 template<typename T>
 bool TSQueue<T>::push_blocking(const T &item) {
-
-  if(termination)termination_avalanche_and_throw_excption();
-  while(push(item)==false)
-  {
-    // printf("push_blocking :: locked\n");
-    if(termination)termination_avalanche_and_throw_excption();
-    push_mutex_.lock();
-    // printf("push_blocking :: unlocked\n");
-  }
-
+  std::unique_lock<std::mutex> lock(mutex_);
+  not_full_cv_.wait(lock, [this]{
+    return termination.load() || maxDataCount==-1 || queue_.size()<(size_t)maxDataCount;
+  });
+  if(termination.load())throw_terminated_locked();
+  queue_.push(item);
+  not_empty_cv_.notify_one();
   return true;
 }
 
 
 template<typename T>
 bool TSQueue<T>::dump(T &item) {
-
+  std::lock_guard<std::mutex> lock(mutex_);
   if (queue_.empty()) {
     return false;
   }
   item = queue_.front();
   queue_.pop();
-  
+  not_full_cv_.notify_one();
   return true;
 }
 
