@@ -1582,11 +1582,11 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
     function CancelNowInsp()
     {
-      ACT_WS_SEND_BPG(CORE_ID, "CI", 0, 
-      { 
-        _PGID_: _PGID_, 
-        _PGINFO_: { keep: true }, 
-        definfo: undefined     
+      ACT_WS_SEND_BPG(CORE_ID, "CI", 0,
+      {
+        _PGID_: _PGID_,
+        _PGINFO_: { keep: true },
+        definfo: undefined
       }, undefined,
       {
         resolve:(darr,mainFlow)=>{
@@ -1594,7 +1594,35 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         reject:(e)=>{
         }
       });
-      
+
+    }
+
+    // Save the frame currently streaming in this 立即測試 modal as an ALTERNATE
+    // sibling image for the def. Use __LAST_DATA_VIEW_CACHE_IMG__ (the last
+    // INSPECTED frame = the live streamed image), NOT __CACHE_IMG__ -- the latter
+    // holds the def image loaded on DefConf entry (the original <def>.png) and is
+    // NOT updated by the CI/FI stream, so it saved a duplicate of <def>.png. We
+    // name it "<defModelPath>_<stamp>" (defModelPath is the extension-less base path),
+    // so the core writes "<base>_<stamp>.png", which DefConfImageSwitcher
+    // discovers as a sibling (filter: name.indexOf(base)===0 && /\.(png|jpe?g|bmp)$/).
+    // On success we fire a window event so the (separate, persistent) switcher
+    // re-scans and the new image appears in its dropdown immediately.
+    function saveAlternateImage()
+    {
+      const base = edit_info.defModelPath;
+      if (!CORE_ID || !base) return;
+      const dt = new Date();
+      const p2 = (n) => ("0" + n).slice(-2);
+      const stamp = `${dt.getFullYear()}${p2(dt.getMonth()+1)}${p2(dt.getDate())}_${p2(dt.getHours())}${p2(dt.getMinutes())}${p2(dt.getSeconds())}`;
+      const filename = `${base}_${stamp}`;
+      ACT_WS_SEND_BPG(CORE_ID, "SV", 0,
+        { filename, type: "__LAST_DATA_VIEW_CACHE_IMG__" }, undefined,
+        {
+          resolve: (darr) => {
+            try { window.dispatchEvent(new CustomEvent('defconf-images-changed')); } catch (e) {}
+          },
+          reject: (e) => { log.info("[save-alt-image] failed", e); }
+        });
     }
 
 
@@ -1603,17 +1631,20 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         CancelNowInsp()
         setModal_view(undefined);
       },
-      onCancel: () => { 
+      onCancel: () => {
         CancelNowInsp()
-        setModal_view(undefined); 
+        setModal_view(undefined);
       },
-      
+
       height:"80%",
       width:"95%",
       style:{top:"30px"},
 
       className:"modal-sizing size95",
-      footer:null,
+      footer:<>
+          <Button key="save-alt" type="primary" onClick={saveAlternateImage}>儲存為替代影像</Button>
+          <Button key="close" danger onClick={()=>{ CancelNowInsp(); setModal_view(undefined); }}>關閉</Button>
+        </>,
       title: null,
       ext_sec:"INST_Inspection"
     })
@@ -2188,13 +2219,28 @@ function DefConfImageSwitcher() {
         }, reject: (e) => { } });
   };
 
-  // Discover sibling images via FB (folder list), once per loaded def.
+  // 立即測試 "save alternate image" writes a new sibling png to disk via SV; it
+  // then fires this window event so we re-scan the folder and the new image
+  // shows up in the dropdown without re-entering the def.
+  const [reloadTick, setReloadTick] = useState(0);
+  useEffect(() => {
+    const h = () => setReloadTick(t => t + 1);
+    window.addEventListener('defconf-images-changed', h);
+    return () => window.removeEventListener('defconf-images-changed', h);
+  }, []);
+
+  // Discover sibling images via FB (folder list), once per loaded def (and once
+  // per reloadTick bump from a save). curPathRef tracks the live selection so a
+  // re-scan preserves what the user is viewing instead of snapping back to base.
   const imgListRef = useRef(null);
+  const curPathRef = useRef(undefined);
+  curPathRef.current = currentImagePath;
   useEffect(() => {
     if (!CORE_ID || !edit_info || !edit_info.defModelPath) return;
     const dmp = edit_info.defModelPath;
-    if (imgListRef.current === dmp) return;
-    imgListRef.current = dmp;
+    const scanKey = dmp + '#' + reloadTick;
+    if (imgListRef.current === scanKey) return;
+    imgListRef.current = scanKey;
     const slash = Math.max(dmp.lastIndexOf('/'), dmp.lastIndexOf('\\'));
     const dir = slash >= 0 ? dmp.substring(0, slash) : '.';
     const base = slash >= 0 ? dmp.substring(slash + 1) : dmp;
@@ -2209,10 +2255,15 @@ function DefConfImageSwitcher() {
                          && f.name.indexOf(base) === 0 && /\.(png|jpe?g|bmp)$/i.test(f.name))
             .map(f => ({ name: f.name, path: fdir + '/' + f.name }));
           setImageList(imgs);
-          const cur = imgs.find(im => im.name.replace(/\.(png|jpe?g|bmp)$/i, '') === base) || imgs[0];
+          // Keep the user's current selection if it still exists (re-scan after a
+          // save); otherwise default to the base image (first load).
+          const keep = imgs.find(im => im.path === curPathRef.current);
+          const cur = keep
+            || imgs.find(im => im.name.replace(/\.(png|jpe?g|bmp)$/i, '') === base)
+            || imgs[0];
           if (cur) setCurrentImagePath(cur.path);
         }, reject: (e) => { } });
-  }, [CORE_ID, edit_info.defModelPath]);
+  }, [CORE_ID, edit_info.defModelPath, reloadTick]);
 
   if (imageList.length <= 1) return null;
   return createPortal(
