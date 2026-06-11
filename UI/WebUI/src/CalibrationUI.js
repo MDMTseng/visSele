@@ -1,7 +1,7 @@
 // New Calibration UI — chessboard (lens) + bright/dark field capture.
 // Stage 1: scaffold only. Real capture / BPG wiring lands in follow-up tasks
 // (see #63-#67). Keep BackLightCalibUI alongside until this fully replaces it.
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { connect } from 'react-redux';
 import Tabs from 'antd/lib/tabs';
 import Button from 'antd/lib/button';
@@ -106,6 +106,25 @@ function CalibrationUI(props) {
 
   const CALIB_DIR = "data/calibImages";
   const canvasRef = useRef(null);
+  const previewBoxRef = useRef(null);
+  const [hoverBri, setHoverBri] = useState(undefined);  // {ix,iy,lum,r,g,b,sx,sy}
+
+  // Hover read-out: sample the pixel brightness under the pointer from the live
+  // preview canvas and stash a screen-relative position for the tooltip.
+  const onPreviewHover = (e) => {
+    const ctrl = canvasRef.current;
+    if (!ctrl || typeof ctrl.brightnessAtEvent !== 'function' || !previewBoxRef.current) return;
+    const info = ctrl.brightnessAtEvent(e.nativeEvent);
+    if (!info) { if (hoverBri !== undefined) setHoverBri(undefined); return; }
+    const rect = previewBoxRef.current.getBoundingClientRect();
+    setHoverBri({ ...info, sx: e.clientX - rect.left, sy: e.clientY - rect.top });
+  };
+  const onPreviewLeave = () => setHoverBri(undefined);
+
+  // Stable identity so hover re-renders of this component don't churn the (pure,
+  // connected) PreviewCanvas -- otherwise each mousemove would re-run SetImg
+  // (JPEG re-decode) on the live preview.
+  const onCanvasInit = useCallback((c) => { canvasRef.current = c; }, []);
 
   // On mount, list any already-saved chessboard images so the user sees them
   // (with placeholder thumbs -- binary PNG read over BPG is not wired yet).
@@ -485,9 +504,22 @@ function CalibrationUI(props) {
 
   return (
     <div className="s width12 height12 overlayCon" style={{ padding: 12 }}>
-      <div style={{ height: '60vh', position: 'relative' }}>
+      <div ref={previewBoxRef} style={{ height: '60vh', position: 'relative' }}
+        onMouseMove={onPreviewHover} onMouseLeave={onPreviewLeave}>
         <PreviewCanvas_rdx addClass="s width12 height12"
-          onCanvasInit={(c) => { canvasRef.current = c; }}/>
+          onCanvasInit={onCanvasInit}/>
+        {hoverBri !== undefined && (
+          <div style={{
+            position: 'absolute', left: hoverBri.sx + 14, top: hoverBri.sy + 14,
+            pointerEvents: 'none', zIndex: 50,
+            background: 'rgba(0,0,0,0.78)', color: '#fff',
+            padding: '3px 7px', borderRadius: 4, fontSize: 12, lineHeight: 1.35,
+            whiteSpace: 'nowrap', fontFamily: 'monospace'
+          }}>
+            <div>({hoverBri.ix}, {hoverBri.iy}) · 亮度 {hoverBri.lum}</div>
+            <div style={{ color: '#bbb' }}>RGB {hoverBri.r},{hoverBri.g},{hoverBri.b}</div>
+          </div>
+        )}
       </div>
       <Card size="small" style={{ marginTop: 12 }}
         title={<span>Camera {loaded ? '' : <span style={{color:'#aaa'}}>(loading…)</span>}</span>}

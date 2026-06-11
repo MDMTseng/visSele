@@ -695,6 +695,30 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   }
 
+  // Sample the image pixel under the mouse. Rebuilds the SAME secCanvas->canvas
+  // transform draw() uses (worldTransform . scale(scale*mmpp) . translate(offset))
+  // and inverts it to map a canvas point back to a secCanvas (image) pixel, then
+  // reads it. Returns {ix,iy,r,g,b,lum} (lum = Rec.601 luma), or undefined if
+  // off-image / not ready.
+  brightnessAtEvent(evt) {
+    if (this.img_info === undefined || this.secCanvas === undefined) return undefined;
+    if (this.secCanvas.width === 0 || this.secCanvas.height === 0) return undefined;
+    let mmpp = this.rUtil.get_mmpp();
+    let scale = (this.img_info.scale !== undefined) ? this.img_info.scale : 1;
+    let M = this.worldTransform();                       // fresh DOMMatrix per call
+    M.scaleSelf(scale * mmpp, scale * mmpp);
+    if (this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined)
+      M.translateSelf(this.img_info.offsetX / scale - 0.5, this.img_info.offsetY / scale - 0.5);
+    let pos = this.getMousePos(this.canvas, evt);         // canvas-pixel coords
+    let p = this.VecX2DMat(pos, M.inverse());             // -> secCanvas pixel
+    let ix = Math.floor(p.x), iy = Math.floor(p.y);
+    if (!Number.isFinite(ix) || !Number.isFinite(iy)) return undefined;
+    if (ix < 0 || iy < 0 || ix >= this.secCanvas.width || iy >= this.secCanvas.height) return undefined;
+    let d = this.secCanvas.getContext('2d').getImageData(ix, iy, 1, 1).data;
+    let lum = Math.round(0.299 * d[0] + 0.587 * d[1] + 0.114 * d[2]);
+    return { ix, iy, r: d[0], g: d[1], b: d[2], lum };
+  }
+
 }
 
 
