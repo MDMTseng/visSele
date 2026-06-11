@@ -157,6 +157,9 @@ target_include_directories(polyfit PUBLIC contrib/polyfit/include)
 add_library(simple_uart STATIC contrib/simple_uart/simple_uart.c)
 force_cxx(contrib/simple_uart/simple_uart.c)
 target_include_directories(simple_uart PUBLIC contrib/simple_uart/include)
+if(WIN32)
+  target_link_libraries(simple_uart PUBLIC winmm)   # timeBeginPeriod (1ms timer res)
+endif()
 
 # --- mjpegLib (bundled libjpeg) -------------------------------------------
 set(_JPEG_SRC

@@ -325,25 +325,24 @@ Data_UART_Layer::Data_UART_Layer(const char *name,int speed,const char *mode_str
 int Data_UART_Layer::recv_data_thread()
 {
   uint8_t buffer[100];
-  for(int k=0;uart!=NULL;k++)
+  // Short read timeout so we notice stopRecv promptly on close(). The handle is
+  // guaranteed valid for the whole loop: close() sets stopRecv and join()s this
+  // thread BEFORE simple_uart_close(), so `uart` is never freed under us.
+  while(!stopRecv)
   {
+    int datLen = simple_uart_read_timed(uart, buffer, sizeof(buffer),100);
 
-    int datLen = simple_uart_read_timed(uart, buffer, sizeof(buffer),1000);
-
+    if(stopRecv)break;       // intentional teardown -- exit without notifying
     if(datLen==0)continue;
-    // printf(">>>>simple_uart datLen:%d\n",datLen);
-    // for(int i=0;i<datLen;i++)
-    // {
-    //     printf("%c",buffer[i]);
-    // }
-    // printf("\n");
-
-
-    if(datLen<0)break;
+    if(datLen<0)break;       // genuine error -> fall through to disconnected()
     recv_data(buffer, datLen,false);
   }
-  
-  disconnected(this);
+
+  // Only surface a disconnect to the upper layer (-> WebUI) on an UNEXPECTED
+  // exit. An intentional close() must not look like a device drop, or the
+  // WebUI reconnects and we flap (close -> reopen -> close ...).
+  if(!stopRecv)
+    disconnected(this);
 
   return 0;
 }
@@ -360,20 +359,21 @@ int Data_UART_Layer::send_data(int head_room,uint8_t *data,int len,int leg_room)
 int Data_UART_Layer::close()
 {
   printf("uart close\n");
+  // Order matters: stop + JOIN the recv thread BEFORE closing the handle, so the
+  // thread can never call ReadFile on a closed/freed handle (that produced the
+  // err=6 "read FATAL" -> disconnected -> WebUI reconnect flap).
+  stopRecv = true;
+  if(recvThread)
+  {
+    recvThread->join();
+    delete recvThread;
+    recvThread = NULL;
+  }
   if(uart!=NULL)
   {
     simple_uart_close(uart);
   }
   uart=NULL;
-
-  if(recvThread)
-  {
-    //printf(">recvThread->join()>\n");
-    recvThread->join();
-    //printf(">delete recvThread>\n");
-    delete recvThread;
-    recvThread = NULL;
-  }
   printf("Data_Layer_IF::close\n");
   Data_Layer_IF::close();
   return 0;

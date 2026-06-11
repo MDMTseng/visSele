@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include "XPlatAPI.h"
 #include <mutex>
+#include <atomic>
 #include <exception>
 #include "simple_uart.h"
 #include "Data_Layer_IF.hpp"
@@ -45,6 +46,11 @@ protected:
     std::thread *recvThread;
 	  struct simple_uart *uart;
     std::timed_mutex sendLock;
+    // Set in close() to tell recv_data_thread to exit. close() joins the thread
+    // BEFORE freeing the handle (no read-after-close -> no err=6 flap), and the
+    // thread suppresses its disconnected() notify when stopRecv is set so an
+    // intentional teardown doesn't masquerade as a device drop to the WebUI.
+    std::atomic<bool> stopRecv{false};
 public:
     Data_UART_Layer(const char *name,int speed,const char *mode_string);//throw(std::runtime_error);
 

@@ -243,32 +243,56 @@ int mainThreadLock_unlock(int call_lineNumber, char *msg = "")
 
 m_BPG_Protocol_Interface bpg_pi;
 
+// Microsecond monotonic clock for peripheral comm-latency logging.
+static inline uint64_t perif_now_us() {
+  return (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(
+           std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
 class PerifChannel:public Data_JsonRaw_Layer
 {
-  
+
   public:
 
   uint16_t conn_pgID;
   int pkt_count = 0;
   int ID;
+  // The WS client that established this connection (set in the CONNECT handler).
+  // Async device replies are pushed back to THIS peer instead of guessing via
+  // default_peer -- otherwise, with a reconnect or multiple clients, the reply
+  // goes to the wrong/dead peer and the requester times out. NULL -> the WS
+  // layer falls back to default_peer (legacy behaviour). Cleared on peer close.
+  void *conn_peer = NULL;
+  // Timestamp of the last command written to this channel (for serial-RTT logs).
+  // Set in the PD MESSAGE handler before the serial write; read here on reply.
+  uint64_t last_tx_us = 0;
   PerifChannel():Data_JsonRaw_Layer()// throw(std::runtime_error)
   {
   }
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
-    
+
     if(opcode==1 )
     {
+      // [perif] Reply arrived from the device. Log the serial round-trip (write
+      // -> reply) so we can localize comm delay: if serialRTT ~= the WebUI's
+      // total RTT, the latency is in the serial/ESP32 hop; if it's small, the
+      // delay is in the WS / WebUI hop instead. Gated by INSP_PERIF_LOG.
+      if (getenv("INSP_PERIF_LOG")) {
+        long rtt = last_tx_us ? (long)(perif_now_us() - last_tx_us) : -1;
+        LOGI("[perif RX] ch=%d serialRTT=%ldus reply=%.120s", ID, rtt, (char*)raw);
+      }
 
       char tmp[1024];
       snprintf(tmp, sizeof(tmp), "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", raw, ID);
-      // LOGI("MSG:%s", tmp);
+      // Route the reply to the client that owns this connection (conn_peer), not
+      // default_peer.  conn_peer==NULL falls back to default_peer in the WS layer.
       BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
       bpg_dat.pgID=conn_pgID;
-      bpg_pi.fromUpperLayer(bpg_dat);
+      bpg_pi.fromUpperLayer(bpg_dat, conn_peer);
 
       bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", "{}");
       bpg_dat.pgID = conn_pgID;
-      bpg_pi.fromUpperLayer(bpg_dat);
+      bpg_pi.fromUpperLayer(bpg_dat, conn_peer);
       return 0;
 
     }
@@ -1442,8 +1466,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
     BPG_protocol_data *dat = &bpgdat;
 
-    // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
-    //      dat->pgID);
+    LOGI("DataType_BPG:[%c%c] pgID:%d", dat->tl[0], dat->tl[1],
+         dat->pgID);
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);
     // RAII cleanup: this BPG message handler is a ~1600-line do/while with
     // 20+ inner `break` paths, none of which previously called
@@ -3414,6 +3438,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             perifCH=new PerifChannel();
             perifCH->ID=avail_CONN_ID;
             perifCH->conn_pgID=dat->pgID;
+            perifCH->conn_peer=peer;   // async device replies go back to this client
             perifCH->setDLayer(PHYLayer);
 
             perifCH->send_RESET();
@@ -3479,6 +3504,17 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           cJSON *msg_obj = JFetch_OBJECT(json, "msg");
           if (msg_obj)
           {
+            // [perif] Stamp + log the outgoing command. This runs the instant the
+            // PD packet is dequeued from the WS, so the gap between this TX log
+            // and the matching RX log is the core->serial->device->core latency.
+            perifCH->last_tx_us = perif_now_us();
+            if (getenv("INSP_PERIF_LOG")) {
+              cJSON *_t = cJSON_GetObjectItem(msg_obj, "type");
+              cJSON *_id = cJSON_GetObjectItem(msg_obj, "id");
+              LOGI("[perif TX] ch=%d type=%s id=%d", perifCH->ID,
+                   (_t && cJSON_IsString(_t)) ? _t->valuestring : "?",
+                   (_id && cJSON_IsNumber(_id)) ? (int)_id->valuedouble : -1);
+            }
             uint8_t _buf[2000];
             int ret= sendcJsonTo_perifCH(perifCH,_buf, sizeof(_buf),true,msg_obj);
             session_ACK = (ret>=0);
@@ -4771,6 +4807,12 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       // If the default broadcast target left, promote another peer (or none).
       if (data.peer == default_peer)
         default_peer = peers.empty() ? NULL : *peers.begin();
+
+      // Drop the perif channel's reply target if it pointed at this peer, so an
+      // async device reply never dereferences a freed peer (it falls back to
+      // default_peer until the client reconnects and re-sends CONNECT).
+      if (bpg_pi.perifCH != NULL && bpg_pi.perifCH->conn_peer == data.peer)
+        bpg_pi.perifCH->conn_peer = NULL;
 
       // Only tear down shared core state when the LAST client disconnects.
       if (peers.empty())

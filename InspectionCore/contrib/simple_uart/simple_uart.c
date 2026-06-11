@@ -25,6 +25,7 @@
 #include <libgen.h>
 #else
 #include <windows.h>
+#include <timeapi.h>    /* timeBeginPeriod -- raise timer res so Sleep(1)~=1ms */
 #endif
 
 #ifdef __linux__
@@ -75,22 +76,58 @@ int simple_uart_read_timed(struct simple_uart *sc, void *buffer, int max_len,int
     
     int r;
 #ifdef WIN32
+    /* Immediate-return reads (MSDN: ReadIntervalTimeout == MAXDWORD with both
+     * total-timeout fields == 0).  ReadFile returns AT ONCE with whatever bytes
+     * are already buffered -- it never blocks the handle.  This matters twice
+     * over on a non-overlapped COM handle:
+     *   1. A reply is delivered the instant we poll for it, instead of being
+     *      held hostage by a blocking read (the old MAXDWORD/MAXDWORD/30 config
+     *      stalled replies for tens of ms up to ~1.8s).
+     *   2. Synchronous I/O on a non-overlapped handle is serialized, so a
+     *      blocking ReadFile also starved the concurrent WriteFile on the TX
+     *      thread.  An instant read never holds the handle, so writes flow.
+     * We then poll with a plain Sleep(1).  Because the port is opened with
+     * timeBeginPeriod(1) (see simple_uart_set_config) a Sleep(1) is really ~1ms,
+     * so a reply is picked up within ~1ms of arriving -- giving ~6ms end-to-end
+     * with essentially zero CPU.  Deliberately NO busy-spin here: this read runs
+     * on a dedicated RX thread, and spinning would steal a core from the WS /
+     * BPG-forwarding thread that has to relay each reply back to the WebUI,
+     * which (ironically) inflated the round-trip the caller actually sees. */
     COMMTIMEOUTS commTimeout;
-    int singleReadTime=30;//TODO: CPU consuming set timeout properly
-
-    /* Get the comm timouts */
     if (GetCommTimeouts(sc->port, &commTimeout)) {
-        /* Set the timeout to return immediately with whatever data is there */
-        commTimeout.ReadIntervalTimeout = MAXDWORD;
-        commTimeout.ReadTotalTimeoutMultiplier = MAXDWORD;
-        commTimeout.ReadTotalTimeoutConstant = singleReadTime;
+        commTimeout.ReadIntervalTimeout        = MAXDWORD;
+        commTimeout.ReadTotalTimeoutMultiplier = 0;
+        commTimeout.ReadTotalTimeoutConstant   = 0;
         SetCommTimeouts(sc->port, &commTimeout);
     }
-    for(int totalReadTime=0;totalReadTime<wait_ms;totalReadTime+=singleReadTime)
-    {
-        if (!ReadFile (sc->port, buffer, max_len, (LPDWORD)&r, NULL) != 0)
-            return -GetLastError();
-        if(r!=0)break;
+    LARGE_INTEGER freq, t0, now;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&t0);
+    for (;;) {
+        DWORD got = 0;
+        if (!ReadFile(sc->port, buffer, max_len, &got, NULL)) {
+            DWORD err = GetLastError();
+            /* A serial line error (overrun / framing / parity / break) LATCHES
+             * the port: ReadFile then keeps failing until ClearCommError resets
+             * it.  Such errors are transient (a stray byte, or RX/TX racing on
+             * this non-overlapped handle) and must NOT tear down the channel --
+             * the caller treats any negative return as a hard disconnect, which
+             * was causing the connection to flap (UART DESTRUCT -> reopen loop).
+             * Clear the latch and keep polling; only a genuinely dead handle
+             * (device unplugged / access lost) is reported as fatal. */
+            DWORD commErr = 0; COMSTAT cs;
+            ClearCommError(sc->port, &commErr, &cs);
+            if (err == ERROR_INVALID_HANDLE  || err == ERROR_ACCESS_DENIED ||
+                err == ERROR_BAD_COMMAND     || err == ERROR_DEVICE_REMOVED ||
+                err == ERROR_GEN_FAILURE     || err == ERROR_FILE_NOT_FOUND)
+                return -(int)err;        /* device really gone -> caller disconnects */
+            got = 0;   /* transient line error: cleared, keep polling */
+        }
+        if (got != 0) { r = (int)got; break; }
+        QueryPerformanceCounter(&now);
+        double elapsed_ms = (double)(now.QuadPart - t0.QuadPart) * 1000.0 / freq.QuadPart;
+        if (elapsed_ms >= wait_ms) { r = 0; break; }
+        Sleep(1);   /* ~1ms at 1ms timer res; no busy-spin, no CPU contention */
     }
 #else
     fd_set readfds, exceptfds;
@@ -211,6 +248,17 @@ static int simple_uart_set_config(struct simple_uart *sc, int speed, const char 
         SetCommState (sc->port, &dcbConfig);
         printf("[simple_uart] %s: %d %d%c%d flow=%s\n",
                sc ? "cfg" : "cfg", speed, dataBits, parity, stopBits, flow);
+    }
+    /* Raise the system timer resolution to 1ms (default ~15.6ms).  The read
+     * poll loop falls back to Sleep(1) when idle; at the default resolution
+     * that Sleep is really ~15.6ms, which quantizes a reply that arrives on a
+     * *different* thread (the RX thread) up to a full tick -- turning a ~5ms
+     * round-trip into ~16ms.  1ms resolution pulls it back to the ~5ms device
+     * baseline.  Process-global and idempotent enough to call once per open. */
+    {
+        static volatile LONG s_timer_res_set = 0;
+        if (InterlockedCompareExchange(&s_timer_res_set, 1, 0) == 0)
+            timeBeginPeriod(1);
     }
     // Bound the write so a wedged line can never block a write indefinitely
     // (the read path only ever sets the READ timeouts, so writes were
