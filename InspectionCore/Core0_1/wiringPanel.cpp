@@ -5032,9 +5032,13 @@ void sigroutine(int dunno)
   case SIGINT:
   case SIGTERM:
     LOGE("Get a signal -- %s \n", (dunno == SIGINT) ? "SIGINT" : "SIGTERM");
-    // Do NOT request a log dump here: the drainer detects our death on its own
-    // (parent process handle) and writes a single PRODUCER_DIED dump. Requesting
-    // one here too produced a duplicate crash_<utc>.dump per kill.
+    // Mark a GRACEFUL shutdown so the drainer writes its final dump to the
+    // fixed-name latest_dump.dump (overwritten every close -> no disk growth)
+    // instead of a timestamped crash_<utc>.dump. This is just a marker in the
+    // shared ring; it does NOT itself trigger a dump (the drainer's single
+    // producer-death dump does), so there's no duplicate file. Unexpected deaths
+    // (OOM / taskkill /F) never reach here, so they still get crash_<utc>.dump.
+    log_request_shutdown_dump();
     LOGE("Tear down websocket.... \n");
     delete ifwebsocket;
 
@@ -5277,6 +5281,30 @@ static CameraLayer::status HeadlessInspContCB(CameraLayer &cl, int type, void *c
   return CameraLayer::ACK;
 }
 
+// Deliberate self-test crash to exercise the crash-dump + symbolication path
+// (writes crash_<utc>.dump + an insp_crash_*.dmp minidump). Triggered ONLY by the
+// explicit `visSele --crash-test [mode]` flag -- never accidentally. The crash
+// site is here in wiringPanel.cpp so the resulting stack trace is a realistic
+// in-tree frame. Modes:
+//   segv (default) null-pointer write   -> EXCEPTION_ACCESS_VIOLATION (SIGSEGV)
+//   wild           junk-pointer write   -> access violation at a non-null address
+//   abort          abort()              -> SIGABRT
+//   fpe            integer divide-by-0  -> SIGFPE
+//   throw          uncaught C++ throw   -> std::terminate
+[[noreturn]] static void trigger_test_crash(const char *mode)
+{
+  if (!mode || !*mode) mode = "segv";
+  LOGF("[crash-test] deliberate crash mode=%s (self-test of the crash-dump path)", mode);
+  fprintf(stderr, "[crash-test] tripping deliberate crash mode=%s\n", mode);
+  fflush(stderr);
+  if (strcmp(mode, "abort") == 0)      { abort(); }
+  else if (strcmp(mode, "fpe") == 0)   { volatile int z = 0; volatile int q = 1 / z; (void)q; }
+  else if (strcmp(mode, "throw") == 0) { throw std::runtime_error("crash-test throw"); }
+  else if (strcmp(mode, "wild") == 0)  { volatile int *p = reinterpret_cast<volatile int *>(0xDEADBEEFULL); *p = 1; }
+  else                                 { volatile int *p = nullptr; *p = 0xDEAD; }  /* segv */
+  abort();  /* unreachable backstop so [[noreturn]] holds even if a branch is elided */
+}
+
 int cp_main(int argc, char **argv)
 {
   // {
@@ -5285,6 +5313,15 @@ int cp_main(int argc, char **argv)
   // }
 
   srand(time(NULL));
+
+  // Self-test: `visSele --crash-test [segv|wild|abort|fpe|throw]` deliberately
+  // crashes so you can verify the crash dump + in-place symbolication end to end.
+  // The log ring, drainer and crash handlers are already installed (in main(),
+  // before cp_main), so the crash is captured and dumped.
+  for (int ai = 1; ai < argc; ai++) {
+    if (strcmp(argv[ai], "--crash-test") == 0)
+      trigger_test_crash((ai + 1 < argc) ? argv[ai + 1] : "segv");
+  }
 
   // for(int i=0;i<10;i++)
   // {

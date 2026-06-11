@@ -140,6 +140,13 @@ int log_spawn_drainer(const char *exe_path);
  * raised to spare the disk.  No-op if no drainer/ring is attached. */
 void log_request_dump(void);
 
+/* Like log_request_dump(), but signals a GRACEFUL SHUTDOWN: the drainer writes
+ * the snapshot to the fixed-name latest_dump.dump (overwritten each time, so a
+ * user who repeatedly closes the app doesn't grow the disk) and treats the
+ * imminent producer exit as expected (no timestamped crash_<utc>.dump). Call
+ * this from the SIGINT/SIGTERM handler. No-op if no drainer/ring is attached. */
+void log_request_shutdown_dump(void);
+
 /* Returns the producer's mapping pointer (the LogRingHeader is at offset 0)
  * if a shm ring is currently open; NULL otherwise.  Provided primarily so
  * tests and the in-process recovery code (Phase G) can inspect the ring

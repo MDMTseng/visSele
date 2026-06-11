@@ -29,7 +29,8 @@ param(
   [switch]$Vcpkg,                                  # static vcpkg build; default = pacman OpenCV (dynamic, no dep builds)
   [string]$Out,                                    # override the export dir (default: dist\win | dist\win_debug)
   [switch]$ForceRuntime,                           # re-copy the heavy MVS runtime even if already bundled
-  [switch]$Fast                                    # incremental: skip the configure step (was export.ps1's default)
+  [switch]$Fast,                                   # incremental: skip the configure step (was export.ps1's default)
+  [switch]$NoInplaceSymbols                        # opt OUT of bundling addr2line + .debug (default ON: on-target crash symbolication)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,6 +54,7 @@ Default toolchain: prebuilt MSYS2 OpenCV (no dep builds); -Vcpkg = static/pinned
   .\build.ps1 -Release -Fast   incremental: skip configure (fast re-bundle)
   .\build.ps1 -Release -ForceRuntime    re-copy the heavy MVS runtime
   .\build.ps1 -Release -Vcpkg  static vcpkg build (reproducible release)
+  .\build.ps1 -Release -NoInplaceSymbols  smaller bundle; symbolicate crashes off-box (default ships addr2line + .debug)
   .\build.ps1 <build.sh args>  raw pass-through, e.g. -p win-mingw -c RelWithDebInfo -e dist\rdi
   .\build.ps1 -h               show build.sh's own help
 
@@ -113,6 +115,7 @@ function Make-Args([string]$cfg, [string]$exportDir) {
   $a = @('-p', $Preset, '-c', $cfg)
   if ($Clean)               { $a += '--clean' }
   if ($Fast)                { $a += '--no-configure' }   # incremental: skip reconfigure (was export.ps1)
+  if ($NoInplaceSymbols)    { $a += '--no-inplace-symbols' } # default ON; this opts out (smaller bundle)
   if (-not $NoBundle -and $exportDir) { $a += @('-e', $exportDir) }
   return $a
 }

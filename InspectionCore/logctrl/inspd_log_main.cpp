@@ -36,6 +36,19 @@
 #include <ctime>
 #include <deque>
 #include <string>
+#include <vector>
+
+// Build provenance of the drainer itself (the producer's is read from the ring).
+#if __has_include("build_info.h")
+#include "build_info.h"
+#endif
+#ifndef BUILD_GIT_HASH
+#define BUILD_GIT_HASH "unknown"
+#define BUILD_CONFIG   "unknown"
+#endif
+#ifndef BUILD_TIME_UTC
+#define BUILD_TIME_UTC (__DATE__ " " __TIME__)   // TU compile time; avoids relink churn
+#endif
 
 #ifdef _WIN32
   #include <windows.h>
@@ -74,11 +87,13 @@ struct Config {
     std::string log_basename   = "insp.log";
     int         rotate_bytes   = 10 * 1024 * 1024;
     int         rotate_keep    = 5;
-    /* Disk-protection default: only WARN+ trickles to insp.log so a 24/7
-     * machine barely writes the disk. INFO/DEBUG stay in the RAM ring and can
-     * be captured in full on demand (log_request_dump -> crash_<utc>.dump) or
-     * on a real crash. Override with INSP_LOG_PERSIST_LEVEL=info while debugging. */
-    int         persist_min_lv = LOG_LV_WARN;
+    /* insp.log is DISABLED by default (persist level OFF): NOTHING trickles to a
+     * standalone disk log, so a 24/7 machine never writes it. Every line --
+     * including WARN/ERROR/FATAL -- stays in the RAM ring + ephemeral buffer and
+     * is still captured in full by the crash/close dumps (crash_<utc>.dump /
+     * latest_dump.dump) and the on-demand 匯出 Log 快照. Re-enable persistence with
+     * INSP_LOG_PERSIST=warn|info|... (an empty INSP_LOG_FILE also disables it). */
+    int         persist_min_lv = LOG_LV_OFF;
     /* WS log-stream server for the WebUI "Core Logs" panel
      * (CoreLogClient -> ws://127.0.0.1:4091/log). On by default now that the
      * daemon is; set INSP_LOG_WS_PORT=0 to disable. */
@@ -219,6 +234,9 @@ public:
                    int rotate_bytes, int rotate_keep)
         : dir_(dir), basename_(basename),
           rotate_bytes_(rotate_bytes), rotate_keep_(rotate_keep) {
+        /* Empty basename == DISABLED: don't create/open any file (insp.log off).
+         * write()/flush() become no-ops since fp_ stays null. */
+        if (basename_.empty()) return;
         /* mkdir -p (single level only for now -- callers should pass a dir
          * that already exists or is at most one level deep). */
         mkdir_p_one(dir_.c_str());
@@ -281,6 +299,7 @@ const char *crash_marker_name(uint32_t m) {
         case LOG_CRASH_SIGBUS:  return "SIGBUS";
         case LOG_CRASH_OTHER:   return "OTHER";
         case LOG_CRASH_PRODUCER_DIED: return "PRODUCER_DIED";
+        case LOG_CRASH_SHUTDOWN: return "SHUTDOWN";
         default:                return "?";
     }
 }
@@ -341,18 +360,142 @@ void symbolicate_one(uint64_t addr, char *out, size_t outsz) {
 /* Write the crash dump file: header + stack trace + entire ring + the
  * drainer's ephemeral DEBUG/TRACE buffer.  Format is plaintext so it can
  * be opened in any editor / streamed to WebUI as-is. */
+/* ---------- in-place DWARF symbolication (addr2line) ----------
+ * dbghelp (symbolicate_one) reads PDB only, so it can't name MinGW/DWARF frames
+ * in the producer's own exe. If the target has the tools + data -- addr2line and
+ * a symbol file (the unstripped visSele.exe or its split visSele.exe.debug) -- we
+ * resolve those frames here, on the box. Otherwise we fall back to printing
+ * addr2line-ready "visSele.exe+0xRVA" so it's still resolvable off-box. */
+static bool a2l_file_exists(const std::string &p) {
+    FILE *f = std::fopen(p.c_str(), "rb");
+    if (f) { std::fclose(f); return true; }
+    return false;
+}
+static std::string a2l_self_dir() {
+#ifdef _WIN32
+    char buf[MAX_PATH];
+    DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
+    std::string p(buf, (size_t)(n ? n : 0));
+    size_t s = p.find_last_of("\\/");
+    return (s == std::string::npos) ? std::string(".") : p.substr(0, s);
+#else
+    return ".";
+#endif
+}
+// Symbol file for the MAIN exe: explicit env, else next to us (an in-place deploy
+// bundles visSele.exe.debug or the unstripped visSele.exe alongside inspd_log.exe).
+static std::string a2l_symbol_file() {
+    if (const char *e = getenv("INSPD_SYMBOL_FILE")) if (*e && a2l_file_exists(e)) return e;
+    std::string d = a2l_self_dir();
+    for (const char *c : {"/visSele.exe.debug", "/visSele.exe"}) {
+        std::string p = d + c;
+        if (a2l_file_exists(p)) return p;
+    }
+    return "";
+}
+static std::string a2l_tool() {
+    if (const char *e = getenv("INSPD_ADDR2LINE")) if (*e) return e;
+    std::string p = a2l_self_dir() + "/addr2line.exe";
+    if (a2l_file_exists(p)) return p;
+    return "addr2line";   // rely on PATH
+}
+// Preferred PE ImageBase read from the on-disk header (NOT the in-memory one --
+// the loader rewrites that to the relocated base). addr2line wants the virtual
+// address = this + RVA. 0 on failure.
+static uint64_t a2l_pe_image_base(const std::string &file) {
+    FILE *f = std::fopen(file.c_str(), "rb");
+    if (!f) return 0;
+    auto rd = [&](long off, void *dst, size_t n) -> bool {
+        return std::fseek(f, off, SEEK_SET) == 0 && std::fread(dst, 1, n, f) == n;
+    };
+    uint8_t mz[2]; uint32_t e_lfanew = 0; uint64_t base = 0;
+    if (rd(0, mz, 2) && mz[0] == 'M' && mz[1] == 'Z' && rd(0x3C, &e_lfanew, 4)) {
+        uint8_t sig[4]; uint16_t magic = 0;
+        if (rd(e_lfanew, sig, 4) && sig[0] == 'P' && sig[1] == 'E' && sig[2] == 0 && sig[3] == 0
+            && rd((long)e_lfanew + 24, &magic, 2)) {
+            if (magic == 0x20b)        rd((long)e_lfanew + 24 + 24, &base, 8);   // PE32+: u64
+            else if (magic == 0x10b) { uint32_t b32 = 0; if (rd((long)e_lfanew + 24 + 28, &b32, 4)) base = b32; } // PE32: u32
+        }
+    }
+    std::fclose(f);
+    return base;
+}
+// Run a command and capture stdout. Uses CreateProcess + a pipe (NOT popen --
+// _popen needs a console, which the spawned drainer daemon doesn't have, so
+// popen returns NULL there). Returns false if the process can't be launched.
+static bool a2l_run_capture(const std::string &cmdline, std::string &out) {
+#ifdef _WIN32
+    SECURITY_ATTRIBUTES sa{}; sa.nLength = sizeof(sa); sa.bInheritHandle = TRUE;
+    HANDLE rd = NULL, wr = NULL;
+    if (!CreatePipe(&rd, &wr, &sa, 0)) return false;
+    SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);   // our read end is private
+    STARTUPINFOA si{}; si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = wr; si.hStdError = wr;
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    PROCESS_INFORMATION pi{};
+    std::vector<char> cl(cmdline.begin(), cmdline.end()); cl.push_back('\0');
+    BOOL ok = CreateProcessA(NULL, cl.data(), NULL, NULL, TRUE,
+                             CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+    CloseHandle(wr);
+    if (!ok) { CloseHandle(rd); return false; }
+    char buf[1024]; DWORD n = 0;
+    while (ReadFile(rd, buf, sizeof(buf), &n, NULL) && n > 0) out.append(buf, n);
+    CloseHandle(rd);
+    WaitForSingleObject(pi.hProcess, 5000);
+    CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+    return true;
+#else
+    FILE *p = popen(cmdline.c_str(), "r");
+    if (!p) return false;
+    char buf[1024]; size_t n;
+    while ((n = std::fread(buf, 1, sizeof(buf), p)) > 0) out.append(buf, n);
+    pclose(p);
+    return true;
+#endif
+}
+static bool a2l_resolve(const std::string &a2l, const std::string &sym,
+                        uint64_t va, std::string &out) {
+    char cmd[1200];
+    std::snprintf(cmd, sizeof(cmd), "\"%s\" -e \"%s\" -f -C 0x%llx",
+                  a2l.c_str(), sym.c_str(), (unsigned long long)va);
+    std::string raw;
+    if (!a2l_run_capture(cmd, raw)) return false;
+    // First two lines: function, then file:line.
+    std::string func, loc; size_t p = 0; int li = 0;
+    while (p < raw.size() && li < 2) {
+        size_t nl = raw.find('\n', p);
+        std::string s = raw.substr(p, (nl == std::string::npos ? raw.size() : nl) - p);
+        while (!s.empty() && (s.back() == '\r' || s.back() == ' ')) s.pop_back();
+        if (li == 0) func = s; else loc = s;
+        li++;
+        if (nl == std::string::npos) break;
+        p = nl + 1;
+    }
+    if (func.empty() || func == "??") return false;
+    out = func + "  (" + (loc.empty() ? "?" : loc) + ")";
+    return true;
+}
+
 std::string write_crash_dump(const Config &cfg,
                              LogRingHeader *h,
                              const EphemeralBuf &eph,
-                             uint32_t marker) {
-    /* Filename: crash_<utc>.dump in the log dir.  Use system clock so the
-     * stamp matches what a human sees in syslog. */
+                             uint32_t marker,
+                             bool fixed_name = false) {
+    /* Timestamp is always recorded inside the dump body. The FILENAME, though,
+     * depends on the reason: a real crash / unexpected death gets a unique
+     * crash_<utc>.dump (keep history); an on-demand snapshot or graceful close
+     * overwrites a single latest_dump.dump so repeated use can't grow the disk. */
     time_t now = std::time(nullptr);
     char ts[64];
     std::strftime(ts, sizeof(ts), "%Y%m%dT%H%M%SZ", std::gmtime(&now));
     char fname[256];
-    std::snprintf(fname, sizeof(fname),
-                  "%s/crash_%s.dump", cfg.log_dir.c_str(), ts);
+    if (fixed_name)
+        std::snprintf(fname, sizeof(fname),
+                      "%s/latest_dump.dump", cfg.log_dir.c_str());
+    else
+        std::snprintf(fname, sizeof(fname),
+                      "%s/crash_%s.dump", cfg.log_dir.c_str(), ts);
 
     FILE *fp = std::fopen(fname, "w");
     if (!fp) {
@@ -372,16 +515,55 @@ std::string write_crash_dump(const Config &cfg,
                  (long)getppid()  /* parent pid -- this is the drainer's pid view */
 #endif
                  );
-    std::fprintf(fp, "\n");
-
-    /* Stack trace. */
+    /* Build provenance: the producer line names the EXACT crashed build (-> which
+     * symbols/<sha>.debug to use); the drainer line is this dumper's own build. */
+    std::fprintf(fp, "producer:  %s\n",
+                 h->producer_build[0] ? h->producer_build : "(unknown)");
+    std::fprintf(fp, "drainer:   git=%s built=%s cfg=%s\n",
+                 BUILD_GIT_HASH, BUILD_TIME_UTC, BUILD_CONFIG);
+    /* Stack trace. Resolve the producer's own (DWARF) frames via addr2line when
+     * the tools+symbols are present on the box; system-DLL frames go through
+     * dbghelp. Frames in [module_base, module_base+module_size) are "the exe";
+     * the addr2line virtual address is pref_image_base + (addr - module_base),
+     * where pref_image_base is read from the on-disk symbol file (the in-memory
+     * header's ImageBase is the relocated base, not the preferred one). */
     uint32_t nf = h->crash_frame_count.load(std::memory_order_acquire);
     if (nf > LOG_CRASH_FRAME_MAX) nf = LOG_CRASH_FRAME_MAX;
+    const uint64_t mbase = h->crash_module_base, msize = h->crash_module_size;
+    std::string symf = (mbase && msize) ? a2l_symbol_file() : std::string();
+    std::string a2l  = a2l_tool();
+    uint64_t pref_base = symf.empty() ? 0 : a2l_pe_image_base(symf);
+    bool inplace = !symf.empty() && pref_base != 0;
+
+    std::fprintf(fp, "module:    base=0x%llx size=0x%llx pref_image_base=0x%llx%s\n",
+                 (unsigned long long)mbase, (unsigned long long)msize,
+                 (unsigned long long)pref_base, symf.empty() ? "" : " (from symbol file)");
+    std::fprintf(fp, "\n");
+
     std::fprintf(fp, "--- Stack trace (%u frames) ---\n", nf);
+    if (inplace)
+        std::fprintf(fp, "(in-place symbolication: addr2line=%s sym=%s)\n",
+                     a2l.c_str(), symf.c_str());
+    else if (mbase)
+        std::fprintf(fp, "(no on-box symbols; exe frames shown as visSele.exe+RVA -> resolve off-box: "
+                         "addr2line -e symbols/visSele-<sha>.debug 0x<pref_image_base + RVA>)\n");
     for (uint32_t i = 0; i < nf; ++i) {
-        char line[512];
-        symbolicate_one(h->crash_frames[i], line, sizeof(line));
-        std::fprintf(fp, "#%-2u %s\n", i, line);
+        uint64_t addr = h->crash_frames[i];
+        bool in_mod = mbase && msize && addr >= mbase && addr < mbase + msize;
+        if (in_mod) {
+            uint64_t rva = addr - mbase;
+            std::string sym;
+            if (inplace && a2l_resolve(a2l, symf, pref_base + rva, sym))
+                std::fprintf(fp, "#%-2u %s  [visSele.exe+0x%llx]\n",
+                             i, sym.c_str(), (unsigned long long)rva);
+            else
+                std::fprintf(fp, "#%-2u 0x%016llx  visSele.exe+0x%llx\n",
+                             i, (unsigned long long)addr, (unsigned long long)rva);
+        } else {
+            char line[512];
+            symbolicate_one(addr, line, sizeof(line));   /* dbghelp: system DLLs */
+            std::fprintf(fp, "#%-2u %s\n", i, line);
+        }
     }
     std::fprintf(fp, "\n");
 
@@ -446,8 +628,15 @@ int run(const Config &cfg) {
         "[inspd_log] attached '%s' (slots=%u, version=%u)\n",
         cfg.ring_name.c_str(), h->slot_count, h->version);
 
-    RollingLogFile disk(cfg.log_dir, cfg.log_basename,
+    /* persist OFF (default) -> empty basename -> RollingLogFile opens no file
+     * (no insp.log on disk at all). Routing below sends every line to the
+     * ephemeral buffer instead, so dumps still have the full history. */
+    bool persist_on = (cfg.persist_min_lv < LOG_LV_OFF) && !cfg.log_basename.empty();
+    RollingLogFile disk(cfg.log_dir, persist_on ? cfg.log_basename : std::string(),
                         cfg.rotate_bytes, cfg.rotate_keep);
+    if (!persist_on)
+        std::fprintf(stderr, "[inspd_log] insp.log disabled (persist OFF); "
+                             "logs live in the RAM ring + dumps only\n");
     EphemeralBuf ephemeral(EPHEMERAL_CAP);
 
     /* Optional WebSocket bridge for WebUI live tail.  Default: off. */
@@ -527,9 +716,10 @@ int run(const Config &cfg) {
          * parsing each slot.  Owned-text vector keeps the parsed strings
          * alive until the chunk is serialized. */
         /* dumpNow: synthesize a "no-crash" dump on demand for support
-         * snapshots.  Reuses write_crash_dump with LOG_CRASH_OTHER. */
+         * snapshots. Writes the fixed-name latest_dump.dump (overwritten) so
+         * repeated manual snapshots don't grow the disk. */
         ws->set_dump_handler([&cfg, h, &ephemeral]() -> std::string {
-            return write_crash_dump(cfg, h, ephemeral, LOG_CRASH_OTHER);
+            return write_crash_dump(cfg, h, ephemeral, LOG_CRASH_OTHER, /*fixed_name=*/true);
         });
 
         /* setLevel: convert OTel severityNumber to producer's LOG_LV_*,
@@ -603,6 +793,10 @@ int run(const Config &cfg) {
     uint64_t last_heartbeat = h->heartbeat_ms.load(std::memory_order_relaxed);
     auto last_heartbeat_seen = std::chrono::steady_clock::now();
     bool parent_dead = false;
+    /* Set when the producer signalled a graceful shutdown (SIGINT/SIGTERM). Makes
+     * the producer-death dump go to the fixed latest_dump.dump instead of a new
+     * timestamped crash_<utc>.dump -- so normal app closes don't grow the disk. */
+    bool graceful_exit = false;
 
 #ifdef _WIN32
     /* Reliable parent-death detection: poll the producer's process handle. The
@@ -623,6 +817,17 @@ int run(const Config &cfg) {
          * resets the marker, and KEEPS RUNNING. */
         uint32_t cm = h->crash_marker.load(std::memory_order_acquire);
         if (cm != LOG_CRASH_NONE) {
+            /* Graceful shutdown: don't dump here. Just note the imminent producer
+             * exit is expected, clear the marker, and keep draining -- the single
+             * final dump is written by the producer-death path below, to the fixed
+             * latest_dump.dump. (If the producer dies before we even see this, the
+             * death path reads the marker directly, so we still classify it right.) */
+            if (cm == LOG_CRASH_SHUTDOWN) {
+                graceful_exit = true;
+                h->crash_marker.store(LOG_CRASH_NONE, std::memory_order_release);
+                std::fprintf(stderr, "[inspd_log] graceful shutdown; dump on exit -> latest_dump.dump\n");
+                continue;
+            }
             bool on_demand = (cm == LOG_CRASH_DUMP_REQUEST);
             std::fprintf(stderr, "[inspd_log] %s marker %u; writing dump\n",
                          on_demand ? "on-demand dump" : "crash", cm);
@@ -644,7 +849,8 @@ int run(const Config &cfg) {
             }
             disk.flush();
             std::string dump_path = write_crash_dump(cfg, h, ephemeral,
-                                       on_demand ? LOG_CRASH_OTHER : cm);
+                                       on_demand ? LOG_CRASH_OTHER : cm,
+                                       /*fixed_name=*/on_demand); // snapshot -> latest_dump; crash -> crash_<utc>
             if (on_demand) {
                 /* Acknowledge so we don't re-dump every poll, then keep running. */
                 h->crash_marker.store(LOG_CRASH_NONE, std::memory_order_release);
@@ -817,11 +1023,20 @@ int run(const Config &cfg) {
      * DEBUG/TRACE buffer is our own RAM. Result: a kill always leaves a
      * crash_<utc>.dump, not just an orderly Ctrl-C. */
     if (parent_dead) {
+        /* Graceful close (SIGINT/SIGTERM handler set the SHUTDOWN marker) ->
+         * overwrite latest_dump.dump. We may have already consumed+cleared the
+         * marker (graceful_exit), OR the producer died so fast we never polled it
+         * -- so also check the marker directly here. Unexpected deaths (OOM,
+         * taskkill /F: no marker) -> timestamped crash_<utc>.dump, kept as history. */
+        bool graceful = graceful_exit ||
+            (h->crash_marker.load(std::memory_order_acquire) == LOG_CRASH_SHUTDOWN);
         std::string dump_path =
-            write_crash_dump(cfg, h, ephemeral, LOG_CRASH_PRODUCER_DIED);
+            write_crash_dump(cfg, h, ephemeral,
+                             graceful ? LOG_CRASH_SHUTDOWN : LOG_CRASH_PRODUCER_DIED,
+                             /*fixed_name=*/graceful);
         std::fprintf(stderr,
-            "[inspd_log] producer died -> wrote flight-recorder dump: %s\n",
-            dump_path.c_str());
+            "[inspd_log] producer died (%s) -> wrote dump: %s\n",
+            graceful ? "graceful" : "unexpected", dump_path.c_str());
     }
 
     if (ws) delete ws;

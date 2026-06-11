@@ -39,7 +39,7 @@
 /* ---------- protocol constants ---------- */
 
 static constexpr uint32_t LOG_RING_MAGIC   = 0x474E524C;  /* 'LRNG' little-endian */
-static constexpr uint32_t LOG_RING_VERSION = 2;            /* bump: added crash trace */
+static constexpr uint32_t LOG_RING_VERSION = 3;            /* bump: crash module geometry + build provenance */
 
 static constexpr uint32_t LOG_SLOT_BYTES   = 256;
 static constexpr uint32_t LOG_HEADER_BYTES = 512;          /* expanded to fit crash trace */
@@ -68,6 +68,13 @@ static constexpr uint32_t LOG_CRASH_DUMP_REQUEST = 100;
  * can catch) via the parent process handle, and writes a final flight-recorder
  * dump on its way out. Used only as the write_crash_dump() reason label. */
 static constexpr uint32_t LOG_CRASH_PRODUCER_DIED = 101;
+/* NOT a crash: the producer is shutting down GRACEFULLY (SIGINT/SIGTERM handler).
+ * Like DUMP_REQUEST it asks for a flight-recorder snapshot, but it ALSO tells the
+ * drainer the imminent producer death is EXPECTED -- so the dump goes to the
+ * fixed-name latest_dump.dump (overwritten, no disk growth on every close) rather
+ * than a timestamped crash_<utc>.dump. Real crashes / unexpected deaths (OOM,
+ * taskkill /F) still get the timestamped file. */
+static constexpr uint32_t LOG_CRASH_SHUTDOWN = 102;
 
 /* ---------- layout ---------- */
 
@@ -132,8 +139,24 @@ struct alignas(64) LogRingHeader {
      * (legacy producer); drainer falls back to its own attach time. */
     uint64_t producer_started_unix_nano;
 
-    /* Pad up to LOG_HEADER_BYTES.  Layout: 328 + 4 + 4 + 28 + 8 = 372. */
-    uint8_t pad[LOG_HEADER_BYTES - 372];
+    /* Crash-time geometry of the MAIN executable, captured by the crash handler
+     * so the drainer can DWARF-symbolicate (addr2line) the producer's OWN frames
+     * in place -- dbghelp can't read MinGW DWARF. The addr2line virtual address is
+     *   crash_image_base + (frame_addr - crash_module_base),
+     * and a frame is "in the exe" when crash_module_base <= addr < +crash_module_size.
+     * All zero if not captured (older producer / non-Windows). */
+    uint64_t crash_module_base;   /* runtime ASLR load base of the exe */
+    uint64_t crash_image_base;    /* preferred PE ImageBase (from the in-memory header) */
+    uint64_t crash_module_size;   /* SizeOfImage (module address span) */
+
+    /* Producer build provenance, written once at log_open_shm_ring(), e.g.
+     * "git=0d79ff83c4a3-dirty built=2026-06-11T04:01:00Z cfg=Release". Lets a
+     * crash dump name the EXACT build that died -> which symbols/<sha>.debug to
+     * use. NUL-terminated; empty if the producer was built without build_info. */
+    char     producer_build[96];
+
+    /* Pad up to LOG_HEADER_BYTES.  Layout: 372 + 8 + 8 + 8 + 96 = 492. */
+    uint8_t pad[LOG_HEADER_BYTES - 492];
 };
 
 /* One log entry.  Fixed-size; producer truncates rather than splitting

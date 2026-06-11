@@ -56,6 +56,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # --- shared compile options (mirrors old FLAGS: -w -O3 + suppressions) ----
 add_compile_options(-w -Wno-sign-compare -Wno-write-strings -Wno-unused-variable)
 add_compile_options($<$<CONFIG:Release>:-O3>)
+# Ship Release as -O3 AND -g (debug info). The deploy bundle (build.sh) strips
+# the shipped exe and archives the separated symbols (symbols/<exe>-<sha>.debug),
+# so a field crash dump stays symbolicatable via addr2line without shipping fat
+# binaries. -g doesn't change codegen, only adds DWARF sections that get stripped.
+add_compile_options($<$<CONFIG:Release>:-g>)
 
 find_package(OpenMP)
 # OpenCV is now an unconditional dependency of MatchingEngine. Provide via vcpkg.
@@ -91,10 +96,26 @@ target_include_directories(cJSON PUBLIC contrib/cJSON)
 # Phase A2: shm-ring sink on contrib/smem_channel.
 # Header is extern-"C"-wrapped so C callers still work.  Phase F will add the
 # drainer daemon that reads from this same ring.
+# ---- build provenance header (git hash + build time), regenerated each build ----
+# Imprinted into the shm ring (producer_build) + printed in crash dumps and at
+# startup, so any dump traces back to the exact commit/build (-> symbols/<sha>.debug).
+set(BUILD_INFO_DIR "${CMAKE_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${BUILD_INFO_DIR}")
+add_custom_target(build_info_gen ALL
+  BYPRODUCTS "${BUILD_INFO_DIR}/build_info.h"
+  COMMAND ${CMAKE_COMMAND}
+          -DOUT=${BUILD_INFO_DIR}/build_info.h
+          -DCFG=$<CONFIG>
+          -DSRC=${CMAKE_SOURCE_DIR}
+          -P ${CMAKE_SOURCE_DIR}/cmake/gen_build_info.cmake
+  COMMENT "Generating build_info.h (git hash + build time)"
+  VERBATIM)
+
 add_library(logctrl STATIC logctrl/logctrl.cpp
                           logctrl/log_crash_posix.cpp
                           logctrl/log_crash_win.cpp)
-target_include_directories(logctrl PUBLIC logctrl/include)
+target_include_directories(logctrl PUBLIC logctrl/include ${BUILD_INFO_DIR})
+add_dependencies(logctrl build_info_gen)
 # smem_channel target is defined further down; we just record the dep here
 # and CMake resolves the order.
 target_link_libraries(logctrl PUBLIC smem_channel)

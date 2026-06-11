@@ -24,6 +24,11 @@ EXPORT_DIR=""
 CLEAN=0
 NO_CONFIGURE=0
 BUNDLE_ONLY=0
+# On by default: bundle addr2line + visSele.exe.debug into the export so a crash
+# on the target symbolicates in place. Disable with --no-inplace-symbols (smaller
+# bundle; symbolicate off-box from symbols/<sha>.debug instead). Respects an
+# explicitly-set env value (empty = off).
+BUNDLE_INPLACE_SYMBOLS="${BUNDLE_INPLACE_SYMBOLS-1}"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 VCPKG_ROOT="${VCPKG_ROOT:-$HOME/vcpkg}"
 MINGW_PREFIX="${MINGW_PREFIX:-/opt/homebrew/opt/mingw-w64}"
@@ -69,6 +74,8 @@ while [[ $# -gt 0 ]]; do
     --clean)       CLEAN=1; shift;;
     --no-configure) NO_CONFIGURE=1; shift;;
     --bundle-only) BUNDLE_ONLY=1; NO_CONFIGURE=1; shift;;
+    --inplace-symbols) BUNDLE_INPLACE_SYMBOLS=1; shift;;     # force on (default already on)
+    --no-inplace-symbols) BUNDLE_INPLACE_SYMBOLS=""; shift;; # opt out: smaller bundle, symbolicate off-box
     --allow-rebuild) export ALLOW_REBUILD=1; shift;;
     -j|--jobs)     JOBS="$2"; shift 2;;
     -h|--help)     usage; exit 0;;
@@ -162,6 +169,49 @@ if [[ -n "$EXPORT_DIR" ]]; then
       echo "==> Bundling Windows binaries + DLLs -> $EXPORT_DIR"
       # 1) all .exe from the build dir
       find "$BUILD_DIR" -maxdepth 2 -name "*.exe" -exec cp -v {} "$EXPORT_DIR/" \;
+
+      # 1b) Split + archive debug symbols, then STRIP the shipped exes. The target
+      # gets small optimized binaries; the separated DWARF is archived under
+      # symbols/<exe>-<gitsha>.debug so a field crash_<utc>.dump (+ its .dmp) can be
+      # symbolicated off-target with tools/symbolicate_dump.py --exe <that .debug>
+      # (addr2line). Requires a build WITH debug info -- Release is now -O3 -g.
+      # The build-dir exes keep their symbols, so on-box dev symbolication still works.
+      _objcopy="$(command -v objcopy || true)"; _objdumpS="$(command -v objdump || true)"
+      if [[ -n "$_objcopy" && -n "$_objdumpS" ]]; then
+        _sha="$(git -C "$SCRIPT_DIR" rev-parse --short=12 HEAD 2>/dev/null || date +%Y%m%d_%H%M%S)"
+        _symdir="$SCRIPT_DIR/symbols"
+        for _exe in visSele.exe inspd_log.exe; do
+          _ep="$EXPORT_DIR/$_exe"
+          [[ -f "$_ep" ]] || continue
+          if "$_objdumpS" -h "$_ep" 2>/dev/null | grep -q '\.debug_info'; then
+            mkdir -p "$_symdir"
+            _dbg="$_symdir/${_exe%.exe}-${_sha}.debug"
+            "$_objcopy" --only-keep-debug "$_ep" "$_dbg"
+            "$_objcopy" --strip-debug --strip-unneeded "$_ep"
+            "$_objcopy" --add-gnu-debuglink="$_dbg" "$_ep" 2>/dev/null || true
+            echo "==> symbols: stripped $_exe -> archived $(basename "$_dbg")"
+            # In-place symbolication deploy (opt-in BUNDLE_INPLACE_SYMBOLS=1): drop
+            # the .debug next to the exe (as <exe>.debug, where the drainer looks)
+            # so inspd_log can addr2line crash frames ON the target. addr2line.exe
+            # is copied below; the DLL-closure walk then bundles its runtime DLLs.
+            if [[ -n "${BUNDLE_INPLACE_SYMBOLS:-}" ]]; then
+              cp -f "$_dbg" "$EXPORT_DIR/${_exe}.debug"
+              echo "==> in-place symbols: $_exe.debug placed next to exe"
+            fi
+          else
+            echo "WARN: $_exe has no debug info (build -O3 -g / RelWithDebInfo) -> field crash dumps won't symbolicate" >&2
+          fi
+        done
+        # Bundle addr2line.exe for on-box symbolication; placed BEFORE the DLL
+        # closure walk so its runtime DLLs (libbfd/libiconv/zlib/...) get pulled in.
+        if [[ -n "${BUNDLE_INPLACE_SYMBOLS:-}" ]]; then
+          _a2l="$(command -v addr2line || true)"
+          if [[ -n "$_a2l" ]]; then cp -f "$_a2l" "$EXPORT_DIR/"; echo "==> in-place symbols: bundled addr2line.exe"; \
+          else echo "WARN: BUNDLE_INPLACE_SYMBOLS set but addr2line not found" >&2; fi
+        fi
+      else
+        echo "WARN: objcopy/objdump not found; skipping symbol split (shipped exes keep full debug size)" >&2
+      fi
       if [[ "$PRESET" == "win-mingw-msys" ]]; then
         # Dynamic (pacman) OpenCV: copy the full transitive mingw DLL closure of
         # the exes (OpenCV + jpeg/png/webp/zlib/lzma/tbb + libgcc/stdc++/winpthread)
@@ -254,6 +304,44 @@ if [[ -n "$EXPORT_DIR" ]]; then
       #    it by the name MVCAMSDK_X64.DLL; the repo ships it as MVCAMSDK.dll.
       mv_dll="$SCRIPT_DIR/contrib/MindVision_GIGE/win_x64/lib/MVCAMSDK.dll"
       [[ -f "$mv_dll" ]] && cp -v "$mv_dll" "$EXPORT_DIR/MVCAMSDK_X64.DLL"
+
+      # 6) Post-export self-test: deliberately crash the BUNDLED exe and PRINT the
+      #    resulting symbolicated stack trace -- proves the deployed bundle writes
+      #    a crash dump and resolves its own frames on-box (via the bundled
+      #    addr2line + .debug, which a2l_tool/a2l_symbol_file prefer over PATH).
+      #    Only when in-place symbols are bundled and we're on a Windows host that
+      #    can actually run the exe. Skip with SKIP_SELFTEST=1.
+      _host="$(uname -s 2>/dev/null || echo unknown)"
+      if [[ -n "${BUNDLE_INPLACE_SYMBOLS:-}" && -z "${SKIP_SELFTEST:-}" \
+            && -f "$EXPORT_DIR/visSele.exe" \
+            && ( "$_host" == *MINGW* || "$_host" == *MSYS* || "$_host" == *CYGWIN* ) ]]; then
+        # Fully isolated: a subshell with errexit off, ALL output on stdout, outer
+        # stderr to /dev/null, and a trailing `true` + `|| true` -- so a deliberate
+        # crash here can never fail the build or leak a "Segmentation fault" line.
+        ( set +e
+          echo "==> self-test: crashing the bundled exe to verify in-place crash symbolication..."
+          rm -f "$EXPORT_DIR"/crash_*.dump "$EXPORT_DIR"/insp_crash_*.dmp "$EXPORT_DIR"/latest_dump.dump 2>/dev/null
+          # Background + disown so bash (non-interactive) never announces the
+          # child's signal death; the drainer writes the dump within ~ms anyway.
+          ( cd "$EXPORT_DIR" && ./visSele.exe --crash-test segv >/dev/null 2>&1 ) & disown 2>/dev/null
+          sleep 2
+          _st_dump="$(ls -t "$EXPORT_DIR"/crash_*.dump 2>/dev/null | head -1)"
+          if [[ -n "$_st_dump" ]]; then
+            echo "---- crash dump: $(basename "$_st_dump") ----"
+            grep -E "^(signal|producer|drainer|module):" "$_st_dump"
+            sed -n '/--- Stack trace/,/^$/p' "$_st_dump"
+            if grep -q "trigger_test_crash" "$_st_dump"; then
+              echo "==> self-test PASS: bundled crash dump symbolicated in place (trigger_test_crash resolved)"
+            else
+              echo "==> self-test WARN: stack not symbolicated -- check addr2line/.debug bundling"
+            fi
+            rm -f "$EXPORT_DIR"/crash_*.dump "$EXPORT_DIR"/insp_crash_*.dmp "$EXPORT_DIR"/latest_dump.dump 2>/dev/null
+          else
+            echo "==> self-test WARN: no crash dump produced (drainer didn't write one)"
+          fi
+          true
+        ) 2>/dev/null || true
+      fi
       ;;
     *)
       echo "==> Bundling native binaries -> $EXPORT_DIR"

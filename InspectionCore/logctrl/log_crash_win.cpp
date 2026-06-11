@@ -112,6 +112,25 @@ uint32_t code_to_marker(DWORD code) {
     }
 }
 
+/* Record the main exe's load geometry so the drainer can DWARF-symbolicate our
+ * own frames (addr2line): VA = image_base + (frame - module_base), for frames in
+ * [module_base, module_base+module_size). Reads the in-memory PE header -- just
+ * memory loads + GetModuleHandle(NULL), safe in an exception-filter context. */
+static void record_module_geometry(LogRingHeader *h) {
+    HMODULE hm = GetModuleHandleW(nullptr);
+    h->crash_module_base = reinterpret_cast<uint64_t>(hm);
+    h->crash_image_base  = 0;
+    h->crash_module_size = 0;
+    if (!hm) return;
+    auto *dos = reinterpret_cast<IMAGE_DOS_HEADER *>(hm);
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) return;
+    auto *nt = reinterpret_cast<IMAGE_NT_HEADERS *>(
+        reinterpret_cast<uint8_t *>(hm) + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) return;
+    h->crash_image_base  = static_cast<uint64_t>(nt->OptionalHeader.ImageBase);
+    h->crash_module_size = static_cast<uint64_t>(nt->OptionalHeader.SizeOfImage);
+}
+
 LONG WINAPI handler(EXCEPTION_POINTERS *ep) {
     /* Synchronous, file-based core dump first -- survives drainer death. */
     write_minidump(ep);
@@ -132,6 +151,7 @@ LONG WINAPI handler(EXCEPTION_POINTERS *ep) {
         }
         h->crash_frame_count.store(static_cast<uint32_t>(n),
                                    std::memory_order_release);
+        record_module_geometry(h);
 
         h->head.fetch_add(1, std::memory_order_acq_rel);
 
@@ -167,6 +187,7 @@ void terminate_handler() {
             h->crash_frames[i] = reinterpret_cast<uint64_t>(frames[i]);
         h->crash_frame_count.store(static_cast<uint32_t>(n),
                                    std::memory_order_release);
+        record_module_geometry(h);
         h->head.fetch_add(1, std::memory_order_acq_rel);
         h->crash_marker.store(LOG_CRASH_SIGABRT, std::memory_order_release);
         Sleep(50);

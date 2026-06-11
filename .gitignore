@@ -79,6 +79,9 @@ CoreHub/
 # build bundle (artifacts)
 InspectionCore/dist/
 
+# archived debug symbols split from Release bundles (per-build .debug files)
+InspectionCore/symbols/
+
 # logctrl daemon runtime outputs
 insp.log
 insp.log.*
