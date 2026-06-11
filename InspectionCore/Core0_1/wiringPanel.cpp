@@ -5030,12 +5030,16 @@ void sigroutine(int dunno)
   switch (dunno)
   {
   case SIGINT:
-    LOGE("Get a signal -- SIGINT \n");
+  case SIGTERM:
+    LOGE("Get a signal -- %s \n", (dunno == SIGINT) ? "SIGINT" : "SIGTERM");
+    // Do NOT request a log dump here: the drainer detects our death on its own
+    // (parent process handle) and writes a single PRODUCER_DIED dump. Requesting
+    // one here too produced a duplicate crash_<utc>.dump per kill.
     LOGE("Tear down websocket.... \n");
     delete ifwebsocket;
-    
+
     terminationFlag = true;
-    LOGE("SIGINT exit.... \n");
+    LOGE("signal exit.... \n");
     break;
   }
   return;
@@ -5656,6 +5660,7 @@ int cp_main(int argc, char **argv)
     return 0;
   }
   signal(SIGINT, sigroutine);
+  signal(SIGTERM, sigroutine);   // graceful kill -> clean teardown (drainer dumps)
 #ifdef SIGPIPE
   signal(SIGPIPE, SIG_IGN);
 #endif

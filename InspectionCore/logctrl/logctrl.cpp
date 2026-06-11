@@ -611,8 +611,15 @@ int log_spawn_drainer(const char *exe_path) {
     /* CreateProcessA mutates the command-line buffer, so dup it. */
     char cmd[1024];
     std::snprintf(cmd, sizeof(cmd), "%s", path);
+    /* CREATE_NEW_PROCESS_GROUP: the drainer must OUTLIVE the producer so it can
+     * detect the producer's death and write the final flight-recorder dump. With
+     * flags=0 the drainer shares our console + process group, so a console Ctrl+C
+     * (CTRL_C_EVENT) would be delivered to BOTH us and the drainer at once -- and
+     * the drainer has no handler, so the default action would kill it before it
+     * could dump. A new process group disables Ctrl+C for the drainer, so Ctrl+C
+     * kills only us; the drainer then notices via the parent handle and dumps. */
     BOOL ok = CreateProcessA(
-        nullptr, cmd, nullptr, nullptr, FALSE, 0,
+        nullptr, cmd, nullptr, nullptr, FALSE, CREATE_NEW_PROCESS_GROUP,
         nullptr, nullptr, &si, &pi);
     if (!ok) {
         std::fprintf(stderr,

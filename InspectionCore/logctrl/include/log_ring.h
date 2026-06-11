@@ -63,6 +63,11 @@ static constexpr uint32_t LOG_CRASH_OTHER   = 99;
  * drainer writes the dump but, unlike a real crash, RESETS the marker and
  * keeps running. Distinct value so it never collides with a real crash code. */
 static constexpr uint32_t LOG_CRASH_DUMP_REQUEST = 100;
+/* NOT a real crash either: the DRAINER detected the producer process died
+ * (exited/killed/closed -- including taskkill /F, which no producer-side handler
+ * can catch) via the parent process handle, and writes a final flight-recorder
+ * dump on its way out. Used only as the write_crash_dump() reason label. */
+static constexpr uint32_t LOG_CRASH_PRODUCER_DIED = 101;
 
 /* ---------- layout ---------- */
 

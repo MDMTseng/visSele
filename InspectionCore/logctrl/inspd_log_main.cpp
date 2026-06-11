@@ -280,6 +280,7 @@ const char *crash_marker_name(uint32_t m) {
         case LOG_CRASH_SIGFPE:  return "SIGFPE";
         case LOG_CRASH_SIGBUS:  return "SIGBUS";
         case LOG_CRASH_OTHER:   return "OTHER";
+        case LOG_CRASH_PRODUCER_DIED: return "PRODUCER_DIED";
         default:                return "?";
     }
 }
@@ -803,6 +804,24 @@ int run(const Config &cfg) {
                 disk.write(text, std::strlen(text));
         }
         disk.flush();
+    }
+
+    /* Producer died -> write a final flight-recorder dump. This is the ONLY way
+     * out of the drain loop (a real crash dumps and returns earlier, at the
+     * crash_marker branch), so reaching here means visSele exited/was killed.
+     * Crucially this covers the cases the producer's OWN handlers CANNOT: a hard
+     * taskkill /F (TerminateProcess), being force-killed as a child of the
+     * launcher, OOM, etc. -- because WE are a separate process and detected the
+     * death via the parent's process handle. The SHM ring is still mapped on our
+     * side after the producer exits, so head/slots remain readable; the ephemeral
+     * DEBUG/TRACE buffer is our own RAM. Result: a kill always leaves a
+     * crash_<utc>.dump, not just an orderly Ctrl-C. */
+    if (parent_dead) {
+        std::string dump_path =
+            write_crash_dump(cfg, h, ephemeral, LOG_CRASH_PRODUCER_DIED);
+        std::fprintf(stderr,
+            "[inspd_log] producer died -> wrote flight-recorder dump: %s\n",
+            dump_path.c_str());
     }
 
     if (ws) delete ws;

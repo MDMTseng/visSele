@@ -258,8 +258,14 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
     };
   }, [wsUrl, pushBuf]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-subscribe when filters change.
+  // Re-subscribe when filters change. SKIP the initial mount run: the mount
+  // effect above already subscribed WITH a backlog (tailN:500), and that
+  // subscription is re-applied on `hello`. Running here on mount would overwrite
+  // it with backlog:null before hello lands, dropping the initial tail. Only
+  // real filter CHANGES should re-subscribe (and those don't want a re-fetch).
+  const firstFilterRun = useRef(true);
   useEffect(() => {
+    if (firstFilterRun.current) { firstFilterRun.current = false; return; }
     const c = clientRef.current;
     if (!c) return;
     const minSn = SEVERITIES[minSevIdx].sn;
@@ -284,17 +290,25 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [entries, autoscroll, paused]);
 
-  // Client-side text filter (against body + module). Gap markers always visible.
+  // Client-side filter. The min-severity dropdown and module checkboxes also
+  // drive the server subscription (future frames), but WITHOUT filtering the
+  // already-buffered rows here, toggling them looked dead -- the visible buffer
+  // never changed. So apply all three (min severity, module include-set, text
+  // needle) to the buffer too, for immediate, obvious feedback. Gap markers
+  // always stay visible so dropped-line context isn't hidden.
+  const minSn = SEVERITIES[minSevIdx].sn;
   const visible = useMemo(() => {
-    if (!needle) return entries;
-    const n = needle.toLowerCase();
+    const n = needle ? needle.toLowerCase() : null;
+    const modSet = modFilter.length ? new Set(modFilter) : null;
     return entries.filter((e) => {
       if (e.kind === 'gap') return true;
-      const body = (e.body || '').toLowerCase();
-      const mod  = (e.attributes && e.attributes.module || '').toLowerCase();
-      return body.includes(n) || mod.includes(n);
+      if (typeof e.severityNumber === 'number' && e.severityNumber < minSn) return false;
+      const mod = (e.attributes && e.attributes.module) || '';
+      if (modSet && !modSet.has(mod)) return false;
+      if (n) return (e.body || '').toLowerCase().includes(n) || mod.toLowerCase().includes(n);
+      return true;
     });
-  }, [entries, needle]);
+  }, [entries, needle, minSn, modFilter]);
 
   const onDumpNow = useCallback(() => {
     const c = clientRef.current; if (!c) return;
@@ -302,14 +316,22 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
                .catch((e) => alert('dump failed: ' + String(e)));
   }, []);
 
-  // Quick action: set every known module to the same severity. Wires into
-  // setLevel(scope:module). Cheap; backend coalesces.
+  // "set all": set every module to the same severity via ONE global setLevel,
+  // NOT a per-module fan-out. The drainer->producer command channel is a
+  // SINGLE-SLOT mailbox (one ctrl_cmd_module + one ctrl_cmd_seq); firing N
+  // per-module commands at once races -- they overwrite the slot and only the
+  // last survives (logctrl.cpp ctrl_cmd handling). A global command (empty
+  // module) sets the level for every module in one shot. The producer applies
+  // it on its NEXT log emit, so the setLevel ack only means the drainer QUEUED
+  // it -- re-read modules after a short delay to reflect the applied level.
   const onSetAllModules = useCallback((sn) => {
     const c = clientRef.current; if (!c) return;
-    Promise.all(modules.map((m) =>
-      c.setLevel({ scope: 'module', module: m.name, severityNumber: sn }).catch(() => null)
-    )).then(() => c.getModules()).then((mods) => setModules(mods || []));
-  }, [modules]);
+    c.setLevel({ scope: 'global', severityNumber: sn })
+      .then(() => new Promise((r) => setTimeout(r, 500)))
+      .then(() => c.getModules())
+      .then((mods) => setModules(mods || []))
+      .catch(() => {});
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height, fontFamily: 'monospace' }}>
@@ -342,7 +364,7 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
         <label style={{ fontSize: 12 }}>
           <input type="checkbox" checked={autoscroll} onChange={(e) => setAutoscroll(e.target.checked)} /> follow
         </label>
-        <button onClick={onDumpNow}>dump now</button>
+        <button onClick={onDumpNow} title="寫出 log 飛行記錄快照 (crash_*.dump)">匯出 Log 快照</button>
         <button onClick={() => { bufRef.current = []; setEntries([]); }}>clear</button>
       </div>
 
@@ -354,9 +376,16 @@ export default function CoreLogPanel({ url, height = '70vh' }) {
               <input
                 type="checkbox"
                 checked={modFilter.includes(m.name)}
-                onChange={(e) => setModFilter((prev) => e.target.checked
-                  ? [...prev, m.name]
-                  : prev.filter((x) => x !== m.name))}
+                onChange={(e) => {
+                  // Capture BEFORE the functional updater: React 16 pools the
+                  // SyntheticEvent, so reading e.target inside the (deferred)
+                  // updater throws "Cannot read properties of null". This crashed
+                  // the whole panel on any module-checkbox toggle.
+                  const on = e.target.checked;
+                  setModFilter((prev) => on
+                    ? [...prev, m.name]
+                    : prev.filter((x) => x !== m.name));
+                }}
               />{' '}{m.name}<sub style={{ opacity: 0.5 }}>{sevLabel(m.effectiveSeverityNumber)}</sub>
             </label>
           ))}
