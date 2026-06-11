@@ -1758,9 +1758,12 @@ class APP_INSP_MODE extends React.Component {
         this.CameraCtrl.setCameraSpeed_HIGHEST();
       }
       else if (this.props.machine_custom_setting.InspectionMode == "CI") {
-        
 
-        this.CameraCtrl.setCameraSpeed_LOW();
+
+        // CI runs at 10fps (was setCameraSpeed_LOW = 2fps, too sluggish). The
+        // walk-away/idle case is now handled by the auto-exit guard, not by
+        // crawling the framerate.
+        this.CameraCtrl.setCameraFrameRate(10);
 
         console.log("this.props.System_Setting.CI_MODE_StatSettingParam",this.props.System_Setting.CI_MODE_StatSettingParam);
 
@@ -1806,6 +1809,7 @@ class APP_INSP_MODE extends React.Component {
   }
 
   componentWillUnmount() {
+    if (this._autoExitTimer !== null) { clearTimeout(this._autoExitTimer); this._autoExitTimer = null; }
     this.props.ACT_WS_GET_OBJ(this.props.uInsp_API_ID,(api)=>{
       if(api===undefined)return;
       api.send({type: "exit_inspection"},
@@ -1821,6 +1825,20 @@ class APP_INSP_MODE extends React.Component {
     super(props);
     this.ec_canvas = null;
     this.checkResult2AirAction = { direction: "none", ver: 0 };
+
+    // CI auto-exit (power/overheat guard): CI is a STATIONARY inspection -- the
+    // user puts objects on the plate and the camera streams + re-inspects the
+    // same scene forever. If nobody is there (no object) or the same object just
+    // sits stuck, the machine burns power/heat computing the same frame over and
+    // over. So: no object for NO_OBJ_MS, OR the same object persisting for
+    // SAME_OBJ_MS, flashes a reason then exits inspection mode entirely.
+    // Both are time-based (epoch ms), so they're robust to render cadence.
+    this.NO_OBJ_MS = 30 * 1000;     // no object on the plate -> idle line
+    this.SAME_OBJ_MS = 60 * 1000;   // same object stuck in view -> user walked off
+    this._noObjSince = null;        // epoch ms when the no-object streak began
+    this._autoExiting = false;      // latch: flashing + leaving
+    this._autoExitTimer = null;
+
     this.state = {
       GraphUIDisplayMode: 0,
       CanvasWindowRatio: 9,
@@ -1830,7 +1848,8 @@ class APP_INSP_MODE extends React.Component {
       SettingParamInfo:undefined,
       modalInfo:undefined,
       renderObjAlignRotate:false,
-      hideSLID:true
+      hideSLID:true,
+      autoExitReason:undefined
     };
 
     
@@ -1895,13 +1914,84 @@ class APP_INSP_MODE extends React.Component {
     if(this.exitGate==false)
     {//prevent double exit
       this.exitGate=true;
+
+      // Stop the core RIGHT NOW, on the click task, BEFORE kicking off the SM
+      // transition. The same two commands also run in componentWillUnmount, but
+      // that fires only after the SM EXIT event + reducer + unmount of this heavy
+      // tree have committed -- and when a turntable (SLID/uInsp) is connected the
+      // camera is hardware-triggered and floods RP/IR reports, saturating the JS
+      // main thread. In that state the deferred unmount sends queue behind the
+      // inbound-report backlog and reach the core 5-10s late. Sending here gets
+      // the stop bytes onto the wire in the input task: trigger_mode:1 halts the
+      // camera grab (killing the flood at its source) and CI keep:false closes
+      // the inspection PG (clearing the loaded def). Idempotent with unmount.
+      this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
+        { CameraSetting: { trigger_mode: 1 } });
+      this.props.ACT_WS_SEND_CORE_BPG("CI", 0,
+        { _PGID_: stream_PGID_, _PGINFO_: { keep: false } });
+
       this.props.ACT_EXIT();
     }
   }
 
+  // CI-only idle watchdog. Called from componentDidUpdate with each fresh
+  // inspection report (already gated to CI there). Two exit triggers, both
+  // time-based:
+  //  - no object on the plate for NO_OBJ_MS, or
+  //  - the SAME object (reducer tracking-window identity, matched by orientation/
+  //    area/position) still present after SAME_OBJ_MS, i.e. user walked off and
+  //    left a part sitting there.
+  checkAutoExitForCI(report) {
+    if (this._autoExiting) return;
+    const now = Date.now();
+
+    // --- no object ---
+    const hasObj = report && report.reports && report.reports.length > 0;
+    if (!hasObj) {
+      if (this._noObjSince == null) this._noObjSince = now;
+      else if (now - this._noObjSince > this.NO_OBJ_MS) {
+        this.autoExit("no_obj");
+        return;
+      }
+    } else {
+      this._noObjSince = null;
+    }
+
+    // --- same object stuck too long ---
+    // Entries remain in trackingWindow only while still being seen (the reducer
+    // ages them out keepInTrackingTime_ms after the last sighting), so a present
+    // entry with a far-past add_time_ms means the same object has persisted that
+    // long. repeatTime can't be used here -- it caps at maxReportRepeat.
+    const tw = this.props.reportStatisticState && this.props.reportStatisticState.trackingWindow;
+    if (Array.isArray(tw)) {
+      for (let i = 0; i < tw.length; i++) {
+        const e = tw[i];
+        if (e && typeof e.add_time_ms === 'number' && (now - e.add_time_ms > this.SAME_OBJ_MS)) {
+          this.autoExit("same_obj");
+          return;
+        }
+      }
+    }
+  }
+
+  // Flash the reason for a moment, then leave inspection mode. Halt the camera
+  // immediately (trigger_mode:1) so the wasteful compute stops during the flash;
+  // EXIT() does the full clean teardown after.
+  autoExit(reason) {
+    if (this._autoExiting) return;
+    if (this.props.machine_custom_setting.InspectionMode !== "CI") return;
+    this._autoExiting = true;
+    this.props.ACT_WS_SEND_CORE_BPG("ST", 0, { CameraSetting: { trigger_mode: 1 } });
+    const msg = (reason === "no_obj")
+      ? "長時間無物件，自動退出檢測以節省電力"
+      : "物件長時間停滯，自動退出檢測以節省電力";
+    this.setState({ autoExitReason: msg });
+    this._autoExitTimer = setTimeout(() => { this._autoExitTimer = null; this.EXIT(); }, 2000);
+  }
+
   componentDidUpdate() {
     if (this.props.machine_custom_setting.InspectionMode== "CI")
-      this.CameraCtrl.updateInspectionReportForPowerSaving(this.props.inspectionReport);
+      this.checkAutoExitForCI(this.props.inspectionReport);
 
     if(this.props.uInsp_API_ID_CONN_INFO!==undefined)
     {
@@ -2160,9 +2250,9 @@ class APP_INSP_MODE extends React.Component {
   render() {
     
     let inspectionReport = undefined;
-    if (this.props.inspectionReport !== undefined) {
+    if (this.props.inspectionReport != null) {   // != catches BOTH null and undefined
       inspectionReport = this.props.inspectionReport;
-      if (inspectionReport.reports.length > 0) {
+      if (inspectionReport.reports && inspectionReport.reports.length > 0) {
         let groupResult = inspectionReport.reports.map((single_rep) => {
 
           // [1,2,3,4].reduce((sum,ele)=>{return sum+ele},0);
@@ -2720,7 +2810,16 @@ class APP_INSP_MODE extends React.Component {
 
           </Menu> */}
         </>
-      
+
+        <Modal
+          visible={this.state.autoExitReason !== undefined}
+          title={dictLookUp("WARNING", this.props.DICT)}
+          closable={false}
+          maskClosable={false}
+          footer={null}>
+          {this.state.autoExitReason}
+        </Modal>
+
       </div>
     );
   }

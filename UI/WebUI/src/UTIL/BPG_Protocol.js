@@ -343,9 +343,7 @@ export class CameraTransferCtrl {
   constructor(setting) {
     this.data = {
       DoImageTransfer: true,
-      emptyResultCount: 0,
       cameraFrameRate: 30,
-      speedSwitchingCount: 1000,
     };
     this.ws_ch = setting.ws_ch;
 
@@ -353,11 +351,6 @@ export class CameraTransferCtrl {
     if (this.ev_frameRateChange === undefined)
       this.ev_frameRateChange = () => { };
 
-    this.ev_emptyResultCountChange = setting.ev_emptyResultCountChange;
-    if (this.ev_emptyResultCountChange === undefined)
-      this.ev_emptyResultCountChange = () => { };
-
-    this.setSpeedSwitchingCount(100);
     this.setCameraFrameRate(8);
   }
 
@@ -402,10 +395,6 @@ export class CameraTransferCtrl {
 
 
 
-  setSpeedSwitchingCount(speedSwitchingCount = 100) {
-    this.data.speedSwitchingCount = speedSwitchingCount;
-  }
-
   setCameraSpeed_HIGHEST() {
     this.setCameraFrameRate(9999999);
   }
@@ -414,23 +403,6 @@ export class CameraTransferCtrl {
   }
   setCameraSpeed_LOW() {
     this.setCameraFrameRate(2);
-  }
-
-  updateInspectionReportForPowerSaving(report) {
-    if (report === undefined || report.reports.length == 0) {
-      this.data.emptyResultCount++;
-      if (this.data.emptyResultCount > this.data.speedSwitchingCount)
-        this.setCameraSpeed_LOW();
-
-      this.ev_emptyResultCountChange(this.data.emptyResultCount);
-      return;
-    }
-
-    if (this.data.emptyResultCount != 0) {
-      this.ev_emptyResultCountChange(this.data.emptyResultCount);
-      this.data.emptyResultCount = 0;
-      this.setCameraSpeed_HIGH();
-    }
   }
 
 }
