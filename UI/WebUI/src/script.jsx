@@ -1085,8 +1085,8 @@ class APPMasterX extends React.Component {
         comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, {type:"CONNECT",...connInfo, _PGID_: this.pg_id_channel, _PGINFO_: { keep: true }},undefined,
         {
           resolve: (stacked_pkts,action_channal) => {
-            // console.log(stacked_pkts);
             let PD=stacked_pkts.find(pkt=>pkt.type=="PD");
+            // console.log(stacked_pkts);
             this.inReconnection=false;
             if(PD!==undefined)
             {
@@ -1326,6 +1326,50 @@ class APPMasterX extends React.Component {
 
       }
       
+      // Round-trip latency probe for the peripheral link: WebUI -> core PD packet
+      // -> perifCH serial -> device -> reply -> back. Sends `count` SEQUENTIAL
+      // PINGs (same transport a light/PIN_CONF command takes) and times each
+      // resolve, then reports min/avg/p95/max + per-sample list via onUpdate.
+      // Drives the WebUI "通訊診斷" button so field comm-delay can be measured.
+      diagnoseComm(count,onUpdate)
+      {
+        count = count || 20;
+        onUpdate = onUpdate || (()=>{});
+        let self=this;
+        let samples=[], fails=0, i=0, startedAt=new Date().getTime();
+        function finish(){
+          let sorted=[...samples].sort((a,b)=>a-b);
+          let sum=samples.reduce((a,b)=>a+b,0);
+          onUpdate({
+            done:true, total:count, n:samples.length, fails:fails,
+            min: sorted.length?sorted[0]:null,
+            max: sorted.length?sorted[sorted.length-1]:null,
+            avg: samples.length?Math.round(sum/samples.length):null,
+            p95: sorted.length?sorted[Math.min(sorted.length-1,Math.floor(sorted.length*0.95))]:null,
+            elapsed: new Date().getTime()-startedAt,
+            samples: samples,
+          });
+        }
+        function next(){
+          if(i>=count || self.CONN_ID===undefined){ finish(); return; }
+          i++;
+          let t0=new Date().getTime(), settled=false;
+          let to=setTimeout(()=>{ if(settled)return; settled=true; fails++;
+            onUpdate({done:false,i:i,total:count,last:null,timeout:true}); next(); },3000);
+          self.send({type:"PING"},()=>{
+            if(settled)return; settled=true; clearTimeout(to);
+            samples.push(new Date().getTime()-t0);
+            onUpdate({done:false,i:i,total:count,last:samples[samples.length-1]});
+            next();
+          },(e)=>{
+            if(settled)return; settled=true; clearTimeout(to); fails++;
+            onUpdate({done:false,i:i,total:count,last:null,error:String(e)});
+            next();
+          });
+        }
+        next();
+      }
+
     }
     this.props.ACT_WS_REGISTER(this.props.uInsp_API_ID,new uInsp_API(this.props.uInsp_API_ID));
 
@@ -1559,7 +1603,7 @@ class APPMasterX extends React.Component {
         {
           //time to disconnect
           this.PINGCount=0;
-          
+
           this.connect(this.connInfo);
           return;
         }
@@ -1620,6 +1664,50 @@ class APPMasterX extends React.Component {
 
       }
       
+      // Round-trip latency probe for the peripheral link: WebUI -> core PD packet
+      // -> perifCH serial -> device -> reply -> back. Sends `count` SEQUENTIAL
+      // PINGs (same transport a light/PIN_CONF command takes) and times each
+      // resolve, then reports min/avg/p95/max + per-sample list via onUpdate.
+      // Drives the WebUI "通訊診斷" button so field comm-delay can be measured.
+      diagnoseComm(count,onUpdate)
+      {
+        count = count || 20;
+        onUpdate = onUpdate || (()=>{});
+        let self=this;
+        let samples=[], fails=0, i=0, startedAt=new Date().getTime();
+        function finish(){
+          let sorted=[...samples].sort((a,b)=>a-b);
+          let sum=samples.reduce((a,b)=>a+b,0);
+          onUpdate({
+            done:true, total:count, n:samples.length, fails:fails,
+            min: sorted.length?sorted[0]:null,
+            max: sorted.length?sorted[sorted.length-1]:null,
+            avg: samples.length?Math.round(sum/samples.length):null,
+            p95: sorted.length?sorted[Math.min(sorted.length-1,Math.floor(sorted.length*0.95))]:null,
+            elapsed: new Date().getTime()-startedAt,
+            samples: samples,
+          });
+        }
+        function next(){
+          if(i>=count || self.CONN_ID===undefined){ finish(); return; }
+          i++;
+          let t0=new Date().getTime(), settled=false;
+          let to=setTimeout(()=>{ if(settled)return; settled=true; fails++;
+            onUpdate({done:false,i:i,total:count,last:null,timeout:true}); next(); },3000);
+          self.send({type:"PING"},()=>{
+            if(settled)return; settled=true; clearTimeout(to);
+            samples.push(new Date().getTime()-t0);
+            onUpdate({done:false,i:i,total:count,last:samples[samples.length-1]});
+            next();
+          },(e)=>{
+            if(settled)return; settled=true; clearTimeout(to); fails++;
+            onUpdate({done:false,i:i,total:count,last:null,error:String(e)});
+            next();
+          });
+        }
+        next();
+      }
+
     }
 
     

@@ -1082,6 +1082,20 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
   const [statisticValue, set_statisticValue] = useState(undefined);
   const [SLID_api, set_SLID_api] = useState(undefined);
   const [_UPDATE_, set_update] = useState(0);
+  const [commDiag, setCommDiag] = useState(null);   // peripheral comm-latency probe result
+
+  // Run the round-trip latency probe against the peripheral and surface the
+  // stats in the modal, so field comm-delay can be measured + reported.
+  const runCommDiag = (n=20) => {
+    setCommDiag({ running:true, i:0, total:n, last:undefined });
+    ACT_WS_GET_OBJ((api)=>{
+      if(!api || typeof api.diagnoseComm!=="function"){ setCommDiag({ error:"diagnoseComm unavailable on this peripheral" }); return; }
+      api.diagnoseComm(n,(u)=>{
+        if(u.done) setCommDiag({ running:false, ...u });
+        else       setCommDiag({ running:true, i:u.i, total:u.total, last:u.last, timeout:u.timeout, error:u.error });
+      });
+    });
+  };
  
   useEffect(()=>{//auto update
       function getRandomInt(max) {
@@ -1312,6 +1326,7 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
 
     
     <Button
+        data-testid="slid-bl-on"
         icon={<BulbOutlined />}
         key="ON"
         onClick={() =>
@@ -1329,6 +1344,7 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
 
     
     <Button
+        data-testid="slid-bl-off"
         key="OFF"
         onClick={() =>
           ACT_WS_GET_OBJ((api)=>{
@@ -1342,6 +1358,7 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
 
     {"  "}
     <Button
+        data-testid="slid-em-stop"
         icon={<WarningOutlined />}
         key="EM_STOP"
         onClick={() =>
@@ -1353,7 +1370,33 @@ export function SLID_UI({SIMPLE_CTRL_UI=false,UI_EM_STOP_BRIF_INFO_UI=false,UI_E
         STOP
     </Button>
 
-    
+    <Divider style={{ margin:'8px 0' }}/>
+    <Button key="comm-diag"
+      data-testid="slid-comm-diag"
+      loading={!!(commDiag && commDiag.running)}
+      onClick={()=>runCommDiag(20)}>
+      通訊診斷 / Comm Diagnosis
+    </Button>
+    {commDiag && (
+      <pre data-testid="slid-comm-diag-result"
+           data-status={commDiag.error ? "error" : commDiag.running ? "running" : "done"}
+           data-n={commDiag.n} data-fails={commDiag.fails} data-total={commDiag.total}
+           data-avg={commDiag.avg} data-p95={commDiag.p95} data-max={commDiag.max}
+           style={{ fontSize:12, whiteSpace:'pre-wrap', marginTop:6,
+                    background:'#f5f5f5', padding:8, borderRadius:4 }}>
+        {commDiag.error ? ("錯誤: " + commDiag.error)
+         : commDiag.running ? ("測試中... " + commDiag.i + "/" + commDiag.total
+              + (commDiag.last!=null ? ("  最近往返 " + commDiag.last + "ms")
+                 : commDiag.timeout ? "  (逾時)" : ""))
+         : ("周邊往返延遲 (成功 " + commDiag.n + "/" + commDiag.total
+              + (commDiag.fails ? (", 失敗 " + commDiag.fails) : "") + "):\n"
+              + "  min " + commDiag.min + "ms   avg " + commDiag.avg + "ms   "
+              + "p95 " + commDiag.p95 + "ms   max " + commDiag.max + "ms\n"
+              + "  總耗時 " + commDiag.elapsed + "ms\n"
+              + "  樣本(ms): " + (commDiag.samples||[]).join(', '))}
+      </pre>
+    )}
+
     {/* <Button
         icon={<BulbOutlined />}
         key="TAKE"

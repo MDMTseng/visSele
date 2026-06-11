@@ -4679,7 +4679,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
   bool doPassDown = doInspActionThread;
 
-  if (bpg_pi.perifCH!=NULL && false)
+  if (bpg_pi.perifCH!=NULL)
   {
     // Hand off to PerifSendThread instead of blocking here on the serial
     // write (which can stall >1s under flow control and freeze inspection).

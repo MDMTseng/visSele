@@ -2612,7 +2612,7 @@ class APP_INSP_MODE extends React.Component {
           + " " + this.state.inspUploadedCount + ":" + this.props.reportStatisticState.historyReport.length + "/" + InspectionReportPullSkip}
       </Button> */}
       
-      <Button type="primary" size={"large"} onClick={()=>this.setState({hideSLID:false})}>
+      <Button data-testid="open-slid-modal" type="primary" size={"large"} onClick={()=>this.setState({hideSLID:false})}>
        SHOW
       </Button>
       {/* {this.state.hideSLID==false?null:SLID_SP_UI}
