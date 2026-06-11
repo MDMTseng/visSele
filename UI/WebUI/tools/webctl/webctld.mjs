@@ -52,9 +52,12 @@ function json(res, code, obj) {
 }
 function readBody(req) {
   return new Promise((resolve) => {
-    let d = '';
-    req.on('data', (c) => (d += c));
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
     req.on('end', () => {
+      // Decode the whole body once as UTF-8; concatenating Buffers as strings
+      // (d += c) corrupts multibyte chars (e.g. CJK) split across chunks.
+      const d = Buffer.concat(chunks).toString('utf8');
       try {
         resolve(d ? JSON.parse(d) : {});
       } catch {
@@ -108,6 +111,15 @@ const server = http.createServer(async (req, res) => {
           return json(res, 200, { ok: true });
         case '/press':
           await page.press(b.selector || 'body', b.key, { timeout });
+          return json(res, 200, { ok: true });
+        case '/mouse':              // selector-free coordinate click (replay fallback)
+          await page.mouse.click(b.x, b.y);
+          return json(res, 200, { ok: true });
+        case '/key':                // keyboard key press at page level
+          await page.keyboard.press(b.key);
+          return json(res, 200, { ok: true });
+        case '/viewport':           // match the recording's viewport so coords align
+          await page.setViewportSize({ width: b.width, height: b.height });
           return json(res, 200, { ok: true });
         case '/wait':
           await page.waitForSelector(b.selector, { state: b.state || 'visible', timeout });
