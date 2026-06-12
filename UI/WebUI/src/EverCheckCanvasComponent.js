@@ -265,6 +265,10 @@ class EverCheckCanvasComponent_proto {
         const ctx2nd = this.secCanvas.getContext('2d');
         ctx2nd.drawImage(bmp, 0, 0);
         this.secCanvas_rawImg = bmp;
+        // Decode is async: the draw() that ran synchronously on mount had no
+        // image yet, so the canvas stayed blank until a mousemove forced a
+        // redraw. Redraw now that secCanvas holds the bitmap.
+        if (typeof this.draw === 'function') this.draw();
       }).catch((err) => {
         log.warn("SetImg: JPEG decode failed", err);
       });
