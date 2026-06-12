@@ -4,6 +4,7 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { webuiBuildPlugin } from './vite_build_info.mjs';
 
 // Production Vite build (companion to the dev-only vite.config.mjs). The legacy
 // webpack production build does not resolve the .jsx/.ts files added on this
@@ -49,6 +50,7 @@ export default defineConfig({
   base: './', // relative asset paths -> portable when copied/deployed
   define: { __DEV_MODE__: 'false' },
   plugins: [
+    webuiBuildPlugin(),
     nodePolyfills({ globals: { Buffer: true, process: true } }),
     jsxInJs,
     react({ jsxRuntime: 'classic', include: /src\/.*\.(js|jsx)$/, exclude: /node_modules/ }),

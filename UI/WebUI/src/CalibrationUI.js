@@ -27,6 +27,7 @@ class PreviewCanvas extends React.Component {
   }
   componentDidMount() {
     this.ec_canvas = new EC_CANVAS_Ctrl.Preview_CanvasComponent(this.refs.canvas);
+    this.ec_canvas.disableImageAlign = true;   // raw live frame: no def_image_reg rotate
     this._didInitialFit = false;
     if (this.props.onCanvasInit) this.props.onCanvasInit(this.ec_canvas);
     this.updateCanvas(this.props.c_state);
@@ -126,41 +127,79 @@ function CalibrationUI(props) {
   // (JPEG re-decode) on the live preview.
   const onCanvasInit = useCallback((c) => { canvasRef.current = c; }, []);
 
-  // On mount, list any already-saved chessboard images so the user sees them
-  // (with placeholder thumbs -- binary PNG read over BPG is not wired yet).
+  // On mount, list any already-saved chessboard images and load their thumbnails.
+  // Use LD with down_samp_level (DOWNSAMPLED) instead of LB (full-res PNG) so a
+  // thumbnail costs ~1/THUMB_DS^2 the bytes -- the saved calib PNGs are full
+  // camera res. no_cache:true tells the core's LD handler NOT to overwrite
+  // __CACHE_IMG__ (the live working image) for these read-only loads. The IM
+  // reply is already parsed (format 1/2 = JPEG); blob its bytes directly.
+  const THUMB_DS = 8;
+  // Gate the camera stream on this: load saved thumbnails FIRST, then start
+  // streaming, so the two don't contend for the link on entry.
+  const [thumbsLoaded, setThumbsLoaded] = useState(false);
   useEffect(() => {
+    let pending = 0, listed = false, settled = false;
+    const finishAll = () => { if (!settled) { settled = true; setThumbsLoaded(true); } };
+    const checkDone = () => { if (listed && pending === 0) finishAll(); };
+    // Safety: never let a slow/stuck thumbnail block the stream indefinitely.
+    const guard = setTimeout(finishAll, 4000);
     const lazyLoadThumbs = (shots, setter) => {
       shots.forEach((shot) => {
-        props.ACT_WS_SEND_BPG(props.CORE_ID, "LB", 0, { filename: shot.path }, undefined, {
+        pending++;
+        const tick = () => { pending--; checkDone(); };
+        props.ACT_WS_SEND_BPG(props.CORE_ID, "LD", 0,
+          { imgsrc: shot.path, down_samp_level: THUMB_DS, no_cache: true, jpeg_quality: 70 }, undefined, {
           resolve: (rpkts) => {
-            const bl = rpkts.find(p => p.type === "BL");
-            if (!bl || !bl.rawdata || !bl.rawdata.byteLength) return;
-            const blob = new Blob([new Uint8Array(bl.rawdata.buffer, bl.rawdata.byteOffset, bl.rawdata.byteLength)], { type: 'image/png' });
-            const url = URL.createObjectURL(blob);
-            setter(prev => prev.map(s => s.ts === shot.ts ? { ...s, thumb: url } : s));
+            const IM = rpkts.find(p => p.type === "IM");
+            let url = null;
+            if (IM && IM.image) {
+              if (IM.format === 1 || IM.format === 2) {
+                // JPEG: blob the bytes directly.
+                const bytes = new Uint8Array(IM.image.byteLength);
+                bytes.set(IM.image);   // copy: WS buffer is recycled on next message
+                url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+              } else if (IM.width && IM.height) {
+                // Raw RGBA (format 0 -- what the LD-from-disk path sends). Paint to
+                // an offscreen canvas and export a small JPEG data URL.
+                try {
+                  const rgba = new Uint8ClampedArray(IM.image.length || IM.image.byteLength);
+                  rgba.set(IM.image);   // copy off the recycled WS buffer
+                  const tc = document.createElement('canvas');
+                  tc.width = IM.width; tc.height = IM.height;
+                  tc.getContext('2d').putImageData(new ImageData(rgba, IM.width, IM.height), 0, 0);
+                  url = tc.toDataURL('image/jpeg', 0.7);
+                } catch (e) { /* leave thumb null */ }
+              }
+            }
+            if (url) setter(prev => prev.map(s => s.ts === shot.ts ? { ...s, thumb: url } : s));
+            tick();
           },
-          reject: () => {},
+          reject: () => { tick(); },
         });
       });
     };
     props.ACT_WS_SEND_BPG(props.CORE_ID, "FB", 0, { path: CALIB_DIR, depth: 1 }, undefined, {
       resolve: (pkts) => {
         const fs = pkts.find(p => p.type === "FS");
-        if (!fs || !fs.data || !fs.data.files) return;
-        const toShot = (f) => ({ ts: f.name, path: `${CALIB_DIR}/${f.name}`, thumb: null, persisted: true });
-        const pngs = fs.data.files.filter(f => /\.png$/i.test(f.name));
-        const chess  = pngs.filter(f => /^chess[_\-.]/i.test(f.name)  || (!/^bright/i.test(f.name) && !/^dark/i.test(f.name))).map(toShot);
-        const bright = pngs.filter(f => /^bright[_\-.]/i.test(f.name)).map(toShot);
-        const dark   = pngs.filter(f => /^dark[_\-.]/i.test(f.name)).map(toShot);
-        if (chess.length)  setChessShots(chess);
-        if (bright.length) setBrightShots(bright);
-        if (dark.length)   setDarkShots(dark);
-        lazyLoadThumbs(chess,  setChessShots);
-        lazyLoadThumbs(bright, setBrightShots);
-        lazyLoadThumbs(dark,   setDarkShots);
+        if (fs && fs.data && fs.data.files) {
+          const toShot = (f) => ({ ts: f.name, path: `${CALIB_DIR}/${f.name}`, thumb: null, persisted: true });
+          const pngs = fs.data.files.filter(f => /\.png$/i.test(f.name));
+          const chess  = pngs.filter(f => /^chess[_\-.]/i.test(f.name)  || (!/^bright/i.test(f.name) && !/^dark/i.test(f.name))).map(toShot);
+          const bright = pngs.filter(f => /^bright[_\-.]/i.test(f.name)).map(toShot);
+          const dark   = pngs.filter(f => /^dark[_\-.]/i.test(f.name)).map(toShot);
+          if (chess.length)  setChessShots(chess);
+          if (bright.length) setBrightShots(bright);
+          if (dark.length)   setDarkShots(dark);
+          lazyLoadThumbs(chess,  setChessShots);
+          lazyLoadThumbs(bright, setBrightShots);
+          lazyLoadThumbs(dark,   setDarkShots);
+        }
+        listed = true;
+        checkDone();   // no-shots case -> stream can start immediately
       },
-      reject: () => {},
+      reject: () => { listed = true; finishAll(); },
     });
+    return () => clearTimeout(guard);
   }, []);
 
   const grabThumb = () => {
@@ -271,6 +310,7 @@ function CalibrationUI(props) {
   // BackLightCalibUI's stage_light_report PGID -- lightest published path that
   // delivers raw frames + ignores any in-process lens calibration.
   useEffect(() => {
+    if (!thumbsLoaded) return;   // start the stream only after saved thumbnails load
     const CALIB_STREAM_PGID = 10105;
     props.ACT_WS_SEND_BPG(props.CORE_ID, "ST", 0,
       { CameraSetting: { trigger_mode: 0 } });
@@ -291,7 +331,7 @@ function CalibrationUI(props) {
       props.ACT_WS_SEND_BPG(props.CORE_ID, "ST", 0,
         { CameraSetting: { trigger_mode: 1 } });
     };
-  }, []);
+  }, [thumbsLoaded]);
 
   const captureChess = () => {
     const thumb = grabThumb();
@@ -503,8 +543,8 @@ function CalibrationUI(props) {
   };
 
   return (
-    <div className="s width12 height12 overlayCon" style={{ padding: 12 }}>
-      <div ref={previewBoxRef} style={{ height: '60vh', position: 'relative' }}
+    <div className="s width12 height12 overlayCon" style={{ padding: 12, overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box' }}>
+      <div ref={previewBoxRef} style={{ height: '60vh', position: 'relative', flexShrink: 0 }}
         onMouseMove={onPreviewHover} onMouseLeave={onPreviewLeave}>
         <PreviewCanvas_rdx addClass="s width12 height12"
           onCanvasInit={onCanvasInit}/>
@@ -541,7 +581,7 @@ function CalibrationUI(props) {
               onChange={(v) => { const x = v || 1; setGamma(x); setCam('gamma', x); }} />
           </label>
           <label>blacklevel:
-            <InputNumber value={blacklevel} min={0} max={255} step={1}
+            <InputNumber value={blacklevel} min={0} max={1000} step={1}
               style={{ marginLeft: 6, width: 90 }}
               onChange={(v) => { const x = v || 0; setBlacklevel(x); setCam('blacklevel', x); }} />
           </label>

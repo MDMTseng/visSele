@@ -665,7 +665,10 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
       // entirely for legacy defs -> zero change to existing rendering.
       // NOTE: coordinate frame/sign (and isFlipped) pending visual verification.
       try {
-        const reg = this.edit_DB_info && this.edit_DB_info.def_image_reg;
+        // The calibration preview (disableImageAlign) shows a raw live frame, not
+        // a def image, so it must NOT apply def_image_reg rotation -- ignore reg
+        // and fall through to the centering-only branch below.
+        const reg = this.disableImageAlign ? null : (this.edit_DB_info && this.edit_DB_info.def_image_reg);
         const ref = this.db_obj && this.db_obj.sig360info && this.db_obj.sig360info.reports
                     && this.db_obj.sig360info.reports[0];
         if (reg && ref && typeof reg.cx === 'number' && typeof reg.cy === 'number') {

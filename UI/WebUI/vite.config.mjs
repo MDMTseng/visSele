@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { webuiBuildPlugin } from './vite_build_info.mjs';
 
 // Dev Vite config (dev server on :8081). Production builds use vite.config.prod.mjs
 // via `npm run build`. (The legacy webpack/babel build path has been removed.)
@@ -43,6 +44,7 @@ export default defineConfig({
   root,
   define: { __DEV_MODE__: 'true' },
   plugins: [
+    webuiBuildPlugin(),
     devHtmlAtRoot,
     // webpack auto-polyfilled Node builtins; several deps need them at runtime
     // (jsum → crypto.createHash for the featureSet_sha1 integrity hash, etc.).

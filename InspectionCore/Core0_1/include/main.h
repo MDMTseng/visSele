@@ -135,6 +135,10 @@ typedef struct BPG_protocol_data_acvImage_Send_info
     uint16_t scale;
     uint16_t offsetX,offsetY;
     uint16_t fullWidth,fullHeight;
+    // Per-call JPEG quality override for SEND_acvImage. 0 = use the global
+    // DataView_JPEG_quality (default). >0 forces a JPEG encode for THIS send
+    // only (e.g. LD thumbnail reads want JPEG without flipping the live stream).
+    int jpeg_quality = 0;
 
 }BPG_protocol_data_acvImage_Send_info;
 

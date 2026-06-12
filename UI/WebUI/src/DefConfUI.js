@@ -2298,8 +2298,8 @@ function DefConfImageSwitcher() {
       <span style={{ color: '#bbb' }}>image</span>
       <select value={currentImagePath || ''}
         onChange={(e) => switchImage(e.target.value)}
-        style={{ height: 24, fontSize: 12, maxWidth: 240 }}>
-        {imageList.map(im => <option key={im.path} value={im.path}>{im.name}</option>)}
+        style={{ height: 24, fontSize: 12, maxWidth: 240, color: '#000', background: '#fff' }}>
+        {imageList.map(im => <option key={im.path} value={im.path} style={{ color: '#000', background: '#fff' }}>{im.name}</option>)}
       </select>
     </div>,
     document.body

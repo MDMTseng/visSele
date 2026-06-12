@@ -13,6 +13,7 @@ import {UINSP_UI,SLID_UI,CNC_UI} from './component/rdxComponent.jsx';
 import {GetDefaultSystemSetting} from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import { initActionRecorder } from 'UTIL/actionRecorder.js';
+import { WEBUI_BUILD } from 'virtual:webui-build';   // git/build provenance injected at build time
 import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
 
 import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
@@ -163,7 +164,9 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
 
   
   if(gridSize===undefined)gridSize=iconSize+50;
-  let gridStyle={...style,width:(gridSize)+"px" };
+  // height:auto + whiteSpace:normal so the full label can wrap instead of being
+  // clipped by the antd button's default nowrap (運算核心 -> 運算核, HikCam -> HikCa).
+  let gridStyle={...style,width:(gridSize)+"px", height:"auto", whiteSpace:"normal" };
   
   let iconStyle={width:iconSize+"px",height:iconSize+"px"};
 
@@ -197,8 +200,8 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
   return [
     [dictLookUp("core", DICT),   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>,true],
     [dictLookUp("camera", DICT), ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
-    ["設定資料庫",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
-    ["檢測資料庫",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
+    ["設定DB",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
+    ["檢測DB",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
     [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined||ConnInfo.CNC_API_ID_CONN_INFO!==undefined],//seg line
     ["全檢設備",       ConnInfo.uInsp_API_ID_CONN_INFO,   <RobotOutlined />,false],
     ["坡檢設備",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
@@ -220,8 +223,8 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
         </div>
             {(showText==false)?null:
               <>
-                <span className="veleX">{textName}<br/>{brief_info}<br/></span>
-                
+                <span className="veleX" style={{whiteSpace:"normal", wordBreak:"break-word", textAlign:"center", lineHeight:1.15, display:"block"}}>{textName}<br/>{brief_info}</span>
+
               </>}
       </Button>)})
 
@@ -596,6 +599,7 @@ class APPMasterX extends React.Component {
 
         setInterval(()=>{
           let info=`${this.getDataQueueCount()}>${this.getDataSentCount()}`;
+
           // console.log(info);
           comp.props.DISPATCH({type:"WS_UPDATE",id,brief_info:info});
         },5000)
@@ -2155,7 +2159,7 @@ class APPMasterX extends React.Component {
             {this.state.show_core_log_panel && <CoreLogPanel height="calc(100vh - 100px)" />}
           </Drawer>
 
-          <System_Status_Display showText iconSize={30} gridSize={90}
+          <System_Status_Display showText iconSize={30} gridSize={100}
             onItemClick={(connInfo)=>{
               switch(connInfo.id)
               {
@@ -2303,7 +2307,26 @@ class APPMasterX extends React.Component {
           />
           
           <>
-            <Divider>V{this.props.System_Setting.version}</Divider>
+            <Divider>Build Info</Divider>
+            {(() => {
+              const cb = GetObjElement(this.props.CORE_ID_CONN_INFO, ["data","data","build"]) || {};
+              const cv = GetObjElement(this.props.CORE_ID_CONN_INFO, ["data","data","version"]) || this.props.System_Setting.version;
+              const wb = WEBUI_BUILD || {};
+              return (
+                <pre style={{fontSize:11, lineHeight:1.4, margin:"4px 0"}}>
+{`Core   v${cv || '?'}   ${cb.config || ''}
+  build  ${cb.time || 'unknown'}
+  git    ${cb.git_hash || 'unknown'}  (${cb.git_branch || '?'})
+  tag    ${cb.git_describe || 'unknown'}
+
+WebUI
+  build  ${wb.time || 'unknown'}
+  git    ${wb.git_hash || 'unknown'}  (${wb.git_branch || '?'})
+  tag    ${wb.git_describe || 'unknown'}`}
+                </pre>
+              );
+            })()}
+            <Divider></Divider>
             <pre>
               {JSON.stringify(this.props.System_Setting, null, 1)}
             </pre>
