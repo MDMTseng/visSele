@@ -13,6 +13,55 @@
 #include <opencv2/imgproc.hpp>
 
 LOG_MODULE("match.group");
+
+// Per-frame center-sampled adaptive threshold (the default "center_auto" binarize).
+// The sig360 part sits near the image center, so the central 1/3 ROI captures the
+// part's lit surface. We isolate the BRIGHT GROUP of that ROI via an Otsu split --
+// excluding the low-brightness pixels (background/shadow that may share the crop)
+// so a small bright part isn't drowned out -- and take the bright group's mean as
+// "the brightest part" B. Then T = ratio * B (ratio 0.7), which scales with
+// exposure so the sig360 signature survives brightness changes.
+static double centerAutoThreshold(const cv::Mat &gray, double ratio, double /*dark*/, double fixedThres)
+{
+  if (gray.empty() || gray.type() != CV_8UC1) return fixedThres;
+  int W = gray.cols, H = gray.rows;
+  int rw = std::max(8, W / 3), rh = std::max(8, H / 3);
+  cv::Rect roi((W - rw) / 2, (H - rh) / 2, rw, rh);
+  roi &= cv::Rect(0, 0, W, H);
+  if (roi.width < 4 || roi.height < 4) return fixedThres;
+  cv::Mat c = gray(roi);
+  // Strided histogram. Auto-pick the stride so we sample >= ~10000 points
+  // regardless of ROI size: bounds the cost on large frames and avoids
+  // under-sampling small ROIs. Otsu split + bright-group mean from the histogram.
+  const long TARGET_SAMPLES = 10000;
+  int STEP = (int)std::floor(std::sqrt((double)((long)c.rows * c.cols) / (double)TARGET_SAMPLES));
+  if (STEP < 1) STEP = 1;
+  long h[256] = {0}, total = 0; double sum = 0;
+  for (int y = 0; y < c.rows; y += STEP) {
+    const uchar *p = c.ptr<uchar>(y);
+    for (int x = 0; x < c.cols; x += STEP) h[p[x]]++;
+  }
+  for (int i = 0; i < 256; i++) { total += h[i]; sum += (double)i * h[i]; }
+  if (total <= 0) return fixedThres;
+  // Otsu threshold (maximize between-class variance) from the histogram.
+  double sumB = 0; long wB = 0, otsu = 0; double maxVar = -1;
+  for (int t = 0; t < 256; t++) {
+    wB += h[t]; if (wB == 0) continue;
+    long wF = total - wB; if (wF == 0) break;
+    sumB += (double)t * h[t];
+    double mB = sumB / wB, mF = (sum - sumB) / wF;
+    double var = (double)wB * wF * (mB - mF) * (mB - mF);
+    if (var > maxVar) { maxVar = var; otsu = t; }
+  }
+  // Bright group = bins above Otsu; B = its mean (low-brightness excluded).
+  double bsum = 0; long bn = 0;
+  for (int i = (int)otsu + 1; i < 256; i++) { bsum += (double)i * h[i]; bn += h[i]; }
+  double B = (bn > 0) ? bsum / bn : 0;
+  if (B <= 0) return fixedThres;
+  double T = ratio * B;
+  if (T < 1) T = 1; else if (T > 254) T = 254;
+  return T;
+}
 /*
   FeatureManager_group_proto Section
 */
@@ -51,11 +100,24 @@ int FeatureManager_group_proto::parse_jobj()
 
   briThres=JFetch_NUMBER_ex(root,"briThres",80);
 
-  // Calibration-free vignette-tolerant binarization (bg-flatten).
+  // binarize method:  (default) "center_auto" | "bg_flatten" | "fixed"
+  //   0 center_auto : DEFAULT. T = ratio * (brightest of the central 1/3), ratio
+  //                   0.7. Scales with exposure so the signature survives 0.5x-2x
+  //                   brightness; matches the legacy fixed result at nominal.
+  //   1 bg_flatten  : calibration-free vignette-tolerant local flat-field
+  //   2 fixed       : legacy fixed global briThres (per-def opt-out)
+  // edgeRatio is the center_auto ratio; field-cal (adaptiveThres) overrides it
+  // below when that path is enabled.
   binarize_method = 0;
+  edgeRatio = 0.7;   // center_auto: T = ratio * (brightest of central 1/3)
+  darkLevel = 0;
   {
     char *bm = (char *)JFetch(root, "binarize", cJSON_String);
-    if (bm != NULL && strcmp(bm, "bg_flatten") == 0) binarize_method = 1;
+    if (bm != NULL) {
+      if      (strcmp(bm, "bg_flatten") == 0) binarize_method = 1;
+      else if (strcmp(bm, "fixed")      == 0) binarize_method = 2;
+    }
+    edgeRatio = JFetch_NUMBER_ex(root, "center_thres_ratio", edgeRatio);
     bg_close_kernel = (int)JFetch_NUMBER_ex(root, "bg_close_kernel", 81);
     bg_ratio = JFetch_NUMBER_ex(root, "bg_ratio", 0.5);
     bg_downscale = (int)JFetch_NUMBER_ex(root, "bg_downscale", 4);
@@ -268,9 +330,14 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     {
       cvThresholdMap(binary_img_storage, gray_in, bgThreshMap.data(), bgMapW, bgMapH, 0);
     }
-    else
+    else if (binarize_method == 2) // per-def opt-out: legacy fixed global threshold
     {
       cv::threshold(gray_in, binary_img_storage, (double)briThres, 255.0, cv::THRESH_BINARY);
+    }
+    else // DEFAULT: per-frame center-sampled adaptive threshold (0.7 * brightest center)
+    {
+      double T = centerAutoThreshold(gray_in, edgeRatio, darkLevel, (double)briThres);
+      cv::threshold(gray_in, binary_img_storage, T, 255.0, cv::THRESH_BINARY);
     }
 
     int downScaleF = dsampLevel;
