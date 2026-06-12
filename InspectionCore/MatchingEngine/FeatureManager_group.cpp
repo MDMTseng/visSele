@@ -30,16 +30,26 @@ static double centerAutoThreshold(const cv::Mat &gray, double ratio, double /*da
   roi &= cv::Rect(0, 0, W, H);
   if (roi.width < 4 || roi.height < 4) return fixedThres;
   cv::Mat c = gray(roi);
-  // Strided histogram. Auto-pick the stride so we sample >= ~10000 points
-  // regardless of ROI size: bounds the cost on large frames and avoids
-  // under-sampling small ROIs. Otsu split + bright-group mean from the histogram.
+  // Strided histogram, auto-tuned to ~TARGET_SAMPLES points (bounds cost on big
+  // frames, no under-sampling on small ones). Split the needed area-per-sample
+  // into an INTEGER y stride (the larger -- skipping whole rows is cache-cheaper)
+  // and a FRACTIONAL x stride (the smaller, interlaced within a row), kept close,
+  // so the count lands near the target instead of overshooting like an integer
+  // stride would. Otsu split + bright-group mean are computed from the histogram.
   const long TARGET_SAMPLES = 10000;
-  int STEP = (int)std::floor(std::sqrt((double)((long)c.rows * c.cols) / (double)TARGET_SAMPLES));
-  if (STEP < 1) STEP = 1;
+  long roiPix = (long)c.rows * c.cols;
+  int ystep = 1; double xstep = 1.0;
+  if (roiPix > TARGET_SAMPLES) {
+    double area = (double)roiPix / (double)TARGET_SAMPLES;   // pixels per sample
+    double D = std::sqrt(area);
+    ystep = std::max(1, (int)std::ceil(D));                  // larger stride (integer, rows)
+    xstep = area / (double)ystep;                            // smaller stride (fractional, cols)
+    if (xstep < 1.0) xstep = 1.0;
+  }
   long h[256] = {0}, total = 0; double sum = 0;
-  for (int y = 0; y < c.rows; y += STEP) {
+  for (int y = 0; y < c.rows; y += ystep) {
     const uchar *p = c.ptr<uchar>(y);
-    for (int x = 0; x < c.cols; x += STEP) h[p[x]]++;
+    for (double fx = 0.0; fx < (double)c.cols; fx += xstep) h[p[(int)fx]]++;
   }
   for (int i = 0; i < 256; i++) { total += h[i]; sum += (double)i * h[i]; }
   if (total <= 0) return fixedThres;
