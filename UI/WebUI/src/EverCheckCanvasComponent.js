@@ -577,10 +577,10 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.camera.Scale(minCanvasWH/maxSig);
 
     
-    let center = this.db_obj.getsig360infoCenter();
+    // let center = this.db_obj.getsig360infoCenter();
 
     // console.log(this.canvas.width,(img_info.scale*img_info.width*mmpp));
-    this.camera.SetOffset({ x: -center.x, y: -center.y });
+    // this.camera.SetOffset({ x: -center.x, y: -center.y });
   }
   EditDBInfoSync(edit_DB_info) {
     this.edit_DB_info = edit_DB_info;
@@ -643,27 +643,81 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.webkitImageSmoothingEnabled = scale!=1;
       let mmpp_mult = scale * mmpp;
       ctx.scale(scale * mmpp, scale * mmpp);
-      if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX) / scale-0.5, (this.img_info.offsetY) / scale-0.5);
-      }
+      // if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
+      //   ctx.translate((this.img_info.offsetX) / scale-0.5, (this.img_info.offsetY) / scale-0.5);
+      // }
       // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       //ctx.translate(-1 * scale * mmpp, -1 * mmpp_mult);
-      
-      
+
+
+
+
+      // ALIGN <def>.png TO THE DEF FEATURES.
+      // The features live in the reference/init sig360 frame. If this def recorded
+      // the saved image's OWN sig360 (def_image_reg, see DefConfUI save), map that
+      // image's sig360 onto the reference so its content registers with the
+      // features even when it isn't the original init image. Guarded so it is an
+      // exact identity for an init-image save (img reg == reference) and skipped
+      // entirely for legacy defs -> zero change to existing rendering.
+      // NOTE: coordinate frame/sign (and isFlipped) pending visual verification.
+      try {
+        const reg = this.edit_DB_info && this.edit_DB_info.def_image_reg;
+        const ref = this.db_obj && this.db_obj.sig360info && this.db_obj.sig360info.reports
+                    && this.db_obj.sig360info.reports[0];
+        if (reg && ref && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
+          const refAngle = ref.orientation || 0;
+          const imgAngle = reg.angle || 0;
+          const flip = reg.isFlipped || false;
+          const differs = reg.cx !== ref.cx || reg.cy !== ref.cy || imgAngle !== refAngle;
+          if (differs) {
+            flip ? ctx.scale(1, -1) : ctx.scale(1, 1);
+            //ctx.translate(ref.cx, ref.cy);          // -> reference sig360 position
+            ctx.rotate(imgAngle);        // -> reference orientation
+            ctx.translate(-reg.cx/mmpp, -reg.cy/mmpp); 
+                  // image sig360 -> origin
+            //ctx.translate(-reg.cx, -reg.cy);
+          }
+        }
+        else
+        {
+
+          let center = this.db_obj.getsig360infoCenter();
+          ctx.translate(-center.x/mmpp, -center.y/mmpp);
+        }
+      } catch (e) { 
+
+
+
+       }
+
       ctx.drawImage(this.secCanvas, 0, 0);
       
       ctx.strokeStyle = "rgba(120, 120, 120,30)";
       let curScale=this.camera.GetCameraScale();
       ctx.lineWidth = 200/curScale/scale;
       this.rUtil.drawImageBoundaryGrid(ctx,this.img_info,100000/curScale);
+
+      
+
+
+    
       ctx.restore();
     }
     
 
+    //draw box 0,0 to 100,100
+    // ctx.strokeStyle = "rgba(255,0,0,1)";
+    // ctx.lineWidth = 3;
+    // ctx.strokeRect(0, 0, 100, 100);
+    // ctx.closePath();
+
+
+    let skipDrawIdxs = [];
+
+
     if(this.ShowInspectionNote!=true)
       return
-    let center = this.db_obj.getsig360infoCenter();
-    ctx.translate(center.x, center.y);
+   
 
 
 
@@ -682,17 +736,20 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
       //this.Mouse2SecCanvas = invMat;
       let mPos = this.mouseStatus;
       let mouseOnCanvas2 = this.VecX2DMat(mPos, invMat);
+      // console.log("mouseOnCanvas2",mouseOnCanvas2);
 
     }
+
     ctx.closePath();
     ctx.save();
 
 
-    let skipDrawIdxs = [];
+
 
     this.rUtil.drawShapeList(ctx, this.edit_DB_info._obj.shapeList, null, skipDrawIdxs, this.edit_DB_info._obj.shapeList, unitConvert,false,false);
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
 
+    
   }
 
   // Sample the image pixel under the mouse. Rebuilds the SAME secCanvas->canvas

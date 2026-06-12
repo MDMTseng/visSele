@@ -279,8 +279,14 @@ export class InspectionEditorLogic {
   
   
       edit_info.loadedDefFile = dclone(root_defFile);
-  
-  
+
+      // Registration (sig360 center + angle) of the image stored as <def>.png, if
+      // recorded at save time. Lets the main-UI canvas transform that image to align
+      // with the def features (which live in the reference/init frame). Absent on
+      // legacy defs -> canvas leaves the image untransformed (current behaviour).
+      edit_info.def_image_reg = root_defFile.def_image_reg;
+
+
       if (typeof root_defFile.intrusionSizeLimitRatio == 'number') {
         edit_info.intrusionSizeLimitRatio =
           root_defFile.intrusionSizeLimitRatio
