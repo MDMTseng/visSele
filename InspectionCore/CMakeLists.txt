@@ -250,6 +250,34 @@ add_library(CameraLayer STATIC ${_CAM_SRC})
 target_include_directories(CameraLayer PUBLIC CameraLayer/include)
 target_link_libraries(CameraLayer PUBLIC acvImage logctrl common_lib)
 
+# --- shape_based_matching (line2Dup + roi_refine localizer) ----------------
+# The submodule's own CMakeLists only builds test exes against a hard-coded
+# Windows OpenCV path, so we compile the high-level API into our own static lib
+# and link it into MatchingEngine. The public surface (include/shape_matcher.h)
+# is cv::Mat + std only -- MIPP/AVX2 stays internal to these TUs, so the rest of
+# MatchingEngine need not be built with AVX2.
+add_library(shape_based_matching STATIC
+  contrib/shape_based_matching/line2Dup.cpp
+  contrib/shape_based_matching/icp_refine.cpp
+  contrib/shape_based_matching/roi_refine.cpp
+  contrib/shape_based_matching/shape_matcher.cpp)
+target_include_directories(shape_based_matching PUBLIC
+  contrib/shape_based_matching
+  contrib/shape_based_matching/include
+  contrib/shape_based_matching/MIPP
+  ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(shape_based_matching PUBLIC opencv_core opencv_imgproc)
+# MIPP picks the AVX2 backend off __AVX2__; -mavx2 (not -march=native) keeps the
+# binary portable across build/deploy hosts. big-obj: line2Dup.cpp is large.
+target_compile_definitions(shape_based_matching PRIVATE __AVX2__)
+target_compile_options(shape_based_matching PRIVATE -mavx2 -mfma)
+if(WIN32 OR MINGW OR MSYS)
+  target_compile_options(shape_based_matching PRIVATE -Wa,-mbig-obj)
+endif()
+if(OpenMP_CXX_FOUND)
+  target_link_libraries(shape_based_matching PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
 # --- MatchingEngine --------------------------------------------------------
 add_library(MatchingEngine STATIC
   MatchingEngine/MatchingEngine.cpp MatchingEngine/MatchingCore.cpp
@@ -275,6 +303,7 @@ target_include_directories(MatchingEngine PUBLIC
   MatchingEngine/include MatchingEngine/include_priv MatchingEngine/MorphEngine/include
   ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(MatchingEngine PUBLIC acvImage cJSON common_lib CircleFitting logctrl polyfit CameraLayer
+  shape_based_matching
   opencv_core opencv_imgproc opencv_imgcodecs opencv_calib3d)
 target_compile_definitions(MatchingEngine PUBLIC FEATURE_OPENCV)
 

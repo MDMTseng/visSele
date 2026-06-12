@@ -17,6 +17,7 @@ LOG_MODULE("match.sig360");
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include "polyfit.h"
+#include "shape_matcher.h"   // sbm::ShapeMatcher / extractFeatures (line2Dup + ROI refine)
 
 
 void acvXY_pts_smooth(vector<ContourFetch::ptInfo> &from, vector<ContourFetch::ptInfo> &to, int sideW = 2)
@@ -1680,6 +1681,22 @@ int FeatureManager_sig360_circle_line::parse_sign360(cJSON *signature_obj)
 
   feature_signature.RELOAD(signature);
 
+  // Capture the raw radius signature (absolute mm) BEFORE the in-place high-pass
+  // below -- the shape-based mask needs the true silhouette, not the detail band.
+  this->raw_sig_radius = feature_signature.signature_data;
+
+  // The signature's reference origin (pt1, mm/ideal) + orientation: the center
+  // the signature was sampled around. The shape localizer uses this as its origin
+  // ("original center location") instead of an Otsu-derived centroid.
+  cJSON *pt1 = NULL;
+  if (getDataFromJsonObj(signature_obj, "pt1", (void **)&pt1) & cJSON_Object)
+  {
+    this->ref_center_mm.x = (float)JFetch_NUMBER_ex(pt1, "x", 0);
+    this->ref_center_mm.y = (float)JFetch_NUMBER_ex(pt1, "y", 0);
+    this->has_ref_center = true;
+  }
+  this->ref_orientation = (float)JFetch_NUMBER_ex(signature_obj, "orientation", 0);
+
   sign360_process(feature_signature.signature_data, signature_data_buffer);
   // signature_data_buffer
 
@@ -1968,6 +1985,38 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     if (estep != NULL && *estep > 0)
       this->edge_sig_ray_step = (float)*estep;
 
+    // Localization engine: backward compatible (absent => sig360 signature).
+    // "shape_based" switches to line2Dup + ROI-refine, trained from the
+    // <base>.png sidecar (see trainShapeMatcher, called at the end of parse).
+    this->locating_engine = 0;
+    char *le = (char *)JFetch(root, "locating_engine", cJSON_String);
+    if (le != NULL && strcmp(le, "shape_based") == 0)
+      this->locating_engine = 1;
+    char *refimg = (char *)JFetch(root, "reference_image", cJSON_String);
+    this->reference_image_name = (refimg != NULL) ? refimg : "";
+    char *defp = (char *)JFetch(root, "_def_path", cJSON_String);
+    this->def_path = (defp != NULL) ? defp : "";
+    double *smin = JFetch_NUMBER(root, "shape_min_score");
+    if (smin != NULL && *smin > 0) this->shape_min_score = (float)*smin;
+    double *sastep = JFetch_NUMBER(root, "shape_angle_step_deg");
+    if (sastep != NULL && *sastep > 0) this->shape_angle_step_deg = (float)*sastep;
+    double *mmppn = JFetch_NUMBER(root, "mmpp");
+    this->def_mmpp = (mmppn != NULL && *mmppn > 0) ? (float)*mmppn : 0.0f;
+
+    // def_image_reg (registered pose of the part in the saved reference image).
+    // Injected into the sub-feature by the def loader (it lives at def top level).
+    this->has_reg = false;
+    cJSON *reg = cJSON_GetObjectItem(root, "def_image_reg");
+    if (reg != NULL && cJSON_IsObject(reg))
+    {
+      this->reg_center_mm.x = (float)JFetch_NUMBER_ex(reg, "cx", 0);
+      this->reg_center_mm.y = (float)JFetch_NUMBER_ex(reg, "cy", 0);
+      this->reg_angle_rad   = (float)JFetch_NUMBER_ex(reg, "angle", 0);
+      cJSON *fl = cJSON_GetObjectItem(reg, "isFlipped");
+      this->reg_flipped = (fl != NULL) && cJSON_IsTrue(fl);
+      this->has_reg = true;
+    }
+
     // Orientation matcher version: backward compatible (absent => v1).
     this->matching_version = 1;
     char *mv = (char *)JFetch(root, "matching_version", cJSON_String);
@@ -2171,7 +2220,8 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     }*/
   }
 
-  if (this->matching_without_signature && feature_signature.signature_data.size() == 0)
+  if (this->locating_engine != 1 &&
+      this->matching_without_signature && feature_signature.signature_data.size() == 0)
   {
     LOGE("No signature data");
     return -1;
@@ -2206,6 +2256,14 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       }
       cur = nxt;
     }
+  }
+
+  // Train the shape-based localizer from the <base>.png sidecar. On failure we
+  // log and leave shape_ready=false so FeatureMatching falls back to sig360.
+  if (this->locating_engine == 1)
+  {
+    if (trainShapeMatcher() != 0)
+      LOGW("[shape] training failed; falling back to sig360 for this def");
   }
 
   return 0;
@@ -5488,6 +5546,13 @@ FeatureManager_sig360_circle_line::~FeatureManager_sig360_circle_line()
 
 int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
 {
+  // Shape-based localizer path: bypass binarize/CCL/signature entirely and
+  // locate via line2Dup + ROI refine on the original grayscale. Falls through
+  // to the legacy sig360 path when shape training wasn't available.
+  if (locating_engine == 1 && shape_ready)
+  {
+    return FeatureMatching_shape();
+  }
   if (img_cv.empty()) return -1;
   if (!img_cv.isContinuous()) img_cv = img_cv.clone();
   // img_cv is the LABELED image (binary_processing_group's binary_img_storage
@@ -5925,6 +5990,406 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
   }
 
   //LOGI(">>>>>>>>");
+  return 0;
+}
+
+// ===========================================================================
+// Shape-based localizer (line2Dup + ROI refine) -- opt-in alternative to the
+// sig360 contour signature. Locates the object pose, then reuses the SAME
+// anchor-morph + caliper measurement as the sig360 path.
+// ===========================================================================
+
+int FeatureManager_sig360_circle_line::trainShapeMatcher()
+{
+  shape_ready = false;
+  shapeMatcher.reset();
+  shapeFeatureSet.reset();
+
+  // Resolve the template image path: explicit def "reference_image" (relative to
+  // the def's dir) wins; otherwise derive "<def-base>.png" from the def path
+  // (def "_def_path", else env VISSELE_DEF_PATH set by the --insp entry).
+  std::string base = !def_path.empty() ? def_path
+                     : (getenv("VISSELE_DEF_PATH") ? std::string(getenv("VISSELE_DEF_PATH")) : std::string());
+  std::string png;
+  if (!reference_image_name.empty())
+  {
+    std::string dir;
+    size_t slash = base.find_last_of("/\\");
+    if (slash != std::string::npos) dir = base.substr(0, slash + 1);
+    png = dir + reference_image_name;
+  }
+  else if (!base.empty())
+  {
+    size_t dot = base.find_last_of('.');
+    png = (dot == std::string::npos ? base : base.substr(0, dot)) + ".png";
+  }
+  if (png.empty())
+  {
+    LOGE("[shape] no template path (set def \"reference_image\" or VISSELE_DEF_PATH)");
+    return -1;
+  }
+
+  cv::Mat templ = cv::imread(png, cv::IMREAD_GRAYSCALE);
+  if (templ.empty()) { LOGE("[shape] cannot read template image: %s", png.c_str()); return -1; }
+
+  // Derive the object mask + centroid via Otsu. The part is the largest
+  // connected component that does NOT touch the image border -- the backlit
+  // field / cage frame spans the image and touches the border, so it must be
+  // excluded (otherwise the frame wins and the origin collapses to the image
+  // centre). We try both polarities (part may be bright or dark) and keep the
+  // largest interior blob. Its centroid is the registration origin, so the
+  // reported pose shares the sig360 silhouette-centroid basis.
+  cv::Mat bw;
+  cv::threshold(templ, bw, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+  cv::Mat bwInv; cv::bitwise_not(bw, bwInv);
+
+  auto pickInterior = [](const cv::Mat &m, cv::Mat &o_labels, cv::Mat &o_cents,
+                         int &o_best) -> int {
+    cv::Mat stats;
+    int n = cv::connectedComponentsWithStats(m, o_labels, stats, o_cents, 8, CV_32S);
+    int best = -1, bestA = 0;
+    for (int c = 1; c < n; c++)
+    {
+      int x = stats.at<int>(c, cv::CC_STAT_LEFT), y = stats.at<int>(c, cv::CC_STAT_TOP);
+      int w = stats.at<int>(c, cv::CC_STAT_WIDTH), h = stats.at<int>(c, cv::CC_STAT_HEIGHT);
+      int a = stats.at<int>(c, cv::CC_STAT_AREA);
+      if (x <= 0 || y <= 0 || x + w >= m.cols || y + h >= m.rows) continue; // border
+      if (a > bestA) { bestA = a; best = c; }
+    }
+    o_best = best;
+    return bestA;
+  };
+
+  cv::Mat l1, c1, l2, c2; int b1 = -1, b2 = -1;
+  int a1 = pickInterior(bw,    l1, c1, b1);
+  int a2 = pickInterior(bwInv, l2, c2, b2);
+
+  cv::Point2f originPx(templ.cols * 0.5f, templ.rows * 0.5f);
+  cv::Mat blob;
+  int blobArea = 0;
+  if (a1 >= a2 && b1 > 0)
+  {
+    blob = (l1 == b1); blobArea = a1;
+    originPx = cv::Point2f((float)c1.at<double>(b1, 0), (float)c1.at<double>(b1, 1));
+  }
+  else if (b2 > 0)
+  {
+    blob = (l2 == b2); blobArea = a2;
+    originPx = cv::Point2f((float)c2.at<double>(b2, 0), (float)c2.at<double>(b2, 1));
+  }
+  // Registration origin + angle. Priority: def_image_reg (the registered pose of
+  // the part in the saved reference image) > sign360 pt1 (the signature center) >
+  // Otsu interior-blob centroid (fallback). The reg angle (and flip) also rotate
+  // the silhouette mask and become the reported-angle offset, so matches land in
+  // the def's reference frame.
+  const char *origin_src = "otsu_blob";
+  float reg_sin = 0.0f, reg_cos = 1.0f, reg_flip_f = 1.0f, angle_offset_deg = 0.0f;
+  if (has_reg && def_mmpp > 0)
+  {
+    originPx = cv::Point2f(reg_center_mm.x / def_mmpp, reg_center_mm.y / def_mmpp);
+    reg_sin = sinf(reg_angle_rad);
+    reg_cos = cosf(reg_angle_rad);
+    reg_flip_f = reg_flipped ? -1.0f : 1.0f;
+    angle_offset_deg = reg_angle_rad * 180.0f / (float)M_PI;
+    origin_src = "def_image_reg";
+  }
+  else if (has_ref_center && def_mmpp > 0)
+  {
+    originPx = cv::Point2f(ref_center_mm.x / def_mmpp, ref_center_mm.y / def_mmpp);
+    origin_src = "sign360_pt1";
+  }
+
+  cv::Mat mask;
+  const char *mask_src = "none";
+
+  // Preferred feature mask: the def's sig360 silhouette. It is the exact part
+  // region (so it precisely excludes the cage frame) and is rendered around the
+  // origin via the measurement pipeline's own template->pixel transform at
+  // identity pose -- so the coordinate frame matches automatically.
+  if (!raw_sig_radius.empty() && def_mmpp > 0)
+  {
+    std::vector<cv::Point> poly;
+    const int N = (int)raw_sig_radius.size();
+    poly.reserve(N);
+    for (int i = 0; i < N; i++)
+    {
+      float R  = raw_sig_radius[i].x;   // absolute radius (mm)
+      float th = raw_sig_radius[i].y;   // absolute angle (rad)
+      if (!(R > 1e-4f)) continue;       // skip empty bins
+      acv_XY tp = { R * cosf(th), R * sinf(th) };
+      // Rotate/flip by the registered pose so the silhouette overlays the part as
+      // it actually sits in the saved image (identity when there is no reg).
+      acv_XY px = TemplateDomain_TO_PixDomain(tp, reg_sin, reg_cos, reg_flip_f,
+                                              acv_XY(originPx.x, originPx.y), def_mmpp);
+      poly.push_back(cv::Point((int)lround(px.x), (int)lround(px.y)));
+    }
+    if (poly.size() >= 3)
+    {
+      cv::Mat m = cv::Mat::zeros(templ.size(), CV_8U);
+      std::vector<std::vector<cv::Point>> polys{poly};
+      cv::fillPoly(m, polys, cv::Scalar(255));
+      // Grow by ~5px so the silhouette boundary gradient sits inside the mask.
+      cv::dilate(m, m, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(11, 11)));
+      mask = m;
+      mask_src = "signature";
+    }
+  }
+
+  // Fallback: dilate the Otsu interior blob by ~its equivalent radius so it grows
+  // over the connected part body while still excluding the far cage frame.
+  if (mask.empty() && !blob.empty() && blobArea > 0)
+  {
+    int r = (int)std::sqrt((double)blobArea / M_PI);
+    int k = std::max(5, r);
+    cv::Mat kern = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(2 * k + 1, 2 * k + 1));
+    cv::dilate(blob, mask, kern);
+    mask_src = "otsu_blob";
+  }
+  if (getenv("SHAPE_DBG"))
+    fprintf(stderr, "[SHAPE_DBG] train: templ %dx%d origin=(%.1f,%.1f)[%s] areaPos=%d areaInv=%d blobArea=%d mask=%s maskPx=%d\n",
+            templ.cols, templ.rows, originPx.x, originPx.y, origin_src, a1, a2, blobArea, mask_src,
+            mask.empty() ? 0 : cv::countNonZero(mask));
+
+  try
+  {
+    sbm::FeatureSet fset = sbm::extractFeatures(templ, mask, 128, {4, 8});
+    // If the masked region is too sparse to model, retry on the whole image so
+    // we never feed line2Dup a degenerate (crash-prone) template.
+    if (fset.numFeatures() < 16)
+    {
+      LOGW("[shape] masked features=%d too few; retrying without mask", fset.numFeatures());
+      fset = sbm::extractFeatures(templ, cv::Mat(), 128, {4, 8});
+    }
+    if (fset.numFeatures() < 16)
+    {
+      LOGE("[shape] only %d features extractable; aborting shape training", fset.numFeatures());
+      return -1;
+    }
+    fset.setOrigin(originPx.x, originPx.y);
+    // Report matched angles in the def reference frame: add back the registered
+    // orientation of the saved image (0 when there is no def_image_reg).
+    fset.setAngleOffset(angle_offset_deg);
+    shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fset);
+
+    sbm::MatchConfig mc;
+    mc.min_score = shape_min_score;
+    mc.refine    = sbm::RefineMode::ROI;
+    mc.T_levels  = {4, 8};
+    shapeMatcher = std::make_shared<sbm::ShapeMatcher>(mc);
+
+    sbm::ModelConfig modc;
+    modc.angle.start = 0; modc.angle.end = 360; modc.angle.step = shape_angle_step_deg;
+    modc.flip = (matching_face == 0);   // match both faces when face==both
+    int nv = shapeMatcher->addModel("def", *shapeFeatureSet, modc);
+    if (nv <= 0) { LOGE("[shape] addModel failed (%d)", nv); return -1; }
+
+    shape_ready = true;
+    LOGI("[shape] trained from %s origin(%.1f,%.1f) variants=%d min_score=%.1f",
+         png.c_str(), originPx.x, originPx.y, nv, shape_min_score);
+    return 0;
+  }
+  catch (const std::exception &e)
+  {
+    LOGE("[shape] training exception: %s", e.what());
+    return -1;
+  }
+}
+
+int FeatureManager_sig360_circle_line::FeatureMatching_shape()
+{
+  report.bacpac = bacpac;
+  reports.resize(0);
+  if (!shapeMatcher || originalImage_cv.empty()) return -1;
+
+  cv::Mat scene;
+  if (originalImage_cv.channels() == 1) scene = originalImage_cv;
+  else cv::cvtColor(originalImage_cv, scene, cv::COLOR_BGR2GRAY);
+  if (!scene.isContinuous()) scene = scene.clone();
+
+  std::vector<sbm::MatchResult> ms;
+  try { ms = shapeMatcher->match(scene); }
+  catch (const std::exception &e) { LOGE("[shape] match exception: %s", e.what()); return -1; }
+  LOGI("[shape] matches=%d", (int)ms.size());
+  if (getenv("SHAPE_DBG"))
+  {
+    fprintf(stderr, "[SHAPE_DBG] scene %dx%d matches=%d mmpp=%.6f\n",
+            scene.cols, scene.rows, (int)ms.size(), bacpac->sampler->mmpP_ideal());
+    for (int z = 0; z < (int)ms.size() && z < 5; z++)
+      fprintf(stderr, "[SHAPE_DBG]  m[%d] x=%.2f y=%.2f ang=%.3f scale=%.3f flip=%d score=%.1f\n",
+              z, ms[z].x, ms[z].y, ms[z].angle, ms[z].scale, (int)ms[z].flipped, ms[z].score);
+  }
+  if (ms.empty()) return 0;
+
+  float mmpp = bacpac->sampler->mmpP_ideal();
+
+  // Grow the per-instance report pool (mirrors the CCL path's allocation).
+  int want = (int)ms.size();
+  if ((int)reportDataPool.size() < want)
+  {
+    int oriSize = reportDataPool.size();
+    reportDataPool.resize(want);
+    for (int i = oriSize; i < (int)reportDataPool.size(); i++)
+    {
+      reportDataPool[i].detectedCircles     = new vector<FeatureReport_circleReport>(0);
+      reportDataPool[i].detectedLines       = new vector<FeatureReport_lineReport>(0);
+      reportDataPool[i].detectedAuxPoints   = new vector<FeatureReport_auxPointReport>(0);
+      reportDataPool[i].detectedSearchPoints= new vector<FeatureReport_searchPointReport>(0);
+      reportDataPool[i].judgeReports        = new vector<FeatureReport_judgeReport>(0);
+    }
+  }
+
+  // Calipers measure on the full-res original (same source sig360's eT uses).
+  p_cropImg_cv = originalImage_cv;
+  cropOffset.x = 0; cropOffset.y = 0;
+
+  for (int mi = 0; mi < (int)ms.size(); mi++)
+  {
+    sbm::MatchResult &m = ms[mi];
+    FeatureReport_sig360_circle_line_single singleReport =
+        {
+            .detectedCircles      = reportDataPool[reports.size()].detectedCircles,
+            .detectedLines        = reportDataPool[reports.size()].detectedLines,
+            .detectedAuxPoints    = reportDataPool[reports.size()].detectedAuxPoints,
+            .detectedSearchPoints = reportDataPool[reports.size()].detectedSearchPoints,
+            .judgeReports         = reportDataPool[reports.size()].judgeReports,
+            .LTBound = acv_XY(0, 0),
+            .RBBound = acv_XY(0, 0),
+            .Center  = acv_XY(m.x, m.y),   // origin point in scene px (full-res)
+            .area = 0,
+            .pix_area = 0,
+            .labeling_idx = mi,
+            .scale = m.scale,
+            .targetName = NULL};
+
+    // Scene px -> ideal mm, exactly as the sig360 path converts its centroid.
+    bacpac->sampler->img2ideal(&singleReport.Center);
+    singleReport.Center = acvVecMult(singleReport.Center, mmpp);
+    singleReport.LTBound = singleReport.Center;
+    singleReport.RBBound = singleReport.Center;
+
+    float ang = m.angle * (float)M_PI / 180.0f;
+    if (getenv("SHAPE_DBG"))
+      fprintf(stderr, "[SHAPE_DBG]  -> Center_mm=(%.4f,%.4f) ang_rad=%.4f flip=%d\n",
+              singleReport.Center.x, singleReport.Center.y, ang, (int)m.flipped);
+    int ret = SingleMatching_shape(bacpac, singleReport, ang, m.flipped, m.score / 100.0f);
+    if (getenv("SHAPE_DBG"))
+      fprintf(stderr, "[SHAPE_DBG]     ret=%d rotate=%.4f\n", ret, singleReport.rotate);
+    if (ret == 0) reports.push_back(singleReport);
+  }
+  return 0;
+}
+
+int FeatureManager_sig360_circle_line::SingleMatching_shape(
+    FeatureManager_BacPac *bacpac,
+    FeatureReport_sig360_circle_line_single &singleReport,
+    float matched_angle, bool isInv, float similarity)
+{
+  vector<FeatureReport_circleReport>      &detectedCircles      = *singleReport.detectedCircles;
+  vector<FeatureReport_lineReport>        &detectedLines        = *singleReport.detectedLines;
+  vector<FeatureReport_auxPointReport>    &detectedAuxPoints    = *singleReport.detectedAuxPoints;
+  vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
+  vector<FeatureReport_judgeReport>       &judgeReports         = *singleReport.judgeReports;
+
+  cv::Mat _eT_cv = p_cropImg_cv;                 // full-res original (set by caller)
+  edgeTracking eT(_eT_cv, cropOffset, bacpac);
+
+  { // pre-allocate + bind defs (mirror SingleMatching)
+    detectedCircles.resize(featureCircleList.size());
+    detectedLines.resize(featureLineList.size());
+    detectedAuxPoints.resize(auxPointList.size());
+    detectedSearchPoints.resize(searchPointList.size());
+    judgeReports.resize(judgeList.size());
+    for (int j = 0; j < featureLineList.size(); j++)   detectedLines[j].def        = &(featureLineList[j]);
+    for (int j = 0; j < featureCircleList.size(); j++) detectedCircles[j].def      = &(featureCircleList[j]);
+    for (int j = 0; j < judgeList.size(); j++)         judgeReports[j].def         = &(judgeList[j]);
+    for (int j = 0; j < auxPointList.size(); j++)      detectedAuxPoints[j].def    = &(auxPointList[j]);
+    for (int j = 0; j < searchPointList.size(); j++)   detectedSearchPoints[j].def = &(searchPointList[j]);
+    RESET_REPORT(singleReport);
+  }
+
+  cm.center      = acv_XY(0, 0);
+  cm.mode        = this->morph_mode;
+  cm.reg         = this->morph_reg;
+  cm.outlier_k   = this->morph_outlier_k;
+  cm.min_anchors = this->morph_min_anchors;
+
+  singleReport.similarity = similarity;
+
+  // ---- pose setup (mirror SingleMatching 5137-5167) ----
+  float angle = matched_angle;
+  float rot_report = angle;
+  while (rot_report >   (float)M_PI) rot_report -= (float)(2 * M_PI);
+  while (rot_report <= -(float)M_PI) rot_report += (float)(2 * M_PI);
+  singleReport.rotate = rot_report;
+  singleReport.isFlipped = isInv;
+
+  angle = -angle;                                // rotate template to match object
+  float flip_f = isInv ? -1 : 1;
+  float mmpp = bacpac->sampler->mmpP_ideal();
+  float ppmm = 1 / mmpp;
+  acv_XY calibCen = singleReport.Center;
+  calibCen.x *= ppmm;
+  calibCen.y *= ppmm;
+  float cached_cos = cos(angle);
+  float cached_sin = sin(angle);
+
+  // ---- locating-anchor morph loop (mirror SingleMatching 5172-5259) ----
+  for (int j = 0; j < detectedSearchPoints.size(); j++)
+    cm.anchorPairs[j].to = acv_XY(NAN, NAN);
+  cm.resetTransform();
+  std::vector<acv_XY> prev_to(cm.anchorPairs.size(), acv_XY(NAN, NAN));
+  for (int k = 0; k < morph_max_iter; k++)
+  {
+    RESET_REPORT(singleReport);
+    for (int j = 0; j < searchPointList.size(); j++)
+    {
+      if (searchPointList[j].data.anglefollow.locating_anchor == false) continue;
+      TreeExecution(searchPointList[j].id, singleReport, eT,
+                    calibCen, mmpp, cached_cos, cached_sin, flip_f);
+    }
+    for (int j = 0; j < detectedSearchPoints.size(); j++)
+    {
+      cm.anchorPairs[j].to = acv_XY(NAN, NAN);
+      if (detectedSearchPoints[j].def->data.anglefollow.locating_anchor != true) continue;
+      if (detectedSearchPoints[j].status != FeatureReport_sig360_circle_line_single::STATUS_SUCCESS) continue;
+      acv_XY locatedPtOnTemplate = Image_mm_Domain_TO_TemplateDomain(
+          detectedSearchPoints[j].pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
+      cm.anchorPairs[j].to = locatedPtOnTemplate;
+    }
+    cm.solve();
+    if (k + 1 < morph_max_iter)
+    {
+      float maxd = 0; bool any_prev = false;
+      for (size_t j = 0; j < cm.anchorPairs.size(); j++)
+      {
+        acv_XY cur = cm.anchorPairs[j].to;
+        if (cur.x != cur.x) continue;
+        if (prev_to[j].x == prev_to[j].x)
+        {
+          float d = acvDistance(cur, prev_to[j]);
+          if (d > maxd) maxd = d;
+          any_prev = true;
+        }
+        prev_to[j] = cur;
+      }
+      if (any_prev && maxd < morph_tol_mm) break;
+    }
+  }
+
+  // ---- official measurement (mirror SingleMatching 5261-5314) ----
+  RESET_REPORT(singleReport);
+  for (int j = 0; j < judgeReports.size(); j++)
+  {
+    FeatureReport_judgeDef &def = *judgeReports[j].def;
+    if (def.orientation_essential != true) continue;
+    int status = TreeExecution(def.id, singleReport, eT,
+                               calibCen, mmpp, cached_cos, cached_sin, flip_f);
+    if (status != FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
+      return -2;   // orientation-essential judge failed -> reject this detection
+  }
+
+  TreeExecution(singleReport, eT, calibCen, mmpp, cached_cos, cached_sin, flip_f);
+  SET_UNSET_REPORT_NA(singleReport);
   return 0;
 }
 

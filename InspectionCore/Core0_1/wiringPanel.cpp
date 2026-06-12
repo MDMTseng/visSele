@@ -3626,7 +3626,35 @@ int CameraSettingFromFile(CameraLayer *camera, char *path)
 int ImgInspection_DefRead(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *defFilename, FeatureManager_BacPac *bacpac)
 {
   char *string = ReadText(defFilename);
-  int ret = ImgInspection_JSONStr(me, test1_cv, repeatTime, string, bacpac);
+  // Stamp the def file path into each sub-feature so a shape-based localizer can
+  // find the sibling "<base>.png" template (it reads "_def_path" in parse_jobj).
+  // Best-effort: on any JSON hiccup we fall back to the raw def string.
+  char *injected = NULL;
+  cJSON *root = cJSON_Parse(string);
+  if (root)
+  {
+    cJSON *fs = cJSON_GetObjectItem(root, "featureSet");
+    // def_image_reg lives at the def top level; copy it into each sub-feature so
+    // the shape localizer (which only sees featureSet[i]) can read the part's
+    // registered pose. Same idea as the _def_path stamp.
+    cJSON *reg = cJSON_GetObjectItem(root, "def_image_reg");
+    if (fs && cJSON_IsArray(fs))
+    {
+      cJSON *sub = NULL;
+      cJSON_ArrayForEach(sub, fs)
+      {
+        if (!cJSON_IsObject(sub)) continue;
+        if (!cJSON_GetObjectItem(sub, "_def_path"))
+          cJSON_AddStringToObject(sub, "_def_path", defFilename);
+        if (reg && !cJSON_GetObjectItem(sub, "def_image_reg"))
+          cJSON_AddItemToObject(sub, "def_image_reg", cJSON_Duplicate(reg, 1));
+      }
+      injected = cJSON_PrintUnformatted(root);
+    }
+    cJSON_Delete(root);
+  }
+  int ret = ImgInspection_JSONStr(me, test1_cv, repeatTime, injected ? injected : string, bacpac);
+  if (injected) free(injected);
   free(string);
   return ret;
 }

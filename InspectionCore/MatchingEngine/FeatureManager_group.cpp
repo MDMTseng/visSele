@@ -280,6 +280,33 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
   if (img_cv.empty()) return -1;
   if (!img_cv.isContinuous()) img_cv = img_cv.clone();
 
+  // Fast path: when no sub-feature needs the binary silhouette (e.g. a
+  // shape-based locator works on the raw grayscale), skip binarize -> cage ->
+  // CCL -> intrusion entirely. Old sig360 defs still take the full path below.
+  {
+    bool anyNeedsBinary = false;
+    for (size_t i = 0; i < binaryFeatureBundle.size(); i++)
+      if (binaryFeatureBundle[i]->needsBinaryPreprocessing()) { anyNeedsBinary = true; break; }
+    if (!binaryFeatureBundle.empty() && !anyNeedsBinary)
+    {
+      if (getenv("SHAPE_DBG"))
+        fprintf(stderr, "[SHAPE_DBG] group: raw-gray fast path (binarize/cage/CCL/contour skipped)\n");
+      report.bacpac = bacpac;
+      error = FeatureReport_ERROR::NONE;
+      ldData.resize(0);
+      const int dsampLevel = (inspection_downsample > 0) ? inspection_downsample : 1;
+      for (size_t i = 0; i < binaryFeatureBundle.size(); i++)
+      {
+        binaryFeatureBundle[i]->setOriginalImage(img_cv);
+        binaryFeatureBundle[i]->setLabeledData(&ldData);
+        binaryFeatureBundle[i]->setBacPac(bacpac);
+        binaryFeatureBundle[i]->setLabelDownSampLevel(dsampLevel);
+        binaryFeatureBundle[i]->FeatureMatching(img_cv);   // raw-gray locator ignores arg
+      }
+      return 0;
+    }
+  }
+
   auto _pt0 = std::chrono::steady_clock::now();   // [PROF] start
 
   report.bacpac=bacpac;

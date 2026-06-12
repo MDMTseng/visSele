@@ -8,6 +8,12 @@
 #include "FeatureManager_binary_processing.h"
 #include <ContourGrid.h>
 #include <MatchingCore.h>
+#include <memory>
+#include <string>
+
+// Shape-based localizer (line2Dup + ROI refine). Held by pointer so the heavy
+// header (shape_matcher.h / MIPP) stays out of this widely-included file.
+namespace sbm { class ShapeMatcher; struct FeatureSet; }
 
 
 
@@ -231,12 +237,48 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
 
   vector<ContourFetch::ptInfo > tmp_points;
   vector<ContourFetch::contourMatchSec > m_sections;
-  
+
+  // --- shape-based localizer (opt-in via def "locating_engine":"shape_based") ---
+  // 0 = sig360 contour signature (default/legacy); 1 = shape_based (line2Dup +
+  // ROI refine). When shape_based is requested but training fails (no template
+  // image), we fall back to sig360 so the def still runs.
+  int locating_engine = 0;
+  bool shape_ready = false;
+  std::shared_ptr<sbm::ShapeMatcher> shapeMatcher;
+  std::shared_ptr<sbm::FeatureSet> shapeFeatureSet;
+  std::string reference_image_name;   // optional explicit sidecar PNG (relative)
+  std::string def_path;               // full path of the .hydef (for <base>.png)
+  float shape_min_score = 50.0f;      // line2Dup similarity gate (0-100)
+  float shape_angle_step_deg = 1.0f;  // template rotation granularity
+  float def_mmpp = 0.0f;              // def's mm-per-pixel (for signature->px mask)
+  // Raw sig360 radius signature (mm) captured before the in-place high-pass in
+  // sign360_process -- the absolute part silhouette, used to build the shape
+  // feature mask. .x = radius(mm), .y = absolute angle(rad).
+  vector<acv_XY> raw_sig_radius;
+  // Reference origin recorded in the def's sign360 feature (pt1, in mm/ideal) and
+  // its orientation -- the "original center location" the signature was sampled
+  // around. Used as the shape-localizer origin (def_image_reg overrides if present).
+  acv_XY ref_center_mm = {0, 0};
+  bool   has_ref_center = false;
+  float  ref_orientation = 0;
+  // def_image_reg: the part's registered pose (sig360 center+angle) in the saved
+  // reference image, recorded by the WebUI at save time. Highest-priority source
+  // for the shape-localizer origin + angle (overrides sign360 pt1 when present).
+  acv_XY reg_center_mm = {0, 0};   // cx,cy (mm/ideal)
+  float  reg_angle_rad = 0;        // angle (rad)
+  bool   reg_flipped = false;
+  bool   has_reg = false;
+
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
   ~FeatureManager_sig360_circle_line();
   int reload(const char *json_str) override;
   int FeatureMatching(cv::Mat &img_cv) override;
+  // Shape-based locating works on the raw grayscale and needs no binarize/CCL
+  // /contour-walk; the legacy sig360 signature path still does. Only skip when
+  // the shape matcher actually trained -- otherwise FeatureMatching falls back to
+  // the sig360 path, which still needs the labeled image.
+  bool needsBinaryPreprocessing() override { return !(locating_engine == 1 && shape_ready); }
   virtual const FeatureReport* GetReport() override;
   virtual void ClearReport() override;
   static const char* GetFeatureTypeName(){return "sig360_circle_line";};
@@ -316,6 +358,21 @@ protected:
   int grid_size, ContourFetch &edge_grid,int scanline_skip, FeatureManager_BacPac *bacpac,
   FeatureReport_sig360_circle_line_single &singleReport,
   vector<ContourFetch::ptInfo > &tmp_points,vector<ContourFetch::contourMatchSec >&m_sections);
+
+  // --- shape-based localizer methods ---
+  // Build the line2Dup template + ROI feature set from the <base>.png sidecar.
+  // Registration (origin/angle) is derived from the template's own silhouette
+  // centroid so it shares the sig360 centroid basis. Returns 0 on success.
+  int trainShapeMatcher();
+  // Shape-based localization path: match the original grayscale, then run the
+  // SAME anchor-morph + caliper measurement per detection. Populates `reports`.
+  int FeatureMatching_shape();
+  // Per-detection morph + measurement for a shape-match pose. Mirrors the tail
+  // of SingleMatching but takes the pose (Center preset on singleReport, plus
+  // matched angle/flip/score) directly instead of from the signature refine.
+  int SingleMatching_shape(FeatureManager_BacPac *bacpac,
+    FeatureReport_sig360_circle_line_single &singleReport,
+    float matched_angle, bool isInv, float similarity);
 };
 
 

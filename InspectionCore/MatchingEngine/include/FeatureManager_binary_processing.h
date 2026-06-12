@@ -20,6 +20,10 @@ public :
   void setOriginalImage(cv::Mat &oriImageCv){ this->originalImage_cv = oriImageCv; }
   void setLabeledData(vector<acv_LabeledData> *ldData){this->_ldData = ldData;};
   void setLabelDownSampLevel(int dsampLevel){this->dsampLevel=dsampLevel;};
+  // Whether this sub-feature needs the group's binarize -> cage -> CCL pass.
+  // Default yes (legacy sig360 silhouette path). A shape-based locator works on
+  // the raw grayscale and skips it (no contour walk / edge_grid).
+  virtual bool needsBinaryPreprocessing(){ return true; }
   void ClearReport(){FeatureManager::ClearReport();};
 };
 
