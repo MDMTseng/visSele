@@ -8,8 +8,10 @@
 // replay.mjs) to "parachute" straight to the failure state instead of having to
 // re-navigate the app blind.
 //
-// Always-on by default (ring buffer), so you don't have to remember to start
-// before reproducing a bug. Toggle/clear via the floating widget or __rec.
+// OFF by default. Enable per-session via localStorage.__rec_on = "1" (then
+// reload); once enabled it records always-on into a ring buffer, so you don't
+// have to remember to start before reproducing a bug. Toggle/clear via the
+// floating widget or __rec.
 
 const CAP = 400;
 

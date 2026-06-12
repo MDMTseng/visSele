@@ -67,7 +67,6 @@ import {
   TableOutlined,
   DownOutlined,
   ThunderboltOutlined,
-  CloudDownloadOutlined,
   LeftOutlined,
   RightOutlined,
   LinkOutlined,
@@ -403,7 +402,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   useEffect(()=>{
     setTimeout(()=>{
       
-      let down_samp_level=IMG_LOAD_DOWNSAMP_LEVEL*2;
+      let down_samp_level=IMG_LOAD_DOWNSAMP_LEVEL;
       if(down_samp_level>3)down_samp_level=3;
 
       loadDefWithImageFallback({
@@ -1271,17 +1270,6 @@ const MainUI=()=>{
         text:hideMachineSetting?"打開機器設定":"隱藏機器設定",
         onClick:_=>{
           setHideMachineSetting(!hideMachineSetting)
-        }
-      });
-
-      siderUI_info.menu.push({
-        icon:<CloudDownloadOutlined />,
-        text:"匯出 Log 快照",
-        onClick:_=>{
-          ACT_WS_SEND_BPG( "SC", 0, {
-            type:"log_dump"
-          });
-          message.success("已要求匯出 Log 快照");
         }
       });
 

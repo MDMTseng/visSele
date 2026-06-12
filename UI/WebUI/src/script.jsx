@@ -2430,7 +2430,7 @@ ReactDOM.render(
     </Provider>
   </RootErrorBoundary>, document.getElementById('container'));
 
-// UI action recorder: always-on ring buffer -> export repro JSON for replay.
-// Disable with localStorage.__rec_off = "1".
-if (typeof localStorage === 'undefined' || localStorage.__rec_off !== '1')
+// UI action recorder: OFF by default. Opt in with localStorage.__rec_on = "1"
+// (then reload) to capture a repro sequence for replay.
+if (typeof localStorage !== 'undefined' && localStorage.__rec_on === '1')
   initActionRecorder();
