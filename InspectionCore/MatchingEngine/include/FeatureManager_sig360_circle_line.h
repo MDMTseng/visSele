@@ -252,6 +252,13 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   float shape_angle_step_deg = 1.0f;  // template rotation granularity
   float shape_match_scale = 1.0f;     // <1 downscales the scene for the coarse
                                       // match (ROI refine restores full-res accuracy)
+  // line2Dup feature/pyramid tuning (def-overridable). Applied to BOTH the
+  // template extraction and the scene matcher so their edges stay consistent.
+  int   shape_num_features = 128;     // max gradient features per template
+  std::vector<int> shape_pyramid_T{4, 8}; // pyramid decimation strides (fine->coarse)
+  float shape_weak_thres   = 50.0f;   // min gradient magnitude to be an edge
+  float shape_strong_thres = 80.0f;   // strong-edge preference magnitude
+  int   shape_blur         = 7;       // pre-gradient Gaussian kernel (scene)
   float def_mmpp = 0.0f;              // def's mm-per-pixel (for signature->px mask)
   // Raw sig360 radius signature (mm) captured before the in-place high-pass in
   // sign360_process -- the absolute part silhouette, used to build the shape

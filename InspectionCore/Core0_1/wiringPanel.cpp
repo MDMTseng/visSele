@@ -5747,25 +5747,6 @@ int cp_main(int argc, char **argv)
     for (int li = 0; li < loopN; ++li) {
       ImgInspection_DefRead(matchingEng, cvSrc, 1, defPath, &neutral_bacpac);
     }
-    // Steady-state per-frame profiling: the def is already loaded+trained above,
-    // so this times ONLY the per-frame inspection (no re-train), comparable across
-    // sig360 vs shape defs.  visSele --insp <img> <def> <out> with INSP_TIME_N=50
-    if (const char *te = std::getenv("INSP_TIME_N")) {
-      int tN = std::atoi(te);
-      if (tN > 0) {
-        matchingEng.setBacPac(&neutral_bacpac);
-        double mn = 1e18, mx = 0, sum = 0;
-        for (int k = 0; k < tN; k++) {
-          auto a = std::chrono::steady_clock::now();
-          matchingEng.FeatureMatching(cvSrc);
-          auto b = std::chrono::steady_clock::now();
-          double t = std::chrono::duration<double, std::milli>(b - a).count();
-          if (t < mn) mn = t; if (t > mx) mx = t; sum += t;
-        }
-        fprintf(stderr, "[INSP_TIME] %s  n=%d  min=%.2f avg=%.2f max=%.2f ms/frame\n",
-                defPath, tN, mn, sum / tN, mx);
-      }
-    }
     const FeatureReport *report = matchingEng.GetReport();
     if (report == NULL) { LOGE("--insp: null report"); return 4; }
     cJSON *jobj = matchingEng.FeatureReport2Json(report);

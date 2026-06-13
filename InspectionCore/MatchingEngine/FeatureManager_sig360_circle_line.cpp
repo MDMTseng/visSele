@@ -2002,6 +2002,25 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     if (sastep != NULL && *sastep > 0) this->shape_angle_step_deg = (float)*sastep;
     double *smscale = JFetch_NUMBER(root, "shape_match_scale");
     if (smscale != NULL && *smscale > 0 && *smscale <= 1.0) this->shape_match_scale = (float)*smscale;
+
+    // line2Dup feature/pyramid tuning (all optional; defaults preserve behavior).
+    double *snf = JFetch_NUMBER(root, "shape_num_features");
+    if (snf != NULL && *snf >= 8) this->shape_num_features = (int)*snf;
+    double *swk = JFetch_NUMBER(root, "shape_weak_thres");
+    if (swk != NULL && *swk > 0) this->shape_weak_thres = (float)*swk;
+    double *sst = JFetch_NUMBER(root, "shape_strong_thres");
+    if (sst != NULL && *sst > 0) this->shape_strong_thres = (float)*sst;
+    double *sbl = JFetch_NUMBER(root, "shape_blur");
+    if (sbl != NULL && (int)*sbl >= 1) this->shape_blur = (int)*sbl | 1;  // odd kernel
+    cJSON *spt = cJSON_GetObjectItem(root, "shape_pyramid_T");
+    if (spt != NULL && cJSON_IsArray(spt) && cJSON_GetArraySize(spt) > 0)
+    {
+      std::vector<int> tv;
+      cJSON *e = NULL;
+      cJSON_ArrayForEach(e, spt)
+        if (cJSON_IsNumber(e) && e->valueint > 0) tv.push_back(e->valueint);
+      if (!tv.empty()) this->shape_pyramid_T = tv;
+    }
     double *mmppn = JFetch_NUMBER(root, "mmpp");
     this->def_mmpp = (mmppn != NULL && *mmppn > 0) ? (float)*mmppn : 0.0f;
 
@@ -6188,14 +6207,15 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
 
   try
   {
-    auto _tp0 = std::chrono::steady_clock::now();
-    sbm::FeatureSet fset = sbm::extractFeatures(templ_use, mask_use, 128, {4, 8});
+    sbm::FeatureSet fset = sbm::extractFeatures(templ_use, mask_use, shape_num_features,
+                                                shape_pyramid_T, shape_weak_thres, shape_strong_thres);
     // If the masked region is too sparse to model, retry on the whole crop so
     // we never feed line2Dup a degenerate (crash-prone) template.
     if (fset.numFeatures() < 16)
     {
       LOGW("[shape] masked features=%d too few; retrying without mask", fset.numFeatures());
-      fset = sbm::extractFeatures(templ_use, cv::Mat(), 128, {4, 8});
+      fset = sbm::extractFeatures(templ_use, cv::Mat(), shape_num_features,
+                                  shape_pyramid_T, shape_weak_thres, shape_strong_thres);
     }
     if (fset.numFeatures() < 16)
     {
@@ -6209,10 +6229,13 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fset);
 
     sbm::MatchConfig mc;
-    mc.min_score   = shape_min_score;
-    mc.refine      = sbm::RefineMode::ROI;
-    mc.T_levels    = {4, 8};
-    mc.match_scale = shape_match_scale;   // <1 = downscaled coarse match (ROI refine keeps accuracy)
+    mc.min_score        = shape_min_score;
+    mc.refine           = sbm::RefineMode::ROI;
+    mc.T_levels         = shape_pyramid_T;
+    mc.weak_threshold   = shape_weak_thres;
+    mc.strong_threshold = shape_strong_thres;
+    mc.blur_kernel_size = shape_blur;
+    mc.match_scale      = shape_match_scale;   // <1 = downscaled coarse match (ROI refine keeps accuracy)
     shapeMatcher = std::make_shared<sbm::ShapeMatcher>(mc);
 
     sbm::ModelConfig modc;
@@ -6220,8 +6243,6 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     modc.flip = (matching_face == 0);   // match both faces when face==both
     int nv = shapeMatcher->addModel("def", *shapeFeatureSet, modc);
     if (nv <= 0) { LOGE("[shape] addModel failed (%d)", nv); return -1; }
-    auto _tp1 = std::chrono::steady_clock::now();
-    double _trainms = std::chrono::duration<double, std::milli>(_tp1 - _tp0).count();
 
     shape_ready = true;
 
@@ -6264,11 +6285,6 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
       fprintf(stderr, "[SHAPE_DRAW_ROI] wrote %s (%d roi points)\n", outp.c_str(), (int)rpts.size());
     }
 
-    LOGI("[SHAPE_PROF] train (extractFeatures+addModel): %.1f ms (variants=%d step=%.1fdeg)",
-         _trainms, nv, shape_angle_step_deg);
-    if (getenv("SHAPE_PROF"))
-      fprintf(stderr, "[SHAPE_PROF] train (extractFeatures+addModel): %.1f ms (variants=%d step=%.1fdeg)\n",
-              _trainms, nv, shape_angle_step_deg);
     LOGI("[shape] trained from %s origin(%.1f,%.1f) variants=%d min_score=%.1f",
          png.c_str(), originPx.x, originPx.y, nv, shape_min_score);
     return 0;
@@ -6282,6 +6298,10 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
 
 int FeatureManager_sig360_circle_line::FeatureMatching_shape()
 {
+  // Debug toggle read once (process-wide), so the per-frame path costs nothing
+  // when off -- no getenv in the hot loop.
+  static const bool dbg = (getenv("SHAPE_DBG") != nullptr);
+
   report.bacpac = bacpac;
   reports.resize(0);
   if (!shapeMatcher || originalImage_cv.empty()) return -1;
@@ -6293,13 +6313,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   else cv::extractChannel(originalImage_cv, scene, 0);
   if (!scene.isContinuous()) scene = scene.clone();
 
-  auto _sp0 = std::chrono::steady_clock::now();
+  // Match the full scene. Scene downscaling for speed is the def's shape_match_scale
+  // (handled inside ShapeMatcher); ROI refine restores full-res accuracy.
   std::vector<sbm::MatchResult> ms;
   try { ms = shapeMatcher->match(scene); }
   catch (const std::exception &e) { LOGE("[shape] match exception: %s", e.what()); return -1; }
-  auto _sp1 = std::chrono::steady_clock::now();
   LOGI("[shape] matches=%d", (int)ms.size());
-  if (getenv("SHAPE_DBG"))
+  if (dbg)
   {
     fprintf(stderr, "[SHAPE_DBG] scene %dx%d matches=%d mmpp=%.6f\n",
             scene.cols, scene.rows, (int)ms.size(), bacpac->sampler->mmpP_ideal());
@@ -6361,35 +6381,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     // to that convention; the reference offset (reg angle, baked in via
     // setAngleOffset) is preserved so the upright case reads identically. The
     // matcher's flip path already negates internally, so flipped matches use the
-    // angle as-is. Env SHAPE_ANG overrides the formula for empirical tuning.
+    // angle as-is.
     float reg_deg = reg_angle_rad * 180.0f / (float)M_PI;
     float corr_deg = m.flipped ? m.angle : (2.0f * reg_deg - m.angle);
-    if (const char *amode = getenv("SHAPE_ANG")) {
-      if      (strcmp(amode, "raw")   == 0) corr_deg = m.angle;
-      else if (strcmp(amode, "neg")   == 0) corr_deg = -m.angle;
-      else if (strcmp(amode, "2reg")  == 0) corr_deg = 2.0f * reg_deg - m.angle;
-    }
     float ang = corr_deg * (float)M_PI / 180.0f;
-    if (getenv("SHAPE_DBG"))
+    if (dbg)
       fprintf(stderr, "[SHAPE_DBG]  -> Center_mm=(%.4f,%.4f) m.angle=%.2f corr=%.2f flip=%d\n",
               singleReport.Center.x, singleReport.Center.y, m.angle, corr_deg, (int)m.flipped);
     int ret = SingleMatching_shape(bacpac, singleReport, ang, m.flipped, m.score / 100.0f);
-    if (getenv("SHAPE_DBG"))
+    if (dbg)
       fprintf(stderr, "[SHAPE_DBG]     ret=%d rotate=%.4f\n", ret, singleReport.rotate);
     if (ret == 0) reports.push_back(singleReport);
   }
-  auto _sp2 = std::chrono::steady_clock::now();
-  auto _spms = [](std::chrono::steady_clock::time_point a,
-                  std::chrono::steady_clock::time_point b){
-    return std::chrono::duration<double, std::milli>(b - a).count();
-  };
-  LOGI("[SHAPE_PROF] match+refine:%.2f measure:%.2f total:%.2f ms (n=%d %dx%d)",
-       _spms(_sp0, _sp1), _spms(_sp1, _sp2), _spms(_sp0, _sp2),
-       (int)ms.size(), scene.cols, scene.rows);
-  if (getenv("SHAPE_PROF"))
-    fprintf(stderr, "[SHAPE_PROF] match+refine:%.2f measure:%.2f total:%.2f ms (n=%d %dx%d)\n",
-            _spms(_sp0, _sp1), _spms(_sp1, _sp2), _spms(_sp0, _sp2),
-            (int)ms.size(), scene.cols, scene.rows);
   return 0;
 }
 
