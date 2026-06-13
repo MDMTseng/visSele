@@ -3623,36 +3623,39 @@ int CameraSettingFromFile(CameraLayer *camera, char *path)
   return 0;
 }
 
+// Stamp per-sub-feature context onto a def JSON string so a shape-based locator
+// can resolve its template + registered pose: "_def_path" (to find the sibling
+// "<base>.png") and a copy of the top-level "def_image_reg" (which only lives at
+// def top level, but the sub-feature parser only sees featureSet[i]). Returns a
+// malloc'd JSON string, or NULL on parse failure (caller falls back to raw).
+static char *def_stamp_context(const char *defJson, const char *defPath)
+{
+  cJSON *root = cJSON_Parse(defJson);
+  if (!root) return NULL;
+  cJSON *fs  = cJSON_GetObjectItem(root, "featureSet");
+  cJSON *reg = cJSON_GetObjectItem(root, "def_image_reg");
+  char *out = NULL;
+  if (fs && cJSON_IsArray(fs))
+  {
+    cJSON *sub = NULL;
+    cJSON_ArrayForEach(sub, fs)
+    {
+      if (!cJSON_IsObject(sub)) continue;
+      if (defPath && !cJSON_GetObjectItem(sub, "_def_path"))
+        cJSON_AddStringToObject(sub, "_def_path", defPath);
+      if (reg && !cJSON_GetObjectItem(sub, "def_image_reg"))
+        cJSON_AddItemToObject(sub, "def_image_reg", cJSON_Duplicate(reg, 1));
+    }
+    out = cJSON_PrintUnformatted(root);
+  }
+  cJSON_Delete(root);
+  return out;
+}
+
 int ImgInspection_DefRead(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *defFilename, FeatureManager_BacPac *bacpac)
 {
   char *string = ReadText(defFilename);
-  // Stamp the def file path into each sub-feature so a shape-based localizer can
-  // find the sibling "<base>.png" template (it reads "_def_path" in parse_jobj).
-  // Best-effort: on any JSON hiccup we fall back to the raw def string.
-  char *injected = NULL;
-  cJSON *root = cJSON_Parse(string);
-  if (root)
-  {
-    cJSON *fs = cJSON_GetObjectItem(root, "featureSet");
-    // def_image_reg lives at the def top level; copy it into each sub-feature so
-    // the shape localizer (which only sees featureSet[i]) can read the part's
-    // registered pose. Same idea as the _def_path stamp.
-    cJSON *reg = cJSON_GetObjectItem(root, "def_image_reg");
-    if (fs && cJSON_IsArray(fs))
-    {
-      cJSON *sub = NULL;
-      cJSON_ArrayForEach(sub, fs)
-      {
-        if (!cJSON_IsObject(sub)) continue;
-        if (!cJSON_GetObjectItem(sub, "_def_path"))
-          cJSON_AddStringToObject(sub, "_def_path", defFilename);
-        if (reg && !cJSON_GetObjectItem(sub, "def_image_reg"))
-          cJSON_AddItemToObject(sub, "def_image_reg", cJSON_Duplicate(reg, 1));
-      }
-      injected = cJSON_PrintUnformatted(root);
-    }
-    cJSON_Delete(root);
-  }
+  char *injected = def_stamp_context(string, defFilename);
   int ret = ImgInspection_JSONStr(me, test1_cv, repeatTime, injected ? injected : string, bacpac);
   if (injected) free(injected);
   free(string);
@@ -3673,6 +3676,197 @@ int ImgInspection(MatchingEngine &me, cv::Mat &test1_cv, FeatureManager_BacPac *
   clock_t new_t = clock();
   LOGI("%fms \n", (double)(new_t - t) / CLOCKS_PER_SEC * 1000);
   return 0;
+}
+
+// ===========================================================================
+// Legacy-def -> shape-based conversion + A/B validation (--convert / --convert-test).
+// ===========================================================================
+
+// "<dir>/<base>.hydef" -> "<dir>/<base>.png"
+static std::string def_sidecar_png(const std::string &defPath)
+{
+  size_t dot = defPath.find_last_of('.');
+  return (dot == std::string::npos ? defPath : defPath.substr(0, dot)) + ".png";
+}
+static std::string path_basename(const std::string &p)
+{
+  size_t s = p.find_last_of("/\\");
+  return (s == std::string::npos) ? p : p.substr(s + 1);
+}
+
+// Run a def (JSON string) on an image and return its report as cJSON (caller
+// deletes). defPathCtx (may be NULL) anchors the sidecar/reg stamping.
+static cJSON *run_def_report(MatchingEngine &me, FeatureManager_BacPac &bacpac,
+                             const char *defJson, const char *defPathCtx, cv::Mat &img)
+{
+  if (cJSON *dj = cJSON_Parse(defJson)) {
+    bacpac.sampler->getCalibMap()->calibPpB  = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.ppb2b");
+    bacpac.sampler->getCalibMap()->calibmmpB = JFetch_NUMBER_ex(dj, "featureSet[0].cam_param.mmpb2b");
+    cJSON_Delete(dj);
+  }
+  char *injected = def_stamp_context(defJson, defPathCtx);
+  me.ResetFeature();
+  me.AddMatchingFeature(injected ? injected : defJson);
+  if (injected) free(injected);
+  ImgInspection(me, img, &bacpac, NULL, 1);
+  const FeatureReport *rep = me.GetReport();
+  if (!rep) return NULL;
+  return me.FeatureReport2Json(rep);
+}
+
+// The first per-instance single report: report.reports[0].reports[0].
+static cJSON *report_first_instance(cJSON *report)
+{
+  cJSON *grp = report ? cJSON_GetObjectItem(report, "reports") : NULL;
+  cJSON *g0  = (grp && cJSON_IsArray(grp)) ? cJSON_GetArrayItem(grp, 0) : NULL;
+  cJSON *inner = g0 ? cJSON_GetObjectItem(g0, "reports") : NULL;
+  return (inner && cJSON_IsArray(inner)) ? cJSON_GetArrayItem(inner, 0) : NULL;
+}
+
+static bool sig360_first_pose(cJSON *report, double &cx, double &cy, double &rot, bool &flip)
+{
+  cJSON *r0 = report_first_instance(report);
+  if (!r0) return false;
+  cJSON *jcx = cJSON_GetObjectItem(r0, "cx");
+  cJSON *jcy = cJSON_GetObjectItem(r0, "cy");
+  cJSON *jrot = cJSON_GetObjectItem(r0, "rotate");
+  cJSON *jfl = cJSON_GetObjectItem(r0, "isFlipped");
+  if (!jcx || !jcy || !jrot) return false;
+  cx = jcx->valuedouble; cy = jcy->valuedouble; rot = jrot->valuedouble;
+  flip = jfl && cJSON_IsTrue(jfl);
+  return true;
+}
+
+// Convert a legacy sig360 def (JSON) into a shape-based one: flip each sig360
+// sub-feature to locating_engine="shape_based" + reference_image, and stamp the
+// measured pose as top-level def_image_reg. Returns a cJSON the caller serialises.
+static cJSON *def_to_shape(const char *oldDefJson, const char *refImgName,
+                           double cx, double cy, double rot, bool flip)
+{
+  cJSON *root = cJSON_Parse(oldDefJson);
+  if (!root) return NULL;
+  cJSON *fs = cJSON_GetObjectItem(root, "featureSet");
+  if (fs && cJSON_IsArray(fs))
+  {
+    cJSON *sub = NULL;
+    cJSON_ArrayForEach(sub, fs)
+    {
+      if (!cJSON_IsObject(sub)) continue;
+      cJSON *ty = cJSON_GetObjectItem(sub, "type");
+      if (!ty || !cJSON_IsString(ty) || strcmp(ty->valuestring, "sig360_circle_line") != 0) continue;
+      cJSON_DeleteItemFromObject(sub, "locating_engine");
+      cJSON_AddStringToObject(sub, "locating_engine", "shape_based");
+      cJSON_DeleteItemFromObject(sub, "reference_image");
+      cJSON_AddStringToObject(sub, "reference_image", refImgName);
+    }
+  }
+  cJSON_DeleteItemFromObject(root, "def_image_reg");
+  cJSON *reg = cJSON_CreateObject();
+  cJSON_AddNumberToObject(reg, "cx", cx);
+  cJSON_AddNumberToObject(reg, "cy", cy);
+  cJSON_AddNumberToObject(reg, "angle", rot);
+  cJSON_AddBoolToObject(reg, "isFlipped", flip);
+  cJSON_AddItemToObject(root, "def_image_reg", reg);
+  return root;
+}
+
+// Build the shape-based def JSON for an old def: inspect its <base>.png to grab
+// the sig360 pose, then convert. Returns malloc'd JSON (caller frees) or NULL.
+static char *convert_def_to_shape(MatchingEngine &me, FeatureManager_BacPac &bacpac,
+                                  const char *oldDefPath)
+{
+  char *oldJson = ReadText(oldDefPath);
+  if (!oldJson) { LOGE("[convert] cannot read def %s", oldDefPath); return NULL; }
+  std::string refPng = def_sidecar_png(oldDefPath);
+  cv::Mat refImg;
+  if (loadImageCv(refPng.c_str(), refImg) != 0)
+  { LOGE("[convert] cannot read reference image %s", refPng.c_str()); free(oldJson); return NULL; }
+
+  cJSON *refReport = run_def_report(me, bacpac, oldJson, oldDefPath, refImg);
+  double cx = 0, cy = 0, rot = 0; bool flip = false;
+  bool ok = sig360_first_pose(refReport, cx, cy, rot, flip);
+  if (refReport) cJSON_Delete(refReport);
+  if (!ok) { LOGE("[convert] old def found no part in its reference image %s", refPng.c_str()); free(oldJson); return NULL; }
+
+  cJSON *newRoot = def_to_shape(oldJson, path_basename(refPng).c_str(), cx, cy, rot, flip);
+  free(oldJson);
+  if (!newRoot) { LOGE("[convert] failed to build shape def"); return NULL; }
+  char *newJson = cJSON_Print(newRoot);
+  cJSON_Delete(newRoot);
+  LOGE("[convert] %s -> shape_based  reg{cx=%.4f cy=%.4f angle=%.5f flip=%d}", oldDefPath, cx, cy, rot, flip);
+  return newJson;
+}
+
+// Compare the numeric outputs of two reports (rep_old vs rep_new). Prints a
+// summary to stderr and returns a cJSON diff (caller deletes).
+static cJSON *compare_reports(cJSON *oldR, cJSON *newR)
+{
+  cJSON *diff = cJSON_CreateObject();
+  double cxo, cyo, roto, cxn, cyn, rotn; bool flo = false, fln = false;
+  bool po = sig360_first_pose(oldR, cxo, cyo, roto, flo);
+  bool pn = sig360_first_pose(newR, cxn, cyn, rotn, fln);
+  fprintf(stderr, "[convert-test] === pose ===\n");
+  if (po && pn) {
+    fprintf(stderr, "  cx  %10.4f -> %10.4f  (d=%+.4f)\n", cxo, cxn, cxn - cxo);
+    fprintf(stderr, "  cy  %10.4f -> %10.4f  (d=%+.4f)\n", cyo, cyn, cyn - cyo);
+    fprintf(stderr, "  rot %10.5f -> %10.5f  (d=%+.5f)\n", roto, rotn, rotn - roto);
+    fprintf(stderr, "  flip       %d -> %d\n", (int)flo, (int)fln);
+    cJSON *jp = cJSON_AddObjectToObject(diff, "pose");
+    cJSON_AddNumberToObject(jp, "dcx", cxn - cxo);
+    cJSON_AddNumberToObject(jp, "dcy", cyn - cyo);
+    cJSON_AddNumberToObject(jp, "drot", rotn - roto);
+  } else {
+    fprintf(stderr, "  DETECTION MISMATCH: old=%d new=%d\n", (int)po, (int)pn);
+    cJSON_AddBoolToObject(diff, "detection_mismatch", true);
+  }
+
+  // judgeReports, matched by id.
+  cJSON *r0o = report_first_instance(oldR);
+  cJSON *r0n = report_first_instance(newR);
+  cJSON *jo = r0o ? cJSON_GetObjectItem(r0o, "judgeReports") : NULL;
+  cJSON *jn = r0n ? cJSON_GetObjectItem(r0n, "judgeReports") : NULL;
+  fprintf(stderr, "[convert-test] === judges ===\n");
+  cJSON *jarr = cJSON_AddArrayToObject(diff, "judges");
+  double worstRel = 0;
+  if (jo && cJSON_IsArray(jo) && jn && cJSON_IsArray(jn))
+  {
+    cJSON *e = NULL;
+    cJSON_ArrayForEach(e, jo)
+    {
+      cJSON *jid = cJSON_GetObjectItem(e, "id");
+      cJSON *jvo = cJSON_GetObjectItem(e, "value");
+      cJSON *jso = cJSON_GetObjectItem(e, "status");
+      if (!jid) continue;
+      int id = jid->valueint;
+      // find same id in new
+      cJSON *m = NULL, *en = NULL;
+      cJSON_ArrayForEach(en, jn) {
+        cJSON *nid = cJSON_GetObjectItem(en, "id");
+        if (nid && nid->valueint == id) { m = en; break; }
+      }
+      double vo = jvo ? jvo->valuedouble : NAN;
+      double vn = (m && cJSON_GetObjectItem(m, "value")) ? cJSON_GetObjectItem(m, "value")->valuedouble : NAN;
+      int so = jso ? jso->valueint : 0;
+      int sn = (m && cJSON_GetObjectItem(m, "status")) ? cJSON_GetObjectItem(m, "status")->valueint : 0;
+      double d = vn - vo;
+      double rel = (vo != 0 && vo == vo) ? fabs(d / vo) * 100.0 : 0;
+      if (rel > worstRel) worstRel = rel;
+      fprintf(stderr, "  id %3d  %12.5f -> %12.5f  (d=%+.5f, %.3f%%)  status %d->%d%s\n",
+              id, vo, vn, d, rel, so, sn, (so != sn ? "  *STATUS CHANGED*" : ""));
+      cJSON *je = cJSON_CreateObject();
+      cJSON_AddNumberToObject(je, "id", id);
+      cJSON_AddNumberToObject(je, "old", vo);
+      cJSON_AddNumberToObject(je, "new", vn);
+      cJSON_AddNumberToObject(je, "delta", d);
+      cJSON_AddNumberToObject(je, "rel_pct", rel);
+      cJSON_AddBoolToObject(je, "status_changed", so != sn);
+      cJSON_AddItemToArray(jarr, je);
+    }
+  }
+  else fprintf(stderr, "  (no judgeReports to compare)\n");
+  cJSON_AddNumberToObject(diff, "worst_judge_rel_pct", worstRel);
+  fprintf(stderr, "[convert-test] worst judge delta: %.3f%%\n", worstRel);
+  return diff;
 }
 
 int ImgInspection_JSONStr(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *jsonStr, FeatureManager_BacPac *bacpac)
@@ -5553,6 +5747,25 @@ int cp_main(int argc, char **argv)
     for (int li = 0; li < loopN; ++li) {
       ImgInspection_DefRead(matchingEng, cvSrc, 1, defPath, &neutral_bacpac);
     }
+    // Steady-state per-frame profiling: the def is already loaded+trained above,
+    // so this times ONLY the per-frame inspection (no re-train), comparable across
+    // sig360 vs shape defs.  visSele --insp <img> <def> <out> with INSP_TIME_N=50
+    if (const char *te = std::getenv("INSP_TIME_N")) {
+      int tN = std::atoi(te);
+      if (tN > 0) {
+        matchingEng.setBacPac(&neutral_bacpac);
+        double mn = 1e18, mx = 0, sum = 0;
+        for (int k = 0; k < tN; k++) {
+          auto a = std::chrono::steady_clock::now();
+          matchingEng.FeatureMatching(cvSrc);
+          auto b = std::chrono::steady_clock::now();
+          double t = std::chrono::duration<double, std::milli>(b - a).count();
+          if (t < mn) mn = t; if (t > mx) mx = t; sum += t;
+        }
+        fprintf(stderr, "[INSP_TIME] %s  n=%d  min=%.2f avg=%.2f max=%.2f ms/frame\n",
+                defPath, tN, mn, sum / tN, mx);
+      }
+    }
     const FeatureReport *report = matchingEng.GetReport();
     if (report == NULL) { LOGE("--insp: null report"); return 4; }
     cJSON *jobj = matchingEng.FeatureReport2Json(report);
@@ -5569,6 +5782,66 @@ int cp_main(int argc, char **argv)
     else LOGE("--insp: cannot write %s", outPath);
     cJSON_Delete(jobj);
     free(jstr);
+    return 0;
+  }
+
+  // Convert a legacy sig360 def to a shape-based def (inspects its <base>.png to
+  // capture the registered pose -> def_image_reg):
+  //   visSele --convert <old_def.hydef> <new_def.hydef>
+  for (int ai = 1; ai < argc; ai++)
+  {
+    if (strcmp(argv[ai], "--convert") != 0) continue;
+    if (ai + 2 >= argc) { LOGE("--convert needs <old_def.hydef> <new_def.hydef>"); return 2; }
+    const char *oldDef = argv[ai + 1], *newDef = argv[ai + 2];
+    char *newJson = convert_def_to_shape(matchingEng, neutral_bacpac, oldDef);
+    if (!newJson) return 4;
+    FILE *fp = fopen(newDef, "wb");
+    if (!fp) { LOGE("--convert: cannot write %s", newDef); free(newJson); return 4; }
+    fwrite(newJson, 1, strlen(newJson), fp);
+    fclose(fp);
+    LOGE("--convert: wrote %s", newDef);
+    free(newJson);
+    return 0;
+  }
+
+  // Convert + validate: inspect the alt image with BOTH the old def and the
+  // converted shape-based def, then diff the two reports numerically:
+  //   visSele --convert-test <old_def.hydef> <alt_image.png> [out_diff.json]
+  for (int ai = 1; ai < argc; ai++)
+  {
+    if (strcmp(argv[ai], "--convert-test") != 0) continue;
+    if (ai + 2 >= argc) { LOGE("--convert-test needs <old_def.hydef> <alt_image.png> [out_diff.json]"); return 2; }
+    const char *oldDef = argv[ai + 1], *altImg = argv[ai + 2];
+    const char *outDiff = (ai + 3 < argc) ? argv[ai + 3] : NULL;
+
+    cv::Mat alt;
+    if (loadImageCv(altImg, alt) != 0) { LOGE("--convert-test: cannot load alt image %s", altImg); return 3; }
+
+    // 1) old def on alt image -> rep_old
+    char *oldJson = ReadText(oldDef);
+    if (!oldJson) { LOGE("--convert-test: cannot read %s", oldDef); return 3; }
+    cJSON *repOld = run_def_report(matchingEng, neutral_bacpac, oldJson, oldDef, alt);
+
+    // 2) convert old def -> new shape-based def (inspects <base>.png for the pose)
+    char *newJson = convert_def_to_shape(matchingEng, neutral_bacpac, oldDef);
+    free(oldJson);
+    if (!newJson) { if (repOld) cJSON_Delete(repOld); return 4; }
+
+    // 3) new def on the SAME alt image -> rep_new (ctx = old def so <base>.png resolves)
+    cJSON *repNew = run_def_report(matchingEng, neutral_bacpac, newJson, oldDef, alt);
+    free(newJson);
+
+    // 4) compare rep_old vs rep_new
+    cJSON *diff = compare_reports(repOld, repNew);
+    if (outDiff) {
+      char *ds = cJSON_Print(diff);
+      FILE *fp = fopen(outDiff, "wb");
+      if (fp) { fwrite(ds, 1, strlen(ds), fp); fclose(fp); LOGE("--convert-test: wrote %s", outDiff); }
+      free(ds);
+    }
+    cJSON_Delete(diff);
+    if (repOld) cJSON_Delete(repOld);
+    if (repNew) cJSON_Delete(repNew);
     return 0;
   }
 

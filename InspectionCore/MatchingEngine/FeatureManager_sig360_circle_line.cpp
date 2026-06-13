@@ -2000,6 +2000,8 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     if (smin != NULL && *smin > 0) this->shape_min_score = (float)*smin;
     double *sastep = JFetch_NUMBER(root, "shape_angle_step_deg");
     if (sastep != NULL && *sastep > 0) this->shape_angle_step_deg = (float)*sastep;
+    double *smscale = JFetch_NUMBER(root, "shape_match_scale");
+    if (smscale != NULL && *smscale > 0 && *smscale <= 1.0) this->shape_match_scale = (float)*smscale;
     double *mmppn = JFetch_NUMBER(root, "mmpp");
     this->def_mmpp = (mmppn != NULL && *mmppn > 0) ? (float)*mmppn : 0.0f;
 
@@ -6150,31 +6152,67 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
             templ.cols, templ.rows, originPx.x, originPx.y, origin_src, a1, a2, blobArea, mask_src,
             mask.empty() ? 0 : cv::countNonZero(mask));
 
+  // Tight-crop the template to the part (mask bbox + margin). The whole-image
+  // template rotates about the IMAGE centre, which mis-maps the pose of a part
+  // that sits far off-centre (breaks rotation/flip). Cropping puts the part at
+  // the template centre so rotation/flip pose recovery is accurate -- and
+  // matching/training run on a small ROI instead of the full 5MP frame.
+  cv::Mat templ_use = templ;
+  cv::Mat mask_use  = mask;
+  cv::Point2f origin_use(originPx.x, originPx.y);
+  cv::Rect cropRect(0, 0, templ.cols, templ.rows);
+  if (!mask.empty())
+  {
+    cv::Rect bb = cv::boundingRect(mask);
+    // Square crop CENTRED ON THE ORIGIN so the template centre == origin. Then the
+    // matcher's rotation (about the template centre) is exactly the part's rotation
+    // about the registration point -> pose recovery is correct at any angle. The
+    // half-size covers the part's farthest extent from the origin so it stays
+    // inside the crop at all rotations, plus a margin for the ROI windows.
+    float hx = std::max(originPx.x - bb.x, (bb.x + bb.width) - originPx.x);
+    float hy = std::max(originPx.y - bb.y, (bb.y + bb.height) - originPx.y);
+    int half = (int)std::ceil(std::max(hx, hy)) + std::max(24, (int)(0.15f * std::max(bb.width, bb.height)));
+    cv::Rect r((int)originPx.x - half, (int)originPx.y - half, 2 * half, 2 * half);
+    r &= cv::Rect(0, 0, templ.cols, templ.rows);
+    if (r.width >= 16 && r.height >= 16)
+    {
+      cropRect = r;
+      templ_use = templ(r).clone();
+      mask_use  = mask(r).clone();
+      origin_use = cv::Point2f(originPx.x - r.x, originPx.y - r.y);
+    }
+  }
+  if (getenv("SHAPE_DBG"))
+    fprintf(stderr, "[SHAPE_DBG] crop: [%d,%d %dx%d] origin_in_crop=(%.1f,%.1f)\n",
+            cropRect.x, cropRect.y, cropRect.width, cropRect.height, origin_use.x, origin_use.y);
+
   try
   {
-    sbm::FeatureSet fset = sbm::extractFeatures(templ, mask, 128, {4, 8});
-    // If the masked region is too sparse to model, retry on the whole image so
+    auto _tp0 = std::chrono::steady_clock::now();
+    sbm::FeatureSet fset = sbm::extractFeatures(templ_use, mask_use, 128, {4, 8});
+    // If the masked region is too sparse to model, retry on the whole crop so
     // we never feed line2Dup a degenerate (crash-prone) template.
     if (fset.numFeatures() < 16)
     {
       LOGW("[shape] masked features=%d too few; retrying without mask", fset.numFeatures());
-      fset = sbm::extractFeatures(templ, cv::Mat(), 128, {4, 8});
+      fset = sbm::extractFeatures(templ_use, cv::Mat(), 128, {4, 8});
     }
     if (fset.numFeatures() < 16)
     {
       LOGE("[shape] only %d features extractable; aborting shape training", fset.numFeatures());
       return -1;
     }
-    fset.setOrigin(originPx.x, originPx.y);
+    fset.setOrigin(origin_use.x, origin_use.y);
     // Report matched angles in the def reference frame: add back the registered
     // orientation of the saved image (0 when there is no def_image_reg).
     fset.setAngleOffset(angle_offset_deg);
     shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fset);
 
     sbm::MatchConfig mc;
-    mc.min_score = shape_min_score;
-    mc.refine    = sbm::RefineMode::ROI;
-    mc.T_levels  = {4, 8};
+    mc.min_score   = shape_min_score;
+    mc.refine      = sbm::RefineMode::ROI;
+    mc.T_levels    = {4, 8};
+    mc.match_scale = shape_match_scale;   // <1 = downscaled coarse match (ROI refine keeps accuracy)
     shapeMatcher = std::make_shared<sbm::ShapeMatcher>(mc);
 
     sbm::ModelConfig modc;
@@ -6182,8 +6220,55 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     modc.flip = (matching_face == 0);   // match both faces when face==both
     int nv = shapeMatcher->addModel("def", *shapeFeatureSet, modc);
     if (nv <= 0) { LOGE("[shape] addModel failed (%d)", nv); return -1; }
+    auto _tp1 = std::chrono::steady_clock::now();
+    double _trainms = std::chrono::duration<double, std::milli>(_tp1 - _tp0).count();
 
     shape_ready = true;
+
+    // Optional: render the ROI refine sample points (+ their search windows), the
+    // signature silhouette mask, and the origin onto the template for inspection.
+    //   SHAPE_DRAW_ROI=1 -> writes "<base>_roi.png" next to the template.
+    if (getenv("SHAPE_DRAW_ROI"))
+    {
+      cv::Mat vis;                                  // drawn on the cropped template
+      cv::cvtColor(templ_use, vis, cv::COLOR_GRAY2BGR);
+      // silhouette mask outline (the part region the features were extracted from)
+      if (!mask_use.empty())
+      {
+        std::vector<std::vector<cv::Point>> cts;
+        cv::findContours(mask_use, cts, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+        cv::drawContours(vis, cts, -1, cv::Scalar(255, 128, 0), 2);
+      }
+      const float tcx = templ_use.cols / 2.0f, tcy = templ_use.rows / 2.0f;
+      // linemod (line2Dup) gradient features, finest pyramid level: pixel = f.{x,y}+tl
+      if (!shapeFeatureSet->levels.empty())
+      {
+        auto &lv = shapeFeatureSet->levels[0];
+        for (auto &f : lv.features)
+          cv::circle(vis, cv::Point(f.x + lv.tl_x, f.y + lv.tl_y), 2, cv::Scalar(255, 255, 0), -1); // cyan
+      }
+      std::vector<cv::Point2f> rpts = shapeFeatureSet->selectOptimizedPoints(8);
+      for (size_t i = 0; i < rpts.size(); i++)
+      {
+        cv::Point2f p(rpts[i].x + tcx, rpts[i].y + tcy);   // template-center relative -> pixel
+        cv::rectangle(vis, cv::Rect((int)p.x - 15, (int)p.y - 15, 30, 30), cv::Scalar(0, 255, 0), 1); // roi_half window
+        cv::circle(vis, p, 6, cv::Scalar(0, 0, 255), -1);
+        cv::putText(vis, std::to_string((int)i), p + cv::Point2f(16, -10),
+                    cv::FONT_HERSHEY_SIMPLEX, 1.2, cv::Scalar(0, 255, 255), 3);
+      }
+      cv::drawMarker(vis, origin_use, cv::Scalar(255, 0, 255),
+                     cv::MARKER_CROSS, 40, 3);   // registration origin
+      size_t dot = png.find_last_of('.');
+      std::string outp = (dot == std::string::npos ? png : png.substr(0, dot)) + "_roi.png";
+      cv::imwrite(outp, vis);
+      fprintf(stderr, "[SHAPE_DRAW_ROI] wrote %s (%d roi points)\n", outp.c_str(), (int)rpts.size());
+    }
+
+    LOGI("[SHAPE_PROF] train (extractFeatures+addModel): %.1f ms (variants=%d step=%.1fdeg)",
+         _trainms, nv, shape_angle_step_deg);
+    if (getenv("SHAPE_PROF"))
+      fprintf(stderr, "[SHAPE_PROF] train (extractFeatures+addModel): %.1f ms (variants=%d step=%.1fdeg)\n",
+              _trainms, nv, shape_angle_step_deg);
     LOGI("[shape] trained from %s origin(%.1f,%.1f) variants=%d min_score=%.1f",
          png.c_str(), originPx.x, originPx.y, nv, shape_min_score);
     return 0;
@@ -6202,13 +6287,17 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   if (!shapeMatcher || originalImage_cv.empty()) return -1;
 
   cv::Mat scene;
+  // Source is BGR-replicated grayscale (B=G=R), so pull channel 0 -- much cheaper
+  // than a weighted cvtColor on a multi-megapixel frame.
   if (originalImage_cv.channels() == 1) scene = originalImage_cv;
-  else cv::cvtColor(originalImage_cv, scene, cv::COLOR_BGR2GRAY);
+  else cv::extractChannel(originalImage_cv, scene, 0);
   if (!scene.isContinuous()) scene = scene.clone();
 
+  auto _sp0 = std::chrono::steady_clock::now();
   std::vector<sbm::MatchResult> ms;
   try { ms = shapeMatcher->match(scene); }
   catch (const std::exception &e) { LOGE("[shape] match exception: %s", e.what()); return -1; }
+  auto _sp1 = std::chrono::steady_clock::now();
   LOGI("[shape] matches=%d", (int)ms.size());
   if (getenv("SHAPE_DBG"))
   {
@@ -6267,15 +6356,40 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     singleReport.LTBound = singleReport.Center;
     singleReport.RBBound = singleReport.Center;
 
-    float ang = m.angle * (float)M_PI / 180.0f;
+    // line2Dup's rotation sign is inverted relative to the sig360 measurement
+    // convention (TreeExecution/calipers). Flip the rotation-from-reference back
+    // to that convention; the reference offset (reg angle, baked in via
+    // setAngleOffset) is preserved so the upright case reads identically. The
+    // matcher's flip path already negates internally, so flipped matches use the
+    // angle as-is. Env SHAPE_ANG overrides the formula for empirical tuning.
+    float reg_deg = reg_angle_rad * 180.0f / (float)M_PI;
+    float corr_deg = m.flipped ? m.angle : (2.0f * reg_deg - m.angle);
+    if (const char *amode = getenv("SHAPE_ANG")) {
+      if      (strcmp(amode, "raw")   == 0) corr_deg = m.angle;
+      else if (strcmp(amode, "neg")   == 0) corr_deg = -m.angle;
+      else if (strcmp(amode, "2reg")  == 0) corr_deg = 2.0f * reg_deg - m.angle;
+    }
+    float ang = corr_deg * (float)M_PI / 180.0f;
     if (getenv("SHAPE_DBG"))
-      fprintf(stderr, "[SHAPE_DBG]  -> Center_mm=(%.4f,%.4f) ang_rad=%.4f flip=%d\n",
-              singleReport.Center.x, singleReport.Center.y, ang, (int)m.flipped);
+      fprintf(stderr, "[SHAPE_DBG]  -> Center_mm=(%.4f,%.4f) m.angle=%.2f corr=%.2f flip=%d\n",
+              singleReport.Center.x, singleReport.Center.y, m.angle, corr_deg, (int)m.flipped);
     int ret = SingleMatching_shape(bacpac, singleReport, ang, m.flipped, m.score / 100.0f);
     if (getenv("SHAPE_DBG"))
       fprintf(stderr, "[SHAPE_DBG]     ret=%d rotate=%.4f\n", ret, singleReport.rotate);
     if (ret == 0) reports.push_back(singleReport);
   }
+  auto _sp2 = std::chrono::steady_clock::now();
+  auto _spms = [](std::chrono::steady_clock::time_point a,
+                  std::chrono::steady_clock::time_point b){
+    return std::chrono::duration<double, std::milli>(b - a).count();
+  };
+  LOGI("[SHAPE_PROF] match+refine:%.2f measure:%.2f total:%.2f ms (n=%d %dx%d)",
+       _spms(_sp0, _sp1), _spms(_sp1, _sp2), _spms(_sp0, _sp2),
+       (int)ms.size(), scene.cols, scene.rows);
+  if (getenv("SHAPE_PROF"))
+    fprintf(stderr, "[SHAPE_PROF] match+refine:%.2f measure:%.2f total:%.2f ms (n=%d %dx%d)\n",
+            _spms(_sp0, _sp1), _spms(_sp1, _sp2), _spms(_sp0, _sp2),
+            (int)ms.size(), scene.cols, scene.rows);
   return 0;
 }
 

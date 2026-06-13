@@ -250,6 +250,8 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   std::string def_path;               // full path of the .hydef (for <base>.png)
   float shape_min_score = 50.0f;      // line2Dup similarity gate (0-100)
   float shape_angle_step_deg = 1.0f;  // template rotation granularity
+  float shape_match_scale = 1.0f;     // <1 downscales the scene for the coarse
+                                      // match (ROI refine restores full-res accuracy)
   float def_mmpp = 0.0f;              // def's mm-per-pixel (for signature->px mask)
   // Raw sig360 radius signature (mm) captured before the in-place high-pass in
   // sign360_process -- the absolute part silhouette, used to build the shape
