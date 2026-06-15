@@ -199,6 +199,10 @@ typedef struct featureDef_searchPoint{
       float angleDeg;
       bool search_far;
       bool locating_anchor;
+      // User tag for the TPS morph (mode 2): true = this anchor is 2D-localized
+      // (a corner) -> constrains both axes; false = edge -> constrains only along
+      // its search normal. Default false (edge). Ignored by morph modes 0/1.
+      bool anchor_corner;
     }anglefollow;
     data() : anglefollow{} {}
   }data;

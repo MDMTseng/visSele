@@ -1473,8 +1473,14 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
     }
     else if (type == cJSON_True)
     {
-      searchPoint.data.anglefollow.locating_anchor = true;  
+      searchPoint.data.anglefollow.locating_anchor = true;
     }
+
+    // User tag: is this anchor a corner (2D-localized) or an edge (1D)? Drives the
+    // per-anchor precision in the TPS morph (mode 2). Default edge.
+    searchPoint.data.anglefollow.anchor_corner = false;
+    if (getDataFromJson(jobj, "anchor_corner", &target) == cJSON_True)
+      searchPoint.data.anglefollow.anchor_corner = true;
 
     LOGV("searchPoint.x:%f Y:%f angleDeg:%f tar_id:%d",
          searchPoint.data.anglefollow.position.x,
@@ -2059,7 +2065,11 @@ int FeatureManager_sig360_circle_line::parse_jobj()
         this->morph_mode = 1;
       else if (strcmp(morphm, "legacy") == 0 || strcmp(morphm, "polar") == 0)
         this->morph_mode = 0;
+      else if (strcmp(morphm, "tps") == 0)
+        this->morph_mode = 2;
     }
+    double *mtl2 = JFetch_NUMBER(root, "morph_tps_lambda");
+    if (mtl2 != NULL && *mtl2 >= 0) this->morph_tps_lambda = (float)*mtl2;
     double *mmi = JFetch_NUMBER(root, "morph_max_iter");
     if (mmi != NULL && *mmi >= 1) this->morph_max_iter = (int)*mmi;
     double *mtl = JFetch_NUMBER(root, "morph_tol_mm");
@@ -2179,7 +2189,10 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     LOGV("XY:%f %f", vec.x, vec.y);
     vec = acvVecNormal(vec);
     LOGV("XY:%f %f", vec.x, vec.y);
-    cm.add(pos, pos, vec);
+    // Corner anchors constrain both axes (w_minor = weight); edge anchors only
+    // along their search normal (w_minor = 0). Used by the TPS morph (mode 2).
+    float wmin = searchPointList[j].data.anglefollow.anchor_corner ? 1.0f : 0.0f;
+    cm.add(pos, pos, vec, 1.0f, wmin);
   }
 
 
@@ -3246,6 +3259,9 @@ int ConstrainMap::solve()
   // Mode 0 computes its warp per-call in convert_polar; nothing to cache.
   if (mode == 0)
     return valid;
+  // Mode 2: anisotropic approximating-TPS (handles mixed edge/corner anchors).
+  if (mode == 2)
+    return solve_tps();
   // Mode 1: identity unless we have enough anchors to trust a fit.
   resetTransform();
   valid_count = valid;
@@ -3346,11 +3362,202 @@ acv_XY ConstrainMap::convert(acv_XY from)
 {
   if (mode == 0)
     return convert_polar(from);
+  if (mode == 2)
+    return convert_tps(from);
   // Mode 1: apply the cached directional-similarity transform.
   acv_XY out;
   out.x = (float)(sa * from.x - sb * from.y + stx);
   out.y = (float)(sb * from.x + sa * from.y + sty);
   return out;
+}
+
+// Thin-plate-spline radial basis: phi(r) = r^2 * log(r^2),  phi(0)=0.
+static double tps_phi_r2(double r2)
+{
+  if (r2 < 1e-12) return 0.0;
+  return r2 * std::log(r2);
+}
+
+// ---- Morph effectiveness test hook (diagnostics only) --------------------
+// Injects a known REGIONAL deformation field D(p) onto detected anchor targets
+// so the morph "sees" a ground-truth deformation on an undeformed frame. The
+// metric is whether cm.convert(q) tracks q + D(q) (i.e. the inspection window
+// stays on the feature). Zero overhead unless MORPH_FIELD_AMP is set.
+//   MORPH_FIELD_AMP  amplitude: mm (type=trans) or DEGREES (type=rot); 0=>disabled
+//   MORPH_FIELD_TYPE "trans" (gaussian translation, default) | "rot" (local rotation)
+//   MORPH_FIELD_C    "cx,cy"  bump/rotation centre in object-frame mm (default arc)
+//   MORPH_FIELD_SIG  gaussian sigma in mm (default 1.6)
+//   MORPH_FIELD_DIR  "dx,dy"  translation direction (type=trans only; default 1,0)
+// type=rot models the photo's case: the region near C rotates (the rod tilts), so a
+// good morph must reproduce the LOCAL ROTATION to keep the caliper window aligned.
+// p is the template/object-frame anchor position (cm.anchorPairs[].from).
+static bool synth_field_enabled()
+{
+  static bool init = false, on = false;
+  if (!init) { init = true; const char *a = getenv("MORPH_FIELD_AMP"); on = (a && atof(a) != 0.0); }
+  return on;
+}
+static acv_XY synth_morph_field(acv_XY p)
+{
+  static bool init = false, is_rot = false;
+  static double amp = 0, cx = 1.55, cy = -0.30, sig = 1.6, dx = 1, dy = 0;
+  if (!init)
+  {
+    init = true;
+    const char *a = getenv("MORPH_FIELD_AMP"); if (a) amp = atof(a);
+    const char *c = getenv("MORPH_FIELD_C");   if (c) sscanf(c, "%lf,%lf", &cx, &cy);
+    const char *s = getenv("MORPH_FIELD_SIG");  if (s) sig = atof(s);
+    const char *d = getenv("MORPH_FIELD_DIR");  if (d) { sscanf(d, "%lf,%lf", &dx, &dy);
+      double n = sqrt(dx * dx + dy * dy); if (n > 0) { dx /= n; dy /= n; } }
+    const char *t = getenv("MORPH_FIELD_TYPE"); if (t && strcmp(t, "rot") == 0) is_rot = true;
+  }
+  acv_XY r = acv_XY(0, 0);
+  if (amp == 0) return r;
+  double ex = p.x - cx, ey = p.y - cy;
+  double g = exp(-(ex * ex + ey * ey) / (2.0 * sig * sig));
+  if (is_rot)
+  {
+    // Gaussian-enveloped local rotation: near C rotate by amp degrees, ->0 far away.
+    double th = amp * (3.14159265358979323846 / 180.0) * g;
+    double ct = cos(th), st = sin(th);
+    r.x = (float)(ct * ex - st * ey - ex);   // (R*e - e).x
+    r.y = (float)(st * ex + ct * ey - ey);   // (R*e - e).y
+  }
+  else
+  {
+    r.x = (float)(amp * g * dx);
+    r.y = (float)(amp * g * dy);
+  }
+  return r;
+}
+
+// Similarity-base RBF fit (mode 2). The global part is a 4-DOF SIMILARITY
+// (rotation+scale+translation, shared between x and y) instead of a 6-DOF affine
+// -- removing the shear / anisotropic-scale freedom that made the old affine-base
+// TPS wobble under sparse rank-1 anchors. A TPS-kernel RBF residual captures the
+// REGIONAL (non-affine) part a global similarity can't. Each anchor contributes a
+// 2x2 precision W = w_major*n n^T + w_minor*t t^T (n = constrainVector, t = perp):
+// edge anchors (w_minor=0) constrain only along their normal, corner anchors
+// (w_minor~w_major) constrain 2D -- all blended in one coupled solve. Unknowns:
+//   u = [cx(N) | cy(N) | a | b | tx | ty],
+//   fx = a*x - b*y + tx + sum cx_j phi(|p-from_j|)
+//   fy = b*x + a*y + ty + sum cy_j phi(|p-from_j|)
+// The result is stored into ax/ay as (tx,a,-b)/(ty,b,a) so convert_tps is unchanged.
+int ConstrainMap::solve_tps()
+{
+  tps_valid = false;
+  std::vector<int> idx;
+  for (size_t i = 0; i < anchorPairs.size(); i++)
+    if (anchorPairs[i].to.x == anchorPairs[i].to.x) idx.push_back((int)i); // not NAN
+  int N = (int)idx.size();
+  valid_count = N;
+  int need = min_anchors > 0 ? min_anchors : 3;
+  if (N < need) return N; // caller falls back to identity (tps_valid stays false)
+
+  std::vector<acv_XY> X(N);
+  for (int a = 0; a < N; a++) X[a] = anchorPairs[idx[a]].from;
+  std::vector<std::vector<double>> K(N, std::vector<double>(N, 0.0));
+  for (int a = 0; a < N; a++)
+    for (int b = 0; b < N; b++)
+    {
+      double dx = X[a].x - X[b].x, dy = X[a].y - X[b].y;
+      K[a][b] = tps_phi_r2(dx * dx + dy * dy);
+    }
+
+  // u = [cx(N) | cy(N) | a | b | tx | ty]
+  const int M = 2 * N + 4, OA = 2 * N, OB = 2 * N + 1, OTX = 2 * N + 2, OTY = 2 * N + 3;
+  cv::Mat S   = cv::Mat::zeros(M, M, CV_64F);
+  cv::Mat rhs = cv::Mat::zeros(M, 1, CV_64F);
+  std::vector<double> mx(M), my(M);
+
+  for (int a = 0; a < N; a++)
+  {
+    const anchorPair &p = anchorPairs[idx[a]];
+    double nx = p.constrainVector.x, ny = p.constrainVector.y;
+    double nrm = std::sqrt(nx * nx + ny * ny);
+    if (nrm > 1e-9) { nx /= nrm; ny /= nrm; } else { nx = 1; ny = 0; }
+    double wMaj = (p.weight  > 0) ? p.weight  : 1.0;  // precision along normal
+    double wMin = (p.w_minor > 0) ? p.w_minor : 0.0;  // precision along tangent
+    double w11 = wMaj * nx * nx + wMin * ny * ny;
+    double w22 = wMaj * ny * ny + wMin * nx * nx;
+    double w12 = (wMaj - wMin) * nx * ny;
+    double ux = p.to.x, uy = p.to.y;
+
+    std::fill(mx.begin(), mx.end(), 0.0);
+    std::fill(my.begin(), my.end(), 0.0);
+    for (int j = 0; j < N; j++) { mx[j] = K[a][j]; my[N + j] = K[a][j]; }
+    // similarity coupling: fx = a*x - b*y + tx ;  fy = a*y + b*x + ty
+    mx[OA] = X[a].x; mx[OB] = -X[a].y; mx[OTX] = 1.0;
+    my[OA] = X[a].y; my[OB] =  X[a].x; my[OTY] = 1.0;
+
+    for (int r = 0; r < M; r++)
+    {
+      double mxr = mx[r], myr = my[r];
+      if (mxr == 0.0 && myr == 0.0) continue;
+      double *Srow = S.ptr<double>(r);
+      for (int c = 0; c < M; c++)
+        Srow[c] += w11 * mxr * mx[c] + w12 * (mxr * my[c] + myr * mx[c]) + w22 * myr * my[c];
+      rhs.at<double>(r, 0) += w11 * mxr * ux + w12 * (mxr * uy + myr * ux) + w22 * myr * uy;
+    }
+  }
+
+  // Bending energy lambda*(cx^T K cx + cy^T K cy): add lambda*K to the cx,cy blocks.
+  // Penalises the RBF residual so the global similarity explains as much as it can
+  // and the kernel only bends where a similarity genuinely cannot fit.
+  double lam = (tps_lambda > 0) ? tps_lambda : 0.0;
+  for (int a = 0; a < N; a++)
+    for (int b = 0; b < N; b++)
+    {
+      S.at<double>(a,     b)     += lam * K[a][b];
+      S.at<double>(N + a, N + b) += lam * K[a][b];
+    }
+  // Regularize the global similarity toward IDENTITY (a=1, b=0, tx=0, ty=0) and the
+  // RBF coeffs toward 0. With rank-1 anchors the unobserved direction is a null space;
+  // ridging to identity keeps that direction at "no deformation". CRITICAL: scale the
+  // ridge to the similarity block's OWN data magnitude (its strongest diagonal), NOT
+  // the global trace -- the bending block (lam*K) dominates the trace and would make
+  // the ridge so strong it suppresses even a fully-observed translation. As a small
+  // fraction of the strongest observed DOF, the ridge is negligible where a DOF is
+  // observed (data wins -> full correction) yet still resolves the unobserved null
+  // direction to identity.
+  double sdmax = 0.0;
+  for (int k : {OA, OB, OTX, OTY}) sdmax = std::max(sdmax, S.at<double>(k, k));
+  double gamma = (double)((reg > 0 ? reg : 1e-3f)) * (sdmax + 1.0);
+  S.at<double>(OA,  OA)  += gamma; rhs.at<double>(OA,  0) += gamma; // a  -> 1
+  S.at<double>(OB,  OB)  += gamma;                                  // b  -> 0
+  S.at<double>(OTX, OTX) += gamma;                                  // tx -> 0
+  S.at<double>(OTY, OTY) += gamma;                                  // ty -> 0
+  for (int j = 0; j < 2 * N; j++) S.at<double>(j, j) += 1e-6 * (sdmax + 1.0); // c -> 0 (numerical)
+
+  cv::Mat theta;
+  if (!cv::solve(S, rhs, theta, cv::DECOMP_SVD)) return N; // singular -> fall back
+
+  double a = theta.at<double>(OA, 0), b = theta.at<double>(OB, 0);
+  double tx = theta.at<double>(OTX, 0), ty = theta.at<double>(OTY, 0);
+  tps_centers = X;
+  tps_cx.assign(N, 0.0); tps_cy.assign(N, 0.0);
+  for (int j = 0; j < N; j++) { tps_cx[j] = theta.at<double>(j, 0); tps_cy[j] = theta.at<double>(N + j, 0); }
+  // Store the similarity as an affine row so convert_tps stays unchanged:
+  //   fx = ax0 + ax1*x + ax2*y = tx + a*x + (-b)*y ;  fy = ty + b*x + a*y
+  tps_ax[0] = tx; tps_ax[1] = a;  tps_ax[2] = -b;
+  tps_ay[0] = ty; tps_ay[1] = b;  tps_ay[2] =  a;
+  tps_valid = true;
+  return N;
+}
+
+acv_XY ConstrainMap::convert_tps(acv_XY from)
+{
+  if (!tps_valid) return from;
+  double fx = tps_ax[0] + tps_ax[1] * from.x + tps_ax[2] * from.y;
+  double fy = tps_ay[0] + tps_ay[1] * from.x + tps_ay[2] * from.y;
+  for (size_t j = 0; j < tps_centers.size(); j++)
+  {
+    double dx = from.x - tps_centers[j].x, dy = from.y - tps_centers[j].y;
+    double ph = tps_phi_r2(dx * dx + dy * dy);
+    fx += tps_cx[j] * ph;
+    fy += tps_cy[j] * ph;
+  }
+  return acv_XY((float)fx, (float)fy);
 }
 
 inline int valueWarping(int v, int ringSize)
@@ -3823,6 +4030,22 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   acv_XY m_pt1 = cm.convert(cdef.pt1);
   acv_XY m_pt2 = cm.convert(cdef.pt2);
   acv_XY m_pt3 = cm.convert(cdef.pt3);
+  // Morph effectiveness test: report how well the morphed caliper points track
+  // the ground-truth deformed position q + D(q). off_morph = |predicted-true|,
+  // off_nomorph = |D(q)|; if off > caliper margin the feature is out of scope.
+  if (synth_field_enabled()) {
+    acv_XY q[3]   = {cdef.pt1, cdef.pt2, cdef.pt3};
+    acv_XY pr[3]  = {m_pt1, m_pt2, m_pt3};
+    const char *nm[3] = {"pt1", "pt2", "pt3"};
+    for (int t = 0; t < 3; t++) {
+      acv_XY d = synth_morph_field(q[t]);
+      float truex = q[t].x + d.x, truey = q[t].y + d.y;
+      float offm = sqrtf((pr[t].x-truex)*(pr[t].x-truex)+(pr[t].y-truey)*(pr[t].y-truey));
+      float offn = sqrtf(d.x*d.x + d.y*d.y);
+      fprintf(stderr, "[MORPHTEST] arc id=%d %s raw=(%.3f,%.3f) field=(%.3f,%.3f) pred=(%.3f,%.3f) off_nomorph=%.4f off_morph=%.4f\n",
+              cdef.id, nm[t], q[t].x, q[t].y, d.x, d.y, pr[t].x, pr[t].y, offn, offm);
+    }
+  }
 
   m_pt1 = acvRotation(cached_sin, cached_cos, flip_f, m_pt1);
   m_pt2 = acvRotation(cached_sin, cached_cos, flip_f, m_pt2);
@@ -4485,9 +4708,27 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
 
   // LOGI("p0:%f %f , p1:%f %f",line.p0.x,line.p0.y,line.p1.x,line.p1.y);
 
+  acv_XY l0_raw = lineDef.p0, l1_raw = lineDef.p1;
   lineDef.p0=cm.convert(lineDef.p0);
   lineDef.p1=cm.convert(lineDef.p1);
-  
+  // Morph effectiveness test (window follow): does the caliper window rotate/track
+  // the deformed edge? Compares the morphed endpoints + line angle against the
+  // ground-truth-deformed endpoints. off_* = endpoint error (mm); dang_* = line
+  // ANGLE error (deg) -> directly measures the photo's "red box must tilt to follow".
+  if (synth_field_enabled()) {
+    acv_XY d0 = synth_morph_field(l0_raw), d1 = synth_morph_field(l1_raw);
+    acv_XY t0 = acv_XY(l0_raw.x + d0.x, l0_raw.y + d0.y);
+    acv_XY t1 = acv_XY(l1_raw.x + d1.x, l1_raw.y + d1.y);
+    auto ang = [](acv_XY a, acv_XY b){ return (float)(atan2(b.y - a.y, b.x - a.x) * 180.0 / 3.14159265358979323846); };
+    auto dabs = [](acv_XY a, acv_XY b){ return sqrtf((a.x-b.x)*(a.x-b.x)+(a.y-b.y)*(a.y-b.y)); };
+    float a_true = ang(t0, t1), a_morph = ang(lineDef.p0, lineDef.p1), a_raw = ang(l0_raw, l1_raw);
+    auto wrap = [](float e){ while(e>180)e-=360; while(e<-180)e+=360; return e; };
+    fprintf(stderr, "[MORPHTEST] line id=%d off_nomorph=(%.4f,%.4f) off_morph=(%.4f,%.4f) "
+            "dang_nomorph=%.3f dang_morph=%.3f (deg)\n",
+            lineDef.id, dabs(l0_raw,t0), dabs(l1_raw,t1), dabs(lineDef.p0,t0), dabs(lineDef.p1,t1),
+            wrap(a_raw - a_true), wrap(a_morph - a_true));
+  }
+
   lineDef.p0 = TemplateDomain_TO_PixDomain(lineDef.p0, cached_sin, cached_cos, flip_f, calibCen, mmpp);
   lineDef.p1 = TemplateDomain_TO_PixDomain(lineDef.p1, cached_sin, cached_cos, flip_f, calibCen, mmpp);
   LOGV("p0:%f %f, p1:%f,%f",
@@ -5115,6 +5356,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
   cm.reg         = this->morph_reg;
   cm.outlier_k   = this->morph_outlier_k;
   cm.min_anchors = this->morph_min_anchors;
+  cm.tps_lambda  = this->morph_tps_lambda;
 
   float error = NAN;
 
@@ -5304,6 +5546,13 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
           calibCen,
           mmpp);
         cm.anchorPairs[j].to = locatedPtOnTemplate;
+        // Morph effectiveness test: add a known regional field to the anchor
+        // target so the morph sees a ground-truth deformation (diagnostics).
+        if (synth_field_enabled()) {
+          acv_XY d = synth_morph_field(cm.anchorPairs[j].from);
+          cm.anchorPairs[j].to.x += d.x;
+          cm.anchorPairs[j].to.y += d.y;
+        }
 
         // acv_XY pos = ;
         // LOGI("XY:%f %f -> %f %f", cm.anchorPairs[j].from.x, cm.anchorPairs[j].from.y, locatedPtOnTemplate.x, locatedPtOnTemplate.y);
@@ -6301,6 +6550,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   // Debug toggle read once (process-wide), so the per-frame path costs nothing
   // when off -- no getenv in the hot loop.
   static const bool dbg = (getenv("SHAPE_DBG") != nullptr);
+  // Test hook: add a deliberate offset (deg) to the located angle, to check how
+  // well the anchor-warp re-registers and keeps measurements stable (env INSP_ANG_OFFSET).
+  static const double angOffDeg = getenv("INSP_ANG_OFFSET") ? atof(getenv("INSP_ANG_OFFSET")) : 0.0;
 
   report.bacpac = bacpac;
   reports.resize(0);
@@ -6383,7 +6635,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     // matcher's flip path already negates internally, so flipped matches use the
     // angle as-is.
     float reg_deg = reg_angle_rad * 180.0f / (float)M_PI;
-    float corr_deg = m.flipped ? m.angle : (2.0f * reg_deg - m.angle);
+    float corr_deg = (m.flipped ? m.angle : (2.0f * reg_deg - m.angle)) + (float)angOffDeg;
     float ang = corr_deg * (float)M_PI / 180.0f;
     if (dbg)
       fprintf(stderr, "[SHAPE_DBG]  -> Center_mm=(%.4f,%.4f) m.angle=%.2f corr=%.2f flip=%d\n",
@@ -6429,6 +6681,7 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
   cm.reg         = this->morph_reg;
   cm.outlier_k   = this->morph_outlier_k;
   cm.min_anchors = this->morph_min_anchors;
+  cm.tps_lambda  = this->morph_tps_lambda;
 
   singleReport.similarity = similarity;
 
@@ -6472,6 +6725,11 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
       acv_XY locatedPtOnTemplate = Image_mm_Domain_TO_TemplateDomain(
           detectedSearchPoints[j].pt, cached_sin, cached_cos, flip_f, calibCen, mmpp);
       cm.anchorPairs[j].to = locatedPtOnTemplate;
+      if (synth_field_enabled()) {
+        acv_XY d = synth_morph_field(cm.anchorPairs[j].from);
+        cm.anchorPairs[j].to.x += d.x;
+        cm.anchorPairs[j].to.y += d.y;
+      }
     }
     cm.solve();
     if (k + 1 < morph_max_iter)

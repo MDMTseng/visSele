@@ -62,33 +62,49 @@ class ConstrainMap
   typedef struct anchorPair{
     acv_XY from;
     acv_XY to;
-    acv_XY constrainVector;
-    float weight;
+    acv_XY constrainVector;   // primary (well-localized) direction = major eigenvector
+    float weight;             // precision along constrainVector (w_major)
+    // Precision along the tangent (perpendicular to constrainVector). Auto-detected
+    // from the local structure: 0 = pure edge (1D, aperture along tangent), ~weight
+    // = corner (2D). Anything between is a graded ellipse. Used by the anisotropic
+    // data term in mode 2 (TPS) and mode 1.
+    float w_minor;
   }anchorPair;
 
   acv_XY center;
   vector<anchorPair> anchorPairs;
 
   // --- morph model selection (backward compatible: mode 0 == legacy convert_polar) ---
-  // 0 = legacy polar/complex distance-weighted similarity-about-center (default).
-  // 1 = directional weighted least-squares similarity (solve() caches it).
+  // 0 = legacy polar/complex distance-weighted similarity-about-center.
+  // 1 = directional weighted least-squares similarity (solve() caches it; default).
+  // 2 = anisotropic approximating-TPS: nonlinear/regional warp with per-anchor 2x2
+  //     precision (edge->corner handled simultaneously); solve_tps() caches it.
   int   mode        = 0;
   float reg         = 1e-3f; // ridge toward identity for the WLS fit (mode 1)
   float outlier_k   = 0;     // >0 enables MAD outlier rejection on anchor residuals
   int   min_anchors = 0;     // fewer valid anchors than this => identity morph (mode 1)
+  float tps_lambda  = 0.5f;  // mode 2 bending stiffness (0 -> interpolate; large -> affine)
 
   // Cached similarity transform for mode 1: [x';y'] = [sa -sb; sb sa][x;y] + [stx;sty]
   double sa = 1, sb = 0, stx = 0, sty = 0;
   int   valid_count = 0;     // # of non-NAN anchors used by the last solve()
+
+  // Cached approximating-TPS warp (mode 2):
+  //   f(p) = A[1,x,y] + sum_j c_j * phi(|p - center_j|),  phi(r)=r^2 log r^2.
+  bool   tps_valid = false;
+  std::vector<acv_XY> tps_centers;       // the from_j the RBF coeffs attach to
+  std::vector<double> tps_cx, tps_cy;    // RBF coeffs per center
+  double tps_ax[3] = {0, 1, 0};          // affine x-row (identity: x)
+  double tps_ay[3] = {0, 0, 1};          // affine y-row (identity: y)
 
   ConstrainMap()
   {
 
   }
 
-  void add(acv_XY from,acv_XY to,acv_XY constrainVector,float weight=1.0f)
+  void add(acv_XY from,acv_XY to,acv_XY constrainVector,float weight=1.0f,float w_minor=0.0f)
   {
-    anchorPairs.push_back((anchorPair){from:from,to:to,constrainVector:acvVecNormalize(constrainVector),weight:weight});
+    anchorPairs.push_back((anchorPair){from:from,to:to,constrainVector:acvVecNormalize(constrainVector),weight:weight,w_minor:w_minor});
   }
 
   int size()
@@ -105,11 +121,21 @@ class ConstrainMap
   void resetTransform()
   {
     sa = 1; sb = 0; stx = 0; sty = 0; valid_count = 0;
+    tps_valid = false; tps_centers.clear(); tps_cx.clear(); tps_cy.clear();
+    tps_ax[0] = 0; tps_ax[1] = 1; tps_ax[2] = 0;
+    tps_ay[0] = 0; tps_ay[1] = 0; tps_ay[2] = 1;
   }
 
   // Recompute the cached transform from the currently-filled anchors (mode 1).
   // Returns the number of valid (non-NAN) anchors. No-op for mode 0.
   int solve();
+
+  // Mode 2: fit the anisotropic approximating-TPS from the filled anchors, using
+  // each anchor's 2x2 precision (weight along constrainVector, w_minor along the
+  // tangent). Returns the number of anchors used. Falls back to identity on too
+  // few anchors / singular system.
+  int solve_tps();
+  acv_XY convert_tps(acv_XY from);
 
 
 
@@ -216,6 +242,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   float morph_outlier_k   = 0;
   float morph_reg         = 1e-3f;
   int   morph_min_anchors = 0;
+  float morph_tps_lambda  = 0.5f;   // mode 2 (tps) bending stiffness
 
   float sig_st1_matching_sim_thres;
 
