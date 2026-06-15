@@ -316,8 +316,16 @@ export class InspectionEditorLogic {
               // sig360 match-acceptance threshold lives on the sub-feature.
               if (typeof report.sig_match_sim_thres === 'number')
                 edit_info.sig_match_sim_thres = report.sig_match_sim_thres;
-  
-  
+              // Locating-anchor morph settings (sub-feature). Absent => keep the
+              // edit_info default ("tps"), which matches the core's absent-default.
+              if (typeof report.morph_mode === 'string')
+                edit_info.morph_mode = report.morph_mode;
+              if (typeof report.morph_tps_lambda === 'number')
+                edit_info.morph_tps_lambda = report.morph_tps_lambda;
+              if (typeof report.morph_max_iter === 'number')
+                edit_info.morph_max_iter = report.morph_max_iter;
+
+
               edit_info = Object.assign({}, edit_info);
   
               inspEditorLogic.SetDefInfo(report);
@@ -1445,6 +1453,12 @@ export function Edit_info_Empty() {
     matching_version: 1,
     inspection_downsample: 1,
     sig_match_sim_thres: 0.9,   // core default; min similarity to accept a sig360 match
+    // Locating-anchor morph (deformation correction). "tps" = similarity-base RBF
+    // (core default); "wls_similarity" / "legacy" to opt out. lambda/max_iter left
+    // undefined => core defaults (only serialized when the user sets them).
+    morph_mode: "tps",
+    morph_tps_lambda: undefined,
+    morph_max_iter: undefined,
     intrusionSizeLimitRatio: 0.1,
     img: null,
     DefFileName: "",

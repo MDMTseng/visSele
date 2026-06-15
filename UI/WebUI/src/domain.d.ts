@@ -48,7 +48,7 @@ export interface ArcShape extends ShapeBase {
 }
 export interface CircleShape extends ShapeBase { type: 'circle'; }
 export interface SearchPointShape extends ShapeBase {
-  type: 'search_point'; search_far?: boolean; locating_anchor?: boolean; line_thickness_value?: number;
+  type: 'search_point'; search_far?: boolean; locating_anchor?: boolean; anchor_corner?: boolean; line_thickness_value?: number;
 }
 export interface MeasureShape extends ShapeBase {
   type: 'measure'; subtype?: string;

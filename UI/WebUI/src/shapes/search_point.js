@@ -32,6 +32,10 @@ export const fields = {
   },
   edge:             edgeField({ method: 'first', polarity: 'any' }),
   locating_anchor:  { editor: 'switch', default: false, normalize: (v) => v === true },
+  // Anchor corner tag (used by the morph: corner => 2D-localized, constrains both
+  // axes; edge => 1D, constrains only along the search normal). Only meaningful
+  // when locating_anchor is true. Default false (edge).
+  anchor_corner:    { editor: 'switch', default: false, normalize: (v) => v === true },
   line_thickness_value: { skipEditor: true, default: 0, normalize: (v) => (typeof v === 'number' ? v : 0) },
   // Reference slot — search_point references one line (ref[0]). The schema
   // matches the legacy ref-button convention: outer __OBJ__:'div' renders

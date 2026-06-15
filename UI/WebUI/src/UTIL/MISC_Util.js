@@ -245,6 +245,16 @@ export function defFileGeneration(edit_info)
   // existing defs hash-stable.
   if (typeof edit_info.sig_match_sim_thres === 'number')
     report.featureSet[0].sig_match_sim_thres = edit_info.sig_match_sim_thres;
+  // Locating-anchor morph (deformation correction). Core reads "morph_mode" (STRING:
+  // "tps" | "wls_similarity" | "legacy") on the sig360 sub-feature; absent => "tps"
+  // (the core default). Only emit when non-default to keep existing defs hash-stable.
+  // lambda/max_iter only emitted when the user has set them (else core defaults).
+  if (typeof edit_info.morph_mode === 'string' && edit_info.morph_mode !== 'tps')
+    report.featureSet[0].morph_mode = edit_info.morph_mode;
+  if (typeof edit_info.morph_tps_lambda === 'number')
+    report.featureSet[0].morph_tps_lambda = edit_info.morph_tps_lambda;
+  if (typeof edit_info.morph_max_iter === 'number')
+    report.featureSet[0].morph_max_iter = edit_info.morph_max_iter;
 
   // Strip transient per-frame inspection RESULTS from the shapes before they get
   // hashed/saved. cal_hits (per-caliper edge hits) and the derived fit fields are

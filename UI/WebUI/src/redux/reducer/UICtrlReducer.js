@@ -839,6 +839,38 @@ function StateReducer(newState, action) {
               break;
             }
 
+          case DefConfAct.EVENT.Morph_Mode_Update:
+            {
+              // Anchor-morph model: "tps" (similarity-base RBF, core default) |
+              // "wls_similarity" | "legacy".
+              if (typeof action.data === 'string' &&
+                  ['tps', 'wls_similarity', 'legacy'].includes(action.data)) {
+                newState.edit_info = { ...newState.edit_info, morph_mode: action.data };
+              }
+              break;
+            }
+
+          case DefConfAct.EVENT.Morph_TPS_Lambda_Update:
+            {
+              // RBF bending stiffness (core default 0.5). undefined => use core default.
+              if (action.data === undefined ||
+                  (typeof action.data === 'number' && Number.isFinite(action.data) && action.data >= 0)) {
+                newState.edit_info = { ...newState.edit_info, morph_tps_lambda: action.data };
+              }
+              break;
+            }
+
+          case DefConfAct.EVENT.Morph_Max_Iter_Update:
+            {
+              // Morph relocation iterations (core default 1). undefined => core default.
+              if (action.data === undefined ||
+                  (typeof action.data === 'number' && Number.isFinite(action.data) && action.data >= 1)) {
+                newState.edit_info = { ...newState.edit_info,
+                  morph_max_iter: action.data === undefined ? undefined : Math.floor(action.data) };
+              }
+              break;
+            }
+
           case DefConfAct.EVENT.DefFileHash_Update:
             {
               let DefFileHash_root = newState.edit_info.DefFileHash_root;//root is still root

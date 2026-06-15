@@ -19,6 +19,9 @@ export const EVENT = {
   Matching_Version_Update:"Matching_Version_Update",
   Inspection_Downsample_Update:"Inspection_Downsample_Update",
   Sig_Match_Sim_Thres_Update:"Sig_Match_Sim_Thres_Update",
+  Morph_Mode_Update:"Morph_Mode_Update",
+  Morph_TPS_Lambda_Update:"Morph_TPS_Lambda_Update",
+  Morph_Max_Iter_Update:"Morph_Max_Iter_Update",
   InspOptionalTag_Update:"InspOptionalTag_Update",
   SUCCESS:"DEFCONF_MODE_SUCCESS",
   FAIL:"DEFCONF_MODE_FAIL",
@@ -122,6 +125,27 @@ export function Sig_Match_Sim_Thres_Update(v)
 {
   return {
     type: EVENT.Sig_Match_Sim_Thres_Update, data: v
+  }
+}
+
+export function Morph_Mode_Update(mode)
+{
+  return {
+    type: EVENT.Morph_Mode_Update, data: mode
+  }
+}
+
+export function Morph_TPS_Lambda_Update(v)
+{
+  return {
+    type: EVENT.Morph_TPS_Lambda_Update, data: v
+  }
+}
+
+export function Morph_Max_Iter_Update(v)
+{
+  return {
+    type: EVENT.Morph_Max_Iter_Update, data: v
   }
 }
 

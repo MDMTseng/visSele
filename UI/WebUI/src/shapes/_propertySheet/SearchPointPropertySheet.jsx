@@ -79,6 +79,9 @@ export function SearchPointPropertySheet({
     <SwitchField label={t('locating_anchor')}
       checked={!!shape.locating_anchor}
       onChange={(v) => update({ locating_anchor: v })} />
+    {shape.locating_anchor && <SwitchField label={t('anchor_corner')}
+      checked={!!shape.anchor_corner}
+      onChange={(v) => update({ anchor_corner: v })} />}
 
     {shape.locating === 'caliper' && <Section label="edge">
       <DropdownField label="method" value={shape.edge?.method}

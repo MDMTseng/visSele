@@ -133,6 +133,7 @@ export default {
     search_point:{
       search_far:"近/遠",
       locating_anchor:"定位錨點",
+      anchor_corner:"角點(2D)",
     },
     mainui:{
       select_deffile:"選擇定義檔",

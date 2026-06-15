@@ -1157,6 +1157,10 @@ function SettingUI({})
   // not a raw number. Unwrap + parse so the (number-typed) reducers accept it.
   const ACT_Inspection_Downsample_Update=(e) => { const n = parseFloat(e?.target?.value ?? e); if (Number.isFinite(n)) dispatch(DefConfAct.Inspection_Downsample_Update(n)) };// 1..8 (core caps at 4 today)
   const ACT_Sig_Match_Sim_Thres_Update=(e) => { const v = parseFloat(e?.target?.value ?? e); if (Number.isFinite(v)) dispatch(DefConfAct.Sig_Match_Sim_Thres_Update(v)) };// 0..1, core default 0.9
+  // Anchor-morph (deformation correction) controls.
+  const ACT_Morph_Mode_Update=(m) => dispatch(DefConfAct.Morph_Mode_Update(m));// "tps"|"wls_similarity"|"legacy"
+  const ACT_Morph_TPS_Lambda_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Morph_TPS_Lambda_Update(Number.isFinite(v) ? v : undefined)) };// core default 0.5
+  const ACT_Morph_Max_Iter_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Morph_Max_Iter_Update(Number.isFinite(v) ? v : undefined)) };// core default 1
 
   const DICT = useSelector(state => state.UIData.DICT);
   return [
@@ -1250,6 +1254,33 @@ function SettingUI({})
       max={1}
       value={edit_info.sig_match_sim_thres === undefined ? 0.9 : edit_info.sig_match_sim_thres}
       onChange={ACT_Sig_Match_Sim_Thres_Update}
+    />,
+
+    <Divider orientation="left">anchor morph</Divider>,
+    <span>&nbsp;mode&nbsp;</span>,
+    <select
+      value={edit_info.morph_mode || 'tps'}
+      onChange={(e) => ACT_Morph_Mode_Update(e.target.value)}
+      style={{ height: 24, fontSize: 12 }}
+    >
+      <option value="tps">tps (similarity-base RBF, default)</option>
+      <option value="wls_similarity">wls_similarity</option>
+      <option value="legacy">legacy (polar)</option>
+    </select>,
+    <br />,
+    (edit_info.morph_mode || 'tps') === 'tps' && <span key="ml">&nbsp;rbf λ (bending)&nbsp;</span>,
+    (edit_info.morph_mode || 'tps') === 'tps' && <NumberAccInput key="mli"
+      min={0}
+      max={50}
+      value={edit_info.morph_tps_lambda === undefined ? 0.5 : edit_info.morph_tps_lambda}
+      onChange={ACT_Morph_TPS_Lambda_Update}
+    />,
+    (edit_info.morph_mode || 'tps') !== 'legacy' && <span key="mit">&nbsp;max iter&nbsp;</span>,
+    (edit_info.morph_mode || 'tps') !== 'legacy' && <NumberAccInput key="miti"
+      min={1}
+      max={10}
+      value={edit_info.morph_max_iter === undefined ? 1 : edit_info.morph_max_iter}
+      onChange={ACT_Morph_Max_Iter_Update}
     />,
 
     <Divider orientation="left"/>,
