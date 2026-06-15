@@ -708,6 +708,11 @@ int ImgInspection_JSONStr(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime,
 
 int ImgInspection_DefRead(MatchingEngine &me, cv::Mat &test1_cv, int repeatTime, char *defFilename, FeatureManager_BacPac *bacpac);
 
+// Stamp _def_path + def_image_reg onto a def JSON so a shape-based locator can
+// resolve its template sidecar/pose (defined below; forward-declared for the live
+// WS def-load path, which precedes the definition).
+static char *def_stamp_context(const char *defJson, const char *defPath);
+
 typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst, size_t dstLen, uint8_t *src, size_t srcLen);
 
 // Downsample src by `downScale` (optionally within an X/Y/W/H crop) into dst.
@@ -2423,7 +2428,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
           // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
           matchingEng.ResetFeature();
-          matchingEng.AddMatchingFeature(jsonStr);
+          // Stamp shape-locator context (sidecar path + def_image_reg) like the
+          // --insp path so live/WS-loaded shape-based defs can train. deffile may
+          // be NULL when the def is pushed inline via "definfo" -> only the reg is
+          // stamped (no sidecar path); reference_image in the def still works.
+          {
+            char *injected_ctx = def_stamp_context(jsonStr, deffile);
+            matchingEng.AddMatchingFeature(injected_ctx ? injected_ctx : jsonStr);
+            if (injected_ctx) free(injected_ctx);
+          }
 
           // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
           void *target;
@@ -5510,7 +5523,11 @@ int testCode()
     LOGI("2__ %f  %f ___", loca.x, loca.y);
     char *string = ReadText("data/FM_gen.json");
     matchingEng.ResetFeature();
-    matchingEng.AddMatchingFeature(string);
+    {
+      char *injected_ctx = def_stamp_context(string, "data/FM_gen.json");
+      matchingEng.AddMatchingFeature(injected_ctx ? injected_ctx : string);
+      if (injected_ctx) free(injected_ctx);
+    }
 
     cv::Mat bw_img = cv::imread("data/gen_TEST/B.BMP", cv::IMREAD_COLOR);
     if (!bw_img.isContinuous()) bw_img = bw_img.clone();
@@ -5849,8 +5866,13 @@ int cp_main(int argc, char **argv)
       cJSON_Delete(dj);
     }
     matchingEng.ResetFeature();
-    matchingEng.AddMatchingFeature(ds);   // features stay loaded for the per-frame ImgInspection()
-    free(ds);
+    {
+      // Stamp shape-locator context so shape-based defs train on this path too.
+      char *injected_ctx = def_stamp_context(ds, defPath);
+      matchingEng.AddMatchingFeature(injected_ctx ? injected_ctx : ds);
+      if (injected_ctx) free(injected_ctx);
+    }
+    free(ds);   // features stay loaded for the per-frame ImgInspection()
 
     // Pick a camera: first discovered, or the one matching driverFilter.
     camLayerMan.discover();
