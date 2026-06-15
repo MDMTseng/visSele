@@ -6366,7 +6366,15 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   if (has_reg && def_mmpp > 0)
   {
     originPx = cv::Point2f(reg_center_mm.x / def_mmpp, reg_center_mm.y / def_mmpp);
-    reg_sin = sinf(reg_angle_rad);
+    // The silhouette/ROI mask must overlay the part with -reg, not +reg: the sig360
+    // signature frame is +reg-rotated from the part's actual placement (same angle-
+    // sign inversion as the match-site convention corr = 2*reg - m.angle). With +reg
+    // the mask landed 2*reg off the part, so the full-silhouette path was silently
+    // running on the no-mask fallback and any ROI intersected an off-part mask.
+    // setAngleOffset below keeps +reg: it offsets the REPORTED match angle (a
+    // separate convention); the template orientation is unchanged so the measured
+    // pose is unaffected.
+    reg_sin = -sinf(reg_angle_rad);
     reg_cos = cosf(reg_angle_rad);
     reg_flip_f = reg_flipped ? -1.0f : 1.0f;
     angle_offset_deg = reg_angle_rad * 180.0f / (float)M_PI;
