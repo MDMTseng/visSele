@@ -2000,6 +2000,20 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       this->locating_engine = 1;
     char *refimg = (char *)JFetch(root, "reference_image", cJSON_String);
     this->reference_image_name = (refimg != NULL) ? refimg : "";
+    // Optional localization ROI polygon (object-frame mm): [{x,y},...]. Restricts
+    // shape-locator feature extraction to the rigid region (see loc_roi_mm).
+    this->loc_roi_mm.clear();
+    cJSON *roi = cJSON_GetObjectItem(root, "localization_roi");
+    if (roi != NULL && cJSON_IsArray(roi))
+    {
+      cJSON *pt = NULL;
+      cJSON_ArrayForEach(pt, roi)
+      {
+        cJSON *jx = cJSON_GetObjectItem(pt, "x"), *jy = cJSON_GetObjectItem(pt, "y");
+        if (cJSON_IsNumber(jx) && cJSON_IsNumber(jy))
+          this->loc_roi_mm.push_back(acv_XY((float)jx->valuedouble, (float)jy->valuedouble));
+      }
+    }
     char *defp = (char *)JFetch(root, "_def_path", cJSON_String);
     this->def_path = (defp != NULL) ? defp : "";
     double *smin = JFetch_NUMBER(root, "shape_min_score");
@@ -6432,6 +6446,86 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     cv::dilate(blob, mask, kern);
     mask_src = "otsu_blob";
   }
+  // Diagnostic: draw the sig360 silhouette polygon TWICE -- once at identity (angle
+  // 0, green) and once at the reg pose (red) -- so the reg placement can be checked.
+  if (getenv("SHAPE_DRAW_SIG") && !raw_sig_radius.empty() && def_mmpp > 0)
+  {
+    cv::Mat vis; cv::cvtColor(templ, vis, cv::COLOR_GRAY2BGR);
+    std::vector<cv::Point> p0, pr, pn;
+    for (const acv_XY &s : raw_sig_radius)
+    {
+      float R = s.x, th = s.y;
+      if (!(R > 1e-4f)) continue;
+      acv_XY tp = { R * cosf(th), R * sinf(th) };
+      acv_XY a0 = TemplateDomain_TO_PixDomain(tp, 0.0f, 1.0f, 1.0f,
+                                              acv_XY(originPx.x, originPx.y), def_mmpp);
+      acv_XY ar = TemplateDomain_TO_PixDomain(tp, reg_sin, reg_cos, reg_flip_f,
+                                              acv_XY(originPx.x, originPx.y), def_mmpp);
+      acv_XY an = TemplateDomain_TO_PixDomain(tp, -reg_sin, reg_cos, reg_flip_f,
+                                              acv_XY(originPx.x, originPx.y), def_mmpp);  // -reg
+      p0.push_back(cv::Point((int)lround(a0.x), (int)lround(a0.y)));
+      pr.push_back(cv::Point((int)lround(ar.x), (int)lround(ar.y)));
+      pn.push_back(cv::Point((int)lround(an.x), (int)lround(an.y)));
+    }
+    if (p0.size() >= 3)
+    {
+      std::vector<std::vector<cv::Point>> g{p0}, r{pr}, n{pn};
+      cv::polylines(vis, g, true, cv::Scalar(0, 255, 0), 2);   // green = angle 0 (identity)
+      cv::polylines(vis, r, true, cv::Scalar(0, 0, 255), 2);   // red   = +reg pose
+      cv::polylines(vis, n, true, cv::Scalar(255, 255, 0), 2); // cyan  = -reg pose
+    }
+    cv::drawMarker(vis, originPx, cv::Scalar(255, 0, 255), cv::MARKER_CROSS, 40, 3);
+    try { cv::imwrite(getenv("SHAPE_DRAW_SIG"), vis);
+          fprintf(stderr, "[SHAPE_DRAW_SIG] wrote %s (green=angle0, red=reg, reg_deg=%.2f)\n",
+                  getenv("SHAPE_DRAW_SIG"), angle_offset_deg); }
+    catch (const cv::Exception &e) { fprintf(stderr, "[SHAPE_DRAW_SIG] failed: %s\n", e.what()); }
+  }
+  // Restrict the feature mask to the localization ROI (rigid region) if the def
+  // provides one. Localizing only on the deformation-invariant part keeps the
+  // global pose stable when the rest flexes; the morph handles the deformable
+  // features. The ROI polygon is object-frame mm (relative to origin), rendered
+  // through the SAME template->pixel transform as the silhouette above.
+  if (!loc_roi_mm.empty() && !mask.empty() && def_mmpp > 0)
+  {
+    std::vector<cv::Point> rpoly;
+    rpoly.reserve(loc_roi_mm.size());
+    for (const acv_XY &q : loc_roi_mm)
+    {
+      acv_XY px = TemplateDomain_TO_PixDomain(q, reg_sin, reg_cos, reg_flip_f,
+                                              acv_XY(originPx.x, originPx.y), def_mmpp);
+      rpoly.push_back(cv::Point((int)lround(px.x), (int)lround(px.y)));
+    }
+    if (rpoly.size() >= 3)
+    {
+      cv::Mat roiMask = cv::Mat::zeros(mask.size(), CV_8U);
+      std::vector<std::vector<cv::Point>> rpolys{rpoly};
+      cv::fillPoly(roiMask, rpolys, cv::Scalar(255));
+      cv::bitwise_and(mask, roiMask, mask);
+      mask_src = "signature+loc_roi";
+    }
+  }
+  if (getenv("SHAPE_DUMP_MASK") && !mask.empty())
+  {
+    cv::Mat vis; cv::cvtColor(templ, vis, cv::COLOR_GRAY2BGR);
+    cv::Mat red = vis.clone();
+    red.setTo(cv::Scalar(0, 0, 255), mask);   // red over the feature-extraction region
+    cv::addWeighted(vis, 0.5, red, 0.5, 0, vis);
+    // Object-frame markers (so the ROI can be authored in object mm): origin (green),
+    // +x tip (magenta), +y tip (cyan), and each search point's pt1 with its id.
+    auto proj = [&](acv_XY o){ return TemplateDomain_TO_PixDomain(o, reg_sin, reg_cos, reg_flip_f,
+                                 acv_XY(originPx.x, originPx.y), def_mmpp); };
+    auto P = [&](acv_XY o){ acv_XY p = proj(o); return cv::Point((int)lround(p.x),(int)lround(p.y)); };
+    cv::circle(vis, P(acv_XY(0,0)), 5, cv::Scalar(0,200,0), -1);
+    cv::line(vis, P(acv_XY(0,0)), P(acv_XY(2,0)), cv::Scalar(255,0,255), 2); cv::putText(vis,"+x",P(acv_XY(2.2f,0)),0,0.6,cv::Scalar(255,0,255),2);
+    cv::line(vis, P(acv_XY(0,0)), P(acv_XY(0,2)), cv::Scalar(255,255,0), 2); cv::putText(vis,"+y",P(acv_XY(0,2.2f)),0,0.6,cv::Scalar(255,255,0),2);
+    for (auto &sp : searchPointList) {
+      acv_XY q = sp.data.anglefollow.position;
+      cv::circle(vis, P(q), 4, cv::Scalar(0,140,255), -1);
+      cv::putText(vis, std::to_string(sp.id), P(acv_XY(q.x+0.1f,q.y)), 0, 0.5, cv::Scalar(0,140,255), 2);
+    }
+    try { cv::imwrite(getenv("SHAPE_DUMP_MASK"), vis); fprintf(stderr, "[SHAPE] mask dumped: %s (%s)\n", getenv("SHAPE_DUMP_MASK"), mask_src); }
+    catch (const cv::Exception &e) { fprintf(stderr, "[SHAPE] mask dump failed: %s\n", e.what()); }
+  }
   if (getenv("SHAPE_DBG"))
     fprintf(stderr, "[SHAPE_DBG] train: templ %dx%d origin=(%.1f,%.1f)[%s] areaPos=%d areaInv=%d blobArea=%d mask=%s maskPx=%d\n",
             templ.cols, templ.rows, originPx.x, originPx.y, origin_src, a1, a2, blobArea, mask_src,
@@ -6506,6 +6600,11 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
 
     sbm::ModelConfig modc;
     modc.angle.start = 0; modc.angle.end = 360; modc.angle.step = shape_angle_step_deg;
+    // Diagnostic override: SHAPE_ANG_RANGE="start,end" (raw template-rotation deg) to
+    // test a constrained angle search before wiring it to the def margin.
+    if (const char *ar = getenv("SHAPE_ANG_RANGE")) {
+      float s, e; if (sscanf(ar, "%f,%f", &s, &e) == 2) { modc.angle.start = s; modc.angle.end = e; }
+    }
     modc.flip = (matching_face == 0);   // match both faces when face==both
     int nv = shapeMatcher->addModel("def", *shapeFeatureSet, modc);
     if (nv <= 0) { LOGE("[shape] addModel failed (%d)", nv); return -1; }
@@ -6545,10 +6644,19 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
       }
       cv::drawMarker(vis, origin_use, cv::Scalar(255, 0, 255),
                      cv::MARKER_CROSS, 40, 3);   // registration origin
+      // Optional: de-rotate by the reg angle so the part is shown in the def
+      // (canonical/upright) frame -- the orientation the matcher canonicalizes to
+      // and the frame the ROI was authored in.
+      if (getenv("SHAPE_DRAW_DEROT") && angle_offset_deg != 0.0f)
+      {
+        cv::Mat R = cv::getRotationMatrix2D(origin_use, -angle_offset_deg, 1.0);
+        cv::warpAffine(vis, vis, R, vis.size(), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
+      }
       size_t dot = png.find_last_of('.');
       std::string outp = (dot == std::string::npos ? png : png.substr(0, dot)) + "_roi.png";
       cv::imwrite(outp, vis);
-      fprintf(stderr, "[SHAPE_DRAW_ROI] wrote %s (%d roi points)\n", outp.c_str(), (int)rpts.size());
+      fprintf(stderr, "[SHAPE_DRAW_ROI] wrote %s (%d roi points)%s\n", outp.c_str(), (int)rpts.size(),
+              getenv("SHAPE_DRAW_DEROT") ? " [de-rotated to def frame]" : "");
     }
 
     LOGI("[shape] trained from %s origin(%.1f,%.1f) variants=%d min_score=%.1f",

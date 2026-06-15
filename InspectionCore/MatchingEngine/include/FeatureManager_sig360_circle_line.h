@@ -304,6 +304,12 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   float  reg_angle_rad = 0;        // angle (rad)
   bool   reg_flipped = false;
   bool   has_reg = false;
+  // Optional localization ROI: a polygon (object-frame mm, relative to the
+  // registration origin) restricting WHERE the shape locator extracts its
+  // gradient features. Localizing only on the rigid (deformation-invariant)
+  // region keeps the global pose stable when the rest of the part flexes; the
+  // morph then corrects the deformable features. Empty => whole silhouette.
+  vector<acv_XY> loc_roi_mm;
 
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
