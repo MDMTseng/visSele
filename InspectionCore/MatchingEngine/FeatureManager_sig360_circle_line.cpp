@@ -2054,10 +2054,11 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     double *vtl = JFetch_NUMBER(root, "matching_v2_tol_mm");
     if (vtl != NULL && *vtl > 0) this->matching_v2_tol_mm = (float)*vtl;
 
-    // Locating-anchor morph (deformation correction). Backward compatible:
-    // absent => mode 0 (legacy convert_polar). Opt in per def with
-    // "wls_similarity"; "legacy"/"polar" are explicit no-ops for clarity.
-    this->morph_mode = 1;
+    // Locating-anchor morph (deformation correction). Default = mode 2
+    // (similarity-base RBF): best at keeping caliper windows on deformed features,
+    // and it falls back to the WLS similarity when anchors are too sparse. Opt out
+    // per def with "wls_similarity" (mode 1) or "legacy"/"polar" (mode 0).
+    this->morph_mode = 2;
     char *morphm = (char *)JFetch(root, "morph_mode", cJSON_String);
     if (morphm != NULL)
     {
@@ -3259,10 +3260,18 @@ int ConstrainMap::solve()
   // Mode 0 computes its warp per-call in convert_polar; nothing to cache.
   if (mode == 0)
     return valid;
-  // Mode 2: anisotropic approximating-TPS (handles mixed edge/corner anchors).
+  // Mode 2: similarity-base RBF (handles mixed edge/corner anchors). Falls back to
+  // the mode-1 WLS similarity when the RBF can't fit (too few anchors / singular)
+  // so sparse-anchor defs keep the previous behaviour instead of collapsing to
+  // identity. tps_valid stays false in that case -> convert() routes to WLS.
   if (mode == 2)
-    return solve_tps();
-  // Mode 1: identity unless we have enough anchors to trust a fit.
+  {
+    int n = solve_tps();
+    if (tps_valid)
+      return n;
+    // fall through to the WLS solve below.
+  }
+  // Mode 1 (and mode-2 fallback): identity unless we have enough anchors to trust a fit.
   resetTransform();
   valid_count = valid;
   int need = min_anchors > 0 ? min_anchors : 2;
@@ -3362,9 +3371,9 @@ acv_XY ConstrainMap::convert(acv_XY from)
 {
   if (mode == 0)
     return convert_polar(from);
-  if (mode == 2)
+  if (mode == 2 && tps_valid)
     return convert_tps(from);
-  // Mode 1: apply the cached directional-similarity transform.
+  // Mode 1 (and mode-2 fallback when the RBF couldn't fit): cached similarity.
   acv_XY out;
   out.x = (float)(sa * from.x - sb * from.y + stx);
   out.y = (float)(sb * from.x + sa * from.y + sty);
