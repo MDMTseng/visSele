@@ -2014,6 +2014,31 @@ int FeatureManager_sig360_circle_line::parse_jobj()
           this->loc_roi_mm.push_back(acv_XY((float)jx->valuedouble, (float)jy->valuedouble));
       }
     }
+    // Pure-SBM native feature-extraction region: arrays of polygons (object-frame mm).
+    // "localization_include" = where to extract gradient features; "localization_exclude"
+    // = avoid areas subtracted from it. mask = union(include) AND-NOT union(exclude).
+    // A migrated def bakes the sig360 silhouette into include; a fresh def authors it.
+    auto parse_poly_array = [](cJSON *arr, vector<vector<acv_XY>> &out) {
+      out.clear();
+      if (arr == NULL || !cJSON_IsArray(arr)) return;
+      cJSON *poly = NULL;
+      cJSON_ArrayForEach(poly, arr)
+      {
+        if (!cJSON_IsArray(poly)) continue;
+        vector<acv_XY> pts;
+        cJSON *pt = NULL;
+        cJSON_ArrayForEach(pt, poly)
+        {
+          cJSON *jx = cJSON_GetObjectItem(pt, "x"), *jy = cJSON_GetObjectItem(pt, "y");
+          if (cJSON_IsNumber(jx) && cJSON_IsNumber(jy))
+            pts.push_back(acv_XY((float)jx->valuedouble, (float)jy->valuedouble));
+        }
+        if (pts.size() >= 3) out.push_back(std::move(pts));
+      }
+    };
+    parse_poly_array(cJSON_GetObjectItem(root, "localization_include"), this->loc_incl_mm);
+    parse_poly_array(cJSON_GetObjectItem(root, "localization_exclude"), this->loc_excl_mm);
+
     char *defp = (char *)JFetch(root, "_def_path", cJSON_String);
     this->def_path = (defp != NULL) ? defp : "";
     char *refp = (char *)JFetch(root, "_ref_image_path", cJSON_String);
@@ -6423,13 +6448,48 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   }
 
   cv::Mat mask;
-  const char *mask_src = "none";
+  std::string mask_src = "none";
+
+  // Render an object-frame-mm polygon to scene pixels via the SAME template->pixel
+  // transform (reg-rotated) the silhouette/loc_roi use, so all regions share one frame.
+  auto render_poly_px = [&](const vector<acv_XY> &poly_mm) {
+    std::vector<cv::Point> px;
+    px.reserve(poly_mm.size());
+    for (const acv_XY &q : poly_mm)
+    {
+      acv_XY p = TemplateDomain_TO_PixDomain(q, reg_sin, reg_cos, reg_flip_f,
+                                             acv_XY(originPx.x, originPx.y), def_mmpp);
+      px.push_back(cv::Point((int)lround(p.x), (int)lround(p.y)));
+    }
+    return px;
+  };
+
+  // Pure-SBM native mask (highest priority): union(localization_include), dilated ~5px
+  // so the boundary gradient sits inside. The sig360 path below is skipped when this
+  // fires, so a migrated/fresh def never depends on the signature. Exclude polygons and
+  // localization_roi are applied uniformly further down to whatever mask was built.
+  if (!loc_incl_mm.empty() && def_mmpp > 0)
+  {
+    cv::Mat m = cv::Mat::zeros(templ.size(), CV_8U);
+    int filled = 0;
+    for (const auto &poly : loc_incl_mm)
+    {
+      std::vector<cv::Point> px = render_poly_px(poly);
+      if (px.size() >= 3) { std::vector<std::vector<cv::Point>> ps{px}; cv::fillPoly(m, ps, cv::Scalar(255)); filled++; }
+    }
+    if (filled > 0)
+    {
+      cv::dilate(m, m, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(11, 11)));
+      mask = m;
+      mask_src = "include";
+    }
+  }
 
   // Preferred feature mask: the def's sig360 silhouette. It is the exact part
   // region (so it precisely excludes the cage frame) and is rendered around the
   // origin via the measurement pipeline's own template->pixel transform at
   // identity pose -- so the coordinate frame matches automatically.
-  if (!raw_sig_radius.empty() && def_mmpp > 0)
+  if (mask.empty() && !raw_sig_radius.empty() && def_mmpp > 0)
   {
     std::vector<cv::Point> poly;
     const int N = (int)raw_sig_radius.size();
@@ -6509,22 +6569,28 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   // through the SAME template->pixel transform as the silhouette above.
   if (!loc_roi_mm.empty() && !mask.empty() && def_mmpp > 0)
   {
-    std::vector<cv::Point> rpoly;
-    rpoly.reserve(loc_roi_mm.size());
-    for (const acv_XY &q : loc_roi_mm)
-    {
-      acv_XY px = TemplateDomain_TO_PixDomain(q, reg_sin, reg_cos, reg_flip_f,
-                                              acv_XY(originPx.x, originPx.y), def_mmpp);
-      rpoly.push_back(cv::Point((int)lround(px.x), (int)lround(px.y)));
-    }
+    std::vector<cv::Point> rpoly = render_poly_px(loc_roi_mm);
     if (rpoly.size() >= 3)
     {
       cv::Mat roiMask = cv::Mat::zeros(mask.size(), CV_8U);
       std::vector<std::vector<cv::Point>> rpolys{rpoly};
       cv::fillPoly(roiMask, rpolys, cv::Scalar(255));
       cv::bitwise_and(mask, roiMask, mask);
-      mask_src = "signature+loc_roi";
+      mask_src += "+loc_roi";
     }
+  }
+  // Subtract the "avoid generation" exclude polygons from whatever mask was built
+  // (native include path, signature, or Otsu). Applied uniformly so a def can carve
+  // out a logo / moving sub-part / reflective patch regardless of the include source.
+  if (!loc_excl_mm.empty() && !mask.empty() && def_mmpp > 0)
+  {
+    int subtracted = 0;
+    for (const auto &poly : loc_excl_mm)
+    {
+      std::vector<cv::Point> px = render_poly_px(poly);
+      if (px.size() >= 3) { std::vector<std::vector<cv::Point>> ps{px}; cv::fillPoly(mask, ps, cv::Scalar(0)); subtracted++; }
+    }
+    if (subtracted > 0) mask_src += "-exclude";
   }
   if (getenv("SHAPE_DUMP_MASK") && !mask.empty())
   {
@@ -6545,12 +6611,12 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
       cv::circle(vis, P(q), 4, cv::Scalar(0,140,255), -1);
       cv::putText(vis, std::to_string(sp.id), P(acv_XY(q.x+0.1f,q.y)), 0, 0.5, cv::Scalar(0,140,255), 2);
     }
-    try { cv::imwrite(getenv("SHAPE_DUMP_MASK"), vis); fprintf(stderr, "[SHAPE] mask dumped: %s (%s)\n", getenv("SHAPE_DUMP_MASK"), mask_src); }
+    try { cv::imwrite(getenv("SHAPE_DUMP_MASK"), vis); fprintf(stderr, "[SHAPE] mask dumped: %s (%s)\n", getenv("SHAPE_DUMP_MASK"), mask_src.c_str()); }
     catch (const cv::Exception &e) { fprintf(stderr, "[SHAPE] mask dump failed: %s\n", e.what()); }
   }
   if (getenv("SHAPE_DBG"))
     fprintf(stderr, "[SHAPE_DBG] train: templ %dx%d origin=(%.1f,%.1f)[%s] areaPos=%d areaInv=%d blobArea=%d mask=%s maskPx=%d\n",
-            templ.cols, templ.rows, originPx.x, originPx.y, origin_src, a1, a2, blobArea, mask_src,
+            templ.cols, templ.rows, originPx.x, originPx.y, origin_src, a1, a2, blobArea, mask_src.c_str(),
             mask.empty() ? 0 : cv::countNonZero(mask));
 
   // Tight-crop the template to the part (mask bbox + margin). The whole-image
@@ -6610,29 +6676,9 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     fset.setAngleOffset(angle_offset_deg);
     shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fset);
 
-    sbm::MatchConfig mc;
-    mc.min_score        = shape_min_score;
-    mc.refine           = sbm::RefineMode::ROI;
-    if (const char *rm = getenv("SHAPE_REFINE")) {   // diagnostic override
-      if (strcmp(rm, "none") == 0) mc.refine = sbm::RefineMode::None;
-      else if (strcmp(rm, "icp") == 0) mc.refine = sbm::RefineMode::ICP;
-    }
-    mc.T_levels         = shape_pyramid_T;
-    mc.weak_threshold   = shape_weak_thres;
-    mc.strong_threshold = shape_strong_thres;
-    mc.blur_kernel_size = shape_blur;
-    mc.match_scale      = shape_match_scale;   // <1 = downscaled coarse match (ROI refine keeps accuracy)
-    shapeMatcher = std::make_shared<sbm::ShapeMatcher>(mc);
-
-    sbm::ModelConfig modc;
-    modc.angle.start = 0; modc.angle.end = 360; modc.angle.step = shape_angle_step_deg;
-    // Diagnostic override: SHAPE_ANG_RANGE="start,end" (raw template-rotation deg) to
-    // test a constrained angle search before wiring it to the def margin.
-    if (const char *ar = getenv("SHAPE_ANG_RANGE")) {
-      float s, e; if (sscanf(ar, "%f,%f", &s, &e) == 2) { modc.angle.start = s; modc.angle.end = e; }
-    }
-    modc.flip = (matching_face == 0);   // match both faces when face==both
-    int nv = shapeMatcher->addModel("def", *shapeFeatureSet, modc);
+    // Build the matcher at teach pixel scale (1.0). FeatureMatching_shape rescales it
+    // to def_mmpp/current_mmpp on the first frame for cross-magnification portability.
+    int nv = buildShapeMatcher(1.0f);
     if (nv <= 0) { LOGE("[shape] addModel failed (%d)", nv); return -1; }
 
     shape_ready = true;
@@ -6696,6 +6742,60 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   }
 }
 
+int FeatureManager_sig360_circle_line::buildShapeMatcher(float scale)
+{
+  if (!shapeFeatureSet) return -1;
+
+  sbm::MatchConfig mc;
+  mc.min_score        = shape_min_score;
+  mc.refine           = sbm::RefineMode::ROI;
+  if (const char *rm = getenv("SHAPE_REFINE")) {   // diagnostic override
+    if (strcmp(rm, "none") == 0) mc.refine = sbm::RefineMode::None;
+    else if (strcmp(rm, "icp") == 0) mc.refine = sbm::RefineMode::ICP;
+  }
+  mc.T_levels         = shape_pyramid_T;
+  mc.weak_threshold   = shape_weak_thres;
+  mc.strong_threshold = shape_strong_thres;
+  mc.blur_kernel_size = shape_blur;
+  mc.match_scale      = shape_match_scale;   // <1 = downscaled coarse match (ROI refine keeps accuracy)
+  auto m = std::make_shared<sbm::ShapeMatcher>(mc);
+
+  sbm::ModelConfig modc;
+  modc.angle.start = 0; modc.angle.end = 360; modc.angle.step = shape_angle_step_deg;
+  // Diagnostic override: SHAPE_ANG_RANGE="start,end" (raw template-rotation deg) to
+  // test a constrained angle search before wiring it to the def margin.
+  if (const char *ar = getenv("SHAPE_ANG_RANGE")) {
+    float s, e; if (sscanf(ar, "%f,%f", &s, &e) == 2) { modc.angle.start = s; modc.angle.end = e; }
+  }
+  modc.flip = (matching_face == 0);   // match both faces when face==both
+  // Pre-scale the model variants (magnification portability). 1.0 = teach scale.
+  modc.scale.min = scale; modc.scale.max = scale; modc.scale.step = 1.0f;
+
+  int nv = m->addModel("def", *shapeFeatureSet, modc);
+  if (nv <= 0) return nv;
+  shapeMatcher      = m;
+  shape_built_scale = scale;
+  return nv;
+}
+
+bool FeatureManager_sig360_circle_line::ensureShapeScale(float current_mmpp)
+{
+  // Without both mmpp values we cannot normalize magnification -- keep the matcher
+  // at whatever scale it was last built for (teach scale on the first frame).
+  if (def_mmpp <= 0.0f || current_mmpp <= 0.0f) return true;
+  // Template (built at def_mmpp) must be scaled to the live pixel size: the part
+  // spans S/def_mmpp px in the template and S/current_mmpp px in the scene, so the
+  // model variants scale by def_mmpp/current_mmpp.
+  float want = def_mmpp / current_mmpp;
+  if (fabsf(want - shape_built_scale) < 1e-3f) return true;   // already built for this mmpp
+
+  int nv = buildShapeMatcher(want);
+  if (nv <= 0) { LOGE("[shape] rescale failed (%d) scale=%.4f", nv, want); return false; }
+  LOGI("[shape] rescaled model to %.4f (def_mmpp=%.6f cur_mmpp=%.6f) variants=%d",
+       want, def_mmpp, current_mmpp, nv);
+  return true;
+}
+
 int FeatureManager_sig360_circle_line::FeatureMatching_shape()
 {
   // Debug toggle read once (process-wide), so the per-frame path costs nothing
@@ -6715,6 +6815,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   if (originalImage_cv.channels() == 1) scene = originalImage_cv;
   else cv::extractChannel(originalImage_cv, scene, 0);
   if (!scene.isContinuous()) scene = scene.clone();
+
+  // Magnification portability: rescale the model to the live mmpp before matching so
+  // a def teach-ed on one camera locates correctly on a different-magnification one
+  // (no-op when mmpp matches the teach scale; cached so a fixed camera pays once).
+  if (!ensureShapeScale(bacpac->sampler->mmpP_ideal())) return -1;
 
   // Match the full scene. Scene downscaling for speed is the def's shape_match_scale
   // (handled inside ShapeMatcher); ROI refine restores full-res accuracy.

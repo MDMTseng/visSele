@@ -280,6 +280,13 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   bool shape_ready = false;
   std::shared_ptr<sbm::ShapeMatcher> shapeMatcher;
   std::shared_ptr<sbm::FeatureSet> shapeFeatureSet;
+  // Magnification portability: the template is extracted at the def's teach pixel
+  // scale (def_mmpp). When this def runs on a camera with a different mmpp the part
+  // appears at a different pixel size, so the matched model variants must be scaled
+  // by def_mmpp/current_mmpp (the SBM analog of sig360 re-deriving its mm signature
+  // radius at the live mmpp). buildShapeMatcher() rebuilds the matcher at a given
+  // scale from the shape_* members; shape_built_scale = the scale it currently holds.
+  float shape_built_scale = 1.0f;
   std::string reference_image_name;   // optional explicit sidecar PNG (relative)
   std::string def_path;               // full path of the .hydef (for <base>.png)
   std::string ref_image_path;         // transient FULL path to the reference image,
@@ -320,6 +327,14 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // region keeps the global pose stable when the rest of the part flexes; the
   // morph then corrects the deformable features. Empty => whole silhouette.
   vector<acv_XY> loc_roi_mm;
+  // Pure-SBM native feature-extraction region (object-frame mm, origin-relative). The
+  // train-time mask = union(loc_incl_mm) AND-NOT union(loc_excl_mm). This is the
+  // SBM-native replacement for the sig360-signature silhouette: a migrated def bakes
+  // the signature into loc_incl_mm, a fresh def authors it by hand. Each entry is one
+  // polygon. Empty include => fall back to loc_roi_mm, then the sig360 signature, then
+  // Otsu (see trainShapeMatcher mask-priority).
+  vector<vector<acv_XY>> loc_incl_mm;   // include polygons (where to extract features)
+  vector<vector<acv_XY>> loc_excl_mm;   // exclude polygons ("avoid generation" areas)
 
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
@@ -416,6 +431,18 @@ protected:
   // Registration (origin/angle) is derived from the template's own silhouette
   // centroid so it shares the sig360 centroid basis. Returns 0 on success.
   int trainShapeMatcher();
+  // (Re)build shapeMatcher from the shape_* members with the model variants pre-scaled
+  // by `scale` (1.0 = teach pixel scale). Requires shapeFeatureSet to be set. Returns
+  // the variant count (>0) on success, <=0 on failure. Shared by trainShapeMatcher
+  // (scale 1.0) and ensureShapeScale (live mmpp ratio).
+  int buildShapeMatcher(float scale);
+  // Ensure the shape matcher's template variants are scaled for the live mmpp so a
+  // def is portable across camera magnifications. Rebuilds shapeMatcher at
+  // scale = def_mmpp/current_mmpp when it differs from shape_built_scale (cached, so
+  // a fixed-mmpp deployment only pays the variant-regen once). No-op (keeps the
+  // train-time scale) when def_mmpp or current_mmpp is unknown. Returns false only on
+  // a rebuild failure. Called at the head of FeatureMatching_shape.
+  bool ensureShapeScale(float current_mmpp);
   // Shape-based localization path: match the original grayscale, then run the
   // SAME anchor-morph + caliper measurement per detection. Populates `reports`.
   int FeatureMatching_shape();
