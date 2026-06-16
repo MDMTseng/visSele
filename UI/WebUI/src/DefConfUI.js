@@ -1755,6 +1755,15 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               report.name=fileName;
               ACT_DefFileName_Update(fileName)
             }
+            // For a shape-based def, point reference_image at the ACTUAL on-disk
+            // sidecar (<this-file-base>.png) -- the image is saved as <fileNamePath>.png
+            // below. Using the real file name (not the def's internal `name`) is what
+            // lets the core read the template instead of falling back to sig360.
+            if (report.featureSet && report.featureSet[0] &&
+                report.featureSet[0].locating_engine === 'shape_based') {
+              const imgBase = fileName.replace('.' + DEF_EXTENSION, "");
+              report.featureSet[0].reference_image = imgBase + ".png";
+            }
             // On a NEW save, record the registration (sig360 center + angle) of the
             // image being written as <def>.png. The def features live in the
             // reference/init frame (inherentfeatures[0]); storing this image's own

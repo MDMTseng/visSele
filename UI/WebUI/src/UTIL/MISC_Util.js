@@ -265,8 +265,11 @@ export function defFileGeneration(edit_info)
   // the default and leaves both absent (back-compatible / hash-stable).
   if (edit_info.locating_engine === 'shape_based') {
     report.featureSet[0].locating_engine = 'shape_based';
-    const base = (edit_info.DefFileName || '').replace(/\.[^.]+$/, '');
-    if (base) report.featureSet[0].reference_image = base + '.png';
+    // NOTE: reference_image (the <base>.png sidecar) is stamped in the SAVE callback
+    // from the ACTUAL on-disk file name, NOT here -- edit_info.DefFileName is the def's
+    // internal `name` field, which can differ from the real file name (that mismatch
+    // made the core unable to read the template -> fall back to sig360). The core also
+    // auto-derives <def>.png from the def path when reference_image is absent.
   }
   // Preserve def_image_reg (the shape locator's registered pose) across RE-saves of an
   // existing def -- the save flow only writes it fresh on a NEW save (!existed), so
