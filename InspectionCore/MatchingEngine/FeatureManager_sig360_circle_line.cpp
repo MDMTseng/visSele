@@ -6591,6 +6591,10 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     sbm::MatchConfig mc;
     mc.min_score        = shape_min_score;
     mc.refine           = sbm::RefineMode::ROI;
+    if (const char *rm = getenv("SHAPE_REFINE")) {   // diagnostic override
+      if (strcmp(rm, "none") == 0) mc.refine = sbm::RefineMode::None;
+      else if (strcmp(rm, "icp") == 0) mc.refine = sbm::RefineMode::ICP;
+    }
     mc.T_levels         = shape_pyramid_T;
     mc.weak_threshold   = shape_weak_thres;
     mc.strong_threshold = shape_strong_thres;
@@ -6760,7 +6764,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     // matcher's flip path already negates internally, so flipped matches use the
     // angle as-is.
     float reg_deg = reg_angle_rad * 180.0f / (float)M_PI;
-    float corr_deg = (m.flipped ? m.angle : (2.0f * reg_deg - m.angle)) + (float)angOffDeg;
+    // Object rotation in the def frame. line2Dup's angle is opposite-handed to the
+    // measurement convention, hence the base "2*reg - m.angle" (non-flip). A mirror
+    // REVERSES the sense of rotation, so a flipped match needs the negated base
+    // (verified against the sig360 path, which reports +127.3deg for a flipped frame
+    // where the un-negated shape formula gave -128.4deg -> angle measure 149deg vs
+    // the correct 0.87deg). flip_f=-1 below applies the mirror itself.
+    float corr_deg = (m.flipped ? -1.0f : 1.0f) * (2.0f * reg_deg - m.angle) + (float)angOffDeg;
     float ang = corr_deg * (float)M_PI / 180.0f;
     if (dbg)
       fprintf(stderr, "[SHAPE_DBG]  -> Center_mm=(%.4f,%.4f) m.angle=%.2f corr=%.2f flip=%d\n",
