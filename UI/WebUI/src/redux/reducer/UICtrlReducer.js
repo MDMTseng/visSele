@@ -893,6 +893,16 @@ function StateReducer(newState, action) {
               break;
             }
 
+          case DefConfAct.EVENT.Locating_Engine_Update:
+            {
+              // Localizer: "sig360" (contour signature) or "shape_based" (line2Dup +
+              // ROI refine). The shape locator trains from the def's <base>.png sidecar.
+              if (action.data === 'sig360' || action.data === 'shape_based') {
+                newState.edit_info = { ...newState.edit_info, locating_engine: action.data };
+              }
+              break;
+            }
+
           case DefConfAct.EVENT.DefFileHash_Update:
             {
               let DefFileHash_root = newState.edit_info.DefFileHash_root;//root is still root

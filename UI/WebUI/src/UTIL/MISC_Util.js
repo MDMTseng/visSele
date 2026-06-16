@@ -259,6 +259,20 @@ export function defFileGeneration(edit_info)
     report.featureSet[0].morph_alpha = edit_info.morph_alpha;
   if (typeof edit_info.shape_match_scale === 'number')
     report.featureSet[0].shape_match_scale = edit_info.shape_match_scale;
+  // Localizer: shape_based opts into the line2Dup + ROI-refine locator (trained from
+  // the def's <base>.png sidecar). reference_image points at that sidecar; the core
+  // also auto-derives <def>.png when it's absent, but emit it explicitly. sig360 is
+  // the default and leaves both absent (back-compatible / hash-stable).
+  if (edit_info.locating_engine === 'shape_based') {
+    report.featureSet[0].locating_engine = 'shape_based';
+    const base = (edit_info.DefFileName || '').replace(/\.[^.]+$/, '');
+    if (base) report.featureSet[0].reference_image = base + '.png';
+  }
+  // Preserve def_image_reg (the shape locator's registered pose) across RE-saves of an
+  // existing def -- the save flow only writes it fresh on a NEW save (!existed), so
+  // without this a migrate+resave of an existing def would drop it. New-save still
+  // overwrites with the freshly-detected pose.
+  if (edit_info.def_image_reg) report.def_image_reg = edit_info.def_image_reg;
 
   // Strip transient per-frame inspection RESULTS from the shapes before they get
   // hashed/saved. cal_hits (per-caliper edge hits) and the derived fit fields are

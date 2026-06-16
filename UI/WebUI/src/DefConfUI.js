@@ -1163,6 +1163,15 @@ function SettingUI({})
   const ACT_Morph_Max_Iter_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Morph_Max_Iter_Update(Number.isFinite(v) ? v : undefined)) };// core default 1
   const ACT_Morph_Alpha_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Morph_Alpha_Update(Number.isFinite(v) ? v : undefined)) };// (0,1], core default 1
   const ACT_Shape_Match_Scale_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Shape_Match_Scale_Update(Number.isFinite(v) ? v : undefined)) };// (0,1], core default 1
+  const ACT_Locating_Engine_Update=(v) => dispatch(DefConfAct.Locating_Engine_Update(v));// "sig360"|"shape_based"
+  // One-click migration of a legacy sig360 def to the shape-based localizer:
+  // flip the engine + apply the recommended fast coarse scale. anchor_corner and all
+  // other settings are carried over untouched. def_image_reg is already stored at save;
+  // reference_image is emitted from the def name. Re-SAVE afterwards to persist.
+  const ACT_Migrate_To_Shape=() => {
+    dispatch(DefConfAct.Locating_Engine_Update('shape_based'));
+    dispatch(DefConfAct.Shape_Match_Scale_Update(0.3));
+  };
 
   const DICT = useSelector(state => state.UIData.DICT);
   return [
@@ -1236,6 +1245,22 @@ function SettingUI({})
       value={edit_info.intrusionSizeLimitRatio}
       onChange={ACT_IntrusionSizeLimitRatio_Update}
     />,
+
+    <Divider orientation="left">localizer</Divider>,
+    <span>&nbsp;engine&nbsp;</span>,
+    <select
+      value={edit_info.locating_engine || 'sig360'}
+      onChange={(e) => ACT_Locating_Engine_Update(e.target.value)}
+      style={{ height: 24, fontSize: 12 }}
+    >
+      <option value="sig360">sig360 (contour signature)</option>
+      <option value="shape_based">shape_based (line2Dup + ROI refine)</option>
+    </select>,
+    (edit_info.locating_engine !== 'shape_based') && <Button key="mig2shape" size="small"
+      style={{ marginLeft: 8 }}
+      onClick={ACT_Migrate_To_Shape}
+      title="Switch to the shape-based localizer + set shape_match_scale=0.3. Re-save to persist. anchor_corner and other settings are kept.">
+      → migrate to shape_based (v2)</Button>,
 
     <Divider orientation="left">sig360 perf</Divider>,
     <Checkbox

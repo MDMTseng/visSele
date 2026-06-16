@@ -328,6 +328,8 @@ export class InspectionEditorLogic {
                 edit_info.morph_alpha = report.morph_alpha;
               if (typeof report.shape_match_scale === 'number')
                 edit_info.shape_match_scale = report.shape_match_scale;
+              edit_info.locating_engine =
+                (report.locating_engine === 'shape_based') ? 'shape_based' : 'sig360';
 
 
               edit_info = Object.assign({}, edit_info);
@@ -1465,6 +1467,7 @@ export function Edit_info_Empty() {
     morph_max_iter: undefined,
     morph_alpha: undefined,         // re-location relaxation, (0,1]; core default 1
     shape_match_scale: undefined,   // shape-locator coarse downscale, (0,1]; core default 1
+    locating_engine: "sig360",      // "sig360" | "shape_based" (shape = line2Dup+ROI refine)
     intrusionSizeLimitRatio: 0.1,
     img: null,
     DefFileName: "",
