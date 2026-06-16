@@ -209,6 +209,18 @@ export { CircularCounter, ConsumeQueue } from './structures';
 
 
 
+// Stamp the reference-image FULL path onto a def-INFO object before sending it to the
+// core for inspection (live/WS path). The saved .hydef stays path-free; the core reads
+// "_ref_image_path" (highest priority) to train the shape locator without guessing the
+// sidecar name. Path = <defModelPath>.png (the sidecar written next to the def on save).
+// No-op for unsaved defs (no defModelPath) and harmless for sig360 defs (ignored).
+export function stampRefImagePath(deffile, edit_info) {
+  if (deffile && deffile.featureSet && deffile.featureSet[0] && edit_info && edit_info.defModelPath) {
+    deffile.featureSet[0]._ref_image_path = String(edit_info.defModelPath).replace(/\.[^.]+$/, '') + '.png';
+  }
+  return deffile;
+}
+
 export function defFileGeneration(edit_info)
 {
 
@@ -259,17 +271,12 @@ export function defFileGeneration(edit_info)
     report.featureSet[0].morph_alpha = edit_info.morph_alpha;
   if (typeof edit_info.shape_match_scale === 'number')
     report.featureSet[0].shape_match_scale = edit_info.shape_match_scale;
-  // Localizer: shape_based opts into the line2Dup + ROI-refine locator (trained from
-  // the def's <base>.png sidecar). reference_image points at that sidecar; the core
-  // also auto-derives <def>.png when it's absent, but emit it explicitly. sig360 is
-  // the default and leaves both absent (back-compatible / hash-stable).
+  // Localizer: shape_based opts into the line2Dup + ROI-refine locator. The reference
+  // image is NOT a def-file field (kept path-free / portable): the core gets its path
+  // at runtime via "_ref_image_path" (stampRefImagePath, stamped into the def-INFO the
+  // WebUI sends), or derives <def>.png from the def path on the --insp path.
   if (edit_info.locating_engine === 'shape_based') {
     report.featureSet[0].locating_engine = 'shape_based';
-    // NOTE: reference_image (the <base>.png sidecar) is stamped in the SAVE callback
-    // from the ACTUAL on-disk file name, NOT here -- edit_info.DefFileName is the def's
-    // internal `name` field, which can differ from the real file name (that mismatch
-    // made the core unable to read the template -> fall back to sig360). The core also
-    // auto-derives <def>.png from the def path when reference_image is absent.
   }
   // Preserve def_image_reg (the shape locator's registered pose) across RE-saves of an
   // existing def -- the save flow only writes it fresh on a NEW save (!existed), so

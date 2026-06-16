@@ -26,7 +26,7 @@ import {
   round as roundX, websocket_autoReconnect,
   websocket_reqTrack, dictLookUp,
   GetObjElement, Exp2PostfixExp, PostfixExpCalc,
-  defFileGeneration
+  defFileGeneration, stampRefImagePath
 } from 'UTIL/MISC_Util';
 
 import { mkLog } from 'UTIL/logger';
@@ -1610,6 +1610,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
 
     let deffile = defFileGeneration(edit_info);
+    stampRefImagePath(deffile, edit_info);   // shape locator: ref-image path for the core
     deffile.intrusionSizeLimitRatio=1;
     setCacheDef(deffile);
 
@@ -1754,15 +1755,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             {
               report.name=fileName;
               ACT_DefFileName_Update(fileName)
-            }
-            // For a shape-based def, point reference_image at the ACTUAL on-disk
-            // sidecar (<this-file-base>.png) -- the image is saved as <fileNamePath>.png
-            // below. Using the real file name (not the def's internal `name`) is what
-            // lets the core read the template instead of falling back to sig360.
-            if (report.featureSet && report.featureSet[0] &&
-                report.featureSet[0].locating_engine === 'shape_based') {
-              const imgBase = fileName.replace('.' + DEF_EXTENSION, "");
-              report.featureSet[0].reference_image = imgBase + ".png";
             }
             // On a NEW save, record the registration (sig360 center + angle) of the
             // image being written as <def>.png. The def features live in the
@@ -1933,6 +1925,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       key="INST_CHECK"
       text="INST_CHECK" onClick={() => {
         let deffile = defFileGeneration(edit_info);
+        stampRefImagePath(deffile, edit_info);   // shape locator: ref-image path for the core
         console.log("deffile",deffile);
         deffile.intrusionSizeLimitRatio=1;
         console.log("INST_CHECK");
@@ -2277,6 +2270,7 @@ function DefConfImageSwitcher() {
   const sendOrientationInspect = () => {
     if (!CORE_ID || !edit_info || !edit_info._obj || !edit_info._obj.sig360info) return;
     let deffile = defFileGeneration(edit_info);
+    stampRefImagePath(deffile, edit_info);   // shape locator: ref-image path for the core
     deffile.intrusionSizeLimitRatio = 1;
     ACT_WS_SEND_BPG(CORE_ID, "II", 0,
       { definfo: deffile, imgsrc: "__CACHE_IMG__",
@@ -2730,6 +2724,7 @@ class APP_DEFCONF_MODE extends React.Component {
               text="CHECK" onClick={() =>{
 
                 let deffile = defFileGeneration(this.props.edit_info);
+                stampRefImagePath(deffile, this.props.edit_info);   // shape locator: ref-image path
                 deffile.intrusionSizeLimitRatio=1;
   
 

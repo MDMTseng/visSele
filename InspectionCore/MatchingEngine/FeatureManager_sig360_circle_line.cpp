@@ -2016,6 +2016,8 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     }
     char *defp = (char *)JFetch(root, "_def_path", cJSON_String);
     this->def_path = (defp != NULL) ? defp : "";
+    char *refp = (char *)JFetch(root, "_ref_image_path", cJSON_String);
+    this->ref_image_path = (refp != NULL) ? refp : "";
     double *smin = JFetch_NUMBER(root, "shape_min_score");
     if (smin != NULL && *smin > 0) this->shape_min_score = (float)*smin;
     double *sastep = JFetch_NUMBER(root, "shape_angle_step_deg");
@@ -6312,13 +6314,19 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
   shapeMatcher.reset();
   shapeFeatureSet.reset();
 
-  // Resolve the template image path: explicit def "reference_image" (relative to
-  // the def's dir) wins; otherwise derive "<def-base>.png" from the def path
-  // (def "_def_path", else env VISSELE_DEF_PATH set by the --insp entry).
+  // Resolve the template image path, in priority order:
+  //   1. "_ref_image_path": a FULL path supplied at runtime (e.g. the WebUI stamps it
+  //      into the def-info it sends), so the saved def stays path-free / portable.
+  //   2. "reference_image" (relative) resolved against the def's dir.
+  //   3. "<def-base>.png" derived from the def path (_def_path / VISSELE_DEF_PATH).
   std::string base = !def_path.empty() ? def_path
                      : (getenv("VISSELE_DEF_PATH") ? std::string(getenv("VISSELE_DEF_PATH")) : std::string());
   std::string png;
-  if (!reference_image_name.empty())
+  if (!ref_image_path.empty())
+  {
+    png = ref_image_path;
+  }
+  else if (!reference_image_name.empty())
   {
     std::string dir;
     size_t slash = base.find_last_of("/\\");

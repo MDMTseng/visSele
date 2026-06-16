@@ -282,6 +282,9 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   std::shared_ptr<sbm::FeatureSet> shapeFeatureSet;
   std::string reference_image_name;   // optional explicit sidecar PNG (relative)
   std::string def_path;               // full path of the .hydef (for <base>.png)
+  std::string ref_image_path;         // transient FULL path to the reference image,
+                                      // supplied at runtime (e.g. WebUI def-info "_ref_image_path");
+                                      // highest priority so the def file stays path-free.
   float shape_min_score = 50.0f;      // line2Dup similarity gate (0-100)
   float shape_angle_step_deg = 1.0f;  // template rotation granularity
   float shape_match_scale = 1.0f;     // <1 downscales the scene for the coarse
