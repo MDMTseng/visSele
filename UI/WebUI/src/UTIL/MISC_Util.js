@@ -277,6 +277,35 @@ export function defFileGeneration(edit_info)
   // WebUI sends), or derives <def>.png from the def path on the --insp path.
   if (edit_info.locating_engine === 'shape_based') {
     report.featureSet[0].locating_engine = 'shape_based';
+    // Pure-SBM feature-extraction region (object-frame mm polygons). Priority:
+    //   1. user-authored region in edit_info (the authoring UI), if present;
+    //   2. else auto-bake from the sig360 signature silhouette (migration default).
+    // Baking the signature -> include is what makes the SBM localizer independent of
+    // the sig360 block (the block itself is kept dormant for A/B). It is also the
+    // pixel->mm "store features in unit coords" step: the signature is already mm, so
+    // a bin (R mm, theta rad) maps to {x:R*cos, y:R*sin} -- magnification-portable.
+    // Re-bake is deterministic (signature unchanged => identical poly => stable hash).
+    const authoredIncl = edit_info.localization_include;
+    if (Array.isArray(authoredIncl) && authoredIncl.length) {
+      report.featureSet[0].localization_include = authoredIncl;
+      if (Array.isArray(edit_info.localization_exclude) && edit_info.localization_exclude.length)
+        report.featureSet[0].localization_exclude = edit_info.localization_exclude;
+      if (Array.isArray(edit_info.roi_refine_points) && edit_info.roi_refine_points.length)
+        report.featureSet[0].roi_refine_points = edit_info.roi_refine_points;
+    } else {
+      const inh = report.featureSet[0].inherentfeatures;
+      const sig = inh && inh[0] && inh[0].signature;
+      if (sig && Array.isArray(sig.magnitude) && Array.isArray(sig.angle)) {
+        const r5 = (v) => Math.round(v * 100000) / 100000;   // match signature precision
+        const poly = [];
+        const n = Math.min(sig.magnitude.length, sig.angle.length);
+        for (let i = 0; i < n; i++) {
+          const R = sig.magnitude[i], t = sig.angle[i];
+          if (R > 1e-4) poly.push({ x: r5(R * Math.cos(t)), y: r5(R * Math.sin(t)) });
+        }
+        if (poly.length >= 3) report.featureSet[0].localization_include = [poly];
+      }
+    }
   }
   // Preserve def_image_reg (the shape locator's registered pose) across RE-saves of an
   // existing def -- the save flow only writes it fresh on a NEW save (!existed), so
