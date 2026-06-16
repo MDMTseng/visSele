@@ -277,21 +277,30 @@ export function defFileGeneration(edit_info)
   // WebUI sends), or derives <def>.png from the def path on the --insp path.
   if (edit_info.locating_engine === 'shape_based') {
     report.featureSet[0].locating_engine = 'shape_based';
-    // Pure-SBM feature-extraction region (object-frame mm polygons). Priority:
-    //   1. user-authored region in edit_info (the authoring UI), if present;
-    //   2. else auto-bake from the sig360 signature silhouette (migration default).
-    // Baking the signature -> include is what makes the SBM localizer independent of
-    // the sig360 block (the block itself is kept dormant for A/B). It is also the
-    // pixel->mm "store features in unit coords" step: the signature is already mm, so
-    // a bin (R mm, theta rad) maps to {x:R*cos, y:R*sin} -- magnification-portable.
-    // Re-bake is deterministic (signature unchanged => identical poly => stable hash).
-    const authoredIncl = edit_info.localization_include;
-    if (Array.isArray(authoredIncl) && authoredIncl.length) {
-      report.featureSet[0].localization_include = authoredIncl;
-      if (Array.isArray(edit_info.localization_exclude) && edit_info.localization_exclude.length)
-        report.featureSet[0].localization_exclude = edit_info.localization_exclude;
-      if (Array.isArray(edit_info.roi_refine_points) && edit_info.roi_refine_points.length)
-        report.featureSet[0].roi_refine_points = edit_info.roi_refine_points;
+    // Pure-SBM feature-extraction region (object-frame mm polygons). The user authors
+    // them as loc_include / loc_exclude SHAPES on the canvas (same object-frame mm as
+    // every other shape, so the points need no transform). Pull them out of the
+    // measurement-feature list and emit them as the def's localization_include /
+    // localization_exclude. Falls back to baking the sig360 silhouette into include
+    // (migration default) when the user authored no include region. The signature is
+    // already mm, so a bin (R mm, theta rad) -> {x:R*cos, y:R*sin}: the pixel->unit
+    // step that makes the locator magnification-portable and sig360-independent.
+    const feats = Array.isArray(report.featureSet[0].features) ? report.featureSet[0].features : [];
+    const inclShapes = feats.filter((s) => s && s.type === 'loc_include');
+    const exclShapes = feats.filter((s) => s && s.type === 'loc_exclude');
+    if (inclShapes.length || exclShapes.length) {
+      // Localization config is NOT a measurement feature — strip from features[].
+      report.featureSet[0].features = feats.filter(
+        (s) => s && s.type !== 'loc_include' && s.type !== 'loc_exclude');
+    }
+    const toPolys = (shapes) => shapes
+      .map((s) => (Array.isArray(s.points) ? s.points.map((p) => ({ x: p.x, y: p.y })) : []))
+      .filter((p) => p.length >= 3);
+    const inclPolys = toPolys(inclShapes);
+    const exclPolys = toPolys(exclShapes);
+
+    if (inclPolys.length) {
+      report.featureSet[0].localization_include = inclPolys;
     } else {
       const inh = report.featureSet[0].inherentfeatures;
       const sig = inh && inh[0] && inh[0].signature;
@@ -306,6 +315,10 @@ export function defFileGeneration(edit_info)
         if (poly.length >= 3) report.featureSet[0].localization_include = [poly];
       }
     }
+    if (exclPolys.length) report.featureSet[0].localization_exclude = exclPolys;
+    // ROI-refine sample points (object-frame mm). Empty => core auto-selects.
+    if (Array.isArray(edit_info.roi_refine_points) && edit_info.roi_refine_points.length)
+      report.featureSet[0].roi_refine_points = edit_info.roi_refine_points;
   }
   // Preserve def_image_reg (the shape locator's registered pose) across RE-saves of an
   // existing def -- the save flow only writes it fresh on a NEW save (!existed), so

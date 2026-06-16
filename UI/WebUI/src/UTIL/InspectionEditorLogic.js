@@ -330,6 +330,15 @@ export class InspectionEditorLogic {
                 edit_info.shape_match_scale = report.shape_match_scale;
               edit_info.locating_engine =
                 (report.locating_engine === 'shape_based') ? 'shape_based' : 'sig360';
+              // Shape-locator registration (origin+angle) lives at the def top level;
+              // load it so a re-save preserves it (MISC_Util carries edit_info.def_image_reg)
+              // and the localization-settings editor can re-set it.
+              if (root_defFile.def_image_reg)
+                edit_info.def_image_reg = root_defFile.def_image_reg;
+              // Optional user-overridden ROI-refine points (object-frame mm). Absent =>
+              // the core auto-selects; an empty array here keeps "auto".
+              if (Array.isArray(report.roi_refine_points))
+                edit_info.roi_refine_points = report.roi_refine_points;
 
 
               edit_info = Object.assign({}, edit_info);
@@ -695,6 +704,27 @@ export class InspectionEditorLogic {
 
   SetDefInfo(defInfo) {
     this.SetShapeList(defInfo.features);
+
+    // Rebuild the shape-based localizer's feature-extraction regions
+    // (localization_include / localization_exclude — object-frame mm polygon arrays)
+    // as editable loc_include / loc_exclude shapes. They round-trip back into those
+    // arrays at save (defFileGeneration strips them from features). Ids are assigned
+    // above the current max so they never collide with measurement features.
+    const addRegionShapes = (arr, type, baseName) => {
+      if (!Array.isArray(arr)) return;
+      arr.forEach((poly, idx) => {
+        if (!Array.isArray(poly) || poly.length < 3) return;
+        this.shapeCount = (this.shapeCount || 0) + 1;
+        this.shapeList.push({
+          id: this.shapeCount,
+          type,
+          name: baseName + (idx > 0 ? ('_' + idx) : ''),
+          points: poly.map((p) => ({ x: p.x, y: p.y })),
+        });
+      });
+    };
+    addRegionShapes(defInfo.localization_include, 'loc_include', '@__LOC_INCLUDE__');
+    addRegionShapes(defInfo.localization_exclude, 'loc_exclude', '@__LOC_EXCLUDE__');
 
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);

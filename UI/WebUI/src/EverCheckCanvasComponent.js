@@ -1544,6 +1544,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       case UI_SM_STATES.DEFCONF_MODE_ARC_CREATE:
         type = SHAPE_TYPE.arc;
         break;
+      case UI_SM_STATES.DEFCONF_MODE_LOC_INCLUDE_CREATE:
+        type = SHAPE_TYPE.loc_include;
+        break;
+      case UI_SM_STATES.DEFCONF_MODE_LOC_EXCLUDE_CREATE:
+        type = SHAPE_TYPE.loc_exclude;
+        break;
       case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
         type = SHAPE_TYPE.aux_point;
         break;
@@ -1891,6 +1897,34 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           break;
         }
 
+
+      case UI_SM_STATES.DEFCONF_MODE_LOC_INCLUDE_CREATE:
+      case UI_SM_STATES.DEFCONF_MODE_LOC_EXCLUDE_CREATE:
+        {
+          // Click-to-add-vertex polygon. The cursor (mouseOnCanvas2) is already in
+          // object-frame mm — the exact frame the def's localization_include/_exclude
+          // arrays use — so vertices are stored verbatim, no transform. Close the
+          // polygon by clicking near the first vertex (>=3 verts) to commit.
+          const ptype = (this.state.substate == UI_SM_STATES.DEFCONF_MODE_LOC_INCLUDE_CREATE)
+            ? SHAPE_TYPE.loc_include : SHAPE_TYPE.loc_exclude;
+          if (this.EditShape == null || this.EditShape.type !== ptype) {
+            this.EditShape = { type: ptype, points: [], color: this.colorSet.unselected };
+          }
+          this.EditShape._cursor = { x: mouseOnCanvas2.x, y: mouseOnCanvas2.y };  // rubber-band preview
+          if (this.mouseStatus.status == 1 && ifOnMouseLeftClickEdge) {
+            const pts = this.EditShape.points;
+            const closeDist = this.mouse_close_dist / this.camera.GetCameraScale();
+            if (pts.length >= 3 &&
+                Math.hypot(mouseOnCanvas2.x - pts[0].x, mouseOnCanvas2.y - pts[0].y) < closeDist) {
+              delete this.EditShape._cursor;
+              this.SetShape(this.EditShape);
+              this.EmitEvent(DefConfAct.SUCCESS());
+            } else {
+              pts.push({ x: mouseOnCanvas2.x, y: mouseOnCanvas2.y });
+            }
+          }
+          break;
+        }
 
       case UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE:
       case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:

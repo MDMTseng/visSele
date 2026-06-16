@@ -25,6 +25,7 @@ export const EVENT = {
   Morph_Alpha_Update:"Morph_Alpha_Update",
   Shape_Match_Scale_Update:"Shape_Match_Scale_Update",
   Locating_Engine_Update:"Locating_Engine_Update",
+  EditInfo_Patch:"EditInfo_Patch",
   InspOptionalTag_Update:"InspOptionalTag_Update",
   SUCCESS:"DEFCONF_MODE_SUCCESS",
   FAIL:"DEFCONF_MODE_FAIL",
@@ -170,6 +171,15 @@ export function Locating_Engine_Update(v)
 {
   return {
     type: EVENT.Locating_Engine_Update, data: v
+  }
+}
+
+// Generic shallow merge into edit_info. Used for low-frequency localization
+// settings (def_image_reg, roi_refine_points) that don't warrant a dedicated action.
+export function EditInfo_Patch(patch)
+{
+  return {
+    type: EVENT.EditInfo_Patch, data: patch
   }
 }
 

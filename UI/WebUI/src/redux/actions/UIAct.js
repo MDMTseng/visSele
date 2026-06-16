@@ -12,6 +12,8 @@ export const UI_SM_STATES = {
   DEFCONF_MODE_SEARCH_POINT_CREATE:"SEARCH_POINT_CREATE",
   DEFCONF_MODE_MEASURE_CREATE:"MEASURE_CREATE",
   DEFCONF_MODE_ARC_CREATE:"ARC_CREATE",
+  DEFCONF_MODE_LOC_INCLUDE_CREATE:"LOC_INCLUDE_CREATE",
+  DEFCONF_MODE_LOC_EXCLUDE_CREATE:"LOC_EXCLUDE_CREATE",
   DEFCONF_MODE_SHAPE_EDIT:"SHAPE_EDIT",
 
 
@@ -46,6 +48,8 @@ export const SHAPE_TYPE = {
   aux_point:"aux_point",
   aux_line:"aux_line",
   search_point:"search_point",
+  loc_include:"loc_include",
+  loc_exclude:"loc_exclude",
 
   measure:"measure",
   measure_subtype:{
@@ -100,6 +104,8 @@ export const UI_SM_EVENT = {
   SIG360_Extraction:"SIG360_Extraction",
   Line_Create:"Line_Create",
   Arc_Create:"Arc_Create",
+  Loc_Include_Create:"Loc_Include_Create",
+  Loc_Exclude_Create:"Loc_Exclude_Create",
   Aux_Line_Create:"Aux_Line_Create",
   Search_Point_Create:"Search_Point_Create",
   Aux_Point_Create:"Aux_Point_Create",

@@ -903,6 +903,16 @@ function StateReducer(newState, action) {
               break;
             }
 
+          case DefConfAct.EVENT.EditInfo_Patch:
+            {
+              // Generic shallow merge into edit_info (localization settings:
+              // def_image_reg, roi_refine_points). New object ref so selectors re-run.
+              if (action.data && typeof action.data === 'object') {
+                newState.edit_info = { ...newState.edit_info, ...action.data };
+              }
+              break;
+            }
+
           case DefConfAct.EVENT.DefFileHash_Update:
             {
               let DefFileHash_root = newState.edit_info.DefFileHash_root;//root is still root

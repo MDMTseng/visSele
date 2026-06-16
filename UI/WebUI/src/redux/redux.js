@@ -26,6 +26,8 @@ const EditStates = {
                      [UISEV.Search_Point_Create]: UISTS.DEFCONF_MODE_SEARCH_POINT_CREATE,
                      [UISEV.Aux_Point_Create]: UISTS.DEFCONF_MODE_AUX_POINT_CREATE,
                      [UISEV.Aux_Line_Create]: UISTS.DEFCONF_MODE_AUX_LINE_CREATE,
+                     [UISEV.Loc_Include_Create]: UISTS.DEFCONF_MODE_LOC_INCLUDE_CREATE,
+                     [UISEV.Loc_Exclude_Create]: UISTS.DEFCONF_MODE_LOC_EXCLUDE_CREATE,
                      [UISEV.Shape_Edit]:  UISTS.DEFCONF_MODE_SHAPE_EDIT,
                      [UISEV.Measure_Create]:  UISTS.DEFCONF_MODE_MEASURE_CREATE,
                     }},
@@ -46,7 +48,13 @@ const EditStates = {
     [UISTS.DEFCONF_MODE_ARC_CREATE]
                :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_SHAPE_EDIT,
                       [DefConfAct.EVENT.FAIL]:    UISTS.DEFCONF_MODE_NEUTRAL}},
-                  
+    [UISTS.DEFCONF_MODE_LOC_INCLUDE_CREATE]
+               :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_SHAPE_EDIT,
+                      [DefConfAct.EVENT.FAIL]:    UISTS.DEFCONF_MODE_NEUTRAL}},
+    [UISTS.DEFCONF_MODE_LOC_EXCLUDE_CREATE]
+               :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_SHAPE_EDIT,
+                      [DefConfAct.EVENT.FAIL]:    UISTS.DEFCONF_MODE_NEUTRAL}},
+
     //Result formula calculation
     // [UISTS.DEFCONF_MODE_AUX_LINE_CREATE]
     //           :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_SHAPE_EDIT,

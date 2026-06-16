@@ -1164,6 +1164,7 @@ function SettingUI({})
   const ACT_Morph_Alpha_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Morph_Alpha_Update(Number.isFinite(v) ? v : undefined)) };// (0,1], core default 1
   const ACT_Shape_Match_Scale_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Shape_Match_Scale_Update(Number.isFinite(v) ? v : undefined)) };// (0,1], core default 1
   const ACT_Locating_Engine_Update=(v) => dispatch(DefConfAct.Locating_Engine_Update(v));// "sig360"|"shape_based"
+  const ACT_EditInfo_Patch=(patch) => dispatch(DefConfAct.EditInfo_Patch(patch));// generic edit_info merge (localization settings)
   // One-click migration of a legacy sig360 def to the shape-based localizer:
   // flip the engine + apply the recommended fast coarse scale. anchor_corner and all
   // other settings are carried over untouched. def_image_reg is already stored at save;
@@ -1261,6 +1262,44 @@ function SettingUI({})
       onClick={ACT_Migrate_To_Shape}
       title="Switch to the shape-based localizer + set shape_match_scale=0.3. Re-save to persist. anchor_corner and other settings are kept.">
       → migrate to shape_based (v2)</Button>,
+
+    // ----- shape_based localization authoring (pure-SBM def) -----
+    (edit_info.locating_engine === 'shape_based') &&
+      <Divider key="locregdiv" orientation="left">localization regions</Divider>,
+    (edit_info.locating_engine === 'shape_based') && <div key="locregbtns" style={{ marginBottom: 4 }}>
+      <Button size="small" style={{ marginRight: 6 }} onClick={ACT_Loc_Include_Add_Mode}
+        title="Draw an INCLUDE polygon (green): click vertices on the image; click near the first vertex to close. Features are generated inside it.">
+        + include region</Button>
+      <Button size="small" onClick={ACT_Loc_Exclude_Add_Mode}
+        title="Draw an EXCLUDE polygon (red): an avoid-generation area carved out of the include mask.">
+        + exclude region</Button>
+      <div style={{ fontSize: 11, color: '#999' }}>
+        click vertices on the canvas; click the first vertex to close. No include region ⇒ auto-bake from the sig360 silhouette at save.
+      </div>
+    </div>,
+    (edit_info.locating_engine === 'shape_based') && <div key="locreg" style={{ marginBottom: 6 }}>
+      <Divider orientation="left" style={{ margin: '4px 0' }}>registration (origin / angle)</Divider>
+      <span>&nbsp;cx&nbsp;</span>
+      <NumberAccInput value={edit_info.def_image_reg?.cx ?? 0}
+        onChange={(v) => ACT_EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), cx: parseFloat(v) } })} />
+      <span>&nbsp;cy&nbsp;</span>
+      <NumberAccInput value={edit_info.def_image_reg?.cy ?? 0}
+        onChange={(v) => ACT_EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), cy: parseFloat(v) } })} />
+      <span>&nbsp;angle°&nbsp;</span>
+      <NumberAccInput value={Math.round(((edit_info.def_image_reg?.angle ?? 0) * 180 / Math.PI) * 1000) / 1000}
+        onChange={(v) => ACT_EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), angle: parseFloat(v) * Math.PI / 180 } })} />
+      <Checkbox style={{ marginLeft: 8 }}
+        checked={!!(edit_info.def_image_reg?.isFlipped)}
+        onChange={() => ACT_EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), isFlipped: !(edit_info.def_image_reg?.isFlipped) } })}>
+        flipped</Checkbox>
+      <div style={{ fontSize: 11, color: '#999' }}>origin (mm) + orientation of the part in the reference image. Auto-detected on a fresh save; edit to re-set.</div>
+    </div>,
+    (edit_info.locating_engine === 'shape_based') && <div key="roirp" style={{ marginBottom: 6 }}>
+      <span style={{ fontSize: 12 }}>ROI refine points: {(edit_info.roi_refine_points || []).length} {((edit_info.roi_refine_points || []).length === 0) ? '(auto)' : '(override)'}</span>
+      <Button size="small" style={{ marginLeft: 8 }}
+        onClick={() => ACT_EditInfo_Patch({ roi_refine_points: [] })}
+        title="Clear overrides — the core auto-selects ROI refine points.">use auto</Button>
+    </div>,
 
     <Divider orientation="left">sig360 perf</Divider>,
     <Checkbox
@@ -1453,6 +1492,10 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_Aux_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create)) };
   const ACT_Shape_Edit_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit)) };
   const ACT_Measure_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create)) };
+  // Shape-based localizer feature-extraction regions (click vertices on the canvas;
+  // click near the first vertex to close). Saved as localization_include/_exclude.
+  const ACT_Loc_Include_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Include_Create)) };
+  const ACT_Loc_Exclude_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Exclude_Create)) };
 
   const ACT_Shape_List_Reset= () => { dispatch(DefConfAct.Shape_List_Update([])) };
   const ACT_Cache_Img_Save= (id, fileName) =>
