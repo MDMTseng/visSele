@@ -200,11 +200,17 @@ remains for A/B. The user can then open the authoring UI and edit the baked regi
 
 ## 11. Phasing
 
-- **P1 (core)**: parse `localization_include/exclude`; mask priority in
-  `trainShapeMatcher`; verify no-sig360 fast path. Validate with a hand-written
-  include polygon on an existing def.
-- **P2 (migration bake)**: `defFileGeneration` bakes signature → include; keep sig360.
-  Validate bake parity (§9.1) + pure-SBM proof (§9.2).
-- **P3 (authoring UI)**: canvas draw/add/delete include+exclude, set localization,
-  pixel→mm, mask preview. Validate manual author (§9.3).
-- **P4**: fresh pure-SBM def end to end (no sig360 emitted); cross-mmpp (§9.4).
+- **P1 (core) — DONE (commit c9f734fc).** `localization_include/exclude` parsed into
+  `loc_incl_mm`/`loc_excl_mm`; mask priority include(−exclude)>signature>Otsu in
+  `trainShapeMatcher`; no-sig360 path verified. Bundled the mmpp portability change.
+- **P2 (migration bake) — DONE (commit 3542ef89).** `defFileGeneration` bakes the
+  signature → include; sig360 kept. Bake parity + pure-SBM proof validated.
+- **P3 (authoring UI) — DONE (commit fbc68e9e).** loc_include/loc_exclude shapes +
+  click-to-add-vertex tool; save strips them from features → localization arrays; load
+  rebuilds them; registration + ROI-pts settings panel. **Frame note:** shapeList is
+  object-frame mm (def `unit:"px"` is a legacy misnomer), so polygon points = the
+  localization arrays verbatim — no pixel→mm transform needed (§4's formula is moot).
+  Validated via node-replicated save + core. KNOWN GAP: pre-filling the auto
+  roi_refine_points into the override editor needs a core round-trip (empty = auto today).
+- **P4 — TODO**: fresh pure-SBM def end to end (author from scratch, no sig360 emitted);
+  cross-mmpp (§9.4).
