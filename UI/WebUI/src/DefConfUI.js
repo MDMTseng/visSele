@@ -1161,6 +1161,8 @@ function SettingUI({})
   const ACT_Morph_Mode_Update=(m) => dispatch(DefConfAct.Morph_Mode_Update(m));// "tps"|"wls_similarity"|"legacy"
   const ACT_Morph_TPS_Lambda_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Morph_TPS_Lambda_Update(Number.isFinite(v) ? v : undefined)) };// core default 0.5
   const ACT_Morph_Max_Iter_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Morph_Max_Iter_Update(Number.isFinite(v) ? v : undefined)) };// core default 1
+  const ACT_Morph_Alpha_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Morph_Alpha_Update(Number.isFinite(v) ? v : undefined)) };// (0,1], core default 1
+  const ACT_Shape_Match_Scale_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Shape_Match_Scale_Update(Number.isFinite(v) ? v : undefined)) };// (0,1], core default 1
 
   const DICT = useSelector(state => state.UIData.DICT);
   return [
@@ -1255,6 +1257,14 @@ function SettingUI({})
       value={edit_info.sig_match_sim_thres === undefined ? 0.9 : edit_info.sig_match_sim_thres}
       onChange={ACT_Sig_Match_Sim_Thres_Update}
     />,
+    <br />,
+    <span>&nbsp;shape match scale&nbsp;</span>,
+    <NumberAccInput
+      min={0.1}
+      max={1}
+      value={edit_info.shape_match_scale === undefined ? 1 : edit_info.shape_match_scale}
+      onChange={ACT_Shape_Match_Scale_Update}
+    />,
 
     <Divider orientation="left">anchor morph</Divider>,
     <span>&nbsp;mode&nbsp;</span>,
@@ -1281,6 +1291,13 @@ function SettingUI({})
       max={10}
       value={edit_info.morph_max_iter === undefined ? 1 : edit_info.morph_max_iter}
       onChange={ACT_Morph_Max_Iter_Update}
+    />,
+    ((edit_info.morph_mode || 'tps') !== 'legacy' && edit_info.morph_max_iter > 1) && <span key="maa">&nbsp;alpha(0-1)&nbsp;</span>,
+    ((edit_info.morph_mode || 'tps') !== 'legacy' && edit_info.morph_max_iter > 1) && <NumberAccInput key="maai"
+      min={0.1}
+      max={1}
+      value={edit_info.morph_alpha === undefined ? 1 : edit_info.morph_alpha}
+      onChange={ACT_Morph_Alpha_Update}
     />,
 
     <Divider orientation="left"/>,

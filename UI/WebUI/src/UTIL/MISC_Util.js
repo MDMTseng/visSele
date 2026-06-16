@@ -255,6 +255,10 @@ export function defFileGeneration(edit_info)
     report.featureSet[0].morph_tps_lambda = edit_info.morph_tps_lambda;
   if (typeof edit_info.morph_max_iter === 'number')
     report.featureSet[0].morph_max_iter = edit_info.morph_max_iter;
+  if (typeof edit_info.morph_alpha === 'number')
+    report.featureSet[0].morph_alpha = edit_info.morph_alpha;
+  if (typeof edit_info.shape_match_scale === 'number')
+    report.featureSet[0].shape_match_scale = edit_info.shape_match_scale;
 
   // Strip transient per-frame inspection RESULTS from the shapes before they get
   // hashed/saved. cal_hits (per-caliper edge hits) and the derived fit fields are

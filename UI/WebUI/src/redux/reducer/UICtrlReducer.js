@@ -871,6 +871,28 @@ function StateReducer(newState, action) {
               break;
             }
 
+          case DefConfAct.EVENT.Morph_Alpha_Update:
+            {
+              // Morph re-location relaxation / learning-rate, (0,1] (core default 1).
+              // <1 damps overshoot so the iteration converges on large deformations.
+              if (action.data === undefined ||
+                  (typeof action.data === 'number' && Number.isFinite(action.data) && action.data > 0 && action.data <= 1)) {
+                newState.edit_info = { ...newState.edit_info, morph_alpha: action.data };
+              }
+              break;
+            }
+
+          case DefConfAct.EVENT.Shape_Match_Scale_Update:
+            {
+              // Shape-locator coarse-match downscale, (0,1] (core default 1). 0.3 ~3x
+              // faster; ROI refine restores accuracy. undefined => core default.
+              if (action.data === undefined ||
+                  (typeof action.data === 'number' && Number.isFinite(action.data) && action.data > 0 && action.data <= 1)) {
+                newState.edit_info = { ...newState.edit_info, shape_match_scale: action.data };
+              }
+              break;
+            }
+
           case DefConfAct.EVENT.DefFileHash_Update:
             {
               let DefFileHash_root = newState.edit_info.DefFileHash_root;//root is still root

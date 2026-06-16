@@ -324,6 +324,10 @@ export class InspectionEditorLogic {
                 edit_info.morph_tps_lambda = report.morph_tps_lambda;
               if (typeof report.morph_max_iter === 'number')
                 edit_info.morph_max_iter = report.morph_max_iter;
+              if (typeof report.morph_alpha === 'number')
+                edit_info.morph_alpha = report.morph_alpha;
+              if (typeof report.shape_match_scale === 'number')
+                edit_info.shape_match_scale = report.shape_match_scale;
 
 
               edit_info = Object.assign({}, edit_info);
@@ -1459,6 +1463,8 @@ export function Edit_info_Empty() {
     morph_mode: "tps",
     morph_tps_lambda: undefined,
     morph_max_iter: undefined,
+    morph_alpha: undefined,         // re-location relaxation, (0,1]; core default 1
+    shape_match_scale: undefined,   // shape-locator coarse downscale, (0,1]; core default 1
     intrusionSizeLimitRatio: 0.1,
     img: null,
     DefFileName: "",

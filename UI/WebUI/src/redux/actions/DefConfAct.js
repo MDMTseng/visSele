@@ -22,6 +22,8 @@ export const EVENT = {
   Morph_Mode_Update:"Morph_Mode_Update",
   Morph_TPS_Lambda_Update:"Morph_TPS_Lambda_Update",
   Morph_Max_Iter_Update:"Morph_Max_Iter_Update",
+  Morph_Alpha_Update:"Morph_Alpha_Update",
+  Shape_Match_Scale_Update:"Shape_Match_Scale_Update",
   InspOptionalTag_Update:"InspOptionalTag_Update",
   SUCCESS:"DEFCONF_MODE_SUCCESS",
   FAIL:"DEFCONF_MODE_FAIL",
@@ -146,6 +148,20 @@ export function Morph_Max_Iter_Update(v)
 {
   return {
     type: EVENT.Morph_Max_Iter_Update, data: v
+  }
+}
+
+export function Morph_Alpha_Update(v)
+{
+  return {
+    type: EVENT.Morph_Alpha_Update, data: v
+  }
+}
+
+export function Shape_Match_Scale_Update(v)
+{
+  return {
+    type: EVENT.Shape_Match_Scale_Update, data: v
   }
 }
 
