@@ -5764,6 +5764,23 @@ int cp_main(int argc, char **argv)
     for (int li = 0; li < loopN; ++li) {
       ImgInspection_DefRead(matchingEng, cvSrc, 1, defPath, &neutral_bacpac);
     }
+    // Speed profile: INSP_PROF=N times the per-frame INSPECTION only (FeatureMatching:
+    // localize + morph + measure), with the def already trained -- the recurring
+    // production cost, excluding one-time training. Prints min/avg/max to stderr.
+    if (const char *pe = std::getenv("INSP_PROF")) {
+      int pn = std::atoi(pe); if (pn < 1) pn = 30;
+      matchingEng.setBacPac(&neutral_bacpac);
+      double mn = 1e18, mx = 0, sum = 0;
+      for (int i = 0; i < pn; i++) {
+        auto t0 = std::chrono::high_resolution_clock::now();
+        matchingEng.FeatureMatching(cvSrc);
+        double ms = std::chrono::duration<double, std::milli>(
+                        std::chrono::high_resolution_clock::now() - t0).count();
+        sum += ms; if (ms < mn) mn = ms; if (ms > mx) mx = ms;
+      }
+      fprintf(stderr, "[INSP_PROF] FeatureMatching x%d: avg=%.2f min=%.2f max=%.2f ms\n",
+              pn, sum / pn, mn, mx);
+    }
     const FeatureReport *report = matchingEng.GetReport();
     if (report == NULL) { LOGE("--insp: null report"); return 4; }
     cJSON *jobj = matchingEng.FeatureReport2Json(report);

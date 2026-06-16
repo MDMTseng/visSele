@@ -243,6 +243,13 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   float morph_reg         = 1e-3f;
   int   morph_min_anchors = 0;
   float morph_tps_lambda  = 0.5f;   // mode 2 (tps) bending stiffness
+  // Relaxation / learning-rate for the anchor re-location iteration (def "morph_alpha",
+  // default 1 = legacy full warp). <1 places the caliper at lerp(raw, morphed, alpha),
+  // damping overshoot so the iteration CONVERGES instead of oscillating on large
+  // deformations (only matters when morph_max_iter > 1). morph_place_alpha is the
+  // runtime value: set to morph_alpha during the loop, reset to 1 for final measure.
+  float morph_alpha       = 1.0f;   // def-configured relaxation factor
+  float morph_place_alpha = 1.0f;   // runtime (loop = morph_alpha, final = 1)
 
   float sig_st1_matching_sim_thres;
 

@@ -2085,6 +2085,8 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     }
     double *mtl2 = JFetch_NUMBER(root, "morph_tps_lambda");
     if (mtl2 != NULL && *mtl2 >= 0) this->morph_tps_lambda = (float)*mtl2;
+    double *mal = JFetch_NUMBER(root, "morph_alpha");
+    if (mal != NULL && *mal > 0 && *mal <= 1) this->morph_alpha = (float)*mal;
     double *mmi = JFetch_NUMBER(root, "morph_max_iter");
     if (mmi != NULL && *mmi >= 1) this->morph_max_iter = (int)*mmi;
     double *mtl = JFetch_NUMBER(root, "morph_tol_mm");
@@ -4009,7 +4011,14 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatchin
   spoint.include_range /= mmpp;
   spoint.manual_offset /= mmpp;
   acv_XY pos_raw = spoint.data.anglefollow.position;
-  spoint.data.anglefollow.position=cm.convert(spoint.data.anglefollow.position);
+  {
+    // Relaxation: place at lerp(raw, morphed, morph_place_alpha). alpha<1 (during the
+    // re-location iteration) damps overshoot; the final measurement runs at alpha=1.
+    acv_XY cv = cm.convert(pos_raw);
+    float a = morph_place_alpha;
+    spoint.data.anglefollow.position =
+        acv_XY(pos_raw.x + a * (cv.x - pos_raw.x), pos_raw.y + a * (cv.y - pos_raw.y));
+  }
   acv_XY pos_cm = spoint.data.anglefollow.position;
 
   if (spoint.subtype == featureDef_searchPoint::anglefollow)
@@ -5521,6 +5530,10 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     // single-pass result; morph_max_iter>1 then re-locates anchors through the
     // morph built from the previous iteration until they converge.
     cm.resetTransform();
+    // Relaxation/learning-rate for the re-location iteration (def "morph_alpha",
+    // env MORPH_ALPHA override; <1 damps overshoot to converge on large deformations).
+    morph_place_alpha = morph_alpha;
+    if (const char *ma = getenv("MORPH_ALPHA")) { float a = atof(ma); if (a > 0 && a <= 1) morph_place_alpha = a; }
     std::vector<acv_XY> prev_to(cm.anchorPairs.size(), acv_XY(NAN, NAN));
     for(int k=0;k<morph_max_iter;k++)//perform locating_anchor locating and adjust
     {
@@ -5608,8 +5621,9 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
       }
 
     }
+    morph_place_alpha = 1.0f;   // final measurement uses the full converged warp
 
-    RESET_REPORT(singleReport);//Set to Unset state, and perform official measurment with locating anchor calibration 
+    RESET_REPORT(singleReport);//Set to Unset state, and perform official measurment with locating anchor calibration
 
     bool reDo_orien=false;//check if retry the orientation needed,
     for (int j = 0; j < judgeReports.size(); j++)
@@ -6842,6 +6856,10 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
   for (int j = 0; j < detectedSearchPoints.size(); j++)
     cm.anchorPairs[j].to = acv_XY(NAN, NAN);
   cm.resetTransform();
+  // Relaxation/learning-rate for the re-location iteration (def "morph_alpha", env
+  // MORPH_ALPHA override; <1 damps overshoot to converge on large deformations).
+  morph_place_alpha = morph_alpha;
+  if (const char *ma = getenv("MORPH_ALPHA")) { float a = atof(ma); if (a > 0 && a <= 1) morph_place_alpha = a; }
   std::vector<acv_XY> prev_to(cm.anchorPairs.size(), acv_XY(NAN, NAN));
   for (int k = 0; k < morph_max_iter; k++)
   {
@@ -6882,9 +6900,12 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
         }
         prev_to[j] = cur;
       }
+      if (getenv("MORPH_ITER_DBG"))
+        fprintf(stderr, "[MORPH_ITER] iter=%d anchor maxd=%.5f mm (tol=%.5f)\n", k, maxd, morph_tol_mm);
       if (any_prev && maxd < morph_tol_mm) break;
     }
   }
+  morph_place_alpha = 1.0f;   // final measurement uses the full converged warp
 
   // ---- official measurement (mirror SingleMatching 5261-5314) ----
   RESET_REPORT(singleReport);
