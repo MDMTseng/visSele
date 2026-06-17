@@ -291,7 +291,7 @@ export function defFileGeneration(edit_info)
         const c = { ...s, locating: 'caliper' };
         if (!c.caliper) {
           const len = (s.pt1 && s.pt2) ? Math.hypot(s.pt2.x - s.pt1.x, s.pt2.y - s.pt1.y) : 0;
-          c.caliper = { count: 10, width: len > 0 ? len / 10 : 0.1, min_inliers: 0, max_error: 0 };
+          c.caliper = { count: 10, width: len > 0 ? len / 10 : 0.1, min_inliers: 5, max_error: 0.1 };
         }
         if (!c.edge) c.edge = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 60 };
         return c;

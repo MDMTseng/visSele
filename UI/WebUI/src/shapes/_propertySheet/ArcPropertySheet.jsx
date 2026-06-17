@@ -45,7 +45,7 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
       const count = 10;
       if (!shape.caliper) patch.caliper = {
         count, width: defaultCaliperWidth(shape, count),
-        min_inliers: 0, max_error: 0,
+        min_inliers: 5, max_error: 0.1,
       };
       if (!shape.edge) patch.edge = {
         method: 'strongest', polarity: 'falling', nth: 0, min_strength: 60,
@@ -104,9 +104,10 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', loc
         <DropdownField label="polarity" value={shape.edge?.polarity}
           options={EDGE_POLARITIES}
           onChange={(polarity) => updateSub('edge', { polarity })} />
-        <NumberField label="nth" value={shape.edge?.nth} step={1}
-          onCommit={(nth) => updateSub('edge', { nth })}
-          tweak={{ add: [1] }} />
+        {shape.edge?.method === 'nth' &&
+          <NumberField label="nth" value={shape.edge?.nth} step={1}
+            onCommit={(nth) => updateSub('edge', { nth })}
+            tweak={{ add: [1] }} />}
         <NumberField label="min_strength" value={shape.edge?.min_strength}
           onCommit={(min_strength) => updateSub('edge', { min_strength })}
           tweak={defaultTweak} />

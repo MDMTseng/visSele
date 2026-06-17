@@ -42,7 +42,7 @@ export function caliperField(countDefault, geomLengthFn) {
         const L = geomLengthFn(shape);
         if (L > 0 && Number.isFinite(L)) width = L / countDefault;
       }
-      return { count: countDefault, width, min_inliers: 0, max_error: 0 };
+      return { count: countDefault, width, min_inliers: 5, max_error: 0.1 };
     },
   };
 }

@@ -35,8 +35,8 @@ export const fields = {
         obj.caliper = {
           count,
           width: (len > 0 ? len / count : 0.1),
-          min_inliers: 0,
-          max_error: 0,
+          min_inliers: 5,
+          max_error: 0.1,
         };
       }
       if (obj.edge === undefined) {
