@@ -146,17 +146,16 @@ function ctrlScene(g, canvas, ctx_state) {
   const scale = canvas.camera.GetCameraScale() || 100;
 
   if (tool === 'roi') {
-    if (g.mouseEdge && st.status === 0) {                  // click
-      const movedPx = Math.hypot(st.x - st.px, st.y - st.py);
-      if (movedPx < 6) {
-        const p = { x: g.mouseOnCanvas.x, y: g.mouseOnCanvas.y };
-        const pts = (roiPts || []).map((q) => ({ x: q.x, y: q.y }));
-        const closeW = 14 / scale;
-        const idx = pts.findIndex((q) => Math.hypot(q.x - p.x, q.y - p.y) < closeW);
-        if (idx >= 0) pts.splice(idx, 1);                   // click on a point removes it
-        else pts.push(p);                                   // else add a new override point
-        onRoi(pts);
-      }
+    // roi mode captures the drag (no camera pan), so any press→release places a point
+    // at the release position; clicking on an existing point removes it.
+    if (g.mouseEdge && st.status === 0) {                  // mouse-up
+      const p = { x: g.mouseOnCanvas.x, y: g.mouseOnCanvas.y };
+      const pts = (roiPts || []).map((q) => ({ x: q.x, y: q.y }));
+      const closeW = 14 / scale;
+      const idx = pts.findIndex((q) => Math.hypot(q.x - p.x, q.y - p.y) < closeW);
+      if (idx >= 0) pts.splice(idx, 1);                     // click on a point removes it
+      else pts.push(p);                                     // else add a new override point
+      onRoi(pts);
     }
     return;
   }
@@ -242,8 +241,9 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
       .finally(() => setGenBusy(false));
   }, [sendBPG, edit_info]);
 
+  const captureDrag = (tool === 'locline' || tool === 'roi');
   const dhook = useCallback((isCtrl, g, canvas) => {
-    canvas.captureDrag = (tool === 'locline');
+    canvas.captureDrag = captureDrag;
     const ctx_state = { reg, mmpp, shapeList, work: work.current,
       featPts: featRef.current, roiPts, tool, onPoly, onReg, onRoi };
     if (isCtrl) ctrlScene(g, canvas, ctx_state);
@@ -334,7 +334,7 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
     </div>
 
     <div style={{ flex: 1, minWidth: 0, height: '100%', border: '1px solid #333' }}>
-      <HookCanvasComponent dhook={dhook} image={edit_info.img} captureDrag={tool === 'locline'} />
+      <HookCanvasComponent dhook={dhook} image={edit_info.img} captureDrag={captureDrag} />
     </div>
   </div>;
 }
