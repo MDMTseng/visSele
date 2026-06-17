@@ -15,6 +15,7 @@ export const UI_SM_STATES = {
   DEFCONF_MODE_LOC_INCLUDE_CREATE:"LOC_INCLUDE_CREATE",
   DEFCONF_MODE_LOC_EXCLUDE_CREATE:"LOC_EXCLUDE_CREATE",
   DEFCONF_MODE_LOC_REG_CREATE:"LOC_REG_CREATE",
+  DEFCONF_MODE_OBJ_DETECT_CREATE:"OBJ_DETECT_CREATE",
   DEFCONF_MODE_SHAPE_EDIT:"SHAPE_EDIT",
 
 
@@ -52,6 +53,7 @@ export const SHAPE_TYPE = {
   loc_include:"loc_include",
   loc_exclude:"loc_exclude",
   loc_reg:"loc_reg",
+  obj_detect:"obj_detect",
 
   measure:"measure",
   measure_subtype:{
@@ -109,6 +111,7 @@ export const UI_SM_EVENT = {
   Loc_Include_Create:"Loc_Include_Create",
   Loc_Exclude_Create:"Loc_Exclude_Create",
   Loc_Reg_Create:"Loc_Reg_Create",
+  Obj_Detect_Create:"Obj_Detect_Create",
   Aux_Line_Create:"Aux_Line_Create",
   Search_Point_Create:"Search_Point_Create",
   Aux_Point_Create:"Aux_Point_Create",

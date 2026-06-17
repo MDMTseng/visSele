@@ -1474,6 +1474,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_Aux_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create)) };
   const ACT_Shape_Edit_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit)) };
   const ACT_Measure_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create)) };
+  const ACT_Obj_Detect_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Obj_Detect_Create)) };
 
   const ACT_Shape_List_Reset= () => { dispatch(DefConfAct.Shape_List_Update([])) };
   const ACT_Cache_Img_Save= (id, fileName) =>
@@ -1634,6 +1635,13 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       dict={DICT}
       text="measure"
       onClick={() => ACT_Measure_Add_Mode()}>
+    </BASE_COM.IconButton>,
+    <BASE_COM.IconButton
+      addClass="layout palatte-cyan-7 btn-swipe"
+      key="OBJDETECT"
+      dict={DICT}
+      text="物件偵測"
+      onClick={() => ACT_Obj_Detect_Add_Mode()}>
     </BASE_COM.IconButton>]);
       
 

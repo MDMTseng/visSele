@@ -29,6 +29,7 @@ const EditStates = {
                      [UISEV.Loc_Include_Create]: UISTS.DEFCONF_MODE_LOC_INCLUDE_CREATE,
                      [UISEV.Loc_Exclude_Create]: UISTS.DEFCONF_MODE_LOC_EXCLUDE_CREATE,
                      [UISEV.Loc_Reg_Create]: UISTS.DEFCONF_MODE_LOC_REG_CREATE,
+                     [UISEV.Obj_Detect_Create]: UISTS.DEFCONF_MODE_OBJ_DETECT_CREATE,
                      [UISEV.Shape_Edit]:  UISTS.DEFCONF_MODE_SHAPE_EDIT,
                      [UISEV.Measure_Create]:  UISTS.DEFCONF_MODE_MEASURE_CREATE,
                     }},
@@ -58,6 +59,9 @@ const EditStates = {
     // loc_reg sets def_image_reg (not a persisted shape) -> back to NEUTRAL on commit.
     [UISTS.DEFCONF_MODE_LOC_REG_CREATE]
                :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_NEUTRAL,
+                      [DefConfAct.EVENT.FAIL]:    UISTS.DEFCONF_MODE_NEUTRAL}},
+    [UISTS.DEFCONF_MODE_OBJ_DETECT_CREATE]
+               :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_SHAPE_EDIT,
                       [DefConfAct.EVENT.FAIL]:    UISTS.DEFCONF_MODE_NEUTRAL}},
 
     //Result formula calculation

@@ -1626,6 +1626,9 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       case UI_SM_STATES.DEFCONF_MODE_LOC_REG_CREATE:
         type = SHAPE_TYPE.loc_reg;
         break;
+      case UI_SM_STATES.DEFCONF_MODE_OBJ_DETECT_CREATE:
+        type = SHAPE_TYPE.obj_detect;
+        break;
       case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
         type = SHAPE_TYPE.aux_point;
         break;
@@ -1756,6 +1759,11 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       collect(single.detectedLines);
       collect(single.detectedCircles);
       collect(single.searchPoints);
+      // obj_detect region stats by id (for the live overlay in obj_detect.draw).
+      this.rUtil.objDetect_by_id = {};
+      if (Array.isArray(single.objDetects))
+        for (const o of single.objDetects)
+          if (o && o.id !== undefined) this.rUtil.objDetect_by_id[o.id] = o;
     }
 
     {
@@ -1987,6 +1995,26 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           break;
         }
 
+
+      case UI_SM_STATES.DEFCONF_MODE_OBJ_DETECT_CREATE:
+        {
+          // Object-detect region: drag two opposite corners (object-frame mm), like the
+          // line tool. pt1 = drag start, pt2 = current. Commit on release.
+          if (this.mouseStatus.status == 1) {
+            this.EditShape = {
+              type: SHAPE_TYPE.obj_detect,
+              pt1: pmouseOnCanvas2,
+              pt2: mouseOnCanvas2,
+              ignore_rotation: false,
+              ignore_translation: false,
+              color: this.colorSet.unselected,
+            };
+          } else if (this.EditShape != null && ifOnMouseLeftClickEdge) {
+            this.SetShape(this.EditShape);
+            this.EmitEvent(DefConfAct.SUCCESS());
+          }
+          break;
+        }
 
       case UI_SM_STATES.DEFCONF_MODE_LOC_REG_CREATE:
         {
