@@ -1510,7 +1510,9 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
 
     this.SetEditShape(edit_DB_info.edit_tar_info);
 
-    let mmpp = this.db_obj.getsig360info_mmpp();
+    // Pure-SBM defs have no signature, so derive mmpp from the camera calibration
+    // when there's no sig360 extraction (getEditorMmpp falls back to cam_param).
+    let mmpp = this.db_obj.getEditorMmpp();
     this.rUtil.renderParam.mmpp = mmpp;
   }
 
@@ -1549,6 +1551,9 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
         break;
       case UI_SM_STATES.DEFCONF_MODE_LOC_EXCLUDE_CREATE:
         type = SHAPE_TYPE.loc_exclude;
+        break;
+      case UI_SM_STATES.DEFCONF_MODE_LOC_REG_CREATE:
+        type = SHAPE_TYPE.loc_reg;
         break;
       case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
         type = SHAPE_TYPE.aux_point;
@@ -1695,12 +1700,26 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       // rotates the wrong way, flip the sign of `single.rotate`; if a flipped
       // match mirrors wrong, change `ctx.scale(1, flip)` to `ctx.scale(flip, 1)`.
       console.log("single",single);
-      if (single && typeof single.rotate === 'number') {
+      const isLocReg = this.state &&
+        this.state.substate === UI_SM_STATES.DEFCONF_MODE_LOC_REG_CREATE;
+      const reg = this.edit_DB_info && this.edit_DB_info.def_image_reg;
+      if (isLocReg) {
+        // Setting the registration: show the RAW image frame (no rectify) so the
+        // drawn localization line is in image-mm — its start = origin and its
+        // direction = the 0deg axis directly become def_image_reg.
+      } else if (single && typeof single.rotate === 'number') {
         let flip = single.isFlipped ? -1 : 1;
         ctx.scale(1, flip);                       // mirror (flipped match) first
         ctx.rotate(single.rotate);               // undo the part's rotation
         ctx.translate(-single.cx, -single.cy);    // detected center -> object origin
 
+      } else if (reg && typeof reg.cx === 'number' && typeof reg.angle === 'number') {
+        // Pure-SBM def (no sig360 center) or no live inspection yet: rectify the
+        // reference image into the object frame using the saved registration.
+        let flip = reg.isFlipped ? -1 : 1;
+        ctx.scale(1, flip);
+        ctx.rotate(reg.angle);
+        ctx.translate(-reg.cx, -reg.cy);
       } else {
         ctx.translate(-center.x, -center.y);
       }
@@ -1897,6 +1916,31 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           break;
         }
 
+
+      case UI_SM_STATES.DEFCONF_MODE_LOC_REG_CREATE:
+        {
+          // Set the shape-based localizer registration by dragging a line: press =
+          // origin, release direction = the def's 0deg axis. The canvas shows the RAW
+          // image frame in this mode (see draw_DEFCONF isLocReg), so pmouseOnCanvas2 /
+          // mouseOnCanvas2 are image-mm -> def_image_reg directly. Does NOT add a shape.
+          if (this.mouseStatus.status == 1) {
+            this.EditShape = {
+              type: SHAPE_TYPE.loc_reg,
+              pt1: pmouseOnCanvas2,   // origin (drag start)
+              pt2: mouseOnCanvas2,    // direction tip (current)
+              color: this.colorSet.unselected,
+            };
+          } else if (this.EditShape != null && ifOnMouseLeftClickEdge) {
+            const o = this.EditShape.pt1, t = this.EditShape.pt2;
+            const angle = Math.atan2(t.y - o.y, t.x - o.x);
+            this.EmitEvent(DefConfAct.EditInfo_Patch({
+              def_image_reg: { cx: o.x, cy: o.y, angle, isFlipped: false },
+            }));
+            this.EditShape = null;
+            this.EmitEvent(DefConfAct.SUCCESS());
+          }
+          break;
+        }
 
       case UI_SM_STATES.DEFCONF_MODE_LOC_INCLUDE_CREATE:
       case UI_SM_STATES.DEFCONF_MODE_LOC_EXCLUDE_CREATE:

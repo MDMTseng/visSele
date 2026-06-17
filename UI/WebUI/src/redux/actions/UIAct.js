@@ -14,6 +14,7 @@ export const UI_SM_STATES = {
   DEFCONF_MODE_ARC_CREATE:"ARC_CREATE",
   DEFCONF_MODE_LOC_INCLUDE_CREATE:"LOC_INCLUDE_CREATE",
   DEFCONF_MODE_LOC_EXCLUDE_CREATE:"LOC_EXCLUDE_CREATE",
+  DEFCONF_MODE_LOC_REG_CREATE:"LOC_REG_CREATE",
   DEFCONF_MODE_SHAPE_EDIT:"SHAPE_EDIT",
 
 
@@ -50,6 +51,7 @@ export const SHAPE_TYPE = {
   search_point:"search_point",
   loc_include:"loc_include",
   loc_exclude:"loc_exclude",
+  loc_reg:"loc_reg",
 
   measure:"measure",
   measure_subtype:{
@@ -106,6 +108,7 @@ export const UI_SM_EVENT = {
   Arc_Create:"Arc_Create",
   Loc_Include_Create:"Loc_Include_Create",
   Loc_Exclude_Create:"Loc_Exclude_Create",
+  Loc_Reg_Create:"Loc_Reg_Create",
   Aux_Line_Create:"Aux_Line_Create",
   Search_Point_Create:"Search_Point_Create",
   Aux_Point_Create:"Aux_Point_Create",

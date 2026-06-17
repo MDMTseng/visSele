@@ -22,8 +22,9 @@ import * as aux_point from './aux_point';
 import * as aux_line from './aux_line';
 import * as loc_include from './loc_include';
 import * as loc_exclude from './loc_exclude';
+import * as loc_reg from './loc_reg';
 
-export const SHAPE_REGISTRY = { line, arc, search_point, measure, aux_point, aux_line, loc_include, loc_exclude };
+export const SHAPE_REGISTRY = { line, arc, search_point, measure, aux_point, aux_line, loc_include, loc_exclude, loc_reg };
 
 // Resolve the per-shape module by type. Returns undefined for unregistered types
 // — callers must treat that as a pass-through (no defaults / no schema).

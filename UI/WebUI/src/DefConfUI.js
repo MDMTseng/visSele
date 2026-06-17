@@ -1279,6 +1279,10 @@ function SettingUI({})
     </div>,
     (edit_info.locating_engine === 'shape_based') && <div key="locreg" style={{ marginBottom: 6 }}>
       <Divider orientation="left" style={{ margin: '4px 0' }}>registration (origin / angle)</Divider>
+      <Button size="small" style={{ marginBottom: 4 }} onClick={ACT_Loc_Reg_Add_Mode}
+        title="Drag a line on the reference image: press = origin, release direction = the 0° axis. Sets def_image_reg. Use this first when building a fresh shape_based def.">
+        ✛ set localization line</Button>
+      <br />
       <span>&nbsp;cx&nbsp;</span>
       <NumberAccInput value={edit_info.def_image_reg?.cx ?? 0}
         onChange={(v) => ACT_EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), cx: parseFloat(v) } })} />
@@ -1496,6 +1500,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   // click near the first vertex to close). Saved as localization_include/_exclude.
   const ACT_Loc_Include_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Include_Create)) };
   const ACT_Loc_Exclude_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Exclude_Create)) };
+  // Set the localizer registration by dragging a line on the raw image: press =
+  // origin, release direction = the def's 0deg axis. Writes def_image_reg.
+  const ACT_Loc_Reg_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Reg_Create)) };
 
   const ACT_Shape_List_Reset= () => { dispatch(DefConfAct.Shape_List_Update([])) };
   const ACT_Cache_Img_Save= (id, fileName) =>

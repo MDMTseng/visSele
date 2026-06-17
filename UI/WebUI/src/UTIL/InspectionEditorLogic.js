@@ -671,6 +671,18 @@ export class InspectionEditorLogic {
     return 1;
   }
 
+  // mm-per-pixel for the editor, independent of a sig360 extraction. A pure-SBM def
+  // has no signature, so fall back to the camera calibration (cam_param.mmpb2b/ppb2b,
+  // populated from the def or a camera_calibration WS report). 1 only as a last resort.
+  getEditorMmpp() {
+    const m = this.getsig360info_mmpp();
+    if (Number.isFinite(m) && m > 0 && m !== 1) return m;   // a real sig360 mmpp
+    const cp = this.cameraParam;
+    if (cp && Number.isFinite(cp.mmpb2b) && Number.isFinite(cp.ppb2b) && cp.ppb2b > 0)
+      return cp.mmpb2b / cp.ppb2b;
+    return (Number.isFinite(m) && m > 0) ? m : 1;
+  }
+
   setsig360infoCenter(center){
 
     this.sig360info.reports[0].cx=center.x;
@@ -735,23 +747,29 @@ export class InspectionEditorLogic {
     if (defInfo.cam_param && this.cameraParam === undefined) {
       this.cameraParam = defInfo.cam_param;
     }
-    let sig360info = defInfo.inherentfeatures[0];
-
-    this.Setsig360info(
-      {
-        reports: [
-          {
-            cx: sig360info.pt1.x,
-            cy: sig360info.pt1.y,
-            area: sig360info.area,
-            orientation: sig360info.orientation,
-            signature: sig360info.signature,
-            mmpp: defInfo.mmpp,
-            cam_param: defInfo.cam_param,
-          }
-        ]
-      }
-    );
+    // A pure-SBM def has no sig360 block (inherentfeatures empty). Only seed
+    // sig360info when a signature feature is actually present; otherwise the editor
+    // frame comes from def_image_reg + cam_param (getEditorMmpp), not sig360.
+    let sig360info = defInfo.inherentfeatures && defInfo.inherentfeatures[0];
+    if (sig360info && sig360info.pt1) {
+      this.Setsig360info(
+        {
+          reports: [
+            {
+              cx: sig360info.pt1.x,
+              cy: sig360info.pt1.y,
+              area: sig360info.area,
+              orientation: sig360info.orientation,
+              signature: sig360info.signature,
+              mmpp: defInfo.mmpp,
+              cam_param: defInfo.cam_param,
+            }
+          ]
+        }
+      );
+    } else {
+      this.sig360info = null;   // no signature -> UpdateInherentShapeList early-exits
+    }
     this.UpdateInherentShapeList();
 
     let lostRefObjs = this.findLostRefShapes();
@@ -850,12 +868,16 @@ export class InspectionEditorLogic {
   }
 
   GenerateFeature_sig360_circle_line() {
+    // A pure-SBM def has no sig360info, so source mmpp/cam_param from the camera
+    // calibration instead of the (absent) signature report. inherentfeatures is then
+    // the empty inherentShapeList — the core tolerates a def with no sig360 block.
+    const sig = this.sig360info && this.sig360info.reports && this.sig360info.reports[0];
     return {
       "type": "sig360_circle_line",
       "ver": "0.0.1.0",
       "unit": "px",
-      "mmpp": this.sig360info.reports[0].mmpp,
-      cam_param: this.sig360info.reports[0].cam_param,
+      "mmpp": (sig && sig.mmpp) || this.getEditorMmpp(),
+      cam_param: (sig && sig.cam_param) || this.cameraParam,
       features: this.shapeList,
       inherentfeatures: this.inherentShapeList
     };
