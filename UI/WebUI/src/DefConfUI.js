@@ -1165,6 +1165,11 @@ function SettingUI({})
   const ACT_Shape_Match_Scale_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Shape_Match_Scale_Update(Number.isFinite(v) ? v : undefined)) };// (0,1], core default 1
   const ACT_Locating_Engine_Update=(v) => dispatch(DefConfAct.Locating_Engine_Update(v));// "sig360"|"shape_based"
   const ACT_EditInfo_Patch=(patch) => dispatch(DefConfAct.EditInfo_Patch(patch));// generic edit_info merge (localization settings)
+  // Shape-based localizer authoring tools (enter a canvas draw mode). Defined here in
+  // SettingUI because the buttons that use them live in this component's render.
+  const ACT_Loc_Include_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Include_Create)) };
+  const ACT_Loc_Exclude_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Exclude_Create)) };
+  const ACT_Loc_Reg_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Reg_Create)) };
   // One-click migration of a legacy sig360 def to the shape-based localizer:
   // flip the engine + apply the recommended fast coarse scale. anchor_corner and all
   // other settings are carried over untouched. def_image_reg is already stored at save;
@@ -1496,13 +1501,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_Aux_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create)) };
   const ACT_Shape_Edit_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit)) };
   const ACT_Measure_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create)) };
-  // Shape-based localizer feature-extraction regions (click vertices on the canvas;
-  // click near the first vertex to close). Saved as localization_include/_exclude.
-  const ACT_Loc_Include_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Include_Create)) };
-  const ACT_Loc_Exclude_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Exclude_Create)) };
-  // Set the localizer registration by dragging a line on the raw image: press =
-  // origin, release direction = the def's 0deg axis. Writes def_image_reg.
-  const ACT_Loc_Reg_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Reg_Create)) };
 
   const ACT_Shape_List_Reset= () => { dispatch(DefConfAct.Shape_List_Update([])) };
   const ACT_Cache_Img_Save= (id, fileName) =>
