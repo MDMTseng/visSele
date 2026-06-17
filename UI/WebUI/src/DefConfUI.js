@@ -1221,32 +1221,36 @@ function SettingUI({})
 
 
 
-    <Divider orientation="left">{DICT.defConf.intrusion_size_limit_ratio}</Divider>,
-    <Slider
-      min={0}
-      step={0.01}
-      max={1}
-      included={true}
-      marks={
-        {
-          0: '',
-          0.01: '',
-          0.05: '',
-          0.1: '0.1',
-          0.3: '0.2',
-          0.5: '0.5',
-          1: '',
+    // Binary intrusion-size gate — only the sig360/binary path uses it; the shape path
+    // skips binarization, so hide it for shape_based.
+    (edit_info.locating_engine !== 'shape_based') && <React.Fragment key="intrusion">
+      <Divider orientation="left">{DICT.defConf.intrusion_size_limit_ratio}</Divider>
+      <Slider
+        min={0}
+        step={0.01}
+        max={1}
+        included={true}
+        marks={
+          {
+            0: '',
+            0.01: '',
+            0.05: '',
+            0.1: '0.1',
+            0.3: '0.2',
+            0.5: '0.5',
+            1: '',
+          }
         }
-      }
-      onChange={ACT_IntrusionSizeLimitRatio_Update}
-      value={edit_info.intrusionSizeLimitRatio}
-    />,
-    <NumberAccInput
-      min={0}
-      max={1}
-      value={edit_info.intrusionSizeLimitRatio}
-      onChange={ACT_IntrusionSizeLimitRatio_Update}
-    />,
+        onChange={ACT_IntrusionSizeLimitRatio_Update}
+        value={edit_info.intrusionSizeLimitRatio}
+      />
+      <NumberAccInput
+        min={0}
+        max={1}
+        value={edit_info.intrusionSizeLimitRatio}
+        onChange={ACT_IntrusionSizeLimitRatio_Update}
+      />
+    </React.Fragment>,
 
     <Divider orientation="left">localizer</Divider>,
     <span>&nbsp;engine&nbsp;</span>,
@@ -1272,34 +1276,38 @@ function SettingUI({})
         定位區域 / 定位線 / ROI 在工具列的「SBM定位設定」全螢幕視窗裡設定。
       </div>,
 
-    <Divider orientation="left">sig360 perf</Divider>,
-    <Checkbox
-      checked={edit_info.matching_version === 2}
-      onChange={() => ACT_Matching_Version_Update(edit_info.matching_version === 2 ? 1 : 2)}
-    >v2 matcher (morph-boundary dual-sig)</Checkbox>,
-    <span>&nbsp;downsample&nbsp;</span>,
-    <NumberAccInput
-      min={1}
-      max={8}
-      value={edit_info.inspection_downsample || 1}
-      onChange={ACT_Inspection_Downsample_Update}
-    />,
-    <br />,
-    <span>&nbsp;match sim thres&nbsp;</span>,
-    <NumberAccInput
-      min={0}
-      max={1}
-      value={edit_info.sig_match_sim_thres === undefined ? 0.9 : edit_info.sig_match_sim_thres}
-      onChange={ACT_Sig_Match_Sim_Thres_Update}
-    />,
-    <br />,
-    <span>&nbsp;shape match scale&nbsp;</span>,
-    <NumberAccInput
-      min={0.1}
-      max={1}
-      value={edit_info.shape_match_scale === undefined ? 1 : edit_info.shape_match_scale}
-      onChange={ACT_Shape_Match_Scale_Update}
-    />,
+    // sig360-only perf knobs — hidden for shape_based (its coarse-match scale lives in
+    // the SBM定位設定 studio; v2/downsample/sim-thres don't apply to the line2Dup path).
+    (edit_info.locating_engine !== 'shape_based') && <React.Fragment key="sig360perf">
+      <Divider orientation="left">sig360 perf</Divider>
+      <Checkbox
+        checked={edit_info.matching_version === 2}
+        onChange={() => ACT_Matching_Version_Update(edit_info.matching_version === 2 ? 1 : 2)}
+      >v2 matcher (morph-boundary dual-sig)</Checkbox>
+      <span>&nbsp;downsample&nbsp;</span>
+      <NumberAccInput
+        min={1}
+        max={8}
+        value={edit_info.inspection_downsample || 1}
+        onChange={ACT_Inspection_Downsample_Update}
+      />
+      <br />
+      <span>&nbsp;match sim thres&nbsp;</span>
+      <NumberAccInput
+        min={0}
+        max={1}
+        value={edit_info.sig_match_sim_thres === undefined ? 0.9 : edit_info.sig_match_sim_thres}
+        onChange={ACT_Sig_Match_Sim_Thres_Update}
+      />
+      <br />
+      <span>&nbsp;shape match scale&nbsp;</span>
+      <NumberAccInput
+        min={0.1}
+        max={1}
+        value={edit_info.shape_match_scale === undefined ? 1 : edit_info.shape_match_scale}
+        onChange={ACT_Shape_Match_Scale_Update}
+      />
+    </React.Fragment>,
 
     <Divider orientation="left">anchor morph</Divider>,
     <span>&nbsp;mode&nbsp;</span>,
