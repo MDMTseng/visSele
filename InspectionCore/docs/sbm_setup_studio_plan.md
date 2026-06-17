@@ -50,11 +50,16 @@ pan/zoom. Commits still go to the def (Shape_Set / EditInfo_Patch) so save round
 Decision resolved: minimal port onto the existing proto (not a from-scratch canvas, not a
 whole-WebUI2-stack port). Interactive behavior first-run, untested on target.
 
-### P-C. Consolidated settings + Save/Exit in the modal
-Move shape_match_scale, matching_angle_margin/offset, matching_face, shape_min_score,
-ROI controls into the modal. A "生成特徵點 / refresh" button (P-A round-trip), a
-"測試定位" (optional later), and a "完成/儲存" that writes the def and closes. SettingUI
-keeps only the engine toggle + migrate.
+### P-C. Consolidated settings + Save/Exit — DONE (commits 148a77b4 core, 7fa7b8d0 + 5c415ade WebUI)
+- Core: "SF" WS command returns the trained feature points (object-frame mm) via
+  getShapeFeaturePointsJson (base virtual → sig360 → group forward → MatchingEngine →
+  wiringPanel SF handler, definfo-inline like CI).
+- WebUI: studio "🔵 生成特徵點" button pushes the in-progress def (defFileGeneration +
+  stampRefImagePath) via the SF promise round-trip and overlays features (blue) + ROI
+  (magenta). Matching params (shape_match_scale, angle ±°, face) in the toolbar.
+  "儲存並退出" reuses the extracted triggerSave(); "關閉" resets to NEUTRAL.
+  Limitation: SF trains from the on-disk <def>.png, so a brand-new unsaved def must be
+  saved before feature points appear.
 
 ### P-D. Polish
 Edit/delete individual regions & ROI points; feature-point density tuning; cross-mmpp.
