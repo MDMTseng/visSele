@@ -10,6 +10,7 @@ import { Button, Divider, Checkbox } from 'antd';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
+import { defFileGeneration, stampRefImagePath } from 'UTIL/MISC_Util';
 
 // ── React wrapper: mount a DrawHook_CanvasComponent on a <canvas>, feed it the
 // image + the draw hook, resize via ReactResizeDetector. ──────────────────────
@@ -168,11 +169,12 @@ function ctrlScene(g, canvas, ctx_state) {
 }
 
 // ── The studio view. ───────────────────────────────────────────────────────────
-export function SBMSetupView() {
+export function SBMSetupView({ sendBPG }) {
   const dispatch = useDispatch();
   const edit_info = useSelector((s) => s.UIData.edit_info);
   const [tool, setTool] = useState('pan');
-  const [featPts] = useState(undefined);        // filled by the SF round-trip (P-C)
+  const [featPts, setFeatPts] = useState(undefined);   // {features:[],roi:[]} from the SF round-trip
+  const [genBusy, setGenBusy] = useState(false);
   const work = useRef({ poly: [], cursor: null, line: null });
 
   const reg = edit_info.def_image_reg || {};
@@ -192,6 +194,24 @@ export function SBMSetupView() {
     dispatch(DefConfAct.EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), ...r } }));
     setTool('pan');
   }, [dispatch, edit_info]);
+
+  // "生成特徵點": push the current (in-progress) def to the core's SF command and
+  // overlay the returned line2Dup features + ROI points. Trains from the on-disk
+  // <def>.png, so a brand-new unsaved def must be saved first.
+  const genFeatures = useCallback(() => {
+    if (!sendBPG) return;
+    let deffile;
+    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    catch (e) { return; }
+    setGenBusy(true);
+    new Promise((resolve, reject) => sendBPG('SF', 0, { definfo: deffile }, undefined, { resolve, reject }))
+      .then((pkts) => {
+        const sf = (pkts || []).find((p) => p.type === 'SF');
+        setFeatPts(sf && sf.data ? sf.data : { features: [], roi: [] });
+      })
+      .catch(() => {})
+      .finally(() => setGenBusy(false));
+  }, [sendBPG, edit_info]);
 
   const dhook = useCallback((isCtrl, g, canvas) => {
     canvas.captureDrag = (tool === 'locline');
@@ -232,9 +252,18 @@ export function SBMSetupView() {
         點頂點圍住零件,點回第一個頂點收尾。拖曳=平移視角,滾輪=縮放。
       </div>
 
+      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>可視化</Divider>
+      <Button size="small" block loading={genBusy} onClick={genFeatures}
+        title="把目前設定送到 core,回傳並疊上實際生成的 line2Dup 特徵點(藍)+ ROI 點(粉)。需先存過檔(<def>.png 在磁碟上)。">
+        🔵 生成特徵點</Button>
+      {featPts && <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+        features: {(featPts.features || []).length} ／ roi: {(featPts.roi || []).length}
+        <Button size="small" type="link" onClick={() => setFeatPts(undefined)}>清除</Button>
+      </div>}
+
       <Divider orientation="left" style={{ margin: '8px 0 4px' }}>檢視</Divider>
       <TBtn id="pan">🖐 平移/縮放</TBtn>
-      <div style={{ fontSize: 11, color: '#999' }}>「生成特徵點」可視化(core 往返)與設定整併:下一步 P-C。</div>
+      <div style={{ fontSize: 11, color: '#999' }}>拖曳=平移,滾輪=縮放。</div>
     </div>
 
     <div style={{ flex: 1, minWidth: 0, height: '100%', border: '1px solid #333' }}>

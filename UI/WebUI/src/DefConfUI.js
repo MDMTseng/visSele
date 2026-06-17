@@ -2030,7 +2030,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           style: { top: 12 },
           bodyStyle: { padding: 8 },
           onCancel: () => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); },
-          view: <SBMSetupView />,
+          view: <SBMSetupView sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)} />,
         });
       }} />,
 
