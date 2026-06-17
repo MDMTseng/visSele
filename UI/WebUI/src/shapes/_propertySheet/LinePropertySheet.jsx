@@ -49,7 +49,7 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line', l
         min_inliers: 0, max_error: 0,
       };
       if (!shape.edge) patch.edge = {
-        method: 'strongest', polarity: 'falling', nth: 0, min_strength: 0,
+        method: 'strongest', polarity: 'falling', nth: 0, min_strength: 60,
       };
     }
     update(patch);

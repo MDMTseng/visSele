@@ -49,7 +49,7 @@ export function caliperField(countDefault, geomLengthFn) {
 
 // `edge` field decl, parameterized by per-shape defaults. line/arc default to
 // {strongest, falling}; search_point defaults to {first, any} (matches core).
-export function edgeField({ method = 'strongest', polarity = 'falling' } = {}) {
+export function edgeField({ method = 'strongest', polarity = 'falling', min_strength = 0 } = {}) {
   return {
     editor: (ctx) => (ctx.edit_tar.locating === 'caliper') ? {
       __OBJ__: 'div',
@@ -59,7 +59,7 @@ export function edgeField({ method = 'strongest', polarity = 'falling' } = {}) {
       min_strength: 'input-number',
     } : undefined,
     derive: (shape) => (shape.locating === 'caliper') ? {
-      method, polarity, nth: 0, min_strength: 0,
+      method, polarity, nth: 0, min_strength,
     } : undefined,
   };
 }

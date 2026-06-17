@@ -47,7 +47,7 @@ export const fields = {
         };
       }
       if (obj.edge === undefined) {
-        obj.edge = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 0 };
+        obj.edge = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 60 };
       }
     },
   },
@@ -68,7 +68,7 @@ export const fields = {
     while (span < 0) span += 2 * Math.PI;
     return a.r * span; // arc length, def-unit (mm)
   }),
-  edge:    edgeField({ method: 'strongest', polarity: 'falling' }),
+  edge:    edgeField({ method: 'strongest', polarity: 'falling', min_strength: 60 }),
 };
 
 export function buildWhiteListKey(ctx) {

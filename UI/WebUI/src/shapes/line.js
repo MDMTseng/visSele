@@ -40,14 +40,14 @@ export const fields = {
         };
       }
       if (obj.edge === undefined) {
-        obj.edge = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 0 };
+        obj.edge = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 60 };
       }
     },
   },
   caliper: caliperField(10, (s) =>
     (s.pt1 && s.pt2) ? Math.hypot(s.pt2.x - s.pt1.x, s.pt2.y - s.pt1.y) : 0
   ),
-  edge:    edgeField({ method: 'strongest', polarity: 'falling' }),
+  edge:    edgeField({ method: 'strongest', polarity: 'falling', min_strength: 60 }),
 };
 
 export function buildWhiteListKey(ctx) {
