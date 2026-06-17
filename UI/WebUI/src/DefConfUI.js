@@ -19,6 +19,7 @@ import ReactResizeDetector from 'react-resize-detector';
 import { DEF_EXTENSION, BPG_ExpCalc, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
+import { SBMSetupView } from './SBMStudio';
 import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
@@ -1351,65 +1352,8 @@ function SettingUI({})
 }
 
 
-// Dedicated full-screen authoring surface for the shape-based localizer. Hosts its
-// OWN canvas (reuses the connected CanvasComponent_rdx, so it auto-syncs edit_info +
-// the redux state machine and commits shapes exactly like the main editor) plus an
-// SBM-only toolbar — kept separate from the measurement-feature tools. The tool
-// buttons dispatch the same global draw-mode events; each first forces a return to
-// NEUTRAL (dispatch SUCCESS) so a tool can be re-picked after the previous shape
-// committed (which leaves the machine in SHAPE_EDIT).
-function SBMSetupView()
-{
-  const dispatch = useDispatch();
-  const edit_info = useSelector(state => state.UIData.edit_info);
-  const reg = edit_info.def_image_reg || {};
-  const roiN = (edit_info.roi_refine_points || []).length;
-  const enterMode = (ev) => {
-    dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS));   // SHAPE_EDIT/any -> NEUTRAL
-    dispatch(UIAct.EV_UI_ACT(ev));                         // NEUTRAL -> the draw mode
-  };
-  const patchReg = (p) =>
-    dispatch(DefConfAct.EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), ...p } }));
-
-  return <div style={{ display: 'flex', height: '84vh', gap: 8 }}>
-    <div style={{ width: 240, overflowY: 'auto', fontSize: 12, paddingRight: 6 }}>
-      <Divider orientation="left" style={{ margin: '4px 0' }}>registration（原點/方向）</Divider>
-      <Button size="small" block style={{ marginBottom: 6 }} onClick={() => enterMode(UIAct.UI_SM_EVENT.Loc_Reg_Create)}
-        title="在影像上拖一條線:按下=原點,放開方向=0°軸。設定 def_image_reg。建立全新 def 先做這步。">
-        ✛ 設定定位線</Button>
-      <div style={{ display: 'flex', gap: 4 }}>
-        <span>cx</span><NumberAccInput value={reg.cx ?? 0} onChange={(v) => patchReg({ cx: parseFloat(v) })} />
-        <span>cy</span><NumberAccInput value={reg.cy ?? 0} onChange={(v) => patchReg({ cy: parseFloat(v) })} />
-      </div>
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 2 }}>
-        <span>angle°</span>
-        <NumberAccInput value={Math.round(((reg.angle ?? 0) * 180 / Math.PI) * 1000) / 1000}
-          onChange={(v) => patchReg({ angle: parseFloat(v) * Math.PI / 180 })} />
-        <Checkbox checked={!!reg.isFlipped} onChange={() => patchReg({ isFlipped: !reg.isFlipped })}>flip</Checkbox>
-      </div>
-
-      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>特徵範圍 regions</Divider>
-      <Button size="small" block style={{ marginBottom: 4 }} onClick={() => enterMode(UIAct.UI_SM_EVENT.Loc_Include_Create)}
-        title="生成區(綠):點頂點圍住零件,點回第一個頂點收尾。line2Dup 特徵只在此區生成。">
-        ＋ include 生成區</Button>
-      <Button size="small" block onClick={() => enterMode(UIAct.UI_SM_EVENT.Loc_Exclude_Create)}
-        title="避免區(紅):從生成區挖掉(反光/會動的子件等)。">
-        － exclude 避免區</Button>
-      <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-        點頂點圍住,點回第一點收尾。沒畫 include 時存檔會自動從 sig360 silhouette 烘焙(全新 def 無 sig360,務必畫)。
-      </div>
-
-      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>ROI refine</Divider>
-      <div>取樣點: {roiN} {roiN === 0 ? '(auto)' : '(override)'}</div>
-      <Button size="small" style={{ marginTop: 2 }}
-        onClick={() => dispatch(DefConfAct.EditInfo_Patch({ roi_refine_points: [] }))}>清除→auto</Button>
-    </div>
-
-    <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
-      <CanvasComponent_rdx addClass="HXF" onCanvasInit={() => {}} />
-    </div>
-  </div>;
-}
+// The SBM setup studio (self-contained hook canvas + tools) lives in SBMStudio.jsx;
+// imported as SBMSetupView at the top of this file.
 
 
 function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,CORE_ID,dispatch)

@@ -516,6 +516,77 @@ class EverCheckCanvasComponent_proto {
 }
 
 
+// Hook-driven canvas (ported from WebUI2's DrawHook_CanvasComponent, adapted to this
+// proto). Instead of the global redux state machine deciding what to draw/interact, a
+// single `drawHook(ctrl_or_draw, g, canvas)` callback owns BOTH: ctrl_or_draw=true on
+// the control pass (mouse), false on the draw pass. `g` carries the ctx, world matrix
+// (+inverse), and the mouse position in WORLD coords (object-frame mm). This makes the
+// SBM setup studio fully self-contained — no state-machine coupling. Camera pan/zoom is
+// inherited from the proto; set `captureDrag=true` (e.g. while dragging the localization
+// line) to suppress pan so the hook owns the drag.
+class DrawHook_CanvasComponent extends EverCheckCanvasComponent_proto {
+  constructor(canvasDOM) {
+    super(canvasDOM);
+    this.drawHook = undefined;   // (ctrl_or_draw, g, canvas) => void
+    this.captureDrag = false;    // true = drag is the hook's (no camera pan)
+    this.g = undefined;
+    this._fitDone = false;
+  }
+
+  buildG(ctx) {
+    let wt = this.worldTransform();
+    let inv = new DOMMatrix([wt.a, wt.b, wt.c, wt.d, wt.e, wt.f]).invertSelf();
+    return {
+      ctx,
+      worldTransform: wt,
+      worldTransform_inv: inv,
+      mouseOnCanvas: this.VecX2DMat(this.mouseStatus, inv),
+      pmouseOnCanvas: this.VecX2DMat({ x: this.mouseStatus.px, y: this.mouseStatus.py }, inv),
+      mouseStatus: this.mouseStatus,
+      mouseEdge: (this.mouseStatus.status != this.mouseStatus.pstatus),
+    };
+  }
+
+  // Fit the loaded image to the view once, on first SetImg.
+  SetImg(img_info) {
+    super.SetImg(img_info);
+    if (!this._fitDone && this.img_info) { this.scaleImageToFitScreen(); this._fitDone = true; }
+  }
+
+  // Proto.onmousemove gates on this.state (the global SM) — override to a
+  // state-free version: pan while dragging unless the hook captured the drag.
+  onmousemove(evt) {
+    let pos = this.getMousePos(this.canvas, evt);
+    this.mouseStatus.x = pos.x;
+    this.mouseStatus.y = pos.y;
+    if (this.mouseStatus.status == 1 && !this.captureDrag) {
+      this.camera.StartDrag({ x: pos.x - this.mouseStatus.px, y: pos.y - this.mouseStatus.py });
+    }
+    this.ctrlLogic();
+    this.draw();
+  }
+
+  ctrlLogic() {
+    let ctx = this.canvas.getContext('2d');
+    if (!ctx) return;
+    this.g = this.buildG(ctx);
+    if (this.drawHook) this.drawHook(true, this.g, this);
+    this.mouseStatus.pstatus = this.mouseStatus.status;
+  }
+
+  draw() {
+    let ctx = this.canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    let m = this.worldTransform();
+    ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+    this.g = this.buildG(ctx);
+    if (this.drawHook) this.drawHook(false, this.g, this);
+  }
+}
+
+
 class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 
@@ -2820,4 +2891,4 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 export default { EverCheckCanvasComponent_proto,
   Preview_CanvasComponent, INSP_CanvasComponent, SLCALIB_CanvasComponent, DEFCONF_CanvasComponent,
-  SHAPE_TYPE_COLOR,InstInsp_CanvasComponent,RepDisplay_CanvasComponent}
+  SHAPE_TYPE_COLOR,InstInsp_CanvasComponent,RepDisplay_CanvasComponent,DrawHook_CanvasComponent}
