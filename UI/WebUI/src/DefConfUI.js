@@ -66,6 +66,7 @@ import {
   CameraOutlined,
   ArrowLeftOutlined,
   CaretDownOutlined,
+  AimOutlined,
 
 
 } from '@ant-design/icons';
@@ -1164,12 +1165,6 @@ function SettingUI({})
   const ACT_Morph_Alpha_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Morph_Alpha_Update(Number.isFinite(v) ? v : undefined)) };// (0,1], core default 1
   const ACT_Shape_Match_Scale_Update=(e) => { const raw = e?.target?.value ?? e; const v = parseFloat(raw); dispatch(DefConfAct.Shape_Match_Scale_Update(Number.isFinite(v) ? v : undefined)) };// (0,1], core default 1
   const ACT_Locating_Engine_Update=(v) => dispatch(DefConfAct.Locating_Engine_Update(v));// "sig360"|"shape_based"
-  const ACT_EditInfo_Patch=(patch) => dispatch(DefConfAct.EditInfo_Patch(patch));// generic edit_info merge (localization settings)
-  // Shape-based localizer authoring tools (enter a canvas draw mode). Defined here in
-  // SettingUI because the buttons that use them live in this component's render.
-  const ACT_Loc_Include_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Include_Create)) };
-  const ACT_Loc_Exclude_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Exclude_Create)) };
-  const ACT_Loc_Reg_Add_Mode= () => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Loc_Reg_Create)) };
   // One-click migration of a legacy sig360 def to the shape-based localizer:
   // flip the engine + apply the recommended fast coarse scale. anchor_corner and all
   // other settings are carried over untouched. def_image_reg is already stored at save;
@@ -1268,47 +1263,13 @@ function SettingUI({})
       title="Switch to the shape-based localizer + set shape_match_scale=0.3. Re-save to persist. anchor_corner and other settings are kept.">
       → migrate to shape_based (v2)</Button>,
 
-    // ----- shape_based localization authoring (pure-SBM def) -----
+    // Localization regions / registration / ROI are authored in the dedicated
+    // full-screen "SBM定位設定" modal (its own canvas, separate from measurement) —
+    // opened from the editor toolbar. This panel keeps only engine + perf settings.
     (edit_info.locating_engine === 'shape_based') &&
-      <Divider key="locregdiv" orientation="left">localization regions</Divider>,
-    (edit_info.locating_engine === 'shape_based') && <div key="locregbtns" style={{ marginBottom: 4 }}>
-      <Button size="small" style={{ marginRight: 6 }} onClick={ACT_Loc_Include_Add_Mode}
-        title="Draw an INCLUDE polygon (green): click vertices on the image; click near the first vertex to close. Features are generated inside it.">
-        + include region</Button>
-      <Button size="small" onClick={ACT_Loc_Exclude_Add_Mode}
-        title="Draw an EXCLUDE polygon (red): an avoid-generation area carved out of the include mask.">
-        + exclude region</Button>
-      <div style={{ fontSize: 11, color: '#999' }}>
-        click vertices on the canvas; click the first vertex to close. No include region ⇒ auto-bake from the sig360 silhouette at save.
-      </div>
-    </div>,
-    (edit_info.locating_engine === 'shape_based') && <div key="locreg" style={{ marginBottom: 6 }}>
-      <Divider orientation="left" style={{ margin: '4px 0' }}>registration (origin / angle)</Divider>
-      <Button size="small" style={{ marginBottom: 4 }} onClick={ACT_Loc_Reg_Add_Mode}
-        title="Drag a line on the reference image: press = origin, release direction = the 0° axis. Sets def_image_reg. Use this first when building a fresh shape_based def.">
-        ✛ set localization line</Button>
-      <br />
-      <span>&nbsp;cx&nbsp;</span>
-      <NumberAccInput value={edit_info.def_image_reg?.cx ?? 0}
-        onChange={(v) => ACT_EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), cx: parseFloat(v) } })} />
-      <span>&nbsp;cy&nbsp;</span>
-      <NumberAccInput value={edit_info.def_image_reg?.cy ?? 0}
-        onChange={(v) => ACT_EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), cy: parseFloat(v) } })} />
-      <span>&nbsp;angle°&nbsp;</span>
-      <NumberAccInput value={Math.round(((edit_info.def_image_reg?.angle ?? 0) * 180 / Math.PI) * 1000) / 1000}
-        onChange={(v) => ACT_EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), angle: parseFloat(v) * Math.PI / 180 } })} />
-      <Checkbox style={{ marginLeft: 8 }}
-        checked={!!(edit_info.def_image_reg?.isFlipped)}
-        onChange={() => ACT_EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), isFlipped: !(edit_info.def_image_reg?.isFlipped) } })}>
-        flipped</Checkbox>
-      <div style={{ fontSize: 11, color: '#999' }}>origin (mm) + orientation of the part in the reference image. Auto-detected on a fresh save; edit to re-set.</div>
-    </div>,
-    (edit_info.locating_engine === 'shape_based') && <div key="roirp" style={{ marginBottom: 6 }}>
-      <span style={{ fontSize: 12 }}>ROI refine points: {(edit_info.roi_refine_points || []).length} {((edit_info.roi_refine_points || []).length === 0) ? '(auto)' : '(override)'}</span>
-      <Button size="small" style={{ marginLeft: 8 }}
-        onClick={() => ACT_EditInfo_Patch({ roi_refine_points: [] })}
-        title="Clear overrides — the core auto-selects ROI refine points.">use auto</Button>
-    </div>,
+      <div key="sbmhint" style={{ fontSize: 11, color: '#999', margin: '4px 0' }}>
+        定位區域 / 定位線 / ROI 在工具列的「SBM定位設定」全螢幕視窗裡設定。
+      </div>,
 
     <Divider orientation="left">sig360 perf</Divider>,
     <Checkbox
@@ -1390,7 +1351,67 @@ function SettingUI({})
 }
 
 
-  
+// Dedicated full-screen authoring surface for the shape-based localizer. Hosts its
+// OWN canvas (reuses the connected CanvasComponent_rdx, so it auto-syncs edit_info +
+// the redux state machine and commits shapes exactly like the main editor) plus an
+// SBM-only toolbar — kept separate from the measurement-feature tools. The tool
+// buttons dispatch the same global draw-mode events; each first forces a return to
+// NEUTRAL (dispatch SUCCESS) so a tool can be re-picked after the previous shape
+// committed (which leaves the machine in SHAPE_EDIT).
+function SBMSetupView()
+{
+  const dispatch = useDispatch();
+  const edit_info = useSelector(state => state.UIData.edit_info);
+  const reg = edit_info.def_image_reg || {};
+  const roiN = (edit_info.roi_refine_points || []).length;
+  const enterMode = (ev) => {
+    dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS));   // SHAPE_EDIT/any -> NEUTRAL
+    dispatch(UIAct.EV_UI_ACT(ev));                         // NEUTRAL -> the draw mode
+  };
+  const patchReg = (p) =>
+    dispatch(DefConfAct.EditInfo_Patch({ def_image_reg: { ...(edit_info.def_image_reg || {}), ...p } }));
+
+  return <div style={{ display: 'flex', height: '84vh', gap: 8 }}>
+    <div style={{ width: 240, overflowY: 'auto', fontSize: 12, paddingRight: 6 }}>
+      <Divider orientation="left" style={{ margin: '4px 0' }}>registration（原點/方向）</Divider>
+      <Button size="small" block style={{ marginBottom: 6 }} onClick={() => enterMode(UIAct.UI_SM_EVENT.Loc_Reg_Create)}
+        title="在影像上拖一條線:按下=原點,放開方向=0°軸。設定 def_image_reg。建立全新 def 先做這步。">
+        ✛ 設定定位線</Button>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <span>cx</span><NumberAccInput value={reg.cx ?? 0} onChange={(v) => patchReg({ cx: parseFloat(v) })} />
+        <span>cy</span><NumberAccInput value={reg.cy ?? 0} onChange={(v) => patchReg({ cy: parseFloat(v) })} />
+      </div>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 2 }}>
+        <span>angle°</span>
+        <NumberAccInput value={Math.round(((reg.angle ?? 0) * 180 / Math.PI) * 1000) / 1000}
+          onChange={(v) => patchReg({ angle: parseFloat(v) * Math.PI / 180 })} />
+        <Checkbox checked={!!reg.isFlipped} onChange={() => patchReg({ isFlipped: !reg.isFlipped })}>flip</Checkbox>
+      </div>
+
+      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>特徵範圍 regions</Divider>
+      <Button size="small" block style={{ marginBottom: 4 }} onClick={() => enterMode(UIAct.UI_SM_EVENT.Loc_Include_Create)}
+        title="生成區(綠):點頂點圍住零件,點回第一個頂點收尾。line2Dup 特徵只在此區生成。">
+        ＋ include 生成區</Button>
+      <Button size="small" block onClick={() => enterMode(UIAct.UI_SM_EVENT.Loc_Exclude_Create)}
+        title="避免區(紅):從生成區挖掉(反光/會動的子件等)。">
+        － exclude 避免區</Button>
+      <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+        點頂點圍住,點回第一點收尾。沒畫 include 時存檔會自動從 sig360 silhouette 烘焙(全新 def 無 sig360,務必畫)。
+      </div>
+
+      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>ROI refine</Divider>
+      <div>取樣點: {roiN} {roiN === 0 ? '(auto)' : '(override)'}</div>
+      <Button size="small" style={{ marginTop: 2 }}
+        onClick={() => dispatch(DefConfAct.EditInfo_Patch({ roi_refine_points: [] }))}>清除→auto</Button>
+    </div>
+
+    <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
+      <CanvasComponent_rdx addClass="HXF" onCanvasInit={() => {}} />
+    </div>
+  </div>;
+}
+
+
 function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,CORE_ID,dispatch)
 {
   function actionGen_W_IGNORE_LOCK(pkts)
@@ -2051,6 +2072,24 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       }} />,
 
     
+    <BASE_COM.IconButton
+      iconType={<AimOutlined />}
+      dict={DICT}
+      addClass="layout palatte-cyan-8 vbox width12"
+      key="SBMSETUP"
+      text="SBM定位設定" onClick={() => {
+        dispatch(DefConfAct.Locating_Engine_Update('shape_based'));   // this surface implies shape_based
+        setModal_view({
+          title: "Shape-based 定位設定",
+          footer: null,
+          width: "96vw",
+          style: { top: 12 },
+          bodyStyle: { padding: 8 },
+          onCancel: () => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); },
+          view: <SBMSetupView />,
+        });
+      }} />,
+
     <BASE_COM.IconButton
       iconType={<ThunderboltOutlined />}
       dict={DICT}
