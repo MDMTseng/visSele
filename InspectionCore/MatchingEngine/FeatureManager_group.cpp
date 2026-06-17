@@ -511,6 +511,16 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   return &report;
 }
 
+cJSON *FeatureManager_binary_processing_group::getShapeFeaturePointsJson()
+{
+  for (auto *sub : binaryFeatureBundle)
+  {
+    cJSON *j = sub->getShapeFeaturePointsJson();
+    if (j != NULL) return j;
+  }
+  return NULL;
+}
+
 
 void FeatureManager_binary_processing_group::ClearReport()
 {

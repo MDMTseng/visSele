@@ -450,6 +450,9 @@ protected:
     roi_mm  = shape_roi_mm;
     return true;
   }
+  // cJSON variant for the WS "SF" round-trip (see FeatureManager base). NULL if the
+  // shape localizer has not trained.
+  cJSON *getShapeFeaturePointsJson() override;
   // Ensure the shape matcher's template variants are scaled for the live mmpp so a
   // def is portable across camera magnifications. Rebuilds shapeMatcher at
   // scale = def_mmpp/current_mmpp when it differs from shape_built_scale (cached, so

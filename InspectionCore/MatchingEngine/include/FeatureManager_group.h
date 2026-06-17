@@ -61,6 +61,8 @@ public :
   int FeatureMatching(cv::Mat &img_cv) override;
   virtual const FeatureReport* GetReport() override;
   virtual void ClearReport() override;
+  // Forward to the first sub-feature with a trained shape localizer (SF round-trip).
+  cJSON *getShapeFeaturePointsJson() override;
   static const char* GetFeatureTypeName(){return "binary_processing_group";};
 
 

@@ -6842,6 +6842,29 @@ bool FeatureManager_sig360_circle_line::ensureShapeScale(float current_mmpp)
   return true;
 }
 
+cJSON *FeatureManager_sig360_circle_line::getShapeFeaturePointsJson()
+{
+  if (!shape_ready) return NULL;
+  cJSON *root = cJSON_CreateObject();
+  cJSON *feats = cJSON_AddArrayToObject(root, "features");
+  for (const acv_XY &p : shape_feat_mm)
+  {
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddNumberToObject(o, "x", p.x);
+    cJSON_AddNumberToObject(o, "y", p.y);
+    cJSON_AddItemToArray(feats, o);
+  }
+  cJSON *rois = cJSON_AddArrayToObject(root, "roi");
+  for (const acv_XY &p : shape_roi_mm)
+  {
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddNumberToObject(o, "x", p.x);
+    cJSON_AddNumberToObject(o, "y", p.y);
+    cJSON_AddItemToArray(rois, o);
+  }
+  return root;
+}
+
 int FeatureManager_sig360_circle_line::FeatureMatching_shape()
 {
   // Debug toggle read once (process-wide), so the per-frame path costs nothing

@@ -2338,6 +2338,36 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
       calib_bacpac.sampler->ignoreCalib(false);
     }
+    else if (checkTL("SF", dat)) //[S]hape [F]eatures: train the shape localizer from the
+    {                            //  pushed def and return its feature/ROI points (object-frame mm)
+      do                         //  for the SBM setup studio's "生成特徵點" visualization.
+      {
+        if (json == NULL) { LOGE("SF: JSON parse failed"); break; }
+        char *deffile = (char *)JFetch(json, "deffile", cJSON_String);
+        cJSON *defInfo = JFetch_OBJECT(json, "definfo");
+        if (deffile == NULL && defInfo == NULL) { LOGE("SF: no 'deffile' or 'definfo'"); break; }
+
+        char *jsonStr = (defInfo != NULL) ? cJSON_Print(defInfo) : ReadText(deffile);
+        if (jsonStr == NULL) { LOGE("SF: cannot read def"); break; }
+
+        matchingEng.ResetFeature();
+        {
+          char *injected_ctx = def_stamp_context(jsonStr, deffile);
+          matchingEng.AddMatchingFeature(injected_ctx ? injected_ctx : jsonStr);
+          if (injected_ctx) free(injected_ctx);
+        }
+        free(jsonStr);
+
+        cJSON *fp = matchingEng.GetShapeFeaturePoints();
+        char *out = fp ? cJSON_PrintUnformatted(fp) : strdup("{\"features\":[],\"roi\":[]}");
+        if (fp) cJSON_Delete(fp);
+
+        bpg_dat = GenStrBPGData("SF", out);
+        bpg_dat.pgID = dat->pgID;
+        fromUpperLayer(bpg_dat, peer);
+        free(out);
+      } while (0);
+    }
     else if (checkTL("CI", dat) || checkTL("FI", dat)) //[C]ontinuous [I]nspection / [F]ull [I]nspection
     {
       do

@@ -49,6 +49,11 @@ public :
   virtual int FeatureMatching(cv::Mat &img_cv) = 0;
   
   virtual cJSON * SetParam(cJSON *json_str){return cJSON_CreateNull();}
+  // Shape-based localizer visualization round-trip ("生成特徵點"): return the trained
+  // line2Dup feature points + ROI points as cJSON {"features":[{x,y}...],"roi":[...]}
+  // in object-frame mm, or NULL if this manager has no trained shape localizer. Groups
+  // forward to their sub-features. Caller owns the returned cJSON.
+  virtual cJSON * getShapeFeaturePointsJson(){return NULL;}
   virtual const FeatureReport* GetReport(){return &report;};
   virtual void ClearReport(){
     bacpac=NULL;

@@ -136,6 +136,17 @@ const FeatureReport * MatchingEngine::GetReport()
   return NULL;
 }
 
+cJSON *MatchingEngine::GetShapeFeaturePoints()
+{
+  for (auto *fm : featureBundle)
+  {
+    fm->setBacPac(bacpac);
+    cJSON *j = fm->getShapeFeaturePointsJson();
+    if (j != NULL) return j;
+  }
+  return NULL;
+}
+
 cJSON *MatchingEngine::FeatureReport2Json(const FeatureReport *report)
 {
   return MatchingReport2JSON(report);

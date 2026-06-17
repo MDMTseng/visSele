@@ -22,6 +22,9 @@ public:
   cJSON * SetParam(cJSON *json_str);
   int AddMatchingFeature(FeatureManager *featureSet);
   int FeatureMatching(cv::Mat &img_cv);     // canonical cv::Mat entry
+  // SF round-trip: first trained shape localizer's feature points (object-frame mm),
+  // as cJSON {"features":[{x,y}...],"roi":[...]}, or NULL. Caller owns the cJSON.
+  cJSON *GetShapeFeaturePoints();
   const FeatureReport *GetReport();
   cJSON*FeatureReport2Json(const FeatureReport *report);
   ~MatchingEngine();
