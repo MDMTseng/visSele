@@ -287,6 +287,11 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // radius at the live mmpp). buildShapeMatcher() rebuilds the matcher at a given
   // scale from the shape_* members; shape_built_scale = the scale it currently holds.
   float shape_built_scale = 1.0f;
+  // Trained feature geometry exposed for UI visualization (the "生成特徵點" round-trip):
+  // the line2Dup gradient features and the ROI refine sample points, in OBJECT-FRAME mm
+  // (the def's own frame, same as localization_include). Populated by trainShapeMatcher.
+  std::vector<acv_XY> shape_feat_mm;   // line2Dup gradient features (finest pyramid level)
+  std::vector<acv_XY> shape_roi_mm;    // ROI refine sample points
   std::string reference_image_name;   // optional explicit sidecar PNG (relative)
   std::string def_path;               // full path of the .hydef (for <base>.png)
   std::string ref_image_path;         // transient FULL path to the reference image,
@@ -436,6 +441,15 @@ protected:
   // the variant count (>0) on success, <=0 on failure. Shared by trainShapeMatcher
   // (scale 1.0) and ensureShapeScale (live mmpp ratio).
   int buildShapeMatcher(float scale);
+  // Copy the trained feature geometry (object-frame mm) out for UI visualization.
+  // Returns false if the shape localizer has not trained (shape_ready == false).
+  bool getShapeFeaturePoints(std::vector<acv_XY> &feat_mm, std::vector<acv_XY> &roi_mm) const
+  {
+    if (!shape_ready) return false;
+    feat_mm = shape_feat_mm;
+    roi_mm  = shape_roi_mm;
+    return true;
+  }
   // Ensure the shape matcher's template variants are scaled for the live mmpp so a
   // def is portable across camera magnifications. Rebuilds shapeMatcher at
   // scale = def_mmpp/current_mmpp when it differs from shape_built_scale (cached, so

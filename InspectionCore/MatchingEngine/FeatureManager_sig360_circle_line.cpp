@@ -6683,6 +6683,52 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
 
     shape_ready = true;
 
+    // Lift the trained feature geometry into OBJECT-FRAME mm for UI visualization
+    // (the "生成特徵點" round-trip). Same frame as localization_include: feature pixel
+    // (cropped-template coords) -> full-image px (+cropRect.tl) -> inverse reg
+    // transform. Uses reg_sin (== -sin(reg), the mask convention) so the points land
+    // in the exact frame the include polygons were authored in.
+    shape_feat_mm.clear();
+    shape_roi_mm.clear();
+    if (def_mmpp > 0)
+    {
+      auto px_to_obj = [&](float fx, float fy) {
+        acv_XY full = { fx + (float)cropRect.x, fy + (float)cropRect.y };
+        return PixDomain_TO_TemplateDomain(full, reg_sin, reg_cos, reg_flip_f,
+                                           acv_XY(originPx.x, originPx.y), def_mmpp);
+      };
+      if (!shapeFeatureSet->levels.empty())
+      {
+        auto &lv = shapeFeatureSet->levels[0];
+        shape_feat_mm.reserve(lv.features.size());
+        for (auto &f : lv.features)
+          shape_feat_mm.push_back(px_to_obj((float)(f.x + lv.tl_x), (float)(f.y + lv.tl_y)));
+      }
+      const float tcx = templ_use.cols / 2.0f, tcy = templ_use.rows / 2.0f;
+      std::vector<cv::Point2f> rpts = shapeFeatureSet->selectOptimizedPoints(16);
+      shape_roi_mm.reserve(rpts.size());
+      for (auto &rp : rpts)
+        shape_roi_mm.push_back(px_to_obj(rp.x + tcx, rp.y + tcy));
+    }
+    // Diagnostic: dump the object-frame-mm feature geometry to JSON for validation
+    // (the data the "生成特徵點" WS round-trip will return). SHAPE_DUMP_FEAT=<path>.
+    if (const char *fp_path = getenv("SHAPE_DUMP_FEAT"))
+    {
+      std::string j = "{\"features\":[";
+      for (size_t i = 0; i < shape_feat_mm.size(); i++)
+        j += (i ? "," : "") + std::string("{\"x\":") + std::to_string(shape_feat_mm[i].x) +
+             ",\"y\":" + std::to_string(shape_feat_mm[i].y) + "}";
+      j += "],\"roi\":[";
+      for (size_t i = 0; i < shape_roi_mm.size(); i++)
+        j += (i ? "," : "") + std::string("{\"x\":") + std::to_string(shape_roi_mm[i].x) +
+             ",\"y\":" + std::to_string(shape_roi_mm[i].y) + "}";
+      j += "]}";
+      FILE *f = fopen(fp_path, "wb");
+      if (f) { fwrite(j.data(), 1, j.size(), f); fclose(f);
+               fprintf(stderr, "[SHAPE_DUMP_FEAT] wrote %s (%d feat, %d roi)\n",
+                       fp_path, (int)shape_feat_mm.size(), (int)shape_roi_mm.size()); }
+    }
+
     // Optional: render the ROI refine sample points (+ their search windows), the
     // signature silhouette mask, and the origin onto the template for inspection.
     //   SHAPE_DRAW_ROI=1 -> writes "<base>_roi.png" next to the template.
