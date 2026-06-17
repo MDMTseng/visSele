@@ -328,6 +328,10 @@ export class InspectionEditorLogic {
                 edit_info.morph_alpha = report.morph_alpha;
               if (typeof report.shape_match_scale === 'number')
                 edit_info.shape_match_scale = report.shape_match_scale;
+              if (typeof report.shape_weak_thres === 'number')
+                edit_info.shape_weak_thres = report.shape_weak_thres;
+              if (typeof report.shape_strong_thres === 'number')
+                edit_info.shape_strong_thres = report.shape_strong_thres;
               edit_info.locating_engine =
                 (report.locating_engine === 'shape_based') ? 'shape_based' : 'sig360';
               // Shape-locator registration (origin+angle) lives at the def top level;

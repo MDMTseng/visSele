@@ -284,9 +284,11 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   // saved on disk). The user can refresh with the button after editing regions.
   useEffect(() => { genFeatures(); /* eslint-disable-next-line */ }, []);
 
+  // Tool toggle: clicking the active tool returns to 'pan' (drag = pan, wheel = zoom),
+  // so no separate pan button is needed.
   const TBtn = ({ id, children, ...p }) => (
     <Button size="small" block style={{ marginBottom: 4 }} type={tool === id ? 'primary' : 'default'}
-      onClick={() => { work.current = { poly: [], cursor: null, line: null }; setTool(id); }} {...p}>
+      onClick={() => { work.current = { poly: [], cursor: null, line: null }; setTool(tool === id ? 'pan' : id); }} {...p}>
       {children}</Button>
   );
 
@@ -355,13 +357,26 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
           options={[{ value: 1, label: '正面 front' }, { value: -1, label: '反面 back' }, { value: 0, label: '兩面 both' }]} />
       </div>
 
-      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>檢視</Divider>
-      <TBtn id="pan">🖐 平移/縮放</TBtn>
-      <div style={{ fontSize: 11, color: '#999' }}>拖曳=平移,滾輪=縮放。</div>
+      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>特徵生成（邊緣強度）</Divider>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
+        <span style={{ width: 92 }}>weak 弱邊</span>
+        <InputNumber size="small" min={1} max={255} step={5} style={{ width: 70 }}
+          value={edit_info.shape_weak_thres ?? 50}
+          onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_weak_thres: v }))} />
+      </div>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <span style={{ width: 92 }}>strong 強邊</span>
+        <InputNumber size="small" min={1} max={255} step={5} style={{ width: 70 }}
+          value={edit_info.shape_strong_thres ?? 80}
+          onChange={(v) => dispatch(DefConfAct.EditInfo_Patch({ shape_strong_thres: v }))} />
+      </div>
+      <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+        梯度門檻:小=更多特徵(含雜訊),大=只留強邊。改後按「生成特徵點」看效果。
+      </div>
 
-      <div style={{ borderTop: '1px solid #444', marginTop: 10, paddingTop: 8, display: 'flex', gap: 6 }}>
-        <Button type="primary" size="small" onClick={() => onSave && onSave()}>儲存並退出</Button>
-        <Button size="small" onClick={() => onClose && onClose()}>關閉</Button>
+      <div style={{ borderTop: '1px solid #444', marginTop: 10, paddingTop: 8 }}>
+        <Button type="primary" size="small" block onClick={() => onClose && onClose()}>完成(套用到編輯暫存)</Button>
+        <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>設定即時套用到編輯暫存;回主編輯器按「存檔」才寫入磁碟。</div>
       </div>
     </div>
 

@@ -271,6 +271,11 @@ export function defFileGeneration(edit_info)
     report.featureSet[0].morph_alpha = edit_info.morph_alpha;
   if (typeof edit_info.shape_match_scale === 'number')
     report.featureSet[0].shape_match_scale = edit_info.shape_match_scale;
+  // line2Dup edge-strength thresholds for feature generation (core defaults 50/80).
+  if (typeof edit_info.shape_weak_thres === 'number')
+    report.featureSet[0].shape_weak_thres = edit_info.shape_weak_thres;
+  if (typeof edit_info.shape_strong_thres === 'number')
+    report.featureSet[0].shape_strong_thres = edit_info.shape_strong_thres;
   // Localizer: shape_based opts into the line2Dup + ROI-refine locator. The reference
   // image is NOT a def-file field (kept path-free / portable): the core gets its path
   // at runtime via "_ref_image_path" (stampRefImagePath, stamped into the def-INFO the
