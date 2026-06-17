@@ -145,6 +145,15 @@ function ctrlScene(g, canvas, ctx_state) {
   const st = g.mouseStatus;
   const scale = canvas.camera.GetCameraScale() || 100;
 
+  // Touch devices fire touchend -> onmouseup AND a synthetic mouseup, so one physical
+  // release produces TWO mouse-up edges. That double-toggled a ROI point off right after
+  // adding it (and double-added polygon vertices). Swallow a 2nd mouse-up within 200ms.
+  if (g.mouseEdge && st.status === 0) {
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+    if (now && now - (work.lastUpMs || 0) < 200) return;
+    work.lastUpMs = now;
+  }
+
   if (tool === 'roi') {
     // roi mode captures the drag (no camera pan), so any press→release places a point
     // at the release position; clicking on an existing point removes it.
