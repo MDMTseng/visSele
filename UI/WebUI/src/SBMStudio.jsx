@@ -78,7 +78,7 @@ function poly(ctx, pts, close) {
 // ── The SBM scene draw. Everything is in object-frame mm (== world), except in
 // locline mode where we show the raw image to author def_image_reg. ────────────
 function drawScene(g, canvas, ctx_state) {
-  const { reg, mmpp, shapeList, work, featPts, tool } = ctx_state;
+  const { reg, mmpp, shapeList, work, featPts, roiPts, tool } = ctx_state;
   const ctx = g.ctx;
   const scale = canvas.camera.GetCameraScale() || 100;
   const lw = 1.6 / scale, pr = 2.4 / scale;
@@ -108,12 +108,18 @@ function drawScene(g, canvas, ctx_state) {
     ctx.lineWidth = lw; ctx.strokeStyle = inc ? '#00c853' : '#ff5252'; ctx.stroke();
   }
 
-  // generated feature points (line2Dup = blue, ROI = magenta) from the core round-trip.
+  // generated feature points (line2Dup = blue, auto ROI = magenta) from the round-trip.
   if (featPts) {
     ctx.fillStyle = '#29b6f6';
     for (const p of (featPts.features || [])) { ctx.beginPath(); ctx.arc(p.x, p.y, pr * 0.8, 0, 7); ctx.fill(); }
     ctx.fillStyle = '#ff4081';
     for (const p of (featPts.roi || [])) { ctx.beginPath(); ctx.arc(p.x, p.y, pr * 1.8, 0, 7); ctx.fill(); }
+  }
+
+  // user-placed ROI override points (orange squares), saved as roi_refine_points.
+  if (roiPts && roiPts.length) {
+    ctx.strokeStyle = '#ff9100'; ctx.lineWidth = lw * 1.4;
+    for (const p of roiPts) ctx.strokeRect(p.x - pr * 1.8, p.y - pr * 1.8, pr * 3.6, pr * 3.6);
   }
 
   // localization origin (object (0,0)) + 0° axis.
@@ -135,9 +141,25 @@ function drawScene(g, canvas, ctx_state) {
 
 // ── The SBM control (mouse) logic. ─────────────────────────────────────────────
 function ctrlScene(g, canvas, ctx_state) {
-  const { tool, work, onPoly, onReg } = ctx_state;
+  const { tool, work, roiPts, onPoly, onReg, onRoi } = ctx_state;
   const st = g.mouseStatus;
   const scale = canvas.camera.GetCameraScale() || 100;
+
+  if (tool === 'roi') {
+    if (g.mouseEdge && st.status === 0) {                  // click
+      const movedPx = Math.hypot(st.x - st.px, st.y - st.py);
+      if (movedPx < 6) {
+        const p = { x: g.mouseOnCanvas.x, y: g.mouseOnCanvas.y };
+        const pts = (roiPts || []).map((q) => ({ x: q.x, y: q.y }));
+        const closeW = 14 / scale;
+        const idx = pts.findIndex((q) => Math.hypot(q.x - p.x, q.y - p.y) < closeW);
+        if (idx >= 0) pts.splice(idx, 1);                   // click on a point removes it
+        else pts.push(p);                                   // else add a new override point
+        onRoi(pts);
+      }
+    }
+    return;
+  }
 
   if (tool === 'include' || tool === 'exclude') {
     work.cursor = { x: g.mouseOnCanvas.x, y: g.mouseOnCanvas.y };
@@ -174,6 +196,8 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const edit_info = useSelector((s) => s.UIData.edit_info);
   const [tool, setTool] = useState('pan');
   const [featPts, setFeatPts] = useState(undefined);   // {features:[],roi:[]} from the SF round-trip
+  const featRef = useRef(undefined);                   // mirror — drawScene reads this so the
+  featRef.current = featPts;                            // overlay never goes stale across redraws
   const [genBusy, setGenBusy] = useState(false);
   const work = useRef({ poly: [], cursor: null, line: null });
 
@@ -181,6 +205,11 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const obj = edit_info._obj;
   const mmpp = obj && obj.getEditorMmpp ? obj.getEditorMmpp() : 1;
   const shapeList = (obj && obj.shapeList) || [];
+  const roiPts = edit_info.roi_refine_points || [];
+
+  const onRoi = useCallback((pts) => {
+    dispatch(DefConfAct.EditInfo_Patch({ roi_refine_points: pts }));
+  }, [dispatch]);
 
   const onPoly = useCallback((type, pts) => {
     dispatch(DefConfAct.Shape_Set({
@@ -215,10 +244,15 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
 
   const dhook = useCallback((isCtrl, g, canvas) => {
     canvas.captureDrag = (tool === 'locline');
-    const ctx_state = { reg, mmpp, shapeList, work: work.current, featPts, tool, onPoly, onReg };
+    const ctx_state = { reg, mmpp, shapeList, work: work.current,
+      featPts: featRef.current, roiPts, tool, onPoly, onReg, onRoi };
     if (isCtrl) ctrlScene(g, canvas, ctx_state);
     else drawScene(g, canvas, ctx_state);
-  }, [tool, reg, mmpp, shapeList, featPts, onPoly, onReg]);
+  }, [tool, reg, mmpp, shapeList, featPts, roiPts, onPoly, onReg, onRoi]);
+
+  // Auto-generate the feature-point overlay once when the studio opens (if the def is
+  // saved on disk). The user can refresh with the button after editing regions.
+  useEffect(() => { genFeatures(); /* eslint-disable-next-line */ }, []);
 
   const TBtn = ({ id, children, ...p }) => (
     <Button size="small" block style={{ marginBottom: 4 }} type={tool === id ? 'primary' : 'default'}
@@ -250,6 +284,14 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
       </div>
       <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
         點頂點圍住零件,點回第一個頂點收尾。拖曳=平移視角,滾輪=縮放。
+      </div>
+
+      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>ROI 取樣點</Divider>
+      <TBtn id="roi" title="點影像新增 ROI 取樣點(橘框);點既有點可刪除。空=core 自動選(粉點)。">
+        ◻ 設定 ROI 點（{roiPts.length}）{roiPts.length === 0 ? ' auto' : ''}</TBtn>
+      <Button size="small" onClick={() => onRoi([])}>清除→auto</Button>
+      <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+        點影像加點/點既有點刪除。空白=自動(粉點為 core 自動選)。
       </div>
 
       <Divider orientation="left" style={{ margin: '8px 0 4px' }}>可視化</Divider>
