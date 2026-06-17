@@ -283,16 +283,11 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
   // Fast path: when no sub-feature needs the binary silhouette (e.g. a
   // shape-based locator works on the raw grayscale), skip binarize -> cage ->
   // CCL -> intrusion entirely. Old sig360 defs still take the full path below.
-  // EXCEPTION: the frame-intrusion safety gate (intrusionSizeLimitRatio > 0, used on
-  // backlit AOI to reject scenes with foreign material reaching in from the edge ->
-  // prevents false eject) is binarize+CCL-based and independent of the localizer, so a
-  // shape-based def with intrusion enabled still takes the full path: the gate runs,
-  // and the shape locator runs on the raw gray in the sub-feature regardless.
   {
     bool anyNeedsBinary = false;
     for (size_t i = 0; i < binaryFeatureBundle.size(); i++)
       if (binaryFeatureBundle[i]->needsBinaryPreprocessing()) { anyNeedsBinary = true; break; }
-    if (!binaryFeatureBundle.empty() && !anyNeedsBinary && intrusionSizeLimitRatio <= 0)
+    if (!binaryFeatureBundle.empty() && !anyNeedsBinary)
     {
       if (getenv("SHAPE_DBG"))
         fprintf(stderr, "[SHAPE_DBG] group: raw-gray fast path (binarize/cage/CCL/contour skipped)\n");

@@ -1221,36 +1221,36 @@ function SettingUI({})
 
 
 
-    // Frame-intrusion safety gate (foreign material reaching in from the edge -> reject
-    // the scene, prevents false eject on backlit AOI). It is binarize+CCL-based but
-    // localizer-INDEPENDENT (the core runs the gate even on shape_based defs when this
-    // is > 0), so it stays visible for both engines. 0 = off.
-    <Divider orientation="left">{DICT.defConf.intrusion_size_limit_ratio}</Divider>,
-    <Slider
-      min={0}
-      step={0.01}
-      max={1}
-      included={true}
-      marks={
-        {
-          0: '',
-          0.01: '',
-          0.05: '',
-          0.1: '0.1',
-          0.3: '0.2',
-          0.5: '0.5',
-          1: '',
+    // Binary intrusion-size gate — only the sig360/binary path uses it; the shape path
+    // skips binarization, so hide it for shape_based.
+    (edit_info.locating_engine !== 'shape_based') && <React.Fragment key="intrusion">
+      <Divider orientation="left">{DICT.defConf.intrusion_size_limit_ratio}</Divider>
+      <Slider
+        min={0}
+        step={0.01}
+        max={1}
+        included={true}
+        marks={
+          {
+            0: '',
+            0.01: '',
+            0.05: '',
+            0.1: '0.1',
+            0.3: '0.2',
+            0.5: '0.5',
+            1: '',
+          }
         }
-      }
-      onChange={ACT_IntrusionSizeLimitRatio_Update}
-      value={edit_info.intrusionSizeLimitRatio}
-    />,
-    <NumberAccInput
-      min={0}
-      max={1}
-      value={edit_info.intrusionSizeLimitRatio}
-      onChange={ACT_IntrusionSizeLimitRatio_Update}
-    />,
+        onChange={ACT_IntrusionSizeLimitRatio_Update}
+        value={edit_info.intrusionSizeLimitRatio}
+      />
+      <NumberAccInput
+        min={0}
+        max={1}
+        value={edit_info.intrusionSizeLimitRatio}
+        onChange={ACT_IntrusionSizeLimitRatio_Update}
+      />
+    </React.Fragment>,
 
     <Divider orientation="left">localizer</Divider>,
     <span>&nbsp;engine&nbsp;</span>,
