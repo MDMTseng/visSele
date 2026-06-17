@@ -212,5 +212,11 @@ remains for A/B. The user can then open the authoring UI and edit the baked regi
   localization arrays verbatim — no pixel→mm transform needed (§4's formula is moot).
   Validated via node-replicated save + core. KNOWN GAP: pre-filling the auto
   roi_refine_points into the override editor needs a core round-trip (empty = auto today).
-- **P4 — TODO**: fresh pure-SBM def end to end (author from scratch, no sig360 emitted);
-  cross-mmpp (§9.4).
+- **P4 (fresh pure-SBM def) — DONE (commit 609dd332).** Build a def with NO sig360
+  block from scratch. Decisions: ref image = live snapshot; origin+angle = drag a
+  "localization line" (loc_reg tool → def_image_reg); mmpp = cam_param. Editor made
+  signature-independent (getEditorMmpp, SetDefInfo guard, GenerateFeature, def_image_reg
+  frame). Core verified to inspect inherentfeatures=[] (score 99.6). Authoring loop:
+  snapshot → set localization line → draw include/exclude → add measurements → save.
+  Remaining: cross-mmpp on a real different-mmpp frame (§9.4); auto roi_refine_points
+  pre-fill (needs a core round-trip); interactive UX tuning on target.
