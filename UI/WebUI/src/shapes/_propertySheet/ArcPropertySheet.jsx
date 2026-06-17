@@ -4,7 +4,7 @@
 // Arc-specific bits vs line:
 //   - `direction` switch (stored as ±1, not bool — coerce in the handler).
 //   - caliper width auto-default = arc length / count (not chord length).
-import React from 'react';
+import React, { useEffect } from 'react';
 import { threePointToArc } from 'UTIL/MathTools';
 import {
   Row, Section, NumberField, TextField, SwitchField, DropdownField,
@@ -32,7 +32,7 @@ function defaultCaliperWidth(shape, count) {
   return (L > 0 && count > 0) ? L / count : 0.1;
 }
 
-export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc' }) {
+export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc', lockCaliper = false }) {
   const update = (patch) => onUpdate({ ...shape, ...patch });
   const updateSub = (key, patch) => onUpdate({
     ...shape,
@@ -57,6 +57,13 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc' }) {
   const t = (key) => translate(dict, dictTheme, key);
   const defaultTweak = { mul: [1.5], add: [0.1] };
 
+  // shape_based defs are caliper-only: force caliper on open, hide the selector.
+  useEffect(() => {
+    if (lockCaliper && shape.locating !== 'caliper') flipLocating('caliper');
+    // eslint-disable-next-line
+  }, [lockCaliper, shape.id]);
+  const isCaliper = lockCaliper || shape.locating === 'caliper';
+
   return <div>
     <Row label={t('type')}><span style={{ fontSize: 12 }}>{t('arc')}</span></Row>
     <TextField label={t('name')} value={shape.name}
@@ -68,13 +75,14 @@ export function ArcPropertySheet({ shape, onUpdate, dict, dictTheme = 'arc' }) {
     <SwitchField label={t('direction')}
       checked={shape.direction === -1}
       onChange={(v) => update({ direction: v ? -1 : 1 })} />
-    <DropdownField label={t('locating')} value={shape.locating || 'contour'}
-      options={['contour', 'caliper']} onChange={flipLocating} />
+    {!lockCaliper &&
+      <DropdownField label={t('locating')} value={shape.locating || 'contour'}
+        options={['contour', 'caliper']} onChange={flipLocating} />}
     <DropdownField label={t('fit_mode') || 'fit_mode'} value={shape.fit_mode || 'ls'}
       options={['ls', 'outer', 'inner']}
       onChange={(fit_mode) => update({ fit_mode })} />
 
-    {shape.locating === 'caliper' && <>
+    {isCaliper && <>
       <Section label="caliper">
         <NumberField label="count" value={shape.caliper?.count} step={1}
           onCommit={(count) => updateSub('caliper', { count })}

@@ -282,6 +282,21 @@ export function defFileGeneration(edit_info)
   // WebUI sends), or derives <def>.png from the def path on the --insp path.
   if (edit_info.locating_engine === 'shape_based') {
     report.featureSet[0].locating_engine = 'shape_based';
+    // Caliper-only: the raw-gray shape path has no contour, so force every line/arc
+    // primitive to caliper locating (seed caliper/edge defaults if the user never
+    // opened it). Covers primitives the property sheet's force-on-open didn't touch.
+    if (Array.isArray(report.featureSet[0].features)) {
+      report.featureSet[0].features = report.featureSet[0].features.map((s) => {
+        if (!s || (s.type !== 'line' && s.type !== 'arc') || s.locating === 'caliper') return s;
+        const c = { ...s, locating: 'caliper' };
+        if (!c.caliper) {
+          const len = (s.pt1 && s.pt2) ? Math.hypot(s.pt2.x - s.pt1.x, s.pt2.y - s.pt1.y) : 0;
+          c.caliper = { count: 10, width: len > 0 ? len / 10 : 0.1, min_inliers: 0, max_error: 0 };
+        }
+        if (!c.edge) c.edge = { method: 'strongest', polarity: 'falling', nth: 0, min_strength: 0 };
+        return c;
+      });
+    }
     // Pure-SBM feature-extraction region (object-frame mm polygons). The user authors
     // them as loc_include / loc_exclude SHAPES on the canvas (same object-frame mm as
     // every other shape, so the points need no transform). Pull them out of the

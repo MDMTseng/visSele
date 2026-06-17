@@ -2166,8 +2166,11 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 // Rules-of-Hooks tooling and confuses readers. As a top-level function component
 // it's idiomatic, lint-friendly, and easier to extract further (next: shape-slice).
 function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, ACT_EDIT_TAR_ELE_TRACE_UPDATE }) {
-    
+
     const DICT = useSelector(state => state.UIData.DICT);
+    // New-version (shape_based) defs: measurement primitives must use caliper locating
+    // (the raw-gray path has no contour to follow) — hide the contour/caliper choice.
+    const lockCaliper = useSelector(state => state.UIData.edit_info.locating_engine === 'shape_based');
   
     let edit_tar = edit_tar_info;
     let decorator = Info_decorator;
@@ -2228,6 +2231,7 @@ function GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, AC
           shapeList={shape_list}
           dict={DICT}
           dictTheme={edit_tar.type}
+          lockCaliper={lockCaliper}
           onUpdate={(next) => ec_canvas.SetShape(next, next.id)}
           onTracePick={(keyTrace) => ACT_EDIT_TAR_ELE_TRACE_UPDATE(keyTrace)}
         />);

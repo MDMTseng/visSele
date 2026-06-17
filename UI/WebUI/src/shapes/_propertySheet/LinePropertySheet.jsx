@@ -11,7 +11,7 @@
 //   shapeList     — for ref resolution (search_point/aux_* only — line
 //                   doesn't reference other shapes itself, so unused here)
 //   dict / theme  — i18n
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Row, Section, NumberField, TextField, SwitchField, DropdownField,
   translate,
@@ -28,7 +28,7 @@ function defaultCaliperWidth(shape, count) {
   return len > 0 ? len / count : 0.1;
 }
 
-export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line' }) {
+export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line', lockCaliper = false }) {
   // Single-key updater: spreads a partial patch onto the shape and pushes
   // through onUpdate. Sub-object updates use updateSub('caliper', patch).
   const update = (patch) => onUpdate({ ...shape, ...patch });
@@ -57,6 +57,14 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line' })
 
   const t = (key) => translate(dict, dictTheme, key);
 
+  // New-version (shape_based) defs are caliper-only: force caliper on open and hide the
+  // contour/caliper selector (the raw-gray path has no contour for contour mode).
+  useEffect(() => {
+    if (lockCaliper && shape.locating !== 'caliper') flipLocating('caliper');
+    // eslint-disable-next-line
+  }, [lockCaliper, shape.id]);
+  const isCaliper = lockCaliper || shape.locating === 'caliper';
+
   const defaultTweak = { mul: [1.5], add: [0.1] };
   return <div>
     <Row label={t('type')}><span style={{ fontSize: 12 }}>{t('line')}</span></Row>
@@ -68,10 +76,11 @@ export function LinePropertySheet({ shape, onUpdate, dict, dictTheme = 'line' })
     <SwitchField label={t('vertex_touch_searching')}
       checked={shape.vertex_touch_searching}
       onChange={(v) => update({ vertex_touch_searching: v })} />
-    <DropdownField label={t('locating')} value={shape.locating || 'contour'}
-      options={['contour', 'caliper']} onChange={flipLocating} />
+    {!lockCaliper &&
+      <DropdownField label={t('locating')} value={shape.locating || 'contour'}
+        options={['contour', 'caliper']} onChange={flipLocating} />}
 
-    {shape.locating === 'caliper' && <>
+    {isCaliper && <>
       <Section label="caliper">
         <NumberField label="count" value={shape.caliper?.count} step={1}
           onCommit={(count) => updateSub('caliper', { count })}
