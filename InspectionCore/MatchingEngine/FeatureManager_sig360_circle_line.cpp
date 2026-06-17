@@ -2039,6 +2039,23 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     parse_poly_array(cJSON_GetObjectItem(root, "localization_include"), this->loc_incl_mm);
     parse_poly_array(cJSON_GetObjectItem(root, "localization_exclude"), this->loc_excl_mm);
 
+    // Explicit ROI refine points (object-frame mm flat array). Presence of the key
+    // (even an empty array) switches the localizer to user-points mode; absence keeps
+    // the legacy auto-selection.
+    this->roi_pts_mm.clear();
+    cJSON *roi_pts = cJSON_GetObjectItem(root, "roi_refine_points");
+    this->roi_pts_set = (roi_pts != NULL && cJSON_IsArray(roi_pts));
+    if (this->roi_pts_set)
+    {
+      cJSON *pt = NULL;
+      cJSON_ArrayForEach(pt, roi_pts)
+      {
+        cJSON *jx = cJSON_GetObjectItem(pt, "x"), *jy = cJSON_GetObjectItem(pt, "y");
+        if (cJSON_IsNumber(jx) && cJSON_IsNumber(jy))
+          this->roi_pts_mm.push_back(acv_XY((float)jx->valuedouble, (float)jy->valuedouble));
+      }
+    }
+
     char *defp = (char *)JFetch(root, "_def_path", cJSON_String);
     this->def_path = (defp != NULL) ? defp : "";
     char *refp = (char *)JFetch(root, "_ref_image_path", cJSON_String);
@@ -6674,6 +6691,27 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     // Report matched angles in the def reference frame: add back the registered
     // orientation of the saved image (0 when there is no def_image_reg).
     fset.setAngleOffset(angle_offset_deg);
+
+    // Explicit user ROI refine points: convert the def's object-frame-mm list to
+    // template-center-relative px (inverse of the px_to_obj used for the SF round-trip)
+    // and hand them to the matcher, which then uses EXACTLY these (empty => coarse-only,
+    // no ROI refine). Absent key (roi_pts_set=false) keeps the legacy auto-selection.
+    if (roi_pts_set && def_mmpp > 0)
+    {
+      const float tcx = templ_use.cols / 2.0f, tcy = templ_use.rows / 2.0f;
+      fset.user_opt_points.clear();
+      fset.user_opt_points.reserve(roi_pts_mm.size());
+      for (const acv_XY &q : roi_pts_mm)
+      {
+        acv_XY full = TemplateDomain_TO_PixDomain(q, reg_sin, reg_cos, reg_flip_f,
+                                                  acv_XY(originPx.x, originPx.y), def_mmpp);
+        fset.user_opt_points.push_back(cv::Point2f(full.x - cropRect.x - tcx,
+                                                   full.y - cropRect.y - tcy));
+      }
+      fset.user_opt_points_set = true;
+      LOGI("[shape] using %d explicit ROI refine points (user)", (int)fset.user_opt_points.size());
+    }
+
     shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fset);
 
     // Build the matcher at teach pixel scale (1.0). FeatureMatching_shape rescales it

@@ -340,6 +340,11 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   // Otsu (see trainShapeMatcher mask-priority).
   vector<vector<acv_XY>> loc_incl_mm;   // include polygons (where to extract features)
   vector<vector<acv_XY>> loc_excl_mm;   // exclude polygons ("avoid generation" areas)
+  // Explicit user ROI refine points (object-frame mm). When the def carries the
+  // "roi_refine_points" key the localizer uses EXACTLY these (empty => no ROI refine,
+  // coarse pose only); when the key is absent the matcher auto-selects (legacy).
+  vector<acv_XY> roi_pts_mm;
+  bool roi_pts_set = false;
 
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
