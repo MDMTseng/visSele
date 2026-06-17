@@ -38,13 +38,17 @@ the UI can overlay it.
 - Validation: points must lie on the part edges within the include region (overlay on
   _n2_shape).
 
-### P-B. Independent canvas in the modal
-A lightweight canvas (image + pan/zoom + overlays + polygon/line drawing), local state
-(no global state machine). Draws: reference image, include (green fill) / exclude (red
-fill) polygons, localization line + origin, generated feature points (from P-A), ROI
-points. Tools: draw/edit include, exclude, localization line, ROI override.
-Open question: reuse the legacy EverCheckCanvas vs. a fresh minimal canvas — lean fresh
-+ minimal to stay decoupled, but assess porting cost first.
+### P-B. Independent canvas in the modal — DONE (commit 2e0e395b)
+Ported WebUI2's hook-canvas pattern minimally onto this repo's existing
+EverCheckCanvasComponent_proto: `DrawHook_CanvasComponent` (overrides draw/ctrlLogic to
+call a single drawHook(ctrl_or_draw, g, canvas); state-free onmousemove with captureDrag
+for pan-vs-draw). `SBMStudio.jsx`: HookCanvasComponent wrapper + the SBM draw/control
+hook + SBMSetupView. Draws image (object frame) + include(green)/exclude(red) fills +
+origin/0°-axis + in-progress polygon + feature-point slot. Tools: include/exclude polygon
+(click verts, click-first to close), localization line (raw-frame drag → def_image_reg),
+pan/zoom. Commits still go to the def (Shape_Set / EditInfo_Patch) so save round-trips.
+Decision resolved: minimal port onto the existing proto (not a from-scratch canvas, not a
+whole-WebUI2-stack port). Interactive behavior first-run, untested on target.
 
 ### P-C. Consolidated settings + Save/Exit in the modal
 Move shape_match_scale, matching_angle_margin/offset, matching_face, shape_min_score,
