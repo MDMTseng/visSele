@@ -236,6 +236,37 @@ cJSON* acv_SearchPointReport2JSON(const vector< FeatureReport_searchPointReport>
   }
   return detectedSearchPoint_jarr;
 }
+
+cJSON* acv_ObjDetectReport2JSON(const vector<FeatureReport_objDetectReport> &vec)
+{
+  cJSON* arr = cJSON_CreateArray();
+  for(int j=0;j<vec.size();j++)
+  {
+    cJSON* o = cJSON_CreateObject();
+    cJSON_AddNumberToObject(o, "status", vec[j].status);
+    cJSON_AddNumberToObject(o, "id", vec[j].def->id);
+    cJSON_AddStringToObject(o, "name", vec[j].def->name);
+    if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
+    {
+      cJSON_AddNumberToObject(o, "bright_mean", vec[j].bright_mean);
+      cJSON_AddNumberToObject(o, "bright_max",  vec[j].bright_max);
+      cJSON_AddNumberToObject(o, "edge_mean",   vec[j].edge_mean);
+      cJSON_AddNumberToObject(o, "edge_max",    vec[j].edge_max);
+    }
+    // region corners in OBJECT-FRAME mm (for the WebUI overlay).
+    cJSON* corners = cJSON_CreateArray();
+    for(int k=0;k<4;k++){
+      cJSON* c=cJSON_CreateObject();
+      cJSON_AddNumberToObject(c,"x",vec[j].corner[k].x);
+      cJSON_AddNumberToObject(c,"y",vec[j].corner[k].y);
+      cJSON_AddItemToArray(corners,c);
+    }
+    cJSON_AddItemToObject(o,"corners",corners);
+    cJSON_AddItemToArray(arr, o);
+  }
+  return arr;
+}
+
 cJSON* acv_LineFitVector2JSON(const vector< FeatureReport_lineReport> &vec, acv_XY center_offset)
 {
 
@@ -316,6 +347,9 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
   const vector<FeatureReport_searchPointReport> &detectedSearchPoints =*report.detectedSearchPoints;
   cJSON_AddItemToObject(report_jobj,"searchPoints",
     acv_SearchPointReport2JSON(detectedSearchPoints,offset));
+
+  cJSON_AddItemToObject(report_jobj,"objDetects",
+    acv_ObjDetectReport2JSON(*report.detectedObjDetects));
 
   const vector< FeatureReport_judgeReport> &judgeReports=*report.judgeReports;
   cJSON_AddItemToObject(report_jobj,"judgeReports",

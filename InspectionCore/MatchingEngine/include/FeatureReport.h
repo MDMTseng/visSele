@@ -211,6 +211,24 @@ typedef struct featureDef_searchPoint{
 }featureDef_searchPoint;
 
 
+// "Object detect" region: an axis-aligned (object-frame) rectangle whose brightness and
+// Sobel-edge mean/max are measured at the located pose and self-judged. pt1/pt2 are
+// opposite corners in object-frame mm. ignore_rotation keeps it axis-aligned; ignore_
+// translation pins it to the teach/absolute image position. Each bound is NAN when
+// unset (= no limit on that side).
+typedef struct featureDef_objDetect{
+  int id;
+  char name[FeatureManager_NAME_LENGTH];
+  acv_XY pt1, pt2;
+  bool ignore_rotation;
+  bool ignore_translation;
+  float bright_mean_min, bright_mean_max;
+  float bright_max_min,  bright_max_max;
+  float edge_mean_min,   edge_mean_max;
+  float edge_max_min,    edge_max_max;
+}featureDef_objDetect;
+
+
 typedef struct FeatureReport_judgeDef{
   int id;
 
@@ -311,6 +329,15 @@ typedef struct FeatureReport_auxPointReport{
 }FeatureReport_auxPointReport;
 
 
+typedef struct FeatureReport_objDetectReport{
+  featureDef_objDetect *def;
+  float bright_mean, bright_max;
+  float edge_mean, edge_max;
+  acv_XY corner[4];   // measured region corners, OBJECT-FRAME mm (for the UI overlay)
+  int status;
+}FeatureReport_objDetectReport;
+
+
 typedef struct FeatureReport_searchPointReport{
   featureDef_searchPoint *def;
   acv_XY pt;
@@ -329,6 +356,7 @@ typedef struct FeatureReport_sig360_circle_line_single{
   vector<FeatureReport_lineReport> *detectedLines;
   vector<FeatureReport_auxPointReport> *detectedAuxPoints;
   vector<FeatureReport_searchPointReport> *detectedSearchPoints;
+  vector<FeatureReport_objDetectReport> *detectedObjDetects;
   vector<FeatureReport_judgeReport> *judgeReports;
 
   acv_XY LTBound;

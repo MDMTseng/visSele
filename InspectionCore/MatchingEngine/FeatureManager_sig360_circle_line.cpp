@@ -1659,6 +1659,34 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   return 0;
 }
 
+int FeatureManager_sig360_circle_line::parse_objDetectData(cJSON *obj)
+{
+  featureDef_objDetect od;
+  od.name[0] = '\0';
+  { char *tmpstr; if ((tmpstr = json_find_name(obj))) copyFeatureName(od.name, tmpstr); }
+  double *pnum;
+  if ((pnum = JSON_GET_NUM(obj, "id")) == NULL) return -1; od.id = (int)*pnum;
+  if ((pnum = JSON_GET_NUM(obj, "pt1.x")) == NULL) return -1; od.pt1.x = (float)*pnum;
+  if ((pnum = JSON_GET_NUM(obj, "pt1.y")) == NULL) return -1; od.pt1.y = (float)*pnum;
+  if ((pnum = JSON_GET_NUM(obj, "pt2.x")) == NULL) return -1; od.pt2.x = (float)*pnum;
+  if ((pnum = JSON_GET_NUM(obj, "pt2.y")) == NULL) return -1; od.pt2.y = (float)*pnum;
+  od.ignore_rotation    = JFetch_TRUE(obj, "ignore_rotation");
+  od.ignore_translation = JFetch_TRUE(obj, "ignore_translation");
+  // Optional bounds: NAN = unset (no limit on that side).
+  const double NA = std::nan("");
+  od.bright_mean_min = (float)JFetch_NUMBER_ex(obj, "bright_mean_min", NA);
+  od.bright_mean_max = (float)JFetch_NUMBER_ex(obj, "bright_mean_max", NA);
+  od.bright_max_min  = (float)JFetch_NUMBER_ex(obj, "bright_max_min",  NA);
+  od.bright_max_max  = (float)JFetch_NUMBER_ex(obj, "bright_max_max",  NA);
+  od.edge_mean_min   = (float)JFetch_NUMBER_ex(obj, "edge_mean_min",   NA);
+  od.edge_mean_max   = (float)JFetch_NUMBER_ex(obj, "edge_mean_max",   NA);
+  od.edge_max_min    = (float)JFetch_NUMBER_ex(obj, "edge_max_min",    NA);
+  od.edge_max_max    = (float)JFetch_NUMBER_ex(obj, "edge_max_max",    NA);
+  if (od.name[0] == '\0') sprintf(od.name, "@OBJDET_%d", (int)objDetectList.size());
+  objDetectList.push_back(od);
+  return 0;
+}
+
 void sign360_process(vector<acv_XY> &target, vector<acv_XY> &buffer)
 {
 #define SIG_SOFT_SIZE 5
@@ -2221,6 +2249,14 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     else if (strcmp(feature_type, "measure") == 0)
     {
       if (parse_judgeData(feature) != 0)
+      {
+        LOGE("feature[%d] has error %s format", i, feature_type);
+        return -1;
+      }
+    }
+    else if (strcmp(feature_type, "obj_detect") == 0)
+    {
+      if (parse_objDetectData(feature) != 0)
       {
         LOGE("feature[%d] has error %s format", i, feature_type);
         return -1;
@@ -4859,12 +4895,102 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
 
 
 
+FeatureReport_objDetectReport FeatureManager_sig360_circle_line::ObjDetect_ReportGen(
+  featureDef_objDetect *def, edgeTracking &eT,
+  acv_XY calibCen, float mmpp, float cached_cos, float cached_sin, float flip_f)
+{
+  FeatureReport_objDetectReport rep = {};
+  rep.def = def;
+  rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+  if (mmpp <= 0) return rep;
+
+  // Region placement: center + (sin,cos,flip). ignore_translation pins to the teach
+  // (def_image_reg) image position; ignore_rotation keeps it axis-aligned; otherwise
+  // the live located pose. (Matches the mask -reg convention used at train time.)
+  acv_XY center = calibCen;
+  if (def->ignore_translation && has_reg)
+    center = acv_XY(reg_center_mm.x / mmpp, reg_center_mm.y / mmpp);
+  float s_, c_, f_;
+  if (def->ignore_rotation) { s_ = 0.0f; c_ = 1.0f; f_ = 1.0f; }
+  else if (def->ignore_translation && has_reg)
+    { s_ = -sinf(reg_angle_rad); c_ = cosf(reg_angle_rad); f_ = reg_flipped ? -1.0f : 1.0f; }
+  else { s_ = cached_sin; c_ = cached_cos; f_ = flip_f; }
+
+  cv::Mat img = eT.getImageCv();
+  if (img.empty()) return rep;
+  cv::Mat gray;
+  if (img.channels() == 1) gray = img; else cv::extractChannel(img, gray, 0);
+  acv_XY off = eT.getImgOffset();
+
+  // 4 object-frame corners (axis-aligned rect pt1..pt2) -> image px.
+  acv_XY cm[4] = { {def->pt1.x, def->pt1.y}, {def->pt2.x, def->pt1.y},
+                   {def->pt2.x, def->pt2.y}, {def->pt1.x, def->pt2.y} };
+  std::vector<cv::Point> poly(4);
+  float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
+  for (int k = 0; k < 4; k++)
+  {
+    rep.corner[k] = cm[k];
+    acv_XY px = TemplateDomain_TO_PixDomain(cm[k], s_, c_, f_, center, mmpp);
+    float gx = px.x - off.x, gy = px.y - off.y;
+    poly[k] = cv::Point((int)lround(gx), (int)lround(gy));
+    minx = std::min(minx, gx); maxx = std::max(maxx, gx);
+    miny = std::min(miny, gy); maxy = std::max(maxy, gy);
+  }
+  cv::Rect bb((int)floorf(minx), (int)floorf(miny),
+              (int)ceilf(maxx - minx) + 1, (int)ceilf(maxy - miny) + 1);
+  bb &= cv::Rect(0, 0, gray.cols, gray.rows);
+  if (bb.width < 2 || bb.height < 2) return rep;   // region off-image
+
+  cv::Mat crop = gray(bb);
+  cv::Mat mask = cv::Mat::zeros(bb.size(), CV_8U);
+  std::vector<cv::Point> cpoly(4);
+  for (int k = 0; k < 4; k++) cpoly[k] = cv::Point(poly[k].x - bb.x, poly[k].y - bb.y);
+  std::vector<std::vector<cv::Point>> polys{cpoly};
+  cv::fillPoly(mask, polys, cv::Scalar(255));
+  if (cv::countNonZero(mask) < 1) return rep;
+
+  // brightness mean/max over the masked region.
+  double bmin, bmax; cv::Point pl;
+  cv::minMaxLoc(crop, &bmin, &bmax, &pl, &pl, mask);
+  rep.bright_mean = (float)cv::mean(crop, mask)[0];
+  rep.bright_max  = (float)bmax;
+
+  // Sobel-edge magnitude (sqrt(dx^2+dy^2)) mean/max over the mask.
+  cv::Mat dx, dy, mag;
+  cv::Sobel(crop, dx, CV_32F, 1, 0, 3);
+  cv::Sobel(crop, dy, CV_32F, 0, 1, 3);
+  cv::magnitude(dx, dy, mag);
+  double emin, emax;
+  cv::minMaxLoc(mag, &emin, &emax, &pl, &pl, mask);
+  rep.edge_mean = (float)cv::mean(mag, mask)[0];
+  rep.edge_max  = (float)emax;
+
+  // Self-judge: FAILURE if any present bound is violated, else SUCCESS.
+  int st = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+  auto chk = [&](float v, float lo, float hi) {
+    if (!std::isnan(lo) && v < lo) st = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
+    if (!std::isnan(hi) && v > hi) st = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
+  };
+  chk(rep.bright_mean, def->bright_mean_min, def->bright_mean_max);
+  chk(rep.bright_max,  def->bright_max_min,  def->bright_max_max);
+  chk(rep.edge_mean,   def->edge_mean_min,   def->edge_mean_max);
+  chk(rep.edge_max,    def->edge_max_min,    def->edge_max_max);
+  rep.status = st;
+  return rep;
+}
+
 int FeatureManager_sig360_circle_line::TreeExecution(
   FeatureReport_sig360_circle_line_single &singleReport,
   edgeTracking &eT,
   acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f)
 {
-  
+  // obj_detect regions (independent of the dimensional tree).
+  for (size_t i = 0; i < singleReport.detectedObjDetects->size(); i++)
+  {
+    FeatureReport_objDetectReport &r = (*singleReport.detectedObjDetects)[i];
+    r = ObjDetect_ReportGen(r.def, eT, calibCen, mmpp, cached_cos, cached_sin, flip_f);
+  }
+
   for(int i=0;i<singleReport.detectedLines->size();i++)
   {
     TreeExecution((*singleReport.detectedLines)[i].def->id,
@@ -5206,6 +5332,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
 
   vector<FeatureReport_auxPointReport> &detectedAuxPoints = *singleReport.detectedAuxPoints;
   vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
+  vector<FeatureReport_objDetectReport> &detectedObjDetects = *singleReport.detectedObjDetects;
   vector<FeatureReport_judgeReport> &judgeReports = *singleReport.judgeReports;
 
   cv::Mat _eT_cv = p_cropImg_cv;
@@ -5400,9 +5527,14 @@ int FeatureManager_sig360_circle_line::SingleMatching(int lableIdx, acv_LabeledD
     detectedLines.resize(featureLineList.size());
     detectedAuxPoints.resize(auxPointList.size());
     detectedSearchPoints.resize(searchPointList.size());
+    detectedObjDetects.resize(objDetectList.size());
     judgeReports.resize(judgeList.size());
 
     //assign def
+    for (int j = 0; j < objDetectList.size(); j++)
+    {
+      detectedObjDetects[j].def=&(objDetectList[j]);
+    }
     for (int j = 0; j < featureLineList.size(); j++)
     {
       detectedLines[j].def=&(featureLineList[j]);
@@ -5889,6 +6021,7 @@ FeatureManager_sig360_circle_line::~FeatureManager_sig360_circle_line()
     delete reportDataPool[i].detectedLines;
     delete reportDataPool[i].detectedAuxPoints;
     delete reportDataPool[i].detectedSearchPoints;
+    delete reportDataPool[i].detectedObjDetects;
     delete reportDataPool[i].judgeReports;
   }
   reportDataPool.resize(0);
@@ -6033,6 +6166,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
         reportDataPool[i].detectedLines = new vector<FeatureReport_lineReport>(0);
         reportDataPool[i].detectedAuxPoints = new vector<FeatureReport_auxPointReport>(0);
         reportDataPool[i].detectedSearchPoints = new vector<FeatureReport_searchPointReport>(0);
+        reportDataPool[i].detectedObjDetects = new vector<FeatureReport_objDetectReport>(0);
         reportDataPool[i].judgeReports = new vector<FeatureReport_judgeReport>(0);
       }
     }
@@ -6301,6 +6435,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
             .detectedLines = reportDataPool[reports.size()].detectedLines,
             .detectedAuxPoints = reportDataPool[reports.size()].detectedAuxPoints,
             .detectedSearchPoints = reportDataPool[reports.size()].detectedSearchPoints,
+            .detectedObjDetects = reportDataPool[reports.size()].detectedObjDetects,
             .judgeReports = reportDataPool[reports.size()].judgeReports,
             .LTBound = acvVecMult(curLableDat.LTBound,dsampLevel),
             .RBBound = acvVecMult(curLableDat.RBBound,dsampLevel),
@@ -6958,6 +7093,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
       reportDataPool[i].detectedLines       = new vector<FeatureReport_lineReport>(0);
       reportDataPool[i].detectedAuxPoints   = new vector<FeatureReport_auxPointReport>(0);
       reportDataPool[i].detectedSearchPoints= new vector<FeatureReport_searchPointReport>(0);
+      reportDataPool[i].detectedObjDetects  = new vector<FeatureReport_objDetectReport>(0);
       reportDataPool[i].judgeReports        = new vector<FeatureReport_judgeReport>(0);
     }
   }
@@ -6975,6 +7111,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
             .detectedLines        = reportDataPool[reports.size()].detectedLines,
             .detectedAuxPoints    = reportDataPool[reports.size()].detectedAuxPoints,
             .detectedSearchPoints = reportDataPool[reports.size()].detectedSearchPoints,
+            .detectedObjDetects   = reportDataPool[reports.size()].detectedObjDetects,
             .judgeReports         = reportDataPool[reports.size()].judgeReports,
             .LTBound = acv_XY(0, 0),
             .RBBound = acv_XY(0, 0),
@@ -7026,6 +7163,7 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
   vector<FeatureReport_lineReport>        &detectedLines        = *singleReport.detectedLines;
   vector<FeatureReport_auxPointReport>    &detectedAuxPoints    = *singleReport.detectedAuxPoints;
   vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
+  vector<FeatureReport_objDetectReport>   &detectedObjDetects   = *singleReport.detectedObjDetects;
   vector<FeatureReport_judgeReport>       &judgeReports         = *singleReport.judgeReports;
 
   cv::Mat _eT_cv = p_cropImg_cv;                 // full-res original (set by caller)
@@ -7036,12 +7174,14 @@ int FeatureManager_sig360_circle_line::SingleMatching_shape(
     detectedLines.resize(featureLineList.size());
     detectedAuxPoints.resize(auxPointList.size());
     detectedSearchPoints.resize(searchPointList.size());
+    detectedObjDetects.resize(objDetectList.size());
     judgeReports.resize(judgeList.size());
     for (int j = 0; j < featureLineList.size(); j++)   detectedLines[j].def        = &(featureLineList[j]);
     for (int j = 0; j < featureCircleList.size(); j++) detectedCircles[j].def      = &(featureCircleList[j]);
     for (int j = 0; j < judgeList.size(); j++)         judgeReports[j].def         = &(judgeList[j]);
     for (int j = 0; j < auxPointList.size(); j++)      detectedAuxPoints[j].def    = &(auxPointList[j]);
     for (int j = 0; j < searchPointList.size(); j++)   detectedSearchPoints[j].def = &(searchPointList[j]);
+    for (int j = 0; j < objDetectList.size(); j++)     detectedObjDetects[j].def   = &(objDetectList[j]);
     RESET_REPORT(singleReport);
   }
 

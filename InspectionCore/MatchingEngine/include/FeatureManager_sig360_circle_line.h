@@ -186,14 +186,16 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
     ARC,
     AUX_POINT,
     SEARCH_POINT,
-    MEASURE
-    }; 
+    MEASURE,
+    OBJ_DETECT
+    };
   vector<featureDef_circle> featureCircleList;
   vector<featureDef_line> featureLineList;
   vector<FeatureReport_judgeDef> judgeList;
-  
+
   vector<featureDef_auxPoint> auxPointList;
   vector<featureDef_searchPoint> searchPointList;
+  vector<featureDef_objDetect> objDetectList;
   int signature_feature_id;
   ContourSignature feature_signature;
   ContourSignature tmp_signature;
@@ -368,6 +370,7 @@ protected:
   int parse_lineData(cJSON * line_obj);
   int parse_auxPointData(cJSON * auxPoint_obj);
   int parse_searchPointData(cJSON * searchPoint_obj);
+  int parse_objDetectData(cJSON * objDetect_obj);
   int parse_sign360(cJSON * signature_obj);
   int parse_judgeData(cJSON * judge_obj);
   int parse_jobj() override;
@@ -396,6 +399,11 @@ protected:
   FeatureReport_searchPointReport SPointMatching_ReportGen(
   featureDef_searchPoint *def,
   FeatureReport_sig360_circle_line_single &singleReport,
+  edgeTracking &eT,
+  acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
+
+  FeatureReport_objDetectReport ObjDetect_ReportGen(
+  featureDef_objDetect *def,
   edgeTracking &eT,
   acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
 
