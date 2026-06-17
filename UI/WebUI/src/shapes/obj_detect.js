@@ -10,6 +10,7 @@ export const type = 'obj_detect';
 export function applyDefaults(shape) {
   if (shape.ignore_rotation === undefined) shape.ignore_rotation = false;
   if (shape.ignore_translation === undefined) shape.ignore_translation = false;
+  if (shape.downsample === undefined) shape.downsample = 1;
   return shape;
 }
 

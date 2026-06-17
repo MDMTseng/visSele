@@ -35,8 +35,11 @@ export function ObjDetectPropertySheet({ shape, onUpdate, dict, dictTheme = 'obj
       onChange={(v) => update({ ignore_rotation: v })} />
     <SwitchField label="忽視位移(絕對位置)" checked={shape.ignore_translation}
       onChange={(v) => update({ ignore_translation: v })} />
+    <NumberField label="降採樣 ÷" value={shape.downsample ?? 1} step={1}
+      onCommit={(v) => update({ downsample: Math.max(1, Math.round(v) || 1) })}
+      tweak={{ add: [1] }} />
     <div style={{ fontSize: 11, color: '#999', margin: '2px 0' }}>
-      界限留空 = 不限。任一超出 → NG。改後跑「快速驗證」看數值。
+      降採樣加速統計(平均);注意 max 會變小、Sobel 尺度會變。界限留空 = 不限,任一超出 → NG。
     </div>
     <StatBounds keyBase="bright_mean" label="亮度 mean" />
     <StatBounds keyBase="bright_max"  label="亮度 max" />

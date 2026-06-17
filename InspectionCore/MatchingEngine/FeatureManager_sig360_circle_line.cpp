@@ -1672,6 +1672,8 @@ int FeatureManager_sig360_circle_line::parse_objDetectData(cJSON *obj)
   if ((pnum = JSON_GET_NUM(obj, "pt2.y")) == NULL) return -1; od.pt2.y = (float)*pnum;
   od.ignore_rotation    = JFetch_TRUE(obj, "ignore_rotation");
   od.ignore_translation = JFetch_TRUE(obj, "ignore_translation");
+  od.downsample = (int)JFetch_NUMBER_ex(obj, "downsample", 1);
+  if (od.downsample < 1) od.downsample = 1;
   // Optional bounds: NAN = unset (no limit on that side).
   const double NA = std::nan("");
   od.bright_mean_min = (float)JFetch_NUMBER_ex(obj, "bright_mean_min", NA);
@@ -4941,13 +4943,26 @@ FeatureReport_objDetectReport FeatureManager_sig360_circle_line::ObjDetect_Repor
   bb &= cv::Rect(0, 0, gray.cols, gray.rows);
   if (bb.width < 2 || bb.height < 2) return rep;   // region off-image
 
-  cv::Mat crop = gray(bb);
+  cv::Mat crop = gray(bb).clone();
   cv::Mat mask = cv::Mat::zeros(bb.size(), CV_8U);
   std::vector<cv::Point> cpoly(4);
   for (int k = 0; k < 4; k++) cpoly[k] = cv::Point(poly[k].x - bb.x, poly[k].y - bb.y);
   std::vector<std::vector<cv::Point>> polys{cpoly};
   cv::fillPoly(mask, polys, cv::Scalar(255));
   if (cv::countNonZero(mask) < 1) return rep;
+
+  // Optional region downsample for speed: shrink crop (averaging) + mask before stats.
+  // mean stays ~constant; max shrinks and the Sobel scale changes (accepted tradeoff).
+  if (def->downsample > 1 && crop.cols > def->downsample && crop.rows > def->downsample)
+  {
+    int dw = std::max(1, crop.cols / def->downsample);
+    int dh = std::max(1, crop.rows / def->downsample);
+    cv::Mat cs, ms;
+    cv::resize(crop, cs, cv::Size(dw, dh), 0, 0, cv::INTER_AREA);
+    cv::resize(mask, ms, cv::Size(dw, dh), 0, 0, cv::INTER_NEAREST);
+    crop = cs; mask = ms;
+    if (cv::countNonZero(mask) < 1) return rep;
+  }
 
   // brightness mean/max over the masked region.
   double bmin, bmax; cv::Point pl;

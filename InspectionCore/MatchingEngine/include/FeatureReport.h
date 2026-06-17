@@ -222,6 +222,8 @@ typedef struct featureDef_objDetect{
   acv_XY pt1, pt2;
   bool ignore_rotation;
   bool ignore_translation;
+  int downsample;   // >1 = INTER_AREA-downsample the region before stats (speed; note:
+                    // mean stays ~constant, but max shrinks and Sobel scale changes)
   float bright_mean_min, bright_mean_max;
   float bright_max_min,  bright_max_max;
   float edge_mean_min,   edge_mean_max;
