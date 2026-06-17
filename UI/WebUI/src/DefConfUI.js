@@ -1494,6 +1494,37 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     
   const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
 
+  // Save the current def (opens the file picker, then writes the .hydef + <def>.png on
+  // a NEW save). Extracted from the SAVE button so the SBM studio can save in-modal too.
+  const triggerSave = () => {
+    if (defConf_lock_level > 2) return;
+    setFileSavingCallBack((prevs, props) => (folderInfo, fileName, existed) => {
+      log.debug("[file-exists]", { folderInfo, fileName, existed });
+      let fileNamePath = folderInfo.path + "/" + fileName.replace('.' + DEF_EXTENSION, "");
+      var enc = new TextEncoder();
+      let report = defFileGeneration(edit_info);
+      if (report.name === undefined || report.name.length == 0) {
+        report.name = fileName;
+        ACT_DefFileName_Update(fileName);
+      }
+      if (!existed) {
+        const reg = edit_info.inspReport && edit_info.inspReport.reports && edit_info.inspReport.reports[0];
+        if (reg && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
+          report.def_image_reg = { cx: reg.cx, cy: reg.cy, angle: reg.rotate, isFlipped: !!reg.isFlipped };
+          log.info("[action] def_image_reg stored", report.def_image_reg);
+        }
+      }
+      ACT_DefFileHash_Update(report.featureSet_sha1);
+      log.info("[action] report-save");
+      ACT_Report_Save(CORE_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
+      if (!existed) { log.info("[action] cache-img-save (new def)"); ACT_Cache_Img_Save(CORE_ID, fileNamePath); }
+      else { log.info("[action] cache-img-save skipped (def exists; keeping original image)"); }
+      ACT_Def_Model_Path_Update(fileNamePath);
+      setFileSavingCallBack(undefined);
+      DefFile_DB_SEND(report).then((ret) => console.log('then', ret)).catch((ret) => console.log("catch", ret));
+    });
+  };
+
   const edit_info = useSelector(state => state.UIData.edit_info);
   const FILE_default_camera_setting = useSelector(state => state.UIData.FILE_default_camera_setting);
   const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
@@ -1755,57 +1786,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       dict={DICT}
       addClass="layout palatte-gold-7 vbox"
       key="SAVE"
-      text="save" onClick={() => {
-        if (defConf_lock_level > 2) return;
-        setFileSavingCallBack((prevs,props)=> (folderInfo, fileName, existed) => {
-            log.debug("[file-exists]", { folderInfo, fileName, existed });
-            
-            let fileNamePath = folderInfo.path + "/" + fileName.replace('.' + DEF_EXTENSION, "");
-
-            var enc = new TextEncoder();
-            let report = defFileGeneration(edit_info);
-            if(report.name===undefined || report.name.length==0)
-            {
-              report.name=fileName;
-              ACT_DefFileName_Update(fileName)
-            }
-            // On a NEW save, record the registration (sig360 center + angle) of the
-            // image being written as <def>.png. The def features live in the
-            // reference/init frame (inherentfeatures[0]); storing this image's own
-            // detected sig360 lets the main-UI display transform <def>.png to align
-            // with the features even when it isn't the original init image.
-            // Top-level field => does not affect featureSet_sha1 (def hash stays stable).
-            if (!existed) {
-              const reg = edit_info.inspReport && edit_info.inspReport.reports && edit_info.inspReport.reports[0];
-              if (reg && typeof reg.cx === 'number' && typeof reg.cy === 'number') {
-                report.def_image_reg = { cx: reg.cx, cy: reg.cy, angle: reg.rotate, isFlipped: !!reg.isFlipped };
-                log.info("[action] def_image_reg stored", report.def_image_reg);
-              }
-            }
-            ACT_DefFileHash_Update(report.featureSet_sha1);
-            log.info("[action] report-save");
-            ACT_Report_Save(CORE_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
-            // Only write <def>.png for a NEW setup. For an existing def the image
-            // is already on disk, and __CACHE_IMG__ may currently hold an ALTERNATE
-            // image the user switched to via DefConfImageSwitcher (switchImage LDs
-            // it into __CACHE_IMG__) -- saving it would clobber the real def image.
-            if (!existed) {
-              log.info("[action] cache-img-save (new def)");
-              ACT_Cache_Img_Save(CORE_ID, fileNamePath);
-            } else {
-              log.info("[action] cache-img-save skipped (def exists; keeping original image)");
-            }
-
-
-            ACT_Def_Model_Path_Update(fileNamePath);
-            setFileSavingCallBack(undefined);
-
-            DefFile_DB_SEND(report).
-            then((ret) => console.log('then', ret)).
-            catch((ret) => console.log("catch", ret));
-
-          });
-      }} />,
+      text="save" onClick={() => triggerSave()} />,
     <BASE_COM.IconButton
       iconType={<ExportOutlined/>}
       dict={DICT}
@@ -2030,7 +2011,11 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           style: { top: 12 },
           bodyStyle: { padding: 8 },
           onCancel: () => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); },
-          view: <SBMSetupView sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)} />,
+          view: <SBMSetupView
+            sendBPG={(...a) => ACT_WS_SEND_BPG(CORE_ID, ...a)}
+            onClose={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); }}
+            onSave={() => { dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS)); setModal_view(undefined); triggerSave(); }}
+          />,
         });
       }} />,
 

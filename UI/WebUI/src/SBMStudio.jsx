@@ -6,7 +6,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import ReactResizeDetector from 'react-resize-detector';
-import { Button, Divider, Checkbox } from 'antd';
+import { Button, Divider, Checkbox, InputNumber, Select } from 'antd';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
@@ -169,7 +169,7 @@ function ctrlScene(g, canvas, ctx_state) {
 }
 
 // ── The studio view. ───────────────────────────────────────────────────────────
-export function SBMSetupView({ sendBPG }) {
+export function SBMSetupView({ sendBPG, onSave, onClose }) {
   const dispatch = useDispatch();
   const edit_info = useSelector((s) => s.UIData.edit_info);
   const [tool, setTool] = useState('pan');
@@ -261,9 +261,34 @@ export function SBMSetupView({ sendBPG }) {
         <Button size="small" type="link" onClick={() => setFeatPts(undefined)}>清除</Button>
       </div>}
 
+      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>matching 參數</Divider>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
+        <span style={{ width: 92 }}>coarse scale</span>
+        <InputNumber size="small" min={0.1} max={1} step={0.1} style={{ width: 70 }}
+          value={edit_info.shape_match_scale ?? 0.3}
+          onChange={(v) => dispatch(DefConfAct.Shape_Match_Scale_Update(v))} />
+      </div>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 3 }}>
+        <span style={{ width: 92 }}>angle ±°</span>
+        <InputNumber size="small" min={0} max={180} step={5} style={{ width: 70 }}
+          value={edit_info.matching_angle_margin_deg ?? 180}
+          onChange={(v) => dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(v))} />
+      </div>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <span style={{ width: 92 }}>face</span>
+        <Select size="small" style={{ width: 110 }} value={edit_info.matching_face ?? 1}
+          onChange={(v) => dispatch(DefConfAct.Matching_Face_Update(v))}
+          options={[{ value: 1, label: '正面 front' }, { value: -1, label: '反面 back' }, { value: 0, label: '兩面 both' }]} />
+      </div>
+
       <Divider orientation="left" style={{ margin: '8px 0 4px' }}>檢視</Divider>
       <TBtn id="pan">🖐 平移/縮放</TBtn>
       <div style={{ fontSize: 11, color: '#999' }}>拖曳=平移,滾輪=縮放。</div>
+
+      <div style={{ borderTop: '1px solid #444', marginTop: 10, paddingTop: 8, display: 'flex', gap: 6 }}>
+        <Button type="primary" size="small" onClick={() => onSave && onSave()}>儲存並退出</Button>
+        <Button size="small" onClick={() => onClose && onClose()}>關閉</Button>
+      </div>
     </div>
 
     <div style={{ flex: 1, minWidth: 0, height: '100%', border: '1px solid #333' }}>
