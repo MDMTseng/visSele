@@ -108,15 +108,16 @@ function drawScene(g, canvas, ctx_state) {
     ctx.lineWidth = lw; ctx.strokeStyle = inc ? '#00c853' : '#ff5252'; ctx.stroke();
   }
 
-  // generated feature points (line2Dup = blue, auto ROI = magenta) from the round-trip.
+  // generated line2Dup feature points (blue) from the round-trip — what the localizer
+  // keys on. (The auto ROI selection is NOT drawn here; "自動產生 ROI 點" turns it into
+  // editable orange points instead.)
   if (featPts) {
     ctx.fillStyle = '#29b6f6';
     for (const p of (featPts.features || [])) { ctx.beginPath(); ctx.arc(p.x, p.y, pr * 0.8, 0, 7); ctx.fill(); }
-    ctx.fillStyle = '#ff4081';
-    for (const p of (featPts.roi || [])) { ctx.beginPath(); ctx.arc(p.x, p.y, pr * 1.8, 0, 7); ctx.fill(); }
   }
 
-  // user-placed ROI override points (orange squares), saved as roi_refine_points.
+  // ROI refine points (orange squares) — the ONLY ROI representation; saved as
+  // roi_refine_points. Empty = no ROI refine.
   if (roiPts && roiPts.length) {
     ctx.strokeStyle = '#ff9100'; ctx.lineWidth = lw * 1.4;
     for (const p of roiPts) ctx.strokeRect(p.x - pr * 1.8, p.y - pr * 1.8, pr * 3.6, pr * 3.6);
@@ -251,6 +252,26 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
   }, [sendBPG, edit_info]);
 
   const captureDrag = (tool === 'locline' || tool === 'roi');
+  // "自動產生 ROI 點": ask the core for its auto-selected ROI points and put them into
+  // the editable list. Strips roi_refine_points from the sent def so the core
+  // auto-selects (otherwise it would echo back the current explicit list).
+  const autoFillRoi = useCallback(() => {
+    if (!sendBPG) return;
+    let deffile;
+    try { deffile = defFileGeneration(edit_info); stampRefImagePath(deffile, edit_info); }
+    catch (e) { return; }
+    if (deffile.featureSet && deffile.featureSet[0]) delete deffile.featureSet[0].roi_refine_points;
+    setGenBusy(true);
+    new Promise((resolve, reject) => sendBPG('SF', 0, { definfo: deffile }, undefined, { resolve, reject }))
+      .then((pkts) => {
+        const sf = (pkts || []).find((p) => p.type === 'SF');
+        const roi = (sf && sf.data && sf.data.roi) || [];
+        dispatch(DefConfAct.EditInfo_Patch({ roi_refine_points: roi.map((p) => ({ x: p.x, y: p.y })) }));
+      })
+      .catch(() => {})
+      .finally(() => setGenBusy(false));
+  }, [sendBPG, edit_info, dispatch]);
+
   const dhook = useCallback((isCtrl, g, canvas) => {
     canvas.captureDrag = captureDrag;
     const ctx_state = { reg, mmpp, shapeList, work: work.current,
@@ -295,20 +316,22 @@ export function SBMSetupView({ sendBPG, onSave, onClose }) {
         點頂點圍住零件,點回第一個頂點收尾。拖曳=平移視角,滾輪=縮放。
       </div>
 
-      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>ROI 取樣點</Divider>
-      <TBtn id="roi" title="點影像新增 ROI 取樣點(橘框);點既有點可刪除。空=core 自動選(粉點)。">
-        ◻ 設定 ROI 點（{roiPts.length}）{roiPts.length === 0 ? ' auto' : ''}</TBtn>
-      <Button size="small" onClick={() => onRoi([])}>清除→auto</Button>
+      <Divider orientation="left" style={{ margin: '8px 0 4px' }}>ROI 取樣點（{roiPts.length}）</Divider>
+      <Button size="small" block loading={genBusy} onClick={autoFillRoi}
+        title="向 core 取得自動選的 ROI 點,填入下方清單(橘框)後即可編輯。">
+        ⚙ 自動產生 ROI 點</Button>
+      <TBtn id="roi" title="點影像新增 ROI 點(橘框);點既有點可刪除。">◻ 編輯 ROI 點（點擊增/刪）</TBtn>
+      <Button size="small" onClick={() => onRoi([])}>清除全部</Button>
       <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
-        點影像加點/點既有點刪除。空白=自動(粉點為 core 自動選)。
+        core 只用這些 ROI 點。全部清除 = 不做 ROI 微調(僅粗定位)。
       </div>
 
       <Divider orientation="left" style={{ margin: '8px 0 4px' }}>可視化</Divider>
       <Button size="small" block loading={genBusy} onClick={genFeatures}
-        title="把目前設定送到 core,回傳並疊上實際生成的 line2Dup 特徵點(藍)+ ROI 點(粉)。需先存過檔(<def>.png 在磁碟上)。">
-        🔵 生成特徵點</Button>
+        title="把目前設定送到 core,回傳並疊上實際生成的 line2Dup 特徵點(藍)。需先存過檔(<def>.png 在磁碟上)。">
+        🔵 生成特徵點(藍)</Button>
       {featPts && <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
-        features: {(featPts.features || []).length} ／ roi: {(featPts.roi || []).length}
+        line2Dup features: {(featPts.features || []).length}
         <Button size="small" type="link" onClick={() => setFeatPts(undefined)}>清除</Button>
       </div>}
 

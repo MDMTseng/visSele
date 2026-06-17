@@ -316,9 +316,11 @@ export function defFileGeneration(edit_info)
       }
     }
     if (exclPolys.length) report.featureSet[0].localization_exclude = exclPolys;
-    // ROI-refine sample points (object-frame mm). Empty => core auto-selects.
-    if (Array.isArray(edit_info.roi_refine_points) && edit_info.roi_refine_points.length)
-      report.featureSet[0].roi_refine_points = edit_info.roi_refine_points;
+    // ROI-refine sample points (object-frame mm). ALWAYS emitted for shape_based (even
+    // []) so the core treats the def as explicit: it uses exactly these, and an empty
+    // list means NO ROI refine (coarse only). "自動產生 ROI 點" fills it from the core.
+    report.featureSet[0].roi_refine_points =
+      Array.isArray(edit_info.roi_refine_points) ? edit_info.roi_refine_points : [];
   }
   // Preserve def_image_reg (the shape locator's registered pose) across RE-saves of an
   // existing def -- the save flow only writes it fresh on a NEW save (!existed), so
