@@ -306,6 +306,26 @@ WebUI 的 PING 看門狗掉 2 次（約 6 秒）就重連 → 重新 CONNECT →
 `JFetch_STRING(json, "uart_name")` 從裡面挖欄位 —— 多一個 `machine_type`
 會免費地一路送到 core。
 
+#### conn_info 完整欄位（`machine_setting.json`）
+
+> ⚠ **`InspectionCore/Core0_1/data/` 是 gitignore 的**，這個檔案不進版控
+> （每台機器的設定不同）。所以架新機時**沒有範本可以 clone**，欄位得照這裡填。
+
+```jsonc
+"uInsp_peripheral_conn_info": {
+  "machine_type": "uInspESP32",   // 或 "uInspMEGA"；未設 = uInspMEGA（舊路徑）
+  "cat_ok": 1,                    // 良品噴哪一個 SEL —— 見下方警告
+  "cat_ng": 2,                    // 不良品噴哪一個 SEL
+  "uart_name": "COM6",
+  "baudrate": 115200
+}
+```
+
+- **`cat_ok`/`cat_ng` 任一未設 → 所有料件回報 NA、全部回流、不噴任何東西。**
+  這是刻意的安全預設：分選在出口確認之前是關閉的，寧可不分也不要分錯。
+  core 啟動時會 `LOGE` 明確告知。
+- **key 名稱不能有數字尾碼**（`..._info1` 會讓 `BPG_WS.js` 找不到而靜默停用）
+
 ### 5.8 README.md 的 Project Structure 是過時的
 
 它列的 `src/config.h`、`gate_sensor.*`、`pipeline.*`、`state_machine.*`、
@@ -387,6 +407,23 @@ uInspESP32 的 `PIN_O_CAM1`（GPIO 17）是**裸的 3.3V ESP32 GPIO**。現役�
 | `de99f98f` | NVS 持久化 + `machine_id`；ISR 內 `digitalRead` → 暫存器直讀；輸出 fail-safe 集中成 `ALL_OUTPUTS_SAFE()` |
 | `535d92fb` | ISR 內的錯誤轉移延後到主迴圈（原本從 ISR 呼叫 `pinMode`/`digitalWrite`）|
 | `d956ddd9` | WebUI 抽出 `Perif_API_Base` 去重；新增 `uInspESP32_API` |
+| `d7b74f61` | **core 的 tid 結果路徑**：`bTrigInfo` tap、FIFO 配對、`report{tid,cat}`、`machine_type` 辨識 |
+
+### core 的 tid 路徑（`d7b74f61`）
+
+`PerifChannel` 現在會攔 `bTrigInfo` 存進 `perifTriggerQueue`（**仍原封不動轉發給
+瀏覽器**，不影響既有 WebUI）。結果在 `InspResultAction_s` 產生時就 FIFO 配對
+最舊的未認領 trigger —— 在這裡配而不是在送出執行緒配，是為了讓配對跟著
+**影像順序**而不是寫入順序。
+
+`machine_type` 未設或不認得 → 完全走舊的 `inspRep` 路徑，未 opt-in 的部署零影響。
+
+**分選目前是刻意關閉的**：`cat_ok`/`cat_ng` 任一未設，`perif_status_to_cat()`
+一律回 NA。整條管線可以端到端測試（tid 配對、不會 fault），但**證明不可能分錯槽**。
+確認出口後填上設定即可啟用。
+
+配不到 trigger 的影像**不送**：韌體對未知 tid 會 fault，捏造一個比沉默更糟；
+而且「有影像沒 trigger」本身就代表配對已經失步了。
 
 ### NVS 持久化怎麼用
 
@@ -430,9 +467,10 @@ Perif_API_Base                傳輸層（連線/追蹤窗/PING/設定檔/延遲
 
 | 項目 | 說明 |
 |---|---|
-| **Core 的 tid 結果路徑** | §5.6。`PerifChannel` 加 tap 收 `bTrigInfo`；`InspResultAction_s` 改帶 tid；`sendResultTo_perifCH` 依 `machine_type` 分歧 |
-| **`machine_type` 欄位** | machine_setting.json + core 的 CONNECT handler；順便修掉 `_info1` 尾碼 |
-| **相機 strict mode** | `TriggerSelector` + `TriggerSource=Line0` + `Line0RisingEdge` 事件 + `frameInfo.frameNum` |
+| ~~Core 的 tid 結果路徑~~ | ✅ `d7b74f61`（分選待設定啟用）|
+| ~~`machine_type` 欄位~~ | ✅ `d7b74f61` |
+| **相機 strict mode** | `TriggerSelector` + `TriggerSource=Line0` + `Line0RisingEdge` 事件 + `frameInfo.frameNum`。**這是目前最大的缺口** —— 沒有它，掉幀會讓 FIFO 永久錯位，而不是產生一個 NA 佔位 |
+| **實機驗證 tid 配對** | 上面全是靜態驗證，一次都還沒接過真機 |
 | `gate_ref` 中心/後緣可切換 | §5.2，**切 mid 要重新調機** |
 | 閘門防彈跳 | §5.3，建議門檻可設定、預設 0 = 現行行為 |
 | SEL3 補完或移除 | §5.4 |
@@ -478,6 +516,31 @@ cd UI/WebUI && npm run build                  # vite，約 5000 modules
 
 # WebUI regress（本機跑不了）
 # 需要 webctl daemon + dev app + core :4090，且 fixture 路徑寫死成 macOS 家目錄
+```
+
+### ⚠ MSYS2 GCC 要先設 PATH，否則錯誤訊息會騙你
+
+從 git-bash 直接呼叫 `C:\msys64\mingw64\bin\c++.exe` 編譯時：
+
+```
+rc=1，完全沒有任何診斷輸出，也沒有產出 .o
+```
+
+看起來像編譯器壞了或程式碼有問題，**其實是 `cc1plus` 載入不到 MSYS2 的 DLL**。
+`c++.exe --version` 會正常回應，所以很容易誤判。修法：
+
+```sh
+export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
+```
+
+同一個根因也會讓 `cmake --build` 在 vcpkg 的 compiler detection 階段失敗
+（`vcpkg was unable to detect the active compiler's information`）。
+
+單檔語法檢查（不需要完整 link）：
+
+```sh
+export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
+# 從 build/win-mingw-ninja/compile_commands.json 撈出該檔的編譯指令來跑
 ```
 
 除錯環境變數：`INSP_PERIF_LOG=1` 會讓 core 印出周邊的序列埠 round-trip 時間，
