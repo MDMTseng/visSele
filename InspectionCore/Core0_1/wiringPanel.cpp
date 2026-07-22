@@ -134,9 +134,34 @@ TSQueue<image_pipe_info *> inspSnapQueue(5);
 // the critical path. The queue is generously sized to ride out transient
 // stalls; persistent overflow drops the oldest message (and counts it)
 // rather than back-pressuring inspection.
-struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; };
+// tid < 0 means "no object identity" -- either the legacy dialect (which
+// addresses by timestamp) or an ESP32 frame we could not pair with a trigger.
+struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid; };
 TSQueue<PerifResultMsg> perifSendQueue(256);
 std::atomic<int> perifSendDropCount{0};
+
+// --- Peripheral protocol dialect -------------------------------------------
+// uInspMEGA and uInspESP32 correlate a result to a part in incompatible ways:
+//
+//   uInspMEGA   inspRep{status,time_100us} -- the firmware learns a host-us to
+//               pulse-count mapping and fuzzy-matches the nearest object. A
+//               mismatch silently sorts the part into the wrong bin.
+//   uInspESP32  the firmware announces bTrigInfo{tid} when it fires the camera;
+//               the host answers report{tid,cat}. Exact. A mismatch faults the
+//               machine instead of mis-sorting.
+//
+// Which one to speak comes from "machine_type" in the peripheral's conn_info
+// (machine_setting.json -> WebUI -> the PD CONNECT packet). Absent/unknown ->
+// PERIF_UINSP_MEGA, so an unconfigured deployment behaves exactly as before.
+enum PerifMachineType { PERIF_UINSP_MEGA = 0, PERIF_UINSP_ESP32 = 1 };
+
+// Trigger identities the device announced (bTrigInfo), waiting to be paired
+// with the frame they produced. Single camera today, so one FIFO; tidx is
+// carried anyway so a second camera only needs a queue per index.
+struct PerifTriggerMsg { int64_t tid; uint64_t dev_us; int tidx; int qs; };
+TSQueue<PerifTriggerMsg> perifTriggerQueue(256);
+std::atomic<int> perifTriggerDropCount{0};
+std::atomic<long long> perifTriggerRxCount{0};
 // Serial write-latency stats (only ever touched by the single PerifSendThread,
 // so plain scalars are fine). max_ms is the interesting one -- it exposes any
 // remaining flow-control / driver-buffer stall in the COM peripheral write.
@@ -291,13 +316,72 @@ class PerifChannel:public Data_JsonRaw_Layer
   // Timestamp of the last command written to this channel (for serial-RTT logs).
   // Set in the PD MESSAGE handler before the serial write; read here on reply.
   uint64_t last_tx_us = 0;
+  // Which result protocol this device speaks. Set from the CONNECT packet's
+  // "machine_type"; see PerifMachineType.
+  int machine_type = PERIF_UINSP_MEGA;
+  // Which selector an OK / NG verdict fires, from conn_info ("cat_ok"/"cat_ng").
+  // 0 = not configured, and an unconfigured channel reports NA for everything:
+  // every part recirculates, nothing is ejected, nothing is mis-sorted. Which
+  // physical outlet is the good one is a wiring fact this code cannot infer,
+  // and guessing it swaps good and bad wholesale without ever announcing it.
+  int cat_ok = 0;
+  int cat_ng = 0;
   PerifChannel():Data_JsonRaw_Layer()// throw(std::runtime_error)
   {
   }
+
+  // uInspESP32 announces every camera trigger with the object id the result
+  // must later be reported against. Tap those into perifTriggerQueue on the way
+  // past -- the message is still forwarded to the WebUI untouched, so nothing
+  // that already consumes it changes. Cheap substring test first so the common
+  // replies (PONG, acks) never reach cJSON.
+  void tap_trigger_info(uint8_t *raw, int rawL)
+  {
+    if (machine_type != PERIF_UINSP_ESP32) return;
+    if (strstr((const char *)raw, "bTrigInfo") == NULL) return;
+
+    cJSON *j = cJSON_Parse((const char *)raw);
+    if (j == NULL) return;
+
+    double *tid = JFetch_NUMBER(j, "tid");
+    if (tid != NULL)
+    {
+      double *usH  = JFetch_NUMBER(j, "usH");
+      double *usL  = JFetch_NUMBER(j, "usL");
+      double *tidx = JFetch_NUMBER(j, "tidx");
+      double *qs   = JFetch_NUMBER(j, "Qs");
+
+      PerifTriggerMsg m;
+      m.tid    = (int64_t)*tid;
+      m.dev_us = ((usH != NULL) ? ((uint64_t)*usH << 32) : 0) |
+                 ((usL != NULL) ? (uint64_t)*usL : 0);
+      m.tidx   = (tidx != NULL) ? (int)*tidx : 1;
+      m.qs     = (qs   != NULL) ? (int)*qs   : -1;
+
+      perifTriggerRxCount++;
+      if (!perifTriggerQueue.push(m))
+      {
+        // Backed up: results are not being produced fast enough to consume
+        // triggers. Drop the OLDEST -- keeping stale ids would pair every
+        // subsequent frame with the wrong part, which is worse than losing
+        // the parts already past the selector.
+        PerifTriggerMsg discard;
+        perifTriggerQueue.pop(discard);
+        perifTriggerQueue.push(m);
+        int n = ++perifTriggerDropCount;
+        if ((n % 50) == 1)
+          LOGE("perifTriggerQueue full -> dropping oldest (cumulative: %d)", n);
+      }
+    }
+    cJSON_Delete(j);
+  }
+
   int recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     if(opcode==1 )
     {
+      tap_trigger_info(raw, rawL);
+
       // [perif] Reply arrived from the device. Log the serial round-trip (write
       // -> reply) so we can localize comm delay: if serialRTT ~= the WebUI's
       // total RTT, the latency is in the serial/ESP32 hop; if it's small, the
@@ -3525,6 +3609,44 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             perifCH->conn_peer=peer;   // async device replies go back to this client
             perifCH->setDLayer(PHYLayer);
 
+            // Which result dialect this peripheral speaks. Rides along in the
+            // CONNECT packet because the WebUI spreads the whole conn_info
+            // object from machine_setting.json into it. Anything we don't
+            // recognise stays on the legacy uInspMEGA path.
+            {
+              char *mt = JFetch_STRING(json, "machine_type");
+              if (mt != NULL && strcmp(mt, "uInspESP32") == 0)
+                perifCH->machine_type = PERIF_UINSP_ESP32;
+              else
+                perifCH->machine_type = PERIF_UINSP_MEGA;
+              LOGI("perif machine_type: %s -> %d",
+                   (mt != NULL) ? mt : "(unset, default uInspMEGA)",
+                   perifCH->machine_type);
+
+              double *cok = JFetch_NUMBER(json, "cat_ok");
+              double *cng = JFetch_NUMBER(json, "cat_ng");
+              perifCH->cat_ok = (cok != NULL) ? (int)*cok : 0;
+              perifCH->cat_ng = (cng != NULL) ? (int)*cng : 0;
+              if (perifCH->machine_type == PERIF_UINSP_ESP32 &&
+                  (perifCH->cat_ok == 0 || perifCH->cat_ng == 0))
+              {
+                LOGE("perif cat_ok/cat_ng not set in conn_info -- every part "
+                     "will be reported NA and recirculate. Sorting is OFF "
+                     "until both are declared.");
+              }
+              else if (perifCH->machine_type == PERIF_UINSP_ESP32)
+              {
+                LOGI("perif sorting: OK->SEL%d  NG->SEL%d",
+                     perifCH->cat_ok, perifCH->cat_ng);
+              }
+            }
+
+            // Trigger ids from a previous session are meaningless now.
+            {
+              PerifTriggerMsg discard;
+              while (perifTriggerQueue.pop(discard)) {}
+            }
+
             perifCH->send_RESET();
             perifCH->send_RESET();
             perifCH->RESET();
@@ -4176,7 +4298,7 @@ int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directSt
 int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us,int count)
 {
   uint8_t buffx[200];
-  
+
   int ret= printfTo_perifCH(perifCH,buffx, sizeof(buffx),true,
     "{"
     "\"type\":\"inspRep\",\"status\":%d,"
@@ -4184,6 +4306,51 @@ int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeSta
     "\"time_100us\":%lu"
     "}", uInspStatus, 1, count, timeStamp_100us);
   return ret;
+}
+
+// uInspESP32 dialect: the verdict is addressed to the object id the firmware
+// handed us in bTrigInfo, not to a timestamp it has to fuzzy-match.
+//
+// cat values (Run_ACTS' SWITCH branch):
+//   1              fire SEL1  -- ejected
+//   2              fire SEL2  -- ejected
+//   0xFFFF (NA)    fire nothing -- the part runs off the end into the
+//                  collection mechanism and goes back to the bowl feeder to be
+//                  inspected again on a later pass
+//   anything else  OBJECT_HAS_NO_INSP_RESULT -> the machine faults
+//
+// A part we could not inspect (dropped frame, lost trigger pairing) must be NA
+// and never NG: NG means inspected-and-failed, and folding transport faults
+// into it corrupts the yield figures. NA costs only throughput, because the
+// part comes round again.
+#define PERIF_CAT_NA 0xFFFF
+
+int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat)
+{
+  uint8_t buffx[200];
+
+  return printfTo_perifCH(perifCH, buffx, sizeof(buffx), true,
+    "{"
+    "\"type\":\"report\",\"tid\":%lld,\"cat\":%d"
+    "}", (long long)tid, cat);
+}
+
+// Inspection verdict -> selector category.
+//
+// STATUS_NA / STATUS_UNSET / anything unrecognised deliberately collapse to NA:
+// those mean "no usable verdict", and the honest action is to let the part go
+// round again rather than commit it to a bin. Only a real SUCCESS or FAILURE
+// ejects, and only once the outlets have been declared in conn_info.
+int perif_status_to_cat(const PerifChannel *pc, int uInspStatus)
+{
+  typedef FeatureReport_sig360_circle_line_single FR;
+
+  if (uInspStatus == FR::STATUS_SUCCESS)
+    return (pc->cat_ok != 0) ? pc->cat_ok : PERIF_CAT_NA;
+  if (uInspStatus == FR::STATUS_FAILURE)
+    return (pc->cat_ng != 0) ? pc->cat_ng : PERIF_CAT_NA;
+
+  return PERIF_CAT_NA;
 }
 
 
@@ -4561,7 +4728,29 @@ void PerifSendThread(bool *terminationflag)
         if (pc != NULL)
         {
           auto _wt0 = std::chrono::steady_clock::now();
-          int ret = sendResultTo_perifCH(pc, msg.uInspStatus, msg.timeStamp_100us, pc->pkt_count);
+          int ret;
+          if (pc->machine_type == PERIF_UINSP_ESP32)
+          {
+            if (msg.tid >= 0)
+            {
+              ret = sendReportTo_perifCH(pc, msg.tid, perif_status_to_cat(pc, msg.uInspStatus));
+            }
+            else
+            {
+              // No object identity for this frame. Nothing useful can be sent:
+              // the firmware faults on an unknown tid, so an invented one would
+              // be worse than silence. The part reaches the selector with no
+              // verdict and the machine stops -- which is the correct outcome,
+              // because a frame with no trigger means the pairing has desynced.
+              LOGE("perif: result with no paired tid (status:%d) -- not sent",
+                   msg.uInspStatus);
+              ret = -1;
+            }
+          }
+          else
+          {
+            ret = sendResultTo_perifCH(pc, msg.uInspStatus, msg.timeStamp_100us, pc->pkt_count);
+          }
           double ms = std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - _wt0).count();
           if (ret >= 0)
@@ -4989,7 +5178,28 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   {
     // Hand off to PerifSendThread instead of blocking here on the serial
     // write (which can stall >1s under flow control and freeze inspection).
-    PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100 };
+    PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1 };
+
+    // Pair this frame with the object the firmware announced. FIFO: triggers
+    // and frames are produced in the same order by construction, so the oldest
+    // unclaimed trigger owns the oldest result. Done here rather than in the
+    // send thread so the pairing follows frame order rather than write order.
+    if (bpg_pi.perifCH->machine_type == PERIF_UINSP_ESP32)
+    {
+      PerifTriggerMsg trig;
+      if (perifTriggerQueue.pop(trig))
+      {
+        msg.tid = trig.tid;
+      }
+      else
+      {
+        // A frame with no announced trigger. Either the device is not in
+        // inspection mode (free-run / manual grab), or a bTrigInfo was lost.
+        // Left as tid=-1; the send thread logs and drops it.
+        LOGE("perif: frame with no pending trigger -- pairing desynced?");
+      }
+    }
+
     if (!perifSendQueue.push(msg))
     {
       // Full: the peripheral can't keep up. Drop the OLDEST so we keep the
