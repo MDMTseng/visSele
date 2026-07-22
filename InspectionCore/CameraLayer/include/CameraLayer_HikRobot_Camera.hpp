@@ -72,6 +72,29 @@ protected:
   unsigned int _lastFrameNum=0;
   bool _lastFrameNumValid=false;
 
+  // Line0 edge accounting.
+  //
+  // nFrameNum only counts frames the sensor actually exposed, so it cannot see
+  // a trigger the sensor refused (still integrating, or a readout that cannot
+  // keep up) -- no frame was exposed, so there is no gap to detect. The camera's
+  // own Line0RisingEdge event fires per electrical edge regardless, which makes
+  // it an independent count to reconcile against.
+  //
+  // Rising vs falling is a signal-integrity check: they should be equal. A
+  // divergence means the input is seeing bounce, or a level that only sometimes
+  // clears the opto threshold -- the failure mode expected when a 3.3V GPIO
+  // drives an input specified for 5-24V.
+  std::atomic<unsigned long long> _line0RisingEdges{0};
+  std::atomic<unsigned long long> _line0FallingEdges{0};
+  std::atomic<unsigned long long> _framesDelivered{0};
+  std::atomic<unsigned long long> _framesDroppedByGap{0};
+  std::atomic<unsigned long long> _line0LastEdgeDevTick{0};
+
+  static void sEventCallBack(MV_EVENT_OUT_INFO *pEventInfo, void *context);
+  void EventCallBack(MV_EVENT_OUT_INFO *pEventInfo);
+  void registerLineEvents();
+  void logTriggerConfig(const char *when);
+
   bool acquisition_started=false;
   int mirrorFlag[2]={0,0};
   int ROI_mirrorFlag[2]={0,0};
@@ -221,6 +244,26 @@ public:
 
   CameraLayer::status StartAquisition();
   CameraLayer::status StopAquisition();
+
+  // Trigger/frame accounting, for reconciling against whatever external source
+  // is driving the trigger line. rising==falling means the pulses arrived
+  // cleanly; rising>delivered+droppedByGap means the sensor refused triggers.
+  struct TriggerStats {
+    unsigned long long line0RisingEdges;
+    unsigned long long line0FallingEdges;
+    unsigned long long framesDelivered;
+    unsigned long long framesDroppedByGap;
+    unsigned long long line0LastEdgeDevTick;
+  };
+  TriggerStats GetTriggerStats() const {
+    TriggerStats s;
+    s.line0RisingEdges     = _line0RisingEdges.load();
+    s.line0FallingEdges    = _line0FallingEdges.load();
+    s.framesDelivered      = _framesDelivered.load();
+    s.framesDroppedByGap   = _framesDroppedByGap.load();
+    s.line0LastEdgeDevTick = _line0LastEdgeDevTick.load();
+    return s;
+  }
   
   // CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param);
   // CameraLayer::status SnapFrame(int type,CameraLayer_Callback snap_cb,void *cb_param);

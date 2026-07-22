@@ -4767,10 +4767,22 @@ void PerifSendThread(bool *terminationflag)
           // Log on every new max (the thing you want to catch) and a periodic
           // heartbeat every 100 writes so you can read the steady state.
           if (newMax || (g_perifWriteCnt % 100) == 0)
+          {
             LOGE("perif write: last:%.2fms max:%.2fms avg:%.2fms n:%llu qdepth:%zu drops:%d%s",
                  ms, g_perifWriteMaxMs, g_perifWriteSumMs / (double)g_perifWriteCnt,
                  (unsigned long long)g_perifWriteCnt, perifSendQueue.size(),
                  perifSendDropCount.load(), newMax ? "  <== NEW MAX" : "");
+
+            // Trigger accounting, for reconciling the three independent counts:
+            // what the firmware announced (rx), what we could not judge (missed)
+            // and what is still unclaimed (pending). Steady state is pending~0
+            // and missed flat; pending climbing means results are not keeping up
+            // with triggers, missed climbing means frames are being lost.
+            if (pc->machine_type == PERIF_UINSP_ESP32)
+              LOGE("perif trig: rx:%lld missed(NA):%lld pending:%zu trigdrops:%d",
+                   perifTriggerRxCount.load(), perifMissedFrameCount.load(),
+                   perifTriggerQueue.size(), perifTriggerDropCount.load());
+          }
         }
       }
     }

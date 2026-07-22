@@ -161,12 +161,14 @@ void CameraLayer_HikRobot_Camera::sImageCallBack(unsigned char *pData, MV_FRAME_
   // SDK node pool). Diagnostic only -- nothing downstream depends on it.
   if (cl->_lastFrameNumValid && pFrameInfo->nFrameNum > cl->_lastFrameNum + 1)
   {
+    unsigned lost = pFrameInfo->nFrameNum - cl->_lastFrameNum - 1;
+    cl->_framesDroppedByGap += lost;
     LOGE("camera dropped %u frame(s) (nFrameNum %u->%u)",
-         pFrameInfo->nFrameNum - cl->_lastFrameNum - 1,
-         cl->_lastFrameNum, pFrameInfo->nFrameNum);
+         lost, cl->_lastFrameNum, pFrameInfo->nFrameNum);
   }
   cl->_lastFrameNum = pFrameInfo->nFrameNum;
   cl->_lastFrameNumValid = true;
+  cl->_framesDelivered++;
 
   // Copy the volatile SDK buffer into a reusable pool slot NOW, while
   // pData is still valid. The queue then carries a pointer into stable
@@ -586,7 +588,12 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(
 
   MV_IMAGE_BASIC_INFO img_basic_info;
   MV_CC_GetImageInfo(handle, &img_basic_info);
+
+  registerLineEvents();
+  logTriggerConfig("after-open");
+
   TriggerMode(1);
+  logTriggerConfig("after-TriggerMode(1)");
   threadRunningState = true;
 
   SetROI(0, 0, 999999, 999999, 0, 0);
@@ -629,6 +636,72 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(
 
   cam_json_info.assign(buff);
   LOGI(">>>%s",cam_json_info.c_str());
+}
+
+void CameraLayer_HikRobot_Camera::sEventCallBack(MV_EVENT_OUT_INFO *pEventInfo, void *context)
+{
+  CameraLayer_HikRobot_Camera *cl = (CameraLayer_HikRobot_Camera *)context;
+  if (cl != NULL && pEventInfo != NULL)
+    cl->EventCallBack(pEventInfo);
+}
+
+void CameraLayer_HikRobot_Camera::EventCallBack(MV_EVENT_OUT_INFO *pEventInfo)
+{
+  if (pEventInfo->EventName == NULL) return;
+
+  // Camera-clock timestamp of the edge itself. Survives even when no frame
+  // follows, which is exactly the case we cannot see any other way.
+  uint64_t tick = (((uint64_t)pEventInfo->nTimestampHigh) << 32) |
+                    (uint64_t)pEventInfo->nTimestampLow;
+
+  if (strcmp(pEventInfo->EventName, "Line0RisingEdge") == 0)
+  {
+    _line0RisingEdges++;
+    _line0LastEdgeDevTick = tick;
+  }
+  else if (strcmp(pEventInfo->EventName, "Line0FallingEdge") == 0)
+  {
+    _line0FallingEdges++;
+  }
+}
+
+// Registration is unconditional and failure is not fatal: on firmwares (or
+// TriggerSource settings) where these events never fire the counters simply
+// stay at 0, which is itself the diagnostic. Nothing downstream depends on
+// them yet -- they exist to be reconciled against the trigger source.
+void CameraLayer_HikRobot_Camera::registerLineEvents()
+{
+  static const char *kEvents[] = { "Line0RisingEdge", "Line0FallingEdge" };
+
+  for (int i = 0; i < 2; i++)
+  {
+    int rSel = MV_CC_SetEnumValueByString(handle, "EventSelector", kEvents[i]);
+    int rEn  = (rSel == MV_OK) ? MV_CC_SetBoolValue(handle, "EventNotification", true) : -1;
+    int rCb  = MV_CC_RegisterEventCallBackEx(handle, kEvents[i], sEventCallBack, this);
+    LOGI("event %s: selector=%d notify=%d register=%d",
+         kEvents[i], rSel, rEn, rCb);
+  }
+}
+
+// Reads back what the firmware actually settled on. TriggerMode/Source/
+// Activation all apply to whichever TriggerSelector is current, so the selector
+// is the field that decides whether "trigger mode on" means one frame per edge
+// or something else entirely -- and this code has never set it, meaning the
+// firmware default has been in force all along. Log it rather than change it:
+// which value is correct here is a question for the hardware, not the source.
+void CameraLayer_HikRobot_Camera::logTriggerConfig(const char *when)
+{
+  MVCC_ENUMVALUE ev = {0};
+  const char *keys[] = { "TriggerSelector", "TriggerMode", "TriggerSource", "TriggerActivation" };
+
+  for (int i = 0; i < 4; i++)
+  {
+    memset(&ev, 0, sizeof(ev));
+    int r = MV_CC_GetEnumValue(handle, keys[i], &ev);
+    // Numeric value only -- enough to compare against the SDK constants, and
+    // enum-as-string readback is not available on every node.
+    LOGI("[trigger cfg %s] %-18s ret=%d cur=%u", when, keys[i], r, ev.nCurValue);
+  }
 }
 
 void CameraLayer_HikRobot_Camera::imgQThreadFunc()
@@ -705,9 +778,16 @@ CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
   if (type == 2) //hardware trigger
   {
     takeCount=-1;
+    // NOTE: "Anyway"(13) accepts edges on any input line, but it also silences
+    // the per-edge trigger events -- which is why _line0RisingEdges can read 0
+    // on a rig that is triggering perfectly well. Switching to Line0 restores
+    // the event stream, but only if the trigger is physically wired to Line0;
+    // if it is on Line1/Line2 the set succeeds and no trigger ever arrives.
+    // Left on Anyway until the wiring is confirmed on the machine.
     int nRet = SetEnumValue("TriggerSource", 13);//anyway
     if(nRet!=MV_OK)
       nRet = SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_LINE0);
+    logTriggerConfig("after-TriggerMode(2)");
     return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
   }
 
