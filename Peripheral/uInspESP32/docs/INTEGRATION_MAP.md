@@ -408,6 +408,7 @@ uInspESP32 的 `PIN_O_CAM1`（GPIO 17）是**裸的 3.3V ESP32 GPIO**。現役�
 | `535d92fb` | ISR 內的錯誤轉移延後到主迴圈（原本從 ISR 呼叫 `pinMode`/`digitalWrite`）|
 | `d956ddd9` | WebUI 抽出 `Perif_API_Base` 去重；新增 `uInspESP32_API` |
 | `d7b74f61` | **core 的 tid 結果路徑**：`bTrigInfo` tap、FIFO 配對、`report{tid,cat}`、`machine_type` 辨識 |
+| `3ffadfd1` | **掉幀吸收**：`frameInfo.frameNum` 貫通、斷號 → 補送 NA 讓 FIFO 重新對齊 |
 
 ### core 的 tid 路徑（`d7b74f61`）
 
@@ -424,6 +425,27 @@ uInspESP32 的 `PIN_O_CAM1`（GPIO 17）是**裸的 3.3V ESP32 GPIO**。現役�
 
 配不到 trigger 的影像**不送**：韌體對未知 tid 會 fault，捏造一個比沉默更糟；
 而且「有影像沒 trigger」本身就代表配對已經失步了。
+
+### 掉幀吸收（`3ffadfd1`）
+
+裸 FIFO 有個致命弱點：**掉一幀就永久錯位**，之後每顆料件都用鄰居的判定去分選 ——
+正是 tid 協定想根除的那種失效。
+
+不需要猜。`nFrameNum` 計的是感測器曝光了幾幀（不管有沒有送達），所以斷號
+**就是精確的掉幀數**。斷號 N 就把排在前面的 N 個 tid 提前退成 NA，那些料件回流
+重驗，FIFO 下一幀立刻對齊。
+
+實作放在 core 而不是讓相機層產生佔位影像：`CameraLayer` 的契約是「push 一張影像
+的 callback」，硬生出沒有影像的 frame 會動到每個消費端。而 core 本來就握有
+trigger 佇列，兩個計數在這裡交會最自然。
+
+`frameNum`/`frameNumValid` 預設 `0/false`，所以給不出感測器計數的驅動
+（Aravis、BMP、MindVision）自動退出這個機制，行為不變。
+
+> ⚠ **`nFrameNum` 只抓得到「傳輸掉幀」**（曝光了但沒送到）。抓不到
+> **「感測器根本沒接受這個觸發」**（曝光中、ROI 太大讀不完）—— 那種情況
+> `nFrameNum` 不會有斷號，因為那一幀從來沒被曝光。要抓那個得靠
+> `Line0RisingEdge` 事件計數（xInsp plugin 的機制 #2/#4），仍未實作。
 
 ### NVS 持久化怎麼用
 
@@ -469,7 +491,9 @@ Perif_API_Base                傳輸層（連線/追蹤窗/PING/設定檔/延遲
 |---|---|
 | ~~Core 的 tid 結果路徑~~ | ✅ `d7b74f61`（分選待設定啟用）|
 | ~~`machine_type` 欄位~~ | ✅ `d7b74f61` |
-| **相機 strict mode** | `TriggerSelector` + `TriggerSource=Line0` + `Line0RisingEdge` 事件 + `frameInfo.frameNum`。**這是目前最大的缺口** —— 沒有它，掉幀會讓 FIFO 永久錯位，而不是產生一個 NA 佔位 |
+| ~~掉幀吸收~~ | ✅ `3ffadfd1` —— `nFrameNum` 斷號 → 補送 N 個 NA，FIFO 下一幀就對齊 |
+| **相機觸發組態** | `TriggerSelector`（caveat #4，目前沒設）+ `TriggerSource` 從 `Anyway` 改 `Line0`（caveat #7，目前的設定讓事件靜音）|
+| **`Line0RisingEdge` 事件** | 第二個獨立邊緣計數，用來跟 ESP32 的 `tid` 互相驗證。`nFrameNum` 只抓得到「傳輸掉幀」，抓不到「感測器根本沒接受這個觸發」 |
 | **實機驗證 tid 配對** | 上面全是靜態驗證，一次都還沒接過真機 |
 | `gate_ref` 中心/後緣可切換 | §5.2，**切 mid 要重新調機** |
 | 閘門防彈跳 | §5.3，建議門檻可設定、預設 0 = 現行行為 |
@@ -489,8 +513,9 @@ Perif_API_Base                傳輸層（連線/追蹤窗/PING/設定檔/延遲
    會整批互換，而且因為兩者都會被噴出、不會回流，錯了不會自己顯現。
 2. **兩台新機的相機型號。** 沿用現役還是新採購？若新購，照 xInsp plugin 的
    verified 清單（MV-CE200-11UM / MV-CA050-12UC）可省一輪韌體事件支援度試錯。
-3. **新機走 visSele 還是 xInsp？** 若走 xInsp，§6 整條 visSele 相機層改造就不用做。
-   這個決定比實作方式重要得多。
+3. ~~新機走 visSele 還是 xInsp？~~ **已決定：走 Core0_1（visSele 舊專案）**，
+   所以 §6 的相機層要在 visSele 這邊補強，不是移植到 xInsp。
+   xInsp 的 plugin 仍是最佳參考實作。
 
 ### 已確定
 
