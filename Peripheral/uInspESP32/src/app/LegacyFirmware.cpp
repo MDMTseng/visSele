@@ -241,7 +241,32 @@ struct TaskQ2CommInfo{//TODO: rename the infoQ to be more versatile
   int resp_id;
 };
 
+// Producers: the main loop only (state transitions, recv_ERROR, trigCamPulse).
+// Consumer: the main loop. The camera-trigger path used to push here too, from
+// inside the timer ISR, which made this a two-producer queue -- and a locked
+// counter cannot save that, because getHead()/fill/pushHead() is three steps:
+// the ISR and the loop could both be handed the SAME slot, each write it, and
+// one message would be lost while the next slot went out never written.
+//
+// Splitting the ISR onto its own queue removes the race by construction rather
+// than by locking, and keeps std::string out of interrupt context: this struct
+// holds three of them, so copying it in an ISR would mean malloc in an ISR.
 RingBuf_Static<struct TaskQ2CommInfo,20,uint8_t> TaskQ2CommInfoQ;
+
+// Camera-trigger announcements raised inside onTimer(). Single producer (ISR),
+// single consumer (the main loop drain) -- a true SPSC ring, which the counter
+// critical section in RingBuf.hpp now makes safe.
+//
+// POD only, deliberately: it is filled from an ISR, so nothing here may
+// allocate. The main loop turns it into the bTrigInfo JSON where std::string
+// is free to be used.
+struct ISRTrigInfo
+{
+  uint64_t trig_time_us;
+  uint32_t trig_id;
+  uint8_t  btrig_idx;
+};
+RingBuf_Static<struct ISRTrigInfo,32,uint8_t> ISRTrigQ;
 
 
 void ERROR_LOG_PUSH(GEN_ERROR_CODE code)
@@ -597,9 +622,8 @@ int Run_ACTS(uint32_t cur_pulse)
                   {
 
                     GPIOLS32_SET(PIN_O_CAM1);
-                    TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
+                    ISRTrigInfo *commInfo = ISRTrigQ.getHead();
                     if(commInfo){
-                      commInfo->type=TaskQ2CommInfo_Type::btrigInfo;
                       if(time_us_fetched==false)
                       {
                         time_us=esp_timer_get_time();
@@ -608,7 +632,7 @@ int Run_ACTS(uint32_t cur_pulse)
                       commInfo->trig_time_us=time_us;
                       commInfo->btrig_idx=1;
                       commInfo->trig_id=task->src->tid;
-                      TaskQ2CommInfoQ.pushHead();
+                      ISRTrigQ.pushHead();
                     }
                     else
                     {
@@ -642,9 +666,8 @@ int Run_ACTS(uint32_t cur_pulse)
                   {
 
                     GPIOLS32_SET(PIN_O_CAM2);
-                    TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
+                    ISRTrigInfo *commInfo = ISRTrigQ.getHead();
                     if(commInfo){
-                      commInfo->type=TaskQ2CommInfo_Type::btrigInfo;
                       if(time_us_fetched==false)
                       {
                         time_us=esp_timer_get_time();
@@ -653,7 +676,7 @@ int Run_ACTS(uint32_t cur_pulse)
                       commInfo->trig_time_us=time_us;
                       commInfo->btrig_idx=2;
                       commInfo->trig_id=task->src->tid;
-                      TaskQ2CommInfoQ.pushHead();
+                      ISRTrigQ.pushHead();
                     }
                     else
                     {
@@ -2156,6 +2179,26 @@ void firmwareLoop()
     uint8_t buff[700];
     while(1)
     {
+      // Camera triggers first: they are what the host is waiting on to give a
+      // verdict before the part reaches the selector, so they must not queue
+      // behind chattier diagnostics.
+      if(0!=(ISRTrigQ.size()))
+      {
+        ISRTrigInfo trig=*ISRTrigQ.getTail();
+        ISRTrigQ.consumeTail();
+
+        retdoc.clear();
+        retdoc["type"]="bTrigInfo";
+        retdoc["tidx"]=trig.btrig_idx;
+        retdoc["usH"]=(uint32_t)(trig.trig_time_us>>32);
+        retdoc["usL"]=(uint32_t)(trig.trig_time_us&((uint32_t)0-1));
+        retdoc["tid"]=trig.trig_id;
+        retdoc["Qs"]=RBuf.size();
+        int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+        djrl.send_json_string(0,buff,slen,0);
+        continue;
+      }
+
       bool hasNewInfo=false;
       TaskQ2CommInfo info;
       if(hasNewInfo ==false && 0!=(TaskQ2CommInfoQ.size()))

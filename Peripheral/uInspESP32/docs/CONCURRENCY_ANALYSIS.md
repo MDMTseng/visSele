@@ -1,10 +1,12 @@
 # uInspESP32 併發與 thread safety 分析
 
-> **這是靜態程式碼分析，不是實測結果。** 下面標 🔴 的問題是從程式碼推導出來的
-> race condition，**尚未在硬體上重現**。但它們的失效模式都是「偶發、無法重現、
-> 看起來像硬體問題」，所以在兩台新機投產前值得處理。
+> **這是靜態程式碼分析。** race condition 靠測試不可靠——「沒測到」不等於
+> 「不存在」，而這類問題的失效模式正是「偶發、無法重現、看起來像硬體問題」。
+> 所以下面的修正是**靠推理做的，不是靠重現做的**。
 >
 > 分析對象：`src/app/LegacyFirmware.cpp` @ `c1f0a7da`
+>
+> **狀態**：§2 §3 已修（見 §5.0）。§4 的其餘項目仍待處理。
 
 ---
 
@@ -125,32 +127,52 @@ atomic，所以**不會撕裂**，但沒有 `volatile`，編譯器理論上可�
 
 ---
 
-## 5. 建議的修法
+## 5. 修法
 
-按「風險 / 成本」排序。**這些都還沒做**，而且我不建議在沒有硬體的情況下盲改
-ISR 熱路徑——併發修補改壞的後果比原本的 bug 更難查。
+### 5.0 ✅ 已修（`RingBuf.hpp` + `LegacyFirmware.cpp`）
 
-### 5.1 佇列索引加臨界區（最小、最安全）
+**(a) 佇列索引加臨界區。** `pushHead()` / `consumeTail()` / `pullHead()` /
+`clear()` 整段包進 `portENTER_CRITICAL_SAFE`，每個 RingBuf 實例一個 mux
+（不用全域，避免無關佇列互相序列化）。`dataSize` 同時加上 `volatile`。
 
-因為 ISR 和主迴圈同核心，關中斷就夠：
+**判斷與空/滿檢查一起包進去**，不能只保護計數寫入——「檢查是否為空」和
+「推進索引」如果是兩個各自原子的步驟，另一邊還是能插進中間。
 
-```cpp
-// RingBuf.hpp
-#include "freertos/FreeRTOS.h"
-static portMUX_TYPE rb_mux = portMUX_INITIALIZER_UNLOCKED;
+**(b) 拆掉兩個生產者。** ISR 的相機觸發改用專屬佇列 `ISRTrigQ`，主迴圈保留
+`TaskQ2CommInfoQ`。這是**結構上消除競爭，不是用鎖蓋住它**。
 
-int consumeTail(){
-  portENTER_CRITICAL_SAFE(&rb_mux);      // ISR/非 ISR 通用
-  ...
-  portEXIT_CRITICAL_SAFE(&rb_mux);
-}
-```
+理由很關鍵：`TaskQ2CommInfoQ` 的多生產者問題**光靠鎖住計數器救不了**。
+生產是三個步驟——`getHead()` 拿槽、填資料、`pushHead()` 推進——ISR 和主迴圈
+可能拿到**同一個槽**，各自寫入，結果一則訊息被覆蓋、下一個槽則從未被寫入就
+被送出去。
 
-成本：ISR 內多幾十個 cycle。`Run_ACTS` 每個 tick 最多動 7 條佇列，在
-2 kHz tick 下可以接受，但**要實測 ISR 執行時間**。
+而且 `TaskQ2CommInfo` 裡有三個 `std::string`，所以「把整個 struct 原子地複製
+進佇列」這種修法會**把 malloc 帶進 ISR**——比原本的 bug 更糟。`ISRTrigInfo`
+刻意只放 POD。
 
-> ⚠ 用單一全域 mux 會讓所有 RingBuf 互相序列化。若量到影響，改成每個實例
-> 一個 mux。
+拆開之後：
+
+| 佇列 | 生產者 | 消費者 | 狀態 |
+|---|---|---|---|
+| `ISRTrigQ` (32 深) | ISR | 主迴圈 | ✅ 真正的 SPSC + 臨界區 |
+| `TaskQ2CommInfoQ` (20 深) | 主迴圈 | 主迴圈 | ✅ 完全沒有併發 |
+| `RBuf` (100 深) | ISR | 主迴圈 | ✅ SPSC + 臨界區 |
+| `act_S.*` | ISR | ISR | ✅ 加上 `clear()` 已保護 |
+
+主迴圈排空時 **`ISRTrigQ` 優先**——相機觸發是 host 等著給判定的東西，
+不該排在除錯訊息後面。
+
+成本：`Run_ACTS` 每個 tick 約 10 個臨界區，每個數十 cycle，在 240MHz / 2kHz
+tick 下約佔 0.2–0.4% CPU。
+
+> ⚠ **仍需實測 ISR 執行時間**。相機觸發脈寬只有 2 個 pulse
+> （`INTEGRATION_MAP.md` §5.2），上機時值得用示波器確認觸發波形沒有變胖或抖動。
+
+建置影響：RAM +624 B（mux + `ISRTrigQ`），Flash +0.1%。
+
+---
+
+以下**尚未處理**：
 
 ### 5.2 `STAGE_PULSE_OFFSET` 雙緩衝
 
@@ -164,14 +186,9 @@ volatile stagePulseOffset* SPO_active = &SPO_buf[0];
 
 指標寫入是 atomic，ISR 要嘛整份看到舊的、要嘛整份看到新的。
 
-### 5.3 `TaskQ2CommInfoQ` 拆成兩條
+### 5.4 加 `volatile`（部分已做）
 
-ISR 一條、主迴圈一條，主迴圈輪流排空。這樣就變成乾淨的 SPSC，
-配合 5.1 之後完全安全，而且消掉「兩個生產者」這個結構性問題。
-
-### 5.4 加 `volatile`
-
-`blockNewDetectedObject`、`minWidth`/`maxWidth`、`SYS_STEP_COUNT`、
+`blockNewDetectedObject` 已加。剩 `minWidth`/`maxWidth`、`SYS_STEP_COUNT`、
 `pipeLineInfo::insp_status`。零成本，防編譯器把值快取在暫存器。
 
 ### 5.5 統計計數器降為 32 位元或加保護
@@ -217,11 +234,12 @@ python uinsp_test.py --port COM6 stress --max-hz 150 --no-report   # 只壓 anno
 
 ## 7. 對兩台新機的實務建議
 
-1. **先量再改。** 跑 `stress` 拿到基準數字，確認上面哪些是真的會發生的。
-2. **刪掉 `dbg_printf("sdksjldlskjd")`**——零風險、直接回收頻寬。
-3. **5.4（加 `volatile`）零風險，可以先做。**
-4. **5.1 / 5.2 / 5.3 要配合硬體實測**，特別是 5.1 會影響 ISR 時序，而相機
-   觸發脈寬只有 2 個 pulse（見 `INTEGRATION_MAP.md` §5.2）。
-5. 如果產線目標速率遠低於 64 顆/秒（例如 15 顆/秒，也就是
-   `SYS_MIN_PULSE_TIME_SEP_us` 的預設值），**這些 race 的觸發機率會低很多**，
-   但不會是零——ISR 每秒仍然跳 2000 次，每次都有機會撞上主迴圈的 RMW。
+1. ✅ 佇列競爭已按 §5.0 修掉，**靠推理而不是靠重現**。
+2. ✅ 刪掉 `dbg_printf("sdksjldlskjd")`，直接回收頻寬。
+3. **上機時用示波器確認相機觸發波形**（脈寬只有 2 個 pulse），確認新增的臨界區
+   沒有讓 ISR 變胖或抖動。這是 §5.0 唯一需要實測的副作用。
+4. `stress` 現在是**回歸測試**而不是探測工具：如果還在遠低於 64 顆/秒的地方
+   出現 `INSP_CAM_TRIG_INFO_CANNOT_BE_SENT`，代表還有沒抓到的東西。
+5. §5.2（`STAGE_PULSE_OFFSET` 撕裂）仍在。它只在**調機當下改參數**時才會踩到
+   ——正常運轉不會寫入——所以風險比佇列競爭低，但調機時看到一顆料件時序異常
+   要想到它。

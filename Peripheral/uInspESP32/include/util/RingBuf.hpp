@@ -19,15 +19,44 @@
  */
 
 template <typename RB_Idx_Type=uint32_t>
+// dataSize is read-modify-written by BOTH the producer and the consumer, which
+// is what makes this counter -- unlike a textbook lock-free ring, where the
+// producer owns head, the consumer owns tail and the length is derived -- a
+// shared mutable. On Xtensa a ++ is load/add/store even for a uint8_t, so a
+// timer ISR that preempts the main loop mid-sequence silently drops one side's
+// update. The count then drifts, and both directions are damaging: too low and
+// the producer overwrites entries that were never sent, too high and the queue
+// reports itself full and faults the machine for no reason.
+//
+// The two contexts share a core, so masking interrupts is sufficient and no
+// cross-core spinlock is needed -- but portMUX gives us the ISR/task-agnostic
+// _SAFE variants for free, and keeps this correct if a queue is ever touched
+// from the other core. One mux per instance so unrelated queues do not
+// serialise against each other.
+//
+// See docs/CONCURRENCY_ANALYSIS.md.
+#if defined(ARDUINO_ARCH_ESP32) || defined(ESP32)
+  #include "freertos/FreeRTOS.h"
+  #define RB_CRIT_MEMBER  portMUX_TYPE _rb_mux = portMUX_INITIALIZER_UNLOCKED;
+  #define RB_CRIT_ENTER() portENTER_CRITICAL_SAFE(&_rb_mux)
+  #define RB_CRIT_EXIT()  portEXIT_CRITICAL_SAFE(&_rb_mux)
+#else
+  // Host builds / tests: single threaded, nothing to protect against.
+  #define RB_CRIT_MEMBER
+  #define RB_CRIT_ENTER() do{}while(0)
+  #define RB_CRIT_EXIT()  do{}while(0)
+#endif
+
 class RingBufIdxCounter
 {
   RB_Idx_Type headIdx;
   RB_Idx_Type tailIdx;
-  RB_Idx_Type dataSize;
+  volatile RB_Idx_Type dataSize;
   RB_Idx_Type RBLen;
+  RB_CRIT_MEMBER
 
   public:
-  
+
   RingBufIdxCounter()
   {
     RESET(0);
@@ -45,7 +74,11 @@ class RingBufIdxCounter
     dataSize=0;
   }
 
-  void clear(){headIdx=0;tailIdx=0;dataSize=0;}
+  void clear(){
+    RB_CRIT_ENTER();
+    headIdx=0;tailIdx=0;dataSize=0;
+    RB_CRIT_EXIT();
+  }
   RB_Idx_Type getHead(){return headIdx;}
   RB_Idx_Type getTail(){return tailIdx;}
   RB_Idx_Type getTail(RB_Idx_Type idx){
@@ -74,38 +107,52 @@ class RingBufIdxCounter
   }
   
   
+  // The full test-and-update has to be inside the critical section, not just
+  // the counter write: checking emptiness and then advancing as two separate
+  // atomic steps still lets the other side slip in between them.
   int consumeTail(){
-    if(dataSize==0)return -1;//Tail pass the head... ERROR
+    RB_CRIT_ENTER();
+    if(dataSize==0){//Tail pass the head... ERROR
+      RB_CRIT_EXIT();
+      return -1;
+    }
     if(tailIdx==RBLen-1)tailIdx=0;
     else tailIdx++;
     dataSize--;
+    RB_CRIT_EXIT();
     return 0;
   }
 
   int pushHead(){
+    RB_CRIT_ENTER();
     if(dataSize==RBLen)//queue is full.... ERROR
     {
+      RB_CRIT_EXIT();
       return -1;
     }
     if(headIdx==RBLen-1)headIdx=0;
     else headIdx++;
-    
-    
+
+
     dataSize++;
+    RB_CRIT_EXIT();
     return 0;
   }
 
-  
+
   int pullHead(){
+    RB_CRIT_ENTER();
     if(dataSize==0)//queue is full.... ERROR
     {
+      RB_CRIT_EXIT();
       return -1;
     }
     if(headIdx==0)headIdx=RBLen-1;
     else headIdx--;
-    
-    
+
+
     dataSize--;
+    RB_CRIT_EXIT();
     return 0;
   }
 };
