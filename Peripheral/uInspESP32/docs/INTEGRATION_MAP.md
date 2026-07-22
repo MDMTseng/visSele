@@ -568,5 +568,7 @@ export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
 # 從 build/win-mingw-ninja/compile_commands.json 撈出該檔的編譯指令來跑
 ```
 
+見 `HW_VERIFICATION_CHECKLIST.md` —— 明天上機時逐項驗證用。
+
 除錯環境變數：`INSP_PERIF_LOG=1` 會讓 core 印出周邊的序列埠 round-trip 時間，
 可用來判斷延遲是在序列埠/ESP32 那一段還是 WS/WebUI 那一段。
