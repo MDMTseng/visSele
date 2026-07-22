@@ -330,6 +330,10 @@ void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_O
 
 
   frameInfo _fi;
+  // Carried through so downstream can absorb transmission drops instead of
+  // silently shifting every subsequent pairing by one.
+  _fi.frameNum = pFrameInfo->nFrameNum;
+  _fi.frameNumValid = true;
   _fi.timeStamp_us = nDevTimeStamp_us;
   _fi.offset_x =  pFrameInfo->nOffsetX;
   _fi.offset_y =  pFrameInfo->nOffsetY;

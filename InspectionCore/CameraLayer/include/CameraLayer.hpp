@@ -50,6 +50,14 @@ class CameraLayer{
       float pixel_size_mm;
       int channelCount;
       int pixelBits;
+      // Sensor-side frame counter. It increments for every frame the sensor
+      // exposes, whether or not that frame reaches us, so a gap is an exact
+      // count of what was lost in transport -- not an estimate. Consumers that
+      // pair frames with external events (trigger ids, part ids) need this to
+      // stay aligned across a drop. 0 / frameNumValid==false when the driver
+      // cannot supply it.
+      uint32_t frameNum = 0;
+      bool frameNumValid = false;
     }frameInfo;
     /*// Camera's device information
     typedef struct

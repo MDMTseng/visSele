@@ -162,6 +162,8 @@ struct PerifTriggerMsg { int64_t tid; uint64_t dev_us; int tidx; int qs; };
 TSQueue<PerifTriggerMsg> perifTriggerQueue(256);
 std::atomic<int> perifTriggerDropCount{0};
 std::atomic<long long> perifTriggerRxCount{0};
+// Parts whose frame never reached us, reported NA so the pairing stays aligned.
+std::atomic<long long> perifMissedFrameCount{0};
 // Serial write-latency stats (only ever touched by the single PerifSendThread,
 // so plain scalars are fine). max_ms is the interesting one -- it exposes any
 // remaining flow-control / driver-buffer stall in the COM peripheral write.
@@ -5186,6 +5188,43 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // send thread so the pairing follows frame order rather than write order.
     if (bpg_pi.perifCH->machine_type == PERIF_UINSP_ESP32)
     {
+      // Absorb transmission drops FIRST. nFrameNum counts what the sensor
+      // exposed, so a gap of N means N triggered parts produced no image here.
+      // Their trigger ids are still queued ahead of this frame's; left there
+      // they would shift every later pairing by N and quietly sort parts by
+      // their neighbours' verdicts. Retire them as NA instead: unjudged parts
+      // recirculate and get another pass, and the FIFO realigns immediately.
+      static uint32_t last_frame_num = 0;
+      static bool     last_frame_num_valid = false;
+
+      if (imgPipe->fi.frameNumValid)
+      {
+        if (last_frame_num_valid && imgPipe->fi.frameNum > last_frame_num + 1)
+        {
+          uint32_t lost = imgPipe->fi.frameNum - last_frame_num - 1;
+          LOGE("camera dropped %u frame(s) (nFrameNum %u->%u) -> reporting NA",
+               lost, last_frame_num, imgPipe->fi.frameNum);
+
+          for (uint32_t i = 0; i < lost; i++)
+          {
+            PerifTriggerMsg lost_trig;
+            if (!perifTriggerQueue.pop(lost_trig))
+              break;   // fewer queued triggers than lost frames: free-run frames
+            perifMissedFrameCount++;
+            PerifResultMsg na{ FeatureReport_sig360_circle_line_single::STATUS_NA,
+                               0, lost_trig.tid };
+            if (!perifSendQueue.push(na))
+            {
+              PerifResultMsg discard;
+              perifSendQueue.pop(discard);
+              perifSendQueue.push(na);
+            }
+          }
+        }
+        last_frame_num = imgPipe->fi.frameNum;
+        last_frame_num_valid = true;
+      }
+
       PerifTriggerMsg trig;
       if (perifTriggerQueue.pop(trig))
       {
