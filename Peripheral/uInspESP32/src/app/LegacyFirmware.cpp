@@ -267,6 +267,10 @@ void ERROR_LOG_PUSH(GEN_ERROR_CODE code)
 
 bool blockNewDetectedObject=false;
 
+// Error raised inside onTimer(), waiting for firmwareLoop() to turn it into a
+// real state transition. NOP means "nothing pending".
+volatile GEN_ERROR_CODE PENDING_ISR_ERROR=GEN_ERROR_CODE::NOP;
+
 
 void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 {
@@ -758,7 +762,16 @@ int Run_ACTS(uint32_t cur_pulse)
 
   if(ecode!=GEN_ERROR_CODE::NOP)
   {
-    SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)ecode);
+    // Run_ACTS() executes inside onTimer(); SYS_STATE_Transfer() walks into
+    // SYS_STATE_LIFECYCLE(), which calls pinMode()/digitalWrite() -- neither is
+    // IRAM-resident and neither is safe from an ISR. Do the parts that must not
+    // wait right here (register writes and a bool are ISR-safe), and hand the
+    // state transition itself to firmwareLoop().
+    ALL_OUTPUTS_SAFE();
+    blockNewDetectedObject=true;
+
+    if(PENDING_ISR_ERROR==GEN_ERROR_CODE::NOP)
+      PENDING_ISR_ERROR=ecode;//keep the first error, it is the one that explains the rest
   }
 
   return 0;
@@ -2079,6 +2092,17 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
 static uint8_t recvBuf[20];
 void firmwareLoop()
 {
+  // Drain any error the step ISR raised. Its outputs are already safe and new
+  // object detection is already blocked; what is left is the state transition,
+  // which has to run out here where Arduino GPIO calls are legal.
+  {
+    GEN_ERROR_CODE isr_ecode=(GEN_ERROR_CODE)PENDING_ISR_ERROR;
+    if(isr_ecode!=GEN_ERROR_CODE::NOP)
+    {
+      PENDING_ISR_ERROR=GEN_ERROR_CODE::NOP;
+      SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)isr_ecode);
+    }
+  }
 
   SYS_STATE_Transfer(SYS_STATE_ACT::NOP);
   djrl.loop();
