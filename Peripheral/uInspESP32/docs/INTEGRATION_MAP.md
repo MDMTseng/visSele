@@ -175,12 +175,33 @@ Serial 115200，JSON。命令帶 `id` 會在回應中回echo。
 
 | 訊息 | 說明 |
 |---|---|
-| **`bTrigInfo`** | `{tidx, usH, usL, tid, Qs}` —— 相機觸發時發出。`tid` 是物件識別碼、`Qs` 是韌體 RBuf 深度。**這是結果回報的關聯依據** |
+| **`bTrigInfo`** | `{tidx, usH, usL, tid, Qs}` —— 相機觸發時發出。`tid` 是物件識別碼、`Qs` 是韌體 RBuf 深度（在途物件數）。**這是結果回報的關聯依據**。⚠ 見下方「每顆料件兩則」 |
 | `systemInfo` | 狀態變化 |
 | `dbg` | 除錯訊息 |
 
 > ⚠ **README.md 說這個訊息叫 `bT`，是錯的。** 實際 `retdoc["type"]="bTrigInfo"`
 > （`LegacyFirmware.cpp` 的 `TaskQ2CommInfo_Type::btrigInfo` 分支）。`[已驗證]`
+
+#### ⚠ 每顆料件會送**兩則** `bTrigInfo`
+
+`Run_ACTS` 的 `ACT_CAM1` 和 `ACT_CAM2` 分支各推一則，而
+`ActRegister_pipeLineInfo` 對每顆物件**無條件註冊兩條佇列**。預設 offset 又相同
+（`CAM1_on = CAM2_on = 654`），所以兩則會在同一個 tick 發出：
+
+```json
+{"type":"bTrigInfo","tidx":1,"tid":42,...}
+{"type":"bTrigInfo","tidx":2,"tid":42,...}   ← 同一個 tid
+```
+
+**即使只接一台相機也照送**——韌體沒有停用 CAM2 的開關。`[已驗證]`
+
+後果：
+- **配對端必須用 `tidx` 過濾**，否則佇列會以 2 倍速成長，每張影像都拿到
+  前一顆料件的 tid。core 端用 conn_info 的 `cam_idx`（預設 1）處理。
+- **序列埠負載加倍**。單相機機台有一半的訊息是純浪費，這也是
+  `CONCURRENCY_ANALYSIS.md` 算出 ~64 顆/秒上限的原因之一
+  （每顆 2 則 × ~90B @ 115200）。韌體加一個「停用 CAM2」的開關可以直接
+  把上限翻倍。
 
 ### 關聯模型：tid vs timestamp
 

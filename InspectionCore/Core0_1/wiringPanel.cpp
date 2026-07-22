@@ -328,6 +328,16 @@ class PerifChannel:public Data_JsonRaw_Layer
   // and guessing it swaps good and bad wholesale without ever announcing it.
   int cat_ok = 0;
   int cat_ng = 0;
+  // Which camera's announcements this channel pairs frames against.
+  //
+  // The firmware announces EVERY object twice -- once from the ACT_CAM1 branch
+  // and once from ACT_CAM2, same tid, differing only in tidx -- and it does so
+  // whether or not a second camera exists, because ActRegister_pipeLineInfo
+  // registers both queues unconditionally and the default offsets fire them on
+  // the same tick. Queueing both against a single camera makes the trigger
+  // queue grow at twice the frame rate and hands every frame the previous
+  // part's tid. Overridable via "cam_idx" for a second-camera setup.
+  int cam_idx = 1;
   PerifChannel():Data_JsonRaw_Layer()// throw(std::runtime_error)
   {
   }
@@ -346,11 +356,21 @@ class PerifChannel:public Data_JsonRaw_Layer
     if (j == NULL) return;
 
     double *tid = JFetch_NUMBER(j, "tid");
+    double *tidx = JFetch_NUMBER(j, "tidx");
+
+    // Take one announcement per object. Both camera branches announce the same
+    // tid, so accepting both would queue two entries per part against one
+    // stream of frames.
+    if (tid != NULL && tidx != NULL && (int)*tidx != cam_idx)
+    {
+      cJSON_Delete(j);
+      return;
+    }
+
     if (tid != NULL)
     {
       double *usH  = JFetch_NUMBER(j, "usH");
       double *usL  = JFetch_NUMBER(j, "usL");
-      double *tidx = JFetch_NUMBER(j, "tidx");
       double *qs   = JFetch_NUMBER(j, "Qs");
 
       PerifTriggerMsg m;
@@ -3629,6 +3649,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               double *cng = JFetch_NUMBER(json, "cat_ng");
               perifCH->cat_ok = (cok != NULL) ? (int)*cok : 0;
               perifCH->cat_ng = (cng != NULL) ? (int)*cng : 0;
+
+              double *cidx = JFetch_NUMBER(json, "cam_idx");
+              perifCH->cam_idx = (cidx != NULL) ? (int)*cidx : 1;
+              if (perifCH->machine_type == PERIF_UINSP_ESP32)
+                LOGI("perif pairing against bTrigInfo tidx=%d "
+                     "(the firmware announces every object on both 1 and 2)",
+                     perifCH->cam_idx);
               if (perifCH->machine_type == PERIF_UINSP_ESP32 &&
                   (perifCH->cat_ok == 0 || perifCH->cat_ng == 0))
               {
