@@ -233,6 +233,168 @@ class TestReplyMatching(unittest.TestCase):
         self.assertEqual(seen[0]["type"], "systemInfo")
 
 
+class FakeFirmware(FakeSerial):
+    """Models enough of LegacyFirmware.cpp to exercise bench() offline.
+
+    Reproduces the parts the bench actually asserts on: tids are issued per
+    phantom pulse and announced via bTrigInfo, report{tid} only matches an
+    outstanding object, an unmatched tid faults with
+    INSP_RESULT_MATCHES_NO_OBJECT(1), and a part that reaches the selector with
+    no verdict faults with OBJECT_HAS_NO_INSP_RESULT(2).
+    """
+
+    ST_IDLE, ST_READY, ST_ERROR = 100, 101, 112
+    E_NO_OBJECT, E_NO_RESULT = 1, 2
+
+    def __init__(self, judge_deadline=1.0, drop_announce=False,
+                 min_sep_s=0.067):
+        super().__init__(auto_reply=True)
+        self.state = self.ST_IDLE
+        self.plate_freq = 0
+        self.step_count = 0
+        self.tid = 0
+        self.pending = {}          # tid -> issued_at
+        self.counts = {"SEL1": 0, "SEL2": 0, "SEL3": 0, "NA": 0}
+        self.errors = []
+        self.judge_deadline = judge_deadline
+        self.drop_announce = drop_announce
+        self.min_sep_s = min_sep_s
+        self._last_pulse_t = 0.0
+        self._t = threading.Thread(target=self._tick, daemon=True)
+        self._run = True
+        self._t.start()
+
+    def stop(self):
+        self._run = False
+
+    def _tick(self):
+        while self._run:
+            time.sleep(0.05)
+            if self.plate_freq > 0 and self.state in (self.ST_READY,):
+                self.step_count += int(self.plate_freq * 2 * 0.05)
+            now = time.time()
+            # A pending object that reached the selector unjudged.
+            for tid, born in list(self.pending.items()):
+                if now - born > self.judge_deadline:
+                    del self.pending[tid]
+                    if self.state == self.ST_READY:
+                        self.state = self.ST_ERROR
+                        self.errors.append(self.E_NO_RESULT)
+
+    def reply_to(self, msg):
+        t = msg.get("type")
+        rep = {"id": msg.get("id"), "ack": True}
+
+        if t == "PING":
+            rep["type"] = "PONG"
+        elif t == "get_setup":
+            rep.update({"type": "get_setup", "machine_id": "BENCH",
+                        "cfg_from_nvs": True, "plateFreq": self.plate_freq,
+                        "SYS_STEP_COUNT": self.step_count,
+                        "stage_pulse_offset": {"CAM1_on": 654},
+                        "pulse_minWidth": 0, "pulse_maxWidth": 1000})
+        elif t == "set_setup":
+            if "plateFreq" in msg:
+                self.plate_freq = msg["plateFreq"]
+            rep["type"] = "set_setup"
+        elif t == "enter_insp_mode":
+            self.state = self.ST_READY
+            rep["type"] = "enter_insp_mode"
+        elif t == "exit_insp_mode":
+            self.state = self.ST_IDLE
+            self.pending.clear()
+            rep["type"] = "exit_insp_mode"
+        elif t == "clear_error":
+            self.state = self.ST_IDLE
+            self.pending.clear()
+            rep["type"] = "clear_error"
+        elif t == "get_running_stat":
+            rep.update({"type": "get_running_stat", "state": self.state,
+                        "count": dict(self.counts), "ERROR_HIST": list(self.errors),
+                        "plateFreq": self.plate_freq, "sel1_cd": -1})
+        elif t == "trig_phamton_pulse":
+            now = time.time()
+            if (self.state == self.ST_READY and
+                    now - self._last_pulse_t >= self.min_sep_s):
+                self._last_pulse_t = now
+                self.tid += 1
+                self.pending[self.tid] = now
+                if not self.drop_announce:
+                    self.feed(json.dumps({"type": "bTrigInfo", "tidx": 1,
+                                          "usH": 0, "usL": int(now * 1e6) & 0xFFFFFFFF,
+                                          "tid": self.tid, "Qs": len(self.pending)}))
+            rep["type"] = "trig_phamton_pulse"
+        elif t == "report":
+            tid, cat = msg.get("tid"), msg.get("cat")
+            if tid in self.pending:
+                del self.pending[tid]
+                key = {1: "SEL1", 2: "SEL2", 3: "SEL3", 0xFFFF: "NA"}.get(cat)
+                if key:
+                    self.counts[key] += 1
+            else:
+                if self.state == self.ST_READY:
+                    self.state = self.ST_ERROR
+                    self.errors.append(self.E_NO_OBJECT)
+            return   # firmware sets doRsp=false for report
+        else:
+            rep["type"] = t
+        self.feed(json.dumps(rep))
+
+
+class TestBench(unittest.TestCase):
+
+    def _run_bench(self, fw, **kw):
+        link = make_link(fw)
+        rep = uinsp_test.Report()
+        try:
+            uinsp_test.bench(link, rep,
+                             kw.get("count", 4), kw.get("freq", 1000),
+                             kw.get("interval_ms", 120), kw.get("cat", 1))
+        finally:
+            link._stop = True
+            fw.stop()
+            time.sleep(0.08)
+        return {r[0]: r for r in rep.rows}
+
+    def test_happy_path(self):
+        fw = FakeFirmware(judge_deadline=5.0)
+        rows = self._run_bench(fw, count=4)
+        self.assertTrue(rows["B.3"][2], "timer-running check should pass")
+        self.assertTrue(rows["B.4"][2], "should reach READY")
+        self.assertTrue(rows["B.5"][2], f"1:1 pulses->bTrigInfo: {rows['B.5'][3]}")
+        self.assertTrue(rows["B.6"][2], "tid should be contiguous")
+        self.assertTrue(rows["B.8"][2], f"SEL1 count: {rows['B.8'][3]}")
+
+    def test_unknown_tid_is_detected(self):
+        fw = FakeFirmware(judge_deadline=5.0)
+        rows = self._run_bench(fw, count=3)
+        self.assertTrue(rows["B.9"][2],
+                        "reporting a bogus tid must be seen to fault the machine")
+
+    def test_unjudged_part_is_detected(self):
+        fw = FakeFirmware(judge_deadline=1.0)
+        rows = self._run_bench(fw, count=3)
+        self.assertTrue(rows["B.11"][2], "board must still answer")
+        self.assertTrue(rows["B.12"][2],
+                        f"unjudged part should fault: {rows['B.12'][3]}")
+
+    def test_missing_announcement_is_caught(self):
+        # If bTrigInfo never arrives the bench must fail B.5 rather than
+        # quietly reporting success on zero parts.
+        fw = FakeFirmware(judge_deadline=5.0, drop_announce=True)
+        rows = self._run_bench(fw, count=3)
+        self.assertFalse(rows["B.5"][2],
+                         "missing bTrigInfo must be reported as a failure")
+
+    def test_too_fast_pulses_are_reported_not_hidden(self):
+        # Firing faster than SYS_MIN_PULSE_TIME_SEP_us makes the firmware drop
+        # pulses; the bench should surface that as a 1:1 failure with a hint.
+        fw = FakeFirmware(judge_deadline=5.0, min_sep_s=0.5)
+        rows = self._run_bench(fw, count=4, interval_ms=60)
+        self.assertFalse(rows["B.5"][2])
+        self.assertIn("interval-ms", rows["B.5"][3])
+
+
 class TestReport(unittest.TestCase):
 
     def test_summary_counts(self):

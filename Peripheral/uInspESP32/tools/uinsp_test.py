@@ -159,6 +159,23 @@ class UInspLink:
             self._pending.pop(mid, None)
         return slot["reply"] if got else None
 
+    def send_nowait(self, obj):
+        """Fire and forget.
+
+        Some commands never answer -- `report` ends with doRsp=false in the
+        firmware whether it matched an object or not. Waiting on those would
+        burn the full timeout per part, which for a paced test also stretches
+        the gap between parts far beyond what was asked for.
+        """
+        obj = dict(obj)
+        self._id += 1
+        obj["id"] = self._id
+        raw = json.dumps(obj, separators=(",", ":")).encode()
+        if self.verbose:
+            print("  TX", raw.decode(), "(no reply expected)")
+        self.ser.write(raw)
+        self.ser.flush()
+
     def drain_async(self):
         out = []
         while self._async:
@@ -364,6 +381,172 @@ def monitor(link, rep, seconds):
     return tids
 
 
+# --- bench: whole tid round trip on a bare board --------------------------
+
+# State codes from FirmwareTypes.hpp (SMM_STATE_DECLARE).
+ST_INIT, ST_IDLE, ST_READY, ST_ERROR, ST_FATAL, ST_TEST = 0, 100, 101, 112, 113, 140
+ST_NAME = {ST_INIT: "INIT", ST_IDLE: "IDLE", ST_READY: "INSPECTION_MODE_READY",
+           ST_ERROR: "INSPECTION_MODE_ERROR", ST_FATAL: "INSPECTION_MODE_FATAL",
+           ST_TEST: "INSPECTION_MODE_TEST"}
+
+CAT_NA = 0xFFFF
+
+
+def _state(link):
+    r = link.send({"type": "get_running_stat"}, timeout=3.0)
+    return (r or {}).get("state"), r
+
+
+def _counts(link):
+    r = link.send({"type": "get_running_stat"}, timeout=3.0)
+    return (r or {}).get("count", {}), r
+
+
+def _wait_ready(link, rep):
+    """Bring the board into INSPECTION_MODE_READY with its timer actually
+    ticking. Run_ACTS only executes from the timer ISR, so with plateFreq at 0
+    a phantom pulse is accepted and then never acted on -- which looks exactly
+    like a broken pipeline."""
+    a = link.send({"type": "get_setup"}, timeout=3.0)
+    if not a:
+        return False, "no reply to get_setup"
+    c1 = a.get("SYS_STEP_COUNT")
+    time.sleep(0.6)
+    b = link.send({"type": "get_setup"}, timeout=3.0)
+    c2 = (b or {}).get("SYS_STEP_COUNT")
+    running = (isinstance(c1, int) and isinstance(c2, int) and c2 != c1)
+    return running, f"SYS_STEP_COUNT {c1} -> {c2}"
+
+
+def bench(link, rep, count, freq, interval_ms, cat):
+    """Exercise the whole firmware-side tid handshake with no rig attached.
+
+    trig_phamton_pulse calls newPulseEvent() directly, bypassing the gate
+    sensor entirely, so a bare board on USB can produce real objects with real
+    tids and run them all the way to the selector outputs. The gate pin is
+    INPUT_PULLUP with sense inverted, so an unconnected input reads as
+    "no object" and contributes nothing.
+    """
+    print("\n\033[1m== Bench: tid round trip, no rig required ==\033[0m")
+    print(f"  {count} phantom parts at plateFreq={freq}, {interval_ms}ms apart,"
+          f" reported as cat={cat}\n")
+
+    orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    orig_freq = orig.get("plateFreq")
+    base_counts, _ = _counts(link)
+
+    r = link.send({"type": "set_setup", "plateFreq": freq}, timeout=3.0)
+    rep.add("B.1", f"set plateFreq={freq}", bool(r), r)
+
+    r = link.send({"type": "enter_insp_mode"}, timeout=3.0)
+    rep.add("B.2", "enter_insp_mode", bool(r), r)
+
+    running, detail = _wait_ready(link, rep)
+    rep.add("B.3", "timer ISR is actually ticking", running, detail)
+    if not running:
+        print("  \033[31m  Run_ACTS only runs from the timer ISR. Without it a"
+              " phantom pulse is accepted and then never acted on.\033[0m")
+
+    st, _ = _state(link)
+    rep.add("B.4", "state is INSPECTION_MODE_READY", st == ST_READY,
+            f"state={st} ({ST_NAME.get(st, '?')})")
+
+    # --- fire phantoms, answer each announced tid -------------------------
+    link.drain_async()
+    fired, seen, reported, rejected = 0, [], [], []
+
+    for i in range(count):
+        r = link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+        fired += 1
+        time.sleep(interval_ms / 1000.0)
+
+        for _, msg in link.drain_async():
+            if msg.get("type") != "bTrigInfo":
+                continue
+            tid = msg.get("tid")
+            seen.append(tid)
+            # report never answers (doRsp=false either way), so do not wait.
+            link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+            reported.append(tid)
+
+    time.sleep(0.5)
+    for _, msg in link.drain_async():
+        if msg.get("type") == "bTrigInfo":
+            seen.append(msg.get("tid"))
+
+    rep.add("B.5", "one bTrigInfo per phantom pulse", len(seen) == fired,
+            f"fired={fired} announced={len(seen)}"
+            + ("  (newPulseEvent rejects pulses closer than "
+               "SYS_MIN_PULSE_TIME_SEP_us or 3.5mm of travel -- raise "
+               "--interval-ms)" if len(seen) < fired else ""))
+
+    if seen:
+        gaps = [(a, b) for a, b in zip(seen, seen[1:]) if b != a + 1]
+        rep.add("B.6", "tid strictly increasing by 1", not gaps,
+                f"tid {seen[0]}..{seen[-1]}" + (f" gaps:{gaps}" if gaps else ""))
+
+    st, stat = _state(link)
+    rep.add("B.7", "no error state after a full reported run", st == ST_READY,
+            f"state={st} ({ST_NAME.get(st, '?')}) "
+            f"ERROR_HIST={(stat or {}).get('ERROR_HIST')}")
+
+    now_counts, _ = _counts(link)
+    key = {1: "SEL1", 2: "SEL2", 3: "SEL3", CAT_NA: "NA"}.get(cat)
+    if key:
+        before = base_counts.get(key, 0)
+        after = now_counts.get(key, 0)
+        rep.add("B.8", f"{key} counter advanced by the reported parts",
+                after - before == len(reported),
+                f"{key}: {before} -> {after} (reported {len(reported)})")
+
+    # --- negative: a tid the firmware never issued ------------------------
+    print("\n  Negative check: reporting a tid that does not exist should fault")
+    print("  the machine. That fault is the safety net the whole design leans")
+    print("  on -- if it does NOT fire, a desync would sort parts silently.")
+    bogus = (max(seen) + 100000) if seen else 999999
+    link.send_nowait({"type": "report", "tid": bogus, "cat": cat})
+    time.sleep(0.5)
+    st, stat = _state(link)
+    rep.add("B.9", "unknown tid faults the machine", st == ST_ERROR,
+            f"state={st} ({ST_NAME.get(st, '?')}) "
+            f"ERROR_HIST={(stat or {}).get('ERROR_HIST')} "
+            f"(expect INSP_RESULT_MATCHES_NO_OBJECT=1)")
+
+    r = link.send({"type": "clear_error"}, timeout=3.0)
+    st, _ = _state(link)
+    rep.add("B.10", "clear_error recovers", st in (ST_IDLE, ST_READY),
+            f"state={st} ({ST_NAME.get(st, '?')})")
+
+    # --- negative: a part that never gets a verdict -----------------------
+    # This is stage 0.7 without needing anyone to block a gate by hand, and it
+    # is the path that used to call pinMode/digitalWrite from inside the ISR:
+    # a regression shows up as a hang or reboot rather than a clean fault.
+    print("\n  Negative check: a part with no verdict at all (ISR error path,")
+    print("  commit 535d92fb). A hang or reboot here is the regression.")
+    link.send({"type": "enter_insp_mode"}, timeout=3.0)
+    time.sleep(0.3)
+    link.drain_async()
+    link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+    time.sleep(2.0)
+
+    st, stat = _state(link)
+    rep.add("B.11", "board still answers after the ISR error path",
+            st is not None, "no reply = hang/reboot = regression")
+    rep.add("B.12", "unjudged part faults cleanly", st == ST_ERROR,
+            f"state={st} ({ST_NAME.get(st, '?')}) "
+            f"ERROR_HIST={(stat or {}).get('ERROR_HIST')} "
+            f"(expect OBJECT_HAS_NO_INSP_RESULT=2)")
+
+    # --- restore ----------------------------------------------------------
+    link.send({"type": "clear_error"}, timeout=3.0)
+    link.send({"type": "exit_insp_mode"}, timeout=3.0)
+    if isinstance(orig_freq, (int, float)):
+        link.send({"type": "set_setup", "plateFreq": orig_freq}, timeout=3.0)
+    st, _ = _state(link)
+    rep.add("B.13", "returned to IDLE with plateFreq restored",
+            st == ST_IDLE, f"state={st} plateFreq={orig_freq}")
+
+
 # --- stage 3: which selector feeds which bin ------------------------------
 
 def selectors(link, rep):
@@ -423,6 +606,15 @@ def main():
     sub.add_parser("selectors", help="stage 3.1/3.2 outlet mapping")
     m = sub.add_parser("monitor", help="watch bTrigInfo / tid continuity")
     m.add_argument("--seconds", type=int, default=60)
+    b = sub.add_parser("bench",
+                       help="full tid round trip using phantom pulses -- "
+                            "needs only the board and USB, no rig")
+    b.add_argument("--count", type=int, default=10)
+    b.add_argument("--freq", type=float, default=1000)
+    b.add_argument("--interval-ms", type=int, default=250,
+                   help="must exceed SYS_MIN_PULSE_TIME_SEP_us (default ~67ms)")
+    b.add_argument("--cat", type=int, default=1,
+                   help="1=SEL1 2=SEL2 65535=NA")
     s = sub.add_parser("send", help="send one raw JSON command")
     s.add_argument("json")
     sub.add_parser("all", help="stage0 + errorpath + monitor + selectors")
@@ -455,8 +647,11 @@ def main():
             selectors(link, rep)
         elif args.cmd == "monitor":
             monitor(link, rep, args.seconds)
+        elif args.cmd == "bench":
+            bench(link, rep, args.count, args.freq, args.interval_ms, args.cat)
         elif args.cmd == "all":
             stage0(link, rep)
+            bench(link, rep, 10, 1000, 250, 1)
             stage_error(link, rep)
             monitor(link, rep, 60)
             selectors(link, rep)
