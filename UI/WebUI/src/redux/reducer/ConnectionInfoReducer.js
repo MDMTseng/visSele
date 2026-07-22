@@ -11,6 +11,7 @@ let CORE_ID= "CORE_ID";
 let CAM1_ID= "CAM1_ID";
 let Platform_API_ID="Platform_API_ID";
 let uInsp_API_ID="uInsp_API_ID";
+let uInspESP32_API_ID="uInspESP32_API_ID";
 let SLID_API_ID="SLID_API_ID";
 
 
@@ -94,6 +95,16 @@ let StateReducer = (state, action) => {
           return {...state,uInsp_API_ID_CONN_INFO:action}
           break;
 
+        case uInspESP32_API_ID:
+          if(action.type=="WS_UPDATE")
+          {
+            delete action["type"];
+            return {...state,uInspESP32_API_ID_CONN_INFO:{...state.uInspESP32_API_ID_CONN_INFO,...action}}
+          }
+          if(GetObjElement(state,["uInspESP32_API_ID_CONN_INFO","type"]) == action.type)break;
+          return {...state,uInspESP32_API_ID_CONN_INFO:action}
+          break;
+
         case SLID_API_ID:
           if(action.type=="WS_UPDATE")
           {
@@ -137,6 +148,9 @@ let ConnectionInfoReducer = (state = {
 
   uInsp_API_ID,
   uInsp_API_ID_CONN_INFO:undefined,
+
+  uInspESP32_API_ID,
+  uInspESP32_API_ID_CONN_INFO:undefined,
 
   SLID_API_ID,
   SLID_API_ID_CONN_INFO:undefined,

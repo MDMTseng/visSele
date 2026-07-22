@@ -463,6 +463,10 @@ class APPMasterX extends React.Component {
       CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
       CORE_ID_CONN_INFO:state.ConnInfo.CORE_ID_CONN_INFO,
       uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
+
+      uInspESP32_API_ID:state.ConnInfo.uInspESP32_API_ID,
+      uInspESP32_API_ID_CONN_INFO:state.ConnInfo.uInspESP32_API_ID_CONN_INFO,
+
       SLID_API_ID:state.ConnInfo.SLID_API_ID,
       SLID_API_ID_CONN_INFO:state.ConnInfo.SLID_API_ID_CONN_INFO,
 
@@ -981,184 +985,21 @@ class APPMasterX extends React.Component {
 
 
 
-    class  uInsp_API
+    // Transport plumbing shared by every serial peripheral reached through the
+    // core's PD channel: connect/reconnect, request/response tracking, the PING
+    // watchdog, setting-file load/save and the comm latency probe. Subclasses
+    // supply the device's protocol dialect, not the transport.
+    class  Perif_API_Base
     {
-
-      cleanUpTrackingWindow()
+      constructor(id,settingFilePath,pg_id_channel)
       {
-        let keyList = Object.keys(this.trackingWindow);
-        keyList.forEach(key=>{
-          let reject = this.trackingWindow[key].reject;
-          if(reject !==undefined)
-          {
-            reject("CONNECTION ERROR");
-          }
-          delete this.trackingWindow[key]
-        })
-      }
-
-      cleanUpConnection()
-      {
-        this.cleanUpTrackingWindow();
-        
-      }
-
-      
-      saveMachineSetupIntoFile(filename = "data/uInspSetting.json")
-      {
-        
-        let act = comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"SV", 0,
-          { filename: filename },
-          new TextEncoder().encode(JSON.stringify(this.machineSetup, null, 4)),
-          {
-            resolve:(res)=>{
-              let default_pulse_hz = this.machineSetup.pulse_hz;
-              StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,default_pulse_hz:default_pulse_hz});
-            }, 
-            reject:(res)=>{
-            }, 
-          }
-        )
-      }
-
-      
-
-      LoadFileToMachine(filename = "data/uInspSetting.json") {
-        new Promise((resolve, reject) => {
-
-          log.info("LoaduInspSettingToMachine step2");
-          comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"LD", 0,
-            { filename },
-            undefined, { resolve, reject }
-          );
-          setTimeout(() => reject("Timeout"), 1000)
-        }).then((pkts) => {
-
-          log.info("LoaduInspSettingToMachine>> step3", pkts);
-          if (pkts[0].type != "FL")
-          {
-            return;
-          }
-          let machInfo = pkts[0].data;
-          
-          this.machineSetupUpdate(machInfo,true);
-          this.default_pulse_hz = machInfo.pulse_hz;
-          StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,default_pulse_hz:this.default_pulse_hz});
-        }).catch((err) => {
-
-          log.info("LoaduInspSettingToMachine>> step3-error", err);
-        })
-      }
-
-      machineSetupUpdate(newMachineInfo,doReplace=false)
-      {
-
-        this.machineSetup=doReplace==true?newMachineInfo:{...this.machineSetup,...newMachineInfo};
-        // console.log(this.machineSetup);
-        StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,machineSetup:this.machineSetup});
-        this.send({type:"set_setup",...newMachineInfo},
-        (ret)=>{
-          //HACK: just assume it will work
-          // this.machineSetup={...this.machineSetup,...newMachineInfo};
-          // console.log(ret);
-        },(e)=>console.log(e));
-      }
-      
-      machineSetupReSync() {
-        this.send({type:"get_setup"},
-        (ret)=>{
-          delete ret["type"];
-          delete ret["id"];
-          delete ret["st"];
-          this.machineSetup=ret;
-          // console.log(ret);
-          this.machineSetupUpdate(this.machineSetup,true);
-        },(e)=>console.log(e));
-      }
-
-      connect(connInfo)
-      {
-        if(this.inReconnection==true)
-        {//still in reconnection state, return
-          return false;
-        }
-        
-        StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:undefined});
-        this.connInfo=connInfo;
-        this.inReconnection=true;
-        this.LoadFileToMachine();
-        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, {type:"CONNECT",...connInfo, _PGID_: this.pg_id_channel, _PGINFO_: { keep: true }},undefined,
-        {
-          resolve: (stacked_pkts,action_channal) => {
-            let PD=stacked_pkts.find(pkt=>pkt.type=="PD");
-            // console.log(stacked_pkts);
-            this.inReconnection=false;
-            if(PD!==undefined)
-            {
-              let PD_data=PD.data;
-              switch(PD_data.type)
-              {
-                case "MESSAGE":
-                {
-                  let CONN_ID = PD_data.CONN_ID;
-                  let msg = PD_data.msg;
-                  let msg_id = msg!==undefined? msg.id:undefined;
-                  let trwin=this.trackingWindow[msg_id];
-                  if(trwin!==undefined)
-                  {
-                    if(trwin.resolve!==undefined)
-                      trwin.resolve(msg);
-                    delete this.trackingWindow[msg_id];
-                  }
-                }
-                  break;
-                case "DISCONNECT":
-                  this.CONN_ID=undefined;
-                  this.cleanUpConnection();
-                  StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:PD});
-                  break;
-                case "CONNECT":
-                  this.CONN_ID=PD_data.CONN_ID;
-                  StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.uInsp_API_ID,data:PD});
-
-                  if(this.machineSetup!==undefined)
-                  {
-                    // this.default_pulse_hz = machInfo.pulse_hz;
-                    StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,default_pulse_hz:this.default_pulse_hz})
-                    this.send({type:"set_setup",...this.machineSetup},
-                    (ret)=>{
-                      this.machineSetupReSync();
-                      
-                    },(e)=>console.log(e));
-                  }
-                  else
-                  {
-                    this.machineSetupReSync();
-                  }
-                  
-                  break;
-              }
-            }
-          },
-          reject:(e)=>{
-            this.CONN_ID=undefined;
-            this.inReconnection=false;
-            this.cleanUpConnection();
-            StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:undefined});
-            
-          }
-        });
-      }
-
-      constructor(id,pg_id_channel=10024)
-      {
-        this.CONN_ID=undefined;
-        this.pg_id_channel=pg_id_channel;
         this.id=id;
+        this.settingFilePath=settingFilePath;
+        this.pg_id_channel=pg_id_channel;
+
+        this.CONN_ID=undefined;
         this.connInfo=undefined;
         this.inReconnection=false;
-        this.checkReconnectionInterval=setInterval(()=>this.checkReConnection(),3000);//watch dog to do reconnection
-        this.runPINGInterval=setInterval(()=>this._sendPing(),3000);//watch dog to do reconnection
 
         this.trackingWindow={};
         this.idCounter=10;
@@ -1166,223 +1007,28 @@ class APPMasterX extends React.Component {
 
         this.machineInfo=undefined;
 
-
-        this.pre_res_count=undefined;
-        this.res_count_start_time=undefined;
-        this.res_count_pre_time=undefined;
-
-        this.res_count_rate_overall=undefined;
-        this.res_count_rate_recent=undefined;
-
-
-        
-      } 
-      checkReConnection()
-      {
-        // console.log(this.connInfo,this.connected,this.inReconnection);
-        if(this.connInfo===undefined ||this.CONN_ID!==undefined || this.inReconnection==true)
-        {
-          return;
-        }
-        this.connect(this.connInfo);
-        // this.checkReconnectionTimeout=setTimeout(,);
+        this.checkReconnectionInterval=setInterval(()=>this.checkReConnection(),3000);//watch dog to do reconnection
+        this.runPINGInterval=setInterval(()=>this._sendPing(),3000);//watch dog to do reconnection
       }
 
-      getMachineSetup()
+      // ---- subclass hooks ------------------------------------------------
+
+      // uInspMEGA's get_setup reply carries no "ack" field, so the check cannot
+      // be unconditional -- devices that do send one opt in and avoid storing a
+      // nak as if it were settings.
+      resyncRequiresAck(){ return false; }
+
+      // PING reply with the envelope fields already stripped.
+      onPingStatus(machineStatus)
       {
-        return this.machineSetup;
+        StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineStatus});
       }
 
-      findAvailableID()
-      {
-        let id=this.idCounter;
-        while(this.trackingWindow[id]!==undefined)
-        {
-          this.idCounter++;
-          if(this.idCounter>999999)
-          {
-            this.idCounter=0;
-          }
-          id=this.idCounter;
-        }
-        return id;
-      }
-      
-      _sendPing()
-      {
-        if(this.CONN_ID===undefined)return ;
+      onSetupFileLoaded(machInfo){}
+      onSetupFileSaved(){}
+      onBeforeSetupPush(){}
 
-
-        if(this.PINGCount>=2)
-        {
-          //time to disconnect
-          this.PINGCount=0;
-          
-          this.connect(this.connInfo);
-          return;
-        }
-        this.PINGCount++;
-        // console.log(this.CONN_ID);
-
-        this.triggerPing();
-        // this.machineSetupUpdate({pulse_hz:0});
-      }
-      triggerPing()
-      {
-        
-        this.send({type:"PING"},(ret)=>{
-          // console.log(ret);
-          delete ret["type"]
-          delete ret["id"]
-          delete ret["st"]
-          let machineStatus={...ret};
-          let res_count=machineStatus.res_count||{OK:0,NG:0,NA:0};
-
-          let currentTime_ms=new Date().getTime();
-          if(this.pre_res_count!==undefined)
-          {
-            if( this.pre_res_count.OK <= res_count.OK &&
-              this.pre_res_count.NG <= res_count.NG &&
-              this.pre_res_count.NA <= res_count.NA &&
-              this.res_count_pre_time!==undefined&&
-              this.res_count_start_time!==undefined
-              )
-            {
-              let period_s = (currentTime_ms-this.res_count_pre_time)/1000;
-              let period_overall_s = (currentTime_ms-this.res_count_start_time)/1000;
-              let period_pre_s=period_overall_s-period_s;
-              let OK_rate=(res_count.OK-this.pre_res_count.OK)/period_s;
-              let NG_rate=(res_count.NG-this.pre_res_count.NG)/period_s;
-              let NA_rate=(res_count.NA-this.pre_res_count.NA)/period_s;
-              // console.log(currentTime_ms,"<ms->>",OK_rate,NG_rate,NA_rate, period_overall_s,period_s)
-              this.res_count_rate_overall={
-                OK:(this.res_count_rate_overall.OK*period_pre_s+OK_rate*period_s)/period_overall_s,
-                NG:(this.res_count_rate_overall.NG*period_pre_s+NG_rate*period_s)/period_overall_s,
-                NA:(this.res_count_rate_overall.NA*period_pre_s+NA_rate*period_s)/period_overall_s,
-              }
-
-              let maxRange=20;
-              let offset=1;
-              let alpha=period_s>maxRange?1:((period_s+offset)/(maxRange+offset));
-              this.res_count_rate_recent={
-                OK:(this.res_count_rate_recent.OK*(1-alpha)+OK_rate*alpha),
-                NG:(this.res_count_rate_recent.NG*(1-alpha)+NG_rate*alpha),
-                NA:(this.res_count_rate_recent.NA*(1-alpha)+NA_rate*alpha),
-              }
-              this.res_count_pre_time=currentTime_ms;
-              this.pre_res_count={...res_count};
-            }
-            else
-            {
-              this.pre_res_count=undefined;
-            }
-          }
-
-
-          if(this.pre_res_count===undefined)
-          {
-            this.pre_res_count={...res_count};
-            this.res_count_start_time=
-            this.res_count_pre_time=currentTime_ms;
-            
-            this.res_count_rate_overall={OK:0,NG:0,NA:0};
-            this.res_count_rate_recent={OK:0,NG:0,NA:0};
-
-
-          }
-          // console.log(this.res_count_rate_overall,this.res_count_rate_recent);
-
-          StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,machineStatus,result_count_rate_recent:this.res_count_rate_recent});
-          this.PINGCount=0;
-        },errorInfo=>console.log(errorInfo));
-
-      }
-      send(data,resolve,reject)
-      {
-        if(this.CONN_ID===undefined)
-        {
-          reject("CONN ID is not set");
-          return ;
-        }
-
-
-        if(data.id!==undefined )
-        {
-          if(this.trackingWindow[data.id]!==undefined)
-            reject(`ID ${data.id} collision`);
-        }
-        else
-        {
-          data.id=this.findAvailableID();
-        }
-        this.trackingWindow[data.id]={resolve,reject};
-
-        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, //just send
-        {
-          msg:data,
-          CONN_ID:this.CONN_ID,
-          type:"MESSAGE"
-        },undefined, {
-          resolve:d=>d,
-          reject:d=>console.log(d)
-        });
-        
-
-
-      }
-      
-      // Round-trip latency probe for the peripheral link: WebUI -> core PD packet
-      // -> perifCH serial -> device -> reply -> back. Sends `count` SEQUENTIAL
-      // PINGs (same transport a light/PIN_CONF command takes) and times each
-      // resolve, then reports min/avg/p95/max + per-sample list via onUpdate.
-      // Drives the WebUI "通訊診斷" button so field comm-delay can be measured.
-      diagnoseComm(count,onUpdate)
-      {
-        count = count || 20;
-        onUpdate = onUpdate || (()=>{});
-        let self=this;
-        let samples=[], fails=0, i=0, startedAt=new Date().getTime();
-        function finish(){
-          let sorted=[...samples].sort((a,b)=>a-b);
-          let sum=samples.reduce((a,b)=>a+b,0);
-          onUpdate({
-            done:true, total:count, n:samples.length, fails:fails,
-            min: sorted.length?sorted[0]:null,
-            max: sorted.length?sorted[sorted.length-1]:null,
-            avg: samples.length?Math.round(sum/samples.length):null,
-            p95: sorted.length?sorted[Math.min(sorted.length-1,Math.floor(sorted.length*0.95))]:null,
-            elapsed: new Date().getTime()-startedAt,
-            samples: samples,
-          });
-        }
-        function next(){
-          if(i>=count || self.CONN_ID===undefined){ finish(); return; }
-          i++;
-          let t0=new Date().getTime(), settled=false;
-          let to=setTimeout(()=>{ if(settled)return; settled=true; fails++;
-            onUpdate({done:false,i:i,total:count,last:null,timeout:true}); next(); },3000);
-          self.send({type:"PING"},()=>{
-            if(settled)return; settled=true; clearTimeout(to);
-            samples.push(new Date().getTime()-t0);
-            onUpdate({done:false,i:i,total:count,last:samples[samples.length-1]});
-            next();
-          },(e)=>{
-            if(settled)return; settled=true; clearTimeout(to); fails++;
-            onUpdate({done:false,i:i,total:count,last:null,error:String(e)});
-            next();
-          });
-        }
-        next();
-      }
-
-    }
-    this.props.ACT_WS_REGISTER(this.props.uInsp_API_ID,new uInsp_API(this.props.uInsp_API_ID));
-
-
-
-
-    class  GenPerif_API
-    {
+      // ---- connection ----------------------------------------------------
 
       cleanUpTrackingWindow()
       {
@@ -1400,81 +1046,6 @@ class APPMasterX extends React.Component {
       cleanUpConnection()
       {
         this.cleanUpTrackingWindow();
-        
-      }
-
-      
-      saveMachineSetupIntoFile(filename = this.settingFilePath)
-      {
-        
-        let act = comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"SV", 0,
-          { filename: filename },
-          new TextEncoder().encode(JSON.stringify(this.machineSetup, null, 4)),
-          {
-            resolve:(res)=>{
-            }, 
-            reject:(res)=>{
-            }, 
-          }
-        )
-      }
-
-      
-
-      LoadFileToMachine(filename = this.settingFilePath) {
-        new Promise((resolve, reject) => {
-
-          log.info("LoadSettingToMachine step2");
-          comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"LD", 0,
-            { filename },
-            undefined, { resolve, reject }
-          );
-          setTimeout(() => reject("Timeout"), 1000)
-        }).then((pkts) => {
-
-          log.info("LoadSettingToMachine>> step3", pkts);
-          if (pkts[0].type != "FL")
-          {
-            return;
-          }
-          let machInfo = pkts[0].data;
-          
-          this.machineSetupUpdate(machInfo,true);
-        }).catch((err) => {
-
-          log.info("LoadSettingToMachine>> step3-error", err);
-        })
-      }
-
-      machineSetupUpdate(newMachineInfo,doReplace=false)
-      {
-
-        this.machineSetup=doReplace==true?newMachineInfo:{...this.machineSetup,...newMachineInfo};
-        // console.log(this.machineSetup);
-        StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineSetup:this.machineSetup});
-        this.send({type:"set_setup",...newMachineInfo},
-        (ret)=>{
-          log.debug("[machine-setup] set_setup ack", ret);
-          //HACK: just assume it will work
-        },(e)=>log.warn("[machine-setup] set_setup failed", e));
-      }
-
-      machineSetupReSync() {
-        log.debug("[machine-setup] resync request");
-        this.send({type:"get_setup"},
-        (ret)=>{
-          if(ret["ack"]!=true)
-          {
-            log.warn("[machine-setup] get_setup nak", ret);
-            return;
-          }
-          delete ret["type"];
-          delete ret["id"];
-          delete ret["st"];
-          delete ret["ack"];
-          this.machineSetup=ret;
-          this.machineSetupUpdate(this.machineSetup,true);
-        },(e)=>console.log(e));
       }
 
       connect(connInfo)
@@ -1483,7 +1054,7 @@ class APPMasterX extends React.Component {
         {//still in reconnection state, return
           return false;
         }
-        
+
         StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:undefined});
         this.connInfo=connInfo;
         this.inReconnection=true;
@@ -1523,18 +1094,17 @@ class APPMasterX extends React.Component {
 
                   if(this.machineSetup!==undefined)
                   {
-                    // this.default_pulse_hz = machInfo.pulse_hz;
+                    this.onBeforeSetupPush();
                     this.send({type:"set_setup",...this.machineSetup},
                     (ret)=>{
                       this.machineSetupReSync();
-                      
                     },(e)=>console.log(e));
                   }
                   else
                   {
                     this.machineSetupReSync();
                   }
-                  
+
                   break;
               }
             }
@@ -1544,45 +1114,96 @@ class APPMasterX extends React.Component {
             this.inReconnection=false;
             this.cleanUpConnection();
             StoreX.dispatch({type:"WS_DISCONNECTED",id:this.id,data:undefined});
-            
           }
         });
       }
 
-      constructor(id,settingFilePath,pg_id_channel=10025)
-      {
-        this.settingFilePath=settingFilePath;
-        this.CONN_ID=undefined;
-        this.pg_id_channel=pg_id_channel;
-        this.id=id;
-        this.connInfo=undefined;
-        this.inReconnection=false;
-        this.checkReconnectionInterval=setInterval(()=>this.checkReConnection(),3000);//watch dog to do reconnection
-        this.runPINGInterval=setInterval(()=>this._sendPing(),3000);//watch dog to do reconnection
-
-        this.trackingWindow={};
-        this.idCounter=10;
-        this.PINGCount=0;
-
-        this.machineInfo=undefined;
-
-        
-      } 
       checkReConnection()
       {
-        // console.log(this.connInfo,this.connected,this.inReconnection);
         if(this.connInfo===undefined ||this.CONN_ID!==undefined || this.inReconnection==true)
         {
           return;
         }
         this.connect(this.connInfo);
-        // this.checkReconnectionTimeout=setTimeout(,);
+      }
+
+      // ---- setting file ----------------------------------------------------
+
+      saveMachineSetupIntoFile(filename = this.settingFilePath)
+      {
+        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"SV", 0,
+          { filename: filename },
+          new TextEncoder().encode(JSON.stringify(this.machineSetup, null, 4)),
+          {
+            resolve:(res)=>{ this.onSetupFileSaved(); },
+            reject:(res)=>{ },
+          }
+        )
+      }
+
+      LoadFileToMachine(filename = this.settingFilePath) {
+        new Promise((resolve, reject) => {
+
+          log.info("LoadSettingToMachine step2");
+          comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"LD", 0,
+            { filename },
+            undefined, { resolve, reject }
+          );
+          setTimeout(() => reject("Timeout"), 1000)
+        }).then((pkts) => {
+
+          log.info("LoadSettingToMachine>> step3", pkts);
+          if (pkts[0].type != "FL")
+          {
+            return;
+          }
+          let machInfo = pkts[0].data;
+
+          this.machineSetupUpdate(machInfo,true);
+          this.onSetupFileLoaded(machInfo);
+        }).catch((err) => {
+
+          log.info("LoadSettingToMachine>> step3-error", err);
+        })
+      }
+
+      // ---- machine setup ---------------------------------------------------
+
+      machineSetupUpdate(newMachineInfo,doReplace=false)
+      {
+        this.machineSetup=doReplace==true?newMachineInfo:{...this.machineSetup,...newMachineInfo};
+        StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineSetup:this.machineSetup});
+        this.send({type:"set_setup",...newMachineInfo},
+        (ret)=>{
+          log.debug("[machine-setup] set_setup ack", ret);
+          //HACK: just assume it will work
+        },(e)=>log.warn("[machine-setup] set_setup failed", e));
+      }
+
+      machineSetupReSync() {
+        log.debug("[machine-setup] resync request");
+        this.send({type:"get_setup"},
+        (ret)=>{
+          if(this.resyncRequiresAck() && ret["ack"]!=true)
+          {
+            log.warn("[machine-setup] get_setup nak", ret);
+            return;
+          }
+          delete ret["type"];
+          delete ret["id"];
+          delete ret["st"];
+          delete ret["ack"];
+          this.machineSetup=ret;
+          this.machineSetupUpdate(this.machineSetup,true);
+        },(e)=>console.log(e));
       }
 
       getMachineSetup()
       {
         return this.machineSetup;
       }
+
+      // ---- request / response ---------------------------------------------
 
       findAvailableID()
       {
@@ -1598,43 +1219,7 @@ class APPMasterX extends React.Component {
         }
         return id;
       }
-      
-      _sendPing()
-      {
-        if(this.CONN_ID===undefined)return ;
 
-
-        if(this.PINGCount>=2)
-        {
-          //time to disconnect
-          this.PINGCount=0;
-
-          this.connect(this.connInfo);
-          return;
-        }
-        this.PINGCount++;
-        // console.log(this.CONN_ID);
-
-        this.triggerPing();
-        // this.machineSetupUpdate({pulse_hz:0});
-      }
-      triggerPing()
-      {
-        
-        this.send({type:"PING"},(ret)=>{
-          // console.log(ret);
-          delete ret["type"]
-          delete ret["id"]
-          delete ret["st"]
-          let machineStatus={...ret};
-          let res_count=machineStatus.res_count||{OK:0,NG:0,NA:0};
-
-          let currentTime_ms=new Date().getTime();
-
-          this.PINGCount=0;
-        },errorInfo=>console.log(errorInfo));
-
-      }
       send(data,resolve,reject)
       {
         if(this.CONN_ID===undefined)
@@ -1642,7 +1227,6 @@ class APPMasterX extends React.Component {
           reject("CONN ID is not set");
           return ;
         }
-
 
         if(data.id!==undefined )
         {
@@ -1664,11 +1248,44 @@ class APPMasterX extends React.Component {
           resolve:d=>d,
           reject:d=>console.log(d)
         });
-        
-
-
       }
-      
+
+      // Promise flavour of send(), for the command helpers subclasses add.
+      sendP(data)
+      {
+        return new Promise((resolve,reject)=>this.send(data,resolve,reject));
+      }
+
+      // ---- PING watchdog ---------------------------------------------------
+
+      _sendPing()
+      {
+        if(this.CONN_ID===undefined)return ;
+
+        if(this.PINGCount>=2)
+        {
+          //time to disconnect
+          this.PINGCount=0;
+
+          this.connect(this.connInfo);
+          return;
+        }
+        this.PINGCount++;
+
+        this.triggerPing();
+      }
+
+      triggerPing()
+      {
+        this.send({type:"PING"},(ret)=>{
+          delete ret["type"]
+          delete ret["id"]
+          delete ret["st"]
+          this.onPingStatus({...ret});
+          this.PINGCount=0;
+        },errorInfo=>console.log(errorInfo));
+      }
+
       // Round-trip latency probe for the peripheral link: WebUI -> core PD packet
       // -> perifCH serial -> device -> reply -> back. Sends `count` SEQUENTIAL
       // PINGs (same transport a light/PIN_CONF command takes) and times each
@@ -1712,7 +1329,189 @@ class APPMasterX extends React.Component {
         }
         next();
       }
+    }
 
+
+    // uInspMEGA (Arduino MEGA + W5500). Speaks pulse_hz / res_count and reports
+    // sorting throughput derived from successive PING replies.
+    class  uInsp_API extends Perif_API_Base
+    {
+      constructor(id,pg_id_channel=10024)
+      {
+        super(id,"data/uInspSetting.json",pg_id_channel);
+
+        this.pre_res_count=undefined;
+        this.res_count_start_time=undefined;
+        this.res_count_pre_time=undefined;
+
+        this.res_count_rate_overall=undefined;
+        this.res_count_rate_recent=undefined;
+      }
+
+      onSetupFileLoaded(machInfo)
+      {
+        this.default_pulse_hz = machInfo.pulse_hz;
+        StoreX.dispatch({type:"WS_UPDATE",id:this.id,default_pulse_hz:this.default_pulse_hz});
+      }
+
+      onSetupFileSaved()
+      {
+        StoreX.dispatch({type:"WS_UPDATE",id:this.id,default_pulse_hz:this.machineSetup.pulse_hz});
+      }
+
+      onBeforeSetupPush()
+      {
+        StoreX.dispatch({type:"WS_UPDATE",id:this.id,default_pulse_hz:this.default_pulse_hz});
+      }
+
+      onPingStatus(machineStatus)
+      {
+        let res_count=machineStatus.res_count||{OK:0,NG:0,NA:0};
+
+        let currentTime_ms=new Date().getTime();
+        if(this.pre_res_count!==undefined)
+        {
+          if( this.pre_res_count.OK <= res_count.OK &&
+            this.pre_res_count.NG <= res_count.NG &&
+            this.pre_res_count.NA <= res_count.NA &&
+            this.res_count_pre_time!==undefined&&
+            this.res_count_start_time!==undefined
+            )
+          {
+            let period_s = (currentTime_ms-this.res_count_pre_time)/1000;
+            let period_overall_s = (currentTime_ms-this.res_count_start_time)/1000;
+            let period_pre_s=period_overall_s-period_s;
+            let OK_rate=(res_count.OK-this.pre_res_count.OK)/period_s;
+            let NG_rate=(res_count.NG-this.pre_res_count.NG)/period_s;
+            let NA_rate=(res_count.NA-this.pre_res_count.NA)/period_s;
+            this.res_count_rate_overall={
+              OK:(this.res_count_rate_overall.OK*period_pre_s+OK_rate*period_s)/period_overall_s,
+              NG:(this.res_count_rate_overall.NG*period_pre_s+NG_rate*period_s)/period_overall_s,
+              NA:(this.res_count_rate_overall.NA*period_pre_s+NA_rate*period_s)/period_overall_s,
+            }
+
+            let maxRange=20;
+            let offset=1;
+            let alpha=period_s>maxRange?1:((period_s+offset)/(maxRange+offset));
+            this.res_count_rate_recent={
+              OK:(this.res_count_rate_recent.OK*(1-alpha)+OK_rate*alpha),
+              NG:(this.res_count_rate_recent.NG*(1-alpha)+NG_rate*alpha),
+              NA:(this.res_count_rate_recent.NA*(1-alpha)+NA_rate*alpha),
+            }
+            this.res_count_pre_time=currentTime_ms;
+            this.pre_res_count={...res_count};
+          }
+          else
+          {
+            this.pre_res_count=undefined;
+          }
+        }
+
+        if(this.pre_res_count===undefined)
+        {
+          this.pre_res_count={...res_count};
+          this.res_count_start_time=
+          this.res_count_pre_time=currentTime_ms;
+
+          this.res_count_rate_overall={OK:0,NG:0,NA:0};
+          this.res_count_rate_recent={OK:0,NG:0,NA:0};
+        }
+
+        StoreX.dispatch({type:"WS_UPDATE",id:this.id,machineStatus,result_count_rate_recent:this.res_count_rate_recent});
+      }
+    }
+    this.props.ACT_WS_REGISTER(this.props.uInsp_API_ID,new uInsp_API(this.props.uInsp_API_ID));
+
+
+    // uInspESP32 (Peripheral/uInspESP32). Distinct protocol from uInspMEGA:
+    // plateFreq rather than pulse_hz, stage_pulse_offset for the per-machine
+    // camera/light/selector timing, and an explicit inspection-mode state
+    // machine. get_setup answers with ack, so the resync check is worth having.
+    class  uInspESP32_API extends Perif_API_Base
+    {
+      constructor(id,settingFilePath="data/uInspESP32Setting.json",pg_id_channel=10027)
+      {
+        super(id,settingFilePath,pg_id_channel);
+        this.runningStat=undefined;
+      }
+
+      resyncRequiresAck(){ return true; }
+
+      // ---- inspection mode -------------------------------------------------
+
+      enterInspMode(){ return this.sendP({type:"enter_insp_mode"}); }
+      exitInspMode(){ return this.sendP({type:"exit_insp_mode"}); }
+      clearError(){ return this.sendP({type:"clear_error"}); }
+      clearErrorHistory(){ return this.sendP({type:"clear_error_history"}); }
+
+      // ---- sorting ---------------------------------------------------------
+
+      // cat 1 -> SEL1, 2 -> SEL2. tid comes from the bT trigger message that
+      // announced the object, so a late result cannot be applied to the wrong
+      // part.
+      report(tid,cat){ return this.sendP({type:"report",tid,cat}); }
+
+      // count of -1 disables the countdown; reaching zero faults the machine.
+      setSel1Countdown(count){ return this.sendP({type:"set_sel1_cd",count}); }
+      getSel1Countdown(){ return this.sendP({type:"get_sel1_cd"}); }
+
+      // ---- stepper / diagnostics -------------------------------------------
+
+      stepperEnable(){ return this.sendP({type:"stepper_enable"}); }
+      stepperDisable(){ return this.sendP({type:"stepper_disable"}); }
+      trigPhantomPulse(){ return this.sendP({type:"trig_phamton_pulse"}); }
+
+      resetRunningStat(){ return this.sendP({type:"reset_running_stat"}); }
+      getRunningStat()
+      {
+        return this.sendP({type:"get_running_stat"}).then(ret=>{
+          this.runningStat=ret;
+          StoreX.dispatch({type:"WS_UPDATE",id:this.id,runningStat:ret});
+          return ret;
+        });
+      }
+
+      // ---- persistence -----------------------------------------------------
+
+      // The board keeps its own copy in NVS, so a machine that is moved or
+      // reflashed still comes up on its own timing rather than whatever the
+      // host happened to cache. Persisting is deliberate, not automatic --
+      // offset probing during setup should not burn flash cycles.
+      saveSetupToDevice(){ return this.sendP({type:"save_setup"}); }
+      clearSavedSetupOnDevice(){ return this.sendP({type:"clear_saved_setup"}); }
+
+      machineSetupUpdateAndPersist(newMachineInfo)
+      {
+        this.machineSetupUpdate(newMachineInfo);
+        return this.saveSetupToDevice();
+      }
+
+      setMachineId(machine_id){ return this.sendP({type:"set_setup",machine_id,persist:true}); }
+      getMachineId(){ return (this.machineSetup||{}).machine_id; }
+
+      // True when the running config came from the board's NVS rather than the
+      // compiled fallback -- an unconfigured board is worth flagging loudly
+      // before it starts flinging parts at the wrong bin.
+      isConfigFromNVS(){ return (this.machineSetup||{}).cfg_from_nvs===true; }
+    }
+    this.props.ACT_WS_REGISTER(this.props.uInspESP32_API_ID,new uInspESP32_API(this.props.uInspESP32_API_ID));
+
+
+    // Generic serial peripheral with no device-specific status handling.
+    class  GenPerif_API extends Perif_API_Base
+    {
+      constructor(id,settingFilePath,pg_id_channel=10025)
+      {
+        super(id,settingFilePath,pg_id_channel);
+      }
+
+      resyncRequiresAck(){ return true; }
+
+      // Deliberately does NOT publish machineStatus: the pre-refactor
+      // GenPerif_API decoded the PING reply and dropped it on the floor, and
+      // SLID_API inherits from here. Publishing it would be a behaviour change
+      // to a machine in production, so it stays opt-in per device.
+      onPingStatus(machineStatus){}
     }
 
     
