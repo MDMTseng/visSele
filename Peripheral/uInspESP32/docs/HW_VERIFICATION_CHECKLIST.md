@@ -31,6 +31,21 @@ export INSP_PERIF_LOG=1     # core 印出序列埠 round-trip
 
 ---
 
+### 用工具跑
+
+```sh
+pip install pyserial
+cd Peripheral/uInspESP32/tools
+python uinsp_test.py ports
+python uinsp_test.py --port COM? all
+```
+
+`tools/uinsp_test.py` 直接對韌體下 JSON，不經過 core / WebUI，把階段 0~3
+能自動化的部分自動化，其餘停下來問你。每次跑完產出 `uinsp_verify_report.md`。
+細節見 `tools/README.md`。
+
+---
+
 ## 階段 0 — 韌體單獨（不接 core）
 
 用序列埠工具直接對板子下命令，115200。
