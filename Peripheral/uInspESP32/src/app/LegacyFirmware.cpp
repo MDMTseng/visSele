@@ -265,7 +265,10 @@ void ERROR_LOG_PUSH(GEN_ERROR_CODE code)
 }
 
 
-bool blockNewDetectedObject=false;
+// Written by the main loop on every state transition, read by newPulseEvent()
+// from inside the timer ISR. volatile so the read is not hoisted or cached
+// across the interrupt boundary -- see docs/CONCURRENCY_ANALYSIS.md.
+volatile bool blockNewDetectedObject=false;
 
 // Error raised inside onTimer(), waiting for firmwareLoop() to turn it into a
 // real state transition. NOP means "nothing pending".
@@ -2178,7 +2181,6 @@ void firmwareLoop()
 
 
 
-      djrl.dbg_printf("sdksjldlskjd");
       retdoc.clear();
       // retdoc["tag"]="s_Step_"+std::to_string((int)info.step);
       // retdoc["trigger_id"]=info.step;

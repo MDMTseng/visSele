@@ -395,6 +395,86 @@ class TestBench(unittest.TestCase):
         self.assertIn("interval-ms", rows["B.5"][3])
 
 
+class FakeFirmwareRateLimited(FakeFirmware):
+    """Adds the throughput ceiling: a 20-deep comm queue drained at a fixed
+    rate, which faults with INSP_CAM_TRIG_INFO_CANNOT_BE_SENT(10) when it
+    overflows -- the real firmware's behaviour under load."""
+
+    E_CANNOT_SEND = 10
+
+    def __init__(self, drain_hz=40, **kw):
+        self.commq = 0
+        self.drain_hz = drain_hz
+        super().__init__(**kw)
+
+    def _tick(self):
+        while self._run:
+            time.sleep(0.05)
+            if self.plate_freq > 0 and self.state == self.ST_READY:
+                self.step_count += int(self.plate_freq * 2 * 0.05)
+            drained = min(self.commq, max(1, int(self.drain_hz * 0.05)))
+            self.commq -= drained
+            now = time.time()
+            for tid, born in list(self.pending.items()):
+                if now - born > self.judge_deadline:
+                    del self.pending[tid]
+                    if self.state == self.ST_READY:
+                        self.state = self.ST_ERROR
+                        self.errors.append(self.E_NO_RESULT)
+
+    def reply_to(self, msg):
+        if msg.get("type") == "trig_phamton_pulse" and self.state == self.ST_READY:
+            now = time.time()
+            if now - self._last_pulse_t >= self.min_sep_s:
+                if self.commq >= 20:
+                    self.state = self.ST_ERROR
+                    self.errors.append(self.E_CANNOT_SEND)
+                    self.feed(json.dumps({"id": msg.get("id"), "ack": True,
+                                          "type": "trig_phamton_pulse"}))
+                    return
+                self.commq += 1
+        super().reply_to(msg)
+
+
+class TestStress(unittest.TestCase):
+
+    def _run(self, fw, fn, *a):
+        link = make_link(fw)
+        rep = uinsp_test.Report()
+        try:
+            fn(link, rep, *a)
+        finally:
+            link._stop = True
+            fw.stop()
+            time.sleep(0.08)
+        return {r[0]: r for r in rep.rows}
+
+    def test_ramp_finds_a_ceiling(self):
+        # Drain slower than the offered rate, so the queue must overflow.
+        fw = FakeFirmwareRateLimited(drain_hz=25, judge_deadline=30.0,
+                                     min_sep_s=0.0)
+        rows = self._run(fw, uinsp_test.stress, 10, 60, 20, 1.0,
+                         uinsp_test.CAT_NA, True)
+        self.assertIn("S.1", rows)
+        self.assertIn("S.2", rows)
+        self.assertIn("comm queue overflow", rows["S.2"][3],
+                      f"should name the failure mode, got: {rows['S.2'][3]}")
+
+    def test_ramp_reports_a_clean_rate_when_nothing_breaks(self):
+        fw = FakeFirmwareRateLimited(drain_hz=10000, judge_deadline=30.0,
+                                     min_sep_s=0.0)
+        rows = self._run(fw, uinsp_test.stress, 10, 30, 10, 0.6,
+                         uinsp_test.CAT_NA, True)
+        self.assertTrue(rows["S.1"][2], f"expected a clean rate: {rows['S.1'][3]}")
+
+    def test_stall_is_detected_as_a_fault(self):
+        fw = FakeFirmware(judge_deadline=1.0, min_sep_s=0.0)
+        rows = self._run(fw, uinsp_test.stall, 10, 3.0, uinsp_test.CAT_NA)
+        self.assertTrue(rows["T.2"][2],
+                        f"unanswered parts must fault: {rows['T.2'][3]}")
+        self.assertTrue(rows["T.3"][2], "board must still answer")
+
+
 class TestReport(unittest.TestCase):
 
     def test_summary_counts(self):

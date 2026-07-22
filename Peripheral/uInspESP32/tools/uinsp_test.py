@@ -547,6 +547,227 @@ def bench(link, rep, count, freq, interval_ms, cat):
             st == ST_IDLE, f"state={st} plateFreq={orig_freq}")
 
 
+# --- stress: find the pipeline ceiling ------------------------------------
+
+# GEN_ERROR_CODE (FirmwareTypes.hpp)
+ERR_NAME = {
+    1: "INSP_RESULT_MATCHES_NO_OBJECT (tid desync)",
+    2: "OBJECT_HAS_NO_INSP_RESULT (no verdict before the selector)",
+    3: "INSP_RESULT_COUNTER_ERROR",
+    4: "INSP_RESULT_PULSE_TIME_OUT_OF_SYNC",
+    5: "INSP_RESULT_HAS_NO_TIME_STAMP",
+    10: "INSP_CAM_TRIG_INFO_CANNOT_BE_SENT (comm queue overflow)",
+    11: "SERIAL_PROTOCOL_ERROR",
+    0xff: "SEL_ACT_LIMIT_REACHES",
+}
+
+# Pipeline limits worth knowing before reading the numbers:
+#   RBuf / every ACT_SCH queue      PIPE_INFO_LEN = 100 objects
+#   TaskQ2CommInfoQ                 20 entries -- overflow FAULTS the machine
+#                                   (INSP_CAM_TRIG_INFO_CANNOT_BE_SENT)
+#   Every object announces bTrigInfo for CAM1 *and* CAM2 -> 2 messages/part
+#   115200 8N1 ~= 11.5 kB/s; a bTrigInfo frame is ~90 B
+PIPE_INFO_LEN = 100
+COMM_Q_DEPTH = 20
+
+
+def _errors_of(stat):
+    return [e for e in (stat or {}).get("ERROR_HIST", []) if e not in (0, -1)]
+
+
+def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
+    """Ramp the phantom-object rate until the pipeline gives, and say what gave.
+
+    The firmware rate-limits new objects two ways, both of which have to be
+    opened up first or the ramp measures the limiter instead of the pipeline:
+    a minimum time separation (SYS_MIN_PULSE_TIME_SEP_us, default ~67ms = 15/s)
+    and a minimum travel distance (3.5mm, ~91 pulses) whose wall-clock cost
+    depends on plateFreq.
+    """
+    print("\n\033[1m== Pipeline stress ==\033[0m")
+
+    orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    orig_freq = orig.get("plateFreq")
+    orig_sep = orig.get("minDetectTimeSep_us")
+
+    # plateFreq needed so the 3.5mm distance gate clears fast enough for the
+    # top rate we intend to ask for. ISR ticks at 2*plateFreq.
+    need_freq = int(91 * max_hz / 2.0 * 1.5) + 500
+    sep_us = max(200, int(1e6 / max_hz / 3))
+
+    print(f"  opening the rate limiters: plateFreq={need_freq} "
+          f"minDetectTimeSep_us={sep_us}")
+    print(f"  (defaults {orig_freq} / {orig_sep} cap objects at "
+          f"{1e6/orig_sep:.1f}/s)" if orig_sep else "")
+
+    link.send({"type": "set_setup", "plateFreq": need_freq,
+               "minDetectTimeSep_us": sep_us}, timeout=3.0)
+    link.send({"type": "enter_insp_mode"}, timeout=3.0)
+    time.sleep(0.8)
+
+    st, _ = _state(link)
+    if st != ST_READY:
+        rep.add("S.0", "reached READY before ramping", False,
+                f"state={st} ({ST_NAME.get(st, '?')})")
+        return
+    rep.add("S.0", "reached READY before ramping", True, f"plateFreq={need_freq}")
+
+    print(f"\n  {'rate':>6} {'fired':>7} {'seen':>7} {'ratio':>7} "
+          f"{'maxQs':>6}  result")
+    print("  " + "-" * 62)
+
+    results = []
+    best = 0
+    broke_at = None
+    broke_why = ""
+
+    hz = start_hz
+    while hz <= max_hz:
+        link.drain_async()
+        link.send({"type": "clear_error"}, timeout=2.0)
+        link.send({"type": "enter_insp_mode"}, timeout=2.0)
+        time.sleep(0.3)
+        link.drain_async()
+
+        period = 1.0 / hz
+        n = max(1, int(dwell * hz))
+        fired = 0
+        seen = []
+        qs_max = 0
+        t0 = time.time()
+
+        for i in range(n):
+            deadline = t0 + i * period
+            slack = deadline - time.time()
+            if slack > 0:
+                time.sleep(slack)
+            # No round trip: waiting on the ack would itself become the limit.
+            link.send_nowait({"type": "trig_phamton_pulse"})
+            fired += 1
+
+            for _, msg in link.drain_async():
+                if msg.get("type") == "bTrigInfo":
+                    tid = msg.get("tid")
+                    seen.append(tid)
+                    qs_max = max(qs_max, msg.get("Qs", 0) or 0)
+                    if do_report:
+                        link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+
+        # let the tail drain
+        t_drain = time.time() + 1.5
+        while time.time() < t_drain:
+            time.sleep(0.05)
+            for _, msg in link.drain_async():
+                if msg.get("type") == "bTrigInfo":
+                    tid = msg.get("tid")
+                    seen.append(tid)
+                    qs_max = max(qs_max, msg.get("Qs", 0) or 0)
+                    if do_report:
+                        link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+
+        st, stat = _state(link)
+        errs = _errors_of(stat)
+        ratio = len(seen) / fired if fired else 0.0
+
+        if st == ST_ERROR or errs:
+            why = ", ".join(ERR_NAME.get(e, f"code {e}") for e in sorted(set(errs)))
+            verdict = f"\033[31mFAULT\033[0m {why}"
+            broke_at, broke_why = hz, why
+        elif ratio < 0.98:
+            verdict = f"\033[33mdropped {fired - len(seen)} at the rate gate\033[0m"
+        else:
+            verdict = "\033[32mok\033[0m"
+            best = hz
+
+        print(f"  {hz:>5}/s {fired:>7} {len(seen):>7} {ratio:>6.0%} "
+              f"{qs_max:>6}  {verdict}")
+        results.append((hz, fired, len(seen), ratio, qs_max, errs))
+
+        if broke_at:
+            break
+        hz += step_hz
+
+    # --- verdicts ---------------------------------------------------------
+    rep.add("S.1", "highest clean sustained object rate", best > 0,
+            f"{best}/s with reporting {'on' if do_report else 'OFF'} "
+            f"(ramped {start_hz}..{max_hz} step {step_hz}, {dwell}s dwell)")
+
+    if broke_at:
+        rep.add("S.2", f"first failure at {broke_at}/s", None, broke_why)
+        if "comm queue overflow" in broke_why:
+            print(f"\n  \033[33mTaskQ2CommInfoQ is {COMM_Q_DEPTH} deep and every"
+                  f" object announces bTrigInfo twice (CAM1 and CAM2).")
+            print(f"  At 115200 a ~90B frame costs ~8ms, so the serial link"
+                  f" alone caps this well before the pipeline does.\033[0m")
+    else:
+        rep.add("S.2", "no failure up to the ceiling tested", None,
+                f"survived {max_hz}/s -- raise --max-hz to find the real limit")
+
+    qs_peak = max((r[4] for r in results), default=0)
+    rep.add("S.3", "firmware queue depth stayed clear of PIPE_INFO_LEN",
+            qs_peak < PIPE_INFO_LEN * 0.8,
+            f"peak Qs={qs_peak} of {PIPE_INFO_LEN}")
+
+    # --- restore ----------------------------------------------------------
+    link.send({"type": "clear_error"}, timeout=3.0)
+    link.send({"type": "exit_insp_mode"}, timeout=3.0)
+    restore = {"type": "set_setup"}
+    if isinstance(orig_freq, (int, float)):
+        restore["plateFreq"] = orig_freq
+    if isinstance(orig_sep, (int, float)):
+        restore["minDetectTimeSep_us"] = orig_sep
+    link.send(restore, timeout=3.0)
+    print(f"\n  restored plateFreq={orig_freq} minDetectTimeSep_us={orig_sep}")
+
+
+def stall(link, rep, hz, stall_s, cat):
+    """Stop answering mid-run and confirm the machine degrades the way it
+    should: it must fault (OBJECT_HAS_NO_INSP_RESULT), not sort parts by stale
+    or guessed verdicts."""
+    print("\n\033[1m== Host stall ==\033[0m")
+    print(f"  Reporting normally, then going silent for {stall_s}s.")
+    print("  Expect OBJECT_HAS_NO_INSP_RESULT(2) -- a part reaching the")
+    print("  selector with no verdict must stop the line, not guess.\n")
+
+    link.send({"type": "set_setup", "plateFreq": 1000}, timeout=3.0)
+    link.send({"type": "clear_error"}, timeout=2.0)
+    link.send({"type": "enter_insp_mode"}, timeout=3.0)
+    time.sleep(0.8)
+    link.drain_async()
+
+    period = 1.0 / hz
+    answered = 0
+    for i in range(int(3 * hz)):
+        link.send_nowait({"type": "trig_phamton_pulse"})
+        time.sleep(period)
+        for _, msg in link.drain_async():
+            if msg.get("type") == "bTrigInfo":
+                link.send_nowait({"type": "report", "tid": msg["tid"], "cat": cat})
+                answered += 1
+
+    st, _ = _state(link)
+    rep.add("T.1", "healthy while answering", st == ST_READY,
+            f"answered {answered} parts, state={ST_NAME.get(st, st)}")
+
+    print(f"  going silent for {stall_s}s ...")
+    t_end = time.time() + stall_s
+    while time.time() < t_end:
+        link.send_nowait({"type": "trig_phamton_pulse"})
+        time.sleep(period)
+        link.drain_async()          # deliberately discard, do not report
+
+    st, stat = _state(link)
+    errs = _errors_of(stat)
+    rep.add("T.2", "unanswered parts fault the line", st == ST_ERROR,
+            f"state={ST_NAME.get(st, st)} errors="
+            f"{[ERR_NAME.get(e, e) for e in sorted(set(errs))]}")
+    rep.add("T.3", "board still responsive after the stall", stat is not None,
+            "no reply = hang/reboot")
+
+    link.send({"type": "clear_error"}, timeout=3.0)
+    link.send({"type": "exit_insp_mode"}, timeout=3.0)
+
+
 # --- stage 3: which selector feeds which bin ------------------------------
 
 def selectors(link, rep):
@@ -615,6 +836,24 @@ def main():
                    help="must exceed SYS_MIN_PULSE_TIME_SEP_us (default ~67ms)")
     b.add_argument("--cat", type=int, default=1,
                    help="1=SEL1 2=SEL2 65535=NA")
+    st_ = sub.add_parser("stress",
+                         help="ramp the object rate until the pipeline gives "
+                              "-- board only, no rig")
+    st_.add_argument("--start-hz", type=int, default=10)
+    st_.add_argument("--max-hz", type=int, default=120)
+    st_.add_argument("--step-hz", type=int, default=10)
+    st_.add_argument("--dwell", type=float, default=3.0,
+                     help="seconds to hold each rate")
+    st_.add_argument("--cat", type=int, default=CAT_NA)
+    st_.add_argument("--no-report", action="store_true",
+                     help="never answer -- measures the announce path alone")
+
+    sl = sub.add_parser("stall", help="stop answering mid-run; must fault, "
+                                      "not guess")
+    sl.add_argument("--hz", type=int, default=10)
+    sl.add_argument("--stall-seconds", type=float, default=5.0)
+    sl.add_argument("--cat", type=int, default=CAT_NA)
+
     s = sub.add_parser("send", help="send one raw JSON command")
     s.add_argument("json")
     sub.add_parser("all", help="stage0 + errorpath + monitor + selectors")
@@ -649,6 +888,11 @@ def main():
             monitor(link, rep, args.seconds)
         elif args.cmd == "bench":
             bench(link, rep, args.count, args.freq, args.interval_ms, args.cat)
+        elif args.cmd == "stress":
+            stress(link, rep, args.start_hz, args.max_hz, args.step_hz,
+                   args.dwell, args.cat, not args.no_report)
+        elif args.cmd == "stall":
+            stall(link, rep, args.hz, args.stall_seconds, args.cat)
         elif args.cmd == "all":
             stage0(link, rep)
             bench(link, rep, 10, 1000, 250, 1)
