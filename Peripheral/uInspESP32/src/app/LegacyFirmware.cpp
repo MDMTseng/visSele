@@ -4,6 +4,7 @@
 #include "xtensa/core-macros.h"
 #include "soc/rtc_wdt.h"
 #include "comm/Data_Layer_Protocol.hpp"
+#include "config/MachineConfig.hpp"
 #include "driver/timer.h"
 #include <string>
 
@@ -18,7 +19,25 @@ extern "C" {
 
 #define GPIOLS32_SET(PIN) GPIO.out_w1ts=1<<(PIN);
 #define GPIOLS32_CLR(PIN) GPIO.out_w1tc=1<<(PIN);
-  
+// Direct register read, mirroring the write macros above. Arduino digitalRead()
+// is not IRAM-resident and walks the pin mux table, which is dead weight in the
+// step ISR. Valid for pins 0..31 only -- every input we sample is in that range.
+#define GPIOLS32_GET(PIN) ((GPIO.in>>(PIN))&1)
+
+// Single place that drives every actuator to its inactive level. Used on the
+// error path, on reset, and once the plate has coasted to a stop, so a selector
+// can never be left energised by a state transition that forgot one pin.
+#define ALL_OUTPUTS_SAFE() \
+  { \
+    GPIOLS32_CLR(PIN_O_L1A); \
+    GPIOLS32_CLR(PIN_O_L2A); \
+    GPIOLS32_CLR(PIN_O_CAM1); \
+    GPIOLS32_CLR(PIN_O_CAM2); \
+    GPIOLS32_CLR(PIN_O_SEL1); \
+    GPIOLS32_CLR(PIN_O_SEL2); \
+    GPIOLS32_CLR(PIN_O_SEL3); \
+  }
+
 
 #define SARRL(SARR) (sizeof((SARR)) / sizeof(*(SARR)))
 
@@ -72,30 +91,9 @@ uint64_t SEL3_Count=0;
 uint64_t NA_Count=0;
 uint64_t SKIP_Count=0;
 
-typedef struct stagePulseOffset{
-  uint32_t CAM1_on;
-  uint32_t CAM1_off;
-  uint32_t L1A_on;
-  uint32_t L1A_off;
-
-  uint32_t CAM2_on;
-  uint32_t CAM2_off;
-  uint32_t L2A_on;
-  uint32_t L2A_off;
-
-  uint32_t SWITCH;
-
-
-  uint32_t SEL1_on;
-  uint32_t SEL1_off;
-
-  uint32_t SEL2_on;
-  uint32_t SEL2_off;
-
-  uint32_t SEL3_on;
-  uint32_t SEL3_off;
-}stagePulseOffset;
-
+// stagePulseOffset now lives in config/MachineConfig.hpp so the NVS layer can
+// persist it. The values below remain the fallback for a board with no stored
+// config; MachineConfig::begin() overwrites them when one exists.
 stagePulseOffset STAGE_PULSE_OFFSET={
   .CAM1_on =654,
   .CAM1_off=656,
@@ -370,7 +368,12 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       {
         SYS_TAR_FREQ=0;
         blockNewDetectedObject=true;
-        
+
+        // Drop every actuator immediately. The plate still has to ramp down, so
+        // waiting for the freq-stable path below would leave a selector held on
+        // for the whole deceleration.
+        ALL_OUTPUTS_SAFE();
+
         RESET_ALL_PIPELINE_QUEUE();
         // DEBUG_printf(">>ENTER ERROR(%d)>>>\n",sysinfo.extra_code);
 
@@ -1087,7 +1090,7 @@ void GateSensing2()
 void GateSensing()
 {
   //(perRevPulseCount/50)
-  uint8_t new_Sense = digitalRead(PIN_I_GATE);
+  uint8_t new_Sense = GPIOLS32_GET(PIN_I_GATE);
   if(_senseInv_)new_Sense=!new_Sense;
   bool onSenseEdge=false;
 
@@ -1442,10 +1445,33 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   else if(strcmp(type,"set_setup")==0)
   {
     retdoc["type"]="set_setup";
-    
+
     setMachineSetup(doc);
+
+    // Opt-in commit. Without "persist":true this behaves exactly as before --
+    // RAM only, gone at power-off -- so probing/jogging during setup doesn't
+    // burn flash write cycles.
+    if(doc["persist"].is<bool>() && doc["persist"].as<bool>())
+    {
+      retdoc["persisted"]=MachineConfig::save();
+    }
+
     doRsp=rspAck=true;
 
+  }
+  else if(strcmp(type,"save_setup")==0)
+  {
+    retdoc["type"]="save_setup";
+    retdoc["persisted"]=MachineConfig::save();
+    doRsp=rspAck=true;
+  }
+  else if(strcmp(type,"clear_saved_setup")==0)
+  {
+    // Wipes NVS only. The running values stay put, so this cannot disturb a
+    // machine mid-run; the compiled defaults come back on the next boot.
+    retdoc["type"]="clear_saved_setup";
+    retdoc["cleared"]=MachineConfig::clear();
+    doRsp=rspAck=true;
   }
   else if(strcmp(type,"reset_running_stat")==0)
   {
@@ -1773,6 +1799,10 @@ void MData_JR::handleResetCommand()
   clearProtocolError();
   doDataLog=false;
 
+  // A RESET can arrive with the link in an unknown state; don't leave an
+  // actuator held on while we sort the protocol out.
+  ALL_OUTPUTS_SAFE();
+
   if(wasLatched && sysinfo.state==SYS_STATE::INSPECTION_MODE_ERROR)
   {
     SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR_REDEEM);
@@ -1955,6 +1985,11 @@ void firmwareSetup()
   Serial.setRxBufferSize(500);
   // Serial.setHwFlowCtrlMode(0);
   // // setup_comm();
+
+  // Must run before the timer is armed: the pulse offsets and plate frequency
+  // it restores are what everything below derives its timing from.
+  MachineConfig::begin();
+
   timer = timerBegin(0, 80*1000*1000/_TICK2SEC_BASE_, true);
   
   timerAttachInterrupt(timer, &onTimer, true);
@@ -2217,12 +2252,7 @@ void firmwareLoop()
     {
       if(SYS_TAR_FREQ==0 && SYS_FREQ_STABLE==false)//just stable
       {
-
-        GPIOLS32_CLR(PIN_O_L1A);
-        GPIOLS32_CLR(PIN_O_L2A);
-        GPIOLS32_CLR(PIN_O_SEL1);
-        GPIOLS32_CLR(PIN_O_SEL2);
-        GPIOLS32_CLR(PIN_O_SEL3);
+        ALL_OUTPUTS_SAFE();
       }
       SYS_FREQ_STABLE=true;
       break;
@@ -2363,6 +2393,14 @@ void genMachineSetup(JsonDocument &jdoc)
   jdoc["plateFreq"]=SETUP_TAR_FREQ;
   jdoc["minDetectTimeSep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
 
+  jdoc["pulse_minWidth"]=minWidth;
+  jdoc["pulse_maxWidth"]=maxWidth;
+
+  // Lets the host tell the two machines apart and see whether what it is
+  // reading came from NVS or is just the compiled fallback.
+  jdoc["machine_id"]=MachineConfig::machineId();
+  jdoc["cfg_from_nvs"]=MachineConfig::isLoadedFromNVS();
+
 
   {
     JsonArray jERROR_HIST = jdoc.createNestedArray("ERROR_HIST");
@@ -2410,6 +2448,11 @@ void setMachineSetup(JsonDocument &jdoc)
     CAM2_Tags=jdoc["CAM2_Tags"].as<const char*>();
   }
   
+
+  if(jdoc["machine_id"].is<const char*>())
+  {
+    MachineConfig::setMachineId(jdoc["machine_id"].as<const char*>());
+  }
 
   JSON_SETIF_ABLE(SETUP_TAR_FREQ,jdoc,"plateFreq");
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jdoc,"minDetectTimeSep_us");
