@@ -948,7 +948,15 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
           "\033[0m")
     print(f"  {seconds}s, {min_hz}-{max_hz} obj/s, seed {seed}\n")
 
-    orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    # Capture the baseline to restore later. Retry until the fields we must put
+    # back are all present -- a single partial read would drop them from the
+    # teardown and leave the board on a stray churn value.
+    orig = {}
+    for _ in range(5):
+        orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
+        if all(k in orig for k in ("plateFreq", "minDetectTimeSep_us",
+                                   "stage_pulse_offset")):
+            break
     orig_freq = orig.get("plateFreq")
     orig_sep = orig.get("minDetectTimeSep_us")
     orig_spo = dict(orig.get("stage_pulse_offset") or {})
