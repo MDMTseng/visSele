@@ -1285,6 +1285,176 @@ def edge(link, rep, only=None):
                 f"sel1_cd={cd}")
 
 
+# --- iotrace: the actuator sequence, straight from the firmware -----------
+
+# The raw PIN_O_* GPIO numbers the firmware records, plus the synthetic id 0
+# for the SWITCH dispatch (which has no pin of its own). Keep in step with
+# HardwareConfig.hpp and IOT_PIN_SWITCH in LegacyFirmware.cpp.
+IOT_PIN = {0: "SWITCH", 16: "L1A", 17: "CAM1", 18: "L2A", 19: "CAM2",
+           25: "SEL1", 26: "SEL2", 32: "SEL3"}
+
+# Each recorded (pin_name, val) edge and the stage_pulse_offset key that should
+# place it. SWITCH is handled apart -- its val is the decided cat, not 0/1.
+IOT_EDGE_KEY = {
+    ("L1A", 1): "L1A_on",   ("L1A", 0): "L1A_off",
+    ("CAM1", 1): "CAM1_on", ("CAM1", 0): "CAM1_off",
+    ("L2A", 1): "L2A_on",   ("L2A", 0): "L2A_off",
+    ("CAM2", 1): "CAM2_on", ("CAM2", 0): "CAM2_off",
+    ("SEL1", 1): "SEL1_on", ("SEL1", 0): "SEL1_off",
+    ("SEL2", 1): "SEL2_on", ("SEL2", 0): "SEL2_off",
+}
+
+
+def iotrace(link, rep, plate_freq, cat):
+    """Dump the actuator edge sequence the firmware records, and check every
+    edge lands on its configured stage_pulse_offset -- at REAL geometry.
+
+    The firmware logs each L1A/CAM/SWITCH/SEL GPIO edge with the pulse count it
+    fired at (io_trace_arm/dump). Firing one phantom and dumping turns the board
+    into its own logic analyzer: it verifies the physical output timing and
+    ordering that a counter cannot see, with no scope and -- unlike bench --
+    WITHOUT widening the window. A low plateFreq is the trick: the real ~43-step
+    camera-to-selector gap becomes tens of ms in wall time, long enough that the
+    host verdict still lands in the true window, so SWITCH dispatches the part
+    and the SEL edges fire on schedule too.
+    """
+    print("\n\033[1m== IO trace: actuator sequence at real geometry ==\033[0m")
+
+    orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    orig_freq = orig.get("plateFreq")
+    spo = dict(orig.get("stage_pulse_offset") or {})
+    link.send({"type": "clear_error"}, timeout=2.0)
+    link.send({"type": "clear_error_history"}, timeout=2.0)
+
+    try:
+        # Deliberately NOT widening the window -- the whole point is real
+        # offsets. Low plateFreq stretches the 43-step gap into answerable ms.
+        link.send({"type": "set_setup", "plateFreq": plate_freq}, timeout=3.0)
+        link.send({"type": "enter_insp_mode"}, timeout=3.0)
+        _wait_at_speed(link)
+        st, _ = _state(link)
+        if st != ST_READY:
+            rep.add("I.0", "reached READY", False,
+                    f"state={st} ({ST_NAME.get(st, '?')}) -- aborting iotrace")
+            return
+
+        r = link.send({"type": "io_trace_arm"}, timeout=3.0)
+        rep.add("I.1", "io_trace armed", bool(r and r.get("armed") is True), r)
+        link.drain_async()
+
+        # One phantom, answered the instant it announces so the verdict makes
+        # the real window and SWITCH/SEL fire (cat -> SEL1/SEL2).
+        answered = set()
+        link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+        t_end = time.time() + 3.0
+        while time.time() < t_end:
+            for _, m in link.drain_async():
+                if m.get("type") == "bTrigInfo":
+                    tid = m.get("tid")
+                    if tid not in answered:
+                        answered.add(tid)
+                        link.send_nowait({"type": "report", "tid": tid,
+                                          "cat": cat})
+            time.sleep(0.002)
+
+        dump = link.send({"type": "io_trace_dump"}, timeout=3.0) or {}
+        ev = dump.get("ev") or []
+        n, emitted = dump.get("n"), dump.get("emitted")
+        rep.add("I.2", "trace recorded and dumped intact",
+                bool(ev) and n == emitted and emitted == len(ev),
+                f"n={n} emitted={emitted} rows={len(ev)}"
+                + ("  (n>emitted means the 3KB dump buffer truncated -- fire "
+                   "fewer parts per trace)" if (n or 0) != (emitted or 0)
+                   else ""))
+        if not ev:
+            return
+
+        named = [(IOT_PIN.get(p, p), v, pulse, tid)
+                 for pulse, p, v, tid in ev]
+
+        # I.3: monotonic pulse order -- the sequence must not reorder.
+        pulses = [pulse for _, _, pulse, _ in named]
+        rep.add("I.3", "edges in nondecreasing pulse order",
+                all(b >= a for a, b in zip(pulses, pulses[1:])),
+                " -> ".join(f"{nm}{'+' if v else '-'}@{pl}"
+                            for nm, v, pl, _ in named))
+
+        # Anchor on the first L1A rising edge: gate_pulse = its pulse - L1A_on.
+        anchor = next((pulse for nm, v, pulse, _ in named
+                       if nm == "L1A" and v == 1), None)
+        gate = (anchor - spo.get("L1A_on", 0)) if anchor is not None else None
+
+        # I.4: every light/camera edge on its configured offset (this set fires
+        # regardless of the host verdict, so it always tells the timing truth).
+        core = [(nm, v, pulse) for nm, v, pulse, _ in named
+                if nm in ("L1A", "CAM1", "L2A", "CAM2")]
+        bad = []
+        for nm, v, pulse in core:
+            want = spo.get(IOT_EDGE_KEY[(nm, v)])
+            got = (pulse - gate) if gate is not None else None
+            if want is None or got is None or abs(got - want) > 1:
+                bad.append(f"{nm}{'+' if v else '-'}: off {got} != {want}")
+        have_all = {(nm, v) for nm, v, _ in core} == {
+            ("L1A", 1), ("L1A", 0), ("CAM1", 1), ("CAM1", 0),
+            ("L2A", 1), ("L2A", 0), ("CAM2", 1), ("CAM2", 0)}
+        rep.add("I.4", "light+camera edges each on their configured offset",
+                have_all and not bad,
+                ("missing edges" if not have_all else "")
+                + (" ".join(bad) if bad else
+                   "L1A/CAM1/L2A/CAM2 on+off all match stage_pulse_offset"))
+
+        # I.5: CAM1 and CAM2 rising edges coincide (dual-camera, same gate).
+        c1 = next((pl for nm, v, pl, _ in named if nm == "CAM1" and v == 1),
+                  None)
+        c2 = next((pl for nm, v, pl, _ in named if nm == "CAM2" and v == 1),
+                  None)
+        rep.add("I.5", "CAM1 and CAM2 trigger on the same pulse",
+                c1 is not None and c1 == c2, f"CAM1@{c1} CAM2@{c2}")
+
+        # I.6: SWITCH dispatched the part with the verdict we sent, at the
+        # SWITCH offset -- proof the report landed inside the REAL window with
+        # no widening (val would be a large UNSET sentinel if it had missed).
+        sw = next(((v, pulse) for nm, v, pulse, _ in named if nm == "SWITCH"),
+                  None)
+        sw_off = (sw[1] - gate) if (sw and gate is not None) else None
+        rep.add("I.6", "SWITCH dispatched the real verdict inside the true "
+                "window (no widening)",
+                bool(sw) and sw[0] == cat and sw_off is not None
+                and abs(sw_off - spo.get("SWITCH", -999)) <= 1,
+                f"SWITCH val={sw[0] if sw else None} (reported cat={cat}) "
+                f"off={sw_off} vs {spo.get('SWITCH')}")
+
+        # I.7: the selector for that verdict fired on+off at its offsets.
+        sel = "SEL1" if cat == 1 else ("SEL2" if cat == 2 else None)
+        if sel:
+            on = next((pl for nm, v, pl, _ in named if nm == sel and v == 1),
+                      None)
+            off = next((pl for nm, v, pl, _ in named if nm == sel and v == 0),
+                       None)
+            on_ok = on is not None and gate is not None and abs(
+                (on - gate) - spo.get(f"{sel}_on", -999)) <= 1
+            off_ok = off is not None and gate is not None and abs(
+                (off - gate) - spo.get(f"{sel}_off", -999)) <= 1
+            rep.add("I.7", f"{sel} fired on+off at its configured offsets",
+                    on_ok and off_ok,
+                    f"{sel}_on off={None if on is None else on - gate} vs "
+                    f"{spo.get(f'{sel}_on')}, "
+                    f"{sel}_off off={None if off is None else off - gate} vs "
+                    f"{spo.get(f'{sel}_off')}")
+
+    finally:
+        link.send({"type": "io_trace_stop"}, timeout=3.0)
+        link.send({"type": "clear_error"}, timeout=3.0)
+        link.send({"type": "exit_insp_mode"}, timeout=3.0)
+        if isinstance(orig_freq, (int, float)):
+            link.send({"type": "set_setup", "plateFreq": orig_freq},
+                      timeout=3.0)
+        st, _ = _state(link)
+        rep.add("I.8", "returned to IDLE, plateFreq restored",
+                st == ST_IDLE, f"state={ST_NAME.get(st, st)} "
+                f"plateFreq={orig_freq}")
+
+
 # --- stage 3: which selector feeds which bin ------------------------------
 
 def selectors(link, rep):
@@ -1361,6 +1531,14 @@ def main():
                    help="deep firmware paths: NA verdict, SKIP absorption, "
                         "pulse-gate rejection, SEL1 countdown, protocol-error "
                         "latch, RBuf saturation -- board only, no rig")
+    it = sub.add_parser("iotrace",
+                        help="dump the firmware's own record of the actuator "
+                             "edge sequence and check it against the real "
+                             "stage_pulse_offset -- board only, no scope")
+    it.add_argument("--freq", type=float, default=200,
+                    help="plateFreq; low stretches the real 43-step window "
+                         "into answerable ms so SWITCH/SEL fire in-window")
+    it.add_argument("--cat", type=int, default=1, help="1=SEL1 2=SEL2")
     st_ = sub.add_parser("stress",
                          help="ramp the object rate until the pipeline gives "
                               "-- board only, no rig")
@@ -1417,6 +1595,8 @@ def main():
             probe(link, rep)
         elif args.cmd == "edge":
             edge(link, rep)
+        elif args.cmd == "iotrace":
+            iotrace(link, rep, args.freq, args.cat)
         elif args.cmd == "stress":
             stress(link, rep, args.start_hz, args.max_hz, args.step_hz,
                    args.dwell, args.cat, not args.no_report)
@@ -1427,6 +1607,7 @@ def main():
             probe(link, rep)
             bench(link, rep, 10, 1000, 120, 1)
             edge(link, rep)
+            iotrace(link, rep, 200, 1)
             stage_error(link, rep)
             monitor(link, rep, 60)
             selectors(link, rep)

@@ -269,6 +269,27 @@ struct ISRTrigInfo
 RingBuf_Static<struct ISRTrigInfo,32,uint8_t> ISRTrigQ;
 
 
+// --- IO trace: an on-board logic analyzer for the actuator sequence -------
+// Every actuator edge in Run_ACTS records (pulse, tid, val, pin) here while
+// armed, so the real-geometry timing of the L1A / CAM / SWITCH / SEL edges can
+// be dumped and checked without a scope on the bench. Filled from onTimer()
+// (the timer ISR), drained by the io_trace_dump command (main loop) -- SPSC,
+// POD, no allocation, the same discipline as ISRTrigQ. Disarmed by default:
+// the guard is a single volatile read, so a deployed machine pays nothing.
+// `pin` carries the raw PIN_O_* GPIO number; the SWITCH dispatch has no pin of
+// its own and is logged as pin 0 with val = the decided insp_status.
+struct IOTraceEvt { uint32_t pulse; uint32_t tid; int32_t val; uint8_t pin; };
+RingBuf_Static<struct IOTraceEvt,120,uint16_t> IO_TRACE;
+volatile bool IO_TRACE_ARMED=false;
+#define IOT_PIN_SWITCH 0
+inline void IO_TRACE_LOG(uint8_t pin,int32_t val,uint32_t pulse,uint32_t tid)
+{
+  if(!IO_TRACE_ARMED)return;
+  IOTraceEvt *e=IO_TRACE.getHead();
+  if(e){ e->pulse=pulse; e->tid=tid; e->val=val; e->pin=pin; IO_TRACE.pushHead(); }
+}
+
+
 void ERROR_LOG_PUSH(GEN_ERROR_CODE code)
 {
   GEN_ERROR_CODE *head_code = ERROR_HIST.getHead();
@@ -602,13 +623,15 @@ int Run_ACTS(uint32_t cur_pulse)
                    if(task->info)
                    {
                     GPIOLS32_SET(PIN_O_L1A);
+                    IO_TRACE_LOG(PIN_O_L1A,1,cur_pulse,task->src->tid);
                    }
-                   else 
-                   {         
+                   else
+                   {
                     GPIOLS32_CLR(PIN_O_L1A);
+                    IO_TRACE_LOG(PIN_O_L1A,0,cur_pulse,task->src->tid);
                    }
-                   
-                   
+
+
                    );
 
 
@@ -622,6 +645,7 @@ int Run_ACTS(uint32_t cur_pulse)
                   {
 
                     GPIOLS32_SET(PIN_O_CAM1);
+                    IO_TRACE_LOG(PIN_O_CAM1,1,cur_pulse,task->src->tid);
                     ISRTrigInfo *commInfo = ISRTrigQ.getHead();
                     if(commInfo){
                       if(time_us_fetched==false)
@@ -642,8 +666,9 @@ int Run_ACTS(uint32_t cur_pulse)
                   else
                   {
                     GPIOLS32_CLR(PIN_O_CAM1);
+                    IO_TRACE_LOG(PIN_O_CAM1,0,cur_pulse,task->src->tid);
                   }
-                   
+
 
                    );
 
@@ -652,10 +677,12 @@ int Run_ACTS(uint32_t cur_pulse)
                    if(task->info)
                    {
                     GPIOLS32_SET(PIN_O_L2A);
+                    IO_TRACE_LOG(PIN_O_L2A,1,cur_pulse,task->src->tid);
                    }
-                   else 
-                   {         
+                   else
+                   {
                     GPIOLS32_CLR(PIN_O_L2A);
+                    IO_TRACE_LOG(PIN_O_L2A,0,cur_pulse,task->src->tid);
                    }
                     );
 
@@ -666,6 +693,7 @@ int Run_ACTS(uint32_t cur_pulse)
                   {
 
                     GPIOLS32_SET(PIN_O_CAM2);
+                    IO_TRACE_LOG(PIN_O_CAM2,1,cur_pulse,task->src->tid);
                     ISRTrigInfo *commInfo = ISRTrigQ.getHead();
                     if(commInfo){
                       if(time_us_fetched==false)
@@ -686,11 +714,12 @@ int Run_ACTS(uint32_t cur_pulse)
                   else
                   {
                     GPIOLS32_CLR(PIN_O_CAM2);
+                    IO_TRACE_LOG(PIN_O_CAM2,0,cur_pulse,task->src->tid);
                   }
-                   
-                   
-                   
-                   
+
+
+
+
                    );
 
 
@@ -703,6 +732,8 @@ int Run_ACTS(uint32_t cur_pulse)
       pipeLineInfo *pli = task->src;
       // DEBUG_print("insp_status:");
       // DEBUG_println(pli->insp_status);
+
+      IO_TRACE_LOG(IOT_PIN_SWITCH,pli->insp_status,cur_pulse,pli->tid);
 
       switch (pli->insp_status)
       {
@@ -757,11 +788,13 @@ int Run_ACTS(uint32_t cur_pulse)
                       if(SEL1_ACT_COUNTDOWN>0)SEL1_ACT_COUNTDOWN--;
                       SEL1_Count++;
                       GPIOLS32_SET(PIN_O_SEL1);
+                      IO_TRACE_LOG(PIN_O_SEL1,1,cur_pulse,0);
                     }
                    }
-                   else 
-                   {         
+                   else
+                   {
                     GPIOLS32_CLR(PIN_O_SEL1);
+                    IO_TRACE_LOG(PIN_O_SEL1,0,cur_pulse,0);
                    }
                   );
 
@@ -775,11 +808,13 @@ int Run_ACTS(uint32_t cur_pulse)
                   {
                     SEL2_Count++;
                     GPIOLS32_SET(PIN_O_SEL2);
+                    IO_TRACE_LOG(PIN_O_SEL2,1,cur_pulse,0);
                   }
                   }
-                  else 
-                  {         
+                  else
+                  {
                     GPIOLS32_CLR(PIN_O_SEL2);
+                    IO_TRACE_LOG(PIN_O_SEL2,0,cur_pulse,0);
                   }
                 
                   
@@ -1624,6 +1659,49 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
     ERROR_HIST.clear();
     doRsp=rspAck=true;
+  }
+
+  else if(strcmp(type,"io_trace_arm")==0)
+  {
+    // Disarm before clearing so an in-flight ISR event lands in the cleared
+    // buffer, never after the arm. Order: off -> clear -> on.
+    IO_TRACE_ARMED=false;
+    IO_TRACE.clear();
+    IO_TRACE_ARMED=true;
+    retdoc["armed"]=true;
+    retdoc["cap"]=(int)120;
+    doRsp=rspAck=true;
+  }
+  else if(strcmp(type,"io_trace_stop")==0)
+  {
+    IO_TRACE_ARMED=false;
+    retdoc["n"]=(int)IO_TRACE.size();
+    doRsp=rspAck=true;
+  }
+  else if(strcmp(type,"io_trace_dump")==0)
+  {
+    // Freeze, then hand-serialize into a dedicated buffer: retdoc is only 1KB,
+    // too small for a full trace, and each row is a flat [pulse,pin,val,tid].
+    IO_TRACE_ARMED=false;
+    int n=IO_TRACE.size();
+    static char db[3072];
+    int cid=(doc["id"].is<int>()==true)?(int)doc["id"]:0;
+    int off=snprintf(db,sizeof(db),
+        "{\"type\":\"io_trace_dump\",\"id\":%d,\"ack\":true,\"n\":%d,\"ev\":[",
+        cid,n);
+    int emitted=0;
+    for(int i=0;i<n && off<(int)sizeof(db)-48;i++)
+    {
+      IOTraceEvt *e=IO_TRACE.getTail(i);
+      if(!e)break;
+      off+=snprintf(db+off,sizeof(db)-off,"%s[%u,%d,%d,%u]",
+          emitted?",":"",(unsigned)e->pulse,(int)e->pin,
+          (int)e->val,(unsigned)e->tid);
+      emitted++;
+    }
+    off+=snprintf(db+off,sizeof(db)-off,"],\"emitted\":%d}",emitted);
+    send_json_string(0,(uint8_t*)db,off,0);
+    doRsp=false;   // already sent above
   }
 
   else if(strcmp(type,"PIN_ON")==0)

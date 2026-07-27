@@ -17,6 +17,7 @@ python uinsp_test.py --port COM6 stage0             # 階段 0：韌體單獨 + 
 python uinsp_test.py --port COM6 bench              # ★ 光板：完整 tid 往返
 python uinsp_test.py --port COM6 probe              # ★ 光板：協定 + 相機觸發
 python uinsp_test.py --port COM6 edge               # ★ 光板：深層路徑
+python uinsp_test.py --port COM6 iotrace            # ★ 光板：真實 IO 時序
 python uinsp_test.py --port COM6 errorpath          # 階段 0.7：錯誤路徑
 python uinsp_test.py --port COM6 monitor --seconds 60   # 階段 2：tid 連續性
 python uinsp_test.py --port COM6 selectors          # 階段 3.1/3.2：出口對應
@@ -117,6 +118,40 @@ E.1–E.4 在 plateFreq=600 下跑（門檻時序才拉得開）；E.5 要在檢
 IDLE 狀態表**沒有** INSPECTION_ERROR 轉移，雜訊在 IDLE 只上鎖不記錯誤。
 跑完 E.7 會把 offset、plateFreq、minDetectTimeSep_us、sel1_cd 全部還原。
 
+## ★ 真實 IO 時序（`iotrace`）—— 韌體當自己的邏輯分析儀
+
+`bench` 靠計數器驗「有沒有分對槽」，但計數器看不到**實體接腳的邊沿時序**。
+韌體現在會把 `Run_ACTS` 裡每一個 L1A/CAM/SWITCH/SEL 的 GPIO 邊沿連同當下的
+pulse count 記進一個環狀緩衝（`io_trace_arm`/`io_trace_dump`，**預設關閉、上鎖旁
+路只是一個 volatile 判斷，量產零成本**）。發一顆假脈衝再 dump，板子就變成自己的
+邏輯分析儀——不用示波器、也**不用撐窗口**：
+
+**關鍵是壓低 plateFreq**（預設 200）。真機幾何裡相機到選別只差 43 步，但步頻一低，
+這 43 步在牆鐘上就變成幾十毫秒，host 的判定照樣趕得上真實窗口，於是 SWITCH 會帶著
+真 verdict 派工、SEL 也照時序打出來。實測 dump（`plateFreq=200`）：
+
+```
+L1A_on @654  CAM1_on @654  L2A_on @654  CAM2_on @654   ← 四路燈/相機同一 pulse
+CAM1_off @656  L2A_off @656  CAM2_off @656
+L1A_off @666
+SWITCH @697  val=1          ← host 在真窗口內回覆，SWITCH 帶 cat=1 派工
+SEL1_on @700  SEL1_off @701
+```
+
+| # | 內容 |
+|---|---|
+| I.1 | `io_trace_arm` 成功 |
+| I.2 | trace 有錄到且 dump 完整（`n==emitted==rows`；否則代表 3KB dump buffer 被截，發少一點）|
+| I.3 | 邊沿依 pulse 單調不倒序 |
+| I.4 | **燈/相機每個邊沿都落在設定的 offset**（這組不依賴 host 判定，永遠說實話）|
+| I.5 | CAM1 與 CAM2 在同一 pulse 觸發（雙相機同步）|
+| I.6 | **SWITCH 帶著實際 verdict 在真窗口內派工**（沒撐窗口；若沒趕上會是 UNSET 大數）|
+| I.7 | 對應 SEL 在設定 offset on+off |
+| I.8 | 回 IDLE、plateFreq 還原 |
+
+RAM 代價：trace 環（120 筆）＋ dump buffer 約 5KB 靜態，佔用從 12.7% 升到 14.2%，
+仍是九牛一毛（見上面「空間 & 算力」的分析）。
+
 ## 各子命令在測什麼
 
 | 子命令 | 對應清單 | 需要什麼硬體 | 需要人 |
@@ -125,6 +160,7 @@ IDLE 狀態表**沒有** INSPECTION_ERROR 轉移，雜訊在 IDLE 只上鎖不�
 | `bench` | 0.7 / 2.x 的韌體側 | **只要板子** | 無 |
 | `probe` | 版本握手/計數歸零/相機觸發 | **只要板子** | 無 |
 | `edge` | NA/SKIP/去重/限量/協定鎖/佇列滿 | **只要板子** | 無 |
+| `iotrace` | 真實 IO 邊沿時序（韌體自錄）| **只要板子** | 無 |
 | `errorpath` | 0.7 | 板子 + 閘門 | 手動遮閘門、目視氣閥 |
 | `monitor` | 2.3–2.4 | 完整機構 | 放料 |
 | `selectors` | 3.1–3.3 | 板子 + 氣閥 + 料槽 | **逐一打氣閥、記錄實體桶** |
@@ -157,7 +193,7 @@ latch 協定錯誤，之後除了 RESET 什麼都不理。上一輪跑到一半�
 ## 自我測試
 
 ```sh
-python test_uinsp_test.py        # 29 項，不需要硬體
+python test_uinsp_test.py        # 32 項，不需要硬體
 ```
 
 用假的序列埠模擬韌體行為，驗證分框（跨讀取切斷、背對背訊息、字串內含大括號、

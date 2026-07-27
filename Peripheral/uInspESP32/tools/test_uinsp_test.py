@@ -266,13 +266,20 @@ class FakeFirmware(FakeSerial):
         self.plate_freq = 0
         self.step_count = 0
         self.tid = 0
-        self.spo = {"L1A_on": 654, "CAM1_on": 654, "CAM2_on": 654,
+        # Full offset set, matching stagePulseOffset in LegacyFirmware.cpp.
+        self.spo = {"CAM1_on": 654, "CAM1_off": 656,
+                    "L1A_on": 654, "L1A_off": 666,
+                    "CAM2_on": 654, "CAM2_off": 656,
+                    "L2A_on": 654, "L2A_off": 656,
                     "SWITCH": 697, "SEL1_on": 700, "SEL1_off": 701,
                     "SEL2_on": 710, "SEL2_off": 711,
                     "SEL3_on": 720, "SEL3_off": 721}
         self.pending = {}          # tid -> issued_at (UNSET, still judgeable)
         self.transit = {}          # tid -> (release_time, cat) judged/skipped,
                                    # still occupying RBuf until the selector
+        self.iot_armed = False
+        self.iot = []              # recorded [pulse, pin, val, tid] edges
+        self.gate_base = 1000      # synthetic gate pulse for a phantom object
         self.counts = {"SEL1": 0, "SEL2": 0, "SEL3": 0, "NA": 0}
         self.errors = []
         self.sel1_cd = -1
@@ -293,6 +300,36 @@ class FakeFirmware(FakeSerial):
         """Announce-to-selector time at the current window and plate speed."""
         pf = max(1, self.plate_freq)
         return (self.spo["SWITCH"] - self.spo["L1A_on"] + 78) / (2.0 * pf)
+
+    # IO-trace pin ids, mirroring HardwareConfig.hpp / IOT_PIN_SWITCH.
+    IOT = {"SWITCH": 0, "L1A": 16, "CAM1": 17, "L2A": 18, "CAM2": 19,
+           "SEL1": 25, "SEL2": 26}
+
+    def _iot_lights(self, tid):
+        """Record the light/camera edges a phantom fires, at spo offsets."""
+        if not self.iot_armed:
+            return
+        gate = self.gate_base + tid
+        edges = [("L1A_on", "L1A", 1), ("CAM1_on", "CAM1", 1),
+                 ("L2A_on", "L2A", 1), ("CAM2_on", "CAM2", 1),
+                 ("CAM1_off", "CAM1", 0), ("L2A_off", "L2A", 0),
+                 ("CAM2_off", "CAM2", 0), ("L1A_off", "L1A", 0)]
+        rows = sorted(((self.spo[k], self.IOT[pin], v, tid)
+                       for k, pin, v in edges), key=lambda r: r[0])
+        for off, pin, v, td in rows:
+            self.iot.append([gate + off, pin, v, td])
+
+    def _iot_dispatch(self, tid, cat):
+        """Record SWITCH + the selector edges when the object is judged."""
+        if not self.iot_armed:
+            return
+        gate = self.gate_base + tid
+        self.iot.append([gate + self.spo["SWITCH"], self.IOT["SWITCH"],
+                         cat, tid])
+        sel = "SEL1" if cat == 1 else ("SEL2" if cat == 2 else None)
+        if sel:
+            self.iot.append([gate + self.spo[f"{sel}_on"], self.IOT[sel], 1, 0])
+            self.iot.append([gate + self.spo[f"{sel}_off"], self.IOT[sel], 0, 0])
 
     def _qdepth(self):
         return len(self.pending) + len(self.transit)
@@ -416,6 +453,19 @@ class FakeFirmware(FakeSerial):
             for k in self.counts:
                 self.counts[k] = 0
             rep["type"] = "reset_running_stat"
+        elif t == "io_trace_arm":
+            self.iot_armed = True
+            self.iot = []
+            rep.update({"type": "io_trace_arm", "armed": True, "cap": 120})
+        elif t == "io_trace_stop":
+            self.iot_armed = False
+            rep.update({"type": "io_trace_stop", "n": len(self.iot)})
+        elif t == "io_trace_dump":
+            self.iot_armed = False
+            self.feed(json.dumps({"type": "io_trace_dump", "id": msg.get("id"),
+                                  "ack": True, "n": len(self.iot),
+                                  "emitted": len(self.iot), "ev": self.iot}))
+            return
         elif t == "trigCamPulse":
             # One announcement carrying the caller's trigger_id, no object
             # enqueued (Qs reflects the untouched RBuf depth).
@@ -442,6 +492,7 @@ class FakeFirmware(FakeSerial):
                 if self._qdepth() < self.RBUF_LEN:   # RBuf full: silent reject
                     self.tid += 1
                     self.pending[self.tid] = now
+                    self._iot_lights(self.tid)
                     if not self.drop_announce:
                         # Real firmware announces each object twice: CAM1
                         # (tidx=1) and CAM2 (tidx=2), same tid, same offset.
@@ -469,6 +520,7 @@ class FakeFirmware(FakeSerial):
                     self.transit[k] = (self.pending.pop(k) + travel, "SKIP")
             born = self.pending.pop(tid)
             self.transit[tid] = (born + travel, cat)
+            self._iot_dispatch(tid, cat)
         else:
             if self.state == self.ST_READY:
                 self.state = self.ST_ERROR
@@ -723,6 +775,55 @@ class TestProbe(unittest.TestCase):
         rows = self._run_probe(DoubleAnnounce(judge_deadline=5.0))
         self.assertFalse(rows["P.3"][2],
                          f"double announcement must fail P.3: {rows['P.3'][3]}")
+
+
+class TestIOTrace(unittest.TestCase):
+
+    def _run(self, fw):
+        link = make_link(fw)
+        rep = uinsp_test.Report()
+        try:
+            uinsp_test.iotrace(link, rep, 200, 1)
+        finally:
+            link._stop = True
+            fw.stop()
+            time.sleep(0.08)
+        return {r[0]: r for r in rep.rows}
+
+    def test_iotrace_happy_path(self):
+        fw = FakeFirmware(judge_deadline=5.0, min_sep_s=0.0)
+        rows = self._run(fw)
+        for ref in ("I.1", "I.2", "I.3", "I.4", "I.5", "I.6", "I.7", "I.8"):
+            self.assertIn(ref, rows)
+            self.assertTrue(rows[ref][2], f"{ref}: {rows[ref][3]}")
+
+    def test_misplaced_edge_is_caught(self):
+        # A firmware that fires an actuator at the wrong pulse offset must trip
+        # the offset check -- that is the whole reason for a real-geometry dump.
+        class SkewedCam(FakeFirmware):
+            def _iot_lights(self, tid):
+                if not self.iot_armed:
+                    return
+                self.spo["CAM1_on"] += 5      # CAM1 fires 5 steps too late
+                try:
+                    super()._iot_lights(tid)
+                finally:
+                    self.spo["CAM1_on"] -= 5
+        rows = self._run(SkewedCam(judge_deadline=5.0, min_sep_s=0.0))
+        self.assertFalse(rows["I.4"][2],
+                         f"a skewed CAM1 edge must fail I.4: {rows['I.4'][3]}")
+
+    def test_missed_window_shows_in_switch(self):
+        # If the verdict never lands, SWITCH dispatches UNSET (a large
+        # sentinel), not the reported cat -- I.6 must catch that.
+        class NeverJudged(FakeFirmware):
+            def _report(self, tid, cat):
+                pass          # drop every report
+        fw = NeverJudged(judge_deadline=5.0, min_sep_s=0.0)
+        rows = self._run(fw)
+        self.assertTrue(rows["I.4"][2], "light/camera edges still fire")
+        self.assertFalse(rows["I.6"][2],
+                         "no SWITCH dispatch recorded means I.6 cannot pass")
 
 
 class TestReport(unittest.TestCase):
