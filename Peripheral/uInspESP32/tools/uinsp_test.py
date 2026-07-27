@@ -918,6 +918,173 @@ def stall(link, rep, hz, stall_s, cat):
                   timeout=3.0)
 
 
+# --- chaos: randomized rate + plate speed + offset churn ------------------
+
+def chaos(link, rep, seconds, min_hz, max_hz, seed):
+    """Adversarial randomized stress. Fire objects at a rate that jitters every
+    pulse across [min_hz, max_hz], while under the run we also randomly change
+    the plate speed and shove the selector-offset window around. The offset
+    churn hammers the double-buffered publish path (pubcheck) with objects in
+    flight; the speed changes force ramps mid-stream.
+
+    Nothing here should fault, desync the tid sequence, overflow the queue, or
+    stop answering -- the machine must simply survive the churn. Only NEW
+    objects pick up a changed offset (a task's target is fixed when the object
+    registers), so an in-flight part never has its window yanked out from under
+    it; that is what makes the churn safe to demand zero faults from.
+    """
+    import random
+    rng = random.Random(seed)
+    print("\n\033[1m== Chaos: randomized rate + plate speed + offset churn =="
+          "\033[0m")
+    print(f"  {seconds}s, {min_hz}-{max_hz} obj/s, seed {seed}\n")
+
+    orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    orig_freq = orig.get("plateFreq")
+    orig_sep = orig.get("minDetectTimeSep_us")
+    orig_spo = dict(orig.get("stage_pulse_offset") or {})
+    l1a = int(orig_spo.get("L1A_on", 654))
+
+    # plateFreq floor so max_hz still clears the 91-step (3.5mm) distance gate:
+    # the wall gap 1/hz must exceed 91/(2*freq), i.e. freq > 91*hz/2. Keep the
+    # random speed band above that floor so acceptance never starves the rate.
+    freq_floor = int(91 * max_hz / 2 * 1.3) + 500
+    freq_ceil = freq_floor * 2
+
+    # The window (SWITCH offset past the camera trigger) is in plate steps, but
+    # the host's answer budget is wall-time = steps/(2*plateFreq). plateFreq
+    # ranges up to freq_ceil here, so size the window off the CEILING to keep a
+    # comfortable ~300ms budget even at top speed -- a 600-step window that is
+    # fine at plateFreq 1000 shrinks to ~100ms at these rates and drops parts.
+    win_lo = int(0.30 * 2 * freq_ceil)     # ~300ms of runway at the ceiling
+    win_hi = int(0.45 * 2 * freq_ceil)
+
+    def _win(base):
+        return {"SWITCH": l1a + base,
+                "SEL1_on": l1a + base + 3,  "SEL1_off": l1a + base + 4,
+                "SEL2_on": l1a + base + 13, "SEL2_off": l1a + base + 14,
+                "SEL3_on": l1a + base + 23, "SEL3_off": l1a + base + 24}
+
+    try:
+        link.send({"type": "clear_error"}, timeout=2.0)
+        link.send({"type": "clear_error_history"}, timeout=2.0)
+        sep_us = max(500, int(1e6 / max_hz / 3))   # let max_hz through the gate
+        link.send({"type": "set_setup", "plateFreq": freq_floor,
+                   "minDetectTimeSep_us": sep_us,
+                   "stage_pulse_offset": _win(win_lo)}, timeout=3.0)
+        link.send({"type": "enter_insp_mode"}, timeout=3.0)
+        _wait_at_speed(link)
+        st, _ = _state(link)
+        rep.add("C.0", "reached READY with the rate limiters opened",
+                st == ST_READY, f"plateFreq={freq_floor}..{freq_ceil} "
+                f"minDetectTimeSep_us={sep_us}")
+        if st != ST_READY:
+            return
+
+        link.drain_async()
+        tids, reported = [], set()
+        qs_max = 0
+        cats = (CAT_NA, 1, 2)
+        events = []
+        fault, unresponsive = None, False
+
+        def _pump():
+            nonlocal qs_max
+            for _, m in link.drain_async():
+                if m.get("type") != "bTrigInfo":
+                    continue
+                tid = m.get("tid")
+                if tid not in reported:
+                    tids.append(tid)
+                    reported.add(tid)
+                    qs_max = max(qs_max, m.get("Qs", 0) or 0)
+                    link.send_nowait({"type": "report", "tid": tid,
+                                      "cat": rng.choice(cats)})
+
+        t_end = time.time() + seconds
+        next_fire = time.time()
+        next_freq = time.time() + rng.uniform(1.5, 3.0)
+        next_offs = time.time() + rng.uniform(2.0, 4.0)
+        next_poll = time.time() + 0.5
+        fired = 0
+
+        while time.time() < t_end:
+            now = time.time()
+            _pump()
+            if now >= next_fire:
+                link.send_nowait({"type": "trig_phamton_pulse"})
+                fired += 1
+                next_fire = now + 1.0 / rng.uniform(min_hz, max_hz)
+            if now >= next_freq:
+                f = rng.randint(freq_floor, freq_ceil)
+                link.send({"type": "set_setup", "plateFreq": f}, timeout=2.0)
+                events.append(f"freq={f}")
+                next_freq = now + rng.uniform(1.5, 3.0)
+            if now >= next_offs:
+                base = rng.randint(win_lo, win_hi)   # stay generous, but move it
+                link.send({"type": "set_setup",
+                           "stage_pulse_offset": _win(base)}, timeout=2.0)
+                events.append(f"win={base}")
+                next_offs = now + rng.uniform(2.0, 4.0)
+            if now >= next_poll:
+                st, stat = _state(link)
+                if stat is None:
+                    unresponsive = True
+                    break
+                errs = _errors_of(stat)
+                if st == ST_ERROR or errs:
+                    fault = errs or ["state=ERROR"]
+                    break
+                next_poll = now + 0.5
+            time.sleep(0.001)
+
+        t_s = time.time() + 1.0           # answer the tail
+        while time.time() < t_s:
+            _pump()
+            time.sleep(0.003)
+
+        st, stat = _state(link)
+        errs = _errors_of(stat)
+        rate = fired / seconds if seconds else 0
+
+        rep.add("C.1", "survived the churn without faulting",
+                fault is None and not unresponsive and st == ST_READY
+                and not errs,
+                f"fired={fired} (~{rate:.0f}/s) objects={len(tids)} "
+                f"state={ST_NAME.get(st, st)}"
+                + (f" FAULT={[ERR_NAME.get(e, e) for e in fault]}"
+                   if fault else "")
+                + (" UNRESPONSIVE" if unresponsive else ""))
+
+        gaps = [(a, b) for a, b in zip(tids, tids[1:]) if b != a + 1]
+        rep.add("C.2", "accepted tids stayed strictly +1 through the churn",
+                bool(tids) and not gaps,
+                (f"tid {tids[0]}..{tids[-1]}" if tids else "no objects")
+                + (f" gaps:{gaps[:5]}" if gaps else ""))
+
+        rep.add("C.3", "firmware queue stayed bounded under load",
+                qs_max < PIPE_INFO_LEN, f"peak Qs={qs_max} of {PIPE_INFO_LEN}")
+
+        rep.add("C.4", "board still responsive after the run",
+                stat is not None, "no reply = hang/reboot")
+
+        print(f"\n  injected {len(events)} perturbations mid-run: "
+              f"{', '.join(events[:14])}{' ...' if len(events) > 14 else ''}")
+
+    finally:
+        link.send({"type": "clear_error"}, timeout=3.0)
+        link.send({"type": "exit_insp_mode"}, timeout=3.0)
+        restore = {"type": "set_setup"}
+        if isinstance(orig_freq, (int, float)):
+            restore["plateFreq"] = orig_freq
+        if isinstance(orig_sep, (int, float)):
+            restore["minDetectTimeSep_us"] = orig_sep
+        if orig_spo:
+            restore["stage_pulse_offset"] = orig_spo
+        link.send(restore, timeout=3.0)
+        link.send({"type": "clear_error_history"}, timeout=2.0)
+
+
 # --- probe: the protocol + camera-trigger surface -------------------------
 
 def probe(link, rep):
@@ -1660,6 +1827,15 @@ def main():
     sl.add_argument("--stall-seconds", type=float, default=5.0)
     sl.add_argument("--cat", type=int, default=CAT_NA)
 
+    ch = sub.add_parser("chaos",
+                        help="randomized rate + plate speed + offset churn; "
+                             "must survive without faulting -- board only")
+    ch.add_argument("--seconds", type=float, default=20.0)
+    ch.add_argument("--min-hz", type=float, default=30.0)
+    ch.add_argument("--max-hz", type=float, default=40.0)
+    ch.add_argument("--seed", type=int, default=None,
+                    help="RNG seed; default random, printed so a run repeats")
+
     s = sub.add_parser("send", help="send one raw JSON command")
     s.add_argument("json")
     sub.add_parser("all", help="stage0 + errorpath + monitor + selectors")
@@ -1707,6 +1883,10 @@ def main():
                    args.dwell, args.cat, not args.no_report)
         elif args.cmd == "stall":
             stall(link, rep, args.hz, args.stall_seconds, args.cat)
+        elif args.cmd == "chaos":
+            seed = (args.seed if args.seed is not None
+                    else int(time.time() * 1000) & 0xFFFFFFFF)
+            chaos(link, rep, args.seconds, args.min_hz, args.max_hz, seed)
         elif args.cmd == "all":
             stage0(link, rep)
             probe(link, rep)

@@ -732,6 +732,32 @@ class TestStress(unittest.TestCase):
                         f"unanswered parts must fault: {rows['T.2'][3]}")
         self.assertTrue(rows["T.3"][2], "board must still answer")
 
+    def test_chaos_survives(self):
+        # A healthy board under randomized rate/speed/offset churn must not
+        # fault, must keep tids contiguous, and must stay responsive.
+        fw = FakeFirmware(judge_deadline=30.0, min_sep_s=0.0)
+        rows = self._run(fw, uinsp_test.chaos, 6.0, 30.0, 40.0, 1234)
+        for ref in ("C.0", "C.1", "C.2", "C.3", "C.4"):
+            self.assertIn(ref, rows)
+            self.assertTrue(rows[ref][2], f"{ref}: {rows[ref][3]}")
+
+    def test_chaos_catches_a_fault(self):
+        # If the churn does trip a fault (here: a fake that faults the moment
+        # its offset is changed under load), C.1 must go red -- the survival
+        # claim can actually fail.
+        class FaultsOnOffsetChange(FakeFirmware):
+            def reply_to(self, msg):
+                if (msg.get("type") == "set_setup"
+                        and "stage_pulse_offset" in msg
+                        and self.state == self.ST_READY):
+                    self.state = self.ST_ERROR
+                    self.errors.append(self.E_NO_RESULT)
+                super().reply_to(msg)
+        fw = FaultsOnOffsetChange(judge_deadline=30.0, min_sep_s=0.0)
+        rows = self._run(fw, uinsp_test.chaos, 6.0, 30.0, 40.0, 1234)
+        self.assertFalse(rows["C.1"][2],
+                         f"a fault under churn must fail C.1: {rows['C.1'][3]}")
+
 
 class FakeFirmwareNoSkip(FakeFirmware):
     """Regression model: a report matches its own tid but does NOT mark older
