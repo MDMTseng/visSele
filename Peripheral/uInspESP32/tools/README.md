@@ -18,6 +18,7 @@ python uinsp_test.py --port COM6 bench              # ★ 光板：完整 tid �
 python uinsp_test.py --port COM6 probe              # ★ 光板：協定 + 相機觸發
 python uinsp_test.py --port COM6 edge               # ★ 光板：深層路徑
 python uinsp_test.py --port COM6 iotrace            # ★ 光板：真實 IO 時序
+python uinsp_test.py --port COM6 pubcheck           # ★ 光板：set_setup offset 是否到 ISR
 python uinsp_test.py --port COM6 errorpath          # 階段 0.7：錯誤路徑
 python uinsp_test.py --port COM6 monitor --seconds 60   # 階段 2：tid 連續性
 python uinsp_test.py --port COM6 selectors          # 階段 3.1/3.2：出口對應
@@ -161,6 +162,7 @@ RAM 代價：trace 環（120 筆）＋ dump buffer 約 5KB 靜態，佔用從 12
 | `probe` | 版本握手/計數歸零/相機觸發 | **只要板子** | 無 |
 | `edge` | NA/SKIP/去重/限量/協定鎖/佇列滿 | **只要板子** | 無 |
 | `iotrace` | 真實 IO 邊沿時序（韌體自錄）| **只要板子** | 無 |
+| `pubcheck` | set_setup 改 offset 後 ISR 是否真的拿到（雙緩衝發布路徑）| **只要板子** | 無 |
 | `errorpath` | 0.7 | 板子 + 閘門 | 手動遮閘門、目視氣閥 |
 | `monitor` | 2.3–2.4 | 完整機構 | 放料 |
 | `selectors` | 3.1–3.3 | 板子 + 氣閥 + 料槽 | **逐一打氣閥、記錄實體桶** |

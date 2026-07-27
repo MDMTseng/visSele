@@ -6,8 +6,9 @@
 >
 > 分析對象：`src/app/LegacyFirmware.cpp` @ `c1f0a7da`
 >
-> **狀態**：§2 §3 已修（見 §5.0）。§5.2（`STAGE_PULSE_OFFSET` 撕裂）已修。
-> §4 其餘小項仍待處理。
+> **狀態**：§2 §3 §5.2 §5.4 §5.5 **全部已修**。§4 標記的每一項都處理完了。
+> 佇列與撕裂靠推理修（測不出來），`STAGE_PULSE_OFFSET` 的發布路徑則另外用
+> `uinsp_test.py pubcheck` 做了可上機驗證的回歸測試（見 §6）。
 
 ---
 
@@ -206,19 +207,46 @@ SEL 的 offset 則在 SWITCH 分支較晚讀取。註冊與 SWITCH 之間若改�
 
 成本：兩份 60-byte 快照（RAM +120B），ISR 讀取多一次指標載入。
 
-### 5.4 加 `volatile`（部分已做）
+### 5.4 ✅ 已修：加 `volatile`
 
-`blockNewDetectedObject` 已加。剩 `minWidth`/`maxWidth`、`SYS_STEP_COUNT`、
-`pipeLineInfo::insp_status`。零成本，防編譯器把值快取在暫存器。
+全部完成。`blockNewDetectedObject`、`minWidth`/`maxWidth`（含 `MachineConfig.hpp`
+的 extern）、`SYS_STEP_COUNT`、`pipeLineInfo::insp_status` 都已標 `volatile`。
+每個都是「單一 writer / 對齊 32-bit」，所以存取本身原子；`volatile` 只是防編譯器
+把值快取在暫存器、跨中斷邊界讀到陳舊值。
 
-### 5.5 統計計數器降為 32 位元或加保護
+### 5.5 ✅ 已修：統計計數器降為 32 位元
 
-`SEL1_Count` 等改成 `uint32_t`（4 億顆料件才會 wrap，夠用），或在讀取端接受
-撕裂。目前只影響顯示。
+`SEL1/SEL2/SEL3/NA/SKIP_Count` 由 `uint64_t` 改為 `volatile uint32_t`。64-bit 在
+32-bit 核心上是兩次載入，`get_running_stat` 可能讀到跨進位的半更新值；32-bit 是
+單次對齊存取,讀取即原子。4.29e9 顆 ≈ 60/s 跑 800 天,而且本來就可重置。
+`reset_running_stat` 的歸零仍會與 ISR 的 `++` 競爭、在歸零瞬間可能少算一次——無害,
+且純顯示。
 
 ---
 
-## 6. 怎麼把它測出來
+## 6. 怎麼驗證
+
+分兩類，因為這些修正的可測性天差地別。
+
+### 6a. `STAGE_PULSE_OFFSET` 發布路徑 —— 可上機直接驗（`pubcheck`）
+
+雙緩衝唯一的回歸風險是「某處忘了呼叫 `STAGE_PULSE_OFFSET_publish()`」——那樣
+`get_setup` 會回報新 offset，但 ISR 仍用舊的。`iotrace` 看不出來（它只讀已生效的
+offset）。`pubcheck` 專門抓這個：
+
+```sh
+python uinsp_test.py --port COM6 pubcheck
+```
+
+它改一個 `SEL1_on`，發一顆假脈衝，再從韌體自錄的 `io_trace` **讀回實際邊沿位置**，
+確認 SEL1 真的在新 offset 觸發。忘了 publish 的話,SEL1 會停在舊 offset,`I.P` 直接
+FAIL 並印 `stale offset`。離線測試用一個「更新回報值但 io_trace 用舊值」的假韌體
+反向確認了這個檢查真的會抓到（`TestPubcheck.test_missing_publish_is_caught`）。
+
+### 6b. 佇列與撕裂 —— 測不出來，靠推理
+
+這幾條 race 是時序相關的，「跑一趟沒壞」不構成證據（見本檔開頭）。`stress` 只能
+**增加信心、抓明顯退化**，不能證明無誤：
 
 `tools/uinsp_test.py stress` 就是為此設計的：
 

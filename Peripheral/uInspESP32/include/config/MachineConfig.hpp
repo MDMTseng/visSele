@@ -37,8 +37,10 @@ typedef struct stagePulseOffset
 extern stagePulseOffset STAGE_PULSE_OFFSET;
 extern float SETUP_TAR_FREQ;
 extern uint32_t SYS_MIN_PULSE_TIME_SEP_us;
-extern int minWidth;
-extern int maxWidth;
+// volatile: shared between the main loop (set_setup) and the step ISR
+// (GateSensing) -- see LegacyFirmware.cpp.
+extern volatile int minWidth;
+extern volatile int maxWidth;
 
 #define MACHINE_ID_MAX_LEN 24
 

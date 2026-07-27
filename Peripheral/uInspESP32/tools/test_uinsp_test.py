@@ -626,6 +626,74 @@ class FakeFirmwareRateLimited(FakeFirmware):
         super().reply_to(msg)
 
 
+class FakeStalePublish(FakeFirmware):
+    """Models the one regression the STAGE_PULSE_OFFSET double-buffer could
+    introduce: set_setup updates the working copy get_setup reports, but the
+    change never reaches the ISR snapshot the edges fire from (i.e. someone
+    dropped the publish() call). get_setup looks right; the hardware fires at
+    the old offset."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.reported_spo = dict(self.spo)   # what get_setup shows
+
+    def reply_to(self, msg):
+        if msg.get("type") == "set_setup" and "stage_pulse_offset" in msg:
+            # Working copy moves; the ISR copy (self.spo, drives io_trace) does
+            # NOT -- the missing-publish bug.
+            self.reported_spo.update(msg["stage_pulse_offset"])
+            other = {k: v for k, v in msg.items() if k != "stage_pulse_offset"}
+            if other:
+                super().reply_to({**other, "type": "set_setup",
+                                  "id": msg.get("id")})
+            else:
+                self.feed(json.dumps({"id": msg.get("id"), "ack": True,
+                                      "type": "set_setup"}))
+            return
+        if msg.get("type") == "get_setup":
+            self.feed(json.dumps({"id": msg.get("id"), "ack": True,
+                                  "type": "get_setup", "machine_id": "BENCH",
+                                  "cfg_from_nvs": True, "plateFreq": self.plate_freq,
+                                  "SYS_STEP_COUNT": self.step_count,
+                                  "stage_pulse_offset": dict(self.reported_spo),
+                                  "pulse_minWidth": 0, "pulse_maxWidth": 1000}))
+            return
+        super().reply_to(msg)
+
+
+class TestPubcheck(unittest.TestCase):
+
+    def _run(self, fw):
+        link = make_link(fw)
+        rep = uinsp_test.Report()
+        try:
+            uinsp_test.pubcheck(link, rep, 200)
+        finally:
+            link._stop = True
+            fw.stop()
+            time.sleep(0.08)
+        return {r[0]: r for r in rep.rows}
+
+    def test_publish_propagates(self):
+        # Correct firmware: set_setup reaches the edges. I.P must pass.
+        fw = FakeFirmware(judge_deadline=5.0, min_sep_s=0.0)
+        rows = self._run(fw)
+        self.assertTrue(rows["I.P0"][2], "working copy should update")
+        self.assertTrue(rows["I.P"][2],
+                        f"ISR should fire at the new offset: {rows['I.P'][3]}")
+
+    def test_missing_publish_is_caught(self):
+        # The regression: get_setup shows the new value (I.P0 passes) but the
+        # edge fires at the old offset -- I.P must FAIL, or the check is useless.
+        fw = FakeStalePublish(judge_deadline=5.0, min_sep_s=0.0)
+        rows = self._run(fw)
+        self.assertTrue(rows["I.P0"][2],
+                        "working copy still updates -- that was never the bug")
+        self.assertFalse(rows["I.P"][2],
+                         "a stale ISR offset must be caught, not passed")
+        self.assertIn("stale offset", rows["I.P"][3])
+
+
 class TestStress(unittest.TestCase):
 
     def _run(self, fw, fn, *a):

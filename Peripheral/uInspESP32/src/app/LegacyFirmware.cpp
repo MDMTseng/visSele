@@ -81,15 +81,27 @@ int SEL1_ACT_COUNTDOWN=-1;
 typedef struct pipeLineInfo{
   uint32_t gate_pulse;
   int8_t stage;
-  int32_t insp_status;
+  // The verdict handoff: written by report (main loop) and by newPulseEvent /
+  // the SWITCH branch (ISR), read by the SWITCH branch (ISR) and the cleanup
+  // sweep (main loop). Aligned int32 so each access is atomic; volatile so
+  // neither side caches the other's write. The object is reached through a
+  // pointer into RBuf, never copied by value, so a volatile member is free.
+  volatile int32_t insp_status;
   uint32_t tid;
 }pipeLineInfo;
 
-uint64_t SEL1_Count=0;
-uint64_t SEL2_Count=0;
-uint64_t SEL3_Count=0;
-uint64_t NA_Count=0;
-uint64_t SKIP_Count=0;
+// Incremented from the ISR (Run_ACTS' SWITCH branch), read and zeroed from the
+// main loop (get_running_stat / reset_running_stat). Were uint64_t, which on a
+// 32-bit core is two loads -> get_running_stat could read a half-updated value
+// straddling a carry. 32-bit is a single aligned access, so the read is atomic;
+// 4.29e9 parts is ~800 days at 60/s and they are resettable stats anyway.
+// The reset store still races the ISR's ++ and may drop one count at the exact
+// moment of reset -- harmless, and display-only regardless.
+volatile uint32_t SEL1_Count=0;
+volatile uint32_t SEL2_Count=0;
+volatile uint32_t SEL3_Count=0;
+volatile uint32_t NA_Count=0;
+volatile uint32_t SKIP_Count=0;
 
 // stagePulseOffset now lives in config/MachineConfig.hpp so the NVS layer can
 // persist it. The values below remain the fallback for a board with no stored
@@ -1035,7 +1047,11 @@ extern void __digitalWrite(uint8_t pin, uint8_t val)
 
 
 
-uint32_t SYS_STEP_COUNT=0;
+// Advanced by the ISR (onTimer), read by the main loop (get_setup report,
+// bench's at-speed wait). Aligned 32-bit so each access is atomic; volatile so
+// the main loop re-reads it rather than caching a stale copy, and the ISR is
+// not free to hoist it. Single writer (the ISR), so its ++ needs no lock.
+volatile uint32_t SYS_STEP_COUNT=0;
 
 
 typedef struct GateInfo {
@@ -1072,8 +1088,10 @@ void RESET_GateSensing()
 
 bool _senseInv_=true;
 
-int  minWidth = 0;
-int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
+// Written by set_setup (main loop), read by GateSensing (ISR). Aligned int so
+// the access is atomic; volatile so the ISR does not cache a stale threshold.
+volatile int  minWidth = 0;
+volatile int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
 
 // Gate debounce, in gate-sample ticks (the timer runs at 2*plateFreq, so one
 // tick is ~1 step ~= _PLAT_DIST_um_PER_STEP of travel -- 38um on the 350mm

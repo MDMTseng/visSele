@@ -1451,6 +1451,109 @@ def iotrace(link, rep, plate_freq, cat):
                 f"plateFreq={orig_freq}")
 
 
+# --- publish path: does a set_setup offset reach the ISR? -----------------
+
+def pubcheck(link, rep, plate_freq):
+    """Prove STAGE_PULSE_OFFSET_publish() propagates a set_setup change all the
+    way to the timer ISR.
+
+    The firmware double-buffers the pulse offsets: set_setup edits a main-loop
+    working copy, and a publish step hands it to the ISR by an atomic pointer
+    swap (docs/CONCURRENCY_ANALYSIS.md 5.2). The one regression a missing
+    publish would cause is invisible to iotrace, which only reads the offsets
+    already in effect: get_setup would report the new value while the ISR kept
+    firing at the old one.
+
+    So change an offset, then read the ACTUAL edge back from io_trace and check
+    it moved. If publish() were dropped from setMachineSetup, SEL1 would still
+    fire at the old offset and I.P would fail even though get_setup looks right.
+    """
+    print("\n\033[1m== Publish check: set_setup offset reaches the ISR ==\033[0m")
+
+    orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    orig_freq = orig.get("plateFreq")
+    spo = dict(orig.get("stage_pulse_offset") or {})
+    base_sel1_on = spo.get("SEL1_on")
+    base_sel1_off = spo.get("SEL1_off")
+    if not isinstance(base_sel1_on, int):
+        rep.add("I.P", "read SEL1_on from get_setup", False, "no SEL1_on")
+        return
+
+    # Move SEL1 a few steps out and back within the same safe window. Small
+    # enough that the verdict still lands before it, distinct enough that a
+    # stale (un-published) offset is unambiguous.
+    new_sel1_on = base_sel1_on + 5
+    new_sel1_off = new_sel1_on + 1
+
+    link.send({"type": "clear_error"}, timeout=2.0)
+    link.send({"type": "clear_error_history"}, timeout=2.0)
+    try:
+        link.send({"type": "set_setup", "plateFreq": plate_freq}, timeout=3.0)
+        # The change under test.
+        link.send({"type": "set_setup", "stage_pulse_offset": {
+            "SEL1_on": new_sel1_on, "SEL1_off": new_sel1_off}}, timeout=3.0)
+
+        # Confirm the working copy took it (necessary but not sufficient -- this
+        # is the part that was always fine).
+        chk = (link.send({"type": "get_setup"}, timeout=3.0) or {}) \
+            .get("stage_pulse_offset") or {}
+        rep.add("I.P0", "set_setup updated the working copy",
+                chk.get("SEL1_on") == new_sel1_on,
+                f"SEL1_on now {chk.get('SEL1_on')} (was {base_sel1_on})")
+
+        link.send({"type": "enter_insp_mode"}, timeout=3.0)
+        _wait_at_speed(link)
+        link.send({"type": "io_trace_arm"}, timeout=3.0)
+        link.drain_async()
+
+        answered = set()
+        link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+        t_end = time.time() + 3.0
+        while time.time() < t_end:
+            for _, m in link.drain_async():
+                if m.get("type") == "bTrigInfo":
+                    tid = m.get("tid")
+                    if tid not in answered:
+                        answered.add(tid)
+                        link.send_nowait({"type": "report", "tid": tid, "cat": 1})
+            time.sleep(0.002)
+
+        dump = link.send({"type": "io_trace_dump"}, timeout=3.0) or {}
+        ev = dump.get("ev") or []
+        named = [(IOT_PIN.get(p, p), v, pulse, tid) for pulse, p, v, tid in ev]
+
+        anchor = next((pulse for nm, v, pulse, _ in named
+                       if nm == "L1A" and v == 1), None)
+        gate = (anchor - spo.get("L1A_on", 0)) if anchor is not None else None
+        sel1_on_pulse = next((pl for nm, v, pl, _ in named
+                              if nm == "SEL1" and v == 1), None)
+        actual = (sel1_on_pulse - gate) if (sel1_on_pulse is not None
+                                            and gate is not None) else None
+
+        # The real test: the ISR fired SEL1 at the NEW offset, not the old one.
+        rep.add("I.P", "ISR fired SEL1 at the newly-set offset (publish works)",
+                actual is not None and abs(actual - new_sel1_on) <= 1,
+                f"SEL1_on edge at offset {actual}; set {new_sel1_on}, "
+                f"old was {base_sel1_on}"
+                + ("  <-- stale offset: STAGE_PULSE_OFFSET_publish() not "
+                   "reaching the ISR" if actual == base_sel1_on else ""))
+
+    finally:
+        link.send({"type": "io_trace_stop"}, timeout=3.0)
+        link.send({"type": "clear_error"}, timeout=3.0)
+        link.send({"type": "exit_insp_mode"}, timeout=3.0)
+        restore = {"type": "set_setup", "stage_pulse_offset": {
+            "SEL1_on": base_sel1_on, "SEL1_off": base_sel1_off}}
+        if isinstance(orig_freq, (int, float)):
+            restore["plateFreq"] = orig_freq
+        link.send(restore, timeout=3.0)
+        back = (link.send({"type": "get_setup"}, timeout=3.0) or {}) \
+            .get("stage_pulse_offset") or {}
+        rep.add("I.P9", "restored SEL1 offset",
+                back.get("SEL1_on") == base_sel1_on,
+                f"SEL1_on back to {back.get('SEL1_on')}")
+
+
 # --- stage 3: which selector feeds which bin ------------------------------
 
 def selectors(link, rep):
@@ -1535,6 +1638,10 @@ def main():
                     help="plateFreq; low stretches the real 43-step window "
                          "into answerable ms so SWITCH/SEL fire in-window")
     it.add_argument("--cat", type=int, default=1, help="1=SEL1 2=SEL2")
+    pc = sub.add_parser("pubcheck",
+                        help="prove a set_setup offset change reaches the ISR "
+                             "(the STAGE_PULSE_OFFSET double-buffer) -- board only")
+    pc.add_argument("--freq", type=float, default=200)
     st_ = sub.add_parser("stress",
                          help="ramp the object rate until the pipeline gives "
                               "-- board only, no rig")
@@ -1593,6 +1700,8 @@ def main():
             edge(link, rep)
         elif args.cmd == "iotrace":
             iotrace(link, rep, args.freq, args.cat)
+        elif args.cmd == "pubcheck":
+            pubcheck(link, rep, args.freq)
         elif args.cmd == "stress":
             stress(link, rep, args.start_hz, args.max_hz, args.step_hz,
                    args.dwell, args.cat, not args.no_report)
