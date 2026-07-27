@@ -918,6 +918,82 @@ def stall(link, rep, hz, stall_s, cat):
                   timeout=3.0)
 
 
+# --- probe: the protocol + camera-trigger surface -------------------------
+
+def probe(link, rep):
+    """The command handlers bench/edge/stress never touch, kept to the ones
+    that are both safe to fire on a bare board and observable in the reply.
+
+    Deliberately excluded, because they actuate an output with nothing to read
+    back here and the checklist gates them behind a human at the machine:
+    PIN_ON/PIN_OFF/PIN_MODE (raw GPIO), sel_act (fires a valve -- stage 3,
+    "the one that cannot self-correct"), stepper_enable/disable (moves the
+    plate), and save_setup (burns a flash cycle; NVS survival is stage 0.5,
+    which needs a real power cycle anyway).
+    """
+    print("\n\033[1m== Probe: protocol + camera-trigger surface ==\033[0m")
+
+    # Keep everything in IDLE: none of these need inspection mode, and IDLE has
+    # no INSPECTION_ERROR transition so a stray report here cannot fault.
+    link.send({"type": "clear_error"}, timeout=2.0)
+    st, _ = _state(link)
+
+    # --- P.1: version handshake -------------------------------------------
+    # ask_JsonRaw_version stores the peer version and answers with the
+    # firmware's own -- the core leans on this reply to know it is talking to
+    # uInsp firmware and not, say, the CNC image that was on this very board.
+    # The reply carries a HARDCODED id (100446), not the command's, so it
+    # arrives as an async message rather than a matched reply -- drain for it.
+    link.drain_async()
+    link.send_nowait({"type": "ask_JsonRaw_version", "version": "probe-tool"})
+    ver, rtype = None, None
+    t_end = time.time() + 2.0
+    while time.time() < t_end and ver is None:
+        for _, m in link.drain_async():
+            if m.get("type") == "rsp_JsonRaw_version":
+                rtype, ver = m.get("type"), m.get("version")
+        time.sleep(0.02)
+    rep.add("P.1", "version handshake answers with a firmware version",
+            bool(rtype == "rsp_JsonRaw_version" and ver),
+            f"rsp={rtype} version={ver!r}")
+
+    # --- P.2: reset_running_stat ------------------------------------------
+    # Zeroes the SEL/NA tallies. Untested until now, and it is the only way to
+    # make a run assert on absolute counts instead of deltas.
+    link.send({"type": "reset_running_stat"}, timeout=3.0)
+    counts, _ = _counts(link)
+    zeroed = all(counts.get(k, -1) == 0 for k in ("SEL1", "SEL2", "SEL3", "NA"))
+    rep.add("P.2", "reset_running_stat zeroes every counter", zeroed,
+            f"counts={counts}")
+
+    # --- P.3: trigCamPulse -------------------------------------------------
+    # The camera-trigger simulation, distinct from trig_phamton_pulse: it
+    # announces ONE bTrigInfo carrying the caller's trigger_id and pulses the
+    # CAM/light pins, but does NOT call newPulseEvent, so no pipeline object is
+    # created (Qs stays where it was). This is the announce path stage 1 leans
+    # on -- verifiable before any camera is attached. A phantom pulse, by
+    # contrast, announces twice (CAM1+CAM2) and does enqueue an object.
+    link.drain_async()
+    marker = 424242
+    r = link.send({"type": "trigCamPulse", "trigger_id": marker},
+                  timeout=3.0)
+    time.sleep(0.5)
+    anns = [m for _, m in link.drain_async() if m.get("type") == "bTrigInfo"]
+    mine = [m for m in anns if m.get("tid") == marker]
+    qs = mine[0].get("Qs") if mine else None
+    rep.add("P.3", "trigCamPulse announces once with the caller's trigger_id,"
+            " enqueues no object",
+            bool(r) and len(mine) == 1 and mine[0].get("tidx") == 1
+            and qs == 0,
+            f"announcements for {marker}: {len(mine)} "
+            f"(tidx={mine[0].get('tidx') if mine else None}, Qs={qs}); "
+            f"a phantom pulse would announce twice and set Qs>0")
+
+    st, _ = _state(link)
+    rep.add("P.4", "still IDLE and responsive after the probes",
+            st == ST_IDLE, f"state={st} ({ST_NAME.get(st, '?')})")
+
+
 # --- edge: firmware paths bench/stress/stall never touch -------------------
 
 # Steps of announce-to-selector runway for the saturation run, and how many
@@ -1278,6 +1354,9 @@ def main():
                         "(~67ms) and clear the 3.5mm de-dup gate at --freq")
     b.add_argument("--cat", type=int, default=1,
                    help="1=SEL1 2=SEL2 65535=NA")
+    sub.add_parser("probe",
+                   help="protocol + camera-trigger surface: version handshake, "
+                        "reset_running_stat, trigCamPulse -- board only, no rig")
     sub.add_parser("edge",
                    help="deep firmware paths: NA verdict, SKIP absorption, "
                         "pulse-gate rejection, SEL1 countdown, protocol-error "
@@ -1334,6 +1413,8 @@ def main():
             monitor(link, rep, args.seconds)
         elif args.cmd == "bench":
             bench(link, rep, args.count, args.freq, args.interval_ms, args.cat)
+        elif args.cmd == "probe":
+            probe(link, rep)
         elif args.cmd == "edge":
             edge(link, rep)
         elif args.cmd == "stress":
@@ -1343,6 +1424,7 @@ def main():
             stall(link, rep, args.hz, args.stall_seconds, args.cat)
         elif args.cmd == "all":
             stage0(link, rep)
+            probe(link, rep)
             bench(link, rep, 10, 1000, 120, 1)
             edge(link, rep)
             stage_error(link, rep)

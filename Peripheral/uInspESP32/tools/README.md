@@ -15,6 +15,7 @@ pip install pyserial
 python uinsp_test.py ports                          # 找序列埠
 python uinsp_test.py --port COM6 stage0             # 階段 0：韌體單獨 + NVS
 python uinsp_test.py --port COM6 bench              # ★ 光板：完整 tid 往返
+python uinsp_test.py --port COM6 probe              # ★ 光板：協定 + 相機觸發
 python uinsp_test.py --port COM6 edge               # ★ 光板：深層路徑
 python uinsp_test.py --port COM6 errorpath          # 階段 0.7：錯誤路徑
 python uinsp_test.py --port COM6 monitor --seconds 60   # 階段 2：tid 連續性
@@ -83,6 +84,21 @@ sleep，這樣即使不撐窗口也能讓判定跑在物件前面。
 
 每次跑完會產出 `uinsp_verify_report.md`（`-o` 可改路徑），把結果貼回來就能對照。
 
+## ★ 協定 + 相機觸發（`probe`）—— 其餘命令處理器
+
+`bench`/`edge`/`stress` 沒碰到、但**安全又能觀察**的命令處理器。一樣只要板子：
+
+| # | 內容 | 為什麼重要 |
+|---|---|---|
+| P.1 | `ask_JsonRaw_version` 回 `rsp_JsonRaw_version` 帶版本字串（**注意**：回覆 id 寫死 100446，是非同步訊息不是配對回覆）| core 就是靠這個握手確認對面是 uInsp 韌體、不是這塊板上一版的 CNC image |
+| P.2 | `reset_running_stat` 把 SEL/NA 計數全部歸零 | 之前沒測過；也是讓測試能用絕對值而非增量斷言的唯一手段 |
+| P.3 | `trigCamPulse` 只 announce **一次**、帶呼叫端給的 `trigger_id`，且**不建立管線物件**（Qs 不變）| 這是階段 1 依賴的相機觸發 announce 路徑，接相機前就能先驗；對照假脈衝是 announce 兩次（CAM1+CAM2）且會進 RBuf |
+
+**刻意排除**（會驅動輸出、這裡沒有可讀回的狀態，清單也把它們留給現場人工）：
+`PIN_ON`/`PIN_OFF`/`PIN_MODE`（裸 GPIO）、`sel_act`（打氣閥，屬階段 3「錯了不會自己
+顯現」那條）、`stepper_enable`/`disable`（會動盤子）、`save_setup`（燒 flash；NVS
+存活是階段 0.5，本來就得真的斷電）。
+
 ## ★ 深層路徑（`edge`）—— bench 沒走到的那幾條
 
 `bench`/`stress`/`stall` 走的都是「回報 cat=1、一切正常」的主線。`edge` 補上
@@ -107,6 +123,7 @@ IDLE 狀態表**沒有** INSPECTION_ERROR 轉移，雜訊在 IDLE 只上鎖不�
 |---|---|---|---|
 | `stage0` | 0.1–0.6 | **只要板子** | 斷電重開兩次 |
 | `bench` | 0.7 / 2.x 的韌體側 | **只要板子** | 無 |
+| `probe` | 版本握手/計數歸零/相機觸發 | **只要板子** | 無 |
 | `edge` | NA/SKIP/去重/限量/協定鎖/佇列滿 | **只要板子** | 無 |
 | `errorpath` | 0.7 | 板子 + 閘門 | 手動遮閘門、目視氣閥 |
 | `monitor` | 2.3–2.4 | 完整機構 | 放料 |
@@ -140,7 +157,7 @@ latch 協定錯誤，之後除了 RESET 什麼都不理。上一輪跑到一半�
 ## 自我測試
 
 ```sh
-python test_uinsp_test.py        # 15 項，不需要硬體
+python test_uinsp_test.py        # 29 項，不需要硬體
 ```
 
 用假的序列埠模擬韌體行為，驗證分框（跨讀取切斷、背對背訊息、字串內含大括號、

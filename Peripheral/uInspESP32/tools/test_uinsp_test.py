@@ -406,6 +406,25 @@ class FakeFirmware(FakeSerial):
         elif t == "clear_error_history":
             self.errors.clear()
             rep["type"] = "clear_error_history"
+        elif t == "ask_JsonRaw_version":
+            # Real firmware answers with a HARDCODED id (100446), so the reply
+            # arrives async rather than matched to the command id.
+            self.feed(json.dumps({"type": "rsp_JsonRaw_version", "id": 100446,
+                                  "version": "0.0.0-fake"}))
+            return
+        elif t == "reset_running_stat":
+            for k in self.counts:
+                self.counts[k] = 0
+            rep["type"] = "reset_running_stat"
+        elif t == "trigCamPulse":
+            # One announcement carrying the caller's trigger_id, no object
+            # enqueued (Qs reflects the untouched RBuf depth).
+            now = time.time()
+            self.feed(json.dumps({"type": "bTrigInfo", "tidx": 1, "usH": 0,
+                                  "usL": int(now * 1e6) & 0xFFFFFFFF,
+                                  "tid": msg.get("trigger_id", 924949),
+                                  "Qs": self._qdepth()}))
+            rep["type"] = "trigCamPulse"
         elif t == "set_sel1_cd":
             self.sel1_cd = msg.get("count", 0)
             rep["type"] = "set_sel1_cd"
@@ -662,6 +681,48 @@ class TestEdge(unittest.TestCase):
         self.assertFalse(rows["E.5"][2],
                          f"a board that shrugs off garbage must fail E.5: "
                          f"{rows['E.5'][3]}")
+
+
+class TestProbe(unittest.TestCase):
+
+    def _run_probe(self, fw):
+        link = make_link(fw)
+        rep = uinsp_test.Report()
+        try:
+            uinsp_test.probe(link, rep)
+        finally:
+            link._stop = True
+            fw.stop()
+            time.sleep(0.08)
+        return {r[0]: r for r in rep.rows}
+
+    def test_probe_happy_path(self):
+        fw = FakeFirmware(judge_deadline=5.0)
+        fw.counts["NA"] = 17          # give reset_running_stat something to do
+        rows = self._run_probe(fw)
+        for ref in ("P.1", "P.2", "P.3", "P.4"):
+            self.assertIn(ref, rows)
+            self.assertTrue(rows[ref][2], f"{ref}: {rows[ref][3]}")
+
+    def test_trigcampulse_single_announcement(self):
+        # A regression that made trigCamPulse announce twice (like a phantom)
+        # or enqueue an object must trip P.3.
+        class DoubleAnnounce(FakeFirmware):
+            def reply_to(self, msg):
+                if msg.get("type") == "trigCamPulse":
+                    now = time.time()
+                    for _ in range(2):
+                        self.feed(json.dumps({"type": "bTrigInfo", "tidx": 1,
+                                              "usH": 0, "usL": 0,
+                                              "tid": msg.get("trigger_id"),
+                                              "Qs": 0}))
+                    self.feed(json.dumps({"id": msg.get("id"), "ack": True,
+                                          "type": "trigCamPulse"}))
+                    return
+                super().reply_to(msg)
+        rows = self._run_probe(DoubleAnnounce(judge_deadline=5.0))
+        self.assertFalse(rows["P.3"][2],
+                         f"double announcement must fail P.3: {rows['P.3'][3]}")
 
 
 class TestReport(unittest.TestCase):
