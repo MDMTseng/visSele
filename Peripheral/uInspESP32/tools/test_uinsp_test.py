@@ -741,6 +741,32 @@ class TestStress(unittest.TestCase):
             self.assertIn(ref, rows)
             self.assertTrue(rows[ref][2], f"{ref}: {rows[ref][3]}")
 
+    def test_chaos_persist_churn_survives(self):
+        # A healthy board answers the liveness probe after every NVS save.
+        fw = FakeFirmware(judge_deadline=30.0, min_sep_s=0.0)
+        rows = self._run(fw, uinsp_test.chaos, 8.0, 30.0, 40.0, 5, True)
+        self.assertIn("C.5", rows)
+        self.assertTrue(rows["C.5"][2], f"C.5: {rows['C.5'][3]}")
+
+    def test_chaos_persist_hang_is_caught(self):
+        # If a mid-run NVS save hangs the board (the IRAM/flash-cache hazard),
+        # the liveness probe misses and C.5 must go red. The fake plays dead
+        # just long enough to miss one probe, then recovers so teardown is fast.
+        class HangsOnPersist(FakeFirmware):
+            def reply_to(self, msg):
+                if getattr(self, "_dead_until", 0) > time.time():
+                    return
+                if msg.get("type") == "set_setup" and msg.get("persist"):
+                    # Stay dead past the 3s save timeout AND the 2s liveness
+                    # PING, then recover so teardown isn't all timeouts.
+                    self._dead_until = time.time() + 6.0
+                    return
+                super().reply_to(msg)
+        fw = HangsOnPersist(judge_deadline=30.0, min_sep_s=0.0)
+        rows = self._run(fw, uinsp_test.chaos, 8.0, 30.0, 40.0, 5, True)
+        self.assertFalse(rows["C.5"][2],
+                         f"a hung NVS save must fail C.5: {rows['C.5'][3]}")
+
     def test_chaos_catches_a_fault(self):
         # If the churn does trip a fault (here: a fake that faults the moment
         # its offset is changed under load), C.1 must go red -- the survival

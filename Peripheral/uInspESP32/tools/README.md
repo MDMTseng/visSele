@@ -155,7 +155,7 @@ RAM 代價：trace 環（120 筆）＋ dump buffer 約 5KB 靜態，佔用從 12
 
 ## ★ 亂流壓測（`chaos`）—— 隨機速率＋盤速＋offset 同時亂動
 
-`stress` 是一階一階往上爬找天花板；`chaos` 反過來——在**一段時間內同時亂動三件事**，
+`stress` 是一階一階往上爬找天花板；`chaos` 反過來——在**一段時間內同時亂動很多件事**，
 看機台會不會被搞出錯：
 
 - **物件速率**：每一顆的間距都在 `[--min-hz, --max-hz]`（預設 30～40/s）之間隨機。
@@ -163,10 +163,15 @@ RAM 代價：trace 環（120 筆）＋ dump buffer 約 5KB 靜態，佔用從 12
   逼出中途**斜坡**。
 - **選別窗口 offset**：每 2～4s 隨機把 `SWITCH`/`SEL*` 的 offset 挪一挪——這條會在
   「有物件在飛」的情況下**狂敲雙緩衝發布路徑**（就是 `pubcheck` 那條）。
+- **`minDetectTimeSep_us`**：每 2～4s 隨機挪時間去重門檻（保持在還能過 max-hz 的範圍）。
+- **並發查詢洪流**：整段期間每 ~0.1s 送一個 `PING`/`get_setup`/`get_running_stat`，
+  跟 bTrigInfo／report **搶序列埠頻寬**（core／WebUI 在現場就是這樣）。
+- **SEL1 批量計數**：每 3～5s 隨機設/清 `set_sel1_cd`。
 
 ```sh
 python uinsp_test.py --port COM6 chaos --seconds 25
 python uinsp_test.py --port COM6 chaos --seconds 30 --min-hz 30 --max-hz 40 --seed 111
+python uinsp_test.py --port COM6 chaos --seconds 20 --persist-churn   # 見下
 ```
 
 **通過標準是「撐得住」而不是精確計數**：
@@ -178,14 +183,24 @@ python uinsp_test.py --port COM6 chaos --seconds 30 --min-hz 30 --max-hz 40 --se
 | C.2 | 被接受的 `tid` 全程嚴格 +1（被門檻退掉的脈衝不吃號，所以不算斷號）|
 | C.3 | RBuf 深度全程 < `PIPE_INFO_LEN` |
 | C.4 | 跑完板子還會回應 |
+| C.5 | （只有 `--persist-churn`）每次跑中途 NVS persist 後板子都還答得出 PING |
 
 只影響**新**物件的 offset 改動是安全的關鍵：一顆 task 的目標 pulse 在物件註冊當下就
 定死了，所以飛到一半的料**不會被抽掉窗口**——這也是為什麼可以要求 offset 亂動下
 零錯誤。窗口以**盤速上限**換算成牆鐘時間來設（約 300ms 餘裕），否則高盤速時窗口在
 牆鐘上會縮到 ~100ms，host 回不及就會誤判成韌體問題。
 
-`--seed` 不給就用隨機值並印出來，出事可以照那個 seed 重跑。實測 25s、~30/s、
-十幾次隨機擾動下 5 項全過。
+### `--persist-churn`（opt-in，會燒 flash）
+
+跑中途反覆做 NVS persist（`set_setup persist:true`），每次寫完立刻探一下 PING。
+這是刻意去踩一個**已知隱患**：`onTimer` 是 `IRAM_ATTR`，但它呼叫的
+`StepGo`/`GateSensing`/`Run_ACTS` 不在 IRAM——flash 寫入會關 cache，timer ISR 若在那
+當下跑進非 cache 的 code 就可能卡死。C.5 過＝板子挺過了每一次寫入（實測 5 次都活著，
+代表該中斷在 flash 寫入時是被 mask/延後而不是硬跑）。**預設關**：會磨損 flash，真踩到
+隱患還可能要人工重新上電。跑完會把 NVS 還原（原本沒存設定就 `clear_saved_setup`）。
+
+`--seed` 不給就用隨機值並印出來，出事可以照那個 seed 重跑。實測 25s、~28～30/s、
+三十幾次隨機擾動＋查詢洪流下 5～6 項全過。
 
 ## 各子命令在測什麼
 
@@ -197,7 +212,7 @@ python uinsp_test.py --port COM6 chaos --seconds 30 --min-hz 30 --max-hz 40 --se
 | `edge` | NA/SKIP/去重/限量/協定鎖/佇列滿 | **只要板子** | 無 |
 | `iotrace` | 真實 IO 邊沿時序（韌體自錄）| **只要板子** | 無 |
 | `pubcheck` | set_setup 改 offset 後 ISR 是否真的拿到（雙緩衝發布路徑）| **只要板子** | 無 |
-| `chaos` | 隨機速率＋盤速＋offset 同時亂動下要撐得住 | **只要板子** | 無 |
+| `chaos` | 隨機速率＋盤速＋offset＋去重門檻＋查詢洪流＋NVS 同時亂動下要撐得住 | **只要板子** | 無 |
 | `errorpath` | 0.7 | 板子 + 閘門 | 手動遮閘門、目視氣閥 |
 | `monitor` | 2.3–2.4 | 完整機構 | 放料 |
 | `selectors` | 3.1–3.3 | 板子 + 氣閥 + 料槽 | **逐一打氣閥、記錄實體桶** |
@@ -230,7 +245,7 @@ latch 協定錯誤，之後除了 RESET 什麼都不理。上一輪跑到一半�
 ## 自我測試
 
 ```sh
-python test_uinsp_test.py        # 34 項，不需要硬體
+python test_uinsp_test.py        # 36 項，不需要硬體
 ```
 
 用假的序列埠模擬韌體行為，驗證分框（跨讀取切斷、背對背訊息、字串內含大括號、

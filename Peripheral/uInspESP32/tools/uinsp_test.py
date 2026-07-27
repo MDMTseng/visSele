@@ -920,12 +920,20 @@ def stall(link, rep, hz, stall_s, cat):
 
 # --- chaos: randomized rate + plate speed + offset churn ------------------
 
-def chaos(link, rep, seconds, min_hz, max_hz, seed):
+def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
     """Adversarial randomized stress. Fire objects at a rate that jitters every
-    pulse across [min_hz, max_hz], while under the run we also randomly change
-    the plate speed and shove the selector-offset window around. The offset
-    churn hammers the double-buffered publish path (pubcheck) with objects in
-    flight; the speed changes force ramps mid-stream.
+    pulse across [min_hz, max_hz], while under the run we ALSO randomly, and
+    concurrently: change the plate speed (mid-stream ramps); shove the
+    selector-offset window around (hammers the double-buffered publish path
+    with objects in flight); move the minDetectTimeSep_us rate gate; flood the
+    link with read commands (PING/get_setup/get_running_stat) to contend for
+    serial bandwidth; and churn the SEL1 batch countdown.
+
+    With --persist-churn it also fires NVS saves mid-run: onTimer is IRAM but
+    its callees (StepGo/GateSensing/Run_ACTS) are not, so a flash write with
+    the timer live is the one thing that could stall/crash the ISR. Each save
+    is followed by an immediate liveness probe (C.5). Off by default -- it
+    wears flash and can hang the board if that hazard is real.
 
     Nothing here should fault, desync the tid sequence, overflow the queue, or
     stop answering -- the machine must simply survive the churn. Only NEW
@@ -943,7 +951,13 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed):
     orig_freq = orig.get("plateFreq")
     orig_sep = orig.get("minDetectTimeSep_us")
     orig_spo = dict(orig.get("stage_pulse_offset") or {})
+    orig_nvs = bool(orig.get("cfg_from_nvs"))
     l1a = int(orig_spo.get("L1A_on", 654))
+
+    # minDetectTimeSep_us must stay below 1e6/max_hz or it caps the rate below
+    # the target; jitter it within a band that always admits max_hz.
+    sep_lo, sep_hi = 500, max(700, int(1e6 / max_hz / 2))
+    FLOOD = ("PING", "get_setup", "get_running_stat")
 
     # plateFreq floor so max_hz still clears the 91-step (3.5mm) distance gate:
     # the wall gap 1/hz must exceed 91/(2*freq), i.e. freq > 91*hz/2. Keep the
@@ -987,6 +1001,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed):
         cats = (CAT_NA, 1, 2)
         events = []
         fault, unresponsive = None, False
+        persist_total, persist_ok = 0, 0
 
         def _pump():
             nonlocal qs_max
@@ -1001,11 +1016,16 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed):
                     link.send_nowait({"type": "report", "tid": tid,
                                       "cat": rng.choice(cats)})
 
-        t_end = time.time() + seconds
-        next_fire = time.time()
-        next_freq = time.time() + rng.uniform(1.5, 3.0)
-        next_offs = time.time() + rng.uniform(2.0, 4.0)
-        next_poll = time.time() + 0.5
+        now0 = time.time()
+        t_end = now0 + seconds
+        next_fire = now0
+        next_freq = now0 + rng.uniform(1.5, 3.0)
+        next_offs = now0 + rng.uniform(2.0, 4.0)
+        next_sep = now0 + rng.uniform(2.0, 4.0)
+        next_sel = now0 + rng.uniform(3.0, 5.0)
+        next_flood = now0 + rng.uniform(0.08, 0.15)
+        next_persist = now0 + rng.uniform(3.0, 5.0)
+        next_poll = now0 + 0.5
         fired = 0
 
         while time.time() < t_end:
@@ -1015,6 +1035,9 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed):
                 link.send_nowait({"type": "trig_phamton_pulse"})
                 fired += 1
                 next_fire = now + 1.0 / rng.uniform(min_hz, max_hz)
+            if now >= next_flood:      # contend for serial bandwidth
+                link.send_nowait({"type": rng.choice(FLOOD)})
+                next_flood = now + rng.uniform(0.08, 0.15)
             if now >= next_freq:
                 f = rng.randint(freq_floor, freq_ceil)
                 link.send({"type": "set_setup", "plateFreq": f}, timeout=2.0)
@@ -1026,6 +1049,30 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed):
                            "stage_pulse_offset": _win(base)}, timeout=2.0)
                 events.append(f"win={base}")
                 next_offs = now + rng.uniform(2.0, 4.0)
+            if now >= next_sep:
+                sep = rng.randint(sep_lo, sep_hi)
+                link.send({"type": "set_setup",
+                           "minDetectTimeSep_us": sep}, timeout=2.0)
+                events.append(f"sep={sep}")
+                next_sep = now + rng.uniform(2.0, 4.0)
+            if now >= next_sel:
+                cd = rng.choice([-1, rng.randint(1, 20)])
+                link.send({"type": "set_sel1_cd", "count": cd}, timeout=2.0)
+                events.append(f"sel1cd={cd}")
+                next_sel = now + rng.uniform(3.0, 5.0)
+            if persist and now >= next_persist:
+                # NVS write with the timer live -- the IRAM/flash-cache hazard.
+                link.send({"type": "set_setup", "persist": True}, timeout=3.0)
+                persist_total += 1
+                pong = link.send({"type": "PING"}, timeout=2.0)  # liveness probe
+                if pong and pong.get("type") == "PONG":
+                    persist_ok += 1
+                else:
+                    unresponsive = True
+                    events.append("persist->NO PONG")
+                    break
+                events.append("persist")
+                next_persist = now + rng.uniform(3.0, 5.0)
             if now >= next_poll:
                 st, stat = _state(link)
                 if stat is None:
@@ -1068,12 +1115,19 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed):
         rep.add("C.4", "board still responsive after the run",
                 stat is not None, "no reply = hang/reboot")
 
+        if persist:
+            rep.add("C.5", "board answered after every mid-run NVS persist",
+                    persist_total > 0 and persist_ok == persist_total,
+                    f"{persist_ok}/{persist_total} PING after set_setup "
+                    f"persist:true (a miss = the IRAM/flash-cache ISR hazard)")
+
         print(f"\n  injected {len(events)} perturbations mid-run: "
               f"{', '.join(events[:14])}{' ...' if len(events) > 14 else ''}")
 
     finally:
         link.send({"type": "clear_error"}, timeout=3.0)
         link.send({"type": "exit_insp_mode"}, timeout=3.0)
+        link.send({"type": "set_sel1_cd", "count": -1}, timeout=3.0)
         restore = {"type": "set_setup"}
         if isinstance(orig_freq, (int, float)):
             restore["plateFreq"] = orig_freq
@@ -1083,6 +1137,13 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed):
             restore["stage_pulse_offset"] = orig_spo
         link.send(restore, timeout=3.0)
         link.send({"type": "clear_error_history"}, timeout=2.0)
+        # persist-churn left test values in NVS; put it back the way it was so
+        # the next boot doesn't come up on chaos junk.
+        if persist and persist_total:
+            if orig_nvs:
+                link.send({"type": "set_setup", "persist": True}, timeout=4.0)
+            else:
+                link.send({"type": "clear_saved_setup"}, timeout=4.0)
 
 
 # --- probe: the protocol + camera-trigger surface -------------------------
@@ -1835,6 +1896,9 @@ def main():
     ch.add_argument("--max-hz", type=float, default=40.0)
     ch.add_argument("--seed", type=int, default=None,
                     help="RNG seed; default random, printed so a run repeats")
+    ch.add_argument("--persist-churn", action="store_true",
+                    help="also fire NVS saves mid-run (probes the IRAM/flash "
+                         "ISR hazard); wears flash, can hang if the hazard is real")
 
     s = sub.add_parser("send", help="send one raw JSON command")
     s.add_argument("json")
@@ -1886,7 +1950,8 @@ def main():
         elif args.cmd == "chaos":
             seed = (args.seed if args.seed is not None
                     else int(time.time() * 1000) & 0xFFFFFFFF)
-            chaos(link, rep, args.seconds, args.min_hz, args.max_hz, seed)
+            chaos(link, rep, args.seconds, args.min_hz, args.max_hz, seed,
+                  persist=args.persist_churn)
         elif args.cmd == "all":
             stage0(link, rep)
             probe(link, rep)
