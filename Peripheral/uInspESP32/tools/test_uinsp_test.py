@@ -167,6 +167,18 @@ class TestFraming(unittest.TestCase):
         got = self._wait_async(1)
         self.assertEqual(got[0]["tid"], 9)
 
+    def test_poisoned_frame_resyncs(self):
+        # The firmware's recv_ERROR dbg embeds RAW received bytes; a stray
+        # quote in there flips the string parity and, before the resync guard,
+        # silenced reception permanently (hardware-reproduced: every reply
+        # after a protocol-error test vanished while commands kept executing).
+        self.fake.feed('{"dbg":"recv_ERROR:1 dat:@@"@"}')     # parity broken
+        time.sleep(1.3)                    # stale half-frame gets dropped
+        self.fake.feed('{"type":"x","tid":5}')
+        got = self._wait_async(1)
+        self.assertTrue(got and got[0].get("tid") == 5,
+                        "reader must recover from an unbalanced frame")
+
     def test_array_framing(self):
         self.fake.feed('[1,2,[3,4]]')
         end = time.time() + 1.0
@@ -244,7 +256,8 @@ class FakeFirmware(FakeSerial):
     """
 
     ST_IDLE, ST_READY, ST_ERROR = 100, 101, 112
-    E_NO_OBJECT, E_NO_RESULT = 1, 2
+    E_NO_OBJECT, E_NO_RESULT, E_PROTOCOL = 1, 2, 11
+    RBUF_LEN = 100
 
     def __init__(self, judge_deadline=1.0, drop_announce=False,
                  min_sep_s=0.067):
@@ -253,9 +266,18 @@ class FakeFirmware(FakeSerial):
         self.plate_freq = 0
         self.step_count = 0
         self.tid = 0
-        self.pending = {}          # tid -> issued_at
+        self.spo = {"L1A_on": 654, "CAM1_on": 654, "CAM2_on": 654,
+                    "SWITCH": 697, "SEL1_on": 700, "SEL1_off": 701,
+                    "SEL2_on": 710, "SEL2_off": 711,
+                    "SEL3_on": 720, "SEL3_off": 721}
+        self.pending = {}          # tid -> issued_at (UNSET, still judgeable)
+        self.transit = {}          # tid -> (release_time, cat) judged/skipped,
+                                   # still occupying RBuf until the selector
         self.counts = {"SEL1": 0, "SEL2": 0, "SEL3": 0, "NA": 0}
         self.errors = []
+        self.sel1_cd = -1
+        self.data_latched = False    # cleared by a RESET (substring or parsed)
+        self._errbuf = ""
         self.judge_deadline = judge_deadline
         self.drop_announce = drop_announce
         self.min_sep_s = min_sep_s
@@ -267,12 +289,41 @@ class FakeFirmware(FakeSerial):
     def stop(self):
         self._run = False
 
+    def _travel_s(self):
+        """Announce-to-selector time at the current window and plate speed."""
+        pf = max(1, self.plate_freq)
+        return (self.spo["SWITCH"] - self.spo["L1A_on"] + 78) / (2.0 * pf)
+
+    def _qdepth(self):
+        return len(self.pending) + len(self.transit)
+
+    def _release(self, cat):
+        """A judged object reaching the selector (real: ACT_SWITCH dispatch)."""
+        if cat == "SKIP":
+            return
+        if cat == 1:
+            if self.sel1_cd == 0:      # countdown spent: quiet, no count
+                return
+            if self.sel1_cd > 0:
+                self.sel1_cd -= 1
+            self.counts["SEL1"] += 1
+        elif cat == 2:
+            self.counts["SEL2"] += 1
+        elif cat == 3:
+            self.counts["SEL3"] += 1
+        elif cat == 0xFFFF:
+            self.counts["NA"] += 1
+
     def _tick(self):
         while self._run:
             time.sleep(0.05)
             if self.plate_freq > 0 and self.state in (self.ST_READY,):
                 self.step_count += int(self.plate_freq * 2 * 0.05)
             now = time.time()
+            for tid, (release, cat) in list(self.transit.items()):
+                if now >= release:
+                    del self.transit[tid]
+                    self._release(cat)
             # A pending object that reached the selector unjudged.
             for tid, born in list(self.pending.items()):
                 if now - born > self.judge_deadline:
@@ -281,8 +332,46 @@ class FakeFirmware(FakeSerial):
                         self.state = self.ST_ERROR
                         self.errors.append(self.E_NO_RESULT)
 
+    # -- the protocol-error latch (write-level, like the firmware's data
+    #    layer). Garbage latches + faults; while latched everything is eaten
+    #    during a scan for RESET; the recovery routes through
+    #    handleResetCommand, so one RESET clears the latch AND redeems. ------
+    def write(self, data):
+        text = data.decode()
+        self.written.append(text)
+        if self.data_latched:
+            self._errbuf += text
+            if '"type":"RESET"' in self._errbuf:
+                self._on_framing_reset()
+            return len(data)
+        try:
+            msg = json.loads(text)
+        except json.JSONDecodeError:
+            self.data_latched = True
+            self._errbuf = ""
+            if self.state == self.ST_READY:
+                self.state = self.ST_ERROR
+                self.errors.append(self.E_PROTOCOL)
+            return len(data)
+        if self.auto_reply:
+            self.reply_to(msg)
+        return len(data)
+
+    def _on_framing_reset(self):
+        """recv_RESET calls handleResetCommand: framing, the command lock and
+        a latch-caused fault all recover on the FIRST reset."""
+        self.data_latched = False
+        self._errbuf = ""
+        if self.state == self.ST_ERROR and self.E_PROTOCOL in self.errors:
+            self.state = self.ST_READY
+        self.feed('{"type":"RESET_OK"}')
+
     def reply_to(self, msg):
         t = msg.get("type")
+        if t == "RESET":
+            self.feed('{"type":"RESET_OK"}')
+            return
+
         rep = {"id": msg.get("id"), "ack": True}
 
         if t == "PING":
@@ -291,11 +380,15 @@ class FakeFirmware(FakeSerial):
             rep.update({"type": "get_setup", "machine_id": "BENCH",
                         "cfg_from_nvs": True, "plateFreq": self.plate_freq,
                         "SYS_STEP_COUNT": self.step_count,
-                        "stage_pulse_offset": {"CAM1_on": 654},
+                        "stage_pulse_offset": dict(self.spo),
                         "pulse_minWidth": 0, "pulse_maxWidth": 1000})
         elif t == "set_setup":
             if "plateFreq" in msg:
                 self.plate_freq = msg["plateFreq"]
+            if "minDetectTimeSep_us" in msg:
+                self.min_sep_s = msg["minDetectTimeSep_us"] / 1e6
+            if "stage_pulse_offset" in msg:
+                self.spo.update(msg["stage_pulse_offset"])
             rep["type"] = "set_setup"
         elif t == "enter_insp_mode":
             self.state = self.ST_READY
@@ -303,42 +396,64 @@ class FakeFirmware(FakeSerial):
         elif t == "exit_insp_mode":
             self.state = self.ST_IDLE
             self.pending.clear()
+            self.transit.clear()
             rep["type"] = "exit_insp_mode"
         elif t == "clear_error":
             self.state = self.ST_IDLE
             self.pending.clear()
+            self.transit.clear()
             rep["type"] = "clear_error"
+        elif t == "clear_error_history":
+            self.errors.clear()
+            rep["type"] = "clear_error_history"
+        elif t == "set_sel1_cd":
+            self.sel1_cd = msg.get("count", 0)
+            rep["type"] = "set_sel1_cd"
+        elif t == "get_sel1_cd":
+            rep.update({"type": "get_sel1_cd", "sel1_cd": self.sel1_cd})
         elif t == "get_running_stat":
             rep.update({"type": "get_running_stat", "state": self.state,
                         "count": dict(self.counts), "ERROR_HIST": list(self.errors),
-                        "plateFreq": self.plate_freq, "sel1_cd": -1})
+                        "plateFreq": self.plate_freq, "sel1_cd": self.sel1_cd})
         elif t == "trig_phamton_pulse":
             now = time.time()
             if (self.state == self.ST_READY and
                     now - self._last_pulse_t >= self.min_sep_s):
                 self._last_pulse_t = now
-                self.tid += 1
-                self.pending[self.tid] = now
-                if not self.drop_announce:
-                    self.feed(json.dumps({"type": "bTrigInfo", "tidx": 1,
-                                          "usH": 0, "usL": int(now * 1e6) & 0xFFFFFFFF,
-                                          "tid": self.tid, "Qs": len(self.pending)}))
+                if self._qdepth() < self.RBUF_LEN:   # RBuf full: silent reject
+                    self.tid += 1
+                    self.pending[self.tid] = now
+                    if not self.drop_announce:
+                        # Real firmware announces each object twice: CAM1
+                        # (tidx=1) and CAM2 (tidx=2), same tid, same offset.
+                        for tidx in (1, 2):
+                            self.feed(json.dumps({"type": "bTrigInfo",
+                                                  "tidx": tidx, "usH": 0,
+                                                  "usL": int(now * 1e6) & 0xFFFFFFFF,
+                                                  "tid": self.tid,
+                                                  "Qs": self._qdepth()}))
             rep["type"] = "trig_phamton_pulse"
         elif t == "report":
-            tid, cat = msg.get("tid"), msg.get("cat")
-            if tid in self.pending:
-                del self.pending[tid]
-                key = {1: "SEL1", 2: "SEL2", 3: "SEL3", 0xFFFF: "NA"}.get(cat)
-                if key:
-                    self.counts[key] += 1
-            else:
-                if self.state == self.ST_READY:
-                    self.state = self.ST_ERROR
-                    self.errors.append(self.E_NO_OBJECT)
+            self._report(msg.get("tid"), msg.get("cat"))
             return   # firmware sets doRsp=false for report
         else:
             rep["type"] = t
         self.feed(json.dumps(rep))
+
+    def _report(self, tid, cat):
+        if tid in self.pending:
+            travel = self._travel_s()
+            # Older UNSET objects are marked SKIP by the scan toward the
+            # reported tid -- the FIFO's desync absorber.
+            for k in list(self.pending):
+                if k < tid:
+                    self.transit[k] = (self.pending.pop(k) + travel, "SKIP")
+            born = self.pending.pop(tid)
+            self.transit[tid] = (born + travel, cat)
+        else:
+            if self.state == self.ST_READY:
+                self.state = self.ST_ERROR
+                self.errors.append(self.E_NO_OBJECT)
 
 
 class TestBench(unittest.TestCase):
@@ -415,6 +530,10 @@ class FakeFirmwareRateLimited(FakeFirmware):
             drained = min(self.commq, max(1, int(self.drain_hz * 0.05)))
             self.commq -= drained
             now = time.time()
+            for tid, (release, cat) in list(self.transit.items()):
+                if now >= release:
+                    del self.transit[tid]
+                    self._release(cat)
             for tid, born in list(self.pending.items()):
                 if now - born > self.judge_deadline:
                     del self.pending[tid]
@@ -473,6 +592,76 @@ class TestStress(unittest.TestCase):
         self.assertTrue(rows["T.2"][2],
                         f"unanswered parts must fault: {rows['T.2'][3]}")
         self.assertTrue(rows["T.3"][2], "board must still answer")
+
+
+class FakeFirmwareNoSkip(FakeFirmware):
+    """Regression model: a report matches its own tid but does NOT mark older
+    unanswered objects SKIP -- they ride to the selector unjudged and fault."""
+
+    def _report(self, tid, cat):
+        if tid in self.pending:
+            born = self.pending.pop(tid)
+            self.transit[tid] = (born + self._travel_s(), cat)
+        else:
+            if self.state == self.ST_READY:
+                self.state = self.ST_ERROR
+                self.errors.append(self.E_NO_OBJECT)
+
+
+class FakeFirmwareNoLatch(FakeFirmware):
+    """Regression model: garbage is shrugged off instead of latching -- the
+    board keeps answering as if nothing happened."""
+
+    def write(self, data):
+        text = data.decode()
+        self.written.append(text)
+        try:
+            msg = json.loads(text)
+        except json.JSONDecodeError:
+            return len(data)     # ignore garbage: no latch, no fault
+        if self.auto_reply:
+            self.reply_to(msg)
+        return len(data)
+
+
+class TestEdge(unittest.TestCase):
+
+    def _run_edge(self, fw, only=None):
+        link = make_link(fw)
+        rep = uinsp_test.Report()
+        try:
+            uinsp_test.edge(link, rep, only=only)
+        finally:
+            link._stop = True
+            fw.stop()
+            time.sleep(0.08)
+        return {r[0]: r for r in rep.rows}
+
+    def test_edge_happy_path(self):
+        fw = FakeFirmware(judge_deadline=1.5)
+        rows = self._run_edge(fw)
+        for ref in ("E.1", "E.2", "E.3", "E.4", "E.5", "E.5b", "E.6", "E.7"):
+            self.assertIn(ref, rows)
+            self.assertTrue(rows[ref][2], f"{ref}: {rows[ref][3]}")
+
+    def test_missing_skip_absorption_is_detected(self):
+        # If a newer report stops SKIPping older unanswered objects, E.2 must
+        # go red -- that silent absorber is what keeps a desynced FIFO from
+        # stopping the line on every recoverable hiccup.
+        fw = FakeFirmwareNoSkip(judge_deadline=1.5)
+        rows = self._run_edge(fw, only={"E.2"})
+        self.assertFalse(rows["E.2"][2],
+                         f"missing SKIP absorption must fail E.2: {rows['E.2'][3]}")
+
+    def test_missing_protocol_latch_is_detected(self):
+        # If garbage stops latching the link, commands after a corrupted
+        # stream would execute on whatever half-frame the parser salvages --
+        # E.5 must notice the board kept answering.
+        fw = FakeFirmwareNoLatch(judge_deadline=1.5)
+        rows = self._run_edge(fw, only={"E.5"})
+        self.assertFalse(rows["E.5"][2],
+                         f"a board that shrugs off garbage must fail E.5: "
+                         f"{rows['E.5'][3]}")
 
 
 class TestReport(unittest.TestCase):

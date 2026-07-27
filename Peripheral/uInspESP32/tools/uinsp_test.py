@@ -72,12 +72,37 @@ class UInspLink:
         depth = 0
         in_str = False
         esc = False
+        fails = 0
+        frame_t0 = None
         while not self._stop:
             try:
                 chunk = self.ser.read(4096)
-            except Exception:
-                break
+                fails = 0
+            except Exception as exc:
+                # A transient driver hiccup must not silently kill reception:
+                # writes would keep working, the board would keep executing
+                # commands, and every reply would just vanish for the rest of
+                # the run -- which looks exactly like a dead board.
+                if self._stop:
+                    break
+                fails += 1
+                if fails >= 50:
+                    print(f"  [serial read failed {fails}x, giving up: {exc}]")
+                    break
+                print(f"  [serial read error, retrying: {exc}]")
+                time.sleep(0.1)
+                continue
             if not chunk:
+                # A frame that has been open for over a second is not a slow
+                # frame -- at 115200 nothing legitimate takes that long. It is
+                # a poisoned one: the firmware's recv_ERROR dbg embeds RAW
+                # received bytes, and a stray quote in there flips the string
+                # parity so every later frame looks like string content and
+                # reception goes permanently silent. Drop it and resync.
+                if depth and frame_t0 and time.time() - frame_t0 > 1.0:
+                    print("  [dropping a stale half-frame; resyncing]")
+                    buf, depth, in_str, esc = "", 0, False, False
+                    frame_t0 = None
                 continue
             for ch in chunk.decode("utf-8", errors="replace"):
                 if depth == 0:
@@ -86,6 +111,7 @@ class UInspLink:
                     if ch not in "{[":
                         continue
                     buf = ""
+                    frame_t0 = time.time()
                 buf += ch
 
                 if in_str:
@@ -402,20 +428,53 @@ def _counts(link):
     return (r or {}).get("count", {}), r
 
 
-def _wait_ready(link, rep):
-    """Bring the board into INSPECTION_MODE_READY with its timer actually
-    ticking. Run_ACTS only executes from the timer ISR, so with plateFreq at 0
-    a phantom pulse is accepted and then never acted on -- which looks exactly
-    like a broken pipeline."""
-    a = link.send({"type": "get_setup"}, timeout=3.0)
-    if not a:
-        return False, "no reply to get_setup"
-    c1 = a.get("SYS_STEP_COUNT")
-    time.sleep(0.6)
-    b = link.send({"type": "get_setup"}, timeout=3.0)
-    c2 = (b or {}).get("SYS_STEP_COUNT")
-    running = (isinstance(c1, int) and isinstance(c2, int) and c2 != c1)
-    return running, f"SYS_STEP_COUNT {c1} -> {c2}"
+# Steps to push the selector past the camera trigger for the duration of a
+# bench. The real geometry leaves only SWITCH-L1A_on ~= 43 steps between the
+# bTrigInfo announcement and the selector -- a window the in-firmware C++ core
+# answers inside but a host scripting over serial cannot. This buys a
+# comfortable margin; the original offsets are restored when the bench ends.
+BENCH_WINDOW = 600
+
+
+def _widen_selector_window(link, orig_spo):
+    """Push SWITCH and the SEL outputs BENCH_WINDOW steps past the camera
+    trigger (where bTrigInfo is announced) so a host scripting over serial can
+    answer each tid before the part reaches the selector. Returns the SWITCH
+    offset it set on success, else None. Caller restores orig_spo when done."""
+    win = int((orig_spo or {}).get("L1A_on", 654)) + BENCH_WINDOW
+    link.send({"type": "set_setup", "stage_pulse_offset": {
+        "SWITCH": win,
+        "SEL1_on": win + 3,  "SEL1_off": win + 4,
+        "SEL2_on": win + 13, "SEL2_off": win + 14,
+        "SEL3_on": win + 23, "SEL3_off": win + 24}}, timeout=3.0)
+    back = ((link.send({"type": "get_setup"}, timeout=3.0) or {})
+            .get("stage_pulse_offset") or {})
+    return win if back.get("SWITCH") == win else None
+
+
+def _wait_at_speed(link, settle=0.15, tries=30):
+    """Block until the plate is turning at a steady rate.
+
+    newPulseEvent drops any pulse within 3.5 mm of the previous one, so
+    phantoms fired while SYS_CUR_FREQ is still ramping up from zero are silently
+    rejected and never become objects. Poll SYS_STEP_COUNT until the
+    per-interval delta stops climbing (the ramp has plateaued)."""
+    def ssc():
+        return (link.send({"type": "get_setup"}, timeout=3.0) or {}).get(
+            "SYS_STEP_COUNT")
+    prev = ssc()
+    last = None
+    for _ in range(tries):
+        time.sleep(settle)
+        cur = ssc()
+        if not (isinstance(prev, int) and isinstance(cur, int)):
+            return False, "no SYS_STEP_COUNT in get_setup"
+        d = cur - prev
+        prev = cur
+        if d > 0 and last is not None and d <= last * 1.05:
+            return True, f"steady ~{int(d / settle)} steps/s"
+        last = d
+    return (last or 0) > 0, f"~{int((last or 0) / settle)} steps/s (no plateau)"
 
 
 def bench(link, rep, count, freq, interval_ms, cat):
@@ -433,7 +492,21 @@ def bench(link, rep, count, freq, interval_ms, cat):
 
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
     orig_freq = orig.get("plateFreq")
+    orig_spo = dict(orig.get("stage_pulse_offset") or {})
     base_counts, _ = _counts(link)
+    # ERROR_HIST is a cumulative ring; clear it so the B.7/B.9/B.12 readouts
+    # reflect only what this run produced, not stale faults from earlier runs.
+    link.send({"type": "clear_error"}, timeout=2.0)
+    link.send({"type": "clear_error_history"}, timeout=2.0)
+
+    # Widen the selector window with firmware params so the round trip measures
+    # "does the pipeline route tids correctly", not "can the host answer inside
+    # 17 ms". Restored in the teardown below.
+    win = _widen_selector_window(link, orig_spo)
+    rep.add("B.0", "widen the selector window for a bare-board round trip",
+            win is not None,
+            f"SWITCH {orig_spo.get('SWITCH')} -> {win}"
+            f" ({BENCH_WINDOW} steps past the camera trigger)")
 
     r = link.send({"type": "set_setup", "plateFreq": freq}, timeout=3.0)
     rep.add("B.1", f"set plateFreq={freq}", bool(r), r)
@@ -441,8 +514,10 @@ def bench(link, rep, count, freq, interval_ms, cat):
     r = link.send({"type": "enter_insp_mode"}, timeout=3.0)
     rep.add("B.2", "enter_insp_mode", bool(r), r)
 
-    running, detail = _wait_ready(link, rep)
-    rep.add("B.3", "timer ISR is actually ticking", running, detail)
+    # Fire only once the plate is at speed -- see _wait_at_speed: phantoms fired
+    # mid-ramp fall inside the 3.5 mm de-dup gate and never become objects.
+    running, detail = _wait_at_speed(link)
+    rep.add("B.3", "timer ISR ticking at speed", running, detail)
     if not running:
         print("  \033[31m  Run_ACTS only runs from the timer ISR. Without it a"
               " phantom pulse is accepted and then never acted on.\033[0m")
@@ -451,44 +526,60 @@ def bench(link, rep, count, freq, interval_ms, cat):
     rep.add("B.4", "state is INSPECTION_MODE_READY", st == ST_READY,
             f"state={st} ({ST_NAME.get(st, '?')})")
 
-    # --- fire phantoms, answer each announced tid -------------------------
+    # --- fire phantoms, answer each object once, the instant it announces ---
+    # Every object announces bTrigInfo twice (CAM1 tidx=1, CAM2 tidx=2) at the
+    # same offset, so dedup by tid and report exactly once: a second report for
+    # a tid whose object has already passed would itself desync the machine.
+    # Answering on-announce (not after a fixed sleep) is what keeps the verdict
+    # ahead of the part even before the window is widened.
     link.drain_async()
-    fired, seen, reported, rejected = 0, [], [], []
+    fired, seen, reported = 0, [], []
+    answered = set()
 
-    for i in range(count):
-        r = link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
-        fired += 1
-        time.sleep(interval_ms / 1000.0)
-
+    def _pump():
         for _, msg in link.drain_async():
             if msg.get("type") != "bTrigInfo":
                 continue
             tid = msg.get("tid")
             seen.append(tid)
-            # report never answers (doRsp=false either way), so do not wait.
-            link.send_nowait({"type": "report", "tid": tid, "cat": cat})
-            reported.append(tid)
+            if tid not in answered:
+                link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+                answered.add(tid)
+                reported.append(tid)
 
-    time.sleep(0.5)
-    for _, msg in link.drain_async():
-        if msg.get("type") == "bTrigInfo":
-            seen.append(msg.get("tid"))
+    for i in range(count):
+        link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+        fired += 1
+        deadline = time.time() + interval_ms / 1000.0
+        while time.time() < deadline:      # answer ASAP, keep phantoms spaced
+            _pump()
+            time.sleep(0.002)
 
-    rep.add("B.5", "one bTrigInfo per phantom pulse", len(seen) == fired,
-            f"fired={fired} announced={len(seen)}"
+    drain_until = time.time() + 0.5
+    while time.time() < drain_until:       # let the last parts announce/clear
+        _pump()
+        time.sleep(0.005)
+
+    objs = sorted(set(seen))
+    per = {t: seen.count(t) for t in objs}
+    twice = bool(objs) and all(v == 2 for v in per.values())
+    rep.add("B.5", "one object per pulse, announced twice (CAM1+CAM2)",
+            len(objs) == fired and twice,
+            f"fired={fired} objects={len(objs)} announcements={len(seen)}"
             + ("  (newPulseEvent rejects pulses closer than "
                "SYS_MIN_PULSE_TIME_SEP_us or 3.5mm of travel -- raise "
-               "--interval-ms)" if len(seen) < fired else ""))
+               "--interval-ms)" if len(objs) < fired
+               else ("" if twice else f"  (not 2 per object: {per})")))
 
-    if seen:
-        gaps = [(a, b) for a, b in zip(seen, seen[1:]) if b != a + 1]
+    if objs:
+        gaps = [(a, b) for a, b in zip(objs, objs[1:]) if b != a + 1]
         rep.add("B.6", "tid strictly increasing by 1", not gaps,
-                f"tid {seen[0]}..{seen[-1]}" + (f" gaps:{gaps}" if gaps else ""))
+                f"tid {objs[0]}..{objs[-1]}" + (f" gaps:{gaps}" if gaps else ""))
 
     st, stat = _state(link)
     rep.add("B.7", "no error state after a full reported run", st == ST_READY,
             f"state={st} ({ST_NAME.get(st, '?')}) "
-            f"ERROR_HIST={(stat or {}).get('ERROR_HIST')}")
+            f"ERROR_HIST={_errors_of(stat)}")
 
     now_counts, _ = _counts(link)
     key = {1: "SEL1", 2: "SEL2", 3: "SEL3", CAT_NA: "NA"}.get(cat)
@@ -540,11 +631,19 @@ def bench(link, rep, count, freq, interval_ms, cat):
     # --- restore ----------------------------------------------------------
     link.send({"type": "clear_error"}, timeout=3.0)
     link.send({"type": "exit_insp_mode"}, timeout=3.0)
+    if orig_spo:
+        link.send({"type": "set_setup", "stage_pulse_offset": orig_spo},
+                  timeout=3.0)
     if isinstance(orig_freq, (int, float)):
         link.send({"type": "set_setup", "plateFreq": orig_freq}, timeout=3.0)
+    chk = ((link.send({"type": "get_setup"}, timeout=3.0) or {})
+           .get("stage_pulse_offset") or {})
     st, _ = _state(link)
-    rep.add("B.13", "returned to IDLE with plateFreq restored",
-            st == ST_IDLE, f"state={st} plateFreq={orig_freq}")
+    restored = (orig_spo.get("SWITCH") is None
+                or chk.get("SWITCH") == orig_spo.get("SWITCH"))
+    rep.add("B.13", "returned to IDLE, window + plateFreq restored",
+            st == ST_IDLE and restored,
+            f"state={st} SWITCH={chk.get('SWITCH')} plateFreq={orig_freq}")
 
 
 # --- stress: find the pipeline ceiling ------------------------------------
@@ -589,6 +688,13 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
     orig_freq = orig.get("plateFreq")
     orig_sep = orig.get("minDetectTimeSep_us")
+    orig_spo = dict(orig.get("stage_pulse_offset") or {})
+
+    # Widen the selector window (see _widen_selector_window). Without this the
+    # ramp measures how fast the host can answer inside the ~43-step gate, not
+    # the pipeline's real ceiling; the first late verdict faults the machine and
+    # the ramp stops at rate 1. Restored in the teardown below.
+    _widen_selector_window(link, orig_spo)
 
     # plateFreq needed so the 3.5mm distance gate clears fast enough for the
     # top rate we intend to ask for. ISR ticks at 2*plateFreq.
@@ -603,7 +709,7 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
     link.send({"type": "set_setup", "plateFreq": need_freq,
                "minDetectTimeSep_us": sep_us}, timeout=3.0)
     link.send({"type": "enter_insp_mode"}, timeout=3.0)
-    time.sleep(0.8)
+    _wait_at_speed(link)
 
     st, _ = _state(link)
     if st != ST_READY:
@@ -625,45 +731,61 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
     while hz <= max_hz:
         link.drain_async()
         link.send({"type": "clear_error"}, timeout=2.0)
+        # ERROR_HIST is a cumulative ring; without clearing it this rate would
+        # inherit every fault from earlier rates (and earlier sessions) and be
+        # judged as broken on stale history. Clear so errs reflects THIS rate.
+        link.send({"type": "clear_error_history"}, timeout=2.0)
         link.send({"type": "enter_insp_mode"}, timeout=2.0)
-        time.sleep(0.3)
+        # clear_error drops the plate back to a standstill, so wait for it to
+        # spin back up to speed. Firing during the ramp lands pulses inside the
+        # 3.5mm de-dup gate -- they are dropped, and a late tail verdict for a
+        # part that already faulted then reads as a tid desync.
+        _wait_at_speed(link)
         link.drain_async()
 
         period = 1.0 / hz
         n = max(1, int(dwell * hz))
         fired = 0
-        seen = []
+        seen = set()          # unique object tids (each announces twice)
+        reported = set()      # tids answered once -- a 2nd report desyncs
         qs_max = 0
         t0 = time.time()
 
         for i in range(n):
             deadline = t0 + i * period
-            slack = deadline - time.time()
-            if slack > 0:
-                time.sleep(slack)
+            # Drain continuously while pacing to the deadline: a bTrigInfo left
+            # sitting until the next fire would be answered up to a full period
+            # late and miss the selector even with the window widened.
+            while time.time() < deadline:
+                for _, msg in link.drain_async():
+                    if msg.get("type") == "bTrigInfo":
+                        tid = msg.get("tid")
+                        seen.add(tid)
+                        qs_max = max(qs_max, msg.get("Qs", 0) or 0)
+                        if do_report and tid not in reported:
+                            reported.add(tid)
+                            link.send_nowait({"type": "report", "tid": tid,
+                                              "cat": cat})
+                time.sleep(0.002)
             # No round trip: waiting on the ack would itself become the limit.
             link.send_nowait({"type": "trig_phamton_pulse"})
             fired += 1
 
-            for _, msg in link.drain_async():
-                if msg.get("type") == "bTrigInfo":
-                    tid = msg.get("tid")
-                    seen.append(tid)
-                    qs_max = max(qs_max, msg.get("Qs", 0) or 0)
-                    if do_report:
-                        link.send_nowait({"type": "report", "tid": tid, "cat": cat})
-
-        # let the tail drain
+        # Let the tail drain -- finely (2ms), the same cadence as the fire
+        # loop. A 50ms poll here can leave the last part's verdict later than
+        # its ~window-sized runway to the selector and fault an otherwise clean
+        # run on the final object alone.
         t_drain = time.time() + 1.5
         while time.time() < t_drain:
-            time.sleep(0.05)
             for _, msg in link.drain_async():
                 if msg.get("type") == "bTrigInfo":
                     tid = msg.get("tid")
-                    seen.append(tid)
+                    seen.add(tid)
                     qs_max = max(qs_max, msg.get("Qs", 0) or 0)
-                    if do_report:
+                    if do_report and tid not in reported:
+                        reported.add(tid)
                         link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+            time.sleep(0.002)
 
         st, stat = _state(link)
         errs = _errors_of(stat)
@@ -716,6 +838,8 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
         restore["plateFreq"] = orig_freq
     if isinstance(orig_sep, (int, float)):
         restore["minDetectTimeSep_us"] = orig_sep
+    if orig_spo:
+        restore["stage_pulse_offset"] = orig_spo
     link.send(restore, timeout=3.0)
     print(f"\n  restored plateFreq={orig_freq} minDetectTimeSep_us={orig_sep}")
 
@@ -729,21 +853,44 @@ def stall(link, rep, hz, stall_s, cat):
     print("  Expect OBJECT_HAS_NO_INSP_RESULT(2) -- a part reaching the")
     print("  selector with no verdict must stop the line, not guess.\n")
 
+    orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    orig_spo = dict(orig.get("stage_pulse_offset") or {})
+    # Widen the selector window so the host can answer inside it while healthy.
+    # The silent phase still faults -- those parts get no verdict at all, window
+    # or no window -- which is exactly what T.2 is checking for.
+    _widen_selector_window(link, orig_spo)
     link.send({"type": "set_setup", "plateFreq": 1000}, timeout=3.0)
     link.send({"type": "clear_error"}, timeout=2.0)
+    link.send({"type": "clear_error_history"}, timeout=2.0)   # judge this run only
     link.send({"type": "enter_insp_mode"}, timeout=3.0)
-    time.sleep(0.8)
+    _wait_at_speed(link)
     link.drain_async()
 
     period = 1.0 / hz
     answered = 0
-    for i in range(int(3 * hz)):
-        link.send_nowait({"type": "trig_phamton_pulse"})
-        time.sleep(period)
+    reported = set()          # each object announces twice -- answer it once
+
+    def _answer():
+        nonlocal answered
         for _, msg in link.drain_async():
             if msg.get("type") == "bTrigInfo":
-                link.send_nowait({"type": "report", "tid": msg["tid"], "cat": cat})
-                answered += 1
+                tid = msg["tid"]
+                if tid not in reported:
+                    reported.add(tid)
+                    link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+                    answered += 1
+
+    t0 = time.time()
+    for i in range(int(3 * hz)):
+        deadline = t0 + i * period
+        while time.time() < deadline:   # answer on-announce while pacing
+            _answer()
+            time.sleep(0.002)
+        link.send_nowait({"type": "trig_phamton_pulse"})
+    settle = time.time() + 0.4          # answer the last parts before checking
+    while time.time() < settle:
+        _answer()
+        time.sleep(0.002)
 
     st, _ = _state(link)
     rep.add("T.1", "healthy while answering", st == ST_READY,
@@ -766,6 +913,300 @@ def stall(link, rep, hz, stall_s, cat):
 
     link.send({"type": "clear_error"}, timeout=3.0)
     link.send({"type": "exit_insp_mode"}, timeout=3.0)
+    if orig_spo:
+        link.send({"type": "set_setup", "stage_pulse_offset": orig_spo},
+                  timeout=3.0)
+
+
+# --- edge: firmware paths bench/stress/stall never touch -------------------
+
+# Steps of announce-to-selector runway for the saturation run, and how many
+# phantoms to fire into it. At the minimum object spacing (~110 steps) the
+# runway would hold E6_WINDOW/110 ~= 127 objects in flight -- more than the
+# 100-deep RBuf -- so the firmware MUST start rejecting pulses, and must do it
+# silently without faulting. Both scale with step rate, so the numbers hold at
+# any plateFreq.
+E6_WINDOW = 14000
+E6_COUNT = 115
+
+
+def edge(link, rep, only=None):
+    """Deep firmware paths the bench never exercises.
+
+    E.1 the NA verdict (cat=0xFFFF counts, actuates nothing) -- what stage 2
+        leans on while sorting is off; E.2 SKIP absorption (a newer report
+        marks older unanswered objects SKIP instead of faulting); E.3 the
+        pulse de-dup gates reject without consuming a tid; E.4 the SEL1
+        countdown fires exactly N then goes quiet; E.5 the serial
+        protocol-error latch (garbage -> fault + silence -> one RESET recovers
+        and redeems); E.6 RBuf saturation rejects gracefully.
+    """
+    def _want(ref):
+        return only is None or ref in only
+
+    print("\n\033[1m== Edge: deep firmware paths, no rig required ==\033[0m")
+
+    orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    orig_freq = orig.get("plateFreq")
+    orig_sep = orig.get("minDetectTimeSep_us")
+    orig_spo = dict(orig.get("stage_pulse_offset") or {})
+    link.send({"type": "clear_error"}, timeout=2.0)
+    link.send({"type": "clear_error_history"}, timeout=2.0)
+
+    def _pump(answer_cat, seen, answered, qs=None):
+        for _, msg in link.drain_async():
+            if msg.get("type") != "bTrigInfo":
+                continue
+            tid = msg.get("tid")
+            seen.append(tid)
+            if qs is not None:
+                qs[0] = max(qs[0], msg.get("Qs", 0) or 0)
+            if answer_cat is not None and tid not in answered:
+                answered.add(tid)
+                link.send_nowait({"type": "report", "tid": tid,
+                                  "cat": answer_cat})
+
+    def _run_parts(n, interval_s, answer_cat):
+        """Fire n phantoms, answering (or deliberately not) on-announce."""
+        seen, answered = [], set()
+        link.drain_async()
+        for i in range(n):
+            link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+            deadline = time.time() + interval_s
+            while time.time() < deadline:
+                _pump(answer_cat, seen, answered)
+                time.sleep(0.002)
+        return seen, answered
+
+    def _settle(seconds, answer_cat, seen, answered):
+        t_end = time.time() + seconds
+        while time.time() < t_end:
+            _pump(answer_cat, seen, answered)
+            time.sleep(0.005)
+
+    try:
+        win = _widen_selector_window(link, orig_spo)
+        rep.add("E.0", "widen the selector window", win is not None,
+                f"SWITCH {orig_spo.get('SWITCH')} -> {win}")
+
+        # Slow plate: at ~600 the 3.5mm distance gate (~91 steps) costs ~76ms,
+        # just past the ~67ms time gate, and E.2's oldest part gets a ~0.56s
+        # runway to the selector -- room to observe three announcements and
+        # answer only the newest before anything arrives unjudged.
+        link.send({"type": "set_setup", "plateFreq": 600}, timeout=3.0)
+        link.send({"type": "enter_insp_mode"}, timeout=3.0)
+        _wait_at_speed(link)
+        st, _ = _state(link)
+        if st != ST_READY:
+            rep.add("E.0", "reached READY", False,
+                    f"state={st} ({ST_NAME.get(st, '?')}) -- aborting edge")
+            return
+
+        # --- E.1: NA is a verdict, not an error ---------------------------
+        # Stage 2 runs the whole line with sorting off: the core reports every
+        # part NA and expects it to recirculate. bench always reports cat=1,
+        # so this path -- count NA, actuate nothing, no fault -- was untested.
+        if _want("E.1"):
+            base, _ = _counts(link)
+            seen, answered = _run_parts(3, 0.12, CAT_NA)
+            _settle(2.0, CAT_NA, seen, answered)
+            st, _ = _state(link)
+            now, _ = _counts(link)
+            dna = now.get("NA", 0) - base.get("NA", 0)
+            dsel = sum(now.get(k, 0) - base.get(k, 0)
+                       for k in ("SEL1", "SEL2", "SEL3"))
+            rep.add("E.1", "cat=0xFFFF is a verdict: NA counts, no selector,"
+                    " no fault",
+                    st == ST_READY and dna == 3 and dsel == 0,
+                    f"NA +{dna} of 3, SEL +{dsel}, "
+                    f"state={ST_NAME.get(st, st)}")
+
+        # --- E.2: SKIP absorption -----------------------------------------
+        # The report handler marks older UNSET objects SKIP when a newer tid
+        # is answered. This is the FIFO's desync absorber: skipped parts pass
+        # the selector silently instead of faulting the line.
+        if _want("E.2"):
+            base, _ = _counts(link)
+            seen, _ = _run_parts(3, 0.12, None)     # answer nothing yet
+            t_lim = time.time() + 0.25
+            while time.time() < t_lim and len(set(seen)) < 3:
+                _pump(None, seen, set())
+                time.sleep(0.002)
+            tids = sorted(set(seen))
+            if len(tids) == 3:
+                link.send_nowait({"type": "report", "tid": tids[-1],
+                                  "cat": CAT_NA})
+            _settle(2.0, None, seen, set())
+            st, _ = _state(link)
+            now, _ = _counts(link)
+            dna = now.get("NA", 0) - base.get("NA", 0)
+            rep.add("E.2", "older unanswered parts SKIP on a newer report,"
+                    " no fault",
+                    len(tids) == 3 and st == ST_READY and dna == 1,
+                    f"answered newest of {tids}, NA +{dna} (skipped parts "
+                    f"count nowhere), state={ST_NAME.get(st, st)}")
+
+        # --- E.3: the de-dup gates reject without consuming a tid ---------
+        # A pulse inside SYS_MIN_PULSE_TIME_SEP_us / 3.5mm is dropped by
+        # newPulseEvent before a tid is issued. If a rejection ever consumed a
+        # tid, every bounce at the gate would desync the pairing from then on.
+        if _want("E.3"):
+            link.drain_async()
+            seen, answered = [], set()
+            link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+            link.send_nowait({"type": "trig_phamton_pulse"})   # inside both gates
+            time.sleep(0.2)
+            link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+            _settle(1.5, CAT_NA, seen, answered)
+            tids = sorted(set(seen))
+            st, _ = _state(link)
+            rep.add("E.3", "a gated-out pulse consumes no tid",
+                    len(tids) == 2 and tids[1] == tids[0] + 1
+                    and st == ST_READY,
+                    f"fired 3 (one back-to-back) -> objects {tids}, "
+                    f"state={ST_NAME.get(st, st)}")
+
+        # --- E.4: SEL1 countdown ------------------------------------------
+        # set_sel1_cd N: SEL1 actuates and counts exactly N more times, then
+        # goes quiet -- silently (the SEL_ACT_LIMIT_REACHES fault is compiled
+        # out), which is worth pinning down because a batch run that hits the
+        # limit looks exactly like a dead valve.
+        if _want("E.4"):
+            base, _ = _counts(link)
+            link.send({"type": "set_sel1_cd", "count": 2}, timeout=3.0)
+            cd0 = (link.send({"type": "get_sel1_cd"}, timeout=3.0)
+                   or {}).get("sel1_cd")
+            seen, answered = _run_parts(4, 0.12, 1)
+            _settle(2.5, 1, seen, answered)
+            cd1 = (link.send({"type": "get_sel1_cd"}, timeout=3.0)
+                   or {}).get("sel1_cd")
+            now, _ = _counts(link)
+            d1 = now.get("SEL1", 0) - base.get("SEL1", 0)
+            st, _ = _state(link)
+            rep.add("E.4", "SEL1 countdown fires exactly N then goes quiet,"
+                    " no fault",
+                    cd0 == 2 and cd1 == 0 and d1 == 2
+                    and len(answered) == 4 and st == ST_READY,
+                    f"sel1_cd {cd0}->{cd1}, SEL1 +{d1} of 4 reported cat=1, "
+                    f"state={ST_NAME.get(st, st)}")
+            link.send({"type": "set_sel1_cd", "count": -1}, timeout=3.0)
+
+        # --- E.5: the serial protocol-error latch -------------------------
+        # Garbage latches the link: the machine faults (SERIAL_PROTOCOL_ERROR
+        # =11) and the data layer eats every byte while scanning for a RESET.
+        # A single RESET recovers everything -- the framing recovery routes
+        # through handleResetCommand, which clears the command lock AND
+        # auto-redeems the fault (hardware-verified: state 112 -> 101 on the
+        # first RESET). The "send RESET twice per connection" convention
+        # (checklist 5.5) is belt and braces, not a requirement.
+        # Note IDLE has no INSPECTION_ERROR transition in the state table --
+        # this must run while READY or nothing faults.
+        if _want("E.5"):
+            link.send({"type": "clear_error_history"}, timeout=2.0)
+            link.drain_async()
+            link.ser.write(b"@@@@@@@@")           # not JSON: latch the link
+            time.sleep(0.4)
+            r1 = link.send({"type": "PING"}, timeout=1.0)      # eaten silently
+            link.ser.write(b'{"type":"RESET"}')   # recovers and auto-redeems
+            time.sleep(0.4)
+            link.drain_async()
+            r2 = link.send({"type": "PING"}, timeout=1.5)
+            st, stat = _state(link)
+            errs = _errors_of(stat)
+            rep.add("E.5", "garbage latches the link: silent until one RESET"
+                    " recovers it",
+                    r1 is None and bool(r2 and r2.get("type") == "PONG"),
+                    f"after garbage: {'silent' if r1 is None else r1}; "
+                    f"after RESET: {(r2 or {}).get('type')}")
+            rep.add("E.5b", "protocol error faulted (11) and RESET redeemed it",
+                    11 in errs and st == ST_READY,
+                    f"ERROR_HIST={errs} state={ST_NAME.get(st, st)} "
+                    f"(expect SERIAL_PROTOCOL_ERROR=11, back to READY)")
+
+        # --- E.6: RBuf saturation -----------------------------------------
+        # Give objects a runway long enough that more of them are in flight
+        # than RBuf can hold. The firmware must cap silently -- reject the
+        # excess pulses, announce nothing for them, fault nothing -- and drain
+        # clean. Answer everything on-announce so nothing faults for the
+        # legitimate reason.
+        if _want("E.6"):
+            link.send({"type": "clear_error_history"}, timeout=2.0)
+            l1a = int(orig_spo.get("L1A_on", 654))
+            win2 = l1a + E6_WINDOW
+            link.send({"type": "set_setup", "plateFreq": 1000,
+                       "minDetectTimeSep_us": 5000,
+                       "stage_pulse_offset": {
+                           "SWITCH": win2,
+                           "SEL1_on": win2 + 3,  "SEL1_off": win2 + 4,
+                           "SEL2_on": win2 + 13, "SEL2_off": win2 + 14,
+                           "SEL3_on": win2 + 23, "SEL3_off": win2 + 24}},
+                      timeout=3.0)
+            _wait_at_speed(link)
+
+            def _ssc():
+                return (link.send({"type": "get_setup"}, timeout=3.0)
+                        or {}).get("SYS_STEP_COUNT")
+            s0 = _ssc()
+            time.sleep(0.5)
+            s1 = _ssc()
+            rate = ((s1 - s0) / 0.5
+                    if isinstance(s0, int) and isinstance(s1, int) else 0)
+            if rate <= 0:
+                rep.add("E.6", "queue saturation", False,
+                        "could not measure the step rate")
+            else:
+                # 110 steps between pulses: just past the ~91-step distance
+                # gate, so pulses are accepted until RBuf itself says no.
+                interval = max(0.010, 110.0 / rate)
+                seen, answered = [], set()
+                qs = [0]
+                fired = 0
+                link.drain_async()
+                t0 = time.time()
+                for i in range(E6_COUNT):
+                    deadline = t0 + i * interval
+                    while time.time() < deadline:
+                        _pump(CAT_NA, seen, answered, qs)
+                        time.sleep(0.002)
+                    link.send_nowait({"type": "trig_phamton_pulse"})
+                    fired += 1
+                _settle(E6_WINDOW / rate + 2.0, CAT_NA, seen, answered)
+                objs = set(seen)
+                st, stat = _state(link)
+                errs = _errors_of(stat)
+                rep.add("E.6", "over-capacity pulses rejected silently, queue"
+                        " drains clean",
+                        qs[0] >= 90 and 85 <= len(objs) < fired
+                        and st == ST_READY and not errs,
+                        f"fired={fired} objects={len(objs)} "
+                        f"(RBuf holds {PIPE_INFO_LEN}) peak Qs={qs[0]} "
+                        f"errors={errs} state={ST_NAME.get(st, st)}")
+
+    finally:
+        # --- E.7: restore --------------------------------------------------
+        link.send({"type": "clear_error"}, timeout=3.0)
+        link.send({"type": "exit_insp_mode"}, timeout=3.0)
+        link.send({"type": "set_sel1_cd", "count": -1}, timeout=3.0)
+        link.send({"type": "clear_error_history"}, timeout=2.0)
+        restore = {"type": "set_setup"}
+        if isinstance(orig_freq, (int, float)):
+            restore["plateFreq"] = orig_freq
+        if isinstance(orig_sep, (int, float)):
+            restore["minDetectTimeSep_us"] = orig_sep
+        if orig_spo:
+            restore["stage_pulse_offset"] = orig_spo
+        link.send(restore, timeout=3.0)
+        chk = ((link.send({"type": "get_setup"}, timeout=3.0) or {})
+               .get("stage_pulse_offset") or {})
+        cd = (link.send({"type": "get_sel1_cd"}, timeout=3.0)
+              or {}).get("sel1_cd")
+        st, _ = _state(link)
+        rep.add("E.7", "board restored: IDLE, offsets back, countdown off",
+                st == ST_IDLE and cd == -1
+                and (orig_spo.get("SWITCH") is None
+                     or chk.get("SWITCH") == orig_spo.get("SWITCH")),
+                f"state={ST_NAME.get(st, st)} SWITCH={chk.get('SWITCH')} "
+                f"sel1_cd={cd}")
 
 
 # --- stage 3: which selector feeds which bin ------------------------------
@@ -832,10 +1273,15 @@ def main():
                             "needs only the board and USB, no rig")
     b.add_argument("--count", type=int, default=10)
     b.add_argument("--freq", type=float, default=1000)
-    b.add_argument("--interval-ms", type=int, default=250,
-                   help="must exceed SYS_MIN_PULSE_TIME_SEP_us (default ~67ms)")
+    b.add_argument("--interval-ms", type=int, default=120,
+                   help="phantom spacing; must exceed SYS_MIN_PULSE_TIME_SEP_us "
+                        "(~67ms) and clear the 3.5mm de-dup gate at --freq")
     b.add_argument("--cat", type=int, default=1,
                    help="1=SEL1 2=SEL2 65535=NA")
+    sub.add_parser("edge",
+                   help="deep firmware paths: NA verdict, SKIP absorption, "
+                        "pulse-gate rejection, SEL1 countdown, protocol-error "
+                        "latch, RBuf saturation -- board only, no rig")
     st_ = sub.add_parser("stress",
                          help="ramp the object rate until the pipeline gives "
                               "-- board only, no rig")
@@ -888,6 +1334,8 @@ def main():
             monitor(link, rep, args.seconds)
         elif args.cmd == "bench":
             bench(link, rep, args.count, args.freq, args.interval_ms, args.cat)
+        elif args.cmd == "edge":
+            edge(link, rep)
         elif args.cmd == "stress":
             stress(link, rep, args.start_hz, args.max_hz, args.step_hz,
                    args.dwell, args.cat, not args.no_report)
@@ -895,7 +1343,8 @@ def main():
             stall(link, rep, args.hz, args.stall_seconds, args.cat)
         elif args.cmd == "all":
             stage0(link, rep)
-            bench(link, rep, 10, 1000, 250, 1)
+            bench(link, rep, 10, 1000, 120, 1)
+            edge(link, rep)
             stage_error(link, rep)
             monitor(link, rep, 60)
             selectors(link, rep)
