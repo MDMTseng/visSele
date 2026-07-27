@@ -920,7 +920,8 @@ def stall(link, rep, hz, stall_s, cat):
 
 # --- chaos: randomized rate + plate speed + offset churn ------------------
 
-def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
+def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
+          verify=False):
     """Adversarial randomized stress. Fire objects at a rate that jitters every
     pulse across [min_hz, max_hz], while under the run we ALSO randomly, and
     concurrently: change the plate speed (mid-stream ramps); shove the
@@ -935,6 +936,14 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
     permits a save with the plate stopped. Because the guard blocks the write,
     this costs no flash -- it verifies the guard, it does not exercise the
     hazard.
+
+    With --verify-timing it periodically quiesces, fires ONE object at the
+    current (churned) offset, and dumps io_trace to confirm SWITCH/SEL landed on
+    that offset (C.6) -- the edges the publish path reads at dispatch. That
+    turns a persistent torn/stale offset read from invisible (still judged, tid
+    still contiguous, no fault) into a hard failure. It cannot see a purely
+    transient torn read during the write instant -- that needs a firmware-side
+    assertion -- but it catches a publish path that leaves a wrong value behind.
 
     Nothing here should fault, desync the tid sequence, overflow the queue, or
     stop answering -- the machine must simply survive the churn. Only NEW
@@ -1011,6 +1020,8 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
         events = []
         fault, unresponsive = None, False
         persist_total, persist_ok, persist_allowed = 0, 0, 0
+        cur_base = win_lo
+        checks_done, checks_ok, check_fails = 0, 0, []
 
         def _pump():
             nonlocal qs_max
@@ -1025,6 +1036,63 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
                     link.send_nowait({"type": "report", "tid": tid,
                                       "cat": rng.choice(cats)})
 
+        def _spotcheck(base):
+            """Fire ONE object at the CURRENT (churned) offset and confirm the
+            firmware routes SWITCH/SEL to it -- the edges the publish path reads
+            at dispatch. A torn/stale offset read shows up as SWITCH or SEL off
+            its expected pulse. Quiesce first so the trace holds just our part
+            (SEL edges log tid 0, so they are only attributable in isolation).
+            Returns (ok, detail)."""
+            link.send({"type": "set_sel1_cd", "count": -1}, timeout=2.0)
+            # Quiesce: stop firing but KEEP reporting (via _pump) so the parts
+            # already in flight get a verdict before SWITCH -- a bare wait here
+            # would fault them (OBJECT_HAS_NO_INSP_RESULT). 1.3s > the widest
+            # window traversal, so the pipeline empties and the freq settles.
+            tq = time.time() + 1.3
+            while time.time() < tq:
+                _pump()
+                time.sleep(0.003)
+            link.send({"type": "io_trace_arm"}, timeout=2.0)
+            link.drain_async()
+            link.send({"type": "trig_phamton_pulse"}, timeout=2.0)
+            te = time.time() + 1.3
+            while time.time() < te:
+                # Fold the probe object into the shared tid stream (report cat=1
+                # so SEL1 fires) -- otherwise its tid is a phantom gap in C.2.
+                for _, m in link.drain_async():
+                    if m.get("type") == "bTrigInfo":
+                        t = m.get("tid")
+                        if t not in reported:
+                            reported.add(t)
+                            tids.append(t)
+                            link.send_nowait({"type": "report", "tid": t,
+                                              "cat": 1})
+                time.sleep(0.003)
+            dump = link.send({"type": "io_trace_dump"}, timeout=3.0) or {}
+            link.send({"type": "io_trace_stop"}, timeout=2.0)
+            named = [(IOT_PIN.get(p, p), v, pl)
+                     for pl, p, v, _ in (dump.get("ev") or [])]
+
+            def _last(nm, vv):       # our object is the most recent in the ring
+                return next((pl for n, v, pl in reversed(named)
+                             if n == nm and v == vv), None)
+            l1a_on = _last("L1A", 1)
+            sw = _last("SWITCH", 1)
+            sw_val = next((v for n, v, pl in reversed(named)
+                           if n == "SWITCH"), None)
+            s1 = _last("SEL1", 1)
+            if l1a_on is None or sw is None:
+                return False, (f"base={base} incomplete trace "
+                               f"L1A_on={l1a_on} SWITCH={sw} n={dump.get('n')}")
+            # SWITCH offset (l1a+base) minus L1A_on offset (l1a) == base.
+            d_sw = sw - l1a_on
+            ok = abs(d_sw - base) <= 1 and sw_val == 1
+            d_sel = None if s1 is None else s1 - l1a_on
+            if s1 is not None:
+                ok = ok and abs(d_sel - (base + 3)) <= 1
+            return ok, (f"base={base} SWITCH-L1A={d_sw}(want {base}) "
+                        f"sw_val={sw_val} SEL1-L1A={d_sel}(want {base + 3})")
+
         now0 = time.time()
         t_end = now0 + seconds
         next_fire = now0
@@ -1034,6 +1102,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
         next_sel = now0 + rng.uniform(3.0, 5.0)
         next_flood = now0 + rng.uniform(0.08, 0.15)
         next_persist = now0 + rng.uniform(3.0, 5.0)
+        next_check = now0 + rng.uniform(6.0, 10.0)
         next_poll = now0 + 0.5
         fired = 0
 
@@ -1056,8 +1125,19 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
                 base = rng.randint(win_lo, win_hi)   # stay generous, but move it
                 link.send({"type": "set_setup",
                            "stage_pulse_offset": _win(base)}, timeout=2.0)
+                cur_base = base
                 events.append(f"win={base}")
                 next_offs = now + rng.uniform(2.0, 4.0)
+            if verify and now >= next_check:
+                ok, detail = _spotcheck(cur_base)
+                checks_done += 1
+                if ok:
+                    checks_ok += 1
+                else:
+                    check_fails.append(detail)
+                events.append("check" + ("" if ok else "-FAIL"))
+                next_fire = time.time()          # resume firing immediately
+                next_check = time.time() + rng.uniform(6.0, 10.0)
             if now >= next_sep:
                 sep = rng.randint(sep_lo, sep_hi)
                 link.send({"type": "set_setup",
@@ -1134,6 +1214,15 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
                     f"{persist_ok}/{persist_total} refused, "
                     f"{persist_allowed} wrongly allowed "
                     f"(a save with the timer ISR live is the flash-cache hazard)")
+
+        if verify:
+            rep.add("C.6", "actuator edges matched the published offset in "
+                    "every spot-check",
+                    checks_done > 0 and checks_ok == checks_done,
+                    f"{checks_ok}/{checks_done} spot-checks matched"
+                    + (f"; mismatches: {check_fails[:4]}" if check_fails
+                       else " (SWITCH/SEL landed on the current offset -- no "
+                            "torn/stale offset read observed)"))
 
         print(f"\n  injected {len(events)} perturbations mid-run: "
               f"{', '.join(events[:14])}{' ...' if len(events) > 14 else ''}")
@@ -1911,8 +2000,12 @@ def main():
     ch.add_argument("--seed", type=int, default=None,
                     help="RNG seed; default random, printed so a run repeats")
     ch.add_argument("--persist-churn", action="store_true",
-                    help="also fire NVS saves mid-run (probes the IRAM/flash "
-                         "ISR hazard); wears flash, can hang if the hazard is real")
+                    help="also attempt NVS saves mid-run and assert they are "
+                         "refused (the plate is spinning); wears no flash")
+    ch.add_argument("--verify-timing", action="store_true",
+                    help="periodically spot-check that SWITCH/SEL land on the "
+                         "current offset (catches a publish-path race); adds "
+                         "brief low-load gaps")
 
     s = sub.add_parser("send", help="send one raw JSON command")
     s.add_argument("json")
@@ -1965,7 +2058,7 @@ def main():
             seed = (args.seed if args.seed is not None
                     else int(time.time() * 1000) & 0xFFFFFFFF)
             chaos(link, rep, args.seconds, args.min_hz, args.max_hz, seed,
-                  persist=args.persist_churn)
+                  persist=args.persist_churn, verify=args.verify_timing)
         elif args.cmd == "all":
             stage0(link, rep)
             probe(link, rep)

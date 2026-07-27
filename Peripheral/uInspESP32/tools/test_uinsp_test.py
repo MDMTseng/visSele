@@ -780,6 +780,35 @@ class TestStress(unittest.TestCase):
         self.assertFalse(rows["C.5"][2],
                          f"an allowed mid-run save must fail C.5: {rows['C.5'][3]}")
 
+    def test_chaos_verify_timing_passes(self):
+        # A healthy board routes SWITCH/SEL to the current offset, so every
+        # spot-check matches and C.6 passes.
+        fw = FakeFirmware(judge_deadline=30.0, min_sep_s=0.0)
+        rows = self._run(fw, uinsp_test.chaos, 14.0, 30.0, 40.0, 7, False, True)
+        self.assertIn("C.6", rows)
+        self.assertTrue(rows["C.6"][2], f"C.6: {rows['C.6'][3]}")
+
+    def test_chaos_verify_catches_offset_race(self):
+        # A firmware whose SWITCH lands off the published offset (a torn/stale
+        # read) must trip C.6 -- otherwise the spot-check is worthless.
+        class SwitchSkew(FakeFirmware):
+            def _iot_dispatch(self, tid, cat):
+                if not self.iot_armed:
+                    return
+                gate = self.gate_base + tid
+                self.iot.append([gate + self.spo["SWITCH"] + 40,
+                                 self.IOT["SWITCH"], cat, tid])  # 40 steps off
+                sel = {1: "SEL1", 2: "SEL2"}.get(cat)
+                if sel:
+                    self.iot.append([gate + self.spo[f"{sel}_on"],
+                                     self.IOT[sel], 1, 0])
+                    self.iot.append([gate + self.spo[f"{sel}_off"],
+                                     self.IOT[sel], 0, 0])
+        fw = SwitchSkew(judge_deadline=30.0, min_sep_s=0.0)
+        rows = self._run(fw, uinsp_test.chaos, 14.0, 30.0, 40.0, 7, False, True)
+        self.assertFalse(rows["C.6"][2],
+                         f"a skewed SWITCH must fail C.6: {rows['C.6'][3]}")
+
     def test_chaos_catches_a_fault(self):
         # If the churn does trip a fault (here: a fake that faults the moment
         # its offset is changed under load), C.1 must go red -- the survival

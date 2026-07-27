@@ -184,6 +184,7 @@ python uinsp_test.py --port COM6 chaos --seconds 20 --persist-churn   # 見下
 | C.3 | RBuf 深度全程 < `PIPE_INFO_LEN` |
 | C.4 | 跑完板子還會回應 |
 | C.5 | （只有 `--persist-churn`）跑中途每次 NVS persist 都被**拒絕**（盤子在轉，存檔不安全）|
+| C.6 | （只有 `--verify-timing`）每次抽驗 SWITCH/SEL 都落在**當下**的 offset 上 |
 
 只影響**新**物件的 offset 改動是安全的關鍵：一顆 task 的目標 pulse 在物件註冊當下就
 定死了，所以飛到一半的料**不會被抽掉窗口**——這也是為什麼可以要求 offset 亂動下
@@ -216,6 +217,22 @@ python uinsp_test.py --port COM6 chaos --seconds 20 --persist-churn   # 見下
 
 `--seed` 不給就用隨機值並印出來，出事可以照那個 seed 重跑。實測 25s、~28～30/s、
 三十幾次隨機擾動＋查詢洪流下全過。
+
+### `--verify-timing`（抓 publish-path race）
+
+純負載的 chaos 只驗「不出錯／tid 連號／不當機」——一個把物件**派到錯 offset 但仍
+給了判定**的 race（例如發布路徑的 torn read）它看不到。加上這個旗標後，每 6～10s
+會抽驗一次：先靜默把在途料清掉，發**一顆**料，dump `io_trace`，確認 SWITCH／SEL 有
+落在**當下（被 churn 過的）**offset 上（`SWITCH-L1A==base`）。落錯就是讀到了殘留／
+torn 的 offset → C.6 紅。
+
+限制要講清楚：抽驗是在 churn 之間「settle 後」量的，所以抓得到**發布路徑留下錯值**
+（持續性），抓不到**寫入當下瞬間**的 torn read（那要韌體端 assert）。而且它會插入
+短暫的低負載空檔（吞吐會掉一些）。硬體實測 45s 下 4/4 抽驗全中。
+
+**它抓不到的（老實說）**：靜默的計數器 corruption、只在寫入瞬間發生且會自我修復的
+torn read、以及任何 race 是否會在 1 小時內剛好被時序命中——ISR 對 loop 的交錯**不受
+`--seed` 控制**，所以就算同 seed 也不保證重現。跑久只是加樣本，不是證明無 race。
 
 ## 各子命令在測什麼
 
@@ -260,7 +277,7 @@ latch 協定錯誤，之後除了 RESET 什麼都不理。上一輪跑到一半�
 ## 自我測試
 
 ```sh
-python test_uinsp_test.py        # 39 項，不需要硬體
+python test_uinsp_test.py        # 41 項，不需要硬體
 ```
 
 用假的序列埠模擬韌體行為，驗證分框（跨讀取切斷、背對背訊息、字串內含大括號、
