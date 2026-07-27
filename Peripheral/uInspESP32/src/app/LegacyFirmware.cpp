@@ -1300,6 +1300,17 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
   return 0;
 }
 
+// An NVS commit erases/writes flash, which disables the instruction cache. The
+// timer ISR (onTimer, IRAM) calls into non-IRAM code (Run_ACTS et al.), so a
+// save with the timer live risks a stall/reset. Only permit it once the plate
+// is fully stopped -- state IDLE AND SYS_CUR_FREQ==0, which is exactly when the
+// timer alarm has been disabled (see the SYS_CUR_FREQ==0 -> timerAlarmDisable
+// path). Setup is done stopped anyway, so this costs the caller nothing.
+static bool cfgPersistSafe()
+{
+  return sysinfo.state==SYS_STATE::IDLE && SYS_CUR_FREQ==0;
+}
+
 int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   
   if(opcode!=1)
@@ -1492,10 +1503,17 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     // Opt-in commit. Without "persist":true this behaves exactly as before --
     // RAM only, gone at power-off -- so probing/jogging during setup doesn't
-    // burn flash write cycles.
+    // burn flash write cycles. Refused unless the plate is stopped (see
+    // cfgPersistSafe): a flash write with the timer ISR live is unsafe.
     if(doc["persist"].is<bool>() && doc["persist"].as<bool>())
     {
-      retdoc["persisted"]=MachineConfig::save();
+      if(cfgPersistSafe())
+        retdoc["persisted"]=MachineConfig::save();
+      else
+      {
+        retdoc["persisted"]=false;
+        retdoc["persist_err"]="only in IDLE with plate stopped";
+      }
     }
 
     doRsp=rspAck=true;
@@ -1504,7 +1522,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   else if(strcmp(type,"save_setup")==0)
   {
     retdoc["type"]="save_setup";
-    retdoc["persisted"]=MachineConfig::save();
+    if(cfgPersistSafe())
+      retdoc["persisted"]=MachineConfig::save();
+    else
+    {
+      retdoc["persisted"]=false;
+      retdoc["persist_err"]="only in IDLE with plate stopped";
+    }
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"clear_saved_setup")==0)

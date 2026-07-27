@@ -929,11 +929,12 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
     link with read commands (PING/get_setup/get_running_stat) to contend for
     serial bandwidth; and churn the SEL1 batch countdown.
 
-    With --persist-churn it also fires NVS saves mid-run: onTimer is IRAM but
-    its callees (StepGo/GateSensing/Run_ACTS) are not, so a flash write with
-    the timer live is the one thing that could stall/crash the ISR. Each save
-    is followed by an immediate liveness probe (C.5). Off by default -- it
-    wears flash and can hang the board if that hazard is real.
+    With --persist-churn it also attempts NVS saves mid-run and asserts the
+    firmware REFUSES them (C.5): a flash write with the timer ISR live is
+    unsafe (onTimer is IRAM but its callees are not), so the firmware only
+    permits a save with the plate stopped. Because the guard blocks the write,
+    this costs no flash -- it verifies the guard, it does not exercise the
+    hazard.
 
     Nothing here should fault, desync the tid sequence, overflow the queue, or
     stop answering -- the machine must simply survive the churn. Only NEW
@@ -1001,7 +1002,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
         cats = (CAT_NA, 1, 2)
         events = []
         fault, unresponsive = None, False
-        persist_total, persist_ok = 0, 0
+        persist_total, persist_ok, persist_allowed = 0, 0, 0
 
         def _pump():
             nonlocal qs_max
@@ -1061,17 +1062,20 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
                 events.append(f"sel1cd={cd}")
                 next_sel = now + rng.uniform(3.0, 5.0)
             if persist and now >= next_persist:
-                # NVS write with the timer live -- the IRAM/flash-cache hazard.
-                link.send({"type": "set_setup", "persist": True}, timeout=3.0)
+                # Attempt an NVS save mid-run; the firmware must refuse it
+                # (plate is spinning -> flash write would be unsafe).
+                r = link.send({"type": "set_setup", "persist": True},
+                              timeout=3.0)
                 persist_total += 1
-                pong = link.send({"type": "PING"}, timeout=2.0)  # liveness probe
-                if pong and pong.get("type") == "PONG":
-                    persist_ok += 1
-                else:
+                if r is None:
                     unresponsive = True
-                    events.append("persist->NO PONG")
+                    events.append("persist->NO REPLY")
                     break
-                events.append("persist")
+                if r.get("persisted") is False:
+                    persist_ok += 1                 # correctly refused
+                else:
+                    persist_allowed += 1            # guard let it through
+                    events.append("persist-ALLOWED!")
                 next_persist = now + rng.uniform(3.0, 5.0)
             if now >= next_poll:
                 st, stat = _state(link)
@@ -1116,10 +1120,12 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
                 stat is not None, "no reply = hang/reboot")
 
         if persist:
-            rep.add("C.5", "board answered after every mid-run NVS persist",
-                    persist_total > 0 and persist_ok == persist_total,
-                    f"{persist_ok}/{persist_total} PING after set_setup "
-                    f"persist:true (a miss = the IRAM/flash-cache ISR hazard)")
+            rep.add("C.5", "mid-run NVS persist refused while the plate runs",
+                    persist_total > 0 and persist_ok == persist_total
+                    and persist_allowed == 0,
+                    f"{persist_ok}/{persist_total} refused, "
+                    f"{persist_allowed} wrongly allowed "
+                    f"(a save with the timer ISR live is the flash-cache hazard)")
 
         print(f"\n  injected {len(events)} perturbations mid-run: "
               f"{', '.join(events[:14])}{' ...' if len(events) > 14 else ''}")
@@ -1137,9 +1143,9 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False):
             restore["stage_pulse_offset"] = orig_spo
         link.send(restore, timeout=3.0)
         link.send({"type": "clear_error_history"}, timeout=2.0)
-        # persist-churn left test values in NVS; put it back the way it was so
-        # the next boot doesn't come up on chaos junk.
-        if persist and persist_total:
+        # The guard should have blocked every mid-run save, so NVS is normally
+        # untouched. Only clean up if one slipped through (guard regression).
+        if persist and persist_allowed:
             if orig_nvs:
                 link.send({"type": "set_setup", "persist": True}, timeout=4.0)
             else:

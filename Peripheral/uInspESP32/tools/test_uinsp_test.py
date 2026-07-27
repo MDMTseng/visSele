@@ -427,6 +427,14 @@ class FakeFirmware(FakeSerial):
             if "stage_pulse_offset" in msg:
                 self.spo.update(msg["stage_pulse_offset"])
             rep["type"] = "set_setup"
+            if msg.get("persist"):
+                # Guard: a save is only permitted with the plate stopped
+                # (IDLE + plateFreq 0). Otherwise refuse, don't write flash.
+                if self.state == self.ST_IDLE and self.plate_freq == 0:
+                    rep["persisted"] = True
+                else:
+                    rep["persisted"] = False
+                    rep["persist_err"] = "only in IDLE with plate stopped"
         elif t == "enter_insp_mode":
             self.state = self.ST_READY
             rep["type"] = "enter_insp_mode"
@@ -741,31 +749,29 @@ class TestStress(unittest.TestCase):
             self.assertIn(ref, rows)
             self.assertTrue(rows[ref][2], f"{ref}: {rows[ref][3]}")
 
-    def test_chaos_persist_churn_survives(self):
-        # A healthy board answers the liveness probe after every NVS save.
+    def test_chaos_persist_refused_while_running(self):
+        # The plate is spinning through the whole run, so every mid-run save
+        # must come back persisted:false. C.5 passes when all are refused.
         fw = FakeFirmware(judge_deadline=30.0, min_sep_s=0.0)
         rows = self._run(fw, uinsp_test.chaos, 8.0, 30.0, 40.0, 5, True)
         self.assertIn("C.5", rows)
         self.assertTrue(rows["C.5"][2], f"C.5: {rows['C.5'][3]}")
 
-    def test_chaos_persist_hang_is_caught(self):
-        # If a mid-run NVS save hangs the board (the IRAM/flash-cache hazard),
-        # the liveness probe misses and C.5 must go red. The fake plays dead
-        # just long enough to miss one probe, then recovers so teardown is fast.
-        class HangsOnPersist(FakeFirmware):
+    def test_chaos_unguarded_persist_is_caught(self):
+        # A firmware that lets a save through while running (missing guard)
+        # must fail C.5 -- that write is exactly the flash-cache hazard.
+        class UnguardedPersist(FakeFirmware):
             def reply_to(self, msg):
-                if getattr(self, "_dead_until", 0) > time.time():
-                    return
                 if msg.get("type") == "set_setup" and msg.get("persist"):
-                    # Stay dead past the 3s save timeout AND the 2s liveness
-                    # PING, then recover so teardown isn't all timeouts.
-                    self._dead_until = time.time() + 6.0
+                    self.feed(json.dumps({"id": msg.get("id"), "ack": True,
+                                          "type": "set_setup",
+                                          "persisted": True}))
                     return
                 super().reply_to(msg)
-        fw = HangsOnPersist(judge_deadline=30.0, min_sep_s=0.0)
+        fw = UnguardedPersist(judge_deadline=30.0, min_sep_s=0.0)
         rows = self._run(fw, uinsp_test.chaos, 8.0, 30.0, 40.0, 5, True)
         self.assertFalse(rows["C.5"][2],
-                         f"a hung NVS save must fail C.5: {rows['C.5'][3]}")
+                         f"an allowed mid-run save must fail C.5: {rows['C.5'][3]}")
 
     def test_chaos_catches_a_fault(self):
         # If the churn does trip a fault (here: a fake that faults the moment
@@ -853,6 +859,32 @@ class TestEdge(unittest.TestCase):
         self.assertFalse(rows["E.5"][2],
                          f"a board that shrugs off garbage must fail E.5: "
                          f"{rows['E.5'][3]}")
+
+
+class TestPersistGuard(unittest.TestCase):
+    """The NVS-save state guard: allowed only with the plate stopped."""
+
+    def _link(self):
+        fw = FakeFirmware(judge_deadline=30.0, min_sep_s=0.0)
+        self.addCleanup(fw.stop)
+        link = make_link(fw)
+        self.addCleanup(setattr, link, "_stop", True)
+        return link
+
+    def test_persist_allowed_when_idle_and_stopped(self):
+        link = self._link()
+        r = link.send({"type": "set_setup", "persist": True}, timeout=2.0)
+        self.assertTrue(r and r.get("persisted") is True,
+                        f"a stopped board must allow the save: {r}")
+
+    def test_persist_refused_while_running(self):
+        link = self._link()
+        link.send({"type": "set_setup", "plateFreq": 1000}, timeout=2.0)
+        link.send({"type": "enter_insp_mode"}, timeout=2.0)
+        r = link.send({"type": "set_setup", "persist": True}, timeout=2.0)
+        self.assertTrue(r and r.get("persisted") is False,
+                        f"a running board must refuse the save: {r}")
+        self.assertIn("persist_err", r)
 
 
 class TestProbe(unittest.TestCase):
