@@ -121,6 +121,42 @@ stagePulseOffset STAGE_PULSE_OFFSET={
 
 };
 
+// STAGE_PULSE_OFFSET above is the main-loop-owned working copy: set_setup edits
+// it field by field, MachineConfig reads/writes it as a whole, get_setup reports
+// it. The step ISR must NOT read it directly -- a 15-field struct updated in
+// place is torn from an interrupt's point of view, so one object could be timed
+// with half the old configuration and half the new (see
+// docs/CONCURRENCY_ANALYSIS.md 5.2).
+//
+// Instead the ISR reads through SPO_active, which always points at a snapshot
+// that is never mid-write. The writer fills the OTHER snapshot with interrupts
+// enabled (no step-timer stall, unlike a critical section around 15 JSON field
+// extractions) and commits with a single atomic pointer swap. A read of
+// SPO_active therefore sees one buffer or the other, whole, never a mix.
+//
+// Note this does not, and need not, make an object's whole lifecycle coherent:
+// ACT_PUSH_TASK bakes gate_pulse+offset into targetPulse at registration, so
+// CAM/L/SWITCH offsets are captured then, while the SEL offsets are read later
+// in the SWITCH branch. A config change between those two moments gives that one
+// object new SEL timing with old CAM timing -- an inherent property of reading
+// SEL late, unrelated to tearing, and harmless because config only changes
+// during deliberate setup.
+static stagePulseOffset SPO_snap[2] = { STAGE_PULSE_OFFSET, STAGE_PULSE_OFFSET };
+static volatile stagePulseOffset* volatile SPO_active = &SPO_snap[0];
+
+// Copy the working STAGE_PULSE_OFFSET into the inactive snapshot and publish it
+// to the ISR with one atomic pointer store. Call from the main loop after any
+// change to STAGE_PULSE_OFFSET, before the ISR needs to act on it.
+void STAGE_PULSE_OFFSET_publish()
+{
+  stagePulseOffset* inactive =
+      (SPO_active == &SPO_snap[0]) ? &SPO_snap[1] : &SPO_snap[0];
+  *inactive = STAGE_PULSE_OFFSET;
+  // Ensure the copy is fully written before the pointer that exposes it moves.
+  __asm__ __volatile__("" ::: "memory");
+  SPO_active = inactive;   // aligned pointer store -> atomic on ESP32
+}
+
 RingBuf_Static<pipeLineInfo, PIPE_INFO_LEN, uint8_t> RBuf;
 
 
@@ -580,18 +616,20 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli)
     // DEBUG_printf("e:%d ",pli->e_pulse);
     // DEBUG_printf("cur:%d\n",logicPulseCount);
 
-    ACT_PUSH_TASK(act_S.ACT_L1A, pli, STAGE_PULSE_OFFSET.L1A_on, 1, );
-    ACT_PUSH_TASK(act_S.ACT_L1A, pli, STAGE_PULSE_OFFSET.L1A_off, 0, );
-    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, STAGE_PULSE_OFFSET.CAM1_on, 1, );
-    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, STAGE_PULSE_OFFSET.CAM1_off, 0, );
+    // One coherent snapshot for this object's registration (see SPO_active).
+    volatile stagePulseOffset* spo = SPO_active;
+    ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_on, 1, );
+    ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_off, 0, );
+    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, spo->CAM1_on, 1, );
+    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, spo->CAM1_off, 0, );
 
 
-    ACT_PUSH_TASK(act_S.ACT_L2A, pli, STAGE_PULSE_OFFSET.L2A_on, 1, );
-    ACT_PUSH_TASK(act_S.ACT_L2A, pli, STAGE_PULSE_OFFSET.L2A_off, 0, );
-    ACT_PUSH_TASK(act_S.ACT_CAM2, pli, STAGE_PULSE_OFFSET.CAM2_on, 1, );
-    ACT_PUSH_TASK(act_S.ACT_CAM2, pli, STAGE_PULSE_OFFSET.CAM2_off, 0, );
+    ACT_PUSH_TASK(act_S.ACT_L2A, pli, spo->L2A_on, 1, );
+    ACT_PUSH_TASK(act_S.ACT_L2A, pli, spo->L2A_off, 0, );
+    ACT_PUSH_TASK(act_S.ACT_CAM2, pli, spo->CAM2_on, 1, );
+    ACT_PUSH_TASK(act_S.ACT_CAM2, pli, spo->CAM2_off, 0, );
 
-    ACT_PUSH_TASK(act_S.ACT_SWITCH, pli,STAGE_PULSE_OFFSET.SWITCH, 0, );
+    ACT_PUSH_TASK(act_S.ACT_SWITCH, pli,spo->SWITCH, 0, );
     return 0;
     // pli->insp_status=insp_status_OK;
   }
@@ -735,15 +773,16 @@ int Run_ACTS(uint32_t cur_pulse)
 
       IO_TRACE_LOG(IOT_PIN_SWITCH,pli->insp_status,cur_pulse,pli->tid);
 
+      volatile stagePulseOffset* spo = SPO_active;
       switch (pli->insp_status)
       {
         case 1:
-          ACT_PUSH_TASK(act_S.ACT_SEL1, pli, STAGE_PULSE_OFFSET.SEL1_on, 1, _task_->src =NULL;);//the src will be cleaned up right after
-          ACT_PUSH_TASK(act_S.ACT_SEL1, pli, STAGE_PULSE_OFFSET.SEL1_off, 0, _task_->src =NULL; );
+          ACT_PUSH_TASK(act_S.ACT_SEL1, pli, spo->SEL1_on, 1, _task_->src =NULL;);//the src will be cleaned up right after
+          ACT_PUSH_TASK(act_S.ACT_SEL1, pli, spo->SEL1_off, 0, _task_->src =NULL; );
           break;
         case 2:
-          ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_on, 1, _task_->src =NULL; );
-          ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_off, 0, _task_->src =NULL; );
+          ACT_PUSH_TASK(act_S.ACT_SEL2, pli, spo->SEL2_on, 1, _task_->src =NULL; );
+          ACT_PUSH_TASK(act_S.ACT_SEL2, pli, spo->SEL2_off, 0, _task_->src =NULL; );
           break;
         case 3:
           SEL3_Count++;
@@ -2017,6 +2056,9 @@ void firmwareSetup()
   // Must run before the timer is armed: the pulse offsets and plate frequency
   // it restores are what everything below derives its timing from.
   MachineConfig::begin();
+  // Publish whatever begin() loaded (or the compiled defaults) to the ISR
+  // snapshot before onTimer can read it.
+  STAGE_PULSE_OFFSET_publish();
 
   timer = timerBegin(0, 80*1000*1000/_TICK2SEC_BASE_, true);
   
@@ -2555,6 +2597,11 @@ void setMachineSetup(JsonDocument &jdoc)
     JSON_SETIF_ABLE(STAGE_PULSE_OFFSET.SEL3_on,jSPO,"SEL3_on");
     JSON_SETIF_ABLE(STAGE_PULSE_OFFSET.SEL3_off,jSPO,"SEL3_off");
 
+    // Hand the freshly edited offsets to the ISR as one atomic snapshot. The
+    // field-by-field writes above ran with interrupts enabled, so the ISR may
+    // have registered objects against the old snapshot until this point -- that
+    // is fine, and far cheaper than masking the step timer through 15 writes.
+    STAGE_PULSE_OFFSET_publish();
   }
 
 

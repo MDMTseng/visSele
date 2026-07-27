@@ -6,7 +6,8 @@
 >
 > 分析對象：`src/app/LegacyFirmware.cpp` @ `c1f0a7da`
 >
-> **狀態**：§2 §3 已修（見 §5.0）。§4 的其餘項目仍待處理。
+> **狀態**：§2 §3 已修（見 §5.0）。§5.2（`STAGE_PULSE_OFFSET` 撕裂）已修。
+> §4 其餘小項仍待處理。
 
 ---
 
@@ -172,19 +173,38 @@ tick 下約佔 0.2–0.4% CPU。
 
 ---
 
-以下**尚未處理**：
+### 5.2 ✅ 已修：`STAGE_PULSE_OFFSET` 雙緩衝
 
-### 5.2 `STAGE_PULSE_OFFSET` 雙緩衝
-
-不要就地改。準備一份新的，用一個 `volatile` 指標一次切換：
+`STAGE_PULSE_OFFSET` 保留為主迴圈的工作副本（`set_setup` 逐欄位改、
+`MachineConfig` 整份讀寫、`get_setup` 回報都不變）。ISR **改成透過 `SPO_active`
+指標讀取**，它永遠指向一份「不在寫入中」的快照。
 
 ```cpp
-stagePulseOffset SPO_buf[2];
-volatile stagePulseOffset* SPO_active = &SPO_buf[0];
-// 更新：寫進非使用中的那份，最後一行才切指標
+static stagePulseOffset SPO_snap[2];
+static volatile stagePulseOffset* volatile SPO_active = &SPO_snap[0];
+
+void STAGE_PULSE_OFFSET_publish() {          // 主迴圈呼叫
+  stagePulseOffset* inactive = (SPO_active==&SPO_snap[0]) ? &SPO_snap[1] : &SPO_snap[0];
+  *inactive = STAGE_PULSE_OFFSET;            // 中斷開啟下複製到私有緩衝
+  __asm__ __volatile__("" ::: "memory");     // 複製先於指標切換
+  SPO_active = inactive;                     // 對齊指標寫入 = 原子
+}
 ```
 
-指標寫入是 atomic，ISR 要嘛整份看到舊的、要嘛整份看到新的。
+**為什麼不用臨界區**：寫入端要更新 15 個欄位（JSON 逐欄位取值）。若包在
+`portENTER_CRITICAL` 裡會遮罩 step timer ISR 整段時間，高 plateFreq 下可能掉步。
+雙緩衝讓寫入端在中斷開啟下操作私有緩衝，只有指標切換是原子的——**完全不遮罩中斷**。
+
+呼叫點：`firmwareSetup()` 的 `MachineConfig::begin()` 之後（timer arm 前）、
+以及每次 `setMachineSetup()` 結尾。
+
+**刻意不追求「單一物件全生命週期一致」**：`ACT_PUSH_TASK` 在註冊當下就把
+`gate_pulse+offset` 算進 `targetPulse`，所以 CAM/L/SWITCH 的 offset 在註冊時固化，
+SEL 的 offset 則在 SWITCH 分支較晚讀取。註冊與 SWITCH 之間若改了設定，該顆物件
+會拿到新 SEL + 舊 CAM——這是「SEL 晚讀」的固有性質，跟撕裂無關，而且只在調機
+當下發生，無害。
+
+成本：兩份 60-byte 快照（RAM +120B），ISR 讀取多一次指標載入。
 
 ### 5.4 加 `volatile`（部分已做）
 
