@@ -996,13 +996,18 @@ def probe(link, rep):
 
 # --- edge: firmware paths bench/stress/stall never touch -------------------
 
-# Steps of announce-to-selector runway for the saturation run, and how many
-# phantoms to fire into it. At the minimum object spacing (~110 steps) the
-# runway would hold E6_WINDOW/110 ~= 127 objects in flight -- more than the
-# 100-deep RBuf -- so the firmware MUST start rejecting pulses, and must do it
-# silently without faulting. Both scale with step rate, so the numbers hold at
-# any plateFreq.
-E6_WINDOW = 14000
+# RBuf-saturation run. Fire E6_COUNT phantoms spaced E6_SPACING steps apart
+# into a runway E6_WINDOW steps long. The spacing clears the ~91-step distance
+# gate with margin so every pulse is accepted, and the runway is long enough
+# that all E6_COUNT are still in flight when the last is fired
+# (E6_WINDOW > E6_COUNT*E6_SPACING), forcing RBuf past its 100-object cap. The
+# firmware must then reject the excess silently -- no announce, no fault -- so
+# objects settle at the cap. Paced off the SET plateFreq (ISR = 2*freq), not a
+# measured rate: measuring live proved noisy (serial contention on the ISR's
+# core) and mis-spaced the pulses.
+E6_FREQ = 1000
+E6_SPACING = 150
+E6_WINDOW = 26000
 E6_COUNT = 115
 
 
@@ -1209,7 +1214,7 @@ def edge(link, rep, only=None):
             link.send({"type": "clear_error_history"}, timeout=2.0)
             l1a = int(orig_spo.get("L1A_on", 654))
             win2 = l1a + E6_WINDOW
-            link.send({"type": "set_setup", "plateFreq": 1000,
+            link.send({"type": "set_setup", "plateFreq": E6_FREQ,
                        "minDetectTimeSep_us": 5000,
                        "stage_pulse_offset": {
                            "SWITCH": win2,
@@ -1219,44 +1224,35 @@ def edge(link, rep, only=None):
                       timeout=3.0)
             _wait_at_speed(link)
 
-            def _ssc():
-                return (link.send({"type": "get_setup"}, timeout=3.0)
-                        or {}).get("SYS_STEP_COUNT")
-            s0 = _ssc()
-            time.sleep(0.5)
-            s1 = _ssc()
-            rate = ((s1 - s0) / 0.5
-                    if isinstance(s0, int) and isinstance(s1, int) else 0)
-            if rate <= 0:
-                rep.add("E.6", "queue saturation", False,
-                        "could not measure the step rate")
-            else:
-                # 110 steps between pulses: just past the ~91-step distance
-                # gate, so pulses are accepted until RBuf itself says no.
-                interval = max(0.010, 110.0 / rate)
-                seen, answered = [], set()
-                qs = [0]
-                fired = 0
-                link.drain_async()
-                t0 = time.time()
-                for i in range(E6_COUNT):
-                    deadline = t0 + i * interval
-                    while time.time() < deadline:
-                        _pump(CAT_NA, seen, answered, qs)
-                        time.sleep(0.002)
-                    link.send_nowait({"type": "trig_phamton_pulse"})
-                    fired += 1
-                _settle(E6_WINDOW / rate + 2.0, CAT_NA, seen, answered)
-                objs = set(seen)
-                st, stat = _state(link)
-                errs = _errors_of(stat)
-                rep.add("E.6", "over-capacity pulses rejected silently, queue"
-                        " drains clean",
-                        qs[0] >= 90 and 85 <= len(objs) < fired
-                        and st == ST_READY and not errs,
-                        f"fired={fired} objects={len(objs)} "
-                        f"(RBuf holds {PIPE_INFO_LEN}) peak Qs={qs[0]} "
-                        f"errors={errs} state={ST_NAME.get(st, st)}")
+            # ISR ticks at 2*plateFreq, so steps/s is known exactly -- pace off
+            # that rather than a live measurement (see the E6_* comment above).
+            steps_per_s = 2.0 * E6_FREQ
+            interval = E6_SPACING / steps_per_s
+            seen, answered = [], set()
+            qs = [0]
+            fired = 0
+            link.drain_async()
+            t0 = time.time()
+            for i in range(E6_COUNT):
+                deadline = t0 + i * interval
+                while time.time() < deadline:
+                    _pump(CAT_NA, seen, answered, qs)
+                    time.sleep(0.002)
+                link.send_nowait({"type": "trig_phamton_pulse"})
+                fired += 1
+            # Every accepted object was reported on-announce, so none can fault;
+            # a short settle is enough to drain the announcement tail and catch
+            # any late fault without waiting the whole window out.
+            _settle(4.0, CAT_NA, seen, answered)
+            objs = set(seen)
+            st, stat = _state(link)
+            errs = _errors_of(stat)
+            rep.add("E.6", "over-capacity pulses rejected silently, no fault",
+                    qs[0] >= 95 and 95 <= len(objs) <= PIPE_INFO_LEN
+                    and len(objs) < fired and st == ST_READY and not errs,
+                    f"fired={fired} objects={len(objs)} "
+                    f"(RBuf holds {PIPE_INFO_LEN}) peak Qs={qs[0]} "
+                    f"errors={errs} state={ST_NAME.get(st, st)}")
 
     finally:
         # --- E.7: restore --------------------------------------------------

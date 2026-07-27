@@ -225,7 +225,7 @@ and recirculate. Sorting is OFF until both are declared.
 | 5.1 | `cat=3` 靜默陷阱 | core 的映射**不會**產生 3（否則料件靜默回流）| ☐ |
 | 5.2 | SEL3 | 確認新機是否需要三分類；不需要就移除 JSON 欄位 | ☐ |
 | 5.3 | gate 參考點 | 量測不同尺寸料件的觸發位置是否漂移（INTEGRATION_MAP §5.2）| ☐ |
-| 5.4 | 閘門防彈跳 | 觀察是否有單顆料件被切成兩段而漏檢（§5.3）| ☐ |
+| 5.4 | 閘門防彈跳 | 計數式去彈跳已併回 `GateSensing()`、可調（`gate_debounce_rise`/`gate_debounce_fall`，預設 2/2）。依 `GATE_DEBOUNCE_TEST_PLAN.md` 驗證：觀察是否有單顆被切成兩段（split）或雜訊變 phantom | ☐ |
 | 5.5 | RESET 行為 | 拔插序列埠觸發重連，確認氣閥動作可接受（§5.5，每次連線送兩次）| ☐ |
 
 ---

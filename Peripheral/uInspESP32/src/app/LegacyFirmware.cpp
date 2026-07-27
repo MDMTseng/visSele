@@ -1017,12 +1017,16 @@ GateInfo gateInfo={0};
 
 
 
+extern int DEBOUNCE_H_THRES;   // defined below; seeds the debounce counter
 void RESET_GateSensing()
 {
   GateInfo ngateInfo = {0};
   ngateInfo.cur_Sense=0;
   ngateInfo.start_pulse=~0;
   ngateInfo.end_pulse=~0;
+  // Idle is LOW (INPUT_PULLUP + _senseInv_), so the first edge to confirm is a
+  // rising one; seed the counter with the rising threshold rather than 0.
+  ngateInfo.debunce=DEBOUNCE_H_THRES;
   gateInfo=ngateInfo;
 }
 
@@ -1031,193 +1035,100 @@ bool _senseInv_=true;
 
 int  minWidth = 0;
 int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
-const int  DEBOUNCE_L_THRES = 1+20/_PLAT_DIST_um_PER_STEP;//object inner connection
-const int  DEBOUNCE_H_THRES = 1;
 
-void GateSensing2()
-{
-  //(perRevPulseCount/50)
-  uint8_t new_Sense = digitalRead(PIN_I_GATE);
-  if(_senseInv_)new_Sense=!new_Sense;
-  bool onSenseEdge=false;
-
-  
-  // if(gateInfo.cur_Sense)
-  // {//H
-  //   if(!new_Sense)//L
-  //   {
-  //     gateInfo.debunce--;
-  //     if(gateInfo.debunce==0)
-  //     {
-  //       onSenseEdge=true;
-  //       gateInfo.debunce = DEBOUNCE_H_THRES;
-      
-  //     }
-  //   }
-  //   else
-  //   {
-  //     gateInfo.debunce = DEBOUNCE_L_THRES;
-  //     gateInfo.end_pulse=SYS_STEP_COUNT;
-  //   }
-  // }
-  // else
-  // {//L cur_Sense
-  //   if(new_Sense)//H
-  //   {
-  //     gateInfo.debunce--;
-  //     if(gateInfo.debunce==0)
-  //     {
-  //       onSenseEdge=true;
-  //       gateInfo.debunce = DEBOUNCE_L_THRES;
-  //     }
-  //   }
-  //   else
-  //   {
-  //     gateInfo.debunce = DEBOUNCE_H_THRES;
-  //     gateInfo.start_pulse=SYS_STEP_COUNT;
-  //   }
-  // }
-
-
-  if(gateInfo.cur_Sense)
-  {//H
-    if(!new_Sense)//L
-    {
-      gateInfo.debunce--;
-      if(gateInfo.debunce==0)
-      {
-        onSenseEdge=true;
-        gateInfo.debunce = DEBOUNCE_H_THRES;
-      
-      }
-    }
-    else
-    {
-      gateInfo.debunce = DEBOUNCE_L_THRES;
-      gateInfo.end_pulse=SYS_STEP_COUNT;
-    }
-  }
-  else
-  {//L cur_Sense
-    if(new_Sense)//H
-    {
-      gateInfo.debunce--;
-      if(gateInfo.debunce==0)
-      {
-        onSenseEdge=true;
-        gateInfo.debunce = DEBOUNCE_L_THRES;
-      }
-    }
-    else
-    {
-      gateInfo.debunce = DEBOUNCE_H_THRES;
-      gateInfo.start_pulse=SYS_STEP_COUNT;
-    }
-  }
-
-
-
-  
-  if(onSenseEdge)
-  {
-    if(!new_Sense)
-    {//a pulse is completed
-
-      uint32_t diff=gateInfo.end_pulse-gateInfo.start_pulse;
-      if( diff>minWidth && diff<maxWidth )
-      {
-        uint32_t middle_pulse=gateInfo.start_pulse+(diff>>1);
-
-        // uint32_t avg_PD_B2M=(pre_pulseDist_B2M+pulseDist_B2M)>>1;
-        // if(pulseDist_B2M>(minPulseDist*2/3) && avg_PD_B2M>minPulseDist)
-        newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,middle_pulse,diff);
-  
-      }
-      else
-      {
-
-        // sInfo.skippedPulse++;
-          //skip the pulse : the pulse width is not in the valid range
-          //this might be caused by too large object > typ:2cm
-          //or there are multiple objects too close to each other 
-          //control by   minWidth,maxWidth,      
-          //also effected DEBOUNCE_L_THRES,DEBOUNCE_H_THRES(these two are to control what is a complete pulse high time, low time)
-      }
-      gateInfo.start_pulse=SYS_STEP_COUNT;
-    }
-    else
-    {
-      gateInfo.end_pulse=SYS_STEP_COUNT;
-    }
-
-    gateInfo.cur_Sense=new_Sense;
-
-  }
-
-
-
-}
-
-
+// Gate debounce, in gate-sample ticks (the timer runs at 2*plateFreq, so one
+// tick is ~1 step ~= _PLAT_DIST_um_PER_STEP of travel -- 38um on the 350mm
+// plate). A value of N means an edge is accepted only after the new level has
+// held for N consecutive samples, so any glitch shorter than N ticks is
+// rejected. Runtime-settable (gate_debounce_rise / gate_debounce_fall) like
+// minWidth/maxWidth; not persisted, so a reboot returns to these defaults.
+//
+//   DEBOUNCE_H_THRES  rising edge  (object arriving): reject short HIGH blips
+//                                  -- noise that would otherwise become a
+//                                  phantom object with a real tid.
+//   DEBOUNCE_L_THRES  falling edge (object leaving):  tolerate short LOW dips
+//                                  -- a seam/hole in one object that would
+//                                  otherwise split it into two detections.
+//
+// Default 2/2 = reject a single-sample glitch on either edge, the minimum that
+// is unambiguously correct. The old 20um expression rounded to 1 (< one step),
+// i.e. no debounce at all. Real parts are hundreds of steps wide, so 2 costs
+// only a 1-step leading-edge shift (a constant offset, harmless downstream).
+int  DEBOUNCE_L_THRES = 2;
+int  DEBOUNCE_H_THRES = 2;
 
 
 void GateSensing()
 {
-  //(perRevPulseCount/50)
   uint8_t new_Sense = GPIOLS32_GET(PIN_I_GATE);
   if(_senseInv_)new_Sense=!new_Sense;
   bool onSenseEdge=false;
 
-
-
-  if(new_Sense!=gateInfo.cur_Sense)
-  {
-    onSenseEdge=true;
+  // Counter debounce: an edge is only accepted once the new level has held for
+  // DEBOUNCE_*_THRES consecutive samples, so a glitch shorter than that is
+  // ignored. While the level holds we reload the counter and keep tracking the
+  // trailing/leading edge, so start_pulse/end_pulse still mark the TRUE edges,
+  // not the (later) debounce-confirmation tick.
+  if(gateInfo.cur_Sense)
+  {//currently HIGH -- object present
+    if(!new_Sense)
+    {//reading LOW: count toward a falling edge
+      gateInfo.debunce--;
+      if(gateInfo.debunce==0)
+      {
+        onSenseEdge=true;
+        gateInfo.debunce=DEBOUNCE_H_THRES;
+      }
+    }
+    else
+    {//still HIGH: absorb the dip, keep the trailing edge current
+      gateInfo.debunce=DEBOUNCE_L_THRES;
+      gateInfo.end_pulse=SYS_STEP_COUNT;
+    }
+  }
+  else
+  {//currently LOW -- no object
+    if(new_Sense)
+    {//reading HIGH: count toward a rising edge
+      gateInfo.debunce--;
+      if(gateInfo.debunce==0)
+      {
+        onSenseEdge=true;
+        gateInfo.debunce=DEBOUNCE_L_THRES;
+      }
+    }
+    else
+    {//still LOW: reject the blip, keep the leading edge current
+      gateInfo.debunce=DEBOUNCE_H_THRES;
+      gateInfo.start_pulse=SYS_STEP_COUNT;
+    }
   }
 
-
-
-  
   if(onSenseEdge)
   {
     if(!new_Sense)
-    {//a pulse is completed
-
-      gateInfo.end_pulse=SYS_STEP_COUNT;
+    {//a pulse is completed -- end_pulse is the last HIGH sample (true edge)
       uint32_t diff=gateInfo.end_pulse-gateInfo.start_pulse;
       if( diff>minWidth && diff<maxWidth )
       {
         uint32_t middle_pulse=gateInfo.start_pulse+(diff>>1);
-
-        // uint32_t avg_PD_B2M=(pre_pulseDist_B2M+pulseDist_B2M)>>1;
-        // if(pulseDist_B2M>(minPulseDist*2/3) && avg_PD_B2M>minPulseDist)
-
+        (void)middle_pulse;
+        // Reference the object off its TRAILING edge (end_pulse), as the
+        // pre-debounce code did, so the calibrated stage_pulse_offset values
+        // still line up. (Switching to the object centre -- middle_pulse -- is
+        // checklist 5.3's separate, calibration-affecting change.)
         if(SYS_STEPPER_DISABLED==false && SYS_FREQ_STABLE)
-          newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,SYS_STEP_COUNT,diff);
-  
+          newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,
+                        gateInfo.end_pulse,diff);
       }
-      // else
-      // {
-
-      //   // sInfo.skippedPulse++;
-      //     //skip the pulse : the pulse width is not in the valid range
-      //     //this might be caused by too large object > typ:2cm
-      //     //or there are multiple objects too close to each other 
-      //     //control by   minWidth,maxWidth,      
-      //     //also effected DEBOUNCE_L_THRES,DEBOUNCE_H_THRES(these two are to control what is a complete pulse high time, low time)
-      // }
+      gateInfo.start_pulse=SYS_STEP_COUNT;
     }
     else
     {
-      gateInfo.start_pulse=SYS_STEP_COUNT;
+      gateInfo.end_pulse=SYS_STEP_COUNT;
     }
-
     gateInfo.cur_Sense=new_Sense;
-
   }
-
-
-
 }
 
 
@@ -2543,6 +2454,9 @@ void genMachineSetup(JsonDocument &jdoc)
   jdoc["pulse_minWidth"]=minWidth;
   jdoc["pulse_maxWidth"]=maxWidth;
 
+  jdoc["gate_debounce_rise"]=DEBOUNCE_H_THRES;
+  jdoc["gate_debounce_fall"]=DEBOUNCE_L_THRES;
+
   // Lets the host tell the two machines apart and see whether what it is
   // reading came from NVS or is just the compiled fallback.
   jdoc["machine_id"]=MachineConfig::machineId();
@@ -2607,6 +2521,12 @@ void setMachineSetup(JsonDocument &jdoc)
 
   JSON_SETIF_ABLE(minWidth,jdoc,"pulse_minWidth");
   JSON_SETIF_ABLE(maxWidth,jdoc,"pulse_maxWidth");
+  JSON_SETIF_ABLE(DEBOUNCE_H_THRES,jdoc,"gate_debounce_rise");
+  JSON_SETIF_ABLE(DEBOUNCE_L_THRES,jdoc,"gate_debounce_fall");
+  // A threshold of 0 would underflow the down-counter into a ~65k-sample stall;
+  // 1 means "no debounce" (accept on the first sample), the sane floor.
+  if(DEBOUNCE_H_THRES<1)DEBOUNCE_H_THRES=1;
+  if(DEBOUNCE_L_THRES<1)DEBOUNCE_L_THRES=1;
   
 
   if (jdoc.containsKey("stage_pulse_offset")) {
