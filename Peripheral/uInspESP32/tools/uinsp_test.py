@@ -1104,6 +1104,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
         next_persist = now0 + rng.uniform(3.0, 5.0)
         next_check = now0 + rng.uniform(6.0, 10.0)
         next_poll = now0 + 0.5
+        next_beat = now0 + 30.0
         fired = 0
 
         while time.time() < t_end:
@@ -1175,6 +1176,16 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                     fault = errs or ["state=ERROR"]
                     break
                 next_poll = now + 0.5
+            if now >= next_beat:
+                # Flushed heartbeat so a long run is observable and a kill still
+                # leaves a trail (plain prints are buffered when piped to a file).
+                el = int(now - now0)
+                print(f"  [{el:>4}s] fired={fired} objs={len(tids)} "
+                      f"peakQs={qs_max} perturb={len(events)}"
+                      + (f" checks={checks_ok}/{checks_done}" if verify else "")
+                      + (f" persist_refused={persist_ok}" if persist else ""),
+                      flush=True)
+                next_beat = now + 30.0
             time.sleep(0.001)
 
         t_s = time.time() + 1.0           # answer the tail
