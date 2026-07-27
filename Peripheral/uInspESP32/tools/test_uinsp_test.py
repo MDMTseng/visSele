@@ -428,13 +428,20 @@ class FakeFirmware(FakeSerial):
                 self.spo.update(msg["stage_pulse_offset"])
             rep["type"] = "set_setup"
             if msg.get("persist"):
-                # Guard: a save is only permitted with the plate stopped
-                # (IDLE + plateFreq 0). Otherwise refuse, don't write flash.
-                if self.state == self.ST_IDLE and self.plate_freq == 0:
-                    rep["persisted"] = True
+                # Guard: a save is only permitted stopped -- plateFreq 0, in
+                # IDLE or a (stopped) READY. Otherwise NAK with a reason; the
+                # RAM update above still applied. (The fake has no coast, so
+                # plate_freq==0 stands in for SYS_CUR_FREQ==0.)
+                if self.plate_freq != 0:
+                    rep.update({"persisted": False, "ack": False,
+                                "persist_err": "set plateFreq to 0 first",
+                                "state": self.state})
+                elif self.state not in (self.ST_IDLE, self.ST_READY):
+                    rep.update({"persisted": False, "ack": False,
+                                "persist_err": "must be in IDLE or "
+                                "INSPECTION_MODE_READY", "state": self.state})
                 else:
-                    rep["persisted"] = False
-                    rep["persist_err"] = "only in IDLE with plate stopped"
+                    rep["persisted"] = True
         elif t == "enter_insp_mode":
             self.state = self.ST_READY
             rep["type"] = "enter_insp_mode"
@@ -877,13 +884,24 @@ class TestPersistGuard(unittest.TestCase):
         self.assertTrue(r and r.get("persisted") is True,
                         f"a stopped board must allow the save: {r}")
 
-    def test_persist_refused_while_running(self):
+    def test_persist_allowed_in_stopped_ready(self):
+        # READY is fine too, as long as the plate is stopped -- no need to exit
+        # inspection mode just to save.
+        link = self._link()
+        link.send({"type": "set_setup", "plateFreq": 0}, timeout=2.0)
+        link.send({"type": "enter_insp_mode"}, timeout=2.0)
+        r = link.send({"type": "set_setup", "persist": True}, timeout=2.0)
+        self.assertTrue(r and r.get("persisted") is True,
+                        f"a stopped READY board must allow the save: {r}")
+
+    def test_persist_refused_and_nakked_while_running(self):
         link = self._link()
         link.send({"type": "set_setup", "plateFreq": 1000}, timeout=2.0)
         link.send({"type": "enter_insp_mode"}, timeout=2.0)
         r = link.send({"type": "set_setup", "persist": True}, timeout=2.0)
         self.assertTrue(r and r.get("persisted") is False,
                         f"a running board must refuse the save: {r}")
+        self.assertFalse(r.get("ack"), "a refused save must be NAKed")
         self.assertIn("persist_err", r)
 
 

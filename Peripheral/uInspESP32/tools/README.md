@@ -195,9 +195,24 @@ python uinsp_test.py --port COM6 chaos --seconds 20 --persist-churn   # 見下
 跑中途反覆嘗試 NVS persist（`set_setup persist:true`），驗**韌體會拒絕**它。
 原因是那個隱患：`onTimer` 是 `IRAM_ATTR`，但它呼叫的 `StepGo`/`GateSensing`/`Run_ACTS`
 不在 IRAM——flash 寫入會關 cache，timer ISR 若在那當下跑進非 cache 的 code 就可能卡死。
-**所以韌體只在盤子停穩（state IDLE 且 `SYS_CUR_FREQ==0`）才允許存檔**，跑的時候一律回
-`persisted:false`＋`persist_err`。C.5 過＝跑中途每次都被正確擋下。因為存檔根本沒發生，
-**這個測試不燒 flash、也不會踩到隱患**——它是在驗那道防線。
+**所以韌體只在盤子停穩才允許存檔**，否則回 `persisted:false`＋NAK（`ack:false`）＋
+`persist_err` 原因字串＋當下 `state`。C.5 過＝跑中途每次都被正確擋下。因為存檔根本沒
+發生，**這個測試不燒 flash、也不會踩到隱患**——它是在驗那道防線。
+
+**存檔允許的條件**（`cfgPersistDeny` 回 NULL）＝三者皆滿足，否則回對應原因：
+
+| 條件 | 不滿足時的 `persist_err` |
+|---|---|
+| `state` 是 `IDLE` 或 `INSPECTION_MODE_READY` | `must be in IDLE or INSPECTION_MODE_READY` |
+| `plateFreq==0`（`SETUP_TAR_FREQ==0`，不會再轉起來）| `set plateFreq to 0 first` |
+| 盤子真的停了（`SYS_CUR_FREQ==0`，timer alarm 已關）| `plate still moving; wait until SYS_STEP_COUNT stops` |
+
+**怎麼進到可存檔狀態**（READY 也行，不必退出檢測模式）：
+1. `set_setup {"plateFreq":0}` —— 命令減速。
+2.（在 READY 就留著；要 IDLE 才 `exit_insp_mode`。）
+3. 等盤子真的停：poll `get_setup` 的 `SYS_STEP_COUNT`，不再增加就是停了
+   （回覆裡的 `plateFreq` 是**目標值**不是當下轉速，所以要看 step count）。
+4. `save_setup` / `set_setup persist:true` → `persisted:true`。
 
 `--seed` 不給就用隨機值並印出來，出事可以照那個 seed 重跑。實測 25s、~28～30/s、
 三十幾次隨機擾動＋查詢洪流下全過。
@@ -245,7 +260,7 @@ latch 協定錯誤，之後除了 RESET 什麼都不理。上一輪跑到一半�
 ## 自我測試
 
 ```sh
-python test_uinsp_test.py        # 38 項，不需要硬體
+python test_uinsp_test.py        # 39 項，不需要硬體
 ```
 
 用假的序列埠模擬韌體行為，驗證分框（跨讀取切斷、背對背訊息、字串內含大括號、
