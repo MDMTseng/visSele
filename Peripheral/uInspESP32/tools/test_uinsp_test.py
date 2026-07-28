@@ -351,6 +351,15 @@ class FakeFirmware(FakeSerial):
         elif cat == 0xFFFF:
             self.counts["NA"] += 1
 
+    def _fault(self, code):
+        """Enter ERROR and announce it via async systemInfo, like the real
+        firmware's SYS_STATE_Transfer does -- so the tool's live async fault
+        detection has something to see."""
+        self.state = self.ST_ERROR
+        self.errors.append(code)
+        self.feed(json.dumps({"type": "systemInfo", "state": self.ST_ERROR,
+                              "ERROR_HIST": list(self.errors), "log": "fault"}))
+
     def _tick(self):
         while self._run:
             time.sleep(0.05)
@@ -366,8 +375,7 @@ class FakeFirmware(FakeSerial):
                 if now - born > self.judge_deadline:
                     del self.pending[tid]
                     if self.state == self.ST_READY:
-                        self.state = self.ST_ERROR
-                        self.errors.append(self.E_NO_RESULT)
+                        self._fault(self.E_NO_RESULT)
 
     # -- the protocol-error latch (write-level, like the firmware's data
     #    layer). Garbage latches + faults; while latched everything is eaten
@@ -538,8 +546,7 @@ class FakeFirmware(FakeSerial):
             self._iot_dispatch(tid, cat)
         else:
             if self.state == self.ST_READY:
-                self.state = self.ST_ERROR
-                self.errors.append(self.E_NO_OBJECT)
+                self._fault(self.E_NO_OBJECT)
 
 
 class TestBench(unittest.TestCase):
@@ -809,6 +816,17 @@ class TestStress(unittest.TestCase):
         self.assertFalse(rows["C.6"][2],
                          f"a skewed SWITCH must fail C.6: {rows['C.6'][3]}")
 
+    def test_chaos_burst_and_report_delay_survive(self):
+        # Bursts + a random report delay must not, by themselves, fault a
+        # healthy board -- and the run still verifies timing (C.6).
+        fw = FakeFirmware(judge_deadline=30.0, min_sep_s=0.0)
+        # (secs, min, max, seed, persist, verify, burst, every, count, delayms)
+        rows = self._run(fw, uinsp_test.chaos,
+                         8.0, 15.0, 25.0, 3, False, True, True, 2.0, 8, 100)
+        for ref in ("C.1", "C.2", "C.3", "C.4", "C.6"):
+            self.assertIn(ref, rows)
+            self.assertTrue(rows[ref][2], f"{ref}: {rows[ref][3]}")
+
     def test_chaos_catches_a_fault(self):
         # If the churn does trip a fault (here: a fake that faults the moment
         # its offset is changed under load), C.1 must go red -- the survival
@@ -818,8 +836,7 @@ class TestStress(unittest.TestCase):
                 if (msg.get("type") == "set_setup"
                         and "stage_pulse_offset" in msg
                         and self.state == self.ST_READY):
-                    self.state = self.ST_ERROR
-                    self.errors.append(self.E_NO_RESULT)
+                    self._fault(self.E_NO_RESULT)
                 super().reply_to(msg)
         fw = FaultsOnOffsetChange(judge_deadline=30.0, min_sep_s=0.0)
         rows = self._run(fw, uinsp_test.chaos, 6.0, 30.0, 40.0, 1234)

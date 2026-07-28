@@ -921,7 +921,8 @@ def stall(link, rep, hz, stall_s, cat):
 # --- chaos: randomized rate + plate speed + offset churn ------------------
 
 def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
-          verify=False):
+          verify=False, burst=False, burst_every=5.0, burst_count=8,
+          report_delay_ms=0):
     """Adversarial randomized stress. Fire objects at a rate that jitters every
     pulse across [min_hz, max_hz], while under the run we ALSO randomly, and
     concurrently: change the plate speed (mid-stream ramps); shove the
@@ -1022,19 +1023,50 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
         persist_total, persist_ok, persist_allowed = 0, 0, 0
         cur_base = win_lo
         checks_done, checks_ok, check_fails = 0, 0, []
+        report_delay = report_delay_ms / 1000.0
+        pending_rep = []          # (due_time, tid, cat) FIFO for delayed reports
+        last_due = [0.0]          # keeps due times monotonic -> in-order sends
+        bursts_done = 0
 
         def _pump():
-            nonlocal qs_max
+            nonlocal qs_max, fault
+            now = time.time()
             for _, m in link.drain_async():
-                if m.get("type") != "bTrigInfo":
-                    continue
-                tid = m.get("tid")
-                if tid not in reported:
-                    tids.append(tid)
-                    reported.add(tid)
-                    qs_max = max(qs_max, m.get("Qs", 0) or 0)
-                    link.send_nowait({"type": "report", "tid": tid,
-                                      "cat": rng.choice(cats)})
+                t = m.get("type")
+                if t == "bTrigInfo":
+                    tid = m.get("tid")
+                    if tid not in reported:
+                        tids.append(tid)
+                        reported.add(tid)
+                        qs_max = max(qs_max, m.get("Qs", 0) or 0)
+                        cat = rng.choice(cats)
+                        if report_delay > 0:
+                            # Jitter each report, but keep due times monotonic
+                            # so reports still go out in tid order -- a real host
+                            # answers FIFO, and reporting a later tid before an
+                            # earlier one legitimately desyncs the firmware
+                            # (the SKIP scan retires the earlier ones).
+                            due = max(now + rng.uniform(0, report_delay),
+                                      last_due[0])
+                            last_due[0] = due
+                            pending_rep.append((due, tid, cat))
+                        else:
+                            link.send_nowait({"type": "report", "tid": tid,
+                                              "cat": cat})
+                elif t == "systemInfo" and m.get("state") == ST_ERROR:
+                    # Detect a fault the instant the firmware announces it, from
+                    # the async stream -- no blocking poll that could stall
+                    # reporting and self-inflict OBJECT_HAS_NO_INSP_RESULT.
+                    if fault is None:
+                        fault = _errors_of(m) or ["state=ERROR"]
+
+        def _flush_rep():
+            # Send from the FRONT while due, so reports leave in tid order
+            # (due times are monotonic; never send a later tid first).
+            now = time.time()
+            while pending_rep and pending_rep[0][0] <= now:
+                _due, tid, cat = pending_rep.pop(0)
+                link.send_nowait({"type": "report", "tid": tid, "cat": cat})
 
         def _spotcheck(base):
             """Fire ONE object at the CURRENT (churned) offset and confirm the
@@ -1044,14 +1076,23 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
             (SEL edges log tid 0, so they are only attributable in isolation).
             Returns (ok, detail)."""
             link.send({"type": "set_sel1_cd", "count": -1}, timeout=2.0)
-            # Quiesce: stop firing but KEEP reporting (via _pump) so the parts
-            # already in flight get a verdict before SWITCH -- a bare wait here
-            # would fault them (OBJECT_HAS_NO_INSP_RESULT). 1.3s > the widest
-            # window traversal, so the pipeline empties and the freq settles.
+            # Quiesce: stop firing but KEEP reporting (via _pump/_flush_rep) so
+            # the parts already in flight get a verdict before SWITCH -- a bare
+            # wait would fault them (OBJECT_HAS_NO_INSP_RESULT). 1.3s > the
+            # widest window traversal, so the pipeline empties and freq settles.
             tq = time.time() + 1.3
             while time.time() < tq:
                 _pump()
+                _flush_rep()
                 time.sleep(0.003)
+            # Force out any still-delayed reports so all prior tids are answered
+            # before we fire the probe -- else the probe's (higher) tid reports
+            # ahead of them and the SKIP scan desyncs the machine.
+            for _due, tid, cat in pending_rep:
+                link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+            pending_rep.clear()
+            last_due[0] = 0.0
+            time.sleep(0.05)
             link.send({"type": "io_trace_arm"}, timeout=2.0)
             link.drain_async()
             link.send({"type": "trig_phamton_pulse"}, timeout=2.0)
@@ -1103,29 +1144,52 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
         next_flood = now0 + rng.uniform(0.08, 0.15)
         next_persist = now0 + rng.uniform(3.0, 5.0)
         next_check = now0 + rng.uniform(6.0, 10.0)
-        next_poll = now0 + 0.5
+        next_burst = (now0 + rng.uniform(burst_every * 0.6, burst_every * 1.4)
+                      if burst else float("inf"))
+        next_poll = now0 + 2.0
         next_beat = now0 + 30.0
         fired = 0
 
         while time.time() < t_end:
             now = time.time()
             _pump()
+            _flush_rep()
+            if fault is not None:        # async systemInfo said ERROR
+                break
             if now >= next_fire:
                 link.send_nowait({"type": "trig_phamton_pulse"})
                 fired += 1
                 next_fire = now + 1.0 / rng.uniform(min_hz, max_hz)
+            if burst and now >= next_burst:
+                # A tight burst of M pulses 10ms apart -- most fall inside the
+                # 3.5mm / time gates and are rejected; the point is that rapid
+                # back-to-back triggers are shed cleanly, not desynced/faulted.
+                for _ in range(burst_count):
+                    link.send_nowait({"type": "trig_phamton_pulse"})
+                    fired += 1
+                    _pump()
+                    _flush_rep()
+                    time.sleep(0.010)
+                bursts_done += 1
+                events.append(f"burst{burst_count}")
+                next_burst = now + rng.uniform(burst_every * 0.6,
+                                               burst_every * 1.4)
             if now >= next_flood:      # contend for serial bandwidth
                 link.send_nowait({"type": rng.choice(FLOOD)})
                 next_flood = now + rng.uniform(0.08, 0.15)
+            # Churn commands are fire-and-forget (send_nowait): a blocking round
+            # trip here could stall reporting past an in-flight part's window and
+            # self-inflict OBJECT_HAS_NO_INSP_RESULT (a host artifact, not a
+            # firmware fault). We don't need their acks.
             if now >= next_freq:
                 f = rng.randint(freq_floor, freq_ceil)
-                link.send({"type": "set_setup", "plateFreq": f}, timeout=2.0)
+                link.send_nowait({"type": "set_setup", "plateFreq": f})
                 events.append(f"freq={f}")
                 next_freq = now + rng.uniform(1.5, 3.0)
             if now >= next_offs:
                 base = rng.randint(win_lo, win_hi)   # stay generous, but move it
-                link.send({"type": "set_setup",
-                           "stage_pulse_offset": _win(base)}, timeout=2.0)
+                link.send_nowait({"type": "set_setup",
+                                  "stage_pulse_offset": _win(base)})
                 cur_base = base
                 events.append(f"win={base}")
                 next_offs = now + rng.uniform(2.0, 4.0)
@@ -1141,13 +1205,13 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                 next_check = time.time() + rng.uniform(6.0, 10.0)
             if now >= next_sep:
                 sep = rng.randint(sep_lo, sep_hi)
-                link.send({"type": "set_setup",
-                           "minDetectTimeSep_us": sep}, timeout=2.0)
+                link.send_nowait({"type": "set_setup",
+                                  "minDetectTimeSep_us": sep})
                 events.append(f"sep={sep}")
                 next_sep = now + rng.uniform(2.0, 4.0)
             if now >= next_sel:
                 cd = rng.choice([-1, rng.randint(1, 20)])
-                link.send({"type": "set_sel1_cd", "count": cd}, timeout=2.0)
+                link.send_nowait({"type": "set_sel1_cd", "count": cd})
                 events.append(f"sel1cd={cd}")
                 next_sel = now + rng.uniform(3.0, 5.0)
             if persist and now >= next_persist:
@@ -1167,30 +1231,45 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                     events.append("persist-ALLOWED!")
                 next_persist = now + rng.uniform(3.0, 5.0)
             if now >= next_poll:
+                # Backup only: faults are caught live via async systemInfo in
+                # _pump. This infrequent blocking poll just catches a hang (no
+                # reply) and a missed fault; pump right after so the round trip
+                # never leaves an in-flight part unreported.
                 st, stat = _state(link)
+                _pump()
+                _flush_rep()
                 if stat is None:
                     unresponsive = True
                     break
                 errs = _errors_of(stat)
-                if st == ST_ERROR or errs:
+                if (st == ST_ERROR or errs) and fault is None:
                     fault = errs or ["state=ERROR"]
+                if fault is not None:
                     break
-                next_poll = now + 0.5
+                next_poll = time.time() + 2.0
             if now >= next_beat:
                 # Flushed heartbeat so a long run is observable and a kill still
                 # leaves a trail (plain prints are buffered when piped to a file).
                 el = int(now - now0)
                 print(f"  [{el:>4}s] fired={fired} objs={len(tids)} "
                       f"peakQs={qs_max} perturb={len(events)}"
+                      + (f" bursts={bursts_done}" if burst else "")
                       + (f" checks={checks_ok}/{checks_done}" if verify else "")
-                      + (f" persist_refused={persist_ok}" if persist else ""),
+                      + (f" persist_refused={persist_ok}" if persist else "")
+                      + (f" pendRep={len(pending_rep)}" if report_delay else ""),
                       flush=True)
                 next_beat = now + 30.0
             time.sleep(0.001)
 
-        t_s = time.time() + 1.0           # answer the tail
+        # Flush any delayed reports immediately so nothing is stranded, then
+        # answer the tail.
+        for _due, tid, cat in pending_rep:
+            link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+        pending_rep.clear()
+        t_s = time.time() + 1.0
         while time.time() < t_s:
             _pump()
+            _flush_rep()
             time.sleep(0.003)
 
         st, stat = _state(link)
@@ -2017,6 +2096,16 @@ def main():
                     help="periodically spot-check that SWITCH/SEL land on the "
                          "current offset (catches a publish-path race); adds "
                          "brief low-load gaps")
+    ch.add_argument("--burst", action="store_true",
+                    help="periodic bursts of pulses 10ms apart (probes the "
+                         "gate/queue under rapid back-to-back triggers)")
+    ch.add_argument("--burst-every", type=float, default=5.0,
+                    help="seconds between bursts (jittered +-40%%)")
+    ch.add_argument("--burst-count", type=int, default=8,
+                    help="pulses per burst, 10ms apart")
+    ch.add_argument("--report-delay-ms", type=int, default=0,
+                    help="report each verdict after a random 0..N ms delay "
+                         "(simulate host latency; keep well under the window)")
 
     s = sub.add_parser("send", help="send one raw JSON command")
     s.add_argument("json")
@@ -2069,7 +2158,10 @@ def main():
             seed = (args.seed if args.seed is not None
                     else int(time.time() * 1000) & 0xFFFFFFFF)
             chaos(link, rep, args.seconds, args.min_hz, args.max_hz, seed,
-                  persist=args.persist_churn, verify=args.verify_timing)
+                  persist=args.persist_churn, verify=args.verify_timing,
+                  burst=args.burst, burst_every=args.burst_every,
+                  burst_count=args.burst_count,
+                  report_delay_ms=args.report_delay_ms)
         elif args.cmd == "all":
             stage0(link, rep)
             probe(link, rep)
