@@ -218,6 +218,19 @@ python uinsp_test.py --port COM6 chaos --seconds 20 --persist-churn   # 見下
 `--seed` 不給就用隨機值並印出來，出事可以照那個 seed 重跑。實測 25s、~28～30/s、
 三十幾次隨機擾動＋查詢洪流下全過。
 
+### 其他 stressor 旗標
+
+- **`--burst`**（`--burst-every N`、`--burst-count M`）：每 N 秒發 M 個相隔 10ms 的
+  脈衝。大多會落在 3.5mm／時間門檻內被丟掉——驗「快速連發不會讓管線失步」。
+- **`--report-delay-ms N`**：每個判定回報前隨機延遲 0～N ms，模擬 host 延遲。
+  **預設保持 FIFO 順序**（真 host 是照順序回的）。
+- **`--report-shuffle`**：讓延遲的回報在延遲窗內**亂序**送出（out-of-order 結果）。
+  實測結論：**只要亂序仍落在選別窗口內（reorder 窗 < 物件到 SWITCH 的時間），韌體
+  容忍得了**——被 SKIP 掉的物件在自己的回報進來時、只要還在 RBuf 就會被覆寫回正確
+  判定。但若某個回報慢到物件已過 SWITCH，就會 `OBJECT_HAS_NO_INSP_RESULT` **錯誤
+  停機**（這是**對的**行為：檢驗太慢就該停）。實測 60ms／250ms reorder 窗全過；
+  `--report-delay-ms 800`（> 窗口）立刻乾淨停機。
+
 ### `--verify-timing`（抓 publish-path race）
 
 純負載的 chaos 只驗「不出錯／tid 連號／不當機」——一個把物件**派到錯 offset 但仍

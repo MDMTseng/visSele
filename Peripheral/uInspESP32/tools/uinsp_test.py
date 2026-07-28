@@ -922,7 +922,7 @@ def stall(link, rep, hz, stall_s, cat):
 
 def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
           verify=False, burst=False, burst_every=5.0, burst_count=8,
-          report_delay_ms=0):
+          report_delay_ms=0, report_shuffle=False):
     """Adversarial randomized stress. Fire objects at a rate that jitters every
     pulse across [min_hz, max_hz], while under the run we ALSO randomly, and
     concurrently: change the plate speed (mid-stream ramps); shove the
@@ -1041,14 +1041,15 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                         qs_max = max(qs_max, m.get("Qs", 0) or 0)
                         cat = rng.choice(cats)
                         if report_delay > 0:
-                            # Jitter each report, but keep due times monotonic
-                            # so reports still go out in tid order -- a real host
-                            # answers FIFO, and reporting a later tid before an
-                            # earlier one legitimately desyncs the firmware
-                            # (the SKIP scan retires the earlier ones).
-                            due = max(now + rng.uniform(0, report_delay),
-                                      last_due[0])
-                            last_due[0] = due
+                            due = now + rng.uniform(0, report_delay)
+                            if not report_shuffle:
+                                # Keep due times monotonic -> reports leave in
+                                # tid order (a real host answers FIFO). With
+                                # --report-shuffle we DROP this, letting reports
+                                # reorder within the delay window to probe the
+                                # firmware's out-of-order tolerance.
+                                due = max(due, last_due[0])
+                                last_due[0] = due
                             pending_rep.append((due, tid, cat))
                         else:
                             link.send_nowait({"type": "report", "tid": tid,
@@ -1061,12 +1062,24 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                         fault = _errors_of(m) or ["state=ERROR"]
 
         def _flush_rep():
-            # Send from the FRONT while due, so reports leave in tid order
-            # (due times are monotonic; never send a later tid first).
             now = time.time()
-            while pending_rep and pending_rep[0][0] <= now:
-                _due, tid, cat = pending_rep.pop(0)
-                link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+            if report_shuffle:
+                # Send any due entry -- due times are independent, so order is
+                # shuffled relative to tid (deliberately, to test reordering).
+                keep = []
+                for e in pending_rep:
+                    if e[0] <= now:
+                        link.send_nowait({"type": "report", "tid": e[1],
+                                          "cat": e[2]})
+                    else:
+                        keep.append(e)
+                pending_rep[:] = keep
+            else:
+                # Send from the FRONT while due -> reports leave in tid order
+                # (due times are monotonic; never send a later tid first).
+                while pending_rep and pending_rep[0][0] <= now:
+                    _due, tid, cat = pending_rep.pop(0)
+                    link.send_nowait({"type": "report", "tid": tid, "cat": cat})
 
         def _spotcheck(base):
             """Fire ONE object at the CURRENT (churned) offset and confirm the
@@ -2106,6 +2119,9 @@ def main():
     ch.add_argument("--report-delay-ms", type=int, default=0,
                     help="report each verdict after a random 0..N ms delay "
                          "(simulate host latency; keep well under the window)")
+    ch.add_argument("--report-shuffle", action="store_true",
+                    help="let delayed reports reorder within the delay window "
+                         "(out-of-order results; probes FIFO-assumption limits)")
 
     s = sub.add_parser("send", help="send one raw JSON command")
     s.add_argument("json")
@@ -2157,11 +2173,15 @@ def main():
         elif args.cmd == "chaos":
             seed = (args.seed if args.seed is not None
                     else int(time.time() * 1000) & 0xFFFFFFFF)
+            # Shuffling needs a delay window to reorder within.
+            delay_ms = args.report_delay_ms
+            if args.report_shuffle and delay_ms == 0:
+                delay_ms = 60
             chaos(link, rep, args.seconds, args.min_hz, args.max_hz, seed,
                   persist=args.persist_churn, verify=args.verify_timing,
                   burst=args.burst, burst_every=args.burst_every,
                   burst_count=args.burst_count,
-                  report_delay_ms=args.report_delay_ms)
+                  report_delay_ms=delay_ms, report_shuffle=args.report_shuffle)
         elif args.cmd == "all":
             stage0(link, rep)
             probe(link, rep)
