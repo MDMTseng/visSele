@@ -827,6 +827,25 @@ class TestStress(unittest.TestCase):
             self.assertIn(ref, rows)
             self.assertTrue(rows[ref][2], f"{ref}: {rows[ref][3]}")
 
+    def test_chaos_expect_fault_stops_on_slow_result(self):
+        # Results delayed past the window must error-stop with
+        # OBJECT_HAS_NO_INSP_RESULT; --expect-fault asserts that stop happens.
+        fw = FakeFirmware(judge_deadline=0.5, min_sep_s=0.0)
+        # (secs,min,max,seed,persist,verify,burst,every,count,delayms,shuf,expect)
+        rows = self._run(fw, uinsp_test.chaos, 10.0, 15.0, 25.0, 3,
+                         False, False, False, 5.0, 8, 1200, False, True)
+        self.assertTrue(rows["C.1"][2],
+                        f"a too-slow result must error-stop: {rows['C.1'][3]}")
+
+    def test_chaos_expect_fault_fails_if_no_stop(self):
+        # If the board does NOT stop on a too-slow result (judge_deadline huge
+        # so the fake never faults), --expect-fault must go red.
+        fw = FakeFirmware(judge_deadline=999.0, min_sep_s=0.0)
+        rows = self._run(fw, uinsp_test.chaos, 6.0, 15.0, 25.0, 3,
+                         False, False, False, 5.0, 8, 1200, False, True)
+        self.assertFalse(rows["C.1"][2],
+                         "no error-stop on a slow result must fail --expect-fault")
+
     def test_chaos_catches_a_fault(self):
         # If the churn does trip a fault (here: a fake that faults the moment
         # its offset is changed under load), C.1 must go red -- the survival

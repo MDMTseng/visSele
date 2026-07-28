@@ -922,7 +922,7 @@ def stall(link, rep, hz, stall_s, cat):
 
 def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
           verify=False, burst=False, burst_every=5.0, burst_count=8,
-          report_delay_ms=0, report_shuffle=False):
+          report_delay_ms=0, report_shuffle=False, expect_fault=False):
     """Adversarial randomized stress. Fire objects at a rate that jitters every
     pulse across [min_hz, max_hz], while under the run we ALSO randomly, and
     concurrently: change the plate speed (mid-stream ramps); shove the
@@ -1288,15 +1288,31 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
         st, stat = _state(link)
         errs = _errors_of(stat)
         rate = fired / seconds if seconds else 0
+        all_errs = (fault or []) + errs
 
-        rep.add("C.1", "survived the churn without faulting",
-                fault is None and not unresponsive and st == ST_READY
-                and not errs,
-                f"fired={fired} (~{rate:.0f}/s) objects={len(tids)} "
-                f"state={ST_NAME.get(st, st)}"
-                + (f" FAULT={[ERR_NAME.get(e, e) for e in fault]}"
-                   if fault else "")
-                + (" UNRESPONSIVE" if unresponsive else ""))
+        if expect_fault:
+            # We deliberately delayed results past the window -- the machine
+            # MUST error-stop with OBJECT_HAS_NO_INSP_RESULT (a slow inspection
+            # is not allowed to let an unjudged part reach the selector), and
+            # must stop cleanly (still responsive), not hang or silently pass.
+            OBJ_NO_RESULT = 2
+            rep.add("C.1", "a too-slow result error-stopped "
+                    "(OBJECT_HAS_NO_INSP_RESULT), board still responsive",
+                    OBJ_NO_RESULT in all_errs and not unresponsive
+                    and stat is not None,
+                    f"fired={fired} objects={len(tids)} "
+                    f"state={ST_NAME.get(st, st)} "
+                    f"errors={[ERR_NAME.get(e, e) for e in sorted(set(all_errs))]}"
+                    + (" UNRESPONSIVE" if unresponsive else ""))
+        else:
+            rep.add("C.1", "survived the churn without faulting",
+                    fault is None and not unresponsive and st == ST_READY
+                    and not errs,
+                    f"fired={fired} (~{rate:.0f}/s) objects={len(tids)} "
+                    f"state={ST_NAME.get(st, st)}"
+                    + (f" FAULT={[ERR_NAME.get(e, e) for e in fault]}"
+                       if fault else "")
+                    + (" UNRESPONSIVE" if unresponsive else ""))
 
         gaps = [(a, b) for a, b in zip(tids, tids[1:]) if b != a + 1]
         rep.add("C.2", "accepted tids stayed strictly +1 through the churn",
@@ -2122,6 +2138,10 @@ def main():
     ch.add_argument("--report-shuffle", action="store_true",
                     help="let delayed reports reorder within the delay window "
                          "(out-of-order results; probes FIFO-assumption limits)")
+    ch.add_argument("--expect-fault", action="store_true",
+                    help="delay results PAST the window and assert the machine "
+                         "error-stops (OBJECT_HAS_NO_INSP_RESULT) cleanly -- the "
+                         "too-slow-inspection safety stop, under churn")
 
     s = sub.add_parser("send", help="send one raw JSON command")
     s.add_argument("json")
@@ -2173,15 +2193,19 @@ def main():
         elif args.cmd == "chaos":
             seed = (args.seed if args.seed is not None
                     else int(time.time() * 1000) & 0xFFFFFFFF)
-            # Shuffling needs a delay window to reorder within.
+            # Shuffling needs a delay window to reorder within; expecting a
+            # fault needs a delay PAST the window to induce it.
             delay_ms = args.report_delay_ms
-            if args.report_shuffle and delay_ms == 0:
+            if args.expect_fault and delay_ms == 0:
+                delay_ms = 1200        # > the ~600ms worst-case window
+            elif args.report_shuffle and delay_ms == 0:
                 delay_ms = 60
             chaos(link, rep, args.seconds, args.min_hz, args.max_hz, seed,
                   persist=args.persist_churn, verify=args.verify_timing,
                   burst=args.burst, burst_every=args.burst_every,
                   burst_count=args.burst_count,
-                  report_delay_ms=delay_ms, report_shuffle=args.report_shuffle)
+                  report_delay_ms=delay_ms, report_shuffle=args.report_shuffle,
+                  expect_fault=args.expect_fault)
         elif args.cmd == "all":
             stage0(link, rep)
             probe(link, rep)

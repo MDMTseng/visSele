@@ -231,6 +231,10 @@ python uinsp_test.py --port COM6 chaos --seconds 20 --persist-churn   # 見下
   停機**（這是**對的**行為：檢驗太慢就該停）。實測 60ms／250ms reorder 窗全過；
   `--report-delay-ms 800`（> 窗口）立刻乾淨停機。
 
+- **`--expect-fault`**：故意把回報延遲到**超過窗口**，然後**斷言**機台會以
+  `OBJECT_HAS_NO_INSP_RESULT` 乾淨錯誤停機（檢驗太慢就該停）——在 churn 下驗這條
+  安全停機。跑完 C.1 反過來變成「有沒有正確停機」而不是「有沒有存活」。
+
 ### `--verify-timing`（抓 publish-path race）
 
 純負載的 chaos 只驗「不出錯／tid 連號／不當機」——一個把物件**派到錯 offset 但仍
