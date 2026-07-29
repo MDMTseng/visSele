@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 import threading
 import time
@@ -37,6 +38,22 @@ except ImportError:
 
 # --- framing ---------------------------------------------------------------
 
+class LinkReset(Exception):
+    """Raised after the serial link dropped and was transparently reopened.
+
+    A USB-UART re-enumeration (cable re-seat, hub/power hiccup) power-cycles the
+    ESP32, so once the port comes back the board has rebooted: IDLE, config and
+    tid counter reset, pipeline empty. Callers that hold board state (chaos)
+    catch this, re-establish that state, and continue -- turning a USB drop into
+    a hiccup instead of an end-of-run.
+    """
+
+
+class LinkDead(Exception):
+    """The port never came back within the reconnect timeout -- genuinely
+    unrecoverable (board unplugged and left off), not a transient drop."""
+
+
 class UInspLink:
     """Serial link speaking the firmware's brace-framed JSON.
 
@@ -47,6 +64,8 @@ class UInspLink:
     """
 
     def __init__(self, port, baud=115200, verbose=False):
+        self.port = port
+        self.baud = baud
         self.ser = serial.Serial(port, baud, timeout=0.05)
         self.verbose = verbose
         self._id = 1000
@@ -56,6 +75,14 @@ class UInspLink:
         self._async_ev = threading.Event()
         self._raw_log = deque(maxlen=5000)
         self._stop = False
+        # Auto-reconnect: when on, a dropped port is transparently reopened
+        # instead of killing the run. The write path signals the reopen to
+        # callers via LinkReset so board state can be re-established; the reader
+        # thread just waits it out. Off by default -> unchanged behaviour.
+        self.auto_reconnect = False
+        self.reconnects = 0
+        self._reconn_lock = threading.Lock()
+        self._last_reset = 0.0
         self._rx = threading.Thread(target=self._reader, daemon=True)
         self._rx.start()
 
@@ -66,6 +93,64 @@ class UInspLink:
             self.ser.close()
         except Exception:
             pass
+
+    def _reopen_serial(self, wait_timeout=600.0):
+        """Close the dead handle and wait for the port node to re-appear, then
+        reopen it. Serialized so the reader thread and the write path don't both
+        reopen the same drop (or double-count it). Returns True once the link is
+        back, False if the port stays gone past wait_timeout."""
+        with self._reconn_lock:
+            # Coalesce: if a sibling thread reopened this same drop moments ago,
+            # adopt its handle rather than cycling the port a second time.
+            if time.time() - self._last_reset < 1.5:
+                return True
+            try:
+                self.ser.close()
+            except Exception:
+                pass
+            deadline = time.time() + wait_timeout
+            delay = 0.2
+            announced = False
+            while not self._stop and time.time() < deadline:
+                if os.path.exists(self.port):
+                    try:
+                        self.ser = serial.Serial(self.port, self.baud,
+                                                 timeout=0.05)
+                        # A freshly re-enumerated adapter often needs a beat
+                        # before it accepts I/O, and the MCU it just power-cycled
+                        # needs to finish booting.
+                        time.sleep(0.6)
+                        self.reconnects += 1
+                        self._last_reset = time.time()
+                        print(f"  [link reconnected (#{self.reconnects}) on "
+                              f"{self.port}]", flush=True)
+                        return True
+                    except Exception:
+                        pass
+                if not announced:
+                    print(f"  [link down; waiting for {self.port} to "
+                          f"re-appear...]", flush=True)
+                    announced = True
+                time.sleep(delay)
+                delay = min(delay * 1.5, 2.0)
+            return False
+
+    def _tx(self, raw):
+        """Write raw bytes, transparently reopening a dropped link. Raises
+        LinkReset once the link is back (board state now unknown) or LinkDead if
+        it never returned. With auto_reconnect off, the original error
+        propagates -- unchanged behaviour."""
+        try:
+            self.ser.write(raw)
+            self.ser.flush()
+            return
+        except (serial.SerialException, OSError) as exc:
+            if not self.auto_reconnect:
+                raise
+            print(f"  [link write failed: {exc} -- reconnecting]", flush=True)
+            if self._reopen_serial():
+                raise LinkReset()
+            raise LinkDead()
 
     def _reader(self):
         buf = ""
@@ -85,6 +170,14 @@ class UInspLink:
                 # the run -- which looks exactly like a dead board.
                 if self._stop:
                     break
+                if self.auto_reconnect:
+                    # A full port drop (re-enumeration) fails reads too. Wait for
+                    # the link to come back rather than giving up; the write path
+                    # drives re-establishing board state. Resync framing after
+                    # the gap.
+                    self._reopen_serial()
+                    buf, depth, in_str, esc, frame_t0 = "", 0, False, False, None
+                    continue
                 fails += 1
                 if fails >= 50:
                     print(f"  [serial read failed {fails}x, giving up: {exc}]")
@@ -176,8 +269,14 @@ class UInspLink:
         raw = json.dumps(obj, separators=(",", ":")).encode()
         if self.verbose:
             print("  TX", raw.decode())
-        self.ser.write(raw)
-        self.ser.flush()
+        try:
+            self._tx(raw)
+        except LinkReset:
+            # The reply we were about to wait for will never come from the
+            # pre-reboot board; drop the slot and let the caller re-establish.
+            with self._lock:
+                self._pending.pop(mid, None)
+            raise
 
         got = ev.wait(timeout)
         with self._lock:
@@ -199,8 +298,7 @@ class UInspLink:
         raw = json.dumps(obj, separators=(",", ":")).encode()
         if self.verbose:
             print("  TX", raw.decode(), "(no reply expected)")
-        self.ser.write(raw)
-        self.ser.flush()
+        self._tx(raw)
 
     def drain_async(self):
         out = []
@@ -976,6 +1074,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
     # minDetectTimeSep_us must stay below 1e6/max_hz or it caps the rate below
     # the target; jitter it within a band that always admits max_hz.
     sep_lo, sep_hi = 500, max(700, int(1e6 / max_hz / 2))
+    sep_us = max(500, int(1e6 / max_hz / 3))   # setup value; let max_hz through
     FLOOD = ("PING", "get_setup", "get_running_stat")
 
     # plateFreq floor so max_hz still clears the 91-step (3.5mm) distance gate:
@@ -998,16 +1097,26 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                 "SEL2_on": l1a + base + 13, "SEL2_off": l1a + base + 14,
                 "SEL3_on": l1a + base + 23, "SEL3_off": l1a + base + 24}
 
-    try:
+    def _enter_ready():
+        """Put the board into READY at the churn baseline. Idempotent, so it
+        both starts the run and re-establishes state after a reconnect (a USB
+        drop reboots the board back to IDLE)."""
         link.send({"type": "clear_error"}, timeout=2.0)
         link.send({"type": "clear_error_history"}, timeout=2.0)
-        sep_us = max(500, int(1e6 / max_hz / 3))   # let max_hz through the gate
         link.send({"type": "set_setup", "plateFreq": freq_floor,
                    "minDetectTimeSep_us": sep_us,
                    "stage_pulse_offset": _win(win_lo)}, timeout=3.0)
         link.send({"type": "enter_insp_mode"}, timeout=3.0)
         _wait_at_speed(link)
-        st, _ = _state(link)
+        return _state(link)[0]
+
+    try:
+        try:
+            st = _enter_ready()
+        except LinkReset:
+            st = _enter_ready()      # dropped during setup; board rebooted, retry
+        except LinkDead:
+            st = None
         rep.add("C.0", "reached READY with the rate limiters opened",
                 st == ST_READY, f"plateFreq={freq_floor}..{freq_ceil} "
                 f"minDetectTimeSep_us={sep_us}")
@@ -1027,6 +1136,12 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
         pending_rep = []          # (due_time, tid, cat) FIFO for delayed reports
         last_due = [0.0]          # keeps due times monotonic -> in-order sends
         bursts_done = 0
+        # A reconnect reboots the board, so the tid counter restarts: the +1
+        # chain only holds WITHIN a segment between drops. Track objects and
+        # gaps across all segments so C.2 stays meaningful across USB drops.
+        seg_objs = [0]            # objects counted in already-closed segments
+        seg_count = [1]           # segments seen (starts at 1)
+        seg_gaps = []
 
         def _pump():
             nonlocal qs_max, fault
@@ -1147,6 +1262,34 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
             return ok, (f"base={base} SWITCH-L1A={d_sw}(want {base}) "
                         f"sw_val={sw_val} SEL1-L1A={d_sel}(want {base + 3})")
 
+        def _reestablish():
+            """Recover from a reconnect (LinkReset). The board rebooted on the
+            USB re-seat: back to IDLE with the tid counter and pipeline reset.
+            Close the current tid segment, put the board back into READY at the
+            baseline, and drop the volatile expectations a reboot invalidated."""
+            nonlocal cur_base
+            # Close the segment we were in: fold its objects + any in-segment
+            # gaps into the running totals before the counter restarts.
+            if tids:
+                seg_gaps.extend((a, b) for a, b in zip(tids, tids[1:])
+                                if b != a + 1)
+                seg_objs[0] += len(tids)
+                seg_count[0] += 1
+            tids.clear()
+            reported.clear()
+            pending_rep.clear()
+            last_due[0] = 0.0
+            cur_base = win_lo
+            # Re-arm READY; if it drops again mid-recovery, keep retrying.
+            for _ in range(4):
+                try:
+                    if _enter_ready() == ST_READY:
+                        link.drain_async()
+                        return True
+                except (LinkReset, LinkDead):
+                    continue
+            return False
+
         now0 = time.time()
         t_end = now0 + seconds
         next_fire = now0
@@ -1164,6 +1307,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
         fired = 0
 
         while time.time() < t_end:
+          try:
             now = time.time()
             _pump()
             _flush_rep()
@@ -1269,23 +1413,43 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                       + (f" bursts={bursts_done}" if burst else "")
                       + (f" checks={checks_ok}/{checks_done}" if verify else "")
                       + (f" persist_refused={persist_ok}" if persist else "")
-                      + (f" pendRep={len(pending_rep)}" if report_delay else ""),
+                      + (f" pendRep={len(pending_rep)}" if report_delay else "")
+                      + (f" reconnects={link.reconnects}"
+                         if link.reconnects else ""),
                       flush=True)
                 next_beat = now + 30.0
             time.sleep(0.001)
+          except LinkReset:
+            # The link dropped and was reopened mid-tick. The board rebooted, so
+            # re-establish READY + reset the segment and carry on -- a USB drop
+            # is a hiccup, not the end of the soak.
+            if not _reestablish():
+                unresponsive = True
+                break
+            next_fire = next_poll = time.time()
+            continue
+          except LinkDead:
+            unresponsive = True     # port never came back within the timeout
+            break
 
         # Flush any delayed reports immediately so nothing is stranded, then
-        # answer the tail.
-        for _due, tid, cat in pending_rep:
-            link.send_nowait({"type": "report", "tid": tid, "cat": cat})
-        pending_rep.clear()
-        t_s = time.time() + 1.0
-        while time.time() < t_s:
-            _pump()
-            _flush_rep()
-            time.sleep(0.003)
-
-        st, stat = _state(link)
+        # answer the tail. A drop right at the finish is still just a reconnect.
+        try:
+            for _due, tid, cat in pending_rep:
+                link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+            pending_rep.clear()
+            t_s = time.time() + 1.0
+            while time.time() < t_s:
+                _pump()
+                _flush_rep()
+                time.sleep(0.003)
+            st, stat = _state(link)
+        except LinkReset:
+            _reestablish()
+            st, stat = _state(link)
+        except LinkDead:
+            unresponsive = True
+            st, stat = None, None
         errs = _errors_of(stat)
         rate = fired / seconds if seconds else 0
         all_errs = (fault or []) + errs
@@ -1310,15 +1474,28 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                     and not errs,
                     f"fired={fired} (~{rate:.0f}/s) objects={len(tids)} "
                     f"state={ST_NAME.get(st, st)}"
+                    + (f" over {link.reconnects} USB reconnect(s)"
+                       if link.reconnects else "")
                     + (f" FAULT={[ERR_NAME.get(e, e) for e in fault]}"
                        if fault else "")
                     + (" UNRESPONSIVE" if unresponsive else ""))
 
-        gaps = [(a, b) for a, b in zip(tids, tids[1:]) if b != a + 1]
-        rep.add("C.2", "accepted tids stayed strictly +1 through the churn",
-                bool(tids) and not gaps,
-                (f"tid {tids[0]}..{tids[-1]}" if tids else "no objects")
-                + (f" gaps:{gaps[:5]}" if gaps else ""))
+        # Close the final segment. A reconnect reboots the tid counter, so the
+        # +1 chain only holds WITHIN a segment; a gap INSIDE a segment is still a
+        # real desync and still fails C.2.
+        seg_gaps.extend((a, b) for a, b in zip(tids, tids[1:]) if b != a + 1)
+        total_objs = seg_objs[0] + len(tids)
+        if link.reconnects:
+            rep.add("C.2", "accepted tids stayed strictly +1 within each link "
+                    "segment", total_objs > 0 and not seg_gaps,
+                    f"{total_objs} objs across {seg_count[0]} segment(s), "
+                    f"{link.reconnects} reconnect(s)"
+                    + (f" gaps:{seg_gaps[:5]}" if seg_gaps else ""))
+        else:
+            rep.add("C.2", "accepted tids stayed strictly +1 through the churn",
+                    bool(tids) and not seg_gaps,
+                    (f"tid {tids[0]}..{tids[-1]}" if tids else "no objects")
+                    + (f" gaps:{seg_gaps[:5]}" if seg_gaps else ""))
 
         rep.add("C.3", "firmware queue stayed bounded under load",
                 qs_max < PIPE_INFO_LEN, f"peak Qs={qs_max} of {PIPE_INFO_LEN}")
@@ -1347,25 +1524,30 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
               f"{', '.join(events[:14])}{' ...' if len(events) > 14 else ''}")
 
     finally:
-        link.send({"type": "clear_error"}, timeout=3.0)
-        link.send({"type": "exit_insp_mode"}, timeout=3.0)
-        link.send({"type": "set_sel1_cd", "count": -1}, timeout=3.0)
-        restore = {"type": "set_setup"}
-        if isinstance(orig_freq, (int, float)):
-            restore["plateFreq"] = orig_freq
-        if isinstance(orig_sep, (int, float)):
-            restore["minDetectTimeSep_us"] = orig_sep
-        if orig_spo:
-            restore["stage_pulse_offset"] = orig_spo
-        link.send(restore, timeout=3.0)
-        link.send({"type": "clear_error_history"}, timeout=2.0)
-        # The guard should have blocked every mid-run save, so NVS is normally
-        # untouched. Only clean up if one slipped through (guard regression).
-        if persist and persist_allowed:
-            if orig_nvs:
-                link.send({"type": "set_setup", "persist": True}, timeout=4.0)
-            else:
-                link.send({"type": "clear_saved_setup"}, timeout=4.0)
+        # Best-effort restore. If the link drops during teardown the board
+        # reboots to a safe IDLE anyway, so a failed restore is harmless.
+        try:
+            link.send({"type": "clear_error"}, timeout=3.0)
+            link.send({"type": "exit_insp_mode"}, timeout=3.0)
+            link.send({"type": "set_sel1_cd", "count": -1}, timeout=3.0)
+            restore = {"type": "set_setup"}
+            if isinstance(orig_freq, (int, float)):
+                restore["plateFreq"] = orig_freq
+            if isinstance(orig_sep, (int, float)):
+                restore["minDetectTimeSep_us"] = orig_sep
+            if orig_spo:
+                restore["stage_pulse_offset"] = orig_spo
+            link.send(restore, timeout=3.0)
+            link.send({"type": "clear_error_history"}, timeout=2.0)
+            # The guard should have blocked every mid-run save, so NVS is
+            # normally untouched. Only clean up if one slipped through.
+            if persist and persist_allowed:
+                if orig_nvs:
+                    link.send({"type": "set_setup", "persist": True}, timeout=4.0)
+                else:
+                    link.send({"type": "clear_saved_setup"}, timeout=4.0)
+        except (LinkReset, LinkDead):
+            pass
 
 
 # --- probe: the protocol + camera-trigger surface -------------------------
@@ -2142,6 +2324,12 @@ def main():
                     help="delay results PAST the window and assert the machine "
                          "error-stops (OBJECT_HAS_NO_INSP_RESULT) cleanly -- the "
                          "too-slow-inspection safety stop, under churn")
+    ch.add_argument("--auto-reconnect", action=argparse.BooleanOptionalAction,
+                    default=True,
+                    help="survive a USB drop: reopen the port when it re-appears "
+                         "and re-establish the board, instead of ending the run "
+                         "(on by default; --no-auto-reconnect to disable). Lets a "
+                         "soak run unattended for days across USB re-enumerations")
 
     s = sub.add_parser("send", help="send one raw JSON command")
     s.add_argument("json")
@@ -2191,6 +2379,7 @@ def main():
         elif args.cmd == "stall":
             stall(link, rep, args.hz, args.stall_seconds, args.cat)
         elif args.cmd == "chaos":
+            link.auto_reconnect = args.auto_reconnect
             seed = (args.seed if args.seed is not None
                     else int(time.time() * 1000) & 0xFFFFFFFF)
             # Shuffling needs a delay window to reorder within; expecting a

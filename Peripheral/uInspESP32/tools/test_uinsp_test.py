@@ -92,9 +92,11 @@ class FakeSerial:
         self.feed(json.dumps(rep))
 
 
-def make_link(fake):
+def make_link(fake, auto_reconnect=False):
     link = uinsp_test.UInspLink.__new__(uinsp_test.UInspLink)
     link.ser = fake
+    link.port = getattr(fake, "port_path", "FAKE")
+    link.baud = 115200
     link.verbose = False
     link._id = 1000
     link._pending = {}
@@ -104,6 +106,10 @@ def make_link(fake):
     link._async_ev = threading.Event()
     link._raw_log = deque(maxlen=1000)
     link._stop = False
+    link.auto_reconnect = auto_reconnect
+    link.reconnects = 0
+    link._reconn_lock = threading.Lock()
+    link._last_reset = 0.0
     link._rx = threading.Thread(target=link._reader, daemon=True)
     link._rx.start()
     return link
@@ -1080,6 +1086,100 @@ class TestReport(unittest.TestCase):
         with open(path, encoding="utf-8") as fh:
             body = fh.read()
         self.assertIn("x\\|y", body)
+
+
+class TestReconnect(unittest.TestCase):
+    """The auto-reconnect seam in the link layer: a dropped write reopens the
+    port and signals the caller (LinkReset) so board state can be re-established,
+    or gives up (LinkDead) only if the port never comes back."""
+
+    def _boom_writer(self):
+        import serial as _serial
+
+        def boom(_data):
+            raise _serial.SerialException("[Errno 6] Device not configured")
+        return boom
+
+    def test_tx_raises_linkreset_and_counts_when_reopen_succeeds(self):
+        fake = FakeSerial(auto_reply=False)
+        link = make_link(fake, auto_reconnect=True)
+        link._reopen_serial = lambda wait_timeout=600.0: (
+            setattr(link, "reconnects", link.reconnects + 1) or True)
+        fake.write = self._boom_writer()
+        with self.assertRaises(uinsp_test.LinkReset):
+            link.send_nowait({"type": "PING"})
+        self.assertEqual(link.reconnects, 1)
+        link._stop = True
+        time.sleep(0.05)
+
+    def test_tx_reraises_original_when_auto_reconnect_off(self):
+        import serial as _serial
+        fake = FakeSerial(auto_reply=False)
+        link = make_link(fake, auto_reconnect=False)
+        fake.write = self._boom_writer()
+        with self.assertRaises(_serial.SerialException):
+            link.send_nowait({"type": "PING"})
+        link._stop = True
+        time.sleep(0.05)
+
+    def test_linkdead_when_port_never_returns(self):
+        fake = FakeSerial(auto_reply=False)
+        link = make_link(fake, auto_reconnect=True)
+        link._reopen_serial = lambda wait_timeout=600.0: False
+        fake.write = self._boom_writer()
+        with self.assertRaises(uinsp_test.LinkDead):
+            link.send_nowait({"type": "PING"})
+        link._stop = True
+        time.sleep(0.05)
+
+
+class TestChaosReconnect(unittest.TestCase):
+    """End-to-end: a USB drop mid-chaos is a hiccup, not the end of the run."""
+
+    def test_chaos_survives_a_usb_drop(self):
+        import serial as _serial
+        fw = FakeFirmware(judge_deadline=30.0, min_sep_s=0.0)
+        link = make_link(fw, auto_reconnect=True)
+        state = {"fw": fw}
+
+        # Arm one drop ~0.6s in: the next write raises like a vanished port.
+        def _arm_drop():
+            time.sleep(0.6)
+
+            def boom(_data):
+                raise _serial.SerialException("[Errno 6] Device not configured")
+            state["fw"].write = boom
+        threading.Thread(target=_arm_drop, daemon=True).start()
+
+        # Simulate the port re-appearing with the board freshly rebooted: a new
+        # firmware (tid counter reset), which is exactly what a USB re-seat does.
+        def fake_reopen(wait_timeout=600.0):
+            state["fw"].stop()
+            new = FakeFirmware(judge_deadline=30.0, min_sep_s=0.0)
+            state["fw"] = new
+            link.ser = new
+            link.reconnects += 1
+            link._last_reset = time.time()
+            return True
+        link._reopen_serial = fake_reopen
+
+        rep = uinsp_test.Report()
+        try:
+            uinsp_test.chaos(link, rep, 2.5, 30.0, 40.0, 4321)
+        finally:
+            link._stop = True
+            state["fw"].stop()
+            time.sleep(0.08)
+        rows = {r[0]: r for r in rep.rows}
+        self.assertGreaterEqual(link.reconnects, 1,
+                                "the injected drop should have reconnected")
+        self.assertTrue(rows["C.1"][2],
+                        f"must survive the USB drop: {rows['C.1'][3]}")
+        self.assertTrue(rows["C.2"][2],
+                        f"tids +1 within each segment: {rows['C.2'][3]}")
+        self.assertIn("segment", rows["C.2"][3],
+                      "C.2 should account for segments after a reconnect")
+        self.assertTrue(rows["C.4"][2], "board must answer after the reconnect")
 
 
 if __name__ == "__main__":

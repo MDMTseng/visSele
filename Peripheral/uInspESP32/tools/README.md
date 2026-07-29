@@ -235,6 +235,18 @@ python uinsp_test.py --port COM6 chaos --seconds 20 --persist-churn   # 見下
   `OBJECT_HAS_NO_INSP_RESULT` 乾淨錯誤停機（檢驗太慢就該停）——在 churn 下驗這條
   安全停機。跑完 C.1 反過來變成「有沒有正確停機」而不是「有沒有存活」。
 
+- **`--auto-reconnect` / `--no-auto-reconnect`**（**預設開**）：USB 連線掉線
+  （re-enumeration／重插線／hub 供電抖動）不再讓整個 run 結束——工具會等 port 回來、
+  自動重開，並把板子**重新帶回 READY**（USB 掉線會 power-cycle ESP32，回來時板子已重開
+  機、回到 IDLE、tid 計數歸零），然後**接著跑**。這讓 chaos 可以**無人看管跑好幾天**、
+  跨過多次 USB 掉線。掉線會被算成一次 reconnect：
+  - C.1「survived …」的敘述會附上 `over N USB reconnect(s)`；
+  - C.2 因為重開機 tid 會歸零，改成**每個 segment 各自連號**（`M objs across K
+    segment(s), N reconnect(s)`）——segment **內部**若有斷號仍算真失步、仍會 fail；
+  - heartbeat 會顯示 `reconnects=N`。
+  真的**一直沒回來**（拔掉不插）才會以 `LinkDead` 收尾（`C.4` no-reply）。
+  → 24/7 長泡壓測就是靠這條；要重現「掉線即停」的舊行為才加 `--no-auto-reconnect`。
+
 ### `--verify-timing`（抓 publish-path race）
 
 純負載的 chaos 只驗「不出錯／tid 連號／不當機」——一個把物件**派到錯 offset 但仍
