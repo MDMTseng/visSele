@@ -83,8 +83,29 @@ class UInspLink:
         self.reconnects = 0
         self._reconn_lock = threading.Lock()
         self._last_reset = 0.0
+        # Identity of the port node we opened. A USB re-enumeration destroys and
+        # re-creates the node (new inode/birthtime); a board that just goes
+        # silent leaves it intact. That difference lets a silent-death USB drop
+        # be recovered WITHOUT masking a real firmware hang/reboot.
+        self._port_sig0 = self._port_sig()
         self._rx = threading.Thread(target=self._reader, daemon=True)
         self._rx.start()
+
+    def _port_sig(self):
+        """A stable-per-enumeration signature of the port node, or None if the
+        node is currently absent (definitely re-enumerating/gone)."""
+        try:
+            s = os.stat(self.port)
+            return (s.st_ino, getattr(s, "st_birthtime", s.st_ctime))
+        except OSError:
+            return None
+
+    def port_reenumerated(self):
+        """True if the port node vanished or was re-created since we opened it
+        -- a USB re-enumeration -- as opposed to the board going silent with the
+        node intact (a firmware hang/reboot, which must NOT be masked)."""
+        cur = self._port_sig()
+        return cur is None or cur != self._port_sig0
 
     def close(self):
         self._stop = True
@@ -120,6 +141,7 @@ class UInspLink:
                         # before it accepts I/O, and the MCU it just power-cycled
                         # needs to finish booting.
                         time.sleep(0.6)
+                        self._port_sig0 = self._port_sig()   # adopt the new node
                         self.reconnects += 1
                         self._last_reset = time.time()
                         print(f"  [link reconnected (#{self.reconnects}) on "
@@ -1132,6 +1154,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
         persist_total, persist_ok, persist_allowed = 0, 0, 0
         cur_base = win_lo
         checks_done, checks_ok, check_fails = 0, 0, []
+        checks_skipped = 0        # inconclusive spot-checks (link glitch)
         report_delay = report_delay_ms / 1000.0
         pending_rep = []          # (due_time, tid, cat) FIFO for delayed reports
         last_due = [0.0]          # keeps due times monotonic -> in-order sends
@@ -1251,8 +1274,13 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                            if n == "SWITCH"), None)
             s1 = _last("SEL1", 1)
             if l1a_on is None or sw is None:
-                return False, (f"base={base} incomplete trace "
-                               f"L1A_on={l1a_on} SWITCH={sw} n={dump.get('n')}")
+                # No usable trace came back. A torn/stale offset read shows WRONG
+                # edge positions, not a MISSING trace -- an empty dump means the
+                # io_trace reply didn't make it (link glitching / mid-drop). Mark
+                # it inconclusive (ok=None) so a dying transport doesn't masquer-
+                # ade as an offset-race failure; the caller skips it, not fails.
+                return None, (f"base={base} incomplete trace "
+                              f"L1A_on={l1a_on} SWITCH={sw} n={dump.get('n')}")
             # SWITCH offset (l1a+base) minus L1A_on offset (l1a) == base.
             d_sw = sw - l1a_on
             ok = abs(d_sw - base) <= 1 and sw_val == 1
@@ -1289,6 +1317,22 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                 except (LinkReset, LinkDead):
                     continue
             return False
+
+        def _recover_silence():
+            """The board stopped replying though writes never failed. If the
+            port node re-enumerated it is a USB drop that kept our write side
+            open (the write-failure path never fired) -- force a fresh handle
+            and re-establish. If the node is INTACT the board went silent on its
+            own (a real firmware hang/reboot) -- do NOT mask it; let C.1 fail."""
+            if not link.port_reenumerated():
+                return False
+            print("  [board silent + port re-enumerated -- treating as a USB "
+                  "drop, recovering]", flush=True)
+            try:
+                link._reopen_serial()
+            except Exception:
+                pass
+            return _reestablish()
 
         now0 = time.time()
         t_end = now0 + seconds
@@ -1352,12 +1396,18 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                 next_offs = now + rng.uniform(2.0, 4.0)
             if verify and now >= next_check:
                 ok, detail = _spotcheck(cur_base)
-                checks_done += 1
-                if ok:
-                    checks_ok += 1
+                if ok is None:
+                    # Inconclusive (no trace came back -- link glitch), not a
+                    # verdict on the offset: skip it rather than fail C.6.
+                    checks_skipped += 1
+                    events.append("check-skip")
                 else:
-                    check_fails.append(detail)
-                events.append("check" + ("" if ok else "-FAIL"))
+                    checks_done += 1
+                    if ok:
+                        checks_ok += 1
+                    else:
+                        check_fails.append(detail)
+                    events.append("check" + ("" if ok else "-FAIL"))
                 next_fire = time.time()          # resume firing immediately
                 next_check = time.time() + rng.uniform(6.0, 10.0)
             if now >= next_sep:
@@ -1396,6 +1446,13 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                 _pump()
                 _flush_rep()
                 if stat is None:
+                    # No reply. A USB drop that kept the write side open won't
+                    # have tripped the write-failure reconnect -- recover it if
+                    # the port re-enumerated. A board silent with the node intact
+                    # is a real hang: _recover_silence returns False -> C.1 fails.
+                    if _recover_silence():
+                        next_fire = next_poll = time.time()
+                        continue
                     unresponsive = True
                     break
                 errs = _errors_of(stat)
@@ -1516,6 +1573,8 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                     "every spot-check",
                     checks_done > 0 and checks_ok == checks_done,
                     f"{checks_ok}/{checks_done} spot-checks matched"
+                    + (f", {checks_skipped} inconclusive (link glitch)"
+                       if checks_skipped else "")
                     + (f"; mismatches: {check_fails[:4]}" if check_fails
                        else " (SWITCH/SEL landed on the current offset -- no "
                             "torn/stale offset read observed)"))

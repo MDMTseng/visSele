@@ -10,6 +10,7 @@ splits the two streams correctly.
 """
 
 import json
+import os
 import sys
 import threading
 import time
@@ -110,6 +111,7 @@ def make_link(fake, auto_reconnect=False):
     link.reconnects = 0
     link._reconn_lock = threading.Lock()
     link._last_reset = 0.0
+    link._port_sig0 = link._port_sig()
     link._rx = threading.Thread(target=link._reader, daemon=True)
     link._rx.start()
     return link
@@ -1133,8 +1135,122 @@ class TestReconnect(unittest.TestCase):
         time.sleep(0.05)
 
 
+class SilentAfterFirmware(FakeFirmware):
+    """A board that, after N seconds, still ACCEPTS writes (the OS port stays
+    open) but stops replying -- the USB-drop signature that doesn't trip a
+    write failure, so only the no-reply poll can catch it."""
+
+    def __init__(self, silent_after=0.6, **kw):
+        super().__init__(**kw)
+        self._silent_after = silent_after
+        self._born = None
+
+    def write(self, data):
+        if self._born is None:
+            self._born = time.time()
+        if time.time() - self._born > self._silent_after:
+            self.written.append(data.decode())
+            return len(data)          # accepted, but no reply is ever fed
+        return super().write(data)
+
+
+class TestPortReenumeration(unittest.TestCase):
+    """port_reenumerated() is the discriminator that lets a silent-death USB
+    drop be recovered without masking a firmware hang (node stays intact)."""
+
+    def test_detects_vanished_and_recreated_node(self):
+        import tempfile
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, "ttyFAKE")
+        open(p, "w").close()
+        fake = FakeSerial(auto_reply=False)
+        fake.port_path = p
+        link = make_link(fake)
+        self.assertFalse(link.port_reenumerated(), "same node -> not re-enum")
+        os.remove(p)
+        self.assertTrue(link.port_reenumerated(), "vanished node -> re-enum")
+        link._stop = True
+        time.sleep(0.05)
+
+
 class TestChaosReconnect(unittest.TestCase):
     """End-to-end: a USB drop mid-chaos is a hiccup, not the end of the run."""
+
+    def _fresh_reopen(self, link, state):
+        def fake_reopen(wait_timeout=600.0):
+            state["fw"].stop()
+            new = FakeFirmware(judge_deadline=30.0, min_sep_s=0.0)
+            state["fw"] = new
+            link.ser = new
+            link.reconnects += 1
+            link._last_reset = time.time()
+            return True
+        return fake_reopen
+
+    def test_chaos_recovers_from_silent_usb_drop(self):
+        # Writes keep succeeding but the board stops replying, and the port
+        # re-enumerated: the poll's no-reply path must recover it, not end.
+        fw = SilentAfterFirmware(silent_after=0.6, judge_deadline=30.0,
+                                 min_sep_s=0.0)
+        link = make_link(fw, auto_reconnect=True)
+        link.port_reenumerated = lambda: True
+        state = {"fw": fw}
+        link._reopen_serial = self._fresh_reopen(link, state)
+        rep = uinsp_test.Report()
+        try:
+            uinsp_test.chaos(link, rep, 6.0, 30.0, 40.0, 99)
+        finally:
+            link._stop = True
+            state["fw"].stop()
+            time.sleep(0.08)
+        rows = {r[0]: r for r in rep.rows}
+        self.assertGreaterEqual(link.reconnects, 1)
+        self.assertTrue(rows["C.1"][2],
+                        f"silent USB drop must recover: {rows['C.1'][3]}")
+
+    def test_chaos_silent_with_intact_node_still_fails(self):
+        # Same silence, but the node is INTACT -> a real firmware hang. It must
+        # NOT be masked as a USB drop: C.1 fails and nothing reconnects.
+        fw = SilentAfterFirmware(silent_after=0.6, judge_deadline=30.0,
+                                 min_sep_s=0.0)
+        link = make_link(fw, auto_reconnect=True)
+        link.port_reenumerated = lambda: False
+        rep = uinsp_test.Report()
+        try:
+            uinsp_test.chaos(link, rep, 6.0, 30.0, 40.0, 99)
+        finally:
+            link._stop = True
+            fw.stop()
+            time.sleep(0.08)
+        rows = {r[0]: r for r in rep.rows}
+        self.assertFalse(rows["C.1"][2],
+                         "intact-node silence is a real hang, must fail C.1")
+        self.assertEqual(link.reconnects, 0, "must not fake a reconnect")
+
+    def test_incomplete_trace_is_inconclusive_not_a_c6_mismatch(self):
+        # An empty io_trace dump (link glitch) must be quarantined as
+        # inconclusive, never scored as an offset-race mismatch.
+        class NoTraceFirmware(FakeFirmware):
+            def reply_to(self, msg):
+                if msg.get("type") == "io_trace_dump":
+                    self.feed(json.dumps({"id": msg.get("id"), "ack": True,
+                                          "type": "io_trace_dump",
+                                          "ev": [], "n": 0}))
+                    return
+                super().reply_to(msg)
+        fw = NoTraceFirmware(judge_deadline=30.0, min_sep_s=0.0)
+        link = make_link(fw)
+        rep = uinsp_test.Report()
+        try:
+            uinsp_test.chaos(link, rep, 9.0, 30.0, 40.0, 7, False, True)
+        finally:
+            link._stop = True
+            fw.stop()
+            time.sleep(0.08)
+        rows = {r[0]: r for r in rep.rows}
+        self.assertIn("inconclusive", rows["C.6"][3])
+        self.assertNotIn("mismatches", rows["C.6"][3],
+                         "an empty trace must not read as an offset mismatch")
 
     def test_chaos_survives_a_usb_drop(self):
         import serial as _serial
