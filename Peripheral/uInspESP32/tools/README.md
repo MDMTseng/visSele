@@ -28,6 +28,41 @@ python uinsp_test.py --port COM6 send '{"type":"get_setup"}'   # 單發命令
 python uinsp_test.py --port COM6 -v monitor         # -v 印出每一個收發框
 ```
 
+## ★ 硬體接線面板（`uinsp_panel.py`）—— 新板 bring-up 用
+
+接新板 / 步進馬達 / 光閘 / 吹氣閥時，開一個瀏覽器面板逐一手動測試：
+
+```sh
+python3 uinsp_panel.py --port /dev/cu.usbserial-0001    # 開 http://127.0.0.1:8765
+```
+
+- **Stepper**：enable/disable、設 `plateFreq`、Start（`enter_insp_mode`）/ Stop
+- **吹氣閥 / 任意輸出腳**：`PIN_ON`/`PIN_OFF`/定時 pulse（預設 FEEDER pin 21）
+- **Selectors**：`sel_act` 打 SEL1/2/3（pin 25/26/32），脈寬可調
+- **光閘（pin 27）**：即時電平大字顯示（BLOCKED/CLEAR）＋邊緣計數 —— 揮手就看得到
+- **Live pins** 表、raw JSON 命令框、非同步事件（`bTrigInfo` 等）即時 log
+
+面板可以在板子還沒插上時先開著，插上後自動連線；USB 掉線自動重連。
+
+光閘即時電平靠新的 `PIN_READ` 命令（`{"type":"PIN_READ","pin":27}` 或
+`"pins":[...]` 批次讀），舊韌體沒有 —— 面板會顯示警告並停用該區，其餘功能照常。
+接新板記得先燒新韌體：`pio run -t upload`。
+
+### 新板接線相關的機台設定（set_setup 鍵，都可 save_setup 存 NVS）
+
+驅動器輸入若是**共陽極（common +5V）**，訊號全部反相 —— 這些都改成執行期設定：
+
+- `stepper_en_active`（0/1）：EN 腳（13）哪個電平是「啟用」；`stepper_dir`（0/1）：DIR 腳（23）電平（換轉向）
+- `io_on_level`：每個輸出「ON」是 HIGH 還是 LOW，例如
+  `{"type":"set_setup","io_on_level":{"SEL1":0,"FEEDER":0}}`（0=ON 是 LOW）。
+  韌體所有輸出路徑（ISR stage 脈波、`sel_act`、feeder、`trigCamPulse`）都走這個映射；
+  FEEDER 預設就是 ON=LOW（沿用舊行為），其餘預設 ON=HIGH
+- `pulses_per_rev`、`plate_diameter_mm`：純 metadata，韌體不拿來運算，
+  host 用來換算 mm/rpm ↔ pulses（rpm = plateFreq / pulses_per_rev × 60）
+
+面板都有對應 UI（Stepper 卡、IO polarity 卡、Machine metadata 卡）。
+NVS blob 版本升到 v4：舊存檔會退回編譯預設，重新推一次設定再 save 即可。
+
 ## ★ 光板診斷（`bench`）—— 不用接任何機構
 
 **只要 ESP32 板 + USB 線就能跑完整條 tid 路徑。**
