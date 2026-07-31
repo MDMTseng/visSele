@@ -41,6 +41,26 @@ extern uint32_t SYS_MIN_PULSE_TIME_SEP_us;
 // (GateSensing) -- see LegacyFirmware.cpp.
 extern volatile int minWidth;
 extern volatile int maxWidth;
+// Stepper electrical polarity. A driver with common-anode (common +5V) opto
+// inputs sees every signal inverted relative to direct wiring, so the level
+// that means "enabled" -- and the DIR level for the wanted rotation -- are
+// per-machine wiring facts, not compile-time ones.
+extern int stepper_en_active;   // level on STEPPER_EN_PIN that enables the driver
+extern int stepper_dir_level;   // level driven on STEPPER_DIR_PIN
+// Passive machine metadata: the firmware computes purely in the pulse domain
+// and never uses these; they let a host read the board and convert
+// mm/rpm <-> pulses without a side channel (pulse rate == plateFreq, so
+// rpm = plateFreq / pulses_per_rev * 60).
+extern uint32_t pulses_per_rev;    // full stepper pulses per plate revolution
+extern float plate_diameter_mm;   // 0 = not configured
+// Per-output ON polarity mask, bit=IO_IDX in LegacyFirmware.cpp (set = ON is
+// LOW, for common-anode driver inputs). volatile: read by the step ISR.
+extern volatile uint32_t IO_INV_MASK;
+// Plate ramp acceleration, Hz of plateFreq per second (<=0 = instant).
+extern float SYS_FREQ_ACCEL;
+// Gate edge debounce thresholds (samples) -- see GateSensing().
+extern int DEBOUNCE_H_THRES;
+extern int DEBOUNCE_L_THRES;
 
 #define MACHINE_ID_MAX_LEN 24
 
@@ -49,7 +69,14 @@ namespace MachineConfig
   // Bump when the stored layout changes; a mismatch is treated as "no config"
   // so an old board silently falls back to compiled defaults instead of
   // loading garbage into the pulse offsets.
-  constexpr uint32_t kConfigVersion = 1;
+  // v2: + stepper_en_active / stepper_dir_level
+  // v3: + pulses_per_rev / plate_diameter_mm
+  // v4: + io_inv_mask (per-output ON polarity)
+  // v5: + plate_accel (Hz/s ramp)
+  // v6: + gate debounce rise/fall
+  // (an older blob falls back to compiled defaults -- re-push and save_setup
+  // once after upgrading).
+  constexpr uint32_t kConfigVersion = 6;
 
   // Reads NVS into the globals above. Call once, early in firmwareSetup(),
   // before anything derives timing from them.

@@ -24,18 +24,55 @@ extern "C" {
 // step ISR. Valid for pins 0..31 only -- every input we sample is in that range.
 #define GPIOLS32_GET(PIN) ((GPIO.in>>(PIN))&1)
 
+// Per-output ON polarity. A driver board with common-anode (common +5V) opto
+// inputs is energised by the GPIO sinking LOW, so "ON" is a logical notion:
+// every firmware write goes through IO_ON/IO_OFF/io_drive below and IO_INV_MASK
+// (bit set = ON is LOW) maps it to the wire. Configured per machine via
+// set_setup {"io_on_level":{...}} and persisted with the rest of the config.
+enum IO_IDX { IOI_L1A=0, IOI_CAM1, IOI_L2A, IOI_CAM2,
+              IOI_SEL1, IOI_SEL2, IOI_SEL3, IOI_FEEDER, IOI_COUNT };
+// FEEDER's legacy convention was already ON=LOW (run pulls the pin low); the
+// default mask preserves that while everything else stays ON=HIGH.
+volatile uint32_t IO_INV_MASK = (1u<<IOI_FEEDER);
+#define IO_IS_INV(IDX) ((IO_INV_MASK>>(IDX))&1u)
+// Register-level writes valid for any pin (out1 bank covers >=32), IRAM-safe.
+#define GPIO_ANY_SET(PIN) do{ if((PIN)<32) {GPIO.out_w1ts=1u<<(PIN);} else {GPIO.out1_w1ts.val=1u<<((PIN)-32);} }while(0)
+#define GPIO_ANY_CLR(PIN) do{ if((PIN)<32) {GPIO.out_w1tc=1u<<(PIN);} else {GPIO.out1_w1tc.val=1u<<((PIN)-32);} }while(0)
+#define IO_ON(PIN,IDX)  do{ if(IO_IS_INV(IDX)) GPIO_ANY_CLR(PIN); else GPIO_ANY_SET(PIN); }while(0)
+#define IO_OFF(PIN,IDX) do{ if(IO_IS_INV(IDX)) GPIO_ANY_SET(PIN); else GPIO_ANY_CLR(PIN); }while(0)
+// Main-loop counterpart (digitalWrite is fine outside the ISR). idx<0 = pin not
+// under polarity control (e.g. a custom trigCamPulse pin): logical==physical.
+static inline void io_drive(int pin,int idx,bool on)
+{
+  bool inv = (idx>=0) && IO_IS_INV(idx);
+  digitalWrite(pin, (on!=inv) ? HIGH : LOW);
+}
+// Logical feeder state, so a polarity change can re-drive the pin correctly.
+bool FEEDER_ON=false;
+// Name<->pin<->mask-bit table for the io_on_level JSON config.
+static const struct { const char *name; int pin; int idx; } IO_POL_TAB[] = {
+  {"L1A",   PIN_O_L1A,  IOI_L1A},
+  {"CAM1",  PIN_O_CAM1, IOI_CAM1},
+  {"L2A",   PIN_O_L2A,  IOI_L2A},
+  {"CAM2",  PIN_O_CAM2, IOI_CAM2},
+  {"SEL1",  PIN_O_SEL1, IOI_SEL1},
+  {"SEL2",  PIN_O_SEL2, IOI_SEL2},
+  {"SEL3",  PIN_O_SEL3, IOI_SEL3},
+  {"FEEDER",FEEDER_PIN, IOI_FEEDER},
+};
+
 // Single place that drives every actuator to its inactive level. Used on the
 // error path, on reset, and once the plate has coasted to a stop, so a selector
 // can never be left energised by a state transition that forgot one pin.
 #define ALL_OUTPUTS_SAFE() \
   { \
-    GPIOLS32_CLR(PIN_O_L1A); \
-    GPIOLS32_CLR(PIN_O_L2A); \
-    GPIOLS32_CLR(PIN_O_CAM1); \
-    GPIOLS32_CLR(PIN_O_CAM2); \
-    GPIOLS32_CLR(PIN_O_SEL1); \
-    GPIOLS32_CLR(PIN_O_SEL2); \
-    GPIOLS32_CLR(PIN_O_SEL3); \
+    IO_OFF(PIN_O_L1A,IOI_L1A); \
+    IO_OFF(PIN_O_L2A,IOI_L2A); \
+    IO_OFF(PIN_O_CAM1,IOI_CAM1); \
+    IO_OFF(PIN_O_CAM2,IOI_CAM2); \
+    IO_OFF(PIN_O_SEL1,IOI_SEL1); \
+    IO_OFF(PIN_O_SEL2,IOI_SEL2); \
+    IO_OFF(PIN_O_SEL3,IOI_SEL3); \
   }
 
 
@@ -58,7 +95,11 @@ float SETUP_TAR_FREQ=0;
 bool SYS_FREQ_STABLE=false;
 float SYS_TAR_FREQ=1000;
 float SYS_CUR_FREQ=0;
-float SYS_FREQ_ADV_STEP=5;
+// Plate spin-up/down ramp, in Hz of plateFreq per second of wall time. The old
+// scheme stepped a fixed 5 Hz every 256th loop pass, so the real acceleration
+// depended on loop speed; this is deterministic and per-machine configurable
+// (set_setup "plateAccel", persisted). <=0 means jump instantly.
+float SYS_FREQ_ACCEL=2000;
 bool SYS_STEPPER_DISABLED=false;
 
 uint32_t SYS_MIN_PULSE_TIME_SEP_us=(1000000/15);
@@ -88,7 +129,17 @@ typedef struct pipeLineInfo{
   // pointer into RBuf, never copied by value, so a volatile member is free.
   volatile int32_t insp_status;
   uint32_t tid;
+  // Registration wall time (lower 32 of esp_timer_get_time), for the
+  // gate->report latency stat. Wraps every ~71 min; a single latency sample
+  // never spans that, so unsigned subtraction stays correct.
+  uint32_t trig_us;
 }pipeLineInfo;
+
+// Gate->report latency, updated by the report handler (main loop only),
+// reported by get_running_stat, zeroed by reset_running_stat.
+uint32_t REP_LAT_N=0;
+uint64_t REP_LAT_SUM_US=0;
+uint32_t REP_LAT_MAX_US=0;
 
 // Incremented from the ISR (Run_ACTS' SWITCH branch), read and zeroed from the
 // main loop (get_running_stat / reset_running_stat). Were uint64_t, which on a
@@ -97,11 +148,30 @@ typedef struct pipeLineInfo{
 // 4.29e9 parts is ~800 days at 60/s and they are resettable stats anyway.
 // The reset store still races the ISR's ++ and may drop one count at the exact
 // moment of reset -- harmless, and display-only regardless.
+// Context of the most recent pipeline error, captured in the ISR at the moment
+// the fault is detected so the state-change log can say WHICH object failed
+// and how late it was, instead of a bare code.
+volatile uint32_t ERR_CTX_TID=0;
+volatile int32_t  ERR_CTX_STATUS=0;
+volatile uint32_t ERR_CTX_GATE_PULSE=0;
+volatile uint32_t ERR_CTX_CUR_PULSE=0;
+
 volatile uint32_t SEL1_Count=0;
 volatile uint32_t SEL2_Count=0;
 volatile uint32_t SEL3_Count=0;
 volatile uint32_t NA_Count=0;
 volatile uint32_t SKIP_Count=0;
+
+// Stepper polarity (see config/MachineConfig.hpp). Compiled fallback keeps the
+// original direct-wired behaviour; a common-anode 5V driver input flips these
+// via set_setup {"stepper_en_active":..,"stepper_dir":..} + save_setup.
+int stepper_en_active = STEPPER_EN_ACTIVATION;
+int stepper_dir_level = 0;
+
+// Passive machine metadata (see config/MachineConfig.hpp): reported and
+// persisted so hosts can convert physical units, never used in firmware math.
+uint32_t pulses_per_rev = perRevPulseCount;
+float plate_diameter_mm = 0;
 
 // stagePulseOffset now lives in config/MachineConfig.hpp so the NVS layer can
 // persist it. The values below remain the fallback for a board with no stored
@@ -401,6 +471,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         SYS_TAR_FREQ=0;
 
         pinMode(FEEDER_PIN, OUTPUT);
+        io_drive(FEEDER_PIN, IOI_FEEDER, false);
       } //exit
       break;
       
@@ -446,10 +517,11 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       if (i == 0)//enter
       {
         blockNewDetectedObject=false;
-        digitalWrite(FEEDER_PIN, 0);
+        FEEDER_ON=true;
+        io_drive(FEEDER_PIN, IOI_FEEDER, true);
 
-        // 
-      } 
+        //
+      }
       else if (i == 1)
       {
         SYS_TAR_FREQ=SETUP_TAR_FREQ;
@@ -457,7 +529,8 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       else
       {
         blockNewDetectedObject=true;
-        digitalWrite(FEEDER_PIN, 1);
+        FEEDER_ON=false;
+        io_drive(FEEDER_PIN, IOI_FEEDER, false);
       } //exit
       break;
     }
@@ -552,8 +625,26 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
       TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
       if(commInfo){
         commInfo->type=TaskQ2CommInfo_Type::systemInfo;
-        char numberStr[100];  // Assuming the number will fit within 10 characters
-        sprintf(numberStr, "State changed from  %d to %d",sysinfo.state,state);
+        char numberStr[200];
+        if(state==SYS_STATE::INSPECTION_MODE_ERROR)
+        {
+          // Say WHICH object failed and how far past its deadline it was --
+          // "err=2 tid=7 ... late=123" reads directly as "tid 7 was never
+          // answered and the SWITCH point passed 123 pulses ago".
+          sprintf(numberStr,
+                  "State changed from  %d to %d err=%d tid=%u status=%ld"
+                  " gate_pulse=%lu cur_pulse=%lu late_pulses=%ld",
+                  sysinfo.state,state,extraCode,
+                  (unsigned)ERR_CTX_TID,(long)ERR_CTX_STATUS,
+                  (unsigned long)ERR_CTX_GATE_PULSE,
+                  (unsigned long)ERR_CTX_CUR_PULSE,
+                  (long)(ERR_CTX_CUR_PULSE-ERR_CTX_GATE_PULSE
+                         -STAGE_PULSE_OFFSET.SWITCH));
+        }
+        else
+        {
+          sprintf(numberStr, "State changed from  %d to %d",sysinfo.state,state);
+        }
         commInfo->log=numberStr;
         TaskQ2CommInfoQ.pushHead();
       }
@@ -608,6 +699,7 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   head->gate_pulse = middle_pulse;
   head->insp_status = insp_status_UNSET;
   head->tid=acc_tid;
+  head->trig_us=(uint32_t)esp_timer_get_time();
   if (ActRegister_pipeLineInfo(head) != 0)
   { //register failed....
     return -2;
@@ -672,12 +764,12 @@ int Run_ACTS(uint32_t cur_pulse)
   ACT_TRY_RUN_TASK(acts->ACT_L1A, cur_pulse,
                    if(task->info)
                    {
-                    GPIOLS32_SET(PIN_O_L1A);
+                    IO_ON(PIN_O_L1A,IOI_L1A);
                     IO_TRACE_LOG(PIN_O_L1A,1,cur_pulse,task->src->tid);
                    }
                    else
                    {
-                    GPIOLS32_CLR(PIN_O_L1A);
+                    IO_OFF(PIN_O_L1A,IOI_L1A);
                     IO_TRACE_LOG(PIN_O_L1A,0,cur_pulse,task->src->tid);
                    }
 
@@ -694,7 +786,7 @@ int Run_ACTS(uint32_t cur_pulse)
                   if(task->info)
                   {
 
-                    GPIOLS32_SET(PIN_O_CAM1);
+                    IO_ON(PIN_O_CAM1,IOI_CAM1);
                     IO_TRACE_LOG(PIN_O_CAM1,1,cur_pulse,task->src->tid);
                     ISRTrigInfo *commInfo = ISRTrigQ.getHead();
                     if(commInfo){
@@ -715,7 +807,7 @@ int Run_ACTS(uint32_t cur_pulse)
                   }
                   else
                   {
-                    GPIOLS32_CLR(PIN_O_CAM1);
+                    IO_OFF(PIN_O_CAM1,IOI_CAM1);
                     IO_TRACE_LOG(PIN_O_CAM1,0,cur_pulse,task->src->tid);
                   }
 
@@ -726,12 +818,12 @@ int Run_ACTS(uint32_t cur_pulse)
   ACT_TRY_RUN_TASK(acts->ACT_L2A, cur_pulse,
                    if(task->info)
                    {
-                    GPIOLS32_SET(PIN_O_L2A);
+                    IO_ON(PIN_O_L2A,IOI_L2A);
                     IO_TRACE_LOG(PIN_O_L2A,1,cur_pulse,task->src->tid);
                    }
                    else
                    {
-                    GPIOLS32_CLR(PIN_O_L2A);
+                    IO_OFF(PIN_O_L2A,IOI_L2A);
                     IO_TRACE_LOG(PIN_O_L2A,0,cur_pulse,task->src->tid);
                    }
                     );
@@ -742,7 +834,7 @@ int Run_ACTS(uint32_t cur_pulse)
                   if(task->info)
                   {
 
-                    GPIOLS32_SET(PIN_O_CAM2);
+                    IO_ON(PIN_O_CAM2,IOI_CAM2);
                     IO_TRACE_LOG(PIN_O_CAM2,1,cur_pulse,task->src->tid);
                     ISRTrigInfo *commInfo = ISRTrigQ.getHead();
                     if(commInfo){
@@ -763,7 +855,7 @@ int Run_ACTS(uint32_t cur_pulse)
                   }
                   else
                   {
-                    GPIOLS32_CLR(PIN_O_CAM2);
+                    IO_OFF(PIN_O_CAM2,IOI_CAM2);
                     IO_TRACE_LOG(PIN_O_CAM2,0,cur_pulse,task->src->tid);
                   }
 
@@ -815,7 +907,10 @@ int Run_ACTS(uint32_t cur_pulse)
         case insp_status_UNSET:
         default:
           ecode=GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT;
-          
+          ERR_CTX_TID=pli->tid;
+          ERR_CTX_STATUS=pli->insp_status;
+          ERR_CTX_GATE_PULSE=pli->gate_pulse;
+          ERR_CTX_CUR_PULSE=cur_pulse;
           break;
       }
       //
@@ -838,13 +933,13 @@ int Run_ACTS(uint32_t cur_pulse)
                     {
                       if(SEL1_ACT_COUNTDOWN>0)SEL1_ACT_COUNTDOWN--;
                       SEL1_Count++;
-                      GPIOLS32_SET(PIN_O_SEL1);
+                      IO_ON(PIN_O_SEL1,IOI_SEL1);
                       IO_TRACE_LOG(PIN_O_SEL1,1,cur_pulse,0);
                     }
                    }
                    else
                    {
-                    GPIOLS32_CLR(PIN_O_SEL1);
+                    IO_OFF(PIN_O_SEL1,IOI_SEL1);
                     IO_TRACE_LOG(PIN_O_SEL1,0,cur_pulse,0);
                    }
                   );
@@ -858,13 +953,13 @@ int Run_ACTS(uint32_t cur_pulse)
                   if(SYS_FREQ_STABLE && SYS_STEPPER_DISABLED==false)
                   {
                     SEL2_Count++;
-                    GPIOLS32_SET(PIN_O_SEL2);
+                    IO_ON(PIN_O_SEL2,IOI_SEL2);
                     IO_TRACE_LOG(PIN_O_SEL2,1,cur_pulse,0);
                   }
                   }
                   else
                   {
-                    GPIOLS32_CLR(PIN_O_SEL2);
+                    IO_OFF(PIN_O_SEL2,IOI_SEL2);
                     IO_TRACE_LOG(PIN_O_SEL2,0,cur_pulse,0);
                   }
                 
@@ -1098,7 +1193,7 @@ volatile int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
 // plate). A value of N means an edge is accepted only after the new level has
 // held for N consecutive samples, so any glitch shorter than N ticks is
 // rejected. Runtime-settable (gate_debounce_rise / gate_debounce_fall) like
-// minWidth/maxWidth; not persisted, so a reboot returns to these defaults.
+// minWidth/maxWidth, and persisted with the config blob since v6.
 //
 //   DEBOUNCE_H_THRES  rising edge  (object arriving): reject short HIGH blips
 //                                  -- noise that would otherwise become a
@@ -1438,12 +1533,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
 
 
-    digitalWrite(cam_PIN,HIGH);
+    // Custom cpin/lpin fall outside polarity control (idx -1: logical==physical).
+    int cam_idx = (cam_PIN==PIN_O_CAM1)?IOI_CAM1 : (cam_PIN==PIN_O_CAM2)?IOI_CAM2 : -1;
+    int light_idx = (light_PIN==PIN_O_L1A)?IOI_L1A : (light_PIN==PIN_O_L2A)?IOI_L2A : -1;
+    io_drive(cam_PIN,cam_idx,true);
     delayMicroseconds(Light_Delay);
-    digitalWrite(light_PIN,HIGH);
+    io_drive(light_PIN,light_idx,true);
     delayMicroseconds(Light_Duration);
-    digitalWrite(light_PIN,LOW);
-    digitalWrite(cam_PIN,LOW);
+    io_drive(light_PIN,light_idx,false);
+    io_drive(cam_PIN,cam_idx,false);
 
 
 
@@ -1564,6 +1662,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
 
     SEL1_Count=SEL2_Count=SEL3_Count=NA_Count=0;
+    REP_LAT_N=0;
+    REP_LAT_SUM_US=0;
+    REP_LAT_MAX_US=0;
 
     doRsp=rspAck=true;
 
@@ -1596,8 +1697,42 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // }
     retdoc["sel1_cd"]=SEL1_ACT_COUNTDOWN;
 
-    // retdoc["plateFreq"]=NA_Count;
-
+    // Pipeline snapshot: what is currently registered on the plate and where
+    // each object is headed. Walked concurrently with the ISR that consumes
+    // objects, so counts are a display-only approximation (each field read is
+    // a single aligned access -- never garbage, just possibly one tick stale).
+    {
+      int reg=0,waiting=0,h1=0,h2=0,h3=0,hna=0,hskip=0;
+      for(int i=0;i<RBuf.size();i++)
+      {
+        pipeLineInfo *p=RBuf.getTail(i);
+        if(p==NULL)break;
+        int32_t st=p->insp_status;
+        if(st==insp_status_DEL)continue;   // consumed, awaiting cleanup sweep
+        reg++;
+        if(st==insp_status_UNSET)waiting++;
+        else if(st==1)h1++;
+        else if(st==2)h2++;
+        else if(st==3)h3++;
+        else if(st==0xFFFF)hna++;
+        else if(st==insp_status_SKIP)hskip++;
+      }
+      JsonObject jP=retdoc.createNestedObject("pipe");
+      jP["registered"]=reg;
+      jP["waiting"]=waiting;
+      JsonObject jH=jP.createNestedObject("heading");
+      jH["SEL1"]=h1;
+      jH["SEL2"]=h2;
+      jH["SEL3"]=h3;
+      jH["NA"]=hna;
+      jH["SKIP"]=hskip;
+    }
+    {
+      JsonObject jL=retdoc.createNestedObject("report_latency");
+      jL["n"]=REP_LAT_N;
+      jL["avg_us"]=REP_LAT_N ? (uint32_t)(REP_LAT_SUM_US/REP_LAT_N) : 0;
+      jL["max_us"]=REP_LAT_MAX_US;
+    }
 
     doRsp=rspAck=true;
 
@@ -1640,6 +1775,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       //   SETUP_TAR_FREQ=SETUP_TAR_FREQ*19/20;
       // }
       retdoc["tr"]=pressure;
+      if(tarP->insp_status==insp_status_UNSET)
+      {
+        uint32_t lat=(uint32_t)esp_timer_get_time()-tarP->trig_us;
+        REP_LAT_N++;
+        REP_LAT_SUM_US+=lat;
+        if(lat>REP_LAT_MAX_US)REP_LAT_MAX_US=lat;
+      }
       tarP->insp_status=cat;
       rspAck=true;
     }
@@ -1738,6 +1880,32 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
     doRsp=rspAck=true;
   }
+  else if(strcmp(type,"PIN_READ")==0)
+  {
+    if(doc["pin"].is<int>()==true)
+    {
+      int pin=doc["pin"];
+      retdoc["pin"]=pin;
+      retdoc["val"]=digitalRead(pin);
+      rspAck=true;
+    }
+    else if(doc["pins"].is<JsonArray>()==true)
+    {
+      JsonArray pins=doc["pins"];
+      JsonArray vals=retdoc.createNestedArray("vals");
+      for(JsonVariant p : pins)
+      {
+        vals.add(digitalRead(p.as<int>()));
+      }
+      retdoc["pins"]=pins;
+      rspAck=true;
+    }
+    else
+    {
+      rspAck=false;
+    }
+    doRsp=true;
+  }
   else if(strcmp(type,"enter_insp_mode")==0)
   {
 
@@ -1783,13 +1951,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
   else if(strcmp(type,"stepper_enable")==0)
   {
-    digitalWrite(STEPPER_EN_PIN,STEPPER_EN_ACTIVATION);
+    digitalWrite(STEPPER_EN_PIN,stepper_en_active);
     SYS_STEPPER_DISABLED=false;
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"stepper_disable")==0)
   {
-    digitalWrite(STEPPER_EN_PIN,!STEPPER_EN_ACTIVATION);
+    digitalWrite(STEPPER_EN_PIN,!stepper_en_active);
     SYS_STEPPER_DISABLED=true;
     doRsp=rspAck=true;
   }
@@ -1809,21 +1977,21 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     switch(idx)
     {
       case 1:
-      digitalWrite(PIN_O_SEL1, 1);
+      io_drive(PIN_O_SEL1,IOI_SEL1,true);
       delay(delay_ms);
-      digitalWrite(PIN_O_SEL1, 0);
+      io_drive(PIN_O_SEL1,IOI_SEL1,false);
       rspAck=true;
       break;
       case 2:
-      digitalWrite(PIN_O_SEL2, 1);
+      io_drive(PIN_O_SEL2,IOI_SEL2,true);
       delay(delay_ms);
-      digitalWrite(PIN_O_SEL2, 0);
+      io_drive(PIN_O_SEL2,IOI_SEL2,false);
       rspAck=true;
       break;
       case 3:
-      digitalWrite(PIN_O_SEL3, 1);
+      io_drive(PIN_O_SEL3,IOI_SEL3,true);
       delay(delay_ms);
-      digitalWrite(PIN_O_SEL3, 0);
+      io_drive(PIN_O_SEL3,IOI_SEL3,false);
       rspAck=true;
       break;
     }
@@ -2146,7 +2314,8 @@ void firmwareSetup()
   pinMode(STEPPER_DIR_PIN, OUTPUT);
   pinMode(STEPPER_EN_PIN, OUTPUT);
 
-  digitalWrite(STEPPER_EN_PIN,STEPPER_EN_ACTIVATION);
+  digitalWrite(STEPPER_DIR_PIN,stepper_dir_level);
+  digitalWrite(STEPPER_EN_PIN,stepper_en_active);
   SYS_STEPPER_DISABLED=false;
   
 
@@ -2162,6 +2331,16 @@ void firmwareSetup()
   pinMode(PIN_O_SEL1, OUTPUT);
   pinMode(PIN_O_SEL2, OUTPUT);
   pinMode(PIN_O_SEL3, OUTPUT);
+
+  // Rest every actuator at its logical OFF level -- with an active-low output
+  // the reset-default LOW would otherwise mean "energised" until first use.
+  io_drive(PIN_O_L1A,IOI_L1A,false);
+  io_drive(PIN_O_CAM1,IOI_CAM1,false);
+  io_drive(PIN_O_L2A,IOI_L2A,false);
+  io_drive(PIN_O_CAM2,IOI_CAM2,false);
+  io_drive(PIN_O_SEL1,IOI_SEL1,false);
+  io_drive(PIN_O_SEL2,IOI_SEL2,false);
+  io_drive(PIN_O_SEL3,IOI_SEL3,false);
 
   pinMode(PIN_I_GATE, INPUT_PULLUP);
 
@@ -2408,9 +2587,13 @@ void firmwareLoop()
 
 
   static int subDiv=0;
+  static int64_t lastRampUs=0;
   do{//timer freq ctrl
     subDiv=(subDiv+1)&(0xFF);
     if(subDiv!=0)break;
+    int64_t nowUs=esp_timer_get_time();
+    float dt=(nowUs-lastRampUs)*1e-6f;
+    lastRampUs=nowUs;
     if(SYS_CUR_FREQ==SYS_TAR_FREQ)
     {
       if(SYS_TAR_FREQ==0 && SYS_FREQ_STABLE==false)//just stable
@@ -2426,6 +2609,11 @@ void firmwareLoop()
     {
       TimerNeedsStart=true;
     }
+    // Wall-time ramp: accel is Hz/s regardless of loop speed. dt is clamped so
+    // a stall (long serial burst, NVS write) can't turn into a frequency jump.
+    if(dt<0)dt=0;
+    if(dt>0.25f)dt=0.25f;
+    float step=(SYS_FREQ_ACCEL>0) ? SYS_FREQ_ACCEL*dt : 3.4e38f;
     if(SYS_CUR_FREQ>SYS_TAR_FREQ)
     {
       if(SYS_TAR_FREQ==0 && SYS_CUR_FREQ<10)
@@ -2434,7 +2622,7 @@ void firmwareLoop()
       }
       else
       {
-        SYS_CUR_FREQ-=SYS_FREQ_ADV_STEP;
+        SYS_CUR_FREQ-=step;
         if(SYS_CUR_FREQ<SYS_TAR_FREQ)
         {
           SYS_CUR_FREQ=SYS_TAR_FREQ;
@@ -2443,7 +2631,7 @@ void firmwareLoop()
     }
     else
     {
-      SYS_CUR_FREQ+=SYS_FREQ_ADV_STEP;
+      SYS_CUR_FREQ+=step;
       if(SYS_CUR_FREQ>SYS_TAR_FREQ)
       {
         SYS_CUR_FREQ=SYS_TAR_FREQ;
@@ -2554,6 +2742,7 @@ void genMachineSetup(JsonDocument &jdoc)
   // auto obj=jdoc.createNestedObject("obj");
 
   jdoc["plateFreq"]=SETUP_TAR_FREQ;
+  jdoc["plateAccel"]=SYS_FREQ_ACCEL;
   jdoc["minDetectTimeSep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
 
   jdoc["pulse_minWidth"]=minWidth;
@@ -2561,6 +2750,18 @@ void genMachineSetup(JsonDocument &jdoc)
 
   jdoc["gate_debounce_rise"]=DEBOUNCE_H_THRES;
   jdoc["gate_debounce_fall"]=DEBOUNCE_L_THRES;
+
+  jdoc["stepper_en_active"]=stepper_en_active;
+  jdoc["stepper_dir"]=stepper_dir_level;
+
+  jdoc["pulses_per_rev"]=pulses_per_rev;
+  jdoc["plate_diameter_mm"]=plate_diameter_mm;
+
+  {
+    JsonObject jIO = jdoc.createNestedObject("io_on_level");
+    for(size_t i=0;i<SARRL(IO_POL_TAB);i++)
+      jIO[IO_POL_TAB[i].name]=IO_IS_INV(IO_POL_TAB[i].idx)?0:1;
+  }
 
   // Lets the host tell the two machines apart and see whether what it is
   // reading came from NVS or is just the compiled fallback.
@@ -2621,6 +2822,7 @@ void setMachineSetup(JsonDocument &jdoc)
   }
 
   JSON_SETIF_ABLE(SETUP_TAR_FREQ,jdoc,"plateFreq");
+  JSON_SETIF_ABLE(SYS_FREQ_ACCEL,jdoc,"plateAccel");
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jdoc,"minDetectTimeSep_us");
   JSON_SETIF_ABLE(stepRun,jdoc,"stepRun");
 
@@ -2628,6 +2830,49 @@ void setMachineSetup(JsonDocument &jdoc)
   JSON_SETIF_ABLE(maxWidth,jdoc,"pulse_maxWidth");
   JSON_SETIF_ABLE(DEBOUNCE_H_THRES,jdoc,"gate_debounce_rise");
   JSON_SETIF_ABLE(DEBOUNCE_L_THRES,jdoc,"gate_debounce_fall");
+
+  if(jdoc["stepper_en_active"].is<int>() || jdoc["stepper_dir"].is<int>())
+  {
+    JSON_SETIF_ABLE(stepper_en_active,jdoc,"stepper_en_active");
+    JSON_SETIF_ABLE(stepper_dir_level,jdoc,"stepper_dir");
+    stepper_en_active = stepper_en_active ? 1 : 0;
+    stepper_dir_level = stepper_dir_level ? 1 : 0;
+    // Re-drive both pins so the new polarity takes effect now, preserving the
+    // driver's current enabled/disabled state under the new convention.
+    digitalWrite(STEPPER_DIR_PIN, stepper_dir_level);
+    digitalWrite(STEPPER_EN_PIN, SYS_STEPPER_DISABLED ? !stepper_en_active
+                                                      : stepper_en_active);
+  }
+
+  JSON_SETIF_ABLE(pulses_per_rev,jdoc,"pulses_per_rev");
+  JSON_SETIF_ABLE(plate_diameter_mm,jdoc,"plate_diameter_mm");
+
+  if(jdoc["io_on_level"].is<JsonObject>())
+  {
+    JsonObject jIO=jdoc["io_on_level"];
+    uint32_t mask=IO_INV_MASK;
+    for(size_t i=0;i<SARRL(IO_POL_TAB);i++)
+    {
+      if(jIO[IO_POL_TAB[i].name].is<int>())
+      {
+        if(jIO[IO_POL_TAB[i].name].as<int>())
+          mask&=~(1u<<IO_POL_TAB[i].idx);   // ON is HIGH
+        else
+          mask|=(1u<<IO_POL_TAB[i].idx);    // ON is LOW
+      }
+    }
+    IO_INV_MASK=mask;
+    // Re-rest every actuator at its logical OFF under the new polarity, so a
+    // flipped output doesn't sit energised at its old idle level. FEEDER keeps
+    // its current logical state instead -- it is level-driven, not pulsed.
+    for(size_t i=0;i<SARRL(IO_POL_TAB);i++)
+    {
+      if(IO_POL_TAB[i].idx==IOI_FEEDER)
+        io_drive(IO_POL_TAB[i].pin,IOI_FEEDER,FEEDER_ON);
+      else
+        io_drive(IO_POL_TAB[i].pin,IO_POL_TAB[i].idx,false);
+    }
+  }
   // A threshold of 0 would underflow the down-counter into a ~65k-sample stall;
   // 1 means "no debounce" (accept on the first sample), the sane floor.
   if(DEBOUNCE_H_THRES<1)DEBOUNCE_H_THRES=1;

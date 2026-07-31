@@ -20,6 +20,14 @@ namespace
     uint32_t minDetectTimeSep_us;
     int32_t pulse_minWidth;
     int32_t pulse_maxWidth;
+    int32_t stepper_en_active;
+    int32_t stepper_dir_level;
+    uint32_t pulses_per_rev;
+    float plate_diameter_mm;
+    uint32_t io_inv_mask;
+    float plate_accel;
+    int32_t gate_debounce_rise;
+    int32_t gate_debounce_fall;
     char machine_id[MACHINE_ID_MAX_LEN];
   };
 
@@ -36,6 +44,14 @@ namespace
     cfg.minDetectTimeSep_us = SYS_MIN_PULSE_TIME_SEP_us;
     cfg.pulse_minWidth = minWidth;
     cfg.pulse_maxWidth = maxWidth;
+    cfg.stepper_en_active = stepper_en_active;
+    cfg.stepper_dir_level = stepper_dir_level;
+    cfg.pulses_per_rev = pulses_per_rev;
+    cfg.plate_diameter_mm = plate_diameter_mm;
+    cfg.io_inv_mask = IO_INV_MASK;
+    cfg.plate_accel = SYS_FREQ_ACCEL;
+    cfg.gate_debounce_rise = DEBOUNCE_H_THRES;
+    cfg.gate_debounce_fall = DEBOUNCE_L_THRES;
     memcpy(cfg.machine_id, machine_id, MACHINE_ID_MAX_LEN);
     cfg.machine_id[MACHINE_ID_MAX_LEN - 1] = '\0';
   }
@@ -47,6 +63,14 @@ namespace
     SYS_MIN_PULSE_TIME_SEP_us = cfg.minDetectTimeSep_us;
     minWidth = cfg.pulse_minWidth;
     maxWidth = cfg.pulse_maxWidth;
+    stepper_en_active = cfg.stepper_en_active ? 1 : 0;
+    stepper_dir_level = cfg.stepper_dir_level ? 1 : 0;
+    pulses_per_rev = cfg.pulses_per_rev;
+    plate_diameter_mm = cfg.plate_diameter_mm;
+    IO_INV_MASK = cfg.io_inv_mask;
+    SYS_FREQ_ACCEL = cfg.plate_accel;
+    DEBOUNCE_H_THRES = cfg.gate_debounce_rise < 1 ? 1 : cfg.gate_debounce_rise;
+    DEBOUNCE_L_THRES = cfg.gate_debounce_fall < 1 ? 1 : cfg.gate_debounce_fall;
     memcpy(machine_id, cfg.machine_id, MACHINE_ID_MAX_LEN);
     machine_id[MACHINE_ID_MAX_LEN - 1] = '\0';
   }
