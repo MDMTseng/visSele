@@ -71,6 +71,10 @@ class UInspLink:
         self._id = 1000
         self._pending = {}
         self._lock = threading.Lock()
+        # Serializes id assignment + the wire write, so concurrent callers
+        # (e.g. a UI poller and a low-latency auto-reporter) cannot interleave
+        # frames or mint duplicate ids. Reply *waiting* happens outside it.
+        self._tx_lock = threading.Lock()
         self._async = deque(maxlen=20000)
         self._async_ev = threading.Event()
         self._raw_log = deque(maxlen=5000)
@@ -278,27 +282,29 @@ class UInspLink:
 
     def send(self, obj, timeout=2.0):
         """Send a command and wait for the reply that echoes its id."""
-        obj = dict(obj)
-        self._id += 1
-        mid = self._id
-        obj["id"] = mid
+        with self._tx_lock:
+            obj = dict(obj)
+            self._id += 1
+            mid = self._id
+            obj["id"] = mid
 
-        ev = threading.Event()
-        slot = {"event": ev, "reply": None}
-        with self._lock:
-            self._pending[mid] = slot
-
-        raw = json.dumps(obj, separators=(",", ":")).encode()
-        if self.verbose:
-            print("  TX", raw.decode())
-        try:
-            self._tx(raw)
-        except LinkReset:
-            # The reply we were about to wait for will never come from the
-            # pre-reboot board; drop the slot and let the caller re-establish.
+            ev = threading.Event()
+            slot = {"event": ev, "reply": None}
             with self._lock:
-                self._pending.pop(mid, None)
-            raise
+                self._pending[mid] = slot
+
+            raw = json.dumps(obj, separators=(",", ":")).encode()
+            if self.verbose:
+                print("  TX", raw.decode())
+            try:
+                self._tx(raw)
+            except LinkReset:
+                # The reply we were about to wait for will never come from the
+                # pre-reboot board; drop the slot and let the caller
+                # re-establish.
+                with self._lock:
+                    self._pending.pop(mid, None)
+                raise
 
         got = ev.wait(timeout)
         with self._lock:
@@ -314,13 +320,14 @@ class UInspLink:
         burn the full timeout per part, which for a paced test also stretches
         the gap between parts far beyond what was asked for.
         """
-        obj = dict(obj)
-        self._id += 1
-        obj["id"] = self._id
-        raw = json.dumps(obj, separators=(",", ":")).encode()
-        if self.verbose:
-            print("  TX", raw.decode(), "(no reply expected)")
-        self._tx(raw)
+        with self._tx_lock:
+            obj = dict(obj)
+            self._id += 1
+            obj["id"] = self._id
+            raw = json.dumps(obj, separators=(",", ":")).encode()
+            if self.verbose:
+                print("  TX", raw.decode(), "(no reply expected)")
+            self._tx(raw)
 
     def drain_async(self):
         out = []

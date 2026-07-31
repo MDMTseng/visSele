@@ -102,6 +102,7 @@ def make_link(fake, auto_reconnect=False):
     link._id = 1000
     link._pending = {}
     link._lock = threading.Lock()
+    link._tx_lock = threading.Lock()
     from collections import deque
     link._async = deque(maxlen=1000)
     link._async_ev = threading.Event()
