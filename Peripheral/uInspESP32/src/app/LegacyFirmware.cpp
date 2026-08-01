@@ -167,6 +167,16 @@ volatile int UNANSWERED_STOP_AFTER=5;
 volatile uint32_t UNANSWERED_Count=0;
 volatile uint32_t CONSEC_UNANSWERED=0;
 
+// Monotonic sequence stamped on every async event (cam_trig / system_info)
+// so the host can DETECT event loss on the unacked path -- events, unlike
+// replies, have no id to miss.
+uint32_t EVENT_SEQ=0;
+
+// Host-link watchdog: if >0 and the machine is in READY, going this long
+// without any valid inbound frame is treated as host death -> fail-safe stop
+// (a hung vision process must stop the line without host cooperation).
+volatile int host_timeout_ms=0;
+
 // Health high-water marks (reset with reset_running_stat).
 volatile uint32_t ISR_GAP_MAX_CY=0;   // max inter-tick gap, CPU cycles
 volatile uint32_t RBUF_PEAK=0;        // max pipeline depth seen
@@ -648,7 +658,8 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
       if(commInfo){
         commInfo->type=TaskQ2CommInfo_Type::system_info;
         char numberStr[200];
-        if(state==SYS_STATE::INSPECTION_MODE_ERROR)
+        if(state==SYS_STATE::INSPECTION_MODE_ERROR
+           && extraCode==(int)GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT)
         {
           // Say WHICH object failed and how far past its deadline it was --
           // "err=2 tid=7 ... late=123" reads directly as "tid 7 was never
@@ -662,6 +673,11 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
                   (unsigned long)ERR_CTX_CUR_PULSE,
                   (long)(ERR_CTX_CUR_PULSE-ERR_CTX_GATE_PULSE
                          -STAGE_PULSE_OFFSET.SWITCH));
+        }
+        else if(state==SYS_STATE::INSPECTION_MODE_ERROR)
+        {
+          sprintf(numberStr, "State changed from  %d to %d err=%d",
+                  sysinfo.state,state,extraCode);
         }
         else
         {
@@ -1788,6 +1804,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["rbuf_peak"]=RBUF_PEAK;
       jHl["uptime_s"]=(uint32_t)(esp_timer_get_time()/1000000ULL);
       jHl["consec_unanswered"]=CONSEC_UNANSWERED;
+      jHl["rx_frames"]=djrl.rx_frames;
+      jHl["rx_crc_ok"]=djrl.rx_crc_ok;
+      jHl["rx_crc_fail"]=djrl.rx_crc_fail;
     }
     {
       JsonObject jL=retdoc.createNestedObject("report_latency");
@@ -2495,6 +2514,15 @@ static uint8_t recvBuf[20];
 void firmwareLoop()
 {
   esp_task_wdt_reset();
+  if(host_timeout_ms>0 && sysinfo.state==SYS_STATE::INSPECTION_MODE_READY)
+  {
+    uint32_t last=djrl.last_rx_ms;
+    if(last!=0 && (millis()-last) > (uint32_t)host_timeout_ms)
+    {
+      SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,
+                         (int)GEN_ERROR_CODE::HOST_LINK_TIMEOUT);
+    }
+  }
   if(WDT_TEST_REQ)
   {
     delay(200);              // let the ack out
@@ -2581,6 +2609,7 @@ void firmwareLoop()
 
         retdoc.clear();
         retdoc["type"]="cam_trig";
+        retdoc["q"]=EVENT_SEQ++;
         retdoc["tid"]=trig.trig_id;
         retdoc["cam"]=trig.btrig_idx;
         retdoc["t_us"]=trig.trig_time_us;
@@ -2644,6 +2673,7 @@ void firmwareLoop()
         case TaskQ2CommInfo_Type::btrigInfo :
         {
           retdoc["type"]="cam_trig";
+          retdoc["q"]=EVENT_SEQ++;
           retdoc["tid"]=info.trig_id;
           retdoc["cam"]=info.btrig_idx;
           retdoc["t_us"]=(uint64_t)info.trig_time_us;
@@ -2656,7 +2686,8 @@ void firmwareLoop()
 
         case TaskQ2CommInfo_Type::system_info :
         {
-          retdoc["type"]="system_info"; 
+          retdoc["type"]="system_info";
+          retdoc["q"]=EVENT_SEQ++;
 
           retdoc["state"]=(int)sysinfo.state;
           
@@ -2887,6 +2918,10 @@ void genMachineSetup(JsonDocument &jdoc)
   // reading came from NVS or is just the compiled fallback.
   jdoc["machine_id"]=MachineConfig::machineId();
   jdoc["cfg_from_nvs"]=MachineConfig::isLoadedFromNVS();
+  // Canonical hash of the full active config: host compares at connect and
+  // refuses to run on mismatch (config-drift guard, RELIABILITY_ROADMAP L3).
+  jdoc["cfg_crc"]=MachineConfig::hash();
+  jdoc["host_timeout_ms"]=host_timeout_ms;
 
   // Why the chip last booted: lets a host that finds the board freshly in
   // IDLE tell a panic/watchdog/brownout from a plain power cycle.
@@ -2980,6 +3015,7 @@ void setMachineSetup(JsonDocument &jdoc)
     v=UNANSWERED_STOP_AFTER;
     if(jdoc["unanswered_stop_after"].is<int>()){ v=jdoc["unanswered_stop_after"]; UNANSWERED_STOP_AFTER=(v<1)?1:v; }
   }
+  JSON_SETIF_ABLE(host_timeout_ms,jdoc,"host_timeout_ms");
   JSON_SETIF_ABLE(pulses_per_rev,jdoc,"pulses_per_rev");
   JSON_SETIF_ABLE(plate_diameter_mm,jdoc,"plate_diameter_mm");
 

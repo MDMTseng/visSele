@@ -64,6 +64,8 @@ extern int DEBOUNCE_L_THRES;
 // Fail-to-reject policy for unanswered parts (see LegacyFirmware.cpp).
 extern volatile int UNANSWERED_POLICY;
 extern volatile int UNANSWERED_STOP_AFTER;
+// Host-link watchdog (ms, 0 = off) -- see firmwareLoop().
+extern volatile int host_timeout_ms;
 
 #define MACHINE_ID_MAX_LEN 24
 
@@ -78,9 +80,10 @@ namespace MachineConfig
   // v5: + plate_accel (Hz/s ramp)
   // v6: + gate debounce rise/fall
   // v7: + unanswered_policy / unanswered_stop_after
+  // v8: + host_timeout_ms
   // (an older blob falls back to compiled defaults -- re-push and save_setup
   // once after upgrading).
-  constexpr uint32_t kConfigVersion = 7;
+  constexpr uint32_t kConfigVersion = 8;
 
   // Reads NVS into the globals above. Call once, early in firmwareSetup(),
   // before anything derives timing from them.
@@ -100,6 +103,10 @@ namespace MachineConfig
   // Identifies which physical machine this board is bolted to. Empty until
   // set. Reported in get_setup so the host cannot cross-wire two machines'
   // settings.
+  // FNV-1a over the canonical config image -- the config-drift fingerprint
+  // reported as cfg_crc in get_setup.
+  uint32_t hash();
+
   const char *machineId();
   void setMachineId(const char *id);
 } // namespace MachineConfig

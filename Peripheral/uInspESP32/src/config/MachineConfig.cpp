@@ -30,6 +30,7 @@ namespace
     int32_t gate_debounce_fall;
     int32_t unanswered_policy;
     int32_t unanswered_stop_after;
+    int32_t host_timeout_ms;
     char machine_id[MACHINE_ID_MAX_LEN];
   };
 
@@ -56,6 +57,7 @@ namespace
     cfg.gate_debounce_fall = DEBOUNCE_L_THRES;
     cfg.unanswered_policy = UNANSWERED_POLICY;
     cfg.unanswered_stop_after = UNANSWERED_STOP_AFTER;
+    cfg.host_timeout_ms = host_timeout_ms;
     memcpy(cfg.machine_id, machine_id, MACHINE_ID_MAX_LEN);
     cfg.machine_id[MACHINE_ID_MAX_LEN - 1] = '\0';
   }
@@ -77,6 +79,7 @@ namespace
     DEBOUNCE_L_THRES = cfg.gate_debounce_fall < 1 ? 1 : cfg.gate_debounce_fall;
     UNANSWERED_POLICY = cfg.unanswered_policy == 1 ? 1 : 0;
     UNANSWERED_STOP_AFTER = cfg.unanswered_stop_after < 1 ? 1 : cfg.unanswered_stop_after;
+    host_timeout_ms = cfg.host_timeout_ms < 0 ? 0 : cfg.host_timeout_ms;
     memcpy(machine_id, cfg.machine_id, MACHINE_ID_MAX_LEN);
     machine_id[MACHINE_ID_MAX_LEN - 1] = '\0';
   }
@@ -138,6 +141,21 @@ namespace MachineConfig
 
     loadedFromNVS = false;
     return ok;
+  }
+
+  uint32_t hash()
+  {
+    StoredConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));   // deterministic padding
+    fillFromGlobals(cfg);
+    const uint8_t *p = (const uint8_t *)&cfg;
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < sizeof(cfg); i++)
+    {
+      h ^= p[i];
+      h *= 16777619u;
+    }
+    return h;
   }
 
   bool isLoadedFromNVS()

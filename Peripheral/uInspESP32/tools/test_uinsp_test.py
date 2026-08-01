@@ -58,6 +58,13 @@ class FakeSerial:
 
     def write(self, data):
         text = data.decode()
+        # The tool appends a *HHHH\n CRC trailer; the fake models a legacy
+        # peer and just validates/strips it before parsing.
+        if text.endswith("\n") and len(text) > 6 and text[-6] == "*":
+            body, tr = text[:-6], text[-6:-1]
+            assert int(tr[1:], 16) == uinsp_test._crc16_ccitt(body.encode()), \
+                "tool sent a bad CRC trailer"
+            text = body
         self.written.append(text)
         if self.auto_reply:
             try:
@@ -74,10 +81,19 @@ class FakeSerial:
         pass
 
     # -- test-facing API ---------------------------------------------------
-    def feed(self, text):
-        """Push raw bytes toward the tool, in arbitrary fragments."""
+    def feed(self, text, trailer=True):
+        """Push raw bytes toward the tool, in arbitrary fragments.
+
+        Complete JSON frames get the *HHHH CRC trailer the real firmware now
+        appends (without it every frame pays the tool's legacy-peer grace
+        delay); pass trailer=False to model a legacy peer or raw fragments.
+        """
+        raw = text.encode()
+        if (trailer and text.startswith("{") and text.endswith("}")
+                and "}{" not in text):   # exactly one frame
+            raw += b"*%04X\n" % uinsp_test._crc16_ccitt(raw)
         with self._lock:
-            self._out.extend(text.encode())
+            self._out.extend(raw)
 
     def reply_to(self, msg):
         t = msg.get("type")
@@ -103,6 +119,11 @@ def make_link(fake, auto_reconnect=False):
     link._pending = {}
     link._lock = threading.Lock()
     link._tx_lock = threading.Lock()
+    link.rx_frames = 0
+    link.rx_crc_ok = 0
+    link.rx_crc_fail = 0
+    link.event_gaps = 0
+    link._last_q = None
     from collections import deque
     link._async = deque(maxlen=1000)
     link._async_ev = threading.Event()
@@ -392,6 +413,13 @@ class FakeFirmware(FakeSerial):
     #    handleResetCommand, so one RESET clears the latch AND redeems. ------
     def write(self, data):
         text = data.decode()
+        # The tool appends a *HHHH\n CRC trailer; the fake models a legacy
+        # peer and just validates/strips it before parsing.
+        if text.endswith("\n") and len(text) > 6 and text[-6] == "*":
+            body, tr = text[:-6], text[-6:-1]
+            assert int(tr[1:], 16) == uinsp_test._crc16_ccitt(body.encode()), \
+                "tool sent a bad CRC trailer"
+            text = body
         self.written.append(text)
         if self.data_latched:
             self._errbuf += text
@@ -892,6 +920,13 @@ class FakeFirmwareNoLatch(FakeFirmware):
 
     def write(self, data):
         text = data.decode()
+        # The tool appends a *HHHH\n CRC trailer; the fake models a legacy
+        # peer and just validates/strips it before parsing.
+        if text.endswith("\n") and len(text) > 6 and text[-6] == "*":
+            body, tr = text[:-6], text[-6:-1]
+            assert int(tr[1:], 16) == uinsp_test._crc16_ccitt(body.encode()), \
+                "tool sent a bad CRC trailer"
+            text = body
         self.written.append(text)
         try:
             msg = json.loads(text)
@@ -1359,6 +1394,87 @@ class TestGrillPlan(unittest.TestCase):
         plan = uinsp_test.grill_plan(p)
         self.assertEqual(plan["spo"]["SWITCH"], 200)
         self.assertEqual(plan["window_ticks"], 100)
+
+
+
+
+class TestCrcFraming(unittest.TestCase):
+    """The *HHHH\n integrity trailer: TX always stamped, RX verifies when
+    present, drops on mismatch, passes legacy frames through, and the "q"
+    event sequence exposes silent event loss."""
+
+    def _mklink(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        return fake, link
+
+    def test_tx_carries_valid_trailer(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        link.send({"type": "ping"}, timeout=1.0)
+        # FakeSerial.write validates and strips the trailer; reaching a reply
+        # at all proves the trailer parsed and the CRC matched.
+        self.assertTrue(fake.written)
+        link.close()
+
+    def test_rx_good_crc_dispatches(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        body = b'{"type":"cam_trig","q":0,"tid":9}'
+        with fake._lock:
+            fake._out += body + b"*%04X\n" % uinsp_test._crc16_ccitt(body)
+        time.sleep(0.3)
+        msgs = [m for _, m in link.drain_async()]
+        self.assertEqual([m["tid"] for m in msgs if m.get("type") == "cam_trig"],
+                         [9])
+        self.assertEqual(link.rx_crc_ok, 1)
+        self.assertEqual(link.rx_crc_fail, 0)
+        link.close()
+
+    def test_rx_bad_crc_drops_frame(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        body = b'{"type":"cam_trig","q":0,"tid":9}'
+        with fake._lock:
+            fake._out += body + b"*BEEF\n"     # wrong CRC
+            good = b'{"type":"cam_trig","q":1,"tid":10}'
+            fake._out += good + b"*%04X\n" % uinsp_test._crc16_ccitt(good)
+        time.sleep(0.3)
+        msgs = [m for _, m in link.drain_async()]
+        self.assertEqual([m["tid"] for m in msgs if m.get("type") == "cam_trig"],
+                         [10], "the corrupted frame must be dropped")
+        self.assertEqual(link.rx_crc_fail, 1)
+        link.close()
+
+    def test_rx_legacy_frame_without_trailer(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        with fake._lock:
+            fake._out += b'{"type":"cam_trig","tid":3,"Qs":1}'
+            fake._out += b'{"type":"cam_trig","tid":4,"Qs":1}'
+        time.sleep(0.3)
+        msgs = [m for _, m in link.drain_async()]
+        self.assertEqual([m["tid"] for m in msgs if m.get("type") == "cam_trig"],
+                         [3, 4])
+        self.assertEqual(link.rx_crc_fail, 0)
+        link.close()
+
+    def test_event_seq_gap_detection(self):
+        fake = FakeFirmware()
+        link = make_link(fake)
+        with fake._lock:
+            for q in (0, 1, 4, 5):     # q=2,3 lost
+                fake._out += json.dumps(
+                    {"type": "cam_trig", "q": q, "tid": q}).encode()
+        time.sleep(0.3)
+        self.assertEqual(link.event_gaps, 2)
+        # a reboot (q restarts low) must resync, not count a huge gap
+        with fake._lock:
+            fake._out += b'{"type":"cam_trig","q":0,"tid":99}'
+            fake._out += b'{"type":"cam_trig","q":1,"tid":100}'
+        time.sleep(0.3)
+        self.assertEqual(link.event_gaps, 2)
+        link.close()
 
 
 if __name__ == "__main__":

@@ -23,5 +23,6 @@
   "cat_na": 65535,
   "sel_pulse_ms": 10.0,
   "speed_tolerance_pct": 3.0,
-  "stage_pulse_offset": null
+  "stage_pulse_offset": null,
+  "max_object_mm": 20.0
 }

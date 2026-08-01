@@ -54,6 +54,18 @@ class LinkDead(Exception):
     unrecoverable (board unplugged and left off), not a transient drop."""
 
 
+def _crc16_ccitt(data):
+    """CRC16-CCITT (poly 0x1021, init 0xFFFF) -- must match the firmware's
+    Data_JsonRaw_Layer::crc16_ccitt."""
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 \
+                else (crc << 1) & 0xFFFF
+    return crc
+
+
 class UInspLink:
     """Serial link speaking the firmware's brace-framed JSON.
 
@@ -78,6 +90,12 @@ class UInspLink:
         self._async = deque(maxlen=20000)
         self._async_ev = threading.Event()
         self._raw_log = deque(maxlen=5000)
+        # Frame-integrity + event-loss accounting (see *HHHH trailer / "q").
+        self.rx_frames = 0
+        self.rx_crc_ok = 0
+        self.rx_crc_fail = 0
+        self.event_gaps = 0
+        self._last_q = None
         self._stop = False
         # Auto-reconnect: when on, a dropped port is transparently reopened
         # instead of killing the run. The write path signals the reopen to
@@ -186,6 +204,18 @@ class UInspLink:
         fails = 0
         frame_t0 = None
         noise = ""
+        pend = None    # completed frame awaiting its optional *HHHH trailer
+        tr = ""
+        pend_t = 0.0
+
+        def _sd(frame):
+            # Belt and braces: nothing a device can send should be able to
+            # take the reader thread down.
+            try:
+                self._dispatch(frame)
+            except Exception as exc:              # pragma: no cover
+                print(f"  [dispatch error: {exc}]")
+
         while not self._stop:
             try:
                 chunk = self.ser.read(4096)
@@ -204,6 +234,7 @@ class UInspLink:
                     # the gap.
                     self._reopen_serial()
                     buf, depth, in_str, esc, frame_t0 = "", 0, False, False, None
+                    pend, tr = None, ""
                     continue
                 fails += 1
                 if fails >= 50:
@@ -213,6 +244,15 @@ class UInspLink:
                 time.sleep(0.1)
                 continue
             if not chunk:
+                # A completed frame with no trailer bytes following: a legacy
+                # peer with nothing else to say. Grace period then dispatch.
+                if pend is not None and time.time() - pend_t > 0.05:
+                    self.rx_frames += 1
+                    if tr:
+                        self.rx_crc_fail += 1
+                    else:
+                        _sd(pend)
+                    pend, tr = None, ""
                 # A frame that has been open for over a second is not a slow
                 # frame -- at 115200 nothing legitimate takes that long. It is
                 # a poisoned one: the firmware's recv_ERROR dbg embeds RAW
@@ -225,6 +265,38 @@ class UInspLink:
                     frame_t0 = None
                 continue
             for ch in chunk.decode("utf-8", errors="replace"):
+                if pend is not None:
+                    # Between a frame and its optional CRC trailer. A bad CRC
+                    # drops the frame (a corrupted frame is exactly the one
+                    # not to act on); no trailer = legacy peer, passes through.
+                    if tr == "" and ch == "*":
+                        tr = "*"
+                        continue
+                    if tr and len(tr) < 5 and ch in "0123456789abcdefABCDEF":
+                        tr += ch
+                        continue
+                    if ch in "\r\n":
+                        self.rx_frames += 1
+                        if tr:
+                            ok = (len(tr) == 5 and
+                                  int(tr[1:], 16) == _crc16_ccitt(pend.encode()))
+                            if ok:
+                                self.rx_crc_ok += 1
+                                _sd(pend)
+                            else:
+                                self.rx_crc_fail += 1
+                        else:
+                            _sd(pend)
+                        pend, tr = None, ""
+                        continue
+                    # unexpected char: trailer absent or garbled
+                    self.rx_frames += 1
+                    if tr:
+                        self.rx_crc_fail += 1
+                    else:
+                        _sd(pend)
+                    pend, tr = None, ""
+                    # fall through: process ch normally
                 if depth == 0:
                     # Resync point. The firmware would fault on stray bytes;
                     # we ignore them for framing -- but KEEP them in the raw
@@ -262,12 +334,11 @@ class UInspLink:
                 elif ch in "}]":
                     depth -= 1
                     if depth == 0:
-                        # Belt and braces: nothing a device can send should be
-                        # able to take the reader thread down.
-                        try:
-                            self._dispatch(buf)
-                        except Exception as exc:      # pragma: no cover
-                            print(f"  [dispatch error: {exc}]")
+                        # Hold the frame until we know whether a CRC trailer
+                        # follows; dispatch happens in the trailer logic above.
+                        pend, tr = buf, ""
+                        pend_t = time.time()
+                        frame_t0 = None
                         buf = ""
 
     def _dispatch(self, text):
@@ -284,6 +355,13 @@ class UInspLink:
         # raise, because an exception here would kill the reader thread and
         # stop all reception silently for the rest of the run.
         mid = msg.get("id") if isinstance(msg, dict) else None
+
+        q = msg.get("q") if (isinstance(msg, dict) and mid is None) else None
+        if q is not None:
+            if self._last_q is not None and q > self._last_q + 1:
+                self.event_gaps += q - self._last_q - 1
+            # q < last_q means the board rebooted; just resync.
+            self._last_q = q
 
         with self._lock:
             slot = self._pending.pop(mid, None) if mid is not None else None
@@ -308,6 +386,7 @@ class UInspLink:
                 self._pending[mid] = slot
 
             raw = json.dumps(obj, separators=(",", ":")).encode()
+            raw += b"*%04X\n" % _crc16_ccitt(raw)
             if self.verbose:
                 print("  TX", raw.decode())
             try:
@@ -339,6 +418,7 @@ class UInspLink:
             self._id += 1
             obj["id"] = self._id
             raw = json.dumps(obj, separators=(",", ":")).encode()
+            raw += b"*%04X\n" % _crc16_ccitt(raw)
             if self.verbose:
                 print("  TX", raw.decode(), "(no reply expected)")
             self._tx(raw)
@@ -1684,7 +1764,14 @@ def grill_plan(params):
     min_obj_mm = float(params.get("min_object_mm", 0))
     min_gap_mm = float(params.get("min_gap_mm", 0))
     rim_mm_s = (3.14159265 * dia / spr) if dia else 0
+    # Gate-filter settings derived from part geometry: sep = half the
+    # min-gap flight time; width window = [half the smallest part, the
+    # largest part with margin].
+    max_obj_mm = float(params.get("max_object_mm", 0))
     return {
+        "sep_us": int(min_gap_mm / rim_mm_s * 1e6 / 2) if rim_mm_s and min_gap_mm else None,
+        "min_w": int(min_obj_mm / mm_per_tick / 2) if mm_per_tick and min_obj_mm else None,
+        "max_w": int(max_obj_mm / mm_per_tick) if mm_per_tick and max_obj_mm else None,
         "mm_per_tick": mm_per_tick,
         "min_obj_ticks": (min_obj_mm / mm_per_tick) if mm_per_tick else 0,
         "gap_us": (min_gap_mm / rim_mm_s * 1e6) if rim_mm_s else 0,
@@ -1782,9 +1869,19 @@ def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
     link.send({"type": "clear_error_history"}, timeout=2.0)
     link.send({"type": "reset_running_stat"}, timeout=2.0)
 
-    r = link.send({"type": "set_setup", "plate_freq": freq,
-                   "plate_accel": plan["accel"],
-                   "stage_pulse_offset": plan["spo"]}, timeout=3.0)
+    cfg = {"type": "set_setup", "plate_freq": freq,
+           "plate_accel": plan["accel"],
+           "stage_pulse_offset": plan["spo"]}
+    # Push the geometry-derived gate filter too: a config-blob version bump
+    # silently reverts NVS to compiled defaults, and a 66ms separation gate
+    # at a 20ms part pitch swallows most of the stream.
+    if plan["sep_us"]:
+        cfg["min_detect_sep_us"] = plan["sep_us"]
+    if plan["min_w"] and plan["min_w"] > 20:
+        cfg["pulse_min_width"] = 0   # phantoms are 20 ticks; do not filter them
+    if plan["max_w"]:
+        cfg["pulse_max_width"] = plan["max_w"]
+    r = link.send(cfg, timeout=3.0)
     back = (link.send({"type": "get_setup"}, timeout=3.0) or {})
     ok = (bool(r) and back.get("plate_freq") == freq
           and (back.get("stage_pulse_offset") or {}).get("SWITCH")
@@ -1972,10 +2069,12 @@ def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
                       for k in ("SEL1", "SEL2", "SEL3", "NA")}
                 print("  [%5.0fs] fired=%d objs=%d peak=%d rate=%.0f/s"
                       " bursts=%d sorted=%s lat avg/max=%.0f/%.0fms reconn=%d"
+                      " crcfail=%d gaps=%d"
                       % (now - t_start, fired, seg_objs + len(set(seen)),
                          max_reg, rate, bursts, dc,
                          last_lat.get("avg_us", 0) / 1000,
-                         last_lat.get("max_us", 0) / 1000, reconnects),
+                         last_lat.get("max_us", 0) / 1000, reconnects,
+                         link.rx_crc_fail, link.event_gaps),
                       flush=True)
             _pump()
             time.sleep(0.002)
@@ -2079,7 +2178,8 @@ def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
 
     # -- G.9 the board's detect separation cannot exceed the real gap ------
     if plan["gap_us"]:
-        cfg_sep = orig.get("min_detect_sep_us")
+        cfg_sep = (link.send({"type": "get_setup"}, timeout=3.0)
+                   or {}).get("min_detect_sep_us")
         ok = isinstance(cfg_sep, int) and cfg_sep < plan["gap_us"]
         rep.add("G.9", "configured min_detect_sep_us fits the real"
                        f" {params.get('min_gap_mm')}mm part gap", ok,
