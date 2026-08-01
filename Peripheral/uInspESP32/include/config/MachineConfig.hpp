@@ -35,7 +35,7 @@ typedef struct stagePulseOffset
 
 // Machine tunables owned by LegacyFirmware.cpp, persisted by this module.
 extern stagePulseOffset STAGE_PULSE_OFFSET;
-extern float SETUP_TAR_FREQ;
+extern float PLATE_FREQ_SETPOINT;
 extern uint32_t SYS_MIN_PULSE_TIME_SEP_us;
 // volatile: shared between the main loop (set_setup) and the step ISR
 // (GateSensing) -- see LegacyFirmware.cpp.
@@ -49,14 +49,14 @@ extern int stepper_en_active;   // level on STEPPER_EN_PIN that enables the driv
 extern int stepper_dir_level;   // level driven on STEPPER_DIR_PIN
 // Passive machine metadata: the firmware computes purely in the pulse domain
 // and never uses these; they let a host read the board and convert
-// mm/rpm <-> pulses without a side channel (pulse rate == plateFreq, so
-// rpm = plateFreq / pulses_per_rev * 60).
+// mm/rpm <-> pulses without a side channel (pulse rate == plate_freq, so
+// rpm = plate_freq / pulses_per_rev * 60).
 extern uint32_t pulses_per_rev;    // full stepper pulses per plate revolution
 extern float plate_diameter_mm;   // 0 = not configured
 // Per-output ON polarity mask, bit=IO_IDX in LegacyFirmware.cpp (set = ON is
 // LOW, for common-anode driver inputs). volatile: read by the step ISR.
 extern volatile uint32_t IO_INV_MASK;
-// Plate ramp acceleration, Hz of plateFreq per second (<=0 = instant).
+// Plate ramp acceleration, Hz of plate_freq per second (<=0 = instant).
 extern float SYS_FREQ_ACCEL;
 // Gate edge debounce thresholds (samples) -- see GateSensing().
 extern int DEBOUNCE_H_THRES;

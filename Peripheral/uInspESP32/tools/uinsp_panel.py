@@ -4,12 +4,12 @@
 Serves a single-page UI (stdlib http.server, no dependencies) that exercises
 each peripheral over the firmware's JSON-serial protocol:
 
-  * stepper   -- enable/disable, plateFreq, start/stop (enter/exit_insp_mode)
+  * stepper   -- enable/disable, plate_freq, start/stop (enter/exit_insp_mode)
   * blow valve / feeder -- PIN_ON / PIN_OFF on any output pin (default 21)
   * selectors -- sel_act pulses on SEL1/2/3 (pins 25/26/32)
   * gate sensor -- live level of pin 27 via PIN_READ polling (firmware >= the
     build that adds PIN_READ; the panel degrades gracefully without it)
-  * raw command box + live async event log (bTrigInfo, systemInfo, dbg)
+  * raw command box + live async event log (cam_trig, system_info, dbg)
 
 Usage:
     python3 uinsp_panel.py --port /dev/cu.usbserial-0001 [--http-port 8765]
@@ -59,7 +59,7 @@ class Panel:
         self.clients = set()
         self.clients_lock = threading.Lock()
         self.pin_read_ok = None   # None=unknown, True/False once probed
-        # Camera-less test mode: answer every bTrigInfo with a verdict following
+        # Camera-less test mode: answer every cam_trig with a verdict following
         # a repeating pattern of M ok, N ng, O NA. None = off.
         self.autorep = None
         self._stop = False
@@ -128,7 +128,7 @@ class Panel:
         Auto-report verdicts must beat the SWITCH pulse deadline; the poller
         loop's pin/stat round-trips (up to ~1.5s) are far too slow for that,
         so this thread wakes on the link's async event and answers a
-        bTrigInfo within milliseconds. It is also the single drain point --
+        cam_trig within milliseconds. It is also the single drain point --
         SSE forwarding happens here too.
         """
         while not self._stop:
@@ -141,7 +141,7 @@ class Panel:
             for msg in lk.drain_async():
                 self._maybe_autoreport(lk, msg)
                 obj = msg[1] if isinstance(msg, (list, tuple)) and len(msg) == 2 else msg
-                if isinstance(obj, dict) and obj.get("type") == "systemInfo" \
+                if isinstance(obj, dict) and obj.get("type") == "system_info" \
                         and obj.get("state") == 112:
                     threading.Thread(target=self._diag_error, daemon=True).start()
                 self.broadcast({"panel": "async", "msg": msg})
@@ -153,18 +153,18 @@ class Panel:
             g = self.send({"type": "get_setup"}, timeout=3.0)
             spo = (g or {}).get("stage_pulse_offset") or {}
             st = self.send({"type": "get_running_stat"}, timeout=3.0)
-            freq = float(g.get("plateFreq") or 0)
+            freq = float(g.get("plate_freq") or 0)
             win = int(spo.get("SWITCH", 0)) - int(spo.get("CAM1_on", 0))
             win_ms = win / (2.0 * freq) * 1000 if freq else 0
             lat = (st or {}).get("report_latency") or {}
             lat_ms = lat.get("avg_us", 0) / 1000.0
             txt = ("ERROR analysis: answer window CAM1->SWITCH = %d ticks ="
-                   " %.0fms @ plateFreq %g; host report latency avg %.0fms"
+                   " %.0fms @ plate_freq %g; host report latency avg %.0fms"
                    " (n=%d)." % (win, win_ms, freq, lat_ms, lat.get("n", 0)))
             if lat.get("n") and win_ms and lat_ms >= win_ms:
                 txt += (" Latency >= window: the host CANNOT answer in time --"
                         " raise the SWITCH offset (Station offsets card) or"
-                        " lower plateFreq for serial testing.")
+                        " lower plate_freq for serial testing.")
             elif not (self.autorep):
                 txt += (" Auto-report is OFF -- nothing answers objects, so"
                         " any part reaching SWITCH stops the line.")
@@ -177,12 +177,12 @@ class Panel:
         if not ar:
             return
         obj = msg[1] if isinstance(msg, (list, tuple)) and len(msg) == 2 else msg
-        if not isinstance(obj, dict) or obj.get("type") not in ("bTrigInfo", "TriggerInfo"):
+        if not isinstance(obj, dict) or obj.get("type") not in ("cam_trig", "cam_trig_tagged"):
             return
         tid = obj.get("tid")
         if tid is None:
             return
-        # Every object announces twice (CAM1 tidx=1, CAM2 tidx=2); a second
+        # Every object announces twice (CAM1 cam=1, CAM2 cam=2); a second
         # report for the same tid would advance the pattern AND desync the
         # machine, so answer each tid exactly once.
         if tid in ar["answered"]:
@@ -226,7 +226,7 @@ class Panel:
             # Live pin levels. Older firmware has no PIN_READ; stop hammering
             # it after a few silent tries but keep the rest of the panel alive.
             if self.pin_read_ok is not False:
-                rep = self.send({"type": "PIN_READ", "pins": POLL_PINS}, timeout=0.6)
+                rep = self.send({"type": "pin_read", "pins": POLL_PINS}, timeout=0.6)
                 if rep.get("ack") and "vals" in rep:
                     self.pin_read_ok = True
                     pinread_fails = 0
@@ -238,7 +238,7 @@ class Panel:
                         self.pin_read_ok = False
                         self.broadcast({"panel": "pins_unsupported"})
 
-            # Slow status: state + counters + plateFreq.
+            # Slow status: state + counters + plate_freq.
             if time.time() - last_stat > 1.5:
                 last_stat = time.time()
                 rep = self.send({"type": "get_running_stat"}, timeout=0.8)
@@ -248,7 +248,7 @@ class Panel:
                     self.broadcast({"panel": "stat",
                                     "state": st,
                                     "state_name": STATE_NAMES.get(st, str(st)),
-                                    "plateFreq": rep.get("plateFreq"),
+                                    "plate_freq": rep.get("plate_freq"),
                                     "count": rep.get("count"),
                                     "pipe": rep.get("pipe"),
                                     "report_latency": rep.get("report_latency"),
@@ -389,7 +389,7 @@ PAGE = r"""<!DOCTYPE html>
   <span class="dot" id="linkdot"></span>
   <b>uInsp bring-up panel</b>
   <span class="kv" id="stateline">state: ?</span>
-  <span class="kv" id="freqline">plateFreq: ?</span>
+  <span class="kv" id="freqline">plate_freq: ?</span>
   <span class="kv" id="reconline"></span>
   <span class="warn" id="pinwarn" style="display:none">PIN_READ unsupported -- flash the new firmware for live pin levels</span>
 </header>
@@ -401,21 +401,21 @@ PAGE = r"""<!DOCTYPE html>
     <button onclick="cmd({type:'stepper_disable'})">Disable driver</button>
   </div>
   <div style="margin-top:8px">
-    plateFreq <input id="freq" type="number" value="1000" onchange="el('freqslide').value=this.value">
+    plate_freq <input id="freq" type="number" value="1000" onchange="el('freqslide').value=this.value">
     accel <input id="accel" type="number" value="2000"> Hz/s
-    <button onclick="cmd({type:'set_setup',plateFreq:+el('freq').value,plateAccel:+el('accel').value})">Set</button>
+    <button onclick="cmd({type:'set_setup',plate_freq:+el('freq').value,plate_accel:+el('accel').value})">Set</button>
   </div>
   <div style="margin-top:8px">
     <input type="range" id="freqslide" min="0" max="4000" step="10" value="1000" style="width:100%"
       oninput="el('freq').value=this.value"
-      onchange="cmd({type:'set_setup',plateFreq:+this.value})">
+      onchange="cmd({type:'set_setup',plate_freq:+this.value})">
     <div class="kv" style="display:flex;justify-content:space-between"><span>0</span><span>drag = live set on release</span><span>4000</span></div>
   </div>
   <div style="margin-top:8px">
     <button class="go" onclick="cmd({type:'stepper_enable'});cmd({type:'enter_insp_mode'})">&#9654; Start (enter insp mode)</button>
     <button class="stop" onclick="cmd({type:'exit_insp_mode'})">&#9632; Stop</button>
   </div>
-  <div class="kv" style="margin-top:6px">start = enable + enter_insp_mode; the plate spins at plateFreq. Stop = exit_insp_mode.</div>
+  <div class="kv" style="margin-top:6px">start = enable + enter_insp_mode; the plate spins at plate_freq. Stop = exit_insp_mode.</div>
   <div style="margin-top:8px;border-top:1px solid #2c2c33;padding-top:8px">
     EN active <select id="enact" style="width:110px">
       <option value="0">LOW (direct)</option>
@@ -437,7 +437,7 @@ PAGE = r"""<!DOCTYPE html>
     <option value="16">16 L1A</option>
     <option value="18">18 L2A</option>
   </select>
-  <button onclick="cmd({type:'PIN_MODE',pin:+el('vpin').value,mode:'OUTPUT'})">Set OUTPUT</button>
+  <button onclick="cmd({type:'pin_mode',pin:+el('vpin').value,mode:'OUTPUT'})">Set OUTPUT</button>
   <div style="margin-top:8px">
     <button class="go" onclick="setOut(+el('vpin').value,true)">ON</button>
     <button class="stop" onclick="setOut(+el('vpin').value,false)">OFF</button>
@@ -470,7 +470,7 @@ PAGE = r"""<!DOCTYPE html>
   <div id="gate" class="gna">no data</div>
   <div class="kv">INPUT_PULLUP, inverted: beam blocked pulls LOW. edges seen: <b id="gedges">0</b></div>
   <div style="margin-top:8px">
-    <button onclick="cmd({type:'PIN_MODE',pin:27,mode:'INPUT_PULLUP'})">Re-arm INPUT_PULLUP</button>
+    <button onclick="cmd({type:'pin_mode',pin:27,mode:'INPUT_PULLUP'})">Re-arm INPUT_PULLUP</button>
     <button onclick="firePhantom()">Phantom trigger</button>
   </div>
 </div>
@@ -535,7 +535,7 @@ PAGE = r"""<!DOCTYPE html>
     blow width <select id="selw" style="width:70px"><option>SEL1</option><option>SEL2</option><option>SEL3</option></select>
     <input id="selwms" type="number" value="100"> ms
     <button onclick="setSelWidth()">Set width &amp; apply</button>
-    <span class="kv">ms &#8594; ticks 依目前 plateFreq 換算(_off = _on + ms&#215;2&#215;freq/1000)</span>
+    <span class="kv">ms &#8594; ticks 依目前 plate_freq 換算(_off = _on + ms&#215;2&#215;freq/1000)</span>
   </div>
   <div class="kv" style="margin-top:6px">Pulse position of each station, counted from the gate trigger. _on/_off = actuation window edges; SWITCH = report deadline.</div>
 </div>
@@ -550,13 +550,13 @@ PAGE = r"""<!DOCTYPE html>
     <button onclick="cmd({type:'save_setup'})">Save NVS</button>
     <span class="kv" id="convline"></span>
   </div>
-  <div class="kv" style="margin-top:6px">Passive: FW never computes with these; hosts use them to convert mm/rpm &#8596; pulses. rpm = plateFreq / pulses_per_rev &#215; 60.</div>
+  <div class="kv" style="margin-top:6px">Passive: FW never computes with these; hosts use them to convert mm/rpm &#8596; pulses. rpm = plate_freq / pulses_per_rev &#215; 60.</div>
 </div>
 
 <div class="card"><h2>Raw command</h2>
   <textarea id="raw">{"type":"get_setup"}</textarea>
   <button onclick="sendRaw()">Send</button>
-  <button onclick="cmd({type:'PING'})">PING</button>
+  <button onclick="cmd({type:'ping'})">PING</button>
   <button onclick="cmd({type:'get_running_stat'})">Stat</button>
   <button onclick="cmd({type:'clear_error'})">Clear error</button>
 </div>
@@ -577,13 +577,13 @@ async function firePhantom(){
   // An unanswered object stops the line by design -- never fire a phantom
   // without a reporter running.
   if(!arOn){log("autorep","reporter was off -- auto-starting it first");await arSet(true);}
-  cmd({type:'trig_phamton_pulse'},true);
+  cmd({type:'trig_phantom_pulse'},true);
 }
 let ioOn={};  // name -> 1 (ON=HIGH) / 0 (ON=LOW), from get_setup io_on_level
 function setOut(pin,on){
   const lvl=ioOn[PINS[pin]] ?? 1;
   const phys=on ? lvl : 1-lvl;
-  return cmd(phys ? {type:'PIN_ON',pin} : {type:'PIN_OFF',pin});
+  return cmd(phys ? {type:'pin_on',pin} : {type:'pin_off',pin});
 }
 function paintPol(){
   el('polrows').innerHTML=OUTS.map(n=>
@@ -608,14 +608,14 @@ function pfHint(){
 }
 async function applyPf(){
   await cmd({type:'set_setup',
-    pulse_minWidth:+el('pf_min').value, pulse_maxWidth:+el('pf_max').value,
+    pulse_min_width:+el('pf_min').value, pulse_max_width:+el('pf_max').value,
     gate_debounce_rise:+el('pf_dr').value, gate_debounce_fall:+el('pf_df').value,
-    minDetectTimeSep_us:+el('pf_sep').value});
+    min_detect_sep_us:+el('pf_sep').value});
   pfHint();
 }
 async function setSelWidth(){
   const f=lastFreq||+el('freq').value;
-  if(!f){log("err","plateFreq unknown/zero -- set it first");return;}
+  if(!f){log("err","plate_freq unknown/zero -- set it first");return;}
   const n=el('selw').value, ms=+el('selwms').value;
   const on=+el('spo_'+n+'_on').value;
   const ticks=Math.max(1,Math.round(ms*2*f/1000));
@@ -700,8 +700,8 @@ es.onmessage=e=>{
   else if(m.panel==='stat'){
     el('linkdot').className='dot up';
     el('stateline').textContent='state: '+m.state_name+' ('+m.state+')';
-    lastFreq=m.plateFreq||lastFreq;
-    el('freqline').textContent='plateFreq: '+m.plateFreq+fmtSpeed(m.plateFreq);
+    lastFreq=m.plate_freq||lastFreq;
+    el('freqline').textContent='plate_freq: '+m.plate_freq+fmtSpeed(m.plate_freq);
     el('reconline').textContent=m.reconnects?('reconnects: '+m.reconnects):'';
     if(m.count)el('reconline').textContent+='  sorted: '+JSON.stringify(m.count);
     arOn=!!m.autorep;
@@ -735,15 +735,15 @@ cmd({type:'get_setup'}).then(s=>{
   if(!s)return;
   if('stepper_en_active' in s)el('enact').value=String(s.stepper_en_active);
   if('stepper_dir' in s)el('dirlvl').value=String(s.stepper_dir);
-  if(s.plateFreq){el('freq').value=s.plateFreq;el('freqslide').value=s.plateFreq;}
-  if('plateAccel' in s)el('accel').value=s.plateAccel;
+  if(s.plate_freq){el('freq').value=s.plate_freq;el('freqslide').value=s.plate_freq;}
+  if('plate_accel' in s)el('accel').value=s.plate_accel;
   if(s.pulses_per_rev){meta.ppr=s.pulses_per_rev;el('ppr').value=s.pulses_per_rev;}
   if(s.plate_diameter_mm){meta.dia=s.plate_diameter_mm;el('pdia').value=s.plate_diameter_mm;}
   if(s.io_on_level)ioOn=s.io_on_level;
-  if('pulse_minWidth' in s){
-    el('pf_min').value=s.pulse_minWidth; el('pf_max').value=s.pulse_maxWidth;
+  if('pulse_min_width' in s){
+    el('pf_min').value=s.pulse_min_width; el('pf_max').value=s.pulse_max_width;
     el('pf_dr').value=s.gate_debounce_rise; el('pf_df').value=s.gate_debounce_fall;
-    el('pf_sep').value=s.minDetectTimeSep_us;
+    el('pf_sep').value=s.min_detect_sep_us;
     pfHint();
   }
   paintPol();

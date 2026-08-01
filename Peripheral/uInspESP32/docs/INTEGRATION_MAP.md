@@ -51,7 +51,7 @@
             │                            ▼
             │                     [Core] CameraLayer callback
             │                            │
-            └─→ bTrigInfo{tid,usH,usL,Qs} │
+            └─→ cam_trig{tid,cam,t_us,gate_pulse,Qs} │
                      │                    ▼
                      │            [Core] 檢測 → uInspStatus
                      │                    │
@@ -118,9 +118,9 @@ Serial 115200，JSON。命令帶 `id` 會在回應中回echo。
 | **`report{tid,cat}`** | **回報檢測結果**，`cat` 值見下表 |
 | `set_sel1_cd{count}` | SEL1 動作倒數，歸零則進錯誤態；`-1` 停用 |
 | `stepper_enable` / `stepper_disable` | |
-| `trig_phamton_pulse` | 注入假物件（測試用，注意拼字是 `phamton`） |
+| `trig_phantom_pulse` | 注入假物件（測試用，注意拼字是 `phantom`） |
 | `get_running_stat` / `reset_running_stat` | |
-| `PING` | 回 `{"type":"PONG"}`，**不帶任何統計數據** |
+| `PING` | 回 `{"type":"pong"}`，**不帶任何統計數據** |
 | `RESET` | 協定層重置，見 §5.5 |
 
 #### 分選機構的實體拓撲
@@ -175,28 +175,28 @@ Serial 115200，JSON。命令帶 `id` 會在回應中回echo。
 
 | 訊息 | 說明 |
 |---|---|
-| **`bTrigInfo`** | `{tidx, usH, usL, tid, Qs}` —— 相機觸發時發出。`tid` 是物件識別碼、`Qs` 是韌體 RBuf 深度（在途物件數）。**這是結果回報的關聯依據**。⚠ 見下方「每顆料件兩則」 |
-| `systemInfo` | 狀態變化 |
+| **`cam_trig`** | `{tid, cam, t_us, gate_pulse, Qs}`（v2 欄位：`cam` 取代 `tidx`、`t_us` 合併 `usH/usL` 為單一 64-bit µs、新增 `gate_pulse` = 該件的註冊 pulse 位置） —— 相機觸發時發出。`tid` 是物件識別碼、`Qs` 是韌體 RBuf 深度（在途物件數）。**這是結果回報的關聯依據**。⚠ 見下方「每顆料件兩則」 |
+| `system_info` | 狀態變化 |
 | `dbg` | 除錯訊息 |
 
-> ⚠ **README.md 說這個訊息叫 `bT`，是錯的。** 實際 `retdoc["type"]="bTrigInfo"`
+> ⚠ **README.md 說這個訊息叫 `bT`，是錯的。** 實際 `retdoc["type"]="cam_trig"`
 > （`LegacyFirmware.cpp` 的 `TaskQ2CommInfo_Type::btrigInfo` 分支）。`[已驗證]`
 
-#### ⚠ 每顆料件會送**兩則** `bTrigInfo`
+#### ⚠ 每顆料件會送**兩則** `cam_trig`
 
 `Run_ACTS` 的 `ACT_CAM1` 和 `ACT_CAM2` 分支各推一則，而
 `ActRegister_pipeLineInfo` 對每顆物件**無條件註冊兩條佇列**。預設 offset 又相同
 （`CAM1_on = CAM2_on = 654`），所以兩則會在同一個 tick 發出：
 
 ```json
-{"type":"bTrigInfo","tidx":1,"tid":42,...}
-{"type":"bTrigInfo","tidx":2,"tid":42,...}   ← 同一個 tid
+{"type":"cam_trig","tid":42,"cam":1,...}
+{"type":"cam_trig","tid":42,"cam":2,...}   ← 同一個 tid
 ```
 
 **即使只接一台相機也照送**——韌體沒有停用 CAM2 的開關。`[已驗證]`
 
 後果：
-- **配對端必須用 `tidx` 過濾**，否則佇列會以 2 倍速成長，每張影像都拿到
+- **配對端必須用 `cam` 過濾**，否則佇列會以 2 倍速成長，每張影像都拿到
   前一顆料件的 tid。core 端用 conn_info 的 `cam_idx`（預設 1）處理。
 - **序列埠負載加倍**。單相機機台有一半的訊息是純浪費，這也是
   `CONCURRENCY_ANALYSIS.md` 算出 ~64 顆/秒上限的原因之一
@@ -212,7 +212,7 @@ Serial 115200，JSON。命令帶 `id` 會在回應中回echo。
   RBuf 找最接近的物件。整套 `SETUP_preBaseTime → ... → READY` 狀態機都是為此。
   失配 → 安靜地分錯槽。
 
-- **uInspESP32**：韌體主動送 `bTrigInfo{tid}`，host 回 `report{tid,cat}`，精確比對。
+- **uInspESP32**：韌體主動送 `cam_trig{tid}`，host 回 `report{tid,cat}`，精確比對。
   失配 → `INSP_RESULT_MATCHES_NO_OBJECT` → **停機**。
 
 **tid 模型是刻意的設計**：`PulseTimeSyncInfo` 在 uInspESP32 裡是死碼，只在
@@ -295,7 +295,7 @@ WebUI 的 PING 看門狗掉 2 次（約 6 秒）就重連 → 重新 CONNECT →
 
 而且 `PerifChannel::recv_jsonRaw_data` 是**一根啞管子** —— 把裝置回來的所有東西
 原封不動包成 PD MESSAGE 丟給瀏覽器，core 自己不解析任何內容。所以
-**`bTrigInfo` 到得了瀏覽器，到不了 core**，而 core 才是送結果的那一方。
+**`cam_trig` 到得了瀏覽器，到不了 core**，而 core 才是送結果的那一方。
 
 **這是自動分選跑不起來的根本原因。** 解法見 §8。
 
@@ -428,12 +428,12 @@ uInspESP32 的 `PIN_O_CAM1`（GPIO 17）是**裸的 3.3V ESP32 GPIO**。現役�
 | `de99f98f` | NVS 持久化 + `machine_id`；ISR 內 `digitalRead` → 暫存器直讀；輸出 fail-safe 集中成 `ALL_OUTPUTS_SAFE()` |
 | `535d92fb` | ISR 內的錯誤轉移延後到主迴圈（原本從 ISR 呼叫 `pinMode`/`digitalWrite`）|
 | `d956ddd9` | WebUI 抽出 `Perif_API_Base` 去重；新增 `uInspESP32_API` |
-| `d7b74f61` | **core 的 tid 結果路徑**：`bTrigInfo` tap、FIFO 配對、`report{tid,cat}`、`machine_type` 辨識 |
+| `d7b74f61` | **core 的 tid 結果路徑**：`cam_trig` tap、FIFO 配對、`report{tid,cat}`、`machine_type` 辨識 |
 | `3ffadfd1` | **掉幀吸收**：`frameInfo.frameNum` 貫通、斷號 → 補送 NA 讓 FIFO 重新對齊 |
 
 ### core 的 tid 路徑（`d7b74f61`）
 
-`PerifChannel` 現在會攔 `bTrigInfo` 存進 `perifTriggerQueue`（**仍原封不動轉發給
+`PerifChannel` 現在會攔 `cam_trig` 存進 `perifTriggerQueue`（**仍原封不動轉發給
 瀏覽器**，不影響既有 WebUI）。結果在 `InspResultAction_s` 產生時就 FIFO 配對
 最舊的未認領 trigger —— 在這裡配而不是在送出執行緒配，是為了讓配對跟著
 **影像順序**而不是寫入順序。
@@ -470,8 +470,8 @@ trigger 佇列，兩個計數在這裡交會最自然。
 
 ### NVS 持久化怎麼用
 
-存的欄位：`STAGE_PULSE_OFFSET` 全部、`plateFreq`、`minDetectTimeSep_us`、
-`pulse_minWidth/maxWidth`、`machine_id`。
+存的欄位：`STAGE_PULSE_OFFSET` 全部、`plate_freq`、`min_detect_sep_us`、
+`pulse_min_width/maxWidth`、`machine_id`。
 
 ```jsonc
 {"type":"set_setup", "persist":true, "stage_pulse_offset":{...}}  // 設定並存檔
@@ -542,7 +542,7 @@ Perif_API_Base                傳輸層（連線/追蹤窗/PING/設定檔/延遲
 
 - 新機**取代** uInspMEGA，新程式碼可重新定義協定
 - 舊機相容「看情況」，不是硬需求 —— 用 `machine_type` 分歧即可，成本很低
-- **單相機**，`tidx` 恆為 1，一條 FIFO
+- **單相機**，`cam` 恆為 1，一條 FIFO
 - FIFO 配對可接受（當初用 timestamp 是因為不確定怎麼掌握 HikRobot 掉幀，
   而這個問題在 xInsp plugin 已經解決）
 - **掉幀 / 未檢測 → NA（`cat=0xFFFF`），不是 NG** —— 不可污染良率統計

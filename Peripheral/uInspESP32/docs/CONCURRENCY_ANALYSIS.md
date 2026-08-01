@@ -78,7 +78,7 @@ ISR    pushHead():     load dataSize (=5), store 6
 
 計數會**單向漂移**，而且兩個方向都會咬人：
 
-- **少算**（增量遺失）→ 佇列以為比實際空 → 覆寫還沒送出的資料 → **`bTrigInfo` 靜默遺失**
+- **少算**（增量遺失）→ 佇列以為比實際空 → 覆寫還沒送出的資料 → **`cam_trig` 靜默遺失**
   → core 端配對失步 → `INSP_RESULT_MATCHES_NO_OBJECT` → 停機
 - **多算**（減量遺失）→ 佇列以為比實際滿 → `getHead()` 回 NULL →
   **`INSP_CAM_TRIG_INFO_CANNOT_BE_SENT` → 無故停機**
@@ -91,7 +91,7 @@ ISR    pushHead():     load dataSize (=5), store 6
 
 | 佇列 | 生產者 | 消費者 | 狀態 |
 |---|---|---|---|
-| **`TaskQ2CommInfoQ`** (20 深) | **ISR** (`Run_ACTS` :597/:642)<br>**+ 主迴圈** (:455 狀態轉移、:1259 `recv_ERROR`、:1379 `trigCamPulse`) | 主迴圈 (:2161) | 🔴 **最嚴重** |
+| **`TaskQ2CommInfoQ`** (20 深) | **ISR** (`Run_ACTS` :597/:642)<br>**+ 主迴圈** (:455 狀態轉移、:1259 `recv_ERROR`、:1379 `trig_cam_pulse`) | 主迴圈 (:2161) | 🔴 **最嚴重** |
 | **`RBuf`** (100 深) | ISR (`newPulseEvent`) | 主迴圈（清理 `consumeTail`）<br>+ 主迴圈（`report` 改 `insp_status`）| 🔴 |
 | `act_S.*` (7 條) | ISR (`ActRegister` / SWITCH 分支) | ISR (`Run_ACTS`) | 🟡 ISR 內自洽，但 `RESET_ALL_PIPELINE_QUEUE()` 從主迴圈清空 |
 | `ERROR_HIST` | 主迴圈 | 主迴圈 | 🟢 安全 |
@@ -193,7 +193,7 @@ void STAGE_PULSE_OFFSET_publish() {          // 主迴圈呼叫
 ```
 
 **為什麼不用臨界區**：寫入端要更新 15 個欄位（JSON 逐欄位取值）。若包在
-`portENTER_CRITICAL` 裡會遮罩 step timer ISR 整段時間，高 plateFreq 下可能掉步。
+`portENTER_CRITICAL` 裡會遮罩 step timer ISR 整段時間，高 plate_freq 下可能掉步。
 雙緩衝讓寫入端在中斷開啟下操作私有緩衝，只有指標切換是原子的——**完全不遮罩中斷**。
 
 呼叫點：`firmwareSetup()` 的 `MachineConfig::begin()` 之後（timer arm 前）、
@@ -259,7 +259,7 @@ python uinsp_test.py --port COM6 stress --max-hz 150 --no-report   # 只壓 anno
 
 - **在遠低於理論上限的速率出現 `INSP_CAM_TRIG_INFO_CANNOT_BE_SENT`**
   → 很可能就是 §2 的 `dataSize` 漂移（真的塞滿應該發生在特定可算的速率）
-- **`bTrigInfo` 數量少於發出的假脈衝數，但沒有任何錯誤**
+- **`cam_trig` 數量少於發出的假脈衝數，但沒有任何錯誤**
   → 增量遺失，資料被覆寫
 - **同一速率重跑結果不一致** → 競爭的典型特徵
 
@@ -268,9 +268,9 @@ python uinsp_test.py --port COM6 stress --max-hz 150 --no-report   # 只壓 anno
 | 限制 | 數值 |
 |---|---|
 | `TaskQ2CommInfoQ` 深度 | 20 |
-| 每顆料件的 `bTrigInfo` 則數 | **2**（CAM1 + CAM2 各一）|
+| 每顆料件的 `cam_trig` 則數 | **2**（CAM1 + CAM2 各一）|
 | 115200 8N1 有效頻寬 | ~11.5 kB/s |
-| 一則 `bTrigInfo` 大小 | ~90 B → ~8 ms |
+| 一則 `cam_trig` 大小 | ~90 B → ~8 ms |
 | **序列埠上限** | **~64 顆/秒**（每顆 2 則）|
 
 > 🔴 **順帶發現一個純浪費**：`LegacyFirmware.cpp:2181` 每排空一則訊息就送一次

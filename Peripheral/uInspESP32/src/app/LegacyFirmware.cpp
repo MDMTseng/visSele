@@ -41,7 +41,7 @@ volatile uint32_t IO_INV_MASK = (1u<<IOI_FEEDER);
 #define IO_ON(PIN,IDX)  do{ if(IO_IS_INV(IDX)) GPIO_ANY_CLR(PIN); else GPIO_ANY_SET(PIN); }while(0)
 #define IO_OFF(PIN,IDX) do{ if(IO_IS_INV(IDX)) GPIO_ANY_SET(PIN); else GPIO_ANY_CLR(PIN); }while(0)
 // Main-loop counterpart (digitalWrite is fine outside the ISR). idx<0 = pin not
-// under polarity control (e.g. a custom trigCamPulse pin): logical==physical.
+// under polarity control (e.g. a custom trig_cam_pulse pin): logical==physical.
 static inline void io_drive(int pin,int idx,bool on)
 {
   bool inv = (idx>=0) && IO_IS_INV(idx);
@@ -91,14 +91,14 @@ SYS_INFO sysinfo = {
 
 
 
-float SETUP_TAR_FREQ=0;
+float PLATE_FREQ_SETPOINT=0;
 bool SYS_FREQ_STABLE=false;
-float SYS_TAR_FREQ=1000;
-float SYS_CUR_FREQ=0;
-// Plate spin-up/down ramp, in Hz of plateFreq per second of wall time. The old
+float PLATE_FREQ_TARGET=1000;
+float PLATE_FREQ_CURRENT=0;
+// Plate spin-up/down ramp, in Hz of plate_freq per second of wall time. The old
 // scheme stepped a fixed 5 Hz every 256th loop pass, so the real acceleration
 // depended on loop speed; this is deterministic and per-machine configurable
-// (set_setup "plateAccel", persisted). <=0 means jump instantly.
+// (set_setup "plate_accel", persisted). <=0 means jump instantly.
 float SYS_FREQ_ACCEL=2000;
 bool SYS_STEPPER_DISABLED=false;
 
@@ -151,6 +151,9 @@ uint32_t REP_LAT_MAX_US=0;
 // Context of the most recent pipeline error, captured in the ISR at the moment
 // the fault is detected so the state-change log can say WHICH object failed
 // and how late it was, instead of a bare code.
+// Deliberate-crash request (CRASH_TEST command); executed in firmwareLoop().
+volatile int CRASH_REQ=0;
+
 volatile uint32_t ERR_CTX_TID=0;
 volatile int32_t  ERR_CTX_STATUS=0;
 volatile uint32_t ERR_CTX_GATE_PULSE=0;
@@ -332,7 +335,7 @@ void RESET_ALL_PIPELINE_QUEUE()
 enum TaskQ2CommInfo_Type{
   trigInfo=1000,
   btrigInfo=1005,//brif trigger info
-  systemInfo=1006,
+  system_info=1006,
   ext_log=1001,
   respFrame=1002,
 };
@@ -349,6 +352,7 @@ struct TaskQ2CommInfo{//TODO: rename the infoQ to be more versatile
   int btrig_idx;
   int64_t trig_time_us;
   int trig_id;
+  uint32_t gate_pulse;
   // float curFreq;
 
   //log
@@ -359,7 +363,7 @@ struct TaskQ2CommInfo{//TODO: rename the infoQ to be more versatile
   int resp_id;
 };
 
-// Producers: the main loop only (state transitions, recv_ERROR, trigCamPulse).
+// Producers: the main loop only (state transitions, recv_ERROR, trig_cam_pulse).
 // Consumer: the main loop. The camera-trigger path used to push here too, from
 // inside the timer ISR, which made this a two-producer queue -- and a locked
 // counter cannot save that, because getHead()/fill/pushHead() is three steps:
@@ -376,12 +380,13 @@ RingBuf_Static<struct TaskQ2CommInfo,20,uint8_t> TaskQ2CommInfoQ;
 // critical section in RingBuf.hpp now makes safe.
 //
 // POD only, deliberately: it is filled from an ISR, so nothing here may
-// allocate. The main loop turns it into the bTrigInfo JSON where std::string
+// allocate. The main loop turns it into the cam_trig JSON where std::string
 // is free to be used.
 struct ISRTrigInfo
 {
   uint64_t trig_time_us;
   uint32_t trig_id;
+  uint32_t gate_pulse;
   uint8_t  btrig_idx;
 };
 RingBuf_Static<struct ISRTrigInfo,32,uint8_t> ISRTrigQ;
@@ -468,7 +473,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       if (i == 2)
       {//For INIT state "EXIT"(i==2) is the first and the last action it would run
         blockNewDetectedObject=true;
-        SYS_TAR_FREQ=0;
+        PLATE_FREQ_TARGET=0;
 
         pinMode(FEEDER_PIN, OUTPUT);
         io_drive(FEEDER_PIN, IOI_FEEDER, false);
@@ -484,7 +489,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       } //enter
       else if (i == 1)
       {
-        SYS_TAR_FREQ=SETUP_TAR_FREQ;
+        PLATE_FREQ_TARGET=PLATE_FREQ_SETPOINT;
         // SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);
         // SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);//the event sould be issued by remote
       } //loop
@@ -502,7 +507,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       } //enter
       else if (i == 1)
       {
-        SYS_TAR_FREQ=SETUP_TAR_FREQ;
+        PLATE_FREQ_TARGET=PLATE_FREQ_SETPOINT;
       } //loop
       else
       {
@@ -524,7 +529,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       }
       else if (i == 1)
       {
-        SYS_TAR_FREQ=SETUP_TAR_FREQ;
+        PLATE_FREQ_TARGET=PLATE_FREQ_SETPOINT;
       } //loop
       else
       {
@@ -540,7 +545,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       static uint32_t targetPulse=0;
       if (i == 0)
       {
-        SYS_TAR_FREQ=0;
+        PLATE_FREQ_TARGET=0;
         blockNewDetectedObject=true;
 
         // Drop every actuator immediately. The plate still has to ramp down, so
@@ -624,7 +629,7 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
     {
       TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
       if(commInfo){
-        commInfo->type=TaskQ2CommInfo_Type::systemInfo;
+        commInfo->type=TaskQ2CommInfo_Type::system_info;
         char numberStr[200];
         if(state==SYS_STATE::INSPECTION_MODE_ERROR)
         {
@@ -677,7 +682,7 @@ uint32_t _prePulse=0;
 uint64_t _preTime=0;
 int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
-  static uint32_t acc_tid=1;
+  static uint32_t tid_counter=1;
   uint32_t _prePulse_BK=_prePulse;
   _prePulse=middle_pulse;
   if(middle_pulse-_prePulse_BK<(_PLAT_DIST_step(3500)))return -9;
@@ -698,14 +703,14 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   // head->pulse_width = pulse_width;
   head->gate_pulse = middle_pulse;
   head->insp_status = insp_status_UNSET;
-  head->tid=acc_tid;
+  head->tid=tid_counter;
   head->trig_us=(uint32_t)esp_timer_get_time();
   if (ActRegister_pipeLineInfo(head) != 0)
   { //register failed....
     return -2;
   }
   RBuf.pushHead();
-  acc_tid++;
+  tid_counter++;
   return 0;
 }
 int ActRegister_pipeLineInfo(pipeLineInfo *pli)
@@ -798,6 +803,7 @@ int Run_ACTS(uint32_t cur_pulse)
                       commInfo->trig_time_us=time_us;
                       commInfo->btrig_idx=1;
                       commInfo->trig_id=task->src->tid;
+                      commInfo->gate_pulse=task->src->gate_pulse;
                       ISRTrigQ.pushHead();
                     }
                     else
@@ -846,6 +852,7 @@ int Run_ACTS(uint32_t cur_pulse)
                       commInfo->trig_time_us=time_us;
                       commInfo->btrig_idx=2;
                       commInfo->trig_id=task->src->tid;
+                      commInfo->gate_pulse=task->src->gate_pulse;
                       ISRTrigQ.pushHead();
                     }
                     else
@@ -1152,7 +1159,7 @@ volatile uint32_t SYS_STEP_COUNT=0;
 typedef struct GateInfo {
   uint32_t start_pulse;
   uint32_t end_pulse;
-  uint16_t debunce;
+  uint16_t debounce;
   uint8_t cur_Sense;
 
 
@@ -1176,7 +1183,7 @@ void RESET_GateSensing()
   ngateInfo.end_pulse=~0;
   // Idle is LOW (INPUT_PULLUP + _senseInv_), so the first edge to confirm is a
   // rising one; seed the counter with the rising threshold rather than 0.
-  ngateInfo.debunce=DEBOUNCE_H_THRES;
+  ngateInfo.debounce=DEBOUNCE_H_THRES;
   gateInfo=ngateInfo;
 }
 
@@ -1188,7 +1195,7 @@ bool _senseInv_=true;
 volatile int  minWidth = 0;
 volatile int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
 
-// Gate debounce, in gate-sample ticks (the timer runs at 2*plateFreq, so one
+// Gate debounce, in gate-sample ticks (the timer runs at 2*plate_freq, so one
 // tick is ~1 step ~= _PLAT_DIST_um_PER_STEP of travel -- 38um on the 350mm
 // plate). A value of N means an edge is accepted only after the new level has
 // held for N consecutive samples, so any glitch shorter than N ticks is
@@ -1225,16 +1232,16 @@ void GateSensing()
   {//currently HIGH -- object present
     if(!new_Sense)
     {//reading LOW: count toward a falling edge
-      gateInfo.debunce--;
-      if(gateInfo.debunce==0)
+      gateInfo.debounce--;
+      if(gateInfo.debounce==0)
       {
         onSenseEdge=true;
-        gateInfo.debunce=DEBOUNCE_H_THRES;
+        gateInfo.debounce=DEBOUNCE_H_THRES;
       }
     }
     else
     {//still HIGH: absorb the dip, keep the trailing edge current
-      gateInfo.debunce=DEBOUNCE_L_THRES;
+      gateInfo.debounce=DEBOUNCE_L_THRES;
       gateInfo.end_pulse=SYS_STEP_COUNT;
     }
   }
@@ -1242,16 +1249,16 @@ void GateSensing()
   {//currently LOW -- no object
     if(new_Sense)
     {//reading HIGH: count toward a rising edge
-      gateInfo.debunce--;
-      if(gateInfo.debunce==0)
+      gateInfo.debounce--;
+      if(gateInfo.debounce==0)
       {
         onSenseEdge=true;
-        gateInfo.debunce=DEBOUNCE_L_THRES;
+        gateInfo.debounce=DEBOUNCE_L_THRES;
       }
     }
     else
     {//still LOW: reject the blip, keep the leading edge current
-      gateInfo.debunce=DEBOUNCE_H_THRES;
+      gateInfo.debounce=DEBOUNCE_H_THRES;
       gateInfo.start_pulse=SYS_STEP_COUNT;
     }
   }
@@ -1286,17 +1293,11 @@ void GateSensing()
 
 
 
-int stepRun=-1;
 void StepGo()
 {
 
   if((SYS_STEP_COUNT&1)==0)
   {
-    // if(stepRun)
-    // {
-    //   if(stepRun>0)stepRun--;
-    //   GPIOLS32_SET(STEPPER_PLS_PIN);
-    // }
     GPIOLS32_SET(STEPPER_PLS_PIN);
   }
   else
@@ -1382,7 +1383,7 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
 
     TaskQ2CommInfo *commInfo = TaskQ2CommInfoQ.getHead();
     if(commInfo){
-      commInfo->type=TaskQ2CommInfo_Type::systemInfo;
+      commInfo->type=TaskQ2CommInfo_Type::system_info;
       commInfo->log="Serial protocol error detected";
       TaskQ2CommInfoQ.pushHead();
     }
@@ -1398,9 +1399,9 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
 // An NVS commit erases/writes flash, which disables the instruction cache. The
 // timer ISR (onTimer, IRAM) calls into non-IRAM code (Run_ACTS et al.), so a
 // save with the timer live risks a stall/reset. Permit it only with the plate
-// fully stopped -- SYS_CUR_FREQ==0 is exactly when the timer alarm has been
-// disabled (SYS_CUR_FREQ==0 -> timerAlarmDisable) -- and held stopped
-// (SETUP_TAR_FREQ==0, so it will not spin back up), in a settle-able state
+// fully stopped -- PLATE_FREQ_CURRENT==0 is exactly when the timer alarm has been
+// disabled (PLATE_FREQ_CURRENT==0 -> timerAlarmDisable) -- and held stopped
+// (PLATE_FREQ_SETPOINT==0, so it will not spin back up), in a settle-able state
 // (IDLE or a stopped READY, not ERROR/TEST/FATAL). Returns NULL if a save is
 // allowed, else a human-readable reason so the caller knows what to fix.
 static const char* cfgPersistDeny()
@@ -1408,9 +1409,9 @@ static const char* cfgPersistDeny()
   if(sysinfo.state!=SYS_STATE::IDLE &&
      sysinfo.state!=SYS_STATE::INSPECTION_MODE_READY)
     return "must be in IDLE or INSPECTION_MODE_READY";
-  if(SETUP_TAR_FREQ!=0)
-    return "set plateFreq to 0 first";
-  if(SYS_CUR_FREQ!=0)
+  if(PLATE_FREQ_SETPOINT!=0)
+    return "set plate_freq to 0 first";
+  if(PLATE_FREQ_CURRENT!=0)
     return "plate still moving; wait until SYS_STEP_COUNT stops";
   return NULL;
 }
@@ -1470,7 +1471,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     handleResetCommand();
     return msg_printf("RESET_OK","");
   }
-  else if(strcmp(type,"ask_JsonRaw_version")==0)
+  else if(strcmp(type,"get_version")==0)
   {
     
     const char* _version = doc["version"];
@@ -1488,7 +1489,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   // }
 
 
-  else if(strcmp(type,"trigCamPulse")==0)
+  else if(strcmp(type,"trig_cam_pulse")==0)
   {
     int cam_PIN=PIN_O_CAM1;
     if(doc["cpin"].is<int>()==true)
@@ -1528,6 +1529,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         commInfo->trig_time_us=time_us;
         commInfo->btrig_idx=1;
         commInfo->trig_id=trigger_id;
+        commInfo->gate_pulse=0;   // no pipeline object behind a manual pulse
         TaskQ2CommInfoQ.pushHead();
       }
     }
@@ -1549,7 +1551,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     doRsp=rspAck=true;
   }
-  else if(strcmp(type,"PIN_MODE")==0)
+  else if(strcmp(type,"pin_mode")==0)
   {
     doRsp=true;
     int PIN_Mode=INPUT;
@@ -1586,9 +1588,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
 
 
-  else if(strcmp(type,"PING")==0)
+  else if(strcmp(type,"ping")==0)
   {
-    retdoc["type"]="PONG"; 
+    retdoc["type"]="pong"; 
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"get_setup")==0)
@@ -1673,7 +1675,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
 
     {
-      JsonArray jERROR_HIST = retdoc.createNestedArray("ERROR_HIST");
+      JsonArray jERROR_HIST = retdoc.createNestedArray("error_hist");
 
       for(int i=0;i<ERROR_HIST.size();i++)
       {
@@ -1691,7 +1693,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     //current state
     retdoc["state"]=(int)sysinfo.state;
 
-    retdoc["plateFreq"]=SYS_TAR_FREQ;//SYS_CUR_FREQ;
+    retdoc["plate_freq"]=PLATE_FREQ_TARGET;//PLATE_FREQ_CURRENT;
     // if(SEL1_ACT_COUNTDOWN>=0)
     // {
     // }
@@ -1772,7 +1774,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       uint32_t pressure=tarP->gate_pulse+STAGE_PULSE_OFFSET.SWITCH-SYS_STEP_COUNT;
       // if(pressure<1000)
       // {
-      //   SETUP_TAR_FREQ=SETUP_TAR_FREQ*19/20;
+      //   PLATE_FREQ_SETPOINT=PLATE_FREQ_SETPOINT*19/20;
       // }
       retdoc["tr"]=pressure;
       if(tarP->insp_status==insp_status_UNSET)
@@ -1859,7 +1861,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=false;   // already sent above
   }
 
-  else if(strcmp(type,"PIN_ON")==0)
+  else if(strcmp(type,"pin_on")==0)
   {
     
     if(doc["pin"].is<int>()==true)
@@ -1869,7 +1871,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
     doRsp=rspAck=true;
   }
-  else if(strcmp(type,"PIN_OFF")==0)
+  else if(strcmp(type,"pin_off")==0)
   {
     
     if(doc["pin"].is<int>()==true)
@@ -1880,7 +1882,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
     doRsp=rspAck=true;
   }
-  else if(strcmp(type,"PIN_READ")==0)
+  else if(strcmp(type,"pin_read")==0)
   {
     if(doc["pin"].is<int>()==true)
     {
@@ -1920,7 +1922,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     
     doRsp=rspAck=true;
   }
-  else if(strcmp(type,"trig_phamton_pulse")==0)
+  else if(strcmp(type,"trig_phantom_pulse")==0)
   {
     uint32_t tatPulse= SYS_STEP_COUNT-STAGE_PULSE_OFFSET.L1A_on+_PLAT_DIST_step(3000);
 
@@ -1929,7 +1931,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=rspAck=true;
   }
 
-  else if(strcmp(type,"sel1_act_countdown")==0 || strcmp(type,"set_sel1_cd")==0)
+  else if(strcmp(type,"set_sel1_cd")==0)
   {
     
     if(doc["count"].is<int>()==true)
@@ -1998,7 +2000,26 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=true;
   }
   
-  else if(strcmp(type,"BYE")==0)
+  else if(strcmp(type,"crash_test")==0)
+  {
+    // Deliberately kill the firmware to exercise the host's crash forensics
+    // (NOISE capture of the panic dump + reset_reason on the next boot).
+    // Refused without confirm:true so a stray command can't stop a machine.
+    if(doc["confirm"].is<bool>() && doc["confirm"].as<bool>())
+    {
+      CRASH_REQ = (doc["mode"].is<const char*>()
+                   && strcmp(doc["mode"].as<const char*>(),"abort")==0) ? 2 : 1;
+      retdoc["crashing"]=true;
+      rspAck=true;
+    }
+    else
+    {
+      retdoc["err"]="needs confirm:true";
+      rspAck=false;
+    }
+    doRsp=true;
+  }
+  else if(strcmp(type,"bye")==0)
   {
     doRsp=rspAck=true;
 
@@ -2171,7 +2192,7 @@ bool AUX_Task_Try_Read(JsonDocument& data,const char* type,JsonDocument& ret_doc
   {
     return false;
   }
-  if(strcmp(type,"AUX_TEST")==0)
+  if(strcmp(type,"aux_test")==0)
   {
     ret_doc["msg"]="Try more";
     doRsp=true;
@@ -2391,6 +2412,16 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
 static uint8_t recvBuf[20];
 void firmwareLoop()
 {
+  if(CRASH_REQ)
+  {
+    delay(200);              // let the ack reach the wire first
+    if(CRASH_REQ==2)
+    {
+      abort();               // panic via abort(): SW reset, abort backtrace
+    }
+    *(volatile int*)0 = 42;  // LoadProhibited/StoreProhibited Guru Meditation
+  }
+
   // Drain any error the step ISR raised. Its outputs are already safe and new
   // object detection is already blocked; what is left is the state transition,
   // which has to run out here where Arduino GPIO calls are legal.
@@ -2461,11 +2492,11 @@ void firmwareLoop()
         ISRTrigQ.consumeTail();
 
         retdoc.clear();
-        retdoc["type"]="bTrigInfo";
-        retdoc["tidx"]=trig.btrig_idx;
-        retdoc["usH"]=(uint32_t)(trig.trig_time_us>>32);
-        retdoc["usL"]=(uint32_t)(trig.trig_time_us&((uint32_t)0-1));
+        retdoc["type"]="cam_trig";
         retdoc["tid"]=trig.trig_id;
+        retdoc["cam"]=trig.btrig_idx;
+        retdoc["t_us"]=trig.trig_time_us;
+        retdoc["gate_pulse"]=trig.gate_pulse;
         retdoc["Qs"]=RBuf.size();
         int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
         djrl.send_json_string(0,buff,slen,0);
@@ -2504,7 +2535,7 @@ void firmwareLoop()
       {
         case TaskQ2CommInfo_Type::trigInfo :
         {
-          retdoc["type"]="TriggerInfo"; 
+          retdoc["type"]="cam_trig_tagged"; 
           retdoc["camera_id"]=info.camera_id;
 
 
@@ -2524,27 +2555,26 @@ void firmwareLoop()
         
         case TaskQ2CommInfo_Type::btrigInfo :
         {
-          retdoc["type"]="bTrigInfo"; 
-          retdoc["tidx"]=info.btrig_idx;
-          retdoc["usH"]=info.trig_time_us>>32;
-          retdoc["usL"]=info.trig_time_us&((uint32_t)0-1);
-
+          retdoc["type"]="cam_trig";
           retdoc["tid"]=info.trig_id;
+          retdoc["cam"]=info.btrig_idx;
+          retdoc["t_us"]=(uint64_t)info.trig_time_us;
+          retdoc["gate_pulse"]=info.gate_pulse;
           retdoc["Qs"]=RBuf.size();
           int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
           djrl.send_json_string(0,buff,slen,0);
           break;
         }
 
-        case TaskQ2CommInfo_Type::systemInfo :
+        case TaskQ2CommInfo_Type::system_info :
         {
-          retdoc["type"]="systemInfo"; 
+          retdoc["type"]="system_info"; 
 
           retdoc["state"]=(int)sysinfo.state;
           
 
           {
-            JsonArray jERROR_HIST = retdoc.createNestedArray("ERROR_HIST");
+            JsonArray jERROR_HIST = retdoc.createNestedArray("error_hist");
 
             for(int i=0;i<ERROR_HIST.size();i++)
             {
@@ -2594,9 +2624,9 @@ void firmwareLoop()
     int64_t nowUs=esp_timer_get_time();
     float dt=(nowUs-lastRampUs)*1e-6f;
     lastRampUs=nowUs;
-    if(SYS_CUR_FREQ==SYS_TAR_FREQ)
+    if(PLATE_FREQ_CURRENT==PLATE_FREQ_TARGET)
     {
-      if(SYS_TAR_FREQ==0 && SYS_FREQ_STABLE==false)//just stable
+      if(PLATE_FREQ_TARGET==0 && SYS_FREQ_STABLE==false)//just stable
       {
         ALL_OUTPUTS_SAFE();
       }
@@ -2605,7 +2635,7 @@ void firmwareLoop()
     }
     SYS_FREQ_STABLE=false;
     bool TimerNeedsStart=false;
-    if(SYS_CUR_FREQ==0)
+    if(PLATE_FREQ_CURRENT==0)
     {
       TimerNeedsStart=true;
     }
@@ -2614,39 +2644,39 @@ void firmwareLoop()
     if(dt<0)dt=0;
     if(dt>0.25f)dt=0.25f;
     float step=(SYS_FREQ_ACCEL>0) ? SYS_FREQ_ACCEL*dt : 3.4e38f;
-    if(SYS_CUR_FREQ>SYS_TAR_FREQ)
+    if(PLATE_FREQ_CURRENT>PLATE_FREQ_TARGET)
     {
-      if(SYS_TAR_FREQ==0 && SYS_CUR_FREQ<10)
+      if(PLATE_FREQ_TARGET==0 && PLATE_FREQ_CURRENT<10)
       {
-        SYS_CUR_FREQ=0;
+        PLATE_FREQ_CURRENT=0;
       }
       else
       {
-        SYS_CUR_FREQ-=step;
-        if(SYS_CUR_FREQ<SYS_TAR_FREQ)
+        PLATE_FREQ_CURRENT-=step;
+        if(PLATE_FREQ_CURRENT<PLATE_FREQ_TARGET)
         {
-          SYS_CUR_FREQ=SYS_TAR_FREQ;
+          PLATE_FREQ_CURRENT=PLATE_FREQ_TARGET;
         }
       }
     }
     else
     {
-      SYS_CUR_FREQ+=step;
-      if(SYS_CUR_FREQ>SYS_TAR_FREQ)
+      PLATE_FREQ_CURRENT+=step;
+      if(PLATE_FREQ_CURRENT>PLATE_FREQ_TARGET)
       {
-        SYS_CUR_FREQ=SYS_TAR_FREQ;
+        PLATE_FREQ_CURRENT=PLATE_FREQ_TARGET;
       }
     }
 
 
 
-    if(SYS_CUR_FREQ==0)
+    if(PLATE_FREQ_CURRENT==0)
     {
       timerAlarmDisable(timer);
     }
     else
     {
-      timerAlarmWrite(timer, (uint64_t)((_TICK2SEC_BASE_>>1)/SYS_CUR_FREQ), true);
+      timerAlarmWrite(timer, (uint64_t)((_TICK2SEC_BASE_>>1)/PLATE_FREQ_CURRENT), true);
     }
 
     if(TimerNeedsStart)
@@ -2741,12 +2771,12 @@ void genMachineSetup(JsonDocument &jdoc)
 
   // auto obj=jdoc.createNestedObject("obj");
 
-  jdoc["plateFreq"]=SETUP_TAR_FREQ;
-  jdoc["plateAccel"]=SYS_FREQ_ACCEL;
-  jdoc["minDetectTimeSep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
+  jdoc["plate_freq"]=PLATE_FREQ_SETPOINT;
+  jdoc["plate_accel"]=SYS_FREQ_ACCEL;
+  jdoc["min_detect_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
 
-  jdoc["pulse_minWidth"]=minWidth;
-  jdoc["pulse_maxWidth"]=maxWidth;
+  jdoc["pulse_min_width"]=minWidth;
+  jdoc["pulse_max_width"]=maxWidth;
 
   jdoc["gate_debounce_rise"]=DEBOUNCE_H_THRES;
   jdoc["gate_debounce_fall"]=DEBOUNCE_L_THRES;
@@ -2768,9 +2798,20 @@ void genMachineSetup(JsonDocument &jdoc)
   jdoc["machine_id"]=MachineConfig::machineId();
   jdoc["cfg_from_nvs"]=MachineConfig::isLoadedFromNVS();
 
+  // Why the chip last booted: lets a host that finds the board freshly in
+  // IDLE tell a panic/watchdog/brownout from a plain power cycle.
+  {
+    static const char* rr_names[]={"UNKNOWN","POWERON","EXT","SW","PANIC",
+                                   "INT_WDT","TASK_WDT","WDT","DEEPSLEEP",
+                                   "BROWNOUT","SDIO"};
+    int rr=(int)esp_reset_reason();
+    jdoc["reset_reason"]=rr;
+    jdoc["reset_reason_name"]=(rr>=0 && rr<11)?rr_names[rr]:"?";
+  }
+
 
   {
-    JsonArray jERROR_HIST = jdoc.createNestedArray("ERROR_HIST");
+    JsonArray jERROR_HIST = jdoc.createNestedArray("error_hist");
 
     for(int i=0;i<ERROR_HIST.size();i++)
     {
@@ -2779,9 +2820,9 @@ void genMachineSetup(JsonDocument &jdoc)
   }
 
 
-  // jdoc["SYS_TAR_FREQ"]=SYS_TAR_FREQ;
-  jdoc["curState"]=(int)sysinfo.state;
-  jdoc["SYS_STEP_COUNT"]=(int)SYS_STEP_COUNT;
+  // jdoc["PLATE_FREQ_TARGET"]=PLATE_FREQ_TARGET;
+  jdoc["cur_state"]=(int)sysinfo.state;
+  jdoc["step_count"]=(int)SYS_STEP_COUNT;
 
   
 }
@@ -2821,13 +2862,12 @@ void setMachineSetup(JsonDocument &jdoc)
     MachineConfig::setMachineId(jdoc["machine_id"].as<const char*>());
   }
 
-  JSON_SETIF_ABLE(SETUP_TAR_FREQ,jdoc,"plateFreq");
-  JSON_SETIF_ABLE(SYS_FREQ_ACCEL,jdoc,"plateAccel");
-  JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jdoc,"minDetectTimeSep_us");
-  JSON_SETIF_ABLE(stepRun,jdoc,"stepRun");
+  JSON_SETIF_ABLE(PLATE_FREQ_SETPOINT,jdoc,"plate_freq");
+  JSON_SETIF_ABLE(SYS_FREQ_ACCEL,jdoc,"plate_accel");
+  JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jdoc,"min_detect_sep_us");
 
-  JSON_SETIF_ABLE(minWidth,jdoc,"pulse_minWidth");
-  JSON_SETIF_ABLE(maxWidth,jdoc,"pulse_maxWidth");
+  JSON_SETIF_ABLE(minWidth,jdoc,"pulse_min_width");
+  JSON_SETIF_ABLE(maxWidth,jdoc,"pulse_max_width");
   JSON_SETIF_ABLE(DEBOUNCE_H_THRES,jdoc,"gate_debounce_rise");
   JSON_SETIF_ABLE(DEBOUNCE_L_THRES,jdoc,"gate_debounce_fall");
 

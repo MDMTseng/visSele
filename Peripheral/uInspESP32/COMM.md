@@ -23,18 +23,18 @@ This project communicates with the host controller over a JSON-based serial prot
 
 - Implements the transport callbacks:
   * `recv_jsonRaw_data` parses the ArduinoJson document, routes `"type"` commands, and provides responses/acks.
-  * `recv_ERROR` logs the failure, latches a machine-level error (`GEN_ERROR_CODE::SERIAL_PROTOCOL_ERROR`), and pushes a `systemInfo` message onto the outbound queue.
+  * `recv_ERROR` logs the failure, latches a machine-level error (`GEN_ERROR_CODE::SERIAL_PROTOCOL_ERROR`), and pushes a `system_info` message onto the outbound queue.
   * `recv_RESET` clears the transport latch and requests the state machine to exit the inspection error state.
 - While a serial error is latched, any command other than `RESET` receives `{"ack":false,"err":"serial_error_locked"}` to force the host to perform a reset.
 - Outbound messages are queued in `TaskQ2CommInfoQ` (system/camera events) and `AUX2CommInfoQ` (auxiliary task responses) before the main loop serialises them with `ArduinoJson`.
 
 ## Host-Facing Messages
 
-- **Requests (host → device)** include control commands such as `enter_insp_mode`, `report`, `set_setup`, stepper enable/disable, selector controls, and diagnostics (`get_running_stat`, `ask_JsonRaw_version`).
+- **Requests (host → device)** include control commands such as `enter_insp_mode`, `report`, `set_setup`, stepper enable/disable, selector controls, and diagnostics (`get_running_stat`, `get_version`).
 - **Responses (device → host)** echo the `id`, set `ack`, and provide command-specific payloads. Errors use `ack:false` with descriptive fields (`err`, `log`).
 - **Asynchronous notifications**:
-  * `TriggerInfo` / `bT`: camera trigger metadata and timestamps.
-  * `systemInfo`: state changes and aggregated error history.
+  * `cam_trig_tagged` / `bT`: camera trigger metadata and timestamps.
+  * `system_info`: state changes and aggregated error history.
   * Debug frames produced by `dbg_printf` / `msg_printf`.
 
 ## Error Handling & Recovery Workflow

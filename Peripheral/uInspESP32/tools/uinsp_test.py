@@ -18,7 +18,7 @@ Usage:
     python uinsp_test.py --port COM6 stage0
     python uinsp_test.py --port COM6 monitor --seconds 60
     python uinsp_test.py --port COM6 selectors
-    python uinsp_test.py --port COM6 send '{"type":"PING"}'
+    python uinsp_test.py --port COM6 send '{"type":"ping"}'
 """
 
 import argparse
@@ -59,7 +59,7 @@ class UInspLink:
 
     Replies and asynchronous device messages arrive on the same stream, so the
     reader thread splits them: anything carrying an 'id' we sent is routed to
-    the waiting caller, everything else (bTrigInfo, systemInfo, dbg) goes to
+    the waiting caller, everything else (cam_trig, system_info, dbg) goes to
     the async queue.
     """
 
@@ -185,6 +185,7 @@ class UInspLink:
         esc = False
         fails = 0
         frame_t0 = None
+        noise = ""
         while not self._stop:
             try:
                 chunk = self.ser.read(4096)
@@ -226,9 +227,22 @@ class UInspLink:
             for ch in chunk.decode("utf-8", errors="replace"):
                 if depth == 0:
                     # Resync point. The firmware would fault on stray bytes;
-                    # we just ignore them so a mid-stream attach still works.
+                    # we ignore them for framing -- but KEEP them in the raw
+                    # log: a panic backtrace or the boot ROM banner is plain
+                    # text and is exactly what explains a dead board.
                     if ch not in "{[":
+                        if ch == "\n":
+                            if noise.strip():
+                                self._raw_log.append(
+                                    (time.time(), "NOISE: " + noise.strip()))
+                            noise = ""
+                        elif len(noise) < 400:
+                            noise += ch
                         continue
+                    if noise.strip():
+                        self._raw_log.append(
+                            (time.time(), "NOISE: " + noise.strip()))
+                    noise = ""
                     buf = ""
                     frame_t0 = time.time()
                 buf += ch
@@ -388,8 +402,8 @@ def ask(prompt):
 def stage0(link, rep):
     print("\n\033[1m== Stage 0: firmware alone ==\033[0m")
 
-    r = link.send({"type": "PING"})
-    rep.add("0.1", "PING -> PONG", bool(r and r.get("type") == "PONG"), r)
+    r = link.send({"type": "ping"})
+    rep.add("0.1", "PING -> PONG", bool(r and r.get("type") == "pong"), r)
 
     setup = link.send({"type": "get_setup"}, timeout=3.0)
     rep.add("0.2", "get_setup returns machine config",
@@ -400,7 +414,7 @@ def stage0(link, rep):
         print("  aborting stage 0: the board is not answering get_setup")
         return
 
-    for key in ("machine_id", "cfg_from_nvs", "pulse_minWidth", "pulse_maxWidth"):
+    for key in ("machine_id", "cfg_from_nvs", "pulse_min_width", "pulse_max_width"):
         rep.add("0.2", f"  field present: {key}", key in setup,
                 repr(setup.get(key)))
 
@@ -486,10 +500,10 @@ def stage_error(link, rep):
 # --- stage 2: trigger stream ----------------------------------------------
 
 def monitor(link, rep, seconds):
-    """Watch bTrigInfo and check the assumption the whole tid pairing rests on:
+    """Watch cam_trig and check the assumption the whole tid pairing rests on:
     that tid arrives strictly increasing, one per part, with no gaps."""
     print(f"\n\033[1m== Trigger monitor ({seconds}s) ==\033[0m")
-    print("  Run parts through. Watching bTrigInfo for tid continuity.\n")
+    print("  Run parts through. Watching cam_trig for tid continuity.\n")
 
     link.drain_async()
     t_end = time.time() + seconds
@@ -501,7 +515,7 @@ def monitor(link, rep, seconds):
         time.sleep(0.1)
         for ts, msg in link.drain_async():
             mtype = msg.get("type", "?")
-            if mtype == "bTrigInfo":
+            if mtype == "cam_trig":
                 tid = msg.get("tid")
                 qs = msg.get("Qs", -1)
                 qs_max = max(qs_max, qs if isinstance(qs, int) else -1)
@@ -511,8 +525,8 @@ def monitor(link, rep, seconds):
                 tids.append(tid)
             else:
                 others[mtype] = others.get(mtype, 0) + 1
-                if mtype == "systemInfo":
-                    print(f"  \033[33msystemInfo: {json.dumps(msg)[:160]}\033[0m")
+                if mtype == "system_info":
+                    print(f"  \033[33msystem_info: {json.dumps(msg)[:160]}\033[0m")
 
         if time.time() - last_print > 2.0:
             last_print = time.time()
@@ -521,7 +535,7 @@ def monitor(link, rep, seconds):
 
     print(" " * 100, end="\r")
     n = len(tids)
-    rep.add("2.3", "bTrigInfo observed", n > 0, f"{n} triggers in {seconds}s")
+    rep.add("2.3", "cam_trig observed", n > 0, f"{n} triggers in {seconds}s")
     if n:
         rep.add("2.3", "tid strictly increasing by 1", len(gaps) == 0,
                 f"{len(gaps)} gap(s): {gaps[:10]}" if gaps else
@@ -557,7 +571,7 @@ def _counts(link):
 
 # Steps to push the selector past the camera trigger for the duration of a
 # bench. The real geometry leaves only SWITCH-L1A_on ~= 43 steps between the
-# bTrigInfo announcement and the selector -- a window the in-firmware C++ core
+# cam_trig announcement and the selector -- a window the in-firmware C++ core
 # answers inside but a host scripting over serial cannot. This buys a
 # comfortable margin; the original offsets are restored when the bench ends.
 BENCH_WINDOW = 600
@@ -565,7 +579,7 @@ BENCH_WINDOW = 600
 
 def _widen_selector_window(link, orig_spo):
     """Push SWITCH and the SEL outputs BENCH_WINDOW steps past the camera
-    trigger (where bTrigInfo is announced) so a host scripting over serial can
+    trigger (where cam_trig is announced) so a host scripting over serial can
     answer each tid before the part reaches the selector. Returns the SWITCH
     offset it set on success, else None. Caller restores orig_spo when done."""
     win = int((orig_spo or {}).get("L1A_on", 654)) + BENCH_WINDOW
@@ -583,12 +597,12 @@ def _wait_at_speed(link, settle=0.15, tries=30):
     """Block until the plate is turning at a steady rate.
 
     newPulseEvent drops any pulse within 3.5 mm of the previous one, so
-    phantoms fired while SYS_CUR_FREQ is still ramping up from zero are silently
+    phantoms fired while PLATE_FREQ_CURRENT is still ramping up from zero are silently
     rejected and never become objects. Poll SYS_STEP_COUNT until the
     per-interval delta stops climbing (the ramp has plateaued)."""
     def ssc():
         return (link.send({"type": "get_setup"}, timeout=3.0) or {}).get(
-            "SYS_STEP_COUNT")
+            "step_count")
     prev = ssc()
     last = None
     for _ in range(tries):
@@ -607,18 +621,18 @@ def _wait_at_speed(link, settle=0.15, tries=30):
 def bench(link, rep, count, freq, interval_ms, cat):
     """Exercise the whole firmware-side tid handshake with no rig attached.
 
-    trig_phamton_pulse calls newPulseEvent() directly, bypassing the gate
+    trig_phantom_pulse calls newPulseEvent() directly, bypassing the gate
     sensor entirely, so a bare board on USB can produce real objects with real
     tids and run them all the way to the selector outputs. The gate pin is
     INPUT_PULLUP with sense inverted, so an unconnected input reads as
     "no object" and contributes nothing.
     """
     print("\n\033[1m== Bench: tid round trip, no rig required ==\033[0m")
-    print(f"  {count} phantom parts at plateFreq={freq}, {interval_ms}ms apart,"
+    print(f"  {count} phantom parts at plate_freq={freq}, {interval_ms}ms apart,"
           f" reported as cat={cat}\n")
 
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
-    orig_freq = orig.get("plateFreq")
+    orig_freq = orig.get("plate_freq")
     orig_spo = dict(orig.get("stage_pulse_offset") or {})
     base_counts, _ = _counts(link)
     # ERROR_HIST is a cumulative ring; clear it so the B.7/B.9/B.12 readouts
@@ -635,8 +649,8 @@ def bench(link, rep, count, freq, interval_ms, cat):
             f"SWITCH {orig_spo.get('SWITCH')} -> {win}"
             f" ({BENCH_WINDOW} steps past the camera trigger)")
 
-    r = link.send({"type": "set_setup", "plateFreq": freq}, timeout=3.0)
-    rep.add("B.1", f"set plateFreq={freq}", bool(r), r)
+    r = link.send({"type": "set_setup", "plate_freq": freq}, timeout=3.0)
+    rep.add("B.1", f"set plate_freq={freq}", bool(r), r)
 
     r = link.send({"type": "enter_insp_mode"}, timeout=3.0)
     rep.add("B.2", "enter_insp_mode", bool(r), r)
@@ -654,7 +668,7 @@ def bench(link, rep, count, freq, interval_ms, cat):
             f"state={st} ({ST_NAME.get(st, '?')})")
 
     # --- fire phantoms, answer each object once, the instant it announces ---
-    # Every object announces bTrigInfo twice (CAM1 tidx=1, CAM2 tidx=2) at the
+    # Every object announces cam_trig twice (CAM1 cam=1, CAM2 cam=2) at the
     # same offset, so dedup by tid and report exactly once: a second report for
     # a tid whose object has already passed would itself desync the machine.
     # Answering on-announce (not after a fixed sleep) is what keeps the verdict
@@ -665,7 +679,7 @@ def bench(link, rep, count, freq, interval_ms, cat):
 
     def _pump():
         for _, msg in link.drain_async():
-            if msg.get("type") != "bTrigInfo":
+            if msg.get("type") != "cam_trig":
                 continue
             tid = msg.get("tid")
             seen.append(tid)
@@ -675,7 +689,7 @@ def bench(link, rep, count, freq, interval_ms, cat):
                 reported.append(tid)
 
     for i in range(count):
-        link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+        link.send({"type": "trig_phantom_pulse"}, timeout=3.0)
         fired += 1
         deadline = time.time() + interval_ms / 1000.0
         while time.time() < deadline:      # answer ASAP, keep phantoms spaced
@@ -727,7 +741,7 @@ def bench(link, rep, count, freq, interval_ms, cat):
     st, stat = _state(link)
     rep.add("B.9", "unknown tid faults the machine", st == ST_ERROR,
             f"state={st} ({ST_NAME.get(st, '?')}) "
-            f"ERROR_HIST={(stat or {}).get('ERROR_HIST')} "
+            f"ERROR_HIST={(stat or {}).get('error_hist')} "
             f"(expect INSP_RESULT_MATCHES_NO_OBJECT=1)")
 
     r = link.send({"type": "clear_error"}, timeout=3.0)
@@ -744,7 +758,7 @@ def bench(link, rep, count, freq, interval_ms, cat):
     link.send({"type": "enter_insp_mode"}, timeout=3.0)
     time.sleep(0.3)
     link.drain_async()
-    link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+    link.send({"type": "trig_phantom_pulse"}, timeout=3.0)
     time.sleep(2.0)
 
     st, stat = _state(link)
@@ -752,7 +766,7 @@ def bench(link, rep, count, freq, interval_ms, cat):
             st is not None, "no reply = hang/reboot = regression")
     rep.add("B.12", "unjudged part faults cleanly", st == ST_ERROR,
             f"state={st} ({ST_NAME.get(st, '?')}) "
-            f"ERROR_HIST={(stat or {}).get('ERROR_HIST')} "
+            f"ERROR_HIST={(stat or {}).get('error_hist')} "
             f"(expect OBJECT_HAS_NO_INSP_RESULT=2)")
 
     # --- restore ----------------------------------------------------------
@@ -762,15 +776,15 @@ def bench(link, rep, count, freq, interval_ms, cat):
         link.send({"type": "set_setup", "stage_pulse_offset": orig_spo},
                   timeout=3.0)
     if isinstance(orig_freq, (int, float)):
-        link.send({"type": "set_setup", "plateFreq": orig_freq}, timeout=3.0)
+        link.send({"type": "set_setup", "plate_freq": orig_freq}, timeout=3.0)
     chk = ((link.send({"type": "get_setup"}, timeout=3.0) or {})
            .get("stage_pulse_offset") or {})
     st, _ = _state(link)
     restored = (orig_spo.get("SWITCH") is None
                 or chk.get("SWITCH") == orig_spo.get("SWITCH"))
-    rep.add("B.13", "returned to IDLE, window + plateFreq restored",
+    rep.add("B.13", "returned to IDLE, window + plate_freq restored",
             st == ST_IDLE and restored,
-            f"state={st} SWITCH={chk.get('SWITCH')} plateFreq={orig_freq}")
+            f"state={st} SWITCH={chk.get('SWITCH')} plate_freq={orig_freq}")
 
 
 # --- stress: find the pipeline ceiling ------------------------------------
@@ -791,14 +805,14 @@ ERR_NAME = {
 #   RBuf / every ACT_SCH queue      PIPE_INFO_LEN = 100 objects
 #   TaskQ2CommInfoQ                 20 entries -- overflow FAULTS the machine
 #                                   (INSP_CAM_TRIG_INFO_CANNOT_BE_SENT)
-#   Every object announces bTrigInfo for CAM1 *and* CAM2 -> 2 messages/part
-#   115200 8N1 ~= 11.5 kB/s; a bTrigInfo frame is ~90 B
+#   Every object announces cam_trig for CAM1 *and* CAM2 -> 2 messages/part
+#   115200 8N1 ~= 11.5 kB/s; a cam_trig frame is ~90 B
 PIPE_INFO_LEN = 100
 COMM_Q_DEPTH = 20
 
 
 def _errors_of(stat):
-    return [e for e in (stat or {}).get("ERROR_HIST", []) if e not in (0, -1)]
+    return [e for e in (stat or {}).get("error_hist", []) if e not in (0, -1)]
 
 
 def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
@@ -808,13 +822,13 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
     opened up first or the ramp measures the limiter instead of the pipeline:
     a minimum time separation (SYS_MIN_PULSE_TIME_SEP_us, default ~67ms = 15/s)
     and a minimum travel distance (3.5mm, ~91 pulses) whose wall-clock cost
-    depends on plateFreq.
+    depends on plate_freq.
     """
     print("\n\033[1m== Pipeline stress ==\033[0m")
 
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
-    orig_freq = orig.get("plateFreq")
-    orig_sep = orig.get("minDetectTimeSep_us")
+    orig_freq = orig.get("plate_freq")
+    orig_sep = orig.get("min_detect_sep_us")
     orig_spo = dict(orig.get("stage_pulse_offset") or {})
 
     # Widen the selector window (see _widen_selector_window). Without this the
@@ -823,18 +837,18 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
     # the ramp stops at rate 1. Restored in the teardown below.
     _widen_selector_window(link, orig_spo)
 
-    # plateFreq needed so the 3.5mm distance gate clears fast enough for the
-    # top rate we intend to ask for. ISR ticks at 2*plateFreq.
+    # plate_freq needed so the 3.5mm distance gate clears fast enough for the
+    # top rate we intend to ask for. ISR ticks at 2*plate_freq.
     need_freq = int(91 * max_hz / 2.0 * 1.5) + 500
     sep_us = max(200, int(1e6 / max_hz / 3))
 
-    print(f"  opening the rate limiters: plateFreq={need_freq} "
-          f"minDetectTimeSep_us={sep_us}")
+    print(f"  opening the rate limiters: plate_freq={need_freq} "
+          f"min_detect_sep_us={sep_us}")
     print(f"  (defaults {orig_freq} / {orig_sep} cap objects at "
           f"{1e6/orig_sep:.1f}/s)" if orig_sep else "")
 
-    link.send({"type": "set_setup", "plateFreq": need_freq,
-               "minDetectTimeSep_us": sep_us}, timeout=3.0)
+    link.send({"type": "set_setup", "plate_freq": need_freq,
+               "min_detect_sep_us": sep_us}, timeout=3.0)
     link.send({"type": "enter_insp_mode"}, timeout=3.0)
     _wait_at_speed(link)
 
@@ -843,7 +857,7 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
         rep.add("S.0", "reached READY before ramping", False,
                 f"state={st} ({ST_NAME.get(st, '?')})")
         return
-    rep.add("S.0", "reached READY before ramping", True, f"plateFreq={need_freq}")
+    rep.add("S.0", "reached READY before ramping", True, f"plate_freq={need_freq}")
 
     print(f"\n  {'rate':>6} {'fired':>7} {'seen':>7} {'ratio':>7} "
           f"{'maxQs':>6}  result")
@@ -880,12 +894,12 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
 
         for i in range(n):
             deadline = t0 + i * period
-            # Drain continuously while pacing to the deadline: a bTrigInfo left
+            # Drain continuously while pacing to the deadline: a cam_trig left
             # sitting until the next fire would be answered up to a full period
             # late and miss the selector even with the window widened.
             while time.time() < deadline:
                 for _, msg in link.drain_async():
-                    if msg.get("type") == "bTrigInfo":
+                    if msg.get("type") == "cam_trig":
                         tid = msg.get("tid")
                         seen.add(tid)
                         qs_max = max(qs_max, msg.get("Qs", 0) or 0)
@@ -895,7 +909,7 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
                                               "cat": cat})
                 time.sleep(0.002)
             # No round trip: waiting on the ack would itself become the limit.
-            link.send_nowait({"type": "trig_phamton_pulse"})
+            link.send_nowait({"type": "trig_phantom_pulse"})
             fired += 1
 
         # Let the tail drain -- finely (2ms), the same cadence as the fire
@@ -905,7 +919,7 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
         t_drain = time.time() + 1.5
         while time.time() < t_drain:
             for _, msg in link.drain_async():
-                if msg.get("type") == "bTrigInfo":
+                if msg.get("type") == "cam_trig":
                     tid = msg.get("tid")
                     seen.add(tid)
                     qs_max = max(qs_max, msg.get("Qs", 0) or 0)
@@ -945,7 +959,7 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
         rep.add("S.2", f"first failure at {broke_at}/s", None, broke_why)
         if "comm queue overflow" in broke_why:
             print(f"\n  \033[33mTaskQ2CommInfoQ is {COMM_Q_DEPTH} deep and every"
-                  f" object announces bTrigInfo twice (CAM1 and CAM2).")
+                  f" object announces cam_trig twice (CAM1 and CAM2).")
             print(f"  At 115200 a ~90B frame costs ~8ms, so the serial link"
                   f" alone caps this well before the pipeline does.\033[0m")
     else:
@@ -962,13 +976,13 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
     link.send({"type": "exit_insp_mode"}, timeout=3.0)
     restore = {"type": "set_setup"}
     if isinstance(orig_freq, (int, float)):
-        restore["plateFreq"] = orig_freq
+        restore["plate_freq"] = orig_freq
     if isinstance(orig_sep, (int, float)):
-        restore["minDetectTimeSep_us"] = orig_sep
+        restore["min_detect_sep_us"] = orig_sep
     if orig_spo:
         restore["stage_pulse_offset"] = orig_spo
     link.send(restore, timeout=3.0)
-    print(f"\n  restored plateFreq={orig_freq} minDetectTimeSep_us={orig_sep}")
+    print(f"\n  restored plate_freq={orig_freq} min_detect_sep_us={orig_sep}")
 
 
 def stall(link, rep, hz, stall_s, cat):
@@ -986,7 +1000,7 @@ def stall(link, rep, hz, stall_s, cat):
     # The silent phase still faults -- those parts get no verdict at all, window
     # or no window -- which is exactly what T.2 is checking for.
     _widen_selector_window(link, orig_spo)
-    link.send({"type": "set_setup", "plateFreq": 1000}, timeout=3.0)
+    link.send({"type": "set_setup", "plate_freq": 1000}, timeout=3.0)
     link.send({"type": "clear_error"}, timeout=2.0)
     link.send({"type": "clear_error_history"}, timeout=2.0)   # judge this run only
     link.send({"type": "enter_insp_mode"}, timeout=3.0)
@@ -1000,7 +1014,7 @@ def stall(link, rep, hz, stall_s, cat):
     def _answer():
         nonlocal answered
         for _, msg in link.drain_async():
-            if msg.get("type") == "bTrigInfo":
+            if msg.get("type") == "cam_trig":
                 tid = msg["tid"]
                 if tid not in reported:
                     reported.add(tid)
@@ -1013,7 +1027,7 @@ def stall(link, rep, hz, stall_s, cat):
         while time.time() < deadline:   # answer on-announce while pacing
             _answer()
             time.sleep(0.002)
-        link.send_nowait({"type": "trig_phamton_pulse"})
+        link.send_nowait({"type": "trig_phantom_pulse"})
     settle = time.time() + 0.4          # answer the last parts before checking
     while time.time() < settle:
         _answer()
@@ -1026,7 +1040,7 @@ def stall(link, rep, hz, stall_s, cat):
     print(f"  going silent for {stall_s}s ...")
     t_end = time.time() + stall_s
     while time.time() < t_end:
-        link.send_nowait({"type": "trig_phamton_pulse"})
+        link.send_nowait({"type": "trig_phantom_pulse"})
         time.sleep(period)
         link.drain_async()          # deliberately discard, do not report
 
@@ -1054,7 +1068,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
     pulse across [min_hz, max_hz], while under the run we ALSO randomly, and
     concurrently: change the plate speed (mid-stream ramps); shove the
     selector-offset window around (hammers the double-buffered publish path
-    with objects in flight); move the minDetectTimeSep_us rate gate; flood the
+    with objects in flight); move the min_detect_sep_us rate gate; flood the
     link with read commands (PING/get_setup/get_running_stat) to contend for
     serial bandwidth; and churn the SEL1 batch countdown.
 
@@ -1091,32 +1105,32 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
     orig = {}
     for _ in range(5):
         orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
-        if all(k in orig for k in ("plateFreq", "minDetectTimeSep_us",
+        if all(k in orig for k in ("plate_freq", "min_detect_sep_us",
                                    "stage_pulse_offset")):
             break
-    orig_freq = orig.get("plateFreq")
-    orig_sep = orig.get("minDetectTimeSep_us")
+    orig_freq = orig.get("plate_freq")
+    orig_sep = orig.get("min_detect_sep_us")
     orig_spo = dict(orig.get("stage_pulse_offset") or {})
     orig_nvs = bool(orig.get("cfg_from_nvs"))
     l1a = int(orig_spo.get("L1A_on", 654))
 
-    # minDetectTimeSep_us must stay below 1e6/max_hz or it caps the rate below
+    # min_detect_sep_us must stay below 1e6/max_hz or it caps the rate below
     # the target; jitter it within a band that always admits max_hz.
     sep_lo, sep_hi = 500, max(700, int(1e6 / max_hz / 2))
     sep_us = max(500, int(1e6 / max_hz / 3))   # setup value; let max_hz through
-    FLOOD = ("PING", "get_setup", "get_running_stat")
+    FLOOD = ("ping", "get_setup", "get_running_stat")
 
-    # plateFreq floor so max_hz still clears the 91-step (3.5mm) distance gate:
+    # plate_freq floor so max_hz still clears the 91-step (3.5mm) distance gate:
     # the wall gap 1/hz must exceed 91/(2*freq), i.e. freq > 91*hz/2. Keep the
     # random speed band above that floor so acceptance never starves the rate.
     freq_floor = int(91 * max_hz / 2 * 1.3) + 500
     freq_ceil = freq_floor * 2
 
     # The window (SWITCH offset past the camera trigger) is in plate steps, but
-    # the host's answer budget is wall-time = steps/(2*plateFreq). plateFreq
+    # the host's answer budget is wall-time = steps/(2*plate_freq). plate_freq
     # ranges up to freq_ceil here, so size the window off the CEILING to keep a
     # comfortable ~300ms budget even at top speed -- a 600-step window that is
-    # fine at plateFreq 1000 shrinks to ~100ms at these rates and drops parts.
+    # fine at plate_freq 1000 shrinks to ~100ms at these rates and drops parts.
     win_lo = int(0.30 * 2 * freq_ceil)     # ~300ms of runway at the ceiling
     win_hi = int(0.45 * 2 * freq_ceil)
 
@@ -1132,8 +1146,8 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
         drop reboots the board back to IDLE)."""
         link.send({"type": "clear_error"}, timeout=2.0)
         link.send({"type": "clear_error_history"}, timeout=2.0)
-        link.send({"type": "set_setup", "plateFreq": freq_floor,
-                   "minDetectTimeSep_us": sep_us,
+        link.send({"type": "set_setup", "plate_freq": freq_floor,
+                   "min_detect_sep_us": sep_us,
                    "stage_pulse_offset": _win(win_lo)}, timeout=3.0)
         link.send({"type": "enter_insp_mode"}, timeout=3.0)
         _wait_at_speed(link)
@@ -1147,8 +1161,8 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
         except LinkDead:
             st = None
         rep.add("C.0", "reached READY with the rate limiters opened",
-                st == ST_READY, f"plateFreq={freq_floor}..{freq_ceil} "
-                f"minDetectTimeSep_us={sep_us}")
+                st == ST_READY, f"plate_freq={freq_floor}..{freq_ceil} "
+                f"min_detect_sep_us={sep_us}")
         if st != ST_READY:
             return
 
@@ -1178,7 +1192,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
             now = time.time()
             for _, m in link.drain_async():
                 t = m.get("type")
-                if t == "bTrigInfo":
+                if t == "cam_trig":
                     tid = m.get("tid")
                     if tid not in reported:
                         tids.append(tid)
@@ -1199,7 +1213,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                         else:
                             link.send_nowait({"type": "report", "tid": tid,
                                               "cat": cat})
-                elif t == "systemInfo" and m.get("state") == ST_ERROR:
+                elif t == "system_info" and m.get("state") == ST_ERROR:
                     # Detect a fault the instant the firmware announces it, from
                     # the async stream -- no blocking poll that could stall
                     # reporting and self-inflict OBJECT_HAS_NO_INSP_RESULT.
@@ -1253,13 +1267,13 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
             time.sleep(0.05)
             link.send({"type": "io_trace_arm"}, timeout=2.0)
             link.drain_async()
-            link.send({"type": "trig_phamton_pulse"}, timeout=2.0)
+            link.send({"type": "trig_phantom_pulse"}, timeout=2.0)
             te = time.time() + 1.3
             while time.time() < te:
                 # Fold the probe object into the shared tid stream (report cat=1
                 # so SEL1 fires) -- otherwise its tid is a phantom gap in C.2.
                 for _, m in link.drain_async():
-                    if m.get("type") == "bTrigInfo":
+                    if m.get("type") == "cam_trig":
                         t = m.get("tid")
                         if t not in reported:
                             reported.add(t)
@@ -1362,10 +1376,10 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
             now = time.time()
             _pump()
             _flush_rep()
-            if fault is not None:        # async systemInfo said ERROR
+            if fault is not None:        # async system_info said ERROR
                 break
             if now >= next_fire:
-                link.send_nowait({"type": "trig_phamton_pulse"})
+                link.send_nowait({"type": "trig_phantom_pulse"})
                 fired += 1
                 next_fire = now + 1.0 / rng.uniform(min_hz, max_hz)
             if burst and now >= next_burst:
@@ -1373,7 +1387,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                 # 3.5mm / time gates and are rejected; the point is that rapid
                 # back-to-back triggers are shed cleanly, not desynced/faulted.
                 for _ in range(burst_count):
-                    link.send_nowait({"type": "trig_phamton_pulse"})
+                    link.send_nowait({"type": "trig_phantom_pulse"})
                     fired += 1
                     _pump()
                     _flush_rep()
@@ -1391,7 +1405,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
             # firmware fault). We don't need their acks.
             if now >= next_freq:
                 f = rng.randint(freq_floor, freq_ceil)
-                link.send_nowait({"type": "set_setup", "plateFreq": f})
+                link.send_nowait({"type": "set_setup", "plate_freq": f})
                 events.append(f"freq={f}")
                 next_freq = now + rng.uniform(1.5, 3.0)
             if now >= next_offs:
@@ -1420,7 +1434,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
             if now >= next_sep:
                 sep = rng.randint(sep_lo, sep_hi)
                 link.send_nowait({"type": "set_setup",
-                                  "minDetectTimeSep_us": sep})
+                                  "min_detect_sep_us": sep})
                 events.append(f"sep={sep}")
                 next_sep = now + rng.uniform(2.0, 4.0)
             if now >= next_sel:
@@ -1445,7 +1459,7 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                     events.append("persist-ALLOWED!")
                 next_persist = now + rng.uniform(3.0, 5.0)
             if now >= next_poll:
-                # Backup only: faults are caught live via async systemInfo in
+                # Backup only: faults are caught live via async system_info in
                 # _pump. This infrequent blocking poll just catches a hang (no
                 # reply) and a missed fault; pump right after so the round trip
                 # never leaves an in-flight part unreported.
@@ -1598,9 +1612,9 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
             link.send({"type": "set_sel1_cd", "count": -1}, timeout=3.0)
             restore = {"type": "set_setup"}
             if isinstance(orig_freq, (int, float)):
-                restore["plateFreq"] = orig_freq
+                restore["plate_freq"] = orig_freq
             if isinstance(orig_sep, (int, float)):
-                restore["minDetectTimeSep_us"] = orig_sep
+                restore["min_detect_sep_us"] = orig_sep
             if orig_spo:
                 restore["stage_pulse_offset"] = orig_spo
             link.send(restore, timeout=3.0)
@@ -1614,6 +1628,537 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                     link.send({"type": "clear_saved_setup"}, timeout=4.0)
         except (LinkReset, LinkDead):
             pass
+
+
+# --- grill: the whole machine at REAL parameters --------------------------
+
+def grill_plan(params):
+    """Derive everything grill needs from the machine parameter file.
+
+    Pure function so the derivation is unit-testable. 'tick' = one
+    SYS_STEP_COUNT increment (the stage_pulse_offset unit); the ISR ticks at
+    2x plate_freq, hence plate_freq = ticks_per_rev / sec_per_rev / 2.
+
+    When the file gives no explicit stage_pulse_offset, stations are laid out
+    along the real gate->last-station span: cameras at 5%, SWITCH (report
+    deadline) at 90%, and the three selector exits at 92/96/100% with a
+    sel_pulse_ms-wide actuation window.
+    """
+    tpr = float(params["ticks_per_rev"])
+    span = float(params["gate_to_last_station_ticks"])
+    spr = float(params["sec_per_rev"])
+    tick_hz = tpr / spr                     # SYS_STEP_COUNT ticks per second
+    freq = tick_hz / 2.0                    # plate_freq
+    sel_w = max(2, int(round(params.get("sel_pulse_ms", 10.0) / 1000.0 * tick_hz)))
+
+    spo = params.get("stage_pulse_offset")
+    if not spo:
+        cam = int(round(span * 0.05))
+        switch = int(round(span * 0.90))
+        spo = {
+            "L1A_on": cam, "L1A_off": cam + 12,
+            "CAM1_on": cam, "CAM1_off": cam + 2,
+            "L2A_on": cam, "L2A_off": cam + 12,
+            "CAM2_on": cam, "CAM2_off": cam + 2,
+            "SWITCH": switch,
+            "SEL1_on": int(round(span * 0.92)),
+            "SEL2_on": int(round(span * 0.96)),
+            "SEL3_on": int(round(span * 1.00)),
+        }
+        for i in (1, 2, 3):
+            spo["SEL%d_off" % i] = spo["SEL%d_on" % i] + sel_w
+
+    pat = params.get("pattern") or {"ok": 1, "ng": 0, "na": 0}
+    cats = ([int(params.get("cat_ok", 1))] * int(pat.get("ok", 0))
+            + [int(params.get("cat_ng", 2))] * int(pat.get("ng", 0))
+            + [int(params.get("cat_na", CAT_NA))] * int(pat.get("na", 0)))
+
+    window_ticks = spo["SWITCH"] - spo["CAM1_on"]
+
+    # Real part geometry -> gate-domain numbers. mm_per_tick comes from the
+    # rim circumference; the minimum inter-part gap becomes a hard ceiling on
+    # min_detect_sep_us (a larger value MERGES legitimate parts), and
+    # object size sets where the pulse width filter must sit.
+    dia = float(params.get("plate_diameter_mm", 0))
+    mm_per_tick = (3.14159265 * dia / tpr) if dia else 0
+    min_obj_mm = float(params.get("min_object_mm", 0))
+    min_gap_mm = float(params.get("min_gap_mm", 0))
+    rim_mm_s = (3.14159265 * dia / spr) if dia else 0
+    return {
+        "mm_per_tick": mm_per_tick,
+        "min_obj_ticks": (min_obj_mm / mm_per_tick) if mm_per_tick else 0,
+        "gap_us": (min_gap_mm / rim_mm_s * 1e6) if rim_mm_s else 0,
+        "pitch_rate_hz": (rim_mm_s / (min_obj_mm + min_gap_mm)
+                          if (min_obj_mm + min_gap_mm) and rim_mm_s else 0),
+        "freq": freq,
+        "accel": float(params.get("plate_accel_hz_s", 4 * freq)),
+        "tick_hz": tick_hz,
+        "spo": spo,
+        "cats": cats or [int(params.get("cat_ok", 1))],
+        "rate": float(params.get("parts_per_second", 5.0)),
+        "window_ticks": window_ticks,
+        "window_ms": window_ticks / tick_hz * 1000.0,
+        "transit_s": span / tick_hz,
+        "speed_tol": float(params.get("speed_tolerance_pct", 3.0)),
+        "diameter_mm": float(params.get("plate_diameter_mm", 0)),
+        "sec_per_rev": spr,
+        "ticks_per_rev": tpr,
+    }
+
+
+def _symbolize_backtrace(lines):
+    """If the captured noise contains an ESP32 panic backtrace, resolve the
+    PC addresses to source lines with the toolchain's addr2line and the
+    build's ELF -- the log then names the guilty code, not just addresses."""
+    import re
+    import glob
+    import subprocess
+    addrs = []
+    for t in lines:
+        if "Backtrace" in t:
+            # "Backtrace:0xPC:0xSP 0xPC:0xSP ..." -- PCs live in 0x40xxxxxx
+            addrs += re.findall(r"0x40[0-9a-fA-F]{6}", t)
+    if not addrs:
+        return
+    here = os.path.dirname(os.path.abspath(__file__))
+    elf = os.path.join(here, "..", ".pio", "build", "esp32dev", "firmware.elf")
+    tools = glob.glob(os.path.expanduser(
+        "~/.platformio/packages/toolchain-xtensa-esp32*/bin/"
+        "xtensa-esp32-elf-addr2line"))
+    if not (os.path.exists(elf) and tools):
+        print("  [backtrace addrs: %s -- symbolize manually with"
+              " xtensa-esp32-elf-addr2line -pfiaC -e firmware.elf]"
+              % " ".join(addrs), flush=True)
+        return
+    try:
+        out = subprocess.run([tools[0], "-pfiaC", "-e", elf] + addrs,
+                             capture_output=True, text=True, timeout=10).stdout
+        print("  [-- backtrace symbolized (current build's ELF) --]",
+              flush=True)
+        for line in out.strip().splitlines():
+            print("    " + line, flush=True)
+    except Exception as exc:
+        print("  [addr2line failed: %s]" % exc, flush=True)
+
+
+def _dump_raw_tail(link, label, n=30):
+    """Dump the link's raw receive log (frames AND out-of-frame noise --
+    panic backtraces, boot banners) so a dead/rebooted board explains
+    itself in the soak log."""
+    tail = list(link._raw_log)[-n:]
+    print("  [-- raw serial tail: %s --]" % label, flush=True)
+    for ts, txt in tail:
+        print("    %s %s" % (time.strftime("%H:%M:%S", time.localtime(ts)),
+                             txt[:220]), flush=True)
+    _symbolize_backtrace([txt for _, txt in tail])
+
+
+def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
+          burst_every=0.0, burst_count=5, burst_hz=100.0, seed=None):
+    """Run the sorter at the REAL machine's speed and geometry.
+
+    bench/chaos prove the firmware at synthetic settings; grill asserts the
+    actual deployment point: true plate speed and station positions, a
+    sustained part stream with the real in-flight depth (transit is a full
+    second, so many parts ride the plate at once), the M/N/O verdict pattern
+    landing exactly, the firmware's own latency bookkeeping staying inside
+    the answer window, and every actuator resting at its logical OFF level
+    after the run.
+    """
+    plan = grill_plan(params)
+    freq, tick_hz = plan["freq"], plan["tick_hz"]
+    print("\n\033[1m== Grill: real-machine parameters ==\033[0m")
+    print("  %.0f ticks/rev, %.1fs/rev -> plate_freq %.0f (tick rate %.0f/s)"
+          % (plan["ticks_per_rev"], plan["sec_per_rev"], freq, tick_hz))
+    print("  gate->last station %.0f ticks = %.2fs transit; answer window"
+          " %.0f ticks = %.0fms" % (plan["spo"]["SEL3_on"], plan["transit_s"],
+                                    plan["window_ticks"], plan["window_ms"]))
+
+    orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    orig_freq = orig.get("plate_freq")
+    orig_accel = orig.get("plate_accel")
+    orig_spo = dict(orig.get("stage_pulse_offset") or {})
+    link.send({"type": "clear_error"}, timeout=2.0)
+    link.send({"type": "clear_error_history"}, timeout=2.0)
+    link.send({"type": "reset_running_stat"}, timeout=2.0)
+
+    r = link.send({"type": "set_setup", "plate_freq": freq,
+                   "plate_accel": plan["accel"],
+                   "stage_pulse_offset": plan["spo"]}, timeout=3.0)
+    back = (link.send({"type": "get_setup"}, timeout=3.0) or {})
+    ok = (bool(r) and back.get("plate_freq") == freq
+          and (back.get("stage_pulse_offset") or {}).get("SWITCH")
+          == plan["spo"]["SWITCH"])
+    rep.add("G.0", "apply real-machine plan (freq/accel/offsets)", ok,
+            f"plate_freq={freq:g} accel={plan['accel']:g}"
+            f" SWITCH={plan['spo']['SWITCH']}")
+
+    # -- G.1 spin-up time follows plate_accel -------------------------------
+    t0 = time.time()
+    link.send({"type": "enter_insp_mode"}, timeout=3.0)
+    running, detail = _wait_at_speed(link)
+    ramp_s = time.time() - t0
+    expect_ramp = freq / plan["accel"] if plan["accel"] > 0 else 0
+    rep.add("G.1", "reached speed; ramp consistent with plate_accel",
+            running and ramp_s < expect_ramp + 2.5,
+            f"ramp {ramp_s:.2f}s (accel predicts {expect_ramp:.2f}s"
+            f" + measurement settle); {detail}")
+
+    # -- G.2 the plate actually turns at sec_per_rev -----------------------
+    def ssc():
+        return (link.send({"type": "get_setup"}, timeout=3.0) or {}).get(
+            "step_count")
+    c0, t0 = ssc(), time.time()
+    time.sleep(4.0)
+    c1, t1 = ssc(), time.time()
+    meas_hz = (c1 - c0) / (t1 - t0) if isinstance(c0, int) and isinstance(c1, int) else 0
+    err_pct = abs(meas_hz - tick_hz) / tick_hz * 100 if tick_hz else 999
+    rev_s = plan["ticks_per_rev"] / meas_hz if meas_hz else 0
+    rim = ""
+    if plan["diameter_mm"]:
+        rim = " (rim %.0f mm/s)" % (3.14159265 * plan["diameter_mm"] / rev_s) \
+              if rev_s else ""
+    rep.add("G.2", f"plate speed within {plan['speed_tol']:g}% of"
+                   f" {plan['sec_per_rev']:g}s/rev",
+            err_pct <= plan["speed_tol"],
+            f"measured {meas_hz:.0f} ticks/s = {rev_s:.3f}s/rev"
+            f" (err {err_pct:.1f}%){rim}")
+
+    # -- G.3..G.5 sustained stream at the real rate ------------------------
+    # seconds <= 0 means run FOREVER (soak): heartbeat every 30s, survive USB
+    # drops by re-establishing the board, and stop only when the machine
+    # error-stops (the firmware log then names the tid and how late it was).
+    endless = seconds <= 0
+    import random
+    rng = random.Random(seed)
+    churn = bool(min_rate and max_rate)
+    rate = rng.uniform(min_rate, max_rate) if churn else plan["rate"]
+    interval = 1.0 / rate
+    if churn or burst_every:
+        print("  rate %s, burst %s (seed=%s)"
+              % ("%g..%g/s churning" % (min_rate, max_rate) if churn
+                 else "%g/s fixed" % rate,
+                 "%d parts @%gHz every ~%gs" % (burst_count, burst_hz,
+                                                burst_every)
+                 if burst_every else "off", seed), flush=True)
+    cats = plan["cats"]
+    base_counts, _ = _counts(link)
+    link.drain_async()
+    seen, answered, reported_cats = [], set(), []
+    max_reg = 0
+    seg_objs, segments, reconnects = 0, 0, 0
+    err_log = [None]
+    t_start = time.time()
+    deadline = float("inf") if endless else time.time() + seconds
+    next_fire = time.time()
+    next_peek = time.time() + 1.0
+    next_beat = time.time() + 30.0
+    next_rate = time.time() + (rng.uniform(3, 8) if churn else 1e18)
+    next_burst = time.time() + (burst_every * rng.uniform(0.6, 1.4)
+                                if burst_every else 1e18)
+    fired = 0
+    bursts = 0
+    noreply = 0
+    last_lat = {}
+    fault = False
+
+    def _pump():
+        for _, msg in link.drain_async():
+            mtype = msg.get("type")
+            if mtype == "system_info" and msg.get("state") == ST_ERROR:
+                err_log[0] = msg.get("log")
+            if mtype != "cam_trig":
+                continue
+            tid = msg.get("tid")
+            seen.append(tid)
+            if tid not in answered:
+                cat = cats[len(answered) % len(cats)]
+                link.send_nowait({"type": "report", "tid": tid, "cat": cat})
+                answered.add(tid)
+                reported_cats.append(cat)
+
+    def _reestablish():
+        # The board rebooted with the USB drop: RAM config and tids are gone.
+        # Close the tid segment, re-push the plan and spin back up.
+        nonlocal seg_objs, segments
+        segments += 1
+        seg_objs += len(set(seen))
+        seen.clear()
+        answered.clear()
+        g = link.send({"type": "get_setup"}, timeout=3.0) or {}
+        if "reset_reason" in g:
+            print("  [board reset reason: %s (%s)]"
+                  % (g.get("reset_reason"), g.get("reset_reason_name")),
+                  flush=True)
+        link.send({"type": "clear_error"}, timeout=3.0)
+        link.send({"type": "set_setup", "plate_freq": freq,
+                   "plate_accel": plan["accel"],
+                   "stage_pulse_offset": plan["spo"]}, timeout=3.0)
+        link.send({"type": "enter_insp_mode"}, timeout=3.0)
+        _wait_at_speed(link)
+        link.drain_async()
+
+    while time.time() < deadline:
+        try:
+            now = time.time()
+            if churn and now >= next_rate:
+                rate = rng.uniform(min_rate, max_rate)
+                interval = 1.0 / rate
+                next_rate = now + rng.uniform(3, 8)
+            if now >= next_burst:
+                # A short burst at burst_hz: spacing sits right on top of the
+                # minDetectTimeSep / 3.5mm de-dup limits -- the point.
+                for _ in range(burst_count):
+                    link.send_nowait({"type": "trig_phantom_pulse"})
+                    fired += 1
+                    t_next = time.time() + 1.0 / burst_hz
+                    while time.time() < t_next:
+                        _pump()
+                        time.sleep(0.001)
+                bursts += 1
+                next_burst = now + burst_every * rng.uniform(0.6, 1.4)
+            if now >= next_fire:
+                link.send_nowait({"type": "trig_phantom_pulse"})
+                fired += 1
+                next_fire = now + interval
+            if now >= next_peek:
+                next_peek = now + 1.0
+                st = link.send({"type": "get_running_stat"}, timeout=1.0) or {}
+                if not st:
+                    # No reply. Three in a row is either a silent USB death
+                    # (the OS keeps the fd alive while the device is gone --
+                    # writes "succeed", reads are empty) or a real firmware
+                    # hang. The port node tells them apart: a re-enumeration
+                    # destroys it, a hung board leaves it intact.
+                    noreply += 1
+                    if noreply >= 3:
+                        if endless and link.port_reenumerated():
+                            print("  [silent USB drop -- waiting for the"
+                                  " port to re-appear]", flush=True)
+                            if link._reopen_serial():
+                                reconnects += 1
+                                _reestablish()
+                                noreply = 0
+                                next_fire = next_peek = time.time()
+                                continue
+                        print("  [board unresponsive, port node intact --"
+                              " treating as firmware hang]", flush=True)
+                        _dump_raw_tail(link, "before hang")
+                        fault = True
+                        break
+                    continue
+                noreply = 0
+                reg = ((st.get("pipe") or {}).get("registered")) or 0
+                max_reg = max(max_reg, reg)
+                last_lat = st.get("report_latency") or last_lat
+                if endless and st.get("state") == ST_ERROR:
+                    _dump_raw_tail(link, "around the error stop", n=15)
+                    fault = True
+                    break
+                if endless and st.get("state") == ST_IDLE:
+                    # The board rebooted under us (brownout/WDT) without a
+                    # USB drop: the port stayed up but RAM state is gone.
+                    print("  [board rebooted to IDLE -- re-establishing]",
+                          flush=True)
+                    _dump_raw_tail(link, "around the reboot")
+                    reconnects += 1
+                    _reestablish()
+                    next_fire = next_peek = time.time()
+                    continue
+            if endless and now >= next_beat:
+                next_beat = now + 30.0
+                c, _ = _counts(link)
+                dc = {k: c.get(k, 0) - base_counts.get(k, 0)
+                      for k in ("SEL1", "SEL2", "SEL3", "NA")}
+                print("  [%5.0fs] fired=%d objs=%d peak=%d rate=%.0f/s"
+                      " bursts=%d sorted=%s lat avg/max=%.0f/%.0fms reconn=%d"
+                      % (now - t_start, fired, seg_objs + len(set(seen)),
+                         max_reg, rate, bursts, dc,
+                         last_lat.get("avg_us", 0) / 1000,
+                         last_lat.get("max_us", 0) / 1000, reconnects),
+                      flush=True)
+            _pump()
+            time.sleep(0.002)
+        except LinkReset:
+            reconnects += 1
+            print("  [link reset -- re-establishing the board]", flush=True)
+            try:
+                _reestablish()
+            except (LinkReset, LinkDead):
+                pass
+            next_fire = next_peek = time.time()
+        except LinkDead:
+            print("  [link dead -- port never came back]", flush=True)
+            fault = True
+            break
+    drain_until = time.time() + plan["transit_s"] + 1.0
+    while time.time() < drain_until:
+        try:
+            _pump()
+        except (LinkReset, LinkDead):
+            break
+        time.sleep(0.005)
+    seg_objs += len(set(t for t in seen if t is not None))
+
+    objs = sorted(set(t for t in seen if t is not None))
+    ran_s = time.time() - t_start
+    st, stat = _state(link)
+    stream_ok = st == ST_READY and not _errors_of(stat) and not fault
+    rep.add("G.3", f"{'endless' if endless else '%gs' % seconds} stream at"
+                   f" {rate:g}/s survives at real speed", stream_ok,
+            f"ran {ran_s:.0f}s fired={fired} objects={seg_objs}"
+            f" segments={segments + 1} reconnects={reconnects} state={st}"
+            f" ({ST_NAME.get(st, '?')}) ERROR_HIST={_errors_of(stat)}"
+            + (f"  firmware: {err_log[0]}" if err_log[0] else ""))
+
+    gaps = [(a, b) for a, b in zip(objs, objs[1:]) if b != a + 1]
+    rep.add("G.4", "tid strictly increasing by 1 (final segment)",
+            bool(objs) and not gaps,
+            f"tid {objs[0]}..{objs[-1]}" if objs and not gaps
+            else f"gaps: {gaps[:5]}")
+
+    counts, stat = _counts(link)
+    dc = {k: counts.get(k, 0) - base_counts.get(k, 0) for k in
+          ("SEL1", "SEL2", "SEL3", "NA")}
+    from collections import Counter
+    want = Counter()
+    for c in reported_cats:
+        want[{1: "SEL1", 2: "SEL2", 3: "SEL3", CAT_NA: "NA"}.get(c, "?")] += 1
+    ok = all(dc.get(k, 0) == want.get(k, 0) for k in
+             ("SEL1", "SEL2", "SEL3", "NA"))
+    if segments:
+        # A reboot mid-run zeroed the on-board counters; exact accounting is
+        # impossible, so report what we have rather than a false failure.
+        rep.add("G.5", "verdict pattern vs exit counters (reboot mid-run --"
+                       " informational)", None,
+                f"final-segment sorted {dc}, total reported {dict(want)}")
+    else:
+        rep.add("G.5", "verdict pattern lands exactly on the exit counters",
+                ok, f"sorted {dc} expected {dict(want)}")
+
+    # -- G.6 in-flight depth matches the real transit ----------------------
+    peak_rate = max_rate if churn else rate
+    expect_depth = peak_rate * plan["transit_s"] + (burst_count if burst_every
+                                                    else 0)
+    rep.add("G.6", "in-flight depth ~= rate x transit (RBuf holds a real"
+                   " plate-load)", 1 <= max_reg <= expect_depth + 4,
+            f"max registered={max_reg}, rate x transit = {expect_depth:.1f},"
+            f" RBuf cap 100")
+
+    # -- G.7 firmware's own latency stat inside the window -----------------
+    lat = (stat or {}).get("report_latency") or {}
+    lat_ok = (lat.get("n", 0) == len(answered)
+              and lat.get("max_us", 0) / 1000.0 < plan["window_ms"])
+    rep.add("G.7", "gate->report latency tracked for every part, max inside"
+                   " the answer window", lat_ok,
+            f"n={lat.get('n')} (answered {len(answered)}),"
+            f" avg={lat.get('avg_us', 0) / 1000:.0f}ms"
+            f" max={lat.get('max_us', 0) / 1000:.0f}ms"
+            f" window={plan['window_ms']:.0f}ms")
+
+    # -- G.8 stop; every actuator rests at logical OFF ---------------------
+    link.send({"type": "exit_insp_mode"}, timeout=3.0)
+    time.sleep(max(2.0, freq / plan["accel"] + 1.0))
+    io_on = (link.send({"type": "get_setup"}, timeout=3.0) or {}).get(
+        "io_on_level") or {}
+    pins = {"L1A": 16, "CAM1": 17, "L2A": 18, "CAM2": 19,
+            "SEL1": 25, "SEL2": 26, "SEL3": 32, "FEEDER": 21}
+    names = list(pins)
+    rd = link.send({"type": "pin_read", "pins": [pins[n] for n in names]},
+                   timeout=2.0) or {}
+    vals = rd.get("vals") or []
+    bad = []
+    for n, v in zip(names, vals):
+        on_level = io_on.get(n, 1)
+        if v == on_level:            # resting at its ON level = energised
+            bad.append(f"{n}=phys{v}")
+    rep.add("G.8", "after stop every actuator rests at logical OFF",
+            bool(vals) and not bad,
+            "all OFF" if vals and not bad else f"energised: {bad} "
+            f"(vals={vals})")
+
+    # -- G.9 the board's detect separation cannot exceed the real gap ------
+    if plan["gap_us"]:
+        cfg_sep = orig.get("min_detect_sep_us")
+        ok = isinstance(cfg_sep, int) and cfg_sep < plan["gap_us"]
+        rep.add("G.9", "configured min_detect_sep_us fits the real"
+                       f" {params.get('min_gap_mm')}mm part gap", ok,
+                f"board={cfg_sep}us, gap at speed = {plan['gap_us']:.0f}us"
+                f" ({params.get('min_gap_mm')}mm at rim); a larger separation"
+                f" MERGES adjacent parts. Pitch limit"
+                f" ~{plan['pitch_rate_hz']:.0f} parts/s")
+
+    # -- G.10 the REAL gate path: debounce + width filter ------------------
+    # Phantoms bypass GateSensing entirely (trig_phantom_pulse calls
+    # newPulseEvent directly), so the width filter is invisible to them.
+    # Drive the gate pin itself instead: set it OUTPUT and pull it LOW
+    # (sense is inverted -- LOW = beam blocked = part present) for a
+    # controlled time. That walks debounce -> width filter -> registration
+    # exactly as a real part does. A back-to-back LOW blip (~ms) must be
+    # rejected by a 30ms minimum-width filter; an 80ms LOW must register,
+    # announce once and sort cleanly.
+    gate_pin = 27
+    minw = int(0.030 * tick_hz)
+    maxw = int(0.500 * tick_hz)
+    link.send({"type": "set_setup", "pulse_min_width": minw,
+               "pulse_max_width": maxw}, timeout=2.0)
+    link.send({"type": "pin_mode", "pin": gate_pin, "mode": "OUTPUT"},
+              timeout=2.0)
+    link.send({"type": "pin_on", "pin": gate_pin}, timeout=2.0)  # idle
+    link.send({"type": "enter_insp_mode"}, timeout=3.0)
+    _wait_at_speed(link)
+    link.drain_async()
+
+    # thin blip: two writes back-to-back, LOW for well under 30ms
+    link.send_nowait({"type": "pin_off", "pin": gate_pin})
+    link.send_nowait({"type": "pin_on", "pin": gate_pin})
+    time.sleep(plan["transit_s"] * 0.2 + 0.5)
+    ghosts = [m for _, m in link.drain_async() if m.get("type") == "cam_trig"]
+
+    # real part: LOW for ~80ms (2400 ticks here), then answer it on announce
+    link.send({"type": "pin_off", "pin": gate_pin}, timeout=2.0)
+    time.sleep(0.08)
+    link.send({"type": "pin_on", "pin": gate_pin}, timeout=2.0)
+    real_tids = set()
+    t_end = time.time() + plan["transit_s"] + 1.0
+    while time.time() < t_end:
+        for _, msg in link.drain_async():
+            if msg.get("type") == "cam_trig":
+                tid = msg.get("tid")
+                if tid not in real_tids:
+                    real_tids.add(tid)
+                    link.send_nowait({"type": "report", "tid": tid,
+                                      "cat": CAT_NA})
+        time.sleep(0.005)
+    st2, stat2 = _state(link)
+    rep.add("G.10", "real gate path: width filter rejects a blip, accepts a"
+                    " part, no error",
+            not ghosts and len(real_tids) == 1 and st2 == ST_READY
+            and not _errors_of(stat2),
+            f"minWidth={minw} ticks ({minw * plan['mm_per_tick']:.1f}mm-eq):"
+            f" blip -> {len(ghosts)} announcements; 80ms part ->"
+            f" {len(real_tids)} object(s); state={st2}"
+            f" ERROR_HIST={_errors_of(stat2)}")
+
+    link.send({"type": "exit_insp_mode"}, timeout=3.0)
+    link.send({"type": "pin_mode", "pin": gate_pin, "mode": "INPUT_PULLUP"},
+              timeout=2.0)
+    link.send({"type": "set_setup",
+               "pulse_min_width": orig.get("pulse_min_width", 0),
+               "pulse_max_width": orig.get("pulse_max_width", 1000)},
+              timeout=2.0)
+    time.sleep(max(2.0, freq / plan["accel"] + 1.0))
+
+    # -- teardown: put the board back the way we found it ------------------
+    restore = {}
+    if orig_freq is not None:
+        restore["plate_freq"] = orig_freq
+    if orig_accel is not None:
+        restore["plate_accel"] = orig_accel
+    if orig_spo:
+        restore["stage_pulse_offset"] = orig_spo
+    if restore:
+        link.send({"type": "set_setup", **restore}, timeout=3.0)
 
 
 # --- probe: the protocol + camera-trigger surface -------------------------
@@ -1637,13 +2182,13 @@ def probe(link, rep):
     st, _ = _state(link)
 
     # --- P.1: version handshake -------------------------------------------
-    # ask_JsonRaw_version stores the peer version and answers with the
+    # get_version stores the peer version and answers with the
     # firmware's own -- the core leans on this reply to know it is talking to
     # uInsp firmware and not, say, the CNC image that was on this very board.
     # The reply carries a HARDCODED id (100446), not the command's, so it
     # arrives as an async message rather than a matched reply -- drain for it.
     link.drain_async()
-    link.send_nowait({"type": "ask_JsonRaw_version", "version": "probe-tool"})
+    link.send_nowait({"type": "get_version", "version": "probe-tool"})
     ver, rtype = None, None
     t_end = time.time() + 2.0
     while time.time() < t_end and ver is None:
@@ -1664,27 +2209,27 @@ def probe(link, rep):
     rep.add("P.2", "reset_running_stat zeroes every counter", zeroed,
             f"counts={counts}")
 
-    # --- P.3: trigCamPulse -------------------------------------------------
-    # The camera-trigger simulation, distinct from trig_phamton_pulse: it
-    # announces ONE bTrigInfo carrying the caller's trigger_id and pulses the
+    # --- P.3: trig_cam_pulse -------------------------------------------------
+    # The camera-trigger simulation, distinct from trig_phantom_pulse: it
+    # announces ONE cam_trig carrying the caller's trigger_id and pulses the
     # CAM/light pins, but does NOT call newPulseEvent, so no pipeline object is
     # created (Qs stays where it was). This is the announce path stage 1 leans
     # on -- verifiable before any camera is attached. A phantom pulse, by
     # contrast, announces twice (CAM1+CAM2) and does enqueue an object.
     link.drain_async()
     marker = 424242
-    r = link.send({"type": "trigCamPulse", "trigger_id": marker},
+    r = link.send({"type": "trig_cam_pulse", "trigger_id": marker},
                   timeout=3.0)
     time.sleep(0.5)
-    anns = [m for _, m in link.drain_async() if m.get("type") == "bTrigInfo"]
+    anns = [m for _, m in link.drain_async() if m.get("type") == "cam_trig"]
     mine = [m for m in anns if m.get("tid") == marker]
     qs = mine[0].get("Qs") if mine else None
-    rep.add("P.3", "trigCamPulse announces once with the caller's trigger_id,"
+    rep.add("P.3", "trig_cam_pulse announces once with the caller's trigger_id,"
             " enqueues no object",
-            bool(r) and len(mine) == 1 and mine[0].get("tidx") == 1
+            bool(r) and len(mine) == 1 and mine[0].get("cam") == 1
             and qs == 0,
             f"announcements for {marker}: {len(mine)} "
-            f"(tidx={mine[0].get('tidx') if mine else None}, Qs={qs}); "
+            f"(cam={mine[0].get('cam') if mine else None}, Qs={qs}); "
             f"a phantom pulse would announce twice and set Qs>0")
 
     st, _ = _state(link)
@@ -1700,7 +2245,7 @@ def probe(link, rep):
 # that all E6_COUNT are still in flight when the last is fired
 # (E6_WINDOW > E6_COUNT*E6_SPACING), forcing RBuf past its 100-object cap. The
 # firmware must then reject the excess silently -- no announce, no fault -- so
-# objects settle at the cap. Paced off the SET plateFreq (ISR = 2*freq), not a
+# objects settle at the cap. Paced off the SET plate_freq (ISR = 2*freq), not a
 # measured rate: measuring live proved noisy (serial contention on the ISR's
 # core) and mis-spaced the pulses.
 E6_FREQ = 1000
@@ -1726,15 +2271,15 @@ def edge(link, rep, only=None):
     print("\n\033[1m== Edge: deep firmware paths, no rig required ==\033[0m")
 
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
-    orig_freq = orig.get("plateFreq")
-    orig_sep = orig.get("minDetectTimeSep_us")
+    orig_freq = orig.get("plate_freq")
+    orig_sep = orig.get("min_detect_sep_us")
     orig_spo = dict(orig.get("stage_pulse_offset") or {})
     link.send({"type": "clear_error"}, timeout=2.0)
     link.send({"type": "clear_error_history"}, timeout=2.0)
 
     def _pump(answer_cat, seen, answered, qs=None):
         for _, msg in link.drain_async():
-            if msg.get("type") != "bTrigInfo":
+            if msg.get("type") != "cam_trig":
                 continue
             tid = msg.get("tid")
             seen.append(tid)
@@ -1750,7 +2295,7 @@ def edge(link, rep, only=None):
         seen, answered = [], set()
         link.drain_async()
         for i in range(n):
-            link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+            link.send({"type": "trig_phantom_pulse"}, timeout=3.0)
             deadline = time.time() + interval_s
             while time.time() < deadline:
                 _pump(answer_cat, seen, answered)
@@ -1772,7 +2317,7 @@ def edge(link, rep, only=None):
         # just past the ~67ms time gate, and E.2's oldest part gets a ~0.56s
         # runway to the selector -- room to observe three announcements and
         # answer only the newest before anything arrives unjudged.
-        link.send({"type": "set_setup", "plateFreq": 600}, timeout=3.0)
+        link.send({"type": "set_setup", "plate_freq": 600}, timeout=3.0)
         link.send({"type": "enter_insp_mode"}, timeout=3.0)
         _wait_at_speed(link)
         st, _ = _state(link)
@@ -1832,10 +2377,10 @@ def edge(link, rep, only=None):
         if _want("E.3"):
             link.drain_async()
             seen, answered = [], set()
-            link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
-            link.send_nowait({"type": "trig_phamton_pulse"})   # inside both gates
+            link.send({"type": "trig_phantom_pulse"}, timeout=3.0)
+            link.send_nowait({"type": "trig_phantom_pulse"})   # inside both gates
             time.sleep(0.2)
-            link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+            link.send({"type": "trig_phantom_pulse"}, timeout=3.0)
             _settle(1.5, CAT_NA, seen, answered)
             tids = sorted(set(seen))
             st, _ = _state(link)
@@ -1885,16 +2430,16 @@ def edge(link, rep, only=None):
             link.drain_async()
             link.ser.write(b"@@@@@@@@")           # not JSON: latch the link
             time.sleep(0.4)
-            r1 = link.send({"type": "PING"}, timeout=1.0)      # eaten silently
+            r1 = link.send({"type": "ping"}, timeout=1.0)      # eaten silently
             link.ser.write(b'{"type":"RESET"}')   # recovers and auto-redeems
             time.sleep(0.4)
             link.drain_async()
-            r2 = link.send({"type": "PING"}, timeout=1.5)
+            r2 = link.send({"type": "ping"}, timeout=1.5)
             st, stat = _state(link)
             errs = _errors_of(stat)
             rep.add("E.5", "garbage latches the link: silent until one RESET"
                     " recovers it",
-                    r1 is None and bool(r2 and r2.get("type") == "PONG"),
+                    r1 is None and bool(r2 and r2.get("type") == "pong"),
                     f"after garbage: {'silent' if r1 is None else r1}; "
                     f"after RESET: {(r2 or {}).get('type')}")
             rep.add("E.5b", "protocol error faulted (11) and RESET redeemed it",
@@ -1912,8 +2457,8 @@ def edge(link, rep, only=None):
             link.send({"type": "clear_error_history"}, timeout=2.0)
             l1a = int(orig_spo.get("L1A_on", 654))
             win2 = l1a + E6_WINDOW
-            link.send({"type": "set_setup", "plateFreq": E6_FREQ,
-                       "minDetectTimeSep_us": 5000,
+            link.send({"type": "set_setup", "plate_freq": E6_FREQ,
+                       "min_detect_sep_us": 5000,
                        "stage_pulse_offset": {
                            "SWITCH": win2,
                            "SEL1_on": win2 + 3,  "SEL1_off": win2 + 4,
@@ -1922,7 +2467,7 @@ def edge(link, rep, only=None):
                       timeout=3.0)
             _wait_at_speed(link)
 
-            # ISR ticks at 2*plateFreq, so steps/s is known exactly -- pace off
+            # ISR ticks at 2*plate_freq, so steps/s is known exactly -- pace off
             # that rather than a live measurement (see the E6_* comment above).
             steps_per_s = 2.0 * E6_FREQ
             interval = E6_SPACING / steps_per_s
@@ -1936,7 +2481,7 @@ def edge(link, rep, only=None):
                 while time.time() < deadline:
                     _pump(CAT_NA, seen, answered, qs)
                     time.sleep(0.002)
-                link.send_nowait({"type": "trig_phamton_pulse"})
+                link.send_nowait({"type": "trig_phantom_pulse"})
                 fired += 1
             # Every accepted object was reported on-announce, so none can fault;
             # a short settle is enough to drain the announcement tail and catch
@@ -1960,9 +2505,9 @@ def edge(link, rep, only=None):
         link.send({"type": "clear_error_history"}, timeout=2.0)
         restore = {"type": "set_setup"}
         if isinstance(orig_freq, (int, float)):
-            restore["plateFreq"] = orig_freq
+            restore["plate_freq"] = orig_freq
         if isinstance(orig_sep, (int, float)):
-            restore["minDetectTimeSep_us"] = orig_sep
+            restore["min_detect_sep_us"] = orig_sep
         if orig_spo:
             restore["stage_pulse_offset"] = orig_spo
         link.send(restore, timeout=3.0)
@@ -2007,7 +2552,7 @@ def iotrace(link, rep, plate_freq, cat):
     fired at (io_trace_arm/dump). Firing one phantom and dumping turns the board
     into its own logic analyzer: it verifies the physical output timing and
     ordering that a counter cannot see, with no scope and -- unlike bench --
-    WITHOUT widening the window. A low plateFreq is the trick: the real ~43-step
+    WITHOUT widening the window. A low plate_freq is the trick: the real ~43-step
     camera-to-selector gap becomes tens of ms in wall time, long enough that the
     host verdict still lands in the true window, so SWITCH dispatches the part
     and the SEL edges fire on schedule too.
@@ -2015,15 +2560,15 @@ def iotrace(link, rep, plate_freq, cat):
     print("\n\033[1m== IO trace: actuator sequence at real geometry ==\033[0m")
 
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
-    orig_freq = orig.get("plateFreq")
+    orig_freq = orig.get("plate_freq")
     spo = dict(orig.get("stage_pulse_offset") or {})
     link.send({"type": "clear_error"}, timeout=2.0)
     link.send({"type": "clear_error_history"}, timeout=2.0)
 
     try:
         # Deliberately NOT widening the window -- the whole point is real
-        # offsets. Low plateFreq stretches the 43-step gap into answerable ms.
-        link.send({"type": "set_setup", "plateFreq": plate_freq}, timeout=3.0)
+        # offsets. Low plate_freq stretches the 43-step gap into answerable ms.
+        link.send({"type": "set_setup", "plate_freq": plate_freq}, timeout=3.0)
         link.send({"type": "enter_insp_mode"}, timeout=3.0)
         _wait_at_speed(link)
         st, _ = _state(link)
@@ -2039,11 +2584,11 @@ def iotrace(link, rep, plate_freq, cat):
         # One phantom, answered the instant it announces so the verdict makes
         # the real window and SWITCH/SEL fire (cat -> SEL1/SEL2).
         answered = set()
-        link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+        link.send({"type": "trig_phantom_pulse"}, timeout=3.0)
         t_end = time.time() + 3.0
         while time.time() < t_end:
             for _, m in link.drain_async():
-                if m.get("type") == "bTrigInfo":
+                if m.get("type") == "cam_trig":
                     tid = m.get("tid")
                     if tid not in answered:
                         answered.add(tid)
@@ -2141,12 +2686,12 @@ def iotrace(link, rep, plate_freq, cat):
         link.send({"type": "clear_error"}, timeout=3.0)
         link.send({"type": "exit_insp_mode"}, timeout=3.0)
         if isinstance(orig_freq, (int, float)):
-            link.send({"type": "set_setup", "plateFreq": orig_freq},
+            link.send({"type": "set_setup", "plate_freq": orig_freq},
                       timeout=3.0)
         st, _ = _state(link)
-        rep.add("I.8", "returned to IDLE, plateFreq restored",
+        rep.add("I.8", "returned to IDLE, plate_freq restored",
                 st == ST_IDLE, f"state={ST_NAME.get(st, st)} "
-                f"plateFreq={orig_freq}")
+                f"plate_freq={orig_freq}")
 
 
 # --- publish path: does a set_setup offset reach the ISR? -----------------
@@ -2169,7 +2714,7 @@ def pubcheck(link, rep, plate_freq):
     print("\n\033[1m== Publish check: set_setup offset reaches the ISR ==\033[0m")
 
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
-    orig_freq = orig.get("plateFreq")
+    orig_freq = orig.get("plate_freq")
     spo = dict(orig.get("stage_pulse_offset") or {})
     base_sel1_on = spo.get("SEL1_on")
     base_sel1_off = spo.get("SEL1_off")
@@ -2186,7 +2731,7 @@ def pubcheck(link, rep, plate_freq):
     link.send({"type": "clear_error"}, timeout=2.0)
     link.send({"type": "clear_error_history"}, timeout=2.0)
     try:
-        link.send({"type": "set_setup", "plateFreq": plate_freq}, timeout=3.0)
+        link.send({"type": "set_setup", "plate_freq": plate_freq}, timeout=3.0)
         # The change under test.
         link.send({"type": "set_setup", "stage_pulse_offset": {
             "SEL1_on": new_sel1_on, "SEL1_off": new_sel1_off}}, timeout=3.0)
@@ -2205,11 +2750,11 @@ def pubcheck(link, rep, plate_freq):
         link.drain_async()
 
         answered = set()
-        link.send({"type": "trig_phamton_pulse"}, timeout=3.0)
+        link.send({"type": "trig_phantom_pulse"}, timeout=3.0)
         t_end = time.time() + 3.0
         while time.time() < t_end:
             for _, m in link.drain_async():
-                if m.get("type") == "bTrigInfo":
+                if m.get("type") == "cam_trig":
                     tid = m.get("tid")
                     if tid not in answered:
                         answered.add(tid)
@@ -2243,7 +2788,7 @@ def pubcheck(link, rep, plate_freq):
         restore = {"type": "set_setup", "stage_pulse_offset": {
             "SEL1_on": base_sel1_on, "SEL1_off": base_sel1_off}}
         if isinstance(orig_freq, (int, float)):
-            restore["plateFreq"] = orig_freq
+            restore["plate_freq"] = orig_freq
         link.send(restore, timeout=3.0)
         back = (link.send({"type": "get_setup"}, timeout=3.0) or {}) \
             .get("stage_pulse_offset") or {}
@@ -2309,7 +2854,7 @@ def main():
     sub.add_parser("stage0", help="firmware-alone checks incl. NVS persistence")
     sub.add_parser("errorpath", help="stage 0.7 inspection-error behaviour")
     sub.add_parser("selectors", help="stage 3.1/3.2 outlet mapping")
-    m = sub.add_parser("monitor", help="watch bTrigInfo / tid continuity")
+    m = sub.add_parser("monitor", help="watch cam_trig / tid continuity")
     m.add_argument("--seconds", type=int, default=60)
     b = sub.add_parser("bench",
                        help="full tid round trip using phantom pulses -- "
@@ -2323,7 +2868,7 @@ def main():
                    help="1=SEL1 2=SEL2 65535=NA")
     sub.add_parser("probe",
                    help="protocol + camera-trigger surface: version handshake, "
-                        "reset_running_stat, trigCamPulse -- board only, no rig")
+                        "reset_running_stat, trig_cam_pulse -- board only, no rig")
     sub.add_parser("edge",
                    help="deep firmware paths: NA verdict, SKIP absorption, "
                         "pulse-gate rejection, SEL1 countdown, protocol-error "
@@ -2333,7 +2878,7 @@ def main():
                              "edge sequence and check it against the real "
                              "stage_pulse_offset -- board only, no scope")
     it.add_argument("--freq", type=float, default=200,
-                    help="plateFreq; low stretches the real 43-step window "
+                    help="plate_freq; low stretches the real 43-step window "
                          "into answerable ms so SWITCH/SEL fire in-window")
     it.add_argument("--cat", type=int, default=1, help="1=SEL1 2=SEL2")
     pc = sub.add_parser("pubcheck",
@@ -2396,6 +2941,29 @@ def main():
                          "and re-establish the board, instead of ending the run "
                          "(on by default; --no-auto-reconnect to disable). Lets a "
                          "soak run unattended for days across USB re-enumerations")
+
+    gr = sub.add_parser("grill",
+                        help="run the sorter at the REAL machine's speed and "
+                             "geometry from a parameter file -- speed accuracy, "
+                             "sustained stream with true in-flight depth, "
+                             "verdict pattern, latency vs answer window, "
+                             "part-gap / width-filter feasibility, fail-safe "
+                             "outputs")
+    gr.add_argument("--params", default="machine_params.json",
+                    help="machine parameter file (JSON)")
+    gr.add_argument("--min-rate", type=float, default=None,
+                    help="with --max-rate: churn the part rate in this range")
+    gr.add_argument("--max-rate", type=float, default=None)
+    gr.add_argument("--burst-every", type=float, default=0.0,
+                    help="every ~N s (jittered) fire a short burst; 0 = off")
+    gr.add_argument("--burst-count", type=int, default=5)
+    gr.add_argument("--burst-hz", type=float, default=100.0,
+                    help="spacing inside a burst (100 = 10ms apart)")
+    gr.add_argument("--seed", type=int, default=None)
+    gr.add_argument("--seconds", type=float, default=30.0,
+                    help="length of the sustained stream phase; 0 = run "
+                         "FOREVER (soak: 30s heartbeat, survives USB drops, "
+                         "stops when the machine error-stops)")
 
     s = sub.add_parser("send", help="send one raw JSON command")
     s.add_argument("json")
@@ -2461,6 +3029,19 @@ def main():
                   burst_count=args.burst_count,
                   report_delay_ms=delay_ms, report_shuffle=args.report_shuffle,
                   expect_fault=args.expect_fault)
+        elif args.cmd == "grill":
+            link.auto_reconnect = True
+            pdir = os.path.dirname(os.path.abspath(__file__))
+            ppath = args.params if os.path.exists(args.params) \
+                else os.path.join(pdir, args.params)
+            with open(ppath) as f:
+                params = json.load(f)
+            seed = (args.seed if args.seed is not None
+                    else int(time.time() * 1000) & 0xFFFFFFFF)
+            grill(link, rep, params, args.seconds,
+                  min_rate=args.min_rate, max_rate=args.max_rate,
+                  burst_every=args.burst_every, burst_count=args.burst_count,
+                  burst_hz=args.burst_hz, seed=seed)
         elif args.cmd == "all":
             stage0(link, rep)
             probe(link, rep)

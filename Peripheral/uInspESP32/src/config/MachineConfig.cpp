@@ -16,10 +16,10 @@ namespace
     uint32_t magic;
     uint32_t version;
     stagePulseOffset spo;
-    float plateFreq;
-    uint32_t minDetectTimeSep_us;
-    int32_t pulse_minWidth;
-    int32_t pulse_maxWidth;
+    float plate_freq;
+    uint32_t min_detect_sep_us;
+    int32_t pulse_min_width;
+    int32_t pulse_max_width;
     int32_t stepper_en_active;
     int32_t stepper_dir_level;
     uint32_t pulses_per_rev;
@@ -40,10 +40,10 @@ namespace
     cfg.magic = kMagic;
     cfg.version = MachineConfig::kConfigVersion;
     cfg.spo = STAGE_PULSE_OFFSET;
-    cfg.plateFreq = SETUP_TAR_FREQ;
-    cfg.minDetectTimeSep_us = SYS_MIN_PULSE_TIME_SEP_us;
-    cfg.pulse_minWidth = minWidth;
-    cfg.pulse_maxWidth = maxWidth;
+    cfg.plate_freq = PLATE_FREQ_SETPOINT;
+    cfg.min_detect_sep_us = SYS_MIN_PULSE_TIME_SEP_us;
+    cfg.pulse_min_width = minWidth;
+    cfg.pulse_max_width = maxWidth;
     cfg.stepper_en_active = stepper_en_active;
     cfg.stepper_dir_level = stepper_dir_level;
     cfg.pulses_per_rev = pulses_per_rev;
@@ -59,10 +59,10 @@ namespace
   void applyToGlobals(const StoredConfig &cfg)
   {
     STAGE_PULSE_OFFSET = cfg.spo;
-    SETUP_TAR_FREQ = cfg.plateFreq;
-    SYS_MIN_PULSE_TIME_SEP_us = cfg.minDetectTimeSep_us;
-    minWidth = cfg.pulse_minWidth;
-    maxWidth = cfg.pulse_maxWidth;
+    PLATE_FREQ_SETPOINT = cfg.plate_freq;
+    SYS_MIN_PULSE_TIME_SEP_us = cfg.min_detect_sep_us;
+    minWidth = cfg.pulse_min_width;
+    maxWidth = cfg.pulse_max_width;
     stepper_en_active = cfg.stepper_en_active ? 1 : 0;
     stepper_dir_level = cfg.stepper_dir_level ? 1 : 0;
     pulses_per_rev = cfg.pulses_per_rev;

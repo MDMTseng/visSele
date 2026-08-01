@@ -16,7 +16,7 @@
 | `gate_debounce_fall`（`DEBOUNCE_L_THRES`）| 下降（物件離）| 容忍短暫 LOW 凹陷（否則一顆被切成兩顆）| 2 |
 
 - 兩者以 **gate 取樣 tick** 為單位；1 tick ≈ 1 步 ≈ `_PLAT_DIST_um_PER_STEP`
-  ＝在 350mm 盤上約 **38µm** 行程。時間上 1 tick ＝ `1/(2·plateFreq)` 秒。
+  ＝在 350mm 盤上約 **38µm** 行程。時間上 1 tick ＝ `1/(2·plate_freq)` 秒。
 - 皆可用 `set_setup` 即時調（`gate_debounce_rise`/`gate_debounce_fall`），
   `get_setup` 可讀回；**不寫入 NVS**，重開回預設。設為 0 會被夾成 1。
 - 預設 2/2 ＝拒絕任一邊沿的單取樣雜訊，這是「一定正確」的最小值；真實料件寬達
@@ -27,7 +27,7 @@
 
 ## 為什麼不能用 phantom 脈衝測
 
-`trig_phamton_pulse` 直接呼叫 `newPulseEvent()`，**完全繞過 `GateSensing()`**。
+`trig_phantom_pulse` 直接呼叫 `newPulseEvent()`，**完全繞過 `GateSensing()`**。
 所以 `bench`/`edge`/`stress`/`iotrace` 一律測不到去彈跳——去彈跳只在真實閘門
 訊號（或注入到閘門取樣輸入）時才會跑到。這也是清單 5.4 一直掛著「需要現場」
 的原因。
@@ -69,7 +69,7 @@
 
 ## 方法 B（建議做，可在光板上自動測）——韌體注入閘門取樣
 
-概念與 `trig_phamton_pulse`/`io_trace` 對稱：那兩個讓「產生物件」「觀察輸出」
+概念與 `trig_phantom_pulse`/`io_trace` 對稱：那兩個讓「產生物件」「觀察輸出」
 可在桌上測；這個讓「閘門輸入」也能在桌上測。
 
 ### 需要的韌體 hook（尚未實作）
@@ -115,7 +115,7 @@ tid 落點、以及各 SEL/L1A/CAM 邊沿——**全部在光板上、可自動�
 - **`newPulseEvent` 的 3.5mm（~91 步）去重門檻**：把「一顆被切成兩顆」的第二段
   （距前一顆 <3.5mm）擋掉——所以 split 多半不會變成雙數 tid。但**空檔中的孤立
   雜訊**（距鄰居 >3.5mm）它擋不住，會變 phantom。去彈跳補的正是這一塊。
-- **`pulse_minWidth`**：寬度下限。設成真實料件寬度的一個下界，可再擋掉「比料件
+- **`pulse_min_width`**：寬度下限。設成真實料件寬度的一個下界，可再擋掉「比料件
   窄很多」的雜訊脈衝，即使沒有時間去彈跳。是最便宜的過渡防護（不用重燒）。
 - **建議**：rise 去彈跳擋孤立尖波（phantom），fall 去彈跳擋內部凹陷（split），
   minWidth 擋殘餘窄脈衝，3.5mm 門擋近距重複。四者互補。
