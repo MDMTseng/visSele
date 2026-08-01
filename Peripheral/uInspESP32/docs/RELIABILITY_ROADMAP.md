@@ -62,7 +62,11 @@ Klipper/LinuxCNC 開源機控、PLC 工法)。結論先講:**核心架構就是�
 - [ ] **task WDT 啟用 + wdt_test 演練**(main loop 卡死目前無人知曉 —— 最高性價比)
 - [ ] **健康遙測進 get_running_stat**:min-free-heap、最大 free block、
       stack 高水位、ISR tick-gap 高水位、RBuf 深度峰值 —— soak 心跳免費變趨勢監測
-- [ ] ISR 呼叫鏈全面 IRAM 化(NVS flash-cache 危險從規則變不存在)
+- [x] ~~ISR 呼叫鏈全面 IRAM 化~~ **決議不做**(2026-08-02):flash 寫入
+      已收斂到單一入口(NVS save)且被 standstill guard 硬性攔截;無 OTA、
+      無 WiFi、無 flash 日誌,cache-disable 條件已封死。全鏈 IRAM 化的
+      維護成本(巨集鏈、漏標即炸)高於殘餘風險;`isr_gap_max_us` 遙測
+      持續實證。**翻案條件**:未來引入 OTA / WiFi / flash 日誌任一者。
 - [ ] 清 comm 路徑 std::string(長月運轉頭號殺手 = 堆碎片)
 - [ ] device 端故障注入鉤子(跳 trigger / 竄改 tid⋯)= pipeline 的 mutation testing
 - [ ] 斷電注入 rig(USB relay 斬 5V)+ powerchaos 子命令
