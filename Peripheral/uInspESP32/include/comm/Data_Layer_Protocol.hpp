@@ -20,7 +20,10 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
   const int crcL=4;
   const int lenFieldIdx=crcFieldIdx+crcL;
   protected:
-  uint8_t dataBuff[500];
+  // Frame assembly buffer. Was 500 -- a set_setup carrying the full config
+  // (~550B after the snake_case rename) tripped RECV_BUFFER_FULL and latched
+  // the link. Sized to comfortably hold the largest legitimate command.
+  uint8_t dataBuff[2048];
   int buffIdx=0;
   bool protocolErrorActive=false;
 

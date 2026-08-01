@@ -61,6 +61,9 @@ extern float SYS_FREQ_ACCEL;
 // Gate edge debounce thresholds (samples) -- see GateSensing().
 extern int DEBOUNCE_H_THRES;
 extern int DEBOUNCE_L_THRES;
+// Fail-to-reject policy for unanswered parts (see LegacyFirmware.cpp).
+extern volatile int UNANSWERED_POLICY;
+extern volatile int UNANSWERED_STOP_AFTER;
 
 #define MACHINE_ID_MAX_LEN 24
 
@@ -74,9 +77,10 @@ namespace MachineConfig
   // v4: + io_inv_mask (per-output ON polarity)
   // v5: + plate_accel (Hz/s ramp)
   // v6: + gate debounce rise/fall
+  // v7: + unanswered_policy / unanswered_stop_after
   // (an older blob falls back to compiled defaults -- re-push and save_setup
   // once after upgrading).
-  constexpr uint32_t kConfigVersion = 6;
+  constexpr uint32_t kConfigVersion = 7;
 
   // Reads NVS into the globals above. Call once, early in firmwareSetup(),
   // before anything derives timing from them.

@@ -6,6 +6,7 @@
 #include "comm/Data_Layer_Protocol.hpp"
 #include "config/MachineConfig.hpp"
 #include "driver/timer.h"
+#include <esp_task_wdt.h>
 #include <string>
 
 extern "C" {
@@ -153,6 +154,22 @@ uint32_t REP_LAT_MAX_US=0;
 // and how late it was, instead of a bare code.
 // Deliberate-crash request (CRASH_TEST command); executed in firmwareLoop().
 volatile int CRASH_REQ=0;
+// Deliberate task-WDT starvation request (wdt_test command).
+volatile int WDT_TEST_REQ=0;
+
+// Fail-to-reject policy (docs/RELIABILITY_ROADMAP.md, layer 2). 0 = legacy:
+// any unanswered part at SWITCH stops the line. 1 = force-NA: the part is
+// left unactuated (recirculates via the NA path), counted, and only
+// UNANSWERED_STOP_AFTER *consecutive* unanswered parts stop the line --
+// quality uncertainty is rejected, tracking-integrity faults still stop.
+volatile int UNANSWERED_POLICY=0;
+volatile int UNANSWERED_STOP_AFTER=5;
+volatile uint32_t UNANSWERED_Count=0;
+volatile uint32_t CONSEC_UNANSWERED=0;
+
+// Health high-water marks (reset with reset_running_stat).
+volatile uint32_t ISR_GAP_MAX_CY=0;   // max inter-tick gap, CPU cycles
+volatile uint32_t RBUF_PEAK=0;        // max pipeline depth seen
 
 volatile uint32_t ERR_CTX_TID=0;
 volatile int32_t  ERR_CTX_STATUS=0;
@@ -710,6 +727,10 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
     return -2;
   }
   RBuf.pushHead();
+  {
+    uint32_t sz=RBuf.size();
+    if(sz>RBUF_PEAK) RBUF_PEAK=sz;
+  }
   tid_counter++;
   return 0;
 }
@@ -888,24 +909,29 @@ int Run_ACTS(uint32_t cur_pulse)
       switch (pli->insp_status)
       {
         case 1:
+          CONSEC_UNANSWERED=0;
           ACT_PUSH_TASK(act_S.ACT_SEL1, pli, spo->SEL1_on, 1, _task_->src =NULL;);//the src will be cleaned up right after
           ACT_PUSH_TASK(act_S.ACT_SEL1, pli, spo->SEL1_off, 0, _task_->src =NULL; );
           break;
         case 2:
+          CONSEC_UNANSWERED=0;
           ACT_PUSH_TASK(act_S.ACT_SEL2, pli, spo->SEL2_on, 1, _task_->src =NULL; );
           ACT_PUSH_TASK(act_S.ACT_SEL2, pli, spo->SEL2_off, 0, _task_->src =NULL; );
           break;
         case 3:
+          CONSEC_UNANSWERED=0;
           SEL3_Count++;
           // ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_on, 1, _task_->src =NULL; );
           // ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_off, 0, _task_->src =NULL; );
           break;
         case 0xFFFF:
+          CONSEC_UNANSWERED=0;
           NA_Count++;
           // inspResCount.NA++;
           break;
 
-        case insp_status_SKIP: 
+        case insp_status_SKIP:
+          CONSEC_UNANSWERED=0;
           SKIP_Count++;
           break;
         case insp_status_DEL: //ERROR
@@ -913,6 +939,13 @@ int Run_ACTS(uint32_t cur_pulse)
 
         case insp_status_UNSET:
         default:
+          if(UNANSWERED_POLICY==1)
+          {
+            UNANSWERED_Count++;
+            CONSEC_UNANSWERED++;
+            if(CONSEC_UNANSWERED < (uint32_t)UNANSWERED_STOP_AFTER)
+              break;   // fail-to-reject: no actuation -> part recirculates
+          }
           ecode=GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT;
           ERR_CTX_TID=pli->tid;
           ERR_CTX_STATUS=pli->insp_status;
@@ -1328,6 +1361,18 @@ void IRAM_ATTR onTimer()
 
 
 
+  {
+    // Inter-tick gap high-water: field evidence of ISR jitter/stalls without
+    // a scope. A gap over 1s is a timer stop/start seam, not jitter.
+    static uint32_t last_cc=0;
+    uint32_t cc=XTHAL_GET_CCOUNT();
+    if(last_cc){
+      uint32_t d=cc-last_cc;
+      if(d<240000000u && d>ISR_GAP_MAX_CY) ISR_GAP_MAX_CY=d;
+    }
+    last_cc=cc;
+  }
+
   SYS_STEP_COUNT++;
 
   //Step adv
@@ -1352,12 +1397,12 @@ void IRAM_ATTR onTimer()
   // GPIOLS32_CLR(PIN_LED);
 
 }
-StaticJsonDocument<1024> recv_doc;
-StaticJsonDocument<1024> ret_doc;
+StaticJsonDocument<3072> recv_doc;
+StaticJsonDocument<3072> ret_doc;
 
 
-StaticJsonDocument <1024>doc;
-StaticJsonDocument <1024>retdoc;
+StaticJsonDocument <3072>doc;
+StaticJsonDocument <3072>retdoc;
 
 
 
@@ -1664,6 +1709,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
 
     SEL1_Count=SEL2_Count=SEL3_Count=NA_Count=0;
+    UNANSWERED_Count=0;
+    CONSEC_UNANSWERED=0;
+    ISR_GAP_MAX_CY=0;
+    RBUF_PEAK=0;
     REP_LAT_N=0;
     REP_LAT_SUM_US=0;
     REP_LAT_MAX_US=0;
@@ -1689,6 +1738,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     jCountInfo["SEL2"]=SEL2_Count;
     jCountInfo["SEL3"]=SEL3_Count;
     jCountInfo["NA"]=NA_Count;
+    jCountInfo["UNANSWERED"]=UNANSWERED_Count;
 
     //current state
     retdoc["state"]=(int)sysinfo.state;
@@ -1728,6 +1778,16 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jH["SEL3"]=h3;
       jH["NA"]=hna;
       jH["SKIP"]=hskip;
+    }
+    {
+      JsonObject jHl=retdoc.createNestedObject("health");
+      jHl["min_heap"]=esp_get_minimum_free_heap_size();
+      jHl["max_block"]=heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+      jHl["stack_hwm"]=(uint32_t)uxTaskGetStackHighWaterMark(NULL);
+      jHl["isr_gap_max_us"]=ISR_GAP_MAX_CY/240;   // 240MHz CPU
+      jHl["rbuf_peak"]=RBUF_PEAK;
+      jHl["uptime_s"]=(uint32_t)(esp_timer_get_time()/1000000ULL);
+      jHl["consec_unanswered"]=CONSEC_UNANSWERED;
     }
     {
       JsonObject jL=retdoc.createNestedObject("report_latency");
@@ -2000,6 +2060,23 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=true;
   }
   
+  else if(strcmp(type,"wdt_test")==0)
+  {
+    // Starve the task watchdog on purpose -- drills the WDT->panic->forensics
+    // chain the same way crash_test drills a null-deref panic.
+    if(doc["confirm"].is<bool>() && doc["confirm"].as<bool>())
+    {
+      WDT_TEST_REQ=1;
+      retdoc["starving"]=true;
+      rspAck=true;
+    }
+    else
+    {
+      retdoc["err"]="needs confirm:true";
+      rspAck=false;
+    }
+    doRsp=true;
+  }
   else if(strcmp(type,"crash_test")==0)
   {
     // Deliberately kill the firmware to exercise the host's crash forensics
@@ -2034,7 +2111,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["id"]=doc["id"];
     retdoc["ack"]=rspAck;
     
-    uint8_t buff[1024];
+    uint8_t buff[2048];
     int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
     send_json_string(0,buff,slen,0);
   }
@@ -2308,6 +2385,11 @@ void firmwareSetup()
   // Must run before the timer is armed: the pulse offsets and plate frequency
   // it restores are what everything below derives its timing from.
   MachineConfig::begin();
+
+  // Task watchdog on the main loop: a wedged parser/deadlock must reboot
+  // (and leave TASK_WDT in reset_reason), not spin the ISR blind forever.
+  esp_task_wdt_init(5, true);
+  esp_task_wdt_add(NULL);
   // Publish whatever begin() loaded (or the compiled defaults) to the ISR
   // snapshot before onTimer can read it.
   STAGE_PULSE_OFFSET_publish();
@@ -2412,6 +2494,12 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
 static uint8_t recvBuf[20];
 void firmwareLoop()
 {
+  esp_task_wdt_reset();
+  if(WDT_TEST_REQ)
+  {
+    delay(200);              // let the ack out
+    for(;;){}                // starve the task WDT -> panic -> TASK_WDT reboot
+  }
   if(CRASH_REQ)
   {
     delay(200);              // let the ack reach the wire first
@@ -2784,6 +2872,8 @@ void genMachineSetup(JsonDocument &jdoc)
   jdoc["stepper_en_active"]=stepper_en_active;
   jdoc["stepper_dir"]=stepper_dir_level;
 
+  jdoc["unanswered_policy"]=UNANSWERED_POLICY;
+  jdoc["unanswered_stop_after"]=UNANSWERED_STOP_AFTER;
   jdoc["pulses_per_rev"]=pulses_per_rev;
   jdoc["plate_diameter_mm"]=plate_diameter_mm;
 
@@ -2884,6 +2974,12 @@ void setMachineSetup(JsonDocument &jdoc)
                                                       : stepper_en_active);
   }
 
+  {
+    int v=UNANSWERED_POLICY;
+    if(jdoc["unanswered_policy"].is<int>()){ v=jdoc["unanswered_policy"]; UNANSWERED_POLICY=(v==1)?1:0; }
+    v=UNANSWERED_STOP_AFTER;
+    if(jdoc["unanswered_stop_after"].is<int>()){ v=jdoc["unanswered_stop_after"]; UNANSWERED_STOP_AFTER=(v<1)?1:v; }
+  }
   JSON_SETIF_ABLE(pulses_per_rev,jdoc,"pulses_per_rev");
   JSON_SETIF_ABLE(plate_diameter_mm,jdoc,"plate_diameter_mm");
 

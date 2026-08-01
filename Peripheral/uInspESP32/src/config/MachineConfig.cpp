@@ -28,6 +28,8 @@ namespace
     float plate_accel;
     int32_t gate_debounce_rise;
     int32_t gate_debounce_fall;
+    int32_t unanswered_policy;
+    int32_t unanswered_stop_after;
     char machine_id[MACHINE_ID_MAX_LEN];
   };
 
@@ -52,6 +54,8 @@ namespace
     cfg.plate_accel = SYS_FREQ_ACCEL;
     cfg.gate_debounce_rise = DEBOUNCE_H_THRES;
     cfg.gate_debounce_fall = DEBOUNCE_L_THRES;
+    cfg.unanswered_policy = UNANSWERED_POLICY;
+    cfg.unanswered_stop_after = UNANSWERED_STOP_AFTER;
     memcpy(cfg.machine_id, machine_id, MACHINE_ID_MAX_LEN);
     cfg.machine_id[MACHINE_ID_MAX_LEN - 1] = '\0';
   }
@@ -71,6 +75,8 @@ namespace
     SYS_FREQ_ACCEL = cfg.plate_accel;
     DEBOUNCE_H_THRES = cfg.gate_debounce_rise < 1 ? 1 : cfg.gate_debounce_rise;
     DEBOUNCE_L_THRES = cfg.gate_debounce_fall < 1 ? 1 : cfg.gate_debounce_fall;
+    UNANSWERED_POLICY = cfg.unanswered_policy == 1 ? 1 : 0;
+    UNANSWERED_STOP_AFTER = cfg.unanswered_stop_after < 1 ? 1 : cfg.unanswered_stop_after;
     memcpy(machine_id, cfg.machine_id, MACHINE_ID_MAX_LEN);
     machine_id[MACHINE_ID_MAX_LEN - 1] = '\0';
   }
