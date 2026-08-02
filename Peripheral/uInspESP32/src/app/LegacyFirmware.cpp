@@ -7,6 +7,7 @@
 #include "config/MachineConfig.hpp"
 #include "driver/timer.h"
 #include <esp_task_wdt.h>
+#include "soc/rtc.h"
 #include <string>
 
 extern "C" {
@@ -2403,6 +2404,23 @@ void firmwareSetup()
 
   // Must run before the timer is armed: the pulse offsets and plate frequency
   // it restores are what everything below derives its timing from.
+  // XTAL autodetect guard: this board's 40MHz crystal is occasionally
+  // misdetected as 26MHz on noisy boots (EN bounce), which shifts the whole
+  // clock tree by 26/40 -- UART 115200 becomes an unintelligible 74880 and
+  // every timing constant is silently wrong. Detect and re-boot until the
+  // detection lands right (bounded by an RTC-memory counter so a genuinely
+  // 26MHz board could never brick).
+  {
+    static RTC_NOINIT_ATTR uint32_t xtal_retry;
+    if(esp_reset_reason()==ESP_RST_POWERON) xtal_retry=0;
+    int mhz=(int)rtc_clk_xtal_freq_get();
+    if(mhz!=40 && xtal_retry<5)
+    {
+      xtal_retry++;
+      esp_restart();
+    }
+  }
+
   MachineConfig::begin();
 
   // Task watchdog on the main loop: a wedged parser/deadlock must reboot
@@ -2932,6 +2950,7 @@ void genMachineSetup(JsonDocument &jdoc)
     int rr=(int)esp_reset_reason();
     jdoc["reset_reason"]=rr;
     jdoc["reset_reason_name"]=(rr>=0 && rr<11)?rr_names[rr]:"?";
+    jdoc["xtal_mhz"]=(int)rtc_clk_xtal_freq_get();
   }
 
 

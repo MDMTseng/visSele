@@ -78,7 +78,18 @@ class UInspLink:
     def __init__(self, port, baud=115200, verbose=False):
         self.port = port
         self.baud = baud
-        self.ser = serial.Serial(port, baud, timeout=0.05)
+        # Pin the modem lines BEFORE opening -- both DEASSERTED. This
+        # adapter wires RTS straight to EN (no auto-program transistor pair),
+        # so an asserted RTS holds the chip in reset for as long as the port
+        # is open. Deasserted lines = EN released, IO0 high: the board keeps
+        # running across our opens.
+        self.ser = serial.Serial()
+        self.ser.port = port
+        self.ser.baudrate = baud
+        self.ser.timeout = 0.05
+        self.ser.dtr = False
+        self.ser.rts = False
+        self.ser.open()
         self.verbose = verbose
         self._id = 1000
         self._pending = {}
@@ -162,8 +173,13 @@ class UInspLink:
             while not self._stop and time.time() < deadline:
                 if os.path.exists(self.port):
                     try:
-                        self.ser = serial.Serial(self.port, self.baud,
-                                                 timeout=0.05)
+                        self.ser = serial.Serial()
+                        self.ser.port = self.port
+                        self.ser.baudrate = self.baud
+                        self.ser.timeout = 0.05
+                        self.ser.dtr = False
+                        self.ser.rts = False
+                        self.ser.open()
                         # A freshly re-enumerated adapter often needs a beat
                         # before it accepts I/O, and the MCU it just power-cycled
                         # needs to finish booting.
@@ -2330,6 +2346,155 @@ def _grill_teardown(link, orig):
         link.send({"type": "set_setup", **restore}, timeout=3.0)
 
 
+
+
+# --- resetchaos: hard-reset survival, via the EN<-D5 wire -----------------
+
+def resetchaos(link, rep, params, rounds):
+    """Hard-reset the board at random moments and prove it always comes back
+    clean. The trigger is the adapter's own RTS->EN line (the same circuit
+    esptool uses): EN goes low while RTS is asserted and DTR is not, so a
+    dtr=0 / rts-pulse sequence is electrically the reset button -- no extra
+    wiring, no serial command racing its own death.
+
+    Round phases: idle plate, spin-up ramp, mid-stream sorting, and the
+    nastiest -- mid-NVS-save. Every round must end with: board back within
+    10s, reset_reason POWERON, config image identical (NVS blob atomic),
+    every actuator at logical OFF, and a working sort afterwards.
+    """
+    import random as _r
+    plan = grill_plan(params)
+    print("\n\033[1m== Resetchaos: %d hard resets via EN<-D5 ==\033[0m"
+          % rounds)
+
+    def _revive(t=12.0):
+        deadline = time.time() + t
+        while time.time() < deadline:
+            try:
+                link.ser.write(b'{"type":"RESET"}')
+            except Exception:
+                pass
+            time.sleep(0.4)
+            link.drain_async()
+            if link.send({"type": "ping"}, timeout=1.0):
+                return True
+        return False
+
+    def _push_cfg():
+        link.send({"type": "set_setup", "plate_freq": 0,
+                   "plate_accel": plan["accel"],
+                   "min_detect_sep_us": plan["sep_us"] or 4000,
+                   "pulse_min_width": 0,
+                   "pulse_max_width": plan["max_w"] or 1600,
+                   "stage_pulse_offset": plan["spo"]}, timeout=3.0)
+
+    def _yank():
+        try:
+            link.ser.rts = True      # RTS is wired to EN: chip in reset
+            time.sleep(0.15)
+            link.ser.rts = False     # EN released: chip boots
+        except Exception:
+            pass
+
+    # Baseline: one clean boot, push+persist the reference config once.
+    if not _revive():
+        rep.add("R.0", "board alive to start", False, "no contact")
+        return
+    _push_cfg()
+    time.sleep(0.8)
+    link.send({"type": "save_setup"}, timeout=5.0)
+    base = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    base_crc = base.get("cfg_crc")
+    io_on = base.get("io_on_level") or {}
+    rep.add("R.0", "baseline config persisted", base_crc is not None,
+            f"cfg_crc={base_crc}")
+
+    pins = {"L1A": 16, "CAM1": 17, "L2A": 18, "CAM2": 19,
+            "SEL1": 25, "SEL2": 26, "SEL3": 32, "FEEDER": 21}
+    phases = ["idle", "ramp", "stream", "save"]
+    fails = []
+    for i in range(rounds):
+        phase = phases[i % len(phases)]
+        # -- arrange the phase, then yank at its most awkward moment
+        if phase in ("ramp", "stream"):
+            link.send({"type": "set_setup", "plate_freq": plan["freq"]},
+                      timeout=2.0)
+            link.send({"type": "stepper_enable"}, timeout=2.0)
+            link.send({"type": "enter_insp_mode"}, timeout=2.0)
+            if phase == "ramp":
+                time.sleep(0.2)          # mid-acceleration
+            else:
+                _wait_at_speed(link)
+                link.drain_async()
+                for _ in range(4):       # parts in flight, verdicts pending
+                    link.send_nowait({"type": "trig_phantom_pulse"})
+                    time.sleep(0.05)
+        elif phase == "save":
+            link.send({"type": "set_setup", "plate_freq": 0}, timeout=2.0)
+            time.sleep(0.8)
+            link.send_nowait({"type": "save_setup"})
+            time.sleep(_r.uniform(0.0, 0.02))   # land inside the NVS write
+        _yank()
+        t0 = time.time()
+        alive = _revive()
+        dt = time.time() - t0
+        g = link.send({"type": "get_setup"}, timeout=3.0) or {}
+        rr = g.get("reset_reason_name")
+        crc = g.get("cfg_crc")
+        rd = link.send({"type": "pin_read",
+                        "pins": [pins[n] for n in pins]}, timeout=2.0) or {}
+        vals = rd.get("vals") or []
+        hot = [n for n, v in zip(pins, vals) if v == io_on.get(n, 1)]
+        st, _stat = _state(link)
+        probs = []
+        if not alive:
+            probs.append("no revival")
+        if rr != "POWERON":
+            probs.append(f"reset_reason={rr}")
+        if crc != base_crc:
+            probs.append(f"cfg_crc {base_crc}->{crc}")
+        if not vals or hot:
+            probs.append(f"outputs energised: {hot or 'unreadable'}")
+        if st != ST_IDLE:
+            probs.append(f"state={st}")
+        tag = "ok" if not probs else "; ".join(probs)
+        print("  [%2d/%d] %-6s revive %.1fs  %s"
+              % (i + 1, rounds, phase, dt, tag), flush=True)
+        if probs:
+            fails.append((i + 1, phase, tag))
+    rep.add("R.1", f"{rounds} hard resets across all phases survive clean",
+            not fails, f"fails={fails[:4]}" if fails else
+            f"all {rounds} rounds: POWERON, cfg intact, outputs OFF, IDLE")
+
+    # -- prove the machine still sorts after the ordeal
+    link.send({"type": "set_setup", "plate_freq": plan["freq"]}, timeout=2.0)
+    link.send({"type": "stepper_enable"}, timeout=2.0)
+    link.send({"type": "enter_insp_mode"}, timeout=2.0)
+    _wait_at_speed(link)
+    link.drain_async()
+    answered = set()
+    for _ in range(5):
+        link.send({"type": "trig_phantom_pulse"}, timeout=2.0)
+        t_end = time.time() + 0.4
+        while time.time() < t_end:
+            for _ts, m in link.drain_async():
+                if m.get("type") == "cam_trig" and m.get("tid") not in answered:
+                    answered.add(m.get("tid"))
+                    link.send_nowait({"type": "report", "tid": m["tid"],
+                                      "cat": CAT_NA})
+            time.sleep(0.005)
+    time.sleep(plan["transit_s"] + 0.5)
+    st, stat = _state(link)
+    rep.add("R.2", "sorts normally after the last reset",
+            st == ST_READY and not _errors_of(stat),
+            f"answered={len(answered)} state={st}"
+            f" ERROR_HIST={_errors_of(stat)}")
+    link.send({"type": "exit_insp_mode"}, timeout=2.0)
+    time.sleep(2.0)
+    link.send({"type": "set_setup", "plate_freq": 0}, timeout=2.0)
+
+
+
 # --- probe: the protocol + camera-trigger surface -------------------------
 
 def probe(link, rep):
@@ -3129,6 +3294,13 @@ def main():
     gr.add_argument("--burst-hz", type=float, default=100.0,
                     help="spacing inside a burst (100 = 10ms apart)")
     gr.add_argument("--seed", type=int, default=None)
+    rc = sub.add_parser("resetchaos",
+                        help="hard-reset the board at random moments via the "
+                             "EN<-D5 wire; must always come back clean "
+                             "(POWERON, config intact, outputs OFF, sorts)")
+    rc.add_argument("--params", default="machine_params.json")
+    rc.add_argument("--rounds", type=int, default=8)
+
     gr.add_argument("--seconds", type=float, default=30.0,
                     help="length of the sustained stream phase; 0 = run "
                          "FOREVER (soak: 30s heartbeat, survives USB drops, "
@@ -3149,9 +3321,23 @@ def main():
     rep = Report()
     # A previous run may have left the protocol error latched, which blocks
     # every command except RESET.
+    # Opening the port resets the board through the modem-line bounce; give
+    # the boot ROM + app startup a clear runway before first contact.
+    time.sleep(2.5)
     link.ser.write(b'{"type":"RESET"}')
-    time.sleep(0.3)
+    time.sleep(0.4)
     link.drain_async()
+    # Do not start a subcommand mid-boot. Wait until it
+    # actually answers (RESET again each try: the escape hatch is idempotent).
+    for _ in range(12):
+        if link.send({"type": "ping"}, timeout=0.8):
+            break
+        try:
+            link.ser.write(b'{"type":"RESET"}')
+        except Exception:
+            pass
+        time.sleep(0.5)
+        link.drain_async()
 
     try:
         if args.cmd == "send":
@@ -3198,6 +3384,14 @@ def main():
                   burst_count=args.burst_count,
                   report_delay_ms=delay_ms, report_shuffle=args.report_shuffle,
                   expect_fault=args.expect_fault)
+        elif args.cmd == "resetchaos":
+            link.auto_reconnect = True
+            pdir = os.path.dirname(os.path.abspath(__file__))
+            ppath = args.params if os.path.exists(args.params) \
+                else os.path.join(pdir, args.params)
+            with open(ppath) as f:
+                params = json.load(f)
+            resetchaos(link, rep, params, args.rounds)
         elif args.cmd == "grill":
             link.auto_reconnect = True
             pdir = os.path.dirname(os.path.abspath(__file__))
