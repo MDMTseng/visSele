@@ -124,6 +124,7 @@ def make_link(fake, auto_reconnect=False):
     link.rx_crc_fail = 0
     link.event_gaps = 0
     link._last_q = None
+    link.read_errors = 0
     from collections import deque
     link._async = deque(maxlen=1000)
     link._async_ev = threading.Event()

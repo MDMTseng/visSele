@@ -96,6 +96,11 @@ class UInspLink:
         self.rx_crc_fail = 0
         self.event_gaps = 0
         self._last_q = None
+        # Consecutive serial read failures. A port NODE that exists but whose
+        # reads throw "Device not configured" is a ZOMBIE bridge -- enumerated
+        # shell, dead endpoints -- and must not be mistaken for a firmware
+        # hang (that mistake ended a 1.3M-part soak).
+        self.read_errors = 0
         self._stop = False
         # Auto-reconnect: when on, a dropped port is transparently reopened
         # instead of killing the run. The write path signals the reopen to
@@ -220,7 +225,9 @@ class UInspLink:
             try:
                 chunk = self.ser.read(4096)
                 fails = 0
+                self.read_errors = 0
             except Exception as exc:
+                self.read_errors = getattr(self, "read_errors", 0) + 1
                 # A transient driver hiccup must not silently kill reception:
                 # writes would keep working, the board would keep executing
                 # commands, and every reply would just vanish for the rest of
@@ -1956,6 +1963,7 @@ def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
     fired = 0
     bursts = 0
     noreply = 0
+    reset_tried = False
     last_lat = {}
     fault = False
 
@@ -1982,6 +1990,15 @@ def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
         seg_objs += len(set(seen))
         seen.clear()
         answered.clear()
+        # The protocol may be LATCHED by garbage bytes from the drop/sleep
+        # transition -- while latched everything except literal RESET is
+        # eaten. Fire the escape hatch first, always.
+        try:
+            link.ser.write(b'{"type":"RESET"}')
+            time.sleep(0.4)
+            link.drain_async()
+        except Exception:
+            pass
         g = link.send({"type": "get_setup"}, timeout=3.0) or {}
         if "reset_reason" in g:
             print("  [board reset reason: %s (%s)]"
@@ -2038,6 +2055,41 @@ def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
                                 noreply = 0
                                 next_fire = next_peek = time.time()
                                 continue
+                        if endless and link.read_errors >= 3:
+                            # Node exists but reads die: zombie bridge. Only a
+                            # TRUE re-enumeration (node vanishes, then returns
+                            # -- usually a physical replug) can revive it.
+                            print("  [ZOMBIE USB BRIDGE: node present, reads"
+                                  " dead -- REPLUG THE USB CABLE; waiting for"
+                                  " a true re-enumeration]", flush=True)
+                            sig0 = link._port_sig()
+                            while not (link._stop or
+                                       link._port_sig() in (None,)):
+                                time.sleep(1.0)
+                            while link._port_sig() is None:
+                                time.sleep(1.0)
+                            if link._reopen_serial():
+                                reconnects += 1
+                                _reestablish()
+                                noreply = 0
+                                next_fire = next_peek = time.time()
+                                continue
+                        if endless and not reset_tried:
+                            # A latched protocol also looks like silence.
+                            # One RESET + retry before calling it a hang.
+                            print("  [no reply -- firing the RESET escape"
+                                  " hatch once before judging]", flush=True)
+                            reset_tried = True
+                            try:
+                                link.ser.write(b'{"type":"RESET"}')
+                                time.sleep(0.5)
+                                link.drain_async()
+                            except Exception:
+                                pass
+                            _reestablish()
+                            noreply = 0
+                            next_fire = next_peek = time.time()
+                            continue
                         print("  [board unresponsive, port node intact --"
                               " treating as firmware hang]", flush=True)
                         _dump_raw_tail(link, "before hang")
@@ -2045,6 +2097,7 @@ def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
                         break
                     continue
                 noreply = 0
+                reset_tried = False
                 reg = ((st.get("pipe") or {}).get("registered")) or 0
                 max_reg = max(max_reg, reg)
                 last_lat = st.get("report_latency") or last_lat
@@ -2198,6 +2251,15 @@ def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
     # rejected by a 30ms minimum-width filter; an 80ms LOW must register,
     # announce once and sort cleanly.
     gate_pin = 27
+    try:
+        _grill_gate_test(link, rep, plan, orig, freq, tick_hz)
+    except (LinkReset, LinkDead):
+        rep.add("G.10", "real gate path (link dropped mid-test)", None,
+                "USB link reset during the gate-pin drill; inconclusive")
+
+
+def _grill_gate_test(link, rep, plan, orig, freq, tick_hz):
+    gate_pin = 27
     minw = int(0.030 * tick_hz)
     maxw = int(0.500 * tick_hz)
     link.send({"type": "set_setup", "pulse_min_width": minw,
@@ -2249,6 +2311,13 @@ def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
               timeout=2.0)
     time.sleep(max(2.0, freq / plan["accel"] + 1.0))
 
+    _grill_teardown(link, orig)
+
+
+def _grill_teardown(link, orig):
+    orig_freq = orig.get("plate_freq")
+    orig_accel = orig.get("plate_accel")
+    orig_spo = dict(orig.get("stage_pulse_offset") or {})
     # -- teardown: put the board back the way we found it ------------------
     restore = {}
     if orig_freq is not None:

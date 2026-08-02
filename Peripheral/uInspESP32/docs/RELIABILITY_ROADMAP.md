@@ -69,7 +69,11 @@ Klipper/LinuxCNC 開源機控、PLC 工法)。結論先講:**核心架構就是�
       持續實證。**翻案條件**:未來引入 OTA / WiFi / flash 日誌任一者。
 - [ ] 清 comm 路徑 std::string(長月運轉頭號殺手 = 堆碎片)
 - [ ] device 端故障注入鉤子(跳 trigger / 竄改 tid⋯)= pipeline 的 mutation testing
-- [ ] 斷電注入 rig(USB relay 斬 5V)+ powerchaos 子命令
+- [ ] **resetchaos 子命令**(零硬體,已規劃待做):用現成的 RTS→EN 線在
+      隨機時點(含 save_setup 中途)硬重啟,斷言 reset_reason/cfg_crc/
+      輸出 OFF/狀態機歸零/可重進 READY —— 覆蓋斷電測試 ~七成價值
+- [ ] 斷電注入 rig(USB relay 斬 5V)+ powerchaos 子命令(補 flash
+      斷電損毀與 brownout 路徑,resetchaos 蓋不到的三成)
 - [ ] NVS 磨耗計數;flash 溫度遙測
 - [ ] v2 emulator 接 CI(chaos/grill 語意每 commit 跑)
 
