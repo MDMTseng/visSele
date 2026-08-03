@@ -223,7 +223,7 @@ class VisionLoop:
         self.stats["lat_sum"] += lat
         self.stats["lat_max"] = max(self.stats["lat_max"], lat)
         self.stats["ok" if cat == CAT_OK else "ng" if cat == CAT_NG else "na"] += 1
-        self.rows.append((tid, verdict, frac, lat))
+        self.rows.append((tid, verdict, frac, lat, obj.get("gate_pulse")))
         print("  tid %-6s %-8s dark %-7s answered in %5.1f ms  (%.0f%% of window)"
               % (tid, verdict, "%.3f%%" % (frac * 100) if frac is not None else "-",
                  lat, 100.0 * lat / self.window_ms))
@@ -320,9 +320,31 @@ class VisionLoop:
         print("device counters:", json.dumps(st.get("count", {})))
         print("device state:", st.get("state"), " pipe:", json.dumps(st.get("pipe", {})))
         if s["no_frame"] or s["unlit"] or s["fid_gaps"]:
-            print("WARNING: the camera did not answer every trigger. At %s fps max"
-                  " it cannot, above that rate -- shrink --roi-height or slow the"
-                  " part rate." % (("%.1f" % self.max_fps) if self.max_fps else "?"))
+            # Two distinct causes, and they need different fixes -- say which.
+            gaps = []
+            prev = None
+            for row in self.rows:
+                gp = row[4]
+                if gp is not None and prev is not None and row[1] == "NO-FRAME":
+                    gaps.append(gp - prev)
+                if gp is not None:
+                    prev = gp
+            close = [g for g in gaps if g is not None and g <= self.args.light_ticks]
+            print("WARNING: %d object(s) got no picture." % (s["no_frame"] + s["unlit"]))
+            if close:
+                print("  %d of them arrived within the %d-tick light window of the"
+                      " previous object. With the trigger wired to the backlight,"
+                      " an object landing while the light is already ON produces no"
+                      " rising edge and therefore no frame. Narrow --light-ticks (the"
+                      " measured floor is ~100us of light) or drive the camera from"
+                      " its own CAM pin." % (len(close), self.args.light_ticks))
+            if s["unlit"]:
+                print("  %d frame(s) came back unlit -- that IS the camera being"
+                      " triggered faster than %.1f fps."
+                      % (s["unlit"], self.max_fps or 0))
+            if gaps and not close and not s["unlit"]:
+                print("  spacing to the previous object: %s ticks (light window is %d)"
+                      % (gaps, self.args.light_ticks))
 
 
 def main():
