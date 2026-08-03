@@ -894,9 +894,16 @@ CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
   // the payload, on a link whose bandwidth is exactly what decides whether the
   // camera can accept the next trigger at all. The pipeline pairs one frame to
   // one part, so anything but 1 also desynchronises that pairing.
+  // Acquisition-control nodes are locked while the camera is grabbing --
+  // writing this one mid-stream is rejected by the device. Stop, write, restore.
+  const bool burst_was_running = acquisition_started;
+  if (burst_was_running) StopAquisition();
+
   int burst_ret = SetIntValue_w_Check("AcquisitionBurstFrameCount", 1);
   if (MV_OK != burst_ret)
     LOGI("AcquisitionBurstFrameCount=1: ret=%x (harmless if the node is absent)", burst_ret);
+
+  if (burst_was_running) StartAquisition();
 
   int nRet = SetEnumValue("TriggerMode", MV_TRIGGER_MODE_ON);
 

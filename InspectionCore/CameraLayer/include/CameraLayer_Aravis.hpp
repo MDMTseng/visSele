@@ -58,6 +58,29 @@ protected:
   // number after a payload change. It was two independent literal 8s.
   static constexpr int STREAM_BUFFER_COUNT = 8;
 
+  // Device-timestamp scaling.
+  //
+  // arv_buffer_get_timestamp() is NOT a fixed unit across cameras: Aravis
+  // normalises GigE timestamps to nanoseconds, but a USB3Vision device's
+  // timestamp comes through in whatever the device uses. Measured on a
+  // MV-CA050-12UC: 99.957 MHz, i.e. 10 ns ticks -- so the old code, which
+  // assigned the raw value straight to timeStamp_us, was out by 100x.
+  //
+  // Rather than hardcode a divisor (which would then be wrong for GigE), work
+  // it out at runtime: every buffer also carries a host system timestamp in
+  // nanoseconds, so the ratio of the two elapsed times IS the tick rate.
+  // Calibrate over the first few frames, then snap to the nearest real-world
+  // clock convention so the arithmetic stays exact instead of inheriting the
+  // noise in the estimate.
+  static constexpr int TS_CALIB_FRAMES = 8;
+  uint64_t _ts_calib_dev0 = 0;      // first device timestamp seen
+  uint64_t _ts_calib_sys0 = 0;      // matching host timestamp (ns)
+  int      _ts_calib_n = 0;
+  double   _ts_ticks_per_us = 1000.0;  // assume ns until proven otherwise
+  bool     _ts_calibrated = false;
+  // Returns microseconds, feeding the calibration as it goes.
+  uint64_t deviceTimestampToUs(uint64_t dev_ticks, uint64_t sys_ns);
+
   static void s_STREAM_NEW_BUFFER_CB(ArvStream *stream, CameraLayer_Aravis *self);
   void STREAM_NEW_BUFFER_CB(ArvStream *stream);
   static void s_STREAM_CONTROL_LOST_CB(ArvStream *stream, CameraLayer_Aravis *self);

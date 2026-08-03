@@ -107,6 +107,52 @@ void CameraLayer_Aravis::pushErrorCode(uint64_t code)
   error_code_list.push_back(code);
 }
 
+// See the header for why this is calibrated rather than hardcoded.
+uint64_t CameraLayer_Aravis::deviceTimestampToUs(uint64_t dev_ticks, uint64_t sys_ns)
+{
+  if (!_ts_calibrated)
+  {
+    if (_ts_calib_n == 0)
+    {
+      _ts_calib_dev0 = dev_ticks;
+      _ts_calib_sys0 = sys_ns;
+      _ts_calib_n = 1;
+    }
+    else if (++_ts_calib_n >= TS_CALIB_FRAMES &&
+             dev_ticks > _ts_calib_dev0 && sys_ns > _ts_calib_sys0)
+    {
+      double dev_d = (double)(dev_ticks - _ts_calib_dev0);
+      double sys_us = (double)(sys_ns - _ts_calib_sys0) / 1000.0;
+      double est = (sys_us > 0.0) ? dev_d / sys_us : 0.0;
+
+      // Snap to the conventions that actually exist. The true rate is one of
+      // these; snapping keeps the divisor exact instead of baking in the
+      // (host-clock-limited) error of the estimate.
+      static const double kRates[] = { 1000.0, 100.0, 1.0 };  // ns, 10ns, us ticks
+      double best = 1000.0, best_err = 1e30;
+      for (double r : kRates)
+      {
+        double e = (est > r) ? est / r : r / est;
+        if (e < best_err) { best_err = e; best = r; }
+      }
+      // Only accept a plausible match; otherwise keep the ns default and say so.
+      if (est > 0.0 && best_err < 1.5)
+      {
+        _ts_ticks_per_us = best;
+        LOGI("device timestamp: measured %.4f ticks/us -> using %.0f (%.1f ns/tick)",
+             est, best, 1000.0 / best);
+      }
+      else
+      {
+        LOGE("device timestamp: measured %.4f ticks/us matches no known convention "
+             "-- falling back to nanoseconds; frame timestamps may be mis-scaled", est);
+      }
+      _ts_calibrated = true;
+    }
+  }
+  return (uint64_t)(dev_ticks / _ts_ticks_per_us);
+}
+
 CameraLayer::FrameExtractPixelFormat CameraLayer_Aravis::GetFrameFormat()
 {
   // _frame_cache_buffer is only live inside the EV_IMG callback; everywhere
@@ -407,9 +453,11 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
 
     gint x, y, w, h;
     arv_buffer_get_image_region(buffer, &x, &y, &w, &h);
-    guint64 timeStamp_us = arv_buffer_get_timestamp(buffer);
+    // Raw device ticks, whose unit is device-specific -- converted, not assumed.
+    guint64 dev_ticks = arv_buffer_get_timestamp(buffer);
+    guint64 sys_ns    = arv_buffer_get_system_timestamp(buffer);
     frameInfo _fi;
-    _fi.timeStamp_us = timeStamp_us;
+    _fi.timeStamp_us = deviceTimestampToUs(dev_ticks, sys_ns);
     _fi.offset_x = x;
     _fi.offset_y = y;
     _fi.width = w;
@@ -1177,7 +1225,13 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
   // the payload, on a link whose bandwidth is exactly what decides whether the
   // camera can accept the next trigger at all. The pipeline pairs one frame to
   // one part, so anything but 1 also desynchronises that pairing.
+  // Acquisition-control nodes are locked while the camera is streaming --
+  // writing this one mid-stream fails with a USB3Vision write_memory error and
+  // leaves the control endpoint unhappy. Stop, write, restore.
   {
+    const bool burst_was_running = acquisition_started;
+    if (burst_was_running) StopAquisition();
+
     GError *burst_err = NULL;
     arv_camera_set_integer(camera, "AcquisitionBurstFrameCount", 1, &burst_err);
     if (burst_err)
@@ -1186,6 +1240,8 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
            burst_err->message);
       g_clear_error(&burst_err);
     }
+
+    if (burst_was_running) StartAquisition();
   }
 
   //0 for continuous, 1 for soft trigger, 2 for HW trigger
