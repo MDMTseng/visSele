@@ -514,6 +514,46 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     _fi.frameNum = (uint32_t)arv_buffer_get_frame_id(buffer);
     _fi.frameNumValid = true;
 
+    // Exposure-floor watch. The interval is taken from the DEVICE timestamp,
+    // not the host clock: host arrival is smeared by transport and scheduling,
+    // while the device stamp is when the sensor actually exposed -- which is
+    // precisely the quantity that gets pinned to the floor.
+    //
+    // Only once the timestamp scale has settled. deviceTimestampToUs() starts
+    // out assuming nanosecond ticks and corrects itself over the first frames,
+    // so intervals before that are off by the calibration factor (10x on this
+    // body) and the frame where it snaps shows a nonsense jump -- which the
+    // floor check would read as a saturation episode.
+    if (_ts_calibrated && _prev_frame_us != 0 &&
+        _fi.timeStamp_us > _prev_frame_us)
+    {
+      _fi.interval_us = _fi.timeStamp_us - _prev_frame_us;
+      if (_floor_us > 0.0 &&
+          (double)_fi.interval_us <= _floor_us * (1.0 + SATURATION_TOL))
+      {
+        _fi.rateSaturated = true;
+        _saturated_run++;
+        if (_saturated_run >= SATURATION_RUN_ALERT && !_saturation_reported)
+        {
+          _saturation_reported = true;
+          LOGE("camera is being triggered faster than it can expose: %d frames "
+               "in a row at the %.0fus floor (ResultingFrameRate limit). "
+               "Triggers are being delayed or silently dropped -- frame "
+               "timestamps no longer identify the trigger that caused them.",
+               _saturated_run, _floor_us);
+          pushErrorCode(130130140);
+        }
+      }
+      else
+      {
+        _saturated_run = 0;
+        _saturation_reported = false;
+      }
+    }
+    // Left at 0 until the scale is trustworthy, so the first interval measured
+    // after calibration cannot straddle the change.
+    _prev_frame_us = _ts_calibrated ? _fi.timeStamp_us : 0;
+
     ArvPixelFormat format = arv_buffer_get_image_pixel_format	(_frame_cache_buffer);
     if(format==ARV_PIXEL_FORMAT_MONO_8)
     {
@@ -948,6 +988,10 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   else
   {
     acquisition_started=true;
+    // This path starts acquisition inline instead of via StartAquisition(), so
+    // it has to arm the floor watch itself -- the same omission that left
+    // AcquisitionBurstFrameCount at its factory default here for so long.
+    refreshExposureFloor();
   }
 
   logCameraState("after-ctor");
@@ -1753,6 +1797,37 @@ CameraLayer::status CameraLayer_Aravis::StopAquisition()
   }
   return CameraLayer::ACK;
 }
+// The exposure floor moves with ROI and pixel format, so it has to be re-read
+// every time acquisition starts rather than sampled once at construction.
+// ResultingFrameRate is what the camera itself says it can sustain with the
+// current settings; measured against hardware triggers it is exact, not
+// advisory -- triggers spaced 1ms above it are honoured and 1ms below it are
+// clamped. Exposure time only enters once it exceeds the readout time
+// (full frame: no effect until ~40ms), so this covers that case too.
+void CameraLayer_Aravis::refreshExposureFloor()
+{
+  _prev_frame_us = 0;
+  _saturated_run = 0;
+  _saturation_reported = false;
+  _floor_us = 0.0;
+  if (!camera) return;
+  GError *err = NULL;
+  double rfr = arv_camera_get_float(camera, "ResultingFrameRate", &err);
+  if (err)
+  {
+    // Not every body exposes it. Skip the check rather than invent a floor.
+    LOGI("ResultingFrameRate unavailable (%s); exposure-floor watch disabled",
+         err->message);
+    g_clear_error(&err);
+    return;
+  }
+  if (rfr > 0.0)
+  {
+    _floor_us = 1000000.0 / rfr;
+    LOGI("exposure floor: %.0fus (ResultingFrameRate %.2f fps)", _floor_us, rfr);
+  }
+}
+
 CameraLayer::status CameraLayer_Aravis::StartAquisition()
 {
   if (!camera) return CameraLayer::NAK;
@@ -1782,6 +1857,7 @@ CameraLayer::status CameraLayer_Aravis::StartAquisition()
     return CameraLayer::NAK;
   }
   acquisition_started = true;
+  refreshExposureFloor();
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   return CameraLayer::ACK;
 }

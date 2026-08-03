@@ -84,6 +84,27 @@ protected:
   // Log what the camera actually settled on (not what we asked for).
   void logCameraState(const char *when);
 
+  // Exposure-floor watch. See frameInfo::rateSaturated for what it detects and
+  // why nothing else can: the camera reports no error when it is being
+  // triggered faster than it can expose, so the only evidence is the frame
+  // interval collapsing onto 1/ResultingFrameRate and staying there.
+  //
+  // Refreshed whenever acquisition starts, since ROI and pixel format both
+  // move the floor. 0 when the camera does not expose ResultingFrameRate, in
+  // which case the check is skipped rather than guessed at.
+  double   _floor_us = 0.0;
+  uint64_t _prev_frame_us = 0;
+  int      _saturated_run = 0;
+  bool     _saturation_reported = false;
+  // Within this much of the floor counts as sitting on it. The measured
+  // spread while saturated is ~0 (40097us against a 40108us floor), so the
+  // margin only has to cover timestamp quantisation.
+  static constexpr double SATURATION_TOL = 0.02;   // 2%
+  // One frame at the floor is normal if the machine simply runs near the
+  // limit; a run of them is the failure. Log once per episode, not per frame.
+  static constexpr int SATURATION_RUN_ALERT = 3;
+  void refreshExposureFloor();
+
   static void s_STREAM_NEW_BUFFER_CB(ArvStream *stream, CameraLayer_Aravis *self);
   void STREAM_NEW_BUFFER_CB(ArvStream *stream);
   static void s_STREAM_CONTROL_LOST_CB(ArvStream *stream, CameraLayer_Aravis *self);

@@ -58,6 +58,25 @@ class CameraLayer{
       // cannot supply it.
       uint32_t frameNum = 0;
       bool frameNumValid = false;
+      // Time since the previous frame's exposure, 0 when unknown (first frame,
+      // or a driver with no usable timestamp).
+      uint64_t interval_us = 0;
+      // The camera hit its exposure floor on this frame.
+      //
+      // A sensor cannot start an exposure sooner than 1/ResultingFrameRate
+      // after the previous one. Trigger it faster and the camera does NOT say
+      // so: it delays the exposure to that floor if it has buffer room, and
+      // silently refuses the trigger if it does not -- with no error and with
+      // frameNum staying contiguous, because the refused frames were never
+      // exposed. Measured on a MV-CA050-12UC at full frame (floor 40108us):
+      // triggers 41ms apart are timestamped exactly, 40ms and closer all come
+      // back at the floor, and closer than 20ms also lose a trigger outright.
+      //
+      // So when this is set, timeStamp_us is the truth about the EXPOSURE but
+      // no longer about the trigger that asked for it -- it can sit tens of ms
+      // late, and anything pairing frames to parts by time or by index is
+      // being fed a lie. It is the one warning the camera itself will not give.
+      bool rateSaturated = false;
     }frameInfo;
     /*// Camera's device information
     typedef struct
