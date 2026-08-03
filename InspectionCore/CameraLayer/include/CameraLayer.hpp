@@ -137,7 +137,11 @@ class CameraLayer{
       return "_CameraLayer_";
     }
 
-    FrameExtractPixelFormat GetFrameFormat()
+    // MUST stay virtual. Without it the derived layers' GetFrameFormat() only
+    // hid this one, so every consumer -- which holds cameras as CameraLayer&
+    // or CameraLayer* -- silently got this RGB default no matter what the
+    // sensor was actually delivering.
+    virtual FrameExtractPixelFormat GetFrameFormat()
     {
       return FrameExtractPixelFormat::RGB;
     }

@@ -82,10 +82,12 @@ void CameraLayer_Aravis::s_STREAM_NEW_BUFFER_CB(ArvStream *stream, CameraLayer_A
   self->STREAM_NEW_BUFFER_CB(stream);
 }
 
-void empty_stream(ArvStream *stream)
+// static: this was a global symbol in a file full of them, one collision away
+// from an ODR problem at link time.
+static void empty_stream(ArvStream *stream)
 {
   ArvBuffer *buffer = NULL;
-  while (buffer = arv_stream_try_pop_buffer(stream))
+  while ((buffer = arv_stream_try_pop_buffer(stream)) != NULL)
   {
     arv_stream_push_buffer(stream, buffer);
   }
@@ -93,8 +95,26 @@ void empty_stream(ArvStream *stream)
 }
 
 
+// Bounded because the base class never reads or clears error_code_list: on a
+// link that is dropping packets it grew by one entry per bad frame for the
+// lifetime of the process. Keeping the most recent entries is what a human
+// debugging a fault actually wants anyway.
+void CameraLayer_Aravis::pushErrorCode(uint64_t code)
+{
+  if (error_code_list.size() >= ERROR_LIST_MAX)
+    error_code_list.erase(error_code_list.begin(),
+                          error_code_list.begin() + (error_code_list.size() - ERROR_LIST_MAX / 2));
+  error_code_list.push_back(code);
+}
+
 CameraLayer::FrameExtractPixelFormat CameraLayer_Aravis::GetFrameFormat()
 {
+  // _frame_cache_buffer is only live inside the EV_IMG callback; everywhere
+  // else it is NULL, and this used to hand that NULL straight to Aravis.
+  if (_frame_cache_buffer == NULL)
+  {
+    return CameraLayer::FrameExtractPixelFormat::RGB;
+  }
 
   ArvPixelFormat format = arv_buffer_get_image_pixel_format	(_frame_cache_buffer);
 
@@ -359,6 +379,10 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
   {
     arv_camera_stop_acquisition(camera, NULL);
     acquisition_started=false;
+    // Cleared on every exit from here on: leaving a stale pointer to a buffer
+    // that has already gone back to the stream is how a later ExtractFrame
+    // ends up reading a frame the driver is busy refilling.
+    _frame_cache_buffer = NULL;
     empty_stream(stream);
     return;
   }
@@ -368,7 +392,8 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
   {
     LOGI("buffer pop failed...");
 
-    error_code_list.push_back(130130131);
+    _frame_cache_buffer = NULL;
+    pushErrorCode(130130131);
     callback(*this, CameraLayer::EV_ERROR, context);
     return;
   }
@@ -391,20 +416,37 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     _fi.height = h;
     _fi.pixel_size_mm=pixel_size_mm;
 
-    
+    // The camera's own frame counter. Aravis has always exposed this and the
+    // layer never passed it on, so consumers could not tell a frame that was
+    // never exposed from one lost in transport -- exactly the distinction
+    // needed when chasing missing frames. (The HikRobot layer already does
+    // this via nFrameNum; this brings Aravis in line.)
+    _fi.frameNum = (uint32_t)arv_buffer_get_frame_id(buffer);
+    _fi.frameNumValid = true;
+
     ArvPixelFormat format = arv_buffer_get_image_pixel_format	(_frame_cache_buffer);
     if(format==ARV_PIXEL_FORMAT_MONO_8)
     {
       _fi.channelCount=1;
       _fi.pixelBits=8;
     }
-    else if(true || format==ARV_PIXEL_FORMAT_BGR_8_PACKED || format==ARV_PIXEL_FORMAT_BAYER_GR_8 || format==ARV_PIXEL_FORMAT_BAYER_GB_8 || format==ARV_PIXEL_FORMAT_BAYER_RG_8)
+    // The `true ||` that used to lead this condition made the whole format
+    // test dead code: EVERY non-Mono8 format was reported as 8-bit 3-channel,
+    // including 16-bit, packed 12-bit and YUV. Consumers sized buffers from
+    // that lie. Only the formats ExtractFrame can actually decode are claimed
+    // as 3-channel now; anything else is reported honestly so the frame is
+    // rejected instead of misread.
+    else if(format==ARV_PIXEL_FORMAT_BGR_8_PACKED || format==ARV_PIXEL_FORMAT_BAYER_GR_8 || format==ARV_PIXEL_FORMAT_BAYER_GB_8 || format==ARV_PIXEL_FORMAT_BAYER_RG_8)
     {
       _fi.channelCount=3;//3 channel
       _fi.pixelBits=8*_fi.channelCount;
     }
-
-
+    else
+    {
+      LOGE("unsupported pixel format %0X -- ExtractFrame cannot decode it", format);
+      _fi.channelCount=0;
+      _fi.pixelBits=0;
+    }
 
     fi=_fi;
     callback(*this, CameraLayer::EV_IMG, context);
@@ -431,16 +473,17 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     )
     {
 
-      error_code_list.push_back(bufferStatus);
+      pushErrorCode(bufferStatus);
     }
     // data->error_count++;
-    frameInfo _fi = {
-      timeStamp_us : 0,
-      width : 0,
-      height : 0,
-      offset_x : 0,
-      offset_y : 0,
-    };
+    // Was a GNU `field: value` designated initializer -- a non-standard C++
+    // extension whose member order here did not even match the declaration
+    // order in CameraLayer.hpp, and which silently left the remaining fields
+    // (channelCount, pixelBits, pixel_size_mm, frameNum...) to the aggregate
+    // rules. A value-initialized frameInfo says exactly the same thing --
+    // "nothing valid in here" -- with none of the ambiguity, and it also
+    // clears frameNumValid, which the old form did not name at all.
+    frameInfo _fi = frameInfo();
     fi = _fi;
     callback(*this, CameraLayer::EV_ERROR, context);
   }
@@ -504,13 +547,20 @@ void CameraLayer_Aravis::s_STREAM_CONTROL_LOST_CB(ArvStream *stream, CameraLayer
 
 void CameraLayer_Aravis::STREAM_CONTROL_LOST_CB(ArvStream *stream)
 {
-  LOGI("CTRL lost %s",connection_data.name.c_str());
+  LOGE("CTRL lost %s",connection_data.name.c_str());
 
+  pushErrorCode(130130130);
 
-  // error_code_list.push_back(130130130);
-  error_code_list.push_back(130130130);
+  // The device is gone: every Aravis call from here on will fail. Record that
+  // in our own state so the acquisition_started flag stops claiming the camera
+  // is streaming, and drop the frame cache -- no further frames are coming and
+  // the buffer it points at will never be handed back.
+  acquisition_started = false;
+  _frame_cache_buffer = NULL;
 
-  
+  // NOTE: still no reconnect attempt here -- the layer only reports upward and
+  // leaves recovery to the owner, which is why a lost camera needs an explicit
+  // teardown and re-construct rather than healing itself.
   callback(*this, CameraLayer::EV_CTRL_LOST, context);
 
 
@@ -561,26 +611,63 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
 
   
   {
+    // This block used to query the camera's supported formats, log them, throw
+    // the array away without g_free (a leak per construction), and then force
+    // BGR_8_PACKED regardless of whether the camera offered it -- swallowing
+    // the error, so construction carried on with an unknown format. It also
+    // looped on n_pixel_formats without checking the array was non-NULL, so a
+    // failed query dereferenced NULL a garbage number of times.
     GError *err = NULL;
 
+    guint n_pixel_formats = 0;
+    gint64 *formats = arv_camera_dup_available_pixel_formats(camera, &n_pixel_formats, NULL);
+
+    bool has_mono8 = false, has_bgr8 = false;
+    if (formats != NULL)
     {
-      guint n_pixel_formats;
-      gint64 *format=arv_camera_dup_available_pixel_formats			(camera,&n_pixel_formats,NULL);
-      for(int i=0;i<n_pixel_formats;i++)
+      for (guint i = 0; i < n_pixel_formats; i++)
       {
-        LOGI("format:%0X",format[i]);
+        LOGI("supported pixel format: %0llX", (unsigned long long)formats[i]);
+        if ((ArvPixelFormat)formats[i] == ARV_PIXEL_FORMAT_MONO_8)       has_mono8 = true;
+        if ((ArvPixelFormat)formats[i] == ARV_PIXEL_FORMAT_BGR_8_PACKED) has_bgr8  = true;
       }
+      g_free(formats);
     }
-      
-    err=NULL;
-    arv_camera_set_pixel_format(camera,ARV_PIXEL_FORMAT_BGR_8_PACKED,&err);//this need to be before arv_camera_create_stream
+    else
+    {
+      LOGE("could not enumerate pixel formats -- leaving the camera on its current one");
+    }
+
+    // Preference unchanged (colour -> BGR8, mono stays Mono8); the difference
+    // is that it is now chosen from what the camera actually advertises rather
+    // than set blind. Must happen before arv_camera_create_stream.
+    if (has_bgr8)
+    {
+      arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_BGR_8_PACKED, &err);
+    }
+    else if (has_mono8)
+    {
+      arv_camera_set_pixel_format(camera, ARV_PIXEL_FORMAT_MONO_8, &err);
+    }
 
     if (err)
     {
-      LOGE("ERR code:%d msg:%s", err->code, err->message);
+      LOGE("set_pixel_format ERR code:%d msg:%s", err->code, err->message);
       g_clear_error(&err);
     }
 
+    // Loud if we end up somewhere ExtractFrame cannot decode: the symptom
+    // otherwise is a camera that opens cleanly and delivers nothing.
+    ArvPixelFormat settled = arv_camera_get_pixel_format(camera, NULL);
+    if (settled != ARV_PIXEL_FORMAT_MONO_8 &&
+        settled != ARV_PIXEL_FORMAT_BGR_8_PACKED &&
+        settled != ARV_PIXEL_FORMAT_BAYER_GR_8 &&
+        settled != ARV_PIXEL_FORMAT_BAYER_GB_8 &&
+        settled != ARV_PIXEL_FORMAT_BAYER_RG_8)
+    {
+      LOGE("camera settled on pixel format %0X, which ExtractFrame cannot decode "
+           "-- frames will be rejected", settled);
+    }
   }
 
   stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
@@ -641,7 +728,7 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   if (stream != NULL)
   { // GigE/USB3 best practice is 4-10 buffers to absorb consumer jitter; 2 was
     // too few and produced packet/frame drops under load.
-    for (int i = 0; i < 8; i++)
+    for (int i = 0; i < STREAM_BUFFER_COUNT; i++)
     {
       arv_stream_push_buffer(stream, arv_buffer_new(payloadSize, NULL));
     }
@@ -655,12 +742,21 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   }
 
 
+  // Keep the handler ids: without them the destructor had no way to detach
+  // these closures (both capture `this`) before freeing what they touch.
   //
-  g_signal_connect(stream, "new-buffer", G_CALLBACK(s_STREAM_NEW_BUFFER_CB), this);
+  // Note this arms the stream callback while the constructor is still running.
+  // That is survivable now only because every member the callback reads has a
+  // default initializer in the header -- previously they were indeterminate,
+  // and a takeCount that happened to be 0 stopped acquisition on frame one.
+  _sig_new_buffer = g_signal_connect(stream, "new-buffer",
+                                     G_CALLBACK(s_STREAM_NEW_BUFFER_CB), this);
 
   arv_stream_set_emit_signals(stream, TRUE);
-  g_signal_connect(arv_camera_get_device(camera), "control-lost",
-                   G_CALLBACK(s_STREAM_CONTROL_LOST_CB), this);
+  ArvDevice *ctrl_dev = arv_camera_get_device(camera);
+  if (ctrl_dev)
+    _sig_control_lost = g_signal_connect(ctrl_dev, "control-lost",
+                                         G_CALLBACK(s_STREAM_CONTROL_LOST_CB), this);
 
   arv_camera_set_acquisition_mode (camera, ARV_ACQUISITION_MODE_CONTINUOUS, NULL);
   arv_camera_set_exposure_time_auto (camera,ARV_AUTO_OFF,NULL);
@@ -777,12 +873,61 @@ void CameraLayer_Aravis::listDevices(vector<cam_info> &ret_infoList, bool tryOpe
 
 CameraLayer_Aravis::~CameraLayer_Aravis()
 {
-  g_object_unref(camera);
-  camera = NULL;
+  // The old body was two unrefs and nothing else, which left three ways for
+  // the stream thread to run against a destroyed object:
+  //   - acquisition was never stopped, so frames kept arriving;
+  //   - "new-buffer"/"control-lost" were never disconnected, and both closures
+  //     carry `this`;
+  //   - `camera` was unreffed FIRST, while the callback dereferences it
+  //     (arv_camera_stop_acquisition, arv_camera_get_payload).
+  // Silence the source, disconnect, and only then release -- camera last,
+  // since the stream holds the device.
+  if (stream)
+  {
+    arv_stream_set_emit_signals(stream, FALSE);
+    if (_sig_new_buffer && g_signal_handler_is_connected(stream, _sig_new_buffer))
+      g_signal_handler_disconnect(stream, _sig_new_buffer);
+    _sig_new_buffer = 0;
+  }
+
+  if (camera)
+  {
+    ArvDevice *dev = arv_camera_get_device(camera);
+    if (dev && _sig_control_lost && g_signal_handler_is_connected(dev, _sig_control_lost))
+      g_signal_handler_disconnect(dev, _sig_control_lost);
+    _sig_control_lost = 0;
+
+    if (acquisition_started)
+    {
+      arv_camera_stop_acquisition(camera, NULL);
+      acquisition_started = false;
+    }
+  }
+
+  // Nothing can be mid-callback past this point, so the cached pointer is
+  // meaningless and the chunk state can go.
+  _frame_cache_buffer = NULL;
+
+  if (chunk_parser)
+  {
+    g_object_unref(chunk_parser);
+    chunk_parser = NULL;
+  }
+  if (chunks)
+  {
+    g_strfreev(chunks);
+    chunks = NULL;
+  }
+
   if (stream)
   {
     g_object_unref(stream);
     stream = NULL;
+  }
+  if (camera)
+  {
+    g_object_unref(camera);
+    camera = NULL;
   }
 }
 CameraLayer::status CameraLayer_Aravis::SetMirror(int Dir, int en)
@@ -807,20 +952,37 @@ CameraLayer::status CameraLayer_Aravis::SetMirror(int Dir, int en)
 
   if(doChange==false)return CameraLayer::ACK;
 
-  arv_camera_stop_acquisition (camera, NULL);
+  // Restore what we found. This used to stop and then unconditionally start,
+  // so toggling a mirror on a stopped camera silently began streaming, and
+  // acquisition_started was never updated either way -- leaving the flag
+  // claiming "stopped" while the camera was actually running.
+  const bool was_running = acquisition_started;
+  if (was_running) StopAquisition();
+
+  GError *err = NULL;
   if(Dir==0)
   {
-    arv_camera_set_boolean(camera,"ReverseX",en,NULL);
+    arv_camera_set_boolean(camera,"ReverseX",en,&err);
   }
   if(Dir==1)
   {
-    arv_camera_set_boolean(camera,"ReverseY",en,NULL);
+    arv_camera_set_boolean(camera,"ReverseY",en,&err);
   }
 
+  CameraLayer::status ret = CameraLayer::ACK;
+  if (err)
+  {
+    // Previously all three Aravis calls here passed NULL for the error, so a
+    // camera that does not expose ReverseX/ReverseY failed silently and this
+    // still returned ACK.
+    LOGE("SetMirror dir %d: %s", Dir, err->message);
+    g_clear_error(&err);
+    ret = CameraLayer::NAK;
+  }
 
-  arv_camera_start_acquisition (camera, NULL);
+  if (was_running) StartAquisition();
 
-  return CameraLayer::ACK;
+  return ret;
 }
 CameraLayer::status CameraLayer_Aravis::SetROIMirror(int Dir, int en)
 {
@@ -875,6 +1037,16 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
   gint	w_inc = arv_camera_get_width_increment	(camera,NULL);
   gint	h_inc = arv_camera_get_height_increment	(camera,NULL);
 
+  // These four are used as divisors immediately below. Every call passes NULL
+  // for the GError, so a camera that does not expose the increment features
+  // returns 0 silently -- and 0 here was an integer division by zero, i.e. a
+  // SIGFPE that takes the whole process down on a ROI change. 1 means "no
+  // granularity constraint", which is the right fallback.
+  if (xo_inc <= 0) { LOGE("x offset increment unavailable, assuming 1"); xo_inc = 1; }
+  if (yo_inc <= 0) { LOGE("y offset increment unavailable, assuming 1"); yo_inc = 1; }
+  if (w_inc  <= 0) { LOGE("width increment unavailable, assuming 1");    w_inc  = 1; }
+  if (h_inc  <= 0) { LOGE("height increment unavailable, assuming 1");   h_inc  = 1; }
+
   x=x/xo_inc*xo_inc;
   y=y/yo_inc*yo_inc;
   w=w/w_inc*w_inc;
@@ -898,16 +1070,15 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
 
 
 
-  if(acquisition_started)
+  // Was a hardcoded 1000 ms sleep on the caller's thread, used as a "wait for
+  // the camera to settle" after stopping. StopAquisition() already does the
+  // same stop plus a 50 ms settle -- the value that was actually tuned for
+  // reliable parameter writes (see the comment on StopAquisition) -- so go
+  // through it instead of blocking a full second inside a setter.
+  const bool was_running = acquisition_started;
+  if (was_running)
   {
-    arv_camera_stop_acquisition (camera, &err);
-    if (err)
-    {
-      LOGI("ERR code:%d msg:%s", err->code, err->message);
-      g_clear_error(&err);
-    }
-    // sleep(1);
-    this_thread::sleep_for(chrono::milliseconds(1000) );
+    StopAquisition();
   }
 
 
@@ -932,16 +1103,17 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
 
 
   
-  if(acquisition_started)
+  // was_running, NOT acquisition_started: StopAquisition() above cleared the
+  // flag, so testing it here would never restart. Going through
+  // StartAquisition() also re-sizes the buffer pool, which matters precisely
+  // here -- changing the region is what changes the payload, and stale-sized
+  // buffers are what produce SIZE_MISMATCH on the first frames back.
+  if (was_running)
   {
-    arv_camera_start_acquisition (camera, &err);
-    if (err)
-    {
-      LOGI("ERR code:%d msg:%s", err->code, err->message);
-      g_clear_error(&err);
-    }
+    StartAquisition();
   }
-    
+
+
   // if(acquisition_started)
   // {
   //   arv_camera_start_acquisition (camera, &err);
@@ -1118,8 +1290,11 @@ CameraLayer::status CameraLayer_Aravis::Trigger()
     takeCount++;
   arv_camera_software_trigger (camera,&err);
 
-  // arv_camera_start_acquisition(camera, NULL);
-  acquisition_started=true;
+  // NOT acquisition_started=true here. The start_acquisition call it used to
+  // sit next to is commented out, so the flag was simply a lie -- and it is
+  // load-bearing: SetROI (stop/restart around the region write) and
+  // StopAquisition both branch on it, so a lying flag made them act on a
+  // camera that was never streaming.
   if (err == NULL)
   {
     return CameraLayer::ACK;
@@ -1447,9 +1622,11 @@ CameraLayer::status CameraLayer_Aravis::StartAquisition()
       LOGI("StartAquisition: payload %d -> %d, recycling buffers",
            payloadSize, cur_payload);
       payloadSize = cur_payload;
+      // Anything cached points into a buffer about to be unreffed.
+      _frame_cache_buffer = NULL;
       ArvBuffer *b;
       while ((b = arv_stream_try_pop_buffer(stream)) != NULL) g_object_unref(b);
-      for (int i = 0; i < 8; i++)
+      for (int i = 0; i < STREAM_BUFFER_COUNT; i++)
         arv_stream_push_buffer(stream, arv_buffer_new(payloadSize, NULL));
     }
   }
