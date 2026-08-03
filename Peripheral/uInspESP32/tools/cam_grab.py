@@ -233,6 +233,82 @@ def cmd_hwtrig(args):
     return 0 if got else 1
 
 
+def cmd_pulsetest(args):
+    """Sweep the ESP32 light/trigger pulse width and see what the camera does.
+
+    The calibration that matters: a pulse too short does not trigger at all, a
+    pulse merely short triggers but the light is gone before the exposure ends
+    (dark frame). The usable width is where brightness reaches its plateau --
+    convert that to plate ticks for stage_pulse_offset.
+    """
+    import json as _json
+    import urllib.request
+
+    def fire(width):
+        body = _json.dumps({"mode": "single", "cpin": args.cpin, "lpin": args.lpin,
+                            "light_delay": args.delay, "light_duration": width}).encode()
+        req = urllib.request.Request(args.panel.rstrip("/") + "/camtest", data=body,
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=4).read()
+
+    cam = open_camera(args.camera)
+    apply_exposure(cam, args)
+    cam.set_acquisition_mode(Aravis.AcquisitionMode.CONTINUOUS)
+    cam.set_trigger(args.source)
+    try:
+        cam.get_device().set_string_feature_value("TriggerActivation", args.edge)
+    except Exception:
+        pass
+    stream = cam.create_stream(None, None)
+    for _ in range(10):
+        stream.push_buffer(Aravis.Buffer.new_allocate(cam.get_payload()))
+    cam.start_acquisition()
+
+    widths = [int(w) for w in args.widths.split(",")]
+    print("exposure %s us, %d shot(s) per width" % (args.expo or "(camera default)", args.repeat))
+    print("width(us)   frames   mean brightness")
+    results = []
+    try:
+        for w in widths:
+            while stream.try_pop_buffer():      # drop anything stale
+                pass
+            means = []
+            for _ in range(args.repeat):
+                fire(w)
+                t0 = time.time()
+                while time.time() - t0 < 1.0:
+                    b = stream.timeout_pop_buffer(200000)
+                    if b is None:
+                        continue
+                    if b.get_status().value_nick == "success":
+                        means.append(stats(b.get_data())[1])
+                    stream.push_buffer(b)
+                    break
+                time.sleep(0.15)
+            avg = sum(means) / len(means) if means else None
+            results.append((w, len(means), avg))
+            print("  %7d   %d/%d      %s"
+                  % (w, len(means), args.repeat, "%.1f" % avg if avg is not None else "-"))
+    finally:
+        cam.stop_acquisition()
+
+    lit = [r for r in results if r[1] == args.repeat and r[2] is not None]
+    if lit:
+        peak = max(r[2] for r in lit)
+        plateau = next((r[0] for r in lit if r[2] >= 0.95 * peak), None)
+        floor = min(r[0] for r in lit)
+        print("\ntrigger floor: %d us (nothing below this fires the camera)" % floor)
+        if plateau:
+            print("full brightness from: %d us" % plateau)
+            print("suggest a light window of %d us (2x the plateau, for margin)"
+                  % (plateau * 2))
+            if args.freq:
+                tps = 2 * args.freq
+                print("  = %.1f plate ticks at plate_freq %d (%d ticks/s)"
+                      % (plateau * 2 * tps / 1e6, args.freq, tps))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -260,6 +336,21 @@ def main():
     h.add_argument("--seconds", type=float, default=15.0)
     h.add_argument("--out", default="cam")
     h.set_defaults(fn=cmd_hwtrig)
+
+    p = sub.add_parser("pulsetest")
+    p.add_argument("--panel", default="http://127.0.0.1:8765",
+                   help="uinsp_panel base URL (it owns the serial link)")
+    p.add_argument("--widths", default="20,50,100,200,300,500,1000,3000",
+                   help="light_duration values to try, us")
+    p.add_argument("--repeat", type=int, default=3)
+    p.add_argument("--cpin", type=int, default=17)
+    p.add_argument("--lpin", type=int, default=16)
+    p.add_argument("--delay", type=int, default=100, help="light_delay, us")
+    p.add_argument("--source", default="Line0")
+    p.add_argument("--edge", default="RisingEdge")
+    p.add_argument("--freq", type=int, default=None,
+                   help="plate_freq to convert the result into ticks")
+    p.set_defaults(fn=cmd_pulsetest)
 
     args = ap.parse_args()
     return args.fn(args)
