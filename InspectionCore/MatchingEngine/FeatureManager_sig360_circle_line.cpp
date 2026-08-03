@@ -6862,10 +6862,8 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
       fset.user_opt_points_set = true;
       LOGI("[shape] using %d explicit ROI refine points (user)", (int)fset.user_opt_points.size());
 #else
-      // TODO(recover): sbm::FeatureSet::user_opt_points lived only in an
-      // unpushed shape_based_matching commit (b987d179) whose objects are
-      // gone from this machine. Until that work is recovered or re-done,
-      // explicit user ROI refine points fall back to auto-selection.
+      // The submodule predates user_opt_points (reimplemented in a7e8864);
+      // with such a checkout, explicit ROI points fall back to auto-selection.
       LOGW("[shape] this build lacks sbm user_opt_points; explicit ROI refine "
            "points IGNORED (auto-selection used)");
 #endif
