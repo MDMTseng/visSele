@@ -104,7 +104,10 @@ float PLATE_FREQ_CURRENT=0;
 float SYS_FREQ_ACCEL=2000;
 bool SYS_STEPPER_DISABLED=false;
 
-uint32_t SYS_MIN_PULSE_TIME_SEP_us=(1000000/15);
+// 15/s was the old machine's rate; production runs ~30/s and bursts higher, so
+// a 66ms floor silently merged adjacent parts. 4ms still rejects the double
+// counting a single part can cause, while clearing 250 parts/s.
+uint32_t SYS_MIN_PULSE_TIME_SEP_us=4000;
 int SEL1_ACT_COUNTDOWN=-1;
 
 // Plate geometry for the distance gate. These were the OLD machine's numbers
@@ -212,28 +215,36 @@ float plate_diameter_mm = 240.0f;     // glass plate diameter
 // stagePulseOffset now lives in config/MachineConfig.hpp so the NVS layer can
 // persist it. The values below remain the fallback for a board with no stored
 // config; MachineConfig::begin() overwrites them when one exists.
+// Measured/confirmed on this machine (see docs and tools/cam_grab.py pulsetest):
+//   - 18 ticks = 600us of light at production plate_freq 15000, twice the
+//     exposure-covering width the camera needs; its trigger floor is ~100us, so
+//     the old 2-tick CAM window (66us) could not have fired a camera at all.
+//   - the blow station sits 30000 pulses after the gate; SWITCH (the verdict
+//     deadline) must fall before it, leaving the whole transit as answer budget.
+//   - 1500 ticks = 50ms of air at production speed; the old 1-tick default was
+//     33us, far too short to eject anything.
 stagePulseOffset STAGE_PULSE_OFFSET={
   .CAM1_on =654,
-  .CAM1_off=656,
+  .CAM1_off=672,
   .L1A_on =654,
-  .L1A_off=666,
+  .L1A_off=672,
 
 
   .CAM2_on =654,
-  .CAM2_off=656,
+  .CAM2_off=672,
   .L2A_on =654,
-  .L2A_off=656,
+  .L2A_off=672,
 
 
-  .SWITCH =697,
+  .SWITCH =29900,
 
 
-  .SEL1_on=700,
-  .SEL1_off=701,
-  .SEL2_on=710,
-  .SEL2_off=711,
-  .SEL3_on=720,
-  .SEL3_off=721
+  .SEL1_on=30000,
+  .SEL1_off=31500,
+  .SEL2_on=30010,
+  .SEL2_off=31510,
+  .SEL3_on=30020,
+  .SEL3_off=31520
 
 
 
@@ -724,7 +735,9 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   static uint32_t tid_counter=1;
   uint32_t _prePulse_BK=_prePulse;
   _prePulse=middle_pulse;
-  if(middle_pulse-_prePulse_BK<(_PLAT_DIST_step(3500)))return -9;
+  // 2mm, not 3.5mm: parts are specified 3mm apart, and with the plate geometry
+  // finally correct a 3.5mm gate would reject conforming production parts.
+  if(middle_pulse-_prePulse_BK<(_PLAT_DIST_step(2000)))return -9;
   uint64_t curTime = esp_timer_get_time();
   if(curTime-_preTime<SYS_MIN_PULSE_TIME_SEP_us)return -8;
   _preTime=curTime;
@@ -1617,6 +1630,109 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
 
     doRsp=rspAck=true;
+  }
+  // Emit a whole pulse train from here instead of one command per pulse.
+  //
+  // The panel used to loop in python, one trig_cam_pulse per pulse, each one
+  // contending for the same lock the status poller holds across a blocking
+  // round trip. Measured: ask for 60 Hz, get 21 Hz, with intervals ranging
+  // 22-140 ms. That is six times the jitter of the thing we are trying to
+  // measure, so no camera rate ceiling above ~21 Hz could ever be established.
+  //
+  // Here a plain busy-wait on esp_timer_get_time() gets the jitter down to
+  // interrupt latency. Two things this loop MUST do, because it runs inside
+  // firmwareLoop() and hogs it for the whole train:
+  //   1. feed the task WDT itself -- firmwareLoop's own esp_task_wdt_reset()
+  //      at the top is out of reach, and esp_task_wdt_init(5,true) panics.
+  //   2. NOT push a TaskQ2CommInfo per pulse -- that queue is 20 deep and its
+  //      only consumer is the part of firmwareLoop we are blocking, so a train
+  //      of any useful length would overflow it. The train's timing is reported
+  //      back measured instead, which is better evidence than an echo anyway.
+  else if(strcmp(type,"trig_cam_burst")==0)
+  {
+    retdoc["type"]="trig_cam_burst";
+    doRsp=true;
+
+    // Blocking the machine loop for seconds is only safe with the plate
+    // stopped -- otherwise parts keep arriving at the selector with nobody
+    // answering for them. Same condition the NVS save uses.
+    const char* deny=cfgPersistDeny();
+    if(deny!=NULL)
+    {
+      retdoc["burst_err"]=deny;
+      retdoc["state"]=(int)sysinfo.state;
+      rspAck=false;
+    }
+    else
+    {
+      int cam_PIN   = doc["cpin"].is<int>()          ? (int)doc["cpin"]           : PIN_O_CAM1;
+      int light_PIN = doc["lpin"].is<int>()          ? (int)doc["lpin"]           : PIN_O_L1A;
+      int Light_Delay    = doc["light_delay"].is<int>()    ? (int)doc["light_delay"]    : 100;
+      int Light_Duration = doc["light_duration"].is<int>() ? (int)doc["light_duration"] : 100;
+      int count     = doc["count"].is<int>()         ? (int)doc["count"]          : 10;
+      int period_us = doc["period_us"].is<int>()     ? (int)doc["period_us"]      : 0;
+      if(period_us<=0 && doc["hz"].is<float>() && (float)doc["hz"]>0.0f)
+        period_us=(int)(1000000.0f/(float)doc["hz"]);
+      if(period_us<=0) period_us=200000;   // 5 Hz
+
+      // Bound the stall. 5000 pulses and 30 s are both far past any real
+      // experiment, and either one running away would look like a hang.
+      if(count<1) count=1;
+      if(count>5000) count=5000;
+      const int64_t max_total_us=30LL*1000000LL;
+      if((int64_t)count*(int64_t)period_us > max_total_us)
+        count=(int)(max_total_us/(int64_t)period_us);
+
+      // A pulse cannot be shorter than the light it gates.
+      const int pulse_us=Light_Delay+Light_Duration;
+      if(period_us < pulse_us+50) period_us = pulse_us+50;
+
+      const int cam_idx   = (cam_PIN==PIN_O_CAM1)?IOI_CAM1 : (cam_PIN==PIN_O_CAM2)?IOI_CAM2 : -1;
+      const int light_idx = (light_PIN==PIN_O_L1A)?IOI_L1A : (light_PIN==PIN_O_L2A)?IOI_L2A : -1;
+
+      int64_t next=esp_timer_get_time();
+      const int64_t t_first=next;
+      int64_t prev_rise=0, sum_us=0, min_us=INT64_MAX, max_us=0;
+      int emitted=0;
+
+      for(int i=0;i<count;i++)
+      {
+        // Absolute schedule, never `now + period` -- the latter accumulates the
+        // cost of every pulse and drifts the train slow.
+        while(esp_timer_get_time() < next)
+          esp_task_wdt_reset();
+
+        const int64_t rise=esp_timer_get_time();
+        io_drive(cam_PIN,cam_idx,true);
+        delayMicroseconds(Light_Delay);
+        io_drive(light_PIN,light_idx,true);
+        delayMicroseconds(Light_Duration);
+        io_drive(light_PIN,light_idx,false);
+        io_drive(cam_PIN,cam_idx,false);
+        emitted++;
+
+        if(prev_rise!=0)
+        {
+          const int64_t d=rise-prev_rise;
+          sum_us+=d;
+          if(d<min_us) min_us=d;
+          if(d>max_us) max_us=d;
+        }
+        prev_rise=rise;
+        next+=period_us;
+        esp_task_wdt_reset();
+      }
+
+      const int gaps=emitted-1;
+      retdoc["emitted"]=emitted;
+      retdoc["period_us"]=period_us;
+      retdoc["span_us"]=(int32_t)(prev_rise-t_first);
+      retdoc["mean_us"]=gaps>0?(int32_t)(sum_us/gaps):0;
+      retdoc["min_us"] =gaps>0?(int32_t)min_us:0;
+      retdoc["max_us"] =gaps>0?(int32_t)max_us:0;
+      retdoc["jitter_us"]=gaps>0?(int32_t)(max_us-min_us):0;
+      rspAck=true;
+    }
   }
   else if(strcmp(type,"pin_mode")==0)
   {
