@@ -59,7 +59,73 @@ def open_camera(name):
     print("camera: %s %s  sensor %dx%d  %s"
           % (cam.get_vendor_name(), cam.get_model_name(),
              *cam.get_sensor_size(), cam.get_pixel_format_as_string()))
+    # Feature values are cached by default. A live input level read back through
+    # the cache never changes, which reads exactly like a dead trigger wire.
+    try:
+        cam.get_device().set_register_cache_policy(Aravis.RegisterCachePolicy.DISABLE)
+    except Exception:
+        pass
     return cam
+
+
+def feat_str(dev, name):
+    """Read a GenICam feature whatever its type (or 'n/a' if absent)."""
+    for getter in (dev.get_string_feature_value, dev.get_integer_feature_value,
+                   dev.get_boolean_feature_value, dev.get_float_feature_value):
+        try:
+            return str(getter(name))
+        except Exception:
+            pass
+    return "n/a"
+
+
+def cmd_lines(args):
+    """Watch the camera's input lines -- the wiring test with no acquisition.
+
+    Toggle the ESP32 pin (panel hold buttons, or its camera card) and watch for
+    a change here. No change at all means the signal is not reaching the camera:
+    the ESP32 side can be proven separately with pin_read.
+    """
+    cam = open_camera(args.camera)
+    dev = cam.get_device()
+    for f in ("TriggerMode", "TriggerSource", "TriggerActivation"):
+        print("  %s = %s" % (f, feat_str(dev, f)))
+    try:
+        lines = dev.dup_available_enumeration_feature_values_as_strings("LineSelector")
+    except Exception:
+        lines = ["Line0"]
+    for ln in lines:
+        try:
+            dev.set_string_feature_value("LineSelector", ln)
+            print("  %s mode=%s" % (ln, feat_str(dev, "LineMode")))
+        except Exception:
+            pass
+
+    print("watching LineStatusAll for %.0fs -- toggle the pin now" % args.seconds)
+    t0 = time.time()
+    last = None
+    changes = 0
+    while time.time() - t0 < args.seconds:
+        try:
+            v = dev.get_integer_feature_value("LineStatusAll")
+        except Exception as exc:
+            print("  LineStatusAll unreadable: %s" % exc)
+            return 1
+        if v != last:
+            if last is not None:
+                changes += 1
+            print("  [%6.2fs] LineStatusAll = 0x%X  %s"
+                  % (time.time() - t0, v, format(v, "04b")))
+            last = v
+        time.sleep(0.05)
+    print("%d change(s) seen" % changes)
+    if changes == 0:
+        print("Line levels never moved. The signal is not reaching the camera --"
+              " check the common ground between the ESP32 and the camera I/O"
+              " connector, and note that opto-isolated inputs (Line0 on most"
+              " Hikrobot bodies) want 5-24V: a 3.3V GPIO may sit below the"
+              " opto's threshold even when the wire is correct.")
+    return 0 if changes else 1
 
 
 def cmd_list(args):
@@ -126,8 +192,9 @@ def cmd_hwtrig(args):
     apply_exposure(cam, args)
     cam.set_acquisition_mode(Aravis.AcquisitionMode.CONTINUOUS)
     cam.set_trigger(args.source)
+    # No set_trigger_activation() in this binding -- go through the feature.
     try:
-        cam.set_trigger_activation(args.edge)
+        cam.get_device().set_string_feature_value("TriggerActivation", args.edge)
     except Exception as exc:
         print("  (trigger activation %s not settable: %s)" % (args.edge, exc))
     print("armed on %s (%s edge), waiting %.0fs -- fire pulses from the panel now"
@@ -181,6 +248,10 @@ def main():
     g.add_argument("--timeout", type=float, default=3.0, help="per-frame, seconds")
     g.add_argument("--out", default="grab")
     g.set_defaults(fn=cmd_grab)
+
+    ln = sub.add_parser("lines")
+    ln.add_argument("--seconds", type=float, default=20.0)
+    ln.set_defaults(fn=cmd_lines)
 
     h = sub.add_parser("hwtrig")
     h.add_argument("--source", default="Line0", help="camera trigger source")
