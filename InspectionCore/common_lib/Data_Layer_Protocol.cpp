@@ -359,9 +359,22 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
             if(jlevel==0)
             {
               dataBuff[buffIdx]='\0';
-              // Defer dispatch until we know whether a CRC trailer follows.
-              recvType=RTYPE::TRAILER;
-              trailerIdx=0;
+              if(tx_trailer)
+              {
+                // v2 peer (uInspESP32): every frame carries a trailer, so
+                // deferring dispatch costs ~0 latency and buys corrupt-frame
+                // dropping. Wait for it.
+                recvType=RTYPE::TRAILER;
+                trailerIdx=0;
+              }
+              else
+              {
+                // Legacy peer (uInspMEGA...): frames never carry trailers and
+                // may be followed by silence -- holding the frame would delay
+                // every reply until the NEXT byte arrives. Dispatch now,
+                // exactly as before the trailer support existed.
+                finishJsonFrame(false,false);
+              }
             }
 
           }
