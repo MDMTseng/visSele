@@ -67,6 +67,14 @@ protected:
   // and queue a pointer into the slot. The ring is larger than imgQueue's
   // capacity, so a slot is always fully consumed before it is reused.
   static constexpr int FRAME_POOL_SIZE = 16;
+  static constexpr int IMG_QUEUE_DEPTH = 10;
+  // The pool's whole correctness argument is that a slot cannot be recycled
+  // while a frame still sitting in the queue points at it. That holds only
+  // while the ring is strictly larger than the queue can ever be -- which was
+  // previously true by coincidence of two literals in two different files.
+  static_assert(FRAME_POOL_SIZE > IMG_QUEUE_DEPTH,
+                "frame pool must outnumber the queue, or a queued frame's slot "
+                "can be overwritten before it is consumed");
   std::vector<std::vector<uint8_t>> _frameBufPool;
   int _frameBufIdx=0;
   unsigned int _lastFrameNum=0;
