@@ -7,6 +7,8 @@ each peripheral over the firmware's JSON-serial protocol:
   * stepper   -- enable/disable, plate_freq, start/stop (enter/exit_insp_mode)
   * blow valve / feeder -- PIN_ON / PIN_OFF on any output pin (default 21)
   * selectors -- sel_act pulses on SEL1/2/3 (pins 25/26/32)
+  * camera    -- trig_cam_pulse on CAM1/L1A (17/16) or CAM2/L2A (19/18):
+    single shot, burst, free-run and a light-duration sweep
   * gate sensor -- live level of pin 27 via PIN_READ polling (firmware >= the
     build that adds PIN_READ; the panel degrades gracefully without it)
   * raw command box + live async event log (cam_trig, system_info, dbg)
@@ -44,6 +46,12 @@ STATE_NAMES = {
     113: "FATAL", 140: "TEST",
 }
 
+# trigger_id range reserved for panel camera tests. The firmware echoes a
+# cam_trig carrying this id, which lets the panel confirm the round trip -- and
+# lets auto-report ignore it (a manual pulse has no object on the plate, so
+# answering it would be a verdict for a tid the pipeline never registered).
+CAM_TEST_ID_BASE = 900000
+
 
 class Panel:
     """Owns the serial link and fans device data out to SSE clients."""
@@ -62,6 +70,14 @@ class Panel:
         # Camera-less test mode: answer every cam_trig with a verdict following
         # a repeating pattern of M ok, N ng, O NA. None = off.
         self.autorep = None
+        # Camera trigger test: active config dict (None = idle) plus the ids we
+        # have issued, so their cam_trig echoes can be counted and skipped by
+        # auto-report.
+        self.cam = None
+        self.cam_ids = set()
+        self.cam_fired = 0
+        self.cam_echo = 0
+        self.cam_last_dur = None
         self._stop = False
         threading.Thread(target=self._link_keeper, daemon=True).start()
         threading.Thread(target=self._poller, daemon=True).start()
@@ -141,6 +157,17 @@ class Panel:
             for msg in lk.drain_async():
                 self._maybe_autoreport(lk, msg)
                 obj = msg[1] if isinstance(msg, (list, tuple)) and len(msg) == 2 else msg
+                if isinstance(obj, dict) and obj.get("type") in ("cam_trig", "cam_trig_tagged") \
+                        and obj.get("tid") in self.cam_ids:
+                    # Round-trip proof: the firmware really drove the pin.
+                    # Echoed here rather than only in the runner, so the last
+                    # shot's echo -- which lands after the runner exits -- still
+                    # updates the counter instead of looking un-echoed.
+                    self.cam_echo += 1
+                    self.broadcast({"panel": "camstat", "running": self.cam is not None,
+                                    "fired": self.cam_fired, "echo": self.cam_echo,
+                                    "dur": self.cam_last_dur,
+                                    "mode": (self.cam or {}).get("mode", "")})
                 if isinstance(obj, dict) and obj.get("type") == "system_info" \
                         and obj.get("state") == 112:
                     threading.Thread(target=self._diag_error, daemon=True).start()
@@ -172,6 +199,82 @@ class Panel:
         except Exception:
             pass
 
+    # -- camera trigger test ----------------------------------------------
+
+    def cam_stop(self):
+        self.cam = None
+
+    def cam_start(self, cfg):
+        """(Re)start the camera pulse generator. mode: single|burst|run|sweep."""
+        self.cam_stop()
+        mode = cfg.get("mode", "single")
+        if mode == "stop":
+            self.broadcast({"panel": "camstat", "running": False, "text": "stopped"})
+            return {"cam": False}
+        job = {
+            "mode": mode,
+            "cpin": int(cfg.get("cpin", 17)),
+            "lpin": int(cfg.get("lpin", 16)),
+            "light_delay": int(cfg.get("light_delay", 100)),
+            "light_duration": int(cfg.get("light_duration", 100)),
+            "hz": max(0.05, float(cfg.get("hz", 5) or 5)),
+            "count": int(cfg.get("count", 1) or 0),
+            "s0": int(cfg.get("s0", 10)),
+            "s1": int(cfg.get("s1", 500)),
+            "ss": max(1, int(cfg.get("ss", 10) or 1)),
+        }
+        self.cam_fired = self.cam_echo = 0
+        self.cam_ids.clear()
+        self.cam = job
+        threading.Thread(target=self._cam_runner, args=(job,), daemon=True).start()
+        return {"cam": True, "job": job}
+
+    def _cam_runner(self, job):
+        mode = job["mode"]
+        period = 1.0 / job["hz"]
+        # single = one shot; burst = count shots; sweep = one shot per width
+        # step; run = until stopped.
+        if mode == "single":
+            widths = [job["light_duration"]]
+        elif mode == "sweep":
+            lo, hi, st = job["s0"], job["s1"], job["ss"]
+            widths = list(range(lo, hi + 1, st)) if hi >= lo else [lo]
+        elif mode == "burst":
+            widths = [job["light_duration"]] * max(1, job["count"])
+        else:
+            widths = None   # endless
+
+        i = 0
+        while not self._stop and self.cam is job:
+            if widths is not None and i >= len(widths):
+                break
+            dur = job["light_duration"] if widths is None else widths[i]
+            tid = CAM_TEST_ID_BASE + (i % 90000)
+            self.cam_ids.add(tid)
+            if len(self.cam_ids) > 20000:
+                self.cam_ids.clear()
+                self.cam_ids.add(tid)
+            # nowait: at free-run rates a blocking round trip per shot would
+            # queue behind the poller and smear the interval.
+            self.send({"type": "trig_cam_pulse", "cpin": job["cpin"],
+                       "lpin": job["lpin"], "light_delay": job["light_delay"],
+                       "light_duration": dur, "trigger_id": tid}, nowait=True)
+            self.cam_fired += 1
+            self.cam_last_dur = dur
+            self.broadcast({"panel": "camstat", "running": True,
+                            "fired": self.cam_fired, "echo": self.cam_echo,
+                            "dur": dur, "mode": mode})
+            i += 1
+            if widths is not None and i >= len(widths):
+                break
+            time.sleep(period)
+        if self.cam is job:
+            self.cam = None
+        self.broadcast({"panel": "camstat", "running": False,
+                        "fired": self.cam_fired, "echo": self.cam_echo,
+                        "dur": self.cam_last_dur, "mode": mode,
+                        "text": "done"})
+
     def _maybe_autoreport(self, lk, msg):
         ar = self.autorep
         if not ar:
@@ -181,6 +284,11 @@ class Panel:
             return
         tid = obj.get("tid")
         if tid is None:
+            return
+        # A manual camera pulse has no object on the plate -- reporting a
+        # verdict for it would be a judgement on a tid the pipeline never
+        # registered (and would advance the ok/ng pattern for nothing).
+        if tid in self.cam_ids:
             return
         # Every object announces twice (CAM1 cam=1, CAM2 cam=2); a second
         # report for the same tid would advance the pattern AND desync the
@@ -332,6 +440,14 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._json({"err": str(exc)}, 500)
             return
+        if self.path == "/camtest":
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(n).decode() or "{}")
+                self._json(PANEL.cam_start(body))
+            except Exception as exc:
+                self._json({"err": str(exc)}, 500)
+            return
         if self.path != "/cmd":
             self._json({"err": "not found"}, 404)
             return
@@ -445,6 +561,45 @@ PAGE = r"""<!DOCTYPE html>
     <button onclick="pulsePin(+el('vpin').value,+el('vpulse').value)">Pulse</button>
   </div>
   <div class="kv" style="margin-top:6px">ON/OFF are logical -- the wire level follows each output's "ON is" polarity below.</div>
+</div>
+
+<div class="card"><h2>Camera 相機觸發測試</h2>
+  <div>
+    station <select id="camsel" onchange="camStation()">
+      <option value="1" selected>CAM1 pin 17 + light L1A 16</option>
+      <option value="2">CAM2 pin 19 + light L2A 18</option>
+    </select>
+    cpin <input id="cam_cpin" type="number" value="17" style="width:60px">
+    lpin <input id="cam_lpin" type="number" value="16" style="width:60px">
+  </div>
+  <div style="margin-top:6px">
+    light delay <input id="cam_delay" type="number" value="100" style="width:70px"> &#181;s
+    light duration <input id="cam_dur" type="number" value="100" style="width:70px"> &#181;s
+  </div>
+  <div style="margin-top:8px">
+    <button class="go" onclick="camFire('single')">Single shot</button>
+    burst <input id="cam_n" type="number" value="10" style="width:55px"> shots @
+    <input id="cam_hz" type="number" value="5" style="width:55px"> Hz
+    <button onclick="camFire('burst')">Burst</button>
+    <button onclick="camFire('run')">Free-run</button>
+    <button class="stop" onclick="camFire('stop')">Stop</button>
+  </div>
+  <div style="margin-top:8px;border-top:1px solid #2c2c33;padding-top:8px">
+    sweep light duration <input id="cam_s0" type="number" value="10" style="width:60px"> &#8594;
+    <input id="cam_s1" type="number" value="500" style="width:60px"> step
+    <input id="cam_ss" type="number" value="10" style="width:55px"> &#181;s
+    <button onclick="camFire('sweep')">Sweep</button>
+    <div class="kv" style="margin-top:4px">一步一張,找出相機/光源可靠反應的最小脈寬 &#8594; 再據此設 CAM_on/off 與 L1A_on/off 的 tick 寬度。</div>
+  </div>
+  <div style="margin-top:8px;border-top:1px solid #2c2c33;padding-top:8px">
+    hold (接線/極性確認):
+    <button onclick="setOut(+el('cam_cpin').value,true)">CAM ON</button>
+    <button onclick="setOut(+el('cam_cpin').value,false)">CAM OFF</button>
+    <button onclick="setOut(+el('cam_lpin').value,true)">LIGHT ON</button>
+    <button onclick="setOut(+el('cam_lpin').value,false)">LIGHT OFF</button>
+  </div>
+  <div style="margin-top:8px"><b id="camstat" class="kv">idle</b></div>
+  <div class="kv" style="margin-top:6px">trig_cam_pulse 的時序 = CAM 拉起 &#8594; delay &#8594; 光源亮 duration &#8594; 兩者關閉,與檢測模式中 ISR 打出的波形同型。每發都會回一筆 cam_trig(fired vs echo 應相等),此測試用的 trigger_id 不會被 auto-report 回答。脈波期間韌體是阻塞的,所以上面的 Live pins 表看不到這種短脈波 —— 要確認接線/極性請用 hold 按鈕(靜態電平會反映在表上)。</div>
 </div>
 
 <div class="card"><h2>IO polarity ("ON" level)</h2>
@@ -649,6 +804,23 @@ async function applyMeta(){
   await cmd({type:'set_setup',pulses_per_rev:+el('ppr').value,plate_diameter_mm:+el('pdia').value});
   meta.ppr=+el('ppr').value;meta.dia=+el('pdia').value;
 }
+function camStation(){
+  const s=el('camsel').value;
+  el('cam_cpin').value = s==='1'?17:19;
+  el('cam_lpin').value = s==='1'?16:18;
+}
+async function camFire(mode){
+  const body={mode,
+    cpin:+el('cam_cpin').value, lpin:+el('cam_lpin').value,
+    light_delay:+el('cam_delay').value, light_duration:+el('cam_dur').value,
+    hz:+el('cam_hz').value, count:+el('cam_n').value,
+    s0:+el('cam_s0').value, s1:+el('cam_s1').value, ss:+el('cam_ss').value};
+  if(mode==='single'){body.count=1;body.hz=10;}
+  log("cam",mode+" "+JSON.stringify(body));
+  const r=await fetch('/camtest',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)});
+  log("cam",await r.json());
+}
 function log(tag,obj){
   const d=el('log');
   d.textContent+=new Date().toTimeString().slice(0,8)+" ["+tag+"] "+
@@ -725,6 +897,14 @@ es.onmessage=e=>{
     if(!m.up)el('stateline').textContent='state: link down';
   }
   else if(m.panel==='pins_unsupported'){el('pinwarn').style.display='';el('gate').className='gna';el('gate').textContent='PIN_READ n/a';}
+  else if(m.panel==='camstat'){
+    const miss=(m.fired??0)-(m.echo??0);
+    el('camstat').textContent=(m.running?'RUNNING ':'idle ')+
+      `[${m.mode??''}] fired ${m.fired??0} / echo ${m.echo??0}`+
+      (miss>1?`  (${miss} un-echoed)`:'')+
+      (m.dur!=null?`  last duration ${m.dur}µs`:'');
+    el('camstat').className=m.running?'':'kv';
+  }
   else if(m.panel==='diag')log("diag",m.text);
   else if(m.panel==='async')log("dev",m.msg);
 };
