@@ -10,6 +10,13 @@ MV_CC_DEVICE_INFO_LIST s_dev_list;
 CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int h, int zw, int zh)
 {
 
+  // Width/Height/Offset are only writable while grabbing is stopped, but the
+  // camera has to come back on afterwards. SetROI is a live runtime call
+  // (Core0_1/wiringPanel.cpp:1229 drives it from the UI), so leaving it
+  // stopped meant one ROI change silently killed the camera until reconnect.
+  // Restore whatever state we found -- the constructor calls SetROI before
+  // StartAquisition, and that path must stay "not grabbing".
+  const bool was_running = acquisition_started;
   StopAquisition();
   int max_w, max_h;
 
@@ -21,6 +28,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int
   max_h = HInfo.nCurValue;
   if (x >= max_w || y >= max_h || w < 0 || h < 0)
   {
+    if (was_running) StartAquisition();
     return CameraLayer::NAK;
   }
   if (x < 0)
@@ -62,10 +70,19 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int
   int xret=SetIntValue_w_Check("OffsetX", (int)x);
   int yret=SetIntValue_w_Check("OffsetY", (int)y);
   // LOGI("SET:%d,%d,%d,%d,  ret:%d,%d,%d,%d max.wh:%d,%d",x,y,w,h, xret,yret,wret,hret,max_w,max_h);
+  // Checked here, while x/y/w/h still hold what we asked for -- GetROI below
+  // overwrites them with what the camera settled on.
+  const bool roi_rejected =
+      (wret != MV_OK || hret != MV_OK || xret != MV_OK || yret != MV_OK);
+  if (roi_rejected)
+    LOGE("SetROI partially rejected: w=%x h=%x x=%x y=%x (asked %d,%d %dx%d, max %dx%d)",
+         wret, hret, xret, yret, x, y, w, h, max_w, max_h);
+
   GetROI(&x, &y, &w, &h, NULL,NULL);
   // LOGI("SET:%d,%d,%d,%d,  ret:%d,%d,%d,%d",x,y,w,h, xret,yret,wret,hret);
-  // StartAquisition();
-  return CameraLayer::ACK;
+  if (was_running) StartAquisition();
+
+  return roi_rejected ? CameraLayer::NAK : CameraLayer::ACK;
 }
 CameraLayer::status CameraLayer_HikRobot_Camera::GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh)
 {
@@ -579,9 +596,10 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(
     nRet = MV_CC_SetBoolValue(handle, "ChunkEnable", true);
     nRet = MV_CC_SetEnumValueByString(handle, "ChunkSelector", "Timestamp");
     nRet = MV_CC_SetBoolValue(handle, "ChunkEnable", true);
-    
-    SetFrameRate(60);
-    
+
+    // NOTE: the frame-rate cap that used to be applied here (SetFrameRate(60))
+    // now lives in TriggerMode(), because whether a cap is wanted depends
+    // entirely on the mode -- see the comment there.
   }
 
   // SetROI(1000,1000,200,200,0,0);
@@ -647,19 +665,23 @@ void CameraLayer_HikRobot_Camera::sEventCallBack(MV_EVENT_OUT_INFO *pEventInfo, 
 
 void CameraLayer_HikRobot_Camera::EventCallBack(MV_EVENT_OUT_INFO *pEventInfo)
 {
-  if (pEventInfo->EventName == NULL) return;
+  // EventName is an inline char[128], never NULL -- the old "== NULL" guard was
+  // always false. What can actually happen is an empty/unterminated name, so
+  // check that instead, and bound the compares to the array.
+  if (pEventInfo->EventName[0] == '\0') return;
+  const size_t kNameMax = sizeof(pEventInfo->EventName);
 
   // Camera-clock timestamp of the edge itself. Survives even when no frame
   // follows, which is exactly the case we cannot see any other way.
   uint64_t tick = (((uint64_t)pEventInfo->nTimestampHigh) << 32) |
                     (uint64_t)pEventInfo->nTimestampLow;
 
-  if (strcmp(pEventInfo->EventName, "Line0RisingEdge") == 0)
+  if (strncmp(pEventInfo->EventName, "Line0RisingEdge", kNameMax) == 0)
   {
     _line0RisingEdges++;
     _line0LastEdgeDevTick = tick;
   }
-  else if (strcmp(pEventInfo->EventName, "Line0FallingEdge") == 0)
+  else if (strncmp(pEventInfo->EventName, "Line0FallingEdge", kNameMax) == 0)
   {
     _line0FallingEdges++;
   }
@@ -739,9 +761,22 @@ void CameraLayer_HikRobot_Camera::CLOSE()
 }
 CameraLayer_HikRobot_Camera::~CameraLayer_HikRobot_Camera()
 {
+  // Teardown order matters. imgQThreadFunc runs ImageCallBack, which touches
+  // the SDK handle and calls out through `callback` into the owner; the old
+  // order (CLOSE then join) let it keep running against a handle that
+  // MV_CC_DestroyHandle had already freed, and against _frameBufPool while
+  // this object was being destroyed.
+  //
+  // 1. stop the camera so sImageCallBack pushes no more frames,
+  // 2. wake the consumer out of pop_blocking,
+  // 3. join it -- after this nothing else touches handle or the frame pool,
+  // 4. only then close and destroy the handle.
+  if (bDevConnected)
+    StopAquisition();
   imgQueue.termination_trigger();
+  if (imgQueueThread.joinable())
+    imgQueueThread.join();
   CLOSE();
-  imgQueueThread.join();
 }
 
 
@@ -762,8 +797,21 @@ CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
     takeCount=-1;
     int nRet = SetEnumValue("TriggerMode", MV_TRIGGER_MODE_OFF);
     SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_SOFTWARE);
+    // Free-run: a cap is the only thing stopping the sensor from flooding the
+    // link at max fps, so keep the 60 the constructor used to apply globally.
+    SetFrameRate(60);
     return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
   }
+
+  // Triggered: AcquisitionFrameRateEnable is a HARD CEILING ON THE TRIGGER
+  // RATE, not just on free-run output -- triggers arriving faster than the cap
+  // are discarded by the camera, with no error and no frame. That failure looks
+  // exactly like a dead trigger wire or a flaky opto, which is why it has to be
+  // off here. (Confirmed on the bench: the camera-side preset for this rig also
+  // keeps AcquisitionFrameRateEnable false for the same reason.)
+  int fr_ret = MV_CC_SetBoolValue(handle, "AcquisitionFrameRateEnable", false);
+  if (MV_OK != fr_ret)
+    LOGE("could not clear AcquisitionFrameRateEnable (ret=%x) -- trigger rate may be capped", fr_ret);
 
   int nRet = SetEnumValue("TriggerMode", MV_TRIGGER_MODE_ON);
 
@@ -800,9 +848,11 @@ CameraLayer::status CameraLayer_HikRobot_Camera::Trigger()
     takeCount++;
   // arv_camera_software_trigger (camera,&err);
 
+  // NOT acquisition_started=true here: issuing a software trigger does not
+  // start grabbing, and claiming it does would make SetROI/SetMirror restart
+  // a camera that was deliberately stopped.
   int nRet = CommandExecute("TriggerSoftware");
-  acquisition_started=true;
-  
+
   return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
 }
 
@@ -846,7 +896,11 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
     return CameraLayer::NAK;
   }
   m.lock();
-  
+
+  // Same restore-what-we-found rule as SetROI: this used to start grabbing
+  // unconditionally, so toggling a mirror on a stopped camera silently
+  // started it.
+  const bool was_running = acquisition_started;
   StopAquisition();
   bool ben=(en!=0);
   if(Dir==0)
@@ -858,7 +912,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
     SetBoolValue("ReverseY", ben);
   }
   mirrorFlag[Dir] = en;
-  StartAquisition();
+  if (was_running) StartAquisition();
   m.unlock();
   return CameraLayer::ACK;
 }
@@ -947,11 +1001,20 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetGamma(float gamma)
 
 
 
+// acquisition_started tracks whether the camera is actually grabbing, so that
+// the settings calls that must briefly stop it (ROI, mirror) can put it back
+// the way they found it instead of guessing.
 CameraLayer::status CameraLayer_HikRobot_Camera::StartAquisition()
 {
-  return (MV_OK == MV_CC_StartGrabbing(handle)) ? CameraLayer::ACK : CameraLayer::NAK;
+  int ret = MV_CC_StartGrabbing(handle);
+  if (MV_OK == ret)
+    acquisition_started = true;
+  return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
 }
 CameraLayer::status CameraLayer_HikRobot_Camera::StopAquisition()
 {
-  return (MV_OK == MV_CC_StopGrabbing(handle)) ? CameraLayer::ACK : CameraLayer::NAK;
+  int ret = MV_CC_StopGrabbing(handle);
+  if (MV_OK == ret)
+    acquisition_started = false;
+  return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
 }
