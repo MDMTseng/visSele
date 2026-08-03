@@ -6848,6 +6848,7 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
     // no ROI refine). Absent key (roi_pts_set=false) keeps the legacy auto-selection.
     if (roi_pts_set && def_mmpp > 0)
     {
+#ifdef SBM_HAS_USER_OPT_POINTS
       const float tcx = templ_use.cols / 2.0f, tcy = templ_use.rows / 2.0f;
       fset.user_opt_points.clear();
       fset.user_opt_points.reserve(roi_pts_mm.size());
@@ -6860,6 +6861,14 @@ int FeatureManager_sig360_circle_line::trainShapeMatcher()
       }
       fset.user_opt_points_set = true;
       LOGI("[shape] using %d explicit ROI refine points (user)", (int)fset.user_opt_points.size());
+#else
+      // TODO(recover): sbm::FeatureSet::user_opt_points lived only in an
+      // unpushed shape_based_matching commit (b987d179) whose objects are
+      // gone from this machine. Until that work is recovered or re-done,
+      // explicit user ROI refine points fall back to auto-selection.
+      LOGW("[shape] this build lacks sbm user_opt_points; explicit ROI refine "
+           "points IGNORED (auto-selection used)");
+#endif
     }
 
     shapeFeatureSet = std::make_shared<sbm::FeatureSet>(fset);

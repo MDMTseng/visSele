@@ -1,4 +1,6 @@
 #include "Data_Layer_Protocol.hpp"
+#include <ctype.h>
+#include <stdlib.h>
 #include "string.h"
 #include "stdio.h"
 
@@ -58,8 +60,45 @@ int Data_JsonRaw_Layer::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
 }
 
+uint16_t Data_JsonRaw_Layer::crc16_ccitt(const uint8_t *d,int len){
+  uint16_t crc=0xFFFF;
+  for(int i=0;i<len;i++){
+    crc^=(uint16_t)d[i]<<8;
+    for(int b=0;b<8;b++)
+      crc=(crc&0x8000)?(crc<<1)^0x1021:(crc<<1);
+  }
+  return crc;
+}
+
 int Data_JsonRaw_Layer::send_json_string(int head_room,uint8_t *data,int len,int leg_room){
-  return send_data(head_room,data,len,leg_room);
+  int r=send_data(head_room,data,len,leg_room);
+  if(tx_trailer)
+  {
+    // Integrity trailer, symmetric with the uInspESP32 firmware: *HHHH\n
+    // (CRC16-CCITT over the JSON bytes).
+    char tr[8];
+    uint16_t crc=crc16_ccitt(data,len);
+    int tl=snprintf(tr,sizeof(tr),"*%04X\n",crc);
+    send_data(0,(uint8_t*)tr,tl,0);
+  }
+  return r;
+}
+
+void Data_JsonRaw_Layer::finishJsonFrame(bool crc_present,bool crc_ok){
+  rx_frames++;
+  if(crc_present && !crc_ok)
+  {
+    // Corrupted frame: drop it -- acting on it would be worse than the loss.
+    rx_crc_fail++;
+  }
+  else
+  {
+    if(crc_present)rx_crc_ok++;
+    dataBuff[buffIdx]='\0';
+    recv_jsonRaw_data(dataBuff,buffIdx,1);//opcode 1 is for text
+    if(uplayer_df!=NULL)uplayer_df->recv_data(dataBuff,buffIdx,true);
+  }
+  recvType=RTYPE::INIT;
 }
 
 int Data_JsonRaw_Layer::send_raw_data(int opcode,int head_room,uint8_t *data,int len,int leg_room){
@@ -319,21 +358,45 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
 
             if(jlevel==0)
             {
-
-
-
               dataBuff[buffIdx]='\0';
-              // if(uplayer_df!=NULL)
-              //   uplayer_df->recv_data(dataBuff,buffIdx);
-              recv_jsonRaw_data(dataBuff,buffIdx,1);//opcode 1 is for text
-              
-              recvType=RTYPE::INIT;
-              if(uplayer_df!=NULL)uplayer_df->recv_data(dataBuff,buffIdx,true);
+              // Defer dispatch until we know whether a CRC trailer follows.
+              recvType=RTYPE::TRAILER;
+              trailerIdx=0;
             }
 
           }
 
         break;
+        }
+        case RTYPE::TRAILER:{
+          buffIdx--;   // undo the generic append: trailer bytes are not frame
+          if(trailerIdx==0)
+          {
+            if(c=='*'){ trailerBuf[trailerIdx++]=c; }
+            else if(c=='\n'||c=='\r'){ finishJsonFrame(false,false); }
+            else { finishJsonFrame(false,false); i--; }   // legacy; reprocess c
+          }
+          else if(c=='\n'||c=='\r')
+          {
+            bool ok=false;
+            if(trailerIdx==5)
+            {
+              trailerBuf[5]='\0';
+              uint16_t want=(uint16_t)strtoul(trailerBuf+1,NULL,16);
+              ok=(want==crc16_ccitt(dataBuff,buffIdx));
+            }
+            finishJsonFrame(true,ok);
+          }
+          else if(trailerIdx<5 && isxdigit((unsigned char)c))
+          {
+            trailerBuf[trailerIdx++]=c;
+          }
+          else
+          {
+            finishJsonFrame(true,false);   // malformed trailer = corrupt
+            i--;
+          }
+          break;
         }
         case RTYPE::JSONRAW:{
           static int headerLen;

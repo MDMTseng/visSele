@@ -58,6 +58,8 @@ class Data_JsonRaw_Layer:public Data_Layer_IF
     JSONRAW,
     ERROR,
     TRAILER,   // between a completed JSON frame and its optional *HHHH\n CRC
+    RESYNC,    // after RESET recovery: discard until newline (the RESET that
+               // freed us carries its own trailer, which must not re-latch)
   };
   
   enum ERROR_TYPE

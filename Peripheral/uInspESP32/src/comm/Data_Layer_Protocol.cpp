@@ -109,6 +109,9 @@ void Data_JsonRaw_Layer::handleResetRecovery()
 {
   recv_RESET();
   clearProtocolError();
+  // The recovering RESET frame carries its own *HHHH trailer; consuming it
+  // as INIT bytes would latch us right back. Skip to the next newline.
+  recvType=RTYPE::RESYNC;
 }
 
 int Data_JsonRaw_Layer::ask_JsonRaw_version(){
@@ -360,6 +363,11 @@ int Data_JsonRaw_Layer::recv_data(uint8_t *data,int len, bool is_a_packet){
           }
 
         break;
+        }
+        case RTYPE::RESYNC:{
+          buffIdx--;   // not frame content
+          if(c=='\n'||c=='\r') recvType=RTYPE::INIT;
+          break;
         }
         case RTYPE::TRAILER:{
           buffIdx--;   // undo the generic append: trailer bytes are not frame

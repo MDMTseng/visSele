@@ -146,7 +146,7 @@ std::atomic<int> perifSendDropCount{0};
 //   uInspMEGA   inspRep{status,time_100us} -- the firmware learns a host-us to
 //               pulse-count mapping and fuzzy-matches the nearest object. A
 //               mismatch silently sorts the part into the wrong bin.
-//   uInspESP32  the firmware announces bTrigInfo{tid} when it fires the camera;
+//   uInspESP32  the firmware announces cam_trig{tid} when it fires the camera;
 //               the host answers report{tid,cat}. Exact. A mismatch faults the
 //               machine instead of mis-sorting.
 //
@@ -155,10 +155,11 @@ std::atomic<int> perifSendDropCount{0};
 // PERIF_UINSP_MEGA, so an unconfigured deployment behaves exactly as before.
 enum PerifMachineType { PERIF_UINSP_MEGA = 0, PERIF_UINSP_ESP32 = 1 };
 
-// Trigger identities the device announced (bTrigInfo), waiting to be paired
+// Trigger identities the device announced (cam_trig), waiting to be paired
 // with the frame they produced. Single camera today, so one FIFO; tidx is
 // carried anyway so a second camera only needs a queue per index.
-struct PerifTriggerMsg { int64_t tid; uint64_t dev_us; int tidx; int qs; };
+struct PerifTriggerMsg { int64_t tid; uint64_t dev_us; int tidx;
+                         uint32_t gate_pulse; int qs; };
 TSQueue<PerifTriggerMsg> perifTriggerQueue(256);
 std::atomic<int> perifTriggerDropCount{0};
 std::atomic<long long> perifTriggerRxCount{0};
@@ -350,18 +351,21 @@ class PerifChannel:public Data_JsonRaw_Layer
   void tap_trigger_info(uint8_t *raw, int rawL)
   {
     if (machine_type != PERIF_UINSP_ESP32) return;
-    if (strstr((const char *)raw, "bTrigInfo") == NULL) return;
+    // Protocol v2 (uInspESP32 docs/INTEGRATION_MAP.md): the announce is
+    // cam_trig{tid,cam,t_us,gate_pulse,Qs} -- tidx became cam, usH/usL merged
+    // into a single 64-bit t_us, gate_pulse is the registration position.
+    if (strstr((const char *)raw, "cam_trig") == NULL) return;
 
     cJSON *j = cJSON_Parse((const char *)raw);
     if (j == NULL) return;
 
     double *tid = JFetch_NUMBER(j, "tid");
-    double *tidx = JFetch_NUMBER(j, "tidx");
+    double *cam = JFetch_NUMBER(j, "cam");
 
     // Take one announcement per object. Both camera branches announce the same
     // tid, so accepting both would queue two entries per part against one
     // stream of frames.
-    if (tid != NULL && tidx != NULL && (int)*tidx != cam_idx)
+    if (tid != NULL && cam != NULL && (int)*cam != cam_idx)
     {
       cJSON_Delete(j);
       return;
@@ -369,15 +373,15 @@ class PerifChannel:public Data_JsonRaw_Layer
 
     if (tid != NULL)
     {
-      double *usH  = JFetch_NUMBER(j, "usH");
-      double *usL  = JFetch_NUMBER(j, "usL");
+      double *t_us = JFetch_NUMBER(j, "t_us");
+      double *gp   = JFetch_NUMBER(j, "gate_pulse");
       double *qs   = JFetch_NUMBER(j, "Qs");
 
       PerifTriggerMsg m;
       m.tid    = (int64_t)*tid;
-      m.dev_us = ((usH != NULL) ? ((uint64_t)*usH << 32) : 0) |
-                 ((usL != NULL) ? (uint64_t)*usL : 0);
-      m.tidx   = (tidx != NULL) ? (int)*tidx : 1;
+      m.dev_us = (t_us != NULL) ? (uint64_t)*t_us : 0;
+      m.tidx   = (cam != NULL) ? (int)*cam : 1;
+      m.gate_pulse = (gp != NULL) ? (uint32_t)*gp : 0;
       m.qs     = (qs   != NULL) ? (int)*qs   : -1;
 
       perifTriggerRxCount++;
@@ -3638,7 +3642,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             {
               char *mt = JFetch_STRING(json, "machine_type");
               if (mt != NULL && strcmp(mt, "uInspESP32") == 0)
+              {
                 perifCH->machine_type = PERIF_UINSP_ESP32;
+                // v2 firmware speaks the *HHHH\n integrity trailer; turn on
+                // our TX side too (opt-in: MEGA latches on stray bytes).
+                perifCH->tx_trailer = true;
+              }
               else
                 perifCH->machine_type = PERIF_UINSP_MEGA;
               LOGI("perif machine_type: %s -> %d",
@@ -3653,7 +3662,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               double *cidx = JFetch_NUMBER(json, "cam_idx");
               perifCH->cam_idx = (cidx != NULL) ? (int)*cidx : 1;
               if (perifCH->machine_type == PERIF_UINSP_ESP32)
-                LOGI("perif pairing against bTrigInfo tidx=%d "
+                LOGI("perif pairing against cam_trig cam=%d "
                      "(the firmware announces every object on both 1 and 2)",
                      perifCH->cam_idx);
               if (perifCH->machine_type == PERIF_UINSP_ESP32 &&
@@ -4338,7 +4347,7 @@ int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeSta
 }
 
 // uInspESP32 dialect: the verdict is addressed to the object id the firmware
-// handed us in bTrigInfo, not to a timestamp it has to fuzzy-match.
+// handed us in cam_trig, not to a timestamp it has to fuzzy-match.
 //
 // cat values (Run_ACTS' SWITCH branch):
 //   1              fire SEL1  -- ejected

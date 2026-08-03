@@ -269,8 +269,12 @@ target_include_directories(shape_based_matching PUBLIC
 target_link_libraries(shape_based_matching PUBLIC opencv_core opencv_imgproc)
 # MIPP picks the AVX2 backend off __AVX2__; -mavx2 (not -march=native) keeps the
 # binary portable across build/deploy hosts. big-obj: line2Dup.cpp is large.
-target_compile_definitions(shape_based_matching PRIVATE __AVX2__)
-target_compile_options(shape_based_matching PRIVATE -mavx2 -mfma)
+# arm64 has no AVX2 -- MIPP auto-selects NEON there, so only force the flags
+# on x86 hosts.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+  target_compile_definitions(shape_based_matching PRIVATE __AVX2__)
+  target_compile_options(shape_based_matching PRIVATE -mavx2 -mfma)
+endif()
 if(WIN32 OR MINGW OR MSYS)
   target_compile_options(shape_based_matching PRIVATE -Wa,-mbig-obj)
 endif()
