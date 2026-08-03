@@ -201,8 +201,11 @@ int stepper_dir_level = 0;
 
 // Passive machine metadata (see config/MachineConfig.hpp): reported and
 // persisted so hosts can convert physical units, never used in firmware math.
-uint32_t pulses_per_rev = perRevPulseCount;
-float plate_diameter_mm = 0;
+// These are the REAL machine's numbers, not a placeholder: a config-version
+// bump discards the stored blob and falls back here, which happens on every
+// firmware change, so wrong defaults silently re-arrive after each flash.
+uint32_t pulses_per_rev = 60000;      // measured on the machine
+float plate_diameter_mm = 240.0f;     // glass plate diameter
 
 // stagePulseOffset now lives in config/MachineConfig.hpp so the NVS layer can
 // persist it. The values below remain the fallback for a board with no stored
