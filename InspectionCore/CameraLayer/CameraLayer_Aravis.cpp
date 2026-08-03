@@ -153,6 +153,48 @@ uint64_t CameraLayer_Aravis::deviceTimestampToUs(uint64_t dev_ticks, uint64_t sy
   return (uint64_t)(dev_ticks / _ts_ticks_per_us);
 }
 
+// Reads back what the camera actually settled on, rather than what we asked
+// for. The sibling HikRobot layer has had this for a while; Aravis did not, and
+// its absence is why a mis-set trigger here looks identical to a dead wire:
+// every write "succeeds" (or its GError is dropped) and nothing reports that
+// the camera is in a state that cannot produce frames.
+void CameraLayer_Aravis::logCameraState(const char *when)
+{
+  static const char *kStr[] = { "TriggerSelector", "TriggerMode", "TriggerSource",
+                                "TriggerActivation", "AcquisitionMode" };
+  for (size_t i = 0; i < sizeof(kStr)/sizeof(kStr[0]); i++)
+  {
+    GError *e = NULL;
+    const char *v = arv_camera_get_string(camera, kStr[i], &e);
+    LOGI("[cam state %s] %-18s = %s%s", when, kStr[i],
+         e ? "<err> " : (v ? v : "(null)"), e ? e->message : "");
+    if (e) g_clear_error(&e);
+  }
+
+  {
+    GError *e = NULL;
+    gint64 burst = arv_camera_get_integer(camera, "AcquisitionBurstFrameCount", &e);
+    LOGI("[cam state %s] %-18s = %lld%s", when, "BurstFrameCount",
+         (long long)burst, e ? " <err>" : "");
+    if (e) g_clear_error(&e);
+
+    e = NULL;
+    gboolean fre = arv_camera_get_boolean(camera, "AcquisitionFrameRateEnable", &e);
+    LOGI("[cam state %s] %-18s = %d%s", when, "FrameRateEnable", (int)fre, e ? " <err>" : "");
+    if (e) g_clear_error(&e);
+
+    e = NULL;
+    double rfr = arv_camera_get_float(camera, "ResultingFrameRate", &e);
+    LOGI("[cam state %s] %-18s = %.2f fps%s", when, "ResultingFrameRate", rfr, e ? " <err>" : "");
+    if (e) g_clear_error(&e);
+  }
+
+  gint x=0,y=0,w=0,h=0;
+  arv_camera_get_region(camera, &x, &y, &w, &h, NULL);
+  LOGI("[cam state %s] region = %d,%d %dx%d  payload=%d  acquiring=%d",
+       when, x, y, w, h, payloadSize, (int)acquisition_started);
+}
+
 CameraLayer::FrameExtractPixelFormat CameraLayer_Aravis::GetFrameFormat()
 {
   // _frame_cache_buffer is only live inside the EV_IMG callback; everywhere
@@ -859,9 +901,34 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
   }
 
 
-  arv_camera_set_string (camera, "BalanceWhiteAuto", "Off",NULL);
-  arv_camera_set_string (camera, "TriggerSource", "Anyway",NULL);
-  arv_camera_set_string (camera, "TriggerMode", "On", NULL);
+  logCameraState("before-trigger-setup");
+
+  // These used to pass NULL for the GError, so a rejected write was invisible
+  // -- and a camera left in a state that cannot produce frames is
+  // indistinguishable from a dead trigger wire. Report them.
+  {
+    GError *e = NULL;
+    arv_camera_set_string (camera, "BalanceWhiteAuto", "Off", &e);
+    if (e) { LOGI("BalanceWhiteAuto=Off: %s", e->message); g_clear_error(&e); }
+
+    arv_camera_set_string (camera, "TriggerSource", "Anyway", &e);
+    if (e) { LOGE("TriggerSource=Anyway REJECTED: %s", e->message); g_clear_error(&e); }
+
+    arv_camera_set_string (camera, "TriggerMode", "On", &e);
+    if (e) { LOGE("TriggerMode=On REJECTED: %s", e->message); g_clear_error(&e); }
+
+    // ONE frame per trigger -- and it has to be done HERE, not only in
+    // TriggerMode(), because this constructor configures triggering inline and
+    // never calls TriggerMode() at all. Left at its default of 5, every trigger
+    // demands five full frames: at this layer's forced BGR8 full frame that is
+    // 5 x 15 MB = 75 MB per trigger, which saturates the link, and the camera
+    // then silently refuses triggers outright -- no error, no frames, and
+    // indistinguishable from a dead trigger wire. Measured: with burst=5 the
+    // layer captured 0 frames from 40 pulses; with burst=1, 35.
+    // Must precede start_acquisition: this node is locked while streaming.
+    arv_camera_set_integer (camera, "AcquisitionBurstFrameCount", 1, &e);
+    if (e) { LOGI("AcquisitionBurstFrameCount=1: %s (absent on some models)", e->message); g_clear_error(&e); }
+  }
   GError *err = NULL;
 
   arv_camera_stop_acquisition (camera, &err);
@@ -878,10 +945,12 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
     LOGE("ERR code:%d msg:%s", err->code, err->message);
     g_clear_error(&err);
   }
-  else 
+  else
   {
     acquisition_started=true;
   }
+
+  logCameraState("after-ctor");
 
   //
 

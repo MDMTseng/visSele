@@ -81,6 +81,9 @@ protected:
   // Returns microseconds, feeding the calibration as it goes.
   uint64_t deviceTimestampToUs(uint64_t dev_ticks, uint64_t sys_ns);
 
+  // Log what the camera actually settled on (not what we asked for).
+  void logCameraState(const char *when);
+
   static void s_STREAM_NEW_BUFFER_CB(ArvStream *stream, CameraLayer_Aravis *self);
   void STREAM_NEW_BUFFER_CB(ArvStream *stream);
   static void s_STREAM_CONTROL_LOST_CB(ArvStream *stream, CameraLayer_Aravis *self);
