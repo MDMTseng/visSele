@@ -1169,6 +1169,25 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
 
 
   takeCount = -1;
+
+  // ONE frame per trigger. Measured on the bench: these bodies expose only
+  // TriggerSelector=FrameBurstStart (there is no FrameStart trigger), so
+  // AcquisitionBurstFrameCount *is* the frames-per-trigger control -- and it
+  // defaults to 5. Left alone, every trigger produces five frames: five times
+  // the payload, on a link whose bandwidth is exactly what decides whether the
+  // camera can accept the next trigger at all. The pipeline pairs one frame to
+  // one part, so anything but 1 also desynchronises that pairing.
+  {
+    GError *burst_err = NULL;
+    arv_camera_set_integer(camera, "AcquisitionBurstFrameCount", 1, &burst_err);
+    if (burst_err)
+    {
+      LOGI("AcquisitionBurstFrameCount=1: %s (harmless if the node is absent)",
+           burst_err->message);
+      g_clear_error(&burst_err);
+    }
+  }
+
   //0 for continuous, 1 for soft trigger, 2 for HW trigger
   if (type == 0)
   {

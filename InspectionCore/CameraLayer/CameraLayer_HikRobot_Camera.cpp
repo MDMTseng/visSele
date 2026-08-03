@@ -887,6 +887,17 @@ CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
   if (MV_OK != fr_ret)
     LOGE("could not clear AcquisitionFrameRateEnable (ret=%x) -- trigger rate may be capped", fr_ret);
 
+  // ONE frame per trigger. Measured on the bench: these bodies expose only
+  // TriggerSelector=FrameBurstStart (there is no FrameStart trigger), so
+  // AcquisitionBurstFrameCount *is* the frames-per-trigger control -- and it
+  // defaults to 5. Left alone, every trigger produces five frames: five times
+  // the payload, on a link whose bandwidth is exactly what decides whether the
+  // camera can accept the next trigger at all. The pipeline pairs one frame to
+  // one part, so anything but 1 also desynchronises that pairing.
+  int burst_ret = SetIntValue_w_Check("AcquisitionBurstFrameCount", 1);
+  if (MV_OK != burst_ret)
+    LOGI("AcquisitionBurstFrameCount=1: ret=%x (harmless if the node is absent)", burst_ret);
+
   int nRet = SetEnumValue("TriggerMode", MV_TRIGGER_MODE_ON);
 
   // MV_CC_StopGrabbing(handle);
