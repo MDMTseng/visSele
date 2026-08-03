@@ -1690,16 +1690,40 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       const int cam_idx   = (cam_PIN==PIN_O_CAM1)?IOI_CAM1 : (cam_PIN==PIN_O_CAM2)?IOI_CAM2 : -1;
       const int light_idx = (light_PIN==PIN_O_L1A)?IOI_L1A : (light_PIN==PIN_O_L2A)?IOI_L2A : -1;
 
-      int64_t next=esp_timer_get_time();
-      const int64_t t_first=next;
+      // Optional: splice a tight cluster of extra pulses into the middle of an
+      // otherwise regular train. The regular train keeps its ORIGINAL absolute
+      // schedule -- the extras go in between two of its pulses rather than
+      // pushing the rest of it late -- so the emitted pattern is exactly "N Hz
+      // with a couple of intruders", which is what an unexpected trigger on the
+      // line looks like to the pipeline.
+      int ins_at = doc["insert_after"].is<int>()      ? (int)doc["insert_after"]      : -1;
+      int ins_n  = doc["insert_count"].is<int>()      ? (int)doc["insert_count"]      : 0;
+      int ins_p  = doc["insert_period_us"].is<int>()  ? (int)doc["insert_period_us"]  : period_us/4;
+      if(ins_n<0) ins_n=0;
+      if(ins_p<pulse_us+50) ins_p=pulse_us+50;
+      // The cluster has to fit in one gap of the regular train, or it would
+      // collide with the next scheduled pulse.
+      if(ins_n>0 && (int64_t)(ins_n+1)*(int64_t)ins_p >= (int64_t)period_us)
+        ins_n=(int)((int64_t)period_us/(int64_t)ins_p)-1;
+      if(ins_n<0) ins_n=0;
+      if(ins_at<1 || ins_at>=count) { ins_at=-1; ins_n=0; }
+
+      // Per-pulse emission times, so the host can line them up against frame
+      // timestamps. Only for short trains -- the reply serialises into 2048 B.
+      const int total=count+ins_n;
+      const bool want_offsets = (total<=120);
+      JsonArray offs = want_offsets ? retdoc.createNestedArray("offsets_us") : JsonArray();
+
+      int64_t main_next=esp_timer_get_time();
+      const int64_t t_first=main_next;
       int64_t prev_rise=0, sum_us=0, min_us=INT64_MAX, max_us=0;
       int emitted=0;
 
-      for(int i=0;i<count;i++)
+      // One pulse, scheduled against the absolute clock. Never `now + period`:
+      // that accumulates the cost of every pulse and drifts the train slow.
+      auto emit_at=[&](int64_t when)
       {
-        // Absolute schedule, never `now + period` -- the latter accumulates the
-        // cost of every pulse and drifts the train slow.
-        while(esp_timer_get_time() < next)
+        while(esp_timer_get_time() < when)
           esp_task_wdt_reset();
 
         const int64_t rise=esp_timer_get_time();
@@ -1719,8 +1743,19 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
           if(d>max_us) max_us=d;
         }
         prev_rise=rise;
-        next+=period_us;
+        if(want_offsets) offs.add((int32_t)(rise-t_first));
         esp_task_wdt_reset();
+      };
+
+      for(int i=0;i<count;i++)
+      {
+        emit_at(main_next);
+        if(ins_n>0 && (i+1)==ins_at)
+        {
+          int64_t ins_t=main_next+ins_p;
+          for(int j=0;j<ins_n;j++) { emit_at(ins_t); ins_t+=ins_p; }
+        }
+        main_next+=period_us;
       }
 
       const int gaps=emitted-1;
@@ -1730,7 +1765,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       retdoc["mean_us"]=gaps>0?(int32_t)(sum_us/gaps):0;
       retdoc["min_us"] =gaps>0?(int32_t)min_us:0;
       retdoc["max_us"] =gaps>0?(int32_t)max_us:0;
+      // With a cluster spliced in, min/max span the whole pattern by design --
+      // jitter_us is only a jitter figure for a uniform train.
       retdoc["jitter_us"]=gaps>0?(int32_t)(max_us-min_us):0;
+      if(ins_n>0) { retdoc["insert_at"]=ins_at; retdoc["insert_n"]=ins_n;
+                    retdoc["insert_period_us"]=ins_p; }
       rspAck=true;
     }
   }
