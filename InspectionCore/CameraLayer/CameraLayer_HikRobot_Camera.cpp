@@ -391,6 +391,41 @@ void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_O
   // 1-channel frame (no replicate-to-BGR). Color/Bayer is delivered as BGR8.
   _fi.channelCount = (pType == PixelType_Gvsp_Mono8) ? 1 : 3;
   _fi.pixelBits=8*_fi.channelCount; // CameraLayer::frameInfo uses pixelBits
+
+  // Exposure-floor watch -- see frameInfo::rateSaturated. Mirrors the Aravis
+  // layer. No timestamp calibration is needed here: MV_FRAME_OUT_INFO_EX gives
+  // device ticks in a documented 10ns unit, already divided out above.
+  //
+  // NOTE: this backend links only on Windows, so unlike the Aravis version
+  // this code has been type-checked but never executed. That is also why the
+  // watch is opt-in and off by default -- the trustworthy trigger accounting
+  // on this path remains the Line0RisingEdge event count above.
+  if (_prev_frame_us != 0 && nDevTimeStamp_us > _prev_frame_us)
+  {
+    _fi.interval_us = nDevTimeStamp_us - _prev_frame_us;
+    if (_exposure_floor_watch && _floor_us > 0.0 &&
+        (double)_fi.interval_us <= _floor_us * (1.0 + SATURATION_TOL))
+    {
+      _fi.rateSaturated = true;
+      _saturated_run++;
+      if (_saturated_run >= SATURATION_RUN_ALERT && !_saturation_reported)
+      {
+        _saturation_reported = true;
+        LOGE("camera is being triggered faster than it can expose: %d frames "
+             "in a row at the %.0fus floor (ResultingFrameRate limit). "
+             "Triggers are being delayed or silently dropped -- frame "
+             "timestamps no longer identify the trigger that caused them.",
+             _saturated_run, _floor_us);
+      }
+    }
+    else
+    {
+      _saturated_run = 0;
+      _saturation_reported = false;
+    }
+  }
+  _prev_frame_us = nDevTimeStamp_us;
+
   fi=_fi;
   callback(*this, CameraLayer::EV_IMG, context);
 
@@ -1097,11 +1132,37 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetGamma(float gamma)
 // acquisition_started tracks whether the camera is actually grabbing, so that
 // the settings calls that must briefly stop it (ROI, mirror) can put it back
 // the way they found it instead of guessing.
+// ROI, pixel format and a long exposure all move the floor, so re-read it
+// every time acquisition starts rather than sampling it once.
+void CameraLayer_HikRobot_Camera::refreshExposureFloor()
+{
+  _prev_frame_us = 0;
+  _saturated_run = 0;
+  _saturation_reported = false;
+  _floor_us = 0.0;
+
+  MVCC_FLOATVALUE fv = {0};
+  int ret = MV_CC_GetFloatValue(handle, "ResultingFrameRate", &fv);
+  if (MV_OK != ret || !(fv.fCurValue > 0.0f))
+  {
+    // Not fatal and not guessed at: without the rate there is no floor, so the
+    // check simply stays off.
+    LOGI("ResultingFrameRate unavailable (ret=%d); exposure-floor watch idle", ret);
+    return;
+  }
+  _floor_us = 1000000.0 / (double)fv.fCurValue;
+  LOGI("exposure floor: %.0fus (ResultingFrameRate %.2f fps)",
+       _floor_us, (double)fv.fCurValue);
+}
+
 CameraLayer::status CameraLayer_HikRobot_Camera::StartAquisition()
 {
   int ret = MV_CC_StartGrabbing(handle);
   if (MV_OK == ret)
+  {
     acquisition_started = true;
+    refreshExposureFloor();
+  }
   return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
 }
 CameraLayer::status CameraLayer_HikRobot_Camera::StopAquisition()

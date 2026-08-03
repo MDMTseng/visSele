@@ -66,6 +66,16 @@ protected:
   // memcpy each frame into one of these reusable slots inside the callback
   // and queue a pointer into the slot. The ring is larger than imgQueue's
   // capacity, so a slot is always fully consumed before it is reused.
+  // Exposure-floor watch state. Mirrors CameraLayer_Aravis; see
+  // frameInfo::rateSaturated. Off unless SetExposureFloorWatch(true).
+  double   _floor_us = 0.0;
+  uint64_t _prev_frame_us = 0;
+  int      _saturated_run = 0;
+  bool     _saturation_reported = false;
+  static constexpr double SATURATION_TOL = 0.02;
+  static constexpr int SATURATION_RUN_ALERT = 3;
+  void refreshExposureFloor();
+
   static constexpr int FRAME_POOL_SIZE = 16;
   static constexpr int IMG_QUEUE_DEPTH = 10;
   // The pool's whole correctness argument is that a slot cannot be recycled

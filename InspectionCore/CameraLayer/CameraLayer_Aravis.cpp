@@ -528,7 +528,7 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
         _fi.timeStamp_us > _prev_frame_us)
     {
       _fi.interval_us = _fi.timeStamp_us - _prev_frame_us;
-      if (_floor_us > 0.0 &&
+      if (_exposure_floor_watch && _floor_us > 0.0 &&
           (double)_fi.interval_us <= _floor_us * (1.0 + SATURATION_TOL))
       {
         _fi.rateSaturated = true;

@@ -138,6 +138,14 @@ class CameraLayer{
     std::vector<uint64_t> error_code_list;
     std::string cam_json_info;
 
+    // Opt-in, and deliberately OFF by default. The reliable trigger accounting
+    // is the camera's own edge count (HikRobot's Line0RisingEdge events) plus
+    // frameNum continuity; this watch is a second opinion for diagnosing a
+    // suspected over-trigger, not a replacement. Leaving it dark by default
+    // also means a machine that legitimately runs at the frame-rate limit does
+    // not spend its life logging that it is doing so.
+    bool _exposure_floor_watch = false;
+
     
     float ROI_x;
     float ROI_y;
@@ -167,6 +175,13 @@ class CameraLayer{
 
     
     static int listAddDevices(std::vector<CameraLayer::BasicCameraInfo> &dev){return 0;}
+
+    // Turn the exposure-floor watch on for this camera. frameInfo::interval_us
+    // is filled either way (it costs a subtraction); this only controls whether
+    // frameInfo::rateSaturated gets set and whether a sustained episode is
+    // logged. See frameInfo::rateSaturated for what it means.
+    void SetExposureFloorWatch(bool enable){ _exposure_floor_watch = enable; }
+    bool GetExposureFloorWatch() const { return _exposure_floor_watch; }
 
     
     CameraLayer(CameraLayer::BasicCameraInfo connection_data,std::string connection_misc,CameraLayer_Callback cb,void* context)
