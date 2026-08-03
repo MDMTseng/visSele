@@ -107,10 +107,12 @@ bool SYS_STEPPER_DISABLED=false;
 uint32_t SYS_MIN_PULSE_TIME_SEP_us=(1000000/15);
 int SEL1_ACT_COUNTDOWN=-1;
 
-#define _PLAT_DIAMITER_mm 350
+// Plate geometry for the distance gate. These were the OLD machine's numbers
+// (350mm plate, 28800 pulses/turn), which made every mm<->pulse conversion here
+// off by a factor of ~2: 3.5mm resolved to 91 pulses instead of 278.
+#define _PLAT_DIAMITER_mm 240
 #define _PLAT_CIRC_um (_PLAT_DIAMITER_mm*3.14159*1000)
-#define _PLAT_SUB_STEP 800
-#define _PLAT_PULSE_PER_TURN (_PLAT_SUB_STEP*18 *2)
+#define _PLAT_PULSE_PER_TURN 60000
 #define _PLAT_DIST_um_PER_STEP ((int)(_PLAT_CIRC_um/_PLAT_PULSE_PER_TURN))
 
 #define _PLAT_DIST_um(stepCount) ((int)(stepCount*_PLAT_CIRC_um/_PLAT_PULSE_PER_TURN))
@@ -1249,7 +1251,7 @@ volatile int  minWidth = 0;
 volatile int  maxWidth = 1000;//1+40000/_PLAT_DIST_um_PER_STEP;
 
 // Gate debounce, in gate-sample ticks (the timer runs at 2*plate_freq, so one
-// tick is ~1 step ~= _PLAT_DIST_um_PER_STEP of travel -- 38um on the 350mm
+// tick is ~1 step ~= _PLAT_DIST_um_PER_STEP of travel -- 12.6um on the 240mm
 // plate). A value of N means an edge is accepted only after the new level has
 // held for N consecutive samples, so any glitch shorter than N ticks is
 // rejected. Runtime-settable (gate_debounce_rise / gate_debounce_fall) like
