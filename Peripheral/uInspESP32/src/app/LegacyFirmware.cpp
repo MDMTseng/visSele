@@ -137,6 +137,11 @@ bool SYS_STEPPER_DISABLED=false;
 // a 66ms floor silently merged adjacent parts. 4ms still rejects the double
 // counting a single part can cause, while clearing 250 parts/s.
 uint32_t SYS_MIN_PULSE_TIME_SEP_us=4000;
+
+// Promote the camera-timestamp match from observer to decider. Default off: the
+// first flash must behave exactly as before, and the agree/disagree counters in
+// get_running_stat are what justify turning it on.
+bool REPORT_MATCH_TS=false;
 int SEL1_ACT_COUNTDOWN=-1;
 
 // Plate geometry for the distance gate. These were the OLD machine's numbers
@@ -169,7 +174,87 @@ typedef struct pipeLineInfo{
   // gate->report latency stat. Wraps every ~71 min; a single latency sample
   // never spans that, so unsigned subtraction stays correct.
   uint32_t trig_us;
+  // Device clock at the instant THIS object's camera trigger fired. Full 64
+  // bits, unlike trig_us: the offset arithmetic against the camera's own clock
+  // would otherwise have to handle a 71-minute wrap, and 8 bytes x 100 objects
+  // is 800 bytes out of 270KB free.
+  //
+  // Written from the CAM ISR branch, read by the report handler in the main
+  // loop. A 64-bit store is not atomic on a 32-bit core, so this relies on the
+  // pipeline order rather than on atomicity: an object cannot be reported
+  // against until its camera stage has already fired, which is what wrote this.
+  // The write and the read are separated by the whole inspection round trip.
+  uint64_t cam_us;
 }pipeLineInfo;
+
+// ---------------------------------------------------------------------------
+// Camera clock <-> device clock
+// ---------------------------------------------------------------------------
+// Which frame belongs to which object is a question this board can answer
+// directly: it fired the trigger, so it knows the object and the instant. The
+// host cannot, and had been reconstructing it from arrival order and a clock
+// offset it estimated itself -- which needed bootstrap, drift tracking, a
+// staleness sweep, a resync path and an idle heartbeat, all of it compensation
+// for knowledge that lives here.
+//
+// So the host now reports what it actually knows -- "the frame taken at camera
+// time T is verdict C" -- and the matching happens where the ground truth is.
+//
+// The two clocks share no epoch but their difference is near constant: only
+// crystal drift moves it, ~83us per second measured on this pair, against a
+// tolerance of several ms. Estimate it once, track it slowly, and every report
+// becomes self-addressing.
+//
+// Integer throughout on purpose: this runs in the report handler beside ISR
+// work, and an EWMA is a shift.
+struct CamClockSync
+{
+  static const int64_t TOL_US   = 5000;   // match window; drift needs ~60s to cross it
+  static const int     BOOT_N   = 8;      // samples before the estimate is trusted
+  static const int     EWMA_SH  = 4;      // 1/16 per update
+
+  bool     valid = false;
+  int64_t  offset_us = 0;                 // cam_ts - cam_us
+  int64_t  boot[BOOT_N];
+  uint8_t  boot_n = 0;
+  int64_t  last_resid_us = 0;
+  int64_t  max_resid_us = 0;
+  uint32_t agree = 0, disagree = 0, learned = 0;
+
+  // A report whose object is already known (matched by tid) is a free
+  // measurement of the offset. Real parts therefore calibrate the clock as a
+  // side effect of ordinary running -- no injected pulses required.
+  void observe(uint64_t cam_ts, uint64_t cam_us)
+  {
+    if(cam_ts==0 || cam_us==0) return;
+    int64_t sample = (int64_t)cam_ts - (int64_t)cam_us;
+    learned++;
+    if(!valid)
+    {
+      if(boot_n < BOOT_N) boot[boot_n++] = sample;
+      if(boot_n < BOOT_N) return;
+      // Median, then require a real majority around it. Disagreement means the
+      // samples are not measuring one constant -- better to stay unconverged and
+      // say so than to publish an average of unrelated numbers.
+      int64_t srt[BOOT_N];
+      for(int i=0;i<BOOT_N;i++) srt[i]=boot[i];
+      for(int i=1;i<BOOT_N;i++){int64_t k=srt[i];int j=i-1;while(j>=0&&srt[j]>k){srt[j+1]=srt[j];j--;}srt[j+1]=k;}
+      int64_t med = srt[BOOT_N/2];
+      int ok=0; for(int i=0;i<BOOT_N;i++) if(llabs(srt[i]-med)<=TOL_US) ok++;
+      if(ok*2 > BOOT_N){ offset_us=med; valid=true; }
+      else { for(int i=0;i<BOOT_N/2;i++) boot[i]=boot[i+BOOT_N/2]; boot_n=BOOT_N/2; }
+      return;
+    }
+    int64_t resid = sample - offset_us;
+    last_resid_us = resid;
+    if(llabs(resid) > llabs(max_resid_us)) max_resid_us = resid;
+    offset_us += resid >> EWMA_SH;   // crystals drift, they do not jump
+  }
+
+  // Where a frame taken at cam_ts should sit on the device clock.
+  int64_t expectedCamUs(uint64_t cam_ts) const { return (int64_t)cam_ts - offset_us; }
+};
+CamClockSync CAM_SYNC;
 
 // Gate->report latency, updated by the report handler (main loop only),
 // reported by get_running_stat, zeroed by reset_running_stat.
@@ -914,6 +999,11 @@ int Run_ACTS(uint32_t cur_pulse)
                       commInfo->trig_id=task->src->tid;
                       commInfo->gate_pulse=task->src->gate_pulse;
                       ISRTrigQ.pushHead();
+                      // Keep it on the object too. Until now this timestamp was
+                      // announced and then forgotten, which is why the host had
+                      // to reconstruct the frame<->object mapping from clocks it
+                      // could only observe indirectly.
+                      task->src->cam_us = time_us;
                     }
                     else
                     {
@@ -2079,6 +2169,22 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
                      (uint32_t)(1000000UL/SYS_MIN_PULSE_TIME_SEP_us) : 0;
     }
     {
+      // The migration's evidence. agree/disagree is the whole argument for
+      // promoting the timestamp match: the new mechanism checked against the
+      // old one on real traffic, continuously, at no cost. resid says whether
+      // the clock model is healthy -- tens of us is right, drifting toward
+      // TOL_US means the EWMA is losing the crystals.
+      JsonObject jS=retdoc.createNestedObject("cam_sync");
+      jS["valid"]=CAM_SYNC.valid;
+      jS["authoritative"]=REPORT_MATCH_TS;
+      jS["offset_us"]=(double)CAM_SYNC.offset_us;
+      jS["resid_us"]=(int32_t)CAM_SYNC.last_resid_us;
+      jS["resid_max_us"]=(int32_t)CAM_SYNC.max_resid_us;
+      jS["learned"]=CAM_SYNC.learned;
+      jS["agree"]=CAM_SYNC.agree;
+      jS["disagree"]=CAM_SYNC.disagree;
+    }
+    {
       JsonObject jL=retdoc.createNestedObject("report_latency");
       jL["n"]=REP_LAT_N;
       jL["avg_us"]=REP_LAT_N ? (uint32_t)(REP_LAT_SUM_US/REP_LAT_N) : 0;
@@ -2092,30 +2198,73 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
     int tid=(doc["tid"].is<int>()==true)?doc["tid"]:-1;
     int cat=(doc["cat"].is<int>()==true)?doc["cat"]:-1;
+    // The camera's own timestamp for the frame this verdict came from. The host
+    // knows this without knowing anything else, which is the point: it stops
+    // having to work out WHICH object it inspected.
+    uint64_t cam_ts = 0;
+    if(doc["cam_ts"].is<uint64_t>()==true) cam_ts=doc["cam_ts"];
+    else if(doc["cam_ts"].is<double>()==true) cam_ts=(uint64_t)(double)doc["cam_ts"];
 
     pipeLineInfo *tarP=NULL;
 
-    if(tid!=-1 && cat!=-1)
-    for (int i = 0; i < RBuf.size(); i++)
+    // --- find the object, both ways, before touching anything ------------
+    //
+    // Separated from the SKIP sweep below on purpose. The old code found and
+    // swept in one pass, which meant the sweep depended on which object it
+    // happened to find first -- fine when there was only one way to look, wrong
+    // now that there are two and they can disagree.
+    pipeLineInfo *byTid=NULL;
+    pipeLineInfo *byTs=NULL;
+    int64_t bestDelta=0;
+    if(cat!=-1)
     {
-      pipeLineInfo *pipe = RBuf.getTail(i);
-      if (pipe == NULL)
-        break;
-
-      if(pipe->tid==tid)
+      int64_t want = CAM_SYNC.valid ? CAM_SYNC.expectedCamUs(cam_ts) : 0;
+      for (int i = 0; i < RBuf.size(); i++)
       {
-        tarP=pipe;
-        break;
+        pipeLineInfo *pipe = RBuf.getTail(i);
+        if (pipe == NULL) break;
+        if(tid!=-1 && pipe->tid==(uint32_t)tid) byTid=pipe;
+        if(cam_ts!=0 && CAM_SYNC.valid && pipe->cam_us!=0)
+        {
+          int64_t d = (int64_t)pipe->cam_us - want; if(d<0) d=-d;
+          if(d<=CamClockSync::TOL_US && (byTs==NULL || d<bestDelta)){ byTs=pipe; bestDelta=d; }
+        }
       }
-      if(pipe->insp_status==insp_status_UNSET)
-      {
-        pipe->insp_status=insp_status_SKIP;
-      }
+    }
 
-      // if(i>30)
-      // {//only check the last 30 info in the queue
-      //   break;
-      // }
+    // --- cross-check, and learn ------------------------------------------
+    //
+    // While both are available the tid stays authoritative and the timestamp
+    // match is only watched. That is what makes this migration free of risk:
+    // the new mechanism has to agree with the old one, continuously and on real
+    // production traffic, before anyone has to trust it. A disagreement is not
+    // a tie to break -- it is a defect, reported as one.
+    if(byTid!=NULL && cam_ts!=0) CAM_SYNC.observe(cam_ts, byTid->cam_us);
+    if(byTid!=NULL && byTs!=NULL)
+    {
+      if(byTid==byTs) CAM_SYNC.agree++;
+      else
+      {
+        CAM_SYNC.disagree++;
+        djrl.dbg_printf("CAMSYNC MISMATCH tid=%u ts_tid=%u d=%lld",
+                        (unsigned)byTid->tid,(unsigned)byTs->tid,(long long)bestDelta);
+      }
+    }
+
+    // tid wins while it is present. REPORT_MATCH_TS promotes the timestamp to
+    // authoritative once the agreement count says it has earned it.
+    tarP = (REPORT_MATCH_TS && byTs!=NULL) ? byTs : (byTid!=NULL ? byTid : byTs);
+
+    // --- sweep everything older than the chosen object --------------------
+    if(tarP!=NULL)
+    {
+      for (int i = 0; i < RBuf.size(); i++)
+      {
+        pipeLineInfo *pipe = RBuf.getTail(i);
+        if (pipe == NULL || pipe==tarP) break;
+        if(pipe->insp_status==insp_status_UNSET)
+          pipe->insp_status=insp_status_SKIP;
+      }
     }
 
     if(tarP)
@@ -3262,6 +3411,7 @@ void genMachineSetup(JsonDocument &jdoc)
   jdoc["plate_freq"]=PLATE_FREQ_SETPOINT;
   jdoc["plate_accel"]=SYS_FREQ_ACCEL;
   jdoc["min_detect_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
+  jdoc["report_match_ts"]=REPORT_MATCH_TS;
 
   jdoc["pulse_min_width"]=minWidth;
   jdoc["pulse_max_width"]=maxWidth;
@@ -3360,6 +3510,7 @@ void setMachineSetup(JsonDocument &jdoc)
   JSON_SETIF_ABLE(PLATE_FREQ_SETPOINT,jdoc,"plate_freq");
   JSON_SETIF_ABLE(SYS_FREQ_ACCEL,jdoc,"plate_accel");
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jdoc,"min_detect_sep_us");
+  JSON_SETIF_ABLE(REPORT_MATCH_TS,jdoc,"report_match_ts");
 
   JSON_SETIF_ABLE(minWidth,jdoc,"pulse_min_width");
   JSON_SETIF_ABLE(maxWidth,jdoc,"pulse_max_width");

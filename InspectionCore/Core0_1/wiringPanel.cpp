@@ -138,7 +138,10 @@ TSQueue<image_pipe_info *> inspSnapQueue(5);
 // rather than back-pressuring inspection.
 // tid < 0 means "no object identity" -- either the legacy dialect (which
 // addresses by timestamp) or an ESP32 frame we could not pair with a trigger.
-struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid; };
+struct PerifResultMsg { int uInspStatus; uint64_t timeStamp_100us; int64_t tid;
+                       // Raw camera timestamp for the frame, passed through
+                       // untouched so the device can match on it.
+                       uint64_t cam_ts_us; };
 TSQueue<PerifResultMsg> perifSendQueue(256);
 std::atomic<int> perifSendDropCount{0};
 
@@ -4700,14 +4703,20 @@ int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeSta
 // part comes round again.
 #define PERIF_CAT_NA 0xFFFF
 
-int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat)
+int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat, uint64_t cam_ts_us)
 {
   uint8_t buffx[200];
 
+  // cam_ts is the camera's own timestamp for the frame this verdict came from.
+  // It is the one thing the host knows without having to work out WHICH object
+  // it inspected -- and the device, which fired the trigger, can turn it back
+  // into an object exactly. Sent alongside tid during the migration so the
+  // device can check the two against each other on real traffic before the
+  // timestamp is trusted on its own.
   return printfTo_perifCH(perifCH, buffx, sizeof(buffx), true,
     "{"
-    "\"type\":\"report\",\"tid\":%lld,\"cat\":%d"
-    "}", (long long)tid, cat);
+    "\"type\":\"report\",\"tid\":%lld,\"cat\":%d,\"cam_ts\":%llu"
+    "}", (long long)tid, cat, (unsigned long long)cam_ts_us);
 }
 
 // Inspection verdict -> selector category.
@@ -5114,7 +5123,7 @@ void PerifSendThread(bool *terminationflag)
             if (msg.tid >= 0)
             {
               int cat = perif_status_to_cat(pc, msg.uInspStatus);
-              ret = sendReportTo_perifCH(pc, msg.tid, cat);
+              ret = sendReportTo_perifCH(pc, msg.tid, cat, msg.cam_ts_us);
               // The announcement side is traced ([perif RX] cam_trig) but the
               // verdict side was not, so "did tid N ever get answered, and
               // when?" could not be asked of the log at all. Both halves are
@@ -5616,7 +5625,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   {
     // Hand off to PerifSendThread instead of blocking here on the serial
     // write (which can stall >1s under flow control and freeze inspection).
-    PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1 };
+    PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1,
+                        imgPipe->fi.timeStamp_us };
     // Set when the frame turns out to belong to a clock-sync pulse rather than
     // a part: the pairing still learns from it, but there is nothing to report.
     bool skip_perif_report = false;
@@ -5658,7 +5668,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
             {
               perifMissedFrameCount++;
               PerifResultMsg na{ FeatureReport_sig360_circle_line_single::STATUS_NA,
-                                 0, lt.tid };
+                                 0, lt.tid, 0 };
               if (!perifSendQueue.push(na))
               {
                 PerifResultMsg discard;
