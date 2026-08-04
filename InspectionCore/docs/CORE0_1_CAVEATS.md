@@ -452,21 +452,42 @@ until it takes (typically succeeds on try 2). A cleaner fix would be to stop
 resetting the board on port open, or to wait for its
 `system_info "State changed 0 -> 100"` before talking.
 
-### J7. FIFO trigger↔frame pairing drifts if frame count ≠ part count — OPEN
+### J7. FIFO trigger↔frame pairing needs the two streams 1:1
 `ImgPipeProcessCenter_imp` pairs the oldest unclaimed `cam_trig{tid}` with the
-oldest frame. That is only correct while the two streams are 1:1. Measured over
-one run at `plate_freq` 3000: **426 cam_trig announcements (~213 parts, each
-announced on cam 1 and 2), 449 frames, 400 reports, and 273 "frame with no
-pending trigger"**. Report latency (measured by the firmware from the camera
-trigger to the report arriving) grew monotonically 844 ms → 1348 ms avg, max
-4970 ms, until a part blew the SWITCH budget.
+oldest frame. That is only correct while frames and parts are 1:1.
 
-Inspection is **not** the bottleneck: 9–13 ms per frame with `insp:0/10`, i.e.
-no queue at all. The budget is `SWITCH_offset / (2 × plate_freq)` — 4.98 s at
-`plate_freq` 3000, but only **996 ms** at production 15000.
+**Cause found and fixed: `TriggerSource` was `"Anyway"`.** That tells the camera
+to accept a trigger from *any* source including its internal one, so the sensor
+free-runs between hardware pulses. It triggers correctly on Line0 as well, so it
+passes a bench test and looks settled — but the surplus frames drift the
+pairing, and a drifted pairing hands parts their neighbours' verdicts. The
+tell is direct: with `"Anyway"` an **idle** machine still produced frames at
+~26 ms intervals. Now set to `Line0` with an `"Anyway"` fallback
+(`CameraLayer_Aravis.cpp`, both the ctor's inline setup and `TriggerMode()`).
 
-Note the existing guard retires surplus triggers only on **`frame_id` gaps**,
-which by construction cannot see a trigger the camera silently refused
-(`frame_id` stays contiguous in that case). First thing to check: `CAM1_on/off`
-and `CAM2_on/off` sit at *identical* offsets (654/672) in `stage_pulse_offset`,
-so verify whether both pins can reach the one camera.
+Measured at `plate_freq` 3000, before → after:
+
+| | "Anyway" | `Line0` |
+|---|---|---|
+| frames vs parts | 449 vs ~213 (2×) | 103 vs ~99 (1:1) |
+| "frame with no pending trigger" | 273 | 1 |
+| `perif trig` pending | 4, drifting | 1, steady |
+| report latency (avg) | 844 ms | 348 ms |
+
+**STILL OPEN — residual drift.** Over a longer run `pending` still crept 1 → 5
+and latency 348 ms → 929 ms avg (max 4803 ms), i.e. a handful of triggers still
+produce no frame. Each one permanently shifts the pairing by one and adds a
+whole part-period to every later part, so it is cumulative and eventually blows
+the SWITCH budget (`SWITCH_offset / (2 × plate_freq)`: 4.98 s at `plate_freq`
+3000, but only **996 ms** at production 15000).
+
+Inspection is **not** the bottleneck — measured 7–14 ms per frame with
+`insp:0/10`, no queue at all.
+
+The existing guard retires surplus triggers only on **`frame_id` gaps**, which
+by construction cannot see a trigger the camera silently *refused* — `frame_id`
+stays contiguous in that case (see `cameralayer-validation`). So FIFO position
+alone can never be made safe here. The fix is to stop inferring the pairing:
+either carry the tid through explicitly, or reconcile against the camera's own
+Line0 rising-edge event count (the HikRobot layer already accounts for exactly
+this via `_line0RisingEdges`; the Aravis layer does not yet).
