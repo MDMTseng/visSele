@@ -51,6 +51,20 @@ static inline void io_drive(int pin,int idx,bool on)
 }
 // Logical feeder state, so a polarity change can re-drive the pin correctly.
 bool FEEDER_ON=false;
+
+// Manual backlight hold, for camera setup (exposure/gain/focus need a steady
+// image, and the stage machine only ever flashes the light for ~600us).
+//
+// Auto-off is not optional politeness: a backlight sized for a 600us strobe is
+// not necessarily rated for continuous duty, so a hold that outlives the person
+// who set it is a thermal risk. LIGHT_HOLD_deadline_ms==0 means nothing is
+// held; a hold is refused outside IDLE because there the stage tasks own these
+// pins and would fight it.
+volatile uint32_t LIGHT_HOLD_deadline_ms=0;
+volatile int LIGHT_HOLD_pin=-1;
+volatile int LIGHT_HOLD_idx=-1;
+static const uint32_t LIGHT_HOLD_MAX_MS=300000;      // 5 min ceiling
+static const uint32_t LIGHT_HOLD_DEFAULT_MS=60000;   // 1 min unless asked otherwise
 // Name<->pin<->mask-bit table for the io_on_level JSON config.
 static const struct { const char *name; int pin; int idx; } IO_POL_TAB[] = {
   {"L1A",   PIN_O_L1A,  IOI_L1A},
@@ -2129,6 +2143,56 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
     doRsp=rspAck=true;
   }
+  // Polarity-aware light hold. pin_on/pin_off above are RAW digitalWrite, and
+  // with io_on_level.L1A=0 (ON is LOW, the current machine's config) they do
+  // the opposite of what their names suggest -- not something to put behind an
+  // operator's button. This one goes through io_drive() so "on" means lit
+  // whatever the wiring polarity is.
+  //   {"type":"light","ch":"L1A"|"L2A","on":true,"timeout_ms":60000}
+  else if(strcmp(type,"light")==0)
+  {
+    doRsp=true;
+    const char* ch = doc["ch"].is<const char*>() ? doc["ch"].as<const char*>() : "L1A";
+    int pin=-1, idx=-1;
+    if(strcmp(ch,"L1A")==0)      { pin=PIN_O_L1A; idx=IOI_L1A; }
+    else if(strcmp(ch,"L2A")==0) { pin=PIN_O_L2A; idx=IOI_L2A; }
+    else { retdoc["err"]="ch must be L1A or L2A"; rspAck=false; }
+
+    if(pin>=0)
+    {
+      bool on = doc["on"].is<bool>() ? doc["on"].as<bool>() : true;
+      if(on)
+      {
+        const char* deny=cfgPersistDeny();
+        if(deny!=NULL)
+        {
+          // In INSPECTION the stage tasks drive these pins every part; a manual
+          // hold would be stomped within milliseconds and read as a fault.
+          retdoc["err"]=deny;
+          retdoc["state"]=(int)sysinfo.state;
+          rspAck=false;
+        }
+        else
+        {
+          uint32_t to = doc["timeout_ms"].is<uint32_t>()
+                      ? (uint32_t)doc["timeout_ms"] : LIGHT_HOLD_DEFAULT_MS;
+          if(to>LIGHT_HOLD_MAX_MS) to=LIGHT_HOLD_MAX_MS;
+          io_drive(pin,idx,true);
+          LIGHT_HOLD_pin=pin; LIGHT_HOLD_idx=idx;
+          LIGHT_HOLD_deadline_ms=millis()+to;
+          retdoc["on"]=true; retdoc["timeout_ms"]=to;
+          rspAck=true;
+        }
+      }
+      else
+      {
+        io_drive(pin,idx,false);
+        LIGHT_HOLD_deadline_ms=0; LIGHT_HOLD_pin=-1; LIGHT_HOLD_idx=-1;
+        retdoc["on"]=false;
+        rspAck=true;
+      }
+    }
+  }
   else if(strcmp(type,"pin_read")==0)
   {
     if(doc["pin"].is<int>()==true)
@@ -2710,6 +2774,19 @@ static uint8_t recvBuf[20];
 void firmwareLoop()
 {
   esp_task_wdt_reset();
+  // Drop a manual light hold when it expires, or the moment the machine leaves
+  // IDLE -- entering inspection hands these pins back to the stage tasks.
+  if(LIGHT_HOLD_deadline_ms!=0)
+  {
+    bool expired = (int32_t)(millis()-LIGHT_HOLD_deadline_ms) >= 0;
+    bool notIdle = (sysinfo.state!=SYS_STATE::IDLE &&
+                    sysinfo.state!=SYS_STATE::INSPECTION_MODE_READY);
+    if(expired || notIdle)
+    {
+      if(LIGHT_HOLD_pin>=0) io_drive(LIGHT_HOLD_pin,LIGHT_HOLD_idx,false);
+      LIGHT_HOLD_deadline_ms=0; LIGHT_HOLD_pin=-1; LIGHT_HOLD_idx=-1;
+    }
+  }
   if(host_timeout_ms>0 && sysinfo.state==SYS_STATE::INSPECTION_MODE_READY)
   {
     uint32_t last=djrl.last_rx_ms;

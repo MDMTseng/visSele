@@ -1561,6 +1561,13 @@ class APPMasterX extends React.Component {
 
       // ---- stepper / diagnostics -------------------------------------------
 
+      // Steady backlight for camera setup (exposure / gain / focus need a stable
+      // image; the stage machine only ever strobes it for ~600us). Polarity-aware
+      // on the firmware side -- do NOT use pin_on/pin_off, those are raw writes
+      // and this machine's io_on_level makes ON active-low, so they invert.
+      // The board auto-drops the hold on timeout or when it leaves IDLE.
+      light(ch,on,timeout_ms){ return this.sendP({type:"light",ch,on,timeout_ms}); }
+
       stepperEnable(){ return this.sendP({type:"stepper_enable"}); }
       stepperDisable(){ return this.sendP({type:"stepper_disable"}); }
       trigPhantomPulse(){ return this.sendP({type:"trig_phamton_pulse"}); }

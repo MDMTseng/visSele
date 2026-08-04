@@ -63,6 +63,11 @@ const fmtMs = (ms) => (isFinite(ms) ? `${ms.toFixed(ms < 10 ? 2 : 0)} ms` : '—
 // blank exactly when someone is sitting there reading the timing. Fall back to
 // the production speed and label it, rather than showing nothing.
 const REF_FREQ = 15000;
+
+// Matches LIGHT_HOLD_MAX_MS in the firmware, which clamps anything larger.
+// Two minutes is not enough to set exposure/gain/focus without the light
+// dying mid-adjustment; five is the most the board will hold.
+const LIGHT_HOLD_MS = 300000;
 const refFreq = (plate_freq) => (plate_freq > 0 ? plate_freq : REF_FREQ);
 const isRef = (plate_freq) => !(plate_freq > 0);
 
@@ -76,6 +81,8 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const [busy, setBusy] = useState('');
   const [freqInput, setFreqInput] = useState('');
   const [commDiag, setCommDiag] = useState(null);
+  const [lightUntil, setLightUntil] = useState(0);   // epoch ms the board will auto-drop the hold
+  const [now, setNow] = useState(Date.now());
   const mounted = useRef(true);
 
   const cfg = GetObjElement(CONN, ['machineSetup']) || {};
@@ -100,7 +107,8 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
     };
     tick();
     const h = setInterval(tick, pollMs);
-    return () => { mounted.current = false; clearInterval(h); };
+    const h2 = setInterval(() => { if (mounted.current) setNow(Date.now()); }, 500);
+    return () => { mounted.current = false; clearInterval(h); clearInterval(h2); };
   }, [API_ID, pollMs]);
 
   const run = (label, fn) => {
@@ -241,6 +249,37 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           <Button size="small" loading={busy === 'save'}
             onClick={() => run('save', (api) => api.saveSetupToDevice())}
           >存入 NVS</Button>
+        </div>
+      </Card>
+
+      {/* Steady light for camera setup. The board refuses the hold outside IDLE
+          (in INSPECTION the stage tasks own these pins and would stomp it) and
+          drops it on a timeout, because a backlight sized for a 600us strobe is
+          not necessarily rated for continuous duty. */}
+      <Card size="small" title="背光 (相機設定用)" style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {['L1A', 'L2A'].map((ch) => (
+            <Button key={ch} size="small" loading={busy === 'lt' + ch} disabled={running}
+              onClick={() => run('lt' + ch, (api) =>
+                api.light(ch, true, LIGHT_HOLD_MS).then((r) => {
+                  if (r && r.ack === false) { log.warn('[light] refused', r); return; }
+                  setLightUntil(Date.now() + ((r && r.timeout_ms) || LIGHT_HOLD_MS));
+                }))}
+            >{ch} 開</Button>
+          ))}
+          <Button size="small" danger loading={busy === 'ltoff'}
+            onClick={() => run('ltoff', (api) => {
+              setLightUntil(0);
+              return Promise.all([api.light('L1A', false), api.light('L2A', false)]);
+            })}
+          >全部關</Button>
+          <span style={dim}>
+            {running
+              ? '檢測模式中無法手動點燈'
+              : lightUntil > now
+                ? `亮著 — ${Math.ceil((lightUntil - now) / 1000)} 秒後自動熄滅`
+                : '熄滅'}
+          </span>
         </div>
       </Card>
 
