@@ -109,6 +109,21 @@ SYS_INFO sysinfo = {
 
 float PLATE_FREQ_SETPOINT=0;
 bool SYS_FREQ_STABLE=false;
+
+// Ignore the real gate sensor while leaving trig_phantom_pulse working.
+//
+// The two are deliberately separated: this is checked on the SENSOR path only,
+// so injected pulses still register. blockNewDetectedObject lives inside
+// newPulseEvent and blocks everything, which is right for IDLE/ERROR but wrong
+// here -- the whole point is to inject while real parts are ignored.
+//
+// What it buys: a clean lane for calibration. Disable, wait for the plate to
+// reach constant speed, fire a couple of known pulses to measure the host's
+// clock offset against, then re-enable. The measurement is then taken on
+// pulses whose timing we chose, with no real part able to land in the middle
+// of it. Parts on the plate are not lost by this -- they simply ride round
+// again, which is what they do for any other rejection.
+volatile bool GATE_DISABLED=false;
 float PLATE_FREQ_TARGET=1000;
 float PLATE_FREQ_CURRENT=0;
 // Plate spin-up/down ramp, in Hz of plate_freq per second of wall time. The old
@@ -1402,7 +1417,7 @@ void GateSensing()
         // pre-debounce code did, so the calibrated stage_pulse_offset values
         // still line up. (Switching to the object centre -- middle_pulse -- is
         // checklist 5.3's separate, calibration-affecting change.)
-        if(SYS_STEPPER_DISABLED==false && SYS_FREQ_STABLE)
+        if(SYS_STEPPER_DISABLED==false && SYS_FREQ_STABLE && GATE_DISABLED==false)
           newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,
                         gateInfo.end_pulse,diff);
       }
@@ -2055,6 +2070,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jG["rej_rate"]=GATE_REJ_RATE;
       jG["rej_dist"]=GATE_REJ_DIST;
       jG["rej_busy"]=GATE_REJ_BUSY;
+      jG["disabled"]=(bool)GATE_DISABLED;
+      // The host needs this to know when a calibration pulse is meaningful:
+      // before the plate is at constant speed the stage offsets do not line up.
+      jG["freq_stable"]=SYS_FREQ_STABLE;
       jG["min_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
       jG["max_hz"]=SYS_MIN_PULSE_TIME_SEP_us ?
                      (uint32_t)(1000000UL/SYS_MIN_PULSE_TIME_SEP_us) : 0;
@@ -2302,6 +2321,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     
     doRsp=rspAck=true;
   }
+  else if(strcmp(type,"set_gate_disable")==0)
+  {
+    if(doc["on"].is<bool>()==true)
+      GATE_DISABLED = (bool)doc["on"];
+    retdoc["gate_disabled"]=(bool)GATE_DISABLED;
+    doRsp=rspAck=true;
+  }
+
   else if(strcmp(type,"trig_phantom_pulse")==0)
   {
     uint32_t tatPulse= SYS_STEP_COUNT-STAGE_PULSE_OFFSET.L1A_on+_PLAT_DIST_step(3000);

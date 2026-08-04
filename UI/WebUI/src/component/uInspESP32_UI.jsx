@@ -273,6 +273,26 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
             </span>
           )}
         </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          {/* Disabling the gate does not lose parts -- they ride round again,
+              exactly as they do for any rate/distance rejection. What it buys is
+              a lane with no real detections in it, so a calibration pulse can be
+              fired and measured without a part landing mid-measurement. */}
+          <Button
+            danger={gate && gate.disabled}
+            loading={busy === 'gatedis'}
+            onClick={() => run('gatedis', (api) => api.setGateDisable(!(gate && gate.disabled)))}
+          >{gate && gate.disabled ? '閘門已停用 — 恢復' : '停用閘門(僅忽略真實感測)'}</Button>
+          <Button
+            loading={busy === 'phantom'}
+            onClick={() => run('phantom', (api) => api.trigPhantomPulse())}
+          >注入假脈衝</Button>
+          {gate && (
+            <span style={{ alignSelf: 'center', ...dim }}>
+              轉速{gate.freq_stable ? '已穩定' : '未穩定'}
+            </span>
+          )}
+        </div>
         {gate && (
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             <span>通過 <b>{gate.accept}</b></span>

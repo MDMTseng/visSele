@@ -1453,6 +1453,13 @@ class APPMasterX extends React.Component {
       // The switch exists so the two can be compared on the same machine with
       // the same input; reading it only at CONNECT made that comparison cost a
       // board reset, which is why it had never been run.
+      // Ignore the real gate sensor while phantom pulses still register.
+      // Lets a calibration pulse be fired into a clean lane -- no real part can
+      // land in the middle of the measurement. Parts are not lost; they ride
+      // round again.
+      setGateDisable(on){ return this.sendP({type:"set_gate_disable", on:!!on}); }
+      trigPhantomPulse(){ return this.sendP({type:"trig_phantom_pulse"}); }
+
       setPairingMode(mode)
       {
         comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0,
