@@ -8,6 +8,7 @@
 #include "driver/timer.h"
 #include <esp_task_wdt.h>
 #include "soc/rtc.h"
+#include "soc/rtc_cntl_reg.h"   // RTC_CNTL_FORCE_DOWNLOAD_BOOT
 #include <string>
 
 extern "C" {
@@ -2470,6 +2471,46 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     
     doRsp=rspAck=true;
   }
+  else if(strcmp(type,"reboot_bootloader")==0)
+  {
+    // Enter the ROM serial bootloader without touching IO0.
+    //
+    // This board's auto-reset circuit is only half wired: DTR->EN resets the
+    // chip fine, but RTS->IO0 does nothing, so esptool always finds boot:0x1
+    // (SPI boot) instead of 0x3 (download) no matter how long IO0 is held --
+    // measured at 0.05s, 0.3s and 0.8s, all identical. No timing setting can
+    // fix a missing connection, so every flash has needed a physical BOOT
+    // press.
+    //
+    // The chip can be told to do it in software: RTC_CNTL_FORCE_DOWNLOAD_BOOT
+    // survives the restart and the ROM honours it, which is exactly the pin
+    // this board cannot pull. Flash with --before no_reset afterwards, since a
+    // normal reset would take it straight back out again.
+    //
+    // Reply first -- after the restart there is nobody left to answer.
+    retdoc["type"]="reboot_bootloader";
+    retdoc["ack"]=true;
+    {
+      int slen=serializeJson(retdoc,(char*)dataBuff,sizeof(dataBuff));
+      djrl.send_json_string(0,dataBuff,slen,0);
+    }
+    delay(80);
+    // This SDK version (arduino-esp32 3.20004 / IDF 4.4) does not export
+    // RTC_CNTL_OPTION1_REG, so the address is written out. It is fixed silicon
+    // on the ESP32: DR_REG_RTCCNTL_BASE (0x3ff48000) + 0x0128, bit 0 =
+    // FORCE_DOWNLOAD_BOOT. Taken from the register header of a newer SDK in
+    // this same install, and cross-checked against the base address here.
+    #ifndef RTC_CNTL_OPTION1_REG
+    #define RTC_CNTL_OPTION1_REG          (DR_REG_RTCCNTL_BASE + 0x0128)
+    #endif
+    #ifndef RTC_CNTL_FORCE_DOWNLOAD_BOOT
+    #define RTC_CNTL_FORCE_DOWNLOAD_BOOT  (BIT(0))
+    #endif
+    REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
+    esp_restart();
+    doRsp=false;
+  }
+
   else if(strcmp(type,"set_gate_disable")==0)
   {
     if(doc["on"].is<bool>()==true)
