@@ -357,3 +357,116 @@ the row axis with `nS = width` and `nP = 2*margin`. Internally
 consistent — but it means SearchPointCV's `s` is the bar axis and its
 `perp` is the actual scanline. Don't confuse this when reading
 SearchPointCV.
+
+---
+
+## J. Driving a real sorter (uInspESP32 peripheral)
+
+Traps found bringing Core0_1 + WebUI up against a live uInspESP32 machine
+(plate + blow selectors + hardware-triggered camera), 2026-08-04. Every one of
+these presents as a *different* layer than the one at fault, which is why they
+are worth writing down.
+
+### J1. Nothing inspects until an `FI`/`CI` packet arrives — and the failure looks like comms
+`ImgPipeProcessCenter_imp()` opens with:
+
+```c
+if (bpg_pi.cameraFramesLeft == 0) return;
+```
+
+`cameraFramesLeft` is set **only** by the `CI` / `FI` BPG commands
+(`wiringPanel.cpp`, `checkTL("CI"…)/checkTL("FI"…)`; absent `frame_count` means
+`-1` = unlimited). Until one arrives, every frame is discarded at that first
+line: no inspection runs, no verdict is produced, no `report` is sent — and the
+board faults with `OBJECT_HAS_NO_INSP_RESULT` because parts reach SWITCH
+unanswered. It reads exactly like a dead serial link.
+
+**Two separate things must both be done**, and neither is implied by the other:
+
+1. `InspectionMode` in `data/machine_setting.json` must be **`FI`**
+   (設定 → 測量模式 → 全檢). `CI` (檢驗) is continuous streaming for an operator
+   placing parts by hand and **does not report to the peripheral**; `FI` (全檢)
+   is the triggered mode that does. `觸發檢驗` is the third option.
+2. In the UI, pick a 檢測方式 tag and press the ▶ button
+   (`.anticon-caret-right`) — that is what actually emits the packet.
+
+Confirm with `DataType_BPG:[FI]` followed by `this->cameraFramesLeft:-1` in
+`insp.log`. If you only see `[CI]`, mode 1 is wrong.
+
+### J2. Peripheral traffic is invisible unless you ask for it
+`[perif TX]` / `[perif RX]` are gated on `getenv("INSP_PERIF_LOG")`, and the raw
+byte tap on `INSP_PERIF_RAW`. Without them you cannot see the serial
+conversation at all and will misread silence as "the core never sent it".
+
+Three traps in reading those logs, all of which produced wrong conclusions here:
+- `[perif TX]` is logged **before** the write, so its presence does not prove
+  the bytes went out.
+- `[perif RX] reply=%.120s` truncates at 120 chars — a full ~950-byte
+  `get_setup` reply looks identical to a stub.
+- The raw tap prints ~11 bytes per line, so grepping it for a string like
+  `"0.0.0"` finds nothing. Strip the `[raw NN] ` prefixes and rejoin before
+  searching.
+
+Also: **the logctrl shm ring survives process death and `inspd_log` replays
+it**, so a fresh run's `insp.log` is polluted with older runs' lines whose
+timestamps interleave nonsensically. Use `INSP_LOG_RING_NAME=<fresh>` whenever
+you are measuring, or you will chase ghosts.
+
+### J3. `framerate` in `default_camera_setting.json` is a hard trigger ceiling
+It was `2`, which turns `AcquisitionFrameRateEnable` on and pushes the camera's
+exposure floor to **500 ms** — about 2 captures/s against a machine running ~14
+parts/s. The camera silently refuses triggers it cannot service (no error,
+`frame_id` stays contiguous), so this surfaces as unexplained NA/UNANSWERED
+counts and never points at the camera. `SetFrameRate` treats negative/NaN as
+"disable the limiter"; `-1` restores the sensor ceiling (35.18 fps / 28.4 ms at
+full-frame 2448×2048 Mono8 on MV-CA050-11UM).
+
+### J4. One global `perifCH`, and CONNECT deletes before it builds
+`delete_PeripheralChannel()` runs unconditionally at the *top* of the CONNECT
+handler, before the new PHY is even attempted — so a failed connect leaves you
+with nothing (`PHYLayer is not able to eatablish`). And `perifCH` is a single
+global, not per-client and not per-peripheral-kind, so **any** CONNECT from
+**any** WebSocket client evicts the working channel. Two browser tabs open on
+the WebUI is enough to make the link flap. Configure exactly one peripheral in
+`machine_setting.json`; disable the others by renaming the key (the file's own
+convention — `uInsp_peripheral_conn_info1`, `SLID_peripheral_conn_info1`).
+
+### J5. The board owns its config; do not push it back
+`Perif_API_Base.machineSetupReSync()` (WebUI) stores the whole `get_setup` reply
+and hands it straight back as `set_setup`, stripping only 4 envelope fields — so
+`ver`/`name`/`cur_state`/`error_hist`/`cfg_crc`/`reset_reason`/`xtal_mhz` get
+pushed at a board that has no use for them. The board persists to NVS and comes
+up on it (`cfg_from_nvs`), so the host has no business re-pushing settings just
+because it connected. `uInspESP32_API` overrides this to be read-only; note it
+must *actively clear* `this.machineSetup`, because `connect()` pushes that field
+**directly**, bypassing the override.
+
+### J6. Opening the port reboots the board, so the first command is lost
+DTR toggles on `open()`, hard-resetting the ESP32. The host then has a live port
+to a board whose UART is not up yet, and the first command out of `connect()`
+lands in that window — the board reports it as `recv_ERROR:2` with the frame
+mangled a dozen bytes in (`{'type':'get_s<garbage>`). PING survives this **only
+by accident**: it repeats every 3 s, so one eventually lands. Any *one-shot*
+command at connect is simply lost. `uInspESP32_API` retries the config resync
+until it takes (typically succeeds on try 2). A cleaner fix would be to stop
+resetting the board on port open, or to wait for its
+`system_info "State changed 0 -> 100"` before talking.
+
+### J7. FIFO trigger↔frame pairing drifts if frame count ≠ part count — OPEN
+`ImgPipeProcessCenter_imp` pairs the oldest unclaimed `cam_trig{tid}` with the
+oldest frame. That is only correct while the two streams are 1:1. Measured over
+one run at `plate_freq` 3000: **426 cam_trig announcements (~213 parts, each
+announced on cam 1 and 2), 449 frames, 400 reports, and 273 "frame with no
+pending trigger"**. Report latency (measured by the firmware from the camera
+trigger to the report arriving) grew monotonically 844 ms → 1348 ms avg, max
+4970 ms, until a part blew the SWITCH budget.
+
+Inspection is **not** the bottleneck: 9–13 ms per frame with `insp:0/10`, i.e.
+no queue at all. The budget is `SWITCH_offset / (2 × plate_freq)` — 4.98 s at
+`plate_freq` 3000, but only **996 ms** at production 15000.
+
+Note the existing guard retires surplus triggers only on **`frame_id` gaps**,
+which by construction cannot see a trigger the camera silently refused
+(`frame_id` stays contiguous in that case). First thing to check: `CAM1_on/off`
+and `CAM2_on/off` sit at *identical* offsets (654/672) in `stage_pulse_offset`,
+so verify whether both pins can reach the one camera.
