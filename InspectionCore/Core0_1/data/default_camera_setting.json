@@ -3,6 +3,6 @@
   "gain": 5,
   "gamma": 1,
   "blacklevel": 254,
-  "framerate": 2,
+  "framerate": -1,
   "ww": 1
 }
