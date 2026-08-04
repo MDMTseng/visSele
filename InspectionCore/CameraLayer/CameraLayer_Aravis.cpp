@@ -1743,9 +1743,30 @@ CameraLayer::status CameraLayer_Aravis::SetFrameRate(float frame_rate)
     LOGD("M:%f m:%f\n",max,min);
   }
 
-  if(frame_rate==0)frame_rate=min;  
-  else if(isinf(frame_rate))frame_rate=max;
-  else if(frame_rate<min || frame_rate>max)return CameraLayer::NAK;
+  if(frame_rate==0)frame_rate=min;
+  else if(isinf(frame_rate) || frame_rate>max)
+  {
+    // "Faster than the sensor can go" means "don't limit me" -- the WebUI's
+    // setCameraSpeed_HIGHEST() sends the finite sentinel 9999999 for exactly
+    // that. Returning NAK here was actively harmful: the request was rejected
+    // and whatever limit was already in force stayed. Observed on the real
+    // machine -- something pushed framerate:8 at inspection start, the
+    // immediately-following framerate:9999999 was refused, and the camera ran
+    // the whole production test pinned at 8 fps (125ms exposure floor) while
+    // the machine fed it parts far faster. The camera then silently refuses
+    // the surplus triggers, which surfaces only as pairing drift several
+    // layers up. Disable the limiter instead, and say so.
+    LOGI("SetFrameRate %.0f exceeds max %.2f -> disabling the limiter", frame_rate, max);
+    arv_camera_set_boolean (camera, "AcquisitionFrameRateEnable", false, &err);
+    if (err != NULL)
+    {
+      LOGE("AcquisitionFrameRateEnable(false): %s", err->message);
+      g_clear_error(&err);
+      return CameraLayer::NAK;
+    }
+    return CameraLayer::ACK;
+  }
+  else if(frame_rate<min)return CameraLayer::NAK;
 
 
 
