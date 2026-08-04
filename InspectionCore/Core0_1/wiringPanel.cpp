@@ -4386,9 +4386,6 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     }
   }
   pframeT = t;
-  // Ignore the first frame (pframeT unset) and anything implausibly small.
-  if (interval > 1.0 && (g_camMinIntervalMs == 0 || interval < g_camMinIntervalMs))
-    g_camMinIntervalMs = interval;
   LOGI("=============== frameInterval:%fms \n", interval);
   LOGI("bpg_pi->cameraFramesLeft:%d", bpg_pi.cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
@@ -5324,6 +5321,19 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     perifPairing.noteDumped();
     LOGE("perif: announcement lost for this frame -- dumped before inspection");
     return;
+  }
+
+  // Camera ceiling, from the CAMERA's clock. The frameInterval logged in the
+  // capture callback is a clock() delta -- process CPU time, which in a
+  // multithreaded core runs faster than wall time and is not a frame interval
+  // at all. fi.interval_us is the difference between two sensor timestamps,
+  // which is the real thing. This is the number the gate cap has to stay under,
+  // so it has to be measured, not inferred.
+  if (imgPipe->fi.interval_us > 0)
+  {
+    double ms = imgPipe->fi.interval_us / 1000.0;
+    if (ms > 0.1 && (g_camMinIntervalMs == 0 || ms < g_camMinIntervalMs))
+      g_camMinIntervalMs = ms;
   }
 
   clock_t t = clock();
