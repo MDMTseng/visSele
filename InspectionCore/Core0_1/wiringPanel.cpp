@@ -169,6 +169,11 @@ std::atomic<long long> perifMissedFrameCount{0};
 // so plain scalars are fine). max_ms is the interesting one -- it exposes any
 // remaining flow-control / driver-buffer stall in the COM peripheral write.
 double g_perifWriteMaxMs = 0, g_perifWriteSumMs = 0, g_perifWriteLastMs = 0;
+// How late a cam_trig announcement has ever been relative to its own frame.
+// Touched only by the single inspection thread. This is the margin against
+// err=2 (see the trigger wait in ImgPipeProcessCenter_imp): if it creeps toward
+// the cap, parts are packed tighter than the serial link can announce them.
+double g_perifTrigWaitMaxMs = 0;
 uint64_t g_perifWriteCnt = 0;
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
@@ -5380,16 +5385,67 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         last_frame_num_valid = true;
       }
 
-      PerifTriggerMsg trig;
-      if (perifTriggerQueue.pop(trig))
+      PerifTriggerMsg trig{ -1, 0, 0, 0, 0 };   // tid -1 == unpaired
+      // The trigger is a wire; its announcement is a serial message. The camera
+      // is exposed the instant the firmware pulses the line, but cam_trig{tid}
+      // has to cross 115200 baud to get here, so the frame can and does arrive
+      // FIRST. Measured on a 4-part run at 5mm spacing / plate_freq 8000: the
+      // fourth announcement landed 21ms after its own frame had already been
+      // inspected. Treating "queue empty" as "no trigger" turned that into
+      // tid=-1 -> no report -> the part reached the selector unjudged -> err=2
+      // OBJECT_HAS_NO_INSP_RESULT. The camera was never the limit: 4 triggers
+      // produced 4 frames, spaced 39-168ms against a 28.4ms sensor floor.
+      //
+      // So wait for it -- but only while the device is actually inspecting.
+      // An empty queue in any other mode (calibration free-run, manual grab)
+      // means there genuinely is no trigger coming, and waiting there would
+      // stall every single frame.
+      //
+      // An empty queue during inspection means we have consumed every
+      // announcement so far -- there is no backlog to work through, so this
+      // wait costs nothing but the announcement's own flight time. Bounded well
+      // under the SWITCH budget (1.87s at plate_freq 8000) so a genuinely
+      // missing announcement still degrades to the old behaviour rather than
+      // stalling the pipeline.
+      const int TRIG_WAIT_MAX_MS = 150;
+      const int DEV_STATE_INSPECTION = 101;
+      if (!perifTriggerQueue.pop(trig) &&
+          bpg_pi.perifCH->last_dev_state == DEV_STATE_INSPECTION)
+      {
+        auto _w0 = std::chrono::steady_clock::now();
+        int waited_ms = 0;
+        while (waited_ms < TRIG_WAIT_MAX_MS)
+        {
+          std::this_thread::sleep_for(std::chrono::milliseconds(2));
+          if (perifTriggerQueue.pop(trig)) break;
+          waited_ms = (int)std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - _w0).count();
+        }
+        if (trig.tid >= 0)
+        {
+          // Log it: this is the margin against err=2, and it is the number to
+          // watch if parts get packed tighter or the serial link gets busier.
+          double ms = std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - _w0).count();
+          if (ms > g_perifTrigWaitMaxMs)
+          {
+            g_perifTrigWaitMaxMs = ms;
+            LOGE("perif: announcement arrived %.1fms after its frame (new max, cap %dms)",
+                 ms, TRIG_WAIT_MAX_MS);
+          }
+        }
+      }
+
+      if (trig.tid >= 0)
       {
         msg.tid = trig.tid;
       }
       else
       {
-        // A frame with no announced trigger. Either the device is not in
-        // inspection mode (free-run / manual grab), or a bTrigInfo was lost.
-        // Left as tid=-1; the send thread logs and drops it.
+        // No announcement, and if the device was inspecting we already waited
+        // TRIG_WAIT_MAX_MS for one. Either this is a free-run / manual-grab
+        // frame (normal, no device inspection running), or the announcement was
+        // genuinely lost. Left as tid=-1; the send thread logs and drops it.
         LOGE("perif: frame with no pending trigger -- pairing desynced?");
       }
     }
