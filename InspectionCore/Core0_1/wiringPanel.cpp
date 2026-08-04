@@ -365,7 +365,11 @@ class PerifChannel:public Data_JsonRaw_Layer
     // Results already computed belong to those same dead tids.
     PerifResultMsg dr;
     while (perifSendQueue.pop(dr)) {}
-    if (n) LOGI("perif: device pipeline reset (%s) -- dropped %zu pending trigger(s)", why, n);
+    // Log unconditionally, including the n==0 case. These transitions are rare
+    // (a fault, an idle, an explicit clear), so this is not noise -- and "the
+    // drain ran and there was nothing to drop" is exactly what you need to see
+    // to confirm the fix is live, which a count-gated log cannot tell you.
+    LOGI("perif: device pipeline reset (%s) -- dropped %zu pending trigger(s)", why, n);
   }
 
   // Device SYS_STATE as last seen on the wire. -1 = nothing observed yet.
