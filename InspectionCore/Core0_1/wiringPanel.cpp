@@ -482,7 +482,16 @@ class PerifChannel:public Data_JsonRaw_Layer
       // delay is in the WS / WebUI hop instead. Gated by INSP_PERIF_LOG.
       if (getenv("INSP_PERIF_LOG")) {
         long rtt = last_tx_us ? (long)(perif_now_us() - last_tx_us) : -1;
-        LOGI("[perif RX] ch=%d serialRTT=%ldus reply=%.120s", ID, rtt, (char*)raw);
+        // 120 chars is fine for the routine chatter (cam_trig, pong, stat) and
+        // keeps this readable at 20 messages/second. But the device's fault
+        // report carries its whole diagnosis in the tail of the line --
+        // status=, gate_pulse=, cur_pulse= -- and cutting that off is the
+        // difference between "the part had no verdict" and knowing WHY. Never
+        // truncate a fault.
+        bool is_fault = (strstr((const char *)raw, "err=") != NULL) ||
+                        (strstr((const char *)raw, "system_info") != NULL);
+        LOGI("[perif RX] ch=%d serialRTT=%ldus reply=%.*s", ID, rtt,
+             is_fault ? rawL : 120, (char*)raw);
       }
 
       // Size the envelope from the payload instead of a fixed 1024. A get_setup
@@ -4883,7 +4892,16 @@ void PerifSendThread(bool *terminationflag)
           {
             if (msg.tid >= 0)
             {
-              ret = sendReportTo_perifCH(pc, msg.tid, perif_status_to_cat(pc, msg.uInspStatus));
+              int cat = perif_status_to_cat(pc, msg.uInspStatus);
+              ret = sendReportTo_perifCH(pc, msg.tid, cat);
+              // The announcement side is traced ([perif RX] cam_trig) but the
+              // verdict side was not, so "did tid N ever get answered, and
+              // when?" could not be asked of the log at all. Both halves are
+              // needed to tell a report that was never sent from one that was
+              // sent too late -- the two causes of err=2, which look identical
+              // from the device end.
+              if (getenv("INSP_PERIF_LOG"))
+                LOGI("[perif TX] report tid=%lld cat=%d", (long long)msg.tid, cat);
             }
             else
             {
