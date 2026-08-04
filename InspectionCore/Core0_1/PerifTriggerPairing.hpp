@@ -96,6 +96,12 @@ public:
   // single mispaired bootstrap frame cannot set the offset on its own.
   static constexpr int BOOTSTRAP_N = 8;
 
+  // Consecutive unmatched frames that mean "the clock model is stale", not
+  // "these parts were lost". Low enough to recover within a fraction of a
+  // second at production rates; high enough that a genuine burst of lost frames
+  // does not throw away a good offset.
+  static constexpr int RESYNC_AFTER = 5;
+
   explicit PerifTriggerPairing(size_t cap = 256) : _cap(cap) {}
 
   void setMode(Mode m)
@@ -227,6 +233,7 @@ public:
     if (best_i > 0) _out_of_order++;
     _q.erase(_q.begin() + best_i);
     _matched++;
+    _consec_miss = 0;
     return PAIRED;
   }
 
@@ -332,15 +339,17 @@ public:
   long long matched()     const { std::lock_guard<std::mutex> lk(_mx); return _matched; }
   long long outOfOrder()  const { std::lock_guard<std::mutex> lk(_mx); return _out_of_order; }
   // Frames the caller gave up on, after any wait it chose to do.
-  void noteUnpaired() { std::lock_guard<std::mutex> lk(_mx); _no_candidate++; }
+  void noteUnpaired() { std::lock_guard<std::mutex> lk(_mx); _no_candidate++; _missStreak(); }
   long long staleCount()  const { std::lock_guard<std::mutex> lk(_mx); return _stale; }
   long long noCandidate() const { std::lock_guard<std::mutex> lk(_mx); return _no_candidate; }
   long long dropCount()   const { std::lock_guard<std::mutex> lk(_mx); return _drops; }
+  // Times the clock model was thrown away and relearned.
+  long long resyncs()     const { std::lock_guard<std::mutex> lk(_mx); return _resyncs; }
   // Orphans we stayed quiet about because the device had already swept them.
   long long coveredBySkip() const { std::lock_guard<std::mutex> lk(_mx); return _covered_by_skip; }
   // Frames dropped before inspection because their announcement was lost.
   long long dumped()      const { std::lock_guard<std::mutex> lk(_mx); return _dumped; }
-  void noteDumped() { std::lock_guard<std::mutex> lk(_mx); _dumped++; }
+  void noteDumped() { std::lock_guard<std::mutex> lk(_mx); _dumped++; _missStreak(); }
 
   // One line, because these numbers only mean anything together: a healthy run
   // is skipped~0 and maxResid small; skipped climbing means frames are being
@@ -352,15 +361,43 @@ public:
     snprintf(buf, n,
       "pairing:%s%s off:%.1fms resid last:%.0fus max:%.0fus | "
       "rx:%lld matched:%lld ooo:%lld stale:%lld(skip:%lld) nocand:%lld "
-      "dumped:%lld drops:%lld pend:%zu",
+      "dumped:%lld drops:%lld resync:%lld pend:%zu",
       _mode == TIMESTAMP ? "timestamp" : "positional",
       (_mode == TIMESTAMP && !_offset_valid) ? "(bootstrapping)" : "",
       _offset_us / 1000.0, _last_resid_us, _max_resid_us,
       _rx, _matched, _out_of_order, _stale, _covered_by_skip, _no_candidate,
-      _dumped, _drops, _q.size());
+      _dumped, _drops, _resyncs, _q.size());
   }
 
 private:
+  // Relearn the clock offset when matching stops working.
+  //
+  // The offset drifts -- 22ms observed across a single run, against a 5ms
+  // tolerance -- and only a SUCCESSFUL match feeds the EWMA that tracks it. So
+  // any gap with no matches (the plate stopped, a shift change, a fault) leaves
+  // the estimate stale, and once it is stale by more than the tolerance nothing
+  // matches, which means nothing updates it, which means nothing ever matches
+  // again. A wedge that never recovers.
+  //
+  // Measured the hard way: after a 5-minute idle the next run dumped all 13
+  // frames as "announcement lost", reported nothing, and faulted on the second
+  // part. The offset was not wrong by a little -- it was wrong by more than the
+  // window, and had no path back.
+  //
+  // So a run of consecutive misses is treated as evidence about the MODEL, not
+  // about the parts: drop back to bootstrapping, pair positionally for a few
+  // frames, and re-measure. Positional is wrong in the ways this class exists
+  // to fix, but it is wrong for a handful of parts rather than forever.
+  void _missStreak()
+  {
+    if (!_offset_valid) return;
+    if (++_consec_miss < RESYNC_AFTER) return;
+    _offset_valid = false;
+    _boot.clear();
+    _consec_miss = 0;
+    _resyncs++;
+  }
+
   mutable std::mutex   _mx;
   std::deque<PerifTrigger> _q;
   size_t               _cap;
@@ -377,4 +414,6 @@ private:
   long long _rx = 0, _matched = 0, _out_of_order = 0, _stale = 0,
             _no_candidate = 0, _drops = 0, _covered_by_skip = 0, _dumped = 0;
   int64_t   _max_reported_tid = -1;
+  int       _consec_miss = 0;
+  long long _resyncs = 0;
 };
