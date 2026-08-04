@@ -354,14 +354,14 @@ function CalibrationUI(props) {
   useEffect(() => {
     if (!thumbsLoaded) return;   // start the stream only after saved thumbnails load
     const CALIB_STREAM_PGID = 10105;
-    // down_samp_level matters as much as trigger_mode here. Without it the core
-    // streams DL:1 -- the full 2448x2048 frame, ~5MB raw, ~38ms just to encode,
-    // ~30MB/s at the rate this page asks for. The socket cannot carry that, and
-    // it fails silently: the core logs "img transfer" happily while the canvas
-    // stays empty. 4 is plenty to frame a chessboard and aim the lens; the
-    // captures themselves are taken at full res through a separate path.
+    // Full resolution on purpose. This is the one page where the pixels ARE the
+    // subject: judging focus and reading chessboard corners needs the real
+    // 2448x2048 frame, and a downsampled preview hides exactly the detail the
+    // operator is here to set. It is not free -- ~5MB raw and ~38ms just to
+    // encode, against ~3.3ms at DL:4 -- but this page never runs during
+    // production, so the frame rate it costs buys nothing back elsewhere.
     props.ACT_WS_SEND_BPG(props.CORE_ID, "ST", 0,
-      { CameraSetting: { trigger_mode: 0, down_samp_level: 4 } });
+      { CameraSetting: { trigger_mode: 0, down_samp_level: 1 } });
     props.ACT_WS_SEND_BPG(props.CORE_ID, "CI", 0, {
       _PGID_: CALIB_STREAM_PGID,
       _PGINFO_: { keep: true },
@@ -540,8 +540,11 @@ function CalibrationUI(props) {
       { CameraSetting: { trigger_mode: 1 } });
   };
   const startStream = () => {
+    // Restate down_samp_level, not just trigger_mode: it is core-global state
+    // that another page (or a lens-calibration run) may have moved since the
+    // mount effect set it.
     props.ACT_WS_SEND_BPG(props.CORE_ID, "ST", 0,
-      { CameraSetting: { trigger_mode: 0 } });
+      { CameraSetting: { trigger_mode: 0, down_samp_level: 1 } });
     props.ACT_WS_SEND_BPG(props.CORE_ID, "CI", 0, {
       _PGID_: CALIB_STREAM_PGID, _PGINFO_: { keep: true },
       definfo: { type: "stage_light_report", grid_size: [10, 10],
