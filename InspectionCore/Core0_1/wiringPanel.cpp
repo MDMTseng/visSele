@@ -159,7 +159,12 @@ enum PerifMachineType { PERIF_UINSP_MEGA = 0, PERIF_UINSP_ESP32 = 1 };
 // with the frame they produced. Single camera today, so one FIFO; tidx is
 // carried anyway so a second camera only needs a queue per index.
 struct PerifTriggerMsg { int64_t tid; uint64_t dev_us; int tidx;
-                         uint32_t gate_pulse; int qs; };
+                         uint32_t gate_pulse; int qs;
+                         // Host clock at which we saw the announcement. Pairing
+                         // is frame-driven, so without a deadline a trigger
+                         // whose frame never comes waits forever -- see
+                         // retire_stale_triggers().
+                         uint64_t arrival_ms; };
 TSQueue<PerifTriggerMsg> perifTriggerQueue(256);
 std::atomic<int> perifTriggerDropCount{0};
 std::atomic<long long> perifTriggerRxCount{0};
@@ -380,6 +385,64 @@ class PerifChannel:public Data_JsonRaw_Layer
   // Device SYS_STATE as last seen on the wire. -1 = nothing observed yet.
   int last_dev_state = -1;
 
+  // Answer triggers whose frame is never coming.
+  //
+  // Pairing is FRAME-driven: a queued trigger only leaves when a frame arrives
+  // to claim it. That has two consequences, and the second one is what stops
+  // the machine.
+  //
+  // 1. A single trigger that produces no frame (the camera silently refuses it;
+  //    frame_id stays contiguous so the gap guard cannot see it, see J7)
+  //    permanently offsets the FIFO. Every later frame is then reported against
+  //    the object one position behind it -- not late, WRONG. Measured on a real
+  //    run: 2596 announcements, 2591 frames, a standing offset of 5, with the
+  //    frame of object 690 reported as tid 685.
+  //
+  // 2. That offset strands the tail. While parts keep coming each new frame
+  //    drains one trigger and everything is eventually answered, so the fault
+  //    hides. Clear the plate and the announcements stop -- the last 5 queued
+  //    triggers have no frames left to claim them, those parts reach the
+  //    selector with no verdict, and the device faults err=2. Which is exactly
+  //    the reported reproduction: run loaded for a while, clear the plate, error.
+  //
+  // So give a trigger a deadline. Past it, report NA: the part recirculates for
+  // another pass, which is the honest outcome for "we never got its image", and
+  // the FIFO realigns instead of carrying the offset forever.
+  //
+  // The deadline has to clear the real trigger/frame skew -- announcements have
+  // been seen arriving up to 115ms AFTER their own frame -- while staying well
+  // inside the SWITCH budget (1.87s at plate_freq 8000). 500ms sits between
+  // those with room on both sides.
+  //
+  // Swept from the RX path because that is the one thing still ticking when the
+  // plate empties: the status poll arrives every second even with no parts.
+  // PerifSendThread cannot do it -- it is blocked on an empty result queue,
+  // which is precisely the situation this exists to resolve.
+  void retire_stale_triggers()
+  {
+    if (machine_type != PERIF_UINSP_ESP32) return;
+    const uint64_t TRIG_STALE_MS = 500;
+    uint64_t now_ms = perif_now_us() / 1000;
+    PerifTriggerMsg head;
+    while (perifTriggerQueue.peek(head) &&
+           head.arrival_ms != 0 && now_ms > head.arrival_ms + TRIG_STALE_MS)
+    {
+      if (!perifTriggerQueue.pop(head)) break;
+      perifMissedFrameCount++;
+      PerifResultMsg na{ FeatureReport_sig360_circle_line_single::STATUS_NA,
+                         0, head.tid };
+      if (!perifSendQueue.push(na))
+      {
+        PerifResultMsg discard;
+        perifSendQueue.pop(discard);
+        perifSendQueue.push(na);
+      }
+      LOGE("perif: no frame for tid %lld within %llums -> reporting NA "
+           "(queue now %zu)", (long long)head.tid,
+           (unsigned long long)TRIG_STALE_MS, perifTriggerQueue.size());
+    }
+  }
+
   // Watch the device's state for the transitions that wipe its object ring.
   //
   // Doing this on the RX side rather than only when WE send clear_error is what
@@ -450,6 +513,7 @@ class PerifChannel:public Data_JsonRaw_Layer
       m.tidx   = (cam != NULL) ? (int)*cam : 1;
       m.gate_pulse = (gp != NULL) ? (uint32_t)*gp : 0;
       m.qs     = (qs   != NULL) ? (int)*qs   : -1;
+      m.arrival_ms = perif_now_us() / 1000;
 
       perifTriggerRxCount++;
       if (!perifTriggerQueue.push(m))
@@ -475,6 +539,7 @@ class PerifChannel:public Data_JsonRaw_Layer
     {
       tap_trigger_info(raw, rawL);
       tap_device_state(raw, rawL);
+      retire_stale_triggers();
 
       // [perif] Reply arrived from the device. Log the serial round-trip (write
       // -> reply) so we can localize comm delay: if serialRTT ~= the WebUI's
@@ -5403,7 +5468,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         last_frame_num_valid = true;
       }
 
-      PerifTriggerMsg trig{ -1, 0, 0, 0, 0 };   // tid -1 == unpaired
+      PerifTriggerMsg trig{ -1, 0, 0, 0, 0, 0 };   // tid -1 == unpaired
       // The trigger is a wire; its announcement is a serial message. The camera
       // is exposed the instant the firmware pulses the line, but cam_trig{tid}
       // has to cross 115200 baud to get here, so the frame can and does arrive
