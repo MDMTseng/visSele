@@ -2181,6 +2181,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             cJSON_AddNumberToObject(robj, "no_candidate", (double)perifPairing.noCandidate());
             cJSON_AddNumberToObject(robj, "stale", (double)perifPairing.staleCount());
             cJSON_AddNumberToObject(robj, "drops", (double)perifPairing.dropCount());
+            cJSON_AddNumberToObject(robj, "covered_by_skip", (double)perifPairing.coveredBySkip());
+            cJSON_AddNumberToObject(robj, "dumped", (double)perifPairing.dumped());
             cJSON_AddNumberToObject(robj, "pending", (double)perifPairing.pending());
             cJSON_AddNumberToObject(robj, "offset_ms", perifPairing.offsetUs() / 1000.0);
             cJSON_AddNumberToObject(robj, "resid_last_us", perifPairing.lastResidUs());
@@ -5303,6 +5305,27 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // MT_UNLOCK("");
     return;
   }
+
+  // Drop frames nothing will ever claim, before spending anything on them.
+  //
+  // If announcements have already overtaken this frame -- the queue holds a
+  // trigger that fired after it was exposed -- then its own announcement is not
+  // late, it is lost. No verdict can be attributed to it, so the gray
+  // conversion, the full-resolution inspection and the encode would all be
+  // thrown away at the end. This is the cheapest possible place to notice: the
+  // test is a walk over a queue that is normally 1-3 deep.
+  //
+  // The part itself is not abandoned: its trigger is still queued and the
+  // staleness sweep answers for it.
+  if (bpg_pi.perifCH != NULL &&
+      bpg_pi.perifCH->last_dev_state == 101 /* INSPECTION */ &&
+      perifPairing.announcementLost(imgPipe->fi.timeStamp_us))
+  {
+    perifPairing.noteDumped();
+    LOGE("perif: announcement lost for this frame -- dumped before inspection");
+    return;
+  }
+
   clock_t t = clock();
 
   LOGI("====================================");
@@ -5578,6 +5601,9 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       if (pr == PerifTriggerPairing::PAIRED)
       {
         msg.tid = paired_tid;
+        // The device sweeps everything older than this into SKIP the moment the
+        // report lands, so the staleness timer can stay quiet about them.
+        perifPairing.noteReported(paired_tid);
       }
       else if (pr == PerifTriggerPairing::NO_CANDIDATE)
       {

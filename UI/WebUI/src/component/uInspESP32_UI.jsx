@@ -212,6 +212,13 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
             {pairing.stale}</b></span>
           <span>佇列滿溢 <b style={{ color: pairing.drops > 0 ? '#c33' : undefined }}>
             {pairing.drops}</b></span>
+          {/* Not failures. covered_by_skip = orphans we stayed quiet about
+              because a later report had already swept them on the device;
+              dumped = frames discarded before inspection because their
+              announcement was lost, so nothing could ever claim them. Both are
+              work avoided, and both are only legible next to the failures. */}
+          <span style={dim}>裝置已掃 {pairing.covered_by_skip ?? 0}</span>
+          <span style={dim}>提前丟棄 {pairing.dumped ?? 0}</span>
           {pairing.rx > 0 && (
             <span style={dim}>失敗率 {((pairing.no_candidate / pairing.rx) * 100).toFixed(1)}%</span>
           )}

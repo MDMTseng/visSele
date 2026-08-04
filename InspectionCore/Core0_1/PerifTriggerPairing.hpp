@@ -250,9 +250,31 @@ public:
     return k;
   }
 
-  // Triggers whose frame is never coming. The caller reports these NA so the
-  // part recirculates. Without this the queue only ever drains when a frame
-  // arrives, so the tail is stranded the moment the plate empties.
+  // Highest object id we have actually reported. The device sweeps on our
+  // behalf: reporting tid R marks every OLDER object still unjudged as SKIP,
+  // which is a non-error state. So anything below R is already accounted for
+  // and saying it again would only add an out-of-order report.
+  void noteReported(int64_t tid)
+  {
+    std::lock_guard<std::mutex> lk(_mx);
+    if (tid > _max_reported_tid) _max_reported_tid = tid;
+  }
+
+  // Triggers whose frame is never coming.
+  //
+  // Only the ones the device CANNOT have swept are handed back to be reported
+  // NA. An orphan older than something we already reported was marked SKIP on
+  // the device the moment that report landed -- it reaches the selector in a
+  // non-error state without us saying anything, and an extra NA for it would be
+  // an out-of-order report whose only effect is to sweep ITS predecessors.
+  //
+  // What that leaves is exactly the case the device cannot cover: orphans NEWER
+  // than anything we have reported. Nothing will follow them, so nothing will
+  // sweep them, and they reach the selector still unjudged -> err=2. That is
+  // the tail of a run -- clear the plate and this is every part still in
+  // flight. The timer exists for those and only those, which makes it the
+  // counterpart of the device's SWITCH deadline rather than a second, competing
+  // source of reports.
   size_t sweepStale(uint64_t now_ms, uint32_t stale_ms, std::vector<PerifTrigger> *out)
   {
     std::lock_guard<std::mutex> lk(_mx);
@@ -261,12 +283,42 @@ public:
     {
       const PerifTrigger &f = _q.front();
       if (f.arrival_ms == 0 || now_ms <= f.arrival_ms + stale_ms) break;
-      if (out) out->push_back(f);
+      if (f.tid > _max_reported_tid)
+      {
+        if (out) out->push_back(f);
+        n++;
+      }
+      else _covered_by_skip++;
       _q.pop_front();
       _stale++;
-      n++;
     }
     return n;
+  }
+
+  // --- B: is this frame's announcement lost, or merely still in flight? ------
+  //
+  // The difference decides whether waiting (and inspecting) is worth anything.
+  // If the queue already holds a trigger that fired AFTER this frame was
+  // exposed, then announcements have overtaken it -- its own announcement is
+  // not late, it is gone. Nothing will ever claim this frame, so inspecting it
+  // is pure waste: a full-resolution inspect plus encode, thrown away.
+  //
+  // Only answerable with a valid offset; without one, every frame has to be
+  // treated as maybe-pairable.
+  bool announcementLost(uint64_t cam_ts_us) const
+  {
+    std::lock_guard<std::mutex> lk(_mx);
+    if (_mode != TIMESTAMP || !_offset_valid || cam_ts_us == 0 || _q.empty()) return false;
+    int64_t want = (int64_t)cam_ts_us - (int64_t)llround(_offset_us);
+    for (const PerifTrigger &t : _q)
+    {
+      // A trigger this frame could still be. Not lost.
+      if (llabs((int64_t)t.dev_us - want) <= _tol_us) return false;
+      // A trigger that fired later than this frame: its announcement got here,
+      // so an earlier one is not still in transit behind it.
+      if ((int64_t)t.dev_us > want + _tol_us) return true;
+    }
+    return false;
   }
 
   // --- diagnostics ---------------------------------------------------------
@@ -284,6 +336,11 @@ public:
   long long staleCount()  const { std::lock_guard<std::mutex> lk(_mx); return _stale; }
   long long noCandidate() const { std::lock_guard<std::mutex> lk(_mx); return _no_candidate; }
   long long dropCount()   const { std::lock_guard<std::mutex> lk(_mx); return _drops; }
+  // Orphans we stayed quiet about because the device had already swept them.
+  long long coveredBySkip() const { std::lock_guard<std::mutex> lk(_mx); return _covered_by_skip; }
+  // Frames dropped before inspection because their announcement was lost.
+  long long dumped()      const { std::lock_guard<std::mutex> lk(_mx); return _dumped; }
+  void noteDumped() { std::lock_guard<std::mutex> lk(_mx); _dumped++; }
 
   // One line, because these numbers only mean anything together: a healthy run
   // is skipped~0 and maxResid small; skipped climbing means frames are being
@@ -294,11 +351,13 @@ public:
     std::lock_guard<std::mutex> lk(_mx);
     snprintf(buf, n,
       "pairing:%s%s off:%.1fms resid last:%.0fus max:%.0fus | "
-      "rx:%lld matched:%lld ooo:%lld stale:%lld nocand:%lld drops:%lld pend:%zu",
+      "rx:%lld matched:%lld ooo:%lld stale:%lld(skip:%lld) nocand:%lld "
+      "dumped:%lld drops:%lld pend:%zu",
       _mode == TIMESTAMP ? "timestamp" : "positional",
       (_mode == TIMESTAMP && !_offset_valid) ? "(bootstrapping)" : "",
       _offset_us / 1000.0, _last_resid_us, _max_resid_us,
-      _rx, _matched, _out_of_order, _stale, _no_candidate, _drops, _q.size());
+      _rx, _matched, _out_of_order, _stale, _covered_by_skip, _no_candidate,
+      _dumped, _drops, _q.size());
   }
 
 private:
@@ -316,5 +375,6 @@ private:
   double    _last_resid_us = 0, _max_resid_us = 0;
   int64_t   _last_miss_us = 0;
   long long _rx = 0, _matched = 0, _out_of_order = 0, _stale = 0,
-            _no_candidate = 0, _drops = 0;
+            _no_candidate = 0, _drops = 0, _covered_by_skip = 0, _dumped = 0;
+  int64_t   _max_reported_tid = -1;
 };
