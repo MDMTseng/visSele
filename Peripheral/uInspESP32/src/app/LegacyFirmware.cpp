@@ -1003,22 +1003,42 @@ int Run_ACTS(uint32_t cur_pulse)
           // inspResCount.NA++;
           break;
 
+        // --- unjudged: the part goes round again, and the run is on notice ---
+        //
+        // SKIP and UNSET differ only in WHY nobody judged this part -- swept by
+        // a later report, or never spoken for at all -- so they are counted
+        // apart but escalate together. Neither is an answer, so neither resets
+        // the consecutive counter. That reset was the bug: SKIP is the common
+        // case once reports can arrive out of order, so zeroing the counter
+        // there quietly disabled the only guard against a machine that has
+        // stopped judging anything.
+        //
+        // One unjudged part is normal loss -- it recirculates and gets another
+        // pass, costing a lap. Several in a row is not loss, it is a system
+        // that has stopped working, and that is what UNANSWERED_STOP_AFTER is
+        // for. The threshold is the whole safety argument for not faulting on
+        // the first one.
         case insp_status_SKIP:
-          CONSEC_UNANSWERED=0;
           SKIP_Count++;
+          CONSEC_UNANSWERED++;
+          if(UNANSWERED_POLICY==1 && CONSEC_UNANSWERED < (uint32_t)UNANSWERED_STOP_AFTER)
+            break;   // fail-to-reject: no actuation -> part recirculates
+          if(UNANSWERED_POLICY!=1) break;   // policy 0: SKIP alone never faults
+          ecode=GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT;
+          ERR_CTX_TID=pli->tid;
+          ERR_CTX_STATUS=pli->insp_status;
+          ERR_CTX_GATE_PULSE=pli->gate_pulse;
+          ERR_CTX_CUR_PULSE=cur_pulse;
           break;
         case insp_status_DEL: //ERROR
           break;
 
         case insp_status_UNSET:
         default:
-          if(UNANSWERED_POLICY==1)
-          {
-            UNANSWERED_Count++;
-            CONSEC_UNANSWERED++;
-            if(CONSEC_UNANSWERED < (uint32_t)UNANSWERED_STOP_AFTER)
-              break;   // fail-to-reject: no actuation -> part recirculates
-          }
+          UNANSWERED_Count++;
+          CONSEC_UNANSWERED++;
+          if(UNANSWERED_POLICY==1 && CONSEC_UNANSWERED < (uint32_t)UNANSWERED_STOP_AFTER)
+            break;   // fail-to-reject: no actuation -> part recirculates
           ecode=GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT;
           ERR_CTX_TID=pli->tid;
           ERR_CTX_STATUS=pli->insp_status;

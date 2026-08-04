@@ -423,25 +423,23 @@ class PerifChannel:public Data_JsonRaw_Layer
   void retire_stale_triggers()
   {
     if (machine_type != PERIF_UINSP_ESP32) return;
+    // Garbage collection only. This used to report the expired triggers NA, and
+    // that turned out to be work the device was already doing better: an object
+    // nobody speaks for reaches SWITCH unjudged, and the device now treats that
+    // as unjudged-and-recirculate rather than a fault. SWITCH is the real
+    // deadline -- literally the last moment the verdict could matter -- so a
+    // host-side timer was only ever an approximation of it, one that had to be
+    // rescaled with plate_freq and that injected a second, out-of-order source
+    // of reports to do it.
+    //
+    // The host now says exactly one thing: here is a verdict for a frame I am
+    // confident about. Silence means no verdict, and silence needs no timer.
+    // The queue still has to be bounded, hence the sweep -- it just no longer
+    // speaks.
     const uint64_t TRIG_STALE_MS = 500;
     uint64_t now_ms = perif_now_us() / 1000;
-    std::vector<PerifTrigger> expired;
-    perifPairing.sweepStale(now_ms, TRIG_STALE_MS, &expired);
-    for (const PerifTrigger &head : expired)
-    {
-      perifMissedFrameCount++;
-      PerifResultMsg na{ FeatureReport_sig360_circle_line_single::STATUS_NA,
-                         0, head.tid };
-      if (!perifSendQueue.push(na))
-      {
-        PerifResultMsg discard;
-        perifSendQueue.pop(discard);
-        perifSendQueue.push(na);
-      }
-      LOGE("perif: no frame for tid %lld within %llums -> reporting NA "
-           "(queue now %zu)", (long long)head.tid,
-           (unsigned long long)TRIG_STALE_MS, perifPairing.pending());
-    }
+    size_t n = perifPairing.sweepStale(now_ms, TRIG_STALE_MS, NULL);
+    if (n) perifMissedFrameCount += n;
   }
 
   // Watch the device's state for the transitions that wipe its object ring.
