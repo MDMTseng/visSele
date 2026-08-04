@@ -180,6 +180,27 @@ function urlConcat(base, add) {
                     }
 
 
+                    // uInspESP32 -- the 2nd-gen board, a separate block from the
+                    // uInspMEGA one above on purpose. It speaks a different
+                    // dialect (plate_freq/stage_pulse_offset/report{tid,cat}
+                    // rather than pulse_hz/res_count) and rides its own channel
+                    // (10027), so the two can coexist and the MEGA path stays
+                    // untouched. Configure exactly one of the two in
+                    // machine_setting.json -- the core keeps a single global
+                    // perifCH, so a second CONNECT would evict the first.
+                    if(info.uInspESP32_peripheral_conn_info!==undefined)
+                    {
+
+                      this.comp.props.ACT_WS_GET_OBJ(this.comp.props.uInspESP32_API_ID, (obj)=>{
+                        obj.connect( info.uInspESP32_peripheral_conn_info);
+                      })
+                    }
+                    else
+                    {
+                      log.info("[peripheral] uInspESP32 not configured");
+                    }
+
+
                     if(info.SLID_peripheral_conn_info!==undefined)
                     {
 

@@ -1433,9 +1433,111 @@ class APPMasterX extends React.Component {
       {
         super(id,settingFilePath,pg_id_channel);
         this.runningStat=undefined;
+        this.deviceState={};
+        this.cfg={};
+        this._resyncTries=0;
       }
 
       resyncRequiresAck(){ return true; }
+
+      // Opening the serial port toggles DTR, which hard-resets the ESP32. The
+      // host then has a live port to a board that is still booting, and the
+      // first command out of connect() lands in that window: the board reports
+      // it as recv_ERROR:2 with the frame mangled a dozen bytes in
+      // ({'type':'get_s<garbage>), because its UART is not up yet. PING survives
+      // this by accident -- it repeats every 3s, so one eventually lands. The
+      // one-shot config resync does not, which is why the machine panel stayed
+      // blank forever while the link itself looked perfectly healthy.
+      //
+      // So retry until the config actually arrives instead of trusting the first
+      // attempt. Cheap (one small command), bounded, and self-cancelling the
+      // moment cfg is populated.
+      static RESYNC_RETRY_MS=1000;
+      static RESYNC_MAX_TRIES=10;
+
+      machineSetupReSync()
+      {
+        this._resyncTries=0;
+        this._resyncKick();
+      }
+
+      _resyncKick()
+      {
+        if(Object.keys(this.cfg||{}).length>0)return;   // got it, stop
+        if(this.CONN_ID===undefined)return;             // a reconnect will restart this
+        if(this._resyncTries>=uInspESP32_API.RESYNC_MAX_TRIES)
+        {
+          log.warn("[uInspESP32] config resync gave up after",this._resyncTries,"tries");
+          return;
+        }
+        this._resyncTries++;
+        super.machineSetupReSync();
+        setTimeout(()=>this._resyncKick(),uInspESP32_API.RESYNC_RETRY_MS);
+      }
+
+      // Everything the firmware's set_setup handler actually consumes
+      // (LegacyFirmware.cpp, the JSON_SETIF_ABLE block). Anything else in a
+      // get_setup reply is read-only runtime state.
+      static SETTABLE_KEYS=[
+        "plate_freq","plate_accel","min_detect_sep_us",
+        "pulse_min_width","pulse_max_width",
+        "gate_debounce_rise","gate_debounce_fall",
+        "stepper_en_active","stepper_dir",
+        "unanswered_policy","unanswered_stop_after",
+        "host_timeout_ms","pulses_per_rev","plate_diameter_mm",
+        "stage_pulse_offset","io_on_level",
+        "machine_id","CAM1_Tags","CAM2_Tags","persist",
+      ];
+
+      // This board owns its own configuration: it keeps a copy in NVS and comes
+      // up on it (cfg_from_nvs), so the host has no business re-pushing settings
+      // just because it connected. Perif_API_Base does exactly that -- it echoes
+      // the whole get_setup reply straight back as set_setup, stripping only the
+      // 4 envelope fields, so ver/name/cur_state/step_count/error_hist/cfg_crc/
+      // reset_reason/xtal_mhz all get sent to a board that has no use for them.
+      //
+      // So this override makes the sync READ-ONLY: values are stored for display
+      // and never echoed. Settable keys land in machineSetup, runtime state in
+      // deviceState (getDeviceState). Writing config is an explicit act --
+      // machineSetupUpdateAndPersist() / setMachineId() -- not a side effect of
+      // connecting, which also means the NVS copy stays authoritative instead of
+      // being silently overwritten by whatever the host happened to cache.
+      //
+      // Bonus: it keeps the wire quiet. A full config push is ~500-670 bytes and
+      // used to arrive corrupted (see the RX-buffer fix in LegacyFirmware.cpp);
+      // not sending it at all is the better answer than sending it carefully.
+      machineSetupUpdate(newMachineInfo,doReplace=false,push=false)
+      {
+        let settable={}, readonly={};
+        Object.keys(newMachineInfo||{}).forEach(k=>{
+          if(uInspESP32_API.SETTABLE_KEYS.indexOf(k)>=0) settable[k]=newMachineInfo[k];
+          else readonly[k]=newMachineInfo[k];
+        });
+        this.deviceState=doReplace?readonly:{...this.deviceState,...readonly};
+        this.cfg=doReplace?settable:{...this.cfg,...settable};
+
+        // Actively clear, not merely "leave unset": machineSetupReSync() assigns
+        // `this.machineSetup = ret` (the whole get_setup reply) BEFORE it calls
+        // this method, so the field is already populated by the time we get here.
+        // Perif_API_Base.connect()
+        // pushes `send({type:"set_setup",...this.machineSetup})` directly -- not
+        // through this method -- whenever the field is set, so the only way to
+        // guarantee a reconnect stays read-only is to keep the field empty. The
+        // UI is unaffected: it reads machineSetup out of redux, which is fed
+        // here, not off the instance.
+        this.machineSetup=undefined;
+
+        StoreX.dispatch({type:"WS_UPDATE",id:this.id,
+                         machineSetup:this.cfg,
+                         deviceState:this.deviceState});
+        if(push!==true)return;
+        this.send({type:"set_setup",...settable},
+          (ret)=>log.debug("[machine-setup] set_setup ack",ret),
+          (e)=>log.warn("[machine-setup] set_setup failed",e));
+      }
+
+      getMachineSetup(){ return this.cfg; }
+      getDeviceState(){ return this.deviceState; }
 
       // ---- inspection mode -------------------------------------------------
 
@@ -1480,9 +1582,11 @@ class APPMasterX extends React.Component {
       saveSetupToDevice(){ return this.sendP({type:"save_setup"}); }
       clearSavedSetupOnDevice(){ return this.sendP({type:"clear_saved_setup"}); }
 
+      // push=true: this is the explicit write path. Everything else -- connect,
+      // resync, file load -- is read-only, see machineSetupUpdate.
       machineSetupUpdateAndPersist(newMachineInfo)
       {
-        this.machineSetupUpdate(newMachineInfo);
+        this.machineSetupUpdate(newMachineInfo,false,true);
         return this.saveSetupToDevice();
       }
 
@@ -1492,9 +1596,19 @@ class APPMasterX extends React.Component {
       // True when the running config came from the board's NVS rather than the
       // compiled fallback -- an unconfigured board is worth flagging loudly
       // before it starts flinging parts at the wrong bin.
-      isConfigFromNVS(){ return (this.machineSetup||{}).cfg_from_nvs===true; }
+      // cfg_from_nvs is read-only state, so it lives in deviceState now, not in
+      // machineSetup -- see machineSetupUpdate above.
+      isConfigFromNVS(){ return this.deviceState.cfg_from_nvs===true; }
     }
-    this.props.ACT_WS_REGISTER(this.props.uInspESP32_API_ID,new uInspESP32_API(this.props.uInspESP32_API_ID));
+    {
+      let _uInspESP32 = new uInspESP32_API(this.props.uInspESP32_API_ID);
+      this.props.ACT_WS_REGISTER(this.props.uInspESP32_API_ID,_uInspESP32);
+      // QA/bring-up handle, same spirit as __GP_MEASURE__/__GP_UTIL__ above.
+      // Driving the board by hand from the console is the only way to probe one
+      // command in isolation -- the periodic PING/resync traffic otherwise makes
+      // it impossible to tell which request a reply (or a silence) belongs to.
+      if(typeof window!=="undefined") window.__GP_PERIF__ = _uInspESP32;
+    }
 
 
     // Generic serial peripheral with no device-specific status handling.
