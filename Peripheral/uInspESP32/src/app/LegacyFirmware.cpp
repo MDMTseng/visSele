@@ -201,6 +201,20 @@ volatile int host_timeout_ms=0;
 volatile uint32_t ISR_GAP_MAX_CY=0;   // max inter-tick gap, CPU cycles
 volatile uint32_t RBUF_PEAK=0;        // max pipeline depth seen
 
+// Why a detection was turned away at the gate. Incremented from the timer ISR
+// (single writer) and read by the main loop for get_running_stat.
+//
+// Until now newPulseEvent's return code was discarded at both call sites, so a
+// rejected object was indistinguishable from an object that was never there.
+// That matters most for the rate limit: it is the knob that protects the camera
+// from being asked for frames faster than it can produce them, and without a
+// count there is no way to tell whether it is doing nothing or throwing away
+// half the parts.
+volatile uint32_t GATE_REJ_RATE=0;    // faster than min_detect_sep_us
+volatile uint32_t GATE_REJ_DIST=0;    // closer than the 2mm plate-distance gate
+volatile uint32_t GATE_REJ_BUSY=0;    // no room in RBuf / the ACT schedules
+volatile uint32_t GATE_ACCEPT=0;      // registered, for a rejection ratio
+
 volatile uint32_t ERR_CTX_TID=0;
 volatile int32_t  ERR_CTX_STATUS=0;
 volatile uint32_t ERR_CTX_GATE_PULSE=0;
@@ -751,16 +765,24 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   _prePulse=middle_pulse;
   // 2mm, not 3.5mm: parts are specified 3mm apart, and with the plate geometry
   // finally correct a 3.5mm gate would reject conforming production parts.
-  if(middle_pulse-_prePulse_BK<(_PLAT_DIST_step(2000)))return -9;
+  if(middle_pulse-_prePulse_BK<(_PLAT_DIST_step(2000))){GATE_REJ_DIST++;return -9;}
   uint64_t curTime = esp_timer_get_time();
-  if(curTime-_preTime<SYS_MIN_PULSE_TIME_SEP_us)return -8;
+  // The fire-rate limit. Rejecting here is the cheapest possible outcome: the
+  // object never gets a tid, never gets a camera trigger and never gets a
+  // SWITCH task, so it simply recirculates for another pass. Letting it through
+  // instead would ask the camera for a frame it cannot deliver, and a trigger
+  // with no frame poisons the host's pairing (see CORE0_1_CAVEATS J7/J9).
+  if(curTime-_preTime<SYS_MIN_PULSE_TIME_SEP_us){GATE_REJ_RATE++;return -8;}
   _preTime=curTime;
 
 
   if(blockNewDetectedObject)return -1;
   pipeLineInfo *head = RBuf.getHead();
   if (head == NULL)
+  {
+    GATE_REJ_BUSY++;
     return -1;
+  }
 
   //get a new object and find a space to log it
   // TCount++;
@@ -773,9 +795,11 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   head->trig_us=(uint32_t)esp_timer_get_time();
   if (ActRegister_pipeLineInfo(head) != 0)
   { //register failed....
+    GATE_REJ_BUSY++;
     return -2;
   }
   RBuf.pushHead();
+  GATE_ACCEPT++;
   {
     uint32_t sz=RBuf.size();
     if(sz>RBUF_PEAK) RBUF_PEAK=sz;
@@ -1911,6 +1935,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     CONSEC_UNANSWERED=0;
     ISR_GAP_MAX_CY=0;
     RBUF_PEAK=0;
+    GATE_ACCEPT=GATE_REJ_RATE=GATE_REJ_DIST=GATE_REJ_BUSY=0;
     REP_LAT_N=0;
     REP_LAT_SUM_US=0;
     REP_LAT_MAX_US=0;
@@ -1989,6 +2014,21 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jHl["rx_frames"]=djrl.rx_frames;
       jHl["rx_crc_ok"]=djrl.rx_crc_ok;
       jHl["rx_crc_fail"]=djrl.rx_crc_fail;
+    }
+    {
+      // Gate admission. rate>0 means the fire-rate limit is actually engaging:
+      // parts are arriving faster than min_detect_sep_us allows and are being
+      // left on the plate to come round again, which is the intended behaviour
+      // but needs to be visible -- otherwise "the machine is missing parts" and
+      // "the machine is deliberately skipping parts" look identical.
+      JsonObject jG=retdoc.createNestedObject("gate");
+      jG["accept"]=GATE_ACCEPT;
+      jG["rej_rate"]=GATE_REJ_RATE;
+      jG["rej_dist"]=GATE_REJ_DIST;
+      jG["rej_busy"]=GATE_REJ_BUSY;
+      jG["min_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
+      jG["max_hz"]=SYS_MIN_PULSE_TIME_SEP_us ?
+                     (uint32_t)(1000000UL/SYS_MIN_PULSE_TIME_SEP_us) : 0;
     }
     {
       JsonObject jL=retdoc.createNestedObject("report_latency");

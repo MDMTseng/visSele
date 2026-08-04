@@ -80,6 +80,8 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const [stat, setStat] = useState(undefined);
   const [busy, setBusy] = useState('');
   const [freqInput, setFreqInput] = useState('');
+  const [hzInput, setHzInput] = useState('');        // gate fire-rate cap, in parts/s
+
   const [commDiag, setCommDiag] = useState(null);
   const [lightUntil, setLightUntil] = useState(0);   // epoch ms the board will auto-drop the hold
   const [now, setNow] = useState(Date.now());
@@ -90,6 +92,12 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const connected = GetObjElement(CONN, ['type']) === 'WS_CONNECTED';
   const spo = cfg.stage_pulse_offset || {};
   const plate_freq = stat ? stat.plate_freq : cfg.plate_freq;
+  // Gate admission stats come from the board (get_running_stat.gate); the
+  // configured cap is mirrored there too, so the panel never has to guess
+  // whether its own last write actually landed.
+  const gate = stat ? stat.gate : undefined;
+  const gateSepUs = gate ? gate.min_sep_us : cfg.min_detect_sep_us;
+  const gateHz = gateSepUs > 0 ? Math.round(1000000 / gateSepUs) : undefined;
 
   // Poll running stats while the panel is open. The board answers
   // get_running_stat in ~8 ms, so 1 Hz is free -- and without it the counters
@@ -164,6 +172,47 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           {stat.error_hist.map((e, i) => <div key={i}>{errName(e)}</div>)}
         </Card>
       )}
+
+      <Card size="small" title="進料節流(閘門)" style={{ marginBottom: 8 }}>
+        <div style={{ marginBottom: 6, ...dim }}>
+          閘門每登記一個物件就會觸發相機一次。要求得比相機能給的快,就會出現「有觸發、沒影格」
+          —— 那會讓主機的配對永久錯位,不是只掉一顆料。這裡把進料速率壓在相機之下。
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          <Input
+            style={{ width: 150 }}
+            addonBefore="上限"
+            addonAfter="顆/秒"
+            placeholder={gateHz !== undefined ? String(gateHz) : ''}
+            value={hzInput}
+            onChange={(e) => setHzInput(e.target.value)}
+          />
+          <Button
+            loading={busy === 'gate'}
+            disabled={!(Number(hzInput) > 0)}
+            onClick={() => run('gate', (api) => api.machineSetupUpdate(
+              { min_detect_sep_us: Math.round(1000000 / Number(hzInput)) }, false, true))}
+          >套用</Button>
+          <span style={{ alignSelf: 'center', ...dim }}>
+            目前 {gateHz !== undefined ? `${gateHz} 顆/秒` : '—'}
+            {gateSepUs !== undefined ? ` (min_detect_sep_us=${gateSepUs})` : ''}
+          </span>
+        </div>
+        {gate && (
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <span>通過 <b>{gate.accept}</b></span>
+            {/* rej_rate > 0 is the limiter doing its job: those parts stayed on
+                the plate and come round again. It is not an error, but it must
+                be visible -- "missing parts" and "deliberately skipped parts"
+                look identical without it. */}
+            <span>擋下·速率 <b style={{ color: gate.rej_rate > 0 ? '#c60' : undefined }}>
+              {gate.rej_rate}</b></span>
+            <span>擋下·距離 <b>{gate.rej_dist}</b></span>
+            <span>擋下·忙碌 <b style={{ color: gate.rej_busy > 0 ? '#c33' : undefined }}>
+              {gate.rej_busy}</b></span>
+          </div>
+        )}
+      </Card>
 
       <Card size="small" title="運轉" style={{ marginBottom: 8 }}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
