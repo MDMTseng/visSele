@@ -632,3 +632,39 @@ cannot see those because `frame_id` stays contiguous (see J7), so every report
 runs `pending × object_period` late — 1.4 s at the observed rates, against a
 2.49 s budget. Until pairing is evidential rather than positional, drain the
 in-flight objects before changing plate speed.
+
+### J10. The pairing is moving to the device; the host's half is scaffolding
+
+Which camera frame belongs to which physical part is the single point where a
+wrong answer becomes a mis-sorted part. The core currently answers it in
+`Core0_1/PerifTriggerPairing.hpp` by matching the camera's frame timestamp
+against the device's trigger timestamp, having estimated the offset between the
+two clocks.
+
+**That whole module is on its way out.** The device fired the trigger, so it
+knows the object and the instant; it announced the instant and then discarded
+it. Bootstrap, drift EWMA, staleness sweep, offset TTL, failure-driven resync,
+early frame dump and the idle heartbeat all exist to reconstruct one value the
+firmware threw away. The firmware now keeps it (`pipeLineInfo.cam_us`) and
+reports carry `cam_ts`, so matching happens where the ground truth is.
+
+Migration is deliberately evidence-driven rather than argued: reports carry
+**both** `tid` and `cam_ts`, the device matches by tid and simultaneously
+computes what the timestamp match would give, and counts agreement. Promotion
+is one config flag (`report_match_ts`) justified by `cam_sync.disagree` staying
+0 over real production traffic. Until then the new path is a permanently-running
+observer, which is a far stronger check than any one-off A/B.
+
+Full status, measured numbers and the tooling traps that produced several wrong
+conclusions along the way: `Peripheral/uInspESP32/docs/PAIRING_MIGRATION_STATUS.md`.
+
+**Two host-side facts worth keeping even after the deletion:**
+
+- `gate_pulse == 0` on a `cam_trig` means the device fired the camera directly
+  (`trig_cam_pulse`) with no pipeline object behind it. Reporting a verdict
+  against one faults the device with `INSP_RESULT_MATCHES_NO_OBJECT`. The core
+  marks these `sync_only`: paired for the clock, never reported.
+- Opening the peripheral serial port toggles DTR and hard-resets the ESP32, so
+  every core restart reloads the board from NVS. Runtime-only settings are lost
+  — which is how `unanswered_policy` silently reverted to 0 mid-session and left
+  the machine running at 18.8% unjudged with an empty error log.

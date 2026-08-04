@@ -1,0 +1,168 @@
+# Frame ↔ object pairing: where it is and what to do next
+
+Start here. This is the live state of the uInspESP32 bring-up as of the end of
+the 2026-08-04 session, written so the next person (or the next session) can
+pick it up without re-deriving anything.
+
+---
+
+## The one-paragraph version
+
+The machine decides which camera frame belongs to which physical part. That
+mapping used to be inferred on the host from arrival order, which is wrong by
+construction and silently mis-sorts parts. It now matches on timestamps, and is
+in the middle of being moved onto the ESP32 — which knew the answer all along
+and was throwing it away. Everything works at 35 parts/s with zero losses. The
+firmware side is written and builds but **is not flashed yet**.
+
+---
+
+## State of the machine
+
+| | |
+|---|---|
+| Safe gate rate | **35 parts/s** (`min_detect_sep_us` 28571) — 5400 triggers, 0 losses |
+| Practical ceiling | 40/s (0.25% loss, stops after ~286 parts at `stop_after` 2) |
+| Cliff | 45/s → 6%, 50/s → 42% |
+| Throughput at 35/s | 14–18 parts/s accepted, ~27% deferred by clustering |
+| Parts on plate | ~45 (measured: 32.4 detections/rev × 1.40 parts/detection) |
+| Plate speed | 15000 is the throughput optimum; slower is monotonically worse |
+| Persisted to NVS | gate 35/s, `unanswered_policy` 1, `unanswered_stop_after` 2 |
+
+Physical: parts jam / stop circulating after long unattended runs. Normal
+operation (vibratory feeder in, ejected at the last station) will not do this;
+the current recirculating setup is roughly **8× harsher** than production.
+
+---
+
+## What is flashed vs what is not
+
+**Flashed and running:**
+gate admission counters (`gate.accept/rej_rate/rej_dist/rej_busy`),
+`SKIP_Count` reporting, SKIP+UNSET sharing the consecutive-unjudged escalation,
+`light` command, RX buffer ordering fix.
+
+**Written, builds, NOT flashed** — needs one physical BOOT press:
+- `gate_disable` — ignore the real sensor, keep `trig_phantom_pulse` working
+- `cam_us` on `pipeLineInfo` + `CamClockSync` + dual (tid / timestamp) matching
+- `reboot_bootloader` — the thing that ends the BOOT presses
+
+**Host side, running:** `PerifTriggerPairing.hpp` (timestamp matching), gate
+throttle UI, pairing stats in the panel, link RESYNC, idle heartbeat.
+
+---
+
+## Tomorrow, in order
+
+1. **One BOOT press, flash everything.** After that
+   `Peripheral/uInspESP32/tools/flash_no_boot.sh` handles it — the firmware puts
+   itself into the ROM bootloader and no pin is involved.
+2. **Watch `cam_sync.agree` / `cam_sync.disagree`** in `get_running_stat`. This
+   is the migration's entire evidence base: the timestamp match is computed on
+   every real report and checked against the tid match, continuously, on
+   production traffic. `disagree` must stay 0.
+3. **Promote when the counters justify it**: `report_match_ts: true`. Not
+   before, and not on argument.
+4. **Then delete from the host** — `PerifTriggerPairing.hpp`,
+   `tap_trigger_info`, `keep_clock_warm`, the trigger wait, the early dump.
+   ~450 lines that exist only to reconstruct what the device already knows.
+
+---
+
+## Caveats — the ones that cost time today
+
+### The device knew all along
+The camera-fire timestamp was announced and then discarded. Every host-side
+mechanism built this session — bootstrap, drift EWMA, staleness sweep, TTL,
+resync, early dump, idle heartbeat — is compensation for that one thrown-away
+value. When a subsystem needs this much scaffolding, check whether the
+information is being reconstructed rather than passed.
+
+### Positional pairing is wrong by construction
+One trigger that yields no frame offsets the FIFO **permanently**: every later
+frame is then reported against the object behind it. Measured: 2596
+announcements, 2591 frames, standing offset 5, object 690's image reported as
+tid 685. Not late — wrong. It hid only because every verdict was NA.
+
+### SKIP is a silencer, not a safety net
+Reporting tid N marks every older unjudged object SKIP, and SKIP raises no
+error. So err=2 systematically under-reports: the parts swept into SKIP are
+exactly the ones that would otherwise have faulted. A machine can look clean on
+errors while quietly not judging parts. `SKIP_Count` existed from the first
+build and was reported nowhere.
+
+### The clock offset has a shelf life
+It only refreshes on a successful match, so idle time freezes it while the
+crystals keep separating (~22ms drift per run against a 5ms tolerance). The
+failure is self-sealing: stale → nothing matches → nothing updates it → never
+recovers. Five idle minutes was enough to lose the next 13 frames and fault on
+the second part.
+
+### One corrupted byte kills the link until a reconnect
+The framing state machine leaves its error state on exactly one thing: the
+RESET_PACKET byte sequence. It does not resynchronise on a normal frame start.
+So every well-formed command after a glitch is ignored. Reconnecting fixes it —
+because CONNECT sends RESET — but reopening the port hard-resets the ESP32 and
+ends the run. Host-side RESYNC now tries RESET alone first. **Untested: no
+framing error has occurred since.**
+
+### Runtime config does not survive a core restart
+Opening the serial port toggles DTR, which resets the board, which reloads from
+NVS. Anything set at runtime and not persisted is gone. This is how
+`unanswered_policy` silently reverted to 0 mid-session, leaving the machine
+running at 18.8% unjudged with a clean error log.
+
+### The gate rate limit protects the camera, not the sensor
+Rejections are all the time gate. The sensor resolves parts fine: `rej_dist` is
+always 0, and widening `pulse_max_width` from 12.6mm to 37.7mm changes nothing.
+Measured pulse-width distribution (2mm parts): 72.8% single, 19.4% two touching,
+2.5% three, 5.2% more. **Merged parts are not filtered — they pass as one
+object and one verdict covers both.**
+
+### `pulse_min_width` is 0
+No noise floor at all: a single 12.6µm pulse counts as a part. Now set to 120
+(1.5mm), justified by the measured minimum of 2.51mm — not by the A/B that
+tried to verify it, which was run while nothing was passing the sensor and
+therefore proved nothing.
+
+---
+
+## Traps in the tooling, not the machine
+
+These produced wrong conclusions today. All of them.
+
+- **`insp.log` accumulates across core restarts** while each run's uptime
+  restarts at 0, so a "this run only" filter on the timestamp matches every run.
+  Reported 1340 triggers on an empty plate. Move the log aside before a
+  measurement you intend to trust.
+- **`perif trig:` prints every 100 writes.** On a low-traffic run the last line
+  is minutes stale. Query the live `perif_pairing` GS item instead.
+- **Long log lines get corrupted** — the record is overwritten while being read,
+  and the next record appears inline with no newline. Confirmed at the producer:
+  `rawL=178 strlen=178` with only ~110 characters surviving. Any long
+  diagnostic may be silently truncated. **Not fixed.**
+- **`matched` counted only the timestamp branch** until fixed, reading 2 when
+  455 frames had paired.
+- Grepping `"tid":12,"cam":1` for `[0-9]+` returns `12` and `1`.
+
+---
+
+## Still open
+
+- **The A/B is inconclusive.** Timestamp vs positional has never been compared
+  under real frame loss, because host-driven phantom pulses cannot make a burst
+  tight enough for the camera to refuse one — every pulse is a serial round trip
+  and a 10ms-spaced burst arrives 10–30ms apart. Needs a firmware-side
+  generator. `cam_sync.agree/disagree` supersedes this anyway once flashed.
+- **ISR gap of 10ms** (`isr_gap_max_us`), against a 33µs tick period — 300×.
+  Something blocks the timer ISR for a long time; cause unknown. This should be
+  understood before scaling to more cameras or adding WiFi.
+- **Serial is the scaling limit, not CPU.** At 115200: 1 camera 22%, 2 cameras
+  44%, 10 cameras 221%. Device-side matching removes the `cam_trig`
+  announcements entirely (−64% traffic) and 921600 gives 10 cameras ~10%.
+- **Multi-camera verdict aggregation** does not exist: `insp_status` is a single
+  value, set once. N cameras per object needs a different shape.
+- **Record + replay** of gate-pulse sequences, for reproducible tests: store
+  pulse *diffs* (not µs — pulses are speed-invariant), `uint16` covers a full
+  revolution at 2 bytes/event. Recording needs no firmware at all — `gate_pulse`
+  is already on the wire in every `cam_trig`.
