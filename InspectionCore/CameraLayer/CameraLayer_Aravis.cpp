@@ -951,8 +951,25 @@ CameraLayer_Aravis::CameraLayer_Aravis(CameraLayer::BasicCameraInfo camInfo,std:
     arv_camera_set_string (camera, "BalanceWhiteAuto", "Off", &e);
     if (e) { LOGI("BalanceWhiteAuto=Off: %s", e->message); g_clear_error(&e); }
 
-    arv_camera_set_string (camera, "TriggerSource", "Anyway", &e);
-    if (e) { LOGE("TriggerSource=Anyway REJECTED: %s", e->message); g_clear_error(&e); }
+    // Line0 (the opto input the sorter drives), NOT "Anyway". "Anyway" accepts
+    // a trigger from any source including the camera's internal one, so the
+    // sensor free-runs between hardware pulses -- frames the machine never
+    // asked for. It triggers correctly, so it looks fine, but the core pairs
+    // cam_trig{tid} to frames FIFO and that only holds while the two streams
+    // are 1:1. See the TriggerMode() copy of this comment for the measured
+    // damage. Fall back to "Anyway" for bodies without Line0, and say which one
+    // took -- getting it wrong is invisible until the pairing has drifted.
+    const char *tsrc = "Line0";
+    arv_camera_set_string (camera, "TriggerSource", tsrc, &e);
+    if (e)
+    {
+      LOGE("TriggerSource=Line0 REJECTED (%s) -- falling back to Anyway", e->message);
+      g_clear_error(&e);
+      tsrc = "Anyway";
+      arv_camera_set_string (camera, "TriggerSource", tsrc, &e);
+      if (e) { LOGE("TriggerSource=Anyway REJECTED: %s", e->message); g_clear_error(&e); tsrc = NULL; }
+    }
+    if (tsrc) LOGI("TriggerSource=%s", tsrc);
 
     arv_camera_set_string (camera, "TriggerMode", "On", &e);
     if (e) { LOGE("TriggerMode=On REJECTED: %s", e->message); g_clear_error(&e); }
@@ -1399,18 +1416,41 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
       }
     }
 
-    arv_camera_set_string (camera, "TriggerSource", "Anyway", &err);
+    // Prefer the physical trigger input over "Anyway".
+    //
+    // "Anyway" means the camera accepts a trigger from ANY source -- including
+    // its own internal one -- so the sensor keeps free-running between hardware
+    // pulses. It does trigger correctly (proven 20/20 on the bench), which is
+    // why it looked fine, but the extra frames are the problem downstream: the
+    // core pairs cam_trig{tid} to frames FIFO, and that is only correct while
+    // the two streams are 1:1. Measured with "Anyway": ~213 announced parts vs
+    // 449 frames and 273 "frame with no pending trigger", with report latency
+    // climbing without bound as the pairing drifted.
+    //
+    // Line0 is the opto input the sorter drives. Fall back to "Anyway" if a
+    // body does not expose it, so other cameras keep working -- and log which
+    // one actually took, because getting this wrong is invisible until the
+    // pairing has already drifted.
+    const char *trig_src = "Line0";
+    arv_camera_set_string (camera, "TriggerSource", trig_src, &err);
     if(err)
     {
-      LOGE("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+      LOGE("TriggerSource Line0 rejected (d%d c:%d m:%s) -- falling back to Anyway",
+           err->domain,err->code,err->message);
       err=NULL;
       g_clear_error(&err);
+      trig_src = "Anyway";
+      arv_camera_set_string (camera, "TriggerSource", trig_src, &err);
+      if(err)
+      {
+        LOGE("e:d%d c:%d m:%s\n",err->domain,err->code,err->message);
+        err=NULL;
+        g_clear_error(&err);
+        trig_src = NULL;
+      }
     }
-    else
-    {
-      
-      LOGE("TriggerSource Anyway");
-    }
+    if(trig_src)
+      LOGE("TriggerSource %s", trig_src);
     arv_camera_set_string (camera, "TriggerActivation", "RisingEdge", &err);
 
     if(err)
