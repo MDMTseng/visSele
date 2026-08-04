@@ -312,8 +312,14 @@ function CalibrationUI(props) {
   useEffect(() => {
     if (!thumbsLoaded) return;   // start the stream only after saved thumbnails load
     const CALIB_STREAM_PGID = 10105;
+    // down_samp_level matters as much as trigger_mode here. Without it the core
+    // streams DL:1 -- the full 2448x2048 frame, ~5MB raw, ~38ms just to encode,
+    // ~30MB/s at the rate this page asks for. The socket cannot carry that, and
+    // it fails silently: the core logs "img transfer" happily while the canvas
+    // stays empty. 4 is plenty to frame a chessboard and aim the lens; the
+    // captures themselves are taken at full res through a separate path.
     props.ACT_WS_SEND_BPG(props.CORE_ID, "ST", 0,
-      { CameraSetting: { trigger_mode: 0 } });
+      { CameraSetting: { trigger_mode: 0, down_samp_level: 4 } });
     props.ACT_WS_SEND_BPG(props.CORE_ID, "CI", 0, {
       _PGID_: CALIB_STREAM_PGID,
       _PGINFO_: { keep: true },

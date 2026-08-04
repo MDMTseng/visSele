@@ -178,6 +178,13 @@ public:
     std::lock_guard<std::mutex> g(subscribersLock);
     stream_subscribers.erase(peer);
   }
+  // How many peers a pushToSubscribers() call will actually reach. Worth having
+  // at the send sites: the fan-out is silent, so "packet sent" to an empty list
+  // looks exactly like a working stream in the logs.
+  size_t streamSubscriberCount() {
+    std::lock_guard<std::mutex> g(subscribersLock);
+    return stream_subscribers.size();
+  }
   // Push one packet to every subscribed peer (routes per-peer so framing stays
   // per-client; bulk image callbacks pick up the active peer under linkLayerLock).
   void pushToSubscribers(BPG_protocol_data bpg_dat)

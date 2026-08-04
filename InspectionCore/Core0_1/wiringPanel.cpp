@@ -1054,7 +1054,13 @@ void downSampSetup(CameraLayer &camera, cJSON &settingJson)
   {
     downSampLevel = (int)*val;
   }
-  downSampLevel=1;
+  // (was: an unconditional `downSampLevel=1;` right here, with no comment,
+  // discarding the value parsed one line above. It made down_samp_level
+  // unsettable by any client and pinned the live stream to full res -- DL:1,
+  // ~5MB and ~38ms of encoding per frame. IGNORE_DYNAMIC_VIEW already exists
+  // as the supported way to force full res, so the hard-coded override was
+  // only ever a debug leftover.)
+  if (downSampLevel <= 0) downSampLevel = 1;
 
   int type = getDataFromJson(&settingJson, "down_samp_w_calib", NULL);
   if (type == cJSON_False)
@@ -4565,7 +4571,12 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
       bpg_dat.pgID = bpg_pi.CI_pgID;
 
       bpg_pi.pushToSubscribers(bpg_dat);
-      LOGI("img transfer(DL:%d) %fms \n", _downSampLevel, ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000);
+      // subscribers is the number this packet was actually delivered to.
+      // pushToSubscribers is a fan-out to a list, so "sent" with an empty list
+      // is indistinguishable from "not sent" unless the count is printed.
+      LOGI("img transfer(DL:%d) %fms pgID:%d subscribers:%zu\n", _downSampLevel,
+           ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000,
+           bpg_pi.CI_pgID, bpg_pi.streamSubscriberCount());
       
       lastImgSendTime=cur_ms;
       avgInterval=cur_avgInterval;
@@ -5427,9 +5438,27 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       bpg_pi.unsubscribeStream(data.peer);
       peers.erase(data.peer);
 
-      // If the default broadcast target left, promote another peer (or none).
+      // If the default broadcast target left, promote another peer (or none) --
+      // and carry the stream subscription with the promotion.
+      //
+      // Streaming is granted in exactly one place (HAND_SHAKING_FINISHED) and
+      // only while default_peer is NULL, and nothing in the WebUI ever sends SB
+      // to ask for it. So a peer promoted here without subscribeStream() never
+      // receives another frame, and the failure is completely silent: the core
+      // keeps grabbing, inspecting and calling pushToSubscribers -- there is
+      // simply nobody left in the list to push to. No error, no warning, an
+      // empty canvas.
+      //
+      // A browser reload hits this whenever the new socket finishes its
+      // handshake before the old one's CLOSING is processed, which is the
+      // common ordering: the new connection is not NULL-default so it does not
+      // subscribe, and then the old one hands it a promotion without one.
       if (data.peer == default_peer)
+      {
         default_peer = peers.empty() ? NULL : *peers.begin();
+        if (default_peer != NULL)
+          bpg_pi.subscribeStream(default_peer);
+      }
 
       // Drop the perif channel's reply target if it pointed at this peer, so an
       // async device reply never dereferences a freed peer (it falls back to
