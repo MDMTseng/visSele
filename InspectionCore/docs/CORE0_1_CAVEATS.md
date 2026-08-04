@@ -548,9 +548,25 @@ filling the view, not the sensor). `edit_info` still holds whatever def was
 loaded last, so a def-less preview gets zoomed to a stale, unrelated scale even
 once it does draw.
 
-Both are opt-out via `allowNoCameraParam` on the canvas ctrl; `CalibrationUI`
-sets it. Default stays `false`, so the def editor is unchanged — drawing
-overlays at a guessed mmpp is exactly what the guard is there to prevent.
+**The scale is not a detail to fall back on.** A raw-frame preview has three
+spatial inputs, and in the def path *all three* come from the def: mmpp from
+`cam_param`/sig360, the origin from the sig360 centre, and the fit extent from
+the signature magnitude. For an instrument page every one of them is the wrong
+number — a def's mmpp describes whatever image was side-loaded *with that def*
+(different camera, lens, standoff), and there is no part to centre or frame. The
+authority is `lens_calib.json` `um_per_px`; the def's `mmpp` is only ever about
+the sideloaded image.
+
+`Preview_CanvasComponent.SetStandalonePreview(mmpp)` takes all three out at
+once: instrument mmpp in, `EditDBInfoSync` becomes a no-op, `db_obj` and
+`edit_DB_info` stay null, origin becomes the frame's own centre. Default is off,
+so the def editor is unchanged — drawing overlays at a guessed mmpp is exactly
+what the original guard exists to prevent.
+
+The centring is not cosmetic either: `draw()` puts the frame's top-left at the
+world origin and relied on the sig360 translate to centre it, so without an
+explicit offset the frame slides off-centre the moment the canvas resizes
+(opening the side panel is enough).
 
 **Bisecting this class of bug.** Three hypotheses died before the real one
 (`TriggerSource=Line0` starving frames; a promoted peer losing its stream
@@ -562,7 +578,8 @@ sent it" and "the page drew it" had no observable between them. Count packets at
   `pushToSubscribers` is a fan-out, so sending to an empty list is otherwise
   indistinguishable from not sending
 - WebUI: `__GP_WS__.rxTally()` (inbound, keyed `pgID:type`) and
-  `__GP_WS__.reqWindowIDs()` (which pgIDs are registered)
+  `__GP_WS__.reqWindowIDs()` (which pgIDs are registered);
+  `__GP_CALIB_CANVAS__.rUtil.get_mmpp()` reads back the scale actually in use
 
 `{"10105:IM": 102}` with `edit_info.img` set and a transparent canvas localizes
 the loss to the draw call in one step.
