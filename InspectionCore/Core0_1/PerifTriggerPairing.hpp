@@ -61,6 +61,7 @@
 #include <vector>
 #include <algorithm>
 #include <math.h>
+#include <chrono>
 
 // One announced camera trigger, waiting for the frame it caused.
 struct PerifTrigger
@@ -101,6 +102,23 @@ public:
   // second at production rates; high enough that a genuine burst of lost frames
   // does not throw away a good offset.
   static constexpr int RESYNC_AFTER = 5;
+
+  // How long a measured offset stays trustworthy with nothing to refresh it.
+  //
+  // Only a successful match feeds the drift EWMA, so an idle line freezes the
+  // estimate while the two crystals keep separating -- ~22ms of drift was
+  // observed across a single run, against a 5ms tolerance. 30s at that rate is
+  // roughly half the tolerance, so the first frame after a pause still lands
+  // inside the window if the offset is fresh, and is treated as unmeasured if
+  // it is not.
+  //
+  // Without this the recovery is failure-driven: the offset stays "valid" until
+  // five frames in a row fail to match, and with the early-dump those five are
+  // discarded before inspection and never reported. Restarting after a break
+  // therefore burned five parts and, at unanswered_stop_after=2, faulted the
+  // machine before it had judged anything. Expiring on TIME instead costs
+  // nothing: bootstrap pairs positionally and still reports every frame.
+  static constexpr int64_t OFFSET_TTL_MS = 30000;
 
   explicit PerifTriggerPairing(size_t cap = 256) : _cap(cap) {}
 
@@ -150,6 +168,7 @@ public:
   PairResult pairFrame(uint64_t cam_ts_us, int64_t *tid_out)
   {
     std::lock_guard<std::mutex> lk(_mx);
+    _expireStaleOffset();
     if (_q.empty()) return EMPTY;
 
     if (_mode == POSITIONAL || cam_ts_us == 0)
@@ -234,6 +253,7 @@ public:
     _q.erase(_q.begin() + best_i);
     _matched++;
     _consec_miss = 0;
+    _last_match_ms = _nowMs();
     return PAIRED;
   }
 
@@ -315,6 +335,8 @@ public:
   bool announcementLost(uint64_t cam_ts_us) const
   {
     std::lock_guard<std::mutex> lk(_mx);
+    // A stale offset makes every frame look lost, so never dump on one.
+    if (_offsetExpired()) return false;
     if (_mode != TIMESTAMP || !_offset_valid || cam_ts_us == 0 || _q.empty()) return false;
     int64_t want = (int64_t)cam_ts_us - (int64_t)llround(_offset_us);
     for (const PerifTrigger &t : _q)
@@ -388,6 +410,25 @@ private:
   // about the parts: drop back to bootstrapping, pair positionally for a few
   // frames, and re-measure. Positional is wrong in the ways this class exists
   // to fix, but it is wrong for a handful of parts rather than forever.
+  static int64_t _nowMs()
+  {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::steady_clock::now().time_since_epoch()).count();
+  }
+  bool _offsetExpired() const
+  {
+    return _offset_valid && _last_match_ms != 0 &&
+           (_nowMs() - _last_match_ms) > OFFSET_TTL_MS;
+  }
+  void _expireStaleOffset()
+  {
+    if (!_offsetExpired()) return;
+    _offset_valid = false;
+    _boot.clear();
+    _consec_miss = 0;
+    _resyncs++;
+  }
+
   void _missStreak()
   {
     if (!_offset_valid) return;
@@ -415,5 +456,6 @@ private:
             _no_candidate = 0, _drops = 0, _covered_by_skip = 0, _dumped = 0;
   int64_t   _max_reported_tid = -1;
   int       _consec_miss = 0;
+  int64_t   _last_match_ms = 0;
   long long _resyncs = 0;
 };
