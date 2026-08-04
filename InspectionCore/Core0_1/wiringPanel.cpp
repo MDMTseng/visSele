@@ -472,6 +472,66 @@ class PerifChannel:public Data_JsonRaw_Layer
     cJSON_Delete(j);
   }
 
+  // Keep the clock model alive through idle stretches.
+  //
+  // The offset between the device clock and the camera clock only refreshes
+  // when something PAIRS, so a running machine with no parts lets it go stale
+  // while the crystals keep separating. The TTL added earlier handles that by
+  // giving up and relearning, which costs a bootstrap window every time -- it
+  // treats the symptom.
+  //
+  // The cause is simply that nothing is arriving. So make something arrive: a
+  // phantom pulse costs one tid, one camera frame and one NA verdict, and it
+  // produces exactly the match the estimator needs. The model never goes stale,
+  // so the first real part after a quiet spell is paired on a fresh offset
+  // instead of on a bootstrap guess.
+  //
+  // Only while the device is actually inspecting -- a phantom pulse registers a
+  // real object with a real SWITCH deadline, and injecting those into a machine
+  // that is idle or faulted would be inventing work. The TTL stays as the net
+  // for the cases this cannot reach (plate stopped, link down).
+  uint64_t last_warm_ms = 0;
+  void keep_clock_warm()
+  {
+    if (machine_type != PERIF_UINSP_ESP32) return;
+    if (last_dev_state != 101) return;              // only while inspecting
+    // Two cadences, because the two situations are not the same problem.
+    //
+    // Cold (no usable offset yet) the model is not merely aging, it does not
+    // exist -- and bootstrap needs BOOTSTRAP_N samples before it does. At the
+    // maintenance cadence that is over a minute of being unready, during which
+    // the first real part to arrive gets paired on a guess. The whole point of
+    // the heartbeat is to be ready BEFORE the work arrives, so when cold, beat
+    // fast and get there in a couple of seconds.
+    //
+    // Warm, the only job is to outpace drift, and drift is slow: ~83us/s
+    // against a 5ms tolerance. 10s keeps it fresh with room to spare while
+    // adding one phantom object per ten seconds to an idle machine, which is
+    // as close to free as this gets.
+    const bool cold = !perifPairing.offsetValid();
+    const int64_t  WARM_AFTER_MS   = cold ?  300 : 10000;
+    const uint64_t WARM_MIN_GAP_MS = cold ?  250 :  5000;
+
+    // age < 0 means nothing has EVER paired -- which is not a reason to skip the
+    // heartbeat, it is the strongest reason to send one. A machine that starts
+    // inspecting with no parts in front of it has no clock estimate at all, and
+    // waiting for a part to arrive to fix that is backwards: the first real part
+    // is then paired on a bootstrap guess. Treating "never" as "overdue" is what
+    // makes the model ready BEFORE the work arrives.
+    int64_t age = perifPairing.lastMatchAgeMs();
+    if (age >= 0 && age < WARM_AFTER_MS) return;
+
+    uint64_t now_ms = perif_now_us() / 1000;
+    if (last_warm_ms != 0 && now_ms - last_warm_ms < WARM_MIN_GAP_MS) return;
+    last_warm_ms = now_ms;
+
+    uint8_t buf[128];
+    printfTo_perifCH(this, buf, sizeof(buf), true,
+                     "{\"type\":\"trig_phantom_pulse\"}");
+    LOGI("perif: %lldms since last pairing -- phantom pulse to keep the clock warm",
+         (long long)age);
+  }
+
   // uInspESP32 announces every camera trigger with the object id the result
   // must later be reported against. Tap those into the pairing on the way
   // past -- the message is still forwarded to the WebUI untouched, so nothing
@@ -526,6 +586,7 @@ class PerifChannel:public Data_JsonRaw_Layer
       tap_trigger_info(raw, rawL);
       tap_device_state(raw, rawL);
       retire_stale_triggers();
+      keep_clock_warm();
 
       // [perif] Reply arrived from the device. Log the serial round-trip (write
       // -> reply) so we can localize comm delay: if serialRTT ~= the WebUI's

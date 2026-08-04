@@ -369,6 +369,13 @@ public:
   // too, which it had not, so a run pairing 455 frames reported matched:2.
   long long matched()     const { std::lock_guard<std::mutex> lk(_mx); return _matched; }
   long long tsMatched()   const { std::lock_guard<std::mutex> lk(_mx); return _ts_matched; }
+  // How long since anything last paired. -1 = nothing has ever paired, so
+  // there is no estimate to keep alive yet.
+  int64_t lastMatchAgeMs() const
+  {
+    std::lock_guard<std::mutex> lk(_mx);
+    return _last_match_ms == 0 ? -1 : (_nowMs() - _last_match_ms);
+  }
   long long outOfOrder()  const { std::lock_guard<std::mutex> lk(_mx); return _out_of_order; }
   // Frames the caller gave up on, after any wait it chose to do.
   void noteUnpaired() { std::lock_guard<std::mutex> lk(_mx); _no_candidate++; _missStreak(); }
