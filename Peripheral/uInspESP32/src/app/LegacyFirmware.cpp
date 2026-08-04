@@ -1810,9 +1810,16 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
 
 
-  else if(strcmp(type,"ping")==0)
+  // Both casings on purpose. The uInspMEGA-era WebUI peripheral base class
+  // sends {"type":"PING"} (script.jsx triggerPing), while this firmware and the
+  // bring-up panel use lowercase everywhere else. strcmp is case-sensitive, so
+  // the uppercase form went unanswered -- and the WebUI treats 3 missed pings
+  // (3s apart) as a dead link, tearing the peripheral channel down and
+  // reopening the serial port every 9s, forever. Accepting both is the
+  // additive fix; it costs one comparison and leaves the old WebUI untouched.
+  else if(strcmp(type,"ping")==0 || strcmp(type,"PING")==0)
   {
-    retdoc["type"]="pong"; 
+    retdoc["type"]="pong";
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"get_setup")==0)
@@ -2556,9 +2563,20 @@ void firmwareSetup()
 {
   
   // noInterrupts();
+  // setRxBufferSize MUST precede begin(): HardwareSerial::setRxBufferSize()
+  // bails out with "RX Buffer can't be resized when Serial is already running"
+  // the moment _uart exists, so the old begin()-then-resize order silently left
+  // the buffer at the 256-byte default. Anything longer than that -- a full
+  // set_setup with stage_pulse_offset and io_on_level is ~500-670 bytes --
+  // overran the FIFO and arrived corrupted mid-frame ("'plate_<garbage>:2000"),
+  // which the parser reported as JSON_FORMAT_ERROR/INIT_CHAR_ERROR. The stream
+  // then desynced and every later command, PING included, went unanswered, so
+  // the host declared the link dead and reconnected every 9s forever.
+  // 2048 matches Data_Layer_Protocol's dataBuff, so a frame the protocol layer
+  // can hold is a frame the UART can hold.
+  Serial.setRxBufferSize(2048);
   Serial.begin(115200);//230400);
   // Serial.begin(460800);
-  Serial.setRxBufferSize(500);
   // Serial.setHwFlowCtrlMode(0);
   // // setup_comm();
 
