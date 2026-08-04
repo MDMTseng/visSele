@@ -1931,6 +1931,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
 
     SEL1_Count=SEL2_Count=SEL3_Count=NA_Count=0;
+    SKIP_Count=0;
     UNANSWERED_Count=0;
     CONSEC_UNANSWERED=0;
     ISR_GAP_MAX_CY=0;
@@ -1962,6 +1963,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     jCountInfo["SEL3"]=SEL3_Count;
     jCountInfo["NA"]=NA_Count;
     jCountInfo["UNANSWERED"]=UNANSWERED_Count;
+    // Counted since the first build and reported by nothing until now, which
+    // hid the real cost of out-of-order reports. Reporting tid N marks every
+    // OLDER object still UNSET as SKIP; if that object's own verdict then
+    // arrives before SWITCH it overwrites the SKIP and all is well, but if it
+    // does not, the object passes the selector unjudged and -- unlike UNSET --
+    // SKIP raises no error. So SKIP is the honest count of parts that went
+    // through without a verdict, and err=2 systematically under-reports it.
+    jCountInfo["SKIP"]=SKIP_Count;
 
     //current state
     retdoc["state"]=(int)sysinfo.state;

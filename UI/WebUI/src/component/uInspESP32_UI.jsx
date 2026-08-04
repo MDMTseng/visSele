@@ -326,6 +326,18 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
         <div style={kv}><span>SEL1 / SEL2 / SEL3</span>
           <b>{cnt.SEL1 ?? '—'} / {cnt.SEL2 ?? '—'} / {cnt.SEL3 ?? '—'}</b></div>
         <div style={kv}><span>NA</span><b>{cnt.NA ?? '—'}</b></div>
+        {/* SKIP is the one that does not announce itself. Reporting an object
+            marks every OLDER still-unjudged object as SKIP, so any out-of-order
+            report (a stale-trigger NA fill is always for an older id than the
+            verdicts around it) sweeps its predecessors. If their own verdict
+            lands before the selector it overwrites the SKIP and nothing is
+            lost; if it does not, the part goes through unjudged -- and unlike
+            UNANSWERED, SKIP raises no error at all. So this is the honest
+            count of parts that passed without a verdict. */}
+        <div style={kv}>
+          <span>SKIP <span style={dim}>(被較新的回報蓋過)</span></span>
+          <b style={{ color: cnt.SKIP ? '#c60' : undefined }}>{cnt.SKIP ?? '—'}</b>
+        </div>
         <div style={kv}>
           <span>UNANSWERED</span>
           <b style={{ color: cnt.UNANSWERED ? '#c33' : undefined }}>{cnt.UNANSWERED ?? '—'}</b>
