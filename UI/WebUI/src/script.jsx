@@ -1449,6 +1449,17 @@ class APPMasterX extends React.Component {
 
       resyncRequiresAck(){ return true; }
 
+      // QA/bring-up: flip the frame<->object pairing algorithm at runtime.
+      // The switch exists so the two can be compared on the same machine with
+      // the same input; reading it only at CONNECT made that comparison cost a
+      // board reset, which is why it had never been run.
+      setPairingMode(mode)
+      {
+        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0,
+          { type:"PAIRING_MODE", mode, CONN_ID:this.CONN_ID },
+          undefined, { resolve:d=>d, reject:d=>d });
+      }
+
       // Try to un-wedge the serial link before resorting to reopening the port.
       //
       // The base watchdog reconnects after two unanswered PINGs, and reconnect

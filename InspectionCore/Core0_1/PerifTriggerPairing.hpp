@@ -175,6 +175,8 @@ public:
     {
       *tid_out = _q.front().tid;
       _q.pop_front();
+      _matched++;
+      _last_match_ms = _nowMs();
       return PAIRED;
     }
 
@@ -186,6 +188,8 @@ public:
       PerifTrigger t = _q.front();
       _q.pop_front();
       *tid_out = t.tid;
+      _matched++;
+      _last_match_ms = _nowMs();
       _boot.push_back((int64_t)cam_ts_us - (int64_t)t.dev_us);
       if ((int)_boot.size() >= BOOTSTRAP_N)
       {
@@ -252,6 +256,7 @@ public:
     if (best_i > 0) _out_of_order++;
     _q.erase(_q.begin() + best_i);
     _matched++;
+    _ts_matched++;
     _consec_miss = 0;
     _last_match_ms = _nowMs();
     return PAIRED;
@@ -358,7 +363,12 @@ public:
   double   maxResidUs()   const { std::lock_guard<std::mutex> lk(_mx); return _max_resid_us; }
   int64_t  lastMissUs()   const { std::lock_guard<std::mutex> lk(_mx); return _last_miss_us; }
   long long rxCount()     const { std::lock_guard<std::mutex> lk(_mx); return _rx; }
+  // Every frame given an object, by any route. tsMatched() is the subset that
+  // was matched on evidence rather than on queue order -- the two were the same
+  // number until matched() started counting the positional and bootstrap paths
+  // too, which it had not, so a run pairing 455 frames reported matched:2.
   long long matched()     const { std::lock_guard<std::mutex> lk(_mx); return _matched; }
+  long long tsMatched()   const { std::lock_guard<std::mutex> lk(_mx); return _ts_matched; }
   long long outOfOrder()  const { std::lock_guard<std::mutex> lk(_mx); return _out_of_order; }
   // Frames the caller gave up on, after any wait it chose to do.
   void noteUnpaired() { std::lock_guard<std::mutex> lk(_mx); _no_candidate++; _missStreak(); }
@@ -382,12 +392,12 @@ public:
     std::lock_guard<std::mutex> lk(_mx);
     snprintf(buf, n,
       "pairing:%s%s off:%.1fms resid last:%.0fus max:%.0fus | "
-      "rx:%lld matched:%lld ooo:%lld stale:%lld(skip:%lld) nocand:%lld "
+      "rx:%lld matched:%lld(ts:%lld) ooo:%lld stale:%lld(skip:%lld) nocand:%lld "
       "dumped:%lld drops:%lld resync:%lld pend:%zu",
       _mode == TIMESTAMP ? "timestamp" : "positional",
       (_mode == TIMESTAMP && !_offset_valid) ? "(bootstrapping)" : "",
       _offset_us / 1000.0, _last_resid_us, _max_resid_us,
-      _rx, _matched, _out_of_order, _stale, _covered_by_skip, _no_candidate,
+      _rx, _matched, _ts_matched, _out_of_order, _stale, _covered_by_skip, _no_candidate,
       _dumped, _drops, _resyncs, _q.size());
   }
 
@@ -452,7 +462,7 @@ private:
 
   double    _last_resid_us = 0, _max_resid_us = 0;
   int64_t   _last_miss_us = 0;
-  long long _rx = 0, _matched = 0, _out_of_order = 0, _stale = 0,
+  long long _rx = 0, _matched = 0, _ts_matched = 0, _out_of_order = 0, _stale = 0,
             _no_candidate = 0, _drops = 0, _covered_by_skip = 0, _dumped = 0;
   int64_t   _max_reported_tid = -1;
   int       _consec_miss = 0;

@@ -2177,6 +2177,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             cJSON_AddBoolToObject(robj, "offset_valid", perifPairing.offsetValid());
             cJSON_AddNumberToObject(robj, "rx", (double)perifPairing.rxCount());
             cJSON_AddNumberToObject(robj, "matched", (double)perifPairing.matched());
+            cJSON_AddNumberToObject(robj, "ts_matched", (double)perifPairing.tsMatched());
             // The two failure counts, kept apart because they mean different
             // things: no_candidate is a FRAME we could not place (its part goes
             // unjudged), stale is a TRIGGER whose frame never came (that part is
@@ -3975,6 +3976,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           perifCH->send_RESET();
           perifCH->send_RESET();
           LOGE("perif: link RESYNC requested -- RESET_PACKET sent, port left open");
+          session_ACK = true;
+        }
+        else if(strcmp(type, "PAIRING_MODE") == 0)
+        {
+          // Switch the pairing algorithm without reconnecting.
+          //
+          // The mode is normally read from conn_info at CONNECT, which means
+          // changing it costs a reconnect, and reconnecting reopens the port,
+          // which hard-resets the device. That makes the A/B the switch exists
+          // for -- same machine, same parts, both algorithms -- expensive enough
+          // that it never got run. It is a comparison, so it has to be cheap.
+          cJSON *pm = cJSON_GetObjectItem(json, "mode");
+          bool ts = (pm && cJSON_IsString(pm) && strcmp(pm->valuestring, "timestamp") == 0);
+          perifPairing.setMode(ts ? PerifTriggerPairing::TIMESTAMP
+                                  : PerifTriggerPairing::POSITIONAL);
+          LOGE("perif pairing mode -> %s (runtime switch)", ts ? "timestamp" : "positional");
           session_ACK = true;
         }
         else if(strcmp(type, "MESSAGE") == 0)
