@@ -605,6 +605,16 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.CandEditPointInfo = null;
     this.EditPoint = null;
     this.ShowInspectionNote = false;
+    // Opt-in escape hatch for callers that only want the raw live frame on
+    // screen (camera calibration / lens aiming). Both EditDBInfoSync and draw
+    // normally bail when db_obj.cameraParam is undefined -- correct for the def
+    // editor, where overlays must not be drawn at a guessed scale, but fatal
+    // for a preview with no def: cameraParam only ever arrives from a def's
+    // cam_param or an inspection report that carries one, so a def-less page
+    // never draws a single pixel and says nothing about why. With this set,
+    // mmpp falls back to 1 (world units == pixels), which is all a preview
+    // needs. Same spirit as disableImageAlign below.
+    this.allowNoCameraParam = false;
 
     this.EmitEvent = (event) => { log.debug(event); };
   }
@@ -635,8 +645,14 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
   scaleImageToFitScreen(img_info=this.img_info) {
     if(img_info===undefined)return;
     let mmpp = this.rUtil.get_mmpp();
-    let magArr = GetObjElement(this.edit_DB_info.inherentShapeList,[0,"signature","magnitude"]);
-    
+    // Normally the fit targets the def's signature extent, not the frame -- the
+    // editor wants the PART filling the view, not the sensor. A def-less preview
+    // has no part to frame, and edit_info still carries whatever def was loaded
+    // last, so honouring magnitude here zooms the raw frame to a stale, unrelated
+    // scale. Fall back to the image extent in that mode.
+    let magArr = this.allowNoCameraParam ? undefined
+      : GetObjElement(this.edit_DB_info.inherentShapeList,[0,"signature","magnitude"]);
+
 
 
     let minCanvasWH=this.canvas.width<this.canvas.height?this.canvas.width:this.canvas.height;
@@ -660,7 +676,8 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
   EditDBInfoSync(edit_DB_info) {
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
-    if (this.db_obj === undefined || this.db_obj == null || this.db_obj.cameraParam === undefined) return;
+    if (this.db_obj === undefined || this.db_obj == null) return;
+    if (this.db_obj.cameraParam === undefined && !this.allowNoCameraParam) return;
     this.rUtil.setEditor_db_obj(this.db_obj);
     let imageChanged=edit_DB_info.img!=this.img_info;
     this.SetImg(edit_DB_info.img);
@@ -689,7 +706,8 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
 
   draw() {
-    if (this.db_obj === undefined || this.db_obj == null || this.db_obj.cameraParam === undefined) return;
+    if (this.db_obj === undefined || this.db_obj == null) return;
+    if (this.db_obj.cameraParam === undefined && !this.allowNoCameraParam) return;
     if(this.img_info===undefined)
     {
       return;

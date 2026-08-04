@@ -28,6 +28,11 @@ class PreviewCanvas extends React.Component {
   componentDidMount() {
     this.ec_canvas = new EC_CANVAS_Ctrl.Preview_CanvasComponent(this.refs.canvas);
     this.ec_canvas.disableImageAlign = true;   // raw live frame: no def_image_reg rotate
+    // This page runs with no def loaded, so db_obj.cameraParam is undefined and
+    // the canvas would silently refuse to draw -- frames arrive, redux holds the
+    // image, and the canvas stays fully transparent. Scale doesn't matter here
+    // (we're aiming a lens, not measuring), so let it render at mmpp=1.
+    this.ec_canvas.allowNoCameraParam = true;
     this._didInitialFit = false;
     if (this.props.onCanvasInit) this.props.onCanvasInit(this.ec_canvas);
     this.updateCanvas(this.props.c_state);
