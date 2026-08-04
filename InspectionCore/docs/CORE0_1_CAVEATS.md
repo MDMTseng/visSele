@@ -497,9 +497,22 @@ With both fixes in (Line0 + the sentinel), measured at `plate_freq` 3000 over
 | cam_trig vs frames | ~2:1 | 514 (~257 parts) vs 261, **1:1** |
 | faults | `err[2]` | none |
 
-218 ms against the **996 ms** SWITCH budget at production `plate_freq` 15000 is
-a 4.6× margin. Inspection itself was never the bottleneck — 7–14 ms per frame
-with `insp:0/10`.
+**What that latency actually measures:** the firmware stamps `trig_us` where the
+object is *registered at the gate* (next to `gate_pulse`, before the stage tasks
+are scheduled) — despite the name it is **not** the camera trigger. So the
+number is gate→report, and it contains a pure-transport term: `CAM1_on` is 654
+ticks after the gate and the stage timer runs at `2 × plate_freq`, i.e. **109 ms
+at plate_freq 3000**. The vision loop proper is therefore ~54 ms avg / ~109 ms
+max, which cross-checks against the core-side parts: cam_trig→frame ~29 ms,
+inspect 7–14 ms, report round trip ~8 ms.
+
+That split matters for scaling, because only one half moves with plate speed.
+At production `plate_freq` 15000 the transport term shrinks to 654/30000 =
+**21.8 ms** while the vision term does not change, so expect roughly
+**21.8 + ~109 = ~131 ms against the 996 ms budget (~7.6× margin)**. Comparing
+against SWITCH is apples-to-apples: that deadline is also measured from the gate
+(`pressure = gate_pulse + SWITCH - SYS_STEP_COUNT`). Inspection itself was never
+the bottleneck — 7–14 ms per frame with `insp:0/10`.
 
 **Still worth doing:** the pairing is still positional. The existing guard retires surplus triggers only on **`frame_id` gaps**, which
 by construction cannot see a trigger the camera silently *refused* — `frame_id`
