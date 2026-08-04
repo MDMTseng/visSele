@@ -474,17 +474,34 @@ Measured at `plate_freq` 3000, before → after:
 | `perif trig` pending | 4, drifting | 1, steady |
 | report latency (avg) | 844 ms | 348 ms |
 
-**STILL OPEN — residual drift.** Over a longer run `pending` still crept 1 → 5
-and latency 348 ms → 929 ms avg (max 4803 ms), i.e. a handful of triggers still
-produce no frame. Each one permanently shifts the pairing by one and adds a
-whole part-period to every later part, so it is cumulative and eventually blows
-the SWITCH budget (`SWITCH_offset / (2 × plate_freq)`: 4.98 s at `plate_freq`
-3000, but only **996 ms** at production 15000).
+**Second cause, and the one that actually mattered: `SetFrameRate` rejected the
+"no limit" sentinel.** The WebUI's `setCameraSpeed_HIGHEST()` sends the *finite*
+value `9999999` (`BPG_Protocol.js`); `SetFrameRate` handled `isinf` but returned
+`NAK` for anything else above max — so the request was refused and whatever
+limit was already in force stayed. On the real machine something pushed
+`framerate:8` at inspection start, the `9999999` that immediately followed was
+rejected, and the camera ran the whole production test **pinned at 8 fps
+(125 ms exposure floor)** while parts arrived far faster. Now "faster than max"
+disables the limiter, and says so.
 
-Inspection is **not** the bottleneck — measured 7–14 ms per frame with
-`insp:0/10`, no queue at all.
+With both fixes in (Line0 + the sentinel), measured at `plate_freq` 3000 over
+309 parts:
 
-The existing guard retires surplus triggers only on **`frame_id` gaps**, which
+| | broken | fixed |
+|---|---|---|
+| ResultingFrameRate | 8.00 fps | 35.18 fps |
+| exposure floor | 125 ms | 28.4 ms |
+| report latency avg | 348 → 929 ms, growing | **162 ms, flat** |
+| report latency max | 4803 ms | **218 ms** |
+| `perif trig` pending | 1 → 5, growing | **0, steady** |
+| cam_trig vs frames | ~2:1 | 514 (~257 parts) vs 261, **1:1** |
+| faults | `err[2]` | none |
+
+218 ms against the **996 ms** SWITCH budget at production `plate_freq` 15000 is
+a 4.6× margin. Inspection itself was never the bottleneck — 7–14 ms per frame
+with `insp:0/10`.
+
+**Still worth doing:** the pairing is still positional. The existing guard retires surplus triggers only on **`frame_id` gaps**, which
 by construction cannot see a trigger the camera silently *refused* — `frame_id`
 stays contiguous in that case (see `cameralayer-validation`). So FIFO position
 alone can never be made safe here. The fix is to stop inferring the pairing:
