@@ -521,3 +521,48 @@ alone can never be made safe here. The fix is to stop inferring the pairing:
 either carry the tid through explicitly, or reconcile against the camera's own
 Line0 rising-edge event count (the HikRobot layer already accounts for exactly
 this via `_line0RisingEdges`; the Aravis layer does not yet).
+
+### J8. A def-less WebUI page can receive every frame and draw none of it
+
+The camera-calibration page (相機校正) streamed nothing while the core was doing
+everything right. The failure has a specific shape worth recognizing, because
+nothing in it logs.
+
+**The end-to-end path is fine right up to the last step.** The core encodes the
+frame, routes it to the pgID the page registered, and hands it to a real
+subscriber; the socket delivers it; the demux tallies it; the reducer stores it
+in `edit_info.img`. Then `Preview_CanvasComponent.draw()` returns on its first
+line, because `db_obj.cameraParam === undefined`.
+
+`cameraParam` only ever arrives from a def's `cam_param` or from an inspection
+report that carries one (`UICtrlReducer` `sig360_extractor` /
+`sig360_circle_line`). A page that deliberately loads **no def** — calibration,
+lens aiming, any raw-frame preview — can therefore never satisfy that guard. And
+because the guard `return`s rather than throwing, the symptom is a fully
+transparent canvas with a **silent console**: no error, no warning, no
+`[demux] untracked packet`. Every layer reports success.
+
+`scaleImageToFitScreen` has the same def-shaped assumption one level down: it
+fits to `inherentShapeList[0].signature.magnitude` (the editor wants the *part*
+filling the view, not the sensor). `edit_info` still holds whatever def was
+loaded last, so a def-less preview gets zoomed to a stale, unrelated scale even
+once it does draw.
+
+Both are opt-out via `allowNoCameraParam` on the canvas ctrl; `CalibrationUI`
+sets it. Default stays `false`, so the def editor is unchanged — drawing
+overlays at a guessed mmpp is exactly what the guard is there to prevent.
+
+**Bisecting this class of bug.** Three hypotheses died before the real one
+(`TriggerSource=Line0` starving frames; a promoted peer losing its stream
+subscription; the full-res payload overrunning the socket) because "the core
+sent it" and "the page drew it" had no observable between them. Count packets at
+**both** ends:
+
+- core: `img transfer(DL:%d) %fms pgID:%d subscribers:%zu` at the send site —
+  `pushToSubscribers` is a fan-out, so sending to an empty list is otherwise
+  indistinguishable from not sending
+- WebUI: `__GP_WS__.rxTally()` (inbound, keyed `pgID:type`) and
+  `__GP_WS__.reqWindowIDs()` (which pgIDs are registered)
+
+`{"10105:IM": 102}` with `edit_info.img` set and a transparent canvas localizes
+the loss to the draw call in one step.
