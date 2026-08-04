@@ -28,11 +28,12 @@ class PreviewCanvas extends React.Component {
   componentDidMount() {
     this.ec_canvas = new EC_CANVAS_Ctrl.Preview_CanvasComponent(this.refs.canvas);
     this.ec_canvas.disableImageAlign = true;   // raw live frame: no def_image_reg rotate
-    // This page runs with no def loaded, so db_obj.cameraParam is undefined and
-    // the canvas would silently refuse to draw -- frames arrive, redux holds the
-    // image, and the canvas stays fully transparent. Scale doesn't matter here
-    // (we're aiming a lens, not measuring), so let it render at mmpp=1.
-    this.ec_canvas.allowNoCameraParam = true;
+    // This page uses NO def-file state at all. It exists to aim and calibrate
+    // the instrument itself, so its scale must come from the instrument
+    // (lens_calib.json um_per_px, passed down as props.mmpp) -- a def's mmpp
+    // describes whatever image was side-loaded with that def, which is a
+    // different camera-lens-standoff and simply the wrong number here.
+    this.ec_canvas.SetStandalonePreview(this.props.mmpp);
     this._didInitialFit = false;
     if (this.props.onCanvasInit) this.props.onCanvasInit(this.ec_canvas);
     this.updateCanvas(this.props.c_state);
@@ -46,15 +47,21 @@ class PreviewCanvas extends React.Component {
     // it, mouse drag is a no-op. (BackLightCalibUI hits the same code via the
     // DefConfUI flow that already pushes state.)
     if (ec_state) this.ec_canvas.SetState(ec_state);
-    // EditDBInfoSync calls scaleImageToFitScreen() every time img changes,
-    // which would reset the user's pan/zoom on every streamed frame. Run the
-    // full sync once to set db_obj + initial fit; after that, push only the
-    // new img frame via SetImg.
-    if (!this._didInitialFit) {
-      this.ec_canvas.EditDBInfoSync(props.edit_info);
-      if (props.edit_info && props.edit_info.img) this._didInitialFit = true;
-    } else if (props.edit_info && props.edit_info.img) {
+    // lens_calib.json is fetched asynchronously, so the first frames can land
+    // before the instrument scale does. Re-apply on change (it also re-fits).
+    if (props.mmpp !== this._appliedMmpp && Number.isFinite(props.mmpp)) {
+      this._appliedMmpp = props.mmpp;
+      this.ec_canvas.SetStandalonePreview(props.mmpp);
+    }
+    // Only the frame is taken from redux -- edit_info.img is the live stream's
+    // delivery slot, not def data. Fit once so the streamed frames don't reset
+    // the operator's pan/zoom on every update.
+    if (props.edit_info && props.edit_info.img) {
       this.ec_canvas.SetImg(props.edit_info.img);
+      if (!this._didInitialFit) {
+        this.ec_canvas.scaleImageToFitScreen();
+        this._didInitialFit = true;
+      }
     }
     this.ec_canvas.draw();
   }
@@ -109,6 +116,10 @@ function CalibrationUI(props) {
   const [fieldReport, setFieldReport] = useState(null);
   const [fieldBusy, setFieldBusy] = useState(false);
   const [savedField, setSavedField] = useState(null);   // { hasBright, hasDark }
+  // Instrument scale (mm/px) straight from lens_calib.json -- the authority for
+  // this page. Undefined until the file loads; the preview keeps the renderer
+  // default until then rather than borrowing a number from somewhere wrong.
+  const [instMmpp, setInstMmpp] = useState(undefined);
 
   const CALIB_DIR = "data/calibImages";
   const canvasRef = useRef(null);
@@ -130,7 +141,14 @@ function CalibrationUI(props) {
   // Stable identity so hover re-renders of this component don't churn the (pure,
   // connected) PreviewCanvas -- otherwise each mousemove would re-run SetImg
   // (JPEG re-decode) on the live preview.
-  const onCanvasInit = useCallback((c) => { canvasRef.current = c; }, []);
+  const onCanvasInit = useCallback((c) => {
+    canvasRef.current = c;
+    // QA handle: this canvas silently rendered nothing for a whole session
+    // (CORE0_1_CAVEATS J8). Being able to read back the scale it is actually
+    // using -- __GP_CALIB_CANVAS__.rUtil.get_mmpp() -- is what makes "is the
+    // instrument mmpp applied?" a one-line question instead of an inference.
+    if (typeof window !== "undefined") window.__GP_CALIB_CANVAS__ = c;
+  }, []);
 
   // On mount, list any already-saved chessboard images and load their thumbnails.
   // Use LD with down_samp_level (DOWNSAMPLED) instead of LB (full-res PNG) so a
@@ -252,6 +270,25 @@ function CalibrationUI(props) {
   // to be present on disk -- finalize uses the latest pending grid per side,
   // and missing-side pending means the saved file's side stays intact only if
   // we re-load it server-side first, which is out of scope here.
+  // Instrument scale. um_per_px is what lens calibration produces and what the
+  // core writes back; m (px/mm) is the same number inverted, kept as a fallback
+  // for older files. Re-read after a successful run so the preview immediately
+  // reflects the calibration the operator just made.
+  const loadInstMmpp = useCallback(() => {
+    props.ACT_WS_SEND_BPG(props.CORE_ID, "LD", 0, { filename: "data/lens_calib.json" },
+      undefined, {
+        resolve: (pkts) => {
+          const fl = pkts.find(p => p.type === "FL");
+          const d = fl && fl.data;
+          if (!d) return;
+          const mmpp = Number.isFinite(+d.um_per_px) && +d.um_per_px > 0 ? +d.um_per_px / 1000
+                     : (Number.isFinite(+d.m) && +d.m > 0 ? 1 / +d.m : undefined);
+          if (mmpp !== undefined) setInstMmpp(mmpp);
+        },
+        reject: () => {},
+      });
+  }, []);
+  useEffect(() => { loadInstMmpp(); }, []);
   useEffect(() => {
     props.ACT_WS_SEND_BPG(props.CORE_ID, "LD", 0, { filename: "data/field_calib.json" },
       undefined, {
@@ -541,6 +578,7 @@ function CalibrationUI(props) {
           setCalibMsg(ok ? 'Calibration complete. (no report payload)' :
             'Calibration failed. Check core log.');
         }
+        if (ok) loadInstMmpp();   // the run just rewrote lens_calib.json
         startStream();
         setTimeout(() => setCalibrating(false), ok ? 4000 : 3500);
       },
@@ -558,7 +596,7 @@ function CalibrationUI(props) {
       <div ref={previewBoxRef} style={{ height: '60vh', position: 'relative', flexShrink: 0 }}
         onMouseMove={onPreviewHover} onMouseLeave={onPreviewLeave}>
         <PreviewCanvas_rdx addClass="s width12 height12"
-          onCanvasInit={onCanvasInit}/>
+          mmpp={instMmpp} onCanvasInit={onCanvasInit}/>
         {hoverBri !== undefined && (
           <div style={{
             position: 'absolute', left: hoverBri.sx + 14, top: hoverBri.sy + 14,

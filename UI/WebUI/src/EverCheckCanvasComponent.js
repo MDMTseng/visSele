@@ -605,18 +605,35 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.CandEditPointInfo = null;
     this.EditPoint = null;
     this.ShowInspectionNote = false;
-    // Opt-in escape hatch for callers that only want the raw live frame on
-    // screen (camera calibration / lens aiming). Both EditDBInfoSync and draw
-    // normally bail when db_obj.cameraParam is undefined -- correct for the def
-    // editor, where overlays must not be drawn at a guessed scale, but fatal
-    // for a preview with no def: cameraParam only ever arrives from a def's
-    // cam_param or an inspection report that carries one, so a def-less page
-    // never draws a single pixel and says nothing about why. With this set,
-    // mmpp falls back to 1 (world units == pixels), which is all a preview
-    // needs. Same spirit as disableImageAlign below.
-    this.allowNoCameraParam = false;
+    // Standalone preview: show a raw live frame at the INSTRUMENT's own scale,
+    // using no def-file state whatsoever. See SetStandalonePreview below.
+    this.standalonePreview = false;
 
     this.EmitEvent = (event) => { log.debug(event); };
+  }
+
+  // Put this canvas in standalone-preview mode: a raw live frame, drawn at the
+  // instrument scale, with every def-derived input ignored.
+  //
+  // The normal (def editor) path takes all three of its spatial inputs from the
+  // loaded def: mmpp from the def's cam_param / sig360, the origin from the
+  // def's sig360 centre, and the fit extent from the def's signature magnitude.
+  // For camera calibration and lens aiming those are not just unavailable, they
+  // are the WRONG numbers -- a def's scale belongs to whatever image was
+  // side-loaded with it, whereas the frame on screen came from this camera
+  // through this lens. The authority for that is the instrument calibration
+  // (lens_calib.json um_per_px), which the caller passes in here.
+  //
+  // Without this, the def-shaped assumptions fail silently: draw() returns on
+  // its cameraParam guard, so a def-less page receives every frame and paints a
+  // fully transparent canvas with nothing logged anywhere. See CORE0_1_CAVEATS
+  // J8.
+  SetStandalonePreview(mmpp) {
+    this.standalonePreview = true;
+    if (Number.isFinite(mmpp) && mmpp > 0) {
+      this.rUtil.renderParam.mmpp = mmpp;
+      this.scaleImageToFitScreen();
+    }
   }
 
   SetShowInspectionNote(doShow=false)
@@ -646,11 +663,11 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     if(img_info===undefined)return;
     let mmpp = this.rUtil.get_mmpp();
     // Normally the fit targets the def's signature extent, not the frame -- the
-    // editor wants the PART filling the view, not the sensor. A def-less preview
-    // has no part to frame, and edit_info still carries whatever def was loaded
-    // last, so honouring magnitude here zooms the raw frame to a stale, unrelated
-    // scale. Fall back to the image extent in that mode.
-    let magArr = this.allowNoCameraParam ? undefined
+    // editor wants the PART filling the view, not the sensor. A standalone
+    // preview has no part to frame, and edit_info still carries whatever def was
+    // loaded last, so honouring magnitude here would zoom the raw frame to a
+    // stale, unrelated scale. Fit to the image extent instead.
+    let magArr = this.standalonePreview ? undefined
       : GetObjElement(this.edit_DB_info.inherentShapeList,[0,"signature","magnitude"]);
 
 
@@ -667,17 +684,31 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.camera.Scale(1/curScale);
     this.camera.Scale(minCanvasWH/maxSig);
 
-    
+    // In the def path the frame gets centred by draw()'s translate to the def's
+    // sig360 centre. A standalone preview has no sig360, and drawing from the
+    // origin puts the frame's top-left at the middle of the view, so it must
+    // centre on its own -- otherwise the frame drifts off-centre the moment the
+    // canvas is resized (opening the side panel was enough).
+    if (this.standalonePreview) {
+      this.camera.SetOffset({
+        x: -img_info.scale * img_info.width  * mmpp / 2,
+        y: -img_info.scale * img_info.height * mmpp / 2,
+      });
+    }
+
     // let center = this.db_obj.getsig360infoCenter();
 
     // console.log(this.canvas.width,(img_info.scale*img_info.width*mmpp));
     // this.camera.SetOffset({ x: -center.x, y: -center.y });
   }
   EditDBInfoSync(edit_DB_info) {
+    // A standalone preview owns its scale and has no def to sync against;
+    // pulling mmpp out of edit_DB_info here would overwrite the instrument
+    // value with a def's (or with the 1 fallback when there is no def at all).
+    if (this.standalonePreview) return;
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
-    if (this.db_obj === undefined || this.db_obj == null) return;
-    if (this.db_obj.cameraParam === undefined && !this.allowNoCameraParam) return;
+    if (this.db_obj === undefined || this.db_obj == null || this.db_obj.cameraParam === undefined) return;
     this.rUtil.setEditor_db_obj(this.db_obj);
     let imageChanged=edit_DB_info.img!=this.img_info;
     this.SetImg(edit_DB_info.img);
@@ -706,8 +737,9 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
 
   draw() {
-    if (this.db_obj === undefined || this.db_obj == null) return;
-    if (this.db_obj.cameraParam === undefined && !this.allowNoCameraParam) return;
+    if (!this.standalonePreview) {
+      if (this.db_obj === undefined || this.db_obj == null || this.db_obj.cameraParam === undefined) return;
+    }
     if(this.img_info===undefined)
     {
       return;
@@ -753,6 +785,11 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
       // exact identity for an init-image save (img reg == reference) and skipped
       // entirely for legacy defs -> zero change to existing rendering.
       // NOTE: coordinate frame/sign (and isFlipped) pending visual verification.
+      // A standalone preview registers against nothing: no def_image_reg to
+      // rotate by and no sig360 centre to translate to, so the frame is drawn at
+      // the origin and this whole block is skipped. (Letting it run would only
+      // "work" by throwing into the catch on a null db_obj.)
+      if (!this.standalonePreview)
       try {
         // The calibration preview (disableImageAlign) shows a raw live frame, not
         // a def image, so it must NOT apply def_image_reg rotation -- ignore reg
