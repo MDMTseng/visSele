@@ -72,6 +72,12 @@ struct PerifTrigger
   uint32_t gate_pulse = 0;    // plate position at registration
   int      qs         = -1;   // device pipeline depth when it was announced
   uint64_t arrival_ms = 0;    // host clock when WE saw it -- drives staleness
+  // A clock-sync pulse, not a part. The device fires the camera directly
+  // (trig_cam_pulse) with no pipeline object behind it and announces it with
+  // gate_pulse == 0. It is worth pairing -- that is the whole point, it carries
+  // both timestamps -- but reporting a verdict against it would name an object
+  // the device does not have, which faults it with INSP_RESULT_MATCHES_NO_OBJECT.
+  bool sync_only = false;
 };
 
 class PerifTriggerPairing
@@ -81,6 +87,7 @@ public:
 
   enum PairResult {
     PAIRED,        // tid_out is the object this frame belongs to
+    PAIRED_SYNC,   // matched a clock-sync pulse: model updated, nothing to report
     EMPTY,         // nothing announced yet -- caller may wait, it may still arrive
     NO_CANDIDATE   // announcements exist but none is plausibly this frame
   };
@@ -173,11 +180,12 @@ public:
 
     if (_mode == POSITIONAL || cam_ts_us == 0)
     {
+      bool sync = _q.front().sync_only;
       *tid_out = _q.front().tid;
       _q.pop_front();
       _matched++;
       _last_match_ms = _nowMs();
-      return PAIRED;
+      return sync ? PAIRED_SYNC : PAIRED;
     }
 
     if (!_offset_valid)
@@ -188,6 +196,7 @@ public:
       PerifTrigger t = _q.front();
       _q.pop_front();
       *tid_out = t.tid;
+      const bool boot_sync = t.sync_only;
       _matched++;
       _last_match_ms = _nowMs();
       _boot.push_back((int64_t)cam_ts_us - (int64_t)t.dev_us);
@@ -212,7 +221,7 @@ public:
           _boot.erase(_boot.begin(), _boot.begin() + _boot.size() / 2);
         }
       }
-      return PAIRED;
+      return boot_sync ? PAIRED_SYNC : PAIRED;
     }
 
     // Evidence. Nearest trigger to where this frame says it should be.
@@ -239,6 +248,7 @@ public:
     }
 
     *tid_out = _q[best_i].tid;
+    const bool ts_sync = _q[best_i].sync_only;
     // Track drift. Only matched frames update the offset, so a mismatch can
     // never drag the estimate along with it.
     double resid = (double)((int64_t)cam_ts_us - (int64_t)_q[best_i].dev_us) - _offset_us;
@@ -259,7 +269,7 @@ public:
     _ts_matched++;
     _consec_miss = 0;
     _last_match_ms = _nowMs();
-    return PAIRED;
+    return ts_sync ? PAIRED_SYNC : PAIRED;
   }
 
   // Retire the n oldest triggers unconditionally. Only meaningful in
@@ -315,7 +325,8 @@ public:
     {
       const PerifTrigger &f = _q.front();
       if (f.arrival_ms == 0 || now_ms <= f.arrival_ms + stale_ms) break;
-      if (f.tid > _max_reported_tid)
+      if (f.sync_only) { /* no object behind it -- nothing to answer for */ }
+      else if (f.tid > _max_reported_tid)
       {
         if (out) out->push_back(f);
         n++;

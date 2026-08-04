@@ -571,6 +571,12 @@ class PerifChannel:public Data_JsonRaw_Layer
       m.dev_us = (t_us != NULL) ? (uint64_t)*t_us : 0;
       m.tidx   = (cam != NULL) ? (int)*cam : 1;
       m.gate_pulse = (gp != NULL) ? (uint32_t)*gp : 0;
+      // gate_pulse == 0 is the device saying "no pipeline object behind this":
+      // a trig_cam_pulse fired straight at the camera for clock sync, not a
+      // part that came past the gate. Worth pairing -- it carries both
+      // timestamps, which is exactly what the offset is measured from -- but
+      // never worth reporting a verdict against.
+      m.sync_only = (m.gate_pulse == 0);
       m.qs     = (qs   != NULL) ? (int)*qs   : -1;
       m.arrival_ms = perif_now_us() / 1000;
 
@@ -5611,6 +5617,9 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     // Hand off to PerifSendThread instead of blocking here on the serial
     // write (which can stall >1s under flow control and freeze inspection).
     PerifResultMsg msg{ imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100, -1 };
+    // Set when the frame turns out to belong to a clock-sync pulse rather than
+    // a part: the pairing still learns from it, but there is nothing to report.
+    bool skip_perif_report = false;
 
     // Pair this frame with the object the firmware announced. FIFO: triggers
     // and frames are produced in the same order by construction, so the oldest
@@ -5719,7 +5728,14 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         }
       }
 
-      if (pr == PerifTriggerPairing::PAIRED)
+      if (pr == PerifTriggerPairing::PAIRED_SYNC)
+      {
+        // Clock sync only. The model has already been updated inside pairFrame;
+        // there is no object to judge, and naming one would fault the device.
+        msg.tid = -1;
+        skip_perif_report = true;
+      }
+      else if (pr == PerifTriggerPairing::PAIRED)
       {
         msg.tid = paired_tid;
         // The device sweeps everything older than this into SKIP the moment the
@@ -5748,7 +5764,11 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       }
     }
 
-    if (!perifSendQueue.push(msg))
+    if (skip_perif_report)
+    {
+      // A clock-sync frame. Nothing to send.
+    }
+    else if (!perifSendQueue.push(msg))
     {
       // Full: the peripheral can't keep up. Drop the OLDEST so we keep the
       // freshest result flowing, and count the loss -- never block here.
