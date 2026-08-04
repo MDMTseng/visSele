@@ -12,6 +12,8 @@
 
 #include <sys/stat.h>
 #include <atomic>         // std::atomic explicit for mingw
+#include <deque>
+#include "PerifTriggerPairing.hpp"   // frame <-> object pairing (self-contained)
 #ifndef _WIN32
 #include <sys/statvfs.h>
 #include <libgen.h>
@@ -158,16 +160,9 @@ enum PerifMachineType { PERIF_UINSP_MEGA = 0, PERIF_UINSP_ESP32 = 1 };
 // Trigger identities the device announced (cam_trig), waiting to be paired
 // with the frame they produced. Single camera today, so one FIFO; tidx is
 // carried anyway so a second camera only needs a queue per index.
-struct PerifTriggerMsg { int64_t tid; uint64_t dev_us; int tidx;
-                         uint32_t gate_pulse; int qs;
-                         // Host clock at which we saw the announcement. Pairing
-                         // is frame-driven, so without a deadline a trigger
-                         // whose frame never comes waits forever -- see
-                         // retire_stale_triggers().
-                         uint64_t arrival_ms; };
-TSQueue<PerifTriggerMsg> perifTriggerQueue(256);
-std::atomic<int> perifTriggerDropCount{0};
-std::atomic<long long> perifTriggerRxCount{0};
+// Which object owns this frame: the whole algorithm, and the switch that turns
+// it off, live in PerifTriggerPairing.hpp. Nothing here knows how it works.
+PerifTriggerPairing perifPairing(256);
 // Parts whose frame never reached us, reported NA so the pairing stays aligned.
 std::atomic<long long> perifMissedFrameCount{0};
 // Serial write-latency stats (only ever touched by the single PerifSendThread,
@@ -369,9 +364,8 @@ class PerifChannel:public Data_JsonRaw_Layer
   // only drained on CONNECT, so the only way out was a reconnect.
   void forget_pending_triggers(const char *why)
   {
-    size_t n = perifTriggerQueue.size();
-    PerifTriggerMsg dt;
-    while (perifTriggerQueue.pop(dt)) {}
+    size_t n = perifPairing.pending();
+    perifPairing.reset();
     // Results already computed belong to those same dead tids.
     PerifResultMsg dr;
     while (perifSendQueue.pop(dr)) {}
@@ -423,11 +417,10 @@ class PerifChannel:public Data_JsonRaw_Layer
     if (machine_type != PERIF_UINSP_ESP32) return;
     const uint64_t TRIG_STALE_MS = 500;
     uint64_t now_ms = perif_now_us() / 1000;
-    PerifTriggerMsg head;
-    while (perifTriggerQueue.peek(head) &&
-           head.arrival_ms != 0 && now_ms > head.arrival_ms + TRIG_STALE_MS)
+    std::vector<PerifTrigger> expired;
+    perifPairing.sweepStale(now_ms, TRIG_STALE_MS, &expired);
+    for (const PerifTrigger &head : expired)
     {
-      if (!perifTriggerQueue.pop(head)) break;
       perifMissedFrameCount++;
       PerifResultMsg na{ FeatureReport_sig360_circle_line_single::STATUS_NA,
                          0, head.tid };
@@ -439,7 +432,7 @@ class PerifChannel:public Data_JsonRaw_Layer
       }
       LOGE("perif: no frame for tid %lld within %llums -> reporting NA "
            "(queue now %zu)", (long long)head.tid,
-           (unsigned long long)TRIG_STALE_MS, perifTriggerQueue.size());
+           (unsigned long long)TRIG_STALE_MS, perifPairing.pending());
     }
   }
 
@@ -474,7 +467,7 @@ class PerifChannel:public Data_JsonRaw_Layer
   }
 
   // uInspESP32 announces every camera trigger with the object id the result
-  // must later be reported against. Tap those into perifTriggerQueue on the way
+  // must later be reported against. Tap those into the pairing on the way
   // past -- the message is still forwarded to the WebUI untouched, so nothing
   // that already consumes it changes. Cheap substring test first so the common
   // replies (PONG, acks) never reach cJSON.
@@ -507,7 +500,7 @@ class PerifChannel:public Data_JsonRaw_Layer
       double *gp   = JFetch_NUMBER(j, "gate_pulse");
       double *qs   = JFetch_NUMBER(j, "Qs");
 
-      PerifTriggerMsg m;
+      PerifTrigger m;
       m.tid    = (int64_t)*tid;
       m.dev_us = (t_us != NULL) ? (uint64_t)*t_us : 0;
       m.tidx   = (cam != NULL) ? (int)*cam : 1;
@@ -515,20 +508,7 @@ class PerifChannel:public Data_JsonRaw_Layer
       m.qs     = (qs   != NULL) ? (int)*qs   : -1;
       m.arrival_ms = perif_now_us() / 1000;
 
-      perifTriggerRxCount++;
-      if (!perifTriggerQueue.push(m))
-      {
-        // Backed up: results are not being produced fast enough to consume
-        // triggers. Drop the OLDEST -- keeping stale ids would pair every
-        // subsequent frame with the wrong part, which is worse than losing
-        // the parts already past the selector.
-        PerifTriggerMsg discard;
-        perifTriggerQueue.pop(discard);
-        perifTriggerQueue.push(m);
-        int n = ++perifTriggerDropCount;
-        if ((n % 50) == 1)
-          LOGE("perifTriggerQueue full -> dropping oldest (cumulative: %d)", n);
-      }
+      perifPairing.announce(m);
     }
     cJSON_Delete(j);
   }
@@ -3829,6 +3809,23 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
               double *cidx = JFetch_NUMBER(json, "cam_idx");
               perifCH->cam_idx = (cidx != NULL) ? (int)*cidx : 1;
+
+              // "pairing": "timestamp" | "positional" (default). The switch is
+              // here rather than compiled in so the two can be A/B'd on the
+              // same machine with the same parts -- which is the only way to
+              // tell whether the evidential match is actually better than the
+              // order it replaces. Absent = the old behaviour, unchanged.
+              {
+                const char *pm = JFetch_STRING(json, "pairing");
+                bool ts = (pm != NULL && strcmp(pm, "timestamp") == 0);
+                perifPairing.setMode(ts ? PerifTriggerPairing::TIMESTAMP
+                                        : PerifTriggerPairing::POSITIONAL);
+                double *tol = JFetch_NUMBER(json, "pairing_tol_us");
+                if (tol != NULL) perifPairing.setToleranceUs((int64_t)*tol);
+                if (perifCH->machine_type == PERIF_UINSP_ESP32)
+                  LOGI("perif pairing mode: %s", ts ? "timestamp (dev_us <-> camera clock)"
+                                                    : "positional (FIFO order)");
+              }
               if (perifCH->machine_type == PERIF_UINSP_ESP32)
                 LOGI("perif pairing against cam_trig cam=%d "
                      "(the firmware announces every object on both 1 and 2)",
@@ -3849,8 +3846,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
             // Trigger ids from a previous session are meaningless now.
             {
-              PerifTriggerMsg discard;
-              while (perifTriggerQueue.pop(discard)) {}
+              perifPairing.reset();
             }
 
             perifCH->send_RESET();
@@ -5010,9 +5006,12 @@ void PerifSendThread(bool *terminationflag)
             // and missed flat; pending climbing means results are not keeping up
             // with triggers, missed climbing means frames are being lost.
             if (pc->machine_type == PERIF_UINSP_ESP32)
-              LOGE("perif trig: rx:%lld missed(NA):%lld pending:%zu trigdrops:%d",
-                   perifTriggerRxCount.load(), perifMissedFrameCount.load(),
-                   perifTriggerQueue.size(), perifTriggerDropCount.load());
+            {
+              char pbuf[320];
+              perifPairing.formatStatus(pbuf, sizeof(pbuf));
+              LOGE("perif trig: %s missed(NA):%lld", pbuf,
+                   perifMissedFrameCount.load());
+            }
           }
         }
       }
@@ -5448,19 +5447,27 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
           LOGE("camera dropped %u frame(s) (nFrameNum %u->%u) -> reporting NA",
                lost, last_frame_num, imgPipe->fi.frameNum);
 
-          for (uint32_t i = 0; i < lost; i++)
+          // Only POSITIONAL pairing needs this compensation: there, the n
+          // triggers at the head produced no image and would shift every later
+          // pairing. TIMESTAMP pairing never consults order, so an orphaned
+          // trigger is simply never the nearest match and falls out through the
+          // staleness sweep -- retiring by count there would throw away
+          // triggers that would have matched correctly.
+          if (perifPairing.mode() == PerifTriggerPairing::POSITIONAL)
           {
-            PerifTriggerMsg lost_trig;
-            if (!perifTriggerQueue.pop(lost_trig))
-              break;   // fewer queued triggers than lost frames: free-run frames
-            perifMissedFrameCount++;
-            PerifResultMsg na{ FeatureReport_sig360_circle_line_single::STATUS_NA,
-                               0, lost_trig.tid };
-            if (!perifSendQueue.push(na))
+            std::vector<PerifTrigger> lost_trigs;
+            perifPairing.retireOldest(lost, &lost_trigs);
+            for (const PerifTrigger &lt : lost_trigs)
             {
-              PerifResultMsg discard;
-              perifSendQueue.pop(discard);
-              perifSendQueue.push(na);
+              perifMissedFrameCount++;
+              PerifResultMsg na{ FeatureReport_sig360_circle_line_single::STATUS_NA,
+                                 0, lt.tid };
+              if (!perifSendQueue.push(na))
+              {
+                PerifResultMsg discard;
+                perifSendQueue.pop(discard);
+                perifSendQueue.push(na);
+              }
             }
           }
         }
@@ -5468,46 +5475,44 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         last_frame_num_valid = true;
       }
 
-      PerifTriggerMsg trig{ -1, 0, 0, 0, 0, 0 };   // tid -1 == unpaired
-      // The trigger is a wire; its announcement is a serial message. The camera
+      // Ask the pairing which object this frame belongs to. The algorithm and
+      // the positional/timestamp switch live in PerifTriggerPairing.hpp; the
+      // only thing that belongs here is the threading: EMPTY means the
+      // announcement may still be in flight over the serial link, and waiting
+      // for it is a decision about this thread, not about pairing.
+      //
+      // The trigger is a wire; its announcement is a serial message. The sensor
       // is exposed the instant the firmware pulses the line, but cam_trig{tid}
-      // has to cross 115200 baud to get here, so the frame can and does arrive
-      // FIRST. Measured on a 4-part run at 5mm spacing / plate_freq 8000: the
-      // fourth announcement landed 21ms after its own frame had already been
-      // inspected. Treating "queue empty" as "no trigger" turned that into
-      // tid=-1 -> no report -> the part reached the selector unjudged -> err=2
-      // OBJECT_HAS_NO_INSP_RESULT. The camera was never the limit: 4 triggers
-      // produced 4 frames, spaced 39-168ms against a 28.4ms sensor floor.
-      //
-      // So wait for it -- but only while the device is actually inspecting.
-      // An empty queue in any other mode (calibration free-run, manual grab)
-      // means there genuinely is no trigger coming, and waiting there would
-      // stall every single frame.
-      //
-      // An empty queue during inspection means we have consumed every
-      // announcement so far -- there is no backlog to work through, so this
-      // wait costs nothing but the announcement's own flight time. Bounded well
-      // under the SWITCH budget (1.87s at plate_freq 8000) so a genuinely
-      // missing announcement still degrades to the old behaviour rather than
-      // stalling the pipeline.
+      // has to cross 115200 baud, so the frame can arrive first -- measured up
+      // to 115ms first. Waiting is only correct while the device is actually
+      // inspecting; an empty queue in any other mode (calibration free-run,
+      // manual grab) means no trigger is coming and waiting would stall every
+      // frame. And an empty queue DURING inspection means every announcement so
+      // far is consumed, so there is no backlog and the wait costs only the
+      // announcement's own flight time.
       const int TRIG_WAIT_MAX_MS = 150;
       const int DEV_STATE_INSPECTION = 101;
-      if (!perifTriggerQueue.pop(trig) &&
+      int64_t paired_tid = -1;
+      auto _w0 = std::chrono::steady_clock::now();
+      PerifTriggerPairing::PairResult pr =
+        perifPairing.pairFrame(imgPipe->fi.timeStamp_us, &paired_tid);
+
+      if (pr == PerifTriggerPairing::EMPTY &&
           bpg_pi.perifCH->last_dev_state == DEV_STATE_INSPECTION)
       {
-        auto _w0 = std::chrono::steady_clock::now();
         int waited_ms = 0;
         while (waited_ms < TRIG_WAIT_MAX_MS)
         {
           std::this_thread::sleep_for(std::chrono::milliseconds(2));
-          if (perifTriggerQueue.pop(trig)) break;
+          pr = perifPairing.pairFrame(imgPipe->fi.timeStamp_us, &paired_tid);
+          if (pr != PerifTriggerPairing::EMPTY) break;
           waited_ms = (int)std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - _w0).count();
         }
-        if (trig.tid >= 0)
+        if (pr == PerifTriggerPairing::PAIRED)
         {
-          // Log it: this is the margin against err=2, and it is the number to
-          // watch if parts get packed tighter or the serial link gets busier.
+          // This is the margin against err=2 -- the number to watch when parts
+          // get packed tighter or the serial link gets busier.
           double ms = std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - _w0).count();
           if (ms > g_perifTrigWaitMaxMs)
@@ -5519,9 +5524,18 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         }
       }
 
-      if (trig.tid >= 0)
+      if (pr == PerifTriggerPairing::PAIRED)
       {
-        msg.tid = trig.tid;
+        msg.tid = paired_tid;
+      }
+      else if (pr == PerifTriggerPairing::NO_CANDIDATE)
+      {
+        // Announcements exist, but none is plausibly this frame. Refusing to
+        // guess IS the fix: popping the front here is exactly how a single lost
+        // frame used to mis-assign every part after it.
+        LOGE("perif: no trigger matches this frame (nearest %.1fms off) -- "
+             "frame unreported, part recirculates",
+             perifPairing.lastMissUs() / 1000.0);
       }
       else
       {
