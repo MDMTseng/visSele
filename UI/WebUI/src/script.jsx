@@ -9,6 +9,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
 import {UINSP_UI,SLID_UI,CNC_UI} from './component/rdxComponent.jsx';
+import {UINSP_ESP32_UI} from './component/uInspESP32_UI.jsx';
 
 import {GetDefaultSystemSetting} from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
@@ -202,8 +203,9 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     [dictLookUp("camera", DICT), ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
     ["設定DB",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
     ["檢測DB",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
-    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined||ConnInfo.CNC_API_ID_CONN_INFO!==undefined],//seg line
+    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.uInspESP32_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined||ConnInfo.CNC_API_ID_CONN_INFO!==undefined],//seg line
     ["全檢設備",       ConnInfo.uInsp_API_ID_CONN_INFO,   <RobotOutlined />,false],
+    ["全檢設備v2",     ConnInfo.uInspESP32_API_ID_CONN_INFO, <RobotOutlined />,false],
     ["坡檢設備",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
     ["CNC設備",       ConnInfo.CNC_API_ID_CONN_INFO,    <RobotOutlined />,false],
     ]
@@ -2161,6 +2163,20 @@ class APPMasterX extends React.Component {
                   break;
                 }
                 
+                case this.props.uInspESP32_API_ID:
+                {
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=><UINSP_ESP32_UI/>,
+                      title:"全檢設備 v2 (uInspESP32)",
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
+                  break;
+                }
+
                 case this.props.SLID_API_ID:
                 {
                   this.setState({

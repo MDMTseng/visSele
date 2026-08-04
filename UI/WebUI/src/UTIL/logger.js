@@ -69,6 +69,7 @@ export const NAMESPACES = Object.freeze({
   'ui.instinsp':   'info',   // InstInspUI
   'ui.base':       'info',   // component/baseComponent.jsx (JsonEditBlock etc.)
   'ui.rdx':        'info',   // component/rdxComponent.jsx
+  'ui.uinsp2':     'info',   // component/uInspESP32_UI.jsx (2nd-gen sorter panel)
   'ui.boundary':   'warn',   // ComponentBoundary / RootErrorBoundary
   'db.idb':        'info',   // local IndexedDB queue
   'i18n':          'warn',   // dictLookUp warnings only

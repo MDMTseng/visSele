@@ -26,10 +26,22 @@ function record(kind, text, extra = {}) {
   logStream.write(JSON.stringify(entry) + '\n');
 }
 
+// Default stays 1600x1000 on purpose: golden snapshots are coordinate-sensitive
+// (see the /viewport endpoint), so changing it under regress.mjs would
+// invalidate the baselines. Override per-run with WEBCTL_VIEWPORT=1920x1080
+// when you want a headed window big enough to watch the real UI.
+const VIEWPORT = (() => {
+  const m = /^(\d+)x(\d+)$/.exec(process.env.WEBCTL_VIEWPORT || '');
+  return m ? { width: +m[1], height: +m[2] } : { width: 1600, height: 1000 };
+})();
+
 const context = await chromium.launchPersistentContext(USERDATA, {
   headless: HEADLESS,
-  viewport: { width: 1600, height: 1000 },
-  args: ['--disable-features=Translate'],
+  viewport: VIEWPORT,
+  // Size the OS window to match, or a 1920x1080 viewport just gets scrollbars
+  // inside a smaller window.
+  args: ['--disable-features=Translate',
+         `--window-size=${VIEWPORT.width},${VIEWPORT.height + 90}`],
 });
 const page = context.pages()[0] || (await context.newPage());
 
