@@ -90,6 +90,15 @@ void Data_JsonRaw_Layer::finishJsonFrame(bool crc_present,bool crc_ok){
   {
     // Corrupted frame: drop it -- acting on it would be worse than the loss.
     rx_crc_fail++;
+    // ...but say so. A silently dropped frame looks exactly like a device that
+    // never answered, and that ambiguity is expensive: it sent us hunting
+    // through the WebUI and the core for a missing get_setup reply that had in
+    // fact arrived and been binned here. Opt-in via the same switch as the
+    // [perif TX]/[perif RX] logs so the hot path stays quiet in production.
+    if(getenv("INSP_PERIF_LOG"))
+      fprintf(stderr,"[perif DROP] bad trailer  len=%u  crc_fail=%u/%u  frame=%.160s\n",
+              (unsigned)buffIdx,(unsigned)rx_crc_fail,(unsigned)rx_frames,
+              (const char*)dataBuff);
   }
   else
   {

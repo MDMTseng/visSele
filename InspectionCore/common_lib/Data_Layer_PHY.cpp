@@ -335,6 +335,23 @@ int Data_UART_Layer::recv_data_thread()
     if(stopRecv)break;       // intentional teardown -- exit without notifying
     if(datLen==0)continue;
     if(datLen<0)break;       // genuine error -> fall through to disconnected()
+    // Raw-byte tap, opt-in via INSP_PERIF_RAW. The framed view further up can
+    // only show frames that PARSED; when a reply goes missing entirely the one
+    // thing worth knowing is what actually came off the wire.
+    {
+      static const bool raw_tap = (getenv("INSP_PERIF_RAW") != NULL);
+      if(raw_tap)
+      {
+        fprintf(stderr,"[raw %3d] ",datLen);
+        for(int i=0;i<datLen;i++)
+        {
+          unsigned char c=buffer[i];
+          if(c>=0x20 && c<0x7f) fputc(c,stderr);
+          else fprintf(stderr,"<%02X>",c);
+        }
+        fputc('\n',stderr);
+      }
+    }
     recv_data(buffer, datLen,false);
   }
 

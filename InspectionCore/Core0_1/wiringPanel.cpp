@@ -417,8 +417,28 @@ class PerifChannel:public Data_JsonRaw_Layer
         LOGI("[perif RX] ch=%d serialRTT=%ldus reply=%.120s", ID, rtt, (char*)raw);
       }
 
-      char tmp[1024];
-      snprintf(tmp, sizeof(tmp), "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", raw, ID);
+      // Size the envelope from the payload instead of a fixed 1024. A get_setup
+      // reply from uInspESP32 is ~950 bytes on its own and grows with
+      // error_hist, so the old buffer sat right on the edge: snprintf would
+      // silently truncate mid-JSON, the WebUI would fail to parse the packet and
+      // drop it, and the request's promise would simply never settle -- no
+      // error, no log, an apparently dead command. Truncating a device reply is
+      // never the right answer; refuse loudly instead if it is ever absurd.
+      const size_t env_extra = 64;   // {"type":"MESSAGE","msg":,"CONN_ID":NNN} + NUL
+      const size_t tmp_len = (size_t)rawL + env_extra;
+      if (tmp_len > 64 * 1024)
+      {
+        LOGE("[perif RX] ch=%d reply too large to forward (%d bytes), dropped", ID, rawL);
+        return -1;
+      }
+      std::vector<char> tmp_buf(tmp_len);
+      char *tmp = tmp_buf.data();
+      int env_n = snprintf(tmp, tmp_len, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", raw, ID);
+      if (env_n < 0 || (size_t)env_n >= tmp_len)
+      {
+        LOGE("[perif RX] ch=%d envelope would truncate (%d vs %zu), dropped", ID, env_n, tmp_len);
+        return -1;
+      }
       // Route the reply to the client that owns this connection (conn_peer), not
       // default_peer.  conn_peer==NULL falls back to default_peer in the WS layer.
       BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
