@@ -75,6 +75,7 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const dispatch = useDispatch();
   const API_ID = useSelector((s) => s.ConnInfo.uInspESP32_API_ID);
   const CONN = useSelector((s) => s.ConnInfo.uInspESP32_API_ID_CONN_INFO);
+  const CORE_ID = useSelector((s) => s.ConnInfo.CORE_ID);
   const withApi = (cb) => dispatch(UIAct.EV_WS_GET_OBJ(API_ID, cb));
 
   const [stat, setStat] = useState(undefined);
@@ -83,6 +84,8 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const [hzInput, setHzInput] = useState('');        // gate fire-rate cap, in parts/s
 
   const [commDiag, setCommDiag] = useState(null);
+  const [pairing, setPairing] = useState(null);   // core-side frame<->object pairing health
+
   const [lightUntil, setLightUntil] = useState(0);   // epoch ms the board will auto-drop the hold
   const [now, setNow] = useState(Date.now());
   const mounted = useRef(true);
@@ -112,6 +115,18 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           .then((r) => { if (mounted.current) setStat(r); })
           .catch(() => {});
       });
+      // Pairing health lives in the CORE, not the device -- the device can only
+      // ever say "answered / unanswered", never "answered with the right
+      // verdict". So it comes over the core's GS channel, not get_running_stat.
+      dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, "GS", 0, { items: ["perif_pairing"] },
+        undefined, {
+          resolve: (pkts) => {
+            const gs = pkts.find((p) => p.type === "GS");
+            const pv = gs && gs.data && gs.data.perif_pairing;
+            if (pv && mounted.current) setPairing(pv);
+          },
+          reject: () => {},
+        }));
     };
     tick();
     const h = setInterval(tick, pollMs);
@@ -171,6 +186,48 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           <b style={{ color: '#c33' }}>錯誤紀錄</b>
           {stat.error_hist.map((e, i) => <div key={i}>{errName(e)}</div>)}
         </Card>
+      )}
+
+      {pairing && (
+      <Card size="small" title="影格配對(核心端)" style={{ marginBottom: 8 }}>
+        <div style={{ marginBottom: 6, ...dim }}>
+          每張影格屬於哪一顆料。配錯不會有任何錯誤碼 —— 料照樣被回答、照樣被分選,
+          只是判定落在別顆身上。這裡是唯一看得出來的地方。
+        </div>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 6 }}>
+          <span>模式 <b>{pairing.mode}</b>
+            {pairing.mode === 'timestamp' && !pairing.offset_valid
+              ? <span style={dim}> (校時中)</span> : null}</span>
+          <span>已配對 <b>{pairing.matched}</b> / {pairing.rx}</span>
+          <span>待配 <b>{pairing.pending}</b></span>
+        </div>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 6 }}>
+          {/* Two counts, deliberately not summed: no_candidate is a FRAME that
+              could not be placed (its part goes unjudged), stale is a TRIGGER
+              whose frame never arrived (that part is reported NA). They pair up
+              1:1 when it is the same event seen from both sides. */}
+          <span>配對失敗·影格 <b style={{ color: pairing.no_candidate > 0 ? '#c33' : undefined }}>
+            {pairing.no_candidate}</b></span>
+          <span>配對失敗·觸發 <b style={{ color: pairing.stale > 0 ? '#c60' : undefined }}>
+            {pairing.stale}</b></span>
+          <span>佇列滿溢 <b style={{ color: pairing.drops > 0 ? '#c33' : undefined }}>
+            {pairing.drops}</b></span>
+          {pairing.rx > 0 && (
+            <span style={dim}>失敗率 {((pairing.no_candidate / pairing.rx) * 100).toFixed(1)}%</span>
+          )}
+        </div>
+        {pairing.mode === 'timestamp' && (
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', ...dim }}>
+            {/* resid is how far each match sat from where the clock model said
+                it should be. Tens of us = the model is right. Creeping toward
+                the tolerance = the offset is drifting faster than it is tracked. */}
+            <span>時鐘差 {Number(pairing.offset_ms).toFixed(1)} ms</span>
+            <span>殘差 現在 {Math.round(pairing.resid_last_us)} µs</span>
+            <span>殘差 最大 {Math.round(pairing.resid_max_us)} µs</span>
+            <span>宣告最晚 {Number(pairing.trig_wait_max_ms).toFixed(0)} ms</span>
+          </div>
+        )}
+      </Card>
       )}
 
       <Card size="small" title="進料節流(閘門)" style={{ marginBottom: 8 }}>

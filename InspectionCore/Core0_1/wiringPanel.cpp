@@ -2152,6 +2152,33 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             realfullPath("./", chBuff);
             cJSON_AddStringToObject(retArr, itemType, chBuff);
           }
+          else if (strcmp(itemType, "perif_pairing") == 0)
+          {
+            // Frame<->object pairing health. This lives in the core, not the
+            // device, so get_running_stat cannot carry it -- and it is the one
+            // number that says whether verdicts are landing on the right parts.
+            // A device-side stat can only ever report "answered / unanswered".
+            cJSON *robj = cJSON_CreateObject();
+            cJSON_AddItemToObject(retArr, itemType, robj);
+            cJSON_AddStringToObject(robj, "mode",
+              perifPairing.mode() == PerifTriggerPairing::TIMESTAMP ? "timestamp" : "positional");
+            cJSON_AddBoolToObject(robj, "offset_valid", perifPairing.offsetValid());
+            cJSON_AddNumberToObject(robj, "rx", (double)perifPairing.rxCount());
+            cJSON_AddNumberToObject(robj, "matched", (double)perifPairing.matched());
+            // The two failure counts, kept apart because they mean different
+            // things: no_candidate is a FRAME we could not place (its part goes
+            // unjudged), stale is a TRIGGER whose frame never came (that part is
+            // reported NA). They usually pair up 1:1 -- the same event seen from
+            // each side.
+            cJSON_AddNumberToObject(robj, "no_candidate", (double)perifPairing.noCandidate());
+            cJSON_AddNumberToObject(robj, "stale", (double)perifPairing.staleCount());
+            cJSON_AddNumberToObject(robj, "drops", (double)perifPairing.dropCount());
+            cJSON_AddNumberToObject(robj, "pending", (double)perifPairing.pending());
+            cJSON_AddNumberToObject(robj, "offset_ms", perifPairing.offsetUs() / 1000.0);
+            cJSON_AddNumberToObject(robj, "resid_last_us", perifPairing.lastResidUs());
+            cJSON_AddNumberToObject(robj, "resid_max_us", perifPairing.maxResidUs());
+            cJSON_AddNumberToObject(robj, "trig_wait_max_ms", g_perifTrigWaitMaxMs);
+          }
           else if (strcmp(itemType, "precess_queue_status") == 0)
           {
             cJSON *robj = cJSON_CreateObject();
