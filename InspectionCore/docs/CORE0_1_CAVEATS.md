@@ -583,3 +583,52 @@ sent it" and "the page drew it" had no observable between them. Count packets at
 
 `{"10105:IM": 102}` with `edit_info.img` set and a transparent canvas localizes
 the loss to the draw call in one step.
+
+### J9. Clearing a device fault does not clear the host's half of the pairing
+
+`report{tid,cat}` is only meaningful while both ends agree on which objects
+exist. The firmware wipes its object ring (`RESET_ALL_PIPELINE_QUEUE`) in three
+places — `clear_error`, entering `INSPECTION_MODE_ERROR`, and entering `IDLE` —
+and `tid_counter` keeps counting across all of them. So a stale tid never
+collides with a live object; it matches **nothing**, and the firmware faults
+with `INSP_RESULT_MATCHES_NO_OBJECT` (err=1) the instant a report names it.
+
+The core's `perifTriggerQueue` used to be drained only on CONNECT. That made
+"clear the error and press continue" fail deterministically:
+
+1. machine faults, device ring is emptied, ids continue from (say) 173
+2. the core is still holding 169–172 — it was never told
+3. first frame of the restarted run pairs with 169
+4. `report{tid:169}` → no such object → err=1, immediately
+
+The only escape was a reconnect. Note the operator sees a *different* error code
+from the one they just cleared, which reads like a new problem rather than a
+leftover.
+
+Fixed on both sides, and the RX side is the one that matters:
+
+- **RX (`tap_device_state`)** — watch the device's `state` for 112/100. This is
+  the reliable half, because the device also faults on its own, and because
+  `clear_error` travels straight from the WebUI to the board over the peripheral
+  passthrough: the core is never consulted and would otherwise never learn.
+- **TX** — also act on `clear_error` / `enter_insp_mode` / `exit_insp_mode` as
+  they pass through, since the RX tap only fires at the next status poll (up to
+  a second later) and the plate can already be running by then.
+
+Both call `forget_pending_triggers()`, which drops queued triggers *and* the
+results computed for them. In-flight frames then report `tid=-1` and are logged
+and dropped — no fault.
+
+**Related, still open: the deadline is in pulses, the latency is in
+milliseconds.** `pressure = gate_pulse + SWITCH - SYS_STEP_COUNT` is a pulse
+budget, so raising `plate_freq` shrinks the wall-clock time to answer
+proportionally, while the host's report latency does not change at all. A run
+that is comfortable at 3000 can fault on the objects already in flight the
+moment the speed is raised — observed at 494 ms after a `set_setup`, as err=2
+`OBJECT_HAS_NO_INSP_RESULT`. Compounding it, `perifTriggerQueue` carries a
+standing backlog whenever the camera silently refuses a trigger (102 announced
+vs 100 frames over 35 s, `pending` 2→4, `missed(NA):0`): the frame-gap guard
+cannot see those because `frame_id` stays contiguous (see J7), so every report
+runs `pending × object_period` late — 1.4 s at the observed rates, against a
+2.49 s budget. Until pairing is evidential rather than positional, drain the
+in-flight objects before changing plate speed.

@@ -343,6 +343,64 @@ class PerifChannel:public Data_JsonRaw_Layer
   {
   }
 
+  // Forget every tid we are still holding.
+  //
+  // The firmware wipes its own object ring (RESET_ALL_PIPELINE_QUEUE) on
+  // clear_error, on entering ERROR, and on entering IDLE. Every tid we have
+  // queued becomes meaningless at that instant: the ids keep counting up, so a
+  // stale one does not collide with a live object -- it matches NOTHING, and
+  // the firmware faults with INSP_RESULT_MATCHES_NO_OBJECT the moment we report
+  // against it.
+  //
+  // That is what made "clear the error and continue" fail immediately and
+  // every time: the operator clears the fault, the device starts clean at (say)
+  // tid 173, and the very first frame after the restart gets paired with the
+  // tid 169 still sitting at the head of our FIFO. Until this, the queue was
+  // only drained on CONNECT, so the only way out was a reconnect.
+  void forget_pending_triggers(const char *why)
+  {
+    size_t n = perifTriggerQueue.size();
+    PerifTriggerMsg dt;
+    while (perifTriggerQueue.pop(dt)) {}
+    // Results already computed belong to those same dead tids.
+    PerifResultMsg dr;
+    while (perifSendQueue.pop(dr)) {}
+    if (n) LOGI("perif: device pipeline reset (%s) -- dropped %zu pending trigger(s)", why, n);
+  }
+
+  // Device SYS_STATE as last seen on the wire. -1 = nothing observed yet.
+  int last_dev_state = -1;
+
+  // Watch the device's state for the transitions that wipe its object ring.
+  //
+  // Doing this on the RX side rather than only when WE send clear_error is what
+  // makes it reliable: the device also faults on its own (a missing verdict at
+  // the selector, a serial protocol error), and clear_error reaches it straight
+  // from the WebUI over the peripheral passthrough -- the core is not consulted
+  // and would otherwise never learn the ring was emptied.
+  void tap_device_state(uint8_t *raw, int rawL)
+  {
+    if (machine_type != PERIF_UINSP_ESP32) return;
+    if (strstr((const char *)raw, "\"state\"") == NULL) return;
+
+    cJSON *j = cJSON_Parse((const char *)raw);
+    if (j == NULL) return;
+    double *st = JFetch_NUMBER(j, "state");
+    if (st != NULL)
+    {
+      int s = (int)*st;
+      if (s != last_dev_state)
+      {
+        // 112 INSPECTION_MODE_ERROR and 100 IDLE both enter through
+        // RESET_ALL_PIPELINE_QUEUE on the firmware side.
+        if (s == 112) forget_pending_triggers("device faulted");
+        else if (s == 100) forget_pending_triggers("device idle");
+        last_dev_state = s;
+      }
+    }
+    cJSON_Delete(j);
+  }
+
   // uInspESP32 announces every camera trigger with the object id the result
   // must later be reported against. Tap those into perifTriggerQueue on the way
   // past -- the message is still forwarded to the WebUI untouched, so nothing
@@ -407,6 +465,7 @@ class PerifChannel:public Data_JsonRaw_Layer
     if(opcode==1 )
     {
       tap_trigger_info(raw, rawL);
+      tap_device_state(raw, rawL);
 
       // [perif] Reply arrived from the device. Log the serial round-trip (write
       // -> reply) so we can localize comm delay: if serialRTT ~= the WebUI's
@@ -3784,6 +3843,19 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               LOGI("[perif TX] ch=%d type=%s id=%d", perifCH->ID,
                    (_t && cJSON_IsString(_t)) ? _t->valuestring : "?",
                    (_id && cJSON_IsNumber(_id)) ? (int)_id->valuedouble : -1);
+            }
+            // Commands that empty the device's object ring. The RX state tap
+            // catches these too, but only at the next status poll (up to a
+            // second later) -- and the plate can be running again by then. Act
+            // on the command itself so the queues are clean before the first
+            // frame of the restarted run can be paired.
+            {
+              cJSON *_ty = cJSON_GetObjectItem(msg_obj, "type");
+              const char *ty = (_ty && cJSON_IsString(_ty)) ? _ty->valuestring : NULL;
+              if (ty && (strcmp(ty, "clear_error") == 0 ||
+                         strcmp(ty, "enter_insp_mode") == 0 ||
+                         strcmp(ty, "exit_insp_mode") == 0))
+                perifCH->forget_pending_triggers(ty);
             }
             uint8_t _buf[2000];
             int ret= sendcJsonTo_perifCH(perifCH,_buf, sizeof(_buf),true,msg_obj);
