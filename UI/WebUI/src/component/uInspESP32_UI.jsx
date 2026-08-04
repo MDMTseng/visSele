@@ -254,6 +254,17 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
             目前 {gateHz !== undefined ? `${gateHz} 顆/秒` : '—'}
             {gateSepUs !== undefined ? ` (min_detect_sep_us=${gateSepUs})` : ''}
           </span>
+          {/* The camera ceiling, measured rather than assumed: shrinking the ROI
+              height raises it, which is the lever for running parts closer
+              together. The gate cap has to stay under this -- above it you get
+              triggers with no frames, which is exactly what breaks the pairing. */}
+          {pairing && pairing.cam_max_fps > 0 && (
+            <span style={{ alignSelf: 'center',
+              color: gateHz > pairing.cam_max_fps ? '#c33' : '#888' }}>
+              相機實測上限 {Number(pairing.cam_max_fps).toFixed(1)} fps
+              {gateHz > pairing.cam_max_fps ? ' ← 閘門開得比相機快' : ''}
+            </span>
+          )}
         </div>
         {gate && (
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>

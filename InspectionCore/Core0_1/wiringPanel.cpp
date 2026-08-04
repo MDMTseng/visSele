@@ -169,6 +169,14 @@ std::atomic<long long> perifMissedFrameCount{0};
 // so plain scalars are fine). max_ms is the interesting one -- it exposes any
 // remaining flow-control / driver-buffer stall in the COM peripheral write.
 double g_perifWriteMaxMs = 0, g_perifWriteSumMs = 0, g_perifWriteLastMs = 0;
+// Smallest frame-to-frame interval this camera has actually delivered. The
+// vendor's ResultingFrameRate is behind the CameraLayer API, and this is the
+// better number anyway: it is what the CURRENT ROI, exposure and transport
+// really sustain. It is the ceiling the gate fire-rate limit has to stay
+// under -- ask for triggers faster than this and you get triggers with no
+// frames, which is what poisons the pairing.
+double g_camMinIntervalMs = 0;
+
 // How late a cam_trig announcement has ever been relative to its own frame.
 // Touched only by the single inspection thread. This is the margin against
 // err=2 (see the trigger wait in ImgPipeProcessCenter_imp): if it creeps toward
@@ -2178,6 +2186,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             cJSON_AddNumberToObject(robj, "resid_last_us", perifPairing.lastResidUs());
             cJSON_AddNumberToObject(robj, "resid_max_us", perifPairing.maxResidUs());
             cJSON_AddNumberToObject(robj, "trig_wait_max_ms", g_perifTrigWaitMaxMs);
+            // The measured camera ceiling, so the gate cap can be set against a
+            // real number instead of a guess. Shrinking the ROI raises it --
+            // that is the lever for running parts closer together.
+            cJSON_AddNumberToObject(robj, "cam_min_interval_ms", g_camMinIntervalMs);
+            cJSON_AddNumberToObject(robj, "cam_max_fps",
+              g_camMinIntervalMs > 0 ? 1000.0 / g_camMinIntervalMs : 0);
           }
           else if (strcmp(itemType, "precess_queue_status") == 0)
           {
@@ -4370,6 +4384,9 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     }
   }
   pframeT = t;
+  // Ignore the first frame (pframeT unset) and anything implausibly small.
+  if (interval > 1.0 && (g_camMinIntervalMs == 0 || interval < g_camMinIntervalMs))
+    g_camMinIntervalMs = interval;
   LOGI("=============== frameInterval:%fms \n", interval);
   LOGI("bpg_pi->cameraFramesLeft:%d", bpg_pi.cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
@@ -5524,7 +5541,14 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       PerifTriggerPairing::PairResult pr =
         perifPairing.pairFrame(imgPipe->fi.timeStamp_us, &paired_tid);
 
-      if (pr == PerifTriggerPairing::EMPTY &&
+      // Wait on NO_CANDIDATE as well as EMPTY. Both mean "this frame's
+      // announcement has not arrived yet" -- EMPTY when nothing is queued,
+      // NO_CANDIDATE when what IS queued belongs to other parts. Only handling
+      // EMPTY made the wait fire in the easy case and give up instantly in the
+      // common one: measured 307 unplaced frames in 4592 parts (6.7%), against
+      // 308 triggers that then went stale -- the same parts counted from both
+      // ends.
+      if ((pr == PerifTriggerPairing::EMPTY || pr == PerifTriggerPairing::NO_CANDIDATE) &&
           bpg_pi.perifCH->last_dev_state == DEV_STATE_INSPECTION)
       {
         int waited_ms = 0;
@@ -5532,7 +5556,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         {
           std::this_thread::sleep_for(std::chrono::milliseconds(2));
           pr = perifPairing.pairFrame(imgPipe->fi.timeStamp_us, &paired_tid);
-          if (pr != PerifTriggerPairing::EMPTY) break;
+          if (pr == PerifTriggerPairing::PAIRED) break;
           waited_ms = (int)std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - _w0).count();
         }
@@ -5557,9 +5581,12 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       }
       else if (pr == PerifTriggerPairing::NO_CANDIDATE)
       {
-        // Announcements exist, but none is plausibly this frame. Refusing to
-        // guess IS the fix: popping the front here is exactly how a single lost
-        // frame used to mis-assign every part after it.
+        // Announcements exist, but none is plausibly this frame, and we already
+        // waited for a late one. Refusing to guess IS the fix: popping the front
+        // here is exactly how a single lost frame used to mis-assign every part
+        // after it. Counted here rather than inside pairFrame, which the wait
+        // loop calls every 2ms.
+        perifPairing.noteUnpaired();
         LOGE("perif: no trigger matches this frame (nearest %.1fms off) -- "
              "frame unreported, part recirculates",
              perifPairing.lastMissUs() / 1000.0);

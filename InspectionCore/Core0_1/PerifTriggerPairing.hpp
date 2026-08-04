@@ -199,9 +199,12 @@ public:
     if (best_d > _tol_us)
     {
       // Nothing plausible. Do NOT fall back to popping the front -- that is
-      // exactly the guess this class exists to stop making. The caller reports
-      // no verdict for this frame; the part recirculates.
-      _no_candidate++;
+      // exactly the guess this class exists to stop making.
+      //
+      // Deliberately NOT counted here: the caller retries this every 2ms while
+      // it waits out a late announcement, so counting per call would report ~75
+      // failures for one frame that then paired fine. The caller calls
+      // noteUnpaired() once, when it actually gives up.
       _last_miss_us = best_d;
       return NO_CANDIDATE;
     }
@@ -216,7 +219,12 @@ public:
     // Anything older than the match is an orphan -- its frame never arrived.
     // Leave it queued; the staleness sweep retires it as NA, which is what
     // makes a lost frame cost one part instead of every part after it.
-    _skipped += best_i;
+    //
+    // Counted once per out-of-order match, not once per position skipped: an
+    // orphan sitting at the head is passed over by EVERY later match until the
+    // sweep retires it, so summing positions reported 1994 "skips" for 308 real
+    // orphans. The honest count of orphans is staleCount().
+    if (best_i > 0) _out_of_order++;
     _q.erase(_q.begin() + best_i);
     _matched++;
     return PAIRED;
@@ -270,7 +278,9 @@ public:
   int64_t  lastMissUs()   const { std::lock_guard<std::mutex> lk(_mx); return _last_miss_us; }
   long long rxCount()     const { std::lock_guard<std::mutex> lk(_mx); return _rx; }
   long long matched()     const { std::lock_guard<std::mutex> lk(_mx); return _matched; }
-  long long skipped()     const { std::lock_guard<std::mutex> lk(_mx); return _skipped; }
+  long long outOfOrder()  const { std::lock_guard<std::mutex> lk(_mx); return _out_of_order; }
+  // Frames the caller gave up on, after any wait it chose to do.
+  void noteUnpaired() { std::lock_guard<std::mutex> lk(_mx); _no_candidate++; }
   long long staleCount()  const { std::lock_guard<std::mutex> lk(_mx); return _stale; }
   long long noCandidate() const { std::lock_guard<std::mutex> lk(_mx); return _no_candidate; }
   long long dropCount()   const { std::lock_guard<std::mutex> lk(_mx); return _drops; }
@@ -284,11 +294,11 @@ public:
     std::lock_guard<std::mutex> lk(_mx);
     snprintf(buf, n,
       "pairing:%s%s off:%.1fms resid last:%.0fus max:%.0fus | "
-      "rx:%lld matched:%lld skipped:%lld stale:%lld nocand:%lld drops:%lld pend:%zu",
+      "rx:%lld matched:%lld ooo:%lld stale:%lld nocand:%lld drops:%lld pend:%zu",
       _mode == TIMESTAMP ? "timestamp" : "positional",
       (_mode == TIMESTAMP && !_offset_valid) ? "(bootstrapping)" : "",
       _offset_us / 1000.0, _last_resid_us, _max_resid_us,
-      _rx, _matched, _skipped, _stale, _no_candidate, _drops, _q.size());
+      _rx, _matched, _out_of_order, _stale, _no_candidate, _drops, _q.size());
   }
 
 private:
@@ -305,6 +315,6 @@ private:
 
   double    _last_resid_us = 0, _max_resid_us = 0;
   int64_t   _last_miss_us = 0;
-  long long _rx = 0, _matched = 0, _skipped = 0, _stale = 0,
+  long long _rx = 0, _matched = 0, _out_of_order = 0, _stale = 0,
             _no_candidate = 0, _drops = 0;
 };
