@@ -79,6 +79,7 @@ import { initLogger, mkLog } from 'UTIL/logger';
 initLogger();
 const log = mkLog('ui.main');
 const dbLog = mkLog('comm.db'); // DB_WS / SLID API queue chatter
+const perifLog = mkLog('ui.uinsp2'); // uInspESP32 link health (2nd-gen sorter only)
 
 // import moment from 'moment';
 // import 'moment/locale/fr';
@@ -1429,6 +1430,11 @@ class APPMasterX extends React.Component {
     // plateFreq rather than pulse_hz, stage_pulse_offset for the per-machine
     // camera/light/selector timing, and an explicit inspection-mode state
     // machine. get_setup answers with ack, so the resync check is worth having.
+    // Consecutive RESET attempts before falling back to a port reopen. Two is
+    // enough for a one-off line glitch; more would just delay the real recovery
+    // when the device is genuinely gone (unplugged, crashed, powered down).
+    const LINK_RESYNC_MAX = 2;
+
     class  uInspESP32_API extends Perif_API_Base
     {
       constructor(id,settingFilePath="data/uInspESP32Setting.json",pg_id_channel=10027)
@@ -1438,9 +1444,57 @@ class APPMasterX extends React.Component {
         this.deviceState={};
         this.cfg={};
         this._resyncTries=0;
+        this._linkResyncTries=0;
       }
 
       resyncRequiresAck(){ return true; }
+
+      // Try to un-wedge the serial link before resorting to reopening the port.
+      //
+      // The base watchdog reconnects after two unanswered PINGs, and reconnect
+      // reopens the port, and opening the port toggles DTR, which hard-resets
+      // the ESP32. So one corrupted byte on the wire costs a board reset, every
+      // object in flight, and the whole run. Observed exactly that: a bad frame,
+      // two silent PINGs, channel torn down 9s later, run over at 196 parts.
+      //
+      // The device parser leaves its framing-error state on one thing only --
+      // the RESET_PACKET byte sequence -- which is why a reconnect works: it
+      // sends RESET on the way up. The core can send that alone, without
+      // touching the port, so try that first and give the link a cycle to come
+      // back. Only if it stays silent is the expensive reset justified.
+      //
+      // Overridden here rather than in Perif_API_Base because that watchdog is
+      // shared with the 1st-gen peripherals, whose devices do not necessarily
+      // treat RESET the same way.
+      _sendPing()
+      {
+        if(this.CONN_ID===undefined)return;
+
+        if(this.PINGCount>=2)
+        {
+          if(this._linkResyncTries<LINK_RESYNC_MAX)
+          {
+            this._linkResyncTries++;
+            perifLog.warn("[link] PING unanswered -- trying RESET before reconnect",
+                          { attempt:this._linkResyncTries, max:LINK_RESYNC_MAX });
+            comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0,
+              { type:"RESYNC", CONN_ID:this.CONN_ID },
+              undefined, { resolve:d=>d, reject:d=>d });
+            this.PINGCount=0;      // give the link one more cycle to answer
+            this.triggerPing();
+            return;
+          }
+          perifLog.error("[link] RESET did not recover the link -- reconnecting "
+                         + "(this resets the board and ends the run)");
+          this._linkResyncTries=0;
+        }
+        else if(this.PINGCount===0)
+        {
+          this._linkResyncTries=0;   // link is healthy again
+        }
+
+        super._sendPing();
+      }
 
       // Opening the serial port toggles DTR, which hard-resets the ESP32. The
       // host then has a live port to a board that is still booting, and the

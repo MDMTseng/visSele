@@ -541,8 +541,14 @@ class PerifChannel:public Data_JsonRaw_Layer
         // truncate a fault.
         bool is_fault = (strstr((const char *)raw, "err=") != NULL) ||
                         (strstr((const char *)raw, "system_info") != NULL);
-        LOGI("[perif RX] ch=%d serialRTT=%ldus reply=%.*s", ID, rtt,
-             is_fault ? rawL : 120, (char*)raw);
+        // rawL/strlen printed on faults because the "print it in full" fix has
+        // now failed twice and guessing at which layer is cutting the line has
+        // cost more than measuring it would have.
+        if (is_fault)
+          LOGI("[perif RX] ch=%d serialRTT=%ldus rawL=%d strlen=%zu reply=%.*s",
+               ID, rtt, rawL, strlen((const char *)raw), rawL, (char*)raw);
+        else
+          LOGI("[perif RX] ch=%d serialRTT=%ldus reply=%.120s", ID, rtt, (char*)raw);
       }
 
       // Size the envelope from the payload instead of a fixed 1024. A get_setup
@@ -3941,6 +3947,35 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           }
 
 
+        }
+        else if(strcmp(type, "RESYNC") == 0)
+        {
+          // Recover a desynced serial link WITHOUT reopening the port.
+          //
+          // The framing state machine leaves its error state on exactly one
+          // thing: the RESET_PACKET byte sequence. It does NOT resynchronise on
+          // a normal frame start. So one corrupted byte parks the device parser
+          // in ERROR_SEC, every subsequent well-formed command is ignored, and
+          // the link is dead -- observed live: a bad frame at t=65.9s, two PINGs
+          // unanswered, channel torn down at t=74.9s.
+          //
+          // Tearing the channel down does fix it, because CONNECT sends RESET on
+          // the way up. But reopening the port toggles DTR, which hard-resets
+          // the ESP32: the run ends, every object in flight is lost, and the
+          // device restarts from NVS. That is a heavy price for one noisy byte.
+          //
+          // RESET_PACKET on its own is the cheap half of that recovery, so offer
+          // it separately. The caller can try this first and only fall back to a
+          // full reconnect if the link stays silent.
+          if(perifCH==NULL || (CONN_ID!=-1 && perifCH->ID != CONN_ID))
+          {
+            sprintf(err_str, "CONN_ID(%d) no perifCH to resync", CONN_ID);
+            break;
+          }
+          perifCH->send_RESET();
+          perifCH->send_RESET();
+          LOGE("perif: link RESYNC requested -- RESET_PACKET sent, port left open");
+          session_ACK = true;
         }
         else if(strcmp(type, "MESSAGE") == 0)
         {
