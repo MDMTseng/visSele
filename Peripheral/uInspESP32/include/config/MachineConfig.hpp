@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ArduinoJson.h>
 #include <cstdint>
 
 // Per-machine tunables that must survive a power cycle.
@@ -36,6 +37,10 @@ typedef struct stagePulseOffset
 // Machine tunables owned by LegacyFirmware.cpp, persisted by this module.
 extern stagePulseOffset STAGE_PULSE_OFFSET;
 extern float PLATE_FREQ_SETPOINT;
+// Config is stored as the same JSON the wire uses, so these are shared.
+void genMachineSetup(JsonDocument &jdoc);
+void setMachineSetup(JsonDocument &jdoc, bool apply_hw);
+
 extern uint32_t SYS_MIN_PULSE_TIME_SEP_us;
 extern volatile bool AUTO_RATE;
 extern uint32_t AUTO_RATE_FLOOR_us;
@@ -85,9 +90,11 @@ namespace MachineConfig
   // v7: + unanswered_policy / unanswered_stop_after
   // v8: + host_timeout_ms
   // v9: + auto_rate / auto_rate_floor_us / auto_rate_recover_n
+  //     (WITHDRAWN -- inserted mid-struct, see trustedPrefix())
+  // v10: same fields, appended after machine_id where they belong
   // (an older blob falls back to compiled defaults -- re-push and save_setup
   // once after upgrading).
-  constexpr uint32_t kConfigVersion = 9;
+  constexpr uint32_t kConfigVersion = 10;
 
   // Reads NVS into the globals above. Call once, early in firmwareSetup(),
   // before anything derives timing from them.

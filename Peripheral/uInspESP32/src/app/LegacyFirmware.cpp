@@ -1361,7 +1361,7 @@ int Run_ACTS(uint32_t cur_pulse)
 inline float mm2Pulse_conv(int axisIdx,float dist);
 
 void genMachineSetup(JsonDocument &jdoc);
-void setMachineSetup(JsonDocument &jdoc);
+void setMachineSetup(JsonDocument &jdoc, bool apply_hw);
 bool doDataLog=false;
 class MData_JR:public Data_JsonRaw_Layer
 {
@@ -2241,7 +2241,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   {
     retdoc["type"]="set_setup";
 
-    setMachineSetup(doc);
+    setMachineSetup(doc, true);
 
     // Opt-in commit. Without "persist":true this behaves exactly as before --
     // RAM only, gone at power-off -- so probing/jogging during setup doesn't
@@ -3889,7 +3889,13 @@ void genMachineSetup(JsonDocument &jdoc)
   {if(jsonObj[key].is<typeof(tarVar)>()  ) tarVar=jsonObj[key];}
 
 
-void setMachineSetup(JsonDocument &jdoc)
+// apply_hw=false assigns the globals and touches nothing else.
+//
+// MachineConfig::begin() runs BEFORE pinMode(), so driving a pin from there
+// would write to an unconfigured GPIO. It does not need to: firmwareSetup rests
+// every actuator at its logical OFF level right after pinMode, and that reads
+// IO_INV_MASK -- so setting the variables is enough to come up correct.
+void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
 {
   if(jdoc["CAM1_ID"].is<const char*>()  )
   { 
@@ -3951,9 +3957,12 @@ void setMachineSetup(JsonDocument &jdoc)
     stepper_dir_level = stepper_dir_level ? 1 : 0;
     // Re-drive both pins so the new polarity takes effect now, preserving the
     // driver's current enabled/disabled state under the new convention.
-    digitalWrite(STEPPER_DIR_PIN, stepper_dir_level);
-    digitalWrite(STEPPER_EN_PIN, SYS_STEPPER_DISABLED ? !stepper_en_active
-                                                      : stepper_en_active);
+    if(apply_hw)
+    {
+      digitalWrite(STEPPER_DIR_PIN, stepper_dir_level);
+      digitalWrite(STEPPER_EN_PIN, SYS_STEPPER_DISABLED ? !stepper_en_active
+                                                        : stepper_en_active);
+    }
   }
 
   {
@@ -3984,12 +3993,15 @@ void setMachineSetup(JsonDocument &jdoc)
     // Re-rest every actuator at its logical OFF under the new polarity, so a
     // flipped output doesn't sit energised at its old idle level. FEEDER keeps
     // its current logical state instead -- it is level-driven, not pulsed.
-    for(size_t i=0;i<SARRL(IO_POL_TAB);i++)
+    if(apply_hw)
     {
-      if(IO_POL_TAB[i].idx==IOI_FEEDER)
-        io_drive(IO_POL_TAB[i].pin,IOI_FEEDER,FEEDER_ON);
-      else
-        io_drive(IO_POL_TAB[i].pin,IO_POL_TAB[i].idx,false);
+      for(size_t i=0;i<SARRL(IO_POL_TAB);i++)
+      {
+        if(IO_POL_TAB[i].idx==IOI_FEEDER)
+          io_drive(IO_POL_TAB[i].pin,IOI_FEEDER,FEEDER_ON);
+        else
+          io_drive(IO_POL_TAB[i].pin,IO_POL_TAB[i].idx,false);
+      }
     }
   }
   // A threshold of 0 would underflow the down-counter into a ~65k-sample stall;
