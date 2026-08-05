@@ -2662,7 +2662,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         {
           //SaveIMGFile("data/buff.bmp",&test1_buff);
 
-          // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
+          // Shares matchingEng with the inspection thread -- see the guard in
+          // ImgPipeProcessCenter_imp for why this is a scoped lock.
+          std::lock_guard<std::mutex> _me_guard(matchingEnglock);
           int ret = ImgInspection_JSONStr(matchingEng, *srcImg, 1, jsonStr, select_bacpac);
           free(jsonStr);
           const FeatureReport *report = matchingEng.GetReport();
@@ -2688,8 +2690,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           {
             session_ACK = false;
           }
-          
-          // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
         }
         catch (std::invalid_argument iaex)
         {
@@ -2837,19 +2837,19 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             LOGE("cache_deffile_JSON: malformed JSON, keeping previous cached value");
           }
 
-          // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
-          matchingEng.ResetFeature();
-          // Stamp shape-locator context (sidecar path + def_image_reg) like the
-          // --insp path so live/WS-loaded shape-based defs can train. deffile may
-          // be NULL when the def is pushed inline via "definfo" -> only the reg is
-          // stamped (no sidecar path); reference_image in the def still works.
+          // The def reload. This is the writer the inspection thread has to be
+          // kept out of: ResetFeature destroys every feature it may be walking.
           {
+            std::lock_guard<std::mutex> _me_guard(matchingEnglock);
+            matchingEng.ResetFeature();
+            // Stamp shape-locator context (sidecar path + def_image_reg) like the
+            // --insp path so live/WS-loaded shape-based defs can train. deffile may
+            // be NULL when the def is pushed inline via "definfo" -> only the reg is
+            // stamped (no sidecar path); reference_image in the def still works.
             char *injected_ctx = def_stamp_context(jsonStr, deffile);
             matchingEng.AddMatchingFeature(injected_ctx ? injected_ctx : jsonStr);
             if (injected_ctx) free(injected_ctx);
           }
-
-          // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
           void *target;
           if (getDataFromJson(json, "get_deffile", &target) == cJSON_True)
           {
@@ -2971,7 +2971,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           try
           {
 
-            // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
+            // Shares matchingEng with the inspection thread -- see the guard in
+            // ImgPipeProcessCenter_imp.
+            std::lock_guard<std::mutex> _me_guard(matchingEnglock);
             ImgInspection_DefRead(matchingEng, *srcImg, 1, "data/featureDetect.json", &calib_bacpac);
             const FeatureReport *report = matchingEng.GetReport();
 
@@ -2999,8 +3001,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               
               fromUpperLayer(bpg_dat, peer);
             }
-            
-            // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
           }
           catch (std::invalid_argument iaex)
           {
@@ -3552,11 +3552,12 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       if (InspectionParam)
       {
         
-        // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
-        cJSON *retInfo = matchingEng.SetParam(InspectionParam);
-
-
-        // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
+        cJSON *retInfo;
+        {
+          // SetParam mutates live features -- same writer/reader problem.
+          std::lock_guard<std::mutex> _me_guard(matchingEnglock);
+          retInfo = matchingEng.SetParam(InspectionParam);
+        }
 
 
         char *jstr = cJSON_Print(retInfo);
@@ -5641,7 +5642,20 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
     
     LOGI("====================================");
-    // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
+    // matchingEng is rebuilt from scratch by the def-load handlers on the WS
+    // thread (ResetFeature + AddMatchingFeature), while this thread is walking
+    // the very features being destroyed. Entering inspection mode does exactly
+    // that: it reloads the def, and if a frame is already in flight the shape
+    // matcher is torn down under it -- observed 2026-08-05, ImgInspection at
+    // t+622930ms and the reload's parse_jobj at t+622944ms, then SIGSEGV inside
+    // sbm::ShapeMatcher::match on a matcher that no longer existed.
+    //
+    // The lock for this has always been here; every one of its ten uses was
+    // commented out. Manual lock/unlock could not survive the ~1600-line
+    // handler's 20+ early breaks and its try/catch, which is the likely reason
+    // it was abandoned -- so take it with a scoped guard instead, which cannot
+    // be leaked by any exit path.
+    std::lock_guard<std::mutex> _insp_guard(matchingEnglock);
     ret = ImgInspection(matchingEng, capImg, bacpac, imgPipe->camLayer, 1);
     const FeatureReport *report = matchingEng.GetReport();
 
@@ -5714,7 +5728,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     LOGI("stat:%d stat_sec:%d",stat,stat_sec);
     
     imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
-    // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
   }
 
   // LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
