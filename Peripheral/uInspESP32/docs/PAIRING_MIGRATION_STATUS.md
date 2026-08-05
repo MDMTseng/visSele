@@ -1,7 +1,7 @@
 # Frame ↔ object pairing: where it is and what to do next
 
 Start here. This is the live state of the uInspESP32 bring-up as of the end of
-the 2026-08-04 session, written so the next person (or the next session) can
+the 2026-08-05 session, written so the next person (or the next session) can
 pick it up without re-deriving anything.
 
 ---
@@ -12,8 +12,12 @@ The machine decides which camera frame belongs to which physical part. That
 mapping used to be inferred on the host from arrival order, which is wrong by
 construction and silently mis-sorts parts. It now matches on timestamps, and is
 in the middle of being moved onto the ESP32 — which knew the answer all along
-and was throwing it away. Everything works at 35 parts/s with zero losses. The
-firmware side is written and builds but **is not flashed yet**.
+and was throwing it away. Everything works at 35 parts/s with zero losses.
+
+The device-side machinery is flashed and running, but it is **not yet the
+authority**: `report_match_ts` is false, so the device still acts on the tid the
+core names and only *watches* its own timestamp match. Flipping that flag is the
+actual handover, and it is not done — see "Tomorrow, in order".
 
 ---
 
@@ -35,20 +39,23 @@ the current recirculating setup is roughly **8× harsher** than production.
 
 ---
 
-## What is flashed vs what is not
+## What is flashed
 
-**Flashed and running:**
-gate admission counters (`gate.accept/rej_rate/rej_dist/rej_busy`),
-`SKIP_Count` reporting, SKIP+UNSET sharing the consecutive-unjudged escalation,
-`light` command, RX buffer ordering fix.
+Everything is. Flashing needs no BOOT press since the 4k resistor (below), so
+the device side is no longer a bottleneck on iteration.
 
-**Written, builds, NOT flashed** — needs one physical BOOT press:
-- `gate_disable` — ignore the real sensor, keep `trig_phantom_pulse` working
-- `cam_us` on `pipeLineInfo` + `CamClockSync` + dual (tid / timestamp) matching
-- `reboot_bootloader` — the thing that ends the BOOT presses
+Device: gate counters and `gate_disable`, `SKIP_Count`, SKIP+UNSET sharing the
+consecutive-unjudged escalation, `cam_us` + `CamClockSync` (with outlier
+rejection) + dual tid/timestamp matching, `trig_cam_burst`,
+`trig_phantom_train`, `light`, `reboot_bootloader` (an ordinary software reboot
+— it does *not* reach the ROM bootloader on this chip).
 
-**Host side, running:** `PerifTriggerPairing.hpp` (timestamp matching), gate
-throttle UI, pairing stats in the panel, link RESYNC, idle heartbeat.
+Host: `PerifTriggerPairing.hpp` (timestamp matching), gate throttle UI, pairing
+stats in the panel, link RESYNC, idle heartbeat, and the dev console
+(`INSP_PERIF_CONSOLE`, with `!pd` injection).
+
+**Still off:** `report_match_ts`. The device computes the timestamp match on
+every report and compares it against the tid match, but acts on the tid.
 
 ---
 
@@ -141,6 +148,53 @@ Every verdict in these runs was NA, so a wrong assignment had no visible
 consequence. In production with real OK/NG, positional's extra 477 "judged"
 parts are 477 parts sorted on another part's verdict.
 
+### The estimator was amplifying its own mistakes
+
+`CamClockSync::observe()` folded every sample into the EWMA unconditionally.
+One pair wrong by 400ms moves the offset by 400ms/16 = 25ms in a single step,
+against a 5000us match window — so the next frame matches the wrong object,
+which produces another bad pair. It was a positive feedback loop wearing an
+averaging filter, not a starved estimator (239 reports over 20s is ~12
+samples/s; starvation never explained a 381ms residual).
+
+Samples further from the estimate than the match window are now refused before
+they touch the offset, and `LOST_N` consecutive refusals abandon and rebuild it
+rather than creeping toward the truth a sixteenth at a time. Same 900 objects at
+45/s:
+
+| | judged | SKIP | disagree | rejected |
+|---|---|---|---|---|
+| timestamp, before | 239 | 627 | 35 | — |
+| timestamp, after | **491** | 381 | 19 | 51 |
+| positional, after | 715 | 173 | **101** | **341** |
+
+Judged doubles because the estimate stays usable. In positional mode the guard
+refuses 341 of the pairs it is handed, and `disagree` *rises* 61→101 — the
+device's clock model is no longer dragged along by positional's mistakes, so it
+can finally see them. No regression under the ceiling: 30/s gives 604/604
+judged, SKIP 0, disagree 0, rejected 0, resid -30us.
+
+`reset_running_stat` clears CAM_SYNC now.
+
+### The load is steady now
+
+Host-paced injection made every interval a serial round trip. `trig_phantom_train
+{count, hz}` schedules on-device against the absolute clock, one object per
+main-loop pass so reports keep flowing. Measured on cam_trig timestamps at a
+33.3ms target:
+
+| | min | p50 | max | stdev |
+|---|---|---|---|---|
+| host-paced | 25.90 | 33.30 | 39.80 | 1.760ms |
+| device | 32.27 | 33.33 | 34.40 | **0.121ms** |
+
+The device's own emission intervals are looser (min 22.9ms): absolute scheduling
+means one late pass is followed by a short gap as the train returns to phase.
+That lateness is ~10ms — the same order as the unexplained `isr_gap_max_us` —
+but it does not reach the trigger times, because object positions are in plate
+pulses and the stage machine is ISR-driven, so the pipeline absorbs main-loop
+jitter.
+
 ### This is the part-free test rig
 
 The sweep above needs no parts on the plate and takes about two minutes. It is
@@ -170,24 +224,23 @@ induced loss", which is the one case still unproven.
 2. ~~Watch `cam_sync.agree` / `cam_sync.disagree`.~~ **Done: 6237 / 0.**
 3. ~~Induce frame loss with objects in the pipeline.~~ **Done** — see the A/B
    above. Positional is confidently wrong under loss; timestamp refuses.
-4. **Find out why the device's clock residual blows up under loss.** This is the
-   blocker, and it is a *diagnosis* task, not a fix task — the mechanism is not
-   yet known. Under 45/s the residual reached -1381us with a 381ms maximum,
-   against a 5000us tolerance, then recovered to -9us on a later clean trial.
+4. ~~Find out why the device's clock residual blows up under loss.~~ **Done** —
+   no outlier rejection in `observe()`; see above.
 
-   Do not "fix" it by feeding the estimator from `cam_trig`: that cannot work.
-   `cam_trig.t_us` and `pipeLineInfo.cam_us` are both the **device's** clock
-   (`esp_timer` / the CAM ISR). The **camera's** clock reaches the device only
-   as `cam_ts` inside a report. The estimator structurally depends on reports;
-   there is no other source for the second clock.
+   One thing to keep from that investigation: do **not** try to feed the
+   estimator from `cam_trig`. `cam_trig.t_us` and `pipeLineInfo.cam_us` are both
+   the **device's** clock (`esp_timer` / the CAM ISR). The **camera's** clock
+   reaches the device only as `cam_ts` inside a report, so reports are the only
+   possible source for the second clock in the pair.
 
-   Note the residual is far larger than sample starvation explains — 239 reports
-   over ~20s is still ~12 samples/s, plenty. A 381ms residual means some
-   observed (cam_ts, cam_us) pair was wrong by 381ms, so the question is which
-   pairs are being fed in, not how many. Instrument `observe()` and look at the
-   bad ones before changing the estimator.
-5. **Then promote**: `report_match_ts: true`.
-6. **Then delete from the host** — `PerifTriggerPairing.hpp`,
+5. **Decide on promotion from the load sweep**, not from a single trial. With a
+   steady device-generated load and the estimator fixed, the useful evidence is
+   the shape of the degradation across rates bracketing the 35-36Hz ceiling
+   (see `tools/soak_pairing.py`). `report_match_ts` should go true only if
+   `disagree` stays at zero through the design load and rises gracefully — not
+   because one run looked good.
+6. **Then promote**: `report_match_ts: true`.
+7. **Then delete from the host** — `PerifTriggerPairing.hpp`,
    `tap_trigger_info`, `keep_clock_warm`, the trigger wait, the early dump.
    ~450 lines that exist only to reconstruct what the device already knows.
 
