@@ -5129,7 +5129,28 @@ void PerifConsoleThread(bool *terminationflag)
       if (n <= 0) break;
       if (c == '\r') continue;
       if (c != '\n') { if (line.size() < 4096) line += c; continue; }
-      if (!line.empty())
+      if (line.compare(0, 4, "!pd ") == 0)
+      {
+        // Inject a PD packet -- the same one the WebUI sends. Everything else
+        // on this socket goes to the device; '!pd' addresses the core.
+        //
+        // Needed because the peripheral channel does not exist until some
+        // client CONNECTs it. A headless core opens nothing, so the device is
+        // unreachable and every frame goes unreported -- which looks exactly
+        // like a pairing fault. This makes the rig independent of a browser
+        // being open, and it is also the only way to reach PAIRING_MODE, which
+        // is what the positional-vs-timestamp A/B has to switch.
+        //
+        // conn_info lives in data/machine_setting.json under
+        // uInspESP32_peripheral_conn_info; pass it through verbatim.
+        std::string payload = line.substr(4);
+        BPG_protocol_data d =
+          m_BPG_Protocol_Interface::GenStrBPGData((char *)"PD", payload.c_str());
+        d.pgID = 1;
+        bpg_pi.toUpperLayer(d, NULL);
+        ::write(cli, "{\"core\":\"pd injected\"}\n", 23);
+      }
+      else if (!line.empty())
       {
         PerifChannel *pc = bpg_pi.perifCH;
         if (pc == NULL)
