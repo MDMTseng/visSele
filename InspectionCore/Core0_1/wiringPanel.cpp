@@ -5398,8 +5398,9 @@ void PerifSendThread(bool *terminationflag)
             {
               int cat = perif_status_to_cat(pc, msg.uInspStatus);
 
-              // INSP_PERIF_VERDICT_PATTERN=<n>: replace the real verdict with a
-              // repeating block of n OK then n NG, keyed on the OBJECT ID.
+              // INSP_PERIF_VERDICT_PATTERN=<seed>: replace the real verdict with
+              // a deterministic noise pattern keyed on the OBJECT ID. Nonzero
+              // enables it and the value IS the seed.
               //
               // Validation scaffolding for the pairing, and the only way found
               // so far to make a slip visible without working vision. Counters
@@ -5407,20 +5408,31 @@ void PerifSendThread(bool *terminationflag)
               // totals as a correct one, because every part still gets an
               // answer and only the assignment changes. Keying the verdict on
               // the tid makes the verdict a property of the PART, so the device
-              // can record which object each one landed on and the block
-              // boundary lands on the wrong tid the moment the pairing slips.
+              // can record which object each one landed on and compare.
               //
               // Keyed on tid and not on a send counter on purpose: a counter is
               // a property of the STREAM, so a legitimately lost frame shifts it
               // and looks exactly like a slip. The tid does not move.
               //
-              // Therefore this only means anything while a tid exists -- i.e.
-              // PERIF_CORE_PAIRING 1. At 0 there is no object id to key on and
-              // the pattern is skipped rather than silently keyed on something
-              // that cannot detect what it claims to.
-              static const int vpat = []{
+              // NOISE and not blocks of n OK / n NG, which is what this started
+              // as. Blocks are periodic with 2n, so a slip of exactly 2n shifts
+              // the pattern onto itself and passes perfectly -- measured, not
+              // theorised: a real 10-part slip gave a clean pass over 510 parts
+              // against 5/5 blocks. Any multiple of 2n does the same. A hash has
+              // no period, so every nonzero slip disagrees on about half the
+              // parts and the chance of one hiding falls off as 2^-k.
+              //
+              // The hash must match the checker (slip_probe.py) exactly, so it
+              // is written as plain uint32 steps -- a splitmix-style finaliser
+              // -- rather than anything language-specific.
+              //
+              // Only meaningful while a tid exists, i.e. PERIF_CORE_PAIRING 1.
+              // At 0 there is no object id to key on, and the pattern is skipped
+              // rather than silently keyed on something that cannot detect what
+              // it claims to.
+              static const uint32_t vseed = []{
                 const char *e = getenv("INSP_PERIF_VERDICT_PATTERN");
-                return e ? atoi(e) : 0;
+                return e ? (uint32_t)strtoul(e, NULL, 10) : 0u;
               }();
               // INSP_PERIF_VERDICT_SLIP=<k>: fault injection. Key the pattern on
               // tid+k, which is exactly what a verdict landing k parts away
@@ -5435,9 +5447,13 @@ void PerifSendThread(bool *terminationflag)
                 const char *e = getenv("INSP_PERIF_VERDICT_SLIP");
                 return e ? atoi(e) : 0;
               }();
-              if (vpat > 0 && msg.tid >= 0)
+              if (vseed && msg.tid >= 0)
               {
-                bool ok = (((msg.tid + vslip) / vpat) % 2) == 0;
+                uint32_t h = (uint32_t)(msg.tid + vslip) * 2654435761u + vseed;
+                h ^= h >> 15; h *= 2246822519u;
+                h ^= h >> 13; h *= 3266489917u;
+                h ^= h >> 16;
+                bool ok = (h & 1u) == 0u;
                 cat = ok ? (pc->cat_ok ? pc->cat_ok : PERIF_CAT_NA)
                          : (pc->cat_ng ? pc->cat_ng : PERIF_CAT_NA);
               }

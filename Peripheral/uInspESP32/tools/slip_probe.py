@@ -10,20 +10,26 @@ real-parts runs so far produce nothing but NA, which hides a slip completely --
 the same way it hid the original positional off-by-five until it was measured.
 
 So: make the verdict a known function of the part. The core is told
-(INSP_PERIF_VERDICT_PATTERN=n) to send n OK then n NG, keyed on the object id
-rather than on a send counter -- a counter is a property of the stream, so a
-legitimately lost frame shifts it and is indistinguishable from a slip. The
-device records which object each verdict actually landed on, and this reads that
-back and checks it against the pattern.
+(INSP_PERIF_VERDICT_PATTERN=<seed>) to derive each verdict from a hash of the
+object id -- keyed on the object rather than on a send counter, because a
+counter is a property of the stream, so a legitimately lost frame shifts it and
+is indistinguishable from a slip. The device records which object each verdict
+actually landed on, and this reads that back and checks it.
 
-A slip shows up as the block boundary sitting on the wrong tid. One misplaced
-verdict is one mis-sorted part, so the pass mark is zero.
+Noise rather than a regular pattern, and that is not fussiness. This started as
+blocks of 5 OK / 5 NG, which is periodic with 10 -- so a slip of exactly 10
+shifts the pattern onto itself and passes perfectly. Measured: a real 10-part
+slip gave a CLEAN PASS over 510 parts. Any multiple of the period does the same.
+A hash has no period, so every nonzero slip disagrees on about half the parts
+and the chance of one hiding falls off as 2^-k.
+
+One misplaced verdict is one mis-sorted part, so the pass mark is zero.
 
 Requires PERIF_CORE_PAIRING 1: with no tid there is no object id to key on, and
 the script says so rather than reporting a vacuous pass.
 
-  INSP_PERIF_VERDICT_PATTERN=5 <restart core>
-  python3 slip_probe.py --seconds 120 --block 5
+  INSP_PERIF_VERDICT_PATTERN=20260806 <restart core>
+  python3 slip_probe.py --seconds 120 --seed 20260806
 """
 import socket, time, json, argparse
 
@@ -31,6 +37,25 @@ PORT = 4099
 CONN = {"type": "CONNECT", "uart_name": "/dev/cu.usbserial-0001",
         "baudrate": 115200, "machine_type": "uInspESP32",
         "cat_ok": 1, "cat_ng": 2, "cam_idx": 1, "pairing": "timestamp"}
+
+
+M32 = 0xFFFFFFFF
+
+
+def expect(tid, a, shift=0):
+    """The verdict the pattern says this part should get.
+
+    Must match the core's arithmetic exactly (wiringPanel.cpp, the
+    INSP_PERIF_VERDICT_PATTERN block), which is why the hash is written out in
+    plain uint32 steps rather than using anything Python-specific.
+    """
+    h = (((tid + shift) & M32) * 2654435761 + a.seed) & M32
+    h ^= h >> 15
+    h = (h * 2246822519) & M32
+    h ^= h >> 13
+    h = (h * 3266489917) & M32
+    h ^= h >> 16
+    return CONN['cat_ok'] if (h & 1) == 0 else CONN['cat_ng']
 
 
 def sock():
@@ -144,21 +169,18 @@ def run(a):
         print("  no part verdicts recorded")
         return 1, s
 
-    bad = []
-    for t, c in pairs:
-        want = CONN['cat_ok'] if ((t // a.block) % 2) == 0 else CONN['cat_ng']
-        if c != want:
-            bad.append((t, c, want))
+    bad = [(t, c, expect(t, a)) for t, c in pairs if c != expect(t, a)]
 
     lo, hi = pairs[0][0], pairs[-1][0]
-    print("  checked %d part verdicts, tid %d..%d, block=%d"
-          % (len(pairs), lo, hi, a.block))
+    print("  checked %d part verdicts, tid %d..%d, seed=%d"
+          % (len(pairs), lo, hi, a.seed))
     show = pairs[:80]
     print("  sequence: %s"
           % ''.join('O' if c == CONN['cat_ok'] else
                     ('N' if c == CONN['cat_ng'] else '.') for _, c in show))
     print("  expected: %s"
-          % ''.join('O' if ((t // a.block) % 2) == 0 else 'N' for t, _ in show))
+          % ''.join('O' if expect(t, a) == CONN['cat_ok'] else 'N'
+                    for t, _ in show))
     # Gaps are not slips. A part the gate rejected, or one whose frame the
     # camera declined, simply has no verdict -- and refusing to answer is the
     # designed behaviour, not a defect. Print it so a sparse run is not mistaken
@@ -177,9 +199,31 @@ def run(a):
                  st.get('error_hist')))
 
     if bad:
-        print("  MISPLACED %d verdict(s) -- each one is a mis-sorted part:" % len(bad))
+        print("  MISPLACED %d of %d verdict(s) -- each one is a mis-sorted part:"
+              % (len(bad), len(pairs)))
         for t, c, w in bad[:10]:
             print("    tid %d got cat %d, pattern says %d" % (t, c, w))
+        # How far out is it? Re-check against the pattern shifted by k. A clean
+        # fit at some k says the pairing is uniformly k parts out of step, which
+        # is a very different fault from scattered mismatches (noise, or a
+        # pairing that slips and recovers).
+        # Scan wide. A range that does not contain the actual slip reports "no
+        # single shift explains it", which reads as scattered corruption and is
+        # exactly the wrong conclusion -- seen at first hand with a +-8 scan
+        # against a real slip of 10.
+        fits = [(sum(1 for t, c in pairs if c != expect(t, a, k)), abs(k), k)
+                for k in range(-64, 65)]
+        # Ties broken toward the smallest |k|. With noise a tie should not
+        # happen -- that is the point of using it -- but reporting the nearest
+        # fit is the honest answer if one ever does.
+        fits.sort()
+        n_bad, _, k = fits[0]
+        if k != 0 and n_bad == 0:
+            print("    => uniform slip of %+d parts (pattern fits exactly when "
+                  "shifted by %d)" % (k, k))
+        else:
+            print("    => no single shift explains it; best is %+d with %d "
+                  "still wrong" % (k, n_bad))
         return 1, s
 
     if all(c == pairs[0][1] for _, c in pairs):
@@ -197,7 +241,7 @@ def run(a):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument("--seconds", type=int, default=120)
-    ap.add_argument("--block", type=int, default=5,
+    ap.add_argument("--seed", type=int, default=20260806,
                     help="must match INSP_PERIF_VERDICT_PATTERN")
     ap.add_argument("--min-sep-us", type=int, default=33000)
     # Negative control. A check that has never failed proves nothing, and
