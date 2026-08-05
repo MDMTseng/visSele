@@ -1,3 +1,46 @@
+// ---------------------------------------------------------------------------
+// PERIF_CORE_PAIRING -- does the CORE work out which object each frame belongs
+// to, or does the device?
+//
+// 1 (default): the core keeps its own trigger FIFO and clock model, pairs each
+//   frame here, and names a tid in every report. The device cross-checks that
+//   against its own timestamp match and reports agree/disagree.
+//
+// 0: the core pairs nothing. Reports carry cam_ts and tid -1, and the device
+//   alone decides which object a frame belongs to.
+//
+// The migration is toward 0. Everything the core does here exists only because
+// the device used to announce the trigger timestamp and then forget it, leaving
+// the host to reconstruct the mapping from clocks it could only observe
+// indirectly. The device now keeps that timestamp, so this is redundancy, and
+// on 2026-08-05 it was measured to be WORSE than redundant: with the core in
+// positional mode the pairing runs one part out of step -- miss_delta 12221us
+// against a 12000us object spacing -- and it reproduces below the camera's
+// frame-rate ceiling, so it is not a frame-loss effect. A skewed pairing puts
+// one part's verdict on the next part.
+//
+// Kept switchable rather than deleted because turning it off is not free:
+//
+//   - agree/disagree, the evidence the report_match_ts promotion rests on,
+//     needs both mechanisms running to exist at all.
+//   - the device's clock CALIBRATION currently finds its object by tid
+//     (CamClockSync::observe is reached via byTid), so with no tid the
+//     bootstrap has nothing to match against. Calibration would have to select
+//     "the one outstanding sync object" instead -- which it can, since the
+//     one-at-a-time guard makes that unambiguous by construction, but it is a
+//     firmware change and must land first.
+//   - when the device's timestamp match finds nothing, tarP falls back to the
+//     tid. With this at 0 there is no fallback and the frame simply is not
+//     placed, which is the correct "stop rather than guess" behaviour but is a
+//     behaviour change.
+//
+// So: do not set this to 0 until the firmware calibrates without a tid, and
+// re-run the burst and real-part validation afterwards.
+// ---------------------------------------------------------------------------
+#ifndef PERIF_CORE_PAIRING
+#define PERIF_CORE_PAIRING 1
+#endif
+
 // Which physical object does this camera frame belong to?
 //
 // Everything needed to answer that question lives in this one file, on purpose.
