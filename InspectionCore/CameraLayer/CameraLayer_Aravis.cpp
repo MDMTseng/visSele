@@ -1937,20 +1937,47 @@ CameraLayer::status CameraLayer_Aravis::StartAquisition()
   if (!camera) return CameraLayer::NAK;
   if (acquisition_started) return CameraLayer::ACK;
   // ROI / pixel format may have changed while stopped, which changes payload.
-  // Drain whatever's queued in the stream and refill with current-size buffers
-  // so the first frames don't fail SIZE_MISMATCH.
+  //
+  // Recycling buffers in place does NOT work: arv_stream_try_pop_buffer only
+  // returns COMPLETED buffers, so any still submitted to the USB transfer
+  // layer at the old size stay in the stream. Pushing new-size buffers on top
+  // leaves the stream holding two sizes at once, and the device then refuses
+  // the next AcquisitionStart -- "USB3Vision write_memory error" -- which is
+  // unrecoverable for the life of the process, because acquisition_started
+  // stays false and every later start fails the same way. Observed today:
+  // changing the ROI (payload 5013504 -> 544960) killed imaging until the
+  // camera was physically unplugged.
+  //
+  // Buffer size is a property of the stream, so change it the way Aravis
+  // intends: tear the stream down and build a new one. Mirrors the destructor's
+  // ordering -- silence the source, disconnect, drop the cached pointer, and
+  // only then release.
   if (stream) {
     int cur_payload = arv_camera_get_payload(camera, NULL);
     if (cur_payload > 0 && cur_payload != payloadSize) {
-      LOGI("StartAquisition: payload %d -> %d, recycling buffers",
+      LOGI("StartAquisition: payload %d -> %d, rebuilding stream",
            payloadSize, cur_payload);
       payloadSize = cur_payload;
-      // Anything cached points into a buffer about to be unreffed.
+
+      arv_stream_set_emit_signals(stream, FALSE);
+      if (_sig_new_buffer && g_signal_handler_is_connected(stream, _sig_new_buffer))
+        g_signal_handler_disconnect(stream, _sig_new_buffer);
+      _sig_new_buffer = 0;
+      // Points into a buffer owned by the stream about to be released.
       _frame_cache_buffer = NULL;
-      ArvBuffer *b;
-      while ((b = arv_stream_try_pop_buffer(stream)) != NULL) g_object_unref(b);
+      g_object_unref(stream);
+      stream = NULL;
+
+      stream = arv_camera_create_stream(camera, stream_cb, NULL, NULL);
+      if (stream == NULL) {
+        LOGE("StartAquisition: stream rebuild failed -- no frames until reconnect");
+        return CameraLayer::NAK;
+      }
       for (int i = 0; i < STREAM_BUFFER_COUNT; i++)
         arv_stream_push_buffer(stream, arv_buffer_new(payloadSize, NULL));
+      _sig_new_buffer = g_signal_connect(stream, "new-buffer",
+                                         G_CALLBACK(s_STREAM_NEW_BUFFER_CB), this);
+      arv_stream_set_emit_signals(stream, TRUE);
     }
   }
   GError *err = NULL;
