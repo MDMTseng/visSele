@@ -23,19 +23,32 @@
 //
 //   - agree/disagree, the evidence the report_match_ts promotion rests on,
 //     needs both mechanisms running to exist at all.
-//   - the device's clock CALIBRATION currently finds its object by tid
-//     (CamClockSync::observe is reached via byTid), so with no tid the
-//     bootstrap has nothing to match against. Calibration would have to select
-//     "the one outstanding sync object" instead -- which it can, since the
-//     one-at-a-time guard makes that unambiguous by construction, but it is a
-//     firmware change and must land first.
+//   - the device's clock CALIBRATION used to find its object by tid. DONE
+//     2026-08-06: it now selects "the one outstanding sync object" (bySync),
+//     which the one-at-a-time guard in syncPulseService makes unambiguous by
+//     construction. tid still wins whenever it is present, so the paired build
+//     is byte-for-byte unaffected.
 //   - when the device's timestamp match finds nothing, tarP falls back to the
 //     tid. With this at 0 there is no fallback and the frame simply is not
 //     placed, which is the correct "stop rather than guess" behaviour but is a
 //     behaviour change.
 //
-// So: do not set this to 0 until the firmware calibrates without a tid, and
-// re-run the burst and real-part validation afterwards.
+// That second point is sharper than it looks, and turning the switch off is how
+// it was found. With no tid, byTs is the ONLY way to place a real part's frame,
+// and byTs needs a valid clock -- so any window in which the device deliberately
+// invalidates its own clock while a part can still report is a halt. RECAL was
+// exactly such a window, and it halted at accept=2 (`NOMATCH state=104 valid=0
+// rb_real=2`). Two firmware defects, both previously MASKED by the tid:
+//   1. calFireNow was gated on blockNewDetectedObject, so CAL/RECAL had to clear
+//      that flag to fire at all -- which also let real parts register for the
+//      whole phase, contradicting the comment right above it.
+//   2. RECAL dropped the estimate on entry, orphaning parts already in flight.
+//      It is now deferred until the pipeline is genuinely empty.
+// Both are fixed and both builds re-validated. The lesson generalises: the tid
+// is load-bearing in more places than a grep for `byTid` shows.
+//
+// Remaining before this can default to 0: real-part validation. Everything
+// above is phantom-pulse traffic.
 // ---------------------------------------------------------------------------
 #ifndef PERIF_CORE_PAIRING
 #define PERIF_CORE_PAIRING 1

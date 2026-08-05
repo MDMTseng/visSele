@@ -922,6 +922,13 @@ static void calibrationBegin(bool full);
 static void calibrationCleanup();
 static void spinupBegin();
 static bool CAL_GATE_PREV = false;   // GATE_DISABLED before calibration shut it
+// RECAL has been asked for, but the old estimate is still in use until the
+// pipeline empties. See calibrationBegin.
+static bool CAL_RESET_PENDING = false;
+// Recals abandoned because the machine never emptied within the phase timeout.
+// Harmless -- the previous offset is untouched -- but a rising count means the
+// top-up is not actually happening.
+static uint32_t CAL_RESET_SKIPPED = 0;
 
 void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 {
@@ -1001,7 +1008,12 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         // Objects must flow through the pipeline (the phantoms are objects),
         // but nothing real may enter: calibrationBegin shuts the gate and holds
         // the feeder off, so the only things in flight are our own pulses.
-        blockNewDetectedObject=false;
+        //
+        // This used to CLEAR the block, which said the opposite of the comment
+        // -- it was the only way calFireNow would fire, since that checked the
+        // same flag. calFireNow no longer does, so the sensor can stay blocked
+        // for real.
+        blockNewDetectedObject=true;
         calibrationBegin(true);
       }
       else if (i == 1)
@@ -1036,7 +1048,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       // reopen.
       if (i == 0)//enter
       {
-        blockNewDetectedObject=false;
+        blockNewDetectedObject=true;   // sensor shut; calFireNow is unaffected
         calibrationBegin(false);
       }
       else if (i == 1)
@@ -2184,7 +2196,25 @@ static void calibrationBegin(bool full)
   // registering them, i.e. unsorted, and that is not worth leaving to inference.
   FEEDER_ON = false;
   io_drive(FEEDER_PIN, IOI_FEEDER, false);
-  if(full) CAM_SYNC.reset(); else CAM_SYNC.resetEstimate();
+  // A recal must not blind the machine while parts are still in it.
+  //
+  // Dropping the estimate here is what broke the tid-free build: with no tid,
+  // byTs is the ONLY way to place a real part's frame, and byTs needs a valid
+  // clock. Any part already in flight when RECAL began then came back
+  // unplaceable and halted the machine on INSP_RESULT_MATCHES_NO_OBJECT --
+  // caught as `NOMATCH state=104 valid=0 rb_real=2`. The entry guard checks
+  // RBuf, but registration can complete just after it passes, so "empty at
+  // entry" is not the same as "empty".
+  //
+  // The old offset stays authoritative until the pipeline is genuinely clear;
+  // syncPulseService performs the reset at the moment it is, immediately before
+  // the first pulse. Waiting costs nothing -- it will not fire while a real
+  // part is in RBuf anyway.
+  //
+  // CAL is different and resets outright: it runs before anything is moving,
+  // and its whole purpose is that no offset exists yet.
+  if(full){ CAM_SYNC.reset(); CAL_RESET_PENDING=false; }
+  else     CAL_RESET_PENDING=true;
   CAL_STARTED_MS = (int64_t)(esp_timer_get_time()/1000);
   CAL_PULSE_MS = 0;
   CAL_DEADLINE_MS = CAL_STARTED_MS + CAL_TIMEOUT_MS;
@@ -2239,7 +2269,15 @@ static void calibrationEnd(bool ok)
 // syncPulseService rather than by the SWITCH stage it will never reach.
 static int calFireNow()
 {
-  if(blockNewDetectedObject) return -1;
+  // Deliberately NOT gated on blockNewDetectedObject.
+  //
+  // That flag means "do not let the SENSOR put parts into the pipeline". This
+  // is not the sensor -- calibration is asking for a pulse on purpose, and it
+  // is the only caller. Honouring the flag here forced CAL and RECAL to clear
+  // it just to be able to fire, which also opened the gate to real parts for
+  // the whole phase: measured as two parts registering DURING a recal, whose
+  // reports then had no valid clock to be placed by. The flag now stays set
+  // through calibration and only the sensor path is blocked.
   pipeLineInfo *head = RBuf.getHead();
   if(head==NULL) return -1;
 
@@ -2302,6 +2340,52 @@ static int calFireNow()
   return 0;
 }
 
+// Calibration pulses whose object was retired before the report came back.
+//
+// A calibration pulse can be in flight when CAL ends, and its object is retired
+// on the way out -- so the report arrives with nothing left to match. While the
+// core paired frames this never surfaced: the core recognised those frames as
+// its own sync pulses and never sent them (PairResult PAIRED_SYNC). With
+// PERIF_CORE_PAIRING 0 the core reports EVERY frame, so the late one arrives
+// here, matches nothing, and faults the machine with
+// INSP_RESULT_MATCHES_NO_OBJECT -- observed as accept=3 judged=0 state=112.
+//
+// The fault itself is right and must stay: a report that matches no object
+// normally means the pairing has desynced, and guessing is what this whole
+// design refuses to do. So rather than softening it, remember the few pulses
+// that were retired with an answer still owed and recognise their frames
+// exactly. Anything that is NOT one of them still stops the machine.
+//
+// A stale tombstone cannot swallow a real part's frame: cam_us is monotonic
+// esp_timer time, so a retired pulse is always OLDER than any later frame's
+// expected time by far more than the window -- and calibration only ever runs
+// with the gate shut and the pipeline drained, so no real part shares its
+// moment in the first place.
+static const int SYNC_TOMB_N = 4;
+static uint64_t  SYNC_TOMB_US[SYNC_TOMB_N] = {0};
+static uint8_t   SYNC_TOMB_W = 0;
+static uint32_t  SYNC_TOMB_HITS = 0;
+
+static void syncTombstone(uint64_t cam_us)
+{
+  if(cam_us==0) return;
+  SYNC_TOMB_US[SYNC_TOMB_W] = cam_us;
+  SYNC_TOMB_W = (uint8_t)((SYNC_TOMB_W+1)%SYNC_TOMB_N);
+}
+
+static bool syncTombMatches(uint64_t cam_ts)
+{
+  if(cam_ts==0 || !CAM_SYNC.valid) return false;
+  const int64_t want = CAM_SYNC.expectedCamUs(cam_ts);
+  for(int i=0;i<SYNC_TOMB_N;i++)
+  {
+    if(SYNC_TOMB_US[i]==0) continue;
+    int64_t d = (int64_t)SYNC_TOMB_US[i] - want; if(d<0) d=-d;
+    if(d<=CamClockSync::TOL_US) return true;
+  }
+  return false;
+}
+
 // Leaving CAL or RECAL, by any route -- converged, timed out, or the operator
 // left. Restoring the gate here rather than in calibrationEnd means a path that
 // skips that call cannot leave the machine gated shut.
@@ -2309,6 +2393,9 @@ static void calibrationCleanup()
 {
   blockNewDetectedObject=true;
   GATE_DISABLED=CAL_GATE_PREV;
+  // Leaving by any route drops a pending recal reset. The old estimate is
+  // still valid and still correct; it simply did not get topped up.
+  CAL_RESET_PENDING=false;
 
   // Retire every calibration object, answered or not.
   //
@@ -2323,6 +2410,9 @@ static void calibrationCleanup()
   {
     pipeLineInfo *p=RBuf.getTail(k);
     if(p==NULL) break;
+    // Only the ones still owed an answer leave a tombstone -- an already
+    // answered pulse has no report left to arrive.
+    if(p->sync && p->insp_status==insp_status_UNSET) syncTombstone(p->cam_us);
     if(p->sync) p->insp_status=insp_status_DEL;
   }
 }
@@ -2429,8 +2519,28 @@ static void syncPulseService()
 
   const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
 
-  if(CAM_SYNC.valid){ calibrationEnd(true); return; }
-  if(now_ms > CAL_DEADLINE_MS){ calibrationEnd(false); return; }
+  // While the reset is still pending the old estimate is deliberately still
+  // valid, so this test would declare the recal finished before it had taken a
+  // single sample.
+  if(!CAL_RESET_PENDING && CAM_SYNC.valid){ calibrationEnd(true); return; }
+  if(now_ms > CAL_DEADLINE_MS)
+  {
+    if(CAL_RESET_PENDING)
+    {
+      // The machine never emptied, so the recal never started -- and because it
+      // never started, the previous offset is intact and still authoritative.
+      // Nothing was lost, so this is not a failure: give up on the top-up and
+      // carry on rather than stopping a working machine over a refinement.
+      CAL_RESET_PENDING=false;
+      CAL_RESET_SKIPPED++;
+      djrl.dbg_printf("CAMSYNC RECAL skipped -- pipeline never emptied; "
+                      "keeping previous offset");
+      calibrationEnd(true);
+      return;
+    }
+    calibrationEnd(false);
+    return;
+  }
 
   // The gate is shut, so there is no real work to collide with and no
   // REAL_ACCEPT_MS guard to get wrong. 300ms is simply how fast the samples can
@@ -2478,6 +2588,17 @@ static void syncPulseService()
     if(!p->sync) return;
   }
 
+  // Past the drain guard: no real part is left in RBuf, and a part that has
+  // left RBuf has already been answered -- so no real report is still owed.
+  // This is the first moment at which dropping the estimate cannot orphan
+  // anything, which is why the recal reset happens here rather than at entry.
+  if(CAL_RESET_PENDING)
+  {
+    CAM_SYNC.resetEstimate();
+    CAL_RESET_PENDING=false;
+    djrl.dbg_printf("CAMSYNC RECAL: pipeline clear, re-measuring");
+  }
+
   bool outstanding=false;
   for(int i=0;i<RBuf.size();i++)
   {
@@ -2495,7 +2616,12 @@ static void syncPulseService()
       pipeLineInfo *p=RBuf.getTail(i);
       if(p==NULL) break;
       if(p->sync && p->insp_status==insp_status_UNSET)
+      {
+        // It may yet come back late -- that is the whole reason we gave up on
+        // it rather than knowing it was lost.
+        syncTombstone(p->cam_us);
         p->insp_status=insp_status_DEL;
+      }
     }
     CAL_PULSE_LOST++;
     djrl.dbg_printf("CAMSYNC CAL pulse unanswered after %dms -- retrying",
@@ -3133,6 +3259,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jS["recal_idle_ms"]=CAM_RECAL_IDLE_MS;
       jS["recals"]=CAM_RECALS;
       jS["cal_pulse_lost"]=CAL_PULSE_LOST;
+      // Calibration frames answered after their object was retired. Expect a
+      // small number per calibration; a large or growing one means pulses are
+      // routinely outliving the phase, which is worth looking at.
+      jS["sync_late"]=SYNC_TOMB_HITS;
+      jS["recal_skipped"]=CAL_RESET_SKIPPED;
       jS["gap_us"]=(double)CAM_SYNC.last_gap_us;
       // resid/gap. Tens of us/s is two crystals; a sudden jump is not.
       jS["drift_us_per_s"]=CAM_SYNC.last_gap_us
@@ -3187,6 +3318,22 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     pipeLineInfo *nearest=NULL;
     int64_t nearestDelta=0;
     int64_t bestDelta=0;
+    // The one outstanding calibration pulse -- the tid-free way to identify a
+    // sync sample.
+    //
+    // syncPulseService fires strictly one at a time and refuses to fire at all
+    // while any non-sync object is in RBuf, so during CAL/RECAL "the sync object
+    // still awaiting an answer" is unique by construction. That is what makes it
+    // a valid substitute for the tid lookup, and it is the only identification
+    // that survives PERIF_CORE_PAIRING 0 (see PerifTriggerPairing.hpp) -- with
+    // the core no longer assigning tids, byTid is permanently NULL and the
+    // bootstrap would otherwise have nothing to match against.
+    //
+    // Counted rather than taken on first hit: if the invariant is ever broken
+    // the honest answer is "I cannot tell", not "here, have the oldest one". A
+    // wrong sample here poisons the offset that everything downstream trusts.
+    pipeLineInfo *bySync=NULL;
+    int syncOutstanding=0;
     if(cat!=-1)
     {
       int64_t want = CAM_SYNC.valid ? CAM_SYNC.expectedCamUs(cam_ts) : 0;
@@ -3195,6 +3342,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         pipeLineInfo *pipe = RBuf.getTail(i);
         if (pipe == NULL) break;
         if(tid!=-1 && pipe->tid==(uint32_t)tid) byTid=pipe;
+        if(pipe->sync && pipe->insp_status==insp_status_UNSET)
+        { bySync=pipe; syncOutstanding++; }
         if(cam_ts!=0 && CAM_SYNC.valid && pipe->cam_us!=0)
         {
           int64_t d = (int64_t)pipe->cam_us - want; if(d<0) d=-d;
@@ -3203,6 +3352,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       }
       if(nearest!=NULL && nearestDelta<=CamClockSync::TOL_US)
       { byTs=nearest; bestDelta=nearestDelta; }
+      if(syncOutstanding!=1) bySync=NULL;
     }
 
     // --- cross-check, and learn ------------------------------------------
@@ -3216,12 +3366,27 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // ONLY IF its pairing was right, which is the thing the offset is for --
     // so learning from them is circular and self-poisoning. Sync pulses are
     // fired with nothing else outstanding, so their pairing is certain.
-    if(byTid!=NULL && cam_ts!=0 && byTid->sync) CAM_SYNC.observe(cam_ts, byTid->cam_us);
+    //
+    // tid still wins while it is there, so this change cannot alter today's
+    // behaviour: with a tid the teacher is byTid exactly as before, and bySync
+    // is only consulted when the tid is absent. Note byTid must still be a sync
+    // object to teach -- an ordinary part carrying a tid teaches nothing, which
+    // is the circularity guard, not a lookup detail.
+    pipeLineInfo *teach = (byTid!=NULL) ? (byTid->sync ? byTid : NULL) : bySync;
+    if(teach!=NULL && cam_ts!=0) CAM_SYNC.observe(cam_ts, teach->cam_us);
 
     // Once the offset exists, every report maintains it: nearest object inside
     // the window re-measures it, outside the window twice running stops the
     // machine.
-    if(cam_ts!=0 && cat!=-1 && nearest!=NULL)
+    // A frame belonging to a retired calibration pulse must not reach the gate
+    // either. Its nearest surviving object is whatever real part happens to be
+    // in the machine, which is arbitrarily far away -- that counts as a miss,
+    // and two in a row halt on CAM_CLOCK_LOST. The frame is accounted for; it
+    // is simply not evidence about the clock.
+    const bool retired_sync = (byTid==NULL && byTs==NULL && bySync==NULL &&
+                               syncTombMatches(cam_ts));
+
+    if(cam_ts!=0 && cat!=-1 && nearest!=NULL && !retired_sync)
       CAM_SYNC.gate(cam_ts, nearest->cam_us, nearestDelta);
 
     if(CAM_SYNC.fault_pending)
@@ -3250,7 +3415,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
     // tid wins while it is present. REPORT_MATCH_TS promotes the timestamp to
     // authoritative once the agreement count says it has earned it.
-    tarP = (REPORT_MATCH_TS && byTs!=NULL) ? byTs : (byTid!=NULL ? byTid : byTs);
+    // bySync is the last resort, and it only ever fires during CAL/RECAL: in
+    // READY no sync pulse is outstanding, so bySync is NULL and this reduces to
+    // the previous expression exactly. It matters because calibration runs
+    // BEFORE the clock exists -- byTs is necessarily NULL there -- so without
+    // it a tid-free calibration report would match no object at all and raise
+    // INSP_RESULT_MATCHES_NO_OBJECT on every single pulse.
+    tarP = (REPORT_MATCH_TS && byTs!=NULL) ? byTs
+         : (byTid!=NULL ? byTid : (byTs!=NULL ? byTs : bySync));
 
     // --- sweep everything older than the chosen object --------------------
     if(tarP!=NULL)
@@ -3282,8 +3454,28 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       tarP->insp_status=cat;
       rspAck=true;
     }
+    else if(retired_sync)
+    {
+      // Known-harmless: our own calibration pulse, answered after its object
+      // was retired. Nothing to judge and nothing to learn -- just do not
+      // pretend the pairing broke.
+      SYNC_TOMB_HITS++;
+      rspAck=true;
+    }
     else
     {
+      int rb_real=0, rb_sync=0;
+      for(int i=0;i<RBuf.size();i++)
+      {
+        pipeLineInfo *p=RBuf.getTail(i);
+        if(p==NULL) break;
+        if(p->sync) rb_sync++; else rb_real++;
+      }
+      djrl.dbg_printf("NOMATCH state=%d tid=%d cam_ts=%llu valid=%d "
+                      "nearest=%d nd=%lld rb_real=%d rb_sync=%d syncOut=%d",
+                      (int)sysinfo.state, tid, (unsigned long long)cam_ts,
+                      (int)CAM_SYNC.valid, nearest!=NULL?1:0,
+                      (long long)nearestDelta, rb_real, rb_sync, syncOutstanding);
       SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::INSP_RESULT_MATCHES_NO_OBJECT);
       rspAck=false;
     }

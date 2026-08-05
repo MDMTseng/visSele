@@ -5378,7 +5378,23 @@ void PerifSendThread(bool *terminationflag)
           int ret;
           if (pc->machine_type == PERIF_UINSP_ESP32)
           {
-            if (msg.tid >= 0)
+            // A missing tid means two opposite things depending on who is
+            // pairing, so the gate cannot be a bare tid test.
+            //
+            // At PERIF_CORE_PAIRING 1 the core named the object, so tid < 0 is
+            // a failure to place the frame -- refusing to send is right.
+            // At 0 the core deliberately names nothing and EVERY report goes
+            // out with tid -1, carrying cam_ts for the device to place. Reusing
+            // the failure branch there would silence the link completely:
+            // no reports at all, so no verdicts, and the device's own clock
+            // calibration -- which is fed by these very reports -- never even
+            // bootstraps.
+#if PERIF_CORE_PAIRING
+            const bool have_identity = (msg.tid >= 0);
+#else
+            const bool have_identity = true;   // tid stays -1 on the wire, by design
+#endif
+            if (have_identity)
             {
               int cat = perif_status_to_cat(pc, msg.uInspStatus);
               ret = sendReportTo_perifCH(pc, msg.tid, cat, msg.cam_ts_us);
