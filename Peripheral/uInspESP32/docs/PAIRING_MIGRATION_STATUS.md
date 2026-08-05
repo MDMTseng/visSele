@@ -31,7 +31,7 @@ actual handover, and it is not done — see "Tomorrow, in order".
 | Throughput at 35/s | 14–18 parts/s accepted, ~27% deferred by clustering |
 | Parts on plate | ~45 (measured: 32.4 detections/rev × 1.40 parts/detection) |
 | Plate speed | 15000 is the throughput optimum; slower is monotonically worse |
-| Persisted to NVS | gate 35/s, `unanswered_policy` 1, `unanswered_stop_after` 2 |
+| Persisted to NVS | gate **18/s** (deliberately conservative for inspection work; the measured ceiling is 35-36/s), `unanswered_policy` 1, `unanswered_stop_after` 2 |
 
 Physical: parts jam / stop circulating after long unattended runs. Normal
 operation (vibratory feeder in, ejected at the last station) will not do this;
@@ -233,14 +233,22 @@ induced loss", which is the one case still unproven.
    reaches the device only as `cam_ts` inside a report, so reports are the only
    possible source for the second clock in the pair.
 
-5. **Decide on promotion from the load sweep**, not from a single trial. With a
-   steady device-generated load and the estimator fixed, the useful evidence is
-   the shape of the degradation across rates bracketing the 35-36Hz ceiling
-   (see `tools/soak_pairing.py`). `report_match_ts` should go true only if
-   `disagree` stays at zero through the design load and rises gracefully — not
-   because one run looked good.
-6. **Then promote**: `report_match_ts: true`.
-7. **Then delete from the host** — `PerifTriggerPairing.hpp`,
+5. ~~Decide on promotion from the load sweep.~~ **The evidence is in** (see the
+   sync-pulse section). `disagree` is now 0 at 35Hz *and* at 41Hz, which is over
+   the camera ceiling with a third of the frames genuinely lost. `rejected` and
+   `rebuilds` are both 0 — bad pairs no longer reach the estimator at all.
+
+   `report_match_ts` has NOT been flipped. What is still missing is duration:
+   every trial above is ~500 objects over ~15s. Promotion should follow a long
+   run on real parts at production settings, not a rig.
+
+6. **Push it to the limit — deliberately, at night.** The rig can now apply a
+   steady, known load with no parts on the plate, so the overload regime is
+   worth exploring properly rather than in passing. Deferred: the machine is
+   needed for inspection work, and the gate is set to 18/s so the condition
+   cannot arise in the meantime.
+7. **Then promote**: `report_match_ts: true`.
+8. **Then delete from the host** — `PerifTriggerPairing.hpp`,
    `tap_trigger_info`, `keep_clock_warm`, the trigger wait, the early dump.
    ~450 lines that exist only to reconstruct what the device already knows.
 
