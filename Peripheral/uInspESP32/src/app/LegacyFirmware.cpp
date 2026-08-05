@@ -818,6 +818,7 @@ volatile GEN_ERROR_CODE PENDING_ISR_ERROR=GEN_ERROR_CODE::NOP;
 // The calibration phase is documented where it is implemented, far below; the
 // state machine that drives it lives up here.
 static void calibrationBegin();
+static void spinupBegin();
 static bool CAL_GATE_PREV = false;   // GATE_DISABLED before calibration shut it
 
 void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
@@ -903,9 +904,10 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       }
       else if (i == 1)
       {
-        // The plate has to turn: a phantom pulse is scheduled at a future step
-        // count, so a stationary plate would never reach it.
-        PLATE_FREQ_TARGET=PLATE_FREQ_SETPOINT;
+        // Held still. calFireNow drives the camera directly, so calibration no
+        // longer needs the plate turning -- and measuring a clock is no reason
+        // to move a machine.
+        PLATE_FREQ_TARGET=0;
       } //loop
       else
       {
@@ -914,6 +916,53 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         // that skips it cannot leave the machine gated shut.
         blockNewDetectedObject=true;
         GATE_DISABLED=CAL_GATE_PREV;
+
+        // Retire every calibration object, answered or not.
+        //
+        // calFireNow deliberately registers no stage tasks, so SWITCH -- the
+        // only thing that ever sets insp_status_DEL -- will never reach these.
+        // The in-phase sweep only runs while this state does, so the last pulse
+        // (still unanswered at handover) would sit in RBuf forever, and one
+        // slot per calibration is a leak: measured as rej_busy 518 and twelve
+        // auto-rate backoffs, dropping the effective gate from 83Hz to 20Hz.
+        // Calibration is over; these have no part to sort and nowhere to go.
+        for(int k=0;k<RBuf.size();k++)
+        {
+          pipeLineInfo *p=RBuf.getTail(k);
+          if(p==NULL) break;
+          if(p->sync) p->insp_status=insp_status_DEL;
+        }
+      } //exit
+      break;
+    }
+
+    case SYS_STATE::INSPECTION_MODE_SPINUP:
+    {
+      // Reaching speed is its own phase.
+      //
+      // The gate has always required SYS_FREQ_STABLE, so parts could never be
+      // registered while the plate was still ramping. That protection was real
+      // but invisible: from outside, a machine accelerating with the feeder off
+      // and a machine that had simply stopped detecting looked identical. As a
+      // state it is reportable, and the sequence IDLE -> CAL -> SPINUP -> READY
+      // says plainly what the machine is doing before it starts judging parts.
+      // The decision itself is in spinupService(), beside syncPulseService():
+      // both need djrl and SYS_STATE_Transfer, which are defined below this
+      // state machine.
+      if (i == 0)//enter
+      {
+        blockNewDetectedObject=true;
+        // Start the ramp on entry rather than waiting for the first loop pass,
+        // so the state's own service call cannot observe a pre-ramp plate.
+        PLATE_FREQ_TARGET=PLATE_FREQ_SETPOINT;
+        spinupBegin();
+      }
+      else if (i == 1)
+      {
+        PLATE_FREQ_TARGET=PLATE_FREQ_SETPOINT;
+      } //loop
+      else
+      {
       } //exit
       break;
     }
@@ -1977,6 +2026,19 @@ static uint32_t SYNC_EMITTED = 0;
 // not to READY -- if the clock is why the machine stopped, resuming on the same
 // stale offset is the one thing that must not happen.
 static int64_t  CAL_DEADLINE_MS = 0;
+// Calibration objects get their own tid space so they are never confused with
+// gate-registered parts, in a log or in the core.
+//
+// 0x40000000 and not 0xC0000000: the report handler parses tid as a signed int
+// (`doc["tid"].is<int>()`), so anything above INT32_MAX fails that test, comes
+// back as -1, matches no object and faults the machine with
+// INSP_RESULT_MATCHES_NO_OBJECT. Measured exactly that on the first run.
+static uint32_t CAL_TID_NEXT = 0x40000001;
+// The ramp is deterministic arithmetic and always converges, so this only fires
+// if the machine is not doing what it was told -- but a silent hang between
+// calibration and running is exactly the kind of stall nobody would diagnose.
+static int64_t  SPINUP_DEADLINE_MS = 0;
+static const int64_t SPINUP_TIMEOUT_MS = 30000;
 static uint32_t CAL_RUNS = 0, CAL_FAILS = 0;
 static int64_t  CAL_STARTED_MS = 0;
 static uint32_t CAL_LAST_MS_TAKEN = 0;
@@ -2029,6 +2091,111 @@ static void calibrationEnd(bool ok)
   }
 }
 
+// Fire the camera now, with an object behind it, so calibration needs nothing
+// to be moving.
+//
+// The ordinary CAM trigger lives inside a stage driven by plate step count: a
+// phantom pulse is scheduled at a future step, so a stationary plate never
+// reaches it. That made calibration depend on spinning the machine up first,
+// which is backwards -- the offset should exist before anything moves, and
+// spinning a plate to measure a clock is a physical operation performed for a
+// purely electrical reason.
+//
+// trig_cam_burst already fires the camera directly, but it deliberately creates
+// no pipeline object, so the core reports nothing and there is no cam_ts to
+// learn from. This does both: an object the core can answer, and the same pin
+// sequence trig_cam_burst uses.
+//
+// Deliberately does NOT call ActRegister_pipeLineInfo. Those tasks are
+// scheduled at step offsets and would never fire on a stationary plate; the
+// camera is driven here instead, and the object is retired by the sweep in
+// syncPulseService rather than by the SWITCH stage it will never reach.
+static int calFireNow()
+{
+  if(blockNewDetectedObject) return -1;
+  pipeLineInfo *head = RBuf.getHead();
+  if(head==NULL) return -1;
+
+  head->w            = 0;
+  head->gate_pulse   = SYS_STEP_COUNT;
+  head->insp_status  = insp_status_UNSET;
+  head->tid          = CAL_TID_NEXT++;
+  head->trig_us      = (uint32_t)esp_timer_get_time();
+  head->cam_us       = 0;
+  head->stage        = 0;
+  head->sync         = 1;              // only sync objects teach the offset
+  RBuf.pushHead();
+
+  // Same order and timing as trig_cam_burst's emit_at: camera line first, then
+  // the light it gates, 100us each.
+  //
+  // The stamp is taken here, at the start, to match how the CAM1 stage stamps
+  // an ordinary part -- and matching it is what matters, because the offset
+  // measured during calibration is only transferable to running if both use the
+  // same convention.
+  //
+  // NOTE: on this rig the camera trigger is currently tied to the light A line,
+  // so the physically correct instant is the L1A rising edge, not this one.
+  // Moving the stamp there is a two-line change and it is WRONG TODAY: measured
+  // 2026-08-05, same burst seed, it took accept 618 -> 21 and faulted with
+  // CAM_CLOCK_LOST on misses of ~9000us. That is ~90x the 100us the stamp
+  // actually moved, so something else is coupled to this and is not yet
+  // understood. Do not "fix" this without reproducing that first.
+  const int64_t rise = esp_timer_get_time();
+  io_drive(PIN_O_CAM1, IOI_CAM1, true);
+  delayMicroseconds(100);
+  io_drive(PIN_O_L1A,  IOI_L1A,  true);
+  delayMicroseconds(100);
+  io_drive(PIN_O_L1A,  IOI_L1A,  false);
+  io_drive(PIN_O_CAM1, IOI_CAM1, false);
+  head->cam_us = (uint64_t)rise;
+
+  // Announce it, exactly as the CAM stage does -- this is what lets the core
+  // answer with a tid, and therefore what makes the frame attributable.
+  ISRTrigInfo *commInfo = ISRTrigQ.getHead();
+  if(commInfo)
+  {
+    commInfo->trig_time_us = rise;
+    commInfo->btrig_idx    = 1;
+    commInfo->trig_id      = head->tid;
+    commInfo->gate_pulse   = head->gate_pulse;
+    ISRTrigQ.pushHead();
+  }
+  SYNC_EMITTED++;
+  return 0;
+}
+
+static void spinupBegin()
+{
+  SPINUP_DEADLINE_MS =
+    (int64_t)(esp_timer_get_time()/1000) + SPINUP_TIMEOUT_MS;
+}
+
+static void spinupService()
+{
+  if(sysinfo.state != SYS_STATE::INSPECTION_MODE_SPINUP) return;
+  // Compared against the setpoint explicitly, not just SYS_FREQ_STABLE.
+  //
+  // That flag means "current == target", and calibration now runs with the
+  // plate deliberately held at zero -- where current and target are both 0 and
+  // the flag is therefore TRUE. Entering spin-up would see the previous
+  // phase's flag before the ramp had even started and declare the plate up to
+  // speed at 0 Hz, which is exactly what it did on the first run.
+  if(SYS_FREQ_STABLE && PLATE_FREQ_CURRENT == PLATE_FREQ_SETPOINT)
+  {
+    djrl.dbg_printf("PLATE spinup done (freq=%d)",(int)PLATE_FREQ_CURRENT);
+    SYS_STATE_Transfer(SYS_STATE_ACT::SPIN_READY);
+    return;
+  }
+  if((int64_t)(esp_timer_get_time()/1000) > SPINUP_DEADLINE_MS)
+  {
+    djrl.dbg_printf("PLATE spinup TIMEOUT (cur=%d target=%d)",
+                    (int)PLATE_FREQ_CURRENT,(int)PLATE_FREQ_TARGET);
+    SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,
+                       (int)GEN_ERROR_CODE::PLATE_SPINUP_TIMEOUT);
+  }
+}
+
 static void syncPulseService()
 {
   // Phantom pulses exist only to calibrate. Once READY, the offset is
@@ -2046,9 +2213,24 @@ static void syncPulseService()
   // be collected.
   if(SYNC_LAST_MS!=0 && (now_ms-SYNC_LAST_MS) < 300) return;
 
-  // Still checked, but now it is an assertion rather than a race: with the gate
-  // shut the only objects in flight are our own previous phantoms, so this just
-  // paces us to one at a time.
+  // Retire answered calibration objects.
+  //
+  // SWITCH is the only stage that ever sets insp_status_DEL, and SWITCH is
+  // driven by plate steps -- so on a stationary plate nothing would retire
+  // these and they would fill RBuf and stall the very phase they belong to. A
+  // calibration object has no selector to reach and no part to sort: once it
+  // has been answered it is finished.
+  for(int i=0;i<RBuf.size();i++)
+  {
+    pipeLineInfo *p=RBuf.getTail(i);
+    if(p==NULL) break;
+    if(p->sync && p->insp_status!=insp_status_UNSET)
+      p->insp_status=insp_status_DEL;
+  }
+
+  // One at a time, so the returning frame has exactly one candidate by
+  // construction and the sample cannot need the estimate it is meant to
+  // produce.
   for(int i=0;i<RBuf.size();i++)
   {
     pipeLineInfo *p=RBuf.getTail(i);
@@ -2056,12 +2238,7 @@ static void syncPulseService()
     if(p->insp_status==insp_status_UNSET) return;
   }
 
-  SYNC_MARK_NEXT = 1;
-  uint32_t tatPulse = SYS_STEP_COUNT - STAGE_PULSE_OFFSET.L1A_on + _PLAT_DIST_step(3000);
-  if(newPulseEvent(tatPulse-10, tatPulse+10, tatPulse, 20) != 0)
-    SYNC_MARK_NEXT = 0;            // refused (gate, busy) -- try again later
-  else
-    SYNC_EMITTED++;
+  calFireNow();
   SYNC_LAST_MS = now_ms;
 }
 
@@ -3702,6 +3879,7 @@ void firmwareLoop()
 {
   esp_task_wdt_reset();
   syncPulseService();
+  spinupService();
   phantomTrainService();
   // Drop a manual light hold when it expires, or the moment the machine leaves
   // IDLE -- entering inspection hands these pins back to the stage tasks.

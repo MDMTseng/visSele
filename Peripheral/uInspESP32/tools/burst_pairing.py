@@ -71,14 +71,14 @@ def stat(s, listen=2.5):
     return None
 
 
-def run(seconds, pairing, seed, window_us, hz_lo_f, hz_hi_f):
+def run(seconds, pairing, seed, window_us, hz_lo_f, hz_hi_f, min_sep_us):
     rng = random.Random(seed)
     s = sock()
     c = dict(CONN); c["pairing"] = pairing
     send(s, "!pd " + json.dumps(c), gap=1.0)
     time.sleep(4.0)
 
-    setup = {"type": "set_setup", "min_detect_sep_us": 12000,
+    setup = {"type": "set_setup", "min_detect_sep_us": min_sep_us,
              "unanswered_stop_after": 100000}
     if window_us:
         setup["cam_match_window_us"] = window_us
@@ -144,14 +144,31 @@ if __name__ == '__main__':
     # Fractions of the camera ceiling to draw burst rates between. The
     # default straddles it; "--hz-hi 0.7" gives a no-loss control run that
     # still has the gaps the clock needs to bootstrap.
+    # The gate's minimum separation, and the single most important knob here.
+    #
+    # Default 33000us (30Hz) keeps the GATE below the camera's ~35Hz ceiling, so
+    # every accepted object can actually be photographed and the run measures
+    # pairing. Note the burst RATES still straddle the ceiling -- the gate is
+    # what refuses the excess, which is the real machine's behaviour too.
+    #
+    # Lowering it to 12000us (83Hz) lets the injector drive the camera far past
+    # what it can service, and then this stops being a pairing test: frames come
+    # back with multi-millisecond timing error and the machine correctly halts
+    # on CAM_CLOCK_LOST. Measured 2026-08-05, same seed:
+    #   33000us -> accept 816, judged 816, miss_max 0,     clean
+    #   12000us -> accept  37, judged  14, miss_max 9089,  halt
+    # Both are correct. Use the low value to exercise the halt path on purpose,
+    # not to judge the pairing.
+    ap.add_argument("--min-sep-us", type=int, default=33000)
     ap.add_argument("--hz-lo", type=float, default=0.6)
     ap.add_argument("--hz-hi", type=float, default=2.0)
     a = ap.parse_args()
     seed = a.seed if a.seed is not None else random.randrange(1 << 30)
 
-    print("burst trial: %ss  pairing=%s  seed=%d" % (a.seconds, a.pairing, seed))
+    print("burst trial: %ss  pairing=%s  seed=%d  min_sep=%dus (%.0f Hz)"
+          % (a.seconds, a.pairing, seed, a.min_sep_us, 1e6/a.min_sep_us))
     j, cycles, injected, lo, hi = run(a.seconds, a.pairing, seed, a.window_us,
-                                      a.hz_lo, a.hz_hi)
+                                      a.hz_lo, a.hz_hi, a.min_sep_us)
     if not j:
         print("  NO STAT"); raise SystemExit(1)
 

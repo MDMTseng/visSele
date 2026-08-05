@@ -30,6 +30,7 @@ enum class PulseTimeSyncInfo_State
   MACROX(     INSPECTION_MODE_TEST , 140,0) \
   MACROX(     INSPECTION_MODE_READY, 101,0) \
   MACROX(       INSPECTION_MODE_CAL, 102,0) \
+  MACROX(    INSPECTION_MODE_SPINUP, 103,0) \
   MACROX(     INSPECTION_MODE_ERROR, 112,0) \
   MACROX(     INSPECTION_MODE_FATAL, 113,0) \
   MACROX(                      IDLE, 100,0) \
@@ -43,6 +44,7 @@ enum class PulseTimeSyncInfo_State
   MACROX(              EXIT_INSPECTION_MODE, 105,0) \
   MACROX(                  INSPECTION_ERROR,   6,0) \
   MACROX(                          CAL_DONE,   8,0) \
+  MACROX(                        SPIN_READY,   9,0) \
   MACROX(           INSPECTION_ERROR_REDEEM, 106,0) \
   MACROX(                  INSPECTION_FATAL,   7,0) \
   MACROX(           INSPECTION_FATAL_REDEEM, 107,0)
@@ -66,7 +68,13 @@ SMM_GEN_ENUM(SYS_STATE_ACT,SMM_STATE_ACT_DECLARE)
     )\
   \
   MX1(S::INSPECTION_MODE_CAL,\
-    MX2(A::CAL_DONE,                        S::INSPECTION_MODE_READY)\
+    MX2(A::CAL_DONE,                        S::INSPECTION_MODE_SPINUP)\
+    MX2(A::EXIT_INSPECTION_MODE,            S::IDLE)\
+    MX2(A::INSPECTION_ERROR,                S::INSPECTION_MODE_ERROR)\
+    )\
+  \
+  MX1(S::INSPECTION_MODE_SPINUP,\
+    MX2(A::SPIN_READY,                      S::INSPECTION_MODE_READY)\
     MX2(A::EXIT_INSPECTION_MODE,            S::IDLE)\
     MX2(A::INSPECTION_ERROR,                S::INSPECTION_MODE_ERROR)\
     )\
@@ -114,6 +122,9 @@ enum class GEN_ERROR_CODE
   // The startup clock calibration did not converge, so the machine never had a
   // usable offset to begin with. Refusing to start is the point.
   CAM_CLOCK_CAL_FAILED = 14,
+  // The plate never reached its target speed. The ramp is deterministic
+  // arithmetic, so this means the machine is not doing what it was told.
+  PLATE_SPINUP_TIMEOUT = 15,
   SEL_ACT_LIMIT_REACHES=0xff,
 };
 
