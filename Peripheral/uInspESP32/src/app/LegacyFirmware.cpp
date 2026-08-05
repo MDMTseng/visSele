@@ -187,6 +187,10 @@ typedef struct pipeLineInfo{
   // against until its camera stage has already fired, which is what wrote this.
   // The write and the read are separated by the whole inspection round trip.
   uint64_t cam_us;
+  // Set on objects the device emitted purely to measure the clock offset, at a
+  // moment when nothing else was outstanding. Only these teach CamClockSync --
+  // see the sync-pulse note there.
+  uint8_t sync;
 }pipeLineInfo;
 
 // ---------------------------------------------------------------------------
@@ -911,6 +915,10 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli);
 
 uint32_t _prePulse=0;
 uint64_t _preTime=0;
+// Consumed by the next newPulseEvent: marks that object as a clock-sync pulse.
+// Only ever set by syncPulseService, which fires with the pipeline empty.
+static uint8_t SYNC_MARK_NEXT = 0;
+
 int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
   static uint32_t tid_counter=1;
@@ -946,6 +954,13 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   head->insp_status = insp_status_UNSET;
   head->tid=tid_counter;
   head->trig_us=(uint32_t)esp_timer_get_time();
+  // Clear the previous occupant's camera time. RBuf is a ring, so without this
+  // an object whose CAM stage has not fired yet still carries a plausible-
+  // looking cam_us from whoever held the slot last -- and the timestamp matcher
+  // only skips zeroes, so it would happily match a frame against it.
+  head->cam_us = 0;
+  head->sync = SYNC_MARK_NEXT;
+  SYNC_MARK_NEXT = 0;
   if (ActRegister_pipeLineInfo(head) != 0)
   { //register failed....
     GATE_REJ_BUSY++;
@@ -1729,6 +1744,60 @@ static inline void phantomEmitOne()
   newPulseEvent(tatPulse-10, tatPulse+10, tatPulse, 20);
 }
 
+// Clock-sync pulses: break the circularity in the offset estimate.
+//
+// Learning the offset from ordinary reports is circular. A (cam_ts, cam_us)
+// pair is only a valid sample if the pairing that produced it was correct, and
+// the pairing needs the offset. One bad pair moves the estimate, a moved
+// estimate produces more bad pairs, and the loop closes on itself -- which is
+// exactly what was measured before outlier rejection went in (-274ms in
+// positional mode). Rejection contains that, but it cannot break it: deciding
+// what is an outlier assumes the current estimate is roughly right, so a
+// genuinely wrong estimate has to time out and rebuild, sampling blind
+// throughout.
+//
+// A pulse fired when nothing else is outstanding has no such problem. There is
+// exactly one candidate object, so the frame that comes back belongs to it by
+// construction, with no clock knowledge required. Those samples are
+// unambiguous, so they -- and only they -- teach the estimate. Ordinary reports
+// consume the offset and never modify it, which means a lost frame or a
+// mispaired part can no longer corrupt the clock at all.
+//
+// This is the piece the migration was missing: moving the estimator onto the
+// device was done, but its samples still came from mixed production traffic.
+static int64_t  SYNC_LAST_MS = 0;
+static uint32_t SYNC_EMITTED = 0;
+
+static void syncPulseService()
+{
+  if(sysinfo.state != SYS_STATE::INSPECTION_MODE_READY) return;
+
+  // Cold, the estimate does not exist and the first real part would be paired
+  // on a guess -- so beat fast until it does. Warm, the only job is to outpace
+  // drift (~24-83us/s against a 5000us window), and 10s is ample.
+  const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
+  const int64_t due_ms = CAM_SYNC.valid ? 10000 : 300;
+  if(SYNC_LAST_MS!=0 && (now_ms-SYNC_LAST_MS) < due_ms) return;
+
+  // The whole point: nothing else may be outstanding, or the returning frame
+  // would have more than one candidate and the sample would need the very
+  // estimate it is meant to produce.
+  for(int i=0;i<RBuf.size();i++)
+  {
+    pipeLineInfo *p=RBuf.getTail(i);
+    if(p==NULL) break;
+    if(p->insp_status==insp_status_UNSET) return;
+  }
+
+  SYNC_MARK_NEXT = 1;
+  uint32_t tatPulse = SYS_STEP_COUNT - STAGE_PULSE_OFFSET.L1A_on + _PLAT_DIST_step(3000);
+  if(newPulseEvent(tatPulse-10, tatPulse+10, tatPulse, 20) != 0)
+    SYNC_MARK_NEXT = 0;            // refused (gate, busy) -- try again later
+  else
+    SYNC_EMITTED++;
+  SYNC_LAST_MS = now_ms;
+}
+
 static void phantomTrainService()
 {
   if(PH_TRAIN_LEFT<=0) return;
@@ -2298,6 +2367,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // rebuilds up = the offset genuinely moved and was re-learned.
       jS["rejected"]=CAM_SYNC.rejected;
       jS["rebuilds"]=CAM_SYNC.rebuilds;
+      // Unambiguous samples emitted. `learned` should now equal this: any
+      // excess means something other than a sync pulse taught the estimate.
+      jS["sync_pulses"]=SYNC_EMITTED;
     }
     {
       JsonObject jL=retdoc.createNestedObject("report_latency");
@@ -2354,7 +2426,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // the new mechanism has to agree with the old one, continuously and on real
     // production traffic, before anyone has to trust it. A disagreement is not
     // a tie to break -- it is a defect, reported as one.
-    if(byTid!=NULL && cam_ts!=0) CAM_SYNC.observe(cam_ts, byTid->cam_us);
+    // Only sync pulses teach. An ordinary report is a sample of the offset
+    // ONLY IF its pairing was right, which is the thing the offset is for --
+    // so learning from them is circular and self-poisoning. Sync pulses are
+    // fired with nothing else outstanding, so their pairing is certain.
+    if(byTid!=NULL && cam_ts!=0 && byTid->sync) CAM_SYNC.observe(cam_ts, byTid->cam_us);
     if(byTid!=NULL && byTs!=NULL)
     {
       if(byTid==byTs) CAM_SYNC.agree++;
@@ -3236,6 +3312,7 @@ static uint8_t recvBuf[20];
 void firmwareLoop()
 {
   esp_task_wdt_reset();
+  syncPulseService();
   phantomTrainService();
   // Drop a manual light hold when it expires, or the moment the machine leaves
   // IDLE -- entering inspection hands these pins back to the stage tasks.
