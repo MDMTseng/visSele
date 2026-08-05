@@ -352,6 +352,26 @@ struct CamClockSync
   //
   // ppb keeps this integer: 35us/s is 35000ppb, and slope_ppb * elapsed_us
   // stays inside int64 for any elapsed worth correcting.
+  //
+  // TODO (deferred 2026-08-05, do not enable this before doing it): offset and
+  // slope should be estimated JOINTLY with a learning rate, not separately as
+  // they are here -- an alpha-beta filter, where a residual corrects both terms
+  // at once with alpha on the offset and beta on the slope. Estimating them
+  // independently, as this does, means the slope is fitted to residuals that
+  // the offset has already partly absorbed, and the two can chase each other.
+  // The A/B that shipped with this showed the slope estimated correctly
+  // (-17.5us/s against -20.6 actual) while delta_max did not improve, which is
+  // consistent with exactly that.
+  //
+  // Watch the arithmetic too. inst_ppb = resid * 1e9 / gap, and resid has 1us
+  // granularity, so at the 1s minimum gap one count of resid noise is 1000ppb
+  // = 1us/s of slope noise; only the long gaps measure the slope well. Any
+  // joint estimator needs more headroom than int32 ppb before it is trusted.
+  //
+  // Also note the experiment that produced "no improvement" was run over burst
+  // gaps of tens of ms, where there is nothing for a slope to correct. The case
+  // this is FOR is a slow line -- parts minutes apart -- and it was never tested
+  // there. Retest with a known long idle before concluding anything.
   int32_t  slope_ppb = 0;
   uint32_t slope_n = 0;
   // Why the bootstrap is not converging is not answerable from counters: 690
@@ -2333,9 +2353,33 @@ static void recalService()
   if(CAM_RECAL_IDLE_MS <= 0) return;              // 0 disables
   if(!CAM_SYNC.valid || CAM_SYNC.est_cam_us==0) return;
 
+  const int64_t now_ms  = (int64_t)(esp_timer_get_time()/1000);
   const int64_t idle_us =
     (int64_t)esp_timer_get_time() - (int64_t)CAM_SYNC.est_cam_us;
   if(idle_us < (int64_t)CAM_RECAL_IDLE_MS*1000) return;
+
+  // The clock going stale is not the same thing as the line being idle, and
+  // only the second one makes it safe to shut the gate.
+  //
+  // est_cam_us advances on every ACCEPTED report, so normally a running line
+  // keeps it fresh by itself. But reports that fall outside the window do not
+  // update it -- so a machine that is busily producing while something is wrong
+  // with the pairing would look "idle" here, and this would shut the gate and
+  // stop the feeder in the middle of production. Require that no real part has
+  // been registered either.
+  //
+  // A part registered but not yet reported also counts as "not idle": RBuf is
+  // checked below, and the drain guard in syncPulseService will hold the pulses
+  // until it clears anyway.
+  if(REAL_ACCEPT_MS!=0 &&
+     (now_ms-REAL_ACCEPT_MS) < (int64_t)CAM_RECAL_IDLE_MS) return;
+
+  for(int i=0;i<RBuf.size();i++)
+  {
+    pipeLineInfo *p=RBuf.getTail(i);
+    if(p==NULL) break;
+    if(!p->sync) return;            // a real part is still in the machine
+  }
 
   CAM_RECALS++;
   djrl.dbg_printf("CAMSYNC RECAL: %llds idle, est drift %lld us -- topping up",
@@ -2419,6 +2463,21 @@ static void syncPulseService()
   // one sample. Observed once on the bench: cal_fails=1, cal_ms=30001,
   // learned=0, accept=1. Give up on that pulse and fire another instead; one
   // lost frame is not a reason to refuse to start.
+  // A real part still anywhere in the pipeline blocks the pulses outright, and
+  // "still in the pipeline" means still in RBuf -- not merely "already
+  // answered". An answered part has a verdict but has not yet reached SWITCH to
+  // act on it, and firing the backlight across a part mid-flight is not
+  // something to do on the assumption that it happens to be harmless. It is
+  // harmless today only because calFireNow registers no stage tasks and so
+  // cannot collide with a selector action; that is an accident of the
+  // implementation, not a property anyone guaranteed.
+  for(int i=0;i<RBuf.size();i++)
+  {
+    pipeLineInfo *p=RBuf.getTail(i);
+    if(p==NULL) break;
+    if(!p->sync) return;
+  }
+
   bool outstanding=false;
   for(int i=0;i<RBuf.size();i++)
   {
