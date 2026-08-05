@@ -104,8 +104,9 @@ namespace MachineConfig
   // failed; the in-RAM values are untouched either way.
   bool save();
 
-  // Drops the stored blob. The globals keep their current values; the next
-  // boot comes up on compiled defaults.
+  // Drops the stored config -- both the JSON and any legacy packed blob. The
+  // globals keep their current values; the next boot comes up on compiled
+  // defaults.
   bool clear();
 
   // True if begin() found a usable stored config.

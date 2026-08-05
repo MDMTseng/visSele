@@ -75,10 +75,6 @@ namespace
 
   Preferences prefs;
   bool loadedFromNVS = false;
-  // Smallest blob we will accept: everything up to and including machine_id,
-  // i.e. the v8 layout. Anything shorter predates fields that have no safe
-  // default on a real machine.
-  uint32_t cfg_upgraded_from = 0;
 
   // How many bytes of a stored blob this firmware is willing to believe, given
   // the version it declares. A blob is only a valid prefix of the current
@@ -100,6 +96,23 @@ namespace
   // Anything shorter than the v1 core is not worth reading at all.
   constexpr size_t kMinCompatBytes = offsetof(StoredConfig, machine_id);
   char machine_id[MACHINE_ID_MAX_LEN] = {0};
+
+  // The canonical config image: what save() writes and hash() fingerprints.
+  // One producer, so the stored bytes and the reported CRC can never disagree.
+  bool canonicalImage(String &out)
+  {
+    StaticJsonDocument<3072> jdoc;
+    genMachineSetup(jdoc);
+    // genMachineSetup also reports live state, which has no business in a
+    // configuration store -- persisting cur_state or an error history would
+    // restore yesterday's situation on top of today's machine.
+    for (size_t i = 0; i < sizeof(kVolatileKeys)/sizeof(kVolatileKeys[0]); i++)
+      jdoc.remove(kVolatileKeys[i]);
+    out = "";
+    if (serializeJson(jdoc, out) == 0) return false;
+    if (jdoc.overflowed()) return false;   // truncated JSON is worse than none
+    return true;
+  }
 
   void fillFromGlobals(StoredConfig &cfg)
   {
@@ -210,32 +223,16 @@ namespace MachineConfig
     size_t want = trustedPrefix(raw.version);
     if (want > head) want = head;
     memcpy(&cfg, &raw, want);
-    size_t got = want;
     prefs.end();
 
     applyToGlobals(cfg);
     loadedFromNVS = true;
-    if (cfg.version < kConfigVersion)
-    {
-      // Not an error: the blob is simply older. Saving once rewrites it at the
-      // current version, but everything it did carry is already in effect.
-      cfg_upgraded_from = cfg.version;
-    }
   }
 
   bool save()
   {
-    StaticJsonDocument<3072> jdoc;
-    genMachineSetup(jdoc);
-    // genMachineSetup also reports live state, which has no business in a
-    // configuration store -- persisting cur_state or an error history would
-    // restore yesterday's situation on top of today's machine.
-    for (size_t i = 0; i < sizeof(kVolatileKeys)/sizeof(kVolatileKeys[0]); i++)
-      jdoc.remove(kVolatileKeys[i]);
-
     String txt;
-    if (serializeJson(jdoc, txt) == 0) return false;
-    if (jdoc.overflowed()) return false;   // truncated JSON is worse than none
+    if (!canonicalImage(txt)) return false;
 
     if (!prefs.begin(kNamespace, /*readOnly=*/false))
       return false;
@@ -257,7 +254,13 @@ namespace MachineConfig
     if (!prefs.begin(kNamespace, /*readOnly=*/false))
       return false;
 
-    bool ok = prefs.remove(kBlobKey);
+    // Both stores, not just the one this firmware writes. Clearing only the
+    // packed blob would leave the JSON in place, so clear_saved_setup would
+    // report success and the next boot would come up on the same config it
+    // was asked to forget.
+    bool ok = false;
+    if (prefs.isKey(kJsonKey)) ok |= prefs.remove(kJsonKey);
+    if (prefs.isKey(kBlobKey)) ok |= prefs.remove(kBlobKey);
     prefs.end();
 
     loadedFromNVS = false;
@@ -266,14 +269,16 @@ namespace MachineConfig
 
   uint32_t hash()
   {
-    StoredConfig cfg;
-    memset(&cfg, 0, sizeof(cfg));   // deterministic padding
-    fillFromGlobals(cfg);
-    const uint8_t *p = (const uint8_t *)&cfg;
+    // FNV-1a over the same image save() writes, so cfg_crc tracks what is
+    // actually persisted. Hashing the legacy packed struct instead would be
+    // blind to every field added since -- the struct exists only for migration
+    // now, and a field that is not in it would drift without changing the CRC.
+    String txt;
+    if (!canonicalImage(txt)) return 0;
     uint32_t h = 2166136261u;
-    for (size_t i = 0; i < sizeof(cfg); i++)
+    for (size_t i = 0; i < txt.length(); i++)
     {
-      h ^= p[i];
+      h ^= (uint8_t)txt[i];
       h *= 16777619u;
     }
     return h;

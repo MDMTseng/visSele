@@ -804,8 +804,6 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 
     case SYS_STATE::INSPECTION_MODE_READY:
     {
-      static uint8_t loopDivCounter=0;// just to make the buzy loop not so buzy
-       
       if (i == 0)//enter
       {
         blockNewDetectedObject=false;
@@ -829,7 +827,6 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 
     case SYS_STATE::INSPECTION_MODE_ERROR:
     {
-      static uint32_t targetPulse=0;
       if (i == 0)
       {
         PLATE_FREQ_TARGET=0;
