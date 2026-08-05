@@ -170,14 +170,22 @@ induced loss", which is the one case still unproven.
 2. ~~Watch `cam_sync.agree` / `cam_sync.disagree`.~~ **Done: 6237 / 0.**
 3. ~~Induce frame loss with objects in the pipeline.~~ **Done** — see the A/B
    above. Positional is confidently wrong under loss; timestamp refuses.
-4. **Fix the device's clock model under starvation, before promoting.** This is
-   now the blocker. `CamClockSync` learns only from reports, so when 73% of
-   parts go unjudged it is both starved and fed late samples: residual went to
-   -1381us with a 381ms maximum, against a 5000us tolerance. It recovers (a
-   later clean 30/s trial read -9us), but a model that degrades exactly when
-   loss makes it matter is not yet the authority. Options: feed it from
-   `cam_trig` announcements rather than reports, or hold the estimate when the
-   sample rate collapses.
+4. **Find out why the device's clock residual blows up under loss.** This is the
+   blocker, and it is a *diagnosis* task, not a fix task — the mechanism is not
+   yet known. Under 45/s the residual reached -1381us with a 381ms maximum,
+   against a 5000us tolerance, then recovered to -9us on a later clean trial.
+
+   Do not "fix" it by feeding the estimator from `cam_trig`: that cannot work.
+   `cam_trig.t_us` and `pipeLineInfo.cam_us` are both the **device's** clock
+   (`esp_timer` / the CAM ISR). The **camera's** clock reaches the device only
+   as `cam_ts` inside a report. The estimator structurally depends on reports;
+   there is no other source for the second clock.
+
+   Note the residual is far larger than sample starvation explains — 239 reports
+   over ~20s is still ~12 samples/s, plenty. A 381ms residual means some
+   observed (cam_ts, cam_us) pair was wrong by 381ms, so the question is which
+   pairs are being fed in, not how many. Instrument `observe()` and look at the
+   bad ones before changing the estimator.
 5. **Then promote**: `report_match_ts: true`.
 6. **Then delete from the host** — `PerifTriggerPairing.hpp`,
    `tap_trigger_info`, `keep_clock_warm`, the trigger wait, the early dump.
