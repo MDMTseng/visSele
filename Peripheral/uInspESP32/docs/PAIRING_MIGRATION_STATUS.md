@@ -105,6 +105,42 @@ This also reconciles yesterday's numbers with today's: 40/s cost 0.25% in parts
 but 10% in triggers, because real parts do not arrive uniformly and the gate
 spaces them. Both are right; they measure different things.
 
+### The A/B, finally: timestamp vs positional under induced loss
+
+Run on a **still plate with no parts**. `stepper_disable` drops the driver's
+enable pin, so the glass does not turn, while the stage timer keeps advancing
+and objects still travel L1A -> CAM -> SWITCH. It also gates the real sensor
+path, so nothing real enters. `trig_phantom_pulse` calls `newPulseEvent`
+directly, bypassing that gate, so objects can be injected at any rate.
+
+Each trial starts from a **hard reset**: re-issuing CONNECT tears the channel
+down and reopens the UART, which toggles DTR and reboots the ESP32.
+`reset_running_stat` does *not* clear the CAM_SYNC counters, so without the
+reboot every trial is contaminated by the previous one -- an earlier "control"
+appeared to show 12 disagreements that were entirely leftovers.
+
+| core pairing | 30/s (under the ceiling) | 45/s (over it) |
+|---|---|---|
+| **timestamp** | judged 601, SKIP 2, disagree 0, resid **-9us** | judged 239, SKIP 627, disagree 35, resid **-1.4ms** |
+| **positional** | judged 612, SKIP 0, disagree 0, resid -157us | judged **716**, SKIP 160, disagree 61, resid **-274ms** |
+
+**Without frame loss the two are indistinguishable.** That is why ~5000 real
+parts this morning produced 0 disagreements: nothing was lost, so the two
+algorithms never had an opportunity to differ. Agreement in that regime says
+nothing about which is right.
+
+**With frame loss they differ in kind, not degree.** Positional judged three
+times as many parts -- because it never refuses. It pops the head of the queue
+for whatever frame arrives, and after a loss the queue is offset, so those
+verdicts belong to other parts. The proof is the residual: feeding the device
+mismatched (object, timestamp) pairs drives its clock model to **-274ms**,
+while timestamp mode stays at -1.4ms. Timestamp's 627 SKIPs are it declining to
+guess.
+
+Every verdict in these runs was NA, so a wrong assignment had no visible
+consequence. In production with real OK/NG, positional's extra 477 "judged"
+parts are 477 parts sorted on another part's verdict.
+
 ### This is the part-free test rig
 
 The sweep above needs no parts on the plate and takes about two minutes. It is
@@ -132,17 +168,18 @@ induced loss", which is the one case still unproven.
 
 1. ~~One BOOT press, flash everything.~~ **Done 2026-08-05.**
 2. ~~Watch `cam_sync.agree` / `cam_sync.disagree`.~~ **Done: 6237 / 0.**
-3. **Induce frame loss with objects in the pipeline.** This is the one thing
-   the agree/disagree run does not cover, and it is the case the whole
-   migration exists for: a lost frame permanently offsets a positional FIFO,
-   and timestamp matching is supposed to shrug it off. `trig_cam_burst` cannot
-   do it — it fires the camera directly, produces no pipeline object
-   (`gate_pulse == 0`, so the core reports nothing), and only exercises the
-   clock path. The route is either real parts with the gate raised above 36/s,
-   or the motor pulse gate.
-4. **Promote when that case is covered too**: `report_match_ts: true`. Agreement
-   in the easy case is not the argument; surviving the hard case is.
-5. **Then delete from the host** — `PerifTriggerPairing.hpp`,
+3. ~~Induce frame loss with objects in the pipeline.~~ **Done** — see the A/B
+   above. Positional is confidently wrong under loss; timestamp refuses.
+4. **Fix the device's clock model under starvation, before promoting.** This is
+   now the blocker. `CamClockSync` learns only from reports, so when 73% of
+   parts go unjudged it is both starved and fed late samples: residual went to
+   -1381us with a 381ms maximum, against a 5000us tolerance. It recovers (a
+   later clean 30/s trial read -9us), but a model that degrades exactly when
+   loss makes it matter is not yet the authority. Options: feed it from
+   `cam_trig` announcements rather than reports, or hold the estimate when the
+   sample rate collapses.
+5. **Then promote**: `report_match_ts: true`.
+6. **Then delete from the host** — `PerifTriggerPairing.hpp`,
    `tap_trigger_info`, `keep_clock_warm`, the trigger wait, the early dump.
    ~450 lines that exist only to reconstruct what the device already knows.
 
