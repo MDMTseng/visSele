@@ -1642,7 +1642,6 @@ class APPMasterX extends React.Component {
 
       stepperEnable(){ return this.sendP({type:"stepper_enable"}); }
       stepperDisable(){ return this.sendP({type:"stepper_disable"}); }
-      trigPhantomPulse(){ return this.sendP({type:"trig_phamton_pulse"}); }
 
       resetRunningStat(){ return this.sendP({type:"reset_running_stat"}); }
       getRunningStat()
