@@ -279,13 +279,13 @@ typedef struct pipeLineInfo{
 // work, and an EWMA is a shift.
 struct CamClockSync
 {
-  static const int64_t TOL_US   = 5000;   // match window; drift needs ~60s to cross it
-  static const int     BOOT_N   = 8;      // samples before the estimate is trusted
-  static const int     EWMA_SH  = 4;      // 1/16 per update
-  // Consecutive out-of-window samples before the estimate is abandoned. Long
-  // enough that a burst of mismatches cannot trigger it, short enough that a
-  // genuinely moved offset is re-learned in a second or two of traffic.
-  static const int     LOST_N   = 16;
+  static const int64_t TOL_US   = 5000;   // match window
+  static const int     BOOT_N   = 8;      // samples to establish the first offset
+  // Consecutive frames whose nearest object is outside the window before the
+  // machine is stopped. Two, not sixteen: one is a lost frame or a stray, two
+  // in a row is the clock, and there is nothing to be gained by letting a
+  // machine that cannot place its frames keep sorting parts.
+  static const int     LOST_N   = 2;
 
   bool     valid = false;
   int64_t  offset_us = 0;                 // cam_ts - cam_us
@@ -300,6 +300,13 @@ struct CamClockSync
   // climbing means the offset really is moving.
   uint32_t rejected = 0, rebuilds = 0;
   uint16_t consec_reject = 0;
+  // Set when the clock has been lost and the machine must stop. Raised here,
+  // acted on at the call site, which is where SYS_STATE_Transfer lives.
+  bool     fault_pending = false;
+  // When the current offset was measured, so its age -- and therefore how much
+  // drift it has accumulated -- is readable. resid/age is the drift rate.
+  uint64_t est_cam_us = 0;
+  uint32_t established = 0;
   // Why the bootstrap is not converging is not answerable from counters: 690
   // samples with valid=false says only "no 8 of them agreed". Keep the raw
   // sample and how many windows were thrown out, so the shape of the
@@ -313,72 +320,105 @@ struct CamClockSync
     last_resid_us=0; max_resid_us=0;
     agree=disagree=learned=rejected=rebuilds=0; consec_reject=0;
     last_sample_us=0; boot_fail=0;
+    fault_pending=false; est_cam_us=0; established=0;
   }
 
-  // A report whose object is already known (matched by tid) is a free
-  // measurement of the offset. Real parts therefore calibrate the clock as a
-  // side effect of ordinary running -- no injected pulses required.
+  // Establish the first offset from sync pulses. After that, every report
+  // maintains it directly -- see gate().
   void observe(uint64_t cam_ts, uint64_t cam_us)
   {
     if(cam_ts==0 || cam_us==0) return;
     int64_t sample = (int64_t)cam_ts - (int64_t)cam_us;
     learned++;
     last_sample_us = sample;
-    if(!valid)
-    {
-      if(boot_n < BOOT_N) boot[boot_n++] = sample;
-      if(boot_n < BOOT_N) return;
-      // Median, then require a real majority around it. Disagreement means the
-      // samples are not measuring one constant -- better to stay unconverged and
-      // say so than to publish an average of unrelated numbers.
-      int64_t srt[BOOT_N];
-      for(int i=0;i<BOOT_N;i++) srt[i]=boot[i];
-      for(int i=1;i<BOOT_N;i++){int64_t k=srt[i];int j=i-1;while(j>=0&&srt[j]>k){srt[j+1]=srt[j];j--;}srt[j+1]=k;}
-      int64_t med = srt[BOOT_N/2];
-      int ok=0; for(int i=0;i<BOOT_N;i++) if(llabs(srt[i]-med)<=TOL_US) ok++;
-      if(ok*2 > BOOT_N){ offset_us=med; valid=true; }
-      else { boot_fail++; for(int i=0;i<BOOT_N/2;i++) boot[i]=boot[i+BOOT_N/2]; boot_n=BOOT_N/2; }
-      return;
-    }
-    int64_t resid = sample - offset_us;
-    last_resid_us = resid;
-    if(llabs(resid) > llabs(max_resid_us)) max_resid_us = resid;
 
-    // Refuse samples from outside the match window before they touch the
-    // estimate.
-    //
-    // Without this every sample was folded in unconditionally, which made the
-    // estimator amplify its own mistakes: one pair that is wrong by 400ms moves
-    // the offset by 400ms/16 = 25ms in a single step, against a 5000us match
-    // window. The next frame then matches the wrong object, which produces
-    // another bad pair, and so on. Measured under induced frame loss: -1381us
-    // residual with a 381ms maximum in timestamp mode, and -274ms in positional
-    // mode, where nearly every pair is wrong by construction.
-    //
-    // A sample further from the estimate than the window either belongs to a
-    // different object or the estimate is stale -- and neither case is improved
-    // by averaging it in. Crystals drift; they do not jump.
-    if(llabs(resid) > TOL_US)
+    if(valid)
+    {
+      // Diagnostic only -- this never corrects anything. Divided by the age of
+      // the measurement it is the drift rate, which is what sizes the window.
+      last_resid_us = sample - offset_us;
+      if(llabs(last_resid_us) > llabs(max_resid_us)) max_resid_us = last_resid_us;
+    }
+
+    if(boot_n < BOOT_N) boot[boot_n++] = sample;
+    if(boot_n < BOOT_N) return;
+
+    // Median, then require a real majority around it. Disagreement means the
+    // samples are not measuring one constant -- better to keep the previous
+    // measurement (or stay unconverged) and say so than to publish an average
+    // of unrelated numbers.
+    int64_t srt[BOOT_N];
+    for(int i=0;i<BOOT_N;i++) srt[i]=boot[i];
+    for(int i=1;i<BOOT_N;i++){int64_t k=srt[i];int j=i-1;while(j>=0&&srt[j]>k){srt[j+1]=srt[j];j--;}srt[j+1]=k;}
+    int64_t med = srt[BOOT_N/2];
+    int ok=0; for(int i=0;i<BOOT_N;i++) if(llabs(srt[i]-med)<=TOL_US) ok++;
+    if(ok*2 > BOOT_N)
+    {
+      offset_us = med;                 // replace outright; do not blend
+      est_cam_us = cam_us;
+      valid = true;
+      established++;
+      boot_n = 0;
+      consec_reject = 0;
+    }
+    else
+    {
+      boot_fail++;
+      for(int i=0;i<BOOT_N/2;i++) boot[i]=boot[i+BOOT_N/2];
+      boot_n=BOOT_N/2;
+    }
+  }
+
+  // Every report, once the offset exists: take the nearest pending object, and
+  // decide. Inside the window it is a match and the offset is re-measured from
+  // it outright. Outside, twice running, the machine stops.
+  //
+  // This replaced an EWMA that folded each accepted sample in at 1/16. A
+  // first-order filter following a ramp keeps a permanent lag proportional to
+  // the drift rate, and the drift here is real: measured on the plate at
+  // -35us/s (35ppm between the camera crystal and the ESP32's). The lag settled
+  // at -3430us against a 5000us window -- 69% of the match margin spent on an
+  // error that was constant, predictable, and entirely self-inflicted.
+  //
+  // Freezing the offset instead is no better: 35us/s crosses a 5000us window in
+  // 143 seconds of uninterrupted running, so the machine would fault every
+  // couple of minutes.
+  //
+  // Updating from every report removes the problem rather than managing it. The
+  // offset is never more than one report old (~55ms at 18 parts/s), so the
+  // drift it can accumulate is 55ms * 35us/s = 2us -- three orders of magnitude
+  // inside the window, and it no longer matters how long the line runs.
+  //
+  // What makes taking the nearest object safe is that the window is far smaller
+  // than the spacing between objects: 5ms against 55ms at 18 parts/s. A frame
+  // cannot be within 5ms of two different objects, so a match inside the window
+  // is the right object or there is no right object. That is also why this
+  // cannot quietly lock onto a wrong offset the way blending could -- a wrong
+  // offset puts frames outside the window, and outside the window it stops
+  // instead of guessing.
+  void gate(uint64_t cam_ts, uint64_t nearest_cam_us, int64_t nearest_delta)
+  {
+    if(!valid) return;
+    if(nearest_delta > TOL_US)
     {
       rejected++;
       if(++consec_reject >= LOST_N)
       {
-        // Sustained rejection is the other case: the offset has genuinely moved
-        // (a long idle, a device reboot) and no longer describes these clocks.
-        // Rebuild it from scratch rather than creep toward it a sixteenth at a
-        // time, which would spend the whole approach mismatching.
-        reset_estimate();
-        rebuilds++;
+        valid = false;
+        boot_n = 0;
+        consec_reject = 0;
+        rebuilds++;            // kept as the "how often did this happen" counter
+        fault_pending = true;
       }
       return;
     }
     consec_reject = 0;
-    offset_us += resid >> EWMA_SH;   // crystals drift, they do not jump
+    last_resid_us = (int64_t)cam_ts - (int64_t)nearest_cam_us - offset_us;
+    if(llabs(last_resid_us) > llabs(max_resid_us)) max_resid_us = last_resid_us;
+    offset_us  = (int64_t)cam_ts - (int64_t)nearest_cam_us;   // measured, not blended
+    est_cam_us = nearest_cam_us;
+    established++;
   }
-
-  // Drop the estimate but keep the counters -- this is a recovery, not a
-  // measurement boundary.
-  void reset_estimate() { valid=false; boot_n=0; consec_reject=0; }
 
   // Where a frame taken at cam_ts should sit on the device clock.
   int64_t expectedCamUs(uint64_t cam_ts) const { return (int64_t)cam_ts - offset_us; }
@@ -2504,6 +2544,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // whole response. The deltas are what carries the information anyway.
       jS["last_sample_us"]=(double)CAM_SYNC.last_sample_us;
       jS["boot_fail"]=CAM_SYNC.boot_fail;
+      // How many times the offset was measured outright (not converged toward),
+      // and how old the current measurement is. resid/age is the drift rate,
+      // which is the number that sizes the match window.
+      jS["established"]=CAM_SYNC.established;
+      jS["est_age_s"]=CAM_SYNC.est_cam_us
+        ? (double)((int64_t)(esp_timer_get_time()-(int64_t)CAM_SYNC.est_cam_us)/1000000.0) : 0.0;
       if(CAM_SYNC.boot_n>0)
       {
         jS["boot0_us"]=(double)CAM_SYNC.boot[0];
@@ -2542,6 +2588,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // now that there are two and they can disagree.
     pipeLineInfo *byTid=NULL;
     pipeLineInfo *byTs=NULL;
+    // The nearest candidate regardless of the window. byTs is that same object
+    // only when it is close enough to be believed; `nearest` is kept separately
+    // because "the best we could do, and it was not good enough" is exactly the
+    // signal that stops the machine, and it is invisible if the search itself
+    // discards anything outside the window.
+    pipeLineInfo *nearest=NULL;
+    int64_t nearestDelta=0;
     int64_t bestDelta=0;
     if(cat!=-1)
     {
@@ -2554,9 +2607,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         if(cam_ts!=0 && CAM_SYNC.valid && pipe->cam_us!=0)
         {
           int64_t d = (int64_t)pipe->cam_us - want; if(d<0) d=-d;
-          if(d<=CamClockSync::TOL_US && (byTs==NULL || d<bestDelta)){ byTs=pipe; bestDelta=d; }
+          if(nearest==NULL || d<nearestDelta){ nearest=pipe; nearestDelta=d; }
         }
       }
+      if(nearest!=NULL && nearestDelta<=CamClockSync::TOL_US)
+      { byTs=nearest; bestDelta=nearestDelta; }
     }
 
     // --- cross-check, and learn ------------------------------------------
@@ -2571,6 +2626,26 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // so learning from them is circular and self-poisoning. Sync pulses are
     // fired with nothing else outstanding, so their pairing is certain.
     if(byTid!=NULL && cam_ts!=0 && byTid->sync) CAM_SYNC.observe(cam_ts, byTid->cam_us);
+
+    // Once the offset exists, every report maintains it: nearest object inside
+    // the window re-measures it, outside the window twice running stops the
+    // machine.
+    if(cam_ts!=0 && cat!=-1 && nearest!=NULL)
+      CAM_SYNC.gate(cam_ts, nearest->cam_us, nearestDelta);
+
+    if(CAM_SYNC.fault_pending)
+    {
+      // Stop rather than guess. A halt an operator can see is recoverable; a
+      // part quietly sorted into the wrong bin is not.
+      CAM_SYNC.fault_pending=false;
+      djrl.dbg_printf("CAMSYNC LOST: %u consecutive frames whose nearest object "
+                      "was outside the window (last delta=%lld us, tol=%lld us)",
+                      (unsigned)CamClockSync::LOST_N,
+                      (long long)nearestDelta,(long long)CamClockSync::TOL_US);
+      SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,
+                         (int)GEN_ERROR_CODE::CAM_CLOCK_LOST);
+    }
+
     if(byTid!=NULL && byTs!=NULL)
     {
       if(byTid==byTs) CAM_SYNC.agree++;

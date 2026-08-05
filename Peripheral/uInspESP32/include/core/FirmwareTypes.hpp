@@ -99,6 +99,10 @@ enum class GEN_ERROR_CODE
   INSP_RESULT_PULSE_TIME_OUT_OF_SYNC = 4,
   INSP_RESULT_HAS_NO_TIME_STAMP = 5,
   HOST_LINK_TIMEOUT = 12,
+  // The camera clock offset no longer describes these two clocks, and the
+  // machine would have to guess which object a frame belongs to. Stopping is
+  // the correct answer: a wrong guess mis-sorts a part silently.
+  CAM_CLOCK_LOST = 13,
   SEL_ACT_LIMIT_REACHES=0xff,
 };
 
