@@ -361,6 +361,19 @@ struct CamClockSync
   int64_t  last_sample_us = 0;
   uint32_t boot_fail = 0;
 
+  // Drop the estimate, keep the evidence.
+  //
+  // A mid-run RECAL must not zero the counters: agree/disagree/rejected/
+  // delta_max are the record of how the machine has been behaving, and wiping
+  // them at every idle top-up means a reading of "disagree 0" says only "none
+  // since the last top-up", which is a far weaker claim than it looks. Observed
+  // exactly that -- a burst run reported agree=0 delta_max=0 because a RECAL
+  // had landed near the end.
+  void resetEstimate()
+  {
+    valid=false; boot_n=0; consec_reject=0; est_cam_us=0;
+  }
+
   void reset()
   {
     valid=false; offset_us=0; boot_n=0;
@@ -885,7 +898,7 @@ volatile GEN_ERROR_CODE PENDING_ISR_ERROR=GEN_ERROR_CODE::NOP;
 
 // The calibration phase is documented where it is implemented, far below; the
 // state machine that drives it lives up here.
-static void calibrationBegin();
+static void calibrationBegin(bool full);
 static void calibrationCleanup();
 static void spinupBegin();
 static bool CAL_GATE_PREV = false;   // GATE_DISABLED before calibration shut it
@@ -969,7 +982,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         // but nothing real may enter: calibrationBegin shuts the gate and holds
         // the feeder off, so the only things in flight are our own pulses.
         blockNewDetectedObject=false;
-        calibrationBegin();
+        calibrationBegin(true);
       }
       else if (i == 1)
       {
@@ -1004,7 +1017,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       if (i == 0)//enter
       {
         blockNewDetectedObject=false;
-        calibrationBegin();
+        calibrationBegin(false);
       }
       else if (i == 1)
       {
@@ -2119,6 +2132,12 @@ static uint32_t CAL_TID_NEXT = 0x40000001;
 // if the machine is not doing what it was told -- but a silent hang between
 // calibration and running is exactly the kind of stall nobody would diagnose.
 static int64_t  SPINUP_DEADLINE_MS = 0;
+// Per-pulse deadline. A calibration round trip is one camera frame plus one
+// inspection -- tens of ms on this machine -- so a second and a half is already
+// far past "late" and firmly into "not coming".
+static int64_t  CAL_PULSE_MS = 0;
+static uint32_t CAL_PULSE_LOST = 0;
+static const int64_t CAL_PULSE_TIMEOUT_MS = 1500;
 // Idle before the offset is re-measured, set_setup "cam_recal_idle_ms".
 // 0 disables. See recalService for where 10s comes from.
 int32_t  CAM_RECAL_IDLE_MS = 10000;
@@ -2133,7 +2152,9 @@ static uint32_t CAL_LAST_MS_TAKEN = 0;
 static const int64_t CAL_TIMEOUT_MS = 30000;
 
 // Shut the gate and hold the feeder, then pulse until the offset exists.
-static void calibrationBegin()
+// full=false keeps the diagnostic counters, which is what a mid-run top-up
+// wants; the startup calibration zeroes everything because the run is new.
+static void calibrationBegin(bool full)
 {
   CAL_GATE_PREV = GATE_DISABLED;
   GATE_DISABLED = true;
@@ -2143,8 +2164,9 @@ static void calibrationBegin()
   // registering them, i.e. unsorted, and that is not worth leaving to inference.
   FEEDER_ON = false;
   io_drive(FEEDER_PIN, IOI_FEEDER, false);
-  CAM_SYNC.reset();
+  if(full) CAM_SYNC.reset(); else CAM_SYNC.resetEstimate();
   CAL_STARTED_MS = (int64_t)(esp_timer_get_time()/1000);
+  CAL_PULSE_MS = 0;
   CAL_DEADLINE_MS = CAL_STARTED_MS + CAL_TIMEOUT_MS;
   SYNC_LAST_MS = 0;
   CAL_RUNS++;
@@ -2389,14 +2411,40 @@ static void syncPulseService()
   // One at a time, so the returning frame has exactly one candidate by
   // construction and the sample cannot need the estimate it is meant to
   // produce.
+  //
+  // But an outstanding pulse gets its own deadline, not just the phase's. A
+  // frame that never comes back -- the camera declined the trigger, the core
+  // dropped it, the link hiccuped -- would otherwise hold this guard shut for
+  // the whole 30s phase timeout and then fail the machine, having taken exactly
+  // one sample. Observed once on the bench: cal_fails=1, cal_ms=30001,
+  // learned=0, accept=1. Give up on that pulse and fire another instead; one
+  // lost frame is not a reason to refuse to start.
+  bool outstanding=false;
   for(int i=0;i<RBuf.size();i++)
   {
     pipeLineInfo *p=RBuf.getTail(i);
     if(p==NULL) break;
-    if(p->insp_status==insp_status_UNSET) return;
+    if(p->insp_status==insp_status_UNSET){ outstanding=true; break; }
+  }
+  if(outstanding)
+  {
+    if(CAL_PULSE_MS==0 || (now_ms-CAL_PULSE_MS) < CAL_PULSE_TIMEOUT_MS) return;
+    // Abandon it. Marking DEL both frees the RBuf slot and clears the guard;
+    // the sample is simply never taken, which is the honest outcome.
+    for(int i=0;i<RBuf.size();i++)
+    {
+      pipeLineInfo *p=RBuf.getTail(i);
+      if(p==NULL) break;
+      if(p->sync && p->insp_status==insp_status_UNSET)
+        p->insp_status=insp_status_DEL;
+    }
+    CAL_PULSE_LOST++;
+    djrl.dbg_printf("CAMSYNC CAL pulse unanswered after %dms -- retrying",
+                    (int)CAL_PULSE_TIMEOUT_MS);
   }
 
   calFireNow();
+  CAL_PULSE_MS = now_ms;
   SYNC_LAST_MS = now_ms;
 }
 
@@ -3025,6 +3073,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jS["slope_n"]=CAM_SYNC.slope_n;
       jS["recal_idle_ms"]=CAM_RECAL_IDLE_MS;
       jS["recals"]=CAM_RECALS;
+      jS["cal_pulse_lost"]=CAL_PULSE_LOST;
       jS["gap_us"]=(double)CAM_SYNC.last_gap_us;
       // resid/gap. Tens of us/s is two crystals; a sudden jump is not.
       jS["drift_us_per_s"]=CAM_SYNC.last_gap_us
