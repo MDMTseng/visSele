@@ -1700,6 +1700,59 @@ int MData_JR::recv_ERROR(ERROR_TYPE errorcode,uint8_t *recv_data,size_t dataL)
 // (PLATE_FREQ_SETPOINT==0, so it will not spin back up), in a settle-able state
 // (IDLE or a stopped READY, not ERROR/TEST/FATAL). Returns NULL if a save is
 // allowed, else a human-readable reason so the caller knows what to fix.
+// Phantom object train, emitted from the main loop.
+//
+// The host can already inject objects one `trig_phantom_pulse` at a time, but
+// each one is a serial round trip, so the interval carries that jitter: a
+// 33.3ms target measured 25.9-39.8ms, stdev 1.76ms, which is visible as an
+// unsteady strobe and means the rig cannot present a known instantaneous load.
+//
+// trig_cam_burst is exact, but it blocks the machine loop and drives the pins
+// directly -- so it produces frames with no pipeline object behind them, and
+// while it runs no report can be serviced. Neither half is usable here.
+//
+// This schedules against the absolute clock (never `now + period`, which
+// accumulates every iteration's cost and drifts the train slow) and emits at
+// most one object per loop pass, so reports keep flowing the whole time.
+static int32_t  PH_TRAIN_LEFT     = 0;
+static int64_t  PH_TRAIN_NEXT_US  = 0;
+static int32_t  PH_TRAIN_PERIOD_US= 0;
+static uint32_t PH_TRAIN_EMITTED  = 0;
+static int64_t  PH_TRAIN_PREV_US  = 0;
+static int32_t  PH_TRAIN_MIN_US   = 0, PH_TRAIN_MAX_US = 0;
+
+// Where trig_phantom_pulse puts an object: one L1A offset back, plus enough
+// plate distance that it has somewhere to travel from.
+static inline void phantomEmitOne()
+{
+  uint32_t tatPulse = SYS_STEP_COUNT - STAGE_PULSE_OFFSET.L1A_on + _PLAT_DIST_step(3000);
+  newPulseEvent(tatPulse-10, tatPulse+10, tatPulse, 20);
+}
+
+static void phantomTrainService()
+{
+  if(PH_TRAIN_LEFT<=0) return;
+  const int64_t now=esp_timer_get_time();
+  if(now < PH_TRAIN_NEXT_US) return;
+
+  phantomEmitOne();
+  PH_TRAIN_EMITTED++;
+  if(PH_TRAIN_PREV_US!=0)
+  {
+    const int32_t d=(int32_t)(now-PH_TRAIN_PREV_US);
+    if(PH_TRAIN_MIN_US==0 || d<PH_TRAIN_MIN_US) PH_TRAIN_MIN_US=d;
+    if(d>PH_TRAIN_MAX_US) PH_TRAIN_MAX_US=d;
+  }
+  PH_TRAIN_PREV_US=now;
+
+  PH_TRAIN_NEXT_US += PH_TRAIN_PERIOD_US;
+  // If the loop was held up longer than a whole period, do not try to catch up
+  // by firing back-to-back -- that would hand the pipeline a burst it never
+  // asked for. Give up the missed slots and stay on the original phase.
+  if(PH_TRAIN_NEXT_US < now) PH_TRAIN_NEXT_US = now + PH_TRAIN_PERIOD_US;
+  PH_TRAIN_LEFT--;
+}
+
 static const char* cfgPersistDeny()
 {
   if(sysinfo.state!=SYS_STATE::IDLE &&
@@ -2616,10 +2669,38 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
 
   else if(strcmp(type,"trig_phantom_pulse")==0)
   {
-    uint32_t tatPulse= SYS_STEP_COUNT-STAGE_PULSE_OFFSET.L1A_on+_PLAT_DIST_step(3000);
+    phantomEmitOne();
+    doRsp=rspAck=true;
+  }
 
-    newPulseEvent(tatPulse-10, tatPulse+10, tatPulse,20);
-    
+  // A train of phantom objects at an exact interval, emitted by the device.
+  // {count, hz|period_us}; count:0 cancels a running train. Reply carries the
+  // measured min/max interval of the PREVIOUS train, so the rig can state the
+  // load it actually applied rather than the one it asked for.
+  else if(strcmp(type,"trig_phantom_train")==0)
+  {
+    retdoc["type"]="trig_phantom_train";
+    retdoc["prev_emitted"]=PH_TRAIN_EMITTED;
+    retdoc["prev_min_us"]=PH_TRAIN_MIN_US;
+    retdoc["prev_max_us"]=PH_TRAIN_MAX_US;
+
+    int count=doc["count"].is<int>() ? (int)doc["count"] : 0;
+    int period_us=doc["period_us"].is<int>() ? (int)doc["period_us"] : 0;
+    if(period_us<=0 && doc["hz"].is<float>() && (float)doc["hz"]>0.0f)
+      period_us=(int)(1000000.0f/(float)doc["hz"]);
+    if(period_us<=0) period_us=100000;      // 10 Hz
+    if(period_us<2000) period_us=2000;      // 500 Hz is already absurd here
+    if(count<0) count=0;
+    if(count>20000) count=20000;
+
+    PH_TRAIN_EMITTED=0; PH_TRAIN_PREV_US=0;
+    PH_TRAIN_MIN_US=0;  PH_TRAIN_MAX_US=0;
+    PH_TRAIN_PERIOD_US=period_us;
+    PH_TRAIN_NEXT_US=esp_timer_get_time();
+    PH_TRAIN_LEFT=count;
+
+    retdoc["count"]=count;
+    retdoc["period_us"]=period_us;
     doRsp=rspAck=true;
   }
 
@@ -3155,6 +3236,7 @@ static uint8_t recvBuf[20];
 void firmwareLoop()
 {
   esp_task_wdt_reset();
+  phantomTrainService();
   // Drop a manual light hold when it expires, or the moment the machine leaves
   // IDLE -- entering inspection hands these pins back to the stage tasks.
   if(LIGHT_HOLD_deadline_ms!=0)
