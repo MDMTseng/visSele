@@ -921,6 +921,16 @@ volatile GEN_ERROR_CODE PENDING_ISR_ERROR=GEN_ERROR_CODE::NOP;
 static void calibrationBegin(bool full);
 static void calibrationCleanup();
 static void spinupBegin();
+// Verdict trace: the last N (object, verdict) pairs, in application order.
+// Read back with get_verdict_log. Kept out of get_running_stat deliberately --
+// that response is already close to its buffer and silently overflowing it once
+// cost an afternoon.
+struct VerdRec { uint32_t tid; int32_t cat; };
+static const int VERD_LOG_N = 64;
+static VerdRec   VERD_LOG[VERD_LOG_N];
+static uint16_t  VERD_W = 0;
+static uint16_t  VERD_N = 0;
+
 static bool CAL_GATE_PREV = false;   // GATE_DISABLED before calibration shut it
 // RECAL has been asked for, but the old estimate is still in use until the
 // pipeline empties. See calibrationBegin.
@@ -3452,6 +3462,20 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         if(lat>REP_LAT_MAX_US)REP_LAT_MAX_US=lat;
       }
       tarP->insp_status=cat;
+      // Which verdict landed on which object, in the order the device applied
+      // them.
+      //
+      // Counters cannot show a slip. If the pairing is off by one, SEL1 and
+      // SEL2 still come out roughly 50/50 and every part still gets an answer
+      // -- the totals are identical to a correct run. The only thing that
+      // changes is WHICH object each verdict went to, so that is what has to be
+      // recorded. Feed the machine a verdict pattern keyed on the object id
+      // (INSP_PERIF_VERDICT_PATTERN in the core) and a slip shows up here as
+      // the block boundary sitting on the wrong tid.
+      VERD_LOG[VERD_W].tid = tarP->tid;
+      VERD_LOG[VERD_W].cat = cat;
+      VERD_W = (uint16_t)((VERD_W+1)%VERD_LOG_N);
+      if(VERD_N<VERD_LOG_N) VERD_N++;
       rspAck=true;
     }
     else if(retired_sync)
@@ -3497,6 +3521,25 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR_REDEEM);
 
     
+    doRsp=rspAck=true;
+  }
+  else if(strcmp(type,"get_verdict_log")==0)
+  {
+    // Oldest first, so the sequence reads in the order the machine applied it.
+    JsonArray at = retdoc["tid"].to<JsonArray>();
+    JsonArray ac = retdoc["cat"].to<JsonArray>();
+    int start = (VERD_N==VERD_LOG_N) ? VERD_W : 0;
+    for(int k=0;k<VERD_N;k++)
+    {
+      const VerdRec &r = VERD_LOG[(start+k)%VERD_LOG_N];
+      at.add(r.tid);
+      ac.add(r.cat);
+    }
+    doRsp=rspAck=true;
+  }
+  else if(strcmp(type,"clear_verdict_log")==0)
+  {
+    VERD_W=0; VERD_N=0;
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"clear_error_history")==0)

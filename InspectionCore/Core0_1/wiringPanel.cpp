@@ -5397,6 +5397,50 @@ void PerifSendThread(bool *terminationflag)
             if (have_identity)
             {
               int cat = perif_status_to_cat(pc, msg.uInspStatus);
+
+              // INSP_PERIF_VERDICT_PATTERN=<n>: replace the real verdict with a
+              // repeating block of n OK then n NG, keyed on the OBJECT ID.
+              //
+              // Validation scaffolding for the pairing, and the only way found
+              // so far to make a slip visible without working vision. Counters
+              // cannot do it: an off-by-one pairing produces the same SEL1/SEL2
+              // totals as a correct one, because every part still gets an
+              // answer and only the assignment changes. Keying the verdict on
+              // the tid makes the verdict a property of the PART, so the device
+              // can record which object each one landed on and the block
+              // boundary lands on the wrong tid the moment the pairing slips.
+              //
+              // Keyed on tid and not on a send counter on purpose: a counter is
+              // a property of the STREAM, so a legitimately lost frame shifts it
+              // and looks exactly like a slip. The tid does not move.
+              //
+              // Therefore this only means anything while a tid exists -- i.e.
+              // PERIF_CORE_PAIRING 1. At 0 there is no object id to key on and
+              // the pattern is skipped rather than silently keyed on something
+              // that cannot detect what it claims to.
+              static const int vpat = []{
+                const char *e = getenv("INSP_PERIF_VERDICT_PATTERN");
+                return e ? atoi(e) : 0;
+              }();
+              // INSP_PERIF_VERDICT_SLIP=<k>: fault injection. Key the pattern on
+              // tid+k, which is exactly what a verdict landing k parts away
+              // looks like from the device. Its only purpose is to prove the
+              // slip probe can FAIL -- a check that has never failed is not
+              // evidence of anything, and the obvious negative control
+              // (positional pairing) does not work here: without frame loss
+              // positional and timestamp agree part for part, and inducing
+              // frame loss halts the device on CAM_CLOCK_LOST before a slip can
+              // accumulate. So the fault has to be injected directly.
+              static const int vslip = []{
+                const char *e = getenv("INSP_PERIF_VERDICT_SLIP");
+                return e ? atoi(e) : 0;
+              }();
+              if (vpat > 0 && msg.tid >= 0)
+              {
+                bool ok = (((msg.tid + vslip) / vpat) % 2) == 0;
+                cat = ok ? (pc->cat_ok ? pc->cat_ok : PERIF_CAT_NA)
+                         : (pc->cat_ng ? pc->cat_ng : PERIF_CAT_NA);
+              }
               ret = sendReportTo_perifCH(pc, msg.tid, cat, msg.cam_ts_us);
               // The announcement side is traced ([perif RX] cam_trig) but the
               // verdict side was not, so "did tid N ever get answered, and
