@@ -37,6 +37,9 @@ typedef struct stagePulseOffset
 extern stagePulseOffset STAGE_PULSE_OFFSET;
 extern float PLATE_FREQ_SETPOINT;
 extern uint32_t SYS_MIN_PULSE_TIME_SEP_us;
+extern volatile bool AUTO_RATE;
+extern uint32_t AUTO_RATE_FLOOR_us;
+extern uint32_t AUTO_RATE_RECOVER_N;
 // volatile: shared between the main loop (set_setup) and the step ISR
 // (GateSensing) -- see LegacyFirmware.cpp.
 extern volatile int minWidth;
@@ -81,9 +84,10 @@ namespace MachineConfig
   // v6: + gate debounce rise/fall
   // v7: + unanswered_policy / unanswered_stop_after
   // v8: + host_timeout_ms
+  // v9: + auto_rate / auto_rate_floor_us / auto_rate_recover_n
   // (an older blob falls back to compiled defaults -- re-push and save_setup
   // once after upgrading).
-  constexpr uint32_t kConfigVersion = 8;
+  constexpr uint32_t kConfigVersion = 9;
 
   // Reads NVS into the globals above. Call once, early in firmwareSetup(),
   // before anything derives timing from them.

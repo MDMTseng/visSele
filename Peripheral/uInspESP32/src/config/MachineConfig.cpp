@@ -31,6 +31,9 @@ namespace
     int32_t unanswered_policy;
     int32_t unanswered_stop_after;
     int32_t host_timeout_ms;
+    int32_t auto_rate;
+    uint32_t auto_rate_floor_us;
+    uint32_t auto_rate_recover_n;
     char machine_id[MACHINE_ID_MAX_LEN];
   };
 
@@ -58,6 +61,9 @@ namespace
     cfg.unanswered_policy = UNANSWERED_POLICY;
     cfg.unanswered_stop_after = UNANSWERED_STOP_AFTER;
     cfg.host_timeout_ms = host_timeout_ms;
+    cfg.auto_rate = AUTO_RATE ? 1 : 0;
+    cfg.auto_rate_floor_us = AUTO_RATE_FLOOR_us;
+    cfg.auto_rate_recover_n = AUTO_RATE_RECOVER_N;
     memcpy(cfg.machine_id, machine_id, MACHINE_ID_MAX_LEN);
     cfg.machine_id[MACHINE_ID_MAX_LEN - 1] = '\0';
   }
@@ -80,6 +86,9 @@ namespace
     UNANSWERED_POLICY = cfg.unanswered_policy == 1 ? 1 : 0;
     UNANSWERED_STOP_AFTER = cfg.unanswered_stop_after < 1 ? 1 : cfg.unanswered_stop_after;
     host_timeout_ms = cfg.host_timeout_ms < 0 ? 0 : cfg.host_timeout_ms;
+    AUTO_RATE = cfg.auto_rate == 1;
+    AUTO_RATE_FLOOR_us = cfg.auto_rate_floor_us;
+    AUTO_RATE_RECOVER_N = cfg.auto_rate_recover_n < 1 ? 1 : cfg.auto_rate_recover_n;
     memcpy(machine_id, cfg.machine_id, MACHINE_ID_MAX_LEN);
     machine_id[MACHINE_ID_MAX_LEN - 1] = '\0';
   }

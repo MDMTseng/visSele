@@ -138,7 +138,65 @@ bool SYS_STEPPER_DISABLED=false;
 // 15/s was the old machine's rate; production runs ~30/s and bursts higher, so
 // a 66ms floor silently merged adjacent parts. 4ms still rejects the double
 // counting a single part can cause, while clearing 250 parts/s.
+// Dry run: the stage machine advances, the plate does not.
+//
+// The rig used to fake this with stepper_disable + plate_freq 15000, which is
+// the worst available combination: dropping ENABLE takes away the motor's
+// holding torque while StepGo keeps clocking the driver, so the plate is both
+// free and being pulsed -- and parts get shaken off it.
+//
+// Muting the pulse instead leaves the driver energised, so the plate is held
+// still by its own holding torque and the logical clock runs at whatever
+// plate_freq asks for. Physical speed is zero by construction rather than by
+// trusting the driver to honour an enable pin.
+volatile bool DRY_RUN=false;
+
 uint32_t SYS_MIN_PULSE_TIME_SEP_us=4000;
+
+// ---------------------------------------------------------------------------
+// Automatic trigger rate
+// ---------------------------------------------------------------------------
+// SKIP is the machine telling us it admitted more parts than it could judge.
+// Backing the gate off when that happens, and easing it forward when it does
+// not, keeps the machine at the fastest rate it can actually sustain instead of
+// at whatever rate somebody typed once.
+//
+// AIMD, the congestion-control shape, because the problem has the same
+// structure: the cost of being slightly too slow is small and linear, the cost
+// of being too fast is parts passing unjudged. So retreat fast, return slowly.
+//
+// SYS_MIN_PULSE_TIME_SEP_us stays the CONFIGURED value -- the fastest the
+// operator is willing to run and the thing save_setup persists. The loop only
+// ever moves GATE_SEP_EFF_us, between that and a floor. Without this split a
+// save_setup during a backoff would write a transient into NVS and the machine
+// would come back permanently slow.
+uint32_t GATE_SEP_EFF_us      = 4000;    // what newPulseEvent actually enforces
+uint32_t AUTO_RATE_FLOOR_us   = 200000;  // slowest it may go (5/s)
+volatile bool AUTO_RATE       = false;
+uint32_t AUTO_RATE_OK_RUN     = 0;       // consecutive judged parts with no SKIP
+uint32_t AUTO_RATE_RECOVER_N  = 50;      // clean parts before easing forward
+uint32_t AUTO_RATE_BACKOFFS   = 0, AUTO_RATE_RECOVERS = 0;
+
+// Called from the report handler when a part is swept into SKIP.
+static inline void autoRateBackoff()
+{
+  if(!AUTO_RATE) return;
+  AUTO_RATE_OK_RUN=0;
+  uint32_t s = GATE_SEP_EFF_us + (GATE_SEP_EFF_us>>3);   // +12.5%
+  if(s>AUTO_RATE_FLOOR_us) s=AUTO_RATE_FLOOR_us;
+  if(s!=GATE_SEP_EFF_us){ GATE_SEP_EFF_us=s; AUTO_RATE_BACKOFFS++; }
+}
+
+// Called when a part is judged normally.
+static inline void autoRateOk()
+{
+  if(!AUTO_RATE) return;
+  if(++AUTO_RATE_OK_RUN < AUTO_RATE_RECOVER_N) return;
+  AUTO_RATE_OK_RUN=0;
+  uint32_t s = GATE_SEP_EFF_us - (GATE_SEP_EFF_us>>5);   // -3%
+  if(s<SYS_MIN_PULSE_TIME_SEP_us) s=SYS_MIN_PULSE_TIME_SEP_us;
+  if(s!=GATE_SEP_EFF_us){ GATE_SEP_EFF_us=s; AUTO_RATE_RECOVERS++; }
+}
 
 // Promote the camera-timestamp match from observer to decider. Default off: the
 // first flash must behave exactly as before, and the agree/disagree counters in
@@ -933,7 +991,7 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   // SWITCH task, so it simply recirculates for another pass. Letting it through
   // instead would ask the camera for a frame it cannot deliver, and a trigger
   // with no frame poisons the host's pairing (see CORE0_1_CAVEATS J7/J9).
-  if(curTime-_preTime<SYS_MIN_PULSE_TIME_SEP_us){GATE_REJ_RATE++;return -8;}
+  if(curTime-_preTime<GATE_SEP_EFF_us){GATE_REJ_RATE++;return -8;}
   _preTime=curTime;
 
 
@@ -1156,22 +1214,26 @@ int Run_ACTS(uint32_t cur_pulse)
       {
         case 1:
           CONSEC_UNANSWERED=0;
+          autoRateOk();   // a part was judged
           ACT_PUSH_TASK(act_S.ACT_SEL1, pli, spo->SEL1_on, 1, _task_->src =NULL;);//the src will be cleaned up right after
           ACT_PUSH_TASK(act_S.ACT_SEL1, pli, spo->SEL1_off, 0, _task_->src =NULL; );
           break;
         case 2:
           CONSEC_UNANSWERED=0;
+          autoRateOk();   // a part was judged
           ACT_PUSH_TASK(act_S.ACT_SEL2, pli, spo->SEL2_on, 1, _task_->src =NULL; );
           ACT_PUSH_TASK(act_S.ACT_SEL2, pli, spo->SEL2_off, 0, _task_->src =NULL; );
           break;
         case 3:
           CONSEC_UNANSWERED=0;
+          autoRateOk();   // a part was judged
           SEL3_Count++;
           // ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_on, 1, _task_->src =NULL; );
           // ACT_PUSH_TASK(act_S.ACT_SEL2, pli, STAGE_PULSE_OFFSET.SEL2_off, 0, _task_->src =NULL; );
           break;
         case 0xFFFF:
           CONSEC_UNANSWERED=0;
+          autoRateOk();   // a part was judged
           NA_Count++;
           // inspResCount.NA++;
           break;
@@ -1193,6 +1255,8 @@ int Run_ACTS(uint32_t cur_pulse)
         // the first one.
         case insp_status_SKIP:
           SKIP_Count++;
+          // The machine just told us it admitted a part it could not judge.
+          autoRateBackoff();
           CONSEC_UNANSWERED++;
           if(UNANSWERED_POLICY==1 && CONSEC_UNANSWERED < (uint32_t)UNANSWERED_STOP_AFTER)
             break;   // fail-to-reject: no actuation -> part recirculates
@@ -1235,7 +1299,7 @@ int Run_ACTS(uint32_t cur_pulse)
                    if(task->info)
                    {
 
-                    if(SYS_FREQ_STABLE && SYS_STEPPER_DISABLED==false && SEL1_ACT_COUNTDOWN)
+                    if(SYS_FREQ_STABLE && SYS_STEPPER_DISABLED==false && DRY_RUN==false && SEL1_ACT_COUNTDOWN)
                     {
                       if(SEL1_ACT_COUNTDOWN>0)SEL1_ACT_COUNTDOWN--;
                       SEL1_Count++;
@@ -1256,7 +1320,7 @@ int Run_ACTS(uint32_t cur_pulse)
                   if(task->info)
                   {
 
-                  if(SYS_FREQ_STABLE && SYS_STEPPER_DISABLED==false)
+                  if(SYS_FREQ_STABLE && SYS_STEPPER_DISABLED==false && DRY_RUN==false)
                   {
                     SEL2_Count++;
                     IO_ON(PIN_O_SEL2,IOI_SEL2);
@@ -1575,7 +1639,7 @@ void GateSensing()
         // pre-debounce code did, so the calibrated stage_pulse_offset values
         // still line up. (Switching to the object centre -- middle_pulse -- is
         // checklist 5.3's separate, calibration-affecting change.)
-        if(SYS_STEPPER_DISABLED==false && SYS_FREQ_STABLE && GATE_DISABLED==false)
+        if(SYS_STEPPER_DISABLED==false && SYS_FREQ_STABLE && GATE_DISABLED==false && DRY_RUN==false)
           newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,
                         gateInfo.end_pulse,diff);
       }
@@ -1594,6 +1658,8 @@ void GateSensing()
 
 void StepGo()
 {
+  // Held at whatever level it had; a static pin is not a step.
+  if(DRY_RUN) return;
 
   if((SYS_STEP_COUNT&1)==0)
   {
@@ -2344,9 +2410,20 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // The host needs this to know when a calibration pulse is meaningful:
       // before the plate is at constant speed the stage offsets do not line up.
       jG["freq_stable"]=SYS_FREQ_STABLE;
-      jG["min_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
+      // Stage clock running with the plate held still -- test rig only.
+      jG["dry_run"]=(bool)DRY_RUN;
+      jG["min_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;      // configured
       jG["max_hz"]=SYS_MIN_PULSE_TIME_SEP_us ?
                      (uint32_t)(1000000UL/SYS_MIN_PULSE_TIME_SEP_us) : 0;
+      // What the gate is enforcing right now. Equal to the configured value
+      // unless the auto-rate loop has backed off.
+      jG["eff_sep_us"]=GATE_SEP_EFF_us;
+      jG["eff_hz"]=GATE_SEP_EFF_us ? (uint32_t)(1000000UL/GATE_SEP_EFF_us) : 0;
+      jG["auto_rate"]=(bool)AUTO_RATE;
+      jG["auto_floor_hz"]=AUTO_RATE_FLOOR_us ?
+                     (uint32_t)(1000000UL/AUTO_RATE_FLOOR_us) : 0;
+      jG["auto_backoffs"]=AUTO_RATE_BACKOFFS;
+      jG["auto_recovers"]=AUTO_RATE_RECOVERS;
     }
     {
       // The migration's evidence. agree/disagree is the whole argument for
@@ -2800,6 +2877,36 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=rspAck=true;
   }
 
+  else if(strcmp(type,"set_dry_run")==0)
+  {
+    // Only from a standstill, in both directions. Muting mid-spin is an abrupt
+    // stop with the driver still energised; unmuting mid-spin would start
+    // stepping a plate the caller believes is stopped. Either way the answer is
+    // "bring it to rest first".
+    bool on = doc["on"].is<bool>() ? (bool)doc["on"] : true;
+    retdoc["type"]="set_dry_run";
+    if(PLATE_FREQ_CURRENT!=0)
+    {
+      retdoc["dry_run_err"]="plate must be at rest (plate_freq 0) to change dry_run";
+      retdoc["plate_freq_current"]=PLATE_FREQ_CURRENT;
+      doRsp=true; rspAck=false;
+    }
+    else
+    {
+      DRY_RUN=on;
+      if(on)
+      {
+        // Holding the plate still is the whole point, and that needs the driver
+        // energised. Leaving ENABLE off would put us back in the state this
+        // replaces: a free plate that shakes its parts off.
+        digitalWrite(STEPPER_EN_PIN,stepper_en_active);
+        SYS_STEPPER_DISABLED=false;
+      }
+      retdoc["dry_run"]=DRY_RUN;
+      retdoc["stepper_disabled"]=SYS_STEPPER_DISABLED;
+      doRsp=rspAck=true;
+    }
+  }
   else if(strcmp(type,"stepper_enable")==0)
   {
     digitalWrite(STEPPER_EN_PIN,stepper_en_active);
@@ -3202,6 +3309,11 @@ void firmwareSetup()
   }
 
   MachineConfig::begin();
+  // The gate enforces GATE_SEP_EFF_us, not the configured value, so it has to be
+  // seeded from whatever begin() just restored. Without this a reboot left it at
+  // its 4000us initialiser -- a wide-open 250/s gate on a machine configured for
+  // 35/s, which is precisely the overload the rate limit exists to prevent.
+  GATE_SEP_EFF_us = SYS_MIN_PULSE_TIME_SEP_us;
 
   // Task watchdog on the main loop: a wedged parser/deadlock must reboot
   // (and leave TASK_WDT in reset_reason), not spin the ISR blind forever.
@@ -3706,6 +3818,9 @@ void genMachineSetup(JsonDocument &jdoc)
   jdoc["plate_freq"]=PLATE_FREQ_SETPOINT;
   jdoc["plate_accel"]=SYS_FREQ_ACCEL;
   jdoc["min_detect_sep_us"]=SYS_MIN_PULSE_TIME_SEP_us;
+  jdoc["auto_rate"]=(bool)AUTO_RATE;
+  jdoc["auto_rate_floor_us"]=AUTO_RATE_FLOOR_us;
+  jdoc["auto_rate_recover_n"]=AUTO_RATE_RECOVER_N;
   jdoc["report_match_ts"]=REPORT_MATCH_TS;
 
   jdoc["pulse_min_width"]=minWidth;
@@ -3805,6 +3920,22 @@ void setMachineSetup(JsonDocument &jdoc)
   JSON_SETIF_ABLE(PLATE_FREQ_SETPOINT,jdoc,"plate_freq");
   JSON_SETIF_ABLE(SYS_FREQ_ACCEL,jdoc,"plate_accel");
   JSON_SETIF_ABLE(SYS_MIN_PULSE_TIME_SEP_us,jdoc,"min_detect_sep_us");
+  // Changing the configured rate always resets the live one: the operator asked
+  // for a rate, not for whatever the loop had crept to.
+  if(jdoc["min_detect_sep_us"].is<int>()) GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us;
+  {
+    bool ar=AUTO_RATE;
+    JSON_SETIF_ABLE(ar,jdoc,"auto_rate");
+    if(ar!=AUTO_RATE){ AUTO_RATE=ar; AUTO_RATE_OK_RUN=0;
+                       if(!ar) GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us; }
+  }
+  JSON_SETIF_ABLE(AUTO_RATE_FLOOR_us,jdoc,"auto_rate_floor_us");
+  JSON_SETIF_ABLE(AUTO_RATE_RECOVER_N,jdoc,"auto_rate_recover_n");
+  if(AUTO_RATE_RECOVER_N<1) AUTO_RATE_RECOVER_N=1;
+  if(AUTO_RATE_FLOOR_us<SYS_MIN_PULSE_TIME_SEP_us)
+    AUTO_RATE_FLOOR_us=SYS_MIN_PULSE_TIME_SEP_us;
+  if(GATE_SEP_EFF_us<SYS_MIN_PULSE_TIME_SEP_us)
+    GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us;
   JSON_SETIF_ABLE(REPORT_MATCH_TS,jdoc,"report_match_ts");
 
   JSON_SETIF_ABLE(minWidth,jdoc,"pulse_min_width");
