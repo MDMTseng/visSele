@@ -31,6 +31,7 @@ enum class PulseTimeSyncInfo_State
   MACROX(     INSPECTION_MODE_READY, 101,0) \
   MACROX(       INSPECTION_MODE_CAL, 102,0) \
   MACROX(    INSPECTION_MODE_SPINUP, 103,0) \
+  MACROX(     INSPECTION_MODE_RECAL, 104,0) \
   MACROX(     INSPECTION_MODE_ERROR, 112,0) \
   MACROX(     INSPECTION_MODE_FATAL, 113,0) \
   MACROX(                      IDLE, 100,0) \
@@ -45,6 +46,7 @@ enum class PulseTimeSyncInfo_State
   MACROX(                  INSPECTION_ERROR,   6,0) \
   MACROX(                          CAL_DONE,   8,0) \
   MACROX(                        SPIN_READY,   9,0) \
+  MACROX(                       RECAL_START,  10,0) \
   MACROX(           INSPECTION_ERROR_REDEEM, 106,0) \
   MACROX(                  INSPECTION_FATAL,   7,0) \
   MACROX(           INSPECTION_FATAL_REDEEM, 107,0)
@@ -84,6 +86,13 @@ SMM_GEN_ENUM(SYS_STATE_ACT,SMM_STATE_ACT_DECLARE)
     )\
   \
   MX1(S::INSPECTION_MODE_READY,\
+    MX2(A::RECAL_START,                     S::INSPECTION_MODE_RECAL)\
+    MX2(A::EXIT_INSPECTION_MODE,            S::IDLE)\
+    MX2(A::INSPECTION_ERROR,                S::INSPECTION_MODE_ERROR)\
+    )\
+  \
+  MX1(S::INSPECTION_MODE_RECAL,\
+    MX2(A::CAL_DONE,                        S::INSPECTION_MODE_READY)\
     MX2(A::EXIT_INSPECTION_MODE,            S::IDLE)\
     MX2(A::INSPECTION_ERROR,                S::INSPECTION_MODE_ERROR)\
     )\

@@ -336,6 +336,24 @@ struct CamClockSync
   // a 6s idle gap and a broken one over 100ms. resid/gap is the drift rate,
   // which is the number that is actually comparable between runs.
   int64_t  last_gap_us = 0;
+  // Drift rate, parts per billion, signed. Opt-in (cam_drift_comp).
+  //
+  // The offset is re-measured every report and so carries no lag, but between
+  // measurements it is a CONSTANT while the truth is a RAMP. Estimating the
+  // ramp's slope lets the prediction follow it, which is what turns idle drift
+  // from "error accumulating at 35us/s" into "error accumulating at whatever is
+  // left after correction".
+  //
+  // Filtering the SLOPE is safe where filtering the offset was not. A filter's
+  // lag is proportional to the rate of change of what it tracks; the offset
+  // ramps continuously, so a filter on it lags forever (that was the -3430us
+  // EWMA). The slope is near-constant -- it moves with temperature over
+  // minutes -- so a slow filter on it settles and stays settled.
+  //
+  // ppb keeps this integer: 35us/s is 35000ppb, and slope_ppb * elapsed_us
+  // stays inside int64 for any elapsed worth correcting.
+  int32_t  slope_ppb = 0;
+  uint32_t slope_n = 0;
   // Why the bootstrap is not converging is not answerable from counters: 690
   // samples with valid=false says only "no 8 of them agreed". Keep the raw
   // sample and how many windows were thrown out, so the shape of the
@@ -352,6 +370,7 @@ struct CamClockSync
     fault_pending=false; est_cam_us=0; established=0;
     delta_max_us=0; delta_last_us=0;
     miss_delta_last_us=0; miss_delta_max_us=0; last_gap_us=0;
+    slope_ppb=0; slope_n=0;
   }
 
   // Establish the first offset from sync pulses. After that, every report
@@ -451,15 +470,57 @@ struct CamClockSync
     last_resid_us = (int64_t)cam_ts - (int64_t)nearest_cam_us - offset_us;
     if(llabs(last_resid_us) > llabs(max_resid_us)) max_resid_us = last_resid_us;
     last_gap_us = est_cam_us ? ((int64_t)nearest_cam_us - (int64_t)est_cam_us) : 0;
+
+    // Learn the slope, but only from samples that already passed the window.
+    //
+    // That ordering is the whole safety argument: a sample far enough out to be
+    // wrong is refused above and never reaches here, so the slope cannot be
+    // taught by a mispaired frame. Feeding bad data into a slope is strictly
+    // worse than feeding it into an offset -- an offset error is constant,
+    // while a slope error grows without bound until the next measurement.
+    //
+    // Short gaps are skipped: resid/gap at 55ms is dominated by the ~1us
+    // sample noise (1us/55ms = 18000ppb of pure noise), and the slope does not
+    // need them -- it is constant, so the long gaps measure it far better.
+    if(last_gap_us >= 1000000 && llabs(last_resid_us) <= TOL_US)
+    {
+      int64_t inst_ppb = (int64_t)last_resid_us * 1000000000LL / last_gap_us;
+      // Two crystals cannot differ by more than a few hundred ppm. Anything
+      // past this is not a clock, and clamping keeps one strange sample from
+      // steering the prediction into the weeds.
+      if(inst_ppb >  200000) inst_ppb =  200000;
+      if(inst_ppb < -200000) inst_ppb = -200000;
+      if(slope_n == 0) slope_ppb = (int32_t)inst_ppb;
+      else             slope_ppb += (int32_t)((inst_ppb - slope_ppb) >> 3);
+      slope_n++;
+    }
     offset_us  = (int64_t)cam_ts - (int64_t)nearest_cam_us;   // measured, not blended
     est_cam_us = nearest_cam_us;
     established++;
   }
 
   // Where a frame taken at cam_ts should sit on the device clock.
-  int64_t expectedCamUs(uint64_t cam_ts) const { return (int64_t)cam_ts - offset_us; }
+  //
+  // With drift compensation on, the offset is projected forward by the measured
+  // slope over the time since it was measured -- so an idle line no longer
+  // accumulates error at the full crystal rate, only at whatever the slope
+  // estimate gets wrong.
+  int64_t expectedCamUs(uint64_t cam_ts) const
+  {
+    int64_t off = offset_us;
+    if(DRIFT_COMP && slope_n && est_cam_us)
+    {
+      int64_t elapsed_us = (int64_t)esp_timer_get_time() - (int64_t)est_cam_us;
+      if(elapsed_us > 0)
+        off += (int64_t)slope_ppb * elapsed_us / 1000000000LL;
+    }
+    return (int64_t)cam_ts - off;
+  }
+
+  static bool DRIFT_COMP;
 };
 int32_t CamClockSync::TOL_US = 5000;
+bool    CamClockSync::DRIFT_COMP = false;   // opt-in, set_setup cam_drift_comp
 CamClockSync CAM_SYNC;
 
 // Gate->report latency, updated by the report handler (main loop only),
@@ -825,6 +886,7 @@ volatile GEN_ERROR_CODE PENDING_ISR_ERROR=GEN_ERROR_CODE::NOP;
 // The calibration phase is documented where it is implemented, far below; the
 // state machine that drives it lives up here.
 static void calibrationBegin();
+static void calibrationCleanup();
 static void spinupBegin();
 static bool CAL_GATE_PREV = false;   // GATE_DISABLED before calibration shut it
 
@@ -918,27 +980,39 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       } //loop
       else
       {
-        // Covers every way out -- converged, timed out, or the operator left.
-        // Restoring the gate here rather than in calibrationEnd means an exit
-        // that skips it cannot leave the machine gated shut.
-        blockNewDetectedObject=true;
-        GATE_DISABLED=CAL_GATE_PREV;
+        calibrationCleanup();
+      } //exit
+      break;
+    }
 
-        // Retire every calibration object, answered or not.
-        //
-        // calFireNow deliberately registers no stage tasks, so SWITCH -- the
-        // only thing that ever sets insp_status_DEL -- will never reach these.
-        // The in-phase sweep only runs while this state does, so the last pulse
-        // (still unanswered at handover) would sit in RBuf forever, and one
-        // slot per calibration is a leak: measured as rej_busy 518 and twelve
-        // auto-rate backoffs, dropping the effective gate from 83Hz to 20Hz.
-        // Calibration is over; these have no part to sort and nowhere to go.
-        for(int k=0;k<RBuf.size();k++)
-        {
-          pipeLineInfo *p=RBuf.getTail(k);
-          if(p==NULL) break;
-          if(p->sync) p->insp_status=insp_status_DEL;
-        }
+    case SYS_STATE::INSPECTION_MODE_RECAL:
+    {
+      // Re-measure without stopping the line.
+      //
+      // The offset is only maintained while parts are being reported, so an
+      // idle line lets it go stale at the crystal drift rate. This is the
+      // scheduled top-up, and unlike CAL it must not touch the plate: CAL holds
+      // it at zero because at startup nothing has spun up yet, but here it is
+      // already at speed and correct. Spinning down and back up would cost
+      // ~7.5s each way at accel 2000 -- around 19s of downtime to fix an error
+      // of 0.038mm, which is the wrong trade by a wide margin.
+      //
+      // calFireNow does not care whether the plate turns, so keeping speed
+      // costs nothing. Shut the gate, let the pipeline drain (syncPulseService
+      // will not fire while anything is outstanding), take fresh samples,
+      // reopen.
+      if (i == 0)//enter
+      {
+        blockNewDetectedObject=false;
+        calibrationBegin();
+      }
+      else if (i == 1)
+      {
+        PLATE_FREQ_TARGET=PLATE_FREQ_SETPOINT;   // stay at speed
+      } //loop
+      else
+      {
+        calibrationCleanup();
       } //exit
       break;
     }
@@ -2045,6 +2119,10 @@ static uint32_t CAL_TID_NEXT = 0x40000001;
 // if the machine is not doing what it was told -- but a silent hang between
 // calibration and running is exactly the kind of stall nobody would diagnose.
 static int64_t  SPINUP_DEADLINE_MS = 0;
+// Idle before the offset is re-measured, set_setup "cam_recal_idle_ms".
+// 0 disables. See recalService for where 10s comes from.
+int32_t  CAM_RECAL_IDLE_MS = 10000;
+uint32_t CAM_RECALS = 0;
 static const int64_t SPINUP_TIMEOUT_MS = 30000;
 static uint32_t CAL_RUNS = 0, CAL_FAILS = 0;
 static int64_t  CAL_STARTED_MS = 0;
@@ -2182,6 +2260,68 @@ static int calFireNow()
   return 0;
 }
 
+// Leaving CAL or RECAL, by any route -- converged, timed out, or the operator
+// left. Restoring the gate here rather than in calibrationEnd means a path that
+// skips that call cannot leave the machine gated shut.
+static void calibrationCleanup()
+{
+  blockNewDetectedObject=true;
+  GATE_DISABLED=CAL_GATE_PREV;
+
+  // Retire every calibration object, answered or not.
+  //
+  // calFireNow deliberately registers no stage tasks, so SWITCH -- the only
+  // thing that ever sets insp_status_DEL -- will never reach these. The in-phase
+  // sweep only runs while the phase does, so the last pulse (still unanswered at
+  // handover) would sit in RBuf forever, and one slot per calibration is a leak:
+  // measured as rej_busy 518 and twelve auto-rate backoffs, dropping the
+  // effective gate from 83Hz to 20Hz. Calibration is over; these have no part to
+  // sort and nowhere to go.
+  for(int k=0;k<RBuf.size();k++)
+  {
+    pipeLineInfo *p=RBuf.getTail(k);
+    if(p==NULL) break;
+    if(p->sync) p->insp_status=insp_status_DEL;
+  }
+}
+
+// Top the offset up before idle drift can move a frame off its object.
+//
+// The offset is re-measured on every report, so while parts flow it is never
+// more than one part old (~2us at 18/s). An idle line stops reporting, and from
+// then on it drifts at the crystal rate with nothing to correct it.
+//
+// The threshold comes from a position tolerance, not from the clock:
+//
+//   300us of clock error x 10000 pulse/s = 3 plate steps
+//   240mm plate -> 753.98mm / 60000 steps = 0.012566 mm/step
+//   3 steps = 0.0377mm at the rim
+//
+// So 300us is "the frame is attributed to within 0.038mm of where the part
+// actually was", and at the 35us/s worst-case drift measured on this machine
+// that is reached in 8.6s. Hence 10s.
+//
+// Note this is well inside the point where anything would BREAK: 5000us window
+// / 35us/s = 143s before a returning frame would even fall outside the match
+// window, and the first frame back re-measures the offset anyway. This is a
+// precision guarantee, not a failure guard.
+static void recalService()
+{
+  if(sysinfo.state != SYS_STATE::INSPECTION_MODE_READY) return;
+  if(CAM_RECAL_IDLE_MS <= 0) return;              // 0 disables
+  if(!CAM_SYNC.valid || CAM_SYNC.est_cam_us==0) return;
+
+  const int64_t idle_us =
+    (int64_t)esp_timer_get_time() - (int64_t)CAM_SYNC.est_cam_us;
+  if(idle_us < (int64_t)CAM_RECAL_IDLE_MS*1000) return;
+
+  CAM_RECALS++;
+  djrl.dbg_printf("CAMSYNC RECAL: %llds idle, est drift %lld us -- topping up",
+                  (long long)(idle_us/1000000),
+                  (long long)(idle_us/1000000*35));
+  SYS_STATE_Transfer(SYS_STATE_ACT::RECAL_START);
+}
+
 static void spinupBegin()
 {
   SPINUP_DEADLINE_MS =
@@ -2218,7 +2358,8 @@ static void syncPulseService()
   // Phantom pulses exist only to calibrate. Once READY, the offset is
   // maintained by ordinary reports, so injecting anything would just be
   // stealing gate slots from real parts again.
-  if(sysinfo.state != SYS_STATE::INSPECTION_MODE_CAL) return;
+  if(sysinfo.state != SYS_STATE::INSPECTION_MODE_CAL &&
+     sysinfo.state != SYS_STATE::INSPECTION_MODE_RECAL) return;
 
   const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
 
@@ -2879,6 +3020,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jS["cal_runs"]=CAL_RUNS;
       jS["cal_fails"]=CAL_FAILS;
       jS["cal_ms"]=CAL_LAST_MS_TAKEN;
+      jS["drift_comp"]=CamClockSync::DRIFT_COMP;
+      jS["slope_ppb"]=CAM_SYNC.slope_ppb;
+      jS["slope_n"]=CAM_SYNC.slope_n;
+      jS["recal_idle_ms"]=CAM_RECAL_IDLE_MS;
+      jS["recals"]=CAM_RECALS;
       jS["gap_us"]=(double)CAM_SYNC.last_gap_us;
       // resid/gap. Tens of us/s is two crystals; a sudden jump is not.
       jS["drift_us_per_s"]=CAM_SYNC.last_gap_us
@@ -3482,8 +3628,26 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["id"]=doc["id"];
     retdoc["ack"]=rspAck;
     
-    uint8_t buff[2048];
+    // Static, not stack: this is the largest response the device produces and
+    // stack_hwm has been as low as 2500 bytes.
+    static uint8_t buff[3072];
+    // Never fail silently. get_running_stat outgrew a 2048 byte buffer once the
+    // clock diagnostics went in, and the symptom was simply no reply at all --
+    // which reads as a dead link and cost an hour of looking in the wrong place.
+    // A short error is infinitely more useful than nothing.
+    if(retdoc.overflowed())
+    {
+      const char *e="{\"err\":\"stat_doc_overflow\"}";
+      send_json_string(0,(uint8_t*)e,strlen(e),0);
+      return 0;
+    }
     int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
+    if(slen<=0 || slen>=(int)sizeof(buff))
+    {
+      const char *e="{\"err\":\"stat_buf_overflow\"}";
+      send_json_string(0,(uint8_t*)e,strlen(e),0);
+      return 0;
+    }
     send_json_string(0,buff,slen,0);
   }
   return 0;
@@ -3901,6 +4065,7 @@ void firmwareLoop()
   esp_task_wdt_reset();
   syncPulseService();
   spinupService();
+  recalService();
   phantomTrainService();
   // Drop a manual light hold when it expires, or the moment the machine leaves
   // IDLE -- entering inspection hands these pins back to the stage tasks.
@@ -4304,6 +4469,8 @@ void genMachineSetup(JsonDocument &jdoc)
   // and JSON_SETIF_ABLE gates on is<int64_t>(). A value written back as a float
   // would fail that test on the next boot and silently revert to the default.
   jdoc["cam_match_window_us"]=CamClockSync::TOL_US;
+  jdoc["cam_recal_idle_ms"]=CAM_RECAL_IDLE_MS;
+  jdoc["cam_drift_comp"]=CamClockSync::DRIFT_COMP;
 
   jdoc["pulse_min_width"]=minWidth;
   jdoc["pulse_max_width"]=maxWidth;
@@ -4432,6 +4599,12 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   // the machine forever; above that the choice is the operator's, and
   // cam_sync.delta_max_us against gate.eff_sep_us is how it gets checked.
   if(CamClockSync::TOL_US < 200) CamClockSync::TOL_US = 200;
+  JSON_SETIF_ABLE(CamClockSync::DRIFT_COMP,jdoc,"cam_drift_comp");
+  JSON_SETIF_ABLE(CAM_RECAL_IDLE_MS,jdoc,"cam_recal_idle_ms");
+  // Negative is meaningless; 0 is the documented "off". A floor above that stops
+  // a small positive value from recalibrating continuously and never running.
+  if(CAM_RECAL_IDLE_MS < 0) CAM_RECAL_IDLE_MS = 0;
+  if(CAM_RECAL_IDLE_MS > 0 && CAM_RECAL_IDLE_MS < 2000) CAM_RECAL_IDLE_MS = 2000;
 
   JSON_SETIF_ABLE(minWidth,jdoc,"pulse_min_width");
   JSON_SETIF_ABLE(maxWidth,jdoc,"pulse_max_width");

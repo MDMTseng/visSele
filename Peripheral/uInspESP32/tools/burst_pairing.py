@@ -71,7 +71,8 @@ def stat(s, listen=2.5):
     return None
 
 
-def run(seconds, pairing, seed, window_us, hz_lo_f, hz_hi_f, min_sep_us):
+def run(seconds, pairing, seed, window_us, hz_lo_f, hz_hi_f, min_sep_us,
+        drift_comp, recal_idle_ms):
     rng = random.Random(seed)
     s = sock()
     c = dict(CONN); c["pairing"] = pairing
@@ -82,6 +83,10 @@ def run(seconds, pairing, seed, window_us, hz_lo_f, hz_hi_f, min_sep_us):
              "unanswered_stop_after": 100000}
     if window_us:
         setup["cam_match_window_us"] = window_us
+    if drift_comp is not None:
+        setup["cam_drift_comp"] = bool(drift_comp)
+    if recal_idle_ms is not None:
+        setup["cam_recal_idle_ms"] = recal_idle_ms
     # Plate first: entering inspection mode now goes through INSPECTION_MODE_CAL,
     # and a phantom pulse is scheduled at a future step count, so a stationary
     # plate would leave calibration waiting for a step that never comes.
@@ -160,6 +165,10 @@ if __name__ == '__main__':
     # Both are correct. Use the low value to exercise the halt path on purpose,
     # not to judge the pairing.
     ap.add_argument("--min-sep-us", type=int, default=33000)
+    ap.add_argument("--drift-comp", type=int, default=None,
+                    help="1/0: project the offset by the measured slope")
+    ap.add_argument("--recal-idle-ms", type=int, default=None,
+                    help="idle before re-measuring; 0 disables")
     ap.add_argument("--hz-lo", type=float, default=0.6)
     ap.add_argument("--hz-hi", type=float, default=2.0)
     a = ap.parse_args()
@@ -168,7 +177,8 @@ if __name__ == '__main__':
     print("burst trial: %ss  pairing=%s  seed=%d  min_sep=%dus (%.0f Hz)"
           % (a.seconds, a.pairing, seed, a.min_sep_us, 1e6/a.min_sep_us))
     j, cycles, injected, lo, hi = run(a.seconds, a.pairing, seed, a.window_us,
-                                      a.hz_lo, a.hz_hi, a.min_sep_us)
+                                      a.hz_lo, a.hz_hi, a.min_sep_us,
+                                      a.drift_comp, a.recal_idle_ms)
     if not j:
         print("  NO STAT"); raise SystemExit(1)
 
@@ -187,6 +197,9 @@ if __name__ == '__main__':
     # resid alone says nothing -- it is drift accrued over gap_us.
     print("  gap=%.2fs -> drift=%.1f us/s   (resid is drift x gap, not an error)"
           % ((cs.get('gap_us') or 0)/1e6, cs.get('drift_us_per_s') or 0))
+    print("  drift_comp=%s slope=%s ppb (%.1f us/s) from n=%s   recals=%s"
+          % (cs.get('drift_comp'), cs.get('slope_ppb'),
+             (cs.get('slope_ppb') or 0)/1000.0, cs.get('slope_n'), cs.get('recals')))
     print("  cal_runs=%s cal_fails=%s cal_ms=%s  miss_last=%s miss_max=%s"
           % (cs.get('cal_runs'), cs.get('cal_fails'), cs.get('cal_ms'),
              cs.get('miss_delta_last_us'), cs.get('miss_delta_max_us')))
