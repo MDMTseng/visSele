@@ -2126,24 +2126,31 @@ static int calFireNow()
   head->sync         = 1;              // only sync objects teach the offset
   RBuf.pushHead();
 
-  // Same order and timing as trig_cam_burst's emit_at: camera line first, then
-  // the light it gates, 100us each.
+  // Same order as trig_cam_burst's emit_at: camera line first, then the light.
   //
-  // The stamp is taken here, at the start, to match how the CAM1 stage stamps
-  // an ordinary part -- and matching it is what matters, because the offset
-  // measured during calibration is only transferable to running if both use the
-  // same convention.
+  // The stamp is taken at the L1A rising edge, and that is both the physically
+  // correct instant and the one the stage path uses -- which on this rig are
+  // the same thing:
   //
-  // NOTE: on this rig the camera trigger is currently tied to the light A line,
-  // so the physically correct instant is the L1A rising edge, not this one.
-  // Moving the stamp there is a two-line change and it is WRONG TODAY: measured
-  // 2026-08-05, same burst seed, it took accept 618 -> 21 and faulted with
-  // CAM_CLOCK_LOST on misses of ~9000us. That is ~90x the 100us the stamp
-  // actually moved, so something else is coupled to this and is not yet
-  // understood. Do not "fix" this without reproducing that first.
-  const int64_t rise = esp_timer_get_time();
+  //   The camera trigger is spliced onto the light A line, so GPIO16 (L1A)
+  //   drives the backlight AND triggers the camera, while GPIO17 (CAM1) is not
+  //   connected to anything. Driving CAM1 is therefore a no-op kept only for
+  //   symmetry with the stage path.
+  //
+  //   In the stage path ACT_L1A and ACT_CAM1 are both scheduled at step offset
+  //   654 and run in the same ISR pass off one fetched time_us -- so an
+  //   ordinary part's cam_us is stamped at the L1A edge too.
+  //
+  // Stamping before the CAM1 no-op instead, as this did until now, put cam_us
+  // 100us ahead of the frame it describes and 100us out of step with running.
+  // (An earlier attempt to correct this was backed out after burst runs went
+  // from accept 618 to 21 -- but every one of those runs was at min_sep 12000,
+  // i.e. driving the gate at 83Hz into a ~35Hz camera, which halts on committed
+  // HEAD just the same. That was camera saturation, not this.)
+  const int LIGHT_DELAY_US = 100;
   io_drive(PIN_O_CAM1, IOI_CAM1, true);
-  delayMicroseconds(100);
+  delayMicroseconds(LIGHT_DELAY_US);
+  const int64_t rise = esp_timer_get_time();
   io_drive(PIN_O_L1A,  IOI_L1A,  true);
   delayMicroseconds(100);
   io_drive(PIN_O_L1A,  IOI_L1A,  false);

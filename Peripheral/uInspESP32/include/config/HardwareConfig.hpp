@@ -19,6 +19,19 @@ constexpr uint32_t perRevPulseCount = kPerRevPulseCount;
 #define STEPPER_EN_PIN 13
 
 // Lighting and camera IO
+//
+// WIRING (2026-08-05): the camera trigger is spliced onto the light A line.
+// GPIO16 drives the backlight AND triggers camera 1; GPIO17 is not connected to
+// anything, so driving PIN_O_CAM1 is a no-op kept for symmetry with the stage
+// path. Do NOT "fix the naming" by swapping these two defines -- that would move
+// the backlight onto the unconnected pin and the light would simply stop
+// working. If the names are ever made to match reality, CAM1 has to point at
+// the same pin as L1A, not trade places with it.
+//
+// Consequence for timestamps: the instant that matters is the L1A rising edge.
+// The stage path already stamps there by accident (ACT_L1A and ACT_CAM1 share
+// step offset 654 and one fetched time_us), and calFireNow stamps there on
+// purpose.
 #define PIN_O_L1A 16
 #define PIN_O_CAM1 17
 #define PIN_O_L2A 18
