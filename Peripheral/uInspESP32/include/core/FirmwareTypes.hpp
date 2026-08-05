@@ -29,6 +29,7 @@ enum class PulseTimeSyncInfo_State
   MACROX(INIT                      ,   0,0) \
   MACROX(     INSPECTION_MODE_TEST , 140,0) \
   MACROX(     INSPECTION_MODE_READY, 101,0) \
+  MACROX(       INSPECTION_MODE_CAL, 102,0) \
   MACROX(     INSPECTION_MODE_ERROR, 112,0) \
   MACROX(     INSPECTION_MODE_FATAL, 113,0) \
   MACROX(                      IDLE, 100,0) \
@@ -41,6 +42,7 @@ enum class PulseTimeSyncInfo_State
   MACROX(  PREPARE_TO_ENTER_INSPECTION_MODE,   5,0) \
   MACROX(              EXIT_INSPECTION_MODE, 105,0) \
   MACROX(                  INSPECTION_ERROR,   6,0) \
+  MACROX(                          CAL_DONE,   8,0) \
   MACROX(           INSPECTION_ERROR_REDEEM, 106,0) \
   MACROX(                  INSPECTION_FATAL,   7,0) \
   MACROX(           INSPECTION_FATAL_REDEEM, 107,0)
@@ -59,8 +61,14 @@ SMM_GEN_ENUM(SYS_STATE_ACT,SMM_STATE_ACT_DECLARE)
     MX2(A::INIT_OK,                         S::IDLE)\
     )\
   MX1(S::IDLE,\
-    MX2(A::PREPARE_TO_ENTER_INSPECTION_MODE,S::INSPECTION_MODE_READY)\
+    MX2(A::PREPARE_TO_ENTER_INSPECTION_MODE,S::INSPECTION_MODE_CAL)\
     MX2(A::ENTER_INSPECTION_TEST_MODE,      S::INSPECTION_MODE_TEST)\
+    )\
+  \
+  MX1(S::INSPECTION_MODE_CAL,\
+    MX2(A::CAL_DONE,                        S::INSPECTION_MODE_READY)\
+    MX2(A::EXIT_INSPECTION_MODE,            S::IDLE)\
+    MX2(A::INSPECTION_ERROR,                S::INSPECTION_MODE_ERROR)\
     )\
   \
   MX1(S::INSPECTION_MODE_TEST,\
@@ -73,7 +81,7 @@ SMM_GEN_ENUM(SYS_STATE_ACT,SMM_STATE_ACT_DECLARE)
     )\
   MX1(S::INSPECTION_MODE_ERROR,\
     MX2(A::EXIT_INSPECTION_MODE,            S::IDLE)\
-    MX2(A::INSPECTION_ERROR_REDEEM,         S::INSPECTION_MODE_READY)\
+    MX2(A::INSPECTION_ERROR_REDEEM,         S::INSPECTION_MODE_CAL)\
     )
 
 #define PULSE_TIME_SYNC_USSHIFT 25
@@ -103,6 +111,9 @@ enum class GEN_ERROR_CODE
   // machine would have to guess which object a frame belongs to. Stopping is
   // the correct answer: a wrong guess mis-sorts a part silently.
   CAM_CLOCK_LOST = 13,
+  // The startup clock calibration did not converge, so the machine never had a
+  // usable offset to begin with. Refusing to start is the point.
+  CAM_CLOCK_CAL_FAILED = 14,
   SEL_ACT_LIMIT_REACHES=0xff,
 };
 

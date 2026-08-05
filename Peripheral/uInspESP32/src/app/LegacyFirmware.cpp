@@ -324,6 +324,12 @@ struct CamClockSync
   // there is real margin; if it creeps toward the window, there is not.
   int64_t  delta_max_us = 0;
   int64_t  delta_last_us = 0;
+  // The deltas of frames that were REFUSED. delta_max_us only records what was
+  // accepted, so without these a halt says "two frames were outside the window"
+  // and nothing about whether they were 6ms out or 400ms out -- and those two
+  // have completely different causes.
+  int64_t  miss_delta_last_us = 0;
+  int64_t  miss_delta_max_us = 0;
   // Why the bootstrap is not converging is not answerable from counters: 690
   // samples with valid=false says only "no 8 of them agreed". Keep the raw
   // sample and how many windows were thrown out, so the shape of the
@@ -339,6 +345,7 @@ struct CamClockSync
     last_sample_us=0; boot_fail=0;
     fault_pending=false; est_cam_us=0; established=0;
     delta_max_us=0; delta_last_us=0;
+    miss_delta_last_us=0; miss_delta_max_us=0;
   }
 
   // Establish the first offset from sync pulses. After that, every report
@@ -420,6 +427,8 @@ struct CamClockSync
     if(nearest_delta > TOL_US)
     {
       rejected++;
+      miss_delta_last_us = nearest_delta;
+      if(nearest_delta > miss_delta_max_us) miss_delta_max_us = nearest_delta;
       if(++consec_reject >= LOST_N)
       {
         valid = false;
@@ -806,6 +815,11 @@ volatile bool blockNewDetectedObject=false;
 volatile GEN_ERROR_CODE PENDING_ISR_ERROR=GEN_ERROR_CODE::NOP;
 
 
+// The calibration phase is documented where it is implemented, far below; the
+// state machine that drives it lives up here.
+static void calibrationBegin();
+static bool CAL_GATE_PREV = false;   // GATE_DISABLED before calibration shut it
+
 void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 {
   SYS_STATE states[3] = {SYS_STATE::NOP};//0: enter, 1:loop, 2:exit
@@ -876,6 +890,33 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       } //exit
       break;
     break;
+
+    case SYS_STATE::INSPECTION_MODE_CAL:
+    {
+      if (i == 0)//enter
+      {
+        // Objects must flow through the pipeline (the phantoms are objects),
+        // but nothing real may enter: calibrationBegin shuts the gate and holds
+        // the feeder off, so the only things in flight are our own pulses.
+        blockNewDetectedObject=false;
+        calibrationBegin();
+      }
+      else if (i == 1)
+      {
+        // The plate has to turn: a phantom pulse is scheduled at a future step
+        // count, so a stationary plate would never reach it.
+        PLATE_FREQ_TARGET=PLATE_FREQ_SETPOINT;
+      } //loop
+      else
+      {
+        // Covers every way out -- converged, timed out, or the operator left.
+        // Restoring the gate here rather than in calibrationEnd means an exit
+        // that skips it cannot leave the machine gated shut.
+        blockNewDetectedObject=true;
+        GATE_DISABLED=CAL_GATE_PREV;
+      } //exit
+      break;
+    }
 
     case SYS_STATE::INSPECTION_MODE_READY:
     {
@@ -1910,38 +1951,104 @@ static inline void phantomEmitOne()
 static int64_t  SYNC_LAST_MS = 0;
 static uint32_t SYNC_EMITTED = 0;
 
+// Clock calibration is a phase, not a background activity.
+//
+// It used to be neither: sync pulses were fired opportunistically alongside
+// real work, guarded by "has anything real happened in the last 3 seconds".
+// That guard existed because the two compete -- a sync pulse takes a gate slot,
+// a camera trigger and an inspection. Measured on the real plate: 690 of 715
+// registered objects were sync pulses, 151 real parts were refused by the rate
+// gate because the phantoms had spent the budget, and from the operator's side
+// the machine "flashes on its own and ignores the parts on the plate".
+//
+// Blocking instead removes the competition rather than refereeing it. While
+// calibrating, the gate is shut and the feeder is off, so there are no real
+// objects at all -- which means every phantom pulse is the only thing in the
+// pipeline BY CONSTRUCTION, not by a timing guard that can be wrong. Once the
+// offset exists the phantoms stop for good; ordinary reports maintain it from
+// then on (CamClockSync::gate), and if it is ever lost the machine stops and
+// the operator re-enters inspection mode, which recalibrates.
+//
+// It is a real state (INSPECTION_MODE_CAL, 102) rather than a flag riding
+// alongside READY, so it is one state machine instead of two: the host and the
+// operator see "calibrating" instead of an unexplained pause before parts move,
+// and IDLE -> CAL -> READY makes "running without an offset" unreachable rather
+// than merely unlikely. A redeem from INSPECTION_MODE_ERROR goes back to CAL,
+// not to READY -- if the clock is why the machine stopped, resuming on the same
+// stale offset is the one thing that must not happen.
+static int64_t  CAL_DEADLINE_MS = 0;
+static uint32_t CAL_RUNS = 0, CAL_FAILS = 0;
+static int64_t  CAL_STARTED_MS = 0;
+static uint32_t CAL_LAST_MS_TAKEN = 0;
+// Generous: the pulse cadence is 300ms and the bootstrap needs 8 unambiguous
+// samples, so a healthy machine finishes in ~3s. This is the "something is
+// actually wrong" bound, not a performance target.
+static const int64_t CAL_TIMEOUT_MS = 30000;
+
+// Shut the gate and hold the feeder, then pulse until the offset exists.
+static void calibrationBegin()
+{
+  CAL_GATE_PREV = GATE_DISABLED;
+  GATE_DISABLED = true;
+  // Belt and braces on the feeder. READY's enter block is what turns it on, and
+  // CAL always runs before READY, so it should already be off -- but a feeder
+  // running while the gate is shut would send parts across the machine without
+  // registering them, i.e. unsorted, and that is not worth leaving to inference.
+  FEEDER_ON = false;
+  io_drive(FEEDER_PIN, IOI_FEEDER, false);
+  CAM_SYNC.reset();
+  CAL_STARTED_MS = (int64_t)(esp_timer_get_time()/1000);
+  CAL_DEADLINE_MS = CAL_STARTED_MS + CAL_TIMEOUT_MS;
+  SYNC_LAST_MS = 0;
+  CAL_RUNS++;
+  djrl.dbg_printf("CAMSYNC CAL start (gate shut, feeder held)");
+}
+
+static void calibrationEnd(bool ok)
+{
+  GATE_DISABLED = CAL_GATE_PREV;
+  CAL_LAST_MS_TAKEN =
+    (uint32_t)((int64_t)(esp_timer_get_time()/1000) - CAL_STARTED_MS);
+  if(ok)
+  {
+    // READY's enter block turns the feeder on; nothing to do here but hand over.
+    djrl.dbg_printf("CAMSYNC CAL ok in %u ms (offset=%lld us, %u pulses)",
+                    (unsigned)CAL_LAST_MS_TAKEN,(long long)CAM_SYNC.offset_us,
+                    (unsigned)SYNC_EMITTED);
+    SYS_STATE_Transfer(SYS_STATE_ACT::CAL_DONE);
+  }
+  else
+  {
+    CAL_FAILS++;
+    djrl.dbg_printf("CAMSYNC CAL FAILED after %u ms "
+                    "(learned=%u boot_n=%u boot_fail=%u) -- not starting",
+                    (unsigned)CAL_LAST_MS_TAKEN,(unsigned)CAM_SYNC.learned,
+                    (unsigned)CAM_SYNC.boot_n,(unsigned)CAM_SYNC.boot_fail);
+    SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,
+                       (int)GEN_ERROR_CODE::CAM_CLOCK_CAL_FAILED);
+  }
+}
+
 static void syncPulseService()
 {
-  if(sysinfo.state != SYS_STATE::INSPECTION_MODE_READY) return;
+  // Phantom pulses exist only to calibrate. Once READY, the offset is
+  // maintained by ordinary reports, so injecting anything would just be
+  // stealing gate slots from real parts again.
+  if(sysinfo.state != SYS_STATE::INSPECTION_MODE_CAL) return;
 
   const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
 
-  // Never inject into a machine that is doing real work.
-  //
-  // A sync pulse is a phantom object: it takes a gate slot, a camera trigger,
-  // a backlight flash and an inspection, and it is judged NA because there is
-  // nothing under the lens. On an idle machine that is free. On a running line
-  // it is not -- observed 2026-08-05 on the real plate: 690 of 715 registered
-  // objects were sync pulses, 151 real parts were refused by the rate gate
-  // because the phantoms had spent the budget, and from the operator's side
-  // the machine "flashes on its own and ignores the parts on the plate".
-  //
-  // The cold cadence made it far worse. It is 300ms so an idle machine is
-  // ready before work arrives, but the estimate only converges once the core
-  // starts returning cam_ts -- and while it does not converge, 300ms is a
-  // permanent 3.3Hz phantom load with no end condition. Requiring real
-  // silence bounds it: the moment parts flow, the pulses stop.
-  if(REAL_ACCEPT_MS!=0 && (now_ms-REAL_ACCEPT_MS) < 3000) return;
+  if(CAM_SYNC.valid){ calibrationEnd(true); return; }
+  if(now_ms > CAL_DEADLINE_MS){ calibrationEnd(false); return; }
 
-  // Cold, the estimate does not exist and the first real part would be paired
-  // on a guess -- so beat fast until it does. Warm, the only job is to outpace
-  // drift (~24-83us/s against a 5000us window), and 10s is ample.
-  const int64_t due_ms = CAM_SYNC.valid ? 10000 : 300;
-  if(SYNC_LAST_MS!=0 && (now_ms-SYNC_LAST_MS) < due_ms) return;
+  // The gate is shut, so there is no real work to collide with and no
+  // REAL_ACCEPT_MS guard to get wrong. 300ms is simply how fast the samples can
+  // be collected.
+  if(SYNC_LAST_MS!=0 && (now_ms-SYNC_LAST_MS) < 300) return;
 
-  // The whole point: nothing else may be outstanding, or the returning frame
-  // would have more than one candidate and the sample would need the very
-  // estimate it is meant to produce.
+  // Still checked, but now it is an assertion rather than a race: with the gate
+  // shut the only objects in flight are our own previous phantoms, so this just
+  // paces us to one at a time.
   for(int i=0;i<RBuf.size();i++)
   {
     pipeLineInfo *p=RBuf.getTail(i);
@@ -2575,6 +2682,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jS["window_us"]=(double)CamClockSync::TOL_US;
       jS["delta_max_us"]=(double)CAM_SYNC.delta_max_us;
       jS["delta_last_us"]=(double)CAM_SYNC.delta_last_us;
+      jS["cal_runs"]=CAL_RUNS;
+      jS["cal_fails"]=CAL_FAILS;
+      jS["cal_ms"]=CAL_LAST_MS_TAKEN;
+      jS["miss_delta_last_us"]=(double)CAM_SYNC.miss_delta_last_us;
+      jS["miss_delta_max_us"]=(double)CAM_SYNC.miss_delta_max_us;
       jS["est_age_s"]=CAM_SYNC.est_cam_us
         ? (double)((int64_t)(esp_timer_get_time()-(int64_t)CAM_SYNC.est_cam_us)/1000000.0) : 0.0;
       if(CAM_SYNC.boot_n>0)
