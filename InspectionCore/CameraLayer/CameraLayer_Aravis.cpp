@@ -1432,14 +1432,19 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
     // one actually took, because getting this wrong is invisible until the
     // pairing has already drifted.
     //
-    // type 1 is the SOFTWARE trigger, and it needs TriggerSource=Software:
-    // arv_camera_software_trigger() is silently ignored by a camera whose
-    // source is the physical line. Pinning Line0 for both modes is what broke
-    // the WebUI's take-new-image -- TriggerCount() reported ACK, no frame ever
-    // arrived, and (before the SnapFrame timeout clamp) the core hung there.
-    // It matters most exactly when the plate is stopped, which is when
-    // Line0 is guaranteed to be silent.
-    const char *trig_src = (type == 1) ? "Software" : "Line0";
+    // Both triggered modes point here, including type 1. That looks wrong --
+    // type 1 is nominally "soft trigger" -- but trigger_mode:1 is what the
+    // WebUI sends to mean "stop free-running", and on this machine the camera
+    // must still answer the plate while it is in that state. Selecting
+    // Software here instead made the camera deaf to Line0 the moment the UI
+    // paused the stream, which is the whole sensor gone (observed 2026-08-05:
+    // FI armed Line0, an ST {"CameraSetting":{"trigger_mode":1}} arrived a
+    // moment later, and from then on the camera only answered software
+    // triggers).
+    //
+    // A software trigger gets the Software source for the instant it needs it
+    // -- see Trigger() -- which is where that requirement actually belongs.
+    const char *trig_src = "Line0";
     arv_camera_set_string (camera, "TriggerSource", trig_src, &err);
     if(err)
     {
@@ -1524,7 +1529,37 @@ CameraLayer::status CameraLayer_Aravis::Trigger()
   GError *err = NULL;
   if (takeCount >= 0)
     takeCount++;
+
+  // arv_camera_software_trigger() is silently ignored by a camera whose
+  // TriggerSource is the physical line -- the call succeeds, ACK is returned,
+  // and no frame ever arrives. That is what broke the WebUI's take-new-image,
+  // and with a negative snap timeout it hung the core instead of failing.
+  //
+  // The triggered modes hold Line0 because the machine has to keep answering
+  // the plate (see TriggerMode). So borrow the Software source for the instant
+  // of the trigger and hand it straight back -- neither requirement has to
+  // lose. Only in a triggered mode: in free-run there is nothing to restore.
+  const bool borrow_src = (triggerMode == 1 || triggerMode == 2);
+  if (borrow_src)
+  {
+    GError *se = NULL;
+    arv_camera_set_string (camera, "TriggerSource", "Software", &se);
+    if (se) { LOGE("TriggerSource Software rejected: %s", se->message); g_clear_error(&se); }
+  }
+
   arv_camera_software_trigger (camera,&err);
+
+  if (borrow_src)
+  {
+    GError *se = NULL;
+    arv_camera_set_string (camera, "TriggerSource", "Line0", &se);
+    if (se)
+    {
+      g_clear_error(&se);
+      arv_camera_set_string (camera, "TriggerSource", "Anyway", &se);
+      if (se) { LOGE("could not restore TriggerSource: %s", se->message); g_clear_error(&se); }
+    }
+  }
 
   // NOT acquisition_started=true here. The start_acquisition call it used to
   // sit next to is commented out, so the flag was simply a lie -- and it is

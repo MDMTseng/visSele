@@ -249,6 +249,12 @@ typedef struct pipeLineInfo{
   // moment when nothing else was outstanding. Only these teach CamClockSync --
   // see the sync-pulse note there.
   uint8_t sync;
+  // How wide the gate sensor was blocked, in plate steps. The width filter
+  // (pulse_min_width / pulse_max_width) is the only thing separating a part
+  // from anything else that breaks the beam, and it could not be tuned because
+  // the measurement was thrown away the moment it was tested against. Reported
+  // in cam_trig so the two populations can actually be compared.
+  uint32_t w;
 }pipeLineInfo;
 
 // ---------------------------------------------------------------------------
@@ -1007,7 +1013,7 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   // TCount++;
   // head->s_pulse = start_pulse;
   // head->e_pulse = end_pulse;
-  // head->pulse_width = pulse_width;
+  head->w = pulse_width;
   head->gate_pulse = middle_pulse;
   head->insp_status = insp_status_UNSET;
   head->tid=tid_counter;
@@ -1881,6 +1887,20 @@ static void syncPulseService()
   else
     SYNC_EMITTED++;
   SYNC_LAST_MS = now_ms;
+}
+
+// Gate width of the object a cam_trig refers to, in plate steps. Looked up
+// here rather than carried through the ISR trigger queues, which are kept
+// deliberately small.
+static uint32_t gateWidthOf(uint32_t tid)
+{
+  for(int i=0;i<RBuf.size();i++)
+  {
+    pipeLineInfo *p=RBuf.getTail(i);
+    if(p==NULL) break;
+    if(p->tid==tid) return p->w;
+  }
+  return 0;
 }
 
 static void phantomTrainService()
@@ -3561,6 +3581,7 @@ void firmwareLoop()
         retdoc["cam"]=trig.btrig_idx;
         retdoc["t_us"]=trig.trig_time_us;
         retdoc["gate_pulse"]=trig.gate_pulse;
+        retdoc["w"]=gateWidthOf(trig.trig_id);
         retdoc["Qs"]=RBuf.size();
         int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
         djrl.send_json_string(0,buff,slen,0);
@@ -3625,6 +3646,7 @@ void firmwareLoop()
           retdoc["cam"]=info.btrig_idx;
           retdoc["t_us"]=(uint64_t)info.trig_time_us;
           retdoc["gate_pulse"]=info.gate_pulse;
+          retdoc["w"]=gateWidthOf(info.trig_id);
           retdoc["Qs"]=RBuf.size();
           int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
           djrl.send_json_string(0,buff,slen,0);
