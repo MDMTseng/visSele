@@ -18,7 +18,7 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,LocalStorageTools ,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
-import { INSPECTION_STATUS, DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
+import { DEF_EXTENSION, CameraTransferCtrl as CameraCtrl } from 'UTIL/BPG_Protocol';
 import { mkLog } from 'UTIL/logger';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';
@@ -1670,10 +1670,10 @@ class APP_INSP_MODE extends React.Component {
     // below armed the hardware trigger, so it silently undid it: entering
     // InspMode left the camera streaming at the free-run framerate and the
     // plate's trigger unused.
-    if (this.props.machine_custom_setting.InspectionMode != "FI") {
-      this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
-        { CameraSetting: { trigger_mode: 0 } });
-    }
+    // if (this.props.machine_custom_setting.InspectionMode != "FI") {
+    //   this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
+    //     { CameraSetting: { trigger_mode: 0 } });
+    // }
     this.CameraCtrl.setCameraImageTransfer(true);
 
     this.CameraCtrl.setImageCropParam(undefined,1);
@@ -1735,6 +1735,7 @@ class APP_INSP_MODE extends React.Component {
       let deffile = defFileGeneration(this.props.edit_info);
 
       this.props.ACT_WS_Define_File_Update_EXPRESS(deffile,true)
+      console.log("deffile",JSON.parse(JSON.stringify(deffile)));
       deffile.featureSet_sha1=DefFileHash;//fake the sha1 data since we might modify the deffile, but still need to have the same deffile hex
 
 
@@ -1749,7 +1750,6 @@ class APP_INSP_MODE extends React.Component {
 
         // deffile.featureSet[0].sig_st1_matching_sim_thres=0.2;
         // deffile.briThres=100;
-
 
 
 
@@ -1834,7 +1834,6 @@ class APP_INSP_MODE extends React.Component {
   constructor(props) {
     super(props);
     this.ec_canvas = null;
-    this.checkResult2AirAction = { direction: "none", ver: 0 };
 
     // CI auto-exit (power/overheat guard): CI is a STATIONARY inspection -- the
     // user puts objects on the plate and the camera streams + re-inspects the
@@ -2258,53 +2257,6 @@ class APP_INSP_MODE extends React.Component {
     this.notifyPopUp("警告",msg)
   }
   render() {
-    
-    let inspectionReport = undefined;
-    if (this.props.inspectionReport != null) {   // != catches BOTH null and undefined
-      inspectionReport = this.props.inspectionReport;
-      if (inspectionReport.reports && inspectionReport.reports.length > 0) {
-        let groupResult = inspectionReport.reports.map((single_rep) => {
-
-          // [1,2,3,4].reduce((sum,ele)=>{return sum+ele},0);
-          // [1,2,3,4].map((ele)=>2*ele);
-
-          let judgeReports = single_rep.judgeReports;
-          let ret_status = judgeReports.reduce((res, obj) => {
-            if (res == INSPECTION_STATUS.NA) return res;
-            if (res == INSPECTION_STATUS.FAILURE) {
-              if (obj.status == INSPECTION_STATUS.NA)
-                return INSPECTION_STATUS.NA;
-              return res;
-            }
-            return obj.status;
-          }
-            , INSPECTION_STATUS.SUCCESS);
-          return ret_status;
-        });
-
-        let ret_status = groupResult.reduce((gresult, result) => {
-          if (gresult === undefined)
-            return result;
-
-          if (gresult == INSPECTION_STATUS.NA || result == INSPECTION_STATUS.NA)
-            return INSPECTION_STATUS.NA;
-
-          if (gresult != result)
-            return INSPECTION_STATUS.NA;
-
-          return result;
-        }, undefined);
-
-        // if (ret_status == INSPECTION_STATUS.SUCCESS) {
-        //   this.checkResult2AirAction = { direction: "right", ver: this.checkResult2AirAction.ver + 1 };
-        // } else if (ret_status == INSPECTION_STATUS.FAILURE) {
-        //   this.checkResult2AirAction = { direction: "left", ver: this.checkResult2AirAction.ver + 1 };
-        // } else {
-        //   //log.error("result NA...");
-        // }
-        //
-      }
-    }
     let MenuSet = [];
     let menu_height = "HXA";//auto
     log.debug("CanvasComponent render");
@@ -2535,7 +2487,6 @@ class APP_INSP_MODE extends React.Component {
           DICT={this.props.DICT}
           measureDisplayRank={this.state.measureDisplayRank}
           IR_decotrator={this.props.info_decorator}
-          checkResult2AirAction={this.checkResult2AirAction}
           shape_def={this.props.shape_list}
           key="ObjInfoList"
           uInsp_API_ID_CONN_INFO={this.props.uInsp_API_ID_CONN_INFO}
