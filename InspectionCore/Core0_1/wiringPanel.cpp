@@ -4709,6 +4709,16 @@ int sendReportTo_perifCH(PerifChannel *perifCH, int64_t tid, int cat, uint64_t c
   // into an object exactly. Sent alongside tid during the migration so the
   // device can check the two against each other on real traffic before the
   // timestamp is trusted on its own.
+  // Logged with its own delta so the host's view of the camera clock can be
+  // checked against the device's without a reflash: the device reports
+  // cam_ts-cam_us, and a step here that the device does not see (or vice versa)
+  // says which side of the subtraction is unstable.
+  static uint64_t prev_cam_ts = 0;
+  LOGI("[perif] report tid:%lld cat:%d cam_ts:%llu d:%lld",
+       (long long)tid, cat, (unsigned long long)cam_ts_us,
+       (long long)(prev_cam_ts ? (int64_t)(cam_ts_us - prev_cam_ts) : 0));
+  prev_cam_ts = cam_ts_us;
+
   return printfTo_perifCH(perifCH, buffx, sizeof(buffx), true,
     "{"
     "\"type\":\"report\",\"tid\":%lld,\"cat\":%d,\"cam_ts\":%llu"

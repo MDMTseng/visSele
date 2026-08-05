@@ -150,6 +150,26 @@ uint64_t CameraLayer_Aravis::deviceTimestampToUs(uint64_t dev_ticks, uint64_t sy
       _ts_calibrated = true;
     }
   }
+
+  // Until the rate is known there is no honest answer, so say so rather than
+  // divide by the assumed default.
+  //
+  // The default is 1000 (ns) and this camera is 100 (10ns), so every frame
+  // before calibration completed came out 10x too small. Measured on the real
+  // plate 2026-08-05: the first sync sample read 216,513,611 where its
+  // neighbours read 2,382,734,242 +/- 25 -- an outlier 2166 SECONDS wide next
+  // to samples that agreed with each other to 49us. It was outvoted by the
+  // median that time, but the guard on both sides is a majority vote, so a
+  // camera that starts streaming just as pulses begin can fill a whole
+  // bootstrap window with these and converge on nonsense.
+  //
+  // 0 is the "unknown" sentinel the whole stack already honours:
+  // PerifTriggerPairing::pairFrame falls back to positional on it,
+  // announcementLost() declines to judge, and the firmware's
+  // CamClockSync::observe drops the sample. Those frames simply pair by
+  // position, which is what they did before timestamps existed.
+  if (!_ts_calibrated) return 0;
+
   return (uint64_t)(dev_ticks / _ts_ticks_per_us);
 }
 

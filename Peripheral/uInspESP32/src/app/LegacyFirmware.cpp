@@ -300,12 +300,19 @@ struct CamClockSync
   // climbing means the offset really is moving.
   uint32_t rejected = 0, rebuilds = 0;
   uint16_t consec_reject = 0;
+  // Why the bootstrap is not converging is not answerable from counters: 690
+  // samples with valid=false says only "no 8 of them agreed". Keep the raw
+  // sample and how many windows were thrown out, so the shape of the
+  // disagreement (constant / drifting / noise) is readable from the status.
+  int64_t  last_sample_us = 0;
+  uint32_t boot_fail = 0;
 
   void reset()
   {
     valid=false; offset_us=0; boot_n=0;
     last_resid_us=0; max_resid_us=0;
     agree=disagree=learned=rejected=rebuilds=0; consec_reject=0;
+    last_sample_us=0; boot_fail=0;
   }
 
   // A report whose object is already known (matched by tid) is a free
@@ -316,6 +323,7 @@ struct CamClockSync
     if(cam_ts==0 || cam_us==0) return;
     int64_t sample = (int64_t)cam_ts - (int64_t)cam_us;
     learned++;
+    last_sample_us = sample;
     if(!valid)
     {
       if(boot_n < BOOT_N) boot[boot_n++] = sample;
@@ -329,7 +337,7 @@ struct CamClockSync
       int64_t med = srt[BOOT_N/2];
       int ok=0; for(int i=0;i<BOOT_N;i++) if(llabs(srt[i]-med)<=TOL_US) ok++;
       if(ok*2 > BOOT_N){ offset_us=med; valid=true; }
-      else { for(int i=0;i<BOOT_N/2;i++) boot[i]=boot[i+BOOT_N/2]; boot_n=BOOT_N/2; }
+      else { boot_fail++; for(int i=0;i<BOOT_N/2;i++) boot[i]=boot[i+BOOT_N/2]; boot_n=BOOT_N/2; }
       return;
     }
     int64_t resid = sample - offset_us;
@@ -2489,6 +2497,19 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // Unambiguous samples emitted. `learned` should now equal this: any
       // excess means something other than a sync pulse taught the estimate.
       jS["sync_pulses"]=SYNC_EMITTED;
+      // Bootstrap forensics. boot[] is the live window; its spread says whether
+      // the samples disagree by a constant, a drift, or noise.
+      // Sent as deltas from boot[0]: retdoc is a 3072B static and this handler
+      // is already dense, so eight full-width offsets would risk truncating the
+      // whole response. The deltas are what carries the information anyway.
+      jS["last_sample_us"]=(double)CAM_SYNC.last_sample_us;
+      jS["boot_fail"]=CAM_SYNC.boot_fail;
+      if(CAM_SYNC.boot_n>0)
+      {
+        jS["boot0_us"]=(double)CAM_SYNC.boot[0];
+        JsonArray jB=jS.createNestedArray("bootd");
+        for(int i=1;i<CAM_SYNC.boot_n;i++) jB.add((double)(CAM_SYNC.boot[i]-CAM_SYNC.boot[0]));
+      }
     }
     {
       JsonObject jL=retdoc.createNestedObject("report_latency");
