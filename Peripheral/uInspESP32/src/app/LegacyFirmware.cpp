@@ -8,7 +8,8 @@
 #include "driver/timer.h"
 #include <esp_task_wdt.h>
 #include "soc/rtc.h"
-#include "soc/rtc_cntl_reg.h"   // RTC_CNTL_FORCE_DOWNLOAD_BOOT
+#include "soc/rtc_cntl_reg.h"
+#include "driver/rtc_io.h"      // rtc_gpio_hold_en -- IO0 low across a reset
 #include <string>
 
 extern "C" {
@@ -2473,19 +2474,44 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
   }
   else if(strcmp(type,"reboot_bootloader")==0)
   {
-    // Enter the ROM serial bootloader without touching IO0.
+    // Enter the ROM serial bootloader without a physical BOOT press.
     //
     // This board's auto-reset circuit is only half wired: DTR->EN resets the
     // chip fine, but RTS->IO0 does nothing, so esptool always finds boot:0x1
-    // (SPI boot) instead of 0x3 (download) no matter how long IO0 is held --
+    // (SPI boot) instead of download mode no matter how long IO0 is held --
     // measured at 0.05s, 0.3s and 0.8s, all identical. No timing setting can
-    // fix a missing connection, so every flash has needed a physical BOOT
-    // press.
+    // fix a missing connection.
     //
-    // The chip can be told to do it in software: RTC_CNTL_FORCE_DOWNLOAD_BOOT
-    // survives the restart and the ROM honours it, which is exactly the pin
-    // this board cannot pull. Flash with --before no_reset afterwards, since a
-    // normal reset would take it straight back out again.
+    // The obvious software route does not exist on this chip. An earlier
+    // version wrote RTC_CNTL_FORCE_DOWNLOAD_BOOT, which the ESP32-S2/S3/C3 ROM
+    // honours -- but the original ESP32 has no such register. It is absent from
+    // every header in this SDK, and writing the address anyway produced exactly
+    // what you would expect: the command acked, the chip restarted
+    // (rst:0xc SW_CPU_RESET), and it came straight back up as
+    // boot:0x13 SPI_FAST_FLASH_BOOT.
+    //
+    // DOES NOT WORK EITHER, and is kept only so the next person does not spend
+    // the afternoon rediscovering it. The idea was to drive the strapping pin
+    // and make the level outlive the reset: GPIO0 is an RTC GPIO, and the RTC
+    // domain is not cleared by a software reset, so rtc_gpio_hold_en ought to
+    // keep the pad low while the ROM samples it.
+    //
+    // Measured, both ways round:
+    //   hold + esp_restart()          -> rst:0xc SW_CPU_RESET,  boot:0x13
+    //   hold + RTC_CNTL_SW_SYS_RST    -> rst:0x3 SW_RESET,      boot:0x13
+    // 0x13 is SPI_FAST_FLASH_BOOT; download mode is 0x03, and the bit that
+    // differs is IO0. So the system reset half is right -- the reset reason
+    // changed exactly as intended -- and the pad half is not: this chip's RTC
+    // hold is a deep-sleep facility and the pad is not held low at the moment
+    // the straps latch.
+    //
+    // There is no software route on the original ESP32. The fix is one wire,
+    // RTS -> IO0, which is what esptool has always needed: it holds RTS low
+    // (IO0 low) while releasing DTR (EN high), and only two independent lines
+    // can produce that ordering. Tying IO0 to EN cannot -- they rise together.
+    //
+    // What survives here is a working software reboot. Flashing still needs the
+    // BOOT button until that wire exists.
     //
     // Reply first -- after the restart there is nobody left to answer.
     retdoc["type"]="reboot_bootloader";
@@ -2494,20 +2520,26 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       int slen=serializeJson(retdoc,(char*)dataBuff,sizeof(dataBuff));
       djrl.send_json_string(0,dataBuff,slen,0);
     }
+    Serial.flush();
     delay(80);
-    // This SDK version (arduino-esp32 3.20004 / IDF 4.4) does not export
-    // RTC_CNTL_OPTION1_REG, so the address is written out. It is fixed silicon
-    // on the ESP32: DR_REG_RTCCNTL_BASE (0x3ff48000) + 0x0128, bit 0 =
-    // FORCE_DOWNLOAD_BOOT. Taken from the register header of a newer SDK in
-    // this same install, and cross-checked against the base address here.
-    #ifndef RTC_CNTL_OPTION1_REG
-    #define RTC_CNTL_OPTION1_REG          (DR_REG_RTCCNTL_BASE + 0x0128)
-    #endif
-    #ifndef RTC_CNTL_FORCE_DOWNLOAD_BOOT
-    #define RTC_CNTL_FORCE_DOWNLOAD_BOOT  (BIT(0))
-    #endif
-    REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
-    esp_restart();
+    rtc_gpio_hold_dis((gpio_num_t)0);      // in case a previous attempt left it
+    rtc_gpio_init((gpio_num_t)0);
+    rtc_gpio_set_direction((gpio_num_t)0, RTC_GPIO_MODE_OUTPUT_ONLY);
+    rtc_gpio_set_level((gpio_num_t)0, 0);
+    rtc_gpio_hold_en((gpio_num_t)0);
+    delay(10);
+    // A SYSTEM reset, not esp_restart().
+    //
+    // esp_restart() ends in esp_cpu_reset(), which is a SW_CPU_RESET (rst:0xc)
+    // -- it restarts the CPU but does not re-latch GPIO_STRAP. The ROM then
+    // reads the strapping captured at the last system reset, i.e. IO0 as it was
+    // at power-on, and holding the pad low now changes nothing. That is exactly
+    // what was observed: pad held, and still boot:0x13 SPI_FAST_FLASH_BOOT.
+    //
+    // RTC_CNTL_SW_SYS_RST re-latches the straps, and leaves the RTC domain --
+    // and therefore the pad hold -- alone, which is the combination this needs.
+    SET_PERI_REG_MASK(RTC_CNTL_OPTIONS0_REG, RTC_CNTL_SW_SYS_RST);
+    while(1){}   // not reached
     doRsp=false;
   }
 

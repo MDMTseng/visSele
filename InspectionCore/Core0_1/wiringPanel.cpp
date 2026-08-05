@@ -11,6 +11,8 @@
 #include "mjpegLib.h"
 
 #include <sys/stat.h>
+#include <sys/socket.h>   // INSP_PERIF_CONSOLE dev console
+#include <netinet/in.h>
 #include <atomic>         // std::atomic explicit for mingw
 #include <deque>
 #include "PerifTriggerPairing.hpp"   // frame <-> object pairing (self-contained)
@@ -192,6 +194,7 @@ uint64_t g_perifWriteCnt = 0;
 
 int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json);
 int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...);
+static void perifConsoleEcho(const uint8_t *raw, int rawL);   // dev console, opt-in
 int sendResultTo_perifCH(PerifChannel *perifCH,int uInspStatus, uint64_t timeStamp_100us);
 
 
@@ -596,6 +599,8 @@ class PerifChannel:public Data_JsonRaw_Layer
       tap_device_state(raw, rawL);
       retire_stale_triggers();
       keep_clock_warm();
+      // Verbatim copy to the dev console, before any envelope or truncation.
+      perifConsoleEcho(raw, rawL);
 
       // [perif] Reply arrived from the device. Log the serial round-trip (write
       // -> reply) so we can localize comm delay: if serialRTT ~= the WebUI's
@@ -1206,12 +1211,6 @@ void AttachStaticInfo(cJSON *reportJson, m_BPG_Protocol_Interface *BPG_prot_if)
       tmpStr_ptr += sprintf(tmpStr_ptr, "%02X", machine_h.machine[i]);
     }
     cJSON_AddStringToObject(reportJson, "machine_hash", tmpStr);
-
-    if (BPG_prot_if && BPG_prot_if->cameraFramesLeft >= 0)
-    {
-      LOGI("BPG_prot_if->cameraFramesLeft:%d", BPG_prot_if->cameraFramesLeft);
-      cJSON_AddNumberToObject(reportJson, "frames_left", BPG_prot_if->cameraFramesLeft);
-    }
   }
 }
 // int backPackLoad(FeatureManager_BacPac &calib_bacpac,cJSON *from)
@@ -1885,11 +1884,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       static const bool dbgProbe = (getenv("CORE_STATE_PROBE") != NULL);
       if (dbgProbe && !checkTL("GS", dat)) {
         fprintf(stderr,
-          "[STATEPROBE] msg=[%c%c] DoImageTransfer=%d JPEGq=%d cameraFramesLeft=%d "
+          "[STATEPROBE] msg=[%c%c] DoImageTransfer=%d JPEGq=%d "
           "cacheImage=%dx%d ImageCrop=(%d,%d,%d,%d)\n",
           dat->tl[0], dat->tl[1],
           (int)DoImageTransfer, DataView_JPEG_quality,
-          (int)cameraFramesLeft,
           cacheImage.cols, cacheImage.rows,
           ImageCropX, ImageCropY, ImageCropW, ImageCropH);
       }
@@ -2593,7 +2591,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         if (deffile == NULL && defInfo == NULL)
         {
           LOGE("No entry:'deffile':%p OR 'definfo(json)':%p ", __LINE__, deffile, defInfo);
-          this->cameraFramesLeft = 0;
           camera->TriggerMode(1);
           break;
         }
@@ -2759,10 +2756,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
         NG_MAX_FPS=6;
         NA_MAX_FPS=6;
         // save_snap_folder_full_delete_count=0;
-        double *frame_count = JFetch_NUMBER(json, "frame_count");
-        this->cameraFramesLeft = (frame_count != NULL) ? ((int)(*frame_count)) : -1;
-        int frameCount = (int)this->cameraFramesLeft;
-        LOGI("this->cameraFramesLeft:%d frame_count:%p", this->cameraFramesLeft, frame_count);
 
         if (json == NULL)
         {
@@ -2791,8 +2784,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
           LOGE("No entry:'deffile':%p OR 'definfo(json)':%p ", __LINE__, deffile, defInfo);
 
-          this->cameraFramesLeft = 0;
-
           camera->TriggerMode(1);
           break;
         }
@@ -2814,8 +2805,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             {
               snprintf(err_str, sizeof(err_str), "Cannot read defFile from:%s LINE:%04d", jsonStr, __LINE__);
               LOGE("%s", err_str);
-              this->cameraFramesLeft = 0;
-
               break;
             }
             LOGI("Read deffile:%s", deffile);
@@ -2862,14 +2851,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           datViewQueueSkipSize=datViewQueue.capacity();
           if (dat->tl[0] == 'C')
           {
-            if (false && frameCount == 1)
-            {
-              camera->TriggerMode(1); //Manual trigger
-            }
-            else
-            {
-              camera->TriggerMode(0);
-            }
+            camera->TriggerMode(0);
 
             doImgProcessThread = true;
             imageQueueSkipSize=1;
@@ -2884,18 +2866,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           }
 
 
-          if (this->cameraFramesLeft > 0)
-          {
-
-            MT_UNLOCK("SPACING LOCK");
-            while (this->cameraFramesLeft > 0)
-            {
-              std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-
-            MT_LOCK("SPACING LOCK");
-            camera->TriggerMode(1);
-          }
           //SaveIMGFile("data/buff.bmp",&test1_buff);
 
           session_ACK = true;
@@ -4507,7 +4477,6 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   }
   pframeT = t;
   LOGI("=============== frameInterval:%fms \n", interval);
-  LOGI("bpg_pi->cameraFramesLeft:%d", bpg_pi.cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
   CameraLayer::frameInfo finfo = cl_GMV.GetFrameInfo();
@@ -4749,15 +4718,6 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
   if (ret_pipe_pass_down)
     *ret_pipe_pass_down = false;
 
-  if (bpg_pi.cameraFramesLeft == 0)
-  {
-    // camera->TriggerMode(1);
-    //MT_UNLOCK("");
-    return;
-  }
-  if (bpg_pi.cameraFramesLeft > 0)
-    bpg_pi.cameraFramesLeft--;
-  
   MT_LOCK("InspResultAction lock");
 
 
@@ -4910,7 +4870,7 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
   if( *skipInspDataTransfer==false ||*skipImageTransfer==false)//if any of them are sent
   do
   {
-    sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"frameID\":%d,\"ACK\":true}", (bpg_pi.cameraFramesLeft) ? "true" : "false", frameActionID);
+    sprintf(tmp, "{\"start\":false, \"framesLeft\":true,\"frameID\":%d,\"ACK\":true}", frameActionID);
     bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", tmp);
     bpg_dat.pgID = bpg_pi.CI_pgID;
 
@@ -4918,15 +4878,6 @@ void InspResultAction_s(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bo
 
     //SaveIMGFile("data/MVCamX.bmp",&test1_buff);
     //exit(0);
-    if (bpg_pi.cameraFramesLeft)
-    {
-      LOGV("bpg_pi.cameraFramesLeft:%d Get Next frame...", bpg_pi.cameraFramesLeft);
-      //std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      //cl_GMV.Trigger();
-    }
-    else
-    {
-    }
   } while (false);
 
   if (*inspSnap==true)
@@ -5099,6 +5050,105 @@ int removeOldestRep(const char* path,const char* ext)
   return 0;
 }
 
+
+// ---- peripheral dev console (opt-in) ---------------------------------------
+//
+// INSP_PERIF_CONSOLE=<port> opens a plain TCP line console onto the peripheral
+// link: write one line of JSON, it reaches the device verbatim; every reply the
+// device sends is echoed back, one per line.
+//
+// It exists because the core owns the serial port exclusively. While the core
+// is running, uinsp_test.py cannot open /dev/cu.usbserial-* at all, so the
+// device is unreachable exactly when it is most worth asking questions -- with
+// real parts moving past a real camera.
+//
+// Deliberately not routed through the log. Long records are corrupted in the
+// log transport (a record is overwritten while being read), and the reply this
+// was built to read -- get_running_stat, ~1kB with the cam_sync block at the
+// far end -- is precisely the size that loses its tail. A socket hands over the
+// bytes the device actually sent.
+//
+// Off unless the variable is set: no socket, no thread, no listener. A
+// production machine does not open a control port because a developer once
+// needed one.
+static std::atomic<int> g_perifConsoleClient{-1};
+
+static void perifConsoleEcho(const uint8_t *raw, int rawL)
+{
+  int fd = g_perifConsoleClient.load();
+  if (fd < 0) return;
+  if (::write(fd, raw, rawL) < 0 || ::write(fd, "\n", 1) < 0)
+  {
+    ::close(fd);
+    g_perifConsoleClient.store(-1);
+  }
+}
+
+void PerifConsoleThread(bool *terminationflag)
+{
+  const char *portStr = getenv("INSP_PERIF_CONSOLE");
+  if (portStr == NULL) return;
+  int port = atoi(portStr);
+  if (port <= 0) return;
+
+  int srv = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (srv < 0) { LOGE("[perif console] socket() failed"); return; }
+  int on = 1;
+  ::setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+  struct sockaddr_in a; memset(&a, 0, sizeof(a));
+  a.sin_family = AF_INET;
+  a.sin_port = htons((uint16_t)port);
+  // Loopback only. This forwards arbitrary commands to a machine that moves
+  // physical parts; it must not be reachable from the network.
+  a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  if (::bind(srv, (struct sockaddr *)&a, sizeof(a)) < 0 || ::listen(srv, 1) < 0)
+  {
+    LOGE("[perif console] bind/listen on 127.0.0.1:%d failed", port);
+    ::close(srv);
+    return;
+  }
+  LOGI("[perif console] listening on 127.0.0.1:%d", port);
+
+  while (terminationflag && *terminationflag == false)
+  {
+    struct timeval tv = {1, 0};              // so termination is noticed
+    fd_set rf; FD_ZERO(&rf); FD_SET(srv, &rf);
+    if (::select(srv + 1, &rf, NULL, NULL, &tv) <= 0) continue;
+
+    int cli = ::accept(srv, NULL, NULL);
+    if (cli < 0) continue;
+    int old = g_perifConsoleClient.exchange(cli);
+    if (old >= 0) ::close(old);              // one client at a time
+    LOGI("[perif console] client attached");
+
+    std::string line;
+    while (terminationflag && *terminationflag == false)
+    {
+      char c;
+      ssize_t n = ::read(cli, &c, 1);
+      if (n <= 0) break;
+      if (c == '\r') continue;
+      if (c != '\n') { if (line.size() < 4096) line += c; continue; }
+      if (!line.empty())
+      {
+        PerifChannel *pc = bpg_pi.perifCH;
+        if (pc == NULL)
+          ::write(cli, "{\"err\":\"no perif channel\"}\n", 27);
+        else
+        {
+          std::vector<uint8_t> buf(line.size() + 64);
+          printfTo_perifCH(pc, buf.data(), (int)buf.size(), true, "%s", line.c_str());
+        }
+      }
+      line.clear();
+    }
+    LOGI("[perif console] client gone");
+    if (g_perifConsoleClient.load() == cli) g_perifConsoleClient.store(-1);
+    ::close(cli);
+  }
+  ::close(srv);
+  LOGI("[perif console] ended");
+}
 
 // Drains perifSendQueue and performs the (potentially blocking) serial write
 // to the peripheral inspection machine, keeping that latency off the
@@ -5422,12 +5472,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
        datViewQueue.size(), datViewQueue.capacity(),
        inspSnapQueue.size(), inspSnapQueue.capacity(),
        bpg_pi.resPool.rest_size());
-  if (bpg_pi.cameraFramesLeft == 0)
-  {
-    // camera->TriggerMode(1);
-    // MT_UNLOCK("");
-    return;
-  }
 
   // Drop frames nothing will ever claim, before spending anything on them.
   //
@@ -5929,7 +5973,6 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       // Only tear down shared core state when the LAST client disconnects.
       if (peers.empty())
       {
-        bpg_pi.cameraFramesLeft = 0;
         if (bpg_pi.camera)
           bpg_pi.camera->TriggerMode(1);
         bpg_pi.delete_PeripheralChannel();
@@ -6108,6 +6151,9 @@ int mainLoop(bool realCamera = false)
 
   std::thread _perifSendThread(PerifSendThread, &terminationFlag);
   setThreadPriority(_perifSendThread, SCHED_RR, 10);
+
+  // Returns immediately unless INSP_PERIF_CONSOLE is set.
+  std::thread _perifConsoleThread(PerifConsoleThread, &terminationFlag);
 
   {
 
