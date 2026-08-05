@@ -5077,7 +5077,21 @@ static void perifConsoleEcho(const uint8_t *raw, int rawL)
 {
   int fd = g_perifConsoleClient.load();
   if (fd < 0) return;
-  if (::write(fd, raw, rawL) < 0 || ::write(fd, "\n", 1) < 0)
+
+  // Never block here. This runs on the peripheral RX path, so a console client
+  // that reads slowly must not be able to stall it -- and with a blocking
+  // write it could: the socket buffer fills, write() sleeps, and the whole
+  // device receive thread stops with it. That happened, and it wedged the core
+  // mid-experiment. A diagnostic must not be able to halt the thing it watches.
+  //
+  // MSG_DONTWAIT means a slow reader loses echo lines instead. That is the
+  // right trade: the authoritative record is get_running_stat, which is
+  // request/response and cannot be dropped this way.
+  struct iovec iov[2] = { { (void *)raw, (size_t)rawL }, { (void *)"\n", 1 } };
+  struct msghdr mh; memset(&mh, 0, sizeof(mh));
+  mh.msg_iov = iov; mh.msg_iovlen = 2;
+  ssize_t n = ::sendmsg(fd, &mh, MSG_DONTWAIT);
+  if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
   {
     ::close(fd);
     g_perifConsoleClient.store(-1);
@@ -5117,6 +5131,11 @@ void PerifConsoleThread(bool *terminationflag)
 
     int cli = ::accept(srv, NULL, NULL);
     if (cli < 0) continue;
+    // Without this a client that goes away mid-write raises SIGPIPE and takes
+    // the core down with it -- an unacceptable way for a debug socket to fail.
+#ifdef SO_NOSIGPIPE
+    { int one = 1; ::setsockopt(cli, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one)); }
+#endif
     int old = g_perifConsoleClient.exchange(cli);
     if (old >= 0) ::close(old);              // one client at a time
     LOGI("[perif console] client attached");

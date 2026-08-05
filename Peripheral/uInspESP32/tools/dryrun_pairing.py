@@ -101,5 +101,7 @@ if __name__ == '__main__':
     tot = ct['NA'] + ct['SEL1'] + ct['SEL2'] + ct['SEL3']
     print("  injected %.1f/s  accept=%s" % (rate, j['gate']['accept']))
     print("  judged=%-5s SKIP=%-5s UNANS=%-4s" % (tot, ct['SKIP'], ct['UNANSWERED']))
-    print("  learned=%-5s agree=%-5s disagree=%-4s  resid=%s resid_max=%s" %
-          (cs['learned'], cs['agree'], cs['disagree'], cs['resid_us'], cs['resid_max_us']))
+    print("  learned=%-5s agree=%-5s disagree=%-4s rejected=%-5s rebuilds=%-3s" %
+          (cs['learned'], cs['agree'], cs['disagree'],
+           cs.get('rejected','-'), cs.get('rebuilds','-')))
+    print("  resid=%s  resid_max=%s" % (cs['resid_us'], cs['resid_max_us']))

@@ -214,6 +214,10 @@ struct CamClockSync
   static const int64_t TOL_US   = 5000;   // match window; drift needs ~60s to cross it
   static const int     BOOT_N   = 8;      // samples before the estimate is trusted
   static const int     EWMA_SH  = 4;      // 1/16 per update
+  // Consecutive out-of-window samples before the estimate is abandoned. Long
+  // enough that a burst of mismatches cannot trigger it, short enough that a
+  // genuinely moved offset is re-learned in a second or two of traffic.
+  static const int     LOST_N   = 16;
 
   bool     valid = false;
   int64_t  offset_us = 0;                 // cam_ts - cam_us
@@ -222,6 +226,19 @@ struct CamClockSync
   int64_t  last_resid_us = 0;
   int64_t  max_resid_us = 0;
   uint32_t agree = 0, disagree = 0, learned = 0;
+  // Samples refused as outliers, and how often the model was abandoned and
+  // rebuilt. Both are diagnostics for the failure this guard exists to stop:
+  // rejected climbing while resid stays small is the guard working; rebuilds
+  // climbing means the offset really is moving.
+  uint32_t rejected = 0, rebuilds = 0;
+  uint16_t consec_reject = 0;
+
+  void reset()
+  {
+    valid=false; offset_us=0; boot_n=0;
+    last_resid_us=0; max_resid_us=0;
+    agree=disagree=learned=rejected=rebuilds=0; consec_reject=0;
+  }
 
   // A report whose object is already known (matched by tid) is a free
   // measurement of the offset. Real parts therefore calibrate the clock as a
@@ -250,8 +267,42 @@ struct CamClockSync
     int64_t resid = sample - offset_us;
     last_resid_us = resid;
     if(llabs(resid) > llabs(max_resid_us)) max_resid_us = resid;
+
+    // Refuse samples from outside the match window before they touch the
+    // estimate.
+    //
+    // Without this every sample was folded in unconditionally, which made the
+    // estimator amplify its own mistakes: one pair that is wrong by 400ms moves
+    // the offset by 400ms/16 = 25ms in a single step, against a 5000us match
+    // window. The next frame then matches the wrong object, which produces
+    // another bad pair, and so on. Measured under induced frame loss: -1381us
+    // residual with a 381ms maximum in timestamp mode, and -274ms in positional
+    // mode, where nearly every pair is wrong by construction.
+    //
+    // A sample further from the estimate than the window either belongs to a
+    // different object or the estimate is stale -- and neither case is improved
+    // by averaging it in. Crystals drift; they do not jump.
+    if(llabs(resid) > TOL_US)
+    {
+      rejected++;
+      if(++consec_reject >= LOST_N)
+      {
+        // Sustained rejection is the other case: the offset has genuinely moved
+        // (a long idle, a device reboot) and no longer describes these clocks.
+        // Rebuild it from scratch rather than creep toward it a sixteenth at a
+        // time, which would spend the whole approach mismatching.
+        reset_estimate();
+        rebuilds++;
+      }
+      return;
+    }
+    consec_reject = 0;
     offset_us += resid >> EWMA_SH;   // crystals drift, they do not jump
   }
+
+  // Drop the estimate but keep the counters -- this is a recovery, not a
+  // measurement boundary.
+  void reset_estimate() { valid=false; boot_n=0; consec_reject=0; }
 
   // Where a frame taken at cam_ts should sit on the device clock.
   int64_t expectedCamUs(uint64_t cam_ts) const { return (int64_t)cam_ts - offset_us; }
@@ -2064,6 +2115,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     ISR_GAP_MAX_CY=0;
     RBUF_PEAK=0;
     GATE_ACCEPT=GATE_REJ_RATE=GATE_REJ_DIST=GATE_REJ_BUSY=0;
+    // The clock model too. Leaving it out made every segmented experiment
+    // read the previous segment's numbers: an A/B control appeared to show 12
+    // disagreements that were entirely leftovers, which nearly produced the
+    // wrong conclusion about which matching mode is safe.
+    CAM_SYNC.reset();
     REP_LAT_N=0;
     REP_LAT_SUM_US=0;
     REP_LAT_MAX_US=0;
@@ -2185,6 +2241,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jS["learned"]=CAM_SYNC.learned;
       jS["agree"]=CAM_SYNC.agree;
       jS["disagree"]=CAM_SYNC.disagree;
+      // rejected up while resid stays small = the outlier guard doing its job.
+      // rebuilds up = the offset genuinely moved and was re-learned.
+      jS["rejected"]=CAM_SYNC.rejected;
+      jS["rebuilds"]=CAM_SYNC.rebuilds;
     }
     {
       JsonObject jL=retdoc.createNestedObject("report_latency");
