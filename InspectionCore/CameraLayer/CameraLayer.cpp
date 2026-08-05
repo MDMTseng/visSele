@@ -54,7 +54,22 @@ CameraLayer::status  CameraLayer::SnapFrame(CameraLayer_Callback snap_cb,void *c
     return NAK;
   }
 
-  CameraLayer::status retStatus=NAK; 
+  // A negative timeout used to mean "wait forever": SnapAbort returns
+  // immediately for timeout_ms<0, so nothing ever notifies conV and the wait
+  // below never ends. That is not a survivable default here -- SnapFrame is
+  // called from the WebSocket command handler on the main loop thread, so one
+  // snap that never gets a frame stops the core serving EVERY client, with no
+  // log and no way back except a restart.
+  //
+  // It is reachable in normal use: the WebUI's take-new-image sends
+  // timeout=-1, and on this machine the camera trigger rides the backlight
+  // line driven by the peripheral board -- with the plate stopped, no trigger
+  // ever comes. Clamp to a bound generous enough for a trigger that is
+  // genuinely on its way, so the failure is a NAK the UI can report instead of
+  // a frozen core.
+  if (timeout_ms < 0) timeout_ms = 30000;
+
+  CameraLayer::status retStatus=NAK;
   snapFlag = 1;
   //trigger reset;
   {
