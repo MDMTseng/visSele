@@ -2795,6 +2795,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
 
         cJSON *defInfo = JFetch_OBJECT(json, "definfo");
 
+        // Every FI/CI, and whether it actually carried a def. A def-less one is
+        // not inert: it falls through to TriggerMode(1) below and leaves
+        // whatever the engine already held, so a run of them looks like an
+        // inspection session that quietly never reloads its def.
+        LOGI("[%c%c] pgID:%d hasDeffile:%s (deffile:%s definfo:%s)",
+             dat->tl[0], dat->tl[1], dat->pgID,
+             (deffile != NULL || defInfo != NULL) ? "true" : "false",
+             deffile != NULL ? "yes" : "no",
+             defInfo != NULL ? "yes" : "no");
+
         if (deffile == NULL && defInfo == NULL)
         {
 
