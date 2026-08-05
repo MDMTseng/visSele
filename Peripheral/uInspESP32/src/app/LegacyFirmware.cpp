@@ -973,6 +973,9 @@ uint64_t _preTime=0;
 // Consumed by the next newPulseEvent: marks that object as a clock-sync pulse.
 // Only ever set by syncPulseService, which fires with the pipeline empty.
 static uint8_t SYNC_MARK_NEXT = 0;
+// When a REAL part was last registered. Sync pulses must stay out of the way
+// of production -- see syncPulseService.
+static int64_t REAL_ACCEPT_MS = 0;
 
 int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
@@ -1015,6 +1018,7 @@ int newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_puls
   // only skips zeroes, so it would happily match a frame against it.
   head->cam_us = 0;
   head->sync = SYNC_MARK_NEXT;
+  if(SYNC_MARK_NEXT==0) REAL_ACCEPT_MS = (int64_t)(esp_timer_get_time()/1000);
   SYNC_MARK_NEXT = 0;
   if (ActRegister_pipeLineInfo(head) != 0)
   { //register failed....
@@ -1835,10 +1839,28 @@ static void syncPulseService()
 {
   if(sysinfo.state != SYS_STATE::INSPECTION_MODE_READY) return;
 
+  const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
+
+  // Never inject into a machine that is doing real work.
+  //
+  // A sync pulse is a phantom object: it takes a gate slot, a camera trigger,
+  // a backlight flash and an inspection, and it is judged NA because there is
+  // nothing under the lens. On an idle machine that is free. On a running line
+  // it is not -- observed 2026-08-05 on the real plate: 690 of 715 registered
+  // objects were sync pulses, 151 real parts were refused by the rate gate
+  // because the phantoms had spent the budget, and from the operator's side
+  // the machine "flashes on its own and ignores the parts on the plate".
+  //
+  // The cold cadence made it far worse. It is 300ms so an idle machine is
+  // ready before work arrives, but the estimate only converges once the core
+  // starts returning cam_ts -- and while it does not converge, 300ms is a
+  // permanent 3.3Hz phantom load with no end condition. Requiring real
+  // silence bounds it: the moment parts flow, the pulses stop.
+  if(REAL_ACCEPT_MS!=0 && (now_ms-REAL_ACCEPT_MS) < 3000) return;
+
   // Cold, the estimate does not exist and the first real part would be paired
   // on a guess -- so beat fast until it does. Warm, the only job is to outpace
   // drift (~24-83us/s against a 5000us window), and 10s is ample.
-  const int64_t now_ms = (int64_t)(esp_timer_get_time()/1000);
   const int64_t due_ms = CAM_SYNC.valid ? 10000 : 300;
   if(SYNC_LAST_MS!=0 && (now_ms-SYNC_LAST_MS) < due_ms) return;
 
