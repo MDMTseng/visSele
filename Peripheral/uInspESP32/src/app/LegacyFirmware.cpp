@@ -2229,8 +2229,11 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["name"]="uInspESP32";
     
     genMachineSetup(retdoc);
+    // Canonical hash of the full active config: host compares at connect and
+    // refuses to run on mismatch (config-drift guard, RELIABILITY_ROADMAP L3).
+    // Added here rather than inside genMachineSetup, which hash() itself calls.
+    retdoc["cfg_crc"]=MachineConfig::hash();
 
-    
     doRsp=rspAck=true;
 
   }
@@ -3844,9 +3847,10 @@ void genMachineSetup(JsonDocument &jdoc)
   // reading came from NVS or is just the compiled fallback.
   jdoc["machine_id"]=MachineConfig::machineId();
   jdoc["cfg_from_nvs"]=MachineConfig::isLoadedFromNVS();
-  // Canonical hash of the full active config: host compares at connect and
-  // refuses to run on mismatch (config-drift guard, RELIABILITY_ROADMAP L3).
-  jdoc["cfg_crc"]=MachineConfig::hash();
+  // cfg_crc is NOT added here. MachineConfig::hash() fingerprints the image
+  // this function produces, so calling it from inside would recurse -- and
+  // each frame carries a 3KB document, so it overflows the stack rather than
+  // merely being slow. The get_setup handler adds it once, at the top.
   jdoc["host_timeout_ms"]=host_timeout_ms;
 
   // Why the chip last booted: lets a host that finds the board freshly in
