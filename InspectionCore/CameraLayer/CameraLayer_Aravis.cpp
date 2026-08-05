@@ -1431,12 +1431,20 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
     // body does not expose it, so other cameras keep working -- and log which
     // one actually took, because getting this wrong is invisible until the
     // pairing has already drifted.
-    const char *trig_src = "Line0";
+    //
+    // type 1 is the SOFTWARE trigger, and it needs TriggerSource=Software:
+    // arv_camera_software_trigger() is silently ignored by a camera whose
+    // source is the physical line. Pinning Line0 for both modes is what broke
+    // the WebUI's take-new-image -- TriggerCount() reported ACK, no frame ever
+    // arrived, and (before the SnapFrame timeout clamp) the core hung there.
+    // It matters most exactly when the plate is stopped, which is when
+    // Line0 is guaranteed to be silent.
+    const char *trig_src = (type == 1) ? "Software" : "Line0";
     arv_camera_set_string (camera, "TriggerSource", trig_src, &err);
     if(err)
     {
-      LOGE("TriggerSource Line0 rejected (d%d c:%d m:%s) -- falling back to Anyway",
-           err->domain,err->code,err->message);
+      LOGE("TriggerSource %s rejected (d%d c:%d m:%s) -- falling back to Anyway",
+           trig_src, err->domain,err->code,err->message);
       err=NULL;
       g_clear_error(&err);
       trig_src = "Anyway";
