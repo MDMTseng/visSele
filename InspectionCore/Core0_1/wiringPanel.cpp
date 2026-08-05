@@ -1619,6 +1619,21 @@ void m_BPG_Protocol_Interface::delete_PeripheralChannel()
 
 
 std::vector<uint8_t> image_send_buffer(40000);
+// SEND_acvImage runs on two threads: the WS command handler (a calibration or
+// LD snap, via toUpperLayer) and the inspection pipeline (InspResultAction_s).
+// They shared image_send_buffer, and the send loop holds a raw pointer into it
+// across toLinkLayer while the other thread can resize() it -- a grow
+// reallocates, so the pointer dangles and the loop writes into freed heap.
+//
+// That is what has been killing the core during lens calibration: the freed
+// block lands on ws_conn_set's storage, one element reads back NULL, and the
+// main loop faults in ws_server::set_fd_set on the next select() -- a crash
+// with no visible connection to imaging (6 identical reports on 2026-08-05).
+//
+// Serializing the whole call also fixes a second problem the same race caused:
+// two threads emitting WebSocket fragments onto one socket interleave them,
+// which is a corrupt frame stream regardless of who owns the buffer.
+static std::mutex image_send_lock;
 // Heuristic: is this 3-channel BGR image actually grayscale content (B=G=R
 // across every pixel)?  Used to auto-pick mode 2 (1-component grayscale JPEG)
 // even when the caller passed a BGR Mat. Fast-rejecting via a 1-row sample
@@ -1651,6 +1666,7 @@ static bool _looks_grayscale(const cv::Mat &m)
 int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
 {
   if(callbackInfo==NULL)return -1;
+  std::lock_guard<std::mutex> image_send_guard(image_send_lock);
   BPG_protocol_data send_dat;
   BPG_protocol_data_acvImage_Send_info *img_info = (BPG_protocol_data_acvImage_Send_info*)callbackInfo;
 
