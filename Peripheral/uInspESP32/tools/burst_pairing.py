@@ -184,6 +184,9 @@ if __name__ == '__main__':
     print("  resid=%-8s resid_max=%-8s delta_max=%-8s window=%s"
           % (cs['resid_us'], cs['resid_max_us'],
              cs.get('delta_max_us', '-'), cs.get('window_us', '-')))
+    # resid alone says nothing -- it is drift accrued over gap_us.
+    print("  gap=%.2fs -> drift=%.1f us/s   (resid is drift x gap, not an error)"
+          % ((cs.get('gap_us') or 0)/1e6, cs.get('drift_us_per_s') or 0))
     print("  cal_runs=%s cal_fails=%s cal_ms=%s  miss_last=%s miss_max=%s"
           % (cs.get('cal_runs'), cs.get('cal_fails'), cs.get('cal_ms'),
              cs.get('miss_delta_last_us'), cs.get('miss_delta_max_us')))

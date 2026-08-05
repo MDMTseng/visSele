@@ -330,6 +330,12 @@ struct CamClockSync
   // have completely different causes.
   int64_t  miss_delta_last_us = 0;
   int64_t  miss_delta_max_us = 0;
+  // Device time since the previous measurement. Without it last_resid_us cannot
+  // be read at all: the offset is re-measured every report, so the residual is
+  // drift accrued over THIS gap -- the same -211us means a healthy machine over
+  // a 6s idle gap and a broken one over 100ms. resid/gap is the drift rate,
+  // which is the number that is actually comparable between runs.
+  int64_t  last_gap_us = 0;
   // Why the bootstrap is not converging is not answerable from counters: 690
   // samples with valid=false says only "no 8 of them agreed". Keep the raw
   // sample and how many windows were thrown out, so the shape of the
@@ -345,7 +351,7 @@ struct CamClockSync
     last_sample_us=0; boot_fail=0;
     fault_pending=false; est_cam_us=0; established=0;
     delta_max_us=0; delta_last_us=0;
-    miss_delta_last_us=0; miss_delta_max_us=0;
+    miss_delta_last_us=0; miss_delta_max_us=0; last_gap_us=0;
   }
 
   // Establish the first offset from sync pulses. After that, every report
@@ -444,6 +450,7 @@ struct CamClockSync
     if(nearest_delta > delta_max_us) delta_max_us = nearest_delta;
     last_resid_us = (int64_t)cam_ts - (int64_t)nearest_cam_us - offset_us;
     if(llabs(last_resid_us) > llabs(max_resid_us)) max_resid_us = last_resid_us;
+    last_gap_us = est_cam_us ? ((int64_t)nearest_cam_us - (int64_t)est_cam_us) : 0;
     offset_us  = (int64_t)cam_ts - (int64_t)nearest_cam_us;   // measured, not blended
     est_cam_us = nearest_cam_us;
     established++;
@@ -2147,11 +2154,14 @@ static int calFireNow()
   // from accept 618 to 21 -- but every one of those runs was at min_sep 12000,
   // i.e. driving the gate at 83Hz into a ~35Hz camera, which halts on committed
   // HEAD just the same. That was camera saturation, not this.)
-  const int LIGHT_DELAY_US = 100;
-  io_drive(PIN_O_CAM1, IOI_CAM1, true);
-  delayMicroseconds(LIGHT_DELAY_US);
+  // Both lines together, which is what the stage path does: ACT_L1A and
+  // ACT_CAM1 share step offset 654, so they fire in the SAME ISR pass with no
+  // delay between them. This used to lead CAM1 by 100us, copied from
+  // trig_cam_burst's light_delay -- a skew the path it is meant to match does
+  // not have, spent waiting on a pin that is not connected to anything.
   const int64_t rise = esp_timer_get_time();
-  io_drive(PIN_O_L1A,  IOI_L1A,  true);
+  io_drive(PIN_O_CAM1, IOI_CAM1, true);   // no-op today; see HardwareConfig.hpp
+  io_drive(PIN_O_L1A,  IOI_L1A,  true);   // the actual trigger, and the light
   delayMicroseconds(100);
   io_drive(PIN_O_L1A,  IOI_L1A,  false);
   io_drive(PIN_O_CAM1, IOI_CAM1, false);
@@ -2869,6 +2879,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       jS["cal_runs"]=CAL_RUNS;
       jS["cal_fails"]=CAL_FAILS;
       jS["cal_ms"]=CAL_LAST_MS_TAKEN;
+      jS["gap_us"]=(double)CAM_SYNC.last_gap_us;
+      // resid/gap. Tens of us/s is two crystals; a sudden jump is not.
+      jS["drift_us_per_s"]=CAM_SYNC.last_gap_us
+        ? (double)CAM_SYNC.last_resid_us*1000000.0/(double)CAM_SYNC.last_gap_us : 0.0;
       jS["miss_delta_last_us"]=(double)CAM_SYNC.miss_delta_last_us;
       jS["miss_delta_max_us"]=(double)CAM_SYNC.miss_delta_max_us;
       jS["est_age_s"]=CAM_SYNC.est_cam_us
