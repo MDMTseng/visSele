@@ -1,0 +1,6 @@
+#define __UPRT_I_(fmt,...) djrl.dbg_printf("%04d %.*s:i " fmt,__LINE__,PRT_FUNC_LEN,__func__ , ##__VA_ARGS__)
+  djrl.dbg_printf(str);
+      // djrl.dbg_printf("recvLen:%d",recvLen);
+        djrl.dbg_printf(">%s",recvBuf);
+      // djrl.dbg_printf("recv DONE");
+          djrl.dbg_printf("%s",info.log.c_str());

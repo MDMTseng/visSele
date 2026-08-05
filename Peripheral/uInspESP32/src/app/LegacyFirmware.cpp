@@ -2505,13 +2505,16 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // hold is a deep-sleep facility and the pad is not held low at the moment
     // the straps latch.
     //
-    // There is no software route on the original ESP32. The fix is one wire,
-    // RTS -> IO0, which is what esptool has always needed: it holds RTS low
-    // (IO0 low) while releasing DTR (EN high), and only two independent lines
-    // can produce that ordering. Tying IO0 to EN cannot -- they rise together.
+    // There is no software route on the original ESP32, and none is needed
+    // anymore: the actual fix was a 4k resistor from IO0 to GND. The board's
+    // RTS->IO0 leg was present but too weak to pull below VIL against the
+    // pull-up; 4k to ground moves the operating point far enough that RTS now
+    // crosses the threshold, while the resting level still boots normally
+    // (verified 28/28 resets into the application, 3/3 uploads with no button).
     //
-    // What survives here is a working software reboot. Flashing still needs the
-    // BOOT button until that wire exists.
+    // So this command is not the flashing path -- `pio run -t upload` is. What
+    // survives here is a plain software reboot, which is occasionally useful on
+    // its own. Nothing depends on it.
     //
     // Reply first -- after the restart there is nobody left to answer.
     retdoc["type"]="reboot_bootloader";

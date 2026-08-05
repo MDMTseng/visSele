@@ -191,9 +191,23 @@ induced loss", which is the one case still unproven.
    `tap_trigger_info`, `keep_clock_warm`, the trigger wait, the early dump.
    ~450 lines that exist only to reconstruct what the device already knows.
 
-### The BOOT press: no software route on this chip
+### The BOOT press: SOLVED — a 4k resistor from IO0 to GND
 
-Three attempts, all measured, all dead ends:
+`pio run -t upload` now flashes with no button, repeatably.
+
+The board is a stock ESP32-WROOM-32 DevKitC, so the two-transistor auto-reset
+circuit is present; DTR->EN always worked (`rst:0x1` observed), only IO0 refused
+to go low. The RTS->IO0 leg was evidently there but too weak to pull IO0 below
+VIL against its pull-up. **4k from IO0 to GND shifts the operating point just
+enough**: RTS asserted now crosses the threshold, while the resting level stays
+above VIH so a normal boot is unaffected.
+
+Verified: 28/28 resets started the application, 3/3 uploads succeeded with no
+BOOT press. Noise margin on IO0 is by definition reduced, so if flaky boots ever
+appear, this is the first thing to suspect.
+
+Three software attempts preceded this, all measured, all dead ends — do not
+retry them:
 
 | attempt | result |
 |---|---|
@@ -201,15 +215,14 @@ Three attempts, all measured, all dead ends:
 | RTC pad hold on IO0 + `esp_restart()` | `rst:0xc` SW_CPU_RESET — does not re-latch `GPIO_STRAP`, so the pad level is irrelevant |
 | RTC pad hold + `RTC_CNTL_SW_SYS_RST` | `rst:0x3` SW_RESET — straps re-latch correctly, but the hold is a deep-sleep facility and the pad is not held at latch time |
 
-All three ended at `boot:0x13` (SPI_FAST_FLASH_BOOT). Download mode is `0x03`;
-the differing bit is IO0.
+All three ended at `boot:0x13` (SPI_FAST_FLASH_BOOT); download mode is `0x03`
+and the differing bit is IO0. Tying IO0 to EN also cannot work — they rise
+together, so the straps latch after both are already high (tried, measured,
+`boot:0x13`, and it additionally makes esptool's DTR/RTS fight each other).
 
-**The fix is one wire: RTS -> IO0.** esptool holds RTS low (IO0 low) while
-releasing DTR (EN high), and only two independent lines can produce that
-ordering. Tying IO0 to EN cannot — they rise together, and the straps latch
-after both are already high (tried, measured, `boot:0x13`). `reboot_bootloader`
-survives as a working software reboot; flashing needs the button until the wire
-exists.
+`reboot_bootloader` remains in the firmware as a working software reboot; it
+does not reach the ROM bootloader and nothing depends on it. `flash_no_boot.sh`
+is deleted — plain `pio run -t upload` is the flashing path now.
 
 ---
 
