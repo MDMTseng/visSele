@@ -1659,11 +1659,21 @@ class APP_INSP_MODE extends React.Component {
   
   componentDidMount() {
     let DefFileHash=this.props.edit_info.DefFileHash;
-    // Trigger-mode policy: ONLY InspMode runs the camera free-running.
+    // Trigger-mode policy: only CI InspMode runs the camera free-running.
     // Flip to continuous on mount and back to trigger=On on unmount so the
     // camera doesn't flood frames when no one is inspecting.
-    this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
-      { CameraSetting: { trigger_mode: 0 } });
+    //
+    // FI must NOT free-run. It pairs one frame to one part off the machine's
+    // own trigger, so a free-running sensor produces frames no part asked for
+    // -- the core logs them as "frame with no pending trigger -- pairing
+    // desynced?" and drops the results. This mount ran before the FI branch
+    // below armed the hardware trigger, so it silently undid it: entering
+    // InspMode left the camera streaming at the free-run framerate and the
+    // plate's trigger unused.
+    if (this.props.machine_custom_setting.InspectionMode != "FI") {
+      this.props.ACT_WS_SEND_CORE_BPG("ST", 0,
+        { CameraSetting: { trigger_mode: 0 } });
+    }
     this.CameraCtrl.setCameraImageTransfer(true);
 
     this.CameraCtrl.setImageCropParam(undefined,1);
