@@ -52,20 +52,119 @@ throttle UI, pairing stats in the panel, link RESYNC, idle heartbeat.
 
 ---
 
+## 2026-08-05: the evidence arrived
+
+The firmware is flashed and the migration's evidence base is real:
+
+| | |
+|---|---|
+| Reports observed by the device | 6249 |
+| Timestamp match **agreed** with tid match | 6237 |
+| **Disagreed** | **0** |
+| Clock residual | -12 .. -21us, against a 5000us tolerance |
+| UNANSWERED / SKIP over the whole run | **0 / 0** |
+
+~5000 real parts at plate_freq 15000, gate 35/s, ~19 parts/s accepted.
+
+The clock offset moved **5.9ms during the run** (~24us/s) -- more than the
+match tolerance -- while the residual never left +-21us. A fixed offset would
+have failed inside this one run; the EWMA is doing real work, not riding luck.
+
+**What this does and does not prove.** It proves the timestamp match is never
+*worse* than the tid match. It does not yet prove it is *better*, because
+better only shows up when a frame is lost, and no frame was lost in this run.
+That case still needs inducing.
+
+### The camera ignores triggers; it does not drop frames
+
+Measured directly with on-device `trig_cam_burst` (40 pulses, mean interval
+19999us at 50Hz -- the firmware generator is exact, unlike the old host-driven
+attempt that smeared 10ms into 10-30ms):
+
+| trigger rate | frames delivered | loss |
+|---|---|---|
+| <= 35 Hz | 40 / 40 | 0% |
+| 38 Hz | 38 | 5% |
+| 40 Hz | 36 | 10% |
+| 45 Hz | 32 | 20% |
+| 50 Hz | 29 | 27.5% |
+| 60 Hz | 24 | 40% |
+
+The ceiling is **35-36 Hz**, which lands exactly on the camera's 35.18 fps
+(28425us) figure. The gate setting of 35/s is now a measured number rather than
+one inferred from stop events.
+
+Crucially, `camera dropped N frame(s)` **never fired once** through any of it.
+`frameNum` only numbers buffers the camera actually delivered, so a trigger it
+was too busy to service leaves no gap. The core's frame-gap compensation is
+therefore blind to this failure mode -- it watches for something that does not
+happen. Triggers are lost silently, and the only downstream evidence is a part
+with no verdict.
+
+This also reconciles yesterday's numbers with today's: 40/s cost 0.25% in parts
+but 10% in triggers, because real parts do not arrive uniformly and the gate
+spaces them. Both are right; they measure different things.
+
+### This is the part-free test rig
+
+The sweep above needs no parts on the plate and takes about two minutes. It is
+the repeatable bench measurement that was missing. Wiring a motor pulse gate
+into it would extend it from "camera ceiling" to "object pairing under
+induced loss", which is the one case still unproven.
+
+### Also today
+
+- **`cameraFramesLeft` is gone.** It gated the entire inspection pipeline on a
+  frame budget no client ever set: the WebUI never sends `frame_count`, and its
+  only consumer was behind `if(false&&...)`. A headless core therefore announced
+  triggers, inspected nothing, reported nothing, and the device stopped the
+  machine on unanswered parts -- which reads exactly like a pairing failure and
+  is not one. Cost about an hour of chasing the device before the guard turned
+  up in `ImgPipeProcessCenter_imp`.
+- **Dev console**: `INSP_PERIF_CONSOLE=<port>` (loopback TCP, one line of JSON
+  in, device replies out). The core owns the serial port exclusively, so this is
+  the only way to question the device while parts are moving. Not routed through
+  the log, deliberately -- `get_running_stat` is ~1kB and the log transport
+  corrupts records that long.
+- **The BOOT press is not solvable in software on this chip.** See below.
+
 ## Tomorrow, in order
 
-1. **One BOOT press, flash everything.** After that
-   `Peripheral/uInspESP32/tools/flash_no_boot.sh` handles it — the firmware puts
-   itself into the ROM bootloader and no pin is involved.
-2. **Watch `cam_sync.agree` / `cam_sync.disagree`** in `get_running_stat`. This
-   is the migration's entire evidence base: the timestamp match is computed on
-   every real report and checked against the tid match, continuously, on
-   production traffic. `disagree` must stay 0.
-3. **Promote when the counters justify it**: `report_match_ts: true`. Not
-   before, and not on argument.
-4. **Then delete from the host** — `PerifTriggerPairing.hpp`,
+1. ~~One BOOT press, flash everything.~~ **Done 2026-08-05.**
+2. ~~Watch `cam_sync.agree` / `cam_sync.disagree`.~~ **Done: 6237 / 0.**
+3. **Induce frame loss with objects in the pipeline.** This is the one thing
+   the agree/disagree run does not cover, and it is the case the whole
+   migration exists for: a lost frame permanently offsets a positional FIFO,
+   and timestamp matching is supposed to shrug it off. `trig_cam_burst` cannot
+   do it — it fires the camera directly, produces no pipeline object
+   (`gate_pulse == 0`, so the core reports nothing), and only exercises the
+   clock path. The route is either real parts with the gate raised above 36/s,
+   or the motor pulse gate.
+4. **Promote when that case is covered too**: `report_match_ts: true`. Agreement
+   in the easy case is not the argument; surviving the hard case is.
+5. **Then delete from the host** — `PerifTriggerPairing.hpp`,
    `tap_trigger_info`, `keep_clock_warm`, the trigger wait, the early dump.
    ~450 lines that exist only to reconstruct what the device already knows.
+
+### The BOOT press: no software route on this chip
+
+Three attempts, all measured, all dead ends:
+
+| attempt | result |
+|---|---|
+| `RTC_CNTL_FORCE_DOWNLOAD_BOOT` | the register does not exist on the original ESP32 (S2/S3/C3 only); absent from every SDK header |
+| RTC pad hold on IO0 + `esp_restart()` | `rst:0xc` SW_CPU_RESET — does not re-latch `GPIO_STRAP`, so the pad level is irrelevant |
+| RTC pad hold + `RTC_CNTL_SW_SYS_RST` | `rst:0x3` SW_RESET — straps re-latch correctly, but the hold is a deep-sleep facility and the pad is not held at latch time |
+
+All three ended at `boot:0x13` (SPI_FAST_FLASH_BOOT). Download mode is `0x03`;
+the differing bit is IO0.
+
+**The fix is one wire: RTS -> IO0.** esptool holds RTS low (IO0 low) while
+releasing DTR (EN high), and only two independent lines can produce that
+ordering. Tying IO0 to EN cannot — they rise together, and the straps latch
+after both are already high (tried, measured, `boot:0x13`). `reboot_bootloader`
+survives as a working software reboot; flashing needs the button until the wire
+exists.
 
 ---
 
