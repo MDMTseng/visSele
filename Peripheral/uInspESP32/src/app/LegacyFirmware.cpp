@@ -279,7 +279,18 @@ typedef struct pipeLineInfo{
 // work, and an EWMA is a shift.
 struct CamClockSync
 {
-  static const int64_t TOL_US   = 5000;   // match window
+  // Match window, set_setup "cam_match_window_us". Not a constant because the
+  // right value follows the object spacing, which is a property of the line and
+  // not of this code: it has to be well inside the spacing (so a frame cannot be
+  // within one window of two objects) and well outside the worst delta actually
+  // observed. Both of those numbers are in get_running_stat next to this one --
+  // gate.eff_sep_us and cam_sync.delta_max_us -- so the setting can be checked
+  // against measurement rather than guessed.
+  // int32, like every other setting here: JSON_SETIF_ABLE gates on
+  // is<typeof(var)>(), and ArduinoJson's long-long support is conditional, so an
+  // int64 target silently never matches and the setting can never be applied.
+  // Microseconds in an int32 reach 35 minutes; there is nothing to gain from 64.
+  static int32_t TOL_US;
   static const int     BOOT_N   = 8;      // samples to establish the first offset
   // Consecutive frames whose nearest object is outside the window before the
   // machine is stopped. Two, not sixteen: one is a lost frame or a stray, two
@@ -307,6 +318,12 @@ struct CamClockSync
   // drift it has accumulated -- is readable. resid/age is the drift rate.
   uint64_t est_cam_us = 0;
   uint32_t established = 0;
+  // The worst nearest-delta that was still accepted -- i.e. how much of the
+  // window the machine actually needed. This is the number the window should be
+  // set against: if it stays at hundreds of us and the window is thousands,
+  // there is real margin; if it creeps toward the window, there is not.
+  int64_t  delta_max_us = 0;
+  int64_t  delta_last_us = 0;
   // Why the bootstrap is not converging is not answerable from counters: 690
   // samples with valid=false says only "no 8 of them agreed". Keep the raw
   // sample and how many windows were thrown out, so the shape of the
@@ -321,6 +338,7 @@ struct CamClockSync
     agree=disagree=learned=rejected=rebuilds=0; consec_reject=0;
     last_sample_us=0; boot_fail=0;
     fault_pending=false; est_cam_us=0; established=0;
+    delta_max_us=0; delta_last_us=0;
   }
 
   // Establish the first offset from sync pulses. After that, every report
@@ -413,6 +431,8 @@ struct CamClockSync
       return;
     }
     consec_reject = 0;
+    delta_last_us = nearest_delta;
+    if(nearest_delta > delta_max_us) delta_max_us = nearest_delta;
     last_resid_us = (int64_t)cam_ts - (int64_t)nearest_cam_us - offset_us;
     if(llabs(last_resid_us) > llabs(max_resid_us)) max_resid_us = last_resid_us;
     offset_us  = (int64_t)cam_ts - (int64_t)nearest_cam_us;   // measured, not blended
@@ -423,6 +443,7 @@ struct CamClockSync
   // Where a frame taken at cam_ts should sit on the device clock.
   int64_t expectedCamUs(uint64_t cam_ts) const { return (int64_t)cam_ts - offset_us; }
 };
+int32_t CamClockSync::TOL_US = 5000;
 CamClockSync CAM_SYNC;
 
 // Gate->report latency, updated by the report handler (main loop only),
@@ -2548,6 +2569,12 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // and how old the current measurement is. resid/age is the drift rate,
       // which is the number that sizes the match window.
       jS["established"]=CAM_SYNC.established;
+      // The two numbers the window is set against. delta_max is how much of it
+      // was actually needed; compare with gate.eff_sep_us above, which is how
+      // far apart the objects are and therefore the hard upper bound.
+      jS["window_us"]=(double)CamClockSync::TOL_US;
+      jS["delta_max_us"]=(double)CAM_SYNC.delta_max_us;
+      jS["delta_last_us"]=(double)CAM_SYNC.delta_last_us;
       jS["est_age_s"]=CAM_SYNC.est_cam_us
         ? (double)((int64_t)(esp_timer_get_time()-(int64_t)CAM_SYNC.est_cam_us)/1000000.0) : 0.0;
       if(CAM_SYNC.boot_n>0)
@@ -3962,6 +3989,10 @@ void genMachineSetup(JsonDocument &jdoc)
   jdoc["auto_rate_floor_us"]=AUTO_RATE_FLOOR_us;
   jdoc["auto_rate_recover_n"]=AUTO_RATE_RECOVER_N;
   jdoc["report_match_ts"]=REPORT_MATCH_TS;
+  // Emitted as an integer, not a double: this document IS the persisted config,
+  // and JSON_SETIF_ABLE gates on is<int64_t>(). A value written back as a float
+  // would fail that test on the next boot and silently revert to the default.
+  jdoc["cam_match_window_us"]=CamClockSync::TOL_US;
 
   jdoc["pulse_min_width"]=minWidth;
   jdoc["pulse_max_width"]=maxWidth;
@@ -4084,6 +4115,12 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   if(GATE_SEP_EFF_us<SYS_MIN_PULSE_TIME_SEP_us)
     GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us;
   JSON_SETIF_ABLE(REPORT_MATCH_TS,jdoc,"report_match_ts");
+  JSON_SETIF_ABLE(CamClockSync::TOL_US,jdoc,"cam_match_window_us");
+  // Only a sanity floor, deliberately not a policy. A window narrower than the
+  // measurement noise (~50us observed) can never match anything and would stop
+  // the machine forever; above that the choice is the operator's, and
+  // cam_sync.delta_max_us against gate.eff_sep_us is how it gets checked.
+  if(CamClockSync::TOL_US < 200) CamClockSync::TOL_US = 200;
 
   JSON_SETIF_ABLE(minWidth,jdoc,"pulse_min_width");
   JSON_SETIF_ABLE(maxWidth,jdoc,"pulse_max_width");
