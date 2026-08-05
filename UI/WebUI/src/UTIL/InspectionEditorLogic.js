@@ -739,8 +739,8 @@ export class InspectionEditorLogic {
         });
       });
     };
-    addRegionShapes(defInfo.localization_include, 'loc_include', '@__LOC_INCLUDE__');
-    addRegionShapes(defInfo.localization_exclude, 'loc_exclude', '@__LOC_EXCLUDE__');
+    // addRegionShapes(defInfo.localization_include, 'loc_include', '@__LOC_INCLUDE__');
+    // addRegionShapes(defInfo.localization_exclude, 'loc_exclude', '@__LOC_EXCLUDE__');
 
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);

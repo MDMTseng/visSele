@@ -693,8 +693,8 @@ function StateReducer(newState, action) {
               //when in Full inspection mode if the uInspResult(the final result sends to inspection machine)
               //is NA/UNSET(may caused by dirty image/ non-single object...), when means to tell insp mach skip this one
               //so we gonna skip the report to put in(even if there may be a result)
-              reportSkip=(inspMode=="FI")&&
-                ((uInspResult== INSPECTION_STATUS.NA)  ||  (uInspResult== INSPECTION_STATUS.UNSET))
+              // reportSkip=(inspMode=="FI")&&
+              //   ((uInspResult== INSPECTION_STATUS.NA)  ||  (uInspResult== INSPECTION_STATUS.UNSET))
 
               
               EVENT_Inspection_Report(newState, action,reportSkip);
