@@ -1956,9 +1956,29 @@ CameraLayer::status CameraLayer_Aravis::StartAquisition()
   GError *err = NULL;
   arv_camera_start_acquisition(camera, &err);
   if (err) {
-    LOGE("StartAquisition: %s", err->message);
+    // A camera left streaming by a process that died rejects AcquisitionStart
+    // ("USB3Vision write_memory error (invalid-parameter)") -- it is already
+    // acquiring. The new process cannot know that: acquisition_started is
+    // false on a fresh start, so StopAquisition() is skipped and every start
+    // fails forever. The core then runs with no frames at all, and the only
+    // cure was unplugging the camera.
+    //
+    // That is not a rare state here: the core has crashed and been killed
+    // repeatedly during bring-up. So on failure, stop unconditionally and try
+    // once more. Costs nothing on the healthy path -- this runs only after a
+    // start has already failed.
+    LOGE("StartAquisition: %s -- stopping and retrying once", err->message);
     g_clear_error(&err);
-    return CameraLayer::NAK;
+    GError *stop_err = NULL;
+    arv_camera_stop_acquisition(camera, &stop_err);
+    if (stop_err) g_clear_error(&stop_err);   // expected if it really was idle
+    arv_camera_start_acquisition(camera, &err);
+    if (err) {
+      LOGE("StartAquisition retry: %s", err->message);
+      g_clear_error(&err);
+      return CameraLayer::NAK;
+    }
+    LOGI("StartAquisition: recovered a camera left streaming by a dead process");
   }
   acquisition_started = true;
   refreshExposureFloor();
