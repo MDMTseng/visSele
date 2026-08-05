@@ -4942,6 +4942,52 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   // the machine forever; above that the choice is the operator's, and
   // cam_sync.delta_max_us against gate.eff_sep_us is how it gets checked.
   if(CamClockSync::TOL_US < 200) CamClockSync::TOL_US = 200;
+
+  // The window must stay well inside the object spacing, or a missing frame
+  // stops being a halt and becomes a mis-sorted part.
+  //
+  // There are two separate margins here and they are easy to conflate:
+  //
+  //  1. The true object is present. Matching takes the NEAREST object and only
+  //     then applies the window, so the neighbour wins only if it is actually
+  //     closer -- spacing < 2x the clock error. At the measured ~150us error
+  //     that needs spacing under 300us, against 33000us in use. Margin ~110x.
+  //     This one is not in danger and the window does not govern it.
+  //
+  //  2. The true object is ABSENT -- its frame was lost, or it was already
+  //     swept. Now the nearest candidate IS a neighbour, one full spacing away,
+  //     and the window is the only thing standing between "refuse and halt" and
+  //     "answer the wrong part". That requires window < spacing, and nothing
+  //     enforced it: the shipped defaults were min_detect_sep_us 4000 against a
+  //     5000us window, i.e. already the wrong way round. It never bit because
+  //     the camera cannot service 4000us (250Hz) so the real spacing is set far
+  //     wider -- the safety came from the camera's frame rate, by accident,
+  //     rather than from the configuration.
+  //
+  // Half the spacing, so a neighbour sits at least two windows out. Clamped
+  // rather than rejected: refusing the write would leave the machine on the
+  // previous value with no obvious sign, and a narrower window is always the
+  // safe direction -- it can only cause a halt, never a mis-sort.
+  if(SYS_MIN_PULSE_TIME_SEP_us > 0)
+  {
+    int32_t cap = (int32_t)(SYS_MIN_PULSE_TIME_SEP_us/2);
+    if(cap < 200) cap = 200;   // the noise floor wins; see below
+    if(CamClockSync::TOL_US > cap)
+    {
+      djrl.dbg_printf("CAMSYNC window %ld us clamped to %ld us "
+                      "(min_detect_sep_us=%lu, window must stay under half)",
+                      (long)CamClockSync::TOL_US,(long)cap,
+                      (unsigned long)SYS_MIN_PULSE_TIME_SEP_us);
+      CamClockSync::TOL_US = cap;
+    }
+    // Below this the two floors conflict and no window is both matchable and
+    // safe. Physically unreachable (400us spacing is 2500 parts/s), but say so
+    // rather than leaving a silently unsafe combination.
+    if(SYS_MIN_PULSE_TIME_SEP_us < 400)
+      djrl.dbg_printf("CAMSYNC WARNING: min_detect_sep_us=%lu is below twice "
+                      "the window noise floor -- a lost frame could be matched "
+                      "to a neighbour",(unsigned long)SYS_MIN_PULSE_TIME_SEP_us);
+  }
   JSON_SETIF_ABLE(CamClockSync::DRIFT_COMP,jdoc,"cam_drift_comp");
   JSON_SETIF_ABLE(CAM_RECAL_IDLE_MS,jdoc,"cam_recal_idle_ms");
   // Negative is meaningless; 0 is the documented "off". A floor above that stops

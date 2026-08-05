@@ -96,11 +96,19 @@ def run(a):
     CONN['pairing'] = a.pairing
     send(s, "!pd " + json.dumps(CONN), gap=1.0)
     time.sleep(4.0)
+    # --real: turn the plate and let parts trip the sensor, instead of holding
+    # it still and injecting phantom pulses.
+    #
+    # Worth having as the same script rather than a second one: the phantom rig
+    # controls rate but supplies synthetic timing, and a clean result on it says
+    # nothing about real pipeline depth or real jitter. The check applied to the
+    # verdicts is identical either way, which is the point -- only the traffic
+    # differs.
     send(s, {"type": "clear_error"},
             {"type": "set_setup", "min_detect_sep_us": a.min_sep_us,
              "unanswered_stop_after": 100000},
-            {"type": "set_setup", "plate_freq": 15000},
-            {"type": "stepper_disable"},
+            {"type": "set_setup", "plate_freq": a.plate_freq},
+            {"type": "stepper_enable" if a.real else "stepper_disable"},
             {"type": "enter_insp_mode"})
     # Wait for READY rather than sleeping a guessed interval. CAL -> SPINUP ->
     # READY takes as long as the ramp takes, and a fixed wait turns a slow ramp
@@ -140,13 +148,17 @@ def run(a):
     n = 0
     next_poll = time.time() + 1.5
     while time.time() < t_end:
-        s.sendall(cmd)
-        n += 1
-        time.sleep(a.min_sep_us / 1e6)
-        try:
-            s.recv(65536)
-        except socket.timeout:
-            pass
+        if a.real:
+            # The parts arrive on their own; this loop only harvests.
+            time.sleep(0.2)
+        else:
+            s.sendall(cmd)
+            n += 1
+            time.sleep(a.min_sep_us / 1e6)
+            try:
+                s.recv(65536)
+            except socket.timeout:
+                pass
         if time.time() >= next_poll:
             harvest()
             next_poll = time.time() + 1.5
@@ -160,7 +172,9 @@ def run(a):
 
     tids = sorted(seen)
     cats = [seen[t] for t in tids]
-    print("  injected=%d   collected %d distinct verdicts" % (n, len(tids)))
+    print("  %s   collected %d distinct verdicts"
+          % ("real parts, plate at %d" % a.plate_freq if a.real
+             else "injected=%d" % n, len(tids)))
 
     # Calibration objects live in their own tid space (0x40000000+) and are not
     # parts; they carry no verdict worth checking.
@@ -244,6 +258,11 @@ if __name__ == '__main__':
     ap.add_argument("--seed", type=int, default=20260806,
                     help="must match INSP_PERIF_VERDICT_PATTERN")
     ap.add_argument("--min-sep-us", type=int, default=33000)
+    ap.add_argument("--real", action="store_true",
+                    help="turn the plate and use real sensor detections "
+                         "instead of injecting phantom pulses")
+    ap.add_argument("--plate-freq", type=int, default=15000,
+                    help="10000 is the validated real-parts speed")
     # Negative control. A check that has never failed proves nothing, and
     # positional pairing is the known-bad case -- measured one object out of
     # step. If this script cannot catch that, it cannot catch anything.
