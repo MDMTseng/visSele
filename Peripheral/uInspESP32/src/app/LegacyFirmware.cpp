@@ -323,6 +323,9 @@ struct CamClockSync
   // set against: if it stays at hundreds of us and the window is thousands,
   // there is real margin; if it creeps toward the window, there is not.
   int64_t  delta_max_us = 0;
+  // Accepted-residual distribution, log2 buckets from 32us. See gate().
+  static const int DELTA_BUCKETS = 8;
+  uint32_t delta_hist[DELTA_BUCKETS] = {0};
   int64_t  delta_last_us = 0;
   // The deltas of frames that were REFUSED. delta_max_us only records what was
   // accepted, so without these a halt says "two frames were outside the window"
@@ -500,6 +503,25 @@ struct CamClockSync
     consec_reject = 0;
     delta_last_us = nearest_delta;
     if(nearest_delta > delta_max_us) delta_max_us = nearest_delta;
+    // Distribution, not just the high-water mark.
+    //
+    // delta_max over a four-minute run says nothing about the tail a machine
+    // running all day will meet, and the tail is the whole question: the match
+    // window has to sit above the worst residual that ever legitimately occurs,
+    // or good parts get refused. A max cannot distinguish "one outlier at 240us
+    // and everything else under 60" from "routinely near 240", and those two
+    // want very different windows.
+    //
+    // Log2 buckets from 32us, so 8 counters cover 32us..4ms and the tail is
+    // readable without shipping a histogram of hundreds of bins over 115200
+    // baud. Bucket i holds [32<<i, 32<<(i+1)); bucket 0 also absorbs
+    // everything below 32us, which is already under the ~50us noise floor.
+    {
+      uint32_t d = (uint32_t)(nearest_delta < 0 ? -nearest_delta : nearest_delta);
+      int b = 0;
+      while(b < DELTA_BUCKETS-1 && d >= (uint32_t)(32u << (b+1))) b++;
+      delta_hist[b]++;
+    }
     last_resid_us = (int64_t)cam_ts - (int64_t)nearest_cam_us - offset_us;
     if(llabs(last_resid_us) > llabs(max_resid_us)) max_resid_us = last_resid_us;
     last_gap_us = est_cam_us ? ((int64_t)nearest_cam_us - (int64_t)est_cam_us) : 0;
@@ -3319,6 +3341,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // routinely outliving the phase, which is worth looking at.
       jS["sync_late"]=SYNC_TOMB_HITS;
       jS["recal_skipped"]=CAL_RESET_SKIPPED;
+      // Accepted-residual histogram: bucket i is [32<<i, 32<<(i+1)) us, last
+      // bucket open-ended. This is what the match window has to clear, and a
+      // max alone cannot show whether the tail is one outlier or the norm.
+      {
+        JsonArray jh = jS["delta_hist"].to<JsonArray>();
+        for(int i=0;i<CamClockSync::DELTA_BUCKETS;i++) jh.add(CAM_SYNC.delta_hist[i]);
+      }
       jS["gap_us"]=(double)CAM_SYNC.last_gap_us;
       // resid/gap. Tens of us/s is two crystals; a sudden jump is not.
       jS["drift_us_per_s"]=CAM_SYNC.last_gap_us

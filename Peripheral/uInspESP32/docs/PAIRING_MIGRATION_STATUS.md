@@ -1,5 +1,10 @@
 # Frame ↔ object pairing: where it is and what to do next
 
+**Companion doc: `PAIRING_VALIDATION_2026-08-06.md`** — what was actually proved
+on real parts, what each measurement is worth, and which instruments returned
+clean results while testing nothing. Read it before trusting any "clean" result
+quoted here.
+
 Start here. This is the live state of the uInspESP32 bring-up as of the end of
 the 2026-08-05 session, written so the next person (or the next session) can
 pick it up without re-deriving anything.
