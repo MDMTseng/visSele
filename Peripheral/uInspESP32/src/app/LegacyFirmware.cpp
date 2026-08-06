@@ -2446,6 +2446,21 @@ static void calibrationCleanup()
 // actually was", and at the 35us/s worst-case drift measured on this machine
 // that is reached in 8.6s. Hence 10s.
 //
+// Careful with that sentence, because it conflates two things that behave
+// differently (2026-08-06):
+//
+//   - Clock OFFSET error does not move the part in the image at all. The
+//     trigger fires from the step ISR (Run_ACTS inside onTimer, alongside
+//     StepGo), so it is locked to plate position rather than to wall time; a
+//     stalled ISR stalls the motor too. Offset error only decides which object
+//     record a frame is matched against, and neighbours are 33ms / 8.3mm apart.
+//   - The camera's trigger-to-exposure latency jitter DOES displace the part,
+//     and it lands in the same matching residual.
+//
+// So the position framing is not wrong, but it applies to the jitter term, not
+// to the drift term. Drift's real cost is spending the match window: 350us of
+// it after 10s idle. See the TODO beside the cam_match_window_us floor.
+//
 // Note this is well inside the point where anything would BREAK: 5000us window
 // / 35us/s = 143s before a returning frame would even fall outside the match
 // window, and the first frame back re-measures the offset anyway. This is a
@@ -4980,6 +4995,38 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
     GATE_SEP_EFF_us=SYS_MIN_PULSE_TIME_SEP_us;
   JSON_SETIF_ABLE(REPORT_MATCH_TS,jdoc,"report_match_ts");
   JSON_SETIF_ABLE(CamClockSync::TOL_US,jdoc,"cam_match_window_us");
+  // TODO (deferred 2026-08-06): the window is really a POSITION tolerance, and
+  // expressing it in microseconds hides that.
+  //
+  // What the window absorbs is the camera's trigger-to-exposure latency jitter,
+  // and that jitter is a real displacement of the part in the image -- unlike
+  // the clock offset, which does not move anything, because the trigger fires
+  // from the step ISR (Run_ACTS in onTimer, alongside StepGo) and so is locked
+  // to plate POSITION, not to wall time.
+  //
+  // The accepted tolerance is 0.2mm. On this machine (240mm plate, 60000
+  // ticks/rev -> 0.01257mm/tick) that is:
+  //
+  //     plate_freq 10000 (251 mm/s)  ->  796 us
+  //     plate_freq 15000 (377 mm/s)  ->  531 us
+  //
+  // against the 5000us in use, which is 1.26mm at plate_freq 10000 -- six times
+  // looser than intended. Measured residual is 152..244us (0.038..0.061mm), so
+  // there is room to tighten a long way.
+  //
+  // The budget also has a second claimant that is invisible at 5000us: after
+  // CAM_RECAL_IDLE_MS of idle the offset has drifted by up to 10s x 35us/s =
+  // 350us, which is 44% of the 796us. Tightening the window without also
+  // shortening the recal idle would spend most of the tolerance on drift.
+  //
+  // NOT deriving the window from plate speed, though that is what makes the
+  // tolerance actually constant: a window that changes underneath you makes
+  // failures hard to reproduce, and the same test at two speeds stops being the
+  // same test. A fixed number that is occasionally too strict is easier to
+  // debug than a correct one that moves. The hazard that remains, and the
+  // reason this is written down rather than dropped: raising plate_freq
+  // silently loosens the position tolerance, and nothing says so.
+  //
   // Only a sanity floor, deliberately not a policy. A window narrower than the
   // measurement noise (~50us observed) can never match anything and would stop
   // the machine forever; above that the choice is the operator's, and
