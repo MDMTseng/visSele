@@ -740,13 +740,14 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', ...dim }}>
             <span>殘差·真實料 平均 {Math.round(pairing.resid_real_avg_us)} µs
               <span style={dim}> (n={pairing.resid_real_n})</span></span>
-            <span>殘差·校時脈衝 平均 {Math.round(pairing.resid_sync_avg_us)} µs
+            <span>殘差·直接驅動 平均 {Math.round(pairing.resid_sync_avg_us)} µs
               <span style={dim}> (n={pairing.resid_sync_n})</span></span>
             <span style={{ color: Math.abs(pairing.resid_real_avg_us - pairing.resid_sync_avg_us) > 200 ? '#c33' : '#888' }}>
               差 {Math.round(pairing.resid_real_avg_us - pairing.resid_sync_avg_us)} µs
-              <Why>兩者走不同的程式路徑:校時脈衝由 calFireNow 直接驅動,真實料經過
-                stage 佇列由步進 ISR 發出。若這個差是穩定的常數,那時鐘估計值就是被
-                兩個母體拉扯,任何單一增益對兩邊都不對 —— 那是要補償的量,不是雜訊。</Why>
+              <Why>兩者走不同的程式路徑:校時脈衝和 keep-warm 心跳由主迴圈直接驅動腳位;
+                真實料的觸發排進 stage 佇列、由步進 ISR 發出。若這個差是穩定的常數,
+                時鐘估計值就是被兩個母體拉扯,任何單一增益對兩邊都不對 ——
+                那是要補償的量,不是雜訊。</Why>
             </span>
           </div>
         )}

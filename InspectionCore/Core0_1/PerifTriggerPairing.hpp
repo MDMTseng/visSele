@@ -373,10 +373,24 @@ public:
     // keep_clock_warm()'s phantom pulse is the ONLY anchor when no parts are
     // flowing. If a constant separation exists it has to be measured and
     // compensated, not thrown away.
-    if (ts_sync) { _resid_sync_us = resid; _n_sync++;
-                   _sum_sync += resid; }
-    else         { _resid_real_us = resid; _n_real++;
-                   _sum_real += resid; }
+    // CLASSIFY BY HOW THE PIN WAS DRIVEN, which is the hypothesis.
+    //
+    // sync_only (gate_pulse == 0) alone is the WRONG boundary and the first
+    // version of this used it. That flag marks trig_cam_pulse -- the host's
+    // keep-the-clock-warm heartbeat -- but calFireNow's CALIBRATION objects
+    // carry gate_pulse = SYS_STEP_COUNT, which is non-zero on any machine that
+    // has ever stepped, so they were being counted as ordinary parts. The split
+    // would then have compared "heartbeat" against "everything else" and
+    // answered a question nobody asked.
+    //
+    // Calibration objects are identifiable: CAL_TID_NEXT starts at 0x40000001,
+    // so bit 30 of the tid is the marker (LegacyFirmware.cpp:2280). Both it and
+    // trig_cam_pulse drive the pins directly from the main loop; a part's
+    // trigger is scheduled through the stage queue and fires from the step ISR.
+    // Direct-vs-staged is the difference under test.
+    const bool direct = ts_sync || ((_q[best_i].tid & 0x40000000LL) != 0);
+    if (direct) { _resid_sync_us = resid; _n_sync++; _sum_sync += resid; }
+    else        { _resid_real_us = resid; _n_real++; _sum_real += resid; }
     // Anything older than the match is an orphan -- its frame never arrived.
     // Leave it queued; the staleness sweep retires it as NA, which is what
     // makes a lost frame cost one part instead of every part after it.

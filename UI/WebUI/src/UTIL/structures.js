@@ -172,6 +172,7 @@ export class ConsumeQueue{
     this.inPromise=true;
     this.consumePromiseFunc(this).then(result=>{
       //console.log("Consume ok? result",result);
+      this._failN = 0;
       this.inPromise=false;
 
 
@@ -193,7 +194,22 @@ export class ConsumeQueue{
         return;
       }
 
-      log.warn("[ConsumeQueue] consume failed", { err: e && (e.message || String(e)) });
+      // Once, not once per kick.
+      //
+      // The Insp_DB / DefFile_DB sockets are deliberately never connected in
+      // this build (script.jsx, the ACT_WS_CONNECT to db.xception.tech is
+      // commented out), so their consume rejects immediately and forever. That
+      // filled the browser console with "[ConsumeQueue] consume failed" at
+      // several lines a second and buried every real message underneath it --
+      // which on 2026-08-06 cost real debugging time, because "nothing is
+      // printed in the console" was true and meaningless at the same time.
+      //
+      // The count keeps it honest: a queue that is failing is still failing,
+      // and the next successful consume resets it.
+      this._failN = (this._failN || 0) + 1;
+      if (this._failN === 1 || this._failN % 200 === 0)
+        log.warn("[ConsumeQueue] consume failed", { err: e && (e.message || String(e)),
+                                                    consecutive: this._failN });
       this.inPromise=false;
     });
   }
