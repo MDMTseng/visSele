@@ -31,7 +31,9 @@ the migration's whole premise.
 | Sustained overload halts rather than mis-sorts | `state=112 err=[13]`, 8 verdicts emitted, 0 misplaced, recovers via `clear_error` and sorts correctly afterwards | Strong. "Refuse" is fine, "answer wrongly" is not, and it refuses. |
 | Sporadic frame loss self-heals | 9 runs, 8–16 parts lost each, no halt, zero misplaced | Strong. This is the case a real line meets and it does not stop for it. |
 | The match window cannot be configured wider than the object spacing | clamp verified: sep 4000→window 2000, 2000→1000, 300→200 + warning | Guard, not a measurement. |
-| Residual distribution is thin-tailed | 1497 samples: 1496 under 64 µs, 1 in 128–256 µs | Preliminary (12 min). The number that decides whether the window can be tightened. |
+| Residual distribution is thin-tailed | 6685 samples over 12 min: 6681 under 64 µs, 3 in 64–128, 1 in 128–256. `delta_max=150 µs` | Strong for 12 min. This is the number that decides whether the window can be tightened. |
+| busy → idle → RECAL → busy works with real parts | 3 forced idle windows, `recals=3 recal_skipped=0 cal_fails=0 rejected=0`, `disagree=0` throughout | Strong. The path where both RECAL bugs lived, now exercised with parts in the machine. |
+| No heap leak per RECAL | 45 consecutive recals, `free_heap` flat at 192320, not one byte | Strong. See "the leak that wasn't" below. |
 
 ### The discount on every "zero misplaced" result
 
@@ -140,6 +142,20 @@ by the machine, but the test measured the gate rather than the pairing.
 **Treating any state ≠ READY as a halt.** Reported FAIL on a run sitting in
 RECAL (104) with an empty `error_hist`. Only 112/113 are halts.
 
+**A statistic that can only move one way.** A 12-minute soak showed `min_heap`
+stepping down by exactly 96 bytes on every RECAL and at no other moment — four
+points, perfectly correlated. Projected: 34.5 KB/day, heap exhausted in ~5.5
+days. **All of it wrong.** `min_heap` is an all-time *minimum*: it can only fall,
+so any repeated transient dip that happens to get slightly deeper each time
+draws a straight line that looks exactly like a leak. Measuring the *current*
+free heap over 45 consecutive recals showed it dead flat at 192320 — not one
+byte. The structural clue that should have prevented the projection was already
+in hand: the firmware does essentially **no dynamic allocation** on that path
+(`ERROR_HIST` is a RingBuf over a static array, `retdoc` is a
+`StaticJsonDocument`, `dbg_printf` and `send_json_string` use stack buffers
+only). Nothing that never mallocs can leak. `tools/recal_leak.py` runs the
+two-phase check (recal ON vs OFF) if this needs re-testing.
+
 **Unreproducible findings.** One run showed `misplaced=21 / 523` with no halt;
 thirteen repeats could not bring it back, and it predated the `disagree` print
 so it could not be attributed either. That is most of the way to not having
@@ -215,9 +231,11 @@ and `seed`. New stats: `delta_hist`, `sync_late`, `recal_skipped`.
 1. **Where does the core's pairing start to slip inside a *plausible* config
    range?** The reproduction used a 2000 µs gate (500 parts/s), which is absurd.
    The onset point is the number that says how urgent `PERIF_CORE_PAIRING 0` is.
-2. **Residual distribution over hours**, not 12 minutes. The preliminary
-   histogram (1496 of 1497 under 64 µs) suggests the window could be tightened a
-   long way, but a thin tail measured over 12 minutes is not a thin tail.
+2. **Residual distribution over hours**, not 12 minutes. 6681 of 6685 samples
+   under 64 µs and a max of 150 µs says the window has 5.3x margin at its
+   measured worst and >12x at the 99.94th percentile — but a thin tail measured
+   over 12 minutes is not a thin tail. The evidence is now good enough to act
+   on; it is not yet good enough to stop looking.
 3. **Tighten the window to the 0.2 mm tolerance** (≈796 µs at pf 10000) —
    deferred, with the recal-idle coupling above. Deliberately **not** derived
    from plate speed: a window that moves makes failures hard to reproduce, and
@@ -234,6 +252,8 @@ and `seed`. New stats: `delta_hist`, `sync_late`, `recal_skipped`.
   re-measures the offset, so it is never more than one part old and the recal
   trigger cannot fire by construction.
 - `extra_area_ratio < 0.1` is legacy and being removed. Do not tune it.
+- `min_heap` is a high-water mark, not a level. Do not read a slope off it —
+  see "the leak that wasn't". Use `health.free_heap` for that.
 - All-NA verdicts on real parts are a vision/def matter, not a pairing one — but
   they hide a slip completely, which is how the original positional off-by-five
   stayed hidden. Never validate pairing on NA-only traffic.

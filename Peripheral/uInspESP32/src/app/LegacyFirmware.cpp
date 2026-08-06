@@ -3247,6 +3247,14 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
     {
       JsonObject jHl=retdoc.createNestedObject("health");
+      // Current free heap, not just the all-time minimum.
+      //
+      // min_heap is a high-water mark, so it cannot tell a LEAK from a
+      // transient allocation that happens to get bigger each time -- both make
+      // it step down. A soak showed it dropping exactly 96 bytes on every
+      // RECAL and never at any other moment, which is suspicious enough to
+      // need the direct measurement rather than an inference from a minimum.
+      jHl["free_heap"]=esp_get_free_heap_size();
       jHl["min_heap"]=esp_get_minimum_free_heap_size();
       jHl["max_block"]=heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
       jHl["stack_hwm"]=(uint32_t)uxTaskGetStackHighWaterMark(NULL);
