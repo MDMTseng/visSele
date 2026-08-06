@@ -11,6 +11,7 @@ import ReactResizeDetector from 'react-resize-detector';
 import dateFormat from "dateformat";
 import INFO from './info.js';
 import { TagOptions_rdx,UINSP_UI ,SLID_UI} from './component/rdxComponent.jsx';
+import { UINSP_ESP32_MINI, UINSP_ESP32_UI } from './component/uInspESP32_UI.jsx';
 import dclone from 'clone';
 import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
@@ -801,6 +802,26 @@ class ObjInfoList extends React.Component {
     </SubMenu>
 
 
+    // The 2nd-gen board. A SEPARATE block from uInspUI above on purpose: that
+    // one drives uInspMEGA, which speaks a different dialect entirely, and the
+    // 1st-gen panels are not to be touched. Everything here comes out of
+    // uInspESP32_UI.jsx.
+    let uInspESP32UI = this.props.uInspESP32_API_ID_CONN_INFO === undefined ? null :
+    <SubMenu style={{ 'textAlign': 'left' }} key={"uInspESP32"} className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
+      title={
+      <>
+        <Divider orientation="center" key="divi2" style={{ 'margin': '5px'}} className="Antd_Divider_Small_Text_Tight">全檢設備 v2</Divider>
+        <UINSP_ESP32_MINI/>
+      </>}
+      >
+        <div style={{margin:"15px"}}>
+          <Button key="opt uInspESP32" icon={<SettingOutlined/>}
+            onClick={() => this.setState({ ...this.state, uInspESP32_popUp: true })}
+          >設定 / 診斷</Button>
+        </div>
+    </SubMenu>
+
+
     // console.log(this.state.SLID_EM_STOP_src_list);
     let SLIDUI=this.props.SLID_API_ID_CONN_INFO===undefined? null:
     <div style={{ 'textAlign': 'left' }} key={"uInsp" } className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
@@ -868,11 +889,21 @@ class ObjInfoList extends React.Component {
           openKeys={openAllsubMenuKeyList}
           mode="inline">
           {uInspUI}
+          {uInspESP32UI}
           {SLIDUI}
 
           {resultMenu}
 
         </Menu>
+        {/* The full setup panel, on demand. Mounted only while open so its 1Hz
+            poll does not share the serial link with the strip above for the
+            whole shift. */}
+        <Modal open={this.state.uInspESP32_popUp === true} title="全檢設備 v2 (uInspESP32)"
+          onCancel={() => this.setState({ ...this.state, uInspESP32_popUp: false })}
+          onOk={() => this.setState({ ...this.state, uInspESP32_popUp: false })}
+          footer={null} destroyOnClose width={560}>
+          {this.state.uInspESP32_popUp === true ? <UINSP_ESP32_UI/> : null}
+        </Modal>
         {fullScreenMODAL}
         {
           uInspUI===null?null:
@@ -2491,6 +2522,7 @@ class APP_INSP_MODE extends React.Component {
           key="ObjInfoList"
           uInsp_API_ID_CONN_INFO={this.props.uInsp_API_ID_CONN_INFO}
           SLID_API_ID_CONN_INFO={this.props.SLID_API_ID_CONN_INFO}
+          uInspESP32_API_ID_CONN_INFO={this.props.uInspESP32_API_ID_CONN_INFO}
           ACT_WS_GET_OBJ={this.props.ACT_WS_GET_OBJ}
           WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND_CORE_BPG( tl, prop, data, uintArr); }}
         />);
@@ -2829,6 +2861,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
 
     SLID_API_ID_CONN_INFO:state.ConnInfo.SLID_API_ID_CONN_INFO,
+    uInspESP32_API_ID_CONN_INFO:state.ConnInfo.uInspESP32_API_ID_CONN_INFO,
 
     CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
     

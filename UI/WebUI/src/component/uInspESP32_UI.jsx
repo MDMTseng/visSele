@@ -110,6 +110,7 @@ const PULSES_PER_REV = 60000;
 const MM_PER_PULSE = (240 * Math.PI) / PULSES_PER_REV;
 const plateRpm = (pf) => (pf > 0 ? (2 * pf * 60) / PULSES_PER_REV : 0);
 const plateMmS = (pf) => (pf > 0 ? 2 * pf * MM_PER_PULSE : 0);
+const rpmToFreq = (rpm) => Math.round((rpm * PULSES_PER_REV) / 120);   // inverse of plateRpm
 
 // Slider range. 20000 is ~40 rpm / 500 mm/s, comfortably past anything the
 // camera can keep up with, so the top of the travel is a limit the machine
@@ -160,6 +161,71 @@ const spoToEdit = (spo, wus, plate_freq) => {
   }
   return e;
 };
+
+// The speed the operator last ran this machine at, kept across reloads.
+//
+// Necessary because STOP has to zero plate_freq: SYS_STATE::IDLE's loop does
+// PLATE_FREQ_TARGET = PLATE_FREQ_SETPOINT every pass, so leaving inspection
+// mode does NOT stop the plate -- zeroing the setpoint is the only thing that
+// does. Which means the configured speed is gone the moment you stop, and any
+// control that wants to start again has nothing to start at.
+//
+// In-memory was not enough: the sidebar strip remounts, and a page reload wipes
+// it, so an operator who stopped the machine yesterday met "no speed available"
+// with no way forward except the setup panel.
+//
+// Deliberately NOT falling back to a compiled default. REF_FREQ is 30rpm; a
+// machine being set up at 4.5rpm must not leap to that because someone pressed
+// stop. No remembered speed means the control refuses and says so.
+const SPEED_KEY = 'uinsp2.last_plate_freq';
+const rememberSpeed = (pf) => {
+  if (!(pf > 0)) return;
+  try { window.localStorage.setItem(SPEED_KEY, String(pf)); } catch (e) { /* private mode */ }
+};
+const recallSpeed = () => {
+  try { const v = Number(window.localStorage.getItem(SPEED_KEY)); return v > 0 ? v : 0; }
+  catch (e) { return 0; }
+};
+
+// Start or stop the machine. Shared by the setup panel and the sidebar strip
+// because getting this sequence subtly different in two places is how one of
+// them ends up silently refusing itself.
+//
+// Returns a promise resolving to null on success, or a string saying why it
+// declined -- callers show that, they do not swallow it.
+function runSequence(api, on, speed) {
+  if (!on) {
+    api.exitInspMode();
+    api.machineSetupUpdate({ plate_freq: 0 }, false, true);
+    return Promise.resolve(null);
+  }
+  if (!(speed > 0)) return Promise.resolve('沒有可用的轉速,請先在設定面板設定');
+  api.stepperEnable();
+  api.machineSetupUpdate({ plate_freq: speed }, false, true);
+  // Barrier, not politeness. machineSetupUpdate is fire-and-forget, so firing
+  // enter_insp_mode straight after it races. The device answers in the order it
+  // was asked, so a reply to a request queued AFTER set_setup proves set_setup
+  // was consumed.
+  //
+  // It must be get_setup, not get_running_stat. The firmware keeps THREE plate
+  // frequencies and they are not interchangeable:
+  //
+  //   PLATE_FREQ_SETPOINT  the configuration -- what set_setup writes, what
+  //                        get_setup returns
+  //   PLATE_FREQ_TARGET    what the ramp is aiming at -- what get_running_stat
+  //                        returns, and 0 while IDLE
+  //   PLATE_FREQ_CURRENT   the actual speed
+  //
+  // Checking the running stat meant checking TARGET to confirm a write to
+  // SETPOINT, so in IDLE the test could never pass: the first press turned the
+  // driver on, set the speed, failed its own check and silently declined to
+  // enter inspection -- plate turning, switch snapping back, nothing else
+  // happening.
+  return api.getSetupP().then((s) => {
+    if (!(s && s.plate_freq > 0)) return '轉速沒有寫進裝置,未進入檢測模式';
+    return Promise.resolve(api.enterInspMode()).then(() => null);
+  });
+}
 
 // A "?" that carries the explanation instead of a paragraph that carries it
 // permanently. The prose is worth keeping -- most of it is a fact that cost a
@@ -315,7 +381,8 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // to adopt, so it opens at the production value rather than at zero -- a
   // slider that starts at 0 makes RUN a two-step action for no reason.
   useEffect(() => {
-    if (speed === undefined && plate_freq !== undefined) setSpeed(plate_freq > 0 ? plate_freq : REF_FREQ);
+    if (speed === undefined && plate_freq !== undefined)
+      setSpeed(plate_freq > 0 ? plate_freq : (recallSpeed() || REF_FREQ));
   }, [plate_freq, speed]);
 
   const run = (label, fn) => {
@@ -334,51 +401,13 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   // while doing nothing. STOP is the inverse and stops the plate: an operator
   // reaching for STOP wants the plate still, not merely unjudged.
   const toggleRun = (on) => run('run', (api) => {
-    if (!on) {
-      api.exitInspMode();
-      return api.machineSetupUpdate({ plate_freq: 0 }, false, true);
-    }
-    api.stepperEnable();
-    api.machineSetupUpdate({ plate_freq: speed || REF_FREQ }, false, true);
-    // Barrier, not politeness. machineSetupUpdate is fire-and-forget, so firing
-    // enter_insp_mode straight after it races. The device answers in the order
-    // it was asked, so a reply to a request queued AFTER set_setup proves
-    // set_setup was consumed.
-    //
-    // It must be get_setup, not get_running_stat. The firmware keeps THREE
-    // plate frequencies and they are not interchangeable:
-    //
-    //   PLATE_FREQ_SETPOINT  the configuration -- what set_setup writes,
-    //                        what get_setup returns
-    //   PLATE_FREQ_TARGET    what the ramp is currently aiming at -- what
-    //                        get_running_stat returns, and 0 while IDLE
-    //   PLATE_FREQ_CURRENT   the actual speed
-    //
-    // Checking the running stat meant checking TARGET to confirm a write to
-    // SETPOINT, so in IDLE the test could never pass: the first press turned
-    // the driver on, set the speed, failed its own check and silently declined
-    // to enter inspection -- plate turning, switch snapping back, nothing else
-    // happening. The second press passed only because the first had left the
-    // machine somewhere that had loaded TARGET.
-    return api.getSetupP().then((s) => {
-      if (!(s && s.plate_freq > 0)) {
-        // Say so on screen. The first version only log.warn()'d, so a refused
-        // RUN looked identical to a RUN that had done nothing at all -- which
-        // is precisely how it was reported: "plate turns, nothing happens,
-        // switch stays off". A control that declines must show that it did.
-        log.warn('[uinsp2] refusing RUN: plate_freq did not take', s && s.plate_freq);
-        if (mounted.current) setRunRefused('轉速沒有寫進裝置,未進入檢測模式');
-        return undefined;
-      }
-      if (mounted.current) setRunRefused('');
-      return api.enterInspMode();
+    if (on) rememberSpeed(speed);
+    return runSequence(api, on, speed || REF_FREQ).then((why) => {
+      if (mounted.current) setRunRefused(why || '');
+      if (why) log.warn('[uinsp2] RUN declined:', why);
     });
   });
 
-  // Push the whole stage_pulse_offset, not the edited field alone: the firmware
-  // writes only what it is given (JSON_SETIF_ABLE), but machineSetupUpdate
-  // merges shallowly, so a partial object would leave the panel's own copy
-  // missing every station it did not send.
   const commitSpo = () => {
     const spoOut = {};
     const wOut = {};
@@ -400,24 +429,23 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
       if (w !== Number((wus || {})[st.us])) changed = true;
     }
     if (!changed) return;
-    // Widths go as microseconds and the DEVICE converts to ticks, against its
-    // own plate_freq. Sending ticks from here would bake in whatever speed the
-    // panel happened to believe, which is the whole problem being fixed.
+    // Widths go as microseconds and the DEVICE converts to ticks against its own
+    // plate_freq. Sending ticks from here would bake in whatever speed the panel
+    // happened to believe, which is the whole problem being fixed.
     run('spo', (api) => api.machineSetupUpdate({
       stage_pulse_offset: { ...spo, ...spoOut },
       stage_pulse_width_us: { ...(wus || {}), ...wOut },
     }, false, true));
   };
 
-  // Fine adjust on the focused field. Clamped at 0 for position and 1 for
-  // width -- the two values that make the device do something it cannot undo.
+  // Fine adjust on the focused field. Position steps in ticks (1 tick = 12.6um,
+  // the resolution that matters); width steps in microseconds, where 1us is
+  // meaningless and 10us is not.
   const nudge = (d) => {
     if (!sel) return;
     const st = STATIONS.find((x) => x.key === sel.key);
     const field = sel.which === 'pos' ? st.on : '_w_' + st.key;
     const floor = sel.which === 'pos' ? 0 : 1;
-    // Position steps in ticks (1 tick = 12.6um, the resolution that matters);
-    // width steps in microseconds, where 1us is meaningless and 10us is not.
     if (sel.which === 'w') d *= 10;
     const cur = Number(spoEdit[field]);
     if (!isFinite(cur)) return;
@@ -568,8 +596,8 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
               marks={SPEED_MARKS}
               tooltipVisible={false}
               onChange={setSpeed}
-              onAfterChange={(v) => run('freq', (api) =>
-                api.machineSetupUpdate({ plate_freq: v }, false, true))}
+              onAfterChange={(v) => { rememberSpeed(v); return run('freq', (api) =>
+                api.machineSetupUpdate({ plate_freq: v }, false, true)); }}
               /* The bottom margin is the mark labels' room. antd reserves it via
                  .ant-slider-with-marks; an inline `margin` shorthand wipes that
                  out and the marks land on top of whatever follows. */
@@ -949,3 +977,191 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
 }
 
 export default UINSP_ESP32_UI;
+
+// ---------------------------------------------------------------------------
+// Sidebar strip for the inspection screen.
+//
+// The full panel above is a setup tool -- it lives in a modal and nobody wants
+// it open while parts are running. This is what you watch instead: whether the
+// machine is running, how fast, and the six counts. Nothing here is editable.
+//
+// It does NOT poll on its own if something else already is.
+//
+// getRunningStat() dispatches its reply into redux, so when the modal is open
+// this strip is fed for free. Only when the reply stops changing does it start
+// asking. That matters: the link is 115200 baud and one get_running_stat reply
+// is ~1.6kB, so a second unconditional 1Hz poller would take another ~14% of
+// the wire from cam_trig announcements that are already measured arriving late.
+export function UINSP_ESP32_MINI() {
+  const dispatch = useDispatch();
+  const API_ID = useSelector((s) => s.ConnInfo.uInspESP32_API_ID);
+  const CONN = useSelector((s) => s.ConnInfo.uInspESP32_API_ID_CONN_INFO);
+  const withApi = (cb) => dispatch(UIAct.EV_WS_GET_OBJ(API_ID, cb));
+
+  const stat = GetObjElement(CONN, ['runningStat']);
+  const cfg = GetObjElement(CONN, ['machineSetup']) || {};
+  const seenRef = useRef({ obj: null, at: 0 });
+  const mounted = useRef(true);
+  const [busy, setBusy] = useState(false);
+  const [why, setWhy] = useState('');
+  const [rpmSel, setRpmSel] = useState(undefined);   // slider position, in rpm
+
+  // The last speed this machine was actually seen running at.
+  //
+  // STOP writes plate_freq 0, so by the time someone presses RUN again the
+  // configured speed is gone. Falling back to a compiled default would mean a
+  // sidebar button that can spin a plate from 4.5rpm to 30rpm because the
+  // operator stopped it once -- so it remembers instead, and REFUSES if it has
+  // never seen a speed rather than inventing one.
+  const lastSpeedRef = useRef(recallSpeed());
+  const seenSpeed = (stat && stat.plate_freq > 0) ? stat.plate_freq
+                  : (cfg.plate_freq > 0 ? cfg.plate_freq : 0);
+  if (seenSpeed > 0 && seenSpeed !== lastSpeedRef.current) {
+    lastSpeedRef.current = seenSpeed;
+    rememberSpeed(seenSpeed);
+  }
+
+  useEffect(() => {
+    mounted.current = true;
+    let sentAt = 0;
+    const tick = () => {
+      const now = Date.now();
+      if (stat !== seenRef.current.obj) { seenRef.current = { obj: stat, at: now }; return; }
+      if (now - seenRef.current.at < 2500) return;      // somebody else is polling
+      if (sentAt && now - sentAt < 5000) return;        // one in flight
+      sentAt = now;
+      withApi((api) => {
+        if (!api || typeof api.getRunningStat !== 'function') { sentAt = 0; return; }
+        api.getRunningStat().then(() => { sentAt = 0; })
+          .catch((e) => { sentAt = 0; log.warn('[uinsp2mini] poll failed', e); });
+      });
+    };
+    const h = setInterval(tick, 1000);
+    return () => { mounted.current = false; clearInterval(h); };
+  }, [API_ID, stat]);
+
+  if (!CONN) return null;
+
+  const st = stat ? stat.state : undefined;
+  const cnt = (stat && stat.count) || {};
+  const gate = stat ? stat.gate : undefined;
+  const inError = st === 112 || st === 113;
+  const starting = st === 102 || st === 103 || st === 104;
+  const running = st === 101;
+  const rpm = plateRpm(stat ? stat.plate_freq : cfg.plate_freq);
+  const label = inError ? 'ERROR' : starting ? '啟動中' : (running && rpm > 0) ? 'RUN' : 'STOP';
+  // While dragging, show the slider. Otherwise show the machine -- running
+  // speed if it is turning, else the speed the next press would use.
+  const rpmShown = rpmSel !== undefined ? rpmSel
+                 : (rpm > 0 ? rpm : plateRpm(lastSpeedRef.current));
+  const color = inError ? '#c33' : label === 'RUN' ? '#389e0d' : starting ? '#d48806' : '#888';
+
+  const cell = (name, v, warn) => (
+    <div style={{ minWidth: 44 }} key={name}>
+      <div style={{ fontSize: 10, color: '#888', whiteSpace: 'nowrap' }}>{name}</div>
+      <div style={{ fontSize: 16, fontWeight: 600, color: warn && v > 0 ? warn : undefined }}>
+        {v ?? '—'}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ margin: '4px 12px 10px 12px', textAlign: 'left' }}>
+      {/* One button, and it says what pressing it DOES -- not what the machine
+          currently is. A switch shows state and leaves the action implied,
+          which is the wrong way round for something that starts a spinning
+          plate. The state goes underneath, in small text, where it is read and
+          not pressed. */}
+      <Button
+        block
+        size="large"
+        type={running || starting ? 'default' : 'primary'}
+        danger={running || starting}
+        loading={busy}
+        disabled={inError || (!running && !starting && !(lastSpeedRef.current > 0))}
+        onClick={() => {
+          const on = !(running || starting);
+          setBusy(true);
+          dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+            if (!api) { setBusy(false); return; }
+            runSequence(api, on, lastSpeedRef.current)
+              .then((w) => { if (mounted.current) setWhy(w || ''); })
+              .catch((e) => { if (mounted.current) setWhy(String(e)); })
+              .then(() => { if (mounted.current) setBusy(false); });
+          }));
+        }}
+        style={{ height: 46, fontSize: 18, fontWeight: 700, marginBottom: 4 }}
+      >{running || starting ? '停止' : '啟動'}</Button>
+
+      {/* State, speed, and what the machine is actually doing -- the three
+          things the button deliberately does not say. */}
+      <div style={{ fontSize: 12, marginBottom: 4 }}>
+        <b style={{ color }}>{label}</b>
+        <span style={{ color: '#888' }}>
+          {' · '}{rpm > 0 ? `${rpm.toFixed(1)} rpm` : '盤停止'}
+          {gate ? ` · 進料 ${gate.accept}` : ''}
+        </span>
+        <div style={{ color: starting ? '#d48806' : '#888' }}>
+          {inError ? '錯誤中,需先在設定面板清除'
+            : st === 102 ? '校時中 — 盤故意停著'
+            : st === 103 ? '加速中'
+            : st === 104 ? '空檔重新校時'
+            : running ? '檢測中'
+            : lastSpeedRef.current > 0 ? `按下即以 ${plateRpm(lastSpeedRef.current).toFixed(1)} rpm 啟動`
+            : '尚無轉速,請先在設定面板設定'}
+        </div>
+      </div>
+      {/* Speed, in the unit an operator thinks in.
+          Applied LIVE while the machine is running; while it is stopped this
+          only remembers. That asymmetry is not a nicety -- SYS_STATE::IDLE
+          copies PLATE_FREQ_SETPOINT into TARGET every pass, so writing a
+          non-zero plate_freq to a stopped machine STARTS THE PLATE. A speed
+          slider must never be a start button. */}
+      <div style={{ marginBottom: 2 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#888' }}>
+          <span>轉速</span>
+          <span>
+            {rpmShown > 0
+              ? `${rpmShown.toFixed(1)} rpm · ${plateMmS(rpmToFreq(rpmShown)).toFixed(0)} mm/s`
+              : '未設定'}
+            {!(running || starting) && rpmShown > 0 ? ' (啟動時套用)' : ''}
+          </span>
+        </div>
+        <Slider
+          min={0} max={40} step={0.5}
+          value={rpmShown}
+          tooltipVisible={false}
+          onChange={setRpmSel}
+          onAfterChange={(v) => {
+            const pf = rpmToFreq(v);
+            if (!(pf > 0)) return;
+            rememberSpeed(pf);
+            lastSpeedRef.current = pf;
+            // Only push it to the device if the plate is already turning.
+            if (running || starting) {
+              dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+                if (api) api.machineSetupUpdate({ plate_freq: pf }, false, true);
+              }));
+            }
+          }}
+          style={{ margin: '0 6px' }}
+        />
+      </div>
+      {why ? <div style={{ fontSize: 11, color: '#c33', marginBottom: 4 }}>⚠ {why}</div> : null}
+      {/* error_hist is the one thing here that must never be quiet */}
+      {stat && stat.error_hist && stat.error_hist.length > 0 && (
+        <div style={{ fontSize: 11, color: '#c33', marginBottom: 4 }}>
+          {stat.error_hist.map((e, i) => <div key={i}>⚠ {errName(e)}</div>)}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {cell('SEL1', cnt.SEL1)}
+        {cell('SEL2', cnt.SEL2)}
+        {cell('SEL3', cnt.SEL3)}
+        {cell('NA', cnt.NA)}
+        {cell('SKIP', cnt.SKIP, '#c60')}
+        {cell('UNANS', cnt.UNANSWERED, '#c33')}
+      </div>
+    </div>
+  );
+}
