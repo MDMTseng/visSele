@@ -1653,6 +1653,13 @@ class APPMasterX extends React.Component {
         });
       }
 
+      // The enum lives in the firmware, so its text should come from there too.
+      // A copy of the table in the UI is a copy that goes stale, and it did:
+      // the panel knew five of the ten states, so a machine sitting in CAL
+      // showed "state 102". Asked once when the panel opens; old firmware that
+      // does not know the command simply leaves the built-in table in place.
+      getStateNames(){ return this.sendP({type:"get_state_names"}); }
+
       // ---- persistence -----------------------------------------------------
 
       // The board keeps its own copy in NVS, so a machine that is moved or

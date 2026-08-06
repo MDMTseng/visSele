@@ -192,6 +192,51 @@ uint64_t g_perifWriteCnt = 0;
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
 
 
+// One serial port, four writers, and until now no lock between them:
+//
+//   * the BPG/WebSocket thread   -- every command the WebUI sends
+//   * the report thread          -- sendReportTo_perifCH, one per judged part
+//   * the peripheral RX thread   -- keep_clock_warm()'s phantom pulse, fired
+//                                   from inside recv_jsonRaw_data
+//   * the dev console thread     -- INSP_PERIF_CONSOLE line injection
+//
+// A frame is not written atomically (header, body, CRC trailer), so two writers
+// interleave and the device receives one command spliced into another. Its
+// parser meets the tail of the first in INIT state, calls that
+// INIT_CHAR_ERROR -- and INIT_CHAR_ERROR is LATCHED: err 11, machine stopped,
+// with nothing wrong on the wire and nothing wrong with the device.
+//
+// Caught on 2026-08-06 with the console tap:
+//     {"dbg":"recv_ERROR:1 type dat:t","id":4"}
+// `t","id":4` is the tail of a WebUI command (only those carry "id"); it
+// arrived on its own, so the head went out under someone else's write.
+//
+// Same failure as 138790f3 (two threads sharing one image send buffer): the
+// shared resource was never the buffer, it is anything one writer assumes it
+// holds alone.
+static std::mutex perif_tx_lock;
+
+// Held for the whole of one frame's inspection, and by anyone about to destroy
+// the camera object.
+//
+// `camera` is a global that the BPG thread reassigns on camera_ez_reconnect
+// while ImgPipeProcessThread is mid-frame holding the same pointer
+// (ImgInspection takes it as `cam` and hands it to the matcher via
+// bacpac->cam). The old code went straight to `delete camera;` with no stop, no
+// drain and no lock, so every press of the WebUI's 重連 button was a race the
+// inspection thread usually lost.
+//
+// Not a hypothesis: crash_20260806T035429Z.dump ends with
+//   ~CameraLayer_BMP_carousel Descructor...
+//   FeatureMatching ... this:0xb0b024000
+//   ImgInspection 7.942000ms
+//   === SIGSEGV ===
+// -- destructor, then the matcher still running on that camera's frame. There
+// are 80+ such dumps from two days of pressing that button.
+//
+// One frame is ~8ms, so a reconnect waits at most that long.
+static std::mutex camera_lifetime_lock;
+
 int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, cJSON* json);
 int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directStringFormat, const char *fmt, ...);
 static void perifConsoleEcho(const uint8_t *raw, int rawL);   // dev console, opt-in
@@ -2289,6 +2334,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             cJSON_AddNumberToObject(robj, "pending", (double)perifPairing.pending());
             cJSON_AddNumberToObject(robj, "offset_ms", perifPairing.offsetUs() / 1000.0);
             cJSON_AddNumberToObject(robj, "resid_last_us", perifPairing.lastResidUs());
+            // The EWMA gain the last match earned. ~0.05 means a full plate;
+            // ~0.9 means the estimate had gone stale and was re-anchored.
+            cJSON_AddNumberToObject(robj, "ewma_gain", perifPairing.lastGain());
             cJSON_AddNumberToObject(robj, "resid_max_us", perifPairing.maxResidUs());
 #endif  // PERIF_CORE_PAIRING (status)
 
@@ -2340,7 +2388,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
           {
 
             cJSON *cam_info_jarr = cJSON_CreateArray();
-            string jInfo=camera->getCameraJsonInfo();
+            // camera can now legitimately be NULL: a failed reconnect no longer
+            // hides behind a BMP-folder stand-in. Report the absence.
+            string jInfo = (camera != NULL) ? camera->getCameraJsonInfo() : string("{}");
             // LOGI("CAM_INFO..\n%s",jInfo.c_str());
             cJSON *cam_1 = cJSON_Parse(jInfo.c_str());
             if (cam_1 == NULL)
@@ -2352,8 +2402,17 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             cJSON_AddNumberToObject(cam_1, "cur_height", calib_bacpac.sampler->getCalibMap()->fullFrameH);
 
             int M_gain, m_gain;
-            CameraLayer::status g_ret = calib_bacpac.cam->isInOperation();
+            CameraLayer::status g_ret = (calib_bacpac.cam != NULL)
+                                        ? calib_bacpac.cam->isInOperation()
+                                        : CameraLayer::NAK;
             cJSON_AddNumberToObject(cam_1, "cam_status", g_ret);
+            // Everything above this line is CACHED: getCameraJsonInfo() returns
+            // a string built when the layer was constructed, so id, model and
+            // serial keep being reported for a camera that has been physically
+            // unplugged. Say plainly whether the device is still answering, so
+            // the identity is read as "who this was" rather than "who is here".
+            cJSON_AddBoolToObject(cam_1, "present",
+                                  g_ret == CameraLayer::ACK ? cJSON_True : cJSON_False);
 
             // BMP_carousel: expose live state so WebUI can show fake-cam ctrls.
             if (CameraLayer_BMP_carousel *car =
@@ -3083,31 +3142,68 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
       }
       else if (strcmp(target, "camera_ez_reconnect") == 0)
       {
+        // Rate limit FIRST, before anything is touched.
+        //
+        // This is not a button a human presses occasionally. The WebUI polls
+        // camera_info and auto-fires this whenever cam_status != 0 or the layer
+        // is a CameraLayer_BMP* with ALLOW_SOFT_CAM false (script.jsx ~855) --
+        // and the old code, on failing to open the real camera, installed
+        // exactly such a BMP layer. So a failed reconnect guaranteed the next
+        // reconnect: fallback -> UI sees soft cam -> reconnect -> fallback,
+        // with no human in the loop. That is where 80+ crash dumps came from.
+        static std::chrono::steady_clock::time_point last_rc{};
+        auto rc_now = std::chrono::steady_clock::now();
+        if (last_rc.time_since_epoch().count() != 0 &&
+            std::chrono::duration_cast<std::chrono::milliseconds>(rc_now - last_rc).count() < 3000)
+        {
+          LOGE("camera_ez_reconnect: ignored, less than 3s since the last one");
+          session_ACK = false;
+          break;
+        }
+        last_rc = rc_now;
 
+        // Quiesce, then swap. The lock keeps the inspection thread out of a
+        // frame while the object it is inspecting with is destroyed; stopping
+        // acquisition first means no new frame can enter behind us.
+        std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+
+        if (camera != NULL)
+          camera->StopAquisition();
+
+        // The device cannot be opened twice, so the old object has to release
+        // its handle before the new one can take it. Nothing may dereference
+        // `camera` between here and the reassignment -- which is what the lock
+        // above is for.
         delete camera;
         camera = NULL;
 
         camera = getCamera(1);
 
-        // for (int i = 0; camera == NULL; i++)
-        // {
-        //   LOGV("Camera init retry[%d]...", i);
-        //   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        //   camera = getCamera(CamInitStyle);
-        // }
         if (camera != NULL)
         {
           session_ACK = true;
         }
         else
         {
-          camera = getCamera(0); //Fallback BMP test folder
+          // Deliberately NOT falling back to the BMP folder here.
+          //
+          // It used to, silently. The result was a machine showing a PNG from
+          // 2026-06-04 as if it were the live camera -- lens calibration,
+          // exposure setup and clock calibration all ran against a still image
+          // and failed for reasons that made no sense. Whatever this leaves
+          // behind must be legible as broken, because it IS broken.
+          //
+          // A failed reconnect leaves no camera at all. Every reader below is
+          // NULL-guarded; the UI sees cam_status != ACK and says so.
+          LOGE("camera_ez_reconnect: no camera found. NOT substituting the BMP "
+               "test folder -- a fake camera that looks live is worse than none.");
+          session_ACK = false;
         }
         LOGV("DatCH_BPG1_0:%p", camera);
 
-        CameraSettingFromFile(camera, "data/");
+        if (camera != NULL)
+          CameraSettingFromFile(camera, "data/");
 
-        LOGV("DatCH_BPG1_0");
         this->camera = camera;
         calib_bacpac.cam = camera;
       }
@@ -3983,8 +4079,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
               perifPairing.reset();
             }
 
-            perifCH->send_RESET();
-            perifCH->send_RESET();
+            {
+              // Also under the TX lock: a RESET spliced by a report or a
+              // phantom pulse is the same broken frame as any other.
+              std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
+              perifCH->send_RESET();
+              perifCH->send_RESET();
+            }
             perifCH->RESET();
 
 
@@ -4059,8 +4160,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             sprintf(err_str, "CONN_ID(%d) no perifCH to resync", CONN_ID);
             break;
           }
-          perifCH->send_RESET();
-          perifCH->send_RESET();
+          {
+            std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);   // see perif_tx_lock
+            perifCH->send_RESET();
+            perifCH->send_RESET();
+          }
           LOGE("perif: link RESYNC requested -- RESET_PACKET sent, port left open");
           session_ACK = true;
         }
@@ -4641,6 +4745,9 @@ int sendcJsonTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool direc
   }
 
   int contentSize=strlen(padded_buf);
+  // Held only across the write, not across the serialisation above: the whole
+  // point is that one frame reaches the wire before the next one starts.
+  std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);
   if(directStringFormat)
   {
     ret = perifCH->send_json_string(buff_head_room,(uint8_t*)padded_buf,contentSize,buffSize-contentSize);
@@ -4675,7 +4782,8 @@ int printfTo_perifCH(PerifChannel *perifCH,uint8_t* buf, int bufL, bool directSt
   if(ret<0)return ret;
 
   int contentSize=ret;
-  
+
+  std::lock_guard<std::mutex> _tx_guard(perif_tx_lock);   // see perif_tx_lock
   if(directStringFormat)
   {
     ret = perifCH->send_json_string(buff_head_room,padded_buf,contentSize,buffSize-contentSize);
@@ -6129,7 +6237,11 @@ void ImgPipeProcessThread(bool *terminationflag)
       LOGI("============New frame go ImgPipeProcessCenter_imp");
       //delayStartCounter=10000;
       bool doPassDown = false;
-      ImgPipeProcessCenter_imp(headImgPipe, &doPassDown);
+      {
+        // The camera object must outlive this frame -- see camera_lifetime_lock.
+        std::lock_guard<std::mutex> _cam_guard(camera_lifetime_lock);
+        ImgPipeProcessCenter_imp(headImgPipe, &doPassDown);
+      }
       LOGI("============ImgPipeProcessCenter_imp done");
       if (!doPassDown)
         bpg_pi.resPool.retResrc(headImgPipe);

@@ -308,7 +308,45 @@ public:
     // Track drift. Only matched frames update the offset, so a mismatch can
     // never drag the estimate along with it.
     double resid = (double)((int64_t)cam_ts_us - (int64_t)_q[best_i].dev_us) - _offset_us;
-    _offset_us += resid * 0.05;      // slow EWMA: crystals drift, they do not jump
+
+    // Gain is a function of the GAP, not a constant.
+    //
+    // This was `resid * 0.05`, which makes the filter sample-invariant: it
+    // needs ~20 matches to converge no matter how long they take to arrive.
+    // Against a drifting crystal (a ramp, not a step) that leaves a standing
+    // lag of r*T*(1-a)/a, and T is set by how often parts come past. Measured
+    // 2026-08-06 across a 170x range in T, one drift parameter r ~= 23 us/s:
+    //
+    //     full plate 20 rpm  T=33ms   ->   -20 us
+    //     3 rpm              T=220ms  ->   -70 us
+    //     7 rpm, ONE object  T=8.57s  -> -3408 us   <- 68% of the match window
+    //
+    // The residual was never a measurement error. It is this filter's lag, and
+    // single-object bring-up sits on the worst point of the formula.
+    //
+    // a = T/(T+T0) makes it time-invariant instead: the lag becomes r*T0,
+    // independent of part rate. T0 = sigma/r, the ratio of per-match noise
+    // (camera trigger->exposure jitter, ~15us) to drift rate -- which is also
+    // where a scalar Kalman gain lands. At production spacing it evaluates to
+    // 0.048, i.e. it REPRODUCES the old 0.05: that constant was right for a
+    // full plate and wrong everywhere else. Getting T0 wrong by 2x only moves
+    // the residual floor between 8 and 30 us; nothing diverges.
+    //
+    // Capped below 1. At a=1 a single bad match becomes the offset outright,
+    // with no damping -- and a bad match is precisely a mis-paired frame, the
+    // one input that must never be trusted whole.
+    const double T0_S = 0.65;        // seconds; sigma/r from the 2026-08-06 fit
+    const double A_MAX = 0.90;
+    double gap_s = (_last_match_us != 0 && cam_ts_us > _last_match_us)
+                   ? (double)(cam_ts_us - _last_match_us) * 1e-6
+                   : 0.0;
+    double a = gap_s / (gap_s + T0_S);
+    if (a > A_MAX) a = A_MAX;
+    if (a < 0.001) a = 0.001;        // a burst of near-simultaneous matches is
+                                     // near-redundant; do not let a hit 0
+    _offset_us += resid * a;
+    _last_match_us = cam_ts_us;
+    _last_gain = a;
     _last_resid_us = resid;
     if (fabs(resid) > _max_resid_us) _max_resid_us = fabs(resid);
     // Anything older than the match is an orphan -- its frame never arrived.
@@ -428,6 +466,7 @@ public:
   double   offsetUs()     const { std::lock_guard<std::mutex> lk(_mx); return _offset_us; }
   double   lastResidUs()  const { std::lock_guard<std::mutex> lk(_mx); return _last_resid_us; }
   double   maxResidUs()   const { std::lock_guard<std::mutex> lk(_mx); return _max_resid_us; }
+  double   lastGain()     const { std::lock_guard<std::mutex> lk(_mx); return _last_gain; }
   int64_t  lastMissUs()   const { std::lock_guard<std::mutex> lk(_mx); return _last_miss_us; }
   long long rxCount()     const { std::lock_guard<std::mutex> lk(_mx); return _rx; }
   // Every frame given an object, by any route. tsMatched() is the subset that
@@ -535,6 +574,11 @@ private:
   long long            _engaged_at_rx = 0;
 
   double    _last_resid_us = 0, _max_resid_us = 0;
+  // Camera-clock stamp of the previous match, and the gain that match earned.
+  // The gain is worth reporting: it is the one number that says whether the
+  // filter is in its full-plate regime (~0.05) or its sparse regime (~0.9).
+  uint64_t  _last_match_us = 0;
+  double    _last_gain = 0;
   int64_t   _last_miss_us = 0;
   long long _rx = 0, _matched = 0, _ts_matched = 0, _out_of_order = 0, _stale = 0,
             _no_candidate = 0, _drops = 0, _covered_by_skip = 0, _dumped = 0;

@@ -3086,6 +3086,29 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["type"]="pong";
     doRsp=rspAck=true;
   }
+  // The enum lives here, so the names have to come from here too. A copy of the
+  // table in the WebUI is a copy that drifts: it carried five of the ten states
+  // and one that never existed, so a machine waiting in CAL displayed
+  // "state 102" -- a number that tells the person watching it nothing. Both
+  // lists are generated from the same X-macros the enums are, so adding a state
+  // cannot leave the panel behind.
+  else if(strcmp(type,"get_state_names")==0)
+  {
+    retdoc["type"]="state_names";
+    {
+      JsonObject js = retdoc.createNestedObject("state");
+      #define SMM_GEN_NAME_X(NAME,VALUE,X) js[#VALUE]=#NAME;
+      SMM_STATE_DECLARE(SMM_GEN_NAME_X)
+      #undef SMM_GEN_NAME_X
+    }
+    {
+      JsonObject je = retdoc.createNestedObject("err");
+      #define ERR_NAME_X(NAME,VALUE,TEXT) je[String((int)(VALUE))]=TEXT;
+      GEN_ERROR_CODE_DECLARE(ERR_NAME_X)
+      #undef ERR_NAME_X
+    }
+    doRsp=rspAck=true;
+  }
   else if(strcmp(type,"get_setup")==0)
   {
     retdoc["ver"]="0.0.0 Alpha";

@@ -240,8 +240,43 @@ CameraLayer::FrameExtractPixelFormat CameraLayer_Aravis::GetFrameFormat()
 }
 
 
+// Whether the camera is still THERE, asked of the camera.
+//
+// This used to be `return ACK;` under a //TODO. Nothing else in Core0_1 ever
+// checks either -- EV_CTRL_LOST is delivered to a callback that drops every
+// non-image event -- so "is the camera connected?" had exactly one answer in
+// the whole system, and it was yes. Unplug the camera, reload the WebUI, and
+// the panel would still show its id, model and serial: cam_json_info is
+// captured at construction and this said the device was fine, so every layer
+// downstream agreed on a camera that was physically not attached.
+//
+// Two checks, cheapest first:
+//   1. control-lost already fired -- Aravis told us the device went away.
+//      Authoritative and free.
+//   2. a real register read. Needed because a USB device can be yanked without
+//      the control-lost signal arriving promptly, and because this is also the
+//      only way to notice a camera that came back on a different handle.
 CameraLayer::status CameraLayer_Aravis::isInOperation()
-{//TODO: check availability
+{
+    if (_ctrl_lost || camera == NULL)
+        return CameraLayer::NAK;
+
+    // One register read. On a live USB3 link this is well under a millisecond;
+    // on a dead one it fails rather than hanging, which is the entire point.
+    GError *error = NULL;
+    arv_camera_get_integer(camera, "Width", &error);
+    if (error)
+    {
+        LOGE("camera probe failed (%s) -- treating as disconnected",
+             error->message ? error->message : "no message");
+        g_clear_error(&error);
+        // Latch it: once a probe has failed the object is not going to heal
+        // itself, and re-probing a dead device on every UI poll is a stall
+        // waiting to happen.
+        _ctrl_lost = true;
+        acquisition_started = false;
+        return CameraLayer::NAK;
+    }
     return CameraLayer::ACK;
 }
 
@@ -700,6 +735,10 @@ void CameraLayer_Aravis::STREAM_CONTROL_LOST_CB(ArvStream *stream)
   LOGE("CTRL lost %s",connection_data.name.c_str());
 
   pushErrorCode(130130130);
+
+  // The one fact everything downstream needs, recorded where it can be asked
+  // for. Without it isInOperation() had to guess, and it guessed ACK.
+  _ctrl_lost = true;
 
   // The device is gone: every Aravis call from here on will fail. Record that
   // in our own state so the acquisition_started flag stops claiming the camera

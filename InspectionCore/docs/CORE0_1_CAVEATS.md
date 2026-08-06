@@ -668,3 +668,81 @@ conclusions along the way: `Peripheral/uInspESP32/docs/PAIRING_MIGRATION_STATUS.
   every core restart reloads the board from NVS. Runtime-only settings are lost
   — which is how `unanswered_policy` silently reverted to 0 mid-session and left
   the machine running at 18.8% unjudged with an empty error log.
+
+### J11. The camera reconnect was a self-sustaining crash loop
+
+`Core0_1/` accumulated **80+ `crash_*.dump` files across 2026-08-05/06** — one
+every 10–30 minutes, five in eight minutes at one point. It was not random, and
+it needed no human. Three separate defects closed a loop:
+
+**1. A failed camera open silently became a fake camera.**
+`camera_ez_reconnect` ended with `camera = getCamera(0); //Fallback BMP test
+folder`. When the real camera could not be opened, the core installed a
+`CameraLayer_BMP_carousel` reading `data/BMP_carousel_test/` — and said nothing.
+The WebUI showed a picture, so everything looked alive. It was
+`snap_2026-06-04_08-53-52-042.png`. Lens calibration, exposure setup and clock
+calibration all ran against a two-month-old still and failed for reasons that
+made no sense. Frame size is the tell: the real camera was 496x416, the
+substitute 2448x2048.
+
+**2. The WebUI auto-reconnects on exactly that condition.** `script.jsx` ~855:
+
+```js
+if (cam0 === undefined ||
+    (System_Setting.ALLOW_SOFT_CAM == false && cam0.includes("CameraLayer_BMP")))
+  isInOperation = false;
+if (camInfo[0].cam_status != 0) isInOperation = false;
+if (!isInOperation) { ... this.reconnection(); }   // fires camera_ez_reconnect
+```
+
+`ALLOW_SOFT_CAM` is false on this machine. So a failed reconnect installed a
+soft cam, which the UI read as "camera lost", which fired another reconnect.
+**Failure guaranteed the next failure.**
+
+**3. Reconnect was a use-after-free.** The body was `delete camera; camera =
+NULL; camera = getCamera(1);` — no `StopAquisition()`, no drain, no lock — run
+from the BPG thread while `ImgPipeProcessThread` was mid-frame holding the same
+pointer (`ImgInspection` takes it as `cam` and hands it to the matcher via
+`bacpac->cam`). `crash_20260806T035429Z.dump` ends:
+
+```
+~CameraLayer_BMP_carousel Descructor...
+FeatureMatching ... this:0xb0b024000
+ImgInspection 7.942000ms
+=== SIGSEGV ===
+```
+
+**Fixed** (2026-08-06): a `camera_lifetime_lock` held for the whole of one
+frame's inspection and by anyone destroying the camera; `StopAquisition()`
+before `delete`; a 3-second floor between reconnects; and **no BMP substitution
+on the reconnect path** — a failed reconnect now leaves no camera at all, and
+every reader is NULL-guarded. A fake camera that looks live is worse than none.
+
+### J12. "Is the camera connected?" had one answer, and it was always yes
+
+`CameraLayer_Aravis::isInOperation()` was:
+
+```cpp
+{//TODO: check availability
+    return CameraLayer::ACK;
+}
+```
+
+`getCameraJsonInfo()` returns `cam_json_info`, a string built at construction.
+And Core0_1's three camera callbacks all begin `if (type != EV_IMG) return NAK;`
+— so `EV_CTRL_LOST`, which the Aravis layer does emit, was delivered to nobody.
+(Only CoreHub handles it, `InspectionTarget.cpp:945`.)
+
+Consequence, reproduced by the user: **unplug the camera, reload the WebUI, and
+the panel still shows its id, model and serial.** Identity was cached, health
+was hardcoded, and the disconnect event was dropped — three layers agreeing on
+a camera that was not physically attached. Restarting the core was the only way
+to make the system ask again.
+
+**Fixed** (2026-08-06): `isInOperation()` checks a `_ctrl_lost` flag (set by the
+control-lost handler) and otherwise performs a real register read
+(`arv_camera_get_integer(camera,"Width",&error)`), latching the failure;
+`camera_info` gained a `present` field. Note the ordering hazard: making this
+honest *without* J11's fix would have converted an occasional manual crash into
+an automatic one, because the UI auto-reconnects on `cam_status != 0`. The two
+had to ship together, and did.

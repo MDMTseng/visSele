@@ -44,6 +44,12 @@ protected:
   int takeCount = -1;
   bool acquisition_started = false;
 
+  // Set when Aravis reports control-lost, or when a register probe fails.
+  // Latched on purpose: a device that has gone away does not come back on the
+  // same handle, and isInOperation() must not re-probe a dead link on every
+  // poll. Cleared only by constructing a new layer.
+  bool _ctrl_lost = false;
+
   // Set once the stream callback has been armed, so teardown knows it has to
   // disconnect before it can safely free anything the callback touches.
   gulong _sig_new_buffer = 0;

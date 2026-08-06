@@ -257,3 +257,110 @@ and `seed`. New stats: `delta_hist`, `sync_late`, `recal_skipped`.
 - All-NA verdicts on real parts are a vision/def matter, not a pairing one — but
   they hide a slip completely, which is how the original positional off-by-five
   stayed hidden. Never validate pairing on NA-only traffic.
+
+---
+
+# The residual is filter lag, not measurement error (2026-08-06 PM)
+
+`pairing.resid_last_us` was assumed to be how well the clock offset is *known*.
+It is not. It is how far the EWMA that tracks the offset is *behind*, and it is
+governed by the sampling rate, not by any accuracy limit.
+
+`PerifTriggerPairing.hpp:310`:
+
+```cpp
+double resid = (cam_ts_us - _q[best_i].dev_us) - _offset_us;
+_offset_us += resid * 0.05;      // slow EWMA
+```
+
+An EWMA tracking a **ramp** (the crystals drift, they do not jump) has a
+standing lag. With gain `a = 0.05`, gap `T` between matches, drift rate `r`, and
+`N` matches arriving in a burst each revolution:
+
+```
+resid_first = r · T / (1 − (1−a)^N)          resid_last = resid_first · (1−a)^N
+```
+
+## Measured, over a 170x range in T
+
+| condition | T (estimate age) | predicted | measured |
+|---|---|---|---|
+| 20 rpm, full plate | 33 ms | 9–22 µs | −20 |
+| 3 rpm | 220 ms | 63 µs | −70 |
+| 6.5 rpm, ONE object | 9.23 s | (r fitted here) | −2622 |
+| 7 rpm, ONE object | 8.57 s | 2443 | −3408 |
+| 7 rpm, train N≈13 | 7.83 s | 413 / 212 | −400 / −200 |
+| 7 rpm, train N≈27 | 7.09 s | **~290** | **−290** |
+
+One parameter, `r ≈ 21–26 µs/s`. The last row was predicted **before** it was
+measured. The `N≈13` row was not assumed either — it was *derived* from the
+observed first/last ratio (200/400 = 0.95^N → N = 13.5) and matched the train
+that was actually on the plate.
+
+Nothing else produces a monotone dependence on the number of objects at a fixed
+speed, fixed spacing and fixed exposure window. The mechanism is settled.
+
+## What this means
+
+- **The floor is `r · T_gap`, and it is causal, not a precision limit.** No
+  train, however long, can correct drift that accumulated *before* its first
+  object arrived. Getting the first object under 100 µs at 7 rpm needs ~60% of
+  the circumference filled. The true noise floor is far lower — the
+  speed-independent term in the 3/20 rpm fit is about −11 µs, which is the
+  camera's trigger→exposure latency.
+- **Clustering objects buys the tail, not the head.** first/last is the `a`
+  term; the absolute value of first is the gap term. Two different things.
+- **Single-object bring-up sits on the worst point of the formula**: N smallest,
+  T largest. −3408 µs is 68% of the 5000 µs window. That is a setup-mode
+  artifact, not a production hazard — but during setup it is real, and it shows
+  up as good frames being refused.
+- **The window is doing no useful work in that regime.** With one object the
+  mis-pair threshold is half a revolution (≈4.3 s); the window is 1000x
+  tighter. It cannot prevent an error that cannot happen, and it can cause
+  false rejections. During single-object work raise
+  `cam_match_window_us` to ~15000 (cap is `min_detect_sep_us/2` = 16666) and
+  **do not persist it** — production spacing needs it back at 5000.
+
+## The recal cliff at 6.0 rpm
+
+With one object, "no parts registered" is the revolution period, so
+`cam_recal_idle_ms = 10000` puts a hard edge at **60/10 = 6.0 rpm**:
+
+- ≤ 6.0 rpm — a recal fires every revolution, and its sync pulse feeds the core
+  EWMA too (`gate_pulse == 0` triggers are paired for the clock, never
+  reported), so the estimate gets a second anchor per turn.
+- ≥ 6.5 rpm — the gap never reaches 10 s and recals stop entirely.
+
+Crossing it looks like "speeding up made the residual worse", which the lag
+formula alone forbids. It is not a defect, but it is invisible, and it makes any
+A/B that changes plate speed near 6 rpm untrustworthy: **two variables move at
+once.** Vary the object count instead — that moves N and nothing else.
+
+## Two real fixes, neither of them recal
+
+- **(A) scale `a` with the match rate.** Lag ∝ T/a. Cheap, but it trades noise
+  rejection for bias, and outliers are exactly what causes mis-pairing.
+- **(B) add a slope term.** A first-order filter must lag a ramp; a filter that
+  models the ramp does not. The firmware already has `cam_drift_comp` /
+  `slope_ppb` (default off); the core has no equivalent.
+
+(B) is the better shape, but it is only safe if `r` is stable. The 7 rpm point
+hinted that it is not (15 → 21 µs/s across the session, plausibly thermal). Log
+`cam_sync.drift_us_per_s` over hours before fitting a slope to it — a slope term
+chasing a wandering rate is worse than the lag it replaces.
+
+## Corrections to earlier claims in this document's session
+
+Recorded because each was stated with more confidence than it had earned:
+
+1. "Sparse parts suppress RECAL, so the estimate ages without bound." **Wrong.**
+   Every successful match feeds the EWMA, ordinary parts included; the estimate
+   is never older than one gap. RECAL is not load-bearing here.
+2. "Clustered samples are nearly redundant, so a second object barely helps."
+   **Wrong in steady state.** Per-sample correction is 5%, but the steady-state
+   residual is `r·T/(1−0.95^N)` — N=2 nearly halves it.
+3. "The residual scales with the exposure window, which is defined in position."
+   **Wrong.** 18 ticks is 6000 µs at 3 rpm and 900 µs at 20 rpm, against
+   measured residuals of 70 and 20 µs. Off by two orders of magnitude. The
+   2622 µs residual at 6.5 rpm landing near that speed's 2769 µs window was a
+   coincidence, and a seductive one.

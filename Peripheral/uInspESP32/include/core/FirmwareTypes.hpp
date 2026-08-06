@@ -112,30 +112,43 @@ struct PulseTimeSyncInfo
   uint64_t pre_basePulse_us;
 };
 
+// Declared as an X-macro, like SYS_STATE above, so the code that has to SHOW
+// these can generate its own table from the same list. The host used to keep a
+// hand-copied version; it went stale, and an operator met "code 14" with no
+// text at the exact moment the machine had refused to start.
+//
+//   MACROX(NAME, VALUE, "what the operator should understand by it")
+#define GEN_ERROR_CODE_DECLARE(MACROX) \
+  MACROX(NOP,                                 -1, "no error") \
+  MACROX(RESET,                                0, "reset") \
+  MACROX(INSP_RESULT_MATCHES_NO_OBJECT,        1, "a verdict arrived for no known object") \
+  MACROX(OBJECT_HAS_NO_INSP_RESULT,            2, "object reached SWITCH with no verdict") \
+  MACROX(INSP_RESULT_COUNTER_ERROR,            3, "result counter error") \
+  MACROX(INSP_RESULT_PULSE_TIME_OUT_OF_SYNC,   4, "result pulse time out of sync") \
+  MACROX(INSP_RESULT_HAS_NO_TIME_STAMP,        5, "result carried no timestamp") \
+  MACROX(INSP_CAM_TRIG_INFO_CANNOT_BE_SENT,   10, "cam_trig could not be sent") \
+  /* A malformed or stray byte on the serial link. LATCHED: one bad frame  */ \
+  /* stops the machine and it does not come back on its own.               */ \
+  MACROX(SERIAL_PROTOCOL_ERROR,               11, "serial protocol error (latched)") \
+  MACROX(HOST_LINK_TIMEOUT,                   12, "host link timeout") \
+  /* The camera clock offset no longer describes these two clocks, and the */ \
+  /* machine would have to guess which object a frame belongs to. Stopping */ \
+  /* is the correct answer: a wrong guess mis-sorts a part silently.       */ \
+  MACROX(CAM_CLOCK_LOST,                      13, "camera clock lost") \
+  /* The startup clock calibration did not converge, so the machine never  */ \
+  /* had a usable offset to begin with. Refusing to start is the point.    */ \
+  MACROX(CAM_CLOCK_CAL_FAILED,                14, "clock calibration did not converge") \
+  /* The plate never reached its target speed. The ramp is deterministic   */ \
+  /* arithmetic, so this means the machine is not doing what it was told.  */ \
+  MACROX(PLATE_SPINUP_TIMEOUT,                15, "plate never reached target speed") \
+  MACROX(SEL_ACT_LIMIT_REACHES,             0xff, "SEL actuation limit reached")
+
+#define GEN_ERROR_CODE_ENUM_X(NAME,VALUE,TEXT) NAME = VALUE ,
 enum class GEN_ERROR_CODE
 {
-  NOP=-1,
-  RESET = 0,
-  INSP_RESULT_MATCHES_NO_OBJECT = 1,
-  INSP_CAM_TRIG_INFO_CANNOT_BE_SENT = 10,
-  SERIAL_PROTOCOL_ERROR = 11,
-  OBJECT_HAS_NO_INSP_RESULT = 2,
-  INSP_RESULT_COUNTER_ERROR = 3,
-  INSP_RESULT_PULSE_TIME_OUT_OF_SYNC = 4,
-  INSP_RESULT_HAS_NO_TIME_STAMP = 5,
-  HOST_LINK_TIMEOUT = 12,
-  // The camera clock offset no longer describes these two clocks, and the
-  // machine would have to guess which object a frame belongs to. Stopping is
-  // the correct answer: a wrong guess mis-sorts a part silently.
-  CAM_CLOCK_LOST = 13,
-  // The startup clock calibration did not converge, so the machine never had a
-  // usable offset to begin with. Refusing to start is the point.
-  CAM_CLOCK_CAL_FAILED = 14,
-  // The plate never reached its target speed. The ramp is deterministic
-  // arithmetic, so this means the machine is not doing what it was told.
-  PLATE_SPINUP_TIMEOUT = 15,
-  SEL_ACT_LIMIT_REACHES=0xff,
+  GEN_ERROR_CODE_DECLARE(GEN_ERROR_CODE_ENUM_X)
 };
+#undef GEN_ERROR_CODE_ENUM_X
 
 struct SYS_INFO
 {
