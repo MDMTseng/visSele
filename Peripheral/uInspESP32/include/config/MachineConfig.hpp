@@ -36,6 +36,38 @@ typedef struct stagePulseOffset
 
 // Machine tunables owned by LegacyFirmware.cpp, persisted by this module.
 extern stagePulseOffset STAGE_PULSE_OFFSET;
+
+// How long each station stays ON, in MICROSECONDS.
+//
+// The offsets above are positions -- "how many stage ticks after the gate saw
+// this part" -- and position is the right unit for them: a tick is 0.0126mm of
+// plate, so changing speed does not move where anything fires. Width is a
+// different question with a different answer. Nothing a station drives cares
+// about distance:
+//
+//   camera   trigger floor ~100us, and its exposure is set in us on the camera
+//   backlight ~300us to reach full brightness
+//   SEL      solenoid open time + air transit
+//
+// Storing width as ticks made every one of those swing with plate speed. The
+// SEL blow, tuned to 50ms at 30rpm, is 500ms at 3rpm and 38ms at 40rpm -- a 13x
+// spread from one stored number, wrong at both ends.
+//
+// 0 means "not set": the corresponding *_off above stays authoritative, so an
+// existing NVS config keeps behaving exactly as it did. Set a width and it
+// takes over.
+typedef struct stagePulseWidthUs
+{
+  uint32_t CAM1;
+  uint32_t L1A;
+  uint32_t CAM2;
+  uint32_t L2A;
+  uint32_t SEL1;
+  uint32_t SEL2;
+  uint32_t SEL3;
+} stagePulseWidthUs;
+
+extern stagePulseWidthUs STAGE_PULSE_WIDTH_US;
 extern float PLATE_FREQ_SETPOINT;
 // Config is stored as the same JSON the wire uses, so these are shared.
 void genMachineSetup(JsonDocument &jdoc);

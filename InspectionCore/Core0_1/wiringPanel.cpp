@@ -4853,8 +4853,34 @@ static int64_t perifPairFrameForReport(image_pipe_info *imgPipe, bool &skip)
     // frame. And an empty queue DURING inspection means every announcement so
     // far is consumed, so there is no backlog and the wait costs only the
     // announcement's own flight time.
-    const int TRIG_WAIT_MAX_MS = 150;
-    const int DEV_STATE_INSPECTION = 101;
+    // 150ms was sized against announcements measured up to 115ms late on an
+    // otherwise quiet link. It is not enough when the link is busy: with the
+    // 1Hz stat poll and per-part traffic sharing 115200 baud, serialRTT was
+    // logged at 130ms, 420ms and 652ms on 2026-08-06. An announcement that
+    // arrives after the cap is the same as one that never arrives.
+    const int TRIG_WAIT_MAX_MS = 700;
+    // States in which a frame's announcement is worth waiting for.
+    //
+    // This was INSPECTION only, and that is why startup calibration could not
+    // converge. CAL runs in state 102: the device fires a pulse, the camera
+    // (free-running at ~70fps) hands the frame over almost immediately, and the
+    // announcement is still crossing the serial link. The core asked the
+    // pairing, got EMPTY, did not wait -- because 102 is not 101 -- and logged
+    // "result with no paired tid -- not sent". The device then reported the
+    // pulse unanswered, 1500ms later retried, and 30s later failed with
+    // CAM_CLOCK_CAL_FAILED. Measured directly:
+    //
+    //   [44104.647] New frame go ImgPipeProcessCenter_imp
+    //   [44110.898] ImgInspection 3.734000ms          <- pairing asked here
+    //   [44116.269] [perif RX] cam_trig tid:...       <- announcement, 12ms later
+    //   [44118.544] perif: result with no paired tid -- not sent
+    //
+    // Waiting is MORE clearly right in CAL than in INSPECTION, not less: the
+    // plate is stopped, exactly one pulse is outstanding, and there is no
+    // backlog for the wait to make worse. RECAL (104) is the same situation.
+    const auto dev_state_wants_wait = [](int s) {
+      return s == 101 /* INSPECTION */ || s == 102 /* CAL */ || s == 104 /* RECAL */;
+    };
     int64_t paired_tid = -1;
     auto _w0 = std::chrono::steady_clock::now();
     PerifTriggerPairing::PairResult pr =
@@ -4868,7 +4894,7 @@ static int64_t perifPairFrameForReport(image_pipe_info *imgPipe, bool &skip)
     // 308 triggers that then went stale -- the same parts counted from both
     // ends.
     if ((pr == PerifTriggerPairing::EMPTY || pr == PerifTriggerPairing::NO_CANDIDATE) &&
-        bpg_pi.perifCH->last_dev_state == DEV_STATE_INSPECTION)
+        dev_state_wants_wait(bpg_pi.perifCH->last_dev_state))
     {
       int waited_ms = 0;
       while (waited_ms < TRIG_WAIT_MAX_MS)

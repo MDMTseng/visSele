@@ -20,18 +20,24 @@ constexpr uint32_t perRevPulseCount = kPerRevPulseCount;
 
 // Lighting and camera IO
 //
-// WIRING (2026-08-05): the camera trigger is spliced onto the light A line.
-// GPIO16 drives the backlight AND triggers camera 1; GPIO17 is not connected to
-// anything, so driving PIN_O_CAM1 is a no-op kept for symmetry with the stage
-// path. Do NOT "fix the naming" by swapping these two defines -- that would move
-// the backlight onto the unconnected pin and the light would simply stop
-// working. If the names are ever made to match reality, CAM1 has to point at
-// the same pin as L1A, not trade places with it.
+// WIRING (2026-08-06): the two lines are SEPARATE again.
+//   GPIO16 (L1A)  -> backlight
+//   GPIO17 (CAM1) -> camera 1 trigger
+// The names now mean what they say.
 //
-// Consequence for timestamps: the instant that matters is the L1A rising edge.
-// The stage path already stamps there by accident (ACT_L1A and ACT_CAM1 share
-// step offset 654 and one fetched time_us), and calFireNow stamps there on
-// purpose.
+// HISTORY, because it changes what the timestamps mean and the old arrangement
+// is still described in commits and docs: from 2026-08-05 until 2026-08-06 the
+// camera trigger was spliced onto the light line, GPIO16 did both jobs, and
+// GPIO17 went nowhere. Everything written in that window that says "L1A is the
+// actual trigger" or "CAM1 is a no-op" was true then and is false now.
+//
+// Consequence for timestamps: the instant that matters is the CAM1 rising edge,
+// because that is what the camera actually sees. It coincides with the L1A edge
+// only while the two offsets are equal -- ACT_L1A and ACT_CAM1 are scheduled at
+// the same step offset and run in the same ISR pass off one fetched time_us, and
+// calFireNow drives both back to back. If the two are ever given DIFFERENT
+// stage_pulse_offsets (to lead the light, say), cam_us must follow CAM1, not
+// L1A, or every pairing residual acquires that difference as a bias.
 #define PIN_O_L1A 16
 #define PIN_O_CAM1 17
 #define PIN_O_L2A 18

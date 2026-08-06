@@ -746,3 +746,29 @@ control-lost handler) and otherwise performs a real register read
 honest *without* J11's fix would have converted an occasional manual crash into
 an automatic one, because the UI auto-reconnects on `cam_status != 0`. The two
 had to ship together, and did.
+
+### J13. The log system is not trustworthy, and it cost a day
+
+On 2026-08-06 every piece of real evidence came from somewhere other than the
+log: a raw TCP tap on `INSP_PERIF_CONSOLE`, crash dumps, and a hand-rolled
+websocket client. Twice a wrong conclusion was drawn from "it is not in the
+log", which only ever meant the log did not arrive.
+
+Four separate problems, all still open:
+
+1. **`persist` is OFF by default.** Logs live in a 16MB shm ring and nowhere
+   else, so anything not read live is gone at restart. Workaround in use:
+   `INSP_LOG_PERSIST_LEVEL=info INSP_LOG_DIR=/tmp/insplog INSP_LOG_FILE=insp`.
+   That should be the default for a machine under development.
+2. **The `inspd_log` drainer can die silently.** Observed: it started, bound
+   4091, and vanished; port closed, WebUI "Core Logs" empty, and nothing
+   anywhere said so. The core never notices its own drainer is gone.
+3. **Port 4091 serves one client at a time**, and a second connection hangs in
+   the opening handshake rather than being refused. Two people (or a person and
+   a tool) looking at the same machine block each other with no diagnostic.
+4. **Long records are corrupted in transport** -- already documented at
+   `wiringPanel.cpp` (the reason `INSP_PERIF_CONSOLE` exists at all). A
+   ~1kB `get_running_stat` reply is exactly the size that loses its tail.
+
+The crash dump is the one part that works: it writes the entire retained ring,
+which is how J11 was solved.

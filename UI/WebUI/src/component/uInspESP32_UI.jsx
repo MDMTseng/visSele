@@ -119,6 +119,48 @@ const SPEED_MAX = 20000;
 const SPEED_STEP = 250;
 const SPEED_MARKS = { 0: '0', 10000: '20rpm', 15000: '30rpm', 20000: '40rpm' };
 
+// Every station the plate carries a part past, in the order it meets them.
+// Names and keys are exactly the firmware's stage_pulse_offset fields, so this
+// table and SMM's struct can be diffed by eye.
+//
+// SWITCH has no "off": it is not an actuator, it is the deadline by which a
+// verdict must have arrived. Everything downstream of it is a blow nozzle.
+const STATIONS = [
+  { key: 'CAM1', label: '相機 CAM1', on: 'CAM1_on', off: 'CAM1_off', us: 'CAM1',
+    why: '相機觸發 (GPIO17)。窗寬就是曝光窗;盤在窗內走的距離就是拖影。' },
+  { key: 'L1A',  label: '背光 L1A',  on: 'L1A_on',  off: 'L1A_off', us: 'L1A',
+    why: '背光 (GPIO16)。必須完整覆蓋 CAM1 的窗,否則相機會在漸亮或全暗中曝光。' +
+         '背光約需 300µs 才全亮,所以提前開、延後關是合理的。' },
+  { key: 'CAM2', label: '相機 CAM2', on: 'CAM2_on', off: 'CAM2_off', us: 'CAM2' },
+  { key: 'L2A',  label: '背光 L2A',  on: 'L2A_on',  off: 'L2A_off', us: 'L2A' },
+  { key: 'SWITCH', label: 'SWITCH 期限', on: 'SWITCH',
+    why: '判定期限,不是致動器。料走到這裡還沒有判定就算沒判定 —— 而且會被標成 ' +
+         'UNANSWERED 或被較新的回報蓋成 SKIP。必須早於所有 SEL。' },
+  { key: 'SEL1', label: 'SEL1 吹氣', on: 'SEL1_on', off: 'SEL1_off', us: 'SEL1' },
+  { key: 'SEL2', label: 'SEL2 吹氣', on: 'SEL2_on', off: 'SEL2_off', us: 'SEL2' },
+  { key: 'SEL3', label: 'SEL3 吹氣', on: 'SEL3_on', off: 'SEL3_off', us: 'SEL3' },
+];
+
+// The firmware stores on/off; the panel edits position/width. Kept as an
+// explicit pair of converters rather than done inline, because a half-typed
+// width must not be able to corrupt `off` on the device -- the conversion only
+// happens on commit.
+const spoToEdit = (spo, wus, plate_freq) => {
+  const e = { ...spo };
+  for (const st of STATIONS) {
+    if (!st.off) continue;
+    // Prefer the device's configured microseconds. Fall back to converting the
+    // stored tick offsets only when no width has ever been set (wus === 0),
+    // which is how a machine that predates the us fields still shows something
+    // sensible instead of a blank field.
+    const fromDev = wus && Number(wus[st.us]) > 0 ? Number(wus[st.us]) : 0;
+    e['_w_' + st.key] = fromDev
+      ? fromDev
+      : Math.round(ticksToMs((spo[st.off] ?? 0) - (spo[st.on] ?? 0), refFreq(plate_freq)) * 1000);
+  }
+  return e;
+};
+
 // A "?" that carries the explanation instead of a paragraph that carries it
 // permanently. The prose is worth keeping -- most of it is a fact that cost a
 // day to learn -- but it belongs one hover away, not between the operator and
@@ -158,12 +200,17 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const lastOkRef = useRef(0);
   const openedRef = useRef(Date.now());
 
-  // Camera trigger position and exposure-window width, in stage ticks. Same
-  // pattern as the speed slider: local while dragging, pushed on release.
-  const [camOn, setCamOn] = useState(undefined);
-  const [camW, setCamW] = useState(undefined);
-
   const [names, setNames] = useState(null);   // state/err text, asked of the board
+  const [runRefused, setRunRefused] = useState('');   // why RUN declined, shown inline
+  // Working copy of stage_pulse_offset while it is being typed into. Adopted
+  // from the device once, then owned by the editor -- rebinding on every poll
+  // would overwrite a half-typed number on the next tick.
+  const [spoEdit, setSpoEdit] = useState({});
+  // Which field the fine-adjust bar acts on: {key,label,which:'pos'|'w'}.
+  const [sel, setSel] = useState(null);
+  // Set by nudge(), consumed by the effect that pushes the change. setSpoEdit
+  // is async, so committing inside nudge() would send the PREVIOUS value.
+  const [nudged, setNudged] = useState(false);
 
   const [commDiag, setCommDiag] = useState(null);
   const [pairing, setPairing] = useState(null);   // core-side frame<->object pairing health
@@ -176,7 +223,17 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const dev = GetObjElement(CONN, ['deviceState']) || {};
   const connected = GetObjElement(CONN, ['type']) === 'WS_CONNECTED';
   const spo = cfg.stage_pulse_offset || {};
+  // Per-station widths in microseconds; {} on firmware that predates them.
+  const wus = cfg.stage_pulse_width_us;
   const plate_freq = stat ? stat.plate_freq : cfg.plate_freq;
+  // The CONFIGURED speed (PLATE_FREQ_SETPOINT), not the ramp's current target.
+  // Width in microseconds is converted to ticks by the DEVICE against exactly
+  // this value, so any us<->tick arithmetic shown here has to use it too. Using
+  // the running target instead made the panel display a width 6.7x off while
+  // the machine was idle -- the third time today these three variables have
+  // been confused, so: get_setup.plate_freq = SETPOINT (what set_setup writes),
+  // get_running_stat.plate_freq = TARGET (0 in IDLE), and CURRENT is neither.
+  const setpoint_freq = (cfg.plate_freq > 0) ? cfg.plate_freq : refFreq(plate_freq);
   // Gate admission stats come from the board (get_running_stat.gate); the
   // configured cap is mirrored there too, so the panel never has to guess
   // whether its own last write actually landed.
@@ -248,14 +305,10 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
     });
   }, [API_ID]);
 
-  // Adopt the board's trigger window once, then the sliders own it -- rebinding
-  // on every poll would fight the drag.
+  // Adopt the station table once, same reasoning as the sliders below.
   useEffect(() => {
-    if (camOn === undefined && spo.CAM1_on !== undefined) {
-      setCamOn(spo.CAM1_on);
-      setCamW(Math.max(1, (spo.CAM1_off ?? spo.CAM1_on) - spo.CAM1_on));
-    }
-  }, [spo.CAM1_on, spo.CAM1_off, camOn]);
+    if (Object.keys(spoEdit).length === 0 && spo.CAM1_on !== undefined) setSpoEdit(spoToEdit(spo, wus, setpoint_freq));
+  }, [spo.CAM1_on, spoEdit]);
 
   // Adopt the machine's speed once, so the slider opens where the machine
   // actually is. After that the operator owns it. A stopped plate has no speed
@@ -288,38 +341,95 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
     api.stepperEnable();
     api.machineSetupUpdate({ plate_freq: speed || REF_FREQ }, false, true);
     // Barrier, not politeness. machineSetupUpdate is fire-and-forget, so firing
-    // enter_insp_mode straight after it races: the board enters CAL while
-    // plate_freq is still 0, the stage timer never ticks, the calibration
-    // pulses never fire, and it fails to converge -- err 14, machine in ERROR.
-    // Measured, not theorised: that is exactly what the first version did.
-    // The device answers in the order it was asked, so a reply to a request
-    // queued AFTER set_setup proves set_setup was consumed.
-    return api.getRunningStat().then((s) => {
+    // enter_insp_mode straight after it races. The device answers in the order
+    // it was asked, so a reply to a request queued AFTER set_setup proves
+    // set_setup was consumed.
+    //
+    // It must be get_setup, not get_running_stat. The firmware keeps THREE
+    // plate frequencies and they are not interchangeable:
+    //
+    //   PLATE_FREQ_SETPOINT  the configuration -- what set_setup writes,
+    //                        what get_setup returns
+    //   PLATE_FREQ_TARGET    what the ramp is currently aiming at -- what
+    //                        get_running_stat returns, and 0 while IDLE
+    //   PLATE_FREQ_CURRENT   the actual speed
+    //
+    // Checking the running stat meant checking TARGET to confirm a write to
+    // SETPOINT, so in IDLE the test could never pass: the first press turned
+    // the driver on, set the speed, failed its own check and silently declined
+    // to enter inspection -- plate turning, switch snapping back, nothing else
+    // happening. The second press passed only because the first had left the
+    // machine somewhere that had loaded TARGET.
+    return api.getSetupP().then((s) => {
       if (!(s && s.plate_freq > 0)) {
+        // Say so on screen. The first version only log.warn()'d, so a refused
+        // RUN looked identical to a RUN that had done nothing at all -- which
+        // is precisely how it was reported: "plate turns, nothing happens,
+        // switch stays off". A control that declines must show that it did.
         log.warn('[uinsp2] refusing RUN: plate_freq did not take', s && s.plate_freq);
-        return undefined;   // entering CAL at 0 is a guaranteed err 14
+        if (mounted.current) setRunRefused('轉速沒有寫進裝置,未進入檢測模式');
+        return undefined;
       }
+      if (mounted.current) setRunRefused('');
       return api.enterInspMode();
     });
   });
 
-  // CAM1 is the camera's trigger line, L1A is the backlight strobe -- two pins,
-  // two independent offsets, and they default to the same window. Moving one
-  // without the other exposes the sensor into the dark, so the panel moves them
-  // as one: the whole group shifts by the same delta and takes the same width.
-  //
-  // The full stage_pulse_offset object is sent, not just the two keys. The
-  // firmware writes only what it is given (JSON_SETIF_ABLE), so a partial one
-  // would be correct on the device -- but machineSetupUpdate merges shallowly,
-  // so the panel's own copy would lose SWITCH and every SEL offset and the
-  // timing card below would go blank.
-  const applyCam = (on, w) => run('cam', (api) => api.machineSetupUpdate({
-    stage_pulse_offset: {
-      ...spo,
-      CAM1_on: on, CAM1_off: on + w,
-      L1A_on:  on, L1A_off:  on + w,
-    },
-  }, false, true));
+  // Push the whole stage_pulse_offset, not the edited field alone: the firmware
+  // writes only what it is given (JSON_SETIF_ABLE), but machineSetupUpdate
+  // merges shallowly, so a partial object would leave the panel's own copy
+  // missing every station it did not send.
+  const commitSpo = () => {
+    const spoOut = {};
+    const wOut = {};
+    let changed = false;
+    for (const st of STATIONS) {
+      const pos = Number(spoEdit[st.on]);
+      if (isFinite(pos) && spoEdit[st.on] !== '' && spoEdit[st.on] !== undefined) {
+        spoOut[st.on] = pos;
+        if (pos !== spo[st.on]) changed = true;
+      }
+      if (!st.off) continue;
+      const w = Number(spoEdit['_w_' + st.key]);
+      if (!isFinite(w) || spoEdit['_w_' + st.key] === '') continue;
+      if (!(w > 0)) {
+        log.warn('[uinsp2] refusing %s: width %s us', st.key, w);
+        return;
+      }
+      wOut[st.us] = w;
+      if (w !== Number((wus || {})[st.us])) changed = true;
+    }
+    if (!changed) return;
+    // Widths go as microseconds and the DEVICE converts to ticks, against its
+    // own plate_freq. Sending ticks from here would bake in whatever speed the
+    // panel happened to believe, which is the whole problem being fixed.
+    run('spo', (api) => api.machineSetupUpdate({
+      stage_pulse_offset: { ...spo, ...spoOut },
+      stage_pulse_width_us: { ...(wus || {}), ...wOut },
+    }, false, true));
+  };
+
+  // Fine adjust on the focused field. Clamped at 0 for position and 1 for
+  // width -- the two values that make the device do something it cannot undo.
+  const nudge = (d) => {
+    if (!sel) return;
+    const st = STATIONS.find((x) => x.key === sel.key);
+    const field = sel.which === 'pos' ? st.on : '_w_' + st.key;
+    const floor = sel.which === 'pos' ? 0 : 1;
+    // Position steps in ticks (1 tick = 12.6um, the resolution that matters);
+    // width steps in microseconds, where 1us is meaningless and 10us is not.
+    if (sel.which === 'w') d *= 10;
+    const cur = Number(spoEdit[field]);
+    if (!isFinite(cur)) return;
+    setSpoEdit({ ...spoEdit, [field]: String(Math.max(floor, cur + d)) });
+    setNudged(true);
+  };
+
+  useEffect(() => {
+    if (!nudged) return;
+    setNudged(false);
+    commitSpo();
+  }, [nudged, spoEdit]);
 
   const runCommDiag = (n = 20) => {
     setCommDiag({ running: true, i: 0, total: n });
@@ -432,17 +542,23 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
             <div style={{ fontSize: 11, color: starting ? '#d48806' : '#888' }}>
               {runHint}
             </div>
+            {runRefused ? (
+              <div style={{ fontSize: 11, color: '#c33' }}>⚠ {runRefused}</div>
+            ) : null}
           </div>
           <div style={{ flex: '1 1 200px', minWidth: 190 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, ...dim }}>
               <span>轉速</span>
               <span>
                 {/* Shown for the SLIDER position, not the running speed, so the
-                    consequence is visible before the plate moves. 0.01mm is the
-                    width-measurement budget, and it is the exposure that has to
-                    fit inside it. */}
+                    consequence is visible before the plate moves.
+                    "0.01mm =" is the exposure that fits inside the 0.01mm
+                    width-measurement budget -- compare it against the CAMERA's
+                    ExposureTime, not against any pulse width here. Smear is
+                    speed x ExposureTime; the trigger pulse only has to be long
+                    enough to fire the camera and light it. */}
                 {speed > 0
-                  ? `${plateRpm(speed).toFixed(1)} rpm · ${plateMmS(speed).toFixed(0)} mm/s · 0.01mm = ${(10000 / plateMmS(speed)).toFixed(0)}µs`
+                  ? `${plateRpm(speed).toFixed(1)} rpm · ${plateMmS(speed).toFixed(0)} mm/s · 0.01mm 需曝光 ≤ ${(10000 / plateMmS(speed)).toFixed(0)}µs`
                   : '停止'}
               </span>
             </div>
@@ -516,80 +632,11 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           the plate from the gate that registered the part. Not in ADVANCED,
           because "the trigger is not on the object" is the thing you are here
           to fix, and it is fixed by watching the image while you drag. */}
-      {camOn !== undefined && (
-      <Card size="small" style={{ marginBottom: 8 }} title={<span>相機觸發位置
-        <Why>觸發位置是「從閘門登記算起,盤走了多少 tick」。1 tick = 0.0126 mm,
-          所以這是空間上的位移,跟轉速無關 —— 改轉速不會讓觸發跑掉。
-          CAM1(相機觸發)和 L1A(背光)一起移動,否則相機會在暗的時候曝光。</Why></span>}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, ...dim }}>
-          <span>位置</span>
-          <span>
-            {camOn} ticks · <b style={{ color: '#000' }}>{(camOn * MM_PER_PULSE).toFixed(2)} mm</b>
-            {' '}· {fmtMs(ticksToMs(camOn, refFreq(plate_freq)))}
-          </span>
-        </div>
-        <Slider
-          min={0} max={spo.SWITCH || 30000} step={5}
-          value={camOn} tooltipVisible={false}
-          onChange={setCamOn}
-          onAfterChange={(v) => applyCam(v, camW)}
-          style={{ margin: '2px 6px 8px 6px' }}
-        />
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 10 }}>
-          {/* A slider cannot land on one tick, and one tick is 12.6 um -- which
-              is the resolution this adjustment actually needs. */}
-          {[-100, -10, -1, 1, 10, 100].map((d) => (
-            <Button key={d} size="small" style={{ padding: '0 7px' }}
-              onClick={() => { const v = Math.max(0, camOn + d); setCamOn(v); applyCam(v, camW); }}
-            >{d > 0 ? `+${d}` : d}</Button>
-          ))}
-          <span style={{ ...dim, fontSize: 11, marginLeft: 4 }}>
-            ticks — 1 tick = {MM_PER_PULSE.toFixed(4)} mm
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, ...dim }}>
-          <span>曝光窗寬度</span>
-          <span>
-            {camW} ticks · {(camW * MM_PER_PULSE).toFixed(3)} mm
-            {' '}· {Math.round(ticksToMs(camW, refFreq(plate_freq)) * 1000)} µs
-          </span>
-        </div>
-        <Slider
-          min={1} max={120} step={1}
-          value={camW} tooltipVisible={false}
-          onChange={setCamW}
-          onAfterChange={(v) => applyCam(camOn, v)}
-          style={{ margin: '2px 6px 8px 6px' }}
-        />
-
-        {/* Two limits worth meeting before the image looks wrong rather than
-            after. The trigger floor is the camera's; the smear budget is the
-            0.01mm the width measurement is allowed to lose. */}
-        {(() => {
-          const us = ticksToMs(camW, refFreq(plate_freq)) * 1000;
-          const smear = camW * MM_PER_PULSE;
-          const warn = [];
-          if (us < 100) warn.push(`窗只有 ${Math.round(us)}µs — 相機觸發下限約 100µs,可能根本不會拍`);
-          else if (us < 300) warn.push(`窗 ${Math.round(us)}µs — 低於 300µs 背光到不了全亮`);
-          if (smear > 0.01) warn.push(`盤在窗內走 ${smear.toFixed(3)} mm — 超過 0.01mm 量測預算`);
-          return warn.length ? (
-            <div style={{ fontSize: 11, color: '#c60', marginBottom: 8 }}>
-              {warn.map((w, i) => <div key={i}>⚠ {w}</div>)}
-            </div>
-          ) : null;
-        })()}
-
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Button size="small" loading={busy === 'spo_save'}
-            onClick={() => run('spo_save', (api) => api.saveSetupToDevice())}
-          >存入 NVS</Button>
-          <span style={{ ...dim, fontSize: 11 }}>
-            拖曳放開就立刻生效(下一顆料起);不存 NVS 的話重開機會回到舊值
-          </span>
-        </div>
-      </Card>
-      )}
+      {/* The camera-trigger slider card that used to live here is gone: the
+          station table below now edits the same two numbers (position and
+          width) for every station, and two controls writing one pair of
+          offsets meant the slider silently undid any L1A lead set in the
+          table. One editor, one truth. */}
 
       {/* Everything below is setup, tuning and diagnosis -- read during
           bring-up, not while parts are running. Collapsed by default so the
@@ -751,28 +798,97 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
           <b>{pipe.registered ?? '—'} / {pipe.waiting ?? '—'}</b></div>
       </Card>
 
-      <Card size="small"
-        title={`時序 (ticks — 括號為 ${isRef(plate_freq) ? `plate_freq ${REF_FREQ} 參考值` : "目前轉速"} 下的時間)`}
-        style={{ marginBottom: 8 }}>
-        {[['相機/光源 CAM1', spo.CAM1_on, spo.CAM1_off],
-          ['SWITCH 判定期限', spo.SWITCH, undefined],
-          ['SEL1 吹氣', spo.SEL1_on, spo.SEL1_off],
-          ['SEL2 吹氣', spo.SEL2_on, spo.SEL2_off]].map(([name, on, off]) => (
-          <div style={kv} key={name}>
-            <span>{name}</span>
-            <b>
-              {on ?? '—'}{off !== undefined ? `→${off}` : ''}
-              <span style={dim}>
-                {' '}({fmtMs(ticksToMs(on, refFreq(plate_freq)))}
-                {off !== undefined ? `, 寬 ${fmtMs(ticksToMs(off - on, refFreq(plate_freq)))}` : ''})
+      {/* Every station, expressed the way it is actually adjusted: WHERE it
+          fires and HOW LONG it stays on. on/off is how the firmware stores it,
+          but nobody thinks "move off to 672" -- they think "make the window
+          wider". Width edits keep the position fixed and move `off`. */}
+      <Card size="small" style={{ marginBottom: 8 }} title={<span>站點時序
+        <Why>位置 = 從閘門登記算起走了多少 tick,1 tick = {MM_PER_PULSE.toFixed(4)} mm,
+          與轉速無關。寬度 = 該站點持續開啟的 tick 數。括號中的時間是
+          {isRef(plate_freq) ? `plate_freq ${REF_FREQ} 參考值` : '目前轉速'}下換算的。
+          改完要按「存入 NVS」才會在重開機後存活。</Why></span>}>
+
+        {/* One fine-adjust bar for the whole table, acting on whichever field
+            was last focused. A slider cannot land on a single tick and one tick
+            is 12.6um, which is the resolution this actually needs; per-row
+            buttons would be 48 buttons. */}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 8,
+          padding: '4px 6px', borderRadius: 4,
+          background: sel ? '#f0f6ff' : '#fafafa',
+          border: sel ? '1px solid #91caff' : '1px solid #eee' }}>
+          {[-100, -10, -1, 1, 10, 100].map((d) => (
+            <Button key={d} size="small" disabled={!sel} style={{ padding: '0 7px' }}
+              onMouseDown={(e) => e.preventDefault()}   /* keep focus on the field */
+              onClick={() => nudge(d)}
+            >{d > 0 ? `+${d}` : d}</Button>
+          ))}
+          <span style={{ fontSize: 11, marginLeft: 6, color: sel ? '#1677ff' : '#aaa' }}>
+            {sel ? `${sel.label} · ${sel.which === 'pos' ? '位置 (tick)' : '寬度 (µs, 每格 ×10)'}` : '點一個欄位再用快速鈕'}
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', fontSize: 11, ...dim, padding: '0 0 4px 0' }}>
+          <span style={{ width: 104 }}>站點</span>
+          <span style={{ width: 86 }}>觸發位置</span>
+          <span style={{ width: 86 }}>寬度 (µs)</span>
+          <span style={{ flex: 1 }}>換算</span>
+        </div>
+
+        {STATIONS.map((st) => {
+          const pos = spoEdit[st.on];
+          const wid = st.off ? spoEdit['_w_' + st.key] : undefined;
+          const bad = st.off && !(Number(wid) > 0);
+          const isSel = (which) => sel && sel.key === st.key && sel.which === which;
+          const cell = (which, val, onCh) => (
+            <Input size="small" style={{ width: 82, marginRight: 4,
+              borderColor: isSel(which) ? '#1677ff' : undefined }}
+              value={val ?? ''}
+              onFocus={() => setSel({ key: st.key, label: st.label, which })}
+              onChange={(e) => onCh(e.target.value.replace(/[^0-9]/g, ''))}
+              onPressEnter={commitSpo} onBlur={commitSpo} />
+          );
+          return (
+            <div key={st.key} style={{ display: 'flex', alignItems: 'center', padding: '2px 0' }}>
+              <span style={{ width: 104, fontSize: 12 }}>
+                {st.label}{st.why ? <Why>{st.why}</Why> : null}
               </span>
-            </b>
+              {cell('pos', pos, (v) => setSpoEdit({ ...spoEdit, [st.on]: v }))}
+              {st.off
+                ? cell('w', wid, (v) => setSpoEdit({ ...spoEdit, ['_w_' + st.key]: v }))
+                : <span style={{ width: 86 }} />}
+              <span style={{ flex: 1, fontSize: 11, color: bad ? '#c33' : '#888' }}>
+                {Number(pos) >= 0
+                  ? `${(Number(pos) * MM_PER_PULSE).toFixed(1)} mm · ${fmtMs(ticksToMs(Number(pos), refFreq(plate_freq)))}`
+                  : '—'}
+                {st.off ? (bad
+                  ? '  ⚠ 寬度必須 > 0'
+                  : `  → ${Math.ceil(Number(wid) * 2 * setpoint_freq / 1e6)} t = ${(Number(wid) * 2 * setpoint_freq / 1e6 * MM_PER_PULSE).toFixed(2)} mm${cfg.plate_freq > 0 ? '' : ' ⚠ 轉速為 0,裝置要等設定轉速後才換算'}`) : ''}
+              </span>
+            </div>
+          );
+        })}
+
+        {/* The one cross-station rule the machine actually enforces: a verdict
+            that arrives after SWITCH is no verdict at all. */}
+        {spoEdit.SWITCH !== undefined && lat.max_us > 0 && (
+          <div style={{ fontSize: 11, marginTop: 6,
+            color: ticksToMs(Number(spoEdit.SWITCH), refFreq(plate_freq)) * 1000 < lat.max_us * 1.5
+                   ? '#c33' : '#888' }}>
+            SWITCH 期限 {fmtMs(ticksToMs(Number(spoEdit.SWITCH), refFreq(plate_freq)))} vs
+            {' '}回報延遲最大 {(lat.max_us / 1000).toFixed(0)} ms
+            {ticksToMs(Number(spoEdit.SWITCH), refFreq(plate_freq)) * 1000 < lat.max_us * 1.5
+              ? ' ← 餘裕不足 1.5x,慢的那幾顆會來不及判定' : ''}
           </div>
-        ))}
-        <div style={{ marginTop: 8 }}>
-          <Button size="small" loading={busy === 'save'}
+        )}
+
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
+          <Button size="small" type="primary" loading={busy === 'save'}
             onClick={() => run('save', (api) => api.saveSetupToDevice())}
           >存入 NVS</Button>
+          <Button size="small" onClick={() => setSpoEdit(spoToEdit(spo, wus, setpoint_freq))}>還原成裝置目前值</Button>
+          <span style={{ ...dim, fontSize: 11 }}>
+            編輯後離開欄位即套用(下一顆料起);存 NVS 才會撐過重開機
+          </span>
         </div>
       </Card>
 

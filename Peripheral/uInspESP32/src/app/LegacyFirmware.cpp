@@ -736,6 +736,88 @@ void STAGE_PULSE_OFFSET_publish()
   SPO_active = inactive;   // aligned pointer store -> atomic on ESP32
 }
 
+// Set when a SEL width came out wider than half the part spacing. A FLAG, not a
+// message, because this function runs above djrl and printf() on this board
+// writes straight to UART0 -- which is the protocol link. Raw text there is a
+// stray byte to the device's parser: INIT_CHAR_ERROR, err 11, latched, machine
+// stopped. That is not hypothetical; it is what happened when this warning was
+// first written as a printf, ten minutes after the same failure was diagnosed
+// and fixed elsewhere in this file. NOTHING may printf here.
+bool STAGE_WIDTH_SEL_WARN = false;
+
+// All zero = "no width configured", i.e. the *_off offsets above stay in charge.
+// Deliberately not seeded with the tick-derived equivalents: a machine that has
+// never been told a width in microseconds must behave EXACTLY as it did before
+// this existed, and silently converting its stored offsets would be a behaviour
+// change disguised as a default.
+stagePulseWidthUs STAGE_PULSE_WIDTH_US = {0,0,0,0,0,0,0};
+
+// Turn the microsecond widths into tick offsets and publish them.
+//
+// Done here, in the main loop, rather than in the ISR: the step ISR keeps
+// reading exactly one thing (SPO_active) and nothing about its timing changes.
+// This just writes the *_off fields it was going to read anyway.
+//
+// Rounds UP, and converts against PLATE_FREQ_SETPOINT rather than the current
+// speed, because the two error directions are not symmetric:
+//
+//   too short -> the camera misses the trigger, or the light is out during
+//                exposure, or the part is not blown off. Every one of those
+//                loses a part or a verdict.
+//   too long  -> more LED duty, more air. Nothing is lost.
+//
+// So during SPINUP, when CURRENT is below SETPOINT, the pulse comes out longer
+// than asked for -- which is the safe side. (SETPOINT / TARGET / CURRENT are
+// three different variables here; using the wrong one is a mistake this
+// codebase has already made once, in the host panel.)
+void STAGE_PULSE_WIDTH_apply()
+{
+  const float pf = PLATE_FREQ_SETPOINT;
+  if(!(pf > 0)) return;                 // no speed, no conversion
+  // ticks = us * (2*pf) / 1e6, rounded up, never zero.
+  auto us2t = [pf](uint32_t us) -> uint32_t {
+    if(us == 0) return 0;
+    double t = ((double)us * 2.0 * (double)pf) / 1000000.0;
+    uint32_t r = (uint32_t)(t + 0.999999);
+    return r ? r : 1;
+  };
+
+  // The SEL blow is the one width that must ALSO respect distance: a fixed time
+  // covers more plate as speed rises, and a blow wide enough to still be open
+  // when the next part arrives ejects two. Cap at half the admission spacing --
+  // the same rule the match window follows, for the same reason.
+  uint32_t sel_cap = us2t(SYS_MIN_PULSE_TIME_SEP_us / 2);
+
+  struct { uint32_t us; uint32_t *on; uint32_t *off; bool is_sel; } M[] = {
+    { STAGE_PULSE_WIDTH_US.CAM1, &STAGE_PULSE_OFFSET.CAM1_on, &STAGE_PULSE_OFFSET.CAM1_off, false },
+    { STAGE_PULSE_WIDTH_US.L1A,  &STAGE_PULSE_OFFSET.L1A_on,  &STAGE_PULSE_OFFSET.L1A_off,  false },
+    { STAGE_PULSE_WIDTH_US.CAM2, &STAGE_PULSE_OFFSET.CAM2_on, &STAGE_PULSE_OFFSET.CAM2_off, false },
+    { STAGE_PULSE_WIDTH_US.L2A,  &STAGE_PULSE_OFFSET.L2A_on,  &STAGE_PULSE_OFFSET.L2A_off,  false },
+    { STAGE_PULSE_WIDTH_US.SEL1, &STAGE_PULSE_OFFSET.SEL1_on, &STAGE_PULSE_OFFSET.SEL1_off, true  },
+    { STAGE_PULSE_WIDTH_US.SEL2, &STAGE_PULSE_OFFSET.SEL2_on, &STAGE_PULSE_OFFSET.SEL2_off, true  },
+    { STAGE_PULSE_WIDTH_US.SEL3, &STAGE_PULSE_OFFSET.SEL3_on, &STAGE_PULSE_OFFSET.SEL3_off, true  },
+  };
+  for(auto &m : M)
+  {
+    if(m.us == 0) continue;             // not configured -> leave *_off alone
+    uint32_t t = us2t(m.us);
+    // WARN, do not clamp.
+    //
+    // A blow wider than half the admission spacing is still open when the next
+    // part arrives, which can eject two. But clamping it would silently shorten
+    // a blow someone tuned by watching parts actually leave the plate -- and
+    // the machine already runs that way: the shipped 1500-tick SEL width is
+    // 75ms at pf 10000 against a 28571us spacing, i.e. well over the "cap"
+    // and evidently fine in practice. Quietly halving it on the first day
+    // someone sets a width in microseconds would be a behaviour change wearing
+    // a bug fix's clothes. Say it and let the operator decide.
+    if(m.is_sel && sel_cap && t > sel_cap)
+      STAGE_WIDTH_SEL_WARN = true;
+    *m.off = *m.on + t;
+  }
+  STAGE_PULSE_OFFSET_publish();
+}
+
 RingBuf_Static<pipeLineInfo, PIPE_INFO_LEN, uint8_t> RBuf;
 
 
@@ -941,6 +1023,7 @@ volatile GEN_ERROR_CODE PENDING_ISR_ERROR=GEN_ERROR_CODE::NOP;
 // The calibration phase is documented where it is implemented, far below; the
 // state machine that drives it lives up here.
 static void calibrationBegin(bool full);
+void STAGE_PULSE_WIDTH_apply();
 static void calibrationCleanup();
 static void spinupBegin();
 // Verdict trace: the last N (object, verdict) pairs, in application order.
@@ -2217,6 +2300,10 @@ static uint32_t CAL_LAST_MS_TAKEN = 0;
 // samples, so a healthy machine finishes in ~3s. This is the "something is
 // actually wrong" bound, not a performance target.
 static const int64_t CAL_TIMEOUT_MS = 30000;
+// Width of the calibration trigger pulse. Settable so this can be swept against
+// a camera that turns out to want more, without a reflash per attempt:
+// set_setup {"cal_pulse_us": N}. See calFireNow for why 100 was wrong.
+int32_t CAL_PULSE_WIDTH_US = 600;
 
 // Shut the gate and hold the feeder, then pulse until the offset exists.
 // full=false keeps the diagnostic counters, which is what a mid-run top-up
@@ -2332,10 +2419,12 @@ static int calFireNow()
   // correct instant and the one the stage path uses -- which on this rig are
   // the same thing:
   //
-  //   The camera trigger is spliced onto the light A line, so GPIO16 (L1A)
-  //   drives the backlight AND triggers the camera, while GPIO17 (CAM1) is not
-  //   connected to anything. Driving CAM1 is therefore a no-op kept only for
-  //   symmetry with the stage path.
+  //   As of 2026-08-06 the lines are separate again: GPIO17 (CAM1) triggers
+  //   the camera, GPIO16 (L1A) drives the backlight. Both are driven here, back
+  //   to back in the same pass, so the stamp is good for either edge -- but the
+  //   edge that MATTERS is now CAM1's. (Between 2026-08-05 and 2026-08-06 the
+  //   trigger was spliced onto L1A and CAM1 went nowhere; comments from that
+  //   window say the opposite.)
   //
   //   In the stage path ACT_L1A and ACT_CAM1 are both scheduled at step offset
   //   654 and run in the same ISR pass off one fetched time_us -- so an
@@ -2351,11 +2440,24 @@ static int calFireNow()
   // ACT_CAM1 share step offset 654, so they fire in the SAME ISR pass with no
   // delay between them. This used to lead CAM1 by 100us, copied from
   // trig_cam_burst's light_delay -- a skew the path it is meant to match does
-  // not have, spent waiting on a pin that is not connected to anything.
+  // not have. (That skew was spent waiting on a pin that, at the time, was
+  // not connected to anything -- it is the camera trigger again now.)
   const int64_t rise = esp_timer_get_time();
-  io_drive(PIN_O_CAM1, IOI_CAM1, true);   // no-op today; see HardwareConfig.hpp
-  io_drive(PIN_O_L1A,  IOI_L1A,  true);   // the actual trigger, and the light
-  delayMicroseconds(100);
+  io_drive(PIN_O_CAM1, IOI_CAM1, true);   // the camera trigger (GPIO17)
+  io_drive(PIN_O_L1A,  IOI_L1A,  true);   // the backlight (GPIO16)
+  // 100us was exactly the camera's trigger floor -- the same ~100us this file
+  // cites at STAGE_PULSE_OFFSET to explain why a 2-tick (66us) window "could
+  // not have fired a camera at all". Sitting ON a documented floor is not a
+  // margin, and the machine behaved accordingly: 2 of ~20 calibration pulses
+  // answered (2026-08-06), CAL timing out at 30s with learned=2, boot_n=2,
+  // boot_fail=0 -- i.e. it never collected enough samples to even attempt the
+  // median, so every convergence parameter was a red herring.
+  //
+  // 600us matches what the RUNNING path actually uses (18 ticks = 900us at
+  // pf 10000) and clears the 300us the backlight needs for full brightness.
+  // It costs nothing: the plate is stationary during calibration, so pulse
+  // width buys no motion blur, and a whole calibration is 8 pulses.
+  delayMicroseconds(CAL_PULSE_WIDTH_US);
   io_drive(PIN_O_L1A,  IOI_L1A,  false);
   io_drive(PIN_O_CAM1, IOI_CAM1, false);
   head->cam_us = (uint64_t)rise;
@@ -4931,6 +5033,18 @@ void genMachineSetup(JsonDocument &jdoc)
   // would fail that test on the next boot and silently revert to the default.
   jdoc["cam_match_window_us"]=CamClockSync::TOL_US;
   jdoc["cam_recal_idle_ms"]=CAM_RECAL_IDLE_MS;
+  jdoc["cal_pulse_us"]=CAL_PULSE_WIDTH_US;
+  {
+    // Widths in microseconds. 0 = not configured, the *_off offset above rules.
+    JsonObject jW = jdoc.createNestedObject("stage_pulse_width_us");
+    jW["CAM1"]=STAGE_PULSE_WIDTH_US.CAM1;
+    jW["L1A"] =STAGE_PULSE_WIDTH_US.L1A;
+    jW["CAM2"]=STAGE_PULSE_WIDTH_US.CAM2;
+    jW["L2A"] =STAGE_PULSE_WIDTH_US.L2A;
+    jW["SEL1"]=STAGE_PULSE_WIDTH_US.SEL1;
+    jW["SEL2"]=STAGE_PULSE_WIDTH_US.SEL2;
+    jW["SEL3"]=STAGE_PULSE_WIDTH_US.SEL3;
+  }
   jdoc["cam_drift_comp"]=CamClockSync::DRIFT_COMP;
 
   jdoc["pulse_min_width"]=minWidth;
@@ -5140,6 +5254,7 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
   }
   JSON_SETIF_ABLE(CamClockSync::DRIFT_COMP,jdoc,"cam_drift_comp");
   JSON_SETIF_ABLE(CAM_RECAL_IDLE_MS,jdoc,"cam_recal_idle_ms");
+  JSON_SETIF_ABLE(CAL_PULSE_WIDTH_US,jdoc,"cal_pulse_us");
   // Negative is meaningless; 0 is the documented "off". A floor above that stops
   // a small positive value from recalibrating continuously and never running.
   if(CAM_RECAL_IDLE_MS < 0) CAM_RECAL_IDLE_MS = 0;
@@ -5242,6 +5357,28 @@ void setMachineSetup(JsonDocument &jdoc, bool apply_hw)
     // have registered objects against the old snapshot until this point -- that
     // is fine, and far cheaper than masking the step timer through 15 writes.
     STAGE_PULSE_OFFSET_publish();
+  }
+
+  if (jdoc.containsKey("stage_pulse_width_us")) {
+    JsonObject jW = jdoc["stage_pulse_width_us"];
+    JSON_SETIF_ABLE(STAGE_PULSE_WIDTH_US.CAM1,jW,"CAM1");
+    JSON_SETIF_ABLE(STAGE_PULSE_WIDTH_US.L1A ,jW,"L1A");
+    JSON_SETIF_ABLE(STAGE_PULSE_WIDTH_US.CAM2,jW,"CAM2");
+    JSON_SETIF_ABLE(STAGE_PULSE_WIDTH_US.L2A ,jW,"L2A");
+    JSON_SETIF_ABLE(STAGE_PULSE_WIDTH_US.SEL1,jW,"SEL1");
+    JSON_SETIF_ABLE(STAGE_PULSE_WIDTH_US.SEL2,jW,"SEL2");
+    JSON_SETIF_ABLE(STAGE_PULSE_WIDTH_US.SEL3,jW,"SEL3");
+  }
+  // Re-derive unconditionally, not only when a width key was present: plate_freq
+  // may have changed in this same set_setup, and every configured width is a
+  // function of it. Cheap, and it removes an ordering dependency between two
+  // keys in one message.
+  STAGE_PULSE_WIDTH_apply();
+  if(STAGE_WIDTH_SEL_WARN)
+  {
+    STAGE_WIDTH_SEL_WARN = false;
+    djrl.dbg_printf("SEL width exceeds half the part spacing -- the blow is "
+                    "still open when the next part arrives");
   }
 
 

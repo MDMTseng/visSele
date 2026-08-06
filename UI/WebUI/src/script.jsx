@@ -1560,6 +1560,16 @@ class APPMasterX extends React.Component {
         "unanswered_policy","unanswered_stop_after",
         "host_timeout_ms","pulses_per_rev","plate_diameter_mm",
         "stage_pulse_offset","io_on_level",
+        // Per-station widths in MICROSECONDS -- the device converts to ticks
+        // against its own plate_freq, so a recipe survives a speed change.
+        "stage_pulse_width_us",
+        // Calibration trigger pulse width, us.
+        "cal_pulse_us",
+        // The camera clock: match window and the recal/drift settings. All are
+        // JSON_SETIF_ABLE targets in set_setup and none of them were listed, so
+        // the panel could display them and never write one.
+        "cam_match_window_us","cam_recal_idle_ms","cam_drift_comp",
+        "report_match_ts","auto_rate","auto_rate_floor_us","auto_rate_recover_n",
         "machine_id","CAM1_Tags","CAM2_Tags","persist",
       ];
 
@@ -1659,6 +1669,18 @@ class APPMasterX extends React.Component {
       // showed "state 102". Asked once when the panel opens; old firmware that
       // does not know the command simply leaves the built-in table in place.
       getStateNames(){ return this.sendP({type:"get_state_names"}); }
+
+      // Promise flavour of get_setup, for callers that need to CONFIRM a write
+      // landed rather than fire and hope. machineSetupReSync() does the same
+      // round trip but swallows the reply into this.machineSetup, so it cannot
+      // be awaited or checked.
+      //
+      // Worth knowing which plate_freq you are reading: get_setup returns
+      // PLATE_FREQ_SETPOINT (the configuration, what set_setup writes), while
+      // get_running_stat returns PLATE_FREQ_TARGET (the ramp\'s current goal,
+      // which stays 0 in IDLE). They are different variables and only one of
+      // them can confirm a set_setup.
+      getSetupP(){ return this.sendP({type:"get_setup"}); }
 
       // ---- persistence -----------------------------------------------------
 
