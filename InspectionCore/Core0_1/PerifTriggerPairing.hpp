@@ -349,6 +349,34 @@ public:
     _last_gain = a;
     _last_resid_us = resid;
     if (fabs(resid) > _max_resid_us) _max_resid_us = fabs(resid);
+
+    // Keep the residual for SYNC pulses and REAL parts apart.
+    //
+    // They are not obviously the same measurement. A sync pulse is fired
+    // directly by calFireNow(); a real part's trigger is scheduled through the
+    // stage-action queue and fires from the step ISR. Two code paths, no reason
+    // their announced t_us sits at the same distance from the actual electrical
+    // edge -- and if it does not, the two populations have a constant offset
+    // between them and this EWMA is being fed a bimodal signal.
+    //
+    // The old fixed gain of 0.05 hid it by averaging: the estimate sat between
+    // the two clusters and was wrong for both by half their separation. The new
+    // time-based gain reaches 0.9 after a long gap, so it now snaps onto
+    // whichever population arrived last -- and the residual swings by the full
+    // separation depending on which one you happen to be looking at. Observed
+    // 2026-08-06: -3408us at 7rpm (parts only, no recal) against +4000us at
+    // 6.5rpm (recal firing once per revolution, so sync and part alternate).
+    // The sign flip is the tell; noise does not change sign, a second
+    // population does.
+    //
+    // Split rather than excluded, because sync pulses cannot simply be dropped:
+    // keep_clock_warm()'s phantom pulse is the ONLY anchor when no parts are
+    // flowing. If a constant separation exists it has to be measured and
+    // compensated, not thrown away.
+    if (ts_sync) { _resid_sync_us = resid; _n_sync++;
+                   _sum_sync += resid; }
+    else         { _resid_real_us = resid; _n_real++;
+                   _sum_real += resid; }
     // Anything older than the match is an orphan -- its frame never arrived.
     // Leave it queued; the staleness sweep retires it as NA, which is what
     // makes a lost frame cost one part instead of every part after it.
@@ -467,6 +495,16 @@ public:
   double   lastResidUs()  const { std::lock_guard<std::mutex> lk(_mx); return _last_resid_us; }
   double   maxResidUs()   const { std::lock_guard<std::mutex> lk(_mx); return _max_resid_us; }
   double   lastGain()     const { std::lock_guard<std::mutex> lk(_mx); return _last_gain; }
+  double   residSyncUs()  const { std::lock_guard<std::mutex> lk(_mx); return _resid_sync_us; }
+  double   residRealUs()  const { std::lock_guard<std::mutex> lk(_mx); return _resid_real_us; }
+  // Means, which is what a constant separation between the two populations
+  // shows up in. A single sample of each cannot distinguish a bias from noise.
+  double   residSyncAvgUs() const { std::lock_guard<std::mutex> lk(_mx);
+                                    return _n_sync ? _sum_sync / (double)_n_sync : 0; }
+  double   residRealAvgUs() const { std::lock_guard<std::mutex> lk(_mx);
+                                    return _n_real ? _sum_real / (double)_n_real : 0; }
+  long long residSyncN()  const { std::lock_guard<std::mutex> lk(_mx); return _n_sync; }
+  long long residRealN()  const { std::lock_guard<std::mutex> lk(_mx); return _n_real; }
   int64_t  lastMissUs()   const { std::lock_guard<std::mutex> lk(_mx); return _last_miss_us; }
   long long rxCount()     const { std::lock_guard<std::mutex> lk(_mx); return _rx; }
   // Every frame given an object, by any route. tsMatched() is the subset that
@@ -579,6 +617,10 @@ private:
   // filter is in its full-plate regime (~0.05) or its sparse regime (~0.9).
   uint64_t  _last_match_us = 0;
   double    _last_gain = 0;
+  // Residual split by what produced the frame: a clock-sync pulse or a part.
+  double    _resid_sync_us = 0, _resid_real_us = 0;
+  double    _sum_sync = 0, _sum_real = 0;
+  long long _n_sync = 0, _n_real = 0;
   int64_t   _last_miss_us = 0;
   long long _rx = 0, _matched = 0, _ts_matched = 0, _out_of_order = 0, _stale = 0,
             _no_candidate = 0, _drops = 0, _covered_by_skip = 0, _dumped = 0;

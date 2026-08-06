@@ -2337,6 +2337,15 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat, void *peer)
             // The EWMA gain the last match earned. ~0.05 means a full plate;
             // ~0.9 means the estimate had gone stale and was re-anchored.
             cJSON_AddNumberToObject(robj, "ewma_gain", perifPairing.lastGain());
+            // Residual split by what produced the frame. If sync and real have
+            // a constant separation, the offset estimate is being fed two
+            // populations and no single gain is correct for both.
+            cJSON_AddNumberToObject(robj, "resid_sync_us",     perifPairing.residSyncUs());
+            cJSON_AddNumberToObject(robj, "resid_real_us",     perifPairing.residRealUs());
+            cJSON_AddNumberToObject(robj, "resid_sync_avg_us", perifPairing.residSyncAvgUs());
+            cJSON_AddNumberToObject(robj, "resid_real_avg_us", perifPairing.residRealAvgUs());
+            cJSON_AddNumberToObject(robj, "resid_sync_n",      (double)perifPairing.residSyncN());
+            cJSON_AddNumberToObject(robj, "resid_real_n",      (double)perifPairing.residRealN());
             cJSON_AddNumberToObject(robj, "resid_max_us", perifPairing.maxResidUs());
 #endif  // PERIF_CORE_PAIRING (status)
 

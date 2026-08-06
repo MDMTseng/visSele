@@ -720,10 +720,34 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
                 the tolerance = the offset is drifting faster than it is tracked. */}
             <span>時鐘差 {Number(pairing.offset_ms).toFixed(1)} ms</span>
             <span>殘差 現在 {Math.round(pairing.resid_last_us)} µs
-              <Why>每次配對離時鐘模型預測位置的距離。幾十 µs = 模型是對的;
-                往容差爬 = 時鐘偏移漂得比追蹤還快。</Why></span>
+              <Why>每次配對離時鐘模型預測位置的距離。這不是量測誤差,是追蹤時鐘漂移的
+                EWMA 的「落後」,大小取決於兩次配對間隔:落後 ≈ 漂移率 × 估計值年齡。
+                單顆料低轉速時最糟(間隔最大、樣本最少)。</Why></span>
+            {pairing.ewma_gain !== undefined && (
+              <span>增益 {Number(pairing.ewma_gain).toFixed(2)}
+                <Why>時間相關的 EWMA 增益 a = T/(T+0.65s)。~0.05 = 滿盤;
+                  ~0.9 = 估計值剛從一段空白裡被重新錨定。</Why></span>
+            )}
             <span>殘差 最大 {Math.round(pairing.resid_max_us)} µs</span>
             <span>宣告最晚 {Number(pairing.trig_wait_max_ms).toFixed(0)} ms</span>
+          </div>
+        )}
+        {/* Two populations feed one estimate: clock-sync pulses (fired directly
+            by calFireNow) and real parts (scheduled through the stage ISR). A
+            standing difference between their means means the estimate is being
+            pulled between two clusters and no single gain is right for both. */}
+        {pairing.resid_real_n > 0 && pairing.resid_sync_n > 0 && (
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', ...dim }}>
+            <span>殘差·真實料 平均 {Math.round(pairing.resid_real_avg_us)} µs
+              <span style={dim}> (n={pairing.resid_real_n})</span></span>
+            <span>殘差·校時脈衝 平均 {Math.round(pairing.resid_sync_avg_us)} µs
+              <span style={dim}> (n={pairing.resid_sync_n})</span></span>
+            <span style={{ color: Math.abs(pairing.resid_real_avg_us - pairing.resid_sync_avg_us) > 200 ? '#c33' : '#888' }}>
+              差 {Math.round(pairing.resid_real_avg_us - pairing.resid_sync_avg_us)} µs
+              <Why>兩者走不同的程式路徑:校時脈衝由 calFireNow 直接驅動,真實料經過
+                stage 佇列由步進 ISR 發出。若這個差是穩定的常數,那時鐘估計值就是被
+                兩個母體拉扯,任何單一增益對兩邊都不對 —— 那是要補償的量,不是雜訊。</Why>
+            </span>
           </div>
         )}
       </Card>
