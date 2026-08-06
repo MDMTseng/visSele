@@ -91,6 +91,208 @@ def ask(s, obj, key, listen=3.0):
     return None
 
 
+def check(pairs, a, tag):
+    """Verdicts vs pattern. Returns the misplaced list."""
+    bad = [(t, c, expect(t, a)) for t, c in pairs if c != expect(t, a)]
+    print("    %-9s %d verdicts, tid %d..%d, misplaced=%d"
+          % (tag, len(pairs), pairs[0][0], pairs[-1][0], len(bad)))
+    for t, c, w in bad[:5]:
+        print("      tid %d got cat %d, pattern says %d" % (t, c, w))
+    return bad
+
+
+def boundary(s, a, harvest, seen, stat_of):
+    """Outside the boundary it must be PERCEIVED; inside it must be RECOVERABLE.
+
+    Two properties that are easy to assume and were never actually tested:
+
+      outside -- driven past what the camera can service, the machine must HALT.
+                 Refusing to answer is fine. Answering the wrong part is not, so
+                 every verdict it did emit before halting is checked too: a halt
+                 with a mis-sort already committed would be a failure, not a
+                 pass.
+
+      inside  -- after the halt, clear_error must bring it back through CAL to
+                 READY and it must go on sorting correctly. A machine that stops
+                 safely but cannot be restarted is not much use on a line.
+    """
+    print("  [1/3] overload: gate at %dus (%.0f Hz) into a ~35Hz camera"
+          % (a.overload_sep_us, 1e6 / a.overload_sep_us))
+    send(s, {"type": "set_setup", "min_detect_sep_us": a.overload_sep_us})
+    cmd = b'{"type":"trig_phantom_pulse"}\n'
+    t_end = time.time() + a.overload_seconds
+    next_poll = time.time() + 1.5
+    halted = None
+    while time.time() < t_end:
+        s.sendall(cmd)
+        time.sleep(a.overload_sep_us / 1e6)
+        try:
+            s.recv(65536)
+        except socket.timeout:
+            pass
+        if time.time() >= next_poll:
+            harvest()
+            j = stat_of()
+            if j and j.get('state') in (112, 113):
+                halted = j
+                break
+            next_poll = time.time() + 1.5
+    harvest()
+    if halted is None:
+        halted = stat_of()
+
+    st8 = halted.get('state') if halted else None
+    errs = (halted or {}).get('error_hist') or []
+    print("    state=%s error_hist=%s" % (st8, errs))
+    pairs = [(t, c) for t, c in sorted(seen.items()) if t < 0x40000000]
+    bad_overload = check(pairs, a, "overload") if pairs else []
+
+    # 13 == CAM_CLOCK_LOST. Any halt is acceptable perception; this is the one
+    # that means "I could not place a frame", which is the point.
+    perceived = st8 in (112, 113)
+    if not perceived:
+        print("    NOT PERCEIVED: ran past the camera ceiling without halting")
+    elif 13 not in errs:
+        print("    halted, but not on CAM_CLOCK_LOST (err_hist=%s)" % errs)
+
+    print("  [2/3] recover: clear_error, expect CAL -> READY")
+    send(s, {"type": "set_setup", "min_detect_sep_us": a.min_sep_us},
+            {"type": "clear_error"})
+    j, t0 = None, time.time()
+    while time.time() - t0 < 60:
+        j = stat_of()
+        if j and j.get('state') == 101:
+            break
+        time.sleep(1.0)
+    recovered = bool(j and j.get('state') == 101)
+    print("    state=%s -> %s" % ((j or {}).get('state'),
+                                  "recovered" if recovered else "DID NOT RECOVER"))
+    if not recovered:
+        return perceived, False, bad_overload, []
+
+    print("  [3/3] resume: %ds at %dus, verdicts must be correct again"
+          % (a.resume_seconds, a.min_sep_us))
+    send(s, {"type": "clear_verdict_log"})
+    seen.clear()
+    t_end = time.time() + a.resume_seconds
+    next_poll = time.time() + 1.5
+    while time.time() < t_end:
+        s.sendall(cmd)
+        time.sleep(a.min_sep_us / 1e6)
+        try:
+            s.recv(65536)
+        except socket.timeout:
+            pass
+        if time.time() >= next_poll:
+            harvest()
+            next_poll = time.time() + 1.5
+    time.sleep(6)
+    harvest()
+    pairs2 = [(t, c) for t, c in sorted(seen.items()) if t < 0x40000000]
+    bad_resume = check(pairs2, a, "resume") if pairs2 else []
+    if not pairs2:
+        print("    no verdicts after recovery")
+        recovered = False
+    return perceived, recovered, bad_overload, bad_resume
+
+
+def sporadic(s, a, harvest, seen, stat_of):
+    """Isolated frame loss must self-heal by skipping, not by halting.
+
+    This is a different question from the sustained overload in boundary(). A
+    line that is driven past the camera forever SHOULD stop. But a real line
+    hiccups: a burst tightens the spacing for a few parts, one exposure runs
+    late, the camera declines a trigger. Those parts have no answer and must
+    simply recirculate -- stopping the machine for each one would make it
+    useless, and the halt rule (LOST_N consecutive misses) is a guess until it
+    has been run against traffic that hiccups on purpose.
+
+    So: mostly safe spacing, with short bursts that overrun the camera. The
+    pass condition is all three of --
+
+      keeps running   no halt
+      loses parts     some registered parts end up without a verdict, i.e. the
+                      hiccup was real and this is not just a slow clean run
+      never mis-sorts every verdict that IS emitted matches the pattern
+    """
+    # The GATE has to permit the burst or there is no hiccup to heal from.
+    #
+    # First attempt held the gate at the safe spacing and injected faster: the
+    # gate simply rejected the burst, nothing extra reached the camera, and the
+    # run came back accept == verdicts with nothing lost. It looked like a pass
+    # and tested nothing. The gate protecting the camera is correct behaviour,
+    # but it is not the behaviour under test here -- what is under test is what
+    # happens when parts DO get through faster than the camera can shoot.
+    print("  sporadic: gate opened to %dus; injecting at %dus with %d-pulse "
+          "bursts every ~%.1fs, for %ds"
+          % (a.overload_sep_us, a.min_sep_us, a.burst_n, a.burst_every,
+             a.seconds))
+    send(s, {"type": "set_setup", "min_detect_sep_us": a.overload_sep_us})
+    cmd = b'{"type":"trig_phantom_pulse"}\n'
+    t_end = time.time() + a.seconds
+    next_poll = time.time() + 1.5
+    next_burst = time.time() + a.burst_every
+    halted = None
+    bursts = 0
+    while time.time() < t_end:
+        if time.time() >= next_burst:
+            for _ in range(a.burst_n):
+                s.sendall(cmd)
+                time.sleep(a.overload_sep_us / 1e6)
+            bursts += 1
+            next_burst = time.time() + a.burst_every
+        else:
+            s.sendall(cmd)
+            time.sleep(a.min_sep_us / 1e6)
+        try:
+            s.recv(65536)
+        except socket.timeout:
+            pass
+        if time.time() >= next_poll:
+            harvest()
+            j = stat_of()
+            if j and j.get('state') in (112, 113):
+                halted = j
+                break
+            next_poll = time.time() + 1.5
+    time.sleep(6)
+    harvest()
+    j = halted or stat_of()
+
+    pairs = [(t, c) for t, c in sorted(seen.items()) if t < 0x40000000]
+    bad = check(pairs, a, "sporadic") if pairs else []
+    g = (j or {}).get('gate', {})
+    ct = (j or {}).get('count', {})
+    print("    %d bursts injected" % bursts)
+    cs = (j or {}).get('cam_sync', {})
+    print("    state=%s err=%s accept=%s SKIP=%s UNANS=%s rejected=%s "
+          "rebuilds=%s miss_max=%s"
+          % ((j or {}).get('state'), (j or {}).get('error_hist'),
+             g.get('accept'), ct.get('SKIP'), ct.get('UNANSWERED'),
+             cs.get('rejected'), cs.get('rebuilds'),
+             cs.get('miss_delta_max_us')))
+    # Which side is wrong? The pattern is keyed on the tid the CORE named, and
+    # the device assigns by its own timestamp match. A mismatch therefore means
+    # the two disagreed -- and `disagree` counts exactly that, so a misplaced
+    # count with disagree=0 would mean something else entirely is going on.
+    print("    agree=%s DISAGREE=%s  (misplaced should track disagree)"
+          % (cs.get('agree'), cs.get('disagree')))
+
+    # "Still running" is not "== READY". RECAL (104) is a normal transient the
+    # machine enters on its own, and treating it as a halt reported a FAIL on a
+    # run whose error_hist was empty. Only the error states are a halt.
+    ran = (j or {}).get('state') not in (112, 113)
+    # accept counts parts the gate let in; a part with no verdict is one the
+    # camera or the pairing declined to answer for. That is the hiccup.
+    lost = max(0, (g.get('accept') or 0) - len(pairs))
+    if not ran:
+        print("    HALTED on a sporadic hiccup -- this is what must not happen")
+    elif lost == 0:
+        print("    INCONCLUSIVE: nothing was actually lost, so nothing had to "
+              "heal. Raise --burst-n or lower --overload-sep-us.")
+    return ran, lost, bad
+
+
 def run(a):
     s = sock()
     CONN['pairing'] = a.pairing
@@ -142,6 +344,28 @@ def run(a):
         if vl and 'tid' in vl and 'cat' in vl:
             for t, c in zip(vl['tid'], vl['cat']):
                 seen[t] = c
+
+    if a.sporadic:
+        def stat_of():
+            return ask(s, {"type": "get_running_stat"}, 'cam_sync', listen=1.5)
+        ran, lost, bad = sporadic(s, a, harvest, seen, stat_of)
+        ok = ran and lost > 0 and not bad
+        print("  => %s" % ("clean: %d part(s) lost and skipped, no halt, "
+                           "nothing mis-sorted" % lost if ok else
+                           "FAIL (kept_running=%s lost=%d misplaced=%d)"
+                           % (ran, lost, len(bad))))
+        return (0 if ok else 1), s
+
+    if a.boundary:
+        def stat_of():
+            return ask(s, {"type": "get_running_stat"}, 'cam_sync', listen=1.5)
+        perceived, recovered, bo, br = boundary(s, a, harvest, seen, stat_of)
+        ok = perceived and recovered and not bo and not br
+        print("  => %s" % ("clean: halted outside the boundary with nothing "
+                           "mis-sorted, and recovered inside it" if ok else
+                           "FAIL (perceived=%s recovered=%s misplaced=%d/%d)"
+                           % (perceived, recovered, len(bo), len(br))))
+        return (0 if ok else 1), s
 
     cmd = b'{"type":"trig_phantom_pulse"}\n'
     t_end = time.time() + a.seconds
@@ -263,6 +487,19 @@ if __name__ == '__main__':
                          "instead of injecting phantom pulses")
     ap.add_argument("--plate-freq", type=int, default=15000,
                     help="10000 is the validated real-parts speed")
+    ap.add_argument("--boundary", action="store_true",
+                    help="overload past the camera ceiling (must halt with "
+                         "nothing mis-sorted), then clear_error and confirm it "
+                         "sorts correctly again")
+    ap.add_argument("--overload-sep-us", type=int, default=12000,
+                    help="83Hz into a ~35Hz camera")
+    ap.add_argument("--overload-seconds", type=int, default=60)
+    ap.add_argument("--sporadic", action="store_true",
+                    help="mostly safe spacing with occasional over-ceiling "
+                         "bursts: must skip the lost parts and keep running")
+    ap.add_argument("--burst-n", type=int, default=6)
+    ap.add_argument("--burst-every", type=float, default=4.0)
+    ap.add_argument("--resume-seconds", type=int, default=45)
     # Negative control. A check that has never failed proves nothing, and
     # positional pairing is the known-bad case -- measured one object out of
     # step. If this script cannot catch that, it cannot catch anything.
