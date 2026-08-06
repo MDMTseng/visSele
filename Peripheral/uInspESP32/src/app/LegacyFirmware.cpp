@@ -2103,6 +2103,9 @@ static int32_t  PH_TRAIN_PERIOD_US= 0;
 static uint32_t PH_TRAIN_EMITTED  = 0;
 static int64_t  PH_TRAIN_PREV_US  = 0;
 static int32_t  PH_TRAIN_MIN_US   = 0, PH_TRAIN_MAX_US = 0;
+// Nominal pitch plus +-jitter, from a seeded LCG so a failing train replays.
+static int32_t  PH_TRAIN_JITTER_US= 0;
+static uint32_t PH_TRAIN_RNG      = 1;
 
 // Where trig_phantom_pulse puts an object: one L1A offset back, plus enough
 // plate distance that it has somewhere to travel from.
@@ -2673,11 +2676,38 @@ static void phantomTrainService()
   }
   PH_TRAIN_PREV_US=now;
 
-  PH_TRAIN_NEXT_US += PH_TRAIN_PERIOD_US;
+  // Even spacing plus noise, not even spacing.
+  //
+  // A perfectly regular train is a degenerate test: every object sits at the
+  // same offset from its neighbour, so the match either always succeeds or
+  // always fails and the boundary is never explored. Real lines are regular
+  // ISH -- a nominal pitch with jitter -- and the risk is a tail event, the
+  // occasional interval short enough to bring a neighbour near the window.
+  // Sweeping the jitter is how the margin gets measured as a distribution
+  // rather than guessed from a single point.
+  //
+  // The noise is a seeded LCG, not esp_random(), so a run that finds a
+  // mis-sort can be replayed exactly. An unreproducible failure is most of the
+  // way to no failure at all -- learned the hard way on this machine, from one
+  // misplaced-verdict run that thirteen repeats could not bring back.
+  //
+  // Phase is kept against the absolute schedule (+= period), so jitter
+  // displaces each pulse without the train drifting away from its nominal rate.
+  int32_t step = PH_TRAIN_PERIOD_US;
+  if(PH_TRAIN_JITTER_US > 0)
+  {
+    PH_TRAIN_RNG = PH_TRAIN_RNG*1664525u + 1013904223u;
+    const int32_t span = PH_TRAIN_JITTER_US*2 + 1;
+    step += (int32_t)((PH_TRAIN_RNG >> 8) % (uint32_t)span) - PH_TRAIN_JITTER_US;
+    // The gate enforces its own minimum anyway, but a non-positive step would
+    // make the schedule run backwards.
+    if(step < 1) step = 1;
+  }
+  PH_TRAIN_NEXT_US += step;
   // If the loop was held up longer than a whole period, do not try to catch up
   // by firing back-to-back -- that would hand the pipeline a burst it never
   // asked for. Give up the missed slots and stay on the original phase.
-  if(PH_TRAIN_NEXT_US < now) PH_TRAIN_NEXT_US = now + PH_TRAIN_PERIOD_US;
+  if(PH_TRAIN_NEXT_US < now) PH_TRAIN_NEXT_US = now + step;
   PH_TRAIN_LEFT--;
 }
 
@@ -3810,14 +3840,27 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     if(count<0) count=0;
     if(count>20000) count=20000;
 
+    // jitter_us: +-noise on each interval. Clamped below the period so the
+    // schedule cannot invert; a seed makes the sequence replayable.
+    int jitter_us=doc["jitter_us"].is<int>() ? (int)doc["jitter_us"] : 0;
+    if(jitter_us<0) jitter_us=0;
+    if(jitter_us>period_us-1) jitter_us=period_us-1;
+    uint32_t seed=doc["seed"].is<unsigned int>() ? (uint32_t)doc["seed"] :
+                  (doc["seed"].is<int>() ? (uint32_t)(int)doc["seed"] : 1u);
+    if(seed==0) seed=1;
+
     PH_TRAIN_EMITTED=0; PH_TRAIN_PREV_US=0;
     PH_TRAIN_MIN_US=0;  PH_TRAIN_MAX_US=0;
     PH_TRAIN_PERIOD_US=period_us;
+    PH_TRAIN_JITTER_US=jitter_us;
+    PH_TRAIN_RNG=seed;
     PH_TRAIN_NEXT_US=esp_timer_get_time();
     PH_TRAIN_LEFT=count;
 
     retdoc["count"]=count;
     retdoc["period_us"]=period_us;
+    retdoc["jitter_us"]=jitter_us;
+    retdoc["seed"]=seed;
     doRsp=rspAck=true;
   }
 

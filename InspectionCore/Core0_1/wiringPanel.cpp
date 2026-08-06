@@ -5457,7 +5457,65 @@ void PerifSendThread(bool *terminationflag)
                 cat = ok ? (pc->cat_ok ? pc->cat_ok : PERIF_CAT_NA)
                          : (pc->cat_ng ? pc->cat_ng : PERIF_CAT_NA);
               }
-              ret = sendReportTo_perifCH(pc, msg.tid, cat, msg.cam_ts_us);
+              // ---- edge-condition fault injection --------------------------
+              //
+              // Chasing a mis-sort by driving the machine into overload and
+              // waiting for one is a lottery: it appeared once in thirteen
+              // runs and could not be attributed afterwards. Overload is also
+              // the wrong instrument -- harsh conditions are SUPPOSED to end in
+              // a halt, and they do (CAM_CLOCK_LOST, nothing mis-sorted). What
+              // is worth knowing is where the edge actually sits, and that is a
+              // question about one report at a time, not about load.
+              //
+              //   INSP_PERIF_FAULT_EVERY=<n>  apply to every nth report
+              //   INSP_PERIF_FAULT_TS_US=<k>  shift that report's cam_ts by k us
+              //   INSP_PERIF_FAULT_DROP=1     send nothing at all for it
+              //   INSP_PERIF_FAULT_DUP=1      send it twice
+              //
+              // Each models something real: TS_US an exposure that ran late or
+              // a clock excursion, DROP a frame the camera declined, DUP a
+              // spurious frame. Sweeping TS_US from 0 up to the object spacing
+              // walks the machine from "matches correctly" through "refuses and
+              // halts" to the point where the evidence genuinely points at the
+              // neighbour -- which is the real boundary, and is a property of
+              // the spacing, not a bug.
+              static const int f_every = []{
+                const char *e = getenv("INSP_PERIF_FAULT_EVERY");
+                return e ? atoi(e) : 0;
+              }();
+              static const int64_t f_ts = []{
+                const char *e = getenv("INSP_PERIF_FAULT_TS_US");
+                return e ? (int64_t)atoll(e) : (int64_t)0;
+              }();
+              static const bool f_drop = getenv("INSP_PERIF_FAULT_DROP") != NULL;
+              static const bool f_dup  = getenv("INSP_PERIF_FAULT_DUP")  != NULL;
+              static uint64_t f_seen = 0;
+
+              uint64_t tx_ts = msg.cam_ts_us;
+              bool tx_skip = false, tx_twice = false;
+              if (f_every > 0 && (++f_seen % (uint64_t)f_every) == 0)
+              {
+                if (f_drop) tx_skip = true;
+                else if (f_dup) tx_twice = true;
+                if (f_ts) tx_ts = (uint64_t)((int64_t)tx_ts + f_ts);
+                LOGE("perif FAULT INJECT #%llu tid=%lld: %s%s%+lldus",
+                     (unsigned long long)f_seen, (long long)msg.tid,
+                     tx_skip ? "drop " : "", tx_twice ? "dup " : "",
+                     (long long)f_ts);
+              }
+
+              if (tx_skip)
+              {
+                // Deliberately not counted as an error here -- the point is to
+                // find out what the DEVICE does when an answer never comes.
+                ret = 0;
+              }
+              else
+              {
+                ret = sendReportTo_perifCH(pc, msg.tid, cat, tx_ts);
+                if (tx_twice)
+                  sendReportTo_perifCH(pc, msg.tid, cat, tx_ts);
+              }
               // The announcement side is traced ([perif RX] cam_trig) but the
               // verdict side was not, so "did tid N ever get answered, and
               // when?" could not be asked of the log at all. Both halves are
