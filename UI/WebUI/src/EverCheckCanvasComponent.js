@@ -1231,7 +1231,11 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
 
       if (state) {
-        const g = lw * 2.5;                       // inset, so both edges read
+        // Half a stroke width. Both strokes are centred on their own path, so
+        // at this inset they sit edge to edge and read as one double line --
+        // enough to carry a second colour without turning the box into a
+        // frame-within-a-frame that eats the region it is describing.
+        const g = lw * 0.5;
         if (w > g * 3 && h > g * 3) {
           ctx.strokeStyle = state.color;
           ctx.strokeRect(x + g, y + g, w - g * 2, h - g * 2);
