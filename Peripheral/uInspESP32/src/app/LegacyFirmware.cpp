@@ -973,6 +973,31 @@ struct ISRTrigInfo
 };
 RingBuf_Static<struct ISRTrigInfo,32,uint8_t> ISRTrigQ;
 
+// How deep this queue ever got, and how often it was found full.
+//
+// It is 32 entries and every object pushes TWO (CAM1 and CAM2), so there are
+// about 16 objects of headroom between the ISR that fills it and the main loop
+// that drains it one entry per iteration over the serial link. When it
+// overflows the machine stops with INSP_CAM_TRIG_INFO_CANNOT_BE_SENT -- which
+// has been appearing under churn at object rates nowhere near any limit, and
+// was impossible to chase because NOTHING PUBLISHED THIS DEPTH. The `Qs` field
+// on every cam_trig is RBuf, a different queue with a different size, and the
+// bench check that reads it has been reporting "firmware queue stayed bounded"
+// every run while looking at the queue that does not overflow.
+//
+// Written from the timer ISR, so: plain integers in DRAM, no allocation, no
+// flash. Read from the main loop; a torn read costs a wrong diagnostic number,
+// never behaviour.
+extern volatile uint32_t LOOP_N;        // defined beside firmwareLoop()
+extern volatile uint32_t LOOP_MAX_US;
+volatile uint8_t  ISRTRIGQ_HWM = 0;    // deepest seen since the last reset
+volatile uint32_t ISRTRIGQ_OVF = 0;    // pushes that found it full
+static inline void isrTrigQMark()
+{
+  uint8_t d = ISRTrigQ.size();
+  if(d > ISRTRIGQ_HWM) ISRTRIGQ_HWM = d;
+}
+
 
 // --- IO trace: an on-board logic analyzer for the actuator sequence -------
 // Every actuator edge in Run_ACTS records (pulse, tid, val, pin) here while
@@ -1538,6 +1563,7 @@ int Run_ACTS(uint32_t cur_pulse)
                       commInfo->trig_id=task->src->tid;
                       commInfo->gate_pulse=task->src->gate_pulse;
                       ISRTrigQ.pushHead();
+                      isrTrigQMark();
                       // Keep it on the object too. Until now this timestamp was
                       // announced and then forgotten, which is why the host had
                       // to reconstruct the frame<->object mapping from clocks it
@@ -1546,6 +1572,7 @@ int Run_ACTS(uint32_t cur_pulse)
                     }
                     else
                     {
+                      ISRTRIGQ_OVF++;
                       ecode=GEN_ERROR_CODE::INSP_CAM_TRIG_INFO_CANNOT_BE_SENT;
                     }
                   }
@@ -1592,9 +1619,11 @@ int Run_ACTS(uint32_t cur_pulse)
                       commInfo->trig_id=task->src->tid;
                       commInfo->gate_pulse=task->src->gate_pulse;
                       ISRTrigQ.pushHead();
+                      isrTrigQMark();
                     }
                     else
                     {
+                      ISRTRIGQ_OVF++;
                       ecode=GEN_ERROR_CODE::INSP_CAM_TRIG_INFO_CANNOT_BE_SENT;
                     }
                   }
@@ -2478,6 +2507,7 @@ static int calFireNow()
     commInfo->trig_id      = head->tid;
     commInfo->gate_pulse   = head->gate_pulse;
     ISRTrigQ.pushHead();
+    isrTrigQMark();
   }
   SYNC_EMITTED++;
   return 0;
@@ -3296,6 +3326,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     CONSEC_UNANSWERED=0;
     ISR_GAP_MAX_CY=0;
     RBUF_PEAK=0;
+    ISRTRIGQ_HWM=0;
+    ISRTRIGQ_OVF=0;
+    LOOP_N=0;
+    LOOP_MAX_US=0;
     GATE_ACCEPT=GATE_REJ_RATE=GATE_REJ_DIST=GATE_REJ_BUSY=0;
     // The clock model too. Leaving it out made every segmented experiment
     // read the previous segment's numbers: an A/B control appeared to show 12
@@ -3334,6 +3368,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["plate_freq"]=PLATE_FREQ_TARGET;
     retdoc["step_count"]=SYS_STEP_COUNT;
     retdoc["q"]=RBuf.size();
+    // The camera-trigger queue, which is NOT `q`. See ISRTRIGQ_HWM: this is
+    // the one that overflows, and until now it was the only queue in the
+    // machine with no instrument on it.
+    retdoc["tq"]=ISRTrigQ.size();
+    retdoc["tqhwm"]=ISRTRIGQ_HWM;
+    retdoc["tqcap"]=ISRTrigQ.capacity();
+    retdoc["tqovf"]=ISRTRIGQ_OVF;
+    retdoc["loopn"]=LOOP_N;
+    retdoc["loopmax_us"]=LOOP_MAX_US;
     retdoc["err"]=ERROR_HIST.size() ? (int)*ERROR_HIST.getTail(0) : 0;
     retdoc["nerr"]=ERROR_HIST.size();
     retdoc["cfg_crc"]=MachineConfig::hash();
@@ -4727,8 +4770,29 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
 
 
 static uint8_t recvBuf[20];
+// How fast the main loop actually turns, and its worst single pass.
+//
+// This is the loop that drains ISRTrigQ, one entry per pass, so its period IS
+// the drain rate. Announcements were sitting in that queue for ~350ms while
+// the wire could have carried each in 4.6ms, and there was no way to tell a
+// slow loop from a blocked write from a queue that simply is not being
+// serviced -- because nothing measured the loop.
+volatile uint32_t LOOP_N=0;
+volatile uint32_t LOOP_MAX_US=0;
+
 void firmwareLoop()
 {
+  {
+    static uint32_t loop_last_us=0;
+    uint32_t now=(uint32_t)esp_timer_get_time();
+    if(loop_last_us)
+    {
+      uint32_t d=now-loop_last_us;
+      if(d>LOOP_MAX_US) LOOP_MAX_US=d;
+    }
+    loop_last_us=now;
+    LOOP_N++;
+  }
   esp_task_wdt_reset();
   syncPulseService();
   spinupService();

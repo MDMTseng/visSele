@@ -2125,8 +2125,18 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                     (f"tid {tids[0]}..{tids[-1]}" if tids else "no objects")
                     + (f" gaps:{seg_gaps[:5]}" if seg_gaps else ""))
 
-        rep.add("C.3", "firmware queue stayed bounded under load",
-                qs_max < PIPE_INFO_LEN, f"peak Qs={qs_max} of {PIPE_INFO_LEN}")
+        # BOTH queues. This check has been passing on `Qs` (RBuf) every run
+        # while the machine stopped with INSP_CAM_TRIG_INFO_CANNOT_BE_SENT --
+        # which is the OTHER queue, ISRTrigQ, 32 entries, 2 pushed per object.
+        # A green light on the queue that does not overflow is worse than no
+        # light at all: it is an alibi.
+        p = _poll(link)
+        tq_hwm, tq_cap = p.get("tqhwm"), p.get("tqcap")
+        tq_ovf = p.get("tqovf")
+        rep.add("C.3", "both firmware queues stayed bounded under load",
+                qs_max < PIPE_INFO_LEN and not tq_ovf,
+                f"RBuf peak Qs={qs_max} of {PIPE_INFO_LEN}; "
+                f"cam-trig queue peak={tq_hwm} of {tq_cap}, overflows={tq_ovf}")
 
         rep.add("C.4", "board still responsive after the run",
                 stat is not None, "no reply = hang/reboot")
