@@ -1157,19 +1157,20 @@ export function UINSP_ESP32_MINI() {
     : lastSpeedRef.current > 0 ? `按下即以 ${plateRpm(lastSpeedRef.current).toFixed(1)} rpm 啟動`
     : '尚無轉速,請先在設定面板設定';
 
-  // Counts on ONE row. They wrapped to two before because every cell
-  // demanded a fixed 44px and the labels run to five characters; flex:1 with
-  // minWidth:0 lets them share whatever the sidebar gives instead. The numbers
-  // stay at a size you can read across the machine -- that is the one thing
-  // not to trade away here.
-  const cell = (name, v, warn) => (
-    <div style={{ flex: 1, minWidth: 0 }} key={name}>
-      <div style={{ fontSize: 9, color: '#888', whiteSpace: 'nowrap', lineHeight: 1.1 }}>{name}</div>
-      <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.15,
-                    color: warn && v > 0 ? warn : undefined }}>
-        {v ?? '—'}
-      </div>
-    </div>
+  // Three counts on ONE row, and the colour carries the meaning so the row can
+  // be read without reading it -- red is the bin you care about, green is the
+  // one you want big, grey is the one that means "went round again".
+  //
+  // flex:1 + minWidth:0 on the Tag, and margin:0 to kill antd's default 8px
+  // right margin, which otherwise fights the flex gap and pushes the last tag
+  // out of a sidebar that has no room to give.
+  const tag = (name, v, color) => (
+    <Tag key={name} color={color}
+         style={{ flex: 1, minWidth: 0, margin: 0, padding: '0 4px',
+                  textAlign: 'center', lineHeight: '22px' }}>
+      <span style={{ fontSize: 10, opacity: 0.8, marginRight: 4 }}>{name}</span>
+      <span style={{ fontSize: 15, fontWeight: 600 }}>{v ?? '—'}</span>
+    </Tag>
   );
 
   return (
@@ -1347,16 +1348,21 @@ export function UINSP_ESP32_MINI() {
       )}
       {/* The verdict, in the operator's words. SEL2/SEL3 are which air valve
           fired -- that is wiring, and it belongs in the setup panel where the
-          wiring is chosen. Out here the only useful reading is NG / OK / NA.
-          SEL1 keeps its own name: nothing is wired to it on this machine, so
-          it has no operator meaning to give it, and a count appearing there is
-          news either way. */}
+          wiring is chosen. Out here the only useful reading is NG / OK / NA. */}
       <div style={{ display: 'flex', gap: 4 }}>
-        {cell('NG', cnt.SEL2)}
-        {cell('OK', cnt.SEL3)}
-        {cell('NA', cnt.NA)}
-        {cell('SEL1', cnt.SEL1, '#c60')}
+        {tag('NG', cnt.SEL2, 'red')}
+        {tag('OK', cnt.SEL3, 'green')}
+        {tag('NA', cnt.NA)}
       </div>
+      {/* SEL1 has no column: nothing is wired to it on this machine, so it
+          reads 0 forever and a permanent 0 teaches people to stop looking. It
+          is not unwatched though -- a count there means a part was sorted into
+          a bin this machine does not have, which is worth a line of its own. */}
+      {cnt.SEL1 > 0 && (
+        <div style={{ fontSize: 11, lineHeight: 1.3, color: '#c60', marginTop: 2 }}>
+          ⚠ SEL1 {cnt.SEL1}(此機未接線)
+        </div>
+      )}
       {/* SKIP and UNANSWERED lost their columns -- they read 0 all day and were
           costing two of six slots. They are NOT dropped: both mean a part went
           past with nobody's judgement on it, and SKIP does that without the
