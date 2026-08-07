@@ -6143,6 +6143,41 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
                                   /*connectivity=*/8);
   }
 
+  // ---- inspection region: decide WHICH labels are even candidates ----------
+  //
+  // This runs BEFORE single_result_area_ratio on purpose. Put it any later and
+  // the largest-blob heuristic below wins: if the biggest label in the frame is
+  // outside the station, onlyIdx points at it, every other label is skipped,
+  // and the object that IS at the station never gets a report for a later
+  // filter to keep. The region has to be the primary selector, not a
+  // post-hoc filter over whatever the heuristics already chose.
+  //
+  // A separate vector rather than ldData[i].misc because the areaThres loop
+  // further down assigns misc unconditionally and would erase it.
+  //
+  // Nothing is cropped. ldData centres stay in inspection-image pixels at
+  // dsampLevel; only the comparison lifts them to full-sensor pixels. That is
+  // the whole point of doing it here instead of cropping the frame -- every
+  // imgOffset/cropOffset assumption in the measurement code stays exactly as
+  // it was.
+  std::vector<char> in_region(ldData.size(), 1);
+  int region_dropped = 0;
+  if (bacpac && bacpac->hasInspRegion())
+  {
+    acv_XY sOff = bacpac->sampler ? bacpac->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
+    for (size_t i = 2; i < ldData.size(); i++)
+    {
+      float fx = ldData[i].Center.x * dsampLevel + sOff.x;
+      float fy = ldData[i].Center.y * dsampLevel + sOff.y;
+      if (!bacpac->inInspRegion(fx, fy)) { in_region[i] = 0; region_dropped++; }
+    }
+    if (region_dropped)
+      LOGI("insp_region [%.0f,%.0f %.0fx%.0f]: dropped %d of %d labels outside the station",
+           bacpac->insp_region_x, bacpac->insp_region_y,
+           bacpac->insp_region_w, bacpac->insp_region_h,
+           region_dropped, (int)ldData.size() - 2);
+  }
+
   int onlyIdx = -1;
   if (single_result_area_ratio > 0 && ldData.size() >= 3)
   {
@@ -6153,7 +6188,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     int maxArea = 0;
     for (int i = 2; i < ldData.size(); i++)
     {
-
+      if (!in_region[i]) continue;   // outside the station: not a candidate, and
+                                     // not part of the total either -- a blob at
+                                     // the far side of the plate must not shrink
+                                     // this ratio and reject a clean station.
       LOGV("AREA[%d]:%d", i, ldData[i].area);
       totalArea += ldData[i].area;
       if (maxArea < ldData[i].area)
@@ -6232,6 +6270,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
   for (int i = 2; i < ldData.size(); i++)
   {                           // idx 0 is not a label, idx 1 is for outer frame and connected objects(with the outter frame)
     if (ldData[i].misc == -1) //the ignore mark
+      continue;
+    if (!in_region[i])        //outside the inspection region (the station)
       continue;
     if (onlyIdx > 0 && i != onlyIdx)
     {
@@ -7168,6 +7208,21 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
   for (int mi = 0; mi < (int)ms.size(); mi++)
   {
     sbm::MatchResult &m = ms[mi];
+
+    // Inspection region (the station). m.x/m.y are already full-res scene px, so
+    // only the camera's hardware ROI has to be added to reach full-sensor px.
+    // Dropped before any measurement work, same as the sig360 path.
+    if (bacpac && bacpac->hasInspRegion())
+    {
+      acv_XY sOff = bacpac->sampler ? bacpac->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
+      if (!bacpac->inInspRegion(m.x + sOff.x, m.y + sOff.y))
+      {
+        LOGI("insp_region: shape match %d at (%.1f,%.1f) is outside the station -- dropped",
+             mi, m.x + sOff.x, m.y + sOff.y);
+        continue;
+      }
+    }
+
     FeatureReport_sig360_circle_line_single singleReport =
         {
             .detectedCircles      = reportDataPool[reports.size()].detectedCircles,

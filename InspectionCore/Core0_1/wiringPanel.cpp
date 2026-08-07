@@ -1628,8 +1628,40 @@ int LoadCameraSetting(CameraLayer &camera, char *filename)
 }
 
 
+// The station: where a part has to be for this machine to consider it ours.
+// FULL-SENSOR pixels. w/h <= 0 means "not configured" and every located object
+// is a candidate, which is exactly the behaviour before this existed.
+//
+// It lives in machine_setting.json and not in the def because it describes the
+// mechanics -- where the part sits when the camera fires -- and that does not
+// change when the product does. A def carrying it would have to be redrawn per
+// product for no reason, and would be wrong the moment it was copied to another
+// machine.
+struct InspRegionCfg { float x = 0, y = 0, w = 0, h = 0; };
+static InspRegionCfg g_insp_region;
+
+static void load_insp_region(cJSON *json_mac_setting)
+{
+  cJSON *r = cJSON_GetObjectItem(json_mac_setting, "inspection_region");
+  InspRegionCfg cfg;
+  if (r != NULL && cJSON_IsObject(r))
+  {
+    cfg.x = (float)JFetch_NUMBER_ex(r, "x", 0);
+    cfg.y = (float)JFetch_NUMBER_ex(r, "y", 0);
+    cfg.w = (float)JFetch_NUMBER_ex(r, "w", 0);
+    cfg.h = (float)JFetch_NUMBER_ex(r, "h", 0);
+  }
+  g_insp_region = cfg;
+  if (cfg.w > 0 && cfg.h > 0)
+    LOGE("inspection_region: [%.0f,%.0f %.0fx%.0f] full-sensor px -- objects "
+         "outside this are not judged", cfg.x, cfg.y, cfg.w, cfg.h);
+  else
+    LOGE("inspection_region: not configured -- every located object is a candidate");
+}
+
 void setup_machine_setting(cJSON *json_mac_setting)
 {
+  load_insp_region(json_mac_setting);
 
   char *path = JFetch_STRING(json_mac_setting, "InspSampleSavePath");
 
@@ -6070,6 +6102,18 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     bacpac->sampler->setOriginOffset(offset);
   }
 
+  // The station, straight onto the machine-context struct the engine already
+  // reads (same place lensCalib and fieldCal ride). Re-applied per frame so a
+  // change saved from InspectionUI takes effect on the next part, with no
+  // def reload and no restart.
+  if (bacpac)
+  {
+    bacpac->insp_region_x = g_insp_region.x;
+    bacpac->insp_region_y = g_insp_region.y;
+    bacpac->insp_region_w = g_insp_region.w;
+    bacpac->insp_region_h = g_insp_region.h;
+  }
+
   //if(stackingC!=0)return;
 
   // if (0)
@@ -6180,22 +6224,25 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
             srep[0].labeling_idx >= 0 &&
             srep[0].labeling_idx < (int)ldat->size()) //only one detected objects in scence is allowed
         {
-          int insp_tar_area = (*ldat)[srep[0].labeling_idx].area;
-
-          int totalArea = 0;
-          for (int i = 1; i < ldat->size(); i++)
-          {
-            totalArea += (*ldat)[i].area;
-          }
-          float extra_area_ratio = (float)(totalArea - insp_tar_area) / totalArea;
-          LOGI("totalArea:%d insp_tar_area:%d extra_area_ratio:%f", totalArea, insp_tar_area, extra_area_ratio);
-          // The 0.1 is a literal, it has no def key and no UI, and on this
-          // machine 14.8% of frames land within +/-0.05 of it -- so it is not
-          // filtering outliers, it is adjudicating. Say so when it rejects.
-          if (extra_area_ratio >= 0.1)
-            LOGI("verdict NA: extra_area_ratio %.3f >= 0.1 (hardcoded) -- something else in frame",
-                 extra_area_ratio);
-          if (extra_area_ratio < 0.1)
+          // The extra_area_ratio < 0.1 gate stood here. Removed 2026-08-07.
+          //
+          // It asked "how much of the frame's foreground is NOT this object",
+          // which is the same question intrusionSizeLimitRatio asked and has the
+          // same defect: one global number that knows whether there is something
+          // else, and never where. A part standing in the wrong place scores 0.0
+          // and sails through it; an unrelated speck at the far edge of the plate
+          // scores 0.4 and throws away a perfectly good measurement.
+          //
+          // The inspection region answers the question it was groping at.
+          // Objects outside the station are dropped in the locator, so
+          // `srep.size() == 1` above now means "one object AT THE STATION"
+          // instead of "one object anywhere in the image" -- which is what the
+          // original comment on that line ("only one detected objects in
+          // scence") was always trying to say.
+          //
+          // Measured before removal: the constant was deciding roughly one frame
+          // in seven here (14.8% landed within +/-0.05 of it), so this is not a
+          // dormant branch being tidied away. See docs/UINSP_VERDICT_PATH.md.
           {
             vector<FeatureReport_judgeReport> &jrep = *(srep[0].judgeReports);
             stat = InspStatusReduce(jrep);
@@ -7048,6 +7095,21 @@ int cp_main(int argc, char **argv)
   // IMG_ignore_calib so it dodged the issue). RESET initialises to identity.
   calib_bacpac.sampler->RESET();
   neutral_bacpac.sampler->RESET();
+
+  // The station, for the headless paths too. mainLoop() loads machine_setting
+  // much later, so without this --insp would run with no inspection_region and
+  // silently disagree with the live pipeline -- which would make the offline
+  // harness useless for exactly the feature it is best placed to test.
+  // Missing file or missing key = no region = old behaviour.
+  if (cJSON *ms_json = ReadJson("data/machine_setting.json"))
+  {
+    load_insp_region(ms_json);
+    cJSON_Delete(ms_json);
+  }
+  neutral_bacpac.insp_region_x = g_insp_region.x;
+  neutral_bacpac.insp_region_y = g_insp_region.y;
+  neutral_bacpac.insp_region_w = g_insp_region.w;
+  neutral_bacpac.insp_region_h = g_insp_region.h;
 
   // Headless golden-sample inspection loopback (for caliper-vs-contour testing
   // without the WebUI):  visSele --insp <image.png> <def.hydef> <out.json>
