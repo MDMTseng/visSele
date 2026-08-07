@@ -748,27 +748,77 @@ def _counts(link):
     return (r or {}).get("count", {}), r
 
 
-# Steps to push the selector past the camera trigger for the duration of a
-# bench. The real geometry leaves only SWITCH-L1A_on ~= 43 steps between the
-# cam_trig announcement and the selector -- a window the in-firmware C++ core
-# answers inside but a host scripting over serial cannot. This buys a
-# comfortable margin; the original offsets are restored when the bench ends.
-BENCH_WINDOW = 600
+# How long a host scripting over serial gets to answer each tid. The real
+# geometry leaves only SWITCH-L1A_on ~= 43 steps between the cam_trig
+# announcement and the selector -- a window the in-firmware C++ core answers
+# inside but a host over serial cannot. This buys a comfortable margin; the
+# original offsets are restored when the caller ends.
+#
+# Stated in SECONDS, because that is the thing that has to be true. The offset
+# itself is in plate steps, and steps are only worth wall-time at a given
+# plate_freq: 600 steps is 300ms at plate_freq 1000 and 50ms at 5960. `stress`
+# opens plate_freq up to ~6000 so the 3.5mm distance gate clears at high rates,
+# and in doing so it was shrinking its own answer budget 6x -- every verdict
+# arrived late, the machine faulted at the first rate tried, and the report
+# read "first failure at 10/s (tid desync)" for a pipeline nowhere near its
+# limit. chaos already sizes its window this way; this puts bench and stress on
+# the same footing.
+BENCH_WINDOW_S = 0.30
+BENCH_WINDOW = 600          # == BENCH_WINDOW_S at plate_freq 1000
 
 
-def _widen_selector_window(link, orig_spo):
-    """Push SWITCH and the SEL outputs BENCH_WINDOW steps past the camera
-    trigger (where cam_trig is announced) so a host scripting over serial can
-    answer each tid before the part reaches the selector. Returns the SWITCH
-    offset it set on success, else None. Caller restores orig_spo when done."""
-    win = int((orig_spo or {}).get("L1A_on", 654)) + BENCH_WINDOW
+def _read_spo(link, tries=5):
+    """The board's stage_pulse_offset, or None.
+
+    get_setup's reply is long and does arrive truncated now and then -- the
+    whole stage_pulse_offset object simply missing. Every caller here used to
+    take that at face value and fall back to a built-in default (L1A_on 654),
+    which on this machine (L1A_on 9314) put SWITCH at 4230: the SELECTOR
+    BEFORE THE CAMERA. Parts then reached the outlet before they were ever
+    announced, and the machine error-stopped with OBJECT_HAS_NO_INSP_RESULT --
+    reported by the harness as a pipeline failure at 10/s. The same empty dict
+    was then handed to the teardown as "the original", so nothing was restored
+    either.
+
+    A default geometry is not a safe answer to a dropped read. Retry, and say
+    None if the board really will not tell us."""
+    for _ in range(tries):
+        spo = ((link.send({"type": "get_setup"}, timeout=3.0) or {})
+               .get("stage_pulse_offset") or {})
+        if spo.get("SWITCH") is not None and any(
+                k.startswith("CAM") and k.endswith("_on") for k in spo):
+            return dict(spo)
+        time.sleep(0.15)
+    return None
+
+
+def _widen_selector_window(link, orig_spo, freq=None):
+    """Push SWITCH and the SEL outputs past the camera trigger (where cam_trig
+    is announced) so a host scripting over serial can answer each tid before
+    the part reaches the selector.
+
+    `freq` is the plate_freq the caller intends to run at; the offset is sized
+    to give BENCH_WINDOW_S of wall-time at that speed. Omit it to keep the
+    legacy fixed step count. Returns the SWITCH offset set on success, else
+    None. Caller restores orig_spo when done."""
+    spo = orig_spo if (orig_spo or {}).get("SWITCH") is not None \
+        else _read_spo(link)
+    if not spo:
+        return None                    # no geometry, no guess -- see _read_spo
+    span = int(BENCH_WINDOW_S * 2 * freq) if freq else BENCH_WINDOW
+    win = int(spo.get("L1A_on", 654)) + span
+    # The selector must sit AFTER the camera, or the part is sorted before it
+    # is announced -- a window that is not merely tight but backwards.
+    cam_on = max((v for k, v in spo.items()
+                  if k.startswith("CAM") and k.endswith("_on")), default=0)
+    if win <= cam_on:
+        return None
     link.send({"type": "set_setup", "stage_pulse_offset": {
         "SWITCH": win,
         "SEL1_on": win + 3,  "SEL1_off": win + 4,
         "SEL2_on": win + 13, "SEL2_off": win + 14,
         "SEL3_on": win + 23, "SEL3_off": win + 24}}, timeout=3.0)
-    back = ((link.send({"type": "get_setup"}, timeout=3.0) or {})
-            .get("stage_pulse_offset") or {})
+    back = _read_spo(link) or {}
     return win if back.get("SWITCH") == win else None
 
 
@@ -871,6 +921,61 @@ def _settle_cal(link, freq, cat=None):
                                   "cat": cat if cat is not None else CAT_NA})
         time.sleep(0.005)
     return tid_base
+
+
+def _quiesce(link, freq, timeout=None):
+    """Leave inspection mode and wait for the line to go quiet, DISCARDING what
+    arrives rather than answering it.
+
+    Announcements outlive the run that caused them. A rate step ends with parts
+    still walking to the camera; they announce into the next step, where
+    _pump_until answers them NA -- for objects the mode re-entry has already
+    flushed. The machine calls that what it is, a report matching no object,
+    and faults. In the ramp that showed up as a clean 15/s followed by an
+    instant fault at 20/s: not a ceiling between the two, just the previous
+    step's tail arriving.
+
+    Discarding is the whole point. An answer is a claim about an object that
+    exists; there is nothing here to make a claim about.
+
+    Returns the number of frames dropped."""
+    link.send({"type": "exit_insp_mode"}, timeout=3.0)
+    if timeout is None:
+        timeout = 3.0
+    dropped, quiet_since = 0, time.time()
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        got = link.drain_async()
+        if got:
+            dropped += len(got)
+            quiet_since = time.time()
+        elif time.time() - quiet_since > 0.4:
+            break
+        time.sleep(0.01)
+    return dropped
+
+
+def _background_rate(link, seconds=3.0):
+    """Objects the MACHINE detects on its own, with the host firing nothing.
+
+    The plate carries real material; spinning it feeds real parts past the real
+    sensor. At plate_freq 5960 that is ~16/s arriving unbidden, and a harness
+    that assumes every object is one it fired reports 60 fired / 124 seen and
+    calls the ratio 207%. Measure it, so `fired` and `seen` can be compared to
+    something true.
+
+    Requires the board already in READY. Returns detections/second."""
+    g0 = _gate_of(link).get("accept") or 0
+    t0 = time.time()
+    while time.time() - t0 < seconds:
+        for _, m in link.drain_async():
+            if m.get("type") == "cam_trig" and m.get("tid") is not None:
+                link.send_nowait({"type": "report", "tid": m["tid"],
+                                  "cat": CAT_NA})
+        time.sleep(0.002)
+    dt = time.time() - t0
+    g1 = _gate_of(link).get("accept") or 0
+    return (g1 - g0) / dt if dt > 0 else 0.0
 
 
 def _wait_at_speed(link, settle=0.15, tries=30):
@@ -1196,21 +1301,32 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
     orig_freq = orig.get("plate_freq")
     orig_sep = orig.get("min_detect_sep_us")
-    orig_spo = dict(orig.get("stage_pulse_offset") or {})
-
-    # Widen the selector window (see _widen_selector_window). Without this the
-    # ramp measures how fast the host can answer inside the ~43-step gate, not
-    # the pipeline's real ceiling; the first late verdict faults the machine and
-    # the ramp stops at rate 1. Restored in the teardown below.
-    _widen_selector_window(link, orig_spo)
+    orig_spo = _read_spo(link)
+    if not orig_spo:
+        rep.add("S.0", "read the station geometry before touching it", False,
+                "get_setup never returned stage_pulse_offset -- refusing to "
+                "run on a guessed geometry (which would then be 'restored' "
+                "over the real one afterwards)")
+        return
 
     # plate_freq needed so the 3.5mm distance gate clears fast enough for the
     # top rate we intend to ask for. ISR ticks at 2*plate_freq.
     need_freq = int(91 * max_hz / 2.0 * 1.5) + 500
     sep_us = max(200, int(1e6 / max_hz / 3))
 
+    # Widen the selector window (see _widen_selector_window). Without this the
+    # ramp measures how fast the host can answer inside the ~43-step gate, not
+    # the pipeline's real ceiling; the first late verdict faults the machine and
+    # the ramp stops at rate 1. Sized against need_freq, not as a step count:
+    # the ramp raises plate_freq precisely to open the distance gate, and a
+    # fixed step count would hand back the time it just bought. Restored in the
+    # teardown below.
+    _widen_selector_window(link, orig_spo, freq=need_freq)
+
     print(f"  opening the rate limiters: plate_freq={need_freq} "
-          f"min_detect_sep_us={sep_us}")
+          f"min_detect_sep_us={sep_us} "
+          f"answer window {BENCH_WINDOW_S*1000:.0f}ms "
+          f"({int(BENCH_WINDOW_S*2*need_freq)} steps)")
     print(f"  (defaults {orig_freq} / {orig_sep} cap objects at "
           f"{1e6/orig_sep:.1f}/s)" if orig_sep else "")
 
@@ -1226,19 +1342,26 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
         return
     rep.add("S.0", "reached READY before ramping", True, f"plate_freq={need_freq}")
 
-    print(f"\n  {'rate':>6} {'fired':>7} {'seen':>7} {'ratio':>7} "
-          f"{'maxQs':>6}  result")
-    print("  " + "-" * 62)
-
     # How long a part takes to reach the camera at the ramp's plate speed --
     # every "did it arrive?" wait below is derived from this, not guessed.
-    _spo = ((link.send({"type": "get_setup"}, timeout=3.0) or {})
-            .get("stage_pulse_offset") or {})
+    _spo = _read_spo(link) or {}
     _cam_on = max((v for k, v in _spo.items()
                    if k.startswith("CAM") and k.endswith("_on")), default=0)
     tail_transit = (_cam_on / (2.0 * need_freq)) if need_freq else 0.0
     print(f"  camera transit {tail_transit:.2f}s "
           f"(CAM_on {_cam_on} at plate_freq {need_freq})")
+
+    # What the plate delivers on its own. Real material on a spinning plate is
+    # real objects; without this number "fired 60, seen 124" looks like the
+    # firmware inventing parts.
+    bg_hz = _background_rate(link)
+    print(f"  plate delivers {bg_hz:.1f} obj/s on its own "
+          f"({'real material on the plate' if bg_hz > 1 else 'plate is empty'})"
+          f" -- counted into the expected total below")
+
+    print(f"\n  {'rate':>6} {'fired':>7} {'admitted':>9} {'seen':>7} "
+          f"{'ratio':>7} {'maxQs':>6}  result")
+    print("  " + "-" * 72)
 
     results = []
     best = 0
@@ -1247,7 +1370,10 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
 
     hz = start_hz
     while hz <= max_hz:
-        link.drain_async()
+        # Flush the previous rate's in-flight parts before touching anything --
+        # see _quiesce. Their announcements would otherwise be answered here,
+        # for objects the mode re-entry has already dropped.
+        _quiesce(link, need_freq, timeout=tail_transit * 1.5 + 1.0)
         link.send({"type": "clear_error"}, timeout=2.0)
         # ERROR_HIST is a cumulative ring; without clearing it this rate would
         # inherit every fault from earlier rates (and earlier sessions) and be
@@ -1269,6 +1395,13 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
 
         period = 1.0 / hz
         n = max(1, int(dwell * hz))
+        # The gate publishes exactly how many objects it ADMITTED. That is the
+        # only honest denominator: what we fired is not it (the gate rejects on
+        # purpose, and rejecting is the machine working, not the pipeline
+        # failing), and neither is fired+background (an estimate). Measuring
+        # against `fired` printed "0/s clean" for a ramp that survived every
+        # rate to 80/s without a single fault.
+        acc0 = _gate_of(link).get("accept") or 0
         fired = 0
         seen = set()          # unique object tids (each announces twice)
         reported = set()      # tids answered once -- a 2nd report desyncs
@@ -1322,20 +1455,23 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
 
         st, stat = _state(link)
         errs = _errors_of(stat)
-        ratio = len(seen) / fired if fired else 0.0
+        g = _gate_of(link)
+        admitted = max(0, (g.get("accept") or 0) - acc0)
+        ratio = len(seen) / admitted if admitted else 0.0
 
         if st == ST_ERROR or errs:
             why = ", ".join(ERR_NAME.get(e, f"code {e}") for e in sorted(set(errs)))
             verdict = f"\033[31mFAULT\033[0m {why}"
             broke_at, broke_why = hz, why
         elif ratio < 0.98:
-            verdict = f"\033[33mdropped {fired - len(seen)} at the rate gate\033[0m"
+            verdict = (f"\033[33mlost {admitted - len(seen)} of {admitted} "
+                       f"admitted\033[0m")
         else:
             verdict = "\033[32mok\033[0m"
             best = hz
 
-        print(f"  {hz:>5}/s {fired:>7} {len(seen):>7} {ratio:>6.0%} "
-              f"{qs_max:>6}  {verdict}")
+        print(f"  {hz:>5}/s {fired:>7} {admitted:>9} {len(seen):>7} "
+              f"{ratio:>6.0%} {qs_max:>6}  {verdict}")
         results.append((hz, fired, len(seen), ratio, qs_max, errs))
 
         if broke_at:
