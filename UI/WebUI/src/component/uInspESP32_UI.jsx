@@ -1057,6 +1057,60 @@ export function UINSP_ESP32_MINI() {
     rememberSpeed(seenSpeed);
   }
 
+  // --- recent throughput -----------------------------------------------------
+  //
+  // The device reports cumulative counters, so a rate is a difference over
+  // time. A raw difference between two polls is unreadable: the poll period
+  // itself jitters (2.5-5s, and only when a reply lands), and at ~9 parts/s one
+  // part more or less swings the number by 10%. So it is smoothed.
+  //
+  // The filter is an EMA in the TIME domain, not per sample: alpha is derived
+  // from dt against a 6s time constant. That matters because the sample period
+  // is not constant -- a fixed per-sample alpha would make the filter faster or
+  // slower depending on how the link happened to be behaving, i.e. the display
+  // would react differently to the same machine at different link speeds.
+  //
+  // Counters only ever go up. A decrease means someone cleared them (or the
+  // board rebooted), and blending across that discontinuity would print one
+  // enormous negative spike -- so the filter restarts instead.
+  const RATE_TAU = 6.0;                       // seconds to ~63% of a step
+  const rateRef = useRef(null);               // last sample + filter state
+  const [rate, setRate] = useState(null);     // what is displayed
+
+  useEffect(() => {
+    if (!stat) return;
+    const c = stat.count || {};
+    const n = (v) => (typeof v === 'number' ? v : 0);
+    const smp = {
+      t: Date.now(),
+      // Feed: parts the gate let onto the plate.
+      g: n(stat.gate && stat.gate.accept),
+      // Inspected: every part that reached SWITCH and was accounted for --
+      // including NA/SKIP/UNANSWERED. This is throughput, not yield; a part
+      // that went round again still cost the machine a slot.
+      i: n(c.SEL1) + n(c.SEL2) + n(c.SEL3) + n(c.NA) + n(c.SKIP) + n(c.UNANSWERED),
+      o: n(c.SEL3),
+    };
+    const p = rateRef.current;
+    const dt = p ? (smp.t - p.t) / 1000 : 0;
+    if (!p || smp.g < p.g || smp.i < p.i || smp.o < p.o) {
+      rateRef.current = { ...smp, rg: 0, ri: 0, ro: 0 };   // first sample, or cleared
+      setRate(null);
+      return;
+    }
+    if (dt < 0.3) return;                                  // same reply seen twice
+    const a = 1 - Math.exp(-dt / RATE_TAU);
+    const mix = (prev, d) => prev + a * (d / dt - prev);
+    const nx = {
+      ...smp,
+      rg: mix(p.rg, smp.g - p.g),
+      ri: mix(p.ri, smp.i - p.i),
+      ro: mix(p.ro, smp.o - p.o),
+    };
+    rateRef.current = nx;
+    setRate({ g: nx.rg, i: nx.ri, o: nx.ro });
+  }, [stat]);
+
   useEffect(() => {
     mounted.current = true;
     let sentAt = 0;
@@ -1103,7 +1157,7 @@ export function UINSP_ESP32_MINI() {
     : lastSpeedRef.current > 0 ? `按下即以 ${plateRpm(lastSpeedRef.current).toFixed(1)} rpm 啟動`
     : '尚無轉速,請先在設定面板設定';
 
-  // Six counts on ONE row. They wrapped to two before because every cell
+  // Counts on ONE row. They wrapped to two before because every cell
   // demanded a fixed 44px and the labels run to five characters; flex:1 with
   // minWidth:0 lets them share whatever the sidebar gives instead. The numbers
   // stay at a size you can read across the machine -- that is the one thing
@@ -1291,14 +1345,45 @@ export function UINSP_ESP32_MINI() {
           {stat.error_hist.map((e, i) => <div key={i}>⚠ {errName(e)}</div>)}
         </div>
       )}
+      {/* The verdict, in the operator's words. SEL2/SEL3 are which air valve
+          fired -- that is wiring, and it belongs in the setup panel where the
+          wiring is chosen. Out here the only useful reading is NG / OK / NA.
+          SEL1 keeps its own name: nothing is wired to it on this machine, so
+          it has no operator meaning to give it, and a count appearing there is
+          news either way. */}
       <div style={{ display: 'flex', gap: 4 }}>
-        {cell('SEL1', cnt.SEL1)}
-        {cell('SEL2', cnt.SEL2)}
-        {cell('SEL3', cnt.SEL3)}
+        {cell('NG', cnt.SEL2)}
+        {cell('OK', cnt.SEL3)}
         {cell('NA', cnt.NA)}
-        {cell('SKIP', cnt.SKIP, '#c60')}
-        {cell('UNANS', cnt.UNANSWERED, '#c33')}
+        {cell('SEL1', cnt.SEL1, '#c60')}
       </div>
+      {/* SKIP and UNANSWERED lost their columns -- they read 0 all day and were
+          costing two of six slots. They are NOT dropped: both mean a part went
+          past with nobody's judgement on it, and SKIP does that without the
+          device raising anything. So they stay silent while they are zero and
+          take a whole line the moment they are not. */}
+      {(cnt.SKIP > 0 || cnt.UNANSWERED > 0) && (
+        <div style={{ fontSize: 11, lineHeight: 1.3, color: '#c60', marginTop: 2 }}>
+          ⚠ 無判定通過
+          {cnt.SKIP > 0 ? ` · SKIP ${cnt.SKIP}` : ''}
+          {cnt.UNANSWERED > 0 ? ` · UNANS ${cnt.UNANSWERED}` : ''}
+        </div>
+      )}
+      {/* Rate, not total. The totals above say what the shift has done; this
+          says what the machine is doing right now, which is the number you
+          watch while turning the speed up. Three of them because the gaps
+          between them are the diagnosis: feed >> inspected means parts are
+          arriving faster than the camera can judge them, and inspected >> OK
+          means it is judging them and not liking them. */}
+      {rate && (
+        <div style={{ display: 'flex', gap: 4, marginTop: 2, fontSize: 10,
+                      color: '#888', lineHeight: 1.2 }}>
+          <span style={{ flex: 1, minWidth: 0 }}>進料 {rate.g.toFixed(1)}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>檢測 {rate.i.toFixed(1)}</span>
+          <span style={{ flex: 1, minWidth: 0, color: '#389e0d' }}>OK {rate.o.toFixed(1)}</span>
+          <span>件/秒</span>
+        </div>
+      )}
     </div>
   );
 }
