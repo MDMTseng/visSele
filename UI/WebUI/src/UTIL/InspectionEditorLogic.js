@@ -287,10 +287,6 @@ export class InspectionEditorLogic {
       edit_info.def_image_reg = root_defFile.def_image_reg;
 
 
-      if (typeof root_defFile.intrusionSizeLimitRatio == 'number') {
-        edit_info.intrusionSizeLimitRatio =
-          root_defFile.intrusionSizeLimitRatio
-      }
       
       root_defFile.featureSet.forEach((report) => {
         switch (report.type) {
@@ -1524,7 +1520,6 @@ export function Edit_info_Empty() {
     morph_alpha: undefined,         // re-location relaxation, (0,1]; core default 1
     shape_match_scale: undefined,   // shape-locator coarse downscale, (0,1]; core default 1
     locating_engine: "sig360",      // "sig360" | "shape_based" (shape = line2Dup+ROI refine)
-    intrusionSizeLimitRatio: 0.1,
     img: null,
     DefFileName: "",
     DefFileTag: [],

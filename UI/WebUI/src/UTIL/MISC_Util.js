@@ -230,7 +230,6 @@ export function defFileGeneration(edit_info)
   let report = {
     ...preloadedDefFile,
     type: "binary_processing_group",
-    intrusionSizeLimitRatio: edit_info.intrusionSizeLimitRatio,
     featureSet: [feature_sig360_circle_line]
   };
   delete report["featureSet_sha1"];
@@ -248,7 +247,7 @@ export function defFileGeneration(edit_info)
   if (typeof edit_info.matching_version === 'number' && edit_info.matching_version === 2)
     report.featureSet[0].matching_version = "v2";
   // downsample: the core reads inspection_downsample as a NUMBER on the GROUP
-  // (top-level) root (FeatureManager_group.cpp), alongside intrusionSizeLimitRatio
+  // (top-level) root (FeatureManager_group.cpp)
   // — NOT inside featureSet[0]. Emit it at the top level so the group picks it up.
   if (typeof edit_info.inspection_downsample === 'number' && edit_info.inspection_downsample !== 1)
     report.inspection_downsample = edit_info.inspection_downsample;

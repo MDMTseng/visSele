@@ -1773,7 +1773,6 @@ class APP_INSP_MODE extends React.Component {
       if (this.props.machine_custom_setting.InspectionMode== "FI" || this.props.machine_custom_setting.InspectionMode== "FI_C") {
 
         
-        //deffile.intrusionSizeLimitRatio=0.001;//By default, the intrusionSizeLimitRatio for Full insp should be as small as possible
         deffile.featureSet[0].matching_angle_margin_deg=180;//By default, match whole round -180~180
         deffile.featureSet[0].matching_face=0;//By default, match two sides
 

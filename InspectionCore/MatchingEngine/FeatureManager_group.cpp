@@ -407,20 +407,19 @@ int FeatureManager_binary_processing_group::FeatureMatching(cv::Mat &img_cv)
     acvComponentLabeling_cv(binary_img_storage, lableImg_cv, ldData);
     auto _pt3 = std::chrono::steady_clock::now();   // [PROF] CCL (component labeling) done
 
-    int CLimit = (lableImg_cv.cols*lableImg_cv.rows)*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
-
+    // Label 1 is everything the cage touches: the border cage itself plus
+    // anything connected to it. Subtracting FENCE_AREA leaves the part of it
+    // that is real intruding material.
+    //
+    // The intrusionSizeLimitRatio gate that used to sit here -- refuse to
+    // inspect the WHOLE frame when this exceeded ratio * image area -- is gone
+    // (2026-08-07). It was one global rule with one number for the entire def,
+    // it could only ever say "somewhere in this image", and with the default it
+    // never got (absent -> 0 -> every frame rejected) it was a trap. obj_detect
+    // clean-space regions do the same job per region, with an operator-legible
+    // limit in mm^2, and with a per-region choice of whether a trip means "this
+    // part is bad" or "this measurement is untrustworthy".
     int intrusionObjectArea = ldData[1].area - FENCE_AREA;
-    LOGI("%d>OBJ:%d  CLimit:%d",ldData[1].area,intrusionObjectArea,CLimit);
-    if(intrusionObjectArea>CLimit)
-    {//If the cage connects something link to the edge we don't want to do the inspection
-      error=FeatureReport_ERROR::EXTERNAL_INTRUSION_OBJECT;
-      
-      for(int i=0;i<binaryFeatureBundle.size();i++)
-      {
-        binaryFeatureBundle[i]->ClearReport();
-      }
-      return 0;
-    }
 
     // if(downScaleF!=1)
     // {
@@ -541,11 +540,9 @@ void FeatureManager_binary_processing_group::ClearReport()
 
 int FeatureManager_binary_processing_group::parse_jobj()
 {
-  double *val= JFetch_NUMBER(root,"intrusionSizeLimitRatio");
-
-  intrusionSizeLimitRatio=(val!=NULL)?*val:0;
-
-  LOGV("intrusionSizeLimitRatio:%f  ptr:%p",intrusionSizeLimitRatio,val);
+  // "intrusionSizeLimitRatio" is no longer read. Old defs still carry the key and
+  // that is fine -- an unknown key is ignored, so a factory def loads unchanged
+  // and simply stops being gated by it. See FeatureMatching() for what replaced it.
 
   // Pre-binarization downsample. 1 = off (default). 2 or 4 cuts threshold/CCL/
   // signature build to 1/N^2 of the work. Coordinate scale-back lives in the

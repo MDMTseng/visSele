@@ -1151,7 +1151,6 @@ function SettingUI({})
   const dispatch = useDispatch();
   const ACT_DefConf_Lock_Level_Update= (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) };
   const ACT_Matching_Angle_Margin_Deg_Update= (deg) => dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) ;
-  const ACT_IntrusionSizeLimitRatio_Update= (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) };//0~1
     
   const ACT_Matching_Face_Update=(faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) };//-1(back)/0(both)/1(front)
   const ACT_Matching_Version_Update=(v) => { dispatch(DefConfAct.Matching_Version_Update(v)) };// 1=legacy, 2=phase2 dual-sig
@@ -1221,36 +1220,11 @@ function SettingUI({})
 
 
 
-    // Binary intrusion-size gate — only the sig360/binary path uses it; the shape path
-    // skips binarization, so hide it for shape_based.
-    (edit_info.locating_engine !== 'shape_based') && <React.Fragment key="intrusion">
-      <Divider orientation="left">{DICT.defConf.intrusion_size_limit_ratio}</Divider>
-      <Slider
-        min={0}
-        step={0.01}
-        max={1}
-        included={true}
-        marks={
-          {
-            0: '',
-            0.01: '',
-            0.05: '',
-            0.1: '0.1',
-            0.3: '0.2',
-            0.5: '0.5',
-            1: '',
-          }
-        }
-        onChange={ACT_IntrusionSizeLimitRatio_Update}
-        value={edit_info.intrusionSizeLimitRatio}
-      />
-      <NumberAccInput
-        min={0}
-        max={1}
-        value={edit_info.intrusionSizeLimitRatio}
-        onChange={ACT_IntrusionSizeLimitRatio_Update}
-      />
-    </React.Fragment>,
+    // The intrusion-size gate used to live here. Removed 2026-08-07: it was one
+    // number for the whole def that could only say "something somewhere in this
+    // image is too big, do not inspect at all". obj_detect clean-space regions
+    // say it per region, in mm², and let each region choose whether a trip means
+    // the part is bad or the measurement is untrustworthy.
 
     <Divider orientation="left">localizer</Divider>,
     <span>&nbsp;engine&nbsp;</span>,
@@ -1489,7 +1463,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_DefFileHash_Update= (hash) => { dispatch(DefConfAct.DefFileHash_Update(hash)) };
 
   const ACT_Def_Model_Path_Update= (path) => { dispatch(UIAct.Def_Model_Path_Update(path)) };
-  const ACT_IntrusionSizeLimitRatio_Update= (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) };//0~1
     
   const ACT_Report_Save=(id, fileName, content) => {
     let act = UIAct.EV_WS_SEND_BPG(id, "SV", 0,
@@ -1671,7 +1644,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
     let deffile = defFileGeneration(edit_info);
     stampRefImagePath(deffile, edit_info);   // shape locator: ref-image path for the core
-    deffile.intrusionSizeLimitRatio=1;
     setCacheDef(deffile);
 
     let _PGID_=11004;
@@ -1937,8 +1909,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         let deffile = defFileGeneration(edit_info);
         stampRefImagePath(deffile, edit_info);   // shape locator: ref-image path for the core
         console.log("deffile",deffile);
-        deffile.intrusionSizeLimitRatio=1;
-        console.log("INST_CHECK");
+            console.log("INST_CHECK");
         ACT_WS_SEND_BPG(CORE_ID,"II", 0, 
         {
           definfo:deffile,
@@ -2307,7 +2278,6 @@ function DefConfImageSwitcher() {
     if (!CORE_ID || !edit_info || !edit_info._obj || !edit_info._obj.sig360info) return;
     let deffile = defFileGeneration(edit_info);
     stampRefImagePath(deffile, edit_info);   // shape locator: ref-image path for the core
-    deffile.intrusionSizeLimitRatio = 1;
     ACT_WS_SEND_BPG(CORE_ID, "II", 0,
       { definfo: deffile, imgsrc: "__CACHE_IMG__",
         img_property: { calibInfo: { type: "disable", mmpp: deffile.featureSet[0].mmpp } } },
@@ -2761,8 +2731,7 @@ class APP_DEFCONF_MODE extends React.Component {
 
                 let deffile = defFileGeneration(this.props.edit_info);
                 stampRefImagePath(deffile, this.props.edit_info);   // shape locator: ref-image path
-                deffile.intrusionSizeLimitRatio=1;
-  
+              
 
                 this.props.ACT_WS_SEND_BPG(this.props.CORE_ID,"II", 0, 
                 {
@@ -2981,7 +2950,6 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
     ACT_Shape_Decoration_Control_Margin_Info_Update: (extra_info) => { dispatch(DefConfAct.Shape_Decoration_Control_Margin_Info_Update(extra_info)) },
     ACT_Matching_Angle_Margin_Deg_Update: (deg) => { dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) },
     ACT_Matching_Face_Update: (faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) },//-1(back)/0(both)/1(front)
-    ACT_IntrusionSizeLimitRatio_Update: (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) },//0~1
     ACT_DefFileHash_Update: (hash) => { dispatch(DefConfAct.DefFileHash_Update(hash)) },
     ACT_Report_Save: (id, fileName, content) => {
       let act = UIAct.EV_WS_SEND_BPG(id, "SV", 0,

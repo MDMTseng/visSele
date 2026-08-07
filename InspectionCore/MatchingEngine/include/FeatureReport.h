@@ -34,6 +34,9 @@ enum FeatureReport_ERROR {
   NONE                            = 0,
   GENERIC                         = 1,
   ONLY_ONE_COMPONENT_IS_ALLOWED   = 2,
+  // Reserved, no longer raised. The intrusionSizeLimitRatio gate that set it was
+  // removed 2026-08-07 (obj_detect clean-space regions replace it). The value
+  // stays so the codes after it do not shift under anything holding an old report.
   EXTERNAL_INTRUSION_OBJECT       = 3,
   DIRTY_BACKGROUND                = 4,
   END

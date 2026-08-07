@@ -849,3 +849,48 @@ What IS settled:
 - The move to 230400 was still worth making, but the reason given for it at the
   time (congestion) was wrong on the evidence, and the benefit turned out to be
   somewhere other than where it was predicted.
+
+---
+
+## K. `intrusionSizeLimitRatio` is gone (2026-08-07)
+
+The binary-path gate in `FeatureManager_group::FeatureMatching` — "if the
+cage-connected blob exceeds `ratio * image area`, raise
+`EXTERNAL_INTRUSION_OBJECT` and inspect nothing" — has been removed, along with
+its WebUI slider, its redux action/reducer, its `edit_info` default and its def
+emission. `obj_detect` clean-space regions replace it.
+
+**Why it had to go rather than be retuned.** It was one number for the whole
+def. It could only ever say "something somewhere in this image is too big", so
+the only available response was to throw the entire frame away — no way to say
+*where* clean matters, no way to distinguish "a speck landed next to the part"
+from "the part itself has residue", and no way to choose between rejecting the
+part and distrusting the measurement. A clean-space region says all of that per
+region, in mm², with a per-region `on_fail`.
+
+**The default was a trap.** `intrusionSizeLimitRatio = (val != NULL) ? *val : 0`
+— a def *without* the key got ratio 0, which makes `CLimit` 0, which rejects
+every frame with any intruding area at all. Every working def therefore had to
+carry the key. That is why `DefConfUI` wrote `deffile.intrusionSizeLimitRatio=1`
+in four separate places before sending a def anywhere: not a policy, a
+workaround for a default that could not be left alone.
+
+**Old defs are unaffected.** The key is no longer read, and an unknown key is
+ignored, so a factory def loads byte-identically and simply stops being gated.
+Nothing needs to be edited on disk.
+
+**`EXTERNAL_INTRUSION_OBJECT = 3` stays in the enum**, reserved and never
+raised. Deleting it would shift every code after it under anything holding an
+old report.
+
+Measured, same image, same def, old binary vs new:
+
+```
+golden def (ratio 0.1)     before 7395 B    after 7395 B   byte-identical
+same def forced to 0.0     before error=3, 251 B empty     after error=0, 7355 B
+```
+
+**What you lose.** A sig360 def that was relying on this to refuse contaminated
+frames now has no such guard until someone places an `obj_detect` region with
+`dark_thresh` + `dark_area_max` on it. The replacement is strictly better but it
+is opt-in, and the gate was not. Which defs need a region is a per-def call.

@@ -1135,7 +1135,12 @@ def _quality_essential_false_all():
                         it["quality_essential"] = False
     return d
 
-# R6-9: intrusionSizeLimitRatio extreme values (0, 1, 100)
+# R6-9: intrusionSizeLimitRatio extreme values (0, 1, 100).
+# The key stopped being read on 2026-08-07 (the gate is gone; obj_detect clean-space
+# regions replace it). These cases stay: they now assert the weaker but still useful
+# property that a def carrying a garbage value for a key the core no longer knows
+# loads and inspects without crashing -- which is exactly what every factory def on
+# disk is about to become.
 def _intrusion_ratio(r):
     def f():
         d = golden()

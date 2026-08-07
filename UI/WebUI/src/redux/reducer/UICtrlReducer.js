@@ -799,14 +799,6 @@ function StateReducer(newState, action) {
               break;
             }
 
-          case DefConfAct.EVENT.IntrusionSizeLimitRatio_Update:
-            {
-              if (typeof action.data == 'number') {
-                newState.edit_info = { ...newState.edit_info, intrusionSizeLimitRatio: action.data };
-              }
-              break;
-            }
-
           case DefConfAct.EVENT.Matching_Version_Update:
             {
               // sig360 matching algo: 1 = legacy v1 (byte-identical pre-milestone),
