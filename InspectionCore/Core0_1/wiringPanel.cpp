@@ -6157,6 +6157,33 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
           {
             vector<FeatureReport_judgeReport> &jrep = *(srep[0].judgeReports);
             stat = InspStatusReduce(jrep);
+
+            // Clean-space regions (obj_detect) fold in HERE, not into judgeReports.
+            //
+            // They answer a different question from every other feature: not "is
+            // this part within tolerance" but "was the field clean enough for that
+            // question to mean anything". Until now they were measured, drawn in
+            // the UI, and then dropped on the floor -- a region could sit there
+            // bright red while the part it condemned went out the OK chute.
+            //
+            // A region reports NA by default when it trips, and InspStatusReducer
+            // makes NA absorbing, so a dirty field takes the part out of the
+            // verdict entirely instead of ejecting it: it goes round again and is
+            // measured on a clean field. A region marked on_fail:"ng" reports
+            // FAILURE instead and does eject. Regions that pass report SUCCESS,
+            // which the reducer leaves alone.
+            vector<FeatureReport_objDetectReport> &odr = *(srep[0].detectedObjDetects);
+            for (size_t oi = 0; oi < odr.size(); oi++)
+            {
+              if (odr[oi].status == FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
+                continue;
+              LOGI("obj_detect region '%s' (id %d) status:%d -> part status:%d",
+                   odr[oi].def ? odr[oi].def->name : "?",
+                   odr[oi].def ? odr[oi].def->id : -1,
+                   odr[oi].status, stat);
+              stat = InspStatusReducer(stat, odr[oi].status);
+            }
+
             stat_sec = stat;//full insp status
           }
         }

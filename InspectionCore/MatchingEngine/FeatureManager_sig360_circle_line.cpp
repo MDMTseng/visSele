@@ -1684,6 +1684,18 @@ int FeatureManager_sig360_circle_line::parse_objDetectData(cJSON *obj)
   od.edge_mean_max   = (float)JFetch_NUMBER_ex(obj, "edge_mean_max",   NA);
   od.edge_max_min    = (float)JFetch_NUMBER_ex(obj, "edge_max_min",    NA);
   od.edge_max_max    = (float)JFetch_NUMBER_ex(obj, "edge_max_max",    NA);
+  od.dark_thresh     = (float)JFetch_NUMBER_ex(obj, "dark_thresh",     NA);
+  od.dark_ratio_min  = (float)JFetch_NUMBER_ex(obj, "dark_ratio_min",  NA);
+  od.dark_ratio_max  = (float)JFetch_NUMBER_ex(obj, "dark_ratio_max",  NA);
+  od.dark_area_min   = (float)JFetch_NUMBER_ex(obj, "dark_area_min",   NA);
+  od.dark_area_max   = (float)JFetch_NUMBER_ex(obj, "dark_area_max",   NA);
+  // "ng" = the part is bad, eject it. Anything else (including absent) = NA:
+  // the region says the measurement cannot be trusted, not that the part failed.
+  { char *s = NULL; cJSON *jf = cJSON_GetObjectItem(obj, "on_fail");
+    if (jf && cJSON_IsString(jf)) s = jf->valuestring;
+    od.on_fail = (s && strcmp(s, "ng") == 0)
+               ? FeatureReport_sig360_circle_line_single::STATUS_FAILURE
+               : FeatureReport_sig360_circle_line_single::STATUS_NA; }
   if (od.name[0] == '\0') sprintf(od.name, "@OBJDET_%d", (int)objDetectList.size());
   objDetectList.push_back(od);
   return 0;
@@ -4951,6 +4963,25 @@ FeatureReport_objDetectReport FeatureManager_sig360_circle_line::ObjDetect_Repor
   cv::fillPoly(mask, polys, cv::Scalar(255));
   if (cv::countNonZero(mask) < 1) return rep;
 
+  // --- dark area, measured at FULL resolution and before any downsample ---
+  //
+  // The order matters and it is not an optimisation detail. INTER_AREA averages,
+  // so a 2px speck seen through downsample:4 comes out at 1/16 of its contrast and
+  // walks straight back over the threshold -- the one thing this measurement exists
+  // to catch would be erased by the setting that exists to make it fast. One
+  // threshold + countNonZero over the crop is cheap enough not to need the help.
+  rep.dark_ratio = rep.dark_area_mm2 = std::nanf("");
+  if (!std::isnan(def->dark_thresh))
+  {
+    cv::Mat dark;
+    cv::threshold(crop, dark, (double)def->dark_thresh, 255.0, cv::THRESH_BINARY_INV);
+    cv::bitwise_and(dark, mask, dark);           // only inside the region polygon
+    int dark_px   = cv::countNonZero(dark);
+    int region_px = cv::countNonZero(mask);
+    rep.dark_ratio    = (float)dark_px / (float)region_px;
+    rep.dark_area_mm2 = (float)(dark_px * (double)mmpp * (double)mmpp);
+  }
+
   // Optional region downsample for speed: shrink crop (averaging) + mask before stats.
   // mean stays ~constant; max shrinks and the Sobel scale changes (accepted tradeoff).
   if (def->downsample > 1 && crop.cols > def->downsample && crop.rows > def->downsample)
@@ -4980,16 +5011,26 @@ FeatureReport_objDetectReport FeatureManager_sig360_circle_line::ObjDetect_Repor
   rep.edge_mean = (float)cv::mean(mag, mask)[0];
   rep.edge_max  = (float)emax;
 
-  // Self-judge: FAILURE if any present bound is violated, else SUCCESS.
+  // Self-judge: violated bound -> def->on_fail, else SUCCESS.
+  //
+  // on_fail is NA by default, and that default is the whole point of the region.
+  // A clean-space region that has gone dirty usually means something is lying in
+  // the field of view -- the measurement of THIS part is no longer trustworthy,
+  // which is not the same claim as "this part is bad". NA leaves the part
+  // unactuated so it comes round again and gets measured on a clean field; only a
+  // region the operator explicitly marked on_fail:"ng" ejects.
   int st = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
   auto chk = [&](float v, float lo, float hi) {
-    if (!std::isnan(lo) && v < lo) st = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
-    if (!std::isnan(hi) && v > hi) st = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
+    if (std::isnan(v)) return;                   // measurement not taken
+    if (!std::isnan(lo) && v < lo) st = def->on_fail;
+    if (!std::isnan(hi) && v > hi) st = def->on_fail;
   };
   chk(rep.bright_mean, def->bright_mean_min, def->bright_mean_max);
   chk(rep.bright_max,  def->bright_max_min,  def->bright_max_max);
   chk(rep.edge_mean,   def->edge_mean_min,   def->edge_mean_max);
   chk(rep.edge_max,    def->edge_max_min,    def->edge_max_max);
+  chk(rep.dark_ratio,  def->dark_ratio_min,  def->dark_ratio_max);
+  chk(rep.dark_area_mm2, def->dark_area_min, def->dark_area_max);
   rep.status = st;
   return rep;
 }

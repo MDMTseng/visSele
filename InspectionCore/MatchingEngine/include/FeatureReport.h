@@ -224,6 +224,21 @@ typedef struct featureDef_objDetect{
   bool ignore_translation;
   int downsample;   // >1 = INTER_AREA-downsample the region before stats (speed; note:
                     // mean stays ~constant, but max shrinks and Sobel scale changes)
+  // Dark-area check: how much of the region is darker than dark_thresh. NAN = the
+  // whole dark measurement is off and dark_ratio/dark_area_mm2 are not computed.
+  //
+  // This is the "is anything sitting here" statistic, and neither mean nor max is
+  // it: on a clean bright field a 0.3mm speck moves bright_mean by a fraction of a
+  // grey level, while bright_max fires on one noisy pixel. Counting the pixels
+  // under a threshold answers the question that was actually asked.
+  float dark_thresh;                            // grey level; pixel < thresh = dark
+  float dark_ratio_min,   dark_ratio_max;       // dark px / region px, 0..1
+  float dark_area_min,    dark_area_max;        // dark area in mm^2
+  // What a violated bound means for the PART. STATUS_NA (default) says the
+  // measurement environment is untrustworthy -- do not eject, let it come round
+  // again; STATUS_FAILURE says the part itself is bad. See the on_fail comment in
+  // ObjDetect_ReportGen for why the default is the cautious one.
+  int on_fail;
   float bright_mean_min, bright_mean_max;
   float bright_max_min,  bright_max_max;
   float edge_mean_min,   edge_mean_max;
@@ -335,6 +350,7 @@ typedef struct FeatureReport_objDetectReport{
   featureDef_objDetect *def;
   float bright_mean, bright_max;
   float edge_mean, edge_max;
+  float dark_ratio, dark_area_mm2;   // NAN when def->dark_thresh is unset
   acv_XY corner[4];   // measured region corners, OBJECT-FRAME mm (for the UI overlay)
   int status;
 }FeatureReport_objDetectReport;

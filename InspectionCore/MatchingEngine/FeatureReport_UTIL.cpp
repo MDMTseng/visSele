@@ -4,6 +4,7 @@
 #include "FeatureManager_stage_light_report.h"
 
 #include <logctrl.h>
+#include <cmath>
 
 cJSON* acv_acv_XY2JSON(acv_XY pt )
 {
@@ -252,6 +253,13 @@ cJSON* acv_ObjDetectReport2JSON(const vector<FeatureReport_objDetectReport> &vec
       cJSON_AddNumberToObject(o, "bright_max",  vec[j].bright_max);
       cJSON_AddNumberToObject(o, "edge_mean",   vec[j].edge_mean);
       cJSON_AddNumberToObject(o, "edge_max",    vec[j].edge_max);
+      // omitted rather than sent as NaN when the region has no dark_thresh --
+      // cJSON writes a bare NaN token that JSON.parse rejects outright.
+      if(!std::isnan(vec[j].dark_ratio))
+      {
+        cJSON_AddNumberToObject(o, "dark_ratio",    vec[j].dark_ratio);
+        cJSON_AddNumberToObject(o, "dark_area_mm2", vec[j].dark_area_mm2);
+      }
     }
     // region corners in OBJECT-FRAME mm (for the WebUI overlay).
     cJSON* corners = cJSON_CreateArray();

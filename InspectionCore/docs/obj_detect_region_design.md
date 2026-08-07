@@ -1,5 +1,100 @@
 # obj_detect — region brightness/Sobel measurement (design & plan)
 
+Status: **P1 + P3 SHIPPED**, plus the clean-space extension below (2026-08-07).
+P2 (expose the stats to judge/calc) still not done — `OBJ_DETECT` is declared in the
+FEATURETYPE enum and has no users.
+
+---
+
+# Clean-space extension (2026-08-07)
+
+Two gaps between what P1 shipped and what a "this space must be clean" check needs.
+
+## 1. The region's verdict never reached the part
+
+P1 measured the region, self-judged it, put it in the report JSON and drew it in the
+WebUI — and stopped there. `ImgPipeProcessCenter_imp` builds the part verdict from
+`InspStatusReduce(judgeReports)` alone, so a region could sit on screen bright red
+while the part it condemned went out the OK chute. `detectedObjDetects` now folds in
+at the same place.
+
+It folds in **there** and not into `judgeReports` on purpose: a region answers a
+different question from every other feature. Not "is this part within tolerance" but
+"was the field clean enough for that question to mean anything".
+
+## 2. `on_fail` — and why the default is NA
+
+```jsonc
+"on_fail": "na"   // default, may be omitted
+"on_fail": "ng"
+```
+
+A dirty clean-space region usually means something is lying in the field of view.
+That makes the measurement of *this* part untrustworthy; it does not make the part
+bad. `STATUS_NA` is absorbing in `InspStatusReducer`, so the part drops out of the
+verdict entirely: no actuation, it recirculates, and it gets measured again on a
+clean field. Only a region the operator explicitly marks `on_fail:"ng"` ejects.
+
+This is the same intent the legacy `extra_area_ratio < 0.1` gate had (don't eject on
+a contaminated frame) without its two problems: it was one global rule with a
+hardcoded constant, and with no ROI it made *every* frame NA.
+
+## 3. `dark_thresh` — the dark-area statistic
+
+```jsonc
+"dark_thresh": 128,        // grey level; pixel < thresh counts as dark. Absent = off.
+"dark_area_min": n,        // mm^2
+"dark_area_max": n,
+"dark_ratio_min": 0..1,    // dark px / region px
+"dark_ratio_max": 0..1
+```
+
+reported as `dark_ratio` and `dark_area_mm2` (both omitted from the JSON when
+`dark_thresh` is absent — cJSON writes a bare `NaN` token that `JSON.parse` rejects).
+
+**Neither mean nor max answers "is anything sitting here."** On a clean bright field
+a 0.3 mm speck moves `bright_mean` by a fraction of a grey level, and `bright_max`
+fires on a single noisy pixel. Counting pixels under a threshold is the question that
+was actually being asked. `dark_area_mm2` is the operator-facing one — "no speck
+bigger than 0.5 mm²" is a sentence you can hold someone to; a ratio is not.
+
+Every field is **per region**. Two regions in one def can hold two different
+thresholds, two different area limits, and two different `on_fail` — verified.
+
+### Measured before downsample, and that is not an optimisation detail
+
+`downsample` uses `INTER_AREA`, which averages. A 2 px speck seen through
+`downsample:4` comes out at 1/16 of its contrast and walks straight back over the
+threshold — the setting that exists to make the region fast would erase the one thing
+this measurement exists to catch. So the dark count runs on the full-resolution crop,
+*before* the resize. One `threshold` + `countNonZero` is cheap enough not to need the
+help. Brightness and Sobel still measure after the downsample, as before.
+
+## What is verified, and what is not
+
+Verified end-to-end through `visSele --insp` (real parse → place → measure →
+self-judge), on `10221 BOS-LT12BH4211 SORTING_bk.png`:
+
+- `dark_ratio` is monotonic in `dark_thresh` over a 16→240 sweep
+  (0.00011 → 0.036 → 0.054 → 0.068 → 0.088) — it is counting pixels under a
+  threshold, not doing something else that happens to correlate
+- `dark_area_mm2` tracks it (1.94 mm² at thresh 128)
+- absent `dark_thresh` → neither field is emitted
+- a bound moved across the measured value flips the region status, and flips it to
+  what `on_fail` asked for: absent → NA, `"na"` → NA, `"ng"` → FAILURE
+- `dark_area_max` trips on the same path as `dark_ratio_max`
+- two regions, two thresholds, independent results
+
+**Not verified: the fold into the part verdict (§1).** That code is in
+`ImgPipeProcessCenter_imp`, which the `--insp` harness does not run — only the live
+image pipeline reaches it. It needs one run on the machine with a def carrying a
+region, checking that a tripped region moves `uInspStatus` to NA and the part is not
+actuated. Until that run happens this half is correct by construction only.
+
+---
+
+## Original P1/P3 design follows.
+
 Status: **DESIGN.** Branch `ct/X1.2_dev`.
 
 ## Goal (ct)
