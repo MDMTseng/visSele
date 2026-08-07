@@ -926,13 +926,29 @@ def _settle_cal(link, freq, cat=None):
     cam_ticks = max((v for k, v in spo.items()
                      if k.startswith("CAM") and k.endswith("_on")), default=0)
     travel = (cam_ticks / (2.0 * freq)) if freq else 0.0
-    t_end = time.time() + travel * 1.4 + 0.3
+    # Wait for the pipe to be EMPTY, not for one transit to elapse.
+    #
+    # tid_base can only be raised by an announcement we actually saw, so a
+    # calibration object still walking to the camera when this returns
+    # announces later, carries a higher tid, and is counted as the caller's.
+    # B.5 read "fired=10 objects=25" that way -- 50 announcements, exactly two
+    # per object, so the property under test held perfectly while the count it
+    # was compared against was somebody else's parts.
+    #
+    # Bounded, because on a loaded plate the pipe never empties (the plate
+    # feeds 23-26 parts/s of its own at speed): the deadline is then the old
+    # behaviour, and the caller is running a phantom suite on a loaded plate,
+    # which UINSP_CAVEATS says not to do.
+    t_end = time.time() + travel * 2.0 + 1.0
     while time.time() < t_end:
         for _, m in link.drain_async():
             if m.get("type") == "cam_trig" and isinstance(m.get("tid"), int):
                 tid_base = max(tid_base, m["tid"])
                 link.send_nowait({"type": "report", "tid": m["tid"],
                                   "cat": cat if cat is not None else CAT_NA})
+        p = (link.send({"type": "get_running_stat"}, timeout=3.0) or {}).get("pipe") or {}
+        if not (p.get("registered") or 0):
+            break
         time.sleep(0.005)
     return tid_base
 
@@ -1044,6 +1060,15 @@ def bench(link, rep, count, freq, interval_ms, cat):
     # Widen the selector window with firmware params so the round trip measures
     # "does the pipeline route tids correctly", not "can the host answer inside
     # 17 ms". Restored in the teardown below.
+    # Blind the real sensor for the duration. This is a PHANTOM suite: with a
+    # loaded plate the machine feeds 23-26 parts/s of its own at speed, and
+    # every count here would be measuring those instead (UINSP_CAVEATS). The
+    # firmware separates the two paths precisely so this is possible --
+    # GATE_DISABLED stops the sensor and leaves trig_phantom_pulse working.
+    # It is volatile and defaults false, so a reboot re-arms the sensor; it is
+    # set here rather than left to whoever remembers.
+    _gate_was = (link.send({"type": "set_gate_disable", "on": True},
+                           timeout=3.0) or {})
     win = _widen_selector_window(link, orig_spo)
     rep.add("B.0", "widen the selector window for a bare-board round trip",
             win is not None,
@@ -1093,18 +1118,44 @@ def bench(link, rep, count, freq, interval_ms, cat):
         for _, msg in link.drain_async():
             if msg.get("type") != "cam_trig":
                 continue
+            if msg.get("sync"):
+                # The machine's own calibration pulse, said so by the firmware
+                # rather than guessed at from tid ordering. syncPulseService
+                # keeps firing these in READY, so they arrive mixed in with the
+                # parts under test and used to be counted as ours.
+                if msg.get("tid") is not None:
+                    link.send_nowait({"type": "report", "tid": msg["tid"],
+                                      "cat": CAT_NA})
+                continue
             tid = msg.get("tid")
             if isinstance(tid, int) and tid <= tid_base:
                 continue                      # a calibration object, not ours
+            # EVERY announcement, not just the first per tid: B.5's whole
+            # claim is that one pulse produces one object announced TWICE
+            # (CAM1 and CAM2), which needs the duplicates kept. `seen` was
+            # never appended to at all -- only `reported` was -- so B.5 could
+            # only ever print "objects=0 announcements=0" and no amount of
+            # widening its wait was going to change that. It was not a slow
+            # test, it was a test that never looked.
+            seen.append(tid)
             if tid not in answered:
                 link.send_nowait({"type": "report", "tid": tid, "cat": cat})
                 answered.add(tid)
                 reported.append(tid)
 
-    spo_now = dict((link.send({"type": "get_setup"}, timeout=3.0) or {})
-                   .get("stage_pulse_offset") or {})
+    # Through _read_spo, not a bare get_setup: a dropped reply left cam_ticks0
+    # at its `default=0`, which collapsed both the calibration settle and B.5's
+    # drain window to nothing and reported "fired=10 objects=0" for parts that
+    # were simply still in transit. Measured at plate_freq 1000: predicted
+    # 4.66s, actual 4.71s -- the formula is right, the read was not.
+    spo_now = _read_spo(link) or {}
     cam_ticks0 = max((v for k, v in spo_now.items()
                       if k.startswith("CAM") and k.endswith("_on")), default=0)
+    if not cam_ticks0:
+        rep.add("B.5", "one object per pulse, announced twice (CAM1+CAM2)",
+                False, "get_setup never returned stage_pulse_offset -- refusing "
+                       "to time a journey whose length is unknown")
+        return
     travel0 = (cam_ticks0 / (2.0 * freq)) if freq else 0.0
     if cal_inflight:
         # Let the calibration objects announce and be counted into tid_base,
@@ -1267,6 +1318,7 @@ def bench(link, rep, count, freq, interval_ms, cat):
     st, _ = _state(link)
     restored = (orig_spo.get("SWITCH") is None
                 or chk.get("SWITCH") == orig_spo.get("SWITCH"))
+    link.send({"type": "set_gate_disable", "on": False}, timeout=3.0)
     rep.add("B.13", "returned to IDLE, window + plate_freq restored",
             st == ST_IDLE and restored,
             f"state={st} SWITCH={chk.get('SWITCH')} plate_freq={orig_freq}")

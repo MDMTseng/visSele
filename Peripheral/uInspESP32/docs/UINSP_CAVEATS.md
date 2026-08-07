@@ -708,9 +708,17 @@ tid=15 gate=30974 at=40050   目標 −8754  ← 反轉，此後全部過期
   `gate.accept` 會自己走(見 [[project_uinsp_throughput_ceiling]]:
   plate_freq 15000 時盤子自己送 23–26/s)。
 - 想在有料的盤子上測,就別注入幻影 —— 真實料本身就是負載。
-- 韌體端若要根治,`ACT_*` 佇列不能假設登記順序等於到期順序,或
-  `phantomEmitOne` 不該回填 `gate_pulse`。**目前不動**:產線不受影響,
-  而回填正是幻影好用的原因。
+- **已於 2026-08-08 修掉:`phantomEmitOne` 不再回填 `gate_pulse`。** 校正早已
+  有專屬路徑(`calFireNow`,直接驅動相機、不註冊 stage task),回填是那之前
+  的遺留。改後幻影與真實料件的登記完全一致,目標單調遞增。
+  代價:注入的物件現在要走一整個 `CAM1_on/(2*plate_freq)` 才宣告(plate_freq
+  1000 時 4.66s,實測 4.71s)。各套件的等待本來就是「等抵達」而非固定延遲,
+  而且物件是管線化的,一輪只付一次 transit。
+  效果:`act_late_max` 9079→0,`tq_hwm` 28→2,chaos 同一個從未通過的 seed
+  變成 5/5(6322 顆料、203 次擾動、佇列尖峰 4/32、零溢位)。
+- **`bench` 現在自己 `set_gate_disable`,結束再還原。** 它是幻影套件,不該
+  靠人記得清空盤子;`GATE_DISABLED` 是 volatile、預設 false,燒錄一次就會
+  重新武裝感測器。加上之後 bench 從 11/2 變 14/0。
 
 順帶,追這個東西時補上的儀表(都在 `poll`):`tq/tqhwm/tqcap/tqovf`(那個會
 溢位的佇列,`Qs` 是 RBuf,是另一個)、`tqburst`、`act_late_max`、`loopn/

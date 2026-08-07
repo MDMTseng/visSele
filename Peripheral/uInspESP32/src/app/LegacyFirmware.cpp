@@ -970,6 +970,11 @@ struct ISRTrigInfo
   uint32_t trig_id;
   uint32_t gate_pulse;
   uint8_t  btrig_idx;
+  // Calibration object or real part. Without it a host cannot tell the two
+  // apart on the wire, so every count it keeps is contaminated by whatever
+  // syncPulseService happened to fire -- bench B.5 read "fired=10 objects=16"
+  // that way, with the six extras being the machine's own sync pulses.
+  uint8_t  sync;
 };
 RingBuf_Static<struct ISRTrigInfo,32,uint8_t> ISRTrigQ;
 
@@ -1692,6 +1697,7 @@ int Run_ACTS(uint32_t cur_pulse)
                       commInfo->btrig_idx=1;
                       commInfo->trig_id=task->src->tid;
                       commInfo->gate_pulse=task->src->gate_pulse;
+                      commInfo->sync=task->src->sync;
                       ISRTrigQ.pushHead();
                       isrTrigQMark(task->src->tid, task->src->gate_pulse);
                       // Keep it on the object too. Until now this timestamp was
@@ -1748,6 +1754,7 @@ int Run_ACTS(uint32_t cur_pulse)
                       commInfo->btrig_idx=2;
                       commInfo->trig_id=task->src->tid;
                       commInfo->gate_pulse=task->src->gate_pulse;
+                      commInfo->sync=task->src->sync;
                       ISRTrigQ.pushHead();
                       isrTrigQMark(task->src->tid, task->src->gate_pulse);
                     }
@@ -2382,7 +2389,30 @@ static uint32_t PH_TRAIN_RNG      = 1;
 // plate distance that it has somewhere to travel from.
 static inline void phantomEmitOne()
 {
-  uint32_t tatPulse = SYS_STEP_COUNT - STAGE_PULSE_OFFSET.L1A_on + _PLAT_DIST_step(3000);
+  // A phantom registers at the plate position it is fired at, exactly like a
+  // part the sensor just saw.
+  //
+  // It used to back-date gate_pulse by a whole L1A_on
+  // (SYS_STEP_COUNT - L1A_on + _PLAT_DIST_step(3000), = now-9076 here) so the
+  // injected object reached the light and camera stages at once instead of
+  // after a lap. That was worth it when calibration had no path of its own;
+  // calFireNow drives the camera directly now and registers no stage tasks, so
+  // nothing but the rig commands still call this.
+  //
+  // The back-date cost more than the wait it saved. ACT_* queues are FIFO in
+  // registration order and ACT_TRY_RUN_TASK only looks at the tail, so a
+  // phantom's near-immediate target and a real part's lap-away target in the
+  // same queue are an inversion: one real part parks every phantom behind it
+  // until its own target comes due, and the whole overdue batch then leaves at
+  // one to two per tick and buries the 32-entry ISRTrigQ. That is the
+  // INSP_CAM_TRIG_INFO_CANNOT_BE_SENT that chaos has been hitting for months
+  // at object rates nowhere near any limit -- measured, UINSP_CAVEATS.
+  //
+  // Cost of the change: an injected object now takes CAM1_on/(2*plate_freq) to
+  // announce, like everything else. The suites already wait for arrival rather
+  // than a fixed delay, and objects pipeline, so a run pays one transit, not
+  // one per pulse.
+  uint32_t tatPulse = SYS_STEP_COUNT;
   newPulseEvent(tatPulse-10, tatPulse+10, tatPulse, 20);
 }
 
@@ -2637,6 +2667,7 @@ static int calFireNow()
     commInfo->btrig_idx    = 1;
     commInfo->trig_id      = head->tid;
     commInfo->gate_pulse   = head->gate_pulse;
+    commInfo->sync         = head->sync;
     ISRTrigQ.pushHead();
     calTrigQMark(head->tid, head->gate_pulse);
   }
@@ -5126,6 +5157,7 @@ void firmwareLoop()
         retdoc["gate_pulse"]=trig.gate_pulse;
         retdoc["w"]=gateWidthOf(trig.trig_id);
         retdoc["Qs"]=RBuf.size();
+        if(trig.sync) retdoc["sync"]=1;   // omitted for parts: it is the common case
         int slen=serializeJson(retdoc, (char*)buff,sizeof(buff));
         djrl.send_json_string(0,buff,slen,0);
         continue;
