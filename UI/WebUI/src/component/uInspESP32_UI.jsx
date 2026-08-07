@@ -1055,6 +1055,21 @@ export function UINSP_ESP32_MINI() {
   const [clearing, setClearing] = useState(false);
   const [why, setWhy] = useState('');
   const [rpmSel, setRpmSel] = useState(undefined);   // slider position, in rpm
+  // Counter reset, armed then fired. Two presses rather than a Popconfirm:
+  // this strip lives inside an antd Menu title, and every overlay we have put
+  // in here so far has needed a fight (Tooltip injects its own span around a
+  // disabled child and broke the button sizing). A button that changes its own
+  // label needs no portal and cannot be mispositioned.
+  //
+  // It is confirmed at all because these counts are the shift's record -- the
+  // device keeps no history, so a stray press loses the only copy.
+  const [rstArm, setRstArm] = useState(false);
+  const [rsting, setRsting] = useState(false);
+  useEffect(() => {
+    if (!rstArm) return;
+    const h = setTimeout(() => setRstArm(false), 4000);   // disarm itself
+    return () => clearTimeout(h);
+  }, [rstArm]);
 
   // The last speed this machine was actually seen running at.
   //
@@ -1367,6 +1382,22 @@ export function UINSP_ESP32_MINI() {
         {tag('NG', cnt.SEL2, 'red')}
         {tag('OK', cnt.SEL3, 'green')}
         {tag('NA', cnt.NA)}
+        {/* Zeroing the counts used to mean opening the setup modal -- for the
+            thing you do at the start of every batch. */}
+        <Button size="small" type={rstArm ? 'primary' : 'text'} danger={rstArm}
+          loading={rsting}
+          style={{ padding: '0 6px', height: 22, fontSize: 11, flexShrink: 0 }}
+          onClick={() => {
+            if (!rstArm) { setRstArm(true); return; }
+            setRstArm(false); setRsting(true); setWhy('');
+            dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+              if (!api) { setRsting(false); return; }
+              Promise.resolve(api.resetRunningStat())
+                .catch((e) => { if (mounted.current) setWhy('歸零失敗: ' + String(e)); })
+                .then(() => { if (mounted.current) setRsting(false); });
+            }));
+          }}
+        >{rstArm ? '確定?' : '歸零'}</Button>
       </div>
       {/* SEL1 has no column: nothing is wired to it on this machine, so it
           reads 0 forever and a permanent 0 teaches people to stop looking. It
