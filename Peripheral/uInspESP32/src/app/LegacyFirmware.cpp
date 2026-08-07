@@ -3310,6 +3310,35 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     doRsp=rspAck=true;
 
   }
+  // The hot poll. Everything a host checks in a loop -- am I running, is the
+  // plate at speed, has anything faulted -- in ~120 bytes instead of the 1174
+  // of get_setup or the 1325 of get_running_stat.
+  //
+  // Why this exists: those two are the ONLY way to read step_count and state,
+  // so every wait loop in the tools (and the core) polls a full configuration
+  // document to read one counter. At 230400 a 1200-byte reply owns the TX path
+  // for ~100ms, and Serial.write blocks the main loop for the duration -- the
+  // same loop that drains ISRTrigQ. That queue is 32 entries and every object
+  // pushes 2, so ~16 objects of headroom; at the rates measured here a single
+  // poll can eat a third of it, and a host that polls in a tight loop
+  // overflows it. That overflow is INSP_CAM_TRIG_INFO_CANNOT_BE_SENT, which
+  // has been showing up under churn at object rates nowhere near any limit.
+  //
+  // cfg_crc rides along so a host can hold the big document in cache and
+  // re-read it only when the fingerprint moves -- "send only what changed",
+  // without any delta machinery to get wrong.
+  else if(strcmp(type,"poll")==0)
+  {
+    retdoc["type"]="poll";
+    retdoc["state"]=(int)sysinfo.state;
+    retdoc["plate_freq"]=PLATE_FREQ_TARGET;
+    retdoc["step_count"]=SYS_STEP_COUNT;
+    retdoc["q"]=RBuf.size();
+    retdoc["err"]=ERROR_HIST.size() ? (int)*ERROR_HIST.getTail(0) : 0;
+    retdoc["nerr"]=ERROR_HIST.size();
+    retdoc["cfg_crc"]=MachineConfig::hash();
+    doRsp=rspAck=true;
+  }
   else if(strcmp(type,"get_running_stat")==0)
   {
 
@@ -4553,6 +4582,14 @@ void firmwareSetup()
   // Every host that opens this port must match: the CONN dicts in
   // tools/regress_watch.py and tools/slip_probe.py, and whatever the WebUI
   // sends in its CONNECT.
+  // Measured 2026-08-08, and the reason it is still 230400: raising this to
+  // 921600 (the classic CP2102's ceiling) moves the trigger->verdict latency
+  // from 40.7ms to 32.7ms and leaves `ping` at 44ms, UNCHANGED. The round trip
+  // is ~44ms of fixed overhead plus the bytes; the verdict path is only 165
+  // bytes, so there is barely any bytes to win. Baud is not the latency knob.
+  // What it does halve is big replies -- get_setup went 97.6ms -> 45.0ms --
+  // and that is a head-of-line problem better fixed by making the reply small
+  // than by making the wire fast.
   Serial.begin(230400);
   // Serial.begin(460800);
   // Serial.setHwFlowCtrlMode(0);

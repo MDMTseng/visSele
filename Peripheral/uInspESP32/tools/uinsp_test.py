@@ -738,6 +738,20 @@ ST_NAME = {ST_INIT: "INIT", ST_IDLE: "IDLE", ST_READY: "INSPECTION_MODE_READY",
 CAT_NA = 0xFFFF
 
 
+def _poll(link, timeout=3.0):
+    """The hot poll: state / plate_freq / step_count / q / err / cfg_crc.
+
+    122 bytes against get_running_stat's 1327 and get_setup's 1174, and those
+    two were the only way to read `state` and `step_count` -- so every wait
+    loop in here polled a full configuration document to read one counter. On
+    the wire that is ~52ms of transmission the firmware's main loop blocks in
+    Serial.write for, and that same loop is what drains ISRTrigQ (32 entries,
+    2 per object = ~16 objects of headroom). Use this wherever only the small
+    fields are wanted; _state still fetches the whole document for callers
+    that read pipe/gate/counters."""
+    return link.send({"type": "poll"}, timeout=timeout) or {}
+
+
 def _state(link):
     r = link.send({"type": "get_running_stat"}, timeout=3.0)
     return (r or {}).get("state"), r
@@ -862,7 +876,7 @@ def _pump_until(link, targets, timeout=25.0):
                 link.send_nowait({"type": "report", "tid": msg["tid"],
                                   "cat": CAT_NA})
                 answered += 1
-        st, _ = _state(link)
+        st = _poll(link).get("state")
         last = st
         if st in targets and st not in ST_TRANSIENT:
             return st, f"{ST_NAME.get(st, st)} after {time.time()-t0:.1f}s, {answered} sync pulses answered"
@@ -989,8 +1003,7 @@ def _wait_at_speed(link, settle=0.15, tries=30):
     # asking whether the plate is moving.
     _pump_cal(link)
     def ssc():
-        return (link.send({"type": "get_setup"}, timeout=3.0) or {}).get(
-            "step_count")
+        return _poll(link).get("step_count")
     prev = ssc()
     last = None
     for _ in range(tries):
