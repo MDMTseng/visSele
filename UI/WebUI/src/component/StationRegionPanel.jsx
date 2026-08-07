@@ -40,6 +40,40 @@ const EMPTY_REGION = { x: 0, y: 0, w: 0, h: 0 };
 // matters: a stale local draft must never quietly override what the machine is
 // actually running.
 const LS_KEY = 'visSele.station.draft.v1';
+
+// The camera ROI origin, and why everything here has to know about it.
+//
+// Regions are stored in FULL-SENSOR px so the station does not move when
+// somebody changes the camera crop -- it is a physical place on the machine.
+// The canvas, however, draws the streamed image as if it were the whole frame:
+// img_info.offsetX is 0 and full_width equals width even under a 1136x640 crop,
+// so canvas coordinates are ROI-LOCAL.
+//
+// Those two agreed exactly while the ROI was 0,0 and diverged the moment one was
+// set -- the saved boxes rendered a thousand pixels off the image, and a fresh
+// drag would have stored coordinates a thousand pixels wrong in the other
+// direction. So convert at the boundary: canvas + origin = stored, stored -
+// origin = canvas.
+//
+// The origin comes from the WebUI's own record of the ROI it asked for
+// (LS_INSP_ROI, written as FullSensorROI in InspectionUI). CAVEAT: that is the
+// REQUESTED rectangle. The camera snaps it to its alignment increments -- asked
+// 1017.47,331.94, got 1016,328 -- so a few px of residual remain. The right
+// long-term source is the core's own sampler->getOriginOffset(), which is what
+// the region filter actually compares against; it just is not sent to the UI
+// today.
+const LS_ROI_KEY = 'LS_INSP_ROI';
+function roiOrigin() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_ROI_KEY) || 'null');
+    if (Array.isArray(v) && v.length >= 2 && isFinite(v[0]) && isFinite(v[1]))
+      return { x: Math.round(v[0]), y: Math.round(v[1]) };
+  } catch (e) { log.warn('[station] LS_INSP_ROI unreadable', e); }
+  return { x: 0, y: 0 };
+}
+const toStored = (r, o) => ({ ...r, x: r.x + o.x, y: r.y + o.y });
+const toCanvas = (r, o) => (r && r.w > 0 && r.h > 0)
+  ? { ...r, x: r.x - o.x, y: r.y - o.y } : r;
 const lsLoad = () => {
   try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : null; }
   catch (e) { log.warn('[station] localStorage read failed', e); return null; }
@@ -126,8 +160,13 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
 
   // Mirror to the canvas whenever anything moves.
   useEffect(() => {
-    if (ecCanvas && typeof ecCanvas.SetStationOverlay === 'function')
-      ecCanvas.SetStationOverlay({ region, clean });
+    if (ecCanvas && typeof ecCanvas.SetStationOverlay === 'function') {
+      const o = roiOrigin();
+      ecCanvas.SetStationOverlay({
+        region: toCanvas(region, o),
+        clean: clean.map((c) => toCanvas(c, o)),
+      });
+    }
   }, [ecCanvas, region, clean]);
 
   // Drag-to-set. The canvas clears its own callback after one drag, so aiming
@@ -140,9 +179,12 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
       const r = rectFromDrag(info);
       setAiming(null);
       if (!r) { log.debug('[station] drag too small, ignored'); return; }
+      const o = roiOrigin();
+      const rs = toStored(r, o);           // canvas px -> full-sensor px
+      log.debug('[station] drag', r, '+ roi origin', o, '=', rs);
       setDirty(true);
-      if (aiming === 'region') setRegion(r);
-      else setClean((cs) => cs.map((c, i) => (i === aiming ? { ...c, ...r } : c)));
+      if (aiming === 'region') setRegion((p) => ({ ...p, ...rs }));
+      else setClean((cs) => cs.map((c, i) => (i === aiming ? { ...c, ...rs } : c)));
     });
     return () => { if (ecCanvas.SetROISettingCallBack) ecCanvas.SetROISettingCallBack(undefined); };
   }, [aiming, ecCanvas]);
