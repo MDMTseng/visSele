@@ -35,8 +35,8 @@ import socket, time, json, argparse
 
 PORT = 4099
 CONN = {"type": "CONNECT", "uart_name": "/dev/cu.usbserial-0001",
-        "baudrate": 115200, "machine_type": "uInspESP32",
-        "cat_ok": 1, "cat_ng": 2, "cam_idx": 1, "pairing": "timestamp"}
+        "baudrate": 230400, "machine_type": "uInspESP32",
+        "cat_ok": 3, "cat_ng": 1, "cam_idx": 1, "pairing": "timestamp"}
 
 
 M32 = 0xFFFFFFFF

@@ -75,7 +75,7 @@ class UInspLink:
     the async queue.
     """
 
-    def __init__(self, port, baud=115200, verbose=False):
+    def __init__(self, port, baud=230400, verbose=False):
         self.port = port
         self.baud = baud
         # Pin the modem lines BEFORE opening -- both DEASSERTED. This
@@ -3179,7 +3179,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", help="serial port, e.g. COM6")
-    ap.add_argument("--baud", type=int, default=115200)
+    ap.add_argument("--baud", type=int, default=230400)
     ap.add_argument("-v", "--verbose", action="store_true", help="log every frame")
     ap.add_argument("-o", "--out", default="uinsp_verify_report.md")
     sub = ap.add_subparsers(dest="cmd", required=True)

@@ -28,8 +28,8 @@ import socket, sys, time, json, random, argparse
 
 PORT = 4099
 CONN = {"type": "CONNECT", "uart_name": "/dev/cu.usbserial-0001",
-        "baudrate": 115200, "machine_type": "uInspESP32",
-        "cat_ok": 1, "cat_ng": 2, "cam_idx": 1, "pairing": "timestamp"}
+        "baudrate": 230400, "machine_type": "uInspESP32",
+        "cat_ok": 3, "cat_ng": 1, "cam_idx": 1, "pairing": "timestamp"}
 
 # The camera services ~35-36Hz and silently ignores triggers above that -- it
 # does not report a drop. Straddling that number is the whole point: below it

@@ -12,8 +12,8 @@ import socket, time, json, sys, datetime
 PORT = 4099
 OUT = '/private/tmp/claude-501/-Users-mdm-workspace-visSele/a4128deb-34af-40d7-aa32-0cf3aabee171/scratchpad/soak_results.txt'
 CONN = {"type": "CONNECT", "uart_name": "/dev/cu.usbserial-0001",
-        "baudrate": 115200, "machine_type": "uInspESP32",
-        "cat_ok": 1, "cat_ng": 2, "cam_idx": 1, "pairing": "timestamp"}
+        "baudrate": 230400, "machine_type": "uInspESP32",
+        "cat_ok": 3, "cat_ng": 1, "cam_idx": 1, "pairing": "timestamp"}
 
 
 def sock():
