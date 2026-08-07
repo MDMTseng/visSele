@@ -632,12 +632,41 @@ class PerifChannel:public Data_JsonRaw_Layer
       m.dev_us = (t_us != NULL) ? (uint64_t)*t_us : 0;
       m.tidx   = (cam != NULL) ? (int)*cam : 1;
       m.gate_pulse = (gp != NULL) ? (uint32_t)*gp : 0;
-      // gate_pulse == 0 is the device saying "no pipeline object behind this":
-      // a trig_cam_pulse fired straight at the camera for clock sync, not a
-      // part that came past the gate. Worth pairing -- it carries both
-      // timestamps, which is exactly what the offset is measured from -- but
-      // never worth reporting a verdict against.
-      m.sync_only = (m.gate_pulse == 0);
+      // "No pipeline object behind this" -- worth pairing, since it carries
+      // both timestamps and that is exactly what the offset is measured from,
+      // but never worth reporting a verdict against, because naming an object
+      // the device does not have faults it with INSP_RESULT_MATCHES_NO_OBJECT.
+      //
+      // gate_pulse == 0 ALONE is not that test, and getting it wrong stops the
+      // machine dead. Two different things announce with gate_pulse == 0:
+      //
+      //   trig_cam_pulse   a manual pulse fired straight at the camera. Sets
+      //                    gate_pulse=0 explicitly; there really is no object.
+      //   a CAL/RECAL pulse fired while THE PLATE IS STANDING STILL. gate_pulse
+      //                    is the plate position, so a stationary plate makes
+      //                    it 0 -- but there IS an object, and the device's
+      //                    clock calibration is blocked waiting for its report.
+      //
+      // Treating the second as sync-only meant the core absorbed every
+      // calibration pulse into its own clock model and reported none of them,
+      // while the device logged "CAMSYNC CAL pulse unanswered after 1500ms"
+      // twenty times and failed with CAM_CLOCK_CAL_FAILED (err 14) after 30 s.
+      //
+      // It hid for two days behind the plate: the RUN sequence is
+      // IDLE -> CAL (plate deliberately still) -> SPINUP -> READY, so a cold
+      // start always hits it, while anything that leaves the plate already
+      // turning never does. That is why the operator's "first press does
+      // nothing, second press calibrates" worked -- the first press started the
+      // plate -- and why a 5h soak passed 758 calibrations without a hint: its
+      // script set plate_freq and stepper_enable BEFORE enter_insp_mode, and
+      // 757 of the 758 were RECALs on a moving plate.
+      //
+      // Calibration objects are identifiable independently of the plate:
+      // CAL_TID_NEXT starts at 0x40000001 and that space is reserved for them
+      // (the same marker PerifTriggerPairing already uses to classify the
+      // residual). A manual trig_cam_pulse takes its tid from the host and
+      // never lands there.
+      m.sync_only = (m.gate_pulse == 0) && ((m.tid & 0x40000000LL) == 0);
       m.qs     = (qs   != NULL) ? (int)*qs   : -1;
       m.arrival_ms = perif_now_us() / 1000;
 
