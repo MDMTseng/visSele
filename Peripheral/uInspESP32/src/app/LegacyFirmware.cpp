@@ -990,6 +990,7 @@ RingBuf_Static<struct ISRTrigInfo,32,uint8_t> ISRTrigQ;
 // never behaviour.
 extern volatile uint32_t LOOP_N;        // defined beside firmwareLoop()
 extern volatile uint32_t LOOP_MAX_US;
+extern volatile uint32_t SEG_SVC_US, SEG_ST_US, SEG_RX_US, SEG_TX_US;
 volatile uint8_t  ISRTRIGQ_HWM = 0;    // deepest seen since the last reset
 volatile uint32_t ISRTRIGQ_OVF = 0;    // pushes that found it full
 static inline void isrTrigQMark()
@@ -3330,6 +3331,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     ISRTRIGQ_OVF=0;
     LOOP_N=0;
     LOOP_MAX_US=0;
+    SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
     GATE_ACCEPT=GATE_REJ_RATE=GATE_REJ_DIST=GATE_REJ_BUSY=0;
     // The clock model too. Leaving it out made every segmented experiment
     // read the previous segment's numbers: an A/B control appeared to show 12
@@ -3377,6 +3379,10 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["tqovf"]=ISRTRIGQ_OVF;
     retdoc["loopn"]=LOOP_N;
     retdoc["loopmax_us"]=LOOP_MAX_US;
+    retdoc["svc_us"]=SEG_SVC_US;
+    retdoc["st_us"]=SEG_ST_US;
+    retdoc["rx_us"]=SEG_RX_US;
+    retdoc["tx_us"]=SEG_TX_US;
     retdoc["err"]=ERROR_HIST.size() ? (int)*ERROR_HIST.getTail(0) : 0;
     retdoc["nerr"]=ERROR_HIST.size();
     retdoc["cfg_crc"]=MachineConfig::hash();
@@ -4612,6 +4618,19 @@ void firmwareSetup()
   // 2048 matches Data_Layer_Protocol's dataBuff, so a frame the protocol layer
   // can hold is a frame the UART can hold.
   Serial.setRxBufferSize(2048);
+  // A TX buffer, for the same reason the RX one is here: without it
+  // Serial.write BLOCKS until the last byte is on the wire. The announce drain
+  // is one cam_trig per pass at 105 bytes = 4.6ms at 230400, so clearing a
+  // queue of 32 costs the main loop 147ms -- measured, as SEG_TX_US, and it is
+  // the whole of the worst loop pass (svc and st are 0.0ms). Meanwhile the
+  // step ISR keeps pushing into that same 32-entry queue, and when it wins the
+  // race the machine stops with INSP_CAM_TRIG_INFO_CANNOT_BE_SENT.
+  //
+  // With a buffer the drain hands bytes to the UART ISR and returns, so the
+  // queue empties at memcpy speed instead of at wire speed. The wire is not
+  // the constraint: at 30 objects/s the announcements are ~13% of 230400.
+  // 4096 holds ~39 announcements, more than the ISRTrigQ can ever contain.
+  Serial.setTxBufferSize(4096);
   // 230400. Raised 2026-08-07 -- and NOT because the link was congested: at
   // 10 objects/s the wire ran at 969 B/s against 11520 B/s of capacity (8.4%)
   // and a `pong` answered in 9.6 ms. The 1.4-2.9 s figures quoted from the
@@ -4780,6 +4799,20 @@ static uint8_t recvBuf[20];
 volatile uint32_t LOOP_N=0;
 volatile uint32_t LOOP_MAX_US=0;
 
+// Where the worst pass spends its time. LOOP_MAX_US said 160ms and nothing
+// more; a number with no address is a number you can only guess about, and
+// the last guess (big replies blocking the drain) cost a full run to disprove.
+// Four segments, worst case each, in the order the loop runs them:
+//   svc   the periodic services (syncPulse/spinup/recal/phantomTrain)
+//   st    the state machine pass
+//   rx    read serial AND handle the command -- the reply is serialized and
+//         written here, so a 1174-byte get_setup lands in this segment
+//   tx    the announce drain: ISRTrigQ first, then the other queues
+volatile uint32_t SEG_SVC_US=0, SEG_ST_US=0, SEG_RX_US=0, SEG_TX_US=0;
+#define SEG_BEGIN() uint32_t _seg_t0=(uint32_t)esp_timer_get_time()
+#define SEG_END(V) do{ uint32_t _d=(uint32_t)esp_timer_get_time()-_seg_t0; \
+                       if(_d>(V)) (V)=_d; }while(0)
+
 void firmwareLoop()
 {
   {
@@ -4794,10 +4827,12 @@ void firmwareLoop()
     LOOP_N++;
   }
   esp_task_wdt_reset();
+  { SEG_BEGIN();
   syncPulseService();
   spinupService();
   recalService();
   phantomTrainService();
+  SEG_END(SEG_SVC_US); }
   // Drop a manual light hold when it expires, or the moment the machine leaves
   // IDLE -- entering inspection hands these pins back to the stage tasks.
   if(LIGHT_HOLD_deadline_ms!=0)
@@ -4847,8 +4882,10 @@ void firmwareLoop()
     }
   }
 
+  { SEG_BEGIN();
   SYS_STATE_Transfer(SYS_STATE_ACT::NOP);
   djrl.loop();
+  SEG_END(SEG_ST_US); }
   
   // Periodic system time debug print (1 second interval)
   {
@@ -4860,6 +4897,7 @@ void firmwareLoop()
     }
   }
   {
+    SEG_BEGIN();
     bool recvF=false;
     while(Serial.available() > 0) {
       recvF=true;
@@ -4889,10 +4927,12 @@ void firmwareLoop()
     {
       // djrl.dbg_printf("recv DONE");
     }
+    SEG_END(SEG_RX_US);
   }
 
 
   {
+    SEG_BEGIN();
     uint8_t buff[700];
     while(1)
     {
@@ -5030,6 +5070,7 @@ void firmwareLoop()
         }
       }
     }
+    SEG_END(SEG_TX_US);
   }
 
 
