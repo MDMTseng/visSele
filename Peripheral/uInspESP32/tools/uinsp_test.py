@@ -773,36 +773,58 @@ def _widen_selector_window(link, orig_spo):
 
 
 ST_CAL, ST_SPINUP, ST_RECAL = 102, 103, 104
+# States the machine passes THROUGH on its way somewhere. Waiting must never
+# be satisfied by one of these: that was the bug in every wait here -- they
+# asked "have we left X" when the question is "have we arrived at Y", and a
+# board caught mid-sequence answered yes to the first and no to the second.
+ST_TRANSIENT = (ST_INIT, ST_CAL, ST_SPINUP, ST_RECAL)
 
-def _pump_cal(link, timeout=20.0):
-    """Answer the calibration pulses until the board leaves CAL.
 
-    INSPECTION_MODE_CAL fires phantom "sync" pulses and waits for CAM_SYNC to
-    become valid before handing over to READY. Only a report carrying a
-    non-zero cam_ts teaches it, and the answer has to arrive while the pulse is
-    still the outstanding one -- so somebody has to be draining and replying
-    throughout, which nothing here was doing. The plate is deliberately
-    STOPPED during CAL ("gate shut, feeder held"), so _wait_at_speed's
-    step-count poll can never be the thing that gets past this state either: it
-    waits for motion that CAL is designed not to produce.
+def _gate_of(link):
+    """The gate's own rejection counters -- the evidence for or against
+    'the gate dropped it'."""
+    stat = link.send({"type": "get_running_stat"}, timeout=3.0) or {}
+    return stat.get("gate") or {}
 
-    cam_ts itself is injected by the link (see Link._with_cam_ts).
 
-    Returns (state, detail). A board that is not in CAL is returned untouched,
-    so this is safe to call unconditionally.
+def _pump_until(link, targets, timeout=25.0):
+    """Answer the calibration pulses while waiting for a settled state.
+
+    INSPECTION_MODE_CAL fires phantom "sync" pulses and hands over only once
+    CAM_SYNC is valid, and CAM_SYNC learns only from a report carrying a
+    non-zero cam_ts (Link._with_cam_ts supplies it). Nothing here was
+    answering, so CAL never finished -- and _wait_at_speed cannot be the thing
+    that gets past it either: CAL stops the plate on purpose, so a poll for
+    plate motion waits for what CAL is designed to prevent.
+
+    `targets` is what counts as arrival. Transient states never do, however
+    long they last, which is what makes this safe to call immediately after
+    enter_insp_mode / clear_error -- before the board has even left IDLE.
+
+    Returns (state, detail); state is None if the deadline passed.
     """
     t0 = time.time()
     answered = 0
-    st, _ = _state(link)
-    while st in (ST_CAL, ST_RECAL) and time.time() - t0 < timeout:
+    last = None
+    while time.time() - t0 < timeout:
         for _, msg in link.drain_async():
             if msg.get("type") == "cam_trig" and msg.get("tid") is not None:
                 link.send_nowait({"type": "report", "tid": msg["tid"],
                                   "cat": CAT_NA})
                 answered += 1
-        time.sleep(0.01)
         st, _ = _state(link)
-    return st, f"answered {answered} sync pulses in {time.time()-t0:.1f}s"
+        last = st
+        if st in targets and st not in ST_TRANSIENT:
+            return st, f"{ST_NAME.get(st, st)} after {time.time()-t0:.1f}s, {answered} sync pulses answered"
+        time.sleep(0.02)
+    return None, (f"timeout after {timeout:.0f}s in {ST_NAME.get(last, last)}, "
+                  f"{answered} sync pulses answered")
+
+
+def _pump_cal(link, timeout=25.0):
+    """Get to a settled state, whatever it is. Used by callers that only need
+    the board to stop being mid-sequence."""
+    return _pump_until(link, (ST_READY, ST_IDLE, ST_ERROR, ST_FATAL), timeout)
 
 
 def _wait_at_speed(link, settle=0.15, tries=30):
@@ -892,17 +914,45 @@ def bench(link, rep, count, freq, interval_ms, cat):
     fired, seen, reported = 0, [], []
     answered = set()
 
+    # CAL's own sync pulses are objects too, and they are still walking to the
+    # camera when this starts: they announce during the fire loop and used to
+    # be counted as ours. B.5 then read "fired=10 objects=21" and called it a
+    # failure of one-object-per-pulse. Everything above this tid belongs to us.
+    tid_base = 0
+    for _, m in link.drain_async():
+        if m.get("type") == "cam_trig" and isinstance(m.get("tid"), int):
+            tid_base = max(tid_base, m["tid"])
+    _p = (link.send({"type": "get_running_stat"}, timeout=3.0) or {}).get("pipe") or {}
+    cal_inflight = _p.get("registered") or 0
+
     def _pump():
         for _, msg in link.drain_async():
             if msg.get("type") != "cam_trig":
                 continue
             tid = msg.get("tid")
-            seen.append(tid)
+            if isinstance(tid, int) and tid <= tid_base:
+                continue                      # a calibration object, not ours
             if tid not in answered:
                 link.send_nowait({"type": "report", "tid": tid, "cat": cat})
                 answered.add(tid)
                 reported.append(tid)
 
+    spo_now = dict((link.send({"type": "get_setup"}, timeout=3.0) or {})
+                   .get("stage_pulse_offset") or {})
+    cam_ticks0 = max((v for k, v in spo_now.items()
+                      if k.startswith("CAM") and k.endswith("_on")), default=0)
+    travel0 = (cam_ticks0 / (2.0 * freq)) if freq else 0.0
+    if cal_inflight:
+        # Let the calibration objects announce and be counted into tid_base,
+        # rather than into ours.
+        t_end = time.time() + travel0 * 1.4 + 0.3
+        while time.time() < t_end:
+            for _, m in link.drain_async():
+                if m.get("type") == "cam_trig" and isinstance(m.get("tid"), int):
+                    tid_base = max(tid_base, m["tid"])
+                    link.send_nowait({"type": "report", "tid": m["tid"],
+                                      "cat": CAT_NA})
+            time.sleep(0.005)
     for i in range(count):
         link.send({"type": "trig_phantom_pulse"}, timeout=3.0)
         fired += 1
@@ -911,7 +961,22 @@ def bench(link, rep, count, freq, interval_ms, cat):
             _pump()
             time.sleep(0.002)
 
-    drain_until = time.time() + 0.5
+    # Wait for the last part to REACH THE CAMERA, not for a fixed half second.
+    #
+    # An object is announced when it arrives at the CAM stage, and that is a
+    # journey: CAM1_on ticks at 2*plate_freq ticks/s. With this suite's own
+    # defaults (CAM1_on 9315, plate_freq 1000) it takes 4.7s, and the old
+    # deadline gave the whole run 2.7s -- so B.5 reported "fired=10 objects=0,
+    # newPulseEvent rejected them", naming a gate that had rejected nothing
+    # (gate.rej_dist = rej_rate = 0, pipe.registered = 7 parts in flight).
+    #
+    # It is worth being precise about what that cost: a test that says the
+    # gate dropped the parts sends you to read the gate. The parts were fine
+    # and on their way.
+    cam_ticks = max((v for k, v in (spo_now or {}).items() if k.startswith("CAM")
+                     and k.endswith("_on")), default=0)
+    travel_s = (cam_ticks / (2.0 * freq)) if freq else 0.0
+    drain_until = time.time() + max(0.5, travel_s * 1.4 + 0.5)
     while time.time() < drain_until:       # let the last parts announce/clear
         _pump()
         time.sleep(0.005)
@@ -922,9 +987,11 @@ def bench(link, rep, count, freq, interval_ms, cat):
     rep.add("B.5", "one object per pulse, announced twice (CAM1+CAM2)",
             len(objs) == fired and twice,
             f"fired={fired} objects={len(objs)} announcements={len(seen)}"
-            + ("  (newPulseEvent rejects pulses closer than "
-               "SYS_MIN_PULSE_TIME_SEP_us or 3.5mm of travel -- raise "
-               "--interval-ms)" if len(objs) < fired
+            + (f"  (gate rejects: rate={_gate_of(link).get('rej_rate')} "
+               f"dist={_gate_of(link).get('rej_dist')} "
+               f"busy={_gate_of(link).get('rej_busy')}; if all zero the parts "
+               f"were accepted and simply had not reached CAM yet)"
+               if len(objs) < fired
                else ("" if twice else f"  (not 2 per object: {per})")))
 
     if objs:
@@ -936,6 +1003,18 @@ def bench(link, rep, count, freq, interval_ms, cat):
     rep.add("B.7", "no error state after a full reported run", st == ST_READY,
             f"state={st} ({ST_NAME.get(st, '?')}) "
             f"ERROR_HIST={_errors_of(stat)}")
+
+    # The selector is further down the plate than the camera, so a part can be
+    # reported and counted at CAM while still travelling to SEL. Reading the
+    # counter the moment the last report goes out gave "SEL1: 0 -> 20
+    # (reported 21)" -- an off-by-one that is really a not-there-yet.
+    sel_ticks = max((v for k, v in (spo_now or {}).items()
+                     if k.startswith("SEL") and k.endswith("_off")), default=0)
+    sel_wait = ((sel_ticks / (2.0 * freq)) if freq else 0.0) * 1.4 + 0.4
+    t_end = time.time() + sel_wait
+    while time.time() < t_end:
+        _pump()
+        time.sleep(0.005)
 
     now_counts, _ = _counts(link)
     key = {1: "SEL1", 2: "SEL2", 3: "SEL3", CAT_NA: "NA"}.get(cat)
@@ -960,6 +1039,11 @@ def bench(link, rep, count, freq, interval_ms, cat):
             f"(expect INSP_RESULT_MATCHES_NO_OBJECT=1)")
 
     r = link.send({"type": "clear_error"}, timeout=3.0)
+    # Clearing the error hands the board back to inspection mode, which starts
+    # at CAL -- and CAL only finishes if somebody answers its sync pulses. Read
+    # the state before that and the answer is 102 every time, which is what
+    # this check used to report as "clear_error does not recover".
+    _pump_until(link, (ST_READY, ST_IDLE, ST_ERROR))
     st, _ = _state(link)
     rep.add("B.10", "clear_error recovers", st in (ST_IDLE, ST_READY),
             f"state={st} ({ST_NAME.get(st, '?')})")
@@ -970,19 +1054,41 @@ def bench(link, rep, count, freq, interval_ms, cat):
     # a regression shows up as a hang or reboot rather than a clean fault.
     print("\n  Negative check: a part with no verdict at all (ISR error path,")
     print("  commit 535d92fb). A hang or reboot here is the regression.")
+    # How many unjudged parts it takes. UNANSWERED_STOP_AFTER is configurable
+    # and this machine runs it at 10, so firing a single phantom and expecting
+    # OBJECT_HAS_NO_INSP_RESULT tested a policy the board stopped having. Read
+    # it and fire enough to cross the threshold.
+    _setup_now = link.send({"type": "get_setup"}, timeout=3.0) or {}
+    stop_after = _setup_now.get("unanswered_stop_after")
+    if not isinstance(stop_after, int) or stop_after < 1:
+        stop_after = 1
     link.send({"type": "enter_insp_mode"}, timeout=3.0)
+    # CAL first, and CAL shuts the gate: a phantom fired there is rejected, so
+    # it never becomes an object, never goes unjudged, and the fault this check
+    # is named after cannot happen. Get to READY before firing.
+    cal_st, cal_detail = _pump_until(link, (ST_READY, ST_ERROR))
     time.sleep(0.3)
     link.drain_async()
-    link.send({"type": "trig_phantom_pulse"}, timeout=3.0)
-    time.sleep(2.0)
+    for _ in range(stop_after + 1):
+        link.send({"type": "trig_phantom_pulse"}, timeout=3.0)
+        time.sleep(0.12)
+    # They fault at SWITCH, which is the far end of the journey -- wait for the
+    # last one to get there rather than for a fixed two seconds.
+    sw = (spo_now or {}).get("SWITCH") or 0
+    time.sleep(min(30.0, ((sw / (2.0 * freq)) if freq else 0.0) * 1.4 + 2.0))
 
     st, stat = _state(link)
     rep.add("B.11", "board still answers after the ISR error path",
             st is not None, "no reply = hang/reboot = regression")
-    rep.add("B.12", "unjudged part faults cleanly", st == ST_ERROR,
-            f"state={st} ({ST_NAME.get(st, '?')}) "
-            f"ERROR_HIST={(stat or {}).get('error_hist')} "
-            f"(expect OBJECT_HAS_NO_INSP_RESULT=2)")
+    cal_ok = cal_st == ST_READY
+    rep.add("B.12", "unjudged part faults cleanly",
+            (st == ST_ERROR) if cal_ok else None,
+            (f"state={st} ({ST_NAME.get(st, '?')}) "
+             f"ERROR_HIST={(stat or {}).get('error_hist')} "
+             f"(expect OBJECT_HAS_NO_INSP_RESULT=2 after "
+             f"{stop_after} unjudged parts)") if cal_ok else
+            (f"inconclusive: never left CAL ({cal_detail}) -- the phantom "
+             f"would have been gate-rejected, so a missing fault says nothing"))
 
     # --- restore ----------------------------------------------------------
     link.send({"type": "clear_error"}, timeout=3.0)
@@ -1805,9 +1911,12 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
                     f"(a save with the timer ISR live is the flash-cache hazard)")
 
         if verify:
+            # None (MANUAL) when nothing was sampled: a run that faulted before
+            # the first quiesce has not disproved anything, and reporting that
+            # as a failure buries the real one under a second red line.
             rep.add("C.6", "actuator edges matched the published offset in "
                     "every spot-check",
-                    checks_done > 0 and checks_ok == checks_done,
+                    (checks_ok == checks_done) if checks_done > 0 else None,
                     f"{checks_ok}/{checks_done} spot-checks matched"
                     + (f", {checks_skipped} inconclusive (link glitch)"
                        if checks_skipped else "")
