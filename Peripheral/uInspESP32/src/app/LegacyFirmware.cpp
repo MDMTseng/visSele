@@ -580,6 +580,12 @@ CamClockSync CAM_SYNC;
 
 // Gate->report latency, updated by the report handler (main loop only),
 // reported by get_running_stat, zeroed by reset_running_stat.
+// Repeated reports for an object that already had a verdict. See the
+// worst-wins block in the report handler: N counts them, DIFF counts the ones
+// that disagreed with what was already there, WORSE counts the ones severe
+// enough to replace it. DIFF>0 with WORSE==0 means later frames were kinder
+// than earlier ones, which under last-wins would have released those parts.
+uint32_t REP_REPEAT_N=0, REP_REPEAT_DIFF_N=0, REP_REPEAT_WORSE_N=0;
 uint32_t REP_LAT_N=0;
 uint64_t REP_LAT_SUM_US=0;
 uint32_t REP_LAT_MAX_US=0;
@@ -3296,6 +3302,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     // disagreements that were entirely leftovers, which nearly produced the
     // wrong conclusion about which matching mode is safe.
     CAM_SYNC.reset();
+    REP_REPEAT_N=REP_REPEAT_DIFF_N=REP_REPEAT_WORSE_N=0;
     REP_LAT_N=0;
     REP_LAT_SUM_US=0;
     REP_LAT_MAX_US=0;
@@ -3498,6 +3505,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     }
     {
       JsonObject jL=retdoc.createNestedObject("report_latency");
+      jL["repeat"]=REP_REPEAT_N;
+      jL["repeat_diff"]=REP_REPEAT_DIFF_N;
+      jL["repeat_worse"]=REP_REPEAT_WORSE_N;
       jL["n"]=REP_LAT_N;
       jL["avg_us"]=REP_LAT_N ? (uint32_t)(REP_LAT_SUM_US/REP_LAT_N) : 0;
       jL["max_us"]=REP_LAT_MAX_US;
@@ -3668,9 +3678,53 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
         REP_LAT_SUM_US+=lat;
         if(lat>REP_LAT_MAX_US)REP_LAT_MAX_US=lat;
       }
-      tarP->insp_status=cat;
+      // A second report for an object that already has a verdict: keep the
+      // WORSE one.
+      //
+      // cat is the severity class and SMALLER IS WORSE -- SEL1 is the most
+      // severe reject, the last selector is OK. PERIF_CAT_NA is 0xFFFF, larger
+      // than any selector, so "no verdict" is automatically the least severe
+      // and a real verdict beats it without a special case.
+      //
+      // This was an unconditional overwrite, i.e. last writer wins, and that
+      // has exactly one bad direction: an NG overwritten by a later OK lets a
+      // defective part through the selectors, while the reverse only costs air.
+      // The same asymmetry the stage pulse widths are rounded up for -- too
+      // long loses nothing, too short loses a part.
+      //
+      // It cannot currently happen: the camera free-runs at ~70 fps, a frame
+      // every 14.3 ms, against a 2*TOL_US = 10 ms window, so no two frames land
+      // in one object's window. It becomes reachable above 100 fps -- the same
+      // 100 that bounds the object rate, for the same reason (nothing may be
+      // closer than 2*TOL_US to anything else). A small ROI gets there.
+      //
+      // UNSET and SKIP are negative sentinels, so they must not be fed to the
+      // comparison; both mean "no verdict yet" and any real verdict replaces
+      // them, exactly as before.
+      const bool had_verdict = (tarP->insp_status!=insp_status_UNSET &&
+                                tarP->insp_status!=insp_status_SKIP);
+      if(!had_verdict)
+      {
+        tarP->insp_status=cat;
+      }
+      else
+      {
+        // Counted whether or not it changes anything. An overwrite left no
+        // trace at all before this, which is why nothing could be said about
+        // how often it happens -- the one blind spot left after 2026-08-07,
+        // and the only one of that day's findings with no instrument.
+        REP_REPEAT_N++;
+        if(cat!=tarP->insp_status) REP_REPEAT_DIFF_N++;
+        if(cat<tarP->insp_status)
+        {
+          REP_REPEAT_WORSE_N++;
+          tarP->insp_status=cat;
+        }
+      }
       // Which verdict landed on which object, in the order the device applied
-      // them.
+      // them. The APPLIED value, not the received one -- with worst-wins those
+      // can differ, and what a slip check needs to know is what the machine
+      // actually did. REP_REPEAT_DIFF_N is what explains a difference.
       //
       // Counters cannot show a slip. If the pairing is off by one, SEL1 and
       // SEL2 still come out roughly 50/50 and every part still gets an answer
@@ -3680,7 +3734,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
       // (INSP_PERIF_VERDICT_PATTERN in the core) and a slip shows up here as
       // the block boundary sitting on the wrong tid.
       VERD_LOG[VERD_W].tid = tarP->tid;
-      VERD_LOG[VERD_W].cat = cat;
+      VERD_LOG[VERD_W].cat = tarP->insp_status;
       VERD_W = (uint16_t)((VERD_W+1)%VERD_LOG_N);
       if(VERD_N<VERD_LOG_N) VERD_N++;
       rspAck=true;
@@ -4486,7 +4540,20 @@ void firmwareSetup()
   // 2048 matches Data_Layer_Protocol's dataBuff, so a frame the protocol layer
   // can hold is a frame the UART can hold.
   Serial.setRxBufferSize(2048);
-  Serial.begin(115200);//230400);
+  // 230400. Raised 2026-08-07 -- and NOT because the link was congested: at
+  // 10 objects/s the wire ran at 969 B/s against 11520 B/s of capacity (8.4%)
+  // and a `pong` answered in 9.6 ms. The 1.4-2.9 s figures quoted from the
+  // perif log were `now - last_tx_us` on UNSOLICITED announcements, which is
+  // not a round trip at all (CORE0_1_CAVEATS J14).
+  //
+  // What it does buy is headroom for the rates being tested next: 30 objects/s
+  // triples the announcement traffic to ~25% of 115200, and the margin for a
+  // burst is what disappears first.
+  //
+  // Every host that opens this port must match: the CONN dicts in
+  // tools/regress_watch.py and tools/slip_probe.py, and whatever the WebUI
+  // sends in its CONNECT.
+  Serial.begin(230400);
   // Serial.begin(460800);
   // Serial.setHwFlowCtrlMode(0);
   // // setup_comm();
