@@ -1128,9 +1128,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   EditDBInfoSync(edit_DB_info,updateImgOnly=false) {
     if(updateImgOnly==false)
     {
-      // updateImgOnly==false is InspectionUI telling us a NEW image arrived, so
-      // this is the moment the station state and the image agree.
-      this.StationOverlayFrameAdvance();
+      // updateImgOnly==false is InspectionUI telling us a NEW image arrived.
+      // Swapping edit_DB_info here is what pairs BOTH the measurement overlay
+      // and the station state to this frame -- draw_station_overlay reads the
+      // station block straight out of it, so there is nothing else to advance.
       this.edit_DB_info = edit_DB_info;
       this.db_obj = edit_DB_info._obj;
       this.rUtil.setEditor_db_obj(this.db_obj);
@@ -1203,44 +1204,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   //
   // Set by the panel as {region:{x,y,w,h}, clean:[{x,y,w,h,name}], pending:{...}}
   // in full-sensor px; undefined draws nothing.
-  // Geometry is the operator's, state is the machine's, and they pair with
-  // different things.
-  //
-  // The boxes must move the instant they are dragged -- they belong to the
-  // person holding the mouse. The state (clean/dirty, the verdict) belongs to a
-  // FRAME, and reports outnumber images better than 2:1 above the 6fps image
-  // cap, so adopting state as it arrives puts it on the wrong picture. Caught in
-  // a photo of the running machine: a clean region reading "乾淨 0.033mm²" green
-  // with a part plainly sitting inside it.
-  //
-  // So geometry lands now, state waits for the image it describes.
-  SetStationOverlay(ov) {
-    const prev = this.stationOverlay || {};
-    this.stationPending = { result: ov.result, cleanState: (ov.clean || []).map(
-      (c) => ({ dirty: c.dirty, detail: c.detail })) };
-    this.stationOverlay = {
-      region: ov.region,
-      clean: (ov.clean || []).map((c, i) => ({ ...c,
-        // keep showing the state that matches the image on screen
-        dirty:  prev.clean && prev.clean[i] ? prev.clean[i].dirty  : undefined,
-        detail: prev.clean && prev.clean[i] ? prev.clean[i].detail : '' })),
-      result: prev.result,
-      pending: ov.pending,
-    };
-    this.draw();
-  }
-
-  // Called when a new image has actually arrived: promote the state that came
-  // with it.
-  StationOverlayFrameAdvance() {
-    if (!this.stationPending || !this.stationOverlay) return;
-    const p = this.stationPending;
-    this.stationOverlay = { ...this.stationOverlay,
-      result: p.result,
-      clean: (this.stationOverlay.clean || []).map((c, i) => ({ ...c,
-        dirty:  p.cleanState[i] ? p.cleanState[i].dirty  : undefined,
-        detail: p.cleanState[i] ? p.cleanState[i].detail : '' })) };
-  }
+  // GEOMETRY ONLY. The boxes belong to the person dragging them, so they land
+  // immediately. The STATE is not passed in at all -- see draw_station_overlay.
+  SetStationOverlay(ov) { this.stationOverlay = ov; this.draw(); }
 
   draw_station_overlay() {
     const ov = this.stationOverlay;
@@ -1299,7 +1265,29 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
                    ctx.fillText(sub, x + pad, y + h + fs * 2.2 + pad); }
     };
 
-    const R = ov.result || {};
+    // State comes from edit_DB_info, NOT from the panel.
+    //
+    // It has to travel with the image or it draws on the wrong picture, and
+    // edit_DB_info is already the snapshot InspectionUI swaps only when a new
+    // image arrives -- so reading it here makes the pairing automatic.
+    //
+    // Routing it through the panel instead was the previous attempt and it
+    // could not work: the panel writes state from a useEffect while the canvas
+    // is driven from a class componentWillUpdate. When React batches a report
+    // and an image into one render, the canvas runs first and promotes the
+    // PREVIOUS state onto the new image. More batching at higher rates, which
+    // is exactly where the symptom lived. One snapshot, one gate, no race.
+    const ST = (this.edit_DB_info && this.edit_DB_info.station) || null;
+    const R = (() => {
+      if (!ST || ST.result === undefined) return {};
+      const cat = ST.cat;
+      const catTxt = (cat !== undefined && cat !== 65535) ? ('SEL' + cat) : 'NA';
+      if (ST.result === 0)  return { tone: 'ok', text: 'OK → ' + catTxt };
+      if (ST.result === -1) return { tone: 'ng', text: 'NG → ' + catTxt };
+      return { tone: 'na', text: 'NA → 不動作'
+               + (ST.result_obj === 0 ? '(零件本身 OK,場地或守門擋下)' : '') };
+    })();
+    const cleanState = (ST && Array.isArray(ST.clean)) ? ST.clean : [];
     // NO fill on the inspection region, in either layer. What is inside it is
     // the part being measured -- the one thing in the frame worth looking at --
     // and a tint over it costs contrast on exactly the edges the measurement is
@@ -1314,6 +1302,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         ov.region ? '檢驗區域' : null, R.text || null, rState);
 
     (ov.clean || []).forEach((c, i) => {
+      const m = cleanState.find((z) => z.name === (c.key || c.name || ('clean' + (i + 1))));
+      c = { ...c, dirty: m ? m.dirty : undefined,
+            detail: m ? (Number(m.dark_area_mm2).toFixed(3) + 'mm²') : '' };
       const known = c.dirty !== undefined;
       const st = !known ? null
                : c.dirty ? { color: '#ff5252', fill: 'rgba(255,82,82,0.12)' }

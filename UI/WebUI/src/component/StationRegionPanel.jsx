@@ -177,33 +177,20 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
   // Mirror to the canvas whenever anything moves.
   useEffect(() => {
     if (ecCanvas && typeof ecCanvas.SetStationOverlay === 'function') {
+      // Geometry only. The state (verdict, clean/dirty) is read by the canvas
+      // straight out of the image-paired snapshot -- pushing it from here raced
+      // the image, because a useEffect and a componentWillUpdate do not order.
       const o = origin;
-      // STATUS_SUCCESS 0, STATUS_FAILURE -1, STATUS_NA -128, STATUS_UNSET -100.
-      // `result` is what the machine receives; `result_obj` is what the object's
-      // own judges said. Showing both when they differ is the whole point --
-      // "OK 但場地髒" is a different problem from "這顆不良".
-      const R = station && station.result !== undefined ? (() => {
-        const r = station.result, ro = station.result_obj;
-        const cat = station.cat;
-        const catTxt = (cat !== undefined && cat !== 65535) ? ('SEL' + cat) : 'NA';
-        if (r === 0)  return { tone: 'ok', text: 'OK → ' + catTxt };
-        if (r === -1) return { tone: 'ng', text: 'NG → ' + catTxt };
-        return { tone: 'na',
-                 text: 'NA → 不動作' + (ro === 0 ? '(零件本身 OK,場地或守門擋下)' : '') };
-      })() : null;
       ecCanvas.SetStationOverlay({
         region: toCanvas(region, o),
-        clean: clean.map((c, i) => {
-          const m = station && Array.isArray(station.clean)
-            ? station.clean.find((z) => z.name === (c.name || ('clean' + (i + 1)))) : null;
-          return { ...toCanvas(c, o),
-                   dirty: m ? m.dirty : undefined,
-                   detail: m ? (Number(m.dark_area_mm2).toFixed(3) + 'mm²') : '' };
-        }),
-        result: R,
+        // `key` matches the core's per-region name; `name` is what gets drawn.
+        // Folding them together made the box caption read "clean1".
+        clean: clean.map((c, i) => ({ ...toCanvas(c, o),
+                                      key: c.name || ('clean' + (i + 1)),
+                                      name: c.name || ('淨空' + (i + 1)) })),
       });
     }
-  }, [ecCanvas, region, clean, origin.x, origin.y, station]);
+  }, [ecCanvas, region, clean, origin.x, origin.y]);
 
   // Drag-to-set. The canvas clears its own callback after one drag, so aiming
   // is a one-shot: press the target, drag once, done. That is deliberate --
