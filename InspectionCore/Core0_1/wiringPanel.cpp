@@ -6123,6 +6123,18 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
     int stat_sec = FeatureReport_sig360_circle_line_single::STATUS_UNSET;
 
+    // Why the verdict is what it is.
+    //
+    // `stat` starts at NA and four separate conditions below can leave it there,
+    // none of which used to say anything. Measured on the live machine over
+    // 10995 verdicts, 46.6% were decided by one of them -- i.e. nearly half of
+    // every part's fate was settled by a branch that wrote nothing to the log,
+    // and "why did that part go to NA" was not answerable after the fact.
+    //
+    // Only the rejecting cases log, so a healthy run stays quiet.
+    // See docs/UINSP_VERDICT_PATH.md for the whole chain.
+    const char *na_reason = NULL;
+
     if (report && report->type == FeatureReport::binary_processing_group &&
         report->data.binary_processing_group.reports &&
         report->data.binary_processing_group.labeledData)
@@ -6132,6 +6144,12 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
       vector<acv_LabeledData> *ldat = report->data.binary_processing_group.labeledData;
 
+      if (reports.size() != 1)
+        na_reason = (reports.size() == 0) ? "no group sub-report" : "more than one group sub-report";
+      else if (!reports[0] || reports[0]->type != FeatureReport::sig360_circle_line ||
+               !reports[0]->data.sig360_circle_line.reports)
+        na_reason = "group sub-report is not a sig360_circle_line";
+
       if (reports.size() == 1 && reports[0] &&
           reports[0]->type == FeatureReport::sig360_circle_line &&
           reports[0]->data.sig360_circle_line.reports)
@@ -6139,6 +6157,24 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
         vector<FeatureReport_sig360_circle_line_single> &srep =
             *(reports[0]->data.sig360_circle_line.reports);
         stat = FeatureReport_sig360_circle_line_single::STATUS_NA;
+
+        if (srep.size() == 0)          na_reason = "no object located";
+        else if (srep.size() != 1)     na_reason = "more than one object located";
+        else if (srep[0].labeling_idx < 0)                     na_reason = "labeling_idx < 0";
+        else if (srep[0].labeling_idx >= (int)ldat->size())
+          // On the shape_based (raw-gray) path FeatureManager_group leaves
+          // labeledData EMPTY, so this is `0 >= 0` for every frame. If that is
+          // what you are seeing here, the object WAS located -- the verdict is
+          // being thrown away by a bounds check against a vector the locator
+          // never fills.
+          na_reason = (ldat->empty())
+                        ? "labeledData EMPTY (shape_based raw-gray path?) -- located but unjudgeable"
+                        : "labeling_idx past end of labeledData";
+
+        if (na_reason)
+          LOGI("verdict NA: %s (reports:%zu srep:%zu labeling_idx:%d ldat:%zu)",
+               na_reason, reports.size(), srep.size(),
+               srep.empty() ? -1 : srep[0].labeling_idx, ldat->size());
 
         if (srep.size() == 1 &&
             srep[0].labeling_idx >= 0 &&
@@ -6153,6 +6189,12 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
           }
           float extra_area_ratio = (float)(totalArea - insp_tar_area) / totalArea;
           LOGI("totalArea:%d insp_tar_area:%d extra_area_ratio:%f", totalArea, insp_tar_area, extra_area_ratio);
+          // The 0.1 is a literal, it has no def key and no UI, and on this
+          // machine 14.8% of frames land within +/-0.05 of it -- so it is not
+          // filtering outliers, it is adjudicating. Say so when it rejects.
+          if (extra_area_ratio >= 0.1)
+            LOGI("verdict NA: extra_area_ratio %.3f >= 0.1 (hardcoded) -- something else in frame",
+                 extra_area_ratio);
           if (extra_area_ratio < 0.1)
           {
             vector<FeatureReport_judgeReport> &jrep = *(srep[0].judgeReports);
