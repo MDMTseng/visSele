@@ -22,6 +22,7 @@ import Slider from 'antd/lib/slider';
 import Switch from 'antd/lib/switch';
 import Tooltip from 'antd/lib/tooltip';
 import CameraOutlined from '@ant-design/icons/CameraOutlined';
+import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
@@ -1036,6 +1037,7 @@ export function UINSP_ESP32_MINI() {
   const mounted = useRef(true);
   const [busy, setBusy] = useState(false);
   const [snapping, setSnapping] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [why, setWhy] = useState('');
   const [rpmSel, setRpmSel] = useState(undefined);   // slider position, in rpm
 
@@ -1128,48 +1130,75 @@ export function UINSP_ESP32_MINI() {
           which is the wrong way round for something that starts a spinning
           plate. The state goes underneath, in small text, where it is read and
           not pressed. */}
-      <Button
-        block
-        size="large"
-        type={running || starting ? 'default' : 'primary'}
-        danger={running || starting}
-        loading={busy}
-        disabled={inError || (!running && !starting && !(lastSpeedRef.current > 0))}
-        onClick={() => {
-          const on = !(running || starting);
-          setBusy(true);
-          dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
-            if (!api) { setBusy(false); return; }
-            runSequence(api, on, lastSpeedRef.current)
-              .then((w) => { if (mounted.current) setWhy(w || ''); })
-              .catch((e) => { if (mounted.current) setWhy(String(e)); })
-              .then(() => { if (mounted.current) setBusy(false); });
-          }));
-        }}
-        style={{ height: 34, fontSize: 15, fontWeight: 700, marginBottom: 3 }}
-      >{running || starting ? '停止' : '啟動'}</Button>
-
-      {/* One lit frame, for setting the station up on a stopped plate.
-          Only offered while stopped: the firmware refuses a manual light hold
-          once the stage machine is driving the pins, and it is right to -- a
-          hold would be stomped within milliseconds and read as a fault. */}
-      {!(running || starting) && (
-        <Button size="small" icon={<CameraOutlined />} loading={snapping}
-          style={{ marginBottom: 3, fontSize: 11, height: 22,
-                   width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
+      {/* One row, 50:25:25. The three things you press on this panel: start it,
+          look at it, and clear what stopped it. Fixed proportions rather than
+          conditional rendering -- a button that vanishes when the machine state
+          changes moves the other two under the operator's finger. They disable
+          instead. */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 3 }}>
+        <Button
+          style={{ flex: 2, minWidth: 0, height: 34, fontSize: 15, fontWeight: 700, padding: 0 }}
+          size="large"
+          type={running || starting ? 'default' : 'primary'}
+          danger={running || starting}
+          loading={busy}
+          disabled={inError || (!running && !starting && !(lastSpeedRef.current > 0))}
           onClick={() => {
-            setSnapping(true); setWhy('');
+            const on = !(running || starting);
+            setBusy(true);
             dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
-              if (!api || typeof api.camSnapWithLight !== 'function') {
-                setSnapping(false); setWhy('韌體或介面不支援 camSnapWithLight'); return;
-              }
-              api.camSnapWithLight()
-                .catch((e) => { if (mounted.current) setWhy('拍照失敗: ' + String(e)); })
-                .then(() => { if (mounted.current) setSnapping(false); });
+              if (!api) { setBusy(false); return; }
+              runSequence(api, on, lastSpeedRef.current)
+                .then((w) => { if (mounted.current) setWhy(w || ''); })
+                .catch((e) => { if (mounted.current) setWhy(String(e)); })
+                .then(() => { if (mounted.current) setBusy(false); });
             }));
           }}
-        >拍一張(含背光)</Button>
-      )}
+        >{running || starting ? '停止' : '啟動'}</Button>
+
+        {/* A lit frame. Disabled while running, because the firmware refuses a
+            manual light hold once the stage machine drives those pins -- and it
+            is right to: a hold would be stomped within milliseconds. */}
+        <Tooltip title="拍一張(含背光)">
+          <Button
+            style={{ flex: 1, minWidth: 0, height: 34, padding: 0 }}
+            icon={<CameraOutlined />} loading={snapping}
+            disabled={running || starting}
+            onClick={() => {
+              setSnapping(true); setWhy('');
+              dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+                if (!api || typeof api.camSnapWithLight !== 'function') {
+                  setSnapping(false); setWhy('韌體或介面不支援 camSnapWithLight'); return;
+                }
+                api.camSnapWithLight()
+                  .catch((e) => { if (mounted.current) setWhy('拍照失敗: ' + String(e)); })
+                  .then(() => { if (mounted.current) setSnapping(false); });
+              }));
+            }} />
+        </Tooltip>
+
+        {/* Clearing the error was only possible from the setup panel, which is a
+            modal the operator has to go and find -- for the one action that gets
+            a stopped line moving again. */}
+        <Tooltip title="清除錯誤">
+          <Button
+            style={{ flex: 1, minWidth: 0, height: 34, padding: 0 }}
+            icon={<ReloadOutlined />} loading={clearing}
+            danger={inError}
+            type={inError ? 'primary' : 'default'}
+            disabled={!inError && !(stat && stat.error_hist && stat.error_hist.length)}
+            onClick={() => {
+              setClearing(true); setWhy('');
+              dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+                if (!api) { setClearing(false); return; }
+                Promise.resolve(api.clearError())
+                  .then(() => api.clearErrorHistory())
+                  .catch((e) => { if (mounted.current) setWhy('清除失敗: ' + String(e)); })
+                  .then(() => { if (mounted.current) setClearing(false); });
+              }));
+            }} />
+        </Tooltip>
+      </div>
 
       {/* State, speed, feed and what the machine is doing -- the things the
           button deliberately does not say -- on one wrapping line. */}
