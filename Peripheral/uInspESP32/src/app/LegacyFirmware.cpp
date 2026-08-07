@@ -993,7 +993,34 @@ extern volatile uint32_t LOOP_MAX_US;
 extern volatile uint32_t SEG_SVC_US, SEG_ST_US, SEG_RX_US, SEG_TX_US;
 volatile uint8_t  ISRTRIGQ_HWM = 0;    // deepest seen since the last reset
 volatile uint32_t ISRTRIGQ_OVF = 0;    // pushes that found it full
+
+// Pushes made inside ONE onTimer() call, worst case.
+//
+// The depth instrument said the queue is empty 146 samples out of 149 and yet
+// its high-water mark is 19: the 19 arrives and clears between samples. Two
+// shapes fit that and they need opposite fixes -- either one ISR call pushes
+// a clump (objects reaching the camera stage on the same tick, a timing
+// problem), or the pushes are spread over time and the drain was blocked for
+// long enough to let them pile up (a scheduling problem). This counter tells
+// them apart: a burst of 19 in one tick pins the first, a max of 2 pins the
+// second. Everything else was ruled out by measurement first -- link
+// saturation, single perturbations, ISR catch-up, the ring counter race.
+volatile uint8_t  ISRTRIGQ_BURST = 0;  // most pushes in a single ISR call
+volatile uint8_t  ISRTRIGQ_THIS = 0;   // pushes so far in the current call
 static inline void isrTrigQMark()
+{
+  uint8_t d = ISRTrigQ.size();
+  if(d > ISRTRIGQ_HWM) ISRTRIGQ_HWM = d;
+  if(++ISRTRIGQ_THIS > ISRTRIGQ_BURST) ISRTRIGQ_BURST = ISRTRIGQ_THIS;
+}
+
+// The calibration path pushes from the MAIN LOOP (syncPulseService), not from
+// onTimer. Counting those into the per-ISR-call counter made it read 7 during
+// CAL while the queue itself never went above 1: nothing resets the counter
+// between main-loop pushes, so they simply accumulate until the next tick.
+// Depth still counts -- same queue -- but the burst figure has to stay
+// ISR-only or it answers a question nobody asked.
+static inline void calTrigQMark()
 {
   uint8_t d = ISRTrigQ.size();
   if(d > ISRTRIGQ_HWM) ISRTRIGQ_HWM = d;
@@ -2148,6 +2175,7 @@ void IRAM_ATTR onTimer()
     last_cc=cc;
   }
 
+  ISRTRIGQ_THIS=0;      // per-call push counter; see ISRTRIGQ_BURST
   SYS_STEP_COUNT++;
 
   //Step adv
@@ -2508,7 +2536,7 @@ static int calFireNow()
     commInfo->trig_id      = head->tid;
     commInfo->gate_pulse   = head->gate_pulse;
     ISRTrigQ.pushHead();
-    isrTrigQMark();
+    calTrigQMark();
   }
   SYNC_EMITTED++;
   return 0;
@@ -3329,6 +3357,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     RBUF_PEAK=0;
     ISRTRIGQ_HWM=0;
     ISRTRIGQ_OVF=0;
+    ISRTRIGQ_BURST=0;
     LOOP_N=0;
     LOOP_MAX_US=0;
     SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
@@ -3377,6 +3406,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["tqhwm"]=ISRTRIGQ_HWM;
     retdoc["tqcap"]=ISRTrigQ.capacity();
     retdoc["tqovf"]=ISRTRIGQ_OVF;
+    retdoc["tqburst"]=ISRTRIGQ_BURST;
     retdoc["loopn"]=LOOP_N;
     retdoc["loopmax_us"]=LOOP_MAX_US;
     retdoc["svc_us"]=SEG_SVC_US;
