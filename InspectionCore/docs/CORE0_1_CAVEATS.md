@@ -1074,3 +1074,41 @@ its reason. Delete that KNOWN entry the moment the drift is explained.
 
 **A test that hardcodes another subsystem's output has quietly become a test of
 that subsystem, and it will report its findings under the wrong name.**
+
+### O addendum — why judge 14 is the fragile one (2026-08-07, same day)
+
+Not ill-conditioning of the angle, and not a setup or transform error. **Its two
+operands are different kinds of line.**
+
+```
+line 2   matching_pts 525   fitted along the whole 4.65 mm edge
+line 1   matching_pts   2   "vertex_touch_searching": true
+```
+
+In that mode the line is defined by where it **touches** the contour at its two
+ends, and `lf.matching_pts = 2` is a hardcoded mode marker
+(`FeatureManager_sig360_circle_line.cpp:~2700`), not a count of weak support.
+The mode also runs deliberately looser gates: `lineCurvatureMax` 10 vs 0.15,
+`cosSim` 0.3 vs 0.9.
+
+A line through two touch points rotates when either point moves a pixel, and the
+judge is a 2.79 deg angle, so that rotation arrives at full size on a small
+number. That is the mechanism behind both observations: 11.2% under WebP
+recompression while every distance held to 0.04%, and 2.7% across the code
+window above.
+
+**Ruled out on the way, each by measurement, and each of them was my first
+answer:**
+
+| suspicion | check | result |
+|---|---|---|
+| def line 1 placed off the edge | perpendicular scan along nominal | edge within 0.05 mm, 200/200 scanlines |
+| object transform / frame error | 4 arc centres, def+`(cx,cy)` vs fitted | agree to 0.065 mm, spread < 0.5 px |
+| line fits drifting from nominal | all 3 lines, report frame only | within 0.07 mm |
+
+The first two "findings" were artifacts of **my own** image registration: the
+origin came from the centroid of all dark pixels, and this image has a dark
+border strip that pulled it ~1 mm. Excluding an 80 px border moved every
+conclusion. A registration you derived yourself is a measurement instrument, and
+it needs its own witness before its output is evidence — the arcs were that
+witness and they were available from the start.
