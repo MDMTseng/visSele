@@ -547,3 +547,78 @@ routed to the most severe station). Phantom traffic can never expose it: nothing
 is ejected, and the verdict-pattern slip check is self-consistent under any
 relabelling. Fixed in all ten scripts; the reason is written next to the values
 in `regress_watch.py` so it does not get "fixed" back.
+
+---
+
+## O. How to set the match window — the question mis-verdicts actually reduce to
+
+In practice every wrong-verdict question on this machine comes back to one
+number, and that number is squeezed from both sides.
+
+**Upper bound — uniqueness.** `2*TOL_US <= GATE_SEP_EFF_us` (L.2), and since the
+gate separation is what sets the rate, `TOL <= 1/(2R)`. Enforced and clamped in
+firmware. At the shipped 28571 us (35 Hz) the ceiling is 14285 us against the
+5000 us in use: **2.86x of headroom**.
+
+**Lower bound — do not refuse legitimate frames.** And here the intuition is
+wrong: **clock drift is not the lower bound.** Drift measures 35 us/s (35 ppm
+between the camera crystal and the ESP32's), but the offset is re-measured
+outright from *every* accepted report, so the most it can accumulate is one
+report interval:
+
+```
+10 parts/s          100 ms * 35 us/s  =   3.5 us
+18 parts/s           55 ms * 35 us/s  =     2 us
+idle to recal (10s)   10 s * 35 us/s  =   350 us
+                                window   5000 us
+```
+
+Three orders of magnitude below the window. The "updating from every report"
+design (which replaced a 1/16 EWMA carrying a permanent -3430 us lag) removed
+drift as a constraint rather than managing it, and the recal idle timer covers
+the only case where it could accumulate.
+
+What actually binds the lower bound is the **rate-dependent residual tail** from
+section M:
+
+```
+R        upper 1/(2R)     lower (measured delta max)     ratio
+10 Hz       50000 us              110 us                  454
+20 Hz       25000 us              105 us                  238
+25 Hz       20000 us             1737 us                   11.5
+30 Hz       16666 us             3308 us                    5.0
+```
+
+The upper bound falls linearly with rate. The lower bound is flat to 20 Hz and
+then climbs sharply. **They converge, and where they meet is this machine's real
+throughput ceiling** — not the 100 Hz that L.2 derives from geometry alone.
+Extrapolating the tail (doubling per 5 Hz) puts the crossing near 40 Hz, but
+that is two points of growth and a weak basis; it is a reason to run the sweep,
+not a number to quote.
+
+**Consequences worth keeping straight:**
+
+1. At production rates (10-20 Hz) the window is not the constraint on anything.
+   5000 us sits 450x above the residual and 10x below the uniqueness limit. It
+   is well chosen and there is nothing to tune.
+2. The question only bites above 25 Hz, and there it **cannot currently be
+   answered**, because the cause of the tail is unknown. Setting the window
+   above 25 Hz means guessing at a lower bound.
+3. **The window is a shared knob.** Its width is also the physical uncertainty
+   band the inspection must be invariant over — 5000 us is 0.88 mm of plate at
+   7 rpm (N). Widening it for throughput widens the band the optics and the
+   locating anchor have to absorb. Throughput and inspection precision are
+   trading against each other through one number.
+
+**Open, and now the highest-value thing in this area:**
+
+- Sweep 25-45 Hz with the gate opened, recording `delta_hist`, and find where
+  the bounds cross. ~20 minutes, and it replaces the extrapolation with the
+  machine's actual ceiling.
+- Explain the tail. Three suspects: the camera (frame scheduling / exposure),
+  the host pipeline (variance in processing latency), and the device's own loop.
+  The third is the most suspicious purely on magnitude — measured loop lateness
+  at 30 Hz is 5.4 ms (M) against a 3.3 ms tail, the same order — but that is a
+  coincidence of scale, not evidence, and it has not been tested. If it IS the
+  loop, the tail is a firmware scheduling problem rather than an optical one,
+  it is fixable, and fixing it moves the throughput ceiling directly.
