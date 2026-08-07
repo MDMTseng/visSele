@@ -251,12 +251,25 @@ CaliperLineResult caliper_locate_line(const cv::Mat &gray, acv_XY p0, acv_XY p1,
   // subtraction. Edge picking is identical (profile_to_edge) to caliper_measure.
   float L = cal.length, step = (cal.step > 0 ? cal.step : 1.0f);
   int nAcross = (int)(2 * L / step) + 1;
+  // A negative width has no meaning, and it used to KILL THE PROCESS: halfW
+  // went negative, nAlong = alongLen + 2*halfW + 1 went negative with it, and
+  // (size_t)negative * nAcross is astronomically large -> std::length_error ->
+  // uncaught -> abort. Not a crash in this frame: the whole core, i.e. the
+  // machine, on one mistyped def value. (The sibling caliper_measure path
+  // survives the same input by accident -- its `for (w=-halfW; w<=halfW; w++)`
+  // simply never executes -- which is why this only ever showed up here.)
   int halfW = (int)(cal.width / 2);
+  if (halfW < 0) halfW = 0;
   float alongLen = (float)hypot(p1.x - p0.x, p1.y - p0.y);
   std::vector<acv_XY> pts; std::vector<float> w;
   if (nAcross < 3) { r.nValid = 0; if (dbg) caliper_dump_line_strip("line", dbgName, cal.edge, dProfs, dPos, dConf, nullptr, ptCaliper, count); return r; }
 
   int nAlong = (int)lroundf(alongLen) + 2 * halfW + 1; // a in [0,nAlong) -> along dist (a - halfW)
+  // Belt and braces: alongLen comes from the def's own endpoints and nothing
+  // upstream promises it is finite or positive. The allocation below is the
+  // one place where a bad number stops being a bad measurement and becomes a
+  // dead process, so it does not get to trust its inputs.
+  if (nAlong < 1) { r.nValid = 0; return r; }
   acv_XY perpStep = acvVecMult(perp, step);
   std::vector<float> B((size_t)nAlong * nAcross);
   for (int a = 0; a < nAlong; a++)
