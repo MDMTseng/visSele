@@ -1028,6 +1028,14 @@ volatile int      HWM_STATE=0;
 // ~1ms means the batch arrived together and the drain never had a chance.
 // The two have nothing in common except the symptom.
 volatile uint32_t HWM_AGE_US=0;
+// How late a CAM task was when it finally fired: cur_pulse - targetPulse, in
+// plate ticks, worst case. Run_ACTS runs every tick and fires one task per
+// stage per tick, so a task cannot fall behind by more than a tick or two --
+// UNLESS its target was already in the past when it was queued. This number
+// separates "the dispatcher fell behind" from "the task was born late", and
+// arithmetic on the witness data already points at the second: the oldest
+// entry at the peak was 7550 ticks (0.63s) past due.
+volatile uint32_t ACT_LATE_MAX=0;
 extern volatile uint32_t SYS_STEP_COUNT;   // defined below, beside the ISR
 
 static inline void hwmWitness(uint32_t tid, uint32_t gate_pulse)
@@ -1613,6 +1621,10 @@ int Run_ACTS(uint32_t cur_pulse)
 
                     IO_ON(PIN_O_CAM1,IOI_CAM1);
                     IO_TRACE_LOG(PIN_O_CAM1,1,cur_pulse,task->src->tid);
+                    {
+                      uint32_t late = cur_pulse - task->targetPulse;
+                      if(late < 0x80000000u && late > ACT_LATE_MAX) ACT_LATE_MAX = late;
+                    }
                     ISRTrigInfo *commInfo = ISRTrigQ.getHead();
                     if(commInfo){
                       if(time_us_fetched==false)
@@ -3394,6 +3406,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     ISRTRIGQ_BURST=0;
     HWM_TID_NEW=HWM_TID_OLD=HWM_GATE_NEW=HWM_GATE_OLD=HWM_STEP=0; HWM_STATE=0;
     HWM_AGE_US=0;
+    ACT_LATE_MAX=0;
     LOOP_N=0;
     LOOP_MAX_US=0;
     SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
@@ -3450,6 +3463,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["hwm_step"]=HWM_STEP;
     retdoc["hwm_state"]=HWM_STATE;
     retdoc["hwm_age_us"]=HWM_AGE_US;
+    retdoc["act_late_max"]=ACT_LATE_MAX;
     retdoc["loopn"]=LOOP_N;
     retdoc["loopmax_us"]=LOOP_MAX_US;
     retdoc["svc_us"]=SEG_SVC_US;
