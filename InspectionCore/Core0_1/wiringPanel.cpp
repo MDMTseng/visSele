@@ -1663,9 +1663,116 @@ static void load_insp_region(cJSON *json_mac_setting)
     LOGE("inspection_region: not configured -- every located object is a candidate");
 }
 
+// Clean-space regions: patches of the field that must be EMPTY when the camera
+// fires. A speck in one means the measurement of this part happened on a dirty
+// field, which is not the same claim as "this part is bad".
+//
+// This lives in wiringPanel and not in the matching engine on purpose (ct's
+// call, and it is the right one). It is a machine-level check bolted onto the
+// uInsp sorter: it does not follow the part's pose, it does not participate in
+// the def, and it wants the FULL frame -- none of which the engine's per-object
+// feature pipeline is shaped for. Calling it what it is keeps it from growing
+// into something that pretends to be a measurement feature.
+//
+// The def-level obj_detect feature still exists and still does the other job: a
+// region that FOLLOWS the located part, for measuring the part. Only the
+// "is this patch of plate empty" role is here.
+struct CleanRegionCfg {
+  float x = 0, y = 0, w = 0, h = 0;
+  float dark_thresh = NAN;              // grey level; pixel < thresh counts as dark
+  float dark_ratio_max = NAN;           // dark px / region px
+  float dark_area_max  = NAN;           // mm^2
+  int   on_fail = FeatureReport_sig360_circle_line_single::STATUS_NA;
+  std::string name;
+};
+static std::vector<CleanRegionCfg> g_clean_regions;
+
+static void load_clean_regions(cJSON *json_mac_setting)
+{
+  std::vector<CleanRegionCfg> out;
+  cJSON *arr = cJSON_GetObjectItem(json_mac_setting, "clean_regions");
+  if (arr != NULL && cJSON_IsArray(arr))
+  {
+    cJSON *e = NULL;
+    cJSON_ArrayForEach(e, arr)
+    {
+      if (!cJSON_IsObject(e)) continue;
+      CleanRegionCfg c;
+      c.x = (float)JFetch_NUMBER_ex(e, "x", 0);
+      c.y = (float)JFetch_NUMBER_ex(e, "y", 0);
+      c.w = (float)JFetch_NUMBER_ex(e, "w", 0);
+      c.h = (float)JFetch_NUMBER_ex(e, "h", 0);
+      if (!(c.w > 0 && c.h > 0)) continue;
+      const double NA = std::nan("");
+      c.dark_thresh    = (float)JFetch_NUMBER_ex(e, "dark_thresh",    NA);
+      c.dark_ratio_max = (float)JFetch_NUMBER_ex(e, "dark_ratio_max", NA);
+      c.dark_area_max  = (float)JFetch_NUMBER_ex(e, "dark_area_max",  NA);
+      cJSON *jf = cJSON_GetObjectItem(e, "on_fail");
+      c.on_fail = (jf && cJSON_IsString(jf) && strcmp(jf->valuestring, "ng") == 0)
+                    ? FeatureReport_sig360_circle_line_single::STATUS_FAILURE
+                    : FeatureReport_sig360_circle_line_single::STATUS_NA;
+      char *nm = JFetch_STRING(e, "name");
+      c.name = nm ? nm : ("clean" + std::to_string(out.size() + 1));
+      out.push_back(c);
+    }
+  }
+  g_clean_regions = out;
+  LOGE("clean_regions: %d configured", (int)g_clean_regions.size());
+}
+
+int InspStatusReducer(int total_status, int new_status);   // defined further down
+
+// Reduce the clean regions against a frame. Returns the status to fold in, or
+// STATUS_SUCCESS when everything is clean / nothing is configured.
+//
+// gray is the INSPECTION image; the regions are in full-sensor px, so the
+// camera's hardware ROI origin has to come off before indexing. Same convention
+// as inspection_region -- one space for the whole station.
+static int eval_clean_regions(const cv::Mat &gray, float mmpp, acv_XY sOff)
+{
+  typedef FeatureReport_sig360_circle_line_single FR;
+  if (g_clean_regions.empty() || gray.empty()) return FR::STATUS_SUCCESS;
+
+  cv::Mat g1;
+  if (gray.channels() == 1) g1 = gray; else cv::extractChannel(gray, g1, 0);
+
+  int worst = FR::STATUS_SUCCESS;
+  for (size_t i = 0; i < g_clean_regions.size(); i++)
+  {
+    const CleanRegionCfg &c = g_clean_regions[i];
+    if (std::isnan(c.dark_thresh)) continue;          // no dark measurement asked for
+
+    cv::Rect r((int)lroundf(c.x - sOff.x), (int)lroundf(c.y - sOff.y),
+               (int)lroundf(c.w), (int)lroundf(c.h));
+    r &= cv::Rect(0, 0, g1.cols, g1.rows);
+    if (r.width < 2 || r.height < 2)
+    {
+      LOGI("clean_region '%s': off-image after ROI offset -- skipped", c.name.c_str());
+      continue;
+    }
+
+    cv::Mat dark;
+    cv::threshold(g1(r), dark, (double)c.dark_thresh, 255.0, cv::THRESH_BINARY_INV);
+    int dark_px = cv::countNonZero(dark);
+    float ratio = (float)dark_px / (float)(r.width * r.height);
+    float area  = (float)(dark_px * (double)mmpp * (double)mmpp);
+
+    bool bad = false;
+    if (!std::isnan(c.dark_ratio_max) && ratio > c.dark_ratio_max) bad = true;
+    if (!std::isnan(c.dark_area_max)  && area  > c.dark_area_max)  bad = true;
+
+    LOGI("clean_region '%s' [%.0f,%.0f %.0fx%.0f] thr %.0f: dark %.4f (%.4f mm2)%s",
+         c.name.c_str(), c.x, c.y, c.w, c.h, c.dark_thresh, ratio, area,
+         bad ? "  -> DIRTY" : "");
+    if (bad) worst = InspStatusReducer(worst, c.on_fail);
+  }
+  return worst;
+}
+
 void setup_machine_setting(cJSON *json_mac_setting)
 {
   load_insp_region(json_mac_setting);
+  load_clean_regions(json_mac_setting);
 
   char *path = JFetch_STRING(json_mac_setting, "InspSampleSavePath");
 
@@ -6300,6 +6407,29 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
 
 
+      }
+    }
+
+    // Clean-space regions fold in LAST, on the full frame, after the object has
+    // been judged. Not inside the guard above: whether the plate is clean does
+    // not depend on whether an object was located, and a dirty field is worth
+    // logging on an empty frame too.
+    //
+    // STATUS_NA is absorbing in InspStatusReducer, so the default on_fail takes
+    // the part out of the verdict rather than ejecting it -- it goes round again
+    // and is measured on a clean field. A region marked on_fail:"ng" reports
+    // FAILURE and does eject.
+    if (!g_clean_regions.empty())
+    {
+      float cr_mmpp = (bacpac && bacpac->sampler) ? bacpac->sampler->mmpP_ideal() : 0.0f;
+      acv_XY cr_off = (bacpac && bacpac->sampler) ? bacpac->sampler->getOriginOffset()
+                                                  : acv_XY{0.f, 0.f};
+      int cs = eval_clean_regions(capImg, cr_mmpp, cr_off);
+      if (cs != FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
+      {
+        LOGI("clean_regions dirty -> part status %d (was %d)",
+             InspStatusReducer(stat, cs), stat);
+        stat = InspStatusReducer(stat, cs);
       }
     }
 
