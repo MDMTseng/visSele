@@ -17,6 +17,9 @@ CameraLayer::status CameraLayer::SNAP_Callback(CameraLayer &cl_obj, int type, vo
   return ret_st;
 }
 
+// No longer used by SnapFrame -- it now owns its deadline via
+// conV.wait_for. Kept because it is virtual public API, but note that calling
+// it aborts whatever snap is in flight, not any particular one.
 CameraLayer::status CameraLayer::SnapAbort(int timeout_ms)
 {
   if(timeout_ms<0)
@@ -81,6 +84,21 @@ CameraLayer::status  CameraLayer::SnapFrame(CameraLayer_Callback snap_cb,void *c
     callback=SNAP_Callback;
     context=cb_param;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    // A trigger needs a running stream. This is not a belt-and-braces call:
+    // one successful snap STOPS acquisition by design -- the burst counter
+    // (takeCount) reaches 0 in the frame callback and calls
+    // arv_camera_stop_acquisition -- so the camera is left unable to answer the
+    // next one. Result, measured on this machine: the first 立即 after anything
+    // that started the stream works, and every 立即 after that waits out the
+    // full timeout and reports 圖像獲取失敗, until a CI session / reconnect /
+    // ROI change happens to restart acquisition and re-arm exactly one shot.
+    //
+    // Idempotent where it is implemented (Aravis returns ACK immediately when
+    // already streaming) and a no-op where it is not, so this costs nothing on
+    // the paths that were already correct -- notably FI, which is streaming.
+    StartAquisition();
+
     LOGI(">>>>");
     if(type==0)
     {
@@ -102,12 +120,26 @@ CameraLayer::status  CameraLayer::SnapFrame(CameraLayer_Callback snap_cb,void *c
 
     LOGI(">>>>");
 
-    std::thread(&CameraLayer::SnapAbort, this, timeout_ms).detach();
-    // auto f = std::async(&CameraLayer::SnapAbort, this, timeout_ms);
-    
-    conV.wait(lock, [this]
-              { return this->snapFlag != 1; });
-    
+    // The timeout belongs to THIS snap.
+    //
+    // It used to be a detached thread that slept for timeout_ms and then wrote
+    // snapFlag=-1 if it found snapFlag==1. That flag is shared by every snap,
+    // and the thread had no way to tell whose 1 it was looking at -- so a snap
+    // that finished early left a live timer that aborted whichever snap
+    // happened to be in flight when it expired. Measured: with a 3s timeout and
+    // presses ~400ms apart, snap 1 succeeded in 276ms and snap 2 died at
+    // 2528ms -- exactly 3s after snap 1 started. The UI sends timeout -1, which
+    // clamps to 30s, so each press armed a 30-second landmine for the next one.
+    //
+    // wait_for owns its deadline and cannot outlive the wait, so there is
+    // nothing left behind to fire late.
+    if (!conV.wait_for(lock, std::chrono::milliseconds(timeout_ms),
+                       [this] { return this->snapFlag != 1; }))
+    {
+      snapFlag = -1;   // nothing arrived in time
+    }
+
+
     LOGI(">>>>snapFlag:%d",snapFlag);
     if(snapFlag==0)
     {

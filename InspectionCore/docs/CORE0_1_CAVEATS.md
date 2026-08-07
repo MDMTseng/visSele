@@ -923,3 +923,57 @@ not cover this gate.
 **The session start says which it got** — `insp session: FI -- station region
 ENFORCED` / `... CI -- station region off (setup view shows everything)`, logged
 only when a region is configured.
+
+## M. "Take a new image" worked once, then stopped (2026-08-07)
+
+DefConfUI's 立即 (BPG `EX`, `trigger_type:0`) fired a software trigger and often
+came back 圖像獲取失敗 — intermittently, which is what made it look like a
+camera problem. It was two independent bugs, both in `CameraLayer::SnapFrame`.
+
+**1. One successful snap stops acquisition.** `TriggerCount(1)` sets the burst
+counter `takeCount`; when the frame arrives `STREAM_NEW_BUFFER_CB` decrements it
+to 0 and calls `arv_camera_stop_acquisition()` (`CameraLayer_Aravis.cpp:644`).
+`SnapFrame` never started it again, and `TriggerMode()`'s stop/write/start block
+only restores acquisition `if (burst_was_running)` — which is false precisely
+because the previous snap turned it off. So a software trigger went out to a
+camera with no running stream and no frame could ever come back.
+
+That is the "sometimes": the first press after **anything** that starts
+acquisition (a CI session, `camera_ez_reconnect`, an ROI or exposure change)
+succeeds and re-arms nothing. Every press after it waits out the full timeout.
+
+Fix: `SnapFrame` calls `StartAquisition()` before triggering. Idempotent on
+Aravis (immediate ACK when already streaming) and a no-op elsewhere, so the
+paths that were already correct — FI, which streams — pay nothing.
+
+**2. The snap timeout belonged to no snap in particular.** The wait was
+`conV.wait()` guarded by a *detached thread* that slept `timeout_ms` and then
+set `snapFlag=-1` if it found `snapFlag==1`. `snapFlag` is shared by every snap
+and carries no identity, so a snap that finished early left a live timer that
+aborted whichever snap was in flight when it expired.
+
+Measured, 3s timeout, presses 400ms apart: snap 1 succeeded in 276ms, snap 2
+died at **2528ms** — 3s after snap 1 started, not after snap 2. The UI sends
+`timeout:-1`, clamped to 30s, so every press armed a 30-second landmine for the
+next one.
+
+Fix: `conV.wait_for(lock, timeout, pred)`. The deadline cannot outlive the wait.
+`SnapAbort()` is kept as public virtual API but is no longer used here.
+
+**Measured, same machine, same camera:**
+
+```
+before   0/10 ACK   every press timed out (after the first, which had been
+                    re-armed by a reconnect); failures at 2528/2530 ms, i.e.
+                    on the PREVIOUS press's deadline
+after   10/10 ACK   173-228 ms each, GAP 150ms..400ms, timeout 3000 and -1
+```
+
+`UI/WebUI/tools/webctl/snap_probe.mjs` is the harness — it presses 立即 N times
+over the same wire the browser uses and reports ACK + whether an IM actually
+came back. This class of bug is invisible from the UI (you retry, it works, you
+move on) and obvious in one run of that.
+
+**Still true, not fixed:** an `EX` snap during an FI run would stop the FI
+stream after its one frame (same `takeCount` path). Pre-existing, and now
+self-healing on the next snap, but the two should not be used together.
