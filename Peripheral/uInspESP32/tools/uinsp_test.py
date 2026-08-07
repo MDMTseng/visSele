@@ -1021,7 +1021,7 @@ def bench(link, rep, count, freq, interval_ms, cat):
 
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
     orig_freq = orig.get("plate_freq")
-    orig_spo = dict(orig.get("stage_pulse_offset") or {})
+    orig_spo = _read_spo(link) or {}
     base_counts, _ = _counts(link)
     # ERROR_HIST is a cumulative ring; clear it so the B.7/B.9/B.12 readouts
     # reflect only what this run produced, not stale faults from earlier runs.
@@ -1523,7 +1523,7 @@ def stall(link, rep, hz, stall_s, cat):
     print("  selector with no verdict must stop the line, not guess.\n")
 
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
-    orig_spo = dict(orig.get("stage_pulse_offset") or {})
+    orig_spo = _read_spo(link) or {}
     # Widen the selector window so the host can answer inside it while healthy.
     # The silent phase still faults -- those parts get no verdict at all, window
     # or no window -- which is exactly what T.2 is checking for.
@@ -1638,9 +1638,18 @@ def chaos(link, rep, seconds, min_hz, max_hz, seed, persist=False,
             break
     orig_freq = orig.get("plate_freq")
     orig_sep = orig.get("min_detect_sep_us")
-    orig_spo = dict(orig.get("stage_pulse_offset") or {})
+    orig_spo = _read_spo(link) or {}
     orig_nvs = bool(orig.get("cfg_from_nvs"))
-    l1a = int(orig_spo.get("L1A_on", 654))
+    # No default station. Every offset below is built from l1a, so a guessed
+    # l1a builds a guessed machine: with the real L1A_on at 9314, the 654
+    # fallback put SWITCH ~6200 -- BEFORE the camera at 9315. Parts are then
+    # sorted before they are announced, which the firmware correctly refuses to
+    # do, and the churn is blamed for the fault it did not cause.
+    if orig_spo.get("L1A_on") is None:
+        rep.add("C.0", "read the station geometry before churning it", False,
+                "get_setup never returned stage_pulse_offset")
+        return
+    l1a = int(orig_spo["L1A_on"])
 
     # min_detect_sep_us must stay below 1e6/max_hz or it caps the rate below
     # the target; jitter it within a band that always admits max_hz.
@@ -2315,7 +2324,7 @@ def grill(link, rep, params, seconds, min_rate=None, max_rate=None,
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
     orig_freq = orig.get("plate_freq")
     orig_accel = orig.get("plate_accel")
-    orig_spo = dict(orig.get("stage_pulse_offset") or {})
+    orig_spo = _read_spo(link) or {}
     link.send({"type": "clear_error"}, timeout=2.0)
     link.send({"type": "clear_error_history"}, timeout=2.0)
     link.send({"type": "reset_running_stat"}, timeout=2.0)
@@ -2761,7 +2770,7 @@ def _grill_gate_test(link, rep, plan, orig, freq, tick_hz):
 def _grill_teardown(link, orig):
     orig_freq = orig.get("plate_freq")
     orig_accel = orig.get("plate_accel")
-    orig_spo = dict(orig.get("stage_pulse_offset") or {})
+    orig_spo = _read_spo(link) or {}
     # -- teardown: put the board back the way we found it ------------------
     restore = {}
     if orig_freq is not None:
@@ -3035,7 +3044,7 @@ def edge(link, rep, only=None):
     orig = link.send({"type": "get_setup"}, timeout=3.0) or {}
     orig_freq = orig.get("plate_freq")
     orig_sep = orig.get("min_detect_sep_us")
-    orig_spo = dict(orig.get("stage_pulse_offset") or {})
+    orig_spo = _read_spo(link) or {}
     link.send({"type": "clear_error"}, timeout=2.0)
     link.send({"type": "clear_error_history"}, timeout=2.0)
 
@@ -3217,8 +3226,13 @@ def edge(link, rep, only=None):
         # legitimate reason.
         if _want("E.6"):
             link.send({"type": "clear_error_history"}, timeout=2.0)
-            l1a = int(orig_spo.get("L1A_on", 654))
-            win2 = l1a + E6_WINDOW
+            # No default station here either -- see _read_spo.
+            l1a = orig_spo.get("L1A_on")
+            if l1a is None:
+                rep.add("E.6", "saturate RBuf and drain clean", False,
+                        "get_setup never returned stage_pulse_offset")
+                return
+            win2 = int(l1a) + E6_WINDOW
             link.send({"type": "set_setup", "plate_freq": E6_FREQ,
                        "min_detect_sep_us": 5000,
                        "stage_pulse_offset": {
