@@ -1007,10 +1007,44 @@ volatile uint32_t ISRTRIGQ_OVF = 0;    // pushes that found it full
 // saturation, single perturbations, ISR catch-up, the ring counter race.
 volatile uint8_t  ISRTRIGQ_BURST = 0;  // most pushes in a single ISR call
 volatile uint8_t  ISRTRIGQ_THIS = 0;   // pushes so far in the current call
-static inline void isrTrigQMark()
+
+// A witness for the moment the queue was deepest: which objects were in it.
+//
+// The depth alone said "28, in the first three seconds, never again". Knowing
+// WHICH parts those were is the difference between reading the answer and
+// inferring it. Recorded when a push sets a new high-water mark:
+//   tid_new   the object being announced right then
+//   tid_old   the oldest one still waiting -- so tid_new-tid_old is the span
+//             of the batch that arrived together
+//   gate_new/gate_old  their gate pulses: equal means they were admitted at
+//             the same plate position, which is what a stopped plate does
+//   step, state  where the machine was
+volatile uint32_t HWM_TID_NEW=0, HWM_TID_OLD=0;
+volatile uint32_t HWM_GATE_NEW=0, HWM_GATE_OLD=0;
+volatile uint32_t HWM_STEP=0;
+volatile int      HWM_STATE=0;
+// How long the OLDEST entry had been waiting when the queue was at its
+// deepest. This is the whole question: 0.4s means the drain stopped running,
+// ~1ms means the batch arrived together and the drain never had a chance.
+// The two have nothing in common except the symptom.
+volatile uint32_t HWM_AGE_US=0;
+extern volatile uint32_t SYS_STEP_COUNT;   // defined below, beside the ISR
+
+static inline void hwmWitness(uint32_t tid, uint32_t gate_pulse)
+{
+  HWM_TID_NEW=tid;  HWM_GATE_NEW=gate_pulse;
+  ISRTrigInfo *oldest = ISRTrigQ.size() ? ISRTrigQ.getTail() : NULL;
+  HWM_TID_OLD  = oldest ? oldest->trig_id    : 0;
+  HWM_GATE_OLD = oldest ? oldest->gate_pulse : 0;
+  HWM_AGE_US   = oldest ? ((uint32_t)esp_timer_get_time() - oldest->trig_time_us) : 0;
+  HWM_STEP     = SYS_STEP_COUNT;
+  HWM_STATE    = (int)sysinfo.state;
+}
+
+static inline void isrTrigQMark(uint32_t tid=0, uint32_t gate_pulse=0)
 {
   uint8_t d = ISRTrigQ.size();
-  if(d > ISRTRIGQ_HWM) ISRTRIGQ_HWM = d;
+  if(d > ISRTRIGQ_HWM) { ISRTRIGQ_HWM = d; hwmWitness(tid, gate_pulse); }
   if(++ISRTRIGQ_THIS > ISRTRIGQ_BURST) ISRTRIGQ_BURST = ISRTRIGQ_THIS;
 }
 
@@ -1020,10 +1054,10 @@ static inline void isrTrigQMark()
 // between main-loop pushes, so they simply accumulate until the next tick.
 // Depth still counts -- same queue -- but the burst figure has to stay
 // ISR-only or it answers a question nobody asked.
-static inline void calTrigQMark()
+static inline void calTrigQMark(uint32_t tid=0, uint32_t gate_pulse=0)
 {
   uint8_t d = ISRTrigQ.size();
-  if(d > ISRTRIGQ_HWM) ISRTRIGQ_HWM = d;
+  if(d > ISRTRIGQ_HWM) { ISRTRIGQ_HWM = d; hwmWitness(tid, gate_pulse); }
 }
 
 
@@ -1591,7 +1625,7 @@ int Run_ACTS(uint32_t cur_pulse)
                       commInfo->trig_id=task->src->tid;
                       commInfo->gate_pulse=task->src->gate_pulse;
                       ISRTrigQ.pushHead();
-                      isrTrigQMark();
+                      isrTrigQMark(task->src->tid, task->src->gate_pulse);
                       // Keep it on the object too. Until now this timestamp was
                       // announced and then forgotten, which is why the host had
                       // to reconstruct the frame<->object mapping from clocks it
@@ -1647,7 +1681,7 @@ int Run_ACTS(uint32_t cur_pulse)
                       commInfo->trig_id=task->src->tid;
                       commInfo->gate_pulse=task->src->gate_pulse;
                       ISRTrigQ.pushHead();
-                      isrTrigQMark();
+                      isrTrigQMark(task->src->tid, task->src->gate_pulse);
                     }
                     else
                     {
@@ -2536,7 +2570,7 @@ static int calFireNow()
     commInfo->trig_id      = head->tid;
     commInfo->gate_pulse   = head->gate_pulse;
     ISRTrigQ.pushHead();
-    calTrigQMark();
+    calTrigQMark(head->tid, head->gate_pulse);
   }
   SYNC_EMITTED++;
   return 0;
@@ -3358,6 +3392,8 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     ISRTRIGQ_HWM=0;
     ISRTRIGQ_OVF=0;
     ISRTRIGQ_BURST=0;
+    HWM_TID_NEW=HWM_TID_OLD=HWM_GATE_NEW=HWM_GATE_OLD=HWM_STEP=0; HWM_STATE=0;
+    HWM_AGE_US=0;
     LOOP_N=0;
     LOOP_MAX_US=0;
     SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
@@ -3407,6 +3443,13 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["tqcap"]=ISRTrigQ.capacity();
     retdoc["tqovf"]=ISRTRIGQ_OVF;
     retdoc["tqburst"]=ISRTRIGQ_BURST;
+    retdoc["hwm_tid_new"]=HWM_TID_NEW;
+    retdoc["hwm_tid_old"]=HWM_TID_OLD;
+    retdoc["hwm_gate_new"]=HWM_GATE_NEW;
+    retdoc["hwm_gate_old"]=HWM_GATE_OLD;
+    retdoc["hwm_step"]=HWM_STEP;
+    retdoc["hwm_state"]=HWM_STATE;
+    retdoc["hwm_age_us"]=HWM_AGE_US;
     retdoc["loopn"]=LOOP_N;
     retdoc["loopmax_us"]=LOOP_MAX_US;
     retdoc["svc_us"]=SEG_SVC_US;
