@@ -91,6 +91,14 @@ Measured origin during this session: **(1016, 328)**. Width/height were not
 captured — read them from the key above, or from any report's
 `station.roi_origin` plus the frame size.
 
+**It is per browser profile.** localStorage belongs to the browser, not the
+machine, so a second browser (or a private window, or a headless harness)
+operating this station enters inspection mode with a *different* ROI — its own,
+or none. Nothing on the machine records what the ROI should be, and nothing
+notices the disagreement. The region coordinates above are full-sensor and so
+are immune; anything reading `roi_origin` is not. Worth fixing by moving it into
+`machine_setting.json` next to the region it has to agree with.
+
 > For a headless test the simplest thing is to **set no ROI at all** (full
 > sensor, origin 0,0) and use the region coordinates above unchanged. They are
 > full-sensor, so they do not move. Only add an ROI when the test is
