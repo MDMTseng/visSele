@@ -1036,6 +1036,21 @@ volatile uint32_t HWM_AGE_US=0;
 // arithmetic on the witness data already points at the second: the oldest
 // entry at the peak was 7550 ticks (0.63s) past due.
 volatile uint32_t ACT_LATE_MAX=0;
+// Who it was. The stage queues are FIFO, so if targets are ever written out of
+// order the head parks everything behind it and releases the lot at one per
+// tick. LATE_PREV_TARGET is the target of the CAM1 task that fired just
+// before: if it is GREATER than this one's, the queue is out of order and the
+// question becomes how a later-registered object got an earlier target.
+volatile uint32_t LATE_TID=0, LATE_GATE=0, LATE_TARGET=0, LATE_CUR=0;
+volatile uint32_t LATE_QDEPTH=0, LATE_PREV_TARGET=0, LATE_LAST_TARGET=0;
+// Which KIND of object it was. Two paths register objects -- the sensor/gate
+// path and the calibration sync path -- and the inversion is almost exactly
+// one CAM1_on, which is the kind of constant one path would carry and the
+// other would not. w is the detected pulse width: 20 ticks is a phantom, a
+// real part is hundreds.
+volatile uint8_t  LATE_SYNC=0;
+volatile uint32_t LATE_W=0;
+volatile uint8_t  LATE_PREV_SYNC=0, LATE_LAST_SYNC=0;
 extern volatile uint32_t SYS_STEP_COUNT;   // defined below, beside the ISR
 
 static inline void hwmWitness(uint32_t tid, uint32_t gate_pulse)
@@ -1623,7 +1638,21 @@ int Run_ACTS(uint32_t cur_pulse)
                     IO_TRACE_LOG(PIN_O_CAM1,1,cur_pulse,task->src->tid);
                     {
                       uint32_t late = cur_pulse - task->targetPulse;
-                      if(late < 0x80000000u && late > ACT_LATE_MAX) ACT_LATE_MAX = late;
+                      if(late < 0x80000000u && late > ACT_LATE_MAX)
+                      {
+                        ACT_LATE_MAX  = late;
+                        LATE_TID      = task->src->tid;
+                        LATE_GATE     = task->src->gate_pulse;
+                        LATE_TARGET   = task->targetPulse;
+                        LATE_CUR      = cur_pulse;
+                        LATE_QDEPTH   = acts->ACT_CAM1.size();
+                        LATE_PREV_TARGET = LATE_LAST_TARGET;
+                        LATE_SYNC     = task->src->sync;
+                        LATE_W        = task->src->w;
+                        LATE_PREV_SYNC= LATE_LAST_SYNC;
+                      }
+                      LATE_LAST_TARGET = task->targetPulse;
+                      LATE_LAST_SYNC   = task->src->sync;
                     }
                     ISRTrigInfo *commInfo = ISRTrigQ.getHead();
                     if(commInfo){
@@ -3407,6 +3436,9 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     HWM_TID_NEW=HWM_TID_OLD=HWM_GATE_NEW=HWM_GATE_OLD=HWM_STEP=0; HWM_STATE=0;
     HWM_AGE_US=0;
     ACT_LATE_MAX=0;
+    LATE_TID=LATE_GATE=LATE_TARGET=LATE_CUR=0;
+    LATE_QDEPTH=LATE_PREV_TARGET=LATE_LAST_TARGET=0;
+    LATE_SYNC=LATE_PREV_SYNC=LATE_LAST_SYNC=0; LATE_W=0;
     LOOP_N=0;
     LOOP_MAX_US=0;
     SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
@@ -3464,6 +3496,15 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["hwm_state"]=HWM_STATE;
     retdoc["hwm_age_us"]=HWM_AGE_US;
     retdoc["act_late_max"]=ACT_LATE_MAX;
+    retdoc["late_tid"]=LATE_TID;
+    retdoc["late_gate"]=LATE_GATE;
+    retdoc["late_target"]=LATE_TARGET;
+    retdoc["late_cur"]=LATE_CUR;
+    retdoc["late_qdepth"]=LATE_QDEPTH;
+    retdoc["late_prev_target"]=LATE_PREV_TARGET;
+    retdoc["late_sync"]=LATE_SYNC;
+    retdoc["late_w"]=LATE_W;
+    retdoc["late_prev_sync"]=LATE_PREV_SYNC;
     retdoc["loopn"]=LOOP_N;
     retdoc["loopmax_us"]=LOOP_MAX_US;
     retdoc["svc_us"]=SEG_SVC_US;
