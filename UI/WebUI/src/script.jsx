@@ -1650,6 +1650,31 @@ class APPMasterX extends React.Component {
       // The board auto-drops the hold on timeout or when it leaves IDLE.
       light(ch,on,timeout_ms){ return this.sendP({type:"light",ch,on,timeout_ms}); }
 
+      // One camera trigger, no pipeline object behind it. This is the shutter,
+      // not the sorter: it fires the camera line directly and does NOT create a
+      // part, so nothing gets counted, tracked or blown.
+      trigCamPulse(){ return this.sendP({type:"trig_cam_pulse"}); }
+
+      // A single lit frame, for setting up on a stopped plate.
+      //
+      // The backlight and the camera trigger are separate things and the stage
+      // machine normally strobes the light for ~600us around each trigger. With
+      // the plate stopped nothing strobes it, so a bare trig_cam_pulse returns a
+      // BLACK frame -- which reads as "the inspection found nothing" and sends
+      // you looking for a fault that is not there.
+      //
+      // Light first, settle, shoot, then drop it. The timeout is a backstop: if
+      // this promise chain dies between on and off, the board drops the hold by
+      // itself rather than leaving the panel lit.
+      camSnapWithLight(ch="L1A", settle_ms=120){
+        return this.light(ch,true,4000)
+          .then(()=> new Promise(r=>setTimeout(r,settle_ms)))
+          .then(()=> this.trigCamPulse())
+          .then((r)=> new Promise(res=>setTimeout(()=>res(r),settle_ms)))
+          .then((r)=> this.light(ch,false,0).then(()=>r),
+                (e)=> this.light(ch,false,0).then(()=>{throw e;}));
+      }
+
       stepperEnable(){ return this.sendP({type:"stepper_enable"}); }
       stepperDisable(){ return this.sendP({type:"stepper_disable"}); }
 

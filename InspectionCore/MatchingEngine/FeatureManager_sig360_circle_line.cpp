@@ -6176,6 +6176,40 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
            bacpac->insp_region_x, bacpac->insp_region_y,
            bacpac->insp_region_w, bacpac->insp_region_h,
            region_dropped, (int)ldData.size() - 2);
+
+    // Where the real objects actually landed, in the SAME space the test above
+    // uses. Without this the region is a black box: "1899 of 1901 dropped" does
+    // not say whether the part was 10px outside the box or the box is in the
+    // wrong coordinate space entirely.
+    //
+    // Both numbers are printed on purpose. `raw` is what the filter compares --
+    // full-sensor px straight off the labeling. `ideal` is the same point after
+    // sampler->img2ideal(), which is the space the REPORT's cx/cy live in and
+    // therefore the space the WebUI overlay draws the box in. If those two
+    // disagree by more than a pixel or two, the box on screen is not the box the
+    // core is testing against, and that is the bug -- not the filter.
+    //
+    // Only the biggest few labels; the rest are backlight speckle (1900 of them)
+    // and printing those would bury the answer.
+    {
+      std::vector<int> big;
+      for (size_t i = 2; i < ldData.size(); i++)
+        if (ldData[i].area > 200) big.push_back((int)i);
+      std::sort(big.begin(), big.end(),
+                [&](int a, int b){ return ldData[a].area > ldData[b].area; });
+      if (big.size() > 6) big.resize(6);
+      for (size_t k = 0; k < big.size(); k++)
+      {
+        int i = big[k];
+        float rx = ldData[i].Center.x * dsampLevel + sOff.x;
+        float ry = ldData[i].Center.y * dsampLevel + sOff.y;
+        acv_XY ideal = acv_XY(ldData[i].Center.x * dsampLevel, ldData[i].Center.y * dsampLevel);
+        if (bacpac->sampler) bacpac->sampler->img2ideal(&ideal);
+        LOGI("insp_region:   label %d area %d  raw(%.0f,%.0f) ideal(%.0f,%.0f) -> %s",
+             i, ldData[i].area, rx, ry, ideal.x + sOff.x, ideal.y + sOff.y,
+             in_region[i] ? "KEEP" : "drop");
+      }
+    }
   }
 
   int onlyIdx = -1;

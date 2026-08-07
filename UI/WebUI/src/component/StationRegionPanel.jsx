@@ -70,8 +70,17 @@ function NumRow({ label, value, onChange, suffix }) {
   </div>;
 }
 
-function RectFields({ rect, onChange }) {
+// The numbers are for debugging, not for the operator: a station is set by
+// dragging a box round the part, and nobody types 1378 to do that. Shown as a
+// read-only one-liner, with the editable fields behind a toggle -- they still
+// matter when you need to nudge an edge by 10px or reproduce a value from a log.
+function RectFields({ rect, onChange, showNumbers }) {
   const set = (k) => (v) => onChange({ ...rect, [k]: v });
+  if (!showNumbers) {
+    return <div style={{ fontSize: 11, color: '#888', margin: '2px 0 4px' }}>
+      {(rect.w > 0 && rect.h > 0) ? `${rect.w}×${rect.h} px @${rect.x},${rect.y}` : '尚未框選'}
+    </div>;
+  }
   return <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '2px 0 4px' }}>
     <NumRow label="x" value={rect.x} onChange={set('x')} />
     <NumRow label="y" value={rect.y} onChange={set('y')} />
@@ -94,6 +103,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
   const [dirty, setDirty]   = useState(() => !!(draft.current && draft.current.dirty));
   const [aiming, setAiming] = useState(null);   // null | 'region' | <clean index>
   const [open, setOpen]     = useState(false);  // collapsed by default: sidebar space
+  const [nums, setNums]     = useState(false);  // xywh fields: debugging, not operating
   const loadedFrom = useRef(null);
 
   // Adopt whatever the core last told us, but never stomp on edits in progress.
@@ -191,7 +201,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
       單位是<b>全幀感光元件像素</b>。
     </div>
     <AimBtn target="region">拉框設定</AimBtn>
-    <RectFields rect={region} onChange={(r) => edit(() => setRegion(r))} />
+    <RectFields rect={region} showNumbers={nums} onChange={(r) => edit(() => setRegion(r))} />
     {region.w > 0 && region.h > 0 ? (
       <Button size="small" danger icon={<DeleteOutlined />}
         onClick={() => edit(() => setRegion(EMPTY_REGION))}>清除(不限制)</Button>
@@ -209,7 +219,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </div>
-        <RectFields rect={c} onChange={(r) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, ...r } : x))))} />
+        <RectFields rect={c} showNumbers={nums} onChange={(r) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, ...r } : x))))} />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <NumRow label="暗" value={c.dark_thresh ?? 128}
             onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, dark_thresh: v } : x))))}
@@ -245,6 +255,8 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
           // effect): once it is on the machine, the machine is the source.
           setDirty(false);
         }}>套用並存檔</Button>
+      <Button size="small" type={nums ? 'primary' : 'default'}
+        onClick={() => setNums(!nums)}>數值</Button>
       {dirty ? (
         <Button size="small" onClick={() => {
           // Throw the draft away and go back to what the machine is running.

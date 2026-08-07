@@ -21,6 +21,7 @@ import Divider from 'antd/lib/divider';
 import Slider from 'antd/lib/slider';
 import Switch from 'antd/lib/switch';
 import Tooltip from 'antd/lib/tooltip';
+import CameraOutlined from '@ant-design/icons/CameraOutlined';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
@@ -1034,6 +1035,7 @@ export function UINSP_ESP32_MINI() {
   const seenRef = useRef({ obj: null, at: 0 });
   const mounted = useRef(true);
   const [busy, setBusy] = useState(false);
+  const [snapping, setSnapping] = useState(false);
   const [why, setWhy] = useState('');
   const [rpmSel, setRpmSel] = useState(undefined);   // slider position, in rpm
 
@@ -1140,6 +1142,27 @@ export function UINSP_ESP32_MINI() {
         }}
         style={{ height: 34, fontSize: 15, fontWeight: 700, marginBottom: 3 }}
       >{running || starting ? '停止' : '啟動'}</Button>
+
+      {/* One lit frame, for setting the station up on a stopped plate.
+          Only offered while stopped: the firmware refuses a manual light hold
+          once the stage machine is driving the pins, and it is right to -- a
+          hold would be stomped within milliseconds and read as a fault. */}
+      {!(running || starting) && (
+        <Button block size="small" icon={<CameraOutlined />} loading={snapping}
+          style={{ marginBottom: 3, fontSize: 11, height: 22 }}
+          onClick={() => {
+            setSnapping(true); setWhy('');
+            dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+              if (!api || typeof api.camSnapWithLight !== 'function') {
+                setSnapping(false); setWhy('韌體或介面不支援 camSnapWithLight'); return;
+              }
+              api.camSnapWithLight()
+                .catch((e) => { if (mounted.current) setWhy('拍照失敗: ' + String(e)); })
+                .then(() => { if (mounted.current) setSnapping(false); });
+            }));
+          }}
+        >拍一張(含背光)</Button>
+      )}
 
       {/* State, speed, feed and what the machine is doing -- the things the
           button deliberately does not say -- on one wrapping line. */}
