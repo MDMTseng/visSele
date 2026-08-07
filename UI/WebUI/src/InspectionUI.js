@@ -810,7 +810,7 @@ class ObjInfoList extends React.Component {
     <SubMenu style={{ 'textAlign': 'left' }} key={"uInspESP32"} className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
       title={
       <>
-        <Divider orientation="center" key="divi2" style={{ 'margin': '5px'}} className="Antd_Divider_Small_Text_Tight">全檢設備 v2</Divider>
+        <Divider orientation="center" key="divi2" style={{ 'margin': '2px 0'}} className="Antd_Divider_Small_Text_Tight">全檢設備 v2</Divider>
         <UINSP_ESP32_MINI/>
       </>}
       >

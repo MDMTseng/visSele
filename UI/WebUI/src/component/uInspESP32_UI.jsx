@@ -1087,17 +1087,34 @@ export function UINSP_ESP32_MINI() {
                  : (rpm > 0 ? rpm : plateRpm(lastSpeedRef.current));
   const color = inError ? '#c33' : label === 'RUN' ? '#389e0d' : starting ? '#d48806' : '#888';
 
+  // What the machine is doing, in one phrase. Kept next to the state word
+  // rather than on its own line -- it is the same sentence, and it was costing
+  // a whole row to say the second half of it.
+  const doing = inError ? '需先在設定面板清除'
+    : st === 102 ? '校時中,盤故意停著'
+    : st === 103 ? '加速中'
+    : st === 104 ? '空檔重新校時'
+    : running ? '檢測中'
+    : lastSpeedRef.current > 0 ? `按下即以 ${plateRpm(lastSpeedRef.current).toFixed(1)} rpm 啟動`
+    : '尚無轉速,請先在設定面板設定';
+
+  // Six counts on ONE row. They wrapped to two before because every cell
+  // demanded a fixed 44px and the labels run to five characters; flex:1 with
+  // minWidth:0 lets them share whatever the sidebar gives instead. The numbers
+  // stay at a size you can read across the machine -- that is the one thing
+  // not to trade away here.
   const cell = (name, v, warn) => (
-    <div style={{ minWidth: 44 }} key={name}>
-      <div style={{ fontSize: 10, color: '#888', whiteSpace: 'nowrap' }}>{name}</div>
-      <div style={{ fontSize: 16, fontWeight: 600, color: warn && v > 0 ? warn : undefined }}>
+    <div style={{ flex: 1, minWidth: 0 }} key={name}>
+      <div style={{ fontSize: 9, color: '#888', whiteSpace: 'nowrap', lineHeight: 1.1 }}>{name}</div>
+      <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.15,
+                    color: warn && v > 0 ? warn : undefined }}>
         {v ?? '—'}
       </div>
     </div>
   );
 
   return (
-    <div style={{ margin: '4px 12px 10px 12px', textAlign: 'left' }}>
+    <div style={{ margin: '2px 12px 6px 12px', textAlign: 'left' }}>
       {/* One button, and it says what pressing it DOES -- not what the machine
           currently is. A switch shows state and leaves the action implied,
           which is the wrong way round for something that starts a spinning
@@ -1121,26 +1138,19 @@ export function UINSP_ESP32_MINI() {
               .then(() => { if (mounted.current) setBusy(false); });
           }));
         }}
-        style={{ height: 46, fontSize: 18, fontWeight: 700, marginBottom: 4 }}
+        style={{ height: 34, fontSize: 15, fontWeight: 700, marginBottom: 3 }}
       >{running || starting ? '停止' : '啟動'}</Button>
 
-      {/* State, speed, and what the machine is actually doing -- the three
-          things the button deliberately does not say. */}
-      <div style={{ fontSize: 12, marginBottom: 4 }}>
+      {/* State, speed, feed and what the machine is doing -- the things the
+          button deliberately does not say -- on one wrapping line. */}
+      <div style={{ fontSize: 11, lineHeight: 1.35, marginBottom: 3 }}>
         <b style={{ color }}>{label}</b>
         <span style={{ color: '#888' }}>
           {' · '}{rpm > 0 ? `${rpm.toFixed(1)} rpm` : '盤停止'}
           {gate ? ` · 進料 ${gate.accept}` : ''}
+          {' · '}
         </span>
-        <div style={{ color: starting ? '#d48806' : '#888' }}>
-          {inError ? '錯誤中,需先在設定面板清除'
-            : st === 102 ? '校時中 — 盤故意停著'
-            : st === 103 ? '加速中'
-            : st === 104 ? '空檔重新校時'
-            : running ? '檢測中'
-            : lastSpeedRef.current > 0 ? `按下即以 ${plateRpm(lastSpeedRef.current).toFixed(1)} rpm 啟動`
-            : '尚無轉速,請先在設定面板設定'}
-        </div>
+        <span style={{ color: inError ? '#c33' : starting ? '#d48806' : '#888' }}>{doing}</span>
       </div>
       {/* Speed, in the unit an operator thinks in.
           Applied LIVE while the machine is running; while it is stopped this
@@ -1148,8 +1158,9 @@ export function UINSP_ESP32_MINI() {
           copies PLATE_FREQ_SETPOINT into TARGET every pass, so writing a
           non-zero plate_freq to a stopped machine STARTS THE PLATE. A speed
           slider must never be a start button. */}
-      <div style={{ marginBottom: 2 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#888' }}>
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between',
+                      fontSize: 10, lineHeight: 1.2, color: '#888' }}>
           <span>轉速</span>
           <span>
             {rpmShown > 0
@@ -1175,17 +1186,18 @@ export function UINSP_ESP32_MINI() {
               }));
             }
           }}
-          style={{ margin: '0 6px' }}
+          style={{ margin: '2px 6px 4px' }}
         />
       </div>
-      {why ? <div style={{ fontSize: 11, color: '#c33', marginBottom: 4 }}>⚠ {why}</div> : null}
-      {/* error_hist is the one thing here that must never be quiet */}
+      {why ? <div style={{ fontSize: 11, color: '#c33', marginBottom: 3 }}>⚠ {why}</div> : null}
+      {/* error_hist is the one thing here that must never be quiet -- it keeps
+          its own line per error even though everything around it got tighter */}
       {stat && stat.error_hist && stat.error_hist.length > 0 && (
-        <div style={{ fontSize: 11, color: '#c33', marginBottom: 4 }}>
+        <div style={{ fontSize: 11, lineHeight: 1.3, color: '#c33', marginBottom: 3 }}>
           {stat.error_hist.map((e, i) => <div key={i}>⚠ {errName(e)}</div>)}
         </div>
       )}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 4 }}>
         {cell('SEL1', cnt.SEL1)}
         {cell('SEL2', cnt.SEL2)}
         {cell('SEL3', cnt.SEL3)}
