@@ -1244,15 +1244,19 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         }
       }
 
-      // Both labels go INSIDE the box, and small. getFontStyle takes a size in
-      // WORLD mm, so the 1 that the measurement overlay uses renders enormous
-      // here -- and with two lines per box and boxes a part-pitch apart, six
-      // strings overlap into an unreadable block.
+      // Text goes BELOW the box. Inside, it sits on top of the parts -- which
+      // is the one thing in the frame the operator is actually trying to look
+      // at. Above collides with the neighbouring box's text as soon as the
+      // stations sit a part-pitch apart, and below the plate is empty.
+      //
+      // Small, because getFontStyle takes a size in WORLD mm: the 1 the
+      // measurement overlay passes renders enormous for a station label, and
+      // there are two lines per box.
       const fs = 0.42, pad = 0.12;
       ctx.font = this.rUtil.getFontStyle(fs);
-      if (label) { ctx.fillStyle = stroke; ctx.fillText(label, x + pad, y + fs + pad); }
+      if (label) { ctx.fillStyle = stroke; ctx.fillText(label, x + pad, y + h + fs + pad); }
       if (sub)   { ctx.fillStyle = state ? state.color : stroke;
-                   ctx.fillText(sub, x + pad, y + fs * 2.2 + pad); }
+                   ctx.fillText(sub, x + pad, y + h + fs * 2.2 + pad); }
     };
 
     const R = ov.result || {};
