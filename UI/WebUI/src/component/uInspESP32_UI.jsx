@@ -18,6 +18,7 @@ import Tag from 'antd/lib/tag';
 import Card from 'antd/lib/card';
 import Collapse from 'antd/lib/collapse';
 import Divider from 'antd/lib/divider';
+import Modal from 'antd/lib/modal';
 import Slider from 'antd/lib/slider';
 import Switch from 'antd/lib/switch';
 import Tooltip from 'antd/lib/tooltip';
@@ -188,6 +189,46 @@ const rememberSpeed = (pf) => {
 const recallSpeed = () => {
   try { const v = Number(window.localStorage.getItem(SPEED_KEY)); return v > 0 ? v : 0; }
   catch (e) { return 0; }
+};
+
+// --- statistics history ------------------------------------------------------
+//
+// The device's counters are cumulative since the last reset and it keeps no
+// history of its own, so zeroing them used to destroy the only copy of what a
+// batch did. Every reset now takes a snapshot first: the snapshot IS the batch.
+//
+// It lives in localStorage, i.e. in this browser, not in the machine. That is
+// honest about what it is -- an operator's notepad, not a production record --
+// and it is why it is capped at 20 rather than kept forever.
+const HIST_KEY = 'visSele.uinsp.statHist.v1';
+const HIST_MAX = 20;
+const recallHist = () => {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(HIST_KEY) || '[]');
+    return Array.isArray(v) ? v : [];
+  } catch (e) { return []; }
+};
+const storeHist = (list) => {
+  try { window.localStorage.setItem(HIST_KEY, JSON.stringify(list.slice(0, HIST_MAX))); }
+  catch (e) { /* private mode / quota */ }
+  return list.slice(0, HIST_MAX);
+};
+// Local time, because it is read next to a wall clock and a shift log.
+const fmtWhen = (t) => {
+  const d = new Date(t);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+// One row of the history table, and the current-counts row above it -- same
+// columns, because the point of showing "now" there is that you can read it
+// against the rows below without translating.
+const histRow = { display: 'flex', alignItems: 'center', fontSize: 12,
+                  padding: '3px 0', lineHeight: 1.3 };
+const n0 = (v) => (typeof v === 'number' ? v : 0);
+const fmtDur = (ms) => {
+  if (!(ms > 0)) return '';
+  const m = Math.round(ms / 60000);
+  return m < 60 ? `${m} 分` : `${Math.floor(m / 60)} 時 ${m % 60} 分`;
 };
 
 // Start or stop the machine. Shared by the setup panel and the sidebar strip
@@ -1055,21 +1096,33 @@ export function UINSP_ESP32_MINI() {
   const [clearing, setClearing] = useState(false);
   const [why, setWhy] = useState('');
   const [rpmSel, setRpmSel] = useState(undefined);   // slider position, in rpm
-  // Counter reset, armed then fired. Two presses rather than a Popconfirm:
-  // this strip lives inside an antd Menu title, and every overlay we have put
-  // in here so far has needed a fight (Tooltip injects its own span around a
-  // disabled child and broke the button sizing). A button that changes its own
-  // label needs no portal and cannot be mispositioned.
+  // Statistics history, and the modal that is the only way to zero the counts.
   //
-  // It is confirmed at all because these counts are the shift's record -- the
-  // device keeps no history, so a stray press loses the only copy.
-  const [rstArm, setRstArm] = useState(false);
+  // An arm-then-fire button in the strip was wrong: both presses land on the
+  // same pixel, so the guard is only a timing accident away from not being one.
+  // The confirmation is in a different PLACE now -- open a modal, then press
+  // something else -- which is the kind a slip cannot walk through.
+  const [histOpen, setHistOpen] = useState(false);
+  const [hist, setHist] = useState(recallHist);
   const [rsting, setRsting] = useState(false);
+  // Presses on the reset button, within a 5s window. Three, because inside a
+  // modal the risk is no longer a stray click (you had to open it) -- it is
+  // pressing the wrong button while looking at the history you came to read.
+  const [rstHits, setRstHits] = useState(0);
   useEffect(() => {
-    if (!rstArm) return;
-    const h = setTimeout(() => setRstArm(false), 4000);   // disarm itself
+    if (!rstHits) return;
+    const h = setTimeout(() => setRstHits(0), 5000);
     return () => clearTimeout(h);
-  }, [rstArm]);
+  }, [rstHits]);
+  useEffect(() => { if (!histOpen) setRstHits(0); }, [histOpen]);
+  // Same shape for "clear the history" -- hidden in the modal, and confirmed,
+  // because it throws away every batch at once rather than one.
+  const [delHits, setDelHits] = useState(0);
+  useEffect(() => {
+    if (!delHits) return;
+    const h = setTimeout(() => setDelHits(0), 5000);
+    return () => clearTimeout(h);
+  }, [delHits]);
 
   // The last speed this machine was actually seen running at.
   //
@@ -1185,6 +1238,30 @@ export function UINSP_ESP32_MINI() {
     : running ? '檢測中'
     : lastSpeedRef.current > 0 ? `按下即以 ${plateRpm(lastSpeedRef.current).toFixed(1)} rpm 啟動`
     : '尚無轉速,請先在設定面板設定';
+
+  // File the current counts as a batch, then zero the device.
+  //
+  // The snapshot is written only AFTER the device confirms -- if it refuses,
+  // nothing was zeroed and inventing a history entry would be inventing a
+  // batch. `since` is the previous reset, which is what makes a row a period
+  // rather than a timestamp.
+  const doReset = () => {
+    if (rstHits + 1 < 3) { setRstHits(rstHits + 1); return; }
+    setRstHits(0); setRsting(true); setWhy('');
+    const prev = hist[0];
+    const snap = {
+      t: Date.now(), since: prev ? prev.t : null,
+      NG: n0(cnt.SEL2), OK: n0(cnt.SEL3), NA: n0(cnt.NA), SEL1: n0(cnt.SEL1),
+      SKIP: n0(cnt.SKIP), UNANS: n0(cnt.UNANSWERED), feed: n0(gate && gate.accept),
+    };
+    dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
+      if (!api) { setRsting(false); setWhy('裝置未連線'); return; }
+      Promise.resolve(api.resetRunningStat())
+        .then(() => { if (mounted.current) setHist(storeHist([snap, ...hist])); })
+        .catch((e) => { if (mounted.current) setWhy('歸零失敗: ' + String(e)); })
+        .then(() => { if (mounted.current) setRsting(false); });
+    }));
+  };
 
   // Three counts on ONE row, and the colour carries the meaning so the row can
   // be read without reading it -- red is the bin you care about, green is the
@@ -1382,22 +1459,12 @@ export function UINSP_ESP32_MINI() {
         {tag('NG', cnt.SEL2, 'red')}
         {tag('OK', cnt.SEL3, 'green')}
         {tag('NA', cnt.NA)}
-        {/* Zeroing the counts used to mean opening the setup modal -- for the
-            thing you do at the start of every batch. */}
-        <Button size="small" type={rstArm ? 'primary' : 'text'} danger={rstArm}
-          loading={rsting}
+        {/* Not a reset button. Reset is something that happens inside the
+            history, because the history is what a reset produces. */}
+        <Button size="small" type="text"
           style={{ padding: '0 6px', height: 22, fontSize: 11, flexShrink: 0 }}
-          onClick={() => {
-            if (!rstArm) { setRstArm(true); return; }
-            setRstArm(false); setRsting(true); setWhy('');
-            dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
-              if (!api) { setRsting(false); return; }
-              Promise.resolve(api.resetRunningStat())
-                .catch((e) => { if (mounted.current) setWhy('歸零失敗: ' + String(e)); })
-                .then(() => { if (mounted.current) setRsting(false); });
-            }));
-          }}
-        >{rstArm ? '確定?' : '歸零'}</Button>
+          onClick={() => setHistOpen(true)}
+        >歷史</Button>
       </div>
       {/* SEL1 has no column: nothing is wired to it on this machine, so it
           reads 0 forever and a permanent 0 teaches people to stop looking. It
@@ -1435,6 +1502,83 @@ export function UINSP_ESP32_MINI() {
           <span>件/秒</span>
         </div>
       )}
+
+      {/* The history, and the only place the counters can be zeroed. */}
+      <Modal visible={histOpen} onCancel={() => setHistOpen(false)} footer={null}
+             width={480} title="統計歷史" destroyOnClose>
+        {/* What is on the machine right now -- i.e. exactly what pressing the
+            button below would file away. Shown in the same shape as a history
+            row so the two can be compared without translating. */}
+        <div style={{ ...histRow, fontWeight: 600, borderBottom: '1px solid #eee' }}>
+          <span style={{ width: 96 }}>目前</span>
+          <span style={{ width: 52, textAlign: 'right' }}>{n0(cnt.SEL2)}</span>
+          <span style={{ width: 52, textAlign: 'right', color: '#389e0d' }}>{n0(cnt.SEL3)}</span>
+          <span style={{ width: 52, textAlign: 'right' }}>{n0(cnt.NA)}</span>
+          <span style={{ width: 60, textAlign: 'right' }}>{n0(gate && gate.accept)}</span>
+          <span style={{ flex: 1 }} />
+        </div>
+        <div style={{ ...histRow, fontSize: 10, color: '#888' }}>
+          <span style={{ width: 96 }}>歸零時間</span>
+          <span style={{ width: 52, textAlign: 'right' }}>NG</span>
+          <span style={{ width: 52, textAlign: 'right' }}>OK</span>
+          <span style={{ width: 52, textAlign: 'right' }}>NA</span>
+          <span style={{ width: 60, textAlign: 'right' }}>進料</span>
+          <span style={{ flex: 1, textAlign: 'right' }}>區間</span>
+        </div>
+
+        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+          {hist.length === 0
+            ? <div style={{ color: '#888', padding: '12px 0' }}>還沒有紀錄。第一次歸零就會建立一筆。</div>
+            : hist.map((h) => (
+              <div key={h.t} style={{ ...histRow, borderBottom: '1px solid #f5f5f5' }}>
+                <span style={{ width: 96 }}>{fmtWhen(h.t)}</span>
+                <span style={{ width: 52, textAlign: 'right',
+                               color: h.NG > 0 ? '#c33' : undefined }}>{n0(h.NG)}</span>
+                <span style={{ width: 52, textAlign: 'right', color: '#389e0d' }}>{n0(h.OK)}</span>
+                <span style={{ width: 52, textAlign: 'right' }}>{n0(h.NA)}</span>
+                <span style={{ width: 60, textAlign: 'right' }}>{n0(h.feed)}</span>
+                <span style={{ flex: 1, textAlign: 'right', fontSize: 10, color: '#888' }}>
+                  {h.since ? fmtDur(h.t - h.since) : ''}
+                  {/* The quiet ones travel with the batch they happened in --
+                      they are the reason to keep a record at all. */}
+                  {(h.SKIP > 0 || h.UNANS > 0 || h.SEL1 > 0) && (
+                    <span style={{ color: '#c60' }}>
+                      {h.SKIP > 0 ? ` SKIP${h.SKIP}` : ''}
+                      {h.UNANS > 0 ? ` UNANS${h.UNANS}` : ''}
+                      {h.SEL1 > 0 ? ` SEL1${h.SEL1}` : ''}
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+        </div>
+
+        {/* Three presses inside a modal you had to open. The risk here is not a
+            stray click -- it is pressing this while reading the table you came
+            for, which one press would not catch and a second press in the same
+            spot barely would. The count resets after 5s of not pressing. */}
+        <Button type="primary" danger block loading={rsting}
+                style={{ marginTop: 14 }}
+                onClick={doReset}>
+          {rstHits === 0 ? '送入歷史並歸零'
+            : `再按 ${3 - rstHits} 次` }
+        </Button>
+        <div style={{ color: '#888', fontSize: 11, marginTop: 4 }}>
+          目前的計數會存成一筆紀錄,然後裝置歸零。只保留最近 {HIST_MAX} 筆,
+          存在這台瀏覽器裡(不在機器上)。
+        </div>
+
+        <div style={{ marginTop: 10, textAlign: 'right' }}>
+          <Button type="text" size="small" style={{ fontSize: 11, color: '#aaa' }}
+                  disabled={hist.length === 0}
+                  onClick={() => {
+                    if (delHits + 1 < 3) { setDelHits(delHits + 1); return; }
+                    setDelHits(0); setHist(storeHist([]));
+                  }}>
+            {delHits === 0 ? '清除歷史' : `再按 ${3 - delHits} 次清除全部`}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
