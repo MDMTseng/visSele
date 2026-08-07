@@ -1116,7 +1116,13 @@ export function UINSP_ESP32_MINI() {
   );
 
   return (
-    <div style={{ margin: '2px 12px 6px 12px', textAlign: 'left' }}>
+    // maxWidth/overflow are load-bearing. This strip renders inside an antd
+    // Menu title, which is `white-space:nowrap` and does not constrain its
+    // children, so a `block` button sizes itself against an unbounded box and
+    // drags the whole strip wider than the sidebar -- everything then clips at
+    // the left edge and the counts read as "NANS".
+    <div style={{ margin: '2px 12px 6px 12px', textAlign: 'left',
+                  maxWidth: '100%', overflow: 'hidden', whiteSpace: 'normal' }}>
       {/* One button, and it says what pressing it DOES -- not what the machine
           currently is. A switch shows state and leaves the action implied,
           which is the wrong way round for something that starts a spinning
@@ -1148,8 +1154,9 @@ export function UINSP_ESP32_MINI() {
           once the stage machine is driving the pins, and it is right to -- a
           hold would be stomped within milliseconds and read as a fault. */}
       {!(running || starting) && (
-        <Button block size="small" icon={<CameraOutlined />} loading={snapping}
-          style={{ marginBottom: 3, fontSize: 11, height: 22 }}
+        <Button size="small" icon={<CameraOutlined />} loading={snapping}
+          style={{ marginBottom: 3, fontSize: 11, height: 22,
+                   width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}
           onClick={() => {
             setSnapping(true); setWhy('');
             dispatch(UIAct.EV_WS_GET_OBJ(API_ID, (api) => {
