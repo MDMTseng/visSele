@@ -772,3 +772,80 @@ Four separate problems, all still open:
 
 The crash dump is the one part that works: it writes the entire retained ring,
 which is how J11 was solved.
+
+---
+
+## J14. `serialRTT` in the perif log is NOT a round trip
+
+`wiringPanel.cpp:668` computes it as:
+
+```cpp
+long rtt = last_tx_us ? (long)(perif_now_us() - last_tx_us) : -1;
+```
+
+That is *time since the host last transmitted anything*, which is a round trip
+only when the line being logged is the reply to that transmission. Announcements
+(`cam_trig`, `report` acks) are sent by the device unprompted, so for them the
+number means nothing at all — it is just how long ago the last poll went out.
+
+Measured on 2026-08-07 over a 214 s window at 10 objects/s:
+
+```
+主動宣告 (no "id")   n=2149  median 1527 ms   <- meaningless
+命令回覆 (has "id")  n=122   median   19 ms
+  pong                n=72   median  9.6 ms   max  106 ms
+  get_verdict_log     n=16   median 1760 ms   max 2980 ms
+  get_running_stat    n=34   median 1518 ms   max 2751 ms
+```
+
+This cost a wrong conclusion twice in one night: "the link is saturated,
+serialRTT 1.4–2.9 s" was quoted as the strongest argument for moving to 230400
+baud. It is not congestion. Two independent measurements say so:
+
+- **Wire utilisation is 8.4%.** Device→host traffic is 969 B/s (2271 replies,
+  91 bytes mean, 99.6% complete in the log) against 11520 B/s of 115200 8N1
+  capacity.
+- **Small replies are fast.** `pong` answers in 9.6 ms median.
+
+What *is* real is that **large replies take ~25x their wire time**: a
+`get_verdict_log` reply is ~800 bytes, which is 70 ms on the wire, and it
+measures 1760 ms. Doubling the baud rate would take that 70 ms to 35 ms and
+leave the other 1690 ms untouched. The thing to chase is the per-read chunking
+or throttling, not the bandwidth.
+
+It matters beyond the test rig: `get_running_stat` is what the WebUI panel
+polls, and a 1.5 s answer to it is a panel that feels stuck.
+
+To read the log correctly, split on whether the reply carries an `"id"` — every
+reply echoes the request's id (`LegacyFirmware.cpp:4191`), so its presence is
+exactly the "was this solicited" test.
+
+### J14 addendum — what 230400 actually changed (2026-08-07)
+
+The paragraph above concluded "large replies take ~25x their wire time; chase
+the chunking, not the bandwidth." Measured after the move to 230400, that
+conclusion does not survive:
+
+```
+                     ping          get_running_stat
+idle                 5.7 ms          65.4 ms
+under 30 Hz load    10.9 ms          66.3 ms      <- unchanged by load
+idle again           5.8 ms          66.3 ms
+```
+
+`get_running_stat` is 66 ms flat, load or no load. At 115200 the same reply
+measured 1518 ms median. A 2x baud change producing a 23x improvement is not
+explained by wire time, and it is not explained by contention either — the load
+column above is flat. **What the remaining factor is has not been established**,
+and the honest position is that it is unknown rather than any of the stories
+tried so far.
+
+What IS settled:
+
+- 66 ms for `get_running_stat` is fine for a 1 Hz WebUI poll. Whatever the
+  1518 ms was, it is gone.
+- `ping` roughly doubles under load (5.7 -> 10.9 ms). That is real contention,
+  and it is small.
+- The move to 230400 was still worth making, but the reason given for it at the
+  time (congestion) was wrong on the evidence, and the benefit turned out to be
+  somewhere other than where it was predicted.
