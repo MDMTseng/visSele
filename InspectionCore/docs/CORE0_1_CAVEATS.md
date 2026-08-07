@@ -977,3 +977,62 @@ move on) and obvious in one run of that.
 **Still true, not fixed:** an `EX` snap during an FI run would stop the FI
 stream after its one frame (same `takeCount` path). Pre-existing, and now
 self-healing on the next snap, but the two should not be used together.
+
+## N. The caliper clamp is in def-mm; the cost it bounds is in px (2026-08-07)
+
+**Deferred, not fixed.** Written up because it is invisible from the outside and
+the ten QA cases it fails are now marked KNOWN, which is how a deferred defect
+stops being a discovery and starts being a decision.
+
+`FeatureManager_sig360_circle_line.cpp:275-277` (arc) and `:1622-1624` (line)
+clamp pathological caliper sub-params:
+
+```cpp
+if (cir.cal_count  >  512) cir.cal_count  =  512;
+if (cir.cal_width  >   64) cir.cal_width  =   64;
+if (cir.cal_length >  256) cir.cal_length =  256;
+```
+
+with the comment "even at these caps worst-case per primitive is ~10^8 ops ->
+completes in ~1s". That arithmetic only works if the numbers are pixels. They
+are **def-mm**, and both paths correctly multiply by `ppmm` before the
+measurement loop (arc at `:4329` inline, line at `:4876` earlier — the
+conversion itself is right, that was checked). At this machine's
+`ppmm ≈ 113 px/mm` the clamped ceiling is
+
+```
+width  64 mm  ->  7,226 px      the whole image is 2,592 x 1,944 px
+length 256 mm -> 28,900 px      i.e. 2.8x the image wide, 11x long
+512 * (2*7226+1) * 28900        ~2e11 ops per primitive, not 1e8
+```
+
+**A guard whose ceiling is ten times the image bounds nothing.**
+
+**Measured** (golden def, 4 arcs / 7 lines, `--insp`):
+
+```
+caliper (count/width/length, def units)   arc      line
+16 / 2 / 16                              0.29s    0.18s
+32 / 4 / 32                              1.16s    0.18s
+64 / 8 / 64                              7.93s    0.35s
+128 / 16 / 64                           31.61s    0.53s
+512 / 64 / 256  (== the caps)          TIMEOUT   10.99s
+4096 / 2049 / 4096 (over the caps)     TIMEOUT   11.67s
+```
+
+At-cap and over-cap take the same time, which is the proof that **the clamp
+does fire** — it just clamps to something unusable. The arc/line gap is not a
+second bug: line's cost saturates because its scan lines run off the image and
+get clipped, while the arc's radial scans stay inside it.
+
+**Impact is bad-input only.** Real defs run `count 10 / width 0.5mm` — tens to
+hundreds of times below any cap — so nothing measured on the machine is
+affected. The cost is that a typo (0.5 -> 500) stalls the core for tens of
+seconds per frame with no error code, on a machine that runs continuously.
+
+**The fix when it is time:** clamp *after* the mm->px conversion, or better
+clamp the work directly —
+`ops = count * (2*length_px/step + 1) * (width_px + 1) <= budget`, shrinking
+count then length. Measured throughput is ~4.3M samples/s, so a budget of ~2e6
+puts a primitive at ~0.5s. Any such change should leave the ten KNOWN cases in
+`qa_measure.py` green and the golden byte-identical.
