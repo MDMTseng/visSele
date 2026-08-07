@@ -827,6 +827,52 @@ def _pump_cal(link, timeout=25.0):
     return _pump_until(link, (ST_READY, ST_IDLE, ST_ERROR, ST_FATAL), timeout)
 
 
+def _settle_cal(link, freq, cat=None):
+    """Let the calibration objects finish their journey, and return the tid
+    high-water mark that separates them from ours.
+
+    INSPECTION_MODE_CAL fires its own sync pulses, and those are objects: they
+    register, they walk to the camera, and they announce cam_trig -- some of
+    them AFTER a test has started firing and counting. Two ways that bites:
+
+      * counted as ours, so "fired=10" reads back "objects=21" (bench B.5);
+      * answered as ours, and by then they have already passed SWITCH, so the
+        report matches no object and the machine faults. That is what made
+        `stress` die at the first rate it tried, 10/s, reporting a tid desync
+        for a rate the pipeline handles comfortably -- 6x below where it
+        actually gives.
+
+    So: drain what has already announced, note the highest tid, and if the pipe
+    still holds registered parts, wait out one camera transit answering them NA
+    (they are not under test; an unanswered object is what the safety stop is
+    for). Everything above the returned tid_base belongs to the caller.
+
+    `freq` is plate_freq -- transit is CAM*_on / (2*freq), so this waits for
+    arrival rather than for a fixed guess.
+    """
+    tid_base = 0
+    for _, m in link.drain_async():
+        if m.get("type") == "cam_trig" and isinstance(m.get("tid"), int):
+            tid_base = max(tid_base, m["tid"])
+    pipe = (link.send({"type": "get_running_stat"}, timeout=3.0) or {}).get("pipe") or {}
+    if not (pipe.get("registered") or 0):
+        return tid_base
+    spo = ((link.send({"type": "get_setup"}, timeout=3.0) or {})
+           .get("stage_pulse_offset") or {})
+    cam_ticks = max((v for k, v in spo.items()
+                     if k.startswith("CAM") and k.endswith("_on")), default=0)
+    travel = (cam_ticks / (2.0 * freq)) if freq else 0.0
+    t_end = time.time() + travel * 1.4 + 0.3
+    while time.time() < t_end:
+        for _, m in link.drain_async():
+            if m.get("type") == "cam_trig" and isinstance(m.get("tid"), int):
+                tid_base = max(tid_base, m["tid"])
+                link.send_nowait({"type": "report", "tid": m["tid"],
+                                  "cat": cat if cat is not None else CAT_NA})
+        time.sleep(0.005)
+    return tid_base
+
+
 def _wait_at_speed(link, settle=0.15, tries=30):
     """Block until the plate is turning at a steady rate.
 
@@ -1184,6 +1230,16 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
           f"{'maxQs':>6}  result")
     print("  " + "-" * 62)
 
+    # How long a part takes to reach the camera at the ramp's plate speed --
+    # every "did it arrive?" wait below is derived from this, not guessed.
+    _spo = ((link.send({"type": "get_setup"}, timeout=3.0) or {})
+            .get("stage_pulse_offset") or {})
+    _cam_on = max((v for k, v in _spo.items()
+                   if k.startswith("CAM") and k.endswith("_on")), default=0)
+    tail_transit = (_cam_on / (2.0 * need_freq)) if need_freq else 0.0
+    print(f"  camera transit {tail_transit:.2f}s "
+          f"(CAM_on {_cam_on} at plate_freq {need_freq})")
+
     results = []
     best = 0
     broke_at = None
@@ -1203,6 +1259,12 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
         # 3.5mm de-dup gate -- they are dropped, and a late tail verdict for a
         # part that already faulted then reads as a tid desync.
         _wait_at_speed(link)
+        # CAL's sync pulses are objects too, and they are still walking to the
+        # camera when this rate starts. Answering one of them here is a report
+        # for a part that already passed SWITCH -- an instant tid desync that
+        # used to end the whole ramp at the first rate tried. Everything above
+        # tid_base is ours.
+        tid_base = _settle_cal(link, need_freq, cat=cat)
         link.drain_async()
 
         period = 1.0 / hz
@@ -1222,6 +1284,8 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
                 for _, msg in link.drain_async():
                     if msg.get("type") == "cam_trig":
                         tid = msg.get("tid")
+                        if isinstance(tid, int) and tid <= tid_base:
+                            continue          # a calibration object, not ours
                         seen.add(tid)
                         qs_max = max(qs_max, msg.get("Qs", 0) or 0)
                         if do_report and tid not in reported:
@@ -1237,11 +1301,18 @@ def stress(link, rep, start_hz, max_hz, step_hz, dwell, cat, do_report):
         # loop. A 50ms poll here can leave the last part's verdict later than
         # its ~window-sized runway to the selector and fault an otherwise clean
         # run on the final object alone.
-        t_drain = time.time() + 1.5
+        # ... and long enough for the LAST part fired to reach the camera.
+        # A flat 1.5s is a guess about a journey whose length is published:
+        # CAM*_on / (2*plate_freq). At this suite's geometry that is 0.8s, but
+        # at a slower plate it is seconds, and every part still in transit when
+        # the window closed counted as "dropped at the rate gate".
+        t_drain = time.time() + max(1.5, tail_transit * 1.4 + 0.5)
         while time.time() < t_drain:
             for _, msg in link.drain_async():
                 if msg.get("type") == "cam_trig":
                     tid = msg.get("tid")
+                    if isinstance(tid, int) and tid <= tid_base:
+                        continue
                     seen.add(tid)
                     qs_max = max(qs_max, msg.get("Qs", 0) or 0)
                     if do_report and tid not in reported:
