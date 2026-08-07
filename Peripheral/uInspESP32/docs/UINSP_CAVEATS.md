@@ -664,3 +664,54 @@ defective parts passing.
 (`Serial.begin`), `platformio.ini` (`monitor_speed`), the ten `tools/*.py`
 CONNs, and this file. Missing the last one leaves the app broken while every
 test script still passes.
+
+## 幻影脈衝與真實料件不能同盤混跑(2026-08-08)
+
+`chaos` 反覆出現的 `INSP_CAM_TRIG_INFO_CANNOT_BE_SENT`(comm queue overflow)
+**是治具造成的,不是產線缺陷。** 產線上沒有幻影脈衝,不會發生。
+
+`phantomEmitOne()` 刻意把 `gate_pulse` 往回填一整個 `L1A_on`:
+
+```c
+uint32_t tatPulse = SYS_STEP_COUNT - STAGE_PULSE_OFFSET.L1A_on + _PLAT_DIST_step(3000);
+```
+
+= `now - 9076`(本機 L1A_on 9314、`_PLAT_DIST_step(3000)` 238;實測 9076–9077
+一個 tick 不差)。用意是讓注入的物件**立刻**抵達燈光/相機站,不必等一整圈。
+
+代價是同一時刻登記的兩種物件,CAM 目標差了 9236 tick:
+
+| 來源 | gate_pulse | CAM1 目標 |
+|---|---|---|
+| 幻影 | `now − 9076` | `now + 239`(馬上) |
+| 真實料 | `now` | `now + 9315`(一圈後) |
+
+`ACT_CAM1` 是**按登記順序**的 FIFO,`ACT_TRY_RUN_TASK` 只看隊尾、每個 tick 發
+一個。一顆真實料插進幻影流裡,它「一圈後」的目標就卡住隊首,後面所有「馬上」
+的幻影一路等到它到期 —— 然後整批已過期的以每 tick 1–2 筆噴出。32 格的
+`ISRTrigQ`(每顆料 2 筆 = 16 顆餘裕)接不住。
+
+**實測證據**(`poll` 的 `pushlog` / `act_late_max`):
+
+```
+tid=13 gate=30576 at=39652   gate = at − 9076   幻影
+tid=14 gate=39728 at=39730   gate = at          真實料 → 目標 +9152
+tid=15 gate=30974 at=40050   目標 −8754  ← 反轉，此後全部過期
+```
+
+任務發射時已過期 8973–9079 tick,五次刷新全部逼近一個完整的 CAM1_on。
+
+**因此:**
+
+- 用 `trig_phantom_pulse` / `trig_phantom_train` 的測試(bench、stress、chaos、
+  edge)**必須在空盤上跑**,否則量到的是這個假象。盤子上有料時
+  `gate.accept` 會自己走(見 [[project_uinsp_throughput_ceiling]]:
+  plate_freq 15000 時盤子自己送 23–26/s)。
+- 想在有料的盤子上測,就別注入幻影 —— 真實料本身就是負載。
+- 韌體端若要根治,`ACT_*` 佇列不能假設登記順序等於到期順序,或
+  `phantomEmitOne` 不該回填 `gate_pulse`。**目前不動**:產線不受影響,
+  而回填正是幻影好用的原因。
+
+順帶,追這個東西時補上的儀表(都在 `poll`):`tq/tqhwm/tqcap/tqovf`(那個會
+溢位的佇列,`Qs` 是 RBuf,是另一個)、`tqburst`、`act_late_max`、`loopn/
+loopmax_us`、`svc/st/rx/tx_us` 分段計時,以及 `pushlog` 指令。

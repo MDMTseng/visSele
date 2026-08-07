@@ -1041,6 +1041,7 @@ volatile uint32_t ACT_LATE_MAX=0;
 // tick. LATE_PREV_TARGET is the target of the CAM1 task that fired just
 // before: if it is GREATER than this one's, the queue is out of order and the
 // question becomes how a later-registered object got an earlier target.
+extern volatile uint32_t SYS_STEP_COUNT;   // defined below, beside the ISR
 volatile uint32_t LATE_TID=0, LATE_GATE=0, LATE_TARGET=0, LATE_CUR=0;
 volatile uint32_t LATE_QDEPTH=0, LATE_PREV_TARGET=0, LATE_LAST_TARGET=0;
 // Which KIND of object it was. Two paths register objects -- the sensor/gate
@@ -1051,6 +1052,31 @@ volatile uint32_t LATE_QDEPTH=0, LATE_PREV_TARGET=0, LATE_LAST_TARGET=0;
 volatile uint8_t  LATE_SYNC=0;
 volatile uint32_t LATE_W=0;
 volatile uint8_t  LATE_PREV_SYNC=0, LATE_LAST_SYNC=0;
+
+// A trace of the last 24 CAM1 ON-task REGISTRATIONS, in push order.
+//
+// The inversion is created at push time, not at fire time, so looking at the
+// queue's two ends can only prove it happened. This records every push --
+// which object, its gate_pulse, the target written, and where the plate was
+// at that instant -- and freezes the moment a task fires badly late, so the
+// window around the event survives to be read out.
+#define PUSHLOG_N 24
+struct PushLogEnt { uint32_t tid, gate, target, at; };
+PushLogEnt PUSHLOG[PUSHLOG_N];
+volatile uint8_t  PUSHLOG_I=0;
+volatile uint8_t  PUSHLOG_FROZEN=0;
+volatile uint32_t PUSHLOG_SEEN=0;
+static inline void pushLog(ACT_INFO *t)
+{
+  if(PUSHLOG_FROZEN || t==NULL) return;
+  PushLogEnt &e = PUSHLOG[PUSHLOG_I];
+  e.tid    = t->src->tid;
+  e.gate   = t->src->gate_pulse;
+  e.target = t->targetPulse;
+  e.at     = SYS_STEP_COUNT;
+  PUSHLOG_I = (uint8_t)((PUSHLOG_I+1) % PUSHLOG_N);
+  PUSHLOG_SEEN++;
+}
 extern volatile uint32_t SYS_STEP_COUNT;   // defined below, beside the ISR
 
 static inline void hwmWitness(uint32_t tid, uint32_t gate_pulse)
@@ -1572,7 +1598,7 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli)
     volatile stagePulseOffset* spo = SPO_active;
     ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_on, 1, );
     ACT_PUSH_TASK(act_S.ACT_L1A, pli, spo->L1A_off, 0, );
-    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, spo->CAM1_on, 1, );
+    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, spo->CAM1_on, 1, pushLog(_task_););
     ACT_PUSH_TASK(act_S.ACT_CAM1, pli, spo->CAM1_off, 0, );
 
 
@@ -1650,6 +1676,7 @@ int Run_ACTS(uint32_t cur_pulse)
                         LATE_SYNC     = task->src->sync;
                         LATE_W        = task->src->w;
                         LATE_PREV_SYNC= LATE_LAST_SYNC;
+                        if(late>1000) PUSHLOG_FROZEN=1;   // keep the window
                       }
                       LATE_LAST_TARGET = task->targetPulse;
                       LATE_LAST_SYNC   = task->src->sync;
@@ -3439,6 +3466,7 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     LATE_TID=LATE_GATE=LATE_TARGET=LATE_CUR=0;
     LATE_QDEPTH=LATE_PREV_TARGET=LATE_LAST_TARGET=0;
     LATE_SYNC=LATE_PREV_SYNC=LATE_LAST_SYNC=0; LATE_W=0;
+    PUSHLOG_I=0; PUSHLOG_FROZEN=0; PUSHLOG_SEEN=0;
     LOOP_N=0;
     LOOP_MAX_US=0;
     SEG_SVC_US=SEG_ST_US=SEG_RX_US=SEG_TX_US=0;
@@ -3514,6 +3542,23 @@ int MData_JR::recv_jsonRaw_data(uint8_t *raw,int rawL,uint8_t opcode){
     retdoc["err"]=ERROR_HIST.size() ? (int)*ERROR_HIST.getTail(0) : 0;
     retdoc["nerr"]=ERROR_HIST.size();
     retdoc["cfg_crc"]=MachineConfig::hash();
+    doRsp=rspAck=true;
+  }
+  // Read out the frozen registration window (see PUSHLOG). Oldest first.
+  else if(strcmp(type,"pushlog")==0)
+  {
+    retdoc["type"]="pushlog";
+    retdoc["frozen"]=(bool)PUSHLOG_FROZEN;
+    retdoc["seen"]=PUSHLOG_SEEN;
+    JsonArray a=retdoc.createNestedArray("e");
+    uint8_t n = (PUSHLOG_SEEN < PUSHLOG_N) ? (uint8_t)PUSHLOG_SEEN : PUSHLOG_N;
+    for(uint8_t k=0;k<n;k++)
+    {
+      uint8_t i = (uint8_t)((PUSHLOG_I + PUSHLOG_N - n + k) % PUSHLOG_N);
+      JsonArray r=a.createNestedArray();
+      r.add(PUSHLOG[i].tid); r.add(PUSHLOG[i].gate);
+      r.add(PUSHLOG[i].target); r.add(PUSHLOG[i].at);
+    }
     doRsp=rspAck=true;
   }
   else if(strcmp(type,"get_running_stat")==0)
