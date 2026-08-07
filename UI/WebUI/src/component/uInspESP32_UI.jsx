@@ -277,6 +277,12 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
   const [spoEdit, setSpoEdit] = useState({});
   // Which field the fine-adjust bar acts on: {key,label,which:'pos'|'w'}.
   const [sel, setSel] = useState(null);
+  // Station timing is read far more often than it is changed, and every field
+  // in it applies on blur -- so a stray click plus a keystroke moves a real
+  // trigger on a running machine with no confirmation anywhere. The lock is
+  // deliberately not persisted: it re-arms every time the panel is opened,
+  // because "I unlocked this an hour ago" is not consent for the next edit.
+  const [spoUnlock, setSpoUnlock] = useState(false);
   // Set by nudge(), consumed by the effect that pushes the change. setSpoEdit
   // is async, so committing inside nudge() would send the PREVIOUS value.
   const [nudged, setNudged] = useState(false);
@@ -675,6 +681,214 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
       <Collapse ghost style={{ marginLeft: -16, marginRight: -16 }}>
         <Collapse.Panel key="adv" header={<b>ADVANCED</b>}>
 
+      <Card size="small" style={{ marginBottom: 8 }} title={<span>背光 (相機設定用)
+        <Why>相機設定用的常亮。裝置在 IDLE 以外會拒絕 —— 檢測模式下這些腳位歸 stage
+          任務所有,點了也會被蓋掉 —— 而且會逾時自動熄滅:為 600µs 閃燈設計的背光,
+          不一定撐得住連續點亮。</Why></span>}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {['L1A', 'L2A'].map((ch) => (
+            <Button key={ch} size="small" loading={busy === 'lt' + ch} disabled={running}
+              onClick={() => run('lt' + ch, (api) =>
+                api.light(ch, true, LIGHT_HOLD_MS).then((r) => {
+                  if (r && r.ack === false) { log.warn('[light] refused', r); return; }
+                  setLightUntil(Date.now() + ((r && r.timeout_ms) || LIGHT_HOLD_MS));
+                }))}
+            >{ch} 開</Button>
+          ))}
+          <Button size="small" danger loading={busy === 'ltoff'}
+            onClick={() => run('ltoff', (api) => {
+              setLightUntil(0);
+              return Promise.all([api.light('L1A', false), api.light('L2A', false)]);
+            })}
+          >全部關</Button>
+          <span style={dim}>
+            {running
+              ? '檢測模式中無法手動點燈'
+              : lightUntil > now
+                ? `亮著 — ${Math.ceil((lightUntil - now) / 1000)} 秒後自動熄滅`
+                : '熄滅'}
+          </span>
+        </div>
+      </Card>
+
+      <Card size="small" style={{ marginBottom: 8 }} title={<span>進料節流(閘門)
+        <Why>閘門每登記一個物件就會觸發相機一次。要求得比相機能給的快,就會出現
+          「有觸發、沒影格」—— 那會讓主機的配對永久錯位,不是只掉一顆料。
+          這裡把進料速率壓在相機之下。</Why></span>}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          <Input
+            style={{ width: 150 }}
+            addonBefore="上限"
+            addonAfter="顆/秒"
+            placeholder={gateHz !== undefined ? String(gateHz) : ''}
+            value={hzInput}
+            onChange={(e) => setHzInput(e.target.value)}
+          />
+          <Button
+            loading={busy === 'gate'}
+            disabled={!(Number(hzInput) > 0)}
+            onClick={() => run('gate', (api) => api.machineSetupUpdate(
+              { min_detect_sep_us: Math.round(1000000 / Number(hzInput)) }, false, true))}
+          >套用</Button>
+          <span style={{ alignSelf: 'center', ...dim }}>
+            目前 {gateHz !== undefined ? `${gateHz} 顆/秒` : '—'}
+            {gateSepUs !== undefined ? ` (min_detect_sep_us=${gateSepUs})` : ''}
+          </span>
+          {/* The camera ceiling, measured rather than assumed: shrinking the ROI
+              height raises it, which is the lever for running parts closer
+              together. The gate cap has to stay under this -- above it you get
+              triggers with no frames, which is exactly what breaks the pairing. */}
+          {pairing && pairing.cam_max_fps > 0 && (
+            <span style={{ alignSelf: 'center',
+              color: gateHz > pairing.cam_max_fps ? '#c33' : '#888' }}>
+              相機實測上限 {Number(pairing.cam_max_fps).toFixed(1)} fps
+              {gateHz > pairing.cam_max_fps ? ' ← 閘門開得比相機快' : ''}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          {/* Disabling the gate does not lose parts -- they ride round again,
+              exactly as they do for any rate/distance rejection. What it buys is
+              a lane with no real detections in it, so a calibration pulse can be
+              fired and measured without a part landing mid-measurement. */}
+          <Button
+            danger={gate && gate.disabled}
+            loading={busy === 'gatedis'}
+            onClick={() => run('gatedis', (api) => api.setGateDisable(!(gate && gate.disabled)))}
+          >{gate && gate.disabled ? '閘門已停用 — 恢復' : '停用閘門(僅忽略真實感測)'}</Button>
+        <Why>停用閘門不會掉料 —— 料會再轉一圈回來,跟任何速率/距離擋下的情況一樣。
+          換到的是一條沒有真實偵測的通道,校時脈衝可以在沒有料闖進來的情況下量測。</Why>
+          <Button
+            loading={busy === 'phantom'}
+            onClick={() => run('phantom', (api) => api.trigPhantomPulse())}
+          >注入假脈衝</Button>
+          {gate && (
+            <span style={{ alignSelf: 'center', ...dim }}>
+              轉速{gate.freq_stable ? '已穩定' : '未穩定'}
+            </span>
+          )}
+        </div>
+        {gate && (
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <span>通過 <b>{gate.accept}</b></span>
+            {/* rej_rate > 0 is the limiter doing its job: those parts stayed on
+                the plate and come round again. It is not an error, but it must
+                be visible -- "missing parts" and "deliberately skipped parts"
+                look identical without it. */}
+            <span>擋下·速率
+              <Why>限速器在做它的事:這些料留在盤上,下一圈會再回來。這不是錯誤,
+                但必須看得見 —— 沒有它,「掉了的料」跟「故意跳過的料」長得一模一樣。</Why>
+              {' '}<b style={{ color: gate.rej_rate > 0 ? '#c60' : undefined }}>
+              {gate.rej_rate}</b></span>
+            <span>擋下·距離 <b>{gate.rej_dist}</b></span>
+            <span>擋下·忙碌 <b style={{ color: gate.rej_busy > 0 ? '#c33' : undefined }}>
+              {gate.rej_busy}</b></span>
+          </div>
+        )}
+      </Card>
+
+      {/* Every station, expressed the way it is actually adjusted: WHERE it
+          fires and HOW LONG it stays on. on/off is how the firmware stores it,
+          but nobody thinks "move off to 672" -- they think "make the window
+          wider". Width edits keep the position fixed and move `off`. */}
+      <Card size="small" style={{ marginBottom: 8 }} title={<span>站點時序
+        <Why>位置 = 從閘門登記算起走了多少 tick,1 tick = {MM_PER_PULSE.toFixed(4)} mm,
+          與轉速無關。寬度 = 該站點持續開啟的 tick 數。括號中的時間是
+          {isRef(plate_freq) ? `plate_freq ${REF_FREQ} 參考值` : '目前轉速'}下換算的。
+          改完要按「存入 NVS」才會在重開機後存活。</Why></span>}
+        extra={<span style={{ fontSize: 11, whiteSpace: 'nowrap',
+                              color: spoUnlock ? '#c60' : '#888' }}>
+          {spoUnlock ? '可編輯' : '唯讀'}{' '}
+          <Switch size="small" checked={spoUnlock} onChange={setSpoUnlock} />
+        </span>}>
+
+        {/* One fine-adjust bar for the whole table, acting on whichever field
+            was last focused. A slider cannot land on a single tick and one tick
+            is 12.6um, which is the resolution this actually needs; per-row
+            buttons would be 48 buttons. */}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 8,
+          padding: '4px 6px', borderRadius: 4,
+          background: sel ? '#f0f6ff' : '#fafafa',
+          border: sel ? '1px solid #91caff' : '1px solid #eee' }}>
+          {[-100, -10, -1, 1, 10, 100].map((d) => (
+            <Button key={d} size="small" disabled={!sel || !spoUnlock} style={{ padding: '0 7px' }}
+              onMouseDown={(e) => e.preventDefault()}   /* keep focus on the field */
+              onClick={() => nudge(d)}
+            >{d > 0 ? `+${d}` : d}</Button>
+          ))}
+          <span style={{ fontSize: 11, marginLeft: 6, color: sel ? '#1677ff' : '#aaa' }}>
+            {!spoUnlock ? '唯讀 — 右上角切換才能編輯'
+              : sel ? `${sel.label} · ${sel.which === 'pos' ? '位置 (tick)' : '寬度 (µs, 每格 ×10)'}`
+              : '點一個欄位再用快速鈕'}
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', fontSize: 11, ...dim, padding: '0 0 4px 0' }}>
+          <span style={{ width: 104 }}>站點</span>
+          <span style={{ width: 86 }}>觸發位置</span>
+          <span style={{ width: 86 }}>寬度 (µs)</span>
+          <span style={{ flex: 1 }}>換算</span>
+        </div>
+
+        {STATIONS.map((st) => {
+          const pos = spoEdit[st.on];
+          const wid = st.off ? spoEdit['_w_' + st.key] : undefined;
+          const bad = st.off && !(Number(wid) > 0);
+          const isSel = (which) => sel && sel.key === st.key && sel.which === which;
+          const cell = (which, val, onCh) => (
+            <Input size="small" style={{ width: 82, marginRight: 4,
+              borderColor: isSel(which) ? '#1677ff' : undefined }}
+              disabled={!spoUnlock}
+              value={val ?? ''}
+              onFocus={() => setSel({ key: st.key, label: st.label, which })}
+              onChange={(e) => onCh(e.target.value.replace(/[^0-9]/g, ''))}
+              onPressEnter={commitSpo} onBlur={commitSpo} />
+          );
+          return (
+            <div key={st.key} style={{ display: 'flex', alignItems: 'center', padding: '2px 0' }}>
+              <span style={{ width: 104, fontSize: 12 }}>
+                {st.label}{st.why ? <Why>{st.why}</Why> : null}
+              </span>
+              {cell('pos', pos, (v) => setSpoEdit({ ...spoEdit, [st.on]: v }))}
+              {st.off
+                ? cell('w', wid, (v) => setSpoEdit({ ...spoEdit, ['_w_' + st.key]: v }))
+                : <span style={{ width: 86 }} />}
+              <span style={{ flex: 1, fontSize: 11, color: bad ? '#c33' : '#888' }}>
+                {Number(pos) >= 0
+                  ? `${(Number(pos) * MM_PER_PULSE).toFixed(1)} mm · ${fmtMs(ticksToMs(Number(pos), refFreq(plate_freq)))}`
+                  : '—'}
+                {st.off ? (bad
+                  ? '  ⚠ 寬度必須 > 0'
+                  : `  → ${Math.ceil(Number(wid) * 2 * setpoint_freq / 1e6)} t = ${(Number(wid) * 2 * setpoint_freq / 1e6 * MM_PER_PULSE).toFixed(2)} mm${cfg.plate_freq > 0 ? '' : ' ⚠ 轉速為 0,裝置要等設定轉速後才換算'}`) : ''}
+              </span>
+            </div>
+          );
+        })}
+
+        {/* The one cross-station rule the machine actually enforces: a verdict
+            that arrives after SWITCH is no verdict at all. */}
+        {spoEdit.SWITCH !== undefined && lat.max_us > 0 && (
+          <div style={{ fontSize: 11, marginTop: 6,
+            color: ticksToMs(Number(spoEdit.SWITCH), refFreq(plate_freq)) * 1000 < lat.max_us * 1.5
+                   ? '#c33' : '#888' }}>
+            SWITCH 期限 {fmtMs(ticksToMs(Number(spoEdit.SWITCH), refFreq(plate_freq)))} vs
+            {' '}回報延遲最大 {(lat.max_us / 1000).toFixed(0)} ms
+            {ticksToMs(Number(spoEdit.SWITCH), refFreq(plate_freq)) * 1000 < lat.max_us * 1.5
+              ? ' ← 餘裕不足 1.5x,慢的那幾顆會來不及判定' : ''}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
+          <Button size="small" type="primary" loading={busy === 'save'}
+            onClick={() => run('save', (api) => api.saveSetupToDevice())}
+          >存入 NVS</Button>
+          <Button size="small" onClick={() => setSpoEdit(spoToEdit(spo, wus, setpoint_freq))}>還原成裝置目前值</Button>
+          <span style={{ ...dim, fontSize: 11 }}>
+            編輯後離開欄位即套用(下一顆料起);存 NVS 才會撐過重開機
+          </span>
+        </div>
+      </Card>
+
       {pairing && (
       <Card size="small" style={{ marginBottom: 8 }} title={<span>影格配對(核心端)
         <Why>每張影格屬於哪一顆料。配錯不會有任何錯誤碼 —— 料照樣被回答、照樣被分選,
@@ -757,82 +971,6 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
       </Card>
       )}
 
-      <Card size="small" style={{ marginBottom: 8 }} title={<span>進料節流(閘門)
-        <Why>閘門每登記一個物件就會觸發相機一次。要求得比相機能給的快,就會出現
-          「有觸發、沒影格」—— 那會讓主機的配對永久錯位,不是只掉一顆料。
-          這裡把進料速率壓在相機之下。</Why></span>}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-          <Input
-            style={{ width: 150 }}
-            addonBefore="上限"
-            addonAfter="顆/秒"
-            placeholder={gateHz !== undefined ? String(gateHz) : ''}
-            value={hzInput}
-            onChange={(e) => setHzInput(e.target.value)}
-          />
-          <Button
-            loading={busy === 'gate'}
-            disabled={!(Number(hzInput) > 0)}
-            onClick={() => run('gate', (api) => api.machineSetupUpdate(
-              { min_detect_sep_us: Math.round(1000000 / Number(hzInput)) }, false, true))}
-          >套用</Button>
-          <span style={{ alignSelf: 'center', ...dim }}>
-            目前 {gateHz !== undefined ? `${gateHz} 顆/秒` : '—'}
-            {gateSepUs !== undefined ? ` (min_detect_sep_us=${gateSepUs})` : ''}
-          </span>
-          {/* The camera ceiling, measured rather than assumed: shrinking the ROI
-              height raises it, which is the lever for running parts closer
-              together. The gate cap has to stay under this -- above it you get
-              triggers with no frames, which is exactly what breaks the pairing. */}
-          {pairing && pairing.cam_max_fps > 0 && (
-            <span style={{ alignSelf: 'center',
-              color: gateHz > pairing.cam_max_fps ? '#c33' : '#888' }}>
-              相機實測上限 {Number(pairing.cam_max_fps).toFixed(1)} fps
-              {gateHz > pairing.cam_max_fps ? ' ← 閘門開得比相機快' : ''}
-            </span>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-          {/* Disabling the gate does not lose parts -- they ride round again,
-              exactly as they do for any rate/distance rejection. What it buys is
-              a lane with no real detections in it, so a calibration pulse can be
-              fired and measured without a part landing mid-measurement. */}
-          <Button
-            danger={gate && gate.disabled}
-            loading={busy === 'gatedis'}
-            onClick={() => run('gatedis', (api) => api.setGateDisable(!(gate && gate.disabled)))}
-          >{gate && gate.disabled ? '閘門已停用 — 恢復' : '停用閘門(僅忽略真實感測)'}</Button>
-        <Why>停用閘門不會掉料 —— 料會再轉一圈回來,跟任何速率/距離擋下的情況一樣。
-          換到的是一條沒有真實偵測的通道,校時脈衝可以在沒有料闖進來的情況下量測。</Why>
-          <Button
-            loading={busy === 'phantom'}
-            onClick={() => run('phantom', (api) => api.trigPhantomPulse())}
-          >注入假脈衝</Button>
-          {gate && (
-            <span style={{ alignSelf: 'center', ...dim }}>
-              轉速{gate.freq_stable ? '已穩定' : '未穩定'}
-            </span>
-          )}
-        </div>
-        {gate && (
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            <span>通過 <b>{gate.accept}</b></span>
-            {/* rej_rate > 0 is the limiter doing its job: those parts stayed on
-                the plate and come round again. It is not an error, but it must
-                be visible -- "missing parts" and "deliberately skipped parts"
-                look identical without it. */}
-            <span>擋下·速率
-              <Why>限速器在做它的事:這些料留在盤上,下一圈會再回來。這不是錯誤,
-                但必須看得見 —— 沒有它,「掉了的料」跟「故意跳過的料」長得一模一樣。</Why>
-              {' '}<b style={{ color: gate.rej_rate > 0 ? '#c60' : undefined }}>
-              {gate.rej_rate}</b></span>
-            <span>擋下·距離 <b>{gate.rej_dist}</b></span>
-            <span>擋下·忙碌 <b style={{ color: gate.rej_busy > 0 ? '#c33' : undefined }}>
-              {gate.rej_busy}</b></span>
-          </div>
-        )}
-      </Card>
-
       <Card size="small" title="統計" style={{ marginBottom: 8 }}>
         {/* SEL/NA/SKIP/UNANSWERED now live on the main row above. What is left
             here is the timing question they cannot answer: a verdict that is
@@ -852,130 +990,6 @@ export function UINSP_ESP32_UI({ pollMs = 1000 }) {
             {isRef(plate_freq) ? <span style={dim}> @{REF_FREQ}</span> : null}</b></div>
         <div style={kv}><span>在途 / 等待</span>
           <b>{pipe.registered ?? '—'} / {pipe.waiting ?? '—'}</b></div>
-      </Card>
-
-      {/* Every station, expressed the way it is actually adjusted: WHERE it
-          fires and HOW LONG it stays on. on/off is how the firmware stores it,
-          but nobody thinks "move off to 672" -- they think "make the window
-          wider". Width edits keep the position fixed and move `off`. */}
-      <Card size="small" style={{ marginBottom: 8 }} title={<span>站點時序
-        <Why>位置 = 從閘門登記算起走了多少 tick,1 tick = {MM_PER_PULSE.toFixed(4)} mm,
-          與轉速無關。寬度 = 該站點持續開啟的 tick 數。括號中的時間是
-          {isRef(plate_freq) ? `plate_freq ${REF_FREQ} 參考值` : '目前轉速'}下換算的。
-          改完要按「存入 NVS」才會在重開機後存活。</Why></span>}>
-
-        {/* One fine-adjust bar for the whole table, acting on whichever field
-            was last focused. A slider cannot land on a single tick and one tick
-            is 12.6um, which is the resolution this actually needs; per-row
-            buttons would be 48 buttons. */}
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 8,
-          padding: '4px 6px', borderRadius: 4,
-          background: sel ? '#f0f6ff' : '#fafafa',
-          border: sel ? '1px solid #91caff' : '1px solid #eee' }}>
-          {[-100, -10, -1, 1, 10, 100].map((d) => (
-            <Button key={d} size="small" disabled={!sel} style={{ padding: '0 7px' }}
-              onMouseDown={(e) => e.preventDefault()}   /* keep focus on the field */
-              onClick={() => nudge(d)}
-            >{d > 0 ? `+${d}` : d}</Button>
-          ))}
-          <span style={{ fontSize: 11, marginLeft: 6, color: sel ? '#1677ff' : '#aaa' }}>
-            {sel ? `${sel.label} · ${sel.which === 'pos' ? '位置 (tick)' : '寬度 (µs, 每格 ×10)'}` : '點一個欄位再用快速鈕'}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', fontSize: 11, ...dim, padding: '0 0 4px 0' }}>
-          <span style={{ width: 104 }}>站點</span>
-          <span style={{ width: 86 }}>觸發位置</span>
-          <span style={{ width: 86 }}>寬度 (µs)</span>
-          <span style={{ flex: 1 }}>換算</span>
-        </div>
-
-        {STATIONS.map((st) => {
-          const pos = spoEdit[st.on];
-          const wid = st.off ? spoEdit['_w_' + st.key] : undefined;
-          const bad = st.off && !(Number(wid) > 0);
-          const isSel = (which) => sel && sel.key === st.key && sel.which === which;
-          const cell = (which, val, onCh) => (
-            <Input size="small" style={{ width: 82, marginRight: 4,
-              borderColor: isSel(which) ? '#1677ff' : undefined }}
-              value={val ?? ''}
-              onFocus={() => setSel({ key: st.key, label: st.label, which })}
-              onChange={(e) => onCh(e.target.value.replace(/[^0-9]/g, ''))}
-              onPressEnter={commitSpo} onBlur={commitSpo} />
-          );
-          return (
-            <div key={st.key} style={{ display: 'flex', alignItems: 'center', padding: '2px 0' }}>
-              <span style={{ width: 104, fontSize: 12 }}>
-                {st.label}{st.why ? <Why>{st.why}</Why> : null}
-              </span>
-              {cell('pos', pos, (v) => setSpoEdit({ ...spoEdit, [st.on]: v }))}
-              {st.off
-                ? cell('w', wid, (v) => setSpoEdit({ ...spoEdit, ['_w_' + st.key]: v }))
-                : <span style={{ width: 86 }} />}
-              <span style={{ flex: 1, fontSize: 11, color: bad ? '#c33' : '#888' }}>
-                {Number(pos) >= 0
-                  ? `${(Number(pos) * MM_PER_PULSE).toFixed(1)} mm · ${fmtMs(ticksToMs(Number(pos), refFreq(plate_freq)))}`
-                  : '—'}
-                {st.off ? (bad
-                  ? '  ⚠ 寬度必須 > 0'
-                  : `  → ${Math.ceil(Number(wid) * 2 * setpoint_freq / 1e6)} t = ${(Number(wid) * 2 * setpoint_freq / 1e6 * MM_PER_PULSE).toFixed(2)} mm${cfg.plate_freq > 0 ? '' : ' ⚠ 轉速為 0,裝置要等設定轉速後才換算'}`) : ''}
-              </span>
-            </div>
-          );
-        })}
-
-        {/* The one cross-station rule the machine actually enforces: a verdict
-            that arrives after SWITCH is no verdict at all. */}
-        {spoEdit.SWITCH !== undefined && lat.max_us > 0 && (
-          <div style={{ fontSize: 11, marginTop: 6,
-            color: ticksToMs(Number(spoEdit.SWITCH), refFreq(plate_freq)) * 1000 < lat.max_us * 1.5
-                   ? '#c33' : '#888' }}>
-            SWITCH 期限 {fmtMs(ticksToMs(Number(spoEdit.SWITCH), refFreq(plate_freq)))} vs
-            {' '}回報延遲最大 {(lat.max_us / 1000).toFixed(0)} ms
-            {ticksToMs(Number(spoEdit.SWITCH), refFreq(plate_freq)) * 1000 < lat.max_us * 1.5
-              ? ' ← 餘裕不足 1.5x,慢的那幾顆會來不及判定' : ''}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 10 }}>
-          <Button size="small" type="primary" loading={busy === 'save'}
-            onClick={() => run('save', (api) => api.saveSetupToDevice())}
-          >存入 NVS</Button>
-          <Button size="small" onClick={() => setSpoEdit(spoToEdit(spo, wus, setpoint_freq))}>還原成裝置目前值</Button>
-          <span style={{ ...dim, fontSize: 11 }}>
-            編輯後離開欄位即套用(下一顆料起);存 NVS 才會撐過重開機
-          </span>
-        </div>
-      </Card>
-
-      <Card size="small" style={{ marginBottom: 8 }} title={<span>背光 (相機設定用)
-        <Why>相機設定用的常亮。裝置在 IDLE 以外會拒絕 —— 檢測模式下這些腳位歸 stage
-          任務所有,點了也會被蓋掉 —— 而且會逾時自動熄滅:為 600µs 閃燈設計的背光,
-          不一定撐得住連續點亮。</Why></span>}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {['L1A', 'L2A'].map((ch) => (
-            <Button key={ch} size="small" loading={busy === 'lt' + ch} disabled={running}
-              onClick={() => run('lt' + ch, (api) =>
-                api.light(ch, true, LIGHT_HOLD_MS).then((r) => {
-                  if (r && r.ack === false) { log.warn('[light] refused', r); return; }
-                  setLightUntil(Date.now() + ((r && r.timeout_ms) || LIGHT_HOLD_MS));
-                }))}
-            >{ch} 開</Button>
-          ))}
-          <Button size="small" danger loading={busy === 'ltoff'}
-            onClick={() => run('ltoff', (api) => {
-              setLightUntil(0);
-              return Promise.all([api.light('L1A', false), api.light('L2A', false)]);
-            })}
-          >全部關</Button>
-          <span style={dim}>
-            {running
-              ? '檢測模式中無法手動點燈'
-              : lightUntil > now
-                ? `亮著 — ${Math.ceil((lightUntil - now) / 1000)} 秒後自動熄滅`
-                : '熄滅'}
-          </span>
-        </div>
       </Card>
 
       <Card size="small" title="診斷">
