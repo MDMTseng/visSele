@@ -138,14 +138,41 @@ check("w=h=0 means OFF, not 'reject everything'", zero == new_body,
 # same box shifted a plate-width away must not.
 print("\nC. a small region aimed at the object")
 OX, OY = 1355, 856
-on,  _ = run(VIS, {"x": OX - 150, "y": OY - 150, "w": 300, "h": 300}, "region_on")
-off, _ = run(VIS, {"x": OX + 600, "y": OY - 150, "w": 300, "h": 300}, "region_off")
+on,  _ = run(VIS, {"x": OX - 150, "y": OY - 150, "w": 300, "h": 300, "fit": "center"}, "region_on")
+off, _ = run(VIS, {"x": OX + 600, "y": OY - 150, "w": 300, "h": 300, "fit": "center"}, "region_off")
 n_on,  _ = located(on)
 n_off, _ = located(off)
-check("300px box centred on the object -> kept", n_on == 1, "located=%s" % n_on)
+check("centre mode: 300px box on the object -> kept", n_on == 1, "located=%s" % n_on)
 check("kept object is measured identically",     on == new_body,
       "" if on == new_body else "%s B vs %s B" % (len(on or b""), len(new_body or b"")))
-check("same box shifted 600px away -> dropped",  n_off == 0, "located=%s" % n_off)
+check("centre mode: same box 600px away -> dropped",  n_off == 0, "located=%s" % n_off)
+
+
+# --- D. fit: contain vs centre ----------------------------------------------
+#
+# The point of contain-mode is that the natural gesture works: a box drawn
+# comfortably around a part keeps it, while a box that merely covers the part's
+# CENTRE does not. Centre-mode behaves the other way round, which is why
+# selecting one part used to mean drawing a box smaller than the part.
+print("\nD. fit mode")
+# The object's real bounding box, read from the core's own diagnostic:
+#   label 3 area 84328 raw(1355,856) bbox[852,203 982x1143]
+# It is 982x1143 px -- far bigger than the 300px "aim" box in section C, which
+# is exactly why contain-mode and centre-mode disagree so visibly here.
+tiny_on_centre = {"x": OX - 40, "y": OY - 40, "w": 80, "h": 80}
+roomy          = {"x": 800, "y": 150, "w": 1100, "h": 1250}   # holds bbox with margin
+
+r1, _ = run(VIS, dict(tiny_on_centre, fit="center"),  "fit_c_tiny")
+r2, _ = run(VIS, dict(tiny_on_centre, fit="contain"), "fit_o_tiny")
+r3, _ = run(VIS, dict(roomy,          fit="contain"), "fit_o_roomy")
+r4, _ = run(VIS, tiny_on_centre,                      "fit_default_tiny")
+n1, n2, n3, n4 = (located(x)[0] for x in (r1, r2, r3, r4))
+check("centre mode: 80px box on the centre -> kept", n1 == 1, "located=%s" % n1)
+check("contain mode: same 80px box -> dropped",      n2 == 0, "located=%s" % n2)
+check("contain mode: roomy box -> kept",             n3 == 1, "located=%s" % n3)
+check("contain mode does not perturb what it keeps", r3 == new_body,
+      "" if r3 == new_body else "%s B vs %s B" % (len(r3 or b""), len(new_body or b"")))
+check("default fit is contain, not centre",          n4 == 0, "located=%s" % n4)
 
 print("\n=> %s" % ("ALL PASS" if not fails else "%d FAILED: %s" % (len(fails), fails)))
 sys.exit(1 if fails else 0)

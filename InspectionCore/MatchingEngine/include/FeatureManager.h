@@ -52,11 +52,49 @@ typedef struct FeatureManager_BacPac
   // stay untouched.
   float insp_region_x = 0, insp_region_y = 0;
   float insp_region_w = 0, insp_region_h = 0;
+
+  // How much of an object has to be in the region to be ours.
+  //
+  //   CONTAIN (default) the object's whole bounding box must fit inside
+  //   CENTRE            only its centroid is tested
+  //
+  // CONTAIN is the default because it is the one that matches the gesture. With
+  // a centre test, excluding a neighbour means shrinking the box until its
+  // centre falls outside -- and when parts are wider than their spacing (measured
+  // here: parts ~350px, spacing down to 234px) that box ends up SMALLER THAN THE
+  // PART, i.e. you draw a little box inside the object to select the object.
+  // Backwards, and it silently gets worse as the feed tightens.
+  //
+  // Containment inverts it: draw a box that comfortably holds one part and a
+  // neighbour cannot also fit, because the neighbour is offset by less than its
+  // own width. The natural drawing IS the correct setting.
+  //
+  // The trade is strictness. A part that drifts far enough to poke out is no
+  // longer contained and drops out -> NA -> another lap. That is the right way
+  // to be wrong here (see on_fail: an unjudged part recirculates, it is not
+  // ejected), but it does mean the box wants a margin, not a tight fit.
+  enum InspRegionFit { INSP_FIT_CENTRE = 0, INSP_FIT_CONTAIN = 1 };
+  int insp_region_fit = INSP_FIT_CONTAIN;
+
   bool hasInspRegion() const { return insp_region_w > 0 && insp_region_h > 0; }
   bool inInspRegion(float full_px_x, float full_px_y) const {
     if (!hasInspRegion()) return true;
     return full_px_x >= insp_region_x && full_px_x < insp_region_x + insp_region_w &&
            full_px_y >= insp_region_y && full_px_y < insp_region_y + insp_region_h;
+  }
+  // Whole-object test. lt/rb are the object's bounding box in the same
+  // full-sensor px frame. Falls back to the centre test when the caller has no
+  // extent to offer (the shape locator's MatchResult carries a pose and no
+  // size), so a locator without a bounding box degrades to the old behaviour
+  // rather than to something arbitrary.
+  bool objInInspRegion(float cx, float cy,
+                       float ltx, float lty, float rbx, float rby,
+                       bool have_extent = true) const {
+    if (!hasInspRegion()) return true;
+    if (insp_region_fit != INSP_FIT_CONTAIN || !have_extent)
+      return inInspRegion(cx, cy);
+    return ltx >= insp_region_x && rbx <= insp_region_x + insp_region_w &&
+           lty >= insp_region_y && rby <= insp_region_y + insp_region_h;
   }
 }FeatureManager_BacPac;
 

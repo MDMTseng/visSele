@@ -149,7 +149,9 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
 
   const edit = (fn) => { setDirty(true); fn(); };
   const built = () => ({
-    inspection_region: (region.w > 0 && region.h > 0) ? region : undefined,
+    inspection_region: (region.w > 0 && region.h > 0)
+      ? { ...region, fit: region.fit === 'center' ? 'center' : 'contain' }
+      : undefined,
     clean_regions: clean.length ? clean : undefined,
   });
 
@@ -201,6 +203,25 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
       單位是<b>全幀感光元件像素</b>。
     </div>
     <AimBtn target="region">拉框設定</AimBtn>
+    {/* Containment vs centre. The default is containment because it is the one
+        the drawing gesture already means: box the part, get the part. Under the
+        centre rule, excluding a neighbour needs a box smaller than the part
+        itself once spacing drops below part width -- which it does here. */}
+    <div style={{ margin: '4px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+        <span style={{ color: '#888' }}>判定方式</span>
+        <Select size="small" style={{ width: 130 }}
+          value={region.fit === 'center' ? 'center' : 'contain'}
+          onChange={(v) => edit(() => setRegion({ ...region, fit: v }))}
+          options={[{ value: 'contain', label: '整顆在框內' },
+                    { value: 'center',  label: '只看中心點' }]} />
+      </div>
+      <div style={{ fontSize: 11, color: '#888', whiteSpace: 'normal', lineHeight: 1.35 }}>
+        {region.fit === 'center'
+          ? '只要中心點在框內就算。框要小到裝不下兩個中心點才能只選一顆 —— 當間距小於零件寬度時,框會比零件還小。'
+          : '整個外接框都要在框內。把框畫得舒服地包住一顆,鄰居就進不來(它偏移的距離小於自己的寬度)。代價是零件偏移到凸出框外時會變 NA、繞回重測。'}
+      </div>
+    </div>
     <RectFields rect={region} showNumbers={nums} onChange={(r) => edit(() => setRegion(r))} />
     {region.w > 0 && region.h > 0 ? (
       <Button size="small" danger icon={<DeleteOutlined />}

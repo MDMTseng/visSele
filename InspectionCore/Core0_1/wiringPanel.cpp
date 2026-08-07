@@ -1637,7 +1637,7 @@ int LoadCameraSetting(CameraLayer &camera, char *filename)
 // change when the product does. A def carrying it would have to be redrawn per
 // product for no reason, and would be wrong the moment it was copied to another
 // machine.
-struct InspRegionCfg { float x = 0, y = 0, w = 0, h = 0; };
+struct InspRegionCfg { float x = 0, y = 0, w = 0, h = 0; int fit = 1; };
 static InspRegionCfg g_insp_region;
 
 static void load_insp_region(cJSON *json_mac_setting)
@@ -1650,11 +1650,15 @@ static void load_insp_region(cJSON *json_mac_setting)
     cfg.y = (float)JFetch_NUMBER_ex(r, "y", 0);
     cfg.w = (float)JFetch_NUMBER_ex(r, "w", 0);
     cfg.h = (float)JFetch_NUMBER_ex(r, "h", 0);
+    // "contain" (default) = the whole object must fit; "center" = centroid only.
+    cJSON *jf = cJSON_GetObjectItem(r, "fit");
+    if (jf && cJSON_IsString(jf) && strcmp(jf->valuestring, "center") == 0) cfg.fit = 0;
   }
   g_insp_region = cfg;
   if (cfg.w > 0 && cfg.h > 0)
-    LOGE("inspection_region: [%.0f,%.0f %.0fx%.0f] full-sensor px -- objects "
-         "outside this are not judged", cfg.x, cfg.y, cfg.w, cfg.h);
+    LOGE("inspection_region: [%.0f,%.0f %.0fx%.0f] full-sensor px, fit=%s -- objects "
+         "outside this are not judged", cfg.x, cfg.y, cfg.w, cfg.h,
+         cfg.fit ? "contain (whole object inside)" : "centre only");
   else
     LOGE("inspection_region: not configured -- every located object is a candidate");
 }
@@ -6112,6 +6116,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     bacpac->insp_region_y = g_insp_region.y;
     bacpac->insp_region_w = g_insp_region.w;
     bacpac->insp_region_h = g_insp_region.h;
+    bacpac->insp_region_fit = g_insp_region.fit;
   }
 
   //if(stackingC!=0)return;
@@ -7110,6 +7115,7 @@ int cp_main(int argc, char **argv)
   neutral_bacpac.insp_region_y = g_insp_region.y;
   neutral_bacpac.insp_region_w = g_insp_region.w;
   neutral_bacpac.insp_region_h = g_insp_region.h;
+  neutral_bacpac.insp_region_fit = g_insp_region.fit;
 
   // Headless golden-sample inspection loopback (for caliper-vs-contour testing
   // without the WebUI):  visSele --insp <image.png> <def.hydef> <out.json>

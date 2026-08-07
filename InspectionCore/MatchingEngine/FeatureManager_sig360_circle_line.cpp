@@ -6169,12 +6169,20 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
     {
       float fx = ldData[i].Center.x * dsampLevel + sOff.x;
       float fy = ldData[i].Center.y * dsampLevel + sOff.y;
-      if (!bacpac->inInspRegion(fx, fy)) { in_region[i] = 0; region_dropped++; }
+      // The label carries a real bounding box, so the containment test has
+      // something honest to work with -- no radius guessed from an area.
+      float lx = ldData[i].LTBound.x * dsampLevel + sOff.x;
+      float ly = ldData[i].LTBound.y * dsampLevel + sOff.y;
+      float rx = ldData[i].RBBound.x * dsampLevel + sOff.x;
+      float ry = ldData[i].RBBound.y * dsampLevel + sOff.y;
+      if (!bacpac->objInInspRegion(fx, fy, lx, ly, rx, ry))
+      { in_region[i] = 0; region_dropped++; }
     }
     if (region_dropped)
-      LOGI("insp_region [%.0f,%.0f %.0fx%.0f]: dropped %d of %d labels outside the station",
+      LOGI("insp_region [%.0f,%.0f %.0fx%.0f] fit=%s: dropped %d of %d labels outside the station",
            bacpac->insp_region_x, bacpac->insp_region_y,
            bacpac->insp_region_w, bacpac->insp_region_h,
+           bacpac->insp_region_fit == FeatureManager_BacPac::INSP_FIT_CONTAIN ? "contain" : "centre",
            region_dropped, (int)ldData.size() - 2);
 
     // Where the real objects actually landed, in the SAME space the test above
@@ -6205,8 +6213,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching(cv::Mat &img_cv)
         float ry = ldData[i].Center.y * dsampLevel + sOff.y;
         acv_XY ideal = acv_XY(ldData[i].Center.x * dsampLevel, ldData[i].Center.y * dsampLevel);
         if (bacpac->sampler) bacpac->sampler->img2ideal(&ideal);
-        LOGI("insp_region:   label %d area %d  raw(%.0f,%.0f) ideal(%.0f,%.0f) -> %s",
+        LOGI("insp_region:   label %d area %d  raw(%.0f,%.0f) ideal(%.0f,%.0f) "
+             "bbox[%.0f,%.0f %.0fx%.0f] -> %s",
              i, ldData[i].area, rx, ry, ideal.x + sOff.x, ideal.y + sOff.y,
+             ldData[i].LTBound.x * dsampLevel + sOff.x,
+             ldData[i].LTBound.y * dsampLevel + sOff.y,
+             (ldData[i].RBBound.x - ldData[i].LTBound.x) * dsampLevel,
+             (ldData[i].RBBound.y - ldData[i].LTBound.y) * dsampLevel,
              in_region[i] ? "KEEP" : "drop");
       }
     }
@@ -7249,9 +7262,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching_shape()
     if (bacpac && bacpac->hasInspRegion())
     {
       acv_XY sOff = bacpac->sampler ? bacpac->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
-      if (!bacpac->inInspRegion(m.x + sOff.x, m.y + sOff.y))
+      // have_extent=false: sbm::MatchResult carries a pose (x,y,angle,scale) and
+      // no size, so there is no bounding box to contain. The test degrades to
+      // the centre rule rather than inventing a radius from the template.
+      if (!bacpac->objInInspRegion(m.x + sOff.x, m.y + sOff.y, 0,0,0,0, false))
       {
-        LOGI("insp_region: shape match %d at (%.1f,%.1f) is outside the station -- dropped",
+        LOGI("insp_region: shape match %d at (%.1f,%.1f) outside the station "
+             "(centre test -- the shape locator reports no extent) -- dropped",
              mi, m.x + sOff.x, m.y + sOff.y);
         continue;
       }
