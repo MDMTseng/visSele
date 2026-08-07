@@ -27,6 +27,29 @@ import log from 'loglevel';
 
 const EMPTY_REGION = { x: 0, y: 0, w: 0, h: 0 };
 
+// localStorage, keyed per browser, is the working copy.
+//
+// The regions describe THIS machine's station, and the browser is on it, so a
+// half-finished setup surviving an F5 is worth more than it costs. It also
+// decouples authoring from the save round-trip: you can draw the boxes with the
+// core down, or before you are ready to commit them.
+//
+// machine_setting.json stays authoritative -- it is what the core reads. The
+// local copy only wins while it is DIRTY, i.e. edited and not yet saved; once
+// saved, both agree and the machine setting takes over again. That ordering
+// matters: a stale local draft must never quietly override what the machine is
+// actually running.
+const LS_KEY = 'visSele.station.draft.v1';
+const lsLoad = () => {
+  try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : null; }
+  catch (e) { log.warn('[station] localStorage read failed', e); return null; }
+};
+const lsSave = (v) => {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(v)); }
+  catch (e) { log.warn('[station] localStorage write failed', e); }
+};
+const lsClear = () => { try { localStorage.removeItem(LS_KEY); } catch (e) { /* ignore */ } };
+
 // A drag gives two opposite corners in any order; a region is an origin + size.
 function rectFromDrag(info) {
   const a = info && info.start && info.start.pix;
@@ -65,10 +88,12 @@ function RectFields({ rect, onChange }) {
  *   onSave(setting) persist                 (SV data/machine_setting.json)
  */
 export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }) {
-  const [region, setRegion] = useState(EMPTY_REGION);
-  const [clean, setClean]   = useState([]);
-  const [dirty, setDirty]   = useState(false);
+  const draft = useRef(lsLoad());
+  const [region, setRegion] = useState(() => ({ ...EMPTY_REGION, ...((draft.current && draft.current.region) || {}) }));
+  const [clean, setClean]   = useState(() => (draft.current && draft.current.clean) || []);
+  const [dirty, setDirty]   = useState(() => !!(draft.current && draft.current.dirty));
   const [aiming, setAiming] = useState(null);   // null | 'region' | <clean index>
+  const [open, setOpen]     = useState(false);  // collapsed by default: sidebar space
   const loadedFrom = useRef(null);
 
   // Adopt whatever the core last told us, but never stomp on edits in progress.
@@ -80,6 +105,14 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
     setRegion({ ...EMPTY_REGION, ...(machineSetting.inspection_region || {}) });
     setClean(Array.isArray(machineSetting.clean_regions) ? machineSetting.clean_regions : []);
   }, [machineSetting, dirty]);
+
+  // Mirror every edit to localStorage. Only while dirty -- a clean panel is just
+  // showing what the machine already has, and storing that would resurrect it as
+  // a "draft" that outranks a change made from somewhere else.
+  useEffect(() => {
+    if (dirty) lsSave({ region, clean, dirty: true });
+    else lsClear();
+  }, [region, clean, dirty]);
 
   // Mirror to the canvas whenever anything moves.
   useEffect(() => {
@@ -118,7 +151,30 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
     </Button>
   );
 
-  return <div style={{ padding: '4px 8px', textAlign: 'left' }}>
+  // Collapsed by default. This is setup, not monitoring: it is touched when the
+  // machine is being commissioned and not once per shift, so it must not sit
+  // between the operator and the counters they actually watch. The one-line
+  // summary is enough to tell at a glance that a region IS set -- which is the
+  // only thing about it that matters while parts are running.
+  const summary = (region.w > 0 && region.h > 0)
+    ? `${region.w}×${region.h} @${region.x},${region.y}`
+    : '未設定(不限制)';
+  const header = (
+    <div onClick={() => setOpen(!open)}
+      style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+               fontSize: 11, padding: '2px 8px', userSelect: 'none' }}>
+      <span style={{ color: '#888' }}>{open ? '▾' : '▸'}</span>
+      <span style={{ color: '#888' }}>工位</span>
+      <span style={{ color: (region.w > 0 && region.h > 0) ? '#00b0ff' : '#888' }}>{summary}</span>
+      {clean.length ? <span style={{ color: '#ffab00' }}>· 淨空 {clean.length}</span> : null}
+      {dirty ? <span style={{ color: '#d48806' }}>· 未存檔</span> : null}
+    </div>
+  );
+
+  if (!open) return header;
+
+  return <div style={{ padding: '0 8px 4px', textAlign: 'left' }}>
+    {header}
     <Divider orientation="left" style={{ margin: '4px 0', fontSize: 12 }}>檢驗區域(工位)</Divider>
     <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
       物件中心落在框外就不判定。留空(w或h=0)= 不限制,整個畫面都算。
@@ -175,9 +231,18 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
           // before it is on disk, not after a restart.
           if (onApply) onApply(patch);
           if (onSave) onSave({ ...(machineSetting || {}), ...patch });
+          // Clearing dirty also drops the localStorage draft (see the mirror
+          // effect): once it is on the machine, the machine is the source.
           setDirty(false);
         }}>套用並存檔</Button>
-      {dirty ? <span style={{ fontSize: 11, color: '#d48806' }}>未存檔</span> : null}
+      {dirty ? (
+        <Button size="small" onClick={() => {
+          // Throw the draft away and go back to what the machine is running.
+          lsClear();
+          loadedFrom.current = null;
+          setDirty(false);
+        }}>放棄變更</Button>
+      ) : null}
     </div>
   </div>;
 }

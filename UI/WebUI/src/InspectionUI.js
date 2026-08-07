@@ -829,10 +829,16 @@ class ObjInfoList extends React.Component {
     // be empty. That is the machine, not the product, so it is authored on the
     // live image and stored in machine_setting.json. Everything is in
     // component/StationRegionPanel.jsx.
+    // Everything goes in the TITLE, not the body. The Menu's openKeys is
+    // controlled and only ever contains "sub1"+index from resultMenu, so a
+    // SubMenu keyed anything else can never be expanded -- clicking it does
+    // nothing at all. That is why the v2 block above puts its strip in the
+    // title too. A body here would render and be permanently unreachable.
     let stationUI =
     <SubMenu style={{ 'textAlign': 'left' }} key={"station"} className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
-      title={<Divider orientation="center" key="divi3" style={{ 'margin': '2px 0'}} className="Antd_Divider_Small_Text_Tight">工位區域</Divider>}
-      >
+      title={
+      <>
+        <Divider orientation="center" key="divi3" style={{ 'margin': '2px 0'}} className="Antd_Divider_Small_Text_Tight">工位區域</Divider>
         <StationRegionPanel
           ecCanvas={this.ec_canvas}
           machineSetting={this.props.machine_custom_setting}
@@ -855,6 +861,8 @@ class ObjInfoList extends React.Component {
                 },
                 reject: (e) => log.error("[station] save failed", e) });
           }} />
+      </>}
+      >
     </SubMenu>
 
 
