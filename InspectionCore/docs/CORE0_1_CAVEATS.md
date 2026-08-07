@@ -1036,3 +1036,41 @@ clamp the work directly —
 count then length. Measured throughput is ~4.3M samples/s, so a budget of ~2e6
 puts a primitive at ~0.5s. Any such change should leave the ten KNOWN cases in
 `qa_measure.py` green and the golden byte-identical.
+
+## O. The golden angle judge drifted 2.7% since 2026-05-30 (2026-08-07)
+
+**Open, unattributed.** Recorded because it was found by accident and would
+otherwise be found again the same way.
+
+Golden sample `10221 BOS-LT12BH4211 SORTING_bk`, same def, same image:
+
+```
+judge  subtype    2026-05-30   2026-08-07     drift
+  8    distance    8.601038     8.600740     0.003%
+ 12    distance    8.468927     8.469253     0.000%
+ 13    distance    8.601037     8.600742     0.003%
+ 14    angle       2.792538     2.716893     2.71%   <---
+```
+
+The three distances are unchanged to a part in 30,000. The one **angle** moved
+2.7%. Lines 1 and 2 (its operands) carry no `locating` key, so this is the
+**legacy line fit**, not the caliper path — the caliper rework is not the
+suspect. 98 `MatchingEngine/` commits sit in that window and it has not been
+bisected. Candidates by shape: labeling (the OpenCV `connectedComponents`
+drop-in changes which boundary points exist and their order), morph/WLS, the
+primitive-locating edge selector.
+
+It may well be a fix rather than a regression — an angle is far more sensitive
+to which points feed the fit than a distance is, so a better boundary would
+move exactly this and leave the distances alone. Nobody has established which.
+
+**How it surfaced, which is the part worth keeping.** `qa_calc` had these four
+values *hardcoded* as CALC operands. When the measurement moved, eight of
+fourteen property trials reported "the CALC evaluator computed the wrong
+answer" — a failure pointing at a module that was working perfectly. The
+operands now come from a golden run at test time, and the drift has its own
+case, `golden_operand_drift_since_20260530`, marked KNOWN with this section as
+its reason. Delete that KNOWN entry the moment the drift is explained.
+
+**A test that hardcodes another subsystem's output has quietly become a test of
+that subsystem, and it will report its findings under the wrong name.**
