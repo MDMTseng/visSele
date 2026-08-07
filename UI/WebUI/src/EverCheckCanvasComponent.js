@@ -1128,6 +1128,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   EditDBInfoSync(edit_DB_info,updateImgOnly=false) {
     if(updateImgOnly==false)
     {
+      // updateImgOnly==false is InspectionUI telling us a NEW image arrived, so
+      // this is the moment the station state and the image agree.
+      this.StationOverlayFrameAdvance();
       this.edit_DB_info = edit_DB_info;
       this.db_obj = edit_DB_info._obj;
       this.rUtil.setEditor_db_obj(this.db_obj);
@@ -1200,7 +1203,44 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   //
   // Set by the panel as {region:{x,y,w,h}, clean:[{x,y,w,h,name}], pending:{...}}
   // in full-sensor px; undefined draws nothing.
-  SetStationOverlay(ov) { this.stationOverlay = ov; this.draw(); }
+  // Geometry is the operator's, state is the machine's, and they pair with
+  // different things.
+  //
+  // The boxes must move the instant they are dragged -- they belong to the
+  // person holding the mouse. The state (clean/dirty, the verdict) belongs to a
+  // FRAME, and reports outnumber images better than 2:1 above the 6fps image
+  // cap, so adopting state as it arrives puts it on the wrong picture. Caught in
+  // a photo of the running machine: a clean region reading "乾淨 0.033mm²" green
+  // with a part plainly sitting inside it.
+  //
+  // So geometry lands now, state waits for the image it describes.
+  SetStationOverlay(ov) {
+    const prev = this.stationOverlay || {};
+    this.stationPending = { result: ov.result, cleanState: (ov.clean || []).map(
+      (c) => ({ dirty: c.dirty, detail: c.detail })) };
+    this.stationOverlay = {
+      region: ov.region,
+      clean: (ov.clean || []).map((c, i) => ({ ...c,
+        // keep showing the state that matches the image on screen
+        dirty:  prev.clean && prev.clean[i] ? prev.clean[i].dirty  : undefined,
+        detail: prev.clean && prev.clean[i] ? prev.clean[i].detail : '' })),
+      result: prev.result,
+      pending: ov.pending,
+    };
+    this.draw();
+  }
+
+  // Called when a new image has actually arrived: promote the state that came
+  // with it.
+  StationOverlayFrameAdvance() {
+    if (!this.stationPending || !this.stationOverlay) return;
+    const p = this.stationPending;
+    this.stationOverlay = { ...this.stationOverlay,
+      result: p.result,
+      clean: (this.stationOverlay.clean || []).map((c, i) => ({ ...c,
+        dirty:  p.cleanState[i] ? p.cleanState[i].dirty  : undefined,
+        detail: p.cleanState[i] ? p.cleanState[i].detail : '' })) };
+  }
 
   draw_station_overlay() {
     const ov = this.stationOverlay;
