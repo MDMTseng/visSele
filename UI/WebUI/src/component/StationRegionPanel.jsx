@@ -21,6 +21,7 @@
 // splitting them would mean threading canvas state through three modules to
 // gain nothing.
 import React, { useState, useEffect, useRef } from 'react';
+import { useSelector } from 'react-redux';
 import { Button, InputNumber, Divider, Select, Popconfirm } from 'antd';
 import { AimOutlined, DeleteOutlined, SaveOutlined, PlusOutlined } from '@ant-design/icons';
 import log from 'loglevel';
@@ -62,8 +63,12 @@ const LS_KEY = 'visSele.station.draft.v1';
 // long-term source is the core's own sampler->getOriginOffset(), which is what
 // the region filter actually compares against; it just is not sent to the UI
 // today.
+// FALLBACK ONLY. The core now sends its own sampler->getOriginOffset() in the
+// report's `station` block -- the exact value the region filter adds -- so the
+// panel and the filter cannot drift apart. This path is what you get before the
+// first report arrives, or against a core too old to send it.
 const LS_ROI_KEY = 'LS_INSP_ROI';
-function roiOrigin() {
+function roiOriginFromLS() {
   try {
     const v = JSON.parse(localStorage.getItem(LS_ROI_KEY) || 'null');
     if (Array.isArray(v) && v.length >= 2 && isFinite(v[0]) && isFinite(v[1]))
@@ -71,7 +76,7 @@ function roiOrigin() {
   } catch (e) { log.warn('[station] LS_INSP_ROI unreadable', e); }
   return { x: 0, y: 0 };
 }
-const toStored = (r, o) => ({ ...r, x: r.x + o.x, y: r.y + o.y });
+const toStored = (r, o) => ({ ...r, x: Math.round(r.x + o.x), y: Math.round(r.y + o.y) });
 const toCanvas = (r, o) => (r && r.w > 0 && r.h > 0)
   ? { ...r, x: r.x - o.x, y: r.y - o.y } : r;
 const lsLoad = () => {
@@ -140,6 +145,17 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
   const [nums, setNums]     = useState(false);  // xywh fields: debugging, not operating
   const loadedFrom = useRef(null);
 
+  // What the core is actually doing, straight from the report it already sends.
+  const station = useSelector((st) =>
+    (st && st.UIData && st.UIData.edit_info && st.UIData.edit_info.station) || null);
+  const origin = (station && Array.isArray(station.roi_origin))
+    ? { x: Math.round(station.roi_origin[0]), y: Math.round(station.roi_origin[1]) }
+    : roiOriginFromLS();
+  // The drag callback is installed once per aiming session, so it must not close
+  // over a stale origin.
+  const originRef = useRef(origin);
+  originRef.current = origin;
+
   // Adopt whatever the core last told us, but never stomp on edits in progress.
   useEffect(() => {
     if (!machineSetting || dirty) return;
@@ -161,13 +177,33 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
   // Mirror to the canvas whenever anything moves.
   useEffect(() => {
     if (ecCanvas && typeof ecCanvas.SetStationOverlay === 'function') {
-      const o = roiOrigin();
+      const o = origin;
+      // STATUS_SUCCESS 0, STATUS_FAILURE -1, STATUS_NA -128, STATUS_UNSET -100.
+      // `result` is what the machine receives; `result_obj` is what the object's
+      // own judges said. Showing both when they differ is the whole point --
+      // "OK 但場地髒" is a different problem from "這顆不良".
+      const R = station && station.result !== undefined ? (() => {
+        const r = station.result, ro = station.result_obj;
+        const cat = station.cat;
+        const catTxt = (cat !== undefined && cat !== 65535) ? ('SEL' + cat) : 'NA';
+        if (r === 0)  return { tone: 'ok', text: 'OK → ' + catTxt };
+        if (r === -1) return { tone: 'ng', text: 'NG → ' + catTxt };
+        return { tone: 'na',
+                 text: 'NA → 不動作' + (ro === 0 ? '(零件本身 OK,場地或守門擋下)' : '') };
+      })() : null;
       ecCanvas.SetStationOverlay({
         region: toCanvas(region, o),
-        clean: clean.map((c) => toCanvas(c, o)),
+        clean: clean.map((c, i) => {
+          const m = station && Array.isArray(station.clean)
+            ? station.clean.find((z) => z.name === (c.name || ('clean' + (i + 1)))) : null;
+          return { ...toCanvas(c, o),
+                   dirty: m ? m.dirty : undefined,
+                   detail: m ? (Number(m.dark_area_mm2).toFixed(3) + 'mm²') : '' };
+        }),
+        result: R,
       });
     }
-  }, [ecCanvas, region, clean]);
+  }, [ecCanvas, region, clean, origin.x, origin.y, station]);
 
   // Drag-to-set. The canvas clears its own callback after one drag, so aiming
   // is a one-shot: press the target, drag once, done. That is deliberate --
@@ -179,7 +215,7 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
       const r = rectFromDrag(info);
       setAiming(null);
       if (!r) { log.debug('[station] drag too small, ignored'); return; }
-      const o = roiOrigin();
+      const o = originRef.current;
       const rs = toStored(r, o);           // canvas px -> full-sensor px
       log.debug('[station] drag', r, '+ roi origin', o, '=', rs);
       setDirty(true);
@@ -270,6 +306,30 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
         onClick={() => edit(() => setRegion(EMPTY_REGION))}>清除(不限制)</Button>
     ) : null}
 
+    {/* What the CORE is enforcing, next to what the panel has drawn. A
+        disagreement between the two is the most confusing state this feature
+        has -- the boxes look right and the machine behaves otherwise -- so it
+        is shown rather than left to be inferred from a log. */}
+    {station && station.region ? (
+      <div style={{ fontSize: 11, whiteSpace: 'normal', lineHeight: 1.35,
+                    color: (Math.round(station.region.x) === region.x &&
+                            Math.round(station.region.y) === region.y &&
+                            Math.round(station.region.w) === region.w &&
+                            Math.round(station.region.h) === region.h) ? '#888' : '#d48806',
+                    margin: '2px 0' }}>
+        核心目前使用 {Math.round(station.region.w)}×{Math.round(station.region.h)}
+        {' @'}{Math.round(station.region.x)},{Math.round(station.region.y)}
+        {' · '}{station.region.fit === 'center' ? '只看中心點' : '整顆在框內'}
+        {' · ROI 原點 '}{origin.x},{origin.y}
+        {(Math.round(station.region.x) !== region.x || Math.round(station.region.w) !== region.w)
+          ? ' ← 與畫面上的框不同,尚未套用' : ''}
+      </div>
+    ) : (
+      <div style={{ fontSize: 11, color: '#888', margin: '2px 0' }}>
+        核心目前沒有工位區域(整個畫面都算)
+      </div>
+    )}
+
     <Divider orientation="left" style={{ margin: '8px 0 4px', fontSize: 12 }}>淨空區域</Divider>
     <div style={{ fontSize: 11, color: '#888', marginBottom: 4, whiteSpace: 'normal', lineHeight: 1.35 }}>
       低於暗門檻的面積超過上限 → 依「超出時」處理。NA = 視野被污染,這顆量不準,繞回重測。
@@ -283,6 +343,18 @@ export function StationRegionPanel({ ecCanvas, machineSetting, onApply, onSave }
           </Popconfirm>
         </div>
         <RectFields rect={c} showNumbers={nums} onChange={(r) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, ...r } : x))))} />
+        {/* Live, from the core. Setting dark_area_max off a log tail is not a
+            workflow; watching 1.11 next to 0.0002 while you drag the box is. */}
+        {(() => {
+          const m = station && Array.isArray(station.clean)
+            ? station.clean.find((z) => z.name === (c.name || ('clean' + (i + 1)))) : null;
+          if (!m) return null;
+          return <div style={{ fontSize: 11, margin: '1px 0',
+                               color: m.dirty ? '#c33' : '#389e0d' }}>
+            實測 暗 {Number(m.dark_area_mm2).toFixed(4)} mm² ({(m.dark_ratio * 100).toFixed(2)}%)
+            {m.dirty ? ' — 超出上限' : ' — 乾淨'}
+          </div>;
+        })()}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <NumRow label="暗" value={c.dark_thresh ?? 128}
             onChange={(v) => edit(() => setClean(clean.map((x, k) => (k === i ? { ...x, dark_thresh: v } : x))))}

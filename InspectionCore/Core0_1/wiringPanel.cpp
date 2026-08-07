@@ -1728,7 +1728,8 @@ int InspStatusReducer(int total_status, int new_status);   // defined further do
 // gray is the INSPECTION image; the regions are in full-sensor px, so the
 // camera's hardware ROI origin has to come off before indexing. Same convention
 // as inspection_region -- one space for the whole station.
-static int eval_clean_regions(const cv::Mat &gray, float mmpp, acv_XY sOff)
+static int eval_clean_regions(const cv::Mat &gray, float mmpp, acv_XY sOff,
+                              cJSON *out_arr = NULL)
 {
   typedef FeatureReport_sig360_circle_line_single FR;
   if (g_clean_regions.empty() || gray.empty()) return FR::STATUS_SUCCESS;
@@ -1764,6 +1765,18 @@ static int eval_clean_regions(const cv::Mat &gray, float mmpp, acv_XY sOff)
     LOGI("clean_region '%s' [%.0f,%.0f %.0fx%.0f] thr %.0f: dark %.4f (%.4f mm2)%s",
          c.name.c_str(), c.x, c.y, c.w, c.h, c.dark_thresh, ratio, area,
          bad ? "  -> DIRTY" : "");
+
+    // Same numbers to the UI. Setting dark_area_max from a log tail is not a
+    // workflow; seeing 1.11 next to 0.0002 while you drag the box is.
+    if (out_arr)
+    {
+      cJSON *o = cJSON_CreateObject();
+      cJSON_AddStringToObject(o, "name", c.name.c_str());
+      cJSON_AddNumberToObject(o, "dark_ratio", ratio);
+      cJSON_AddNumberToObject(o, "dark_area_mm2", area);
+      cJSON_AddBoolToObject(o, "dirty", bad);
+      cJSON_AddItemToArray(out_arr, o);
+    }
     if (bad) worst = InspStatusReducer(worst, c.on_fail);
   }
   return worst;
@@ -6190,6 +6203,10 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
 
   cv::Mat &capImg = imgPipe->img;
+
+  // Declared out here so the station block further down can still see it: the
+  // inspection work happens inside a scope that holds the engine lock.
+  cJSON *station_clean_json = NULL;
   FeatureManager_BacPac *bacpac = imgPipe->bacpac;
   CameraLayer::frameInfo &fi = imgPipe->fi;
 
@@ -6424,7 +6441,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       float cr_mmpp = (bacpac && bacpac->sampler) ? bacpac->sampler->mmpP_ideal() : 0.0f;
       acv_XY cr_off = (bacpac && bacpac->sampler) ? bacpac->sampler->getOriginOffset()
                                                   : acv_XY{0.f, 0.f};
-      int cs = eval_clean_regions(capImg, cr_mmpp, cr_off);
+      station_clean_json = cJSON_CreateArray();
+      int cs = eval_clean_regions(capImg, cr_mmpp, cr_off, station_clean_json);
       if (cs != FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
       {
         LOGI("clean_regions dirty -> part status %d (was %d)",
@@ -6482,6 +6500,52 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     }
   }
   cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
+
+  // ---- station block -------------------------------------------------------
+  //
+  // Everything the UI needs to draw the station truthfully and to say why a
+  // part went NA, in the packet it already receives every frame.
+  //
+  // roi_origin is the one that matters most. The panel had been deriving it
+  // from the WebUI's own record of the ROI it REQUESTED, and the camera snaps
+  // that to its alignment increments (asked 1017.47,331.94, got 1016,328), so
+  // the drawn box sat a few px off the box the core actually compares against.
+  // This is that exact value -- sampler->getOriginOffset(), the same one the
+  // region filter adds -- so the two cannot drift apart by construction.
+  {
+    cJSON *st = cJSON_CreateObject();
+    acv_XY so = (imgPipe->bacpac && imgPipe->bacpac->sampler)
+                  ? imgPipe->bacpac->sampler->getOriginOffset() : acv_XY{0.f, 0.f};
+    cJSON *ro = cJSON_CreateArray();
+    cJSON_AddItemToArray(ro, cJSON_CreateNumber(so.x));
+    cJSON_AddItemToArray(ro, cJSON_CreateNumber(so.y));
+    cJSON_AddItemToObject(st, "roi_origin", ro);
+
+    // What the core is actually enforcing -- not what the panel has in its
+    // draft. A disagreement between the two is the single most confusing state
+    // this feature can be in, and it is now visible instead of inferred.
+    if (g_insp_region.w > 0 && g_insp_region.h > 0)
+    {
+      cJSON *rg = cJSON_CreateObject();
+      cJSON_AddNumberToObject(rg, "x", g_insp_region.x);
+      cJSON_AddNumberToObject(rg, "y", g_insp_region.y);
+      cJSON_AddNumberToObject(rg, "w", g_insp_region.w);
+      cJSON_AddNumberToObject(rg, "h", g_insp_region.h);
+      cJSON_AddStringToObject(rg, "fit", g_insp_region.fit ? "contain" : "center");
+      cJSON_AddItemToObject(st, "region", rg);
+    }
+    // The verdict AS THE MACHINE RECEIVES IT, not as the inspection produced it.
+    // Those differ whenever a clean region or a guard intervenes, and the number
+    // that decides where the part goes is this one -- so it is the one to show
+    // on the station box.
+    cJSON_AddNumberToObject(st, "result", imgPipe->datViewInfo.uInspStatus);
+    cJSON_AddNumberToObject(st, "result_obj", imgPipe->datViewInfo.finspStatus);
+    if (bpg_pi.perifCH != NULL)
+      cJSON_AddNumberToObject(st, "cat",
+        perif_status_to_cat(bpg_pi.perifCH, imgPipe->datViewInfo.uInspStatus));
+    if (station_clean_json) cJSON_AddItemToObject(st, "clean", station_clean_json);
+    cJSON_AddItemToObject(imgPipe->datViewInfo.report_json, "station", st);
+  }
   //taking the short cut, perifCH(inspection machine) needs 100% of data
   // LOGI("timeStamp_us:%lu",imgPipe->fi.timeStamp_us);
 

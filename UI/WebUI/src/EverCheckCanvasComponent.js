@@ -1213,24 +1213,45 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
     ctx.lineWidth = this.rUtil.getIndicationLineSize();
 
-    const box = (r, stroke, fill, label) => {
+    const box = (r, stroke, fill, label, sub) => {
       if (!r || !(r.w > 0) || !(r.h > 0)) return;
       const x = r.x * mmpp, y = r.y * mmpp, w = r.w * mmpp, h = r.h * mmpp;
       ctx.strokeStyle = stroke;
       ctx.strokeRect(x, y, w, h);
       if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
-      if (label) {
-        ctx.fillStyle = stroke;
-        ctx.font = this.rUtil.getFontStyle(1);
-        ctx.fillText(label, x, y - this.rUtil.getIndicationLineSize() * 2);
-      }
+      // Both labels go INSIDE the box, and small. getFontStyle takes a size in
+      // WORLD mm, so the 1 that the measurement overlay uses renders enormous
+      // here -- and unlike a measurement there are two lines per box and the
+      // boxes sit a part-pitch apart, so at that size six strings overlap into
+      // an unreadable block. Inside + small is what keeps each box's answer
+      // attached to that box.
+      const fs = 0.42, pad = 0.12;
+      ctx.font = this.rUtil.getFontStyle(fs);
+      ctx.fillStyle = stroke;
+      if (label) ctx.fillText(label, x + pad, y + fs + pad);
+      if (sub)   ctx.fillText(sub,   x + pad, y + fs * 2.2 + pad);
     };
 
-    // The inspection region is the one that decides which object is judged, so
-    // it gets the strong colour; clean regions are checks, not selectors.
-    box(ov.region, '#00b0ff', 'rgba(0,176,255,0.06)', ov.region ? '檢驗區域' : null);
-    (ov.clean || []).forEach((c, i) =>
-      box(c, '#ffab00', 'rgba(255,171,0,0.06)', c.name || ('淨空' + (i + 1))));
+    // The inspection region carries the verdict THE MACHINE GETS, and the clean
+    // regions carry whether they are actually clean. Both are the question the
+    // box is there to answer, so both are on the box rather than in a panel the
+    // operator would have to look away to read.
+    const R = ov.result || {};
+    const rStroke = R.tone === 'ok'  ? '#00e676'
+                  : R.tone === 'ng'  ? '#ff5252'
+                  : R.tone === 'na'  ? '#bdbdbd' : '#00b0ff';
+    box(ov.region, rStroke,
+        R.tone === 'ok' ? 'rgba(0,230,118,0.07)'
+      : R.tone === 'ng' ? 'rgba(255,82,82,0.09)'
+      : 'rgba(0,176,255,0.06)',
+        ov.region ? '檢驗區域' : null, R.text || null);
+    (ov.clean || []).forEach((c, i) => {
+      const dirty = c.dirty === true, known = c.dirty !== undefined;
+      box(c, dirty ? '#ff5252' : (known ? '#00e676' : '#ffab00'),
+          dirty ? 'rgba(255,82,82,0.10)' : 'rgba(255,171,0,0.06)',
+          c.name || ('淨空' + (i + 1)),
+          known ? (dirty ? '有雜物 ' + c.detail : '乾淨 ' + c.detail) : null);
+    });
     // Live drag preview -- dashed so it reads as "not committed yet".
     if (ov.pending) {
       ctx.setLineDash([6 * mmpp, 4 * mmpp]);

@@ -690,6 +690,14 @@ function StateReducer(newState, action) {
               let inspMode=GetObjElement(newState,["machine_custom_setting","InspectionMode"]);
               let uInspResult=GetObjElement(action,["data","uInspResult"]);
 
+              // The station block is TOP-LEVEL, next to uInspResult -- it
+              // describes the machine's station, not any one located object, so
+              // it does not belong in the per-object sig360 sub-report that
+              // becomes edit_info.inspReport. Keep it where the panel can find
+              // it. Undefined against a core that does not send it.
+              newState.edit_info = { ...newState.edit_info,
+                station: GetObjElement(action,["data","station"]) };
+
               //when in Full inspection mode if the uInspResult(the final result sends to inspection machine)
               //is NA/UNSET(may caused by dirty image/ non-single object...), when means to tell insp mach skip this one
               //so we gonna skip the report to put in(even if there may be a result)
