@@ -136,3 +136,54 @@ leaves the camera streaming, and the next process cannot recover it on its own (
 error (invalid-parameter)` on every `AcquisitionStart`, then no frames at all. The core now
 retries once after an unconditional stop, but a wedged control channel (every register read
 timing out) still needs the camera physically replugged.
+
+### D6. Driving the UI headlessly: two silent traps (2026-08-07)
+
+Both of these cost an hour and both produce a confident WRONG conclusion —
+"the app is broken" instead of "the harness missed". `tools/webctl`.
+
+**A synthetic `.click()` does nothing on the div-based controls.** DefConfUI's
+left menu (`重新設定/TAKE`, `儲存/SAVE`, `讀取/LOAD` …) is built from divs, and
+`eval("el.click()")` neither opens the dialog nor raises anything. Use a real
+Playwright click:
+
+```
+node webctl.mjs click "text=重新設定/TAKE"
+```
+
+Plain `<button>` elements *do* respond to `.click()`, which is what makes the
+failure look intermittent rather than categorical. Keep `.click()` as the
+fallback for the opposite case — Playwright refusing with "element is not
+visible" because an antd modal is stacked underneath the full-screen DefConf
+editor (that is how the 背光 `全部關` button has to be pressed).
+
+**antd keeps a closed modal in the DOM at `display:none`.** So
+
+```js
+document.querySelector('.ant-modal-body').innerText   // <-- lies
+```
+
+returns text from a dialog nobody can see. A leftover `相機重連中...` read this
+way was reported as a blocked UI while the camera was healthy the entire time
+(core said `cam_status 0`, `present true`, and answered a second client 5/5).
+Filter first:
+
+```js
+[...document.querySelectorAll('.ant-modal')].filter(m => m.getBoundingClientRect().height > 0)
+```
+
+The same rule applies to every DOM text read in this app.
+
+**Navigation, for reference.** The right-edge icon strip
+(aim/camera/cloud/cloud/robot) is the collapsed connection panel — clicking any
+of it opens the Build Info drawer, which then covers the right side; close it by
+clicking the **mask** (`.ant-drawer-mask`), not the X. DefConfUI is reached from
+the left sidebar's pencil (編輯). The v2 sidebar strip only renders once its
+peripheral channel is up, so on a fresh page load it is briefly absent.
+
+**Worth knowing while testing the take-image path:** press it more than once. It
+used to work exactly once per acquisition start, and the second press failed on
+a timer left behind by the first — see `InspectionCore/docs/CORE0_1_CAVEATS.md`
+§M, and B3 above for why the `timeout: -1` in that request matters.
+`tools/webctl/snap_probe.mjs` presses it N times over the same wire without a
+browser, which is the cheapest way to see it.
