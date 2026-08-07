@@ -24,7 +24,6 @@ import Tooltip from 'antd/lib/tooltip';
 import CameraOutlined from '@ant-design/icons/CameraOutlined';
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
 import CaretRightOutlined from '@ant-design/icons/CaretRightOutlined';
-import BorderOutlined from '@ant-design/icons/BorderOutlined';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import { mkLog } from 'UTIL/logger';
@@ -1148,7 +1147,11 @@ export function UINSP_ESP32_MINI() {
         <Button
           style={{ width: '100%', height: 34, fontSize: 15, fontWeight: 700, padding: 0 }}
           size="large"
-          type={running || starting ? 'default' : 'primary'}
+          // Solid on both states, red while it is turning. A ghost/outline stop
+          // reads as the secondary option, and stopping a spinning plate is
+          // never the secondary option -- it is the one you want to hit without
+          // looking.
+          type="primary"
           danger={running || starting}
           loading={busy}
           disabled={inError || (!running && !starting && !(lastSpeedRef.current > 0))}
@@ -1169,7 +1172,13 @@ export function UINSP_ESP32_MINI() {
           // status line directly underneath still says STOP or RUN, which is
           // where the machine's state belongs -- the button says what pressing
           // it DOES, and the line says what the machine IS.
-          icon={running || starting ? <BorderOutlined /> : <CaretRightOutlined />}
+          // A filled white square, not antd's outlined BorderOutlined. On a solid
+          // red field a hollow square reads as an empty box; the filled one is
+          // the transport-stop glyph everyone already knows.
+          icon={running || starting
+            ? <span style={{ display: 'inline-block', width: 13, height: 13,
+                             background: '#fff', verticalAlign: 'middle' }} />
+            : <CaretRightOutlined />}
         />
         </div>
 
